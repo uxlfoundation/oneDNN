@@ -109,8 +109,6 @@ protected:
     bool disable_systolic_ = false;
     bool relaxed_acc_ = false;
 
-    status_t transfer_post_ops(gpu_post_ops_t &&post_ops, bool swap_ab);
-
     status_t finalize(const char *tags);
     void update_driver_info();
 };
@@ -134,15 +132,9 @@ struct gen_nocopy_desc_t : public gen_desc_t {
     std::vector<const gemmstone::kcatalog::Entry *> select_kernel(
             compute::gpu_arch_t arch, int stepping, int eu_count,
             bool has_systolic, bool is_integrated, compute_mode mode,
-            int batch_dims, bool trans_a, bool trans_b, bool trans_co,
-            bool swap_ab, const quant_params &a_quant,
-            const quant_params &b_quant, const quant_params &c_quant,
-            bool mx_scales, bool dst_sround, bool c_offset, bool bias,
-            sum_ab_t reduce_ab, float alpha, float beta, data_type_t a_type,
-            data_type_t b_type, data_type_t c_type, data_type_t co_type,
-            data_type_t acc_type, int align_a, int align_b, int align_c,
+            const gemmstone::GEMMProblem &problem, float alpha, float beta,
             dim_t m, dim_t n, dim_t k, dim_t lda, dim_t ldb, dim_t ldc,
-            dim_t batch, gpu_post_ops_t &&post_ops);
+            dim_t batch);
 
     status_t finalize();
 

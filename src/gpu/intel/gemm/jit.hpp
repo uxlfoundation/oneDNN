@@ -238,34 +238,6 @@ struct gen_t : public primitive_t {
                             (mnk <= 256 * 1024 * 1024), VERBOSE_LARGE_SHAPES);
             }
 
-            // Wrangle data types.
-            bool int_acc = utils::one_of(eff_a_type(), s8, u8);
-            int_acc &= !(a_grouped() || b_grouped());
-            auto co_type = with_bias() ? d->bias_type()
-                    : with_sum_ab()    ? d->sum_ab_type
-                    : int_acc          ? s32
-                                       : d->c_type();
-            auto acc_type = int_acc
-                    ? s32
-                    : (utils::one_of(f64, eff_a_type(), eff_b_type()) ? f64
-                                                                      : f32);
-            VDISPATCH_GEMM(
-                    IMPLICATION(acc_type == f64, !with_eltwise && !with_binary),
-                    VERBOSE_UNSUPPORTED_POSTOP);
-
-            bool need_x32_acc
-                    = with_binary || !IMPLICATION(with_sum_, sum_at_begin_);
-
-            switch (attr()->acc_mode_) {
-                case accumulation_mode::any:
-                    if (!need_x32_acc) acc_type = data_type::undef;
-                    break;
-                case accumulation_mode::f16: acc_type = data_type::f16; break;
-                case accumulation_mode::f32: acc_type = data_type::f32; break;
-                case accumulation_mode::s32: acc_type = data_type::s32; break;
-                default: break;
-            }
-
             // Handle special compute modes.
             kernel_desc_t::compute_mode mode = kernel_desc_t::mode_default;
 
@@ -282,10 +254,7 @@ struct gen_t : public primitive_t {
             if (attr()->acc_mode_ == accumulation_mode::relaxed)
                 set_mode(mode, kernel_desc_t::mode_relaxed_acc);
 
-            if (wei_decomp_) {
-                acc_type = data_type::f32;
-                set_mode(mode, kernel_desc_t::mode_w_decomp);
-            }
+            if (wei_decomp_) { set_mode(mode, kernel_desc_t::mode_w_decomp); }
 
             // GEMM kernels down convert the following parameters to
             // int/uint32_t
@@ -296,34 +265,20 @@ struct gen_t : public primitive_t {
                             <= std::numeric_limits<uint32_t>::max(),
                     VERBOSE_SHAPE_RESTRICTION);
 
-            // Call kernel selector to choose a kernel.
-            gpu_post_ops_t gpu_post_ops;
-            CHECK(gpu_post_ops_t::make(gpu_post_ops, post_ops_, dst_md(),
-                    get_post_op_specializations()));
+            gemmstone::GEMMProblem problem;
+            CHECK(init_GEMMProblem(problem, intel_engine));
 
-            // TODO: handle swapping centrally to avoid copying here.
-            // If we just swap a_quant and b_quant, we run into issues in execute
-            // where with_{ab}_zero_points is swapped internally
-            jit::quant_params swapped_a_quant = a_quant;
-            jit::quant_params swapped_b_quant = b_quant;
-            if (swap_ab()) {
-                std::swap(swapped_a_quant, swapped_b_quant);
-                std::swap(swapped_a_quant.group_m, swapped_a_quant.group_n);
-                std::swap(swapped_b_quant.group_m, swapped_b_quant.group_n);
-            }
+            VDISPATCH_GEMM(IMPLICATION(problem.Tc == gemmstone::Type::f64,
+                                   !with_eltwise && !with_binary),
+                    VERBOSE_UNSUPPORTED_POSTOP);
 
             bool print_verbose = get_verbose(verbose_t::debuginfo) >= 5;
             bool kernel_success = false;
             auto entries = kernel_desc_.select_kernel(arch_, stepping,
                     dev_info_->eu_count(), has_systolic, is_integrated, mode,
-                    batch_dims(), eff_transa(), eff_transb(), eff_trans_bias(),
-                    swap_ab(), swapped_a_quant, swapped_b_quant, c_quant,
-                    with_mx_scale_, with_sround_, with_c_zero_points(),
-                    with_bias(), eff_sum_ab(), alpha(), beta(), eff_a_type(),
-                    eff_b_type(), desc()->c_type(), co_type, acc_type,
-                    eff_align_a(), eff_align_b(), align_c(), eff_m(), eff_n(),
-                    d->k(), eff_lda(), eff_ldb(), d->ldc(), d->batch(),
-                    std::move(gpu_post_ops));
+                    problem, alpha(), beta(), eff_m(), eff_n(), d->k(),
+                    eff_lda(), eff_ldb(), d->ldc(), d->batch());
+
             for (auto &entry : entries) {
                 kernel_desc_.set_entry(entry);
                 auto status = kernel_desc_.finalize();
@@ -349,6 +304,8 @@ struct gen_t : public primitive_t {
                 }
                 // Limited post-op support for low-precision accumulation.
                 if (kernel_desc_.problem()->Tc.size() < 4) {
+                    bool need_x32_acc = with_binary
+                            || !IMPLICATION(with_sum_, sum_at_begin_);
                     valid &= !need_x32_acc;
                     if (need_x32_acc && print_verbose)
                         dnnl::impl::verbose_printf(

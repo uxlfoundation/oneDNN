@@ -78,7 +78,7 @@ status_t grouped_matmul_desc_init(matmul_desc_t *matmul_desc,
     // Validate matching number of groups
     const auto &src_grouped = src_d.sparse_desc().grouped_desc;
     const auto &dst_grouped = dst_d.sparse_desc().grouped_desc;
-    const dim_t ngroups = src_grouped.group_count;
+    const dim_t group_count = src_grouped.group_count;
 
     VCHECK_MATMUL_UNIMPL(src_grouped.group_count == dst_grouped.group_count,
             VERBOSE_INCONSISTENT_DIM, "src_group_count",
@@ -90,9 +90,9 @@ status_t grouped_matmul_desc_init(matmul_desc_t *matmul_desc,
             VERBOSE_INCONSISTENT_DIM, "dst_variable_dim_idx", 0,
             "src_variable_dim_idx", 0);
 
-    VCHECK_MATMUL_UNIMPL(wei_d.dims()[0] == ngroups, VERBOSE_INCONSISTENT_DIM,
-            "weights_dim[0]", (int)wei_d.dims()[0], "src_group_count",
-            (int)ngroups);
+    VCHECK_MATMUL_UNIMPL(wei_d.dims()[0] == group_count,
+            VERBOSE_INCONSISTENT_DIM, "weights_dim[0]", (int)wei_d.dims()[0],
+            "src_group_count", (int)group_count);
 
     // Check offsets are int32
     VCHECK_MATMUL_UNIMPL(
@@ -102,7 +102,7 @@ status_t grouped_matmul_desc_init(matmul_desc_t *matmul_desc,
     // M, N, K consistency checks
     // Supported configurations are:
     // src is [total_M, K], dst is [total_M, N]
-    // wei are 3D: [ngroups, K, N]
+    // wei are 3D: [group_count, K, N]
     const int ndims_src = src_d.ndims();
     const int ndims_dst = dst_d.ndims();
     const int ndims_wei = wei_d.ndims();
@@ -141,10 +141,11 @@ status_t grouped_matmul_desc_init(matmul_desc_t *matmul_desc,
                 VERBOSE_UNSUPPORTED_BIAS_CFG);
         // Bias must be 2D for grouped matmul implementations
         VCHECK_MATMUL_UNIMPL(bia_d.ndims() == 2, VERBOSE_UNSUPPORTED_BIAS_CFG);
-        // Bias shape should be [ngroups, N]
-        VCHECK_MATMUL_UNIMPL(bia_d.dims()[0] == ngroups && bia_d.dims()[1] == N,
+        // Bias shape should be [group_count, N]
+        VCHECK_MATMUL_UNIMPL(
+                bia_d.dims()[0] == group_count && bia_d.dims()[1] == N,
                 VERBOSE_INCONSISTENT_DIM, "bias_dim[0]", (int)bia_d.dims()[0],
-                "dst_group_count", (int)ngroups);
+                "dst_group_count", (int)group_count);
     }
 
     op_d.accum_data_type = types::default_accum_data_type(src_desc->data_type,

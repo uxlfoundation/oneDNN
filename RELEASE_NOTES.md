@@ -9,23 +9,20 @@
 * Improved performance of `fp16`/`bf16` matmul with `mxfp4` weights.
 * Improved convolution performance with host-side scalar scales and zero points.
 
-## AArch64-based Processors
-* Improved performance of `s8/u8` eltwise post-ops on Arm(R) Neoverse(TM) V1 processors.
-* Improved `f16` and `bf16` eltwise performance for `abs`, `relu`, `square`, `sqrt`, `clip`, and `clip_v2`.
-* Improved `exp` eltwise performance on Arm(R) Neoverse(TM) N1 processors.
-* Improved reorder primitive performance.
-* Added matmul optimisations for GEMVs.
+## AArch64 based Processors
 * Improved performance of `bf16` matmul.
 * Improved performance of `bf16/int8` convolutions.
-* Convolutions with large spatial filters now consume much less memory during primitive setup.
+* Improved matmul performance for cases when one of the tensor has a trivial dimension.
+* Improved performance of `s8/u8` eltwise post-ops on Arm(R) Neoverse(TM) V1 processors.
+* Improved `f16` and `bf16` eltwise performance with `abs`, `relu`, `square`, `sqrt`, `clip`, and `clip_v2` algorithms.
+* Improved eltwise `exp` algorithm performance on Arm(R) Neoverse(TM) N1 processors.
+* Improved reorder primitive performance.
 
 ## RISC-V based processors
+* Improved `f32` matmul, inner product, convolution, softmax, batch normalization, layer normalization, and group normalization primitives performance.
 * Improved eltwise and binary primitives performance.
-* Improved `f32` GEMM performance.
-* Improved `f32` matmul, softmax, convolution and inner product primitives performance.
-* Improved `f32` batch, group and layer normalization primitives performance.
 * Improved `f32` and `fp16` pooling primitive performance.
-* Improved reorder(`fp32` to `u8`) primitive performance.
+* Improved `fp32` to `u8` reorder primitive performance.
 
 # Functionality
 ## Common
@@ -56,14 +53,22 @@
 * Added limited support for Windows on Arm builds with MSVC
 
 # Usability
+## Common
 * Extended [quantization attributes] documentation to cover all quantization schemes supported by the library.
 * Added [matmul fp8 quantization] example demonstrating use of matmul primitive with `fp8` source, destination, and weights.
-* Extended oneDNN [threadpool runtime] with an option to support asynchronous execution and updated all CPU implementations accordingly. This extension makes oneDNN compatible with OpenXLA "thunk" runtime.
 * Extended information about primitive execution available in VTune(TM) Profiler with the same level of detail as reported by oneDNN [verbose mode]. This feature requires VTune Profiler 2025.7 or later.
+* Enabled `ONEDNN_ENABLE_GRAPH_DUMP` knob by default.
+
+## Intel Architecture Processors
+* Extended oneDNN [threadpool runtime] with an option to support asynchronous execution and updated all CPU implementations accordingly. This extension makes oneDNN compatible with OpenXLA "thunk" runtime.
 * Introduced [`ONEDNN_SAFE_RBP`] build knob that instructs x64 implementations to preserve value of `rbp` register for tools that rely on stack unwinding. This option may have visible performance impact on some workloads.
-* Removed build time dependency on OpenCL runtime in SYCL build configuration.
-* `ONEDNN_ENABLE_GRAPH_DUMP` build knob is enabled by default.
+
+## AArch64 based Processors
 * Fixed a potential overflow on AArch64 builds with Arm Compute Library.
+* Significantly reduced memory consumption of convolution primitive with large spatial filters during primitive creation.
+
+## Intel Graphics Products
+* Removed build time dependency on OpenCL runtime in SYCL build configuration.
 
 [quantization attributes]: https://uxlfoundation.github.io/oneDNN/v3.11/dev_guide_attributes_quantization.html
 [matmul fp8 quantization]: https://uxlfoundation.github.io/oneDNN/v3.11/page_matmul_f8_quantization_cpp.html

@@ -1457,7 +1457,10 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     const bool has_uneven_spatial = jcp.id % jcp.stride_d != 0
             || jcp.ih % jcp.stride_h != 0 || jcp.has_uneven_iw;
 
-    if (cd.use_inversion && has_uneven_spatial) return status::unimplemented;
+    bool is_deconv_with_uneven_spatial = cd.use_inversion && has_uneven_spatial;
+    VDISPATCH_CONV_IC(!is_deconv_with_uneven_spatial,
+            VERBOSE_UNSUPPORTED_FEATURE,
+            "deconvolution with uneven spatial dimensions is not supported");
 
     jcp.dilate_d = (ndims == 5) ? cd.dilates[0] : 0;
     jcp.dilate_h = (ndims == 3) ? 0 : cd.dilates[ndims - 4];

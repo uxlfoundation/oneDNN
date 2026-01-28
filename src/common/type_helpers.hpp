@@ -442,7 +442,7 @@ inline bool sparse_desc_is_equal(
 
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
     if (lhs.encoding == sparse_encoding::grouped) {
-        ok = ok && lhs.grouped_desc.ngroups == rhs.grouped_desc.ngroups
+        ok = ok && lhs.grouped_desc.group_count == rhs.grouped_desc.group_count
                 && lhs.grouped_desc.variable_dim_idx
                         == rhs.grouped_desc.variable_dim_idx;
         if (!ok) return false;

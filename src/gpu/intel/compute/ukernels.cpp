@@ -16,14 +16,19 @@
 
 #include "gpu/intel/compute/ukernels.hpp"
 
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-#include "gpu/intel/ocl/engine.hpp"
-#include "gpu/intel/ocl/utils.hpp"
-#endif
-
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
 #include "gpu/intel/sycl/engine.hpp"
 #include "gpu/intel/sycl/utils.hpp"
+#endif
+
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+#include "gpu/intel/ocl/engine.hpp"
+#include "gpu/intel/ocl/utils/utils.hpp"
+#endif
+
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_L0
+#include "gpu/intel/l0/engine.hpp"
+#include "gpu/intel/l0/utils/utils.hpp"
 #endif
 
 namespace dnnl {
@@ -51,6 +56,11 @@ bool mayiuse_microkernels(const engine_t *engine) {
 
     auto mayiuse_mk = [](const engine_t *engine) {
         switch (engine->runtime_kind()) {
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
+            case runtime_kind::sycl:
+                return sycl::mayiuse_microkernels(
+                        utils::downcast<const sycl::engine_t *>(engine));
+#endif
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
             case runtime_kind::ocl: {
                 auto *ocl_engine
@@ -60,10 +70,10 @@ bool mayiuse_microkernels(const engine_t *engine) {
                         cl_microkernels_check_kernel_code);
             }
 #endif
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
-            case runtime_kind::sycl:
-                return sycl::mayiuse_microkernels(
-                        utils::downcast<const sycl::engine_t *>(engine));
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_L0
+            case runtime_kind::l0:
+                return utils::downcast<const l0::engine_t *>(engine)
+                        ->mayiuse_microkernels();
 #endif
             default: return false;
         }

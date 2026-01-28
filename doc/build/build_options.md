@@ -7,7 +7,7 @@ oneDNN supports the following build-time options.
 |:--------------------------------|:----------------------------------------------------|:-------------------------------------------------------------------------------------------------------------------|
 | ONEDNN_LIBRARY_TYPE             | **SHARED**, STATIC                                  | Defines the resulting library type                                                                                 |
 | ONEDNN_CPU_RUNTIME              | NONE, **OMP**, TBB, SEQ, THREADPOOL, SYCL           | Defines the threading runtime for CPU engines                                                                      |
-| ONEDNN_GPU_RUNTIME              | **NONE**, OCL, SYCL                                 | Defines the offload runtime for GPU engines                                                                        |
+| ONEDNN_GPU_RUNTIME              | **NONE**, OCL, SYCL, L0                             | Defines the offload runtime for GPU engines                                                                        |
 | ONEDNN_BUILD_DOC                | **ON**, OFF                                         | Controls building the documentation                                                                                |
 | ONEDNN_DOC_VERSIONS_JSON        | **""**, *string*                                    | Location of JSON file for [PyData Sphinx Theme version switcher]. Enables documentation version switcher when set. |
 | ONEDNN_BUILD_EXAMPLES           | **ON**, OFF                                         | Controls building the examples                                                                                     |

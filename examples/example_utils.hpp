@@ -35,7 +35,11 @@
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 #include "dnnl_ocl.hpp"
-#elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
+#endif
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_L0
+#include "dnnl_l0.hpp"
+#endif
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
 #include "dnnl_sycl.hpp"
 #endif
 
@@ -228,7 +232,7 @@ inline void read_from_dnnl_memory(void *handle, dnnl::memory &mem) {
         return;
     }
 #endif
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL || DNNL_GPU_RUNTIME == DNNL_RUNTIME_L0
     if (eng.get_kind() == dnnl::engine::kind::gpu) {
         void *mapped_ptr = mem.map_data();
         if (mapped_ptr) std::memcpy(handle, mapped_ptr, size);
@@ -287,7 +291,7 @@ inline void write_to_dnnl_memory(void *handle, dnnl::memory &mem) {
         return;
     }
 #endif
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL || DNNL_GPU_RUNTIME == DNNL_RUNTIME_L0
     if (eng.get_kind() == dnnl::engine::kind::gpu) {
         void *mapped_ptr = mem.map_data();
         if (mapped_ptr) std::memcpy(mapped_ptr, handle, size);

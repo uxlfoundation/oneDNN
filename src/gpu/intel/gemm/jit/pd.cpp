@@ -17,7 +17,9 @@
 #include "gpu/intel/gemm/jit/pd.hpp"
 #include "common/c_types_map.hpp"
 #include "gpu/intel/gemm/exec_types.hpp"
+#include "gpu/intel/gemm/jit/gen_kernel.hpp"
 #include "gpu/intel/jit/eltwise_injector.hpp"
+#include "gpu/intel/jit/utils/type_bridge.hpp"
 #include "gpu/intel/utils.hpp"
 
 namespace dnnl {
@@ -415,6 +417,310 @@ bool pd_t::valid_2d_mask(int mask, int ndims, bool per_tensor_ok) {
     return (mask == full_tensor_mask() && per_tensor_ok)
             || utils::one_of(mask, (1 << (ndims - 1)),
                     (1 << (ndims - 1)) + (1 << (ndims - 2)));
+}
+
+status_t transfer_post_ops(gemmstone::GEMMProblem &problem,
+        gpu_post_ops_t &&post_ops_, bool swap_ab) {
+    using namespace gemmstone;
+    problem.postOps = std::move(post_ops_);
+    const auto &post_ops = problem.postOps;
+
+    if (post_ops.len() > 0) {
+
+        size_t po_count = post_ops.len();
+        problem.Tbinary.reserve(po_count);
+        problem.binary.reserve(po_count);
+        problem.postOps.binaryRow = {};
+        problem.postOps.binaryCol = {};
+        problem.postOps.binaryBatch = {};
+        problem.postOps.binaryTrans = {};
+
+        if (problem.Ta == Type::f16) problem.Ts = Type::f32;
+        if (problem.Ta.isF8() || problem.Tb.isF8()) problem.Ts = Type::f32;
+
+        for (size_t i = 0; i < po_count; i++) {
+            const auto &entry = post_ops[i];
+            if (!entry.is_binary()) {
+                problem.Tbinary.push_back(Type::invalid);
+                problem.binary.push_back(MatrixAddressing {});
+                continue;
+            }
+
+            auto &src_rmd = entry.as_binary().src1_desc;
+
+            auto T = convert_dnnl_to_kernel_type(src_rmd.dt);
+            bool is_multi_row = (src_rmd.broadcast_mask & 1) == 0;
+            bool is_multi_col = (src_rmd.broadcast_mask & 2) == 0;
+
+            bool is_compatible = src_rmd.inner_layout.empty();
+            if (!is_compatible) return status::unimplemented;
+
+            bool trans = is_multi_row && !src_rmd.inner_dim.is_innermost();
+
+            if (swap_ab) {
+                trans = !trans;
+                std::swap(is_multi_row, is_multi_col);
+            }
+
+            problem.Tbinary.push_back(T);
+            problem.postOps.binaryRow[i] = is_multi_row;
+            problem.postOps.binaryCol[i] = is_multi_col;
+            problem.postOps.binaryBatch[i] = src_rmd.ndims() >= 3;
+            problem.postOps.binaryTrans[i] = trans;
+
+            MatrixAddressing atype;
+            atype.layout = trans ? MatrixLayout::T : MatrixLayout::N;
+            atype.crosspack = 1;
+            atype.packSize = 0;
+            atype.setAlignment(T.size());
+
+            problem.binary.push_back(atype);
+        }
+    }
+
+    return status::success;
+}
+
+status_t pd_t::init_GEMMProblem(
+        gemmstone::GEMMProblem &problem, const intel::engine_t *engine) const {
+    // Set up problem structure.
+    using namespace gemmstone;
+    problem = {};
+
+    auto hw = convert_dnnl_arch_to_ngen(engine->device_info()->gpu_arch());
+    bool has_systolic
+            = engine->mayiuse(compute::device_ext_t::
+                              intel_subgroup_matrix_multiply_accumulate)
+            || engine->mayiuse(compute::device_ext_t::
+                            intel_subgroup_split_matrix_multiply_accumulate);
+
+    bool int_acc = utils::one_of(eff_a_type(), data_type::s8, data_type::u8);
+    int_acc &= (!(a_scales_grouped() || b_scales_grouped())
+            && !(a_zp_grouped() || b_zp_grouped()));
+
+    auto m = eff_m();
+    auto n = eff_n();
+    auto k = desc()->k();
+
+    auto a_type = eff_a_type();
+    auto trans_a = eff_transa();
+    auto align_a = nstl::max(eff_align_a(), (int)types::data_type_size(a_type));
+    auto lda = eff_lda();
+    auto a_size = (trans_a ? m : k) * lda * types::data_type_size(a_type);
+
+    auto b_type = eff_b_type();
+    auto trans_b = eff_transb();
+    auto align_b = nstl::max(eff_align_b(), (int)types::data_type_size(b_type));
+    auto ldb = eff_ldb();
+    auto b_size = (trans_b ? k : n) * ldb * types::data_type_size(b_type);
+
+    auto c_type = desc()->c_type();
+    auto align_c
+            = nstl::max(this->align_c(), (int)types::data_type_size(c_type));
+    auto ldc = desc()->ldc();
+    auto c_size = n * ldc * types::data_type_size(c_type);
+
+    auto co_type = with_bias() ? desc()->bias_type()
+            : with_sum_ab()    ? desc()->sum_ab_type
+            : int_acc          ? data_type::s32
+                               : desc()->c_type();
+
+    // Choose accumulation data type.
+    auto acc_type = int_acc
+            ? data_type::s32
+            : (utils::one_of(data_type::f64, eff_a_type(), eff_b_type())
+                              ? data_type::f64
+                              : data_type::f32);
+
+    bool with_binary = (post_ops_.find(primitive_kind::binary) != -1)
+            || (post_ops_.find(primitive_kind::prelu) != -1);
+
+    bool need_x32_acc = with_binary || !IMPLICATION(with_sum_, sum_at_begin_);
+
+    switch (attr()->acc_mode_) {
+        case accumulation_mode::any:
+            if (!need_x32_acc) acc_type = data_type::undef;
+            break;
+        case accumulation_mode::f16: acc_type = data_type::f16; break;
+        case accumulation_mode::f32: acc_type = data_type::f32; break;
+        case accumulation_mode::s32: acc_type = data_type::s32; break;
+        default: break;
+    }
+    if (wei_decomp_) { acc_type = data_type::f32; }
+
+    auto trans_co = eff_trans_bias();
+    auto dst_sround = with_sround_;
+    bool c_offset = with_c_zero_points();
+    bool bias = with_bias();
+    auto reduce_ab = eff_sum_ab();
+
+    auto &attr_zps = attr()->zero_points_;
+    auto &attr_gs = attr()->precomputed_reductions_;
+
+    jit::quant_params a_quant, b_quant, c_quant;
+    {
+        auto ao_type = with_a_zero_points()
+                ? attr_zps.get_data_type(swap_ab_ ? DNNL_ARG_B : DNNL_ARG_A)
+                : data_type::s32;
+        auto bo_type = with_b_zero_points()
+                ? attr_zps.get_data_type(swap_ab_ ? DNNL_ARG_A : DNNL_ARG_B)
+                : data_type::s32;
+        auto ag_type = with_a_group_sums()
+                ? attr_gs.get_data_type(swap_ab_ ? DNNL_ARG_B : DNNL_ARG_A)
+                : data_type::s32;
+        auto bg_type = with_b_group_sums()
+                ? attr_gs.get_data_type(swap_ab_ ? DNNL_ARG_A : DNNL_ARG_B)
+                : data_type::s32;
+        auto has_gs = [&](int idx) {
+            return !attr()->precomputed_reductions_.has_default_values(idx);
+        };
+
+        if (swap_ab()) {
+            a_quant = {b_scales_type_, ao_type, ag_type, bsc_dims_, bo_dims_,
+                    bg_dims_, b_q2d_group_k(), b_q2d_group_n(), 0,
+                    has_gs(DNNL_ARG_B), false, b_zp_host_scalar()};
+            b_quant = {a_scales_type_, bo_type, bg_type, asc_dims_, ao_dims_,
+                    ag_dims_, a_q2d_group_k(), 0, a_q2d_group_m(),
+                    has_gs(DNNL_ARG_A), false, a_zp_host_scalar()};
+        } else {
+            a_quant = {a_scales_type_, ao_type, ag_type, asc_dims_, ao_dims_,
+                    ag_dims_, a_q2d_group_k(), a_q2d_group_m(), 0,
+                    has_gs(DNNL_ARG_A), false, a_zp_host_scalar()};
+            b_quant = {b_scales_type_, bo_type, bg_type, bsc_dims_, bo_dims_,
+                    bg_dims_, b_q2d_group_k(), 0, b_q2d_group_n(),
+                    has_gs(DNNL_ARG_B), false, b_zp_host_scalar()};
+        }
+
+        c_quant = {c_scales_type_, co_type, bg_type, csc_dims_, -1, -1, 0,
+                c_q2d_group_m(), c_q2d_group_n(), has_gs(DNNL_ARG_C),
+                with_mx_scale(), false};
+    }
+
+    problem.Ta = problem.Ta_ext = convert_dnnl_to_kernel_type(a_type);
+    problem.Tb = problem.Tb_ext = convert_dnnl_to_kernel_type(b_type);
+    problem.Tc = convert_dnnl_to_kernel_type(acc_type);
+    problem.Tc_ext = convert_dnnl_to_kernel_type(c_type);
+    problem.Ts = problem.Tc;
+    problem.Tao = convert_dnnl_to_kernel_type(a_quant.zp_type);
+    problem.Tbo = convert_dnnl_to_kernel_type(b_quant.zp_type);
+    problem.Tco = convert_dnnl_to_kernel_type(co_type);
+    problem.A.layout = trans_a ? MatrixLayout::T : MatrixLayout::N;
+    problem.B.layout = trans_b ? MatrixLayout::T : MatrixLayout::N;
+    problem.C.layout = MatrixLayout::N;
+    problem.A.crosspack = problem.B.crosspack = problem.C.crosspack = 1;
+    problem.A.packSize = problem.B.packSize = problem.C.packSize = 0;
+    problem.A.setAlignment(align_a);
+    problem.B.setAlignment(align_b);
+    problem.C.setAlignment(align_c);
+
+    // Consolidate specialization logic to limit large buffer configurations
+    bool needA64 = std::max({a_size, b_size, c_size})
+            > std::numeric_limits<uint32_t>::max();
+    problem.A.needA64 = needA64;
+    problem.B.needA64 = needA64;
+    problem.C.needA64 = needA64;
+
+    if (batch_dims() > 0) {
+        problem.batch = BatchMode::Strided;
+        problem.batchDims = batch_dims();
+    }
+    if (a_quant.zp_ndims >= 0 || a_quant.zp_host_scalar)
+        problem.aOffset = ABOffset::Calc;
+    if (b_quant.zp_ndims >= 0 || b_quant.zp_host_scalar)
+        problem.bOffset = ABOffset::Calc;
+    problem.aoPtrDims = a_quant.zp_host_scalar ? -1 : a_quant.zp_ndims;
+    problem.boPtrDims = b_quant.zp_host_scalar ? -1 : b_quant.zp_ndims;
+    problem.AO.layout = MatrixLayout::N;
+    problem.BO.layout
+            = (problem.bOffset2D()) ? MatrixLayout::N : MatrixLayout::T;
+    problem.AO.crosspack = problem.BO.crosspack = 1;
+    problem.AO.packSize = problem.BO.packSize = 0;
+    problem.A_scale = problem.Ag = problem.AO;
+    problem.B_scale = problem.Bg = problem.BO;
+    if (a_quant.zp_type != data_type::undef)
+        problem.AO.setAlignment(int(types::data_type_size(a_quant.zp_type)));
+    if (b_quant.zp_type != data_type::undef)
+        problem.BO.setAlignment(int(types::data_type_size(b_quant.zp_type)));
+
+    problem.asPtrDims = a_quant.scale_ndims;
+    problem.bsPtrDims = b_quant.scale_ndims;
+    problem.aqGroupK = a_quant.group_k;
+    problem.bqGroupK = b_quant.group_k;
+    problem.aqGroupM = a_quant.group_m;
+    problem.bqGroupN = b_quant.group_n;
+    if (a_quant.scales_type != data_type::undef) {
+        problem.Ta_scale = convert_dnnl_to_kernel_type(a_quant.scales_type);
+        problem.A_scale.layout = swap_ab() ? MatrixLayout::T : MatrixLayout::N;
+        problem.A_scale.setAlignment(
+                int(types::data_type_size(a_quant.scales_type)));
+    }
+    if (b_quant.scales_type != data_type::undef) {
+        problem.Tb_scale = convert_dnnl_to_kernel_type(b_quant.scales_type);
+        problem.B_scale.layout = swap_ab() ? MatrixLayout::T : MatrixLayout::N;
+        problem.B_scale.setAlignment(
+                int(types::data_type_size(b_quant.scales_type)));
+    }
+
+    if (c_quant.scales_type != data_type::undef) {
+        problem.csPtrDims = c_quant.scale_ndims;
+        problem.cMXScale = c_quant.mx;
+        problem.Tc_scale = convert_dnnl_to_kernel_type(c_quant.scales_type);
+        problem.cqGroupM = c_quant.group_m;
+        problem.cqGroupN = c_quant.group_n;
+    }
+
+    if (problem.Ta_ext.isInt4() && problem.Tb_ext.isInt8()
+            && a_quant.zp_ndims >= 0)
+        problem.Ta = Type::s8;
+    if (problem.Tb_ext.isInt4() && problem.Ta_ext.isInt8()
+            && b_quant.zp_ndims >= 0)
+        problem.Tb = Type::s8;
+
+    if (problem.Ta.isInteger()) problem.Ts = Type::f32;
+
+    if (alpha() == 1.0f) problem.alpha = alpha();
+    if (beta() == 0.0f || beta() == 1.0f) problem.beta = beta();
+
+    gpu_post_ops_t gpu_post_ops;
+    CHECK(gpu_post_ops_t::make(
+            gpu_post_ops, post_ops_, dst_md(), get_post_op_specializations()));
+
+    CHECK(transfer_post_ops(problem, std::move(gpu_post_ops), swap_ab()));
+
+    if (c_offset || bias || reduce_ab != sum_ab::sum_none) {
+        assert(!(c_offset && bias));
+        if (bias) problem.cOffset = COffset::Pre;
+        if (c_offset) problem.cOffset = COffset::Post;
+        problem.CO.crosspack = 1;
+        problem.CO.alignment = problem.C.alignment;
+        problem.CO.layout = trans_co ? MatrixLayout::T : MatrixLayout::N;
+    }
+
+    problem.sumA = (reduce_ab == sum_ab::sum_b_col);
+    problem.sumB = (reduce_ab == sum_ab::sum_a_row);
+    problem.forceGroupSumsA = a_quant.force_gs;
+    problem.forceGroupSumsB = b_quant.force_gs;
+
+    problem.postOps.cStochasticRound = dst_sround;
+
+    if (problem.needsAGroupSums() || problem.needsBGroupSums())
+        problem.autoTypeConversions(hw, has_systolic);
+
+    if (problem.needsAGroupSums()) {
+        problem.Tag = convert_dnnl_to_kernel_type(a_quant.gs_type);
+        problem.Ag.layout = MatrixLayout::N;
+        problem.Ag.setAlignment(problem.Tag.paddedSize());
+        if (problem.bqGroupK == 0) problem.bqGroupK = problem.aqGroupK;
+        if (problem.aqGroupK == 0) problem.aqGroupK = problem.bqGroupK;
+    }
+    if (problem.needsBGroupSums()) {
+        problem.Tbg = convert_dnnl_to_kernel_type(b_quant.gs_type);
+        problem.Bg.layout = MatrixLayout::N;
+        problem.Bg.setAlignment(problem.Tbg.paddedSize());
+        if (problem.aqGroupK == 0) problem.aqGroupK = problem.bqGroupK;
+        if (problem.bqGroupK == 0) problem.bqGroupK = problem.aqGroupK;
+    }
+    return status::success;
 }
 
 dim_t pd_t::ld_binary(int idx) const {

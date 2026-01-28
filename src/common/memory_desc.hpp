@@ -224,6 +224,19 @@ struct sparse_desc_t {
     // - Use the block number to find an offset in the packed data
     // - Use the bitmask to unpack the packed data
     blocking_desc_t packed_desc;
+
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    // Grouped encoding descriptor
+    // Uses format_kind::sparse because grouped layout is a form of multi-buffer
+    // representation where values are stored together with metadata
+    // describing the variable structure (similar to CSR with rowptr/colind)
+    struct grouped_desc_t {
+        // Number of groups
+        dnnl_dim_t ngroups;
+        // Index of the dimension with variable size per group
+        int variable_dim_idx;
+    } grouped_desc;
+#endif
 };
 
 // Description of extra information stored in memory

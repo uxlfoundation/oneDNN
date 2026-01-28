@@ -232,7 +232,7 @@ struct sparse_desc_t {
     // describing the variable structure (similar to CSR with rowptr/colind)
     struct grouped_desc_t {
         // Number of groups
-        dnnl_dim_t ngroups;
+        dnnl_dim_t group_count;
         // Index of the dimension with variable size per group
         int variable_dim_idx;
     } grouped_desc;

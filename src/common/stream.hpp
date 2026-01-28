@@ -54,6 +54,10 @@ struct dnnl_stream : public dnnl::impl::c_compatible {
     virtual dnnl::impl::status_t reset_profiling() {
         if (!is_profiling_enabled())
             return dnnl::impl::status::invalid_arguments;
+        if (is_verbose_profiler_enabled())
+            VWARN(common, stream,
+                    "resetting profiler when DNNL_VERBOSE=profile_exec can "
+                    "result in incorrect logging of timing information");
         return dnnl::impl::status::unimplemented;
     }
 
@@ -72,6 +76,25 @@ struct dnnl_stream : public dnnl::impl::c_compatible {
     }
 
     bool is_profiling_enabled() const { return impl_->is_profiling_enabled(); }
+
+    bool is_verbose_profiler_enabled() const {
+        return impl_->is_profiling_enabled()
+                && dnnl::impl::get_verbose(dnnl::impl::verbose_t::exec_profile);
+    }
+
+    virtual dnnl::impl::status_t init_verbose_profiler(
+            uint64_t &last_entry) const {
+        if (!is_verbose_profiler_enabled())
+            return dnnl::impl::status::invalid_arguments;
+        return dnnl::impl::status::unimplemented;
+    }
+
+    virtual dnnl::impl::status_t run_verbose_profiler(
+            std::string &pd_info, double start_ms, uint64_t &last_entry) const {
+        if (!is_verbose_profiler_enabled())
+            return dnnl::impl::status::invalid_arguments;
+        return dnnl::impl::status::unimplemented;
+    }
 
     virtual dnnl::impl::status_t zero_pad(const dnnl::impl::memory_t *memory,
             const dnnl::impl::exec_ctx_t &ctx);

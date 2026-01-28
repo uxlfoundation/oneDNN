@@ -278,7 +278,7 @@ status_t memory_desc_init_with_grouped_encoding(memory_desc_t &memory_desc,
     md.format_desc.sparse_desc.encoding = sparse_encoding::grouped;
     md.format_desc.sparse_desc.nnz = dims[0] /* total_M */ * K;
     md.format_desc.sparse_desc.metadata_types[0] = offsets_dt;
-    md.format_desc.sparse_desc.grouped_desc.ngroups = group_count;
+    md.format_desc.sparse_desc.grouped_desc.group_count = group_count;
     md.format_desc.sparse_desc.grouped_desc.variable_dim_idx = variable_dim_idx;
 
     memory_desc = md;

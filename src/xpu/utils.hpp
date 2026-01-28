@@ -22,15 +22,6 @@
 
 #include "common/verbose.hpp"
 
-#if defined(_WIN32)
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include "windows.h"
-#elif defined(__linux__)
-#include <dlfcn.h>
-#endif
-
 // This file contains utility functionality for heterogeneous runtimes such
 // as OpenCL and SYCL.
 
@@ -109,76 +100,7 @@ struct runtime_version_t {
     }
 };
 
-#if defined(_WIN32)
-inline void *find_symbol(const char *library_name, const char *symbol) {
-    HMODULE handle = LoadLibraryExA(
-            library_name, nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
-    if (!handle) {
-        LPSTR error_text = nullptr;
-        FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM
-                        | FORMAT_MESSAGE_ALLOCATE_BUFFER
-                        | FORMAT_MESSAGE_IGNORE_INSERTS,
-                nullptr, GetLastError(),
-                MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPSTR)&error_text,
-                0, nullptr);
-        VERROR(common, runtime, "error while opening %s library: %s",
-                library_name, error_text);
-        LocalFree(error_text);
-        return nullptr;
-    }
-    void *symbol_address
-            = reinterpret_cast<void *>(GetProcAddress(handle, symbol));
-    if (!symbol_address) {
-        LPSTR error_text = nullptr;
-        FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM
-                        | FORMAT_MESSAGE_ALLOCATE_BUFFER
-                        | FORMAT_MESSAGE_IGNORE_INSERTS,
-                nullptr, GetLastError(),
-                MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPSTR)&error_text,
-                0, nullptr);
-        VERROR(common, runtime,
-                "error while searching for a %s symbol address in %s library: "
-                "%s",
-                symbol, library_name, error_text);
-        LocalFree(error_text);
-        return nullptr;
-    }
-    return symbol_address;
-}
-#elif defined(__linux__)
-inline void *find_symbol(const char *library_name, const char *symbol) {
-    // To clean the error string
-    dlerror();
-    void *handle = dlopen(library_name, RTLD_NOW | RTLD_LOCAL);
-    if (!handle) {
-        VERROR(common, runtime, "error while opening %s library: %s",
-                library_name, dlerror());
-        return nullptr;
-    }
-    // To clean the error string
-    dlerror();
-    void *symbol_address = dlsym(handle, symbol);
-    if (!symbol_address) {
-        VERROR(common, runtime,
-                "error while searching for a %s symbol address in %s library: "
-                "%s",
-                symbol, library_name, dlerror());
-        // See a comment below.
-        // dlclose(handle);
-        return nullptr;
-    }
-    // Note: `dlclose` invalidates `symbol_address` if the application hadn't
-    // had a `handle` opened before. The solution to put a handle in some
-    // `static` object leads to other problems with unloading a library from
-    // applications linked with oneDNN when it comes to managing global
-    // resources passed between libraries such as contexts.
-    //
-    // Thus, the recommendation is not to `dlclose` the handle and let it slide.
-    //
-    // dlclose(handle);
-    return symbol_address;
-}
-#endif
+void *find_symbol(const char *library_name, const char *symbol);
 
 } // namespace xpu
 } // namespace impl

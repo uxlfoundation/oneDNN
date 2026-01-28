@@ -77,6 +77,14 @@ typedef enum {
     dnnl_packed,
     /// Coordinate Sparse Encoding (COO).
     dnnl_coo,
+/// Grouped Encoding represents a tensor where one dimension has variable
+/// size per group.
+/// Stored as concatenated blocks with an offsets specifying the size
+/// of each group along the variable dimension.
+/// Some of the blocks could be empty.
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    dnnl_grouped,
+#endif
 } dnnl_sparse_encoding_t;
 
 #ifdef DNNL_EXPERIMENTAL_PROFILING

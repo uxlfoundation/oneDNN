@@ -23,6 +23,7 @@
 #include <vector>
 #include <unordered_map>
 
+#include "graph/interface/graph.hpp"
 #include "graph/interface/op.hpp"
 #include "graph/utils/pm/pbuilder.hpp"
 
@@ -206,6 +207,16 @@ std::vector<value_t::consumer_t> sort_op_consumers(
 //
 bool match_pattern(op_t *first_op, const std::shared_ptr<pb_graph_t> &pattern,
         std::vector<op_t *> &fusion_ops);
+
+//
+// Graph-level entry point for pattern matching.
+// Matches a pattern against all ops in the graph.
+// Handles both regular patterns (connected subgraphs) and group patterns
+// (multiple disconnected subgraph instances).
+// Returns matched op groups in fusion_ops.
+//
+bool match_pattern(graph_t &graph, const std::shared_ptr<pb_graph_t> &pattern,
+        std::vector<std::vector<op_t *>> &fusion_ops);
 
 //
 // reorder the matched ops to make sure they are in topology order

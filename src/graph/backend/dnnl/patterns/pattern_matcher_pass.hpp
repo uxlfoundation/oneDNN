@@ -21,7 +21,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-#include <unordered_set>
 
 #include "graph/backend/dnnl/dnnl_partition_impl.hpp"
 
@@ -54,16 +53,7 @@ public:
 inline void pattern_utils_t::match(graph_t &backend_graph,
         std::shared_ptr<graph::utils::pm::pb_graph_t> pgraph,
         std::vector<std::vector<op_t *>> &fusion_ops) {
-    // dfs_visit graph, do pattern matching
-    topo_order_visit(backend_graph.get_output_ops(), [&](op_t *cur_op) {
-        std::vector<op_t *> candidate_fusion;
-        if (!graph::utils::pm::match_pattern(
-                    cur_op, pgraph, candidate_fusion)) {
-            return status::success;
-        }
-        fusion_ops.emplace_back(candidate_fusion);
-        return status::success;
-    });
+    graph::utils::pm::match_pattern(backend_graph, pgraph, fusion_ops);
 }
 
 inline void pattern_utils_t::init_partition(graph_t &backend_graph,

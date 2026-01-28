@@ -595,9 +595,11 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
         problem_.CO.crosspack = 1;
         problem_.CO.alignment = problem_.C.alignment;
         problem_.CO.layout = trans_co ? MatrixLayout::T : MatrixLayout::N;
+        
+        // CCC Claude ??? Set coPtrDims from c_quant.zp_ndims
+        problem_.coPtrDims = c_quant.zp_ndims;
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: ---- : problem_.coPtrDims = %d", problem_.coPtrDims);
     }
-
-    // CCC ??? TODO !!!!! hostscalar to problem_ ?????? needed ?????
 
     problem_.sumA = (reduce_ab == sum_ab::sum_b_col);
     problem_.sumB = (reduce_ab == sum_ab::sum_a_row);
@@ -1081,12 +1083,12 @@ void gen_kernel_t::init_interface() {
 // @@@
     }
 
-    // CCC ???
+    // CCC ??? decrale interface_.newArgument("co_hostscalar", DataType::w);
     if (problem.cOffsetHostScalar()) {
         VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> newArgument co_hostscalar");
         interface_.newArgument("co_hostscalar", DataType::w);
     }
-    // CCC ???
+    // CCC ??? -------------------------------------------------------------
 
 
     if (problem.postOps.cStochasticRound) {

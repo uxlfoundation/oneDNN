@@ -2649,11 +2649,11 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
         VDEBUGINFO(4, primitive, gemm, "MY: gemmInitInterface &&&&&&& : after state.inputs.CO.isInvalide = %d",(int)state.inputs.CO.isInvalid());
         VDEBUGINFO(4, primitive, gemm, "MY: gemmInitInterface &&&&&&& :       state.inputs.surfaceCO = %d",state.inputs.surfaceCO);
 
-        // CCC ???
+        // CCC ??? get state.inputs.co_hostscalar in gemmInitInterface
         VDEBUGINFO(4, primitive, gemm, "MY: gemmInitInterface &&&&&&& : before state.inputs.co_hostscalar.isInvalide = %d",(int)state.inputs.co_hostscalar.isInvalid());
         state.inputs.co_hostscalar = interface.getArgumentIfExists("co_hostscalar");
         VDEBUGINFO(4, primitive, gemm, "MY: gemmInitInterface &&&&&&& : after state.inputs.co_hostscalar.isInvalide = %d",(int)state.inputs.co_hostscalar.isInvalid());
-        // CCC ???
+        // CCC ??? ---------------------------------------------------
 
     }
     if (state.useTempC) {
@@ -2959,7 +2959,9 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
         if (strategy.CO.base.isStateless())
             state.ra.claim(state.inputs.CO);
         state.ra.claim(state.inputs.offsetCO);
-        // CCC ???? TODO claim ????? state.inputs.co_hostscalar ????
+        // CCC Claude ??? Claim co_hostscalar register if it's valid
+        if (problem.cOffsetHostScalar() && state.inputs.co_hostscalar.isValid())
+            state.ra.claim(state.inputs.co_hostscalar);
     }
 
     if (state.useTempC)

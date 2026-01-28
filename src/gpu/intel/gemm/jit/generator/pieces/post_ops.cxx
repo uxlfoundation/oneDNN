@@ -160,6 +160,42 @@ void Generator<hw>::gemmScalarBinaryOpC(BinaryOp op, Type Tco, const GRFMultiran
     VDEBUGINFO(4, primitive, gemm, "MY: gemmScalarBinaryOpC $$$$$$ <<<<");
 }
 
+// CCC Claude ??? Overload for hostscalar (Subregister) support
+// Apply binary operation to C with a scalar operand from a Subregister (e.g., hostscalar)
+template <HW hw>
+void Generator<hw>::gemmScalarBinaryOpC(BinaryOp op, Type Tco, const Subregister &scalar,
+                                        const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+{
+    VDEBUGINFO(4, primitive, gemm, "MY: gemmScalarBinaryOpC (hostscalar) $$$$$$ >>>>");
+
+    auto Tacc = state.Tacc;
+    auto offsetTc = scalar;
+
+    // Convert to accumulator type if needed
+    if (Tco != Tacc) {
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmScalarBinaryOpC (hostscalar) $$$$$$ Tco != Tacc, converting");
+        auto temp = state.ra.alloc_sub(Tacc.ngen());
+        mov(1, temp, scalar);
+        offsetTc = temp;
+    }
+    
+    if (op == BinaryOp::Div && one_of(state.Tacc, {Type::f32, Type::f16})) {
+        inv(1, offsetTc, offsetTc);
+        op = BinaryOp::Mul;
+    }
+
+    map(hw, state.Tacc, state.C_regs[0], state.C_layout, strategy, [&](int simd, const RegData &r) {
+        binaryOp(op, simd, r, r, offsetTc, state);
+    });
+    
+    if (Tco != Tacc && offsetTc != scalar) {
+        state.ra.safeRelease(offsetTc);
+    }
+    
+    VDEBUGINFO(4, primitive, gemm, "MY: gemmScalarBinaryOpC (hostscalar) $$$$$$ <<<<");
+}
+// CCC Claude ??? End hostscalar overload
+
 // Apply binary operation to C with a vector operand, optionally multiplied by a scalar.
 template <HW hw>
 void Generator<hw>::gemmVectorBinaryOpC(BinaryOp op, bool column, const GRFMultirange &offsets, const Subregister &scaleIn,
@@ -452,15 +488,23 @@ bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const G
     }
 
 
-// @@@ $$$ ??? TODO - implement hostscalar in gemmBinaryOpC:
-// add one more parameter - hostscalar ???
-// not loat matrix - from stat.input.?????
-
+// CCC Claude ??? Handle hostscalar case: apply scalar directly without loading from memory
+    if (problem.cOffsetHostScalar() && state.inputs.co_hostscalar.isValid()) {
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ Applying host scalar C offset");
+        status << "Applying host scalar C offset" << status_stream::endl;
+        ok = ok && gemmScalarBinaryOpC(BinaryOp::Add, Tco, state.inputs.co_hostscalar, problem, strategy, state);
+        jmpi(1, labelCODone);
+    } else {
+// CCC Claude ??? End hostscalar handling
 
     status << "Applying fixed C offset" << status_stream::endl;
     VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ Applying fixed C offset - call gemmBinaryOpC(add, false, false, ....)");
     ok = ok && gemmBinaryOpC(BinaryOp::Add, false, false, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
     jmpi(1, labelCODone);
+
+    // CCC Claude ??? Close the else block for non-hostscalar case
+    }
+    // CCC Claude ??? End else block
 
     mark(labelCOColumn);
     if (doMatrix) {

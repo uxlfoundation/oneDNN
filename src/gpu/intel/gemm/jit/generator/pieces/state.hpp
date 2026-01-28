@@ -191,9 +191,9 @@ struct GEMMState : public CommonState {
     struct Inputs {
         ngen::Subregister A, B, C[2], CO, base, tempC;      // q
         ngen::Subregister ao, bo, abo;                      // w/w/ud
-                                                            // CCC ???
-        ngen::Subregister co_hostscalar;                    // ?????
-                                                            // CCC ???
+        // CCC ??? subregister co_hostscalar in Inputs declaration
+        ngen::Subregister co_hostscalar;                    //
+        // CCC ??? -----------------------------------------------
         ngen::Subregister aoPtr, boPtr;                     // q
         ngen::Subregister aScalePtr, bScalePtr, cScalePtr;  // q
         ngen::Subregister agPtr, bgPtr;                     // q

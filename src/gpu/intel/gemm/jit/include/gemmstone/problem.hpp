@@ -23,10 +23,8 @@
 #include "internal/utils.hpp"
 #include "gemmstone/type.hpp"
 
-
-// CCC ???
+// ??? maybe remove
 #include "gemmstone/../../../../utils.hpp"
-// CCC ???
 
 GEMMSTONE_NAMESPACE_START
 
@@ -185,6 +183,8 @@ struct GEMMProblem : public CommonProblem {
     ABOffset aOffset = ABOffset::None;              // A/B offset modes.
     ABOffset bOffset = ABOffset::None;              //
     int aoPtrDims = -1, boPtrDims = -1;             // A/B offset dimensionality (-1: none; 0: scalar; 1: vector, 2: matrix)
+    // CCC Claude ??? Add coPtrDims field for C offset dimensionality
+    int coPtrDims = -1;                             // C offset dimensionality (-1: none; 0: scalar; 1: vector, 2: matrix)
     int asPtrDims = -1, bsPtrDims = -1, csPtrDims = -1;           // A/B scale dimensionality (-1: none; 0: scalar; 1: vector, 2: matrix)
     int aqGroupM = 0, aqGroupK = 0;                 // Group sizes for A quantization parameters (offsets and scales)
     int bqGroupN = 0, bqGroupK = 0;                 // Group sizes for B quantization parameters (offsets and scales)
@@ -254,13 +254,9 @@ struct GEMMProblem : public CommonProblem {
     bool hasBOffsetPtr() const { return (boPtrDims > -1); }
     bool aOffsetHostScalar() const {return aoPtrDims == -1 && aOffset == ABOffset::Calc; }
     bool bOffsetHostScalar() const {return boPtrDims == -1 && bOffset == ABOffset::Calc; }
-    // CCC ???
-    // ??????? also see Simon's comment to my A/B ZP PR ???????
-    bool cOffsetHostScalar() const {
-        bool temphost = dnnl::impl::gpu::intel::gpu_utils::dev_getenv("co_host", false);
-        return temphost ; /* ?????????? maybe by cOffset ???????? maybe temp ?????? */
-    }
-    // CCC ???
+    // CCC Claude ??? Proper implementation of cOffsetHostScalar()
+    bool cOffsetHostScalar() const {return coPtrDims == -1 && cOffset != COffset::None; }
+    bool hasCOffsetPtr() const { return (coPtrDims > -1); }
 
     bool aScale2D() const { return (asPtrDims >= 2); }
     bool bScale2D() const { return (bsPtrDims >= 2); }

@@ -492,7 +492,7 @@ bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const G
     if (problem.cOffsetHostScalar() && state.inputs.co_hostscalar.isValid()) {
         VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ Applying host scalar C offset");
         status << "Applying host scalar C offset" << status_stream::endl;
-        ok = ok && gemmScalarBinaryOpC(BinaryOp::Add, Tco, state.inputs.co_hostscalar, problem, strategy, state);
+        gemmScalarBinaryOpC(BinaryOp::Add, Tco, state.inputs.co_hostscalar, problem, strategy, state);
         jmpi(1, labelCODone);
     } else {
 // CCC Claude ??? End hostscalar handling

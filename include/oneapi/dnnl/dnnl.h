@@ -1145,6 +1145,40 @@ dnnl_status_t DNNL_API dnnl_memory_desc_create_with_packed_encoding(
         dnnl_memory_desc_t *memory_desc, int ndims, const dnnl_dims_t dims,
         dnnl_data_type_t data_type, dnnl_dim_t nnz);
 
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+/// Creates a memory descriptor for grouped encoding, that
+/// stores multiple independent sub-tensors.
+///
+/// Common use case is Mixture-of-Experts (MoE) workloads where each expert
+/// processes different numbers of tokens.
+/// In this case, each sub-tensor can have a different size along the
+/// first dimension, but all share the same size along the second dimension.
+/// The total size along the first dimension is fixed, but distribution
+/// among sub-tensors can change.
+///
+/// Memory layout:
+/// - Buffer 0 (values): Sub-tensors stored as [A0 | A1 | ... | AN]
+/// - Buffer 1 (offsets): Cumulative end position of each sub-tensor.
+///
+/// Example: 3 groups with shapes {1, 256}, {3, 256}, {5, 256}
+/// - Values buffer: 9 * 256 elements total
+/// - Offsets: [1, 4, 9] marking cumulative ends (first group starts at 0)
+///
+/// @param memory_desc Output memory descriptor.
+/// @param ndims Number of dimensions for the tensor.
+/// @param dims Array of dimensions representing the overall tensor shape.
+/// @param data_type Elements data type.
+/// @param variable_dim_idx Index of the dimension with variable size per sub-tensor.
+/// @param group_count Number of sub-tensors included.
+/// @param offsets_dt Data type of the offsets array.
+/// @returns #dnnl_success on success and a status describing the error
+///     otherwise.
+dnnl_status_t DNNL_API dnnl_memory_desc_create_with_grouped_encoding(
+        dnnl_memory_desc_t *memory_desc, int ndims, const dnnl_dims_t dims,
+        dnnl_data_type_t data_type, int variable_dim_idx,
+        dnnl_dim_t group_count, dnnl_data_type_t offsets_dt);
+#endif
+
 /// Creates a memory descriptor for a scalar value that resides on the host.
 ///
 /// @param memory_desc Output memory descriptor.

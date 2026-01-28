@@ -213,6 +213,11 @@ option(DNNL_EXPERIMENTAL_UKERNEL
     independently from DNNL_EXPERIMENTAL."
     OFF) # disabled by default
 
+option(DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    "Enable experimental support for grouped gemm. This option works
+    independently from DNNL_EXPERIMENTAL."
+    OFF) # disabled by default
+
 option(DNNL_EXPERIMENTAL_PROFILING
     "Enable experimental profiling capabilities. This option works independently
     from DNNL_EXPERIMENTAL."

@@ -18,15 +18,17 @@
 import argparse
 import os
 import sys
+from typing import NoReturn
 
-from matmul import sampler as matmul_sampler
-from matmul import primitive as matmul
+from .matmul import primitive as matmul
+from .matmul import sampler as matmul_sampler
+
 
 def log(output):
     print("synthdnn: " + output)
 
 
-def error(output):
+def error(output) -> NoReturn:
     print("synthdnn: error: " + output)
     exit(1)
 
@@ -100,9 +102,17 @@ def collect_main(args):
         error(f"cannot execute {benchdnn}, no such file exists")
 
     if args.collect == "corr":
-        benchdnn_args = f"--engine={args.engine} --matmul --mode-modifier=P {get_optional_args(args)}"
+        benchdnn_args = (
+            f"--engine={args.engine} --matmul --mode-modifier=P"
+            f" {get_optional_args(args)}"
+        )
     elif args.collect == "perf":
-        benchdnn_args = f"--engine={args.engine} --matmul --mode=F --cold-cache=all --perf-template=sample,{args.name},%prb%,%0Gflops%,%0Gbw% --memory-kind=usm_device --attr-scratchpad=user {get_optional_args(args)}"
+        benchdnn_args = (
+            f"--engine={args.engine} --matmul --mode=F --cold-cache=all"
+            f" --perf-template=sample,{args.name},%prb%,%0Gflops%,%0Gbw%"
+            " --memory-kind=usm_device --attr-scratchpad=user"
+            f" {get_optional_args(args)}"
+        )
         if args.name.find(",") != -1:
             error(f"sample name {args.name} contains invalid character: ,")
     else:
@@ -136,7 +146,10 @@ def setup_matmul_subparser(subparsers):
         "-l",
         "--layouts",
         default="all",
-        help='stag:wtag:dtag, comma separated list of layouts or "all" for every supported layout',
+        help=(
+            'stag:wtag:dtag, comma separated list of layouts or "all" for every'
+            " supported layout"
+        ),
     )
     matmul_parser.add_argument(
         "-m",
@@ -148,7 +161,10 @@ def setup_matmul_subparser(subparsers):
         "-r",
         "--region",
         default="(1,1,1,1):(8,8192,8192,8192):(1,1,1,1)",
-        help="([b_min,]m_min,n_min,k_min):([b_max,]m_max,n_max,k_max):([b_align,]m_align,n_align,k_align)",
+        help=(
+            "([b_min,]m_min,n_min,k_min):([b_max,]m_max,n_max,k_max):"
+            "([b_align,]m_align,n_align,k_align)"
+        ),
     )
     matmul_parser.add_argument(
         "-s", "--samples", default=1000, help="number of samples to collect"
@@ -157,7 +173,12 @@ def setup_matmul_subparser(subparsers):
         "-t",
         "--types",
         default="*",
-        help='dt:dt:dt(optional fpmath-mode), comma separated list of type configurations. "%%N" will match the Nth given data type. Giving a single data type instead of 3 will match any supported configurations using that type.',
+        help=(
+            "dt:dt:dt(optional fpmath-mode), comma separated list of type"
+            ' configurations. "%%N" will match the Nth given data type. Giving'
+            " a single data type instead of 3 will match any supported"
+            " configurations using that type."
+        ),
     )
 
 
@@ -175,7 +196,7 @@ def matmul_main(args):
     if batch_file:
         log(f"generating batch file: {args.batch_file}")
         write_batch_file(batch_file, samples)
-        log(f"generation complete")
+        log("generation complete")
     else:
         write_batch_file(sys.stdout, samples)
 
@@ -196,7 +217,7 @@ def setup_report_subparser(subparsers):
 
 
 def report_main(args):
-    from report.report_list import ReportList
+    from .report.report_list import ReportList
 
     reports = ReportList(args.scatter)
 

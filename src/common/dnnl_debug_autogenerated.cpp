@@ -1876,7 +1876,8 @@ const char *dnnl_alg_kind2str(dnnl_alg_kind_t v) {
     if (v == dnnl_reduction_norm_lp_power_p_sum) return "reduction_norm_lp_power_p_sum";
     if (v == dnnl_softmax_accurate) return "softmax_accurate";
     if (v == dnnl_softmax_log) return "softmax_log";
-    if (v == dnnl::impl::alg_kind::softmax_accurate_inf_as_zero) return "softmax_accurate_inf_as_zero";
+    if (v == dnnl::impl::alg_kind::softmax_accurate_inf_as_zero)
+        return "softmax_accurate_inf_as_zero";
     assert(!"unknown alg_kind");
     return "unknown alg_kind";
 }

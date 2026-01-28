@@ -30,20 +30,22 @@
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
 import os
-import sys
-import subprocess
 import re
+import subprocess
+import sys
+
 
 def whereis(binary):
-    command = 'which' if os.name != 'nt' else 'where'
+    command = "which" if os.name != "nt" else "where"
     try:
         sub = subprocess.run([command, binary], text=True, capture_output=True)
         return sub.stdout
-    except BaseException as e:
+    except BaseException:
         print(f"Warning: {binary} is not found")
-        return ''
+        return ""
 
-doxyrest_bin_path = whereis('doxyrest')
+
+doxyrest_bin_path = whereis("doxyrest")
 doxyrest_dir_path = os.path.dirname(doxyrest_bin_path)
 doxyrest_share_path = doxyrest_dir_path + "/../share/doxyrest/sphinx"
 sys.path.insert(1, os.path.abspath(doxyrest_share_path))
@@ -51,11 +53,13 @@ sys.path.insert(1, os.path.abspath(doxyrest_share_path))
 
 # -- Project information -----------------------------------------------------
 
-project = '@PROJECT_NAME@'
-release = 'v@PROJECT_VERSION@'
-version = re.search(r'(v\d+\.\d+)', release).group()
-copyright = '2016-2025 Intel Corporation'
-author = ''
+project = "@PROJECT_NAME@"
+release = "v@PROJECT_VERSION@"
+_match = re.search(r"(v\d+\.\d+)", release)
+assert _match is not None
+version = _match.group()
+copyright = "2016-2026 Intel Corporation"
+author = ""
 
 # -- General configuration ---------------------------------------------------
 
@@ -67,14 +71,14 @@ author = ''
 
 # Add Doxyrest extensions ``doxyrest`` and ``cpplexer``:
 
-extensions = ['doxyrest', 'cpplexer', 'sphinx_copybutton']
+extensions = ["doxyrest", "cpplexer", "sphinx_copybutton"]
 
 # If you used INTRO_FILE in 'doxyrest-config.lua' to force-include it
 # into 'index.rst', exclude it from the Sphinx input (otherwise, there
 # will be build warnings):
 
 
-imgmath_latex_preamble = '''\\usepackage[T1]{fontenc}
+imgmath_latex_preamble = """\\usepackage[T1]{fontenc}
 \\usepackage[utf8]{inputenc}
 \\usepackage{textgreek}
 \\newcommand{\\src}{\\operatorname{src}}
@@ -111,40 +115,42 @@ imgmath_latex_preamble = '''\\usepackage[T1]{fontenc}
 \\newcommand{\\diffbeta}{\\operatorname{diff\\_\\beta}}
 \\newcommand{\\workspace}{\\operatorname{workspace}}
 \\newcommand{\\srcshape}{\\operatorname{src\\_\\shape}}
-\\newcommand{\\dstshape}{\\operatorname{dst\\_\\shape}}'''
-
-
+\\newcommand{\\dstshape}{\\operatorname{dst\\_\\shape}}"""
 
 
 # Add any paths that contain templates here, relative to this directory.
-templates_path = ['_templates']
+templates_path = ["_templates"]
 
-source_suffix = '.rst'
+source_suffix = ".rst"
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
-exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store',]
+exclude_patterns = [
+    "_build",
+    "Thumbs.db",
+    ".DS_Store",
+]
 
-exclude_patterns += ['page_index.rst']
+exclude_patterns += ["page_index.rst"]
 # -- Options for HTML output -------------------------------------------------
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-html_theme = 'sphinx_book_theme'
+html_theme = "sphinx_book_theme"
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ['_static']
-#html_js_files = [('dnnl.js', {'defer': 'defer'})]
+html_static_path = ["_static"]
+# html_js_files = [('dnnl.js', {'defer': 'defer'})]
 
-html_favicon = '_static/favicons.png'
+html_favicon = "_static/favicons.png"
 
 html_theme_options = {
     "logo": {
-        "text": "oneDNN "+version+" Documentation",
+        "text": "oneDNN " + version + " Documentation",
         "image_light": "_static/oneAPI-rgb-rev-100.png",
         "image_dark": "_static/oneAPI-rgb-rev-100.png",
     },
@@ -155,113 +161,129 @@ html_theme_options = {
     "path_to_docs": "doc",
     "use_issues_button": True,
     "check_switcher": False,
-    "extra_footer": "oneDNN is licensed under Apache License Version 2.0. "
-"Refer to the <a href='https://github.com/uxlfoundation/oneDNN/blob/main/LICENSE'>LICENSE</a> "
-"file for the full license text and copyright notice.<br>"
-"<a href='page_legal_information.html'>Legal Information</a>"
+    "extra_footer": (
+        "oneDNN is licensed under Apache License Version 2.0. Refer to the"
+        " <a href='https://github.com/uxlfoundation/oneDNN/blob/main/LICENSE'>"
+        "LICENSE</a> file for the full license text and copyright notice.<br><a"
+        " href='page_legal_information.html'>Legal Information</a>"
+    ),
 }
 
 # Adding version switcher if ONEDNN_DOC_VERSIONS_JSON is provided
-json_url = '@ONEDNN_DOC_VERSIONS_JSON@'
+json_url = "@ONEDNN_DOC_VERSIONS_JSON@"
 if json_url:
     html_theme_options["switcher"] = {
         "json_url": json_url,
-        "version_match": version
+        "version_match": version,
     }
-    html_theme_options["article_header_start"] = ["toggle-primary-sidebar", "version-switcher"]
+    html_theme_options["article_header_start"] = [
+        "toggle-primary-sidebar",
+        "version-switcher",
+    ]
 
 mathjax3_config = {
-'tex': {
-    'macros': {
-        'src': '\\operatorname{src}',
-        'srclayer': '\\operatorname{src\\_layer}',
-        'srclayerattention': '\\operatorname{src\\_layer\\_attention}',
-        'srciter': '\\operatorname{src\\_iter}',
-        'srciterc': '\\operatorname{src\\_iter\\_c}',
-        'weights': '\\operatorname{weights}',
-        'weightslayer': '\\operatorname{weights\\_layer}',
-        'weightsiter': '\\operatorname{weights\\_iter}',
-        'weightspeephole': '\\operatorname{weights\\_peephole}',
-        'weightsprojection': '\\operatorname{weights\\_projection}',
-        'bias': '\\operatorname{bias}',
-        'dst': '\\operatorname{dst}',
-        'dstlayer': '\\operatorname{dst\\_layer}',
-        'dstiter': '\\operatorname{dst\\_iter}',
-        'dstiterc': '\\operatorname{dst\\_iter\\_c}',
-        'diffsrc': '\\operatorname{diff\\_src}',
-        'diffsrclayer': '\\operatorname{diff\\_src\\_layer}',
-        'diffsrclayerattention': '\\operatorname{diff\\_src\\_layer\\_attention}',
-        'diffsrciter': '\\operatorname{diff\\_src\\_iter}',
-        'diffsrciterc': '\\operatorname{diff\\_src\\_iter\\_c}',
-        'diffweights': '\\operatorname{diff\\_weights}',
-        'diffweightslayer': '\\operatorname{diff\\_weights\\_layer}',
-        'diffweightsiter': '\\operatorname{diff\\_weights\\_iter}',
-        'diffweightspeephole': '\\operatorname{diff\\_weights\\_peephole}',
-        'diffweightsprojection': '\\operatorname{diff\\_weights\\_projection}',
-        'diffbias': '\\operatorname{diff\\_bias}',
-        'diffdst': '\\operatorname{diff\\_dst}',
-        'diffdstlayer': '\\operatorname{diff\\_dst\\_layer}',
-        'diffdstiter': '\\operatorname{diff\\_dst\\_iter}',
-        'diffdstiterc': '\\operatorname{diff\\_dst\\_iter\\_c}',
-        'diffgamma': '\\operatorname{diff\\_\\gamma}',
-        'diffbeta': '\\operatorname{diff\\_\\beta}',
-        'workspace': '\\operatorname{workspace}',
-        'srcshape': '\\operatorname{src\\_\\shape}',
-        'dstshape': '\\operatorname{dst\\_\\shape}'
+    "tex": {
+        "macros": {
+            "src": "\\operatorname{src}",
+            "srclayer": "\\operatorname{src\\_layer}",
+            "srclayerattention": "\\operatorname{src\\_layer\\_attention}",
+            "srciter": "\\operatorname{src\\_iter}",
+            "srciterc": "\\operatorname{src\\_iter\\_c}",
+            "weights": "\\operatorname{weights}",
+            "weightslayer": "\\operatorname{weights\\_layer}",
+            "weightsiter": "\\operatorname{weights\\_iter}",
+            "weightspeephole": "\\operatorname{weights\\_peephole}",
+            "weightsprojection": "\\operatorname{weights\\_projection}",
+            "bias": "\\operatorname{bias}",
+            "dst": "\\operatorname{dst}",
+            "dstlayer": "\\operatorname{dst\\_layer}",
+            "dstiter": "\\operatorname{dst\\_iter}",
+            "dstiterc": "\\operatorname{dst\\_iter\\_c}",
+            "diffsrc": "\\operatorname{diff\\_src}",
+            "diffsrclayer": "\\operatorname{diff\\_src\\_layer}",
+            "diffsrclayerattention": (
+                "\\operatorname{diff\\_src\\_layer\\_attention}"
+            ),
+            "diffsrciter": "\\operatorname{diff\\_src\\_iter}",
+            "diffsrciterc": "\\operatorname{diff\\_src\\_iter\\_c}",
+            "diffweights": "\\operatorname{diff\\_weights}",
+            "diffweightslayer": "\\operatorname{diff\\_weights\\_layer}",
+            "diffweightsiter": "\\operatorname{diff\\_weights\\_iter}",
+            "diffweightspeephole": "\\operatorname{diff\\_weights\\_peephole}",
+            "diffweightsprojection": (
+                "\\operatorname{diff\\_weights\\_projection}"
+            ),
+            "diffbias": "\\operatorname{diff\\_bias}",
+            "diffdst": "\\operatorname{diff\\_dst}",
+            "diffdstlayer": "\\operatorname{diff\\_dst\\_layer}",
+            "diffdstiter": "\\operatorname{diff\\_dst\\_iter}",
+            "diffdstiterc": "\\operatorname{diff\\_dst\\_iter\\_c}",
+            "diffgamma": "\\operatorname{diff\\_\\gamma}",
+            "diffbeta": "\\operatorname{diff\\_\\beta}",
+            "workspace": "\\operatorname{workspace}",
+            "srcshape": "\\operatorname{src\\_\\shape}",
+            "dstshape": "\\operatorname{dst\\_\\shape}",
         }
     }
 }
 
+
 def setup(app):
-    app.connect('env-before-read-docs', fixFileNameRefs)
-    app.connect('env-before-read-docs', addTocTrees)
-    app.add_js_file('doxyrest_code_copy_button.js',priority=300)
+    app.connect("env-before-read-docs", fixFileNameRefs)
+    app.connect("env-before-read-docs", addTocTrees)
+    app.add_js_file("doxyrest_code_copy_button.js", priority=300)
 
-def fixFileNameRefs(app, env, docnames):
 
-    replacements = {"page_dev_guide":"dev_guide", "group_Dnnl":"group_dnnl"}
+def fixFileNameRefs(*_):
+
+    replacements = {"page_dev_guide": "dev_guide", "group_Dnnl": "group_dnnl"}
     targetDir = "rst"
 
     fileExtension = ".rst"
 
-
-    for dirpath, dirnames, filenames in os.walk(targetDir):
+    for dirpath, _, filenames in os.walk(targetDir):
         for filename in [f for f in filenames if f.endswith(fileExtension)]:
-            filePath = os.path.join(dirpath,filename)
+            filePath = os.path.join(dirpath, filename)
             print("replacing strings in " + filePath)
             outdata = None
             with open(filePath) as f:
                 read_data = f.read()
                 outdata = read_data
                 for replacement in replacements:
-                    outdata = outdata.replace(replacement,replacements[replacement])
-            with open(filePath,"w") as f:
+                    outdata = outdata.replace(
+                        replacement, replacements[replacement]
+                    )
+            with open(filePath, "w") as f:
                 f.write(outdata)
 
 
+def addTocTrees(*_):
 
-def addTocTrees(app, env, docnames):
-
-    trees2Add = {'rst/dev_guide_inference_and_training_aspects.rst':['dev_guide_inference.rst',
-                                                                     'dev_guide_inference_int8.rst',
-                                                                     'dev_guide_training_bf16.rst'],
-                 'rst/dev_guide_attributes.rst':['dev_guide_attributes_fpmath_mode.rst',
-                                                 'dev_guide_attributes_accumulation_mode.rst',
-                                                 'dev_guide_attributes_rounding_mode.rst',
-                                                 'dev_guide_attributes_deterministic.rst',
-                                                 'dev_guide_attributes_dropout.rst',
-                                                 'dev_guide_attributes_quantization.rst',
-                                                 'dev_guide_attributes_post_ops.rst',
-                                                 'dev_guide_attributes_scratchpad.rst']}
-
+    trees2Add = {
+        "rst/dev_guide_inference_and_training_aspects.rst": [
+            "dev_guide_inference.rst",
+            "dev_guide_inference_int8.rst",
+            "dev_guide_training_bf16.rst",
+        ],
+        "rst/dev_guide_attributes.rst": [
+            "dev_guide_attributes_fpmath_mode.rst",
+            "dev_guide_attributes_accumulation_mode.rst",
+            "dev_guide_attributes_rounding_mode.rst",
+            "dev_guide_attributes_deterministic.rst",
+            "dev_guide_attributes_dropout.rst",
+            "dev_guide_attributes_quantization.rst",
+            "dev_guide_attributes_post_ops.rst",
+            "dev_guide_attributes_scratchpad.rst",
+        ],
+    }
 
     for rstFile in trees2Add:
-        with open(rstFile, 'r') as f:
+        with open(rstFile, "r") as f:
             fContents = f.read()
-            if '.. toctree::' in fContents:
+            if ".. toctree::" in fContents:
                 continue
-        with open(rstFile, 'a+') as f:
-            tocTree = '\n.. toctree::\n   :hidden:\n\n'
+        with open(rstFile, "a+") as f:
+            tocTree = "\n.. toctree::\n   :hidden:\n\n"
             for file in trees2Add[rstFile]:
                 tocTree += "   " + file + "\n"
             tocTree += "\n\n"

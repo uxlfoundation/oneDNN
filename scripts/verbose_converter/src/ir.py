@@ -158,13 +158,16 @@ class MemoryDescriptor(Mapping):
 @dataclass(eq=False)
 class Dropout(Mapping):
     tag: Optional[str] = None
-    seed_dt: Optional[str] = None
-    use_offset: Optional[bool] = None
-    use_host_scalars: Optional[bool] = None
+    seed_dt: str = "s32"
+    use_offset: bool = False
+    use_host_scalars: bool = False
 
     def __str__(self):
-        return ":".join(
-            [self.tag, self.seed_dt, self.use_offset, self.use_host_scalars]
+        if self.tag is None:
+            return ""
+        return (
+            f"{self.tag}:{self.seed_dt}:"
+            + f"{self.use_offset:1}:{self.use_host_scalars:1}"
         )
 
 
@@ -315,9 +318,14 @@ class QuantizationParam(Mapping):
     quantization_mode: str = ""
 
     def __str__(self):
+        repr = f"{self.mask}:{self.data_type}"
         if self.groups:
-            return f"{self.mask}:{self.data_type}:{self.groups}"
-        return f"{self.mask}:{self.data_type}"
+            repr += f":{self.groups}"
+        if self.is_host_scalar:
+            repr += ":host_scalar"
+        if self.quantization_mode:
+            repr += f":{self.quantization_mode}"
+        return repr
 
 
 @dataclass(eq=False)

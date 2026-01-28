@@ -60,6 +60,37 @@ DECLARE_2D_TILE_COPY_REBLOCK(c_tile_type_dst, SUBGROUP_SIZE,
 
 #endif
 
+#if WITH_SRC_ATTR_SCALES
+#define SRC_ATTR_SCALE_ARGS , src_attr_scales
+#else
+#define SRC_ATTR_SCALE_ARGS
+#endif
+#if WITH_SRC_ATTR_ZP
+#define SRC_ATTR_ZP_ARGS , src_attr_zp
+#else
+#define SRC_ATTR_ZP_ARGS
+#endif
+#if WITH_SRC_ATTR_SCALES || WITH_SRC_ATTR_ZP
+#define SRC_ATTR_LD_ARGS   , ldsrcq
+#else
+#define SRC_ATTR_LD_ARGS
+#endif
+#if WITH_WEI_ATTR_SCALES
+#define WEI_ATTR_SCALE_ARGS , wei_attr_scales
+#else
+#define WEI_ATTR_SCALE_ARGS
+#endif
+#if WITH_WEI_ATTR_ZP
+#define WEI_ATTR_ZP_ARGS , wei_attr_zp
+#else
+#define WEI_ATTR_ZP_ARGS
+#endif
+#if WITH_WEI_ATTR_SCALES || WITH_WEI_ATTR_ZP
+#define WEI_ATTR_LD_ARGS   , ldweiq
+#else
+#define WEI_ATTR_LD_ARGS
+#endif
+
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) kernel void
 grouped_micro_gemm(const global SRC_DATA_T *src, int ldsrc,
         const global WEI_DATA_T *wei, int ldwei, global DST_DATA_T *dst,
@@ -110,32 +141,9 @@ grouped_micro_gemm(const global SRC_DATA_T *src, int ldsrc,
 #endif
 
     ugemm_grouped_c_type c_tile = ugemm_grouped(
-            src, ldsrc, wei, ldwei, m, n, k, wg_i0, wg_j0, 0, sg_i, sg_j, slm
-#if WITH_SRC_ATTR_SCALES
-            ,
-            src_attr_scales
-#endif
-#if WITH_SRC_ATTR_ZP
-            ,
-            src_attr_zp
-#endif
-#if WITH_SRC_ATTR_SCALES || WITH_SRC_ATTR_ZP
-            ,
-            ldsrcq
-#endif
-#if WITH_WEI_ATTR_SCALES
-            ,
-            wei_attr_scales
-#endif
-#if WITH_WEI_ATTR_ZP
-            ,
-            wei_attr_zp
-#endif
-#if WITH_WEI_ATTR_SCALES || WITH_WEI_ATTR_ZP
-            ,
-            ldweiq
-#endif
-    );
+                                                wei, ldwei, src, ldsrc, m, n, k, wg_i0, wg_j0, 0, sg_i, sg_j, slm
+                                                SRC_ATTR_SCALE_ARGS SRC_ATTR_ZP_ARGS SRC_ATTR_LD_ARGS
+                                                WEI_ATTR_SCALE_ARGS WEI_ATTR_ZP_ARGS WEI_ATTR_LD_ARGS);
 #if WITH_BIAS
 #define binary_add(x, y) ((x) + (y))
     bias += batch * n;

@@ -49,21 +49,85 @@ public:
     pattern_utils_t(const pattern_utils_t &) = delete;
     pattern_utils_t(pattern_utils_t &&) = delete;
     pattern_utils_t &operator=(const pattern_utils_t &) = delete;
+
+private:
+    // Handle group pattern matching
+    inline void match_group_pattern(graph_t &backend_graph,
+            graph::utils::pm::pb_group_t *group_node,
+            std::vector<std::vector<op_t *>> &fusion_ops) {
+        // Early exit if graph doesn't have enough potential subgraphs
+        size_t min_instances = group_node->get_min_instances();
+        if (backend_graph.get_output_ops().size() < min_instances) return;
+
+        auto template_graph = group_node->get_template();
+        std::vector<op_t *> candidate_ops;
+
+        // Try to match each op in the graph against the template
+        topo_order_visit(backend_graph.get_output_ops(), [&](op_t *cur_op) {
+            // Skip if already matched or partitioned
+            if (cur_op->get_partition() != nullptr) return status::success;
+            if (cur_op->has_attr(op_attr::matched)
+                    && cur_op->get_attr<bool>(op_attr::matched))
+                return status::success;
+
+            std::vector<op_t *> temp_fusion;
+            if (graph::utils::pm::match_pattern(
+                        cur_op, template_graph, temp_fusion)) {
+                candidate_ops.insert(candidate_ops.end(), temp_fusion.begin(),
+                        temp_fusion.end());
+            }
+            return status::success;
+        });
+
+        // Check instance count constraints
+        size_t max_instances = group_node->get_max_instances();
+
+        if (candidate_ops.size() == backend_graph.num_ops()
+                && candidate_ops.size() >= min_instances
+                && candidate_ops.size() <= max_instances) {
+            // All constraints satisfied - add as a single group
+            fusion_ops.emplace_back(candidate_ops);
+        } else {
+            // Instance count out of range - clear matched attributes
+            for (auto *op : candidate_ops) {
+                if (op->has_attr(op_attr::matched)) {
+                    op->set_attr<bool>(op_attr::matched, false);
+                }
+            }
+        }
+    }
+
+    // Handle regular pattern matching
+    inline void match_regular_pattern(graph_t &backend_graph,
+            const std::shared_ptr<graph::utils::pm::pb_graph_t> &pgraph,
+            std::vector<std::vector<op_t *>> &fusion_ops) {
+        topo_order_visit(backend_graph.get_output_ops(), [&](op_t *cur_op) {
+            std::vector<op_t *> candidate_fusion;
+            if (!graph::utils::pm::match_pattern(
+                        cur_op, pgraph, candidate_fusion)) {
+                return status::success;
+            }
+            fusion_ops.emplace_back(candidate_fusion);
+            return status::success;
+        });
+    }
 };
 
 inline void pattern_utils_t::match(graph_t &backend_graph,
         std::shared_ptr<graph::utils::pm::pb_graph_t> pgraph,
         std::vector<std::vector<op_t *>> &fusion_ops) {
-    // dfs_visit graph, do pattern matching
-    topo_order_visit(backend_graph.get_output_ops(), [&](op_t *cur_op) {
-        std::vector<op_t *> candidate_fusion;
-        if (!graph::utils::pm::match_pattern(
-                    cur_op, pgraph, candidate_fusion)) {
-            return status::success;
-        }
-        fusion_ops.emplace_back(candidate_fusion);
-        return status::success;
-    });
+    // Check if this is a group pattern
+    auto nodes = pgraph->get_nodes();
+    if (nodes.size() == 1
+            && nodes[0]->get_node_kind()
+                    == graph::utils::pm::pb_node_kind::PB_NODE_KIND_GROUP) {
+        auto *group_node
+                = dynamic_cast<graph::utils::pm::pb_group_t *>(nodes[0]);
+        if (!group_node) return;
+        match_group_pattern(backend_graph, group_node, fusion_ops);
+    } else {
+        match_regular_pattern(backend_graph, pgraph, fusion_ops);
+    }
 }
 
 inline void pattern_utils_t::init_partition(graph_t &backend_graph,

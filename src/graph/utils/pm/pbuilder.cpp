@@ -352,6 +352,16 @@ repetition_t *pb_graph_t::append_optional(
     return append_optional(p_node, {});
 }
 
+pb_group_t *pb_graph_t::append_group(
+        const std::shared_ptr<pb_graph_t> &p_template, size_t min_instances,
+        size_t max_instances) {
+    std::shared_ptr<pb_group_t> p_group(
+            new pb_group_t(p_template, min_instances, max_instances));
+    p_group->set_name("group" + std::to_string(nodes_.size()));
+    nodes_.push_back(dynamic_pointer_cast<pb_node_t>(p_group));
+    return p_group.get();
+}
+
 alternation_t::alternation_t(std::vector<std::shared_ptr<pb_graph_t>> p_nodes)
     : alternatives_ {std::move(p_nodes)}, min_op_num_ {0} {
     node_kind_ = pb_node_kind::PB_NODE_KIND_ALTERNATION;
@@ -403,4 +413,15 @@ pb_graph_t *repetition_t::get_body() {
 
 port_map repetition_t::get_port_map() {
     return port_map_;
+}
+
+pb_group_t::pb_group_t(std::shared_ptr<pb_graph_t> p_template,
+        size_t min_instances, size_t max_instances)
+    : template_ {std::move(p_template)}
+    , min_instances_ {min_instances}
+    , max_instances_ {max_instances}
+    , min_op_num_ {template_->get_min_op_num() * min_instances} {
+    node_kind_ = pb_node_kind::PB_NODE_KIND_GROUP;
+    auto contained_ops = template_->get_contained_ops();
+    p_ops_.insert(contained_ops.begin(), contained_ops.end());
 }

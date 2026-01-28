@@ -60,6 +60,7 @@ enum class pb_node_kind {
     PB_NODE_KIND_OP,
     PB_NODE_KIND_ALTERNATION,
     PB_NODE_KIND_REPETITION,
+    PB_NODE_KIND_GROUP,
 };
 
 // Base class for pattern graph with input and output ports (placeholders)
@@ -240,6 +241,38 @@ protected:
     size_t min_op_num_;
 };
 
+// pb_group_t represents a pattern that matches multiple disconnected subgraphs
+// This is useful for patterns like grouped matmul where we want to match
+// N independent operations that satisfy certain constraints collectively.
+// For example, matching 2-8 matmul operations that can be executed as a group.
+//
+// Example usage:
+//   auto group = pgraph->append_group(matmul_template, 2, 8);
+//   group->set_constraint([](const std::vector<op_t*>& ops) {
+//       // Verify all matmuls have compatible shapes/attributes
+//       return verify_groupable(ops);
+//   });
+class pb_group_t : public pb_node_t {
+public:
+    pb_group_t() = delete;
+    std::shared_ptr<pb_graph_t> get_template() const { return template_; }
+    size_t get_min_instances() const { return min_instances_; }
+    size_t get_max_instances() const { return max_instances_; }
+    size_t get_min_op_num() const { return min_op_num_; }
+
+protected:
+    friend class pb_graph_t;
+    // Represents a group that matches [min_instances, max_instances]
+    // disconnected instances of the template pattern
+    pb_group_t(std::shared_ptr<pb_graph_t> p_template, size_t min_instances,
+            size_t max_instances);
+
+    std::shared_ptr<pb_graph_t> template_;
+    size_t min_instances_;
+    size_t max_instances_;
+    size_t min_op_num_;
+};
+
 // "pb_graph_t" represents a group of pb_op_ts and also serves as a pb_node_t
 // anywhere And provides a way to limit interface by limiting ports
 // (placeholders) to outside of pb_graph_t.
@@ -303,6 +336,9 @@ public:
     repetition_t *append_optional(const std::shared_ptr<pb_graph_t> &p_node,
             const in_edges_t &p_in_edges);
     repetition_t *append_optional(const std::shared_ptr<pb_graph_t> &p_node);
+
+    pb_group_t *append_group(const std::shared_ptr<pb_graph_t> &p_template,
+            size_t min_instances, size_t max_instances);
 
     std::vector<std::pair<iport_t, consumers_t>> get_inner_consumers();
     std::vector<std::pair<oport_t, producer_t>> get_inner_producers();

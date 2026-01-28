@@ -405,9 +405,9 @@ struct memory_desc_wrapper : public c_compatible {
                         // Return size for values.
                         return nnz() * data_type_size();
                     case 1: {
-                        // Return size for offsets (ngroups offsets).
+                        // Return size for offsets (group_count offsets).
                         const auto offsets_dt = metadata_type(0);
-                        return (sparse_desc().grouped_desc.ngroups)
+                        return (sparse_desc().grouped_desc.group_count)
                                 * types::data_type_size(offsets_dt);
                     }
                     default: assert(!"unknown index"); return 0;

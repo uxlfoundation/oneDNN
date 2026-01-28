@@ -440,6 +440,15 @@ inline bool sparse_desc_is_equal(
     bool ok = lhs.encoding == rhs.encoding && lhs.nnz == rhs.nnz;
     if (!ok) return false;
 
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    if (lhs.encoding == sparse_encoding::grouped) {
+        ok = ok && lhs.grouped_desc.ngroups == rhs.grouped_desc.ngroups
+                && lhs.grouped_desc.variable_dim_idx
+                        == rhs.grouped_desc.variable_dim_idx;
+        if (!ok) return false;
+    }
+#endif
+
     for (int i = 0; i < sparse_desc_t::max_metadata_types; i++)
         ok = ok && lhs.metadata_types[i] == rhs.metadata_types[i];
 

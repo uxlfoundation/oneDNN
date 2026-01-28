@@ -1145,6 +1145,43 @@ dnnl_status_t DNNL_API dnnl_memory_desc_create_with_packed_encoding(
         dnnl_memory_desc_t *memory_desc, int ndims, const dnnl_dims_t dims,
         dnnl_data_type_t data_type, dnnl_dim_t nnz);
 
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+/// Creates a memory descriptor for grouped memory encoding, that
+/// stores multiple independent sub-tensors.
+///
+/// Common use case is Mixture-of-Experts (MoE) workloads where each expert
+/// processes different numbers of tokens.
+///
+/// Memory layout consists of two buffers:
+/// - Buffer 0 (values): Concatenated data [group0 | group1 | ... | groupN-1]
+/// - Buffer 1 (offsets): Cumulative indices [size0, size0 + size1, ...]
+///
+/// Example in the context of MoE:
+/// Below is how to describe 3 experts with token counts [1, 3, 5] and feature dim 256
+/// - Descriptor dims: {9, 256} where 9 is 1 + 3 + 5 (total tokens)
+/// - Variable dimension: 0 (token count varies per expert)
+/// - Group count: 3 (number of experts)
+/// - Values buffer: 9 x 256 elements
+/// - Offsets buffer: [1, 4, 9] (cumulative token counts)
+///
+/// @note
+///     Only s32 offsets are currently supported.
+///
+/// @param memory_desc Output memory descriptor.
+/// @param ndims Number of dimensions for the tensor.
+/// @param dims Array of dimensions representing the overall tensor shape.
+/// @param data_type Elements data type.
+/// @param variable_dim_idx Index of the dimension with variable size per sub-tensor.
+/// @param group_count Number of sub-tensors included.
+/// @param offsets_dt Data type of the offsets array.
+/// @returns #dnnl_success on success and a status describing the error
+///     otherwise.
+dnnl_status_t DNNL_API dnnl_memory_desc_create_with_grouped_encoding(
+        dnnl_memory_desc_t *memory_desc, int ndims, const dnnl_dims_t dims,
+        dnnl_data_type_t data_type, int variable_dim_idx,
+        dnnl_dim_t group_count, dnnl_data_type_t offsets_dt);
+#endif
+
 /// Creates a memory descriptor for a scalar value that resides on the host.
 ///
 /// @param memory_desc Output memory descriptor.

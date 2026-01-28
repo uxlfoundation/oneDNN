@@ -37,7 +37,8 @@ class test_conv_compile_t
     : public ::testing::TestWithParam<test_conv_params_t> {
 public:
     void Test_Conv() {
-        auto params = ::testing::TestWithParam<test_conv_params_t>::GetParam();
+        const auto &params
+                = ::testing::TestWithParam<test_conv_params_t>::GetParam();
 
         using namespace dnnl::graph;
         dnnl::engine::kind engine_kind
@@ -285,7 +286,8 @@ class test_average_pool_compile_t
     : public ::testing::TestWithParam<pool_params_t> {
 public:
     void Test_Average_Pool() {
-        auto params = ::testing::TestWithParam<pool_params_t>::GetParam();
+        const auto &params
+                = ::testing::TestWithParam<pool_params_t>::GetParam();
 
         using namespace dnnl::graph;
         dnnl::engine::kind engine_kind
@@ -377,7 +379,8 @@ INSTANTIATE_TEST_SUITE_P(Test_Average_Pool_Compile, test_average_pool_compile_t,
 class test_max_pool_compile_t : public ::testing::TestWithParam<pool_params_t> {
 public:
     void Test_Max_Pool() {
-        auto params = ::testing::TestWithParam<pool_params_t>::GetParam();
+        const auto &params
+                = ::testing::TestWithParam<pool_params_t>::GetParam();
 
         using namespace dnnl::graph;
         dnnl::engine::kind engine_kind
@@ -452,7 +455,8 @@ public:
     }
 
     void Test_Max_Pool_FWD_BWD() {
-        auto params = ::testing::TestWithParam<pool_params_t>::GetParam();
+        const auto &params
+                = ::testing::TestWithParam<pool_params_t>::GetParam();
 
         using namespace dnnl::graph;
         dnnl::engine::kind engine_kind
@@ -610,7 +614,7 @@ struct bn_params_t {
 class test_bn_compile_t : public ::testing::TestWithParam<bn_params_t> {
 public:
     void Test_BatchNormTraining() {
-        auto params = ::testing::TestWithParam<bn_params_t>::GetParam();
+        const auto &params = ::testing::TestWithParam<bn_params_t>::GetParam();
 
         using namespace dnnl::graph;
         dnnl::engine::kind engine_kind
@@ -755,7 +759,7 @@ public:
     }
 
     void Test_BatchNormTraining_Opaque() {
-        auto params = ::testing::TestWithParam<bn_params_t>::GetParam();
+        const auto &params = ::testing::TestWithParam<bn_params_t>::GetParam();
 
         using namespace dnnl::graph;
         dnnl::engine::kind engine_kind

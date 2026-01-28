@@ -4770,7 +4770,7 @@ class test_single_op_pass_t
     : public ::testing::TestWithParam<single_op_params_t> {
 public:
     void Test_Single_Op_Pass() {
-        const auto params
+        const auto &params
                 = ::testing::TestWithParam<single_op_params_t>::GetParam();
 
         const auto engine_kind = get_test_engine_kind();

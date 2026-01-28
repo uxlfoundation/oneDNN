@@ -34,7 +34,7 @@ private:
 
 public:
     void TestConv2d() {
-        auto p = ::testing::TestWithParam<conv_params_t>::GetParam();
+        const auto &p = ::testing::TestWithParam<conv_params_t>::GetParam();
 
         static auto isa = dnnl_get_effective_cpu_isa();
         SKIP_IF(p.engine == dnnl_cpu && p.data_type == dnnl_bf16

@@ -290,7 +290,7 @@ protected:
 
     void Forward() {
         auto aprop_kind = prop_kind::forward;
-        deconvolution_test_params_t p = ::testing::TestWithParam<
+        const auto &p = ::testing::TestWithParam<
                 deconvolution_test_params_t>::GetParam();
 
         // deconvolution specific types and values

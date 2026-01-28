@@ -48,7 +48,7 @@ public:
     void TestConvtranspose() {
         using dims = graph::dnnl_impl::dims;
 
-        auto params
+        const auto &params
                 = ::testing::TestWithParam<convtranspose_params_t>::GetParam();
 
         graph::engine_t *eng = get_engine();
@@ -175,7 +175,7 @@ public:
     void TestConvTransposeBackwardData() {
         using dims = graph::dnnl_impl::dims;
 
-        auto params = ::testing::TestWithParam<
+        const auto &params = ::testing::TestWithParam<
                 convtranspose_bwd_params_t>::GetParam();
 
         // default engine kind is cpu.
@@ -269,7 +269,7 @@ public:
     void TestConvTransposeBackwardWeights() {
         using dims = graph::dnnl_impl::dims;
 
-        auto params = ::testing::TestWithParam<
+        const auto &params = ::testing::TestWithParam<
                 convtranspose_bwd_params_t>::GetParam();
 
         graph::engine_t *eng = get_engine();
@@ -366,7 +366,7 @@ class test_convtranspose_add_compile_t
     : public ::testing::TestWithParam<convtranspose_add_params_t> {
 public:
     void TestConvTransposeAdd() {
-        const auto params = ::testing::TestWithParam<
+        const auto &params = ::testing::TestWithParam<
                 convtranspose_add_params_t>::GetParam();
         using dims = graph::dnnl_impl::dims;
 

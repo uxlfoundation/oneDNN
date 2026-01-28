@@ -233,7 +233,12 @@ def func_to_str(enum, values):
     func = ""
     func += func_to_str_decl(enum) + " {\n"
     for v in values:
+        # Add conditional compilation for experimental features
+        if v == "dnnl_grouped":
+            func += "#if DNNL_EXPERIMENTAL_GROUPED_GEMM\n"
         func += '%sif (v == %s) return "%s";\n' % (indent, v, sanitize_value(v))
+        if v == "dnnl_grouped":
+            func += "#endif\n"
     if enum == "dnnl_primitive_kind_t":
         func += (
             '%sif (v == dnnl::impl::primitive_kind::sdpa) return "sdpa";\n'
@@ -278,7 +283,12 @@ def str_to_func(enum, values, is_dnnl=True):
         if "any" in v:
             special_values.append(v)
             continue
+        # Add conditional compilation for experimental features
+        if v == "dnnl_grouped":
+            func += "#if DNNL_EXPERIMENTAL_GROUPED_GEMM\n"
         func += "%sCASE(%s);\n" % (indent, sanitize_value(v))
+        if v == "dnnl_grouped":
+            func += "#endif\n"
     func += "#undef CASE\n"
     for v in special_values:
         v_short = re.search(r"(any|undef)", v).group()

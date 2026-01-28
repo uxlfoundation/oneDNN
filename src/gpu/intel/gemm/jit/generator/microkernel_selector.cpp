@@ -78,6 +78,7 @@ std::vector<Protocol::Argument> arguments(const GEMMOptions &o) {
     if (o.localA) argsV[0].stype.format = LocalPointer;
     if (o.localB) argsV[2].stype.format = LocalPointer;
     if (o.addToC) argsV[4].direction = Protocol::Argument::InOut;
+    if (o.kParallelLocal) argsV.push_back({"local_id_k", In, s32});
     if (o.slmPtr) argsV.push_back({"slm", In, LocalPointer});
     if (o.scaleA) argsV.push_back({"a_scale", In, GlobalPointer});
     if (o.offsetA) argsV.push_back({"a_offset", In, GlobalPointer});
@@ -111,7 +112,7 @@ Protocol makeProtocol(const GEMMOptions &o) {
 
 Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams sizes,
                    const GEMMProblem &problem_, const std::vector<StrategyRequirement> &reqs_,
-                   void (*strategyAdjuster)(GEMMStrategy &strategy))
+                   void (*strategyAdjuster)(GEMMStrategy &strategy), SelectionObserver *observer)
 {
     bool localA = options.localA;
     bool localB = options.localB;
@@ -121,6 +122,7 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
     bool scaleB = options.scaleB;
     bool offsetA = options.offsetA;
     bool offsetB = options.offsetB;
+    bool kParallelLocal = options.kParallelLocal;
 
     bool transC = !isColMajor(problem_.C.layout);
 
@@ -204,9 +206,21 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
     /* Call kernel selector */
     EvaluateAuxOutput auxParams;
     const kcatalog::Entry * entry = nullptr;
-    auto entries = select(catalog, 1, &matchParams, evalParams, auxParams);
-    if (entries.size() > 0)
-	    entry = entries[0];
+    auto entries = select(catalog, 1, &matchParams, evalParams, auxParams, observer);
+    // First, attempt to find a strategy that matches the protocol's options
+    for(const auto* this_entry: entries) {
+        GEMMStrategy strategy(hw, stepping);
+        strategy.unroll[LoopM] = this_entry->driverInfo.unroll[LoopM];
+        strategy.unroll[LoopN] = this_entry->driverInfo.unroll[LoopN];
+        parseStrategy(this_entry->strategy, hw, problem, strategy);
+        if (!kParallelLocal && strategy.kParallelLocal) continue;
+        entry = this_entry;
+        break;
+    }
+
+    // If unsuccessful, we can pick the first strategy and modify the parameters to fit the protocol
+    if (entry == nullptr && entries.size() > 0)
+        entry = entries[0];
 
     GEMMStrategy strategy(hw, stepping);
 
@@ -247,6 +261,12 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
     strategy.kParallel = strategy.kParallelVariable = strategy.persistent = false;
     strategy.cWalkOrder = WalkOrder::HW2D;
 
+    /* Disable k-parallelization if the protocol does not allow it */
+    if (!kParallelLocal) {
+        strategy.kParallelLocal = strategy.kInterleave = false;
+        strategy.wg[LoopK] = 1;
+    }
+
     /* Adjust strategy for performance */
     if (strategy.barrierFreq > 0 && sizes.k < 4 * strategy.barrierFreq)
         strategy.barrierFreq = 0;
@@ -261,6 +281,25 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
     if (strategyAdjuster) strategyAdjuster(strategy);
 
     strategy.preflight(hw, problem);
+
+    if (getVerbose(gemmstone::GEMMVerbose::DebugInfo) >= 10) {
+        if (entry)
+            std::cout << "Selected microkernel catalog entry: " << entry->str() << std::endl;
+        else
+            std::cout << "Microkernel generated heuristically" << std::endl;
+    }
+    if (getVerbose(gemmstone::GEMMVerbose::DebugInfo) >= 2) {
+        std::string result = problem.toString();
+        result.append(" ");
+        result.append(std::to_string(strategy.unroll[LoopM]));
+        result.append(" ");
+        result.append(std::to_string(strategy.unroll[LoopN]));
+        result.append(" ");
+        result.append(problem.scalarsToString());
+        result.append(" ");
+        result.append(unparseStrategy(hw, problem, strategy));
+        std::cout << "Actual kernel: " << result << std::endl;
+    }
 
     /* Set up arguments for microkernel */
     InterfaceHandler interface(hw);
@@ -278,6 +317,7 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
     interface.newArgument("h0", DataType::d);
     interface.newArgument("local_id_m", DataType::d);
     interface.newArgument("local_id_n", DataType::d);
+    if (kParallelLocal)    interface.newArgument("local_id_k", DataType::d);
     if (slmPtr)            interface.newArgument("slm_base", ExternalArgumentType::LocalPtr);
     if (scaleA)            interface.newArgument("a_scale_ptr", ExternalArgumentType::GlobalPtr);
     if (offsetA)           interface.newArgument("ao_ptr", ExternalArgumentType::GlobalPtr);

@@ -442,6 +442,7 @@ struct GEMMState : public CommonState {
 
     int internalSIMD() const { return simd32KMasks ? 32 : 16; }
 
+    ngen::GRF r0InfoGRF() const;
     void setTacc(Type T);
 
 };

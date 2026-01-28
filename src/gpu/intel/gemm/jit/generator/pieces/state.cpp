@@ -72,6 +72,15 @@ void CommonState::allocEmulate64Temp(const EmulationStrategy &estrategy)
         emulate.temp[q] = ra.alloc();
 }
 
+GRF GEMMState::r0InfoGRF() const
+{
+    if (r0_info.isValid()) {
+        if (r0_info.isARF()) stub();
+        return GRF{r0_info.getBase()};
+    }
+    return GRF{};
+}
+
 void GEMMState::setTacc(Type T)
 {
     Tacc = T;

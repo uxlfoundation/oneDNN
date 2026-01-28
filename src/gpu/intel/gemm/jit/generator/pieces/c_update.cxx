@@ -2315,8 +2315,13 @@ void Generator<hw>::gemmKReduce(const GEMMProblem &problem, const GEMMStrategy &
     Label lDone;
 
     // Early exit if nothing to do. All branching scalar since no fusing in k dimension.
-    cmp(1 | le | state.flagAP, state.lszK, 1);
-    jmpi(1 | state.flagAP, lDone);
+    if (!strategy.fixedWGK()) {
+        cmp(1 | le | state.flagAP, state.lszK, 1);
+        jmpi(1 | state.flagAP, lDone);
+    } else if (state.lszK.isInvalid()) {
+        state.lszK = state.ra.alloc_sub<uint32_t>();
+        mov(1, state.lszK, strategy.wg[LoopK]);
+    }
 
     status << "k reduction through SLM" << status_stream::endl;
     cmp(1 | eq | state.flagAP, state.lidK, 0);
@@ -2342,8 +2347,7 @@ void Generator<hw>::gemmKReduce(const GEMMProblem &problem, const GEMMStrategy &
     auto flagKTLoop = state.raVFlag.alloc();
     auto barrierTemp = state.ra.alloc();
 
-    if (state.r0_info.isARF()) stub();
-    GRF r0_info{state.r0_info.getBase()};
+    GRF r0_info = state.r0InfoGRF();
 
     bool initialBarrier = (strategy.slmBuffers > 0 || strategy.persistentLoop());
     MOCK_BARRIERS if (initialBarrier)

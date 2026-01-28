@@ -661,7 +661,12 @@ status_t brg_blocking_t::estimate_brgemm_ur() {
                                        : brgemm_broadcast_t::none;
     }
     brgemm_attr_t brgattr;
-    brgattr.use_uker = use_uker;
+    // TODO: The current implementation uses regular brgemm kernel
+    // initialization to estimate the ur, regardless of the use_uker setting.
+    // This should be updated to:
+    //   1. Use unrolled kernel initialization when use_uker is true
+    //   2. Update brg_blocking_t::est_eff() to properly calculate
+    // brgemm_microkernel_eff
     brgattr.max_bs = max_batch;
     max_vpad = exec_type == exec_vpad ? nstl::max(l_pad, r_pad) : 0;
     brgattr.max_top_vpad = max_vpad;

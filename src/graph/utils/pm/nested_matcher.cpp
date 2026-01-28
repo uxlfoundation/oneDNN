@@ -1385,6 +1385,68 @@ bool match_repetition(const binding_t &bind_arg, match_context_t *parent_ctx,
     return true;
 }
 
+bool match_pattern(graph_t &graph, const std::shared_ptr<pb_graph_t> &pattern,
+        std::vector<std::vector<op_t *>> &fusion_ops) {
+    auto nodes = pattern->get_nodes();
+
+    // Check if this is a group pattern
+    if (nodes.size() == 1
+            && nodes[0]->get_node_kind() == pb_node_kind::PB_NODE_KIND_GROUP) {
+        auto *group_node = dynamic_cast<pb_group_t *>(nodes[0]);
+        if (!group_node) return false;
+
+        size_t min_instances = group_node->get_min_instances();
+        if (graph.get_output_ops().size() < min_instances) return false;
+
+        auto template_graph = group_node->get_template();
+        std::vector<op_t *> candidate_ops;
+        size_t instance_count = 0;
+
+        topo_order_visit(graph.get_output_ops(), [&](op_t *cur_op) {
+            if (cur_op->get_partition() != nullptr) return status::success;
+            if (cur_op->has_attr(op_attr::matched)
+                    && cur_op->get_attr<bool>(op_attr::matched))
+                return status::success;
+
+            std::vector<op_t *> temp_fusion;
+            if (match_pattern(cur_op, template_graph, temp_fusion)) {
+                candidate_ops.insert(candidate_ops.end(), temp_fusion.begin(),
+                        temp_fusion.end());
+                instance_count++;
+            }
+            return status::success;
+        });
+
+        size_t max_instances = group_node->get_max_instances();
+
+        if (candidate_ops.size() == graph.num_ops()
+                && instance_count >= min_instances
+                && instance_count <= max_instances) {
+            fusion_ops.emplace_back(candidate_ops);
+            return true;
+        } else {
+            // Constraints not satisfied - clear matched attributes
+            for (auto *op : candidate_ops) {
+                if (op->has_attr(op_attr::matched)) {
+                    op->set_attr<bool>(op_attr::matched, false);
+                }
+            }
+            return false;
+        }
+    }
+
+    // Regular pattern: match each op against the pattern
+    topo_order_visit(graph.get_output_ops(), [&](op_t *cur_op) {
+        std::vector<op_t *> candidate_fusion;
+        if (!match_pattern(cur_op, pattern, candidate_fusion)) {
+            return status::success;
+        }
+        fusion_ops.emplace_back(candidate_fusion);
+        return status::success;
+    });
+    return !fusion_ops.empty();
+}
+
 } // namespace pm
 } // namespace utils
 } // namespace graph

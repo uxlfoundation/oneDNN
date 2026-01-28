@@ -168,6 +168,14 @@ struct destroy_traits;
 // };
 
 template <>
+struct destroy_traits<ze_command_list_handle_t> {
+    static void destroy(ze_command_list_handle_t t) {
+        (void)xpu::ze::zeCommandListHostSynchronize(t, UINT64_MAX);
+        (void)xpu::ze::zeCommandListDestroy(t);
+    }
+};
+
+template <>
 struct destroy_traits<ze_context_handle_t> {
     static void destroy(ze_context_handle_t t) {
         (void)xpu::ze::zeContextDestroy(t);
@@ -190,6 +198,13 @@ struct destroy_traits<ze_event_pool_handle_t> {
 };
 
 template <>
+struct destroy_traits<ze_kernel_handle_t> {
+    static void destroy(ze_kernel_handle_t t) {
+        (void)xpu::ze::zeKernelDestroy(t);
+    }
+};
+
+template <>
 struct destroy_traits<ze_module_handle_t> {
     static void destroy(ze_module_handle_t t) {
         (void)xpu::ze::zeModuleDestroy(t);
@@ -207,6 +222,11 @@ public:
 
     operator T() const { return t_; }
     T get() const { return t_; }
+    // `unwrap` interfaces return a reference to the underlying object allowing
+    // create an empty wrapper, "unwrap" its content to the correcpondent call
+    // and fill it without additional actions.
+    T &unwrap() { return t_; }
+    const T &unwrap() const { return t_; }
 
 private:
     T t_;

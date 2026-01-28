@@ -40,13 +40,7 @@ public:
     const xpu::context_t &ctx() const override;
 
     ze_event_handle_t get_output_event() const;
-    std::shared_ptr<xpu::ze::wrapper_t<ze_event_handle_t>> create_event() {
-        return impl()->create_event();
-    }
-    std::shared_ptr<xpu::ze::wrapper_t<ze_event_pool_handle_t>>
-    get_event_pool() {
-        return impl()->get_event_pool();
-    }
+    ze_event_handle_t create_event() const { return impl()->create_event(); }
 
     ze_command_list_handle_t list() const;
 

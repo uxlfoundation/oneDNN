@@ -29,25 +29,28 @@ namespace ze {
 struct event_t : public xpu::event_t {
     event_t() = default;
     event_t(const event_t &) = default;
-    event_t(const ze_event_handle_t &event) { events_.emplace_back(event); }
-    event_t(const std::vector<ze_event_handle_t> &event) : events_(event) {}
+    event_t(const ze_event_handle_t &event) { ze_events_.emplace_back(event); }
+    event_t(const std::vector<ze_event_handle_t> &events)
+        : ze_events_(events) {}
     event_t(std::vector<ze_event_handle_t> &&event)
-        : events_(std::move(event)) {}
-    event_t(ze_event_handle_t &&event) { events_.emplace_back(event); }
+        : ze_events_(std::move(event)) {}
+    event_t(ze_event_handle_t &&event) { ze_events_.emplace_back(event); }
     ~event_t() override = default;
 
     event_t &operator=(event_t &&other) {
-        std::swap(events_, other.events_);
+        std::swap(ze_events_, other.ze_events_);
         return *this;
     }
     event_t &operator=(const event_t &other) {
-        events_ = other.events_;
+        ze_events_ = other.ze_events_;
         return *this;
     }
 
-    const ze_event_handle_t &operator[](size_t i) const { return events_[i]; }
-    ze_event_handle_t &operator[](size_t i) { return events_[i]; }
-    size_t size() const { return events_.size(); }
+    const ze_event_handle_t &operator[](size_t i) const {
+        return ze_events_[i];
+    }
+    ze_event_handle_t &operator[](size_t i) { return ze_events_[i]; }
+    size_t size() const { return ze_events_.size(); }
 
     static event_t &from(xpu::event_t &event) {
         return *utils::downcast<event_t *>(&event);
@@ -60,11 +63,11 @@ struct event_t : public xpu::event_t {
     }
     void append(const xpu::event_t &event) {
         auto &other = *utils::downcast<const event_t *>(&event);
-        events_.insert(
-                events_.end(), other.events_.begin(), other.events_.end());
+        ze_events_.insert(ze_events_.end(), other.ze_events_.begin(),
+                other.ze_events_.end());
     }
 
-    std::vector<ze_event_handle_t> events_;
+    std::vector<ze_event_handle_t> ze_events_;
 };
 
 class context_t final : public xpu::context_t {
@@ -73,22 +76,22 @@ public:
     ~context_t() override = default;
 
     context_t &operator=(const context_t &other) {
-        events_ = other.events_;
+        event_ = other.event_;
         return *this;
     }
     void set_deps(std::vector<ze_event_handle_t> &&event) {
-        events_ = event_t(event);
+        event_ = event_t(event);
     }
-    void set_deps(event_t &&events) { events_ = std::move(events); }
+    void set_deps(event_t &&event) { event_ = std::move(event); }
 
-    xpu::event_t &get_deps() override { return events_; }
-    const xpu::event_t &get_deps() const override { return events_; }
+    xpu::event_t &get_deps() override { return event_; }
+    const xpu::event_t &get_deps() const override { return event_; }
     void append_deps(const xpu::event_t &event) override {
-        events_.append(event);
+        event_.append(event);
     }
 
 private:
-    event_t events_;
+    event_t event_;
 };
 
 } // namespace ze

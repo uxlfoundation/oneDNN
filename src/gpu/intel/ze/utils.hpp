@@ -17,11 +17,11 @@
 #ifndef GPU_INTEL_ZE_UTILS_HPP
 #define GPU_INTEL_ZE_UTILS_HPP
 
-#include "level_zero/ze_intel_gpu.h"
+#include "gpu/intel/compute/kernel.hpp"
 
 #include "xpu/ze/utils.hpp"
 
-#include "gpu/intel/compute/kernel.hpp"
+#include "level_zero/ze_intel_gpu.h"
 
 namespace dnnl {
 namespace impl {
@@ -34,7 +34,8 @@ status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
         compute::gpu_arch_t &gpu_arch, compute::gpu_product_t &product,
         uint64_t &native_extensions, bool &mayiuse_systolic,
         bool &mayiuse_ngen_kernels);
-status_t get_module_binary(ze_module_handle_t module, xpu::binary_t &binary);
+status_t get_module_binary(
+        ze_module_handle_t module_handle, xpu::binary_t &binary);
 status_t get_kernel_binary(ze_kernel_handle_t kernel, xpu::binary_t &binary);
 bool mayiuse_microkernels(ze_device_handle_t device,
         ze_context_handle_t context, const std::string &code);
@@ -43,7 +44,7 @@ status_t compile_ocl_module_to_binary(ze_device_handle_t device,
         const std::string &options, xpu::binary_t &binary);
 status_t create_kernels(ze_device_handle_t device, ze_context_handle_t context,
         const std::vector<const char *> &kernel_names,
-        const xpu::binary_t &binary, ze_module_handle_t *module,
+        const xpu::binary_t &binary, ze_module_handle_t *module_ptr,
         std::vector<ze_kernel_handle_t> &kernels);
 
 } // namespace ze

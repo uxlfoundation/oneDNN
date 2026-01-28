@@ -15,7 +15,6 @@
 *******************************************************************************/
 
 #include "gpu/intel/ze/device_info.hpp"
-#include "gpu/intel/ze/compiler.hpp"
 #include "gpu/intel/ze/engine.hpp"
 
 #include "ngen_level_zero.hpp"

@@ -590,7 +590,8 @@ int run_execution(perf_function_t &exec_func, const dnnl_engine_t &engine,
 
 void reset_gpu_profiling(dnnl_stream_t stream) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL \
-        || DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
+        || DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL \
+        || DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
     DNN_SAFE_V(dnnl_reset_profiling(stream));
 #endif
 }
@@ -598,7 +599,8 @@ void reset_gpu_profiling(dnnl_stream_t stream) {
 int get_gpu_profiling_info(dnnl_stream_t stream, std::vector<uint64_t> &nsecs,
         std::vector<uint64_t> &cycles, int expected_num_entries) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL \
-        || DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
+        || DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL \
+        || DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
     dnnl_profiling_data_kind_t undef_kind {};
     dnnl_profiling_data_kind_t time_kind {};
 
@@ -641,7 +643,8 @@ int get_gpu_profiling_info(dnnl_stream_t stream, std::vector<uint64_t> &nsecs,
 
 void notify_gpu_profiling_complete(dnnl_stream_t stream) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL \
-        || DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
+        || DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL \
+        || DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
     DNN_SAFE_V(dnnl_impl_notify_profiling_complete(stream));
 #endif
 }
@@ -1155,6 +1158,8 @@ int get_gpu_ram_sizes(size_t &ram_size, size_t &max_alloc_size) {
     auto eng = dnnl::engine(get_test_engine(), true);
     auto ze_dev = dnnl::ze_interop::get_device(eng);
     ze_device_properties_t ze_dev_props;
+    ze_dev_props.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES;
+    ze_dev_props.pNext = nullptr;
     auto status = zeDeviceGetProperties(ze_dev, &ze_dev_props);
     if (status != ZE_RESULT_SUCCESS) return FAIL;
 
@@ -1211,7 +1216,19 @@ int get_gpu_cache_size(size_t &cache_size) {
             = (size_t)sycl_dev
                       .get_info<::sycl::info::device::global_mem_cache_size>();
 #else
-    assert(!"unsupported GPU runtime");
+    auto eng = dnnl::engine(get_test_engine(), true);
+    auto ze_dev = dnnl::ze_interop::get_device(eng);
+    ze_device_cache_properties_t ze_cache_props;
+    ze_cache_props.stype = ZE_STRUCTURE_TYPE_DEVICE_CACHE_PROPERTIES;
+    ze_cache_props.pNext = nullptr;
+    uint32_t count = 0;
+    auto status = zeDeviceGetCacheProperties(ze_dev, &count, nullptr);
+    if (status != ZE_RESULT_SUCCESS) return FAIL;
+
+    status = zeDeviceGetCacheProperties(ze_dev, &count, &ze_cache_props);
+    if (status != ZE_RESULT_SUCCESS) return FAIL;
+
+    _cache_size = ze_cache_props.cacheSize;
 #endif
     cache_size = _cache_size;
     return OK;

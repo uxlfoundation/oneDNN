@@ -21,10 +21,6 @@
 
 #include "oneapi/dnnl/dnnl.h"
 
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_DPCPP
-#include "oneapi/dnnl/dnnl_sycl.h"
-#endif
-
 #include "common.hpp"
 #include "utils/dims.hpp"
 #include "utils/wrapper.hpp"

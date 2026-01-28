@@ -68,12 +68,15 @@ public:
             size_t offset, size_t size) const override;
     std::unique_ptr<impl::memory_storage_t> clone() const override;
 
+    // Note: these are static for reusability with external interfaces.
+    static void *malloc_device(impl::engine_t *engine, size_t size);
+    static void *malloc_shared(impl::engine_t *engine, size_t size);
+    static void free(impl::engine_t *engine, void *ptr);
+
 private:
     status_t init_allocate(size_t size) override;
 
     void *malloc_host(size_t size) const;
-    void *malloc_device(size_t size) const;
-    void *malloc_shared(size_t size) const;
     void free(void *ptr) const;
     status_t memcpy(impl::stream_t *stream, void *dst, const void *src,
             size_t size) const;

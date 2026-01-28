@@ -37,7 +37,7 @@ public:
     stream_impl_t(unsigned flags, ze_context_handle_t context,
             ze_device_handle_t device);
 
-    ~stream_impl_t() override;
+    ~stream_impl_t() override = default;
 
     status_t wait();
 
@@ -57,12 +57,7 @@ public:
 
     ze_event_handle_t get_output_event() const;
 
-    std::shared_ptr<xpu::ze::wrapper_t<ze_event_handle_t>> create_event();
-
-    std::shared_ptr<xpu::ze::wrapper_t<ze_event_pool_handle_t>>
-    get_event_pool() {
-        return event_pool_;
-    }
+    ze_event_handle_t create_event();
 
     ze_command_list_handle_t list() const { return list_; }
 
@@ -70,11 +65,9 @@ private:
     void create_event_pool();
 
     ze_context_handle_t context_;
-    bool allocated_;
-    ze_command_list_handle_t list_;
-
-    std::shared_ptr<xpu::ze::wrapper_t<ze_event_pool_handle_t>> event_pool_;
-    std::list<std::shared_ptr<xpu::ze::wrapper_t<ze_event_handle_t>>> events_;
+    xpu::ze::wrapper_t<ze_command_list_handle_t> list_;
+    xpu::ze::wrapper_t<ze_event_pool_handle_t> event_pool_;
+    std::list<xpu::ze::wrapper_t<ze_event_handle_t>> events_;
 
     mutable utils::thread_local_storage_t<context_t> ctx_;
 

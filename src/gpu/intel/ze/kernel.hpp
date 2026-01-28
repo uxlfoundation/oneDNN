@@ -33,10 +33,9 @@ namespace ze {
 class kernel_t : public compute::kernel_impl_t {
 public:
     static status_t make(compute::kernel_t &compute_kernel,
-            const std::shared_ptr<xpu::ze::wrapper_t<ze_module_handle_t>>
-                    &module_ptr,
-            ze_kernel_handle_t kernel_ptr, const std::string &kernel_name);
-    ~kernel_t() override;
+            ze_module_handle_t amodule, ze_kernel_handle_t akernel,
+            const std::string &kernel_name);
+    ~kernel_t() override = default;
 
     status_t check_alignment(
             const compute::kernel_arg_list_t &arg_list) const override;
@@ -48,21 +47,19 @@ public:
             const xpu::event_t &deps, xpu::event_t &out_dep) override;
 
     status_t get_kernel_binary(xpu::binary_t &binary) const override;
-    std::string name() const override;
+    std::string name() const override { return kernel_name_; }
     status_t dump() const override;
 
 private:
+    // See description in the class implementation.
     friend class kernel_compat_t;
-    kernel_t(const std::shared_ptr<xpu::ze::wrapper_t<ze_module_handle_t>>
-                     &module_ptr,
-            ze_kernel_handle_t kernel_ptr, const std::string &kernel_name);
 
-    std::shared_ptr<xpu::ze::wrapper_t<ze_module_handle_t>> module_;
-    ze_kernel_handle_t kernel_;
+    kernel_t(ze_module_handle_t amodule, ze_kernel_handle_t akernel,
+            const std::string &kernel_name);
+
+    xpu::ze::wrapper_t<ze_module_handle_t> module_;
+    xpu::ze::wrapper_t<ze_kernel_handle_t> kernel_;
     std::string kernel_name_;
-
-    std::shared_ptr<ze_event_pool_handle_t> event_pool_;
-    std::shared_ptr<xpu::ze::wrapper_t<ze_event_handle_t>> event_;
 
     kernel_t() = delete;
     DNNL_DISALLOW_COPY_AND_ASSIGN(kernel_t);

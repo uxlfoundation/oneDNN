@@ -141,11 +141,8 @@ public:
         auto *ze_engine = utils::downcast<const ze::engine_t *>(engine);
         auto ze_module_kernel = ngen_code_generator_t<hw>::getKernel(
                 ze_engine->context(), ze_engine->device());
-        auto ze_module
-                = std::make_shared<xpu::ze::wrapper_t<ze_module_handle_t>>(
-                        ze_module_kernel.first);
-        return ze::kernel_t::make(
-                kernel, ze_module, ze_module_kernel.second, kernel_name());
+        return ze::kernel_t::make(kernel, ze_module_kernel.first,
+                ze_module_kernel.second, kernel_name());
 #endif
     }
 };

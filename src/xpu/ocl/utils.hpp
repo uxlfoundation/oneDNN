@@ -416,6 +416,9 @@ struct wrapper_t {
 
     operator T() const { return t_; }
     T get() const { return t_; }
+    // `unwrap` interfaces return a reference to the underlying object allowing
+    // create an empty wrapper, "unwrap" its content to the correcpondent call
+    // and fill it without additional actions.
     T &unwrap() { return t_; }
     const T &unwrap() const { return t_; }
 

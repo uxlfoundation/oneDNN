@@ -37,22 +37,16 @@ public:
 };
 
 status_t kernel_t::make(compute::kernel_t &compute_kernel,
-        const std::shared_ptr<xpu::ze::wrapper_t<ze_module_handle_t>>
-                &module_ptr,
-        ze_kernel_handle_t kernel_ptr, const std::string &kernel_name) {
-    compute_kernel = compute::kernel_t(std::make_shared<kernel_compat_t>(
-            module_ptr, kernel_ptr, kernel_name));
+        ze_module_handle_t amodule, ze_kernel_handle_t akernel,
+        const std::string &kernel_name) {
+    compute_kernel = compute::kernel_t(
+            std::make_shared<kernel_compat_t>(amodule, akernel, kernel_name));
     return status::success;
 }
 
-kernel_t::kernel_t(const std::shared_ptr<xpu::ze::wrapper_t<ze_module_handle_t>>
-                           &module_ptr,
-        ze_kernel_handle_t kernel_ptr, const std::string &kernel_name)
-    : module_(module_ptr), kernel_(kernel_ptr), kernel_name_(kernel_name) {}
-
-kernel_t::~kernel_t() {
-    xpu::ze::zeKernelDestroy(kernel_);
-}
+kernel_t::kernel_t(ze_module_handle_t amodule, ze_kernel_handle_t akernel,
+        const std::string &kernel_name)
+    : module_(amodule), kernel_(akernel), kernel_name_(kernel_name) {}
 
 status_t kernel_t::check_alignment(
         const compute::kernel_arg_list_t &arg_list) const {
@@ -179,12 +173,11 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
             global_size[1] / group_size[1], global_size[2] / group_size[2]};
 
     std::vector<ze_event_handle_t> ze_deps
-            = utils::downcast<const xpu::ze::event_t *>(&deps)->events_;
+            = utils::downcast<const xpu::ze::event_t *>(&deps)->ze_events_;
     std::vector<ze_event_handle_t> ze_out_deps
-            = utils::downcast<const xpu::ze::event_t *>(&out_dep)->events_;
+            = utils::downcast<const xpu::ze::event_t *>(&out_dep)->ze_events_;
 
-    event_ = ze_stream->create_event();
-    ze_event_handle_t out_event = *event_;
+    ze_event_handle_t out_event = ze_stream->create_event();
 
     CHECK(xpu::ze::zeCommandListAppendLaunchKernel(ze_stream->list(), kernel_,
             &group_count, out_event, static_cast<uint32_t>(ze_deps.size()),
@@ -201,10 +194,6 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
 
 status_t kernel_t::get_kernel_binary(xpu::binary_t &binary) const {
     return ze::get_kernel_binary(kernel_, binary);
-}
-
-std::string kernel_t::name() const {
-    return kernel_name_;
 }
 
 status_t kernel_t::dump() const {

@@ -174,14 +174,15 @@ status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
     return get_device_ip(device, ip_version);
 }
 
-status_t get_module_binary(ze_module_handle_t module, xpu::binary_t &binary) {
+status_t get_module_binary(
+        ze_module_handle_t module_handle, xpu::binary_t &binary) {
     size_t module_binary_size;
     CHECK(xpu::ze::zeModuleGetNativeBinary(
-            module, &module_binary_size, nullptr));
+            module_handle, &module_binary_size, nullptr));
 
     binary.resize(module_binary_size);
     CHECK(xpu::ze::zeModuleGetNativeBinary(
-            module, &module_binary_size, binary.data()));
+            module_handle, &module_binary_size, binary.data()));
 
     return status::success;
 }
@@ -196,69 +197,36 @@ status_t get_kernel_binary(ze_kernel_handle_t kernel, xpu::binary_t &binary) {
     return status::success;
 }
 
-static inline ze_result_t func_zeModuleCreate(ze_context_handle_t hContext,
-        ze_device_handle_t hDevice, ze_module_desc_t *desc,
-        ze_module_handle_t *phModule,
-        ze_module_build_log_handle_t *phBuildLog) {
-    ze_init_flags_t default_ze_flags = 0;
-    static auto init_ = xpu::ze::find_ze_symbol<decltype(&::zeInit)>("zeInit");
-    if (!init_) return ZE_RESULT_ERROR_NOT_AVAILABLE;
-    init_(default_ze_flags);
-
-    static auto f_ = xpu::ze::find_ze_symbol<decltype(&::zeModuleCreate)>(
-            "zeModuleCreate");
-    if (!f_) return ZE_RESULT_ERROR_NOT_AVAILABLE;
-    return f_(hContext, hDevice, desc, phModule, phBuildLog);
-}
-
-#define ZE_MODULE_FORMAT_OCLC (ze_module_format_t)3U
-static inline ze_module_handle_t compile_ocl_module(ze_device_handle_t device,
-        ze_context_handle_t context, const std::string &code,
-        const std::string &options) {
+status_t compile_ocl_module(ze_module_handle_t *module_ptr,
+        ze_device_handle_t device, ze_context_handle_t context,
+        const std::string &code, const std::string &options) {
     ze_module_desc_t module_desc;
     module_desc.stype = ZE_STRUCTURE_TYPE_MODULE_DESC;
     module_desc.pNext = nullptr;
+    // Note: this is a hidden value in the loader.
+    // TODO: remove the macro once the value is published in spec.
+#define ZE_MODULE_FORMAT_OCLC (ze_module_format_t)3U
     module_desc.format = ZE_MODULE_FORMAT_OCLC;
+#undef ZE_MODULE_FORMAT_OCLC
     module_desc.inputSize = code.size();
     module_desc.pInputModule = reinterpret_cast<const uint8_t *>(code.c_str());
     module_desc.pBuildFlags = options.c_str();
     module_desc.pConstants = nullptr;
 
     ze_module_handle_t module_handle;
-    ze_module_build_log_handle_t module_build_log_handle;
-    ze_result_t ret = func_zeModuleCreate(context, device, &module_desc,
-            &module_handle, &module_build_log_handle);
-    if (ret != ZE_RESULT_SUCCESS) return nullptr;
-    return module_handle;
-}
+    // TODO: enable under debug capabilities.
+    // ze_module_build_log_handle_t module_build_log_handle;
+    auto st = xpu::ze::zeModuleCreate(context, device, &module_desc,
+            &module_handle, /* &module_build_log_handle */ nullptr);
+    if (st != status::success) return st;
 
-bool mayiuse_microkernels(ze_device_handle_t device,
-        ze_context_handle_t context, const std::string &code) {
-    ze_module_handle_t module_handle
-            = compile_ocl_module(device, context, code, "");
-    if (module_handle) {
-        xpu::ze::zeModuleDestroy(module_handle);
-        return true;
-    }
-    return false;
-}
-
-status_t compile_ocl_module_to_binary(ze_device_handle_t device,
-        ze_context_handle_t context, const std::string &code,
-        const std::string &options, xpu::binary_t &binary) {
-    ze_module_handle_t module_handle
-            = compile_ocl_module(device, context, code, options);
-    if (!module_handle) { return status::runtime_error; }
-    CHECK(ze::get_module_binary(module_handle, binary));
-    CHECK(xpu::ze::zeModuleDestroy(module_handle));
-
+    *module_ptr = module_handle;
     return status::success;
 }
 
-status_t create_kernels(ze_device_handle_t device, ze_context_handle_t context,
-        const std::vector<const char *> &kernel_names,
-        const xpu::binary_t &binary, ze_module_handle_t *module,
-        std::vector<ze_kernel_handle_t> &kernels) {
+status_t compile_native_module(ze_module_handle_t *module_ptr,
+        ze_device_handle_t device, ze_context_handle_t context,
+        const xpu::binary_t &binary) {
     ze_module_desc_t module_desc;
     module_desc.stype = ZE_STRUCTURE_TYPE_MODULE_DESC;
     module_desc.pNext = nullptr;
@@ -268,8 +236,44 @@ status_t create_kernels(ze_device_handle_t device, ze_context_handle_t context,
     module_desc.pBuildFlags = "";
     module_desc.pConstants = nullptr;
 
-    CHECK(xpu::ze::zeModuleCreate(
-            context, device, &module_desc, module, nullptr));
+    ze_module_handle_t module_handle;
+    // TODO: enable under debug capabilities.
+    // ze_module_build_log_handle_t module_build_log_handle;
+    auto st = xpu::ze::zeModuleCreate(context, device, &module_desc,
+            &module_handle, /* &module_build_log_handle */ nullptr);
+    if (st != status::success) return st;
+
+    *module_ptr = module_handle;
+    return status::success;
+}
+
+bool mayiuse_microkernels(ze_device_handle_t device,
+        ze_context_handle_t context, const std::string &code) {
+    xpu::ze::wrapper_t<ze_module_handle_t> module_handle;
+    auto st = compile_ocl_module(
+            &module_handle.unwrap(), device, context, code, "");
+    (void)st;
+    assert(st == status::success);
+
+    return (bool)module_handle;
+}
+
+status_t compile_ocl_module_to_binary(ze_device_handle_t device,
+        ze_context_handle_t context, const std::string &code,
+        const std::string &options, xpu::binary_t &binary) {
+    xpu::ze::wrapper_t<ze_module_handle_t> module_handle;
+    CHECK(compile_ocl_module(
+            &module_handle.unwrap(), device, context, code, options));
+    CHECK(get_module_binary(module_handle, binary));
+
+    return status::success;
+}
+
+status_t create_kernels(ze_device_handle_t device, ze_context_handle_t context,
+        const std::vector<const char *> &kernel_names,
+        const xpu::binary_t &binary, ze_module_handle_t *module_ptr,
+        std::vector<ze_kernel_handle_t> &kernels) {
+    CHECK(compile_native_module(module_ptr, device, context, binary));
 
     kernels.resize(kernel_names.size(), nullptr);
     for (size_t i = 0; i < kernel_names.size(); i++) {
@@ -285,7 +289,7 @@ status_t create_kernels(ze_device_handle_t device, ze_context_handle_t context,
         kernel_desc.pKernelName = kernel_names[i];
 
         ze_kernel_handle_t kernel;
-        CHECK(xpu::ze::zeKernelCreate(*module, &kernel_desc, &kernel));
+        CHECK(xpu::ze::zeKernelCreate(*module_ptr, &kernel_desc, &kernel));
 
         kernels[i] = kernel;
     }

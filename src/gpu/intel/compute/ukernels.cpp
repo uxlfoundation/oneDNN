@@ -71,9 +71,12 @@ bool mayiuse_microkernels(const engine_t *engine) {
                         utils::downcast<const sycl::engine_t *>(engine));
 #endif
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
-            case runtime_kind::ze:
-                return utils::downcast<const ze::engine_t *>(engine)
-                        ->mayiuse_microkernels();
+            case runtime_kind::ze: {
+                auto *ze_engine = utils::downcast<const ze::engine_t *>(engine);
+                return ze::mayiuse_microkernels(ze_engine->device(),
+                        ze_engine->context(),
+                        cl_microkernels_check_kernel_code);
+            }
 #endif
             default: return false;
         }

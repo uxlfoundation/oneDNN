@@ -17,11 +17,9 @@
 #ifndef GPU_INTEL_ZE_ENGINE_HPP
 #define GPU_INTEL_ZE_ENGINE_HPP
 
-#include "xpu/ocl/utils.hpp"
 #include "xpu/ze/engine_impl.hpp"
 
 #include "gpu/intel/engine.hpp"
-#include "gpu/intel/ze/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -67,8 +65,6 @@ public:
 
     cl_device_id ocl_device() const;
     cl_context ocl_context() const;
-
-    bool mayiuse_microkernels() const;
 
 private:
     const xpu::ze::engine_impl_t *impl() const {

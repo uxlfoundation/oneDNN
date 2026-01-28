@@ -139,10 +139,10 @@ status_t memory_storage_t::init_allocate(size_t size) {
     switch (kind_) {
         case memory_storage_kind_t::host: ptr_alloc = malloc_host(size); break;
         case memory_storage_kind_t::device:
-            ptr_alloc = malloc_device(size);
+            ptr_alloc = memory_storage_t::malloc_device(engine(), size);
             break;
         case memory_storage_kind_t::shared:
-            ptr_alloc = malloc_shared(size);
+            ptr_alloc = memory_storage_t::malloc_shared(engine(), size);
             break;
         default: break;
     }
@@ -154,7 +154,7 @@ status_t memory_storage_t::init_allocate(size_t size) {
 }
 
 void *memory_storage_t::malloc_host(size_t size) const {
-    void *pptr = nullptr;
+    void *ptr = nullptr;
 
     ze_host_mem_alloc_desc_t host_mem_alloc_desc = {};
     host_mem_alloc_desc.stype = ZE_STRUCTURE_TYPE_HOST_MEM_ALLOC_DESC;
@@ -164,13 +164,13 @@ void *memory_storage_t::malloc_host(size_t size) const {
     auto *ze_engine_impl
             = utils::downcast<const xpu::ze::engine_impl_t *>(engine()->impl());
     ze::zeMemAllocHost(
-            ze_engine_impl->context(), &host_mem_alloc_desc, size, 0, &pptr);
+            ze_engine_impl->context(), &host_mem_alloc_desc, size, 0, &ptr);
 
-    return pptr;
+    return ptr;
 }
 
-void *memory_storage_t::malloc_device(size_t size) const {
-    void *pptr = nullptr;
+void *memory_storage_t::malloc_device(impl::engine_t *engine, size_t size) {
+    void *ptr = nullptr;
 
     ze_device_mem_alloc_desc_t device_mem_alloc_desc = {};
     device_mem_alloc_desc.stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC;
@@ -179,15 +179,15 @@ void *memory_storage_t::malloc_device(size_t size) const {
     device_mem_alloc_desc.ordinal = 0;
 
     auto *ze_engine_impl
-            = utils::downcast<const xpu::ze::engine_impl_t *>(engine()->impl());
+            = utils::downcast<const xpu::ze::engine_impl_t *>(engine->impl());
     ze::zeMemAllocDevice(ze_engine_impl->context(), &device_mem_alloc_desc,
-            size, 0, ze_engine_impl->device(), &pptr);
+            size, 0, ze_engine_impl->device(), &ptr);
 
-    return pptr;
+    return ptr;
 }
 
-void *memory_storage_t::malloc_shared(size_t size) const {
-    void *pptr = nullptr;
+void *memory_storage_t::malloc_shared(impl::engine_t *engine, size_t size) {
+    void *ptr = nullptr;
 
     ze_device_mem_alloc_desc_t device_mem_alloc_desc = {};
     device_mem_alloc_desc.stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC;
@@ -201,16 +201,20 @@ void *memory_storage_t::malloc_shared(size_t size) const {
     host_mem_alloc_desc.flags = ZE_MEMORY_ACCESS_CAP_FLAG_RW;
 
     auto *ze_engine_impl
-            = utils::downcast<const xpu::ze::engine_impl_t *>(engine()->impl());
+            = utils::downcast<const xpu::ze::engine_impl_t *>(engine->impl());
     ze::zeMemAllocShared(ze_engine_impl->context(), &device_mem_alloc_desc,
-            &host_mem_alloc_desc, size, 0, ze_engine_impl->device(), &pptr);
+            &host_mem_alloc_desc, size, 0, ze_engine_impl->device(), &ptr);
 
-    return pptr;
+    return ptr;
 }
 
 void memory_storage_t::free(void *ptr) const {
+    return free(engine(), ptr);
+}
+
+void memory_storage_t::free(impl::engine_t *engine, void *ptr) {
     auto *ze_engine_impl
-            = utils::downcast<const xpu::ze::engine_impl_t *>(engine()->impl());
+            = utils::downcast<const xpu::ze::engine_impl_t *>(engine->impl());
     ze::zeMemFree(ze_engine_impl->context(), ptr);
 }
 

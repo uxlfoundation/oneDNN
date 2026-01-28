@@ -34,6 +34,7 @@
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
 #include "oneapi/dnnl/dnnl_ze.hpp"
+#include "src/xpu/ze/usm_utils.hpp"
 #endif
 
 #include "tests/test_thread.hpp"
@@ -137,7 +138,8 @@ int execute_reorder(const dnn_mem_t &src, dnn_mem_t &dst,
     // source and destination and execute CPU reorder. If CPU reorder can't be
     // create, then just execute a regular GPU reorder.
 #if ((DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL) \
-        || (DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL)) \
+        || (DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL) \
+        || (DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE)) \
         && DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
     const auto &cpu_engine = get_cpu_engine();
     if (src.engine_kind() == dnnl_gpu || dst.engine_kind() == dnnl_gpu) {
@@ -590,8 +592,21 @@ void dnn_mem_t::memset(int value, size_t size, int buffer_index) const {
         }
 #endif
     } else if (is_ze) {
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-        assert(!"unimplemented yet");
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+        stream_t stream(engine_);
+        switch (memory_kind) {
+            case memory_kind_ext_t::usm:
+            case memory_kind_ext_t::usm_device:
+            case memory_kind_ext_t::usm_shared: {
+                DNN_SAFE_V(dnnl::impl::xpu::ze::memset(
+                        stream, mem_handle, value, size));
+                DNN_SAFE_V(dnnl_stream_wait(stream));
+                return;
+            }
+            case memory_kind_ext_t::buffer:
+                assert(!"unsupported memory kind");
+                break;
+        }
 #endif
     }
     if (is_cpu(engine_)) {
@@ -853,6 +868,9 @@ int dnn_mem_t::initialize_memory_create_opencl(
             SAFE(init_memory(&m_, md_, m_padded_), CRIT);
             break;
         }
+        case memory_kind_ext_t::buffer:
+            assert(!"unsupported memory kind");
+            break;
         default: assert(!"not expected");
     }
     if (md_padded != md_) DNN_SAFE(dnnl_memory_desc_destroy(md_padded), CRIT);
@@ -888,34 +906,33 @@ int dnn_mem_t::initialize_memory_create_ze(const handle_info_t &handle_info) {
             SAFE(init_memory(&m_, md_, m_padded_), CRIT);
             break;
         }
-        // case memory_kind_ext_t::usm_device:
-        // case memory_kind_ext_t::usm_shared: {
-        //     is_data_owner_ = true;
+        case memory_kind_ext_t::usm_device:
+        case memory_kind_ext_t::usm_shared: {
+            is_data_owner_ = true;
 
-        //     const int nhandles = query_md_num_handles(md_);
-        //     for (int i = 0; i < nhandles; i++) {
-        //         size_t sz = dnnl_memory_desc_get_size_v2(md_padded, i);
-        //         if (memory_kind == memory_kind_ext_t::usm_device) {
-        //             data_.push_back(dnnl::impl::xpu::ocl::usm::malloc_device(
-        //                     engine_, sz));
-        //         } else {
-        //             data_.push_back(dnnl::impl::xpu::ocl::usm::malloc_shared(
-        //                     engine_, sz));
-        //         }
+            const int nhandles = query_md_num_handles(md_);
+            for (int i = 0; i < nhandles; i++) {
+                size_t sz = dnnl_memory_desc_get_size_v2(md_padded, i);
+                if (memory_kind == memory_kind_ext_t::usm_device) {
+                    data_.push_back(
+                            dnnl::impl::xpu::ze::malloc_device(engine_, sz));
+                } else {
+                    data_.push_back(
+                            dnnl::impl::xpu::ze::malloc_shared(engine_, sz));
+                }
 
-        //         if (sz > 0 && !data_[i]) {
-        //             for (void *p : data_)
-        //                 dnnl::impl::xpu::ocl::usm::free(engine_, p);
-        //             DNN_SAFE(dnnl_out_of_memory, CRIT);
-        //         }
-        //     }
-        //     DNN_SAFE(dnnl_ocl_interop_memory_create_v2(&m_padded_, md_padded,
-        //                      engine_, dnnl_ocl_interop_usm, (int)data_.size(),
-        //                      data_.data()),
-        //             CRIT);
-        //     SAFE(init_memory(&m_, md_, m_padded_), CRIT);
-        //     break;
-        // }
+                if (sz > 0 && !data_[i]) {
+                    for (void *p : data_)
+                        dnnl::impl::xpu::ze::free(engine_, p);
+                    DNN_SAFE(dnnl_out_of_memory, CRIT);
+                }
+            }
+            DNN_SAFE(dnnl_ze_interop_memory_create(&m_padded_, md_padded,
+                             engine_, (int)data_.size(), data_.data()),
+                    CRIT);
+            SAFE(init_memory(&m_, md_, m_padded_), CRIT);
+            break;
+        }
         default: assert(!"not expected");
     }
     if (md_padded != md_) DNN_SAFE(dnnl_memory_desc_destroy(md_padded), CRIT);
@@ -1084,14 +1101,14 @@ static int cleanup_opencl(
 static int cleanup_ze(
         const dnnl_engine_t &engine, const std::vector<void *> &data) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
-    // switch (memory_kind) {
-    //     case memory_kind_ext_t::usm_device:
-    //     case memory_kind_ext_t::usm_shared:
-    //         for (void *p : data)
-    //             dnnl::impl::xpu::ocl::usm::free(engine, p);
-    //         break;
-    //     default: break;
-    // }
+    switch (memory_kind) {
+        case memory_kind_ext_t::usm_device:
+        case memory_kind_ext_t::usm_shared:
+            for (void *p : data)
+                dnnl::impl::xpu::ze::free(engine, p);
+            break;
+        default: break;
+    }
 #endif
     return OK;
 }

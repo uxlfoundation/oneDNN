@@ -20,7 +20,6 @@
 #include "gpu/intel/compute/ukernels.hpp"
 #include "gpu/intel/gemm/jit/include/gemmstone/microkernel/fuser.hpp"
 #include "gpu/intel/jit/generator.hpp"
-#include "gpu/intel/ze/compiler.hpp"
 #include "gpu/intel/ze/device_info.hpp"
 #include "gpu/intel/ze/engine.hpp"
 #include "gpu/intel/ze/kernel.hpp"
@@ -78,29 +77,24 @@ status_t engine_t::create_kernel(compute::kernel_t &kernel,
         const gemmstone::dsl::kernel_t &kernel_dsl) const {
     const auto &module_kernel_pair
             = gemmstone::dsl::make_kernel(kernel_dsl, context(), device());
-    auto ze_module_ptr
-            = std::make_shared<xpu::ze::wrapper_t<ze_module_handle_t>>(
-                    module_kernel_pair.first);
-
-    return kernel_t::make(kernel, ze_module_ptr, module_kernel_pair.second, {});
+    return kernel_t::make(
+            kernel, module_kernel_pair.first, module_kernel_pair.second, {});
 }
 
-status_t engine_t::convert_to_ze(std::vector<intel::compute::kernel_t> &kernels,
+status_t engine_t::convert_to_ze(std::vector<compute::kernel_t> &kernels,
         const std::vector<const char *> &kernel_names,
         xpu::binary_t &binary) const {
     ze_module_handle_t ze_module = nullptr;
     std::vector<ze_kernel_handle_t> ze_kernels;
     CHECK(ze::create_kernels(
             device(), context(), kernel_names, binary, &ze_module, ze_kernels));
-    auto ze_module_ptr
-            = std::make_shared<xpu::ze::wrapper_t<ze_module_handle_t>>(
-                    ze_module);
 
-    kernels = std::vector<intel::compute::kernel_t>(kernel_names.size());
+    kernels = std::vector<compute::kernel_t>(kernel_names.size());
     for (size_t i = 0; i < kernel_names.size(); i++) {
         if (!ze_kernels[i]) continue;
+
         CHECK(kernel_t::make(
-                kernels[i], ze_module_ptr, ze_kernels[i], kernel_names[i]));
+                kernels[i], ze_module, ze_kernels[i], kernel_names[i]));
     }
 
     return status::success;
@@ -126,7 +120,7 @@ status_t engine_t::create_kernels(std::vector<compute::kernel_t> *kernels,
     CHECK(compute::preprocess_headers(code_ss, source, kernel_ctx));
     std::string code = code_ss.str();
 
-    intel::compute::program_src_t src(code);
+    compute::program_src_t src(code);
     if (src) { options += " -g -s " + std::string(src.name()); }
 
     compute::debugdump_processed_source(
@@ -134,11 +128,8 @@ status_t engine_t::create_kernels(std::vector<compute::kernel_t> *kernels,
 
     const char *code_c = code.c_str();
     xpu::binary_t binary;
-    if (ze::compile_ocl_module_to_binary(
-                device(), context(), code, options, binary)
-            != status::success)
-        CHECK(ocl_build_kernels(
-                ocl_device(), ocl_context(), code_c, options.c_str(), binary));
+    CHECK(ze::compile_ocl_module_to_binary(
+            device(), context(), code, options, binary));
 
     if (kernel_ctx.has_custom_headers()
             && gemmstone::microkernel::hasMicrokernels(code_c)) {
@@ -160,11 +151,8 @@ status_t engine_t::create_kernel_from_binary(compute::kernel_t &kernel,
     std::vector<ze_kernel_handle_t> ze_kernels;
     CHECK(ze::create_kernels(
             device(), context(), kernel_names, binary, &ze_module, ze_kernels));
-    auto ze_module_ptr
-            = std::make_shared<xpu::ze::wrapper_t<ze_module_handle_t>>(
-                    ze_module);
 
-    CHECK(kernel_t::make(kernel, ze_module_ptr, ze_kernels[0], kernel_name));
+    CHECK(kernel_t::make(kernel, ze_module, ze_kernels[0], kernel_name));
 
     return status::success;
 }
@@ -187,8 +175,8 @@ status_t engine_t::create_kernels_from_cache_blob(
         CHECK(cache_blob.get_binary(&binary_data, &binary_size));
 
         xpu::binary_t binary(binary_data, binary_data + binary_size);
-        CHECK(create_kernel_from_binary(kernels[i], binary, kernel_names[i],
-                intel::compute::program_src_t()));
+        CHECK(create_kernel_from_binary(
+                kernels[i], binary, kernel_names[i], compute::program_src_t()));
     }
 
     return status::success;
@@ -217,15 +205,6 @@ cl_device_id engine_t::ocl_device() const {
 
 cl_context engine_t::ocl_context() const {
     return impl()->ocl_context();
-}
-
-bool engine_t::mayiuse_microkernels() const {
-    if (!ze::mayiuse_microkernels(device(), context(),
-                std::string(compute::cl_microkernels_check_kernel_code))) {
-        return ocl_mayiuse_microkernels(ocl_device(), ocl_context(),
-                compute::cl_microkernels_check_kernel_code);
-    }
-    return true;
 }
 
 status_t engine_t::init_device_info() {

@@ -209,6 +209,84 @@ status_t memory_desc_init_by_packed_encoding(memory_desc_t &memory_desc,
     return success;
 }
 
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+// Creates a memory descriptor for a grouped encoding
+//
+// The grouped encoding represents a tensor where one dimension has variable
+// size per group (e.g., different number of tokens per expert in MoE).
+// Also could be perceived as a group of multiple tensors along
+// the variable dimension.
+//
+// Parameters:
+// - variable_dim_idx: Index of dimension with variable size
+// - group_count: Number of groups
+// - dims: Total dimensions (e.g., [total_M, K] where total_M = sum of M_i)
+//
+// Supported below:
+// - 2D tensors with variable first dimension
+// - Other dimensions must be uniform across all groups
+status_t memory_desc_init_with_grouped_encoding(memory_desc_t &memory_desc,
+        int ndims, const dims_t dims, data_type_t data_type,
+        int variable_dim_idx, dim_t group_count, data_type_t offsets_dt) {
+    if (ndims == 0) {
+        memory_desc = types::zero_md();
+        return success;
+    }
+
+    VCHECK_MEMORY(ndims <= 2, unimplemented, VERBOSE_BAD_NDIMS, "", ndims);
+
+    bool args_ok = memory_desc_sanity_check(
+            ndims, dims, data_type, format_kind::undef);
+    VCHECK_MEMORY(args_ok, invalid_arguments, VERBOSE_MEM_DESC_CHECK_FAIL);
+
+    VCHECK_MEMORY(
+            group_count > 0, invalid_arguments, "group_count must be positive");
+
+    // Validate offsets data type
+    VCHECK_MEMORY(offsets_dt == data_type::s32, invalid_arguments,
+            "offsets_dt must be an integer s32 type");
+
+    // Validate variable dimension index
+    VCHECK_MEMORY(variable_dim_idx >= 0 && variable_dim_idx < ndims,
+            invalid_arguments, "variable_dim_idx must be in range [0, ndims)");
+
+    // Currently only first dimension can be variable
+    VCHECK_MEMORY(variable_dim_idx == 0, unimplemented,
+            "grouped encoding currently only supports variable first dimension "
+            "(M dimension).");
+
+    for (int d = 0; d < ndims; ++d) {
+        VCHECK_MEMORY(dims[d] != DNNL_RUNTIME_DIM_VAL, invalid_arguments,
+                "runtime dimensions not supported for grouped encoding");
+        VCHECK_MEMORY(dims[d] > 0, invalid_arguments,
+                "zero dimensions not supported for grouped encoding");
+    }
+
+    dim_t K = dims[1]; // Uniform dimension
+
+    auto md = memory_desc_t();
+    md.ndims = ndims;
+    array_copy(md.dims, dims, ndims);
+    md.data_type = data_type;
+    array_copy(md.padded_dims, dims, ndims);
+
+    // Grouped sparse encoding specifics
+    // Uses format_kind::sparse because grouped layout is a form of multi-buffer
+    // representation where values are stored together with metadata
+    // describing the variable structure (similar to CSR with rowptr/colind)
+    md.format_kind = format_kind::sparse;
+    md.format_desc.sparse_desc.encoding = sparse_encoding::grouped;
+    md.format_desc.sparse_desc.nnz = dims[0] /* total_M */ * K;
+    md.format_desc.sparse_desc.metadata_types[0] = offsets_dt;
+    md.format_desc.sparse_desc.grouped_desc.ngroups = group_count;
+    md.format_desc.sparse_desc.grouped_desc.variable_dim_idx = variable_dim_idx;
+
+    memory_desc = md;
+
+    return success;
+}
+#endif // DNNL_EXPERIMENTAL_GROUPED_MEMORY
+
 status_t memory_desc_init_submemory(memory_desc_t &memory_desc,
         const memory_desc_t &parent_memory_desc, const dims_t dims,
         const dims_t offsets) {
@@ -667,6 +745,22 @@ status_t dnnl_memory_desc_create_with_packed_encoding(
     return success;
 }
 
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+status_t dnnl_memory_desc_create_with_grouped_encoding(
+        memory_desc_t **memory_desc, int ndims, const dims_t dims,
+        data_type_t data_type, int variable_dim_idx, dim_t group_count,
+        data_type_t offsets_dt) {
+    if (any_null(memory_desc)) return invalid_arguments;
+
+    auto md = utils::make_unique<memory_desc_t>();
+    if (!md) return out_of_memory;
+    CHECK(memory_desc_init_with_grouped_encoding(*md, ndims, dims, data_type,
+            variable_dim_idx, group_count, offsets_dt));
+    (*memory_desc) = md.release();
+    return success;
+}
+#endif // DNNL_EXPERIMENTAL_GROUPED_MEMORY
+
 status_t dnnl_memory_desc_create_host_scalar(
         memory_desc_t **memory_desc, data_type_t data_type) {
     if (any_null(memory_desc)) return invalid_arguments;
@@ -816,6 +910,9 @@ status_t dnnl_memory_desc_query_v2(
                         *(int *)result = md->ndims + 1;
                         break;
                     case sparse_encoding::packed: *(int *)result = 3; break;
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+                    case sparse_encoding::grouped: *(int *)result = 2; break;
+#endif
                     default: assert(!"unknown encoding"); *(int *)result = 0;
                 }
             } else

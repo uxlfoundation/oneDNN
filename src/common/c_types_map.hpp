@@ -228,6 +228,9 @@ const sparse_encoding_t undef = dnnl_sparse_encoding_undef;
 const sparse_encoding_t csr = dnnl_csr;
 const sparse_encoding_t coo = dnnl_coo;
 const sparse_encoding_t packed = dnnl_packed;
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+const sparse_encoding_t grouped = dnnl_grouped;
+#endif
 } // namespace sparse_encoding
 
 using format_kind_t = dnnl_format_kind_t;

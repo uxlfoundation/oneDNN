@@ -116,7 +116,9 @@ int verify_input(const settings_t &s, const settings_t &def) {
         }
     }
 
-    static constexpr int n_vdims_inputs = 2;
+    // Note: for grouped matmul, weights will be expanded from 2D to 3D internally
+    const int n_vdims_inputs = 2;
+
     if (s.prb_vdims.n_inputs() != n_vdims_inputs) {
         BENCHDNN_PRINT(0,
                 "ERROR: Expected number of dims arguments is `%d`, provided "
@@ -165,6 +167,9 @@ int bench(int argc, char **argv) {
                 || parse_tag(s.wtag, def.wtag, argv[0], "wtag")
                 || parse_tag(s.dtag, def.dtag, argv[0], "dtag")
                 || parse_encoding(s.sparse_options, argv[0], "encoding")
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
+                || parse_grouped(s.sparse_options, argv[0], "grouped")
+#endif
                 || parse_strides(s.strides, def.strides, argv[0], "strides")
                 || parse_dt(s.bia_dt, def.bia_dt, argv[0], "bia-dt")
                 // TODO: remove this later
@@ -181,6 +186,34 @@ int bench(int argc, char **argv) {
             parse_prb_vdims(s.prb_vdims, argv[0]);
 
             SAFE(verify_input(s, def), WARN);
+
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
+            // For grouped matmul, expand weights from 2D [K, N] to 3D [G, K, N]
+            // Keep ndims/prb_vdims.ndims as 2 (from src/dst perspective)
+            if (s.sparse_options[0].get_encoding(DNNL_ARG_SRC)
+                    == dnnl_grouped) {
+                const dnnl_dim_t group_count
+                        = s.sparse_options[0].get_group_count();
+
+                const auto &src_dims = s.prb_vdims.vdims[0]; // [M, K]
+                const auto &wei_dims_2d = s.prb_vdims.vdims[1]; // [K, N]
+
+                if (src_dims.size() != 2 || wei_dims_2d.size() != 2) {
+                    BENCHDNN_PRINT(0,
+                            "ERROR: For grouped matmul, src and weights must "
+                            "be 2D, "
+                            "provided src:%dD wei:%dD\\n",
+                            (int)src_dims.size(), (int)wei_dims_2d.size());
+                    SAFE_V(FAIL);
+                }
+
+                // Expand weights from 2D [K, N] to 3D [G, K, N]
+                dims_t wei_dims_3d
+                        = {group_count, wei_dims_2d[0], wei_dims_2d[1]};
+                s.prb_vdims.vdims[1] = wei_dims_3d;
+            }
+#endif
+
             s.finalize();
             check_correctness(s, task_executor);
         }

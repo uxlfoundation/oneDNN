@@ -216,7 +216,7 @@ option(DNNL_EXPERIMENTAL_UKERNEL
 option(DNNL_EXPERIMENTAL_GROUPED_MEMORY
     "Enable experimental support for grouped memory format and grouped GEMM.
     This option works independently from DNNL_EXPERIMENTAL."
-    OFF) # disabled by default
+    ON) # disabled by default
 
 option(DNNL_EXPERIMENTAL_PROFILING
     "Enable experimental profiling capabilities. This option works independently

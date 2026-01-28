@@ -691,6 +691,18 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dnn_mem_t::init_host_scalar_md(
     return md;
 }
 
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
+benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dnn_mem_t::init_grouped_md(
+        int ndims, const dnnl_dims_t dims, dnnl_data_type_t data_type,
+        int variable_dim_idx, dnnl_dim_t group_count,
+        dnnl_data_type_t offsets_dt) {
+    dnnl_memory_desc_t md {};
+    DNN_SAFE_V(dnnl_memory_desc_create_with_grouped_encoding(&md, ndims, dims,
+            data_type, variable_dim_idx, group_count, offsets_dt));
+    return md;
+}
+#endif
+
 int dnn_mem_t::initialize_memory_create_sycl(const handle_info_t &handle_info) {
 #ifdef DNNL_WITH_SYCL
     if (handle_info.is_host_ptr) {

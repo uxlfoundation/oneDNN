@@ -35,6 +35,15 @@ where *matmul-knobs* are:
             format tag must be specified.
 - `--encoding=STRING` - sparse encodings and sparsity. No encodings are set by
             default. Refer to [encodings](knobs_encoding.md) for details.
+ - `--grouped=DIM_NAME:NUM_GROUPS:size0,size1,...,sizeN` -- specifies grouped
+            encoding to execute grouped GEMM. `DIM_NAME` is the
+            dimension name (`M`, `K`, or `N`), `NUM_GROUPS` is the number of
+            tensors in a group or number of experts, and `size0,size1,...,sizeN`
+            are comma-separated sizes or resolved variable dimensions.
+            When grouped encoding is specified, the matmul descriptor uses
+            standard 2-tensor format `MxK:KxN`, and the group dimension is
+            automatically inserted into the weights tensor (becomes `[G,K,N]`).
+            Example: `--grouped=M:8:32,64,32,96,48,80,56,72 256x512:512x256`.
  - `--match=REGEX` -- skip problems not matching the regular expression in
             `REGEX`. By default no pattern is applied (run everything).
             Note: Windows may interpret only string arguments surrounded by

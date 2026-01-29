@@ -494,11 +494,8 @@ bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const G
         VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ Applying host scalar C offset");
         status << "Applying host scalar C offset" << status_stream::endl;
         gemmScalarBinaryOpC(BinaryOp::Add, Tco, state.inputs.co_hostscalar, problem, strategy, state);
-        // CCC Claude ??? Mark done label and return early - no need to generate column/row/matrix code paths
-        mark(labelCODone);
-        //VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ <<<<< early return for hostscalar");
-        return ok;
-    }
+        jmpi(1, labelCODone);
+    } else {
 // CCC Claude ??? Continue with non-hostscalar cases (fixed/column/row/matrix) only if not hostscalar
 
     status << "Applying fixed C offset" << status_stream::endl;
@@ -506,29 +503,41 @@ bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const G
     ok = ok && gemmBinaryOpC(BinaryOp::Add, false, false, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
     jmpi(1, labelCODone);
 
-    mark(labelCOColumn);
-    if (doMatrix) {
-        VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~");
-        jmpi(1 | flagCOR, labelCOMatrix);
     }
-    status << "Applying column-wise C offset" << status_stream::endl;
-    VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ Applying column-wise C offset");
-    ok = ok && gemmBinaryOpC(BinaryOp::Add, false, true, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
+// CCC Claude ??? End conditional - labels must be defined even if not used
+
+    mark(labelCOColumn);
+    // CCC Claude ??? Only generate column/row/matrix code if not hostscalar (effCO would be invalid)
+    if (!problem.cOffsetHostScalar()) {
+        if (doMatrix) {
+            VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~");
+            jmpi(1 | flagCOR, labelCOMatrix);
+        }
+        status << "Applying column-wise C offset" << status_stream::endl;
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ Applying column-wise C offset");
+        ok = ok && gemmBinaryOpC(BinaryOp::Add, false, true, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
+    }
     jmpi(1, labelCODone);
 
     mark(labelCORow);
-    status << "Applying row-wise C offset" << status_stream::endl;
-    VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ Applying row-wise C offset");
-    ok = ok && gemmBinaryOpC(BinaryOp::Add, true, false, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
+    if (!problem.cOffsetHostScalar()) {
+        status << "Applying row-wise C offset" << status_stream::endl;
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ Applying row-wise C offset");
+        ok = ok && gemmBinaryOpC(BinaryOp::Add, true, false, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
+    }
 
     if (doMatrix) {
-        VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~");
+        if (!problem.cOffsetHostScalar()) {
+            VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~");
+        }
         jmpi(1, labelCODone);
 
         mark(labelCOMatrix);
-        status << "Applying matrix C offset" << status_stream::endl;
-        VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~");
-        ok = ok && gemmBinaryOpC(BinaryOp::Add, true, true, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
+        if (!problem.cOffsetHostScalar()) {
+            status << "Applying matrix C offset" << status_stream::endl;
+            VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~");
+            ok = ok && gemmBinaryOpC(BinaryOp::Add, true, true, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
+        }
     }
 
     mark(labelCODone);

@@ -494,18 +494,17 @@ bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const G
         VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ Applying host scalar C offset");
         status << "Applying host scalar C offset" << status_stream::endl;
         gemmScalarBinaryOpC(BinaryOp::Add, Tco, state.inputs.co_hostscalar, problem, strategy, state);
-        jmpi(1, labelCODone);
-    } else {
-// CCC Claude ??? End hostscalar handling
+        // CCC Claude ??? Mark done label and return early - no need to generate column/row/matrix code paths
+        mark(labelCODone);
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ <<<<< early return for hostscalar");
+        return ok;
+    }
+// CCC Claude ??? Continue with non-hostscalar cases (fixed/column/row/matrix) only if not hostscalar
 
     status << "Applying fixed C offset" << status_stream::endl;
     VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ Applying fixed C offset - call gemmBinaryOpC(add, false, false, ....)");
     ok = ok && gemmBinaryOpC(BinaryOp::Add, false, false, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
     jmpi(1, labelCODone);
-
-    // CCC Claude ??? Close the else block for non-hostscalar case
-    }
-    // CCC Claude ??? End else block
 
     mark(labelCOColumn);
     if (doMatrix) {

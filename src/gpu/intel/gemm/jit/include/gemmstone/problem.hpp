@@ -317,7 +317,9 @@ struct GEMMProblem : public CommonProblem {
         s.append(A_scale, B_scale, C_scale);
         s.append(checkBeta0);
         s.append(aOffset, bOffset);
-        s.append(aoPtrDims, boPtrDims);
+// CCC ??? serialization
+        s.append(aoPtrDims, boPtrDims, coPtrDims);
+// CCC ------------------
         s.append(asPtrDims, bsPtrDims, csPtrDims);
         s.append(aqGroupM, aqGroupK);
         s.append(bqGroupN, bqGroupK);

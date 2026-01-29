@@ -158,6 +158,11 @@ public:
                 && !(*dst_scales_ == *other.dst_scales_))
             return false;
 
+        // dropout_
+        if ((dropout_ == nullptr) != (other.dropout_ == nullptr)) return false;
+        if (dropout_ && other.dropout_ && !(*dropout_ == *other.dropout_))
+            return false;
+
         // post_ops_
         if (post_ops_.size() != other.post_ops_.size()) return false;
         for (size_t i = 0; i < post_ops_.size(); ++i) {
@@ -202,6 +207,10 @@ public:
         } else {
             dst_scales_ = std::move(fused_scales);
         }
+    }
+
+    void set_dropout(const op_ptr &op) {
+        dropout_ = std::make_shared<meta_op_t>(op);
     }
 
     // used to modify the fused zps, like modifying it's axis after inserting
@@ -320,11 +329,14 @@ public:
         }
     }
 
+    bool with_dropout() const { return dropout_ != nullptr; }
+
 private:
     std::unordered_map<size_t, std::shared_ptr<meta_op_t>> input_zps_;
     std::shared_ptr<meta_op_t> output_zps_;
     std::unordered_map<size_t, std::shared_ptr<meta_op_t>> input_scales_;
     std::shared_ptr<meta_op_t> dst_scales_;
+    std::shared_ptr<meta_op_t> dropout_;
     std::vector<std::shared_ptr<meta_op_t>> post_ops_;
 };
 

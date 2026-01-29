@@ -199,10 +199,10 @@ status_t DNNL_API dnnl_graph_logical_tensor_init(
     if (ptype == property_type::host_scalar) {
         VCHECK_LOGICAL_TENSOR(ndims == 0, status::invalid_arguments,
                 "host scalar tensor should have zero ndims");
-        VCHECK_LOGICAL_TENSOR(
-                utils::one_of(dtype, data_type::s32, data_type::f32),
+        VCHECK_LOGICAL_TENSOR(utils::one_of(dtype, data_type::s32,
+                                      data_type::f32, data_type::s64),
                 status::invalid_arguments,
-                "host scalar tensor should have s32 or f32 dtype");
+                "host scalar tensor should have s32, f32 or s64 dtype");
     }
 
     auto val = logical_tensor_t();
@@ -237,10 +237,10 @@ status_t DNNL_API dnnl_graph_logical_tensor_init_with_dims(
     if (ptype == property_type::host_scalar) {
         VCHECK_LOGICAL_TENSOR(ndims == 0, status::invalid_arguments,
                 "host scalar tensor should have zero ndims");
-        VCHECK_LOGICAL_TENSOR(
-                utils::one_of(dtype, data_type::s32, data_type::f32),
+        VCHECK_LOGICAL_TENSOR(utils::one_of(dtype, data_type::s32,
+                                      data_type::f32, data_type::s64),
                 status::invalid_arguments,
-                "host scalar tensor should have s32 or f32 dtype");
+                "host scalar tensor should have s32, f32 or s64 dtype");
     }
 
     auto val = logical_tensor_t();
@@ -289,10 +289,10 @@ status_t DNNL_API dnnl_graph_logical_tensor_init_with_strides(
     if (ptype == property_type::host_scalar) {
         VCHECK_LOGICAL_TENSOR(ndims == 0, status::invalid_arguments,
                 "host scalar tensor should have zero ndims");
-        VCHECK_LOGICAL_TENSOR(
-                utils::one_of(dtype, data_type::s32, data_type::f32),
+        VCHECK_LOGICAL_TENSOR(utils::one_of(dtype, data_type::s32,
+                                      data_type::f32, data_type::s64),
                 status::invalid_arguments,
-                "host scalar tensor should have s32 or f32 dtype");
+                "host scalar tensor should have s32, f32 or s64 dtype");
     }
 
     auto val = logical_tensor_t();

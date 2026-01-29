@@ -128,6 +128,9 @@ dnnl_graph_tensor::dnnl_graph_tensor(
         } else if (lt.data_type == data_type::f32) {
             scalar_.f32_value = *static_cast<float *>(handle);
             handle_.reset(&scalar_.f32_value, dummy_destructor);
+        } else if (lt.data_type == data_type::s64) {
+            scalar_.s64_value = *static_cast<int64_t *>(handle);
+            handle_.reset(&scalar_.s64_value, dummy_destructor);
         } else {
             assertm(false, "Unsupported data type for host scalar");
         }

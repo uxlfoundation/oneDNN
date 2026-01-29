@@ -450,7 +450,7 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
 template <HW hw>
 bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
-    VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch >>>>>>> enter, cOffset=%d, cOffsetHostScalar=%d", int(problem.cOffset), problem.cOffsetHostScalar());
+    //VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch >>>>>>> enter, cOffset=%d, cOffsetHostScalar=%d", int(problem.cOffset), problem.cOffsetHostScalar());
     //VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ >>>>>");
 
     Label labelCOColumn, labelCORow, labelCOMatrix, labelCODone;
@@ -491,7 +491,7 @@ bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const G
 
 // CCC Claude ??? Handle hostscalar case: apply scalar directly without loading from memory
     if (problem.cOffsetHostScalar() && state.inputs.co_hostscalar.isValid()) {
-        VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ Applying host scalar C offset");
+        //VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ Applying host scalar C offset");
         status << "Applying host scalar C offset" << status_stream::endl;
         gemmScalarBinaryOpC(BinaryOp::Add, Tco, state.inputs.co_hostscalar, problem, strategy, state);
         jmpi(1, labelCODone);
@@ -499,7 +499,7 @@ bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const G
 // CCC Claude ??? Continue with non-hostscalar cases (fixed/column/row/matrix) only if not hostscalar
 
     status << "Applying fixed C offset" << status_stream::endl;
-    VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ Applying fixed C offset - call gemmBinaryOpC(add, false, false, ....)");
+    //VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ Applying fixed C offset - call gemmBinaryOpC(add, false, false, ...)");
     ok = ok && gemmBinaryOpC(BinaryOp::Add, false, false, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
     jmpi(1, labelCODone);
 
@@ -510,11 +510,11 @@ bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const G
     // CCC Claude ??? Only generate column/row/matrix code if not hostscalar (effCO would be invalid)
     if (!problem.cOffsetHostScalar()) {
         if (doMatrix) {
-            VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~");
+            //VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ ");
             jmpi(1 | flagCOR, labelCOMatrix);
         }
         status << "Applying column-wise C offset" << status_stream::endl;
-        VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ Applying column-wise C offset");
+        //VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ Applying column-wise C offset");
         ok = ok && gemmBinaryOpC(BinaryOp::Add, false, true, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
     }
     jmpi(1, labelCODone);
@@ -522,20 +522,20 @@ bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const G
     mark(labelCORow);
     if (!problem.cOffsetHostScalar()) {
         status << "Applying row-wise C offset" << status_stream::endl;
-        VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ Applying row-wise C offset");
+        //VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ Applying row-wise C offset");
         ok = ok && gemmBinaryOpC(BinaryOp::Add, true, false, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
     }
 
     if (doMatrix) {
         if (!problem.cOffsetHostScalar()) {
-            VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~");
+            //VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ ");
         }
         jmpi(1, labelCODone);
 
         mark(labelCOMatrix);
         if (!problem.cOffsetHostScalar()) {
             status << "Applying matrix C offset" << status_stream::endl;
-            VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~");
+            //VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ ");
             ok = ok && gemmBinaryOpC(BinaryOp::Add, true, true, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
         }
     }
@@ -543,7 +543,7 @@ bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const G
     mark(labelCODone);
 
     if (!strategy.persistentLoop()) {
-        VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~");
+        //VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ ");
         state.ra.safeRelease(ldco);
         state.ra.safeRelease(effCO);
     }

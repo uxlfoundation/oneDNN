@@ -500,12 +500,12 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         // CCC Claude ??? get value of co_hostscalar in execute()
         int co_hostscalar_val = 0;
         if (co->is_host_scalar()) {
-            VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : !!! co->is_host_scalar() !!!!");
+            //VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : !!! co->is_host_scalar() !!!!");
             CHECK(maybe_get_host_scalar_value(*co, co_hostscalar_val));
         }
         // CCC Claude ??? DST zero point is ADDED to result (not subtracted like SRC/WEI), so no sign inversion
         co_hostscalar = static_cast<int16_t>(co_hostscalar_val);
-        VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : co_hostscalar = %d (from co_hostscalar_val=%d)", co_hostscalar, co_hostscalar_val);
+        //VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : co_hostscalar = %d (from co_hostscalar_val=%d)", co_hostscalar, co_hostscalar_val);
         // CCC Claude ??? ---------------------------------------
 
 
@@ -523,7 +523,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     if (pd()->with_a_zero_points() || pd()->with_b_zero_points()) {
         ao = &GEMM_CTX_ARG_STORAGE(a_zero_point);
         bo = &GEMM_CTX_ARG_STORAGE(b_zero_point);
-        VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : a || b w/ zp ; setup ao & bo");
+        //VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : a || b w/ zp ; setup ao & bo");
         // @@@ !!!
         int a_hostscalar_val = 0;
         int b_hostscalar_val = 0;
@@ -536,7 +536,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         //@@@ !!!
     }
 
-    VDEBUGINFO(4, primitive, gemm, "MY execute ++++");
+    //VDEBUGINFO(4, primitive, gemm, "MY execute ++++");
     // Convert host scalar scales to Alpha
     if (pd()->attr()->scales_.has_host_scalars()) {
         const auto &a_scales = pd()->attr()->scales_.get(DNNL_ARG_A);

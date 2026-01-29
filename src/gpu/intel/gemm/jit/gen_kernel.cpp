@@ -599,6 +599,7 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
         // CCC Claude ??? Set coPtrDims from c_quant.zp_ndims
         problem_.coPtrDims = c_quant.zp_ndims;
         VDEBUGINFO(4, primitive, gen_kernel,"MY: ---- : problem_.coPtrDims = %d", problem_.coPtrDims);
+        // CCC ----------------------------------------------
     }
 
     problem_.sumA = (reduce_ab == sum_ab::sum_b_col);
@@ -1068,15 +1069,15 @@ void gen_kernel_t::init_interface() {
     if (problem.bOffset2D() || problem.bScale2D() || problem.needsBGroupSums())
         interface_.newArgument("ldbq", DataType::d);
     if (problem.hasCMXScale()) interface_.newArgument("ldcq", DataType::d);
-    // CCC Claude ??? Fixed: Only add CO argument if NOT using hostscalar
     if (problem.cOffset != COffset::None || problem.sumA || problem.sumB) {
-        // Only add CO memory pointer if not using hostscalar
+        // CCC Claude ??? Only add CO memory pointer if not using hostscalar
         if (!problem.cOffsetHostScalar()) {
             VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> co_access = %d (None = 0, Stateless = 1, Surface = 2, All = 3, Default = 4)", (int)co_access);
             interface_.newArgument(
                     "CO", ExternalArgumentType::GlobalPtr, co_access);
             VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> newArgument CO");
         }
+        // CCC -------------------------------------------------------------
         interface_.newArgument("offset_CO", DataType::q);
         VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> newArgument offset_CO");
         if (problem.cOffset == COffset::Pre){
@@ -1090,7 +1091,7 @@ void gen_kernel_t::init_interface() {
         VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> newArgument co_hostscalar");
         interface_.newArgument("co_hostscalar", DataType::w);
     }
-    // CCC Claude ??? End co_hostscalar handling
+    // CCC ----------------------------------------------------------------
 
 
     if (problem.postOps.cStochasticRound) {
@@ -1255,11 +1256,9 @@ status_t gen_kernel_t::get_kernel(
 
 #define ARCH_DISPATCH(arch) \
     case ngen::HW::arch: { \
-        /*VDEBUGINFO(4, primitive, gen_kernel, "MY: get_kernel >>>>> calling generator.gemm for arch=%d", int(ngen::HW::arch));*/ \
         gemm_kernel_generator_t<ngen::HW::arch> generator; \
         generator.setStepping(desc()->stepping_); \
         generator.gemm(*desc()->problem(), *desc()->strategy(), interface_); \
-        /*VDEBUGINFO(4, primitive, gen_kernel, "MY: get_kernel >>>>> generator.gemm returned, calling get_kernel");*/ \
         return generator.get_kernel(kernel, engine); \
         break; \
     }
@@ -1281,10 +1280,6 @@ status_t gen_kernel_t::get_kernel(
                         .c_str());
     } catch (const std::runtime_error &err) {
         VERROR(primitive, gpu, "%s,%s", "jit::gemm", err.what());
-        //VDEBUGINFO(4, primitive, gen_kernel, "MY: get_kernel <<<<< runtime_error: %s", err.what());
-    } catch (...) {
-        VERROR(primitive, gpu, "%s,%s", "jit::gemm", "unknown exception");
-        //VDEBUGINFO(4, primitive, gen_kernel, "MY: get_kernel <<<<< unknown exception");
     }
 #undef ARCH_DISPATCH
 

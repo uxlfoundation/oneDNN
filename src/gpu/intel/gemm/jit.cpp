@@ -141,16 +141,18 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         auto ldcq = pd()->desc()->m() / problem->cqGroupM;
         arg_list.set(argn++, ldcq);
     }
-    // CCC Claude ??? Fixed: Only pass CO pointer if NOT hostscalar
     if (pd()->with_c_zero_points() || pd()->with_bias()
             || pd()->with_sum_ab()) {
-        // Only pass CO memory storage if not using hostscalar
+        // CCC Claude ???? Only pass CO memory storage if not using hostscalar
         if (!problem->cOffsetHostScalar()) {
             VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; arg_list.set(argn++, co)");
             arg_list.set(argn++, co);
         }
+        // CCC --------------------------------------------------------------
         VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; arg_list.set(argn++, offset_co)");
+        // CCC Claude ???? TODO - needed ??? if hostscalar ???
         arg_list.set(argn++, offset_co);
+        // CCCC --------------------------------------------------------------
         if (pd()->with_bias()) {
             auto ldco = into<int32_t>(pd()->desc()->ld_bias());
             VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; arg_list.set(argn++, ldco)");
@@ -163,7 +165,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; arg_list.set(argn++, co_hostscalar)");
         arg_list.set(argn++, co_hostscalar);
     }
-    // CCC Claude ??? End co_hostscalar handling
+    // CCC --------------------------------------------------------------
 
     if (nocopy_info()->needsTempC()) arg_list.set(argn++, *c_temp);
     if (problem->postOps.cStochasticRound) {
@@ -503,10 +505,10 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
             //VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : !!! co->is_host_scalar() !!!!");
             CHECK(maybe_get_host_scalar_value(*co, co_hostscalar_val));
         }
-        // CCC Claude ??? DST zero point is ADDED to result (not subtracted like SRC/WEI), so no sign inversion
+        // DST zero point is added to result (not subtracted like SRC/WEI)
         co_hostscalar = static_cast<int16_t>(co_hostscalar_val);
         //VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : co_hostscalar = %d (from co_hostscalar_val=%d)", co_hostscalar, co_hostscalar_val);
-        // CCC Claude ??? ---------------------------------------
+        // CCC  ---------------------------------------
 
 
     } else if (pd()->with_bias()) {

@@ -256,6 +256,7 @@ struct pd_t : public gemm::pd_t {
         auto attr_info = attr_info_t::create(attr());
         return attr_info.with_host_dst_zp;
     }
+    // CCC ------------------------------------------
     int a_q2d_group_k() const {
         if (a_zp_2d()) {
             return a_zp_group_k_;

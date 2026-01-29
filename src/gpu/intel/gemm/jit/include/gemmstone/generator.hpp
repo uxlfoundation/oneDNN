@@ -493,6 +493,7 @@ protected:
     void gemmScalarBinaryOpC(BinaryOp op, Type Tco, const GRFMultirange &offsets, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     // CCC Claude ??? Overload for hostscalar (Subregister) support
     void gemmScalarBinaryOpC(BinaryOp op, Type Tco, const ngen::Subregister &scalar, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
+    // CCC --------------------------------------------------------
     void gemmVectorBinaryOpC(BinaryOp op, bool column, const GRFMultirange &offsets, const ngen::Subregister &scale, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, Type Tco = Type::invalid, RegisterLayout CO_layout = RegisterLayout(), int y0 = -1, int y1 = -1);
     void gemmRank1UpdateC(const GRFMultirange &r, const GRFMultirange &c, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void gemmCalcABOffsetAddrs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);

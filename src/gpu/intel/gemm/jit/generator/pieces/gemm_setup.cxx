@@ -777,9 +777,7 @@ void Generator<hw>::gemmSetupABC(const GEMMProblem &problem, const GEMMStrategy 
         else
             state.ra.safeRelease(state.offsetCO);
     }
-    if (problem.cOffsetHostScalar()) {
-        //VDEBUGINFO(4, primitive, gemm, "MY: gemmSetupABC : co_hostscalar mode, skip CO memory setup, co_hostscalar.isValid=%d", state.inputs.co_hostscalar.isValid());
-    }
+    // CCC ------------------------------------------------
 
     if (state.offsetAp.isValid()) {
         if (strategy.A.base.isStateless()) {
@@ -2968,6 +2966,7 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
         // CCC Claude ??? Claim co_hostscalar register if it's valid
         if (problem.cOffsetHostScalar() && state.inputs.co_hostscalar.isValid())
             state.ra.claim(state.inputs.co_hostscalar);
+        // CCC -----------------------------------------------------
     }
 
     if (state.useTempC)

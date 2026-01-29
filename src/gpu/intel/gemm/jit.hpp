@@ -383,7 +383,6 @@ struct gen_t : public primitive_t {
             auto has_gs = [&](int idx) {
                 return !attr()->precomputed_reductions_.has_default_values(idx);
             };
-            // @@@ !!!
             jit::quant_params a_quant
                     = {a_scales_type_, ao_type, ag_type, asc_dims_, ao_dims_,
                             ag_dims_, a_q2d_group_k(), a_q2d_group_m(), 0,
@@ -393,16 +392,15 @@ struct gen_t : public primitive_t {
                             bg_dims_, b_q2d_group_k(), 0, b_q2d_group_n(),
                             has_gs(DNNL_ARG_B), false, b_zp_hostscalar()};
 
-            // CCC Claude ??? Setup c_quant with proper c_zp_hostscalar support
+// CCC Claude ??? Setup c_quant with proper c_zp_hostscalar support
             // co_dims would be -1 for hostscalar, 0 for scalar ptr, 1+ for vector/matrix
             int co_dims = with_c_zero_points() ? (c_zp_hostscalar() ? -1 : 0) : -1;
             jit::quant_params c_quant = {c_scales_type_, co_type, bg_type,
                     csc_dims_, co_dims, -1, 0, c_q2d_group_m(), c_q2d_group_n(),
                     has_gs(DNNL_ARG_C), with_mx_scale(), c_zp_hostscalar()};
+// CCC ------------------------------------------------------------
 
             VDEBUGINFO(4, primitive, gemm, "MY init ===== set c_quant w/ zp_type = %d zp_ndims = %d zp_hostscalar = %d",(int)co_type, co_dims, c_zp_hostscalar());
-
-            // @@@ !!!
 
             bool print_verbose = get_verbose(verbose_t::debuginfo) >= 5;
             bool kernel_success = false;
@@ -746,7 +744,7 @@ private:
             const memory_storage_t *bg,
             const memory_storage_t &co,
 // CCC ??? arg of launch_nocopy
-            int16_t co_hostscalar, // ???? int32
+            int16_t co_hostscalar,
 // CCC ??? --------------------
             const memory_storage_t *c_temp, const memory_storage_t *sround_seed,
             int po_count, const memory_storage_t **po_src, int64_t offset_a,

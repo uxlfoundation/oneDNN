@@ -171,7 +171,6 @@ void Generator<hw>::gemmScalarBinaryOpC(BinaryOp op, Type Tco, const Subregister
     auto Tacc = state.Tacc;
     auto offsetTc = scalar;
 
-    // Convert to accumulator type if needed
     if (Tco != Tacc) {
         VDEBUGINFO(4, primitive, gemm, "MY: gemmScalarBinaryOpC (hostscalar) $$$$$$ Tco != Tacc, converting");
         auto temp = state.ra.alloc_sub(Tacc.ngen());
@@ -194,7 +193,7 @@ void Generator<hw>::gemmScalarBinaryOpC(BinaryOp op, Type Tco, const Subregister
     
     VDEBUGINFO(4, primitive, gemm, "MY: gemmScalarBinaryOpC (hostscalar) $$$$$$ <<<<");
 }
-// CCC Claude ??? End hostscalar overload
+// CCC Claude ??? ---------------------------------------------------------------
 
 // Apply binary operation to C with a vector operand, optionally multiplied by a scalar.
 template <HW hw>
@@ -496,7 +495,6 @@ bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const G
         gemmScalarBinaryOpC(BinaryOp::Add, Tco, state.inputs.co_hostscalar, problem, strategy, state);
         jmpi(1, labelCODone);
     } else {
-// CCC Claude ??? Continue with non-hostscalar cases (fixed/column/row/matrix) only if not hostscalar
 
     status << "Applying fixed C offset" << status_stream::endl;
     //VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ Applying fixed C offset - call gemmBinaryOpC(add, false, false, ...)");
@@ -504,7 +502,7 @@ bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const G
     jmpi(1, labelCODone);
 
     }
-// CCC Claude ??? End conditional - labels must be defined even if not used
+// CCC --------------------------------------------
 
     mark(labelCOColumn);
     // CCC Claude ??? Only generate column/row/matrix code if not hostscalar (effCO would be invalid)
@@ -517,6 +515,7 @@ bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const G
         //VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ Applying column-wise C offset");
         ok = ok && gemmBinaryOpC(BinaryOp::Add, false, true, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
     }
+    // CCC ---------------------------------------------------------------------
     jmpi(1, labelCODone);
 
     mark(labelCORow);
@@ -527,17 +526,16 @@ bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const G
     }
 
     if (doMatrix) {
-        if (!problem.cOffsetHostScalar()) {
-            //VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ ");
-        }
         jmpi(1, labelCODone);
 
         mark(labelCOMatrix);
+// CCC ???
         if (!problem.cOffsetHostScalar()) {
             status << "Applying matrix C offset" << status_stream::endl;
             //VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ ");
             ok = ok && gemmBinaryOpC(BinaryOp::Add, true, true, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
         }
+// CCC --
     }
 
     mark(labelCODone);

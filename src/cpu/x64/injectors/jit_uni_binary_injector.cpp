@@ -230,6 +230,7 @@ void extend_binary_args_per_w(const post_ops_t &post_ops,
             const dim_t rhs_len = rhs_md_wrap.nelems();
             const data_type_t dt = rhs_md.data_type;
             const auto dt_size = types::data_type_size(dt);
+            if (rhs_len <= 0 || dt_size <= 0) continue;
 
             const uint8_t *src = reinterpret_cast<const uint8_t *>(
                     orig_post_ops_binary_rhs_arg_vec[binary_post_op_idx]);

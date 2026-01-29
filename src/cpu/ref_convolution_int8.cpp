@@ -319,7 +319,7 @@ status_t ref_convolution_int8_bwd_data_t::execute_backward_data(
     const auto ndims = pd()->desc()->diff_src_desc.ndims;
 
     auto ker = [=](dim_t g, dim_t mb, dim_t ic, dim_t id, dim_t ih, dim_t iw) {
-        int ds = 0;
+        dim_t ds = 0;
         for_(dim_t oc = 0; oc < OC; ++oc)
         for_(dim_t kd = 0; kd < KD; ++kd)
         for_(dim_t kh = 0; kh < KH; ++kh)
@@ -370,7 +370,7 @@ status_t ref_convolution_int8_bwd_data_t::execute_backward_data(
     auto ker_plain
             = [=](dim_t g, dim_t mb, dim_t ic, dim_t id, dim_t ih, dim_t iw) {
         assert(3 <= ndims && ndims <= 5);
-        int ds = 0;
+        dim_t ds = 0;
         const dim_t diff_dst_loc_off = ref_conv_utils::get_data_off(
                 diff_dst_d, ndims, mb, g * OC, 0, 0, 0);
         const dim_t weights_loc_off = ref_conv_utils::get_weights_off(
@@ -443,7 +443,7 @@ status_t ref_convolution_int8_bwd_data_t::execute_backward_data(
 
     parallel_nd(G, MB, IC, ID, IH, IW,
             [=](dim_t g, dim_t mb, dim_t ic, dim_t id, dim_t ih, dim_t iw) {
-        int acc = 0;
+        dim_t acc = 0;
         if (diff_dst_d.is_plain() && weights_d.is_plain()
                 && diff_dst_oc_stride == 1 && weights_kw_stride == 1)
             acc += ker_plain(g, mb, ic, id, ih, iw);

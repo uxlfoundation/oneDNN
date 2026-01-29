@@ -54,6 +54,25 @@ status_t transfer_post_ops(gemmstone::GEMMProblem &problem,
 struct pd_t : public gemm::pd_t {
     using gemm::pd_t::pd_t;
 
+    // Assumes desc() was already initialized with default formats
+    status_t init(impl::engine_t *engine) {
+
+        with_sround_ = attr()->rounding_mode_.get(DNNL_ARG_DST)
+                == rounding_mode::stochastic;
+
+        eff_lda_ = desc()->lda();
+        eff_ldb_ = desc()->ldb();
+        eff_transa_ = desc()->transa() == dnnl_trans;
+        eff_transb_ = desc()->transb() == dnnl_trans;
+
+        VDISPATCH_GEMM_SC(init_attrs(), VERBOSE_UNSUPPORTED_TAG);
+        VDISPATCH_GEMM(scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+        VDISPATCH_GEMM(zp_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
+        VDISPATCH_GEMM(gs_ok(), VERBOSE_UNSUPPORTED_PR_CFG);
+        VDISPATCH_GEMM_SC(init_post_ops(), VERBOSE_UNSUPPORTED_POSTOP);
+        return status::success;
+    }
+
     struct binary_src_t {
         enum type_t { none, scales, bias, binary, prelu } type;
         int index;

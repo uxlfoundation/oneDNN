@@ -70,21 +70,13 @@ struct gen_t : public primitive_t {
             dev_info_ = intel_engine->device_info();
             arch_ = dev_info_->gpu_arch();
             int stepping = dev_info_->stepping_id();
-            VDISPATCH_GEMM_SC(init_attrs(), VERBOSE_UNSUPPORTED_TAG);
 
             const auto d = desc();
 
             CHECK(set_default_formats(false));
-
-            with_sround_ = attr()->rounding_mode_.get(DNNL_ARG_DST)
-                    == rounding_mode::stochastic;
+            CHECK(jit::pd_t::init(engine));
 
             // If m = 1, swap A/B to use more efficient n = 1 kernels if possible.
-            eff_lda_ = d->lda();
-            eff_ldb_ = d->ldb();
-            eff_transa_ = d->transa() == dnnl_trans;
-            eff_transb_ = d->transb() == dnnl_trans;
-
             bool check_lda = ((d->transa() == dnnl_notrans && d->lda() == 1)
                     || (d->transa() == dnnl_trans));
             swap_ab_ = (d->m() == 1 && d->ldc() == 1 && check_lda)
@@ -194,12 +186,6 @@ struct gen_t : public primitive_t {
                                        c_stride == 1 || c_stride % 2 == 0),
                         VERBOSE_SHAPE_RESTRICTION);
             }
-
-            VDISPATCH_GEMM(scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
-            VDISPATCH_GEMM(zp_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
-            VDISPATCH_GEMM(gs_ok(), VERBOSE_UNSUPPORTED_PR_CFG);
-
-            VDISPATCH_GEMM_SC(init_post_ops(), VERBOSE_UNSUPPORTED_POSTOP);
 
             bool with_binary = (post_ops_.find(binary) != -1)
                     || (post_ops_.find(prelu) != -1);

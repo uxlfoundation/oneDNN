@@ -380,10 +380,14 @@ bool pd_t::zp_ok() {
     }
 
     if (!attr_zps.has_default_values(DNNL_ARG_C)) {
-        VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ cmask_c_ = %d",cmask_c_);
-        if (!utils::one_of(cmask_c_, 0, mask_scalar, mask_per_oc)) {
-            VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ < false");
-            return false;
+        // CCC Claude ??? Skip mask check for host scalar, similar to scales_ok()
+        auto &c_zps = attr_zps.get(DNNL_ARG_C);
+        if (!c_zps.is_host_scalar()) {
+            VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ cmask_c_ = %d",cmask_c_);
+            if (!utils::one_of(cmask_c_, 0, mask_scalar, mask_per_oc)) {
+                VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ < false");
+                return false;
+            }
         }
     }
 

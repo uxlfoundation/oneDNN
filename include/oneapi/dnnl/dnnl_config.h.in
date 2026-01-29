@@ -182,6 +182,10 @@
 // When defined, experimental SYCL capabilities are enabled.
 #cmakedefine DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
 
+// When defined, experimental grouped memory and matmul grouped GEMM codepath
+// is enabled.
+#cmakedefine01 DNNL_EXPERIMENTAL_GROUPED_GEMM
+
 // When defined, it disables GPU compute reference kernels.
 #cmakedefine DNNL_DISABLE_GPU_REF_KERNELS
 

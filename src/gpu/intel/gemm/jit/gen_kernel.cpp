@@ -1068,27 +1068,29 @@ void gen_kernel_t::init_interface() {
     if (problem.bOffset2D() || problem.bScale2D() || problem.needsBGroupSums())
         interface_.newArgument("ldbq", DataType::d);
     if (problem.hasCMXScale()) interface_.newArgument("ldcq", DataType::d);
+    // CCC Claude ??? Fixed: Only add CO argument if NOT using hostscalar
     if (problem.cOffset != COffset::None || problem.sumA || problem.sumB) {
-//@@@
-        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> co_access = %d (None = 0, Stateless = 1, Surface = 2, All = 3, Default = 4)", (int)co_access);
-        interface_.newArgument(
-                "CO", ExternalArgumentType::GlobalPtr, co_access);
-        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> newArgument CO");
+        // Only add CO memory pointer if not using hostscalar
+        if (!problem.cOffsetHostScalar()) {
+            VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> co_access = %d (None = 0, Stateless = 1, Surface = 2, All = 3, Default = 4)", (int)co_access);
+            interface_.newArgument(
+                    "CO", ExternalArgumentType::GlobalPtr, co_access);
+            VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> newArgument CO");
+        }
         interface_.newArgument("offset_CO", DataType::q);
         VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> newArgument offset_CO");
         if (problem.cOffset == COffset::Pre){
             VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> newArgument ldco");
             interface_.newArgument("ldco", DataType::d);
         }
-// @@@
     }
 
-    // CCC ??? decrale interface_.newArgument("co_hostscalar", DataType::w);
+    // CCC Claude ??? Add co_hostscalar argument when using hostscalar mode
     if (problem.cOffsetHostScalar()) {
         VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> newArgument co_hostscalar");
         interface_.newArgument("co_hostscalar", DataType::w);
     }
-    // CCC ??? -------------------------------------------------------------
+    // CCC Claude ??? End co_hostscalar handling
 
 
     if (problem.postOps.cStochasticRound) {

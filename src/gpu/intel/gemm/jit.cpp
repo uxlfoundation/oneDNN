@@ -141,10 +141,14 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         auto ldcq = pd()->desc()->m() / problem->cqGroupM;
         arg_list.set(argn++, ldcq);
     }
+    // CCC Claude ??? Fixed: Only pass CO pointer if NOT hostscalar
     if (pd()->with_c_zero_points() || pd()->with_bias()
             || pd()->with_sum_ab()) {
-        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; arg_list.set(argn++, co)");
-        arg_list.set(argn++, co);
+        // Only pass CO memory storage if not using hostscalar
+        if (!problem->cOffsetHostScalar()) {
+            VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; arg_list.set(argn++, co)");
+            arg_list.set(argn++, co);
+        }
         VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; arg_list.set(argn++, offset_co)");
         arg_list.set(argn++, offset_co);
         if (pd()->with_bias()) {
@@ -154,12 +158,12 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         }
     }
 
-    // CCC ??? add co_hostscalar to arg.list
+    // CCC Claude ??? Pass co_hostscalar value when using hostscalar mode
     if (problem->cOffsetHostScalar()) {
         VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; arg_list.set(argn++, co_hostscalar)");
         arg_list.set(argn++, co_hostscalar);
     }
-    // CCC ??? -----------------------------
+    // CCC Claude ??? End co_hostscalar handling
 
     if (nocopy_info()->needsTempC()) arg_list.set(argn++, *c_temp);
     if (problem->postOps.cStochasticRound) {

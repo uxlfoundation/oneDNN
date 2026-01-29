@@ -140,9 +140,7 @@ Team: @uxlfoundation/onednn-cpu-x64
 | Tatyana Primak      | @tprimak              | Intel Corporation | Maintainer |
 | Alexander Simonov   | @asimonov1            | Intel Corporation | Code Owner |
 | Alexey Makarevich   | @amakarev             | Intel Corporation | Code Owner |
-| David Eberius       | @davideberius         | Intel Corporation | Code Owner |
 | Dmitriy Ovchinnikov | @inteldimitrius       | Intel Corporation | Code Owner |
-| Stefan Palicki      | @spalicki             | Intel Corporation | Code Owner |
 | Tomasz Czeszun      | @tczeszun             | Intel Corporation | Code Owner |
 | Yair Obodovsky      | @yair-obodovsky       | Intel Corporation | Code Owner |
 | Xuxin Zeng          | @xuxinzen             | Intel Corporation | Code Owner |

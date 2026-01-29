@@ -263,8 +263,7 @@ std::string generateShim(const Package &package, HostLanguage language,
                  << "\n"
                     "typedef struct {\n"
                     "    "
-                 << ename;
-            if (vlen > 1) shim << vlen;
+                 << ename << vlen;
             shim << " x[" << sizes.blocks()
                  << "];\n"
                     "} "

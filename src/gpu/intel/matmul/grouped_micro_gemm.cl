@@ -71,7 +71,7 @@ DECLARE_2D_TILE_COPY_REBLOCK(c_tile_type_dst, SUBGROUP_SIZE,
 #define SRC_ATTR_ZP_ARGS
 #endif
 #if WITH_SRC_ATTR_SCALES || WITH_SRC_ATTR_ZP
-#define SRC_ATTR_LD_ARGS   , ldsrcq
+#define SRC_ATTR_LD_ARGS , ldsrcq
 #else
 #define SRC_ATTR_LD_ARGS
 #endif
@@ -86,14 +86,14 @@ DECLARE_2D_TILE_COPY_REBLOCK(c_tile_type_dst, SUBGROUP_SIZE,
 #define WEI_ATTR_ZP_ARGS
 #endif
 #if WITH_WEI_ATTR_SCALES || WITH_WEI_ATTR_ZP
-#define WEI_ATTR_LD_ARGS   , ldweiq
+#define WEI_ATTR_LD_ARGS , ldweiq
 #else
 #define WEI_ATTR_LD_ARGS
 #endif
 
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) kernel void
 grouped_micro_gemm(const global SRC_DATA_T *src, int ldsrc,
-        const global WEI_DATA_T *wei, int ldwei, global DST_DATA_T *dst,
+        const global WEI_DATA_T *wei, long4 wei_strides, global DST_DATA_T *dst,
         int lddst, const global int *src_offsets, const global int *dst_offsets,
         const global SRC_ATTR_SCALES_DATA_T *src_attr_scales,
         const global SRC_ATTR_ZP_DATA_T *src_attr_zp, const int ldsrcq,
@@ -120,13 +120,15 @@ grouped_micro_gemm(const global SRC_DATA_T *src, int ldsrc,
     unsigned long sg_j0 = wg_j0 + sg_j * ugemm_grouped_sg_tile_n;
 
     int m = batch > 0 ? (src_offset.y - src_offset.x) : src_offset.x;
-    if (wg_i0 >= m) return; /* early exit if outside batch */
+    if (wg_j0 >= m) return; /* early exit if outside batch */
 
     src_offset.x = batch > 0 ? src_offset.x : 0;
 
     src += src_offset.x * ldsrc / SRC_ELEMS_PER_BYTE;
-    wei += batch * k * ldwei / WEI_ELEMS_PER_BYTE;
+    wei += batch * wei_strides[0] / WEI_ELEMS_PER_BYTE;
     dst += src_offset.x * lddst;
+
+    int ldwei = wei_strides[2] == 1 ? wei_strides[1] : wei_strides[2];
 #if WITH_SRC_ATTR_SCALES
     src_attr_scales += src_offset.x;
 #endif
@@ -134,26 +136,26 @@ grouped_micro_gemm(const global SRC_DATA_T *src, int ldsrc,
     src_attr_zp += src_offset.x;
 #endif
 #if WITH_WEI_ATTR_SCALES
-    wei_attr_scales += batch * ldweiq * (k / WEI_GROUP_SIZE);
+    wei_attr_scales += batch * n * (k / WEI_GROUP_SIZE);
 #endif
 #if WITH_WEI_ATTR_ZP
-    wei_attr_zp += batch * ldweiq * (k / WEI_GROUP_SIZE);
+    wei_attr_zp += batch * n * (k / WEI_GROUP_SIZE);
 #endif
 
-    ugemm_grouped_c_type c_tile = ugemm_grouped(
-                                                wei, ldwei, src, ldsrc, m, n, k, wg_i0, wg_j0, 0, sg_i, sg_j, slm
-                                                SRC_ATTR_SCALE_ARGS SRC_ATTR_ZP_ARGS SRC_ATTR_LD_ARGS
-                                                WEI_ATTR_SCALE_ARGS WEI_ATTR_ZP_ARGS WEI_ATTR_LD_ARGS);
+    ugemm_grouped_c_type c_tile = ugemm_grouped(wei, ldwei, src, ldsrc, n, m, k,
+            wg_i0, wg_j0, 0, sg_i, sg_j,
+            slm WEI_ATTR_SCALE_ARGS WEI_ATTR_ZP_ARGS WEI_ATTR_LD_ARGS
+                    SRC_ATTR_SCALE_ARGS SRC_ATTR_ZP_ARGS SRC_ATTR_LD_ARGS);
 #if WITH_BIAS
 #define binary_add(x, y) ((x) + (y))
     bias += batch * n;
     bias_tile_type bias_tile;
 #if BIA_DT_F32
-    tile_load(&bias_tile, bias, n, m, 0, sg_j0, sg_i0);
+    tile_load(&bias_tile, bias, n, m, 0, sg_i0, sg_j0);
 #else
     {
         bias_in_tile_type bias_in_tile;
-        tile_load(&bias_in_tile, bias, n, m, 0, sg_j0, sg_i0);
+        tile_load(&bias_in_tile, bias, n, m, 0, sg_i0, sg_j0);
         tile_copy_reblock(bias_in_tile, &bias_tile);
     }
 #endif
@@ -161,12 +163,12 @@ grouped_micro_gemm(const global SRC_DATA_T *src, int ldsrc,
 #endif
 
 #if DST_DT_F32
-    tile_store(c_tile, dst, n, m, lddst, sg_j0, sg_i0);
+    tile_store(c_tile, dst, n, m, lddst, sg_i0, sg_j0);
     //tile_store_t_block2d(c_tile, dst, n, m, lddst, sg_j0, sg_i0);
 #else
     c_tile_type_dst c_tile_dst;
     tile_copy_reblock(c_tile, &c_tile_dst);
-    tile_store(c_tile_dst, dst, n, m, lddst, sg_j0, sg_i0);
+    tile_store(c_tile_dst, dst, n, m, lddst, sg_i0, sg_j0);
     //tile_store_block2d(c_tile_dst, dst, n, m, lddst, sg_j0, sg_i0);
 #endif
 }

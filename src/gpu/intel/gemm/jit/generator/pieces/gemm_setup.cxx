@@ -360,8 +360,8 @@ void Generator<hw>::gemmOffsetABC(bool initial, Subregister i0, Subregister j0, 
     auto &offsetCp = initial ? state.offsetCp   : state.effCp;
     auto  offsetCO = initial ? state.offsetCO   : state.effCO;
     bool doCO = doC && (problem.cOffset != COffset::None);
-    VDEBUGINFO(4, primitive, gemm, "MY: gemmOffsetABC : initial=%d doC=%d cOffset=%d cOffsetHostScalar=%d", initial, doC, int(problem.cOffset), problem.cOffsetHostScalar());
-    VDEBUGINFO(4, primitive, gemm, "MY: gemmOffsetABC : doCO = %d (if 1 - needs actions)", doCO);
+    //VDEBUGINFO(4, primitive, gemm, "MY: gemmOffsetABC : initial=%d doC=%d cOffset=%d cOffsetHostScalar=%d", initial, doC, int(problem.cOffset), problem.cOffsetHostScalar());
+    //VDEBUGINFO(4, primitive, gemm, "MY: gemmOffsetABC : doCO = %d (if 1 - needs actions)", doCO);
 
     bool doAp = doA, doBp = doB;
 
@@ -768,9 +768,9 @@ void Generator<hw>::gemmSetupABC(const GEMMProblem &problem, const GEMMStrategy 
     }
 
     // CCC Claude ??? Skip CO memory setup for host scalar
-    VDEBUGINFO(4, primitive, gemm, "MY: gemmSetupABC : usesCO=%d isStateless=%d cOffsetHostScalar=%d", problem.usesCO(), strategy.CO.base.isStateless(), problem.cOffsetHostScalar());
+    //VDEBUGINFO(4, primitive, gemm, "MY: gemmSetupABC : usesCO=%d isStateless=%d cOffsetHostScalar=%d", problem.usesCO(), strategy.CO.base.isStateless(), problem.cOffsetHostScalar());
     if (problem.usesCO() && strategy.CO.base.isStateless() && !problem.cOffsetHostScalar()) {
-        VDEBUGINFO(4, primitive, gemm, "MY: gemmSetupABC : setup effCO from CO memory, CO.isValid=%d", state.inputs.CO.isValid());
+        //VDEBUGINFO(4, primitive, gemm, "MY: gemmSetupABC : setup effCO from CO memory, CO.isValid=%d", state.inputs.CO.isValid());
         eadd(1, state.effCO, state.inputs.CO, state.offsetCO, strategy, state);
         if (strategy.persistentLoop())
             state.offsetCO = invalid;
@@ -778,7 +778,7 @@ void Generator<hw>::gemmSetupABC(const GEMMProblem &problem, const GEMMStrategy 
             state.ra.safeRelease(state.offsetCO);
     }
     if (problem.cOffsetHostScalar()) {
-        VDEBUGINFO(4, primitive, gemm, "MY: gemmSetupABC : co_hostscalar mode, skip CO memory setup, co_hostscalar.isValid=%d", state.inputs.co_hostscalar.isValid());
+        //VDEBUGINFO(4, primitive, gemm, "MY: gemmSetupABC : co_hostscalar mode, skip CO memory setup, co_hostscalar.isValid=%d", state.inputs.co_hostscalar.isValid());
     }
 
     if (state.offsetAp.isValid()) {

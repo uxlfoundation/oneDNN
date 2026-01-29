@@ -109,7 +109,7 @@ void Generator<hw>::binaryOp(BinaryOp op, int simd, const RegData &dst, const Re
 {
     switch (op) {
         case BinaryOp::Add:
-            VDEBUGINFO(4, primitive, gemm, "MY: !!!!! binaryOp Add !!!!! add(simd, dst, src0, src1)");
+            //VDEBUGINFO(4, primitive, gemm, "MY: !!!!! binaryOp Add !!!!! add(simd, dst, src0, src1)");
             add(simd, dst, src0, src1);
             break;
         case BinaryOp::Sub:
@@ -157,7 +157,7 @@ void Generator<hw>::gemmScalarBinaryOpC(BinaryOp op, Type Tco, const GRFMultiran
     map(hw, state.Tacc, state.C_regs[0], state.C_layout, strategy, [&](int simd, const RegData &r) {
         binaryOp(op, simd, r, r, offsetTc, state);
     });
-    VDEBUGINFO(4, primitive, gemm, "MY: gemmScalarBinaryOpC $$$$$$ <<<<");
+    //VDEBUGINFO(4, primitive, gemm, "MY: gemmScalarBinaryOpC (hostscalar) $$$$$$ <<<<");
 }
 
 // CCC Claude ??? Overload for hostscalar (Subregister) support
@@ -166,7 +166,7 @@ template <HW hw>
 void Generator<hw>::gemmScalarBinaryOpC(BinaryOp op, Type Tco, const Subregister &scalar,
                                         const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
-    VDEBUGINFO(4, primitive, gemm, "MY: gemmScalarBinaryOpC (hostscalar) $$$$$$ >>>>");
+    //VDEBUGINFO(4, primitive, gemm, "MY: gemmScalarBinaryOpC (hostscalar) $$$$$$ >>>>");
 
     auto Tacc = state.Tacc;
     auto offsetTc = scalar;
@@ -451,7 +451,7 @@ template <HW hw>
 bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch >>>>>>> enter, cOffset=%d, cOffsetHostScalar=%d", int(problem.cOffset), problem.cOffsetHostScalar());
-    VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ >>>>>");
+    //VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ >>>>>");
 
     Label labelCOColumn, labelCORow, labelCOMatrix, labelCODone;
     bool doMatrix = problem.allowMatrixOffset();
@@ -464,7 +464,7 @@ bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const G
     bool ok = true;
 
     if (state.flagSwizzle.isValid()) {
-        VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~");
+        //VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~");
         state.raVFlag.release(state.flagSwizzle);
     }
 
@@ -484,7 +484,7 @@ bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const G
     state.raVFlag.safeRelease(flagCOR);
 
     if (state.flagSwizzle.isValid()) {
-        VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~");
+        //VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~");
         state.raVFlag.claim(state.flagSwizzle);
     }
 
@@ -496,7 +496,7 @@ bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const G
         gemmScalarBinaryOpC(BinaryOp::Add, Tco, state.inputs.co_hostscalar, problem, strategy, state);
         // CCC Claude ??? Mark done label and return early - no need to generate column/row/matrix code paths
         mark(labelCODone);
-        VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ <<<<< early return for hostscalar");
+        //VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ <<<<< early return for hostscalar");
         return ok;
     }
 // CCC Claude ??? Continue with non-hostscalar cases (fixed/column/row/matrix) only if not hostscalar
@@ -539,7 +539,7 @@ bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const G
         state.ra.safeRelease(effCO);
     }
 
-    VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ <<<<<");
+    //VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ <<<<<");
     return ok;
 }
 

@@ -450,6 +450,7 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
 template <HW hw>
 bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
+    VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch >>>>>>> enter, cOffset=%d, cOffsetHostScalar=%d", int(problem.cOffset), problem.cOffsetHostScalar());
     VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ >>>>>");
 
     Label labelCOColumn, labelCORow, labelCOMatrix, labelCODone;

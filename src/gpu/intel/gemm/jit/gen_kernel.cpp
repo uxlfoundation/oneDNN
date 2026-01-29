@@ -1243,6 +1243,8 @@ status_t gen_kernel_t::get_kernel(
     init_interface();
     maybe_print_verbose();
 
+    VDEBUGINFO(4, primitive, gen_kernel, "MY: get_kernel >>>>> cOffset=%d cOffsetHostScalar=%d", int(desc()->problem()->cOffset), desc()->problem()->cOffsetHostScalar());
+
     if (enable_generator_dsl()) {
         auto k = get_dsl_kernel(*desc()->problem(), *desc()->strategy(),
                 interface_, make_ir_hw(engine), desc()->m_, desc()->n_,
@@ -1253,9 +1255,11 @@ status_t gen_kernel_t::get_kernel(
 
 #define ARCH_DISPATCH(arch) \
     case ngen::HW::arch: { \
+        VDEBUGINFO(4, primitive, gen_kernel, "MY: get_kernel >>>>> calling generator.gemm for arch=%d", int(ngen::HW::arch)); \
         gemm_kernel_generator_t<ngen::HW::arch> generator; \
         generator.setStepping(desc()->stepping_); \
         generator.gemm(*desc()->problem(), *desc()->strategy(), interface_); \
+        VDEBUGINFO(4, primitive, gen_kernel, "MY: get_kernel >>>>> generator.gemm returned, calling get_kernel"); \
         return generator.get_kernel(kernel, engine); \
         break; \
     }
@@ -1277,6 +1281,10 @@ status_t gen_kernel_t::get_kernel(
                         .c_str());
     } catch (const std::runtime_error &err) {
         VERROR(primitive, gpu, "%s,%s", "jit::gemm", err.what());
+        VDEBUGINFO(4, primitive, gen_kernel, "MY: get_kernel <<<<< runtime_error: %s", err.what());
+    } catch (...) {
+        VERROR(primitive, gpu, "%s,%s", "jit::gemm", "unknown exception");
+        VDEBUGINFO(4, primitive, gen_kernel, "MY: get_kernel <<<<< unknown exception");
     }
 #undef ARCH_DISPATCH
 

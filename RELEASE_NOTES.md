@@ -56,7 +56,6 @@
 ## Common
 * Extended [quantization attributes] documentation to cover all quantization schemes supported by the library.
 * Added [matmul fp8 quantization] example demonstrating use of matmul primitive with `fp8` source, destination, and weights.
-* Extended information about primitive execution available in VTune(TM) Profiler with the same level of detail as reported by oneDNN [verbose mode]. This feature requires VTune Profiler 2025.7 or later.
 * Enabled `ONEDNN_ENABLE_GRAPH_DUMP` knob by default.
 
 ## Intel Architecture Processors

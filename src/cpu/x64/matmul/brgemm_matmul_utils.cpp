@@ -1846,22 +1846,10 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     // Sets things related to chunks and others
     init_aux_values(bgmmc, src_d, weights_d, dst_d);
 
-    if (!bgmmc.is_gemv && bm_conf_utils.is_f32()
+    if (!bgmmc.is_gemv && bm_conf_utils.is_f32() && bgmmc.nthr == 1
             && is_superset(bgmmc.isa, avx512_core)) {
-        // Dispatch the shapes with small K to gemm for better performance
-        // The heuristic values are empirical
-        const bool small_K = bgmmc.N <= 14528 && bgmmc.K == 32
-                && ((bgmmc.M <= 768 && bgmmc.K <= 128)
-                        || bgmmc.K * bgmmc.M <= 49152);
-        // We need to exclude certain shapes as brgemm matmul performs better
-        // for them.
-        const bool exception
-                = (bgmmc.M >= 1000 && bgmmc.K <= 16 && bgmmc.N <= 16)
-                || (bgmmc.M <= 256 && bgmmc.K <= 8 && bgmmc.N <= 1024);
-        VCONDCHECK_BG(
-                IMPLICATION(bgmmc.ndims == 2,
-                        exception || !small_K || !can_use_gemm_fallback()),
-                VERBOSE_SMALL_SHAPES);
+        bgmmc.need_loop_store_prefetch = bgmmc.K < 16 && bgmmc.M <= 768
+                && bgmmc.N <= 14528 && bgmmc.N >= 4064;
     }
 
     bgmmc.use_buffer_reduce

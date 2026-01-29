@@ -359,7 +359,7 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
                 default: throw std::runtime_error("Unsupported architecture");
             }
             #undef ARCH_DISPATCH
-        } catch (const std::runtime_error &ex) {
+        } catch (const std::runtime_error &) {
             /* Try next strategy */
             continue;
         }

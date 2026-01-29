@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -108,6 +108,29 @@ void free(impl::engine_t *engine, void *ptr) {
     cl_int err = ext_func(engine, get_ocl_context(engine), ptr);
     assert(err == CL_SUCCESS);
     MAYBE_UNUSED(err);
+}
+
+// Explicit USM migration to avoid GPU page faults on Xe-LP (DG1)
+status_t migrate(impl::stream_t *stream, size_t count, const void *ptr,
+        size_t size, cl_uint num_events, const cl_event *events,
+        cl_event *out_event) {
+    using clEnqueueSVMMigrateMemINTEL_func_t = cl_int (*)(cl_command_queue,
+            cl_uint, const void *, const size_t *, cl_mem_migration_flags,
+            cl_uint, const cl_event *, cl_event *);
+
+    static xpu::ocl::ext_func_t<clEnqueueSVMMigrateMemINTEL_func_t> ext_func(
+            "clEnqueueSVMMigrateMemINTEL");
+
+    cl_int err = ext_func(stream->engine(), get_ocl_queue(stream), count,
+            reinterpret_cast<const void **>(&ptr), &size, 0, num_events, events,
+            out_event);
+
+    assert(err == CL_SUCCESS);
+    return xpu::ocl::convert_to_dnnl(err);
+}
+
+status_t migrate(impl::stream_t *stream, const void *ptr, size_t size) {
+    return migrate(stream, 1, ptr, size, 0, nullptr, nullptr);
 }
 
 status_t set_kernel_arg(impl::engine_t *engine, cl_kernel kernel, int arg_index,

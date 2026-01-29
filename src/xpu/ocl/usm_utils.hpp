@@ -47,6 +47,7 @@ status_t fill(impl::stream_t *stream, void *ptr, const void *pattern,
         const cl_event *events, cl_event *out_event);
 status_t DNNL_API memset(
         impl::stream_t *stream, void *ptr, int value, size_t size);
+status_t migrate(impl::stream_t *stream, void *ptr, size_t size);
 kind_t DNNL_API get_pointer_type(impl::engine_t *engine, const void *ptr);
 
 } // namespace usm

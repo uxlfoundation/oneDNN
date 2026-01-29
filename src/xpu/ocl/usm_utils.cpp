@@ -88,6 +88,10 @@ status_t memset(impl::stream_t *stream, void *ptr, int value, size_t size) {
             stream, ptr, &pattern, sizeof(uint8_t), size, 0, nullptr, nullptr);
 }
 
+status_t migrate(impl::stream_t *stream, void *ptr, size_t size) {
+    return status::success;
+}
+
 kind_t get_pointer_type(impl::engine_t *engine, const void *ptr) {
     HANDLE_USM_CALL(engine, get_pointer_type(engine, ptr));
 }

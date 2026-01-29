@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -74,7 +74,13 @@ status_t usm_memory_storage_t::unmap_data(
 
     if (!stream) CHECK(engine()->get_service_stream(stream));
     auto &map_manager = memory_map_manager_t<map_usm_tag>::instance();
-    return map_manager.unmap(this, stream, mapped_ptr);
+    CHECK(map_manager.unmap(this, stream, mapped_ptr));
+    bool is_gpu = stream->engine()->kind() == engine_kind::gpu;
+    if (is_gpu) {
+        CHECK(usm::migrate(stream, mapped_ptr, 0));
+        CHECK(stream->wait());
+    }
+    return status::success;
 }
 
 std::unique_ptr<memory_storage_t> usm_memory_storage_t::get_sub_storage(

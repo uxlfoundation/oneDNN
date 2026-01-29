@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -42,8 +42,9 @@ status_t fill(impl::stream_t *stream, void *ptr, const void *pattern,
         size_t pattern_size, size_t size, cl_uint num_events,
         const cl_event *events, cl_event *out_event);
 status_t memset(impl::stream_t *stream, void *ptr, int value, size_t size);
-xpu::ocl::usm::kind_t get_pointer_type(impl::engine_t *engine, const void *ptr);
+status_t migrate(impl::stream_t *stream, void *ptr, size_t size);
 
+xpu::ocl::usm::kind_t get_pointer_type(impl::engine_t *engine, const void *ptr);
 } // namespace usm
 } // namespace ocl
 } // namespace intel

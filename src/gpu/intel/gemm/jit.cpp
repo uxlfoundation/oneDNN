@@ -497,15 +497,16 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : off_co0 = %ld", off_co0);
         VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : cmask = %d", cmask);
 
-        // CCC ??? get value of co_hostscalar in execute()
+        // CCC Claude ??? get value of co_hostscalar in execute()
         int co_hostscalar_val = 0;
         if (co->is_host_scalar()) {
             VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : !!! co->is_host_scalar() !!!!");
             CHECK(maybe_get_host_scalar_value(*co, co_hostscalar_val));
         }
-        co_hostscalar = static_cast<int16_t>(-1 * co_hostscalar_val);
-        VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : co_hostscalar = %d", co_hostscalar);
-        // CCC ??? ---------------------------------------
+        // CCC Claude ??? DST zero point is ADDED to result (not subtracted like SRC/WEI), so no sign inversion
+        co_hostscalar = static_cast<int16_t>(co_hostscalar_val);
+        VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : co_hostscalar = %d (from co_hostscalar_val=%d)", co_hostscalar, co_hostscalar_val);
+        // CCC Claude ??? ---------------------------------------
 
 
     } else if (pd()->with_bias()) {

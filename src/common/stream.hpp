@@ -71,7 +71,14 @@ struct dnnl_stream : public dnnl::impl::c_compatible {
         return dnnl::impl::status::unimplemented;
     }
 
-    bool is_profiling_enabled() const { return impl_->is_profiling_enabled(); }
+    bool is_profiling_enabled() const {
+        return profiling_active_ && impl_->is_profiling_enabled();
+    }
+
+    /** Updates the state of profiling.
+      * It's used to manually control places which shouldn't be profiled such as
+      * service cache flushing to avoid polluting performance results. */
+    void set_profiling(bool value) { profiling_active_ = value; }
 
     virtual dnnl::impl::status_t zero_pad(const dnnl::impl::memory_t *memory,
             const dnnl::impl::exec_ctx_t &ctx);
@@ -91,6 +98,7 @@ struct dnnl_stream : public dnnl::impl::c_compatible {
 protected:
     dnnl::impl::engine_t *engine_;
     std::unique_ptr<dnnl::impl::stream_impl_t> impl_;
+    bool profiling_active_ = true;
 };
 
 #endif

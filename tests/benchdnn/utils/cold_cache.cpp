@@ -19,11 +19,21 @@
 #include "utils/cold_cache.hpp"
 #include "utils/fill.hpp"
 
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE
+extern "C" dnnl_status_t dnnl_impl_gpu_flush_cache(
+        dnnl_stream_t stream, size_t bytes, dnnl_memory_t data);
+#endif
+
 cold_cache_input_t cold_cache_input;
 
 const cold_cache_input_t &default_cold_cache_input() {
     static const cold_cache_input_t cold_cache_input;
     return cold_cache_input;
+}
+
+dnn_mem_t &flush_cache_memory() {
+    static dnn_mem_t flush_cache_mem;
+    return flush_cache_mem;
 }
 
 namespace cold_cache_utils {
@@ -316,7 +326,27 @@ int cold_cache_t::thrash_reorder(size_t mem_size, size_t granularity) const {
     return OK;
 }
 
-bool cold_cache_t::update_dnnl_args(std::vector<dnnl_exec_arg_t> &dnnl_args) {
+void cold_cache_t::flush_cache(dnnl_stream_t stream) const {
+    // Flushing is only applied for GPU.
+    if (!is_gpu()) return;
+
+    // Keep initialization separately from a global reference to have an option
+    // to clean up that memory.
+    static std::once_flag flag;
+    std::call_once(flag, [&]() {
+        const dnnl_dims_t dims = {flush_cache_size_};
+        flush_cache_memory() = dnn_mem_t(
+                1, dims, dnnl_s8, "a", get_test_engine(), /* prefill = */ true);
+    });
+
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE
+    DNN_SAFE_V(dnnl_impl_gpu_flush_cache(
+            stream, flush_cache_size_, flush_cache_memory().m_));
+#endif
+}
+
+bool cold_cache_t::update_dnnl_args(
+        dnnl_stream_t stream, std::vector<dnnl_exec_arg_t> &dnnl_args) {
     if (!enabled_) return true;
     if (should_stop()) return false;
 
@@ -347,6 +377,13 @@ bool cold_cache_t::update_dnnl_args(std::vector<dnnl_exec_arg_t> &dnnl_args) {
         auto st = thrash_reorder(mem_size, /* granularity = */ page_size);
         if (st != OK) return false;
     }
+
+    // Flush GPU's L3 cache if memory arguments update was successful.
+    // Flushing is necessary to stabilize performance results for cases when L3
+    // data wasn't modified. The observation is in such scenario the eviction
+    // doesn't happen which leads to some buffers continue residing in L3
+    // showing faster results than they should.
+    flush_cache(stream);
 
     // Update counter outside of the loop to make **all** arguments use same
     // order element from the cache.

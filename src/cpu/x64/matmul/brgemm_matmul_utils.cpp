@@ -215,6 +215,12 @@ bool is_batch_layout_trivial(
         min_batch_stride = nstl::min(min_batch_stride, cur_stride);
         max_batch_stride = nstl::max(max_batch_stride, cur_stride);
     }
+    std::cout << "strides: ";
+    for (auto d : strides)
+        std::cout << d << " ";
+    std::cout << std::endl;
+    std::cout << "min_batch_stride: " << min_batch_stride
+              << " max_batch_stride: " << max_batch_stride << std::endl;
     if (min_batch_stride == 0) return false;
     return max_batch_stride / min_batch_stride == batch;
 }
@@ -825,6 +831,8 @@ struct matmul_avx512_blocking_params_t {
     }
 
     inline dim_t get_actual_lda(bool use_buffer_a, dim_t a_dt_sz) const {
+        std::cout << "get_actual_lda called: K: " << mp.K
+                  << ", use_buffer_a: " << use_buffer_a << std::endl;
         if (!use_buffer_a) return mp.K;
 
         constexpr int bytes_in_cacheline = 64;
@@ -1198,6 +1206,8 @@ status_t compute_blocking_heuristic(brgemm_matmul_conf_t &bgmmc,
 
             if (best_blocking.get_blocking_scores() != 0.0f) {
                 best_blocking.update_configuration(bgmmc);
+                std::cout << "AMX micro blocking heuristic is used LDA: "
+                          << bgmmc.LDA << std::endl;
                 return status::success;
             }
         }
@@ -1524,6 +1534,8 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.M = helper.M();
     bgmmc.N = helper.N();
     bgmmc.K = helper.K();
+    std::cout << "M=" << bgmmc.M << " N=" << bgmmc.N << " K=" << bgmmc.K
+              << "\n";
     bgmmc.batch = helper.batch();
     bgmmc.is_runtime_M = is_runtime_value(bgmmc.M);
     bgmmc.is_runtime_N = is_runtime_value(bgmmc.N);
@@ -1737,6 +1749,11 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     // (especially for big K sizes).
     bgmmc.use_buffer_a_tail_only = false;
 
+    std::cout << "Original strides A: ";
+    for (int d = 0; d < bgmmc.ndims; d++)
+        std::cout << src_d.blocking_desc().strides[d] << " ";
+    std::cout << std::endl;
+
     const int dmax = nstl::min(bgmmc.ndims, 3);
     for (int d = 0; d < dmax; d++) {
         int dim = bgmmc.ndims - 1 - d;
@@ -1750,7 +1767,13 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     // A layout is formally transposed but could be treated as plain
     bgmmc.adjust_a_strides = merge_batch_dims_into_M
             && (src_d.matches_tag(acbd) || bgmmc.treat_A_as_plain);
+    std::cout << " matches_tag(acbd)=" << src_d.matches_tag(acbd)
+              << " treat_A_as_plain=" << bgmmc.treat_A_as_plain << "\n";
+    std::cout << " adjust_a_strides=" << bgmmc.adjust_a_strides << "\n";
     if (bgmmc.adjust_a_strides) bgmmc.A_strides[1] = bgmmc.A_strides[2];
+    std::cout << " A_strides[0]=" << bgmmc.A_strides[0]
+              << " A_strides[1]=" << bgmmc.A_strides[1]
+              << " A_strides[2]=" << bgmmc.A_strides[2] << "\n";
 
     // We need to correct C_strides if batched dimensions are merged in M and
     // C layout is formally transposed but could be treated as plain
@@ -2169,6 +2192,9 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
                                   : src_d.blocking_desc().strides[0])
                 * bgmmc.a_dt_sz;
     }
+
+    std::cout << "A_ptr_shift_b: " << bgmmc.A_ptr_shift_b
+              << " copy_A_src_stride: " << bgmmc.copy_A_src_stride << std::endl;
 
     bgmmc.B_ptr_shift_b = 0;
     bgmmc.copy_B_wei_stride = 0;

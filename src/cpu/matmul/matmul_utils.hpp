@@ -43,7 +43,7 @@ struct matmul_helper_t {
     dim_t src_batch() const { return get_batch_size(src_md_); }
     dim_t wei_batch() const { return get_batch_size(weights_md_); }
 
-    dim_t M() const { return dst_md_.dims()[ndims() - 2]; }
+    dim_t M() const { return src_md_.dims()[ndims() - 2]; }
     dim_t N() const { return dst_md_.dims()[ndims() - 1]; }
     dim_t K() const { return src_md_.dims()[ndims() - 1]; }
 

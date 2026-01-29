@@ -689,7 +689,10 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
                             if (use_buffer_a && nb == n_start && !skip_copy_a)
                                 copy_a_chunk_in_buffer(
                                         brgmm_ctx, a_batch_ptr, ithr, mb, kb);
-
+                            std::cout << "Compute kernel(b=" << b
+                                      << ", mb=" << mb << ", nb=" << nb
+                                      << ", kb=" << kb << ", kc=" << kc
+                                      << ")\n";
                             compute_kernel(brgmm_ctx, a_batch_ptr, b_batch_ptr,
                                     ithr, b, mb, nb, kb,
                                     kc == kc_start && kb == kb_start,
@@ -803,10 +806,13 @@ void brgemm_matmul_t<isa>::compute_kernel(
                     brgmm_ctx.get_src_scales_ptr(),
                     brgmm_ctx.get_wei_scales_ptr(n),
                     brgmm_ctx.get_dst_scales_inv_ptr(ithr)};
+            std::cout << "Kernel starts with postpops" << std::endl;
             brgemm_kernel_execute_postops(brg_kernel, gemm_batch, addr_batch,
                     (void *)ptr_C, (void *)ptr_D, post_ops_data, scratch,
                     &leading_dimensions);
+            std::cout << "Main kernel finished" << std::endl;
         } else {
+            std::cout << "Kernel starts without postpops" << std::endl;
             brgemm_kernel_execute(brg_kernel, gemm_batch, addr_batch,
                     (void *)ptr_C, is_amx ? (void *)wsp_tile : nullptr,
                     &leading_dimensions);
@@ -859,10 +865,11 @@ void brgemm_matmul_t<isa>::compute_kernel(
                     brgmm_ctx.get_src_scales_ptr(),
                     brgmm_ctx.get_wei_scales_ptr(n),
                     brgmm_ctx.get_dst_scales_inv_ptr(ithr)};
-
+            std::cout << "K tail kernel starts with postpops" << std::endl;
             brgemm_kernel_execute_postops(brg_kernel_k_tail, 1, addr_batch,
                     (void *)ptr_C, (void *)ptr_D, post_ops_data, scratch,
                     &leading_dimensions);
+            std::cout << "K tail kernel finished" << std::endl;
         } else {
             brgemm_kernel_execute(brg_kernel_k_tail, 1, addr_batch,
                     (void *)ptr_C, is_amx ? (void *)wsp_tile : nullptr,
@@ -873,7 +880,7 @@ void brgemm_matmul_t<isa>::compute_kernel(
                 k_blk_idx, do_init, is_K_tail,
                 /* do_K_tail */ true);
     }
-
+    std::cout << "Compute kernel finished" << std::endl;
     brgmm_ctx.maybe_restore_dst_values_from_buffer(
             ithr, b_idx, m_blk_idx, n_blk_idx);
 }
@@ -1764,6 +1771,14 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
     }
 
     const char *get_data_A_mk_ptr(const char *batch_ptr, int m, int k) const {
+        std::cout << "get_data_A_mk_ptr: m=" << m << ", k=" << k << std::endl;
+        std::cout << " offset: " << A_strides_[1] * m << " + "
+                  << A_strides_[0] * k << std::endl;
+        std::cout << " A_strides: ";
+        for (int idx = 0; idx < 3; idx++) {
+            std::cout << A_strides_[idx] << " ";
+        }
+        std::cout << std::endl;
         return batch_ptr + A_strides_[1] * m + A_strides_[0] * k;
     }
 

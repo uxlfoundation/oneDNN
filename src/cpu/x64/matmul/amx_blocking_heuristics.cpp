@@ -64,8 +64,8 @@ void matmul_amx_blocking_params_t::update_configuration(
 
 dim_t matmul_amx_blocking_params_t::get_actual_lda() const {
     if (!need_buf_a_)
-        return treat_A_as_plain ? K : A_strides[1 - transposed_A] / a_dt_sz;
-
+        return treat_A_as_plain ? K
+                                : A_strides[ndims - 1 - transposed_A] / a_dt_sz;
     constexpr int bytes_in_cacheline = 64;
     const int elems_in_cacheline = bytes_in_cacheline / a_dt_sz;
     dim_t lda = rnd_up(k_blk_, elems_in_cacheline);

@@ -57,7 +57,8 @@ public:
         , need_buf_a_(use_buffer_a)
         , extendable_k_(extendable_k)
         , blocking_chunk_mem_size_(0)
-        , efficiency_score_(0.0f) {}
+        , efficiency_score_(0.0f)
+        , ndims(bgmmc.ndims) {}
 
     void update_configuration(brgemm_matmul_conf_t &bgmmc) const;
     float get_blocking_scores() const { return efficiency_score_; }
@@ -89,6 +90,7 @@ protected:
     bool extendable_k_ {false};
     size_t blocking_chunk_mem_size_ {0};
     float efficiency_score_ {0.0};
+    dim_t ndims;
     static constexpr float avx_ipc {1.2f};
     bool is_buffer_c_required() const;
 };

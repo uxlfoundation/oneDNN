@@ -237,13 +237,13 @@ status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
                             dst_md_, get_supported_postops_bcast_strategies());
             if (bcast_type == broadcasting_strategy_t::per_w) {
                 const auto rhs_len = rhs_md_wrap.nelems();
-                if (rhs_len <= 0) continue;
+                const auto rhs_type_size
+                        = types::data_type_size(rhs_md_wrap.data_type());
+                if (rhs_len <= 0 || rhs_type_size <= 0) continue;
 
                 const int vlen = is_superset(conf_.isa, avx512_core)
                         ? cpu_isa_traits_t<avx512_core>::vlen
                         : cpu_isa_traits_t<avx2>::vlen;
-                const auto rhs_type_size
-                        = types::data_type_size(rhs_md_wrap.data_type());
                 const auto simd_w = vlen / rhs_type_size;
                 const auto expanded_len
                         = utils::rnd_up(rhs_len + simd_w, simd_w);

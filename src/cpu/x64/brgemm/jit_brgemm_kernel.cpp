@@ -611,6 +611,10 @@ template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::wei_scales_offset(
         dim_t ld, bool is_tail) const noexcept {
     const dim_t ld_offset = is_tail ? brg.ldb_tail : ld * brg.ld_block;
+    if (types::data_type_size(brg.dt_wei_scales) <= 0) {
+        assert(!"Unsupported weight scales data type.");
+        return 0;
+    }
     return ld_offset * brg.is_oc_scale
             * types::data_type_size(brg.dt_wei_scales);
 }

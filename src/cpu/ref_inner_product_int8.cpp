@@ -64,7 +64,7 @@ status_t ref_inner_product_int8_fwd_t::execute_forward(
     const auto ndims = pd()->ndims();
 
     auto ker = [=](dim_t mb, dim_t oc) {
-        int d = 0;
+        dim_t d = 0;
         for_(dim_t ic = 0; ic < IC; ++ic)
         for_(dim_t kd = 0; kd < KD; ++kd)
         for_(dim_t kh = 0; kh < KH; ++kh)
@@ -84,7 +84,7 @@ status_t ref_inner_product_int8_fwd_t::execute_forward(
     auto sum_dt = pd()->attr()->post_ops_.get_sum_dt(dst_d.data_type());
 
     parallel_nd(MB, OC, [= COMPAT_THIS_CAPTURE](dim_t mb, dim_t oc) {
-        int acc = ker(mb, oc);
+        dim_t acc = ker(mb, oc);
 
         float d = static_cast<float>(acc);
 

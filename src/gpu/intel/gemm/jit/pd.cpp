@@ -58,6 +58,8 @@ status_t pd_t::init_post_ops() {
     using namespace alg_kind;
     using namespace data_type;
 
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_post_ops() **** >");
+
     const auto d = desc();
 
     // Examine post-ops and remember binary srcs.
@@ -150,6 +152,7 @@ status_t pd_t::init_post_ops() {
     };
 
     if (!a_scales.has_default_values() && !a_scales.is_host_scalar()) {
+        VDEBUGINFO(4, primitive, gemm_jit_pd,"MY: init_post_ops() **** ! a_scales has_default");
         // Host scalar scale will be converted to Alpha
         bool converted;
         CHECK(maybe_convert_scales_to_postop(a_scale_md_, DNNL_ARG_A,
@@ -176,6 +179,7 @@ status_t pd_t::init_post_ops() {
                 << "Unable to convert dst scales to a post op";
     }
 
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_post_ops() < **** success");
     return status::success;
 }
 
@@ -209,9 +213,15 @@ bool pd_t::quant_enabled() {
 }
 
 status_t pd_t::init_attrs() {
+
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_attrs ***** >");
+
     wei_decomp_ = wei_decomp();
     dy_quant_enabled_ = dy_quant_enabled();
     quant_enabled_ = quant_enabled();
+
+    //VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ***** : wei_decomp_ dy_quant_enabled_ quant_enabled_ = %d %d %d",wei_decomp_,dy_quant_enabled_,quant_enabled_);
+
     const auto &d = desc();
 
     const auto &attr_zps = attr()->zero_points_;
@@ -231,6 +241,7 @@ status_t pd_t::init_attrs() {
     cmask_a_ = a_zps.get_mask();
     cmask_b_ = b_zps.get_mask();
     cmask_c_ = c_zps.get_mask();
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ***** : recieved(input) cmask_c_ = %d",cmask_c_);
 
     // Swap descriptors to follow column major format
     CHECK(a_zps.get_md(a_zp_md_, d->b_desc));
@@ -250,6 +261,7 @@ status_t pd_t::init_attrs() {
     b_quant.scale_ndims = quant_entry_ndims(b_scales, b_scale_md_, ndims - 1);
     c_quant.scale_ndims = quant_entry_ndims(c_scales, c_scale_md_, -1);
 
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ***** : init pdt:: c_quant.zp_ndims = %d", c_quant.zp_ndims);
     a_quant.scales_type = a_scales.get_data_type();
     a_quant.zp_type = a_zps.get_data_type();
     a_quant.gs_type = a_gs.get_data_type();
@@ -300,11 +312,13 @@ status_t pd_t::init_attrs() {
         c_quant.group_n = c_scales.get_group(0);
         with_mx_scale_ = c_scales.is_mx();
     }
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_attrs < ***** success");
     return status::success;
 }
 
 bool pd_t::zp_ok() {
     using namespace data_type;
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: zp_ok ______ >");
     auto &attr_zps = attr()->zero_points_;
     if (attr_zps.has_default_values()) return true;
     auto &a_zps = attr_zps.get(DNNL_ARG_A);
@@ -368,9 +382,13 @@ bool pd_t::zp_ok() {
     }
 
     if (!attr_zps.has_default_values(DNNL_ARG_C)) {
-        if (!utils::one_of(cmask_c_, 0, mask_scalar, mask_per_oc)) return false;
+        if (!utils::one_of(cmask_c_, 0, mask_scalar, mask_per_oc)) {
+                VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ < false");
+        return false;
+		}
     }
 
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: zp_ok < ______ true");
     return true;
 }
 

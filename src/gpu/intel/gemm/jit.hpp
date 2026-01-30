@@ -52,6 +52,8 @@ struct gen_t : public primitive_t {
             using smask_t = primitive_attr_t::skip_mask_t;
             using arch_t = compute::gpu_arch_t;
 
+            VDEBUGINFO(4, primitive, gemm, "MY init =====>");
+
             assert(engine->kind() == engine_kind::gpu);
             auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
@@ -70,6 +72,7 @@ struct gen_t : public primitive_t {
             dev_info_ = intel_engine->device_info();
             arch_ = dev_info_->gpu_arch();
             int stepping = dev_info_->stepping_id();
+            VDEBUGINFO(4, primitive, gemm, "MY init ==== call init_attrs()");
             VDISPATCH_GEMM_SC(init_attrs(), VERBOSE_UNSUPPORTED_TAG);
 
             const auto d = desc();
@@ -196,10 +199,14 @@ struct gen_t : public primitive_t {
             }
 
             VDISPATCH_GEMM(scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+            VDEBUGINFO(4, primitive, gemm, "MY init ===== scales ok");
             VDISPATCH_GEMM(zp_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
+            VDEBUGINFO(4, primitive, gemm, "MY init ===== zp ok");
             VDISPATCH_GEMM(gs_ok(), VERBOSE_UNSUPPORTED_PR_CFG);
+            VDEBUGINFO(4, primitive, gemm, "MY init ===== gs ok");
 
             VDISPATCH_GEMM_SC(init_post_ops(), VERBOSE_UNSUPPORTED_POSTOP);
+            VDEBUGINFO(4, primitive, gemm, "MY init ===== post ops inited");
 
             bool with_binary = (post_ops_.find(binary) != -1)
                     || (post_ops_.find(prelu) != -1);
@@ -245,16 +252,19 @@ struct gen_t : public primitive_t {
                     : with_sum_ab()    ? d->sum_ab_type
                     : int_acc          ? s32
                                        : d->c_type();
+            VDEBUGINFO(4, primitive, gemm, "MY init ===== : co_type = %d",(int)co_type);
             auto acc_type = int_acc
                     ? s32
                     : (utils::one_of(f64, eff_a_type(), eff_b_type()) ? f64
                                                                       : f32);
+            VDEBUGINFO(4, primitive, gemm, "MY init ===== : acc_type = %d",(int)acc_type);
             VDISPATCH_GEMM(
                     IMPLICATION(acc_type == f64, !with_eltwise && !with_binary),
                     VERBOSE_UNSUPPORTED_POSTOP);
 
             bool need_x32_acc
                     = with_binary || !IMPLICATION(with_sum_, sum_at_begin_);
+            VDEBUGINFO(4, primitive, gemm, "MY init ===== : need_x32_acc = %d",need_x32_acc);
 
             switch (attr()->acc_mode_) {
                 case accumulation_mode::any:
@@ -265,6 +275,7 @@ struct gen_t : public primitive_t {
                 case accumulation_mode::s32: acc_type = data_type::s32; break;
                 default: break;
             }
+            VDEBUGINFO(4, primitive, gemm, "MY init ===== : acc_type = %d",(int)acc_type);
 
             // Handle special compute modes.
             kernel_desc_t::compute_mode mode = kernel_desc_t::mode_default;
@@ -284,6 +295,7 @@ struct gen_t : public primitive_t {
 
             if (wei_decomp_) {
                 acc_type = data_type::f32;
+                VDEBUGINFO(4, primitive, gemm, "MY init ===== set mode_w_decomp");
                 set_mode(mode, kernel_desc_t::mode_w_decomp);
             }
 
@@ -314,6 +326,9 @@ struct gen_t : public primitive_t {
 
             bool print_verbose = get_verbose(verbose_t::debuginfo) >= 5;
             bool kernel_success = false;
+
+            VDEBUGINFO(4, primitive, gemm,"MY init ===== : trying to select kernel");
+
             auto entries = kernel_desc_.select_kernel(arch_, stepping,
                     dev_info_->eu_count(), has_systolic, is_integrated, mode,
                     batch_dims(), eff_transa(), eff_transb(), eff_trans_bias(),
@@ -403,11 +418,14 @@ struct gen_t : public primitive_t {
                     }
                 }
             }
+            VDEBUGINFO(4, primitive, gemm,"MY init ===== : <<<< loop by entries : kernel_success = %d", kernel_success);
 
             VDISPATCH_GEMM(
                     kernel_success, "matching kernel not found in catalog");
 
             init_scratchpad();
+
+            VDEBUGINFO(4, primitive, gemm, "MY init <===== success");
 
             return status::success;
         }
@@ -604,11 +622,15 @@ struct gen_t : public primitive_t {
 
     status_t init_nocopy(impl::engine_t *engine) {
         using namespace data_type;
+
+        VDEBUGINFO(4, primitive, gemm, "MY init_nocopy *****>");
+
         auto kd = pd()->kernel_desc();
 
         CHECK(create_kernel(engine, nocopy_kernel_, "gemm_kernel", *kd));
 
         scalar_type_ = kd->scalar_type();
+        VDEBUGINFO(4, primitive, gemm, "MY init_nocopy ***** : scalar_type_ = %d", (int)scalar_type_);
         const auto *info = nocopy_info();
 
         if (need_zero_pool()) {
@@ -628,6 +650,7 @@ struct gen_t : public primitive_t {
             nocopy_kernel_.save_output_events();
         }
 
+        VDEBUGINFO(4, primitive, gemm, "MY init_nocopy <*****");
         return status::success;
     }
 

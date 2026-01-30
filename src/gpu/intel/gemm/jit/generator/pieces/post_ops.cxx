@@ -108,8 +108,14 @@ template <HW hw>
 void Generator<hw>::binaryOp(BinaryOp op, int simd, const RegData &dst, const RegData &src0, const RegData &src1, CommonState &state)
 {
     switch (op) {
-        case BinaryOp::Add: add(simd, dst, src0, src1); break;
-        case BinaryOp::Sub: add(simd, dst, src0, -src1); break;
+        case BinaryOp::Add:
+            //VDEBUGINFO(4, primitive, gemm, "MY: !!!!! binaryOp Add !!!!! add(simd, dst, src0, src1)");
+            add(simd, dst, src0, src1);
+            break;
+        case BinaryOp::Sub:
+            //VDEBUGINFO(4, primitive, gemm, "MY: binaryOp Sub");
+            add(simd, dst, src0, -src1);
+            break;
         case BinaryOp::Mul: mul(simd, dst, src0, src1); break;
         case BinaryOp::Div: stub();
         case BinaryOp::Min: min_(simd, dst, src0, src1); break;
@@ -133,6 +139,8 @@ template <HW hw>
 void Generator<hw>::gemmScalarBinaryOpC(BinaryOp op, Type Tco, const GRFMultirange &offsets,
                                         const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
+    VDEBUGINFO(4, primitive, gemm, "MY: gemmScalarBinaryOpC $$$$$$ >>>>");
+
     auto Tacc = state.Tacc;
     auto offsetTc = offsets[0].sub(0, Tacc.ngen());
 
@@ -148,6 +156,7 @@ void Generator<hw>::gemmScalarBinaryOpC(BinaryOp op, Type Tco, const GRFMultiran
     map(hw, state.Tacc, state.C_regs[0], state.C_layout, strategy, [&](int simd, const RegData &r) {
         binaryOp(op, simd, r, r, offsetTc, state);
     });
+    VDEBUGINFO(4, primitive, gemm, "MY: gemmScalarBinaryOpC (hostscalar) $$$$$$ <<<<");
 }
 
 // Apply binary operation to C with a vector operand, optionally multiplied by a scalar.
@@ -239,6 +248,10 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
                                   Subregister base, Subregister ld,
                                   const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
+
+    VDEBUGINFO(4, primitive, gemm, "MY: gemmBinaryOpC ***** >>>>");
+    VDEBUGINFO(4, primitive, gemm, "MY: gemmBinaryOpC ***** input: row = %d column = %d", row, column);
+
     std::vector<GRFRange> CO_addrs;
     std::vector<MaskAssignment> masks;
     auto globalCM = state.C_layout.colMajor();
@@ -252,6 +265,7 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
 
     bool matrix = row && column;
     if (matrix) {
+        //VDEBUGINFO(4, primitive, gemm, "MY: gemmBinaryOpC *****");
         // Matrix case implemented as loop over rows/columns, depending on C's layout.
         row &= globalCM;
         column &= !globalCM;
@@ -259,6 +273,7 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
                                  CO_strategy.base.isStateless() ? AccessType::Scattered
                                                                 : AccessType::ChannelScattered;
     } else {
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmBinaryOpC *****");
         CO.layout = column ? MatrixLayout::T : MatrixLayout::N;
         CO_strategy.accessType = AccessType::Block;
     }
@@ -275,11 +290,16 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
     allocAddrRegs(CO_addrs, CO_layout, state);
     setupAddr(CO_addrs, base, CO_layout, ld, strategy, state);
 
-    if (!assignMasks(CO_layout, LoopM, LoopN, masks, strategy, state, true)) return false;
+    if (!assignMasks(CO_layout, LoopM, LoopN, masks, strategy, state, true)){
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmBinaryOpC *****");
+        return false;
+    }
 
+    VDEBUGINFO(4, primitive, gemm, "MY: gemmBinaryOpC ***** load masks");
     loadMasks(masks, state.remainders, strategy, state);
 
     if (matrix) {
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmBinaryOpC *****");
         auto LoopY = globalCM ? LoopN : LoopM;
         auto unrollY = strategy.unroll[LoopY];
         auto remY = state.remainders[LoopY];
@@ -362,22 +382,29 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
         mark(lDone);
         if (simtCF) join(16);
     } else {
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmBinaryOpC ***** else if(matrix)");
         auto CO_regs = state.ra.allocRange(CO_layout.regs());
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmBinaryOpC ***** call loadMatrix()");
         loadMatrix(CO_regs, CO_layout, CO_addrs, strategy, state);
         if (recip) map(hw, Tco, CO_regs, CO_regs, strategy, [&](int simd, GRF r, GRF) {
             inv(simd, r, r);
         });
 
-        if (!row && !column)
+        if (!row && !column){
+            VDEBUGINFO(4, primitive, gemm, "MY: gemmBinaryOpC ***** call gemmScalarBinaryOpC");
             gemmScalarBinaryOpC(op, Tco, CO_regs, problem, strategy, state);
-        else
+        } else{
             gemmVectorBinaryOpC(op, column, CO_regs, Subregister(), problem, strategy, state, Tco, CO_layout);
+        }
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmBinaryOpC ***** state.ra.safeRelease(CO_regs);");
         state.ra.safeRelease(CO_regs);
     }
 
     safeReleaseMaskAssignments(masks, state);
+    VDEBUGINFO(4, primitive, gemm, "MY: gemmBinaryOpC ***** safeReleaseRanges(CO_addrs, state)");
     safeReleaseRanges(CO_addrs, state);
 
+    VDEBUGINFO(4, primitive, gemm, "MY: gemmBinaryOpC ***** <<<<<");
     return true;
 }
 
@@ -385,6 +412,9 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
 template <HW hw>
 bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
+    //VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch >>>>>>> enter, cOffset=%d, cOffsetHostScalar=%d", int(problem.cOffset), problem.cOffsetHostScalar());
+    //VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ >>>>>");
+
     Label labelCOColumn, labelCORow, labelCOMatrix, labelCODone;
     bool doMatrix = problem.allowMatrixOffset();
     auto Tco = problem.Tco;
@@ -415,6 +445,7 @@ bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const G
     if (state.flagSwizzle.isValid()) state.raVFlag.claim(state.flagSwizzle);
 
     status << "Applying fixed C offset" << status_stream::endl;
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ Applying fixed C offset - call gemmBinaryOpC(add, false, false, ...)");
     ok = ok && gemmBinaryOpC(BinaryOp::Add, false, false, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
     jmpi(1, labelCODone);
 
@@ -426,6 +457,7 @@ bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const G
 
     mark(labelCORow);
     status << "Applying row-wise C offset" << status_stream::endl;
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ Applying row-wise C offset");
     ok = ok && gemmBinaryOpC(BinaryOp::Add, true, false, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
 
     if (doMatrix) {
@@ -433,16 +465,19 @@ bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const G
 
         mark(labelCOMatrix);
         status << "Applying matrix C offset" << status_stream::endl;
+            VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ ");
         ok = ok && gemmBinaryOpC(BinaryOp::Add, true, true, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
     }
 
     mark(labelCODone);
 
     if (!strategy.persistentLoop()) {
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ ");
         state.ra.safeRelease(ldco);
         state.ra.safeRelease(effCO);
     }
 
+    VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ <<<<<");
     return ok;
 }
 

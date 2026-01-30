@@ -72,6 +72,9 @@ cold_cache_t::cold_cache_t(
     size_t full_args_size = 0;
     for (auto &e : dnnl_args) {
         if (!e.memory) continue;
+        // Scratchpad is never meant to be cold, remove it from counting.
+        if (e.arg == DNNL_ARG_SCRATCHPAD) continue;
+
         full_args_size += dnnl_memory_desc_get_size(query_md(e.memory));
     }
     size_t hot_args_size = full_args_size;
@@ -85,9 +88,11 @@ cold_cache_t::cold_cache_t(
         hot_args_size -= wei_size;
         cold_args_size += wei_size;
     } else if (cold_cache_input_.cold_cache_mode_ == cold_cache_mode_t::all) {
-        cc_args.resize(dnnl_args.size());
-        for (size_t i = 0; i < dnnl_args.size(); i++) {
-            cc_args[i] = dnnl_args[i].arg;
+        cc_args.reserve(dnnl_args.size());
+        for (auto &e : dnnl_args) {
+            if (e.arg == DNNL_ARG_SCRATCHPAD) continue;
+
+            cc_args.push_back(e.arg);
         }
         hot_args_size = 0;
         cold_args_size = full_args_size;

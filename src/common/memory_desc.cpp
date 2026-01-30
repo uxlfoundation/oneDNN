@@ -239,27 +239,26 @@ status_t memory_desc_init_with_grouped_encoding(memory_desc_t &memory_desc,
             ndims, dims, data_type, format_kind::undef);
     VCHECK_MEMORY(args_ok, invalid_arguments, VERBOSE_MEM_DESC_CHECK_FAIL);
 
-    VCHECK_MEMORY(
-            group_count > 0, invalid_arguments, "group_count must be positive");
+    VCHECK_MEMORY(group_count > 0, invalid_arguments, VERBOSE_BAD_PARAM,
+            "group_count");
 
     // Validate offsets data type
     VCHECK_MEMORY(offsets_dt == data_type::s32, invalid_arguments,
-            "offsets_dt must be an integer s32 type");
+            VERBOSE_INVALID_DATATYPE, "offsets");
 
     // Validate variable dimension index
     VCHECK_MEMORY(variable_dim_idx >= 0 && variable_dim_idx < ndims,
-            invalid_arguments, "variable_dim_idx must be in range [0, ndims)");
+            invalid_arguments, VERBOSE_BAD_PARAM, "variable_dim_idx");
 
     // Currently only first dimension can be variable
-    VCHECK_MEMORY(variable_dim_idx == 0, unimplemented,
-            "grouped encoding currently only supports variable first dimension "
-            "(M dimension).");
+    VCHECK_MEMORY(variable_dim_idx == 0, unimplemented, VERBOSE_BAD_PARAM,
+            "variable_dim_idx");
 
     for (int d = 0; d < ndims; ++d) {
         VCHECK_MEMORY(dims[d] != DNNL_RUNTIME_DIM_VAL, invalid_arguments,
-                "runtime dimensions not supported for grouped encoding");
-        VCHECK_MEMORY(dims[d] > 0, invalid_arguments,
-                "zero dimensions not supported for grouped encoding");
+                VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+        VCHECK_MEMORY(
+                dims[d] > 0, invalid_arguments, VERBOSE_BAD_DIM, "dims", d);
     }
 
     dim_t K = dims[1]; // Uniform dimension

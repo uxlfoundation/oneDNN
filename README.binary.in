@@ -4,7 +4,7 @@ oneAPI Deep Neural Network Library (oneDNN)
 oneAPI Deep Neural Network Library (oneDNN) is an open-source cross-platform
 performance library of basic building blocks for deep learning applications.
 oneDNN is part of oneAPI (https://oneapi.io).
-The library is optimized for Intel(R) Architecture Processors
+The library is optimized for Intel(R) 64/AMD64 based processors
 and Intel Graphics.
 
 oneDNN is intended for deep learning applications and framework

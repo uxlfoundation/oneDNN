@@ -10,9 +10,9 @@ performance library of basic building blocks for deep learning applications.
 oneDNN project is part of the [UXL Foundation] and is an implementation
 of the [oneAPI specification] for oneDNN component.
 
-The library is optimized for Intel(R) Architecture Processors, Intel Graphics,
-and Arm(R) 64-bit Architecture (AArch64)-based processors. oneDNN has
-experimental support for the following architectures: NVIDIA\* GPU,
+The library is optimized for Intel 64/AMD64 architecture based processors,
+Arm(R) 64-bit Architecture (AArch64)-based processors, and Intel Graphics.
+oneDNN has experimental support for the following architectures: NVIDIA\* GPU,
 AMD\* GPU, OpenPOWER\* Power ISA (PPC64), IBMz\* (s390x), and RISC-V.
 
 oneDNN is intended for deep learning applications and framework
@@ -129,7 +129,7 @@ The library is optimized for the following GPUs:
 ### Requirements for Building from Source
 
 oneDNN supports systems meeting the following requirements:
-* Operating system with Intel 64 / Arm 64 / Power / IBMz architecture support
+* Operating system with Intel 64/AMD64, AArch 64, PPC64, or s390x architecture support
 * C++ compiler with C++11 standard support
 * [CMake] 3.13 or later
 
@@ -154,9 +154,9 @@ dependencies.
 
 #### CPU Engine
 
-oneDNN CPU engine is used to execute primitives on Intel Architecture
-Processors, 64-bit Arm Architecture (AArch64) processors,
-64-bit Power ISA (PPC64) processors, IBMz (s390x), and compatible devices.
+oneDNN CPU engine is used to execute primitives on Intel 64/AMD64 based processors,
+64-bit Arm Architecture (AArch64) processors, 64-bit Power ISA (PPC64) processors,
+IBMz (s390x), and compatible devices.
 
 The CPU engine is built by default but can be disabled at build time by setting
 `ONEDNN_CPU_RUNTIME` to `NONE`. In this case, GPU engine must be enabled.

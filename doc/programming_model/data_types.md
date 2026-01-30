@@ -164,10 +164,9 @@ While all the platforms oneDNN supports have hardware acceleration for
 fp32 arithmetics, that is not the case for other data types. Support
 for low precision data types may not be available for older
 platforms. The next sections explain limitations that exist for low
-precision data types for Intel(R) Architecture processors, Intel
-Processor Graphics and Xe Architecture graphics.
+precision data types for Intel 64/AMD64 based processors and Intel Graphpics.
 
-### Intel(R) Architecture Processors
+### Intel 64/AMD64 Processors
 
 oneDNN performance optimizations for Intel Architecture Processors are
 specialized based on Instruction Set Architecture (ISA). The following
@@ -205,11 +204,11 @@ Footnotes:
    This can lead to scenarios where a f16 primitive may perform slower than
    similar f32 primitive.
 
-### Intel(R) Processor Graphics and Xe Architecture graphics
-oneDNN performance optimizations for Intel Processor graphics and
-Xe Architecture graphics are specialized based on device microarchitecture (uArch).
-The following uArchs and associated devices have specialized optimizations in the
-library:
+### Intel Graphics
+
+oneDNN performance optimizations for Intel Graphics are specialized based on
+device microarchitecture (uArch). The following uArchs and associated devices
+have specialized optimizations in the library:
  * Xe-LP
    * Intel UHD Graphics for 11th-14th Gen Intel(R) Processors
    * Intel Iris Xe Graphics

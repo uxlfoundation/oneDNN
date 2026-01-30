@@ -110,17 +110,18 @@ require the use of run-time controls to enable them. See
 > [Linking Guide] for more details.
 
 The library is optimized for the following GPUs:
-* Intel Graphics for 11th-14th Generation Intel Core Processors
-* Intel Iris Xe MAX Graphics (formerly DG1)
-* Intel Arc(TM) A-Series Graphics (formerly Alchemist)
-* Intel Data Center GPU Flex Series (formerly Arctic Sound)
-* Intel Data Center GPU Max Series (formerly Ponte Vecchio)
-* Intel Graphics and Intel Arc Graphics for Intel Core Ultra processors
-  (formerly Meteor Lake, Arrow Lake and Lunar Lake)
-* Intel Arc B-Series Graphics and Intel Arc Pro B-Series Graphics
-  (formerly Battlemage)
-* Intel Arc Graphics for future Intel Core Ultra processors
-  (code name Panther Lake)
+* Intel discrete GPUs:
+  * Intel Iris Xe MAX Graphics (formerly DG1)
+  * Intel Arc(TM) A-Series Graphics (formerly Alchemist)
+  * Intel Data Center GPU Flex Series (formerly Arctic Sound)
+  * Intel Data Center GPU Max Series (formerly Ponte Vecchio)
+  * Intel Arc B-Series Graphics and Intel Arc Pro B-Series Graphics
+   (formerly Battlemage)
+* Intel Graphics integrated with:
+  * 11th-14th Generation Intel Core Processors
+  * Intel Graphics for Intel Core Ultra Series 1 processors (formerly Meteor Lake)
+  * Intel Graphics for Intel Core Ultra Series 2 processors (formerly Arrow Lake and Lunar Lake)
+  * Intel Graphics for Intel Core Ultra Series 3 processors (formerly Panther Lake)
 
 [CPU dispatcher control]: https://uxlfoundation.github.io/oneDNN/dev_guide_cpu_dispatcher_control.html
 [Linking Guide]: https://uxlfoundation.github.io/oneDNN/dev_guide_link.html

@@ -41,15 +41,14 @@ explicitly permits in-place computations
 On certain architectures, proper memory alignment is required to maximize
 efficiency and avoid runtime issues when using oneDNN primitives.
 
-### Intel(R) Architecture Processors
+### Intel 64/AMD64 based processors
 
 No memory alignment requirements.
 
-### Intel(R) Processor Graphics and Xe Architecture graphics
+### Intel Graphics
 
-For Intel Processor graphics and Xe Architecture graphics, oneDNN requires a
-minimum memory alignment of 64 bytes, with 128 bytes recommended for optimal
-performance.
+For Intel Graphics oneDNN requires a minimum memory alignment of 64 bytes,
+with 128 bytes recommended for optimal performance.
 
 If your use case requires element-wise alignment, as a possible workaround, you
 can use the reference primitive implementation which provides functional

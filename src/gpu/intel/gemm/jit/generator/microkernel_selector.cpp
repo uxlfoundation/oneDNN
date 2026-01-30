@@ -204,23 +204,26 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
     }();
 
     /* Call kernel selector */
-    EvaluateAuxOutput auxParams;
-    const kcatalog::Entry * entry = nullptr;
-    auto entries = select(catalog, 1, &matchParams, evalParams, auxParams, observer);
+    const EvaluateAuxOutput* auxParams;
+    const kcatalog::Entry* entry = nullptr;
+    auto entries = collect_kernels(catalog, 1, &matchParams, evalParams, observer);
     // First, attempt to find a strategy that matches the protocol's options
-    for(const auto* this_entry: entries) {
+    for(const auto& this_entry: entries) {
         GEMMStrategy strategy(hw, stepping);
-        strategy.unroll[LoopM] = this_entry->driverInfo.unroll[LoopM];
-        strategy.unroll[LoopN] = this_entry->driverInfo.unroll[LoopN];
-        parseStrategy(this_entry->strategy, hw, problem, strategy);
+        strategy.unroll[LoopM] = this_entry.entry->driverInfo.unroll[LoopM];
+        strategy.unroll[LoopN] = this_entry.entry->driverInfo.unroll[LoopN];
+        parseStrategy(this_entry.entry->strategy, hw, problem, strategy);
         if (!kParallelLocal && strategy.kParallelLocal) continue;
-        entry = this_entry;
+        entry = this_entry.entry;
+        auxParams = &this_entry.aux;
         break;
     }
 
     // If unsuccessful, we can pick the first strategy and modify the parameters to fit the protocol
-    if (entry == nullptr && entries.size() > 0)
-        entry = entries[0];
+    if (entry == nullptr && entries.size() > 0) {
+        entry = entries[0].entry;
+        auxParams = &entries[0].aux;
+    }
 
     GEMMStrategy strategy(hw, stepping);
 
@@ -233,7 +236,7 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
         strategy.unroll[LoopN] = entry->driverInfo.unroll[LoopN];
         parseStrategy(entry->strategy, hw, problem, strategy);
         adjustStrategy(hw, problem, strategy);
-        modifyStrategy(strategy, auxParams);
+        modifyStrategy(strategy, *auxParams);
 
         /* Xe2-XeHPC compatibility logic */
         if (hw == ngen::HW::Xe2 || hw == ngen::HW::Xe3) {

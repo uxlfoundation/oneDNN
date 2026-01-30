@@ -558,6 +558,7 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
         problem_.CO.crosspack = 1;
         problem_.CO.alignment = problem_.C.alignment;
         problem_.CO.layout = trans_co ? MatrixLayout::T : MatrixLayout::N;
+        problem_.coPtrDims = c_quant.zp_host_scalar ? -1 : c_quant.zp_ndims;
     }
 
     problem_.sumA = (reduce_ab == sum_ab::sum_b_col);
@@ -1021,11 +1022,16 @@ void gen_kernel_t::init_interface() {
     }
     if (problem.hasCMXScale()) interface_.newArgument("ldcq", DataType::d);
     if (problem.cOffset != COffset::None || problem.sumA || problem.sumB) {
-        interface_.newArgument(
-                "CO", ExternalArgumentType::GlobalPtr, co_access);
+        if (!problem.cOffsetHostScalar()) {
+            interface_.newArgument(
+                    "CO", ExternalArgumentType::GlobalPtr, co_access);
+        }
         interface_.newArgument("offset_CO", DataType::q);
         if (problem.cOffset == COffset::Pre)
             interface_.newArgument("ldco", DataType::d);
+    }
+    if (problem.cOffsetHostScalar()) {
+        interface_.newArgument("co_host_scalar", DataType::w);
     }
     if (problem.postOps.cStochasticRound) {
         interface_.newArgument("sround_seed", ExternalArgumentType::GlobalPtr);

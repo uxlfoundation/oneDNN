@@ -490,6 +490,23 @@ void Generator<hw>::gemmLoadBinaryOpArgs(const GEMMProblem &problem, const GEMMS
         state.ra.claim(*arg);
     }
 
+    // CTI: Shift to the starting column + increase LDs due to interleaving
+    if (strategy.cInterleaveChunk > 1) {
+        for (size_t i = 0; i < problem.postOps.len(); i++) {
+            auto offset = state.inputs.binaryOffsets[i];
+            if (!offset.isValid()) continue;
+
+            bool row = problem.postOps.binaryRow[i];
+            bool col = problem.postOps.binaryCol[i];
+            if (!(row && col)) continue;
+            
+            auto ld = state.inputs.binaryLDs[i];
+            emad(1, offset, offset, state.ctiShiftJ0, ld, strategy, state);
+            mulConstant(1, ld, ld, strategy.cInterleaveChunk);
+        }
+        if (!strategy.persistentLoop()) state.ra.safeRelease(state.ctiShiftJ0);
+    }
+
     state.ra.safeRelease(temp);
 }
 

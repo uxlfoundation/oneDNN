@@ -35,12 +35,19 @@ namespace gpu {
 namespace intel {
 namespace gemm {
 
+bool check_memory_storage(const memory_storage_t *storage, const char *name) {
+    if (storage && *storage) return true;
+    VERROR(primitive, gpu, "%s,%s: %s", "jit::gemm", "argument is not set",
+            name);
+    return false;
+}
+
 status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         intel::stream_t *compute_stream, zero_pool_t *zero_pool,
         const memory_storage_t &a, const memory_storage_t &b,
         const memory_storage_t &c, const memory_storage_t *ao,
-        const memory_storage_t *bo, int16_t ao_hostscalar,
-        int16_t bo_hostscalar, const memory_storage_t *a_scales,
+        const memory_storage_t *bo, int16_t ao_host_scalar,
+        int16_t bo_host_scalar, const memory_storage_t *a_scales,
         const memory_storage_t *b_scales, const memory_storage_t *c_scales,
         const memory_storage_t *ag, const memory_storage_t *bg,
         const memory_storage_t &co, const memory_storage_t *c_temp,
@@ -49,7 +56,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         int64_t offset_c, int64_t offset_aq, int64_t offset_bq,
         int64_t offset_co, int64_t *offset_po_src, int32_t lda, int32_t ldb,
         int32_t ldc, int32_t m, int32_t n, int32_t k, int32_t k0, float alpha,
-        float beta, int32_t cmask, bool last_k_block, bool swapab,
+        float beta, int32_t cmask, bool last_k_block, bool swap_ab,
         bool disable_hilbert) const {
     if (pd()->desc()->batch() == 0) return status::success;
 
@@ -87,13 +94,19 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         arg_list.set(argn++, *ao);
     if (pd()->with_b_zero_points() && !problem->bOffsetHostScalar())
         arg_list.set(argn++, *bo);
-    if (problem->aOffsetHostScalar()) arg_list.set(argn++, ao_hostscalar);
-    if (problem->bOffsetHostScalar()) arg_list.set(argn++, bo_hostscalar);
+    if (problem->aOffsetHostScalar()) arg_list.set(argn++, ao_host_scalar);
+    if (problem->bOffsetHostScalar()) arg_list.set(argn++, bo_host_scalar);
     if (problem->aScale2D()) arg_list.set(argn++, *a_scales);
     if (problem->bScale2D()) arg_list.set(argn++, *b_scales);
-    if (problem->needsAGroupSums()) arg_list.set(argn++, *ag);
-    if (problem->needsBGroupSums()) arg_list.set(argn++, *bg);
     if (pd()->with_mx_scale()) arg_list.set(argn++, *c_scales);
+    if (problem->needsAGroupSums()) {
+        if (!check_memory_storage(ag, "ag")) return status::runtime_error;
+        arg_list.set(argn++, *ag);
+    }
+    if (problem->needsBGroupSums()) {
+        if (!check_memory_storage(bg, "bg")) return status::runtime_error;
+        arg_list.set(argn++, *bg);
+    }
 
     if (problem->aOffset2D() || problem->aScale2D()
             || problem->needsAGroupSums()) {
@@ -292,9 +305,9 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         arg_list.set(argn++, slm, nullptr);
     }
 
-    if (pd()->ao_dims_ > 0 || problem->aScale2D())
+    if (pd()->a_quant.zp_ndims > 0 || problem->aScale2D())
         arg_list.set(argn++, offset_aq);
-    if (pd()->bo_dims_ > 0 || problem->bScale2D())
+    if (pd()->b_quant.zp_ndims > 0 || problem->bScale2D())
         arg_list.set(argn++, offset_bq);
 
     lws[0] *= nocopy_info()->subgroupSize;
@@ -332,7 +345,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     const auto d = pd()->desc();
     const auto &problem = *pd()->kernel_desc()->problem();
 
-    const bool swapab = pd()->swap_ab();
+    const bool swap_ab = pd()->swap_ab();
 
     auto a_type = pd()->eff_a_type();
     auto b_type = pd()->eff_b_type();
@@ -358,8 +371,8 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
             = (nocopy_info()->kParallel() || nocopy_info()->kParallelLocal())
             && !nocopy_info()->kParallelVariable();
 
-    auto &a = swapab ? GEMM_CTX_ARG_STORAGE(a) : GEMM_CTX_ARG_STORAGE(b);
-    auto &b = swapab ? GEMM_CTX_ARG_STORAGE(b) : GEMM_CTX_ARG_STORAGE(a);
+    auto &a = swap_ab ? GEMM_CTX_ARG_STORAGE(a) : GEMM_CTX_ARG_STORAGE(b);
+    auto &b = swap_ab ? GEMM_CTX_ARG_STORAGE(b) : GEMM_CTX_ARG_STORAGE(a);
     auto &c = GEMM_CTX_ARG_STORAGE(c);
     auto &c_zp = GEMM_CTX_ARG_STORAGE(c_zero_point);
     auto &bias = GEMM_CTX_ARG_STORAGE(bias);
@@ -370,8 +383,8 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     const memory_storage_t *a_scales = nullptr, *b_scales = nullptr;
     const memory_storage_t *c_scales = nullptr;
     const memory_storage_t *ag = nullptr, *bg = nullptr;
-    int16_t ao_hostscalar = 0;
-    int16_t bo_hostscalar = 0;
+    int16_t ao_host_scalar = 0;
+    int16_t bo_host_scalar = 0;
 
     std::unique_ptr<memory_storage_t> c_temp;
     if (nocopy_info()->needsTempC()) {
@@ -459,14 +472,14 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     if (pd()->with_a_zero_points() || pd()->with_b_zero_points()) {
         ao = &GEMM_CTX_ARG_STORAGE(a_zero_point);
         bo = &GEMM_CTX_ARG_STORAGE(b_zero_point);
-        int a_hostscalar_val = 0;
-        int b_hostscalar_val = 0;
+        int a_host_scalar_val = 0;
+        int b_host_scalar_val = 0;
         if (ao->is_host_scalar())
-            CHECK(maybe_get_host_scalar_value(*ao, a_hostscalar_val));
+            CHECK(maybe_get_host_scalar_value(*ao, a_host_scalar_val));
         if (bo->is_host_scalar())
-            CHECK(maybe_get_host_scalar_value(*bo, b_hostscalar_val));
-        ao_hostscalar = static_cast<int16_t>(-1 * a_hostscalar_val);
-        bo_hostscalar = static_cast<int16_t>(-1 * b_hostscalar_val);
+            CHECK(maybe_get_host_scalar_value(*bo, b_host_scalar_val));
+        ao_host_scalar = static_cast<int16_t>(-1 * a_host_scalar_val);
+        bo_host_scalar = static_cast<int16_t>(-1 * b_host_scalar_val);
     }
 
     // Convert host scalar scales to Alpha
@@ -502,7 +515,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     if (problem.needsAGroupSums()) ag = &GEMM_CTX_ARG_STORAGE(a_group_sums);
     if (problem.needsBGroupSums()) bg = &GEMM_CTX_ARG_STORAGE(b_group_sums);
 
-    if (swapab) {
+    if (swap_ab) {
         std::swap(ao, bo);
         std::swap(a_scales, b_scales);
         std::swap(ag, bg);
@@ -543,11 +556,11 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         if (k_parallel_global && !nocopy_info()->fusedBeta() && beta != 1.0f
                 && (k > k0 * pd()->kernel_desc()->aux_params()->wgK)) {
             status = launch_nocopy(ctx, compute_stream, zero_pool, a, b, c, ao,
-                    bo, ao_hostscalar, bo_hostscalar, a_scales, b_scales,
+                    bo, ao_host_scalar, bo_host_scalar, a_scales, b_scales,
                     c_scales, ag, bg, *co, nullptr, sround_seed, po_count,
                     po_srcs, off_a0, off_b0, off_c0, off_aq0, off_bq0, off_co0,
                     po_offsets0, lda, ldb, ldc, m, n, 0, 1, 1.0f, beta, 0,
-                    false, swapab, true);
+                    false, swap_ab, true);
             if (status) return status;
             beta = 1.0f;
         }
@@ -576,8 +589,8 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
 
                 auto off_aq = off_aq0;
                 auto off_bq = off_bq0;
-                if (pd()->ao_dims_ >= 1 || a_scales) off_aq += Bm;
-                if (pd()->bo_dims_ >= 1 || b_scales) off_bq += Bn;
+                if (pd()->a_quant.zp_ndims >= 1 || a_scales) off_aq += Bm;
+                if (pd()->b_quant.zp_ndims >= 1 || b_scales) off_bq += Bn;
 
                 auto off_co = off_co0;
                 switch (cmask & 3) {
@@ -607,13 +620,13 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
 
                 float eff_beta = (Bk == 0) ? beta : 1.0f;
                 status = launch_nocopy(ctx, compute_stream, zero_pool, a, b, c,
-                        ao, bo, ao_hostscalar, bo_hostscalar, a_scales,
+                        ao, bo, ao_host_scalar, bo_host_scalar, a_scales,
                         b_scales, c_scales, ag, bg, *co, c_temp.get(),
                         sround_seed, po_count, po_srcs, off_a_src, off_b_src,
                         off_c, off_aq, off_bq, off_co, po_offsets, lda, ldb,
                         ldc, into<int32_t>(size_m), into<int32_t>(size_n),
                         into<int32_t>(size_k), k0, alpha, eff_beta, cmask,
-                        last_k_block, swapab, disable_hilbert);
+                        last_k_block, swap_ab, disable_hilbert);
 
                 if (status) return status;
             }

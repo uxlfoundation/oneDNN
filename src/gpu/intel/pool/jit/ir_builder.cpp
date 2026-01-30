@@ -475,9 +475,8 @@ stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
                     = compute_stmt.append(store_t::make(acc_buf, off_a, op));
         }
 
-        stmt = stmt.append(schedule.create_loop_nest((check_idhw)
-                        ? fill_stmt.append(compute_stmt)
-                        : std::move(compute_stmt)));
+        stmt = stmt.append(schedule.create_loop_nest(
+                (check_idhw) ? fill_stmt.append(compute_stmt) : compute_stmt));
 
         if (!cfg.is_max()) {
             expr_t filter(prb.kd * prb.kh * prb.kw);

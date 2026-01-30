@@ -85,6 +85,13 @@ public:
 #endif
     }
 };
+
+inline std::unique_ptr<ocl::engine_factory_t> get_engine_factory(
+        engine_kind_t engine_kind) {
+    return std::unique_ptr<ocl::engine_factory_t>(
+            new ocl::engine_factory_t(engine_kind));
+}
+
 } // namespace ocl
 } // namespace xpu
 } // namespace impl

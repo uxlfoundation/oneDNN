@@ -273,8 +273,8 @@ Common dependencies:
 
 Runtime-specific dependencies:
 
-| Runtime configuration    | Compiler                      | Dependency
-| :----------------------- | :---------------------------- | :---------
+| Runtime configuration      | Compiler                      | Dependency
+| :------------------------- | :---------------------------- | :---------
 | `ONEDNN_CPU_RUNTIME=OMP`   | GCC                           | GNU OpenMP runtime (`libgomp.so`)
 | `ONEDNN_CPU_RUNTIME=OMP`   | Intel C/C++ Compiler          | Intel OpenMP runtime (`libiomp5.so`)
 | `ONEDNN_CPU_RUNTIME=OMP`   | Clang                         | Intel OpenMP runtime (`libiomp5.so`)
@@ -290,8 +290,8 @@ Common dependencies:
 
 Runtime-specific dependencies:
 
-| Runtime configuration    | Compiler                      | Dependency
-| :----------------------- | :---------------------------- | :---------
+| Runtime configuration      | Compiler                      | Dependency
+| :------------------------- | :---------------------------- | :---------
 | `ONEDNN_CPU_RUNTIME=OMP`   | Microsoft Visual C++ Compiler | No additional requirements
 | `ONEDNN_CPU_RUNTIME=OMP`   | Intel C/C++ Compiler          | Intel OpenMP runtime (`iomp5.dll`)
 | `ONEDNN_CPU_RUNTIME=TBB`   | any                           | TBB (`tbb.dll`)
@@ -306,8 +306,8 @@ Common dependencies:
 
 Runtime-specific dependencies:
 
-| Runtime configuration  | Compiler                      | Dependency
-| :--------------------- | :---------------------------- | :---------
+| Runtime configuration    | Compiler                      | Dependency
+| :----------------------- | :---------------------------- | :---------
 | `ONEDNN_CPU_RUNTIME=OMP` | Intel C/C++ Compiler          | Intel OpenMP runtime (`libiomp5.dylib`)
 | `ONEDNN_CPU_RUNTIME=TBB` | any                           | TBB (`libtbb.dylib`)
 

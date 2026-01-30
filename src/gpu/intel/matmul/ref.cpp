@@ -35,10 +35,10 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
     auto &src_scales = CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
     auto &wei_scales = CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
 
-    const bool mx_scales = pd()->mx_scales_;
-    auto &dst_scales
-            = (mx_scales ? CTX_OUT_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST)
-                         : CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST));
+    const bool dyn_scales = pd()->dynamic_scales_;
+    auto &dst_scales = (dyn_scales
+                    ? CTX_OUT_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST)
+                    : CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST));
     const auto &a0 = CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
     const auto &b0
             = CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
@@ -256,13 +256,13 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
     auto tmp = ctx.get_scratchpad_grantor().get_memory_storage(
             memory_tracking::names::key_matmul_pack_space);
     auto tmp_ds = ctx.get_scratchpad_grantor().get_memory_storage(
-            memory_tracking::names::key_matmul_mx_scale_space);
+            memory_tracking::names::key_matmul_dyn_scale_space);
 
     compute::kernel_arg_list_t arg_list;
     int arg_idx = 0;
     arg_list.set(arg_idx++, a);
     arg_list.set(arg_idx++, b);
-    arg_list.set(arg_idx++, mx_scales ? *tmp_ds : (subbyte_pack ? *tmp : c));
+    arg_list.set(arg_idx++, dyn_scales ? *tmp_ds : (subbyte_pack ? *tmp : c));
     arg_list.set(arg_idx++, bias);
     arg_list.set(arg_idx++, a0);
     arg_list.set(arg_idx++, src_zp_stride_k);
@@ -382,33 +382,33 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
 
     compute::range_t gws = {1, (size_t)N, (size_t)(D0 * D1 * D2 * D3)};
     auto nd_range = compute::nd_range_t(gws);
-    int kidx = 0;
 
-    CHECK(parallel_for(ctx, nd_range, kernels_[kidx++], arg_list));
+    CHECK(parallel_for(ctx, nd_range, kernels_[0], arg_list));
 
     CHECK(ctx.zero_pad_output(DNNL_ARG_DST));
 
-    if (mx_scales) {
-        compute::kernel_arg_list_t mx_scale_arg_list;
+    if (dyn_scales) {
+        const auto group_size
+                = pd()->attr()->scales_.get_group(DNNL_ARG_DST, -1);
+        compute::kernel_arg_list_t arg_list;
         int arg_idx = 0;
-        mx_scale_arg_list.set(arg_idx++, *tmp_ds);
-        mx_scale_arg_list.set(arg_idx++, subbyte_pack ? *tmp : c);
-        mx_scale_arg_list.set(arg_idx++, dst_scales);
-        mx_scale_arg_list.set(arg_idx++, 32);
-        mx_scale_arg_list.set(arg_idx++, D0);
-        mx_scale_arg_list.set(arg_idx++, D1);
-        mx_scale_arg_list.set(arg_idx++, D2);
-        mx_scale_arg_list.set(arg_idx++, c_stride[5]);
-        mx_scale_arg_list.set(arg_idx++, c_stride[4]);
-        mx_scale_arg_list.set(arg_idx++, c_stride[3]);
-        mx_scale_arg_list.set(arg_idx++, c_stride[2]);
-        mx_scale_arg_list.set(arg_idx++, c_stride[1]);
-        mx_scale_arg_list.set(arg_idx++, c_stride[0]);
-        compute::range_t mx_scale_gws(
-                {(size_t)M, (size_t)N / 32, (size_t)(D0 * D1 * D2 * D3)});
-        compute::nd_range_t mx_scale_nd_range(mx_scale_gws);
-        CHECK(parallel_for(
-                ctx, mx_scale_nd_range, kernels_[kidx++], mx_scale_arg_list));
+        arg_list.set(arg_idx++, *tmp_ds);
+        arg_list.set(arg_idx++, subbyte_pack ? *tmp : c);
+        arg_list.set(arg_idx++, dst_scales);
+        arg_list.set(arg_idx++, group_size);
+        arg_list.set(arg_idx++, D0);
+        arg_list.set(arg_idx++, D1);
+        arg_list.set(arg_idx++, D2);
+        arg_list.set(arg_idx++, c_stride[5]);
+        arg_list.set(arg_idx++, c_stride[4]);
+        arg_list.set(arg_idx++, c_stride[3]);
+        arg_list.set(arg_idx++, c_stride[2]);
+        arg_list.set(arg_idx++, c_stride[1]);
+        arg_list.set(arg_idx++, c_stride[0]);
+        compute::range_t gws({(size_t)M, (size_t)N / group_size,
+                (size_t)(D0 * D1 * D2 * D3)});
+        compute::nd_range_t nd_range(gws);
+        CHECK(parallel_for(ctx, nd_range, kernels_[1], arg_list));
     }
 
     if (!subbyte_pack) return status_t::dnnl_success;
@@ -420,7 +420,7 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
     compute::range_t repack_gws((nelems * 4 + 7) / 8);
     compute::nd_range_t repack_nd_range(repack_gws);
     return large_parallel_for(
-            ctx, repack_nd_range, kernels_[kidx++], repack_arg_list, 4);
+            ctx, repack_nd_range, kernels_[2], repack_arg_list, 4);
 }
 
 } // namespace matmul

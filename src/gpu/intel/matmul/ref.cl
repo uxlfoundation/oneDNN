@@ -227,7 +227,7 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
             FLT_ACC_DATA_T wei_scale = 1.f;
 #if WITH_SRC_SCALES
             long src_scale_g = g * src_gs_group_k / src_scale_group_k;
-            long src_scale_off = src_scale_stride_m * (m / wei_scale_group_m)
+            long src_scale_off = src_scale_stride_m * (m / wei_scale_group_n)
                     + src_scale_stride_k * src_scale_g
                     + src_scale_stride_d0 * d0 + src_scale_stride_d1 * d1;
             src_scale = SRC_SCALES_TO_REF(src_scales[src_scale_off]);
@@ -312,19 +312,19 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
 #if WITH_DST_SCALES
 #if DST_SCALES_MASK == 0
         po_acc /= DST_SCALES_TO_REF(dst_scales[0]);
-#elif WITH_MX_DST_SCALE == 0
+#elif WITH_DYN_DST_SCALE == 0
         po_acc /= DST_SCALES_TO_REF(dst_scales[n]);
 #endif
 #endif
         po_acc += dst_zp;
 
-#if WITH_MX_DST_SCALE
+#if WITH_DYN_DST_SCALE
         ((__global ACC_DATA_T *)C)[dst_off] = po_acc;
 #else
         C[dst_off] = TO_DST(po_acc);
 #endif
 #else // WITH_BIAS || NON_DEFAULT_ATTRS
-#if WITH_MX_DST_SCALE
+#if WITH_DYN_DST_SCALE
         ((__global ACC_DATA_T *)C)[dst_off] = acc;
 #else
         C[dst_off] = TO_DST(acc);

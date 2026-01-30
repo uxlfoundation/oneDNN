@@ -15,12 +15,33 @@
 *******************************************************************************/
 
 #define DT_UNDEF 1
+#include "gpu/intel/include/math_utils.h"
 #include "gpu/intel/include/types.h"
 #include "gpu/intel/include/types_interop.h"
+#include "gpu/intel/include/types_specific.h"
 
-__kernel void mx_scale_dst(__global float *restrict src,
+inline float clamp_scale(float value) {
+    return DST_SCALES_TO_REF(REF_TO_DST_SCALES(value));
+}
+
+inline float mx_recipe(float group_max) {
+    return clamp_scale(clamp_scale(group_max) / clamp_scale(DST_DATA_FMAX));
+}
+
+inline float fp_recipe(float group_max) {
+    float clamped = clamp_scale(group_max / DST_DATA_FMAX);
+    return group_max == 0.f ? 1.f : clamped;
+}
+
+#if DST_SCALES_DT_E8M0
+#define TO_SCALE mx_recipe
+#else
+#define TO_SCALE fp_recipe
+#endif
+
+__kernel void dynamic_scale_dst(__global float *restrict src,
         __global uchar *restrict dst, __global uchar *restrict dst_scales,
-        int groupSize, long D0, long D1, long D2, long c_stride_d3,
+        long groupSize, long D0, long D1, long D2, long c_stride_d3,
         long c_stride_d2, long c_stride_d1, long c_stride_d0, long c_stride_m,
         long c_stride_n) {
     long m = get_global_id(0);
@@ -53,9 +74,7 @@ __kernel void mx_scale_dst(__global float *restrict src,
         max_group = max(max_group, fabs(src[off]));
     }
 
-#define E8M0(x) cvt_e8m0_to_f32(cvt_f32_to_e8m0(x))
-    float scale_val = E8M0(E8M0(max_group) / E8M0(DST_DATA_FMAX));
-#undef E8M0
+    float scale_val = TO_SCALE(max_group);
 
     for (int i = 0; i < groupSize; ++i) {
         long off = 0;
@@ -94,5 +113,5 @@ __kernel void mx_scale_dst(__global float *restrict src,
     scale_off = DST_SCALE_OFF(m, n, 0, 0, 0, groupSize, 1);
 #endif
 #endif
-    dst_scales[scale_off] = cvt_f32_to_e8m0(scale_val);
+    dst_scales[scale_off] = REF_TO_DST_SCALES(scale_val);
 }

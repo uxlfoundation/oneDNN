@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2020 Intel Corporation
 * Copyright 2024-2025 FUJITSU LIMITED
-* Copyright 2024-2025 Arm Ltd. and affiliates
+* Copyright 2024-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -603,7 +603,7 @@ private:
         cmp(reg_apply_comp, 0);
         b(EQ, label_apply_without_comp);
         apply_comp(m_block, n_block, tail);
-        L_aligned(label_apply_without_comp);
+        L(label_apply_without_comp);
 
         for_(int m = 0; m < m_block; m++)
         for (int n = 0; n < n_block; n++) {

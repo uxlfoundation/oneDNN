@@ -1,5 +1,5 @@
 # *******************************************************************************
-# Copyright 2024-2025 Arm Limited and affiliates.
+# Copyright 2024-2026 Arm Limited and affiliates.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -62,9 +62,10 @@ jobs:
     runs-on: ubuntu-22.04-arm
     steps:
       - name: Checkout oneDNN
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
-            path: oneDNN
+          persist-credentials: false
+          path: oneDNN
   
       - name: Read version file
         id: get-versions
@@ -89,9 +90,10 @@ jobs:
     runs-on: ubuntu-22.04-arm
     steps:
       - name: Checkout oneDNN
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
-            path: oneDNN
+          persist-credentials: false
+          path: oneDNN
 
       - name: Build oneDNN new
         uses: ./oneDNN/.github/actions/build-onednn-aarch64
@@ -120,9 +122,10 @@ jobs:
       contents: write
     steps:
       - name: Checkout oneDNN
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
-            path: oneDNN
+          persist-credentials: false
+          path: oneDNN
 
       - name: Read version file
         id: get-versions
@@ -181,7 +184,7 @@ jobs:
           OMP_NUM_THREADS: ${{ inputs.num_threads || 16 }}
 
       - name: Update wiki
-        if: ${{ (success() || failure()) && inputs.benchdnn_command == '' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ryo-not-rio/wiki') }}
+        if: ${{ (success() || failure()) && inputs.benchdnn_command == '' && github.ref == 'refs/heads/main' }}
         uses: ./oneDNN/.github/actions/update-wiki
         with:
           command: add-perf

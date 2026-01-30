@@ -50,7 +50,8 @@ runs:
     - name: Checkout oneDNN
       uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       with:
-          path: oneDNN
+        persist-credentials: false
+        path: oneDNN
 
     - name: Read version file
       shell: bash
@@ -110,8 +111,9 @@ runs:
     - name: Checkout oneDNN to build
       uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       with:
-          path: oneDNN_build
-          fetch-depth: 0
+        persist-credentials: false
+        path: oneDNN_build
+        fetch-depth: 0
 
     - name: Checkout specified oneDNN
       if: ${{ inputs.onednn_hash != '' }}

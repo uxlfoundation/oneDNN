@@ -81,13 +81,15 @@ int __attribute__((overloadable)) rnd_down(long a, unsigned int b) {
 
 #if DT_F4_E2M1 || SRC_DT_F4_E2M1 || WEI_DT_F4_E2M1 || DST_DT_F4_E2M1 \
         || BIA_DT_F4_E2M1 || A_DT_F4_E2M1 || A_DT_F4_E2M1 || B_DT_F4_E2M1 \
-        || C_DT_F4_E2M1 || DATA_DT_F4_E2M1 || POST_OP_USING_F4_E2M1
+        || C_DT_F4_E2M1 || DATA_DT_F4_E2M1 || POST_OP_USING_F4_E2M1 \
+        || BIAS_DT_F4_E2M1
 #define MATH_UTILS_DECLARE_F4_E2M1 1
 #endif
 
 #if DT_F4_E3M0 || SRC_DT_F4_E3M0 || WEI_DT_F4_E3M0 || DST_DT_F4_E3M0 \
         || BIA_DT_F4_E3M0 || A_DT_F4_E3M0 || A_DT_F4_E3M0 || B_DT_F4_E3M0 \
-        || C_DT_F4_E3M0 || DATA_DT_F4_E3M0 || POST_OP_USING_F4_E3M0
+        || C_DT_F4_E3M0 || DATA_DT_F4_E3M0 || POST_OP_USING_F4_E3M0 \
+        || BIAS_DT_F4_E3M0
 #define MATH_UTILS_DECLARE_F4_E3M0 1
 #endif
 
@@ -126,12 +128,12 @@ float __attribute__((overloadable)) cvt_e8m0_to_f32(uchar f) {
     uint bits = f << 23;
     return as_float(bits);
 }
-#endif
 
 uchar __attribute__((overloadable)) cvt_f32_to_e8m0(float f) {
     uint bits = as_uint(f);
     return ((uchar4)((bits >> 23) & 0xff)).s0;
 }
+#endif
 
 #if MATH_UTILS_DECLARE_HF8
 // Emulation functions for f8_e4m3 <-> f16 conversion.

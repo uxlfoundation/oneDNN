@@ -1435,6 +1435,87 @@ status_t fuse_dst_scales(std::shared_ptr<subgraph_t> &sg) {
     return infer_shape(sg);
 }
 
+status_t fuse_dropout(std::shared_ptr<subgraph_t> &sg) {
+    subgraph_rewriter_t rewriter(sg);
+
+    std::vector<std::pair<op_t *, op_t *>> fuse_groups;
+
+    std::set<op_t *> visited;
+    for (auto &cur_op : sg->get_ops()) {
+        if ((cur_op->get_kind() != op_kind::dnnl_dropout)
+                || visited.count(cur_op.get()) != 0)
+            continue;
+        auto in_val = cur_op->get_input_value(0);
+        VCHECK_TRANSFORM(in_val->has_producer(), status::unimplemented,
+                "dropout's input has no producer");
+        // currently dropout attribute is supported by matmul, softmax, eltwise
+        // primitives. However, softmax is special since it has multiple outputs,
+        // so we need to handle the dropout separately by softmax +
+        // [eltwise-linear + dropout].
+        auto &prev_op = in_val->get_producer();
+        if ((prev_op.get_kind() != op_kind::dnnl_eltwise
+                    && prev_op.get_kind() != op_kind::dnnl_matmul)
+                || in_val->get_consumers().size() > 1) {
+            // dropout's preceding op has multiple consumers, cannot fuse
+            // directly. Insert an identity op (eltwise linear) between
+            // preceding op and dropout.
+            /*  A --> Dropout
+                |
+                  --> B
+             ---------------insert----------------
+                A --> Eltwise-Linear --> Dropout
+                |
+                  --> B
+            */
+            op_ptr new_op = std::make_shared<op_t>(op_kind::dnnl_eltwise);
+            new_op->set_attr<float>(op_attr::alpha, 1.f);
+            new_op->set_attr<float>(op_attr::beta, 0.f);
+            new_op->set_attr<int64_t>(op_attr::alg_kind,
+                    static_cast<int64_t>(dnnl::algorithm::eltwise_linear));
+
+            new_op->add_input(in_val);
+            in_val->add_consumer(*new_op, 0);
+
+            auto new_out_val = std::make_shared<value_t>(
+                    *new_op, 0, in_val->get_logical_tensor(), true);
+            new_op->add_output(new_out_val);
+            insert_empty_scratchpad(new_op);
+
+            in_val->remove_consumer(*cur_op, 0);
+            new_out_val->add_consumer(*cur_op, 0);
+            cur_op->connect_input(0, new_out_val);
+
+            rewriter.to_insert(new_op);
+
+            fuse_groups.emplace_back(new_op.get(), cur_op.get());
+            visited.insert(new_op.get());
+            visited.insert(cur_op.get());
+        } else {
+            fuse_groups.emplace_back(&prev_op, cur_op.get());
+            visited.insert(&prev_op);
+            visited.insert(cur_op.get());
+        }
+    }
+
+    for (auto &fuse_group : fuse_groups) {
+        auto base_op = fuse_group.first;
+        auto dropout_op = fuse_group.second;
+
+        if (!base_op->has_attr(op_attr::fusion_info)) {
+            fusion_info_t fusion_info;
+            base_op->set_attr<fusion_info_t>(op_attr::fusion_info, fusion_info);
+        }
+        fusion_info_t fusion_info
+                = base_op->get_attr<fusion_info_t>(op_attr::fusion_info);
+        fusion_info.set_dropout(dropout_op->shared_from_this());
+        base_op->set_attr<fusion_info_t>(op_attr::fusion_info, fusion_info);
+        rewriter.fuse_op_to_predecessor(dropout_op->shared_from_this());
+    }
+
+    rewriter.run();
+    return infer_shape(sg);
+}
+
 status_t convert_to_runtime_dst_scales(std::shared_ptr<subgraph_t> &sg) {
     std::set<op_t *> visited;
     subgraph_rewriter_t rewriter(sg);

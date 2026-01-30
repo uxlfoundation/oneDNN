@@ -317,15 +317,18 @@ status_t gen_desc_t::finalize(const char *tags) {
                     != 0)
         return status::unimplemented;
 
-    // If the M/N group size is equal to M or N, align up to a multiple of unroll size
-    // XXX: Increase group size to a large value before aligning to increase reusability
+    // If the M/N group size is equal to M or N, align up to a multiple of unroll size.
+    // Currently this is incompatible with precomputed reductions.
+    // XXX: Increase group size to a large value before aligning to increase reusability.
     constexpr int perMNGroupSize = 1 << 24;
-    if (problem_.aqGroupM == m_) {
+    if (problem_.aqGroupM == m_
+            && (!problem_.forceGroupSumsA || problem_.aqGroupM > 1)) {
         problem_.aqGroupM = std::max(problem_.aqGroupM, perMNGroupSize);
         problem_.aqGroupM
                 = utils::rnd_up(problem_.aqGroupM, strategy_.unroll[LoopM]);
     }
-    if (problem_.bqGroupN == n_) {
+    if (problem_.bqGroupN == n_
+            && (!problem_.forceGroupSumsB || problem_.bqGroupN > 1)) {
         problem_.bqGroupN = std::max(problem_.bqGroupN, perMNGroupSize);
         problem_.bqGroupN
                 = utils::rnd_up(problem_.bqGroupN, strategy_.unroll[LoopN]);
@@ -427,12 +430,12 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
         int eu_count, bool has_systolic, bool is_integrated, compute_mode mode,
         int batch_dims, bool trans_a, bool trans_b, bool trans_co, bool swap_ab,
         const quant_params &a_quant, const quant_params &b_quant,
-        const quant_params &c_quant, bool dst_sround, bool c_offset, bool bias,
-        sum_ab_t reduce_ab, float alpha, float beta, data_type_t a_type,
-        data_type_t b_type, data_type_t c_type, data_type_t co_type,
-        data_type_t acc_type, int align_a, int align_b, int align_c, dim_t m,
-        dim_t n, dim_t k, dim_t lda, dim_t ldb, dim_t ldc, dim_t batch,
-        gpu_post_ops_t &&post_ops) {
+        const quant_params &c_quant, bool mx_scales, bool dst_sround,
+        bool c_offset, bool bias, sum_ab_t reduce_ab, float alpha, float beta,
+        data_type_t a_type, data_type_t b_type, data_type_t c_type,
+        data_type_t co_type, data_type_t acc_type, int align_a, int align_b,
+        int align_c, dim_t m, dim_t n, dim_t k, dim_t lda, dim_t ldb, dim_t ldc,
+        dim_t batch, gpu_post_ops_t &&post_ops) {
     using namespace ngen;
     using namespace kcatalog;
 
@@ -487,12 +490,12 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
         problem_.batch = BatchMode::Strided;
         problem_.batchDims = batch_dims;
     }
-    if (a_quant.zp_ndims >= 0 || a_quant.zp_hostscalar)
+    if (a_quant.zp_ndims >= 0 || a_quant.zp_host_scalar)
         problem_.aOffset = ABOffset::Calc;
-    if (b_quant.zp_ndims >= 0 || b_quant.zp_hostscalar)
+    if (b_quant.zp_ndims >= 0 || b_quant.zp_host_scalar)
         problem_.bOffset = ABOffset::Calc;
-    problem_.aoPtrDims = a_quant.zp_hostscalar ? -1 : a_quant.zp_ndims;
-    problem_.boPtrDims = b_quant.zp_hostscalar ? -1 : b_quant.zp_ndims;
+    problem_.aoPtrDims = a_quant.zp_host_scalar ? -1 : a_quant.zp_ndims;
+    problem_.boPtrDims = b_quant.zp_host_scalar ? -1 : b_quant.zp_ndims;
     problem_.AO.layout = MatrixLayout::N;
     problem_.BO.layout
             = (problem_.bOffset2D()) ? MatrixLayout::N : MatrixLayout::T;
@@ -526,7 +529,7 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
 
     if (c_quant.scales_type != data_type::undef) {
         problem_.csPtrDims = c_quant.scale_ndims;
-        problem_.cMXScale = c_quant.mx;
+        problem_.cMXScale = mx_scales;
         problem_.Tc_scale = convert_dnnl_to_kernel_type(c_quant.scales_type);
         problem_.cqGroupM = c_quant.group_m;
         problem_.cqGroupN = c_quant.group_n;
@@ -568,14 +571,20 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
         problem_.autoTypeConversions(hw_, has_systolic);
 
     if (problem_.needsAGroupSums()) {
-        problem_.Tag = convert_dnnl_to_kernel_type(a_quant.gs_type);
+        data_type_t gs_dt = a_quant.gs_type == data_type::undef
+                ? data_type::s32
+                : a_quant.gs_type;
+        problem_.Tag = convert_dnnl_to_kernel_type(gs_dt);
         problem_.Ag.layout = MatrixLayout::N;
         problem_.Ag.setAlignment(problem_.Tag.paddedSize());
         if (problem_.bqGroupK == 0) problem_.bqGroupK = problem_.aqGroupK;
         if (problem_.aqGroupK == 0) problem_.aqGroupK = problem_.bqGroupK;
     }
     if (problem_.needsBGroupSums()) {
-        problem_.Tbg = convert_dnnl_to_kernel_type(b_quant.gs_type);
+        data_type_t gs_dt = b_quant.gs_type == data_type::undef
+                ? data_type::s32
+                : b_quant.gs_type;
+        problem_.Tbg = convert_dnnl_to_kernel_type(gs_dt);
         problem_.Bg.layout = MatrixLayout::N;
         problem_.Bg.setAlignment(problem_.Tbg.paddedSize());
         if (problem_.aqGroupK == 0) problem_.aqGroupK = problem_.bqGroupK;

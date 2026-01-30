@@ -494,7 +494,7 @@ std::string get_plain_user_tag(
             }
         }
     } else {
-        for (auto *t : {"axb", "abx"}) {
+        for (std::string t : {"axb", "abx"}) {
             if (matches_tag(md, t)) return t;
         }
     }

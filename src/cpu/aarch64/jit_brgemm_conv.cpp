@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2024-2025 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -15,6 +15,8 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
+
+#include <cassert>
 
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
@@ -254,6 +256,9 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::add_brg_descriptor(int vM,
     CHECK(brgemm_desc_init(&brg, isa, jcp_.brg_type, src_type, wei_type, false,
             false, brgemm_row_major, alpha, vbeta, jcp_.LDA, jcp_.LDB, jcp_.LDC,
             vbrgM, vN, vK, strides_ptr));
+
+    // FIXME: use_uker is currently always false. We should add support or
+    // remove the dead code.
     brgattr.use_uker = jcp_.use_uker;
     brgattr.use_interleave_stores = jcp_.use_interleave_stores;
     brgattr.hint_prefetching = jcp_.hint_prefetching;
@@ -336,15 +341,15 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
 
     const auto adj_M = nstl::max(jcp_.M, jcp_.M_tail);
 
+    // FIXME: use_uker is currently always false. We should add support or
+    // remove the dead code.
+    //
     // 1. The unrolled kernel can be used for exec_trans and exec_base.
     // For exec_base it makes sense to use unrolled kernel only if
     // there is no padding by width.
     // 2. For exec_trans block by kw is always KW
-    // 3. 'false' is used intentionally to disable the condition, ensuring that
-    // the assert fails only when jcp_.use_uker is true, regardless of exec_type.
-    assert(IMPLICATION(jcp_.use_uker,
-            false && one_of(jcp_.exec_type, exec_base, exec_trans)));
-    assert(IMPLICATION(jcp_.use_interleave_stores, jcp_.use_uker));
+    assert(!jcp_.use_uker);
+    assert(!jcp_.use_interleave_stores);
 
     bs_c = 0;
 
@@ -440,9 +445,8 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
             * ((jcp_.exec_type == exec_trans && jcp_.kh_sets > 1) ? 0 : 1);
     wei_kw_offset = static_cast<dim_t>(wei_dsz) * wei_kw_stride;
 
-    batchsizes.resize(KD * KD * KH * KH);
-    fill(batchsizes.begin(), batchsizes.end(), -1);
-
+    // FIXME: use_uker is currently always false. We should add support or
+    // remove the dead code.
     if (jcp_.use_uker) {
 
         assert(KD % KD_BLOCK == 0);
@@ -465,15 +469,15 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
                 const auto bs = kd_l * kh_l * jcp_.kw;
                 if (bs <= 0) continue;
 
-                const auto bs_idx = get_bs_idx(kd_s, kd_f, kh_s, kh_f);
-                if (batchsizes[bs_idx] == -1) {
-                    batchsizes[bs_idx] = bs_c;
+                const std::array<int, 4> key = {kd_s, kd_f, kh_s, kh_f};
+                if (batchsizes.find(key) == batchsizes.end()) {
+                    batchsizes.insert({key, bs_c});
                     bs_c++;
                 }
             }
         }
     } else {
-        batchsizes[get_bs_idx(0, KD, 0, KH)] = bs_c;
+        batchsizes.insert({{0, KD, 0, KH}, bs_c});
         bs_c++;
     }
 
@@ -541,11 +545,11 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
                             && jcp_.r_pad == 0))
                 && vM != jcp_.M && vM != jcp_.M_tail)
             continue;
-        for_(int kd_b = 0; kd_b < KD; kd_b++)
-        for_(int kd_e = 1; kd_e <= KD; kd_e++)
-        for_(int kh_b = 0; kh_b < KH; kh_b++)
-        for (int kh_e = 1; kh_e <= KH; kh_e++) {
-            if (batchsizes[get_bs_idx(kd_b, kd_e, kh_b, kh_e)] == -1) continue;
+        for (const auto &key_value_pair : batchsizes) {
+            const int kd_b = key_value_pair.first[0];
+            const int kd_e = key_value_pair.first[1];
+            const int kh_b = key_value_pair.first[2];
+            const int kh_e = key_value_pair.first[3];
             for_(int i_init = i_init_begin; i_init < i_init_end; i_init++)
             for_(int i_N = N_begin; i_N < N_end; i_N++)
             for (int i_K = K_begin; i_K < K_end; i_K++) {
@@ -843,12 +847,11 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
         CHECK(comp_vpad_pbuffer_->create_kernel());
     }
 
-    for_(int kd_b = 0; kd_b < KD; kd_b++)
-    for_(int kd_e = 1; kd_e <= KD; kd_e++)
-    for_(int kh_b = 0; kh_b < KH; kh_b++)
-    for (int kh_e = 1; kh_e <= KH; kh_e++) {
-        if (_pd->batchsizes[_pd->get_bs_idx(kd_b, kd_e, kh_b, kh_e)] == -1)
-            continue;
+    for (const auto &key_value_pair : _pd->batchsizes) {
+        const int kd_b = key_value_pair.first[0];
+        const int kd_e = key_value_pair.first[1];
+        const int kh_b = key_value_pair.first[2];
+        const int kh_e = key_value_pair.first[3];
 
         for_(int i_N = N_begin; i_N < N_end; i_N++)
         for_(int i_M = M_begin; i_M < M_end; i_M++)
@@ -892,13 +895,11 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
 
                 auto M = ow_f - ow_s;
                 if (M <= 0) continue;
-                for_(int kd_b = 0; kd_b < KD; kd_b++)
-                for_(int kd_e = 1; kd_e <= KD; kd_e++)
-                for_(int kh_b = 0; kh_b < KH; kh_b++)
-                for (int kh_e = 1; kh_e <= KH; kh_e++) {
-                    if (_pd->batchsizes[_pd->get_bs_idx(kd_b, kd_e, kh_b, kh_e)]
-                            == -1)
-                        continue;
+                for (const auto &key_value_pair : _pd->batchsizes) {
+                    const int kd_b = key_value_pair.first[0];
+                    const int kd_e = key_value_pair.first[1];
+                    const int kh_b = key_value_pair.first[2];
+                    const int kh_e = key_value_pair.first[3];
                     for_(int i_init = 0; i_init < 2; i_init++)
                     for_(int i_N = 0; i_N < 2; i_N++)
                     for (int i_K = 0; i_K < 2; i_K++) {
@@ -934,13 +935,11 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
 
                 auto M = ow_f - ow_s;
                 if (M <= 0) continue;
-                for_(int kd_b = 0; kd_b < KD; kd_b++)
-                for_(int kd_e = 1; kd_e <= KD; kd_e++)
-                for_(int kh_b = 0; kh_b < KH; kh_b++)
-                for (int kh_e = 1; kh_e <= KH; kh_e++) {
-                    if (_pd->batchsizes[_pd->get_bs_idx(kd_b, kd_e, kh_b, kh_e)]
-                            == -1)
-                        continue;
+                for (const auto &key_value_pair : _pd->batchsizes) {
+                    const int kd_b = key_value_pair.first[0];
+                    const int kd_e = key_value_pair.first[1];
+                    const int kh_b = key_value_pair.first[2];
+                    const int kh_e = key_value_pair.first[3];
                     for_(int i_init = 0; i_init < 2; i_init++)
                     for_(int i_N = 0; i_N < 2; i_N++)
                     for (int i_K = 0; i_K < 2; i_K++) {
@@ -1698,7 +1697,7 @@ void brgemm_convolution_fwd_t<isa>::ker_base(brgemm_thread_ctx_t &btc) const {
     const auto call_brgemm
             = [&](int brg_idx, int ic_block_s, int n_ic_blocks,
                       int comp_ker_offs, bool do_postops, bool do_only_comp) {
-        if (k_l <= 0) return;
+        assert(k_l > 0 && "invalid batch range");
         const auto brg_ker = brgemm_kernels_[brg_idx];
 
         assert(jcp.brg_type != brgemm_static_offs);
@@ -1738,21 +1737,21 @@ void brgemm_convolution_fwd_t<isa>::ker_base(brgemm_thread_ctx_t &btc) const {
         const auto ow_l = ow_e - ow_b;
         assert(0 <= ow_l && ow_l <= jcp.ow_block);
 
-        const auto comp_ker_offs = get_comp_offset(
-                btc.g, btc.ocb, ow_b, kd_s, kd_f, kh_s, kh_f, kw_b, kw_e);
-
-        const auto ker_i = ow_l - 1;
-        int kernel_idx[2][2];
-        kernel_idx[false][false] = _pd->get_brg_idx(
-                ker_i, false, is_oc_tail, false, kd_s, kd_f, kh_s, kh_f);
-        kernel_idx[true][false] = _pd->get_brg_idx(
-                ker_i, true, is_oc_tail, false, kd_s, kd_f, kh_s, kh_f);
-        kernel_idx[false][true] = _pd->get_brg_idx(
-                ker_i, false, is_oc_tail, true, kd_s, kd_f, kh_s, kh_f);
-        kernel_idx[true][true] = _pd->get_brg_idx(
-                ker_i, true, is_oc_tail, true, kd_s, kd_f, kh_s, kh_f);
-
         if (ow_l > 0 && k_l > 0) {
+            const auto comp_ker_offs = get_comp_offset(
+                    btc.g, btc.ocb, ow_b, kd_s, kd_f, kh_s, kh_f, kw_b, kw_e);
+
+            const auto ker_i = ow_l - 1;
+            int kernel_idx[2][2];
+            kernel_idx[false][false] = _pd->get_brg_idx(
+                    ker_i, false, is_oc_tail, false, kd_s, kd_f, kh_s, kh_f);
+            kernel_idx[true][false] = _pd->get_brg_idx(
+                    ker_i, true, is_oc_tail, false, kd_s, kd_f, kh_s, kh_f);
+            kernel_idx[false][true] = _pd->get_brg_idx(
+                    ker_i, false, is_oc_tail, true, kd_s, kd_f, kh_s, kh_f);
+            kernel_idx[true][true] = _pd->get_brg_idx(
+                    ker_i, true, is_oc_tail, true, kd_s, kd_f, kh_s, kh_f);
+
             if (nb_ic_b > 0) {
                 const auto brg_idx = kernel_idx[do_init][false];
                 call_brgemm(brg_idx, 0, nb_ic_b, comp_ker_offs,
@@ -1873,7 +1872,7 @@ void brgemm_convolution_fwd_t<isa>::ker_trans(
 
     const auto call_brgemm = [&](int brg_idx, int ic_block_s, int n_ic_blocks,
                                      bool do_postops) {
-        if (k_l <= 0) return;
+        assert(k_l > 0 && "invalid batch range");
         const auto brg_ker = brgemm_kernels_[brg_idx];
 
         const auto kh_ee = jcp.kh_sets > 1 ? kh_b + 1 : kh_e;
@@ -1985,6 +1984,7 @@ void brgemm_convolution_fwd_t<isa>::ker_vpad(brgemm_thread_ctx_t &btc) const {
 
     const auto call_brgemm = [&](int brg_idx, int ic_block_s, int n_ic_blocks,
                                      int comp_ker_offs, bool do_postops) {
+        assert(k_l > 0 && "invalid batch range");
         const auto brg_ker = brgemm_kernels_[brg_idx];
 
         assert(jcp.brg_type != brgemm_static_offs);

@@ -993,6 +993,16 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
     if (prb->prop == dnnl_backward) acc_dim *= MAX2(bwdd_acc_dim, bwdw_acc_dim);
     // Here the factor 4 just gives some wiggle room for fp32 testing
 
+    // Note: the following process of picking a `trh` is likely fine for
+    // floating-point problems but doesn't suit well for int8. It may happen
+    // that underlying target implementation will compute DST[i] and DST_ITER[i]
+    // with small difference around X.5f point ending up rounded differently
+    // leading to a difference in the output. Turned out, one incorrect point
+    // leads to norm comparison failure which doesn't make norm validation
+    // meaningful.
+    // TODO: consider moving int8 config (DST_ITER only?) on per point check
+    // with additional verification that underlying sources can have diff_1
+    // (though slightly changing shapes can work around failures).
     float trh = 4
             * (1 + (prb->prop == dnnl_backward)) // double wiggle room for bwd
             * ((prb->direction == dnnl_bidirectional_sum)

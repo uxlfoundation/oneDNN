@@ -28,7 +28,8 @@
 #include "oneapi/dnnl/dnnl.hpp"
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 #include "oneapi/dnnl/dnnl_ocl.hpp"
-#elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_DPCPP
+#endif
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_DPCPP
 #include "oneapi/dnnl/dnnl_sycl.hpp"
 #endif
 
@@ -417,9 +418,16 @@ void args_t::replace(int arg, const dnn_mem_t *mem) {
 
 stream_staller_t::stream_staller_t(stream_t &stream) {
 #if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
+    auto eng = query_engine(stream);
+    auto eng_kind = query_engine_kind(eng);
+    if (eng_kind != dnnl_cpu) return;
+
     void *tp_ptr;
     dnnl_threadpool_interop_stream_get_threadpool(stream, &tp_ptr);
     auto tp = static_cast<dnnl::threadpool_interop::threadpool_iface *>(tp_ptr);
+
+    // `tp` is not expected to be empty for CPU streams with threadpol runtime.
+    if (!tp) SAFE_V(FAIL);
 
     // Only relevant for asynchronous threadpool, synchronous will
     // deadlock.
@@ -1135,6 +1143,8 @@ int get_gpu_ram_sizes(size_t &ram_size, size_t &max_alloc_size) {
             = (size_t)sycl_dev
                       .get_info<::sycl::info::device::max_mem_alloc_size>();
     return OK;
+#else
+    assert(!"unsupported GPU runtime");
 #endif
     ram_size = 0;
     max_alloc_size = 0;
@@ -1182,6 +1192,8 @@ int get_gpu_cache_size(size_t &cache_size) {
     _cache_size
             = (size_t)sycl_dev
                       .get_info<::sycl::info::device::global_mem_cache_size>();
+#else
+    assert(!"unsupported GPU runtime");
 #endif
     cache_size = _cache_size;
     return OK;
@@ -1738,6 +1750,8 @@ engine_t::engine_t(const engine_t &other) : is_owner_(other.is_owner_) {
         DNN_SAFE_V(dnnl_sycl_interop_engine_get_device(other.engine_, &dev));
         DNN_SAFE_V(dnnl_sycl_interop_engine_get_context(other.engine_, &ctx));
         DNN_SAFE_V(dnnl_sycl_interop_engine_create(&engine_, dev, ctx));
+#else
+        assert(!"unsupported GPU runtime");
 #endif
     } else {
         assert(!"unsupported engine kind");
@@ -2041,19 +2055,21 @@ int init_ref_memory_args_default_case(int exec_arg, dnn_mem_t &mem,
         int local_exec_arg = exec_arg ^ DNNL_ARG_ATTR_ZERO_POINTS;
         TIME_FILL(SAFE(
                 fill_zero_points(attr, local_exec_arg, mem, ref_mem), WARN));
-    } else if (is_dropout_p && !attr.dropout.use_host_scalars) {
+    } else if (is_dropout_p) {
         ref_mem.set_f32_elem(0, attr.dropout.p);
-        TIME_FILL(SAFE(mem.reorder(ref_mem), WARN));
-    } else if (is_dropout_seed && !attr.dropout.use_host_scalars) {
+        mem.set_elem(0, attr.dropout.p);
+    } else if (is_dropout_seed) {
         ref_mem = dnn_mem_t(mem.md_, dnnl_s64, tag::abx, get_cpu_engine(),
                 /* prefill = */ false);
         ref_mem.set_s64_elem(0, attr.dropout.seed);
-        TIME_FILL(SAFE(mem.reorder(ref_mem), WARN));
-    } else if (is_dropout_offset && !attr.dropout.use_host_scalars) {
+        assert(mem.dt() == dnnl_s64);
+        mem.set_s64_elem(0, attr.dropout.seed);
+    } else if (is_dropout_offset) {
         ref_mem = dnn_mem_t(mem.md_, dnnl_s64, tag::abx, get_cpu_engine(),
                 /* prefill = */ false);
         ref_mem.set_s64_elem(0, attr.dropout.offset);
-        TIME_FILL(SAFE(mem.reorder(ref_mem), WARN));
+        assert(mem.dt() == dnnl_s64);
+        mem.set_s64_elem(0, attr.dropout.offset);
     } else if (is_rounding_seed) {
         ref_mem.set_elem(0, attr.rounding_mode.seed);
         TIME_FILL(SAFE(mem.reorder(ref_mem), WARN));

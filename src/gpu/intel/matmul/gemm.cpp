@@ -56,8 +56,9 @@ status_t gemm_t::execute(const exec_ctx_t &ctx) const {
     args.c_zero_point = c0;
     args.a_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
     args.b_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
-    bool mx_scales = gemm_->pd()->attr()->scales_.get(DNNL_ARG_DST).is_mx();
-    args.c_scales = mx_scales
+    bool dyn_scales
+            = gemm_->pd()->attr()->scales_.get(DNNL_ARG_DST).is_dynamic();
+    args.c_scales = dyn_scales
             ? &CTX_OUT_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST)
             : &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
 
@@ -65,7 +66,10 @@ status_t gemm_t::execute(const exec_ctx_t &ctx) const {
             DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS | DNNL_ARG_WEIGHTS);
     args.b_group_sums = &CTX_IN_STORAGE(
             DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS | DNNL_ARG_SRC);
-
+    args.dropout_offset = &CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_OFFSET);
+    args.dropout_seed = &CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_SEED);
+    args.dropout_prob = &CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_PROBABILITY);
+    args.dropout_mask = &CTX_OUT_STORAGE(DNNL_ARG_ATTR_DROPOUT_MASK);
     args.sround_seed = &CTX_IN_STORAGE(DNNL_ARG_ATTR_ROUNDING_SEED);
     args.exec_args = ctx.args();
     gemm::desc_t desc;

@@ -14,9 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "shim.hpp"
-#include "fuser.hpp"
-#include "internal_utilities.hpp"
+#include "gemmstone/microkernel/shim.hpp"
+#include "gemmstone/microkernel/fuser.hpp"
 
 #include <algorithm>
 #include <array>
@@ -26,11 +25,14 @@
 #include <stdexcept>
 #include <unordered_set>
 
-namespace dnnl {
-namespace impl {
-namespace gpu {
-namespace intel {
-namespace micro {
+
+GEMMSTONE_NAMESPACE_START
+namespace microkernel {
+
+template <typename T, typename U>
+static inline T divideUp(T num, U denom) {
+    return (num + denom - 1) / denom;
+}
 
 int grfWidth(uint32_t gmdid) {
     union {
@@ -319,7 +321,7 @@ std::string generateShim(const Package &package, HostLanguage language,
 
         /* Locate return type. Return types are used in the case of a single output. */
         for (int i = 0; i < nargs; i++) {
-            if (pargs[i].direction == ProtocolArgument::Out) {
+            if (pargs[i].direction == Protocol::Argument::Out) {
                 if (!returnType.empty()) {
                     returnArg = -1;
                     returnType = "";
@@ -744,8 +746,5 @@ std::string generateShim(const Package &package, HostLanguage language,
     return shim.str();
 }
 
-} /* namespace micro */
-} // namespace intel
-} // namespace gpu
-} // namespace impl
-} // namespace dnnl
+}
+GEMMSTONE_NAMESPACE_END

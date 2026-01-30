@@ -86,6 +86,23 @@ struct single_gemm_conv_chunk_desc_t {
     dim_t w_size_ = 0;
 };
 
+// Address pre-computation cache for im2col optimization
+struct im2col_addr_cache_t {
+    const void *src_base;
+    void *col_base;
+    dim_t src_ic_stride;
+    dim_t col_ks_stride;
+    dim_t col_os_stride;
+    bool is_cached;
+    im2col_addr_cache_t()
+        : src_base(nullptr)
+        , col_base(nullptr)
+        , src_ic_stride(0)
+        , col_ks_stride(0)
+        , col_os_stride(0)
+        , is_cached(false) {}
+};
+
 namespace jit_gemm_convolution_utils {
 template <typename data_type_t>
 void im2col_3d(const conv_gemm_conf_t &jcp, const data_type_t *im,
@@ -104,9 +121,9 @@ void im2col(const conv_gemm_conf_t &jcp, const data_type_t *__restrict im,
         data_type_t *__restrict col, dim_t ss, dim_t sb, dim_t cs, dim_t cb);
 
 template <typename im_dt, typename col_dt>
-void im2col_dt(const conv_gemm_conf_t &jcp, const void *__restrict im,
-        void *__restrict imtr, col_dt *__restrict col, dim_t hs, dim_t hb,
-        dim_t ws, dim_t wb);
+void im2col_dt(const conv_gemm_conf_t &jcp, const im2col_addr_cache_t *cache,
+        const void *__restrict im, void *__restrict imtr,
+        col_dt *__restrict col, dim_t hs, dim_t hb, dim_t ws, dim_t wb);
 
 template <typename T>
 void col2im_dt(

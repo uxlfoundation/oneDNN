@@ -26,6 +26,7 @@
 #include "gemmstone/type.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/compute/kernel_arg_list.hpp"
+#include "gpu/intel/gemm/jit/pd.hpp"
 #include "gpu/intel/jit/generator_base.hpp"
 #include "gpu/intel/kernel_cache.hpp"
 
@@ -114,21 +115,6 @@ protected:
     void update_driver_info();
 };
 
-struct quant_params {
-    data_type_t scales_type;
-    data_type_t zp_type;
-    data_type_t gs_type;
-    int scale_ndims;
-    int zp_ndims;
-    int gs_ndims;
-    int group_k;
-    int group_m;
-    int group_n;
-    bool force_gs;
-    bool mx;
-    bool zp_hostscalar;
-};
-
 struct gen_nocopy_desc_t : public gen_desc_t {
     enum compute_mode {
         mode_default = 0,
@@ -151,12 +137,12 @@ struct gen_nocopy_desc_t : public gen_desc_t {
             int batch_dims, bool trans_a, bool trans_b, bool trans_co,
             bool swap_ab, const quant_params &a_quant,
             const quant_params &b_quant, const quant_params &c_quant,
-            bool dst_sround, bool c_offset, bool bias, sum_ab_t reduce_ab,
-            float alpha, float beta, data_type_t a_type, data_type_t b_type,
-            data_type_t c_type, data_type_t co_type, data_type_t acc_type,
-            int align_a, int align_b, int align_c, dim_t m, dim_t n, dim_t k,
-            dim_t lda, dim_t ldb, dim_t ldc, dim_t batch,
-            gpu_post_ops_t &&post_ops);
+            bool mx_scales, bool dst_sround, bool c_offset, bool bias,
+            sum_ab_t reduce_ab, float alpha, float beta, data_type_t a_type,
+            data_type_t b_type, data_type_t c_type, data_type_t co_type,
+            data_type_t acc_type, int align_a, int align_b, int align_c,
+            dim_t m, dim_t n, dim_t k, dim_t lda, dim_t ldb, dim_t ldc,
+            dim_t batch, gpu_post_ops_t &&post_ops);
 
     status_t finalize();
 

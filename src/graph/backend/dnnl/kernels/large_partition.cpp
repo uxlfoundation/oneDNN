@@ -92,6 +92,7 @@ void larger_partition_kernel_t::setup_pipeline_stage1(
     BACKEND_DNNL_ADD_PASS(pipeline, lift_up_post_add_for_matmul);
 
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_post_ops);
+    BACKEND_DNNL_ADD_PASS(pipeline, fuse_dropout);
     BACKEND_DNNL_ADD_PASS(pipeline, fold_mul_scales);
     BACKEND_DNNL_ADD_PASS(pipeline, convert_to_runtime_dst_scales);
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_dst_scales);

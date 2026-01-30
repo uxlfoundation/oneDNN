@@ -37,7 +37,7 @@ struct concat_params_t {
 class concat_t : public ::testing::TestWithParam<concat_params_t> {
 public:
     void TestConcat() {
-        const auto params
+        const auto &params
                 = ::testing::TestWithParam<concat_params_t>::GetParam();
 
         std::vector<graph::dim_t> src0_dims = params.src0_shape;

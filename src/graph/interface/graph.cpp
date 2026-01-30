@@ -443,8 +443,8 @@ status_t DNNL_API dnnl_graph_graph_get_partitions(
             // p_impl is shallow copy
             const auto p_impl = aop->get_partition();
             const auto p_id = p_impl->id();
-            auto *bkd = p_impl->get_assigned_backend();
-            auto bkd_name = bkd->get_name();
+            const auto *bkd = p_impl->get_assigned_backend();
+            const auto &bkd_name = bkd->get_name();
             aop->set_attr<std::string>(
                     op_attr::partition_id, std::to_string(p_id));
             aop->set_attr<std::string>(op_attr::backend, bkd_name);

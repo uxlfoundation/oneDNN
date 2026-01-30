@@ -54,9 +54,15 @@ struct jit_uni_pooling_fwd_t : public primitive_t {
             VDISPATCH_POOLING(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_POOLING(
                     !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
-            VDISPATCH_POOLING(everyone_is(d_type, src_md()->data_type,
-                                      dst_md()->data_type),
-                    VERBOSE_UNSUPPORTED_DT);
+
+            // Disabling verbose dispatch messages for unsupported dt for better
+            // readability.
+            // TODO: restore once `d_type` template argument is removed.
+            if (!everyone_is(
+                        d_type, src_md()->data_type, dst_md()->data_type)) {
+                return status::unimplemented;
+            }
+
             VDISPATCH_POOLING(
                     attr()->has_default_values(
                             primitive_attr_t::skip_mask_t::post_ops, d_type),

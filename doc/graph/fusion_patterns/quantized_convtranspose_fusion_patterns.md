@@ -69,3 +69,11 @@ platforms follow the general description in the [Data Types Guide](@ref dev_guid
      values as all zeros.
    - Quantize in F2Q Conversion Subgraph only supports per_tensor quantization
      type, and its scales values should be all ones.
+
+## Implementation Notes
+
+Post-binary Add operations in the epilogue subgraph support in-place operations when
+the post-binary Add is the last operation in the epilogue subgraph and the `dst` output
+shape is identical and data type size is the same as the binary Add input.
+In case of an in-place operation, the original input data will be overwritten.
+Use in-place operations whenever possible for performance.

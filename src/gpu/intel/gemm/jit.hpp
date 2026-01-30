@@ -66,38 +66,11 @@ struct gen_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_ATTR);
 
             auto &attr_zps = attr()->zero_points_;
-            auto &attr_gs = attr()->precomputed_reductions_;
-            auto &attr_scales = attr()->scales_;
 
             dev_info_ = intel_engine->device_info();
             arch_ = dev_info_->gpu_arch();
             int stepping = dev_info_->stepping_id();
             VDISPATCH_GEMM_SC(init_attrs(), VERBOSE_UNSUPPORTED_TAG);
-
-            // If we have both grouped scales and grouped zero-points, they must
-            // have the same group size
-            if (a_scales_2d() && (a_zp_2d() || a_gs_2d())) {
-                auto asc_group_k = attr_scales.get_group(DNNL_ARG_A, 0);
-                auto azp_group_k = attr_zps.get_group(DNNL_ARG_A, 0);
-                auto ags_group_k = attr_gs.get_group(DNNL_ARG_A, 0);
-                VDISPATCH_GEMM(
-                        IMPLICATION(a_zp_2d(), asc_group_k == azp_group_k),
-                        VERBOSE_UNSUPPORTED_ZP_CFG);
-                VDISPATCH_GEMM(
-                        IMPLICATION(a_gs_2d(), asc_group_k == ags_group_k),
-                        VERBOSE_UNSUPPORTED_ZP_CFG);
-            }
-            if (b_scales_2d() && (b_zp_2d() || b_gs_2d())) {
-                auto bsc_group_k = attr_scales.get_group(DNNL_ARG_B, 1);
-                auto bzp_group_k = attr_zps.get_group(DNNL_ARG_B, 1);
-                auto bgs_group_k = attr_gs.get_group(DNNL_ARG_B, 1);
-                VDISPATCH_GEMM(
-                        IMPLICATION(b_zp_2d(), bsc_group_k == bzp_group_k),
-                        VERBOSE_UNSUPPORTED_ZP_CFG);
-                VDISPATCH_GEMM(
-                        IMPLICATION(b_gs_2d(), bsc_group_k == bgs_group_k),
-                        VERBOSE_UNSUPPORTED_ZP_CFG);
-            }
 
             const auto d = desc();
 
@@ -242,9 +215,9 @@ struct gen_t : public primitive_t {
 
             // Grouped scales break pre-XeHPG kernels due to increased register pressure
             bool A_grouped
-                    = 1 < a_scales_group_k_ && a_scales_group_k_ < desc()->k();
+                    = 1 < a_quant.group_k && a_quant.group_k < desc()->k();
             bool B_grouped
-                    = 1 < b_scales_group_k_ && b_scales_group_k_ < desc()->k();
+                    = 1 < b_quant.group_k && b_quant.group_k < desc()->k();
             VDISPATCH_GEMM(IMPLICATION(arch_ == compute::gpu_arch_t::xe_lp,
                                    !(A_grouped || B_grouped)),
                     VERBOSE_UNSUPPORTED_FEATURE, "grouped scales");
@@ -266,27 +239,12 @@ struct gen_t : public primitive_t {
             }
 
             // Wrangle data types.
-            auto ao_type = with_a_zero_points()
-                    ? attr_zps.get_data_type(swap_ab_ ? DNNL_ARG_B : DNNL_ARG_A)
-                    : data_type::s32;
-            auto bo_type = with_b_zero_points()
-                    ? attr_zps.get_data_type(swap_ab_ ? DNNL_ARG_A : DNNL_ARG_B)
-                    : data_type::s32;
-            auto ag_type = with_a_group_sums()
-                    ? attr_gs.get_data_type(swap_ab_ ? DNNL_ARG_B : DNNL_ARG_A)
-                    : data_type::s32;
-            auto bg_type = with_b_group_sums()
-                    ? attr_gs.get_data_type(swap_ab_ ? DNNL_ARG_A : DNNL_ARG_B)
-                    : data_type::s32;
             bool int_acc = utils::one_of(eff_a_type(), s8, u8);
-            int_acc &= (!(a_scales_grouped() || b_scales_grouped())
-                    && !(a_zp_grouped() || b_zp_grouped()));
+            int_acc &= !(a_grouped() || b_grouped());
             auto co_type = with_bias() ? d->bias_type()
                     : with_sum_ab()    ? d->sum_ab_type
                     : int_acc          ? s32
                                        : d->c_type();
-
-            // Choose accumulation data type.
             auto acc_type = int_acc
                     ? s32
                     : (utils::one_of(f64, eff_a_type(), eff_b_type()) ? f64
@@ -343,42 +301,29 @@ struct gen_t : public primitive_t {
             CHECK(gpu_post_ops_t::make(gpu_post_ops, post_ops_, dst_md(),
                     get_post_op_specializations()));
 
-            auto has_gs = [&](int idx) {
-                return !attr()->precomputed_reductions_.has_default_values(idx);
-            };
-
-            // TODO: Refactor to contain all swap handling within pd.
-            jit::quant_params a_quant, b_quant;
+            // TODO: handle swapping centrally to avoid copying here.
+            // If we just swap a_quant and b_quant, we run into issues in execute
+            // where with_{ab}_zero_points is swapped internally
+            jit::quant_params swapped_a_quant = a_quant;
+            jit::quant_params swapped_b_quant = b_quant;
             if (swap_ab()) {
-                a_quant = {b_scales_type_, bo_type, ag_type, bsc_dims_,
-                        bo_dims_, bg_dims_, b_q2d_group_k(), b_q2d_group_n(), 0,
-                        has_gs(DNNL_ARG_B), false, b_zp_hostscalar()};
-                b_quant = {a_scales_type_, ao_type, bg_type, asc_dims_,
-                        ao_dims_, ag_dims_, a_q2d_group_k(), 0, a_q2d_group_m(),
-                        has_gs(DNNL_ARG_A), false, a_zp_hostscalar()};
-            } else {
-                a_quant = {a_scales_type_, ao_type, ag_type, asc_dims_,
-                        ao_dims_, ag_dims_, a_q2d_group_k(), a_q2d_group_m(), 0,
-                        has_gs(DNNL_ARG_A), false, a_zp_hostscalar()};
-                b_quant = {b_scales_type_, bo_type, bg_type, bsc_dims_,
-                        bo_dims_, bg_dims_, b_q2d_group_k(), 0, b_q2d_group_n(),
-                        has_gs(DNNL_ARG_B), false, b_zp_hostscalar()};
+                std::swap(swapped_a_quant, swapped_b_quant);
+                std::swap(swapped_a_quant.group_m, swapped_a_quant.group_n);
+                std::swap(swapped_b_quant.group_m, swapped_b_quant.group_n);
             }
-            jit::quant_params c_quant = {c_scales_type_, co_type, bg_type,
-                    csc_dims_, -1, -1, 0, c_q2d_group_m(), c_q2d_group_n(),
-                    has_gs(DNNL_ARG_C), with_mx_scale(), false};
 
             bool print_verbose = get_verbose(verbose_t::debuginfo) >= 5;
             bool kernel_success = false;
             auto entries = kernel_desc_.select_kernel(arch_, stepping,
                     dev_info_->eu_count(), has_systolic, is_integrated, mode,
                     batch_dims(), eff_transa(), eff_transb(), eff_trans_bias(),
-                    swap_ab(), a_quant, b_quant, c_quant, with_sround_,
-                    with_c_zero_points(), with_bias(), eff_sum_ab(), alpha(),
-                    beta(), eff_a_type(), eff_b_type(), desc()->c_type(),
-                    co_type, acc_type, eff_align_a(), eff_align_b(), align_c(),
-                    eff_m(), eff_n(), d->k(), eff_lda(), eff_ldb(), d->ldc(),
-                    d->batch(), std::move(gpu_post_ops));
+                    swap_ab(), swapped_a_quant, swapped_b_quant, c_quant,
+                    with_mx_scale_, with_sround_, with_c_zero_points(),
+                    with_bias(), eff_sum_ab(), alpha(), beta(), eff_a_type(),
+                    eff_b_type(), desc()->c_type(), co_type, acc_type,
+                    eff_align_a(), eff_align_b(), align_c(), eff_m(), eff_n(),
+                    d->k(), eff_lda(), eff_ldb(), d->ldc(), d->batch(),
+                    std::move(gpu_post_ops));
             for (auto &entry : entries) {
                 kernel_desc_.set_entry(entry);
                 auto status = kernel_desc_.finalize();
@@ -693,7 +638,7 @@ private:
             zero_pool_t *zero_pool, const memory_storage_t &a,
             const memory_storage_t &b, const memory_storage_t &c,
             const memory_storage_t *ao, const memory_storage_t *bo,
-            int16_t ao_hostscalar, int16_t bo_hostscalar,
+            int16_t ao_host_scalar, int16_t bo_host_scalar,
             const memory_storage_t *a_scales, const memory_storage_t *b_scales,
             const memory_storage_t *c_scales, const memory_storage_t *ag,
             const memory_storage_t *bg, const memory_storage_t &co,
@@ -703,7 +648,7 @@ private:
             int64_t offset_bq, int64_t offset_co, int64_t *offset_po_src,
             int32_t lda, int32_t ldb, int32_t ldc, int32_t m, int32_t n,
             int32_t k, int32_t k0, float alpha, float beta, int32_t cmask,
-            bool last_k_block, bool swapab, bool disable_hilbert) const;
+            bool last_k_block, bool swap_ab, bool disable_hilbert) const;
 
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     const gemmstone::CommonDriverInfo *nocopy_info() const {

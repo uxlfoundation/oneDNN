@@ -36,6 +36,10 @@ namespace impl {
     VCHECK(primitive, create, dispatch, gemm, (f), "%s," msg, \
             this->info(engine), ##__VA_ARGS__)
 
+#define VDISPATCH_GEMM_IC(cond, msg, ...) \
+    VCONDCHECK(primitive, create, dispatch, gemm, (cond), \
+            status::unimplemented, msg, ##__VA_ARGS__)
+
 // NOLINTBEGIN(google-default-arguments)
 struct gemm_pd_t : public primitive_desc_t {
     static constexpr auto base_pkind = primitive_kind::gemm;

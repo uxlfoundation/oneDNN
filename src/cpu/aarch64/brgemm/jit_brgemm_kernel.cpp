@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2024-2025 FUJITSU LIMITED
-* Copyright 2024-2025 Arm Ltd. and affiliates
+* Copyright 2024-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -1230,7 +1230,7 @@ void jit_brgemm_kernel_t::store_accumulators(int bd_block2, bool is_bdb_tail,
         cmp_imm(reg_do_comp, 0, X_TMP_0);
         b(EQ, label_store_without_comp);
         apply_compensation(bd_block, ld_block2, is_ld_tail);
-        L_aligned(label_store_without_comp);
+        L(label_store_without_comp);
     }
 
     if (need_to_apply_alpha_beta)
@@ -1247,10 +1247,10 @@ void jit_brgemm_kernel_t::store_accumulators(int bd_block2, bool is_bdb_tail,
         store_accumulators_apply_post_ops(bd_block, ld_block2, 0, is_ld_tail);
         bl(label_done);
 
-        L_aligned(label_store_without_post_ops);
+        L(label_store_without_post_ops);
     }
     store_accumulators_without_post_ops(bd_block, ld_block2, is_ld_tail);
-    L_aligned(label_done);
+    L(label_done);
 }
 
 void jit_brgemm_kernel_t::sum_into_one_lane(
@@ -1672,7 +1672,7 @@ void jit_brgemm_kernel_t::ldb_loop(int bd_block2, bool is_bdb_tail,
         if (rdb_val > 0) {
             Label rdb_loop_label;
             mov(reg_rdb_loop, rdb_val);
-            L_aligned(rdb_loop_label, 64);
+            L(rdb_loop_label);
             {
                 const bool is_rd_tail = false;
                 gemm_microkernel(bd_block2, is_bdb_tail, ld_block2, is_rd_tail,
@@ -1696,7 +1696,7 @@ void jit_brgemm_kernel_t::ldb_loop(int bd_block2, bool is_bdb_tail,
     };
     if (is_ldb_loop_) { mov_imm(reg_ldb_loop, ldb_loop_length); }
 
-    L_aligned(ldb_loop_label, 64);
+    L(ldb_loop_label);
     {
         zero_accumulators(bd_block2, is_bdb_tail, ld_block2, is_ld_tail,
                 skip_accumulation);
@@ -1724,7 +1724,7 @@ void jit_brgemm_kernel_t::ldb_loop(int bd_block2, bool is_bdb_tail,
             }
 
             if (brg.brgattr.max_bs > 1) { mov(reg_BS_loop, reg_BS); }
-            L_aligned(BS_loop_label, 64);
+            L(BS_loop_label);
             {
                 if (check_top_vpad || check_bottom_vpad) {
                     const auto vpad_first = -brg.brgattr.max_bottom_vpad;
@@ -1924,7 +1924,7 @@ void jit_brgemm_kernel_t::bdb_loop() {
                 // middle bd_blocks -----------
                 Label bdb_loop_label;
                 mov_imm(reg_bdb_loop, bdblocks);
-                L_aligned(bdb_loop_label, 64);
+                L(bdb_loop_label);
                 {
                     bdb_loop_body(1, false, false, false,
                             bd_blocks_for_rd_tail <= 1 ? 0 : rows_for_rd_tail,
@@ -1951,12 +1951,12 @@ void jit_brgemm_kernel_t::bdb_loop() {
         }
         if (!vpad_exist || brg.type == brgemm_strd) {
             // for brgemm_strd batch may be null so we need this code path
-            L_aligned(no_vpad_label, 64);
+            L(no_vpad_label);
             if (brg.bdb > 0) {
                 mov_imm(reg_bdb_loop, brg.bdb);
                 if (brg.bdb > (rows_for_rd_tail ? 1 : 0)) {
                     Label bdb_loop_label;
-                    L_aligned(bdb_loop_label, 64);
+                    L(bdb_loop_label);
                     {
                         bdb_loop_body(1, false, false, false,
                                 bd_blocks_for_rd_tail <= 1 ? 0
@@ -1982,7 +1982,7 @@ void jit_brgemm_kernel_t::bdb_loop() {
                 do_ldb_loop(1, true, false, false, rows_for_rd_tail,
                         skip_accumulation);
         }
-        L_aligned(bdb_loop_end_label, 64);
+        L(bdb_loop_end_label);
     };
 
     auto bdb_loop_general = [=](bool skip_accumulation) {
@@ -2005,10 +2005,10 @@ void jit_brgemm_kernel_t::bdb_loop() {
         bdb_loop_general(false);
         b(bdb_loop_done_label);
 
-        L_aligned(bdb_loop_skip_acc_label, 64);
+        L(bdb_loop_skip_acc_label);
         bdb_loop_general(true);
 
-        L_aligned(bdb_loop_done_label, 64);
+        L(bdb_loop_done_label);
     } else
         bdb_loop_general(false);
 }

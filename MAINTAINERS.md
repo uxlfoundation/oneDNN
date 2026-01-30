@@ -114,10 +114,8 @@ Team: @uxlfoundation/onednn-arch
 | -----------------  | --------------------- | ----------------- | ---------- |
 | Denis Samoilov     | @densamoilov          | Intel Corporation | Maintainer |
 | Dmitry Zarukin     | @dzarukin             | Intel Corporation | Maintainer |
-| Mourad Gouicem     | @mgouicem             | Intel Corporation | Maintainer |
 | Vadim Pirogov      | @vpirogov             | Intel Corporation | Maintainer |
 | Ankit Manerikar    | @avmanerikar          | Intel Corporation | Code Owner |
-| Stefan Palicki     | @spalicki             | Intel Corporation | Code Owner |
 | Maria Zhukova      | @mzhukova             | Intel Corporation | Code Owner |
 
 ## Graph API
@@ -127,12 +125,7 @@ Team: @uxlfoundation/onednn-graph
 | Name               | Github ID             | Affiliation       | Role       |
 | ------------------ | --------------------- | ----------------- | ---------- |
 | Tao Lv             | @TaoLv                | Intel Corporation | Maintainer |
-| Zhitao Wang        | @wzt1997              | Intel Corporation | Code Owner |
-| Jiexin Zheng       | @Jiexin-Zheng         | Intel Corporation | Code Owner |
-| Shaojie Cui        | @ShanSimu             | Intel Corporation | Code Owner |
-| Yonghao Gu         | @gyhintel             | Intel Corporation | Code Owner |
 | Rong Zhang         | @rongzha1             | Intel Corporation | Code Owner |
-| Xiang Guo          | @xiang1guo            | Intel Corporation | Code Owner |
 | Yixin Bao          | @ElaineBao            | Intel Corporation | Code Owner |
 
 ## CPU Engine
@@ -147,9 +140,7 @@ Team: @uxlfoundation/onednn-cpu-x64
 | Tatyana Primak      | @tprimak              | Intel Corporation | Maintainer |
 | Alexander Simonov   | @asimonov1            | Intel Corporation | Code Owner |
 | Alexey Makarevich   | @amakarev             | Intel Corporation | Code Owner |
-| David Eberius       | @davideberius         | Intel Corporation | Code Owner |
 | Dmitriy Ovchinnikov | @inteldimitrius       | Intel Corporation | Code Owner |
-| Stefan Palicki      | @spalicki             | Intel Corporation | Code Owner |
 | Tomasz Czeszun      | @tczeszun             | Intel Corporation | Code Owner |
 | Yair Obodovsky      | @yair-obodovsky       | Intel Corporation | Code Owner |
 | Xuxin Zeng          | @xuxinzen             | Intel Corporation | Code Owner |
@@ -203,12 +194,10 @@ Team: @uxlfoundation/onednn-gpu-intel
 | ------------------ | --------------------- | ----------------- | ---------- |
 | Eugene Chereshnev  | @echeresh             | Intel Corporation | Maintainer |
 | Konstantin Arturov | @karturov             | Intel Corporation | Maintainer |
-| Peter Caday        | @petercad             | Intel Corporation | Maintainer |
 | Andy Kassen        | @atkassen             | Intel Corporation | Code Owner |
 | Daniel Youssif     | @dyoussif             | Intel Corporation | Code Owner |
 | Haleema Sadia      | @h-sadia              | Intel Corporation | Code Owner |
 | Andrey Guskov      | @hidefromkgb          | Intel Corporation | Code Owner |
-| Gallagher Pryor    | @pv-pterab-s          | Intel Corporation | Code Owner |
 | Kealan Barbieri    | @kealan-barbieri      | Intel Corporation | Code Owner |
 | Roy Oursler        | @rjoursler            | Intel Corporation | Code Owner |
 | Simon Ewing        | @Simonsays095         | Intel Corporation | Code Owner |
@@ -216,21 +205,17 @@ Team: @uxlfoundation/onednn-gpu-intel
 | Stefen Yurkevich   | @syurkevi             | Intel Corporation | Code Owner |
 | Umar Arshad        | @umar456              | Intel Corporation | Code Owner |
 
-### NVIDIA, AMD, and generic GPU
+### NVIDIA
 
-Teams:
-* @uxlfoundation/onednn-gpu-nvidia
-* @uxlfoundation/onednn-gpu-amd
-* @uxlfoundation/onednn-gpu-generic
+Vacant. Maintained by Core team.
 
-| Name               | Github ID             | Affiliation       | Role       |
-| ------------------ | --------------------- | ----------------- | ---------- |
-| Anton Mitkov       | @ShanoToni            | Codeplay Software | Code Owner |
-| Atharva Dubey      | @AD2605               | Codeplay Software | Code Owner |
-| Mehdi Goli         | @mehdi-goli           | Codeplay Software | Code Owner |
-| Nicolò Scipione    | @s-Nick               | Codeplay Software | Code Owner |
-| Svetlozar Georgiev | @sgeor255             | Codeplay Software | Code Owner |
-| Romain Biessy      | @Rbiessy              | Codeplay Software | Code Owner |
+### AMD
+
+Vacant. Maintained by Core team.
+
+### Generic SYCL
+
+Vacant. Maintained by Core team.
 
 ## Support functions
 
@@ -243,7 +228,6 @@ Team: @uxlfoundation/onednn-doc
 | Vadim Pirogov      | @vpirogov             | Intel Corporation | Maintainer |
 | Dmitry Zarukin     | @dzarukin             | Intel Corporation | Code Owner |
 | Maria Zhukova      | @mzhukova             | Intel Corporation | Code Owner |
-| Ranu Kundu         | @ranukund             | Intel Corporation | Code Owner |
 | Tao Lv             | @TaoLv                | Intel Corporation | Code Owner |
 
 ### DevOps

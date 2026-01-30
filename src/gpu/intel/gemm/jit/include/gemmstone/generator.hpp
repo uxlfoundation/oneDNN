@@ -34,6 +34,7 @@
 #include "gemmstone/type.hpp"
 #include "gemmstone/problem.hpp"
 #include "gemmstone/strategy.hpp"
+#include "gemmstone/microkernel_selector.hpp"
 #include "generator/pieces/copy_plan.hpp"
 #include "generator/pieces/register_layout.hpp"
 #include "generator/pieces/state.hpp"
@@ -46,7 +47,12 @@ GEMMSTONE_NAMESPACE_START
 #ifndef GENERATOR_BASE
 
 #define GENERATOR_SUPER(hw) ngen::OpenCLCodeGenerator<hw>
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
+#define FORWARD(hw) NGEN_FORWARD_SYCL(hw)
+#endif
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 #define FORWARD(hw) NGEN_FORWARD_OPENCL(hw)
+#endif
 #define GENERATOR_DEBUGINFO {__FILE__, __LINE__}
 
 #define GENERATOR_BASE(hw) GENERATOR_SUPER(hw)
@@ -63,7 +69,7 @@ public:
     // Kernel generation entrypoints.
     void gemm(GEMMProblem problem, GEMMStrategy strategy, const ngen::InterfaceHandler &interface_);
     void gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, const ngen::InterfaceHandler &interface_);
-    micro::Package gemmMicrokernelPackage(const GEMMProblem &problem, const GEMMStrategy &strategy, const ngen::InterfaceHandler &interface_, micro::GEMMProtocol protocol, uint32_t gmdid, bool transposeC = false);
+    microkernel::Package gemmMicrokernelPackage(const GEMMProblem &problem, const GEMMStrategy &strategy, const ngen::InterfaceHandler &interface_, const microkernel::Protocol &protocol, uint32_t gmdid, bool transposeC = false);
 
     // Driver information retrieval.
     static CommonDriverInfo driverInfo(GEMMProblem problem, const GEMMStrategy &strategy);

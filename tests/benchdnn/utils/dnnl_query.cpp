@@ -73,6 +73,18 @@ dnnl_engine_t query_engine(const_dnnl_memory_t memory) {
     return engine;
 }
 
+dnnl_engine_t query_engine(const_dnnl_stream_t stream) {
+    dnnl_engine_t engine;
+    dnnl_stream_get_engine(stream, &engine);
+    return engine;
+}
+
+dnnl_engine_kind_t query_engine_kind(dnnl_engine_t engine) {
+    dnnl_engine_kind_t engine_kind = dnnl_any_engine;
+    dnnl_engine_get_kind(engine, &engine_kind);
+    return engine_kind;
+}
+
 int64_t query_mem_consumption(const_dnnl_primitive_desc_t pd) {
     int64_t size = 0;
     dnnl_primitive_desc_query(pd, dnnl_query_memory_consumption_s64, 0, &size);
@@ -135,12 +147,6 @@ const_dnnl_primitive_desc_t query_pd(dnnl_primitive_t prim) {
     const_dnnl_primitive_desc_t pd {};
     dnnl_primitive_get_primitive_desc(prim, &pd);
     return pd;
-}
-
-dnnl_engine_kind_t query_engine_kind(const dnnl_engine_t &engine) {
-    dnnl_engine_kind_t engine_kind = dnnl_any_engine;
-    dnnl_engine_get_kind(engine, &engine_kind);
-    return engine_kind;
 }
 
 dnnl_sparse_encoding_t query_md_sparse_encoding(const_dnnl_memory_desc_t md) {

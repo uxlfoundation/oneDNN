@@ -235,7 +235,13 @@ def func_to_str(enum, values):
     signature = func_to_str_decl(enum)
     func_blocks = []
     for v in values:
-        func_blocks.append(f'if (v == {v}) return "{sanitize_value(v)}";')
+        # Add conditional compilation for experimental features
+        if v == "dnnl_grouped":
+            func_blocks.append("#if DNNL_EXPERIMENTAL_GROUPED_GEMM")
+            func_blocks.append(f'if (v == {v}) return "{sanitize_value(v)}";')
+            func_blocks.append("#endif")
+        else:
+            func_blocks.append(f'if (v == {v}) return "{sanitize_value(v)}";')
     if enum == "dnnl_primitive_kind_t":
         func_blocks.append(
             'if (v == dnnl::impl::primitive_kind::sdpa) return "sdpa";'
@@ -282,7 +288,13 @@ def str_to_func(enum, values, is_dnnl=True):
         if "any" in v:
             special_values.append(v)
             continue
-        func_blocks.append(f"CASE({sanitize_value(v)});")
+        # Add conditional compilation for experimental features
+        if v == "dnnl_grouped":
+            func_blocks.append("#if DNNL_EXPERIMENTAL_GROUPED_GEMM")
+            func_blocks.append(f"CASE({sanitize_value(v)});")
+            func_blocks.append("#endif")
+        else:
+            func_blocks.append(f"CASE({sanitize_value(v)});")
     func_blocks.append("#undef CASE")
     for v in special_values:
         match = re.search(r"(any|undef)", v)

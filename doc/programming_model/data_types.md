@@ -210,8 +210,7 @@ oneDNN performance optimizations for Intel Graphics are specialized based on
 device microarchitecture (uArch). The following uArchs and associated devices
 have specialized optimizations in the library:
  * Xe-LP
-   * Intel UHD Graphics for 11th-14th Gen Intel(R) Processors
-   * Intel Iris Xe Graphics
+   * Intel Graphics for 11th-14th Gen Intel(R) Processors
    * Intel Iris Xe MAX Graphics (formerly DG1)
  * Xe-LPG
    * Intel Graphics for Intel Core Ultra processors (formerly Meteor Lake)
@@ -225,7 +224,7 @@ have specialized optimizations in the library:
  * Xe2-HPG
    * Intel Arc B-Series Graphics (formerly Battlemage)
  * Xe3-LPG
-   * Intel Arc Graphics for future Intel Core Ultra processors (code name Panther Lake)
+   * Intel Graphics for Intel Core Ultra processors (Series 3) (formerly Panther Lake)
 
 The following table indicates the data types support for each uArch supported by oneDNN.
 

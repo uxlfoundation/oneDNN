@@ -774,7 +774,7 @@ static inline void encodeTernarySrc2(Instruction12 &i, S2 src2, Tag tag)
 template <typename Tag>
 static inline void encodeTernarySrc2(Instruction12 &i, const Immediate &src2, Tag tag)
 {
-    i.ternary.src2Imm = true;
+    i.qword[0] |= 0x800000000000; /* same as (i.ternary.src2Imm = true), update directly to avoid gcc13 bug */
     i.ternary.src2 = static_cast<uint64_t>(src2);
 }
 

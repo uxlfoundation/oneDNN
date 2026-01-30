@@ -18,6 +18,8 @@
 
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
 
+#include <atomic>
+
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/memory_desc_wrapper.hpp"
@@ -42,10 +44,7 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
     const dim_t group_count = src_grouped.group_count;
     const dim_t K = wei_d.dims()[1];
     const dim_t N = wei_d.dims()[2];
-
-#ifndef NDEBUG
     const dim_t total_M = src_d.dims()[0];
-#endif
 
     const void *src_data = CTX_IN_MEM(const void *, DNNL_ARG_SRC, 0);
     const int32_t *src_offsets = CTX_IN_MEM(const int32_t *, DNNL_ARG_SRC, 1);
@@ -98,6 +97,7 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
     // Parallelize over groups (experts in MoE)
     // Expectation is to see 128-256+ groups, with varying M per group
     // and possibly some empty groups (M == 0)
+    std::atomic<status_t> st(status::success);
     parallel_nd(group_count, [&](dim_t group_id) {
         const dim_t src_offset_start
                 = (group_id == 0) ? 0 : src_offsets[group_id - 1];
@@ -106,17 +106,16 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
                 = (group_id == 0) ? 0 : dst_offsets[group_id - 1];
         const dim_t dst_offset_end = dst_offsets[group_id];
 
-        assert(src_offset_start >= 0);
-        assert(src_offset_end <= total_M);
-        assert(src_offset_end >= src_offset_start);
-        assert(dst_offset_start >= 0);
-        assert(dst_offset_end <= total_M);
-        assert(dst_offset_end >= dst_offset_start);
+        // Validate offsets
+        if (src_offset_start < 0 || src_offset_end > total_M
+                || src_offset_end < src_offset_start || dst_offset_start < 0
+                || dst_offset_end > total_M
+                || dst_offset_end < dst_offset_start) {
+            st = status::invalid_arguments;
+            return;
+        }
 
         const dim_t M = src_offset_end - src_offset_start;
-        const dim_t M_dst = dst_offset_end - dst_offset_start;
-
-        assert(M == M_dst);
         if (M == 0) return; // skip if no rows in this group
 
         const dim_t src_base_idx = src_offset_start * K;
@@ -214,7 +213,7 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
         }
     });
 
-    return status::success;
+    return st;
 }
 
 } // namespace matmul

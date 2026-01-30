@@ -188,6 +188,16 @@ def enum_abbrev(enum):
     }.get(enum, def_enum)
 
 
+# Map (enum_name, enum_value) to macro_name for experimental features
+experimental_features = {
+    # ~~~~~~~enum name~~~~~~    ~enum value~     ~~~~~~~~~~macro name~~~~~~~~~~
+    (
+        "dnnl_sparse_encoding_t",
+        "dnnl_grouped",
+    ): "DNNL_EXPERIMENTAL_GROUPED_MEMORY",
+}
+
+
 def sanitize_value(v):
     if "undef" in v:
         return "undef"
@@ -235,7 +245,13 @@ def func_to_str(enum, values):
     signature = func_to_str_decl(enum)
     func_blocks = []
     for v in values:
-        func_blocks.append(f'if (v == {v}) return "{sanitize_value(v)}";')
+        # Add conditional compilation for experimental features
+        if (enum, v) in experimental_features:
+            func_blocks.append(f"#if {experimental_features[enum, v]}")
+            func_blocks.append(f'if (v == {v}) return "{sanitize_value(v)}";')
+            func_blocks.append("#endif")
+        else:
+            func_blocks.append(f'if (v == {v}) return "{sanitize_value(v)}";')
     if enum == "dnnl_primitive_kind_t":
         func_blocks.append(
             'if (v == dnnl::impl::primitive_kind::sdpa) return "sdpa";'
@@ -282,7 +298,13 @@ def str_to_func(enum, values, is_dnnl=True):
         if "any" in v:
             special_values.append(v)
             continue
-        func_blocks.append(f"CASE({sanitize_value(v)});")
+        # Add conditional compilation for experimental features
+        if (enum, v) in experimental_features:
+            func_blocks.append(f"#if {experimental_features[enum, v]}")
+            func_blocks.append(f"CASE({sanitize_value(v)});")
+            func_blocks.append("#endif")
+        else:
+            func_blocks.append(f"CASE({sanitize_value(v)});")
     func_blocks.append("#undef CASE")
     for v in special_values:
         match = re.search(r"(any|undef)", v)

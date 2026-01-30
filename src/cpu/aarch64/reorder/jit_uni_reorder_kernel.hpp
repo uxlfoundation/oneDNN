@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2018 Intel Corporation
 * Copyright 2020-2023 FUJITSU LIMITED
-* Copyright 2022, 2025 Arm Ltd. and affiliates
+* Copyright 2022, 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -152,9 +152,6 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
     bool can_do_tr8x8();
 
     bool process_unroll_tr8x8(const int ndims, const int len);
-
-    template <cpu_isa_t isa>
-    bool process_direct_copy(const int ndims, const int len);
 
     void process_unroll_generic_step(int reg_unroll, const int *i_off,
             const int *o_off, const int *s_off, const int *c_off,

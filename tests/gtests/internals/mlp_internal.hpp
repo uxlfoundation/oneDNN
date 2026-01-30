@@ -17,6 +17,7 @@
 #ifndef DNNL_TEST_INTERNAL_MLP_INTERNAL_HPP
 #define DNNL_TEST_INTERNAL_MLP_INTERNAL_HPP
 
+#include "common/c_types_map.hpp"
 #include <oneapi/dnnl/dnnl.hpp>
 
 #define DNNL_ARG_SRC DNNL_ARG_SRC_0

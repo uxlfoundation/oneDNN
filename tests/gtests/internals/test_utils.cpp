@@ -37,7 +37,7 @@ std::mt19937 &get_generator() {
 // this is changed from the fill_random() function in matmul_perf.cpp.
 void fill_random(std::vector<float> &out, const memory::desc &desc,
         float minval, float maxval) {
-    static std::vector<float> random_data_f;
+    std::vector<float> random_data_f;
     constexpr memory::dim nrand = 1037;
 
     if (random_data_f.empty()) {
@@ -46,6 +46,10 @@ void fill_random(std::vector<float> &out, const memory::desc &desc,
         random_data_f.resize(nrand);
         for (auto &d : random_data_f)
             d = dist_f(get_generator());
+        //for (int i = 0; i < int(random_data_f.size()); i += 32)
+        //    for (int j = 0; j < 32; j++)
+        //        if (i + j < int(random_data_f.size()))
+        //            random_data_f[i + j] = (j == 0) ? maxval / (j + 1) : minval;
     }
 
     auto elems = product(desc.get_dims());
@@ -77,7 +81,8 @@ void fill_random_scales(std::vector<float> &out, const memory::desc &desc) {
     }
 }
 
-void print_mem(const dnnl::memory &mem, const std::string &name) {
+void print_mem(
+        const dnnl::memory &mem, const std::string &name, bool transpose) {
     auto eng = mem.get_engine();
     dnnl::stream s(eng);
     s.wait();
@@ -88,7 +93,7 @@ void print_mem(const dnnl::memory &mem, const std::string &name) {
     size_t ndims = dims.size();
     size_t lastdim = ndims - 1;
 
-    printf("%sbegin : ", name.c_str());
+    printf("%s begin : ", name.c_str());
     printf("dims : [");
     for (auto d : dims) {
         printf("%6ld ", (long)d);
@@ -97,10 +102,14 @@ void print_mem(const dnnl::memory &mem, const std::string &name) {
     for (auto s : strides) {
         printf("%6ld ", (long)s);
     }
-
     if (mem.get_desc().get_data_type() == dnnl_bf16) { printf("bf16\n"); }
     void *mapped_ptr_ = (void *)mem.map_data();
-    printf("]\ni:");
+    if (transpose && (ndims > 1)) {
+        std::swap(strides[ndims - 1], strides[ndims - 2]);
+        printf("]  --TRANSPOSED--\ni:");
+    } else {
+        printf("]\ni:");
+    }
     for (int i = 0; i < dims[lastdim]; i++) {
         switch ((int)desc.get_data_type()) {
             case dnnl_u4:
@@ -152,7 +161,7 @@ void print_mem(const dnnl::memory &mem, const std::string &name) {
 
                 int d = lastdim;
                 while (d >= 0) {
-                    if (++idxs[d] < dims[d]) {
+                    if (++idxs[d] < size_t(dims[d])) {
                         break;
                     } else {
                         idxs[d--] = 0;
@@ -177,7 +186,7 @@ void print_mem(const dnnl::memory &mem, const std::string &name) {
 
                 int d = lastdim;
                 while (d >= 0) {
-                    if (++idxs[d] < dims[d]) {
+                    if (++idxs[d] < size_t(dims[d])) {
                         break;
                     } else {
                         idxs[d--] = 0;
@@ -201,7 +210,7 @@ void print_mem(const dnnl::memory &mem, const std::string &name) {
 
                 int d = lastdim;
                 while (d >= 0) {
-                    if (++idxs[d] < dims[d]) {
+                    if (++idxs[d] < size_t(dims[d])) {
                         break;
                     } else {
                         idxs[d--] = 0;
@@ -234,7 +243,7 @@ void print_mem(const dnnl::memory &mem, const std::string &name) {
 
                 int d = lastdim;
                 while (d >= 0) {
-                    if (++idxs[d] < dims[d]) {
+                    if (++idxs[d] < size_t(dims[d])) {
                         break;
                     } else {
                         idxs[d--] = 0;
@@ -257,7 +266,7 @@ void print_mem(const dnnl::memory &mem, const std::string &name) {
 
                 int d = lastdim;
                 while (d >= 0) {
-                    if (++idxs[d] < dims[d]) {
+                    if (++idxs[d] < size_t(dims[d])) {
                         break;
                     } else {
                         idxs[d--] = 0;
@@ -270,7 +279,7 @@ void print_mem(const dnnl::memory &mem, const std::string &name) {
         default: throw std::runtime_error("Not supported");
     }
     mem.unmap_data(mapped_ptr_);
-    printf("%send\n", name.c_str());
+    printf("%s end\n", name.c_str());
 }
 
 void transpose(const dnnl::engine &eng, memory &out, memory &in) {
@@ -334,7 +343,7 @@ void transpose_strides(const dnnl::engine &eng, memory &out, memory &in) {
 
             int d = lastdim;
             while (d >= 0) {
-                if (++idxs[d] < dims[d]) {
+                if (++idxs[d] < size_t(dims[d])) {
                     break;
                 } else {
                     idxs[d--] = 0;

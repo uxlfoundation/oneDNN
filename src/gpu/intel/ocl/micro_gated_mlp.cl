@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/ocl/ocl_types.h"
-#include "gpu/intel/ocl/tile_ops.h"
+#include "gpu/intel/include/tile_ops.h"
+#include "gpu/intel/include/types.h"
 
 /* Microkernel headers -- generated at runtime */
 #include "gemm_gateup.h"
@@ -185,7 +185,7 @@ micro_gated_mlp(const __global SRC_DATA_T *src,
     //int k0 = get_group_id(1) * ugemm_wgu_wg_tile_m / sg_per_wg;
     //{
     for (int k0 = 0; k0 < IC; k0 += ugemm_wgu_wg_tile_m) {
-        bool last = (k0 + ugemm_wgu_wg_tile_m >= IC);
+        //bool last = (k0 + ugemm_wgu_wg_tile_m >= IC);
 
         // LOAD MISSES LAST COLUMN..... TODO
 #ifdef BLOCK_SRC
@@ -336,7 +336,8 @@ micro_gated_mlp(const __global SRC_DATA_T *src,
     barrier(CLK_LOCAL_MEM_FENCE);
 
     tile_elementwise(S_WG_tile, unary_activation); // for gate + swish
-    tile_binary(S_WU_tile, S_WG_tile, binary_mul); // for gate + swish
+    tile_binary(S_WU_tile, S_WG_tile,
+            binary_mul); // for gate + swish <-- ONLY DISABLED FOR DEBUGGING PURPOSES
 
     s_tile_type_half S_tile_half;
     tile_copy_reblock(S_WU_tile, &S_tile_half); // for gate + swish

@@ -375,9 +375,10 @@ status_t micro_gated_mlp_t::init(impl::engine_t *engine) {
     //pd()->gemm_gateup(), HostLanguage::OpenCL_C, shimOptions);
     //std::cout << "shim HEADER" << std::endl;
     //std::cout << header << std::endl;
-    kernel_ctx.add_custom_header("gemm_gateup.h",
-            generateShim(pd()->gemm_gateup(),
-                gemmstone::microkernel::HostLanguage::OpenCL_C, shimOptions));
+    auto header = generateShim(pd()->gemm_gateup(),
+            gemmstone::microkernel::HostLanguage::OpenCL_C, shimOptions);
+    //printf("+++ HEADER BGN +++\n%s\n+++ HEADER END +++\n", header.c_str());
+    kernel_ctx.add_custom_header("gemm_gateup.h", std::move(header));
 
     if (pd()->gemm_gateup().grfMin > 128) {
         kernel_ctx.add_option("-cl-intel-256-GRF-per-thread");

@@ -43,7 +43,8 @@ void fill_random(std::vector<float> &out, const dnnl::memory::desc &desc,
 void fill_random_scales(
         std::vector<float> &out, const dnnl::memory::desc &desc);
 
-void print_mem(const dnnl::memory &mem, const std::string &name = "");
+void print_mem(const dnnl::memory &mem, const std::string &name = "",
+        bool transpose = false);
 
 void transpose(const dnnl::engine &eng, dnnl::memory &out, dnnl::memory &in);
 
@@ -226,7 +227,7 @@ std::vector<float> dequantize(const std::vector<float> &input,
 
             int d = lastdim;
             while (d >= 0) {
-                if (++idxs[d] < dims[d]) {
+                if (++idxs[d] < size_t(dims[d])) {
                     break;
                 } else {
                     idxs[d--] = 0;

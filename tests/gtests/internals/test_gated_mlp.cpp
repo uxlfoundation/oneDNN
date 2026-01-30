@@ -127,7 +127,7 @@ std::string PrintToString(const ::testing::TestParamInfo<mlp_dims_t> &info) {
 }
 
 void fill_const(std::vector<float> &out, const float c) {
-    for (int i = 0; i < out.size(); ++i) {
+    for (int i = 0; i < int(out.size()); ++i) {
         out[i] = c;
     }
 }
@@ -146,24 +146,23 @@ void fill_const(std::vector<float16_t> &out, const float c) {
             d = dist_f(generator);
     }
 
-    size_t chunk = std::min(nrand, out.size());
-    for (int i = 0; i < out.size(); ++i) {
+    for (int i = 0; i < int(out.size()); ++i) {
         out[i] = float16_t(c); //TMP matmul only
     }
-    //for (size_t i = 0; i < out.size(); i += nrand) {
+    //for (size_t i = 0; i < int(out.size()); i += nrand) {
     //    size_t chunk = std::min(nrand, out.size() - i);
     //    std::memcpy(&out[i], random_data_f.data(), chunk * sizeof(float));
     //}
 }
 
 void fill_lin(std::vector<float> &out) {
-    for (int i = 0; i < out.size(); ++i) {
+    for (int i = 0; i < int(out.size()); ++i) {
         out[i] = i;
     }
 }
 
 void fill_hceye(std::vector<float> &out, int ldi = 32) {
-    for (int i = 0; i < out.size(); ++i) {
+    for (int i = 0; i < int(out.size()); ++i) {
         out[i] = ((((i / ldi) % ldi == (i % ldi))) ? 1.f
                                                    : 0.f); //TMP matmul only
         //out[i] = ((( (i/ldi) == (i%ldi))) ? 1.f : 0.f); //TMP matmul only
@@ -171,9 +170,8 @@ void fill_hceye(std::vector<float> &out, int ldi = 32) {
 }
 void fill_hceye(std::vector<float16_t> &out, int ldi = 32) {
     static std::vector<float> random_data_f;
-    constexpr size_t nrand = 1037;
 
-    for (int i = 0; i < out.size(); ++i) {
+    for (int i = 0; i < int(out.size()); ++i) {
         //out[i] = half_cast<half>( (i/33) == (i%33) ? 1.f : 0.f); //TMP matmul only
         //
         //out[i] = half_cast<half>( (i/32)%32 == (i%32) ? 1.f : 0.f); //TMP matmul only
@@ -328,13 +326,13 @@ gmlp_tensors get_descriptors(dnnl::engine &eng, mlp_dims_t p) {
     out.wd_groups = {};
     switch (p.qtype) {
         case quantize_type::per_token_with_groups: {
-            int gateup_mask = 1 << 1 | 1 << 0;
-            int down_mask = 1 << 1 | 1 << 0;
-
             out.wgu_groups = {p.gateup_group_size, 1};
             out.wd_groups = {p.down_group_size, 1};
 
             /*
+            int gateup_mask = 1 << 1 | 1 << 0;
+            int down_mask = 1 << 1 | 1 << 0;
+
             if (wgu_wt != mdt::f16 && wgu_s_dt != mdt::undef) {
                 out.gateup_attr_quantized.set_scales(
                         DNNL_ARG_WEIGHTS, gateup_mask, {p.gateup_group_size, 1}, wgu_s_dt);
@@ -357,10 +355,10 @@ gmlp_tensors get_descriptors(dnnl::engine &eng, mlp_dims_t p) {
         case quantize_type::per_token: {
             // faster dim | slower dim
             // dim 3, 2,  {1 , 0}
+            /*
             int gateup_mask = 1; //  1 << 0;
             int down_mask = 1; //  1 << 0;
 
-            /*
             if (wgu_wt != mdt::f16 && wgu_s_dt != mdt::undef) {
                 out.gateup_attr_quantized.set_scales(
                         DNNL_ARG_WEIGHTS, gateup_mask, {}, wgu_s_dt);
@@ -436,11 +434,11 @@ gmlp_tensors get_descriptors(dnnl::engine &eng, mlp_dims_t p) {
     }
 
     int wgu_group_size = p.gateup_group_size;
-    int wd_group_size = p.down_group_size;
+    //int wd_group_size = p.down_group_size;
 
     if (p.qtype == quantize_type::per_tensor) {
         wgu_group_size = W_gate_sz[0] * W_gate_sz[1];
-        wd_group_size = W_down_sz[0] * W_down_sz[1];
+        //wd_group_size = W_down_sz[0] * W_down_sz[1];
     }
 
     //vector<float> x_data, w_gate_data, w_up_data, w_down_data;
@@ -507,9 +505,9 @@ gmlp_tensors get_descriptors(dnnl::engine &eng, mlp_dims_t p) {
     write_to_dnnl_memory(w_down_scales_data.data(), out.m_w_down_scales);
 
     printf("memory data types?? %d %d %d\n",
-            out.m_w_gate_scales.get_desc().get_data_type(),
-            out.m_w_up_scales.get_desc().get_data_type(),
-            out.m_w_down_scales.get_desc().get_data_type());
+            int(out.m_w_gate_scales.get_desc().get_data_type()),
+            int(out.m_w_up_scales.get_desc().get_data_type()),
+            int(out.m_w_down_scales.get_desc().get_data_type()));
 
     //transpose_strides(eng, out.m_fc_gate_t, out.m_fc_gate);
 
@@ -584,7 +582,7 @@ void bench_gated_mlp_primitives(std::vector<T> &res, double &avg_time,
     }
 
     bmm1_po.append_binary(algorithm::binary_mul, m_FC_up.get_desc());
-    bmm1_attr.set_post_ops(bmm1_po);
+    bmm1_attr.set_post_ops(bmm1_po); // <-- ONLY DISABLED FOR DEBUGGING PURPOSES
 
     auto bmm1_pd = matmul::primitive_desc(
             eng, O_proj_md, W_gate_md, FC_gate_md, bmm1_attr);
@@ -628,7 +626,9 @@ void bench_gated_mlp_primitives(std::vector<T> &res, double &avg_time,
     reorder_args.insert({DNNL_ARG_DST, m_FC_gate_t});
     ///////////////////
 
-    const auto loop = [&]() {
+    const auto loop = [&](bool print = false) {
+    //        #define PRINT_MEM(mem) if (print) { print_mem(mem, #mem); }
+#define PRINT_MEM(mem)
     ///////////////////
     //TMP!!!!
 // test first MM only
@@ -669,11 +669,17 @@ void bench_gated_mlp_primitives(std::vector<T> &res, double &avg_time,
                 {{DNNL_ARG_SRC, m_FC_gate}, {DNNL_ARG_WEIGHTS, m_W_down},
                         {DNNL_ARG_DST, m_FC_down}});
 #endif
+        PRINT_MEM(m_O_proj)
+        PRINT_MEM(m_W_gate)
+        PRINT_MEM(m_W_up)
+        PRINT_MEM(m_W_down)
+        PRINT_MEM(m_FC_gate)
+#undef PRINT_MEM
     };
 
     // Warmup run.
     // Execute primitives of sdpa.
-    loop();
+    loop(true);
 
     // Wait for the computation to finish.
     strm.wait();
@@ -725,7 +731,7 @@ void bench_gated_mlp_primitives(std::vector<T> &res, double &avg_time,
 
     float16_t *mapped_ptr_f16 = (float16_t *)m_FC_gate_t.map_data();
     res.resize(product(FC_gate_md.get_dims()));
-    for (int i = 0; i < res.size(); ++i) {
+    for (int i = 0; i < int(res.size()); ++i) {
         res[i] = mapped_ptr_f16[i];
     }
     m_FC_gate_t.unmap_data(mapped_ptr_f16);
@@ -738,7 +744,7 @@ void bench_gated_mlp_primitives(std::vector<T> &res, double &avg_time,
 
     float16_t *mapped_ptr_f16 = (float16_t *)m_FC_gate.map_data();
     res.resize(product(FC_gate_md.get_dims()));
-    for (int i = 0; i < res.size(); ++i) {
+    for (int i = 0; i < int(res.size()); ++i) {
         res[i] = mapped_ptr_f16[i];
     }
     m_FC_gate.unmap_data(mapped_ptr_f16);
@@ -871,7 +877,9 @@ void bench_gated_mlp_internal(std::vector<T> &res, double &avg_time,
 
     auto prim_fused_internal = gmlp(gmlp_pd);
 
-    const auto loop = [&]() {
+    const auto loop = [&](bool print = false) {
+    //        #define PRINT_MEM(t, mem) if (print) { print_mem(mem, #mem, t); }
+#define PRINT_MEM(t, mem)
         if (p.do_quantize) {
             prim_fused_internal.execute(strm,
                     {{DNNL_ARG_SRC_0, m_O_proj},
@@ -888,6 +896,15 @@ void bench_gated_mlp_internal(std::vector<T> &res, double &avg_time,
                                     m_W_up_scales},
                             {DNNL_ARG_WTS_UP | DNNL_ARG_ATTR_ZERO_POINTS,
                                     m_W_up_zp}}); // TMP ARG for mm test
+            PRINT_MEM(false, m_O_proj)
+            PRINT_MEM(false, m_W_gate_quant)
+            PRINT_MEM(false, m_W_up_quant)
+            PRINT_MEM(false, m_W_down)
+            PRINT_MEM(false, m_W_gate_scales)
+            PRINT_MEM(false, m_W_gate_zp)
+            PRINT_MEM(false, m_W_up_scales)
+            PRINT_MEM(false, m_W_up_zp)
+            PRINT_MEM(true, m_FC_gate_t)
         } else {
             prim_fused_internal.execute(strm,
                     {{DNNL_ARG_SRC_0, m_O_proj}, {DNNL_ARG_SRC_1, m_W_gate},
@@ -896,12 +913,18 @@ void bench_gated_mlp_internal(std::vector<T> &res, double &avg_time,
                             //{DNNL_ARG_DST, m_FC_down}}); //CORRECT ARG
                             {DNNL_ARG_DST,
                                     m_FC_gate_t}}); // TMP ARG for mm test
+            PRINT_MEM(false, m_O_proj)
+            PRINT_MEM(false, m_W_gate)
+            PRINT_MEM(false, m_W_up)
+            PRINT_MEM(false, m_W_down)
+            PRINT_MEM(true, m_FC_gate_t)
         }
+#undef PRINT_MEM
     };
 
     // Warmup run.
     // Execute primitives of sdpa.
-    loop();
+    loop(true);
 
     // Wait for the computation to finish.
     strm.wait();
@@ -948,7 +971,7 @@ void bench_gated_mlp_internal(std::vector<T> &res, double &avg_time,
     float16_t *mapped_ptr_f16 = (float16_t *)m_FC_gate_t.map_data();
     res.resize(product(FC_gate_md.get_dims()));
     //printf("linmem");
-    for (int i = 0; i < res.size(); ++i) {
+    for (int i = 0; i < int(res.size()); ++i) {
         //printf("%f ",mapped_ptr_f16[i].f());
         res[i] = mapped_ptr_f16[i];
     }
@@ -1113,7 +1136,7 @@ TEST_P(mlp_test, compare) {
     int n_mismatches = 0, n_matches = 0;
     printf("resih.size() %zu\n", resih.size());
     float max_diff = 0.0f, max_val, max_gold;
-    for (int i = 0; i < resih.size(); ++i) {
+    for (int i = 0; i < int(resih.size()); ++i) {
         float abs_diff = std::abs(resih[i] - resph[i]);
         float rel_diff = std::abs((resih[i] - resph[i]) / resih[i]);
         if (abs_diff > 1e-4 && rel_diff > 5e-3) {
@@ -1161,8 +1184,9 @@ INSTANTIATE_TEST_SUITE_P(VEC,
                          1, 1, // gateup, wd group size
                      mdt::f16, mdt::f16, mdt::f16, // dt wgateup
                      mdt::f16, mdt::f16, mdt::f16, // dt wd
-                     quantize_type::per_token, dnnl_eltwise_swish},
-             mlp_dims_t{1024,  3584,   18944,    false,
+                     quantize_type::per_token, dnnl_eltwise_swish}
+//*
+             , mlp_dims_t{1024,  3584,   18944,    false,
                          1, 1,
                      mdt::f16, mdt::f16, mdt::f16,
                      mdt::f16, mdt::f16, mdt::f16,
@@ -1445,4 +1469,5 @@ INSTANTIATE_TEST_SUITE_P(VEC,
                     mdt::s8, mdt::f16, mdt::s8,
                     quantize_type::per_token_with_groups, dnnl_eltwise_gelu_erf}
     //,
+    //*/
     ), &PrintToString);

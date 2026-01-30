@@ -38,15 +38,15 @@ struct jit_uni_reorder_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("jit:uni", jit_uni_reorder_t);
 
-        tr::prb_t prb_;
-        tr::jit_uni_reorder_kernel_t::desc_t ker_desc_;
+        prb_t prb_;
+        jit_uni_reorder_kernel_t::desc_t ker_desc_;
         int nthr_;
         bool with_groups_ = false;
         dim_t D_mask_ = 0;
 
         status_t init(engine_t *engine, engine_t *src_engine,
-                engine_t *dst_engine, const tr::prb_t &prb,
-                const tr::jit_uni_reorder_kernel_t::desc_t &ker_desc);
+                engine_t *dst_engine, const prb_t &prb,
+                const jit_uni_reorder_kernel_t::desc_t &ker_desc);
 
     private:
         status_t init_scratchpad();
@@ -85,16 +85,16 @@ private:
             const int32_t *dst_zero_points,
             const memory_tracking::grantor_t &scratchpad) const;
 
-    void fill_curr_data_chunks(const tr::prb_t &prb, const int off,
+    void fill_curr_data_chunks(const prb_t &prb, const int off,
             const ptrdiff_t *omp_data_chunks, const int omp_ndims,
-            tr::jit_uni_reorder_kernel_t::tail_call_param_t &c) const;
+            jit_uni_reorder_kernel_t::tail_call_param_t &c) const;
 
     void reduce_compensation(char *out,
             const int32_t *compensation_reduce_scratch, const int nthr,
             const dim_t wspace_per_thr_size) const;
 
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    std::unique_ptr<tr::jit_uni_reorder_kernel_t> kernel_;
+    std::unique_ptr<jit_uni_reorder_kernel_t> kernel_;
 };
 
 } // namespace aarch64

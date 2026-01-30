@@ -44,11 +44,10 @@ struct trans_wrapper_t {
         , nb_y_(ysize / 8)
         , x_tail_(xsize % 8)
         , y_tail_(ysize % 8) {
-        using namespace cpu::aarch64::tr;
 
         auto create_ker = [=](dim_t ys, dim_t y_inp_str, dim_t y_out_str,
                                   dim_t xs, dim_t x_inp_str, dim_t x_out_str) {
-            tr::prb_t prb;
+            prb_t prb;
             jit_uni_reorder_kernel_t::desc_t desc;
 
             prb.ndims = 2;
@@ -98,9 +97,9 @@ struct trans_wrapper_t {
         dim_t x_blocked = nb_x_ * 8;
         dim_t y_blocked = nb_y_ * 8;
 
-        auto call_ker = [&](tr::jit_uni_reorder_kernel_t &ker, dim_t inp_y,
+        auto call_ker = [&](jit_uni_reorder_kernel_t &ker, dim_t inp_y,
                                 dim_t inp_x, dim_t out_y, dim_t out_x) {
-            tr::jit_uni_reorder_kernel_t::call_param_t cp;
+            jit_uni_reorder_kernel_t::call_param_t cp;
             cp.src_scales = nullptr;
             cp.dst_scales = nullptr;
 
@@ -124,9 +123,9 @@ struct trans_wrapper_t {
     ~trans_wrapper_t() = default;
 
 private:
-    std::unique_ptr<tr::jit_uni_reorder_kernel_t> ker_;
-    std::unique_ptr<tr::jit_uni_reorder_kernel_t> ker_x_tail_;
-    std::unique_ptr<tr::jit_uni_reorder_kernel_t> ker_y_tail_;
+    std::unique_ptr<jit_uni_reorder_kernel_t> ker_;
+    std::unique_ptr<jit_uni_reorder_kernel_t> ker_x_tail_;
+    std::unique_ptr<jit_uni_reorder_kernel_t> ker_y_tail_;
 
     const size_t inp_dt_size_;
     const size_t out_dt_size_;

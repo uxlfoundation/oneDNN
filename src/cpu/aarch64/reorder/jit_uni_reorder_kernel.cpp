@@ -32,7 +32,6 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 namespace aarch64 {
-namespace tr {
 
 using namespace Xbyak_aarch64;
 using namespace dnnl::impl::types;
@@ -1848,7 +1847,6 @@ void jit_uni_reorder_kernel_t::generate() {
 
 #undef TAIL_PARAM
 #undef PARAM
-} //namespace tr
 } // namespace aarch64
 } // namespace cpu
 } // namespace impl

@@ -30,7 +30,6 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 namespace aarch64 {
-namespace tr {
 /* kernel */
 class jit_uni_reorder_kernel_t : public jit_generator_t {
 public:
@@ -432,7 +431,7 @@ private:
 
     void postamble();
 
-    const tr::prb_t &prb_;
+    const prb_t &prb_;
 
     int itype_sz_;
     int otype_sz_;
@@ -473,8 +472,6 @@ private:
             = {z_tmp0, z_tmp1, z_tmp2, z_tmp3, z_tmp4, z_tmp5, z_tmp6, z_tmp7};
     constexpr static int z_tmp_vec_size = 8;
 };
-
-} // namespace tr
 } // namespace aarch64
 } // namespace cpu
 } // namespace impl

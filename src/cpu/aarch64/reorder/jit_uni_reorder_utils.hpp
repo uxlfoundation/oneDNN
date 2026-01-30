@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2018 Intel Corporation
 * Copyright 2020-2023 FUJITSU LIMITED
-* Copyright 2022, 2025 Arm Ltd. and affiliates
+* Copyright 2022, 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -29,7 +29,6 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
-namespace tr {
 struct node_t {
     static constexpr int64_t empty_field = -1;
 
@@ -157,8 +156,6 @@ void prb_block_for_cache(prb_t &prb);
  * optionally splits one of the dimension to achieve better balance between
  * parallel driver and the kernel. */
 void prb_thread_kernel_balance(prb_t &prb, int &ndims_ker_max, int nthr);
-
-} // namespace tr
 
 } // namespace aarch64
 } // namespace cpu

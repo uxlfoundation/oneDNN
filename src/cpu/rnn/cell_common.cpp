@@ -40,11 +40,18 @@ rnn_cell_execution_sig(
     const auto src_layer_ld = rnn.src_layer_ld(cell_position);
     const auto src_iter_ld = rnn.src_iter_ld(cell_position);
 
+    constexpr bool trans_B_off = false;
+    constexpr bool do_sum_off = false;
+    constexpr bool do_sum_on = true;
+
     if (rnn.need_gemm_layer(cell_position)) {
         if (rnn.use_matmul) {
-            CHECK(this->execute_matmul(ctx,
-                    this->get_matmul_layer(cell_position), w_layer_[0],
-                    src_layer_, scratch_gates_));
+            CHECK(this->mm_primitives_.apply(ctx,
+                    {rnn.n_gates * rnn.dhc, rnn.mb, rnn.slc,
+                            rnn.weights_layer_ld, src_layer_ld,
+                            rnn.scratch_gates_ld, weights_type, src_type,
+                            scratch_type, trans_B_off, do_sum_off},
+                    w_layer_[0], src_layer_, scratch_gates_));
         } else {
             CHECK((this->*gemm_layer_func)('N', 'N', rnn.n_gates * rnn.dhc,
                     rnn.mb, rnn.slc, 1.0f, w_layer_[0], rnn.weights_layer_ld,
@@ -53,7 +60,10 @@ rnn_cell_execution_sig(
         }
     }
     if (rnn.use_matmul) {
-        CHECK(this->execute_matmul(ctx, this->get_matmul_iter(cell_position),
+        CHECK(this->mm_primitives_.apply(ctx,
+                {rnn.n_gates * rnn.dhc, rnn.mb, rnn.sic, rnn.weights_iter_ld,
+                        src_iter_ld, rnn.scratch_gates_ld, weights_type,
+                        src_type, scratch_type, trans_B_off, do_sum_on},
                 w_iter_[0], src_iter_, scratch_gates_));
     } else {
         CHECK((this->*gemm_iter_func)('N', 'N', rnn.n_gates * rnn.dhc, rnn.mb,
@@ -83,9 +93,17 @@ rnn_cell_execution_sig(
         const int dst_proj_ld
                 = rnn.dt_conf == all_f32 ? dst_layer_ld : rnn.scratch_gates_ld;
 
-        CHECK((this->*gemm_projection_func)('N', 'N', rnn.dic, rnn.mb, rnn.dhc,
-                1.0f, w_projection_[0], rnn.weights_projection_ld, dst_postgemm,
-                rnn.proj_ht_ld, 0.0f, dst_proj, dst_proj_ld));
+        if (rnn.use_matmul) {
+            CHECK(this->mm_primitives_.apply(ctx,
+                    {rnn.dic, rnn.mb, rnn.dhc, rnn.weights_projection_ld,
+                            rnn.proj_ht_ld, dst_proj_ld, weights_type, src_type,
+                            scratch_type, trans_B_off, do_sum_off},
+                    w_projection_[0], dst_postgemm, dst_proj));
+        } else {
+            CHECK((this->*gemm_projection_func)('N', 'N', rnn.dic, rnn.mb,
+                    rnn.dhc, 1.0f, w_projection_[0], rnn.weights_projection_ld,
+                    dst_postgemm, rnn.proj_ht_ld, 0.0f, dst_proj, dst_proj_ld));
+        }
 
         // we have to downconvert the output to dst_layer_t and copy to dst_iter if needed
         this->rnn_postgemm_->execute_part2(rnn, cell_position, nullptr,
@@ -241,17 +259,39 @@ dnnl_status_t common_bwd_cell_exec_template(T1 gemm_layer_f, T2 gemm_iter_f,
 template <data_type_t src_type, data_type_t weights_type, data_type_t acc_type>
 rnn_cell_execution_sig(
         (ref_rnn_bwd_t<src_type, weights_type, acc_type>::cell_execution_ref)) {
+    constexpr bool trans_B_off = false;
+    constexpr bool trans_B_on = true;
+    constexpr bool do_sum_off = false;
+
     const auto gemm_layer
             = [&](const weights_t *A, const scratch_t *B, float *C) {
-        return (this->*gemm_layer_func)('N', 'N', rnn.slc, rnn.mb,
-                rnn.n_gates * rnn.dhc, 1.0, A, rnn.weights_layer_ld, B,
-                rnn.scratch_gates_ld, 0.0, C, rnn.ws_diff_states_layer_ld);
+        if (rnn.use_matmul) {
+            return this->mm_primitives_.apply(ctx,
+                    {rnn.slc, rnn.mb, rnn.n_gates * rnn.dhc,
+                            rnn.weights_layer_ld, rnn.scratch_gates_ld,
+                            rnn.ws_diff_states_layer_ld, weights_type, src_type,
+                            data_type::f32, trans_B_off, do_sum_off},
+                    A, B, C);
+        } else {
+            return (this->*gemm_layer_func)('N', 'N', rnn.slc, rnn.mb,
+                    rnn.n_gates * rnn.dhc, 1.0, A, rnn.weights_layer_ld, B,
+                    rnn.scratch_gates_ld, 0.0, C, rnn.ws_diff_states_layer_ld);
+        }
     };
     const auto gemm_iter
             = [&](const weights_t *A, const scratch_t *B, float *C) {
-        return (this->*gemm_iter_func)('N', 'N', rnn.sic, rnn.mb,
-                rnn.n_gates * rnn.dhc, 1.0, A, rnn.weights_iter_ld, B,
-                rnn.scratch_gates_ld, 0.0, C, rnn.ws_diff_states_iter_ld);
+        if (rnn.use_matmul) {
+            return this->mm_primitives_.apply(ctx,
+                    {rnn.sic, rnn.mb, rnn.n_gates * rnn.dhc,
+                            rnn.weights_iter_ld, rnn.scratch_gates_ld,
+                            rnn.ws_diff_states_iter_ld, weights_type, src_type,
+                            data_type::f32, trans_B_off, do_sum_off},
+                    A, B, C);
+        } else {
+            return (this->*gemm_iter_func)('N', 'N', rnn.sic, rnn.mb,
+                    rnn.n_gates * rnn.dhc, 1.0, A, rnn.weights_iter_ld, B,
+                    rnn.scratch_gates_ld, 0.0, C, rnn.ws_diff_states_iter_ld);
+        }
     };
     const auto gemm_proj
             = [&](const weights_t *A, const weights_t *B, float *C) {
@@ -259,25 +299,55 @@ rnn_cell_execution_sig(
             assert(!"Projection is only supported for f32");
             return dnnl_runtime_error;
         }
-        return (this->*gemm_projection_func)('N', 'N', rnn.dhc, rnn.mb, rnn.dic,
-                1.0, A, rnn.weights_projection_ld, B, rnn.scratch_diff_ht_ld,
-                0.0f, C, rnn.ws_diff_states_layer_ld);
+        if (rnn.use_matmul) {
+            return this->mm_primitives_.apply(ctx,
+                    {rnn.dhc, rnn.mb, rnn.dic, rnn.weights_projection_ld,
+                            rnn.scratch_diff_ht_ld, rnn.ws_diff_states_layer_ld,
+                            weights_type, weights_type, data_type::f32,
+                            trans_B_off, do_sum_off},
+                    A, B, C);
+        } else {
+            return (this->*gemm_projection_func)('N', 'N', rnn.dhc, rnn.mb,
+                    rnn.dic, 1.0, A, rnn.weights_projection_ld, B,
+                    rnn.scratch_diff_ht_ld, 0.0f, C,
+                    rnn.ws_diff_states_layer_ld);
+        }
     };
     const auto gemm_weights_layer
             = [&](const scratch_t *A, const src_layer_t *B, float *C) {
         auto src_layer_ld = rnn.src_layer_ld(cell_position);
         const float beta = rnn.diff_weights_beta(cell_position);
-        return gemm('N', 'T', rnn.n_gates * rnn.dhc, rnn.slc, rnn.mb, 1.0, A,
-                rnn.scratch_gates_ld, B, src_layer_ld, beta, C,
-                rnn.diff_weights_layer_ld);
+        if (rnn.use_matmul) {
+            const bool do_sum = beta == 1.0f;
+            return this->mm_primitives_.apply(ctx,
+                    {rnn.n_gates * rnn.dhc, rnn.slc, rnn.mb,
+                            rnn.scratch_gates_ld, src_layer_ld,
+                            rnn.diff_weights_layer_ld, src_type, src_type,
+                            data_type::f32, trans_B_on, do_sum},
+                    A, B, C);
+        } else {
+            return gemm('N', 'T', rnn.n_gates * rnn.dhc, rnn.slc, rnn.mb, 1.0,
+                    A, rnn.scratch_gates_ld, B, src_layer_ld, beta, C,
+                    rnn.diff_weights_layer_ld);
+        }
     };
     const auto gemm_weights_iter
             = [&](const scratch_t *A, const src_iter_t *B, float *C) {
         auto src_iter_ld = rnn.src_iter_ld(cell_position);
         const float beta = rnn.diff_weights_beta(cell_position);
-        return gemm('N', 'T', rnn.n_gates * rnn.dhc, rnn.sic, rnn.mb, 1.0, A,
-                rnn.scratch_gates_ld, B, src_iter_ld, beta, C,
-                rnn.diff_weights_iter_ld);
+        if (rnn.use_matmul) {
+            const bool do_sum = beta == 1.0f;
+            return this->mm_primitives_.apply(ctx,
+                    {rnn.n_gates * rnn.dhc, rnn.sic, rnn.mb,
+                            rnn.scratch_gates_ld, src_iter_ld,
+                            rnn.diff_weights_iter_ld, src_type, src_type,
+                            data_type::f32, trans_B_on, do_sum},
+                    A, B, C);
+        } else {
+            return gemm('N', 'T', rnn.n_gates * rnn.dhc, rnn.sic, rnn.mb, 1.0,
+                    A, rnn.scratch_gates_ld, B, src_iter_ld, beta, C,
+                    rnn.diff_weights_iter_ld);
+        }
     };
     const auto gemm_weights_proj
             = [&](const scratch_t *A, const scratch_t *B, float *C) {
@@ -286,9 +356,19 @@ rnn_cell_execution_sig(
             return dnnl_runtime_error;
         }
         const float beta = rnn.diff_weights_beta(cell_position);
-        return gemm('N', 'T', rnn.dlc, rnn.dhc, rnn.mb, 1.0f, A,
-                rnn.scratch_diff_ht_ld, B, rnn.ws_ht_ld, beta, C,
-                rnn.diff_weights_projection_ld);
+        if (rnn.use_matmul) {
+            const bool do_sum = beta == 1.0f;
+            return this->mm_primitives_.apply(ctx,
+                    {rnn.dlc, rnn.dhc, rnn.mb, rnn.scratch_diff_ht_ld,
+                            rnn.ws_ht_ld, rnn.diff_weights_projection_ld,
+                            src_type, src_type, data_type::f32, trans_B_on,
+                            do_sum},
+                    A, B, C);
+        } else {
+            return gemm('N', 'T', rnn.dlc, rnn.dhc, rnn.mb, 1.0f, A,
+                    rnn.scratch_diff_ht_ld, B, rnn.ws_ht_ld, beta, C,
+                    rnn.diff_weights_projection_ld);
+        }
     };
     return common_bwd_cell_exec_template(gemm_layer, gemm_iter, gemm_proj,
             gemm_weights_layer, gemm_weights_iter, gemm_weights_proj,
@@ -310,6 +390,8 @@ template <data_type_t src_type, data_type_t weights_type, data_type_t acc_type>
 rnn_merged_layer_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
         acc_type>::merged_layer_execution_ref)) {
     const auto src_layer_ld = rnn.src_layer_ld(cell_position);
+    constexpr bool trans_B_off = false;
+    constexpr bool do_sum_off = false;
     // If we avoid copying the last iteration, the corresponding
     // input states appear in `dst_iter_` instead of `ws_states_layer`,
     // hence we cannot merge all iterations.
@@ -321,10 +403,19 @@ rnn_merged_layer_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
             : rnn.n_iter - (rnn.skip_dst_iter_copy() ? 1 : 0);
     cell_position |= merged_layer;
 
-    CHECK((this->*gemm_layer_func)('N', 'N', rnn.n_gates * rnn.dhc,
-            rnn.mb * n_iter, rnn.slc, 1.0, w_layer_[0], rnn.weights_layer_ld,
-            src_layer_, src_layer_ld, 0.0, (gemm_acc_t *)scratch_gates_,
-            rnn.scratch_gates_ld));
+    if (rnn.use_matmul) {
+        CHECK(this->mm_primitives_.apply(ctx,
+                {rnn.n_gates * rnn.dhc, rnn.mb * n_iter, rnn.slc,
+                        rnn.weights_layer_ld, src_layer_ld,
+                        rnn.scratch_gates_ld, weights_type, src_type,
+                        scratch_type, trans_B_off, do_sum_off},
+                w_layer_[0], src_layer_, scratch_gates_));
+    } else {
+        CHECK((this->*gemm_layer_func)('N', 'N', rnn.n_gates * rnn.dhc,
+                rnn.mb * n_iter, rnn.slc, 1.0, w_layer_[0],
+                rnn.weights_layer_ld, src_layer_, src_layer_ld, 0.0,
+                (gemm_acc_t *)scratch_gates_, rnn.scratch_gates_ld));
+    }
 
     return dnnl_success;
 }
@@ -344,14 +435,38 @@ rnn_merged_layer_execution_sig((ref_rnn_bwd_t<src_type, weights_type,
             : rnn.n_iter - (rnn.skip_dst_iter_copy() ? 1 : 0);
     cell_position |= merged_layer;
 
-    CHECK((this->*gemm_layer_func)('N', 'N', rnn.slc, rnn.mb * rnn.n_iter,
-            rnn.n_gates * rnn.dhc, 1.0, w_layer_[0], rnn.weights_layer_ld,
-            (gates_t *)scratch_gates_, rnn.scratch_gates_ld, 0.0,
-            diff_src_layer_, rnn.ws_diff_states_layer_ld));
     const float beta = rnn.diff_weights_beta(cell_position);
-    CHECK(this->gemm('N', 'T', rnn.n_gates * rnn.dhc, rnn.slc, rnn.mb * n_iter,
-            1.0, (weights_t *)scratch_gates_, rnn.scratch_gates_ld, src_layer_,
-            src_layer_ld, beta, diff_w_layer_, rnn.diff_weights_layer_ld));
+
+    if (rnn.use_matmul) {
+        constexpr bool trans_B_off = false;
+        constexpr bool trans_B_on = true;
+        constexpr bool do_sum_off = false;
+
+        CHECK(this->mm_primitives_.apply(ctx,
+                {rnn.slc, rnn.mb * rnn.n_iter, rnn.n_gates * rnn.dhc,
+                        rnn.weights_layer_ld, rnn.scratch_gates_ld,
+                        rnn.ws_diff_states_layer_ld, weights_type, src_type,
+                        acc_type, trans_B_off, do_sum_off},
+                w_layer_[0], scratch_gates_, diff_src_layer_));
+
+        const bool do_sum = beta == 1.0f;
+        CHECK(this->mm_primitives_.apply(ctx,
+                {rnn.n_gates * rnn.dhc, rnn.slc, rnn.mb * n_iter,
+                        rnn.scratch_gates_ld, src_layer_ld,
+                        rnn.diff_weights_layer_ld, src_type, weights_type,
+                        acc_type, trans_B_on, do_sum},
+                scratch_gates_, src_layer_, diff_w_layer_));
+    } else {
+        CHECK((this->*gemm_layer_func)('N', 'N', rnn.slc, rnn.mb * rnn.n_iter,
+                rnn.n_gates * rnn.dhc, 1.0, w_layer_[0], rnn.weights_layer_ld,
+                (gates_t *)scratch_gates_, rnn.scratch_gates_ld, 0.0,
+                diff_src_layer_, rnn.ws_diff_states_layer_ld));
+        CHECK(this->gemm('N', 'T', rnn.n_gates * rnn.dhc, rnn.slc,
+                rnn.mb * n_iter, 1.0, (weights_t *)scratch_gates_,
+                rnn.scratch_gates_ld, src_layer_, src_layer_ld, beta,
+                diff_w_layer_, rnn.diff_weights_layer_ld));
+    }
+
     return dnnl_success;
 }
 

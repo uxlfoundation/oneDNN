@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 
 #include "common.hpp"
 #include "utils/timer.hpp"
@@ -51,6 +52,7 @@ void timer_t::reset() {
     for (int i = 0; i < n_modes; ++i)
         ms_[i] = 0;
     ms_start_ = 0;
+    ms_vec_.clear();
 
     start();
 }
@@ -74,6 +76,8 @@ void timer_t::stop(int add_times, int64_t add_ticks, double add_ms) {
     ticks_[mode_t::avg] += d_ticks;
     ticks_[mode_t::sum] += d_ticks;
 
+    ms_vec_.push_back(d_ms);
+
     d_ticks /= add_times;
     d_ms /= add_times;
 
@@ -90,6 +94,55 @@ void timer_t::stop(int add_times, int64_t add_ticks, double add_ms) {
 
 void timer_t::stamp(int add_times) {
     stop(add_times, ticks_now() - ticks_start_, ms_now() - ms_start_);
+}
+
+void timer_t::filter_collection() {
+    // Remove 10% of fastest times. If needed, can be moved to an argument.
+    constexpr double outlier_percent = 0.10;
+
+    assert((int)ms_vec_.size() == times_);
+
+    std::sort(ms_vec_.begin(), ms_vec_.end());
+
+    // The idea is to measure the magnitude between values and if up to several
+    // values are of bigger magnitude, drop them from the collection.
+    //
+    // The number of magnitudes is `outlier_percent` of the population round
+    // down but, at least, one.
+    const size_t deltas_size = std::max(size_t(1),
+            static_cast<size_t>(std::floor(outlier_percent * times_)));
+    std::vector<double> deltas(deltas_size);
+
+    std::string v;
+
+    // The major magnitude is when `x_i = x_{i+1} * 1.1`.
+    constexpr double magnitude_threshold = 1.1;
+    size_t major_magnitude = SIZE_MAX;
+    for (size_t i = 0; i < deltas.size(); i++) {
+        deltas[i] = ms_vec_[i + 1] / ms_vec_[i];
+        // It may happen there are more major magnitude jumps within
+        // `outlier_percent` number of elements, drop as much values as allowed.
+        if (deltas[i] > magnitude_threshold) {
+            major_magnitude = i;
+            if (verbose >= 4) {
+                v += std::to_string(i) + ":" + std::to_string(ms_vec_[i + 1])
+                        + "/" + std::to_string(ms_vec_[i]) + "="
+                        + std::to_string(deltas[i]) + "; ";
+            }
+        }
+    }
+
+    if (major_magnitude < deltas.size()) {
+        for (size_t i = 0; i < major_magnitude; i++) {
+            ms_[mode_t::avg] -= ms_vec_[i];
+            ms_[mode_t::sum] -= ms_vec_[i];
+        }
+        ms_[mode_t::min] = ms_vec_[major_magnitude + 1];
+        times_ -= major_magnitude;
+    }
+
+    BENCHDNN_PRINT(4, "[TIMER]: Outliers: %zu/%zu; %s\n", deltas_size,
+            ms_vec_.size(), v.c_str());
 }
 
 timer_t &timer_t::operator=(const timer_t &rhs) {

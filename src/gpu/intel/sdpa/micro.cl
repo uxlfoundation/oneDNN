@@ -479,7 +479,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #if WITH_ATTN_MASK
     msk += MSK_BATCH(b1 % MSK_D0, b0 % MSK_D1);
     int mask_aligned = (((size_t)msk) % 4) == 0;
-    bool block_msk = (b1 < MSK_D0 - ceil((float)ugemm_kq_wg_tile_m / k))
+    bool block_msk = (b1 < MSK_D0 - ceil((float)ugemm_kq_wg_tile_m / MSK_S2))
             && mask_aligned;
 #endif
 
@@ -640,12 +640,13 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         mask_tile_type mask_tile;
 #if BROADCAST_MASK_Q
         if (block_msk) {
-            tile_load_block(&mask_tile, msk, k, 0, k0 + sg_i0_kq, 0);
+            tile_load_block(&mask_tile, msk, MSK_S2, 0, k0 + sg_i0_kq, 0);
         } else {
-            tile_load(&mask_tile, msk, k, 1, k0 + sg_i0_kq, 0);
+            tile_load(&mask_tile, msk, k, 1, MSK_S2, k0 + sg_i0_kq, 0);
         }
 #else
-        tile_load_t(&mask_tile, msk, q, k, sg_j0_kq + wg_j0, k0 + sg_i0_kq);
+        tile_load_t(
+                &mask_tile, msk, q, k, MSK_S2, sg_j0_kq + wg_j0, k0 + sg_i0_kq);
 #endif
 #endif
 

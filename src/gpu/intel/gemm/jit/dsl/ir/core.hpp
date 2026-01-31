@@ -1118,6 +1118,28 @@ public:
     }
 };
 
+class send_map_alloc_attr_t : public alloc_attr_impl_t,
+                              public object::info_t<send_map_alloc_attr_t> {
+public:
+    using sends_t = std::vector<std::pair<int, int>>;
+
+    static alloc_attr_t make(const sends_t &sends) {
+        return alloc_attr_t(new send_map_alloc_attr_t(sends));
+    }
+
+    bool is_equal(const object::impl_t &obj) const override {
+        return this == &obj;
+    }
+
+    size_t get_hash() const override { return hash(sends); }
+
+    sends_t sends;
+
+private:
+    send_map_alloc_attr_t(const sends_t &sends)
+        : alloc_attr_impl_t(get_info()), sends(sends) {}
+};
+
 // Allocation attribute to store extra information to avoid bank conflicts.
 class bank_conflict_attr_t : public alloc_attr_impl_t,
                              public object::info_t<bank_conflict_attr_t> {

@@ -431,6 +431,39 @@ stmt_t inject_let_stmts(const stmt_t &stmt, const std::vector<stmt_t> &lets) {
     return ret;
 }
 
+class send_map_attribute_injector_t : public ir_mutator_t {
+public:
+    object_t _mutate(const alloc_t &obj) override {
+        auto new_obj = ir_mutator_t::_mutate(obj);
+        if (bufs_.count(obj.buf) == 0) return new_obj;
+        auto new_attrs = obj.attrs;
+        new_attrs.emplace_back(bufs_.at(obj.buf));
+        return alloc_t::make(obj.buf, obj.size, obj.kind, new_attrs,
+                new_obj.as<alloc_t>().body);
+    }
+
+    object_t _mutate(const func_call_t &obj) override {
+        if (auto *send = obj.func.as_ptr<send_t>()) {
+            auto &buf = send_t::arg_reg_buf(obj);
+            int off = (is_var(buf) ? 0 : to_cpp<int>(buf.as<ptr_t>().off));
+            ir::send_map_alloc_attr_t::sends_t sends;
+            auto it = bufs_.find(get_base(buf));
+            if (it != bufs_.end()) {
+                sends = it->second.as<ir::send_map_alloc_attr_t>().sends;
+            } else {
+                bufs_.insert({get_base(buf), {}});
+                it = bufs_.find(get_base(buf));
+            }
+            sends.emplace_back(off, send->payload_size());
+            it->second = ir::send_map_alloc_attr_t::make(sends);
+        }
+        return ir_mutator_t::_mutate(obj);
+    }
+
+private:
+    object_eq_map_t<expr_t, alloc_attr_t> bufs_;
+};
+
 class var_counter_t : public ir_visitor_t {
 public:
     var_counter_t(const object_set_t<expr_t> &vars) {
@@ -544,6 +577,13 @@ private:
 
 stmt_t inject_dangling_let_stmts(const stmt_t &stmt) {
     return let_injector_t().mutate(stmt);
+}
+
+stmt_t inject_send_map_attribute(const stmt_t &stmt, ir_context_t &ir_ctx) {
+    ir::trace_start();
+    auto retn = send_map_attribute_injector_t().mutate(stmt);
+    ir::trace_pass("inject_send_map_attribute", retn, ir_ctx);
+    return retn;
 }
 
 } // namespace jit

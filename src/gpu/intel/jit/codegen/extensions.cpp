@@ -61,7 +61,6 @@ void eltwise(ngen_generator_t &host, ir::ngen_register_scope_t &scope,
         }
     };
     for (int i = 0; i < elems; i += step) {
-        ir::ngen_register_scope_t i_scope(scope.register_allocator());
         step = std::min(step, elems - i);
         step = utils::rnd_down_pow2(step);
         int cur_elems = step;
@@ -70,12 +69,18 @@ void eltwise(ngen_generator_t &host, ir::ngen_register_scope_t &scope,
         // - Eltwise is applied to full register
         // - Data is aligned to GRF boundary
         if ((cur_elems * f_size) % grf_size != 0 || rd.byte_offset() != 0) {
-            int full_elems
-                    = utils::rnd_up(cur_elems * f_size, grf_size) / f_size;
-            auto tmp = i_scope.alloc_reg_data(dsl::type_t::f32(full_elems));
-            emit_reorder_1d_tile(&host, hw, i_scope, cur_elems, rd, 1, tmp, 1);
-            do_eltwise(tmp, full_elems * f_size / grf_size);
-            emit_reorder_1d_tile(&host, hw, i_scope, cur_elems, tmp, 1, rd, 1);
+            auto &ra = scope.register_allocator();
+            int full_regs = utils::div_up(cur_elems * f_size, grf_size);
+            int full_elems = full_regs * (grf_size / f_size);
+            ir::reg_buf_data_t rbd(
+                    ir::reg_buf_t(ra.hardware(), ra.alloc_range(full_regs)));
+            auto tmp = rbd.format(0, full_elems, 1, ngen::DataType::f);
+            emit_reorder_1d_tile(
+                    &host, ra, hw.systolic_support(), cur_elems, rd, 1, tmp, 1);
+            do_eltwise(tmp, full_regs);
+            emit_reorder_1d_tile(
+                    &host, ra, hw.systolic_support(), cur_elems, tmp, 1, rd, 1);
+            rbd.reg_buf().release(ra);
         } else {
             do_eltwise(rd, cur_elems * f_size / grf_size);
         }

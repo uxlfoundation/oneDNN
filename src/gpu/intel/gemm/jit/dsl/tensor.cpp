@@ -67,8 +67,8 @@ tile_iterator_t::tile_iterator_t(const layout_t &layout, const tile_t &tile) {
             return;
         }
         d_.emplace_back(b.idx, b.size, stride, tile_dim);
+        stride = d_.back().stride * d_.back().end;
         coord_[b.idx] = 0;
-        stride *= b.size;
     }
     if (!layout.is_empty() && layout.blocks().empty()) {
         auto idx = tile.is_empty() ? idx_t() : *tile.begin();

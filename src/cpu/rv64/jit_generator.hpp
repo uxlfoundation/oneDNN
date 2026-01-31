@@ -23,6 +23,7 @@
 #include "common/c_types_map.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
+#include "cpu/jit_utils/jit_utils.hpp"
 
 #include "cpu/rv64/cpu_isa_traits.hpp"
 #include "xbyak_riscv/xbyak_riscv.hpp"
@@ -102,8 +103,8 @@ public:
         jit_ker_ = Xbyak_riscv::CodeGenerator::getCode();
 
         if (jit_ker_) {
-            // TODO: integrate RV64 JIT code registration with cpu::jit_utils
-            // once profiling / dumping support is enabled for this backend.
+            jit_utils::register_jit_code(jit_ker_,
+                    Xbyak_riscv::CodeArray::getSize(), name(), source_file());
             return status::success;
         }
 

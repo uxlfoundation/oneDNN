@@ -1,3 +1,7 @@
+# TEMPORARY: test grouped gemm
+--reset
+--batch=test_matmul_grouped
+
 # Initial Coverage Test
 --reset
 --batch=harness_matmul_generated_ci
@@ -230,3 +234,4 @@
 
 # test batch reshape with attributes
 --batch=harness_matmul_3d_bcast
+

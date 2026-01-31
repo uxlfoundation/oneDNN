@@ -194,7 +194,7 @@ private:
     const reg64_t reg_converted_stride = rsi;
     const reg64_t reg_zp_comp_pad_a = rsi;
 
-    const reg64_t reg_long_offt = r11;
+    const reg64_savable_t reg_long_offt = {regscratchpad_, r11};
 
     bool are_post_ops_applicable_ = false;
     bool need_to_apply_alpha_beta_ = false;
@@ -1050,6 +1050,8 @@ void jit_brgemm_amx_uker_base_t::apply_post_ops_to_range(
 
                 auto zmm = accm(bd);
                 const auto d_offset = D_offset(bi, bdb, bd, ldb_pos);
+                reg64_savable_guard_t reg_A_guard(
+                        {&reg_long_offt}, d_offset > INT_MAX);
                 auto addr = EVEX_compress_addr_safe(
                         reg_D, d_offset, reg_long_offt);
 
@@ -1237,6 +1239,8 @@ void jit_brgemm_amx_uker_base_t::prefetch_CD_range(brgemm_iteration_t &bi,
         if (!is_out_bd(bi.bdi, bdb, bd)) continue;
         if (bi.apply_postops) {
             const auto d_offset = D_offset(bi, bdb, bd, ldb_pos);
+            reg64_savable_guard_t reg_A_guard(
+                    {&reg_long_offt}, d_offset > INT_MAX);
             auto ptr_D
                     = EVEX_compress_addr_safe(reg_D, d_offset, reg_long_offt);
             uni_prefetch(ptr_D, pft, true);
@@ -1445,13 +1449,15 @@ void jit_brgemm_amx_uker_base_t::process_output_range(
             vmovups(vreg_acc, ptr[reg_buf + buf_offset + wsp_offset]);
         }
 
-        const auto c_offset = C_offset(bi, bdb, bd, bi.ldi->pos(ldb));
-        const auto ptr_C
-                = EVEX_compress_addr_safe(reg_C, c_offset, reg_long_offt);
-
-        if (need_to_apply_alpha_beta_ || bi.skip_accumulation)
+        if (need_to_apply_alpha_beta_ || bi.skip_accumulation) {
+            const auto c_offset = C_offset(bi, bdb, bd, bi.ldi->pos(ldb));
+            reg64_savable_guard_t reg_A_guard(
+                    {&reg_long_offt}, c_offset > INT_MAX);
+            const auto ptr_C
+                    = EVEX_compress_addr_safe(reg_C, c_offset, reg_long_offt);
             apply_alpha_beta_to_vector(
                     zmm.getIdx(), ptr_C, bi.ldi->is_tail(ldb));
+        }
 
         if (!bi.apply_postops) continue;
 
@@ -1606,15 +1612,18 @@ void jit_brgemm_amx_uker_base_t::store_vector(
     const auto c_offset = C_offset(bi, bdb, inp_bd, ldb_pos);
     const auto d_offset = D_offset(bi, bdb, inp_bd, ldb_pos);
 
-    auto ptr_C = EVEX_compress_addr_safe(reg_C, c_offset, reg_long_offt);
-    auto ptr_D = EVEX_compress_addr_safe(reg_D, d_offset, reg_long_offt);
-
-    if (bi.apply_postops)
+    reg64_savable_guard_t reg_A_guard(
+            {&reg_long_offt}, c_offset > INT_MAX || d_offset > INT_MAX);
+    if (bi.apply_postops) {
+        auto ptr_D = EVEX_compress_addr_safe(reg_D, d_offset, reg_long_offt);
         store_vector_with_post_ops(vreg_acc.getIdx(), ptr_D, is_ld_tail);
-    else if (are_post_ops_applicable_)
+    } else if (are_post_ops_applicable_) {
+        auto ptr_C = EVEX_compress_addr_safe(reg_C, c_offset, reg_long_offt);
         store_vector_without_post_ops(vreg_acc.getIdx(), ptr_C, is_ld_tail);
-    else
+    } else {
+        auto ptr_D = EVEX_compress_addr_safe(reg_D, d_offset, reg_long_offt);
         store_vector_without_post_ops(vreg_acc.getIdx(), ptr_D, is_ld_tail);
+    }
 }
 
 void jit_brgemm_amx_uker_base_t::interleave_store(

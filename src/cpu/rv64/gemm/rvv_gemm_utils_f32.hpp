@@ -23,6 +23,8 @@
 #include <cstddef>
 #include <unistd.h>
 
+#include <riscv_vector.h>
+
 namespace dnnl {
 namespace impl {
 namespace cpu {
@@ -45,12 +47,21 @@ struct gemm_utils_traits;
 
 template <>
 struct gemm_utils_traits<float> {
-    static constexpr dim_t get_m_unroll_factor() {
-        return gemm_traits_t<float, false, false>::m;
+    static dim_t get_m_unroll_factor() {
+#ifdef __riscv_vector
+        // For f32 micro-kernel we use LMUL=4, so VLmax(e32,m4) == vlenb elements.
+        dim_t vlenb = static_cast<dim_t>(__riscv_vlenb());
+        if (vlenb >= 128) return 128;
+        if (vlenb >= 64) return 64;
+        if (vlenb >= 32) return 32;
+        return 16;
+#else
+        return 16;
+#endif
     }
 
     static dim_t get_n_unroll_factor() {
-        long l1d_size = get_l1d_cache_size();
+        const long l1d_size = get_l1d_cache_size();
         if (l1d_size >= 128 * 1024)
             return 16;
         else if (l1d_size >= 64 * 1024)
@@ -60,11 +71,10 @@ struct gemm_utils_traits<float> {
         else
             return 2;
     }
-
 private:
     static long get_l1d_cache_size() {
         static long l1d_size = sysconf(_SC_LEVEL1_DCACHE_SIZE);
-        if (l1d_size == -1) { l1d_size = 32 * 1024; }
+        if (l1d_size <= 0) { l1d_size = 32 * 1024; }
         return l1d_size;
     }
 };

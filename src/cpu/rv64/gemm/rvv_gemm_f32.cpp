@@ -6,7 +6,7 @@
 * you may not use this file except in compliance with the License.
 * You may obtain a copy of the License at
 *
-* http://www.apache.org/licenses/LICENSE-2.0
+*      http://www.apache.org/licenses/LICENSE-2.0
 *
 * Unless required by applicable law or agreed to in writing, software
 * distributed under the License is distributed on an "AS IS" BASIS,
@@ -60,7 +60,7 @@ namespace {
 
 void copy_A(
         bool isTransA, dim_t K, const float *A, const dim_t lda, float *ws) {
-    constexpr dim_t m = gemm_f32_traits::get_m_unroll_factor();
+    const dim_t m = gemm_f32_traits::get_m_unroll_factor();
 
     // Two-way software pipelining: overlap load and store
     for (dim_t k = 0; k < K; k++) {
@@ -125,7 +125,7 @@ struct kernel_mxn_impl<isTransA, isTransB, 2> {
     static void execute(dim_t K, const float *A, dim_t lda, const float *B,
             dim_t ldb, float *C, dim_t ldc, float alpha, float beta,
             int ithr = -1) {
-        constexpr dim_t m = gemm_f32_traits::get_m_unroll_factor();
+        const dim_t m = gemm_f32_traits::get_m_unroll_factor();
         constexpr dim_t n = 2;
         MAYBE_UNUSED(ithr);
         MAYBE_UNUSED(n);
@@ -168,7 +168,7 @@ struct kernel_mxn_impl<isTransA, isTransB, 4> {
     static void execute(dim_t K, const float *A, dim_t lda, const float *B,
             dim_t ldb, float *C, dim_t ldc, float alpha, float beta,
             int ithr = -1) {
-        constexpr dim_t m = gemm_f32_traits::get_m_unroll_factor();
+        const dim_t m = gemm_f32_traits::get_m_unroll_factor();
         constexpr dim_t n = 4;
         MAYBE_UNUSED(ithr);
         MAYBE_UNUSED(n);
@@ -216,12 +216,78 @@ struct kernel_mxn_impl<isTransA, isTransB, 4> {
     }
 };
 
+
+template <bool isTransA, bool isTransB>
+struct kernel_mxn_impl<isTransA, isTransB, 7> {
+    static void execute(dim_t K, const float *A, dim_t lda, const float *B,
+            dim_t ldb, float *C, dim_t ldc, float alpha, float beta,
+            int ithr = -1) {
+        const dim_t m = gemm_f32_traits::get_m_unroll_factor();
+        constexpr dim_t n = 7;
+        MAYBE_UNUSED(ithr);
+        MAYBE_UNUSED(n);
+
+        dim_t i = 0;
+        while (i < m) {
+            size_t vl = __riscv_vsetvl_e32m4(m - i);
+
+            vfloat32m4_t v_c0, v_c1, v_c2, v_c3, v_c4, v_c5, v_c6;
+
+            v_c0 = __riscv_vfmv_v_f_f32m4(0.0f, vl);
+            v_c1 = __riscv_vfmv_v_f_f32m4(0.0f, vl);
+            v_c2 = __riscv_vfmv_v_f_f32m4(0.0f, vl);
+            v_c3 = __riscv_vfmv_v_f_f32m4(0.0f, vl);
+            v_c4 = __riscv_vfmv_v_f_f32m4(0.0f, vl);
+            v_c5 = __riscv_vfmv_v_f_f32m4(0.0f, vl);
+            v_c6 = __riscv_vfmv_v_f_f32m4(0.0f, vl);
+
+            for (dim_t k = 0; k < K; ++k) {
+                vfloat32m4_t v_a;
+                if (isTransA) {
+                    ptrdiff_t stride_a = lda * sizeof(float);
+                    v_a = __riscv_vlse32_v_f32m4(A + i * lda + k, stride_a, vl);
+                } else {
+                    v_a = __riscv_vle32_v_f32m4(A + i + k * lda, vl);
+                }
+
+                const float *b_ptr = isTransB ? &B[k * ldb] : &B[k];
+                const dim_t b_stride = isTransB ? 1 : ldb;
+
+                v_c0 = __riscv_vfmacc_vf_f32m4(
+                        v_c0, b_ptr[0 * b_stride], v_a, vl);
+                v_c1 = __riscv_vfmacc_vf_f32m4(
+                        v_c1, b_ptr[1 * b_stride], v_a, vl);
+                v_c2 = __riscv_vfmacc_vf_f32m4(
+                        v_c2, b_ptr[2 * b_stride], v_a, vl);
+                v_c3 = __riscv_vfmacc_vf_f32m4(
+                        v_c3, b_ptr[3 * b_stride], v_a, vl);
+                v_c4 = __riscv_vfmacc_vf_f32m4(
+                        v_c4, b_ptr[4 * b_stride], v_a, vl);
+                v_c5 = __riscv_vfmacc_vf_f32m4(
+                        v_c5, b_ptr[5 * b_stride], v_a, vl);
+                v_c6 = __riscv_vfmacc_vf_f32m4(
+                        v_c6, b_ptr[6 * b_stride], v_a, vl);
+            }
+
+            STORE_C(C + 0 * ldc + i, v_c0, alpha, beta, vl, m4);
+            STORE_C(C + 1 * ldc + i, v_c1, alpha, beta, vl, m4);
+            STORE_C(C + 2 * ldc + i, v_c2, alpha, beta, vl, m4);
+            STORE_C(C + 3 * ldc + i, v_c3, alpha, beta, vl, m4);
+            STORE_C(C + 4 * ldc + i, v_c4, alpha, beta, vl, m4);
+            STORE_C(C + 5 * ldc + i, v_c5, alpha, beta, vl, m4);
+            STORE_C(C + 6 * ldc + i, v_c6, alpha, beta, vl, m4);
+
+            i += vl;
+        }
+    }
+};
+
 template <bool isTransA, bool isTransB>
 struct kernel_mxn_impl<isTransA, isTransB, 8> {
     static void execute(dim_t K, const float *A, dim_t lda, const float *B,
             dim_t ldb, float *C, dim_t ldc, float alpha, float beta,
             int ithr = -1) {
-        constexpr dim_t m = gemm_f32_traits::get_m_unroll_factor();
+        const dim_t m = gemm_f32_traits::get_m_unroll_factor();
         constexpr dim_t n = 8;
         MAYBE_UNUSED(ithr);
         MAYBE_UNUSED(n);
@@ -290,7 +356,7 @@ struct kernel_mxn_impl<isTransA, isTransB, 16> {
     static void execute(dim_t K, const float *A, dim_t lda, const float *B,
             dim_t ldb, float *C, dim_t ldc, float alpha, float beta,
             int ithr = -1) {
-        constexpr dim_t m = gemm_f32_traits::get_m_unroll_factor();
+        const dim_t m = gemm_f32_traits::get_m_unroll_factor();
         constexpr dim_t n = 16;
         MAYBE_UNUSED(ithr);
         MAYBE_UNUSED(n);
@@ -402,7 +468,12 @@ void kernel_mxn(dim_t K, const float *A, const dim_t lda, const float *B,
             kernel_mxn_impl<isTransA, isTransB, 4>::execute(
                     K, A, lda, B, ldb, C, ldc, alpha, beta, ithr);
             break;
-        case 8:
+                case 7:
+            kernel_mxn_impl<isTransA, isTransB, 7>::execute(
+                    K, A, lda, B, ldb, C, ldc, alpha, beta, ithr);
+            break;
+
+case 8:
             kernel_mxn_impl<isTransA, isTransB, 8>::execute(
                     K, A, lda, B, ldb, C, ldc, alpha, beta, ithr);
             break;
@@ -429,19 +500,32 @@ void block_ker(const dim_t M, const dim_t N, const dim_t K, const float *A,
     dim_t Mu = rnd_dn(M, m_unroll);
 
     // JIT-optimized specialization for the most important case:
-    //   isTransA = false, isTransB = false, n_unroll = 4.
-    const bool use_jit_ker = !isTransA && !isTransB && (n_unroll == 4)
-            && (m_unroll == 8 || m_unroll == 16);
+    //   isTransA = false, isTransB = false, n_unroll = 7.
+    const dim_t jit_n_unroll = 7;
+    const bool use_jit_ker = do_copy && !isTransA && !isTransB
+            && (m_unroll == 16 || m_unroll == 32 || m_unroll == 64 || m_unroll == 128)
+            && (Nu >= jit_n_unroll);
 
     if (do_copy) {
         if (use_jit_ker) {
+            const dim_t Nu_jit = rnd_dn(Nu, jit_n_unroll);
             for (dim_t i = 0; i < Mu; i += m_unroll) {
-                for (dim_t j = 0; j < Nu; j += n_unroll) {
-                    const float *b = isTransB ? &B[j] : &B[j * ldb];
-                    const float *a = isTransA ? &A[i * lda] : &A[i];
-                    if (j == 0) { copy_A(isTransA, K, a, lda, ws); }
-                    jit_rvv_gemm_kernel(a, b, &C[i + j * ldc], lda, ldb, ldc, K,
-                            alpha, beta, m_unroll);
+                const float *a = &A[i]; // !isTransA guaranteed by use_jit_ker
+                // Pack A for this i-tile once; ws layout is [k][m_unroll]
+                copy_A(false, K, a, lda, ws);
+
+                // Main N-block handled by mx7 JIT kernel
+                for (dim_t j = 0; j < Nu_jit; j += jit_n_unroll) {
+                    const float *b = &B[j * ldb]; // !isTransB guaranteed by use_jit_ker
+                    jit_rvv_gemm_kernel(ws, b, &C[i + j * ldc], m_unroll, ldb, ldc,
+                            K, alpha, beta, m_unroll);
+                }
+
+                // Remainder columns (Nu_jit..Nu) handled by the generic packed-A kernel
+                for (dim_t j = Nu_jit; j < Nu; j += n_unroll) {
+                    const float *b = &B[j * ldb];
+                    kernel_mxn<false, false>(K, ws, m_unroll, b, ldb,
+                            &C[i + j * ldc], ldc, alpha, beta, ithr);
                 }
             }
         } else {

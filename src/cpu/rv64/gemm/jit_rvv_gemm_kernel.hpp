@@ -30,16 +30,15 @@ namespace gemm_utils {
 //   - isTransA = false
 //   - isTransB = false
 //
-// It computes a single mx4 block (m = 8 or 16 rows, n = 4 columns) of:
+// It computes a single mx7 block (m = VLmax(e32,m4) rows, n = 7 columns) of:
 //
-//   C[0:m, 0:4] = alpha * A[0:m, 0:K] * B[0:K, 0:4] + beta * C[0:m, 0:4]
+//   C[0:m, 0:7] = alpha * A[0:m, 0:K] * B[0:K, 0:7] + beta * C[0:m, 0:7]
 //
 // using RVV vectorization over the M dimension and a 4-way unrolled K-loop
 // with a software-pipelined load/FMA schedule to better hide vector/FMA
 // latency.
 //
-// When m=8: uses LMUL=m2 for vector registers
-// When m=16: uses LMUL=m4 for vector registers
+// // Uses LMUL=m4 for vector registers (f32).
 //
 // The m parameter is provided at construction time, and the JIT code is
 // generated specifically for that m value (not as a runtime parameter).
@@ -58,7 +57,7 @@ struct jit_rvv_gemm_kernel_t : public jit_generator_t {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_rvv_gemm_kernel_t)
 
-    // Construct a JIT kernel for a specific m value (8 or 16)
+    // Construct a JIT kernel for a specific m value (16/32/64/128 depending on VLEN)
     jit_rvv_gemm_kernel_t(dim_t m);
 
     void operator()(const call_params_t *p) const {
@@ -69,8 +68,13 @@ protected:
     void generate() override;
 
 private:
-    dim_t m_; // tile size in M dimension (8 or 16)
+    dim_t m_; // tile size in M dimension (16/32/64/128)
 };
+
+// Dispatch helper: selects the right JIT kernel instance by m.
+void jit_rvv_gemm_kernel(const float *A, const float *B, float *C, dim_t lda,
+        dim_t ldb, dim_t ldc, dim_t K, float alpha, float beta, dim_t m);
+
 
 } // namespace gemm_utils
 } // namespace rv64

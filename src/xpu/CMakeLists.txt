@@ -35,6 +35,12 @@ endif()
 
 if(DNNL_GPU_RUNTIME MATCHES "ZE")
     add_subdirectory(ze)
+
+    # This is a workaround to avoid moving code from 'ocl/utils.cpp' to
+    # 'ocl/utils.hpp' as ocl is used to query extensions since Level Zero
+    # doesn't provide those capabilities so far.
+    # TODO: Once it does, remove this and all related OCL code.
+    list(APPEND SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/ocl/utils_shared.cpp)
 endif()
 
 set(OBJ_LIB ${LIB_PACKAGE_NAME}_xpu)

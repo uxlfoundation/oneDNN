@@ -14,8 +14,17 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "xpu/ocl/utils.hpp"
+// Include for:
+// - CL_PLATFORM_NOT_FOUND_KHR
+// - CL_UUID_SIZE_KHR
+// - CL_DEVICE_UUID_KHR
+#include <CL/cl_ext.h>
+
+#include "common/utils.hpp"
+#include "common/verbose.hpp"
+
 #include "xpu/ocl/engine_impl.hpp"
+#include "xpu/ocl/utils.hpp"
 
 // XXX: Include this header for VERROR_ENGINE.
 // TODO: Move VERROR_ENGINE and other similar macros to a separate file.
@@ -44,34 +53,6 @@ std::string get_kernel_name(cl_kernel kernel) {
     // Remove the null terminator as std::string already includes it
     name.resize(name_size - 1);
     return name;
-}
-
-status_t get_devices(std::vector<cl_device_id> *devices,
-        std::vector<wrapper_t<cl_device_id>> *sub_devices,
-        cl_device_type device_type) {
-    std::vector<cl_device_id> devices_tmp;
-    std::vector<wrapper_t<cl_device_id>> sub_devices_tmp;
-
-    CHECK(get_devices(&devices_tmp, device_type));
-
-    for (cl_device_id d : devices_tmp) {
-        cl_uint max_sub_devices;
-        cl_device_partition_property properties[3]
-                = {CL_DEVICE_PARTITION_BY_AFFINITY_DOMAIN,
-                        CL_DEVICE_AFFINITY_DOMAIN_NEXT_PARTITIONABLE, 0};
-        cl_int err = xpu::ocl::clCreateSubDevices(
-                d, properties, 0, nullptr, &max_sub_devices);
-        if (err == CL_DEVICE_PARTITION_FAILED) continue;
-        OCL_CHECK(err);
-        std::vector<cl_device_id> sds(max_sub_devices);
-        OCL_CHECK(xpu::ocl::clCreateSubDevices(
-                d, properties, max_sub_devices, sds.data(), nullptr));
-        for (cl_device_id sd : sds)
-            sub_devices_tmp.emplace_back(sd);
-    }
-    *devices = devices_tmp;
-    *sub_devices = std::move(sub_devices_tmp);
-    return status::success;
 }
 
 status_t get_device_index(size_t *index, cl_device_id device) {

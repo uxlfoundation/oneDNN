@@ -281,10 +281,6 @@ static bool post_binary_fusible_impl(const op_t *base_op,
         return true;
 
     int32_t output_ndims = static_cast<int32_t>(fused_shape.size());
-    // 5d tensor MatMul with broadcasted post was not optimized on CPU
-    if (ekind == dnnl_cpu && base_op->get_kind() == op_kind::dnnl_matmul
-            && output_ndims == 5)
-        return false;
     // any broadcasted for 4d or 5d tensor MatMul
     if (base_op->get_kind() == op_kind::dnnl_matmul
             && (output_ndims == 4 || output_ndims == 5)) {

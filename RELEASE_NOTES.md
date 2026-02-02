@@ -1,15 +1,15 @@
 # Performance Optimizations
-## Intel Architecture Processors
+## Intel 64/AMD64 Processors
 * Improved `fp32` matmul performance with `fp4` compressed weights.
 * Improved `fp32` matmul performance for cases when one of the tensors has a trivial dimension on processors with Intel AVX-512 instruction set support.
 
-## Intel Graphics Products
-* Improved `fp16`/`bf16` matmul performance for large tensor cases on Intel Arc graphics for Intel Core Ultra processor series 3 (formerly Panther Lake).
+## Intel Graphics
+* Improved `fp16`/`bf16` matmul performance for large tensor cases on Intel Graphics for Intel Core Ultra Series 3 processor (formerly Panther Lake).
 * Improved matmul performance for cases with 4-byte alignment on Intel GPUs based on Xe2 architecture.
 * Improved performance of `fp16`/`bf16` matmul with `mxfp4` weights.
 * Improved convolution performance with host-side scalar scales and zero points.
 
-## AArch64 based Processors
+## AArch64 Processors
 * Improved performance of `bf16` matmul.
 * Improved performance of `bf16/int8` convolutions.
 * Improved matmul performance for cases when one of the tensor has a trivial dimension.
@@ -18,7 +18,7 @@
 * Improved eltwise `exp` algorithm performance on Arm(R) Neoverse(TM) N1 processors.
 * Improved reorder primitive performance.
 
-## RISC-V based processors
+## RISC-V Processors
 * Improved `f32` matmul, inner product, convolution, softmax, batch normalization, layer normalization, and group normalization primitives performance.
 * Improved eltwise and binary primitives performance.
 * Improved `f32` and `fp16` pooling primitive performance.
@@ -41,14 +41,14 @@
 
 [RMS Normalization]: https://uxlfoundation.github.io/oneDNN/v3.11/dev_guide_op_rmsnorm.html
 
-## Intel Graphics Products
+## Intel Graphics
 * Introduced support for convolution with `u8` weights.
 * Introduced support for 2D grouped scales in `fp8` matmul.
 
-## Intel Architecture Processors
+## Intel 64/AMD64 Processors
 * Introduced support for different data types of source and destination in pooling forward propagation.
 
-## AArch64-based Processors
+## AArch64 Processors
 * Added limited support for the BRGEMM Microkernel API
 * Added limited support for Windows on Arm builds with MSVC
 
@@ -58,15 +58,15 @@
 * Added [matmul fp8 quantization] example demonstrating use of matmul primitive with `fp8` source, destination, and weights.
 * Enabled `ONEDNN_ENABLE_GRAPH_DUMP` knob by default.
 
-## Intel Architecture Processors
+## Intel 64/AMD64 Processors
 * Extended oneDNN [threadpool runtime] with an option to support asynchronous execution and updated all CPU implementations accordingly. This extension makes oneDNN compatible with OpenXLA "thunk" runtime.
 * Introduced [`ONEDNN_SAFE_RBP`] build knob that instructs x64 implementations to preserve value of `rbp` register for tools that rely on stack unwinding. This option may have visible performance impact on some workloads.
 
-## AArch64 based Processors
+## AArch64 Processors
 * Fixed a potential overflow on AArch64 builds with Arm Compute Library.
 * Significantly reduced memory consumption of convolution primitive with large spatial filters during primitive creation.
 
-## Intel Graphics Products
+## Intel Graphics
 * Removed build time dependency on OpenCL runtime in SYCL build configuration.
 
 [quantization attributes]: https://uxlfoundation.github.io/oneDNN/v3.11/dev_guide_attributes_quantization.html

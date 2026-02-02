@@ -1764,7 +1764,8 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         return data_A_ptr_ + b_off;
     }
 
-    const char *get_data_A_mk_ptr(const char *batch_ptr, int m, int k) const {
+    const char *get_data_A_mk_ptr(
+            const char *batch_ptr, dim_t m, dim_t k) const {
         return batch_ptr + A_strides_[1] * m + A_strides_[0] * k;
     }
 
@@ -1827,7 +1828,7 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         return data_B_bitmask_ptr_ + bitmask_off;
     }
 
-    char *get_data_C_ptr(int b, int m, int n) const {
+    char *get_data_C_ptr(dim_t b, dim_t m, dim_t n) const {
         return data_C_ptr_ + get_data_C_off(b, m, n);
     }
 
@@ -2009,7 +2010,7 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         return bgmmc_.b_dt_sz * offset;
     }
 
-    dim_t get_data_C_off(int b, int m, int n) const {
+    dim_t get_data_C_off(dim_t b, dim_t m, dim_t n) const {
         using namespace format_tag;
         assert(bgmmc_.dst_tag != adbc);
         dim_t off = 0;

@@ -263,7 +263,7 @@ private:
     }
 
     struct buffer_info_t {
-        buffer_info_t(size_t id, size_t size) : id_(id), max_bytes_(size) {};
+        buffer_info_t(size_t id, size_t size) : id_(id), max_bytes_(size) {}
         // the id of the buffer.
         size_t id_;
         // maximum size of buffer requested.

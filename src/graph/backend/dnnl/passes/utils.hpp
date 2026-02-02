@@ -66,7 +66,7 @@ public:
         , is_layout_sensitive_(false)
         , is_memory_sensitive_(false)
         , enable_validator_(enable_validator)
-        , enable_visualizer_(enable_visualizer) {};
+        , enable_visualizer_(enable_visualizer) {}
 
     // Reset the visualize arguments
     void reset_visualize_arg(

@@ -312,6 +312,8 @@ status_t pd_t::init_attrs() {
         c_quant.group_n = c_scales.get_group(0);
         with_mx_scale_ = c_scales.is_mx();
     }
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_attrs   CCC : c_quant.zp_host_scalar = %d",c_quant.zp_host_scalar);
+	
     VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_attrs < ***** success");
     return status::success;
 }

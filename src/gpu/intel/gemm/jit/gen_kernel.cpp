@@ -551,13 +551,17 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     if (status != status::success)
         return std::vector<const gemmstone::kcatalog::Entry *>();
 
+    VDEBUGINFO(4, primitive, gemm, "MY: select_kernel CCC :  before problem_.<CO> settings : c_offset = %d bias=%d (reduce_ab != sum_ab::sum_none) = %d",c_offset, bias, (reduce_ab != sum_ab::sum_none));
+
     if (c_offset || bias || reduce_ab != sum_ab::sum_none) {
         assert(!(c_offset && bias));
         if (bias) problem_.cOffset = COffset::Pre;
         if (c_offset) problem_.cOffset = COffset::Post;
+        VDEBUGINFO(4, primitive, gemm, "MY: select_kernel CCC : problem_.cOfset = %d ",(int)problem_.cOffset);		
         problem_.CO.crosspack = 1;
         problem_.CO.alignment = problem_.C.alignment;
         problem_.CO.layout = trans_co ? MatrixLayout::T : MatrixLayout::N;
+        VDEBUGINFO(4, primitive, gemm, "MY: select_kernel CCC : problem_.coPtrDims = <none> : c_quant.zp_ndims = %d", c_quant.zp_ndims);
     }
 
     problem_.sumA = (reduce_ab == sum_ab::sum_b_col);
@@ -796,6 +800,9 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
         gpu_post_ops_t &&post_ops) {
     using namespace ngen;
     using namespace kcatalog;
+	
+    VDEBUGINFO(4, primitive, gemm, "MY: CCC gen_xe select_kernel ------>");
+	
 
     arch_ = arch;
     hw_ = convert_dnnl_arch_to_ngen(arch);
@@ -909,8 +916,12 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     auto entries = select(
             catalog(), match_params, eval_params, aux_params_, &observer);
 
-    if (entries.size() < 1) return status::unimplemented;
+    if (entries.size() < 1) {
+        VDEBUGINFO(4, primitive, gemm, "MY: CCC gen_xe select_kernel <----- early");
+		return status::unimplemented;
+	}
     entry_ = entries[0];
+    VDEBUGINFO(4, primitive, gemm, "MY: CCC gen_xe select_kernel <----- return finalize");
     return finalize(match_params.tags);
 }
 
@@ -1021,12 +1032,20 @@ void gen_kernel_t::init_interface() {
     }
     if (problem.hasCMXScale()) interface_.newArgument("ldcq", DataType::d);
     if (problem.cOffset != COffset::None || problem.sumA || problem.sumB) {
+		
+        VDEBUGINFO(4, primitive, gemm, "MY: gen_kernel CCC ; newArgument CO");
+		
         interface_.newArgument(
                 "CO", ExternalArgumentType::GlobalPtr, co_access);
+				
+        VDEBUGINFO(4, primitive, gemm, "MY: gen_kernel CCC ; newArgument offset_CO");
+				
         interface_.newArgument("offset_CO", DataType::q);
-        if (problem.cOffset == COffset::Pre)
+        if (problem.cOffset == COffset::Pre){
+            VDEBUGINFO(4, primitive, gemm, "MY: gen_kernel CCC ; newArgument ldco");		
             interface_.newArgument("ldco", DataType::d);
-    }
+		}
+	}
     if (problem.postOps.cStochasticRound) {
         interface_.newArgument("sround_seed", ExternalArgumentType::GlobalPtr);
     }

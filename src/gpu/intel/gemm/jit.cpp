@@ -504,6 +504,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
 
     if (swapab) {
         std::swap(ao, bo);
+        std::swap(ao_hostscalar, bo_hostscalar);
         std::swap(a_scales, b_scales);
         std::swap(ag, bg);
 

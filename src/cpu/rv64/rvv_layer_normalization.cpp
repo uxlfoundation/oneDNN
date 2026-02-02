@@ -175,6 +175,14 @@ inline void norm_loop_unroll4(const float *src, float *dst, dim_t C,
 }
 } // namespace
 
+rvv_layer_normalization_fwd_t::rvv_layer_normalization_fwd_t(const pd_t *apd)
+    : primitive_t(apd) {
+    if (pd()->use_jit_) {
+        kernel_.reset(new jit_rvv_layernorm_kernel_t(
+                pd()->use_scale(), pd()->use_shift()));
+    }
+}
+
 status_t rvv_layer_normalization_fwd_t::execute_forward(
         const exec_ctx_t &ctx) const {
     using namespace memory_tracking::names;
@@ -232,8 +240,21 @@ status_t rvv_layer_normalization_fwd_t::execute_forward(
                 variance_ptr[n] = v_var;
             }
         }
-        norm_loop_unroll4(src_row, dst_row, C, scale, shift, v_mean,
-                1.f / sqrtf(v_var + eps));
+        const float inv_std = 1.f / sqrtf(v_var + eps);
+        if (pd()->use_jit_) {
+            jit_rvv_layernorm_kernel_t::call_params_t p;
+            p.src = src_row;
+            p.dst = dst_row;
+            p.scale = scale;
+            p.shift = shift;
+            p.len = C;
+            p.mean = v_mean;
+            p.inv_std = inv_std;
+            (*kernel_)(&p);
+        } else {
+            norm_loop_unroll4(
+                    src_row, dst_row, C, scale, shift, v_mean, inv_std);
+        }
     });
     return status::success;
 }

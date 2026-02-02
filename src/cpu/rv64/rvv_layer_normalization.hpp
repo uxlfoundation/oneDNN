@@ -24,6 +24,7 @@
 #include "common/stream.hpp"
 
 #include "cpu/cpu_layer_normalization_pd.hpp"
+#include "cpu/rv64/jit_rvv_layernorm_kernel.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -86,6 +87,7 @@ struct rvv_layer_normalization_fwd_t : public primitive_t {
                         stats_are_src() ? &reordered_stat_md_ : stat_md()));
             }
 
+            init_jit_conf();
             init_scratchpad();
             return status::success;
         }
@@ -94,8 +96,20 @@ struct rvv_layer_normalization_fwd_t : public primitive_t {
 
         std::shared_ptr<primitive_desc_t> reorder_pd_;
         memory_desc_t reordered_stat_md_;
+        bool use_jit_ = false;
 
     private:
+        void init_jit_conf() {
+            const dim_t jit_norm_axis_threshold = 512;
+            const unsigned flags = desc()->flags;
+            const bool use_scale = flags & dnnl_use_scale;
+            const bool use_shift = flags & dnnl_use_shift;
+            const bool allow_c = use_scale && !use_shift;
+            const bool allow_ch = use_scale && use_shift;
+            use_jit_ = norm_axis() <= jit_norm_axis_threshold
+                    && (allow_c || allow_ch);
+        }
+
         void init_scratchpad() {
             using namespace memory_tracking::names;
             auto scratchpad = scratchpad_registry().registrar();
@@ -120,7 +134,7 @@ struct rvv_layer_normalization_fwd_t : public primitive_t {
         return status::success;
     }
 
-    rvv_layer_normalization_fwd_t(const pd_t *apd) : primitive_t(apd) {}
+    rvv_layer_normalization_fwd_t(const pd_t *apd);
 
     void reorder_stat(const exec_ctx_t &ctx, engine_t *engine,
             const memory_arg_t &in, const memory_arg_t &out) const {
@@ -181,6 +195,7 @@ private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
     std::shared_ptr<primitive_t> reorder_;
+    std::unique_ptr<jit_rvv_layernorm_kernel_t> kernel_;
 };
 
 } // namespace rv64

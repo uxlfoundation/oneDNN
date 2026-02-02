@@ -55,9 +55,9 @@ class fusion_info_t {
     class meta_op_t {
     public:
         // for scales and zps
-        meta_op_t(const op_ptr &op) : op_(op) {};
+        meta_op_t(const op_ptr &op) : op_(op) {}
         // for post-eltwise
-        meta_op_t(const op_ptr &op, float scale) : op_(op), scale_(scale) {};
+        meta_op_t(const op_ptr &op, float scale) : op_(op), scale_(scale) {}
         // for post-sum and post_binary
         meta_op_t(const op_ptr &op,
                 const std::vector<size_t> &extra_input_indices, float scale,
@@ -65,11 +65,11 @@ class fusion_info_t {
             : op_(op)
             , scale_(scale)
             , zp_(zp)
-            , unfused_input_indices_(extra_input_indices) {};
+            , unfused_input_indices_(extra_input_indices) {}
         // for post-conv
         meta_op_t(const op_ptr &op,
                 const std::vector<size_t> &extra_input_indices)
-            : op_(op), unfused_input_indices_(extra_input_indices) {};
+            : op_(op), unfused_input_indices_(extra_input_indices) {}
 
         bool operator==(const meta_op_t &other) const {
             return *op_ == *other.op_ && scale_ == other.scale_

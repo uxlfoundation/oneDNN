@@ -524,6 +524,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
 
     if (swap_ab) {
         std::swap(ao, bo);
+        std::swap(ao_host_scalar, bo_host_scalar);
         std::swap(a_scales, b_scales);
 
         uint8_t swap_table[4] = {0, 2, 1, 3};

@@ -31,8 +31,7 @@ namespace graph {
 namespace dnnl_impl {
 
 dnnl_backend_t::dnnl_backend_t(const std::string &name, float priority)
-    : backend_t(name, priority) {
-}
+    : backend_t(name, priority) {}
 
 pass::pass_registry_t dnnl_backend_t::register_passes() {
 #define DNNL_BACKEND_REGISTER_PATTERN_CALL(pattern_class_, pattern_registry_) \

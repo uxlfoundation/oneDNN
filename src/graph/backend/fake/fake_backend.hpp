@@ -63,7 +63,7 @@ public:
 
 private:
     fake_backend_t(const std::string &name, float priority)
-        : backend_t(name, priority) {};
+        : backend_t(name, priority) {}
     static graph::pass::pass_registry_t register_passes();
     static graph::pass::pass_registry_t pass_registry_;
 };

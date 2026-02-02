@@ -30,7 +30,7 @@ public:
     using value_type = size_t;
     value_type id() const { return id_; }
 
-    id_t() : id_(++counter) {};
+    id_t() : id_(++counter) {}
 
 protected:
     static std::atomic<value_type> counter;

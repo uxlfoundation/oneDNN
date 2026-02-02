@@ -20,7 +20,6 @@
 #include "src/common/float4.hpp"
 #include "src/common/int4.hpp"
 #include "src/common/nstl.hpp"
-#include "src/common/type_helpers.hpp"
 
 namespace dnnl {
 
@@ -43,10 +42,6 @@ TEST(test_limits, uint4) {
 
 TEST(test_limits, f4_e2m1) {
     test_limits<impl::float4_e2m1_t>(6.0f, -6.0f, 1.0f);
-}
-
-TEST(test_limits, f4_e3m0) {
-    test_limits<impl::float4_e3m0_t>(16.0f, -16.0f, 1.0f);
 }
 
 template <typename T>
@@ -89,10 +84,6 @@ TEST(test_int4_conversion, uint4) {
 
 TEST(test_e2m1_conversion, f4_e2m1) {
     test_conversions<impl::float4_e2m1_t>();
-}
-
-TEST(test_e3m0_conversion, f4_e3m0) {
-    test_conversions<impl::float4_e3m0_t>();
 }
 
 } // namespace dnnl

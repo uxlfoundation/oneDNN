@@ -90,10 +90,12 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
     set_scalar_arg_cvt(arg_list, argn++, alpha, scalar_type_);
     set_scalar_arg_cvt(arg_list, argn++, beta, scalar_type_);
 
-    if (pd()->with_a_zero_points() && !problem->aOffsetHostScalar())
-        arg_list.set(argn++, *ao);
-    if (pd()->with_b_zero_points() && !problem->bOffsetHostScalar())
-        arg_list.set(argn++, *bo);
+    bool a_zp_ptr = pd()->with_a_zero_points() && !problem->aOffsetHostScalar();
+    bool b_zp_ptr = pd()->with_b_zero_points() && !problem->bOffsetHostScalar();
+    if (swap_ab) std::swap(a_zp_ptr, b_zp_ptr);
+
+    if (a_zp_ptr) arg_list.set(argn++, *ao);
+    if (b_zp_ptr) arg_list.set(argn++, *bo);
     if (problem->aOffsetHostScalar()) arg_list.set(argn++, ao_host_scalar);
     if (problem->bOffsetHostScalar()) arg_list.set(argn++, bo_host_scalar);
     if (problem->aScale2D()) arg_list.set(argn++, *a_scales);
@@ -512,13 +514,17 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     if (pd()->b_scales_2d()) { b_scales = &GEMM_CTX_ARG_STORAGE(b_scales); }
     if (pd()->with_mx_scale()) { c_scales = &GEMM_CTX_ARG_STORAGE(c_scales); }
 
-    if (problem.needsAGroupSums()) ag = &GEMM_CTX_ARG_STORAGE(a_group_sums);
-    if (problem.needsBGroupSums()) bg = &GEMM_CTX_ARG_STORAGE(b_group_sums);
+    if (swap_ab) {
+        if (problem.needsAGroupSums()) ag = &GEMM_CTX_ARG_STORAGE(b_group_sums);
+        if (problem.needsBGroupSums()) bg = &GEMM_CTX_ARG_STORAGE(a_group_sums);
+    } else {
+        if (problem.needsAGroupSums()) ag = &GEMM_CTX_ARG_STORAGE(a_group_sums);
+        if (problem.needsBGroupSums()) bg = &GEMM_CTX_ARG_STORAGE(b_group_sums);
+    }
 
     if (swap_ab) {
         std::swap(ao, bo);
         std::swap(a_scales, b_scales);
-        std::swap(ag, bg);
 
         uint8_t swap_table[4] = {0, 2, 1, 3};
         cmask = (cmask & ~3) | swap_table[cmask & 3];

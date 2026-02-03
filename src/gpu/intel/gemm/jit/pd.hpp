@@ -69,6 +69,10 @@ struct pd_t : public gemm::pd_t {
         VDISPATCH_GEMM(scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
         VDISPATCH_GEMM(zp_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
         VDISPATCH_GEMM(gs_ok(), VERBOSE_UNSUPPORTED_PR_CFG);
+        if (swap_ab_) {
+            std::swap(a_quant.zp_ndims, b_quant.zp_ndims);
+            std::swap(a_quant.gs_ndims, b_quant.gs_ndims);
+        }
         VDISPATCH_GEMM_SC(init_post_ops(), VERBOSE_UNSUPPORTED_POSTOP);
         return status::success;
     }
@@ -201,12 +205,8 @@ struct pd_t : public gemm::pd_t {
         return !attr()->scales_.has_default_values(DNNL_ARG_DST);
     }
 
-    bool with_a_zero_points() const {
-        return (swap_ab_ ? b_quant.zp_ndims >= 0 : a_quant.zp_ndims >= 0);
-    }
-    bool with_b_zero_points() const {
-        return (swap_ab_ ? a_quant.zp_ndims >= 0 : b_quant.zp_ndims >= 0);
-    }
+    bool with_a_zero_points() const { return (a_quant.zp_ndims >= 0); }
+    bool with_b_zero_points() const { return (b_quant.zp_ndims >= 0); }
     bool with_c_zero_points() const {
         return !attr()->zero_points_.has_default_values(DNNL_ARG_DST);
     }

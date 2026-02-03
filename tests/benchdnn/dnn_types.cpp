@@ -1035,21 +1035,44 @@ std::ostream &operator<<(std::ostream &s, dnnl_sparse_encoding_t se) {
 std::ostream &operator<<(
         std::ostream &s, const sparse_options_t &sparse_options) {
     if (!sparse_options.is_def()) {
-        s << "--encoding=";
         const std::vector<int> args
                 = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST};
 
-        for (int i = 0; i < (int)args.size(); i++) {
-            const int arg = args[i];
-            if (!sparse_options.is_encoding_def(arg)) {
-                s << sparse_options.get_encoding(arg);
-                if (!sparse_options.is_sparsity_def(arg))
-                    s << "+" << sparse_options.get_sparsity(arg);
-            }
-            if (i != (int)args.size() - 1)
-                s << ":";
-            else
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+        bool has_grouped = false;
+        for (const int arg : args) {
+            if (sparse_options.get_encoding(arg) == dnnl_grouped) {
+                has_grouped = true;
+                // Output new format: --grouped=0:8:32,64,...
+                int var_idx = sparse_options.get_variable_dim_idx(arg);
+                s << "--grouped=" << var_idx << ":"
+                  << sparse_options.get_group_count() << ":";
+                const auto &dims = sparse_options.get_group_sizes(arg);
+                for (size_t i = 0; i < dims.size(); i++) {
+                    s << dims[i];
+                    if (i != dims.size() - 1) s << ",";
+                }
                 s << " ";
+                break;
+            }
+        }
+        if (!has_grouped)
+#endif
+        {
+            // Rest of sparse options use different format: --encoding=...
+            s << "--encoding=";
+            for (int i = 0; i < (int)args.size(); i++) {
+                const int arg = args[i];
+                if (!sparse_options.is_encoding_def(arg)) {
+                    s << sparse_options.get_encoding(arg);
+                    if (!sparse_options.is_sparsity_def(arg))
+                        s << "+" << sparse_options.get_sparsity(arg);
+                }
+                if (i != (int)args.size() - 1)
+                    s << ":";
+                else
+                    s << " ";
+            }
         }
     }
     return s;

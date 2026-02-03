@@ -33,8 +33,18 @@ where *matmul-knobs* are:
             all tensor dimensions are fully defined at primitive creation. For
             tensors with option values other than `0`, a correspondent memory
             format tag must be specified.
-- `--encoding=STRING` - sparse encodings and sparsity. No encodings are set by
+ - `--encoding=STRING` - sparse encodings and sparsity. No encodings are set by
             default. Refer to [encodings](knobs_encoding.md) for details.
+ - `--grouped=DIM_IDX:NUM_GROUPS:size0,size1,...,sizeN` -- specifies grouped
+            encoding to execute grouped GEMM. `DIM_IDX` is the dimension index
+            (`0` is `M`, `1` is `K`, `2` is `N`), `NUM_GROUPS` is the number of
+            tensors in a group or number of experts, and `size0,size1,...,sizeN`
+            are comma-separated sizes or resolved variable dimensions.
+            When grouped encoding is specified, weights must be provided as 3D
+            `[G,K,N]` where `G` matches `NUM_GROUPS`.
+            Example: `--grouped=0:4:32,0,32,96 160x512:4x512x256`
+            means `M` dimension is variable, `4` experts are used, `32, 0, ...`
+            are sizes of each group with total `32+0+32+96 = 160`.
  - `--match=REGEX` -- skip problems not matching the regular expression in
             `REGEX`. By default no pattern is applied (run everything).
             Note: Windows may interpret only string arguments surrounded by

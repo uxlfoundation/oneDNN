@@ -626,9 +626,10 @@ struct sparse_options_t {
         const auto it = grouped_data_.find(arg);
         return it == grouped_data_.end() ? -1 : it->second.variable_dim_idx;
     }
-    dnnl_dim_t get_group_count(int arg = DNNL_ARG_SRC) const {
-        const auto it = grouped_data_.find(arg);
-        return it == grouped_data_.end() ? 0 : it->second.group_count;
+    // Get group count - the count is the same across all grouped arguments
+    dnnl_dim_t get_group_count() const {
+        if (grouped_data_.empty()) return 0;
+        return grouped_data_.begin()->second.group_count;
     }
     const std::vector<dnnl_dim_t> &get_group_sizes(
             int arg = DNNL_ARG_SRC) const {

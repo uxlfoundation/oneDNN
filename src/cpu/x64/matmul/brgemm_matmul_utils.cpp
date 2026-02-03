@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2025 Intel Corporation
+* Copyright 2021 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -1581,11 +1581,13 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     // set is limited for binary post-ops
     const bool plain_A_layout = bm_conf_utils.check_is_plain(bgmmc.src_tag)
             || bgmmc.treat_A_as_plain;
+    // For 4D tensors with acbd layout, avoid merging batches to prevent stride issues
     const bool merge_batch_dims_into_M = bgmmc.batch > 1
             && bgmmc.bcast_B_desc.bcast_across_all_batch_dims && plain_A_layout
             && helper.is_src_dst_layout_batch_fusable()
             && post_ops_ok(
-                    bgmmc, attr, dst_d, true /* limit_bcast_strategies_set */);
+                    bgmmc, attr, dst_d, true /* limit_bcast_strategies_set */)
+            && !(bgmmc.ndims == 4 && src_d.matches_tag(format_tag::acbd));
     if (merge_batch_dims_into_M) {
         bgmmc.M *= bgmmc.batch;
         bgmmc.batch = 1;
@@ -1676,8 +1678,10 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     // We need to correct A_strides if batched dimensions are merged in M and
     // A layout is formally transposed but could be treated as plain
+    // For 4D tensors, only apply adjustment for treat_A_as_plain, not for acbd tag
+    const bool adjust_for_acbd = src_d.matches_tag(acbd) && bgmmc.ndims == 3;
     bgmmc.adjust_a_strides = merge_batch_dims_into_M
-            && (src_d.matches_tag(acbd) || bgmmc.treat_A_as_plain);
+            && (adjust_for_acbd || bgmmc.treat_A_as_plain);
     if (bgmmc.adjust_a_strides) bgmmc.A_strides[1] = bgmmc.A_strides[2];
 
     // We need to correct C_strides if batched dimensions are merged in M and

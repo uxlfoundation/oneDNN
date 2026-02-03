@@ -459,6 +459,16 @@ template <> inline DataType getDataType<uint2>() { return DataType::u2; }
 template <> inline DataType getDataType<int2>() { return DataType::s2; }
 #endif
 
+static inline constexpr14 DataType rawType(DataType dt) {
+    switch (getLog2Bits(dt)) {
+        case 6:  return DataType::uq;
+        case 5:  return DataType::ud;
+        case 4:  return DataType::uw;
+        case 3:  return DataType::ub;
+        default: return dt;
+    }
+}
+
 // Math function codes.
 enum class MathFunction : uint8_t {
     inv   = 0x1,

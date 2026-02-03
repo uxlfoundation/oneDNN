@@ -28,7 +28,7 @@ where:
 **Forward (Training)** applies the dropout mask and scaling as described above.
 **Forward (Inference)** passes the input directly to the output without modification.
 **Backward** applies the same mask and scaling to the gradient
-f$\mathrm{diff\_dst}\f$ to compute \f$\mathrm{diff\_src}\f$.
+\f$\mathrm{diff\_dst}\f$ to compute \f$\mathrm{diff\_src}\f$.
 
 ## Execution arguments
 

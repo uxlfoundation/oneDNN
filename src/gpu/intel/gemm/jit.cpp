@@ -369,8 +369,13 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
 
     if (swap_ab) std::swap(m, n);
 
-    const bool transa = pd()->eff_transa();
-    const bool transb = pd()->eff_transb();
+    bool trans_a = pd()->trans_a();
+    bool trans_b = pd()->trans_b();
+    if (swap_ab) {
+        std::swap(trans_a, trans_b);
+        trans_a = !trans_a;
+        trans_b = !trans_b;
+    }
 
     auto lda = into<int32_t>(pd()->ld(DNNL_ARG_A));
     auto ldb = into<int32_t>(pd()->ld(DNNL_ARG_B));
@@ -601,14 +606,14 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
             if (size_m > block_m) size_m = block_m;
 
             auto off_a_src
-                    = off_a0 + (!transa ? (Bm + Bk * lda) : (Bk + Bm * lda));
+                    = off_a0 + (!trans_a ? (Bm + Bk * lda) : (Bk + Bm * lda));
 
             for (int64_t Bn = 0; Bn < n; Bn += block_n) {
                 int64_t size_n = n - Bn;
                 if (size_n > block_n) size_n = block_n;
 
                 auto off_b_src = off_b0
-                        + (!transb ? (Bk + Bn * ldb) : (Bn + Bk * ldb));
+                        + (!trans_b ? (Bk + Bn * ldb) : (Bn + Bk * ldb));
 
                 auto off_c = off_c0 + Bm + Bn * ldc;
 

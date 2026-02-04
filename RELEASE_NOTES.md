@@ -4,7 +4,7 @@
 * Improved `fp32` matmul performance for cases when one of the tensors has a trivial dimension on processors with Intel AVX-512 instruction set support.
 
 ## Intel Graphics
-* Improved `fp16`/`bf16` matmul performance for large tensor cases on Intel Graphics for Intel Core Ultra Series 3 processor (formerly Panther Lake).
+* Improved `fp16`/`bf16` matmul performance for large tensor cases on Intel Graphics for Intel Core Ultra processor Series 3 (formerly Panther Lake).
 * Improved matmul performance for cases with 4-byte alignment on Intel GPUs based on Xe2 architecture.
 * Improved performance of `fp16`/`bf16` matmul with `mxfp4` weights.
 * Improved convolution performance with host-side scalar scales and zero points.

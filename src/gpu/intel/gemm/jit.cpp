@@ -90,9 +90,11 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
     set_scalar_arg_cvt(arg_list, argn++, alpha, scalar_type_);
     set_scalar_arg_cvt(arg_list, argn++, beta, scalar_type_);
 
-    bool a_zp_ptr = pd()->with_a_zero_points() && !problem->aOffsetHostScalar();
-    bool b_zp_ptr = pd()->with_b_zero_points() && !problem->bOffsetHostScalar();
-    if (swap_ab) std::swap(a_zp_ptr, b_zp_ptr);
+    bool with_a_zp = pd()->with_a_zero_points();
+    bool with_b_zp = pd()->with_b_zero_points();
+    if (swap_ab) std::swap(with_a_zp, with_b_zp);
+    bool a_zp_ptr = with_a_zp && !problem->aOffsetHostScalar();
+    bool b_zp_ptr = with_b_zp && !problem->bOffsetHostScalar();
 
     if (a_zp_ptr) arg_list.set(argn++, *ao);
     if (b_zp_ptr) arg_list.set(argn++, *bo);

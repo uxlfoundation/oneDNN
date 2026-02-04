@@ -118,7 +118,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
                 : problem->aScale2D()            ? problem->A_scale.layout
                                                  : problem->AO.layout;
         auto ldaq = into<int32_t>(isColMajor(layout)
-                        ? utils::div_up(pd()->eff_m(), problem->aqGroupM)
+                        ? utils::div_up(m, problem->aqGroupM)
                         : utils::div_up(pd()->desc()->k(), problem->aqGroupK));
         arg_list.set(argn++, ldaq);
     }
@@ -128,7 +128,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
                 : problem->bScale2D()            ? problem->B_scale.layout
                                                  : problem->BO.layout;
         auto ldbq = into<int32_t>(!isColMajor(layout)
-                        ? utils::div_up(pd()->eff_n(), problem->bqGroupN)
+                        ? utils::div_up(n, problem->bqGroupN)
                         : utils::div_up(pd()->desc()->k(), problem->bqGroupK));
         arg_list.set(argn++, ldbq);
     }
@@ -355,9 +355,11 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     auto b_type = pd()->eff_b_type();
     auto c_type = d->c_type();
 
-    const auto m = into<int32_t>(pd()->eff_m());
-    const auto n = into<int32_t>(pd()->eff_n());
+    auto m = into<int32_t>(pd()->desc()->m());
+    auto n = into<int32_t>(pd()->desc()->n());
     auto k = into<int32_t>(d->k());
+
+    if (swap_ab) std::swap(m, n);
 
     const bool transa = pd()->eff_transa();
     const bool transb = pd()->eff_transb();

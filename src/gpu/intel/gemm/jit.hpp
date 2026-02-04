@@ -76,6 +76,9 @@ struct gen_t : public primitive_t {
             CHECK(set_default_formats(false));
             CHECK(jit::pd_t::init(engine));
 
+            auto m = desc()->m();
+            auto n = desc()->n();
+
             // If m = 1, swap A/B to use more efficient n = 1 kernels if possible.
             bool check_lda = ((d->transa() == dnnl_notrans && d->lda() == 1)
                     || (d->transa() == dnnl_trans));
@@ -89,12 +92,13 @@ struct gen_t : public primitive_t {
 
             if (swap_ab_) {
                 std::swap(eff_lda_, eff_ldb_);
+                std::swap(m, n);
                 std::swap(eff_transa_, eff_transb_);
                 eff_transa_ = !eff_transa_;
                 eff_transb_ = !eff_transb_;
 
                 // Do not use transposed B when it is unnecessary
-                if (eff_transb_ && eff_n() == 1) {
+                if (eff_transb_ && n == 1) {
                     eff_transb_ = false;
                     eff_ldb_ = d->k();
                 }
@@ -102,11 +106,11 @@ struct gen_t : public primitive_t {
 
             // Pad leading dimensions in case of a single row/column.
             if ((d->k() == 1 && eff_transa() == dnnl_notrans)
-                    || (eff_m() == 1 && eff_transa() == dnnl_trans)) {
+                    || (m == 1 && eff_transa() == dnnl_trans)) {
                 eff_lda_ = utils::rnd_up(eff_lda_, 16);
             }
 
-            if ((eff_n() == 1 && eff_transb() == dnnl_notrans)
+            if ((n == 1 && eff_transb() == dnnl_notrans)
                     || (d->k() == 1 && eff_transb() == dnnl_trans)) {
                 eff_ldb_ = utils::rnd_up(eff_ldb_, 16);
             }
@@ -247,7 +251,7 @@ struct gen_t : public primitive_t {
 
             // GEMM kernels down convert the following parameters to
             // int/uint32_t
-            VDISPATCH_GEMM(std::max({eff_m(), eff_n(), d->k(), d->batch()})
+            VDISPATCH_GEMM(std::max({m, n, d->k(), d->batch()})
                             <= std::numeric_limits<int32_t>::max(),
                     VERBOSE_SHAPE_RESTRICTION);
             VDISPATCH_GEMM(std::max({eff_lda(), eff_ldb(), d->ldc()})
@@ -265,8 +269,8 @@ struct gen_t : public primitive_t {
             bool kernel_success = false;
             auto entries = kernel_desc_.select_kernel(arch_, stepping,
                     dev_info_->eu_count(), has_systolic, is_integrated, mode,
-                    problem, alpha(), beta(), eff_m(), eff_n(), d->k(),
-                    eff_lda(), eff_ldb(), d->ldc(), d->batch());
+                    problem, alpha(), beta(), m, n, d->k(), eff_lda(),
+                    eff_ldb(), d->ldc(), d->batch());
 
             for (auto &entry : entries) {
                 kernel_desc_.set_entry(entry);

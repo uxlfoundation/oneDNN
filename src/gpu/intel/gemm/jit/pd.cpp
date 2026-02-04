@@ -437,8 +437,8 @@ bool pd_t::valid_2d_mask(int mask, int ndims, bool per_tensor_ok) {
                     (1 << (ndims - 1)) + (1 << (ndims - 2)));
 }
 
-status_t transfer_post_ops(gemmstone::GEMMProblem &problem,
-        gpu_post_ops_t &&post_ops_, bool swap_ab) {
+status_t transfer_post_ops(
+        gemmstone::GEMMProblem &problem, gpu_post_ops_t &&post_ops_) {
     using namespace gemmstone;
     problem.postOps = std::move(post_ops_);
     const auto &post_ops = problem.postOps;
@@ -474,11 +474,6 @@ status_t transfer_post_ops(gemmstone::GEMMProblem &problem,
             if (!is_compatible) return status::unimplemented;
 
             bool trans = is_multi_row && !src_rmd.inner_dim.is_innermost();
-
-            if (swap_ab) {
-                trans = !trans;
-                std::swap(is_multi_row, is_multi_col);
-            }
 
             problem.Tbinary.push_back(T);
             problem.postOps.binaryRow[i] = is_multi_row;
@@ -669,7 +664,8 @@ status_t pd_t::init_GEMMProblem(
     CHECK(gpu_post_ops_t::make(
             gpu_post_ops, post_ops_, dst_md(), get_post_op_specializations()));
 
-    CHECK(transfer_post_ops(problem, std::move(gpu_post_ops), swap_ab()));
+    CHECK(transfer_post_ops(problem, std::move(gpu_post_ops)));
+    if (swap_ab()) problem.postOps.transpose();
 
     if (c_offset || bias || reduce_ab != sum_ab::sum_none) {
         assert(!(c_offset && bias));

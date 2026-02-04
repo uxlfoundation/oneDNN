@@ -48,8 +48,8 @@ struct quant_params {
     bool zp_host_scalar = false;
 };
 
-status_t transfer_post_ops(gemmstone::GEMMProblem &problem,
-        gpu_post_ops_t &&post_ops_, bool swap_ab);
+status_t transfer_post_ops(
+        gemmstone::GEMMProblem &problem, gpu_post_ops_t &&post_ops_);
 
 struct pd_t : public gemm::pd_t {
     using gemm::pd_t::pd_t;

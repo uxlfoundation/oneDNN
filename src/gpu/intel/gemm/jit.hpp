@@ -91,30 +91,23 @@ struct gen_t : public primitive_t {
                     && d->b_type() == bf16);
 
             if (swap_ab_) {
-                std::swap(m, n);
-                std::swap(eff_transa_, eff_transb_);
-                eff_transa_ = !eff_transa_;
-                eff_transb_ = !eff_transb_;
-
                 // Do not use transposed B when it is unnecessary
-                if (eff_transb_ && n == 1) {
-                    eff_transb_ = false;
+                if (!transa_ && m == 1) {
+                    transa_ = true;
                     lda_ = d->k();
                 }
             }
 
             // Pad leading dimensions in case of a single row/column.
-            if ((d->k() == 1 && eff_transa() == dnnl_notrans)
-                    || (m == 1 && eff_transa() == dnnl_trans)) {
-                dim_t *eff_lda = swap_ab_ ? &ldb_ : &lda_;
-                *eff_lda = utils::rnd_up(*eff_lda, 16);
+            if ((d->k() == 1 && !trans_a()) || (m == 1 && trans_a())) {
+                lda_ = utils::rnd_up(lda_, 16);
             }
 
-            if ((n == 1 && eff_transb() == dnnl_notrans)
-                    || (d->k() == 1 && eff_transb() == dnnl_trans)) {
-                dim_t *eff_ldb = swap_ab_ ? &lda_ : &ldb_;
-                *eff_ldb = utils::rnd_up(*eff_ldb, 16);
+            if ((n == 1 && !trans_b()) || (d->k() == 1 && trans_b())) {
+                ldb_ = utils::rnd_up(ldb_, 16);
             }
+
+            if (swap_ab_) std::swap(m, n);
 
             // Check parameters.
             if (utils::one_of(d->c_type(), s32, f16, bf16, f32, u8, s8)

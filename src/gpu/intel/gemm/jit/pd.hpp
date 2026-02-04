@@ -64,8 +64,8 @@ struct pd_t : public gemm::pd_t {
 
         lda_ = desc()->lda();
         ldb_ = desc()->ldb();
-        eff_transa_ = desc()->transa() == dnnl_trans;
-        eff_transb_ = desc()->transb() == dnnl_trans;
+        transa_ = desc()->transa() == dnnl_trans;
+        transb_ = desc()->transb() == dnnl_trans;
 
         VDISPATCH_GEMM_SC(init_attrs(), VERBOSE_UNSUPPORTED_TAG);
         VDISPATCH_GEMM(scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
@@ -144,7 +144,7 @@ struct pd_t : public gemm::pd_t {
     memory_desc_t a_gs_md_, b_gs_md_;
     bool swap_ab_ = false;
     dim_t lda_ = 0, ldb_ = 0;
-    bool eff_transa_ = false, eff_transb_ = false;
+    bool transa_ = false, transb_ = false;
     bool with_sround_ = false;
     bool with_mx_scale_ = false;
 
@@ -219,8 +219,8 @@ struct pd_t : public gemm::pd_t {
     bool swap_ab() const { return swap_ab_; }
 
     int batch_dims() const { return nstl::max(desc()->c_desc.ndims - 2, 0); }
-    bool eff_transa() const { return eff_transa_; }
-    bool eff_transb() const { return eff_transb_; }
+    bool trans_a() const { return transa_; }
+    bool trans_b() const { return transb_; }
     bool trans_bias() const { return desc()->trans_bias() == dnnl_trans; }
 
     dim_t ld(int arg) const {

@@ -185,12 +185,15 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
                 // relaxed by rounding down the surface pointer and adjusting
                 // the width accordingly.
                 auto base_alignment = intel::jit::block_2d_base_alignment(hw);
-                auto a_size = types::data_type_size(pd()->eff_a_type());
+                auto a_type = pd()->get_type(DNNL_ARG_A);
+                auto b_type = pd()->get_type(DNNL_ARG_B);
+                if (swap_ab) std::swap(a_type, b_type);
+                auto a_size = types::data_type_size(a_type);
                 if (stride_a * a_size % base_alignment) {
                     gpu_warning() << "Unimplemented load transform";
                     return status::runtime_error;
                 }
-                auto b_size = types::data_type_size(pd()->eff_b_type());
+                auto b_size = types::data_type_size(b_type);
                 if (stride_b * b_size % base_alignment) {
                     gpu_warning() << "Unimplemented load transform";
                     return status::runtime_error;
@@ -349,9 +352,10 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
 
     const bool swap_ab = pd()->swap_ab();
 
-    auto a_type = pd()->eff_a_type();
-    auto b_type = pd()->eff_b_type();
+    auto a_type = pd()->get_type(DNNL_ARG_A);
+    auto b_type = pd()->get_type(DNNL_ARG_B);
     auto c_type = d->c_type();
+    if (swap_ab) std::swap(a_type, b_type);
 
     auto m = into<int32_t>(pd()->desc()->m());
     auto n = into<int32_t>(pd()->desc()->n());

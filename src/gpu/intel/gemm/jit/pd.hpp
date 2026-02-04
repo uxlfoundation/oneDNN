@@ -22,6 +22,7 @@
 #include "common/c_types_map.hpp"
 #include "gemmstone/problem.hpp"
 #include "gpu/intel/gemm/config.hpp"
+#include "gpu/intel/gemm/exec_types.hpp"
 #include "gpu/intel/post_ops.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
@@ -231,11 +232,12 @@ struct pd_t : public gemm::pd_t {
     dim_t eff_stride_b(int dim) const {
         return !swap_ab() ? desc()->stride_b(dim) : desc()->stride_a(dim);
     }
-    data_type_t eff_a_type() const {
-        return !swap_ab() ? desc()->a_type() : desc()->b_type();
-    }
-    data_type_t eff_b_type() const {
-        return !swap_ab() ? desc()->b_type() : desc()->a_type();
+    data_type_t get_type(int arg) const {
+        if (arg == DNNL_ARG_A) return desc()->a_type();
+        if (arg == DNNL_ARG_B) return desc()->b_type();
+        if (arg == DNNL_ARG_C) return desc()->c_type();
+        gpu_error_not_expected();
+        return data_type::undef;
     }
     dim_t eff_scale_stride(int idx, int arg) const;
     dim_t eff_zp_stride(int idx, int arg) const;
@@ -265,23 +267,27 @@ struct pd_t : public gemm::pd_t {
     int c_q2d_group_m() const { return c_quant.group_m; }
     int c_q2d_group_n() const { return c_quant.group_n; }
     int eff_align_a() const {
-        auto dt = eff_a_type();
+        auto dta = get_type(DNNL_ARG_A);
+        auto dtb = get_type(DNNL_ARG_B);
+        if (swap_ab_) std::swap(dta, dtb);
         auto align
-                = utils::max_pow2_div(types::elements_to_bytes(dt, eff_lda()));
+                = utils::max_pow2_div(types::elements_to_bytes(dta, eff_lda()));
         for (int b = 0; b < batch_dims(); b++) {
             auto stride_bytes = utils::max_pow2_div(
-                    types::elements_to_bytes(dt, eff_stride_a(b)));
+                    types::elements_to_bytes(dta, eff_stride_a(b)));
             align = (stride_bytes ? nstl::min(align, stride_bytes) : align);
         }
         return int(align);
     }
     int eff_align_b() const {
-        auto dt = eff_b_type();
+        auto dta = get_type(DNNL_ARG_A);
+        auto dtb = get_type(DNNL_ARG_B);
+        if (swap_ab_) std::swap(dta, dtb);
         auto align
-                = utils::max_pow2_div(types::elements_to_bytes(dt, eff_ldb()));
+                = utils::max_pow2_div(types::elements_to_bytes(dtb, eff_ldb()));
         for (int b = 0; b < batch_dims(); b++) {
             auto stride_bytes = utils::max_pow2_div(
-                    types::elements_to_bytes(dt, eff_stride_b(b)));
+                    types::elements_to_bytes(dtb, eff_stride_b(b)));
             align = (stride_bytes ? nstl::min(align, stride_bytes) : align);
         }
         return int(align);

@@ -502,26 +502,27 @@ status_t pd_t::init_GEMMProblem(
             || engine->mayiuse(compute::device_ext_t::
                             intel_subgroup_split_matrix_multiply_accumulate);
 
-    bool int_acc = utils::one_of(eff_a_type(), data_type::s8, data_type::u8);
-    int_acc &= !(a_grouped() || b_grouped());
-    
+    auto a_type = get_type(DNNL_ARG_A);
+    auto b_type = get_type(DNNL_ARG_B);
+    if (swap_ab_) std::swap(a_type, b_type);
+
     auto m = desc()->m();
     auto n = desc()->n();
     auto k = desc()->k();
     if (swap_ab_) std::swap(m, n);
 
-    auto a_type = eff_a_type();
     auto trans_a = eff_transa();
     auto align_a = nstl::max(eff_align_a(), (int)types::data_type_size(a_type));
     auto lda = eff_lda();
     auto a_size = (trans_a ? m : k) * lda * types::data_type_size(a_type);
 
-    auto b_type = eff_b_type();
     auto trans_b = eff_transb();
     auto align_b = nstl::max(eff_align_b(), (int)types::data_type_size(b_type));
     auto ldb = eff_ldb();
     auto b_size = (trans_b ? k : n) * ldb * types::data_type_size(b_type);
 
+    bool int_acc = utils::one_of(a_type, data_type::s8, data_type::u8);
+    int_acc &= !(a_grouped() || b_grouped());
     auto c_type = desc()->c_type();
     auto align_c
             = nstl::max(this->align_c(), (int)types::data_type_size(c_type));
@@ -536,9 +537,8 @@ status_t pd_t::init_GEMMProblem(
     // Choose accumulation data type.
     auto acc_type = int_acc
             ? data_type::s32
-            : (utils::one_of(data_type::f64, eff_a_type(), eff_b_type())
-                              ? data_type::f64
-                              : data_type::f32);
+            : (utils::one_of(data_type::f64, a_type, b_type) ? data_type::f64
+                                                             : data_type::f32);
 
     bool with_binary = (post_ops_.find(primitive_kind::binary) != -1)
             || (post_ops_.find(primitive_kind::prelu) != -1);

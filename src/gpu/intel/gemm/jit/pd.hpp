@@ -244,9 +244,10 @@ struct pd_t : public gemm::pd_t {
         gpu_error_not_expected();
         return data_type::undef;
     }
-    dim_t eff_scale_stride(int idx, int arg) const;
-    dim_t eff_zp_stride(int idx, int arg) const;
-    dim_t eff_gs_stride(int idx, int arg) const;
+
+    dim_t scale_stride(int idx, int arg) const;
+    dim_t zp_stride(int idx, int arg) const;
+    dim_t gs_stride(int idx, int arg) const;
     bool a_grouped() const {
         bool k_grouped = 1 < a_quant.group_k && a_quant.group_k < desc()->k();
         bool m_grouped = 1 < a_quant.group_m && a_quant.group_m < desc()->m();

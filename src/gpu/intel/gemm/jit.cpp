@@ -205,26 +205,29 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
             arg_list.set(argn++, stride_a);
             arg_list.set(argn++, stride_b);
             arg_list.set(argn++, stride_c);
+            int eff_a_arg = DNNL_ARG_A;
+            int eff_b_arg = DNNL_ARG_B;
+            if (swap_ab) std::swap(eff_a_arg, eff_b_arg);
             if (problem->hasAScalePtr()) {
-                arg_list.set(argn++, pd()->eff_scale_stride(i, DNNL_ARG_A));
+                arg_list.set(argn++, pd()->scale_stride(i, eff_a_arg));
             }
             if (problem->hasBScalePtr()) {
-                arg_list.set(argn++, pd()->eff_scale_stride(i, DNNL_ARG_B));
+                arg_list.set(argn++, pd()->scale_stride(i, eff_b_arg));
             }
             if (problem->hasCMXScale()) {
                 arg_list.set(argn++, stride_c / problem->cqGroupM);
             }
             if (problem->hasAOffsetPtr()) {
-                arg_list.set(argn++, pd()->eff_zp_stride(i, DNNL_ARG_A));
+                arg_list.set(argn++, pd()->zp_stride(i, eff_a_arg));
             }
             if (problem->hasBOffsetPtr()) {
-                arg_list.set(argn++, pd()->eff_zp_stride(i, DNNL_ARG_B));
+                arg_list.set(argn++, pd()->zp_stride(i, eff_b_arg));
             }
             if (problem->needsAGroupSums()) {
-                arg_list.set(argn++, pd()->eff_gs_stride(i, DNNL_ARG_A));
+                arg_list.set(argn++, pd()->gs_stride(i, eff_a_arg));
             }
             if (problem->needsBGroupSums()) {
-                arg_list.set(argn++, pd()->eff_gs_stride(i, DNNL_ARG_B));
+                arg_list.set(argn++, pd()->gs_stride(i, eff_b_arg));
             }
         }
         for (int i = 0; i < po_count; i++) {

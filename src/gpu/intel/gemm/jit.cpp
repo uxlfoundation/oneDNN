@@ -368,8 +368,9 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     const bool transa = pd()->eff_transa();
     const bool transb = pd()->eff_transb();
 
-    const auto lda = into<int32_t>(pd()->eff_lda());
-    const auto ldb = into<int32_t>(pd()->eff_ldb());
+    auto lda = into<int32_t>(pd()->ld(DNNL_ARG_A));
+    auto ldb = into<int32_t>(pd()->ld(DNNL_ARG_B));
+    if (swap_ab) std::swap(lda, ldb);
     auto ldc = into<int32_t>(d->ldc());
     auto ldco = into<int32_t>(pd()->with_bias() ? d->ld_bias() : 0);
 

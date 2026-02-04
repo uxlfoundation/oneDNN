@@ -69,10 +69,6 @@ struct pd_t : public gemm::pd_t {
         VDISPATCH_GEMM(scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
         VDISPATCH_GEMM(zp_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
         VDISPATCH_GEMM(gs_ok(), VERBOSE_UNSUPPORTED_PR_CFG);
-        if (swap_ab_) {
-            std::swap(a_quant.zp_ndims, b_quant.zp_ndims);
-            std::swap(a_quant.gs_ndims, b_quant.gs_ndims);
-        }
         VDISPATCH_GEMM_SC(init_post_ops(), VERBOSE_UNSUPPORTED_POSTOP);
         return status::success;
     }

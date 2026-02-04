@@ -314,14 +314,13 @@ bool pd_t::zp_ok() {
     auto &c_zps = attr_zps.get(DNNL_ARG_C);
 
     // INT4 ZPs on SRC do not expand the range in a meaningful way, skipping
-    if (utils::one_of((swap_ab() ? a_zps : b_zps).get_data_type(), s4, u4))
-        return false;
+    if (utils::one_of(b_zps.get_data_type(), s4, u4)) return false;
 
     int ndims = desc()->a_desc.ndims;
     const bool a_int4 = utils::one_of(desc()->a_type(), s4, u4);
     const bool b_int4 = utils::one_of(desc()->b_type(), s4, u4);
-    const bool weights_upconversion = wei_decomp_
-            || ((swap_ab() ? b_int4 : a_int4) && dy_quant_enabled_);
+    const bool weights_upconversion
+            = wei_decomp_ || (a_int4 && dy_quant_enabled_);
 
     // Host scalar ZPs supported only for A & B
     if (c_zps.is_host_scalar()) return false;
@@ -329,8 +328,7 @@ bool pd_t::zp_ok() {
     if (!a_zps.has_default_values()) {
         // Groups determine supported masks.
         if (!a_zps.has_default_groups()) {
-            if (!valid_2d_mask(
-                        cmask_a_, ndims, !swap_ab() && weights_upconversion))
+            if (!valid_2d_mask(cmask_a_, ndims, weights_upconversion))
                 return false;
             const auto a_q2d_group_n = a_zps.get_group(1);
             // Non-trivial N group unsupported.
@@ -352,9 +350,7 @@ bool pd_t::zp_ok() {
     if (!b_zps.has_default_values()) {
         // Groups determine supported masks.
         if (!b_zps.has_default_groups()) {
-            if (!valid_2d_mask(
-                        cmask_b_, ndims, swap_ab() && weights_upconversion))
-                return false;
+            if (!valid_2d_mask(cmask_b_, ndims, false)) return false;
             const auto b_q2d_group_n = b_zps.get_group(0);
             // Non-trivial M group unsupported.
             if (!utils::one_of(b_q2d_group_n, 1, desc()->n())) return false;
@@ -393,7 +389,6 @@ bool pd_t::gs_ok() {
             && with_b_group_sums_) {
         return false;
     }
-    if (swap_ab_) std::swap(with_a_group_sums_, with_b_group_sums_);
 
     return true;
 }

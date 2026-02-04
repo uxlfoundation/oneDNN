@@ -545,6 +545,12 @@ inline derived_type downcast(base_type *base) {
     return static_cast<derived_type>(base);
 }
 
+inline status_t safe_dim_to_int(int &dst, dim_t src) {
+    if (src > INT_MAX || src < INT_MIN) return status::unimplemented;
+    dst = static_cast<int>(src);
+    return status::success;
+}
+
 template <typename T,
         typename std::enable_if<!std::is_same<typename std::decay<T>::type,
                 std::string>::value>::type * = nullptr>

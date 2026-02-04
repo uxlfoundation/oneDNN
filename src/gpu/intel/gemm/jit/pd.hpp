@@ -272,50 +272,14 @@ struct pd_t : public gemm::pd_t {
     int b_q2d_group_n() const { return b_quant.group_n; }
     int c_q2d_group_m() const { return c_quant.group_m; }
     int c_q2d_group_n() const { return c_quant.group_n; }
-    int eff_align_a() const {
-        auto dta = get_type(DNNL_ARG_A);
-        auto dtb = get_type(DNNL_ARG_B);
-        if (swap_ab_) std::swap(dta, dtb);
-        auto lda = ld(DNNL_ARG_A);
-        auto ldb = ld(DNNL_ARG_B);
-        if (swap_ab_) std::swap(lda, ldb);
-        auto align = utils::max_pow2_div(types::elements_to_bytes(dta, lda));
+    int align(int arg) const {
+        auto dt = get_type(arg);
+        auto align = utils::max_pow2_div(types::elements_to_bytes(dt, ld(arg)));
         for (int b = 0; b < batch_dims(); b++) {
-            auto stride_a = stride(DNNL_ARG_A, b);
-            auto stride_b = stride(DNNL_ARG_B, b);
-            if (swap_ab_) std::swap(stride_a, stride_b);
             auto stride_bytes = utils::max_pow2_div(
-                    types::elements_to_bytes(dta, stride_a));
+                    types::elements_to_bytes(dt, stride(arg, b)));
             align = (stride_bytes ? nstl::min(align, stride_bytes) : align);
         }
-        return int(align);
-    }
-    int eff_align_b() const {
-        auto dta = get_type(DNNL_ARG_A);
-        auto dtb = get_type(DNNL_ARG_B);
-        if (swap_ab_) std::swap(dta, dtb);
-        auto lda = ld(DNNL_ARG_A);
-        auto ldb = ld(DNNL_ARG_B);
-        if (swap_ab_) std::swap(lda, ldb);
-        auto align = utils::max_pow2_div(types::elements_to_bytes(dtb, ldb));
-        for (int b = 0; b < batch_dims(); b++) {
-            auto stride_a = stride(DNNL_ARG_A, b);
-            auto stride_b = stride(DNNL_ARG_B, b);
-            if (swap_ab_) std::swap(stride_a, stride_b);
-            auto stride_bytes = utils::max_pow2_div(
-                    types::elements_to_bytes(dtb, stride_b));
-            align = (stride_bytes ? nstl::min(align, stride_bytes) : align);
-        }
-        return int(align);
-    }
-    int align_c() const {
-        auto dt = desc()->c_type();
-        auto align = utils::max_pow2_div(
-                types::elements_to_bytes(dt, desc()->ldc()));
-        for (int b = 0; b < batch_dims(); b++)
-            align = nstl::min(align,
-                    utils::max_pow2_div(
-                            types::elements_to_bytes(dt, desc()->stride_c(b))));
         return int(align);
     }
 };

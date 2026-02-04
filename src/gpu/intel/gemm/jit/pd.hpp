@@ -171,13 +171,6 @@ struct pd_t : public gemm::pd_t {
     }
 
     sum_ab_t sum_ab() const { return desc()->sum_ab; }
-    sum_ab_t eff_sum_ab() const {
-        if (swap_ab() && sum_ab() == sum_ab::sum_a_row)
-            return sum_ab::sum_b_col;
-        if (swap_ab() && sum_ab() == sum_ab::sum_b_col)
-            return sum_ab::sum_a_row;
-        return sum_ab();
-    }
 
     bool a_zp_2d() const { return a_quant.zp_ndims >= 2; }
     bool b_zp_2d() const { return b_quant.zp_ndims >= 2; }
@@ -188,7 +181,7 @@ struct pd_t : public gemm::pd_t {
     bool with_sum_ab() const { return sum_ab() != sum_ab::sum_none; }
 
     int sum_ab_cmask() const {
-        switch (eff_sum_ab()) {
+        switch (sum_ab()) {
             default:
             case sum_ab::sum_none: return 0;
             case sum_ab::sum_a_row: return 1;

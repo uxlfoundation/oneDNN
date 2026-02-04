@@ -468,6 +468,11 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         off_co0 = types::bytes_to_elements(c_type, sum_ab.offset());
         co = &sum_ab;
         cmask = pd()->sum_ab_cmask();
+        // TODO: Check if this swapping is still needed and correct with logic below
+        if (swap_ab) {
+            uint8_t swap_table[4] = {0, 2, 1, 3};
+            cmask = (cmask & ~3) | swap_table[cmask & 3];
+        }
     }
 
     // Get host scalar zero-poins values

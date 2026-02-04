@@ -169,8 +169,9 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
 
     if (pd()->batch_dims() >= 1) {
         for (int i = pd()->batch_dims() - 1; i >= 0; i--) {
-            auto stride_a = int32_t(pd()->eff_stride_a(i));
-            auto stride_b = int32_t(pd()->eff_stride_b(i));
+            auto stride_a = int32_t(pd()->stride(DNNL_ARG_A, i));
+            auto stride_b = int32_t(pd()->stride(DNNL_ARG_B, i));
+            if (swap_ab) std::swap(stride_a, stride_b);
             auto stride_c = int32_t(pd()->desc()->stride_c(i));
             if (jit::enable_generator_dsl()) {
                 auto hw = ngen::getCore(

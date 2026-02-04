@@ -231,11 +231,12 @@ struct pd_t : public gemm::pd_t {
         gpu_error_not_expected();
         return 0;
     }
-    dim_t eff_stride_a(int dim) const {
-        return !swap_ab() ? desc()->stride_a(dim) : desc()->stride_b(dim);
-    }
-    dim_t eff_stride_b(int dim) const {
-        return !swap_ab() ? desc()->stride_b(dim) : desc()->stride_a(dim);
+    dim_t stride(int arg, int dim) const {
+        if (arg == DNNL_ARG_A) return desc()->stride_a(dim);
+        if (arg == DNNL_ARG_B) return desc()->stride_b(dim);
+        if (arg == DNNL_ARG_C) return desc()->stride_c(dim);
+        gpu_error_not_expected();
+        return 0;
     }
     data_type_t get_type(int arg) const {
         if (arg == DNNL_ARG_A) return desc()->a_type();
@@ -280,8 +281,11 @@ struct pd_t : public gemm::pd_t {
         if (swap_ab_) std::swap(lda, ldb);
         auto align = utils::max_pow2_div(types::elements_to_bytes(dta, lda));
         for (int b = 0; b < batch_dims(); b++) {
+            auto stride_a = stride(DNNL_ARG_A, b);
+            auto stride_b = stride(DNNL_ARG_B, b);
+            if (swap_ab_) std::swap(stride_a, stride_b);
             auto stride_bytes = utils::max_pow2_div(
-                    types::elements_to_bytes(dta, eff_stride_a(b)));
+                    types::elements_to_bytes(dta, stride_a));
             align = (stride_bytes ? nstl::min(align, stride_bytes) : align);
         }
         return int(align);
@@ -295,8 +299,11 @@ struct pd_t : public gemm::pd_t {
         if (swap_ab_) std::swap(lda, ldb);
         auto align = utils::max_pow2_div(types::elements_to_bytes(dtb, ldb));
         for (int b = 0; b < batch_dims(); b++) {
+            auto stride_a = stride(DNNL_ARG_A, b);
+            auto stride_b = stride(DNNL_ARG_B, b);
+            if (swap_ab_) std::swap(stride_a, stride_b);
             auto stride_bytes = utils::max_pow2_div(
-                    types::elements_to_bytes(dtb, eff_stride_b(b)));
+                    types::elements_to_bytes(dtb, stride_b));
             align = (stride_bytes ? nstl::min(align, stride_bytes) : align);
         }
         return int(align);

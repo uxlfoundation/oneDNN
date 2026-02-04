@@ -223,8 +223,6 @@ struct pd_t : public gemm::pd_t {
         return swap_ab() ? (desc()->trans_bias() == dnnl_notrans)
                          : (desc()->trans_bias() == dnnl_trans);
     }
-    dim_t eff_m() const { return !swap_ab() ? desc()->m() : desc()->n(); }
-    dim_t eff_n() const { return !swap_ab() ? desc()->n() : desc()->m(); }
     dim_t eff_lda() const { return eff_lda_; }
     dim_t eff_ldb() const { return eff_ldb_; }
     dim_t eff_stride_a(int dim) const {

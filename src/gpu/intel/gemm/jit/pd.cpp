@@ -504,10 +504,11 @@ status_t pd_t::init_GEMMProblem(
 
     bool int_acc = utils::one_of(eff_a_type(), data_type::s8, data_type::u8);
     int_acc &= !(a_grouped() || b_grouped());
-
-    auto m = eff_m();
-    auto n = eff_n();
+    
+    auto m = desc()->m();
+    auto n = desc()->n();
     auto k = desc()->k();
+    if (swap_ab_) std::swap(m, n);
 
     auto a_type = eff_a_type();
     auto trans_a = eff_transa();

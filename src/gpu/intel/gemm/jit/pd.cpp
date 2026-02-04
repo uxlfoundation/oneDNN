@@ -559,7 +559,6 @@ status_t pd_t::init_GEMMProblem(
     auto dst_sround = with_sround_;
     bool c_offset = with_c_zero_points();
     bool bias = with_bias();
-    auto reduce_ab = eff_sum_ab();
 
     jit::quant_params a_quant = this->a_quant;
     jit::quant_params b_quant = this->b_quant;
@@ -662,6 +661,7 @@ status_t pd_t::init_GEMMProblem(
     CHECK(transfer_post_ops(problem, std::move(gpu_post_ops)));
     if (swap_ab()) problem.postOps.transpose();
 
+    auto reduce_ab = sum_ab();
     if (c_offset || bias || reduce_ab != sum_ab::sum_none) {
         assert(!(c_offset && bias));
         if (bias) problem.cOffset = COffset::Pre;
@@ -673,6 +673,7 @@ status_t pd_t::init_GEMMProblem(
 
     problem.sumA = (reduce_ab == sum_ab::sum_b_col);
     problem.sumB = (reduce_ab == sum_ab::sum_a_row);
+    if (swap_ab_) std::swap(problem.sumA, problem.sumB);
     problem.forceGroupSumsA = a_quant.force_gs;
     problem.forceGroupSumsB = b_quant.force_gs;
 

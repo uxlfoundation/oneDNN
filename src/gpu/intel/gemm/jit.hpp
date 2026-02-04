@@ -91,7 +91,6 @@ struct gen_t : public primitive_t {
                     && d->b_type() == bf16);
 
             if (swap_ab_) {
-                std::swap(eff_lda_, eff_ldb_);
                 std::swap(m, n);
                 std::swap(eff_transa_, eff_transb_);
                 eff_transa_ = !eff_transa_;
@@ -100,19 +99,21 @@ struct gen_t : public primitive_t {
                 // Do not use transposed B when it is unnecessary
                 if (eff_transb_ && n == 1) {
                     eff_transb_ = false;
-                    eff_ldb_ = d->k();
+                    lda_ = d->k();
                 }
             }
 
             // Pad leading dimensions in case of a single row/column.
             if ((d->k() == 1 && eff_transa() == dnnl_notrans)
                     || (m == 1 && eff_transa() == dnnl_trans)) {
-                eff_lda_ = utils::rnd_up(eff_lda_, 16);
+                dim_t *eff_lda = swap_ab_ ? &ldb_ : &lda_;
+                *eff_lda = utils::rnd_up(*eff_lda, 16);
             }
 
             if ((n == 1 && eff_transb() == dnnl_notrans)
                     || (d->k() == 1 && eff_transb() == dnnl_trans)) {
-                eff_ldb_ = utils::rnd_up(eff_ldb_, 16);
+                dim_t *eff_ldb = swap_ab_ ? &lda_ : &ldb_;
+                *eff_ldb = utils::rnd_up(*eff_ldb, 16);
             }
 
             // Check parameters.
@@ -251,7 +252,8 @@ struct gen_t : public primitive_t {
             VDISPATCH_GEMM(std::max({m, n, d->k(), d->batch()})
                             <= std::numeric_limits<int32_t>::max(),
                     VERBOSE_SHAPE_RESTRICTION);
-            VDISPATCH_GEMM(std::max({eff_lda(), eff_ldb(), d->ldc()})
+            VDISPATCH_GEMM(
+                    std::max({ld(DNNL_ARG_A), ld(DNNL_ARG_B), ld(DNNL_ARG_C)})
                             <= std::numeric_limits<uint32_t>::max(),
                     VERBOSE_SHAPE_RESTRICTION);
 
@@ -264,10 +266,13 @@ struct gen_t : public primitive_t {
 
             bool print_verbose = get_verbose(verbose_t::debuginfo) >= 5;
             bool kernel_success = false;
+            auto lda = ld(DNNL_ARG_A);
+            auto ldb = ld(DNNL_ARG_B);
+            if (swap_ab_) std::swap(lda, ldb);
             auto entries = kernel_desc_.select_kernel(arch_, stepping,
                     dev_info_->eu_count(), has_systolic, is_integrated, mode,
-                    problem, alpha(), beta(), m, n, d->k(), eff_lda(),
-                    eff_ldb(), d->ldc(), d->batch());
+                    problem, alpha(), beta(), m, n, d->k(), lda, ldb, d->ldc(),
+                    d->batch());
 
             for (auto &entry : entries) {
                 kernel_desc_.set_entry(entry);

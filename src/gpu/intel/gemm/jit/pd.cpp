@@ -511,14 +511,16 @@ status_t pd_t::init_GEMMProblem(
     auto k = desc()->k();
     if (swap_ab_) std::swap(m, n);
 
+    auto lda = ld(DNNL_ARG_A);
+    auto ldb = ld(DNNL_ARG_B);
+    if (swap_ab_) std::swap(lda, ldb);
+
     auto trans_a = eff_transa();
     auto align_a = nstl::max(eff_align_a(), (int)types::data_type_size(a_type));
-    auto lda = eff_lda();
     auto a_size = (trans_a ? m : k) * lda * types::data_type_size(a_type);
 
     auto trans_b = eff_transb();
     auto align_b = nstl::max(eff_align_b(), (int)types::data_type_size(b_type));
-    auto ldb = eff_ldb();
     auto b_size = (trans_b ? k : n) * ldb * types::data_type_size(b_type);
 
     bool int_acc = utils::one_of(a_type, data_type::s8, data_type::u8);

@@ -61,8 +61,8 @@ struct pd_t : public gemm::pd_t {
         with_sround_ = attr()->rounding_mode_.get(DNNL_ARG_DST)
                 == rounding_mode::stochastic;
 
-        eff_lda_ = desc()->lda();
-        eff_ldb_ = desc()->ldb();
+        lda_ = desc()->lda();
+        ldb_ = desc()->ldb();
         eff_transa_ = desc()->transa() == dnnl_trans;
         eff_transb_ = desc()->transb() == dnnl_trans;
 
@@ -142,7 +142,7 @@ struct pd_t : public gemm::pd_t {
     memory_desc_t a_zp_md_, b_zp_md_;
     memory_desc_t a_gs_md_, b_gs_md_;
     bool swap_ab_ = false;
-    dim_t eff_lda_ = 0, eff_ldb_ = 0;
+    dim_t lda_ = 0, ldb_ = 0;
     bool eff_transa_ = false, eff_transb_ = false;
     bool with_sround_ = false;
     bool with_mx_scale_ = false;
@@ -224,8 +224,13 @@ struct pd_t : public gemm::pd_t {
         return swap_ab() ? (desc()->trans_bias() == dnnl_notrans)
                          : (desc()->trans_bias() == dnnl_trans);
     }
-    dim_t eff_lda() const { return eff_lda_; }
-    dim_t eff_ldb() const { return eff_ldb_; }
+    dim_t ld(int arg) const {
+        if (arg == DNNL_ARG_A) return lda_;
+        if (arg == DNNL_ARG_B) return ldb_;
+        if (arg == DNNL_ARG_C) return desc()->ldc();
+        gpu_error_not_expected();
+        return 0;
+    }
     dim_t eff_stride_a(int dim) const {
         return !swap_ab() ? desc()->stride_a(dim) : desc()->stride_b(dim);
     }
@@ -270,8 +275,10 @@ struct pd_t : public gemm::pd_t {
         auto dta = get_type(DNNL_ARG_A);
         auto dtb = get_type(DNNL_ARG_B);
         if (swap_ab_) std::swap(dta, dtb);
-        auto align
-                = utils::max_pow2_div(types::elements_to_bytes(dta, eff_lda()));
+        auto lda = ld(DNNL_ARG_A);
+        auto ldb = ld(DNNL_ARG_B);
+        if (swap_ab_) std::swap(lda, ldb);
+        auto align = utils::max_pow2_div(types::elements_to_bytes(dta, lda));
         for (int b = 0; b < batch_dims(); b++) {
             auto stride_bytes = utils::max_pow2_div(
                     types::elements_to_bytes(dta, eff_stride_a(b)));
@@ -283,8 +290,10 @@ struct pd_t : public gemm::pd_t {
         auto dta = get_type(DNNL_ARG_A);
         auto dtb = get_type(DNNL_ARG_B);
         if (swap_ab_) std::swap(dta, dtb);
-        auto align
-                = utils::max_pow2_div(types::elements_to_bytes(dtb, eff_ldb()));
+        auto lda = ld(DNNL_ARG_A);
+        auto ldb = ld(DNNL_ARG_B);
+        if (swap_ab_) std::swap(lda, ldb);
+        auto align = utils::max_pow2_div(types::elements_to_bytes(dtb, ldb));
         for (int b = 0; b < batch_dims(); b++) {
             auto stride_bytes = utils::max_pow2_div(
                     types::elements_to_bytes(dtb, eff_stride_b(b)));

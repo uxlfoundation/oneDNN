@@ -131,8 +131,9 @@ status_t device_info_t::init_attributes(impl::engine_t *engine) {
             CHECK(gpu::intel::ocl::get_ocl_device_eu_count(
                     ocl_dev, gpu_arch_, &eu_count_));
         } else {
-            eu_count_ = device.get_info<
-                    ::sycl::info::device::max_compute_units>();
+            ze_device_handle_t ze_dev
+                    = xpu::sycl::compat::get_native<ze_device_handle_t>(device);
+            CHECK(get_l0_device_eu_count(ze_dev, eu_count_));
         }
     } else {
         eu_count_ = device.get_info<::sycl::info::device::max_compute_units>();

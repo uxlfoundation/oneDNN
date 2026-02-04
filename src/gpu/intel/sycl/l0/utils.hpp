@@ -51,6 +51,8 @@ status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
         uint64_t &native_extensions, bool &mayiuse_systolic,
         bool &mayiuse_ngen_kernels);
 
+status_t get_l0_device_eu_count(ze_device_handle_t device, int &eu_count);
+
 } // namespace sycl
 } // namespace intel
 } // namespace gpu

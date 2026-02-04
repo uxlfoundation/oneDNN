@@ -317,6 +317,7 @@ status_t get_l0_device_enabled_native_float_atomics(
 
 status_t get_l0_device_eu_count(ze_device_handle_t device, int &eu_count) {
     auto eucnt = ze_eu_count_ext_t();
+    eucnt.stype = ZE_STRUCTURE_TYPE_EU_COUNT_EXT;
     auto deviceProps = ze_device_properties_t();
     deviceProps.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES;
     deviceProps.pNext = &eucnt;

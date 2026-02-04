@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "common/c_types_map.hpp"
+#include "common/gemm_types.hpp"
 #include "gemmstone/problem.hpp"
 #include "gpu/intel/gemm/config.hpp"
 #include "gpu/intel/gemm/exec_types.hpp"
@@ -220,10 +221,8 @@ struct pd_t : public gemm::pd_t {
     int batch_dims() const { return nstl::max(desc()->c_desc.ndims - 2, 0); }
     bool eff_transa() const { return eff_transa_; }
     bool eff_transb() const { return eff_transb_; }
-    bool eff_trans_bias() const {
-        return swap_ab() ? (desc()->trans_bias() == dnnl_notrans)
-                         : (desc()->trans_bias() == dnnl_trans);
-    }
+    bool trans_bias() const { return desc()->trans_bias() == dnnl_trans; }
+
     dim_t ld(int arg) const {
         if (arg == DNNL_ARG_A) return lda_;
         if (arg == DNNL_ARG_B) return ldb_;

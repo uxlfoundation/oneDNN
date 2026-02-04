@@ -558,7 +558,8 @@ status_t pd_t::init_GEMMProblem(
     }
     if (wei_decomp_) { acc_type = data_type::f32; }
 
-    auto trans_co = eff_trans_bias();
+    auto trans_co = trans_bias();
+    if (swap_ab_) trans_co = !trans_co;
     auto dst_sround = with_sround_;
     bool c_offset = with_c_zero_points();
     bool bias = with_bias();

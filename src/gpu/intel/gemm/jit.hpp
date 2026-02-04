@@ -158,23 +158,26 @@ struct gen_t : public primitive_t {
                     !utils::one_of(DNNL_RUNTIME_DIM_VAL, d->m(), d->n(), d->k(),
                             d->lda(), d->ldb(), d->ldc(), d->batch()),
                     VERBOSE_RUNTIMEDIM_UNSUPPORTED);
-            VDISPATCH_GEMM(IMPLICATION(with_bias(),
-                                   utils::one_of(d->bias_type(), f64, f32, bf16,
-                                           f16, f8_e5m2, f8_e4m3)
-                                           && (d->bias_desc.ndims <= 6)
-                                           && d->bias_mask() < 8),
-                    VERBOSE_UNSUPPORTED_BIAS_CFG);
-            VDISPATCH_GEMM(
-                    IMPLICATION(with_bias(),
-                            (d->c_type() != f64 || d->bias_type() == f64)),
-                    VERBOSE_UNSUPPORTED_BIAS_CFG);
             VDISPATCH_GEMM(intel_engine->mayiuse_ngen_kernels(),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "ngen_kernels");
+
+            // Do not use `with_bias()` as the bias operation may have been
+            // moved into a post-op.
+            bool with_bias = d->bias_type() != data_type::undef;
+            VDISPATCH_GEMM(utils::one_of(d->bias_type(), data_type::undef, f64,
+                                   f32, bf16, f16, f8_e5m2, f8_e4m3)
+                            && (d->bias_desc.ndims <= 6) && d->bias_mask() < 8,
+                    VERBOSE_UNSUPPORTED_BIAS_CFG);
+            VDISPATCH_GEMM(
+                    IMPLICATION(with_bias,
+                            (d->c_type() != f64 || d->bias_type() == f64)),
+                    VERBOSE_UNSUPPORTED_BIAS_CFG);
             VDISPATCH_GEMM(IMPLICATION(with_sum_ab(),
-                                   !with_bias()
+                                   !with_bias
                                            && (attr_zps.has_default_values(
                                                    DNNL_ARG_DST))),
                     VERBOSE_UNSUPPORTED_ATTR);
+
             VDISPATCH_GEMM(attr()->post_ops_.check_sum_consistency(d->c_type(),
                                    utils::one_of(d->a_type(), s8, u8)),
                     VERBOSE_UNSUPPORTED_POSTOP);

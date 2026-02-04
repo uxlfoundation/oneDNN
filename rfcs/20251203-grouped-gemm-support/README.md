@@ -39,6 +39,12 @@ And depending on the framework design, this information may only be available on
 See also:
 - [Useful resource to learn about MoE in PyTorch with examples of MoE workflow and challenges](https://pytorchconference.sched.com/event/27QE0/pytorch-apis-for-high-performance-moe-training-and-inference-daniel-vega-myhre-ke-wen-natalia-gimelshein-meta)
 
+In addition, grouped GEMM is also used for backward pass of MoE layers,
+where we have:
+
+- Backward pass wrt activations: `grad_src[i] = grad_output[i] * weights[i]^T`
+- Backward pass wrt weights: `grad_weights[i] = src[i]^T * grad_output[i]`
+
 ## Frameworks Implementations
 
 ### PyTorch Grouped Scaled MM
@@ -69,8 +75,8 @@ for drop-in replacement with various quantization schemes.
 Memory layout:
 ```
 mat_a:  [Expert0: M0xK | Expert1: M1xK | Expert2: M2xK]
-offs:    ^              ^              ^
-         0              M0             M0 + M1
+offs:                   ^              ^
+                        M0             M0 + M1
 Weights: [num_experts x K x N]
 ```
 
@@ -125,19 +131,22 @@ Representation is:
 Contiguous memory: [Expert0 | Expert1 | Expert2 | Expert3]
 Block sizes:       [M0 x K  | M1 x K  | M2 x K  | M3 x K ]
 
-Offsets array is for tracking where each expert starts:
-offsets = [0, M0, M0+M1, M0+M1+M2, M0+M1+M2+M3]
+Offsets array is for tracking where each grouped GEMM should start/end:
+offsets = [M0, M0+M1, M0+M1+M2, M0+M1+M2+M3]
 
 In the case of M_i equals zero, the next expert starts at the same offset, similar to CSR format row pointers.
-Example: if M1 = 0, then offsets = [0, M0, M0, M0 + M2, M0 + M2 + M3]
+Example: if M1 = 0, then offsets = [M0, M0, M0 + M2, M0 + M2 + M3]
 ```
+
+Note, that in contrast to CSR format, where offsets typically starts with zero,
+here offsets start from the size of the first block (M0), that is aligned with PyTorch design.
 
 The grouped memory descriptor defines:
 - Block count: `num_experts` (known at creation)
 - Total elements: `num_input_tokens x TOP_K x K` (known at creation)
 - Data types: values and offsets (known at creation)
 - Values buffer: Contiguous data sum(Mi x K) (provided at execution)
-- Offsets buffer: `[0, M0, M0 + M1, ...]` size `num_experts + 1` (at execution)
+- Offsets buffer: `[M0, M0 + M1, ...]` size `num_experts` (at execution)
 
 This representation is analogous to CSR sparse format:
 - CSR uses row pointers and column indices to describe sparse structure, buffers are resolved
@@ -167,7 +176,7 @@ static memory::desc grouped(
 
 The descriptor specifies a memory object with 2 buffers:
 - Buffer 0: Values, contiguous data organized as groups
-- Buffer 1: Offsets, cumulative row offsets of size `group_count + 1`
+- Buffer 1: Offsets, cumulative row offsets of size `group_count`
 
 Example:
 ```cpp
@@ -199,7 +208,7 @@ Memory objects are created with 2 buffer pointers:
 ```cpp
 // Buffers are coming from Framework side (could be device memory)
 float* values;       // total_tokens * K contiguous data
-int32_t* offsets;    // num_experts + 1 offsets
+int32_t* offsets;    // num_experts offsets
 
 // Create memory object with 2 buffers
 memory src_mem(src_md, eng, {values, offsets});

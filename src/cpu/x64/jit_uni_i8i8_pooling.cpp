@@ -878,6 +878,59 @@ void jit_uni_i8i8_pooling_fwd_ker_t<avx512_core>::compute_max_op(const int jj) {
 }
 
 template <cpu_isa_t isa>
+struct max_postops_unpacker_t;
+
+template <>
+struct max_postops_unpacker_t<avx512_core> {
+    static void load_dst_chunk(
+            jit_uni_i8i8_pooling_fwd_ker_t<avx512_core> *self, int jj, int ll,
+            const Xbyak::Zmm &dst_s32) {
+        // Use vreg_tail as temp register since tail is not supported for max+postops
+        Xbyak::Xmm xreg_tmp(self->vreg_tail.getIdx());
+        Xbyak::Zmm zreg(self->vreg_dst(jj).getIdx());
+        self->vextracti32x4(xreg_tmp, zreg, ll);
+
+        if (self->jpp.src_dt == data_type::s8)
+            self->vpmovsxbd(dst_s32, xreg_tmp);
+        else
+            self->vpmovzxbd(dst_s32, xreg_tmp);
+    }
+};
+
+template <>
+struct max_postops_unpacker_t<avx2> {
+    static void load_dst_chunk(jit_uni_i8i8_pooling_fwd_ker_t<avx2> *self,
+            int jj, int ll, const Xbyak::Ymm &dst_s32) {
+        // Use vreg_tail as temp register since tail is not supported for max+postops
+        Xbyak::Xmm xreg_tmp(self->vreg_tail.getIdx());
+        Xbyak::Ymm yreg(self->vreg_dst(jj).getIdx());
+        self->vextracti128(xreg_tmp, yreg, ll / 2);
+        if (ll % 2 == 1) self->vpsrldq(xreg_tmp, xreg_tmp, 8);
+
+        if (self->jpp.src_dt == data_type::s8)
+            self->vpmovsxbd(dst_s32, xreg_tmp);
+        else
+            self->vpmovzxbd(dst_s32, xreg_tmp);
+    }
+};
+
+template <>
+struct max_postops_unpacker_t<sse41> {
+    static void load_dst_chunk(jit_uni_i8i8_pooling_fwd_ker_t<sse41> *self,
+            int jj, int ll, const Xbyak::Xmm &dst_s32) {
+        // Use vreg_tail as temp register since tail is not supported for max+postops
+        Xbyak::Xmm xreg_tmp(self->vreg_tail.getIdx());
+        self->movups(xreg_tmp, Xbyak::Xmm(self->vreg_dst(jj).getIdx()));
+        if (ll > 0) self->psrldq(xreg_tmp, 4 * ll);
+
+        if (self->jpp.src_dt == data_type::s8)
+            self->pmovsxbd(dst_s32, xreg_tmp);
+        else
+            self->pmovzxbd(dst_s32, xreg_tmp);
+    }
+};
+
+template <cpu_isa_t isa>
 void jit_uni_i8i8_pooling_fwd_ker_t<isa>::compute_max_step(
         int ur_c, int c_tail) {
     Label l_kd, l_kh, l_kw;
@@ -919,6 +972,85 @@ void jit_uni_i8i8_pooling_fwd_ker_t<isa>::compute_max_step(
         inc(reg_kd_index);
         cmp(reg_kd_index, reg_kd);
         jl(l_kd, T_NEAR);
+    }
+
+    if (jpp.with_postops) {
+        const bool is_u8 = jpp.dst_dt == data_type::u8;
+        const int c_block = jpp.c_block;
+
+        if (jpp.src_dt == data_type::s32) {
+            for (int jj = 0; jj < ur_c; jj++) {
+                const auto &reg_dst_f32 = vreg_dst_f32(jj, 0);
+                auto reg_dst_s32 = vreg_dst(jj);
+                uni_vcvtdq2ps(reg_dst_f32, reg_dst_s32);
+
+                binary_injector::rhs_arg_dynamic_params_t rhs_arg_params;
+                if (jpp.with_binary) {
+                    rhs_arg_params.vmm_idx_to_out_reg.emplace(
+                            reg_dst_f32.getIdx(), reg_ptr_dst_i8);
+                    rhs_arg_params.vmm_idx_to_out_elem_off_val.emplace(
+                            reg_dst_f32.getIdx(),
+                            jj * c_block * sizeof_dst_dt());
+                }
+                postops_injector_->compute_vector(
+                        reg_dst_f32.getIdx(), rhs_arg_params);
+
+                uni_vcvtps2dq(reg_dst_s32, reg_dst_f32);
+                if (is_u8) uni_vpmaxsd(reg_dst_s32, reg_dst_s32, vreg_zeros);
+
+                store_dst_max_op(
+                        jj, 0, jj * c_block * sizeof_dst_dt(), false, 0);
+            }
+            return;
+        }
+
+        const int num_ll
+                = data_type_size(avg_proc_dt) / data_type_size(jpp.src_dt);
+
+        // Phase 1: Unpack all chunks from vreg_dst (packed i8) to vreg_dst_s32
+        // This must be done before any post-ops processing because vreg_dst
+        // and vreg_dst_s32 may share the same register index for some ll values.
+        for (int jj = 0; jj < ur_c; jj++) {
+            for (int ll = num_ll - 1; ll >= 0; ll--) {
+                auto reg_dst_s32 = vreg_dst_s32(jj, ll);
+                max_postops_unpacker_t<isa>::load_dst_chunk(
+                        this, jj, ll, reg_dst_s32);
+            }
+        }
+
+        // Phase 2: Apply post-ops to all chunks
+        for (int jj = 0; jj < ur_c; jj++) {
+            for (int ll = 0; ll < num_ll; ll++) {
+                const auto &reg_dst_f32 = vreg_dst_f32(jj, ll);
+                auto reg_dst_s32 = vreg_dst_s32(jj, ll);
+
+                uni_vcvtdq2ps(reg_dst_f32, reg_dst_s32);
+
+                binary_injector::rhs_arg_dynamic_params_t rhs_arg_params;
+                if (jpp.with_binary) {
+                    rhs_arg_params.vmm_idx_to_out_reg.emplace(
+                            reg_dst_f32.getIdx(), reg_ptr_dst_i8);
+                    rhs_arg_params.vmm_idx_to_out_elem_off_val.emplace(
+                            reg_dst_f32.getIdx(), get_offset_dst(jj, ll));
+                }
+                postops_injector_->compute_vector(
+                        reg_dst_f32.getIdx(), rhs_arg_params);
+
+                uni_vcvtps2dq(reg_dst_s32, reg_dst_f32);
+                if (is_u8) uni_vpmaxsd(reg_dst_s32, reg_dst_s32, vreg_zeros);
+            }
+        }
+
+        // Phase 3: Pack s32 back to i8 and store using max_op path
+        for (int jj = 0; jj < ur_c; jj++) {
+            // Pack 4 x vreg_dst_s32 -> 1 x vreg_dst (packed i8)
+            // Use store_dst which handles packing via store_dst_avg_op,
+            // then store the packed result via store_dst_max_op
+            for (int ll = 0; ll < num_ll; ll++) {
+                store_dst_avg_op(jj, ll, get_offset_dst(jj, ll), false, 0);
+            }
+        }
+        return;
     }
 
     for (int jj = 0; jj < ur_c; jj++)
@@ -1391,11 +1523,24 @@ bool jit_uni_i8i8_pooling_fwd_ker_t<isa>::init_post_ops_conf(
     if (post_ops.len() == 0) return true;
 
     if (jpp.alg == pooling_max) {
-        /*
-        * TODO Currently eltwise/binary injectors assumes that data in vmm has f32 dt.
-        * In max pooling data remains in i8 data type.
-        */
-        return false;
+        jpp.with_eltwise = post_ops.find(primitive_kind::eltwise) != -1;
+        jpp.with_binary = post_ops.find(primitive_kind::binary) != -1;
+        jpp.with_postops = jpp.with_eltwise || jpp.with_binary;
+
+        if (!jpp.with_postops) return false;
+
+        // Tail handling for int8 max with post-ops is not supported yet.
+        if (jpp.c_tail != 0) return false;
+
+        jpp.post_ops = post_ops;
+
+        using namespace injector;
+        return post_ops_ok(post_ops_ok_args_t(isa, {binary, eltwise}, post_ops,
+                &dst_d, false /*sum_at_pos_0_only*/,
+                false /*sum_requires_scale_one*/,
+                false /*sum_requires_zp_zero*/,
+                false /*sum_requires_same_params*/,
+                get_supported_bcast_strategies()));
     }
 
     jpp.with_eltwise = post_ops.find(primitive_kind::eltwise) != -1;
@@ -1490,6 +1635,7 @@ status_t jit_uni_i8i8_pooling_fwd_t<isa>::execute_forward(
         p.post_ops_binary_rhs_arg_vec = post_ops_binary_rhs_arg_vec.data();
         (*ker_)(&p);
     });
+
     return status::success;
 }
 

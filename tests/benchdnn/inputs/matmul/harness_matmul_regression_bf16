@@ -39,6 +39,4 @@
 
 # 4D matrix A with acbd-like layout (second dimension = 1) - regression test for segfault.
 --reset
---dt=bf16:bf16:bf16
---stag=abcd --wtag=abdc --dtag=abcd
-6x1x100x256:1x1x256x9_n"4d_matrix_a_acbd_layout"
+--dt=bf16:bf16:bf16 --stag=abcd,acbd --wtag=abdc --dtag=abcd 6x1x100x256:1x1x256x9_n"4d_matrix_a_acbd_layout"

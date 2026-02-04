@@ -493,7 +493,7 @@ TEST(test_large_partition_execute, Int8Mha_CPU) {
 
     ASSERT_EQ(g.get_ops().size(), 13U);
 
-    graph::pass::pass_base_ptr apass = get_pass("int8_sdp_fusion");
+    graph::pass::pass_base_ptr apass = get_pass("x8_sdpa_fusion");
     apass->run(g);
     ASSERT_EQ(g.get_num_partitions(), 1U);
     auto part = g.get_partitions()[0];
@@ -551,7 +551,7 @@ TEST(test_large_partition_execute, Int8DistilBertMha) {
 
     ASSERT_EQ(g.get_ops().size(), 13U);
 
-    graph::pass::pass_base_ptr apass = get_pass("int8_sdp_fusion");
+    graph::pass::pass_base_ptr apass = get_pass("x8_sdpa_fusion");
     apass->run(g);
     ASSERT_EQ(g.get_num_partitions(), 1U);
     auto part = g.get_partitions()[0];

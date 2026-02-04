@@ -359,27 +359,27 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     auto a_type = pd()->get_type(DNNL_ARG_A);
     auto b_type = pd()->get_type(DNNL_ARG_B);
     auto c_type = d->c_type();
-    if (swap_ab) std::swap(a_type, b_type);
 
     auto m = into<int32_t>(pd()->desc()->m());
     auto n = into<int32_t>(pd()->desc()->n());
     auto k = into<int32_t>(d->k());
 
-    if (swap_ab) std::swap(m, n);
-
     bool trans_a = pd()->trans_a();
     bool trans_b = pd()->trans_b();
+
+    auto lda = into<int32_t>(pd()->ld(DNNL_ARG_A));
+    auto ldb = into<int32_t>(pd()->ld(DNNL_ARG_B));
+    auto ldc = into<int32_t>(d->ldc());
+    auto ldco = into<int32_t>(pd()->with_bias() ? d->ld_bias() : 0);
+
     if (swap_ab) {
+        std::swap(a_type, b_type);
+        std::swap(m, n);
+        std::swap(lda, ldb);
         std::swap(trans_a, trans_b);
         trans_a = !trans_a;
         trans_b = !trans_b;
     }
-
-    auto lda = into<int32_t>(pd()->ld(DNNL_ARG_A));
-    auto ldb = into<int32_t>(pd()->ld(DNNL_ARG_B));
-    if (swap_ab) std::swap(lda, ldb);
-    auto ldc = into<int32_t>(d->ldc());
-    auto ldco = into<int32_t>(pd()->with_bias() ? d->ld_bias() : 0);
 
     auto alpha = pd()->alpha();
     auto beta = pd()->beta();

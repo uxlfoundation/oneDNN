@@ -504,24 +504,25 @@ status_t pd_t::init_GEMMProblem(
 
     auto a_type = get_type(DNNL_ARG_A);
     auto b_type = get_type(DNNL_ARG_B);
-    if (swap_ab_) std::swap(a_type, b_type);
 
     auto m = desc()->m();
     auto n = desc()->n();
     auto k = desc()->k();
-    if (swap_ab_) std::swap(m, n);
-    
+
     auto align_a = align(DNNL_ARG_A);
     auto align_b = align(DNNL_ARG_B);
-    if (swap_ab_) std::swap(align_a, align_b);
 
     auto lda = ld(DNNL_ARG_A);
     auto ldb = ld(DNNL_ARG_B);
-    if (swap_ab_) std::swap(lda, ldb);
 
     auto trans_a = this->trans_a();
     auto trans_b = this->trans_b();
+
     if (swap_ab_) {
+        std::swap(a_type, b_type);
+        std::swap(m, n);
+        std::swap(align_a, align_b);
+        std::swap(lda, ldb);
         std::swap(trans_a, trans_b);
         trans_a = !trans_a;
         trans_b = !trans_b;

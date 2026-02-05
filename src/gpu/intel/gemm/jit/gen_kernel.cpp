@@ -759,6 +759,8 @@ void gen_xe_systolic_kernel_desc_t::choose_unrolls(compute::gpu_arch_t arch,
 }
 
 void gen_kernel_t::init_interface() {
+    VDEBUGINFO(4, primitive, gemm, "MY: init_interface ******>");
+
     using namespace ngen;
 
     auto &problem = *desc()->problem();
@@ -825,7 +827,8 @@ void gen_kernel_t::init_interface() {
     }
     if (problem.hasCMXScale()) interface_.newArgument("ldcq", DataType::d);
 
-    //VDEBUGINFO(4, primitive, gemm, "MY: gen_kernel : problem.cOffsetHostScalar() = %d", problem.cOffsetHostScalar());
+    VDEBUGINFO(4, primitive, gemm, "MY: gen_kernel : problem.cOffsetHostScalar() = %d", problem.cOffsetHostScalar());
+    VDEBUGINFO(4, primitive, gemm, "MY: gen_kernel : problem.cOffset = %d", (int)problem.cOffset);
 
     if (problem.cOffset != COffset::None || problem.sumA || problem.sumB) {
         if (!problem.cOffsetHostScalar()) {
@@ -833,13 +836,13 @@ void gen_kernel_t::init_interface() {
             interface_.newArgument(
                     "CO", ExternalArgumentType::GlobalPtr, co_access);
         }
-        //VDEBUGINFO(4, primitive, gemm, "MY: gen_kernel : newArg offset_CO");
+        VDEBUGINFO(4, primitive, gemm, "MY: gen_kernel : newArg offset_CO");
         interface_.newArgument("offset_CO", DataType::q);
         if (problem.cOffset == COffset::Pre)
             interface_.newArgument("ldco", DataType::d);
     }
     if (problem.cOffsetHostScalar()) {
-        //VDEBUGINFO(4, primitive, gemm, "MY: gen_kernel : newArg co_host_scalar");
+        VDEBUGINFO(4, primitive, gemm, "MY: gen_kernel : newArg co_host_scalar");
         interface_.newArgument("co_host_scalar", DataType::w);
     }
     if (problem.postOps.cStochasticRound) {
@@ -953,6 +956,8 @@ void gen_kernel_t::init_interface() {
 
     if (desc()->hw_ >= HW::XeHPG) interface_.allowArgumentRearrangement(false);
     interface_.externalName(kernel_name());
+    VDEBUGINFO(4, primitive, gemm, "MY: init_interface <******");
+
 }
 
 dsl::kernel_t get_dsl_kernel(const GEMMProblem &problem,

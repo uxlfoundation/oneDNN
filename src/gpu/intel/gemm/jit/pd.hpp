@@ -211,8 +211,8 @@ struct pd_t : public gemm::pd_t {
     bool with_a_zero_points() const { return (a_quant.zp_ndims >= 0); }
     bool with_b_zero_points() const { return (b_quant.zp_ndims >= 0); }
     bool with_c_zero_points() const {
-// CCC        return !attr()->zero_points_.has_default_values(DNNL_ARG_DST);
-        return (c_quant.zp_ndims >= 0);
+        return !attr()->zero_points_.has_default_values(DNNL_ARG_DST);
+//        return (c_quant.zp_ndims >= 0); // ok
     }
 
     bool with_a_group_sums() const { return (a_quant.gs_ndims >= 0); }

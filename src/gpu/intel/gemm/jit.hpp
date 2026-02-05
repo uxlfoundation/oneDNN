@@ -47,6 +47,9 @@ struct gen_t : public primitive_t {
         status_t init(impl::engine_t *engine) {
 
             VDEBUGINFO(4, primitive, gemm, "MY: jit init() ********** >>>");
+            static int init_call_count = 0;
+            init_call_count++;
+            VDEBUGINFO(4, primitive, gemm, "MY: jit init() CALL #%d this=%p **********", init_call_count, (void*)this);
 
 
             using namespace prop_kind;

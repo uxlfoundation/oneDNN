@@ -260,6 +260,22 @@ status_t get_devices(std::vector<cl_device_id> *devices,
     return status::success;
 }
 
+status_t get_extensions(cl_device_id dev, std::string &ext) {
+    cl_int err = CL_SUCCESS;
+
+    size_t param_size = 0;
+    err = xpu::ocl::clGetDeviceInfo(
+            dev, CL_DEVICE_EXTENSIONS, 0, nullptr, &param_size);
+    OCL_CHECK(err);
+
+    ext.resize(param_size, '\0');
+    err = xpu::ocl::clGetDeviceInfo(
+            dev, CL_DEVICE_EXTENSIONS, param_size, &ext[0], &param_size);
+    OCL_CHECK(err);
+
+    return status::success;
+}
+
 #ifndef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
 status_t get_device_uuid(xpu::device_uuid_t &uuid, cl_device_id ocl_dev) {
     // This function is used only with SYCL that works with OpenCL 3.0

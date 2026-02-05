@@ -29,6 +29,8 @@ void DNNL_API *malloc_shared(dnnl_engine_t engine, size_t size);
 void DNNL_API free(dnnl_engine_t engine, void *ptr);
 dnnl_status_t DNNL_API memset(
         dnnl_stream_t stream, void *ptr, int value, size_t size);
+dnnl_status_t DNNL_API memcpy(
+        dnnl_stream_t stream, void *dst, const void *src, size_t size);
 
 } // namespace ze
 } // namespace xpu

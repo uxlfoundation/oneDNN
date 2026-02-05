@@ -38,6 +38,9 @@ if(DNNL_GPU_RUNTIME STREQUAL "OCL")
         message(FATAL_ERROR "OpenCL SDK is not found; you can use OPENCLROOT CMake option to specify the path or disable building tests with ONEDNN_BUILD_TESTS=OFF")
     endif()
 endif()
+if(DNNL_GPU_RUNTIME STREQUAL "ZE")
+    list(APPEND EXTRA_SHARED_LIBS ze_loader)
+endif()
 
 # propagate sanitizer flags
 append(CMAKE_C_FLAGS "${CMAKE_CCXX_SANITIZER_FLAGS}")

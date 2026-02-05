@@ -70,6 +70,38 @@ status_t stream_profiler_t::get_info(profiling_data_kind_t data_kind,
     return xpu::stream_profiler_t::get_info_impl(stamp2entry, data_kind, data);
 }
 
+status_t stream_profiler_t::get_aggregate_exec_timing(
+        uint64_t start, uint64_t end, double &duration_ms) const {
+    using namespace ::sycl::info;
+    duration_ms = 0.0;
+    if (end <= start) return status::success;
+    uint64_t global_beg = 0;
+    uint64_t global_end = 0;
+
+    for (auto &ev : events_) {
+
+        if (ev.stamp <= start) continue;
+        if (ev.stamp > end) continue;
+
+        const xpu::sycl::event_t &sycl_event
+                = *utils::downcast<xpu::sycl::event_t *>(ev.event.get());
+        assert(sycl_event.size() == 1);
+        auto evbeg
+                = sycl_event[0]
+                          .get_profiling_info<event_profiling::command_start>();
+        auto evend
+                = sycl_event[0]
+                          .get_profiling_info<event_profiling::command_end>();
+
+        global_beg = global_beg == 0 ? evbeg : std::min(global_beg, evbeg);
+        global_end = std::max(global_end, evend);
+    }
+
+    duration_ms = static_cast<double>(global_end - global_beg) * 1e-6;
+
+    return status::success;
+}
+
 } // namespace sycl
 } // namespace xpu
 } // namespace impl

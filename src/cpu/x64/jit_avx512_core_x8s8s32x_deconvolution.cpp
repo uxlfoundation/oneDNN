@@ -105,12 +105,14 @@ status_t jit_avx512_core_x8s8s32x_deconv_fwd_kernel_vmm_t::init_conf(
     const bool is_2d = ndims == 4;
     const bool is_3d = ndims == 5;
 
-    jcp.ngroups = with_groups ? weights_d.dims()[0] : 1;
-    jcp.oc = dst_d.dims()[1] / jcp.ngroups;
-    jcp.ic = src_d.dims()[1] / jcp.ngroups;
-    jcp.id = is_3d ? src_d.dims()[2] : 1;
-    jcp.oc_without_padding = dst_d.dims()[1] / jcp.ngroups;
-    jcp.ic_without_padding = src_d.dims()[1] / jcp.ngroups;
+    CHECK(safe_dim_to_int(jcp.ngroups, with_groups ? weights_d.dims()[0] : 1));
+    CHECK(safe_dim_to_int(jcp.oc, dst_d.dims()[1] / jcp.ngroups));
+    CHECK(safe_dim_to_int(jcp.ic, src_d.dims()[1] / jcp.ngroups));
+    CHECK(safe_dim_to_int(jcp.id, is_3d ? src_d.dims()[2] : 1));
+    CHECK(safe_dim_to_int(
+            jcp.oc_without_padding, dst_d.dims()[1] / jcp.ngroups));
+    CHECK(safe_dim_to_int(
+            jcp.ic_without_padding, src_d.dims()[1] / jcp.ngroups));
     jcp.is_depthwise = true && with_groups
             && utils::everyone_is(
                     1, jcp.ic_without_padding, jcp.oc_without_padding);
@@ -200,21 +202,23 @@ status_t jit_avx512_core_x8s8s32x_deconv_fwd_kernel_vmm_t::init_conf(
     }
 
     jcp.prop_kind = cd.prop_kind;
-    jcp.mb = src_d.dims()[0];
-    jcp.ih = is_1d ? 1 : src_d.dims()[ndims - 2];
-    jcp.iw = src_d.dims()[ndims - 1];
-    jcp.od = is_3d ? dst_d.dims()[2] : 1;
-    jcp.oh = is_1d ? 1 : dst_d.dims()[ndims - 2];
-    jcp.ow = dst_d.dims()[ndims - 1];
-    jcp.kd = is_3d ? weights_d.dims()[with_groups + 2] : 1;
-    jcp.kh = is_1d ? 1 : weights_d.dims()[with_groups + ndims - 2];
-    jcp.kw = weights_d.dims()[with_groups + ndims - 1];
-    jcp.f_pad = is_3d ? cd.padding[0][0] : 0;
-    jcp.t_pad = is_1d ? 0 : cd.padding[0][ndims - 4];
-    jcp.l_pad = cd.padding[0][ndims - 3];
-    jcp.stride_d = is_3d ? cd.strides[0] : 1;
-    jcp.stride_h = is_1d ? 1 : cd.strides[ndims - 4];
-    jcp.stride_w = cd.strides[ndims - 3];
+    CHECK(safe_dim_to_int(jcp.mb, src_d.dims()[0]));
+    CHECK(safe_dim_to_int(jcp.ih, is_1d ? 1 : src_d.dims()[ndims - 2]));
+    CHECK(safe_dim_to_int(jcp.iw, src_d.dims()[ndims - 1]));
+    CHECK(safe_dim_to_int(jcp.od, is_3d ? dst_d.dims()[2] : 1));
+    CHECK(safe_dim_to_int(jcp.oh, is_1d ? 1 : dst_d.dims()[ndims - 2]));
+    CHECK(safe_dim_to_int(jcp.ow, dst_d.dims()[ndims - 1]));
+    CHECK(safe_dim_to_int(
+            jcp.kd, is_3d ? weights_d.dims()[with_groups + 2] : 1));
+    CHECK(safe_dim_to_int(
+            jcp.kh, is_1d ? 1 : weights_d.dims()[with_groups + ndims - 2]));
+    CHECK(safe_dim_to_int(jcp.kw, weights_d.dims()[with_groups + ndims - 1]));
+    CHECK(safe_dim_to_int(jcp.f_pad, is_3d ? cd.padding[0][0] : 0));
+    CHECK(safe_dim_to_int(jcp.t_pad, is_1d ? 0 : cd.padding[0][ndims - 4]));
+    CHECK(safe_dim_to_int(jcp.l_pad, cd.padding[0][ndims - 3]));
+    CHECK(safe_dim_to_int(jcp.stride_d, is_3d ? cd.strides[0] : 1));
+    CHECK(safe_dim_to_int(jcp.stride_h, is_1d ? 1 : cd.strides[ndims - 4]));
+    CHECK(safe_dim_to_int(jcp.stride_w, cd.strides[ndims - 3]));
 
     if (jcp.is_depthwise) {
         jcp.ch_block = 16;
@@ -247,9 +251,9 @@ status_t jit_avx512_core_x8s8s32x_deconv_fwd_kernel_vmm_t::init_conf(
     VDISPATCH_DECONVOLUTION_IC(
             set_or_check_wei_format(), VERBOSE_UNSUPPORTED_TAG);
 
-    jcp.dilate_d = is_3d ? cd.dilates[0] : 0;
-    jcp.dilate_h = is_1d ? 0 : cd.dilates[ndims - 4];
-    jcp.dilate_w = cd.dilates[ndims - 3];
+    CHECK(safe_dim_to_int(jcp.dilate_d, is_3d ? cd.dilates[0] : 0));
+    CHECK(safe_dim_to_int(jcp.dilate_h, is_1d ? 0 : cd.dilates[ndims - 4]));
+    CHECK(safe_dim_to_int(jcp.dilate_w, cd.dilates[ndims - 3]));
 
     VDISPATCH_DECONVOLUTION_IC(
             !(!IMPLICATION(jcp.dilate_d, jcp.stride_d == 1)

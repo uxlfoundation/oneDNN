@@ -38,6 +38,15 @@ if(DPCPP_HOST_COMPILER_KIND STREQUAL "DEFAULT")
     # the -fsycl option by default so it has to be explicitly disabled.
     set(_omp_original_cmake_cxx_flags "${CMAKE_CXX_FLAGS}")
     string(REGEX REPLACE "-fsycl" "-fno-sycl" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+    # FindOpenMP module is not aware of "-openmp" flag supported by clang-cl
+    # driver. Instead it finds -Xclang -fopenmp option that causes build errors
+    # in SYCL device code.
+    # Setting OpenMP_*_FLAG forces FindOpenMP module to consider provided flags
+    # instead of pre-defined list based on CMAKE_*_COMPILER_ID.
+    if(CMAKE_BASE_NAME STREQUAL "clang-cl")
+        set(OpenMP_C_FLAG "-openmp")
+        set(OpenMP_CXX_FLAG "-openmp")
+    endif()
     find_package(OpenMP)
     set(CMAKE_CXX_FLAGS "${_omp_original_cmake_cxx_flags}")
 endif()

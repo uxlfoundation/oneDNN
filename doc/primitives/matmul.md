@@ -308,3 +308,128 @@ information on sparse encoding.
 
 See @ref dev_guide_examples page for a complete list. MatMul examples are listed in the
 [Matrix Multiplication](@ref examples_matmul) section.
+
+@anchor dev_guide_matmul_grouped_gemm
+## Grouped GEMM Support
+
+@note This is an [experimental feature](@ref dev_guide_experimental). Build oneDNN
+with `ONEDNN_EXPERIMENTAL_GROUPED_MEMORY=ON` to enable grouped GEMM support.
+
+Grouped GEMM enables matrix multiplication when one dimension varies across
+groups, as occurs in Mixture-of-Experts (MoE) models where tokens are dynamically
+routed to different experts.
+
+The computation for grouped GEMM with \f$G\f$ groups is defined as:
+
+\f[
+    \dst_g(m, n) =
+        \sum_{k=0}^{K - 1}
+            \src_g(m, k) \cdot \weights_g(k, n)
+        , \quad g = 0, \ldots, G-1
+\f]
+
+where \f$m \in [0, M_g)\f$ and \f$M_g\f$ is the number of rows in group \f$g\f$.
+
+The source and destination tensors use [grouped memory format](@ref dev_guide_grouped_mem)
+because the number of tokens per expert varies dynamically in MoE workloads. The
+grouped encoding stores values as concatenated buffers with an offsets array specifying
+group boundaries. Weights are represented as a regular dense 3D tensor
+`[num_groups, K, N]` because all experts have uniform dimensions, making grouped
+encoding unnecessary.
+
+### Code Snippet
+
+~~~cpp
+const memory::dim num_groups = 4;
+const memory::dim K = 512, N = 256;
+
+// MoE routing result:
+// Expert 0: 800 tokens
+// Expert 1: 600 tokens
+// Expert 2: 0 tokens
+// Expert 3: 950 tokens
+const memory::dim total_tokens = 2350;  // Sum of all token counts
+
+// Source: grouped encoding for variable M dimension
+// Descriptor: [total_tokens, K] with grouped encoding
+// Memory layout: [expert0_tokens | expert1_tokens | expert2_tokens | expert3_tokens]
+auto src_md = memory::desc::grouped(
+    {total_tokens, K}, memory::data_type::f32,
+    0, num_groups);  // dimension 0 (M) varies per group
+
+// Weights: standard 3D dense tensor [num_groups, K, N]
+// Each expert has its own K by N weight matrix
+auto weights_md = memory::desc({num_groups, K, N},
+    memory::data_type::f32, memory::format_tag::abc);
+
+// Destination: grouped encoding matching source structure
+auto dst_md = memory::desc::grouped(
+    {total_tokens, N}, memory::data_type::f32,
+    0, num_groups);
+
+auto matmul_pd = matmul::primitive_desc(engine, src_md, weights_md, dst_md);
+
+// Offsets mark the boundary of each expert's tokens
+// Format: [end_expert0, end_expert1, end_expert2, end_expert3]
+std::vector<int32_t> offsets = {800, 1400, 1400, 2350};
+
+// Set offsets for both input and output memory objects
+auto src_mem = memory(src_md, engine, {src_data, offsets.data()});
+auto dst_mem = memory(dst_md, engine, {dst_data, offsets.data()});
+~~~
+
+### Attributes Support
+
+Setting attributes for grouped GEMM follows the regular matmul attribute API.
+Below are some examples of common use cases for MoE workloads.
+
+Per-token source scales:
+~~~cpp
+attr.set_scales_mask(DNNL_ARG_SRC, (1 << 0));  // Varies along M dimension
+// Scale tensor: [total_tokens] - one scale per token
+// Layout: concatenated like source data, uses same offsets
+~~~
+
+Per-expert-column weight scales:
+~~~cpp
+attr.set_scales_mask(DNNL_ARG_WEIGHTS, (1 << 0) | (1 << 2));
+// Scale tensor: [num_groups, N] - dense 2D tensor
+// Layout: standard ab layout
+~~~
+
+Bias per expert:
+~~~cpp
+// Bias: [num_groups, N] - dense 2D tensor
+auto bias_md = memory::desc({num_groups, N},
+    memory::data_type::f32, memory::format_tag::ab);
+// Layout: standard ab layout
+~~~
+
+### Benchdnn Testing
+
+To use grouped GEMM in benchdnn, specify the `--grouped` argument as follows
+(all other arguments follow the regular matmul syntax):
+
+~~~bash
+./benchdnn --matmul --grouped=M:8:800,600,700,500,650,450,550,750 8x512x256
+~~~
+
+`--grouped=M:8:800,600,700,500,650,450,550,750` indicates that dimension 0
+(`M`) varies across 8 groups with the specified sizes.
+
+### Implementation Notes
+
+The following are supported:
+- Currently, only single dimension `0` can vary.
+- Source and destination must use identical grouping.
+- Scales attribute for source and weights tensors:
+  - Source Scales: row-wise (per-token, `mask = (1 << 0)`) are applied to all experts equally.
+  - Weight Scales: column-wise (per-expert-per-column, `mask = (1 << 0) | (1 << 2)`)
+    and K-grouped (per-expert-per-K-group-per-column, `mask = (1 << 0) | (1 << 1) | (1 << 2)`)
+    with group specification are supported.
+- Bias supports per-expert shape.
+- Supported on CPU and GPU engines.
+
+### Examples
+
+See @ref matmul_grouped_cpp for a complete example of using grouped GEMM.

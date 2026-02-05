@@ -159,6 +159,7 @@ INDIRECT_OCL_CALL(cl_int, clRetainKernel)
 INDIRECT_OCL_CALL(cl_int, clRetainMemObject)
 INDIRECT_OCL_CALL(cl_int, clRetainProgram)
 INDIRECT_OCL_CALL(cl_int, clRetainSampler)
+INDIRECT_OCL_CALL(cl_int, clSetEventCallback)
 INDIRECT_OCL_CALL(cl_int, clSetKernelArg)
 INDIRECT_OCL_CALL(cl_int, clWaitForEvents)
 #ifdef CL_VERSION_2_0

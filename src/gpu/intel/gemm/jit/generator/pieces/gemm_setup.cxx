@@ -760,7 +760,7 @@ void Generator<hw>::gemmSetupABC(const GEMMProblem &problem, const GEMMStrategy 
         }
     }
 
-    if (problem.usesCO() && strategy.CO.base.isStateless()) {
+    if (problem.usesCO() && strategy.CO.base.isStateless() && !problem.cOffsetHostScalar()) {
         eadd(1, state.effCO, state.inputs.CO, state.offsetCO, strategy, state);
         if (strategy.persistentLoop())
             state.offsetCO = invalid;

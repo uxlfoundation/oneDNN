@@ -373,6 +373,8 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     using namespace ngen;
     using namespace kcatalog;
 
+    VDEBUGINFO(4, primitive, gemm, "MY: select_kernel ------>");
+
     arch_ = arch;
     hw_ = convert_dnnl_arch_to_ngen(arch);
     stepping_ = stepping;
@@ -590,6 +592,9 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
         gpu_post_ops_t &&post_ops) {
     using namespace ngen;
     using namespace kcatalog;
+
+    VDEBUGINFO(4, primitive, gemm, "MY: gen_xe_systolic_kernel_desc_t::select_kernel ------>");
+
 
     arch_ = arch;
     hw_ = convert_dnnl_arch_to_ngen(arch);
@@ -814,16 +819,22 @@ void gen_kernel_t::init_interface() {
         interface_.newArgument("ldbq", DataType::d);
     }
     if (problem.hasCMXScale()) interface_.newArgument("ldcq", DataType::d);
+
+    VDEBUGINFO(4, primitive, gemm, "MY: gen_kernel : problem.cOffsetHostScalar() = %d", problem.cOffsetHostScalar());
+
     if (problem.cOffset != COffset::None || problem.sumA || problem.sumB) {
         if (!problem.cOffsetHostScalar()) {
+            VDEBUGINFO(4, primitive, gemm, "MY: gen_kernel : newArg CO");
             interface_.newArgument(
                     "CO", ExternalArgumentType::GlobalPtr, co_access);
         }
+        VDEBUGINFO(4, primitive, gemm, "MY: gen_kernel : newArg offset_CO");
         interface_.newArgument("offset_CO", DataType::q);
         if (problem.cOffset == COffset::Pre)
             interface_.newArgument("ldco", DataType::d);
     }
     if (problem.cOffsetHostScalar()) {
+        VDEBUGINFO(4, primitive, gemm, "MY: gen_kernel : newArg co_host_scalar");
         interface_.newArgument("co_host_scalar", DataType::w);
     }
     if (problem.postOps.cStochasticRound) {

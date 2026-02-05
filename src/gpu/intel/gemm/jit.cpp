@@ -136,16 +136,26 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         auto ldcq = pd()->desc()->m() / problem->cqGroupM;
         arg_list.set(argn++, ldcq);
     }
+
+    VDEBUGINFO(4, primitive, gemm, "MY: launch : problem->cOffsetHostScalar() = %d", problem->cOffsetHostScalar());
+
     if (pd()->with_c_zero_points() || pd()->with_bias()
             || pd()->with_sum_ab()) {
-        if (!problem->cOffsetHostScalar()) arg_list.set(argn++, co);
+        if (!problem->cOffsetHostScalar()) {
+            VDEBUGINFO(4, primitive, gemm, "MY: launch : argn++ co");
+            arg_list.set(argn++, co);
+        }
+        VDEBUGINFO(4, primitive, gemm, "MY: launch : argn++ offset_co");
         arg_list.set(argn++, offset_co);
         if (pd()->with_bias()) {
             auto ldco = into<int32_t>(pd()->desc()->ld_bias());
             arg_list.set(argn++, ldco);
         }
     }
-    if (problem->cOffsetHostScalar()) arg_list.set(argn++, co_host_scalar);
+    if (problem->cOffsetHostScalar()) {
+        VDEBUGINFO(4, primitive, gemm, "MY: launch : argn++ co_host_scalar");
+        arg_list.set(argn++, co_host_scalar);
+    }
     if (nocopy_info()->needsTempC()) arg_list.set(argn++, *c_temp);
     if (problem->postOps.cStochasticRound) {
         arg_list.set(argn++, *sround_seed);

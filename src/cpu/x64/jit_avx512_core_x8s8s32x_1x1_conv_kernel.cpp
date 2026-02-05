@@ -904,34 +904,36 @@ status_t jit_avx512_core_x8s8s32x_1x1_conv_kernel_t::init_conf(
 
     jcp.prop_kind = cd.prop_kind;
 
-    jcp.ngroups = with_groups ? weights_d.dims()[0] : 1;
-    jcp.mb = src_d.dims()[0];
-    jcp.oc = dst_d.dims()[1] / jcp.ngroups;
+    CHECK(safe_dim_to_int(jcp.ngroups, with_groups ? weights_d.dims()[0] : 1));
+    CHECK(safe_dim_to_int(jcp.mb, src_d.dims()[0]));
+    CHECK(safe_dim_to_int(jcp.oc, dst_d.dims()[1] / jcp.ngroups));
     jcp.oc_without_padding = jcp.oc;
-    jcp.ic = src_d.dims()[1] / jcp.ngroups;
+    CHECK(safe_dim_to_int(jcp.ic, src_d.dims()[1] / jcp.ngroups));
     jcp.ic_without_padding = jcp.ic;
 
     const bool is_1d = ndims == 3;
     const bool is_3d = ndims == 5;
 
-    jcp.id = is_3d ? src_d.dims()[2] : 1;
-    jcp.ih = is_1d ? 1 : src_d.dims()[ndims - 2];
-    jcp.iw = src_d.dims()[ndims - 1];
-    jcp.od = is_3d ? dst_d.dims()[2] : 1;
-    jcp.oh = is_1d ? 1 : dst_d.dims()[ndims - 2];
-    jcp.ow = dst_d.dims()[ndims - 1];
+    CHECK(safe_dim_to_int(jcp.id, is_3d ? src_d.dims()[2] : 1));
+    CHECK(safe_dim_to_int(jcp.ih, is_1d ? 1 : src_d.dims()[ndims - 2]));
+    CHECK(safe_dim_to_int(jcp.iw, src_d.dims()[ndims - 1]));
+    CHECK(safe_dim_to_int(jcp.od, is_3d ? dst_d.dims()[2] : 1));
+    CHECK(safe_dim_to_int(jcp.oh, is_1d ? 1 : dst_d.dims()[ndims - 2]));
+    CHECK(safe_dim_to_int(jcp.ow, dst_d.dims()[ndims - 1]));
 
-    jcp.kd = is_3d ? weights_d.dims()[with_groups + 2] : 1;
-    jcp.kh = is_1d ? 1 : weights_d.dims()[with_groups + ndims - 2];
-    jcp.kw = weights_d.dims()[with_groups + ndims - 1];
+    CHECK(safe_dim_to_int(
+            jcp.kd, is_3d ? weights_d.dims()[with_groups + 2] : 1));
+    CHECK(safe_dim_to_int(
+            jcp.kh, is_1d ? 1 : weights_d.dims()[with_groups + ndims - 2]));
+    CHECK(safe_dim_to_int(jcp.kw, weights_d.dims()[with_groups + ndims - 1]));
 
-    jcp.f_pad = is_3d ? cd.padding[0][0] : 0;
-    jcp.t_pad = is_1d ? 0 : cd.padding[0][ndims - 4];
-    jcp.l_pad = cd.padding[0][ndims - 3];
+    CHECK(safe_dim_to_int(jcp.f_pad, is_3d ? cd.padding[0][0] : 0));
+    CHECK(safe_dim_to_int(jcp.t_pad, is_1d ? 0 : cd.padding[0][ndims - 4]));
+    CHECK(safe_dim_to_int(jcp.l_pad, cd.padding[0][ndims - 3]));
 
-    jcp.stride_d = is_3d ? cd.strides[0] : 1;
-    jcp.stride_h = is_1d ? 1 : cd.strides[ndims - 4];
-    jcp.stride_w = cd.strides[ndims - 3];
+    CHECK(safe_dim_to_int(jcp.stride_d, is_3d ? cd.strides[0] : 1));
+    CHECK(safe_dim_to_int(jcp.stride_h, is_1d ? 1 : cd.strides[ndims - 4]));
+    CHECK(safe_dim_to_int(jcp.stride_w, cd.strides[ndims - 3]));
 
     jcp.with_bias = cd.bias_desc.format_kind != format_kind::undef;
     jcp.signed_input = (src_d.data_type() == data_type::s8);

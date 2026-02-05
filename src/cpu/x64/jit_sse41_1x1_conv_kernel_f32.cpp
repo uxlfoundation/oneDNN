@@ -569,25 +569,26 @@ status_t jit_sse41_1x1_conv_kernel_f32_t::init_conf(jit_1x1_conv_conf_t &jcp,
 
     jcp.prop_kind = cd.prop_kind;
 
-    jcp.ngroups = with_groups ? weights_d.dims()[0] : 1;
-    jcp.mb = src_d.dims()[0];
+    CHECK(safe_dim_to_int(jcp.ngroups, with_groups ? weights_d.dims()[0] : 1));
+    CHECK(safe_dim_to_int(jcp.mb, src_d.dims()[0]));
 
-    jcp.oc = dst_d.dims()[1] / jcp.ngroups;
-    jcp.ic = src_d.dims()[1] / jcp.ngroups;
+    CHECK(safe_dim_to_int(jcp.oc, dst_d.dims()[1] / jcp.ngroups));
+    CHECK(safe_dim_to_int(jcp.ic, src_d.dims()[1] / jcp.ngroups));
 
-    jcp.ih = (ndims == 3) ? 1 : src_d.dims()[2];
-    jcp.iw = src_d.dims()[ndims - 1];
-    jcp.oh = (ndims == 3) ? 1 : dst_d.dims()[2];
-    jcp.ow = dst_d.dims()[ndims - 1];
+    CHECK(safe_dim_to_int(jcp.ih, (ndims == 3) ? 1 : src_d.dims()[2]));
+    CHECK(safe_dim_to_int(jcp.iw, src_d.dims()[ndims - 1]));
+    CHECK(safe_dim_to_int(jcp.oh, (ndims == 3) ? 1 : dst_d.dims()[2]));
+    CHECK(safe_dim_to_int(jcp.ow, dst_d.dims()[ndims - 1]));
 
-    jcp.kh = (ndims == 3) ? 1 : weights_d.dims()[with_groups + 2];
-    jcp.kw = weights_d.dims()[with_groups + ndims - 1];
+    CHECK(safe_dim_to_int(
+            jcp.kh, (ndims == 3) ? 1 : weights_d.dims()[with_groups + 2]));
+    CHECK(safe_dim_to_int(jcp.kw, weights_d.dims()[with_groups + ndims - 1]));
 
-    jcp.t_pad = (ndims == 3) ? 0 : cd.padding[0][0];
-    jcp.l_pad = cd.padding[0][ndims - 3];
+    CHECK(safe_dim_to_int(jcp.t_pad, (ndims == 3) ? 0 : cd.padding[0][0]));
+    CHECK(safe_dim_to_int(jcp.l_pad, cd.padding[0][ndims - 3]));
 
-    jcp.stride_h = (ndims == 3) ? 1 : cd.strides[0];
-    jcp.stride_w = cd.strides[ndims - 3];
+    CHECK(safe_dim_to_int(jcp.stride_h, (ndims == 3) ? 1 : cd.strides[0]));
+    CHECK(safe_dim_to_int(jcp.stride_w, cd.strides[ndims - 3]));
 
     jcp.with_bias = cd.bias_desc.format_kind != format_kind::undef;
 

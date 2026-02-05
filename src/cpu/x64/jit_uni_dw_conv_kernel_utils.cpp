@@ -110,29 +110,29 @@ status_t jit_uni_dw_conv_fwd_kernel_t<isa, kernel_dt>::init_conf(
             "skipping non-grouped convolution in depthwise convolution "
             "implementation");
 
-    jcp.ngroups = weights_d.dims()[0];
-    jcp.mb = src_d.dims()[0];
+    CHECK(safe_dim_to_int(jcp.ngroups, weights_d.dims()[0]));
+    CHECK(safe_dim_to_int(jcp.mb, src_d.dims()[0]));
 
-    jcp.oc = dst_d.dims()[1];
+    CHECK(safe_dim_to_int(jcp.oc, dst_d.dims()[1]));
     jcp.oc_without_padding = jcp.oc;
-    jcp.ic = src_d.dims()[1];
+    CHECK(safe_dim_to_int(jcp.ic, src_d.dims()[1]));
 
-    jcp.ih = src_d.dims()[2];
-    jcp.iw = src_d.dims()[3];
-    jcp.oh = dst_d.dims()[2];
-    jcp.ow = dst_d.dims()[3];
+    CHECK(safe_dim_to_int(jcp.ih, src_d.dims()[2]));
+    CHECK(safe_dim_to_int(jcp.iw, src_d.dims()[3]));
+    CHECK(safe_dim_to_int(jcp.oh, dst_d.dims()[2]));
+    CHECK(safe_dim_to_int(jcp.ow, dst_d.dims()[3]));
 
-    jcp.kh = weights_d.dims()[3];
-    jcp.kw = weights_d.dims()[4];
+    CHECK(safe_dim_to_int(jcp.kh, weights_d.dims()[3]));
+    CHECK(safe_dim_to_int(jcp.kw, weights_d.dims()[4]));
 
-    jcp.t_pad = cd.padding[0][0];
-    jcp.l_pad = cd.padding[0][1];
+    CHECK(safe_dim_to_int(jcp.t_pad, cd.padding[0][0]));
+    CHECK(safe_dim_to_int(jcp.l_pad, cd.padding[0][1]));
 
-    jcp.stride_h = cd.strides[0];
-    jcp.stride_w = cd.strides[1];
+    CHECK(safe_dim_to_int(jcp.stride_h, cd.strides[0]));
+    CHECK(safe_dim_to_int(jcp.stride_w, cd.strides[1]));
 
-    jcp.dilate_h = cd.dilates[0];
-    jcp.dilate_w = cd.dilates[1];
+    CHECK(safe_dim_to_int(jcp.dilate_h, cd.dilates[0]));
+    CHECK(safe_dim_to_int(jcp.dilate_w, cd.dilates[1]));
 
     int ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
     int ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
@@ -310,29 +310,29 @@ status_t jit_uni_dw_conv_bwd_data_kernel_t<isa, kernel_dt>::init_conf(
             "non-grouped convolution in depthwise implementation");
 
     const int ndims = diff_src_d.ndims();
-    jcp.ngroups = weights_d.dims()[0];
-    jcp.mb = diff_src_d.dims()[0];
+    CHECK(safe_dim_to_int(jcp.ngroups, weights_d.dims()[0]));
+    CHECK(safe_dim_to_int(jcp.mb, diff_src_d.dims()[0]));
 
-    jcp.oc = diff_dst_d.dims()[1];
+    CHECK(safe_dim_to_int(jcp.oc, diff_dst_d.dims()[1]));
     jcp.oc_without_padding = jcp.oc;
-    jcp.ic = diff_src_d.dims()[1];
+    CHECK(safe_dim_to_int(jcp.ic, diff_src_d.dims()[1]));
 
-    jcp.ih = diff_src_d.dims()[2];
-    jcp.iw = diff_src_d.dims()[3];
-    jcp.oh = diff_dst_d.dims()[2];
-    jcp.ow = diff_dst_d.dims()[3];
+    CHECK(safe_dim_to_int(jcp.ih, diff_src_d.dims()[2]));
+    CHECK(safe_dim_to_int(jcp.iw, diff_src_d.dims()[3]));
+    CHECK(safe_dim_to_int(jcp.oh, diff_dst_d.dims()[2]));
+    CHECK(safe_dim_to_int(jcp.ow, diff_dst_d.dims()[3]));
 
-    jcp.kh = weights_d.dims()[3];
-    jcp.kw = weights_d.dims()[4];
+    CHECK(safe_dim_to_int(jcp.kh, weights_d.dims()[3]));
+    CHECK(safe_dim_to_int(jcp.kw, weights_d.dims()[4]));
 
-    jcp.t_pad = cd.padding[0][0];
-    jcp.l_pad = cd.padding[0][1];
+    CHECK(safe_dim_to_int(jcp.t_pad, cd.padding[0][0]));
+    CHECK(safe_dim_to_int(jcp.l_pad, cd.padding[0][1]));
 
-    jcp.stride_h = cd.strides[0];
-    jcp.stride_w = cd.strides[1];
+    CHECK(safe_dim_to_int(jcp.stride_h, cd.strides[0]));
+    CHECK(safe_dim_to_int(jcp.stride_w, cd.strides[1]));
 
-    jcp.dilate_h = cd.dilates[0];
-    jcp.dilate_w = cd.dilates[1];
+    CHECK(safe_dim_to_int(jcp.dilate_h, cd.dilates[0]));
+    CHECK(safe_dim_to_int(jcp.dilate_w, cd.dilates[1]));
 
     const int ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
     const int ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
@@ -484,10 +484,10 @@ status_t jit_uni_dw_conv_bwd_weights_kernel_t<isa, kernel_dt>::init_conf(
     VDISPATCH_CONV_IC(!(!mayiuse(isa) || (is_bf16 && !mayiuse(avx512_core))),
             VERBOSE_UNSUPPORTED_ISA);
 
-    jcp.ngroups = diff_weights_d.dims()[0];
-    jcp.oc = diff_dst_d.dims()[1] / jcp.ngroups;
-    jcp.oc_without_padding = diff_dst_d.dims()[1];
-    jcp.ic = src_d.dims()[1] / jcp.ngroups;
+    CHECK(safe_dim_to_int(jcp.ngroups, diff_weights_d.dims()[0]));
+    CHECK(safe_dim_to_int(jcp.oc, diff_dst_d.dims()[1] / jcp.ngroups));
+    CHECK(safe_dim_to_int(jcp.oc_without_padding, diff_dst_d.dims()[1]));
+    CHECK(safe_dim_to_int(jcp.ic, src_d.dims()[1] / jcp.ngroups));
 
     const bool with_groups = diff_weights_d.ndims() == src_d.ndims() + 1;
 
@@ -496,24 +496,24 @@ status_t jit_uni_dw_conv_bwd_weights_kernel_t<isa, kernel_dt>::init_conf(
     VDISPATCH_CONV_IC(jcp.is_depthwise, VERBOSE_UNSUPPORTED_FEATURE,
             "non-grouped convolution in depthwise implementation");
 
-    jcp.mb = src_d.dims()[0];
+    CHECK(safe_dim_to_int(jcp.mb, src_d.dims()[0]));
 
-    jcp.ih = src_d.dims()[2];
-    jcp.iw = src_d.dims()[3];
-    jcp.oh = diff_dst_d.dims()[2];
-    jcp.ow = diff_dst_d.dims()[3];
+    CHECK(safe_dim_to_int(jcp.ih, src_d.dims()[2]));
+    CHECK(safe_dim_to_int(jcp.iw, src_d.dims()[3]));
+    CHECK(safe_dim_to_int(jcp.oh, diff_dst_d.dims()[2]));
+    CHECK(safe_dim_to_int(jcp.ow, diff_dst_d.dims()[3]));
 
-    jcp.kh = diff_weights_d.dims()[3];
-    jcp.kw = diff_weights_d.dims()[4];
+    CHECK(safe_dim_to_int(jcp.kh, diff_weights_d.dims()[3]));
+    CHECK(safe_dim_to_int(jcp.kw, diff_weights_d.dims()[4]));
 
-    jcp.stride_h = cd.strides[0];
-    jcp.stride_w = cd.strides[1];
+    CHECK(safe_dim_to_int(jcp.stride_h, cd.strides[0]));
+    CHECK(safe_dim_to_int(jcp.stride_w, cd.strides[1]));
 
-    jcp.t_pad = cd.padding[0][0];
-    jcp.l_pad = cd.padding[0][1];
+    CHECK(safe_dim_to_int(jcp.t_pad, cd.padding[0][0]));
+    CHECK(safe_dim_to_int(jcp.l_pad, cd.padding[0][1]));
 
-    jcp.dilate_h = cd.dilates[0];
-    jcp.dilate_w = cd.dilates[1];
+    CHECK(safe_dim_to_int(jcp.dilate_h, cd.dilates[0]));
+    CHECK(safe_dim_to_int(jcp.dilate_w, cd.dilates[1]));
 
     jcp.with_bias = cd.diff_bias_desc.format_kind != format_kind::undef;
 

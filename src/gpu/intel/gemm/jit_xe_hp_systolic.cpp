@@ -32,6 +32,8 @@ namespace gemm {
 using namespace gemmstone;
 
 status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
+    VDEBUGINFO(4, primitive, gemm, "MY: xe_hp_systolic -->");
+
     using namespace prop_kind;
     using namespace data_type;
     using namespace primitive_kind;
@@ -43,13 +45,17 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
 
     VDISPATCH_GEMM(intel_engine->mayiuse_ngen_kernels(),
             VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "ngen kernels");
+    //VDEBUGINFO(4, primitive, gemm, "MY: xe_hp_systolic --");
     VDISPATCH_GEMM(intel_engine->mayiuse_large_grf_mode(),
             VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "large grf mode");
+    //VDEBUGINFO(4, primitive, gemm, "MY: xe_hp_systolic --");
 
     dev_info_ = intel_engine->device_info();
     auto arch = dev_info_->gpu_arch();
 
+    VDEBUGINFO(4, primitive, gemm, "MY: xe_hp_systolic call init_attr()");
     VDISPATCH_GEMM_SC(init_attrs(), VERBOSE_UNSUPPORTED_TAG);
+    //VDEBUGINFO(4, primitive, gemm, "MY: xe_hp_systolic --");
     const auto &d = desc();
 
     bool dt_float_ok = (d->a_type() == d->b_type()
@@ -73,16 +79,20 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
             = !utils::one_of(DNNL_RUNTIME_DIM_VAL, d->m(), d->n(), d->k());
 
     VDISPATCH_GEMM(limits_ok, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+    //VDEBUGINFO(4, primitive, gemm, "MY: xe_hp_systolic --");
 
     // Must check runtime dimensions before calling `set_default_formats` to
     // avoid undefined behavior.
     VDISPATCH_GEMM_SC(
             set_default_formats(d->a_type()), VERBOSE_UNSUPPORTED_TAG);
+    //VDEBUGINFO(4, primitive, gemm, "MY: xe_hp_systolic --");
 
     VDISPATCH_GEMM_SC(
             attr_.set_default_formats(dst_md(0)), VERBOSE_UNSUPPORTED_TAG);
+    VDEBUGINFO(4, primitive, gemm, "MY: xe_hp_systolic -- before VDISPATCH_GEMM(!use_nocopy(), VERBOSE_SKIP_PRIMITIVE_IMPL) ");
 
     VDISPATCH_GEMM(!use_nocopy(), VERBOSE_SKIP_PRIMITIVE_IMPL);
+    VDEBUGINFO(4, primitive, gemm, "MY: xe_hp_systolic --");
 
     // `set_default_formats` determines a/b/c packing, so it must be called
     // prior to this.
@@ -117,6 +127,7 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
                            utils::one_of(d->bias_type(), d->a_type(), f32)
                                    && d->bias_mask() < 8),
             VERBOSE_UNSUPPORTED_BIAS_CFG);
+    VDEBUGINFO(4, primitive, gemm, "MY: xe_hp_systolic --");
 
     // Limit scope of large buffer implementation support as the ability test
     // large buffers is limited by testing time.
@@ -128,14 +139,17 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
             VERBOSE_SHAPE_RESTRICTION);
 
     VDISPATCH_GEMM(scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+    VDEBUGINFO(4, primitive, gemm, "MY: xe_hp_systolic --");
 
     if (!attr()->zero_points_.has_default_values()) {
         VDISPATCH_GEMM(!attr()->zero_points_.has_host_scalars(),
                 VERBOSE_UNSUPPORTED_ZP_CFG);
         VDISPATCH_GEMM(zp_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
     }
+    VDEBUGINFO(4, primitive, gemm, "MY: xe_hp_systolic --");
 
     VDISPATCH_GEMM_SC(init_post_ops(), VERBOSE_UNSUPPORTED_POSTOP);
+    VDEBUGINFO(4, primitive, gemm, "MY: xe_hp_systolic --");
 
     if (dt_int_ok) {
         VDISPATCH_GEMM(IMPLICATION(a_zp_, !packed_b())
@@ -160,6 +174,7 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
     }
 
     init_scratchpad();
+    VDEBUGINFO(4, primitive, gemm, "MY: xe_hp_systolic <-- success");
 
     return status::success;
 }

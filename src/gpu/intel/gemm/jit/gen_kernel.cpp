@@ -338,6 +338,7 @@ status_t gen_desc_t::finalize(const char *tags) {
     strategy_.kInterleaveChunk
             = std::min(strategy_.kInterleaveChunk, (int)aux_params_.k0);
     if (strategy_.kInterleave) aux_params_.wgK = strategy_.wg[LoopK];
+    VDEBUGINFO(4, primitive, gemm, "MY: gen_desc_t::finalize : problem_.coPtrDims = %d, problem_.cOffset = %d", problem_.coPtrDims, int(problem_.cOffset));
     update_driver_info();
 
     return status::success;
@@ -387,6 +388,7 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
 
     // Set up problem structure.
     problem_ = problem;
+    VDEBUGINFO(4, primitive, gemm, "MY: select_kernel : after copy problem_.coPtrDims = %d, problem_.cOffset = %d", problem_.coPtrDims, int(problem_.cOffset));
 
     // Select a kernel from the catalog.
     std::vector<MatchParams> match_params;
@@ -574,12 +576,15 @@ status_t gen_nocopy_desc_t::finalize() {
 
     if (problem_.Ts == Type::invalid) problem_.Ts = problem_.Tc;
 
+    VDEBUGINFO(4, primitive, gemm, "MY: gen_nocopy_desc_t::finalize : before gen_desc_t::finalize, problem_.coPtrDims = %d, problem_.cOffset = %d", problem_.coPtrDims, int(problem_.cOffset));
     auto block_k = entry_->driverInfo.blocking[LoopK];
     problem_.beta = beta_;
     if (block_k > 0 && k_ > block_k && eval_params_.beta != 1.0f)
         problem_.beta = Scalar();
     evaluate(*entry_, eval_params_, aux_params_);
-    return gen_desc_t::finalize(tags_.c_str());
+    auto ret = gen_desc_t::finalize(tags_.c_str());
+    VDEBUGINFO(4, primitive, gemm, "MY: gen_nocopy_desc_t::finalize : after gen_desc_t::finalize, problem_.coPtrDims = %d, problem_.cOffset = %d", problem_.coPtrDims, int(problem_.cOffset));
+    return ret;
 }
 
 status_t gen_xe_systolic_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
@@ -820,7 +825,7 @@ void gen_kernel_t::init_interface() {
     }
     if (problem.hasCMXScale()) interface_.newArgument("ldcq", DataType::d);
 
-    VDEBUGINFO(4, primitive, gemm, "MY: gen_kernel : problem.cOffsetHostScalar() = %d", problem.cOffsetHostScalar());
+    //VDEBUGINFO(4, primitive, gemm, "MY: gen_kernel : problem.cOffsetHostScalar() = %d", problem.cOffsetHostScalar());
 
     if (problem.cOffset != COffset::None || problem.sumA || problem.sumB) {
         if (!problem.cOffsetHostScalar()) {
@@ -828,13 +833,13 @@ void gen_kernel_t::init_interface() {
             interface_.newArgument(
                     "CO", ExternalArgumentType::GlobalPtr, co_access);
         }
-        VDEBUGINFO(4, primitive, gemm, "MY: gen_kernel : newArg offset_CO");
+        //VDEBUGINFO(4, primitive, gemm, "MY: gen_kernel : newArg offset_CO");
         interface_.newArgument("offset_CO", DataType::q);
         if (problem.cOffset == COffset::Pre)
             interface_.newArgument("ldco", DataType::d);
     }
     if (problem.cOffsetHostScalar()) {
-        VDEBUGINFO(4, primitive, gemm, "MY: gen_kernel : newArg co_host_scalar");
+        //VDEBUGINFO(4, primitive, gemm, "MY: gen_kernel : newArg co_host_scalar");
         interface_.newArgument("co_host_scalar", DataType::w);
     }
     if (problem.postOps.cStochasticRound) {

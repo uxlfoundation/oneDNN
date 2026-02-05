@@ -66,6 +66,8 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
             && !nocopy_info()->kParallelVariable();
 
     auto problem = pd()->kernel_desc()->problem();
+    VDEBUGINFO(4, primitive, gemm, "MY: execute : problem->coPtrDims = %d, problem->cOffset = %d, cOffsetHostScalar() = %d", problem->coPtrDims, int(problem->cOffset), int(problem->cOffsetHostScalar()));
+    VDEBUGINFO(4, primitive, gemm, "MY: execute : problem->aoPtrDims = %d, problem->aOffset = %d, aOffsetHostScalar() = %d", problem->aoPtrDims, int(problem->aOffset), int(problem->aOffsetHostScalar()));
 
     if (!last_k_block) flags |= gemmstone::FlagNonfinalKBlock;
     if (cmask & 1) flags |= gemmstone::FlagCOColumn;
@@ -137,6 +139,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         arg_list.set(argn++, ldcq);
     }
 
+    VDEBUGINFO(4, primitive, gemm, "MY: launch : pd()->with_c_zero_points() = %d", pd()->with_c_zero_points());
     VDEBUGINFO(4, primitive, gemm, "MY: launch : problem->cOffsetHostScalar() = %d", problem->cOffsetHostScalar());
 
     if (pd()->with_c_zero_points() || pd()->with_bias()

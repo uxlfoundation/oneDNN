@@ -56,6 +56,7 @@ struct pd_t : public gemm::pd_t {
 
     // Assumes desc() was already initialized with default formats
     status_t init(impl::engine_t *engine) {
+        VDEBUGINFO(4, primitive, gemm, "MY: init ====>");
 
         with_sround_ = attr()->rounding_mode_.get(DNNL_ARG_DST)
                 == rounding_mode::stochastic;
@@ -65,6 +66,7 @@ struct pd_t : public gemm::pd_t {
         eff_transa_ = desc()->transa() == dnnl_trans;
         eff_transb_ = desc()->transb() == dnnl_trans;
 
+        VDEBUGINFO(4, primitive, gemm, "MY: init : call init_attrs()");
         VDISPATCH_GEMM_SC(init_attrs(), VERBOSE_UNSUPPORTED_TAG);
         VDISPATCH_GEMM(scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
         VDISPATCH_GEMM(zp_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
@@ -74,6 +76,7 @@ struct pd_t : public gemm::pd_t {
             std::swap(a_quant.gs_ndims, b_quant.gs_ndims);
         }
         VDISPATCH_GEMM_SC(init_post_ops(), VERBOSE_UNSUPPORTED_POSTOP);
+        VDEBUGINFO(4, primitive, gemm, "MY: init <==== success");
         return status::success;
     }
 
@@ -208,7 +211,8 @@ struct pd_t : public gemm::pd_t {
     bool with_a_zero_points() const { return (a_quant.zp_ndims >= 0); }
     bool with_b_zero_points() const { return (b_quant.zp_ndims >= 0); }
     bool with_c_zero_points() const {
-        return !attr()->zero_points_.has_default_values(DNNL_ARG_DST);
+// CCC        return !attr()->zero_points_.has_default_values(DNNL_ARG_DST);
+        return (c_quant.zp_ndims >= 0);
     }
 
     bool with_a_group_sums() const { return (a_quant.gs_ndims >= 0); }

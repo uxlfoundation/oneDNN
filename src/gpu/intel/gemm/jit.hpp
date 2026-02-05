@@ -45,6 +45,10 @@ struct gen_t : public primitive_t {
         DECLARE_COMMON_PD_T("jit:gemm:any", gen_t);
 
         status_t init(impl::engine_t *engine) {
+
+            VDEBUGINFO(4, primitive, gemm, "MY: jit init() ********** >>>");
+
+
             using namespace prop_kind;
             using namespace data_type;
             using namespace primitive_kind;
@@ -255,7 +259,11 @@ struct gen_t : public primitive_t {
                     VERBOSE_SHAPE_RESTRICTION);
 
             gemmstone::GEMMProblem problem;
+            VDEBUGINFO(4, primitive, gemm, "MY: jit init() : call init_GEMMProblem");
             CHECK(init_GEMMProblem(problem, intel_engine));
+
+            VDEBUGINFO(4, primitive, gemm, "MY: after init_GEMMProblem: problem.<a|b|c>oPtrDims = %d %d %d",problem.aoPtrDims,problem.boPtrDims,problem.coPtrDims);
+            VDEBUGINFO(4, primitive, gemm, "MY: after init_GEMMProblem: problem.<a|b|c>OffsetHostScalar() = %d %d %d",problem.aOffsetHostScalar(),problem.bOffsetHostScalar(),problem.cOffsetHostScalar());
 
             VDISPATCH_GEMM(IMPLICATION(problem.Tc == gemmstone::Type::f64,
                                    !with_eltwise && !with_binary),
@@ -355,6 +363,7 @@ struct gen_t : public primitive_t {
 
             init_scratchpad();
 
+            VDEBUGINFO(4, primitive, gemm, "MY: jit init() <<< ********** success");
             return status::success;
         }
 

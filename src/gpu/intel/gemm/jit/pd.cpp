@@ -37,8 +37,12 @@ namespace {
 // Obtain dimension count for gemmstone (common scales give count 0).
 int quant_entry_ndims(
         const quant_entry_t &entry, const memory_desc_t &qmd, int k_idx) {
+    //VDEBUGINFO(4, primitive, gemm, "MY: quant_entry_ndims: has_default=%d, qmd.ndims=%d, k_idx=%d", int(entry.has_default_values()), qmd.ndims, k_idx);
     if (entry.has_default_values()) return -1;
-    if (qmd.ndims < 2) return 0;
+    if (qmd.ndims < 2) {
+        //VDEBUGINFO(4, primitive, gemm, "MY: quant_entry_ndims: returning 0 because qmd.ndims=%d < 2", qmd.ndims);
+        return 0;
+    }
 
     // Count the number of nontrivial (dim > 1) dimensions present
     int count = 0;
@@ -211,6 +215,7 @@ bool pd_t::quant_enabled() {
 }
 
 status_t pd_t::init_attrs() {
+    VDEBUGINFO(4, primitive, gemm, "MY: init_attr ****>");
     wei_decomp_ = wei_decomp();
     dy_quant_enabled_ = dy_quant_enabled();
     quant_enabled_ = quant_enabled();
@@ -245,9 +250,12 @@ status_t pd_t::init_attrs() {
     CHECK(c_scales.get_md(c_scale_md_, desc_.c_desc));
 
     auto ndims = d->c_desc.ndims;
+    VDEBUGINFO(4, primitive, gemm, "MY: init_attr : a _ b _ c_quant.zp_ndims = %d %d %d (before =quant_entry_ndims)", a_quant.zp_ndims, b_quant.zp_ndims, c_quant.zp_ndims);
     a_quant.zp_ndims = quant_entry_ndims(a_zps, a_zp_md_, ndims - 2);
     b_quant.zp_ndims = quant_entry_ndims(b_zps, b_zp_md_, ndims - 1);
     c_quant.zp_ndims = quant_entry_ndims(c_zps, c_zp_md_, -1);
+    VDEBUGINFO(4, primitive, gemm, "MY: init_attr : a _ b _ c_quant.zp_ndims = %d %d %d (after =quant_entry_ndims)", a_quant.zp_ndims, b_quant.zp_ndims, c_quant.zp_ndims);
+
     a_quant.gs_ndims = quant_entry_ndims(a_gs, a_gs_md_, ndims - 2);
     b_quant.gs_ndims = quant_entry_ndims(b_gs, b_gs_md_, ndims - 1);
     a_quant.scale_ndims = quant_entry_ndims(a_scales, a_scale_md_, ndims - 2);
@@ -307,6 +315,8 @@ status_t pd_t::init_attrs() {
     }
     c_quant.zp_host_scalar = c_zp_host_scalar();
 
+    VDEBUGINFO(4, primitive, gemm, "MY: init_attr : a _ b _ c_quant.zp_host_scalar = %d %d %d ", a_quant.zp_host_scalar,b_quant.zp_host_scalar,c_quant.zp_host_scalar);
+    VDEBUGINFO(4, primitive, gemm, "MY: init_attr <**** success");
     return status::success;
 }
 
@@ -505,6 +515,9 @@ status_t transfer_post_ops(gemmstone::GEMMProblem &problem,
 
 status_t pd_t::init_GEMMProblem(
         gemmstone::GEMMProblem &problem, const intel::engine_t *engine) const {
+    VDEBUGINFO(4, primitive, gemm, "MY: init_GEMMProblem +++++++++++>");
+    VDEBUGINFO(4, primitive, gemm, "MY: init_GEMMProblem CALLED: this=%p", (void*)this);
+    //VDEBUGINFO(4, primitive, gemm, "MY: init_GEMMProblem : will call with_c_zero_points() = %d", int(with_c_zero_points()));
     // Set up problem structure.
     using namespace gemmstone;
     problem = {};
@@ -577,6 +590,9 @@ status_t pd_t::init_GEMMProblem(
 
     jit::quant_params a_quant = this->a_quant;
     jit::quant_params b_quant = this->b_quant;
+
+    VDEBUGINFO(4, primitive, gemm, "MY: init_GEMProblem :  c_offset = with_c_zero_points() = %d", c_offset);
+    VDEBUGINFO(4, primitive, gemm, "MY: init_GEMProblem :  c_quant.zp_ndims = %d", this->c_quant.zp_ndims);
 
     if (swap_ab()) {
         std::swap(a_quant, b_quant);
@@ -675,7 +691,11 @@ status_t pd_t::init_GEMMProblem(
 
     CHECK(transfer_post_ops(problem, std::move(gpu_post_ops), swap_ab()));
 
+    VDEBUGINFO(4, primitive, gemm, "MY: init_GEMMProblem : problem.coPtrDims = %d",problem.coPtrDims);
+    VDEBUGINFO(4, primitive, gemm, "MY: init_GEMMProblem : c_offset = %d",c_offset);
+
     if (c_offset || bias || reduce_ab != sum_ab::sum_none) {
+//    if (c_offset || c_quant.zp_host_scalar || bias || reduce_ab != sum_ab::sum_none) {
         assert(!(c_offset && bias));
         if (bias) problem.cOffset = COffset::Pre;
         if (c_offset) problem.cOffset = COffset::Post;
@@ -683,6 +703,7 @@ status_t pd_t::init_GEMMProblem(
         problem.CO.alignment = problem.C.alignment;
         problem.CO.layout = trans_co ? MatrixLayout::T : MatrixLayout::N;
         problem.coPtrDims = c_quant.zp_host_scalar ? -1 : c_quant.zp_ndims;
+        VDEBUGINFO(4, primitive, gemm, "MY: init_GEMMProblem : modified problem.coPtrDims = %d",problem.coPtrDims);
     }
 
     problem.sumA = (reduce_ab == sum_ab::sum_b_col);
@@ -715,6 +736,13 @@ status_t pd_t::init_GEMMProblem(
         if (problem.aqGroupK == 0) problem.aqGroupK = problem.bqGroupK;
         if (problem.bqGroupK == 0) problem.bqGroupK = problem.aqGroupK;
     }
+
+    problem.aoPtrDims = a_quant.zp_host_scalar ? -1 : a_quant.zp_ndims;
+    VDEBUGINFO(4, primitive, gemm, "MY: init_GEMMProblem (exit): a b c quant.zp_ndims = %d %d %d",a_quant.zp_ndims,b_quant.zp_ndims,c_quant.zp_ndims);
+    VDEBUGINFO(4, primitive, gemm, "MY: init_GEMMProblem (exit): a b c quant.zp_host_scalar = %d %d %d",a_quant.zp_host_scalar,b_quant.zp_host_scalar,c_quant.zp_host_scalar);
+    VDEBUGINFO(4, primitive, gemm, "MY: init_GEMMProblem (exit): problem.<a|b|c>oPtrDims = %d %d %d",problem.aoPtrDims,problem.boPtrDims,problem.coPtrDims);
+    VDEBUGINFO(4, primitive, gemm, "MY: init_GEMMProblem (exit): problem.<a|b|c>OffsetHostScalar() = %d %d %d",problem.aOffsetHostScalar(),problem.bOffsetHostScalar(),problem.cOffsetHostScalar());
+    VDEBUGINFO(4, primitive, gemm, "MY: init_GEMMProblem <+++++++++++ success");
     return status::success;
 }
 

@@ -404,6 +404,8 @@ status_t get_devices(std::vector<cl_device_id> *devices,
 
 status_t get_device_index(size_t *index, cl_device_id device);
 
+status_t get_extensions(cl_device_id dev, std::string &ext);
+
 cl_platform_id get_platform(cl_device_id device);
 cl_platform_id get_platform(engine_t *engine);
 

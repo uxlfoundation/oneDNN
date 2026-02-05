@@ -96,10 +96,21 @@ struct rvv_layer_normalization_fwd_t : public primitive_t {
 
         std::shared_ptr<primitive_desc_t> reorder_pd_;
         memory_desc_t reordered_stat_md_;
+        // The current RVV JIT kernel targets f32 forward paths with scale enabled.
+        // For shift-only or no-flag paths, the existing RVV non-JIT implementation
+        // is more stable and is kept as the default fallback.
+        // We also gate JIT usage by norm_axis() (C dimension) to avoid performance
+        // regressions on large-C cases.
+        // The current threshold is based on CI-validated performance results and
+        // can be revisited with further analysis.
         bool use_jit_ = false;
 
     private:
         void init_jit_conf() {
+            // Enable JIT only for the following cases:
+            //   1) use_scale && !use_shift  (C)
+            //   2) use_scale && use_shift   (CH)
+            // Other paths are intentionally excluded to avoid performance regressions.
             const dim_t jit_norm_axis_threshold = 512;
             const unsigned flags = desc()->flags;
             const bool use_scale = flags & dnnl_use_scale;

@@ -8,6 +8,8 @@
 * Improved matmul performance for cases with 4-byte alignment on Intel GPUs based on Xe2 architecture.
 * Improved performance of `fp16`/`bf16` matmul with `mxfp4` weights.
 * Improved convolution performance with host-side scalar scales and zero points.
+* Improved matmul performance for LLM inference workloads on Xe2/Xe3 architectures.
+* Improved `f32` SDPA performance for small head sizes.
 
 ## AArch64 Processors
 * Improved performance of `bf16` matmul.
@@ -43,7 +45,8 @@
 
 ## Intel Graphics
 * Introduced support for convolution with `u8` weights.
-* Introduced support for 2D grouped scales in `fp8` matmul.
+* Introduced support for 2D grouped scales in `fp8` and dual zero points in matmul.
+* Extended support for 5D and 6D tensors in matmul with post-ops.
 
 ## Intel 64/AMD64 Processors
 * Introduced support for different data types of source and destination in pooling forward propagation.

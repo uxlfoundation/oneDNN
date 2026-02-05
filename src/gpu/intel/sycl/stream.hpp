@@ -76,6 +76,11 @@ struct stream_t : public gpu::intel::stream_t {
         return profiler_->get_info(data_kind, num_entries, data);
     }
 
+    status_t init_verbose_profiler(uint64_t &last_entry) const override;
+
+    status_t run_verbose_profiler(std::string &pd_info, double start_ms,
+            uint64_t &last_entry) const override;
+
     ::sycl::queue &queue() const { return *impl()->queue(); }
 
     status_t enqueue_primitive(const primitive_iface_t *prim_iface,

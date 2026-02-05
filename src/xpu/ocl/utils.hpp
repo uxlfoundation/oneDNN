@@ -23,8 +23,6 @@
 
 #include "common/c_types_map.hpp"
 #include "common/cpp_compat.hpp"
-#include "common/utils.hpp"
-#include "common/verbose.hpp"
 
 #include "xpu/utils.hpp"
 
@@ -393,6 +391,9 @@ private:
 };
 
 std::string get_kernel_name(cl_kernel kernel);
+
+bool is_intel_platform(cl_platform_id platform);
+std::string get_platform_name(cl_platform_id platform);
 
 status_t get_devices(std::vector<cl_device_id> *devices,
         cl_device_type device_type, cl_uint vendor_id = 0x8086);

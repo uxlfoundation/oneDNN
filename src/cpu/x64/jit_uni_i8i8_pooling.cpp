@@ -1279,28 +1279,28 @@ status_t jit_uni_i8i8_pooling_fwd_ker_t<isa>::init_conf(
     const bool is_1d = ndims == 3;
     const bool is_3d = ndims == 5;
 
-    jpp.mb = src_d.dims()[0];
-    jpp.c = src_d.dims()[1];
+    CHECK(safe_dim_to_int(jpp.mb, src_d.dims()[0]));
+    CHECK(safe_dim_to_int(jpp.c, src_d.dims()[1]));
 
-    jpp.id = is_3d ? src_d.dims()[ndims - 3] : 1;
-    jpp.ih = is_1d ? 1 : src_d.dims()[ndims - 2];
-    jpp.iw = src_d.dims()[ndims - 1];
+    CHECK(safe_dim_to_int(jpp.id, is_3d ? src_d.dims()[ndims - 3] : 1));
+    CHECK(safe_dim_to_int(jpp.ih, is_1d ? 1 : src_d.dims()[ndims - 2]));
+    CHECK(safe_dim_to_int(jpp.iw, src_d.dims()[ndims - 1]));
 
-    jpp.od = is_3d ? dst_d.dims()[ndims - 3] : 1;
-    jpp.oh = is_1d ? 1 : dst_d.dims()[ndims - 2];
-    jpp.ow = dst_d.dims()[ndims - 1];
+    CHECK(safe_dim_to_int(jpp.od, is_3d ? dst_d.dims()[ndims - 3] : 1));
+    CHECK(safe_dim_to_int(jpp.oh, is_1d ? 1 : dst_d.dims()[ndims - 2]));
+    CHECK(safe_dim_to_int(jpp.ow, dst_d.dims()[ndims - 1]));
 
-    jpp.stride_d = is_3d ? pd.strides[ndims - 5] : 1;
-    jpp.stride_h = is_1d ? 1 : pd.strides[ndims - 4];
-    jpp.stride_w = pd.strides[ndims - 3];
+    CHECK(safe_dim_to_int(jpp.stride_d, is_3d ? pd.strides[ndims - 5] : 1));
+    CHECK(safe_dim_to_int(jpp.stride_h, is_1d ? 1 : pd.strides[ndims - 4]));
+    CHECK(safe_dim_to_int(jpp.stride_w, pd.strides[ndims - 3]));
 
-    jpp.kd = is_3d ? pd.kernel[ndims - 5] : 1;
-    jpp.kh = is_1d ? 1 : pd.kernel[ndims - 4];
-    jpp.kw = pd.kernel[ndims - 3];
+    CHECK(safe_dim_to_int(jpp.kd, is_3d ? pd.kernel[ndims - 5] : 1));
+    CHECK(safe_dim_to_int(jpp.kh, is_1d ? 1 : pd.kernel[ndims - 4]));
+    CHECK(safe_dim_to_int(jpp.kw, pd.kernel[ndims - 3]));
 
-    jpp.f_pad = is_3d ? pd.padding[0][ndims - 5] : 0;
-    jpp.t_pad = is_1d ? 0 : pd.padding[0][ndims - 4];
-    jpp.l_pad = pd.padding[0][ndims - 3];
+    CHECK(safe_dim_to_int(jpp.f_pad, is_3d ? pd.padding[0][ndims - 5] : 0));
+    CHECK(safe_dim_to_int(jpp.t_pad, is_1d ? 0 : pd.padding[0][ndims - 4]));
+    CHECK(safe_dim_to_int(jpp.l_pad, pd.padding[0][ndims - 3]));
 
     int back_pad = calculate_end_padding(
             jpp.f_pad, jpp.od, jpp.id, jpp.stride_d, jpp.kd);

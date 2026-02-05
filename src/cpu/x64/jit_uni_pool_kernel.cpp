@@ -197,17 +197,18 @@ status_t jit_uni_pool_kernel_t<isa>::init_conf(
     jpp.is_training = pd.prop_kind == prop_kind::forward_training;
     jpp.is_backward = pd.prop_kind == prop_kind::backward_data;
 
-    jpp.id = (ndims == 5) ? src_d.dims()[2] : 1;
-    jpp.ih = (ndims == 3) ? 1 : src_d.dims()[ndims - 2];
-    jpp.iw = src_d.dims()[ndims - 1];
-    jpp.od = (ndims == 5) ? dst_d.dims()[2] : 1;
-    jpp.ow = dst_d.dims()[ndims - 1];
-    jpp.oh = (ndims == 3) ? 1 : dst_d.dims()[ndims - 2];
+    using utils::safe_dim_to_int;
+    CHECK(safe_dim_to_int(jpp.id, (ndims == 5) ? src_d.dims()[2] : 1));
+    CHECK(safe_dim_to_int(jpp.ih, (ndims == 3) ? 1 : src_d.dims()[ndims - 2]));
+    CHECK(safe_dim_to_int(jpp.iw, src_d.dims()[ndims - 1]));
+    CHECK(safe_dim_to_int(jpp.od, (ndims == 5) ? dst_d.dims()[2] : 1));
+    CHECK(safe_dim_to_int(jpp.ow, dst_d.dims()[ndims - 1]));
+    CHECK(safe_dim_to_int(jpp.oh, (ndims == 3) ? 1 : dst_d.dims()[ndims - 2]));
 
     const bool is_avx512 = is_superset(isa, avx512_core);
     jpp.ndims = ndims;
-    jpp.mb = src_d.dims()[0];
-    jpp.c_without_padding = src_d.dims()[1];
+    CHECK(safe_dim_to_int(jpp.mb, src_d.dims()[0]));
+    CHECK(safe_dim_to_int(jpp.c_without_padding, src_d.dims()[1]));
     jpp.c_block = is_avx512 ? 16 : 8;
 
     jpp.alg = pd.alg_kind;
@@ -356,16 +357,18 @@ status_t jit_uni_pool_kernel_t<isa>::init_conf(
     jpp.is_c_padded = jpp.tag_kind == jit_memory_tag_kind_t::blocked
             && src_d.padded_dims()[1] != jpp.c_without_padding;
 
-    jpp.stride_d = (ndims == 5) ? pd.strides[0] : 1;
-    jpp.stride_h = (ndims == 3) ? 1 : pd.strides[ndims - 4];
-    jpp.stride_w = pd.strides[ndims - 3];
-    jpp.kd = (ndims == 5) ? pd.kernel[0] : 1;
-    jpp.kh = (ndims == 3) ? 1 : pd.kernel[ndims - 4];
-    jpp.kw = pd.kernel[ndims - 3];
+    CHECK(safe_dim_to_int(jpp.stride_d, (ndims == 5) ? pd.strides[0] : 1));
+    CHECK(safe_dim_to_int(
+            jpp.stride_h, (ndims == 3) ? 1 : pd.strides[ndims - 4]));
+    CHECK(safe_dim_to_int(jpp.stride_w, pd.strides[ndims - 3]));
+    CHECK(safe_dim_to_int(jpp.kd, (ndims == 5) ? pd.kernel[0] : 1));
+    CHECK(safe_dim_to_int(jpp.kh, (ndims == 3) ? 1 : pd.kernel[ndims - 4]));
+    CHECK(safe_dim_to_int(jpp.kw, pd.kernel[ndims - 3]));
 
-    jpp.f_pad = (ndims == 5) ? pd.padding[0][0] : 0;
-    jpp.t_pad = (ndims == 3) ? 0 : pd.padding[0][ndims - 4];
-    jpp.l_pad = pd.padding[0][ndims - 3];
+    CHECK(safe_dim_to_int(jpp.f_pad, (ndims == 5) ? pd.padding[0][0] : 0));
+    CHECK(safe_dim_to_int(
+            jpp.t_pad, (ndims == 3) ? 0 : pd.padding[0][ndims - 4]));
+    CHECK(safe_dim_to_int(jpp.l_pad, pd.padding[0][ndims - 3]));
 
     const int back_pad = calculate_end_padding(
             jpp.f_pad, jpp.od, jpp.id, jpp.stride_d, jpp.kd);

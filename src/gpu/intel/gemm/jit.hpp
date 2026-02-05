@@ -590,13 +590,14 @@ private:
             const memory_storage_t *a_scales, const memory_storage_t *b_scales,
             const memory_storage_t *c_scales, const memory_storage_t *ag,
             const memory_storage_t *bg, const memory_storage_t &co,
-            const memory_storage_t *c_temp, const memory_storage_t *sround_seed,
-            int po_count, const memory_storage_t **po_src, int64_t offset_a,
-            int64_t offset_b, int64_t offset_c, int64_t offset_aq,
-            int64_t offset_bq, int64_t offset_co, int64_t *offset_po_src,
-            int32_t lda, int32_t ldb, int32_t ldc, int32_t m, int32_t n,
-            int32_t k, int32_t k0, float alpha, float beta, int32_t cmask,
-            bool last_k_block, bool swap_ab, bool disable_hilbert) const;
+            int16_t co_host_scalar, const memory_storage_t *c_temp,
+            const memory_storage_t *sround_seed, int po_count,
+            const memory_storage_t **po_src, int64_t offset_a, int64_t offset_b,
+            int64_t offset_c, int64_t offset_aq, int64_t offset_bq,
+            int64_t offset_co, int64_t *offset_po_src, int32_t lda, int32_t ldb,
+            int32_t ldc, int32_t m, int32_t n, int32_t k, int32_t k0,
+            float alpha, float beta, int32_t cmask, bool last_k_block,
+            bool swap_ab, bool disable_hilbert) const;
 
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     const gemmstone::CommonDriverInfo *nocopy_info() const {

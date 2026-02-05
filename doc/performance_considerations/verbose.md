@@ -119,6 +119,60 @@ Please see the profiling example [here](@ref performance_profiling_cpp), as it
 uses ONEDNN_VERBOSE output to tune oneDNN code to align with
 [best practices](@ref dev_guide_inference).
 
+#### Asynchronous Verbose Mode for GPU engines
+
+When oneDNN verbose mode is enabled for primitive execution profiling, the 
+execution time for synchronous runtimes is calculated based on the wall time 
+measured before and after primitive execution. 
+For GPU runtimes, which are generally asynchronous, using synchronizing 
+methodology can lead to additional overhead due to host-to-device stream 
+synchronization on entry and on exit in the `dnnl::primitive::execute()` call.
+
+To ensure accurate tracking of timing information for GPU runtimes, the verbose 
+mode uses a non-blocking approach which prints device-measured 
+times for primitive execution instead of relying on the wall time 
+measurements. Asynchronous profiling is currently supported only for OpenCL 
+and SYCL GPU runtimes and can be optionally disabled by using 
+`ONEDNN_VERBOSE_USE_SYNC=1` environment variable:
+
+##### Example Output (with the asynchronous mode enabled):
+~~~sh
+DNNL_VERBOSE=profile_exec DNNL_VERBOSE_USE_SYNC=0 ./examples/primitives-matmul-cpp gpu
+~~~
+
+~~~sh
+onednn_verbose,v1,info,oneDNN v3.12.0 (commit 2412df2393c02cff88fe6169ce8cf84ea1a5b8e3)
+onednn_verbose,v1,info,cpu,runtime:OpenMP,nthr:24
+onednn_verbose,v1,info,cpu,isa:Intel AVX2 with Intel DL Boost
+onednn_verbose,v1,info,gpu,runtime:OpenCL
+onednn_verbose,v1,info,gpu,engine,opencl device count:1 
+onednn_verbose,v1,info,gpu,engine,0,name:Intel(R) UHD Graphics 770,driver_version:24.35.30872,binary_kernels:enabled
+onednn_verbose,v1,info,graph,backend,0:dnnl_backend
+onednn_verbose,v1,primitive,info,template:operation,engine,primitive,implementation,prop_kind,memory_descriptors,attributes,auxiliary,problem_desc,exec_time
+onednn_verbose,v1,graph,info,template:operation,engine,partition_id,partition_kind,op_names,data_formats,logical_tensors,fpmath_mode,implementation,backend,exec_time
+onednn_verbose,v1,primitive,exec,gpu,matmul,ocl:with_po:any,undef,src:f32::blocked:abc::f0 wei:f32::blocked:abc::f0 bia:f32::blocked:abc::f0_mask4 dst:f32::blocked:abc::f0,attr-post-ops:eltwise_relu,,3x128x256:3x256x512,0.313593
+Example passed on GPU.
+~~~
+
+##### Example Output (with the asynchronous mode disabled):
+~~~sh
+DNNL_VERBOSE=profile_exec DNNL_VERBOSE_USE_SYNC=1 ./examples/primitives-matmul-cpp gpu
+~~~
+
+~~~sh
+onednn_verbose,v1,info,oneDNN v3.12.0 (commit 2412df2393c02cff88fe6169ce8cf84ea1a5b8e3)
+onednn_verbose,v1,info,cpu,runtime:OpenMP,nthr:24
+onednn_verbose,v1,info,cpu,isa:Intel AVX2 with Intel DL Boost
+onednn_verbose,v1,info,gpu,runtime:OpenCL
+onednn_verbose,v1,info,gpu,engine,opencl device count:1 
+onednn_verbose,v1,info,gpu,engine,0,name:Intel(R) UHD Graphics 770,driver_version:24.35.30872,binary_kernels:enabled
+onednn_verbose,v1,info,graph,backend,0:dnnl_backend
+onednn_verbose,v1,primitive,info,template:operation,engine,primitive,implementation,prop_kind,memory_descriptors,attributes,auxiliary,problem_desc,exec_time
+onednn_verbose,v1,graph,info,template:operation,engine,partition_id,partition_kind,op_names,data_formats,logical_tensors,fpmath_mode,implementation,backend,exec_time
+onednn_verbose,v1,primitive,exec,gpu,matmul,ocl:with_po:any,undef,src:f32::blocked:abc::f0 wei:f32::blocked:abc::f0 bia:f32::blocked:abc::f0_mask4 dst:f32::blocked:abc::f0,attr-post-ops:eltwise_relu,,3x128x256:3x256x512,1.03589
+Example passed on GPU.
+~~~
+
 ### Understanding why a given implementation is dispatched
 
 When performance is lower than expected, it is usually likely due to
@@ -231,12 +285,6 @@ where:
    memory is dense, the field will be empty.
 5. `extra_flags` is unspecified information that is intended for development
    purposes.
-
-@note
-When oneDNN verbose mode is enabled with GPU engines, oneDNN adds extra stream
-synchronization on entry and on exit in the dnnl::primitive::execute() call.
-The execution time is calculated based on wall time measured before and after
-primitive execution.
 
 @note
 When oneDNN verbose mode is enabled for builds with

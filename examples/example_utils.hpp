@@ -191,7 +191,13 @@ inline dnnl::memory::dim product(const dnnl::memory::dims &dims) {
 }
 
 // Read from memory, write to handle
-inline void read_from_dnnl_memory(void *handle, dnnl::memory &mem) {
+inline void read_from_dnnl_memory(
+        void *handle, dnnl::memory &mem, int buffer_index = 0) {
+    if (buffer_index != 0)
+        throw std::runtime_error(
+                "buffer_index other than 0 is not supported in "
+                "read_from_dnnl_memory yet.");
+
     dnnl::engine eng = mem.get_engine();
     size_t size = mem.get_desc().get_size();
 
@@ -250,9 +256,10 @@ inline void read_from_dnnl_memory(void *handle, dnnl::memory &mem) {
 }
 
 // Read from handle, write to memory
-inline void write_to_dnnl_memory(void *handle, dnnl::memory &mem) {
+inline void write_to_dnnl_memory(
+        void *handle, dnnl::memory &mem, int buffer_index = 0) {
     dnnl::engine eng = mem.get_engine();
-    size_t size = mem.get_desc().get_size();
+    size_t size = mem.get_desc().get_size(buffer_index);
 
     if (!handle) throw std::runtime_error("handle is nullptr.");
 
@@ -273,7 +280,7 @@ inline void write_to_dnnl_memory(void *handle, dnnl::memory &mem) {
                 dst_ptr[i] = ((uint8_t *)handle)[i];
         } else {
             assert(mkind == dnnl::sycl_interop::memory_kind::usm);
-            uint8_t *dst_ptr = (uint8_t *)mem.get_data_handle();
+            uint8_t *dst_ptr = (uint8_t *)mem.get_data_handle(buffer_index);
             if (!dst_ptr)
                 throw std::runtime_error("get_data_handle returned nullptr.");
             if (is_cpu_sycl) {
@@ -290,15 +297,16 @@ inline void write_to_dnnl_memory(void *handle, dnnl::memory &mem) {
 #endif
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     if (eng.get_kind() == dnnl::engine::kind::gpu) {
-        void *mapped_ptr = mem.map_data();
+        void *mapped_ptr = mem.map_data(buffer_index);
         if (mapped_ptr) std::memcpy(mapped_ptr, handle, size);
-        mem.unmap_data(mapped_ptr);
+        mem.unmap_data(mapped_ptr, buffer_index);
         return;
     }
 #endif
 
     if (eng.get_kind() == dnnl::engine::kind::cpu) {
-        uint8_t *dst = static_cast<uint8_t *>(mem.get_data_handle());
+        uint8_t *dst
+                = static_cast<uint8_t *>(mem.get_data_handle(buffer_index));
         if (!dst) throw std::runtime_error("get_data_handle returned nullptr.");
         for (size_t i = 0; i < size; ++i)
             dst[i] = ((uint8_t *)handle)[i];

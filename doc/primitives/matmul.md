@@ -182,89 +182,6 @@ memory buffer that shares its shape with the destination buffer).
 @note Check the [list of examples and tutorials](#examples) below to see
 run-time attributes in use.
 
-### Sparsity
-
-#### CSR encoding
-
-Supported only for the CPU engine. Only one of the input tensors can be sparse.
-The output tensor is always dense.
-
-The following data type combinations are supported:
-
-| Values (src, weight, dst)   | Indices  |
-|:----------------------------|:---------|
-| f16, f16, f16               | s32      |
-| f32, f32, f32               | s32      |
-
-The following format tags are supported for dense input/output
-tensors:
-
-* ab
-
-@note Check the example @ref cpu_matmul_csr_cpp.
-
-Benchdnn can be used to test matmul with a CSR input tensor as follows:
-`./benchdnn --matmul --encoding=csr+0.99:: --wtag=ab --dtag=ab 4x1000000:1000000x128`
-
-For the case above, the number of non-zero elements for the source tensor is
-calculated as `max(4 * 1000000 * (1 - 0.99), 1)`.
-
-#### COO encoding
-
-Supported only for the CPU and GPU engines. Only one of the input tensors can
-be sparse. The output tensor is always dense.
-
-The following data type combinations are supported:
-
-| Values (src, weight, dst)   | Indices  |
-|:----------------------------|:---------|
-| f16, f16, f16               | s32      |
-| f32, f32, f32               | s32      |
-
-The following format tags are supported for dense weights tensor:
-
-* ab
-* ba
-
-The following format tags are supported for dense destination tensor:
-
-* ab
-
-@note Check the example @ref cpu_matmul_coo_cpp.
-
-Benchdnn can be used to test matmul with a COO input tensor as follows:
-`./benchdnn --matmul --encoding=coo+0.99:: --wtag=ab --dtag=ab 4x1000000:1000000x128`
-
-For the case above, the number of non-zero elements for the source tensor is
-calculated as `max(4 * 1000000 * (1 - 0.99), 1)`.
-
-#### PACKED encoding
-
-Only the weights tensor is allowed to be sparse. The other tensors
-are always dense.
-
-In general, it is expected that all matmul related functionality (e.g. post-ops,
-scales, zero-points, etc) that is supported for the dense weights should
-also work for the sparse weights.
-
-Currently, matmul has the following limitations for the PACKED encoding:
-* Supported only for the CPU engine
-* Only Intel Advanced Matrix Extensions (Intel AMX) instruction set
-architecture (ISA) is supported
-* Only `s8` data type for the weights is supported
-* Only 1 batch dimension is supported
-
-@note Check the example @ref cpu_matmul_weights_compression_cpp.
-
-Benchdnn can be used to test matmul with the PACKED weights tensor as follows:
-`./benchdnn --matmul --dt=s8:s8:s32 --encoding=:packed+0.99: 3x512x1024:1x1024x512`
-
-For the case above, the number of non-zero elements for the weights tensor is
-calculated as `max(1024 * 512 * (1 - 0.99), 1)`.
-
-Refer to [Sparsity Advanced Topic](@ref dev_guide_sparsity) page for more
-information on sparse encoding.
-
 ## Implementation Limitations
 
 1. Check @ref dev_guide_data_types.
@@ -303,6 +220,199 @@ information on sparse encoding.
   during the subsequent passes. However, if any of the input tensors cannot be
   reused, it is best to force the primitive to use the same format as that used
   by the tensors.
+
+@anchor dev_guide_matmul_grouped_gemm
+
+## Sparse Matrix Multiplication Support
+
+### CSR encoding
+
+Supported only for the CPU engine. Only one of the input tensors can be sparse.
+The output tensor is always dense.
+
+The following data type combinations are supported:
+
+| Values (src, weight, dst)   | Indices  |
+|:----------------------------|:---------|
+| f16, f16, f16               | s32      |
+| f32, f32, f32               | s32      |
+
+The following format tags are supported for dense input/output
+tensors:
+
+* ab
+
+@note Check the example @ref cpu_matmul_csr_cpp.
+
+Benchdnn can be used to test matmul with a CSR input tensor as follows:
+`./benchdnn --matmul --encoding=csr+0.99:: --wtag=ab --dtag=ab 4x1000000:1000000x128`
+
+For the case above, the number of non-zero elements for the source tensor is
+calculated as `max(4 * 1000000 * (1 - 0.99), 1)`.
+
+### COO encoding
+
+Supported only for the CPU and GPU engines. Only one of the input tensors can
+be sparse. The output tensor is always dense.
+
+The following data type combinations are supported:
+
+| Values (src, weight, dst)   | Indices  |
+|:----------------------------|:---------|
+| f16, f16, f16               | s32      |
+| f32, f32, f32               | s32      |
+
+The following format tags are supported for dense weights tensor:
+
+* ab
+* ba
+
+The following format tags are supported for dense destination tensor:
+
+* ab
+
+@note Check the example @ref cpu_matmul_coo_cpp.
+
+Benchdnn can be used to test matmul with a COO input tensor as follows:
+`./benchdnn --matmul --encoding=coo+0.99:: --wtag=ab --dtag=ab 4x1000000:1000000x128`
+
+For the case above, the number of non-zero elements for the source tensor is
+calculated as `max(4 * 1000000 * (1 - 0.99), 1)`.
+
+### PACKED encoding
+
+Only the weights tensor is allowed to be sparse. The other tensors
+are always dense.
+
+In general, it is expected that all matmul related functionality (e.g. post-ops,
+scales, zero-points, etc) that is supported for the dense weights should
+also work for the sparse weights.
+
+Currently, matmul has the following limitations for the PACKED encoding:
+* Supported only for the CPU engine
+* Only Intel Advanced Matrix Extensions (Intel AMX) instruction set
+architecture (ISA) is supported
+* Only `s8` data type for the weights is supported
+* Only 1 batch dimension is supported
+
+@note Check the example @ref cpu_matmul_weights_compression_cpp.
+
+Benchdnn can be used to test matmul with the PACKED weights tensor as follows:
+`./benchdnn --matmul --dt=s8:s8:s32 --encoding=:packed+0.99: 3x512x1024:1x1024x512`
+
+For the case above, the number of non-zero elements for the weights tensor is
+calculated as `max(1024 * 512 * (1 - 0.99), 1)`.
+
+Refer to [Sparsity Advanced Topic](@ref dev_guide_sparsity) page for more
+information on sparse encoding.
+
+## Grouped GEMM Support
+
+@note This is an [experimental feature](@ref dev_guide_experimental). Build oneDNN
+with `ONEDNN_EXPERIMENTAL_GROUPED_MEMORY=ON` to enable grouped GEMM support.
+
+Grouped GEMM enables matrix multiplication when one dimension varies across
+groups, as occurs in Mixture-of-Experts (MoE) models where tokens are dynamically
+routed to different experts.
+
+The computation for grouped GEMM with \f$G\f$ groups is defined as:
+
+\f[
+    \dst_g(m, n) =
+        \sum_{k=0}^{K - 1}
+            \src_g(m, k) \cdot \weights_g(k, n)
+        , \quad g = 0, \ldots, G-1
+\f]
+
+where \f$m \in [0, M_g)\f$ and \f$M_g\f$ is the number of rows in group \f$g\f$.
+
+The source and destination tensors use [grouped memory format](@ref dev_guide_grouped_mem)
+because the number of tokens per expert varies dynamically in MoE workloads. The
+grouped encoding stores values as concatenated buffers with an offsets array specifying
+group boundaries. Weights are represented as a regular dense 3D tensor
+`[num_groups, K, N]` because all experts have uniform dimensions, making grouped
+encoding unnecessary.
+
+### Code Snippet
+
+~~~cpp
+const memory::dim num_groups = 4;
+const memory::dim K = 512, N = 256;
+
+// MoE routing result:
+// Expert 0: 800 tokens
+// Expert 1: 600 tokens
+// Expert 2: 0 tokens
+// Expert 3: 950 tokens
+const memory::dim total_tokens = 2350;  // Sum of all token counts
+
+// Source: grouped encoding for variable M dimension
+// Descriptor: [total_tokens, K] with grouped encoding
+// Memory layout: [expert0_tokens | expert1_tokens | expert2_tokens | expert3_tokens]
+auto src_md = memory::desc::grouped(
+    {total_tokens, K}, memory::data_type::f32,
+    0, num_groups);  // dimension 0 (M) varies per group
+
+// Weights: standard 3D dense tensor [num_groups, K, N]
+// Each expert has its own K by N weight matrix
+auto weights_md = memory::desc({num_groups, K, N},
+    memory::data_type::f32, memory::format_tag::abc);
+
+// Destination: grouped encoding matching source structure
+auto dst_md = memory::desc::grouped(
+    {total_tokens, N}, memory::data_type::f32,
+    0, num_groups);
+
+auto matmul_pd = matmul::primitive_desc(engine, src_md, weights_md, dst_md);
+
+// Offsets mark the boundary of each expert's tokens
+// Format: [end_expert0, end_expert1, end_expert2, end_expert3]
+std::vector<int32_t> offsets = {800, 1400, 1400, 2350};
+
+// Set offsets for both input and output memory objects
+auto src_mem = memory(src_md, engine, {src_data, offsets.data()});
+auto dst_mem = memory(dst_md, engine, {dst_data, offsets.data()});
+~~~
+
+### Attributes Support
+
+Setting attributes for grouped GEMM follows the regular matmul attribute API.
+Below are some examples of common use cases for MoE workloads.
+
+Per-token source scales:
+~~~cpp
+attr.set_scales_mask(DNNL_ARG_SRC, (1 << 0));  // Varies along M dimension
+// Scale tensor: [total_tokens] - one scale per token
+// Layout: concatenated like source data, uses same offsets
+~~~
+
+Per-expert-column weight scales:
+~~~cpp
+attr.set_scales_mask(DNNL_ARG_WEIGHTS, (1 << 0) | (1 << 2));
+// Scale tensor: [num_groups, N] - dense 2D tensor
+// Layout: standard ab layout
+~~~
+
+Bias per expert:
+~~~cpp
+// Bias: [num_groups, N] - dense 2D tensor
+auto bias_md = memory::desc({num_groups, N},
+    memory::data_type::f32, memory::format_tag::ab);
+// Layout: standard ab layout
+~~~
+
+### Implementation Notes
+
+The following are supported:
+- Currently, only single dimension `0` can vary.
+- Source and destination must use identical grouping.
+- Scales attribute for source and weights tensors:
+  - Source Scales: row-wise (per-token, `mask = (1 << 0)`) are applied to all experts equally.
+  - Weight Scales: column-wise (per-expert-per-column, `mask = (1 << 0) | (1 << 2)`)
+    and K-grouped (per-expert-per-K-group-per-column, `mask = (1 << 0) | (1 << 1) | (1 << 2)`)
+    with group specification are supported.
+- Bias supports per-expert shape.
+- Supported on CPU and GPU engines.
 
 ## Examples
 

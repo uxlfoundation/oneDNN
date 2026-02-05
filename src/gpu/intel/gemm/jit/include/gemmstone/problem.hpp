@@ -180,6 +180,7 @@ struct GEMMProblem : public CommonProblem {
     ABOffset aOffset = ABOffset::None;              // A/B offset modes.
     ABOffset bOffset = ABOffset::None;              //
     int aoPtrDims = -1, boPtrDims = -1;             // A/B offset dimensionality (-1: none; 0: scalar; 1: vector, 2: matrix)
+    int coPtrDims = -1;                             // C offset dimensionality (-1: none or hostscalar; 0 - others)
     int asPtrDims = -1, bsPtrDims = -1, csPtrDims = -1;           // A/B scale dimensionality (-1: none; 0: scalar; 1: vector, 2: matrix)
     int aqGroupM = 0, aqGroupK = 0;                 // Group sizes for A quantization parameters (offsets and scales)
     int bqGroupN = 0, bqGroupK = 0;                 // Group sizes for B quantization parameters (offsets and scales)
@@ -249,6 +250,8 @@ struct GEMMProblem : public CommonProblem {
     bool hasBOffsetPtr() const { return (boPtrDims > -1); }
     bool aOffsetHostScalar() const {return aoPtrDims == -1 && aOffset == ABOffset::Calc; }
     bool bOffsetHostScalar() const {return boPtrDims == -1 && bOffset == ABOffset::Calc; }
+    bool cOffsetHostScalar() const {return coPtrDims == -1 && cOffset != COffset::None; }
+    bool hasCOffsetPtr() const { return (coPtrDims > -1); }
 
     bool aScale2D() const { return (asPtrDims >= 2); }
     bool bScale2D() const { return (bsPtrDims >= 2); }
@@ -306,7 +309,7 @@ struct GEMMProblem : public CommonProblem {
         s.append(A_scale, B_scale, C_scale);
         s.append(checkBeta0);
         s.append(aOffset, bOffset);
-        s.append(aoPtrDims, boPtrDims);
+        s.append(aoPtrDims, boPtrDims, coPtrDims);
         s.append(asPtrDims, bsPtrDims, csPtrDims);
         s.append(aqGroupM, aqGroupK);
         s.append(bqGroupN, bqGroupK);

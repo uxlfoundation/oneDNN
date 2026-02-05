@@ -142,7 +142,7 @@ struct pd_t : public gemm::pd_t {
 
     const int idx_a = DNNL_ARG_WEIGHTS;
     memory_desc_t prelu_wei_md, a_scale_md_, b_scale_md_, c_scale_md_;
-    memory_desc_t a_zp_md_, b_zp_md_;
+    memory_desc_t a_zp_md_, b_zp_md_, c_zp_md_;
     memory_desc_t a_gs_md_, b_gs_md_;
     bool swap_ab_ = false;
     dim_t eff_lda_ = 0, eff_ldb_ = 0;
@@ -270,6 +270,10 @@ struct pd_t : public gemm::pd_t {
     bool b_zp_host_scalar() const {
         auto attr_info = attr_info_t::create(attr());
         return attr_info.with_host_src_zp;
+    }
+    bool c_zp_host_scalar() const {
+        auto attr_info = attr_info_t::create(attr());
+        return attr_info.with_host_dst_zp;
     }
     int a_q2d_group_k() const { return a_quant.group_k; }
     int a_q2d_group_m() const { return a_quant.group_m; }

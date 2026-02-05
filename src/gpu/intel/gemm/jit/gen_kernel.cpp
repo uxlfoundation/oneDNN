@@ -815,11 +815,16 @@ void gen_kernel_t::init_interface() {
     }
     if (problem.hasCMXScale()) interface_.newArgument("ldcq", DataType::d);
     if (problem.cOffset != COffset::None || problem.sumA || problem.sumB) {
-        interface_.newArgument(
-                "CO", ExternalArgumentType::GlobalPtr, co_access);
+        if (!problem.cOffsetHostScalar()) {
+            interface_.newArgument(
+                    "CO", ExternalArgumentType::GlobalPtr, co_access);
+        }
         interface_.newArgument("offset_CO", DataType::q);
         if (problem.cOffset == COffset::Pre)
             interface_.newArgument("ldco", DataType::d);
+    }
+    if (problem.cOffsetHostScalar()) {
+        interface_.newArgument("co_host_scalar", DataType::w);
     }
     if (problem.postOps.cStochasticRound) {
         interface_.newArgument("sround_seed", ExternalArgumentType::GlobalPtr);

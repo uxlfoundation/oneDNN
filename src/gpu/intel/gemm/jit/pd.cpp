@@ -237,6 +237,7 @@ status_t pd_t::init_attrs() {
     // Swap descriptors to follow column major format
     CHECK(a_zps.get_md(a_zp_md_, d->b_desc));
     CHECK(b_zps.get_md(b_zp_md_, d->a_desc));
+    CHECK(c_zps.get_md(c_zp_md_, d->c_desc));
     CHECK(a_gs.get_md(a_gs_md_, d->b_desc));
     CHECK(b_gs.get_md(b_gs_md_, d->a_desc));
     CHECK(a_scales.get_md(a_scale_md_, desc_.b_desc));
@@ -246,6 +247,7 @@ status_t pd_t::init_attrs() {
     auto ndims = d->c_desc.ndims;
     a_quant.zp_ndims = quant_entry_ndims(a_zps, a_zp_md_, ndims - 2);
     b_quant.zp_ndims = quant_entry_ndims(b_zps, b_zp_md_, ndims - 1);
+    c_quant.zp_ndims = quant_entry_ndims(c_zps, c_zp_md_, -1);
     a_quant.gs_ndims = quant_entry_ndims(a_gs, a_gs_md_, ndims - 2);
     b_quant.gs_ndims = quant_entry_ndims(b_gs, b_gs_md_, ndims - 1);
     a_quant.scale_ndims = quant_entry_ndims(a_scales, a_scale_md_, ndims - 2);
@@ -297,11 +299,14 @@ status_t pd_t::init_attrs() {
     if (!b_scales.has_default_groups()) CHECK(set_b_groups(b_quant, b_scales));
 
     c_quant.scales_type = c_scales.get_data_type();
+    c_quant.zp_type = c_zps.get_data_type();
     if (!c_scales.has_default_groups()) {
         c_quant.group_m = c_scales.get_group(1);
         c_quant.group_n = c_scales.get_group(0);
         with_mx_scale_ = c_scales.is_mx();
     }
+    c_quant.zp_host_scalar = c_zp_host_scalar();
+
     return status::success;
 }
 
@@ -321,9 +326,6 @@ bool pd_t::zp_ok() {
     const bool b_int4 = utils::one_of(desc()->b_type(), s4, u4);
     const bool weights_upconversion
             = wei_decomp_ || (a_int4 && dy_quant_enabled_);
-
-    // Host scalar ZPs supported only for A & B
-    if (c_zps.is_host_scalar()) return false;
 
     if (!a_zps.has_default_values()) {
         // Groups determine supported masks.
@@ -366,7 +368,9 @@ bool pd_t::zp_ok() {
     }
 
     if (!attr_zps.has_default_values(DNNL_ARG_C)) {
-        if (!utils::one_of(cmask_c_, 0, mask_scalar, mask_per_oc)) return false;
+        if (!c_zps.is_host_scalar()
+                && !utils::one_of(cmask_c_, 0, mask_scalar, mask_per_oc))
+            return false;
     }
 
     return true;
@@ -684,6 +688,7 @@ status_t pd_t::init_GEMMProblem(
         problem.CO.crosspack = 1;
         problem.CO.alignment = problem.C.alignment;
         problem.CO.layout = trans_co ? MatrixLayout::T : MatrixLayout::N;
+        problem.coPtrDims = c_quant.zp_host_scalar ? -1 : c_quant.zp_ndims;
     }
 
     problem.sumA = (reduce_ab == sum_ab::sum_b_col);

@@ -760,7 +760,7 @@ void Generator<hw>::gemmSetupABC(const GEMMProblem &problem, const GEMMStrategy 
         }
     }
 
-    if (problem.usesCO() && strategy.CO.base.isStateless()) {
+    if (problem.usesCO() && strategy.CO.base.isStateless() && !problem.cOffsetHostScalar()) {
         eadd(1, state.effCO, state.inputs.CO, state.offsetCO, strategy, state);
         if (strategy.persistentLoop())
             state.offsetCO = invalid;
@@ -2628,6 +2628,7 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
     if (problem.usesCO()) {
         state.inputs.CO = interface.getArgumentIfExists("CO");
         state.inputs.surfaceCO = interface.getArgumentSurfaceIfExists("CO");
+        state.inputs.coHostScalar = interface.getArgumentIfExists("co_host_scalar");
     }
     if (state.useTempC) {
         state.inputs.tempC = interface.getArgumentIfExists("temp_C");
@@ -2930,6 +2931,8 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
         if (strategy.CO.base.isStateless())
             state.ra.claim(state.inputs.CO);
         state.ra.claim(state.inputs.offsetCO);
+        if (problem.cOffsetHostScalar() && state.inputs.coHostScalar.isValid())
+            state.ra.claim(state.inputs.coHostScalar);
     }
 
     if (state.useTempC)

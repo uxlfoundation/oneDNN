@@ -13,3 +13,4 @@ Advanced Topics
    dev_guide_sparsity
    dev_guide_host_side_scalars
    dev_guide_experimental
+   dev_guide_grouped_mem

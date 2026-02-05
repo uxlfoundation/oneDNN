@@ -185,7 +185,7 @@ private:
     const reg64_t reg_tmp_microkernel = r14;
 
     const reg64_t reg_A = r13;
-    const reg64_t reg_B = r12;
+    const reg64_savable_t reg_B {regscratchpad_, r12};
 
     const reg64_t reg_aux_A = r11;
     const reg64_t reg_aux_B = r10;
@@ -476,6 +476,9 @@ private:
     dim_t bdb_zp_comp_b_offset(dim_t bd_block2) const noexcept;
     dim_t zp_c_values_offset(dim_t ld, bool is_tail = false) const noexcept;
 
+    Xbyak::Address get_addr_safe(
+            const Xbyak::Reg64 &reg, dim_t offset, const Xbyak::Reg64 &reg_tmp);
+
     bool vpad_exist = false;
     bool need_comp_pads = false;
     palette_config_t palette_;
@@ -655,6 +658,21 @@ dim_t jit_brgemm_kernel_t<Wmm>::zp_c_values_offset(
 
     return 0;
 }
+
+template <typename Wmm>
+Xbyak::Address jit_brgemm_kernel_t<Wmm>::get_addr_safe(
+        const Xbyak::Reg64 &reg, dim_t offset, const Xbyak::Reg64 &reg_tmp) {
+    if (offset <= INT_MAX) {
+        return ptr[reg + offset];
+    } else {
+        if (is_superset(brg.isa_impl, avx512_core)) {
+            return EVEX_compress_addr_safe(reg, offset, reg_tmp);
+        } else {
+            return make_safe_addr(reg, offset, reg_tmp);
+        }
+    }
+}
+
 template <typename Wmm>
 template <typename U>
 U jit_brgemm_kernel_t<Wmm>::vmm_mask(const U vmm_in, bool mask_flag, bool store,
@@ -1200,12 +1218,17 @@ void jit_brgemm_kernel_t<Wmm>::apply_post_ops(dim_t bd_block, dim_t ld_block2,
             const bool reset_avx_tail_mask = p_sum_zp_reg_set;
 
             {
+                const auto &reg_tmp = reg_B;
+                const bool save_reg_B = brg.type != brgemm_addr
+                        && D_offset(bd_end - 1, ld_block2 - 1) > INT_MAX;
+
                 const reg64_savable_guard_t register_sum_fp8_guard(
                         {{{&reg_ptr_sum_scale},
                                  with_binary_non_scalar_bcast_
                                          && p_sum_scale_reg_set},
                                 {{&reg_ptr_sum_zp}, p_sum_zp_reg_set},
-                                {{&reg64_fp8_aux}, brg.is_fp8_via_convert()}});
+                                {{&reg64_fp8_aux}, brg.is_fp8_via_convert()},
+                                {{&reg_B}, save_reg_B}});
 
                 const auto &vmm_sum_zp = vmm_tmp(1);
 
@@ -1232,7 +1255,8 @@ void jit_brgemm_kernel_t<Wmm>::apply_post_ops(dim_t bd_block, dim_t ld_block2,
                 for_(dim_t bd = bd_start; bd < bd_end; bd++)
                 for (dim_t ld = 0; ld < ld_block2; ld++) {
                     const auto vmm = accm(ld_block2, bd, ld);
-                    const auto addr = ptr[reg_aux_D + D_offset(bd, ld)];
+                    const auto addr = get_addr_safe(
+                            reg_aux_D, D_offset(bd, ld), reg_tmp);
                     const auto vmm_prev_dst = vmm_tmp(0);
                     const bool is_tail = is_ld_tail && ld + 1 == ld_block2;
                     const auto k_mask = is_tail ? ld_tail_mask : ld_full_mask;
@@ -1530,7 +1554,8 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
 
     for_(dim_t bd = 0; bd < bd_block; bd++)
     for (dim_t ld = 0; ld < ld_block2; ld++) {
-        auto addr = ptr[reg_aux_D + D_offset(bd, ld)];
+        const auto addr
+                = get_addr_safe(reg_aux_D, D_offset(bd, ld), reg_tmp_gpr);
         auto vmm = accm(ld_block2, bd, ld);
         auto vmm_lower = Vmm_lower_t(vmm.getIdx());
         const bool is_tail = is_ld_tail && ld + 1 == ld_block2;
@@ -1850,7 +1875,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
                     if (brg.is_runtime_ldc)
                         reg_dynamic_C_offset.addTo(reg_aux_C);
                     else
-                        add(reg_aux_C, bdb_C_offset(1));
+                        safe_add(reg_aux_C, bdb_C_offset(1), reg_tmp_gpr);
                 }
 
                 if (apply_post_ops) {
@@ -1868,7 +1893,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
                         if (brg.is_runtime_ldd)
                             reg_D_bdb_loop_shift.addTo(reg_aux_D);
                         else
-                            add(reg_aux_D, bdb_D_offset(1));
+                            safe_add(reg_aux_D, bdb_D_offset(1), reg_tmp_gpr);
 
                         advance_bdb_post_op_regs(adj_bd_block);
                         post_processed |= utils::one_of(true,
@@ -2873,7 +2898,7 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
             reg_stride_ld_block.imulTo(reg_C, bdb_C_offset(bd_block2));
             reg_C_backup.addTo(reg_C);
         } else {
-            add(reg_C, bdb_C_offset(bd_block2));
+            safe_add(reg_C, bdb_C_offset(bd_block2), reg_tmp_gpr);
         }
         if (brg.is_runtime_ldd) {
             reg_D.saveTo(reg_aux_D_backup);
@@ -2881,9 +2906,9 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
             reg_D_shift_bytes.imulTo(reg_D, bdb_D_offset(bd_block2));
             reg_aux_D_backup.addTo(reg_D);
         } else {
-            add(reg_D, bdb_D_offset(bd_block2));
+            safe_add(reg_D, bdb_D_offset(bd_block2), reg_tmp_gpr);
         }
-        add(reg_a_offset, bdb_A_offset(bd_block2));
+        safe_add(reg_a_offset, bdb_A_offset(bd_block2), reg_tmp_gpr);
 
         if (brg.is_gemv && brg.treat_y_as_row) {
             if (brg.with_bias) {

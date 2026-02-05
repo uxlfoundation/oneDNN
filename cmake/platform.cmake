@@ -197,7 +197,8 @@ if(MSVC)
 
     # Generating frame pointers for easier performance profiling
     if(DNNL_TARGET_ARCH STREQUAL "X64")
-        if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        # clang-cl driver only supports MSVC flags
+        if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT CMAKE_BASE_NAME STREQUAL "clang-cl")
             append(CMAKE_CCXX_FLAGS "-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer")
         else()
             append(CMAKE_CCXX_FLAGS "/Oy-")

@@ -38,7 +38,7 @@ template <typename sycl_object_t>
 void *get_native_impl(backend_t backend, const sycl_object_t &sycl_object) {
     if (backend == backend_t::opencl) {
         return ::sycl::get_native<::sycl::backend::opencl>(sycl_object);
-    } else if (backend == backend_t::level0) {
+    } else if (backend == backend_t::ze) {
         return ::sycl::get_native<::sycl::backend::ext_oneapi_level_zero>(
                 sycl_object);
     } else {

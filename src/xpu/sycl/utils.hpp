@@ -35,7 +35,7 @@ namespace sycl {
 
 using buffer_u8_t = ::sycl::buffer<uint8_t, 1>;
 
-enum class backend_t { unknown, host, level0, opencl, nvidia, amd };
+enum class backend_t { unknown, host, ze, opencl, nvidia, amd };
 
 std::string to_string(backend_t backend);
 std::string to_string(::sycl::info::device_type dev_type);

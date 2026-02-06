@@ -38,7 +38,10 @@ namespace {
 int quant_entry_ndims(
         const quant_entry_t &entry, const memory_desc_t &qmd, int k_idx) {
     //VDEBUGINFO(4, primitive, gemm, "MY: quant_entry_ndims: has_default=%d, qmd.ndims=%d, k_idx=%d", int(entry.has_default_values()), qmd.ndims, k_idx);
-    if (entry.has_default_values()) return -1;
+    if (entry.has_default_values()) {
+        //VDEBUGINFO(4, primitive, gemm, "MY: quant_entry_ndims: has default - return -1");
+        return -1;
+    }
     if (qmd.ndims < 2) {
         //VDEBUGINFO(4, primitive, gemm, "MY: quant_entry_ndims: returning 0 because qmd.ndims=%d < 2", qmd.ndims);
         return 0;
@@ -695,7 +698,6 @@ status_t pd_t::init_GEMMProblem(
     VDEBUGINFO(4, primitive, gemm, "MY: init_GEMMProblem : c_offset = %d",c_offset);
 
     if (c_offset || bias || reduce_ab != sum_ab::sum_none) {
-//    if (c_offset || c_quant.zp_host_scalar || bias || reduce_ab != sum_ab::sum_none) {
         assert(!(c_offset && bias));
         if (bias) problem.cOffset = COffset::Pre;
         if (c_offset) problem.cOffset = COffset::Post;

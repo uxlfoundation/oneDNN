@@ -338,7 +338,7 @@ status_t gen_desc_t::finalize(const char *tags) {
     strategy_.kInterleaveChunk
             = std::min(strategy_.kInterleaveChunk, (int)aux_params_.k0);
     if (strategy_.kInterleave) aux_params_.wgK = strategy_.wg[LoopK];
-    VDEBUGINFO(4, primitive, gemm, "MY: gen_desc_t::finalize : problem_.coPtrDims = %d, problem_.cOffset = %d", problem_.coPtrDims, int(problem_.cOffset));
+    //VDEBUGINFO(4, primitive, gemm, "MY: gen_desc_t::finalize : problem_.coPtrDims = %d, problem_.cOffset = %d", problem_.coPtrDims, int(problem_.cOffset));
     update_driver_info();
 
     return status::success;
@@ -827,8 +827,9 @@ void gen_kernel_t::init_interface() {
     }
     if (problem.hasCMXScale()) interface_.newArgument("ldcq", DataType::d);
 
-    VDEBUGINFO(4, primitive, gemm, "MY: gen_kernel : problem.cOffsetHostScalar() = %d", problem.cOffsetHostScalar());
+    VDEBUGINFO(4, primitive, gemm, "MY: gen_kernel : problem.coPtrDims = %d", problem.coPtrDims);
     VDEBUGINFO(4, primitive, gemm, "MY: gen_kernel : problem.cOffset = %d", (int)problem.cOffset);
+    VDEBUGINFO(4, primitive, gemm, "MY: gen_kernel : ==> problem.cOffsetHostScalar() = %d", problem.cOffsetHostScalar());
 
     if (problem.cOffset != COffset::None || problem.sumA || problem.sumB) {
         if (!problem.cOffsetHostScalar()) {

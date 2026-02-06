@@ -272,6 +272,9 @@ static inline uint32_t get_verbose_dev_mode(
 }
 
 bool get_verbose_timestamp();
+// detemrines if the asynchronous profiling mode for verbose logging
+// has been disabled at runtime
+bool get_verbose_async_mode();
 
 // logging functionality for saving verbose outputs to logfiles
 #ifdef DNNL_EXPERIMENTAL_LOGGING

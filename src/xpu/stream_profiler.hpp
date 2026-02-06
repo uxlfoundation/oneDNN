@@ -58,6 +58,26 @@ struct stream_profiler_t {
             uint64_t *data) const
             = 0;
 
+    virtual status_t get_aggregate_exec_timing(
+            uint64_t start, uint64_t end, double &duration_ms) const
+            = 0;
+
+    const xpu::event_t *peek_last_event() const {
+        return events_.back().event.get();
+    }
+
+    bool get_event_stamp(const xpu::event_t *ev, uint64_t &stamp) const {
+        if (!ev) return false;
+
+        for (auto it = events_.rbegin(); it != events_.rend(); ++it) {
+            if (it->event.get() == ev) {
+                stamp = it->stamp;
+                return true;
+            }
+        }
+        return false;
+    }
+
     uint64_t stamp() const { return stamp_; }
 
     void register_event(std::unique_ptr<xpu::event_t> &&event) {

@@ -629,6 +629,11 @@ status_t xe_hp_systolic_t::init_compute(impl::engine_t *engine) {
 
                 if (status != status::success) return status;
 
+                // Protection against C zero-point host scalar implementation in gen gemm
+                auto *kd_problem
+                        = const_cast<gemmstone::GEMMProblem *>(kd.problem());
+                kd_problem->coPtrDims = pd()->c_quant.zp_ndims;
+
                 if (!got_info) {
                     compute_info_ = *kd.driver_info();
                     got_info = true;

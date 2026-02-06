@@ -1365,6 +1365,7 @@ private:
     zmm vidx1 = zmm31;
 
     reg32_t regw_tmp = r15d;
+    reg64_t reg_long_offt = r15;
 
     reg64_t reg_batch_src = r14;
     reg64_t reg_batch_tr_src = r13;
@@ -1394,7 +1395,8 @@ void jit_trans_to_vnni_t::maybe_zero_pad_col(reg64_t dst) {
     const int iters = (conf_->oc_block - oc_utilized) / transpose_size;
     for (int n = 0; n < iters; ++n) {
         for (int i = 0; i < transpose_size; i += 2) {
-            auto addr = EVEX_compress_addr(dst, i * tr_src_stride);
+            auto addr = EVEX_compress_addr_safe(
+                    dst, i * tr_src_stride, reg_long_offt);
             vmovups(addr, zmm_zero);
         }
         add(reg_col_tr_src, tr_src_col_shift);
@@ -1415,7 +1417,8 @@ void jit_trans_to_vnni_t::transpose(
     };
 
     auto store = [this, dst](Zmm r, int i) {
-        auto addr = EVEX_compress_addr(dst, i * tr_src_stride);
+        auto addr = EVEX_compress_addr_safe(
+                dst, i * tr_src_stride, reg_long_offt);
         vmovups(addr, r);
     };
     auto mask = ncolumns == transpose_size ? kFFFF : mask_tail;
@@ -1427,15 +1430,19 @@ void jit_trans_to_vnni_t::transpose(
         auto zmm_src1 = src_zmm(2 * i + 1);
         if (matrix_to_transform_ == matrix_to_transform_t::matrix_B) {
             vmovdqu16(zmm_src0 | mask | T_z,
-                    EVEX_compress_addr(src, 2 * i * src_stride));
+                    EVEX_compress_addr_safe(
+                            src, 2 * i * src_stride, reg_long_offt));
             vmovdqu16(zmm_src1 | mask | T_z,
-                    EVEX_compress_addr(src, (2 * i + 1) * src_stride));
+                    EVEX_compress_addr_safe(
+                            src, (2 * i + 1) * src_stride, reg_long_offt));
             vinsertf64x4(zmm_src0, zmm_src0, src1, 1);
         } else {
             vmovups(zmm_src0 | mask | T_z,
-                    EVEX_compress_addr(src, 2 * i * src_stride));
+                    EVEX_compress_addr_safe(
+                            src, 2 * i * src_stride, reg_long_offt));
             vmovups(zmm_src1 | mask | T_z,
-                    EVEX_compress_addr(src, (2 * i + 1) * src_stride));
+                    EVEX_compress_addr_safe(
+                            src, (2 * i + 1) * src_stride, reg_long_offt));
             vcvtne2ps2bf16(zmm_src0, zmm_src1, zmm_src0);
         }
         vpermw(zmm_src0, vidx1, zmm_src0);
@@ -1446,11 +1453,13 @@ void jit_trans_to_vnni_t::transpose(
         auto zmm_src0 = src_zmm(2 * i);
         if (matrix_to_transform_ == matrix_to_transform_t::matrix_B) {
             vmovdqu16(zmm_src0 | mask | T_z,
-                    EVEX_compress_addr(src, 2 * i * src_stride));
+                    EVEX_compress_addr_safe(
+                            src, 2 * i * src_stride, reg_long_offt));
         } else {
             auto zmm_zero = src_zmm(2 * i + 1);
             vmovups(zmm_src0 | mask | T_z,
-                    EVEX_compress_addr(src, 2 * i * src_stride));
+                    EVEX_compress_addr_safe(
+                            src, 2 * i * src_stride, reg_long_offt));
             vpxord(zmm_zero, zmm_zero, zmm_zero);
             vcvtne2ps2bf16(zmm_src0, zmm_zero, zmm_src0);
         }

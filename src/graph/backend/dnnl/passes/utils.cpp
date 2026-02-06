@@ -264,8 +264,6 @@ bool binary_doable(
     return true;
 }
 
-// TODO: ekind can be removed once CPU optimized 5d tensor MatMul with
-// broadcasted post op
 static bool post_binary_fusible_impl(const op_t *base_op,
         const std::vector<dim_t> &fused_shape,
         const std::vector<dim_t> &other_shape, engine_kind_t ekind) {
@@ -287,6 +285,81 @@ static bool post_binary_fusible_impl(const op_t *base_op,
         for (int32_t i = output_ndims - 1; i >= 0; i--) {
             if (other_shape[i] == 1) continue;
             if (fused_shape[i] != other_shape[i]) { return false; }
+        }
+        // On CPU, check if the broadcast pattern is supported by the JIT
+        // binary injector. The injector only handles a fixed set of broadcast
+        // strategies. Patterns that don't map to any of them (e.g.
+        // [1,X,1,X,1] -> mask [1,0,1,0,1]) cause fallback to a slow ref
+        // implementation with potential numerical differences.
+        if (ekind == dnnl_cpu && output_ndims == 5) {
+            std::vector<int> mask(output_ndims);
+            for (int32_t i = 0; i < output_ndims; i++)
+                mask[i] = (other_shape[i] == 1) ? 1 : 0;
+
+            const int last = output_ndims - 1;
+
+            // scalar: all dims broadcast [1,1,1,1,1] - already handled above
+            // no_broadcast: no dims broadcast [0,0,0,0,0] - already handled
+            //   above (fused_shape == other_shape)
+
+            // per_oc: only dim 1 is non-broadcast
+            //   mask = [1, 0, 1, 1, 1]  other_shape = [1, C, 1, 1, 1]
+            auto is_per_oc = [&]() {
+                if (mask[1] != 0) return false;
+                for (int i = 0; i < output_ndims; i++)
+                    if (i != 1 && mask[i] != 1) return false;
+                return true;
+            };
+
+            // per_mb: only dim 0 is non-broadcast
+            //   mask = [0, 1, 1, 1, 1]  other_shape = [N, 1, 1, 1, 1]
+            auto is_per_mb = [&]() {
+                if (mask[0] != 0) return false;
+                for (int i = 1; i < output_ndims; i++)
+                    if (mask[i] != 1) return false;
+                return true;
+            };
+
+            // per_mb_w: dim 0 and last dim are non-broadcast, rest broadcast
+            //   mask = [0, 1, 1, 1, 0]  other_shape = [N, 1, 1, 1, W]
+            auto is_per_mb_w = [&]() {
+                if (mask[0] != 0 || mask[last] != 0) return false;
+                for (int i = 1; i < last; i++)
+                    if (mask[i] != 1) return false;
+                return true;
+            };
+
+            // per_w: only last dim is non-broadcast
+            //   mask = [1, 1, 1, 1, 0]  other_shape = [1, 1, 1, 1, W]
+            auto is_per_w = [&]() {
+                if (mask[last] != 0) return false;
+                for (int i = 0; i < last; i++)
+                    if (mask[i] != 1) return false;
+                return true;
+            };
+
+            // per_mb_spatial: dim 0 non-broadcast, dim 1 broadcast,
+            //   spatial dims (2..last) non-broadcast
+            //   mask = [0, 1, 0, 0, 0]  other_shape = [N, 1, D, H, W]
+            auto is_per_mb_spatial = [&]() {
+                if (mask[0] != 0 || mask[1] != 1) return false;
+                for (int i = 2; i < output_ndims; i++)
+                    if (mask[i] != 0) return false;
+                return true;
+            };
+
+            // batch: dim 0 is broadcast, all others non-broadcast
+            //   mask = [1, 0, 0, 0, 0]  other_shape = [1, C, D, H, W]
+            auto is_batch = [&]() {
+                if (mask[0] != 1) return false;
+                for (int i = 1; i < output_ndims; i++)
+                    if (mask[i] != 0) return false;
+                return true;
+            };
+
+            bool supported = is_per_oc() || is_per_mb() || is_per_mb_w()
+                    || is_per_w() || is_per_mb_spatial() || is_batch();
+            if (!supported) return false;
         }
         return true;
     }

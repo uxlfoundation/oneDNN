@@ -2931,8 +2931,7 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
         if (strategy.CO.base.isStateless())
             state.ra.claim(state.inputs.CO);
         state.ra.claim(state.inputs.offsetCO);
-        if (problem.cOffsetHostScalar() && state.inputs.coHostScalar.isValid())
-            state.ra.claim(state.inputs.coHostScalar);
+        state.ra.claim(state.inputs.coHostScalar);
     }
 
     if (state.useTempC)

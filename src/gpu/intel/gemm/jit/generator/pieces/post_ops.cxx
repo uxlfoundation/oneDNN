@@ -445,12 +445,11 @@ bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const G
     if (problem.cOffsetHostScalar() && state.inputs.coHostScalar.isValid()) {
         status << "Applying host scalar C offset" << status_stream::endl;
         gemmScalarBinaryOpC(BinaryOp::Add, Tco, state.inputs.coHostScalar, problem, strategy, state);
-        jmpi(1, labelCODone);
     } else {
         status << "Applying fixed C offset" << status_stream::endl;
         ok = ok && gemmBinaryOpC(BinaryOp::Add, false, false, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
-        jmpi(1, labelCODone);
     }
+    jmpi(1, labelCODone);
 
     mark(labelCOColumn);
     if (!problem.cOffsetHostScalar()) {
@@ -466,14 +465,12 @@ bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const G
         ok = ok && gemmBinaryOpC(BinaryOp::Add, true, false, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
     }
 
-    if (doMatrix) {
+    if (doMatrix && !problem.cOffsetHostScalar()) {
         jmpi(1, labelCODone);
 
         mark(labelCOMatrix);
-        if (!problem.cOffsetHostScalar()) {
-            status << "Applying matrix C offset" << status_stream::endl;
-            ok = ok && gemmBinaryOpC(BinaryOp::Add, true, true, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
-        }
+        status << "Applying matrix C offset" << status_stream::endl;
+        ok = ok && gemmBinaryOpC(BinaryOp::Add, true, true, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
     }
 
     mark(labelCODone);

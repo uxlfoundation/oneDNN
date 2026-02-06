@@ -14,16 +14,14 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "xpu/ocl/engine_factory.hpp"
-
-#include "gpu/intel/sycl/compat.hpp"
 #include "gpu/intel/sycl/device_info.hpp"
+#include "gpu/intel/sycl/compat.hpp"
 #include "gpu/intel/sycl/engine.hpp"
-#include "gpu/intel/sycl/l0/utils.hpp"
-#include "gpu/intel/sycl/utils.hpp"
 
 #include "gpu/intel/ocl/hw_info.hpp"
 #include "gpu/intel/ocl/utils.hpp"
+
+#include "gpu/intel/ze/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -52,11 +50,11 @@ status_t device_info_t::init_arch(impl::engine_t *engine) {
         status = gpu::intel::ocl::init_gpu_hw_info(engine, ocl_dev, ocl_ctx,
                 ip_version_, gpu_arch_, gpu_product_, native_extensions_,
                 mayiuse_systolic_, mayiuse_ngen_kernels_);
-    } else if (be == xpu::sycl::backend_t::level0) {
+    } else if (be == xpu::sycl::backend_t::ze) {
         auto ze_dev = xpu::sycl::compat::get_native<ze_device_handle_t>(device);
         auto ze_ctx = xpu::sycl::compat::get_native<ze_context_handle_t>(ctx);
 
-        status = gpu::intel::sycl::init_gpu_hw_info(engine, ze_dev, ze_ctx,
+        status = gpu::intel::ze::init_gpu_hw_info(engine, ze_dev, ze_ctx,
                 ip_version_, gpu_arch_, gpu_product_, native_extensions_,
                 mayiuse_systolic_, mayiuse_ngen_kernels_);
     } else {

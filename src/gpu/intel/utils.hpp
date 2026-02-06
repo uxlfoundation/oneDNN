@@ -236,7 +236,7 @@ status_t dump_kernel_binary(
 //  Backend      | Compound ID
 // -------------------------------------------------------------
 //  OpenCL       | <backend_t::opencl, cl_device, 0>
-//  Level0       | <backend_t::level0, uuid[0-63], uuid[64-127]>
+//  Level Zero   | <backend_t::ze, uuid[0-63], uuid[64-127]>
 using device_id_t = std::tuple<int, uint64_t, uint64_t>;
 
 struct device_id_hash_t {

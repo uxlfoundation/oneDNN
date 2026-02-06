@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2024-2025 FUJITSU LIMITED
-* Copyright 2024-2025 Arm Ltd. and affiliates
+* Copyright 2024-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -802,7 +802,6 @@ void jit_brgemm_kernel_t::apply_post_ops(
             }
 
             if (p_sum_scale_reg_set) {
-                // embd bcast fma
                 mov_imm(reg_ptr_sum_scale,
                         reinterpret_cast<size_t>(p_sum_scale));
                 ld1rw(vmm_sum_scale.s, P_ALL_ONE / T_z, ptr(reg_ptr_sum_scale));
@@ -1230,7 +1229,7 @@ void jit_brgemm_kernel_t::store_accumulators(int bd_block2, bool is_bdb_tail,
         cmp_imm(reg_do_comp, 0, X_TMP_0);
         b(EQ, label_store_without_comp);
         apply_compensation(bd_block, ld_block2, is_ld_tail);
-        L_aligned(label_store_without_comp);
+        L(label_store_without_comp);
     }
 
     if (need_to_apply_alpha_beta)
@@ -1247,10 +1246,10 @@ void jit_brgemm_kernel_t::store_accumulators(int bd_block2, bool is_bdb_tail,
         store_accumulators_apply_post_ops(bd_block, ld_block2, 0, is_ld_tail);
         bl(label_done);
 
-        L_aligned(label_store_without_post_ops);
+        L(label_store_without_post_ops);
     }
     store_accumulators_without_post_ops(bd_block, ld_block2, is_ld_tail);
-    L_aligned(label_done);
+    L(label_done);
 }
 
 void jit_brgemm_kernel_t::sum_into_one_lane(
@@ -1463,8 +1462,6 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
             = need_comp_pads && vpad != 0 ? bd_b <= bd_e : bd_b < bd_e;
     if (!is_valid_bd) return;
 
-    bool is_emdbd = brg.embd_bcst;
-
     int rd_loop = 0, rd_tail_size = 0;
     if (brg.is_gemv) {
         rd_loop = 1;
@@ -1541,7 +1538,7 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
                     = maybe_load_bytes && (rd == rd_loop - brg.rd_step);
 
             auto rows_by_load_bytes = have_to_load_bytes ? rows_for_rd_tail : 0;
-            for (int bd = bd_b; bd < bd_e && !is_emdbd; bd++) {
+            for (int bd = bd_b; bd < bd_e; bd++) {
                 const auto bd_by_load_bytes = (bd >= bd_e - rows_by_load_bytes
                         || brg.brgattr.wary_A_k_tail_read);
                 broadcast(bcst(bd), A_offset(bd, rd),
@@ -1550,30 +1547,10 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
             for (int ld = 0; ld < ld_block2; ld++) {
                 const auto mask = is_ld_tail ? ld_tail_mask : P_ALL_ONE;
                 add_imm(X_DEFAULT_ADDR, reg_aux_B, B_offset(ld, rd), X_TMP_0);
-                if (brg.dt_b == data_type::f16) {
-                    assert(!"unsupported\n");
-                } else if (is_ld_tail) {
-                    ld1w(load().s, ld_tail_mask / T_z, ptr(X_DEFAULT_ADDR));
-                } else {
-                    ld1w(load().s, P_ALL_ONE / T_z, ptr(X_DEFAULT_ADDR));
-                }
+                ld1w(load().s, mask / T_z, ptr(X_DEFAULT_ADDR));
                 for (int bd = bd_b; bd < bd_e; bd++) {
                     auto vmm = accm(ld_block2, bd, ld);
-                    if (is_emdbd) {
-                        // The ld1rw immediate must be <=252 and a multiple of 4
-                        if (A_offset(bd, rd) >= 0 && A_offset(bd, rd) <= 252
-                                && A_offset(bd, rd) % 4 == 0) {
-                            ld1rw(load().s, mask / T_z,
-                                    ptr(reg_aux_A, A_offset(bd, rd)));
-                        } else {
-                            add_imm(X_DEFAULT_ADDR, reg_aux_A, A_offset(bd, rd),
-                                    X_TMP_0);
-                            ld1rw(load().s, mask / T_z, ptr(X_DEFAULT_ADDR));
-                        }
-                        fmla(vmm.s, P_ALL_ONE / T_m, load(ld).s, load().s);
-                    } else {
-                        dot_product(vmm, load(), bcst(bd));
-                    }
+                    dot_product(vmm, load(), bcst(bd));
                 }
             }
         }
@@ -1585,19 +1562,15 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
             for (int ld = 0; ld < ld_block2; ld++) {
                 auto mask = is_ld_tail ? ld_tail_mask : P_ALL_ONE;
                 if (brg.is_gemv) mask = is_rd_tail ? gemv_tail_mask : P_ALL_ONE;
-                if (brg.dt_b == data_type::f16) {
-                    assert(!"unsupported\n");
-                } else {
-                    const int offset = B_offset(ld, rd);
-                    if (!use_mul_vl(offset - base_offset, 4, cpu_sveLen)) {
-                        add_vl_or_imm(reg_tmp_, x_addr, offset - base_offset,
-                                X_TMP_0);
-                        base_offset = offset;
-                        x_addr = reg_tmp_;
-                    }
-                    LD_MUL_VL(ld1w, load(ld).s, mask, x_addr,
-                            offset - base_offset, 4);
+                const int offset = B_offset(ld, rd);
+                if (!use_mul_vl(offset - base_offset, 4, cpu_sveLen)) {
+                    add_vl_or_imm(
+                            reg_tmp_, x_addr, offset - base_offset, X_TMP_0);
+                    base_offset = offset;
+                    x_addr = reg_tmp_;
                 }
+                LD_MUL_VL(ld1w, load(ld).s, mask, x_addr, offset - base_offset,
+                        4);
             }
 
             bool have_to_load_bytes
@@ -1605,34 +1578,14 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
 
             auto rows_by_load_bytes = have_to_load_bytes ? rows_for_rd_tail : 0;
             for (int bd = bd_b; bd < bd_e; bd++) {
-                if (!is_emdbd) {
-                    const auto bd_by_load_bytes
-                            = (bd >= bd_e - rows_by_load_bytes
-                                    || brg.brgattr.wary_A_k_tail_read);
-                    broadcast(bcst(), A_offset(bd, rd),
-                            (have_to_load_bytes && bd_by_load_bytes), brg.dt_a);
-                }
+                const auto bd_by_load_bytes = (bd >= bd_e - rows_by_load_bytes
+                        || brg.brgattr.wary_A_k_tail_read);
+                broadcast(bcst(), A_offset(bd, rd),
+                        (have_to_load_bytes && bd_by_load_bytes), brg.dt_a);
                 //The current implementaion of prefetch is not giving any gain in performance but is rather introducing some latency. Therefore it is removed util a new useful implementation is deviced.
                 for (int ld = 0; ld < ld_block2; ld++) {
                     auto zmm = accm(ld_block2, bd, ld);
-                    if (is_emdbd) {
-                        const auto mask = brg.is_gemv && is_rd_tail
-                                ? gemv_tail_mask
-                                : P_ALL_ONE;
-                        // The ld1rw immediate must be <= 252 and a multiple of 4
-                        if (A_offset(bd, rd) >= 0 && A_offset(bd, rd) <= 252
-                                && A_offset(bd, rd) % 4 == 0) {
-                            ld1rw(z_tmp_1().s, mask / T_z,
-                                    ptr(reg_aux_A, A_offset(bd, rd)));
-                        } else {
-                            add_imm(X_DEFAULT_ADDR, reg_aux_A, A_offset(bd, rd),
-                                    X_TMP_0);
-                            ld1rw(z_tmp_1().s, mask / T_z, ptr(X_DEFAULT_ADDR));
-                        }
-                        fmla(zmm.s, mask / T_m, load(ld).s, z_tmp_1().s);
-                    } else {
-                        dot_product(zmm, load(ld), bcst());
-                    }
+                    dot_product(zmm, load(ld), bcst());
                 }
             }
         }
@@ -1672,7 +1625,7 @@ void jit_brgemm_kernel_t::ldb_loop(int bd_block2, bool is_bdb_tail,
         if (rdb_val > 0) {
             Label rdb_loop_label;
             mov(reg_rdb_loop, rdb_val);
-            L_aligned(rdb_loop_label, 64);
+            L(rdb_loop_label);
             {
                 const bool is_rd_tail = false;
                 gemm_microkernel(bd_block2, is_bdb_tail, ld_block2, is_rd_tail,
@@ -1696,7 +1649,7 @@ void jit_brgemm_kernel_t::ldb_loop(int bd_block2, bool is_bdb_tail,
     };
     if (is_ldb_loop_) { mov_imm(reg_ldb_loop, ldb_loop_length); }
 
-    L_aligned(ldb_loop_label, 64);
+    L(ldb_loop_label);
     {
         zero_accumulators(bd_block2, is_bdb_tail, ld_block2, is_ld_tail,
                 skip_accumulation);
@@ -1724,7 +1677,7 @@ void jit_brgemm_kernel_t::ldb_loop(int bd_block2, bool is_bdb_tail,
             }
 
             if (brg.brgattr.max_bs > 1) { mov(reg_BS_loop, reg_BS); }
-            L_aligned(BS_loop_label, 64);
+            L(BS_loop_label);
             {
                 if (check_top_vpad || check_bottom_vpad) {
                     const auto vpad_first = -brg.brgattr.max_bottom_vpad;
@@ -1924,7 +1877,7 @@ void jit_brgemm_kernel_t::bdb_loop() {
                 // middle bd_blocks -----------
                 Label bdb_loop_label;
                 mov_imm(reg_bdb_loop, bdblocks);
-                L_aligned(bdb_loop_label, 64);
+                L(bdb_loop_label);
                 {
                     bdb_loop_body(1, false, false, false,
                             bd_blocks_for_rd_tail <= 1 ? 0 : rows_for_rd_tail,
@@ -1951,12 +1904,12 @@ void jit_brgemm_kernel_t::bdb_loop() {
         }
         if (!vpad_exist || brg.type == brgemm_strd) {
             // for brgemm_strd batch may be null so we need this code path
-            L_aligned(no_vpad_label, 64);
+            L(no_vpad_label);
             if (brg.bdb > 0) {
                 mov_imm(reg_bdb_loop, brg.bdb);
                 if (brg.bdb > (rows_for_rd_tail ? 1 : 0)) {
                     Label bdb_loop_label;
-                    L_aligned(bdb_loop_label, 64);
+                    L(bdb_loop_label);
                     {
                         bdb_loop_body(1, false, false, false,
                                 bd_blocks_for_rd_tail <= 1 ? 0
@@ -1982,7 +1935,7 @@ void jit_brgemm_kernel_t::bdb_loop() {
                 do_ldb_loop(1, true, false, false, rows_for_rd_tail,
                         skip_accumulation);
         }
-        L_aligned(bdb_loop_end_label, 64);
+        L(bdb_loop_end_label);
     };
 
     auto bdb_loop_general = [=](bool skip_accumulation) {
@@ -2005,10 +1958,10 @@ void jit_brgemm_kernel_t::bdb_loop() {
         bdb_loop_general(false);
         b(bdb_loop_done_label);
 
-        L_aligned(bdb_loop_skip_acc_label, 64);
+        L(bdb_loop_skip_acc_label);
         bdb_loop_general(true);
 
-        L_aligned(bdb_loop_done_label, 64);
+        L(bdb_loop_done_label);
     } else
         bdb_loop_general(false);
 }

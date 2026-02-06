@@ -15,19 +15,20 @@
 # limitations under the License.
 ################################################################################
 
-import matplotlib.pyplot as plt
-import matplotlib.style
-from matplotlib import colors
-from matplotlib import gridspec
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-import matplotlib.ticker as mticker
 import math
+from typing import cast
 
-import report.metrics as metrics
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
+from matplotlib import gridspec
+from matplotlib.axes import Axes
+from mpl_toolkits.mplot3d.axes3d import Axes3D
+
+from . import metrics
 
 
-# Helpers for workaround for https: //github.com/matplotlib/matplotlib/issues/209
-def log_tick_formatter(val, pos=None):
+# Helpers for workaround for https://github.com/matplotlib/matplotlib/issues/209
+def log_tick_formatter(val, _=None):
     return "{:.0f}".format(2**val)
 
 
@@ -37,7 +38,7 @@ def rescale(data):
 
 def add_plot(proj=None):
     fig = plt.gcf()
-    subplots = fig.get_axes()
+    subplots = fig.get_axes()  # type: ignore
     cols = len(subplots) + 1
     gs = gridspec.GridSpec(1, cols)
 
@@ -47,7 +48,7 @@ def add_plot(proj=None):
         ax.set_subplotspec(gs[i])
 
     # Add the new subplot
-    return fig.add_subplot(gs[cols - 1], projection=proj)
+    return cast(Axes, fig.add_subplot(gs[cols - 1], projection=proj))
 
 
 class Scatter:
@@ -63,15 +64,15 @@ class Scatter:
                 self.ys.append(y)
             self.metrics.add(sample)
 
-    def __init__(self, x_label, y_label, metricValue, scaling):
+    def __init__(self, x_label, y_label, metric_value, scaling):
         self.ax = add_plot(None if y_label is None else "3d")
         self.scaling = scaling
-        self.metric_value = metricValue
+        self.metric_value = metric_value
         self.title = f"{self.scaling.title} {self.metric_value.title}"
         self.x_label = x_label
         self.y_label = y_label
-        self.metric_label = metricValue.title
-        self.data: dict[String, self.Data] = {}
+        self.metric_label = metric_value.title
+        self.data: dict[str, Scatter.Data] = {}
 
         super().__init__()
 
@@ -91,6 +92,7 @@ class Scatter:
                 self.ax.scatter(value.xs, value.metrics.get(), s=1, label=key)
         else:
             # 3D Plot
+            self.ax = cast(Axes3D, self.ax)
             self.ax.set_ylabel(self.y_label)
             self.ax.set_zlabel(self.metric_label)
 
@@ -100,7 +102,11 @@ class Scatter:
 
             for key, value in self.data.items():
                 self.ax.scatter(
-                    value.xs, value.ys, value.metrics.get(), s=1, label=key
+                    value.xs,
+                    value.ys,
+                    value.metrics.get(),  # type: ignore
+                    s=1,
+                    label=key,
                 )
 
         self.ax.legend()
@@ -110,11 +116,10 @@ class Scatter:
         y = None
         if self.y_label is not None:
             y = rescale(sample.primitive[self.y_label])
-        dt = sample.primitive["dt"]
         entry = sample.primitive["kind"]
         if sample.name is not None:
             entry = sample.name + ": " + entry
-        if not entry in self.data:
+        if entry not in self.data:
             self.data[entry] = self.Data(
                 metrics.MetricData(self.scaling, self.metric_value)
             )
@@ -122,7 +127,8 @@ class Scatter:
 
 
 def initialize():
-    plt.style.use('Solarize_Light2')
+    plt.style.use("Solarize_Light2")
+
 
 def show():
     plt.show()

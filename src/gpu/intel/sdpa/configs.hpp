@@ -20,15 +20,16 @@
 #include <iostream>
 
 #include "common/c_types_map.hpp"
-#include "gemmstone/microkernel_provider.hpp"
+#include "gemmstone/microkernel_selector.hpp"
 #include "gpu/intel/compute/device_info.hpp"
-#include "gpu/intel/microkernels/protocol.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
 namespace sdpa {
+
+namespace micro = gemmstone::microkernel;
 
 struct config_t {
     int unroll_m_kq, unroll_n_kq; // Subgroup tile sizes for K*Q GEMM
@@ -114,7 +115,7 @@ struct ukernel_serialized_opts_t
     : trivially_serializable_t<ukernel_serialized_opts_t> {
 
     ukernel_serialized_opts_t() = default;
-    ukernel_serialized_opts_t(micro::GEMMProtocol::Options opts)
+    ukernel_serialized_opts_t(micro::GEMMOptions opts)
         : localB(opts.localB)
         , slmPtr(opts.slmPtr)
         , scaleA(opts.scaleA)
@@ -130,7 +131,7 @@ struct ukernel_serialized_hwinfo_t
     : trivially_serializable_t<ukernel_serialized_hwinfo_t> {
 
     ukernel_serialized_hwinfo_t() = default;
-    ukernel_serialized_hwinfo_t(gemmstone::HWInformation &hwInfo)
+    ukernel_serialized_hwinfo_t(micro::HWInformation &hwInfo)
         : gmdid(static_cast<uint32_t>(hwInfo.gmdid))
         , euCount(static_cast<uint32_t>(hwInfo.euCount))
         , systolicAvailable(hwInfo.systolicAvailable) {}
@@ -239,11 +240,10 @@ struct micro_ukernel_params_t
 };
 DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(micro_ukernel_params_t);
 
-void deserialize_config_to_gemmstone(gemmstone::HWInformation &hwInfo,
+void deserialize_config_to_gemmstone(micro::HWInformation &hwInfo,
         gemmstone::GEMMProblem &problem_kq, gemmstone::GEMMProblem &problem_vs,
-        micro::GEMMProtocol::Options &opts_kq,
-        micro::GEMMProtocol::Options &opts_vs, gemmstone::SizeParams &sizes_kq,
-        gemmstone::SizeParams &sizes_vs,
+        micro::GEMMOptions &opts_kq, micro::GEMMOptions &opts_vs,
+        gemmstone::SizeParams &sizes_kq, gemmstone::SizeParams &sizes_vs,
         const micro_ukernel_params_t &ukernel_config);
 
 } // namespace sdpa

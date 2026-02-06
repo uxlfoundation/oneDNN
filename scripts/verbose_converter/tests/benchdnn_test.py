@@ -21,7 +21,7 @@ import subprocess
 import sys
 from argparse import RawTextHelpFormatter
 from collections import defaultdict
-from typing import Dict, List, IO
+from typing import IO, Dict, List
 
 
 class TestingException(RuntimeError):
@@ -51,7 +51,7 @@ def convert_dir_benchdnn2verbose(dir):
 def filter_verbose(verbose: IO[str], driver: str, filter_event: str):
     found_cases: List[str] = []
     tentative_cases: Dict[str, List[str]] = defaultdict(list)
-    for line in iter(verbose.readline, ''):
+    for line in iter(verbose.readline, ""):
         if "__REPRO" in line:
             # n: STATUS (Status message) __REPRO: repro
             _, status_info, repro = map(str.strip, line.split(":", 2))
@@ -162,13 +162,11 @@ def generate_verbose(path_to_benchdnn, engine, driver, batch):
     if sub.stderr is not None:
         stderr = sub.stderr.read()
     # most likely converter generated incorrect batch file
-    raise TestingException(
-        f"""
+    raise TestingException(f"""
          benchdnn returned {exit_code},
          args: {sub_args}
          stderr: {stderr}
-         """
-    )
+         """)
 
 
 def generate_batch(verbose, driver):
@@ -261,13 +259,11 @@ def compare(driver, ref_v, comp_v):
         for log_type, content in file_map.items():
             with open(f"{driver}.{log_type}.log", "w") as fd:
                 fd.write(content)
-        raise TestingException(
-            f"""
+        raise TestingException(f"""
              verboses do not match
              ref: {r}
              com: {c}
-             """
-        )
+             """)
 
 
 def test(path_to_benchdnn, engine, driver, batch):

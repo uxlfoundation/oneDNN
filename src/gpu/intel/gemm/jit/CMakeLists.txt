@@ -35,7 +35,7 @@ foreach(GPU ${GPUS})
         message(FATAL_ERROR "Unknown GPU architecture: ${GPU}")
     endif()
     string(TOUPPER "${GPU}" GPU)
-    add_compile_definitions("GEMMSTONE_BUILD_${GPU}")
+    add_definitions_with_host_compiler("-DGEMMSTONE_BUILD_${GPU}")
 endforeach()
 
 set(DIRS "dsl;generator;generator/pieces;generator_dsl;selector")

@@ -22,11 +22,11 @@
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 #include "cpu/ref_io_helper.hpp"
-#include "gemmstone/microkernel_provider.hpp"
+#include "gemmstone/microkernel/shim.hpp"
+#include "gemmstone/microkernel_selector.hpp"
 #include "gpu/intel/compute/ukernels.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/gemm/jit/gen_kernel.hpp"
-#include "gpu/intel/microkernels/shim.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
 #include <cstdio>
@@ -186,7 +186,7 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     ukernel_params.wg_n_vs = config->wg_n_vs;
 
     /* Get device information */
-    HWInformation hw_info;
+    micro::HWInformation hw_info;
     hw_info.euCount = dev_info->eu_count();
     hw_info.gmdid = dev_info->ip_version();
     hw_info.systolicAvailable = use_systolic_ukernel_;
@@ -259,7 +259,7 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     const memory_desc_wrapper key_mdw(key_md());
     auto ldk = static_cast<int>(
             gemm_desc_t::get_ld(*key_md()) * key_mdw.data_type_size());
-    problem_kq.A.setAlignment(alignmentForLD(ldk));
+    problem_kq.A.setAlignment(micro::alignmentForLD(ldk));
     problem_kq.B.setAlignment(64); // Q is packed in VNNI format in SLM
     if (use_systolic_ukernel()) {
         problem_kq.B.crosspack = 2;
@@ -270,7 +270,7 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     ukernel_params.problem_kq = {problem_kq};
 
     /* Set up microkernel options */
-    micro::GEMMProtocol::Options opts_kq;
+    micro::GEMMOptions opts_kq;
     opts_kq.localB = true;
     opts_kq.slmPtr = true;
     opts_kq.scaleA = with_key_scales() && !kq_common_scales;
@@ -335,7 +335,7 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     const memory_desc_wrapper val_mdw(val_md());
     auto ldv = static_cast<int>(
             gemm_desc_t::get_ld(*val_md()) * val_mdw.data_type_size());
-    problem_vs.A.setAlignment(alignmentForLD(ldv));
+    problem_vs.A.setAlignment(micro::alignmentForLD(ldv));
     problem_vs.B.setAlignment(64); // S is packed in SLM
     if (use_systolic_ukernel()) { problem_vs.B.crosspack = 16; }
 
@@ -352,7 +352,7 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     ukernel_params.sizes_vs = {heuristic_sizes};
 
     /* Set up microkernel options */
-    micro::GEMMProtocol::Options opts_vs;
+    micro::GEMMOptions opts_vs;
     opts_vs.localB = true;
     opts_vs.slmPtr = true;
     opts_vs.scaleA = with_value_scales() && !vs_common_scales;
@@ -608,9 +608,9 @@ status_t micro_params_t::get_kernel_ctx(
     kernel_ctx.define_int("KQ_F16_ACC", kq_f16_accumulate);
     kernel_ctx.define_int("VS_F16_ACC", vs_f16_accumulate);
 
-    gemmstone::HWInformation hw_info;
+    micro::HWInformation hw_info;
     gemmstone::GEMMProblem problem_kq, problem_vs;
-    micro::GEMMProtocol::Options opts_kq, opts_vs;
+    micro::GEMMOptions opts_kq, opts_vs;
     gemmstone::SizeParams sizes_kq, sizes_vs;
 
     deserialize_config_to_gemmstone(hw_info, problem_kq, problem_vs, opts_kq,
@@ -639,7 +639,7 @@ status_t micro_params_t::get_kernel_ctx(
 
     /* Ask microkernel provider for microkernel */
     try {
-        gemm_kq = selectGEMMMicrokernel(
+        gemm_kq = micro::selectGEMM(
                 opts_kq, hw_info, sizes_kq, problem_kq, reqs_kq);
     } catch (const std::runtime_error &ex) {
         VCHECK_SDPA_COND(false,
@@ -654,10 +654,10 @@ status_t micro_params_t::get_kernel_ctx(
                 /* Enable dpasw */
                 strategy.dpasw |= strategy.fused;
             };
-            gemm_vs = selectGEMMMicrokernel(
+            gemm_vs = micro::selectGEMM(
                     opts_vs, hw_info, sizes_vs, problem_vs, reqs_vs, adjust_vs);
         } else {
-            gemm_vs = selectGEMMMicrokernel(
+            gemm_vs = micro::selectGEMM(
                     opts_vs, hw_info, sizes_vs, problem_vs, reqs_vs);
         }
     } catch (const std::runtime_error &ex) {
@@ -669,7 +669,7 @@ status_t micro_params_t::get_kernel_ctx(
             problem_kq.toString().c_str(), problem_vs.toString().c_str());
 
     /* Generate microkernel shims */
-    ShimOptions shimOptions;
+    micro::ShimOptions shimOptions;
     shimOptions.subgroupSize = subgroup_size;
     shimOptions.useTileOps = true;
     shimOptions.decorator = "kq";

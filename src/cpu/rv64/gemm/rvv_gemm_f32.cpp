@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2018 Intel Corporation
+* Copyright 2025 Institute of Software, Chinese Academy of Sciences
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -20,6 +21,7 @@
 
 #include "cpu/platform.hpp"
 
+#include "cpu/rv64/gemm/jit_rvv_gemm_kernel.hpp"
 #include "cpu/rv64/gemm/rvv_gemm_f32.hpp"
 #include "cpu/rv64/gemm/rvv_gemm_utils_f32.hpp"
 
@@ -38,19 +40,21 @@ using gemm_f32_traits = gemm_utils::gemm_utils_traits<float>;
 
 namespace {
 
-#define STORE_C(C_PTR, V_C_REG, ALPHA, BETA, VL) \
+#define STORE_C(C_PTR, V_C_REG, ALPHA, BETA, VL, LMUL) \
     do { \
         float *c_final_ptr = (C_PTR); \
         if ((BETA) == 0.0f) { \
-            vfloat32m1_t v_res \
-                    = __riscv_vfmul_vf_f32m1((V_C_REG), (ALPHA), (VL)); \
-            __riscv_vse32_v_f32m1(c_final_ptr, v_res, (VL)); \
+            vfloat32##LMUL##_t v_res \
+                    = __riscv_vfmul_vf_f32##LMUL((V_C_REG), (ALPHA), (VL)); \
+            __riscv_vse32_v_f32##LMUL(c_final_ptr, v_res, (VL)); \
         } else { \
-            vfloat32m1_t v_c_old = __riscv_vle32_v_f32m1(c_final_ptr, (VL)); \
-            vfloat32m1_t v_res \
-                    = __riscv_vfmul_vf_f32m1(v_c_old, (BETA), (VL)); \
-            v_res = __riscv_vfmacc_vf_f32m1(v_res, (ALPHA), (V_C_REG), (VL)); \
-            __riscv_vse32_v_f32m1(c_final_ptr, v_res, (VL)); \
+            vfloat32##LMUL##_t v_c_old \
+                    = __riscv_vle32_v_f32##LMUL(c_final_ptr, (VL)); \
+            vfloat32##LMUL##_t v_res \
+                    = __riscv_vfmul_vf_f32##LMUL(v_c_old, (BETA), (VL)); \
+            v_res = __riscv_vfmacc_vf_f32##LMUL( \
+                    v_res, (ALPHA), (V_C_REG), (VL)); \
+            __riscv_vse32_v_f32##LMUL(c_final_ptr, v_res, (VL)); \
         } \
     } while (0)
 
@@ -58,24 +62,51 @@ void copy_A(
         bool isTransA, dim_t K, const float *A, const dim_t lda, float *ws) {
     constexpr dim_t m = gemm_f32_traits::get_m_unroll_factor();
 
+    // Two-way software pipelining: overlap load and store
     for (dim_t k = 0; k < K; k++) {
         dim_t i = 0;
         if (isTransA) {
             ptrdiff_t stride = lda * sizeof(float);
-            while (i < m) {
-                size_t vl = __riscv_vsetvl_e32m1(m - i);
-                const float *a_ptr = A + i * lda + k;
-                vfloat32m1_t v_a = __riscv_vlse32_v_f32m1(a_ptr, stride, vl);
-                __riscv_vse32_v_f32m1(ws + i, v_a, vl);
-                i += vl;
+            if (i < m) {
+                size_t vl0 = __riscv_vsetvl_e32m4(m - i);
+                const float *a_ptr0 = A + i * lda + k;
+                vfloat32m4_t v_a0 = __riscv_vlse32_v_f32m4(a_ptr0, stride, vl0);
+                dim_t i0 = i;
+                i += vl0;
+
+                while (i < m) {
+                    size_t vl1 = __riscv_vsetvl_e32m4(m - i);
+                    const float *a_ptr1 = A + i * lda + k;
+                    vfloat32m4_t v_a1
+                            = __riscv_vlse32_v_f32m4(a_ptr1, stride, vl1);
+                    __riscv_vse32_v_f32m4(ws + i0, v_a0, vl0);
+
+                    i0 = i;
+                    vl0 = vl1;
+                    v_a0 = v_a1;
+                    i += vl1;
+                }
+                __riscv_vse32_v_f32m4(ws + i0, v_a0, vl0);
             }
         } else {
             const float *a_ptr = A + k * lda;
-            while (i < m) {
-                size_t vl = __riscv_vsetvl_e32m1(m - i);
-                vfloat32m1_t v_a = __riscv_vle32_v_f32m1(a_ptr + i, vl);
-                __riscv_vse32_v_f32m1(ws + i, v_a, vl);
-                i += vl;
+            if (i < m) {
+                size_t vl0 = __riscv_vsetvl_e32m4(m - i);
+                vfloat32m4_t v_a0 = __riscv_vle32_v_f32m4(a_ptr + i, vl0);
+                dim_t i0 = i;
+                i += vl0;
+
+                while (i < m) {
+                    size_t vl1 = __riscv_vsetvl_e32m4(m - i);
+                    vfloat32m4_t v_a1 = __riscv_vle32_v_f32m4(a_ptr + i, vl1);
+                    __riscv_vse32_v_f32m4(ws + i0, v_a0, vl0);
+
+                    i0 = i;
+                    vl0 = vl1;
+                    v_a0 = v_a1;
+                    i += vl1;
+                }
+                __riscv_vse32_v_f32m4(ws + i0, v_a0, vl0);
             }
         }
         ws += m;
@@ -101,31 +132,31 @@ struct kernel_mxn_impl<isTransA, isTransB, 2> {
 
         dim_t i = 0;
         while (i < m) {
-            size_t vl = __riscv_vsetvl_e32m1(m - i);
+            size_t vl = __riscv_vsetvl_e32m8(m - i);
 
-            vfloat32m1_t v_c0 = __riscv_vfmv_v_f_f32m1(0.0f, vl);
-            vfloat32m1_t v_c1 = __riscv_vfmv_v_f_f32m1(0.0f, vl);
+            vfloat32m8_t v_c0 = __riscv_vfmv_v_f_f32m8(0.0f, vl);
+            vfloat32m8_t v_c1 = __riscv_vfmv_v_f_f32m8(0.0f, vl);
 
             for (dim_t k = 0; k < K; ++k) {
-                vfloat32m1_t v_a;
+                vfloat32m8_t v_a;
                 if (isTransA) {
                     ptrdiff_t stride_a = lda * sizeof(float);
-                    v_a = __riscv_vlse32_v_f32m1(A + i * lda + k, stride_a, vl);
+                    v_a = __riscv_vlse32_v_f32m8(A + i * lda + k, stride_a, vl);
                 } else {
-                    v_a = __riscv_vle32_v_f32m1(A + i + k * lda, vl);
+                    v_a = __riscv_vle32_v_f32m8(A + i + k * lda, vl);
                 }
 
                 const float *b_ptr = isTransB ? &B[k * ldb] : &B[k];
                 const dim_t b_stride = isTransB ? 1 : ldb;
 
-                v_c0 = __riscv_vfmacc_vf_f32m1(
+                v_c0 = __riscv_vfmacc_vf_f32m8(
                         v_c0, b_ptr[0 * b_stride], v_a, vl);
-                v_c1 = __riscv_vfmacc_vf_f32m1(
+                v_c1 = __riscv_vfmacc_vf_f32m8(
                         v_c1, b_ptr[1 * b_stride], v_a, vl);
             }
 
-            STORE_C(C + 0 * ldc + i, v_c0, alpha, beta, vl);
-            STORE_C(C + 1 * ldc + i, v_c1, alpha, beta, vl);
+            STORE_C(C + 0 * ldc + i, v_c0, alpha, beta, vl, m8);
+            STORE_C(C + 1 * ldc + i, v_c1, alpha, beta, vl, m8);
 
             i += vl;
         }
@@ -144,41 +175,41 @@ struct kernel_mxn_impl<isTransA, isTransB, 4> {
 
         dim_t i = 0;
         while (i < m) {
-            size_t vl = __riscv_vsetvl_e32m1(m - i);
+            size_t vl = __riscv_vsetvl_e32m4(m - i);
 
-            vfloat32m1_t v_c0, v_c1, v_c2, v_c3;
+            vfloat32m4_t v_c0, v_c1, v_c2, v_c3;
 
-            v_c0 = __riscv_vfmv_v_f_f32m1(0.0f, vl);
-            v_c1 = __riscv_vfmv_v_f_f32m1(0.0f, vl);
-            v_c2 = __riscv_vfmv_v_f_f32m1(0.0f, vl);
-            v_c3 = __riscv_vfmv_v_f_f32m1(0.0f, vl);
+            v_c0 = __riscv_vfmv_v_f_f32m4(0.0f, vl);
+            v_c1 = __riscv_vfmv_v_f_f32m4(0.0f, vl);
+            v_c2 = __riscv_vfmv_v_f_f32m4(0.0f, vl);
+            v_c3 = __riscv_vfmv_v_f_f32m4(0.0f, vl);
 
             for (dim_t k = 0; k < K; ++k) {
-                vfloat32m1_t v_a;
+                vfloat32m4_t v_a;
                 if (isTransA) {
                     ptrdiff_t stride_a = lda * sizeof(float);
-                    v_a = __riscv_vlse32_v_f32m1(A + i * lda + k, stride_a, vl);
+                    v_a = __riscv_vlse32_v_f32m4(A + i * lda + k, stride_a, vl);
                 } else {
-                    v_a = __riscv_vle32_v_f32m1(A + i + k * lda, vl);
+                    v_a = __riscv_vle32_v_f32m4(A + i + k * lda, vl);
                 }
 
                 const float *b_ptr = isTransB ? &B[k * ldb] : &B[k];
                 const dim_t b_stride = isTransB ? 1 : ldb;
 
-                v_c0 = __riscv_vfmacc_vf_f32m1(
+                v_c0 = __riscv_vfmacc_vf_f32m4(
                         v_c0, b_ptr[0 * b_stride], v_a, vl);
-                v_c1 = __riscv_vfmacc_vf_f32m1(
+                v_c1 = __riscv_vfmacc_vf_f32m4(
                         v_c1, b_ptr[1 * b_stride], v_a, vl);
-                v_c2 = __riscv_vfmacc_vf_f32m1(
+                v_c2 = __riscv_vfmacc_vf_f32m4(
                         v_c2, b_ptr[2 * b_stride], v_a, vl);
-                v_c3 = __riscv_vfmacc_vf_f32m1(
+                v_c3 = __riscv_vfmacc_vf_f32m4(
                         v_c3, b_ptr[3 * b_stride], v_a, vl);
             }
 
-            STORE_C(C + 0 * ldc + i, v_c0, alpha, beta, vl);
-            STORE_C(C + 1 * ldc + i, v_c1, alpha, beta, vl);
-            STORE_C(C + 2 * ldc + i, v_c2, alpha, beta, vl);
-            STORE_C(C + 3 * ldc + i, v_c3, alpha, beta, vl);
+            STORE_C(C + 0 * ldc + i, v_c0, alpha, beta, vl, m4);
+            STORE_C(C + 1 * ldc + i, v_c1, alpha, beta, vl, m4);
+            STORE_C(C + 2 * ldc + i, v_c2, alpha, beta, vl, m4);
+            STORE_C(C + 3 * ldc + i, v_c3, alpha, beta, vl, m4);
 
             i += vl;
         }
@@ -197,57 +228,57 @@ struct kernel_mxn_impl<isTransA, isTransB, 8> {
 
         dim_t i = 0;
         while (i < m) {
-            size_t vl = __riscv_vsetvl_e32m1(m - i);
+            size_t vl = __riscv_vsetvl_e32m2(m - i);
 
-            vfloat32m1_t v_c0, v_c1, v_c2, v_c3, v_c4, v_c5, v_c6, v_c7;
+            vfloat32m2_t v_c0, v_c1, v_c2, v_c3, v_c4, v_c5, v_c6, v_c7;
 
-            v_c0 = __riscv_vfmv_v_f_f32m1(0.0f, vl);
-            v_c1 = __riscv_vfmv_v_f_f32m1(0.0f, vl);
-            v_c2 = __riscv_vfmv_v_f_f32m1(0.0f, vl);
-            v_c3 = __riscv_vfmv_v_f_f32m1(0.0f, vl);
-            v_c4 = __riscv_vfmv_v_f_f32m1(0.0f, vl);
-            v_c5 = __riscv_vfmv_v_f_f32m1(0.0f, vl);
-            v_c6 = __riscv_vfmv_v_f_f32m1(0.0f, vl);
-            v_c7 = __riscv_vfmv_v_f_f32m1(0.0f, vl);
+            v_c0 = __riscv_vfmv_v_f_f32m2(0.0f, vl);
+            v_c1 = __riscv_vfmv_v_f_f32m2(0.0f, vl);
+            v_c2 = __riscv_vfmv_v_f_f32m2(0.0f, vl);
+            v_c3 = __riscv_vfmv_v_f_f32m2(0.0f, vl);
+            v_c4 = __riscv_vfmv_v_f_f32m2(0.0f, vl);
+            v_c5 = __riscv_vfmv_v_f_f32m2(0.0f, vl);
+            v_c6 = __riscv_vfmv_v_f_f32m2(0.0f, vl);
+            v_c7 = __riscv_vfmv_v_f_f32m2(0.0f, vl);
 
             for (dim_t k = 0; k < K; ++k) {
-                vfloat32m1_t v_a;
+                vfloat32m2_t v_a;
                 if (isTransA) {
                     ptrdiff_t stride_a = lda * sizeof(float);
-                    v_a = __riscv_vlse32_v_f32m1(A + i * lda + k, stride_a, vl);
+                    v_a = __riscv_vlse32_v_f32m2(A + i * lda + k, stride_a, vl);
                 } else {
-                    v_a = __riscv_vle32_v_f32m1(A + i + k * lda, vl);
+                    v_a = __riscv_vle32_v_f32m2(A + i + k * lda, vl);
                 }
 
                 const float *b_ptr = isTransB ? &B[k * ldb] : &B[k];
                 const dim_t b_stride = isTransB ? 1 : ldb;
 
-                v_c0 = __riscv_vfmacc_vf_f32m1(
+                v_c0 = __riscv_vfmacc_vf_f32m2(
                         v_c0, b_ptr[0 * b_stride], v_a, vl);
-                v_c1 = __riscv_vfmacc_vf_f32m1(
+                v_c1 = __riscv_vfmacc_vf_f32m2(
                         v_c1, b_ptr[1 * b_stride], v_a, vl);
-                v_c2 = __riscv_vfmacc_vf_f32m1(
+                v_c2 = __riscv_vfmacc_vf_f32m2(
                         v_c2, b_ptr[2 * b_stride], v_a, vl);
-                v_c3 = __riscv_vfmacc_vf_f32m1(
+                v_c3 = __riscv_vfmacc_vf_f32m2(
                         v_c3, b_ptr[3 * b_stride], v_a, vl);
-                v_c4 = __riscv_vfmacc_vf_f32m1(
+                v_c4 = __riscv_vfmacc_vf_f32m2(
                         v_c4, b_ptr[4 * b_stride], v_a, vl);
-                v_c5 = __riscv_vfmacc_vf_f32m1(
+                v_c5 = __riscv_vfmacc_vf_f32m2(
                         v_c5, b_ptr[5 * b_stride], v_a, vl);
-                v_c6 = __riscv_vfmacc_vf_f32m1(
+                v_c6 = __riscv_vfmacc_vf_f32m2(
                         v_c6, b_ptr[6 * b_stride], v_a, vl);
-                v_c7 = __riscv_vfmacc_vf_f32m1(
+                v_c7 = __riscv_vfmacc_vf_f32m2(
                         v_c7, b_ptr[7 * b_stride], v_a, vl);
             }
 
-            STORE_C(C + 0 * ldc + i, v_c0, alpha, beta, vl);
-            STORE_C(C + 1 * ldc + i, v_c1, alpha, beta, vl);
-            STORE_C(C + 2 * ldc + i, v_c2, alpha, beta, vl);
-            STORE_C(C + 3 * ldc + i, v_c3, alpha, beta, vl);
-            STORE_C(C + 4 * ldc + i, v_c4, alpha, beta, vl);
-            STORE_C(C + 5 * ldc + i, v_c5, alpha, beta, vl);
-            STORE_C(C + 6 * ldc + i, v_c6, alpha, beta, vl);
-            STORE_C(C + 7 * ldc + i, v_c7, alpha, beta, vl);
+            STORE_C(C + 0 * ldc + i, v_c0, alpha, beta, vl, m2);
+            STORE_C(C + 1 * ldc + i, v_c1, alpha, beta, vl, m2);
+            STORE_C(C + 2 * ldc + i, v_c2, alpha, beta, vl, m2);
+            STORE_C(C + 3 * ldc + i, v_c3, alpha, beta, vl, m2);
+            STORE_C(C + 4 * ldc + i, v_c4, alpha, beta, vl, m2);
+            STORE_C(C + 5 * ldc + i, v_c5, alpha, beta, vl, m2);
+            STORE_C(C + 6 * ldc + i, v_c6, alpha, beta, vl, m2);
+            STORE_C(C + 7 * ldc + i, v_c7, alpha, beta, vl, m2);
 
             i += vl;
         }
@@ -334,22 +365,22 @@ struct kernel_mxn_impl<isTransA, isTransB, 16> {
                         v_c15, b_ptr[15 * b_stride], v_a, vl);
             }
 
-            STORE_C(C + 0 * ldc + i, v_c0, alpha, beta, vl);
-            STORE_C(C + 1 * ldc + i, v_c1, alpha, beta, vl);
-            STORE_C(C + 2 * ldc + i, v_c2, alpha, beta, vl);
-            STORE_C(C + 3 * ldc + i, v_c3, alpha, beta, vl);
-            STORE_C(C + 4 * ldc + i, v_c4, alpha, beta, vl);
-            STORE_C(C + 5 * ldc + i, v_c5, alpha, beta, vl);
-            STORE_C(C + 6 * ldc + i, v_c6, alpha, beta, vl);
-            STORE_C(C + 7 * ldc + i, v_c7, alpha, beta, vl);
-            STORE_C(C + 8 * ldc + i, v_c8, alpha, beta, vl);
-            STORE_C(C + 9 * ldc + i, v_c9, alpha, beta, vl);
-            STORE_C(C + 10 * ldc + i, v_c10, alpha, beta, vl);
-            STORE_C(C + 11 * ldc + i, v_c11, alpha, beta, vl);
-            STORE_C(C + 12 * ldc + i, v_c12, alpha, beta, vl);
-            STORE_C(C + 13 * ldc + i, v_c13, alpha, beta, vl);
-            STORE_C(C + 14 * ldc + i, v_c14, alpha, beta, vl);
-            STORE_C(C + 15 * ldc + i, v_c15, alpha, beta, vl);
+            STORE_C(C + 0 * ldc + i, v_c0, alpha, beta, vl, m1);
+            STORE_C(C + 1 * ldc + i, v_c1, alpha, beta, vl, m1);
+            STORE_C(C + 2 * ldc + i, v_c2, alpha, beta, vl, m1);
+            STORE_C(C + 3 * ldc + i, v_c3, alpha, beta, vl, m1);
+            STORE_C(C + 4 * ldc + i, v_c4, alpha, beta, vl, m1);
+            STORE_C(C + 5 * ldc + i, v_c5, alpha, beta, vl, m1);
+            STORE_C(C + 6 * ldc + i, v_c6, alpha, beta, vl, m1);
+            STORE_C(C + 7 * ldc + i, v_c7, alpha, beta, vl, m1);
+            STORE_C(C + 8 * ldc + i, v_c8, alpha, beta, vl, m1);
+            STORE_C(C + 9 * ldc + i, v_c9, alpha, beta, vl, m1);
+            STORE_C(C + 10 * ldc + i, v_c10, alpha, beta, vl, m1);
+            STORE_C(C + 11 * ldc + i, v_c11, alpha, beta, vl, m1);
+            STORE_C(C + 12 * ldc + i, v_c12, alpha, beta, vl, m1);
+            STORE_C(C + 13 * ldc + i, v_c13, alpha, beta, vl, m1);
+            STORE_C(C + 14 * ldc + i, v_c14, alpha, beta, vl, m1);
+            STORE_C(C + 15 * ldc + i, v_c15, alpha, beta, vl, m1);
 
             i += vl;
         }
@@ -391,48 +422,135 @@ void block_ker(const dim_t M, const dim_t N, const dim_t K, const float *A,
         const dim_t ldc, const float alpha, const float beta, float *ws,
         bool do_copy, int ithr = -1) {
 
-    dim_t n_unroll = gemm_f32_traits::get_n_unroll_factor();
-    dim_t m_unroll = gemm_f32_traits::get_m_unroll_factor();
+    const dim_t n_unroll = gemm_f32_traits::get_n_unroll_factor();
+    const dim_t m_unroll = gemm_f32_traits::get_m_unroll_factor();
 
     dim_t Nu = rnd_dn(N, n_unroll);
     dim_t Mu = rnd_dn(M, m_unroll);
 
-    for (dim_t i = 0; i < Mu; i += m_unroll) {
-        for (dim_t j = 0; j < Nu; j += n_unroll) {
-            const float *b = isTransB ? &B[j] : &B[j * ldb];
-            const float *a = isTransA ? &A[i * lda] : &A[i];
-            if (do_copy) {
-                if (j == 0) { copy_A(isTransA, K, a, lda, ws); }
-                kernel_mxn<false, isTransB>(K, ws, m_unroll, b, ldb,
-                        &C[i + j * ldc], ldc, alpha, beta, ithr);
-            } else {
-                kernel_mxn<isTransA, isTransB>(K, a, lda, b, ldb,
-                        &C[i + j * ldc], ldc, alpha, beta, ithr);
+    // JIT-optimized specialization for the most important case:
+    //   isTransA = false, isTransB = false, n_unroll = 4.
+    const bool use_jit_ker = !isTransA && !isTransB && (n_unroll == 4)
+            && (m_unroll == 8 || m_unroll == 16);
+
+    if (do_copy) {
+        if (use_jit_ker) {
+            for (dim_t i = 0; i < Mu; i += m_unroll) {
+                for (dim_t j = 0; j < Nu; j += n_unroll) {
+                    const float *b = isTransB ? &B[j] : &B[j * ldb];
+                    const float *a = isTransA ? &A[i * lda] : &A[i];
+                    if (j == 0) { copy_A(isTransA, K, a, lda, ws); }
+                    jit_rvv_gemm_kernel(a, b, &C[i + j * ldc], lda, ldb, ldc, K,
+                            alpha, beta, m_unroll);
+                }
+            }
+        } else {
+            for (dim_t i = 0; i < Mu; i += m_unroll) {
+                for (dim_t j = 0; j < Nu; j += n_unroll) {
+                    const float *b = isTransB ? &B[j] : &B[j * ldb];
+                    const float *a = isTransA ? &A[i * lda] : &A[i];
+                    if (j == 0) { copy_A(isTransA, K, a, lda, ws); }
+                    kernel_mxn<false, isTransB>(K, ws, m_unroll, b, ldb,
+                            &C[i + j * ldc], ldc, alpha, beta, ithr);
+                }
+            }
+        }
+    } else {
+        if (use_jit_ker) {
+            for (dim_t i = 0; i < Mu; i += m_unroll) {
+                for (dim_t j = 0; j < Nu; j += n_unroll) {
+                    const float *b = isTransB ? &B[j] : &B[j * ldb];
+                    const float *a = isTransA ? &A[i * lda] : &A[i];
+                    jit_rvv_gemm_kernel(a, b, &C[i + j * ldc], lda, ldb, ldc, K,
+                            alpha, beta, m_unroll);
+                }
+            }
+        } else {
+            for (dim_t i = 0; i < Mu; i += m_unroll) {
+                for (dim_t j = 0; j < Nu; j += n_unroll) {
+                    const float *b = isTransB ? &B[j] : &B[j * ldb];
+                    const float *a = isTransA ? &A[i * lda] : &A[i];
+                    kernel_mxn<isTransA, isTransB>(K, a, lda, b, ldb,
+                            &C[i + j * ldc], ldc, alpha, beta, ithr);
+                }
             }
         }
     }
 
-    // tail processing
-    for (dim_t i = 0; i < M; i++) {
-        for (dim_t j = Nu; j < N; j++) {
-            float c = beta == 0.f ? 0.f : beta * C[i + j * ldc];
+    // tail processing: columns Nu to N (vectorized over i for contiguous C access)
+    // Process all M rows for the remaining (N-Nu) columns
+    for (dim_t j = Nu; j < N; j++) {
+        float *c_ptr = &C[j * ldc];
+        const float *b_col = isTransB ? &B[j] : &B[j * ldb];
+
+        dim_t i = 0;
+        while (i < M) {
+            size_t vl = __riscv_vsetvl_e32m4(M - i);
+            vfloat32m4_t v_acc = __riscv_vfmv_v_f_f32m4(0.0f, vl);
+
             for (dim_t p = 0; p < K; p++) {
-                float b = isTransB ? B[j + p * ldb] : B[p + j * ldb];
-                float a = isTransA ? A[p + i * lda] : A[i + p * lda];
-                c += alpha * a * b;
+                float b_val = isTransB ? b_col[p * ldb] : b_col[p];
+                vfloat32m4_t v_a;
+                if (isTransA) {
+                    // A(p, i:i+vl) - strided access
+                    ptrdiff_t stride_a = lda * sizeof(float);
+                    v_a = __riscv_vlse32_v_f32m4(&A[p + i * lda], stride_a, vl);
+                } else {
+                    // A(i:i+vl, p) - contiguous access
+                    v_a = __riscv_vle32_v_f32m4(&A[i + p * lda], vl);
+                }
+                v_acc = __riscv_vfmacc_vf_f32m4(v_acc, b_val, v_a, vl);
             }
-            C[i + j * ldc] = c;
+
+            // Apply alpha and beta, store result (contiguous)
+            v_acc = __riscv_vfmul_vf_f32m4(v_acc, alpha, vl);
+            if (beta != 0.0f) {
+                vfloat32m4_t v_c_old = __riscv_vle32_v_f32m4(c_ptr + i, vl);
+                v_acc = __riscv_vfmacc_vf_f32m4(v_acc, beta, v_c_old, vl);
+            }
+            __riscv_vse32_v_f32m4(c_ptr + i, v_acc, vl);
+            i += vl;
         }
     }
-    for (dim_t i = Mu; i < M; i++) {
+
+    // tail processing: rows Mu to M (vectorized over i for contiguous C access)
+    // Process remaining (M-Mu) rows for the first Nu columns
+    if (Mu < M) {
+        const dim_t m_tail = M - Mu;
+
         for (dim_t j = 0; j < Nu; j++) {
-            float c = beta == 0.f ? 0.f : beta * C[i + j * ldc];
-            for (dim_t p = 0; p < K; p++) {
-                float b = isTransB ? B[j + p * ldb] : B[p + j * ldb];
-                float a = isTransA ? A[p + i * lda] : A[i + p * lda];
-                c += alpha * a * b;
+            float *c_ptr = &C[Mu + j * ldc];
+            const float *b_col = isTransB ? &B[j] : &B[j * ldb];
+
+            dim_t i = 0;
+            while (i < m_tail) {
+                size_t vl = __riscv_vsetvl_e32m4(m_tail - i);
+                vfloat32m4_t v_acc = __riscv_vfmv_v_f_f32m4(0.0f, vl);
+
+                for (dim_t p = 0; p < K; p++) {
+                    float b_val = isTransB ? b_col[p * ldb] : b_col[p];
+                    vfloat32m4_t v_a;
+                    if (isTransA) {
+                        // A(p, Mu+i:Mu+i+vl) - strided access
+                        ptrdiff_t stride_a = lda * sizeof(float);
+                        v_a = __riscv_vlse32_v_f32m4(
+                                &A[p + (Mu + i) * lda], stride_a, vl);
+                    } else {
+                        // A(Mu+i:Mu+i+vl, p) - contiguous access
+                        v_a = __riscv_vle32_v_f32m4(&A[Mu + i + p * lda], vl);
+                    }
+                    v_acc = __riscv_vfmacc_vf_f32m4(v_acc, b_val, v_a, vl);
+                }
+
+                // Apply alpha and beta, store result (contiguous)
+                v_acc = __riscv_vfmul_vf_f32m4(v_acc, alpha, vl);
+                if (beta != 0.0f) {
+                    vfloat32m4_t v_c_old = __riscv_vle32_v_f32m4(c_ptr + i, vl);
+                    v_acc = __riscv_vfmacc_vf_f32m4(v_acc, beta, v_c_old, vl);
+                }
+                __riscv_vse32_v_f32m4(c_ptr + i, v_acc, vl);
+                i += vl;
             }
-            C[i + j * ldc] = c;
         }
     }
 }

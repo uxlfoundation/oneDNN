@@ -71,8 +71,9 @@ jobs:
     runs-on: ${{ matrix.config.label }}
     steps:
       - name: Checkout oneDNN
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          persist-credentials: false
           path: oneDNN
 
       - name: Read version file
@@ -141,8 +142,9 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout oneDNN
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          persist-credentials: false
           path: oneDNN
 
       - name: Read version file
@@ -154,7 +156,7 @@ jobs:
 
       # Setup QEMU for RISC-V platform support
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
         with:
           platforms: riscv64
 
@@ -166,7 +168,7 @@ jobs:
 
       # Download build artifacts
       - name: Download build artifacts
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: build-artifact
           path: ${{ github.workspace }}/oneDNN/
@@ -182,6 +184,7 @@ jobs:
         env:
           CTEST_PARALLEL_LEVEL: 4
           ONEDNN_THREADING: ${{ matrix.config.threading }}
+          ONEDNN_TEST_SET: ${{ matrix.config.testset }}
           QEMU_CPU: "rv64,v=true,vlen=${{ matrix.config.vlen }},vext_spec=v1.0"
 
   # This job adds a check named "CI RISC-V" that represents overall

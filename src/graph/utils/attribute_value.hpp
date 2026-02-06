@@ -238,7 +238,7 @@ public:
     }
 
     attribute_value_t &operator=(const attribute_value_t &orig) {
-        if (orig.value_cell_) {
+        if (&orig != this && orig.value_cell_) {
             this->value_cell_ = orig.value_cell_->duplicate();
         }
         return *this;

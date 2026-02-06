@@ -29,6 +29,8 @@ namespace sycl {
 
 class engine_t;
 
+xpu::device_uuid_t get_device_uuid(const ::sycl::device &dev);
+
 ::sycl::nd_range<3> to_sycl_nd_range(
         const gpu::intel::compute::nd_range_t &range);
 

@@ -58,7 +58,8 @@ std::vector<uint8_t> make_binary(const GEMMKernelDesc &desc) {
         generator_dsl_desc_t dsl_desc(
                 desc.problem, desc.strategy, desc.iface, desc.options);
         auto dsl_kernel = make_kernel(dsl_desc);
-        return dsl::make_kernel(dsl_kernel, context, device);
+        return dsl::make_kernel(
+                dsl_kernel, std::move(context), std::move(device));
     }
     stub();
 }

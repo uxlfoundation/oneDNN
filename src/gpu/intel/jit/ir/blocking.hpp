@@ -304,13 +304,15 @@ public:
     blocking_scheme_t(const std::string &s) {
         gpu_assert(s[s.length() - 1] == ']');
         auto parts = gpu_utils::split(s.substr(0, s.length() - 1), "],");
+        const std::string colon = ":";
+        const std::string comma = ",";
         for (auto &p : parts) {
-            auto p_parts = gpu_utils::split(p, ":");
+            auto p_parts = gpu_utils::split(p, colon);
             auto &key = p_parts[0];
             auto &vec = p_parts[1];
             gpu_assert(vec[0] == '[');
             auto s_dims
-                    = gpu_utils::split(vec.substr(1, vec.length() - 1), ",");
+                    = gpu_utils::split(vec.substr(1, vec.length() - 1), comma);
             for (auto &s : s_dims)
                 set(key, s);
         }

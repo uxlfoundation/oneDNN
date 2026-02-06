@@ -134,7 +134,7 @@ status_t jit_prelu_fwd_t::execute(const exec_ctx_t &ctx) const {
         const auto &nelems_tail = res.rem;
         const auto nelems_parallel = nelems_simd + (nelems_tail ? 1 : 0);
 
-        parallel(0, [&](const int ithr, const int nthr) {
+        parallel(0, [=](const int ithr, const int nthr) {
             dim_t start = 0, end = 0;
             balance211(nelems_parallel, nthr, ithr, start, end);
             if (start >= end) return;
@@ -160,7 +160,7 @@ status_t jit_prelu_fwd_t::execute(const exec_ctx_t &ctx) const {
                 = utils::array_product(src_d.padded_dims() + 1, ndims - 1);
 
         if (bcast == prelu::bcast::per_oc_n_spatial_c) {
-            parallel_nd(MB, SP, [&](dim_t mb, dim_t sp) {
+            parallel_nd(MB, SP, [=](dim_t mb, dim_t sp) {
                 const auto offset = (mb * nelems_single_mb + sp * C);
                 jit_prelu_forward_kernel_t::call_params_t params;
                 params.compute_data_size = C;
@@ -170,7 +170,7 @@ status_t jit_prelu_fwd_t::execute(const exec_ctx_t &ctx) const {
                 (*kernel)(&params);
             });
         } else if (bcast == prelu::bcast::per_oc_n_c_spatial) {
-            parallel_nd(MB, C, [&](dim_t mb, dim_t c) {
+            parallel_nd(MB, C, [=](dim_t mb, dim_t c) {
                 jit_prelu_forward_kernel_t::call_params_t params;
                 const auto offset = (mb * nelems_single_mb + c * SP);
                 params.compute_data_size = SP;
@@ -183,7 +183,7 @@ status_t jit_prelu_fwd_t::execute(const exec_ctx_t &ctx) const {
             const auto simd_w = kernel->simd_w();
             const dim_t C_blocks = std::ceil(static_cast<float>(C) / simd_w);
 
-            parallel_nd(MB, C_blocks, [&](dim_t mb, dim_t c_blk) {
+            parallel_nd(MB, C_blocks, [=](dim_t mb, dim_t c_blk) {
                 jit_prelu_forward_kernel_t::call_params_t params;
                 params.compute_data_size = SP * simd_w;
                 const dim_t offset

@@ -60,3 +60,11 @@ LayerNormBackward operation supports the following data type combinations.
 | f32                       | f32                                                     |
 | bf16                      | f32, bf16                                               |
 | f16                       | f32                                                     |
+
+## Implementation Notes
+
+LayerNormBackward supports in-place operations, meaning that `diff_dst` can be
+used as both input and output (`diff_src`). In case of in-place operation, the
+original `diff_dst` data will be overwritten. This support is limited to cases
+when data types of `diff_dst` and `diff_src` are identical. Use in-place
+operations whenever possible for performance.

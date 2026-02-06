@@ -27,11 +27,12 @@
 /src/cpu/rnn/ @uxlfoundation/onednn-cpu-x64
 
 # GPU Engine
-/src/gpu/amd/ @uxlfoundation/onednn-gpu-amd
 /src/gpu/intel/ @uxlfoundation/onednn-gpu-intel
-/src/gpu/nvidia/ @uxlfoundation/onednn-gpu-nvidia
 /src/gpu/generic/ @uxlfoundation/onednn-arch
-/src/gpu/generic/sycl/ @uxlfoundation/onednn-gpu-generic
+
+# /src/gpu/amd/ @uxlfoundation/onednn-gpu-amd
+# /src/gpu/nvidia/ @uxlfoundation/onednn-gpu-nvidia
+# /src/gpu/generic/sycl/ @uxlfoundation/onednn-gpu-generic
 
 # Tests
 /tests/benchdnn/inputs/ @uxlfoundation/onednn-maintain
@@ -55,6 +56,7 @@
 /third_party/ngen/ @uxlfoundation/onednn-gpu-intel
 /third_party/xbyak/ @uxlfoundation/onednn-cpu-x64
 /third_party/xbyak_aarch64/ @uxlfoundation/onednn-cpu-aarch64
+/third_party/xbyak_riscv/ @uxlfoundation/onednn-cpu-rv64
 
 # Governance and process
 /.github/CODEOWNERS @uxlfoundation/onednn-maintain

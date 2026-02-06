@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2018 Intel Corporation
+* Copyright 2025 Institute of Software, Chinese Academy of Sciences
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -17,14 +18,16 @@
 #ifndef CPU_RV64_CPU_ISA_TRAITS_HPP
 #define CPU_RV64_CPU_ISA_TRAITS_HPP
 
-#include <fstream>
-#include <string>
-#include <sys/auxv.h>
 #include <type_traits>
 
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 #include "dnnl_types.h"
+
+#ifndef XBYAK_RISCV_V
+#define XBYAK_RISCV_V 1
+#endif
+
 #include "xbyak_riscv/xbyak_riscv_util.hpp"
 
 namespace dnnl {
@@ -58,38 +61,14 @@ private:
     bool has_v = false;
     bool has_zvfh = false;
 
-    // Parse /proc/cpuinfo to find Zvfh
-    bool detect_zvfh_procfs() {
-        std::ifstream cpuinfo("/proc/cpuinfo");
-        std::string line;
-
-        if (!cpuinfo.is_open()) { return false; }
-
-        while (std::getline(cpuinfo, line)) {
-            if (line.rfind("isa", 0) == 0) {
-                // Find "_zvfh"
-                if (line.find("_zvfh") != std::string::npos) {
-                    cpuinfo.close();
-                    return true;
-                }
-                // Only need to check the isa line for the first core
-                break;
-            }
-        }
-        cpuinfo.close();
-        return false;
-    }
-
     Riscv64Cpu() {
-        // Use xbyak_riscv for V extension detection
         const auto &xbyak_cpu = Xbyak_riscv::CPU::getInstance();
+
         has_v = xbyak_cpu.hasExtension(Xbyak_riscv::RISCVExtension::V);
 
-        // Zvfh detection: xbyak_riscv doesn't support half-precision yet,
-        // so continue using procfs method
         if (has_v) {
-            // TODO: Prioritize riscv_hwprobe when available (Linux 6.4+)
-            has_zvfh = detect_zvfh_procfs();
+            has_zvfh
+                    = xbyak_cpu.hasExtension(Xbyak_riscv::RISCVExtension::Zvfh);
         } else {
             has_zvfh = false;
         }

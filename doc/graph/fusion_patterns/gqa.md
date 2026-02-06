@@ -92,10 +92,13 @@ propagation as follows. The blue nodes are required while the brown nodes are op
 ![GQA forward pattern](images/gqa_forward.png)
 
 The training forward pattern only supports 5D input and output tensors. The key
-difference between the inference pattern with 5D input/output and the training
-forward propagation pattern is that, for training forward propagation, the
-`Stats` output of the SoftMax operation is needed. See
-[SoftMax](@ref dev_guide_op_softmax) in Graph API for more details.
+differences from the 5D inference pattern are:
+
+1. For training forward propagation, the `Stats` output of the SoftMax operation
+   is needed. See [SoftMax](@ref dev_guide_op_softmax) in Graph API for more details.
+2. An optional Dropout operation may be used; it takes the normalized output and
+   randomly drops some elements during training. See
+   [Dropout](@ref dev_guide_op_dropout) operation in Graph API.
 
 ### GQA for Training Backpropagation
 
@@ -119,22 +122,25 @@ The blue nodes are required while the brown nodes are optional.
    and recover the probabilities computed by SoftMax in the training forward
    propagation. See [Subtract](@ref dev_guide_op_subtract) and [Exp](@ref dev_guide_op_exp)
    in Graph API.
-5. The TypeCast, MatMul and ReduceSum operations after Exp are used to compute the
+5. The Dropout, TypeCast, MatMul and ReduceSum operations after Exp are used to compute the
    gradients with respect to Value. TypeCast is required for bf16 and f16
    training scenarios. ReduceSum reduces the Value gradients from
    (N, H_kv, N_rep, S, D) to (N, H_kv, 1, S, D). See [TypeCast](@ref dev_guide_op_typecast)
    and [ReduceSum](@ref dev_guide_op_reducesum) in Graph API.
 6. The MatMul takes the output gradients (`dO`) and the Value as inputs to
    compute the gradients of the probabilities.
-7. The SoftMaxBackward operation computes the gradients of the scaled output.
+7. The Dropout operation takes the gradients of the dropped probabilities as
+   input and computes gradients with respect to the normalized probabilities.
+   See [Dropout](@ref dev_guide_op_dropout) in Graph API.
+8. The SoftMaxBackward operation computes the gradients of the scaled output.
    See [SoftMaxBackward](@ref dev_guide_op_softmaxbackward) in Graph API.
-8. The Scale node after SoftMaxBackward corresponds to the forward Scale node
+9. The Scale node after SoftMaxBackward corresponds to the forward Scale node
    and is used to compute the gradients of the score.
-9. The TypeCast, two MatMul and ReduceSum operations after the Scale node
+10. The TypeCast, two MatMul and ReduceSum operations after the Scale node
    compute the gradients with respect to Query and Key, respectively. TypeCast
    is required for bf16 and f16 training scenarios. ReduceSum reduces the Key
    gradients from (N, H_kv, N_rep, S, D) to (N, H_kv, 1, S, D).
-10. The optional End operation marks the output of SoftMaxBackward as a
+11. The optional End operation marks the output of SoftMaxBackward as a
     partition output, representing the gradients with respect to the Mask. Note
     that the output shape of `dM` is (N, H_kv, N_rep, S, S) and the data
     type is f32. The library does not perform any reduction or typecast on this

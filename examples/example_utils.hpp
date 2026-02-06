@@ -35,7 +35,8 @@
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 #include "dnnl_ocl.hpp"
-#elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
+#endif
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
 #include "dnnl_sycl.hpp"
 #endif
 

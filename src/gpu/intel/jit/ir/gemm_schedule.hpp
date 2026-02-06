@@ -19,7 +19,6 @@
 
 #include <functional>
 #include <limits>
-#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -42,9 +41,9 @@ namespace jit {
 // - M:  shared only by A and C
 // - N:  shared only by B and C
 // - K:  shared only by A and B (reduction dimension)
-enum class bmnk_kind_t { undef = -1, b = 0, m = 1, n = 2, k = 3 };
+enum class bmnk_kind_t : int { undef = -1, b = 0, m = 1, n = 2, k = 3 };
 
-enum class abc_kind_t { undef, a, b, c };
+enum class abc_kind_t : int { undef, a, b, c };
 
 inline std::ostream &operator<<(std::ostream &out, abc_kind_t abc) {
     switch (abc) {
@@ -1004,8 +1003,9 @@ private:
     static expr_t create_var(
             const std::vector<expr_t> &vars, const std::string &suffix) {
         std::string var_name;
+        const std::string idx_suffix = "_idx";
         for (auto &v : vars) {
-            auto name = strip_suffix(v.as<var_t>().name, "_idx");
+            auto name = strip_suffix(v.as<var_t>().name, idx_suffix);
             var_name += name + "_";
         }
         var_name += suffix;

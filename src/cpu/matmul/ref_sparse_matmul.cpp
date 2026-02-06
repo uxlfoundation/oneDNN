@@ -43,7 +43,7 @@ status_t ref_sparse_matmul_t::execute(const exec_ctx_t &ctx) const {
     const data_type_t mm_dt = src_d.data_type();
     const auto &scratchpad = ctx.get_scratchpad_grantor();
 
-    parallel_nd(M, N, [&](dim_t i, dim_t j) {
+    parallel_nd(M, N, [=](dim_t i, dim_t j) {
         const dim_t dst_idx = i * N + j;
         io::store_float_value(dst_d.data_type(), 0.0f, dst, dst_idx);
     });
@@ -78,7 +78,7 @@ status_t ref_sparse_matmul_t::execute(const exec_ctx_t &ctx) const {
             int32_t *wei_row_pointers = scratchpad.template get<int32_t>(
                     memory_tracking::names::key_matmul_sparse_tmp_ptr);
 
-            parallel_nd(K + 1, [&](dim_t k) {
+            parallel_nd(K + 1, [=](dim_t k) {
                 io::store_float_value(
                         weights_d.metadata_type(0), 0, wei_row_pointers, k);
             });
@@ -121,7 +121,7 @@ status_t ref_sparse_matmul_t::execute(const exec_ctx_t &ctx) const {
             int32_t *src_row_pointers = scratchpad.template get<int32_t>(
                     memory_tracking::names::key_matmul_sparse_tmp_ptr);
 
-            parallel_nd(M + 1, [&](dim_t m) {
+            parallel_nd(M + 1, [=](dim_t m) {
                 io::store_float_value(
                         src_d.metadata_type(0), 0, src_row_pointers, m);
             });
@@ -141,10 +141,12 @@ void ref_sparse_matmul_t::cvt_coo_indices_to_csr_pointers(
         const int32_t *indices, int32_t *pointers, const int nnz,
         const int nrows) const {
     parallel_nd(
-            nnz, [&](dim_t i) { fetch_and_add(&pointers[indices[i] + 1], 1); });
-    for (int i = 0; i < nrows; ++i) {
-        pointers[i + 1] += pointers[i];
-    }
+            nnz, [=](dim_t i) { fetch_and_add(&pointers[indices[i] + 1], 1); });
+    parallel(1, [=](int, int) {
+        for (int i = 0; i < nrows; ++i) {
+            pointers[i + 1] += pointers[i];
+        }
+    });
 }
 
 void ref_sparse_matmul_t::run_csr_kernel(const void *dmat, const void *values,
@@ -156,7 +158,7 @@ void ref_sparse_matmul_t::run_csr_kernel(const void *dmat, const void *values,
         // With a sparse source tensor, the matrix multiplication is carried out
         // for a sparse multiplier with parallelization over the sparse rows
         // of the multiplier matrix.
-        parallel_nd(M, [&](dim_t m) {
+        parallel_nd(M, [=](dim_t m) {
             const dim_t row_start = pointers[m];
             const dim_t row_end = pointers[m + 1];
 
@@ -178,7 +180,7 @@ void ref_sparse_matmul_t::run_csr_kernel(const void *dmat, const void *values,
         // With a sparse weights tensor, the matrix multiplication is carried
         // out for a sparse multiplicand with parallelization over the dense
         // rows of the multiplier matrix.
-        parallel_nd(M, [&](dim_t m) {
+        parallel_nd(M, [=](dim_t m) {
             for (dim_t k = 0; k < K; k++) {
                 const dim_t row_start = pointers[k];
                 const dim_t row_end = pointers[k + 1];

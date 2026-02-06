@@ -107,6 +107,8 @@ typedef enum {
     /// [MX-compliant 4-bit float data type](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf) with 2-bit exponent and 1 bit mantissa.
     dnnl_f4_e2m1 = 14,
     /// 4-bit float data type with 3-bit exponent and 0 bit mantissa.
+    ///
+    /// @deprecated The f4_e3m0 data type will be removed in a future release.
     dnnl_f4_e3m0 = 15,
     /// 64-bit signed integer
     dnnl_s64 = 16,

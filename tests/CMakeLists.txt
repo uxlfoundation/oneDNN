@@ -29,7 +29,6 @@ set(CMAKE_TEST_CCXX_NOWARN_FLAGS)
 # propagate no warning flags
 append(CMAKE_TEST_CCXX_NOWARN_FLAGS "${CMAKE_CCXX_NOWARN_FLAGS}")
 
-# Link the tests to the OpenCL runtime
 if(DNNL_GPU_RUNTIME STREQUAL "OCL")
     find_package(OpenCL REQUIRED)
     if(OpenCL_FOUND)

@@ -220,6 +220,7 @@ struct brgemm_matmul_conf_t {
     bool is_src_batch_layout_trivial = false;
     bool is_wei_batch_layout_trivial = false;
     bool is_dst_batch_layout_trivial = false;
+    bool need_loop_store_prefetch = false;
 
     // Attributes related to quantization
     // Scales

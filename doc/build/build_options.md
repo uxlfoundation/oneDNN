@@ -327,7 +327,7 @@ subject to change without notice, see
 for details.
 
 ## GPU Options
-Intel Processor Graphics is supported by oneDNN GPU engine. GPU engine
+Intel Graphics is supported by oneDNN GPU engine. GPU engine
 is disabled in the default build configuration.
 
 ### Runtimes

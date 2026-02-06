@@ -426,6 +426,12 @@ bool post_binary_fusible(
 
 bool post_eltwise_fusible(
         const op_t *base_op, const op_t *elt_op, graph::engine_kind_t ekind) {
+    if (elt_op->has_attr(op_attr::fusion_info)) {
+        fusion_info_t fusion_info
+                = elt_op->get_attr<fusion_info_t>(op_attr::fusion_info);
+        return !fusion_info.with_dropout();
+    }
+
 // binary + sqrt post-op fusion is unsupported on NVIDIA GPU
 #if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
         && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
@@ -439,7 +445,6 @@ bool post_eltwise_fusible(
     return true;
 #else
     UNUSED(base_op);
-    UNUSED(elt_op);
     UNUSED(ekind);
     return true;
 #endif

@@ -2047,11 +2047,12 @@ public:
             << ")" << std::endl;
         if (split_factor_ != 1)
             oss << " split_factor = " << split_factor_ << std::endl;
+        const std::string indent = "  ";
         for (auto &md : mask_descs_)
-            oss << md.str("  ") << std::endl;
+            oss << md.str(indent) << std::endl;
         int ndescs = (int)send_groups_.size();
         for (int i = 0; i < ndescs; i++) {
-            oss << send_groups_[i].str("  ");
+            oss << send_groups_[i].str(indent);
             if (i != ndescs - 1) oss << std::endl;
         }
         return oss.str();

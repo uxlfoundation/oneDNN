@@ -1,5 +1,5 @@
-#===============================================================================
-# Copyright 2024 Intel Corporation
+################################################################################
+# Copyright 2026 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,14 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#===============================================================================
+################################################################################
 
-file(GLOB SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
-    )
-
-set(OBJ_LIB ${LIB_PACKAGE_NAME}_gpu_microkernels)
-add_library(${OBJ_LIB} OBJECT ${SOURCES})
-set_property(GLOBAL APPEND PROPERTY DNNL_LIB_DEPS
-    $<TARGET_OBJECTS:${OBJ_LIB}>)
+# This file marks this directory as a package and is needed to allow relative
+# imports. See https://docs.python.org/3/tutorial/modules.html#packages.

@@ -172,7 +172,8 @@ public:
     void TestBatchnorm(bool dims_in_order = true) {
         using dims = dnnl::impl::graph::dnnl_impl::dims;
 
-        auto params = ::testing::TestWithParam<batchnorm_params_t>::GetParam();
+        const auto &params
+                = ::testing::TestWithParam<batchnorm_params_t>::GetParam();
 
         graph::op_t batchnorm_op(0, params.op_kind, "batchnorm");
         batchnorm_op.set_attr(graph::op_attr::epsilon, params.epsilon);

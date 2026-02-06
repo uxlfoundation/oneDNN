@@ -17,59 +17,104 @@
 # limitations under the License.
 # *******************************************************************************
 import argparse
-import ctest_utils
 import os
+from typing import Iterable, List, Optional
+
+import ctest_utils
 
 PAGE_TITLE = "AArch64 Testing Status"
 
 
+class MdTree:
+    def __init__(self, title: Optional[str] = None):
+        self.depth, self.title = self._parse_depth_and_title(title)
+        self.body = ""
+        self.children: List[MdTree] = []
+
+    @staticmethod
+    def _parse_depth_and_title(title: Optional[str]):
+        if title is None:
+            return 0, None
+        depth = 0
+        while depth < len(title) and title[depth] == "#":
+            depth += 1
+        return depth, title[depth:].strip()
+
+    def add_child(self, child: "MdTree"):
+        if not self.children:
+            self.children.append(child)
+            return
+        last_child = self.children[-1]
+        if child.depth > last_child.depth:
+            last_child.add_child(child)
+            return
+        self.children.append(child)
+
+    def __contains__(self, key: str):
+        try:
+            self.__getitem__(key)
+        except KeyError:
+            return False
+        return True
+
+    def __getitem__(self, key: str):
+        for child in self.children:
+            if child.title == key:
+                return child
+        raise KeyError(key)
+
+    def __setitem__(self, key: str, value: str):
+        try:
+            child = self.__getitem__(key)
+        except KeyError:
+            child = MdTree("#" * (self.depth + 1) + f" {key}")
+            self.children.append(child)
+        parsed = MdConverter.parse(value.splitlines())
+        child.body = parsed.body
+        child.children = parsed.children
+
+    def __str__(self):
+        my_str = ""
+        if self.title is not None:
+            my_str = "#" * self.depth + f" {self.title}\n\n"
+        body = self.body.strip()
+        if body:
+            my_str += body + "\n\n"
+        for child in self.children:
+            child_str = str(child).strip()
+            if child_str:
+                my_str += child_str + "\n\n"
+        return my_str.strip()
+
+
 class MdConverter:
-    # Recursive function to convert dict to md sections
-    def __unpack_md_dict(self, data, out_str="", level=1):
-        # base case
-        if not isinstance(data, dict):
-            return out_str + data + "\n"
+    @staticmethod
+    def parse(data: Iterable[str]):
+        root = MdTree()
+        last_block = root
+        in_triple_tick = False
+        for line in data:
+            if line.startswith("#") and not in_triple_tick:
+                last_block = MdTree(line)
+                root.add_child(last_block)
+                continue
+            if line.startswith("```"):
+                in_triple_tick = not in_triple_tick
+            last_block.body += line.rstrip() + "\n"
+        return root
 
-        for k, v in data.items():
-            out_str += "#" * level + " " + k + "\n"
-            out_str = self.__unpack_md_dict(v, out_str, level + 1)
-        return out_str
-
-    # Recursive function to convert md to dict
-    def __unpack_md(self, data, level=1):
-        prev = ""
-        inner = []
-        out = {}
-        for l in data:
-            if l[:level] == "#" * level and l[level] != "#":
-                if prev:
-                    out[prev[level + 1 :]] = self.__unpack_md(inner, level + 1)
-                    inner = []
-                prev = l.strip()
-            else:
-                inner.append(l)
-        if prev:
-            out[prev[level + 1 :]] = self.__unpack_md(inner, level + 1)
-        elif inner:
-            # base case
-            return "".join(inner)
-        return out
-
-    def dict2md(self, in_dict, out_file):
-        output = self.__unpack_md_dict(in_dict)
+    @staticmethod
+    def tree2md(in_dict: MdTree, out_file):
         with open(out_file, "w") as f:
-            f.write(output)
+            f.write(str(in_dict))
 
-    def md2dict(self, in_file):
+    @staticmethod
+    def md2tree(in_file):
         if not os.path.isfile(in_file):
-            return {}
+            return MdTree()
 
         with open(in_file) as f:
-            r = f.readlines()
-
-        out = self.__unpack_md(r)
-
-        return out
+            return MdConverter.parse(f)
 
 
 def parse(file, title, subtitle, body):
@@ -78,15 +123,15 @@ def parse(file, title, subtitle, body):
     without overwriting existing section/subsections
     """
     converter = MdConverter()
-    d = converter.md2dict(file)
+    d = converter.md2tree(file)
     if PAGE_TITLE not in d:
-        d[PAGE_TITLE] = {}
-    k0 = {}
-    if title in d[PAGE_TITLE]:
-        k0 = d[PAGE_TITLE][title]
+        d[PAGE_TITLE] = ""
+    parent = d[PAGE_TITLE]
+    if title not in parent:
+        parent[title] = ""
+    k0 = parent[title]
     k0[subtitle] = body
-    d[PAGE_TITLE][title] = k0
-    converter.dict2md(d, file)
+    converter.tree2md(d, file)
 
 
 def parse_unit(args):
@@ -94,10 +139,10 @@ def parse_unit(args):
 
     body = ""
     if failed_tests:
-        body = "| :x: | Failed Test |\n" "| :-----------: | :------: |\n"
+        body = "| :x: | Failed Test |\n| :-----------: | :------: |\n"
         for test in failed_tests:
             body += f"| :x: | {test} |\n"
-        body = body[:-1] # Strip the last '\n'
+        body = body[:-1]  # Strip the last '\n'
     else:
         body = ":white_check_mark: unit tests passed"
 

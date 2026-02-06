@@ -14,15 +14,16 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/sycl/utils.hpp"
+#include "xpu/ocl/utils.hpp"
+#include "xpu/ocl/engine_factory.hpp"
+#include "xpu/sycl/compat.hpp"
+#include "xpu/ze/utils.hpp"
 
 #include "gpu/intel/compute/ukernels.hpp"
 #include "gpu/intel/ocl/utils.hpp"
 #include "gpu/intel/sycl/engine.hpp"
 #include "gpu/intel/sycl/l0/utils.hpp"
-#include "xpu/ocl/engine_factory.hpp"
-#include "xpu/ocl/utils.hpp"
-#include "xpu/sycl/compat.hpp"
+#include "gpu/intel/sycl/utils.hpp"
 
 #include <sycl/ext/oneapi/backend/level_zero.hpp>
 
@@ -31,6 +32,15 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace sycl {
+
+// FIXME: Currently SYCL doesn't provide any API to get device UUID so
+// we query it directly from Level0 with the zeDeviceGetProperties function.
+// The `get_device_uuid` function packs 128 bits of the device UUID, which are
+// represented as an uint8_t array of size 16, to 2 uint64_t values.
+xpu::device_uuid_t get_device_uuid(const ::sycl::device &dev) {
+    return xpu::ze::get_device_uuid(
+            xpu::sycl::compat::get_native<ze_device_handle_t>(dev));
+}
 
 ::sycl::nd_range<3> to_sycl_nd_range(
         const gpu::intel::compute::nd_range_t &range) {

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,34 +14,24 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_MICROKERNELS_ENTRANCE_AGENT_HPP
-#define GPU_MICROKERNELS_ENTRANCE_AGENT_HPP
+#ifndef XPU_ZE_USM_UTILS_HPP
+#define XPU_ZE_USM_UTILS_HPP
 
-#include "package.hpp"
-
-// The entrance agent is a stateless class that analyzes an incoming package from the microkernel provider,
-//   deducing information from the raw microkernel binary.
+#include "oneapi/dnnl/dnnl.h"
 
 namespace dnnl {
 namespace impl {
-namespace gpu {
-namespace intel {
-namespace micro {
+namespace xpu {
+namespace ze {
 
-class EntranceAgent {
-public:
-    enum class Status {
-        Success,
-        UncertainClobbers,
-        UnsupportedHW,
-    };
+void DNNL_API *malloc_device(dnnl_engine_t engine, size_t size);
+void DNNL_API *malloc_shared(dnnl_engine_t engine, size_t size);
+void DNNL_API free(dnnl_engine_t engine, void *ptr);
+dnnl_status_t DNNL_API memset(
+        dnnl_stream_t stream, void *ptr, int value, size_t size);
 
-    static Status scan(Package &package);
-};
-
-} /* namespace micro */
-} // namespace intel
-} // namespace gpu
+} // namespace ze
+} // namespace xpu
 } // namespace impl
 } // namespace dnnl
 

@@ -18,13 +18,15 @@
 
 #define BINARY_OUTPUT
 
-#include "gemmstone/microkernel_provider.hpp"
+#include "gemmstone/microkernel_selector.hpp"
 #include "gemmstone/generator.hpp"
 #include "gemmstone/kernel_selector.hpp"
 #include "gemmstone/strategy_parser.hpp"
+#include "ngen_decoder.hpp"
 #include "npack/neo_packager.hpp"
 
 GEMMSTONE_NAMESPACE_START
+namespace microkernel {
 
 #define _CATALOG_ CatalogMMR
 #include "selector/db/ukernel_mmr.db"
@@ -42,25 +44,85 @@ GEMMSTONE_NAMESPACE_START
 #undef _CATALOG_
 
 using namespace ngen;
-using namespace micro;
-
 
 static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool localA, bool localB,
                                            GEMMProblem &problem, HWInformation hwInfo, SizeParams sizes,
                                            const std::vector<StrategyRequirement> &reqs);
 
-Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeParams sizes,
-                              const GEMMProblem &problem_, const std::vector<StrategyRequirement> &reqs_,
-                              void (*strategyAdjuster)(GEMMStrategy &strategy))
+std::vector<Protocol::Argument> arguments(const GEMMOptions &o) {
+    auto In = Protocol::Argument::In;
+    auto Out = Protocol::Argument::Out;
+
+    auto LocalPointer = StructuredType::LocalPointer;
+    auto GlobalPointer = StructuredType::GlobalPointer;
+    auto s32 = StructuredType::s32;
+
+    static Protocol::Argument args[] = {
+            {"a", In, GlobalPointer},
+            {"lda", In, s32},
+            {"b", In, GlobalPointer},
+            {"ldb", In, s32},
+            {"c", Out, 2},
+            {"m", In, s32},
+            {"n", In, s32},
+            {"k", In, s32},
+            {"i0", In, s32},
+            {"j0", In, s32},
+            {"h0", In, s32},
+            {"local_id_m", In, s32},
+            {"local_id_n", In, s32},
+    };
+    std::vector<Protocol::Argument> argsV
+            = {args, args + sizeof(args) / sizeof(args[0])};
+
+    if (o.localA) argsV[0].stype.format = LocalPointer;
+    if (o.localB) argsV[2].stype.format = LocalPointer;
+    if (o.addToC) argsV[4].direction = Protocol::Argument::InOut;
+    if (o.kParallelLocal) argsV.push_back({"local_id_k", In, s32});
+    if (o.slmPtr) argsV.push_back({"slm", In, LocalPointer});
+    if (o.scaleA) argsV.push_back({"a_scale", In, GlobalPointer});
+    if (o.offsetA) argsV.push_back({"a_offset", In, GlobalPointer});
+    if (o.offsetA || o.scaleA) argsV.push_back({"ldaq", In, s32});
+    if (o.scaleB) argsV.push_back({"b_scale", In, GlobalPointer});
+    if (o.offsetB) argsV.push_back({"b_offset", In, GlobalPointer});
+    if (o.offsetB || o.scaleB) { argsV.push_back({"ldbq", In, s32}); }
+
+    return argsV;
+}
+
+std::vector<Protocol::Setting> settings() {
+    static Protocol::Setting settings[] = {
+            {"sg_tile_m"},
+            {"sg_tile_n"},
+            {"wg_tile_m"},
+            {"wg_tile_n"},
+            {"sg_per_wg_m"},
+            {"sg_per_wg_n"},
+            {"sg_per_wg_k"},
+            {"slm_size"},
+    };
+    static std::vector<Protocol::Setting> settingsV
+            = {settings, settings + sizeof(settings) / sizeof(settings[0])};
+    return settingsV;
+}
+
+Protocol makeProtocol(const GEMMOptions &o) {
+    return {"ugemm", arguments(o), settings()};
+}
+
+Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams sizes,
+                   const GEMMProblem &problem_, const std::vector<StrategyRequirement> &reqs_,
+                   void (*strategyAdjuster)(GEMMStrategy &strategy), SelectionObserver *observer)
 {
-    bool localA = protocol.options().localA;
-    bool localB = protocol.options().localB;
-    bool beta1 = protocol.options().addToC;
-    bool slmPtr = protocol.options().slmPtr;
-    bool scaleA = protocol.options().scaleA;
-    bool scaleB = protocol.options().scaleB;
-    bool offsetA = protocol.options().offsetA;
-    bool offsetB = protocol.options().offsetB;
+    bool localA = options.localA;
+    bool localB = options.localB;
+    bool beta1 = options.addToC;
+    bool slmPtr = options.slmPtr;
+    bool scaleA = options.scaleA;
+    bool scaleB = options.scaleB;
+    bool offsetA = options.offsetA;
+    bool offsetB = options.offsetB;
+    bool kParallelLocal = options.kParallelLocal;
 
     bool transC = !isColMajor(problem_.C.layout);
 
@@ -144,9 +206,21 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
     /* Call kernel selector */
     EvaluateAuxOutput auxParams;
     const kcatalog::Entry * entry = nullptr;
-    auto entries = select(catalog, 1, &matchParams, evalParams, auxParams);
-    if (entries.size() > 0)
-	    entry = entries[0];
+    auto entries = select(catalog, 1, &matchParams, evalParams, auxParams, observer);
+    // First, attempt to find a strategy that matches the protocol's options
+    for(const auto* this_entry: entries) {
+        GEMMStrategy strategy(hw, stepping);
+        strategy.unroll[LoopM] = this_entry->driverInfo.unroll[LoopM];
+        strategy.unroll[LoopN] = this_entry->driverInfo.unroll[LoopN];
+        parseStrategy(this_entry->strategy, hw, problem, strategy);
+        if (!kParallelLocal && strategy.kParallelLocal) continue;
+        entry = this_entry;
+        break;
+    }
+
+    // If unsuccessful, we can pick the first strategy and modify the parameters to fit the protocol
+    if (entry == nullptr && entries.size() > 0)
+        entry = entries[0];
 
     GEMMStrategy strategy(hw, stepping);
 
@@ -187,6 +261,12 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
     strategy.kParallel = strategy.kParallelVariable = strategy.persistent = false;
     strategy.cWalkOrder = WalkOrder::HW2D;
 
+    /* Disable k-parallelization if the protocol does not allow it */
+    if (!kParallelLocal) {
+        strategy.kParallelLocal = strategy.kInterleave = false;
+        strategy.wg[LoopK] = 1;
+    }
+
     /* Adjust strategy for performance */
     if (strategy.barrierFreq > 0 && sizes.k < 4 * strategy.barrierFreq)
         strategy.barrierFreq = 0;
@@ -201,6 +281,25 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
     if (strategyAdjuster) strategyAdjuster(strategy);
 
     strategy.preflight(hw, problem);
+
+    if (getVerbose(gemmstone::GEMMVerbose::DebugInfo) >= 10) {
+        if (entry)
+            std::cout << "Selected microkernel catalog entry: " << entry->str() << std::endl;
+        else
+            std::cout << "Microkernel generated heuristically" << std::endl;
+    }
+    if (getVerbose(gemmstone::GEMMVerbose::DebugInfo) >= 2) {
+        std::string result = problem.toString();
+        result.append(" ");
+        result.append(std::to_string(strategy.unroll[LoopM]));
+        result.append(" ");
+        result.append(std::to_string(strategy.unroll[LoopN]));
+        result.append(" ");
+        result.append(problem.scalarsToString());
+        result.append(" ");
+        result.append(unparseStrategy(hw, problem, strategy));
+        std::cout << "Actual kernel: " << result << std::endl;
+    }
 
     /* Set up arguments for microkernel */
     InterfaceHandler interface(hw);
@@ -218,6 +317,7 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
     interface.newArgument("h0", DataType::d);
     interface.newArgument("local_id_m", DataType::d);
     interface.newArgument("local_id_n", DataType::d);
+    if (kParallelLocal)    interface.newArgument("local_id_k", DataType::d);
     if (slmPtr)            interface.newArgument("slm_base", ExternalArgumentType::LocalPtr);
     if (scaleA)            interface.newArgument("a_scale_ptr", ExternalArgumentType::GlobalPtr);
     if (offsetA)           interface.newArgument("ao_ptr", ExternalArgumentType::GlobalPtr);
@@ -233,12 +333,13 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
         problem.B.packSize = strategy.unroll[LoopN];
 
     /* Generate microkernel */
-#define ARCH_DISPATCH(arch)                                                         \
-    case HW::arch: {                                                                \
-        Generator<HW::arch> generator;                                    \
-        generator.setStepping(stepping);                                            \
-        return generator.gemmMicrokernelPackage(problem, strategy, interface,       \
-                                                protocol, hwInfo.gmdid, transC);    \
+#define ARCH_DISPATCH(arch)                                                          \
+    case HW::arch: {                                                                 \
+        Generator<HW::arch> generator;                                               \
+        generator.setStepping(stepping);                                             \
+        return generator.gemmMicrokernelPackage(problem, strategy, interface,        \
+                                                makeProtocol(options), hwInfo.gmdid,\
+                                                transC);                             \
     }
 
     switch (hw) {
@@ -377,5 +478,5 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
     return true;
 }
 
+}
 GEMMSTONE_NAMESPACE_END
-

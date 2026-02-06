@@ -79,7 +79,10 @@ void Generator<hw>::activeThreadBarrierSignal(const GRF &temp, const GRF &r0_inf
 template <HW hw>
 void Generator<hw>::slmBarrier(const GRF &temp, const GRF &r0_info, const CommonStrategy &strategy)
 {
-    slmfence(temp, r0_info);
+    auto fenceReg = r0_info;
+    if (fenceReg.isInvalid() && hw >= HW::XeHPG)
+        fenceReg = r0;                            // LSC fence ignores argument
+    slmfence(temp, fenceReg);
     fencewait();
     activeThreadBarrier(temp, r0_info, strategy);
 }

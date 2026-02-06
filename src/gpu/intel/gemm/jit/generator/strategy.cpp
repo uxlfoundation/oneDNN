@@ -477,7 +477,7 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
 
     kPadding = align_up(kPadding, kAlign(problem));
 
-    if (fixedWG(problem) && (!kParallelLocal || wgPadFactor > 1))
+    if (fixedWG(problem) && (!kParallelLocal || fixedWGK()))
         activeThreads = wg[LoopM] * wg[LoopN] * wg[LoopK] * (splitCopy ? 2 : 1);
 
     CommonStrategy::preflight(hw, problem);

@@ -14,14 +14,14 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "xpu/ze/utils.hpp"
+
 #include "gpu/intel/sycl/l0/utils.hpp"
-#include "oneapi/dnnl/dnnl_config.h"
 
 #include "gpu/intel/jit/binary_format.hpp"
 #include "gpu/intel/jit/utils/type_bridge.hpp"
 #include "ngen_level_zero.hpp"
 
-#include "level_zero/ze_api.h"
 #include "level_zero/ze_intel_gpu.h"
 
 #if !defined(__SYCL_COMPILER_VERSION)
@@ -45,126 +45,6 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace sycl {
-namespace l0 {
-
-std::string to_string(ze_result_t r) {
-#define ZE_STATUS_CASE(status) \
-    case status: return #status
-    switch (r) {
-        ZE_STATUS_CASE(ZE_RESULT_SUCCESS);
-        ZE_STATUS_CASE(ZE_RESULT_NOT_READY);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_DEVICE_LOST);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_OUT_OF_HOST_MEMORY);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_OUT_OF_DEVICE_MEMORY);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_MODULE_BUILD_FAILURE);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_MODULE_LINK_FAILURE);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_DEVICE_REQUIRES_RESET);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_DEVICE_IN_LOW_POWER_STATE);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_INSUFFICIENT_PERMISSIONS);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_NOT_AVAILABLE);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_DEPENDENCY_UNAVAILABLE);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_UNINITIALIZED);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_UNSUPPORTED_VERSION);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_UNSUPPORTED_FEATURE);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_INVALID_ARGUMENT);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_INVALID_NULL_HANDLE);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_HANDLE_OBJECT_IN_USE);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_INVALID_NULL_POINTER);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_INVALID_SIZE);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_UNSUPPORTED_SIZE);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_UNSUPPORTED_ALIGNMENT);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_INVALID_SYNCHRONIZATION_OBJECT);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_INVALID_ENUMERATION);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_UNSUPPORTED_ENUMERATION);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_UNSUPPORTED_IMAGE_FORMAT);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_INVALID_NATIVE_BINARY);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_INVALID_GLOBAL_NAME);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_INVALID_KERNEL_NAME);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_INVALID_FUNCTION_NAME);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_INVALID_GROUP_SIZE_DIMENSION);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_INVALID_GLOBAL_WIDTH_DIMENSION);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_INVALID_KERNEL_ARGUMENT_INDEX);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_INVALID_KERNEL_ARGUMENT_SIZE);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_INVALID_KERNEL_ATTRIBUTE_VALUE);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_INVALID_MODULE_UNLINKED);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_INVALID_COMMAND_LIST_TYPE);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_OVERLAPPING_REGIONS);
-        ZE_STATUS_CASE(ZE_RESULT_ERROR_UNKNOWN);
-        ZE_STATUS_CASE(ZE_RESULT_FORCE_UINT32);
-        default: return std::to_string((int)r);
-    }
-#undef ZE_STATUS_CASE
-}
-
-#define ZE_CHECK(f) \
-    do { \
-        ze_result_t res_ = (f); \
-        if (res_ != ZE_RESULT_SUCCESS) { \
-            std::string err_str_ = to_string(res_); \
-            VERROR(common, level_zero, "errcode %s", err_str_.c_str()); \
-            return status::runtime_error; \
-        } \
-    } while (false)
-
-#if defined(_WIN32)
-#define L0_LIB_NAME "ze_loader.dll"
-#elif defined(__linux__)
-#define L0_LIB_NAME "libze_loader.so.1"
-#endif
-
-template <typename F>
-F find_ze_symbol(const char *symbol) {
-    return (F)xpu::find_symbol(L0_LIB_NAME, symbol);
-}
-#undef L0_LIB_NAME
-
-#define INDIRECT_L0_CALL(f) \
-    template <typename... Args> \
-    status_t f(Args &&...args) { \
-        const ze_init_flags_t default_ze_flags = 0; \
-        static auto init_ = find_ze_symbol<decltype(&::zeInit)>("zeInit"); \
-        if (!init_) return status::runtime_error; \
-        ZE_CHECK(init_(default_ze_flags)); \
-        static auto f_ = find_ze_symbol<decltype(&::f)>(#f); \
-        if (!f_) return status::runtime_error; \
-        ZE_CHECK(f_(std::forward<Args>(args)...)); \
-        return status::success; \
-    }
-INDIRECT_L0_CALL(zeModuleCreate)
-INDIRECT_L0_CALL(zeDeviceGetProperties)
-INDIRECT_L0_CALL(zeDeviceGetModuleProperties)
-INDIRECT_L0_CALL(zeKernelCreate)
-INDIRECT_L0_CALL(zeKernelGetBinaryExp)
-INDIRECT_L0_CALL(zeModuleGetNativeBinary)
-#undef INDIRECT_L0_CALL
-
-} // namespace l0
-
-// FIXME: Currently SYCL doesn't provide any API to get device UUID so
-// we query it directly from Level0 with the zeDeviceGetProperties function.
-// The `get_device_uuid` function packs 128 bits of the device UUID, which are
-// represented as an uint8_t array of size 16, to 2 uint64_t values.
-xpu::device_uuid_t get_device_uuid(const ::sycl::device &dev) {
-    static_assert(ZE_MAX_DEVICE_UUID_SIZE == 16,
-            "ZE_MAX_DEVICE_UUID_SIZE is expected to be 16");
-
-    auto ze_device_properties = ze_device_properties_t();
-    ze_device_properties.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES;
-
-    auto ze_device = xpu::sycl::compat::get_native<ze_device_handle_t>(dev);
-    auto status = l0::zeDeviceGetProperties(ze_device, &ze_device_properties);
-    MAYBE_UNUSED(status);
-    assert(status == status::success);
-
-    const auto &ze_device_id = ze_device_properties.uuid.id;
-
-    uint64_t uuid[ZE_MAX_DEVICE_UUID_SIZE / sizeof(uint64_t)] = {};
-    for (size_t i = 0; i < ZE_MAX_DEVICE_UUID_SIZE; ++i) {
-        size_t shift = i % sizeof(uint64_t) * CHAR_BIT;
-        uuid[i / sizeof(uint64_t)] |= (((uint64_t)ze_device_id[i]) << shift);
-    }
-    return xpu::device_uuid_t(uuid[0], uuid[1]);
-}
 
 status_t sycl_create_kernels_with_level_zero(
         std::vector<std::unique_ptr<::sycl::kernel>> &sycl_kernels,
@@ -186,7 +66,8 @@ status_t sycl_create_kernels_with_level_zero(
     auto ze_ctx = xpu::sycl::compat::get_native<ze_context_handle_t>(
             sycl_engine->context());
 
-    CHECK(l0::zeModuleCreate(ze_ctx, ze_device, &desc, &ze_module, nullptr));
+    CHECK(xpu::ze::zeModuleCreate(
+            ze_ctx, ze_device, &desc, &ze_module, nullptr));
     ::sycl::kernel_bundle<::sycl::bundle_state::executable> kernel_bundle
             = ::sycl::make_kernel_bundle<::sycl::backend::ext_oneapi_level_zero,
                     ::sycl::bundle_state::executable>(
@@ -198,7 +79,7 @@ status_t sycl_create_kernels_with_level_zero(
         ze_kernel_handle_t ze_kernel;
         ze_kernel_desc_t ze_kernel_desc {
                 ZE_STRUCTURE_TYPE_KERNEL_DESC, nullptr, 0, kernel_names[i]};
-        CHECK(l0::zeKernelCreate(ze_module, &ze_kernel_desc, &ze_kernel));
+        CHECK(xpu::ze::zeKernelCreate(ze_module, &ze_kernel_desc, &ze_kernel));
         auto k = ::sycl::make_kernel<::sycl::backend::ext_oneapi_level_zero>(
                 {kernel_bundle, ze_kernel}, sycl_engine->context());
         sycl_kernels[i] = utils::make_unique<::sycl::kernel>(k);
@@ -213,9 +94,10 @@ status_t get_l0_kernel_binary(
     auto l0_kernel = ::sycl::get_native<::sycl::backend::ext_oneapi_level_zero>(
             kernel);
     size_t binary_size = 0;
-    CHECK(l0::zeKernelGetBinaryExp(l0_kernel, &binary_size, nullptr));
+    CHECK(xpu::ze::zeKernelGetBinaryExp(l0_kernel, &binary_size, nullptr));
     binary.resize(binary_size);
-    CHECK(l0::zeKernelGetBinaryExp(l0_kernel, &binary_size, binary.data()));
+    CHECK(xpu::ze::zeKernelGetBinaryExp(
+            l0_kernel, &binary_size, binary.data()));
 #else
     auto bundle = kernel.get_kernel_bundle();
     auto module_vec
@@ -223,9 +105,10 @@ status_t get_l0_kernel_binary(
                     bundle);
     auto module = module_vec[0];
     size_t module_binary_size;
-    CHECK(l0::zeModuleGetNativeBinary(module, &module_binary_size, nullptr));
+    CHECK(xpu::ze::zeModuleGetNativeBinary(
+            module, &module_binary_size, nullptr));
     binary.resize(module_binary_size);
-    CHECK(l0::zeModuleGetNativeBinary(
+    CHECK(xpu::ze::zeModuleGetNativeBinary(
             module, &module_binary_size, binary.data()));
 #endif
     return status::success;
@@ -246,7 +129,7 @@ status_t get_device_ip(ze_device_handle_t device, uint32_t &ip_version) {
     deviceProps.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES;
     deviceProps.pNext = &devicePropsIP;
 
-    CHECK(l0::zeDeviceGetProperties(device, &deviceProps));
+    CHECK(xpu::ze::zeDeviceGetProperties(device, &deviceProps));
     ip_version = devicePropsIP.ipVersion;
     return status::success;
 }
@@ -262,7 +145,7 @@ status_t get_l0_device_enabled_systolic_intel(
     deviceModProps.stype = ZE_STRUCTURE_TYPE_DEVICE_MODULE_PROPERTIES;
     deviceModProps.pNext = &deviceModPropsExt;
 
-    CHECK(l0::zeDeviceGetModuleProperties(device, &deviceModProps));
+    CHECK(xpu::ze::zeDeviceGetModuleProperties(device, &deviceModProps));
     mayiuse_systolic
             = deviceModPropsExt.flags & ZE_INTEL_DEVICE_MODULE_EXP_FLAG_DPAS;
     return status::success;
@@ -279,7 +162,7 @@ status_t get_l0_device_enabled_native_float_atomics(
     deviceProps.stype = ZE_STRUCTURE_TYPE_DEVICE_MODULE_PROPERTIES;
     deviceProps.pNext = &fltAtom;
 
-    CHECK(l0::zeDeviceGetModuleProperties(device, &deviceProps));
+    CHECK(xpu::ze::zeDeviceGetModuleProperties(device, &deviceProps));
 
     ze_device_fp_atomic_ext_flags_t atomic_load_store
             = ZE_DEVICE_FP_ATOMIC_EXT_FLAG_GLOBAL_LOAD_STORE
@@ -321,7 +204,7 @@ status_t get_l0_device_eu_count(ze_device_handle_t device, int &eu_count) {
     deviceProps.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES;
     deviceProps.pNext = &eucnt;
 
-    CHECK(l0::zeDeviceGetProperties(device, &deviceProps));
+    CHECK(xpu::ze::zeDeviceGetProperties(device, &deviceProps));
     eu_count = eucnt.numTotalEUs;
     return status::success;
 }

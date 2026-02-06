@@ -3,7 +3,7 @@
 --attr-fpmath=,bf16
 --check-ref-impl=false
 
---attr-dropout=0.5:12345678,0.75:12345678:undef,0.25:843921:any:1238976:true
+--attr-dropout=0.5:12345678,0.75:12345678:undef,0.25:843921:any:1238976:true,0.75:111786:any:121716:false
 
 --stag=ab --dtag=ab
 --batch=shapes_2d

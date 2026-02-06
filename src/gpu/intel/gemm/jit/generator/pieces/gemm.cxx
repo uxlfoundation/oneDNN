@@ -526,6 +526,10 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
             add(1, state.j0, state.j0, -shiftJ0);
             divUp(state.j0, state.j0, strategy.cInterleaveChunk, strategy, state);
         }
+        if (problem.hasBinaryPostOp() && strategy.cInterleaveChunk > 1) {
+            state.ctiShiftJ0 = state.ra.alloc_sub<int32_t>();
+            mov(1, state.ctiShiftJ0, shiftJ0);
+        }
         mov(1, shiftJ0, 0);
 
         if (!strategy.persistentLoop()) {

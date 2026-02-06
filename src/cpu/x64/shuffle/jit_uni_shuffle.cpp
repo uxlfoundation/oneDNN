@@ -158,7 +158,7 @@ status_t jit_uni_shuffle_t<isa>::execute(const exec_ctx_t &ctx) const {
             memory_tracking::names::key_shuffle_precompute_transpose);
 
     // Precompute transposed axis helper array
-    parallel_nd(transpose_col, transpose_row, [&](dim_t i, dim_t j) {
+    parallel_nd(transpose_col, transpose_row, [=](dim_t i, dim_t j) {
         scratchpad_ptr[j * transpose_col + i] = i * transpose_row + j;
     });
 
@@ -166,7 +166,7 @@ status_t jit_uni_shuffle_t<isa>::execute(const exec_ctx_t &ctx) const {
     const dim_t SPB = conf.sp / conf.sp_split_size;
 
     // Precompute input offsets using transposed axis
-    parallel_nd(CB, [&](dim_t cb) {
+    parallel_nd(CB, [=](dim_t cb) {
         const int blk_end
                 = nstl::min(conf.blk_size, conf.c - cb * conf.blk_size);
         PRAGMA_OMP_SIMD()
@@ -181,7 +181,8 @@ status_t jit_uni_shuffle_t<isa>::execute(const exec_ctx_t &ctx) const {
         }
     });
 
-    parallel_nd(conf.mb, SPB, CB, [&](dim_t mb, dim_t spb, dim_t cb) {
+    parallel_nd(conf.mb, SPB, CB,
+            [= COMPAT_THIS_CAPTURE](dim_t mb, dim_t spb, dim_t cb) {
         const dim_t c_work
                 = nstl::min(conf.blk_size, conf.c - cb * conf.blk_size);
         const dim_t c_curr = cb * conf.blk_size;

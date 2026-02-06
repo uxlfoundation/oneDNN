@@ -870,8 +870,11 @@ dim_t brg_blocking_t::grid_coverage(
 }
 
 float brg_blocking_t::est_eff() {
-    const auto brgemm_microkernel_eff = (static_cast<float>(adj_ocblock) * ur)
-            / ((ur + adj_ocblock) * max_regs);
+    const auto N_regs = static_cast<float>(adj_ocblock);
+    const auto M_regs = is_amx(isa) ? div_up(ur, amx_h) : ur;
+    const auto tot_regs = is_amx(isa) ? brgemm_desc_t::AMX_TILES_NUM : max_regs;
+    const auto brgemm_microkernel_eff
+            = (N_regs * M_regs) / ((N_regs + M_regs) * tot_regs);
 
     const auto ur_eff = static_cast<float>(sp_block) / rnd_up(sp_block, ur);
     const auto brgemm_eff = squeeze_val(ur

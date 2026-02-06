@@ -24,8 +24,6 @@
 #include "common/verbose.hpp"
 #include "gpu/intel/jit/generator.hpp"
 #include "gpu/intel/jit/post_op_injector.hpp"
-#include "gpu/intel/microkernels/entrance_agent.hpp"
-#include "gpu/intel/microkernels/package.hpp"
 #include "gpu/intel/post_ops.hpp"
 #include "ngen_register_allocator.hpp"
 
@@ -82,8 +80,6 @@ template <typename... Args>
 inline void verbosePrintf(const char *fmtStr, Args... args) {
     return dnnl::impl::verbose_printf(fmtStr, args...);
 }
-
-namespace micro = dnnl::impl::gpu::intel::micro;
 
 using SerializationStream = dnnl::impl::serialization_stream_t;
 

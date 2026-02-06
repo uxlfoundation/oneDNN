@@ -14,8 +14,9 @@
 # limitations under the License.
 ################################################################################
 
-import itertools
 import fnmatch
+import itertools
+from typing import Set
 
 
 class Dims:
@@ -110,7 +111,7 @@ class Types:
 
         def benchdnn_str(self):
             mode_str = ""
-            if not self.mode is None:
+            if self.mode is not None:
                 mode_str = f"--attr-fpmath={self.mode}"
             return f"--dt={self.A}:{self.B}:{self.C} {mode_str}"
 
@@ -150,7 +151,7 @@ class Types:
         return set(case for case in cases if case.matches(A, B, C))
 
     def __init__(self, types: str):
-        self.values = set()
+        self.values: Set[Types.Type] = set()
         for x in types.split(","):
             if x.count(":") == 0:
                 configs = [f"{x}:*:*", f"*:{x}:*", f"*:*:{x}"]
@@ -178,7 +179,11 @@ class Types:
                 ["%0", "u8", "s8", "u4", "s4"],
                 ["f32", "%0", "u8", "s8"],
             ],
-            [["u8", "s8"], ["u8", "s8", "u4", "s4"], ["f32", "bf16", "f16", "s32", "u8", "s8"]],
+            [
+                ["u8", "s8"],
+                ["u8", "s8", "u4", "s4"],
+                ["f32", "bf16", "f16", "s32", "u8", "s8"],
+            ],
             [
                 ["f8_e5m2", "f8_e4m3"],
                 ["f8_e5m2", "f8_e4m3"],
@@ -207,9 +212,9 @@ class Types:
                 ret = [""]
                 if "f32" in [src, wei]:
                     ret.append("(tf32)")
-                if "f32" in [src, wei] and not "f16" in [src, wei]:
+                if "f32" in [src, wei] and "f16" not in [src, wei]:
                     ret.append("(bf16)")
-                if "f32" in [src, wei] and not "bf16" in [src, wei]:
+                if "f32" in [src, wei] and "bf16" not in [src, wei]:
                     ret.append("(f16)")
                 return ret
             if (
@@ -255,7 +260,7 @@ class Primitive:
 
     def __getitem__(self, index):
         if index == "b":
-            return self.b[0] if len(self.dims.b) > 0 else 1
+            return self.dims.b[0] if len(self.dims.b) > 0 else 1
         elif index == "m":
             return self.dims.m
         elif index == "n":
@@ -275,7 +280,7 @@ class Primitive:
     @staticmethod
     def from_repro(repro_line):
         t = Types.Type("f32:f32:f32")
-        l = Layouts.Layout("any:any:any")
+        layout = Layouts.Layout("any:any:any")
         dims = Dims([], 0, 0, 0)
         for arg in repro_line.split(" "):
             if arg.startswith("--dt="):
@@ -283,14 +288,14 @@ class Primitive:
             elif arg.startswith("--attr-fpmath="):
                 t.mode = arg.split("=")[1]
             elif arg.startswith("--stag="):
-                l.A = arg.split("=")[1]
+                layout.A = arg.split("=")[1]
             elif arg.startswith("--wtag="):
-                l.B = arg.split("=")[1]
+                layout.B = arg.split("=")[1]
             elif arg.startswith("--dtag="):
-                l.C = arg.split("=")[1]
+                layout.C = arg.split("=")[1]
             elif not arg.startswith("--"):
                 dims.m, dims.k, dims.n = arg.split("x")
                 dims.m = int(dims.m)
                 dims.k = int(dims.k.split(":")[0])
                 dims.n = int(dims.n)
-        return Primitive(Kind(l, t), dims)
+        return Primitive(Kind(layout, t), dims)

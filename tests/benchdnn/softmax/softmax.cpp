@@ -247,16 +247,6 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
         res->state = DEFERRED;
         return;
     }
-
-    if (is_gpu()) {
-        if (!prb->attr.dropout.is_def()) {
-            BENCHDNN_PRINT(2, "[SKIP][%s:%d]: Dropout isn't supported.\n",
-                    __FILE__, __LINE__);
-            res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
-            return;
-        }
-    }
 }
 
 void skip_invalid_prb(const prb_t *prb, res_t *res) {

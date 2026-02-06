@@ -26,9 +26,6 @@ inline int getVerbose(GEMMVerbose v) { return 0; }
 
 #define GEMMSTONE_ASSERTIONS 1
 
-#include "entrance_agent.hpp"
-#include "package.hpp"
-
 #if (__cplusplus >= 202002L || _MSVC_LANG >= 202002L)
 #if __has_include(<version>)
 #include <version>

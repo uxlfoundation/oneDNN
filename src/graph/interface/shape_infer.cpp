@@ -1016,6 +1016,35 @@ status_t infer_matmul_output_shape(op_t *n,
     return status::success;
 }
 
+status_t infer_dropout_output_shape(op_t *n,
+        std::vector<logical_tensor_t *> &inputs,
+        std::vector<logical_tensor_t *> &outputs) {
+    auto in0 = logical_tensor_wrapper_t(inputs[0]);
+    auto out0 = logical_tensor_wrapper_t(outputs[0]);
+
+    // check if partial set shape aligns with inferred shape
+    if (out0.ndims() != -1) {
+        VCHECK_INVALID_SHAPE(validate(in0.vdims(), out0.vdims()),
+                "%s, input and output shapes are not compatible",
+                op_t::kind2str(n->get_kind()).c_str());
+    }
+
+    set_shape_and_strides(*outputs[0], in0.vdims());
+
+    if (outputs.size() > 1) {
+        auto out1 = logical_tensor_wrapper_t(outputs[1]);
+        if (out1.ndims() != -1) {
+            VCHECK_INVALID_SHAPE(validate(in0.vdims(), out1.vdims()),
+                    "%s, input and mask shapes are not compatible",
+                    op_t::kind2str(n->get_kind()).c_str());
+        }
+        set_shape_and_strides(*outputs[1], in0.vdims());
+    }
+
+    UNUSED(n);
+    return status::success;
+}
+
 status_t infer_identity_output_shape(op_t *n,
         std::vector<logical_tensor_t *> &inputs,
         std::vector<logical_tensor_t *> &outputs) {

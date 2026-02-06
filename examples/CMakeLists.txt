@@ -170,6 +170,17 @@ if (DNNL_CPU_RUNTIME STREQUAL "TBB" OR DNNL_CPU_SYCL)
     endforeach()
 endif()
 
+# Do not build RNN examples for threadpool as it doesn't support asynchronous
+# version of it which can't be distinguished.
+if (DNNL_CPU_RUNTIME STREQUAL "THREADPOOL")
+    foreach(f ${sources})
+        get_filename_component(fname ${f} NAME)
+        if(${fname} MATCHES "rnn_")
+            list(REMOVE_ITEM sources "${f}")
+        endif()
+    endforeach()
+endif()
+
 foreach(src ${sources})
     file(RELATIVE_PATH src_rel_path ${CMAKE_CURRENT_SOURCE_DIR} ${src})
     string(REGEX REPLACE "[/_\\.]" "-" example_name ${src_rel_path})

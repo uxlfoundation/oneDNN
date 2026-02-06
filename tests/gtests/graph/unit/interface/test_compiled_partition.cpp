@@ -191,6 +191,8 @@ TEST(test_interface_compiled_partition, CacheEngine) {
         std::vector<const impl::graph::logical_tensor_t *> outputs {&output};
         // Partition compilation
         par.compile(cpcache, inputs, outputs, eng);
+        // See: DUMMY_PARALLEL.
+        dnnl::impl::parallel(1, [](int, int) {});
     }
 
 #ifdef DNNL_GRAPH_DISABLE_COMPILED_PARTITION_CACHE

@@ -221,7 +221,10 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
         // Compute scales if dyn_quant
         float dst_scale = 1.f;
         if (has_dst_dynamic) {
-            dst_scale = FLT_MIN;
+            // Note: Mantissa-less dt would round-up zero to min normal.
+            // Note: Mantissa-ed dt needs initial value to be zero to properly
+            // handle the final value if the block is full of zero values.
+            dst_scale = 0.f;
             for_(int64_t m = mc * dst_M_group;
                     m < MIN2((mc + 1) * dst_M_group, M); ++m)
             for (int64_t n = nc * dst_N_group;

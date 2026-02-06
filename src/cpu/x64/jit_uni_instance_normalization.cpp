@@ -784,29 +784,32 @@ status_t jit_uni_instance_normalization_fwd_t::execute_forward(
     const int nthr = pd()->nthr_;
 
     if (calculate_stats) {
-        auto reduce = [&](float *stat, const float *tmp_stat) {
-            for (dim_t n = 0; n < N; ++n) {
-                const float *loc_stat = tmp_stat + n * nthr * C;
-                for (dim_t g = 0; g < G; ++g)
-                    stat[g] = 0.f;
+        auto reduce = [=](float *stat, const float *tmp_stat) {
+            parallel(1, [=](int, int) {
+                for (dim_t n = 0; n < N; ++n) {
+                    float *stat_ptr = stat + n * G;
+                    const float *loc_stat = tmp_stat + n * nthr * C;
+                    for (dim_t g = 0; g < G; ++g)
+                        stat_ptr[g] = 0.f;
 
-                for (int ithr_sp = 0; ithr_sp < nthr; ++ithr_sp) {
-                    for (dim_t g = 0; g < G; ++g) {
-                        float s = stat[g];
-                        s += loc_stat[g];
-                        stat[g] = s;
+                    for (int ithr_sp = 0; ithr_sp < nthr; ++ithr_sp) {
+                        for (dim_t g = 0; g < G; ++g) {
+                            float s = stat_ptr[g];
+                            s += loc_stat[g];
+                            stat_ptr[g] = s;
+                        }
+                        // Increase loc_stat to reduce the chunk for the next
+                        // ithr_sp.
+                        loc_stat += C;
                     }
-                    // Increase loc_stat to reduce the chunk for the next ithr_sp
-                    loc_stat += C;
-                }
 
-                for (dim_t g = 0; g < G; ++g)
-                    stat[g] /= SP;
-                stat += G;
-            }
+                    for (dim_t g = 0; g < G; ++g)
+                        stat_ptr[g] /= SP;
+                }
+            });
         };
         // compute mean
-        parallel(nthr, [&](const int ithr, const int nthr) {
+        parallel(nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
             dim_t SP_start = 0, SP_end = 0;
             balance211(SP, nthr, ithr, SP_start, SP_end);
             const int block_size = SP_end - SP_start;
@@ -822,7 +825,7 @@ status_t jit_uni_instance_normalization_fwd_t::execute_forward(
         });
         reduce(mean, stat_reduction);
         // compute variance
-        parallel(nthr, [&](const int ithr, const int nthr) {
+        parallel(nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
             dim_t SP_start = 0, SP_end = 0;
             balance211(SP, nthr, ithr, SP_start, SP_end);
             const dim_t block_size = SP_end - SP_start;
@@ -840,7 +843,7 @@ status_t jit_uni_instance_normalization_fwd_t::execute_forward(
         reduce(variance, stat_reduction);
     }
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         dim_t SP_start = 0, SP_end = 0;
         balance211(SP, nthr, ithr, SP_start, SP_end);
         const dim_t block_size = SP_end - SP_start;

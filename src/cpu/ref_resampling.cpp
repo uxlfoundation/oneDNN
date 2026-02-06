@@ -18,6 +18,7 @@
 #include <cfloat>
 
 #include "common/c_types_map.hpp"
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/math_utils.hpp"
 #include "common/type_helpers.hpp"
@@ -137,15 +138,15 @@ void ref_resampling_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     const dim_t OH = pd()->OH();
     const dim_t OW = pd()->OW();
 
-    auto lin_interp = [&](float c0, float c1, float w) {
+    auto lin_interp = [=](float c0, float c1, float w) {
         return c0 * w + c1 * (1 - w);
     };
-    auto bilin_interp = [&](float c00, float c01, float c10, float c11,
+    auto bilin_interp = [=](float c00, float c01, float c10, float c11,
                                 float w0, float w1) {
         return lin_interp(
                 lin_interp(c00, c10, w0), lin_interp(c01, c11, w0), w1);
     };
-    auto trilin_interp = [&](float c000, float c001, float c010, float c011,
+    auto trilin_interp = [=](float c000, float c001, float c010, float c011,
                                  float c100, float c101, float c110, float c111,
                                  float w0, float w1, float w2) {
         return lin_interp(bilin_interp(c000, c010, c100, c110, w0, w1),
@@ -153,7 +154,8 @@ void ref_resampling_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     };
 
     parallel_nd(MB, C, OD, OH, OW,
-            [&](dim_t mb, dim_t ch, dim_t od, dim_t oh, dim_t ow) {
+            [= COMPAT_THIS_CAPTURE](
+                    dim_t mb, dim_t ch, dim_t od, dim_t oh, dim_t ow) {
         const dim_t data_p_off = get_offset(dst_d, mb, ch, od, oh, ow);
         const dim_t data_l_off
                 = (((mb * C + ch) * OD + od) * OH + oh) * OW + ow;
@@ -240,7 +242,7 @@ void ref_resampling_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
 
     if (alg == alg_kind::resampling_nearest) {
         parallel_nd(MB, C, ID, IH, IW,
-                [&](dim_t mb, dim_t ch, dim_t id, dim_t ih, dim_t iw) {
+                [=](dim_t mb, dim_t ch, dim_t id, dim_t ih, dim_t iw) {
             float id_f = static_cast<float>(id) * OD_to_ID - 0.5f;
             float ih_f = static_cast<float>(ih) * OH_to_IH - 0.5f;
             float iw_f = static_cast<float>(iw) * OW_to_IW - 0.5f;
@@ -265,7 +267,7 @@ void ref_resampling_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
         });
     } else {
         parallel_nd(MB, C, ID, IH, IW,
-                [&](dim_t mb, dim_t ch, dim_t id, dim_t ih, dim_t iw) {
+                [=](dim_t mb, dim_t ch, dim_t id, dim_t ih, dim_t iw) {
             bwd_linear_coeffs_t d(id, OD, ID);
             bwd_linear_coeffs_t h(ih, OH, IH);
             bwd_linear_coeffs_t w(iw, OW, IW);

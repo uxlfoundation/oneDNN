@@ -14,19 +14,16 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_MICROKERNELS_SHIM_HPP
-#define GPU_MICROKERNELS_SHIM_HPP
+#ifndef GEMMSTONE_INCLUDE_GEMMSTONE_MICROKERNEL_SHIM_HPP
+#define GEMMSTONE_INCLUDE_GEMMSTONE_MICROKERNEL_SHIM_HPP
 
 #include <string>
-#include <vector>
 
-#include "package.hpp"
+#include "gemmstone/microkernel/package.hpp"
 
-namespace dnnl {
-namespace impl {
-namespace gpu {
-namespace intel {
-namespace micro {
+GEMMSTONE_NAMESPACE_START
+namespace microkernel {
+
 
 enum class HostLanguage { None, OpenCL_C, SYCL, vISA };
 
@@ -42,10 +39,7 @@ struct ShimOptions {
 std::string generateShim(const Package &package, HostLanguage language,
         const ShimOptions &options = ShimOptions());
 
-} /* namespace micro */
-} // namespace intel
-} // namespace gpu
-} // namespace impl
-} // namespace dnnl
+}
+GEMMSTONE_NAMESPACE_END
 
 #endif

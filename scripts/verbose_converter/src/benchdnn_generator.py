@@ -16,7 +16,7 @@
 
 import logging
 from collections import defaultdict
-from typing import Dict, List, Mapping, Optional, Set, cast
+from typing import Dict, List, Mapping, Optional, Set, Tuple, cast
 
 from . import ir
 
@@ -62,11 +62,11 @@ class Converter(metaclass=ConverterMeta):
         return self.entry.aux.get("alg")
 
     @staticmethod
-    def _get_policies():
+    def _get_policies() -> Tuple[str, ...]:
         return "common", "per_oc"
 
     @staticmethod
-    def _get_policy_map():
+    def _get_policy_map() -> Tuple[int, ...]:
         return 0, 1, 1, 1
 
     def policy(self, mask: int):
@@ -82,13 +82,13 @@ class Converter(metaclass=ConverterMeta):
         return f"--engine={self.entry.engine}"
 
     @property
-    def dir(self):
+    def dir(self) -> str:
         if self._get_dir():
             return f"--dir={self._get_dir()}"
         return ""
 
     @property
-    def bias_mask(self):
+    def bias_mask(self) -> str:
         return ""
 
     @property
@@ -108,7 +108,7 @@ class Converter(metaclass=ConverterMeta):
         return ""
 
     @property
-    def flags(self):
+    def flags(self) -> str:
         return ""
 
     def _get_nondefault_args(self, values, defaults):
@@ -248,14 +248,15 @@ class Converter(metaclass=ConverterMeta):
         # Use default p=0.5 and seed=12345 since those values are user data and
         # can't be obtained properly.
         result = "0.5:12345"
-        if dropout.tag:
-            result += f":{dropout.tag}"
+        if not dropout.tag:
+            return f"--attr-dropout={result}"
+        result += f":{dropout.tag}"
         # Seed dt is always s64 in benchdnn and is not passed to driver
-        if dropout.use_offset == "1":
+        if dropout.use_offset:
             result += ":987654321"
         else:
             result += ":0"
-        if dropout.use_host_scalars == "1":
+        if dropout.use_host_scalars:
             result += f":{dropout.use_host_scalars}"
         return f"--attr-dropout={result}"
 

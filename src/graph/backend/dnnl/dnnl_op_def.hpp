@@ -191,6 +191,22 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_constant_zps, 1,
                 .SET_EXECUTABLE_CREATOR(executable_creator<const_zps_filler>)
                 .SET_ARG_INDICES_GETTER(const_zps_filler))
 
+DNNL_GRAPH_OP_SCHEMA(dnnl_dropout, 1,
+        op_schema_t()
+                .set_num_inputs(4)
+                .set_outputs_option(op_schema_t::param_num_option::optional)
+                .set_num_outputs(std::set<size_t>({1, 2}))
+                .set_input(0, "src")
+                .set_input(1, "seed")
+                .set_input(2, "offset")
+                .set_input(3, "probability")
+                .set_output(0, "dst")
+                .set_output(1, "mask")
+                .set_shape_inference_function(infer_dropout_output_shape)
+                .SET_EXECUTABLE_CREATOR(dummy_executable_creator)
+                .set_additional_item<arg_indices_getter_func>(
+                        "arg_indices_getter", {dummy_arg_indices_getter}))
+
 // The logical axes will be permuted in the following manner:
 // for (i = 0; i < ndims(); i++)
 //     new_desc.dims()[permutation[i]] = dims()[i];

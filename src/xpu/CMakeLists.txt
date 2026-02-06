@@ -23,9 +23,13 @@ file(GLOB SOURCES
 
 if(DNNL_WITH_SYCL)
     add_subdirectory(sycl)
+    if(DNNL_GPU_VENDOR STREQUAL "INTEL")
+        add_subdirectory(ocl)
+        add_subdirectory(ze)
+    endif()
 endif()
 
-if(DNNL_GPU_VENDOR STREQUAL "INTEL")
+if(DNNL_GPU_RUNTIME MATCHES "OCL")
     add_subdirectory(ocl)
 endif()
 

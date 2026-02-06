@@ -965,7 +965,7 @@ class eltwise_binary_t
     : public ::testing::TestWithParam<eltwise_binary_params_t> {
 public:
     void TestEltwiseBinary() {
-        const auto params
+        const auto &params
                 = ::testing::TestWithParam<eltwise_binary_params_t>::GetParam();
         graph::engine_t *eng = get_engine();
 

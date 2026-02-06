@@ -1041,6 +1041,8 @@ TEST_P(matmul_with_diff_inputs_t, MatmulPasses) {
     ASSERT_EQ(dnnl_impl::layout_propagation(subgraph), graph::status::success);
     auto final_subgraph_size = params.final_subgraph_size;
     ASSERT_EQ(subgraph->get_ops().size(), final_subgraph_size);
+    // See: DUMMY_PARALLEL.
+    dnnl::impl::parallel(1, [](int, int) {});
 }
 
 INSTANTIATE_TEST_SUITE_P(test_subgraph_pass, matmul_with_diff_inputs_t,

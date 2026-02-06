@@ -405,6 +405,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
                 = bgmmc_.post_ops_applicable && bgmmc_.nthr_k > 1;
         brgattr.mem_advice = bgmmc_.mem_advice;
         brgattr.max_bs = bs;
+        brgattr.hint_loop_store_prefetch = bgmmc_.need_loop_store_prefetch;
         if (is_superset(kernel_isa, avx512_core_amx)) {
             brgattr.use_uker = true;
             brgattr.use_interleave_stores = true;

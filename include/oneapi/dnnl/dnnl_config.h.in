@@ -145,9 +145,6 @@
 // When defined, DPCPP is supported.
 #cmakedefine DNNL_WITH_SYCL
 
-// When defined, Level Zero is supported.
-#cmakedefine DNNL_WITH_LEVEL_ZERO
-
 // When defined, SYCL CUDA backend is used.
 #cmakedefine DNNL_SYCL_CUDA
 

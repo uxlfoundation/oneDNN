@@ -59,24 +59,6 @@ dnn_mem_t::dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_engine_t engine,
     }
 }
 
-dnn_mem_t::dnn_mem_t(const_dnnl_memory_desc_t md, void *value) {
-    dnnl_format_kind_t format_kind = query_md_format_kind(md);
-    if (format_kind != dnnl_format_kind_host_scalar) { return; }
-
-    auto status = dnnl_memory_desc_clone(&md_, md);
-    (void)status;
-    assert(status == dnnl_success);
-
-    status = dnnl_memory_create_host_scalar(&m_, md_, value);
-    assert(status == dnnl_success);
-
-    // Map the memory for compatibility,
-    // allowing data to be accessed just like a regular memory object
-    map();
-
-    active_ = (status == dnnl_success);
-}
-
 dnn_mem_t::dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_data_type_t dt,
         const std::string &tag, dnnl_engine_t engine, bool prefill) {
     const int ndims = query_md_ndims(md);
@@ -177,18 +159,19 @@ int execute_reorder(const dnn_mem_t &src, dnn_mem_t &dst,
         if (dnnl_memory_desc_equal(src.md_, dst.md_)) {
             // If fail to create reorder pd, use plain data copy for identical
             // mds.
+            //
+            // For unknown reason using memcpy with int4 data types leads to
+            // the double corruption error. Stick for per element copy for now.
             BENCHDNN_PRINT(2, "%s\n", "[REORDER] Fallback to plain copy.");
             const int64_t chunk_size = 64;
             const int64_t n_chunks = div_up(src.nelems(), chunk_size);
-            const int64_t size_dt = src.sizeof_dt();
             benchdnn_parallel_nd(n_chunks, [&](int64_t idx_chunk) {
                 int64_t idx_start = idx_chunk * chunk_size;
                 int64_t idx_end = MIN2(idx_start + chunk_size, src.nelems());
-                char *in
-                        = src.get_mapped_pointer<char>(0) + idx_start * size_dt;
-                char *out
-                        = dst.get_mapped_pointer<char>(0) + idx_start * size_dt;
-                std::memcpy(out, in, (idx_end - idx_start) * size_dt);
+                for (int64_t idx = idx_start; idx < idx_end; ++idx) {
+                    float e = src.get_elem(idx);
+                    dst.set_elem(idx, e);
+                }
             });
             return OK;
         }
@@ -954,6 +937,30 @@ int dnn_mem_t::initialize(
     }
 
     return OK;
+}
+
+dnn_mem_t::dnn_mem_t(const_dnnl_memory_desc_t md) {
+    uint64_t dummy = 0x3F3F3F3F3F3F3F3F;
+    active_ = (initialize_by_host_scalar(md, &dummy) == OK);
+}
+
+int dnn_mem_t::initialize_by_host_scalar(
+        const_dnnl_memory_desc_t md, void *value) {
+    dnnl_format_kind_t format_kind = query_md_format_kind(md);
+    if (format_kind != dnnl_format_kind_host_scalar) return FAIL;
+
+    auto status = dnnl_memory_desc_clone(&md_, md);
+    (void)status;
+    assert(status == dnnl_success);
+
+    status = dnnl_memory_create_host_scalar(&m_, md_, value);
+    assert(status == dnnl_success);
+
+    // Map the memory for compatibility,
+    // allowing data to be accessed just like a regular memory object
+    map();
+
+    return (status == dnnl_success) ? OK : FAIL;
 }
 
 static int cleanup_sycl(

@@ -117,3 +117,11 @@
 --attr-fpmath=bf16:true
 7x6x32:7x32x64
 7x6x32:1x32x64
+
+# 2D Blocked Scales
+
+--reset
+--stag=abx --wtag=abx,any --dtag=abx
+--dt=f8_e4m3:f8_e4m3:f32,f8_e4m3:f8_e4m3:bf16
+--attr-scales=src:per_tensor:f8_e5m2:1x128+wei:per_tensor:f8_e5m2:128x128,src:per_tensor:f16:32x32+wei:per_tensor:f8_e5m2:32x32
+--batch=shapes_2d_attr

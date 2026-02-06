@@ -1653,11 +1653,13 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     // We cannot change M at this point as all gemv related parameters have
     // already been set up.
+    // For 4D tensors with acbd layout, avoid merging batches to prevent stride issues
     const bool merge_batch_dims_into_M = !(bgmmc.is_gemv && bgmmc.gemv_swap_a_b)
             && bgmmc.batch > 1 && bgmmc.bcast_B_desc.bcast_across_all_batch_dims
             && plain_A_layout && helper.is_src_dst_layout_batch_fusable()
             && post_ops_ok(
-                    bgmmc, attr, dst_d, true /* limit_bcast_strategies_set */);
+                    bgmmc, attr, dst_d, true /* limit_bcast_strategies_set */)
+            && !(bgmmc.ndims == 4 && src_d.matches_tag(format_tag::acbd));
     if (merge_batch_dims_into_M) {
         bgmmc.M *= bgmmc.batch;
         bgmmc.batch = 1;
@@ -1748,8 +1750,10 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     // We need to correct A_strides if batched dimensions are merged in M and
     // A layout is formally transposed but could be treated as plain
+    // For 4D tensors, only apply adjustment for treat_A_as_plain, not for acbd tag
+    const bool adjust_for_acbd = src_d.matches_tag(acbd) && bgmmc.ndims == 3;
     bgmmc.adjust_a_strides = merge_batch_dims_into_M
-            && (src_d.matches_tag(acbd) || bgmmc.treat_A_as_plain);
+            && (adjust_for_acbd || bgmmc.treat_A_as_plain);
     if (bgmmc.adjust_a_strides) bgmmc.A_strides[1] = bgmmc.A_strides[2];
 
     // We need to correct C_strides if batched dimensions are merged in M and
@@ -1846,22 +1850,10 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     // Sets things related to chunks and others
     init_aux_values(bgmmc, src_d, weights_d, dst_d);
 
-    if (!bgmmc.is_gemv && bm_conf_utils.is_f32()
+    if (!bgmmc.is_gemv && bm_conf_utils.is_f32() && bgmmc.nthr == 1
             && is_superset(bgmmc.isa, avx512_core)) {
-        // Dispatch the shapes with small K to gemm for better performance
-        // The heuristic values are empirical
-        const bool small_K = bgmmc.N <= 14528 && bgmmc.K == 32
-                && ((bgmmc.M <= 768 && bgmmc.K <= 128)
-                        || bgmmc.K * bgmmc.M <= 49152);
-        // We need to exclude certain shapes as brgemm matmul performs better
-        // for them.
-        const bool exception
-                = (bgmmc.M >= 1000 && bgmmc.K <= 16 && bgmmc.N <= 16)
-                || (bgmmc.M <= 256 && bgmmc.K <= 8 && bgmmc.N <= 1024);
-        VCONDCHECK_BG(
-                IMPLICATION(bgmmc.ndims == 2,
-                        exception || !small_K || !can_use_gemm_fallback()),
-                VERBOSE_SMALL_SHAPES);
+        bgmmc.need_loop_store_prefetch = bgmmc.K < 16 && bgmmc.M <= 768
+                && bgmmc.N <= 14528 && bgmmc.N >= 4064;
     }
 
     bgmmc.use_buffer_reduce

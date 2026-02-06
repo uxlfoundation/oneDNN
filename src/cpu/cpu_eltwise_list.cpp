@@ -62,7 +62,7 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
             CPU_INSTANCE_X64(jit_uni_eltwise_int_fwd_t<avx512_core>)
             CPU_INSTANCE_X64(jit_uni_eltwise_int_fwd_t<avx2>)
             CPU_INSTANCE_X64(jit_uni_eltwise_int_fwd_t<sse41>)
-            CPU_INSTANCE_AARCH64(jit_uni_eltwise_fwd_t<sve_128>)
+            CPU_INSTANCE_AARCH64(jit_uni_eltwise_fwd_t<sve>)
             CPU_INSTANCE_AARCH64(jit_uni_eltwise_fwd_t<asimd>)
             CPU_INSTANCE_AARCH64(jit_uni_eltwise_int_fwd_t<sve_512, s32>)
             CPU_INSTANCE_AARCH64(jit_uni_eltwise_int_fwd_t<sve_512, s8>)
@@ -81,7 +81,7 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
             CPU_INSTANCE_X64(jit_uni_eltwise_bwd_t<avx2>)
             CPU_INSTANCE_X64(jit_uni_eltwise_bwd_t<avx>)
             CPU_INSTANCE_X64(jit_uni_eltwise_bwd_t<sse41>)
-            CPU_INSTANCE_AARCH64(jit_uni_eltwise_bwd_t<sve_128>)
+            CPU_INSTANCE_AARCH64(jit_uni_eltwise_bwd_t<sve>)
             CPU_INSTANCE_RV64GCV(rvv_eltwise_bwd_t)
             CPU_INSTANCE(ref_eltwise_bwd_t)
             nullptr,

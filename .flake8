@@ -1,0 +1,8 @@
+[flake8]
+include =
+    *.py
+    *.pyi
+    *.py.in
+exclude = doc/doxyrest/*
+max-line-length = 80
+extend-ignore = E203

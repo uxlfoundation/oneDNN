@@ -141,7 +141,7 @@ attr_info_t attr_info_t::create(const primitive_attr_t *attr) {
     attr_info.with_host_src_scale = src_scales.is_host_scalar();
     attr_info.with_host_wei_scale = wei_scales.is_host_scalar();
     attr_info.with_host_dst_scale = dst_scales.is_host_scalar();
-    attr_info.with_mx_dst_scale = dst_scales.is_mx();
+    attr_info.with_dyn_dst_scale = dst_scales.is_dynamic();
     attr_info.with_host_src_zp = zp.get(DNNL_ARG_SRC).is_host_scalar();
     attr_info.with_host_wei_zp = zp.get(DNNL_ARG_WEIGHTS).is_host_scalar();
     attr_info.with_host_dst_zp = zp.get(DNNL_ARG_DST).is_host_scalar();
@@ -280,6 +280,7 @@ const char *get_type_name(data_type_t dt, bool with_punning) {
         case data_type::s4: return with_punning ? "uchar" : "s4";
         case data_type::u4: return with_punning ? "uchar" : "u4";
         case data_type::s32: return "int";
+        case data_type::s64: return "long";
         default:
             gpu_error_not_expected()
                     << "Unexpected data type " << dnnl_dt2str(dt);
@@ -351,6 +352,10 @@ void def_data_type(compute::kernel_ctx_t &kernel_ctx, data_type_t dt,
         case data_type::s32:
             kernel_ctx.add_option(
                     utils::format("-D%s_DATA_T=int -D%s_DT_S32", str, str));
+            break;
+        case data_type::s64:
+            kernel_ctx.add_option(
+                    utils::format("-D%s_DATA_T=int -D%s_DT_S64", str, str));
             break;
         default:
             gpu_error_not_expected()
@@ -707,7 +712,7 @@ status_t def_attr_info_impl(compute::kernel_ctx_t &kernel_ctx,
     kernel_ctx.define_int("WITH_HOST_SRC_SCALE", attr_info.with_host_src_scale);
     kernel_ctx.define_int("WITH_HOST_WEI_SCALE", attr_info.with_host_wei_scale);
     kernel_ctx.define_int("WITH_HOST_DST_SCALE", attr_info.with_host_dst_scale);
-    kernel_ctx.define_int("WITH_MX_DST_SCALE", attr_info.with_mx_dst_scale);
+    kernel_ctx.define_int("WITH_DYN_DST_SCALE", attr_info.with_dyn_dst_scale);
 
     return def_post_ops_cfg(kernel_ctx, post_ops, dst_md);
 }

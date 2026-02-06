@@ -55,6 +55,11 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
 
     VDEBUGINFO(4, primitive, gemm, "MY: xe_hp_systolic call init_attr()");
     VDISPATCH_GEMM_SC(init_attrs(), VERBOSE_UNSUPPORTED_TAG);
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // c_quant.zp_ndims = -1;
+    VDEBUGINFO(4, primitive, gemm, "MY: xe_hp_systolic: c_quant.zp_ndims = %d", c_quant.zp_ndims);
+    // problem_.coPtrDims = c_quant.zp_host_scalar ? -1 : c_quant.zp_ndims;
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!
     //VDEBUGINFO(4, primitive, gemm, "MY: xe_hp_systolic --");
     const auto &d = desc();
 
@@ -607,6 +612,11 @@ status_t xe_hp_systolic_t::init_compute(impl::engine_t *engine) {
 
     problem_ = *kd_full.problem();
 
+    //problem_.coPtrDims = pd()->c_quant.zp_host_scalar ? -1 : pd()->c_quant.zp_ndims;
+    VDEBUGINFO(4, primitive, gemm, "MY: systolic: pd()->c_quant.zp_host_scalar = %d", pd()->c_quant.zp_host_scalar);
+    VDEBUGINFO(4, primitive, gemm, "MY: systolic: pd()->c_quant.zp_ndims = %d", pd()->c_quant.zp_ndims);
+    VDEBUGINFO(4, primitive, gemm, "MY: set problem_.coPtrDims = %d", problem_.coPtrDims);
+
     for (bool first_k_block : {false, true}) {
         for (bool last_k_block : {false, true}) {
             if ((!first_k_block || !last_k_block) && !may_k_block) continue;
@@ -643,6 +653,12 @@ status_t xe_hp_systolic_t::init_compute(impl::engine_t *engine) {
                         pd()->unroll_n(), pd()->alt(), std::move(gpu_post_ops));
 
                 if (status != status::success) return status;
+
+                auto *kd_problem = const_cast<gemmstone::GEMMProblem *>(kd.problem());
+                kd_problem->coPtrDims = pd()->c_quant.zp_host_scalar ? -1 : pd()->c_quant.zp_ndims;
+                VDEBUGINFO(4, primitive, gemm, "MY: systolic: pd()->c_quant.zp_host_scalar = %d", pd()->c_quant.zp_host_scalar);
+                VDEBUGINFO(4, primitive, gemm, "MY: systolic: pd()->c_quant.zp_ndims = %d", pd()->c_quant.zp_ndims);
+                VDEBUGINFO(4, primitive, gemm, "MY: set kd.problem().coPtrDims = %d", kd_problem->coPtrDims);
 
                 if (!got_info) {
                     compute_info_ = *kd.driver_info();

@@ -1050,7 +1050,7 @@ std::ostream &operator<<(
         const std::vector<int> args
                 = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST};
 
-#if DNNL_EXPERIMENTAL_GROUPED_GEMM
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
         bool has_grouped = false;
         for (const int arg : args) {
             if (sparse_options.get_encoding(arg) == dnnl_grouped) {

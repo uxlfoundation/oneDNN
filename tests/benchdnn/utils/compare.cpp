@@ -265,7 +265,7 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
 
     res->total += nelems;
 
-#if DNNL_EXPERIMENTAL_GROUPED_GEMM
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
     const int nhandles = query_md_num_handles(got_mem.md_);
     const auto got_encoding = query_md_sparse_encoding(got_mem.md_);
 #endif
@@ -273,7 +273,7 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
 
     // special handling here (almost grouped -> dense)
     // since no reorder supported and reference is in plain format
-#if DNNL_EXPERIMENTAL_GROUPED_GEMM
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
     if (nhandles > 1 && got_encoding == dnnl_grouped) {
         // for grouped encoding, create plain f32 memory and copy values from buffer 0
         const auto ndims = got_mem.ndims();

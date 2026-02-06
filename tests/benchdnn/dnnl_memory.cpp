@@ -691,7 +691,7 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dnn_mem_t::init_host_scalar_md(
     return md;
 }
 
-#if DNNL_EXPERIMENTAL_GROUPED_GEMM
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
 benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dnn_mem_t::init_grouped_md(
         int ndims, const dnnl_dims_t dims, dnnl_data_type_t data_type,
         int variable_dim_idx, dnnl_dim_t group_count,

@@ -150,6 +150,37 @@ void Generator<hw>::gemmScalarBinaryOpC(BinaryOp op, Type Tco, const GRFMultiran
     });
 }
 
+// Apply binary operation to C with a scalar operand from a Subregister (e.g., host side scalar)
+template <HW hw>
+void Generator<hw>::gemmScalarBinaryOpC(BinaryOp op, Type Tco, const Subregister &scalar,
+                                        const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+{
+    auto Tacc = state.Tacc;
+    auto offsetTc = scalar;
+    GRF tempGRF;
+
+    if (Tco != Tacc) {
+        tempGRF = state.ra.alloc();
+        auto tempRange = GRFMultirange(GRFRange(tempGRF.getBase(), 1));
+        mov(1, tempGRF.sub(0, Tco.ngen()), scalar);
+        RegisterLayout scalarLayout(hw, Tacc, 1, 1, true);
+        copyRegisters(Tco, Tacc, scalarLayout, scalarLayout, tempRange, tempRange, strategy, state);
+        offsetTc = tempGRF.sub(0, Tacc.ngen());
+    }
+
+    if (op == BinaryOp::Div && one_of(state.Tacc, {Type::f32, Type::f16})) {
+        inv(1, offsetTc, offsetTc);
+        op = BinaryOp::Mul;
+    }
+
+    map(hw, state.Tacc, state.C_regs[0], state.C_layout, strategy, [&](int simd, const RegData &r) {
+        binaryOp(op, simd, r, r, offsetTc, state);
+    });
+
+    if (Tco != Tacc)
+        state.ra.safeRelease(tempGRF);
+}
+
 // Apply binary operation to C with a vector operand, optionally multiplied by a scalar.
 template <HW hw>
 void Generator<hw>::gemmVectorBinaryOpC(BinaryOp op, bool column, const GRFMultirange &offsets, const Subregister &scaleIn,
@@ -414,21 +445,30 @@ bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const G
 
     if (state.flagSwizzle.isValid()) state.raVFlag.claim(state.flagSwizzle);
 
-    status << "Applying fixed C offset" << status_stream::endl;
-    ok = ok && gemmBinaryOpC(BinaryOp::Add, false, false, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
+    if (problem.cOffsetHostScalar() && state.inputs.co.isValid()) {
+        status << "Applying host scalar C offset" << status_stream::endl;
+        gemmScalarBinaryOpC(BinaryOp::Add, Tco, state.inputs.co, problem, strategy, state);
+    } else {
+        status << "Applying fixed C offset" << status_stream::endl;
+        ok = ok && gemmBinaryOpC(BinaryOp::Add, false, false, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
+    }
     jmpi(1, labelCODone);
 
     mark(labelCOColumn);
-    if (doMatrix) jmpi(1 | flagCOR, labelCOMatrix);
-    status << "Applying column-wise C offset" << status_stream::endl;
-    ok = ok && gemmBinaryOpC(BinaryOp::Add, false, true, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
+    if (!problem.cOffsetHostScalar()) {
+        if (doMatrix) jmpi(1 | flagCOR, labelCOMatrix);
+        status << "Applying column-wise C offset" << status_stream::endl;
+        ok = ok && gemmBinaryOpC(BinaryOp::Add, false, true, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
+    }
     jmpi(1, labelCODone);
 
     mark(labelCORow);
-    status << "Applying row-wise C offset" << status_stream::endl;
-    ok = ok && gemmBinaryOpC(BinaryOp::Add, true, false, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
+    if (!problem.cOffsetHostScalar()) {
+        status << "Applying row-wise C offset" << status_stream::endl;
+        ok = ok && gemmBinaryOpC(BinaryOp::Add, true, false, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
+    }
 
-    if (doMatrix) {
+    if (doMatrix && !problem.cOffsetHostScalar()) {
         jmpi(1, labelCODone);
 
         mark(labelCOMatrix);

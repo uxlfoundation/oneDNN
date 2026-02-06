@@ -50,14 +50,14 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         int16_t bo_host_scalar, const memory_storage_t *a_scales,
         const memory_storage_t *b_scales, const memory_storage_t *c_scales,
         const memory_storage_t *ag, const memory_storage_t *bg,
-        const memory_storage_t &co, const memory_storage_t *c_temp,
-        const memory_storage_t *sround_seed, int po_count,
-        const memory_storage_t **po_srcs, int64_t offset_a, int64_t offset_b,
-        int64_t offset_c, int64_t offset_aq, int64_t offset_bq,
-        int64_t offset_co, int64_t *offset_po_src, int32_t lda, int32_t ldb,
-        int32_t ldc, int32_t m, int32_t n, int32_t k, int32_t k0, float alpha,
-        float beta, int32_t cmask, bool last_k_block, bool swap_ab,
-        bool disable_hilbert) const {
+        const memory_storage_t &co, int16_t co_host_scalar,
+        const memory_storage_t *c_temp, const memory_storage_t *sround_seed,
+        int po_count, const memory_storage_t **po_srcs, int64_t offset_a,
+        int64_t offset_b, int64_t offset_c, int64_t offset_aq,
+        int64_t offset_bq, int64_t offset_co, int64_t *offset_po_src,
+        int32_t lda, int32_t ldb, int32_t ldc, int32_t m, int32_t n, int32_t k,
+        int32_t k0, float alpha, float beta, int32_t cmask, bool last_k_block,
+        bool swap_ab, bool disable_hilbert) const {
     if (pd()->desc()->batch() == 0) return status::success;
 
     uint32_t flags = 0;
@@ -138,13 +138,14 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
     }
     if (pd()->with_c_zero_points() || pd()->with_bias()
             || pd()->with_sum_ab()) {
-        arg_list.set(argn++, co);
+        if (!problem->cOffsetHostScalar()) arg_list.set(argn++, co);
         arg_list.set(argn++, offset_co);
         if (pd()->with_bias()) {
             auto ldco = into<int32_t>(pd()->desc()->ld_bias());
             arg_list.set(argn++, ldco);
         }
     }
+    if (problem->cOffsetHostScalar()) arg_list.set(argn++, co_host_scalar);
     if (nocopy_info()->needsTempC()) arg_list.set(argn++, *c_temp);
     if (problem->postOps.cStochasticRound) {
         arg_list.set(argn++, *sround_seed);
@@ -389,6 +390,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     const memory_storage_t *ag = nullptr, *bg = nullptr;
     int16_t ao_host_scalar = 0;
     int16_t bo_host_scalar = 0;
+    int16_t co_host_scalar = 0;
 
     std::unique_ptr<memory_storage_t> c_temp;
     if (nocopy_info()->needsTempC()) {
@@ -462,6 +464,12 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         off_co0 = types::bytes_to_elements(c_type, co->offset())
                 + pd()->dyn_offset_co;
         cmask = pd()->attr()->zero_points_.get_mask(DNNL_ARG_DST);
+        int co_host_scalar_val = 0;
+        if (co->is_host_scalar()) {
+            CHECK(maybe_get_host_scalar_value(*co, co_host_scalar_val));
+        }
+        // DST zero point is added to result (not subtracted like SRC/WEI)
+        co_host_scalar = static_cast<int16_t>(co_host_scalar_val);
     } else if (pd()->with_bias()) {
         off_co0 = types::bytes_to_elements(c_type, bias.offset());
         co = &bias;
@@ -566,10 +574,10 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
                 && (k > k0 * pd()->kernel_desc()->aux_params()->wgK)) {
             status = launch_nocopy(ctx, compute_stream, zero_pool, a, b, c, ao,
                     bo, ao_host_scalar, bo_host_scalar, a_scales, b_scales,
-                    c_scales, ag, bg, *co, nullptr, sround_seed, po_count,
-                    po_srcs, off_a0, off_b0, off_c0, off_aq0, off_bq0, off_co0,
-                    po_offsets0, lda, ldb, ldc, m, n, 0, 1, 1.0f, beta, 0,
-                    false, swap_ab, true);
+                    c_scales, ag, bg, *co, co_host_scalar, nullptr, sround_seed,
+                    po_count, po_srcs, off_a0, off_b0, off_c0, off_aq0, off_bq0,
+                    off_co0, po_offsets0, lda, ldb, ldc, m, n, 0, 1, 1.0f, beta,
+                    0, false, swap_ab, true);
             if (status) return status;
             beta = 1.0f;
         }
@@ -630,12 +638,13 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
                 float eff_beta = (Bk == 0) ? beta : 1.0f;
                 status = launch_nocopy(ctx, compute_stream, zero_pool, a, b, c,
                         ao, bo, ao_host_scalar, bo_host_scalar, a_scales,
-                        b_scales, c_scales, ag, bg, *co, c_temp.get(),
-                        sround_seed, po_count, po_srcs, off_a_src, off_b_src,
-                        off_c, off_aq, off_bq, off_co, po_offsets, lda, ldb,
-                        ldc, into<int32_t>(size_m), into<int32_t>(size_n),
-                        into<int32_t>(size_k), k0, alpha, eff_beta, cmask,
-                        last_k_block, swap_ab, disable_hilbert);
+                        b_scales, c_scales, ag, bg, *co, co_host_scalar,
+                        c_temp.get(), sround_seed, po_count, po_srcs, off_a_src,
+                        off_b_src, off_c, off_aq, off_bq, off_co, po_offsets,
+                        lda, ldb, ldc, into<int32_t>(size_m),
+                        into<int32_t>(size_n), into<int32_t>(size_k), k0, alpha,
+                        eff_beta, cmask, last_k_block, swap_ab,
+                        disable_hilbert);
 
                 if (status) return status;
             }

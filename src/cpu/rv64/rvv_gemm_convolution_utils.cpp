@@ -427,6 +427,7 @@ void im2col(const conv_gemm_conf_t &jcp, const data_type_t *__restrict im,
     const dim_t oh_end = last_oh + 1;
     const dim_t first_ow = ss % jcp.ow;
     const dim_t last_ow = (ss + sb - 1) % jcp.ow;
+    const bool no_w_padding = (lp == 0 && jcp.r_pad == 0);
 
     const data_t zero_val = 0;
 
@@ -454,12 +455,11 @@ void im2col(const conv_gemm_conf_t &jcp, const data_type_t *__restrict im,
                         } else {
                             // Vectorized data copy for stride=1
                             // Only apply for float(4 bytes) type to ensure correctness
-                            if (sizeof(data_t) == 4
+                            if (sizeof(data_t) == 4 && no_w_padding
                                     && ow_end - ow_begin >= 16) {
                                 dim_t ow = ow_begin;
                                 // Pre-calculate base pointer for current row
-                                const data_t *im_ptr
-                                        = im_ + ih * jcp.iw - lp + kw * dw;
+                                const data_t *im_ptr = im_;
                                 while (ow < ow_end) {
                                     size_t vl
                                             = __riscv_vsetvl_e32m4(ow_end - ow);
@@ -541,7 +541,7 @@ void im2col(const conv_gemm_conf_t &jcp, const data_type_t *__restrict im,
                 } else {
                     // Vectorized data copy for stride=1
                     // Only apply for float(4 bytes) type to ensure correctness
-                    if (sizeof(data_t) == 4 && sw == 1
+                    if (sizeof(data_t) == 4 && sw == 1 && no_w_padding
                             && ow_end - ow_start >= 16) {
                         dim_t ow = ow_start;
                         // Pre-calculate base pointer for current row

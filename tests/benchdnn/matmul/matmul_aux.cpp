@@ -102,7 +102,7 @@ std::string prb_t::set_repro_line() {
     if (canonical || !impl_filter.is_def() || !global_impl_filter.is_def())
         s << impl_filter;
 
-#if DNNL_EXPERIMENTAL_GROUPED_GEMM
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
     // For grouped matmul, output weights in 2D format (without group dimension)
     // since the group dimension is inferred from the --grouped parameter
     if (sparse_options.get_encoding(DNNL_ARG_SRC) == dnnl_grouped) {

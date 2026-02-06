@@ -30,7 +30,7 @@ int64_t wei_ba_off_f(const prb_t *prb, int64_t mb, int64_t k, int64_t n) {
     return (mb * prb->n + n) * prb->k + k;
 }
 
-#if DNNL_EXPERIMENTAL_GROUPED_GEMM
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
 // Reference implementation for grouped gemm
 // Computes per-expert matmuls: for each expert e, computes dst[e] = src[e] * wei[e]
 void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
@@ -141,7 +141,7 @@ void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
         offset += M_g;
     }
 }
-#endif // DNNL_EXPERIMENTAL_GROUPED_GEMM
+#endif // DNNL_EXPERIMENTAL_GROUPED_MEMORY
 
 void compute_ref_matmul(const prb_t *prb, const args_t &args) {
     const dnn_mem_t &src_m = args.find(DNNL_ARG_SRC);
@@ -512,7 +512,7 @@ void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
     const auto wei_encoding
             = prb->sparse_options.get_encoding(DNNL_ARG_WEIGHTS);
 
-#if DNNL_EXPERIMENTAL_GROUPED_GEMM
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
     if (src_encoding == dnnl_grouped) {
         compute_ref_grouped_matmul(prb, args);
     } else

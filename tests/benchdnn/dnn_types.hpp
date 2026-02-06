@@ -588,7 +588,7 @@ struct sparse_options_t {
             = dnnl_sparse_encoding_undef;
     static constexpr float def_sparsity = 0.9f;
 
-#if DNNL_EXPERIMENTAL_GROUPED_GEMM
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
     /**
      * Data structure to hold grouped encoding parameters
      * variable_dim_idx: index of the dimension with variable size (0 for M)
@@ -617,7 +617,7 @@ struct sparse_options_t {
     void add(int arg, dnnl_sparse_encoding_t encoding, float sparsity) {
         options_.insert({arg, {encoding, sparsity}});
     }
-#if DNNL_EXPERIMENTAL_GROUPED_GEMM
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
     void set_grouped(int arg, int var_dim_idx, dnnl_dim_t count,
             const std::vector<dnnl_dim_t> &sizes) {
         add(arg, dnnl_grouped,
@@ -696,7 +696,7 @@ struct sparse_options_t {
 
 private:
     std::unordered_map<int, std::pair<dnnl_sparse_encoding_t, float>> options_;
-#if DNNL_EXPERIMENTAL_GROUPED_GEMM
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
     std::unordered_map<int, grouped_data_t> grouped_data_;
 #endif
 };

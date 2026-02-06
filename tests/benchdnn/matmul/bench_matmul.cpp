@@ -167,7 +167,7 @@ int bench(int argc, char **argv) {
                 || parse_tag(s.wtag, def.wtag, argv[0], "wtag")
                 || parse_tag(s.dtag, def.dtag, argv[0], "dtag")
                 || parse_encoding(s.sparse_options, argv[0], "encoding")
-#if DNNL_EXPERIMENTAL_GROUPED_GEMM
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
                 || parse_grouped(s.sparse_options, argv[0], "grouped")
 #endif
                 || parse_strides(s.strides, def.strides, argv[0], "strides")
@@ -187,7 +187,7 @@ int bench(int argc, char **argv) {
 
             SAFE(verify_input(s, def), WARN);
 
-#if DNNL_EXPERIMENTAL_GROUPED_GEMM
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
             // For grouped matmul, expand weights from 2D [K, N] to 3D [G, K, N]
             // Keep ndims/prb_vdims.ndims as 2 (from src/dst perspective)
             if (s.sparse_options[0].get_encoding(DNNL_ARG_SRC)

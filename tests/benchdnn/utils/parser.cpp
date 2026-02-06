@@ -692,7 +692,7 @@ bool parse_encoding(std::vector<sparse_options_t> &sparse_options,
             str, option_name, help);
 }
 
-#if DNNL_EXPERIMENTAL_GROUPED_GEMM
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
 /**
  * Parse grouped encoding options.
  * Format: DIM_IDX:NUM_GROUPS:size0,size1,...,sizeN

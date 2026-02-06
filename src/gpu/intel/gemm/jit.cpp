@@ -118,7 +118,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
                 : problem->aScale2D()            ? problem->A_scale.layout
                                                  : problem->AO.layout;
         auto ldaq = into<int32_t>(isColMajor(layout)
-                        ? utils::div_up(pd()->eff_m(), problem->aqGroupM)
+                        ? utils::div_up(m, problem->aqGroupM)
                         : utils::div_up(pd()->desc()->k(), problem->aqGroupK));
         arg_list.set(argn++, ldaq);
     }
@@ -128,7 +128,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
                 : problem->bScale2D()            ? problem->B_scale.layout
                                                  : problem->BO.layout;
         auto ldbq = into<int32_t>(!isColMajor(layout)
-                        ? utils::div_up(pd()->eff_n(), problem->bqGroupN)
+                        ? utils::div_up(n, problem->bqGroupN)
                         : utils::div_up(pd()->desc()->k(), problem->bqGroupK));
         arg_list.set(argn++, ldbq);
     }
@@ -171,8 +171,9 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
 
     if (pd()->batch_dims() >= 1) {
         for (int i = pd()->batch_dims() - 1; i >= 0; i--) {
-            auto stride_a = int32_t(pd()->eff_stride_a(i));
-            auto stride_b = int32_t(pd()->eff_stride_b(i));
+            auto stride_a = int32_t(pd()->stride(DNNL_ARG_A, i));
+            auto stride_b = int32_t(pd()->stride(DNNL_ARG_B, i));
+            if (swap_ab) std::swap(stride_a, stride_b);
             auto stride_c = int32_t(pd()->desc()->stride_c(i));
             if (jit::enable_generator_dsl()) {
                 auto hw = ngen::getCore(
@@ -187,12 +188,15 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
                 // relaxed by rounding down the surface pointer and adjusting
                 // the width accordingly.
                 auto base_alignment = intel::jit::block_2d_base_alignment(hw);
-                auto a_size = types::data_type_size(pd()->eff_a_type());
+                auto a_type = pd()->get_type(DNNL_ARG_A);
+                auto b_type = pd()->get_type(DNNL_ARG_B);
+                if (swap_ab) std::swap(a_type, b_type);
+                auto a_size = types::data_type_size(a_type);
                 if (stride_a * a_size % base_alignment) {
                     gpu_warning() << "Unimplemented load transform";
                     return status::runtime_error;
                 }
-                auto b_size = types::data_type_size(pd()->eff_b_type());
+                auto b_size = types::data_type_size(b_type);
                 if (stride_b * b_size % base_alignment) {
                     gpu_warning() << "Unimplemented load transform";
                     return status::runtime_error;
@@ -201,26 +205,29 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
             arg_list.set(argn++, stride_a);
             arg_list.set(argn++, stride_b);
             arg_list.set(argn++, stride_c);
+            int eff_a_arg = DNNL_ARG_A;
+            int eff_b_arg = DNNL_ARG_B;
+            if (swap_ab) std::swap(eff_a_arg, eff_b_arg);
             if (problem->hasAScalePtr()) {
-                arg_list.set(argn++, pd()->eff_scale_stride(i, DNNL_ARG_A));
+                arg_list.set(argn++, pd()->scale_stride(i, eff_a_arg));
             }
             if (problem->hasBScalePtr()) {
-                arg_list.set(argn++, pd()->eff_scale_stride(i, DNNL_ARG_B));
+                arg_list.set(argn++, pd()->scale_stride(i, eff_b_arg));
             }
             if (problem->hasCMXScale()) {
                 arg_list.set(argn++, stride_c / problem->cqGroupM);
             }
             if (problem->hasAOffsetPtr()) {
-                arg_list.set(argn++, pd()->eff_zp_stride(i, DNNL_ARG_A));
+                arg_list.set(argn++, pd()->zp_stride(i, eff_a_arg));
             }
             if (problem->hasBOffsetPtr()) {
-                arg_list.set(argn++, pd()->eff_zp_stride(i, DNNL_ARG_B));
+                arg_list.set(argn++, pd()->zp_stride(i, eff_b_arg));
             }
             if (problem->needsAGroupSums()) {
-                arg_list.set(argn++, pd()->eff_gs_stride(i, DNNL_ARG_A));
+                arg_list.set(argn++, pd()->gs_stride(i, eff_a_arg));
             }
             if (problem->needsBGroupSums()) {
-                arg_list.set(argn++, pd()->eff_gs_stride(i, DNNL_ARG_B));
+                arg_list.set(argn++, pd()->gs_stride(i, eff_b_arg));
             }
         }
         for (int i = 0; i < po_count; i++) {
@@ -351,21 +358,30 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
 
     const bool swap_ab = pd()->swap_ab();
 
-    auto a_type = pd()->eff_a_type();
-    auto b_type = pd()->eff_b_type();
+    auto a_type = pd()->get_type(DNNL_ARG_A);
+    auto b_type = pd()->get_type(DNNL_ARG_B);
     auto c_type = d->c_type();
 
-    const auto m = into<int32_t>(pd()->eff_m());
-    const auto n = into<int32_t>(pd()->eff_n());
+    auto m = into<int32_t>(pd()->desc()->m());
+    auto n = into<int32_t>(pd()->desc()->n());
     auto k = into<int32_t>(d->k());
 
-    const bool transa = pd()->eff_transa();
-    const bool transb = pd()->eff_transb();
+    bool trans_a = pd()->trans_a();
+    bool trans_b = pd()->trans_b();
 
-    const auto lda = into<int32_t>(pd()->eff_lda());
-    const auto ldb = into<int32_t>(pd()->eff_ldb());
+    auto lda = into<int32_t>(pd()->ld(DNNL_ARG_A));
+    auto ldb = into<int32_t>(pd()->ld(DNNL_ARG_B));
     auto ldc = into<int32_t>(d->ldc());
     auto ldco = into<int32_t>(pd()->with_bias() ? d->ld_bias() : 0);
+
+    if (swap_ab) {
+        std::swap(a_type, b_type);
+        std::swap(m, n);
+        std::swap(lda, ldb);
+        std::swap(trans_a, trans_b);
+        trans_a = !trans_a;
+        trans_b = !trans_b;
+    }
 
     auto alpha = pd()->alpha();
     auto beta = pd()->beta();
@@ -470,6 +486,11 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         off_co0 = types::bytes_to_elements(c_type, sum_ab.offset());
         co = &sum_ab;
         cmask = pd()->sum_ab_cmask();
+        // TODO: Check if this swapping is still needed and correct with logic below
+        if (swap_ab) {
+            uint8_t swap_table[4] = {0, 2, 1, 3};
+            cmask = (cmask & ~3) | swap_table[cmask & 3];
+        }
     }
 
     // Get host scalar zero-poins values
@@ -585,14 +606,14 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
             if (size_m > block_m) size_m = block_m;
 
             auto off_a_src
-                    = off_a0 + (!transa ? (Bm + Bk * lda) : (Bk + Bm * lda));
+                    = off_a0 + (!trans_a ? (Bm + Bk * lda) : (Bk + Bm * lda));
 
             for (int64_t Bn = 0; Bn < n; Bn += block_n) {
                 int64_t size_n = n - Bn;
                 if (size_n > block_n) size_n = block_n;
 
                 auto off_b_src = off_b0
-                        + (!transb ? (Bk + Bn * ldb) : (Bn + Bk * ldb));
+                        + (!trans_b ? (Bk + Bn * ldb) : (Bn + Bk * ldb));
 
                 auto off_c = off_c0 + Bm + Bn * ldc;
 

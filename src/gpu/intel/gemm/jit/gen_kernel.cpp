@@ -648,7 +648,7 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     if (alpha == 1.0f) problem_.alpha = alpha;
     if (beta == 0.0f || beta == 1.0f) problem_.beta = beta;
 
-    auto status = transfer_post_ops(problem_, std::move(post_ops), false);
+    auto status = transfer_post_ops(problem_, std::move(post_ops));
     if (status != status::success) return status;
 
     if (c_offset) problem_.cOffset = COffset::Post;

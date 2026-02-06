@@ -20,8 +20,10 @@
 #include <vector>
 
 #include "common/c_types_map.hpp"
+#include "common/gemm_types.hpp"
 #include "gemmstone/problem.hpp"
 #include "gpu/intel/gemm/config.hpp"
+#include "gpu/intel/gemm/exec_types.hpp"
 #include "gpu/intel/post_ops.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
@@ -48,8 +50,8 @@ struct quant_params {
     bool zp_host_scalar = false;
 };
 
-status_t transfer_post_ops(gemmstone::GEMMProblem &problem,
-        gpu_post_ops_t &&post_ops_, bool swap_ab);
+status_t transfer_post_ops(
+        gemmstone::GEMMProblem &problem, gpu_post_ops_t &&post_ops_);
 
 struct pd_t : public gemm::pd_t {
     using gemm::pd_t::pd_t;
@@ -60,19 +62,15 @@ struct pd_t : public gemm::pd_t {
         with_sround_ = attr()->rounding_mode_.get(DNNL_ARG_DST)
                 == rounding_mode::stochastic;
 
-        eff_lda_ = desc()->lda();
-        eff_ldb_ = desc()->ldb();
-        eff_transa_ = desc()->transa() == dnnl_trans;
-        eff_transb_ = desc()->transb() == dnnl_trans;
+        lda_ = desc()->lda();
+        ldb_ = desc()->ldb();
+        transa_ = desc()->transa() == dnnl_trans;
+        transb_ = desc()->transb() == dnnl_trans;
 
         VDISPATCH_GEMM_SC(init_attrs(), VERBOSE_UNSUPPORTED_TAG);
         VDISPATCH_GEMM(scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
         VDISPATCH_GEMM(zp_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
         VDISPATCH_GEMM(gs_ok(), VERBOSE_UNSUPPORTED_PR_CFG);
-        if (swap_ab_) {
-            std::swap(a_quant.zp_ndims, b_quant.zp_ndims);
-            std::swap(a_quant.gs_ndims, b_quant.gs_ndims);
-        }
         VDISPATCH_GEMM_SC(init_post_ops(), VERBOSE_UNSUPPORTED_POSTOP);
         return status::success;
     }
@@ -145,8 +143,8 @@ struct pd_t : public gemm::pd_t {
     memory_desc_t a_zp_md_, b_zp_md_;
     memory_desc_t a_gs_md_, b_gs_md_;
     bool swap_ab_ = false;
-    dim_t eff_lda_ = 0, eff_ldb_ = 0;
-    bool eff_transa_ = false, eff_transb_ = false;
+    dim_t lda_ = 0, ldb_ = 0;
+    bool transa_ = false, transb_ = false;
     bool with_sround_ = false;
     bool with_mx_scale_ = false;
 
@@ -175,13 +173,6 @@ struct pd_t : public gemm::pd_t {
     }
 
     sum_ab_t sum_ab() const { return desc()->sum_ab; }
-    sum_ab_t eff_sum_ab() const {
-        if (swap_ab() && sum_ab() == sum_ab::sum_a_row)
-            return sum_ab::sum_b_col;
-        if (swap_ab() && sum_ab() == sum_ab::sum_b_col)
-            return sum_ab::sum_a_row;
-        return sum_ab();
-    }
 
     bool a_zp_2d() const { return a_quant.zp_ndims >= 2; }
     bool b_zp_2d() const { return b_quant.zp_ndims >= 2; }
@@ -192,7 +183,7 @@ struct pd_t : public gemm::pd_t {
     bool with_sum_ab() const { return sum_ab() != sum_ab::sum_none; }
 
     int sum_ab_cmask() const {
-        switch (eff_sum_ab()) {
+        switch (sum_ab()) {
             default:
             case sum_ab::sum_none: return 0;
             case sum_ab::sum_a_row: return 1;
@@ -228,31 +219,35 @@ struct pd_t : public gemm::pd_t {
     bool swap_ab() const { return swap_ab_; }
 
     int batch_dims() const { return nstl::max(desc()->c_desc.ndims - 2, 0); }
-    bool eff_transa() const { return eff_transa_; }
-    bool eff_transb() const { return eff_transb_; }
-    bool eff_trans_bias() const {
-        return swap_ab() ? (desc()->trans_bias() == dnnl_notrans)
-                         : (desc()->trans_bias() == dnnl_trans);
+    bool trans_a() const { return transa_; }
+    bool trans_b() const { return transb_; }
+    bool trans_bias() const { return desc()->trans_bias() == dnnl_trans; }
+
+    dim_t ld(int arg) const {
+        if (arg == DNNL_ARG_A) return lda_;
+        if (arg == DNNL_ARG_B) return ldb_;
+        if (arg == DNNL_ARG_C) return desc()->ldc();
+        gpu_error_not_expected();
+        return 0;
     }
-    dim_t eff_m() const { return !swap_ab() ? desc()->m() : desc()->n(); }
-    dim_t eff_n() const { return !swap_ab() ? desc()->n() : desc()->m(); }
-    dim_t eff_lda() const { return eff_lda_; }
-    dim_t eff_ldb() const { return eff_ldb_; }
-    dim_t eff_stride_a(int dim) const {
-        return !swap_ab() ? desc()->stride_a(dim) : desc()->stride_b(dim);
+    dim_t stride(int arg, int dim) const {
+        if (arg == DNNL_ARG_A) return desc()->stride_a(dim);
+        if (arg == DNNL_ARG_B) return desc()->stride_b(dim);
+        if (arg == DNNL_ARG_C) return desc()->stride_c(dim);
+        gpu_error_not_expected();
+        return 0;
     }
-    dim_t eff_stride_b(int dim) const {
-        return !swap_ab() ? desc()->stride_b(dim) : desc()->stride_a(dim);
+    data_type_t get_type(int arg) const {
+        if (arg == DNNL_ARG_A) return desc()->a_type();
+        if (arg == DNNL_ARG_B) return desc()->b_type();
+        if (arg == DNNL_ARG_C) return desc()->c_type();
+        gpu_error_not_expected();
+        return data_type::undef;
     }
-    data_type_t eff_a_type() const {
-        return !swap_ab() ? desc()->a_type() : desc()->b_type();
-    }
-    data_type_t eff_b_type() const {
-        return !swap_ab() ? desc()->b_type() : desc()->a_type();
-    }
-    dim_t eff_scale_stride(int idx, int arg) const;
-    dim_t eff_zp_stride(int idx, int arg) const;
-    dim_t eff_gs_stride(int idx, int arg) const;
+
+    dim_t scale_stride(int idx, int arg) const;
+    dim_t zp_stride(int idx, int arg) const;
+    dim_t gs_stride(int idx, int arg) const;
     bool a_grouped() const {
         bool k_grouped = 1 < a_quant.group_k && a_quant.group_k < desc()->k();
         bool m_grouped = 1 < a_quant.group_m && a_quant.group_m < desc()->m();
@@ -277,36 +272,14 @@ struct pd_t : public gemm::pd_t {
     int b_q2d_group_n() const { return b_quant.group_n; }
     int c_q2d_group_m() const { return c_quant.group_m; }
     int c_q2d_group_n() const { return c_quant.group_n; }
-    int eff_align_a() const {
-        auto dt = eff_a_type();
-        auto align
-                = utils::max_pow2_div(types::elements_to_bytes(dt, eff_lda()));
+    int align(int arg) const {
+        auto dt = get_type(arg);
+        auto align = utils::max_pow2_div(types::elements_to_bytes(dt, ld(arg)));
         for (int b = 0; b < batch_dims(); b++) {
             auto stride_bytes = utils::max_pow2_div(
-                    types::elements_to_bytes(dt, eff_stride_a(b)));
+                    types::elements_to_bytes(dt, stride(arg, b)));
             align = (stride_bytes ? nstl::min(align, stride_bytes) : align);
         }
-        return int(align);
-    }
-    int eff_align_b() const {
-        auto dt = eff_b_type();
-        auto align
-                = utils::max_pow2_div(types::elements_to_bytes(dt, eff_ldb()));
-        for (int b = 0; b < batch_dims(); b++) {
-            auto stride_bytes = utils::max_pow2_div(
-                    types::elements_to_bytes(dt, eff_stride_b(b)));
-            align = (stride_bytes ? nstl::min(align, stride_bytes) : align);
-        }
-        return int(align);
-    }
-    int align_c() const {
-        auto dt = desc()->c_type();
-        auto align = utils::max_pow2_div(
-                types::elements_to_bytes(dt, desc()->ldc()));
-        for (int b = 0; b < batch_dims(); b++)
-            align = nstl::min(align,
-                    utils::max_pow2_div(
-                            types::elements_to_bytes(dt, desc()->stride_c(b))));
         return int(align);
     }
 };

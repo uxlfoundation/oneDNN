@@ -32,7 +32,6 @@
 
 #include "graph/backend/dnnl/common.hpp"
 #include "graph/backend/dnnl/dnnl_backend.hpp"
-#include "graph/backend/dnnl/internal_attrs.hpp"
 #include "graph/backend/dnnl/passes/utils.hpp"
 #include "graph/backend/dnnl/utils.hpp"
 
@@ -118,8 +117,8 @@ status_t set_given_inputs_outputs(std::vector<op_ptr> &subgraph,
 // just a workaround at this moment.
 void set_weight_bias_constant(std::shared_ptr<subgraph_t> &sg) {
     for (auto &op : sg->get_ops()) {
-        if (!(op->get_kind() == op_kind::dnnl_matmul
-                    || op->get_kind() == op_kind::dnnl_convolution))
+        if (!(op->get_kind() == op_kind::_dnnl_matmul
+                    || op->get_kind() == op_kind::_dnnl_convolution))
             continue;
 
         // set weight to be constant
@@ -282,11 +281,11 @@ static bool post_binary_fusible_impl(const op_t *base_op,
 
     int32_t output_ndims = static_cast<int32_t>(fused_shape.size());
     // 5d tensor MatMul with broadcasted post was not optimized on CPU
-    if (ekind == dnnl_cpu && base_op->get_kind() == op_kind::dnnl_matmul
+    if (ekind == dnnl_cpu && base_op->get_kind() == op_kind::_dnnl_matmul
             && output_ndims == 5)
         return false;
     // any broadcasted for 4d or 5d tensor MatMul
-    if (base_op->get_kind() == op_kind::dnnl_matmul
+    if (base_op->get_kind() == op_kind::_dnnl_matmul
             && (output_ndims == 4 || output_ndims == 5)) {
         for (int32_t i = output_ndims - 1; i >= 0; i--) {
             if (other_shape[i] == 1) continue;
@@ -296,7 +295,8 @@ static bool post_binary_fusible_impl(const op_t *base_op,
     }
 
     // allow fusion for conv + [N,C,1,1] shape post-binary src
-    if (base_op->get_kind() == op_kind::dnnl_convolution && output_ndims == 4) {
+    if (base_op->get_kind() == op_kind::_dnnl_convolution
+            && output_ndims == 4) {
         if (base_op->get_attr<std::string>(op_attr::data_format) == "NCX"
                 && other_shape[2] == 1 && other_shape[3] == 1) {
             return true;
@@ -378,7 +378,7 @@ bool post_binary_fusible(
 // conv + binary post-op fusion is unsupported on NVIDIA GPU
 #if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
         && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
-    if ((base_op->get_kind() == op_kind::dnnl_convolution)
+    if ((base_op->get_kind() == op_kind::_dnnl_convolution)
             && ekind == dnnl_gpu) {
         return false;
     }
@@ -395,7 +395,7 @@ bool post_binary_fusible(
 
     // Special check: dnnl_reorder only support fuse non-broadcast binary_add as
     // post-sum
-    if (base_op->get_kind() == op_kind::dnnl_reorder) {
+    if (base_op->get_kind() == op_kind::_dnnl_reorder) {
         if (ltw(fused_in).vdims() != ltw(other_in).vdims()
                 || static_cast<dnnl::algorithm>(
                            bin_op->get_attr<int64_t>(op_attr::alg_kind))
@@ -404,7 +404,7 @@ bool post_binary_fusible(
     }
 
     // Special check: dnnl_eltwise only support src and dst datatype are same
-    if (base_op->get_kind() == op_kind::dnnl_eltwise) {
+    if (base_op->get_kind() == op_kind::_dnnl_eltwise) {
         auto bin_out = bin_op->get_output_values()[0]->get_logical_tensor();
         if (ltw(fused_in).data_type() != ltw(bin_out).data_type()) return false;
     }
@@ -435,7 +435,7 @@ bool post_eltwise_fusible(
 // binary + sqrt post-op fusion is unsupported on NVIDIA GPU
 #if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
         && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
-    if (base_op->get_kind() == op_kind::dnnl_binary
+    if (base_op->get_kind() == op_kind::_dnnl_binary
             && static_cast<dnnl::algorithm>(
                        elt_op->get_attr<int64_t>(op_attr::alg_kind))
                     == dnnl::algorithm::eltwise_sqrt
@@ -522,26 +522,25 @@ bool post_depthwise_conv_fusible(
 const std::unordered_map<op_kind_t, std::unordered_set<op_kind_t>> &
 get_post_ops_fusible_map() {
     using namespace graph::op_kind;
-    using namespace dnnl_impl::op_kind;
     static const std::unordered_map<op_kind_t, std::unordered_set<op_kind_t>>
             fusible_map = {
-                    {dnnl_convolution,
-                            {dnnl_eltwise, dnnl_binary, dnnl_convolution}},
-                    {dnnl_convtranspose, {dnnl_eltwise, dnnl_binary}},
-                    {dnnl_matmul, {dnnl_eltwise, dnnl_binary}},
-                    {dnnl_pool, {dnnl_binary}},
-                    {dnnl_eltwise, {dnnl_binary}},
-                    {dnnl_binary, {dnnl_eltwise, dnnl_binary}},
+                    {_dnnl_convolution,
+                            {_dnnl_eltwise, _dnnl_binary, _dnnl_convolution}},
+                    {_dnnl_convtranspose, {_dnnl_eltwise, _dnnl_binary}},
+                    {_dnnl_matmul, {_dnnl_eltwise, _dnnl_binary}},
+                    {_dnnl_pool, {_dnnl_binary}},
+                    {_dnnl_eltwise, {_dnnl_binary}},
+                    {_dnnl_binary, {_dnnl_eltwise, _dnnl_binary}},
                     // bn
-                    {dnnl_batchnorm, {dnnl_eltwise}},
+                    {_dnnl_batchnorm, {_dnnl_eltwise}},
                     // reduction
-                    {dnnl_reduction, {dnnl_eltwise, dnnl_binary}},
+                    {_dnnl_reduction, {_dnnl_eltwise, _dnnl_binary}},
                     // resample
-                    {dnnl_resampling, {dnnl_eltwise, dnnl_binary}},
-                    {dnnl_reorder, {dnnl_binary}},
-                    {dnnl_softmax, {dnnl_eltwise, dnnl_binary}},
-                    {dnnl_layernorm, {dnnl_eltwise, dnnl_binary}},
-                    {dnnl_groupnorm, {dnnl_eltwise, dnnl_binary}},
+                    {_dnnl_resampling, {_dnnl_eltwise, _dnnl_binary}},
+                    {_dnnl_reorder, {_dnnl_binary}},
+                    {_dnnl_softmax, {_dnnl_eltwise, _dnnl_binary}},
+                    {_dnnl_layernorm, {_dnnl_eltwise, _dnnl_binary}},
+                    {_dnnl_groupnorm, {_dnnl_eltwise, _dnnl_binary}},
             };
     return fusible_map;
 }
@@ -598,7 +597,7 @@ bool prelu_doable(const std::vector<dim_t> &src_dims,
 }
 
 bool is_typecast(const op_t *op) {
-    bool is_typecast = op->get_kind() == op_kind::dnnl_reorder
+    bool is_typecast = op->get_kind() == op_kind::_dnnl_reorder
             && !op->get_attr<bool>(op_attr::change_layout)
             && (!op->has_attr(op_attr::qtype)
                     || op->get_attr<std::string>(op_attr::qtype)
@@ -639,7 +638,7 @@ bool with_runtime_scales(const op_ptr &op, bool is_input, size_t index) {
 }
 
 bool is_layout_reorder(const op_t *op) {
-    bool is_layout_reorder = op->get_kind() == dnnl_impl::op_kind::dnnl_reorder
+    bool is_layout_reorder = op->get_kind() == op_kind::_dnnl_reorder
             && op->get_attr<bool>(op_attr::change_layout)
             && (!op->has_attr(op_attr::qtype)
                     || op->get_attr<std::string>(op_attr::qtype)
@@ -664,7 +663,7 @@ std::shared_ptr<op_t> clone_mul_scales(const std::shared_ptr<op_t> &scale_op) {
                     && !scale_op->has_attr(op_attr::with_runtime_scales),
             nullptr,
             "scale_op should be static and have only one input value.");
-    auto new_op = std::make_shared<op_t>(op_kind::dnnl_mul_scales);
+    auto new_op = std::make_shared<op_t>(op_kind::_dnnl_mul_scales);
     new_op->set_attr<std::vector<float>>(op_attr::scales,
             scale_op->get_attr<std::vector<float>>(op_attr::scales));
     new_op->set_attr<int64_t>(

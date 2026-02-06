@@ -35,7 +35,6 @@
 
 #include "graph/utils/utils.hpp"
 
-#include "graph/backend/dnnl/internal_ops.hpp"
 #include "graph/backend/dnnl/subgraph.hpp"
 #include "graph/backend/dnnl/utils.hpp"
 
@@ -67,7 +66,7 @@ public:
         , is_layout_sensitive_(false)
         , is_memory_sensitive_(false)
         , enable_validator_(enable_validator)
-        , enable_visualizer_(enable_visualizer) {};
+        , enable_visualizer_(enable_visualizer) {}
 
     // Reset the visualize arguments
     void reset_visualize_arg(
@@ -145,11 +144,16 @@ status_t set_given_inputs_outputs(std::vector<std::shared_ptr<op_t>> &subgraph,
 void set_weight_bias_constant(std::shared_ptr<subgraph_t> &sg);
 
 inline bool is_preprocess_op(op_t &op) {
-    static const std::set<op_kind_t> preprocess_ops
-            = {op_kind::dnnl_permute, op_kind::dnnl_to_group,
-                    op_kind::dnnl_from_group, op_kind::dnnl_unsqueeze,
-                    op_kind::dnnl_squeeze, op_kind::dnnl_reshape,
-                    op_kind::dnnl_transpose, op_kind::dnnl_identity};
+    static const std::set<op_kind_t> preprocess_ops = {
+            op_kind::_dnnl_permute,
+            op_kind::_dnnl_to_group,
+            op_kind::_dnnl_from_group,
+            op_kind::_dnnl_unsqueeze,
+            op_kind::_dnnl_squeeze,
+            op_kind::_dnnl_reshape,
+            op_kind::_dnnl_transpose,
+            op_kind::_dnnl_identity,
+    };
     return preprocess_ops.count(op.get_kind()) != 0;
 }
 
@@ -158,37 +162,35 @@ void merge_common_eltwise_attrs(
 
 inline const std::map<op_kind_t, dnnl::algorithm> &get_eltwise_alg_map() {
     static const std::map<op_kind_t, dnnl::algorithm> &eltwise_alg_map = {
-            {graph::op_kind::Abs, dnnl::algorithm::eltwise_abs},
-            {graph::op_kind::Clamp, dnnl::algorithm::eltwise_clip_v2},
-            {graph::op_kind::Elu, dnnl::algorithm::eltwise_elu},
-            {graph::op_kind::Exp, dnnl::algorithm::eltwise_exp},
-            {graph::op_kind::GELU, dnnl::algorithm::eltwise_gelu_erf},
-            {graph::op_kind::HardSigmoid, dnnl::algorithm::eltwise_hardsigmoid},
-            {graph::op_kind::HardSwish, dnnl::algorithm::eltwise_hardswish},
-            {graph::op_kind::LeakyReLU, dnnl::algorithm::eltwise_relu},
-            {graph::op_kind::Log, dnnl::algorithm::eltwise_log},
-            {graph::op_kind::Mish, dnnl::algorithm::eltwise_mish},
-            {graph::op_kind::ReLU, dnnl::algorithm::eltwise_relu},
-            {graph::op_kind::Round, dnnl::algorithm::eltwise_round},
-            {graph::op_kind::Sigmoid, dnnl::algorithm::eltwise_logistic},
-            {graph::op_kind::Sqrt, dnnl::algorithm::eltwise_sqrt},
-            {graph::op_kind::Square, dnnl::algorithm::eltwise_square},
-            {graph::op_kind::Tanh, dnnl::algorithm::eltwise_tanh},
-            {graph::op_kind::AbsBackward, dnnl::algorithm::eltwise_abs},
-            {graph::op_kind::ClampBackward, dnnl::algorithm::eltwise_clip_v2},
-            {graph::op_kind::EluBackward, dnnl::algorithm::eltwise_elu},
-            {graph::op_kind::GELUBackward, dnnl::algorithm::eltwise_gelu_erf},
-            {graph::op_kind::HardSigmoidBackward,
+            {op_kind::Abs, dnnl::algorithm::eltwise_abs},
+            {op_kind::Clamp, dnnl::algorithm::eltwise_clip_v2},
+            {op_kind::Elu, dnnl::algorithm::eltwise_elu},
+            {op_kind::Exp, dnnl::algorithm::eltwise_exp},
+            {op_kind::GELU, dnnl::algorithm::eltwise_gelu_erf},
+            {op_kind::HardSigmoid, dnnl::algorithm::eltwise_hardsigmoid},
+            {op_kind::HardSwish, dnnl::algorithm::eltwise_hardswish},
+            {op_kind::LeakyReLU, dnnl::algorithm::eltwise_relu},
+            {op_kind::Log, dnnl::algorithm::eltwise_log},
+            {op_kind::Mish, dnnl::algorithm::eltwise_mish},
+            {op_kind::ReLU, dnnl::algorithm::eltwise_relu},
+            {op_kind::Round, dnnl::algorithm::eltwise_round},
+            {op_kind::Sigmoid, dnnl::algorithm::eltwise_logistic},
+            {op_kind::Sqrt, dnnl::algorithm::eltwise_sqrt},
+            {op_kind::Square, dnnl::algorithm::eltwise_square},
+            {op_kind::Tanh, dnnl::algorithm::eltwise_tanh},
+            {op_kind::AbsBackward, dnnl::algorithm::eltwise_abs},
+            {op_kind::ClampBackward, dnnl::algorithm::eltwise_clip_v2},
+            {op_kind::EluBackward, dnnl::algorithm::eltwise_elu},
+            {op_kind::GELUBackward, dnnl::algorithm::eltwise_gelu_erf},
+            {op_kind::HardSigmoidBackward,
                     dnnl::algorithm::eltwise_hardsigmoid},
-            {graph::op_kind::HardSwishBackward,
-                    dnnl::algorithm::eltwise_hardswish},
-            {graph::op_kind::MishBackward, dnnl::algorithm::eltwise_mish},
-            {graph::op_kind::ReLUBackward, dnnl::algorithm::eltwise_relu},
-            {graph::op_kind::SigmoidBackward,
-                    dnnl::algorithm::eltwise_logistic},
-            {graph::op_kind::ReLUBackward, dnnl::algorithm::eltwise_relu},
-            {graph::op_kind::SqrtBackward, dnnl::algorithm::eltwise_sqrt},
-            {graph::op_kind::TanhBackward, dnnl::algorithm::eltwise_tanh},
+            {op_kind::HardSwishBackward, dnnl::algorithm::eltwise_hardswish},
+            {op_kind::MishBackward, dnnl::algorithm::eltwise_mish},
+            {op_kind::ReLUBackward, dnnl::algorithm::eltwise_relu},
+            {op_kind::SigmoidBackward, dnnl::algorithm::eltwise_logistic},
+            {op_kind::ReLUBackward, dnnl::algorithm::eltwise_relu},
+            {op_kind::SqrtBackward, dnnl::algorithm::eltwise_sqrt},
+            {op_kind::TanhBackward, dnnl::algorithm::eltwise_tanh},
     };
     return eltwise_alg_map;
 }
@@ -207,34 +209,33 @@ inline dnnl::algorithm get_eltwise_alg(
     } else {
         auto alg = it->second;
         // handle attributes
-        if (opk == graph::op_kind::GELU
-                || opk == graph::op_kind::GELUBackward) {
-            if (op->has_attr(graph::op_attr::mode)
-                    && op->get_attr<std::string>(graph::op_attr::mode)
+        if (opk == op_kind::GELU || opk == op_kind::GELUBackward) {
+            if (op->has_attr(op_attr::mode)
+                    && op->get_attr<std::string>(op_attr::mode)
                             == "gelu_tanh") {
                 alg = algo::eltwise_gelu_tanh;
             }
         }
 
-        if (bwd && op->has_attr(graph::op_attr::use_dst)
-                && op->get_attr<bool>(graph::op_attr::use_dst)) {
+        if (bwd && op->has_attr(op_attr::use_dst)
+                && op->get_attr<bool>(op_attr::use_dst)) {
             switch (opk) {
-                case graph::op_kind::ClampBackward:
+                case op_kind::ClampBackward:
                     alg = algo::eltwise_clip_v2_use_dst_for_bwd;
                     break;
-                case graph::op_kind::EluBackward:
+                case op_kind::EluBackward:
                     alg = algo::eltwise_elu_use_dst_for_bwd;
                     break;
-                case graph::op_kind::ReLUBackward:
+                case op_kind::ReLUBackward:
                     alg = algo::eltwise_relu_use_dst_for_bwd;
                     break;
-                case graph::op_kind::SigmoidBackward:
+                case op_kind::SigmoidBackward:
                     alg = algo::eltwise_logistic_use_dst_for_bwd;
                     break;
-                case graph::op_kind::SqrtBackward:
+                case op_kind::SqrtBackward:
                     alg = algo::eltwise_sqrt_use_dst_for_bwd;
                     break;
-                case graph::op_kind::TanhBackward:
+                case op_kind::TanhBackward:
                     alg = algo::eltwise_tanh_use_dst_for_bwd;
                     break;
                 default: break;
@@ -247,79 +248,78 @@ inline dnnl::algorithm get_eltwise_alg(
 
 inline const std::map<op_kind_t, dnnl::algorithm> &get_reduction_alg_map() {
     static const std::map<op_kind_t, dnnl::algorithm> &reduction_alg_map = {
-            {graph::op_kind::ReduceL1,
-                    dnnl::algorithm::reduction_norm_lp_power_p_sum},
-            {graph::op_kind::ReduceL2, dnnl::algorithm::reduction_norm_lp_sum},
-            {graph::op_kind::ReduceMax, dnnl::algorithm::reduction_max},
-            {graph::op_kind::ReduceMean, dnnl::algorithm::reduction_mean},
-            {graph::op_kind::ReduceMin, dnnl::algorithm::reduction_min},
-            {graph::op_kind::ReduceProd, dnnl::algorithm::reduction_mul},
-            {graph::op_kind::ReduceSum, dnnl::algorithm::reduction_sum},
+            {op_kind::ReduceL1, dnnl::algorithm::reduction_norm_lp_power_p_sum},
+            {op_kind::ReduceL2, dnnl::algorithm::reduction_norm_lp_sum},
+            {op_kind::ReduceMax, dnnl::algorithm::reduction_max},
+            {op_kind::ReduceMean, dnnl::algorithm::reduction_mean},
+            {op_kind::ReduceMin, dnnl::algorithm::reduction_min},
+            {op_kind::ReduceProd, dnnl::algorithm::reduction_mul},
+            {op_kind::ReduceSum, dnnl::algorithm::reduction_sum},
     };
     return reduction_alg_map;
 }
 
 inline bool is_eltwise_kind(op_kind_t kind) {
-    const std::set<op_kind_t> eltwise_kinds {
-            graph::op_kind::Abs,
-            graph::op_kind::Clamp,
-            graph::op_kind::Elu,
-            graph::op_kind::Exp,
-            graph::op_kind::GELU,
-            graph::op_kind::HardSigmoid,
-            graph::op_kind::HardSwish,
-            graph::op_kind::LeakyReLU,
-            graph::op_kind::Log,
-            graph::op_kind::Mish,
-            graph::op_kind::ReLU,
-            graph::op_kind::Round,
-            graph::op_kind::Sigmoid,
-            graph::op_kind::SoftPlus,
-            graph::op_kind::Sqrt,
-            graph::op_kind::Square,
-            graph::op_kind::Tanh,
+    static const std::set<op_kind_t> eltwise_kinds {
+            op_kind::Abs,
+            op_kind::Clamp,
+            op_kind::Elu,
+            op_kind::Exp,
+            op_kind::GELU,
+            op_kind::HardSigmoid,
+            op_kind::HardSwish,
+            op_kind::LeakyReLU,
+            op_kind::Log,
+            op_kind::Mish,
+            op_kind::ReLU,
+            op_kind::Round,
+            op_kind::Sigmoid,
+            op_kind::SoftPlus,
+            op_kind::Sqrt,
+            op_kind::Square,
+            op_kind::Tanh,
     };
     return eltwise_kinds.find(kind) != eltwise_kinds.end();
 }
 
 inline bool is_eltwise_bwd_kind(op_kind_t kind) {
-    const std::set<op_kind_t> eltwise_bwd_kinds {
-            graph::op_kind::AbsBackward,
-            graph::op_kind::ClampBackward,
-            graph::op_kind::EluBackward,
-            graph::op_kind::GELUBackward,
-            graph::op_kind::HardSigmoidBackward,
-            graph::op_kind::HardSwishBackward,
-            graph::op_kind::MishBackward,
-            graph::op_kind::ReLUBackward,
-            graph::op_kind::SigmoidBackward,
-            graph::op_kind::SqrtBackward,
-            graph::op_kind::TanhBackward,
+    static const std::set<op_kind_t> eltwise_bwd_kinds {
+            op_kind::AbsBackward,
+            op_kind::ClampBackward,
+            op_kind::EluBackward,
+            op_kind::GELUBackward,
+            op_kind::HardSigmoidBackward,
+            op_kind::HardSwishBackward,
+            op_kind::MishBackward,
+            op_kind::ReLUBackward,
+            op_kind::SigmoidBackward,
+            op_kind::SqrtBackward,
+            op_kind::TanhBackward,
     };
     return eltwise_bwd_kinds.find(kind) != eltwise_bwd_kinds.end();
 }
 
 inline bool is_binary_kind(op_kind_t kind) {
-    const static std::set<op_kind_t> binary_kinds = {
-            graph::op_kind::Add,
-            graph::op_kind::Subtract,
-            graph::op_kind::Multiply,
-            graph::op_kind::Divide,
-            graph::op_kind::Minimum,
-            graph::op_kind::Maximum,
+    static const std::set<op_kind_t> binary_kinds = {
+            op_kind::Add,
+            op_kind::Subtract,
+            op_kind::Multiply,
+            op_kind::Divide,
+            op_kind::Minimum,
+            op_kind::Maximum,
     };
     return binary_kinds.find(kind) != binary_kinds.end();
 }
 
 inline bool is_reduction_kind(op_kind_t kind) {
-    const static std::set<op_kind_t> reduction_kinds = {
-            graph::op_kind::ReduceL1,
-            graph::op_kind::ReduceL2,
-            graph::op_kind::ReduceMax,
-            graph::op_kind::ReduceMean,
-            graph::op_kind::ReduceMin,
-            graph::op_kind::ReduceProd,
-            graph::op_kind::ReduceSum,
+    static const std::set<op_kind_t> reduction_kinds = {
+            op_kind::ReduceL1,
+            op_kind::ReduceL2,
+            op_kind::ReduceMax,
+            op_kind::ReduceMean,
+            op_kind::ReduceMin,
+            op_kind::ReduceProd,
+            op_kind::ReduceSum,
     };
     return reduction_kinds.find(kind) != reduction_kinds.end();
 }

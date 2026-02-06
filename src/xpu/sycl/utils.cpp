@@ -43,7 +43,7 @@ namespace sycl {
 std::string to_string(backend_t backend) {
     switch (backend) {
         case backend_t::host: return "Host";
-        case backend_t::level0: return "Level Zero";
+        case backend_t::ze: return "Level Zero";
         case backend_t::opencl: return "OpenCL";
         case backend_t::nvidia: return "Nvidia";
         case backend_t::amd: return "AMD";
@@ -98,7 +98,7 @@ backend_t get_backend(const ::sycl::device &dev) {
 
     switch (dev.get_backend()) {
         case ::sycl::backend::opencl: return backend_t::opencl;
-        case ::sycl::backend::ext_oneapi_level_zero: return backend_t::level0;
+        case ::sycl::backend::ext_oneapi_level_zero: return backend_t::ze;
         case ::sycl::backend::ext_oneapi_cuda: return backend_t::nvidia;
         case ::sycl::backend::ext_oneapi_hip: return backend_t::amd;
         default: break;
@@ -149,7 +149,7 @@ bool are_equal(const ::sycl::device &lhs, const ::sycl::device &rhs) {
 #endif
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-    if (lhs_be == backend_t::level0) {
+    if (lhs_be == backend_t::ze) {
         return gpu::intel::sycl::compare_ze_devices(lhs, rhs);
     }
 #endif
@@ -318,7 +318,7 @@ status_t get_device_index(size_t *index, const ::sycl::device &dev) {
     } else {
         *index = SIZE_MAX;
         // TODO: remove this work around once Level-Zero is fixed
-        if (backend == backend_t::level0) return status::success;
+        if (backend == backend_t::ze) return status::success;
         VERROR_ENGINE(false, status::invalid_arguments,
                 VERBOSE_INVALID_ENGINE_IDX, devices.size(),
                 xpu::sycl::to_string(dev_type).c_str(), SIZE_MAX);

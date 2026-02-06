@@ -69,7 +69,7 @@ status_t make_kernels(
                     ::sycl::make_kernel<::sycl::backend::opencl>(
                             ocl_kernel, sycl_engine->context()));
         }
-    } else if (backend == xpu::sycl::backend_t::level0) {
+    } else if (backend == xpu::sycl::backend_t::ze) {
         CHECK(sycl_create_kernels_with_level_zero(
                 sycl_kernels, kernel_names, sycl_engine, binary));
     } else {

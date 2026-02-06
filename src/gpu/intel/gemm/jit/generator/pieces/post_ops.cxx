@@ -157,13 +157,17 @@ void Generator<hw>::gemmScalarBinaryOpC(BinaryOp op, Type Tco, const Subregister
 {
     auto Tacc = state.Tacc;
     auto offsetTc = scalar;
+    GRF tempGRF;
 
     if (Tco != Tacc) {
-        auto temp = state.ra.alloc_sub(Tacc.ngen());
-        mov(1, temp, scalar);
-        offsetTc = temp;
+        tempGRF = state.ra.alloc();
+        auto tempRange = GRFMultirange(GRFRange(tempGRF.getBase(), 1));
+        mov(1, tempGRF.sub(0, Tco.ngen()), scalar);
+        RegisterLayout scalarLayout(hw, Tacc, 1, 1, true);
+        copyRegisters(Tco, Tacc, scalarLayout, scalarLayout, tempRange, tempRange, strategy, state);
+        offsetTc = tempGRF.sub(0, Tacc.ngen());
     }
-    
+
     if (op == BinaryOp::Div && one_of(state.Tacc, {Type::f32, Type::f16})) {
         inv(1, offsetTc, offsetTc);
         op = BinaryOp::Mul;
@@ -172,10 +176,9 @@ void Generator<hw>::gemmScalarBinaryOpC(BinaryOp op, Type Tco, const Subregister
     map(hw, state.Tacc, state.C_regs[0], state.C_layout, strategy, [&](int simd, const RegData &r) {
         binaryOp(op, simd, r, r, offsetTc, state);
     });
-    
-    if (Tco != Tacc && offsetTc != scalar) {
-        state.ra.safeRelease(offsetTc);
-    }
+
+    if (Tco != Tacc)
+        state.ra.safeRelease(tempGRF);
 }
 
 // Apply binary operation to C with a vector operand, optionally multiplied by a scalar.

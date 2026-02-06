@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020 Intel Corporation
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,127 +14,24 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "xpu/ze/utils.hpp"
-
-#include "gpu/intel/sycl/l0/utils.hpp"
+#include "gpu/intel/ze/utils.hpp"
 
 #include "gpu/intel/jit/binary_format.hpp"
 #include "gpu/intel/jit/utils/type_bridge.hpp"
+
 #include "ngen_level_zero.hpp"
 
 #include "level_zero/ze_intel_gpu.h"
-
-#if !defined(__SYCL_COMPILER_VERSION)
-#error "Unsupported compiler"
-#endif
-
-#if (__SYCL_COMPILER_VERSION < 20200818)
-#error "Level Zero is not supported with this compiler version"
-#endif
-
-#include "common/c_types_map.hpp"
-#include "common/verbose.hpp"
-
-#include "gpu/intel/sycl/utils.hpp"
-#include <sycl/ext/oneapi/backend/level_zero.hpp>
-
-#include "gpu/intel/sycl/engine.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
-namespace sycl {
+namespace ze {
 
-status_t sycl_create_kernels_with_level_zero(
-        std::vector<std::unique_ptr<::sycl::kernel>> &sycl_kernels,
-        const std::vector<const char *> &kernel_names,
-        const gpu::intel::sycl::engine_t *sycl_engine,
-        const xpu::binary_t &binary) {
-    auto desc = ze_module_desc_t();
-    desc.stype = ZE_STRUCTURE_TYPE_MODULE_DESC;
-    desc.format = ZE_MODULE_FORMAT_NATIVE;
-    desc.inputSize = binary.size();
-    desc.pInputModule = binary.data();
-    desc.pBuildFlags = "";
-    desc.pConstants = nullptr;
+namespace {
 
-    ze_module_handle_t ze_module;
-
-    auto ze_device = xpu::sycl::compat::get_native<ze_device_handle_t>(
-            sycl_engine->device());
-    auto ze_ctx = xpu::sycl::compat::get_native<ze_context_handle_t>(
-            sycl_engine->context());
-
-    CHECK(xpu::ze::zeModuleCreate(
-            ze_ctx, ze_device, &desc, &ze_module, nullptr));
-    ::sycl::kernel_bundle<::sycl::bundle_state::executable> kernel_bundle
-            = ::sycl::make_kernel_bundle<::sycl::backend::ext_oneapi_level_zero,
-                    ::sycl::bundle_state::executable>(
-                    {ze_module}, sycl_engine->context());
-
-    sycl_kernels.resize(kernel_names.size());
-    for (size_t i = 0; i < kernel_names.size(); i++) {
-        if (kernel_names[i] == nullptr) continue;
-        ze_kernel_handle_t ze_kernel;
-        ze_kernel_desc_t ze_kernel_desc {
-                ZE_STRUCTURE_TYPE_KERNEL_DESC, nullptr, 0, kernel_names[i]};
-        CHECK(xpu::ze::zeKernelCreate(ze_module, &ze_kernel_desc, &ze_kernel));
-        auto k = ::sycl::make_kernel<::sycl::backend::ext_oneapi_level_zero>(
-                {kernel_bundle, ze_kernel}, sycl_engine->context());
-        sycl_kernels[i] = utils::make_unique<::sycl::kernel>(k);
-    }
-
-    return status::success;
-}
-
-status_t get_l0_kernel_binary(
-        const ::sycl::kernel &kernel, xpu::binary_t &binary) {
-#ifdef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
-    auto l0_kernel = ::sycl::get_native<::sycl::backend::ext_oneapi_level_zero>(
-            kernel);
-    size_t binary_size = 0;
-    CHECK(xpu::ze::zeKernelGetBinaryExp(l0_kernel, &binary_size, nullptr));
-    binary.resize(binary_size);
-    CHECK(xpu::ze::zeKernelGetBinaryExp(
-            l0_kernel, &binary_size, binary.data()));
-#else
-    auto bundle = kernel.get_kernel_bundle();
-    auto module_vec
-            = ::sycl::get_native<::sycl::backend::ext_oneapi_level_zero>(
-                    bundle);
-    auto module = module_vec[0];
-    size_t module_binary_size;
-    CHECK(xpu::ze::zeModuleGetNativeBinary(
-            module, &module_binary_size, nullptr));
-    binary.resize(module_binary_size);
-    CHECK(xpu::ze::zeModuleGetNativeBinary(
-            module, &module_binary_size, binary.data()));
-#endif
-    return status::success;
-}
-
-bool compare_ze_devices(const ::sycl::device &lhs, const ::sycl::device &rhs) {
-    auto lhs_ze_handle = xpu::sycl::compat::get_native<ze_device_handle_t>(lhs);
-    auto rhs_ze_handle = xpu::sycl::compat::get_native<ze_device_handle_t>(rhs);
-
-    return lhs_ze_handle == rhs_ze_handle;
-}
-
-status_t get_device_ip(ze_device_handle_t device, uint32_t &ip_version) {
-    auto devicePropsIP = ze_device_ip_version_ext_t();
-    devicePropsIP.stype = ZE_STRUCTURE_TYPE_DEVICE_IP_VERSION_EXT;
-
-    auto deviceProps = ze_device_properties_t();
-    deviceProps.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES;
-    deviceProps.pNext = &devicePropsIP;
-
-    CHECK(xpu::ze::zeDeviceGetProperties(device, &deviceProps));
-    ip_version = devicePropsIP.ipVersion;
-    return status::success;
-}
-
-status_t get_l0_device_enabled_systolic_intel(
+status_t get_ze_device_enabled_systolic_intel(
         ze_device_handle_t device, bool &mayiuse_systolic) {
     // Note: supported by Intel Driver 24.05 and onwards
     auto deviceModPropsExt = ze_intel_device_module_dp_exp_properties_t();
@@ -151,7 +48,7 @@ status_t get_l0_device_enabled_systolic_intel(
     return status::success;
 }
 
-status_t get_l0_device_enabled_native_float_atomics(
+status_t get_ze_device_enabled_native_float_atomics(
         ze_device_handle_t device, uint64_t &native_extensions) {
     using namespace gpu::intel::compute;
 
@@ -198,16 +95,20 @@ status_t get_l0_device_enabled_native_float_atomics(
     return status::success;
 }
 
-status_t get_l0_device_eu_count(ze_device_handle_t device, int &eu_count) {
-    auto eucnt = ze_eu_count_ext_t();
+status_t get_device_ip(ze_device_handle_t device, uint32_t &ip_version) {
+    auto devicePropsIP = ze_device_ip_version_ext_t();
+    devicePropsIP.stype = ZE_STRUCTURE_TYPE_DEVICE_IP_VERSION_EXT;
+
     auto deviceProps = ze_device_properties_t();
     deviceProps.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES;
-    deviceProps.pNext = &eucnt;
+    deviceProps.pNext = &devicePropsIP;
 
     CHECK(xpu::ze::zeDeviceGetProperties(device, &deviceProps));
-    eu_count = eucnt.numTotalEUs;
+    ip_version = devicePropsIP.ipVersion;
     return status::success;
 }
+
+} // namespace
 
 status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
         ze_context_handle_t context, uint32_t &ip_version,
@@ -222,7 +123,7 @@ status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
     std::memcpy(&product_, &product, sizeof(ngen::Product));
 
     mayiuse_systolic = false;
-    if (get_l0_device_enabled_systolic_intel(device, mayiuse_systolic)
+    if (get_ze_device_enabled_systolic_intel(device, mayiuse_systolic)
             != status::success)
         mayiuse_systolic = false;
 
@@ -235,7 +136,7 @@ status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
         default: break;
     }
 
-    CHECK(get_l0_device_enabled_native_float_atomics(
+    CHECK(get_ze_device_enabled_native_float_atomics(
             device, native_extensions));
 
     auto status
@@ -243,10 +144,12 @@ status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
     if (status != status::success) mayiuse_ngen_kernels = false;
 
     ip_version = 0;
-    return get_device_ip(device, ip_version);
+    CHECK(get_device_ip(device, ip_version));
+
+    return status::success;
 }
 
-} // namespace sycl
+} // namespace ze
 } // namespace intel
 } // namespace gpu
 } // namespace impl

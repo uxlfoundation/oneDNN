@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020 Intel Corporation
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,34 +14,20 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_SYCL_L0_UTILS_HPP
-#define GPU_INTEL_SYCL_L0_UTILS_HPP
+#ifndef GPU_INTEL_ZE_UTILS_HPP
+#define GPU_INTEL_ZE_UTILS_HPP
 
-#include <memory>
-#include <string>
-#include <vector>
+#include "common/engine.hpp"
 
-#include "gpu/intel/compute/kernel.hpp"
-#include "gpu/intel/sycl/compat.hpp"
+#include "xpu/ze/utils.hpp"
+
+#include "gpu/intel/compute/device_info.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
-namespace sycl {
-
-class engine_t;
-
-status_t sycl_create_kernels_with_level_zero(
-        std::vector<std::unique_ptr<::sycl::kernel>> &sycl_kernels,
-        const std::vector<const char *> &kernel_names,
-        const gpu::intel::sycl::engine_t *sycl_engine,
-        const xpu::binary_t &binary);
-
-status_t get_l0_kernel_binary(
-        const ::sycl::kernel &kernel, xpu::binary_t &binary);
-
-bool compare_ze_devices(const ::sycl::device &lhs, const ::sycl::device &rhs);
+namespace ze {
 
 status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
         ze_context_handle_t context, uint32_t &ip_version,
@@ -49,10 +35,10 @@ status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
         uint64_t &native_extensions, bool &mayiuse_systolic,
         bool &mayiuse_ngen_kernels);
 
-} // namespace sycl
+} // namespace ze
 } // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl
 
-#endif // GPU_INTEL_SYCL_L0_UTILS_HPP
+#endif

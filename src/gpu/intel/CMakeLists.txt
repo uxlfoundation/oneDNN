@@ -61,6 +61,7 @@ endif()
 if(DNNL_WITH_SYCL)
     add_subdirectory(sycl)
     add_subdirectory(ocl)
+    add_subdirectory(ze)
 endif()
 
 set(OBJ_LIB ${LIB_PACKAGE_NAME}_gpu_intel)

@@ -1323,34 +1323,36 @@ status_t jit_uni_x8s8s32x_fwd_kernel_t<isa>::init_conf(jit_conv_conf_t &jcp,
     jcp.nthr = nthreads;
     jcp.ndims = ndims;
     jcp.prop_kind = cd.prop_kind;
-    jcp.ngroups = with_groups ? weights_d.dims()[0] : 1;
-    jcp.mb = src_d.dims()[0];
-    jcp.oc = dst_d.dims()[1] / jcp.ngroups;
+    CHECK(safe_dim_to_int(jcp.ngroups, with_groups ? weights_d.dims()[0] : 1));
+    CHECK(safe_dim_to_int(jcp.mb, src_d.dims()[0]));
+    CHECK(safe_dim_to_int(jcp.oc, dst_d.dims()[1] / jcp.ngroups));
     jcp.oc_without_padding = jcp.oc;
-    jcp.ic = src_d.dims()[1] / jcp.ngroups;
+    CHECK(safe_dim_to_int(jcp.ic, src_d.dims()[1] / jcp.ngroups));
     jcp.ic_without_padding = jcp.ic;
-    jcp.id = is_3d ? src_d.dims()[2] : 1;
-    jcp.ih = is_1d ? 1 : src_d.dims()[ndims - 2];
-    jcp.iw = src_d.dims()[ndims - 1];
-    jcp.od = is_3d ? dst_d.dims()[2] : 1;
-    jcp.oh = is_1d ? 1 : dst_d.dims()[ndims - 2];
-    jcp.ow = dst_d.dims()[ndims - 1];
-    jcp.kd = is_3d ? weights_d.dims()[with_groups + 2] : 1;
-    jcp.kh = is_1d ? 1 : weights_d.dims()[with_groups + ndims - 2];
-    jcp.kw = weights_d.dims()[with_groups + ndims - 1];
-    jcp.f_pad = is_3d ? cd.padding[0][0] : 0;
-    jcp.t_pad = is_1d ? 0 : cd.padding[0][ndims - 4];
-    jcp.l_pad = cd.padding[0][ndims - 3];
-    jcp.stride_d = is_3d ? cd.strides[0] : 1;
-    jcp.stride_h = is_1d ? 1 : cd.strides[ndims - 4];
-    jcp.stride_w = cd.strides[ndims - 3];
+    CHECK(safe_dim_to_int(jcp.id, is_3d ? src_d.dims()[2] : 1));
+    CHECK(safe_dim_to_int(jcp.ih, is_1d ? 1 : src_d.dims()[ndims - 2]));
+    CHECK(safe_dim_to_int(jcp.iw, src_d.dims()[ndims - 1]));
+    CHECK(safe_dim_to_int(jcp.od, is_3d ? dst_d.dims()[2] : 1));
+    CHECK(safe_dim_to_int(jcp.oh, is_1d ? 1 : dst_d.dims()[ndims - 2]));
+    CHECK(safe_dim_to_int(jcp.ow, dst_d.dims()[ndims - 1]));
+    CHECK(safe_dim_to_int(
+            jcp.kd, is_3d ? weights_d.dims()[with_groups + 2] : 1));
+    CHECK(safe_dim_to_int(
+            jcp.kh, is_1d ? 1 : weights_d.dims()[with_groups + ndims - 2]));
+    CHECK(safe_dim_to_int(jcp.kw, weights_d.dims()[with_groups + ndims - 1]));
+    CHECK(safe_dim_to_int(jcp.f_pad, is_3d ? cd.padding[0][0] : 0));
+    CHECK(safe_dim_to_int(jcp.t_pad, is_1d ? 0 : cd.padding[0][ndims - 4]));
+    CHECK(safe_dim_to_int(jcp.l_pad, cd.padding[0][ndims - 3]));
+    CHECK(safe_dim_to_int(jcp.stride_d, is_3d ? cd.strides[0] : 1));
+    CHECK(safe_dim_to_int(jcp.stride_h, is_1d ? 1 : cd.strides[ndims - 4]));
+    CHECK(safe_dim_to_int(jcp.stride_w, cd.strides[ndims - 3]));
     jcp.with_bias = cd.bias_desc.format_kind != format_kind::undef;
 
     jcp.ur_h = 1; /* no code-unrolling by h so far */
 
-    jcp.dilate_d = is_3d ? cd.dilates[0] : 0;
-    jcp.dilate_h = is_1d ? 0 : cd.dilates[ndims - 4];
-    jcp.dilate_w = cd.dilates[ndims - 3];
+    CHECK(safe_dim_to_int(jcp.dilate_d, is_3d ? cd.dilates[0] : 0));
+    CHECK(safe_dim_to_int(jcp.dilate_h, is_1d ? 0 : cd.dilates[ndims - 4]));
+    CHECK(safe_dim_to_int(jcp.dilate_w, cd.dilates[ndims - 3]));
 
     int ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
     int ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);

@@ -16,9 +16,9 @@
 
 #include "xpu/ze/engine_factory.hpp"
 
-// #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-// #include "gpu/intel/ze/engine.hpp"
-// #endif
+#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
+#include "gpu/intel/ze/engine.hpp"
+#endif
 
 namespace dnnl {
 namespace impl {
@@ -86,9 +86,8 @@ status_t engine_factory_t::engine_create(
 status_t engine_factory_t::engine_create(impl::engine_t **engine,
         ze_driver_handle_t driver, ze_device_handle_t device,
         ze_context_handle_t context, size_t index) const {
-    // return gpu::intel::ze::engine_create(
-    //         engine, driver, device, context, index);
-    return status::success;
+    return gpu::intel::ze::engine_create(
+            engine, engine_kind::gpu, driver, device, context, index);
 }
 
 } // namespace ze

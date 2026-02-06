@@ -442,9 +442,9 @@ bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const G
 
     if (state.flagSwizzle.isValid()) state.raVFlag.claim(state.flagSwizzle);
 
-    if (problem.cOffsetHostScalar() && state.inputs.coHostScalar.isValid()) {
+    if (problem.cOffsetHostScalar() && state.inputs.co.isValid()) {
         status << "Applying host scalar C offset" << status_stream::endl;
-        gemmScalarBinaryOpC(BinaryOp::Add, Tco, state.inputs.coHostScalar, problem, strategy, state);
+        gemmScalarBinaryOpC(BinaryOp::Add, Tco, state.inputs.co, problem, strategy, state);
     } else {
         status << "Applying fixed C offset" << status_stream::endl;
         ok = ok && gemmBinaryOpC(BinaryOp::Add, false, false, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);

@@ -27,6 +27,10 @@
 #include <sycl/sycl.hpp>
 #endif
 
+#ifdef GEMMSTONE_WITH_L0_RUNTIME
+#include <level_zero/ze_api.h>
+#endif
+
 #ifdef GEMMSTONE_WITH_OPENCL_RUNTIME
 #include <CL/cl.h>
 #endif
@@ -62,6 +66,16 @@ std::vector<uint8_t> make_binary(const GEMMKernelDesc &desc);
 #ifdef GEMMSTONE_WITH_SYCL_RUNTIME
 std::vector<uint8_t> make_binary(const GEMMKernelDesc &desc, sycl::device device, sycl::context context);
 sycl::kernel make_kernel(const GEMMKernelDesc &desc, sycl::device device, sycl::context context);
+#endif
+
+#ifdef GEMMSTONE_WITH_L0_RUNTIME
+struct LevelZeroKernelAndModule {
+    ze_kernel_handle_t kernel;
+    ze_module_handle_t module;
+};
+dsl::hw_t get_hardware(ze_device_handle_t device, ze_context_handle_t context = nullptr);
+std::vector<uint8_t> make_binary(const GEMMKernelDesc &desc, ze_device_handle_t device, ze_context_handle_t context);
+LevelZeroKernelAndModule make_kernel(const GEMMKernelDesc &desc, ze_device_handle_t device, ze_context_handle_t context);
 #endif
 
 #ifdef GEMMSTONE_WITH_OPENCL_RUNTIME

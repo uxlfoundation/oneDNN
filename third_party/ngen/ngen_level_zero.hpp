@@ -73,6 +73,9 @@ NGEN_L0_INDIRECT_API(zeModuleCreate)
 NGEN_L0_INDIRECT_API(zeModuleDestroy)
 NGEN_L0_INDIRECT_API(zeModuleGetNativeBinary)
 NGEN_L0_INDIRECT_API(zeKernelCreate)
+NGEN_L0_INDIRECT_API(zeDeviceGetComputeProperties)
+NGEN_L0_INDIRECT_API(zeDeviceGetCacheProperties)
+NGEN_L0_INDIRECT_API(zeDeviceGetModuleProperties)
 
 #undef NGEN_L0_INDIRECT_API
 
@@ -92,12 +95,11 @@ public:
     explicit LevelZeroCodeGenerator(DebugConfig debugConfig) : LevelZeroCodeGenerator({genericProductFamily(hw), 0}, debugConfig) {}
     LevelZeroCodeGenerator(LevelZeroCodeGenerator&&) = default;
 
-    inline ze_module_handle_t getModule(ze_context_handle_t context, ze_device_handle_t device, const std::string &options = "");
+    inline std::pair<ze_module_handle_t, ze_kernel_handle_t> getModuleAndKernel(ze_context_handle_t context, ze_device_handle_t device, const std::string &options = "");
     static inline HW detectHW(ze_context_handle_t context, ze_device_handle_t device);
     static inline Product detectHWInfo(ze_context_handle_t context, ze_device_handle_t device);
 
     static bool binaryIsZebin() { return true; }
-
 };
 
 #define NGEN_FORWARD_LEVEL_ZERO(hw) NGEN_FORWARD_ELF(hw)
@@ -140,7 +142,7 @@ static inline std::vector<uint8_t> getDummyModuleBinary(ze_context_handle_t cont
 }; /* namespace detail */
 
 template <HW hw>
-ze_module_handle_t LevelZeroCodeGenerator<hw>::getModule(ze_context_handle_t context, ze_device_handle_t device, const std::string &options)
+std::pair<ze_module_handle_t, ze_kernel_handle_t> LevelZeroCodeGenerator<hw>::getModuleAndKernel(ze_context_handle_t context, ze_device_handle_t device, const std::string &options)
 {
     using super = ELFCodeGenerator<hw>;
 
@@ -156,13 +158,30 @@ ze_module_handle_t LevelZeroCodeGenerator<hw>::getModule(ze_context_handle_t con
         nullptr
     };
 
-    ze_module_handle_t module;
-    detail::handleL0(dynamic::zeModuleCreate(context, device, &moduleDesc, &module, nullptr));
+    ze_module_handle_t moduleHandle;
+    detail::handleL0(dynamic::zeModuleCreate(context, device, &moduleDesc, &moduleHandle, nullptr));
 
-    if (module == nullptr)
+    if (moduleHandle == nullptr)
         throw level_zero_error{};
 
-    return module;
+    auto kernelName = ELFCodeGenerator<hw>::interface_.getExternalName().c_str();
+
+    ze_kernel_desc_t kernelDesc = {
+        ZE_STRUCTURE_TYPE_KERNEL_DESC,
+        nullptr,
+        0,
+        kernelName
+    };
+
+    ze_kernel_handle_t kernelHandle;
+    detail::handleL0(dynamic::zeKernelCreate(moduleHandle, &kernelDesc, &kernelHandle));
+
+    if (kernelHandle == nullptr) {
+        detail::handleL0(dynamic::zeModuleDestroy(moduleHandle));
+        throw level_zero_error{};
+    }
+
+    return std::make_pair(moduleHandle, kernelHandle);
 }
 
 template <HW hw>

@@ -24,6 +24,7 @@
 #include "gpu/intel/compute/ukernels.hpp"
 #include "gpu/intel/ocl/utils.hpp"
 #include "gpu/intel/sycl/engine.hpp"
+#include "gpu/intel/ze/utils.hpp"
 
 #include <sycl/ext/oneapi/backend/level_zero.hpp>
 
@@ -82,23 +83,14 @@ status_t get_ze_kernel_binary(
 #ifdef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
     auto ze_kernel = ::sycl::get_native<::sycl::backend::ext_oneapi_level_zero>(
             kernel);
-    size_t binary_size = 0;
-    CHECK(xpu::ze::zeKernelGetBinaryExp(ze_kernel, &binary_size, nullptr));
-    binary.resize(binary_size);
-    CHECK(xpu::ze::zeKernelGetBinaryExp(
-            ze_kernel, &binary_size, binary.data()));
+    CHECK(ze::get_kernel_binary(ze_kernel, binary));
 #else
     auto bundle = kernel.get_kernel_bundle();
     auto module_vec
             = ::sycl::get_native<::sycl::backend::ext_oneapi_level_zero>(
                     bundle);
     auto ze_module = module_vec[0];
-    size_t module_binary_size;
-    CHECK(xpu::ze::zeModuleGetNativeBinary(
-            ze_module, &module_binary_size, nullptr));
-    binary.resize(module_binary_size);
-    CHECK(xpu::ze::zeModuleGetNativeBinary(
-            ze_module, &module_binary_size, binary.data()));
+    CHECK(ze::get_module_binary(ze_module, binary));
 
     std::unique_ptr<gpu::intel::ocl::engine_t, engine_deleter_t> ocl_engine;
     const auto &devs = kernel.get_context().get_devices();
@@ -133,37 +125,29 @@ status_t sycl_create_kernels_with_level_zero(
         const std::vector<const char *> &kernel_names,
         const gpu::intel::sycl::engine_t *sycl_engine,
         const xpu::binary_t &binary) {
-    auto desc = ze_module_desc_t();
-    desc.stype = ZE_STRUCTURE_TYPE_MODULE_DESC;
-    desc.format = ZE_MODULE_FORMAT_NATIVE;
-    desc.inputSize = binary.size();
-    desc.pInputModule = binary.data();
-    desc.pBuildFlags = "";
-    desc.pConstants = nullptr;
-
-    ze_module_handle_t ze_module;
-
     auto ze_device = xpu::sycl::compat::get_native<ze_device_handle_t>(
             sycl_engine->device());
     auto ze_ctx = xpu::sycl::compat::get_native<ze_context_handle_t>(
             sycl_engine->context());
+    // Note: according to SYCL specification, `ze_module` will be destroyed by
+    // the SYCL runtime since the ownership is transferred to SYCL runtime.
+    // Thus, do nothing with it.
+    ze_module_handle_t ze_module;
+    std::vector<ze_kernel_handle_t> ze_kernels;
+    CHECK(ze::create_kernels(
+            ze_device, ze_ctx, kernel_names, binary, &ze_module, ze_kernels));
 
-    CHECK(xpu::ze::zeModuleCreate(
-            ze_ctx, ze_device, &desc, &ze_module, nullptr));
+    sycl_kernels.resize(kernel_names.size());
     ::sycl::kernel_bundle<::sycl::bundle_state::executable> kernel_bundle
             = ::sycl::make_kernel_bundle<::sycl::backend::ext_oneapi_level_zero,
                     ::sycl::bundle_state::executable>(
                     {ze_module}, sycl_engine->context());
-
-    sycl_kernels.resize(kernel_names.size());
     for (size_t i = 0; i < kernel_names.size(); i++) {
-        if (kernel_names[i] == nullptr) continue;
-        ze_kernel_handle_t ze_kernel;
-        ze_kernel_desc_t ze_kernel_desc {
-                ZE_STRUCTURE_TYPE_KERNEL_DESC, nullptr, 0, kernel_names[i]};
-        CHECK(xpu::ze::zeKernelCreate(ze_module, &ze_kernel_desc, &ze_kernel));
+        // Kernels can't be empty when passed to SYCL runtime.
+        if (ze_kernels[i] == nullptr) continue;
+
         auto k = ::sycl::make_kernel<::sycl::backend::ext_oneapi_level_zero>(
-                {kernel_bundle, ze_kernel}, sycl_engine->context());
+                {kernel_bundle, ze_kernels[i]}, sycl_engine->context());
         sycl_kernels[i] = utils::make_unique<::sycl::kernel>(k);
     }
 

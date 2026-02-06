@@ -45,6 +45,8 @@ struct GEMMOptions {
     bool kParallelLocal = false;
 
     GEMMOptions() = default;
+    ngen::InterfaceHandler generateInterface(ngen::HW hw) const;
+    GEMMOptions transpose() const;
 };
 
 /* Main entrypoint for microkernel auto-selection */

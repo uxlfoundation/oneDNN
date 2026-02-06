@@ -47,7 +47,7 @@ public:
         backend_ = xpu::sycl::get_backend(device_);
         VERROR_ENGINE_IMPL(
                 utils::one_of(backend_, backend_t::host, backend_t::opencl,
-                        backend_t::level0, backend_t::nvidia, backend_t::amd),
+                        backend_t::ze, backend_t::nvidia, backend_t::amd),
                 status::invalid_arguments, VERBOSE_UNSUPPORTED_BACKEND, "sycl");
 
         CHECK(check_device(kind(), device_, context_));

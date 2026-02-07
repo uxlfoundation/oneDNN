@@ -1293,7 +1293,7 @@ void CopyPlan::planInt4Upconversion(CopyInstruction &i)
 
     bool s4 = (i.src0.type == DataType::s4);
 
-    if (i.src0.stride == 1) {
+    if (i.src0.stride == 1 && i.simd > 1) {
         // Split into high and low nybble conversions first, if needed.
         // If dst stride is too large, copy through uw<1>.
         //   This path allows 2D regions.

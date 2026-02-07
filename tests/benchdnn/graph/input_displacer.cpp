@@ -762,7 +762,10 @@ int partition_data_displacer_t::gen_fixed_set_filling(dnn_mem_t &mem,
 int partition_data_displacer_t::gen_causal_mask_filling(
         dnn_mem_t &mem, const_dnnl_memory_desc_t md, res_t *res) const {
 
-    dnn_mem_t tmp_mem(md, get_test_engine(), /* prefill = */ false);
+    const auto &strides = query_md_strides(md);
+    const auto &dt = query_md_data_type(md);
+    dnn_mem_t tmp_mem(
+            md, dt, strides, get_test_engine(), /* prefill = */ false);
 
     const int ndims = query_md_ndims(md);
     assert(ndims >= 2); // This was checked at displacer initialization.
@@ -773,7 +776,7 @@ int partition_data_displacer_t::gen_causal_mask_filling(
     const int64_t N = dims[ndims - 1];
 
     benchdnn_parallel_nd(batch, M, N, [&](int64_t b, int64_t m, int64_t n) {
-        int64_t idx = b * M * N + m * N + n;
+        int64_t idx = b * strides[ndims - 3] + m * strides[ndims - 2] + n;
         float val = m >= n ? 0.f : -INFINITY;
         // The line below masks out the whole prompt to verify the softmax
         // output returns zeroes, not NaNs, as expected by PyTorch.

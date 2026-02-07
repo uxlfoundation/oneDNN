@@ -50,7 +50,7 @@ if [[ "$ONEDNN_ACTION" == "configure" ]]; then
       set +x
     elif [[ "$GITHUB_JOB" == "pr-format-tags" ]]; then
       set -x
-      cmake -B../build -S. -DONEDNN_BUILD_GRAPH=OFF -DDNNL_EXPERIMENTAL_GROUPED_MEMORY=ON
+      cmake -B../build -S. -DONEDNN_BUILD_GRAPH=OFF
       set +x
     else
       echo "Unknown linter job: $GITHUB_JOB"

@@ -71,6 +71,9 @@ dnnl_sparse_encoding_t str2sparse_encoding(const char *str) {
     CASE(csr);
     CASE(packed);
     CASE(coo);
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    CASE(grouped);
+#endif
 #undef CASE
     if (!strcmp("undef", str) || !strcmp("dnnl_sparse_encoding_undef", str))
         return dnnl_sparse_encoding_undef;

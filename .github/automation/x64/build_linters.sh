@@ -41,6 +41,7 @@ if [[ "$ONEDNN_ACTION" == "configure" ]]; then
           -DDNNL_EXPERIMENTAL=ON \
           -DDNNL_EXPERIMENTAL_PROFILING=ON \
           -DDNNL_EXPERIMENTAL_UKERNEL=ON \
+          -DDNNL_EXPERIMENTAL_GROUPED_MEMORY=ON \
           -DONEDNN_EXPERIMENTAL_LOGGING=ON \
           -DDNNL_CPU_RUNTIME=$CPU_RUNTIME \
           -DDNNL_GPU_RUNTIME=$GPU_RUNTIME \
@@ -49,7 +50,7 @@ if [[ "$ONEDNN_ACTION" == "configure" ]]; then
       set +x
     elif [[ "$GITHUB_JOB" == "pr-format-tags" ]]; then
       set -x
-      cmake -B../build -S. -DONEDNN_BUILD_GRAPH=OFF
+      cmake -B../build -S. -DONEDNN_BUILD_GRAPH=OFF -DDNNL_EXPERIMENTAL_GROUPED_MEMORY=ON
       set +x
     else
       echo "Unknown linter job: $GITHUB_JOB"

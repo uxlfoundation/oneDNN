@@ -850,8 +850,10 @@ inline void RegData::fixup(HW hw, int execSize, int execWidth, DataType defaultT
                 vs = 1;
                 hs = 0;
             }
-        } else if (execSize == width)
+        } else if (execSize == width) {
+            if (hs == 0) width = 1;
             vs = width * hs;
+        }
         bool isDest = srcN < 0;
         if (isDest && hs == 0)
             hs = (execWidth > getBytes()) ? (execWidth / getBytes()) : 1;

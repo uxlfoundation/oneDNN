@@ -107,6 +107,7 @@ status_t primitive_execute(
         const primitive_iface_t *primitive_iface, exec_ctx_t &ctx) {
     auto stream = ctx.stream();
     status_t status = success;
+    double itt_start_ms = get_msec();
     auto pd = primitive_iface->pd();
 
 #if defined(DNNL_ENABLE_ITT_TASKS)
@@ -117,6 +118,8 @@ status_t primitive_execute(
         itt::primitive_task_start(pd->impl()->kind(), pd_info, log_kind);
     }
 #endif
+    double itt_duration_ms = get_msec() - itt_start_ms;
+    printf("%f,%f\n", itt_start_ms, itt_duration_ms);
 
     if (get_verbose(verbose_t::exec_profile,
                 prim_kind2_comp_kind(pd->impl()->kind()))) {

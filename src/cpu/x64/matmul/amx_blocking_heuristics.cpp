@@ -185,7 +185,7 @@ bool matmul_amx_blocking_params_macro_t::maybe_small_dims_heuristics(
         best_blocking.set_nt_ = true;
         best_blocking.need_prefetch_a_ = false;
         best_blocking.need_prefetch_b_ = false;
-        best_blocking.use_fused_copy_a = false;
+        best_blocking.use_fused_copy_a_ = false;
         best_blocking.efficiency_score_ = 1;
         best_blocking.current_lda_ = best_blocking.get_actual_lda();
     };

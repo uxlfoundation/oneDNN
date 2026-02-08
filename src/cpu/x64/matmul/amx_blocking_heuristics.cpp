@@ -360,8 +360,8 @@ bool matmul_amx_blocking_params_macro_t::find_best_blocking(
         current_blocking.nthr_ = best_blocking.nthr_b_ * best_blocking.nthr_m_
                 * best_blocking.nthr_n_ * best_blocking.nthr_k_;
         current_blocking.set_core_divs(best_blocking.nthr_b_,
-                best_blocking.nthr_m_, best_blocking.nthr_n_,
-                best_blocking.nthr_k_);
+                best_blocking.nthr_m_, best_blocking.nthr_k_,
+                best_blocking.nthr_n_);
         if (current_blocking.set_blocking_parameters(true)
                 && current_blocking > best_blocking) {
             best_blocking = current_blocking;

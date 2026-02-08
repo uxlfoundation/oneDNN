@@ -1037,7 +1037,7 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters(
         is_a_nt_ = true;
         is_b_nt_ = false;
         need_prefetch_a_ = false;
-        need_prefetch_b_ = (n_per_thread / n_blk_) >= 2;
+        need_prefetch_b_ = ((n_per_thread / n_blk_) >= 2) && !use_buffer_b;
         use_fused_copy_a_ = false;
 
         extendable_k_ = K % wei_k_blk != 0 && !skip_extendable_k();

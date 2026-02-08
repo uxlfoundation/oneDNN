@@ -136,14 +136,14 @@ private:
             min_n_dim_write_bound_layer_elem {};
 
     size_t m_tmul {}, n_tmul {}, k_tmul {};
-    bool set_blocking_parameters(bool force_horizontal = false);
+    bool set_blocking_parameters(bool force_horizontal = false, bool force_transform_matrix_to_l2 = false);
     bool is_horizontal_selected(bool horizontal_not_possible,
             bool vertical_not_possible, size_t best_m_v, size_t best_k_v,
             size_t k_blk_v) const;
     void set_tmul_sizes();
     void set_decomposition();
     size_t l2_matrix_usage(size_t k_chunk_size, size_t m_or_n_blk, size_t k_blk,
-            bool is_horizontal) const;
+            bool is_horizontal, bool force_transform_matrix_to_l2 = false) const;
     size_t l2_matrix_and_c_usage(size_t k_chunk_size, size_t m_or_n_blk,
             size_t k_blk, bool is_horizontal) const;
     void set_core_divs(int nthr_b, int nthr_m, int nthr_k, int nthr_n);
@@ -156,7 +156,7 @@ private:
     std::set<dim_t> blk_candidates(
             dim_t dim_per_thread, dim_t decomposition) const;
     float evaluate_single_core_blocking(size_t k_chunk_size, size_t m_or_n_blk,
-            size_t k_blk, bool is_horizontal) const;
+            size_t k_blk, bool is_horizontal, bool force_transform_matrix_to_l2 = false) const;
     dim_t calc_k_blk(size_t l1_dim) const;
     bool divs_are_acceptable() const;
     bool operator==(const matmul_amx_blocking_params_macro_t &other) const;
@@ -164,7 +164,7 @@ private:
     bool operator!=(const matmul_amx_blocking_params_macro_t &other) const;
     bool operator<(const matmul_amx_blocking_params_macro_t &other) const;
     bool skip_extendable_k() const;
-    bool b_transform_fits_in_mlc(size_t n_blk, size_t k_blk) const;
+    bool b_transform_fits_in_mlc() const;
 };
 
 class matmul_amx_blocking_params_micro_t : public matmul_amx_blocking_params_t {

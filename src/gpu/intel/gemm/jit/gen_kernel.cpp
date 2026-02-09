@@ -814,16 +814,13 @@ void gen_kernel_t::init_interface() {
         interface_.newArgument("ldbq", DataType::d);
     }
     if (problem.hasCMXScale()) interface_.newArgument("ldcq", DataType::d);
-    if (problem.cOffset != COffset::None || problem.sumA || problem.sumB) {
-        if (!problem.cOffsetHostScalar()) {
-            interface_.newArgument(
-                    "co_ptr", ExternalArgumentType::GlobalPtr, co_access);
-        }
+    if (problem.usesCO()) {
+        interface_.newArgument(
+                "co_ptr", ExternalArgumentType::GlobalPtr, co_access);
         interface_.newArgument("offset_CO", DataType::q);
         if (problem.cOffset == COffset::Pre)
             interface_.newArgument("ldco", DataType::d);
-    }
-    if (problem.cOffsetHostScalar()) {
+    } else if (problem.cOffsetHostScalar()) {
         interface_.newArgument("co", DataType::w);
     }
     if (problem.postOps.cStochasticRound) {

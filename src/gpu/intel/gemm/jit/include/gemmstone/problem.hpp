@@ -248,10 +248,10 @@ struct GEMMProblem : public CommonProblem {
     bool hasCMXScale() const { return cMXScale; }
     bool hasAOffsetPtr() const { return (aoPtrDims > -1); }
     bool hasBOffsetPtr() const { return (boPtrDims > -1); }
+    bool hasCOffsetPtr() const { return (coPtrDims > -1); }
     bool aOffsetHostScalar() const {return aoPtrDims == -1 && aOffset == ABOffset::Calc; }
     bool bOffsetHostScalar() const {return boPtrDims == -1 && bOffset == ABOffset::Calc; }
     bool cOffsetHostScalar() const {return coPtrDims == -1 && cOffset != COffset::None; }
-    bool hasCOffsetPtr() const { return (coPtrDims > -1); }
 
     bool aScale2D() const { return (asPtrDims >= 2); }
     bool bScale2D() const { return (bsPtrDims >= 2); }
@@ -270,7 +270,7 @@ struct GEMMProblem : public CommonProblem {
     bool needsAGroupSums() const { return (bOffset == ABOffset::Calc && quantized2DB() && !earlyDequantizableOffset(Tb_ext, Tbo, Tb)); }
     bool needsBGroupSums() const { return (aOffset == ABOffset::Calc && quantized2DA() && !earlyDequantizableOffset(Ta_ext, Tao, Ta)); }
 
-    bool usesCO() const { return (cOffset != COffset::None) || sumA || sumB; }
+    bool usesCO() const { return (hasCOffsetPtr() && ((cOffset != COffset::None) || sumA || sumB)); }
     bool allowMatrixOffset() const { return (cOffset == COffset::Pre); }
 
     Type Tc_compute() const {

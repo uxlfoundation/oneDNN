@@ -676,7 +676,8 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
 
     brgemm_convolution_utils::set_amx_wsp_per_thread(jcp_);
     auto scratchpad = scratchpad_registry().registrar();
-    brgemm_convolution_utils::init_scratchpad(scratchpad, jcp_);
+    CHECK(brgemm_convolution_utils::init_scratchpad(
+            scratchpad, jcp_, *src_md(), *weights_md(), *dst_md()));
 
     return status::success;
 }

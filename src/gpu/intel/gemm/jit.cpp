@@ -136,7 +136,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         auto ldcq = pd()->desc()->m() / problem->cqGroupM;
         arg_list.set(argn++, ldcq);
     }
-    if (problem->usesCO()) {
+    if (problem->usesCOPtr()) {
         if (co.is_null()) return status::runtime_error;
         arg_list.set(argn++, co);
         arg_list.set(argn++, offset_co);

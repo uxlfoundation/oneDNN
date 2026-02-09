@@ -708,7 +708,7 @@ void Generator<hw>::gemmFoldOffsets(const GEMMProblem &problem, const GEMMStrate
     foldOrSave(strategy.B, state.inputs.B, state.offsetB, state.inputs.offsetB, state.saveOffsetB);
     for (int q = 0; q < state.C_count; q++)
         foldOrSave(strategy.C, state.inputs.C[q], state.offsetC[q], state.inputs.offsetC[q], state.saveOffsetC[q]); // todo init for hpl
-    if (problem.usesCO())
+    if (problem.usesCOPtr())
         foldOrSave(strategy.CO, state.inputs.coPtr, state.offsetCO, state.inputs.offsetCO, state.saveOffsetCO);
 
     if (deduplicateAB)
@@ -730,7 +730,7 @@ void Generator<hw>::gemmRestoreOffsets(const GEMMProblem &problem, const GEMMStr
     zeroOrRestore(strategy.B, state.saveOffsetB, state.inputs.offsetB);
     for (int q = 0; q < state.C_count; q++)
         zeroOrRestore(strategy.C, state.saveOffsetC[q], state.inputs.offsetC[q]);
-    if (problem.usesCO())
+    if (problem.usesCOPtr())
         zeroOrRestore(strategy.CO, state.saveOffsetCO, state.inputs.offsetCO);
 }
 
@@ -760,7 +760,7 @@ void Generator<hw>::gemmSetupABC(const GEMMProblem &problem, const GEMMStrategy 
         }
     }
 
-    if (problem.usesCO() && strategy.CO.base.isStateless()) {
+    if (problem.usesCOPtr() && strategy.CO.base.isStateless()) {
         eadd(1, state.effCO, state.inputs.coPtr, state.offsetCO, strategy, state);
         if (strategy.persistentLoop())
             state.offsetCO = invalid;
@@ -892,7 +892,7 @@ void Generator<hw>::gemmScaleInputs(const GEMMProblem &problem, const GEMMStrate
             scale(Tb_ext, inputs.offsetB);
         for (int q = 0; q < state.C_count; q++)
             scale(Tc_ext, inputs.offsetC[q]);
-        if (problem.usesCO())
+        if (problem.usesCOPtr())
             scale(Tco, inputs.offsetCO);
     }
 
@@ -2625,7 +2625,7 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
     state.inputs.C[0] = interface.getArgumentIfExists("C");
     state.inputs.surfaceC[0] = interface.getArgumentSurfaceIfExists("C");
     state.C_count = state.inputs.C[1].isValid() ? 2 : 1;
-    if (problem.usesCO()) {
+    if (problem.usesCOPtr()) {
         state.inputs.coPtr = interface.getArgumentIfExists("co_ptr");
         state.inputs.surfaceCO = interface.getArgumentSurfaceIfExists("co_ptr");
     } else if (problem.cOffsetHostScalar()) {
@@ -2852,7 +2852,7 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
     if (strategy.C.base.getModel() != ModelA64)
         for (int q = 0; q < state.C_count; q++)
             state.inputs.offsetC[q] = state.inputs.offsetC[q].d();
-    if (problem.usesCO() && strategy.CO.base.getModel() != ModelA64)
+    if (problem.usesCOPtr() && strategy.CO.base.getModel() != ModelA64)
         state.inputs.offsetCO = state.inputs.offsetCO.d();
     for (auto &off: state.inputs.binaryOffsets)
         off = off.d();
@@ -2928,7 +2928,7 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
     claimIfValid(state.inputs.offsetAq);
     claimIfValid(state.inputs.offsetBq);
 
-    if (problem.usesCO()) {
+    if (problem.usesCOPtr()) {
         if (strategy.CO.base.isStateless())
             state.ra.claim(state.inputs.coPtr);
         state.ra.claim(state.inputs.offsetCO);
@@ -3104,7 +3104,7 @@ void Generator<hw>::gemmInitState(GEMMProblem &problem, GEMMStrategy &strategy, 
         state.effC[q] = strategy.C.base.isStateless() ? state.inputs.C[q]
                                                       : state.inputs.offsetC[q].d();
     }
-    if (problem.usesCO()) {
+    if (problem.usesCOPtr()) {
         state.effCO = strategy.CO.base.isStateless() ? state.inputs.coPtr
                                                      : state.inputs.offsetCO.d();
     }

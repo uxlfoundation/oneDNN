@@ -340,6 +340,7 @@
 --attr-zero-points=,wei:common:2,wei:per_oc:s4,wei:per_ocic:s4:192x1
 --attr-fpmath=f16:true
 12x4x576:12x576x192
+1x1x1536:1x1536x128
 
 --reset
 --dt=bf16:s4:bf16

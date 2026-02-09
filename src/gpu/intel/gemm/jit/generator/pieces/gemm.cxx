@@ -68,7 +68,7 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
     if (!strategy.C.base.isStateless() && state.C_count > 1) stub();
     if (state.useTempC)
         state.tempCStrategy.assignSurface(state.inputs.surfaceTempC);
-    if (problem.usesCO())
+    if (problem.usesCOPtr())
         strategy.CO.assignSurface(state.inputs.surfaceCO);
 
     for (size_t i = 0; i < strategy.binary.size(); i++)

@@ -814,7 +814,7 @@ void gen_kernel_t::init_interface() {
         interface_.newArgument("ldbq", DataType::d);
     }
     if (problem.hasCMXScale()) interface_.newArgument("ldcq", DataType::d);
-    if (problem.usesCO()) {
+    if (problem.usesCOPtr()) {
         interface_.newArgument(
                 "co_ptr", ExternalArgumentType::GlobalPtr, co_access);
         interface_.newArgument("offset_CO", DataType::q);

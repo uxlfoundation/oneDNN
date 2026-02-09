@@ -359,7 +359,7 @@ void Generator<hw>::gemmOffsetABC(bool initial, Subregister i0, Subregister j0, 
     auto &offsetBp = initial ? state.offsetBp   : state.effBp;
     auto &offsetCp = initial ? state.offsetCp   : state.effCp;
     auto  offsetCO = initial ? state.offsetCO   : state.effCO;
-    bool doCO = doC && (problem.cOffset != COffset::None);
+    bool doCO = doC && (problem.cOffset != COffset::None) && !problem.cOffsetHostScalar();
     bool doAp = doA, doBp = doB;
 
     Subregister tempQ0 = state.ra.alloc_sub<int64_t>(getHint(HintType::TempComp0, strategy));
@@ -760,7 +760,7 @@ void Generator<hw>::gemmSetupABC(const GEMMProblem &problem, const GEMMStrategy 
         }
     }
 
-    if (problem.usesCO() && strategy.CO.base.isStateless() && !problem.cOffsetHostScalar()) {
+    if (problem.usesCO() && strategy.CO.base.isStateless()) {
         eadd(1, state.effCO, state.inputs.coPtr, state.offsetCO, strategy, state);
         if (strategy.persistentLoop())
             state.offsetCO = invalid;
@@ -2628,6 +2628,7 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
     if (problem.usesCO()) {
         state.inputs.coPtr = interface.getArgumentIfExists("co_ptr");
         state.inputs.surfaceCO = interface.getArgumentSurfaceIfExists("co_ptr");
+    } else if (problem.cOffsetHostScalar()) {
         state.inputs.co = interface.getArgumentIfExists("co");
     }
     if (state.useTempC) {
@@ -2931,6 +2932,7 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
         if (strategy.CO.base.isStateless())
             state.ra.claim(state.inputs.coPtr);
         state.ra.claim(state.inputs.offsetCO);
+    } else if (problem.cOffsetHostScalar()) {
         state.ra.claim(state.inputs.co);
     }
 

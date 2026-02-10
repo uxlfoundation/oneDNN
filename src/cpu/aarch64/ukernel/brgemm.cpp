@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 * Copyright 2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -147,13 +147,30 @@ status_t brgemm_t::get_B_pack_type(
     }
 
     const bool b_data_vnni = brgemm_desc_t::is_b_data_layout_vnni(b_dt);
-    if (b_data_vnni) return status::unimplemented;
-    *pack_type = pack_type::no_trans;
+    if (b_data_vnni)
+        *pack_type = pack_type::pack32;
+    else
+        *pack_type = pack_type::no_trans;
     return status::success;
 }
 
+namespace {
+// Cache line size used for alignment
+constexpr size_t k_cache_line = 64;
+} // namespace
+
 size_t brgemm_t::get_scratchpad_size() const {
-    return brgemm_desc_.get_wsp_buffer_size();
+    const size_t wsp_size = brgemm_desc_.get_wsp_buffer_size();
+    // Align workspace end to cache line
+    const size_t wsp_size_aligned = utils::rnd_up(wsp_size, k_cache_line);
+
+    const size_t batch_element_size
+            = brgemm_desc_.brgattr.max_bs * sizeof(brgemm_batch_element_t);
+    // Align batch element size to cache line
+    const size_t batch_element_size_aligned
+            = utils::rnd_up(batch_element_size, k_cache_line);
+
+    return wsp_size_aligned + batch_element_size_aligned;
 }
 
 bool brgemm_t::is_execute_postops_valid() const {
@@ -177,8 +194,19 @@ status_t brgemm_t::generate() {
 
 status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
         const dim_t *A_B_offsets, void *C_ptr, void *scratchpad_ptr) const {
+
+    if (reinterpret_cast<uintptr_t>(scratchpad_ptr) % k_cache_line != 0
+            && get_verbose(verbose_t::exec_profile, component_t::ukernel))
+        VWARN(primitive, ukernel, "Scratchpad is not cache-line aligned");
+
     const auto batch_size = brgemm_desc_.brgattr.max_bs;
-    std::vector<brgemm_batch_element_t> v_batch_element(batch_size);
+
+    // Batch elements at the end of aligned workspace
+    const size_t wsp_size = brgemm_desc_.get_wsp_buffer_size();
+    const size_t wsp_size_aligned = utils::rnd_up(wsp_size, k_cache_line);
+    auto *v_batch_element = reinterpret_cast<brgemm_batch_element_t *>(
+            reinterpret_cast<char *>(scratchpad_ptr) + wsp_size_aligned);
+
     for (int i = 0; i < batch_size; i++) {
         v_batch_element[i].offset.A = A_B_offsets[2 * i];
         v_batch_element[i].offset.B = A_B_offsets[2 * i + 1];
@@ -187,7 +215,7 @@ status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
     if (get_verbose(verbose_t::exec_profile, component_t::ukernel)) {
         double start_ms = get_msec();
         brgemm_kernel_execute(brgemm_kernel_, batch_size, A_ptr, B_ptr,
-                v_batch_element.data(), C_ptr, scratchpad_ptr);
+                v_batch_element, C_ptr, scratchpad_ptr);
         double duration_ms = get_msec() - start_ms;
 
         stringstream_t ss;
@@ -196,7 +224,7 @@ status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
                 duration_ms);
     } else {
         brgemm_kernel_execute(brgemm_kernel_, batch_size, A_ptr, B_ptr,
-                v_batch_element.data(), C_ptr, scratchpad_ptr);
+                v_batch_element, C_ptr, scratchpad_ptr);
     }
     return status::success;
 }
@@ -217,8 +245,18 @@ status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
         }
     }
 
+    if (reinterpret_cast<uintptr_t>(scratchpad_ptr) % k_cache_line != 0
+            && get_verbose(verbose_t::exec_profile, component_t::ukernel))
+        VWARN(primitive, ukernel, "Scratchpad is not cache-line aligned");
+
     const auto batch_size = brgemm_desc_.brgattr.max_bs;
-    std::vector<brgemm_batch_element_t> v_batch_element(batch_size);
+
+    // Batch elements at the end of aligned workspace
+    const size_t wsp_size = brgemm_desc_.get_wsp_buffer_size();
+    const size_t wsp_size_aligned = utils::rnd_up(wsp_size, k_cache_line);
+    auto *v_batch_element = reinterpret_cast<brgemm_batch_element_t *>(
+            reinterpret_cast<char *>(scratchpad_ptr) + wsp_size_aligned);
+
     for (int i = 0; i < batch_size; i++) {
         v_batch_element[i].offset.A = A_B_offsets[2 * i];
         v_batch_element[i].offset.B = A_B_offsets[2 * i + 1];
@@ -250,7 +288,7 @@ status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
     if (get_verbose(verbose_t::exec_profile, component_t::ukernel)) {
         double start_ms = get_msec();
         brgemm_kernel_execute_postops(brgemm_kernel_, batch_size, A_ptr, B_ptr,
-                v_batch_element.data(), const_cast<void *>(C_ptr), D_ptr,
+                v_batch_element, const_cast<void *>(C_ptr), D_ptr,
                 post_ops_data, scratchpad_ptr);
         double duration_ms = get_msec() - start_ms;
 
@@ -260,7 +298,7 @@ status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
                 duration_ms);
     } else {
         brgemm_kernel_execute_postops(brgemm_kernel_, batch_size, A_ptr, B_ptr,
-                v_batch_element.data(), const_cast<void *>(C_ptr), D_ptr,
+                v_batch_element, const_cast<void *>(C_ptr), D_ptr,
                 post_ops_data, scratchpad_ptr);
     }
     return status::success;
@@ -315,11 +353,10 @@ status_t dnnl_brgemm_create(brgemm_t **brgemm, dim_t M, dim_t N, dim_t K,
     }
 
     // TODO: extend brgemm_matmul_copy_b to support these datatypes to enable them
-    const bool is_bf16 = utils::one_of(data_type::bf16, a_dt, b_dt, c_dt);
-    const bool is_s8 = utils::one_of(data_type::s8, a_dt, b_dt, c_dt);
-    const bool is_u8 = utils::one_of(data_type::u8, a_dt, b_dt, c_dt);
+    const bool is_s8 = utils::one_of(data_type::s8, a_dt, b_dt);
+    const bool is_u8 = utils::one_of(data_type::u8, a_dt, b_dt);
 
-    if (is_bf16 || is_s8 || is_u8)
+    if (is_s8 || is_u8)
         VCHECK_BRGEMM_STATUS(
                 status::unimplemented, false, "unsupported datatype");
 

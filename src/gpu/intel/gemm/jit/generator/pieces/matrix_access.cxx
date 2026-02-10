@@ -104,6 +104,9 @@ void Generator<hw>::loadMatrixBlock(const Register &dest, const RegisterBlock &b
         case AccessType::Scattered:
         case AccessType::ChannelScattered: {
             auto spec = getDataSpecLSC(atype, astrategy, block, AccessClass::Read);
+#if XE3P
+            if(hw >= HW::XE3P_35_10) spec |= Overfetch;
+#endif
             if (block.descAssigned) {
                 MessageDescriptor desc;
                 ExtendedMessageDescriptor exdesc;
@@ -121,6 +124,9 @@ void Generator<hw>::loadMatrixBlock(const Register &dest, const RegisterBlock &b
             auto spec = block_2d(getDataSizeLSC(block.ebytes, false), w, h, count) | astrategy.cachingR;
             if (astrategy.accessType == AccessType::Block2DTranspose) spec |= transpose;
             if (astrategy.accessType == AccessType::Block2DVNNI)      spec |= vnni;
+#if XE3P
+            if(hw >= HW::XE3P_35_10) spec |= Overfetch;
+#endif
             load(mod, dest, spec, astrategy.base, getAddress(addr, block, astrategy));
             break;
         }

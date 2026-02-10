@@ -723,13 +723,13 @@ brgemm_broadcast_t get_zp_type(const primitive_attr_t &attr, int arg) {
 
 struct matmul_avx512_blocking_params_t {
     struct matmul_params_t {
-        matmul_params_t(int m, int n, int k, int od)
+        matmul_params_t(dim_t m, dim_t n, dim_t k, dim_t od)
             : M(m), N(n), K(k), batch(od) {}
 
-        const int M;
-        const int N;
-        const int K;
-        const int batch;
+        const dim_t M;
+        const dim_t N;
+        const dim_t K;
+        const dim_t batch;
     };
 
     matmul_avx512_blocking_params_t(const matmul_params_t &m, const int nthr)
@@ -797,11 +797,11 @@ struct matmul_avx512_blocking_params_t {
         const float parallel_work_disb
                 = calculate_spatial_disbalance(parallel_work, cur_nthr);
 
-        int m_work = (m_blk * div_up(mp.M, m_blk)) % mp.M;
+        const auto m_work = (m_blk * div_up(mp.M, m_blk)) % mp.M;
         const float m_blk_disbalance = static_cast<float>(m_work) / mp.M;
 
-        int num_n_blk = div_up(mp.N, n_blk);
-        int par_n_chunks = div_up(num_n_blk, n_chunks);
+        const auto num_n_blk = div_up(mp.N, n_blk);
+        const auto par_n_chunks = div_up(num_n_blk, n_chunks);
         const float n_chunk_disbalance
                 = (static_cast<float>(par_n_chunks) * n_chunks - num_n_blk)
                 / num_n_blk;
@@ -823,8 +823,8 @@ struct matmul_avx512_blocking_params_t {
     }
 
     size_t get_parallel_work() const {
-        int m_elems = div_up(mp.M, m_blk * m_chunks);
-        int n_elems = div_up(mp.N, n_blk * n_chunks);
+        const auto m_elems = div_up(mp.M, m_blk * m_chunks);
+        const auto n_elems = div_up(mp.N, n_blk * n_chunks);
         return static_cast<size_t>(m_elems) * n_elems * mp.batch;
     }
 
@@ -878,21 +878,23 @@ float compute_blocking_heuristic_avx512(brgemm_matmul_conf_t &bgmmc,
             && bgmmc.N <= 14528
             && ((bgmmc.M <= 768 && bgmmc.K <= 128)
                     || bgmmc.K * bgmmc.M <= 49152);
-    const int max_m_blk = nstl::min(need_large_m_blk ? 512 : 256, matmul.M);
-    int min_m_blk = nstl::min(32, matmul.M);
+    const int max_m_blk = static_cast<int>(
+            nstl::min(need_large_m_blk ? (dim_t)512 : (dim_t)256, matmul.M));
+    int min_m_blk = static_cast<int>(nstl::min((dim_t)32, matmul.M));
 
     dim_t min_m_chunks = div_up(matmul.M, max_m_blk);
 
     int n_blk = bgmmc.N_blk;
-    const int n_chunks = div_up(matmul.N, n_blk);
-    const int max_n_chunks = bgmmc.use_buffer_a ? 16 : 1;
-    const int n_chunks_start = nstl::min(max_n_chunks, n_chunks);
+    const dim_t n_chunks = div_up(matmul.N, n_blk);
+    const dim_t max_n_chunks = bgmmc.use_buffer_a ? 16 : 1;
+    const int n_chunks_start
+            = static_cast<int>(nstl::min(max_n_chunks, n_chunks));
 
     // Note: do not extend K_blk for 'bwd_w' cases
     const bool use_extended_k_blk = matmul.K > 1024
             && (!bm_conf_utils.check_is_transposed(bgmmc.src_tag));
-    int default_k_blk = use_extended_k_blk ? 1024 : 512;
-    int k_blk = nstl::min(matmul.K, default_k_blk);
+    const dim_t default_k_blk = use_extended_k_blk ? 1024 : 512;
+    const int k_blk = static_cast<int>(nstl::min(matmul.K, default_k_blk));
     int start_nthr_k = 1;
     int last_nthr_k = 1;
 
@@ -902,7 +904,7 @@ float compute_blocking_heuristic_avx512(brgemm_matmul_conf_t &bgmmc,
     const dim_t max_bmn_parallel = max_parallel * min_m_chunks;
     const bool low_parallel_work = nthr > max_parallel;
     if (low_parallel_work) {
-        min_m_blk = nstl::min(matmul.M, 16);
+        min_m_blk = static_cast<int>(nstl::min(matmul.M, (dim_t)16));
 
         // 2nd level tuning for low parallel work cases:
         bool bwd_w_low_spatial_work
@@ -915,7 +917,7 @@ float compute_blocking_heuristic_avx512(brgemm_matmul_conf_t &bgmmc,
             // showed significant performance degradation
             if (!bm_conf_utils.check_n_blk_fixed()
                     && IMPLICATION(n_chunks == 1, bgmmc.batch_ndims > 0))
-                n_blk = nstl::min(matmul.N, 32);
+                n_blk = static_cast<int>(nstl::min(matmul.N, (dim_t)32));
 
             // force to plain B (wei) in small spatial size for FWD:
             // note: this showed significant performance gain in WnD shapes
@@ -934,7 +936,7 @@ float compute_blocking_heuristic_avx512(brgemm_matmul_conf_t &bgmmc,
                 && matmul.K >= 2048;
         if (bwd_w_par_k_blk) {
             start_nthr_k = nstl::min(nthr, 4);
-            assert(k_blk == nstl::min(matmul.K, 512));
+            assert(k_blk == nstl::min(matmul.K, (dim_t)512));
         }
 
         // Enable k-partitioning for huge k and small m/n dimensions.
@@ -1003,9 +1005,9 @@ float compute_blocking_heuristic_avx512(brgemm_matmul_conf_t &bgmmc,
             float cur_imbalance = cur_params.get_imbalance();
 
             const int m_chunk_size = 1;
-            int m_chunks = div_up(bgmmc.M, m_blk * m_chunk_size);
-            int n_chunks = div_up(bgmmc.N, n_blk * n_chunk_size);
-            int work_amount = bgmmc.batch * m_chunks * n_chunks;
+            const auto m_chunks = div_up(bgmmc.M, m_blk * m_chunk_size);
+            const auto n_chunks = div_up(bgmmc.N, n_blk * n_chunk_size);
+            const auto work_amount = bgmmc.batch * m_chunks * n_chunks;
 
             int nthr_bmn = nthr / nthr_k;
             bool skip_config = work_amount < nthr_bmn * 3
@@ -1038,24 +1040,27 @@ float compute_blocking_heuristic_avx2(brgemm_matmul_conf_t &bgmmc,
         matmul_avx512_blocking_params_t &best_blocking) {
     const int nthr = bgmmc.nthr;
 
-    const int max_m_blk = nstl::min(/*64*/ 256, matmul.M);
-    int min_m_blk = nstl::min(32, matmul.M); // max_m_blk
+    const int max_m_blk
+            = static_cast<int>(nstl::min(/*64*/ (dim_t)256, matmul.M));
+    int min_m_blk
+            = static_cast<int>(nstl::min((dim_t)32, matmul.M)); // max_m_blk
 
     int n_blk = bgmmc.N_blk;
-    const int n_chunks = div_up(matmul.N, n_blk);
-    const int max_n_chunks = bgmmc.use_buffer_a ? 16 : 1;
-    const int n_chunks_start = nstl::min(max_n_chunks, n_chunks);
+    const dim_t n_chunks = div_up(matmul.N, n_blk);
+    const dim_t max_n_chunks = bgmmc.use_buffer_a ? 16 : 1;
+    const int n_chunks_start
+            = static_cast<int>(nstl::min(max_n_chunks, n_chunks));
 
-    int default_k_blk = 1024;
-    int k_blk = nstl::min(matmul.K, default_k_blk);
-    int start_nthr_k = 1;
+    constexpr dim_t default_k_blk = 1024;
+    const int k_blk = static_cast<int>(nstl::min(matmul.K, default_k_blk));
+    const int start_nthr_k = 1;
 
     // for cases with low parallel work, reduce 'min_m_blk' to
     // increase potential parallelization balance.
     const size_t max_parallel = matmul.batch * n_chunks;
     const bool low_parallel_work = static_cast<size_t>(nthr) > max_parallel;
     if (low_parallel_work) {
-        min_m_blk = nstl::min(matmul.M, 16);
+        min_m_blk = static_cast<int>(nstl::min(matmul.M, (dim_t)16));
 
         bool low_spatial_work = matmul.M <= 40;
         if (low_spatial_work) {
@@ -1064,7 +1069,7 @@ float compute_blocking_heuristic_avx2(brgemm_matmul_conf_t &bgmmc,
             // showed significant performance degradation
             if (!bm_conf_utils.check_n_blk_fixed()
                     && IMPLICATION(n_chunks == 1, bgmmc.batch_ndims > 0))
-                n_blk = nstl::min(matmul.N, 32);
+                n_blk = static_cast<int>(nstl::min(matmul.N, (dim_t)32));
         }
     }
 
@@ -1104,30 +1109,30 @@ float compute_blocking_heuristic_avx2_f32(brgemm_matmul_conf_t &bgmmc,
 
     const int nthr = bgmmc.nthr;
 
-    dim_t max_m_blk = nstl::min(256, matmul.M);
-    dim_t min_m_blk = nstl::min(32, matmul.M);
+    dim_t max_m_blk = nstl::min((dim_t)256, matmul.M);
+    dim_t min_m_blk = nstl::min((dim_t)32, matmul.M);
 
     int n_blk = bgmmc.N_blk;
-    const int n_chunks = div_up(matmul.N, n_blk);
-    const int max_n_chunks = bgmmc.use_buffer_a ? 16 : 1;
-    const int n_chunks_start = nstl::min(max_n_chunks, n_chunks);
+    const dim_t n_chunks = div_up(matmul.N, n_blk);
+    const dim_t max_n_chunks = bgmmc.use_buffer_a ? 16 : 1;
+    const int n_chunks_start
+            = static_cast<int>(nstl::min(max_n_chunks, n_chunks));
 
-    int default_k_blk = 1024;
-    int k_blk = nstl::min(matmul.K, default_k_blk);
-    int start_nthr_k = 1;
+    constexpr dim_t default_k_blk = 1024;
+    const int k_blk = static_cast<int>(nstl::min(matmul.K, default_k_blk));
+    const int start_nthr_k = 1;
 
     // for cases with low parallel work, reduce 'min_m_blk' to
     // increase potential parallelization balance.
     size_t max_parallel = matmul.batch * n_chunks;
     const float req_additional_parallel = nthr / max_parallel;
     if (req_additional_parallel > 1) {
-        min_m_blk = saturate<int>(
+        min_m_blk = saturate<dim_t>(
                 16, max_m_blk, matmul.M / req_additional_parallel);
         max_parallel *= div_up(matmul.M, min_m_blk);
     } else if (bm_conf_utils.check_is_transposed(bgmmc.src_tag)
             && matmul.K >= 4096) {
-        min_m_blk = nstl::max(16, matmul.M / 4);
-        default_k_blk = 192;
+        min_m_blk = nstl::max((dim_t)16, matmul.M / 4);
     }
 
     bool low_parallel_work = max_parallel % nthr != 0
@@ -1138,7 +1143,7 @@ float compute_blocking_heuristic_avx2_f32(brgemm_matmul_conf_t &bgmmc,
         // showed significant performance degradation
         if (!bm_conf_utils.check_n_blk_fixed()
                 && IMPLICATION(n_chunks == 1, bgmmc.batch_ndims > 0)) {
-            n_blk = nstl::min(matmul.N, 16);
+            n_blk = static_cast<int>(nstl::min(matmul.N, (dim_t)16));
         }
     }
 

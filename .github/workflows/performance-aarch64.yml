@@ -148,7 +148,7 @@ jobs:
             pip install scipy statistics GitPython
 
       - name: Download oneDNN base
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: onednn-base
           path: oneDNN_pkg
@@ -161,7 +161,7 @@ jobs:
           patchelf --add-rpath ${{ github.workspace }}/oneDNN_base/ComputeLibrary/build ${{ github.workspace }}/oneDNN_base/oneDNN/build/src/libdnnl.so.3
 
       - name: Download oneDNN new
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: onednn-new
           path: oneDNN_pkg

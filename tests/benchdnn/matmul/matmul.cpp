@@ -701,7 +701,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
 }
 
 void skip_invalid_prb(const prb_t *prb, res_t *res) {
-    if (!prb->attr.zero_points.is_def()
+    if (!prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).is_def()
             && (prb->wei_dt() != dnnl_s8 && prb->wei_dt() != dnnl_u8
                     && prb->wei_dt() != dnnl_s4 && prb->wei_dt() != dnnl_u4)) {
         BENCHDNN_PRINT(2,

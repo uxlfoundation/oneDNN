@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2025 Intel Corporation
+* Copyright 2022 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -188,6 +188,10 @@ private:
         } else if (send_.is_a64()) {
             *lsc_spec |= get_cache_settings(send_, host->hw_info());
             if (send_.is_load() || send_.is_prefetch()) {
+#if XE3P
+                if (host->hw_info() >= ngen::HW::XE3P_35_10)
+                    *lsc_spec |= ngen::DataSpecLSC::createOverfetch();
+#endif
                 host->load.ugm(mod, data, *lsc_spec, host->A64, header);
             } else if (send_.is_store()) {
                 host->store.ugm(mod, *lsc_spec, host->A64, header, data);

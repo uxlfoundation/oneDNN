@@ -98,15 +98,11 @@ struct dnn_mem_t {
 
     size_t size(int index = 0) const;
 
-    int64_t nelems(bool with_padded_dims = false) const {
-        const auto &_dims = with_padded_dims ? padded_dims() : dims();
-        if (ndims() == 0) return 0;
+    int64_t nelems(bool with_padded_dims = false) const;
 
-        int64_t n = 1;
-        for (int i = 0; i < ndims(); ++i)
-            n *= _dims[i];
-        return n;
-    }
+    // Returns `true` if there're no "holes" between memory dimensions, and
+    // `false`, otherwise.
+    bool is_dense() const;
 
     // Queries from memory descriptor.
     int ndims() const;

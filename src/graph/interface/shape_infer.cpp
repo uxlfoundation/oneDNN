@@ -1888,10 +1888,8 @@ status_t infer_dnnl_conv_output_shape(op_t *n,
         const size_t ow_offset
                 = (src_fmt == "NCX") ? output_dims.size() - 1 : 2;
         const dim_t stride = 2;
-        const dim_t new_oh = static_cast<dim_t>(
-                std::ceil(output_dims[oh_offset] / stride));
-        const dim_t new_ow = static_cast<dim_t>(
-                std::ceil(output_dims[ow_offset] / stride));
+        const dim_t new_oh = (output_dims[oh_offset] + stride - 1) / stride;
+        const dim_t new_ow = (output_dims[ow_offset] + stride - 1) / stride;
         output_dims[oh_offset] = new_oh;
         output_dims[ow_offset] = new_ow;
         set_shape_and_strides(*outputs[0], output_dims);
@@ -1978,6 +1976,26 @@ status_t infer_permute_output_shape(op_t *n,
 
     auto in_dims = ltw(inputs[0]).vdims();
     auto perm = n->get_attr<std::vector<int64_t>>(op_attr::permutation);
+    // validate permutation: correct rank, in-range indices, and no duplicates
+    VCHECK_INVALID_SHAPE(perm.size() == in_dims.size(),
+            "%s, permutation size (%zu) must match input rank (%zu)",
+            op_t::kind2str(n->get_kind()).c_str(), perm.size(), in_dims.size());
+
+    std::vector<bool> seen(perm.size(), false);
+    for (size_t i = 0; i < perm.size(); ++i) {
+        int64_t p = perm[i];
+        VCHECK_INVALID_SHAPE(p >= 0 && p < static_cast<int64_t>(perm.size()),
+                "%s, permutation index %ld at position %zu is out of range "
+                "[0, %zu)",
+                op_t::kind2str(n->get_kind()).c_str(), static_cast<long int>(p),
+                i, perm.size());
+        VCHECK_INVALID_SHAPE(!seen[static_cast<size_t>(p)],
+                "%s, permutation index %ld appears more than once",
+                op_t::kind2str(n->get_kind()).c_str(),
+                static_cast<long int>(p));
+        seen[static_cast<size_t>(p)] = true;
+    }
+
     std::vector<dim_t> inferred_out_dims(perm.size(), DNNL_GRAPH_UNKNOWN_DIM);
     for (size_t i = 0; i < perm.size(); i++) {
         inferred_out_dims[perm[i]] = in_dims[i];
@@ -2088,7 +2106,9 @@ status_t infer_squeeze_output_shape(op_t *n,
     auto in_dims = ltw(inputs[0]).vdims();
     auto in_ndim = in_dims.size();
 
-    auto axes = n->get_attr<std::vector<int64_t>>(op_attr::axes);
+    auto axes = (n->has_attr(op_attr::axes))
+            ? n->get_attr<std::vector<int64_t>>(op_attr::axes)
+            : std::vector<int64_t>();
     // convert negative axis to positive one
     std::transform(axes.begin(), axes.end(), axes.begin(),
             [&in_ndim](int64_t axis) -> int64_t {
@@ -2305,7 +2325,7 @@ status_t infer_dnnl_binary_output_shape(op_t *n,
     const bool is_bias_add = n->has_attr(op_attr::is_bias_add)
             && n->get_attr<bool>(op_attr::is_bias_add);
     const auto algo = n->get_attr<int64_t>(op_attr::alg_kind);
-    if (algo == 0x1fffc /* binary_select */) {
+    if (algo == static_cast<int64_t>(alg_kind::binary_select)) {
         return infer_binary_select_output_shape(n, inputs, outputs);
     } else if (is_bias_add) {
         return infer_bias_add_output_shape(n, inputs, outputs);

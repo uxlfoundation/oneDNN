@@ -604,34 +604,62 @@ int partition_data_displacer_t::displace_input_data(size_t lt_id,
         BENCHDNN_PRINT(3, "%s\n", "[DISPLACE]: Backward path ended.");
     }
 
-    bool mds_are_equal = dnnl_memory_desc_equal(mem_replace.md_, mem.md_) == 1;
-    bool mds_are_int8 = is_integral_dt(mem_replace.dt())
-            && is_integral_dt(mem.dt()) && mem_replace.sizeof_dt() == 1
-            && mem.sizeof_dt() == 1;
-    bool is_grouped_conv = false;
-    if (main_op.kind_ == "Convolution" || main_op.kind_ == "ConvTranspose") {
-        int64_t groups;
-        main_op.get_attr_s64(groups, "groups");
-        is_grouped_conv = groups > 1;
-    }
+    do {
+        const bool mds_are_equal
+                = dnnl_memory_desc_equal(mem_replace.md_, mem.md_) == 1;
+        if (mds_are_equal) {
+            SAFE(mem.reorder(mem_replace), WARN);
+            break;
+        }
 
-    bool is_reshaped_dims = mem_replace.nelems() == mem.nelems()
-            && mem_replace.ndims() != mem.ndims();
+        // Below are valid cases when `mem_replace.md_` and `mem.md_` might not
+        // be equal yet valid.
+        //
+        // Case: Int8/Int4 descriptors are interchangeable. Treat filled data
+        // as mem.dt() and just reorder one to the other.
+        const bool mds_are_int8 = is_integral_dt(mem_replace.dt())
+                && is_integral_dt(mem.dt()) && mem_replace.sizeof_dt() == 1
+                && mem.sizeof_dt() == 1;
+        if (mds_are_int8) {
+            dnnl_memory_desc_destroy(mem_replace.md_);
+            dnnl_memory_desc_clone(&mem_replace.md_, mem.md_);
+            SAFE(mem.reorder(mem_replace), WARN);
+            break;
+        }
 
-    bool mds_ok = IMPLICATION(!mds_are_equal,
-            mds_are_int8 || is_grouped_conv || is_reshaped_dims);
-    SAFE(mds_ok ? OK : FAIL, WARN);
+        // Case w/ grouped convolutions when number of dimensions would be +1.
+        if (main_op.kind_ == "Convolution"
+                || main_op.kind_ == "ConvTranspose") {
+            int64_t groups = 0;
+            main_op.get_attr_s64(groups, "groups");
+            if (groups > 1) {
+                dnnl_memory_desc_destroy(mem_replace.md_);
+                dnnl_memory_desc_clone(&mem_replace.md_, mem.md_);
+                SAFE(mem.reorder(mem_replace), WARN);
+                break;
+            }
+        }
 
-    dnnl_memory_desc_t md = mem.md_;
-    if (is_reshaped_dims) {
-        DNN_SAFE_V(dnnl_memory_desc_create_with_strides(
-                &md, mem.ndims(), mem.dims(), mem_replace.dt(), mem.strides()));
-    }
-    dnnl_memory_desc_destroy(mem_replace.md_);
-    dnnl_memory_desc_clone(&mem_replace.md_, md);
-    SAFE(mem.reorder(mem_replace), WARN);
+        // Case when there're extra unit dims in replaced memory. Memory buffers
+        // are identical but different ndims are restricted in reorder API.
+        // `mem_replace.md_` requires manual adjustment before reordering.
+        const bool is_reshaped_dims = mem_replace.nelems() == mem.nelems()
+                && mem_replace.ndims() != mem.ndims();
+        if (is_reshaped_dims) {
+            dnnl_memory_desc_t new_replace_md {};
+            DNN_SAFE_V(dnnl_memory_desc_create_with_strides(&new_replace_md,
+                    mem.ndims(), mem.dims(), mem_replace.dt(), mem.strides()));
+            dnnl_memory_desc_destroy(mem_replace.md_);
+            dnnl_memory_desc_clone(&mem_replace.md_, new_replace_md);
+            SAFE(mem.reorder(mem_replace), WARN);
+            dnnl_memory_desc_destroy(new_replace_md);
+            break;
+        }
 
-    if (is_reshaped_dims) dnnl_memory_desc_destroy(md);
+        // Non of valid cases were identified.
+        SAFE(FAIL, WARN);
+    } while (false);
+
     return OK;
 }
 

@@ -227,6 +227,8 @@ private:
         } else if (send_.is_a64()) {
             *lsc_spec |= get_cache_settings(send_, host->hw_info());
             if (send_.is_load() || send_.is_prefetch()) {
+                if (host->hw_info() >= ngen::HW::XE3P_35_10)
+                    *lsc_spec |= ngen::DataSpecLSC::createOverfetch();
                 host->load.ugm(mod, data, *lsc_spec, host->A64, header);
             } else if (send_.is_store()) {
                 host->store.ugm(mod, *lsc_spec, host->A64, header, data);

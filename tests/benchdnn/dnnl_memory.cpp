@@ -257,6 +257,35 @@ size_t dnn_mem_t::size(int index) const {
     return dnnl_memory_desc_get_size_v2(md_, index);
 }
 
+int64_t dnn_mem_t::nelems(bool with_padded_dims) const {
+    const auto &_dims = with_padded_dims ? padded_dims() : dims();
+    if (ndims() == 0) return 0;
+
+    int64_t n = 1;
+    for (int i = 0; i < ndims(); ++i)
+        n *= _dims[i];
+    return n;
+}
+
+bool dnn_mem_t::is_dense() const {
+    int64_t largest_stride = 1;
+    int largest_stride_idx = 0;
+    int64_t dims_product = 1;
+    bool has_unit_stride = false;
+    for (int i = 0; i < ndims(); ++i) {
+        if (dims()[i] == 0) continue;
+
+        if (strides()[i] >= largest_stride && dims()[i] != 1) {
+            largest_stride = strides()[i];
+            largest_stride_idx = i;
+        }
+        if (strides()[i] == 1) has_unit_stride = true;
+        dims_product *= dims()[i];
+    }
+    return has_unit_stride
+            && (dims_product / dims()[largest_stride_idx] == largest_stride);
+}
+
 bool dnn_mem_t::is_sparse_md() const {
     return query_md_sparse_encoding(md_) != dnnl_sparse_encoding_undef;
 }

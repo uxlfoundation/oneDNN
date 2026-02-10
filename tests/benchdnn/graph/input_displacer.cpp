@@ -656,6 +656,24 @@ int partition_data_displacer_t::displace_input_data(size_t lt_id,
             break;
         }
 
+        // Case when there're non-dense strides in `mem.md_` leading to "holes"
+        // in the data. To avoid dealing with all kinds of strides,
+        // `mem_replace` was filled as regular dense-strided memory letting a
+        // reorder to handle dense to srided data conversion.
+        const bool has_non_dense_strides
+                = !mem.is_dense() && mem_replace.is_dense();
+        if (has_non_dense_strides) {
+            dnnl_memory_desc_t new_replace_md {};
+            DNN_SAFE_V(dnnl_memory_desc_create_with_strides(&new_replace_md,
+                    mem.ndims(), mem.dims(), mem_replace.dt(),
+                    mem_replace.strides()));
+            dnnl_memory_desc_destroy(mem_replace.md_);
+            dnnl_memory_desc_clone(&mem_replace.md_, new_replace_md);
+            SAFE(mem.reorder(mem_replace), WARN);
+            dnnl_memory_desc_destroy(new_replace_md);
+            break;
+        }
+
         // Non of valid cases were identified.
         SAFE(FAIL, WARN);
     } while (false);
@@ -755,6 +773,10 @@ int partition_data_displacer_t::gen_fixed_set_filling(dnn_mem_t &mem,
         res_t *res) const {
 
     dnn_mem_t m(md, get_test_engine(), /* prefill = */ false);
+    if (!m.is_dense()) {
+        m = dnn_mem_t(query_md_ndims(md), query_md_dims(md), dnnl_f32, tag::abx,
+                get_test_engine(), /* prefill = */ false);
+    }
     const int64_t nelems = m.nelems();
 
     BENCHDNN_PRINT(6, "%s\n", fill_cfg.print_verbose().c_str());
@@ -791,6 +813,10 @@ int partition_data_displacer_t::gen_causal_mask_filling(
         dnn_mem_t &mem, const_dnnl_memory_desc_t md, res_t *res) const {
 
     dnn_mem_t tmp_mem(md, get_test_engine(), /* prefill = */ false);
+    if (!tmp_mem.is_dense()) {
+        tmp_mem = dnn_mem_t(query_md_ndims(md), query_md_dims(md), dnnl_f32,
+                tag::abx, get_test_engine(), /* prefill = */ false);
+    }
 
     const int ndims = query_md_ndims(md);
     assert(ndims >= 2); // This was checked at displacer initialization.
@@ -819,6 +845,10 @@ int partition_data_displacer_t::gen_softmax_stats_filling(
         res_t *res) const {
 
     dnn_mem_t m(md, get_test_engine(), /* prefill = */ false);
+    if (!m.is_dense()) {
+        m = dnn_mem_t(query_md_ndims(md), query_md_dims(md), dnnl_f32, tag::abx,
+                get_test_engine(), /* prefill = */ false);
+    }
 
     logical_tensor::dims softmax_src_shape = main_op.in_lts_[0].shape_;
     logical_tensor::dims softmax_stats_shape = main_op.in_lts_[1].shape_;

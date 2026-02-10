@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2025 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -1121,9 +1121,13 @@ status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
         int k_blks = div_up(K, b.k_blk);
         int parallel_work = B * m_blks * k_blks;
         int blk_per_bt = m_blks * k_blks;
-        int nt = std::min(pd()->mm_parallel_work, num_threads);
         auto tmp_src = src_b;
-
+        // If parallel_work == 1, we limit num threads to 1 as parallel(1, ...)
+        // does not create a parallel section. We do not limit number of threads
+        // for case 1 < parallel_work_amount_ < dnnl_get_max_threads() to avoid
+        // potential overhead on spawning different number of OMP threads from
+        // layer to layer.
+        int nt = parallel_work > 1 ? num_threads : 1;
         parallel(nt, [&](const int ithr, const int nthr) {
             int start {0}, end {0};
             balance211(parallel_work, nt, ithr, start, end);
@@ -1227,12 +1231,10 @@ status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
         int n_blks = div_up(N, d.n_blk);
         int parallel_work = B * n_blks * k_blks;
         int blk_per_bt = n_blks * k_blks;
-        int nt = std::min(pd()->mm_parallel_work, num_threads);
-
+        int nt = parallel_work > 1 ? num_threads : 1;
         parallel(nt, [&](const int ithr, const int nthr) {
             int start {0}, end {0};
             balance211(parallel_work, nt, ithr, start, end);
-
             int bt = start / blk_per_bt;
             int bs = start % blk_per_bt;
             int nobl = end - start;
@@ -1361,7 +1363,7 @@ status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
         int num_b_blocks = div_up(N, (b.n_blk * b.ld_block));
         int ktail = (b.k_tail == 0) ? 0 : 1;
         int parallel_work = B * num_a_blocks;
-        int nt = std::min(num_threads, pd()->mm_parallel_work);
+        int nt = parallel_work > 1 ? num_threads : 1;
         if (b.zp_type_b != jit_int8_broadcast_t::none)
             parallel(nt, [&](const int ithr, const int nthr) {
                 int start {0}, end {0};
@@ -1404,6 +1406,7 @@ status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
             });
 
         parallel_work = B * num_b_blocks;
+        nt = parallel_work > 1 ? num_threads : 1;
         if (b.zp_type_a != jit_int8_broadcast_t::none)
             parallel(nt, [&](const int ithr, const int nthr) {
                 int start {0}, end {0};
@@ -1475,8 +1478,7 @@ status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
     num_b_blocks = div_up(N, n_block_sz);
     int ktail = (b.k_tail == 0) ? 0 : 1;
     int parallel_work = pd()->mm_parallel_work;
-    int nt = std::min(num_threads, parallel_work);
-
+    int nt = parallel_work > 1 ? num_threads : 1;
     parallel(nt, [&](const int ithr, const int nthr) {
         int start {0}, end {0};
         balance211(parallel_work, nt, ithr, start, end);

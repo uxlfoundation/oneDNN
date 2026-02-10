@@ -147,7 +147,7 @@ GEMMOptions GEMMOptions::transpose() const {
 
 Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams sizes,
                    const GEMMProblem &problem_, const std::vector<StrategyRequirement> &reqs_,
-                   void (*strategyAdjuster)(GEMMStrategy &strategy), SelectionObserver *observer)
+                   StrategyAdjuster strategyAdjuster, SelectionObserver *observer)
 {
     bool transC = !isColMajor(problem_.C.layout);
 

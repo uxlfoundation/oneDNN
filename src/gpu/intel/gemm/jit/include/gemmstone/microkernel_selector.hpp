@@ -50,9 +50,10 @@ struct GEMMOptions {
 };
 
 /* Main entrypoint for microkernel auto-selection */
+using StrategyAdjuster = std::function<void(GEMMStrategy&)>;
 Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams sizes, const GEMMProblem &problem,
                                      const std::vector<StrategyRequirement> &reqs = std::vector<StrategyRequirement>(),
-                                     void (*strategyAdjuster)(GEMMStrategy &strategy) = nullptr, SelectionObserver *observer = nullptr);
+                                     StrategyAdjuster strategyAdjuster = {}, SelectionObserver *observer = nullptr);
 
 /* Helpers */
 static inline int alignmentForLD(int ld)

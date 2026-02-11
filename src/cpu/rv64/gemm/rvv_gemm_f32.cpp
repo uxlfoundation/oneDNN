@@ -216,7 +216,6 @@ struct kernel_mxn_impl<isTransA, isTransB, 4> {
     }
 };
 
-
 template <bool isTransA, bool isTransB>
 struct kernel_mxn_impl<isTransA, isTransB, 7> {
     static void execute(dim_t K, const float *A, dim_t lda, const float *B,
@@ -468,12 +467,12 @@ void kernel_mxn(dim_t K, const float *A, const dim_t lda, const float *B,
             kernel_mxn_impl<isTransA, isTransB, 4>::execute(
                     K, A, lda, B, ldb, C, ldc, alpha, beta, ithr);
             break;
-                case 7:
+        case 7:
             kernel_mxn_impl<isTransA, isTransB, 7>::execute(
                     K, A, lda, B, ldb, C, ldc, alpha, beta, ithr);
             break;
 
-case 8:
+        case 8:
             kernel_mxn_impl<isTransA, isTransB, 8>::execute(
                     K, A, lda, B, ldb, C, ldc, alpha, beta, ithr);
             break;
@@ -499,16 +498,22 @@ void block_ker(const dim_t M, const dim_t N, const dim_t K, const float *A,
     dim_t Nu = rnd_dn(N, n_unroll);
     dim_t Mu = rnd_dn(M, m_unroll);
 
-    // JIT-optimized specialization for the most important case:
+    // JIT-optimized specialization for a small-N path:
     //   isTransA = false, isTransB = false, n_unroll = 7.
+    // Keep it conservative for large-N to avoid cache/tile pressure regressions.
     const dim_t jit_n_unroll = 7;
+    const dim_t jit_n_max = 256;
     const bool use_jit_ker = do_copy && !isTransA && !isTransB
-            && (m_unroll == 16 || m_unroll == 32 || m_unroll == 64 || m_unroll == 128)
-            && (Nu >= jit_n_unroll);
+            && (m_unroll == 16 || m_unroll == 32 || m_unroll == 64
+                    || m_unroll == 128)
+            && (Nu >= jit_n_unroll) && (Nu <= jit_n_max) && (K >= 4);
+
+    dim_t Nu_main = Nu;
 
     if (do_copy) {
         if (use_jit_ker) {
             const dim_t Nu_jit = rnd_dn(Nu, jit_n_unroll);
+            Nu_main = Nu_jit;
             for (dim_t i = 0; i < Mu; i += m_unroll) {
                 const float *a = &A[i]; // !isTransA guaranteed by use_jit_ker
                 // Pack A for this i-tile once; ws layout is [k][m_unroll]
@@ -516,21 +521,15 @@ void block_ker(const dim_t M, const dim_t N, const dim_t K, const float *A,
 
                 // Main N-block handled by mx7 JIT kernel
                 for (dim_t j = 0; j < Nu_jit; j += jit_n_unroll) {
-                    const float *b = &B[j * ldb]; // !isTransB guaranteed by use_jit_ker
-                    jit_rvv_gemm_kernel(ws, b, &C[i + j * ldc], m_unroll, ldb, ldc,
-                            K, alpha, beta, m_unroll);
-                }
-
-                // Remainder columns (Nu_jit..Nu) handled by the generic packed-A kernel
-                for (dim_t j = Nu_jit; j < Nu; j += n_unroll) {
-                    const float *b = &B[j * ldb];
-                    kernel_mxn<false, false>(K, ws, m_unroll, b, ldb,
-                            &C[i + j * ldc], ldc, alpha, beta, ithr);
+                    const float *b = &B[j
+                            * ldb]; // !isTransB guaranteed by use_jit_ker
+                    jit_rvv_gemm_kernel(ws, b, &C[i + j * ldc], m_unroll, ldb,
+                            ldc, K, alpha, beta, m_unroll);
                 }
             }
         } else {
             for (dim_t i = 0; i < Mu; i += m_unroll) {
-                for (dim_t j = 0; j < Nu; j += n_unroll) {
+                for (dim_t j = 0; j < Nu_main; j += n_unroll) {
                     const float *b = isTransB ? &B[j] : &B[j * ldb];
                     const float *a = isTransA ? &A[i * lda] : &A[i];
                     if (j == 0) { copy_A(isTransA, K, a, lda, ws); }
@@ -541,17 +540,10 @@ void block_ker(const dim_t M, const dim_t N, const dim_t K, const float *A,
         }
     } else {
         if (use_jit_ker) {
-            for (dim_t i = 0; i < Mu; i += m_unroll) {
-                for (dim_t j = 0; j < Nu; j += n_unroll) {
-                    const float *b = isTransB ? &B[j] : &B[j * ldb];
-                    const float *a = isTransA ? &A[i * lda] : &A[i];
-                    jit_rvv_gemm_kernel(a, b, &C[i + j * ldc], lda, ldb, ldc, K,
-                            alpha, beta, m_unroll);
-                }
-            }
+            // JIT path requires packed A, so keep it in do_copy branch only.
         } else {
             for (dim_t i = 0; i < Mu; i += m_unroll) {
-                for (dim_t j = 0; j < Nu; j += n_unroll) {
+                for (dim_t j = 0; j < Nu_main; j += n_unroll) {
                     const float *b = isTransB ? &B[j] : &B[j * ldb];
                     const float *a = isTransA ? &A[i * lda] : &A[i];
                     kernel_mxn<isTransA, isTransB>(K, a, lda, b, ldb,
@@ -563,7 +555,7 @@ void block_ker(const dim_t M, const dim_t N, const dim_t K, const float *A,
 
     // tail processing: columns Nu to N (vectorized over i for contiguous C access)
     // Process all M rows for the remaining (N-Nu) columns
-    for (dim_t j = Nu; j < N; j++) {
+    for (dim_t j = Nu_main; j < N; j++) {
         float *c_ptr = &C[j * ldc];
         const float *b_col = isTransB ? &B[j] : &B[j * ldb];
 
@@ -602,7 +594,7 @@ void block_ker(const dim_t M, const dim_t N, const dim_t K, const float *A,
     if (Mu < M) {
         const dim_t m_tail = M - Mu;
 
-        for (dim_t j = 0; j < Nu; j++) {
+        for (dim_t j = 0; j < Nu_main; j++) {
             float *c_ptr = &C[Mu + j * ldc];
             const float *b_col = isTransB ? &B[j] : &B[j * ldb];
 

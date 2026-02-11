@@ -1354,6 +1354,16 @@ inline bool any_memory_desc_host_scalar(const memory_desc_t *md) {
     return md != nullptr && md->format_kind == format_kind::host_scalar;
 }
 
+inline status_t safe_dim_to_int(int &dst, dim_t src) {
+    // TODO: should DNNL_RUNTIME_DIM_VAL be converted to DNNL_RUNTIME_S32_VAL?
+    if ((src <= INT_MAX && src >= INT_MIN) || is_runtime_value(src)) {
+        dst = static_cast<int>(src);
+        return status::success;
+    }
+
+    return status::unimplemented;
+}
+
 } // namespace impl
 } // namespace dnnl
 

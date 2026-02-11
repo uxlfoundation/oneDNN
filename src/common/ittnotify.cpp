@@ -90,7 +90,7 @@ void primitive_task_start(primitive_kind_t kind) {
         __itt_task_begin(itt_domain(), __itt_null, __itt_null,
                 prim_kind_itt_strings[kind_idx]);
     }
-    thread_primitive_kind = kind;
+    // thread_primitive_kind = kind;
 }
 
 primitive_kind_t primitive_task_get_current_kind() {

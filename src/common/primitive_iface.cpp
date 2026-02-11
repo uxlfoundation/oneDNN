@@ -89,15 +89,25 @@ status_t primitive_create(primitive_iface_t **primitive_iface,
 
 status_t primitive_execute(
         const primitive_iface_t *primitive_iface, exec_ctx_t &ctx) {
-    auto stream = ctx.stream();
+    // auto stream = ctx.stream();
     status_t status = success;
 
+    static double ms_pd_info = 0;
+    static double ms_task_start = 0;
+    static double ms_task_end = 0;
 #if defined(DNNL_ENABLE_ITT_TASKS)
     const bool enable_itt = itt::get_itt(itt::__itt_task_level_low);
+    auto ms0 = get_msec();
+    auto ms1 = get_msec();
+    ms_pd_info += ms1 - ms0;
+    auto ms2 = get_msec();
     if (enable_itt)
         itt::primitive_task_start(primitive_iface->pd()->impl()->kind());
+    auto ms3 = get_msec();
+    ms_task_start += ms3 - ms2;
 #endif
 
+/*
     if (get_verbose(verbose_t::exec_profile,
                 prim_kind2_comp_kind(primitive_iface->pd()->impl()->kind()))) {
         bool block_on_wait = true;
@@ -143,10 +153,15 @@ status_t primitive_execute(
     } else {
         status = stream->enqueue_primitive(primitive_iface, ctx);
     }
-
+*/
 #if defined(DNNL_ENABLE_ITT_TASKS)
+    auto ms4 = get_msec();
     if (enable_itt) itt::primitive_task_end();
+    auto ms5 = get_msec();
+    ms_task_end += ms5 - ms4;
 #endif
+    printf("pd_info:%g  task_start:%g task_end=%g\n", ms_pd_info, ms_task_start,
+            ms_task_end);
 
     if (msan_enabled) unpoison_outputs(ctx.args());
 

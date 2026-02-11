@@ -634,7 +634,8 @@ inline int measure_perf_aggregate(timer::timer_t &t,
     std::vector<cold_cache_t> cold_cache(num_streams);
 
     // Nvidia/AMD don't support profiling.
-    const bool use_profiling = is_gpu() && !is_nvidia_gpu() && !is_amd_gpu();
+    const bool use_profiling
+            = false; //is_gpu() && !is_nvidia_gpu() && !is_amd_gpu();
 
     for (size_t j = 0; j < v_stream.size(); j++) {
         // Warm-up run, this is not measured due to possibility the associated

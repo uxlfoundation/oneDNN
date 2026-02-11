@@ -1522,13 +1522,13 @@ status_t jit_uni_i8i8_pooling_fwd_ker_t<isa>::init_post_ops_conf(
         jpp.post_ops = post_ops;
 
         using namespace injector;
-        const bool po_ok = post_ops_ok(
-                post_ops_ok_args_t(isa, {binary, eltwise}, post_ops, &dst_d,
-                        false /*sum_at_pos_0_only*/,
-                        false /*sum_requires_scale_one*/,
-                        false /*sum_requires_zp_zero*/,
-                        false /*sum_requires_same_params*/,
-                        get_supported_bcast_strategies()));
+        const bool po_ok = post_ops_ok(post_ops_ok_args_t(isa,
+                {binary, eltwise}, post_ops, &dst_d,
+                false /*sum_at_pos_0_only*/,
+                false /*sum_requires_scale_one*/,
+                false /*sum_requires_zp_zero*/,
+                false /*sum_requires_same_params*/,
+                get_supported_bcast_strategies()));
         if (!po_ok) return status::unimplemented;
         return status::success;
     }

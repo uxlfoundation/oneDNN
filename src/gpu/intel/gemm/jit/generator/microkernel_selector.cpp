@@ -127,6 +127,7 @@ InterfaceHandler GEMMOptions::generateInterface(HW hw) const {
     interface.newArgument("h0", DataType::d);
     interface.newArgument("local_id_m", DataType::d);
     interface.newArgument("local_id_n", DataType::d);
+    if (kParallelLocal)    interface.newArgument("local_id_k", DataType::d);
     if (slmPtr)            interface.newArgument("slm_base", ExternalArgumentType::LocalPtr);
     if (scaleA)            interface.newArgument("a_scale_ptr", ExternalArgumentType::GlobalPtr);
     if (offsetA)           interface.newArgument("ao_ptr", ExternalArgumentType::GlobalPtr);

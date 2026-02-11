@@ -955,6 +955,18 @@ status_t brdgmm_blocking(brgemm_desc_t *brg) {
     return status::success;
 }
 
+/** assigns dimension to int with range check */
+status_t safe_dim_to_int(int &dst, dim_t src) {
+    assert(src >= 0 || is_runtime_value(src));
+    // TODO: should DNNL_RUNTIME_DIM_VAL be converted to DNNL_RUNTIME_S32_VAL?
+    if ((src <= INT_MAX && src >= 0) || is_runtime_value(src)) {
+        dst = static_cast<int>(src);
+        return status::success;
+    }
+
+    return status::unimplemented;
+}
+
 status_t init_brgemm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
         brgemm_batch_kind_t type, impl::data_type_t dt_a,
         impl::data_type_t dt_b, brgemm_layout_t layout, float alpha, float beta,
@@ -1003,23 +1015,19 @@ status_t init_brgemm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
     brg->req_s8s8_compensation = brg->is_int8 && brg->dt_a == data_type::s8
             && !isa_has_s8s8(brg->isa_impl);
 
-    brg->LDA = (brg->is_row_major()) ? static_cast<int>(LDA)
-                                     : static_cast<int>(LDB);
+    CHECK(safe_dim_to_int(brg->LDA, (brg->is_row_major()) ? LDA : LDB));
     brg->is_runtime_lda = (brg->is_row_major()) ? is_runtime_value(LDA)
                                                 : is_runtime_value(LDB);
-    brg->LDB = (brg->is_row_major()) ? static_cast<int>(LDB)
-                                     : static_cast<int>(LDA);
+    CHECK(safe_dim_to_int(brg->LDB, (brg->is_row_major()) ? LDB : LDA));
     brg->is_runtime_ldb = (brg->is_row_major()) ? is_runtime_value(LDB)
                                                 : is_runtime_value(LDA);
-    brg->LDC = static_cast<int>(LDC);
-    brg->LDD = static_cast<int>(LDC);
+    CHECK(safe_dim_to_int(brg->LDC, LDC));
+    CHECK(safe_dim_to_int(brg->LDD, LDC));
     brg->is_runtime_ldc = brg->is_runtime_ldd = is_runtime_value(LDC);
 
-    brg->bcast_dim
-            = (brg->is_row_major()) ? static_cast<int>(M) : static_cast<int>(N);
-    brg->load_dim
-            = (brg->is_row_major()) ? static_cast<int>(N) : static_cast<int>(M);
-    brg->reduce_dim = static_cast<int>(K);
+    CHECK(safe_dim_to_int(brg->bcast_dim, (brg->is_row_major()) ? M : N));
+    CHECK(safe_dim_to_int(brg->load_dim, (brg->is_row_major()) ? N : M));
+    CHECK(safe_dim_to_int(brg->reduce_dim, K));
 
     brg->bd_block2 = 0;
     brg->bdb2 = 0;
@@ -1078,12 +1086,12 @@ status_t init_brdgmm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
 
     brg->is_dgmm = true;
 
-    brg->LDA = static_cast<int>(LDA);
-    brg->LDC = static_cast<int>(LDC);
-    brg->LDD = static_cast<int>(LDC);
+    CHECK(safe_dim_to_int(brg->LDA, LDA));
+    CHECK(safe_dim_to_int(brg->LDC, LDC));
+    CHECK(safe_dim_to_int(brg->LDD, LDC));
 
-    brg->bcast_dim = M;
-    brg->load_dim = N;
+    CHECK(safe_dim_to_int(brg->bcast_dim, M));
+    CHECK(safe_dim_to_int(brg->load_dim, N));
 
     return status::success;
 }

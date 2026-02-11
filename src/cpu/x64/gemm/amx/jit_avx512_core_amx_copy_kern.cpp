@@ -502,8 +502,7 @@ jit_avx512_core_amx_copy_kern_t::jit_avx512_core_amx_copy_kern_t(
     , is_a_(is_a)
     , is_trans_(is_trans)
     , size_(isize)
-    , isize_(isize)
-    , arg_b_(0) {
+    , isize_(isize) {
 
     assert(utils::one_of(isize_, 2, 1));
     assert(isize_ == size_);

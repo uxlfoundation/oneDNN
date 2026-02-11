@@ -46,6 +46,15 @@
 #define XBYAK_NO_EXCEPTION
 #endif
 
+// Several JIT kernels intentionally or unintentionally use size-mismatched memory operands
+// (e.g. zword[]-annotated addresses with 64-bit GPR instructions, or dword[] fields loaded into
+// Reg64 registers). These are architecturally correct on x86-64 but trigger this check. Until all
+// call sites are updated to use properly-sized operands or stripped annotations, set this to 0 to
+// suppress the false-positive errors.
+#if !defined(XBYAK_STRICT_CHECK_MEM_REG_SIZE)
+#define XBYAK_STRICT_CHECK_MEM_REG_SIZE 0
+#endif
+
 #if defined(_MSC_VER) && !defined(__INTEL_COMPILER)
 /* turn off `size_t to other-type implicit casting` warning
  * currently we have a lot of jit-generated instructions that

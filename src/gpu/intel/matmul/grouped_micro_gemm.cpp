@@ -88,6 +88,7 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
     opts.scaleB = !pd()->attr()->scales_.has_default_values(DNNL_ARG_SRC);
     opts.offsetB = !pd()->attr()->zero_points_.has_default_values(DNNL_ARG_SRC);
     opts.slmPtr = true;
+    opts.kParallelLocal = true;
 
     if (opts.scaleA) {
         auto wei_scales = pd()->attr()->scales_.get(DNNL_ARG_WEIGHTS);
@@ -457,13 +458,25 @@ status_t grouped_micro_gemm_t::execute(const exec_ctx_t &ctx) const {
 
     size_t sg_per_wg_m = gemm.getSetting("sg_per_wg_m");
     size_t sg_per_wg_n = gemm.getSetting("sg_per_wg_n");
-    size_t sg_tile_m = gemm.getSetting("sg_tile_m");
-    size_t sg_tile_n = gemm.getSetting("sg_tile_n");
+    size_t sg_per_wg_k = gemm.getSetting("sg_per_wg_k");
+    size_t wg_tile_m = gemm.getSetting("wg_tile_m");
+    size_t wg_tile_n = gemm.getSetting("wg_tile_n");
 
     // Use total_tokens as upper bound for M dimension
-    compute::range_t lws = {sg_per_wg_m * pd_->sg_size_, sg_per_wg_n, 1};
-    compute::range_t gws = {utils::div_up(n, lws[0]) * lws[0],
-            utils::div_up(m_all, lws[1] * sg_tile_n) * lws[1], num_groups};
+    compute::range_t lws = compute::range_t::one(3);
+    lws[0] *= pd()->sg_size_;
+
+    lws[0] *= sg_per_wg_m;
+    lws[1] *= sg_per_wg_n;
+    lws[2] *= sg_per_wg_k;
+
+    compute::range_t gws = lws;
+    // Swap wg_tile_[mn]_ for col-major vs row-major representations
+    gws[0] *= utils::div_up(n, wg_tile_m);
+    gws[1] *= utils::div_up(m_all, wg_tile_n);
+    gws[2] *= num_groups;
+    //std::cout << "LWS: " << lws.str() << std::endl;
+    //std::cout << "GWS: " << gws.str() << std::endl;
 
     return parallel_for(ctx, compute::nd_range_t(gws, lws), kernel_, arg_list);
 }

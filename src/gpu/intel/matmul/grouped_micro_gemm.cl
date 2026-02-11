@@ -112,6 +112,7 @@ grouped_micro_gemm(const global SRC_DATA_T *src, int ldsrc,
 
     int sg_i = sub_group_broadcast(get_local_id(0) / SUBGROUP_SIZE, 0);
     int sg_j = sub_group_broadcast(get_local_id(1), 0);
+    int sg_k = sub_group_broadcast(get_local_id(2), 0);
 
     unsigned long wg_i0 = get_group_id(0) * ugemm_grouped_wg_tile_m;
     unsigned long wg_j0 = get_group_id(1) * ugemm_grouped_wg_tile_n;
@@ -142,9 +143,12 @@ grouped_micro_gemm(const global SRC_DATA_T *src, int ldsrc,
 #endif
 
     ugemm_grouped_c_type c_tile = ugemm_grouped(wei, ldwei, src, ldsrc, n, m, k,
-            wg_i0, wg_j0, 0, sg_i, sg_j,
+            wg_i0, wg_j0, 0, sg_i, sg_j, sg_k,
             slm WEI_ATTR_SCALE_ARGS WEI_ATTR_ZP_ARGS WEI_ATTR_LD_ARGS
                     SRC_ATTR_SCALE_ARGS SRC_ATTR_ZP_ARGS SRC_ATTR_LD_ARGS);
+
+    if (sg_k > 0) return;
+
 #if WITH_BIAS
     bias += batch * n;
     bias_tile_type bias_tile;

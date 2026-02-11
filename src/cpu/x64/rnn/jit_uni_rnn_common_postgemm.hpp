@@ -46,12 +46,6 @@ struct jit_uni_rnn_postgemm_t : public jit_generator_t {
         , cstate_dt_size_(types::data_type_size(rnn.src_iter_c_dt))
         , is_avx512(mayiuse(avx512_core))
         , is_avx2(mayiuse(avx2))
-        , dscale_off_addr(0)
-        , dshift_off_addr(0)
-        , ymm_perm_mask_addr(0)
-        , zmm_perm_mask_addr(0)
-        , zero_addr(0)
-        , u8_saturation_addr(0)
         , weights_scales_reg(r13)
         , qtable(r14)
         // implementations avoids to preserve Vmm(0) because of potential

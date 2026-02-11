@@ -61,7 +61,7 @@ Xbyak::Address jit_prelu_forward_kernel_t::data_ptr(int arg_num, size_t offt) {
         case DNNL_ARG_DST: return get_addr(reg_dst_, dst_dt_);
         default: assert(!"unsupported arg_num"); break;
     }
-    return Xbyak::Address(0);
+    return Xbyak::Address {};
 }
 
 bool jit_prelu_forward_kernel_t::any_tensor_bf16() const {

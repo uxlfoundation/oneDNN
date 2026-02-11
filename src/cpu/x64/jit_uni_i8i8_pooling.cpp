@@ -167,20 +167,8 @@ struct jit_uni_i8i8_pooling_fwd_ker_t : public jit_generator_t {
     };
 
     inline size_t get_offset_dst(int jj, int ll) const {
-        size_t offset = 0;
-        switch (jpp.alg) {
-            case pooling_max: {
-                offset = jj * jpp.c_block * sizeof_dst_dt();
-                break;
-            }
-            case pooling_avg_include_padding:
-            case pooling_avg_exclude_padding: {
-                offset = (ll * (jpp.c_block / max_num_ll) + jj * jpp.c_block)
-                        * sizeof_dst_dt();
-                break;
-            }
-            default: assert(!"unsupported pooling algorithm");
-        }
+        size_t offset = (ll * (jpp.c_block / max_num_ll) + jj * jpp.c_block)
+                * sizeof_dst_dt();
         return offset;
     }
 

@@ -98,8 +98,8 @@ int jit_brgemm_ip_conf_t::get_os_block(
         max_os_block = enable_128_os_blocking ? 128 : 64;
 
         const int max_oc_block = 64;
-        int min_nb_os = div_up(jbgp.os, max_os_block);
-        int min_nb_oc = div_up(jbgp.oc, max_oc_block);
+        int min_nb_os = div_up(jbgp.os, (dim_t)max_os_block);
+        int min_nb_oc = div_up(jbgp.oc, (dim_t)max_oc_block);
         const int n_blks_per_thr = 50;
 
         // Shapes that have many blocks per thread don't need to sacrifice
@@ -332,9 +332,9 @@ bool jit_brgemm_ip_conf_t::adjust_thread_balance() const {
     if (IMPLICATION(jbgp.is_wei_layout_any, skip_thread_balancing))
         return false;
 
-    int os_chunks = div_up(jbgp.os, get_os_block(true, false));
+    int os_chunks = div_up(jbgp.os, (dim_t)get_os_block(true, false));
 
-    int nb_oc = div_up(jbgp.oc, get_oc_block(true));
+    int nb_oc = div_up(jbgp.oc, (dim_t)get_oc_block(true));
     int nb_oc_blocking = get_nb_oc_blocking();
     int oc_chunks = div_up(nb_oc, nb_oc_blocking);
 
@@ -429,6 +429,8 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
 
     auto &jbgp = *this;
 
+    if ((dim_t)jbgp.os * jbgp.oc > INT_MAX) return status::unimplemented;
+
     const bool is_amx_int8 = jbgp.is_amx && one_of(jbgp.wei_dt, s8, u8);
     const bool is_amx_xf16
             = jbgp.is_amx && one_of(jbgp.wei_dt, bf16, f16) && !jbgp.is_bf32;
@@ -457,13 +459,13 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
     jbgp.ic_block = (is_amx_int8) ? amx_int8_row
             : (is_amx_xf16)       ? amx_xf16_row
                                   : jbgp.simd_w;
-    jbgp.nb_ic = div_up(jbgp.ic, jbgp.ic_block);
+    jbgp.nb_ic = div_up(jbgp.ic, (dim_t)jbgp.ic_block);
 
     // gemm-based inner product performs better when oc = 1
     if (is_f32_compute && jbgp.oc == 1) return status::unimplemented;
 
     jbgp.oc_block = get_adjusted_oc_block();
-    jbgp.nb_oc = div_up(jbgp.oc, jbgp.oc_block);
+    jbgp.nb_oc = div_up(jbgp.oc, (dim_t)jbgp.oc_block);
     jbgp.nb_oc_blocking = get_nb_oc_blocking();
 
     // Use single a single chunk in oc dimension in case of a single main block
@@ -473,7 +475,7 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
     }
 
     jbgp.os_block = get_os_block(false, false);
-    jbgp.nb_os = div_up(jbgp.os, jbgp.os_block);
+    jbgp.nb_os = div_up(jbgp.os, (dim_t)jbgp.os_block);
 
     jbgp.nb_os_blocking = 1;
     // Work done by each thread is given by:
@@ -613,7 +615,7 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
     } else {
         // Note: Here, ic divided into K_blocks of gemm_batch
         const int ic_blks_per_k = div_up(k_blk, jbgp.ic_block);
-        const int nb_k_blk = div_up(jbgp.ic, k_blk);
+        const int nb_k_blk = div_up(jbgp.ic, (dim_t)k_blk);
         const int max_nb_k_blocking = div_up(max_nb_ic_blocking, ic_blks_per_k);
         int nb_k_blocking = max_div(nb_k_blk, max_nb_k_blocking);
         const bool small_nb_k_blk = nb_k_blk <= max_nb_k_blocking;
@@ -645,7 +647,7 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
         int max_os_block = jbgp.os_block - 1;
         jbgp.os_block = max_div(jbgp.os, max_os_block);
         jbgp.os_block = nstl::max(jbgp.os_block, min_os_block);
-        jbgp.nb_os = div_up(jbgp.os, jbgp.os_block);
+        jbgp.nb_os = div_up(jbgp.os, (dim_t)jbgp.os_block);
         jbgp.nb_os_blocking = max_div(jbgp.nb_os, jbgp.nb_os_blocking);
         os_chunks = div_up(jbgp.nb_os, jbgp.nb_os_blocking);
         other_work = os_chunks * oc_chunks;
@@ -660,7 +662,7 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
     if ((is_amx_xf16 || jbgp.is_bf32) && adjust_thread_balance()) {
         // Adjust oc_block to improve thread balancing
         jbgp.oc_block = get_adjusted_oc_block();
-        jbgp.nb_oc = div_up(jbgp.oc, jbgp.oc_block);
+        jbgp.nb_oc = div_up(jbgp.oc, (dim_t)jbgp.oc_block);
         jbgp.nb_oc_blocking = get_nb_oc_blocking(true);
 
         size_t l2_per_core = platform::get_per_core_cache_size(2);
@@ -673,7 +675,7 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
         // Adjust os_block to improve thread balancing
         if (jbgp.oc <= 16 || src_sz <= l2_per_core) {
             jbgp.os_block = get_os_block(false, true);
-            jbgp.nb_os = div_up(jbgp.os, jbgp.os_block);
+            jbgp.nb_os = div_up(jbgp.os, (dim_t)jbgp.os_block);
         }
     }
 
@@ -710,7 +712,7 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
 
             if (jbgp.oc_block == 64 && bd_block != 6) jbgp.os_block = 6;
             if (jbgp.oc_block == 48 && bd_block != 8) jbgp.os_block = 8;
-            jbgp.nb_os = div_up(jbgp.os, jbgp.os_block);
+            jbgp.nb_os = div_up(jbgp.os, (dim_t)jbgp.os_block);
         }
     }
 
@@ -1289,19 +1291,22 @@ status_t jit_brgemm_ip_conf_t::init_conf_base(cpu_isa_t isa,
     jbgp.is_amx = is_superset(jbgp.isa, avx512_core_amx);
     jbgp.prop_kind = ipd.prop_kind;
     jbgp.ngroups = 1;
-    jbgp.mb = src_d.dims()[0];
+
+    CHECK(safe_dim_to_int(jbgp.mb, src_d.dims()[0]));
     jbgp.os = jbgp.mb;
-    jbgp.oc_without_padding = dst_d.dims()[1];
+    CHECK(safe_dim_to_int(jbgp.oc_without_padding, dst_d.dims()[1]));
     jbgp.oc = jbgp.oc_without_padding;
-    jbgp.ic_without_padding = src_d.dims()[1];
+    CHECK(safe_dim_to_int(jbgp.ic_without_padding, src_d.dims()[1]));
     jbgp.ic = jbgp.ic_without_padding;
-    jbgp.id = (ndims == 5) ? src_d.dims()[2] : 1;
-    jbgp.ih = (ndims < 4) ? 1 : src_d.dims()[ndims - 2];
-    jbgp.iw = (ndims < 3) ? 1 : src_d.dims()[ndims - 1];
+    CHECK(safe_dim_to_int(jbgp.id, (ndims == 5) ? src_d.dims()[2] : 1));
+    CHECK(safe_dim_to_int(jbgp.ih, (ndims < 4) ? 1 : src_d.dims()[ndims - 2]));
+    CHECK(safe_dim_to_int(jbgp.iw, (ndims < 3) ? 1 : src_d.dims()[ndims - 1]));
     jbgp.od = jbgp.oh = jbgp.ow = 1;
-    jbgp.kd = (ndims == 5) ? weights_d.dims()[2] : 1;
-    jbgp.kh = (ndims < 4) ? 1 : weights_d.dims()[ndims - 2];
-    jbgp.kw = (ndims < 3) ? 1 : weights_d.dims()[ndims - 1];
+    CHECK(safe_dim_to_int(jbgp.kd, (ndims == 5) ? weights_d.dims()[2] : 1));
+    CHECK(safe_dim_to_int(
+            jbgp.kh, (ndims < 4) ? 1 : weights_d.dims()[ndims - 2]));
+    CHECK(safe_dim_to_int(
+            jbgp.kw, (ndims < 3) ? 1 : weights_d.dims()[ndims - 1]));
     jbgp.stride_d = jbgp.stride_h = jbgp.stride_w = 1;
 
     if (!everyone_is(1, jbgp.ow, jbgp.oh, jbgp.od))
@@ -1480,11 +1485,21 @@ status_t jit_brgemm_ip_conf_t::init_conf_base(cpu_isa_t isa,
     const auto ic_padded = weights_d.padded_dims()[1];
     const bool is_wei_ic_padded = ic != ic_padded;
     if (!is_wei_ic_padded) {
-        jbgp.ic_without_padding *= jbgp.kd * jbgp.kh * jbgp.kw;
-        jbgp.ic = jbgp.ic_without_padding;
-        jbgp.id = jbgp.ih = jbgp.iw = 1;
-        jbgp.od = jbgp.oh = jbgp.ow = 1;
-        jbgp.kd = jbgp.kh = jbgp.kw = 1;
+        dim_t ic_squashed = jbgp.ic_without_padding;
+        ic_squashed *= jbgp.kd;
+        if (ic_squashed <= INT_MAX) {
+            ic_squashed *= jbgp.kh;
+            if (ic_squashed <= INT_MAX) {
+                ic_squashed *= jbgp.kw;
+                if (ic_squashed <= INT_MAX) {
+                    jbgp.ic_without_padding = static_cast<int>(ic_squashed);
+                    jbgp.ic = jbgp.ic_without_padding;
+                    jbgp.id = jbgp.ih = jbgp.iw = 1;
+                    jbgp.od = jbgp.oh = jbgp.ow = 1;
+                    jbgp.kd = jbgp.kh = jbgp.kw = 1;
+                }
+            }
+        }
     }
 
     return status::success;
@@ -1690,20 +1705,21 @@ void jit_brgemm_ip_fwd_conf_t::choose_loop_order() {
     const int os_chunk_sz = os_block * nb_os_blocking;
     const int oc_chunk_sz = oc_block * nb_oc_blocking;
     const int ic_chunk_sz = ic_block * nb_ic_blocking;
-    const int n_blocks = div_up(work_amount, nthr_oc_mb);
+    const dim_t n_blocks = div_up((dim_t)work_amount, nthr_oc_mb);
     const int n_ic_chunks = div_up(ic_chunks, nthr_ic);
 
-    int oc_span_osc_occ = nstl::min(n_blocks, oc_chunks) * oc_chunk_sz;
-    int os_span_osc_occ = div_up(n_blocks, oc_chunks) * os_chunk_sz;
-    oc_span_osc_occ = nstl::min(oc_span_osc_occ, oc);
-    os_span_osc_occ = nstl::min(os_span_osc_occ, os);
+    dim_t oc_span_osc_occ = nstl::min(n_blocks, (dim_t)oc_chunks) * oc_chunk_sz;
+    dim_t os_span_osc_occ = div_up(n_blocks, oc_chunks) * os_chunk_sz;
+    oc_span_osc_occ = nstl::min(oc_span_osc_occ, (dim_t)oc);
+    os_span_osc_occ = nstl::min(os_span_osc_occ, (dim_t)os);
 
-    int os_span_occ_osc = nstl::min(n_blocks, os_chunks) * os_chunk_sz;
-    int oc_span_occ_osc = div_up(n_blocks, os_chunks) * oc_chunk_sz;
-    os_span_occ_osc = nstl::min(os_span_occ_osc, os);
-    oc_span_occ_osc = nstl::min(oc_span_occ_osc, oc);
+    dim_t os_span_occ_osc = nstl::min(n_blocks, (dim_t)os_chunks) * os_chunk_sz;
+    dim_t oc_span_occ_osc = div_up(n_blocks, os_chunks) * oc_chunk_sz;
+    os_span_occ_osc = nstl::min(os_span_occ_osc, (dim_t)os);
+    oc_span_occ_osc = nstl::min(oc_span_occ_osc, (dim_t)oc);
 
-    int ic_span = nstl::min(n_ic_chunks * ic_chunk_sz, ic);
+    const dim_t ic_span
+            = nstl::min((dim_t)n_ic_chunks * ic_chunk_sz, (dim_t)ic);
 
     auto eff = [](dim_t m, dim_t n, dim_t k) {
         return 2 * m * n * k / float(m * k + n * k + 2 * m * n);

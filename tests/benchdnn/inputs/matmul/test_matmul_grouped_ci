@@ -69,6 +69,7 @@
 # Combined row-wise src + blocked weight scales - u8/s8
 --reset
 --dt=u8:s4:bf16,s8:s4:bf16,u8:s4:bf16
+--wtag=abc,acb
 --grouped=0:4:8,8,8,8
 --attr-scales=src:per_dim_0+wei:per_dim_012:bf16:128x1,src:per_dim_0+wei:per_dim_012:bf16:32x1,src:per_dim_0+wei:per_dim_012:bf16:64x1
 32x512:512x256

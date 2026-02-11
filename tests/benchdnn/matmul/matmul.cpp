@@ -970,9 +970,18 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
                     || (prb->wtag != tag::any && prb->wtag != tag::undef))) {
         const auto &weights_rt_dims = get_runtime_dims(
                 prb->weights_dims(), prb->weights_runtime_dim_mask());
+        // For grouped matmul, weights are 3D [G, K, N] while prb->ndims is 2
+        int wei_ndims = static_cast<int>(prb->weights_dims().size());
+        std::string weights_tag = prb->wtag;
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+        if (prb->sparse_options.get_group_count() != 0) {
+            wei_ndims = 3;
+            if (weights_tag == "any") { weights_tag = "abc"; }
+        }
+#endif
         const auto wei_md
-                = dnn_mem_t::init_md(prb->ndims, weights_rt_dims.data(),
-                        prb->wei_dt(), prb->wtag, prb->strides[STRIDES_WEI]);
+                = dnn_mem_t::init_md(wei_ndims, weights_rt_dims.data(),
+                        prb->wei_dt(), weights_tag, prb->strides[STRIDES_WEI]);
 
         const auto wei_strides = query_md_strides(wei_md);
         int n_unit_strides = 0;

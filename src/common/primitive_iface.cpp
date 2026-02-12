@@ -114,9 +114,12 @@ status_t primitive_execute(
     const char *pd_info = pd->info();
     auto ms1 = get_msec();
     ms_pd_info += ms1 - ms0;
+    double mss[4] = {0, 0, 0, 0};
+    double *mss_ptr = &mss[0];
     auto ms2 = get_msec();
     if (enable_itt)
-        itt::primitive_task_start(pd->impl()->kind(), pd_info, VERBOSE_exec);
+        itt::primitive_task_start(
+                pd->impl()->kind(), pd_info, VERBOSE_exec, &mss_ptr);
     auto ms3 = get_msec();
     ms_task_start += ms3 - ms2;
 #endif
@@ -170,8 +173,30 @@ status_t primitive_execute(
     auto ms5 = get_msec();
     ms_task_end += ms5 - ms4;
 #endif
-    printf("pd_info:%g  task_start:%g task_end=%g\n", ms_pd_info, ms_task_start,
-            ms_task_end);
+    const auto thread_id_as_string = [&](std::thread::id id) {
+        std::ostringstream ss;
+        ss << id;
+        return ss.str();
+    };
+    std::string id_str = thread_id_as_string(std::this_thread::get_id());
+    static double ms_task_start_prev = 0;
+    static double ms_metadata_prev = 0;
+    static double ms_update_prev = 0;
+    static double ms_domain_prev = 0;
+    static double ms_begin_prev = 0;
+    if (ms_task_start - ms_task_start_prev > 0.05) {
+        printf("[%s] pd_info:%g  task_start:%g/%g (meta:%g/%g upd:%g/%g "
+               "domain:%g/%g begin:%g/%g)  task_end=%g\n",
+                id_str.c_str(), ms_pd_info, ms_task_start, ms_task_start_prev,
+                mss[0], ms_metadata_prev, mss[1], ms_update_prev, mss[2],
+                ms_domain_prev, mss[3], ms_begin_prev, ms_task_end);
+        // exit(1);
+    }
+    ms_task_start_prev = ms_task_start;
+    ms_metadata_prev = mss[0];
+    ms_update_prev = mss[1];
+    ms_domain_prev = mss[2];
+    ms_begin_prev = mss[3];
 
     if (msan_enabled) unpoison_outputs(ctx.args());
 

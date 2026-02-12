@@ -43,7 +43,7 @@ struct GEMMOptions {
     bool scaleA = false;
     bool scaleB = false;
     bool kParallelLocal = false;
-
+    int num_regs = 0;
     GEMMOptions() = default;
 };
 

@@ -119,8 +119,10 @@ struct ukernel_serialized_opts_t
         : localB(opts.localB)
         , slmPtr(opts.slmPtr)
         , scaleA(opts.scaleA)
-        , offsetA(opts.offsetA) {}
+        , offsetA(opts.offsetA)
+        , num_regs(opts.num_regs) {}
     bool localB, slmPtr, scaleA, offsetA;
+    int num_regs;
     uint8_t padding[4] = {0};
 };
 DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(ukernel_serialized_opts_t);

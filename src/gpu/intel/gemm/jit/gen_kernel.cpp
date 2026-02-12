@@ -25,6 +25,8 @@
 #include "gemmstone/../../generator_dsl/kernel_desc.hpp"
 #include "gemmstone/dsl/dsl.hpp"
 #include "gemmstone/generator.hpp"
+#include "gemmstone/kernel_evaluator.hpp"
+#include "gemmstone/kernel_selector.hpp"
 #include "gemmstone/strategy_parser.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/gemm/jit/gen_kernel_db.hpp"
@@ -32,8 +34,6 @@
 #include "gpu/intel/jit/ir/hw.hpp"
 #include "gpu/intel/jit/utils/type_bridge.hpp"
 #include "gpu/intel/utils.hpp"
-#include "kernel_evaluator.hpp"
-#include "kernel_selector.hpp"
 
 namespace dnnl {
 namespace impl {

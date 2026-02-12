@@ -16,6 +16,7 @@
 
 #include "ittnotify.hpp"
 #include "utils.hpp"
+#include "common/profiler.hpp"
 
 #if defined(DNNL_ENABLE_ITT_TASKS)
 #include "dnnl_debug.h"
@@ -67,10 +68,13 @@ __itt_domain *itt_domain(const char *log_kind) {
 
 } // namespace
 
-void primitive_task_start(
-        primitive_kind_t kind, const char *pd_info, const char *log_kind) {
+void primitive_task_start(primitive_kind_t kind, const char *pd_info,
+        const char *log_kind, double *mss[4]) {
     if (kind == primitive_kind::undefined) return;
+    static double ms_domain = 0;
+    auto ms3 = get_msec();
     __itt_domain *pd_domain = itt_domain(log_kind);
+    auto ms4 = get_msec();
 
 #define CASE(x) \
     __itt_string_handle_create(dnnl_prim_kind2str(primitive_kind::x))
@@ -100,6 +104,8 @@ void primitive_task_start(
             CASE(sdpa),
     };
 #undef CASE
+    static double ms_begin = 0;
+    auto ms5 = get_msec();
     int kind_idx = (int)kind;
     assert(kind_idx >= 0);
     if (kind_idx < primitive_kind::internal_only_start) {
@@ -108,10 +114,28 @@ void primitive_task_start(
         __itt_task_begin(pd_domain, __itt_null, __itt_null,
                 prim_kind_itt_strings[kind_idx]);
     }
-    thread_primitive_kind = kind;
+    auto ms6 = get_msec();
+
+    static double ms_meta = 0;
+    static double ms_upd = 0;
+    auto ms0 = get_msec();
     __itt_formatted_metadata_add(pd_domain, thread_primitive_meta_fmt, pd_info);
+    auto ms1 = get_msec();
+    thread_primitive_kind = kind;
     thread_primitive_info = pd_info;
     thread_primitive_log_kind = log_kind;
+    auto ms2 = get_msec();
+    if (!mss) return;
+
+    ms_meta += ms1 - ms0;
+    ms_upd += ms2 - ms1;
+    ms_domain += ms4 - ms3;
+    ms_begin += ms6 - ms5;
+
+    if (mss[0]) { (*mss)[0] = ms_meta; }
+    if (mss[1]) { (*mss)[1] = ms_upd; }
+    if (mss[2]) { (*mss)[2] = ms_domain; }
+    if (mss[3]) { (*mss)[3] = ms_begin; }
 }
 
 primitive_kind_t primitive_task_get_current_kind() {

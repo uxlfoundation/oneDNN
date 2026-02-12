@@ -85,7 +85,7 @@ add_library(${OBJ_LIB} OBJECT ${SOURCES})
 set_property(GLOBAL APPEND PROPERTY DNNL_LIB_DEPS
     $<TARGET_OBJECTS:${OBJ_LIB}>)
 
-include_directories_with_host_compiler_before(${OBJ_LIB} ${ONEDNN_GEMMSTONE_DIR} ${ONEDNN_GEMMSTONE_DIR}/include/gemmstone)
+include_directories_with_host_compiler_before(${OBJ_LIB} ${ONEDNN_GEMMSTONE_DIR})
 
 if(CMAKE_COMPILER_IS_GNUCC)
     # Workaround for LTO bug in GCC 10, 11, 12 (possibly other versions)

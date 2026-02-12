@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2023 Intel Corporation
 * Copyright 2025 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -412,10 +412,15 @@ status_t jit_bf16_matmul_t::execute(const exec_ctx_t &ctx) const {
     int num_b_blocks = div_up(N, (b.n_blk * b.ld_block));
     int ktail = (b.k_tail == 0) ? 0 : 1;
     int parallel_work = num_a_blocks * num_b_blocks;
-
-    parallel(num_threads, [&](const int ithr, const int nthr) {
+    // If parallel_work == 1, we limit num threads to 1 as parallel(1, ...)
+    // does not create a parallel section. We do not limit number of threads
+    // for case 1 < parallel_work_amount_ < dnnl_get_max_threads() to avoid
+    // potential overhead on spawning different number of OMP threads from
+    // layer to layer.
+    int nt = parallel_work > 1 ? num_threads : 1;
+    parallel(nt, [&](const int ithr, const int nthr) {
         int start {0}, end {0};
-        balance211(parallel_work, num_threads, ithr, start, end);
+        balance211(parallel_work, nt, ithr, start, end);
 
         while (start < end) {
 

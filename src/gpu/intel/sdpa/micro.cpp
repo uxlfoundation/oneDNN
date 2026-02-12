@@ -502,7 +502,7 @@ status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
         conf.block_q = (ldq % 4 == 0);
         conf.block_a = (lda % 16 == 0 && v_full);
     } else if (pd->arch() >= compute::gpu_arch_t::xe_hpc
-            && config.unroll_m_vs < 64) {
+            && (config.unroll_m_vs * dst_mdw.data_type_size()) <= 64) {
         auto vbytes = d->values() * val_mdw.data_type_size();
         if (lda % 16 == 0 && vbytes % 4 == 0) conf.block_2d_a = true;
     }

@@ -136,9 +136,31 @@ void Generator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, 
             state.fullK = state.ra.alloc_sub<uint32_t>(getHint(HintType::LongTerm, strategy));
             mov(1, state.fullK, state.inputs.k);
         }
+        
+        if (strategy.kInterleave) {
+            emad(1, state.h0, state.h0, state.lidK, strategy.kInterleaveChunk, strategy, state);
+        } else {
+            emad(1, state.h0, state.h0, k0, state.lidK, strategy, state);
+        }
 
-        emad(1, state.h0, state.h0, k0, state.lidK, strategy, state);
         add(1 | sat, k.ud(), k, -state.h0);
+
+        if (strategy.kInterleave) {
+            // k <- floor(k / (chunk * k local size)) * chunk + min(k % (chunk * k local size), chunk)
+            auto chunk = strategy.kInterleaveChunk;
+            auto wgChunk = chunk * strategy.wg[LoopK];
+            auto temp1 = state.ra.alloc_sub<uint32_t>();
+            auto temp2 = state.ra.alloc_sub<uint32_t>();
+            divDown(temp1, k.ud(), wgChunk, strategy, state);
+            emad(1, temp2, k.ud(), -temp1, wgChunk, strategy, state);
+            emul(1, temp1, temp1, chunk, strategy, state);
+            min_(1, temp2, temp2, chunk);
+            add(1, state.inputs.k.ud(), temp1, temp2);
+
+            state.ra.safeRelease(temp1);
+            state.ra.safeRelease(temp2);
+        }
+
         min_(1, k, k, k0);
         state.threadK0 = k0;
     }

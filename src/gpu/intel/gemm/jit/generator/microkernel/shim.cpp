@@ -254,6 +254,7 @@ std::string generateShim(const Package &package, HostLanguage language,
 
             auto sname = typeName(stypes[i], language, &sizes);
             auto ename = typeName(stypes[i].type, language);
+            auto typedef_name = "_e_" + sname;
             int vlen = divideUp(sizes.blockElements(), options.subgroupSize);
 
             shim << "#ifndef MICRO_DECL_" << sname
@@ -261,10 +262,12 @@ std::string generateShim(const Package &package, HostLanguage language,
                     "#define MICRO_DECL_"
                  << sname
                  << "\n"
+                    "typedef " << ename <<
+                    " __attribute__((ext_vector_type(" << vlen << "))) "
+                 << typedef_name << ";\n"
                     "typedef struct {\n"
                     "    "
-                 << ename;
-            if (vlen > 1) shim << vlen;
+                 << typedef_name << ' ';
             shim << " x[" << sizes.blocks()
                  << "];\n"
                     "} "

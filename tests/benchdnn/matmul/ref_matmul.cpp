@@ -76,12 +76,17 @@ void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
         }
     }
 
-    // For each group compute a separate matmul
-    int64_t offset = 0;
+    std::vector<int64_t> group_offsets(group_count + 1);
+    group_offsets[0] = 0;
     for (int64_t g = 0; g < group_count; g++) {
-        // Number of tokens for this expert
+        group_offsets[g + 1] = group_offsets[g] + M_dims[g];
+    }
+
+    benchdnn_parallel_nd(group_count, [&](int64_t g) {
         const int64_t M_g = M_dims[g];
-        if (M_g == 0) continue;
+        if (M_g == 0) return;
+
+        const int64_t offset = group_offsets[g];
 
         for (int64_t m = 0; m < M_g; m++) {
             const int64_t src_offset = offset + m;
@@ -133,13 +138,10 @@ void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
 
                 // dst: plain [total_M, N], indexed as [(offset + m), n]
                 const int64_t dst_idx = src_offset * N + n;
-                dst_m.set_f32_elem(dst_idx, acc); // todo: dst_offset
+                dst_m.set_f32_elem(dst_idx, acc);
             }
         }
-
-        // Update offset for next iteration
-        offset += M_g;
-    }
+    });
 }
 #endif // DNNL_EXPERIMENTAL_GROUPED_MEMORY
 

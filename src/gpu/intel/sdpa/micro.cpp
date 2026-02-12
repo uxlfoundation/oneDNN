@@ -269,13 +269,34 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
 
     ukernel_params.problem_kq = {problem_kq};
 
+    // Following code calculates the size of host arguments
+    // to calculate exact num of registers required to inform
+    // the micro kernel so it doesn't overwrite them
+    // r0, r4 reserved registers
+    const int xehpg_reg_sz = 32;
+    size_t arg_offset_sz = sizeof(long) * 4; // int64x4_t type
+    // Size of r1 - r3 registers = 96 bytes
+    size_t host_arg_sz = sizeof(char *) * 4
+            + sizeof(int) * 4; // Q, K, V, A, d, q, k, remainder_k
+    host_arg_sz += with_host_scale() ? (sizeof(float) * 2)
+                                     : sizeof(char *); // scale
+    // oword reads 16 bytes, can be 1, 2, 4, 8
+    host_arg_sz += arg_offset_sz * 8; // offsets, k, q, v, dst
+    host_arg_sz += with_attn_mask() ? sizeof(char *) + arg_offset_sz * 2 : 0;
+    printf("total size: %d and remainder padding,%d \n", host_arg_sz,
+            host_arg_sz % 128);
+
+    int num_regs = (arch_ == compute::gpu_arch_t::xe_hpg)
+            ? (host_arg_sz / xehpg_reg_sz) + 2
+            : 8;
+
     /* Set up microkernel options */
     micro::GEMMOptions opts_kq;
     opts_kq.localB = true;
     opts_kq.slmPtr = true;
     opts_kq.scaleA = with_key_scales() && !kq_common_scales;
     opts_kq.offsetA = with_key_zp();
-
+    opts_kq.num_regs = num_regs;
     ukernel_params.opts_kq = {opts_kq};
 
     /* Set up problem size information */
@@ -357,7 +378,7 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     opts_vs.slmPtr = true;
     opts_vs.scaleA = with_value_scales() && !vs_common_scales;
     opts_vs.offsetA = with_value_zp();
-
+    opts_vs.num_regs = num_regs;
     ukernel_params.opts_vs = {opts_vs};
 
     conf.ukernel_config = ukernel_params;

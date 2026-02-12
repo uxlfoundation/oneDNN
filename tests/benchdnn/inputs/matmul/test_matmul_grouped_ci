@@ -1,0 +1,85 @@
+# Grouped GEMM tests
+#
+# Format: --grouped=<dim_idx>:<num_groups>:<group_sizes> MxK:GxKxN
+# Where:
+#   dim_idx      - dimension index to group (0=M, 1=K, 2=N)
+#   num_groups   - number of groups/experts
+#   group_sizes  - comma-separated list of sizes for each group (sum must equal dimension size)
+#   Weights are explicitly 3D: [G, K, N] where G must equal num_groups
+# Aligns with grouped memory descriptor's variable_dim_idx
+#
+# Configurations below cover:
+# - Data types: f32, bf16, f16
+# - Bias: --bia-dt=f32/bf16/f16, --bia_mask=2 (per-expert bias [num_experts, N])
+# - Empty groups (M_g = 0)
+# - Row-wise (per-token) src scales: --attr-scales=src:per_dim_0
+# - Column-wise wei scales: per_dim_02 (scales vary by expert and N, mask = (1<<0) | (1<<2))
+# - Grouped wei scales: per_dim_012:32x1 (grouped along K, mask = (1<<0) | (1<<1) | (1<<2))
+# - Transposed weights: --wtag=acb (weights layout [num_experts, N, K] vs abc [num_experts, K, N])
+
+--reset
+
+# Basic correctness
+--dt=f32:f32:f32,f16:f16:f16,bf16:bf16:bf16
+--wtag=abc,acb
+--batch=shapes_grouped
+
+# Transposed weights with bias - f32
+--reset
+--dt=f32:f32:f32
+--wtag=acb
+--bia-dt=f32 --bia_mask=2
+--batch=shapes_grouped
+
+# Bias + row-wise src scales - f16
+--reset
+--dt=f16:f16:f16
+--wtag=abc,acb
+--bia-dt=f16 --bia_mask=2
+--attr-scales=src:per_dim_0
+--batch=shapes_grouped
+
+# Bias + row-wise src scales - bf16
+--reset
+--dt=bf16:bf16:bf16
+--wtag=abc
+--bia-dt=bf16 --bia_mask=2
+--attr-scales=src:per_dim_0
+--batch=shapes_grouped
+
+# Column-wise weight scales - f32
+--reset
+--dt=f32:f32:f32
+--wtag=abc
+--attr-scales=wei:per_dim_02
+--batch=shapes_grouped
+
+# Combined src + weight scales - f16
+--reset
+--dt=f16:f16:f16
+--wtag=abc,acb
+--attr-scales=src:per_dim_0+wei:per_dim_02
+--batch=shapes_grouped
+
+# Blocked wei scales - u8/s8
+--reset
+--dt=u8:s4:bf16,s8:s4:bf16,u8:u8:bf16
+--wtag=abc
+--grouped=0:4:8,8,8,8
+--attr-scales=wei:per_dim_012:bf16:128x1,wei:per_dim_012:bf16:64x1,wei:per_dim_012:bf16:32x1
+32x512:4x512x256
+
+# Combined row-wise src + blocked weight scales - u8/s8
+--reset
+--dt=u8:s4:bf16,s8:s4:bf16,u8:s4:bf16
+--wtag=abc,acb
+--grouped=0:4:8,8,8,8
+--attr-scales=src:per_dim_0+wei:per_dim_012:bf16:128x1,src:per_dim_0+wei:per_dim_012:bf16:32x1,src:per_dim_0+wei:per_dim_012:bf16:64x1
+32x512:4x512x256
+
+--reset
+--dt=s8:s4:f32
+--wtag=abc,acb
+--grouped=0:4:8,8,8,8
+--attr-scales=src:per_dim_0+wei:per_dim_012:f32:128x1
+32x512:4x512x256

@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
-* Copyright 2024-2025 FUJITSU LIMITED
+* Copyright 2024-2026 FUJITSU LIMITED
 * Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -104,7 +104,7 @@ status_t brdgmm_dw_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
             && one_of(dst_type, bf16, f32);
     const bool is_f32_bf16
             = everyone_is(f32, src_type, dst_type) && wei_type == bf16;
-    const bool is_int8 = one_of(src_type, u8) && wei_type == s8
+    const bool is_int8 = one_of(src_type, s8, u8) && wei_type == s8
             && one_of(dst_type, s32, f32, u8, s8);
 
     auto skip_mask = skip_mask_t::post_ops;

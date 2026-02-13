@@ -71,8 +71,8 @@ status_t primitive_create(primitive_iface_t **primitive_iface,
             = primitive_desc_iface->impl()->kind() != primitive_kind::gemm;
     // double create_start_ms = get_msec();
     if (enable_itt && is_not_gemm) {
-        itt::primitive_task_start(primitive_desc_iface->impl()->kind(),
-                primitive_desc_iface->info(), VERBOSE_create);
+        itt::primitive_task_start(
+                primitive_desc_iface->impl()->kind(), VERBOSE_create);
     }
     // double create_duration_ms = get_msec() - create_start_ms;
 #endif
@@ -100,7 +100,15 @@ status_t primitive_create(primitive_iface_t **primitive_iface,
     //         create_start_ms, create_duration_ms);
 
 #if defined(DNNL_ENABLE_ITT_TASKS)
-    if (enable_itt) itt::primitive_task_end(VERBOSE_create);
+    if (enable_itt) {
+        if (utils::one_of(p_iface.second, cache_state_t::miss,
+                    cache_state_t::primitive_hit,
+                    cache_state_t::nested_primitive_hit)) {
+            itt::primitive_add_formatted_metadata(
+                    primitive_desc_iface->info(), VERBOSE_create);
+        }
+        itt::primitive_task_end(VERBOSE_create);
+    }
 #endif
 
     return safe_ptr_assign((*primitive_iface), p_iface.first);
@@ -114,12 +122,13 @@ status_t primitive_execute(
 
 #if defined(DNNL_ENABLE_ITT_TASKS)
     const bool enable_itt = itt::get_itt(itt::__itt_task_level_low);
-    double exec_start_ms = get_msec();
+    // double exec_start_ms = get_msec();
     if (enable_itt) {
-        itt::primitive_task_start(pd->impl()->kind(), pd->info(), VERBOSE_exec);
+        itt::primitive_task_start(pd->impl()->kind(), VERBOSE_exec);
+        itt::primitive_add_formatted_metadata(pd->info(), VERBOSE_exec);
     }
-    double exec_duration_ms = get_msec() - exec_start_ms;
-    printf("primitive_exec,exec,%f,%f\n", exec_start_ms, exec_duration_ms);
+    // double exec_duration_ms = get_msec() - exec_start_ms;
+    // printf("primitive_exec,exec,%f,%f\n", exec_start_ms, exec_duration_ms);
 #endif
 
     if (get_verbose(verbose_t::exec_profile,

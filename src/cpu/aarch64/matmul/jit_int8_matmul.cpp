@@ -873,28 +873,38 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
     auto b_tag_3d = format_tag::abc;
     auto b_tag_4d = format_tag::abcd;
 
-    if (isa == sve_256) {
-        switch (brg_.ld_block) {
-            case 2: {
-                b_tag_2d = format_tag::BA8b8a;
-                b_tag_3d = format_tag::aCB8c8b;
-                b_tag_4d = format_tag::abDC8d8c;
-                break;
-            }
-            case 4: {
-                b_tag_2d = format_tag::BA16b8a;
-                b_tag_3d = format_tag::aCB16c8b;
-                b_tag_4d = format_tag::abDC16d8c;
-                break;
-            }
-            case 6: {
-                b_tag_2d = format_tag::BA24b8a;
-                b_tag_3d = format_tag::aCB24c8b;
-                b_tag_4d = format_tag::abDC24d8c;
-                break;
-            }
-            default: return status::unimplemented;
+    switch (micro_n) {
+        case 4: {
+            b_tag_2d = format_tag::BA4b8a;
+            b_tag_3d = format_tag::aCB4c8b;
+            b_tag_4d = format_tag::abDC4d8c;
+            break;
         }
+        case 8: {
+            b_tag_2d = format_tag::BA8b8a;
+            b_tag_3d = format_tag::aCB8c8b;
+            b_tag_4d = format_tag::abDC8d8c;
+            break;
+        }
+        case 12: {
+            b_tag_2d = format_tag::BA12b8a;
+            b_tag_3d = format_tag::aCB12c8b;
+            b_tag_4d = format_tag::abDC12d8c;
+            break;
+        }
+        case 16: {
+            b_tag_2d = format_tag::BA16b8a;
+            b_tag_3d = format_tag::aCB16c8b;
+            b_tag_4d = format_tag::abDC16d8c;
+            break;
+        }
+        case 24: {
+            b_tag_2d = format_tag::BA24b8a;
+            b_tag_3d = format_tag::aCB24c8b;
+            b_tag_4d = format_tag::abDC24d8c;
+            break;
+        }
+        default: return status::unimplemented;
     }
 
     switch (dims) {
@@ -905,22 +915,11 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
             if (is_dst_any)
                 VCHECK_BG(memory_desc_init_by_tag(dst_md_, format_tag::ab),
                         VERBOSE_UNSUPPORTED_TAG);
-            if (isa == sve_256) {
-                if (!weights_d.matches_tag(format_tag::ab)) {
-                    brg_.b_reo = false;
-                    VCHECK_BG(memory_desc_init_by_tag(weights_md_, b_tag_2d),
-                            VERBOSE_UNSUPPORTED_TAG);
-                } else {
-                    VCHECK_BG(memory_desc_init_by_tag(
-                                      weights_md_, format_tag::ab),
-                            VERBOSE_UNSUPPORTED_TAG);
-                }
-            } else {
-                // For sve_128, keep weights in plain layout and use internal
-                // packing (b_reo == true). Blocked weights tags are not used.
-                VDISPATCH_MATMUL(weights_d.format_kind() == format_kind::any
-                                || weights_d.matches_tag(format_tag::ab),
+            if (!weights_d.matches_tag(format_tag::ab)) {
+                brg_.b_reo = false;
+                VCHECK_BG(memory_desc_init_by_tag(weights_md_, b_tag_2d),
                         VERBOSE_UNSUPPORTED_TAG);
+            } else {
                 VCHECK_BG(memory_desc_init_by_tag(weights_md_, format_tag::ab),
                         VERBOSE_UNSUPPORTED_TAG);
             }
@@ -933,20 +932,11 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
             if (is_dst_any)
                 VCHECK_BG(memory_desc_init_by_tag(dst_md_, format_tag::abc),
                         VERBOSE_UNSUPPORTED_TAG);
-            if (isa == sve_256) {
-                if (!weights_d.matches_tag(format_tag::abc)) {
-                    brg_.b_reo = false;
-                    VCHECK_BG(memory_desc_init_by_tag(weights_md_, b_tag_3d),
-                            VERBOSE_UNSUPPORTED_TAG);
-                } else {
-                    VCHECK_BG(memory_desc_init_by_tag(
-                                      weights_md_, format_tag::abc),
-                            VERBOSE_UNSUPPORTED_TAG);
-                }
-            } else {
-                VDISPATCH_MATMUL(weights_d.format_kind() == format_kind::any
-                                || weights_d.matches_tag(format_tag::abc),
+            if (!weights_d.matches_tag(format_tag::abc)) {
+                brg_.b_reo = false;
+                VCHECK_BG(memory_desc_init_by_tag(weights_md_, b_tag_3d),
                         VERBOSE_UNSUPPORTED_TAG);
+            } else {
                 VCHECK_BG(memory_desc_init_by_tag(weights_md_, format_tag::abc),
                         VERBOSE_UNSUPPORTED_TAG);
             }
@@ -961,22 +951,12 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
             if (is_dst_any)
                 VCHECK_BG(memory_desc_init_by_tag(dst_md_, format_tag::abcd),
                         VERBOSE_UNSUPPORTED_TAG);
-            if (isa == sve_256) {
-                if (!weights_d.matches_tag(format_tag::abcd)) {
-                    brg_.b_reo = false;
-                    VCHECK_BG(memory_desc_init_by_tag(weights_md_, b_tag_4d),
-                            VERBOSE_UNSUPPORTED_TAG);
-                } else {
-                    VCHECK_BG(memory_desc_init_by_tag(
-                                      weights_md_, format_tag::abcd),
-                            VERBOSE_UNSUPPORTED_TAG);
-                }
-            } else {
-                VDISPATCH_MATMUL(weights_d.format_kind() == format_kind::any
-                                || weights_d.matches_tag(format_tag::abcd),
+            if (!weights_d.matches_tag(format_tag::abcd)) {
+                brg_.b_reo = false;
+                VCHECK_BG(memory_desc_init_by_tag(weights_md_, b_tag_4d),
                         VERBOSE_UNSUPPORTED_TAG);
-                VCHECK_BG(memory_desc_init_by_tag(
-                                  weights_md_, format_tag::abcd),
+            } else {
+                VCHECK_BG(memory_desc_init_by_tag(weights_md_, format_tag::abcd),
                         VERBOSE_UNSUPPORTED_TAG);
             }
             if (src_d.dims()[0] != weights_d.dims()[0]

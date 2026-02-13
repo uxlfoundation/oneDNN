@@ -29,6 +29,7 @@ namespace aarch64 {
 namespace matmul {
 
 using namespace Xbyak_aarch64;
+template <cpu_isa_t isa>
 struct jit_int8_matmul_utils_kernel_t : public jit_generator_t {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_int8_matmul_utils_kernel_t);

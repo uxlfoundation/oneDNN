@@ -51,7 +51,8 @@ using namespace nstl;
 
 using namespace data_type;
 
-void jit_int8_matmul_utils_kernel_t::reo_A_8x8(int lp, int kt) {
+template <cpu_isa_t isa>
+void jit_int8_matmul_utils_kernel_t<isa>::reo_A_8x8(int lp, int kt) {
     mov(reg_tmp_1, reg_tmp);
     if (kt > 0) {
         for (int i = 0; i < lp; i++) {
@@ -80,7 +81,8 @@ void jit_int8_matmul_utils_kernel_t::reo_A_8x8(int lp, int kt) {
     }
 }
 
-void jit_int8_matmul_utils_kernel_t::reo_B_8xN(int lp, int nt) {
+template <cpu_isa_t isa>
+void jit_int8_matmul_utils_kernel_t<isa>::reo_B_8xN(int lp, int nt) {
     auto p = (nt > 0) ? prd_p3 : prd_ld;
     mov(reg_tmp, reg_aux_a);
     for (int i = 0; i < lp; i++) {
@@ -116,11 +118,12 @@ void jit_int8_matmul_utils_kernel_t::reo_B_8xN(int lp, int nt) {
 
     str(ZReg(0), ptr(reg_aux_b, 0, MUL_VL));
     str(ZReg(2), ptr(reg_aux_b, 1, MUL_VL));
-    if (dyn_.n_blk > 8) {
+    constexpr int cols_per_b_vec = cpu_isa_traits<isa>::vlen / 8;
+    if (dyn_.n_blk > 2 * cols_per_b_vec) {
         str(ZReg(1), ptr(reg_aux_b, 2, MUL_VL));
         str(ZReg(6), ptr(reg_aux_b, 3, MUL_VL));
     }
-    if (dyn_.n_blk > 16) {
+    if (dyn_.n_blk > 4 * cols_per_b_vec) {
         str(ZReg(8), ptr(reg_aux_b, 4, MUL_VL));
         str(ZReg(10), ptr(reg_aux_b, 5, MUL_VL));
     }
@@ -128,7 +131,8 @@ void jit_int8_matmul_utils_kernel_t::reo_B_8xN(int lp, int nt) {
     add_imm(reg_aux_b, reg_aux_b, dyn_.n_blk * dyn_.k_blk, X_TMP_4);
 }
 
-void jit_int8_matmul_utils_kernel_t::gen_reo_a() {
+template <cpu_isa_t isa>
+void jit_int8_matmul_utils_kernel_t<isa>::gen_reo_a() {
 
     int ktl = (dyn_.ktail) ? dyn_.ktail : dyn_.k_blk;
 
@@ -201,7 +205,8 @@ void jit_int8_matmul_utils_kernel_t::gen_reo_a() {
     L(m_end);
 }
 
-void jit_int8_matmul_utils_kernel_t::gen_reo_b() {
+template <cpu_isa_t isa>
+void jit_int8_matmul_utils_kernel_t<isa>::gen_reo_b() {
 
     int lp = (dyn_.ktail > 0) ? dyn_.ktail : dyn_.k_blk;
 
@@ -276,7 +281,8 @@ void jit_int8_matmul_utils_kernel_t::gen_reo_b() {
     L(n_end);
 }
 
-void jit_int8_matmul_utils_kernel_t::generate() {
+template <cpu_isa_t isa>
+void jit_int8_matmul_utils_kernel_t<isa>::generate() {
 
     preamble();
 
@@ -292,6 +298,9 @@ void jit_int8_matmul_utils_kernel_t::generate() {
 
     postamble();
 }
+
+template struct jit_int8_matmul_utils_kernel_t<sve_256>;
+template struct jit_int8_matmul_utils_kernel_t<sve_128>;
 } // namespace matmul
 } // namespace aarch64
 } // namespace cpu

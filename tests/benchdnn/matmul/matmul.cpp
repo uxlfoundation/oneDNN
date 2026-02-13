@@ -354,6 +354,98 @@ int fill_sparse_data(data_kind_t kind, const prb_t *prb, dnn_mem_t &mem_dt,
     return OK;
 }
 
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+// Fill offsets buffer for grouped memory with cumulative sums
+static int fill_grouped_offsets(
+        dnn_mem_t &mem, const prb_t *prb, int64_t &total_size) {
+    const int64_t group_count = prb->sparse_options.get_group_count();
+    const auto &group_sizes = prb->sparse_options.get_group_sizes();
+
+    int64_t cumulative = 0;
+    for (int64_t g = 0; g < group_count; g++) {
+        if (cumulative > INT32_MAX - group_sizes[g]) {
+            BENCHDNN_PRINT(0,
+                    "Error: cumulative offset would exceed INT32_MAX at "
+                    "group %lld\n",
+                    (long long)g);
+            return FAIL;
+        }
+        cumulative += group_sizes[g];
+        mem.set_elem(g, static_cast<int32_t>(cumulative), GROUPED_OFFSETS_IDX);
+    }
+    total_size = cumulative;
+    return OK;
+}
+
+// Fill grouped data (values + offsets) for SRC
+// Note: currently only M dimension is supported for grouping
+static int fill_grouped_data(data_kind_t kind, const prb_t *prb,
+        dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
+    if (kind != SRC) {
+        BENCHDNN_PRINT(0,
+                "Error: grouped filling only supports SRC, got kind=%d\n",
+                (int)kind);
+        return FAIL;
+    }
+
+    const int nhandles = query_md_num_handles(mem_dt.md_);
+    if (nhandles != 2) {
+        BENCHDNN_PRINT(0, "Error: grouped memory requires 2 handles, got %d\n",
+                nhandles);
+        return FAIL;
+    }
+
+    // Fill offsets buffer
+    int64_t total_M = 0;
+    SAFE(fill_grouped_offsets(mem_dt, prb, total_M), WARN);
+
+    // Fill values buffer with random data
+    const int64_t nelems = total_M * prb->k;
+
+    if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) return OK;
+
+    cfg_t cfg(prb, {SRC, WEI, BIA, DST});
+    const int64_t chunk_size = 64;
+    const int64_t n_chunks = div_up(nelems, chunk_size);
+
+    // Mirroring pattern in fill_data
+    benchdnn_parallel_nd(n_chunks, [&](int64_t idx_chunk) {
+        int64_t idx_start = idx_chunk * chunk_size;
+        int64_t idx_end = MIN2(idx_start + chunk_size, nelems);
+
+        std::uniform_int_distribution<> gen(
+                cfg.get_range_min(kind), cfg.get_range_max(kind));
+        std::minstd_rand int_seed(kind * nelems + idx_start + 1);
+        int_seed.discard(1);
+
+        if (idx_start == 0) {
+            float val = 0;
+            while (val <= 0)
+                val = gen(int_seed);
+            mem_dt.set_elem(0,
+                    round_to_nearest_representable(cfg.get_dt(kind), val),
+                    GROUPED_VALUES_IDX);
+            idx_start = 1;
+        }
+
+        for (int64_t i = idx_start; i < idx_end; i++) {
+            float val = gen(int_seed);
+            mem_dt.set_elem(i,
+                    round_to_nearest_representable(cfg.get_dt(kind), val),
+                    GROUPED_VALUES_IDX);
+        }
+    });
+
+    // Copy values to fp memory for reference computation
+    benchdnn_parallel_nd(mem_fp.nelems(), [&](int64_t i) {
+        mem_fp.set_f32_elem(
+                i, mem_dt.get_elem(i, GROUPED_VALUES_IDX));
+    });
+
+    return OK;
+}
+#endif // DNNL_EXPERIMENTAL_GROUPED_MEMORY
+
 int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
         const cfg_t &cfg, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res) {
 
@@ -368,11 +460,25 @@ int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
     const bool is_sparse_csr_coo
             = sparse_encoding == dnnl_csr || sparse_encoding == dnnl_coo;
     is_sparse_packed = sparse_encoding == dnnl_packed;
+    const bool is_grouped_dt = (query_md_num_handles(mem_dt.md_) > 1)
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+            && (sparse_encoding == dnnl_grouped)
+#endif
+            ;
     is_any_sparse = sparse_encoding != sparse_options_t::def_encoding;
 
     if (is_sparse_csr_coo) {
         return fill_sparse_data(
                 kind, prb, mem_dt, mem_fp, res, sparse_encoding);
+    }
+
+    if (is_grouped_dt) {
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+        SAFE(fill_grouped_data(kind, prb, mem_dt, mem_fp), WARN);
+        return OK;
+#else
+        return FAIL;
+#endif
     }
 
     if (is_sparse_packed) {
@@ -974,6 +1080,14 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                         WARN);
                 break;
             case DNNL_ARG_DST: {
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+                if (dst_encoding == dnnl_grouped) {
+                    // Only offsets need to be filled
+                    // as values are computed by the library
+                    int64_t total_M = 0;
+                    SAFE(fill_grouped_offsets(mem, prb, total_M), WARN);
+                }
+#endif
                 const auto &po = prb->attr.post_ops;
                 const int sum_idx = po.find(attr_t::post_ops_t::SUM);
                 if (sum_idx >= 0) {

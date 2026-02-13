@@ -17,7 +17,8 @@
 #define COMMON_PROFILER_HPP
 
 #ifndef _WIN32
-#include <sys/time.h>
+// #include <sys/time.h>
+#include <time.h>
 #else
 #include <windows.h>
 #endif

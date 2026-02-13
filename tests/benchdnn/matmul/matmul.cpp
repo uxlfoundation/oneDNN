@@ -34,6 +34,12 @@
 
 namespace matmul {
 
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+// Buffer indices for multi-handle grouped memory
+constexpr int GROUPED_VALUES_IDX = 0;
+constexpr int GROUPED_OFFSETS_IDX = 1;
+#endif
+
 dims_t get_runtime_dims(const dims_t &dims, const dims_mask_t &mask) {
     if (mask.none() || dims.empty()) return dims;
     dims_t runtime_dims;
@@ -354,52 +360,10 @@ int fill_sparse_data(data_kind_t kind, const prb_t *prb, dnn_mem_t &mem_dt,
     return OK;
 }
 
-int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
-        const cfg_t &cfg, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res) {
-
-    const auto nelems = mem_dt.nelems();
-    if (nelems == 0) return OK;
-    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
-
-    bool is_sparse_packed = false;
-    bool is_any_sparse = false;
-    std::vector<bool> nnz_mask;
-    const auto sparse_encoding = prb->sparse_options.get_encoding(kind);
-    const bool is_sparse_csr_coo
-            = sparse_encoding == dnnl_csr || sparse_encoding == dnnl_coo;
-    is_sparse_packed = sparse_encoding == dnnl_packed;
-    is_any_sparse = sparse_encoding != sparse_options_t::def_encoding;
-
-    if (is_sparse_csr_coo) {
-        return fill_sparse_data(
-                kind, prb, mem_dt, mem_fp, res, sparse_encoding);
-    }
-
-    if (is_sparse_packed) {
-        nnz_mask.resize(nelems, false);
-        const dnnl_dim_t nnz = query_md_nnz(mem_dt.md_);
-        assert(nnz > 0);
-        for (int i = 0; i < nnz; i++)
-            nnz_mask[i] = true;
-        std::default_random_engine rng(nnz);
-        std::shuffle(nnz_mask.begin(), nnz_mask.end(), rng);
-    }
-
-    // Refer to modes documentation for filling principles.
-    // Note: sparse filling is more complex than a general one in a sense that
-    // it requires metadata in addition to data. To have reasonable bitwise
-    // validation for sparse, only data must be random and indices should remain
-    // identical between runs. So far, simply don't support bitwise mode for
-    // sparse problems. `CSR`/`COO` will utilize their `fill_sparse_data`
-    // function, `packed` will fall back into a regular filling as it involves
-    // `nnz_mask`.
-    if (has_bench_mode_bit(mode_bit_t::bitwise) && !is_any_sparse) {
-        return fill_random_real(mem_dt, mem_fp, res);
-    }
-    if (has_bench_mode_bit(mode_bit_t::perf) && !is_any_sparse) {
-        return fill_random_real(
-                mem_dt, mem_fp, res, get_perf_fill_cfg(mem_dt.dt()));
-    }
+// Filling for mem_fp that takes into account density and zero points
+static void fill_dense_fp_values(data_kind_t kind, const prb_t *prb,
+        const cfg_t &cfg, dnn_mem_t &mem_fp) {
+    const int64_t nelems = mem_fp.nelems();
 
     cfg_t::density_args_t density_args;
     density_args.data_kind = kind;
@@ -443,7 +407,7 @@ int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
         std::bernoulli_distribution b_dist(density);
 
         // make sure the first element is positive
-        if (idx_start == 0 && !is_sparse_packed) {
+        if (idx_start == 0) {
             float val = 0;
             while (val <= 0)
                 val = gen(int_seed);
@@ -453,7 +417,157 @@ int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
             idx_start += 1;
         }
 
-        if (is_sparse_packed) {
+        for (int64_t idx = idx_start; idx < idx_end; ++idx) {
+            bool is_one = density == 1.f ? true : b_dist(b_seed);
+            if (!is_one) {
+                mem_fp.set_f32_elem(idx, 0.f);
+                continue;
+            }
+            float val = gen(int_seed);
+            val += src_zp + wei_zp; // Add zp so that it will be subtracted.
+            mem_fp.set_f32_elem(
+                    idx, round_to_nearest_representable(cfg.get_dt(kind), val));
+        }
+    });
+}
+
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+// Fill offsets buffer for grouped memory with cumulative sums
+static int fill_grouped_offsets(dnn_mem_t &mem, const prb_t *prb) {
+    const int64_t group_count = prb->sparse_options.get_group_count();
+    const auto &group_sizes = prb->sparse_options.get_group_sizes();
+
+    int64_t cumulative = 0;
+    for (int64_t g = 0; g < group_count; g++) {
+        if (cumulative > INT32_MAX - group_sizes[g]) {
+            BENCHDNN_PRINT(0,
+                    "Error: cumulative offset would exceed INT32_MAX at "
+                    "group %lld\n",
+                    (long long)g);
+            return FAIL;
+        }
+        cumulative += group_sizes[g];
+        mem.set_elem(g, static_cast<int32_t>(cumulative), GROUPED_OFFSETS_IDX);
+    }
+    return OK;
+}
+
+// Fill grouped data (values + offsets) for SRC
+// Note: currently only M dimension is supported for grouping
+static int fill_grouped_data(data_kind_t kind, const prb_t *prb,
+        dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
+    if (kind != SRC) {
+        BENCHDNN_PRINT(0,
+                "Error: grouped filling only supports SRC, got kind=%d\n",
+                (int)kind);
+        return FAIL;
+    }
+
+    const int nhandles = query_md_num_handles(mem_dt.md_);
+    if (nhandles != 2) {
+        BENCHDNN_PRINT(0, "Error: grouped memory requires 2 handles, got %d\n",
+                nhandles);
+        return FAIL;
+    }
+
+    // Fill offsets buffer
+    SAFE(fill_grouped_offsets(mem_dt, prb), WARN);
+
+    const int64_t nelems = mem_dt.nelems();
+
+    if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) return OK;
+
+    cfg_t cfg(prb, {SRC, WEI, BIA, DST});
+
+    // Fill values buffer
+    fill_dense_fp_values(kind, prb, cfg, mem_fp);
+
+    // Copy values from fp memory into grouped values handle,
+    // as grouped memory doesn't support reorder
+    benchdnn_parallel_nd(nelems, [&](int64_t i) {
+        mem_dt.set_elem(i,
+                round_to_nearest_representable(
+                        cfg.get_dt(kind), mem_fp.get_f32_elem(i)),
+                GROUPED_VALUES_IDX);
+    });
+
+    return OK;
+}
+#endif // DNNL_EXPERIMENTAL_GROUPED_MEMORY
+
+int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
+        const cfg_t &cfg, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res) {
+
+    const auto nelems = mem_dt.nelems();
+    if (nelems == 0) return OK;
+    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
+
+    bool is_sparse_packed = false;
+    bool is_any_sparse = false;
+    std::vector<bool> nnz_mask;
+    const auto sparse_encoding = prb->sparse_options.get_encoding(kind);
+    const bool is_sparse_csr_coo
+            = sparse_encoding == dnnl_csr || sparse_encoding == dnnl_coo;
+    is_sparse_packed = sparse_encoding == dnnl_packed;
+    bool is_grouped_dt = false;
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    is_grouped_dt = (sparse_encoding == dnnl_grouped);
+#endif
+    is_any_sparse = sparse_encoding != sparse_options_t::def_encoding;
+
+    if (is_sparse_csr_coo) {
+        return fill_sparse_data(
+                kind, prb, mem_dt, mem_fp, res, sparse_encoding);
+    }
+
+    if (is_grouped_dt) {
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+        SAFE(fill_grouped_data(kind, prb, mem_dt, mem_fp), WARN);
+        return OK;
+#else
+        return FAIL;
+#endif
+    }
+
+    if (is_sparse_packed) {
+        nnz_mask.resize(nelems, false);
+        const dnnl_dim_t nnz = query_md_nnz(mem_dt.md_);
+        assert(nnz > 0);
+        for (int i = 0; i < nnz; i++)
+            nnz_mask[i] = true;
+        std::default_random_engine rng(nnz);
+        std::shuffle(nnz_mask.begin(), nnz_mask.end(), rng);
+    }
+
+    // Refer to modes documentation for filling principles.
+    // Note: sparse filling is more complex than a general one in a sense that
+    // it requires metadata in addition to data. To have reasonable bitwise
+    // validation for sparse, only data must be random and indices should remain
+    // identical between runs. So far, simply don't support bitwise mode for
+    // sparse problems. `CSR`/`COO` will utilize their `fill_sparse_data`
+    // function, `packed` will fall back into a regular filling as it involves
+    // `nnz_mask`.
+    if (has_bench_mode_bit(mode_bit_t::bitwise) && !is_any_sparse) {
+        return fill_random_real(mem_dt, mem_fp, res);
+    }
+    if (has_bench_mode_bit(mode_bit_t::perf) && !is_any_sparse) {
+        return fill_random_real(
+                mem_dt, mem_fp, res, get_perf_fill_cfg(mem_dt.dt()));
+    }
+
+    if (is_sparse_packed) {
+        /* Do fixed partitioning to have same filling for any number of threads */
+        const int64_t chunk_size = 64;
+        const int64_t n_chunks = div_up(nelems, chunk_size);
+
+        benchdnn_parallel_nd(n_chunks, [&](int64_t idx_chunk) {
+            int64_t idx_start = idx_chunk * chunk_size;
+            int64_t idx_end = MIN2(idx_start + chunk_size, nelems);
+            std::minstd_rand int_seed(kind * nelems + idx_start + 1);
+            int_seed.discard(1);
+            std::uniform_int_distribution<> gen(
+                    cfg.get_range_min(kind), cfg.get_range_max(kind));
+
             for (int64_t idx = idx_start; idx < idx_end; ++idx) {
                 const bool is_one = nnz_mask[idx];
                 if (!is_one) {
@@ -466,20 +580,10 @@ int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
                 mem_fp.set_f32_elem(idx,
                         round_to_nearest_representable(cfg.get_dt(kind), val));
             }
-        } else {
-            for (int64_t idx = idx_start; idx < idx_end; ++idx) {
-                bool is_one = density == 1.f ? true : b_dist(b_seed);
-                if (!is_one) {
-                    mem_fp.set_f32_elem(idx, 0.f);
-                    continue;
-                }
-                float val = gen(int_seed);
-                val += src_zp + wei_zp; // Add zp so that it will be subtracted.
-                mem_fp.set_f32_elem(idx,
-                        round_to_nearest_representable(cfg.get_dt(kind), val));
-            }
-        }
-    });
+        });
+    } else {
+        fill_dense_fp_values(kind, prb, cfg, mem_fp);
+    }
 
     SAFE(mem_dt.reorder(mem_fp, cfg.get_swapped_dt(kind)), WARN);
 
@@ -890,6 +994,17 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
     // Move cfg out of filling since its creation is not free.
     cfg_t cfg(prb, {SRC, WEI, BIA, DST});
 
+    const auto src_encoding = prb->sparse_options.get_encoding(DNNL_ARG_SRC);
+    const auto wei_encoding
+            = prb->sparse_options.get_encoding(DNNL_ARG_WEIGHTS);
+    const auto dst_encoding = prb->sparse_options.get_encoding(DNNL_ARG_DST);
+
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    // The only supported configuration of grouped matmul
+    const bool is_grouped
+            = src_encoding == dnnl_grouped && dst_encoding == dnnl_grouped;
+#endif
+
     for (auto &entry : mem_map) {
         const int exec_arg = entry.first;
         // The function targets regular exec_args that are positive.
@@ -898,9 +1013,6 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         if (exec_arg <= 0) continue;
 
         auto &mem = entry.second; // `mem` is modified by filler (reorder).
-
-        auto src_encoding = prb->sparse_options.get_encoding(DNNL_ARG_SRC);
-        auto wei_encoding = prb->sparse_options.get_encoding(DNNL_ARG_WEIGHTS);
 
         const bool is_sparse_src = exec_arg == DNNL_ARG_SRC
                 && src_encoding != dnnl_sparse_encoding_undef;
@@ -974,6 +1086,13 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                         WARN);
                 break;
             case DNNL_ARG_DST: {
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+                if (is_grouped) {
+                    // Only offsets need to be filled
+                    // as values are computed by the library
+                    SAFE(fill_grouped_offsets(mem, prb), WARN);
+                }
+#endif
                 const auto &po = prb->attr.post_ops;
                 const int sum_idx = po.find(attr_t::post_ops_t::SUM);
                 if (sum_idx >= 0) {

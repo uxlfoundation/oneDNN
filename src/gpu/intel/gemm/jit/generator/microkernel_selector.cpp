@@ -24,6 +24,7 @@
 #include "gemmstone/strategy_parser.hpp"
 #include "ngen_decoder.hpp"
 #include "npack/neo_packager.hpp"
+#include "pieces/hw_utils.hpp"
 
 GEMMSTONE_NAMESPACE_START
 namespace microkernel {
@@ -377,15 +378,14 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
     if (hw < HW::XeHPG) return false;
     if (problem.C.layout == MatrixLayout::T) return false;
 
-    bool systolic = hwInfo.systolicAvailable;
-    bool block2DA = (hw >= HW::XeHPC) && systolic && (problem.A.alignment % 16) == 0;
-    bool block2DB = (hw >= HW::XeHPC) && systolic && (problem.B.alignment % 16) == 0;
+    int min2DAlignmentA = block2DMinAlignment(hw, problem.A, strategy.A, /* asIfBlock2D */ true);
+    int min2DAlignmentB = block2DMinAlignment(hw, problem.B, strategy.B, /* asIfBlock2D */ true);
 
-    problem.A.alignment = std::min<int>(problem.A.alignment, 16);
-    problem.B.alignment = std::min<int>(problem.B.alignment, 16);
+    bool systolic = hwInfo.systolicAvailable;
+    bool block2DA = (hw >= HW::XeHPC) && systolic && (problem.A.alignment % min2DAlignmentA) == 0;
+    bool block2DB = (hw >= HW::XeHPC) && systolic && (problem.B.alignment % min2DAlignmentB) == 0;
 
     auto &s = strategy;
-
     s.ka_load = s.kb_load = 16;
     if (!systolic)
         s.ka_load = s.kb_load = 4;
@@ -426,6 +426,10 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
         s.kb_load = 32;
     }
 
+    problem.A.alignment = std::max(min2DAlignmentA,
+                                   block2DMinAlignment(hw, problem.A, strategy.A));
+    problem.B.alignment = std::max(min2DAlignmentB,
+                                   block2DMinAlignment(hw, problem.B, strategy.B));
     s.C.accessType = AccessType::Block;
 
     s.A.base = localA ? AddressBase::createSLM() : AddressBase::createA64(true);

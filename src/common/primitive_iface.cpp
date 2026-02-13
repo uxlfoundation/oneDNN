@@ -67,12 +67,14 @@ status_t primitive_create(primitive_iface_t **primitive_iface,
 
 #if defined(DNNL_ENABLE_ITT_TASKS)
     const bool enable_itt = itt::get_itt(itt::__itt_task_level_low);
-    double create_start_ms = get_msec();
-    if (enable_itt) {
+    const bool is_not_gemm
+            = primitive_desc_iface->impl()->kind() != primitive_kind::gemm;
+    // double create_start_ms = get_msec();
+    if (enable_itt && is_not_gemm) {
         itt::primitive_task_start(primitive_desc_iface->impl()->kind(),
                 primitive_desc_iface->info(), VERBOSE_create);
     }
-    double create_duration_ms = get_msec() - create_start_ms;
+    // double create_duration_ms = get_msec() - create_start_ms;
 #endif
 
     if (get_verbose(verbose_t::create_profile,
@@ -94,8 +96,8 @@ status_t primitive_create(primitive_iface_t **primitive_iface,
         CHECK(primitive_desc_iface->create_primitive_iface(
                 p_iface, cache_blob));
     }
-    printf("primitive_create,%s,%f,%f\n", cache_state2str(p_iface.second),
-            create_start_ms, create_duration_ms);
+    // printf("primitive_create,%s,%f,%f\n", cache_state2str(p_iface.second),
+    //         create_start_ms, create_duration_ms);
 
 #if defined(DNNL_ENABLE_ITT_TASKS)
     if (enable_itt) itt::primitive_task_end(VERBOSE_create);

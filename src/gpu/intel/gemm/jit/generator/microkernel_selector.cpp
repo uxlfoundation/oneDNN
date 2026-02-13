@@ -404,8 +404,13 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
         s.A.accessType = AccessType::Block2DTranspose;
         s.ka_load = 64 / problem.Ta_ext;
     } else if (problem.A.layout == MatrixLayout::N) {
-        s.A.accessType = AccessType::Block2DVNNI;
-        s.A_copies = 2;
+        if(problem.Ta.isInt4()) {
+            s.A.accessType = AccessType::Block2D;
+            s.A_copies = 2;
+        } else {
+            s.A.accessType = AccessType::Block2DVNNI;
+            s.A_copies = 2;
+        }
     }
 
     if (problem.B.layout == MatrixLayout::Pr) {

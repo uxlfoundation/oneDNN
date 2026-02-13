@@ -291,22 +291,65 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
         for (rd = 0; rd < rdb; rd++) {
             int ao = 0;
 
-            for (ld = 0; ld < ldb; ld++) {
-                PReg p = (brg_.is_n_tail && ld == ldb - 1) ? prd_ld : P_ALL_ONE;
-                ld1b(loadb(ld).b, p, ptr(reg_tmp, ld, MUL_VL));
-            }
-            for (bd = 0; bd < bdb; bd++) {
-                add_imm(X_DEFAULT_ADDR, reg_aux_a, a_off + ao, X_TMP_0);
-                ld1rqb(z0.b, P_ALL_ONE, ptr(X_DEFAULT_ADDR));
-                ao += brg_.m_blk * 2;
-
+            // For SVE128 and no N-tail, use NEON loads (v/z regs overlap) to
+            // reduce predicated SVE load overhead in the hot loop.
+            if (cpu_isa_traits<isa>::vlen == 16 && !brg_.is_n_tail) {
+                const int bytes_per_vec = cpu_isa_traits<isa>::vlen;
+                for (ld = 0; ld + 1 < ldb; ld += 2) {
+                    QReg q0(loadb(ld).getIdx());
+                    QReg q1(loadb(ld + 1).getIdx());
+                    ldp(q0, q1, ptr(reg_tmp, ld * bytes_per_vec));
+                }
+                if (ld < ldb) {
+                    QReg q(loadb(ld).getIdx());
+                    ldr(q, ptr(reg_tmp, ld * bytes_per_vec));
+                }
+            } else {
                 for (ld = 0; ld < ldb; ld++) {
-                    if (brg_.is_s8)
-                        smmla(acc(bd, ld).s, z0.b, loadb(ld).b);
-                    else if (brg_.is_u8_s8)
-                        usmmla(acc(bd, ld).s, z0.b, loadb(ld).b);
-                    else
-                        ummla(acc(bd, ld).s, z0.b, loadb(ld).b);
+                    PReg p = (brg_.is_n_tail && ld == ldb - 1) ? prd_ld
+                                                               : P_ALL_ONE;
+                    ld1b(loadb(ld).b, p, ptr(reg_tmp, ld, MUL_VL));
+                }
+            }
+            for (bd = 0; bd < bdb;) {
+                const int a_inc = brg_.m_blk * 2;
+                add_imm(X_DEFAULT_ADDR, reg_aux_a, a_off + ao, X_TMP_0);
+                if (cpu_isa_traits<isa>::vlen == 16 && bd + 1 < bdb) {
+                    // Load two consecutive A blocks (each 16 bytes for SVE128)
+                    // and compute two rows to amortize load overhead.
+                    ldp(QReg(0), QReg(31), ptr(X_DEFAULT_ADDR));
+                    ao += 2 * a_inc;
+
+                    for (ld = 0; ld < ldb; ld++) {
+                        if (brg_.is_s8) {
+                            smmla(acc(bd, ld).s, z0.b, loadb(ld).b);
+                            smmla(acc(bd + 1, ld).s, z31.b, loadb(ld).b);
+                        } else if (brg_.is_u8_s8) {
+                            usmmla(acc(bd, ld).s, z0.b, loadb(ld).b);
+                            usmmla(acc(bd + 1, ld).s, z31.b, loadb(ld).b);
+                        } else {
+                            ummla(acc(bd, ld).s, z0.b, loadb(ld).b);
+                            ummla(acc(bd + 1, ld).s, z31.b, loadb(ld).b);
+                        }
+                    }
+                    bd += 2;
+                } else {
+                    if (cpu_isa_traits<isa>::vlen == 16) {
+                        ldr(QReg(0), ptr(X_DEFAULT_ADDR));
+                    } else {
+                        ld1rqb(z0.b, P_ALL_ONE, ptr(X_DEFAULT_ADDR));
+                    }
+                    ao += a_inc;
+
+                    for (ld = 0; ld < ldb; ld++) {
+                        if (brg_.is_s8)
+                            smmla(acc(bd, ld).s, z0.b, loadb(ld).b);
+                        else if (brg_.is_u8_s8)
+                            usmmla(acc(bd, ld).s, z0.b, loadb(ld).b);
+                        else
+                            ummla(acc(bd, ld).s, z0.b, loadb(ld).b);
+                    }
+                    bd += 1;
                 }
             }
             a_off += brg_.m_blk * brg_.k_blk;

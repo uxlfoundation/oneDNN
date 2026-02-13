@@ -74,21 +74,11 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
     problem.Tb_ext = convert_dnnl_to_kernel_type(src_mdw.data_type());
     problem.Tc_ext = problem.Ts = problem.Tc = Type::f32;
 
-    auto internalTypes = [](Type extType) -> Type {
-        switch (extType) {
-            case Type::u4:
-            case Type::s4: return Type::s8;
-            default: return extType;
-        }
-    };
+    problem.Ta = problem.Ta_ext;
+    problem.Tb = problem.Tb_ext;
 
-    problem.Ta = internalTypes(problem.Ta_ext);
-    problem.Tb = internalTypes(problem.Tb_ext);
-
-    problem.A.setAlignment(alignmentForLD(pd()->K() / problem.Ta_ext.perByte()
-            * problem.Ta_ext.paddedSize()));
-    problem.B.setAlignment(alignmentForLD(pd()->N() / problem.Tb_ext.perByte()
-            * problem.Tb_ext.paddedSize()));
+    problem.A.setAlignment(alignmentForLD(pd()->K() / problem.Ta_ext));
+    problem.B.setAlignment(alignmentForLD(pd()->N() / problem.Tb_ext));
     problem.C.setAlignment(problem.Tc.size());
 
     problem.A.layout = convert_dnnl_to_kernel_layout(wei_mdw.md_);
@@ -171,18 +161,19 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
     sizes.n = static_cast<uint16_t>(m);
     sizes.k = static_cast<uint16_t>(k);
 
+    auto sg_size = dev_info->min_subgroup_size();
     Package gemm;
     try {
         gemm = microkernel::selectGEMM(opts, hw_info, sizes, problem);
     } catch (const std::runtime_error &ex) {
         std::vector<StrategyRequirement> reqs;
-        reqs.push_back(StrategyRequirement::UnrollM == 16);
+        reqs.push_back(StrategyRequirement::UnrollM == sg_size);
         reqs.push_back(StrategyRequirement::UnrollN
                 == utils::rnd_up_pow2(std::min<int>(pd()->M(), 64)));
         reqs.push_back(StrategyRequirement::WGM == 2);
         reqs.push_back(StrategyRequirement::WGN
                 == utils::rnd_up_pow2(std::max<int>(
-                        2, std::min<int>(pd()->M() / reqs[1].value, 8))));
+                        1, std::min<int>(pd()->M() / reqs[1].value, 8))));
         try {
             gemm = selectGEMM(opts, hw_info, sizes, problem, reqs);
         } catch (const std::runtime_error &ex) {
@@ -196,8 +187,6 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
     //        gemm.getSetting("wg_tile_m"), gemm.getSetting("wg_tile_n"),
     //        gemm.getSetting("sg_tile_m"), gemm.getSetting("sg_tile_n"),
     //        gemm.getSetting("sg_per_wg_m"), gemm.getSetting("sg_per_wg_n"));
-
-    auto sg_size = dev_info->min_subgroup_size();
 
     /* Generate microkernel shims */
     ShimOptions shimOptions;

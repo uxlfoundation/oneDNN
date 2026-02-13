@@ -313,11 +313,17 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
             }
             for (bd = 0; bd < bdb;) {
                 const int a_inc = brg_.m_blk * 2;
-                add_imm(X_DEFAULT_ADDR, reg_aux_a, a_off + ao, X_TMP_0);
+                const int32_t a_off_bytes = a_off + ao;
                 if (cpu_isa_traits<isa>::vlen == 16 && bd + 1 < bdb) {
                     // Load two consecutive A blocks (each 16 bytes for SVE128)
                     // and compute two rows to amortize load overhead.
-                    ldp(QReg(0), QReg(31), ptr(X_DEFAULT_ADDR));
+                    if ((a_off_bytes & 0xf) == 0 && a_off_bytes >= -1024
+                            && a_off_bytes <= 1008) {
+                        ldp(QReg(0), QReg(31), ptr(reg_aux_a, a_off_bytes));
+                    } else {
+                        add_imm(X_DEFAULT_ADDR, reg_aux_a, a_off_bytes, X_TMP_0);
+                        ldp(QReg(0), QReg(31), ptr(X_DEFAULT_ADDR));
+                    }
                     ao += 2 * a_inc;
 
                     for (ld = 0; ld < ldb; ld++) {
@@ -335,8 +341,9 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
                     bd += 2;
                 } else {
                     if (cpu_isa_traits<isa>::vlen == 16) {
-                        ldr(QReg(0), ptr(X_DEFAULT_ADDR));
+                        ldr(QReg(0), ptr(reg_aux_a, a_off_bytes));
                     } else {
+                        add_imm(X_DEFAULT_ADDR, reg_aux_a, a_off_bytes, X_TMP_0);
                         ld1rqb(z0.b, P_ALL_ONE, ptr(X_DEFAULT_ADDR));
                     }
                     ao += a_inc;

@@ -69,6 +69,8 @@ struct attr_t {
         PER_DIM_0, // ... dims[0] point.
         PER_DIM_1, // ... dims[1] point.
         PER_DIM_01, // ... unique combination of dims[0] and dims[1] points.
+        PER_DIM_02, // ... unique combination of dims[0] and dims[2] points.
+        PER_DIM_012, // ... unique combination of dims[0], dims[1] and dims[2] points.
         PER_DIM_2, // ... dims[2] point.
         PER_DIM_3, // ... dims[3] point.
         PER_TENSOR, // ... point in the tensor.

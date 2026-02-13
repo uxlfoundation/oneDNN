@@ -47,10 +47,12 @@ static double get_msec() {
     QueryPerformanceCounter(&now);
     return 1e+3 * now.QuadPart / frequency.QuadPart;
 #else
-    struct timeval time;
-    gettimeofday(&time, nullptr);
+    struct timespec time;
+    clock_gettime(CLOCK_REALTIME, &time);
+    // struct timeval time;
+    // gettimeofday(&time, nullptr);
     return 1e+3 * static_cast<double>(time.tv_sec)
-            + 1e-3 * static_cast<double>(time.tv_usec);
+            + 1e-6 * static_cast<double>(time.tv_nsec);
 #endif
 }
 

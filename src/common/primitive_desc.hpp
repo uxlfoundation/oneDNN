@@ -70,8 +70,20 @@ struct primitive_desc_t : public c_compatible {
     const primitive_attr_t *attr() const { return &attr_; }
     primitive_kind_t kind() const { return kind_; }
 
-    const char *info(engine_t *engine) const {
-        if (!info_.is_initialized()) info_.init(engine, this);
+    // Returns an `info` string for the primitive enlisting the primitive
+    //     name, implementation, propagation kind, operation tensor info,
+    //     primitive attributes, algorithm and problem description. It also
+    //     initializes and constructs the primitive info string before
+    //     returning if it is not already initialized.
+    // Note: The initialization can be force disabled by setting `do_init` -
+    //     in this case, the call to `info()` returns an empty string if it is
+    //     not constructed already. This is a workaround that avoid overheads
+    //     encountered during construction for very large info_ strings.
+    //     This is used when using the info_ string as metadata for setting
+    //     ITT markers for primitive operations without affecting execution
+    //     times.
+    const char *info(engine_t *engine, bool do_init = true) const {
+        if (!info_.is_initialized() && do_init) info_.init(engine, this);
         return info_.c_str();
     }
 

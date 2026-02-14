@@ -2241,8 +2241,7 @@ dnnl_status_t sgemm_nocopy_driver(const char *transa, const char *transb,
     bool hasBias = (bias != nullptr);
     auto ker_bn = get_xbyak_gemm(isTransA, isTransB, *beta, hasBias);
     auto ker_b1 = get_xbyak_gemm(isTransA, isTransB, 1.0, false);
-    auto ker_b0 = get_xbyak_gemm(isTransA, isTransB, 0.0, false);
-    if (utils::any_null(ker_bn, ker_b1, ker_b0)) return dnnl_runtime_error;
+    if (utils::any_null(ker_bn, ker_b1)) return dnnl_runtime_error;
 
     dim_t BM = 4032;
     dim_t BN = isTransA ? 96 : 48;
@@ -2306,12 +2305,8 @@ dnnl_status_t sgemm_nocopy_driver(const char *transa, const char *transb,
                     }
                 }
                 if (Bk == 0) {
-                    if (*beta == 0.0 && bias == nullptr)
-                        (*ker_b0)(sizeM, sizeN, sizeK, alpha, curA, lda, curB,
-                                ldb, beta, curC, ldc, curBias, ws);
-                    else
-                        (*ker_bn)(sizeM, sizeN, sizeK, alpha, curA, lda, curB,
-                                ldb, beta, curC, ldc, curBias, ws);
+                    (*ker_bn)(sizeM, sizeN, sizeK, alpha, curA, lda, curB, ldb,
+                            beta, curC, ldc, curBias, ws);
                 } else {
                     (*ker_b1)(sizeM, sizeN, sizeK, alpha, curA, lda, curB, ldb,
                             beta, curC, ldc, curBias, ws);

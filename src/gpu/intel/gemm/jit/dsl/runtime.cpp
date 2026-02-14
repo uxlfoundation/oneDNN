@@ -20,6 +20,11 @@
 #include "generator_dsl/builder.hpp"
 #include "generator_dsl/kernel_desc.hpp"
 
+#ifdef GEMMSTONE_WITH_L0_RUNTIME
+#include "ngen_level_zero.hpp"
+#include <level_zero/ze_intel_gpu.h>
+#endif
+
 #ifdef GEMMSTONE_WITH_OPENCL_RUNTIME
 #include "ngen_opencl.hpp"
 #include <CL/cl_ext.h>
@@ -148,6 +153,109 @@ cl_kernel make_kernel(
                 desc.problem, desc.strategy, desc.iface, desc.options);
         if (dsl_desc.options.hw() == dsl::hw_t())
             dsl_desc.options.set_hw(get_hardware(device, context));
+        auto dsl_kernel = make_kernel(dsl_desc);
+        return dsl::make_kernel(dsl_kernel, context, device);
+    }
+    stub();
+}
+#endif
+
+#ifdef GEMMSTONE_WITH_L0_RUNTIME
+dsl::hw_t get_hardware(ze_device_handle_t device, ze_context_handle_t context) {
+    auto product
+            = ngen::LevelZeroCodeGenerator<ngen::HW::Unknown>::detectHWInfo(
+                    context, device);
+
+    ze_result_t status;
+    size_t eu_count = 0;
+    {
+        auto deviceProps = ze_device_properties_t();
+        deviceProps.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES;
+
+        status = ngen::dynamic::zeDeviceGetProperties(device, &deviceProps);
+        if (status != ZE_RESULT_SUCCESS) return {};
+        eu_count = deviceProps.numEUsPerSubslice
+                * deviceProps.numSubslicesPerSlice * deviceProps.numSlices;
+    }
+
+    size_t max_wg_size;
+    {
+        auto deviceComputeProps = ze_device_compute_properties_t();
+
+        status = ngen::dynamic::zeDeviceGetComputeProperties(
+                device, &deviceComputeProps);
+        if (status != ZE_RESULT_SUCCESS) return {};
+        max_wg_size = deviceComputeProps.maxTotalGroupSize;
+    }
+
+    size_t l3_cache_size = 0;
+    {
+        uint32_t numProp = 0;
+        status = ngen::dynamic::zeDeviceGetCacheProperties(
+                device, &numProp, nullptr);
+        if (status != ZE_RESULT_SUCCESS) return {};
+        std::vector<ze_device_cache_properties_t> deviceCacheProps(numProp);
+        for (uint32_t i = 0; i < numProp; i++) {
+            deviceCacheProps[i].stype
+                    = ZE_STRUCTURE_TYPE_DEVICE_CACHE_PROPERTIES;
+        }
+        status = ngen::dynamic::zeDeviceGetCacheProperties(
+                device, &numProp, deviceCacheProps.data());
+        if (status != ZE_RESULT_SUCCESS) return {};
+        for (uint32_t i = 0; i < numProp; i++) {
+            if (deviceCacheProps[i].flags == 0) {
+                l3_cache_size = deviceCacheProps[i].cacheSize;
+                break;
+            }
+        }
+    }
+
+    dsl::hw::attr_t attr = {};
+    if (ngen::getCore(product.family) >= ngen::HW::XeHPC)
+        attr |= dsl::hw::attr_t::large_grf;
+
+    {
+        auto deviceModPropsExt = ze_intel_device_module_dp_exp_properties_t();
+        deviceModPropsExt.stype
+                = ZE_STRUCTURE_INTEL_DEVICE_MODULE_DP_EXP_PROPERTIES;
+
+        auto deviceModProps = ze_device_module_properties_t();
+        deviceModProps.stype = ZE_STRUCTURE_TYPE_DEVICE_MODULE_PROPERTIES;
+        deviceModProps.pNext = &deviceModPropsExt;
+
+        status = ngen::dynamic::zeDeviceGetModuleProperties(
+                device, &deviceModProps);
+        if (status != ZE_RESULT_SUCCESS) return {};
+        if (deviceModPropsExt.flags & ZE_INTEL_DEVICE_MODULE_EXP_FLAG_DPAS)
+            attr |= dsl::hw::attr_t::systolic;
+    }
+    {
+        auto fltAtom = ze_float_atomic_ext_properties_t();
+        fltAtom.stype = ZE_STRUCTURE_TYPE_FLOAT_ATOMIC_EXT_PROPERTIES;
+
+        ze_device_fp_atomic_ext_flags_t atomic_add
+                = ZE_DEVICE_FP_ATOMIC_EXT_FLAG_GLOBAL_ADD
+                | ZE_DEVICE_FP_ATOMIC_EXT_FLAG_LOCAL_ADD;
+
+        auto deviceProps = ze_device_module_properties_t();
+        deviceProps.stype = ZE_STRUCTURE_TYPE_DEVICE_MODULE_PROPERTIES;
+        deviceProps.pNext = &fltAtom;
+
+        status = ngen::dynamic::zeDeviceGetModuleProperties(
+                device, &deviceProps);
+        if (status != ZE_RESULT_SUCCESS) return {};
+        if (fltAtom.fp64Flags & atomic_add)
+            attr |= dsl::hw::attr_t::atomic_fp64;
+    }
+
+    return dsl::hw_t(product, eu_count, max_wg_size, l3_cache_size, attr);
+}
+
+LevelZeroKernelAndModule make_kernel(const GEMMKernelDesc &desc,
+        ze_device_handle_t device, ze_context_handle_t context) {
+    if (desc.strategy.isDSLGenerator) {
+        generator_dsl_desc_t dsl_desc(
+                desc.problem, desc.strategy, desc.iface, desc.options);
         auto dsl_kernel = make_kernel(dsl_desc);
         return dsl::make_kernel(dsl_kernel, context, device);
     }

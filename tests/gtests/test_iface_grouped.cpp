@@ -359,6 +359,17 @@ TEST(iface_grouped_test_t, TestGroupedMatmulValidation) {
     auto wei_md
             = memory::desc({ngroups, K, N}, dt::f32, memory::format_tag::abc);
 
+    // Invalid: grouped/non-grouped combinations
+    auto dense_src = memory::desc({M, K}, dt::f32, memory::format_tag::ab);
+    auto dense_dst = memory::desc({M, N}, dt::f32, memory::format_tag::ab);
+
+    EXPECT_THROW(matmul::primitive_desc(eng, dense_src, wei_md, dst_md),
+            dnnl::error);
+    EXPECT_THROW(matmul::primitive_desc(eng, src_md, wei_md, dense_dst),
+            dnnl::error);
+    EXPECT_THROW(matmul::primitive_desc(eng, dense_src, wei_md, dense_dst),
+            dnnl::error);
+
     // Invalid: 2D weights
     auto wei_2d = memory::desc({K, N}, dt::f32, memory::format_tag::ab);
     EXPECT_THROW(
@@ -372,45 +383,6 @@ TEST(iface_grouped_test_t, TestGroupedMatmulValidation) {
     EXPECT_THROW(matmul::primitive_desc(eng, src_md, wei_md, dst_4groups),
             dnnl::error);
     EXPECT_THROW(matmul::primitive_desc(eng, src_md, wei_4groups, dst_md),
-            dnnl::error);
-}
-
-TEST(iface_grouped_test_t, TestGroupedMatmulPatterns) {
-    engine eng = get_test_engine();
-
-    const int ngroups = 2;
-    const int M = 4, K = 8, N = 6;
-
-    // Valid case: Grouped * Regular 3D -> Grouped (MoE forward pass)
-    auto grouped_src = memory::desc::grouped({M, K}, dt::f32, 0, ngroups);
-    auto regular_3d_wei
-            = memory::desc({ngroups, K, N}, dt::f32, memory::format_tag::abc);
-    auto grouped_dst = memory::desc::grouped({M, N}, dt::f32, 0, ngroups);
-
-    EXPECT_NO_THROW(matmul::primitive_desc(
-            eng, grouped_src, regular_3d_wei, grouped_dst));
-
-    // Not supported case: Grouped * Regular 3D -> Regular 3D
-    auto regular_3d_dst = memory::desc(
-            {ngroups, M / ngroups, N}, dt::f32, memory::format_tag::abc);
-
-    EXPECT_THROW(matmul::primitive_desc(
-                         eng, grouped_src, regular_3d_wei, regular_3d_dst),
-            dnnl::error);
-
-    // Not supported case: Regular 3D * Regular 3D -> Grouped
-    auto regular_3d_src = memory::desc(
-            {ngroups, M / ngroups, K}, dt::f32, memory::format_tag::abc);
-
-    EXPECT_THROW(matmul::primitive_desc(
-                         eng, regular_3d_src, regular_3d_wei, grouped_dst),
-            dnnl::error);
-
-    // Not supported case: Grouped * Grouped -> Regular 3D
-    auto grouped_wei = memory::desc::grouped({K, N}, dt::f32, 0, ngroups);
-
-    EXPECT_THROW(matmul::primitive_desc(
-                         eng, grouped_src, grouped_wei, regular_3d_dst),
             dnnl::error);
 }
 

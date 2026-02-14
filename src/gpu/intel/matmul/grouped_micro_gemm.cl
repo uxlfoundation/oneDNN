@@ -57,39 +57,27 @@ DECLARE_2D_TILE_COPY_REBLOCK(c_tile_type_dst, SUBGROUP_SIZE,
         ugemm_grouped_c_type, SUBGROUP_SIZE, ugemm_grouped_c_type_block0,
         ugemm_grouped_c_type_block1, ugemm_grouped_c_type_nblock0,
         ugemm_grouped_c_type_nblock1, CONVERT_DATA_T)
-
 #endif
 
-#if WITH_SRC_ATTR_SCALES
-#define SRC_ATTR_SCALE_ARGS , src_attr_scales
-#else
-#define SRC_ATTR_SCALE_ARGS
-#endif
-#if WITH_SRC_ATTR_ZP
-#define SRC_ATTR_ZP_ARGS , src_attr_zp
-#else
-#define SRC_ATTR_ZP_ARGS
-#endif
-#if WITH_SRC_ATTR_SCALES || WITH_SRC_ATTR_ZP
-#define SRC_ATTR_LD_ARGS , ldsrcq
-#else
-#define SRC_ATTR_LD_ARGS
-#endif
-#if WITH_WEI_ATTR_SCALES
-#define WEI_ATTR_SCALE_ARGS , wei_attr_scales
-#else
-#define WEI_ATTR_SCALE_ARGS
-#endif
-#if WITH_WEI_ATTR_ZP
-#define WEI_ATTR_ZP_ARGS , wei_attr_zp
-#else
-#define WEI_ATTR_ZP_ARGS
-#endif
-#if WITH_WEI_ATTR_SCALES || WITH_WEI_ATTR_ZP
-#define WEI_ATTR_LD_ARGS , ldweiq
-#else
-#define WEI_ATTR_LD_ARGS
-#endif
+#define OPTIONAL(enabled, argName) CONCAT2(OPTIONAL_, enabled)(argName)
+#define OPTIONAL_0(argName)
+#define OPTIONAL_1(argName) , argName
+
+#define OR_RESULT00 0
+#define OR_RESULT01 1
+#define OR_RESULT10 1
+#define OR_RESULT11 1
+#define OR(a, b) CONCAT2(OR_RESULT, CONCAT2(a, b))
+
+/* Optional quantization parameters */
+#define SRC_ATTR_SCALE_ARGS OPTIONAL(WITH_SRC_ATTR_SCALES, src_attr_scales)
+#define SRC_ATTR_ZP_ARGS OPTIONAL(WITH_SRC_ATTR_ZP, src_attr_zp)
+#define SRC_ATTR_LD_ARGS \
+    OPTIONAL(OR(WITH_SRC_ATTR_SCALES, WITH_SRC_ATTR_ZP), ldsrcq)
+#define WEI_ATTR_SCALE_ARGS OPTIONAL(WITH_WEI_ATTR_SCALES, wei_attr_scales)
+#define WEI_ATTR_ZP_ARGS OPTIONAL(WITH_WEI_ATTR_ZP, wei_attr_zp)
+#define WEI_ATTR_LD_ARGS \
+    OPTIONAL(OR(WITH_WEI_ATTR_SCALES, WITH_WEI_ATTR_ZP), ldweiq)
 
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) kernel void
 grouped_micro_gemm(const global SRC_DATA_T *src, int ldsrc,
@@ -100,7 +88,6 @@ grouped_micro_gemm(const global SRC_DATA_T *src, int ldsrc,
         const global WEI_ATTR_SCALES_DATA_T *wei_attr_scales,
         const global WEI_ATTR_ZP_DATA_T *wei_attr_zp, const int ldweiq, int n,
         int k, const global BIA_DATA_T *bias) {
-
 #if ugemm_grouped_slm_size > 0
     local char slm[ugemm_grouped_slm_size];
 #else

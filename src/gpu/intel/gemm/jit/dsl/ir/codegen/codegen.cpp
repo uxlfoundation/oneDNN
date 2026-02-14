@@ -106,7 +106,7 @@ public:
     ngen::HW hw() const { return host_->getHardware(); }
 
     void _visit(const alloc_t &obj) override {
-        auto scope = register_scope();
+        ngen_register_scope_t scope(host_->ra());
         bool do_alloc = (obj.kind == alloc_kind_t::grf);
         bool use_bc_alloc = false;
         if (do_alloc) {
@@ -121,8 +121,10 @@ public:
                 const int regs = div_up(obj.size, ngen::GRF::bytes(hw()));
                 if (is_header(obj.buf)) {
                     rbd = alloc_header(scope, regs);
+                } else if (obj.has_attr<access_map_alloc_attr_t>()) {
+                    rbd = alloc_with_access_map(obj, scope, regs);
                 } else {
-                    rbd = scope.alloc_reg_buf(regs);
+                    rbd = alloc_unmapped(obj, scope, regs);
                 }
             }
             if (obj.has_attr<grf_permute_attr_t>()) {
@@ -140,7 +142,7 @@ public:
 
     void _visit(const for_t &obj) override {
         host_->comment(obj.line_str());
-        auto scope = register_scope();
+        ngen_register_scope_t scope(host_->ra());
         auto var_op = scope.alloc_reg_data(obj.var.type());
         bool dynamic_loop = !is_const(obj.init) || !is_const(obj.bound);
         auto init_op = evaluate(obj.init, scope);
@@ -182,7 +184,7 @@ public:
 
     void _visit(const func_call_t &obj) override {
         host_->comment(obj.line_str());
-        auto scope = register_scope();
+        ngen_register_scope_t scope(host_->ra());
 
         auto &func = obj.func;
         if (func.is<dpas_t>()) {
@@ -241,7 +243,7 @@ public:
         host_->comment(obj.line_str());
 
         bool has_else = bool(obj.else_body);
-        auto scope = register_scope();
+        ngen_register_scope_t scope(host_->ra());
         auto cond_op = evaluate(obj.cond, scope);
 
         ngen::Label l_else;
@@ -271,7 +273,7 @@ public:
             return;
         }
 
-        auto scope = register_scope();
+        ngen_register_scope_t scope(host_->ra());
         host_->comment(obj.line_str());
         if (is_const(obj.value) || is_shuffle_const(obj.value)
                 || obj.var.type() != obj.value.type()) {
@@ -308,7 +310,7 @@ public:
         scope.clear();
 
         // Claim the let variable allocation.
-        auto var_scope = register_scope();
+        ngen_register_scope_t var_scope(host_->ra());
         if (!var_grf_range.isInvalid()) {
             var_scope.claim(var_grf_range);
         } else if (!var_sub.isInvalid()) {
@@ -321,7 +323,7 @@ public:
 
     void _visit(const store_t &obj) override {
         host_->comment(obj.line_str());
-        auto scope = register_scope();
+        ngen_register_scope_t scope(host_->ra());
         auto buf_op = evaluate(obj.buf, scope);
         auto off = to_cpp<int>(obj.off);
         auto mask_op = evaluate(obj.mask, scope);
@@ -348,7 +350,7 @@ public:
 
     void _visit(const while_t &obj) override {
         host_->comment(obj.line_str());
-        auto scope = register_scope();
+        ngen_register_scope_t scope(host_->ra());
 
         ngen::Label loop_end_label;
         ngen::Label loop_begin_label;
@@ -364,7 +366,112 @@ public:
 
 private:
     bool is_header(const expr_t &buf) const {
-        return buf.as<var_t>().name.find("h_") == 0;
+        auto &name = buf.as<var_t>().name;
+        return name == "h" || name.find("h_") == 0;
+    }
+
+    // Allocates buffers that are only contiguous in places where the ops that
+    // access it need them to be.
+    reg_buf_t alloc_with_access_map(const alloc_t &obj,
+            ngen_register_scope_t &scope, int regs,
+            ngen::Bundle base_bundle = ngen::Bundle()) {
+        using acc_info_t = access_map_alloc_attr_t::accesses_t::value_type;
+        const int grf_size = ngen::GRF::bytes(hw());
+        auto accs = obj.get_attr<access_map_alloc_attr_t>().accs;
+        gpu_assert(!accs.empty());
+        // align bases and sizes to grf boundary
+        for (auto &a : accs) {
+            auto first = round_down(a.first, grf_size);
+            a.second = round_up(a.first + a.second, grf_size) - first;
+            a.first = first;
+        }
+        // sort accesses by base
+        std::sort(accs.begin(), accs.end(),
+                [](const acc_info_t &a, const acc_info_t &b) {
+            return a.first < b.first;
+        });
+        // merge overlapping accesses and erase overlaps
+        gpu_assert(!accs[0].first);
+        for (int prev = 0, i = 1; i < (int)accs.size(); i++)
+            if (accs[prev].first + accs[prev].second > accs[i].first) {
+                accs[prev].second = std::max(accs[prev].second,
+                        accs[i].first + accs[i].second - accs[prev].first);
+                accs[i].second = 0;
+            } else {
+                prev = i;
+            }
+        for (auto it = accs.begin(); it != accs.end();)
+            if (!it->second)
+                it = accs.erase(it);
+            else
+                ++it;
+        // identify gaps and fill them with single-register stubs
+        access_map_alloc_attr_t::accesses_t stubs;
+        const int alloc_size
+                = accs.back().first + accs.back().second - accs.front().first;
+        if (utils::safe_divide(alloc_size, grf_size) < regs)
+            accs.emplace_back(
+                    accs.front().first + grf_size * (regs - 1), grf_size);
+        for (int i = 1; i < (int)accs.size(); i++)
+            for (int k = accs[i - 1].first + accs[i - 1].second;
+                    k < accs[i].first; k += grf_size)
+                stubs.emplace_back(k, grf_size);
+        accs.insert(accs.end(), stubs.begin(), stubs.end());
+        // sort accesses by size, largest to smallest
+        std::sort(accs.begin(), accs.end(),
+                [](const acc_info_t &a, const acc_info_t &b) {
+            return a.second > b.second;
+        });
+        // perform the allocations
+        std::vector<std::pair<int, ngen::GRFRange>> allocs;
+        auto &ra = scope.register_allocator();
+        for (auto &a : accs)
+            if (a.second) {
+                auto regs = utils::safe_divide(a.second, grf_size);
+                allocs.emplace_back(a.first, ra.alloc_range(regs, base_bundle));
+            }
+        // sort the allocations by their corresponding buffer bases
+        std::sort(allocs.begin(), allocs.end(),
+                [](const std::pair<int, ngen::GRFRange> &a,
+                        const std::pair<int, ngen::GRFRange> &b) {
+            return a.first < b.first;
+        });
+        // print the allocation map to debug output
+        dsl_trace() << "Allocation for '" << obj.buf << "' (" << obj.size
+                    << " bytes), mapped as:";
+        for (auto &a : allocs)
+            if (a.second.getLen() == 1)
+                dsl_trace()
+                        << "    offset: " << a.first << ", size: " << grf_size
+                        << " (r" << a.second.getBase() << ")";
+            else if (!a.second.isInvalid())
+                dsl_trace()
+                        << "    offset: " << a.first
+                        << ", size: " << a.second.getLen() * grf_size << " (r"
+                        << a.second.getBase() << " - r"
+                        << a.second.getBase() + a.second.getLen() - 1 << ")";
+        // merge the allocations together
+        std::vector<int> tiles;
+        for (auto &a : allocs) {
+            for (int i = a.second.getBase(), size = i + a.second.getLen();
+                    i < size; i++)
+                tiles.emplace_back(i);
+            ra.safeRelease(a.second);
+        }
+        for (auto &t : tiles)
+            scope.claim(ngen::GRFRange(t, 1));
+        return reg_buf_t(hw(), 1, tiles);
+    }
+
+    // Allocates buffers with no access map, keeping it in one piece
+    reg_buf_t alloc_unmapped(const alloc_t &obj, ngen_register_scope_t &scope,
+            int regs, ngen::Bundle base_bundle = ngen::Bundle()) {
+        auto retn = scope.alloc_reg_buf(regs, base_bundle);
+        dsl_trace() << "Allocation for '" << obj.buf << "' (" << obj.size
+                    << " bytes), unmapped:";
+        dsl_trace() << "    offset: 0, size: " << ngen::GRF::bytes(hw()) * regs
+                    << " (" << retn.str() << ")";
+        return retn;
     }
 
     // Allocates headers using heuristics to reduce back-to-back header reuse -
@@ -400,23 +507,21 @@ private:
         // registers.
         std::vector<ngen::GRFRange> ranges;
         for (int found = 0; found < 2;) {
-            auto r = scope.try_alloc_range(regs);
+            auto r = scope.register_allocator().try_alloc_range(regs);
             ranges.push_back(r);
             if (!is_used_recently(r)) found++;
         }
         auto range = ranges.back();
-        ranges.pop_back();
         for (auto &r : ranges)
-            scope.safeRelease(r);
+            scope.register_allocator().safeRelease(r);
         // If there no range found, fall back to regular allocation, without
         // any heuristics.
-        if (range.isInvalid()) range = scope.alloc_range(regs);
+        if (range.isInvalid())
+            range = scope.alloc_range(regs);
+        else
+            scope.claim(range);
         record(range);
         return reg_buf_t(scope.hw(), range);
-    }
-
-    ngen_register_scope_t register_scope() {
-        return ngen_register_scope_t(host_->ra());
     }
 
 #if GEMMSTONE_ASSERTIONS
@@ -494,7 +599,7 @@ private:
     void barrier_wait() { host_->barrierwait(); }
 
     void slm_fence(const func_call_attr_t &attr) {
-        auto scope = register_scope();
+        ngen_register_scope_t scope(host_->ra());
         auto tmp = scope.alloc();
         ngen::InstructionModifier mod;
         if (attr) mod = mod | attr.as<instruction_modifier_attr_t>().mod;
@@ -504,7 +609,7 @@ private:
     }
 
     void barrier(const func_call_attr_t &attr) {
-        auto scope = register_scope();
+        ngen_register_scope_t scope(host_->ra());
         auto tmp = scope.alloc();
         ngen::InstructionModifier mod;
         if (attr) mod = mod | attr.as<instruction_modifier_attr_t>().mod;
@@ -945,7 +1050,7 @@ public:
             default: {
                 // Some cases require pre-allocated register regions with
                 // special strides for a/b.
-                auto scope = ngen_register_scope_t(host_->ra());
+                ngen_register_scope_t scope(host_->ra());
                 auto a_out_op = maybe_alloc_strided_op(obj.type, obj.a, scope);
                 auto b_out_op = maybe_alloc_strided_op(obj.type, obj.b, scope);
                 bool is_mul = obj.op_kind == op_kind_t::_mul;

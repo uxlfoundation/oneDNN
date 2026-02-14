@@ -2496,7 +2496,10 @@ private:
         auto c_layout = get_c_layout(a_layout, b_layout, c_blk_layout);
         bmnk_block_mapper_t c_mapper(mapper);
         c_mapper.push_blocks(abc_kind_t::a, x2r.a_layout.blocks());
-        c_mapper.push_blocks(abc_kind_t::b, x2r.b_layout.blocks());
+        for (auto &block : x2r.b_layout.blocks()) {
+            if (mapper.bmnk_kind(abc_kind_t::b, block.idx) == bmnk_kind_t::n)
+                c_mapper.push_block(abc_kind_t::b, block);
+        }
         auto c_prb_layout = c_mapper.map_from_bmnk(abc_kind_t::c,
                 {bmnk_kind_t::b, bmnk_kind_t::m, bmnk_kind_t::n}, c_layout);
 

@@ -2715,8 +2715,13 @@ void set_amx_wsp_per_thread(jit_brgemm_conv_conf_t &jcp) {
             = utils::rnd_up(jcp.amx_buf_size_per_thread + 1, P4K);
 }
 
-void init_scratchpad(memory_tracking::registrar_t &scratchpad,
-        const jit_brgemm_conv_conf_t &jcp) {
+status_t init_scratchpad(memory_tracking::registrar_t &scratchpad,
+        const jit_brgemm_conv_conf_t &jcp, const memory_desc_t &src_md,
+        const memory_desc_t &weights_md, const memory_desc_t &dst_md) {
+    const memory_desc_wrapper src_d(&src_md);
+    const memory_desc_wrapper weights_d(&weights_md);
+    const memory_desc_wrapper dst_d(&dst_md);
+
     if (uses_batch_elements(jcp.brg_type, jcp.exec_type)) {
         scratchpad.book(key_brgemm_primitive_batch,
                 static_cast<size_t>(jcp.nthr) * jcp.adjusted_batch_size,
@@ -2775,6 +2780,20 @@ void init_scratchpad(memory_tracking::registrar_t &scratchpad,
         scratchpad.book(key_conv_dst_scales,
                 static_cast<size_t>(jcp.nthr) * sizeof(float), P4K);
     }
+
+    // Check scratchpad size to avoid allocating huge buffers
+    if (jcp.exec_type == exec_trans) {
+        constexpr size_t scratchpad_limit_by_absolute_value = (size_t)32
+                << 30; // 32Gb - TODO: may it's too large?
+        const size_t scratchpad_limit_by_tensor_sizes = (size_t)64 * jcp.nthr
+                * (src_d.size() + weights_d.size() + dst_d.size());
+        const size_t scratchpad_limit
+                = nstl::min(scratchpad_limit_by_absolute_value,
+                        scratchpad_limit_by_tensor_sizes);
+        if (scratchpad.size() > scratchpad_limit) return status::unimplemented;
+    }
+
+    return status::success;
 }
 
 void balance_bwd_w(jit_brgemm_conv_conf_t &jcp) {

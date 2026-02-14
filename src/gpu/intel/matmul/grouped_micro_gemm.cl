@@ -22,74 +22,74 @@
 #include "gemm_grouped.h"
 
 #if WITH_BIAS
-DECLARE_2D_TILE(bias_tile_type, float, SUBGROUP_SIZE,
-        ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
-        ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1)
+#define bias_br ugemm_grouped_sg_tile_m
+#define bias_bc 1
+#define bias_nbr ugemm_grouped_c_type_nblock0
+#define bias_nbc 1
 
+DECLARE_2D_TILE(bias_tile_type, float, SUBGROUP_SIZE, bias_br, bias_bc,
+        bias_nbr, bias_nbc)
 #ifndef BIA_DT_F32
-DECLARE_2D_TILE(bias_in_tile_type, BIA_DATA_T, SUBGROUP_SIZE,
-        ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
-        ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1)
-DECLARE_2D_TILE_COPY_REBLOCK(bias_in_tile_type, SUBGROUP_SIZE,
+DECLARE_2D_TILE(bias_in_tile_type, BIA_DATA_T, SUBGROUP_SIZE, bias_br, bias_bc,
+        bias_nbr, bias_nbc)
+#endif
+
+DECLARE_2D_TILE_VREDUCE(ugemm_grouped_c_type, SUBGROUP_SIZE,
         ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
         ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1,
-        bias_tile_type, SUBGROUP_SIZE, ugemm_grouped_c_type_block0,
-        ugemm_grouped_c_type_block1, ugemm_grouped_c_type_nblock0,
-        ugemm_grouped_c_type_nblock1, CONVERT_FLOAT_T)
+        bias_tile_type, SUBGROUP_SIZE, bias_br, bias_bc, bias_nbr, bias_nbc)
+
+void load_bias(
+        bias_tile_type *tile, const global BIA_DATA_T *ptr, int n, int sg_i0) {
+#if BIA_DT_F32
+    tile_load(tile, ptr, n, 1, 0, sg_i0, 0);
+#else
+    bias_in_tile_type bias_in_tile;
+    tile_load(&bias_in_tile, ptr, n, 1, 0, sg_i0, 0);
+    tile_convert(bias_in_tile, (*tile), CONVERT_FLOAT_T);
 #endif
+}
+
 #endif
 
 #ifndef DST_DT_F32
 DECLARE_2D_TILE(c_tile_type_dst, DST_DATA_T, SUBGROUP_SIZE,
         ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
         ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1)
-
-DECLARE_2D_TILE_COPY_REBLOCK(ugemm_grouped_c_type, SUBGROUP_SIZE,
-        ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
-        ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1,
-        c_tile_type_dst, SUBGROUP_SIZE, ugemm_grouped_c_type_block0,
-        ugemm_grouped_c_type_block1, ugemm_grouped_c_type_nblock0,
-        ugemm_grouped_c_type_nblock1, CONVERT_DATA_T)
-
-DECLARE_2D_TILE_COPY_REBLOCK(c_tile_type_dst, SUBGROUP_SIZE,
-        ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
-        ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1,
-        ugemm_grouped_c_type, SUBGROUP_SIZE, ugemm_grouped_c_type_block0,
-        ugemm_grouped_c_type_block1, ugemm_grouped_c_type_nblock0,
-        ugemm_grouped_c_type_nblock1, CONVERT_DATA_T)
-
 #endif
 
-#if WITH_SRC_ATTR_SCALES
-#define SRC_ATTR_SCALE_ARGS , src_attr_scales
+#define OPTIONAL(enabled, argName) CONCAT2(OPTIONAL_, enabled)(argName)
+#define OPTIONAL_0(argName)
+#define OPTIONAL_1(argName) , argName
+
+#define OR_RESULT00 0
+#define OR_RESULT01 1
+#define OR_RESULT10 1
+#define OR_RESULT11 1
+#define OR(a, b) CONCAT2(OR_RESULT, CONCAT2(a, b))
+
+/* Optional quantization parameters */
+#define SRC_ATTR_SCALE_ARGS OPTIONAL(WITH_SRC_ATTR_SCALES, src_attr_scales)
+#define SRC_ATTR_ZP_ARGS OPTIONAL(WITH_SRC_ATTR_ZP, src_attr_zp)
+#define SRC_ATTR_LD_ARGS \
+    OPTIONAL(OR(WITH_SRC_ATTR_SCALES, WITH_SRC_ATTR_ZP), ldsrcq)
+#define WEI_ATTR_SCALE_ARGS OPTIONAL(WITH_WEI_ATTR_SCALES, wei_attr_scales)
+#define WEI_ATTR_ZP_ARGS OPTIONAL(WITH_WEI_ATTR_ZP, wei_attr_zp)
+#define WEI_ATTR_LD_ARGS \
+    OPTIONAL(OR(WITH_WEI_ATTR_SCALES, WITH_WEI_ATTR_ZP), ldweiq)
+
+void store_results(ugemm_grouped_c_type *tile, global DST_DATA_T *ptr, int n,
+        int m, int lddst, int sg_i0, int sg_j0) {
+#if DST_DT_F32
+    tile_store(*tile, ptr, n, m, lddst, sg_i0, sg_j0);
+    //tile_store_t_block2d(c_tile, dst, n, m, lddst, sg_j0, sg_i0);
 #else
-#define SRC_ATTR_SCALE_ARGS
+    c_tile_type_dst tile_dst;
+    tile_convert((*tile), tile_dst, CONVERT_DATA_T);
+    tile_store(tile_dst, ptr, n, m, lddst, sg_i0, sg_j0);
+    //tile_store_block2d(c_tile_dst, dst, n, m, lddst, sg_j0, sg_i0);
 #endif
-#if WITH_SRC_ATTR_ZP
-#define SRC_ATTR_ZP_ARGS , src_attr_zp
-#else
-#define SRC_ATTR_ZP_ARGS
-#endif
-#if WITH_SRC_ATTR_SCALES || WITH_SRC_ATTR_ZP
-#define SRC_ATTR_LD_ARGS , ldsrcq
-#else
-#define SRC_ATTR_LD_ARGS
-#endif
-#if WITH_WEI_ATTR_SCALES
-#define WEI_ATTR_SCALE_ARGS , wei_attr_scales
-#else
-#define WEI_ATTR_SCALE_ARGS
-#endif
-#if WITH_WEI_ATTR_ZP
-#define WEI_ATTR_ZP_ARGS , wei_attr_zp
-#else
-#define WEI_ATTR_ZP_ARGS
-#endif
-#if WITH_WEI_ATTR_SCALES || WITH_WEI_ATTR_ZP
-#define WEI_ATTR_LD_ARGS , ldweiq
-#else
-#define WEI_ATTR_LD_ARGS
-#endif
+}
 
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) kernel void
 grouped_micro_gemm(const global SRC_DATA_T *src, int ldsrc,
@@ -100,7 +100,6 @@ grouped_micro_gemm(const global SRC_DATA_T *src, int ldsrc,
         const global WEI_ATTR_SCALES_DATA_T *wei_attr_scales,
         const global WEI_ATTR_ZP_DATA_T *wei_attr_zp, const int ldweiq, int n,
         int k, const global BIA_DATA_T *bias) {
-
 #if ugemm_grouped_slm_size > 0
     local char slm[ugemm_grouped_slm_size];
 #else
@@ -147,28 +146,11 @@ grouped_micro_gemm(const global SRC_DATA_T *src, int ldsrc,
             slm WEI_ATTR_SCALE_ARGS WEI_ATTR_ZP_ARGS WEI_ATTR_LD_ARGS
                     SRC_ATTR_SCALE_ARGS SRC_ATTR_ZP_ARGS SRC_ATTR_LD_ARGS);
 #if WITH_BIAS
-#define binary_add(x, y) ((x) + (y))
     bias += batch * n;
     bias_tile_type bias_tile;
-#if BIA_DT_F32
-    tile_load(&bias_tile, bias, n, m, 0, sg_i0, sg_j0);
-#else
-    {
-        bias_in_tile_type bias_in_tile;
-        tile_load(&bias_in_tile, bias, n, m, 0, sg_i0, sg_j0);
-        tile_copy_reblock(bias_in_tile, &bias_tile);
-    }
-#endif
-    tile_binary(c_tile, bias_tile, binary_add);
+    load_bias(&bias_tile, bias, n, sg_i0);
+    tile_vbroadcast_add(&c_tile, bias_tile);
 #endif
 
-#if DST_DT_F32
-    tile_store(c_tile, dst, n, m, lddst, sg_i0, sg_j0);
-    //tile_store_t_block2d(c_tile, dst, n, m, lddst, sg_j0, sg_i0);
-#else
-    c_tile_type_dst c_tile_dst;
-    tile_copy_reblock(c_tile, &c_tile_dst);
-    tile_store(c_tile_dst, dst, n, m, lddst, sg_i0, sg_j0);
-    //tile_store_block2d(c_tile_dst, dst, n, m, lddst, sg_j0, sg_i0);
-#endif
+    store_results(&c_tile, dst, n, m, lddst, sg_i0, sg_j0);
 }

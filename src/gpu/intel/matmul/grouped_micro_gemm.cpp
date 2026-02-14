@@ -30,14 +30,6 @@ namespace gpu {
 namespace intel {
 namespace matmul {
 
-int elems_per_byte(data_type_t dt) {
-    switch (dt) {
-        case data_type::u4:
-        case data_type::s4: return 2;
-        default: return 1;
-    }
-}
-
 status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
     using namespace jit;
     using namespace gemmstone;
@@ -48,12 +40,14 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
     auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
     auto *dev_info = intel_engine->device_info();
     //arch_ = dev_info->gpu_arch();
+    bool use_systolic_ukernel = intel_engine->mayiuse(
+            compute::device_ext_t::intel_subgroup_matrix_multiply_accumulate);
 
     /* Get device information */
     HWInformation hw_info;
     hw_info.euCount = dev_info->eu_count();
     hw_info.gmdid = dev_info->ip_version();
-    hw_info.systolicAvailable = pd()->use_systolic_ukernel_;
+    hw_info.systolicAvailable = use_systolic_ukernel;
 
     if (hw_info.gmdid == 0) return status::unimplemented;
 
@@ -77,8 +71,10 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
     problem.Ta = problem.Ta_ext;
     problem.Tb = problem.Tb_ext;
 
-    problem.A.setAlignment(alignmentForLD(pd()->K() / problem.Ta_ext));
-    problem.B.setAlignment(alignmentForLD(pd()->N() / problem.Tb_ext));
+    problem.A.setAlignment(
+            alignmentForLD(static_cast<int>(pd()->K()) / problem.Ta_ext));
+    problem.B.setAlignment(
+            alignmentForLD(static_cast<int>(pd()->N()) / problem.Tb_ext));
     problem.C.setAlignment(problem.Tc.size());
 
     problem.A.layout = convert_dnnl_to_kernel_layout(wei_mdw.md_);
@@ -135,25 +131,14 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
     }
 
     if (opts.scaleA || opts.offsetA) {
-        const quant_entry_t &wei_quant = opts.scaleA
-                ? pd()->attr()->scales_.get(DNNL_ARG_WEIGHTS)
-                : pd()->attr()->zero_points_.get(DNNL_ARG_WEIGHTS);
-        memory_desc_t md;
-        const memory_desc_t &wei_md = *pd()->weights_md();
-        wei_quant.get_md(md, wei_md);
         problem.aqGroupM = pd()->wei_group_sizes_[2];
         problem.aqGroupK = utils::rnd_up_pow2(pd()->wei_group_sizes_[1]);
     }
 
     if (opts.scaleB || opts.offsetB) {
-        const quant_entry_t &src_scales = opts.scaleB
-                ? pd()->attr()->scales_.get(DNNL_ARG_SRC)
-                : pd()->attr()->zero_points_.get(DNNL_ARG_SRC);
-        memory_desc_t md;
-        const memory_desc_t &src_md = *pd()->src_md();
-        src_scales.get_md(md, src_md);
         problem.bqGroupN = pd()->src_group_sizes_[0];
-        problem.bqGroupK = utils::rnd_up_pow2(pd()->src_group_sizes_[1]);
+        problem.bqGroupK = static_cast<int>(
+                utils::rnd_up_pow2(pd()->src_group_sizes_[1]));
     }
 
     SizeParams sizes;
@@ -162,18 +147,17 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
     sizes.k = static_cast<uint16_t>(k);
 
     auto sg_size = dev_info->min_subgroup_size();
-    Package gemm;
     try {
-        gemm = microkernel::selectGEMM(opts, hw_info, sizes, problem);
+        gemm = selectGEMM(opts, hw_info, sizes, problem);
     } catch (const std::runtime_error &ex) {
         std::vector<StrategyRequirement> reqs;
         reqs.push_back(StrategyRequirement::UnrollM == sg_size);
         reqs.push_back(StrategyRequirement::UnrollN
-                == utils::rnd_up_pow2(std::min<int>(pd()->M(), 64)));
+                == utils::rnd_up_pow2(std::min<dim_t>(pd()->M(), 64)));
         reqs.push_back(StrategyRequirement::WGM == 2);
         reqs.push_back(StrategyRequirement::WGN
-                == utils::rnd_up_pow2(std::max<int>(
-                        1, std::min<int>(pd()->M() / reqs[1].value, 8))));
+                == utils::rnd_up_pow2(std::max<dim_t>(
+                        1, std::min<dim_t>(pd()->M() / reqs[1].value, 8))));
         try {
             gemm = selectGEMM(opts, hw_info, sizes, problem, reqs);
         } catch (const std::runtime_error &ex) {
@@ -183,10 +167,6 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
             return status::unimplemented;
         }
     }
-    //printf("Gemm: tile(%d %d)  unroll(%d, %d) sg_per_wg=(%d, %d)\n",
-    //        gemm.getSetting("wg_tile_m"), gemm.getSetting("wg_tile_n"),
-    //        gemm.getSetting("sg_tile_m"), gemm.getSetting("sg_tile_n"),
-    //        gemm.getSetting("sg_per_wg_m"), gemm.getSetting("sg_per_wg_n"));
 
     /* Generate microkernel shims */
     ShimOptions shimOptions;
@@ -198,50 +178,30 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
     kernel_ctx_.add_custom_header("gemm_grouped.h",
             generateShim(gemm, HostLanguage::OpenCL_C, shimOptions));
 
-    auto pd_ = (pd_t *)primitive_t::pd().get();
-    pd_->sg_per_wg_m_ = gemm.getSetting("sg_per_wg_m");
-    pd_->sg_per_wg_n_ = gemm.getSetting("sg_per_wg_n");
-    pd_->sg_tile_m_ = gemm.getSetting("sg_tile_m");
-    pd_->sg_tile_n_ = gemm.getSetting("sg_tile_n");
-    if (gemm.grfMin > 128) pd_->use_256_grf_ = true;
-
     return status::success;
 }
 
 template <size_t N>
-void calc_group_sizes(std::array<dim_t, N> &dims, const quant_entry_t &entry,
-        const memory_desc_t &desc) {
+void calc_group_sizes(std::array<int, N> &dims, const quant_entry_t &entry,
+        const memory_desc_wrapper &desc) {
     memory_desc_t md;
-    entry.get_md(md, desc);
-    std::transform(desc.dims, desc.dims + dims.size(), md.dims, begin(dims),
-            [](dim_t d, dim_t d2) { return d2 == 0 ? 1 : d / d2; });
+    entry.get_md(md, *desc.md_);
+    std::transform(desc.dims(), desc.dims() + dims.size(), md.dims, begin(dims),
+            [](dim_t d, dim_t d2) -> int {
+        return static_cast<int>(d2 == 0 ? 1 : d / d2);
+    });
 }
 
 status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
     using namespace data_type;
 
-    auto src_dt = src_md(0)->data_type;
-    auto wei_dt = weights_md(0)->data_type;
-    auto dst_dt = dst_md(0)->data_type;
-
     memory_desc_wrapper src_d(src_md());
     memory_desc_wrapper wei_d(weights_md(0));
     memory_desc_wrapper dst_d(dst_md());
 
-    if (!attr()->scales_.has_default_values(DNNL_ARG_SRC)) {
-        calc_group_sizes(
-                src_group_sizes_, attr()->scales_.get(DNNL_ARG_SRC), *src_md());
-    } else if (!attr()->zero_points_.has_default_values(DNNL_ARG_SRC)) {
-        calc_group_sizes(src_group_sizes_,
-                attr()->zero_points_.get(DNNL_ARG_SRC), *src_md());
-    }
-    if (!attr()->scales_.has_default_values(DNNL_ARG_WEIGHTS)) {
-        calc_group_sizes(wei_group_sizes_,
-                attr()->scales_.get(DNNL_ARG_WEIGHTS), *weights_md());
-    } else if (!attr()->zero_points_.has_default_values(DNNL_ARG_WEIGHTS)) {
-        calc_group_sizes(wei_group_sizes_,
-                attr()->zero_points_.get(DNNL_ARG_WEIGHTS), *weights_md());
-    }
+    data_type_t src_dt = src_d.data_type();
+    data_type_t wei_dt = wei_d.data_type();
+    data_type_t dst_dt = dst_d.data_type();
 
     // Check for grouped encoding on src and dst
     VDISPATCH_MATMUL(src_d.is_grouped_desc() && dst_d.is_grouped_desc(),
@@ -252,8 +212,14 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
             VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     // Extract grouped encoding
-    const auto &src_grouped = src_d.sparse_desc().grouped_desc;
-    const auto &dst_grouped = dst_d.sparse_desc().grouped_desc;
+    const sparse_desc_t::grouped_desc_t &src_grouped
+            = src_d.sparse_desc().grouped_desc;
+    const sparse_desc_t::grouped_desc_t &dst_grouped
+            = dst_d.sparse_desc().grouped_desc;
+
+    VDISPATCH_MATMUL(wei_d.matches_one_of_tag(format_tag::ab, format_tag::ba,
+                             format_tag::abc, format_tag::acb),
+            VERBOSE_UNSUPPORTED_TAG_S, "weights");
 
     // Validate matching number of groups
     VDISPATCH_MATMUL(src_grouped.group_count == dst_grouped.group_count,
@@ -279,8 +245,8 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
             "weights", 2);
 
     // Check offsets are int32
-    VDISPATCH_MATMUL(
-            src_d.metadata_type(0) == s32 && dst_d.metadata_type(0) == s32,
+    VDISPATCH_MATMUL(utils::everyone_is(s32, src_d.metadata_type(0),
+                             dst_d.metadata_type(0)),
             VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     // Check for limited Bias support
@@ -303,8 +269,45 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
     VDISPATCH_MATMUL(compute::mayiuse_microkernels(intel_engine),
             VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "microkernels");
 
-    use_systolic_ukernel_ = intel_engine->mayiuse(
-            compute::device_ext_t::intel_subgroup_matrix_multiply_accumulate);
+    // Check for supported quantization schemes
+    const scales_t &attr_scales = attr()->scales_;
+    if (!attr_scales.has_default_values(DNNL_ARG_SRC)) {
+        const int src_mask = attr_scales.get_mask(DNNL_ARG_SRC);
+        const int rowwise_mask = src_qmask_M();
+        // Only row-wise f32 scales supported for src
+        VDISPATCH_MATMUL(
+                src_mask == rowwise_mask, VERBOSE_UNSUPPORTED_SCALES_CFG);
+        // No groups for src scales
+        VDISPATCH_MATMUL(attr_scales.get(DNNL_ARG_SRC).has_default_groups(),
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
+    }
+    if (!attr_scales.has_default_values(DNNL_ARG_WEIGHTS)) {
+        const int wei_mask = attr_scales.get_mask(DNNL_ARG_WEIGHTS);
+        // Only column-wise f32 scales supported for weights
+        VDISPATCH_MATMUL(
+                utils::one_of(wei_mask, 7, 5), VERBOSE_UNSUPPORTED_SCALES_CFG);
+    }
+    VDISPATCH_MATMUL(attr_scales.has_default_values(DNNL_ARG_DST),
+            VERBOSE_UNSUPPORTED_SCALES_CFG);
+
+    // No post-ops for now
+    VDISPATCH_MATMUL(
+            attr()->post_ops_.has_default_values(), VERBOSE_UNSUPPORTED_POSTOP);
+
+    if (!attr()->scales_.has_default_values(DNNL_ARG_SRC)) {
+        calc_group_sizes(
+                src_group_sizes_, attr()->scales_.get(DNNL_ARG_SRC), src_d);
+    } else if (!attr()->zero_points_.has_default_values(DNNL_ARG_SRC)) {
+        calc_group_sizes(src_group_sizes_,
+                attr()->zero_points_.get(DNNL_ARG_SRC), src_d);
+    }
+    if (!attr()->scales_.has_default_values(DNNL_ARG_WEIGHTS)) {
+        calc_group_sizes(
+                wei_group_sizes_, attr()->scales_.get(DNNL_ARG_WEIGHTS), wei_d);
+    } else if (!attr()->zero_points_.has_default_values(DNNL_ARG_WEIGHTS)) {
+        calc_group_sizes(wei_group_sizes_,
+                attr()->zero_points_.get(DNNL_ARG_WEIGHTS), wei_d);
+    }
     sg_size_ = dev_info->min_subgroup_size();
 
     return status::success;
@@ -319,7 +322,7 @@ status_t grouped_micro_gemm_t::init(impl::engine_t *engine) {
 
     kernel_ctx_.set_data_type(dst_dt);
 
-    if (pd()->use_256_grf_)
+    if (gemm.grfMin > 128)
         kernel_ctx_.add_option("-cl-intel-256-GRF-per-thread");
 
     def_data_type(kernel_ctx_, src_dt, "SRC");
@@ -358,8 +361,10 @@ status_t grouped_micro_gemm_t::init(impl::engine_t *engine) {
                     DNNL_ARG_WEIGHTS)) {
         kernel_ctx_.define_int("WEI_GROUP_SIZE", pd()->wei_group_sizes_[1]);
     }
-    kernel_ctx_.define_int("SRC_ELEMS_PER_BYTE", elems_per_byte(src_dt));
-    kernel_ctx_.define_int("WEI_ELEMS_PER_BYTE", elems_per_byte(wei_dt));
+    kernel_ctx_.define_int(
+            "SRC_ELEMS_PER_BYTE", types::bytes_to_elements(src_dt, 1));
+    kernel_ctx_.define_int(
+            "WEI_ELEMS_PER_BYTE", types::bytes_to_elements(wei_dt, 1));
 
     auto bia_dt = pd()->weights_md(1)->data_type;
     def_data_type(kernel_ctx_, bia_dt, "BIA");
@@ -387,7 +392,6 @@ status_t grouped_micro_gemm_t::execute(const exec_ctx_t &ctx) const {
 
     const auto &bias_data = CTX_IN_STORAGE(DNNL_ARG_BIAS);
 
-    auto pd_ = pd();
     const memory_desc_t *src_md = ctx.input(DNNL_ARG_SRC)->md();
     const memory_desc_t *wei_md = pd()->weights_md();
     const memory_desc_t *dst_md = ctx.output(DNNL_ARG_DST)->md();
@@ -408,11 +412,8 @@ status_t grouped_micro_gemm_t::execute(const exec_ctx_t &ctx) const {
     int ldweiq = 0;
 
     if (with_src_scales || with_src_zero_points) {
-        const memory_desc_t *src_quant_md = with_src_scales
-                ? ctx.input(DNNL_ARG_SRC | DNNL_ARG_ATTR_SCALES)->md()
-                : ctx.input(DNNL_ARG_SRC | DNNL_ARG_ATTR_ZERO_POINTS)->md();
-        ldsrcq = static_cast<int>(src_quant_md->format_desc.blocking
-                                          .strides[src_quant_md->ndims - 1]);
+        // Only row-wise cales are supported for src
+        ldsrcq = 1;
     }
     if (with_wei_scales || with_wei_zero_points) {
         const memory_desc_t *wei_quant_md = with_wei_scales
@@ -424,8 +425,6 @@ status_t grouped_micro_gemm_t::execute(const exec_ctx_t &ctx) const {
     int m_all = static_cast<int>(dst_md->dims[dst_md->ndims - 2]);
     int n = static_cast<int>(dst_md->dims[dst_md->ndims - 1]);
     int k = static_cast<int>(src_md->dims[src_md->ndims - 1]);
-    //printf("m_all=%d, n=%d, k=%d ldsrcq: %d ldweiq: %d\n", m_all, n, k, ldsrcq,
-    //        ldweiq);
 
     int ldsrc = static_cast<int>(src_md->dims[src_md->ndims - 1]);
     int lddst = static_cast<int>(dst_md->dims[dst_md->ndims - 1]);
@@ -456,14 +455,15 @@ status_t grouped_micro_gemm_t::execute(const exec_ctx_t &ctx) const {
 
     arg_list.append(bias_data);
 
+    size_t sg_per_wg_m = gemm.getSetting("sg_per_wg_m");
+    size_t sg_per_wg_n = gemm.getSetting("sg_per_wg_n");
+    size_t sg_tile_m = gemm.getSetting("sg_tile_m");
+    size_t sg_tile_n = gemm.getSetting("sg_tile_n");
+
     // Use total_tokens as upper bound for M dimension
-    compute::range_t lws = {(size_t)pd_->sg_per_wg_m_ * pd_->sg_size_,
-            (size_t)pd_->sg_per_wg_n_, 1};
+    compute::range_t lws = {sg_per_wg_m * pd_->sg_size_, sg_per_wg_n, 1};
     compute::range_t gws = {utils::div_up(n, lws[0]) * lws[0],
-            utils::div_up(m_all, lws[1] * pd_->sg_tile_n_) * lws[1],
-            num_groups};
-    //std::cout << "LWS: " << lws.str() << std::endl;
-    //std::cout << "GWS: " << gws.str() << std::endl;
+            utils::div_up(m_all, lws[1] * sg_tile_n) * lws[1], num_groups};
 
     return parallel_for(ctx, compute::nd_range_t(gws, lws), kernel_, arg_list);
 }

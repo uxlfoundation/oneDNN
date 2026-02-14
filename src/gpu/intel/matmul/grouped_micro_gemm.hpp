@@ -26,6 +26,7 @@
 #include "common/primitive.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
+#include "gemmstone/microkernel/package.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/matmul/config.hpp"
 #include "gpu/intel/primitive.hpp"
@@ -69,15 +70,9 @@ struct grouped_micro_gemm_t : public primitive_t {
         status_t init(impl::engine_t *engine);
 
         int sg_size_ = 0;
-        bool use_systolic_ukernel_ = true;
-        bool use_256_grf_ = false;
-        dim_t sg_per_wg_m_ = 0;
-        dim_t sg_per_wg_n_ = 0;
-        dim_t sg_tile_m_ = 0;
-        dim_t sg_tile_n_ = 0;
         dim_t ngroups_ = 0;
-        std::array<dim_t, 2> src_group_sizes_ = {0, 0};
-        std::array<dim_t, 3> wei_group_sizes_ = {0, 0, 0};
+        std::array<int, 2> src_group_sizes_ = {0, 0};
+        std::array<int, 3> wei_group_sizes_ = {0, 0, 0};
 
     private:
         compute::gpu_arch_t arch_ = compute::gpu_arch_t::unknown;
@@ -89,6 +84,7 @@ struct grouped_micro_gemm_t : public primitive_t {
 
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
+    gemmstone::microkernel::Package gemm;
     compute::kernel_ctx_t kernel_ctx_;
     compute::kernel_t kernel_;
 };

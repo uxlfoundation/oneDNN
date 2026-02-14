@@ -618,6 +618,15 @@ status_t brgemm_desc_finalize(brgemm_desc_t *brg) {
         if ((max_vpad > min_bd_block)) return status::unimplemented;
     }
 
+    // Required for EVEX encoding for offsets
+    // The kernel brgemm_amx_uker_t has support of large offsets in post-ops
+    if (!brg->can_dispatch_uker()) {
+        const dim_t max_d_stride
+                = brg->LDD * types::data_type_size(brg->dt_d) * brg->bcast_dim;
+        if (max_d_stride > std::numeric_limits<int32_t>::max())
+            return status::unimplemented;
+    }
+
     return status::success;
 }
 

@@ -24,10 +24,12 @@
 #include "cpu/ref_io_helper.hpp"
 #include "gemmstone/microkernel/shim.hpp"
 #include "gemmstone/microkernel_selector.hpp"
+#include "gemmstone/strategy_parser.hpp"
 #include "gpu/intel/compute/ukernels.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/gemm/jit/gen_kernel.hpp"
 #include "gpu/intel/primitive_conf.hpp"
+#include "gpu/intel/utils.hpp"
 
 #include <cstdio>
 #include <iostream>
@@ -637,10 +639,28 @@ status_t micro_params_t::get_kernel_ctx(
     reqs_vs.push_back(StrategyRequirement::WGM == config.wg_m_vs);
     reqs_vs.push_back(StrategyRequirement::WGN == config.wg_n_vs);
 
+    auto kq_strat_override = [&](gemmstone::GEMMStrategy &strat) {
+        std::string newStrat;
+        newStrat = gpu_utils::dev_getenv("SDPA_KQ_USTRATEGY", newStrat);
+        if (!newStrat.empty()) {
+            // Example: 16 16 aT32 aM32 aB wg 2x4 sys
+            auto product = ngen::npack::decodeHWIPVersion(hw_info.gmdid);
+            auto hw = getCore(product.family);
+            auto stepping = hw_info.gmdid & 0xFF;
+            strat = gemmstone::GEMMStrategy(hw, stepping);
+            std::stringstream ss(newStrat);
+            ss >> strat.unroll[0];
+            ss >> strat.unroll[1];
+            std::string strategyString;
+            std::getline(ss >> std::ws, strategyString);
+            parseStrategy(strategyString.c_str(), hw, problem_kq, strat);
+            adjustStrategy(hw, problem_kq, strat);
+        }
+    };
     /* Ask microkernel provider for microkernel */
     try {
-        gemm_kq = micro::selectGEMM(
-                opts_kq, hw_info, sizes_kq, problem_kq, reqs_kq);
+        gemm_kq = micro::selectGEMM(opts_kq, hw_info, sizes_kq, problem_kq,
+                reqs_kq, kq_strat_override);
     } catch (const std::runtime_error &ex) {
         VCHECK_SDPA_COND(false,
                 "gemm_kq microkernel generation failure with message: %s",
@@ -648,17 +668,36 @@ status_t micro_params_t::get_kernel_ctx(
     }
 
     /* Ask microkernel provider for microkernel */
+    auto vs_strat_override = [&](gemmstone::GEMMStrategy &strat) {
+        std::string newStrat;
+        newStrat = gpu_utils::dev_getenv("SDPA_VS_USTRATEGY", newStrat);
+        if (!newStrat.empty()) {
+            // Example: 16 16 aT32 aM32 aB wg 2x4 sys
+            auto product = ngen::npack::decodeHWIPVersion(hw_info.gmdid);
+            auto hw = getCore(product.family);
+            auto stepping = hw_info.gmdid & 0xFF;
+            strat = gemmstone::GEMMStrategy(hw, stepping);
+            std::stringstream ss(newStrat);
+            ss >> strat.unroll[0];
+            ss >> strat.unroll[1];
+            std::string strategyString;
+            std::getline(ss >> std::ws, strategyString);
+            parseStrategy(strategyString.c_str(), hw, problem_vs, strat);
+            adjustStrategy(hw, problem_vs, strat);
+        }
+    };
     try {
         if (use_systolic_ukernel) {
-            auto adjust_vs = [](GEMMStrategy &strategy) {
+            auto adjust_vs = [&](GEMMStrategy &strategy) {
                 /* Enable dpasw */
                 strategy.dpasw |= strategy.fused;
+                vs_strat_override(strategy);
             };
             gemm_vs = micro::selectGEMM(
                     opts_vs, hw_info, sizes_vs, problem_vs, reqs_vs, adjust_vs);
         } else {
-            gemm_vs = micro::selectGEMM(
-                    opts_vs, hw_info, sizes_vs, problem_vs, reqs_vs);
+            gemm_vs = micro::selectGEMM(opts_vs, hw_info, sizes_vs, problem_vs,
+                    reqs_vs, vs_strat_override);
         }
     } catch (const std::runtime_error &ex) {
         VCHECK_SDPA_COND(false,

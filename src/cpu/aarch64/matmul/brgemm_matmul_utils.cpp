@@ -845,7 +845,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     const memory_desc_wrapper weights_d(&weights_md);
     const memory_desc_wrapper dst_d(&dst_md);
 
-    bgmmc = zero<decltype(bgmmc)>();
+    bgmmc = utils::zero<decltype(bgmmc)>();
     bgmmc.isa = isa;
     bgmmc.nthr = dnnl_get_max_threads();
     bgmmc.brg_type = brgemm_addr;

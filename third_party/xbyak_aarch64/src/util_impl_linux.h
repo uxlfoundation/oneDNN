@@ -1,5 +1,6 @@
 /*******************************************************************************
  * Copyright 2020-2023 FUJITSU LIMITED
+ * Copyright 2025 Arm Ltd. and affiliates
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -135,6 +136,10 @@ private:
       buf[0] = '\0';
 
     chomp(buf, buf_size);
+
+    if (fp) {
+      fclose(fp);
+    }
   }
 
   /**
@@ -176,9 +181,10 @@ private:
      /sys/devices/system/cpu/cpu0/cache/index[0-9]+/shared_cpu_list "0", "0-1"
   */
   bool readCacheInfoFromSysDevice() {
-    char buf0[buf_size];
-    char buf1[buf_size];
-    char buf2[buf_size];
+    char buf0[buf_size] = {0};
+    char buf1[buf_size] = {0};
+    char buf2[buf_size] = {0};
+
     struct dirent *dp;
     DIR *dir = opendir(XBYAK_AARCH64_PATH_CACHE_DIR);
     if (dir == NULL)
@@ -401,6 +407,10 @@ private:
       type_ |= (Type)XBYAK_AARCH64_HWCAP_FP;
     if (hwcap & HWCAP_ASIMD)
       type_ |= (Type)XBYAK_AARCH64_HWCAP_ADVSIMD;
+    if (hwcap & HWCAP_CRC32)
+      type_ |= (Type)XBYAK_AARCH64_HWCAP_CRC;
+    if (hwcap & HWCAP_JSCVT)
+      type_ |= (Type)XBYAK_AARCH64_HWCAP_JSCVT;
 
 #ifdef AT_HWCAP2
     const unsigned long hwcap2 = getauxval(AT_HWCAP2);
@@ -454,6 +464,8 @@ private:
     }
 
     cacheInfo_.midr_el1 = strtoull(buf, &stop, 16);
+
+    fclose(file);
   }
 };
 

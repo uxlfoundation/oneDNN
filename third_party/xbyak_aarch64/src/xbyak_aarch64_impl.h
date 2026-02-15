@@ -273,6 +273,26 @@ uint32_t genS(const VRegElem &Reg) {
   return s;
 }
 
+bool CodeGenerator::isValidLogicalImm(uint64_t imm, uint32_t size) {
+  // check imm
+  if (imm == 0 || imm == ones(size)) {
+    return false;
+  }
+
+  auto ptn_size = getPtnSize(imm, size);
+  auto ptn = imm & ones(ptn_size);
+  auto rotate_num = getPtnRotateNum(ptn, ptn_size);
+  auto rotate_ptn = lrotate(ptn, ptn_size, rotate_num);
+  auto one_bit_num = countOneBit(rotate_ptn, ptn_size);
+  auto seq_one_bit_num = countSeqOneBit(rotate_ptn, ptn_size);
+
+  // check ptn
+  if (one_bit_num != seq_one_bit_num) {
+    return false;
+  }
+  return true;
+}
+
 uint32_t CodeGenerator::genNImmrImms(uint64_t imm, uint32_t size) {
   // check imm
   if (imm == 0 || imm == ones(size)) {

@@ -235,6 +235,7 @@ class CodeGenerator : public CodeArray {
   // ############### encoding helper function #############
   // generate encoded imm
   uint32_t genNImmrImms(uint64_t imm, uint32_t size);
+  bool isValidLogicalImm(uint64_t imm, uint32_t size);
 
   // generate relative address for label offset
   uint64_t genLabelOffset(const Label &label, const JmpLabel &jmpL) {
@@ -764,6 +765,7 @@ public:
   void putL(const Label &label) { putL_inner(label); }
 
   void reset() {
+    setProtectModeRW();
     resetSize();
     labelMgr_.reset();
     labelMgr_.set(this);
@@ -846,6 +848,9 @@ public:
     if (remain % 4)
       throw Error(ERR_BAD_ALIGN);
     remain = x - (remain % x);
+
+    if (remain == x)
+      return;
 
     while (remain) {
       nop();

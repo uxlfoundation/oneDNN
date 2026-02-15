@@ -5497,8 +5497,12 @@ void CodeGenerator::bne(const Label &label) { b(NE, label); }
 void CodeGenerator::bne(int64_t label) { b(NE, label); }
 void CodeGenerator::bcs(const Label &label) { b(CS, label); }
 void CodeGenerator::bcs(int64_t label) { b(CS, label); }
+void CodeGenerator::bhs(const Label &label) { b(HS, label); }
+void CodeGenerator::bhs(int64_t label) { b(HS, label); }
 void CodeGenerator::bcc(const Label &label) { b(CC, label); }
 void CodeGenerator::bcc(int64_t label) { b(CC, label); }
+void CodeGenerator::blo(const Label &label) { b(LO, label); }
+void CodeGenerator::blo(int64_t label) { b(LO, label); }
 void CodeGenerator::bmi(const Label &label) { b(MI, label); }
 void CodeGenerator::bmi(int64_t label) { b(MI, label); }
 void CodeGenerator::bpl(const Label &label) { b(PL, label); }

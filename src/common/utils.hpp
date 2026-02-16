@@ -356,8 +356,9 @@ constexpr const T &saturate(const T &low, const T &upper, const T &a) {
 
 template <typename T, typename U>
 inline typename remove_reference<T>::type div_up(const T a, const U b) {
-    assert(b);
-    return static_cast<typename remove_reference<T>::type>((a + b - 1) / b);
+    assert(b > 0);
+    return static_cast<typename remove_reference<T>::type>(
+            a >= 1 ? 1 + (a - 1) / b : (a + b - 1) / b);
 }
 
 template <typename T, typename U>

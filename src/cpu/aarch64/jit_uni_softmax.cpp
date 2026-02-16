@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2019 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -712,7 +712,7 @@ void jit_softmax_sve_t<isa>::generate() {
         exp_injector_.reset(new jit_uni_eltwise_injector_t<to_vla_sve(isa)>(
                 this, alg_kind::eltwise_exp, 0.0f, 0.0f, 1.0f, true,
                 reg_exp_injector_table, injector_mask, injector_tmp, true,
-                false, (isa != sve_128)));
+                false, false));
         exp_injector_->set_input_range(-INFINITY, 0.f);
     }
     if (pd_->is_fwd() && is_logsoftmax_) {

@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2019 Intel Corporation
 * Copyright 2021-2024 FUJITSU LIMITED
-* Copyright 2019-2025 Arm Ltd. and affiliates
+* Copyright 2019-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -468,8 +468,7 @@ void jit_uni_eltwise_injector_t<isa>::exp_compute_vector_fwd(
         h->fmin(t0, p_all, ZRegS(IDX(table_val(exp_ln_flt_max_f, z_tmp))));
     if (min_input_ < ln_flt_min)
         h->fmax(t0, p_all, ZRegS(IDX(table_val(exp_ln_flt_min_f, z_tmp))));
-    h->fmul(t0, t0, ZRegS(IDX(table_val(exp_log2ef, z_tmp))));
-    h->movprfx(t1, p_all, t0);
+    h->fmul(t0, t0, ZRegS(IDX(table_val(exp_log2ef, t1))));
     h->frintm(t1, p_all, t0);
     h->fcvtzs(t2, p_all, t1);
     h->fsub(t1, t0, t1);
@@ -2544,10 +2543,10 @@ void jit_uni_eltwise_injector_t<asimd>::exp_compute_vector_fwd(
     const auto &t4 = VReg4S(vmm_aux3.getIdx());
     const auto &t_tmp = VReg4S(vmm_tmp.getIdx());
 
-    const float special_bound_input = 126.5f * logf(2.0f);
-    const float ln_flt_min = logf(FLT_MIN);
+    const float special_case_input_threshold = 126.5f * logf(2.0f); // ~87.6831f
+    const float ln_flt_min = logf(FLT_MIN); // ~-87.3365f
     bool need_clamp = min_input_ < ln_flt_min;
-    bool need_special_case = max_input_ >= special_bound_input;
+    bool need_special_case = max_input_ >= special_case_input_threshold;
 
     if (!need_special_case && need_clamp) {
         // Clamp x to avoid overflow of f32 exponent bits
@@ -2608,6 +2607,8 @@ void jit_uni_eltwise_injector_t<asimd>::exp_compute_vector_fwd(
 
     if (need_special_case) {
         // Check if any lane needs special-case handling
+        // i.e. if any input |x| ≥ 126.5 / ln 2 ≈ 87.6831f
+        // Includes ±Inf, but not NaNs, which propagate through the fast path
         // mask_special = (|n| > 126)
         const auto &v_mask_special = v_c3;
         const auto &v_special_bound

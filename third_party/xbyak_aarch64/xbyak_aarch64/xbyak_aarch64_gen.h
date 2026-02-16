@@ -25,7 +25,9 @@
 
 enum BarOpt { SY = 0xf, ST = 0xe, LD = 0xd, ISH = 0xb, ISHST = 0xa, ISHLD = 0x9, NSH = 0x7, NSHST = 0x6, NSHLD = 0x5, OSH = 0x3, OSHST = 0x2, OSHLD = 0x1 };
 
-enum PStateField { SPSel, DAIFSet, DAIFClr, UAO, PAN, DIT };
+enum PStateField { SPSel, DAIFSet, DAIFClr, UAO, PAN, DIT, SVCRSM, SVCRZA, SVCRSMZA };
+
+enum SMod { SM = 1, ZA = 2 };
 
 enum Cond { EQ = 0x0, NE = 0x1, CS = 0x2, HS = 0x2, CC = 0x3, LO = 0x3, MI = 0x4, PL = 0x5, VS = 0x6, VC = 0x7, HI = 0x8, LS = 0x9, GE = 0xa, LT = 0xb, GT = 0xc, LE = 0xd, AL = 0xe, NV = 0xf };
 
@@ -657,6 +659,33 @@ class CodeGenerator : public CodeArray {
   void SveStorePredVec(const _ZReg &zt, const AdrScImm &adr);
   void SveStorePredVec(const _ZReg &zt, const AdrNoOfs &adr);
   void mov(const XReg &rd, const Label &label) { adr(rd, label); }
+  // SME
+  void SmeAddPredVec(bool isVertical, const _ZAReg &za, const _PReg &pn, const _PReg &pm, const _ZReg &zn);
+  void SmeAddMultiplySSRegSize(bool isPredicate, const XReg &rd, const XReg &rn, const int32_t imm6);
+  void SmeHalfFloatOuterProd(bool isBfloat16, bool isSubtract, const ZARegS &za, const _PReg &pn, const _PReg &pm, const ZRegH &zn, const ZRegH &zm);
+  void SmeFloatOuterProd(bool isSubtract, const ZARegS &za, const _PReg &pn, const _PReg &pm, const ZRegS &zn, const ZRegS &zm);
+  void SmeDoubleOuterProd(bool isSubtract, const ZARegD &za, const _PReg &pn, const _PReg &pm, const ZRegD &zn, const ZRegD &zm);
+  void SmeZahvContiLdStB(bool isStore, const _ZAHVReg &za0hv, const _PReg &pg, const XReg &xm, const XReg &xn);
+  void SmeZahvContiLdStH(bool isStore, const _ZAHVReg &zahv, const _PReg &pg, const XReg &xm, const XReg &xn);
+  void SmeZahvContiLdStW(bool isStore, const _ZAHVReg &zahv, const _PReg &pg, const XReg &xm, const XReg &xn);
+  void SmeZahvContiLdStD(bool isStore, const _ZAHVReg &zahv, const _PReg &pg, const XReg &xm, const XReg &xn);
+  void SmeZahvContiLdStQ(bool isStore, const _ZAHVReg &zahv, const _PReg &pg, const XReg &xm, const XReg &xn);
+  void SmeZaContiLdSt(bool isStore, const ZAReg &za, const XReg &xn, const uint32_t offs);
+  void SmeMovTileToVectB(const ZRegB &zd, const _PReg &pg, const _ZAHVReg &za0hv);
+  void SmeMovTileToVectH(const ZRegH &zd, const _PReg &pg, const _ZAHVReg &zahv);
+  void SmeMovTileToVectS(const ZRegS &zd, const _PReg &pg, const _ZAHVReg &zahv);
+  void SmeMovTileToVectD(const ZRegD &zd, const _PReg &pg, const _ZAHVReg &zahv);
+  void SmeMovTileToVectQ(const ZRegQ &zd, const _PReg &pg, const _ZAHVReg &zahv);
+  void SmeMovVectToTileB(const _ZAHVReg &za0hv, const _PReg &pg, const ZRegB &zn);
+  void SmeMovVectToTileH(const _ZAHVReg &za0hv, const _PReg &pg, const ZRegH &zn);
+  void SmeMovVectToTileS(const _ZAHVReg &zahv, const _PReg &pg, const ZRegS &zn);
+  void SmeMovVectToTileD(const _ZAHVReg &zahv, const _PReg &pg, const ZRegD &zn);
+  void SmeMovVectToTileQ(const _ZAHVReg &zahv, const _PReg &pg, const ZRegQ &zn);
+  void SmeReadMultiplySSRegSize(const XReg &rd, const int32_t imm6);
+  void Sme8bitTo32bitOuterProd(bool isU0, bool isU1, bool isSubtract, const ZARegS &zaS, const _PReg &pn, const _PReg &pm, const ZRegB &zn, const ZRegB &zm);
+  void Sme16bitTo64bitOuterProd(bool isU0, bool isU1, bool isSubtract, const ZARegD &zaD, const _PReg &pn, const _PReg &pm, const ZRegH &zn, const ZRegH &zm);
+  void SmeZero(std::initializer_list<ZARegD> list);
+  void SmeZero(const ZAReg &za);
 
   template <class T> void putL_inner(T &label) {
     if (isAutoGrow() && size_ >= maxSize_)
@@ -704,6 +733,10 @@ public:
   const PReg p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12;
   const PReg p13, p14, p15;
 
+  const ZAReg za, za0, za1, za2, za3, za4, za5, za6, za7;
+  const ZAHReg za0h, za1h, za2h, za3h, za4h, za5h, za6h, za7h, za8h, za9h, za10h, za11h, za12h, za13h, za14h, za15h;
+  const ZAVReg za0v, za1v, za2v, za3v, za4v, za5v, za6v, za7v, za8v, za9v, za10v, za11v, za12v, za13v, za14v, za15v;
+
   CodeGenerator(size_t maxSize = DEFAULT_MAX_CODE_SIZE, void *userPtr = DontSetProtectRWE, Allocator *allocator = 0)
       : CodeArray(maxSize, userPtr, allocator)
 #if 1
@@ -736,6 +769,15 @@ public:
 
         ,
         p0(0), p1(1), p2(2), p3(3), p4(4), p5(5), p6(6), p7(7), p8(8), p9(9), p10(10), p11(11), p12(12), p13(13), p14(14), p15(15)
+        
+        ,
+        za(0), za0(0), za1(1), za2(2), za3(3), za4(4), za5(5), za6(6), za7(7)
+
+        ,
+        za0h(0), za1h(1), za2h(2), za3h(3), za4h(4), za5h(5), za6h(6), za7h(7), za8h(8), za9h(9), za10h(10), za11h(11), za12h(12), za13h(13), za14h(14), za15h(15)
+
+        ,
+        za0v(0), za1v(1), za2v(2), za3v(3), za4v(4), za5v(5), za6v(6), za7v(7), za8v(8), za9v(9), za10v(10), za11v(11), za12v(12), za13v(13), za14v(14), za15v(15)
 #endif
   {
     labelMgr_.set(this);

@@ -20,7 +20,13 @@ inline uint64_t lsb(uint64_t v) { return v & 0x1; }
 uint32_t concat(const std::initializer_list<uint32_t> list) {
   uint32_t result = 0;
   for (auto f : list) {
+#ifdef STRICT_CONCAT
+    uint32_t saved = result;
     result |= f;
+    if (saved != ((~f) & result)) return saved;
+#else
+    result |= f;
+#endif
   }
   return result;
 }
@@ -581,6 +587,12 @@ void CodeGenerator::PState(PStateField psfield, uint32_t imm) {
   case DIT:
     op1 = 3;
     op2 = 2;
+    break;
+  case SVCRSM:
+  case SVCRZA:
+  case SVCRSMZA:
+    op1 = 3;
+    op2 = 3;
     break;
   default:
     op1 = 0;
@@ -4297,4 +4309,272 @@ void CodeGenerator::clearCache(void *begin, void *end) {
 #else
   __builtin___clear_cache((char *)begin, (char *)end);
 #endif
+}
+
+void CodeGenerator::SmeAddPredVec(bool isVertical, const _ZAReg &za, const _PReg &pn, const _PReg &pm, const _ZReg &zn) {
+  bool isDouble = za.getBit() == 64;
+  verifyIncRange(pn.getIdx() | pm.getIdx(), 0, 7, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(pn.isZ() || pm.isZ(), 0, 0, ERR_ILLEGAL_PREDICATE_TYPE);
+  verifyIncRange(za.getIdx(), 0, isDouble?7:3, ERR_ILLEGAL_REG_IDX);
+  uint32_t code = concat({F(0x181, 23), F(isDouble, 22), F(1, 20), F(isVertical, 16), F(pm.getIdx(), 13), F(pn.getIdx(), 10), F(zn.getIdx(), 5), F(za.getIdx(), 0)});
+  dd(code);
+}
+
+// Add multiply of Streaming SVE <predicate|vector> register size
+void CodeGenerator::SmeAddMultiplySSRegSize(bool isPredicate, const XReg &rd, const XReg &rn, const int32_t imm6) {
+  uint32_t masked_imm = (uint32_t)imm6 & 0x3F;
+  verifyIncRange(imm6, -32, 31, ERR_ILLEGAL_IMM_RANGE, true);
+  uint32_t code = concat({F(isPredicate, 22), F(0x21, 21), F(rn.getIdx(), 16), F(0xB, 11), F(masked_imm, 5), F(rd.getIdx(), 0)});
+  dd(code);
+}
+
+// Half-float/BFloat16 sum of outer products to single-precision
+void CodeGenerator::SmeHalfFloatOuterProd(bool isBfloat16, bool isSubtract, const ZARegS &za, const _PReg &pn, const _PReg &pm, const ZRegH &zn, const ZRegH &zm) {
+  verifyIncRange(pn.getIdx() | pm.getIdx(), 0, 7, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(pn.isZ() || pm.isZ(), 0, 0, ERR_ILLEGAL_PREDICATE_TYPE);
+  verifyIncRange(za.getIdx(), 0, 3, ERR_ILLEGAL_REG_IDX);
+  uint32_t code = concat({F(0x103, 23), F(!isBfloat16, 21), F(zm.getIdx(), 16), F(pm.getIdx(), 13), F(pn.getIdx(), 10), F(zn.getIdx(), 5), F(isSubtract, 4), F(za.getIdx(), 0)});
+  dd(code);
+}
+
+// Float sum of outer products to float
+void CodeGenerator::SmeFloatOuterProd(bool isSubtract, const ZARegS &za, const _PReg &pn, const _PReg &pm, const ZRegS &zn, const ZRegS &zm) {
+  verifyIncRange(pn.getIdx() | pm.getIdx(), 0, 7, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(pn.isZ() || pm.isZ(), 0, 0, ERR_ILLEGAL_PREDICATE_TYPE);
+  verifyIncRange(za.getIdx(), 0, 3, ERR_ILLEGAL_REG_IDX);
+  uint32_t code = concat({F(0x101, 23), F(zm.getIdx(), 16), F(pm.getIdx(), 13), F(pn.getIdx(), 10), F(zn.getIdx(), 5), F(isSubtract, 4), F(za.getIdx(), 0)});
+  dd(code);
+}
+
+// Double sum of outer products to double
+void CodeGenerator::SmeDoubleOuterProd(bool isSubtract, const ZARegD &za, const _PReg &pn, const _PReg &pm, const ZRegD &zn, const ZRegD &zm) {
+  verifyIncRange(pn.getIdx() | pm.getIdx(), 0, 7, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(pn.isZ() || pm.isZ(), 0, 0, ERR_ILLEGAL_PREDICATE_TYPE);
+  uint32_t code = concat({F(0x203, 22), F(zm.getIdx(), 16), F(pm.getIdx(), 13), F(pn.getIdx(), 10), F(zn.getIdx(), 5), F(isSubtract, 4), F(za.getIdx(), 0)});
+  dd(code);
+}
+
+void CodeGenerator::SmeZahvContiLdStB(bool isStore, const _ZAHVReg &za0hv, const _PReg &pg, const XReg &xm, const XReg &xn) {
+  int32_t wsIdxPacked = za0hv.getWsIdx()-12;
+  verifyIncRange(wsIdxPacked, 0, 3, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(za0hv.getIdx(), 0, 0, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(za0hv.getOffs(), 0, 15, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(pg.getIdx(), 0, 7, ERR_ILLEGAL_REG_IDX);
+  if(pg.isM()) throw Error(ERR_ILLEGAL_PREDICATE_TYPE);
+  if(8u != za0hv.getBit()) throw Error(ERR_ILLEGAL_TYPE);
+  uint32_t code = concat({F(0x7, 29), F(isStore, 21), F(xm.getIdx(), 16), F(za0hv.isV(), 15), F(wsIdxPacked, 13), F(pg.getIdx(), 10), F(xn.getIdx(), 5), F(za0hv.getOffs(), 0)});
+  dd(code);
+}
+
+void CodeGenerator::SmeZahvContiLdStH(bool isStore, const _ZAHVReg &zahv, const _PReg &pg, const XReg &xm, const XReg &xn) {
+  int32_t wsIdxPacked = zahv.getWsIdx()-12;
+  verifyIncRange(wsIdxPacked, 0, 3, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(zahv.getIdx(), 0, 1, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(zahv.getOffs(), 0, 7, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(pg.getIdx(), 0, 7, ERR_ILLEGAL_REG_IDX);
+  if(pg.isM()) throw Error(ERR_ILLEGAL_PREDICATE_TYPE);
+  if(16u != zahv.getBit()) throw Error(ERR_ILLEGAL_TYPE);
+  uint32_t code = concat({F(0x7, 29), F(1, 22), F(isStore, 21), F(xm.getIdx(), 16), F(zahv.isV(), 15), F(wsIdxPacked, 13), F(pg.getIdx(), 10), F(xn.getIdx(), 5), F(zahv.getIdx(), 3), F(zahv.getOffs(), 0)});
+  dd(code);
+}
+
+void CodeGenerator::SmeZahvContiLdStW(bool isStore, const _ZAHVReg &zahv, const _PReg &pg, const XReg &xm, const XReg &xn) {
+  int32_t wsIdxPacked = zahv.getWsIdx()-12;
+  verifyIncRange(wsIdxPacked, 0, 3, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(zahv.getIdx(), 0, 3, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(zahv.getOffs(), 0, 3, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(pg.getIdx(), 0, 7, ERR_ILLEGAL_REG_IDX);
+  if(pg.isM()) throw Error(ERR_ILLEGAL_PREDICATE_TYPE);
+  if(32u != zahv.getBit()) throw Error(ERR_ILLEGAL_TYPE);
+  uint32_t code = concat({F(0x7, 29), F(1, 23), F(isStore, 21), F(xm.getIdx(), 16), F(zahv.isV(), 15), F(wsIdxPacked, 13), F(pg.getIdx(), 10), F(xn.getIdx(), 5), F(zahv.getIdx(), 2), F(zahv.getOffs(), 0)});
+  dd(code);
+}
+
+void CodeGenerator::SmeZahvContiLdStD(bool isStore, const _ZAHVReg &zahv, const _PReg &pg, const XReg &xm, const XReg &xn) {
+  int32_t wsIdxPacked = zahv.getWsIdx()-12;
+  verifyIncRange(wsIdxPacked, 0, 3, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(zahv.getIdx(), 0, 7, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(zahv.getOffs(), 0, 1, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(pg.getIdx(), 0, 7, ERR_ILLEGAL_REG_IDX);
+  if(pg.isM()) throw Error(ERR_ILLEGAL_PREDICATE_TYPE);
+  if(64u != zahv.getBit()) throw Error(ERR_ILLEGAL_TYPE);
+  uint32_t code = concat({F(0x7, 29), F(0x3, 22), F(isStore, 21), F(xm.getIdx(), 16), F(zahv.isV(), 15), F(wsIdxPacked, 13), F(pg.getIdx(), 10), F(xn.getIdx(), 5), F(zahv.getIdx(), 1), F(zahv.getOffs(), 0)});
+  dd(code);
+}
+
+void CodeGenerator::SmeZahvContiLdStQ(bool isStore, const _ZAHVReg &zahv, const _PReg &pg, const XReg &xm, const XReg &xn) {
+  int32_t wsIdxPacked = zahv.getWsIdx()-12;
+  verifyIncRange(wsIdxPacked, 0, 3, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(zahv.getOffs(), 0, 0, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(pg.getIdx(), 0, 7, ERR_ILLEGAL_REG_IDX);
+  if(pg.isM()) throw Error(ERR_ILLEGAL_PREDICATE_TYPE);
+  if(128u != zahv.getBit()) throw Error(ERR_ILLEGAL_TYPE);
+  uint32_t code = concat({F(0x7, 29), F(0x7, 22), F(isStore, 21), F(xm.getIdx(), 16), F(zahv.isV(), 15), F(wsIdxPacked, 13), F(pg.getIdx(), 10), F(xn.getIdx(), 5), F(zahv.getIdx(), 0), F(zahv.getOffs(), 0)});
+  dd(code);
+}
+
+void CodeGenerator::SmeZaContiLdSt(bool isStore, const ZAReg &za, const XReg &xn, const uint32_t offs) {
+  int32_t wsIdxPacked = za.getWvIdx()-12;
+  verifyIncRange(wsIdxPacked, 0, 3, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(za.getOffs() | offs, 0, 15, ERR_ILLEGAL_REG_IDX);
+  if(offs != za.getOffs()) throw Error(ERR_ILLEGAL_REG_IDX); // must be equal
+  uint32_t code = concat({F(0x7, 29), F(0x4, 22), F(isStore, 21), F(wsIdxPacked, 13), F(xn.getIdx(), 5), F(offs, 0)});
+  dd(code);
+}
+
+void CodeGenerator::SmeMovTileToVectB(const ZRegB &zd, const _PReg &pg, const _ZAHVReg &za0hv) {
+  int32_t wsIdxPacked = za0hv.getWsIdx()-12;
+  verifyIncRange(wsIdxPacked, 0, 3, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(za0hv.getIdx(), 0, 0, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(za0hv.getOffs(), 0, 15, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(pg.getIdx(), 0, 7, ERR_ILLEGAL_REG_IDX);
+  if(pg.isZ()) throw Error(ERR_ILLEGAL_PREDICATE_TYPE);
+  if(8u != za0hv.getBit()) throw Error(ERR_ILLEGAL_TYPE);
+  uint32_t code = concat({F(0x6, 29), F(1, 17), F(za0hv.isV(), 15), F(wsIdxPacked, 13), F(pg.getIdx(), 10), F(za0hv.getOffs(), 5), F(zd.getIdx(), 0)});
+  dd(code);
+}
+
+void CodeGenerator::SmeMovTileToVectH(const ZRegH &zd, const _PReg &pg, const _ZAHVReg &zahv) {
+  int32_t wsIdxPacked = zahv.getWsIdx()-12;
+  verifyIncRange(wsIdxPacked, 0, 3, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(zahv.getIdx(), 0, 1, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(zahv.getOffs(), 0, 7, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(pg.getIdx(), 0, 7, ERR_ILLEGAL_REG_IDX);
+  if(pg.isZ()) throw Error(ERR_ILLEGAL_PREDICATE_TYPE);
+  if(16u != zahv.getBit()) throw Error(ERR_ILLEGAL_TYPE);
+  uint32_t code = concat({F(0x6, 29), F(1, 22), F(1, 17), F(zahv.isV(), 15), F(wsIdxPacked, 13), F(pg.getIdx(), 10), F(zahv.getIdx(), 8), F(zahv.getOffs(), 5), F(zd.getIdx(), 0)});
+  dd(code);
+}
+
+void CodeGenerator::SmeMovTileToVectS(const ZRegS &zd, const _PReg &pg, const _ZAHVReg &zahv) {
+  int32_t wsIdxPacked = zahv.getWsIdx()-12;
+  verifyIncRange(wsIdxPacked, 0, 3, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(zahv.getIdx(), 0, 3, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(zahv.getOffs(), 0, 3, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(pg.getIdx(), 0, 7, ERR_ILLEGAL_REG_IDX);
+  if(pg.isZ()) throw Error(ERR_ILLEGAL_PREDICATE_TYPE);
+  if(32u != zahv.getBit()) throw Error(ERR_ILLEGAL_TYPE);
+  uint32_t code = concat({F(0x6, 29), F(2, 22), F(1, 17), F(zahv.isV(), 15), F(wsIdxPacked, 13), F(pg.getIdx(), 10), F(zahv.getIdx(), 7), F(zahv.getOffs(), 5), F(zd.getIdx(), 0)});
+  dd(code);
+}
+
+void CodeGenerator::SmeMovTileToVectD(const ZRegD &zd, const _PReg &pg, const _ZAHVReg &zahv) {
+  int32_t wsIdxPacked = zahv.getWsIdx()-12;
+  verifyIncRange(wsIdxPacked, 0, 3, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(zahv.getIdx(), 0, 7, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(zahv.getOffs(), 0, 1, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(pg.getIdx(), 0, 7, ERR_ILLEGAL_REG_IDX);
+  if(pg.isZ()) throw Error(ERR_ILLEGAL_PREDICATE_TYPE);
+  if(64u != zahv.getBit()) throw Error(ERR_ILLEGAL_TYPE);
+  uint32_t code = concat({F(0x6, 29), F(3, 22), F(1, 17), F(zahv.isV(), 15), F(wsIdxPacked, 13), F(pg.getIdx(), 10), F(zahv.getIdx(), 6), F(zahv.getOffs(), 5), F(zd.getIdx(), 0)});
+  dd(code);
+}
+
+void CodeGenerator::SmeMovTileToVectQ(const ZRegQ &zd, const _PReg &pg, const _ZAHVReg &zahv) {
+  int32_t wsIdxPacked = zahv.getWsIdx()-12;
+  verifyIncRange(wsIdxPacked, 0, 3, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(zahv.getOffs(), 0, 0, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(pg.getIdx(), 0, 7, ERR_ILLEGAL_REG_IDX);
+  if(pg.isZ()) throw Error(ERR_ILLEGAL_PREDICATE_TYPE);
+  if(128u != zahv.getBit()) throw Error(ERR_ILLEGAL_TYPE);
+  uint32_t code = concat({F(0x6, 29), F(3, 22), F(1, 17), F(1, 16), F(zahv.isV(), 15), F(wsIdxPacked, 13), F(pg.getIdx(), 10), F(zahv.getIdx(), 5), F(zahv.getOffs(), 5), F(zd.getIdx(), 0)});
+  dd(code);
+}
+
+void CodeGenerator::SmeMovVectToTileB(const _ZAHVReg &za0hv, const _PReg &pg, const ZRegB &zn) {
+  int32_t wsIdxPacked = za0hv.getWsIdx()-12;
+  verifyIncRange(wsIdxPacked, 0, 3, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(za0hv.getIdx(), 0, 0, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(za0hv.getOffs(), 0, 15, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(pg.getIdx(), 0, 7, ERR_ILLEGAL_REG_IDX);
+  if(pg.isZ()) throw Error(ERR_ILLEGAL_PREDICATE_TYPE);
+  if(8u != za0hv.getBit()) throw Error(ERR_ILLEGAL_TYPE);
+  uint32_t code = concat({F(0x6, 29), F(za0hv.isV(), 15), F(wsIdxPacked, 13), F(pg.getIdx(), 10), F(zn.getIdx(), 5), F(za0hv.getOffs(), 0)});
+  dd(code);
+}
+
+void CodeGenerator::SmeMovVectToTileH(const _ZAHVReg &zahv, const _PReg &pg, const ZRegH &zn) {
+  int32_t wsIdxPacked = zahv.getWsIdx()-12;
+  verifyIncRange(wsIdxPacked, 0, 3, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(zahv.getIdx(), 0, 1, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(zahv.getOffs(), 0, 7, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(pg.getIdx(), 0, 7, ERR_ILLEGAL_REG_IDX);
+  if(pg.isZ()) throw Error(ERR_ILLEGAL_PREDICATE_TYPE);
+  if(16u != zahv.getBit()) throw Error(ERR_ILLEGAL_TYPE);
+  uint32_t code = concat({F(0x6, 29), F(1, 22), F(zahv.isV(), 15), F(wsIdxPacked, 13), F(pg.getIdx(), 10), F(zn.getIdx(), 5), F(zahv.getIdx(), 3), F(zahv.getOffs(), 0)});
+  dd(code);
+}
+
+void CodeGenerator::SmeMovVectToTileS(const _ZAHVReg &zahv, const _PReg &pg, const ZRegS &zn) {
+  int32_t wsIdxPacked = zahv.getWsIdx()-12;
+  verifyIncRange(wsIdxPacked, 0, 3, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(zahv.getIdx(), 0, 3, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(zahv.getOffs(), 0, 3, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(pg.getIdx(), 0, 7, ERR_ILLEGAL_REG_IDX);
+  if(pg.isZ()) throw Error(ERR_ILLEGAL_PREDICATE_TYPE);
+  if(32u != zahv.getBit()) throw Error(ERR_ILLEGAL_TYPE);
+  uint32_t code = concat({F(0x6, 29), F(2, 22), F(zahv.isV(), 15), F(wsIdxPacked, 13), F(pg.getIdx(), 10), F(zn.getIdx(), 5), F(zahv.getIdx(), 2), F(zahv.getOffs(), 0)});
+  dd(code);
+}
+
+void CodeGenerator::SmeMovVectToTileD(const _ZAHVReg &zahv, const _PReg &pg, const ZRegD &zn) {
+  int32_t wsIdxPacked = zahv.getWsIdx()-12;
+  verifyIncRange(wsIdxPacked, 0, 3, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(zahv.getIdx(), 0, 7, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(zahv.getOffs(), 0, 1, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(pg.getIdx(), 0, 7, ERR_ILLEGAL_REG_IDX);
+  if(pg.isZ()) throw Error(ERR_ILLEGAL_PREDICATE_TYPE);
+  if(64u != zahv.getBit()) throw Error(ERR_ILLEGAL_TYPE);
+  uint32_t code = concat({F(0x6, 29), F(3, 22), F(zahv.isV(), 15), F(wsIdxPacked, 13), F(pg.getIdx(), 10), F(zn.getIdx(), 5), F(zahv.getIdx(), 1), F(zahv.getOffs(), 0)});
+  dd(code);
+}
+
+void CodeGenerator::SmeMovVectToTileQ(const _ZAHVReg &zahv, const _PReg &pg, const ZRegQ &zn) {
+  int32_t wsIdxPacked = zahv.getWsIdx()-12;
+  verifyIncRange(wsIdxPacked, 0, 3, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(zahv.getOffs(), 0, 0, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(pg.getIdx(), 0, 7, ERR_ILLEGAL_REG_IDX);
+  if(pg.isZ()) throw Error(ERR_ILLEGAL_PREDICATE_TYPE);
+  if(128u != zahv.getBit()) throw Error(ERR_ILLEGAL_TYPE);
+  uint32_t code = concat({F(0x6, 29), F(3, 22), F(1, 16), F(zahv.isV(), 15), F(wsIdxPacked, 13), F(pg.getIdx(), 10), F(zn.getIdx(), 5), F(zahv.getIdx(), 0), F(zahv.getOffs(), 0)});
+  dd(code);
+}
+
+void CodeGenerator::SmeReadMultiplySSRegSize(const XReg &rd, const int32_t imm6) {
+  uint32_t masked_imm = (uint32_t)imm6 & 0x3F;
+  verifyIncRange(imm6, -32, 31, ERR_ILLEGAL_IMM_RANGE, true);
+  uint32_t code = concat({F(0x97EB, 11), F(masked_imm, 5), F(rd.getIdx(), 0)});
+  dd(code);
+}
+
+// 8 bit sum of outer products to 32-bit
+void CodeGenerator::Sme8bitTo32bitOuterProd(bool isU0, bool isU1, bool isSubtract, const ZARegS &zaS, const _PReg &pn, const _PReg &pm, const ZRegB &zn, const ZRegB &zm) {
+  verifyIncRange(pn.getIdx() | pm.getIdx(), 0, 7, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(pn.isZ() || pm.isZ(), 0, 0, ERR_ILLEGAL_PREDICATE_TYPE);
+  verifyIncRange(zaS.getIdx(), 0, 3, ERR_ILLEGAL_REG_IDX);
+  uint32_t code = concat({F(0x5, 29), F(isU0, 24), F(2, 22), F(isU1, 21), F(zm.getIdx(), 16), F(pm.getIdx(), 13), F(pn.getIdx(), 10), F(zn.getIdx(), 5), F(isSubtract, 4), F(zaS.getIdx(), 0)});
+  dd(code);
+}
+
+// 16 bit sum of outer products to 64-bit
+void CodeGenerator::Sme16bitTo64bitOuterProd(bool isU0, bool isU1, bool isSubtract, const ZARegD &zaD, const _PReg &pn, const _PReg &pm, const ZRegH &zn, const ZRegH &zm) {
+  verifyIncRange(pn.getIdx() | pm.getIdx(), 0, 7, ERR_ILLEGAL_REG_IDX);
+  verifyIncRange(pn.isZ() || pm.isZ(), 0, 0, ERR_ILLEGAL_PREDICATE_TYPE);
+  uint32_t code = concat({F(0x5, 29), F(isU0, 24), F(3, 22), F(isU1, 21), F(zm.getIdx(), 16), F(pm.getIdx(), 13), F(pn.getIdx(), 10), F(zn.getIdx(), 5), F(isSubtract, 4), F(zaD.getIdx(), 0)});
+  dd(code);
+}
+
+void CodeGenerator::SmeZero(std::initializer_list<ZARegD> list) {
+  uint32_t imm8 = 0;
+  for (auto e : list) {
+    imm8 |= 1 << e.getIdx();
+  }
+  uint32_t code = concat({F(0x3,30), F(1,19), F(imm8,0)});
+  dd(code);
+}
+
+void CodeGenerator::SmeZero(const ZAReg &za) {
+  (void)za;
+  uint32_t code = concat({F(0x3,30), F(1,19), F(0xFF,0)});
+  dd(code);
 }

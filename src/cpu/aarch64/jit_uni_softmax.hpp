@@ -62,8 +62,8 @@ struct jit_uni_softmax_fwd_t : public primitive_t {
                 // It is fine to use float here as the kernel uses halfs of
                 // vector registers.
                 const auto blk_size = cpu_isa_traits<isa>::vlen / sizeof(float);
-                // 31 is a general limit, 2 is for unroll_regs_ = 4;
-                const size_t max_stride = (1LL << (31 - 2)) - 1;
+                // 31 is a general limit, 4 is for unroll_regs_ = 16;
+                const size_t max_stride = (1LL << (31 - 4)) - 1;
                 const int last_blk = bd.inner_nblks - 1;
                 return bd.inner_blks[last_blk] == blk_size
                         && bd.inner_idxs[last_blk] == axis()
@@ -80,8 +80,8 @@ struct jit_uni_softmax_fwd_t : public primitive_t {
                     && utils::one_of(dst_dt, f32, bf16, s8, u8)
                     && IMPLICATION(
                             utils::one_of(bf16, src_dt, dst_dt), mayiuse_bf16())
-                    && (mayiuse(sve_512) || mayiuse(sve_256)
-                            || mayiuse(sve_128))
+                    && IMPLICATION(isa == asimd,
+                            src_dt == f32 && dst_dt == f32 && is_softmax())
                     && attr()->has_default_values(skip_mask_t::scales)
                     && attr_scales_ok()
                     && set_default_formats() == status::success;

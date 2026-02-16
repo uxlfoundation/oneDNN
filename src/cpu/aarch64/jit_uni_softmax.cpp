@@ -95,11 +95,15 @@ struct jit_softmax_base_t : public jit_generator_t {
 
     bool is_softmax_ = pd_->is_softmax();
     bool is_logsoftmax_ = pd_->is_logsoftmax();
+    bool need_src_scale_
+            = !pd_->attr()->scales_.has_default_values(DNNL_ARG_SRC);
+    bool need_dst_scale_
+            = !pd_->attr()->scales_.has_default_values(DNNL_ARG_DST);
     bool axis_is_blocked_;
     bool need_scratchpad_;
 
     size_t simd_w_ = 0;
-    size_t unroll_regs_ = 4;
+    size_t unroll_regs_ = pd_->is_fwd() ? 16 : 4;
 
     size_t axis_simd_full_;
     size_t axis_simd_tail_;
@@ -693,6 +697,169 @@ template <cpu_isa_t isa>
 jit_softmax_sve_t<isa>::jit_softmax_sve_t(const softmax_pd_t *pd)
     : jit_softmax_base_t(pd, cpu_isa_traits<isa>::vlen) {}
 
+// ASIMD JIT softmax generator
+struct jit_softmax_asimd_t : public jit_softmax_base_t {
+    using TReg = typename cpu_isa_traits<asimd>::TReg;
+
+    std::unique_ptr<jit_uni_eltwise_injector_t<asimd>> exp_injector_;
+
+    const TReg vneg_flt_max = TReg(vneg_flt_max_idx);
+    const TReg vone = TReg(vone_idx);
+    const TReg vsum = TReg(vsum_idx);
+    const TReg vmax = TReg(vmax_idx);
+    const TReg vzero = TReg(vzero_idx);
+
+    void store(const XReg &addr, const TReg &vmm, bool tail);
+    void load(const TReg &vmm, const XReg &addr, bool tail, const TReg &fill);
+    void get_horizontal_op(const TReg &v, op_t op);
+    void accumulate_vmax() override;
+    void accumulate_vsum() override;
+    void compute_dst() override;
+    void generate() override;
+
+    // ASIMD-specific functions
+    void clear_unused_tail_lanes(const TReg &vmm);
+
+    jit_softmax_asimd_t(const softmax_pd_t *pd);
+};
+
+void jit_softmax_asimd_t::load(
+        const TReg &vmm, const XReg &addr, bool tail, const TReg &fill) {
+    if (!tail) {
+        ldr(QReg(vmm.getIdx()), ptr(addr));
+        return;
+    }
+
+    mov(VReg16B(vmm.getIdx()), VReg16B(fill.getIdx()));
+    mov(X_TMP_0, addr);
+    ld1(VReg4S(vmm.getIdx())[0], ptr(X_TMP_0));
+    for (size_t i = 1; i < axis_simd_tail_; i++) {
+        add_imm(X_TMP_1, X_TMP_0, i * sizeof(float), X_TMP_2);
+        ld1(VReg4S(vmm.getIdx())[i], ptr(X_TMP_1));
+    }
+}
+
+void jit_softmax_asimd_t::clear_unused_tail_lanes(const TReg &vmm) {
+    if (!axis_simd_tail_) return;
+    for (size_t lane = axis_simd_tail_; lane < simd_w_; lane++)
+        mov(vmm.s[lane], vzero.s[0]);
+}
+
+void jit_softmax_asimd_t::store(const XReg &addr, const TReg &vmm, bool tail) {
+    if (!tail || axis_is_blocked_) {
+        str(QReg(vmm.getIdx()), ptr(addr));
+        return;
+    }
+
+    mov(X_TMP_0, addr);
+    st1(VReg4S(vmm.getIdx())[0], ptr(X_TMP_0));
+    for (size_t i = 1; i < axis_simd_tail_; i++) {
+        add_imm(X_TMP_1, X_TMP_0, i * sizeof(float), X_TMP_2);
+        st1(VReg4S(vmm.getIdx())[i], ptr(X_TMP_1));
+    }
+}
+
+void jit_softmax_asimd_t::get_horizontal_op(const TReg &v, op_t op) {
+    if (op == op_t::max) {
+        fmaxv(SReg(v.getIdx()), v.s);
+    } else {
+        faddp(v.s, v.s, v.s);
+        faddp(v.s, v.s, v.s);
+    }
+
+    dup(v.s, v.s[0]);
+}
+
+void jit_softmax_asimd_t::accumulate_vmax() {
+    mov(VReg16B(vmax.getIdx()), VReg16B(vneg_flt_max.getIdx()));
+
+    axis_loop([&](int unroll, bool tail) {
+        for (int i = 0; i < unroll; i++) {
+            TReg vreg_tmp_src = TReg(data_vreg_start_idx + i);
+            load(vreg_tmp_src, src_ptr(src_axis_stride_ * i), tail,
+                    vneg_flt_max);
+            fmax(vmax.s, vmax.s, vreg_tmp_src.s);
+        }
+    });
+
+    get_horizontal_op(vmax, op_t::max);
+}
+
+void jit_softmax_asimd_t::accumulate_vsum() {
+    eor(vsum.b, vsum.b, vsum.b); // flush to zero before accumulation
+    eor(vzero.b, vzero.b, vzero.b);
+
+    axis_loop([&](int unroll, bool tail) {
+        const int vmm_start = data_vreg_start_idx;
+        const int vmm_end = vmm_start + unroll;
+
+        for (int i = 0; i < unroll; i++) {
+            TReg vreg_tmp_src = TReg(data_vreg_start_idx + i);
+            load(vreg_tmp_src, src_ptr(src_axis_stride_ * i), tail, vzero);
+            fsub(vreg_tmp_src.s, vreg_tmp_src.s, vmax.s);
+        }
+
+        exp_injector_->compute_vector_range(vmm_start, vmm_end);
+
+        for (int i = 0; i < unroll; i++) {
+            TReg vreg_tmp_src = TReg(data_vreg_start_idx + i);
+            if (tail) clear_unused_tail_lanes(vreg_tmp_src);
+            fadd(vsum.s, vsum.s, vreg_tmp_src.s);
+            store(dst_ptr(dst_axis_stride_ * i), vreg_tmp_src, tail);
+        }
+    });
+
+    get_horizontal_op(vsum, op_t::sum);
+    fdiv(vsum.s, vone.s, vsum.s);
+}
+
+void jit_softmax_asimd_t::compute_dst() {
+    axis_loop([&](int unroll, bool tail) {
+        for (int i = 0; i < unroll; i++) {
+            TReg vreg_tmp_src = TReg(data_vreg_start_idx + i);
+            load(vreg_tmp_src, dst_ptr(dst_axis_stride_ * i), tail, vzero);
+            fmul(vreg_tmp_src.s, vreg_tmp_src.s, vsum.s);
+
+            if (need_src_scale_) {
+                const auto &v_src_scale = vmax;
+                ld1r(v_src_scale.s, ptr(reg_src_scales));
+                fmul(vreg_tmp_src.s, vreg_tmp_src.s, v_src_scale.s);
+            }
+
+            if (need_dst_scale_) {
+                const auto &v_dst_scale = vmax;
+                ld1r(v_dst_scale.s, ptr(reg_dst_scales));
+                fmul(vreg_tmp_src.s, vreg_tmp_src.s, v_dst_scale.s);
+            }
+
+            store(dst_ptr(dst_axis_stride_ * i), vreg_tmp_src, tail);
+        }
+    });
+}
+
+void jit_softmax_asimd_t::generate() {
+    assert(pd_->is_fwd() && is_softmax_);
+
+    exp_injector_.reset(
+            new jit_uni_eltwise_injector_t<asimd>(this, alg_kind::eltwise_exp,
+                    0.0f, 0.0f, 1.0f, true, reg_exp_injector_table,
+                    injector_mask, injector_tmp, true, false, false));
+    exp_injector_->set_input_range(-INFINITY, 0.f);
+
+    compute_predefined_variables();
+    preamble();
+
+    exp_injector_->load_table_addr();
+    load_common_params<asimd>();
+    forward();
+
+    postamble();
+    exp_injector_->prepare_table();
+}
+
+jit_softmax_asimd_t::jit_softmax_asimd_t(const softmax_pd_t *pd)
+    : jit_softmax_base_t(pd, cpu_isa_traits<asimd>::vlen) {}
+
 // JIT softmax specializations
 template <cpu_isa_t isa>
 struct jit_softmax_t;
@@ -710,6 +877,11 @@ struct jit_softmax_t<sve_256> : public jit_softmax_sve_t<sve_256> {
 template <>
 struct jit_softmax_t<sve_128> : public jit_softmax_sve_t<sve_128> {
     jit_softmax_t(const softmax_pd_t *pd) : jit_softmax_sve_t(pd) {}
+};
+
+template <>
+struct jit_softmax_t<asimd> : public jit_softmax_asimd_t {
+    jit_softmax_t(const softmax_pd_t *pd) : jit_softmax_asimd_t(pd) {}
 };
 
 template <cpu_isa_t isa>
@@ -859,6 +1031,7 @@ template struct jit_uni_softmax_fwd_t<sve_256>;
 template struct jit_uni_softmax_bwd_t<sve_256>;
 template struct jit_uni_softmax_fwd_t<sve_128>;
 template struct jit_uni_softmax_bwd_t<sve_128>;
+template struct jit_uni_softmax_fwd_t<asimd>;
 
 } // namespace aarch64
 } // namespace cpu

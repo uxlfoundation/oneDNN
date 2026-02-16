@@ -5543,3 +5543,86 @@ void CodeGenerator::b_tcont(const Label &label) { bge(label); }
 void CodeGenerator::b_tcont(int64_t label) { bge(label); }
 void CodeGenerator::b_tstop(const Label &label) { blt(label); }
 void CodeGenerator::b_tstop(int64_t label) { blt(label); }
+
+// SME
+void CodeGenerator::addha(const ZARegS &za, const _PReg &pn, const _PReg &pm, const ZRegS &zn) { SmeAddPredVec(false, za, pn, pm, zn); }
+void CodeGenerator::addha(const ZARegD &za, const _PReg &pn, const _PReg &pm, const ZRegD &zn) { SmeAddPredVec(false, za, pn, pm, zn); }
+void CodeGenerator::addva(const ZARegS &za, const _PReg &pn, const _PReg &pm, const ZRegS &zn) { SmeAddPredVec(true, za, pn, pm, zn); }
+void CodeGenerator::addva(const ZARegD &za, const _PReg &pn, const _PReg &pm, const ZRegD &zn) { SmeAddPredVec(true, za, pn, pm, zn); }
+void CodeGenerator::addspl(const XReg &rd, const XReg &rn, const int32_t imm6) { SmeAddMultiplySSRegSize(true, rd, rn, imm6); }
+void CodeGenerator::addsvl(const XReg &rd, const XReg &rn, const int32_t imm6) { SmeAddMultiplySSRegSize(false, rd, rn, imm6); }
+void CodeGenerator::bfmopa(const ZARegS &za, const _PReg &pn, const _PReg &pm, const ZRegH &zn, const ZRegH &zm) { SmeHalfFloatOuterProd(true, false, za, pn, pm, zn, zm); }
+void CodeGenerator::bfmops(const ZARegS &za, const _PReg &pn, const _PReg &pm, const ZRegH &zn, const ZRegH &zm) { SmeHalfFloatOuterProd(true, true, za, pn, pm, zn, zm); }
+void CodeGenerator::fmopa(const ZARegS &za, const _PReg &pn, const _PReg &pm, const ZRegH &zn, const ZRegH &zm) { SmeHalfFloatOuterProd(false, false, za, pn, pm, zn, zm); }
+void CodeGenerator::fmopa(const ZARegS &za, const _PReg &pn, const _PReg &pm, const ZRegS &zn, const ZRegS &zm) { SmeFloatOuterProd(false, za, pn, pm, zn, zm); }
+void CodeGenerator::fmopa(const ZARegD &za, const _PReg &pn, const _PReg &pm, const ZRegD &zn, const ZRegD &zm) { SmeDoubleOuterProd(false, za, pn, pm, zn, zm); }
+void CodeGenerator::fmops(const ZARegS &za, const _PReg &pn, const _PReg &pm, const ZRegH &zn, const ZRegH &zm) { SmeHalfFloatOuterProd(false, true, za, pn, pm, zn, zm); }
+void CodeGenerator::fmops(const ZARegS &za, const _PReg &pn, const _PReg &pm, const ZRegS &zn, const ZRegS &zm) { SmeFloatOuterProd(true, za, pn, pm, zn, zm); }
+void CodeGenerator::fmops(const ZARegD &za, const _PReg &pn, const _PReg &pm, const ZRegD &zn, const ZRegD &zm) { SmeDoubleOuterProd(true, za, pn, pm, zn, zm); }
+void CodeGenerator::ld1b(const _ZAHVReg &za0hv, const _PReg &pg, const AdrReg &adr) { SmeZahvContiLdStB(false, za0hv, pg, adr.getXm(), adr.getXn()); }
+void CodeGenerator::ld1b(const _ZAHVReg &za0hv, const _PReg &pg, const AdrNoOfs &adr) { SmeZahvContiLdStB(false, za0hv, pg, xzr, adr.getXn()); }
+void CodeGenerator::st1b(const _ZAHVReg &za0hv, const _PReg &pg, const AdrReg &adr) { SmeZahvContiLdStB(true, za0hv, pg, adr.getXm(), adr.getXn()); }
+void CodeGenerator::st1b(const _ZAHVReg &za0hv, const _PReg &pg, const AdrNoOfs &adr) { SmeZahvContiLdStB(true, za0hv, pg, xzr, adr.getXn()); }
+void CodeGenerator::ld1h(const _ZAHVReg &zahv, const _PReg &pg, const AdrReg &adr) { SmeZahvContiLdStH(false, zahv, pg, adr.getXm(), adr.getXn()); }
+void CodeGenerator::ld1h(const _ZAHVReg &zahv, const _PReg &pg, const AdrNoOfs &adr) { SmeZahvContiLdStH(false, zahv, pg, xzr, adr.getXn()); }
+void CodeGenerator::st1h(const _ZAHVReg &zahv, const _PReg &pg, const AdrReg &adr) { SmeZahvContiLdStH(true, zahv, pg, adr.getXm(), adr.getXn()); }
+void CodeGenerator::st1h(const _ZAHVReg &zahv, const _PReg &pg, const AdrNoOfs &adr) { SmeZahvContiLdStH(true, zahv, pg, xzr, adr.getXn()); }
+void CodeGenerator::ld1w(const _ZAHVReg &zahv, const _PReg &pg, const AdrReg &adr) { SmeZahvContiLdStW(false, zahv, pg, adr.getXm(), adr.getXn()); }
+void CodeGenerator::ld1w(const _ZAHVReg &zahv, const _PReg &pg, const AdrNoOfs &adr) { SmeZahvContiLdStW(false, zahv, pg, xzr, adr.getXn()); }
+void CodeGenerator::st1w(const _ZAHVReg &zahv, const _PReg &pg, const AdrReg &adr) { SmeZahvContiLdStW(true, zahv, pg, adr.getXm(), adr.getXn()); }
+void CodeGenerator::st1w(const _ZAHVReg &zahv, const _PReg &pg, const AdrNoOfs &adr) { SmeZahvContiLdStW(true, zahv, pg, xzr, adr.getXn()); }
+void CodeGenerator::ld1d(const _ZAHVReg &zahv, const _PReg &pg, const AdrReg &adr) { SmeZahvContiLdStD(false, zahv, pg, adr.getXm(), adr.getXn()); }
+void CodeGenerator::ld1d(const _ZAHVReg &zahv, const _PReg &pg, const AdrNoOfs &adr) { SmeZahvContiLdStD(false, zahv, pg, xzr, adr.getXn()); }
+void CodeGenerator::st1d(const _ZAHVReg &zahv, const _PReg &pg, const AdrReg &adr) { SmeZahvContiLdStD(true, zahv, pg, adr.getXm(), adr.getXn()); }
+void CodeGenerator::st1d(const _ZAHVReg &zahv, const _PReg &pg, const AdrNoOfs &adr) { SmeZahvContiLdStD(true, zahv, pg, xzr, adr.getXn()); }
+void CodeGenerator::ld1q(const _ZAHVReg &zahv, const _PReg &pg, const AdrReg &adr) { SmeZahvContiLdStQ(false, zahv, pg, adr.getXm(), adr.getXn()); }
+void CodeGenerator::ld1q(const _ZAHVReg &zahv, const _PReg &pg, const AdrNoOfs &adr) { SmeZahvContiLdStQ(false, zahv, pg, xzr, adr.getXn()); }
+void CodeGenerator::st1q(const _ZAHVReg &zahv, const _PReg &pg, const AdrReg &adr) { SmeZahvContiLdStQ(true, zahv, pg, adr.getXm(), adr.getXn()); }
+void CodeGenerator::st1q(const _ZAHVReg &zahv, const _PReg &pg, const AdrNoOfs &adr) { SmeZahvContiLdStQ(true, zahv, pg, xzr, adr.getXn()); }
+void CodeGenerator::ldr(const ZAReg &za, const AdrImm &adr) { SmeZaContiLdSt(false, za, adr.getXn(), adr.getImm()); }
+void CodeGenerator::ldr(const ZAReg &za, const AdrNoOfs &adr) { SmeZaContiLdSt(false, za, adr.getXn(), 0); }
+void CodeGenerator::str(const ZAReg &za, const AdrImm &adr) { SmeZaContiLdSt(true, za, adr.getXn(), adr.getImm()); }
+void CodeGenerator::str(const ZAReg &za, const AdrNoOfs &adr) { SmeZaContiLdSt(true, za, adr.getXn(), 0); }
+void CodeGenerator::mov(const ZRegB &zd, const _PReg &pg, const _ZAHVReg &za0hv) { SmeMovTileToVectB(zd, pg, za0hv); }
+void CodeGenerator::mova(const ZRegB &zd, const _PReg &pg, const _ZAHVReg &za0hv) { SmeMovTileToVectB(zd, pg, za0hv); }
+void CodeGenerator::mov(const ZRegH &zd, const _PReg &pg, const _ZAHVReg &zahv) { SmeMovTileToVectH(zd, pg, zahv); }
+void CodeGenerator::mova(const ZRegH &zd, const _PReg &pg, const _ZAHVReg &zahv) { SmeMovTileToVectH(zd, pg, zahv); }
+void CodeGenerator::mov(const ZRegS &zd, const _PReg &pg, const _ZAHVReg &zahv) { SmeMovTileToVectS(zd, pg, zahv); }
+void CodeGenerator::mova(const ZRegS &zd, const _PReg &pg, const _ZAHVReg &zahv) { SmeMovTileToVectS(zd, pg, zahv); }
+void CodeGenerator::mov(const ZRegD &zd, const _PReg &pg, const _ZAHVReg &zahv) { SmeMovTileToVectD(zd, pg, zahv); }
+void CodeGenerator::mova(const ZRegD &zd, const _PReg &pg, const _ZAHVReg &zahv) { SmeMovTileToVectD(zd, pg, zahv); }
+void CodeGenerator::mov(const ZRegQ &zd, const _PReg &pg, const _ZAHVReg &zahv) { SmeMovTileToVectQ(zd, pg, zahv); }
+void CodeGenerator::mova(const ZRegQ &zd, const _PReg &pg, const _ZAHVReg &zahv) { SmeMovTileToVectQ(zd, pg, zahv); }
+void CodeGenerator::mov(const _ZAHVReg &za0hv, const _PReg &pg, const ZRegB &zn) { SmeMovVectToTileB(za0hv, pg, zn); }
+void CodeGenerator::mova(const _ZAHVReg &za0hv, const _PReg &pg, const ZRegB &zn) { SmeMovVectToTileB(za0hv, pg, zn); }
+void CodeGenerator::mov(const _ZAHVReg &zahv, const _PReg &pg, const ZRegH &zn) { SmeMovVectToTileH(zahv, pg, zn); }
+void CodeGenerator::mova(const _ZAHVReg &zahv, const _PReg &pg, const ZRegH &zn) { SmeMovVectToTileH(zahv, pg, zn); }
+void CodeGenerator::mov(const _ZAHVReg &zahv, const _PReg &pg, const ZRegS &zn) { SmeMovVectToTileS(zahv, pg, zn); }
+void CodeGenerator::mova(const _ZAHVReg &zahv, const _PReg &pg, const ZRegS &zn) { SmeMovVectToTileS(zahv, pg, zn); }
+void CodeGenerator::mov(const _ZAHVReg &zahv, const _PReg &pg, const ZRegD &zn) { SmeMovVectToTileD(zahv, pg, zn); }
+void CodeGenerator::mova(const _ZAHVReg &zahv, const _PReg &pg, const ZRegD &zn) { SmeMovVectToTileD(zahv, pg, zn); }
+void CodeGenerator::mov(const _ZAHVReg &zahv, const _PReg &pg, const ZRegQ &zn) { SmeMovVectToTileQ(zahv, pg, zn); }
+void CodeGenerator::mova(const _ZAHVReg &zahv, const _PReg &pg, const ZRegQ &zn) { SmeMovVectToTileQ(zahv, pg, zn); }
+void CodeGenerator::rdsvl(const XReg &rd, const int32_t imm6) { SmeReadMultiplySSRegSize(rd, imm6); }
+void CodeGenerator::smopa(const ZARegS &zaS, const _PReg &pn, const _PReg &pm, const ZRegB &zn, const ZRegB &zm) { Sme8bitTo32bitOuterProd(false, false, false, zaS, pn, pm, zn, zm); }
+void CodeGenerator::smopa(const ZARegD &zaD, const _PReg &pn, const _PReg &pm, const ZRegH &zn, const ZRegH &zm) { Sme16bitTo64bitOuterProd(false, false, false, zaD, pn, pm, zn, zm); }
+void CodeGenerator::smops(const ZARegS &zaS, const _PReg &pn, const _PReg &pm, const ZRegB &zn, const ZRegB &zm) { Sme8bitTo32bitOuterProd(false, false, true, zaS, pn, pm, zn, zm); }
+void CodeGenerator::smops(const ZARegD &zaD, const _PReg &pn, const _PReg &pm, const ZRegH &zn, const ZRegH &zm) { Sme16bitTo64bitOuterProd(false, false, true, zaD, pn, pm, zn, zm); }
+void CodeGenerator::sumopa(const ZARegS &zaS, const _PReg &pn, const _PReg &pm, const ZRegB &zn, const ZRegB &zm) { Sme8bitTo32bitOuterProd(false, true, false, zaS, pn, pm, zn, zm); }
+void CodeGenerator::sumopa(const ZARegD &zaD, const _PReg &pn, const _PReg &pm, const ZRegH &zn, const ZRegH &zm) { Sme16bitTo64bitOuterProd(false, true, false, zaD, pn, pm, zn, zm); }
+void CodeGenerator::sumops(const ZARegS &zaS, const _PReg &pn, const _PReg &pm, const ZRegB &zn, const ZRegB &zm) { Sme8bitTo32bitOuterProd(false, true, true, zaS, pn, pm, zn, zm); }
+void CodeGenerator::sumops(const ZARegD &zaD, const _PReg &pn, const _PReg &pm, const ZRegH &zn, const ZRegH &zm) { Sme16bitTo64bitOuterProd(false, true, true, zaD, pn, pm, zn, zm); }
+void CodeGenerator::umopa(const ZARegS &zaS, const _PReg &pn, const _PReg &pm, const ZRegB &zn, const ZRegB &zm) { Sme8bitTo32bitOuterProd(true, true, false, zaS, pn, pm, zn, zm); }
+void CodeGenerator::umopa(const ZARegD &zaD, const _PReg &pn, const _PReg &pm, const ZRegH &zn, const ZRegH &zm) { Sme16bitTo64bitOuterProd(true, true, false, zaD, pn, pm, zn, zm); }
+void CodeGenerator::umops(const ZARegS &zaS, const _PReg &pn, const _PReg &pm, const ZRegB &zn, const ZRegB &zm) { Sme8bitTo32bitOuterProd(true, true, true, zaS, pn, pm, zn, zm); }
+void CodeGenerator::umops(const ZARegD &zaD, const _PReg &pn, const _PReg &pm, const ZRegH &zn, const ZRegH &zm) { Sme16bitTo64bitOuterProd(true, true, true, zaD, pn, pm, zn, zm); }
+void CodeGenerator::usmopa(const ZARegS &zaS, const _PReg &pn, const _PReg &pm, const ZRegB &zn, const ZRegB &zm) { Sme8bitTo32bitOuterProd(true, false, false, zaS, pn, pm, zn, zm); }
+void CodeGenerator::usmopa(const ZARegD &zaD, const _PReg &pn, const _PReg &pm, const ZRegH &zn, const ZRegH &zm) { Sme16bitTo64bitOuterProd(true, false, false, zaD, pn, pm, zn, zm); }
+void CodeGenerator::usmops(const ZARegS &zaS, const _PReg &pn, const _PReg &pm, const ZRegB &zn, const ZRegB &zm) { Sme8bitTo32bitOuterProd(true, false, true, zaS, pn, pm, zn, zm); }
+void CodeGenerator::usmops(const ZARegD &zaD, const _PReg &pn, const _PReg &pm, const ZRegH &zn, const ZRegH &zm) { Sme16bitTo64bitOuterProd(true, false, true, zaD, pn, pm, zn, zm); }
+void CodeGenerator::zero(std::initializer_list<ZARegD> list) { SmeZero(list); }
+void CodeGenerator::zero(const ZAReg &za) { SmeZero(za); }
+void CodeGenerator::smstart(SMod m) { PState(SVCRSMZA, 1 | (m<<1u)); }
+void CodeGenerator::smstart() { PState(SVCRSMZA, 0x7); }
+void CodeGenerator::smstop(SMod m) { PState(SVCRSMZA, m<<1u); }
+void CodeGenerator::smstop() { PState(SVCRSMZA, 0x6); }

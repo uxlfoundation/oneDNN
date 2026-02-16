@@ -106,8 +106,13 @@ status_t set_isa_impl(brgemm_desc_t *brg) {
     } else if (brg->is_bf16 && !mayiuse_bf16()) {
         return status::unimplemented;
     } else if (brg->is_f32 || brg->is_bf16 || brg->is_int8) {
+        brg->is_sme_feat = is_isa_ok(sme);
         brg->isa_impl = utils::map(true, isa_undef, is_isa_ok(sve_512), sve_512,
                 is_isa_ok(sve_256), sve_256, is_isa_ok(sve_128), sve_128);
+        if (isa_undef != brg->isa_impl)
+            brg->is_sve = true;
+        else if (brg->is_sme_feat)
+            brg->isa_impl = sme;
         return status::success;
     }
     return status::success;
@@ -360,6 +365,11 @@ status_t init_brgemm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
     brg->rd_step = has_no_vnni_compute_instruction
             ? 1
             : data_type_vnni_granularity(brg->dt_b);
+    brg->is_sme = brg->is_sme_feat && brg->is_f32 && (data_type::f32 == dt_b)
+            && (data_type::f32 == dt_a) && (0.f == brg->beta)
+            && (1.f == brg->alpha) && (brgemm_addr == brg->type)
+            && (brgemm_row_major == layout);
+    if (!brg->is_sme && (sme == brg->isa_impl)) brg->isa_impl = isa_undef;
     return status::success;
 }
 

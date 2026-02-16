@@ -63,6 +63,7 @@ enum cpu_isa_bit_t : unsigned {
     sve_128_bit = 1u << 2,
     sve_256_bit = 1u << 3,
     sve_512_bit = 1u << 4,
+    sme_bit = 1u << 8,
 };
 
 enum cpu_isa_t : unsigned {
@@ -72,6 +73,7 @@ enum cpu_isa_t : unsigned {
     sve_128 = sve_128_bit | sve,
     sve_256 = sve_256_bit | sve_128,
     sve_512 = sve_512_bit | sve_256,
+    sme = sme_bit,
     isa_all = ~0u,
 };
 
@@ -201,6 +203,7 @@ inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {
         case sve_512:
             return cpu().has(XBYAK_AARCH64_HWCAP_SVE)
                     && cpu().getSveLen() >= SVE_512;
+        case sme: return cpu().has(XBYAK_AARCH64_HWCAP_SME);
         case isa_undef: return true;
         case isa_all: return false;
     }
@@ -210,6 +213,11 @@ inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {
 // SVE length in bytes
 inline uint64_t get_sve_length() {
     return cpu().getSveLen();
+}
+
+// SME length in bytes
+inline uint64_t get_sme_length() {
+    return cpu().getSmeLen();
 }
 
 // SVE length in element type
@@ -228,6 +236,8 @@ inline int isa_max_vlen(cpu_isa_t isa) {
         return cpu_isa_traits<sve_128>::vlen;
     else if (isa == sve)
         return get_sve_length();
+    else if (isa == sme)
+        return get_sme_length();
     else if (isa == asimd)
         return cpu_isa_traits<asimd>::vlen;
     else

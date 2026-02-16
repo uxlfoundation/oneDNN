@@ -187,8 +187,8 @@ void jit_softmax_base_t::load_common_params() {
         PARAM_LOAD(reg_diff_dst, diff_dst);
     }
     if (need_scratchpad_) { PARAM_LOAD(reg_interim, interim); }
-    PARAM_LOAD(reg_src_scales, src_scales);
-    PARAM_LOAD(reg_dst_scales, dst_scales);
+    if (need_src_scale_) { PARAM_LOAD(reg_src_scales, src_scales); }
+    if (need_dst_scale_) { PARAM_LOAD(reg_dst_scales, dst_scales); }
 #undef PARAM_OFF
 #undef PARAM_LOAD
 }
@@ -516,32 +516,71 @@ void jit_softmax_sve_t<isa>::accumulate_vsum() {
     eor(vsum.d, vsum.d, vsum.d); // flush to zero before accumulation
 
     axis_loop([&](int unroll, bool tail = false) {
-        for (int i = 0; i < unroll; i++) {
-            TReg vreg_tmp_src = TReg(data_vreg_start_idx + i);
-            load(vreg_tmp_src, src_ptr(src_axis_stride_ * i),
-                    src_d_.data_type(), tail);
-            fsub(vreg_tmp_src.s, vreg_tmp_src.s, vmax.s);
-            if (is_logsoftmax_) { // store before applying exp
-                if (need_scratchpad_) {
-                    store(interim_ptr(interim_axis_stride_ * i), vreg_tmp_src,
-                            data_type::f32, tail);
-                } else {
-                    store(dst_ptr(dst_axis_stride_ * i), vreg_tmp_src,
-                            dst_d_.data_type(), tail);
+        if (isa == sve_128) {
+            const int vmm_start = data_vreg_start_idx;
+            const int vmm_end = vmm_start + unroll;
+            for (int i = 0; i < unroll; i++) {
+                TReg vreg_tmp_src = TReg(data_vreg_start_idx + i);
+                load(vreg_tmp_src, src_ptr(src_axis_stride_ * i),
+                        src_d_.data_type(), tail);
+                fsub(vreg_tmp_src.s, vreg_tmp_src.s, vmax.s);
+                if (is_logsoftmax_) { // store before applying exp
+                    if (need_scratchpad_) {
+                        store(interim_ptr(interim_axis_stride_ * i),
+                                vreg_tmp_src, data_type::f32, tail);
+                    } else {
+                        store(dst_ptr(dst_axis_stride_ * i), vreg_tmp_src,
+                                dst_d_.data_type(), tail);
+                    }
                 }
             }
-            exp_injector_->compute_vector(vreg_tmp_src.getIdx());
-            if (tail)
-                fadd(vsum.s, tail_opmask / T_m, vreg_tmp_src.s);
-            else
-                fadd(vsum.s, vsum.s, vreg_tmp_src.s);
-            if (is_softmax_) { // store after applying exp
-                if (need_scratchpad_) {
-                    store(interim_ptr(interim_axis_stride_ * i), vreg_tmp_src,
-                            data_type::f32, tail);
-                } else {
-                    store(dst_ptr(dst_axis_stride_ * i), vreg_tmp_src,
-                            dst_d_.data_type(), tail);
+
+            exp_injector_->compute_vector_range(vmm_start, vmm_end);
+
+            for (int i = 0; i < unroll; i++) {
+                TReg vreg_tmp_src = TReg(data_vreg_start_idx + i);
+                if (tail)
+                    fadd(vsum.s, tail_opmask / T_m, vreg_tmp_src.s);
+                else
+                    fadd(vsum.s, vsum.s, vreg_tmp_src.s);
+                if (is_softmax_) { // store after applying exp
+                    if (need_scratchpad_) {
+                        store(interim_ptr(interim_axis_stride_ * i),
+                                vreg_tmp_src, data_type::f32, tail);
+                    } else {
+                        store(dst_ptr(dst_axis_stride_ * i), vreg_tmp_src,
+                                dst_d_.data_type(), tail);
+                    }
+                }
+            }
+        } else {
+            for (int i = 0; i < unroll; i++) {
+                TReg vreg_tmp_src = TReg(data_vreg_start_idx + i);
+                load(vreg_tmp_src, src_ptr(src_axis_stride_ * i),
+                        src_d_.data_type(), tail);
+                fsub(vreg_tmp_src.s, vreg_tmp_src.s, vmax.s);
+                if (is_logsoftmax_) { // store before applying exp
+                    if (need_scratchpad_) {
+                        store(interim_ptr(interim_axis_stride_ * i),
+                                vreg_tmp_src, data_type::f32, tail);
+                    } else {
+                        store(dst_ptr(dst_axis_stride_ * i), vreg_tmp_src,
+                                dst_d_.data_type(), tail);
+                    }
+                }
+                exp_injector_->compute_vector(vreg_tmp_src.getIdx());
+                if (tail)
+                    fadd(vsum.s, tail_opmask / T_m, vreg_tmp_src.s);
+                else
+                    fadd(vsum.s, vsum.s, vreg_tmp_src.s);
+                if (is_softmax_) { // store after applying exp
+                    if (need_scratchpad_) {
+                        store(interim_ptr(interim_axis_stride_ * i),
+                                vreg_tmp_src, data_type::f32, tail);
+                    } else {
+                        store(dst_ptr(dst_axis_stride_ * i), vreg_tmp_src,
+                                dst_d_.data_type(), tail);
+                    }
                 }
             }
         }
@@ -575,10 +614,16 @@ void jit_softmax_sve_t<isa>::compute_dst() {
             }
 
             TReg vscale = vmax;
-            ldr(vscale, ptr(reg_src_scales));
-            fmul(vreg_tmp_src.s, vreg_tmp_src.s, vscale.s);
-            ldr(vscale, ptr(reg_dst_scales));
-            fmul(vreg_tmp_src.s, vreg_tmp_src.s, vscale.s);
+            if (need_src_scale_) {
+                ldr(vscale, ptr(reg_src_scales));
+                fmul(vreg_tmp_src.s, vreg_tmp_src.s, vscale.s);
+            }
+
+            if (need_dst_scale_) {
+                ldr(vscale, ptr(reg_dst_scales));
+                fmul(vreg_tmp_src.s, vreg_tmp_src.s, vscale.s);
+            }
+
             store(dst_ptr(dst_axis_stride_ * i), vreg_tmp_src,
                     dst_d_.data_type(), tail);
         }
@@ -663,10 +708,13 @@ void jit_softmax_sve_t<isa>::restore_mask() {
 
 template <cpu_isa_t isa>
 void jit_softmax_sve_t<isa>::generate() {
-    if (pd_->is_fwd() || is_logsoftmax_)
+    if (pd_->is_fwd() || is_logsoftmax_) {
         exp_injector_.reset(new jit_uni_eltwise_injector_t<to_vla_sve(isa)>(
                 this, alg_kind::eltwise_exp, 0.0f, 0.0f, 1.0f, true,
-                reg_exp_injector_table, injector_mask, injector_tmp));
+                reg_exp_injector_table, injector_mask, injector_tmp, true,
+                false, (isa != sve_128)));
+        exp_injector_->set_input_range(-INFINITY, 0.f);
+    }
     if (pd_->is_fwd() && is_logsoftmax_) {
         log_injector_.reset(new jit_uni_eltwise_injector_t<to_vla_sve(isa)>(
                 this, alg_kind::eltwise_log, 0.0f, 0.0f, 1.0f, true,

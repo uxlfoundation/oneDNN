@@ -459,10 +459,15 @@ void jit_uni_eltwise_injector_t<isa>::exp_compute_vector_fwd(
         const TRegS &vmm_src) {
 
     const auto &t0 = ZRegS(IDX(vmm_src));
-    const auto &t1 = ZRegS(IDX(vmm_aux1));
-    const auto &t2 = ZRegS(IDX(vmm_aux2));
-    h->fmin(t0, p_all, ZRegS(IDX(table_val(exp_ln_flt_max_f, z_tmp))));
-    h->fmax(t0, p_all, ZRegS(IDX(table_val(exp_ln_flt_min_f, z_tmp))));
+    const auto &t1 = ZRegS(IDX(vmm_aux0));
+    const auto &t2 = ZRegS(IDX(vmm_aux1));
+    const float ln_flt_max = logf(FLT_MAX);
+    const float ln_flt_min = logf(FLT_MIN);
+
+    if (max_input_ > ln_flt_max)
+        h->fmin(t0, p_all, ZRegS(IDX(table_val(exp_ln_flt_max_f, z_tmp))));
+    if (min_input_ < ln_flt_min)
+        h->fmax(t0, p_all, ZRegS(IDX(table_val(exp_ln_flt_min_f, z_tmp))));
     h->fmul(t0, t0, ZRegS(IDX(table_val(exp_log2ef, z_tmp))));
     h->movprfx(t1, p_all, t0);
     h->frintm(t1, p_all, t0);
@@ -1616,7 +1621,7 @@ size_t jit_uni_eltwise_injector_t<isa>::aux_vecs_count() {
             case eltwise_logistic_use_dst_for_bwd:
             case eltwise_logistic: return 5; /* = exp + 1 */
             case eltwise_exp_use_dst_for_bwd:
-            case eltwise_exp: return (isa == asimd) ? 5 : 4;
+            case eltwise_exp: return (isa == asimd) ? 5 : 3;
             case eltwise_gelu_tanh: return 9; /* = tanh */
             case eltwise_swish: return 6; /* = logistic */
             case eltwise_log: return 6;

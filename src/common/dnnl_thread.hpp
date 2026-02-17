@@ -295,9 +295,12 @@ static inline void parallel(int nthr, const std::function<void(int, int)> &f) {
         int ithr_ = omp_get_thread_num();
         assert(nthr_ == nthr);
 #if defined(DNNL_ENABLE_ITT_TASKS)
-        if (ithr_ && itt_enable)
-            itt::primitive_task_start(task_primitive_kind, task_primitive_info,
-                    task_primitive_log_kind);
+        if (ithr_ && itt_enable) {
+            itt::primitive_task_start(
+                    task_primitive_kind, task_primitive_log_kind);
+            itt::primitive_add_metadata_and_id(
+                    task_primitive_info, task_primitive_log_kind);
+        }
 #endif
         f(ithr_, nthr_);
 #if defined(DNNL_ENABLE_ITT_TASKS)
@@ -310,9 +313,12 @@ static inline void parallel(int nthr, const std::function<void(int, int)> &f) {
 #if defined(DNNL_ENABLE_ITT_TASKS)
         bool mark_task = itt::primitive_task_get_current_kind()
                 == primitive_kind::undefined;
-        if (mark_task && itt_enable)
-            itt::primitive_task_start(task_primitive_kind, task_primitive_info,
-                    task_primitive_log_kind);
+        if (mark_task && itt_enable) {
+            itt::primitive_task_start(
+                    task_primitive_kind, task_primitive_log_kind);
+            itt::primitive_add_metadata_and_id(
+                    task_primitive_info, task_primitive_log_kind);
+        }
 #endif
         f(ithr, nthr);
 #if defined(DNNL_ENABLE_ITT_TASKS)
@@ -334,7 +340,9 @@ static inline void parallel(int nthr, const std::function<void(int, int)> &f) {
 #if defined(DNNL_ENABLE_ITT_TASKS)
             bool is_master = threadpool_utils::get_active_threadpool() == tp;
             if (!is_master && itt_enable) {
-                itt::primitive_task_start(task_primitive_kind,
+                itt::primitive_task_start(
+                        task_primitive_kind, task_primitive_log_kind);
+                itt::primitive_add_metadata_and_id(
                         task_primitive_info, task_primitive_log_kind);
             }
 #endif

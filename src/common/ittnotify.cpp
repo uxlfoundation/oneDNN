@@ -66,8 +66,7 @@ __itt_domain *itt_domain(const char *log_kind) {
 
 } // namespace
 
-void primitive_task_start(
-        primitive_kind_t kind, const char *pd_info, const char *log_kind) {
+void primitive_task_start(primitive_kind_t kind, const char *log_kind) {
     if (kind == primitive_kind::undefined) return;
     __itt_domain *pd_domain = itt_domain(log_kind);
 
@@ -108,9 +107,18 @@ void primitive_task_start(
                 prim_kind_itt_strings[kind_idx]);
     }
     thread_primitive_kind = kind;
+    thread_primitive_log_kind = log_kind;
+}
+
+void primitive_add_metadata_and_id(const char *pd_info, const char *log_kind) {
+    if (thread_primitive_kind == primitive_kind::undefined) return;
+
+    __itt_domain *pd_domain = itt_domain(log_kind);
     __itt_formatted_metadata_add(pd_domain, thread_primitive_meta_fmt, pd_info);
     thread_primitive_info = pd_info;
-    thread_primitive_log_kind = log_kind;
+
+    // thread_primitive_task_id = task_id;
+    // __itt_id_create(pd_domain, thread_primitive_task_id);
 }
 
 primitive_kind_t primitive_task_get_current_kind() {

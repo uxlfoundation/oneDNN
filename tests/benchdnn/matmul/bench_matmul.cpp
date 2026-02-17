@@ -127,6 +127,60 @@ int verify_input(const settings_t &s, const settings_t &def) {
     return OK;
 }
 
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+// Validate input consistency for grouped encoding
+//
+// Notes:
+// - `--grouped` parameter uses the same configuration for both SRC and
+//   DST, so we only validate SRC parameters
+// - Currently only M dimension grouping is supported
+int verify_grouped_input(const settings_t &s) {
+    if (s.sparse_options[0].get_encoding(DNNL_ARG_SRC) == dnnl_grouped) {
+
+        const int variable_dim_idx
+                = s.sparse_options[0].get_variable_dim_idx(DNNL_ARG_SRC);
+
+        // Validate variable_dim_idx (only M dimension supported by benchdnn)
+        // TODO: remove once benchdnn supports grouping on other dimensions
+        if (variable_dim_idx != 0) {
+            BENCHDNN_PRINT(0,
+                    "ERROR: grouped encoding only supports M dimension "
+                    "(dim 0), got dim %d\n",
+                    variable_dim_idx);
+            SAFE_V(FAIL);
+        }
+
+        // The library cannot validate group sizes at primitive creation time,
+        // so benchdnn must check them at primitive creation time
+        int64_t total_M = 0;
+        const auto &group_sizes
+                = s.sparse_options[0].get_group_sizes(DNNL_ARG_SRC);
+        for (size_t i = 0; i < group_sizes.size(); i++) {
+            if (group_sizes[i] < 0) {
+                BENCHDNN_PRINT(0,
+                        "ERROR: group_sizes[%zu] must be positive, "
+                        "got %lld\n",
+                        i, (long long)group_sizes[i]);
+                SAFE_V(FAIL);
+            }
+            total_M += group_sizes[i];
+        }
+
+        // Check consistency with M dimension of src tensor
+        const auto &src_dims = s.prb_vdims.vdims[0]; // [M, K]
+        const int64_t expected_M = src_dims[0];
+        if (total_M != expected_M) {
+            BENCHDNN_PRINT(0,
+                    "ERROR: sum of group M dimensions (%lld) doesn't match "
+                    "src M (%lld)\n",
+                    (long long)total_M, (long long)expected_M);
+            SAFE_V(FAIL);
+        }
+    }
+    return OK;
+}
+#endif
+
 static const std::string help_bia_mask
         = "UINT    (Default: `2`)\n    Specifies a bit-mask that indicates "
           "which bias dimensions coincide with C matrix dimensions, when `1` "
@@ -184,6 +238,10 @@ int bench(int argc, char **argv) {
             parse_prb_vdims(s.prb_vdims, argv[0]);
 
             SAFE(verify_input(s, def), WARN);
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+            SAFE(verify_grouped_input(s), WARN);
+#endif
+
             s.finalize();
             check_correctness(s, task_executor);
         }

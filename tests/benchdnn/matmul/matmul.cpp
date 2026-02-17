@@ -34,6 +34,47 @@
 
 namespace matmul {
 
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+// Buffer indices for multi-handle grouped memory
+constexpr int GROUPED_VALUES_IDX = 0;
+constexpr int GROUPED_OFFSETS_IDX = 1;
+
+// Helper to create grouped memory descriptor
+//
+// Current input format for grouped matmul is:
+//     --grouped=indx:group_count:size1,size2,...,sizeN total_MxK:group_countxKxN
+// group_count is the number of groups and size1,...,sizeN are the sizes of the variable dimension for each group,
+// that should sum up to total_M
+//
+// Notes:
+// - Currently supports only M dimension,
+//   therefore only SRC and DST can be created with grouped encoding
+// - Input validation is done in verify_grouped_input()
+static benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_grouped_md(
+        const prb_t *prb, data_kind_t kind, dnnl_data_type_t dt) {
+    int arg = (kind == SRC) ? DNNL_ARG_SRC
+            : (kind == DST) ? DNNL_ARG_DST
+                            : DNNL_ARG_UNDEF;
+    assert(arg != DNNL_ARG_UNDEF && "grouped encoding only supports SRC/DST");
+    assert(prb->sparse_options.get_encoding(arg) == dnnl_grouped
+            && "create_grouped_md should be called only for grouped encoding");
+    assert(prb->sparse_options.get_variable_dim_idx(arg) == 0
+            && "currently only M dimension grouping is supported");
+
+    const int64_t group_count = prb->sparse_options.get_group_count();
+
+    // [total_M, K] for SRC
+    // [total_M, N] for DST
+    dnnl_dims_t dims_2d;
+    dims_2d[0] = prb->m; // total_M, at this point we've already validated that sum of group sizes equals M dimension
+    dims_2d[1] = (kind == SRC) ? prb->k : prb->n;
+
+    // Create memory descriptor with grouped encoding with multiple handles
+    return dnn_mem_t::init_grouped_md(
+            2, dims_2d, dt, /* variable_dim_idx = */ 0, group_count, dnnl_s32);
+}
+#endif
+
 dims_t get_runtime_dims(const dims_t &dims, const dims_mask_t &mask) {
     if (mask.none() || dims.empty()) return dims;
     dims_t runtime_dims;
@@ -55,6 +96,11 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_md(const prb_t *prb,
         auto src_encoding = prb->sparse_options.get_encoding(DNNL_ARG_SRC);
         auto src_sparsity = prb->sparse_options.get_sparsity(DNNL_ARG_SRC);
         if (src_encoding != dnnl_sparse_encoding_undef) {
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+            if (src_encoding == dnnl_grouped) {
+                return create_grouped_md(prb, SRC, dt);
+            }
+#endif
             const dnnl_dim_t nnz
                     = std::max(prb->m * prb->k * (1.0f - src_sparsity), 1.0f);
             switch (src_encoding) {
@@ -106,6 +152,13 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_md(const prb_t *prb,
         if (dt == dnnl_data_type_undef) dt = prb->dst_dt();
         const auto &dst_rt_dims
                 = get_runtime_dims(prb->dst_dims, prb->dst_runtime_dim_mask());
+
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+        auto dst_encoding = prb->sparse_options.get_encoding(DNNL_ARG_DST);
+        if (dst_encoding == dnnl_grouped) {
+            return create_grouped_md(prb, DST, dt);
+        }
+#endif
         return dnn_mem_t::init_md(prb->ndims, dst_rt_dims.data(), dt, prb->dtag,
                 prb->strides[STRIDES_DST]);
     }

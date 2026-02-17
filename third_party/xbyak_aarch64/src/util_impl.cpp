@@ -20,6 +20,7 @@
 
 #include "xbyak_aarch64_err.h"
 #include "xbyak_aarch64_util.h"
+#include "xbyak_aarch64.h"
 
 #include "util_impl.h"
 
@@ -107,6 +108,7 @@ int CpuInfo::getNumCores(Arm64CpuTopologyLevel level) const {
 }
 
 uint64_t CpuInfo::getSveLen() const { return sveLen_; }
+uint64_t CpuInfo::getSmeLen() const { return smeLen_; }
 Type CpuInfo::getType() const { return type_; }
 int CpuInfo::getUnifiedCacheSize(int level) const { return cacheInfo_.levelCache[level - 1].size[2]; }
 
@@ -159,6 +161,36 @@ Cpu::Cpu() {
 #endif
 }
 
+struct GetSmeLenCode : public CodeGenerator {
+  GetSmeLenCode() {
+    stp(x29, x30, pre_ptr(sp, -80));
+    mov(x29, sp);
+    stp(d8, d9, ptr(sp, 16));
+    stp(d10, d11, ptr(sp, 32));
+    stp(d12, d13, ptr(sp, 48));
+    stp(d14, d15, ptr(sp, 64));
+    smstart();
+    rdsvl(x0,1);
+    smstop();
+    ldp(d8, d9, ptr(sp, 16));
+    ldp(d10, d11, ptr(sp, 32));
+    ldp(d12, d13, ptr(sp, 48));
+    ldp(d14, d15, ptr(sp, 64));
+    ldp(x29, x30, post_ptr(sp, 80));
+    ret();
+  }
+};
+
+void CpuInfo::setSmeLen() {
+  if ((0 == smeLen_) && (type_ & XBYAK_AARCH64_HWCAP_SME))
+  {
+    GetSmeLenCode code;
+    code.ready();
+    auto get_sme_length = code.getCode<uint64_t (*)()>();
+    smeLen_ = get_sme_length();
+  }
+}
+
 void Cpu::dumpCacheInfo() const { return info->dumpCacheInfo(); }
 
 Arm64CacheType Cpu::getCacheType(const Arm64CacheLevel i) const { return info->getCacheType(i); }
@@ -188,6 +220,7 @@ const char *Cpu::getImplementer() const { return info->getImplementer(); }
 uint32_t Cpu::getLastDataCacheLevel() const { return info->getLastDataCacheLevel(); }
 uint32_t Cpu::getNumCores(Arm64CpuTopologyLevel level) const { return info->getNumCores(level); }
 uint64_t Cpu::getSveLen() const { return info->getSveLen(); }
+uint64_t Cpu::getSmeLen() const { return info->getSmeLen(); }
 Type Cpu::getType() const { return info->getType(); }
 bool Cpu::has(Type type) const { return (type & info->getType()) == type; }
 bool Cpu::isAtomicSupported() const { return has(XBYAK_AARCH64_HWCAP_ATOMIC); }

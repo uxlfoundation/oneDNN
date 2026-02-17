@@ -143,9 +143,11 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_md(const prb_t *prb,
                     break;
                 default: assert(!"unsupported encoding"); return nullptr;
             }
-        } else
-            return dnn_mem_t::init_md(prb->ndims, weights_rt_dims.data(), dt,
-                    prb->wtag, prb->strides[STRIDES_WEI]);
+        } else {
+            return dnn_mem_t::init_md(weights_rt_dims.size(),
+                    weights_rt_dims.data(), dt, prb->wtag,
+                    prb->strides[STRIDES_WEI]);
+        }
     }
 
     if (kind == DST) {
@@ -682,13 +684,28 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
 
     if (!prb->sparse_options.is_def() && is_cpu() && is_wei_dense
             && prb->wtag != "any" && prb->wtag != "ab") {
-        BENCHDNN_PRINT(2,
-                "[SKIP][%s:%d]: Only `any` and `ab` tags are supported for "
-                "dense weights on CPU.\n",
-                __FILE__, __LINE__);
-        res->state = SKIPPED;
-        res->reason = skip_reason::case_not_supported;
-        return;
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+        // Check if this is grouped encoding which requires 3D weight tags
+        const auto src_encoding
+                = prb->sparse_options.get_encoding(DNNL_ARG_SRC);
+        const auto dst_encoding
+                = prb->sparse_options.get_encoding(DNNL_ARG_DST);
+        bool is_grouped = (src_encoding == dnnl_grouped
+                || dst_encoding == dnnl_grouped);
+
+        if (is_grouped && (prb->wtag == "abc" || prb->wtag == "acb")) {
+            // Allow 3D tags for grouped encoding
+        } else
+#endif
+        {
+            BENCHDNN_PRINT(2,
+                    "[SKIP][%s:%d]: Only `any` and `ab` tags are supported for "
+                    "dense weights on CPU.\n",
+                    __FILE__, __LINE__);
+            res->state = SKIPPED;
+            res->reason = skip_reason::case_not_supported;
+            return;
+        }
     }
 
     if (wei_encoding == dnnl_packed) {
@@ -928,7 +945,7 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
         const auto &weights_rt_dims = get_runtime_dims(
                 prb->weights_dims(), prb->weights_runtime_dim_mask());
         const auto wei_md
-                = dnn_mem_t::init_md(prb->ndims, weights_rt_dims.data(),
+                = dnn_mem_t::init_md(weights_rt_dims.size(), weights_rt_dims.data(),
                         prb->wei_dt(), prb->wtag, prb->strides[STRIDES_WEI]);
 
         const auto wei_strides = query_md_strides(wei_md);

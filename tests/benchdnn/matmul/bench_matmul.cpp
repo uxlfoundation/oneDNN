@@ -127,6 +127,131 @@ int verify_input(const settings_t &s, const settings_t &def) {
     return OK;
 }
 
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+// Validate input consistency for grouped encoding
+//
+// Notes:
+// - `--grouped` parameter uses the same configuration for both SRC and
+//   DST, so we only validate SRC parameters
+// - Currently only M dimension grouping is supported
+int verify_grouped_input(const settings_t &s) {
+    if (s.sparse_options[0].get_encoding(DNNL_ARG_SRC) == dnnl_grouped) {
+
+        const int variable_dim_idx
+                = s.sparse_options[0].get_variable_dim_idx(DNNL_ARG_SRC);
+
+        // Validate variable_dim_idx (only M dimension supported)
+        if (variable_dim_idx != 0) {
+            BENCHDNN_PRINT(0,
+                    "ERROR: grouped encoding only supports M dimension "
+                    "(dim 0), got dim %d\n",
+                    variable_dim_idx);
+            SAFE_V(FAIL);
+        }
+
+        // Validate that runtime dimensions are not used with grouped encoding
+        for (const auto &rt_dims_mask_config : s.rt_dims_masks) {
+            for (const auto &mask : rt_dims_mask_config) {
+                if (mask.any()) {
+                    BENCHDNN_PRINT(0, "%s\n",
+                            "ERROR: grouped encoding does not support runtime "
+                            "dimensions");
+                    SAFE_V(FAIL);
+                }
+            }
+        }
+
+        // Validate dimensions consitency
+        const auto &src_dims = s.prb_vdims.vdims[0]; // [M, K]
+        const auto &wei_dims = s.prb_vdims.vdims[1]; // [G, K, N]
+
+        if (src_dims.size() != 2) {
+            BENCHDNN_PRINT(0,
+                    "ERROR: For grouped matmul, src must be 2D, "
+                    "provided src:%dD\n",
+                    (int)src_dims.size());
+            SAFE_V(FAIL);
+        }
+
+        if (wei_dims.size() != 3) {
+            BENCHDNN_PRINT(0,
+                    "ERROR: For grouped matmul, weights must be 3D "
+                    "[G,K,N], "
+                    "provided wei:%dD\n",
+                    (int)wei_dims.size());
+            SAFE_V(FAIL);
+        }
+
+        const dnnl_dim_t group_count = s.sparse_options[0].get_group_count();
+
+        if (wei_dims[0] != group_count) {
+            BENCHDNN_PRINT(0,
+                    "ERROR: For grouped matmul, weights dim[0] must "
+                    "equal group_count, "
+                    "got wei[0]=%lld but group_count=%lld\n",
+                    (long long)wei_dims[0], (long long)group_count);
+            SAFE_V(FAIL);
+        }
+
+        // Validate number of group sizes
+        const auto &group_sizes
+                = s.sparse_options[0].get_group_sizes(DNNL_ARG_SRC);
+
+        if (group_sizes.size() != (size_t)group_count) {
+            BENCHDNN_PRINT(0,
+                    "ERROR: number of group sizes (%zu) doesn't match "
+                    "group_count (%lld)\n",
+                    group_sizes.size(), (long long)group_count);
+            SAFE_V(FAIL);
+        }
+
+        // Validate sum of group_sizes equals M dimension
+        int64_t total_M = 0;
+        for (size_t i = 0; i < group_sizes.size(); i++) {
+            total_M += group_sizes[i];
+        }
+
+        const int64_t expected_M = src_dims[0];
+        if (total_M != expected_M) {
+            BENCHDNN_PRINT(0,
+                    "ERROR: sum of group M dimensions (%lld) doesn't match "
+                    "src M (%lld)\n",
+                    (long long)total_M, (long long)expected_M);
+            SAFE_V(FAIL);
+        }
+
+        // Note: currently not supported, support will require updated filling path for
+        // grouped DST values
+        for (const auto &i_attr : s.attributes) {
+            if (i_attr.post_ops.find(attr_t::post_ops_t::SUM) >= 0) {
+                BENCHDNN_PRINT(0, "%s\n",
+                        "ERROR: grouped matmul does not support sum "
+                        "post-op");
+                SAFE_V(FAIL);
+            }
+        }
+
+        // Validate bias mask
+        // For grouped matmul only per-column-per-expert bias
+        // (bia_mask=2) is supported
+        for (const auto &i_bia_dt : s.bia_dt) {
+            if (i_bia_dt == dnnl_data_type_undef) continue;
+            for (const auto &i_bia_mask : s.bia_mask) {
+                if (i_bia_mask != 2) {
+                    BENCHDNN_PRINT(0,
+                            "ERROR: grouped matmul only supports "
+                            "bia_mask=2 (per-column per-expert bias), "
+                            "got bia_mask=%d\n",
+                            i_bia_mask);
+                    SAFE_V(FAIL);
+                }
+            }
+        }
+    }
+    return OK;
+}
+#endif
+
 static const std::string help_bia_mask
         = "UINT    (Default: `2`)\n    Specifies a bit-mask that indicates "
           "which bias dimensions coincide with C matrix dimensions, when `1` "
@@ -184,6 +309,10 @@ int bench(int argc, char **argv) {
             parse_prb_vdims(s.prb_vdims, argv[0]);
 
             SAFE(verify_input(s, def), WARN);
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+            SAFE(verify_grouped_input(s), WARN);
+#endif
+
             s.finalize();
             check_correctness(s, task_executor);
         }

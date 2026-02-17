@@ -31,6 +31,7 @@
 #include "common.hpp"
 #include "oneapi/dnnl/dnnl_types.h"
 #include "utils/data_kind.hpp"
+#include "utils/dims.hpp"
 #include "utils/wrapper.hpp"
 
 namespace tag {
@@ -405,6 +406,7 @@ struct attr_t {
                 int64_t mask = -1;
                 mask_input_t mask_input = mask_input_t::none;
                 std::string tag = tag::any;
+                dims_t strides;
 
                 // For the src2 tensor when the algorithm takes ternary inputs
                 dnnl_data_type_t src2_dt = dnnl_data_type_undef;
@@ -412,7 +414,7 @@ struct attr_t {
                 int64_t src2_mask = -1;
                 mask_input_t src2_mask_input = mask_input_t::none;
                 std::string src2_tag = tag::any;
-
+                dims_t strides2;
             } binary;
             struct {
                 policy_t policy = policy_t::COMMON;

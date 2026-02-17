@@ -16,7 +16,7 @@
     --attr-post-ops=SUM[:SCALE[:ZERO_POINT[:DATA_TYPE]]]
                     ELTWISE[:ALPHA[:BETA[:SCALE]]]
                     DW:KkSsPp[:DST_DT]
-                    BINARY:DT[:MASK_INPUT[:TAG]]
+                    BINARY:DT[:MASK_INPUT[:TAG[:STRIDES]]]
                     PRELU[:POLICY]
 ```
 
@@ -272,6 +272,11 @@ In case `MASK_INPUT` value affects more than one dimension (e.g. `per_tensor`
 supported, positioned after `MASK_INPUT`, to specify physical memory format.
 `TAG` values use same notation as in drivers. The default value of `TAG` is
 `any`. Refer to [tags](knobs_tag.md) for details.
+`STRIDES` values use same notion as in drivers and intended to specify
+non-trivial strides which is a rare case. It's a single dims-like tensor applied
+to a specific binary post-op input. It's recommended to use this one only when
+the verbose_converter generates it. Refer to [strides](knob_strides.md) for
+details.
 
 `BINARY` supported values are:
 - `add`

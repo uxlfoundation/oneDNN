@@ -383,12 +383,9 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     disable_systolic_ = !has_systolic;
     relaxed_acc_ = mode & mode_relaxed_acc;
 
-    // Set up problem structure.
-    problem_ = problem;
-
     // Select a kernel from the catalog.
     std::vector<MatchParams> match_params;
-    MatchParams base(hw_, has_systolic, is_integrated, problem_);
+    MatchParams base(hw_, has_systolic, is_integrated, problem);
 
     // By default gemmstone assumes that the accumulation type must be at least
     // as wide as the output type. For oneDNN this restriction is not needed.
@@ -401,21 +398,21 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     base.stepping = stepping;
     base.ignoreCase = true;
 
-    bool can_2d_a = (lda * problem_.Ta_ext <= 16777216);
-    bool can_2d_b = (ldb * problem_.Tb_ext <= 16777216);
-    bool can_2d_c = (ldc * problem_.Tc_ext <= 16777216);
+    bool can_2d_a = (lda * problem.Ta_ext <= 16777216);
+    bool can_2d_b = (ldb * problem.Tb_ext <= 16777216);
+    bool can_2d_c = (ldc * problem.Tc_ext <= 16777216);
 
     // Xe2 requires stronger alignment for block 2D.
     if (arch == compute::gpu_arch_t::xe2 || arch == compute::gpu_arch_t::xe3) {
-        can_2d_a &= (problem_.A.alignment % 16 == 0);
-        can_2d_b &= (problem_.B.alignment % 16 == 0);
-        can_2d_c &= (problem_.C.alignment % 16 == 0);
+        can_2d_a &= (problem.A.alignment % 16 == 0);
+        can_2d_b &= (problem.B.alignment % 16 == 0);
+        can_2d_c &= (problem.C.alignment % 16 == 0);
     }
 
     auto tags = const_cast<char *>(base.tags);
     while (*tags)
         tags++;
-    if (problem_.A.needA64 || problem_.B.needA64 || problem_.C.needA64)
+    if (problem.A.needA64 || problem.B.needA64 || problem.C.needA64)
         *tags++ = kcatalog::ReqBatchN;
     if (can_2d_a) *tags++ = kcatalog::ReqBlock2DA;
     if (can_2d_b) *tags++ = kcatalog::ReqBlock2DB;
@@ -425,22 +422,22 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     auto mod_match = [&](MatchParams &params, bool has_mode,
                              const char *(*match)(Type)) {
         if (!has_mode) return;
-        if (match(problem_.Ta)) {
-            params.selector.precisions[0] = match(problem_.Ta);
+        if (match(problem.Ta)) {
+            params.selector.precisions[0] = match(problem.Ta);
         }
-        if (match(problem_.Tb)) {
-            params.selector.precisions[1] = match(problem_.Tb);
+        if (match(problem.Tb)) {
+            params.selector.precisions[1] = match(problem.Tb);
         }
     };
 
     // Workaround limited attribute support with int8 dynamic quant,
     // upconvert to f16.
     mod_match(base,
-            (((problem_.asPtrDims >= 2 || problem_.bsPtrDims >= 2)
-                     || problem_.boPtrDims > -1)
-                    && problem_.aoPtrDims > -1 && problem_.Ta_ext.isInt8()
-                    && problem_.Tb_ext.isInt8() && problem_.Tc.isFP()
-                    && !problem_.forceGroupSumsA && !problem_.forceGroupSumsB),
+            (((problem.asPtrDims >= 2 || problem.bsPtrDims >= 2)
+                     || problem.boPtrDims > -1)
+                    && problem.aoPtrDims > -1 && problem.Ta_ext.isInt8()
+                    && problem.Tb_ext.isInt8() && problem.Tc.isFP()
+                    && !problem.forceGroupSumsA && !problem.forceGroupSumsB),
             [](Type dt) -> const char * {
         if (dt.isInt8()) return "[OH]";
         return nullptr;
@@ -453,18 +450,18 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     bool fpmath_f16 = mode & mode_f16x1;
 
     auto add_matches = [&](MatchParams start, const char *(*match)(Type)) {
-        if (match(problem_.Ta_ext)) {
+        if (match(problem.Ta_ext)) {
             match_params.push_back(start);
-            match_params.back().selector.precisions[0] = match(problem_.Ta_ext);
+            match_params.back().selector.precisions[0] = match(problem.Ta_ext);
         }
-        if (match(problem_.Tb_ext)) {
+        if (match(problem.Tb_ext)) {
             match_params.push_back(start);
-            match_params.back().selector.precisions[1] = match(problem_.Tb_ext);
+            match_params.back().selector.precisions[1] = match(problem.Tb_ext);
         }
-        if (match(problem_.Ta_ext) && match(problem_.Tb_ext)) {
+        if (match(problem.Ta_ext) && match(problem.Tb_ext)) {
             match_params.push_back(start);
-            match_params.back().selector.precisions[0] = match(problem_.Ta_ext);
-            match_params.back().selector.precisions[1] = match(problem_.Tb_ext);
+            match_params.back().selector.precisions[0] = match(problem.Ta_ext);
+            match_params.back().selector.precisions[1] = match(problem.Tb_ext);
         }
     };
 
@@ -517,7 +514,7 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     // we apply scales before dpas, and we must use fp dpas)
     bool allow = gpu_utils::dev_getenv("ALLOW_IACC", true);
     bool is_int = problem.Ta_ext.isInteger() && problem.Tb_ext.isInteger();
-    if (problem_.asPtrDims < 1 && problem_.bsPtrDims < 1 && is_int && allow) {
+    if (problem.asPtrDims < 1 && problem.bsPtrDims < 1 && is_int && allow) {
         match_params.push_back(base);
         match_params.back().selector.precisions[2] = "I";
     }
@@ -525,16 +522,16 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     eval_params_.sizes = base.sizes;
     eval_params_.alpha = alpha;
     eval_params_.beta = beta;
-    eval_params_.postOps = !problem_.postOps.empty();
+    eval_params_.postOps = !problem.postOps.empty();
     eval_params_.cConvert = (problem.Tc != problem.Tc_ext);
     eval_params_.euCount = eu_count;
-    eval_params_.batch = (problem_.batchDims > 0);
+    eval_params_.batch = (problem.batchDims > 0);
     eval_params_.deterministic = (mode & mode_deterministic);
 
     SelectionObserver observer = entryObserver;
     tags_ = match_params[0].tags;
-    Ts_ = problem_.Ts;
-    beta_ = problem_.beta;
+    Ts_ = problem.Ts;
+    beta_ = problem.beta;
     return select(catalog(), static_cast<int>(match_params.size()),
             match_params.data(), eval_params_, aux_params_, &observer);
 }

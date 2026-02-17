@@ -272,6 +272,7 @@ struct gen_t : public primitive_t {
 
             for (auto &entry : entries) {
                 kernel_desc_.set_entry(entry);
+                kernel_desc_.set_problem(problem);
                 auto status = kernel_desc_.finalize();
                 // select_kernel can return a strategy that failed in the finalize call
                 bool valid = status == status::success;

@@ -211,15 +211,32 @@ status_t brgemm_deconvolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
 
         // Second pass: fallback to any other backward data convolution implementation
         // This allows non-BRGEMM kernels (like jit_avx512_core_bf16) to handle
-        // cases with uneven spatial dimensions
-        // If bias is present, only fallback if the direction is FWD_I, this is the only
-        // combination where fallback implementations handle bias correctly.
+        // cases with uneven spatial dimensions.
+        //
+        // This is a hack added in due to the fact that that several jit convolution
+        // implementations are not accessed via the `cpu_deconvolution_list.cpp`.
+        //
+        // Extra checks are added on data types and compatibility to block fallback in
+        // unsupported configurations. This is to limit this extra fallback to a small
+        // set of supported corner cases.
+        //
+        // TODO: implement a new jit_avx512_core_deconv_fwd_t and jit_avx2_deconv_fwd_t
+        // that can be added to the cpu_deconvolution_list as a proper fallback mechanism,
+        // and remove this hack.
         if (it == it.end()) {
             const bool has_bias = with_bias();
             const bool is_fwd_inference
                     = fwd_deconv_d->prop_kind == prop_kind::forward_inference;
-            const bool allow_fallback
-                    = !has_bias || (has_bias && is_fwd_inference);
+            const bool bias_and_dst_dt_compatible
+                    = fwd_deconv_d->dst_desc.data_type
+                    == fwd_deconv_d->bias_desc.data_type;
+            const bool is_supported_dtype
+                    = utils::one_of(dst_type, f32, f16, bf16);
+
+            const bool allow_fallback = is_supported_dtype
+                    && (!has_bias
+                            || (has_bias && is_fwd_inference
+                                    && bias_and_dst_dt_compatible));
 
             if (allow_fallback) {
                 primitive_desc_iterator_t it2(engine,

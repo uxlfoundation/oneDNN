@@ -35,10 +35,6 @@
 namespace matmul {
 
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
-// Buffer indices for multi-handle grouped memory
-constexpr int GROUPED_VALUES_IDX = 0;
-constexpr int GROUPED_OFFSETS_IDX = 1;
-
 // Helper to create grouped memory descriptor
 //
 // Current input format for grouped matmul is:
@@ -143,9 +139,11 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_md(const prb_t *prb,
                     break;
                 default: assert(!"unsupported encoding"); return nullptr;
             }
-        } else
-            return dnn_mem_t::init_md(prb->ndims, weights_rt_dims.data(), dt,
-                    prb->wtag, prb->strides[STRIDES_WEI]);
+        } else {
+            return dnn_mem_t::init_md((int)weights_rt_dims.size(),
+                    weights_rt_dims.data(), dt, prb->wtag,
+                    prb->strides[STRIDES_WEI]);
+        }
     }
 
     if (kind == DST) {
@@ -494,7 +492,8 @@ static int fill_grouped_offsets(dnn_mem_t &mem, const prb_t *prb) {
             return FAIL;
         }
         cumulative += group_sizes[g];
-        mem.set_elem(g, static_cast<int32_t>(cumulative), GROUPED_OFFSETS_IDX);
+        mem.set_elem(g, static_cast<int32_t>(cumulative),
+                sparse_options_t::grouped_offsets_idx);
     }
     return OK;
 }
@@ -535,7 +534,7 @@ static int fill_grouped_data(data_kind_t kind, const prb_t *prb,
         mem_dt.set_elem(i,
                 round_to_nearest_representable(
                         cfg.get_dt(kind), mem_fp.get_f32_elem(i)),
-                GROUPED_VALUES_IDX);
+                sparse_options_t::grouped_values_idx);
     });
 
     return OK;
@@ -674,13 +673,28 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
 
     if (!prb->sparse_options.is_def() && is_cpu() && is_wei_dense
             && prb->wtag != "any" && prb->wtag != "ab") {
-        BENCHDNN_PRINT(2,
-                "[SKIP][%s:%d]: Only `any` and `ab` tags are supported for "
-                "dense weights on CPU.\n",
-                __FILE__, __LINE__);
-        res->state = SKIPPED;
-        res->reason = skip_reason::case_not_supported;
-        return;
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+        // Check if this is grouped encoding which requires 3D weight tags
+        const auto src_encoding
+                = prb->sparse_options.get_encoding(DNNL_ARG_SRC);
+        const auto dst_encoding
+                = prb->sparse_options.get_encoding(DNNL_ARG_DST);
+        bool is_grouped = (src_encoding == dnnl_grouped
+                || dst_encoding == dnnl_grouped);
+
+        if (is_grouped && (prb->wtag == "abc" || prb->wtag == "acb")) {
+            // Allow 3D tags for grouped encoding
+        } else
+#endif
+        {
+            BENCHDNN_PRINT(2,
+                    "[SKIP][%s:%d]: Only `any` and `ab` tags are supported for "
+                    "dense weights on CPU.\n",
+                    __FILE__, __LINE__);
+            res->state = SKIPPED;
+            res->reason = skip_reason::case_not_supported;
+            return;
+        }
     }
 
     if (wei_encoding == dnnl_packed) {
@@ -919,9 +933,9 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
                     || (prb->wtag != tag::any && prb->wtag != tag::undef))) {
         const auto &weights_rt_dims = get_runtime_dims(
                 prb->weights_dims(), prb->weights_runtime_dim_mask());
-        const auto wei_md
-                = dnn_mem_t::init_md(prb->ndims, weights_rt_dims.data(),
-                        prb->wei_dt(), prb->wtag, prb->strides[STRIDES_WEI]);
+        const auto wei_md = dnn_mem_t::init_md((int)weights_rt_dims.size(),
+                weights_rt_dims.data(), prb->wei_dt(), prb->wtag,
+                prb->strides[STRIDES_WEI]);
 
         const auto wei_strides = query_md_strides(wei_md);
         int n_unit_strides = 0;

@@ -117,6 +117,8 @@ bool is_supported(cpu_isa_t isa, const dnnl::impl::memory_desc_t &src1_desc,
         const bcast_set_t &supported_strategy_set) {
     VCHECK_BIN_INJ_BOOL(is_data_supported(isa, src1_desc.data_type),
             VERBOSE_ISA_DT_MISMATCH);
+    VCHECK_BIN_INJ_BOOL(memory_desc_wrapper(src1_desc).is_dense(true),
+            VERBOSE_NONTRIVIAL_STRIDE);
     return is_bcast_supported(src1_desc, dst_d, supported_strategy_set);
 }
 

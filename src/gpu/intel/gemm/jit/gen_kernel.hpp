@@ -92,6 +92,9 @@ struct gen_desc_t {
     }
 
     void set_entry(const gemmstone::kcatalog::Entry *entry) { entry_ = entry; }
+    void set_problem(const gemmstone::GEMMProblem &problem) {
+        problem_ = problem;
+    }
 
 protected:
     compute::gpu_arch_t arch_;

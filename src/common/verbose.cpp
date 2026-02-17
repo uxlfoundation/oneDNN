@@ -791,8 +791,13 @@ std::ostream &operator<<(std::ostream &ss, const primitive_attr_t *attr) {
                     const memory_desc_wrapper mdw(md);
                     switch (mdw.format_kind()) {
                         case format_kind::blocked:
-                            if (!mdw.count_non_unit_dims(1))
+                            if (!mdw.count_non_unit_dims(1)) {
                                 ss << ":" << md2fmt_tag_str(&eb.src1_desc);
+                                const auto &strides_str
+                                        = md2fmt_strides_str(&eb.src1_desc);
+                                if (!strides_str.empty())
+                                    ss << ":" << strides_str;
+                            }
                             break;
                         case format_kind::any: ss << ":any"; break;
                         default: assert(!"unsupported format_kind");

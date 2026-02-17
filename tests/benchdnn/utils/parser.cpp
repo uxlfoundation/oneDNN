@@ -347,6 +347,14 @@ attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
                 }
                 e.binary.tag = tag_str;
 
+                if (src_subpos == std::string::npos) return;
+
+                const auto strides_str = get_substr(s, src_subpos, delim);
+                if (!strides_str.empty()) {
+                    parse_vector_str(e.binary.strides, dims_t(),
+                            parser_utils::stoll_safe, strides_str, 'x');
+                }
+
                 if (src_subpos != std::string::npos) {
                     const auto unknown_str = get_substr(s, src_subpos, delim);
                     BENCHDNN_PRINT(0, "%s \'%s\' %s\n",

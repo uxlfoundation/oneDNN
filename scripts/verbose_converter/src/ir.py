@@ -289,6 +289,7 @@ class BinaryPostOp(AlgPostOp):
     dt: str
     mask: int = 0
     tag: str = "any"
+    strides: str = ""
 
 
 @dataclass(eq=False)

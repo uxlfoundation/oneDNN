@@ -41,7 +41,7 @@ using rem_ref = typename utils::remove_reference<T>::type;
 
 template <typename T, typename U = rem_ref<T>>
 inline U div_up(const T a, const U b) {
-    return (a + b - 1) / b;
+    return a >= 1 ? 1 + (a - 1) / b : 0;
 }
 
 template <typename T, typename U = rem_ref<T>>

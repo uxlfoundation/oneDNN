@@ -20,7 +20,7 @@
 #define DT_UNDEF 1
 #include "gpu/intel/include/types.h"
 
-uint philox_4x32_s64(ulong idx, ulong seed, ulong offset) {
+uint4 philox_4x32_s64_vec4(ulong idx, ulong seed, ulong offset) {
 #define PHILOX_4UINT_ROUND(mul, ctr, key) \
     as_uint4(convert_ulong2(ctr.s02) * mul).s3210 \
             ^ (uint4)(ctr.s1 ^ key.s0, 0, ctr.s3 ^ key.s1, 0)
@@ -50,7 +50,11 @@ uint philox_4x32_s64(ulong idx, ulong seed, ulong offset) {
     ctr = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctr, key0.sEF);
     ctr = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctr, key1.s01);
     ctr = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctr, key1.s23);
-    return ctr[idx & 3L];
+    return ctr;
+}
+
+uint philox_4x32_s64(ulong idx, ulong seed, ulong offset) {
+    return philox_4x32_s64_vec4(idx, seed, offset)[idx & 3L];
 }
 
 uint philox_4x32(uint idx, uint seed) {
@@ -60,6 +64,14 @@ uint philox_4x32(uint idx, uint seed) {
     ulong offset_64 = ((x + 1) << 32) + x;
     ulong seed_64 = ((ulong)(seed) << 32) + seed;
     return philox_4x32_s64(idx_64, seed_64, offset_64);
+}
+
+uint4 philox_4x32_vec4(uint idx, uint seed) {
+    ulong x = idx & ~3L;
+    ulong idx_64 = ((x + 3) << 32) + (x + 2);
+    ulong offset_64 = ((x + 1) << 32) + x;
+    ulong seed_64 = ((ulong)(seed) << 32) + seed;
+    return philox_4x32_s64_vec4(idx_64, seed_64, offset_64);
 }
 
 ushort philox_8x16(long idx, uint seed) {

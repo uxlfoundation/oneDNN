@@ -1429,13 +1429,6 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
         btc.inp_buffer = (jcp.exec_type == exec_trans && jcp.copy_input)
                 ? inp_p_buffer + src_dsz * ithr * jcp.inp_buffer_size
                 : nullptr;
-        if (is_amx && btc.inp_buffer) {
-            // Workaround: for some machines SEGFAULT possible on tile load
-            // if the page was not touched before it
-            for (dim_t i = 0; i < jcp.inp_buffer_size;
-                    i += brgemm_convolution_utils::P4K)
-                btc.inp_buffer[i] = 0;
-        }
 
         btc.inp_buffer_mask = (jcp.exec_type == exec_trans)
                 ? inp_p_buffer_mask + ithr * jcp.inp_buffer_mask_size

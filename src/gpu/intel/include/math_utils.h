@@ -28,15 +28,16 @@
 #pragma clang diagnostic ignored "-Wtautological-compare"
 
 int __attribute__((overloadable)) div_up(int a, unsigned int b) {
-    return (a / b) + (a % b != 0);
+    return a >= 1 ? 1 + (a - 1) / b : 0;
 }
 
-int __attribute__((overloadable)) div_up(unsigned int a, unsigned int b) {
-    return (a / b) + (a % b != 0);
+unsigned int __attribute__((overloadable)) div_up(
+        unsigned int a, unsigned int b) {
+    return a >= 1 ? 1 + (a - 1) / b : 0;
 }
 
 long __attribute__((overloadable)) div_up(long a, unsigned int b) {
-    return (a / b) + (a % b != 0);
+    return a >= 1 ? 1 + (a - 1) / b : 0;
 }
 
 int __attribute__((overloadable)) rnd_up(int a, unsigned int b) {

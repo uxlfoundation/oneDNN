@@ -307,7 +307,8 @@ enum class op_kind_t {
     // op = a + b * c
     _mad,
     // Integer division by a constant with rounding up.
-    // op = (a + b - 1) / b
+    // if (a >= 1) op = 1 + (a - 1) / b
+    // else        op = 0
     _div_up,
     // Integer division by a non-constant (rounding down behavior).
     // if (a % b < 0) op = a / b - 1

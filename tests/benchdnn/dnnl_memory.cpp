@@ -611,6 +611,253 @@ void dnn_mem_t::memset(int value, size_t size, int buffer_index) const {
     SAFE_V(FAIL);
 }
 
+// Fills device memory with pseudo-random data generated directly on device.
+// This prevents GPU driver data compression from producing unrealistically
+// high bandwidth numbers in performance mode. A uniform fill (memset) is
+// trivially compressible by modern GPU drivers, inflating apparent BW by 3-4x.
+// The implementation uses a bijective hash (lowbias32 by Chris Wellons) seeded
+// with a per-call counter to produce unique, non-compressible data.
+void dnn_mem_t::fill_random(size_t size, int buffer_index) const {
+    bool is_opencl = is_opencl_engine(engine_);
+    bool is_sycl = is_sycl_engine(engine_);
+    auto mem = m_padded_ ? m_padded_ : m_;
+    void *mem_handle;
+    DNN_SAFE_V(dnnl_memory_get_data_handle_v2(mem, &mem_handle, buffer_index));
+
+    // Use a different seed for each call so that different memory objects
+    // get different random data. Seed is atomic counter based.
+    static std::atomic<uint32_t> call_counter {0};
+    const uint32_t seed = call_counter.fetch_add(1, std::memory_order_relaxed);
+
+    // Number of uint32 elements to fill. Tail bytes (0-3) are left as-is.
+    const size_t count = size / sizeof(uint32_t);
+
+    // Logic fills memory with 4-bytes aligment. To avoid uninitialized tail
+    // bytes at the end we fill them with default value using memset.
+    const size_t tail_bytes = size % sizeof(uint32_t);
+    if (tail_bytes > 0) {
+        // We should fill tail bytes with some value as well, because the
+        // uninitialized tail bytes may lead to some problems. As a next
+        // step it would be nice to update logic to vectorized n times float.
+        BENCHDNN_PRINT(2,
+                "Warning: size is not multiple of 4 bytes, tail bytes [%zu] "
+                "are not safely initialized\n",tail_bytes);
+    }
+
+    if (count == 0) return;
+
+    if (is_opencl) {
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+        static const char *fill_kernel_src = R"CLC(
+        __kernel void fill_random(__global uint *buf, uint seed, ulong count) {
+            ulong gid = get_global_id(0);
+            if (gid >= count) return;
+
+            uint h = (uint)gid ^ seed;
+            h ^= h >> 16;
+            h *= 0x7FEB352Du;
+            h ^= h >> 15;
+            h *= 0x846CA68Bu;
+            h ^= h >> 16;
+
+            h &= 0xEEEEEEEEu;
+            buf[gid] = h;
+        }
+        )CLC";
+
+        // Cache compiled kernel per OCL context to avoid recompilation.
+        struct ocl_fill_cache_t {
+            std::mutex mtx;
+            std::unordered_map<cl_context, cl_kernel> cache;
+
+            using set_arg_fn_t = cl_int(CL_API_CALL *)(
+                    cl_kernel, cl_uint, const void *);
+            set_arg_fn_t set_kernel_arg_usm = nullptr;
+            bool fn_resolved = false;
+
+            set_arg_fn_t resolve_set_arg_fn(cl_device_id dev) {
+                if (fn_resolved) return set_kernel_arg_usm;
+                fn_resolved = true;
+                cl_platform_id platform;
+                clGetDeviceInfo(dev, CL_DEVICE_PLATFORM, sizeof(platform),
+                        &platform, nullptr);
+                set_kernel_arg_usm = reinterpret_cast<set_arg_fn_t>(
+                        clGetExtensionFunctionAddressForPlatform(
+                                platform, "clSetKernelArgMemPointerINTEL"));
+                if (!set_kernel_arg_usm) {
+                    set_kernel_arg_usm = reinterpret_cast<set_arg_fn_t>(
+                            clGetExtensionFunctionAddressForPlatform(
+                                    platform, "clSetKernelArgSVMPointer"));
+                }
+                return set_kernel_arg_usm;
+            }
+
+            cl_kernel get_or_create(cl_context ctx, cl_device_id dev) {
+                std::lock_guard<std::mutex> lock(mtx);
+                auto it = cache.find(ctx);
+                if (it != cache.end()) return it->second;
+
+                cl_int err;
+                cl_program prog = clCreateProgramWithSource(
+                        ctx, 1, &fill_kernel_src, nullptr, &err);
+                if (err != CL_SUCCESS || !prog) {
+                    BENCHDNN_PRINT(0, "fill_random: "
+                                      "clCreateProgramWithSource failed (%d)\n",
+                            err);
+                    return nullptr;
+                }
+                err = clBuildProgram(
+                        prog, 1, &dev, nullptr, nullptr, nullptr);
+                if (err != CL_SUCCESS) {
+                    BENCHDNN_PRINT(
+                            0, "fill_random: clBuildProgram failed (%d)\n",
+                            err);
+                    clReleaseProgram(prog);
+                    return nullptr;
+                }
+                cl_kernel k
+                        = clCreateKernel(prog, "fill_random", &err);
+                if (err != CL_SUCCESS || !k) {
+                    BENCHDNN_PRINT(
+                            0, "fill_random: clCreateKernel failed (%d)\n",
+                            err);
+                    clReleaseProgram(prog);
+                    return nullptr;
+                }
+                clReleaseProgram(prog);
+                cache[ctx] = k;
+                return k;
+            }
+        };
+        static ocl_fill_cache_t kernel_cache;
+
+        cl_context ocl_ctx;
+        cl_device_id ocl_dev;
+        DNN_SAFE_V(dnnl_ocl_interop_engine_get_context(engine_, &ocl_ctx));
+        DNN_SAFE_V(dnnl_ocl_interop_get_device(engine_, &ocl_dev));
+
+        cl_kernel kernel = kernel_cache.get_or_create(ocl_ctx, ocl_dev);
+        if (!kernel) {
+            // Fallback to uniform memset if kernel compilation fails.
+            BENCHDNN_PRINT(0, "%s\n",
+                    "fill_random: kernel unavailable, falling back to memset!");
+            this->memset(dnnl_mem_default_perf_test_value, size, buffer_index);
+            return;
+        }
+
+        stream_t stream(engine_);
+        cl_command_queue queue;
+        DNN_SAFE_V(dnnl_ocl_interop_stream_get_command_queue(
+                stream, &queue));
+
+        cl_uint seed_arg = seed;
+        cl_ulong count_arg = static_cast<cl_ulong>(count);
+
+        switch (memory_kind) {
+            case memory_kind_ext_t::buffer: {
+                auto buf = static_cast<cl_mem>(mem_handle);
+                clSetKernelArg(kernel, 0, sizeof(cl_mem), &buf);
+                break;
+            }
+            case memory_kind_ext_t::usm:
+            case memory_kind_ext_t::usm_device:
+            case memory_kind_ext_t::usm_shared: {
+                auto set_arg_fn = kernel_cache.resolve_set_arg_fn(ocl_dev);
+                if (!set_arg_fn) {
+                    BENCHDNN_PRINT(0, "%s\n",
+                            "fill_random: USM kernel arg function not "
+                            "available, falling back to memset!");
+                    this->memset(dnnl_mem_default_perf_test_value,
+                            size, buffer_index);
+                    return;
+                }
+                set_arg_fn(kernel, 0, mem_handle);
+                break;
+            }
+        }
+        clSetKernelArg(kernel, 1, sizeof(cl_uint), &seed_arg);
+        clSetKernelArg(kernel, 2, sizeof(cl_ulong), &count_arg);
+
+        size_t gws = count;
+        cl_int err = clEnqueueNDRangeKernel(queue, kernel, 1, nullptr,
+                &gws, nullptr, 0, nullptr, nullptr);
+        if (err != CL_SUCCESS) {
+            BENCHDNN_PRINT(0,
+                    "fill_random: clEnqueueNDRangeKernel failed (%d)\n", err);
+            SAFE_V(FAIL);
+        }
+        DNN_SAFE_V(dnnl_stream_wait(stream));
+        return;
+#endif
+    } else if (is_sycl) {
+#ifdef DNNL_WITH_SYCL
+        stream_t stream(engine_);
+        void *queue_ptr;
+        DNN_SAFE_V(dnnl_sycl_interop_stream_get_queue(stream, &queue_ptr));
+        auto &queue = *static_cast<::sycl::queue *>(queue_ptr);
+
+        auto fill_lambda = [=](auto idx) {
+            uint32_t h = static_cast<uint32_t>(idx) ^ seed;
+            h ^= h >> 16;
+            h *= 0x7FEB352Du;
+            h ^= h >> 15;
+            h *= 0x846CA68Bu;
+            h ^= h >> 16;
+            h &= 0xEEEEEEEEu;
+            return h;
+        };
+
+        switch (memory_kind) {
+            case memory_kind_ext_t::buffer: {
+                auto &buf = *static_cast<::sycl::buffer<uint8_t, 1> *>(
+                        mem_handle);
+                queue.submit([&](::sycl::handler &cgh) {
+                    auto acc
+                            = buf.reinterpret<uint32_t>(
+                                         ::sycl::range<1>(count))
+                                      .template get_access<
+                                              ::sycl::access::mode::write>(cgh);
+                    cgh.parallel_for(
+                            ::sycl::range<1>(count), [=](::sycl::id<1> id) {
+                                acc[id] = fill_lambda(id[0]);
+                            });
+                });
+                DNN_SAFE_V(dnnl_stream_wait(stream));
+                return;
+            }
+            case memory_kind_ext_t::usm:
+            case memory_kind_ext_t::usm_device:
+            case memory_kind_ext_t::usm_shared: {
+                auto *ptr = static_cast<uint32_t *>(mem_handle);
+                queue.submit([&](::sycl::handler &cgh) {
+                    cgh.parallel_for(
+                            ::sycl::range<1>(count), [=](::sycl::id<1> id) {
+                                ptr[id] = fill_lambda(id[0]);
+                            });
+                });
+                DNN_SAFE_V(dnnl_stream_wait(stream));
+                return;
+            }
+        }
+#endif
+    }
+    if (is_cpu(engine_)) {
+        auto *ptr = static_cast<uint32_t *>(mem_handle);
+        for (size_t i = 0; i < count; i++) {
+            uint32_t h = static_cast<uint32_t>(i) ^ seed;
+            h ^= h >> 16;
+            h *= 0x7FEB352Du;
+            h ^= h >> 15;
+            h *= 0x846CA68Bu;
+            h ^= h >> 16;
+            h &= 0xEEEEEEEEu;
+            ptr[i] = h;
+        }
+        return;
+    }
+    SAFE_V(FAIL);
+}
+
 dnn_mem_t dnn_mem_t::create_from_host_ptr(
         const dnnl_memory_desc_t &md, dnnl_engine_t engine, void *host_ptr) {
     // Pre-allocated handle_info won't use prefill no matter what.
@@ -955,8 +1202,10 @@ int dnn_mem_t::initialize(
             if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)
                     || cold_cache_input.cold_cache_mode_
                             != default_cold_cache_input().cold_cache_mode_) {
-                // Fill memory directly with 0x3F3F3F3F (0.747059f) number.
-                this->memset(dnnl_mem_default_perf_test_value, sz, i);
+                // Fill memory with pseudo-random data directly on device
+                // to avoid data compression by GPU drivers that would
+                // lead to unrealistic bandwidth numbers in mode=f.
+                this->fill_random(sz, i);
             } else {
                 // Fill memory with a magic number (NAN for fp data types)
                 // to catch possible uninitialized access.

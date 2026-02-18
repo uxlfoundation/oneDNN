@@ -1007,8 +1007,10 @@ void jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Vmm>::generate() {
                       - extended_filter_size)
                     / jcp.stride_w;
     const int n_urw_per_ow_block = jcp.ow_block / jcp.ur_w;
-    const int max_safe_iw = nstl::max(
-            0, jcp.iw - div_up(ic_sub_step, jcp.ic_without_padding));
+    const int max_safe_iw = nstl::max(0,
+            jcp.iw
+                    - div_up(static_cast<int>(ic_sub_step),
+                            jcp.ic_without_padding));
     const int max_safe_ow = jcp.ic_without_padding % ic_sub_step == 0
             ? jcp.ow
             : (max_safe_iw + jcp.l_pad - extended_filter_size) / jcp.stride_w;

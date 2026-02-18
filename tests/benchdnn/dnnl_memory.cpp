@@ -616,8 +616,10 @@ void dnn_mem_t::memset(int value, size_t size, int buffer_index) const {
 // high bandwidth numbers in performance mode. A uniform fill (memset) is
 // trivially compressible by modern GPU drivers, inflating apparent BW by 3-4x.
 // Library-side GPU kernel for random fill (src/gpu/intel/fill_random.cpp).
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE
 extern "C" dnnl_status_t dnnl_impl_gpu_fill_random(dnnl_stream_t stream,
-        size_t size, dnnl_memory_t memory, int buffer_index, uint32_t seed);
+    size_t size, dnnl_memory_t memory, int buffer_index, uint32_t seed);
+#endif
 
 void dnn_mem_t::fill_random(size_t size, int buffer_index) const {
     auto mem = m_padded_ ? m_padded_ : m_;
@@ -628,20 +630,25 @@ void dnn_mem_t::fill_random(size_t size, int buffer_index) const {
     const size_t count = size / sizeof(uint32_t);
     if (count == 0) return;
 
-    if (!is_cpu(engine_)) {
+        if (!is_cpu(engine_)) {
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE
         stream_t stream(engine_);
         auto st = dnnl_impl_gpu_fill_random(
-                stream, size, mem, buffer_index, seed);
+            stream, size, mem, buffer_index, seed);
         if (st != dnnl_success) {
             BENCHDNN_PRINT(0,
-                    "fill_random: library kernel failed (%d), "
-                    "falling back to memset.\n",
-                    (int)st);
+                "fill_random: library kernel failed (%d), "
+                "falling back to memset.\n",
+                (int)st);
             this->memset(dnnl_mem_default_perf_test_value, size, buffer_index);
         }
         DNN_SAFE_V(dnnl_stream_wait(stream));
         return;
-    }
+#else
+        this->memset(dnnl_mem_default_perf_test_value, size, buffer_index);
+        return;
+#endif
+        }
 
     void *mem_handle;
     DNN_SAFE_V(dnnl_memory_get_data_handle_v2(mem, &mem_handle, buffer_index));

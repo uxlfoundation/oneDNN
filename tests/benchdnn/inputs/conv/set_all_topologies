@@ -25,3 +25,4 @@
 --batch=set_fastrcnn
 --batch=shapes_movinet_dw
 --batch=shapes_x3d_dw
+--batch=shapes_stable_diffusion

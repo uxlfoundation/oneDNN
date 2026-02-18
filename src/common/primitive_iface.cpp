@@ -68,10 +68,8 @@ status_t primitive_create(primitive_iface_t **primitive_iface,
 #if defined(DNNL_ENABLE_ITT_TASKS)
     const bool enable_itt = itt::get_itt(itt::__itt_task_level_low);
     if (enable_itt) {
-        const char *pd_info = primitive_desc_iface->info();
-        auto task_id = itt::make_itt_id(pd_info, get_msec());
-        itt::primitive_task_start(primitive_desc_iface->impl()->kind(), pd_info,
-                VERBOSE_create, task_id);
+        itt::primitive_task_start(
+                primitive_desc_iface->impl()->kind(), VERBOSE_create);
     }
 #endif
 
@@ -96,7 +94,24 @@ status_t primitive_create(primitive_iface_t **primitive_iface,
     }
 
 #if defined(DNNL_ENABLE_ITT_TASKS)
-    if (enable_itt) itt::primitive_task_end(VERBOSE_create);
+    if (enable_itt) {
+        // Before metadata is added to the ITT task, the `info()` string is
+        // checked for initialization.
+        // An empty info_ string for cache states other than `cache_state_t::miss`
+        // implies kernel or nested primitive operations.
+        // In that case, the metadata addition is skipped to avoid additional
+        // overheads.
+        const char *pd_info = p_iface.first->pd()->impl()->info(
+                primitive_desc_iface->engine(), false);
+        if ((p_iface.second == cache_state_t::miss) || (pd_info && *pd_info)) {
+            auto task_id
+                    = itt::make_itt_id(p_iface.first->pd()->info(), get_msec());
+            itt::primitive_add_metadata_and_id(
+                    p_iface.first->pd()->info(), VERBOSE_create, task_id);
+        }
+
+        itt::primitive_task_end(VERBOSE_create);
+    }
 #endif
 
     return safe_ptr_assign((*primitive_iface), p_iface.first);
@@ -111,12 +126,22 @@ status_t primitive_execute(
 #if defined(DNNL_ENABLE_ITT_TASKS)
     const bool enable_itt = itt::get_itt(itt::__itt_task_level_low);
     if (enable_itt) {
-        // ITT task IDs are uniquely assigned using pd->info() and
-        // timestamps - the timestamps helps distinguish between different
-        // instances of the same configuration
-        auto task_id = itt::make_itt_id(pd->info(), get_msec());
-        itt::primitive_task_start(
-                pd->impl()->kind(), pd->info(), VERBOSE_exec, task_id);
+        itt::primitive_task_start(pd->impl()->kind(), VERBOSE_exec);
+
+        // Before metadata is added to the ITT task, the `info()` string is
+        // checked for initialization.
+        // An empty info_ string implies kernel or nested primitive operations,
+        // in which case the metadata addition is skipped to avoid additional
+        // overheads.
+        const auto *pd_info
+                = pd->impl()->info(primitive_iface->engine(), false);
+        if (pd_info && *pd_info) {
+            // ITT task IDs are uniquely assigned using pd->info() and
+            // timestamps - the timestamps helps distinguish between different
+            // instances of the same configuration
+            auto task_id = itt::make_itt_id(pd_info, get_msec());
+            itt::primitive_add_metadata_and_id(pd_info, VERBOSE_exec, task_id);
+        }
     }
 #endif
 

@@ -73,14 +73,9 @@ __itt_domain *itt_domain(const char *log_kind) {
 
 } // namespace
 
-void primitive_task_start(primitive_kind_t kind, const char *pd_info,
-        const char *log_kind, __itt_id task_id) {
+void primitive_task_start(primitive_kind_t kind, const char *log_kind) {
     if (kind == primitive_kind::undefined) return;
     __itt_domain *pd_domain = itt_domain(log_kind);
-
-    thread_primitive_task_id = task_id;
-    __itt_id_create(pd_domain, thread_primitive_task_id);
-
 #define CASE(x) \
     __itt_string_handle_create(dnnl_prim_kind2str(primitive_kind::x))
     static __itt_string_handle *prim_kind_itt_strings[] = {
@@ -118,9 +113,24 @@ void primitive_task_start(primitive_kind_t kind, const char *pd_info,
                 prim_kind_itt_strings[kind_idx]);
     }
     thread_primitive_kind = kind;
+    thread_primitive_log_kind = log_kind;
+}
+
+void primitive_add_metadata_and_id(
+        const char *pd_info, const char *log_kind, __itt_id task_id) {
+    // A separate method for adding metadata and IDs to the primitive ITT tasks
+    // provide the option to skip this step during primitive operation to avoid
+    // performance impact from construction of very large metadata strings.
+    if (thread_primitive_kind == primitive_kind::undefined) return;
+
+    __itt_domain *pd_domain = itt_domain(log_kind);
     __itt_formatted_metadata_add(pd_domain, thread_primitive_meta_fmt, pd_info);
     thread_primitive_info = pd_info;
-    thread_primitive_log_kind = log_kind;
+
+    // While the task ID is unique for each instance of the primitive operation,
+    // it is shared across multi-threaded executions of the same instance.
+    thread_primitive_task_id = task_id;
+    __itt_id_create(pd_domain, thread_primitive_task_id);
 }
 
 primitive_kind_t primitive_task_get_current_kind() {

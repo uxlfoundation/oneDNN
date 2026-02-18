@@ -1113,8 +1113,8 @@ status_t brg_blocking_t::calc_blocks() {
 
     const auto thr_eff_threshold = 0.9f;
     const auto max_iw_block_thr = utils::saturate(1, sp,
-            static_cast<int>(div_up(
-                    mb * ngroups * nb_ic * is, thr_eff_threshold * nthr)));
+            static_cast<int>(ceil(
+                    mb * ngroups * nb_ic * is / (thr_eff_threshold * nthr))));
 
     iw_block = is_block = sp_block = -1;
     brg_blocking_t best_brgb = *this;

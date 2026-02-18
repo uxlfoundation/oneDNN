@@ -132,8 +132,7 @@ static int check_fill_random() {
 
         // All values should be initialized and nan/inf free
         SELF_CHECK(nan_count == 0,
-                "fill_random left %d uninitialized values (0xFFFF)",
-                nan_count);
+                "fill_random left %d uninitialized values (0xFFFF)", nan_count);
     }
 
     return OK;

@@ -641,7 +641,8 @@ void dnn_mem_t::fill_random(size_t size, int buffer_index) const {
         // step it would be nice to update logic to vectorized n times float.
         BENCHDNN_PRINT(2,
                 "Warning: size is not multiple of 4 bytes, tail bytes [%zu] "
-                "are not safely initialized\n",tail_bytes);
+                "are not safely initialized\n",
+                tail_bytes);
     }
 
     if (count == 0) return;
@@ -670,8 +671,8 @@ void dnn_mem_t::fill_random(size_t size, int buffer_index) const {
             std::mutex mtx;
             std::unordered_map<cl_context, cl_kernel> cache;
 
-            using set_arg_fn_t = cl_int(CL_API_CALL *)(
-                    cl_kernel, cl_uint, const void *);
+            using set_arg_fn_t
+                    = cl_int(CL_API_CALL *)(cl_kernel, cl_uint, const void *);
             set_arg_fn_t set_kernel_arg_usm = nullptr;
             bool fn_resolved = false;
 
@@ -701,26 +702,23 @@ void dnn_mem_t::fill_random(size_t size, int buffer_index) const {
                 cl_program prog = clCreateProgramWithSource(
                         ctx, 1, &fill_kernel_src, nullptr, &err);
                 if (err != CL_SUCCESS || !prog) {
-                    BENCHDNN_PRINT(0, "fill_random: "
-                                      "clCreateProgramWithSource failed (%d)\n",
+                    BENCHDNN_PRINT(0,
+                            "fill_random: "
+                            "clCreateProgramWithSource failed (%d)\n",
                             err);
                     return nullptr;
                 }
-                err = clBuildProgram(
-                        prog, 1, &dev, nullptr, nullptr, nullptr);
+                err = clBuildProgram(prog, 1, &dev, nullptr, nullptr, nullptr);
                 if (err != CL_SUCCESS) {
-                    BENCHDNN_PRINT(
-                            0, "fill_random: clBuildProgram failed (%d)\n",
-                            err);
+                    BENCHDNN_PRINT(0,
+                            "fill_random: clBuildProgram failed (%d)\n", err);
                     clReleaseProgram(prog);
                     return nullptr;
                 }
-                cl_kernel k
-                        = clCreateKernel(prog, "fill_random", &err);
+                cl_kernel k = clCreateKernel(prog, "fill_random", &err);
                 if (err != CL_SUCCESS || !k) {
-                    BENCHDNN_PRINT(
-                            0, "fill_random: clCreateKernel failed (%d)\n",
-                            err);
+                    BENCHDNN_PRINT(0,
+                            "fill_random: clCreateKernel failed (%d)\n", err);
                     clReleaseProgram(prog);
                     return nullptr;
                 }
@@ -747,8 +745,7 @@ void dnn_mem_t::fill_random(size_t size, int buffer_index) const {
 
         stream_t stream(engine_);
         cl_command_queue queue;
-        DNN_SAFE_V(dnnl_ocl_interop_stream_get_command_queue(
-                stream, &queue));
+        DNN_SAFE_V(dnnl_ocl_interop_stream_get_command_queue(stream, &queue));
 
         cl_uint seed_arg = seed;
         cl_ulong count_arg = static_cast<cl_ulong>(count);
@@ -767,8 +764,8 @@ void dnn_mem_t::fill_random(size_t size, int buffer_index) const {
                     BENCHDNN_PRINT(0, "%s\n",
                             "fill_random: USM kernel arg function not "
                             "available, falling back to memset!");
-                    this->memset(dnnl_mem_default_perf_test_value,
-                            size, buffer_index);
+                    this->memset(dnnl_mem_default_perf_test_value, size,
+                            buffer_index);
                     return;
                 }
                 set_arg_fn(kernel, 0, mem_handle);
@@ -779,8 +776,8 @@ void dnn_mem_t::fill_random(size_t size, int buffer_index) const {
         clSetKernelArg(kernel, 2, sizeof(cl_ulong), &count_arg);
 
         size_t gws = count;
-        cl_int err = clEnqueueNDRangeKernel(queue, kernel, 1, nullptr,
-                &gws, nullptr, 0, nullptr, nullptr);
+        cl_int err = clEnqueueNDRangeKernel(
+                queue, kernel, 1, nullptr, &gws, nullptr, 0, nullptr, nullptr);
         if (err != CL_SUCCESS) {
             BENCHDNN_PRINT(0,
                     "fill_random: clEnqueueNDRangeKernel failed (%d)\n", err);
@@ -813,14 +810,13 @@ void dnn_mem_t::fill_random(size_t size, int buffer_index) const {
                         mem_handle);
                 queue.submit([&](::sycl::handler &cgh) {
                     auto acc
-                            = buf.reinterpret<uint32_t>(
-                                         ::sycl::range<1>(count))
+                            = buf.reinterpret<uint32_t>(::sycl::range<1>(count))
                                       .template get_access<
                                               ::sycl::access::mode::write>(cgh);
                     cgh.parallel_for(
                             ::sycl::range<1>(count), [=](::sycl::id<1> id) {
-                                acc[id] = fill_lambda(id[0]);
-                            });
+                        acc[id] = fill_lambda(id[0]);
+                    });
                 });
                 DNN_SAFE_V(dnnl_stream_wait(stream));
                 return;
@@ -832,8 +828,8 @@ void dnn_mem_t::fill_random(size_t size, int buffer_index) const {
                 queue.submit([&](::sycl::handler &cgh) {
                     cgh.parallel_for(
                             ::sycl::range<1>(count), [=](::sycl::id<1> id) {
-                                ptr[id] = fill_lambda(id[0]);
-                            });
+                        ptr[id] = fill_lambda(id[0]);
+                    });
                 });
                 DNN_SAFE_V(dnnl_stream_wait(stream));
                 return;

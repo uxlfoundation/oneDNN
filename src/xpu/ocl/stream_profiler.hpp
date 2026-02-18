@@ -32,6 +32,9 @@ struct stream_profiler_t : public xpu::stream_profiler_t {
 
     status_t get_info(profiling_data_kind_t data_kind, int *num_entries,
             uint64_t *data) const override;
+
+    status_t get_aggregate_exec_timing(
+            uint64_t start, uint64_t end, double &duration_ms) const override;
 };
 
 } // namespace ocl

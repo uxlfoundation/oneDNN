@@ -75,6 +75,39 @@ status_t stream_profiler_t::get_info(profiling_data_kind_t data_kind,
     return xpu::stream_profiler_t::get_info_impl(stamp2entry, data_kind, data);
 }
 
+status_t stream_profiler_t::get_aggregate_exec_timing(
+        uint64_t start, uint64_t end, double &duration_ms) const {
+    duration_ms = 0.0;
+    if (end <= start) return status::success;
+    cl_ulong global_beg = 0;
+    cl_ulong global_end = 0;
+
+    for (auto &ev : events_) {
+
+        if (ev.stamp <= start) continue;
+        if (ev.stamp > end) continue;
+
+        cl_ulong evbeg, evend;
+
+        const xpu::ocl::event_t &ocl_event
+                = *utils::downcast<xpu::ocl::event_t *>(ev.event.get());
+        assert(ocl_event.size() == 1);
+        cl_int err = xpu::ocl::clGetEventProfilingInfo(ocl_event[0].get(),
+                CL_PROFILING_COMMAND_START, sizeof(evbeg), &evbeg, nullptr);
+        if (err != CL_SUCCESS) continue;
+        err = xpu::ocl::clGetEventProfilingInfo(ocl_event[0].get(),
+                CL_PROFILING_COMMAND_END, sizeof(evend), &evend, nullptr);
+        if (err != CL_SUCCESS) continue;
+
+        global_beg = global_beg == 0 ? evbeg : std::min(global_beg, evbeg);
+        global_end = std::max(global_end, evend);
+    }
+
+    duration_ms = static_cast<double>(global_end - global_beg) * 1e-6;
+
+    return status::success;
+}
+
 } // namespace ocl
 } // namespace xpu
 } // namespace impl

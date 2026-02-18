@@ -259,8 +259,8 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
         GEMMStrategy strategy(hw, stepping);
 
         if (entry) {
-            problem.A.setAlignment(std::max(problem.Ta.size(), entry->driverInfo.alignment[0]));
-            problem.B.setAlignment(std::max(problem.Tb.size(), entry->driverInfo.alignment[1]));
+            problem.A.setAlignment(std::max(problem.Ta.paddedSize(), entry->driverInfo.alignment[0]));
+            problem.B.setAlignment(std::max(problem.Tb.paddedSize(), entry->driverInfo.alignment[1]));
 
             /* Prepare strategy parameters */
             strategy.unroll[LoopM] = entry->driverInfo.unroll[LoopM];

@@ -17,7 +17,7 @@
 import enum
 import string
 from abc import ABC, abstractmethod
-from collections.abc import MutableMapping
+from collections.abc import Mapping as ImmutableMapping
 from dataclasses import MISSING, dataclass, fields
 from typing import Dict, List, Optional, Union
 
@@ -40,7 +40,7 @@ def hash_str(obj):
 
 
 @dataclass(eq=False)
-class Mapping(MutableMapping):
+class Mapping(ImmutableMapping):
     def __getitem__(self, item):
         try:
             value = getattr(self, item)
@@ -58,12 +58,6 @@ class Mapping(MutableMapping):
             return value
         except AttributeError:
             raise KeyError(item)
-
-    def __setitem__(self, item, value):
-        setattr(self, item, value)
-
-    def __delitem__(self, item):
-        delattr(self, item)
 
     def __len__(self):
         return len(fields(self))
@@ -417,12 +411,6 @@ class Attributes(FormattedMapping):
             # CompositeAttributes get stringified when using the old interface
             return str(value)
         return value
-
-    def __setitem__(self, item: str, value: Attribute):
-        return setattr(self, self._attr_name_to_field_name(item), value)
-
-    def __delitem__(self, item: str):
-        setattr(self, self._attr_name_to_field_name(item), None)
 
     def __iter__(self):
         for field in fields(self):

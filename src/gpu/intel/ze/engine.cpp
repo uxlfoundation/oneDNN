@@ -113,6 +113,8 @@ status_t engine_t::create_kernels(std::vector<compute::kernel_t> *kernels,
     const char *source = nullptr;
     for (size_t i = 0; source == nullptr && i < kernel_names.size(); i++)
         source = intel::get_kernel_source(kernel_names[i]);
+    VERROR_ENGINE(source, status::runtime_error,
+            "No OpenCL source was found for kernel");
 
     std::string options = kernel_ctx.options();
     auto *dev_info = utils::downcast<const device_info_t *>(device_info());

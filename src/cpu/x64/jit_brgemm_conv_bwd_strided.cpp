@@ -780,14 +780,6 @@ status_t brgemm_convolution_bwd_strided_t<isa>::execute(
                 ? out_p_buffer + dst_dsz * ithr * jcp.out_buffer_size
                 : nullptr;
 
-        if (is_amx && inp_buffer) {
-            // Workaround: for some machines SEGFAULT possible on tile load
-            // if the page was not touched before it
-            for (dim_t i = 0; i < jcp.inp_buffer_size;
-                    i += brgemm_convolution_bwd_utils::P4K)
-                inp_buffer[i] = 0;
-        }
-
         uint8_t *__restrict inp_buffer_mask = (jcp.exec_type == exec_trans)
                 ? inp_p_buffer_mask + ithr * jcp.inp_buffer_mask_size
                 : nullptr;

@@ -355,10 +355,13 @@ constexpr const T &saturate(const T &low, const T &upper, const T &a) {
 }
 
 template <typename T, typename U>
-inline typename remove_reference<T>::type div_up(const T a, const U b) {
+inline enable_if_t<std::is_integral<T>::value
+                && (std::is_integral<U>::value || std::is_enum<U>::value),
+        typename remove_reference<T>::type>
+div_up(const T a, const U b) {
     assert(b > 0);
-    return static_cast<typename remove_reference<T>::type>(
-            a >= 1 ? 1 + (a - 1) / b : (a + b - 1) / b);
+    if (a <= 0) return 0;
+    return static_cast<typename remove_reference<T>::type>(1 + (a - 1) / b);
 }
 
 template <typename T, typename U>

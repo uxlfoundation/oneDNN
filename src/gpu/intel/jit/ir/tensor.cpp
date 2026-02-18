@@ -501,8 +501,7 @@ layout_t dim_assignment_t::map(const layout_t &layout) const {
         new_b.idx = new_idx;
         new_blocks.push_back(new_b);
     }
-    new_blocks = normalize_blocks(new_blocks,
-            /*remove_size_1_blocks=*/false);
+    new_blocks = merge_blocks(new_blocks);
     auto ret = layout_t(layout.type(), new_blocks, layout.offset(), new_ndims(),
             /*do_normalize=*/false);
     gpu_assert(layout.elems() == ret.elems())

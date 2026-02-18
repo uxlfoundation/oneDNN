@@ -295,7 +295,7 @@ reorder_2d_impl_t::reorder_2d_impl_t(ngen::HW hw, tile_t tile,
             if (b.idx == a_idx) blocks.emplace_back(0, b.size, b.stride);
             if (b.idx == b_idx) blocks.emplace_back(1, b.size, b.stride);
         }
-        blocks = normalize_blocks(blocks, false);
+        blocks = merge_blocks(blocks);
         return layout_t(layout.type(), blocks, layout.offset(), 2, false);
     };
 

@@ -413,6 +413,9 @@ class Attributes(FormattedMapping):
         value = getattr(self, self._attr_name_to_field_name(item))
         if value is None:
             raise KeyError(item)
+        if isinstance(value, CompositeAttribute):
+            # CompositeAttributes get stringified when using the old interface
+            return str(value)
         return value
 
     def __setitem__(self, item: str, value: Attribute):

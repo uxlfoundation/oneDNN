@@ -615,10 +615,9 @@ void dnn_mem_t::memset(int value, size_t size, int buffer_index) const {
 // This prevents GPU driver data compression from producing unrealistically
 // high bandwidth numbers in performance mode. A uniform fill (memset) is
 // trivially compressible by modern GPU drivers, inflating apparent BW by 3-4x.
-// Library-side GPU kernel for random fill (src/gpu/intel/fill_random.cpp).
 #if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE
 extern "C" dnnl_status_t dnnl_impl_gpu_fill_random(dnnl_stream_t stream,
-    size_t size, dnnl_memory_t memory, int buffer_index, uint32_t seed);
+        size_t size, dnnl_memory_t memory, int buffer_index, uint32_t seed);
 #endif
 
 void dnn_mem_t::fill_random(size_t size, int buffer_index) const {
@@ -630,39 +629,37 @@ void dnn_mem_t::fill_random(size_t size, int buffer_index) const {
     const size_t count = size / sizeof(uint32_t);
     if (count == 0) return;
 
-        if (!is_cpu(engine_)) {
+    if (!is_cpu(engine_)) {
 #if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE
         stream_t stream(engine_);
         auto st = dnnl_impl_gpu_fill_random(
-            stream, size, mem, buffer_index, seed);
+                stream, size, mem, buffer_index, seed);
         if (st != dnnl_success) {
             BENCHDNN_PRINT(0,
-                "fill_random: library kernel failed (%d), "
-                "falling back to memset.\n",
-                (int)st);
+                    "fill_random: library kernel failed (%d), "
+                    "falling back to memset.\n",
+                    (int)st);
             this->memset(dnnl_mem_default_perf_test_value, size, buffer_index);
         }
         DNN_SAFE_V(dnnl_stream_wait(stream));
         return;
 #else
+        BENCHDNN_PRINT(0,
+                "fill_random: no gpu runtime available, "
+                "falling back to memset (%i bytes).\n",
+                (int)size);
         this->memset(dnnl_mem_default_perf_test_value, size, buffer_index);
         return;
 #endif
-        }
+    }
 
+    BENCHDNN_PRINT(0,
+            "fill_random: using cpu fill (%i bytes), "
+            "falling back to memset.\n",
+            (int)size);
     void *mem_handle;
     DNN_SAFE_V(dnnl_memory_get_data_handle_v2(mem, &mem_handle, buffer_index));
-    auto *ptr = static_cast<uint32_t *>(mem_handle);
-    for (size_t i = 0; i < count; i++) {
-        uint32_t h = static_cast<uint32_t>(i) ^ seed;
-        h ^= h >> 16;
-        h *= 0x7FEB352Du;
-        h ^= h >> 15;
-        h *= 0x846CA68Bu;
-        h ^= h >> 16;
-        h &= 0xEEEEEEEEu;
-        ptr[i] = h;
-    }
+    ::memset(mem_handle, dnnl_mem_default_perf_test_value, size);
 }
 
 dnn_mem_t dnn_mem_t::create_from_host_ptr(

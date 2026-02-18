@@ -84,8 +84,8 @@ const xpu::context_t &stream_impl_t::ctx() const {
 }
 
 ze_event_handle_t stream_impl_t::get_output_event() const {
-    auto &ze_deps = event_t::from(ctx().get_deps()).ze_events_;
-    if (!ze_deps.empty()) return ze_deps[0];
+    const auto &ze_deps = event_t::from(ctx().get_deps());
+    if (ze_deps.size() > 0) return ze_deps[0];
 
     return nullptr;
 }
@@ -145,15 +145,12 @@ status_t stream_impl_t::copy(const impl::memory_storage_t &src,
         const xpu::event_t &deps, xpu::event_t &out_dep) {
     if (size == 0) return status::success;
 
-    std::vector<ze_event_handle_t> ze_deps
-            = utils::downcast<const event_t *>(&deps)->ze_events_;
-
+    const auto &ze_deps = event_t::from(deps);
     ze_event_handle_t out_event = create_event();
     CHECK(ze::zeCommandListAppendMemoryCopy(list_, dst.data_handle(),
-            src.data_handle(), size, out_event,
-            static_cast<uint32_t>(ze_deps.size()), ze_deps.data()));
-    if (out_event)
-        utils::downcast<event_t *>(&out_dep)->ze_events_.push_back(out_event);
+            src.data_handle(), size, out_event, ze_deps.size(),
+            ze_deps.data()));
+    if (out_event) event_t::from(out_dep).append(out_event);
 
     return status::success;
 }
@@ -162,15 +159,11 @@ status_t stream_impl_t::fill(const impl::memory_storage_t &dst, uint8_t pattern,
         size_t size, const xpu::event_t &deps, xpu::event_t &out_dep) {
     if (size == 0) return status::success;
 
-    std::vector<ze_event_handle_t> ze_deps
-            = utils::downcast<const event_t *>(&deps)->ze_events_;
-
+    const auto &ze_deps = event_t::from(deps);
     ze_event_handle_t out_event = create_event();
     CHECK(ze::zeCommandListAppendMemoryFill(list_, dst.data_handle(), &pattern,
-            sizeof(pattern), size, out_event,
-            static_cast<uint32_t>(ze_deps.size()), ze_deps.data()));
-    if (out_event)
-        utils::downcast<event_t *>(&out_dep)->ze_events_.push_back(out_event);
+            sizeof(pattern), size, out_event, ze_deps.size(), ze_deps.data()));
+    if (out_event) event_t::from(out_dep).append(out_event);
 
     return status::success;
 }

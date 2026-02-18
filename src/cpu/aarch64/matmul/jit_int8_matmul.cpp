@@ -911,6 +911,31 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
     const int micro_n = brg_.n_blk * brg_.ld_block;
     n_block_sz = (brg_.ld_block == 6) ? micro_n : 2 * micro_n;
 
+    // micro_n is small for 128 bit.
+    // so N tiles can get too tiny and we spemd time in OpenMP overhead.
+    // try a coarser N tile (4x/2x/1x) and pick the first that keeps
+    // tootal wokr more than num_threads.
+    if (cpu_isa_traits<isa>::vlen == 16 && brg_.ld_block == 6) {
+        // pick the largest N size that still gives enough work.
+        int best_n_block_sz = micro_n;
+        const int num_m_tiles = div_up(brg_.M, m_block_sz);
+        // when M is only a few blocks, starting at 4x can reduce N-parallelism.
+        const bool mid_m = (brg_.M > m_block_sz) && (brg_.M <= 4 * m_block_sz);
+        const bool small_m = num_m_tiles <= 4;
+
+        const int preferred_factor = (mid_m || small_m) ? 2 : 4;
+        for (int f = preferred_factor; f >= 1; f /= 2) {
+            const int temp_n_block_sz = f * micro_n;
+            const int num_n_tiles = div_up(brg_.N, temp_n_block_sz);
+            const int work = (int)brg_.B * num_m_tiles * num_n_tiles;
+            if (work >= num_threads) {
+                best_n_block_sz = temp_n_block_sz;
+                break;
+            }
+        }
+        n_block_sz = std::min<int>(brg_.N, best_n_block_sz);
+    }
+
     int num_a_blocks = div_up(brg_.M, m_block_sz);
     int num_b_blocks = div_up(brg_.N, n_block_sz);
     mm_parallel_work = brg_.B * num_a_blocks * num_b_blocks;

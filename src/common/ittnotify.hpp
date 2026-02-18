@@ -40,8 +40,9 @@ struct itt_task_level_t {
 // one by env variable.
 bool get_itt(__itt_task_level level);
 __itt_id make_itt_id(const char *tname, double stamp);
-void primitive_task_start(primitive_kind_t kind, const char *pd_info,
-        const char *log_kind, __itt_id task_id);
+void primitive_task_start(primitive_kind_t kind, const char *log_kind);
+void primitive_add_metadata_and_id(
+        const char *pd_info, const char *log_kind, __itt_id task_id);
 primitive_kind_t primitive_task_get_current_kind();
 void primitive_task_end(const char *log_kind);
 const char *primitive_task_get_current_info();

@@ -50,7 +50,13 @@ struct event_t : public xpu::event_t {
         return ze_events_[i];
     }
     ze_event_handle_t &operator[](size_t i) { return ze_events_[i]; }
-    size_t size() const { return ze_events_.size(); }
+    // Note: `zeCommandListAppendLaunchKernel` takes `uint32_t` as size arg.
+    uint32_t size() const { return static_cast<uint32_t>(ze_events_.size()); }
+    // Note: `zeCommandListAppendLaunchKernel` takes `ze_event_handle_t *` only,
+    // can't take `ze_event_handle_t const*` argument, cast required.
+    ze_event_handle_t *data() const {
+        return const_cast<ze_event_handle_t *>(ze_events_.data());
+    }
 
     static event_t &from(xpu::event_t &event) {
         return *utils::downcast<event_t *>(&event);
@@ -66,7 +72,9 @@ struct event_t : public xpu::event_t {
         ze_events_.insert(ze_events_.end(), other.ze_events_.begin(),
                 other.ze_events_.end());
     }
+    void append(ze_event_handle_t ze_event) { ze_events_.push_back(ze_event); }
 
+private:
     std::vector<ze_event_handle_t> ze_events_;
 };
 

@@ -174,18 +174,13 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
     ze_group_count_t group_count = {global_size[0] / group_size[0],
             global_size[1] / group_size[1], global_size[2] / group_size[2]};
 
-    std::vector<ze_event_handle_t> ze_deps
-            = utils::downcast<const xpu::ze::event_t *>(&deps)->ze_events_;
-    std::vector<ze_event_handle_t> ze_out_deps
-            = utils::downcast<xpu::ze::event_t *>(&out_dep)->ze_events_;
-
+    const auto &ze_deps = xpu::ze::event_t::from(deps);
     ze_event_handle_t out_event = ze_stream->create_event();
 
     CHECK(xpu::ze::zeCommandListAppendLaunchKernel(ze_stream->list(), kernel_,
-            &group_count, out_event, static_cast<uint32_t>(ze_deps.size()),
-            ze_deps.data()));
+            &group_count, out_event, ze_deps.size(), ze_deps.data()));
 
-    if (out_event) ze_out_deps.push_back(out_event);
+    if (out_event) xpu::ze::event_t::from(out_dep).append(out_event);
     if (stream.is_profiling_enabled()) {
         ze_stream->profiler().register_event(
                 utils::make_unique<xpu::ze::event_t>(out_event));

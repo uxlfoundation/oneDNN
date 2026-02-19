@@ -652,7 +652,7 @@ void dnn_mem_t::fill_random(size_t size, int buffer_index) const {
         return;
 #endif
     }
-    
+
     BENCHDNN_PRINT(0,
             "fill_random: using cpu fill (%i bytes), "
             "falling back to memset.\n",

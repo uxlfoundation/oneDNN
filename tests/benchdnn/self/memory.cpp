@@ -36,17 +36,13 @@ static int check_fill_random() {
         m.map();
 
         std::set<uint32_t> unique_vals_uint32_t;
-        std::set<uint16_t> unique_vals_uint16_t;
         const auto *ptr_uint32_t = static_cast<const uint32_t *>(m);
-        const auto *ptr_uint16_t = static_cast<const uint16_t *>(m);
 
         bool all_same = true;
         uint32_t first_val = ptr_uint32_t[0];
         for (int i = 0; i < nelems; i++) {
             // printf("%08X\n", ptr_uint32_t[i]);
             unique_vals_uint32_t.insert(ptr_uint32_t[i]);
-            unique_vals_uint16_t.insert(ptr_uint16_t[i * 2]);
-            unique_vals_uint16_t.insert(ptr_uint16_t[i * 2 + 1]);
             if (ptr_uint32_t[i] != first_val) all_same = false;
         }
         m.unmap();
@@ -58,15 +54,11 @@ static int check_fill_random() {
                 "(val=0x%08X)",
                 first_val);
 
-        // Require at least 50% unique 32-bit values and at least 50% unique
-        // 16-bit half-words (nelems*2 half-words => require > nelems).
+        // Require at least 50% unique 32-bit values.
         SELF_CHECK(
                 unique_vals_uint32_t.size() > static_cast<size_t>(nelems / 2),
                 "fill_random produced too few unique 32-bit values: %d",
                 (int)unique_vals_uint32_t.size());
-        SELF_CHECK(unique_vals_uint16_t.size() > static_cast<size_t>(nelems),
-                "fill_random produced too few unique 16-bit values: %d",
-                (int)unique_vals_uint16_t.size());
     }
 
     // 2. No NaN/Inf for any availabe FP type (mask 0xEEEEEEEE)

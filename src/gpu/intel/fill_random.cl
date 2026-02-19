@@ -14,24 +14,23 @@
 * limitations under the License.
 *******************************************************************************/
 
-// Fills a buffer with pseudo-random uint32 values using lowbias32 hash
-// (Chris Wellons). Each thread produces BLOCK_SIZE uint32 values using SIMD.
-__kernel void fill_random(__global uint *buf) {
-    uint i, start_id = (uint)(get_global_id(0) * BLOCK_SIZE);
+#define DT_UNDEF 1
+#include "gpu/intel/include/philox.h"
 
-    DT idx = (DT)(0);
-#pragma unroll SIMD_WIDTH
-    for (i = 0; i < SIMD_WIDTH; i++) {
-        idx[i] = start_id + i;
-    }
+// Fills a buffer with pseudo-random uint32 values using the Philox PRNG.
+__kernel void fill_random(__global uint *buf, uint seed, uint byte_count) {
+    uint gid = (uint)get_global_id(0);
+    uint offset = gid * 4;
+    if (offset >= byte_count) return;
 
-#pragma unroll ITERS
-    for (i = 0; i < ITERS; ++i) {
-        DT v = (idx ^ (DT)SEED);
-        v = (v ^ (v >> 16)) * (DT)0x7FEB352Du;
-        v = (v ^ (v >> 15)) * (DT)0x846CA68Bu;
-        v = (v ^ (v >> 16)) & (DT)0xEEEEEEEEu;
-        SIMD_STORE(v, 0, buf + start_id + (i * SIMD_WIDTH));
-        idx += SIMD_WIDTH;
+    uint value = philox_4x32(gid, gid ^ seed) & 0xEEEEEEEEu;
+    uint tail = byte_count - offset;
+
+    if (tail >= 4) {
+        buf[gid] = value;
+    } else {
+        __global uchar *p = (__global uchar *)(buf + gid);
+        for (uint i = 0; i < tail; i++)
+            p[i] = (uchar)(value >> (i * 8));
     }
 }

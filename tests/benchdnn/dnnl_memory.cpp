@@ -617,7 +617,7 @@ void dnn_mem_t::memset(int value, size_t size, int buffer_index) const {
 // trivially compressible by modern GPU drivers, inflating apparent BW by 3-4x.
 #if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE
 extern "C" dnnl_status_t dnnl_impl_gpu_fill_random(dnnl_stream_t stream,
-        size_t size, dnnl_memory_t memory, int buffer_index, uint32_t seed);
+        size_t size, dnnl::impl::memory_storage_t *storage, uint32_t seed);
 #endif
 
 void dnn_mem_t::fill_random(size_t size, int buffer_index) const {
@@ -632,8 +632,9 @@ void dnn_mem_t::fill_random(size_t size, int buffer_index) const {
     if (!is_cpu(engine_)) {
 #if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE
         stream_t stream(engine_);
-        auto st = dnnl_impl_gpu_fill_random(
-                stream, size, mem, buffer_index, seed);
+        auto *storage = reinterpret_cast<dnnl_memory *>(mem)->memory_storage(
+                buffer_index);
+        auto st = dnnl_impl_gpu_fill_random(stream, size, storage, seed);
         if (st != dnnl_success) {
             BENCHDNN_PRINT(0,
                     "fill_random: library kernel failed (%d), "

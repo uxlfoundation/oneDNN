@@ -27,7 +27,7 @@ namespace gpu {
 namespace intel {
 
 status_t fill_random(impl::stream_t *stream, size_t size,
-        impl::memory_t *memory, int buffer_index, uint32_t seed) {
+        impl::memory_storage_t *storage, uint32_t seed) {
     static compute::kernel_t kernel;
     static std::once_flag flag;
 
@@ -48,7 +48,7 @@ status_t fill_random(impl::stream_t *stream, size_t size,
     compute::range_t gws = {num_work_items, 1, 1};
     compute::nd_range_t nd_range(gws);
     compute::kernel_arg_list_t arg_list;
-    arg_list.set(0, *memory->memory_storage(buffer_index));
+    arg_list.set(0, *storage);
     arg_list.set(1, seed);
     arg_list.set(2, static_cast<uint32_t>(size));
 
@@ -64,8 +64,7 @@ status_t fill_random(impl::stream_t *stream, size_t size,
 } // namespace dnnl
 
 extern "C" dnnl::impl::status_t DNNL_API dnnl_impl_gpu_fill_random(
-        dnnl::impl::stream_t *stream, size_t size, dnnl::impl::memory_t *memory,
-        int buffer_index, uint32_t seed) {
-    return dnnl::impl::gpu::intel::fill_random(
-            stream, size, memory, buffer_index, seed);
+        dnnl::impl::stream_t *stream, size_t size,
+        dnnl::impl::memory_storage_t *storage, uint32_t seed) {
+    return dnnl::impl::gpu::intel::fill_random(stream, size, storage, seed);
 }

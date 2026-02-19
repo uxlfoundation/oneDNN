@@ -255,7 +255,9 @@ int verify_grouped_input(const settings_t &s) {
 static const std::string help_bia_mask
         = "UINT    (Default: `2`)\n    Specifies a bit-mask that indicates "
           "which bias dimensions coincide with C matrix dimensions, when `1` "
-          "is on a correspondent dimension.\n";
+          "is on a correspondent dimension.\n    Note: for grouped matmul "
+          "(--grouped) only `bia_mask=2` (N-only) is supported; the bias "
+          "shape becomes `[G, N]` (one value per column per expert).\n";
 
 static const std::string help_runtime_dims_masks
         = "UINT:UINT    (Default: `0:0`)\n    Specifies a bit-mask for "

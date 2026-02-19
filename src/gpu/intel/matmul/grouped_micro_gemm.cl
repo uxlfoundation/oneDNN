@@ -26,20 +26,20 @@
 #if WITH_BIAS
 #define bias_br ugemm_grouped_sg_tile_m
 #define bias_bc 1
-#define bias_nbr ugemm_grouped_c_type_nblock0
+#define bias_nbr 1
 #define bias_nbc 1
 
 DECLARE_2D_TILE(bias_tile_type, float, SUBGROUP_SIZE, bias_br, bias_bc,
         bias_nbr, bias_nbc)
-#ifndef BIA_DT_F32
-DECLARE_2D_TILE(bias_in_tile_type, BIA_DATA_T, SUBGROUP_SIZE, bias_br, bias_bc,
-        bias_nbr, bias_nbc)
-#endif
-
 DECLARE_2D_TILE_VREDUCE(ugemm_grouped_c_type, SUBGROUP_SIZE,
         ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
         ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1,
         bias_tile_type, SUBGROUP_SIZE, bias_br, bias_bc, bias_nbr, bias_nbc)
+
+#ifndef BIA_DT_F32
+DECLARE_2D_TILE(bias_in_tile_type, BIA_DATA_T, SUBGROUP_SIZE, bias_br, bias_bc,
+        bias_nbr, bias_nbc)
+#endif
 
 void load_bias(
         bias_tile_type *tile, const global BIA_DATA_T *ptr, int n, int sg_i0) {
@@ -60,14 +60,14 @@ DECLARE_2D_TILE(c_tile_type_dst, DST_DATA_T, SUBGROUP_SIZE,
 #endif
 
 /* Optional quantization parameters */
-#define SRC_ATTR_SCALE_ARGS OPTIONAL(WITH_SRC_ATTR_SCALES, src_attr_scales)
-#define SRC_ATTR_ZP_ARGS OPTIONAL(WITH_SRC_ATTR_ZP, src_attr_zp)
-#define SRC_ATTR_LD_ARGS \
-    OPTIONAL(OR(WITH_SRC_ATTR_SCALES, WITH_SRC_ATTR_ZP), ldsrcq)
-#define WEI_ATTR_SCALE_ARGS OPTIONAL(WITH_WEI_ATTR_SCALES, wei_attr_scales)
-#define WEI_ATTR_ZP_ARGS OPTIONAL(WITH_WEI_ATTR_ZP, wei_attr_zp)
-#define WEI_ATTR_LD_ARGS \
-    OPTIONAL(OR(WITH_WEI_ATTR_SCALES, WITH_WEI_ATTR_ZP), ldweiq)
+#define SRC_SCALE_ARGS \
+    OPTIONAL(AND(WITH_SRC_SCALES, SRC_SCALES_GROUPED), src_attr_scales)
+#define SRC_ZP_ARGS OPTIONAL(WITH_SRC_ZP, src_attr_zp)
+#define SRC_LD_ARGS OPTIONAL(OR(WITH_SRC_ZP, SRC_SCALES_GROUPED), ldsrcq)
+#define WEI_SCALE_ARGS \
+    OPTIONAL(AND(WITH_WEI_SCALES, WEI_SCALES_GROUPED), wei_attr_scales)
+#define WEI_ZP_ARGS OPTIONAL(WITH_WEI_ZP, wei_attr_zp)
+#define WEI_LD_ARGS OPTIONAL(OR(WITH_WEI_ZP, WEI_SCALES_GROUPED), ldweiq)
 
 void store_results(ugemm_grouped_c_type *tile, global DST_DATA_T *ptr, int n,
         int m, int lddst, int sg_i0, int sg_j0) {
@@ -180,25 +180,39 @@ grouped_micro_gemm(const global SRC_DATA_T *src, int ldsrc,
     dst += src_offset.x * lddst;
 
     int ldwei = wei_strides[2] == 1 ? wei_strides[1] : wei_strides[2];
-#if WITH_SRC_ATTR_SCALES
+
+#if WITH_SRC_SCALES
     src_attr_scales += src_offset.x;
 #endif
-#if WITH_SRC_ATTR_ZP
-    src_attr_zp += src_offset.x;
+#if WITH_SRC_ZP
+    src_attr_zp += src_offset.x / SRC_ZP_ELEMS_PER_BYTE;
 #endif
-#if WITH_WEI_ATTR_SCALES
+#if WITH_WEI_SCALES
     wei_attr_scales += batch * n * (k / WEI_GROUP_SIZE);
 #endif
-#if WITH_WEI_ATTR_ZP
-    wei_attr_zp += batch * n * (k / WEI_GROUP_SIZE);
+#if WITH_WEI_ZP
+    wei_attr_zp += batch * n * (k / WEI_GROUP_SIZE) / WEI_ZP_ELEMS_PER_BYTE;
 #endif
 
     ugemm_grouped_c_type c_tile = ugemm_grouped(wei, ldwei, src, ldsrc, n, m, k,
             wg_i0, wg_j0, 0, sg_i, sg_j, sg_k,
-            slm WEI_ATTR_SCALE_ARGS WEI_ATTR_ZP_ARGS WEI_ATTR_LD_ARGS
-                    SRC_ATTR_SCALE_ARGS SRC_ATTR_ZP_ARGS SRC_ATTR_LD_ARGS);
-
+            slm WEI_SCALE_ARGS WEI_ZP_ARGS WEI_LD_ARGS SRC_SCALE_ARGS
+                    SRC_ZP_ARGS SRC_LD_ARGS);
     if (sg_k > 0) return;
+
+#if WITH_SRC_SCALES && !SRC_SCALES_GROUPED
+    src_attr_scales_tile_type src_attr_scales_tile;
+    load_src_attr_scales(
+            &src_attr_scales_tile, src_attr_scales, m, ldsrcq, sg_j0);
+    tile_hbroadcast_mul(&c_tile, src_attr_scales_tile);
+#endif
+
+#if WITH_WEI_SCALES && !WEI_SCALES_GROUPED
+    wei_attr_scales_tile_type wei_attr_scales_tile;
+    load_wei_attr_scales(
+            &wei_attr_scales_tile, wei_attr_scales, n, ldweiq, sg_i0);
+    tile_vbroadcast_mul(&c_tile, wei_attr_scales_tile);
+#endif
 
 #if WITH_BIAS
     bias += batch * n;

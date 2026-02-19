@@ -75,9 +75,10 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
     problem.Tb = problem.Tb_ext;
 
     problem.A.setAlignment(
-            alignmentForLD(static_cast<int>(pd()->K()) / problem.Ta_ext));
+            alignmentForLD(static_cast<int>(gemm_desc_t::get_ld(*wei_mdw.md_))
+                    * problem.Ta_ext));
     problem.B.setAlignment(
-            alignmentForLD(static_cast<int>(pd()->N()) / problem.Tb_ext));
+            alignmentForLD(static_cast<int>(pd()->K()) * problem.Tb_ext));
     problem.C.setAlignment(problem.Tc.size());
 
     problem.A.layout = convert_dnnl_to_kernel_layout(wei_mdw.md_);
@@ -85,17 +86,17 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
     problem.C.layout = MatrixLayout::N;
 
     GEMMOptions opts;
-    opts.scaleA = !pd()->attr()->scales_.has_default_values(DNNL_ARG_WEIGHTS);
-    opts.offsetA
-            = !pd()->attr()->zero_points_.has_default_values(DNNL_ARG_WEIGHTS);
-    opts.scaleB = !pd()->attr()->scales_.has_default_values(DNNL_ARG_SRC);
-    opts.offsetB = !pd()->attr()->zero_points_.has_default_values(DNNL_ARG_SRC);
+    opts.scaleA = pd()->wei_quant_.with_scale()
+            && pd()->wei_group_sizes_[1] < pd()->K();
+    opts.offsetA = pd()->wei_quant_.with_zp();
+    opts.scaleB = pd()->src_quant_.with_scale()
+            && pd()->src_group_sizes_[1] < pd()->K();
+    opts.offsetB = pd()->src_quant_.with_zp();
     opts.slmPtr = true;
     opts.kParallelLocal = true;
 
     if (opts.scaleA) {
-        auto wei_scales = pd()->attr()->scales_.get(DNNL_ARG_WEIGHTS);
-        data_type_t wei_scale_dt = wei_scales.get_data_type();
+        data_type_t wei_scale_dt = pd()->wei_quant_.scale_dt();
         problem.Ta_scale = convert_dnnl_to_kernel_type(wei_scale_dt);
         problem.A_scale.setAlignment(alignmentForLD(
                 static_cast<int>(types::data_type_size(wei_scale_dt))));
@@ -104,8 +105,7 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
     }
 
     if (opts.offsetA) {
-        auto wei_zp = pd()->attr()->zero_points_.get(DNNL_ARG_WEIGHTS);
-        data_type_t wei_zp_dt = wei_zp.get_data_type();
+        data_type_t wei_zp_dt = pd()->wei_quant_.zp_dt();
         problem.Tao = convert_dnnl_to_kernel_type(wei_zp_dt);
         problem.AO.setAlignment(
                 static_cast<int>(types::data_type_size(wei_zp_dt)));
@@ -115,8 +115,7 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
     }
 
     if (opts.scaleB) {
-        auto src_scales = pd()->attr()->scales_.get(DNNL_ARG_SRC);
-        data_type_t src_scale_dt = src_scales.get_data_type();
+        data_type_t src_scale_dt = pd()->src_quant_.scale_dt();
         problem.Tb_scale = convert_dnnl_to_kernel_type(src_scale_dt);
         problem.B_scale.setAlignment(
                 static_cast<int>(types::data_type_size(src_scale_dt)));
@@ -124,8 +123,7 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
         problem.bsPtrDims = 2;
     }
     if (opts.offsetB) {
-        auto src_zp = pd()->attr()->zero_points_.get(DNNL_ARG_SRC);
-        data_type_t src_zp_dt = src_zp.get_data_type();
+        data_type_t src_zp_dt = pd()->src_quant_.zp_dt();
         problem.Tbo = convert_dnnl_to_kernel_type(src_zp_dt);
         problem.BO.setAlignment(
                 static_cast<int>(types::data_type_size(src_zp_dt)));
@@ -155,13 +153,23 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
         gemm_ = selectGEMM(opts, hw_info, sizes, problem);
     } catch (const std::runtime_error &) {
         std::vector<StrategyRequirement> reqs;
-        reqs.push_back(StrategyRequirement::UnrollM == sg_size);
+        int m_unroll = problem.Ta.isInt4()
+                        && dev_info->gpu_arch() > compute::gpu_arch_t::xe_hpc
+                ? sg_size / problem.Ta
+                : sg_size;
+        int max_n_unroll = problem.Ta.isInt4()
+                        && dev_info->gpu_arch() > compute::gpu_arch_t::xe_hpc
+                ? 16 * problem.Ta
+                : 32;
+
+        reqs.push_back(StrategyRequirement::UnrollM == m_unroll);
         reqs.push_back(StrategyRequirement::UnrollN
-                == utils::rnd_up_pow2(std::min<dim_t>(pd()->M(), 64)));
+                == utils::rnd_up_pow2(
+                        std::min<dim_t>(pd()->M(), max_n_unroll)));
         reqs.push_back(StrategyRequirement::WGM == 2);
         reqs.push_back(StrategyRequirement::WGN
                 == utils::rnd_up_pow2(std::max<dim_t>(
-                        1, std::min<dim_t>(pd()->M() / reqs[1].value, 8))));
+                        1, std::min<dim_t>(pd()->M() / reqs[1].value, 4))));
         try {
             gemm_ = selectGEMM(opts, hw_info, sizes, problem, reqs);
         } catch (const std::runtime_error &ex) {
@@ -205,6 +213,8 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
     data_type_t src_dt = src_d.data_type();
     data_type_t wei_dt = wei_d.data_type();
     data_type_t dst_dt = dst_d.data_type();
+    src_quant_ = quantization_t(attr(), src_d, DNNL_ARG_SRC);
+    wei_quant_ = quantization_t(attr(), wei_d, DNNL_ARG_WEIGHTS);
 
     // Check for grouped encoding on src and dst
     VDISPATCH_MATMUL(src_d.is_grouped_desc() && dst_d.is_grouped_desc(),
@@ -274,8 +284,8 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
 
     // Check for supported quantization schemes
     const scales_t &attr_scales = attr()->scales_;
-    if (!attr_scales.has_default_values(DNNL_ARG_SRC)) {
-        const int src_mask = attr_scales.get_mask(DNNL_ARG_SRC);
+    if (src_quant_.with_scale()) {
+        const int src_mask = src_quant_.scale_mask();
         const int rowwise_mask = src_qmask_M();
         // Only row-wise f32 scales supported for src
         VDISPATCH_MATMUL(
@@ -283,13 +293,42 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
         // No groups for src scales
         VDISPATCH_MATMUL(attr_scales.get(DNNL_ARG_SRC).has_default_groups(),
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
+        VDISPATCH_MATMUL(utils::one_of(src_quant_.scale_dt(), f32, f16, bf16),
+                VERBOSE_UNSUPPORTED_SCALES_CFG ": %s(%s)", "src scales",
+                dnnl_dt2str(src_quant_.scale_dt()));
     }
-    if (!attr_scales.has_default_values(DNNL_ARG_WEIGHTS)) {
-        const int wei_mask = attr_scales.get_mask(DNNL_ARG_WEIGHTS);
+
+    if (src_quant_.with_zp()) {
+        const int src_zp_mask = src_quant_.zp_mask();
+        const int src_qmask = src_qmask_M() | src_qmask_K();
+        // Only per-row or per-column zero points supported for src
+        VDISPATCH_MATMUL(utils::one_of(src_zp_mask, src_qmask, 0),
+                VERBOSE_UNSUPPORTED_ZP_CFG ": %s", "src zero points");
+        VDISPATCH_MATMUL(utils::one_of(src_quant_.zp_dt(), u8, s8, u4, s4),
+                VERBOSE_UNSUPPORTED_ZP_CFG ": %s(%s)", "src zero points",
+                dnnl_dt2str(src_quant_.zp_dt()));
+    }
+
+    if (wei_quant_.with_scale()) {
+        const int wei_mask = wei_quant_.scale_mask();
         // Only column-wise f32 scales supported for weights
         VDISPATCH_MATMUL(
                 utils::one_of(wei_mask, 7, 5), VERBOSE_UNSUPPORTED_SCALES_CFG);
+        VDISPATCH_MATMUL(utils::one_of(wei_quant_.scale_dt(), f32, f16, bf16),
+                VERBOSE_UNSUPPORTED_SCALES_CFG ": %s(%s)", "wei scales",
+                dnnl_dt2str(wei_quant_.scale_dt()));
     }
+
+    if (wei_quant_.with_zp()) {
+        const int wei_zp_mask = wei_quant_.zp_mask();
+        // Only per-column zero points supported for weights
+        VDISPATCH_MATMUL(utils::one_of(wei_zp_mask, 7, 5),
+                VERBOSE_UNSUPPORTED_ZP_CFG ": %s", "wei zero points");
+        VDISPATCH_MATMUL(utils::one_of(wei_quant_.zp_dt(), u8, s8, u4, s4),
+                VERBOSE_UNSUPPORTED_ZP_CFG ": %s(%s)", "wei zero points",
+                dnnl_dt2str(wei_quant_.zp_dt()));
+    }
+
     VDISPATCH_MATMUL(attr_scales.has_default_values(DNNL_ARG_DST),
             VERBOSE_UNSUPPORTED_SCALES_CFG);
 
@@ -297,17 +336,17 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
     VDISPATCH_MATMUL(
             attr()->post_ops_.has_default_values(), VERBOSE_UNSUPPORTED_POSTOP);
 
-    if (src_quant.with_scale()) {
+    if (src_quant_.with_scale()) {
         calc_group_sizes(
                 src_group_sizes_, attr()->scales_.get(DNNL_ARG_SRC), src_d);
-    } else if (src_quant.with_zp()) {
+    } else if (src_quant_.with_zp()) {
         calc_group_sizes(src_group_sizes_,
                 attr()->zero_points_.get(DNNL_ARG_SRC), src_d);
     }
-    if (wei_quant.with_scale()) {
+    if (wei_quant_.with_scale()) {
         calc_group_sizes(
                 wei_group_sizes_, attr()->scales_.get(DNNL_ARG_WEIGHTS), wei_d);
-    } else if (wei_quant.with_zp()) {
+    } else if (wei_quant_.with_zp()) {
         calc_group_sizes(wei_group_sizes_,
                 attr()->zero_points_.get(DNNL_ARG_WEIGHTS), wei_d);
     }
@@ -319,9 +358,17 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
 status_t grouped_micro_gemm_t::init(impl::engine_t *engine) {
 
     CHECK(init_microkernels(engine));
-    auto src_dt = pd()->src_md(0)->data_type;
-    auto wei_dt = pd()->weights_md(0)->data_type;
-    auto dst_dt = pd()->dst_md(0)->data_type;
+
+    auto src_mdw = memory_desc_wrapper(pd()->src_md(0));
+    auto wei_mdw = memory_desc_wrapper(pd()->weights_md());
+    auto dst_mdw = memory_desc_wrapper(pd()->dst_md());
+
+    auto src_dt = src_mdw.data_type();
+    auto wei_dt = wei_mdw.data_type();
+    auto dst_dt = dst_mdw.data_type();
+
+    pd()->src_quant_.define_macros(kernel_ctx_, "SRC");
+    pd()->wei_quant_.define_macros(kernel_ctx_, "WEI");
 
     kernel_ctx_.set_data_type(dst_dt);
 
@@ -332,42 +379,36 @@ status_t grouped_micro_gemm_t::init(impl::engine_t *engine) {
     def_data_type(kernel_ctx_, wei_dt, "WEI");
     def_data_type(kernel_ctx_, dst_dt, "DST");
 
-    kernel_ctx_.define_int("WITH_SRC_ATTR_SCALES",
-            !pd()->attr()->scales_.has_default_values(DNNL_ARG_SRC));
-    kernel_ctx_.define_int("WITH_WEI_ATTR_SCALES",
-            !pd()->attr()->scales_.has_default_values(DNNL_ARG_WEIGHTS));
-    kernel_ctx_.define_int("WITH_SRC_ATTR_ZP",
-            !pd()->attr()->zero_points_.has_default_values(DNNL_ARG_SRC));
-    kernel_ctx_.define_int("WITH_WEI_ATTR_ZP",
-            !pd()->attr()->zero_points_.has_default_values(DNNL_ARG_WEIGHTS));
-    def_data_type(kernel_ctx_,
-            pd()->attr()->scales_.get(DNNL_ARG_SRC).get_data_type(),
-            "SRC_ATTR_SCALES");
-
-    def_data_type(kernel_ctx_,
-            pd()->attr()->scales_.get(DNNL_ARG_WEIGHTS).get_data_type(),
-            "WEI_ATTR_SCALES");
-
-    def_data_type(kernel_ctx_,
-            pd()->attr()->zero_points_.get(DNNL_ARG_SRC).get_data_type(),
-            "SRC_ATTR_ZP");
-
-    def_data_type(kernel_ctx_,
-            pd()->attr()->zero_points_.get(DNNL_ARG_WEIGHTS).get_data_type(),
-            "WEI_ATTR_ZP");
-    if (!pd()->attr()->scales_.has_default_values(DNNL_ARG_SRC)
-            || !pd()->attr()->zero_points_.has_default_values(DNNL_ARG_SRC)) {
+    kernel_ctx_.define_int("WITH_SRC_SCALES", pd()->src_quant_.with_scale());
+    kernel_ctx_.define_int("WITH_WEI_SCALES", pd()->wei_quant_.with_scale());
+    kernel_ctx_.define_int("WITH_SRC_ZP", pd()->src_quant_.with_zp());
+    kernel_ctx_.define_int("WITH_WEI_ZP", pd()->wei_quant_.with_zp());
+    if (pd()->src_quant_.with_scale() || pd()->src_quant_.with_zp()) {
         kernel_ctx_.define_int("SRC_GROUP_SIZE", pd()->src_group_sizes_[1]);
     }
-    if (!pd()->attr()->scales_.has_default_values(DNNL_ARG_WEIGHTS)
-            || !pd()->attr()->zero_points_.has_default_values(
-                    DNNL_ARG_WEIGHTS)) {
+    if (pd()->wei_quant_.with_scale() || pd()->wei_quant_.with_zp()) {
         kernel_ctx_.define_int("WEI_GROUP_SIZE", pd()->wei_group_sizes_[1]);
     }
+
+    kernel_ctx_.define_int("SRC_SCALES_GROUPED",
+            pd()->src_quant_.with_scale()
+                    && pd()->src_group_sizes_[1] < pd()->K());
+    kernel_ctx_.define_int("WEI_SCALES_GROUPED",
+            pd()->wei_quant_.with_scale()
+                    && pd()->wei_group_sizes_[1] < pd()->K());
     kernel_ctx_.define_int(
             "SRC_ELEMS_PER_BYTE", types::bytes_to_elements(src_dt, 1));
     kernel_ctx_.define_int(
             "WEI_ELEMS_PER_BYTE", types::bytes_to_elements(wei_dt, 1));
+
+    if (pd()->src_quant_.with_zp()) {
+        kernel_ctx_.define_int("SRC_ZP_ELEMS_PER_BYTE",
+                types::bytes_to_elements(pd()->src_quant_.zp_dt(), 1));
+    }
+    if (pd()->wei_quant_.with_zp()) {
+        kernel_ctx_.define_int("WEI_ZP_ELEMS_PER_BYTE",
+                types::bytes_to_elements(pd()->wei_quant_.zp_dt(), 1));
+    }
 
     auto bia_dt = pd()->weights_md(1)->data_type;
     def_data_type(kernel_ctx_, bia_dt, "BIA");
@@ -384,14 +425,10 @@ status_t grouped_micro_gemm_t::execute(const exec_ctx_t &ctx) const {
     auto &dst_data = CTX_OUT_STORAGE(DNNL_ARG_DST, 0);
     const auto &dst_offsets = CTX_OUT_STORAGE(DNNL_ARG_DST, 1);
 
-    const auto &src_scales
-            = CTX_IN_STORAGE(DNNL_ARG_SRC | DNNL_ARG_ATTR_SCALES);
-    const auto &src_zero_points
-            = CTX_IN_STORAGE(DNNL_ARG_SRC | DNNL_ARG_ATTR_ZERO_POINTS);
-    const auto &wei_scales
-            = CTX_IN_STORAGE(DNNL_ARG_WEIGHTS | DNNL_ARG_ATTR_SCALES);
-    const auto &wei_zero_points
-            = CTX_IN_STORAGE(DNNL_ARG_WEIGHTS | DNNL_ARG_ATTR_ZERO_POINTS);
+    const auto &src_scales = pd()->src_quant_.scales(ctx);
+    const auto &src_zero_points = pd()->src_quant_.zero_points(ctx);
+    const auto &wei_scales = pd()->wei_quant_.scales(ctx);
+    const auto &wei_zero_points = pd()->wei_quant_.zero_points(ctx);
 
     const auto &bias_data = CTX_IN_STORAGE(DNNL_ARG_BIAS);
 
@@ -401,15 +438,10 @@ status_t grouped_micro_gemm_t::execute(const exec_ctx_t &ctx) const {
 
     const size_t num_groups = pd()->ngroups_;
 
-    const quant_entries_t &attr_scales = pd()->attr()->scales_;
-    const quant_entries_t &attr_zero_points = pd()->attr()->zero_points_;
-    const bool with_src_scales = !attr_scales.has_default_values(DNNL_ARG_SRC);
-    const bool with_src_zero_points
-            = !attr_zero_points.has_default_values(DNNL_ARG_SRC);
-    const bool with_wei_scales
-            = !attr_scales.has_default_values(DNNL_ARG_WEIGHTS);
-    const bool with_wei_zero_points
-            = !attr_zero_points.has_default_values(DNNL_ARG_WEIGHTS);
+    const bool with_src_scales = pd()->src_quant_.with_scale();
+    const bool with_src_zero_points = pd()->src_quant_.with_zp();
+    const bool with_wei_scales = pd()->wei_quant_.with_scale();
+    const bool with_wei_zero_points = pd()->wei_quant_.with_zp();
 
     int ldsrcq = 0;
     int ldweiq = 0;

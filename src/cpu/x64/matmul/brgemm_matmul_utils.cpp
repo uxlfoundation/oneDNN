@@ -131,39 +131,49 @@ bool post_ops_ok(brgemm_matmul_conf_t &bgmmc, const primitive_attr_t &attr,
     const auto &post_ops = attr.post_ops_;
     const auto ndims = dst_d.ndims();
 
-    bool is_binary_po_per_oc_sp_bcast {};
-    bool is_binary_po_per_oc_d_bcast {};
-    bool is_binary_po_channel_bcast {};
+    bool is_binary_po_scalar_bcast {};
+    bool is_binary_po_per_oc_bcast {};
     bool is_binary_po_per_mb_bcast {};
+    bool is_binary_po_per_mb_spatial_bcast {};
     bool is_binary_po_per_mb_w_bcast {};
     bool is_binary_po_per_w_bcast {};
-    bool is_binary_po_per_hw_bcast {};
     bool is_binary_po_batch_bcast {};
-    std::tie(is_binary_po_per_oc_sp_bcast, is_binary_po_per_oc_d_bcast,
-            is_binary_po_channel_bcast, is_binary_po_per_mb_bcast,
+    bool is_binary_po_no_bcast {};
+    bool is_binary_po_per_oc_sp_bcast {};
+    bool is_binary_po_per_oc_d_bcast {};
+    bool is_binary_po_per_hw_bcast {};
+    std::tie(is_binary_po_scalar_bcast, is_binary_po_per_oc_bcast,
+            is_binary_po_per_mb_bcast, is_binary_po_per_mb_spatial_bcast,
             is_binary_po_per_mb_w_bcast, is_binary_po_per_w_bcast,
-            is_binary_po_per_hw_bcast, is_binary_po_batch_bcast)
+            is_binary_po_batch_bcast, is_binary_po_no_bcast,
+            is_binary_po_per_oc_sp_bcast, is_binary_po_per_oc_d_bcast,
+            is_binary_po_per_hw_bcast)
             = binary_injector_utils::bcast_strategies_present_tup(
-                    post_ops.entry_, dst_d,
-                    broadcasting_strategy_t::per_oc_spatial,
-                    broadcasting_strategy_t::per_oc_d,
+                    post_ops.entry_, dst_d, broadcasting_strategy_t::scalar,
+                    broadcasting_strategy_t::per_oc,
                     broadcasting_strategy_t::per_mb,
                     broadcasting_strategy_t::per_mb_spatial,
                     broadcasting_strategy_t::per_mb_w,
-                    broadcasting_strategy_t::per_hw,
                     broadcasting_strategy_t::per_w,
-                    broadcasting_strategy_t::batch);
+                    broadcasting_strategy_t::batch,
+                    broadcasting_strategy_t::no_broadcast,
+                    broadcasting_strategy_t::per_oc_spatial,
+                    broadcasting_strategy_t::per_oc_d,
+                    broadcasting_strategy_t::per_hw);
+
     const bool supported_binary_bcast
             = IMPLICATION(is_binary_po_per_oc_sp_bcast, ndims < 4)
             && IMPLICATION(is_binary_po_per_oc_d_bcast, ndims == 4)
+            && IMPLICATION(is_binary_po_per_mb_spatial_bcast,
+                    utils::one_of(ndims, 3, 4, 5))
             && IMPLICATION(
-                    is_binary_po_channel_bcast, utils::one_of(ndims, 3, 4))
+                    is_binary_po_per_mb_w_bcast, utils::one_of(ndims, 3, 4, 5))
             && IMPLICATION(
-                    is_binary_po_per_mb_w_bcast, utils::one_of(ndims, 3, 4))
-            && IMPLICATION(is_binary_po_per_w_bcast, utils::one_of(ndims, 3, 4))
+                    is_binary_po_per_w_bcast, utils::one_of(ndims, 3, 4, 5))
             && IMPLICATION(
-                    is_binary_po_per_mb_bcast, utils::one_of(ndims, 3, 4))
-            && IMPLICATION(is_binary_po_batch_bcast, utils::one_of(ndims, 3, 4))
+                    is_binary_po_per_mb_bcast, utils::one_of(ndims, 3, 4, 5))
+            && IMPLICATION(
+                    is_binary_po_batch_bcast, utils::one_of(ndims, 3, 4, 5))
             && IMPLICATION(is_binary_po_per_hw_bcast, ndims == 4);
 
     const bcast_set_t default_bcast_set = {broadcasting_strategy_t::per_oc,
@@ -187,13 +197,13 @@ bool post_ops_ok(brgemm_matmul_conf_t &bgmmc, const primitive_attr_t &attr,
     accepted_post_ops.push_back(sum);
     accepted_post_ops.push_back(eltwise);
     if (!bgmmc.is_runtime_N) accepted_post_ops.push_back(binary);
-    return supported_binary_bcast
-            && injector::post_ops_ok(
-                    post_ops_ok_args_t(get_max_cpu_isa(), accepted_post_ops,
-                            post_ops, &dst_d, false /*sum_at_pos_0_only*/,
-                            false /*sum_requires_scale_one*/,
-                            false /*sum_requires_zp_zero*/,
-                            true /*sum_requires_same_params*/, bcast_set));
+    const bool injector_ok = injector::post_ops_ok(post_ops_ok_args_t(
+            get_max_cpu_isa(), accepted_post_ops, post_ops, &dst_d,
+            false /*sum_at_pos_0_only*/, false /*sum_requires_scale_one*/,
+            false /*sum_requires_zp_zero*/, true /*sum_requires_same_params*/,
+            bcast_set));
+
+    return supported_binary_bcast && injector_ok;
 }
 
 // Trivial: The motivation is to compute batch offset for a memory

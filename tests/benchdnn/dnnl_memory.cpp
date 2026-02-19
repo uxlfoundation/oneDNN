@@ -54,8 +54,8 @@ extern "C" dnnl_status_t dnnl_memory_desc_set_data_type(
         dnnl_memory_desc_t memory_desc, dnnl_data_type_t data_type);
 
 dnn_mem_t::dnn_mem_t(const_dnnl_memory_desc_t md, const engine_t &engine,
-        bool prefill, const handle_info_t &handle_info)
-    : engine_(engine), is_mapped_(false) {
+        bool prefill, const handle_info_t &handle_info, size_t alignment)
+    : engine_(engine), is_mapped_(false), alignment_(alignment) {
     if (query_md_ndims(md) > 0) {
         auto status = dnnl_memory_desc_clone(&md_, md);
         (void)status;
@@ -988,11 +988,10 @@ int dnn_mem_t::initialize_memory_create(const handle_info_t &handle_info) {
     if (is_cpu(engine_) && handle_info.is_allocate() && !is_sycl) {
         // Allocate memory for native runtime directly.
         is_data_owner_ = true;
-        const size_t alignment = 2 * 1024 * 1024;
 
         for (int i = 0; i < nhandles; i++) {
             size_t sz = dnnl_memory_desc_get_size_v2(md_, i);
-            data_.push_back(zmalloc(sz, alignment));
+            data_.push_back(zmalloc(sz, alignment_));
         }
         if (std::any_of(
                     data_.cbegin(), data_.cend(), [](void *p) { return !p; })) {

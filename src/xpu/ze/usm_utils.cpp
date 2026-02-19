@@ -37,6 +37,18 @@ status_t fill(impl::stream_t *stream, void *ptr, uint8_t pattern, size_t size) {
 
     return status::success;
 }
+
+status_t copy(impl::stream_t *stream, void *dst, const void *src, size_t size) {
+    if (size == 0) return status::success;
+
+    auto *ze_stream_impl
+            = utils::downcast<xpu::ze::stream_impl_t *>(stream->impl());
+
+    CHECK(ze::zeCommandListAppendMemoryCopy(
+            ze_stream_impl->list(), dst, src, size, nullptr, 0, nullptr));
+
+    return status::success;
+}
 } // namespace
 
 void *malloc_device(impl::engine_t *engine, size_t size) {
@@ -53,6 +65,11 @@ void free(impl::engine_t *engine, void *ptr) {
 status_t memset(impl::stream_t *stream, void *ptr, int value, size_t size) {
     uint8_t pattern = (uint8_t)value;
     return fill(stream, ptr, pattern, size);
+}
+
+status_t memcpy(
+        impl::stream_t *stream, void *dst, const void *src, size_t size) {
+    return copy(stream, dst, src, size);
 }
 
 } // namespace ze

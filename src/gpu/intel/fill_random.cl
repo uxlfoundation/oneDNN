@@ -17,20 +17,18 @@
 #define DT_UNDEF 1
 #include "gpu/intel/include/philox.h"
 
-// Fills a buffer with pseudo-random uint32 values using the Philox PRNG.
+// Fills a buffer with pseudo-random uint32 values using the Philox RNG.
 __kernel void fill_random(__global uint *buf, uint seed, uint byte_count) {
     uint gid = (uint)get_global_id(0);
-    uint offset = gid * 4;
-    if (offset >= byte_count) return;
-
     uint value = philox_4x32(gid, gid ^ seed) & 0xEEEEEEEEu;
-    uint tail = byte_count - offset;
 
-    if (tail >= 4) {
+    if (gid < (byte_count >> 2)) {
         buf[gid] = value;
     } else {
         __global uchar *p = (__global uchar *)(buf + gid);
-        for (uint i = 0; i < tail; i++)
-            p[i] = (uchar)(value >> (i * 8));
+        uint tail = byte_count & 3;
+        if (tail > 0) p[0] = (uchar)value;
+        if (tail > 1) p[1] = (uchar)(value >> 8);
+        if (tail > 2) p[2] = (uchar)(value >> 16);
     }
 }

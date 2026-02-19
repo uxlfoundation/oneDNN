@@ -36,7 +36,6 @@ status_t fill_random(impl::stream_t *stream, size_t size,
 
     std::call_once(flag, [&]() {
         compute::kernel_ctx_t ctx;
-        // ctx.define_int("SEED", seed);
         std::vector<compute::kernel_t> kernels;
         UNUSED_STATUS(
                 intel_engine->create_kernels(&kernels, {"fill_random"}, ctx));

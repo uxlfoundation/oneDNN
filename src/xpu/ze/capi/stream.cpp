@@ -30,16 +30,16 @@ status_t dnnl_ze_interop_stream_create(stream_t **stream, engine_t *engine,
             && engine->runtime_kind() == runtime_kind::ze;
     if (!args_ok) return status::invalid_arguments;
 
-    unsigned flags = stream_flags::default_flags;
-    if (profiling) {
-#ifdef DNNL_EXPERIMENTAL_PROFILING
-        flags |= stream_flags::profiling;
-#endif
-    }
+    unsigned flags;
+    CHECK(xpu::ze::stream_impl_t::init_flags(&flags, list, profiling));
 
     std::unique_ptr<stream_impl_t> stream_impl(
             new xpu::ze::stream_impl_t(flags, list));
     if (!stream_impl) return status::out_of_memory;
+
+    auto *ze_stream_impl
+            = utils::downcast<xpu::ze::stream_impl_t *>(stream_impl.get());
+    CHECK(ze_stream_impl->init());
 
     CHECK(engine->create_stream(stream, stream_impl.get()));
     stream_impl.release();

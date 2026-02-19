@@ -86,8 +86,10 @@ status_t engine_impl_t::init() {
 
 status_t engine_impl_t::create_stream_impl(
         impl::stream_impl_t **stream_impl, unsigned flags) const {
-    auto *si = new xpu::ze::stream_impl_t(flags, context_, device_);
+    auto *si = new xpu::ze::stream_impl_t(flags);
     if (!si) return status::out_of_memory;
+
+    CHECK(si->init(context_, device_));
 
     *stream_impl = si;
 

@@ -269,6 +269,10 @@ if(NOT DNNL_ENABLE_STACK_CHECKER)
         add_subdirectory(sycl)
     endif()
 
+    if(DNNL_GPU_RUNTIME STREQUAL "ZE")
+        add_subdirectory(ze)
+    endif()
+
     if(ONEDNN_BUILD_GRAPH)
         add_subdirectory(graph)
     endif()

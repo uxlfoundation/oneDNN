@@ -137,7 +137,7 @@ TEST_F(ocl_stream_test_c_t, BasicInteropC) {
     TEST_OCL_CHECK(clReleaseCommandQueue(interop_ocl_queue));
 }
 
-TEST_F(ocl_stream_test_cpp_t, BasicInteropC) {
+TEST_F(ocl_stream_test_cpp_t, BasicInteropCpp) {
     SKIP_IF(!find_ocl_device(CL_DEVICE_TYPE_GPU),
             "OpenCL GPU devices not found.");
 

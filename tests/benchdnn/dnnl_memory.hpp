@@ -32,6 +32,9 @@
 #define dnnl_mem_default_value 0xFF
 #define dnnl_mem_default_perf_test_value 0x3F
 
+static constexpr size_t dnnl_mem_default_alignment = 2u * 1024u * 1024u;
+static constexpr size_t dnnl_mem_page_size = 4096u;
+
 struct dnn_mem_t {
     struct handle_info_t {
         bool is_host_ptr;
@@ -46,7 +49,8 @@ struct dnn_mem_t {
 
     dnn_mem_t() { map(); }
     dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_engine_t engine, bool prefill,
-            const handle_info_t &handle_info = handle_info_t::allocate());
+            const handle_info_t &handle_info = handle_info_t::allocate(),
+            size_t alignment = dnnl_mem_default_alignment);
 
     dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_data_type_t dt,
             const std::string &tag, dnnl_engine_t engine, bool prefill);
@@ -230,6 +234,7 @@ private:
 
     mutable bool is_mapped_ = false;
     mutable std::vector<void *> mapped_ptrs_;
+    size_t alignment_ {dnnl_mem_default_alignment};
 
     int initialize_memory_create_sycl(const handle_info_t &handle_info);
     int initialize_memory_create_opencl(const handle_info_t &handle_info);

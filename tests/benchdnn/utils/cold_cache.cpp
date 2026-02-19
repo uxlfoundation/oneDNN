@@ -178,7 +178,8 @@ cold_cache_t::cold_cache_t(
             // Note: despite `gpu_n_buffers_top_limit_` is taken as a limit, it
             // applies for CPU as well to avoid numerous reorders.
             const bool prefill = n_mem_pool_buffers > gpu_n_buffers_top_limit_;
-            cc_entry[i] = dnn_mem_t(orig_cc_mem_md, get_test_engine(), prefill);
+            cc_entry[i] = dnn_mem_t(orig_cc_mem_md, get_test_engine(), prefill,
+                    dnn_mem_t::handle_info_t::allocate(), dnnl_mem_page_size);
 
             // Sparse memories require this call to replicate the exact original
             // data distribution because the data structure affects performance

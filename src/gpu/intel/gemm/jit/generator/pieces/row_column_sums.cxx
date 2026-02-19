@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -140,9 +140,12 @@ void Generator<hw>::accumulateSum(bool column,
                 hsMatch = (src.getHS() == 1) && (dst.getHS() == 1);
 
             if (!canSwizzle(hw, Tsrc) && ne > 1 && (srcBase.getOffset() != dstBase.getOffset() || !hsMatch)) {
-                if (temp.isInvalid()) temp = state.ra.alloc_range(2);
+                if (temp.isInvalid()) {
+                    temp = state.ra.alloc_range(2);
+                }
+                zeroMatrix(temp, strategy);
                 auto srcI = src;
-                int tmpHS = std::max<int>(1, (blockDst->crosspack * Tdst) / Tsrc);
+                int tmpHS = std::max<int>(1, ((blockDst->crosspack * Tdst) / Tsrc) / reduce);
                 if (Tsrc == Type::bf16 && Tdst == Type::f32)
                     tmpHS = blockDst->crosspack;
                 auto tmpBase = temp[0].sub(dst.getByteOffset() / Tsrc.real(), src.getType());
@@ -150,7 +153,7 @@ void Generator<hw>::accumulateSum(bool column,
                 auto tmpI = tmp;
                 moveToIntPipe(ne, srcI);
                 moveToIntPipe(ne, tmpI);
-                mov(ne, tmpI, srcI);
+                mov(ne * reduce, tmpI, srcI);
                 src = tmp;
                 srcBase = tmpBase;
             }
@@ -189,7 +192,10 @@ void Generator<hw>::accumulateSum(bool column,
                     }
                 }
             } else
-                eadd(ne, dst, dst, src, strategy, state);
+                if (one_of(src.getType(), DataType::u8, DataType::s8))
+                    eadd(ne, dst, src, dst, strategy, state);
+                else
+                    eadd(ne, dst, dst, src, strategy, state);
 
             x += ne * reduce;
         }

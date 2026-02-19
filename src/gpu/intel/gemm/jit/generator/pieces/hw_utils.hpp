@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -46,6 +46,9 @@ static inline bool canSwizzle(ngen::HW hw, ngen::DataType dt)
     using namespace ngen;
 
     if (hw < HW::XeHP) return true;
+#if XE3P
+    if (hw >= HW::XE3P_35_10) return false;
+#endif
 
     switch (dt) {
         case DataType::b:

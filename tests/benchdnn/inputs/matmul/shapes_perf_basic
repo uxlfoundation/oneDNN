@@ -1,0 +1,17 @@
+# Deep Seek R1
+128x256x1536:128x1536x512_n"deepseek_r1_1*61"
+256x7168:7168x36864_n"deepseek_r1_17*3"
+32768x512:512x1536_n"deepseek_r1_3*61"
+
+# DLRM v2
+32768x13:13x512_n"dlrm_v2:gemm0*1"
+32768x256:256x128_n"dlrm_v2:gemm2*1"
+
+# BERT Large
+21504x1024:1024x1024_n"BERT-L:Encoder_MM_1*96"
+56x16x384x384:56x16x384x64_n"BERT-L:Encoder_MM_5*24"
+
+# Stable Diffusion
+10x9216x64:10x64x77_n"stable_diffusion:mm1*5"
+1152x1280:1280x1280_n"stable_diffusion:mm6*78"
+18432x1280:1280x320_n"stable_diffusion:mm13*10"

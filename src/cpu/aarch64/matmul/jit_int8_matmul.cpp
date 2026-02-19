@@ -321,7 +321,8 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
                             && a_off_bytes <= 1008) {
                         ldp(QReg(0), QReg(31), ptr(reg_aux_a, a_off_bytes));
                     } else {
-                        add_imm(X_DEFAULT_ADDR, reg_aux_a, a_off_bytes, X_TMP_0);
+                        add_imm(X_DEFAULT_ADDR, reg_aux_a, a_off_bytes,
+                                X_TMP_0);
                         ldp(QReg(0), QReg(31), ptr(X_DEFAULT_ADDR));
                     }
                     ao += 2 * a_inc;
@@ -343,7 +344,8 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
                     if (cpu_isa_traits<isa>::vlen == 16) {
                         ldr(QReg(0), ptr(reg_aux_a, a_off_bytes));
                     } else {
-                        add_imm(X_DEFAULT_ADDR, reg_aux_a, a_off_bytes, X_TMP_0);
+                        add_imm(X_DEFAULT_ADDR, reg_aux_a, a_off_bytes,
+                                X_TMP_0);
                         ld1rqb(z0.b, P_ALL_ONE, ptr(X_DEFAULT_ADDR));
                     }
                     ao += a_inc;
@@ -668,16 +670,19 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
         m = brg_.K % (brg_.k_blk * brg_.rd_block);
         k_tail_blk = m / brg_.k_blk;
         k_residual_blk = m % brg_.k_blk;
-        ldb = (brg_.is_n_tail) ? div_up(brg_.n_tail, brg_.n_blk) : brg_.ld_block;
+        ldb = (brg_.is_n_tail) ? div_up(brg_.n_tail, brg_.n_blk)
+                               : brg_.ld_block;
         bdb = (brg_.is_m_tail) ? div_up(brg_.m_tail, 2) : brg_.bd_block / 2;
         rdb = (brg_.is_k_tail) ? div_up(brg_.k_tail, brg_.k_blk) : 4;
 
-        const int pred_zp_b_tl = (n_cols % sv_len == 0) ? sv_len : n_cols % sv_len;
+        const int pred_zp_b_tl
+                = (n_cols % sv_len == 0) ? sv_len : n_cols % sv_len;
         set_preg(prd_8.b, sv_len, X_TMP_0, X_TMP_1);
         set_preg(prd_zp_b_tl.b, pred_zp_b_tl, X_TMP_0, X_TMP_1);
 
         if (brg_.is_n_tail) {
-            pred_b = (brg_.n_tail % sv_len == 0) ? sv_len : (brg_.n_tail % sv_len);
+            pred_b = (brg_.n_tail % sv_len == 0) ? sv_len
+                                                 : (brg_.n_tail % sv_len);
             if (brg_.n_tail % brg_.n_blk == 0) {
                 pred_st = (brg_.n_tail % (brg_.n_blk * 2) == 0) ? sv_len
                                                                 : sv_len / 2;
@@ -1031,7 +1036,8 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
                 VCHECK_BG(memory_desc_init_by_tag(weights_md_, b_tag_4d),
                         VERBOSE_UNSUPPORTED_TAG);
             } else {
-                VCHECK_BG(memory_desc_init_by_tag(weights_md_, format_tag::abcd),
+                VCHECK_BG(
+                        memory_desc_init_by_tag(weights_md_, format_tag::abcd),
                         VERBOSE_UNSUPPORTED_TAG);
             }
             if (src_d.dims()[0] != weights_d.dims()[0]

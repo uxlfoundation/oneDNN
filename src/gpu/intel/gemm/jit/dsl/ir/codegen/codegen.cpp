@@ -368,7 +368,8 @@ public:
 
 private:
     bool is_header(const expr_t &buf) const {
-        return buf.as<var_t>().name.find("h_") == 0;
+        auto &name = buf.as<var_t>().name;
+        return name == "h" || name.find("h_") == 0;
     }
 
     // Allocates headers using heuristics to reduce back-to-back header reuse -

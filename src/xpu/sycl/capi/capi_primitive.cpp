@@ -41,6 +41,12 @@ status_t dnnl_sycl_interop_primitive_execute(
             = utils::downcast<dnnl::impl::xpu::sycl::stream_impl_t *>(
                     stream->impl());
 
+    // Check arguments.
+    exec_args_t exec_args;
+    CHECK(cvt_primitive_args(
+            primitive_iface->pd()->impl().get(), nargs, args, exec_args));
+
+    // Note: there should be no fast exit between hooks.
     stream->before_exec_hook();
 
     if (deps_ != nullptr) {
@@ -50,19 +56,15 @@ status_t dnnl_sycl_interop_primitive_execute(
     }
 
     // run primitive
-    exec_args_t exec_args;
-    CHECK(cvt_primitive_args(
-            primitive_iface->pd()->impl().get(), nargs, args, exec_args));
-
     exec_ctx_t ctx(stream, std::move(exec_args));
-    CHECK(primitive_execute(primitive_iface, ctx));
+    auto status = primitive_execute(primitive_iface, ctx);
 
     // return output event
-    ::sycl::event return_event = sycl_stream_impl->get_output_event();
-    if (return_event_ != nullptr)
-        *(::sycl::event *)return_event_ = return_event;
+    if (return_event_ != nullptr && status == status::success) {
+        *(::sycl::event *)return_event_ = sycl_stream_impl->get_output_event();
+    }
 
     stream->after_exec_hook();
 
-    return status::success;
+    return status;
 }

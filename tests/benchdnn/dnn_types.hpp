@@ -591,6 +591,10 @@ struct sparse_options_t {
     static constexpr float def_sparsity = 0.9f;
 
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    // Buffer indices for multi-handle grouped memory
+    static constexpr int grouped_values_idx = 0;
+    static constexpr int grouped_offsets_idx = 1;
+
     struct grouped_data_t {
         int variable_dim_idx
                 = -1; // index of the dimension with variable size (0 for M)

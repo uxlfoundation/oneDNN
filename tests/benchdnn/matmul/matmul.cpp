@@ -35,10 +35,6 @@
 namespace matmul {
 
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
-// Buffer indices for multi-handle grouped memory
-constexpr int GROUPED_VALUES_IDX = 0;
-constexpr int GROUPED_OFFSETS_IDX = 1;
-
 // Helper to create grouped memory descriptor
 //
 // Current input format for grouped matmul is:
@@ -426,7 +422,7 @@ static int fill_grouped_offsets(
             return FAIL;
         }
         cumulative += group_sizes[g];
-        mem.set_elem(g, static_cast<int32_t>(cumulative), GROUPED_OFFSETS_IDX);
+        mem.set_elem(g, static_cast<int32_t>(cumulative), sparse_options_t::grouped_offsets_idx);
     }
     total_size = cumulative;
     return OK;
@@ -479,7 +475,7 @@ static int fill_grouped_data(data_kind_t kind, const prb_t *prb,
                 val = gen(int_seed);
             mem_dt.set_elem(0,
                     round_to_nearest_representable(cfg.get_dt(kind), val),
-                    GROUPED_VALUES_IDX);
+                    sparse_options_t::grouped_values_idx);
             idx_start = 1;
         }
 
@@ -487,14 +483,14 @@ static int fill_grouped_data(data_kind_t kind, const prb_t *prb,
             float val = gen(int_seed);
             mem_dt.set_elem(i,
                     round_to_nearest_representable(cfg.get_dt(kind), val),
-                    GROUPED_VALUES_IDX);
+                    sparse_options_t::grouped_values_idx);
         }
     });
 
     // Copy values to fp memory for reference computation
     benchdnn_parallel_nd(mem_fp.nelems(), [&](int64_t i) {
         mem_fp.set_f32_elem(
-                i, mem_dt.get_elem(i, GROUPED_VALUES_IDX));
+                i, mem_dt.get_elem(i, sparse_options_t::grouped_values_idx));
     });
 
     return OK;

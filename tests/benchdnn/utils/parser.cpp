@@ -1385,7 +1385,8 @@ static bool parse_memory_kind(
     bool parsed = parse_single_value_option(memory_kind, default_memory_kind,
             str2memory_kind, str, option_name, help);
 
-#if !defined(DNNL_WITH_SYCL) && DNNL_GPU_RUNTIME != DNNL_RUNTIME_OCL
+#if !defined(DNNL_WITH_SYCL) && DNNL_GPU_RUNTIME != DNNL_RUNTIME_OCL \
+        && DNNL_GPU_RUNTIME != DNNL_RUNTIME_ZE
     if (parsed) {
         fprintf(stderr,
                 "ERROR: option `--%s` is supported with DPC++ and OpenCL "
@@ -1546,7 +1547,8 @@ static bool parse_stream_kind(
     bool parsed = parse_single_value_option(stream_kind, default_stream_kind,
             str2stream_kind, str, option_name, help);
 
-#if !defined(DNNL_WITH_SYCL) && DNNL_GPU_RUNTIME != DNNL_RUNTIME_OCL
+#if !defined(DNNL_WITH_SYCL) && DNNL_GPU_RUNTIME != DNNL_RUNTIME_OCL \
+        && DNNL_GPU_RUNTIME != DNNL_RUNTIME_ZE
     if (parsed) {
         BENCHDNN_PRINT(0,
                 "Error: option `--%s` is supported with DPC++ and OpenCL "

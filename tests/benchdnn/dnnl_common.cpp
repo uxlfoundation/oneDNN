@@ -32,6 +32,9 @@
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_DPCPP
 #include "oneapi/dnnl/dnnl_sycl.hpp"
 #endif
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+#include "oneapi/dnnl/dnnl_ze.hpp"
+#endif
 
 #if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
 #include "oneapi/dnnl/dnnl_threadpool.h"
@@ -84,6 +87,11 @@ bool is_sycl_engine(const dnnl_engine_t &engine) {
 
 bool is_opencl_engine(const dnnl_engine_t &engine) {
     if (is_gpu(engine)) return DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL;
+    return false;
+}
+
+bool is_ze_engine(const dnnl_engine_t &engine) {
+    if (is_gpu(engine)) return DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE;
     return false;
 }
 
@@ -582,7 +590,8 @@ int run_execution(perf_function_t &exec_func, const dnnl_engine_t &engine,
 
 void reset_gpu_profiling(dnnl_stream_t stream) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL \
-        || DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
+        || DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL \
+        || DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
     DNN_SAFE_V(dnnl_reset_profiling(stream));
 #endif
 }
@@ -590,7 +599,8 @@ void reset_gpu_profiling(dnnl_stream_t stream) {
 int get_gpu_profiling_info(dnnl_stream_t stream, std::vector<uint64_t> &nsecs,
         std::vector<uint64_t> &cycles, int expected_num_entries) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL \
-        || DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
+        || DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL \
+        || DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
     dnnl_profiling_data_kind_t undef_kind {};
     dnnl_profiling_data_kind_t time_kind {};
 
@@ -633,7 +643,8 @@ int get_gpu_profiling_info(dnnl_stream_t stream, std::vector<uint64_t> &nsecs,
 
 void notify_gpu_profiling_complete(dnnl_stream_t stream) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL \
-        || DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
+        || DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL \
+        || DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
     DNN_SAFE_V(dnnl_impl_notify_profiling_complete(stream));
 #endif
 }
@@ -1143,6 +1154,35 @@ int get_gpu_ram_sizes(size_t &ram_size, size_t &max_alloc_size) {
             = (size_t)sycl_dev
                       .get_info<::sycl::info::device::max_mem_alloc_size>();
     return OK;
+#elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+    auto eng = dnnl::engine(get_test_engine(), true);
+    auto ze_dev = dnnl::ze_interop::get_device(eng);
+
+    ze_result_t status = ZE_RESULT_SUCCESS;
+
+    uint32_t count = 0;
+    status = zeDeviceGetMemoryProperties(ze_dev, &count, nullptr);
+    if (status != ZE_RESULT_SUCCESS) return FAIL;
+    if (count > 1) {
+        assert(!"Found more than a single entry for memory.");
+        return FAIL;
+    }
+
+    ze_device_memory_properties_t ze_dev_mem_props {};
+    ze_dev_mem_props.stype = ZE_STRUCTURE_TYPE_DEVICE_MEMORY_PROPERTIES;
+    status = zeDeviceGetMemoryProperties(ze_dev, &count, &ze_dev_mem_props);
+    if (status != ZE_RESULT_SUCCESS) return FAIL;
+
+    ram_size = (size_t)ze_dev_mem_props.totalSize;
+
+    ze_device_properties_t ze_dev_props {};
+    ze_dev_props.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES;
+    ze_dev_props.pNext = nullptr;
+    status = zeDeviceGetProperties(ze_dev, &ze_dev_props);
+    if (status != ZE_RESULT_SUCCESS) return FAIL;
+
+    max_alloc_size = (size_t)ze_dev_props.maxMemAllocSize;
+    return OK;
 #else
     assert(!"unsupported GPU runtime");
 #endif
@@ -1192,6 +1232,30 @@ int get_gpu_cache_size(size_t &cache_size) {
     _cache_size
             = (size_t)sycl_dev
                       .get_info<::sycl::info::device::global_mem_cache_size>();
+#elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+    auto eng = dnnl::engine(get_test_engine(), true);
+    auto ze_dev = dnnl::ze_interop::get_device(eng);
+
+    ze_result_t status = ZE_RESULT_SUCCESS;
+
+    uint32_t count = 0;
+    status = zeDeviceGetCacheProperties(ze_dev, &count, nullptr);
+    if (status != ZE_RESULT_SUCCESS) return FAIL;
+
+    std::vector<ze_device_cache_properties_t> ze_cache_props(count);
+    for (auto &e : ze_cache_props) {
+        e.stype = ZE_STRUCTURE_TYPE_DEVICE_CACHE_PROPERTIES;
+    }
+
+    status = zeDeviceGetCacheProperties(ze_dev, &count, ze_cache_props.data());
+    if (status != ZE_RESULT_SUCCESS) return FAIL;
+
+    for (uint32_t i = 0; i < count; i++) {
+        if (ze_cache_props[i].flags == 0) {
+            _cache_size = ze_cache_props[i].cacheSize;
+            break;
+        }
+    }
 #else
     assert(!"unsupported GPU runtime");
 #endif
@@ -1750,6 +1814,14 @@ engine_t::engine_t(const engine_t &other) : is_owner_(other.is_owner_) {
         DNN_SAFE_V(dnnl_sycl_interop_engine_get_device(other.engine_, &dev));
         DNN_SAFE_V(dnnl_sycl_interop_engine_get_context(other.engine_, &ctx));
         DNN_SAFE_V(dnnl_sycl_interop_engine_create(&engine_, dev, ctx));
+#elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+        ze_driver_handle_t drv;
+        ze_device_handle_t dev;
+        ze_context_handle_t ctx;
+        DNN_SAFE_V(dnnl_ze_interop_engine_get_driver(other.engine_, &drv));
+        DNN_SAFE_V(dnnl_ze_interop_engine_get_device(other.engine_, &dev));
+        DNN_SAFE_V(dnnl_ze_interop_engine_get_context(other.engine_, &ctx));
+        DNN_SAFE_V(dnnl_ze_interop_engine_create(&engine_, drv, dev, ctx));
 #else
         assert(!"unsupported GPU runtime");
 #endif

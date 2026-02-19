@@ -40,6 +40,12 @@ status_t dnnl_ze_interop_primitive_execute(
     auto *ze_stream_impl
             = utils::downcast<xpu::ze::stream_impl_t *>(stream->impl());
 
+    // Check arguments.
+    exec_args_t exec_args;
+    CHECK(cvt_primitive_args(
+            primitive_iface->pd()->impl().get(), nargs, args, exec_args));
+
+    // Note: there should be no fast exit between hooks.
     stream->before_exec_hook();
 
     if (deps != nullptr) {
@@ -50,15 +56,11 @@ status_t dnnl_ze_interop_primitive_execute(
     }
 
     // run primitive
-    exec_args_t exec_args;
-    CHECK(cvt_primitive_args(
-            primitive_iface->pd()->impl().get(), nargs, args, exec_args));
-
     exec_ctx_t ctx(stream, std::move(exec_args));
-    CHECK(primitive_execute(primitive_iface, ctx));
+    auto status = primitive_execute(primitive_iface, ctx);
 
     // return output event
-    if (return_event != nullptr) {
+    if (return_event != nullptr && status == status::success) {
         if (ze_stream_impl->flags() & stream_flags::in_order) {
             *return_event = nullptr;
         } else {
@@ -68,5 +70,5 @@ status_t dnnl_ze_interop_primitive_execute(
 
     stream->after_exec_hook();
 
-    return status::success;
+    return status;
 }

@@ -27,28 +27,37 @@ namespace ze {
 
 status_t stream_t::create_stream(impl::stream_t **stream,
         impl::engine_t *engine, impl::stream_impl_t *stream_impl) {
-    std::unique_ptr<intel::ze::stream_t> s(
-            new intel::ze::stream_t(engine, stream_impl));
+    std::unique_ptr<intel::ze::stream_t> s(new stream_t(engine, stream_impl));
     if (!s) return status::out_of_memory;
+
+    status_t status = s->init();
+    if (status != status::success) {
+        // Stream owns stream_impl only if it's created successfully
+        // (including initialization).
+        s->impl_.release();
+        return status;
+    }
 
     *stream = s.release();
 
     return status::success;
 }
 
-stream_t::stream_t(impl::engine_t *engine, impl::stream_impl_t *stream_impl)
-    : gpu::intel::stream_t(engine, stream_impl) {
+status_t stream_t::init() {
     if (is_profiling_enabled()) {
-        ze_device_properties_t device_properties = {};
+        ze_device_properties_t device_properties {};
         device_properties.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES_1_2;
+        CHECK(xpu::ze::zeDeviceGetProperties(
+                utils::downcast<engine_t *>(engine())->device(),
+                &device_properties));
 
-        xpu::ze::zeDeviceGetProperties(
-                utils::downcast<engine_t *>(engine)->device(),
-                &device_properties);
+        uint64_t max_timestamp_value
+                = (1ULL << device_properties.kernelTimestampValidBits) - 1;
         profiler_ = utils::make_unique<xpu::ze::stream_profiler_t>(this,
-                1e9 / device_properties.timerResolution,
-                ~(-1L << device_properties.kernelTimestampValidBits));
+                1e9 / device_properties.timerResolution, max_timestamp_value);
     }
+
+    return status::success;
 }
 
 void stream_t::before_exec_hook() {

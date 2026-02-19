@@ -22,46 +22,46 @@ namespace impl {
 namespace xpu {
 namespace ze {
 
-stream_impl_t::stream_impl_t(unsigned flags, ze_command_list_handle_t list)
-    : impl::stream_impl_t(flags), list_(list, /* owner = */ false) {
-    ze::zeCommandListGetContextHandle(list_, &context_);
-    if (flags & stream_flags::out_of_order || is_profiling_enabled())
-        create_event_pool();
-}
+status_t stream_impl_t::init(
+        ze_context_handle_t context, ze_device_handle_t device) {
+    if (!list_) {
+        assert(context && device);
 
-stream_impl_t::stream_impl_t(
-        unsigned flags, ze_context_handle_t context, ze_device_handle_t device)
-    : impl::stream_impl_t(flags), context_(context) {
-    ze_command_queue_desc_t command_queue_desc = {};
-    command_queue_desc.stype = ZE_STRUCTURE_TYPE_COMMAND_QUEUE_DESC;
-    command_queue_desc.pNext = nullptr;
-    command_queue_desc.ordinal = 0;
-    command_queue_desc.index = 0;
-    command_queue_desc.flags = ZE_COMMAND_QUEUE_FLAG_IN_ORDER;
-    command_queue_desc.mode = ZE_COMMAND_QUEUE_MODE_DEFAULT;
-    command_queue_desc.priority = ZE_COMMAND_QUEUE_PRIORITY_NORMAL;
+        ze_command_queue_desc_t command_queue_desc {};
+        command_queue_desc.stype = ZE_STRUCTURE_TYPE_COMMAND_QUEUE_DESC;
+        command_queue_desc.ordinal = 0;
+        command_queue_desc.index = 0;
+        command_queue_desc.flags = ZE_COMMAND_QUEUE_FLAG_IN_ORDER;
+        command_queue_desc.mode = ZE_COMMAND_QUEUE_MODE_DEFAULT;
+        command_queue_desc.priority = ZE_COMMAND_QUEUE_PRIORITY_NORMAL;
 
-    auto st = ze::zeCommandListCreateImmediate(
-            context_, device, &command_queue_desc, &list_.unwrap());
-    if (st != status::success) return;
+        CHECK(ze::zeCommandListCreateImmediate(
+                context, device, &command_queue_desc, &list_.unwrap()));
+    } else {
+        CHECK(ze::zeCommandListGetContextHandle(list_, &context));
+    }
 
-    if (flags & stream_flags::out_of_order || is_profiling_enabled())
-        create_event_pool();
-}
+    if ((flags() & stream_flags::out_of_order) && is_profiling_enabled()) {
+        VERROR(common, ze,
+                "Level Zero kernel profiling is not supported with "
+                "out-of-order queues");
+        return status::invalid_arguments;
+    } else if ((flags() & stream_flags::out_of_order)
+            || is_profiling_enabled()) {
+        ze_event_pool_desc_t event_pool_desc {};
+        event_pool_desc.stype = ZE_STRUCTURE_TYPE_EVENT_POOL_DESC;
+        event_pool_desc.flags = ZE_EVENT_POOL_FLAG_HOST_VISIBLE;
+        if (is_profiling_enabled())
+            event_pool_desc.flags |= ZE_EVENT_POOL_FLAG_KERNEL_TIMESTAMP;
+        // Note: 16K number is taken randomly as big enough to fit mode=F perf
+        // validation or a single model profiling.
+        event_pool_desc.count = 16 * 1024;
 
-void stream_impl_t::create_event_pool() {
-    ze_event_pool_desc_t event_pool_desc = {};
-    event_pool_desc.stype = ZE_STRUCTURE_TYPE_EVENT_POOL_DESC;
-    event_pool_desc.pNext = nullptr;
-    event_pool_desc.flags = ZE_EVENT_POOL_FLAG_HOST_VISIBLE;
-    if (is_profiling_enabled())
-        event_pool_desc.flags |= ZE_EVENT_POOL_FLAG_KERNEL_TIMESTAMP;
-    // Note: 16K number is taken randomly as big enough to fit mode=F perf
-    // validation or a single model profiling.
-    event_pool_desc.count = 16 * 1024;
+        CHECK(ze::zeEventPoolCreate(
+                context, &event_pool_desc, 0, nullptr, &event_pool_.unwrap()));
+    }
 
-    ze::zeEventPoolCreate(
-            context_, &event_pool_desc, 0, nullptr, &event_pool_.unwrap());
+    return status::success;
 }
 
 const xpu::ze::context_t &stream_impl_t::ze_ctx() const {
@@ -117,6 +117,25 @@ status_t stream_impl_t::wait() {
 
 status_t stream_impl_t::barrier() {
     CHECK(ze::zeCommandListAppendBarrier(list_, nullptr, 0, nullptr));
+
+    return status::success;
+}
+
+status_t stream_impl_t::init_flags(
+        unsigned *flags, ze_command_list_handle_t list, bool profiling) {
+    *flags = 0;
+    // Note: determininig if the passed list is in-order/out-of-order is
+    // impossible with ze API.
+    // TODO: add whenever such API appears.
+    *flags |= stream_flags::in_order;
+
+    // Note: ze_command_list_handle_t doesn't have a property of being profiled,
+    // it's indicated by the user directly.
+    if (profiling) {
+#ifdef DNNL_EXPERIMENTAL_PROFILING
+        *flags |= stream_flags::profiling;
+#endif
+    }
 
     return status::success;
 }

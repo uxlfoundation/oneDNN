@@ -47,6 +47,10 @@
 #include "dnnl_test_common_ocl.hpp"
 #endif
 
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+#include "dnnl_test_common_ze.hpp"
+#endif
+
 #ifdef DNNL_WITH_SYCL
 #include "oneapi/dnnl/dnnl_sycl.hpp"
 #endif

@@ -21,10 +21,6 @@
 
 #include "oneapi/dnnl/dnnl.h"
 
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_DPCPP
-#include "oneapi/dnnl/dnnl_sycl.h"
-#endif
-
 #include "common.hpp"
 #include "utils/dims.hpp"
 #include "utils/wrapper.hpp"
@@ -233,6 +229,7 @@ private:
 
     int initialize_memory_create_sycl(const handle_info_t &handle_info);
     int initialize_memory_create_opencl(const handle_info_t &handle_info);
+    int initialize_memory_create_ze(const handle_info_t &handle_info);
     int initialize_memory_create(const handle_info_t &handle_info);
 
     // `prefill` is a flag that controls whether the underlying memory buffer

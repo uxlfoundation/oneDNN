@@ -33,8 +33,19 @@ status_t fill_random(impl::stream_t *stream, size_t size,
 
     auto *intel_stream = utils::downcast<intel::stream_t *>(stream);
     auto *intel_engine = utils::downcast<intel::engine_t *>(stream->engine());
+
+    const uint32_t block_size = 128u;
+    const uint32_t simd_width = 16u;
+    const uint32_t simd_iters = block_size / simd_width;
+
     std::call_once(flag, [&]() {
         compute::kernel_ctx_t ctx;
+        ctx.define_int("BLOCK_SIZE", block_size);
+        ctx.define_int("SIMD_WIDTH", simd_width);
+        ctx.define_int("ITERS", simd_iters);
+        ctx.define_int("SEED", seed);
+        ctx.add_option("-DDT=uint" + std::to_string(simd_width));
+        ctx.add_option("-DSIMD_STORE=vstore" + std::to_string(simd_width));
         std::vector<compute::kernel_t> kernels;
         UNUSED_STATUS(
                 intel_engine->create_kernels(&kernels, {"fill_random"}, ctx));
@@ -44,12 +55,13 @@ status_t fill_random(impl::stream_t *stream, size_t size,
     const uint32_t count = static_cast<uint32_t>(size / sizeof(uint32_t));
     if (count == 0) return status::success;
 
-    compute::range_t gws = {count, 1, 1};
+    const uint32_t num_work_items = count / block_size;
+    if (num_work_items == 0) return status::success;
+
+    compute::range_t gws = {num_work_items, 1, 1};
     compute::nd_range_t nd_range(gws);
     compute::kernel_arg_list_t arg_list;
     arg_list.set(0, *memory->memory_storage(buffer_index));
-    arg_list.set(1, seed);
-    arg_list.set(2, count);
 
     CHECK(kernel.parallel_for(*stream, nd_range, arg_list,
             intel_stream->ctx().get_deps(), intel_stream->ctx().get_deps()));

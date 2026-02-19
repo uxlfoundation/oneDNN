@@ -15,19 +15,23 @@
 *******************************************************************************/
 
 // Fills a buffer with pseudo-random uint32 values using lowbias32 hash
-// (Chris Wellons). Each work-item produces one uint32 from its global ID
-// XORed with a caller-provided seed.The mask 0xEEEEEEEE clears bit 0 and bit 4
-// of every byte, which breaks all-ones exponent for every supported FP format.
-__kernel void fill_random(__global uint *buf, uint seed, uint count) {
-    uint gid = get_global_id(0);
-    if (gid >= count) return;
+// (Chris Wellons). Each thread produces BLOCK_SIZE uint32 values using SIMD.
+__kernel void fill_random(__global uint *buf) {
+    uint i, start_id = (uint)(get_global_id(0) * BLOCK_SIZE);
 
-    uint h = gid ^ seed;
-    h ^= h >> 16;
-    h *= 0x7FEB352Du;
-    h ^= h >> 15;
-    h *= 0x846CA68Bu;
-    h ^= h >> 16;
-    h &= 0xEEEEEEEEu;
-    buf[gid] = h;
+    DT idx = (DT)(0);
+#pragma unroll SIMD_WIDTH
+    for (i = 0; i < SIMD_WIDTH; i++) {
+        idx[i] = start_id + i;
+    }
+
+#pragma unroll ITERS
+    for (i = 0; i < ITERS; ++i) {
+        DT v = (idx ^ (DT)SEED);
+        v = (v ^ (v >> 16)) * (DT)0x7FEB352Du;
+        v = (v ^ (v >> 15)) * (DT)0x846CA68Bu;
+        v = (v ^ (v >> 16)) & (DT)0xEEEEEEEEu;
+        SIMD_STORE(v, 0, buf + start_id + (i * SIMD_WIDTH));
+        idx += SIMD_WIDTH;
+    }
 }

@@ -72,9 +72,9 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
     problem.Tb = problem.Tb_ext;
 
     problem.A.setAlignment(
-            alignmentForLD(static_cast<int>(pd()->K()) / problem.Ta_ext));
+            alignmentForLD(static_cast<int>(pd()->K()) * problem.Ta_ext));
     problem.B.setAlignment(
-            alignmentForLD(static_cast<int>(pd()->N()) / problem.Tb_ext));
+            alignmentForLD(static_cast<int>(pd()->N()) * problem.Tb_ext));
     problem.C.setAlignment(problem.Tc.size());
 
     problem.A.layout = convert_dnnl_to_kernel_layout(wei_mdw.md_);
@@ -82,10 +82,12 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
     problem.C.layout = MatrixLayout::N;
 
     GEMMOptions opts;
-    opts.scaleA = !pd()->attr()->scales_.has_default_values(DNNL_ARG_WEIGHTS);
+    opts.scaleA = !pd()->attr()->scales_.has_default_values(DNNL_ARG_WEIGHTS)
+            && pd()->wei_group_sizes_[1] != pd()->K();
     opts.offsetA
             = !pd()->attr()->zero_points_.has_default_values(DNNL_ARG_WEIGHTS);
-    opts.scaleB = !pd()->attr()->scales_.has_default_values(DNNL_ARG_SRC);
+    opts.scaleB = !pd()->attr()->scales_.has_default_values(DNNL_ARG_SRC)
+            && pd()->src_group_sizes_[1] != pd()->K();
     opts.offsetB = !pd()->attr()->zero_points_.has_default_values(DNNL_ARG_SRC);
     opts.slmPtr = true;
     opts.kParallelLocal = true;
@@ -330,29 +332,29 @@ status_t grouped_micro_gemm_t::init(impl::engine_t *engine) {
     def_data_type(kernel_ctx_, wei_dt, "WEI");
     def_data_type(kernel_ctx_, dst_dt, "DST");
 
-    kernel_ctx_.define_int("WITH_SRC_ATTR_SCALES",
+    kernel_ctx_.define_int("WITH_SRC_SCALES",
             !pd()->attr()->scales_.has_default_values(DNNL_ARG_SRC));
-    kernel_ctx_.define_int("WITH_WEI_ATTR_SCALES",
+    kernel_ctx_.define_int("WITH_WEI_SCALES",
             !pd()->attr()->scales_.has_default_values(DNNL_ARG_WEIGHTS));
-    kernel_ctx_.define_int("WITH_SRC_ATTR_ZP",
+    kernel_ctx_.define_int("WITH_SRC_ZP",
             !pd()->attr()->zero_points_.has_default_values(DNNL_ARG_SRC));
-    kernel_ctx_.define_int("WITH_WEI_ATTR_ZP",
+    kernel_ctx_.define_int("WITH_WEI_ZP",
             !pd()->attr()->zero_points_.has_default_values(DNNL_ARG_WEIGHTS));
     def_data_type(kernel_ctx_,
             pd()->attr()->scales_.get(DNNL_ARG_SRC).get_data_type(),
-            "SRC_ATTR_SCALES");
+            "SRC_SCALES");
 
     def_data_type(kernel_ctx_,
             pd()->attr()->scales_.get(DNNL_ARG_WEIGHTS).get_data_type(),
-            "WEI_ATTR_SCALES");
+            "WEI_SCALES");
 
     def_data_type(kernel_ctx_,
             pd()->attr()->zero_points_.get(DNNL_ARG_SRC).get_data_type(),
-            "SRC_ATTR_ZP");
+            "SRC_ZP");
 
     def_data_type(kernel_ctx_,
             pd()->attr()->zero_points_.get(DNNL_ARG_WEIGHTS).get_data_type(),
-            "WEI_ATTR_ZP");
+            "WEI_ZP");
     if (!pd()->attr()->scales_.has_default_values(DNNL_ARG_SRC)
             || !pd()->attr()->zero_points_.has_default_values(DNNL_ARG_SRC)) {
         kernel_ctx_.define_int("SRC_GROUP_SIZE", pd()->src_group_sizes_[1]);
@@ -362,6 +364,13 @@ status_t grouped_micro_gemm_t::init(impl::engine_t *engine) {
                     DNNL_ARG_WEIGHTS)) {
         kernel_ctx_.define_int("WEI_GROUP_SIZE", pd()->wei_group_sizes_[1]);
     }
+
+    kernel_ctx_.define_int("SRC_SCALES_GROUPED",
+            !pd()->attr()->scales_.has_default_values(DNNL_ARG_SRC)
+                    && pd()->src_group_sizes_[1] != pd()->K());
+    kernel_ctx_.define_int("WEI_SCALES_GROUPED",
+            !pd()->attr()->scales_.has_default_values(DNNL_ARG_WEIGHTS)
+                    && pd()->wei_group_sizes_[1] != pd()->K());
     kernel_ctx_.define_int(
             "SRC_ELEMS_PER_BYTE", types::bytes_to_elements(src_dt, 1));
     kernel_ctx_.define_int(

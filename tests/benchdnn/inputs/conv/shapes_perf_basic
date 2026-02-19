@@ -1,0 +1,21 @@
+# Resnet50
+g1mb50ic3ih224oc64oh112kh7sh2ph3n"resnet_50:conv1"
+mb50ic64ih56oc64oh56kh3ph1n"resnet_50:res2a_branch2b*3"
+mb50ic512ih28oc128oh28kh1ph0n"resnet_50:res3b_branch2a*3"
+mb50ic256ih14oc1024oh14kh1ph0n"resnet_50:res4a_branch2c*6"
+
+# Mobilenet v1
+g1mb32ic256ih28oc256oh28kh1ph0n"mobilenet:conv6*4"
+g1mb32ic512ih14oc512oh14kh1ph0n"mobilenet:conv8*20"
+g128mb32ic128ih56oc128oh56kh3ph1n"mobilenet:conv3_1/dw"
+g512mb32ic512ih14oc512oh14kh3ph1n"mobilenet:conv5_1/dw"
+
+# Stable Diffusion
+mb1ic256ih384oc256oh384kh3ph1n"stable_diffusion:conv5*5"
+mb1ic512ih192oc512oh192kh3ph1n"stable_diffusion:conv11*7"
+mb1ic1920ih24oc1280oh24kh1ph0n"stable_diffusion:conv21*1"
+mb1ic960ih96oc320oh96kh1ph0n"stable_diffusion:conv42*1"
+
+# 3D Unet
+mb1ic128id28ih30iw30oc128od26oh28ow28kd3kh3kw3pd0ph0pw0n"3d_unet:conv_5"
+mb1ic256id10ih11iw11oc512od8oh9ow9kd3kh3kw3pd0ph0pw0n"3d_unet:conv_8"

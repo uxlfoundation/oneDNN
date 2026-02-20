@@ -160,6 +160,8 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
     const bool is_f8 = one_of(src_dt, f8_e5m2, f8_e4m3)
             && one_of(wei_dt, f8_e5m2, f8_e4m3)
             && one_of(dst_dt, f32, f16, bf16, f8_e5m2, f8_e4m3);
+    const bool is_bf16_f8 = src_dt == bf16 && one_of(wei_dt, f8_e5m2, f8_e4m3)
+            && one_of(dst_dt, f32, f16, bf16, f8_e5m2, f8_e4m3);
     const bool is_bf16
             = everyone_is(bf16, src_dt, wei_dt) && one_of(dst_dt, bf16, f32);
     const bool is_f16
@@ -184,10 +186,10 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         const bool is_bia_dt_correct
                 = IMPLICATION(is_int8 == true,
                           one_of(bia_dt, f32, s32, s8, u8, f16, bf16))
-                && IMPLICATION(
-                        is_f8 == true, one_of(bia_dt, f32, f16, bf16, src_dt))
-                && IMPLICATION(
-                        !(is_int8 || is_f8), one_of(bia_dt, f32, src_dt));
+                && IMPLICATION(one_of(true, is_f8, is_bf16_f8),
+                        one_of(bia_dt, f32, f16, bf16, src_dt))
+                && IMPLICATION(!one_of(true, is_int8, is_f8, is_bf16_f8),
+                        one_of(bia_dt, f32, src_dt));
         return IMPLICATION(with_bias(), is_bia_dt_correct && is_bias_1xN());
     };
 
@@ -273,7 +275,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
     };
     const bool problem_dt_correct = one_of(true, is_f4, is_int8, is_f8, is_bf16,
             is_f32, is_f16, is_f32_f16, is_f32_bf16, is_bf16_with_int_wei,
-            is_f16_with_int_wei, is_f32_with_int_wei);
+            is_f16_with_int_wei, is_f32_with_int_wei, is_bf16_f8);
 
     auto src_d = memory_desc_wrapper(src_md_);
     auto weights_d = memory_desc_wrapper(weights_md_);
@@ -410,8 +412,8 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
             brgattr.use_uker = true;
             brgattr.use_interleave_stores = true;
             brgattr.max_bs = bs;
-            brgattr.wary_A_k_tail_read = bgmmc_.extendable_k;
-            brgattr.extendable_k = bgmmc_.extendable_k;
+            brgattr.wary_A_k_tail_read = bgmmc_.extendable_k || is_bf16_f8;
+            brgattr.extendable_k = bgmmc_.extendable_k || is_bf16_f8;
             // TODO: change expected sizes to local chunks wrt L2 blocking
             brgattr.hint_expected_A_size = vM * vK * bs;
             brgattr.hint_expected_B_size = vN * vK * bs;

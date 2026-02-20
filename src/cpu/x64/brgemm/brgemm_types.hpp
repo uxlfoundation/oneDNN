@@ -337,6 +337,7 @@ struct brgemm_desc_t {
     bool is_int8 = false, is_int8_tmm = false;
     bool is_bf16 = false, is_bf16_tmm = false, is_bf16_emu = false;
     bool is_fp8 = false, is_fp8_tmm = false;
+    bool is_bf16_f8 = false;
     bool is_f16 = false, is_f16_tmm = false;
     bool is_f32 = false;
     bool is_bf32 = false;
@@ -376,12 +377,22 @@ struct brgemm_desc_t {
 
     // return 'true' when FP8 MAC is not natively supported by the CPU ISA
     bool is_fp8_via_convert() const {
-        return is_fp8
-                && utils::one_of(isa_impl, avx10_1_512_amx_fp16, avx10_2_512);
+        return utils::one_of(true, is_fp8, is_bf16_f8)
+                && utils::one_of(isa_impl, avx10_1_512_amx,
+                        avx10_1_512_amx_fp16, avx10_2_512);
     }
 
     bool is_fp8_via_convert_non_amx() const {
         return is_fp8_via_convert() && isa_impl == avx10_2_512;
+    }
+
+    bool is_fp8_via_convert_to_bf16() const {
+        return (isa_impl == avx10_1_512_amx_fp16 && is_bf16_f8)
+                || (isa_impl == avx10_1_512_amx && (is_fp8 || is_bf16_f8));
+    }
+
+    bool is_fp8_via_convert_to_f16() const {
+        return isa_impl == avx10_1_512_amx_fp16 && is_fp8;
     }
 
     bool is_input_convert() const { return is_bf32 || is_fp8_via_convert(); }

@@ -500,7 +500,7 @@ dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
         bf16_emu_ = utils::make_unique<bf16_emulation_t>(this, emu_reserv_1,
                 emu_reserv_2, emu_reserv_3, emu_scratch, emu_reserv_4,
                 emu_reserv_4);
-    if (brg_.is_fp8 || has_f8_e5m2_binary_postops
+    if (brg_.is_fp8 || brg_.is_bf16_f8 || has_f8_e5m2_binary_postops
             || has_f8_e4m3_binary_postops) {
         if (utils::one_of(data_type::f8_e5m2, brg_.dt_a, brg_.dt_b, brg_.dt_d)
                 || has_f8_e5m2_binary_postops)

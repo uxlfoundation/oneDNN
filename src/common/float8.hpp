@@ -19,6 +19,7 @@
 
 #include <cstdint>
 
+#include "common/bfloat16.hpp"
 #include "common/float16.hpp"
 
 namespace dnnl {
@@ -40,12 +41,15 @@ struct float8_e5m2_t {
     constexpr float8_e5m2_t(uint8_t r, bool) : raw_bits_(r) {}
     float8_e5m2_t(float f) { (*this) = f; }
     float8_e5m2_t(float16_t f) { (*this) = f; }
+    float8_e5m2_t(bfloat16_t f) { (*this) = f; }
 
     float8_e5m2_t DNNL_API &operator=(float f);
     float8_e5m2_t DNNL_API &operator=(float16_t f);
+    float8_e5m2_t DNNL_API &operator=(bfloat16_t f);
 
     DNNL_API operator float() const;
     DNNL_API operator float16_t() const;
+    DNNL_API operator bfloat16_t() const;
 
     float8_e5m2_t &operator+=(const float a) {
         (*this) = float {*this} + a;
@@ -60,12 +64,15 @@ struct float8_e4m3_t {
     constexpr float8_e4m3_t(uint8_t r, bool) : raw_bits_(r) {}
     float8_e4m3_t(float f) { (*this) = f; }
     float8_e4m3_t(float16_t f) { (*this) = f; }
+    float8_e4m3_t(bfloat16_t f) { (*this) = f; }
 
     float8_e4m3_t DNNL_API &operator=(float f);
     float8_e4m3_t DNNL_API &operator=(float16_t f);
+    float8_e4m3_t DNNL_API &operator=(bfloat16_t f);
 
     DNNL_API operator float() const;
     DNNL_API operator float16_t() const;
+    DNNL_API operator bfloat16_t() const;
 
     float8_e4m3_t &operator+=(const float a) {
         (*this) = float {*this} + a;

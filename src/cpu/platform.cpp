@@ -16,6 +16,7 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <mutex>
 #include <thread>
 
 #include "cpu/platform.hpp"
@@ -32,6 +33,7 @@
 
 #if DNNL_X64
 #include "cpu/x64/cpu_isa_traits.hpp"
+#include "cpu/x64/platform.hpp"
 #elif DNNL_AARCH64
 #include "cpu/aarch64/cpu_isa_traits.hpp"
 #if defined(DNNL_AARCH64_USE_ACL)
@@ -256,8 +258,11 @@ unsigned get_per_core_cache_size(int level) {
             default: return 0U;
         }
     };
-
+// TODO: George Remove before final PR
+// Enable legacy per-core cache size calculation for comparison/testing
+#define USE_LEGACY_PER_CORE_CACHE_SIZE 0
 #if DNNL_X64
+#if USE_LEGACY_PER_CORE_CACHE_SIZE
     using namespace x64;
     if (cpu().getDataCacheLevels() == 0) return guess(level);
 
@@ -266,6 +271,10 @@ unsigned get_per_core_cache_size(int level) {
         return cpu().getDataCacheSize(l) / cpu().getCoresSharingDataCache(l);
     } else
         return 0;
+#else
+    if (x64::cpu().getDataCacheLevels() == 0) return guess(level);
+    return x64::platform::get_per_core_cache_size(level);
+#endif
 #else
     return guess(level);
 #endif

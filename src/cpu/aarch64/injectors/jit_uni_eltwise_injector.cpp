@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2019 Intel Corporation
 * Copyright 2021-2024 FUJITSU LIMITED
-* Copyright 2019-2025 Arm Ltd. and affiliates
+* Copyright 2019-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -73,6 +73,13 @@ bool is_supported(cpu_isa_t isa, alg_kind_t alg) {
 using namespace Xbyak_aarch64;
 
 template <cpu_isa_t isa>
+void jit_uni_eltwise_injector_t<isa>::set_input_range(
+        float min_value, float max_value) {
+    min_input_ = min_value;
+    max_input_ = max_value;
+}
+
+template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_t<isa>::injector_preamble(
         const injector_utils::vmm_index_set_t &vmm_idxs) {
     using namespace alg_kind;
@@ -120,7 +127,7 @@ void jit_uni_eltwise_injector_t<isa>::injector_preamble(
                 h->sub_imm(h->X_SP, h->X_SP, preserved_vecs_count * vlen,
                         h->X_TMP_0);
             for (size_t i = 0; i < preserved_vecs_count; ++i)
-                h->str(ZReg(preserved_vec_idxs[i]), ptr(h->X_SP, i, MUL_VL));
+                store_preserved_vec(i, preserved_vec_idxs[i]);
         }
         load_table_addr();
     }
@@ -141,8 +148,7 @@ void jit_uni_eltwise_injector_t<isa>::injector_preamble_tail(
         if (idx_off) h->add_imm(h->X_SP, h->X_SP, idx_off * vlen, h->X_TMP_0);
 
         for (size_t i = 0; i < tail_vecs_to_preserve; ++i)
-            h->ldr(ZReg(preserved_vec_idxs[idx_off + i]),
-                    ptr(h->X_SP, i, MUL_VL));
+            load_preserved_vec(i, preserved_vec_idxs[idx_off + i]);
     }
 
     for (size_t i = 0; i < tail_vecs_to_preserve; ++i)
@@ -150,8 +156,7 @@ void jit_uni_eltwise_injector_t<isa>::injector_preamble_tail(
 
     if (save_state_ && preserve_vmm_) {
         for (size_t i = 0; i < tail_vecs_to_preserve; ++i)
-            h->str(ZReg(preserved_vec_idxs[idx_off + i]),
-                    ptr(h->X_SP, i, MUL_VL));
+            store_preserved_vec(i, preserved_vec_idxs[idx_off + i]);
 
         if (idx_off) h->sub_imm(h->X_SP, h->X_SP, idx_off * vlen, h->X_TMP_0);
     }
@@ -168,7 +173,7 @@ void jit_uni_eltwise_injector_t<isa>::injector_postamble() {
 
     if (preserve_vmm_) {
         for (size_t i = 0; i < preserved_vecs_count; ++i)
-            h->ldr(ZReg(preserved_vec_idxs[i]), ptr(h->X_SP, i, MUL_VL));
+            load_preserved_vec(i, preserved_vec_idxs[i]);
 
         if (preserved_vecs_count)
             h->add_imm(
@@ -194,6 +199,26 @@ void jit_uni_eltwise_injector_t<isa>::assign_regs() {
     vmm_aux5 = TRegS(preserved_vec_idxs[6]);
     vmm_aux6 = TRegS(preserved_vec_idxs[7]);
     vmm_aux7 = TRegS(preserved_vec_idxs[8]);
+}
+
+template <cpu_isa_t isa>
+inline void jit_uni_eltwise_injector_t<isa>::store_preserved_vec(
+        size_t slot, size_t vmm_idx) {
+    if (isa == asimd) {
+        h->str(QReg(vmm_idx), ptr(h->X_SP, static_cast<int32_t>(slot * vlen)));
+    } else {
+        h->str(ZReg(vmm_idx), ptr(h->X_SP, slot, MUL_VL));
+    }
+}
+
+template <cpu_isa_t isa>
+inline void jit_uni_eltwise_injector_t<isa>::load_preserved_vec(
+        size_t slot, size_t vmm_idx) {
+    if (isa == asimd) {
+        h->ldr(QReg(vmm_idx), ptr(h->X_SP, static_cast<int32_t>(slot * vlen)));
+    } else {
+        h->ldr(ZReg(vmm_idx), ptr(h->X_SP, slot, MUL_VL));
+    }
 }
 
 template <cpu_isa_t isa>
@@ -434,12 +459,16 @@ void jit_uni_eltwise_injector_t<isa>::exp_compute_vector_fwd(
         const TRegS &vmm_src) {
 
     const auto &t0 = ZRegS(IDX(vmm_src));
-    const auto &t1 = ZRegS(IDX(vmm_aux1));
-    const auto &t2 = ZRegS(IDX(vmm_aux2));
-    h->fmin(t0, p_all, ZRegS(IDX(table_val(exp_ln_flt_max_f, z_tmp))));
-    h->fmax(t0, p_all, ZRegS(IDX(table_val(exp_ln_flt_min_f, z_tmp))));
-    h->fmul(t0, t0, ZRegS(IDX(table_val(exp_log2ef, z_tmp))));
-    h->movprfx(t1, p_all, t0);
+    const auto &t1 = ZRegS(IDX(vmm_aux0));
+    const auto &t2 = ZRegS(IDX(vmm_aux1));
+    const float ln_flt_max = logf(FLT_MAX);
+    const float ln_flt_min = logf(FLT_MIN);
+
+    if (max_input_ > ln_flt_max)
+        h->fmin(t0, p_all, ZRegS(IDX(table_val(exp_ln_flt_max_f, z_tmp))));
+    if (min_input_ < ln_flt_min)
+        h->fmax(t0, p_all, ZRegS(IDX(table_val(exp_ln_flt_min_f, z_tmp))));
+    h->fmul(t0, t0, ZRegS(IDX(table_val(exp_log2ef, t1))));
     h->frintm(t1, p_all, t0);
     h->fcvtzs(t2, p_all, t1);
     h->fsub(t1, t0, t1);
@@ -1591,7 +1620,7 @@ size_t jit_uni_eltwise_injector_t<isa>::aux_vecs_count() {
             case eltwise_logistic_use_dst_for_bwd:
             case eltwise_logistic: return 5; /* = exp + 1 */
             case eltwise_exp_use_dst_for_bwd:
-            case eltwise_exp: return (isa == asimd) ? 5 : 4;
+            case eltwise_exp: return (isa == asimd) ? 5 : 3;
             case eltwise_gelu_tanh: return 9; /* = tanh */
             case eltwise_swish: return 6; /* = logistic */
             case eltwise_log: return 6;
@@ -2506,12 +2535,23 @@ void jit_uni_eltwise_injector_t<asimd>::exp_compute_vector_fwd(
     *   For very large |n| > 196, use exp(x) = s1*s1.
     */
 
+    Xbyak_aarch64::Label L_done, L_special;
     const auto &t0 = VReg4S(vmm_src.getIdx());
     const auto &t1 = VReg4S(vmm_aux0.getIdx());
     const auto &t2 = VReg4S(vmm_aux1.getIdx());
     const auto &t3 = VReg4S(vmm_aux2.getIdx());
     const auto &t4 = VReg4S(vmm_aux3.getIdx());
     const auto &t_tmp = VReg4S(vmm_tmp.getIdx());
+
+    const float special_case_input_threshold = 126.5f * logf(2.0f); // ~87.6831f
+    const float ln_flt_min = logf(FLT_MIN); // ~-87.3365f
+    bool need_clamp = min_input_ < ln_flt_min;
+    bool need_special_case = max_input_ >= special_case_input_threshold;
+
+    if (!need_special_case && need_clamp) {
+        // Clamp x to avoid overflow of f32 exponent bits
+        h->fmax(t0, t0, table_val(exp_ln_flt_min_f, t4));
+    }
 
     // z = x * inv_ln2
     const auto &v_inv_ln2 = table_val(exp_log2ef, t_tmp);
@@ -2565,15 +2605,19 @@ void jit_uni_eltwise_injector_t<asimd>::exp_compute_vector_fwd(
     h->fmul(v_p, v_c4, v_r);
     h->fmla(v_p, v_q, v_r2);
 
-    // Check if any lane needs special-case handling
-    // mask_special = (|n| > 126)
-    Xbyak_aarch64::Label L_done, L_special;
-    const auto &v_mask_special = v_c3;
-    const auto &v_special_bound = table_val(exp_special_bound, t_tmp); // 126.0f
-    h->facgt(v_mask_special, v_n, v_special_bound);
-    h->addp(DReg(t_tmp.getIdx()), VReg2D(v_mask_special.getIdx()));
-    h->fmov(h->X_TMP_0, DReg(t_tmp.getIdx()));
-    h->cbnz(h->X_TMP_0, L_special);
+    if (need_special_case) {
+        // Check if any lane needs special-case handling
+        // i.e. if any input |x| ≥ 126.5 / ln 2 ≈ 87.6831f
+        // Includes ±Inf, but not NaNs, which propagate through the fast path
+        // mask_special = (|n| > 126)
+        const auto &v_mask_special = v_c3;
+        const auto &v_special_bound
+                = table_val(exp_special_bound, t_tmp); // 126.0f
+        h->facgt(v_mask_special, v_n, v_special_bound);
+        h->addp(DReg(t_tmp.getIdx()), VReg2D(v_mask_special.getIdx()));
+        h->fmov(h->X_TMP_0, DReg(t_tmp.getIdx()));
+        h->cbnz(h->X_TMP_0, L_special);
+    }
 
     // ===== Fast path =====
     // scale = reinterpret_f32(e + 0x3f800000) = 2^n
@@ -2585,47 +2629,49 @@ void jit_uni_eltwise_injector_t<asimd>::exp_compute_vector_fwd(
     // exp(x) = scale + poly * scale = 2^n * (1 + poly(r))
     const auto &v_dst = v_src;
     h->fmla(v_dst, v_p, v_exp_scale);
-    h->b(L_done);
 
-    // ===== Special-case handling =====
-    // b = (n <= 0) ? special_offset : 0
-    h->L(L_special);
-    const auto &v_b = v_q;
-    const auto &v_special_offset
-            = table_val(exp_special_offset, t_tmp); // 0x82000000
-    h->fcmle(v_b, v_n, 0.0);
-    h->and_(VReg16B(v_b.getIdx()), VReg16B(v_b.getIdx()),
-            VReg16B(v_special_offset.getIdx()));
+    if (need_special_case) {
+        // ===== Special-case handling =====
+        // b = (n <= 0) ? special_offset : 0
+        h->b(L_done);
+        h->L(L_special);
+        const auto &v_b = v_q;
+        const auto &v_special_offset
+                = table_val(exp_special_offset, t_tmp); // 0x82000000
+        h->fcmle(v_b, v_n, 0.0);
+        h->and_(VReg16B(v_b.getIdx()), VReg16B(v_b.getIdx()),
+                VReg16B(v_special_offset.getIdx()));
 
-    // mask_thresh = (|n| > 192)
-    const auto &v_thresh = table_val(exp_scale_thresh, t_tmp); // 192.0f
-    const auto &v_mask_thresh = v_n;
-    h->facgt(v_mask_thresh, v_n, v_thresh);
+        // mask_thresh = (|n| > 192)
+        const auto &v_thresh = table_val(exp_scale_thresh, t_tmp); // 192.0f
+        const auto &v_mask_thresh = v_n;
+        h->facgt(v_mask_thresh, v_n, v_thresh);
 
-    // s2_bits = e - b
-    const auto &v_s2 = v_e;
-    h->sub(v_s2, v_e, v_b);
+        // s2_bits = e - b
+        const auto &v_s2 = v_e;
+        h->sub(v_s2, v_e, v_b);
 
-    // s1_bits = b + special_bias
-    const auto &v_s1 = v_b;
-    const auto &v_special_bias
-            = table_val(exp_special_bias, t_tmp); // 0x7f000000
-    h->add(v_s1, v_b, v_special_bias);
+        // s1_bits = b + special_bias
+        const auto &v_s1 = v_b;
+        const auto &v_special_bias
+                = table_val(exp_special_bias, t_tmp); // 0x7f000000
+        h->add(v_s1, v_b, v_special_bias);
 
-    // r0 = (s2 + poly*s2) * s1
-    const auto &v_r0 = v_p;
-    h->fmla(v_s2, v_p, v_s2);
-    h->fmul(v_r0, v_s2, v_s1);
+        // r0 = (s2 + poly*s2) * s1
+        const auto &v_r0 = v_p;
+        h->fmla(v_s2, v_p, v_s2);
+        h->fmul(v_r0, v_s2, v_s1);
 
-    // r1 = s1 * s1
-    const auto &v_r1 = v_dst;
-    h->fmul(v_r1, v_s1, v_s1);
+        // r1 = s1 * s1
+        const auto &v_r1 = v_dst;
+        h->fmul(v_r1, v_s1, v_s1);
 
-    // out_special = (|n| > 192) ? r1 : r0
-    h->bif(VReg16B(v_r1.getIdx()), VReg16B(v_r0.getIdx()),
-            VReg16B(v_mask_thresh.getIdx()));
+        // out_special = (|n| > 192) ? r1 : r0
+        h->bif(VReg16B(v_r1.getIdx()), VReg16B(v_r0.getIdx()),
+                VReg16B(v_mask_thresh.getIdx()));
 
-    h->L(L_done);
+        h->L(L_done);
+    }
 }
 
 template <>

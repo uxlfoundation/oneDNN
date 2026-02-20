@@ -43,12 +43,19 @@ rnn_cell_execution_sig(
     const auto src_iter_ld = rnn.src_iter_ld(cell_position);
     const auto dst_iter_part2_ld = rnn.dst_iter_part2_ld(cell_position);
 
+    constexpr bool trans_B_off = false;
+    constexpr bool do_sum_off = false;
+    constexpr bool do_sum_on = true;
+
     // 1. gemm Wx[0-2],x
     if (rnn.need_gemm_layer(cell_position)) {
         if (rnn.use_matmul) {
-            CHECK(this->execute_matmul(ctx,
-                    this->get_matmul_layer(cell_position), w_layer_[0],
-                    src_layer_, scratch_gates_));
+            CHECK(this->mm_primitives_.apply(ctx,
+                    {rnn.n_gates * rnn.dhc, rnn.mb, rnn.slc,
+                            rnn.weights_layer_ld, src_layer_ld,
+                            rnn.scratch_gates_ld, weights_type, src_type,
+                            scratch_type, trans_B_off, do_sum_off},
+                    w_layer_[0], src_layer_, scratch_gates_));
         } else {
             CHECK((this->*gemm_layer_func)('N', 'N', rnn.n_gates * rnn.dhc,
                     rnn.mb, rnn.slc, 1.0, w_layer_[0], rnn.weights_layer_ld,
@@ -59,7 +66,11 @@ rnn_cell_execution_sig(
 
     // 2. gemm Wh[0-1],h
     if (rnn.use_matmul) {
-        CHECK(this->execute_matmul(ctx, this->get_matmul_iter(cell_position),
+        CHECK(this->mm_primitives_.apply(ctx,
+                {(rnn.n_gates - 1) * rnn.dhc, rnn.mb, rnn.sic,
+                        rnn.weights_iter_ld, src_iter_ld, rnn.scratch_gates_ld,
+                        weights_type, src_type, scratch_type, trans_B_off,
+                        do_sum_on},
                 w_iter_[0], src_iter_, scratch_gates_));
     } else {
         CHECK((this->*gemm_iter_func)('N', 'N', (rnn.n_gates - 1) * rnn.dhc,
@@ -76,7 +87,10 @@ rnn_cell_execution_sig(
 
     // 4. gemm Wh[2],h~t
     if (rnn.use_matmul) {
-        CHECK(this->execute_matmul(ctx, this->get_matmul_part2(cell_position),
+        CHECK(this->mm_primitives_.apply(ctx,
+                {rnn.dhc, rnn.mb, rnn.sic, rnn.weights_iter_ld,
+                        dst_iter_part2_ld, rnn.scratch_gates_ld, weights_type,
+                        src_type, scratch_type, trans_B_off, do_sum_on},
                 w_iter_[1], dst_layer_, &(scratch_gates(0, 2, 0))));
     } else {
         CHECK((this->*gemm_iter_func)('N', 'N', rnn.dhc, rnn.mb, rnn.sic, 1.0,
@@ -189,32 +203,73 @@ dnnl_status_t gru_bwd_cell_exec_template(T1 gemm_layer_f, T2 gemm_iter_f,
 template <data_type_t src_type, data_type_t weights_type, data_type_t acc_type>
 rnn_cell_execution_sig(
         (ref_rnn_bwd_t<src_type, weights_type, acc_type>::cell_execution_gru)) {
+    constexpr bool trans_B_off = false;
+    constexpr bool trans_B_on = true;
+    constexpr bool do_sum_off = false;
+
     auto gemm_iter_f
             = [&](int m, int n, int k, const weights_t *A, const gemm_data_t *B,
                       float beta, gemm_acc_t *C) {
-        return (this->*gemm_iter_func)('N', 'N', m, n, k, 1.0f, A,
-                rnn.weights_iter_ld, B, rnn.scratch_gates_ld, beta, C,
-                rnn.ws_diff_states_iter_ld);
+        if (rnn.use_matmul) {
+            const bool do_sum = beta == 1.0f;
+            return this->mm_primitives_.apply(ctx,
+                    {m, n, k, rnn.weights_iter_ld, rnn.scratch_gates_ld,
+                            rnn.ws_diff_states_iter_ld, weights_type, src_type,
+                            acc_type, trans_B_off, do_sum},
+                    A, B, C);
+        } else {
+            return (this->*gemm_iter_func)('N', 'N', m, n, k, 1.0f, A,
+                    rnn.weights_iter_ld, B, rnn.scratch_gates_ld, beta, C,
+                    rnn.ws_diff_states_iter_ld);
+        }
     };
     auto gemm_layer_f
             = [&](const weights_t *A, const gemm_data_t *B, gemm_acc_t *C) {
-        return (this->*gemm_layer_func)('N', 'N', rnn.slc, rnn.mb,
-                rnn.n_gates * rnn.dhc, 1.0, A, rnn.weights_layer_ld, B,
-                rnn.scratch_gates_ld, 0.0, C, rnn.ws_diff_states_layer_ld);
+        if (rnn.use_matmul) {
+            return this->mm_primitives_.apply(ctx,
+                    {rnn.slc, rnn.mb, rnn.n_gates * rnn.dhc,
+                            rnn.weights_layer_ld, rnn.scratch_gates_ld,
+                            rnn.ws_diff_states_layer_ld, weights_type, src_type,
+                            acc_type, trans_B_off, do_sum_off},
+                    A, B, C);
+        } else {
+            return (this->*gemm_layer_func)('N', 'N', rnn.slc, rnn.mb,
+                    rnn.n_gates * rnn.dhc, 1.0, A, rnn.weights_layer_ld, B,
+                    rnn.scratch_gates_ld, 0.0, C, rnn.ws_diff_states_layer_ld);
+        }
     };
     auto gemm_weights_layer_f = [&](const gemm_data_t *A, const weights_t *B,
                                         int ldb, gemm_acc_t *C) {
         const float beta = rnn.diff_weights_beta(cell_position);
-        return gemm('N', 'T', rnn.n_gates * rnn.dhc, rnn.slc, rnn.mb, 1.0, A,
-                rnn.scratch_gates_ld, B, ldb, beta, C,
-                rnn.diff_weights_layer_ld);
+        if (rnn.use_matmul) {
+            const bool do_sum = beta == 1.0f;
+            return this->mm_primitives_.apply(ctx,
+                    {rnn.n_gates * rnn.dhc, rnn.slc, rnn.mb,
+                            rnn.scratch_gates_ld, ldb,
+                            rnn.diff_weights_layer_ld, src_type, weights_type,
+                            acc_type, trans_B_on, do_sum},
+                    A, B, C);
+        } else {
+            return gemm('N', 'T', rnn.n_gates * rnn.dhc, rnn.slc, rnn.mb, 1.0,
+                    A, rnn.scratch_gates_ld, B, ldb, beta, C,
+                    rnn.diff_weights_layer_ld);
+        }
     };
     auto gemm_weights_iter_f
             = [&](int m, int n, int k, const weights_t *A, const gemm_data_t *B,
                       int ldb, gemm_acc_t *C) {
         const float beta = rnn.diff_weights_beta(cell_position);
-        return gemm('N', 'T', m, n, k, 1.0f, A, rnn.ws_gates_ld, B, ldb, beta,
-                C, rnn.diff_weights_iter_ld);
+        if (rnn.use_matmul) {
+            const bool do_sum = beta == 1.0f;
+            return this->mm_primitives_.apply(ctx,
+                    {m, n, k, rnn.ws_gates_ld, ldb, rnn.diff_weights_iter_ld,
+                            weights_type, src_type, acc_type, trans_B_on,
+                            do_sum},
+                    A, B, C);
+        } else {
+            return gemm('N', 'T', m, n, k, 1.0f, A, rnn.ws_gates_ld, B, ldb,
+                    beta, C, rnn.diff_weights_iter_ld);
+        }
     };
 
     return gru_bwd_cell_exec_template(gemm_layer_f, gemm_iter_f,

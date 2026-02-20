@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
-* Copyright 2024 FUJITSU LIMITED
+* Copyright 2024-2026 FUJITSU LIMITED
 * Copyright 2024-2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -1685,10 +1685,13 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     if (jcp.wei_plain)
         CHECK(pick_tags(jcp, src_md, weights_md, dst_md, bias_md));
 
+    const bool is_f32
+            = jcp.src_dt == data_type::f32 && jcp.wei_dt == data_type::f32;
+
     if (one_of(jcp.prop_kind, prop_kind::forward_training,
                 prop_kind::forward_inference)
             && jcp.ngroups == 1 && jcp.dilate_w == 0 && jcp.kw > 1
-            && jcp.stride_w > 1 && jcp.l_pad <= 0 && jcp.r_pad <= 0) {
+            && jcp.stride_w > 1 && jcp.l_pad <= 0 && jcp.r_pad <= 0 && is_f32) {
         // such convolutions are equivalent to
         // [iw / k][kw / k][stride_w / k][ic * k]
         const bool pure_1d = (jcp.mb == 1 && jcp.id == 1 && jcp.ih == 1);

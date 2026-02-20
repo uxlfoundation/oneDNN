@@ -425,3 +425,11 @@ mb1_g50ic50oc50_ih28oh26_kh3sh1ph0_n"dw_post-op_ngroups-tail"
 # See github.com/uxlfoundation/oneDNN issue #4055, and #4089
 --reset
 --impl=brg --dt=bf16 --attr-post-ops=relu+log g1mb1ic32ih128iw128oc32oh128ow128kh2kw2sh1sw1ph0pw0dh0dw0_n"brgemm_chained_post_ops"
+
+# tests accuracy failure for int8 and bf16 brgemm convolution
+--reset
+--dt=s8:s8:f32 --dir=FWD_I
+mb64_ic3oc192_ih224oh14kh16sh16dh0ph0_iw224ow14kw16sw16dw0pw0n"rpad0_int8_accuracy"
+--reset
+--dt=bf16:bf16:f32 --dir=FWD_I
+mb64_ic3oc192_ih224oh14kh16sh16dh0ph0_iw224ow14kw16sw16dw0pw0n"rpad0_bf16_accuracy"

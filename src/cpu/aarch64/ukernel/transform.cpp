@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 * Copyright 2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -42,9 +42,6 @@ dnnl_transform::dnnl_transform(dim_t K, dim_t N, pack_type_t in_pack_type,
     assert(in_pack_type == pack_type::no_trans
                     ? IMPLICATION(K_ > 1, in_ld_ >= N_)
                     : in_ld_ >= K_);
-    // Only special N_blk sizes are supported by matmul copy routines. Rest
-    // will crash.
-    assert(utils::one_of(out_ld_, 16, 32, 48, 64));
 
     const auto in_tag = in_pack_type == pack_type::trans ? format_tag::ba
                                                          : format_tag::ab;
@@ -171,8 +168,6 @@ status_t dnnl_transform_create(transform_t **transform, dim_t K, dim_t N,
         pack_type_t in_pack_type, dim_t in_ld, dim_t out_ld, data_type_t in_dt,
         data_type_t out_dt) {
     if (transform == nullptr) return status::invalid_arguments;
-    VCHECK_TRANSFORM(utils::one_of(out_ld, 16, 32, 48, 64),
-            "Transform routine supports only \'out_ld\' of 16, 32, 48, or 64.");
 
     *transform
             = new transform_t(K, N, in_pack_type, in_ld, out_ld, in_dt, out_dt);

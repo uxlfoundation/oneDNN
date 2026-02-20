@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2022 Intel Corporation
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -588,6 +588,7 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
         }
     }
 
+#if defined(brg_x64)
     const bool ldb_ok = prb->get_ldb() == 16 || prb->get_ldb() == 32
             || prb->get_ldb() == 48 || prb->get_ldb() == 64;
     if (!ldb_ok) {
@@ -599,6 +600,7 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
         res->reason = skip_reason::case_not_supported;
         return;
     }
+#endif
 
     if (prb->bia_dt != dnnl_data_type_undef) {
         BENCHDNN_PRINT(2, "%s\n", "Bias is not supported");

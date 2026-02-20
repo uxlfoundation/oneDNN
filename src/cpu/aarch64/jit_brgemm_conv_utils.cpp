@@ -1876,8 +1876,8 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     bool try_exec_trans = false;
     bool try_exec_base = true;
 
-    if (div_up(jcp.l_pad, jcp.stride_w) < jcp.kw
-            && div_up(jcp.r_pad, jcp.stride_w) < jcp.kw) {
+    if (div_up(nstl::max(0, jcp.l_pad), jcp.stride_w) < jcp.kw
+            && div_up(nstl::max(0, jcp.r_pad), jcp.stride_w) < jcp.kw) {
         try_exec_vpad = true;
     }
 

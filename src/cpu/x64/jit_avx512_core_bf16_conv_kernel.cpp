@@ -3613,8 +3613,8 @@ void jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t ::
         compute_od_loop_common(bool is_partial) {
     assert(jcp.harness == harness_3d_reduction);
 
-    const int src_backpad_overlap
-            = div_up(jcp.id + jcp.f_pad - (jcp.kd - 1), jcp.stride_d);
+    const int src_backpad_overlap = div_up(
+            nstl::max(0, jcp.id + jcp.f_pad - (jcp.kd - 1)), jcp.stride_d);
 
     const auto filter_shift
             = get_kernel_offset(0, static_cast<dim_t>(jcp.kh) * jcp.kw);

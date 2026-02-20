@@ -44,6 +44,7 @@
 #endif
 #elif DNNL_PPC64
 #include "cpu/ppc64/ppc64_gemm_reorder.hpp"
+#include "cpu/ppc64/ppc64_uni_reorder.hpp"
 #elif DNNL_RV64
 #ifdef DNNL_RISCV_USE_RVV_INTRINSICS
 #include "cpu/rv64/rvv_gemm_reorder.hpp"

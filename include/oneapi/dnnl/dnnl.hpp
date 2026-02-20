@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2016 Intel Corporation
 * Copyright 2024-2025 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -1676,6 +1676,9 @@ struct memory : public handle<dnnl_memory_t> {
         BA24b8a = dnnl_BA24b8a,
         aCB24c8b = dnnl_aCB24c8b,
         abDC24d8c = dnnl_abDC24d8c,
+        BA12b8a = dnnl_BA12b8a,
+        aCB12c8b = dnnl_aCB12c8b,
+        abDC12d8c = dnnl_abDC12d8c,
         decbA16a = dnnl_decbA16a,
         decbA8a = dnnl_decbA8a,
         defcbA16a = dnnl_defcbA16a,
@@ -1738,6 +1741,9 @@ struct memory : public handle<dnnl_memory_t> {
         aCB16c8b = dnnl_aCB16c8b,
         BA8b8a = dnnl_BA8b8a,
         BA16b8a = dnnl_BA16b8a,
+        BA4b8a = dnnl_BA4b8a,
+        aCB4c8b = dnnl_aCB4c8b,
+        abDC4d8c = dnnl_abDC4d8c,
         AB2a4b = dnnl_AB2a4b,
 
         format_tag_last = dnnl_format_tag_last,

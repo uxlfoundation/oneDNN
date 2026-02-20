@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2016 Intel Corporation
 * Copyright 2024-2025 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -380,6 +380,9 @@ const format_tag_t aCB16b64c = dnnl_aCB16b64c;
 const format_tag_t BA24b8a = dnnl_BA24b8a;
 const format_tag_t aCB24c8b = dnnl_aCB24c8b;
 const format_tag_t abDC24d8c = dnnl_abDC24d8c;
+const format_tag_t BA12b8a = dnnl_BA12b8a;
+const format_tag_t aCB12c8b = dnnl_aCB12c8b;
+const format_tag_t abDC12d8c = dnnl_abDC12d8c;
 const format_tag_t aCB16b16c2b = dnnl_aCB16b16c2b;
 const format_tag_t aCB16b32c2b = dnnl_aCB16b32c2b;
 const format_tag_t aCB16b48c2b = dnnl_aCB16b48c2b;
@@ -1104,6 +1107,9 @@ const format_tag_t aCB8c8b = dnnl_aCB8c8b;
 const format_tag_t aCB16c8b = dnnl_aCB16c8b;
 const format_tag_t BA8b8a = dnnl_BA8b8a;
 const format_tag_t BA16b8a = dnnl_BA16b8a;
+const format_tag_t BA4b8a = dnnl_BA4b8a;
+const format_tag_t aCB4c8b = dnnl_aCB4c8b;
+const format_tag_t abDC4d8c = dnnl_abDC4d8c;
 const format_tag_t AB2a4b = dnnl_AB2a4b;
 
 const format_tag_t last = dnnl_format_tag_last;

@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2016 Intel Corporation
 * Copyright 2024-2025 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -206,6 +206,9 @@ status_t memory_desc_wrapper::compute_blocking(
         C(BA24b8a, {1, 0}, {24, 8}, {1, 0});
         C(aCB24c8b, {0, 2, 1}, {24, 8}, {2, 1});
         C(abDC24d8c, {0, 1, 3, 2}, {24, 8}, {3, 2});
+        C(BA12b8a, {1, 0}, {12, 8}, {1, 0});
+        C(aCB12c8b, {0, 2, 1}, {12, 8}, {2, 1});
+        C(abDC12d8c, {0, 1, 3, 2}, {12, 8}, {3, 2});
         C(BA16a16b2a, {1, 0}, {16, 16, 2}, {0, 1, 0});
         C(BA16a32b2a, {1, 0}, {16, 32, 2}, {0, 1, 0});
         C(BA16a48b2a, {1, 0}, {16, 48, 2}, {0, 1, 0});
@@ -1007,10 +1010,13 @@ status_t memory_desc_wrapper::compute_blocking(
         C(aCB8b8c, {0, 2, 1}, {8, 8}, {1, 2});
         C(BA16b8a, {1, 0}, {16, 8}, {1, 0});
         C(BA8b8a, {1, 0}, {8, 8}, {1, 0});
+        C(BA4b8a, {1, 0}, {4, 8}, {1, 0});
         C(aCB16c8b, {0, 2, 1}, {16, 8}, {2, 1});
         C(aCB8c8b, {0, 2, 1}, {8, 8}, {2, 1});
+        C(aCB4c8b, {0, 2, 1}, {4, 8}, {2, 1});
         C(abDC16d8c, {0, 1, 3, 2}, {16, 8}, {3, 2});
         C(abDC8d8c, {0, 1, 3, 2}, {8, 8}, {3, 2});
+        C(abDC4d8c, {0, 1, 3, 2}, {4, 8}, {3, 2});
         C(AB2a4b, {0, 1}, {2, 4}, {0, 1});
         default: break;
     }

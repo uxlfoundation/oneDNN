@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2017 Intel Corporation
 * Copyright 2024-2025 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -951,6 +951,12 @@ dnnl_format_tag_t str2fmt_tag(const char *str) {
     CASE(BAc4a4b);
     CASE(BAcd4a4b);
     CASE(BAcde4a4b);
+    CASE(BA12b8a);
+    CASE(aCB12c8b);
+    CASE(abDC12d8c);
+    CASE(BA4b8a);
+    CASE(aCB4c8b);
+    CASE(abDC4d8c);
     CASE(x);
     CASE(nc);
     CASE(cn);

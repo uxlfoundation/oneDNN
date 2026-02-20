@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2016 Intel Corporation
 * Copyright 2024-2025 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -1075,6 +1075,12 @@ typedef enum {
     dnnl_BAc4a4b,
     dnnl_BAcd4a4b,
     dnnl_BAcde4a4b,
+    dnnl_BA12b8a,
+    dnnl_aCB12c8b,
+    dnnl_abDC12d8c,
+    dnnl_BA4b8a,
+    dnnl_aCB4c8b,
+    dnnl_abDC4d8c,
 
     /// Just a sentinel, not real memory format tag. Must be changed after new
     /// format tag is added.

@@ -112,6 +112,10 @@ static inline void handleL0(ze_result_t result)
         throw level_zero_error{result};
 }
 
+struct ze_module_deleter_t {
+    void operator()(ze_module_handle_t *h) const { handleL0(dynamic::zeModuleDestroy(*h)); }
+};
+
 static inline std::vector<uint8_t> getDummyModuleBinary(ze_context_handle_t context, ze_device_handle_t device) {
     static const uint8_t dummySPV[] = {0x03, 0x02, 0x23, 0x07, 0x00, 0x00, 0x01, 0x00, 0x0E, 0x00, 0x06, 0x00, 0x07, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x11, 0x00, 0x02, 0x00, 0x04, 0x00, 0x00, 0x00, 0x11, 0x00, 0x02, 0x00, 0x06, 0x00, 0x00, 0x00, 0x0B, 0x00, 0x05, 0x00, 0x01, 0x00, 0x00, 0x00, 0x4F, 0x70, 0x65, 0x6E, 0x43, 0x4C, 0x2E, 0x73, 0x74, 0x64, 0x00, 0x00, 0x0E, 0x00, 0x03, 0x00, 0x02, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x0F, 0x00, 0x04, 0x00, 0x06, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x5F, 0x00, 0x00, 0x00, 0x07, 0x00, 0x07, 0x00, 0x06, 0x00, 0x00, 0x00, 0x6B, 0x65, 0x72, 0x6E, 0x65, 0x6C, 0x5F, 0x61, 0x72, 0x67, 0x5F, 0x74, 0x79, 0x70, 0x65, 0x2E, 0x5F, 0x2E, 0x00, 0x00, 0x03, 0x00, 0x03, 0x00, 0x03, 0x00, 0x00, 0x00, 0x70, 0x8E, 0x01, 0x00, 0x05, 0x00, 0x04, 0x00, 0x05, 0x00, 0x00, 0x00, 0x65, 0x6E, 0x74, 0x72, 0x79, 0x00, 0x00, 0x00, 0x13, 0x00, 0x02, 0x00, 0x02, 0x00, 0x00, 0x00, 0x21, 0x00, 0x03, 0x00, 0x03, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x36, 0x00, 0x05, 0x00, 0x02, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0xF8, 0x00, 0x02, 0x00, 0x05, 0x00, 0x00, 0x00, 0xFD, 0x00, 0x01, 0x00, 0x38, 0x00, 0x01, 0x00};
     ze_module_desc_t moduleDesc = {
@@ -124,22 +128,23 @@ static inline std::vector<uint8_t> getDummyModuleBinary(ze_context_handle_t cont
         nullptr
     };
 
-    ze_module_handle_t module;
-    handleL0(dynamic::zeModuleCreate(context, device, &moduleDesc, &module, nullptr));
+    ze_module_handle_t rawModule = nullptr;
+    handleL0(dynamic::zeModuleCreate(context, device, &moduleDesc, &rawModule, nullptr));
 
-    if (module == nullptr)
+    if (rawModule == nullptr)
         throw level_zero_error{};
+
+    std::unique_ptr<ze_module_handle_t, detail::ze_module_deleter_t> moduleHandle(&rawModule);
 
     std::vector<uint8_t> binary;
     size_t binarySize;
-    handleL0(dynamic::zeModuleGetNativeBinary(module, &binarySize, nullptr));
+    handleL0(dynamic::zeModuleGetNativeBinary(*moduleHandle, &binarySize, nullptr));
     binary.resize(binarySize);
-    handleL0(dynamic::zeModuleGetNativeBinary(module, &binarySize, binary.data()));
-    handleL0(dynamic::zeModuleDestroy(module));
+    handleL0(dynamic::zeModuleGetNativeBinary(*moduleHandle, &binarySize, binary.data()));
     return binary;
 }
 
-}; /* namespace detail */
+} /* namespace detail */
 
 template <HW hw>
 std::pair<ze_module_handle_t, ze_kernel_handle_t> LevelZeroCodeGenerator<hw>::getModuleAndKernel(ze_context_handle_t context, ze_device_handle_t device, const std::string &options)
@@ -158,11 +163,13 @@ std::pair<ze_module_handle_t, ze_kernel_handle_t> LevelZeroCodeGenerator<hw>::ge
         nullptr
     };
 
-    ze_module_handle_t moduleHandle;
-    detail::handleL0(dynamic::zeModuleCreate(context, device, &moduleDesc, &moduleHandle, nullptr));
+    ze_module_handle_t rawModule = nullptr;
+    detail::handleL0(dynamic::zeModuleCreate(context, device, &moduleDesc, &rawModule, nullptr));
 
-    if (moduleHandle == nullptr)
+    if (rawModule == nullptr)
         throw level_zero_error{};
+
+    std::unique_ptr<ze_module_handle_t, detail::ze_module_deleter_t> moduleHandle(&rawModule);
 
     auto kernelName = ELFCodeGenerator<hw>::interface_.getExternalName().c_str();
 
@@ -173,15 +180,13 @@ std::pair<ze_module_handle_t, ze_kernel_handle_t> LevelZeroCodeGenerator<hw>::ge
         kernelName
     };
 
-    ze_kernel_handle_t kernelHandle;
-    detail::handleL0(dynamic::zeKernelCreate(moduleHandle, &kernelDesc, &kernelHandle));
+    ze_kernel_handle_t kernelHandle = nullptr;
+    detail::handleL0(dynamic::zeKernelCreate(*moduleHandle, &kernelDesc, &kernelHandle));
 
-    if (kernelHandle == nullptr) {
-        detail::handleL0(dynamic::zeModuleDestroy(moduleHandle));
+    if (kernelHandle == nullptr)
         throw level_zero_error{};
-    }
 
-    return std::make_pair(moduleHandle, kernelHandle);
+    return std::make_pair(*(moduleHandle.release()), kernelHandle);
 }
 
 template <HW hw>

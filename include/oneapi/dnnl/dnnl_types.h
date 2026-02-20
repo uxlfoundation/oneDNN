@@ -1060,9 +1060,6 @@ typedef enum {
     dnnl_BA24b8a,
     dnnl_aCB24c8b,
     dnnl_abDC24d8c,
-    dnnl_BA12b8a,
-    dnnl_aCB12c8b,
-    dnnl_abDC12d8c,
     dnnl_decbA4a,
     dnnl_defcbA4a,
     dnnl_abDC8d8c,
@@ -1071,9 +1068,6 @@ typedef enum {
     dnnl_aCB16c8b,
     dnnl_BA8b8a,
     dnnl_BA16b8a,
-    dnnl_BA4b8a,
-    dnnl_aCB4c8b,
-    dnnl_abDC4d8c,
     dnnl_AB2a4b,
     dnnl_aCBd4b4c,
     dnnl_aCBde4b4c,
@@ -1081,6 +1075,12 @@ typedef enum {
     dnnl_BAc4a4b,
     dnnl_BAcd4a4b,
     dnnl_BAcde4a4b,
+    dnnl_BA12b8a,
+    dnnl_aCB12c8b,
+    dnnl_abDC12d8c,
+    dnnl_BA4b8a,
+    dnnl_aCB4c8b,
+    dnnl_abDC4d8c,
 
     /// Just a sentinel, not real memory format tag. Must be changed after new
     /// format tag is added.

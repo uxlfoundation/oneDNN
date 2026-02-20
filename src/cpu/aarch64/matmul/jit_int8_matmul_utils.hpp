@@ -18,7 +18,7 @@
 #ifndef CPU_AARCH64_MATMUL_JIT_INT8_MATMUL_UTILS_HPP
 #define CPU_AARCH64_MATMUL_JIT_INT8_MATMUL_UTILS_HPP
 
-// #include "common/primitive.hpp"
+#include "cpu/aarch64/cpu_isa_traits.hpp"
 #include "cpu/aarch64/jit_generator.hpp"
 #include "cpu/aarch64/matmul/jit_int8_kernel_types.hpp"
 
@@ -29,7 +29,6 @@ namespace aarch64 {
 namespace matmul {
 
 using namespace Xbyak_aarch64;
-template <cpu_isa_t isa>
 struct jit_int8_matmul_utils_kernel_t : public jit_generator_t {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_int8_matmul_utils_kernel_t);
@@ -67,7 +66,8 @@ struct jit_int8_matmul_utils_kernel_t : public jit_generator_t {
         return jit_generator_t::operator()(p);
     }
 
-    jit_int8_matmul_utils_kernel_t(const dyn_vals_t &k) : dyn_(k) {}
+    jit_int8_matmul_utils_kernel_t(const dyn_vals_t &k, cpu_isa_t isa)
+        : cols_per_b_vec_(isa_max_vlen(isa) / 8), dyn_(k) {}
     ~jit_int8_matmul_utils_kernel_t() override = default;
 
 private:
@@ -78,6 +78,7 @@ private:
     void reo_B_8xN(int, int);
     void generate() override;
 
+    const int cols_per_b_vec_;
     dyn_vals_t dyn_;
 };
 

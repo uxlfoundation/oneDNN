@@ -1182,14 +1182,14 @@ status_t jit_int8_matmul_t<isa>::init(engine_t *engine) {
 
     d.reorder_a = 1;
     d.reorder_b = 0;
-    reo_ker_a_ = std::unique_ptr<jit_int8_matmul_utils_kernel_t<isa>> {
-            new jit_int8_matmul_utils_kernel_t<isa>(d)};
+    reo_ker_a_ = std::unique_ptr<jit_int8_matmul_utils_kernel_t> {
+            new jit_int8_matmul_utils_kernel_t(d, isa)};
     CHECK(reo_ker_a_->create_kernel());
 
     d.reorder_b = 1;
     d.reorder_a = 0;
-    reo_ker_b_ = std::unique_ptr<jit_int8_matmul_utils_kernel_t<isa>> {
-            new jit_int8_matmul_utils_kernel_t<isa>(d)};
+    reo_ker_b_ = std::unique_ptr<jit_int8_matmul_utils_kernel_t> {
+            new jit_int8_matmul_utils_kernel_t(d, isa)};
     CHECK(reo_ker_b_->create_kernel());
 
     return status::success;

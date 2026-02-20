@@ -39,7 +39,6 @@ namespace matmul {
 
 template <cpu_isa_t isa>
 struct jit_int8_matmul_kernel_t;
-template <cpu_isa_t isa>
 struct jit_int8_matmul_utils_kernel_t;
 template <cpu_isa_t isa>
 struct jit_int8_matmul_t : public primitive_t {
@@ -112,8 +111,8 @@ struct jit_int8_matmul_t : public primitive_t {
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     std::unique_ptr<jit_int8_matmul_kernel_t<isa>> int8_kernels_[16];
-    std::unique_ptr<jit_int8_matmul_utils_kernel_t<isa>> reo_ker_a_;
-    std::unique_ptr<jit_int8_matmul_utils_kernel_t<isa>> reo_ker_b_;
+    std::unique_ptr<jit_int8_matmul_utils_kernel_t> reo_ker_a_;
+    std::unique_ptr<jit_int8_matmul_utils_kernel_t> reo_ker_b_;
 };
 
 } // namespace matmul

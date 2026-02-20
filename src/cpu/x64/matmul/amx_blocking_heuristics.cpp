@@ -865,6 +865,11 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters(
                 }
             }
 
+            if (best_n_h == 0) {
+                horizontal_not_possible = true;
+                return;
+            }
+
             if (rnd_up(n_per_thread, best_n_h * n_decomposition) * (nthr_n_ - 1)
                     >= (size_t)N) {
                 horizontal_not_possible = true;
@@ -904,6 +909,11 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters(
                         best_m_v = *it_m;
                     }
                 }
+            }
+
+            if (best_m_v == 0) {
+                vertical_not_possible = true;
+                return;
             }
 
             if (rnd_up(m_per_thread, best_m_v * m_decomposition) * (nthr_m_ - 1)

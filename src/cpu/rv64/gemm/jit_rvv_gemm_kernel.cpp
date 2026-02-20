@@ -49,10 +49,8 @@ void jit_rvv_gemm_kernel_t::generate() {
     // Loop counters:
     const Reg reg_k = a4; // current k
     const Reg reg_K_main = a5; // K_main = (K / 4) * 4
-
-    // B row pointers for current k (used to access columns 0, 1, 2, and 3).
+    // B row pointer for current k (points to B(k, 0)).
     const Reg reg_B0_ptr = a6; // &B(k, 0)
-    const Reg reg_B1_ptr = a7; // &B(k, 1)
 
     // Scratch temporaries used for address arithmetic.
     const Reg reg_tmp0 = a0; // reused after initial parameter loads
@@ -64,19 +62,24 @@ void jit_rvv_gemm_kernel_t::generate() {
     const FReg freg_b1 = fa3;
     const FReg freg_b2 = fa4;
     const FReg freg_b3 = fa5;
+    const FReg freg_b4 = fa6;
+    const FReg freg_b5 = fa7;
+    const FReg freg_b6 = ft0;
 
-    // Vector register layout depends on m_ (LMUL setting)
-    // For m=8 (LMUL=m2): each vreg occupies 2 vector registers
-    //   v_c0(0), v_c1(2), v_c2(4), v_c3(6), v_a0(8), v_tmp(10)
-    // For m=16 (LMUL=m4): each vreg occupies 4 vector registers
-    //   v_c0(0), v_c1(4), v_c2(8), v_c3(12), v_a0(16), v_tmp(20)
-    const VReg v_c0(0);
-    const VReg v_c1 = (m_ == 16) ? VReg(4) : VReg(2);
-    const VReg v_c2 = (m_ == 16) ? VReg(8) : VReg(4);
-    const VReg v_c3 = (m_ == 16) ? VReg(12) : VReg(6);
-    const VReg v_a0 = (m_ == 16) ? VReg(16) : VReg(8);
-    const VReg v_tmp = (m_ == 16) ? VReg(20) : VReg(10);
-    // Layout of call_params_t:
+// Vector register layout (LMUL=m4, f32):
+//   7 accumulators + 1 A vector == 8 groups -> 8 * 4 = 32 vector registers.
+//   v_c0(0), v_c1(4), v_c2(8), v_c3(12), v_c4(16), v_c5(20), v_c6(24), v_a0(28)
+const VReg v_c0(0);
+const VReg v_c1(4);
+const VReg v_c2(8);
+const VReg v_c3(12);
+const VReg v_c4(16);
+const VReg v_c5(20);
+const VReg v_c6(24);
+const VReg v_a0(28);
+
+// Layout of call_params_t:
+
     //   0  : const float *A;
     //   8  : const float *B;
     //   16 : float *C;
@@ -107,19 +110,19 @@ void jit_rvv_gemm_kernel_t::generate() {
     fmv_w_x(freg_beta, reg_beta_bits);
 
     // Set VL once for m_ rows; with LMUL = m2 (for m=8) or m4 (for m=16)
-    const LMUL lmul = (m_ == 16) ? LMUL::m4 : LMUL::m2;
+    const LMUL lmul = LMUL::m4;
     li(reg_tmp0, m_);
     vsetvli(x0, reg_tmp0, SEW::e32, lmul);
+    // B0_ptr already points to B(k=0, 0).
 
-    // Initialize B row pointers for k = 0.
-    // B0_ptr = B base; B1_ptr = B + ldb_bytes
-    add(reg_B1_ptr, reg_B0_ptr, reg_ldb_bytes);
-
-    // Zero accumulators for 4 output columns.
+    // Zero accumulators for 7 output columns.
     vmv_v_i(v_c0, 0);
     vmv_v_i(v_c1, 0);
     vmv_v_i(v_c2, 0);
     vmv_v_i(v_c3, 0);
+    vmv_v_i(v_c4, 0);
+    vmv_v_i(v_c5, 0);
+    vmv_v_i(v_c6, 0);
 
     // Base pointers for this 8-row micro-tile.
     // A_ptr starts at A(:, 0) and advances by lda_bytes each FMA step.
@@ -136,23 +139,38 @@ void jit_rvv_gemm_kernel_t::generate() {
     //   - load 4 B scalars (one per output column)
     //   - 4 FMAs into v_c0..v_c3
     //   - advance A_ptr and B0/B1 pointers
-    auto emit_k_step = [&]() {
-        vle32_v(v_a0, reg_A_ptr);
-        flw(freg_b0, reg_B0_ptr, 0);
-        flw(freg_b1, reg_B1_ptr, 0);
-        mv(reg_tmp1, reg_B1_ptr);
-        add(reg_tmp1, reg_tmp1, reg_ldb_bytes);
-        flw(freg_b2, reg_tmp1, 0);
-        add(reg_tmp1, reg_tmp1, reg_ldb_bytes);
-        flw(freg_b3, reg_tmp1, 0);
-        vfmacc_vf(v_c0, freg_b0, v_a0);
-        vfmacc_vf(v_c1, freg_b1, v_a0);
-        vfmacc_vf(v_c2, freg_b2, v_a0);
-        vfmacc_vf(v_c3, freg_b3, v_a0);
-        add(reg_A_ptr, reg_A_ptr, reg_lda_bytes);
-        addi(reg_B0_ptr, reg_B0_ptr, 4);
-        addi(reg_B1_ptr, reg_B1_ptr, 4);
-    };
+    
+auto emit_k_step = [&]() {
+    vle32_v(v_a0, reg_A_ptr);
+
+    // Load 7 scalars from B(k, 0..6) with stride ldb_bytes.
+    mv(reg_tmp1, reg_B0_ptr);
+    flw(freg_b0, reg_tmp1, 0);
+    add(reg_tmp1, reg_tmp1, reg_ldb_bytes);
+    flw(freg_b1, reg_tmp1, 0);
+    add(reg_tmp1, reg_tmp1, reg_ldb_bytes);
+    flw(freg_b2, reg_tmp1, 0);
+    add(reg_tmp1, reg_tmp1, reg_ldb_bytes);
+    flw(freg_b3, reg_tmp1, 0);
+    add(reg_tmp1, reg_tmp1, reg_ldb_bytes);
+    flw(freg_b4, reg_tmp1, 0);
+    add(reg_tmp1, reg_tmp1, reg_ldb_bytes);
+    flw(freg_b5, reg_tmp1, 0);
+    add(reg_tmp1, reg_tmp1, reg_ldb_bytes);
+    flw(freg_b6, reg_tmp1, 0);
+
+    vfmacc_vf(v_c0, freg_b0, v_a0);
+    vfmacc_vf(v_c1, freg_b1, v_a0);
+    vfmacc_vf(v_c2, freg_b2, v_a0);
+    vfmacc_vf(v_c3, freg_b3, v_a0);
+    vfmacc_vf(v_c4, freg_b4, v_a0);
+    vfmacc_vf(v_c5, freg_b5, v_a0);
+    vfmacc_vf(v_c6, freg_b6, v_a0);
+
+    add(reg_A_ptr, reg_A_ptr, reg_lda_bytes);
+    addi(reg_B0_ptr, reg_B0_ptr, 4);
+};
+
 
     // k = 0
     mv(reg_k, x0);
@@ -187,43 +205,45 @@ void jit_rvv_gemm_kernel_t::generate() {
     L(label_k_tail_end);
 
     // Combine accumulators with C: C = alpha * accum + beta * C.
-    auto emit_c_update = [&](int col_idx, const VReg &v_c) {
-        Label label_beta_zero, label_done;
-        Reg reg_c_col = reg_tmp0;
+    
+auto emit_c_update = [&](int col_idx, const VReg &v_c) {
+    Label label_beta_zero, label_done;
+    Reg reg_c_col = reg_tmp0;
 
-        if (col_idx == 0) {
-            // Column 0: C_base + 0 * ldc_bytes
-            mv(reg_c_col, reg_C_base);
-        } else {
-            // Column j: C_base + j * ldc_bytes
-            li(reg_tmp1, col_idx);
-            mul(reg_c_col, reg_ldc_bytes, reg_tmp1);
-            add(reg_c_col, reg_C_base, reg_c_col);
-        }
+    if (col_idx == 0) {
+        mv(reg_c_col, reg_C_base);
+    } else {
+        li(reg_tmp1, col_idx);
+        mul(reg_c_col, reg_ldc_bytes, reg_tmp1);
+        add(reg_c_col, reg_C_base, reg_c_col);
+    }
 
-        // beta == 0.0f
-        beq(reg_beta_bits, x0, label_beta_zero);
+    // beta == 0.0f
+    beq(reg_beta_bits, x0, label_beta_zero);
 
-        // beta != 0: v_tmp = beta * C_old + alpha * v_c
-        vle32_v(v_tmp, reg_c_col);
-        vfmul_vf(v_tmp, v_tmp, freg_beta);
-        vfmul_vf(v_c, v_c, freg_alpha); // use in-place v_c update to save regs
-        vfadd_vv(v_tmp, v_tmp, v_c);
-        vse32_v(v_tmp, reg_c_col);
-        j_(label_done);
+    // beta != 0: tmp(v_a0) = beta * C_old + alpha * v_c
+    vle32_v(v_a0, reg_c_col);
+    vfmul_vf(v_a0, v_a0, freg_beta);
+    vfmul_vf(v_c, v_c, freg_alpha);
+    vfadd_vv(v_a0, v_a0, v_c);
+    vse32_v(v_a0, reg_c_col);
+    j_(label_done);
 
-        // beta == 0: v_c = alpha * v_c
-        L(label_beta_zero);
-        vfmul_vf(v_c, v_c, freg_alpha);
-        vse32_v(v_c, reg_c_col);
+    // beta == 0: v_c = alpha * v_c
+    L(label_beta_zero);
+    vfmul_vf(v_c, v_c, freg_alpha);
+    vse32_v(v_c, reg_c_col);
 
-        L(label_done);
-    };
+    L(label_done);
+};
 
-    emit_c_update(0, v_c0);
-    emit_c_update(1, v_c1);
-    emit_c_update(2, v_c2);
-    emit_c_update(3, v_c3);
+emit_c_update(0, v_c0);
+emit_c_update(1, v_c1);
+emit_c_update(2, v_c2);
+emit_c_update(3, v_c3);
+emit_c_update(4, v_c4);
+emit_c_update(5, v_c5);
+emit_c_update(6, v_c6);
     ret();
 #else
     // RVV JIT is disabled, emit a stub. This kernel should never be used
@@ -234,14 +254,16 @@ void jit_rvv_gemm_kernel_t::generate() {
 
 void jit_rvv_gemm_kernel(const float *A, const float *B, float *C, dim_t lda,
         dim_t ldb, dim_t ldc, dim_t K, float alpha, float beta, dim_t m) {
-    static jit_rvv_gemm_kernel_t kernel_m8(8);
     static jit_rvv_gemm_kernel_t kernel_m16(16);
+    static jit_rvv_gemm_kernel_t kernel_m32(32);
+    static jit_rvv_gemm_kernel_t kernel_m64(64);
+    static jit_rvv_gemm_kernel_t kernel_m128(128);
 
     // Print verbose message to indicate JIT kernel is being used for GEMM
     static bool verbose_printed = false;
     if (!verbose_printed) {
         VINFO(primitive, create, dispatch, rvv_gemm_jit,
-                "JIT gemm kernel taking over: m=%d, n=4", (int)m);
+                "JIT gemm kernel taking over: m=%d, n=7", (int)m);
         verbose_printed = true;
     }
 
@@ -256,10 +278,12 @@ void jit_rvv_gemm_kernel(const float *A, const float *B, float *C, dim_t lda,
     p.alpha = alpha;
     p.beta = beta;
 
-    if (m == 8) {
-        kernel_m8(&p);
-    } else { // m == 16
-        kernel_m16(&p);
+    switch ((int)m) {
+        case 16: kernel_m16(&p); break;
+        case 32: kernel_m32(&p); break;
+        case 64: kernel_m64(&p); break;
+        case 128: kernel_m128(&p); break;
+        default: kernel_m16(&p); break;
     }
 }
 

@@ -911,6 +911,7 @@ std::ostream &operator<<(std::ostream &s, const attr_t::post_ops_t &post_ops) {
                 }
             }
             if (e.binary.tag != tag::any) s << src_delim << e.binary.tag;
+            if (!e.binary.strides.empty()) s << src_delim << e.binary.strides;
 
             if (e.is_binary_kind_with_ternary_op()) {
                 bool delim_added = false;
@@ -1198,6 +1199,7 @@ struct post_ops_rhs_tensor_entry_t {
     dnnl_data_type_t dt;
     int mask;
     std::string tag;
+    dims_t strides;
     int arg_attr_mask;
 };
 
@@ -1209,7 +1211,7 @@ post_ops_rhs_tensor_entry_t get_po_rhs_tensor_entry(
     if (entry.is_prelu_kind()) {
         const auto &prelu = entry.prelu;
         const int mask = attr_t::get_default_mask(prelu.policy, ndims);
-        return {dnnl_f32, mask, tag::axb, DNNL_ARG_WEIGHTS};
+        return {dnnl_f32, mask, tag::axb, dims_t(), DNNL_ARG_WEIGHTS};
     } else if (entry.is_binary_kind()) {
         const auto &binary = entry.binary;
         using mask_input_t
@@ -1225,7 +1227,8 @@ post_ops_rhs_tensor_entry_t get_po_rhs_tensor_entry(
                 break;
             default: assert(!"unknown mask_input value"); break;
         }
-        return {binary.src1_dt, mask, binary.tag, DNNL_ARG_SRC_1};
+        return {binary.src1_dt, mask, binary.tag, binary.strides,
+                DNNL_ARG_SRC_1};
     }
 
     return post_ops_rhs_tensor_entry_t {};
@@ -1244,7 +1247,7 @@ int attr_args_t::prepare_post_ops_mds(const attr_t &attr, int ndims,
         const auto &e = po.entry[idx];
         if (e.is_binary_kind() || e.is_prelu_kind()) {
 
-            const auto po_rhs_tensor_entry
+            const auto &po_rhs_tensor_entry
                     = get_po_rhs_tensor_entry(e, ndims, prim_kind);
             const int mask = po_rhs_tensor_entry.mask;
 
@@ -1254,7 +1257,8 @@ int attr_args_t::prepare_post_ops_mds(const attr_t &attr, int ndims,
                 rhs_tensor_dims[d] = (!(mask & (1 << d))) ? 1 : dims[d];
 
             auto rhs_tensor_desc = dnn_mem_t::init_md(ndims, rhs_tensor_dims,
-                    po_rhs_tensor_entry.dt, po_rhs_tensor_entry.tag);
+                    po_rhs_tensor_entry.dt, po_rhs_tensor_entry.tag,
+                    po_rhs_tensor_entry.strides);
             mds.emplace((DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx)
                                 | po_rhs_tensor_entry.arg_attr_mask),
                     std::move(rhs_tensor_desc));

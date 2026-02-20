@@ -386,6 +386,8 @@ class ParserImpl:
             post_op.mask = spec.read_uint()
         if spec.read_literal(":"):
             post_op.tag = spec.read_str()
+        if spec.read_literal(":"):
+            post_op.strides = spec.read_str()
         return post_op
 
     @staticmethod

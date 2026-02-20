@@ -38,6 +38,11 @@ constexpr char hw_ncpu[] = "hw.ncpu";
 constexpr char hw_opt_atomics[] = "hw.optional.armv8_1_atomics";
 constexpr char hw_opt_fp[] = "hw.optional.floatingpoint";
 constexpr char hw_opt_neon[] = "hw.optional.neon";
+constexpr char hw_opt_crc[] = "hw.optional.armv8_crc32";
+constexpr char hw_opt_jscvt[] = "hw.optional.arm.FEAT_JSCVT";
+constexpr char hw_opt_sme[] = "hw.optional.arm.FEAT_SME";
+constexpr char hw_opt_sme_i16i64[] = "hw.optional.arm.FEAT_SME_I16I64";
+constexpr char hw_opt_sme_f64f64[] = "hw.optional.arm.FEAT_SME_F64F64";
 constexpr char hw_perflevel1_logicalcpu[] = "hw.perflevel1.logicalcpu";
 
 class CpuInfoMac : public CpuInfo {
@@ -49,6 +54,7 @@ public:
     setHwCap();
     setCacheHierarchy();
     setImplementer();
+    setSmeLen();
   }
 
 private:
@@ -98,6 +104,17 @@ private:
     cacheInfo_.levelCache[2].sharingCores[2] = ((uint64_t *)sysInfoBuf_)[3];
   }
 
+  static bool has_feature(const char *name) {
+    uint32_t value = 0;
+    size_t size = sizeof(value);
+    if (!sysctlbyname(name, &value, &size, NULL, 0))
+      return value;
+    else if (ENOENT == errno)
+      return 0;
+    else
+      throw Error(ERR_INTERNAL);
+  }
+
   void setHwCap() {
     size_t val = 0;
     size_t len = sizeof(val);
@@ -116,6 +133,28 @@ private:
       throw Error(ERR_INTERNAL);
     else
       type_ |= (val == 1) ? (Type)XBYAK_AARCH64_HWCAP_ADVSIMD : 0;
+
+    if (sysctlbyname(hw_opt_crc, &val, &len, NULL, 0) != 0)
+      throw Error(ERR_INTERNAL);
+    else
+      type_ |= (val == 1) ? (Type)XBYAK_AARCH64_HWCAP_CRC : 0;
+
+    if (sysctlbyname(hw_opt_jscvt, &val, &len, NULL, 0) != 0)
+      throw Error(ERR_INTERNAL);
+    else
+      type_ |= (val == 1) ? (Type)XBYAK_AARCH64_HWCAP_JSCVT : 0;
+
+    if (has_feature(hw_opt_sme))
+      type_ |= (Type)XBYAK_AARCH64_HWCAP_SME;
+
+    if (has_feature(hw_opt_sme_i16i64))
+      type_ |= (Type)XBYAK_AARCH64_HWCAP_SME_I16I64;
+
+    if (has_feature(hw_opt_sme_f64f64))
+      type_ |= (Type)XBYAK_AARCH64_HWCAP_SME_F64F64;
+
+    if (has_feature(hw_opt_sme_f64f64))
+      type_ |= (Type)XBYAK_AARCH64_HWCAP_SME_F64F64;
   }
 
   void setNumCores() {

@@ -853,7 +853,7 @@ status_t jit_sve_conv_fwd_kernel_t<isa>::init_conf(jit_conv_conf_t &jcp,
     const bool with_groups = weights_d.ndims() == src_d.ndims() + 1;
     int ndims = src_d.ndims();
 
-    jcp = zero<decltype(jcp)>();
+    jcp = utils::zero<decltype(jcp)>();
     jcp.nthr = jcp.aligned_threads = nthreads;
     jcp.ndims = ndims;
     jcp.prop_kind = cd.prop_kind;
@@ -2085,7 +2085,7 @@ status_t jit_sve_conv_bwd_data_kernel_f32_t<isa>::init_conf(
     const memory_desc_wrapper diff_src_d(&diff_src_md);
     const memory_desc_wrapper weights_d(&weights_md);
     const memory_desc_wrapper diff_dst_d(&diff_dst_md);
-    jcp = zero<decltype(jcp)>();
+    jcp = utils::zero<decltype(jcp)>();
 
     const bool with_groups = weights_d.ndims() == diff_src_d.ndims() + 1;
     int ndims = diff_src_d.ndims();
@@ -3994,7 +3994,7 @@ status_t jit_sve_conv_bwd_weights_kernel_f32_t<isa>::init_conf(
     const bool with_groups = diff_weights_d.ndims() == src_d.ndims() + 1;
     int ndims = src_d.ndims();
 
-    jcp = zero<decltype(jcp)>();
+    jcp = utils::zero<decltype(jcp)>();
 
     jcp.simd_w = cpu_isa_traits<isa>::vlen / typesize;
     jcp.nthr = jcp.aligned_threads = nthreads;

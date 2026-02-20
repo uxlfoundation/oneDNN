@@ -88,11 +88,7 @@ class LabelManager {
       const size_t offset = jmp->endOfJmp;
       int64_t labelOffset = (addrOffset - offset) * CSIZE;
       uint32_t disp = jmp->encFunc(labelOffset);
-      if (base_->isAutoGrow()) {
-        base_->save(offset, addrOffset, jmp->encFunc);
-      } else {
-        base_->rewrite(offset, disp);
-      }
+      base_->rewrite(offset, disp);
       undefList.erase(itr);
     }
   }

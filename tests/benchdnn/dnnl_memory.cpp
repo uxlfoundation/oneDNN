@@ -617,7 +617,7 @@ void dnn_mem_t::memset(int value, size_t size, int buffer_index) const {
 // unavailable or a CPU engine is used, the function defaults to memset.
 #if DNNL_INTEL_GPU_RUNTIME_ENABLED
 extern "C" dnnl_status_t dnnl_impl_gpu_fill_random(dnnl_stream_t stream,
-        size_t size, dnnl::impl::memory_storage_t *storage, uint32_t seed);
+        size_t size, dnnl_memory_t memory, int buffer_index, uint32_t seed);
 #endif
 
 void dnn_mem_t::fill_for_perf_test(size_t size, int buffer_index) const {
@@ -628,7 +628,7 @@ void dnn_mem_t::fill_for_perf_test(size_t size, int buffer_index) const {
         auto mem = m_padded_ ? m_padded_ : m_;
         stream_t stream(engine_);
         DNN_SAFE_V(dnnl_impl_gpu_fill_random(
-                stream, size, mem->memory_storage(buffer_index), seed));
+                stream, size, mem, buffer_index, seed));
         DNN_SAFE_V(dnnl_stream_wait(stream));
         return;
     }

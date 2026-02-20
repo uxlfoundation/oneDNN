@@ -38,7 +38,8 @@ std::random_device &get_random_device();
 
 std::mt19937 &get_generator();
 
-void fill_random(std::vector<float> &out, const dnnl::memory::desc &desc);
+void fill_random(std::vector<float> &out, const dnnl::memory::desc &desc,
+        float min = -3.f, float max = 4.f);
 
 void fill_random_scales(
         std::vector<float> &out, const dnnl::memory::desc &desc);

@@ -346,6 +346,10 @@ private:
         }
         // sdpa
         if (arg == DNNL_ARG_SRC_2) return true;
+        // gated mlp
+        for (const auto &sa : {DNNL_ARG_WEIGHTS_1, DNNL_ARG_WEIGHTS_2}) {
+            if (arg == sa) return true;
+        }
         return false;
     }
 };
@@ -388,6 +392,10 @@ private:
         }
         // sdpa
         if (arg == DNNL_ARG_SRC_2) return true;
+        // gated mlp
+        for (const auto &sa : {DNNL_ARG_WEIGHTS_1, DNNL_ARG_WEIGHTS_2}) {
+            if (arg == sa) return true;
+        }
         return false;
     }
 };

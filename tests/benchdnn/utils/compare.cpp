@@ -265,7 +265,33 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
 
     res->total += nelems;
 
-    dnn_mem_t got_f32(got_mem, dnnl_f32, tag::abx, get_cpu_engine());
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    const int nhandles = query_md_num_handles(got_mem.md_);
+    const auto got_encoding = query_md_sparse_encoding(got_mem.md_);
+#endif
+    dnn_mem_t got_f32;
+
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    if (nhandles > 1 && got_encoding == dnnl_grouped) {
+        // For grouped matmul, create plain f32 memory and copy values from buffer 0
+        // Buffer 0 contains computed values
+        // Buffer 1 contains offsets that we set as an input, so no need to check them
+        const auto ndims = got_mem.ndims();
+        const auto &dims = got_mem.dims();
+        got_f32 = dnn_mem_t(ndims, dims, dnnl_f32, std::string(tag::abx),
+                get_cpu_engine(), false);
+
+        const int64_t nelems_to_copy = got_f32.nelems();
+        benchdnn_parallel_nd(nelems_to_copy, [&](int64_t i) {
+            got_f32.set_f32_elem(i,
+                    got_mem.get_elem(i, sparse_options_t::grouped_values_idx));
+        });
+    } else
+#endif
+    {
+        got_f32 = dnn_mem_t(got_mem, dnnl_f32, tag::abx, get_cpu_engine());
+    }
+
     dnn_mem_t exp_f32_plain;
     const bool is_prim_ref_dst_mem_f32_abx
             = query_md_data_type(exp_mem.md_) == dnnl_f32

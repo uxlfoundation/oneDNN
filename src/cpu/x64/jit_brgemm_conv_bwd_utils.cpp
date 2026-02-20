@@ -1710,7 +1710,8 @@ void set_k_range(int P, int D, int S, dim_t i, dim_t O, int K, int &k_s,
 
     k_f = is_w ? K : nstl::min(K, static_cast<int>(div_up(i + P + 1, D)));
     k_s = is_w ? 0
-               : nstl::max(0, static_cast<int>(div_up(i + P - O * S + 1, D)));
+               : static_cast<int>(
+                         div_up(nstl::max((dim_t)0, i + P - O * S + 1), D));
 
     while (k_s % S != s)
         k_s++;

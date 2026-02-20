@@ -615,7 +615,7 @@ void dnn_mem_t::memset(int value, size_t size, int buffer_index) const {
 // This prevents GPU driver data compression from producing unrealistically
 // high bandwidth numbers in performance mode. A uniform fill (memset) is
 // trivially compressible by modern GPU drivers, inflating apparent BW by 3-4x.
-#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE
+#if DNNL_INTEL_GPU_RUNTIME_ENABLED
 extern "C" dnnl_status_t dnnl_impl_gpu_fill_random(dnnl_stream_t stream,
         size_t size, dnnl::impl::memory_storage_t *storage, uint32_t seed);
 #endif
@@ -623,14 +623,17 @@ extern "C" dnnl_status_t dnnl_impl_gpu_fill_random(dnnl_stream_t stream,
 void dnn_mem_t::fill_random(size_t size, int buffer_index) const {
     auto mem = m_padded_ ? m_padded_ : m_;
 
+#if DNNL_INTEL_GPU_RUNTIME_ENABLED
     static std::atomic<uint32_t> call_counter {0};
     const uint32_t seed = call_counter.fetch_add(1, std::memory_order_relaxed);
+#endif
 
     const size_t count = size / sizeof(uint32_t);
     if (count == 0) return;
 
     if (!is_cpu(engine_)) {
-#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE
+
+#if DNNL_INTEL_GPU_RUNTIME_ENABLED
         stream_t stream(engine_);
         auto *storage = reinterpret_cast<dnnl_memory *>(mem)->memory_storage(
                 buffer_index);

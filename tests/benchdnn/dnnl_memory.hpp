@@ -32,6 +32,10 @@
 #define dnnl_mem_default_value 0xFF
 #define dnnl_mem_default_perf_test_value 0x3F
 
+#define DNNL_INTEL_GPU_RUNTIME_ENABLED \
+    (DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+            && DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL)
+
 struct dnn_mem_t {
     struct handle_info_t {
         bool is_host_ptr;

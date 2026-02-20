@@ -319,15 +319,15 @@ status_t ref_pooling_bwd_t::execute(const exec_ctx_t &ctx) const {
     };
 
     dim_t ow_start
-            = max(dim_t(0), utils::div_up(padL - ((KW - 1) * DW + KW) + 1, SW));
+            = utils::div_up(max(dim_t(0), padL - ((KW - 1) * DW + KW) + 1), SW);
     dim_t ow_end = min(OW, 1 + (padL + IW - 1) / SW);
 
     dim_t oh_start
-            = max(dim_t(0), utils::div_up(padT - ((KH - 1) * DH + KH) + 1, SH));
+            = utils::div_up(max(dim_t(0), padT - ((KH - 1) * DH + KH) + 1), SH);
     dim_t oh_end = min(OH, 1 + (padT + IH - 1) / SH);
 
     dim_t od_start
-            = max(dim_t(0), utils::div_up(padF - ((KD - 1) * DD + KD) + 1, SD));
+            = utils::div_up(max(dim_t(0), padF - ((KD - 1) * DD + KD) + 1), SD);
     dim_t od_end = min(OD, 1 + (padF + ID - 1) / SD);
 
     using ker_t = std::function<void(dim_t, dim_t, dim_t, dim_t, dim_t)>;

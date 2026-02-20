@@ -937,7 +937,7 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_h_loop(
 
     // last index of output that is not influenced by right padding
     const size_t io_overlap
-            = jcp.oh - 1 - utils::div_up(jcp.b_pad, jcp.stride_h);
+            = jcp.oh - 1 - utils::div_up(nstl::max(0, jcp.b_pad), jcp.stride_h);
 
     const int ch_offset = jcp.ch_block;
     const int t_overlap_off = jcp.t_pad % jcp.stride_h == 0 ? jcp.stride_h : 1;

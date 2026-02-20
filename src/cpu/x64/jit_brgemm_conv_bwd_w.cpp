@@ -1010,7 +1010,8 @@ void brgemm_convolution_bwd_weights_t::compute_diff_weights_2d(
                     for (int kh = 0; kh < jcp.kh; kh++) {
                         const int bs_ih_s = _pd->get_start_ih(kh, ohb_s);
                         const int bs_ih_e = _pd->get_finish_ih(kh, ohb_e);
-                        const auto bs = div_up(bs_ih_e - bs_ih_s, jcp.stride_h);
+                        const auto bs = div_up(
+                                nstl::max(0, bs_ih_e - bs_ih_s), jcp.stride_h);
                         if (bs == 0 && !do_init) continue;
 
                         for_(int s = 0; s < jcp.stride_w; s++)
@@ -1208,7 +1209,8 @@ void brgemm_convolution_bwd_weights_t::compute_diff_weights_3d(
                             const int bs_id_s = _pd->get_start_id(kd, odb_s);
                             const int bs_id_e = _pd->get_finish_id(kd, odb_e);
                             const auto bs_d
-                                    = div_up(bs_id_e - bs_id_s, jcp.stride_d);
+                                    = div_up(nstl::max(0, bs_id_e - bs_id_s),
+                                            jcp.stride_d);
                             // bs_d may be 0 but we may still need to call brgemm to
                             // initialize output
                             if (bs_d == 0 && !do_init) continue;
@@ -1219,7 +1221,8 @@ void brgemm_convolution_bwd_weights_t::compute_diff_weights_3d(
                                 const int bs_ih_e
                                         = _pd->get_finish_ih(kh, ohb_e);
                                 const auto bs_h = div_up(
-                                        bs_ih_e - bs_ih_s, jcp.stride_h);
+                                        nstl::max(0, bs_ih_e - bs_ih_s),
+                                        jcp.stride_h);
                                 if (bs_h == 0 && !do_init) continue;
 
                                 for_(int s = 0; s < jcp.stride_w; s++)

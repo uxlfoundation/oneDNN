@@ -188,15 +188,15 @@ private:
         return ZReg(nb_c_block * jcp.ur_w);
     }
     int get_ow_start(int ki, int pad_l) const {
-        return nstl::max(0,
-                utils::div_up(pad_l - ki * (jcp.dilate_w + 1), jcp.stride_w));
+        return utils::div_up(
+                nstl::max(0, pad_l - ki * (jcp.dilate_w + 1)), jcp.stride_w);
     }
     int get_ow_end(int ur_w, int ki, int pad_r) const {
         return ur_w
-                - nstl::max(0,
-                        utils::div_up(
-                                pad_r - (jcp.kw - 1 - ki) * (jcp.dilate_w + 1),
-                                jcp.stride_w));
+                - utils::div_up(
+                        nstl::max(0,
+                                pad_r - (jcp.kw - 1 - ki) * (jcp.dilate_w + 1)),
+                        jcp.stride_w);
     }
 
     void prepare_output(int ur_w);

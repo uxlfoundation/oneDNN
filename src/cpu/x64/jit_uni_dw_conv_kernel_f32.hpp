@@ -98,16 +98,16 @@ private:
             Vmm &vmm, const Xbyak::Reg64 &reg, int64_t offset, int store_size);
 
     int get_ow_start(int ki, int pad_l) {
-        return nstl::max(0,
-                utils::div_up(pad_l - ki * (jcp.dilate_w + 1), jcp.stride_w));
+        return utils::div_up(
+                nstl::max(0, pad_l - ki * (jcp.dilate_w + 1)), jcp.stride_w);
     }
 
     int get_ow_end(int ur_w, int ki, int pad_r) {
         return ur_w
-                - nstl::max(0,
-                        utils::div_up(
-                                pad_r - (jcp.kw - 1 - ki) * (jcp.dilate_w + 1),
-                                jcp.stride_w));
+                - utils::div_up(
+                        nstl::max(0,
+                                pad_r - (jcp.kw - 1 - ki) * (jcp.dilate_w + 1)),
+                        jcp.stride_w);
     }
 
     inline bool is_src_layout_nxc() {

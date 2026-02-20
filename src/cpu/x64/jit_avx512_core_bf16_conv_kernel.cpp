@@ -1792,8 +1792,14 @@ status_t jit_avx512_core_bf16_bwd_data_kernel_t::init_conf(jit_conv_conf_t &jcp,
     if (is_iw_threading_available(jcp)) {
         int ic_chunks = jcp.nb_ic / jcp.nb_ic_blocking;
         int work_units = jcp.ngroups * jcp.mb * ic_chunks * jcp.ih;
-        float no_iw_block_eff
-                = (float)work_units / rnd_up(work_units, jcp.nthr);
+
+        auto efficiency = [](dim_t size, dim_t block) {
+            // avoid warnings 'potential divide by zero', but in fact it should not happen
+            if (size <= 0 || block == 0) return 0.f;
+            return (float)size / rnd_up(size, block);
+        };
+
+        float no_iw_block_eff = efficiency(work_units, jcp.nthr);
 
         // current design of generate() requires iw_block >= 2 * ur_w
         const int min_iw_block = jcp.ur_w * 2;
@@ -1802,9 +1808,9 @@ status_t jit_avx512_core_bf16_bwd_data_kernel_t::init_conf(jit_conv_conf_t &jcp,
                 rnd_up(jcp.iw, jcp.ur_w * iw_threads) / iw_threads);
         int nb_iw = div_up(jcp.iw, iw_block);
 
-        float block_eff = (float)jcp.iw / rnd_up(jcp.iw, iw_block);
+        float block_eff = efficiency(jcp.iw, iw_block);
         work_units = jcp.ngroups * jcp.mb * ic_chunks * jcp.ih * nb_iw;
-        float work_eff = (float)work_units / rnd_up(work_units, jcp.nthr);
+        float work_eff = efficiency(work_units, jcp.nthr);
         float iw_block_eff = block_eff * work_eff;
 
         const int iw_thread_min_size = 16 * 128;

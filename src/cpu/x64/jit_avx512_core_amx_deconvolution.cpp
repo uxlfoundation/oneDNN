@@ -197,9 +197,9 @@ status_t jit_avx512_core_amx_deconvolution_fwd_t::execute_forward(
                             ? nstl::modulo(dow_f, jcp.stride_w)
                             : nstl::max(0, nstl::min(delta_w, dow_f - dow_l));
                     const int oh_s
-                            = nstl::max(0, utils::div_up(doh_s, jcp.stride_h));
+                            = utils::div_up(nstl::max(0, doh_s), jcp.stride_h);
                     const int ow_s
-                            = nstl::max(0, utils::div_up(dow_s, jcp.stride_w));
+                            = utils::div_up(nstl::max(0, dow_s), jcp.stride_w);
                     // how many real data rows to copy (including padding)
                     p.t_overflow = nstl::min(delta_h, doh_t_overflow);
                     p.b_overflow = nstl::min<size_t>(

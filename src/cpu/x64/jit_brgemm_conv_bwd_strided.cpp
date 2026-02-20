@@ -965,9 +965,9 @@ void brgemm_convolution_bwd_strided_t<isa>::cal_compensation(
 
                 jit_brgemm_conv_comp_pad_args_t p;
 
-                p.kd_l = div_up(kd_e - kd_b, SD);
-                p.kh_l = div_up(kh_e - kh_b, SH);
-                p.kw_l = div_up(kw_e - kw_b, SW);
+                p.kd_l = div_up(nstl::max((dim_t)0, kd_e - kd_b), SD);
+                p.kh_l = div_up(nstl::max((dim_t)0, kh_e - kh_b), SH);
+                p.kw_l = div_up(nstl::max((dim_t)0, kw_e - kw_b), SW);
                 p.use_inversion = false;
 
                 p.ptr_in = &weights[wei_offs];
@@ -1049,13 +1049,18 @@ void brgemm_convolution_bwd_strided_t<isa>::perform_outwork(char *dst_base,
                                     + iw_pw_s * jcp.ic_without_padding);
             p.ptr_in = static_cast<void *>(jcp.use_buffer
                             ? (c_buffer
-                                      + acc_dsz * div_up(iw_pw_s - iw, SW)
+                                      + acc_dsz
+                                              * div_up(nstl::max(
+                                                               0, iw_pw_s - iw),
+                                                      SW)
                                               * jcp.LDC)
                             : p.ptr_out);
         } else {
             p.apply_comp = has_postcomp;
             char *const ptr_Cz = jcp.use_buffer
-                    ? (c_buffer + acc_dsz * div_up(iw_pw_s - iw, SW) * jcp.LDC)
+                    ? (c_buffer
+                              + acc_dsz * div_up(nstl::max(0, iw_pw_s - iw), SW)
+                                      * jcp.LDC)
                     : dst_base
                             + dst_dsz
                                     * (id * dst_h_sz + ih * dst_w_sz
@@ -1352,9 +1357,9 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_base(
                 && btc.occ == (oc_chunks - 1);
         if (iw_e - iw_b <= 0 && !do_init && !do_postwork) return;
 
-        const int kd_l = div_up(kd_e - kd_b, SD);
-        const int kh_l = div_up(kh_e - kh_b, SH);
-        const int kw_l = div_up(kw_e - kw_b, SW);
+        const int kd_l = div_up(nstl::max(0, kd_e - kd_b), SD);
+        const int kh_l = div_up(nstl::max(0, kh_e - kh_b), SH);
+        const int kw_l = div_up(nstl::max(0, kw_e - kw_b), SW);
         k_l = kd_l * kh_l * kw_l;
         const auto iw_l = iw_e - iw_b;
 
@@ -1363,9 +1368,10 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_base(
                         * (btc.id * dst_h_sz + btc.ih * dst_w_sz
                                 + iw_b * jcp.ic_without_padding);
 
-        ptr_C = (jcp.use_buffer)
-                ? btc.c_buffer + acc_dsz * div_up((iw_b - iw), SW) * jcp.LDC
-                : static_cast<char *>(ptr_D);
+        ptr_C = (jcp.use_buffer) ? btc.c_buffer
+                        + acc_dsz * div_up(nstl::max((dim_t)0, iw_b - iw), SW)
+                                * jcp.LDC
+                                 : static_cast<char *>(ptr_D);
 
         assert(0 <= iw_l && iw_l <= jcp.iw_block);
 
@@ -1606,9 +1612,9 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_trans(
         const auto do_postwork = need_postwork && btc.occ == (oc_chunks - 1)
                 && kd_e == kd_f && kh_e == kh_f;
 
-        const int kd_l = div_up(kd_e - kd_b, SD);
-        const int kh_l = div_up(kh_e - kh_b, SH);
-        const int kw_l = div_up(kw_f - kw_s, SW);
+        const int kd_l = div_up(nstl::max(0, kd_e - kd_b), SD);
+        const int kh_l = div_up(nstl::max(0, kh_e - kh_b), SH);
+        const int kw_l = div_up(nstl::max(0, kw_f - kw_s), SW);
         k_l = kd_l * kh_l * kw_l;
 
         const auto comp_ker_offs = kd_l * kh_l > 0

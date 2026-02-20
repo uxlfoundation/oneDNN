@@ -619,13 +619,15 @@ void jit_trans_iw_ic_t::generate() {
     // For 1x1 convolutions with strides we transpose only needed elements
     const auto str_w_end = (conf_->kw == 1) ? 1 : str_w;
     for (int s = 0; s < str_w_end; s++) {
-        const int left_pad = div_up(conf_->l_pad - s, str_w);
+        const int left_pad = div_up(nstl::max(0, conf_->l_pad - s), str_w);
         const int iw1 = iw + conf_->l_pad;
-        const int iw_s = (s < (iw1 % str_w) ? div_up(iw1, str_w) : iw1 / str_w)
+        const int iw_s = (s < (iw1 % str_w) ? div_up(nstl::max(0, iw1), str_w)
+                                            : iw1 / str_w)
                 - left_pad;
         const int right_pad = tr_iw_s - iw_s - left_pad;
 
-        const int transposes = utils::div_up(iw_s, transpose_size);
+        const int transposes
+                = utils::div_up(nstl::max(0, iw_s), transpose_size);
         int loop_iters = nstl::max(0, transposes - 1);
         int tail = iw_s - loop_iters * transpose_size;
 

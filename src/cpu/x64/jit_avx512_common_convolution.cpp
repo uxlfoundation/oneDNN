@@ -1315,13 +1315,13 @@ void jit_avx512_common_convolution_bwd_weights_t<src_type, diff_dst_type,
 
     zero_diff_weights();
     while (i_work < i_work_end) {
-        int kd_start = nstl::max(
-                0, div_up(jcp.f_pad - jcp.stride_d * i_od, kd_step));
+        int kd_start = div_up(
+                nstl::max(0, jcp.f_pad - jcp.stride_d * i_od), kd_step);
         int kd_end = nstl::min(
                 jcp.kd - 1, (jcp.id - 1 + f_pad - stride_d * i_od) / kd_step);
         int i_id_base = stride_d * i_od - f_pad;
-        int kh_start = nstl::max(
-                0, div_up(jcp.t_pad - jcp.stride_h * i_oh, +kh_step));
+        int kh_start = div_up(
+                nstl::max(0, jcp.t_pad - jcp.stride_h * i_oh), +kh_step);
         int kh_end = nstl::min(
                 jcp.kh - 1, (jcp.ih - 1 + t_pad - stride_h * i_oh) / kh_step);
         int i_ih_base = jcp.stride_h * i_oh + -jcp.t_pad;

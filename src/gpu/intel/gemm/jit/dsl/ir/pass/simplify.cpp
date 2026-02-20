@@ -1932,8 +1932,8 @@ struct op_traits_t<op_kind_t::_div_up> {
     template <typename T,
             typename = typename std::enable_if<is_int_t<T>::value>::type>
     static auto compute(T a, T b) -> decltype(a / b) {
-        return op_traits_t<op_kind_t::_div>::compute(
-                static_cast<T>(a + b - 1), b);
+        dsl_assert(b > 0);
+        return div_up(a, b);
     }
 };
 

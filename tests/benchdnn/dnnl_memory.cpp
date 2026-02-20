@@ -612,7 +612,7 @@ void dnn_mem_t::memset(int value, size_t size, int buffer_index) const {
 }
 
 // Fills device memory with pseudo-random data generated directly on the device.
-// This mitigates the impact of GPU driver data compression, which could yield 
+// This mitigates the impact of GPU driver data compression, which could yield
 // unrealistically high bandwidth measurements in mode=F. If the GPU runtime is
 // unavailable or a CPU engine is used, the function defaults to memset.
 #if DNNL_INTEL_GPU_RUNTIME_ENABLED
@@ -620,7 +620,7 @@ extern "C" dnnl_status_t dnnl_impl_gpu_fill_random(dnnl_stream_t stream,
         size_t size, dnnl::impl::memory_storage_t *storage, uint32_t seed);
 #endif
 
-void dnn_mem_t::fill_random(size_t size, int buffer_index) const {
+void dnn_mem_t::fill_for_perf_test(size_t size, int buffer_index) const {
 #if DNNL_INTEL_GPU_RUNTIME_ENABLED
     static std::atomic<uint32_t> call_counter {0};
     const uint32_t seed = call_counter.fetch_add(1, std::memory_order_relaxed);
@@ -635,7 +635,7 @@ void dnn_mem_t::fill_random(size_t size, int buffer_index) const {
 #endif
 
     BENCHDNN_PRINT(2, "%s\n",
-            "The function 'fill_random' has reverted to memset due to "
+            "The function 'fill_for_perf_test' has reverted to memset due to "
             "the use of a non-Intel GPU runtime or a CPU runtime.");
     this->memset(dnnl_mem_default_perf_test_value, size, buffer_index);
 }
@@ -987,7 +987,7 @@ int dnn_mem_t::initialize(
                 // Fill memory with pseudo-random data directly on device
                 // to avoid data compression by GPU drivers that would
                 // lead to unrealistic bandwidth numbers in mode=f.
-                this->fill_random(sz, i);
+                this->fill_for_perf_test(sz, i);
             } else {
                 // Fill memory with a magic number (NAN for fp data types)
                 // to catch possible uninitialized access.

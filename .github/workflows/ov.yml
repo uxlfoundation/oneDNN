@@ -1,0 +1,139 @@
+name: Trigger Jenkins Tests from PR Comment
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  trigger-jenkins:
+    if: |
+      github.event.issue.pull_request &&
+      contains(github.event.comment.body, 'make test_ov')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get PR HEAD SHA
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_DATA=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.issue.number }}")
+          HEAD_SHA=$(echo "$PR_DATA" | jq -r '.head.sha')
+          HEAD_USER=$(echo "$PR_DATA" | jq -r '.head.repo.owner.login')
+          BASE_OWNER=$(echo "$PR_DATA" | jq -r '.base.repo.owner.login')
+
+          if [[ "$HEAD_USER" != "$BASE_OWNER" ]]; then
+            ONEDNN_SHA="${HEAD_USER}@${HEAD_SHA}"
+          else
+            ONEDNN_SHA="${HEAD_SHA}"
+          fi
+
+          echo "onednn_sha=${ONEDNN_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Parse comment
+        id: parse
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          RUN_PERFORMANCE=false
+          RUN_ACCURACY=false
+          DGPU=false
+          IGPU=false
+          CATCH_ONEDNN_LOGS=false
+
+          SESSION_NAME=""
+          ONEDNN_SHA_REF=""
+          NOTIFY_EMAIL_ADDRESS=""
+          TOPOLOGIES_PERFORMANCE="@llm-op-onednn, @static-op-onednn"
+          TOPOLOGIES_ACCURACY="@static-accuracy-op-onednn, @llm-accuracy-op-onednn"
+          SHA_LLM=""
+          REPO_DETAILS=""
+          PIPELINE_BRANCH="master"
+
+          while IFS= read -r line; do
+            if echo "$line" | grep -iq "^enable "; then
+              items=$(echo "$line" | sed 's/^[Ee][Nn][Aa][Bb][Ll][Ee] //' | tr ',' ' ' | tr '[:lower:]' '[:upper:]')
+              for item in $items; do
+                case "$item" in
+                  RUN_PERFORMANCE)   RUN_PERFORMANCE=true ;;
+                  RUN_ACCURACY)      RUN_ACCURACY=true ;;
+                  DGPU)              DGPU=true ;;
+                  IGPU)              IGPU=true ;;
+                  CATCH_ONEDNN_LOGS) CATCH_ONEDNN_LOGS=true ;;
+                esac
+              done
+            fi
+          done <<< "$COMMENT_BODY"
+
+          while IFS= read -r line; do
+            if echo "$line" | grep -iq "^disable "; then
+              items=$(echo "$line" | sed 's/^[Dd][Ii][Ss][Aa][Bb][Ll][Ee] //' | tr ',' ' ' | tr '[:lower:]' '[:upper:]')
+              for item in $items; do
+                case "$item" in
+                  RUN_PERFORMANCE)   RUN_PERFORMANCE=false ;;
+                  RUN_ACCURACY)      RUN_ACCURACY=false ;;
+                  DGPU)              DGPU=false ;;
+                  IGPU)              IGPU=false ;;
+                  CATCH_ONEDNN_LOGS) CATCH_ONEDNN_LOGS=false ;;
+                esac
+              done
+            fi
+          done <<< "$COMMENT_BODY"
+
+          while IFS= read -r line; do
+            if echo "$line" | grep -qE '^[A-Za-z_]+=.+'; then
+              KEY=$(echo "$line" | cut -d'=' -f1 | tr '[:lower:]' '[:upper:]' | xargs)
+              VALUE=$(echo "$line" | cut -d'=' -f2- | xargs)
+              case "$KEY" in
+                SESSION_NAME)            SESSION_NAME="$VALUE" ;;
+                ONEDNN_SHA_REF)          ONEDNN_SHA_REF="$VALUE" ;;
+                NOTIFY_EMAIL_ADDRESS)    NOTIFY_EMAIL_ADDRESS="$VALUE" ;;
+                TOPOLOGIES_PERFORMANCE)  TOPOLOGIES_PERFORMANCE="$VALUE" ;;
+                TOPOLOGIES_ACCURACY)     TOPOLOGIES_ACCURACY="$VALUE" ;;
+                SHA_LLM)                 SHA_LLM="$VALUE" ;;
+                REPO_DETAILS)            REPO_DETAILS="$VALUE" ;;
+                PIPELINE_BRANCH)         PIPELINE_BRANCH="$VALUE" ;;
+              esac
+            fi
+          done <<< "$COMMENT_BODY"
+
+          {
+            echo "RUN_PERFORMANCE=${RUN_PERFORMANCE}"
+            echo "RUN_ACCURACY=${RUN_ACCURACY}"
+            echo "DGPU=${DGPU}"
+            echo "IGPU=${IGPU}"
+            echo "CATCH_ONEDNN_LOGS=${CATCH_ONEDNN_LOGS}"
+            echo "SESSION_NAME=${SESSION_NAME}"
+            echo "ONEDNN_SHA_REF=${ONEDNN_SHA_REF}"
+            echo "NOTIFY_EMAIL_ADDRESS=${NOTIFY_EMAIL_ADDRESS}"
+            echo "TOPOLOGIES_PERFORMANCE=${TOPOLOGIES_PERFORMANCE}"
+            echo "TOPOLOGIES_ACCURACY=${TOPOLOGIES_ACCURACY}"
+            echo "SHA_LLM=${SHA_LLM}"
+            echo "REPO_DETAILS=${REPO_DETAILS}"
+            echo "PIPELINE_BRANCH=${PIPELINE_BRANCH}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Trigger Jenkins pipeline
+        run: |
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST \
+            "${{ secrets.JENKINS_URL }}/job/dev_trigger_onednn/buildWithParameters" \
+            --user "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_API_TOKEN }}" \
+            --data-urlencode "SESSION_NAME=${{ steps.parse.outputs.SESSION_NAME }}" \
+            --data-urlencode "ONEDNN_SHA=${{ steps.pr.outputs.onednn_sha }}" \
+            --data-urlencode "ONEDNN_SHA_REF=${{ steps.parse.outputs.ONEDNN_SHA_REF }}" \
+            --data-urlencode "NOTIFY_EMAIL_ADDRESS=${{ steps.parse.outputs.NOTIFY_EMAIL_ADDRESS }}" \
+            --data-urlencode "RUN_PERFORMANCE=${{ steps.parse.outputs.RUN_PERFORMANCE }}" \
+            --data-urlencode "RUN_ACCURACY=${{ steps.parse.outputs.RUN_ACCURACY }}" \
+            --data-urlencode "DGPU=${{ steps.parse.outputs.DGPU }}" \
+            --data-urlencode "IGPU=${{ steps.parse.outputs.IGPU }}" \
+            --data-urlencode "CATCH_ONEDNN_LOGS=${{ steps.parse.outputs.CATCH_ONEDNN_LOGS }}" \
+            --data-urlencode "TOPOLOGIES_PERFORMANCE=${{ steps.parse.outputs.TOPOLOGIES_PERFORMANCE }}" \
+            --data-urlencode "TOPOLOGIES_ACCURACY=${{ steps.parse.outputs.TOPOLOGIES_ACCURACY }}" \
+            --data-urlencode "SHA_LLM=${{ steps.parse.outputs.SHA_LLM }}" \
+            --data-urlencode "REPO_DETAILS=${{ steps.parse.outputs.REPO_DETAILS }}" \
+            --data-urlencode "PIPELINE_BRANCH=${{ steps.parse.outputs.PIPELINE_BRANCH }}")
+
+          if [[ "$HTTP_CODE" -lt 200 || "$HTTP_CODE" -ge 300 ]]; then
+            exit 1
+          fi

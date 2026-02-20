@@ -346,14 +346,14 @@ void im2col_dt_3d(const conv_gemm_conf_t &jcp, const void *__restrict _imtr,
                 return;
             }
             const im_dt *__restrict imtr_loc = imtr + (ic * jcp.id + id) * IHW;
-            const dim_t oh_start
-                    = saturate(dim_t(0), jcp.oh, div_up(tp - kh, 2));
-            const dim_t oh_end
-                    = saturate(dim_t(0), jcp.oh, div_up(jcp.ih + tp - kh, 2));
-            const dim_t ow_start
-                    = saturate(dim_t(0), jcp.ow, div_up(lp - kw, 2));
-            const dim_t ow_end
-                    = saturate(dim_t(0), jcp.ow, div_up(jcp.iw + lp - kw, 2));
+            const dim_t oh_start = nstl::min(
+                    jcp.oh, div_up(nstl::max(dim_t(0), tp - kh), 2));
+            const dim_t oh_end = nstl::min(
+                    jcp.oh, div_up(nstl::max(dim_t(0), jcp.ih + tp - kh), 2));
+            const dim_t ow_start = nstl::min(
+                    jcp.ow, div_up(nstl::max(dim_t(0), lp - kw), 2));
+            const dim_t ow_end = nstl::min(
+                    jcp.ow, div_up(nstl::max(dim_t(0), jcp.iw + lp - kw), 2));
             for (dim_t oh = oh_start, ih = oh_start * 2 - tp + kh; oh < oh_end;
                     ++oh, ih += 2) {
                 col_dt *__restrict col_h = col_loc + oh * jcp.ow;
@@ -376,14 +376,14 @@ void im2col_dt_3d(const conv_gemm_conf_t &jcp, const void *__restrict _imtr,
                 return;
             }
             const im_dt *__restrict imtr_loc = imtr + (ic * jcp.id + id) * IHW;
-            const dim_t oh_start
-                    = saturate(dim_t(0), jcp.oh, div_up(tp - kh * dh, sh));
-            const dim_t oh_end = saturate(
-                    dim_t(0), jcp.oh, div_up(jcp.ih + tp - kh * dh, sh));
-            const dim_t ow_start
-                    = saturate(dim_t(0), jcp.ow, div_up(lp - kw * dw, sw));
-            const dim_t ow_end = saturate(
-                    dim_t(0), jcp.ow, div_up(jcp.iw + lp - kw * dw, sw));
+            const dim_t oh_start = nstl::min(
+                    jcp.oh, div_up(nstl::max(dim_t(0), tp - kh * dh), sh));
+            const dim_t oh_end = nstl::min(jcp.oh,
+                    div_up(nstl::max(dim_t(0), jcp.ih + tp - kh * dh), sh));
+            const dim_t ow_start = nstl::min(
+                    jcp.ow, div_up(nstl::max(dim_t(0), lp - kw * dw), sw));
+            const dim_t ow_end = nstl::min(jcp.ow,
+                    div_up(nstl::max(dim_t(0), jcp.iw + lp - kw * dw), sw));
             for (dim_t oh = oh_start, ih = oh_start * sh - tp + kh * dh;
                     oh < oh_end; ++oh, ih += sh) {
                 col_dt *__restrict col_h = col_loc + oh * jcp.ow;
@@ -672,10 +672,10 @@ void im2col_dt(const conv_gemm_conf_t &jcp, const void *__restrict _im,
                     col[col_idx_base + ow] = shift;
             else {
                 const dim_t wp = lp - kw * dw;
-                const dim_t ow_start
-                        = saturate(dim_t(0), wb, div_up(wp, sw) - ws);
-                const dim_t ow_end
-                        = saturate(dim_t(0), wb, div_up(jcp.iw + wp, sw) - ws);
+                const dim_t ow_start = saturate(
+                        dim_t(0), wb, div_up(nstl::max(dim_t(0), wp), sw) - ws);
+                const dim_t ow_end = saturate(dim_t(0), wb,
+                        div_up(nstl::max(dim_t(0), jcp.iw + wp), sw) - ws);
                 for (dim_t ow = 0; ow < ow_start; ow++)
                     col[col_idx_base + ow] = shift;
                 const dim_t iw_base = ws * sw - wp;

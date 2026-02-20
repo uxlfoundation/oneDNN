@@ -2694,7 +2694,8 @@ status_t jit_avx512_core_amx_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     jcp.with_dst_scales = !attr.scales_.get(DNNL_ARG_DST).has_default_values();
 
     // Note: currently unsupported, results in seg-fault
-    const int l_pad_output = nstl::min(jcp.ow, div_up(jcp.l_pad, jcp.stride_w));
+    const int l_pad_output
+            = nstl::min(jcp.ow, div_up(nstl::max(0, jcp.l_pad), jcp.stride_w));
     VDISPATCH_CONV_IC(!(!jcp.is_relo && (l_pad_output > jcp.ow_block)),
             VERBOSE_BLOCKING_FAIL, "bad padding dimensions for blocking");
 
@@ -2704,8 +2705,10 @@ status_t jit_avx512_core_amx_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
                 = [](int o_dim, int s_pad, int e_pad, int &s_pad_output,
                           int &e_pad_output, bool &o_mid, int &o_pad,
                           int stride, bool req_mid_area) {
-            s_pad_output = nstl::min(o_dim, div_up(s_pad, stride));
-            e_pad_output = nstl::min(o_dim, div_up(e_pad, stride));
+            s_pad_output
+                    = nstl::min(o_dim, div_up(nstl::max(0, s_pad), stride));
+            e_pad_output
+                    = nstl::min(o_dim, div_up(nstl::max(0, e_pad), stride));
             o_mid = (o_dim - s_pad_output - e_pad_output > 0) && req_mid_area;
             o_pad = nstl::min(o_dim,
                     nstl::max(1, s_pad_output + e_pad_output + (int)o_mid));
@@ -4746,9 +4749,11 @@ void jit_avx512_core_amx_bwd_weights_kernel_t::compute_oh_loop_common(
             oh_dilate_setup_label_noshift, oh_dilate_setup_label_end;
 
     int ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
-    int oh_body_end = div_up(t_pad + jcp.ih - ext_kh + 1, stride_h);
-    int oh_head_end = nstl::min(div_up(t_pad, stride_h), oh_body_end);
-    int oh_head_overflow_end = div_up(t_pad, stride_h);
+    int oh_body_end
+            = div_up(nstl::max(0, t_pad + jcp.ih - ext_kh + 1), stride_h);
+    int oh_head_end
+            = nstl::min(div_up(nstl::max(0, t_pad), stride_h), oh_body_end);
+    int oh_head_overflow_end = div_up(nstl::max(0, t_pad), stride_h);
     int oh_tail_end = jcp.oh;
 
     int body_src_start_offset = (stride_h - (t_pad % stride_h)) % stride_h;
@@ -4766,9 +4771,9 @@ void jit_avx512_core_amx_bwd_weights_kernel_t::compute_oh_loop_common(
             cmp(reg_oj, oh_head_overflow_end);
             jge(oh_tpad_tail_label_end, T_NEAR);
         }
-        const int overflow
-                = nstl::max(0, jcp.kh - div_up(t_pad + jcp.ih, dilate_h));
-        const int underflow = div_up(t_pad, dilate_h);
+        const int overflow = nstl::max(
+                0, jcp.kh - div_up(nstl::max(0, t_pad + jcp.ih), dilate_h));
+        const int underflow = div_up(nstl::max(0, t_pad), dilate_h);
         const int initial_kh = jcp.kh - overflow - underflow;
 
         // Setup reg_kh, reg_kernel, and reg_src
@@ -4990,8 +4995,8 @@ void jit_avx512_core_amx_bwd_weights_kernel_t::compute_od_loop_common(
         int nb_ic_blocking, int nb_oc_blocking, bool is_partial) {
     assert(jcp.harness == harness_3d_reduction);
 
-    const int src_backpad_overlap
-            = div_up(jcp.id + jcp.f_pad - (jcp.kd - 1), jcp.stride_d);
+    const int src_backpad_overlap = div_up(
+            nstl::max(0, jcp.id + jcp.f_pad - (jcp.kd - 1)), jcp.stride_d);
 
     const auto filter_shift = get_kernel_offset(0, jcp.kh * jcp.kw);
     const auto src_shift = get_src_offset(0, 0, jcp.ih);
@@ -5046,7 +5051,7 @@ void jit_avx512_core_amx_bwd_weights_kernel_t::compute_od_loop_common(
     /* Compute 'front' edge */
     if (jcp.f_pad > 0) {
         /* Check if within fpad region */
-        cmp(reg_d_index, div_up(jcp.f_pad, jcp.stride_d));
+        cmp(reg_d_index, div_up(nstl::max(0, jcp.f_pad), jcp.stride_d));
         jge(fpad_end_label, T_NEAR);
 
         /* Fpad steps */

@@ -426,7 +426,7 @@ status_t jit_uni_pool_kernel_t<isa>::init_conf(
     // select jpp.ur_bc
     if (jpp.tag_kind == jit_memory_tag_kind_t::nspc) {
         auto min_ur_w = nstl::max(1, utils::div_up(jpp.l_pad, jpp.stride_w));
-        int min_ur_w1 = utils::div_up(right_pad, jpp.stride_w);
+        int min_ur_w1 = utils::div_up(nstl::max(0, right_pad), jpp.stride_w);
         if (min_ur_w < min_ur_w1) { min_ur_w = min_ur_w1; }
         jpp.ur_bc = nstl::min(jpp.nb_c, nstl::max(1, jpp.ur / min_ur_w));
         //take into account threading - to have enough work for parallelization
@@ -879,7 +879,7 @@ inline void jit_uni_pool_kernel_t<isa>::avg_step(int ur_w, int ur_bc, int pad_l,
     L(kh_label);
     {
         for (int ki = 0; ki < kw; ki++) {
-            int jj_start = nstl::max(0, utils::div_up(pad_l - ki, stride_w));
+            int jj_start = utils::div_up(nstl::max(0, pad_l - ki), stride_w);
             int jj_end = ur_w
                     - utils::div_up(
                             nstl::max(0, ki + pad_r - (kw - 1)), stride_w);
@@ -999,7 +999,7 @@ inline void jit_uni_pool_kernel_t<isa>::max_step_fwd(int ur_w, int ur_bc,
     L(kh_label);
     {
         for (int ki = 0; ki < kw; ki++) {
-            int jj_start = nstl::max(0, utils::div_up(pad_l - ki, stride_w));
+            int jj_start = utils::div_up(nstl::max(0, pad_l - ki), stride_w);
             int jj_end = ur_w
                     - utils::div_up(
                             nstl::max(0, ki + pad_r - (kw - 1)), stride_w);
@@ -1168,7 +1168,7 @@ inline void jit_uni_pool_kernel_t<isa>::max_step_bwd(int ur_w, int ur_bc,
     L(kh_label);
     {
         for (int ki = 0; ki < kw; ki++) {
-            int jj_start = nstl::max(0, utils::div_up(pad_l - ki, stride_w));
+            int jj_start = utils::div_up(nstl::max(0, pad_l - ki), stride_w);
             int jj_end = ur_w
                     - utils::div_up(
                             nstl::max(0, ki + pad_r - (kw - 1)), stride_w);

@@ -297,8 +297,9 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::bwd_kw_iw_loop(const int icb,
         }
         const int k_f
                 = nstl::min(jcp_.kw, static_cast<int>(div_up(iw + LP + 1, DW)));
-        int k_s = nstl::max(
-                0, static_cast<int>(div_up(iw + LP - jcp_.ow * SW + 1, DW)));
+        int k_s = nstl::max(0,
+                static_cast<int>(
+                        div_up(nstl::max(0, iw + LP - jcp_.ow * SW + 1), DW)));
         while (k_s % SW != s)
             k_s++;
 

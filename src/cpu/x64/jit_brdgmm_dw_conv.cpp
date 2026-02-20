@@ -316,9 +316,9 @@ void brdgmm_dw_convolution_fwd_t::pd_t::init_batch_elements() {
                     || kh < tpad || kh >= jcp.kh - adj_bpad;
             if (!requires_batch_pad && padded_bs) continue;
             auto &batch = batches[bs];
-            batch.vvpad.top = nstl::max(0, div_up(lpad - kw, jcp.stride_w));
-            batch.vvpad.bottom = nstl::max(
-                    0, div_up(rpad - jcp.kw + kw + 1, jcp.stride_w));
+            batch.vvpad.top = div_up(nstl::max(0, lpad - kw), jcp.stride_w);
+            batch.vvpad.bottom = div_up(
+                    nstl::max(0, rpad - jcp.kw + kw + 1), jcp.stride_w);
             batch.has_s8s8_comp_batch_pad = padded_bs;
             const dim_t offs_A
                     = kd * src_d_stride + kh * src_h_stride + kw * src_w_stride;
@@ -342,7 +342,7 @@ void brdgmm_dw_convolution_fwd_t::pd_t::init_batch_elements() {
             = (jcp.ow_block - 1) * jcp.stride_w + jcp.kw - (jcp.iw + jcp.l_pad);
     const int rpad_1 = rpad_0 + (nstl::max(0, -rpad_0) / w_shift + 1) * w_shift;
     const int n_uniq_rpads
-            = 1 + nstl::max(0, div_up(jcp.r_pad - (rpad_1 - w_shift), w_shift));
+            = 1 + div_up(nstl::max(0, jcp.r_pad - (rpad_1 - w_shift)), w_shift);
 
     const auto h_blk_info = get_blocks_info(
             jcp.ih, jcp.oh, jcp.kh, jcp.stride_h, jcp.t_pad, jcp.b_pad, 1);
@@ -645,7 +645,7 @@ status_t brdgmm_dw_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
             = (jcp.ow_block - 1) * jcp.stride_w + jcp.kw - (jcp.iw + jcp.l_pad);
     const int rpad_1 = rpad_0 + (nstl::max(0, -rpad_0) / w_shift + 1) * w_shift;
     const int n_rpad_blks
-            = 1 + nstl::max(0, div_up(jcp.r_pad - (rpad_1 - w_shift), w_shift));
+            = 1 + div_up(nstl::max(0, jcp.r_pad - (rpad_1 - w_shift)), w_shift);
 
     parallel(jcp.nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         int start {0}, end {0};
@@ -726,9 +726,8 @@ status_t brdgmm_dw_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
             const int ow_e
                     = nstl::min(ow + cur_n_owb * jcp.ow_block, jcp.ow) - 1;
             const int rpad = ow_e * jcp.stride_w - jcp.l_pad + jcp.kw - jcp.iw;
-            const int rpad_i = rpad <= rpad_1 - w_shift
-                    ? 0
-                    : 1 + div_up(rpad - rpad_1, w_shift);
+            const int rpad_i
+                    = div_up(nstl::max(0, rpad - rpad_1 + w_shift), w_shift);
 
             const int bi //[d_bi][h_bi][w_bi][rpad_i] _
                     = ((d_bi * n_h_blks + h_bi) * n_w_blks + w_bi) * n_rpad_blks

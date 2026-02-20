@@ -537,13 +537,13 @@ status_t nchw_pooling_bwd_t<data_type::f32>::execute_backward(
         }
     };
 
-    dim_t ow_start = max(dim_t(0), utils::div_up(padL - KW + 1, SW));
+    dim_t ow_start = utils::div_up(max(dim_t(0), padL - KW + 1), SW);
     dim_t ow_end = min(OW, 1 + (padL + IW - 1) / SW);
 
-    dim_t oh_start = max(dim_t(0), utils::div_up(padT - KH + 1, SH));
+    dim_t oh_start = utils::div_up(max(dim_t(0), padT - KH + 1), SH);
     dim_t oh_end = min(OH, 1 + (padT + IH - 1) / SH);
 
-    dim_t od_start = max(dim_t(0), utils::div_up(padF - KD + 1, SD));
+    dim_t od_start = utils::div_up(max(dim_t(0), padF - KD + 1), SD);
     dim_t od_end = min(OD, 1 + (padF + ID - 1) / SD);
 
     if (alg == alg_kind::pooling_max) {
@@ -688,13 +688,13 @@ status_t nchw_pooling_bwd_t<d_type>::execute_backward(
         }
     };
 
-    dim_t ow_start = max(dim_t(0), utils::div_up(padL - KW + 1, SW));
+    dim_t ow_start = utils::div_up(max(dim_t(0), padL - KW + 1), SW);
     dim_t ow_end = min(OW, 1 + (padL + IW - 1) / SW);
 
-    dim_t oh_start = max(dim_t(0), utils::div_up(padT - KH + 1, SH));
+    dim_t oh_start = utils::div_up(max(dim_t(0), padT - KH + 1), SH);
     dim_t oh_end = min(OH, 1 + (padT + IH - 1) / SH);
 
-    dim_t od_start = max(dim_t(0), utils::div_up(padF - KD + 1, SD));
+    dim_t od_start = utils::div_up(max(dim_t(0), padF - KD + 1), SD);
     dim_t od_end = min(OD, 1 + (padF + ID - 1) / SD);
 
     dim_t c_blk = pd()->channel_block_size_;

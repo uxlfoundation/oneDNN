@@ -360,6 +360,7 @@ inline enable_if_t<std::is_integral<T>::value
         typename remove_reference<T>::type>
 div_up(const T a, const U b) {
     assert(b > 0);
+    assert(a >= 0);
     if (a <= 0) return 0;
     return static_cast<typename remove_reference<T>::type>(1 + (a - 1) / b);
 }

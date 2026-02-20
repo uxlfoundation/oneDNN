@@ -62,7 +62,8 @@ static benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_grouped_md(
     // [total_M, K] for SRC
     // [total_M, N] for DST
     dnnl_dims_t dims_2d;
-    dims_2d[0] = prb->m; // total_M, at this point we've already validated that sum of group sizes equals M dimension
+    dims_2d[0]
+            = prb->m; // total_M, at this point we've already validated that sum of group sizes equals M dimension
     dims_2d[1] = (kind == SRC) ? prb->k : prb->n;
 
     // Create memory descriptor with grouped encoding with multiple handles
@@ -438,7 +439,8 @@ static int fill_grouped_offsets(
             return FAIL;
         }
         cumulative += group_sizes[g];
-        mem.set_elem(g, static_cast<int32_t>(cumulative), sparse_options_t::grouped_offsets_idx);
+        mem.set_elem(g, static_cast<int32_t>(cumulative),
+                sparse_options_t::grouped_offsets_idx);
     }
     total_size = cumulative;
     return OK;
@@ -956,9 +958,9 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
                     || (prb->wtag != tag::any && prb->wtag != tag::undef))) {
         const auto &weights_rt_dims = get_runtime_dims(
                 prb->weights_dims(), prb->weights_runtime_dim_mask());
-        const auto wei_md
-                = dnn_mem_t::init_md(weights_rt_dims.size(), weights_rt_dims.data(),
-                        prb->wei_dt(), prb->wtag, prb->strides[STRIDES_WEI]);
+        const auto wei_md = dnn_mem_t::init_md(weights_rt_dims.size(),
+                weights_rt_dims.data(), prb->wei_dt(), prb->wtag,
+                prb->strides[STRIDES_WEI]);
 
         const auto wei_strides = query_md_strides(wei_md);
         int n_unit_strides = 0;

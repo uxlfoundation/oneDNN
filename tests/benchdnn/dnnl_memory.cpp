@@ -611,59 +611,33 @@ void dnn_mem_t::memset(int value, size_t size, int buffer_index) const {
     SAFE_V(FAIL);
 }
 
-// Fills device memory with pseudo-random data generated directly on device.
-// This prevents GPU driver data compression from producing unrealistically
-// high bandwidth numbers in performance mode. A uniform fill (memset) is
-// trivially compressible by modern GPU drivers, inflating apparent BW by 3-4x.
+// Fills device memory with pseudo-random data generated directly on the device.
+// This mitigates the impact of GPU driver data compression, which could yield 
+// unrealistically high bandwidth measurements in mode=F. If the GPU runtime is
+// unavailable or a CPU engine is used, the function defaults to memset.
 #if DNNL_INTEL_GPU_RUNTIME_ENABLED
 extern "C" dnnl_status_t dnnl_impl_gpu_fill_random(dnnl_stream_t stream,
         size_t size, dnnl::impl::memory_storage_t *storage, uint32_t seed);
 #endif
 
 void dnn_mem_t::fill_random(size_t size, int buffer_index) const {
-    auto mem = m_padded_ ? m_padded_ : m_;
-
 #if DNNL_INTEL_GPU_RUNTIME_ENABLED
     static std::atomic<uint32_t> call_counter {0};
     const uint32_t seed = call_counter.fetch_add(1, std::memory_order_relaxed);
-#endif
-
-    const size_t count = size / sizeof(uint32_t);
-    if (count == 0) return;
-
     if (!is_cpu(engine_)) {
-
-#if DNNL_INTEL_GPU_RUNTIME_ENABLED
+        auto mem = m_padded_ ? m_padded_ : m_;
         stream_t stream(engine_);
-        auto *storage = reinterpret_cast<dnnl_memory *>(mem)->memory_storage(
-                buffer_index);
-        auto st = dnnl_impl_gpu_fill_random(stream, size, storage, seed);
-        if (st != dnnl_success) {
-            BENCHDNN_PRINT(0,
-                    "fill_random: library kernel failed (%d), "
-                    "falling back to memset.\n",
-                    (int)st);
-            this->memset(dnnl_mem_default_perf_test_value, size, buffer_index);
-        }
+        DNN_SAFE_V(dnnl_impl_gpu_fill_random(
+                stream, size, mem->memory_storage(buffer_index), seed));
         DNN_SAFE_V(dnnl_stream_wait(stream));
         return;
-#else
-        BENCHDNN_PRINT(0,
-                "fill_random: no gpu runtime available, "
-                "falling back to memset (%i bytes).\n",
-                (int)size);
-        this->memset(dnnl_mem_default_perf_test_value, size, buffer_index);
-        return;
-#endif
     }
+#endif
 
-    BENCHDNN_PRINT(0,
-            "fill_random: using cpu fill (%i bytes), "
-            "falling back to memset.\n",
-            (int)size);
-    void *mem_handle;
-    DNN_SAFE_V(dnnl_memory_get_data_handle_v2(mem, &mem_handle, buffer_index));
-    ::memset(mem_handle, dnnl_mem_default_perf_test_value, size);
+    BENCHDNN_PRINT(2, "%s\n",
+            "The function 'fill_random' has reverted to memset due to "
+            "the use of a non-Intel GPU runtime or a CPU runtime.");
+    this->memset(dnnl_mem_default_perf_test_value, size, buffer_index);
 }
 
 dnn_mem_t dnn_mem_t::create_from_host_ptr(

@@ -361,10 +361,16 @@ status_t engine_t::create_kernel(
 
 status_t engine_t::create_kernel(compute::kernel_t &kernel,
         const gemmstone::dsl::kernel_t &kernel_dsl) const {
+    // See `INCLUDE_EXTRA_DIRS_FOR_SYCL` comment.
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     return kernel_t::make(kernel,
             gemmstone::dsl::make_kernel(
                     kernel_dsl, impl()->context(), impl()->device()),
             {});
+#else
+    assert(!"ocl::create_kernel with gemmstone::dsl::kernel_t is not expected");
+    return status::invalid_arguments;
+#endif
 }
 
 status_t engine_t::create_program(xpu::ocl::wrapper_t<cl_program> &program,

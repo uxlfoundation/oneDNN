@@ -20,9 +20,6 @@
 #include "interface/op_schema.hpp"
 
 #include "backend/dnnl/dnnl_backend.hpp"
-#include "backend/dnnl/dnnl_shape_infer.hpp"
-#include "backend/dnnl/internal_attrs.hpp"
-#include "backend/dnnl/internal_ops.hpp"
 
 #include "graph/unit/utils.hpp"
 
@@ -32,7 +29,7 @@ using namespace dnnl::graph::tests::unit::utils;
 TEST(test_op_schema, InferSqueezeOutputShape) {
     auto &be = graph::dnnl_impl::dnnl_backend_t::get_singleton();
     EXPECT_EQ(be.get_name(), "dnnl_backend");
-    const op_kind_t kind = dnnl_impl::op_kind::dnnl_squeeze;
+    const op_kind_t kind = op_kind::_dnnl_squeeze;
     const op_schema_t *op_schema_ = op_schema_registry_t::get_op_schema(kind);
     std::vector<std::vector<int64_t>> axes_list {{1}, {1, 2}, {-1}, {-1, -2}};
     std::vector<std::vector<int64_t>> src_shapes {
@@ -64,7 +61,7 @@ TEST(test_op_schema, InferSqueezeOutputShape) {
 TEST(test_op_schema, InferUnsqueezeOutputShape) {
     auto &be = graph::dnnl_impl::dnnl_backend_t::get_singleton();
     EXPECT_EQ(be.get_name(), "dnnl_backend");
-    const op_kind_t kind = dnnl_impl::op_kind::dnnl_unsqueeze;
+    const op_kind_t kind = op_kind::_dnnl_unsqueeze;
     const op_schema_t *op_schema_ = op_schema_registry_t::get_op_schema(kind);
 
     const std::vector<int64_t> src_shape {4};
@@ -75,7 +72,7 @@ TEST(test_op_schema, InferUnsqueezeOutputShape) {
 
     for (size_t i = 0; i < dst_shapes.size(); ++i) {
         op_t op {kind, "unsqueeze"};
-        op.set_attr<std::vector<int64_t>>(dnnl_impl::op_attr::axes, axes[i]);
+        op.set_attr<std::vector<int64_t>>(graph::op_attr::axes, axes[i]);
 
         logical_tensor_t lt_in = logical_tensor_init(
                 0, src_shape, data_type::f32, layout_type::strided);
@@ -98,7 +95,7 @@ TEST(test_op_schema, InferUnsqueezeOutputShape) {
 TEST(test_op_schema, InferUnsqueezeOutputShapeBasedOnAxes) {
     auto &be = graph::dnnl_impl::dnnl_backend_t::get_singleton();
     EXPECT_EQ(be.get_name(), "dnnl_backend");
-    const op_kind_t kind = dnnl_impl::op_kind::dnnl_unsqueeze;
+    const op_kind_t kind = op_kind::_dnnl_unsqueeze;
     const op_schema_t *op_schema_ = op_schema_registry_t::get_op_schema(kind);
 
     const std::vector<std::vector<int64_t>> axes_list {
@@ -110,7 +107,7 @@ TEST(test_op_schema, InferUnsqueezeOutputShapeBasedOnAxes) {
 
     for (size_t i = 0; i < axes_list.size(); ++i) {
         op_t op {kind, "unsqueeze"};
-        op.set_attr<std::vector<int64_t>>(op_attr::axes, axes_list[i]);
+        op.set_attr<std::vector<int64_t>>(graph::op_attr::axes, axes_list[i]);
 
         logical_tensor_t lt_in = logical_tensor_init(
                 0, src_shapes[i], data_type::f32, layout_type::strided);
@@ -131,13 +128,13 @@ TEST(test_op_schema, InferUnsqueezeOutputShapeBasedOnAxes) {
 }
 
 TEST(test_op_schema, DnnlBinary) {
-    op_kind_t op_kind = dnnl_impl::op_kind::dnnl_binary;
+    op_kind_t op_kind = op_kind::_dnnl_binary;
     const size_t expected_in_size_lower = 2;
     const size_t expected_out_size = 2;
     const size_t expected_attr_size = 7;
     const std::map<op_attr_t, bool> attrs_data
-            = {{op_attr::auto_broadcast, false},
-                    {dnnl_impl::op_attr::alg_kind, true}};
+            = {{graph::op_attr::auto_broadcast, false},
+                    {graph::op_attr::alg_kind, true}};
     verify_op_schema(op_kind, expected_in_size_lower, expected_out_size,
             expected_attr_size, attrs_data);
 

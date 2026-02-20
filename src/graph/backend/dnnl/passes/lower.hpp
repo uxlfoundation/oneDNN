@@ -39,10 +39,10 @@ using handler_func = std::function<status_t(
 // A template handler function that can be specialized by the dnnl backend
 // internal op kind. Most spec ops can use the specialized common_handler to
 // lower theirselves to the specific internal ops.
-template <op_kind::kind_t op_kind>
+template <op_kind_t op_kind>
 status_t common_handler(
         const std::shared_ptr<op_t> &op, subgraph_rewriter_t &rewriter) {
-    auto new_op = std::make_shared<op_t>(static_cast<op_kind_t>(op_kind));
+    auto new_op = std::make_shared<op_t>(op_kind);
     new_op->merge_attributes(op->get_attributes());
 
     rewriter.replace_op(op, new_op);

@@ -101,12 +101,12 @@ public:
         , ops_(deep_copy(other.ops_))
         , engine_kind_(other.engine_kind_)
         , fpmath_(other.fpmath_)
-        , partition_impls_(other.partition_impls_) {};
+        , partition_impls_(other.partition_impls_) {}
 
     dnnl_graph_graph(const std::vector<op_ptr> &ops,
             graph::engine_kind_t kind = graph::engine_kind::cpu,
             graph::fpmath_mode_t fpmath_mode = graph::fpmath_mode::strict)
-        : ops_(ops), engine_kind_(kind), fpmath_ {fpmath_mode, false} {};
+        : ops_(ops), engine_kind_(kind), fpmath_ {fpmath_mode, false} {}
 
     dnnl_graph_graph &operator=(const dnnl_graph_graph &other) = delete;
 

@@ -216,7 +216,59 @@ const op_kind_t TanhBackward = dnnl_graph_op_tanh_backward;
 const op_kind_t TypeCast = dnnl_graph_op_type_cast;
 const op_kind_t Wildcard = dnnl_graph_op_wildcard;
 const op_kind_t Dropout = dnnl_graph_op_dropout;
+// end of public ops
 const op_kind_t LastSymbol = dnnl_graph_op_last_symbol;
+
+// internal ops used by the backend.
+const op_kind_t _dnnl_mul_scales = 1024;
+const op_kind_t _dnnl_constant_scales = 1025;
+const op_kind_t _dnnl_add_zps = 1026;
+const op_kind_t _dnnl_sub_zps = 1027;
+const op_kind_t _dnnl_constant_zps = 1028;
+const op_kind_t _dnnl_permute = 1029;
+const op_kind_t _dnnl_to_group = 1030;
+const op_kind_t _dnnl_from_group = 1031;
+const op_kind_t _dnnl_unsqueeze = 1032;
+const op_kind_t _dnnl_squeeze = 1033;
+const op_kind_t _dnnl_reshape = 1034;
+const op_kind_t _dnnl_transpose = 1035;
+const op_kind_t _dnnl_convolution = 1036;
+const op_kind_t _dnnl_convtranspose = 1037;
+const op_kind_t _dnnl_pool = 1038;
+const op_kind_t _dnnl_bn_folding = 1039;
+const op_kind_t _dnnl_conv_bwd_data = 1040;
+const op_kind_t _dnnl_batchnorm = 1041;
+const op_kind_t _dnnl_binary = 1042;
+const op_kind_t _dnnl_eltwise = 1043;
+const op_kind_t _dnnl_eltwise_bwd = 1044;
+const op_kind_t _dnnl_shuffle = 1045;
+const op_kind_t _dnnl_sum = 1046;
+const op_kind_t _dnnl_reduction = 1047;
+const op_kind_t _dnnl_prelu = 1048;
+const op_kind_t _dnnl_prelu_bwd = 1049;
+const op_kind_t _dnnl_batchnorm_bwd = 1050;
+const op_kind_t _dnnl_softmax_bwd = 1051;
+const op_kind_t _dnnl_logsoftmax_bwd = 1052;
+const op_kind_t _dnnl_resampling = 1053;
+const op_kind_t _dnnl_resampling_bwd = 1054;
+const op_kind_t _dnnl_concat = 1055;
+const op_kind_t _dnnl_layernorm_bwd = 1056;
+const op_kind_t _dnnl_conv_bwd_weights = 1057;
+const op_kind_t _dnnl_pool_bwd = 1058;
+const op_kind_t _dnnl_matmul = 1059;
+const op_kind_t _dnnl_softmax = 1060;
+const op_kind_t _dnnl_logsoftmax = 1061;
+const op_kind_t _dnnl_layernorm = 1062;
+const op_kind_t _dnnl_reorder = 1063;
+const op_kind_t _dnnl_convtranspose_bwd_data = 1064;
+const op_kind_t _dnnl_convtranspose_bwd_weights = 1065;
+const op_kind_t _dnnl_groupnorm = 1066;
+const op_kind_t _dnnl_gen_index = 1067;
+const op_kind_t _dnnl_mask = 1068;
+const op_kind_t _dnnl_sdpa = 1069;
+const op_kind_t _dnnl_host_scalar = 1070;
+const op_kind_t _dnnl_identity = 1071;
+const op_kind_t _dnnl_dropout = 1072;
 } // namespace op_kind
 
 using op_attr_t = typename std::underlying_type<dnnl_graph_op_attr_t>::type;
@@ -274,15 +326,57 @@ const op_attr_t qtype = dnnl_graph_op_attr_qtype;
 const op_attr_t rounding_type = dnnl_graph_op_attr_rounding_type;
 const op_attr_t accumulation_mode = dnnl_graph_op_attr_accumulation_mode;
 
-// Used to indicate the end of all external attributes, note all the new
-// attribute should be added above this one.
+// end of public attributes
 const op_attr_t end = dnnl_graph_op_attr_end;
 
-// internal attributes
-const op_attr_t matched = 0x100;
-const op_attr_t backend = 0x101;
-const op_attr_t partition_id = 0x102;
-const op_attr_t op_depth = 0x103;
+// internal attributes: bool
+const op_attr_t matched = 0x10000;
+const op_attr_t canonicalized = 0x10001;
+const op_attr_t change_layout = 0x10002;
+const op_attr_t is_constant = 0x10003;
+const op_attr_t is_convtranspose = 0x10004;
+const op_attr_t is_training = 0x10005;
+const op_attr_t fwd_alg_kind = 0x10006;
+const op_attr_t fuse_relu = 0x10007;
+const op_attr_t with_bias = 0x10008;
+const op_attr_t with_runtime_scales = 0x10009;
+const op_attr_t with_runtime_zps = 0x1000a;
+const op_attr_t with_runtime_src_zps = 0x1000b;
+const op_attr_t with_runtime_dst_zps = 0x1000c;
+const op_attr_t is_bias_add = 0x1000d;
+const op_attr_t with_sum = 0x1000e;
+const op_attr_t keep_dst_layout = 0x1000f;
+const op_attr_t with_scale = 0x10010;
+const op_attr_t is_invert_scale = 0x10011;
+const op_attr_t mask_type = 0x10012;
+const op_attr_t is_rms = 0x10013;
+
+// int64_t
+const op_attr_t partition_id = 0x10100;
+const op_attr_t op_depth = 0x10101;
+const op_attr_t alg_kind = 0x10102;
+const op_attr_t group_mask = 0x10103;
+const op_attr_t data_type = 0x10104;
+const op_attr_t axis_row = 0x10105;
+const op_attr_t axis_col = 0x10106;
+
+// string
+const op_attr_t backend = 0x10200;
+const op_attr_t dw_type = 0x10201;
+const op_attr_t kind = 0x10204;
+const op_attr_t qk_acc_mode = 0x10205;
+const op_attr_t vs_acc_mode = 0x10206;
+
+// float
+const op_attr_t p = 0x10300;
+
+// vector of int64_t
+const op_attr_t dst_zps = 0x10400;
+const op_attr_t src_zps = 0x10401;
+const op_attr_t permutation = 0x10402;
+
+// store op's fusion info
+const op_attr_t fusion_info = 0x10500;
 } // namespace op_attr
 
 using logical_tensor_t = dnnl_graph_logical_tensor_t;

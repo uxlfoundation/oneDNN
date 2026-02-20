@@ -27,7 +27,6 @@
 #include "graph/interface/partition.hpp"
 
 #include "graph/backend/dnnl/dnnl_backend.hpp"
-#include "graph/backend/dnnl/internal_ops.hpp"
 
 #include "graph/backend/dnnl/kernels/kernel_base.hpp"
 

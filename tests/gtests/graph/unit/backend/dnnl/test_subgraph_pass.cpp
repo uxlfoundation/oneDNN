@@ -63,10 +63,8 @@ dnnl::impl::graph::pass::pass_base_ptr get_pass(const std::string &pass_name) {
 } // namespace
 
 TEST(test_subgraph_pass, Kind2Str) {
-    ASSERT_EQ(graph::dnnl_impl::kind2str(graph::op_kind::Abs), "Abs");
-    ASSERT_EQ(
-            graph::dnnl_impl::kind2str(graph::dnnl_impl::op_kind::dnnl_add_zps),
-            "Dnnl_add_zps");
+    ASSERT_EQ(op_t::kind2str(graph::op_kind::Abs), "Abs");
+    ASSERT_EQ(op_t::kind2str(graph::op_kind::_dnnl_add_zps), "_dnnl_add_zps");
 }
 
 TEST(test_subgraph_pass, LargerPartitionKernelCreator) {
@@ -185,15 +183,15 @@ TEST(test_subgraph_pass, LowerDownToInt8Conv) {
     ASSERT_EQ(subgraph->get_ops().size(), 11U);
     auto conv_op = std::find_if(subgraph->get_ops().begin(),
             subgraph->get_ops().end(), [](const std::shared_ptr<op_t> &op) {
-        return op->get_kind() == dnnl_impl::op_kind::dnnl_convolution;
+        return op->get_kind() == op_kind::_dnnl_convolution;
     });
     ASSERT_NE(conv_op, subgraph->get_ops().end());
     auto &producer0 = (*conv_op)->get_input_value(0)->get_producer();
-    ASSERT_EQ(producer0.get_kind(), dnnl_impl::op_kind::dnnl_mul_scales);
+    ASSERT_EQ(producer0.get_kind(), op_kind::_dnnl_mul_scales);
     ASSERT_EQ(producer0.get_attr<std::vector<float>>(op_attr::scales)[0],
             scales[0]);
     auto &producer1 = (*conv_op)->get_input_value(1)->get_producer();
-    ASSERT_EQ(producer1.get_kind(), dnnl_impl::op_kind::dnnl_mul_scales);
+    ASSERT_EQ(producer1.get_kind(), op_kind::_dnnl_mul_scales);
     ASSERT_EQ(producer1.get_attr<std::vector<float>>(op_attr::scales)[0],
             scales[0]);
 
@@ -209,12 +207,12 @@ TEST(test_subgraph_pass, LowerDownToInt8Conv) {
 
     auto qconv_op = std::find_if(subgraph->get_ops().begin(),
             subgraph->get_ops().end(), [](const std::shared_ptr<op_t> &op) {
-        return op->get_kind() == dnnl_impl::op_kind::dnnl_convolution;
+        return op->get_kind() == op_kind::_dnnl_convolution;
     });
     ASSERT_NE(qconv_op, subgraph->get_ops().end());
-    ASSERT_TRUE((*qconv_op)->has_attr(dnnl_impl::op_attr::fusion_info));
+    ASSERT_TRUE((*qconv_op)->has_attr(graph::op_attr::fusion_info));
     const auto &fusion_info = (*qconv_op)->get_attr<dnnl_impl::fusion_info_t>(
-            dnnl_impl::op_attr::fusion_info);
+            graph::op_attr::fusion_info);
     const auto &post_ops = fusion_info.get_post_ops();
     ASSERT_EQ(post_ops.size(), 2U);
 }
@@ -301,15 +299,15 @@ TEST(test_subgraph_pass, LowerDownToInt8Matmul) {
     ASSERT_EQ(subgraph->get_ops().size(), 8U);
     auto matmul_op = std::find_if(subgraph->get_ops().begin(),
             subgraph->get_ops().end(), [](const std::shared_ptr<op_t> &op) {
-        return op->get_kind() == dnnl_impl::op_kind::dnnl_matmul;
+        return op->get_kind() == op_kind::_dnnl_matmul;
     });
     ASSERT_NE(matmul_op, subgraph->get_ops().end());
     auto &producer0 = (*matmul_op)->get_input_value(0)->get_producer();
-    ASSERT_EQ(producer0.get_kind(), dnnl_impl::op_kind::dnnl_mul_scales);
+    ASSERT_EQ(producer0.get_kind(), op_kind::_dnnl_mul_scales);
     ASSERT_EQ(producer0.get_attr<std::vector<float>>(op_attr::scales)[0],
             scales[0]);
     auto &producer1 = (*matmul_op)->get_input_value(1)->get_producer();
-    ASSERT_EQ(producer1.get_kind(), dnnl_impl::op_kind::dnnl_mul_scales);
+    ASSERT_EQ(producer1.get_kind(), op_kind::_dnnl_mul_scales);
     ASSERT_EQ(producer1.get_attr<std::vector<float>>(op_attr::scales)[0],
             scales[0]);
 
@@ -318,7 +316,7 @@ TEST(test_subgraph_pass, LowerDownToInt8Matmul) {
     dnnl_impl::fuse_src_scales(subgraph);
     auto qmatmul_op = std::find_if(subgraph->get_ops().begin(),
             subgraph->get_ops().end(), [](const std::shared_ptr<op_t> &op) {
-        return op->get_kind() == dnnl_impl::op_kind::dnnl_matmul;
+        return op->get_kind() == op_kind::_dnnl_matmul;
     });
 
     // 3. fuse post ops to int8 matmul
@@ -326,13 +324,13 @@ TEST(test_subgraph_pass, LowerDownToInt8Matmul) {
 
     qmatmul_op = std::find_if(subgraph->get_ops().begin(),
             subgraph->get_ops().end(), [](const std::shared_ptr<op_t> &op) {
-        return op->get_kind() == dnnl_impl::op_kind::dnnl_matmul;
+        return op->get_kind() == op_kind::_dnnl_matmul;
     });
     ASSERT_NE(qmatmul_op, subgraph->get_ops().end());
-    ASSERT_TRUE((*qmatmul_op)->has_attr(dnnl_impl::op_attr::fusion_info));
+    ASSERT_TRUE((*qmatmul_op)->has_attr(graph::op_attr::fusion_info));
     const auto &fusion_info = (*qmatmul_op)
                                       ->get_attr<dnnl_impl::fusion_info_t>(
-                                              dnnl_impl::op_attr::fusion_info);
+                                              graph::op_attr::fusion_info);
     const auto &post_ops = fusion_info.get_post_ops();
     ASSERT_EQ(post_ops.size(), 1U);
 }
@@ -440,16 +438,13 @@ TEST(test_subgraph_pass, Conv2dNxcPlainDst) {
 
     for (const auto &op : subgraph->get_ops()) {
         ASSERT_TRUE(dnnl::impl::utils::one_of(op->get_kind(),
-                dnnl_impl::op_kind::dnnl_permute,
-                dnnl_impl::op_kind::dnnl_reorder,
-                dnnl_impl::op_kind::dnnl_convolution,
-                dnnl_impl::op_kind::dnnl_mul_scales,
-                dnnl_impl::op_kind::dnnl_constant_scales,
-                dnnl_impl::op_kind::dnnl_constant_zps));
+                op_kind::_dnnl_permute, op_kind::_dnnl_reorder,
+                op_kind::_dnnl_convolution, op_kind::_dnnl_mul_scales,
+                op_kind::_dnnl_constant_scales, op_kind::_dnnl_constant_zps));
     }
 
     for (auto &cur_op : subgraph->get_ops()) {
-        if (cur_op->get_kind() == dnnl_impl::op_kind::dnnl_convolution) {
+        if (cur_op->get_kind() == op_kind::_dnnl_convolution) {
             const auto &dst_lt
                     = cur_op->get_output_value(0)->get_logical_tensor();
             const auto &mdesc = dnnl_impl::make_dnnl_memory_desc(dst_lt);
@@ -679,11 +674,9 @@ TEST(test_subgraph_pass, Int8ConvSumRelu) {
     ASSERT_EQ(subgraph->get_ops().size(), 8U);
     for (const auto &op : subgraph->get_ops()) {
         ASSERT_TRUE(dnnl::impl::utils::one_of(op->get_kind(),
-                dnnl_impl::op_kind::dnnl_reorder,
-                dnnl_impl::op_kind::dnnl_convolution,
-                dnnl_impl::op_kind::dnnl_mul_scales,
-                dnnl_impl::op_kind::dnnl_constant_scales,
-                dnnl_impl::op_kind::dnnl_constant_zps));
+                op_kind::_dnnl_reorder, op_kind::_dnnl_convolution,
+                op_kind::_dnnl_mul_scales, op_kind::_dnnl_constant_scales,
+                op_kind::_dnnl_constant_zps));
     }
 
     // insert preprocess and reorder ops
@@ -757,7 +750,7 @@ TEST(test_subgraph_pass, Int8ConvSumRelu) {
         ASSERT_FALSE(exec_arg.empty());
 
         auto cur_op = topo_ordered_ops[i];
-        if (cur_op->get_kind() == dnnl_impl::op_kind::dnnl_convolution) {
+        if (cur_op->get_kind() == op_kind::_dnnl_convolution) {
             ASSERT_NE(exec_arg.find(DNNL_ARG_SRC), exec_arg.end());
             ASSERT_NE(exec_arg.find(DNNL_ARG_WEIGHTS), exec_arg.end());
             ASSERT_NE(exec_arg.find(DNNL_ARG_BIAS), exec_arg.end());
@@ -772,7 +765,7 @@ TEST(test_subgraph_pass, Int8ConvSumRelu) {
             ASSERT_NE(exec_arg.find(DNNL_GRAPH_ARG_POST_SRC), exec_arg.end());
             ASSERT_NE(exec_arg.find(DNNL_ARG_DST), exec_arg.end());
             ASSERT_NE(exec_arg.find(DNNL_ARG_SCRATCHPAD), exec_arg.end());
-        } else if (cur_op->get_kind() == dnnl_impl::op_kind::dnnl_reorder) {
+        } else if (cur_op->get_kind() == op_kind::_dnnl_reorder) {
             ASSERT_NE(exec_arg.find(DNNL_ARG_FROM), exec_arg.end());
             ASSERT_NE(exec_arg.find(DNNL_ARG_TO), exec_arg.end());
         } else {
@@ -1206,15 +1199,15 @@ TEST(test_subgraph_pass, MemoryPlanning) {
     std::vector<int64_t> shape_NCX {64, 32, 256, 256};
     std::vector<int64_t> shape_NXC {64, 256, 256, 32};
 
-    graph::op_t op1(1, dnnl_impl::op_kind::dnnl_mul_scales, "op1");
-    graph::op_t op2(2, dnnl_impl::op_kind::dnnl_mul_scales, "op2");
-    graph::op_t op3(3, dnnl_impl::op_kind::dnnl_permute, "op3");
-    graph::op_t op4(4, dnnl_impl::op_kind::dnnl_mul_scales, "op4");
-    graph::op_t op5(5, dnnl_impl::op_kind::dnnl_permute, "op5");
-    graph::op_t op6(6, dnnl_impl::op_kind::dnnl_mul_scales, "op6");
-    graph::op_t op7(7, dnnl_impl::op_kind::dnnl_mul_scales, "op7");
-    graph::op_t op8(8, dnnl_impl::op_kind::dnnl_reorder, "op8");
-    graph::op_t op9(9, dnnl_impl::op_kind::dnnl_reorder, "op9");
+    graph::op_t op1(1, op_kind::_dnnl_mul_scales, "op1");
+    graph::op_t op2(2, op_kind::_dnnl_mul_scales, "op2");
+    graph::op_t op3(3, op_kind::_dnnl_permute, "op3");
+    graph::op_t op4(4, op_kind::_dnnl_mul_scales, "op4");
+    graph::op_t op5(5, op_kind::_dnnl_permute, "op5");
+    graph::op_t op6(6, op_kind::_dnnl_mul_scales, "op6");
+    graph::op_t op7(7, op_kind::_dnnl_mul_scales, "op7");
+    graph::op_t op8(8, op_kind::_dnnl_reorder, "op8");
+    graph::op_t op9(9, op_kind::_dnnl_reorder, "op9");
 
     op1.set_attr<std::vector<float>>(op_attr::scales, {0.5});
     op2.set_attr<std::vector<float>>(op_attr::scales, {0.5});
@@ -1468,11 +1461,10 @@ TEST(test_subgraph_pass, FuseSigmoidMultiplyToSwish) {
     dnnl_impl::larger_partition_kernel_t::setup_pipeline_stage1(pipeline);
     ASSERT_EQ(pipeline.run(subgraph), graph::status::success);
     ASSERT_EQ(subgraph->num_ops(), 1U);
-    ASSERT_EQ(subgraph->get_ops()[0]->get_kind(),
-            dnnl_impl::op_kind::dnnl_eltwise);
+    ASSERT_EQ(subgraph->get_ops()[0]->get_kind(), op_kind::_dnnl_eltwise);
     ASSERT_EQ(static_cast<dnnl::algorithm>(
                       subgraph->get_ops()[0]->get_attr<int64_t>(
-                              dnnl_impl::op_attr::alg_kind)),
+                              graph::op_attr::alg_kind)),
             dnnl::algorithm::eltwise_swish);
 }
 
@@ -1711,7 +1703,7 @@ TEST(test_subgraph_pass_layout_propagation, ReshapeWithSpecifiedOutputLayout) {
         sorted_ops.emplace_back(op);
         return graph::status::success;
     });
-    ASSERT_EQ(sorted_ops[0]->get_kind(), dnnl_impl::op_kind::dnnl_reorder);
+    ASSERT_EQ(sorted_ops[0]->get_kind(), op_kind::_dnnl_reorder);
 }
 
 TEST(test_subgraph_pass_layout_propagation,
@@ -1753,7 +1745,7 @@ TEST(test_subgraph_pass_layout_propagation,
         sorted_ops.emplace_back(op);
         return graph::status::success;
     });
-    ASSERT_EQ(sorted_ops[0]->get_kind(), dnnl_impl::op_kind::dnnl_reorder);
+    ASSERT_EQ(sorted_ops[0]->get_kind(), op_kind::_dnnl_reorder);
 }
 
 TEST(test_subgraph_pass_layout_propagation, ReshapeWithReshapableInputLayout) {
@@ -2331,12 +2323,12 @@ TEST(test_subgraph_pass, FuseNCXConvolutionBinaryAddNC11PostSrc) {
             graph::dnnl_impl::fuse_post_ops(subgraph), graph::status::success);
     auto qconv_op = std::find_if(subgraph->get_ops().begin(),
             subgraph->get_ops().end(), [](const std::shared_ptr<op_t> &op) {
-        return op->get_kind() == dnnl_impl::op_kind::dnnl_convolution;
+        return op->get_kind() == op_kind::_dnnl_convolution;
     });
     ASSERT_NE(qconv_op, subgraph->get_ops().end());
-    ASSERT_TRUE((*qconv_op)->has_attr(dnnl_impl::op_attr::fusion_info));
+    ASSERT_TRUE((*qconv_op)->has_attr(graph::op_attr::fusion_info));
     const auto &fusion_info = (*qconv_op)->get_attr<dnnl_impl::fusion_info_t>(
-            dnnl_impl::op_attr::fusion_info);
+            graph::op_attr::fusion_info);
     const auto &post_ops = fusion_info.get_post_ops();
 #if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
         && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
@@ -2496,12 +2488,12 @@ TEST(test_subgraph_pass, FuseNXCConvolutionBinaryAddNC11PostSrc) {
             graph::dnnl_impl::fuse_post_ops(subgraph), graph::status::success);
     auto qconv_op = std::find_if(subgraph->get_ops().begin(),
             subgraph->get_ops().end(), [](const std::shared_ptr<op_t> &op) {
-        return op->get_kind() == dnnl_impl::op_kind::dnnl_convolution;
+        return op->get_kind() == op_kind::_dnnl_convolution;
     });
     ASSERT_NE(qconv_op, subgraph->get_ops().end());
-    ASSERT_TRUE((*qconv_op)->has_attr(dnnl_impl::op_attr::fusion_info));
+    ASSERT_TRUE((*qconv_op)->has_attr(graph::op_attr::fusion_info));
     const auto &fusion_info = (*qconv_op)->get_attr<dnnl_impl::fusion_info_t>(
-            dnnl_impl::op_attr::fusion_info);
+            graph::op_attr::fusion_info);
     const auto &post_ops = fusion_info.get_post_ops();
 #if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
         && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA

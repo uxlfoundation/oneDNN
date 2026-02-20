@@ -25,6 +25,7 @@
 
 #include "graph/backend/dnnl/common.hpp"
 #include "graph/backend/dnnl/layout_propagator.hpp"
+#include "graph/backend/dnnl/op_executable.hpp"
 
 #define VCHECK_LAYOUT_PROPAGATION(cond, status, msg, ...) \
     VCONDCHECK(graph, create, check, layout_propagation, (cond), status, msg, \
@@ -121,20 +122,13 @@ status_t layout_propagation(std::shared_ptr<subgraph_t> &sg) {
         ret = topo_order_visit(sg->get_output_ops(), [&](op_t *op) {
             if (visited.count(op)) return status::success;
 
-            const op_schema_t *opm
-                    = op_schema_registry_t::get_op_schema(op->get_kind());
-            VCHECK_LAYOUT_PROPAGATION(opm != nullptr, status::invalid_graph_op,
-                    "no schema for current op: %s", op->get_name().c_str());
-
-            VCHECK_LAYOUT_PROPAGATION(
-                    opm->has_additional_item("layout_propagator"),
+            auto propagator = op_func_t::get_layout_propagator(op->get_kind());
+            VCHECK_LAYOUT_PROPAGATION(propagator != nullptr,
                     status::invalid_graph_op,
                     "no layout propagator in the schema of op: %s",
                     op->get_name().c_str());
 
             auto cur_op = op->shared_from_this();
-            auto propagator = opm->get_additional_item<layout_propagator_func>(
-                    "layout_propagator");
             status_t status = propagator(cur_op, p_engine, pd_cache, fpm,
                     use_block_layout, rewriter);
 

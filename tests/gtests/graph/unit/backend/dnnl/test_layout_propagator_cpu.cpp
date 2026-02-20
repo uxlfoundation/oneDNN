@@ -18,7 +18,6 @@
 #include "interface/c_types_map.hpp"
 
 #include "backend/dnnl/common.hpp"
-#include "backend/dnnl/internal_attrs.hpp"
 #include "backend/dnnl/layout_propagator.hpp"
 
 #include "gtest/gtest.h"
@@ -33,7 +32,7 @@ namespace dnnl_impl = graph::dnnl_impl;
 
 TEST(test_layout_propagator, LayoutPropagatorForPermute) {
     auto op = std::make_shared<graph::op_t>(0, graph::op_kind::Wildcard, "op");
-    op->set_attr<std::vector<int64_t>>(dnnl_impl::op_attr::permutation, {1, 0});
+    op->set_attr<std::vector<int64_t>>(graph::op_attr::permutation, {1, 0});
     auto lt_in = utils::logical_tensor_init(
             0, {1, 1}, graph::data_type::f32, graph::layout_type::any);
     auto lt_out = utils::logical_tensor_init(1, {1, 1}, graph::data_type::f32);
@@ -57,7 +56,7 @@ TEST(test_layout_propagator, LayoutPropagatorForPermute) {
 
 TEST(test_layout_propagator, LayoutPropagatorForReorder) {
     auto op = std::make_shared<graph::op_t>(0, graph::op_kind::Wildcard, "op");
-    op->set_attr<std::vector<int64_t>>(dnnl_impl::op_attr::permutation, {1, 0});
+    op->set_attr<std::vector<int64_t>>(graph::op_attr::permutation, {1, 0});
     auto lt_in = utils::logical_tensor_init(
             0, {1, 2}, graph::data_type::f32, graph::layout_type::any);
     auto lt_out = utils::logical_tensor_init(

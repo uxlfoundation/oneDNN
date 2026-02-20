@@ -14,7 +14,6 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "graph/backend/dnnl/internal_ops.hpp"
 #include "graph/backend/dnnl/kernels/softmax.hpp"
 #include "graph/backend/dnnl/patterns/fusions.hpp"
 #include "graph/backend/dnnl/patterns/pattern_matcher_pass.hpp"

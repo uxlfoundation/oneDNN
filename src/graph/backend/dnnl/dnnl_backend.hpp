@@ -34,7 +34,6 @@
 #include "graph/utils/utils.hpp"
 
 #include "graph/backend/dnnl/common.hpp"
-#include "graph/backend/dnnl/internal_ops.hpp"
 #include "graph/backend/dnnl/layout_id_mgr.hpp"
 #include "graph/backend/dnnl/utils.hpp"
 
@@ -133,9 +132,7 @@ public:
 
 private:
     dnnl_backend_t(const std::string &name, float priority);
-
     static graph::pass::pass_registry_t register_passes();
-    bool register_op_schemas();
 
     dnnl_layout_id_manager_t layout_id_manager_;
     static graph::pass::pass_registry_t pass_registry_;

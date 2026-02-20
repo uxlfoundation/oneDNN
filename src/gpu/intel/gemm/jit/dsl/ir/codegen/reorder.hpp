@@ -48,8 +48,8 @@ struct copy_operand_t : gemmstone::CopyOperand {
 struct copy_plan_t : gemmstone::CopyPlan {
     using gemmstone::CopyPlan::newTemp;
 
-    copy_plan_t(ngen_register_scope_t &scope, bool systolic_support)
-        : CopyPlan(scope.hw(), systolic_support), scope_(scope) {}
+    copy_plan_t(reg_allocator_t &ra, bool systolic_support)
+        : CopyPlan(ra.hardware(), systolic_support), ra_(ra) {}
 
     ngen::HW hw() const { return CopyPlan::hw; }
 
@@ -71,16 +71,16 @@ struct copy_plan_t : gemmstone::CopyPlan {
 
     void alloc_grf(int count, ngen::GRFRange &range) {
         if (count > 0)
-            range = scope_.try_alloc_range(count);
+            range = ra_.try_alloc_range(count);
         else
-            scope_.safeRelease(range);
+            ra_.safeRelease(range);
     }
 
     void alloc_flag(int bytes, ngen::FlagRegister &flag) {
         if (bytes > 0)
-            flag = scope_.try_alloc_flag(bytes * 8);
+            flag = ra_.try_alloc_flag(bytes * 8 <= 16);
         else
-            scope_.safeRelease(flag);
+            ra_.safeRelease(flag);
     }
 
     int phase = 0;
@@ -88,14 +88,14 @@ struct copy_plan_t : gemmstone::CopyPlan {
 protected:
     using CopyPlan::materializeTemps;
 
-    ngen_register_scope_t &scope_;
+    reg_allocator_t &ra_;
 };
 
 template <typename GeneratorT>
-void emit_reorder_1d_tile(GeneratorT *host, const hw_t &hw,
-        ngen_register_scope_t &scope, int width, const reg_buf_data_t &src,
+void emit_reorder_1d_tile(GeneratorT *host, reg_allocator_t &ra,
+        bool systolic_support, int width, const reg_buf_data_t &src,
         int src_stride, const reg_buf_data_t &dst, int dst_stride) {
-    copy_plan_t plan(scope, hw.systolic_support());
+    copy_plan_t plan(ra, systolic_support);
     copy_operand_t dst_op = dst;
     copy_operand_t src_op = src;
     dst_op.stride = (uint8_t)dst_stride;
@@ -111,14 +111,6 @@ void emit_reorder_1d_tile(GeneratorT *host, const hw_t &hw,
         plan.mov(width, dst_op, src_op);
     plan.transform();
     plan.execute(*host);
-}
-
-template <typename GeneratorT>
-void emit_reorder_1d_tile(GeneratorT *host, ngen_register_scope_t &scope,
-        int width, const reg_buf_data_t &src, int src_stride,
-        const reg_buf_data_t &dst, int dst_stride) {
-    emit_reorder_1d_tile(host, host->hw_info(), scope, width, src, src_stride,
-            dst, dst_stride);
 }
 
 template <typename GeneratorT>
@@ -157,8 +149,9 @@ void align_src_dst_offset(GeneratorT *host, ngen_register_scope_t &scope,
     auto new_src = scope.alloc_reg_buf_data(
             div_up(src_size + new_src_off * src_type_size, grf_size));
     new_src = new_src.format(new_src_off, esize, src_stride, src.type());
-    emit_reorder_1d_tile(
-            host, scope, esize, src, src_stride, new_src, src_stride);
+    emit_reorder_1d_tile(host, scope.register_allocator(),
+            host->hw_info().systolic_support(), esize, src, src_stride, new_src,
+            src_stride);
     src = std::move(new_src);
 }
 
@@ -354,7 +347,8 @@ public:
         };
 
         for (const auto &tile : tiles()) {
-            copy_plan_t plan(scope, host->hw_info().systolic_support());
+            copy_plan_t plan(scope.register_allocator(),
+                    host->hw_info().systolic_support());
             const auto base_phase = plan.phase;
             auto src_tile = src_layout_.sub(tile);
             auto dst_tile = dst_layout_.sub(tile);

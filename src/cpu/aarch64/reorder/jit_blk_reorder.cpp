@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2018 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
-* Copyright 2022-2025 Arm Ltd. and affiliates
+* Copyright 2022-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -54,7 +54,7 @@ status_t jit_blk_reorder_t::pd_t::create(reorder_pd_t **reorder_pd,
         const memory_desc_t *dst_md) {
     if (!impl::is_dense_format_kind({src_md, dst_md}))
         return status::unimplemented;
-    auto prb = tr::prb_t();
+    auto prb = prb_t();
     // For shapes with dimension greater than thres it is found that jit:uni is better that jit:blk
     auto upper_thres = 1920 * 4096;
     auto src_d = memory_desc_wrapper(src_md);
@@ -85,7 +85,7 @@ status_t jit_blk_reorder_t::pd_t::create(reorder_pd_t **reorder_pd,
                 verbose_t::debuginfo, "tile : %s\n", prb_dump(prb).c_str());
     });
 
-    if (!tr::jit_single_blk_kernel_t::applicable(prb)) {
+    if (!jit_single_blk_kernel_t::applicable(prb)) {
         return status::unimplemented;
     }
 
@@ -99,7 +99,7 @@ status_t jit_blk_reorder_t::pd_t::create(reorder_pd_t **reorder_pd,
     return safe_ptr_assign(*reorder_pd, _pd.release());
 }
 
-void jit_blk_reorder_t::pd_t::prb_tile_normalize(tr::prb_t &p) {
+void jit_blk_reorder_t::pd_t::prb_tile_normalize(prb_t &p) {
     if (!utils::one_of(p.nodes[0].n, 4ul, 8ul, 16ul, 32ul, 64ul)
             && utils::one_of(p.nodes[1].n, 4ul, 8ul, 16ul, 32ul, 64ul)) {
         nstl::swap(p.nodes[0], p.nodes[1]);
@@ -110,7 +110,7 @@ jit_blk_reorder_t::jit_blk_reorder_t(const pd_t *apd) : primitive_t(apd) {}
 jit_blk_reorder_t::~jit_blk_reorder_t() = default;
 
 status_t jit_blk_reorder_t::init(engine_t *engine) {
-    kernel_ = utils::make_unique<tr::jit_single_blk_kernel_t>(pd()->prb_);
+    kernel_ = utils::make_unique<jit_single_blk_kernel_t>(pd()->prb_);
     return kernel_->create_kernel();
 }
 

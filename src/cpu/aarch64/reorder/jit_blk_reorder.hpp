@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2018 Intel Corporation
 * Copyright 2020-2023 FUJITSU LIMITED
-* Copyright 2022, 2025 Arm Ltd. and affiliates
+* Copyright 2022, 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ struct jit_blk_reorder_t : public primitive_t {
         using cpu_reorder_pd_t::cpu_reorder_pd_t;
         DECLARE_COMMON_PD_T("jit:blk", jit_blk_reorder_t);
 
-        tr::prb_t prb_;
+        prb_t prb_;
 
     private:
         static status_t create(reorder_pd_t **reorder_pd, engine_t *engine,
@@ -46,7 +46,7 @@ struct jit_blk_reorder_t : public primitive_t {
                 const memory_desc_t *dst_md);
 
         // Swap last two nodes, put block 4, 8, 16 nodes to first
-        static void prb_tile_normalize(tr::prb_t &p);
+        static void prb_tile_normalize(prb_t &p);
         friend dnnl::impl::impl_list_item_t;
     };
 
@@ -58,7 +58,7 @@ struct jit_blk_reorder_t : public primitive_t {
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    std::unique_ptr<tr::jit_single_blk_kernel_t> kernel_;
+    std::unique_ptr<jit_single_blk_kernel_t> kernel_;
 };
 
 } // namespace aarch64

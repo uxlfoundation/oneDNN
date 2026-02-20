@@ -611,6 +611,35 @@ void dnn_mem_t::memset(int value, size_t size, int buffer_index) const {
     SAFE_V(FAIL);
 }
 
+// Fills device memory with pseudo-random data generated directly on the device.
+// This mitigates the impact of GPU driver data compression, which could yield
+// unrealistically high bandwidth measurements in mode=F. If the GPU runtime is
+// unavailable or a CPU engine is used, the function defaults to memset.
+#if DNNL_INTEL_GPU_RUNTIME_ENABLED
+extern "C" dnnl_status_t dnnl_impl_gpu_fill_random(dnnl_stream_t stream,
+        size_t size, dnnl_memory_t memory, int buffer_index, uint32_t seed);
+#endif
+
+void dnn_mem_t::fill_for_perf_test(size_t size, int buffer_index) const {
+#if DNNL_INTEL_GPU_RUNTIME_ENABLED
+    static std::atomic<uint32_t> call_counter {0};
+    const uint32_t seed = call_counter.fetch_add(1, std::memory_order_relaxed);
+    if (!is_cpu(engine_)) {
+        auto mem = m_padded_ ? m_padded_ : m_;
+        stream_t stream(engine_);
+        DNN_SAFE_V(dnnl_impl_gpu_fill_random(
+                stream, size, mem, buffer_index, seed));
+        DNN_SAFE_V(dnnl_stream_wait(stream));
+        return;
+    }
+#endif
+
+    BENCHDNN_PRINT(2, "%s\n",
+            "The function 'fill_for_perf_test' has reverted to memset due to "
+            "the use of a non-Intel GPU runtime or a CPU runtime.");
+    this->memset(dnnl_mem_default_perf_test_value, size, buffer_index);
+}
+
 dnn_mem_t dnn_mem_t::create_from_host_ptr(
         const dnnl_memory_desc_t &md, dnnl_engine_t engine, void *host_ptr) {
     // Pre-allocated handle_info won't use prefill no matter what.
@@ -955,8 +984,10 @@ int dnn_mem_t::initialize(
             if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)
                     || cold_cache_input.cold_cache_mode_
                             != default_cold_cache_input().cold_cache_mode_) {
-                // Fill memory directly with 0x3F3F3F3F (0.747059f) number.
-                this->memset(dnnl_mem_default_perf_test_value, sz, i);
+                // Fill memory with pseudo-random data directly on device
+                // to avoid data compression by GPU drivers that would
+                // lead to unrealistic bandwidth numbers in mode=f.
+                this->fill_for_perf_test(sz, i);
             } else {
                 // Fill memory with a magic number (NAN for fp data types)
                 // to catch possible uninitialized access.

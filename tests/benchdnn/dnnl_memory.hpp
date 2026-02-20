@@ -32,6 +32,10 @@
 #define dnnl_mem_default_value 0xFF
 #define dnnl_mem_default_perf_test_value 0x3F
 
+#define DNNL_INTEL_GPU_RUNTIME_ENABLED \
+    (DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+            && DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL)
+
 struct dnn_mem_t {
     struct handle_info_t {
         bool is_host_ptr;
@@ -177,6 +181,7 @@ struct dnn_mem_t {
     void map() const;
     void unmap() const;
     void memset(int value, size_t size, int buffer_index) const;
+    void fill_for_perf_test(size_t size, int buffer_index) const;
 
     static dnn_mem_t create_from_host_ptr(
             const dnnl_memory_desc_t &md, dnnl_engine_t engine, void *host_ptr);

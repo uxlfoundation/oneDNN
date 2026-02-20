@@ -315,7 +315,7 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
               && IMPLICATION(attr.fpmath_.mode_ == fpmath_mode::bf16,
                       bgmmc.src_dt == bf16)
               && IMPLICATION(attr.fpmath_.mode_ == fpmath_mode::strict,
-                      bgmmc.src_dt == f32)
+                      one_of(bgmmc.src_dt, f32, u8, s8))
               && attr.fpmath_.apply_to_int_)
     , bf16_with_int_wei_dt(weights_decompression_support && bgmmc.src_dt == bf16
               && one_of(bgmmc.dst_dt, bf16, f32))
@@ -722,6 +722,9 @@ brgemm_broadcast_t get_zp_type(const primitive_attr_t &attr, int arg) {
     } else if (mask == 2
             && utils::one_of(arg, DNNL_ARG_WEIGHTS, DNNL_ARG_DST)) {
         return brgemm_broadcast_t::per_n;
+    } else if ((mask & 1) > 0 // In current implementation must also be per n
+            && utils::one_of(arg, DNNL_ARG_WEIGHTS)) {
+        return brgemm_broadcast_t::per_k;
     } else {
         return brgemm_broadcast_t::none;
     }

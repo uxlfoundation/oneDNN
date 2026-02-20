@@ -817,7 +817,8 @@ void brgemm_matmul_t<isa>::compute_kernel(
                     static_cast<const void *>(zp_c_val_ptr), false, 1, false,
                     false, brgmm_ctx.get_src_scales_ptr(),
                     brgmm_ctx.get_wei_scales_ptr(n),
-                    brgmm_ctx.get_dst_scales_inv_ptr(ithr)};
+                    brgmm_ctx.get_dst_scales_inv_ptr(ithr), nullptr,
+                    k_blk_idx * bgmmc.K_blk * bgmmc.brgemm_batch_size};
             brgemm_kernel_execute_postops(brg_kernel, gemm_batch, addr_batch,
                     (void *)ptr_C, (void *)ptr_D, post_ops_data, scratch,
                     &leading_dimensions);

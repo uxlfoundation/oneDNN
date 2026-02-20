@@ -154,6 +154,7 @@ void brgemm_kernel_execute_postops(const brgemm_kernel_t *brg_kernel, int bs,
     brgemm_p.do_post_ops
             = post_ops_data.do_only_comp || post_ops_data.do_only_zp_a_val ? 0
                                                                            : 1;
+    brgemm_p.k_start = post_ops_data.k_start;
     brgemm_p.do_apply_comp = post_ops_data.do_only_zp_a_val ? 0 : 1;
     brgemm_p.skip_accm = post_ops_data.skip_accumulation ? 1 : 0;
     brgemm_p.BS = bs;
@@ -477,7 +478,11 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
         // So if wei_scales.get_mask() > 0 (not common) it's assumed here that
         // scale type is per_n_dim_scale and driver which calls brgemm kernel
         // checked that mask has correct value for this case
-        brg->is_oc_scale = wei_scales.get_mask() > 0;
+        const auto &wei_scales_mask = wei_scales.get_mask();
+        brg->is_single_wei_scale = wei_scales_mask == 0;
+        brg->is_oc_wei_scales = wei_scales_mask & 1 << 1;
+        brg->is_ic_wei_scales = wei_scales_mask & 1 << 0;
+        brg->wei_scale_k_group_size = wei_scales.get_group(0);
         brg->dt_wei_scales = wei_scales.get_data_type();
     }
 
@@ -796,7 +801,9 @@ int brgemm_cmp(const brgemm_desc_t &lhs, const brgemm_desc_t &rhs) {
     CMP_BRGEMM_FIELD(zp_type_c);
 
     CMP_BRGEMM_FIELD(skip_scales);
-    CMP_BRGEMM_FIELD(is_oc_scale);
+    CMP_BRGEMM_FIELD(is_single_wei_scale);
+    CMP_BRGEMM_FIELD(is_oc_wei_scales);
+    CMP_BRGEMM_FIELD(is_ic_wei_scales);
     CMP_BRGEMM_FIELD(with_src_scales);
     CMP_BRGEMM_FIELD(with_wei_scales);
     CMP_BRGEMM_FIELD(with_dst_scales);

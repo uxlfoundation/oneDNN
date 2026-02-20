@@ -297,7 +297,10 @@ struct brgemm_desc_t {
 
     // `skip_scales` is controlled by the implementation and not by kernel API.
     bool skip_scales = false;
-    int is_oc_scale = 0;
+    int is_single_wei_scale = 0;
+    int is_oc_wei_scales = 0;
+    int is_ic_wei_scales = 0;
+    int wei_scale_k_group_size = 0;
     bool with_src_scales = false;
     bool with_wei_scales = false;
     // `dst_scales` passed as a bare pointer making kernel change multiplication
@@ -617,6 +620,8 @@ struct brgemm_kernel_params_t {
     size_t do_post_ops;
     size_t do_apply_comp;
     size_t BS;
+    // Used for K-grouped scales application
+    dim_t k_start = 0;
 
     /*
      * ptr to table of void * elements that are pointers to post_op binary
@@ -758,7 +763,7 @@ struct brgemm_post_ops_data_t {
             int32_t zp_a_val = 1, bool do_only_comp = false,
             bool do_only_zp_a_val = false, const void *src_scales = nullptr,
             const void *wei_scales = nullptr, const void *dst_scales = nullptr,
-            const void *a_zp_values = nullptr)
+            const void *a_zp_values = nullptr, dim_t k_start = 0)
         : bias(bias)
         , binary_post_ops_rhs(binary_post_ops_rhs)
         , oc_logical_off(oc_logical_off)
@@ -775,7 +780,8 @@ struct brgemm_post_ops_data_t {
         , src_scales(src_scales)
         , wei_scales(wei_scales)
         , dst_scales(dst_scales)
-        , a_zp_values(a_zp_values) {}
+        , a_zp_values(a_zp_values)
+        , k_start(k_start) {}
 
     const void *bias = nullptr;
     const void *binary_post_ops_rhs = nullptr;
@@ -794,6 +800,7 @@ struct brgemm_post_ops_data_t {
     const void *wei_scales = nullptr;
     const void *dst_scales = nullptr;
     const void *a_zp_values = nullptr;
+    dim_t k_start = 0;
 };
 
 } // namespace x64

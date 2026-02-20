@@ -827,7 +827,7 @@ dim_t jit_brgemm_amx_uker_base_t::bias_offset(int ldb) const noexcept {
 }
 
 dim_t jit_brgemm_amx_uker_base_t::scales_offset(int ldb) const noexcept {
-    return brg.is_oc_scale * ldb * ld_block_scales_size_;
+    return brg.is_oc_wei_scales * ldb * ld_block_scales_size_;
 }
 
 dim_t jit_brgemm_amx_uker_base_t::zp_comp_a_offset(int ldb) const noexcept {
@@ -1149,7 +1149,7 @@ void jit_brgemm_amx_uker_base_t::prepare_post_ops_registers(
             auto scales_ptr = EVEX_compress_addr(
                     reg_scales, scales_offset(ldi->pos(ldb)));
             auto k_mask = ldi->is_tail(ldb) ? ld_tail_mask : ld_full_mask;
-            const bool is_single_scale = !brg.is_oc_scale;
+            const bool is_single_scale = brg.is_single_wei_scale;
 
             const auto zmm_scale = zmm_scales(ldb);
             const auto zmm_scale_masked = zmm_scales(ldb) | k_mask | T_z;

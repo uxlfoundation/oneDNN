@@ -187,8 +187,12 @@ private:
     const reg64_t reg_A = r13;
     const reg64_t reg_B = r12;
 
-    const reg64_t reg_aux_A = r11;
-    const reg64_t reg_aux_B = r10;
+    // r10, r11 are used in dot product with scales application and should be properly
+    // saved and restored
+    const reg64_savable_t reg_aux_A {regscratchpad_, r11};
+    const reg64_savable_t reg_aux_B {regscratchpad_, r10};
+    // const reg64_t reg_aux_A = r11;
+    // const reg64_t reg_aux_B = r10;
     const reg64_t reg_aux_A_vpad = r11;
 
     const reg64_savable_t reg_bdb_loop {regscratchpad_, r9, r16};
@@ -200,11 +204,13 @@ private:
     const reg64_t reg_s8_input_shift = r9;
     const reg64_t reg_zp_a_input_shift = r9;
 
-    const reg64_t reg_BS_loop = rax;
-    const reg64_t reg_rdb_loop = rbx;
-    const reg64_t reg_BS = abi_not_param1;
+    // rax is used for div instruction in microkernel, so it should be savable
+    const reg64_savable_t reg_BS_loop {regscratchpad_, rax};
+    // const reg64_t reg_BS_loop = rax;
+    const reg64_savable_t reg_rdb_loop {regscratchpad_, rbx};
+    const reg64_t reg_BS = abi_not_param1; // rcx (rdi for win os)
 
-    const reg64_t reg_a_offset = rdx;
+    const reg64_savable_t reg_a_offset {regscratchpad_, rdx};
     const reg64_t reg_b_offset = rsi;
 
     const reg64_savable_t reg_aux1_A {regscratchpad_, rbx, rbp, may_use_rbp()};
@@ -228,7 +234,12 @@ private:
 
     const reg64_savable_t reg_aux_src_scales {regscratchpad_, r10};
     const reg64_savable_t reg_aux_wei_scales {regscratchpad_, r10};
+    const reg64_savable_t reg_global_k {regscratchpad_, r11};
+    const reg64_savable_t reg_wei_scales_group_sz {regscratchpad_, r9};
+    const reg64_savable_t reg_grouped_k {regscratchpad_, r10};
+    const reg64_savable_t reg_grouped_k_tmp {regscratchpad_, rbx};
     const reg64_savable_t reg_aux_scale_adjust {regscratchpad_, r10};
+
     const reg64_savable_t reg_do_post_ops {regscratchpad_, rbx};
     const reg64_savable_t reg_do_comp {regscratchpad_, rbx};
     const reg64_savable_t reg_skip_accm {regscratchpad_, rbx};
@@ -267,6 +278,8 @@ private:
     Xbyak::Opmask fp8_col_mask = Xbyak::Opmask(4);
     Xbyak::Opmask kmask_fp8_aux = Xbyak::Opmask(5);
     Xbyak::Opmask rd_tail_mask = Xbyak::Opmask(6);
+    Xbyak::Opmask ic_scales_mask = Xbyak::Opmask(7);
+    Xbyak::Opmask scales_tmp_mask = Xbyak::Opmask(1);
 
     static int get_max_effective_vregs(const brgemm_desc_t &brg) {
         auto used_vregs = 0;
@@ -424,6 +437,8 @@ private:
             matrix_kind_t mk);
     void maybe_tileloadd_nt(matrix_kind_t matrix_kind, dim_t idx, dim_t offset,
             bool is_rd_tail, bool is_tail, bool last_bdb);
+    bool maybe_dot_product_with_ic_scales(dim_t rd, dim_t ld, bool is_ld_tail,
+            const Vmm &acc, const Vmm &a, const Vmm &b);
     void dot_product(Vmm v1, Vmm v2, Vmm v3);
     void gemm_microkernel(dim_t bd_block2, bool is_bdb_tail, dim_t ld_block,
             bool is_rd_tail, bool is_ld_tail, dim_t vpad,
@@ -611,7 +626,7 @@ template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::wei_scales_offset(
         dim_t ld, bool is_tail) const noexcept {
     const dim_t ld_offset = is_tail ? brg.ldb_tail : ld * brg.ld_block;
-    return ld_offset * brg.is_oc_scale
+    return ld_offset * brg.is_oc_wei_scales
             * types::data_type_size(brg.dt_wei_scales);
 }
 
@@ -917,6 +932,7 @@ void jit_brgemm_kernel_t<Wmm>::read_params() {
 
     mov(reg_C, ptr[param1 + GET_OFF(ptr_C)]);
     mov(reg_D, ptr[param1 + GET_OFF(ptr_D)]);
+    reg_D.save();
     mov(reg_BS, ptr[param1 + GET_OFF(BS)]);
 
     // ptr_buf is re-used for passing compensations for
@@ -938,6 +954,14 @@ void jit_brgemm_kernel_t<Wmm>::read_params() {
     if (brg.with_wei_scales) {
         mov(reg_wei_scales, ptr[param1 + GET_OFF(ptr_wei_scales)]);
         reg_wei_scales.save();
+
+        if (brg.is_ic_wei_scales) {
+            mov(reg_global_k, ptr[param1 + GET_OFF(k_start)]);
+            reg_global_k.save();
+            mov(reg_wei_scales_group_sz, brg.wei_scale_k_group_size);
+            reg_wei_scales_group_sz.save();
+            reg_D.restore(); // uses r11, need to  restore
+        }
     }
 
     if (brg.zp_type_a != brgemm_broadcast_t::none) {
@@ -1303,7 +1327,8 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
     // done only once despite all scales and bias applications requiring it.
     // TODO: perform conversion in a dedicated loop if it is required as it is
     // done in brgemm_post_ops kernel?
-    bool dq2ps_cvt_done = false;
+    // In case of IC scales, the conversion is done during gemm_microkernel.
+    bool dq2ps_cvt_done = brg.is_ic_wei_scales;
 
     if (brg.with_src_scales) {
         reg_src_scales.restoreTo(reg_aux_src_scales);
@@ -1325,12 +1350,12 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
         dq2ps_cvt_done = true;
     }
 
-    if (brg.with_wei_scales) {
+    if (brg.with_wei_scales && !brg.is_ic_wei_scales) {
         reg_aux_wei_scales.restore();
         for (dim_t ld = 0; ld < ld_block2; ld++) {
             const auto addr = ptr[reg_aux_wei_scales + wei_scales_offset(ld)];
             const bool is_tail = is_ld_tail && ld + 1 == ld_block2;
-            const bool is_single_scale = !brg.is_oc_scale;
+            const bool is_single_scale = brg.is_single_wei_scale;
 
             const Vmm vmm_wei_scales = vmm_tmp(0);
             const Vmm vmm_wei_scales_masked
@@ -2078,7 +2103,7 @@ void jit_brgemm_kernel_t<Wmm>::maybe_tileloadd_nt(matrix_kind_t matrix_kind,
                                : brg.get_B_tensor(idx, is_tail);
     auto t1 = Tmm(tmm_idx);
 
-    auto reg_base = is_A ? reg_aux_A : reg_aux_B;
+    auto &reg_base = is_A ? reg_aux_A : reg_aux_B;
 
     auto reg_stride = is_A ? reg_stride_lda : reg_stride_ldb;
     bool try_load_nt = brg.innermost_loop
@@ -2281,6 +2306,112 @@ void jit_brgemm_kernel_t<Wmm>::dot_product(Vmm v1, Vmm v2, Vmm v3) {
 }
 
 template <typename Wmm>
+bool jit_brgemm_kernel_t<Wmm>::maybe_dot_product_with_ic_scales(dim_t rd,
+        dim_t ld, bool is_ld_tail, const Vmm &acc, const Vmm &a, const Vmm &b) {
+    if (brg.is_ic_wei_scales) {
+        // Prepare registers & local variables
+        reg_global_k.restore();
+        reg_wei_scales_group_sz.restore();
+
+        const auto &loc_idx = reg_grouped_k_tmp;
+        const auto vmm_scales = vmm_tmp(1);
+        const auto vmm_wei_mask = vmm_tmp(1);
+        const auto tmp_acc = vmm_tmp(15);
+
+        mov(rax, reg_global_k);
+        xor_(rdx, rdx); // rdx is used for 64bit division
+        div(reg_wei_scales_group_sz);
+        mov(reg_grouped_k, rax); // current group index
+        reg_grouped_k.save();
+        xor_(loc_idx, loc_idx);
+
+        auto build_wei_mask = [&]() {
+            Label loop_same_group, loop_end;
+            {
+                /** while (loc_idx < rd_step && 
+                        (k_global + loc_idx) / kgroup_size == cur_gr_idx)
+                    loc_idx++;
+                */
+                L_aligned(loop_same_group, 64);
+                cmp(loc_idx, brg.rd_step);
+                jge(loop_end, T_NEAR);
+                mov(rax, reg_global_k);
+                xor_(rdx, rdx);
+                add(rax, loc_idx);
+                div(reg_wei_scales_group_sz);
+                cmp(rax, reg_grouped_k);
+                jne(loop_end, T_NEAR);
+                inc(loc_idx);
+                jmp(loop_same_group);
+            }
+            L_aligned(loop_end, 64);
+
+            mov(rax, loc_idx);
+            shl(rax, 3);
+            mov(rdx, 0xFFFFFFFF);
+            shrx(rdx, rdx, rax);
+            not_(rdx);
+            uni_vpbroadcastd(vmm_wei_mask, rdx.cvt32());
+        };
+
+        auto load_scales = [&]() {
+            reg_aux_wei_scales.restore();
+            const auto addr = ptr[reg_aux_wei_scales + wei_scales_offset(ld)];
+            const auto masked_vmm_scales
+                    = vmm_mask(vmm_scales, is_ld_tail, false, ld_tail_mask);
+            uni_vmovups(masked_vmm_scales, addr);
+        };
+
+        auto update_group_idx = [&]() {
+            /** if ((k_global + loc_idx) / kgroup_size == cur_gr_idx) {
+                    cur_gr_idx++;
+                    aux_wei_scales += load_dim * sizeof(wei_scales_dt);
+                }
+             */
+            reg_grouped_k.restore();
+            Label update_end;
+            mov(rax, reg_global_k);
+            xor_(rdx, rdx);
+            add(rax, loc_idx);
+            div(reg_wei_scales_group_sz);
+            cmp(rax, reg_grouped_k);
+            je(update_end, T_NEAR);
+            reg_aux_wei_scales.restore();
+            add(reg_aux_wei_scales,
+                    brg.load_dim * types::data_type_size(brg.dt_wei_scales));
+            reg_aux_wei_scales.save();
+            reg_grouped_k.restore();
+            inc(reg_grouped_k);
+            reg_grouped_k.save();
+            L_aligned(update_end, 64);
+        };
+
+        Label dot_product_loop, dot_product_loop_end;
+        L_aligned(dot_product_loop, 64);
+        cmp(loc_idx, brg.rd_step);
+        jge(dot_product_loop_end, T_NEAR);
+        {
+            build_wei_mask();
+            uni_vpand(vmm_wei_mask, b,
+                    vmm_wei_mask); // Use k values only for current group
+            uni_vpxor(tmp_acc, tmp_acc, tmp_acc);
+            dot_product(tmp_acc, a, vmm_wei_mask);
+            uni_vcvtdq2ps(tmp_acc, tmp_acc);
+            load_scales();
+            uni_vmulps(tmp_acc, tmp_acc, vmm_scales);
+            uni_vaddps(acc, acc, tmp_acc);
+            update_group_idx();
+        }
+        jmp(dot_product_loop);
+        L_aligned(dot_product_loop_end, 64);
+        add(reg_global_k, brg.rd_step);
+        reg_global_k.save();
+        return true;
+    }
+    return false;
+}
+
+template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::compute_int8_compensation(dim_t rd_loop,
         dim_t bd_b, dim_t bd_e, dim_t bd_block, dim_t ld_block2,
         bool is_ld_tail, dim_t vpad) {
@@ -2399,6 +2530,15 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
         dim_t vpad, dim_t rows_for_rd_tail) {
 
     MAYBE_UNUSED(bd_block2);
+
+    // rax, r10, r11 are used in fill_scales_vector lambda
+    if (brg.is_ic_wei_scales) {
+        reg_aux_A.save();
+        reg_aux_B.save();
+        reg_rdb_loop.save();
+        reg_a_offset.save();
+    }
+
     dim_t bd_block = (is_bdb_tail) ? brg.bdb_tail : brg.bd_block;
     const auto bd_b = nstl::max(dim_t(0), vpad);
     const auto bd_e = nstl::min(bd_block, bd_block + vpad);
@@ -2421,15 +2561,16 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
         rd_loop = brg.rd_block;
 
     if (brg.req_s8s8_compensation) {
-        reg_bdb_loop.save();
+        if (!brg.is_ic_wei_scales) reg_bdb_loop.save();
         mov(reg_s8_input_shift, 128);
         uni_vpbroadcastb(vmm_inp_shift(), reg_s8_input_shift.cvt8());
-        reg_bdb_loop.restore();
+        if (!brg.is_ic_wei_scales) reg_bdb_loop.restore();
     }
 
     auto broadcast_A = [this, rd_tail_size, is_rd_tail, rd_loop,
                                rows_for_rd_tail,
                                bd_e](Vmm vmm_bcast, dim_t bd, dim_t rd) {
+        if (brg.is_ic_wei_scales) { reg_aux_A.restore(); }
         const auto offset = A_offset(bd, rd);
         const auto dt = brg.dt_a;
         const bool maybe_load_bytes
@@ -2476,6 +2617,8 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
     };
 
     auto load_B = [this, is_ld_tail](dim_t vmm_load_idx, dim_t rd, dim_t ld) {
+        if (brg.is_ic_wei_scales) { reg_aux_B.restore(); }
+
         const bool mem_advice_B
                 = utils::one_of(brg.brgattr.mem_advice,
                           brgemm_hint_mem_advice_B, brgemm_hint_mem_advice_A_B)
@@ -2614,7 +2757,10 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                 }
                 for (dim_t ld = 0; ld < ld_block2; ld++) {
                     auto vmm = accm(ld_block2, bd, ld);
-                    if (is_emdbd)
+                    if (maybe_dot_product_with_ic_scales(
+                                rd, ld, is_ld_tail, vmm, load(ld), bcst()))
+                        ;
+                    else if (is_emdbd)
                         uni_vfmadd231ps(vmm, load(ld),
                                 ptr_b[reg_aux_A + A_offset(bd, rd)]);
                     else {
@@ -2635,6 +2781,13 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
     if (brg.is_fp8_via_convert()) reg64_fp8_aux.restore();
 
     if (max_prefetch_offset > INT_MAX) reg_aux_C.restore();
+    // maybe_dot_product_with_ic_scales uses rax, rbp, r10 and r11
+    if (brg.is_ic_wei_scales) {
+        reg_aux_A.restore();
+        reg_aux_B.restore();
+        reg_rdb_loop.restore();
+        reg_a_offset.restore();
+    }
 }
 
 template <typename Wmm>
@@ -2704,7 +2857,10 @@ void jit_brgemm_kernel_t<Wmm>::bs_loop(dim_t bd_block2, bool is_bdb_tail,
             mov(reg_stride_ldb, brg.rd_step * brg.typesize_B * brg.LDB);
         }
 
-        if (brg.brgattr.max_bs > 1) mov(reg_BS_loop, reg_BS);
+        if (brg.brgattr.max_bs > 1) {
+            mov(reg_BS_loop, reg_BS);
+            if (brg.is_ic_wei_scales) reg_BS_loop.save();
+        }
         L_aligned(BS_loop_label, 64);
         {
             if (first_bdb || last_bdb) {
@@ -2767,6 +2923,7 @@ void jit_brgemm_kernel_t<Wmm>::bs_loop(dim_t bd_block2, bool is_bdb_tail,
                 bs_loop_body(0, last_bdb);
             }
             if (brg.brgattr.max_bs > 1) {
+                if (brg.is_ic_wei_scales) reg_BS_loop.restore();
                 dec(reg_BS_loop);
                 cmp(reg_BS_loop, 0);
                 jg(BS_loop_label, T_NEAR);
@@ -2981,10 +3138,12 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
                     Label bdb_loop_label;
                     L_aligned(bdb_loop_label, 64);
                     {
+                        if (brg.is_ic_wei_scales) reg_bdb_loop.save();
                         bdb_loop_body(1, false, false, false,
                                 bd_blocks_for_rd_tail <= 1 ? 0
                                                            : rows_for_rd_tail,
                                 skip_accumulation);
+                        if (brg.is_ic_wei_scales) reg_bdb_loop.restore();
                         dec(reg_bdb_loop);
                         cmp(reg_bdb_loop, rows_for_rd_tail ? 1 : 0);
                         jg(bdb_loop_label, T_NEAR);

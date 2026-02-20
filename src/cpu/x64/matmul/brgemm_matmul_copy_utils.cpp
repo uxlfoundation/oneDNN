@@ -2602,7 +2602,10 @@ protected:
     constexpr static int reg_src_offs_ = 0;
     constexpr static int reg_tr_src_offs_ = 8;
     constexpr static int reg_current_K_pad_offs_ = 16;
-    constexpr static int stack_space_needed_ = 24;
+    constexpr static int reg_cur_k_offs_ = 24;
+    constexpr static int reg_comp_ptr_offs_ = 32;
+    constexpr static int reg_zp_ptr_offs_ = 40;
+    constexpr static int stack_space_needed_ = 48;
 
     int comp_acc_idx_;
 
@@ -2841,6 +2844,38 @@ protected:
         uni_vpxor(vmm_mask, vmm_mask, vmm_mask);
     }
 
+    inline void maybe_apply_oc_zero_points(
+            const int blk, const int i, bool is_tail) {
+        if (!conf_->has_zero_point_b || !conf_->is_wei_zp_per_k) return;
+        const auto vmm_src = get_vmm(blk, i % k_blk_step_);
+        mov(reg_tmp, ptr[rsp + reg_cur_k_offs_]);
+        mov(ptr[rsp + reg_src_offs_], reg_src); // utilize rax for division
+        const bool need_comp = conf_->s8s8_compensation_required;
+        if (need_comp)
+            mov(ptr[rsp + reg_comp_ptr_offs_],
+                    reg_comp_ptr); // utilize rdx for division
+        // Locate the current K group
+        // Based on current K position and i.
+        xor_(rdx, rdx); // zero rdx for division
+        mov(rax, reg_tmp);
+        mov(reg_tmp, conf_->wei_zp_k_gsize);
+        add(rax, i);
+        div(reg_tmp);
+        mov(reg_tmp, conf_->N);
+        mul(reg_tmp);
+        // Load zero points for current K group
+        mov(rdx, ptr[rsp + reg_zp_ptr_offs_]);
+        add(rdx, rax);
+        const auto addr = ptr[rdx];
+        const auto masked_vmm = maybe_mask(vmm_tmp, is_tail);
+        vmovdqu8(masked_vmm, addr);
+        // Apply zero point shift
+        uni_vpsubb(vmm_src, vmm_src, vmm_tmp);
+        // Restore regs
+        mov(reg_src, ptr[rsp + reg_src_offs_]);
+        if (need_comp) mov(reg_comp_ptr, ptr[rsp + reg_comp_ptr_offs_]);
+    }
+
     void generate() override;
 };
 
@@ -3023,8 +3058,14 @@ private:
             dim_t tr_src_off_base = (kb * max_unroll + k) * tr_src_stride_;
 
             if (!zeropad) {
-                for (int i = row_start; i < row_end; i++)
+                for (int i = row_start; i < row_end; i++) {
                     load(k, i, is_tail);
+                    if (is_src_int4_ && is_tail) {
+                        kmovq(kTail, size_t(((size_t)1 << ncolumns) - 1));
+                    }
+                    maybe_apply_oc_zero_points(k, i, is_tail);
+                    if (is_src_int4_ && is_tail) { kmovq(kTail, tail_mask); }
+                }
                 if (row_end == nrows && nrows % k_blk_step_ > 0) {
                     for (int i = nrows; i < rnd_up(nrows, k_blk_step_); i++) {
                         auto src_reg = get_vmm(k, i % k_blk_step_);
@@ -3361,6 +3402,22 @@ void jit_brgemm_matmul_copy_b_int8_t<Vmm>::generate() {
         vpbroadcastw(vmm_ones_words, reg_tmp.cvt16());
     }
 
+    if (conf_->has_zero_point_b) {
+        mov(reg_tmp, ptr[param1 + GET_OFF(zp_b_value_ptr)]);
+        mov(ptr[rsp + reg_zp_ptr_offs_], reg_tmp);
+
+        if (conf_->is_wei_zp_per_k) {
+            // Used for grouped zero-point applying
+            // Shift current K starting from group start.
+            // Since `brgmm_ctx.get_wei_zp_ptr(n, k);`
+            mov(reg_tmp, conf_->wei_zp_k_gsize);
+            xor_(rdx, rdx);
+            mov(rax, ptr[param1 + GET_OFF(current_K_start)]);
+            div(reg_tmp);
+            mov(ptr[rsp + reg_cur_k_offs_], rdx);
+        }
+    }
+
     uni_vpxor(vmm_zero, vmm_zero, vmm_zero);
     mov(reg_src, ptr[param1 + GET_OFF(src)]);
     mov(reg_tr_src, ptr[param1 + GET_OFF(tr_src)]);
@@ -3392,6 +3449,7 @@ void jit_brgemm_matmul_copy_b_int8_t<Vmm>::generate() {
             add(reg_src,
                     k_unroll * k_blk_step_ * src_stride_ / src_elems_per_byte_);
         add(reg_tr_src, k_unroll * tr_src_stride_);
+        add(dword[rsp + reg_cur_k_offs_], k_unroll * k_blk_step_);
 
         sub(reg_K, k_unroll * k_blk_step_);
         cmp(reg_K, k_unroll * k_blk_step_);
@@ -3405,6 +3463,7 @@ void jit_brgemm_matmul_copy_b_int8_t<Vmm>::generate() {
         if (!zeropad && !is_dynamic_stride_)
             add(reg_src, k_blk_step_ * src_stride_ / src_elems_per_byte_);
         add(reg_tr_src, tr_src_stride_);
+        add(dword[rsp + reg_cur_k_offs_], k_blk_step_);
 
         sub(reg_K, k_blk_step_);
         jmp(K_loop_single, T_NEAR);
@@ -3466,6 +3525,8 @@ void jit_brgemm_matmul_copy_b_int8_t<Vmm>::generate() {
         if (req_zp_comp)
             mov(reg_zp_comp_ptr, ptr[param1 + GET_OFF(zp_a_compensation_ptr)]);
         mov(reg_K_start, ptr[param1 + GET_OFF(current_K_start)]);
+        mov(ptr[rsp + reg_cur_k_offs_],
+                reg_K_start); // Used for grouped zero-point applying
 
         // YMM Note: 16 vmm registers would be needed, so only compute by halves
         const bool do_outer_unroll = req_s8s8_comp;

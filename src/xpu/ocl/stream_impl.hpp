@@ -82,9 +82,25 @@ public:
         OCL_CHECK(xpu::ocl::clGetCommandQueueInfo(queue, CL_QUEUE_PROPERTIES,
                 sizeof(cl_command_queue_properties), &props, nullptr));
 
-        *flags |= (props & CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE)
-                ? stream_flags::out_of_order
-                : stream_flags::in_order;
+        const bool is_ooo_queue
+                = (props & CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE);
+        *flags |= is_ooo_queue ? stream_flags::out_of_order
+                               : stream_flags::in_order;
+
+        // Profiling capabilities are enabled on the stream to allow
+        // printing the info in verbose profiling mode
+        // The verbose profiler state is fixed at stream creation and does not
+        // respond to runtime changes made via set_dnnl_verbose().
+        // TODO: allow runtime control of the asynchronous verbose mode via
+        // set_dnnl_verbose()
+        const bool enable_verbose_profiler
+                = !is_ooo_queue && get_verbose_async_mode();
+
+        if (get_verbose(verbose_t::exec_profile) && enable_verbose_profiler) {
+            props |= CL_QUEUE_PROFILING_ENABLE;
+            *flags |= stream_flags::profiling;
+        }
+
 #ifdef DNNL_EXPERIMENTAL_PROFILING
         if (props & CL_QUEUE_PROFILING_ENABLE)
             *flags |= stream_flags::profiling;

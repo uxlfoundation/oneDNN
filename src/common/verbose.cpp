@@ -312,6 +312,21 @@ bool get_verbose_timestamp() {
     return verbose_timestamp.get();
 }
 
+static setting_t<bool> verbose_async_mode {true};
+bool get_verbose_async_mode() {
+#if defined(DISABLE_VERBOSE)
+    return false;
+#endif
+    if (verbose.get() == 0) return false;
+
+    if (!verbose_async_mode.initialized()) {
+        static bool val
+                = getenv_int_user("VERBOSE_USE_SYNC", verbose_async_mode.get());
+        verbose_async_mode.set(!val);
+    }
+    return verbose_async_mode.get();
+}
+
 std::ostream &operator<<(std::ostream &ss, engine_kind_t eng_kind) {
     ss << dnnl_engine_kind2str(eng_kind);
     return ss;

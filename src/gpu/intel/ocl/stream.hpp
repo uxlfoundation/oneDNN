@@ -76,6 +76,11 @@ struct stream_t : public intel::stream_t {
         return profiler_->get_info(data_kind, num_entries, data);
     }
 
+    status_t init_verbose_profiler(uint64_t &last_entry) const override;
+
+    status_t run_verbose_profiler(std::string &pd_info, double start_ms,
+            uint64_t &last_entry) const override;
+
     cl_command_queue queue() const { return impl()->queue(); }
 
     const mdapi_helper_t &mdapi_helper() const { return *mdapi_helper_; }

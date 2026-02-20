@@ -122,6 +122,7 @@ status_t primitive_execute(
 
     if (get_verbose(verbose_t::exec_profile,
                 prim_kind2_comp_kind(pd->impl()->kind()))) {
+        std::string pd_info;
         bool block_on_wait = true;
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
         dnnl::threadpool_interop::threadpool_iface *tp;
@@ -131,12 +132,7 @@ status_t primitive_execute(
                         & dnnl::threadpool_interop::threadpool_iface::
                                 ASYNCHRONOUS);
 #endif
-        if (block_on_wait) stream->wait();
-        double start_ms = get_msec();
-        status = stream->enqueue_primitive(primitive_iface, ctx);
-        if (block_on_wait) stream->wait();
 
-        double duration_ms = get_msec() - start_ms;
         if (pd->impl()->has_runtime_dims_or_strides()) {
             // Take out mds from `ctx` here to avoid primitive_desc dependency
             // on `exec_ctx_t` type.
@@ -149,14 +145,30 @@ status_t primitive_execute(
             const auto bia_md = ctx.memory_mdw(DNNL_ARG_BIAS, pd_bia_md).md_;
             const auto pd_dst_md = pd->impl()->invariant_dst_md();
             const auto dst_md = ctx.memory_mdw(DNNL_ARG_DST, pd_dst_md).md_;
-
-            std::string info = pd->info_with_runtime_dims(
+            pd_info = pd->info_with_runtime_dims(
                     src_md, wei_md, bia_md, dst_md);
-            VPROF(start_ms, primitive, exec, VERBOSE_profile, info.c_str(),
+        } else {
+            pd_info = primitive_iface->pd()->info();
+        }
+
+        if (!stream->is_verbose_profiler_enabled()) {
+            if (block_on_wait) stream->wait();
+            double start_ms = get_msec();
+            status = stream->enqueue_primitive(primitive_iface, ctx);
+            if (block_on_wait) stream->wait();
+            double duration_ms = get_msec() - start_ms;
+            VPROF(start_ms, primitive, exec, VERBOSE_profile, pd_info.c_str(),
                     duration_ms);
         } else {
-            VPROF(start_ms, primitive, exec, VERBOSE_profile, pd->info(),
-                    duration_ms);
+            // For OpenCL/SYCL GPU streams, the verbose logs print device-
+            // measured execution times in a non-blocking manner.
+            uint64_t profiler_last_entry = 0;
+            CHECK(stream->init_verbose_profiler(profiler_last_entry));
+
+            double start_ms = get_msec();
+            status = stream->enqueue_primitive(primitive_iface, ctx);
+            CHECK(stream->run_verbose_profiler(
+                    pd_info, start_ms, profiler_last_entry));
         }
     } else {
         status = stream->enqueue_primitive(primitive_iface, ctx);

@@ -120,6 +120,135 @@ void stream_t::after_exec_hook() {
     if (is_profiling_enabled()) profiler_->stop_profiling();
 }
 
+status_t stream_t::init_verbose_profiler(uint64_t &last_entry) const {
+
+    // Initialization prepares the stream profiler to collect profiling
+    // data for current primitive execution without affecting any ongoing
+    // events. This includes
+    last_entry = 0;
+    if (!is_verbose_profiler_enabled()) return status::invalid_arguments;
+
+    int num_entries;
+    get_profiling_data(profiling_data_kind::time, &num_entries, nullptr);
+
+    // No event entries implies that the stream profiler was reset and
+    // there is no need to track the previous events
+    if (!num_entries) return status::success;
+
+    uint64_t st = 0;
+    const xpu::event_t *last_evt = profiler_->peek_last_event();
+    if (profiler_->get_event_stamp(last_evt, st)) last_entry = st;
+
+    return status::success;
+}
+
+status_t stream_t::run_verbose_profiler(
+        std::string &pd_info, double start_ms, uint64_t &last_entry) const {
+
+    // utilize the verbose profiler only for profile_exec verbose levels.
+    if (!is_verbose_profiler_enabled()) return status::invalid_arguments;
+
+    // The prompt ensures the verbose headers are printed if they aren't
+    // already. Printing the headers asynchronously during the callback can
+    // result in access failures when printing engine-specific info.
+    verbose_printf(verbose_t::exec_profile, "\r");
+
+    // Captured output event acts as the anchor to track primitive execution
+    const xpu::event_t *deps_ev = &ctx().get_deps();
+    const auto &deps = xpu::ocl::event_t::from(*deps_ev);
+    cl_event out_evt = deps[0].get();
+
+    if (!out_evt || deps.size() != 1) {
+        VWARN(primitive, exec,
+                "%s, profiling error: failed to record output event in context",
+                pd_info.c_str());
+        VPROF(start_ms, primitive, exec, VERBOSE_profile, pd_info.c_str(), 0.f);
+        return status::success;
+    }
+
+    // An OpenCL marker is used for asynchronous printing of profiling info.
+    // The callback triggered after primitive execution calculates and prints
+    // the execution times.
+    cl_command_queue q = queue();
+    cl_event marker = nullptr;
+    cl_int err = xpu::ocl::clEnqueueMarkerWithWaitList(q, 1, &out_evt, &marker);
+
+    if (err != CL_SUCCESS || !marker) {
+        VWARN(primitive, exec,
+                "%s, profiling error: failed to attach OpenCL marker to output "
+                "event",
+                pd_info.c_str());
+        VPROF(start_ms, primitive, exec, VERBOSE_profile, pd_info.c_str(), 0.f);
+        return status::success;
+    }
+
+    struct payload_t {
+        const stream_t *s;
+        std::string info_str;
+        double start;
+        uint64_t lastev;
+        const xpu::event_t *out;
+    };
+
+    std::unique_ptr<payload_t> payload(new payload_t());
+    payload->s = this;
+    payload->info_str = pd_info;
+    payload->start = start_ms;
+    payload->lastev = last_entry;
+    payload->out = deps_ev;
+    void *pluser = payload.get();
+
+    err = xpu::ocl::clSetEventCallback(
+            marker, CL_COMPLETE, [](cl_event ev, cl_int, void *user) {
+        std::unique_ptr<payload_t> hold(static_cast<payload_t *>(user));
+
+        uint64_t end_stamp = 0;
+        bool found = false;
+        if (hold->s->profiler_) {
+            found = hold->s->profiler_->get_event_stamp(hold->out, end_stamp);
+
+            if (!found) {
+                const xpu::event_t *last_evt
+                        = hold->s->profiler_->peek_last_event();
+                uint64_t tmp = 0;
+                if (last_evt
+                        && hold->s->profiler_->get_event_stamp(last_evt, tmp)) {
+                    end_stamp = tmp;
+                }
+                VWARN(primitive, exec,
+                        "%s, profiling error: could not find stamp for output "
+                        "event timing may be inaccurate",
+                        hold->info_str.c_str());
+            }
+        }
+        double duration_ms = 0.0;
+
+        // aggregate execution times are calculated from the start and end times
+        // of the first and last queued events for the primitive respectively
+        hold->s->profiler_->get_aggregate_exec_timing(
+                hold->lastev, end_stamp, duration_ms);
+
+        VPROF(hold->start, primitive, exec, VERBOSE_profile,
+                hold->info_str.c_str(), duration_ms);
+
+        xpu::ocl::clReleaseEvent(ev);
+    }, pluser);
+
+    if (err != CL_SUCCESS) {
+        xpu::ocl::clReleaseEvent(marker);
+        VWARN(primitive, exec,
+                "%s, profiling error: failed to set event callback for "
+                "printing exec info",
+                pd_info.c_str());
+        VPROF(start_ms, primitive, exec, VERBOSE_profile, pd_info.c_str(), 0.f);
+        return status::success;
+    }
+
+    (void)payload.release();
+
+    return status::success;
+}
+
 status_t stream_t::copy(const memory_storage_t &src,
         const memory_storage_t &dst, size_t size, const xpu::event_t &deps,
         xpu::event_t &out_dep) {

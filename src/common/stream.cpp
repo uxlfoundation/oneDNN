@@ -49,6 +49,16 @@ status_t dnnl_stream_create(
         return status::unimplemented;
     }
 
+    // Enables profiling capabilities to allow the verbose mode to print
+    // profiling info using device measured times.
+    // The verbose profiler state is fixed at stream creation and does not
+    // respond to runtime changes made via set_dnnl_verbose().
+    // TODO: allow runtime control of the asynchronous verbose mode via
+    // set_dnnl_verbose()
+    const bool enable_verbose_profiler = engine->kind() == engine_kind::gpu
+            && get_verbose(verbose_t::exec_profile) && get_verbose_async_mode();
+    if (enable_verbose_profiler) { flags |= stream_flags::profiling; }
+
     return engine->create_stream(stream, flags);
 }
 

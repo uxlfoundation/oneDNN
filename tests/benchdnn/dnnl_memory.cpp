@@ -162,12 +162,23 @@ int execute_reorder(const dnn_mem_t &src, dnn_mem_t &dst,
         auto status = dnnl_reorder_primitive_desc_create(
                 &r_pd_, src.md_, src.engine(), dst.md_, dst.engine(), attr);
         if (status == dnnl_success) break;
-        if (dnnl_memory_desc_equal(src.md_, dst.md_)) {
-            // If fail to create reorder pd, use plain data copy for identical
-            // mds.
-            //
-            // For unknown reason using memcpy with int4 data types leads to
-            // the double corruption error. Stick for per element copy for now.
+        // If fail to create reorder pd, use plain data copy for identical
+        // mds.
+        //
+        // Notes:
+        // - For unknown reason using memcpy with int4 data types leads to
+        //   the double corruption error. Stick for per element copy for now.
+        // - For grouped to plain and plain to grouped,
+        //   values reside in buffer 0 only.
+        const bool can_plain_copy = dnnl_memory_desc_equal(src.md_, dst.md_)
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+                || (query_md_sparse_encoding(src.md_) == dnnl_grouped
+                        && query_md_num_handles(dst.md_) == 1)
+                || (query_md_sparse_encoding(dst.md_) == dnnl_grouped
+                        && query_md_num_handles(src.md_) == 1)
+#endif
+                ;
+        if (can_plain_copy) {
             BENCHDNN_PRINT(2, "%s\n", "[REORDER] Fallback to plain copy.");
             const int64_t chunk_size = 64;
             const int64_t n_chunks = div_up(src.nelems(), chunk_size);

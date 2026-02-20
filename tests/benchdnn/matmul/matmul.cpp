@@ -535,8 +535,6 @@ static int fill_grouped_data(data_kind_t kind, const prb_t *prb,
     // Fill offsets buffer
     SAFE(fill_grouped_offsets(mem_dt, prb), WARN);
 
-    const int64_t nelems = mem_dt.nelems();
-
     if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) return OK;
 
     cfg_t cfg(prb, {SRC, WEI, BIA, DST});
@@ -544,14 +542,7 @@ static int fill_grouped_data(data_kind_t kind, const prb_t *prb,
     // Fill values buffer
     fill_dense_fp_values(kind, prb, cfg, mem_fp);
 
-    // Copy values from fp memory into grouped values handle,
-    // as grouped memory doesn't support reorder
-    benchdnn_parallel_nd(nelems, [&](int64_t i) {
-        mem_dt.set_elem(i,
-                round_to_nearest_representable(
-                        cfg.get_dt(kind), mem_fp.get_f32_elem(i)),
-                sparse_options_t::grouped_values_idx);
-    });
+    SAFE(mem_dt.reorder(mem_fp, cfg.get_swapped_dt(kind)), WARN);
 
     return OK;
 }
@@ -1053,10 +1044,14 @@ std::vector<int> supported_exec_args(dir_t dir) {
 int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         dnnl_primitive_t prim, const prb_t *prb, res_t *res,
         dnnl_primitive_t prim_ref) {
-    // Sparse functionality relies on indirect access to the data. While the
-    // data itself can be anything for `no_ref_memory` modifier, metadata values
-    // must be meaningful, otherwise a jump to a random memory location outside
-    // of allocated bytes will happen.
+    // Both sparse and grouped functionality relies on indirect mnemory access.
+    // While the data itself can be anything for `no_ref_memory` modifier,
+    // metadata (indices/pointers for sparse; offsets for grouped) must be
+    // valid before the library executes, otherwise a jump to a random memory
+    // location outside of allocated bytes will happen.
+    // Note, that `has_sparse_md` covers grouped mds as well: `dnnl_grouped`
+    // is a member of `dnnl_sparse_encoding_t`.
+    //
     // If there's a sparse memory, non-sparse memory and non-metadata handles
     // will not reach the filling, unless it's a `packed` encoding. In such case
     // the reference f32 counterpart must be mapped and allowed to reach the
@@ -1092,15 +1087,33 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         auto &mem = entry.second; // `mem` is modified by filler (reorder).
 
         const bool is_sparse_src = exec_arg == DNNL_ARG_SRC
-                && src_encoding != dnnl_sparse_encoding_undef;
+                && src_encoding != dnnl_sparse_encoding_undef
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+                && !is_grouped // Route grouped to the generic else branch below
+#endif
+                ;
         const bool is_sparse_wei = exec_arg == DNNL_ARG_WEIGHTS
                 && wei_encoding != dnnl_sparse_encoding_undef;
-        const bool is_sparse = is_sparse_src || is_sparse_wei;
+        const bool is_sparse_dst = exec_arg == DNNL_ARG_DST
+                && dst_encoding != dnnl_sparse_encoding_undef
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+                && !is_grouped
+#endif
+                ;
+        const bool is_sparse = is_sparse_src || is_sparse_wei || is_sparse_dst;
         const bool is_sparse_wei_packed
                 = is_sparse_wei && wei_encoding == dnnl_packed;
 
         // See the comment at the beginning of the function.
         if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+                // Grouped SRC/DST are excluded from `is_sparse` to keep the
+                // sparse and grouped paths separate below, so exclude them here
+                // to allow `no_ref_memory` to work for grouped cases
+                && !(is_grouped
+                        && (exec_arg == DNNL_ARG_SRC
+                                || exec_arg == DNNL_ARG_DST))
+#endif
                 && !is_sparse)
             continue;
 
@@ -1116,23 +1129,41 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                 ref_mem_map.emplace(exec_arg,
                         dnn_mem_t(wei_fp_d, ref_engine, /* prefill = */ false));
             }
+            if (is_sparse_dst) {
+                auto dst_fp_d = create_md(prb, DST);
+                ref_mem_map.emplace(exec_arg,
+                        dnn_mem_t(dst_fp_d, ref_engine,
+                                /* prefill = */ false));
+            }
         } else {
             if (exec_arg == DNNL_ARG_WEIGHTS) {
-                // Switch the format tag from "ab" to "ba" but to handle batched
-                // cases, use strides instead.
                 const auto ndims = mem.ndims();
                 const auto &dims = mem.dims();
-                dnnl_dims_t strides {};
-                dnnl_dim_t stride = 1;
-                for (int d = ndims - 2; d >= 0; d--) {
-                    strides[d] = stride * dims[d + 1];
-                    stride = strides[d];
+
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+                if (ndims == 3 && is_grouped) {
+                    // For 3D grouped weights, use plain abc format (no transpose)
+                    ref_mem_map.emplace(exec_arg,
+                            dnn_mem_t(ndims, dims, dnnl_f32, std::string("abc"),
+                                    ref_engine,
+                                    /* prefill = */ false));
+                } else
+#endif
+                {
+                    // Switch the format tag from "ab" to "ba" but to handle batched
+                    // cases, use strides instead.
+                    dnnl_dims_t strides {};
+                    dnnl_dim_t stride = 1;
+                    for (int d = ndims - 2; d >= 0; d--) {
+                        strides[d] = stride * dims[d + 1];
+                        stride = strides[d];
+                    }
+                    strides[ndims - 2] = 1;
+                    strides[ndims - 1] = dims[ndims - 2];
+                    ref_mem_map.emplace(exec_arg,
+                            dnn_mem_t(mem.md_, dnnl_f32, strides, ref_engine,
+                                    /* prefill = */ false));
                 }
-                strides[ndims - 2] = 1;
-                strides[ndims - 1] = dims[ndims - 2];
-                ref_mem_map.emplace(exec_arg,
-                        dnn_mem_t(mem.md_, dnnl_f32, strides, ref_engine,
-                                /* prefill = */ false));
             } else if (exec_arg != DNNL_ARG_SCRATCHPAD) {
                 // Scratchpad memory relates to a primitive. If reference needs
                 // it, use switch below to define a memory desc for it.

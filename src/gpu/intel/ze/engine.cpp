@@ -75,6 +75,8 @@ status_t engine_t::create_kernel(
 
 status_t engine_t::create_kernel(compute::kernel_t &kernel,
         const gemmstone::dsl::kernel_t &kernel_dsl) const {
+    // See `INCLUDE_EXTRA_DIRS_FOR_SYCL` comment.
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
     const auto &ze_kernel_and_module
             = gemmstone::dsl::make_kernel(kernel_dsl, context(), device());
     auto ze_module_ptr
@@ -82,6 +84,10 @@ status_t engine_t::create_kernel(compute::kernel_t &kernel,
                     ze_kernel_and_module.module);
     return kernel_t::make(
             kernel, ze_module_ptr, ze_kernel_and_module.kernel, {});
+#else
+    assert(!"ze::create_kernel with gemmstone::dsl::kernel_t is not expected");
+    return status::invalid_arguments;
+#endif
 }
 
 status_t engine_t::convert_to_ze(std::vector<compute::kernel_t> &kernels,

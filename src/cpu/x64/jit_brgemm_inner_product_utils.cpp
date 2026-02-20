@@ -429,6 +429,8 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
 
     auto &jbgp = *this;
 
+    if ((dim_t)jbgp.os * jbgp.oc > INT_MAX) return status::unimplemented;
+
     const bool is_amx_int8 = jbgp.is_amx && one_of(jbgp.wei_dt, s8, u8);
     const bool is_amx_xf16
             = jbgp.is_amx && one_of(jbgp.wei_dt, bf16, f16) && !jbgp.is_bf32;
@@ -1289,20 +1291,26 @@ status_t jit_brgemm_ip_conf_t::init_conf_base(cpu_isa_t isa,
     jbgp.is_amx = is_superset(jbgp.isa, avx512_core_amx);
     jbgp.prop_kind = ipd.prop_kind;
     jbgp.ngroups = 1;
-    jbgp.mb = src_d.dims()[0];
+
+    CHECK(safe_dim_to_int(jbgp.mb, src_d.dims()[0]));
     jbgp.os = jbgp.mb;
-    jbgp.oc_without_padding = dst_d.dims()[1];
+    CHECK(safe_dim_to_int(jbgp.oc_without_padding, dst_d.dims()[1]));
     jbgp.oc = jbgp.oc_without_padding;
-    jbgp.ic_without_padding = src_d.dims()[1];
+    CHECK(safe_dim_to_int(jbgp.ic_without_padding, src_d.dims()[1]));
     jbgp.ic = jbgp.ic_without_padding;
-    jbgp.id = (ndims == 5) ? src_d.dims()[2] : 1;
-    jbgp.ih = (ndims < 4) ? 1 : src_d.dims()[ndims - 2];
-    jbgp.iw = (ndims < 3) ? 1 : src_d.dims()[ndims - 1];
+    CHECK(safe_dim_to_int(jbgp.id, (ndims == 5) ? src_d.dims()[2] : 1));
+    CHECK(safe_dim_to_int(jbgp.ih, (ndims < 4) ? 1 : src_d.dims()[ndims - 2]));
+    CHECK(safe_dim_to_int(jbgp.iw, (ndims < 3) ? 1 : src_d.dims()[ndims - 1]));
     jbgp.od = jbgp.oh = jbgp.ow = 1;
-    jbgp.kd = (ndims == 5) ? weights_d.dims()[2] : 1;
-    jbgp.kh = (ndims < 4) ? 1 : weights_d.dims()[ndims - 2];
-    jbgp.kw = (ndims < 3) ? 1 : weights_d.dims()[ndims - 1];
+    CHECK(safe_dim_to_int(jbgp.kd, (ndims == 5) ? weights_d.dims()[2] : 1));
+    CHECK(safe_dim_to_int(
+            jbgp.kh, (ndims < 4) ? 1 : weights_d.dims()[ndims - 2]));
+    CHECK(safe_dim_to_int(
+            jbgp.kw, (ndims < 3) ? 1 : weights_d.dims()[ndims - 1]));
     jbgp.stride_d = jbgp.stride_h = jbgp.stride_w = 1;
+
+    if ((dim_t)jbgp.kd * jbgp.kh * jbgp.kw > INT_MAX)
+        return status::unimplemented;
 
     if (!everyone_is(1, jbgp.ow, jbgp.oh, jbgp.od))
         return status::unimplemented;
@@ -1480,11 +1488,15 @@ status_t jit_brgemm_ip_conf_t::init_conf_base(cpu_isa_t isa,
     const auto ic_padded = weights_d.padded_dims()[1];
     const bool is_wei_ic_padded = ic != ic_padded;
     if (!is_wei_ic_padded) {
-        jbgp.ic_without_padding *= jbgp.kd * jbgp.kh * jbgp.kw;
-        jbgp.ic = jbgp.ic_without_padding;
-        jbgp.id = jbgp.ih = jbgp.iw = 1;
-        jbgp.od = jbgp.oh = jbgp.ow = 1;
-        jbgp.kd = jbgp.kh = jbgp.kw = 1;
+        const dim_t ic_squashed
+                = (dim_t)jbgp.ic_without_padding * jbgp.kd * jbgp.kh * jbgp.kw;
+        if (ic_squashed <= INT_MAX) {
+            jbgp.ic_without_padding = static_cast<int>(ic_squashed);
+            jbgp.ic = jbgp.ic_without_padding;
+            jbgp.id = jbgp.ih = jbgp.iw = 1;
+            jbgp.od = jbgp.oh = jbgp.ow = 1;
+            jbgp.kd = jbgp.kh = jbgp.kw = 1;
+        }
     }
 
     return status::success;

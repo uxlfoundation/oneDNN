@@ -1720,8 +1720,11 @@ status_t init_conf(conv_gemm_conf_t &jcp,
                     dim_t mem_access_cost
                             = (max_ic_block < 1) ? non_cache_access : 1;
                     max_ic_block = nstl::max(dim_t(1), max_ic_block);
-                    dim_t icb = nstl::max(
-                            dim_t(1), jcp.ic / div_up(jcp.ic, max_ic_block));
+                    // "jcp.ic == 0 ? dim_t(1) : " is to avoid warning about possible divide by zero
+                    dim_t icb = nstl::max(dim_t(1),
+                            jcp.ic == 0
+                                    ? dim_t(1)
+                                    : jcp.ic / div_up(jcp.ic, max_ic_block));
                     dim_t nb_ic = div_up(jcp.ic, icb);
                     dim_t kb = icb * jcp.ks;
                     dim_t kb_caligned = rnd_up(kb, simd_w);

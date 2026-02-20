@@ -104,7 +104,7 @@ inline bool is_pow2(const T &v) {
 }
 template <typename T, typename U>
 inline decltype(std::declval<T>()/std::declval<U>()) div_up(T a, U b) {
-    return (a / b) + (a % b != 0);
+    return a >= 1 ? 1 + (a - 1) / b : 0;
 }
 
 template <typename T, typename U>

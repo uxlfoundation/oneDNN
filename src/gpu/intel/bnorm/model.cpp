@@ -56,10 +56,14 @@ int get_nhwc_sp_block_size(
         const dim_t nblock = div_up(sp, curr_block_size);
         const dim_t nthr_gen = nblock * ic_nsg;
 
-        const float curr_efficiency_eus
-                = (float)nthr_gen / rnd_up(nthr_gen, eu_count);
+        auto efficiency = [](dim_t size, dim_t block) {
+            // avoid warnings 'potential divide by zero', but in fact it should not happen
+            if (size <= 0 || block == 0) return 0.f;
+            return (float)size / rnd_up(size, block);
+        };
+        const float curr_efficiency_eus = efficiency(nthr_gen, eu_count);
         const float curr_efficiency_thr
-                = (float)nthr_gen / rnd_up(nthr_gen, eu_count * threads_per_eu);
+                = efficiency(nthr_gen, eu_count * threads_per_eu);
 
         if (curr_efficiency_thr > efficiency_thr) {
             efficiency_thr = curr_efficiency_thr;

@@ -790,8 +790,11 @@ status_t brgemm_blocking_vmm(brgemm_desc_t *brg) {
     float best_bd_block_eff = 0.f;
     brg->bd_block = max_bcast_block;
     for (int bd_block = max_bcast_block; bd_block >= min_block; bd_block--) {
-        const auto bd_block_disb = static_cast<float>(brg->bcast_dim)
-                / rnd_up(brg->bcast_dim, bd_block);
+        // avoid warnings 'potential divide by zero'
+        const auto bd_block_disb = (brg->bcast_dim <= 0 || bd_block == 0)
+                ? 0.f
+                : static_cast<float>(brg->bcast_dim)
+                        / rnd_up(brg->bcast_dim, bd_block);
         const auto brgemm_microkernel_eff
                 = (static_cast<float>(adj_ld_block2) * bd_block)
                 / (((adj_ld_block2) + bd_block) * max_bcast_block);

@@ -154,13 +154,23 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
         gemm = selectGEMM(opts, hw_info, sizes, problem);
     } catch (const std::runtime_error &ex) {
         std::vector<StrategyRequirement> reqs;
-        reqs.push_back(StrategyRequirement::UnrollM == sg_size);
+        int m_unroll = problem.Ta.isInt4()
+                        && dev_info->gpu_arch() > compute::gpu_arch_t::xe_hpc
+                ? sg_size / problem.Ta
+                : sg_size;
+        int max_n_unroll = problem.Ta.isInt4()
+                        && dev_info->gpu_arch() > compute::gpu_arch_t::xe_hpc
+                ? 16 * problem.Ta
+                : 64;
+
+        reqs.push_back(StrategyRequirement::UnrollM == m_unroll);
         reqs.push_back(StrategyRequirement::UnrollN
-                == utils::rnd_up_pow2(std::min<dim_t>(pd()->M(), 64)));
+                == utils::rnd_up_pow2(
+                        std::min<dim_t>(pd()->M(), max_n_unroll)));
         reqs.push_back(StrategyRequirement::WGM == 2);
         reqs.push_back(StrategyRequirement::WGN
                 == utils::rnd_up_pow2(std::max<dim_t>(
-                        1, std::min<dim_t>(pd()->M() / reqs[1].value, 8))));
+                        1, std::min<dim_t>(pd()->M() / reqs[1].value, 4))));
         try {
             gemm = selectGEMM(opts, hw_info, sizes, problem, reqs);
         } catch (const std::runtime_error &ex) {

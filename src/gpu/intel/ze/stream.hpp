@@ -73,7 +73,10 @@ private:
     }
 
     stream_t() = delete;
-    stream_t(impl::engine_t *engine, impl::stream_impl_t *stream_impl);
+    stream_t(impl::engine_t *engine, impl::stream_impl_t *stream_impl)
+        : intel::stream_t(engine, stream_impl) {}
+
+    status_t init();
 
     DNNL_DISALLOW_COPY_AND_ASSIGN(stream_t);
 };

@@ -33,11 +33,13 @@ namespace ze {
 class stream_impl_t : public impl::stream_impl_t {
 public:
     stream_impl_t() = delete;
-    stream_impl_t(unsigned flags, ze_command_list_handle_t list);
-    stream_impl_t(unsigned flags, ze_context_handle_t context,
-            ze_device_handle_t device);
+    stream_impl_t(unsigned flags, ze_command_list_handle_t list = nullptr)
+        : impl::stream_impl_t(flags), list_(list, /* owner = */ !list) {}
 
     ~stream_impl_t() override = default;
+
+    status_t init(ze_context_handle_t context = nullptr,
+            ze_device_handle_t device = nullptr);
 
     status_t wait();
 
@@ -61,10 +63,10 @@ public:
 
     ze_command_list_handle_t list() const { return list_; }
 
-private:
-    void create_event_pool();
+    static status_t init_flags(
+            unsigned *flags, ze_command_list_handle_t list, bool profiling);
 
-    ze_context_handle_t context_;
+private:
     xpu::ze::wrapper_t<ze_command_list_handle_t> list_;
     // TODO: `event_pool_` seems to belong to `ctx_` as events can't be created
     // in multithreaded scenario and having a thread_local event pool should

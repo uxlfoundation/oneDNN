@@ -121,19 +121,23 @@ status_t device_info_t::init_attributes(impl::engine_t *engine) {
             device_cache_properties_count);
     for (ze_device_cache_properties_t &p : device_cache_properties) {
         p.stype = ZE_STRUCTURE_TYPE_DEVICE_CACHE_PROPERTIES;
-        p.pNext = nullptr;
     }
 
     CHECK(xpu::ze::zeDeviceGetCacheProperties(device,
             &device_cache_properties_count, device_cache_properties.data()));
-    l3_cache_size_ = device_cache_properties[0].cacheSize;
+    for (uint32_t i = 0; i < device_cache_properties_count; i++) {
+        if (device_cache_properties[i].flags == 0) {
+            l3_cache_size_ = device_cache_properties[i].cacheSize;
+            break;
+        }
+    }
 
     ze_device_memory_access_properties_t device_memory_access_properties = {};
     device_memory_access_properties.stype
             = ZE_STRUCTURE_TYPE_DEVICE_MEMORY_ACCESS_PROPERTIES;
 
-    xpu::ze::zeDeviceGetMemoryAccessProperties(
-            device, &device_memory_access_properties);
+    CHECK(xpu::ze::zeDeviceGetMemoryAccessProperties(
+            device, &device_memory_access_properties));
     mayiuse_system_memory_allocators_
             = device_memory_access_properties.sharedSystemAllocCapabilities;
 

@@ -32,6 +32,11 @@
 #include "src/xpu/ocl/usm_utils.hpp"
 #endif
 
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+#include "oneapi/dnnl/dnnl_ze.hpp"
+#include "src/xpu/ze/usm_utils.hpp"
+#endif
+
 #include "tests/test_thread.hpp"
 
 #include "dnn_types.hpp"
@@ -133,7 +138,8 @@ int execute_reorder(const dnn_mem_t &src, dnn_mem_t &dst,
     // source and destination and execute CPU reorder. If CPU reorder can't be
     // create, then just execute a regular GPU reorder.
 #if ((DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL) \
-        || (DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL)) \
+        || (DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL) \
+        || (DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE)) \
         && DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
     const auto &cpu_engine = get_cpu_engine();
     if (src.engine_kind() == dnnl_gpu || dst.engine_kind() == dnnl_gpu) {
@@ -444,7 +450,8 @@ int64_t dnn_mem_t::get_idx(int64_t logical_idx, int dims_mask, const int ndims,
 
 // Creates a memory object from the underlying buffer of an existing memory
 // object `mem`. The size of `mem` must not be less than the size of `md`.
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL || defined(DNNL_WITH_SYCL)
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL || defined(DNNL_WITH_SYCL) \
+        || DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
 static int init_memory(
         dnnl_memory_t *ret, const dnnl_memory_desc_t &md, dnnl_memory_t mem) {
 
@@ -453,6 +460,7 @@ static int init_memory(
 
     bool is_sycl = is_sycl_engine(engine);
     bool is_opencl = is_opencl_engine(engine);
+    bool is_ze = is_ze_engine(engine);
 
     if (ret == nullptr) return FAIL;
     *ret = nullptr;
@@ -479,6 +487,14 @@ static int init_memory(
                          (int)handles.size(), handles.data()),
                 CRIT);
 #endif
+    } else if (is_ze) {
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+        DNN_SAFE(dnnl_ze_interop_memory_create(
+                         ret, md, engine, (int)handles.size(), handles.data()),
+                CRIT);
+#endif
+    } else {
+        assert(!"unsupported GPU runtime");
     }
 
     // Memory must be initialized at this point in some of the branches above.
@@ -543,6 +559,7 @@ void dnn_mem_t::unmap() const {
 void dnn_mem_t::memset(int value, size_t size, int buffer_index) const {
     bool is_opencl = is_opencl_engine(engine_);
     bool is_sycl = is_sycl_engine(engine_);
+    bool is_ze = is_ze_engine(engine_);
     auto mem = m_padded_ ? m_padded_ : m_;
     void *mem_handle;
     DNN_SAFE_V(dnnl_memory_get_data_handle_v2(mem, &mem_handle, buffer_index));
@@ -601,6 +618,23 @@ void dnn_mem_t::memset(int value, size_t size, int buffer_index) const {
                 DNN_SAFE_V(dnnl_stream_wait(stream));
                 return;
             }
+        }
+#endif
+    } else if (is_ze) {
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+        stream_t stream(engine_);
+        switch (memory_kind) {
+            case memory_kind_ext_t::usm:
+            case memory_kind_ext_t::usm_device:
+            case memory_kind_ext_t::usm_shared: {
+                DNN_SAFE_V(dnnl::impl::xpu::ze::memset(
+                        stream, mem_handle, value, size));
+                DNN_SAFE_V(dnnl_stream_wait(stream));
+                return;
+            }
+            case memory_kind_ext_t::buffer:
+                assert(!"unsupported memory kind");
+                break;
         }
 #endif
     }
@@ -872,9 +906,75 @@ int dnn_mem_t::initialize_memory_create_opencl(
     return OK;
 }
 
+int dnn_mem_t::initialize_memory_create_ze(const handle_info_t &handle_info) {
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+    if (handle_info.is_host_ptr) {
+        const int nhandles = query_md_num_handles(md_);
+        std::vector<void *> handles(nhandles, handle_info.ptr);
+        DNN_SAFE(dnnl_ze_interop_memory_create(&m_, md_, engine_,
+                         (int)handles.size(), handles.data()),
+                CRIT);
+        return OK;
+    }
+
+    SAFE(handle_info.is_allocate() ? OK : FAIL, CRIT);
+
+    auto md_padded = pad_memory_desc(md_, engine_kind_, &is_canary_protected_);
+    if (!md_padded) md_padded = md_;
+
+    switch (memory_kind) {
+        case memory_kind_ext_t::usm: {
+            const int nhandles = query_md_num_handles(md_);
+            std::vector<void *> handles(nhandles, handle_info.ptr);
+            DNN_SAFE(dnnl_ze_interop_memory_create(&m_padded_, md_padded,
+                             engine_, (int)handles.size(), handles.data()),
+                    CRIT);
+            SAFE(init_memory(&m_, md_, m_padded_), CRIT);
+            break;
+        }
+        case memory_kind_ext_t::usm_device:
+        case memory_kind_ext_t::usm_shared: {
+            is_data_owner_ = true;
+
+            const int nhandles = query_md_num_handles(md_);
+            for (int i = 0; i < nhandles; i++) {
+                size_t sz = dnnl_memory_desc_get_size_v2(md_padded, i);
+                if (memory_kind == memory_kind_ext_t::usm_device) {
+                    data_.push_back(
+                            dnnl::impl::xpu::ze::malloc_device(engine_, sz));
+                } else {
+                    data_.push_back(
+                            dnnl::impl::xpu::ze::malloc_shared(engine_, sz));
+                }
+
+                if (sz > 0 && !data_[i]) {
+                    for (void *p : data_)
+                        dnnl::impl::xpu::ze::free(engine_, p);
+                    DNN_SAFE(dnnl_out_of_memory, CRIT);
+                }
+            }
+            DNN_SAFE(dnnl_ze_interop_memory_create(&m_padded_, md_padded,
+                             engine_, (int)data_.size(), data_.data()),
+                    CRIT);
+            SAFE(init_memory(&m_, md_, m_padded_), CRIT);
+            break;
+        }
+        case memory_kind_ext_t::buffer:
+            assert(!"unsupported memory kind");
+            break;
+        default: assert(!"not expected");
+    }
+    if (md_padded != md_) DNN_SAFE(dnnl_memory_desc_destroy(md_padded), CRIT);
+#else
+    (void)handle_info;
+#endif
+    return OK;
+}
+
 int dnn_mem_t::initialize_memory_create(const handle_info_t &handle_info) {
     bool is_sycl = is_sycl_engine(engine_);
     bool is_opencl = is_opencl_engine(engine_);
+    bool is_ze = is_ze_engine(engine_);
 
     if (handle_info.is_host_ptr) {
         // Host pointer can be used with CPU memory only.
@@ -906,6 +1006,8 @@ int dnn_mem_t::initialize_memory_create(const handle_info_t &handle_info) {
         SAFE(initialize_memory_create_sycl(handle_info), CRIT);
     } else if (is_opencl) {
         SAFE(initialize_memory_create_opencl(handle_info), CRIT);
+    } else if (is_ze) {
+        SAFE(initialize_memory_create_ze(handle_info), CRIT);
     } else {
         is_data_owner_ = false;
         const int nhandles = query_md_num_handles(md_);
@@ -1025,6 +1127,21 @@ static int cleanup_opencl(
     return OK;
 }
 
+static int cleanup_ze(
+        const dnnl_engine_t &engine, const std::vector<void *> &data) {
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+    switch (memory_kind) {
+        case memory_kind_ext_t::usm_device:
+        case memory_kind_ext_t::usm_shared:
+            for (void *p : data)
+                dnnl::impl::xpu::ze::free(engine, p);
+            break;
+        default: break;
+    }
+#endif
+    return OK;
+}
+
 int dnn_mem_t::cleanup() {
     if (!active_) return OK;
     if (!has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) unmap();
@@ -1032,7 +1149,8 @@ int dnn_mem_t::cleanup() {
     // Unregister device memory.
     // Done it here to account memory allocated inside the library for
     // correspondent memory objects.
-    if (is_sycl_engine(engine_) || is_opencl_engine(engine_)) {
+    if (is_sycl_engine(engine_) || is_opencl_engine(engine_)
+            || is_ze_engine(engine_)) {
         const int nhandles = query_md_num_handles(md_);
         std::vector<void *> handles(nhandles);
         for (int i = 0; i < nhandles; i++) {
@@ -1049,6 +1167,8 @@ int dnn_mem_t::cleanup() {
             SAFE(cleanup_sycl(engine_, data_), CRIT);
         } else if (is_opencl_engine(engine_)) {
             SAFE(cleanup_opencl(engine_, data_), CRIT);
+        } else if (is_ze_engine(engine_)) {
+            SAFE(cleanup_ze(engine_, data_), CRIT);
         } else {
             for (void *p : data_)
                 zfree(p);

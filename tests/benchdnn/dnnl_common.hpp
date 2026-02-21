@@ -79,7 +79,8 @@
 
 #ifndef DNNL_EXPERIMENTAL_PROFILING
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL \
-        || DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
+        || DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL \
+        || DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
 using dnnl_profiling_data_kind_t = int;
 extern "C" dnnl_status_t dnnl_reset_profiling(dnnl_stream_t stream);
 extern "C" dnnl_status_t dnnl_query_profiling_data(dnnl_stream_t stream,
@@ -145,6 +146,7 @@ bool is_gpu(const dnnl_engine_t &engine = get_test_engine());
 bool is_async(const dnnl_engine_t &engine = get_test_engine());
 bool is_sycl_engine(const dnnl_engine_t &engine = get_test_engine());
 bool is_opencl_engine(const dnnl_engine_t &engine = get_test_engine());
+bool is_ze_engine(const dnnl_engine_t &engine = get_test_engine());
 bool is_nvidia_gpu(const dnnl_engine_t &engine = get_test_engine());
 bool is_f64_supported(const dnnl_engine_t &engine = get_test_engine());
 bool is_amd_gpu(const dnnl_engine_t &engine = get_test_engine());

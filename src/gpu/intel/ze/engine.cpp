@@ -75,6 +75,8 @@ status_t engine_t::create_kernel(
 
 status_t engine_t::create_kernel(compute::kernel_t &kernel,
         const gemmstone::dsl::kernel_t &kernel_dsl) const {
+    // See `INCLUDE_EXTRA_DIRS_FOR_SYCL` comment.
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
     const auto &ze_kernel_and_module
             = gemmstone::dsl::make_kernel(kernel_dsl, context(), device());
     auto ze_module_ptr
@@ -82,18 +84,19 @@ status_t engine_t::create_kernel(compute::kernel_t &kernel,
                     ze_kernel_and_module.module);
     return kernel_t::make(
             kernel, ze_module_ptr, ze_kernel_and_module.kernel, {});
+#else
+    assert(!"ze::create_kernel with gemmstone::dsl::kernel_t is not expected");
+    return status::invalid_arguments;
+#endif
 }
 
 status_t engine_t::convert_to_ze(std::vector<compute::kernel_t> &kernels,
         const std::vector<const char *> &kernel_names,
         xpu::binary_t &binary) const {
-    ze_module_handle_t ze_module = nullptr;
+    std::shared_ptr<xpu::ze::wrapper_t<ze_module_handle_t>> ze_module_ptr;
     std::vector<ze_kernel_handle_t> ze_kernels;
-    CHECK(ze::create_kernels(
-            device(), context(), kernel_names, binary, &ze_module, ze_kernels));
-    auto ze_module_ptr
-            = std::make_shared<xpu::ze::wrapper_t<ze_module_handle_t>>(
-                    ze_module);
+    CHECK(ze::create_kernels(device(), context(), kernel_names, binary,
+            &ze_module_ptr->unwrap(), ze_kernels));
     kernels = std::vector<compute::kernel_t>(kernel_names.size());
     for (size_t i = 0; i < kernel_names.size(); i++) {
         if (!ze_kernels[i]) continue;
@@ -116,6 +119,8 @@ status_t engine_t::create_kernels(std::vector<compute::kernel_t> *kernels,
     const char *source = nullptr;
     for (size_t i = 0; source == nullptr && i < kernel_names.size(); i++)
         source = intel::get_kernel_source(kernel_names[i]);
+    VERROR_ENGINE(source, status::runtime_error,
+            "No OpenCL source was found for kernel");
 
     std::string options = kernel_ctx.options();
     auto *dev_info = utils::downcast<const device_info_t *>(device_info());
@@ -152,13 +157,10 @@ status_t engine_t::create_kernel_from_binary(compute::kernel_t &kernel,
         const xpu::binary_t &binary, const char *kernel_name,
         const compute::program_src_t &src) const {
     std::vector<const char *> kernel_names = {kernel_name};
-    ze_module_handle_t ze_module = nullptr;
+    std::shared_ptr<xpu::ze::wrapper_t<ze_module_handle_t>> ze_module_ptr;
     std::vector<ze_kernel_handle_t> ze_kernels;
-    CHECK(ze::create_kernels(
-            device(), context(), kernel_names, binary, &ze_module, ze_kernels));
-    auto ze_module_ptr
-            = std::make_shared<xpu::ze::wrapper_t<ze_module_handle_t>>(
-                    ze_module);
+    CHECK(ze::create_kernels(device(), context(), kernel_names, binary,
+            &ze_module_ptr->unwrap(), ze_kernels));
 
     CHECK(kernel_t::make(kernel, ze_module_ptr, ze_kernels[0], kernel_name));
 

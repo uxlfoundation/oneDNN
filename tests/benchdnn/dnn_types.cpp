@@ -1104,7 +1104,8 @@ std::ostream &dump_global_params(std::ostream &s) {
         s << "--attr-same-pd-check=" << bool2str(attr_same_pd_check) << " ";
     if (canonical || check_ref_impl != false)
         s << "--check-ref-impl=" << bool2str(check_ref_impl) << " ";
-#if defined(DNNL_WITH_SYCL) || DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+#if defined(DNNL_WITH_SYCL) || DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL \
+        || DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
     if (canonical || memory_kind != default_memory_kind)
         s << "--memory-kind=" << memory_kind << " ";
     if (canonical || stream_kind != default_stream_kind)

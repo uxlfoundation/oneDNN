@@ -1144,7 +1144,7 @@ struct send_group_t {
 
     send_group_t split(
             const split_bounds_t &bounds, int subtile_idx, bool is_g1b1) const {
-        if (!is_block()) return send_group_t();
+        if (!is_block() || bounds.is_empty()) return send_group_t();
 
         int factor = bounds.factor();
         if (is_g1b1) {

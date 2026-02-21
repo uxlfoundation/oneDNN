@@ -490,7 +490,6 @@ std::string maybe_fixup_1st_conv_wei_tag(
         const config_t &cfg, const std::string &tag) {
     auto &prb = cfg.prb();
 
-    if (!cfg.is_dp_fma()) return tag;
     if (!is_small_ic(prb) || prb.is_dw) return tag;
     if (prb.ab_swap_transpose) return tag;
     if (!prb.is_fwd) return tag;

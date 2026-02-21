@@ -22,25 +22,82 @@ GEMMSTONE_NAMESPACE_START
 namespace dsl {
 
 namespace layout {
-std::vector<block_t> normalize_blocks(
-        const std::vector<block_t> &blocks, bool remove_size_1_blocks) {
-    if (blocks.empty()) return {};
+
+std::vector<block_t> remove_size_1_blocks(const std::vector<block_t> &blocks) {
     std::vector<block_t> res;
+    for (auto &b : blocks) {
+        if (b.size == 1) continue;
+        res.push_back(b);
+    }
+    return res;
+}
 
-    for (const block_t &block : blocks) {
-        if (remove_size_1_blocks && block.size == 1) continue;
+std::vector<block_t> merge_blocks(const std::vector<block_t> &blocks) {
+    if (blocks.empty()) return {};
 
-        auto can_merge = [&](const block_t &a, const block_t &b) {
+    std::vector<block_t> res;
+    for (const block_t &b : blocks) {
+        auto can_merge = [](const block_t &a, const block_t &b) {
             return a.idx == b.idx && a.stride * a.size == b.stride;
         };
-        if (!res.empty() && can_merge(res.back(), block)) {
-            res.back().size *= block.size;
+        if (!res.empty() && can_merge(res.back(), b)) {
+            res.back().size *= b.size;
         } else {
-            res.emplace_back(block);
+            res.emplace_back(b);
+        }
+    }
+    return res;
+}
+
+std::vector<block_t> normalize_blocks(const std::vector<block_t> &_blocks) {
+    if (_blocks.empty()) return {};
+
+    auto blocks = remove_size_1_blocks(_blocks);
+
+    // Normalize blocks order: select min-stride block and put all preceding
+    // same-index blocks before it.
+    std::vector<block_t> ordered;
+    ordered.reserve(blocks.size());
+    std::vector<bool> used(blocks.size(), false);
+    size_t remaining = blocks.size();
+
+    auto less = [&](const layout::block_t &a, const layout::block_t &b) {
+        auto prev_idx = (ordered.empty() ? idx_t() : ordered.back().idx);
+        auto &as = a.stride;
+        auto &bs = b.stride;
+        dsl_assert(!as.is_undefined() && !bs.is_undefined());
+        // Same stride -> prefer contiguous idx, otherwise order by idx.
+        if (as == bs) {
+            if (a.idx == prev_idx) return true;
+            if (b.idx == prev_idx) return false;
+            return a.idx < b.idx;
+        }
+        // Fixed stride < unknown stride.
+        if (as.is_unknown() != bs.is_unknown()) return bs.is_unknown();
+        // Use stride values otherwise.
+        return (int64_t)as < (int64_t)bs;
+    };
+
+    while (remaining > 0) {
+        // Find min-stride block.
+        size_t min_pos = blocks.size();
+        for (size_t i = 0; i < blocks.size(); i++) {
+            if (used[i]) continue;
+            if (min_pos == blocks.size() || less(blocks[i], blocks[min_pos]))
+                min_pos = i;
+        }
+
+        // Add all same-index blocks from start up to and including min_pos.
+        idx_t target_idx = blocks[min_pos].idx;
+        for (size_t i = 0; i <= min_pos; i++) {
+            if (used[i] || blocks[i].idx != target_idx) continue;
+            ordered.push_back(blocks[i]);
+            used[i] = true;
+            remaining--;
         }
     }
 
-    return res;
+    return merge_blocks(ordered);
 }
 
 tile_iterator_t &tile_iterator_t::operator++() {

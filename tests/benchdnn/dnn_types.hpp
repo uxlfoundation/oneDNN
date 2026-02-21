@@ -78,6 +78,12 @@ struct attr_t {
         POLICY_TOTAL // guard
     };
 
+    enum class mask_input_t {
+        none,
+        mask,
+        policy,
+    };
+
     static policy_t str2policy(const std::string &str);
     static const char *policy2str(policy_t policy);
     static int get_default_mask(policy_t policy, int ndims);
@@ -394,12 +400,6 @@ struct attr_t {
                 dnnl_data_type_t dst_dt = dnnl_f32;
             } convolution;
             struct binary_t {
-                enum class mask_input_t {
-                    none,
-                    mask,
-                    policy,
-                };
-
                 dnnl_alg_kind_t alg = dnnl_alg_kind_undef;
                 dnnl_data_type_t src1_dt = dnnl_data_type_undef;
                 policy_t policy = policy_t::COMMON;

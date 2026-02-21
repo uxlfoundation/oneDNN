@@ -402,8 +402,8 @@ void append_eltwise(attr_t::post_ops_t &po, pk_t akind, float aalpha = 0.f,
 }
 
 void append_binary(attr_t::post_ops_t &po, pk_t akind, dnnl_data_type_t src_dt1,
-        attr_t::post_ops_t::entry_t::binary_t::mask_input_t mask_input,
-        int64_t mask, attr_t::policy_t policy, const std::string &tag) {
+        attr_t::mask_input_t mask_input, int64_t mask, attr_t::policy_t policy,
+        const std::string &tag) {
     po.entry.emplace_back(akind);
     auto &e = po.entry.back();
 
@@ -446,7 +446,7 @@ static int check_post_ops2str() {
             po, "sum+relu+sum:2:1:s8+linear:5:10+dw:k3s1p1+dw:k3s2p1:s32");
 
     {
-        using mi_t = attr_t::post_ops_t::entry_t::binary_t::mask_input_t;
+        using mi_t = attr_t::mask_input_t;
         attr_t::post_ops_t bin_po_int_mask;
         append_binary(bin_po_int_mask, pk_t::ADD, dnnl_f32, mi_t::mask, 13,
                 policy_t::COMMON, tag::abx);
@@ -454,7 +454,7 @@ static int check_post_ops2str() {
     }
 
     {
-        using mi_t = attr_t::post_ops_t::entry_t::binary_t::mask_input_t;
+        using mi_t = attr_t::mask_input_t;
         attr_t::post_ops_t bin_po_policy;
         append_binary(bin_po_policy, pk_t::ADD, dnnl_f32, mi_t::policy, 13,
                 policy_t::COMMON, tag::any);

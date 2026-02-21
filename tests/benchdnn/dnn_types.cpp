@@ -705,9 +705,8 @@ std::vector<std::pair<int, int>> attr_t::post_ops_t::get_po_masks(
         int mask = -1;
         int arg = DNNL_ARG_UNDEF;
         if (e.is_binary_kind()) {
-            using mask_input_t = entry_t::binary_t::mask_input_t;
             auto mask_input = e.binary.mask_input;
-            mask = mask_input == mask_input_t::mask
+            mask = mask_input == attr_t::mask_input_t::mask
                     ? e.binary.mask
                     : policy2mask(DNNL_ARG_SRC_1, e.binary.policy, ndims,
                               prim_kind);
@@ -898,15 +897,12 @@ std::ostream &operator<<(std::ostream &s, const attr_t::post_ops_t &post_ops) {
             const auto src_delim
                     = e.is_binary_kind_with_ternary_op() ? "." : ":";
 
-            using mask_input_t
-                    = attr_t::post_ops_t::entry_t::binary_t::mask_input_t;
-
-            if (e.binary.mask_input != mask_input_t::none
+            if (e.binary.mask_input != attr_t::mask_input_t::none
                     || e.binary.tag != tag::any) {
-                if (e.binary.mask_input == mask_input_t::mask) {
+                if (e.binary.mask_input == attr_t::mask_input_t::mask) {
                     s << src_delim << e.binary.mask;
                 } else {
-                    assert(e.binary.mask_input == mask_input_t::policy);
+                    assert(e.binary.mask_input == attr_t::mask_input_t::policy);
                     s << src_delim << e.binary.policy;
                 }
             }
@@ -916,15 +912,16 @@ std::ostream &operator<<(std::ostream &s, const attr_t::post_ops_t &post_ops) {
             if (e.is_binary_kind_with_ternary_op()) {
                 bool delim_added = false;
 
-                if (e.binary.src2_mask_input != mask_input_t::none
+                if (e.binary.src2_mask_input != attr_t::mask_input_t::none
                         || e.binary.src2_tag != tag::any) {
                     s << ":";
                     delim_added = true;
-                    if (e.binary.src2_mask_input == mask_input_t::mask) {
+                    if (e.binary.src2_mask_input
+                            == attr_t::mask_input_t::mask) {
                         s << e.binary.src2_mask;
                     } else {
                         assert(e.binary.src2_mask_input
-                                == mask_input_t::policy);
+                                == attr_t::mask_input_t::policy);
                         s << e.binary.src2_policy;
                     }
                 }
@@ -1214,14 +1211,12 @@ post_ops_rhs_tensor_entry_t get_po_rhs_tensor_entry(
         return {dnnl_f32, mask, tag::axb, dims_t(), DNNL_ARG_WEIGHTS};
     } else if (entry.is_binary_kind()) {
         const auto &binary = entry.binary;
-        using mask_input_t
-                = attr_t::post_ops_t::entry_t::binary_t::mask_input_t;
         int mask = -1;
         switch (binary.mask_input) {
             // `none` is treated as `policy_t::COMMON`.
-            case mask_input_t::none: mask = 0; break;
-            case mask_input_t::mask: mask = binary.mask; break;
-            case mask_input_t::policy:
+            case attr_t::mask_input_t::none: mask = 0; break;
+            case attr_t::mask_input_t::mask: mask = binary.mask; break;
+            case attr_t::mask_input_t::policy:
                 mask = attr_t::policy2mask(
                         DNNL_ARG_SRC_1, binary.policy, ndims, prim_kind);
                 break;
@@ -1976,10 +1971,8 @@ void update_cpu_ref_attrs(attr_t &attr, dnnl_data_type_t dst_dt) {
             e.binary.tag = tag::any;
             // Since tag is updated, it might get printed with policy, which
             // means that mask_input should be specified.
-            using mask_input_t
-                    = attr_t::post_ops_t::entry_t::binary_t::mask_input_t;
-            if (e.binary.mask_input == mask_input_t::none)
-                e.binary.mask_input = mask_input_t::policy;
+            if (e.binary.mask_input == attr_t::mask_input_t::none)
+                e.binary.mask_input = attr_t::mask_input_t::policy;
         } else if (e.is_sum_kind()) {
             if (dst_dt == dnnl_f32) e.sum.dt = dnnl_data_type_undef;
         }

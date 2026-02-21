@@ -280,8 +280,6 @@ attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
                     return std::isdigit(c);
                 });
 
-                using mask_input_t
-                        = attr_t::post_ops_t::entry_t::binary_t::mask_input_t;
                 if (only_digits) {
                     // If digits only, then read it as integer value.
                     const auto src_mask
@@ -289,10 +287,10 @@ attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
 
                     if (!is_ternary) {
                         e.binary.mask = src_mask;
-                        e.binary.mask_input = mask_input_t::mask;
+                        e.binary.mask_input = attr_t::mask_input_t::mask;
                     } else {
                         e.binary.src2_mask = src_mask;
-                        e.binary.src2_mask_input = mask_input_t::mask;
+                        e.binary.src2_mask_input = attr_t::mask_input_t::mask;
                         if (e.binary.src2_mask > 0)
                             BENCHDNN_PRINT(0, "%s \'%s\' %s\n",
                                     "Error: binary post-op policy for the "
@@ -307,7 +305,7 @@ attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
 
                     if (!is_ternary) {
                         e.binary.policy = src_policy;
-                        e.binary.mask_input = mask_input_t::policy;
+                        e.binary.mask_input = attr_t::mask_input_t::policy;
 
                         if (e.binary.policy == attr_t::policy_t::POLICY_TOTAL) {
                             BENCHDNN_PRINT(0, "%s \'%s\' %s\n",
@@ -321,7 +319,7 @@ attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
                         }
                     } else {
                         e.binary.src2_policy = src_policy;
-                        e.binary.src2_mask_input = mask_input_t::policy;
+                        e.binary.src2_mask_input = attr_t::mask_input_t::policy;
 
                         if (e.binary.src2_policy != attr_t::policy_t::COMMON) {
                             BENCHDNN_PRINT(0, "%s \'%s\' %s\n",

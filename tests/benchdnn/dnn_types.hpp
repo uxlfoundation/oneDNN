@@ -69,6 +69,8 @@ struct attr_t {
         PER_DIM_0, // ... dims[0] point.
         PER_DIM_1, // ... dims[1] point.
         PER_DIM_01, // ... unique combination of dims[0] and dims[1] points.
+        PER_DIM_02, // ... unique combination of dims[0] and dims[2] points.
+        PER_DIM_012, // ... unique combination of dims[0], dims[1] and dims[2] points.
         PER_DIM_2, // ... dims[2] point.
         PER_DIM_3, // ... dims[3] point.
         PER_TENSOR, // ... point in the tensor.
@@ -588,6 +590,25 @@ struct sparse_options_t {
             = dnnl_sparse_encoding_undef;
     static constexpr float def_sparsity = 0.9f;
 
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    // Buffer indices for multi-handle grouped memory
+    static constexpr int grouped_values_idx = 0;
+    static constexpr int grouped_offsets_idx = 1;
+
+    struct grouped_data_t {
+        int variable_dim_idx
+                = -1; // index of the dimension with variable size (0 for M)
+        dnnl_dim_t group_count = 0; // total number of grouped blocks
+        std::vector<dnnl_dim_t>
+                group_sizes; // sizes for each group along the variable dimension
+
+        bool is_def() const {
+            return variable_dim_idx == -1 && group_count == 0
+                    && group_sizes.empty();
+        }
+    };
+#endif
+
     sparse_options_t() = default;
     sparse_options_t(int arg, dnnl_sparse_encoding_t encoding, float sparsity) {
         add(arg, encoding, sparsity);
@@ -596,6 +617,33 @@ struct sparse_options_t {
     void add(int arg, dnnl_sparse_encoding_t encoding, float sparsity) {
         options_.insert({arg, {encoding, sparsity}});
     }
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    void set_grouped(int arg, int var_dim_idx, dnnl_dim_t count,
+            const std::vector<dnnl_dim_t> &sizes) {
+        add(arg, dnnl_grouped, 0.0f);
+        grouped_data_t gd;
+        gd.variable_dim_idx = var_dim_idx;
+        gd.group_count = count;
+        gd.group_sizes = sizes;
+        grouped_data_[arg] = gd;
+    }
+
+    int get_variable_dim_idx(int arg = DNNL_ARG_SRC) const {
+        const auto it = grouped_data_.find(arg);
+        return it == grouped_data_.end() ? -1 : it->second.variable_dim_idx;
+    }
+    // Get group count - the count is the same across all grouped arguments
+    dnnl_dim_t get_group_count() const {
+        if (grouped_data_.empty()) return 0;
+        return grouped_data_.begin()->second.group_count;
+    }
+    const std::vector<dnnl_dim_t> &get_group_sizes(
+            int arg = DNNL_ARG_SRC) const {
+        static const std::vector<dnnl_dim_t> empty;
+        const auto it = grouped_data_.find(arg);
+        return it == grouped_data_.end() ? empty : it->second.group_sizes;
+    }
+#endif
 
     dnnl_sparse_encoding_t get_encoding(int arg) const {
         if (options_.count(arg) == 0) return dnnl_sparse_encoding_undef;
@@ -648,6 +696,9 @@ struct sparse_options_t {
 
 private:
     std::unordered_map<int, std::pair<dnnl_sparse_encoding_t, float>> options_;
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    std::unordered_map<int, grouped_data_t> grouped_data_;
+#endif
 };
 
 std::ostream &operator<<(

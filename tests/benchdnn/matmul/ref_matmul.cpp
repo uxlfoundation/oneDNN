@@ -30,6 +30,109 @@ int64_t wei_ba_off_f(const prb_t *prb, int64_t mb, int64_t k, int64_t n) {
     return (mb * prb->n + n) * prb->k + k;
 }
 
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+// Reference implementation for grouped gemm
+// Computes per-expert matmuls: for each expert e, computes dst[e] = src[e] * wei[e]
+//
+// Note, that all tensors are concatenated
+// src and dst in grouped format and wei in 3D [group_count, K, N] format
+void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
+    const dnn_mem_t &src_m = args.find(DNNL_ARG_SRC);
+    const dnn_mem_t &wei_m = args.find(DNNL_ARG_WEIGHTS);
+    const dnn_mem_t &dst_m = args.find(DNNL_ARG_DST);
+    const dnn_mem_t &bia_m = args.find(DNNL_ARG_BIAS);
+    const dnn_mem_t &src_scales
+            = args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    const dnn_mem_t &wei_scales
+            = args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
+
+    const int64_t group_count = prb->sparse_options.get_group_count();
+    const auto &M_dims = prb->sparse_options.get_group_sizes();
+    const int64_t K = prb->k;
+    const int64_t N = prb->n;
+
+    const bool has_bias = prb->bia_dt != dnnl_data_type_undef;
+    const bool has_src_scale = !prb->attr.scales.get(DNNL_ARG_SRC).is_def();
+    const bool has_wei_scale = !prb->attr.scales.get(DNNL_ARG_WEIGHTS).is_def();
+
+    const auto &wei_scale_groups
+            = prb->attr.scales.get(DNNL_ARG_WEIGHTS).groups;
+
+    // For grouped GEMM, weights are 3D: [group_count, K, N]
+    // wei_scale_groups[0] is the K dimension group size
+    const int64_t wei_scale_group_k
+            = !wei_scale_groups.empty() ? wei_scale_groups[0] : K;
+    const int64_t n_k_groups = K / wei_scale_group_k;
+
+    std::vector<int64_t> group_offsets(group_count + 1);
+    group_offsets[0] = 0;
+    for (int64_t g = 0; g < group_count; g++) {
+        group_offsets[g + 1] = group_offsets[g] + M_dims[g];
+    }
+
+    benchdnn_parallel_nd(group_count, [&](int64_t g) {
+        const int64_t M_g = M_dims[g];
+        if (M_g == 0) return;
+
+        const int64_t offset = group_offsets[g];
+
+        for (int64_t m = 0; m < M_g; m++) {
+            const int64_t src_offset = offset + m;
+
+            // retrieve row-wise src scale for this row if any
+            float src_scale = 1.0f;
+            if (has_src_scale) {
+                src_scale = src_scales.get_f32_elem(src_offset);
+            }
+
+            for (int64_t n = 0; n < N; n++) {
+                float acc = 0.0f;
+
+                for (int64_t n_k_group_idx = 0; n_k_group_idx < n_k_groups;
+                        n_k_group_idx++) {
+                    float acc_group = 0.0f;
+
+                    for (int64_t k = 0; k < wei_scale_group_k; k++) {
+                        const int64_t k_idx
+                                = n_k_group_idx * wei_scale_group_k + k;
+                        const int64_t src_idx = src_offset * K + k_idx;
+                        dnnl_dims_t wei_pos = {g, k_idx, n};
+                        const int64_t wei_idx = md_off_v(wei_m, wei_pos);
+
+                        const float src_val = src_m.get_f32_elem(src_idx);
+                        const float wei_val = wei_m.get_f32_elem(wei_idx);
+                        acc_group += src_val * wei_val;
+                    }
+
+                    if (has_wei_scale) { // wei_scales is [num_experts * n_k_groups * N]
+                        const int64_t wei_scale_idx
+                                = (g * n_k_groups + n_k_group_idx) * N + n;
+                        const float wei_scale
+                                = wei_scales.get_f32_elem(wei_scale_idx);
+                        acc_group *= wei_scale;
+                    }
+
+                    acc += acc_group;
+                }
+
+                // Apply per-token scale
+                acc *= src_scale;
+
+                // Add bias if present
+                if (has_bias) {
+                    const int64_t bias_idx = g * N + n;
+                    acc += bia_m.get_f32_elem(bias_idx);
+                }
+
+                // dst: plain [total_M, N], indexed as [(offset + m), n]
+                const int64_t dst_idx = src_offset * N + n;
+                dst_m.set_f32_elem(dst_idx, acc);
+            }
+        }
+    });
+}
+#endif // DNNL_EXPERIMENTAL_GROUPED_MEMORY
+
 void compute_ref_matmul(const prb_t *prb, const args_t &args) {
     const dnn_mem_t &src_m = args.find(DNNL_ARG_SRC);
     const dnn_mem_t &wei_m = args.find(DNNL_ARG_WEIGHTS);
@@ -399,8 +502,15 @@ void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
     const auto wei_encoding
             = prb->sparse_options.get_encoding(DNNL_ARG_WEIGHTS);
 
-    if (src_encoding == dnnl_csr || wei_encoding == dnnl_csr
-            || src_encoding == dnnl_coo || wei_encoding == dnnl_coo) {
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    const auto dst_encoding = prb->sparse_options.get_encoding(DNNL_ARG_DST);
+
+    if (src_encoding == dnnl_grouped && dst_encoding == dnnl_grouped) {
+        compute_ref_grouped_matmul(prb, args);
+    } else
+#endif
+            if (src_encoding == dnnl_csr || wei_encoding == dnnl_csr
+                    || src_encoding == dnnl_coo || wei_encoding == dnnl_coo) {
         compute_ref_sparse_matmul(prb, args);
     } else {
         compute_ref_matmul(prb, args);

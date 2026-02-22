@@ -252,7 +252,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         return ok;
     };
 
-    auto check_attr_zero_points = [&]() -> bool {
+    auto check_attr_zero_points = [&](bool allow_multiple_wei_zp) -> bool {
         const auto &zp = attr()->zero_points_;
         static const std::vector<int> supported_args {
                 DNNL_ARG_SRC, DNNL_ARG_DST};
@@ -264,10 +264,14 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         }
         if (!zp.has_default_values(DNNL_ARG_WEIGHTS)) {
             const auto mask = zp.get_mask(DNNL_ARG_WEIGHTS);
-            const auto kn_mask = wei_qmask_N() + wei_qmask_K();
-            const bool zp_over_batch = (mask & kn_mask) != mask;
-            const bool mask_ok = (mask & ~kn_mask) == 0;
-            return !(zp_over_batch && batch() > 1) && mask_ok;
+            if (allow_multiple_wei_zp) {
+                const auto kn_mask = wei_qmask_N() + wei_qmask_K();
+                const bool zp_over_batch = (mask & kn_mask) != mask;
+                const bool mask_ok = (mask & ~kn_mask) == 0;
+                return !(zp_over_batch && batch() > 1) && mask_ok;
+            } else {
+                return mask == 0;
+            }
         }
         return true;
     };
@@ -313,7 +317,9 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
             VERBOSE_UNSUPPORTED_POSTOP);
 
     VDISPATCH_MATMUL(check_attr_scales(), VERBOSE_UNSUPPORTED_SCALES_CFG);
-    VDISPATCH_MATMUL(check_attr_zero_points(), VERBOSE_UNSUPPORTED_ZP_CFG);
+    VDISPATCH_MATMUL(check_attr_zero_points(is_bf16_with_int_wei
+                             || is_f16_with_int_wei || is_f32_with_int_wei),
+            VERBOSE_UNSUPPORTED_ZP_CFG);
     VDISPATCH_MATMUL(check_bias(), VERBOSE_UNSUPPORTED_BIAS_CFG);
     VDISPATCH_MATMUL(check_reduce(), VERBOSE_UNSUPPORTED_FEATURE,
             "reduce is not supported");

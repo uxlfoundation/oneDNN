@@ -1307,7 +1307,7 @@ dnnl_primitive_attr_t create_dnnl_attr(
             // If it's non-default, use it, otherwise, deduce it.
             int mask = args_mask != attr_args_t::undefined_mask
                     ? args_mask
-                    : attr_t::policy2mask(arg_name, e.policy, ndims);
+                    : as.get_mask(arg_name, dnnl_undefined_primitive, ndims);
 
             DNN_SAFE_V(dnnl_primitive_attr_set_scales_v3(dnnl_attr, arg_name,
                     mask, static_cast<int>(e.groups.size()), e.groups.data(),
@@ -1338,7 +1338,7 @@ dnnl_primitive_attr_t create_dnnl_attr(
             // If it's non-default, use it, otherwise, deduce it.
             int mask = args_mask != attr_args_t::undefined_mask
                     ? args_mask
-                    : attr_t::policy2mask(arg_name, e.policy, ndims);
+                    : zp.get_mask(arg_name, dnnl_undefined_primitive, ndims);
 
             int group_ndims = static_cast<int>(e.groups.size());
             const auto &groups = e.groups.data();
@@ -1362,7 +1362,7 @@ dnnl_primitive_attr_t create_dnnl_attr(
             // If it's non-default, use it, otherwise, deduce it.
             int mask = args_mask != attr_args_t::undefined_mask
                     ? args_mask
-                    : attr_t::policy2mask(arg_name, e.policy, ndims);
+                    : pr.get_mask(arg_name, dnnl_undefined_primitive, ndims);
 
             int group_ndims = static_cast<int>(e.groups.size());
             const auto &groups = e.groups.data();

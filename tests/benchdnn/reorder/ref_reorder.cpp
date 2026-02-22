@@ -37,10 +37,12 @@ void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
 
     const bool has_src_scale = !prb->attr.scales.get(DNNL_ARG_SRC).is_def();
     const bool has_dst_scale = !prb->attr.scales.get(DNNL_ARG_DST).is_def();
-    const int src_scale_mask = attr_t::get_default_mask(
-            prb->attr.scales.get(DNNL_ARG_SRC).policy, prb->ndims);
-    const int dst_scale_mask = attr_t::get_default_mask(
-            prb->attr.scales.get(DNNL_ARG_DST).policy, prb->ndims);
+    const int src_scale_mask = has_src_scale
+            ? prb->attr.scales.get_mask(DNNL_ARG_SRC, dnnl_reorder, src.ndims())
+            : 0;
+    const int dst_scale_mask = has_dst_scale
+            ? prb->attr.scales.get_mask(DNNL_ARG_DST, dnnl_reorder, dst.ndims())
+            : 0;
     const auto &src_scale_groups = prb->attr.scales.get(DNNL_ARG_SRC).groups;
 
     const auto dst_dt = prb->ddt;
@@ -48,8 +50,10 @@ void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
     // This is native to reorder zero point which comes from reorder attributes.
     const bool has_src_zp = !prb->attr.zero_points.get(DNNL_ARG_SRC).is_def();
     const bool has_dst_zp = !prb->attr.zero_points.get(DNNL_ARG_DST).is_def();
-    const int src_zp_mask = attr_t::get_default_mask(
-            prb->attr.zero_points.get(DNNL_ARG_SRC).policy, src.ndims());
+    const int src_zp_mask = has_src_zp
+            ? prb->attr.zero_points.get_mask(
+                      DNNL_ARG_SRC, dnnl_reorder, src.ndims())
+            : 0;
     const auto &src_zp_groups = prb->attr.zero_points.get(DNNL_ARG_SRC).groups;
     assert(IMPLICATION(has_dst_zp, dst_zps.nelems() == 1));
     const int dst_zero_point = has_dst_zp ? dst_zps.get_elem(0) : 0;

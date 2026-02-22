@@ -104,7 +104,7 @@ static int check_attr2str() {
 
 static int check_attr() {
 #define SELF_CHECK_ATTR_ZP(zp, arg, zero_points_policy, zero_points_value, \
-        zero_points_data_type, zero_points_groups) \
+        zero_points_data_type, zero_points_groups, zero_points_mask_input) \
     do { \
         const auto &entry = (zp).get(arg); \
         SELF_CHECK_EQ(entry.policy, zero_points_policy); \
@@ -112,48 +112,54 @@ static int check_attr() {
         SELF_CHECK_EQ(entry.dt, zero_points_data_type); \
         for (size_t i = 0; i < (zero_points_groups).size(); ++i) \
             SELF_CHECK_EQ(entry.groups[i], (zero_points_groups)[i]); \
+        SELF_CHECK_EQ(entry.mask_input, zero_points_mask_input); \
     } while (0)
 
     static base_settings_t def;
     {
         base_settings_t s;
         std::vector<attr_t::zero_points_t> &zp = s.zero_points;
-        std::string content_to_parse(
-                "--attr-zero-points=src:common:0+wei:per_oc+dst:common:-2,src:"
-                "per_dim_1");
+        std::string content_to_parse;
+
+        content_to_parse = std::string(
+                "--attr-zero-points=src:common:0+wei:per_oc+dst:common:-2,"
+                "src:4");
         SELF_CHECK_EQ(parse_attributes(s, def, content_to_parse.c_str()), true);
         SELF_CHECK_EQ(zp.size(), 2);
         const std::vector<dnnl_dim_t> def_g {};
-        SELF_CHECK_ATTR_ZP(
-                zp[0], DNNL_ARG_SRC, policy_t::COMMON, 0, dnnl_s32, def_g);
-        SELF_CHECK_ATTR_ZP(
-                zp[0], DNNL_ARG_WEIGHTS, policy_t::PER_OC, 0, dnnl_s32, def_g);
-        SELF_CHECK_ATTR_ZP(
-                zp[0], DNNL_ARG_DST, policy_t::COMMON, -2, dnnl_s32, def_g);
+        SELF_CHECK_ATTR_ZP(zp[0], DNNL_ARG_SRC, policy_t::COMMON, 0, dnnl_s32,
+                def_g, attr_t::mask_input_t::policy);
+        SELF_CHECK_ATTR_ZP(zp[0], DNNL_ARG_WEIGHTS, policy_t::PER_OC, 0,
+                dnnl_s32, def_g, attr_t::mask_input_t::policy);
+        SELF_CHECK_ATTR_ZP(zp[0], DNNL_ARG_DST, policy_t::COMMON, -2, dnnl_s32,
+                def_g, attr_t::mask_input_t::policy);
 
-        SELF_CHECK_ATTR_ZP(
-                zp[1], DNNL_ARG_SRC, policy_t::PER_DIM_1, 0, dnnl_s32, def_g);
+        SELF_CHECK_EQ(zp[1].get(DNNL_ARG_SRC).mask, 4);
+        SELF_CHECK_EQ(
+                zp[1].get(DNNL_ARG_SRC).mask_input, attr_t::mask_input_t::mask);
     }
 
     {
         base_settings_t s;
         std::vector<attr_t::arg_scales_t> &sc = s.scales;
-        std::string content_to_parse(
-                "--attr-scales=src:common:1.5+wei:per_oc+src:common:0.5");
+        std::string content_to_parse;
+
+        content_to_parse = std::string(
+                "--attr-scales=src:common:1.5+wei:2+src:common:0.5");
         // `src` scale is overridden with the latter value.
         SELF_CHECK_EQ(parse_attributes(s, def, content_to_parse.c_str()), true);
         SELF_CHECK_EQ(sc.size(), 1);
         SELF_CHECK_EQ(sc[0].get(DNNL_ARG_SRC).policy, policy_t::COMMON);
         SELF_CHECK_EQ(sc[0].get(DNNL_ARG_SRC).scale, 0.5f);
-        SELF_CHECK_EQ(sc[0].get(DNNL_ARG_WEIGHTS).policy, policy_t::PER_OC);
+        SELF_CHECK_EQ(sc[0].get(DNNL_ARG_SRC).mask_input,
+                attr_t::mask_input_t::policy);
+        SELF_CHECK_EQ(sc[0].get(DNNL_ARG_WEIGHTS).mask, 2);
         SELF_CHECK_EQ(sc[0].get(DNNL_ARG_WEIGHTS).scale, 1.f);
-    }
+        SELF_CHECK_EQ(sc[0].get(DNNL_ARG_WEIGHTS).mask_input,
+                attr_t::mask_input_t::mask);
 
-    {
-        base_settings_t s;
-        std::vector<attr_t::arg_scales_t> &sc = s.scales;
-        std::string content_to_parse(
-                "--attr-scales=src:common:2.5+src1:common:1.5");
+        content_to_parse
+                = std::string("--attr-scales=src:common:2.5+src1:common:1.5");
         SELF_CHECK_EQ(parse_attributes(s, def, content_to_parse.c_str()), true);
         SELF_CHECK_EQ(sc.size(), 1);
         SELF_CHECK_EQ(sc[0].get(DNNL_ARG_SRC_0).policy, policy_t::COMMON);
@@ -170,7 +176,7 @@ static int check_attr() {
         SELF_CHECK_EQ(zp.size(), 1);
         std::vector<dnnl_dim_t> groups = {2, 1};
         SELF_CHECK_ATTR_ZP(zp[0], DNNL_ARG_WEIGHTS, policy_t::PER_OCIC, 0,
-                dnnl_s8, groups);
+                dnnl_s8, groups, attr_t::mask_input_t::policy);
     }
 
     {
@@ -348,21 +354,31 @@ static int check_attr() {
         base_settings_t s;
         std::vector<attr_t::precomputed_reductions_t> &pr
                 = s.precomputed_reductions;
-        std::string content_to_parse(
+        std::string content_to_parse;
+        content_to_parse = std::string(
                 "--attr-precomputed-reductions=src:per_tensor:s32:1x1024");
-        auto st = parse_attributes(s, def, content_to_parse.c_str());
-        SELF_CHECK_EQ(st, true);
+        SELF_CHECK_EQ(parse_attributes(s, def, content_to_parse.c_str()), true);
         SELF_CHECK_EQ(pr[0].get(DNNL_ARG_SRC).policy, policy_t::PER_TENSOR);
         SELF_CHECK_EQ(pr[0].get(DNNL_ARG_SRC).dt, dnnl_s32);
         SELF_CHECK_EQ(pr[0].get(DNNL_ARG_SRC).groups[0], 1);
         SELF_CHECK_EQ(pr[0].get(DNNL_ARG_SRC).groups[1], 1024);
+        SELF_CHECK_EQ(pr[0].get(DNNL_ARG_SRC).mask_input,
+                attr_t::mask_input_t::policy);
+
+        content_to_parse
+                = std::string("--attr-precomputed-reductions=src:15:s32:1x32");
+        SELF_CHECK_EQ(parse_attributes(s, def, content_to_parse.c_str()), true);
+        SELF_CHECK_EQ(pr[0].get(DNNL_ARG_SRC).mask, 15);
+        SELF_CHECK_EQ(pr[0].get(DNNL_ARG_SRC).dt, dnnl_s32);
+        SELF_CHECK_EQ(pr[0].get(DNNL_ARG_SRC).groups[0], 1);
+        SELF_CHECK_EQ(pr[0].get(DNNL_ARG_SRC).groups[1], 32);
+        SELF_CHECK_EQ(
+                pr[0].get(DNNL_ARG_SRC).mask_input, attr_t::mask_input_t::mask);
 
         content_to_parse = std::string("--attr-precomputed-reductions=");
-        st = parse_attributes(s, def, content_to_parse.c_str());
-        SELF_CHECK_EQ(st, true);
-        SELF_CHECK_EQ(pr[0].get(DNNL_ARG_SRC).policy, policy_t::COMMON);
-        SELF_CHECK_EQ(pr[0].get(DNNL_ARG_SRC).dt, dnnl_s32);
-        SELF_CHECK_EQ(pr[0].get(DNNL_ARG_SRC).groups.empty(), true);
+        SELF_CHECK_EQ(parse_attributes(s, def, content_to_parse.c_str()), true);
+        SELF_CHECK_EQ(
+                pr[0].get(DNNL_ARG_SRC).mask_input, attr_t::mask_input_t::none);
     }
 
 #undef SELF_CHECK_ATTR_ZP

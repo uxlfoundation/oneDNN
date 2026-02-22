@@ -374,13 +374,22 @@ attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
             }
 
         } else if (e.is_prelu_kind()) {
-            const auto policy_str = get_substr(subs, subs_pos, ':');
-            e.prelu.policy = attr_t::str2policy(policy_str);
-            if (e.prelu.policy == attr_t::policy_t::POLICY_TOTAL) {
-                BENCHDNN_PRINT(0, "%s \'%s\' %s\n",
-                        "Error: prelu post-op policy", policy_str.c_str(),
-                        "is not recognized.");
-                SAFE_V(FAIL);
+            const auto mask_input_str = get_substr(subs, subs_pos, ':');
+            if (parser_utils::has_only_digits(mask_input_str)) {
+                // If an input consists of digits only, then read it as the int
+                // value.
+                e.prelu.mask_input = attr_t::mask_input_t::mask;
+                e.prelu.mask = parser_utils::stoll_safe(mask_input_str);
+            } else {
+                // Otherwise, re-direct to policy parsing.
+                e.prelu.mask_input = attr_t::mask_input_t::policy;
+                e.prelu.policy = attr_t::str2policy(mask_input_str);
+                if (e.prelu.policy == attr_t::policy_t::POLICY_TOTAL) {
+                    BENCHDNN_PRINT(0, "%s \'%s\' %s\n",
+                            "Error: prelu post-op policy",
+                            mask_input_str.c_str(), "is not recognized.");
+                    SAFE_V(FAIL);
+                }
             }
         }
         if (subs_pos == std::string::npos) continue;
@@ -730,7 +739,8 @@ bool parse_attr_post_ops(std::vector<attr_t::post_ops_t> &po, const char *str,
             = "POST-OPS\n    Specifies post-ops attribute. `POST-OPS` syntax "
               "is one of those:\n    * SUM[:SCALE[:ZERO_POINT[:DATA_TYPE]]]\n  "
               "  * ELTWISE[:ALPHA[:BETA[:SCALE]]]\n    * DW:KkSsPp[:DST_DT]\n  "
-              "  * BINARY:DT[:MASK_INPUT[:TAG]]\n    More details at "
+              "  * BINARY:DT[:MASK_INPUT[:TAG]]\n    * PRELU[:MASK_INPUT]\n    "
+              "More details at "
             + doc_url + "knobs_attr.md\n";
     std::vector<attr_t::post_ops_t> def {attr_t::post_ops_t()};
     return parse_vector_option(po, def, parser_utils::parse_attr_post_ops_func,
@@ -740,7 +750,7 @@ bool parse_attr_post_ops(std::vector<attr_t::post_ops_t> &po, const char *str,
 bool parse_attr_scales(std::vector<attr_t::arg_scales_t> &scales,
         const char *str, const std::string &option_name = "attr-scales") {
     static const std::string help
-            = "ARG:POLICY[:SCALE[:DATA_TYPE[:GROUPS]]][+...]\n"
+            = "ARG:MASK_INPUT[:SCALE[:DATA_TYPE[:GROUPS]]][+...]\n"
               "    Specifies input scales attribute.\n"
               "    More details at "
             + doc_url + "knobs_attr.md\n";
@@ -750,7 +760,7 @@ bool parse_attr_scales(std::vector<attr_t::arg_scales_t> &scales,
 bool parse_attr_zero_points(std::vector<attr_t::zero_points_t> &zp,
         const char *str, const std::string &option_name = "attr-zero-points") {
     static const std::string help
-            = "ARG:POLICY[:ZEROPOINT[:DATA_TYPE[:GROUPS]]][+...]\n"
+            = "ARG:MASK_INPUT[:ZEROPOINT[:DATA_TYPE[:GROUPS]]][+...]\n"
               "    Specifies zero-points attribute.\n"
               "    More details at "
             + doc_url + "knobs_attr.md\n";
@@ -761,10 +771,9 @@ bool parse_attr_precomputed_reductions(
         std::vector<attr_t::precomputed_reductions_t> &pr, const char *str,
         const std::string &option_name = "attr-precomputed-reductions") {
     static const std::string help
-            = "ARG:POLICY:DATA_TYPE:GROUPS[+...]\n    Specifies precomputed "
-              "reductions attribute.\n    More details at "
-              "https://github.com/uxlfoundation/oneDNN/blob/main/tests/"
-              "benchdnn/doc/knobs_attr.md\n";
+            = "ARG:MASK_INPUT:DATA_TYPE:GROUPS[+...]\n    Specifies "
+              "precomputed reductions attribute.\n    More details at "
+            + doc_url + "knobs_attr.md\n";
     return parse_subattr(pr, str, option_name, help);
 }
 

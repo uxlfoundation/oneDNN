@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <climits>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -94,27 +95,33 @@ struct attr_t {
 
     struct zero_points_t {
         struct entry_t {
-            entry_t(policy_t apolicy = COMMON, int avalue = 0,
+            entry_t(policy_t apolicy = POLICY_TOTAL, int avalue = 0,
                     dnnl_data_type_t adt = dnnl_s32,
                     const std::vector<dnnl_dim_t> &agroups = {})
-                : policy(apolicy), value(avalue), dt(adt), groups(agroups) {}
+                : policy(apolicy)
+                , value(avalue)
+                , dt(adt)
+                , groups(agroups)
+                , mask_input(policy == POLICY_TOTAL ? mask_input_t::none
+                                                    : mask_input_t::policy) {}
 
             int from_str(const std::string &s);
 
-            bool is_def() const {
-                return policy == COMMON && value == 0 && dt == dnnl_s32
-                        && groups.empty();
-            }
+            bool is_def() const { return mask_input == mask_input_t::none; }
 
             bool is_host_scalar() const { return policy == HOST_SCALAR; }
             bool has_single_element() const {
+                if (mask_input == mask_input_t::mask) return mask == 0;
+                assert(mask_input == mask_input_t::policy);
                 return policy == policy_t::COMMON || policy == HOST_SCALAR;
             }
 
-            policy_t policy = COMMON;
+            policy_t policy = POLICY_TOTAL;
             int value = 0;
             dnnl_data_type_t dt = dnnl_s32;
             std::vector<dnnl_dim_t> groups;
+            int64_t mask = INT_MIN;
+            mask_input_t mask_input = mask_input_t::none;
         };
 
         int from_str(const std::string &s);
@@ -158,30 +165,31 @@ struct attr_t {
 
         int get_mask(int arg,
                 dnnl_primitive_kind_t prim_kind = dnnl_undefined_primitive,
-                int ndims = -1, bool has_groups = false) const {
-            const auto &e = get(arg);
-            return attr_t::policy2mask(
-                    arg, e.policy, ndims, prim_kind, has_groups);
-        }
+                int ndims = -1, bool has_groups = false) const;
 
         std::map<int, entry_t> points;
     };
 
     struct precomputed_reductions_t {
         struct entry_t {
-            entry_t(policy_t apolicy = COMMON, dnnl_data_type_t adt = dnnl_s32,
+            entry_t(policy_t apolicy = POLICY_TOTAL,
+                    dnnl_data_type_t adt = dnnl_s32,
                     const std::vector<dnnl_dim_t> &agroups = {})
-                : policy(apolicy), dt(adt), groups(agroups) {}
+                : policy(apolicy)
+                , dt(adt)
+                , groups(agroups)
+                , mask_input(policy == POLICY_TOTAL ? mask_input_t::none
+                                                    : mask_input_t::policy) {}
 
             int from_str(const std::string &s);
 
-            bool is_def() const {
-                return policy == COMMON && dt == dnnl_s32 && groups.empty();
-            }
+            bool is_def() const { return mask_input == mask_input_t::none; }
 
-            policy_t policy = COMMON;
+            policy_t policy = POLICY_TOTAL;
             dnnl_data_type_t dt = dnnl_s32;
             std::vector<dnnl_dim_t> groups;
+            int64_t mask = INT_MIN;
+            mask_input_t mask_input = mask_input_t::none;
         };
 
         int from_str(const std::string &s);
@@ -213,28 +221,26 @@ struct attr_t {
 
         int get_mask(int arg,
                 dnnl_primitive_kind_t prim_kind = dnnl_undefined_primitive,
-                int ndims = -1, bool has_groups = false) const {
-            const auto &e = get(arg);
-            return attr_t::policy2mask(
-                    arg, e.policy, ndims, prim_kind, has_groups);
-        }
+                int ndims = -1, bool has_groups = false) const;
 
         std::map<int, entry_t> entries;
     };
 
     struct arg_scales_t {
         struct entry_t {
-            entry_t(policy_t apolicy = COMMON, float ascale = 1.f,
+            entry_t(policy_t apolicy = POLICY_TOTAL, float ascale = 1.f,
                     dnnl_data_type_t adt = dnnl_f32,
                     const std::vector<dnnl_dim_t> &agroups = {})
-                : policy(apolicy), scale(ascale), dt(adt), groups(agroups) {}
+                : policy(apolicy)
+                , scale(ascale)
+                , dt(adt)
+                , groups(agroups)
+                , mask_input(policy == POLICY_TOTAL ? mask_input_t::none
+                                                    : mask_input_t::policy) {}
 
             int from_str(const std::string &s);
 
-            bool is_def() const {
-                return policy == COMMON && scale == 1.f && dt == dnnl_f32
-                        && groups.empty();
-            }
+            bool is_def() const { return mask_input == mask_input_t::none; }
 
             bool is_host_scalar() const { return policy == HOST_SCALAR; }
             bool is_dynamic() const {
@@ -243,13 +249,17 @@ struct attr_t {
             bool is_mx() const { return policy == MX; }
             bool is_dynamic_fp() const { return policy == DYNAMIC_FP; }
             bool has_single_element() const {
+                if (mask_input == mask_input_t::mask) return mask == 0;
+                assert(mask_input == mask_input_t::policy);
                 return policy == policy_t::COMMON || policy == HOST_SCALAR;
             }
 
-            policy_t policy = COMMON;
+            policy_t policy = POLICY_TOTAL;
             float scale = 1.f;
             dnnl_data_type_t dt = dnnl_f32;
             std::vector<dnnl_dim_t> groups;
+            int64_t mask = INT_MIN;
+            mask_input_t mask_input = mask_input_t::none;
         };
 
         void set(int arg, const entry_t &scale) { scales[arg] = scale; }
@@ -261,11 +271,7 @@ struct attr_t {
 
         int get_mask(int arg,
                 dnnl_primitive_kind_t prim_kind = dnnl_undefined_primitive,
-                int ndims = -1, bool has_groups = false) const {
-            const auto &e = get(arg);
-            return attr_t::policy2mask(
-                    arg, e.policy, ndims, prim_kind, has_groups);
-        }
+                int ndims = -1, bool has_groups = false) const;
 
         bool is_def(int arg) const {
             return scales.empty() || get(arg).is_def();
@@ -408,22 +414,24 @@ struct attr_t {
             struct binary_t {
                 dnnl_alg_kind_t alg = dnnl_alg_kind_undef;
                 dnnl_data_type_t src1_dt = dnnl_data_type_undef;
-                policy_t policy = policy_t::COMMON;
-                int64_t mask = -1;
+                policy_t policy = policy_t::POLICY_TOTAL;
+                int64_t mask = INT_MIN;
                 mask_input_t mask_input = mask_input_t::none;
                 std::string tag = tag::any;
                 dims_t strides;
 
                 // For the src2 tensor when the algorithm takes ternary inputs
                 dnnl_data_type_t src2_dt = dnnl_data_type_undef;
-                policy_t src2_policy = policy_t::COMMON;
-                int64_t src2_mask = -1;
+                policy_t src2_policy = policy_t::POLICY_TOTAL;
+                int64_t src2_mask = INT_MIN;
                 mask_input_t src2_mask_input = mask_input_t::none;
                 std::string src2_tag = tag::any;
                 dims_t strides2;
             } binary;
             struct {
-                policy_t policy = policy_t::COMMON;
+                policy_t policy = policy_t::POLICY_TOTAL;
+                int64_t mask = INT_MIN;
+                mask_input_t mask_input = mask_input_t::none;
             } prelu;
 
             bool is_sum_kind() const;
@@ -445,12 +453,16 @@ struct attr_t {
         int binary_index() const;
         int prelu_index() const;
 
-        // ndims must be provided for primitives that have po mask that depends
-        // on the ndims. Currently this includes only lnorm with binary post-op
-        // with policy PER_OC.
-        // Some primitives might have a special handling for a policy provided.
-        // For such primitives prim_kind must be set so get_po_masks(prb->ndims) generates
-        // a correct mask. Currently this behavior depends on policy2mask().
+        // Note: this function is used only in reference compute paths.
+        //
+        // Note: `ndims` must be provided for primitives that have post-ops mask
+        // that depends on them. Currently, it affects only lnorm with binary
+        // post-op with policy PER_OC.
+        //
+        // Note: some primitives might need a special handling for a given
+        // policy. For such primitives `prim_kind` must be set to generate a
+        // correct mask value. Currently, this behavior depends on
+        // `policy2mask(...)` implementation.
         std::vector<std::pair<int, int>> get_po_masks(int ndims,
                 dnnl_primitive_kind_t prim_kind
                 = dnnl_undefined_primitive) const;
@@ -683,7 +695,7 @@ struct attr_args_t {
 
     attr_args_t() = default;
 
-    void prepare_quant(const attr_t &attr, int arg, int mask = -1) {
+    void prepare_quant(const attr_t &attr, int arg, int mask = INT_MIN) {
         entries.insert(std::make_pair(arg, mask));
     }
 
@@ -716,7 +728,7 @@ struct attr_args_t {
         }
     }
 
-    static constexpr int undefined_mask = -1;
+    static constexpr int undefined_mask = INT_MIN;
 
 private:
     std::map<int, int /* mask*/> entries;

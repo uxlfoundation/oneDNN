@@ -8,16 +8,16 @@
     --attr-rounding-mode=ARG:MODE[+...]
     --attr-deterministic=BOOL
     --attr-dropout=PROBABILITY[:SEED[:TAG[:OFFSET[:HOST_SCALARS]]]]
-    --attr-scales=ARG:POLICY[:SCALE[:DATA_TYPE]][+...]
-                  ARG:POLICY[:DATA_TYPE[:GROUPS]][+...]
-    --attr-zero-points=ARG:POLICY[:ZEROPOINT[:DATA_TYPE]][+...]
-                       ARG:POLICY[:DATA_TYPE[:GROUPS]][+...]
-    --attr-precomputed-reductions=ARG:POLICY:DATA_TYPE:GROUPS[+...]
+    --attr-scales=ARG:MASK_INPUT[:SCALE[:DATA_TYPE]][+...]
+                  ARG:MASK_INPUT[:DATA_TYPE[:GROUPS]][+...]
+    --attr-zero-points=ARG:MASK_INPUT[:ZEROPOINT[:DATA_TYPE]][+...]
+                       ARG:MASK_INPUT[:DATA_TYPE[:GROUPS]][+...]
+    --attr-precomputed-reductions=ARG:MASK_INPUT:DATA_TYPE:GROUPS[+...]
     --attr-post-ops=SUM[:SCALE[:ZERO_POINT[:DATA_TYPE]]]
                     ELTWISE[:ALPHA[:BETA[:SCALE]]]
                     DW:KkSsPp[:DST_DT]
                     BINARY:DT[:MASK_INPUT[:TAG[:STRIDES]]]
-                    PRELU[:POLICY]
+                    PRELU[:MASK_INPUT]
 ```
 
 ## --attr-scratchpad
@@ -90,13 +90,15 @@ as host_scalars (`true`) or as device memory objects (`false`, default).
   - `dst` corresponds to `DNNL_ARG_DST`.
   - `msrci` corresponds to `DNNL_ARG_MULTIPLE_SRC + i`.
 
-`POLICY` specifies the way scale values will be applied to an `ARG` tensor. By
-default no scales are applied which corresponds to `common` policy and `1.f`
-scale value. Supported values are:
+`MASK_INPUT` specifies the way scale values will be applied to an `ARG` tensor.
+`MASK_INPUT` may be provided in two ways:
+* An integer value encoding the mask. This is the way masks are reported in
+  oneDNN verbose logs.
+* A string literal value encoding the mask (see below). Possible options are:
   - `common`         corresponds to `mask = 0` and means a whole tensor will be
                      multiplied by a single `SCALE` value.
-  - `host_scalar`    for this policy, the whole tensor will be multiplied by a
-                     single `SCALE` value that is always stored on the host.
+  - `host_scalar`    corresponds to `mask = 0` with an additional property of
+                     residing in the host memory.
   - `per_dim_0`      corresponds to `mask = 1 << 0` and means elements of dim0
                      will be multiplied by scale factors different for each
                      point. Number of scale factors is equal to dims[0].
@@ -126,17 +128,24 @@ scale value. Supported values are:
                      will be multiplied by scale factors different for each
                      point. Number of scale factors is equal to dims[3].
                      Currently supported only in matmul primitive for 4D tensors.
-  - `per_tensor`     means each element of original tensor will be multiplied
-                     by a unique number. Number of scale factor is equal to
-                     `nelems`. As of now supported only by binary post-ops.
-  - `mx`             scales are output, computed by the primitive itself, following
-                     the OCP MX specification.
-  - `dynamic_fp`     scales are output, computed by the primitive itself as
-                     `to_scale_dt(amax(x) / max(dst_dt))`
+  - `per_tensor`     means each element, or a group elements expressed by
+                     `GROUP`, of original tensor will be multiplied by a unique
+                     scale value. The number of scale factors equals to
+                     `nelems`, or `nelems / GROUP` for a grouped case.
+  - `mx`             corresponds to `per_tensor` value with an additional scales
+                     property to be computed by the primitive and stored,
+                     following the OCP MX specification. Applicable only for
+                     destination scales.
+  - `dynamic_fp`     same as `mx` value, but uses different formula to compute
+                     scales: `to_scale_dt(amax(x) / max(dst_dt))`
 
-`SCALE` is required for the `common` policy only, and specifies a floating-point
-value which is passed for execution at runtime. Specifying a value for any other
-policies will trigger an error.
+Note: some values can't be expressed with an integer as they encode not only the
+mask value but also a special mechanics behind. Such values are `host_scalar`,
+`mx`, and `dynamic_fp`.
+
+`SCALE` is required for the `common`, or `mask = 0`, value only, and specifies a
+floating-point value which is passed for execution at runtime. Specifying a
+value for any other policies will trigger an error.
 
 `DATA_TYPE` specifies data type for scale factors. Supported values are
 `f32` (the default), `f16`, `bf16`, `e8m0`, `f8_e5m2`, `f8_e4m3`.
@@ -156,15 +165,16 @@ attribute. This attribute is supported only for integer data types as of now.
   - `wei` corresponds to `DNNL_ARG_WEIGHTS`
   - `dst` corresponds to `DNNL_ARG_DST`
 
-`POLICY` has the same semantics and meaning as for `--attr-scales`. Supported
-values are:
+`MASK_INPUT` has the same semantics and meaning as for `--attr-scales`.
+
+Supported string literal values (with same semantics) are:
   - `common`
   - `host_scalar`
-  - `per_dim_1` (for `src` and `dst`)
+  - `per_dim_1`
 
-`ZEROPOINT` is required for the `common` policy only, an specifies an integer
-value which is passed for execution at runtime. Specifying a value for any other
-policies will trigger an error.
+`ZEROPOINT` is required for the `common`, or `mask = 0` value only, and
+specifies an integer value which is passed for execution at runtime. Specifying
+a value for any other policies will trigger an error.
 
 `DATA_TYPE` specifies data type for zero points. Supported values are
 `s32` (the default), `s8`, `u8`, `s4`, `u4`.
@@ -184,8 +194,9 @@ types as of now.
   - `src` corresponds to `DNNL_ARG_SRC`
   - `wei` corresponds to `DNNL_ARG_WEIGHTS`
 
-`POLICY` has the same semantics and meaning as for `--attr-scales`. Supported
-values are:
+`MASK_INPUT` has the same semantics and meaning as for `--attr-scales`.
+
+Supported string literal values (with same semantics) are:
   - `per_tensor`
 
 `DATA_TYPE` specifies data type for precomputed reductions. Supported values are
@@ -262,18 +273,31 @@ They support optional argument `DST_DT`, which defines destination
 tensor data type. Refer to [data types](knobs_dt.md) for details.
 
 ### Binary
-`BINARY` post operation kind applies one of supported binary algorithms to the
-operation result and then stores it. It requires mandatory argument of `DT`
-specifying data type of second memory operand. It supports optional argument of
-`MASK_INPUT` giving a hint what are the dimensions for a second memory operand.
-`MASK_INPUT` may be provided in two ways:
-* As plain integer value which will be process directly.
-* As a `POLICY` value (see above).
-In case `MASK_INPUT` value affects more than one dimension (e.g. `per_tensor`
-`POLICY` input or integer `15` input), additional optional argument `TAG` is
-supported, positioned after `MASK_INPUT`, to specify physical memory format.
-`TAG` values use same notation as in drivers. The default value of `TAG` is
-`any`. Refer to [tags](knobs_tag.md) for details.
+`BINARY` post operation kind applies one of the supported binary algorithms to
+the operation result and then stores it. It requires a mandatory argument of
+`DT` specifying a data type of the second memory operand. It supports an
+optional argument of `MASK_INPUT` providing the information what the dimensions
+for the second memory operand are. `MASK_INPUT` may be provided in two ways:
+* An integer value encoding the mask. This is the way masks are reported in
+  oneDNN verbose logs.
+* A string literal value encoding the mask (see below). Possible options are:
+  - `common`         corresponds to `mask = 0` and means a whole tensor will be
+                     multiplied by a single `SCALE` value.
+  - `per_oc`         corresponds to `mask = 1 << 1` and means elements of dim1
+                     will be multiplied by scale factors different for each
+                     point. Number of scale factors is equal to dims[1].
+  - `per_tensor`     means each element, or a group elements expressed by
+                     `GROUP`, of original tensor will be multiplied by a unique
+                     scale value. The number of scale factors equals to
+                     `nelems`, or `nelems / GROUP` for a grouped case.
+
+In case the `MASK_INPUT` value affects more than one dimension (e.g.,
+`per_tensor` input value or integer `15` input value), additional optional
+argument `TAG` is supported, positioned after `MASK_INPUT`, to specify a
+physical memory format. `TAG` values use same notation as in drivers. The
+default value of the `TAG` option is `any`. Refer to [tags](knobs_tag.md) for
+details.
+
 `STRIDES` values use same notion as in drivers and intended to specify
 non-trivial strides which is a rare case. It's a single dims-like tensor applied
 to a specific binary post-op input. It's recommended to use this one only when
@@ -310,8 +334,11 @@ the third tensor is fixed at `s8`.
 
 ### Prelu
 `PRELU` post operation kind applies forward algorithm to the operations result
-and then stores it. Weights `DT` is always implicitly f32. It supports an
-optional argument of `POLICY` specifying the broadcast policy.
+and then stores it. Weights `DT` is always implicitly f32.
+
+`MASK_INPUT` has the same semantics and meaning as for binary `--attr-post-ops`.
+Supported values are same.
+
 
 ## Examples:
 

@@ -311,8 +311,8 @@ int attr_t::arg_scales_t::entry_t::from_str(const std::string &s) {
     }
     HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING();
 
-    // process scale value for COMMON policy
-    if (this->policy == COMMON || this->policy == HOST_SCALAR) {
+    // process scale value if a single value is expected
+    if (this->has_single_element()) {
         SAFE(parse_value_and_runtime(
                      this->scale, parser::get_substr(s, start_pos, ':')),
                 WARN);
@@ -381,7 +381,7 @@ int attr_t::zero_points_t::entry_t::from_str(const std::string &s) {
     }
     HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING();
 
-    if (this->policy == COMMON || this->policy == HOST_SCALAR) {
+    if (this->has_single_element()) {
         float value = 0.0f;
         SAFE(parse_value_and_runtime(
                      value, parser::get_substr(s, start_pos, ':')),
@@ -804,9 +804,7 @@ std::ostream &operator<<(
     using ::operator<<;
 
     s << scale.policy;
-    if (scale.policy == policy_t::COMMON
-            || scale.policy == policy_t::HOST_SCALAR)
-        s << ":" << scale.scale;
+    if (scale.has_single_element()) s << ":" << scale.scale;
     if (scale.dt != dnnl_f32 || !scale.groups.empty()) s << ':' << scale.dt;
     if (!scale.groups.empty()) s << ":" << dims2str(scale.groups);
     return s;
@@ -820,9 +818,7 @@ std::ostream &operator<<(
     for (const auto &point : zero_points.points) {
         s << delim;
         s << arg2str(point.first) << ":" << point.second.policy;
-        if (point.second.policy == policy_t::COMMON
-                || point.second.policy == policy_t::HOST_SCALAR)
-            s << ":" << point.second.value;
+        if (point.second.has_single_element()) s << ":" << point.second.value;
         if (point.second.dt != dnnl_s32 || !point.second.groups.empty())
             s << ':' << point.second.dt;
         if (!point.second.groups.empty())
@@ -1738,7 +1734,7 @@ void maybe_scale(const attr_t &attr, float &d, const float *scales, int64_t c,
 
     const auto &e = attr.scales.get(arg);
     if (!e.is_def()) {
-        int64_t idx = e.policy == policy_t::COMMON ? 0 : c;
+        int64_t idx = e.has_single_element() ? 0 : c;
         float s = scales[idx];
         if (opposite_scale) s = 1.f / s;
         d *= s;
@@ -1751,7 +1747,7 @@ void maybe_zero_point(const attr_t &attr, float &d, const int32_t *zero_points,
 
     const auto &e = attr.zero_points.get(arg);
     if (!e.is_def()) {
-        const int idx = e.policy == policy_t::COMMON ? 0 : c;
+        const int idx = e.has_single_element() ? 0 : c;
         const int zp_sign = opposite_zero_point ? -1 : 1;
         d -= zp_sign * zero_points[idx];
     }

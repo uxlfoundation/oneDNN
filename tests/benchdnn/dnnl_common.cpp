@@ -989,7 +989,7 @@ void skip_unimplemented_prelu_po(
 
 void skip_unimplemented_arg_scale(const attr_t &attr, res_t *res) {
     for (const auto &arg_s : attr.scales.scales) {
-        if (arg_s.second.policy != policy_t::COMMON) {
+        if (!arg_s.second.has_single_element()) {
             res->state = SKIPPED;
             res->reason = skip_reason::case_not_supported;
             return;

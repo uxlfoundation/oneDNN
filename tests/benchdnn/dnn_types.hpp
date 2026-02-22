@@ -107,6 +107,9 @@ struct attr_t {
             }
 
             bool is_host_scalar() const { return policy == HOST_SCALAR; }
+            bool has_single_element() const {
+                return policy == policy_t::COMMON || policy == HOST_SCALAR;
+            }
 
             policy_t policy = COMMON;
             int value = 0;
@@ -239,6 +242,9 @@ struct attr_t {
             }
             bool is_mx() const { return policy == MX; }
             bool is_dynamic_fp() const { return policy == DYNAMIC_FP; }
+            bool has_single_element() const {
+                return policy == policy_t::COMMON || policy == HOST_SCALAR;
+            }
 
             policy_t policy = COMMON;
             float scale = 1.f;

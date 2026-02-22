@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2018 Intel Corporation
+* Copyright 2026 FUJITSU LIMITED
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -31,6 +32,8 @@
 
 #if DNNL_X64
 #include "cpu/x64/cpu_isa_traits.hpp"
+#elif DNNL_AARCH64
+#include "cpu/aarch64/cpu_isa_traits.hpp"
 #endif
 
 #define rnn_postgemm_sig_args \
@@ -100,6 +103,59 @@
             float *diff_weights_projection_, float *diff_weights_peephole_, \
             float *diff_bias_, gemm_acc_t *amx_scratchpad, \
             x64::brgemm_batch_element_t *addr_batch_global
+
+#elif DNNL_AARCH64
+
+#define rnn_merged_layer_execution_sig_args \
+    const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
+            rnn_utils::cell_position_t cell_position, weights_t **w_layer_, \
+            const src_layer_t *src_layer_, scratch_t *scratch_gates_, \
+            gemm_acc_t *diff_src_layer_, gemm_acc_t *diff_w_layer_, \
+            aarch64::brgemm_batch_element_t *addr_batch_global
+
+#define rnn_cell_execution_sig_args \
+    const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
+            rnn_utils::cell_position_t cell_position, dst_layer_t *dst_layer_, \
+            void *dst_iter_c_, gemm_acc_t *diff_src_layer_, \
+            gemm_acc_t *diff_augru_attention_, gemm_acc_t *diff_src_iter_, \
+            gemm_acc_t *diff_src_iter_c_, weights_t **w_layer_, \
+            weights_t **w_iter_, weights_t **w_projection_, \
+            const float *weights_peephole_, const float *w_proj_comp, \
+            void **bias_, const src_layer_t *src_layer_, \
+            const src_layer_t *augru_attention_, const src_iter_t *src_iter_, \
+            const void *src_iter_c_, gemm_acc_t *diff_dst_layer_, \
+            gemm_acc_t *diff_dst_iter_, gemm_acc_t *diff_dst_iter_c_, \
+            gemm_acc_t *diff_w_layer_, gemm_acc_t *diff_w_iter_, \
+            float *diff_weights_projection_, float *diff_weights_peephole_, \
+            float *diff_bias_, gates_t *ws_gates_, scratch_t *scratch_gates_, \
+            ht_t *proj_ht_, gemm_acc_t *scratch_diff_ht_, gates_t *ws_grid_, \
+            scratch_t *scratch_cell_, scratch_t *scratch_gates_blocked_, \
+            scratch_t *scratch_src_layer_, scratch_t *scratch_src_iter_, \
+            dst_iter_t *dst_iter_, \
+            aarch64::brgemm_batch_element_t *addr_batch_global
+
+#define rnn_grid_execution_sig_args \
+    const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
+            weights_t **weights_layer_, weights_t **weights_iter_, \
+            weights_t **weights_projection_, const float *weights_peephole_, \
+            const float *w_proj_comp, void **bias_, \
+            const src_layer_t *src_layer_, \
+            const src_layer_t *augru_attention_, const src_iter_t *src_iter_, \
+            const void *src_iter_c_, dst_layer_t *dst_layer_, \
+            dst_iter_t *dst_iter_, void *dst_iter_c_, \
+            src_layer_t *ws_states_layer_, src_iter_t *ws_states_iter_, \
+            void *ws_states_iter_c_, gemm_acc_t *ws_diff_states_layer_, \
+            gemm_acc_t *ws_diff_states_iter_, \
+            gemm_acc_t *ws_diff_states_iter_c_, gates_t *ws_gates_, \
+            ht_t *ws_ht_, gates_t *ws_grid_, scratch_t *scratch_gates_, \
+            ht_t *scratch_ht_, gemm_acc_t *scratch_diff_ht_, \
+            scratch_t *scratch_cell_, scratch_t *scratch_gates_blocked_, \
+            scratch_t *scratch_src_layer_, scratch_t *scratch_src_iter_, \
+            gemm_acc_t *diff_augru_attention_, \
+            gemm_acc_t *diff_weights_layer_, gemm_acc_t *diff_weights_iter_, \
+            float *diff_weights_projection_, float *diff_weights_peephole_, \
+            float *diff_bias_, \
+            aarch64::brgemm_batch_element_t *addr_batch_global
 
 #else
 
@@ -278,6 +334,8 @@ struct diff_src_brgemm_conf_t {
 
 #if DNNL_X64
     x64::cpu_isa_t isa = x64::isa_undef;
+#elif DNNL_AARCH64
+    aarch64::cpu_isa_t isa = aarch64::isa_undef;
 #endif
 
     brgemm_rnn_execute_loop_order_t loop_order
@@ -299,6 +357,8 @@ struct diff_wei_brgemm_conf_t {
 
 #if DNNL_X64
     x64::cpu_isa_t isa = x64::isa_undef;
+#elif DNNL_AARCH64
+    aarch64::cpu_isa_t isa = aarch64::isa_undef;
 #endif
 
     brgemm_rnn_execute_loop_order_t loop_order
@@ -656,6 +716,8 @@ struct rnn_conf_t {
     int nthr;
 #if DNNL_X64
     x64::cpu_isa_t brgemm_isa;
+#elif DNNL_AARCH64
+    aarch64::cpu_isa_t brgemm_isa;
 #endif
     bool unfused_post_gemm;
     brgemm_rnn_execute_loop_order_t loop_order
@@ -726,6 +788,8 @@ bool init_conf(rnn_conf_t &rnn, const rnn_desc_t &rd,
 #if DNNL_X64
         if (!(x64::mayiuse(x64::avx512_core) || x64::mayiuse(x64::avx2_vnni_2)))
             return false;
+#elif DNNL_AARCH64
+        if (!aarch64::mayiuse_bf16()) return false;
 #endif
         rnn.dt_conf = all_bf16;
     } else if (utils::everyone_is(data_type::f16, src_layer_d.data_type(),

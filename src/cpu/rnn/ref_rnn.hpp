@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2018 Intel Corporation
+* Copyright 2026 FUJITSU LIMITED
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -32,6 +33,8 @@
 #include "cpu/rnn/postgemm_dispatcher.hpp"
 #if DNNL_X64
 #include "cpu/x64/rnn/rnn_brgemm_utils.hpp"
+#elif DNNL_AARCH64
+#include "cpu/aarch64/rnn/rnn_brgemm_utils.hpp"
 #endif
 #include "cpu/rnn/rnn_utils.hpp"
 namespace dnnl {
@@ -114,6 +117,8 @@ struct ref_rnn_common_t : public primitive_t {
             = ref_rnn_common_t<aprop, src_type, weights_type, acc_type>;
 #if DNNL_X64
     using ref_rnn_brgemm_t = x64::rnn_brgemm_utils::rnn_brgemm_t<aprop>;
+#elif DNNL_AARCH64
+    using ref_rnn_brgemm_t = aarch64::rnn_brgemm_utils::rnn_brgemm_t<aprop>;
 #endif
 
     using cell_execution_f
@@ -141,6 +146,12 @@ struct ref_rnn_common_t : public primitive_t {
         const char *impl_name() const {
 #if DNNL_X64
             using namespace dnnl::impl::cpu::x64;
+            return rnn_.is_brgemm
+                    ? JIT_IMPL_NAME_HELPER("brgemm:", rnn_.brgemm_isa, "")
+                    : rnn_.use_matmul ? "ref+matmul"
+                                      : "ref";
+#elif DNNL_AARCH64
+            using namespace dnnl::impl::cpu::aarch64;
             return rnn_.is_brgemm
                     ? JIT_IMPL_NAME_HELPER("brgemm:", rnn_.brgemm_isa, "")
                     : rnn_.use_matmul ? "ref+matmul"
@@ -187,6 +198,8 @@ protected:
     ref_rnn_brgemm_t rnn_brgemm_;
     std::shared_ptr<primitive_t> bf32_wei_layer_reorder_;
     std::shared_ptr<primitive_t> bf32_wei_iter_reorder_;
+#elif DNNL_AARCH64
+    ref_rnn_brgemm_t rnn_brgemm_;
 #endif
 
     template <typename input_t>

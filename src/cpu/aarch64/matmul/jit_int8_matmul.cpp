@@ -939,6 +939,11 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
             }
         }
         n_block_sz = std::min<int>(brg_.N, best_n_block_sz);
+        // keep the coarsened tile but align it to micro_n so that the last tile
+        // is correctly handled by the tail kernel when needed.
+        if (n_block_sz % micro_n != 0) {
+            n_block_sz = div_up(n_block_sz, micro_n) * micro_n;
+        }
     }
 
     int num_a_blocks = div_up(brg_.M, m_block_sz);

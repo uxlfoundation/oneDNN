@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2023-2024 FUJITSU LIMITED
-* Copyright 2024-2025 Arm Ltd. and affiliates
+* Copyright 2024-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -981,13 +981,17 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     // For batched problems with plain A and C and fully broadcasted across B
     // we can merge all the batch dimensions into M if broadcast strategies
     // set is limited for binary post-ops
+    //
+    // For 4D tensors with acbd layout, avoid merging batches to prevent stride
+    // issues
     const bool plain_A_layout = bm_conf_utils.check_is_plain(bgmmc.src_tag)
             || treat_transposed_A_as_plain;
     const bool merge_batch_dims_into_M = bgmmc.batch > 1
             && bgmmc.bcast_B_desc.bcast_across_all_batch_dims
             && bm_conf_utils.check_is_plain(bgmmc.dst_tag) && plain_A_layout
             && post_ops_ok(
-                    bgmmc, attr, dst_d, true /* limit_bcast_strategies_set */);
+                    bgmmc, attr, dst_d, true /* limit_bcast_strategies_set */)
+            && !(bgmmc.ndims == 4) && src_d.matches_tag(format_tag::acbd);
     if (merge_batch_dims_into_M) {
         bgmmc.M *= bgmmc.batch;
         bgmmc.batch = 1;
@@ -1035,8 +1039,10 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     // We need to correct A_strides if batched dimensions are merged in M and
     // A layout is formally transposed but could be treated as plain
+    // For 4D tensors, only apply adjustment for treat_A_as_plain, not for acbd tag
+    const bool adjust_for_acbd = src_d.matches_tag(acbd) && bgmmc.ndims == 3;
     if (merge_batch_dims_into_M
-            && (src_d.matches_tag(acbd) || treat_transposed_A_as_plain)) {
+            && (adjust_for_acbd || treat_transposed_A_as_plain)) {
         bgmmc.A_strides[1] = bgmmc.A_strides[2];
     }
 

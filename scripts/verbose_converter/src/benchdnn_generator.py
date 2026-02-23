@@ -214,19 +214,19 @@ class Converter(metaclass=ConverterMeta):
     @property
     def scales(self):
         params = self._get_quantization(self.entry.exts.scales, 0.5, "f32")
-        return f"--attr-scales={params}"
+        return f"--attr-scales={params}" if params else ""
 
     @property
     def zero_points(self):
         params = self._get_quantization(self.entry.exts.zero_points, 1, "s32")
-        return f"--attr-zero-points={params}"
+        return f"--attr-zero-points={params}" if params else ""
 
     @property
     def precomputed_reductions(self):
         params = self._get_quantization(
             self.entry.exts.precomputed_reductions, 1, "s32"
         )
-        return f"--attr-precomputed-reductions={params}"
+        return f"--attr-precomputed-reductions={params}" if params else ""
 
     @property
     def rounding_mode(self):

@@ -116,7 +116,7 @@ public:
 };
 
 struct DependencyRegion {
-    uint8_t base, size;
+    uint16_t base, size;
     uint8_t unspecified : 1;
     uint8_t checkWAW : 1;
     uint8_t rf : 2;
@@ -142,6 +142,12 @@ struct DependencyRegion {
         return true;
     }
     void clear()        { *this = DependencyRegion(hw); unspecified = false; checkWAW = false; rf = 0; }
+
+    void duplicateLH() {
+        for (int i = 0; i < size; i++)
+            masks[size + i] = masks[i];
+        size *= 2;
+    }
 
 #ifdef NGEN_DEBUG
     inline void dump() const;
@@ -218,7 +224,7 @@ class DependencyTable {
     };
 
     enum : int {
-        maxGRF = 256,
+        maxGRF = 512,
         grfListIdxUnspecified = maxGRF      // GRF list index for all unspecified regions.
     };
 
@@ -232,7 +238,7 @@ class DependencyTable {
 
     std::vector<Dependency<consumer>> deps;         // List of all Dependencies (active or not)
     std::vector<DependencyFragment> frags;          // List of all DependencyFragments (active or not)
-    std::array<uint32_t, 257> heads[NListTypes];    // Heads of doubly-linked lists.
+    std::array<uint32_t, 512+1> heads[NListTypes];  // Heads of doubly-linked lists.
 
     static bool isHeadLink(uint32_t id)         { return ((id & 0x80000000) != 0) && (id != none); }
     static uint32_t readHeadLink(uint32_t id)   { return id & 0x7FFFFFFF; }
@@ -295,7 +301,7 @@ struct BasicBlock {
     DependencyTable<false> incoming;                        // Table of dependencies produced by prior BBs (temporary).
     std::vector<SyncInsertion> syncs;                       // List of sync instructions to generate.
     std::vector<DummyMovInsertion> movs;                    // List of mov instructions to generate.
-    std::vector<std::array<DependencyRegion, 4>> opRegions; // Cache of instruction operand regions.
+    std::vector<std::array<DependencyRegion, 6>> opRegions; // Cache of instruction operand regions.
     bool enablePVCWARWA = false;                            // Enable workaround for PVC WAR bug.
 
     const DependencyRegion &getOperandRegion(int inum, int opNum) const {
@@ -339,6 +345,7 @@ inline GeneralizedPipe getPipe(HW hw, const Instruction &insn, bool checkOOO = t
 {
     auto op = insn.opcode();
 
+
     // Check jumps and no-ops
     if (isBranch(op) || op == Opcode::nop_gen12 || op == Opcode::sync || op == Opcode::illegal || op == Opcode::directive)
         return GeneralizedPipe();
@@ -348,6 +355,7 @@ inline GeneralizedPipe getPipe(HW hw, const Instruction &insn, bool checkOOO = t
         if (!checkOOO)
             return GeneralizedPipe();
         switch (op) {
+            case Opcode::bdpas:
             case Opcode::dpas:
             case Opcode::dpasw:
                 return GeneralizedPipe::Systolic();
@@ -356,6 +364,10 @@ inline GeneralizedPipe getPipe(HW hw, const Instruction &insn, bool checkOOO = t
                 return GeneralizedPipe::Math();
             case Opcode::send:
             case Opcode::sendc:
+            case Opcode::sendg:
+            case Opcode::sendgc:
+            case Opcode::sendgx:
+            case Opcode::sendgxc:
                 return GeneralizedPipe(insn.sfid());
         }
     }
@@ -375,6 +387,8 @@ inline GeneralizedPipe getPipe(HW hw, const Instruction &insn, bool checkOOO = t
     unsigned lmask = (hw >= HW::XeHPC) ? 0b1011 : 0b0011;
     if ((dt & lmask) == lmask)
         mask = PipeMaskL;
+    else if ((hw >= HW::XE3P_35_10) && (op == Opcode::mov_gen12 || op == Opcode::srnd) && (dt != insn.src0Typecode()))
+        mask = PipeMaskI;
     else if (dt & 8)
         mask = PipeMaskF;
     else
@@ -622,8 +636,13 @@ inline int estimateLatency(HW hw, const Instruction &insn)
     switch (insn.opcode()) {
         default:
         case Opcode::math: return (hw == HW::Gen12LP) ? 20 : 17;
+        case Opcode::bdpas:
         case Opcode::dpas:
         case Opcode::dpasw: return 20;   // need correct value
+        case Opcode::sendg:
+        case Opcode::sendgc:
+        case Opcode::sendgx:
+        case Opcode::sendgxc:
         case Opcode::send:
         case Opcode::sendc: {
             switch (insn.sfid()) {
@@ -1394,7 +1413,7 @@ inline BasicBlockList getBasicBlocks(HW hw, const Program &program)
 
         // Decode and cache operand regions, handling any nodep pseudo-instructions.
         bb.opRegions.resize(bb.iend - bb.istart);
-        std::array<bool, 4> ignoreDeps = {false};
+        std::array<bool, 6> ignoreDeps = {false};
 
         DependencyRegion subDstRegion(hw);
         subDstRegion.clear();
@@ -1409,6 +1428,8 @@ inline BasicBlockList getBasicBlocks(HW hw, const Program &program)
                     case Directive::ignoredep_src0: ignoreDeps[1] = true; break;
                     case Directive::ignoredep_src1: ignoreDeps[2] = true; break;
                     case Directive::ignoredep_src2: ignoreDeps[3] = true; break;
+                    case Directive::ignoredep_src3: ignoreDeps[4] = true; break;
+                    case Directive::ignoredep_src4: ignoreDeps[5] = true; break;
                     case Directive::subdep_dst:
 #ifdef NGEN_SAFE
                         if (!subDstRegion.empty())
@@ -1428,7 +1449,7 @@ inline BasicBlockList getBasicBlocks(HW hw, const Program &program)
                 continue;
             }
 
-            for (int srcN = -1; srcN < 3; srcN++) {
+            for (int srcN = -1; srcN < 5; srcN++) {
                 regions[srcN + 1].hw = hw;
                 if (ignoreDeps[srcN + 1] || !insn.getOperandRegion(regions[srcN + 1], srcN))
                     regions[srcN + 1].clear();
@@ -1646,7 +1667,7 @@ inline uint8_t chooseSBID(HW hw, int tokens, Program &program, const BasicBlock 
 
     // Priority 2: assign SBID based on base register of dst, src1, src0 (in that order),
     //  if it's unclaimed or expired.
-    for (int opNum : {-1, 1, 0}) {
+    for (int opNum : {-1, 1, 0, 2, 3}) {
         auto &region = bb.getOperandRegion(inum, opNum);
         if (region.size > 0) {
             auto sbid = preferredSBID(tokens, region.base);
@@ -1737,12 +1758,12 @@ PVCWARWA analyzePVCWARWA(HW hw, Program &program, BasicBlock &bb, int phase,
     if (sameBB && consumeOp.pipe.type() != GeneralizedPipe::vSystolic) {
         // Check if we have a src at least as large as our dst.
         int srcN;
-        for (srcN = 0; srcN <= 2; srcN++) {
+        for (srcN = 0; srcN <= 4; srcN++) {
             if (regions[srcN + 1].unspecified) continue;
             if (bboxContains(regions[srcN + 1], regions[0]))
                 break;
         }
-        if (srcN >= 2) srcN = -1;
+        if (srcN >= 4) srcN = -1;
 
         // Check for potential read suppression.
         if (srcN >= 0 && consumeOp.pipe.inOrder()) {
@@ -1794,7 +1815,7 @@ PVCWARWA analyzePVCWARWA(HW hw, Program &program, BasicBlock &bb, int phase,
     }
 
     // Case 2: walk forward, looking for a new target send instruction.
-    auto eligibleSend = [=, &program, &dep](uint32_t inum) {
+    auto eligibleSend = [=, &program](uint32_t inum) {
         auto &insn = program[inum];
         if (inum != dep.inum && insn.predicated())
             return false;
@@ -2065,7 +2086,7 @@ inline void analyze(HW hw, int tokens, Program &program, BasicBlock &bb, int pha
             bool assignSBID = (phase == 1) && tokenInsn && tokenInfo.tokenTBD && !insn.atomic();
 
             // Collect operands.
-            for (int srcN = 2; srcN >= -1; srcN--) {
+            for (int srcN = 4; srcN >= -1; srcN--) {
                 // Skip non-GRF operands.
                 // Special case: check for cr/sr/ce source operands and force A@1 if any.
                 if (regions[srcN + 1].empty()) {
@@ -2395,6 +2416,13 @@ inline void analyze(HW hw, int tokens, Program &program, BasicBlock &bb, int pha
         // First pass: record pipeline SWSB dependencies for later entry into consumer table.
         recordIOPreconsumes(generated);
 
+        // mullh takes up two execution slots. Consume dependencies on the first;
+        //  (already done); produce them on the second (up next).
+        if (opcode == Opcode::mullh) {
+            incrementCounters(getPipeMask(hw, insn));
+            consumeOp.counters = counters;
+        }
+
         // Add producer dependencies for all operands.
         // Also record token timeout.
         // During phase 0, only do this for OOO instructions, and if dst not null, only dst.
@@ -2405,7 +2433,7 @@ inline void analyze(HW hw, int tokens, Program &program, BasicBlock &bb, int pha
                 produceOp.tokenTime = estimateLatency(hw, insn);
             }
 
-            for (int srcN = -1; srcN < 3; srcN++) {
+            for (int srcN = -1; srcN < 5; srcN++) {
                 if (!regions[srcN + 1].empty()) {
                     produceOp.rw = (srcN < 0);
                     if (tokenInfo.hasToken()) {

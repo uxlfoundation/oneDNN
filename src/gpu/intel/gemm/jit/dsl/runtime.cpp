@@ -117,9 +117,9 @@ dsl::hw_t get_hardware(cl_device_id device, cl_context context) {
             CL_DEVICE_FEATURE_CAPABILITIES_INTEL, sizeof(cl_bitfield),
             &attrs_cl, nullptr);
     if (err) return {};
+    ngen::HW hw = ngen::getCore(product.family);
 
-    if (ngen::getCore(product.family) >= ngen::HW::XeHPC)
-        attr |= dsl::hw::attr_t::large_grf;
+    if (hw >= ngen::HW::XeHPC) attr |= dsl::hw::attr_t::large_grf;
 
     if (attrs_cl & CL_DEVICE_FEATURE_FLAG_DPAS_INTEL)
         attr |= dsl::hw::attr_t::systolic;
@@ -127,8 +127,11 @@ dsl::hw_t get_hardware(cl_device_id device, cl_context context) {
             && product.family != ngen::ProductFamily::ARL
             && product.family != ngen::ProductFamily::MTL)
         attr |= dsl::hw::attr_t::atomic_fp64;
+    if (ngen::OpenCLCodeGenerator<ngen::HW::Unknown>::detectEfficient64Bit(
+                context, device, hw))
+        attr |= dsl::hw::attr_t::efficient_64bit;
 
-    return dsl::hw_t(product, eu_count, max_wg_size, l3_cache_size, attr);
+    return dsl::hw_t(product, eu_count, (int)max_wg_size, l3_cache_size, attr);
 }
 
 #ifdef GEMMSTONE_WITH_BINARY_RUNTIME
@@ -211,8 +214,8 @@ dsl::hw_t get_hardware(ze_device_handle_t device, ze_context_handle_t context) {
     }
 
     dsl::hw::attr_t attr = {};
-    if (ngen::getCore(product.family) >= ngen::HW::XeHPC)
-        attr |= dsl::hw::attr_t::large_grf;
+    ngen::HW hw = ngen::getCore(product.family);
+    if (hw >= ngen::HW::XeHPC) attr |= dsl::hw::attr_t::large_grf;
 
     {
         auto deviceModPropsExt = ze_intel_device_module_dp_exp_properties_t();
@@ -247,6 +250,10 @@ dsl::hw_t get_hardware(ze_device_handle_t device, ze_context_handle_t context) {
         if (fltAtom.fp64Flags & atomic_add)
             attr |= dsl::hw::attr_t::atomic_fp64;
     }
+
+    if (ngen::LevelZeroCodeGenerator<ngen::HW::Unknown>::detectEfficient64Bit(
+                context, device, hw))
+        attr |= dsl::hw::attr_t::efficient_64bit;
 
     return dsl::hw_t(product, eu_count, max_wg_size, l3_cache_size, attr);
 }

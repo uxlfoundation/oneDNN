@@ -398,6 +398,7 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
     if (!hint.type.is_undef()) vlayout = reinterpret(vlayout, hint.type);
 
     bool is_store = (send_op_ == send_op_t::store);
+    bool is_prefetch = (send_op_ == send_op_t::prefetch);
     auto send_type = dsl::type_t::u(vlayout.type().size() * 8);
     auto blocks = vlayout.blocks();
     if (blocks.size() < 2) return false;
@@ -464,8 +465,8 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
 
     // Try to reduce the number of messages by increasing count per message.
     int try_count = count * 2;
-    int max_count
-            = block_2d_max_count(is_store, transpose, width, mem_type_.size());
+    int max_count = block_2d_max_count(ir_ctx_->hw(), is_prefetch, is_store,
+            transpose, width, mem_type_.size());
     while (try_count <= max_count) {
         if (b0.size % (try_count * width) != 0) break;
         count = try_count;
@@ -654,8 +655,10 @@ bool access_builder_t::fixup_send_2d_params(const dsl::type_t &send_type,
     int factor = 64 / surface_width_size;
     if (h % factor != 0) return false;
 
-    int max_count = block_2d_max_count(
-            send_op_ == send_op_t::store, transpose, w, send_type.size());
+    int max_count = block_2d_max_count(ir_ctx_->hw(),
+            send_op_ == send_op_t::prefetch, send_op_ == send_op_t::store,
+            transpose, w, send_type.size());
+
     if (factor > max_count) return false;
 
     vnni_permute_factor = factor;

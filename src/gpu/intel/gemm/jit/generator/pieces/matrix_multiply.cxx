@@ -378,7 +378,7 @@ void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, boo
 {
     auto Ta = problem.Ta, Tb = problem.Tb, Tc = problem.Tc_compute();
     bool globalCM = state.C_layout.colMajor();
-    auto params = systolicParams(hw, problem, strategy);
+    auto params = systolicParams(hw, problem);
     auto ksys = params.ksys;
     auto osys = params.osys;
     auto sdepth = params.sdepth;
@@ -425,6 +425,7 @@ void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, boo
 
     for (int x = 0; x < nx; x += xinc) {
         Subregister A0, B0, C0;
+        RegData AS, BS, AS0, BS0;
         int rcount = 0, ybase = 0, hhbase = 0;
 
         auto issueDPAS = [&](bool last) {
@@ -448,9 +449,14 @@ void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, boo
                 if (rc != 8 && strategy.extendedAtomicFMA) hw_unsupported();
             }
 
+            if (hhbase + ksys < opCount) mod |= Fwd;
+
             if (startRepackC && hhbase == 0)
                 srcC0 = null.retype(C0.getType());
 
+            if (state.useBDPAS) {
+                bdpas(mod, sdepth, rc, C0, srcC0, V0, N0, AS0, BS0);
+            } else
             {
                 useDPASW ? dpasw(mod, sdepth, rc, C0, srcC0, V0, N0) :
                             dpas(mod, sdepth, rc, C0, srcC0, V0, N0);
@@ -472,6 +478,30 @@ void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, boo
                 Subregister A, B, C;
 
                 const int cxCompA = -1, cxCompB = -1, cxCompC = -1, cBuffer = 0;
+                auto bdpasScaleArg = [&](const RegisterLayout Xr_scaleLayout, Type Tx_scaleOp,
+                                         GRFMultirange Xr_scaleRegs, bool isA, int x, int k) {
+                    RegData XS;
+                    if (state.useBDPAS && !Xr_scaleLayout.empty()) {
+                        int neq;
+                        const RegisterBlock *qblock;
+
+                        int r, c, io0, jo0;
+                        r = Xr_scaleLayout.rows();
+                        c = Xr_scaleLayout.cols();
+
+                        if (isA) {
+                            io0 = x;
+                            jo0 = (k / problem.aqGroupK) % c;
+                        } else {
+                            io0 = (k / problem.bqGroupK) % r;
+                            jo0 = x;
+                        }
+                        XS = Xr_scaleLayout.find(io0, jo0, Xr_scaleRegs, &neq, &qblock);
+                    } else
+                        XS = NullRegister().setType(Type::ngen_e8m0());
+
+                    return XS;
+                };
 
                 if (y < ny) {
                     if (strategy.dpasw && (y % (2 * dpaswTile) >= dpaswTile))
@@ -486,6 +516,8 @@ void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, boo
                         C = state.Cr_layout.find(i % Cr_unrollM, j % Cr_unrollN, state.Cr_regs, &nc, &C_block, cxCompC);
                     else
                         C = state.C_layout.find(i, j, state.C_regs[cBuffer], &nc, &C_block, cxCompC);
+                    AS = bdpasScaleArg(state.Ar_scaleLayout, state.Ta_scaleInt, state.Ar_scaleRegs, true,  i, h + hh);
+                    BS = bdpasScaleArg(state.Br_scaleLayout, state.Tb_scaleInt, state.Br_scaleRegs, false, j, h + hh);
                 } else if (state.systolicSumA) {
                     A = A_layout.find(x, hha, A_regs, &na, &A_block);
                     B = state.sysSumAll1s[0];
@@ -495,6 +527,8 @@ void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, boo
                         C = state.Asr_layout.find(x % Cr_unrollM, 0, state.Asr_regs, &nc, &C_block);
                     else
                         C = state.As_layout.find(x, 0, state.As_regs, &nc, &C_block);
+                    AS = bdpasScaleArg(state.Ar_scaleLayout, state.Ta_scaleInt, state.Ar_scaleRegs, true, x, h + hh);
+                    BS = NullRegister().setType(Type::ngen_e8m0());
                 } else {
                     A = state.sysSumAll1s[0];
                     na = elementsPerGRF(hw, Ta);
@@ -504,6 +538,8 @@ void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, boo
                         C = state.Bsr_layout.find(0, x % Cr_unrollN, state.Bsr_regs, &nc, &C_block);
                     else
                         C = state.Bs_layout.find(0, x, state.Bs_regs, &nc, &C_block);
+                    AS = NullRegister().setType(Type::ngen_e8m0());
+                    BS = bdpasScaleArg(state.Br_scaleLayout, state.Tb_scaleInt, state.Br_scaleRegs, false, h + hh, x);
                 }
 
                 int nv = globalCM ? na : nb;
@@ -540,6 +576,7 @@ void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, boo
                 else {
                     if (strategy.dpasw && y < ny && rcount > 0 && rcount != dpaswTile) stub();
                     if (A0.isValid()) issueDPAS(false);
+                    AS0 = AS; BS0 = BS;
                     A0 = A; B0 = B; C0 = C; rcount = 1;
                     A0.setType(Ta.ngen());
                     B0.setType(Tb.ngen());

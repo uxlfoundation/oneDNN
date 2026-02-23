@@ -713,6 +713,7 @@ status_t def_attr_info_impl(compute::kernel_ctx_t &kernel_ctx,
     kernel_ctx.define_int("WITH_HOST_WEI_SCALE", attr_info.with_host_wei_scale);
     kernel_ctx.define_int("WITH_HOST_DST_SCALE", attr_info.with_host_dst_scale);
     kernel_ctx.define_int("WITH_DYN_DST_SCALE", attr_info.with_dyn_dst_scale);
+    kernel_ctx.define_int("WITH_MX_DST_SCALE", attr_info.with_dyn_dst_scale);
 
     return def_post_ops_cfg(kernel_ctx, post_ops, dst_md);
 }

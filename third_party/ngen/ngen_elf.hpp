@@ -69,6 +69,8 @@ public:
     void requireWalkOrder(int o1, int o2, int o3)                        { interface_.requireWalkOrder(o1, o2, o3); }
     void requireWorkgroup(size_t x, size_t y = 1, size_t z = 1)          { interface_.requireWorkgroup(x, y, z); }
 
+    void setEfficient64Bit(bool def = true)                              { BinaryCodeGenerator<hw>::setEfficient64Bit(def); interface_.setEfficient64Bit(def); }
+
     void finalizeInterface()                                             { interface_.finalize(); }
 
     template <typename DT>
@@ -583,7 +585,8 @@ template <typename... Targs> NGEN_NAMESPACE::Subregister getGroupID(Targs&&... a
 void prologue() { NGEN_NAMESPACE::ELFCodeGenerator<hw>::prologue(); } \
 void epilogue(const NGEN_NAMESPACE::RegData &r0_info = NGEN_NAMESPACE::RegData()) { NGEN_NAMESPACE::ELFCodeGenerator<hw>::epilogue(r0_info); }
 
-#define NGEN_FORWARD_SCOPE_ELF_EXTRA(scope)
+#define NGEN_FORWARD_SCOPE_ELF_EXTRA(scope) \
+template <typename... Targs> void setEfficient64Bit(Targs&&... args) { scope::setEfficient64Bit(std::forward<Targs>(args)...); }
 
 #define NGEN_FORWARD_SCOPE_ELF_EXTRA2(scope)
 

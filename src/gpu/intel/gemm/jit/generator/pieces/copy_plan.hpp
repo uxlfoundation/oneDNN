@@ -148,6 +148,7 @@ struct CopyResource
     enum Kind : uint64_t {
         null = 0,
         constantBase = 0x100000000,
+        shflLUTBase = 0x80000000,
     } kind;
     CopyOperand src;
     bool preinitialized = true;
@@ -158,6 +159,9 @@ struct CopyResource
     inline void initialize(Generator &g);
 
     static Kind makeConstant32(uint32_t c);
+
+    static Kind makeShflLUT(ngen::DataType from, ngen::DataType to);
+    bool decodeShflLUT(ngen::DataType &from, ngen::DataType &to) const;
 
 protected:
     int getData(std::array<uint8_t, 64> &data) const;
@@ -188,7 +192,7 @@ public:
     int tempFlagBytes() const;
 
 #if GEMMSTONE_ENABLE_COPY_PLAN_DUMP
-    void dump() const;
+    void dump(int n = -1) const;
     int cycleCount() const;
 #endif
 
@@ -251,6 +255,10 @@ protected:
     void planEmulatedHFToF4(CopyInstruction &i);
     void planE8M0ToF(CopyInstruction &i);
     void planBFNEmulation();
+    void emulateBooleanFunction();
+    bool planShflUpconvertXe3p(CopyInstruction &i);
+    void legalizeShfl();
+    void legalizeBfImmediate(CopyInstruction &i1);
     void legalizeSIMD(bool initial = false);
     void legalizeRegions();
     void legalizeNegation();
@@ -351,6 +359,14 @@ void CopyInstruction::execute(Generator &g)
                 g.math(ngenModifiers(), fc, dst.ngen(), src0.ngen(), src1.ngen());
             break;
         }
+        case Opcode::dnscl: {
+            uint8_t mode = 0;
+            g.dnscl(ngenModifiers(), mode, RoundingType::rne, dst.ngen(), src0.ngen(), src1.ngen(), src2.ngen());
+            break;
+	    }
+        case Opcode::shfl:
+            g.shfl.idx4(ngenModifiers(), dst.ngen(), src0.ngen(), src1.ngen());
+            break;
         default: stub("Unsupported opcode");
     }
 

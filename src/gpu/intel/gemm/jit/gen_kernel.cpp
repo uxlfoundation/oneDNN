@@ -222,6 +222,16 @@ status_t gen_desc_t::finalize(const char *tags) {
             problem_.B.setAlignment(nstl::max<int>(problem_.B.alignment, 16));
     }
 
+    if (utils::one_of(hw_, ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11,
+                ngen::HW::XE3P_UNKNOWN)) {
+        // Use XeHPC banking if reusing XeHPC strategies (legacy mode)
+        if (!efficient_64b_) strategy_.raHW = ngen::HW::XeHPC;
+
+        // Disable named barriers to avoid simulator errors, allow fallback to pvc strategies.
+        strategy_.namedBarriers[0] = 0;
+        strategy_.namedBarriers[1] = 0;
+    }
+
     // Disable global k parallelization if it wouldn't be used.
     if (strategy_.kParallel && k_ >= 0) {
         auto k_min = aux_params_.k0 * aux_params_.wgK;
@@ -310,26 +320,35 @@ status_t gen_desc_t::finalize(const char *tags) {
     if (problem_.aScale2D()
             && problem_.aqGroupK
                             % minOuterProductCount(hw_, problem_, strategy_)
-                    != 0)
-        return status::unimplemented;
+                    != 0) {
+        if (!problem_.Ta.isF4() || !problem_.Tb.isF4())
+            return status::unimplemented;
+    }
     if (problem_.bScale2D()
             && problem_.bqGroupK
                             % minOuterProductCount(hw_, problem_, strategy_)
-                    != 0)
-        return status::unimplemented;
+                    != 0) {
+        if (!problem_.Ta.isF4() || !problem_.Tb.isF4())
+            return status::unimplemented;
+    }
 
-    // If the M/N group size is equal to M or N, align up to a multiple of unroll size.
-    // Currently this is incompatible with precomputed reductions.
-    // XXX: Increase group size to a large value before aligning to increase reusability.
+    // TODO: Fix kChain handling with BDPAS.
+    if (problem_.preferBDPAS(hw_)) { strategy_.kChain = 1; }
+
+    // If the M/N group size is equal to M or N, align up to a multiple of unroll size
+    // XXX: Increase group size to a large value before aligning to increase reusability
+    // TODO: Refactor M/N groups/thread setting to preserve MN group count.
     constexpr int perMNGroupSize = 1 << 24;
     if (problem_.aqGroupM == m_
-            && (!problem_.forceGroupSumsA || problem_.aqGroupM > 1)) {
+            && ((!problem_.forceGroupSumsA && !problem_.preferBDPAS(hw_))
+                    || m_ > 1)) {
         problem_.aqGroupM = std::max(problem_.aqGroupM, perMNGroupSize);
         problem_.aqGroupM
                 = utils::rnd_up(problem_.aqGroupM, strategy_.unroll[LoopM]);
     }
     if (problem_.bqGroupN == n_
-            && (!problem_.forceGroupSumsB || problem_.bqGroupN > 1)) {
+            && ((!problem_.forceGroupSumsB && !problem_.preferBDPAS(hw_))
+                    || n_ > 1)) {
         problem_.bqGroupN = std::max(problem_.bqGroupN, perMNGroupSize);
         problem_.bqGroupN
                 = utils::rnd_up(problem_.bqGroupN, strategy_.unroll[LoopN]);
@@ -357,6 +376,9 @@ void gen_desc_t::update_driver_info() {
         REG_XEHPC_ISA(ARCH_DISPATCH(XeHPC))
         REG_XE2_ISA(ARCH_DISPATCH(Xe2))
         REG_XE3_ISA(ARCH_DISPATCH(Xe3))
+        REG_XE3P_ISA(ARCH_DISPATCH(XE3P_35_10))
+        REG_XE3P_ISA(ARCH_DISPATCH(XE3P_35_11))
+        REG_XE3P_ISA(ARCH_DISPATCH(XE3P_UNKNOWN))
         default:
             assert(!"Unsupported architecture");
             driver_info_ = entry_->driverInfo;
@@ -386,6 +408,11 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     // Select a kernel from the catalog.
     std::vector<MatchParams> match_params;
     MatchParams base(hw_, has_systolic, is_integrated, problem);
+    /* Reuse PVC strategies for legacy mode on Xe3p */
+    if (utils::one_of(hw_, ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11,
+                ngen::HW::XE3P_UNKNOWN)
+            && !efficient_64b_)
+        base.selector.hw = kcatalog::HWTagXeHPC;
 
     // By default gemmstone assumes that the accumulation type must be at least
     // as wide as the output type. For oneDNN this restriction is not needed.
@@ -725,6 +752,9 @@ void gen_xe_systolic_kernel_desc_t::choose_unrolls(compute::gpu_arch_t arch,
         case compute::gpu_arch_t::xe_hpc:
         case compute::gpu_arch_t::xe2:
         case compute::gpu_arch_t::xe3:
+        case compute::gpu_arch_t::xe3p_35_10:
+        case compute::gpu_arch_t::xe3p_35_11:
+        case compute::gpu_arch_t::xe3p_35_unknown:
             if (utils::one_of(a_type, f16, bf16)) {
                 if (unroll_m != 0)
                     unroll_n = (unroll_m > 16) ? 32 : 16;
@@ -810,6 +840,7 @@ void gen_kernel_t::init_interface() {
             || problem.needsBGroupSums()) {
         interface_.newArgument("ldbq", DataType::d);
     }
+
     if (problem.hasCMXScale()) interface_.newArgument("ldcq", DataType::d);
     if (problem.usesCOPtr()) {
         interface_.newArgument(
@@ -931,6 +962,7 @@ void gen_kernel_t::init_interface() {
 
     if (desc()->hw_ >= HW::XeHPG) interface_.allowArgumentRearrangement(false);
     interface_.externalName(kernel_name());
+    interface_.setEfficient64Bit(desc_.efficient_64b_);
 }
 
 dsl::kernel_t get_dsl_kernel(const GEMMProblem &problem,
@@ -987,6 +1019,9 @@ status_t gen_kernel_t::get_kernel(
             REG_XEHPC_ISA(ARCH_DISPATCH(XeHPC))
             REG_XE2_ISA(ARCH_DISPATCH(Xe2))
             REG_XE3_ISA(ARCH_DISPATCH(Xe3))
+            REG_XE3P_ISA(ARCH_DISPATCH(XE3P_35_10))
+            REG_XE3P_ISA(ARCH_DISPATCH(XE3P_35_11))
+            REG_XE3P_ISA(ARCH_DISPATCH(XE3P_UNKNOWN))
             default: assert(!"Unsupported architecture"); break;
         }
     } catch (const ngen::out_of_registers_exception &err) {

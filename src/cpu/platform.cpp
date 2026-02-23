@@ -32,6 +32,7 @@
 
 #if DNNL_X64
 #include "cpu/x64/cpu_isa_traits.hpp"
+#include "cpu/x64/platform.hpp"
 #elif DNNL_AARCH64
 #include "cpu/aarch64/cpu_isa_traits.hpp"
 #if defined(DNNL_AARCH64_USE_ACL)
@@ -269,16 +270,9 @@ unsigned get_per_core_cache_size(int level) {
             default: return 0U;
         }
     };
-
 #if DNNL_X64
-    using namespace x64;
-    if (cpu().getDataCacheLevels() == 0) return guess(level);
-
-    if (level > 0 && (unsigned)level <= cpu().getDataCacheLevels()) {
-        unsigned l = level - 1;
-        return cpu().getDataCacheSize(l) / cpu().getCoresSharingDataCache(l);
-    } else
-        return 0;
+    if (x64::cpu().getDataCacheLevels() == 0) return guess(level);
+    return x64::platform::get_per_core_cache_size(level);
 #elif DNNL_AARCH64
     const auto num_caches
             = static_cast<int>(aarch64::cpu().getLastDataCacheLevel());

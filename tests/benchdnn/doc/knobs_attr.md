@@ -110,12 +110,14 @@ scale value. Supported values are:
   - `per_oc`         same as `per_dim_0` for non-grouped case of `WEI` argument,
                      same as `per_dim_01` for grouped case of `WEI` argument,
                      same as `per_dim_1` for arguments other than `WEI`.
-  - `per_ocic`       same as `per_dim_01` for non-grouped case of `WEI` argument
-                     or for non-batched Matmul case of `WEI` argument,
+  - `per_ocic`       For non-Matmul primitives:
+                     same as `per_dim_01` for non-grouped case of `WEI` argument,
                      corresponds to `mask = (1 << 1) + (1 << 2)` for grouped case
                      of `WEI` argument.
+                     For Matmul primitive:
+                     same as `per_dim_01` for non-batched case,
                      corresponds to `mask = (1 << batch_ndims) + (1 << batch_ndims + 1)`
-                     for batched Matmul case of `WEI` argument.
+                     for batched case.
   - `per_dim_2`      corresponds to `mask = 1 << 2` and means elements of dim3
                      will be multiplied by scale factors different for each
                      point. Number of scale factors is equal to dims[2].

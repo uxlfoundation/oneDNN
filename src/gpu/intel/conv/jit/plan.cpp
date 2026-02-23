@@ -1462,6 +1462,9 @@ struct fma_context_t {
             auto &b0 = layout[0];
             if (b0.idx != dim) return false;
             if (b0.size % block != 0) return false;
+            bool stride_ok = (b0.stride == 1)
+                    || (layout.type().is_x16() && b0.stride == 2);
+            if (!stride_ok) return false;
             return true;
         };
         if (a_vec_idx != -1 && !is_blocked_by(a, a_vec_idx, vec_size))

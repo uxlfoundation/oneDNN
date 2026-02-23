@@ -61,6 +61,10 @@ public:
     unsupported_argument_location_override() : std::runtime_error("Argument register location is invalid") {}
 };
 
+class zebin_required_exception : public std::runtime_error {
+public:
+    zebin_required_exception() : std::runtime_error("zebin is required for this operation") {}
+};
 #endif
 
 enum class ExternalArgumentType { Scalar, GlobalPtr, LocalPtr, Hidden };
@@ -79,8 +83,8 @@ class InterfaceHandler
     template <HW hw> friend class LevelZeroCodeGenerator;
 
 public:
-    InterfaceHandler(HW hw_) : hw(hw_)
-                             , simd(GRF::bytes(hw_) >> 2)
+    InterfaceHandler(HW hw_) : hw(hw_), simd(GRF::bytes(hw_) >> 2)
+                             , useEfficient64Bit(hw_ >= HW::XE3P_35_10)
                              , requestedInlineBytes(defaultInlineBytes(hw))
     {}
 
@@ -108,6 +112,7 @@ public:
     int getBarrierCount() const                          { return barrierCount; }
     int getGRFCount() const                              { return needGRF; }
     size_t getSLMSize() const                            { return slmSize; }
+    bool getEfficient64Bit() const                       { return useEfficient64Bit; }
 
     void require32BitBuffers()                           { allow64BitBuffers = false; }
     void requireArbitrationMode(ThreadArbitrationMode m) { arbitrationMode = m; }
@@ -121,6 +126,7 @@ public:
     void requireNonuniformWGs()                          { needNonuniformWGs = true; }
     void requireNoPreemption()                           { needNoPreemption = true; }
     void requirePartitionDim(int dim)                    { needPartitionDim = dim; }
+    void requireQuantum(int wgs)                         { needQuantum = wgs; }
     void requireScratch(size_t bytes = 1)                { scratchSize = bytes; }
     inline void requireSIMD(int simd_);
     void requireSLM(size_t bytes)                        { slmSize = bytes; }
@@ -136,6 +142,7 @@ public:
     void setInlineGRFCount(int grfs)                     { requestedInlineBytes = grfs * GRF::bytes(hw); }
     int32_t getSkipCrossThreadOffset() const             { return offsetSkipCrossThread; }
     std::array<int32_t, 2> getCTPatchOffsets() const     { return offsetCTPatches; }
+    void setEfficient64Bit(bool def = true)              { useEfficient64Bit = def; }
 
     inline Register getCrossthreadBase(bool effective = true) const;
     inline Register getArgLoadBase() const;
@@ -195,6 +202,7 @@ protected:
     bool needNonuniformWGs = false;
     bool needNoPreemption = false;
     int needPartitionDim = -1;
+    int needQuantum = 0;
     bool needHalf = false;
     bool needDouble = false;
     bool needStatelessWrites = true;
@@ -207,6 +215,7 @@ protected:
     int walkOrder[3] = {-1, -1, -1};
     size_t wg[3] = {0, 0, 0};
 
+    bool useEfficient64Bit = false;
     int crossthreadBytes = 0;
     int crossthreadRegs = 0;
     int requestedInlineBytes = 0;
@@ -370,6 +379,7 @@ void InterfaceHandler::generateDummyCL(std::ostream &stream) const
 #ifdef NGEN_SAFE
     if (!finalized) throw interface_not_finalized();
     if (hasArgLocOverride || !rearrangeArgs) throw unsupported_argument_location_override();
+    if (needQuantum) throw zebin_required_exception();
 #endif
     const char *dpasDummy = "    int __builtin_IB_sub_group_idpas_s8_s8_8_1(int, int, int8) __attribute__((const));\n"
                             "    int z = __builtin_IB_sub_group_idpas_s8_s8_8_1(0, ____[0], 1);\n"
@@ -562,6 +572,7 @@ void InterfaceHandler::finalize()
 
 int InterfaceHandler::inlineBytes() const
 {
+    if (useEfficient64Bit) return 64;
     return requestedInlineBytes;
 }
 
@@ -630,6 +641,7 @@ void InterfaceHandler::setPrologueLabels(InterfaceLabels &labels, LabelManager &
     };
 
     int immOffset = 0xC;
+    if (hw >= HW::XE3P_35_10) immOffset = 0x8;
 
     setOffset(labels.localIDsLoaded, offsetSkipPerThread);
     setOffset(labels.argsLoaded, offsetSkipCrossThread);
@@ -647,6 +659,8 @@ std::string InterfaceHandler::generateZeInfo() const
     md.imbue(std::locale::classic());
 
     const char *version = "1.8";
+    if (useEfficient64Bit) version = "1.35";
+    if (needQuantum) version = "1.48";
 
     md << "version: " << version << "\n"
           "kernels: \n"
@@ -695,13 +709,28 @@ std::string InterfaceHandler::generateZeInfo() const
     }
     if (inlineBytes() > 0)
         md << "      inline_data_payload_size: " << inlineBytes() << "\n";
+    if (needQuantum) {
+        int encodedWO = 0;
+        if (walkOrder[0] == -1 && walkOrder[1] == -1)
+            encodedWO = 0;
+        else if (walkOrder[0] == 0 && walkOrder[1] == 1)
+            encodedWO = 0;
+        else if (walkOrder[0] == 1 && walkOrder[1] == 0)
+            encodedWO = 1;
+        else
+            throw std::runtime_error("Unsupported walk order");
+
+        md << "      quantum_size: " << needQuantum << "\n";
+        md << "      quantum_walk_order: " << encodedWO << "\n";
+        md << "      quantum_partition_dimension: " << std::max(needPartitionDim, 0) << "\n";
+    }
     if (!assignments.empty()) {
         md << "\n"
               "    payload_arguments: \n";
     }
-    if (scratchSize > 0) {
-        md << "      - arg_type: scratch_pointer\n"
-              "        offset: 8\n"
+    if (useEfficient64Bit) {
+        md << "      - arg_type: indirect_data_pointer\n"
+              "        offset: 0\n"
               "        size: 8\n";
     }
     for (auto &assignment : assignments) {

@@ -106,17 +106,12 @@ public:
     static constexpr ngen::DataType ngen_nf4()  { return static_cast<ngen::DataType>(0x58); }
     static constexpr ngen::DataType ngen_e8m0() { return static_cast<ngen::DataType>(0x79); }
 
-    // Not a valid nGEN DataType; for gemmstone internal use only
-    static constexpr ngen::DataType ngen_e2m1() { return static_cast<ngen::DataType>(0x5A);}
-    static constexpr ngen::DataType ngen_e3m0() { return static_cast<ngen::DataType>(0x5B);}
-
-
     ngen::DataType ngen() const
     {
         using DT = ngen::DataType;
         auto none = DT::invalid;
         static const DT table[32] = {DT::hf,      DT::f,       DT::df,      none,
-                                     ngen_e2m1(), ngen_e3m0(), ngen_nf4(),  none,
+                                     DT::e2m1,  DT::e3m0,  ngen_nf4(),  none,
                                      ngen_e8m0(), none,        none,        none,
                                      DT::bf,      DT::tf32,    DT::bf8,     DT::hf8,
                                      none,        none,        DT::u4,      DT::s4,

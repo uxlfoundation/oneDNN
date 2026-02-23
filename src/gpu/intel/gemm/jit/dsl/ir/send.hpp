@@ -36,6 +36,7 @@ enum class send_op_t {
     undef,
     atomic_add,
     atomic_fadd,
+    atomic_bfadd,
     atomic_cmpwr,
     load,
     load_2d,

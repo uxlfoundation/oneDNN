@@ -34,11 +34,12 @@ struct SystolicParams {
     int opsPerChan;     // # of FMAs/stage
     int sdepth;         // Number of stages (systolic depth)
     int rcountMax;      // Maximum repeat count (# of RHS)
+    int rcountMin;      // Minimum repeat count (# of RHS)
     int ksys;           // Total number of FMAs
     int osys;           // Output vector length
 };
 
-static inline SystolicParams systolicParams(ngen::HW hw, GEMMProblem problem, const GEMMStrategy &strategy)
+static inline SystolicParams systolicParams(ngen::HW hw, GEMMProblem problem)
 {
     problem.autoTypeConversions(hw, true);
 
@@ -48,6 +49,7 @@ static inline SystolicParams systolicParams(ngen::HW hw, GEMMProblem problem, co
     params.ksys = params.sdepth * params.opsPerChan;
     params.osys = ngen::GRF::bytes(hw) / std::max(problem.Tc_compute().real().size(), 4);
     params.rcountMax = 8;
+    params.rcountMin = problem.preferBDPAS(hw) ? 8 : 0;
 
     return params;
 }
@@ -56,7 +58,7 @@ static inline SystolicParams systolicParams(ngen::HW hw, GEMMProblem problem, co
 static inline int minOuterProductCount(ngen::HW hw, const GEMMProblem &problem, const GEMMStrategy &strategy)
 {
     if (strategy.systolic) {
-        auto params = systolicParams(hw, problem, strategy);
+        auto params = systolicParams(hw, problem);
         return params.ksys;
     }
     int kfma = std::max(strategy.dotVL, 1);
@@ -117,14 +119,15 @@ static inline std::tuple<int,int> targetSLMCrosspack(ngen::HW hw, const GEMMProb
 static inline std::tuple<int,int,int,int> targetKernelTiling(ngen::HW hw, const GEMMProblem &problem, const GEMMStrategy &strategy)
 {
     if (strategy.systolic) {
-        auto params = systolicParams(hw, problem, strategy);
+        auto params = systolicParams(hw, problem);
         bool cColMajor = isRegisterColMajor(problem.Tc, problem.C, strategy.C);
         auto tileO_V = params.osys;
         auto tileI_N = params.ksys;
+	auto tileI_K = params.rcountMin;
         if (strategy.unroll[cColMajor ? LoopN : LoopM] == 1)
             tileI_N = 0;
-        return cColMajor ? std::make_tuple(tileO_V, 0, tileI_N, 0)
-                         : std::make_tuple(0, tileI_N, 0, tileO_V);
+        return cColMajor ? std::make_tuple(tileO_V, 0, tileI_N, tileI_K)
+                         : std::make_tuple(tileI_K, tileI_N, 0, tileO_V);
     }
     return std::make_tuple(0,0,0,0);
 }

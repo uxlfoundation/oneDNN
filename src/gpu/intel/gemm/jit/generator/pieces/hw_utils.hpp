@@ -72,6 +72,7 @@ static inline bool hasNativeAtomicAdd(ngen::HW hw, Type T, const MatrixAddressin
     bool floatAtomics = (astrategy.base.getModel() == ModelA64);
     if (astrategy.newDP)
         floatAtomics |= (astrategy.base.getModel() != ModelSLM);
+    if (hw >= HW::XE3P_35_10) floatAtomics = true;
 
     if (T.isInt4())
         return false;
@@ -79,6 +80,8 @@ static inline bool hasNativeAtomicAdd(ngen::HW hw, Type T, const MatrixAddressin
         return true;
     else if (T == Type::f32)
         return floatAtomics && (hw >= HW::XeHP);
+    else if (T == Type::f16 || T == Type::bf16)
+        return (hw >= HW::XE3P_35_10);
     else if (T == Type::f64)
         return floatAtomics && (hw >= HW::XeHPC);
     else
@@ -92,9 +95,12 @@ static inline size_t slmCapacity(ngen::HW hw)
         case HW::Gen12LP:
         case HW::XeHP:
         case HW::XeHPG:
-        case HW::XeHPC:     return 131072;
-        case HW::Xe2:       return 131072;
-        case HW::Xe3:       return 131072;
+        case HW::XeHPC:      return 131072;
+        case HW::Xe2:        return 131072;
+        case HW::Xe3:        return 131072;
+        case HW::XE3P_35_10: return 196608;
+        case HW::XE3P_35_11:
+        case HW::XE3P_UNKNOWN: return 393216;
         default:
             return 0;
     }
@@ -122,6 +128,9 @@ static inline int eusPerSubslice(ngen::HW hw)
     switch (hw) {
         case HW::XeHPC:
         case HW::Xe2:
+        case HW::XE3P_35_10:
+        case HW::XE3P_35_11:
+        case HW::XE3P_UNKNOWN:
         case HW::Xe3:
             return 8;
         case HW::Gen12LP:
@@ -156,6 +165,7 @@ static inline int block2DMinAlignment(ngen::HW hw, const MatrixAddressing &atype
     if (!isBlock2D(astrategy.accessType) && !asIfBlock2D) return 0;
     if (hw == HW::Xe2) return 16;
     if (hw == HW::Xe3) return 16;
+    if (hw >= HW::XE3P_35_10) return 4;
     return (isTransposing(astrategy.accessType) || astrategy.prefetch) ? 4 : 8;
 }
 
@@ -163,6 +173,7 @@ static inline int block2DMinAlignment(ngen::HW hw, const MatrixAddressing &atype
 static inline int block2DBaseAlignment(ngen::HW hw, int stepping)
 {
     using namespace ngen;
+    if (hw >= HW::XE3P_35_10) return 4;
     if (hw == HW::XeHPC && stepping < SteppingPVCXTB4)
         return 128;
     return 64;

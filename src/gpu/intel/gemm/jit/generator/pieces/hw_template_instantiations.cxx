@@ -39,4 +39,7 @@ REG_XEHPG_ISA(template class Generator<HW::XeHPG>);
 REG_XEHPC_ISA(template class Generator<HW::XeHPC>);
 REG_XE2_ISA(template class Generator<HW::Xe2>);
 REG_XE3_ISA(template class Generator<HW::Xe3>);
+REG_XE3P_ISA(template class Generator<HW::XE3P_35_10>);
+REG_XE3P_ISA(template class Generator<HW::XE3P_35_11>);
+REG_XE3P_ISA(template class Generator<HW::XE3P_UNKNOWN>);
 #endif

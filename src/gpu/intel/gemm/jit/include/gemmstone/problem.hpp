@@ -191,6 +191,7 @@ struct GEMMProblem : public CommonProblem {
     bool sumA = false, sumB = false;                // If true, calculate A row sums/B column sums and store in CO.
     bool forceGroupSumsA = false;
     bool forceGroupSumsB = false;
+    bool bdpasEnabled = false;                             // bdpas enabled for problem.
     bool cMXScale = false;
     MatrixAddressing sroundSeed;
     PostOpsProblem postOps;                         // Fused post operations to apply
@@ -261,11 +262,32 @@ struct GEMMProblem : public CommonProblem {
     bool quantized2DA() const { return forceGroupSumsB || aOffset2D() || aScale2D(); }
     bool quantized2DB() const { return forceGroupSumsA || bOffset2D() || bScale2D(); }
 
-    bool earlyDequantizeA() const { return (aOffset == ABOffset::Calc && earlyDequantizableOffset(Ta_ext, Tao, Ta)) || (aScale2D() && (Ta_scale.isSubsetOf(Ta) || Ta.isFP())); }
-    bool earlyDequantizeB() const { return (bOffset == ABOffset::Calc && earlyDequantizableOffset(Tb_ext, Tbo, Tb)) || (bScale2D() && (Tb_scale.isSubsetOf(Tb) || Tb.isFP())); }
+    bool earlyDequantizeA() const { return (aOffset == ABOffset::Calc && earlyDequantizableOffset(Ta_ext, Tao, Ta)) || (aScale2D() && (Ta_scale.isSubsetOf(Ta) || (Ta.isFP() && !Ta.isF4() && !Ta.isF8()))); }
+    bool earlyDequantizeB() const { return (bOffset == ABOffset::Calc && earlyDequantizableOffset(Tb_ext, Tbo, Tb)) || (bScale2D() && (Tb_scale.isSubsetOf(Tb) || (Tb.isFP() && !Tb.isF4() && !Tb.isF8()))); }
 
     bool needsASums() const { return sumA || (bOffset == ABOffset::Calc && !earlyDequantizeB() && !quantized2DB()); }
     bool needsBSums() const { return sumB || (aOffset == ABOffset::Calc && !earlyDequantizeA() && !quantized2DA()); }
+
+
+    bool nativeBDPAS(ngen::HW hw) const {
+        return (((Ta == Tb) && (Ta.isF8() || Ta == Type::f16 || Ta == Type::bf16) && hw >= ngen::Core::XE3P_35_10) || (Ta.isF4() && Tb.isF4() && hw >= ngen::Core::XE3P_35_11));
+    }
+    bool forceLateQuant(ngen::HW hw, int minOPCount) const {
+        bool fp4_fp8_dpas = ((Ta.isF8() && Tb.isF8()) || (Ta.isF4() && Tb.isF4())) && nativeBDPAS(hw);
+        return fp4_fp8_dpas && ((aScale2D() && !preferBDPAS(hw) && aqGroupK % minOPCount == 0)
+            || (bScale2D() && !preferBDPAS(hw) && bqGroupK % minOPCount == 0));
+    }
+    bool forceUpconvertQuant(ngen::HW hw) const {
+        // Cover cases where scale group < ksys by upconverting, using normal dpas and scale routines.
+        return nativeBDPAS(hw) && Ta.isF4() && Tb.isF4() && ((aScale2D() && !preferBDPAS(hw) && aqGroupK % 64 != 0)
+            || (bScale2D() && !preferBDPAS(hw) && bqGroupK % 64 != 0));
+    }
+    bool preferBDPAS(ngen::HW hw) const {
+        bool useBDPAS = (bdpasEnabled && nativeBDPAS(hw) && (aScale2D() || bScale2D()));
+        if (aScale2D()) useBDPAS &= (Ta_scale == Type::f8_e8m0) && (aqGroupK % 32 == 0);
+        if (bScale2D()) useBDPAS &= (Tb_scale == Type::f8_e8m0) && (bqGroupK % 32 == 0);
+        return useBDPAS;
+    }
 
     bool needsAGroupSums() const { return (bOffset == ABOffset::Calc && quantized2DB() && !earlyDequantizableOffset(Tb_ext, Tbo, Tb)); }
     bool needsBGroupSums() const { return (aOffset == ABOffset::Calc && quantized2DA() && !earlyDequantizableOffset(Ta_ext, Tao, Ta)); }
@@ -308,6 +330,7 @@ struct GEMMProblem : public CommonProblem {
         s.append(AO, BO, CO);
         s.append(A_scale, B_scale, C_scale);
         s.append(checkBeta0);
+        s.append(bdpasEnabled);
         s.append(aOffset, bOffset);
         s.append(aoPtrDims, boPtrDims, coPtrDims);
         s.append(asPtrDims, bsPtrDims, csPtrDims);
@@ -340,11 +363,16 @@ void GEMMProblem::autoTypeConversions(ngen::HW hw, bool systolicAvailable)
 
     if (Ta == Ta_ext.asSigned()) Ta = Ta_ext;
     if (Tb == Tb_ext.asSigned()) Tb = Tb_ext;
-
+    if (hw < HW::XE3P_35_10 || !systolicAvailable)
+    {
         if (Ta.isF8()) Ta = Type::f16;
         if (Tb.isF8()) Tb = Type::f16;
+    }
+    if (hw < HW::XE3P_35_11 || !systolicAvailable || forceUpconvertQuant(hw))
+    {
         if (Ta.isF4()) Ta = Type::f16;
         if (Tb.isF4()) Tb = Type::f16;
+    }
 
     if (!systolicAvailable && Tc == Type::f32) {
         if (Ta == Type::f16) Ta = Type::f32;

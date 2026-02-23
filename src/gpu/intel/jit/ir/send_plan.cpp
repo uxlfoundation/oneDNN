@@ -660,22 +660,25 @@ struct send_2d_params_t {
 
     bool is_store() const { return send_op == send_op_t::store; }
 
-    int max_count() const {
-        return block_2d_max_count(is_store(), transpose, w, type.size());
+    bool is_prefetch() const { return send_op == send_op_t::prefetch; }
+
+    int max_count(const dsl::hw_t &hw) const {
+        return block_2d_max_count(hw.ngen_hw(), is_prefetch(), is_store(),
+                transpose, w, type.size());
     }
 
     // Reduce the number of messages by increasing count per
     // message.
-    void try_promote_count() {
+    void try_promote_count(const dsl::hw_t &hw) {
         if (vnni_factor != 1) return;
-        while (c * 2 <= max_count()) {
+        while (c * 2 <= max_count(hw)) {
             if (w_rcount % 2 != 0) break;
             c *= 2;
             w_rcount /= 2;
         }
     }
 
-    bool apply_vnni_factor(int factor) {
+    bool apply_vnni_factor(int factor, const dsl::hw_t &hw) {
         if (factor == 0) return true;
         if (use_xy)
             return fail_2d(
@@ -690,9 +693,9 @@ struct send_2d_params_t {
         if (H % factor != 0)
             return fail_2d("Can't apply VNNI factor: invalid surface height.");
         if (c != 1) return fail_2d("Can't apply VNNI factor: invalid count.");
-        if (factor > max_count())
+        if (factor > max_count(hw))
             return fail_2d(
-                    "Can't apply VNNI factor: factor exceeds max_count().");
+                    "Can't apply VNNI factor: factor exceeds max_count(hw).");
         W *= factor;
         H /= factor;
         P *= factor;
@@ -1756,14 +1759,15 @@ public:
         params_.h_tidx = h_tidx;
         params_.h_vstride = into<int>(h_vstride);
 
-        if (!params_.apply_vnni_factor(hint.vnni_permute_factor)) return false;
+        if (!params_.apply_vnni_factor(hint.vnni_permute_factor, info_.hw()))
+            return false;
         if (!params_.is_supported(info_.hw())) return false;
         if (!base_alignment_ok(vlayout, mod_info, h_tdim, h_vstride))
             return false;
         if (!x_alignment_ok(w_tdim, mod_info)) return false;
         if (!masks_ok()) return false;
 
-        params_.try_promote_count();
+        params_.try_promote_count(info_.hw());
         params_.is_valid = true;
         return true;
     }

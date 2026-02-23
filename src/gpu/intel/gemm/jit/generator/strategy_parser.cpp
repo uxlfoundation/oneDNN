@@ -93,8 +93,38 @@ CacheSettingsLSC getCaching(char l1, char l3)
     }
 }
 
+CacheSettingsLSC getCaching(char l1, char l2, char l3) {
+    if (l3 == 'u' || l3 == 'i') return getCaching(l1, l2);
+
+    if (l3 == 'c' || l3 == 'b') {
+        bool l2cached = (l2 == 'c') || (l2 == 'b');
+        switch (l1) {
+            case 'u':
+                return l2cached ? CacheSettingsLSC::L1UC_L2C_L3C
+                                : CacheSettingsLSC::L1UC_L2UC_L3C;
+            case 't':
+            case 'c':
+                return l2cached ? CacheSettingsLSC::L1C_L2C_L3C
+                                : CacheSettingsLSC::L1C_L2UC_L3C;
+            case 's':
+                return l2cached ? CacheSettingsLSC::L1S_L2C_L3C
+                                : CacheSettingsLSC::L1S_L2UC_L3C;
+            case 'b':
+                if (!l2cached) return CacheSettingsLSC::L1WB_L2UC_L3WB;
+            default: break;
+        }
+    }
+
+    throw std::runtime_error("Unknown cache setting");
+}
+
 CacheSettingsLSC getCachingEntry(std::stringstream &s, HW hw)
 {
+    if (hw >= HW::XE3P_35_10) {
+        char l1, l2, l3;
+        s >> l1 >> l2 >> l3;
+        return getCaching(l1, l2, l3);
+    } else
     {
         char l1, l3;
         s >> l1 >> l3;
@@ -112,6 +142,8 @@ void getCaching(std::stringstream &s, HW hw, MatrixAddressingStrategy &astrategy
         cachingW = CacheSettingsLSC::L1WB_L3WB;
         if (hw >= HW::XeHPC)
             cachingW = CacheSettingsLSC::L1UC_L3WB;
+        if (hw >= HW::XE3P_35_10)
+            cachingR = CacheSettingsLSC::L1C_L2C_L3C;
     }
 
     if (s.peek() == '{') {
@@ -233,6 +265,7 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
     strategy.A.cachingW = CacheSettingsLSC::Default;
     strategy.B.cachingW = CacheSettingsLSC::Default;
     strategy.CO.cachingR = CacheSettingsLSC::L1C_L3C;
+    if (hw >= HW::XE3P_35_10) strategy.CO.cachingR = CacheSettingsLSC::L1C_L2C_L3C;
     strategy.A_prefetch.prefetch = true;
     strategy.B_prefetch.prefetch = true;
     strategy.C_prefetch.prefetch = true;
@@ -253,6 +286,8 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
     strategy.AB_prefetchL3.base = getAddressBase(strategy.l3PrefetchA ? asA : asB);
     if (strategy.AB_prefetchL3.cachingR == CacheSettingsLSC::Default) {
         strategy.AB_prefetchL3.cachingR = CacheSettingsLSC::L1UC_L3C;
+        if (hw >= HW::XE3P_35_10)
+            strategy.AB_prefetchL3.cachingR = CacheSettingsLSC::L1UC_L2C_L3C;
     }
 
     strategy.A.padded |= isPacked(problem.A.layout);
@@ -1048,6 +1083,42 @@ void unparseCaching(HW hw, std::ostream &s, const MatrixAddressingStrategy &astr
 
     s << '{';
 
+    if (hw >= HW::XE3P_35_10) {
+        switch (cachingR) {
+            case CacheSettingsLSC::Default:             s << "ddd"; break;
+            case CacheSettingsLSC::L1UC_L2UC_L3UC:      s << "uuu"; break;
+            case CacheSettingsLSC::L1UC_L2UC_L3C:       s << "uuc"; break;
+            case CacheSettingsLSC::L1UC_L2C_L3UC:       s << "ucu"; break;
+            case CacheSettingsLSC::L1UC_L2C_L3C:        s << "ucc"; break;
+            case CacheSettingsLSC::L1C_L2UC_L3UC:       s << "cuu"; break;
+            case CacheSettingsLSC::L1C_L2UC_L3C:        s << "cuc"; break;
+            case CacheSettingsLSC::L1C_L2C_L3UC:        s << "ccu"; break;
+            case CacheSettingsLSC::L1C_L2C_L3C:         s << "ccc"; break;
+            case CacheSettingsLSC::L1S_L2UC_L3UC:       s << "suu"; break;
+            case CacheSettingsLSC::L1S_L2UC_L3C:        s << "suc"; break;
+            case CacheSettingsLSC::L1S_L2C_L3UC:        s << "scu"; break;
+            case CacheSettingsLSC::L1S_L2C_L3C:         s << "scc"; break;
+            case CacheSettingsLSC::L1IAR_L2IAR_L3IAR:   s << "iii"; break;
+            default:                                    s << "???"; break;
+        }
+        if (cachingW != CacheSettingsLSC::Default) {
+            s << '/';
+            switch (cachingW) {
+                case CacheSettingsLSC::L1UC_L2UC_L3UC:  s << "uuu"; break;
+                case CacheSettingsLSC::L1UC_L2UC_L3WB:  s << "uub"; break;
+                case CacheSettingsLSC::L1UC_L2WB_L3UC:  s << "ubu"; break;
+                case CacheSettingsLSC::L1WT_L2UC_L3UC:  s << "tuu"; break;
+                case CacheSettingsLSC::L1WT_L2UC_L3WB:  s << "tub"; break;
+                case CacheSettingsLSC::L1WT_L2WB_L3UC:  s << "tbu"; break;
+                case CacheSettingsLSC::L1S_L2UC_L3UC:   s << "suu"; break;
+                case CacheSettingsLSC::L1S_L2UC_L3WB:   s << "sub"; break;
+                case CacheSettingsLSC::L1S_L2WB_L3UC:   s << "sbu"; break;
+                case CacheSettingsLSC::L1WB_L2WB_L3UC:  s << "bbu"; break;
+                case CacheSettingsLSC::L1WB_L2UC_L3WB:  s << "bub"; break;
+                default:                                s << "???"; break;
+            }
+        }
+    } else
     {
         switch (cachingR) {
             case CacheSettingsLSC::Default:   s << "dd"; break;

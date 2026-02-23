@@ -53,6 +53,8 @@ struct EmulationStrategy {
             else
                 emulate64_mul = emulate64_logic = true;
         }
+        if (hw_ >= HW::XE3P_35_10)
+            emulateDWxDW = emulate64_mul = false;
         emulate64_mul |= emulate64;
     }
 };
@@ -663,6 +665,13 @@ struct EmulationImplementation {
             g.mov(mod, dstHi, dstLo, loc);
             g.mov(mod, dstLo, acc, loc);
 
+        } else if (dstQ && s0D && ((s1W && !s1Immed) && !emulateDWxDW)) {
+            RegData dstLo, dstHi;
+            splitToDW(dst, dstLo, dstHi);
+            if(dstLo.getBase() == src0.getBase() && src0.getOffset() == dstLo.getOffset())
+                stub();
+            g.mov(mod, dstLo, src1);
+            g.mul(mod, dst, src0, dstLo);
         } else if (dstD && s0D && s1D && strategy.emulateDWxDW) {
             int ne1 = GRF::bytes(g.getHardware()) >> 2;
 

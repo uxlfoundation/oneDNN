@@ -41,6 +41,9 @@ inline int block_2d_base_alignment(ngen::HW hw) {
         case ngen::HW::XeHPC: return 64;
         case ngen::HW::Xe2:
         case ngen::HW::Xe3: return 64;
+        case ngen::HW::XE3P_35_10:
+        case ngen::HW::XE3P_35_11:
+        case ngen::HW::XE3P_UNKNOWN: return 4;
         default: gpu_error_not_expected();
     }
     return 0;
@@ -72,6 +75,9 @@ inline int block_2d_pitch_alignment(ngen::HW hw) {
         case ngen::HW::XeHPC: return 8;
         case ngen::HW::Xe2: return 16;
         case ngen::HW::Xe3: return 16;
+        case ngen::HW::XE3P_35_10:
+        case ngen::HW::XE3P_35_11:
+        case ngen::HW::XE3P_UNKNOWN: return 4;
         default: gpu_error_not_expected();
     }
     return 0;
@@ -89,9 +95,14 @@ inline bool block_2d_pitch_ok(
     return true;
 }
 
-inline int block_2d_max_count(
-        bool is_store, bool is_transpose, int block_width, int type_size) {
+inline int block_2d_max_count(ngen::HW hw, bool is_prefetch, bool is_store,
+        bool is_transpose, int block_width, int type_size) {
     if (is_store || is_transpose) return 1;
+    if (utils::one_of(hw, ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11,
+                ngen::HW::XE3P_UNKNOWN)
+            && is_prefetch) {
+        return 256 / (block_width * type_size);
+    }
     return 64 / (block_width * type_size);
 }
 

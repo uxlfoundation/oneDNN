@@ -289,6 +289,7 @@ const std::vector<const kcatalog::Entry *> select(const kcatalog::Catalog &catal
         switch (hw) {
             case HWTagXe2:  hw = HWTagXeHPC; break;
             case HWTagXe3:  hw = HWTagXe2; break;
+	        case HWTagXe3p: hw = HWTagXe3; break;
             default:        hw = 0; break;
         }
     } while (hw);
@@ -339,6 +340,14 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
     if(problem.Tbo.is4() || problem.Tb_scale.is4()){
         unrollReq[LoopN] = 2;
     }
+
+    ReqBDPASDims = problem.preferBDPAS(hw);
+
+    if (ReqBDPASDims) {
+        unrollReq[LoopM] = 8;
+        unrollReq[LoopN] = 8;
+    }
+ 
     if(problem.hasCMXScale() && unrollReq[LoopN] % 32){
         unrollReq[LoopN] = 32;
     }
@@ -351,6 +360,9 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
         case ngen::HW::XeHPC:   selector.hw = kcatalog::HWTagXeHPC;   break;
         case ngen::HW::Xe2:     selector.hw = kcatalog::HWTagXe2;     break;
         case ngen::HW::Xe3:     selector.hw = kcatalog::HWTagXe3;   break;
+        case ngen::HW::XE3P_35_10:
+        case ngen::HW::XE3P_35_11:
+        case ngen::HW::XE3P_UNKNOWN:     selector.hw = kcatalog::HWTagXe3p;   break;
     }
 
     auto &C = problem.C;
@@ -428,10 +440,8 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
     if (problem.needsASums() && !problem.sumA) *tagPtr++ = ReqSumA;
     if (problem.needsBSums() && !problem.sumB) *tagPtr++ = ReqSumB;
 
-    if (hw == ngen::HW::Xe2)
-        *tagPtr++ = ReqXe2Block2D;
-    if (hw == ngen::HW::Xe3)
-        *tagPtr++ = ReqXe2Block2D;
+    if (one_of(hw, {ngen::HW::Xe2, ngen::HW::Xe3, ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11, ngen::HW::XE3P_UNKNOWN})) *tagPtr++ = ReqXe2Block2D;
+
 
     sizes.batch = sizes.m = sizes.n = sizes.k = 0;
 }

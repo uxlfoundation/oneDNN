@@ -62,7 +62,7 @@ class binary_format_kernel_t : public generator_t<hw> {
     FORWARD(hw);
 
 public:
-    binary_format_kernel_t()
+    binary_format_kernel_t(const engine_t *engine)
         : generator_t<hw>(debug_config_t {GENERATOR_NAME, GENERATOR_LINE}) {
 
         auto low_half = [](uint64_t q) -> uint32_t { return q & 0xFFFFFFFF; };
@@ -81,6 +81,9 @@ public:
         requireSIMD((GRF::bytes(hw) == 64) ? 16 : 8);
         requireLocalID(3); // r1-r3
         requireLocalSize(); // r7.0-2:ud
+        if (utils::one_of(hw, ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11,
+                    ngen::HW::XE3P_UNKNOWN))
+            setEfficient64Bit(engine->device_info()->is_efficient_64bit());
         finalizeInterface();
 
         Label doWrite;
@@ -165,14 +168,13 @@ public:
         threadend(SWSB(sb2, 1), r127);
     }
 
-    static compute::kernel_t make_kernel(
-            intel::engine_t *engine, bool *skip_check) {
+    static compute::kernel_t make_kernel(engine_t *engine, bool *skip_check) {
         compute::kernel_t kernel;
 
         *skip_check = false;
 
         if (hw != HW::Unknown) {
-            binary_format_kernel_t<hw> binary_format_kernel;
+            binary_format_kernel_t<hw> binary_format_kernel(engine);
 
             auto status = engine->create_kernel(&kernel, &binary_format_kernel);
 
@@ -204,6 +206,19 @@ public:
                     kernel = binary_format_kernel_t<HW::Xe3>::make_kernel(
                             engine, skip_check);
                     break;
+                case compute::gpu_arch_t::xe3p_35_10:
+                    kernel = binary_format_kernel_t<
+                            HW::XE3P_35_10>::make_kernel(engine, skip_check);
+                    break;
+                case compute::gpu_arch_t::xe3p_35_11:
+                    kernel = binary_format_kernel_t<
+                            HW::XE3P_35_11>::make_kernel(engine, skip_check);
+                    break;
+                case compute::gpu_arch_t::xe3p_35_unknown:
+                    kernel = binary_format_kernel_t<
+                            HW::XE3P_UNKNOWN>::make_kernel(engine, skip_check);
+                    break;
+
                 case compute::gpu_arch_t::unknown:
                     VWARN(common, runtime,
                             "unknown gpu platform - optimizations are disabled "
@@ -219,6 +234,13 @@ public:
 status_t gpu_supports_binary_format(bool *ok, impl::engine_t *engine) {
     *ok = false;
 
+    auto gpu_engine = utils::downcast<engine_t *>(engine);
+
+    if (!gpu_engine) {
+        VERROR(common, runtime, "bad engine kind, expected a gpu engine");
+        return status::invalid_arguments;
+    }
+
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
     if (engine->runtime_kind() == runtime_kind::ocl) {
         // Here we are doing a check for a temporary OpenCL engine while the
@@ -230,13 +252,6 @@ status_t gpu_supports_binary_format(bool *ok, impl::engine_t *engine) {
         return status::success;
     }
 #endif
-
-    auto gpu_engine = utils::downcast<intel::engine_t *>(engine);
-
-    if (!gpu_engine) {
-        VERROR(common, runtime, "bad engine kind, expected a gpu engine");
-        return status::invalid_arguments;
-    }
 
     impl::stream_t *stream_generic;
     auto status = gpu_engine->get_service_stream(stream_generic);

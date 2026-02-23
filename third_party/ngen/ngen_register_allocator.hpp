@@ -242,6 +242,9 @@ int Bundle::firstReg(HW hw) const
         case HW::XeHPC:
         case HW::Xe2:
         case HW::Xe3:
+        case HW::XE3P_35_10:
+        case HW::XE3P_35_11:
+        case HW::XE3P_UNKNOWN:
             return (bundle0 << 1) | bank0;
         case HW::XeHP:
         case HW::XeHPG:
@@ -278,6 +281,9 @@ int Bundle::stride(HW hw) const
         case HW::Gen12LP:
         case HW::Xe2:
         case HW::Xe3:
+        case HW::XE3P_35_10:
+        case HW::XE3P_35_11:
+        case HW::XE3P_UNKNOWN:
             return 16;
         case HW::XeHP:
         case HW::XeHPG:
@@ -308,6 +314,9 @@ uint64_t Bundle::regMask(HW hw, int offset) const
         case HW::Gen12LP:
         case HW::Xe2:
         case HW::Xe3:
+        case HW::XE3P_35_10:
+        case HW::XE3P_35_11:
+        case HW::XE3P_UNKNOWN:
             if (bundle_id != any)                           base_mask  = 0x0003000300030003;
             if (bank_id != any)                             base_mask &= 0x5555555555555555;
             return base_mask << (bank0 + (bundle0 << 1));
@@ -338,6 +347,9 @@ Bundle Bundle::locate(HW hw, RegData reg)
         case HW::Gen12LP:
         case HW::Xe2:
         case HW::Xe3:
+        case HW::XE3P_35_10:
+        case HW::XE3P_35_11:
+        case HW::XE3P_UNKNOWN:
             return Bundle(base & 1, (base >> 1) & 7);
         case HW::XeHP:
         case HW::XeHPG:
@@ -368,6 +380,8 @@ void RegisterAllocator::init()
 
     if (hw < HW::XeHP)
         setRegisterCount(128);
+    else if (hw < HW::XE3P_35_10)
+        setRegisterCount(256);
 
 }
 
@@ -596,6 +610,13 @@ Subregister RegisterAllocator::tryAllocSub(DataType type, Bundle bundle)
         auto alloc_pattern = alloc_patterns[(dwords - 1) & 3];
         uint64_t freeGRF64[sizeof(freeGRF) / sizeof(uint64_t)];
         std::memcpy(freeGRF64, freeGRF, sizeof(freeGRF));
+
+        /* Preferentially use r511 for small allocations as it can't be used in sendgx. */
+        if (searchFullGRF && freeSub[511] == fullSubMask) {
+            rAlloc = 511;
+            oAlloc = 0;
+            return true;
+        }
 
         for (int rchunk = 0; rchunk < (GRF::maxRegs() >> 6); rchunk++) {
             uint64_t free = searchFullGRF ? freeGRF64[rchunk] : -1;

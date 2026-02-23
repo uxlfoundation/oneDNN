@@ -675,6 +675,16 @@ public:
         }
     }
 
+    bool is_inner_loop(const expr_t &v) const {
+        for (size_t i = 0; i < vars_.size(); i++) {
+            auto &loop = find_loop(vars_[i]);
+            if (!loop.is_leaf() || loop.kind() != loop_kind_t::serial) continue;
+            if (to_cpp<dim_t>(loop.bound()) == 1) continue;
+            return find_root_var(vars_[i]).is_same(v);
+        }
+        return false;
+    }
+
     // Sets init and step for loop defined by `var`.
     // Used to create loop that avoids skip conditions:
     //   for (var = init ; var < bound; var += step) {
@@ -974,6 +984,14 @@ private:
     loop_t &find_loop(const expr_t &var) {
         gpu_assert(has_loop(var)) << "Var not found: " << var;
         return loops_[var];
+    }
+
+    expr_t find_root_var(const expr_t &var) const {
+        auto *loop = &find_loop(var);
+        while (!loop->is_root()) {
+            loop = &find_loop(loop->parent_vars()[0]);
+        }
+        return loop->var();
     }
 
     int loop_level(const expr_t &var) const {

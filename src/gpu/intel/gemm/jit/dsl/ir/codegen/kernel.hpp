@@ -513,7 +513,7 @@ public:
         auto src2 = _src2;
         auto scope = ngen_register_scope_t(ra_);
         align_src_dst_offset(this, scope, mod, dst, src0);
-        align_src_dst_offset(this, scope, mod, dst, src1);
+        align_src_dst_offset(this, scope, mod, dst, src1, true);
         if (getHardware() >= ngen::HW::XeHP) {
             if (src2.is_reg_data()) {
                 align_src_dst_offset(this, scope, mod, dst, src2);
@@ -527,7 +527,7 @@ public:
         }
         add(mod, dst.reg_data(), src0.reg_data(), src1.reg_data());
         if (src2.is_reg_data()) {
-            align_src_dst_offset(this, scope, mod, dst, src2);
+            align_src_dst_offset(this, scope, mod, dst, src2, true);
             add(mod, dst.reg_data(), dst.reg_data(), src2.reg_data());
         } else {
             add(mod, dst.reg_data(), dst.reg_data(), src2.immediate());
@@ -541,7 +541,7 @@ public:
         auto src1 = _src1;
         auto src2 = _src2;
         auto scope = ngen_register_scope_t(ra_);
-        align_src_dst_offset(this, scope, mod, dst, src1);
+        align_src_dst_offset(this, scope, mod, dst, src1, true);
         if (src2.is_reg_data()) {
             align_src_dst_offset(this, scope, mod, dst, src0);
             align_src_dst_offset(this, scope, mod, dst, src2);
@@ -900,6 +900,10 @@ public:
 
         // qot = (x * m) >> p
         bool use_mach = true;
+        if (one_of(hw_info(),
+                    {ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11,
+                            ngen::HW::XE3P_UNKNOWN}))
+            use_mach = false;
         if (use_mach) {
             auto acc = acc0.retype(div_type);
             mul(1, acc[0], _x, m & 0xFFFF);

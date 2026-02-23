@@ -35,9 +35,17 @@ namespace NGEN_NAMESPACE {
 // Exceptions.
 class level_zero_error : public std::runtime_error {
 public:
-    level_zero_error(ze_result_t status_ = ZE_RESULT_SUCCESS) : std::runtime_error("A Level Zero error occurred."), status(status_) {}
+    level_zero_error(ze_result_t status_ = ZE_RESULT_SUCCESS) : std::runtime_error("A Level Zero error occurred: " + to_hex(status_)), status(status_) {}
 protected:
     ze_result_t status;
+
+private:
+    static std::string to_hex(ze_result_t status) {
+        std::ostringstream oss;
+        oss.imbue(std::locale::classic());
+        oss << std::hex << status;
+        return "0x" + oss.str();
+    }
 };
 
 // Dynamic loading support.
@@ -100,6 +108,8 @@ public:
     static inline Product detectHWInfo(ze_context_handle_t context, ze_device_handle_t device);
 
     static bool binaryIsZebin() { return true; }
+
+    static inline bool detectEfficient64Bit(ze_context_handle_t context, ze_device_handle_t device, HW inHW = HW::Unknown);
 };
 
 #define NGEN_FORWARD_LEVEL_ZERO(hw) NGEN_FORWARD_ELF(hw)
@@ -218,6 +228,16 @@ Product LevelZeroCodeGenerator<hw>::detectHWInfo(ze_context_handle_t context, ze
     product.type = (dprop.flags & ZE_DEVICE_PROPERTY_FLAG_INTEGRATED) ? PlatformType::Integrated : PlatformType::Discrete;
 
     return product;
+}
+
+template <HW hw>
+bool LevelZeroCodeGenerator<hw>::detectEfficient64Bit(ze_context_handle_t context, ze_device_handle_t device, HW inHW)
+{
+    if (inHW == HW::Unknown) inHW = hw;
+    if (inHW < HW::XE3P_35_10) return false;
+
+    auto binary = detail::getDummyModuleBinary(context, device);
+    return npack::isBinaryEfficient64Bit(binary, inHW);
 }
 
 } /* namespace NGEN_NAMESPACE */

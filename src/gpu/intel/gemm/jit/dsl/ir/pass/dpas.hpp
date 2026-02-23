@@ -25,9 +25,10 @@ namespace ir {
 
 // Adds {Atomic} modifier to dpas/dpasw instructions when applicable.
 stmt_t inject_dpas_atomic(const stmt_t &stmt, bool filter_by_label = true);
+// Adds {Fwd} modifier to dpas/dpasw instructions when applicable.
+stmt_t inject_dpas_fwd(const stmt_t &stmt);
 
 } // namespace ir
 } // namespace dsl
 GEMMSTONE_NAMESPACE_END
-
 #endif

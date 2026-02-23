@@ -37,7 +37,13 @@ GEMMSTONE_NAMESPACE_START
 namespace dsl {
 
 namespace hw {
-enum class attr_t { none = 0, large_grf = 1, systolic = 2, atomic_fp64 = 4 };
+enum class attr_t {
+    none = 0,
+    large_grf = 1,
+    systolic = 2,
+    atomic_fp64 = 4,
+    efficient_64bit = 8
+};
 constexpr attr_t operator&(attr_t a, attr_t b) {
     return static_cast<attr_t>(
             static_cast<uint32_t>(a) & static_cast<uint32_t>(b));
@@ -68,8 +74,8 @@ class hw_t : public stringify_t<hw_t> {
 public:
     using attr_t = hw::attr_t;
     hw_t() = default;
-    explicit hw_t(const ngen::Product &product, int eu_count,
-            size_t max_wg_size, size_t l3_cache_size, attr_t attr);
+    explicit hw_t(const ngen::Product &product, int eu_count, int max_wg_size,
+            size_t l3_cache_size, attr_t attr);
 
     ngen::Product product() const;
     ngen::ProductFamily family() const;
@@ -85,6 +91,9 @@ public:
     int grf_size() const;
     int systolic_support() const { return any(attr_ & attr_t::systolic); }
     size_t l3_cache_size() const { return l3_cache_size_; }
+    bool efficient_64_bit() const {
+        return any(attr_ & attr_t::efficient_64bit);
+    }
 
     size_t max_tg_size(int regs, int simd) const;
 

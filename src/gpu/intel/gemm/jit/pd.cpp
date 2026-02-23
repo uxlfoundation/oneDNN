@@ -418,12 +418,27 @@ bool pd_t::scales_ok() {
             return false;
 
         if (!x_scales.has_default_groups()) {
+            const memory_desc_t *md = nullptr;
+            switch (s) {
+                // Swap descriptors to follow column major format
+                case DNNL_ARG_A: md = &desc()->b_desc; break;
+                case DNNL_ARG_B: md = &desc()->a_desc; break;
+                case DNNL_ARG_C: md = &desc()->c_desc; break;
+            }
+            if (!md) gpu_error_not_expected();
+            int count = 0;
+            for (int i = 0; i < 2; i++) {
+                int gs = x_scales.get_group(i);
+                int dim = md->dims[md->ndims - 2 + i];
+                if (1 < gs && gs < dim) count++;
+            }
+            if (count > 1) return false;
+
             // Dynamic Dst Quant only supported with `1x32` groups.
-            if (s == DNNL_ARG_C && with_mx_scale() && x_scales.get_group(0) != 1
-                    && x_scales.get_group(1) != 32)
+            if (s == DNNL_ARG_C && with_mx_scale()
+                    && (x_scales.get_group(0) != 1
+                            || x_scales.get_group(1) != 32))
                 return false;
-            // Other dynamic quant unsupported
-            if (x_scales.is_dynamic()) return false;
         }
     }
 
@@ -722,6 +737,13 @@ status_t pd_t::init_GEMMProblem(
         if (problem.aqGroupK == 0) problem.aqGroupK = problem.bqGroupK;
         if (problem.bqGroupK == 0) problem.bqGroupK = problem.aqGroupK;
     }
+    // Disable bdpas with unsupported k dim.
+    // TODO: Enable 2D block, masking scale loads.
+    if (problem.nativeBDPAS(hw)) {
+        if ((!(problem.Ta.isF4() || problem.Tb.isF4()) || k % 64 == 0))
+            problem.bdpasEnabled = true;
+    }
+
     return status::success;
 }
 

@@ -242,7 +242,7 @@ void Generator<hw>::divDown(const Subregister &dst, const Subregister &src0, con
     bool emulate = strategy.emulate.emulate64_mul;
     Subregister tmp;
     auto shift = state.ra.alloc_sub<uint32_t>();
-    auto pop = state.ra.alloc_sub<uint16_t>();
+    auto pop = state.ra.alloc_sub<uint32_t>();
     cbit(1, pop, src1);
     fbh(1, shift, src1);
     cmp(1 | gt | flag, pop, 1);

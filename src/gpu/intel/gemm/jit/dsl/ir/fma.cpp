@@ -52,6 +52,7 @@ int get_simd_size(const hw_t &hw, const fma_kind_t kind, const type_t &a,
 }
 
 bool dpas_t::is_src_type(type_t type) {
+    if (type.is_bf8() || type.is_hf8()) return true;
     return type.is_x8() || type.is_bf16() || type.is_f16() || type.is_tf32();
 }
 

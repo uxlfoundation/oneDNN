@@ -124,7 +124,7 @@ void emit_reorder_1d_tile(GeneratorT *host, ngen_register_scope_t &scope,
 template <typename GeneratorT>
 void align_src_dst_offset(GeneratorT *host, ngen_register_scope_t &scope,
         const ngen::InstructionModifier &mod, const reg_buf_data_t &dst,
-        reg_buf_data_t &src) {
+        reg_buf_data_t &src, bool align_stride = false) {
     int src_stride = src.hs();
     // src is broadcasted, no need to align, return.
     if (src_stride == 0) return;
@@ -145,10 +145,29 @@ void align_src_dst_offset(GeneratorT *host, ngen_register_scope_t &scope,
     //   - <1; 1, 0>, which is a more compatible representation of <N; N, 1>
     int grf_src = grf_size / std::max(src.hs(), 1);
     int grf_dst = grf_size / std::max(dst.hs(), 1);
+    auto new_src_type = src.type();
+    bool needs_stride_alignment = false;
+    bool align_bf = is_bf_to_f && src.hs();
+    if (scope.hw() >= ngen::HW::XE3P_35_10 && (align_stride || align_bf)) {
+        auto src_stride_bytes = src.hs() * src_type_size;
+        auto dst_stride_bytes = dst.hs() * dst_type_size;
+        needs_stride_alignment = (src_stride_bytes != dst_stride_bytes);
+        src_stride = dst_stride_bytes / src_type_size;
+        if (align_bf) {
+            needs_stride_alignment = true;
+            src_stride = dst.hs();
+            new_src_type = dst.type();
+            src_type_size = ngen::getBytes(new_src_type);
+        }
+    }
 
     // If src is aligned with dst, return.
-    if ((is_xf || is_bf_to_f) && src_off % grf_src == dst_off % grf_dst) return;
-    if (!is_xf && src_byte_off % grf_size == dst_byte_off % grf_size) return;
+    if (!needs_stride_alignment) {
+        if ((is_xf || is_bf_to_f) && src_off % grf_src == dst_off % grf_dst)
+            return;
+        if (!is_xf && src_byte_off % grf_size == dst_byte_off % grf_size)
+            return;
+    }
 
     int new_src_off = (is_xf ? dst_off * src_type_size / dst_type_size
                              : dst_off * dst_type_size / src_type_size);
@@ -156,24 +175,17 @@ void align_src_dst_offset(GeneratorT *host, ngen_register_scope_t &scope,
     int src_size = std::max(src_type_size * esize * src_stride, src_type_size);
     auto new_src = scope.alloc_reg_buf_data(
             div_up(src_size + new_src_off * src_type_size, grf_size));
-    new_src = new_src.format(new_src_off, esize, src_stride, src.type());
+    new_src = new_src.format(new_src_off, esize, src_stride, new_src_type);
+
     emit_reorder_1d_tile(
-            host, scope, esize, src, src_stride, new_src, src_stride);
+            host, scope, esize, src, src.hs(), new_src, src_stride);
     src = std::move(new_src);
 }
 
 template <typename GeneratorT>
 void align_src_dst_offset(GeneratorT *host, ngen_register_scope_t &scope,
-        const ngen::InstructionModifier &mod, const reg_buf_data_t &dst,
-        reg_buf_data_t &src0, reg_buf_data_t &src1) {
-    align_src_dst_offset(host, scope, mod, dst, src0);
-    align_src_dst_offset(host, scope, mod, dst, src1);
-}
-
-template <typename GeneratorT>
-void align_src_dst_offset(GeneratorT *host, ngen_register_scope_t &scope,
         const ngen::InstructionModifier &mod, const ngen_operand_t &dst,
-        ngen_operand_t &src) {
+        ngen_operand_t &src, bool align_stride = false) {
     if (!src.is_reg_data()) return;
     auto rd = src.reg_buf_data();
 
@@ -183,9 +195,10 @@ void align_src_dst_offset(GeneratorT *host, ngen_register_scope_t &scope,
         // GRF boundary.
         reg_buf_data_t dummy(reg_buf_t(rd.hw(), ngen::GRFRange(0, 1)));
         // This call returns early if everything is already aligned nicely
-        align_src_dst_offset(host, scope, mod, dummy, rd);
+        align_src_dst_offset(host, scope, mod, dummy, rd, align_stride);
     } else {
-        align_src_dst_offset(host, scope, mod, dst.reg_buf_data(), rd);
+        align_src_dst_offset(
+                host, scope, mod, dst.reg_buf_data(), rd, align_stride);
     }
     if (rd == src.reg_buf_data()) return;
 

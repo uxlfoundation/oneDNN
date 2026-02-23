@@ -41,7 +41,18 @@ namespace gpu {
 namespace intel {
 namespace compute {
 
-enum class gpu_arch_t { unknown, xe_lp, xe_hp, xe_hpg, xe_hpc, xe2, xe3 };
+enum class gpu_arch_t {
+    unknown,
+    xe_lp,
+    xe_hp,
+    xe_hpg,
+    xe_hpc,
+    xe2,
+    xe3,
+    xe3p_35_10,
+    xe3p_35_11,
+    xe3p_35_unknown,
+};
 
 // Memory for storing ngen::Product to avoid directly including nGEN because of
 // header dependencies outside of src/gpu/intel.
@@ -58,6 +69,9 @@ static inline const char *to_string(gpu_arch_t arch) {
     CASE(xe_hpc);
     CASE(xe2);
     CASE(xe3);
+    CASE(xe3p_35_10);
+    CASE(xe3p_35_11);
+    CASE(xe3p_35_unknown);
     return "unknown";
 #undef CASE
 }
@@ -71,6 +85,9 @@ static inline gpu_arch_t str2gpu_arch(const char *str) {
     CASE(xe_hpc);
     CASE(xe2);
     CASE(xe3);
+    CASE(xe3p_35_10);
+    CASE(xe3p_35_11);
+    CASE(xe3p_35_unknown);
     return gpu_arch_t::unknown;
 #undef CASE
 }
@@ -253,6 +270,8 @@ public:
 
     bool has_native(data_type_t type) const;
 
+    bool is_efficient_64bit() const { return is_efficient_64bit_; }
+
     const std::vector<uint8_t> &get_cache_blob() const {
         return serialized_device_info_.get_data();
     }
@@ -282,6 +301,7 @@ protected:
     bool mayiuse_systolic_ = false;
     bool mayiuse_ngen_kernels_ = false;
     bool mayiuse_system_memory_allocators_ = false;
+    bool is_efficient_64bit_ = false; // Efficient 64 bit addressing available
 
     std::string name_;
     xpu::runtime_version_t runtime_version_;

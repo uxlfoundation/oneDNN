@@ -1709,6 +1709,7 @@ public:
             is_first = false;
         };
         if (mod.isAtomic()) append("Atomic");
+        if (mod.isFwd()) append("Fwd");
         for (auto item : mod.getSWSB()) {
             if (item.hasTokenSet()) {
                 append(std::string("$")

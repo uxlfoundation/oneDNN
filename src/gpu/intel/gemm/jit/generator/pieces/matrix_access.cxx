@@ -310,7 +310,7 @@ void Generator<hw>::atomicAddMatrixBlock(Type T, const GRF &src, const RegisterB
                     auto mod = simd | maskMod | ExecutionOffset(eoff);
                     if (block.ebytes * block.count != T.real().size()) stub();
                     if (astrategy.newDP) {
-                        auto op = T.isFP() ? AtomicOp::fadd
+                        auto op = T.isFP() ? (hw >= HW::XE3P_35_10 && T == Type::bf16) ? AtomicOp::bfadd : AtomicOp::fadd
                                            : AtomicOp::add;
                         atomic(op, mod, specLSC, astrategy.base, getAddress(addr[hoff], block, astrategy), curSrc);
                     } else switch (T.real()) {

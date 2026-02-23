@@ -511,7 +511,7 @@ struct send_2d_desc_t {
     // Reduce the number of messages by increasing count per
     // message.
     void try_promote_count() {
-        int max_count = block_2d_max_count(
+        int max_count = block_2d_max_count(hw, op == send_op_t::prefetch,
                 op == send_op_t::store, transpose, w, type.size());
         while (c * 2 <= max_count) {
             if (w_rcount % 2 != 0) break;

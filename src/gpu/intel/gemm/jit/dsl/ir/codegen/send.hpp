@@ -47,6 +47,15 @@ inline ngen::CacheSettingsLSC get_cache_settings(
                         ret = ngen::CacheSettingsLSC::L1C_L3C;
                     }
                     break;
+                case ngen::HW::XE3P_35_10:
+                case ngen::HW::XE3P_35_11:
+                case ngen::HW::XE3P_UNKNOWN:
+                    if (is_store) {
+                        ret = ngen::CacheSettingsLSC::L1UC_L2UC_L3WB;
+                    } else if (is_load || is_prefetch) {
+                        ret = ngen::CacheSettingsLSC::L1C_L2C_L3C;
+                    }
+                    break;
                 default: break;
             }
             break;
@@ -298,6 +307,7 @@ private:
         switch (op) {
             case send_op_t::atomic_add: return ngen::AtomicOp::add;
             case send_op_t::atomic_fadd: return ngen::AtomicOp::fadd;
+            case send_op_t::atomic_bfadd: return ngen::AtomicOp::bfadd;
             case send_op_t::atomic_cmpwr: return ngen::AtomicOp::cmpwr;
             default: stub();
         }

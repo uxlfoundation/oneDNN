@@ -96,6 +96,10 @@ struct gen_desc_t {
         problem_ = problem;
     }
 
+    void set_efficient_64b(bool efficient_64b) {
+        efficient_64b_ = efficient_64b;
+    }
+
 protected:
     compute::gpu_arch_t arch_;
     ngen::HW hw_ = ngen::HW::Unknown;
@@ -105,6 +109,8 @@ protected:
     const gemmstone::kcatalog::Entry *entry_ = nullptr;
     gemmstone::EvaluateAuxOutput aux_params_;
     gemmstone::CommonDriverInfo driver_info_;
+
+    bool efficient_64b_ = false;
 
     /* optional information to fine-tune kernel */
     int m_ = -1, n_ = -1, k_ = -1;

@@ -47,6 +47,8 @@ inline dsl::hw_t make_ir_hw(const impl::engine_t *engine) {
     if (device_info->mayiuse_systolic()) attr |= dsl::hw_t::attr_t::systolic;
     if (device_info->mayiuse_float_atomic_add(data_type::f64))
         attr |= dsl::hw_t::attr_t::atomic_fp64;
+    if (device_info->is_efficient_64bit())
+        attr |= dsl::hw_t::attr_t::efficient_64bit;
 
     return dsl::hw_t(product, eu_count, max_wg_size, l3_cache_size, attr);
 }

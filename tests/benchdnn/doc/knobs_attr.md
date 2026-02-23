@@ -30,7 +30,7 @@ for details.
 `--attr-fpmath` specifies the fpmath mode to be used for benchmarking.
 `MATHMODE` values can be any of `strict` (the default), `bf16`, `f16`, `tf32`,
 or `any`.
-`APPLY_TO_INT` values can be either `true` (the default) or `false`.
+`APPLY_TO_INT` values can be either `true` or `false` (the default).
 Refer to
 [fpmath primitive attribute](https://uxlfoundation.github.io/oneDNN/dev_guide_attributes_fpmath_mode.html)
 for details.

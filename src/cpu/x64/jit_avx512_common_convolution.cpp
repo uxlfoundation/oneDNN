@@ -1813,7 +1813,7 @@ void jit_avx512_common_convolution_bwd_weights_t<src_type, diff_dst_type,
     prepare_scratchpad_data(ctx);
 
 #if DNNL_THR_SYNC == 1
-    parallel(nthr_, [=](const int ithr, const int nthr) {
+    parallel(nthr_, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         assert(nthr_ == nthr);
 
         thread_info_t thread_info(this, ctx, ithr);

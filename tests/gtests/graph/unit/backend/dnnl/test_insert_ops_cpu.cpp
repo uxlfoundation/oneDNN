@@ -47,8 +47,7 @@ TEST(test_insert_ops, InsertPermuteForOpOnlyRequireDataFormat) {
     size_t id = 0;
 
     auto op = std::make_shared<graph::op_t>(id++,
-            static_cast<graph::op_kind_t>(graph::op_kind::_dnnl_prelu),
-            "prelu");
+            static_cast<graph::op_kind_t>(graph::op_kind::_prelu), "prelu");
 
     op->set_attr<std::string>(graph::op_attr::data_format, "NXC");
     op->set_attr<bool>(graph::op_attr::per_channel_broadcast, true);
@@ -85,7 +84,7 @@ TEST(test_insert_ops, InsertPermuteForOpOnlyRequireDataFormat) {
             = prelu_op->get_attr<graph::dnnl_impl::fusion_info_t>(
                     graph::op_attr::fusion_info);
     auto post_op = std::make_shared<graph::op_t>(id++,
-            static_cast<graph::op_kind_t>(graph::op_kind::_dnnl_binary), "add");
+            static_cast<graph::op_kind_t>(graph::op_kind::_binary), "add");
     post_op->set_attr<int64_t>(graph::op_attr::alg_kind,
             static_cast<int64_t>(graph::dnnl_impl::get_binary_alg_map().at(
                     graph::op_kind::Add)));
@@ -120,7 +119,7 @@ TEST(test_insert_ops, InsertToGroupForReorder) {
         auto &status = std::get<2>(item);
 
         auto op = std::make_shared<graph::op_t>(id++,
-                static_cast<graph::op_kind_t>(graph::op_kind::_dnnl_reorder),
+                static_cast<graph::op_kind_t>(graph::op_kind::_reorder),
                 "reorder");
         graph::logical_tensor_t in_lt = utils::logical_tensor_init(
                 id++, in_dims, graph::data_type::f32);

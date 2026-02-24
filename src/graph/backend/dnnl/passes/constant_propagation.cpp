@@ -33,25 +33,25 @@ namespace {
 bool has_scratchpad(const op_t *op) {
     // the following ops do not have scratchpad output by definition
     const static std::set<op_kind_t> no_scratchpad_ops {
-            op_kind::_dnnl_constant_scales,
-            op_kind::_dnnl_constant_zps,
-            op_kind::_dnnl_add_zps,
-            op_kind::_dnnl_sub_zps,
-            op_kind::_dnnl_to_group,
-            op_kind::_dnnl_from_group,
-            op_kind::_dnnl_permute,
-            op_kind::_dnnl_squeeze,
-            op_kind::_dnnl_unsqueeze,
-            op_kind::_dnnl_transpose,
-            op_kind::_dnnl_reshape,
-            op_kind::_dnnl_gen_index,
-            op_kind::_dnnl_mask,
+            op_kind::_constant_scales,
+            op_kind::_constant_zps,
+            op_kind::_add_zps,
+            op_kind::_sub_zps,
+            op_kind::_to_group,
+            op_kind::_from_group,
+            op_kind::_permute,
+            op_kind::_squeeze,
+            op_kind::_unsqueeze,
+            op_kind::_transpose,
+            op_kind::_reshape,
+            op_kind::_gen_index,
+            op_kind::_mask,
     };
 
     // the following ops may have scratchpad output if output size > 1
     const static std::set<op_kind_t> may_have_scratchpad_ops {
-            op_kind::_dnnl_mul_scales,
-            op_kind::_dnnl_reorder,
+            op_kind::_mul_scales,
+            op_kind::_reorder,
     };
 
     const op_kind_t kind = op->get_kind();

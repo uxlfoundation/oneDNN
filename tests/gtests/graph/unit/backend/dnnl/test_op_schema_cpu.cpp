@@ -29,7 +29,7 @@ using namespace dnnl::graph::tests::unit::utils;
 TEST(test_op_schema, InferSqueezeOutputShape) {
     auto &be = graph::dnnl_impl::dnnl_backend_t::get_singleton();
     EXPECT_EQ(be.get_name(), "dnnl_backend");
-    const op_kind_t kind = op_kind::_dnnl_squeeze;
+    const op_kind_t kind = op_kind::_squeeze;
     const op_schema_t *op_schema_ = op_schema_registry_t::get_op_schema(kind);
     std::vector<std::vector<int64_t>> axes_list {{1}, {1, 2}, {-1}, {-1, -2}};
     std::vector<std::vector<int64_t>> src_shapes {
@@ -61,7 +61,7 @@ TEST(test_op_schema, InferSqueezeOutputShape) {
 TEST(test_op_schema, InferUnsqueezeOutputShape) {
     auto &be = graph::dnnl_impl::dnnl_backend_t::get_singleton();
     EXPECT_EQ(be.get_name(), "dnnl_backend");
-    const op_kind_t kind = op_kind::_dnnl_unsqueeze;
+    const op_kind_t kind = op_kind::_unsqueeze;
     const op_schema_t *op_schema_ = op_schema_registry_t::get_op_schema(kind);
 
     const std::vector<int64_t> src_shape {4};
@@ -95,7 +95,7 @@ TEST(test_op_schema, InferUnsqueezeOutputShape) {
 TEST(test_op_schema, InferUnsqueezeOutputShapeBasedOnAxes) {
     auto &be = graph::dnnl_impl::dnnl_backend_t::get_singleton();
     EXPECT_EQ(be.get_name(), "dnnl_backend");
-    const op_kind_t kind = op_kind::_dnnl_unsqueeze;
+    const op_kind_t kind = op_kind::_unsqueeze;
     const op_schema_t *op_schema_ = op_schema_registry_t::get_op_schema(kind);
 
     const std::vector<std::vector<int64_t>> axes_list {
@@ -128,7 +128,7 @@ TEST(test_op_schema, InferUnsqueezeOutputShapeBasedOnAxes) {
 }
 
 TEST(test_op_schema, DnnlBinary) {
-    op_kind_t op_kind = op_kind::_dnnl_binary;
+    op_kind_t op_kind = op_kind::_binary;
     const size_t expected_in_size_lower = 2;
     const size_t expected_out_size = 2;
     const size_t expected_attr_size = 7;

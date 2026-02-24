@@ -31,12 +31,11 @@ void get_arg_indices_for_post_ops(
         if (pops[i]->is_post_sum()) {
             indices.insert({DNNL_GRAPH_ARG_POST_SRC,
                     {indices_t::type_t::input, base_index++}});
-        } else if (pops[i]->get_op()->get_kind() == op_kind::_dnnl_binary) {
+        } else if (pops[i]->get_op()->get_kind() == op_kind::_binary) {
             indices.insert(
                     {DNNL_ARG_ATTR_MULTIPLE_POST_OP((int)i) | DNNL_ARG_SRC_1,
                             {indices_t::type_t::input, base_index++}});
-        } else if (pops[i]->get_op()->get_kind()
-                == op_kind::_dnnl_convolution) {
+        } else if (pops[i]->get_op()->get_kind() == op_kind::_convolution) {
             indices.insert({DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_WEIGHTS,
                     {indices_t::type_t::input, base_index++}});
             if (pops[i]->get_op()->num_inputs() > 2) {

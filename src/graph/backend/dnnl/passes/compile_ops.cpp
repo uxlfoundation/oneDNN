@@ -55,7 +55,7 @@ status_t compile_ops(std::shared_ptr<subgraph_t> &sg) {
         VCHECK_COMPILE_OPS(exec != nullptr, status::invalid_graph_op,
                 "unimplemented op, can't compile op %s",
                 op->get_name().c_str());
-        if (cur_op->get_kind() == op_kind::_dnnl_sdpa) {
+        if (cur_op->get_kind() == op_kind::_sdpa) {
             auto sdpa_exec = std::dynamic_pointer_cast<sdpa_executable_t>(exec);
             VCHECK_COMPILE_OPS(sdpa_exec->is_initialized(),
                     status::unimplemented,

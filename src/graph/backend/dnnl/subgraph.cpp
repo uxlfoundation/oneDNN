@@ -290,7 +290,7 @@ status_t subgraph_validator_t::run(const std::shared_ptr<subgraph_t> &sg) {
         }
 
         // Additional verifications
-        if (op->get_kind() == op_kind::_dnnl_convolution) {
+        if (op->get_kind() == op_kind::_convolution) {
             bool canonicalized = op->has_attr(op_attr::canonicalized)
                     && op->get_attr<bool>(op_attr::canonicalized);
             if (canonicalized) {
@@ -315,7 +315,7 @@ status_t subgraph_validator_t::run(const std::shared_ptr<subgraph_t> &sg) {
         const auto &in_vals = op->get_input_values();
         for (size_t i = 0; i < in_vals.size(); i++) {
             // dnnl_pool_bwd's index 1 and index 2 input are optional
-            if (op->get_kind() == op_kind::_dnnl_pool_bwd && (i == 1 || i == 2))
+            if (op->get_kind() == op_kind::_pool_bwd && (i == 1 || i == 2))
                 continue;
 
             auto lt = in_vals[i]->get_logical_tensor();
@@ -419,9 +419,9 @@ void subgraph_rewriter_t::insert_op_before(const op_ptr &inserted_op,
     auto in_dtype = in_val->get_logical_tensor().data_type;
     new_val->set_data_type(in_dtype);
 
-    if (inserted_op->get_kind() == op_kind::_dnnl_permute
-            && (base_op->get_kind() == op_kind::_dnnl_mul_scales
-                    || base_op->get_kind() == op_kind::_dnnl_sub_zps)) {
+    if (inserted_op->get_kind() == op_kind::_permute
+            && (base_op->get_kind() == op_kind::_mul_scales
+                    || base_op->get_kind() == op_kind::_sub_zps)) {
         // Only abx tag is respected for scale and zps inputs, should set
         // strides explicitly and execute reorder.
 

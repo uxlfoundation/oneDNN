@@ -141,83 +141,61 @@ public:
         fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(Dropout, 1)>());
 
         // internal ops
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_mul_scales, 1)>());
         fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(
-                        _dnnl_mul_scales, 1)>());
+                        _constant_scales, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_add_zps, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_sub_zps, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_constant_zps, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_permute, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_to_group, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_from_group, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_unsqueeze, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_squeeze, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_reshape, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_transpose, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_identity, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_convolution, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_convtranspose, 1)>());
         fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(
-                        _dnnl_constant_scales, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_dnnl_add_zps, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_dnnl_sub_zps, 1)>());
+                        _convtranspose_bwd_data, 1)>());
         fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(
-                        _dnnl_constant_zps, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_dnnl_permute, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_dnnl_to_group, 1)>());
+                        _convtranspose_bwd_weights, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_reduction, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_pool, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_bn_folding, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_conv_bwd_data, 1)>());
         fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(
-                        _dnnl_from_group, 1)>());
+                        _conv_bwd_weights, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_batchnorm, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_batchnorm_bwd, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_binary, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_eltwise, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_eltwise_bwd, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_gen_index, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_host_scalar, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_mask, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_shuffle, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_sum, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_prelu, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_prelu_bwd, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_softmax_bwd, 1)>());
         fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(
-                        _dnnl_unsqueeze, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_dnnl_squeeze, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_dnnl_reshape, 1)>());
+                        _logsoftmax_bwd, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_resampling, 1)>());
         fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(
-                        _dnnl_transpose, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_dnnl_identity, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(
-                        _dnnl_convolution, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(
-                        _dnnl_convtranspose, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(
-                        _dnnl_convtranspose_bwd_data, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(
-                        _dnnl_convtranspose_bwd_weights, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(
-                        _dnnl_reduction, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_dnnl_pool, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(
-                        _dnnl_bn_folding, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(
-                        _dnnl_conv_bwd_data, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(
-                        _dnnl_conv_bwd_weights, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(
-                        _dnnl_batchnorm, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(
-                        _dnnl_batchnorm_bwd, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_dnnl_binary, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_dnnl_eltwise, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(
-                        _dnnl_eltwise_bwd, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(
-                        _dnnl_gen_index, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(
-                        _dnnl_host_scalar, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_dnnl_mask, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_dnnl_shuffle, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_dnnl_sum, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_dnnl_prelu, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(
-                        _dnnl_prelu_bwd, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(
-                        _dnnl_softmax_bwd, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(
-                        _dnnl_logsoftmax_bwd, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(
-                        _dnnl_resampling, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(
-                        _dnnl_resampling_bwd, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_dnnl_concat, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(
-                        _dnnl_layernorm_bwd, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_dnnl_pool_bwd, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_dnnl_matmul, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(
-                        _dnnl_logsoftmax, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_dnnl_softmax, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(
-                        _dnnl_layernorm, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_dnnl_reorder, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(
-                        _dnnl_groupnorm, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_dnnl_sdpa, 1)>());
-        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_dnnl_dropout, 1)>());
+                        _resampling_bwd, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_concat, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_layernorm_bwd, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_pool_bwd, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_matmul, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_logsoftmax, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_softmax, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_layernorm, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_reorder, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_groupnorm, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_sdpa, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(_dropout, 1)>());
     }
 };
 

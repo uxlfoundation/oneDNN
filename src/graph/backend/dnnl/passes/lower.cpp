@@ -59,7 +59,7 @@ using ltw = logical_tensor_wrapper_t;
 
 static status_t pool_fwd_handler(
         const std::shared_ptr<op_t> &op, subgraph_rewriter_t &rewriter) {
-    auto new_op = std::make_shared<op_t>(op_kind::_dnnl_pool);
+    auto new_op = std::make_shared<op_t>(op_kind::_pool);
     if (op->get_kind() == graph::op_kind::MaxPool) {
         new_op->set_attr<std::string>(op_attr::kind, "maxpool");
     } else {
@@ -73,7 +73,7 @@ static status_t pool_fwd_handler(
 
 static status_t avgpool_bwd_handler(
         const std::shared_ptr<op_t> &op, subgraph_rewriter_t &rewriter) {
-    auto new_op = std::make_shared<op_t>(op_kind::_dnnl_pool_bwd);
+    auto new_op = std::make_shared<op_t>(op_kind::_pool_bwd);
     new_op->set_attr<std::string>(op_attr::kind, "avgpool");
     new_op->merge_attributes(op->get_attributes());
     rewriter.replace_op(op, new_op);
@@ -83,7 +83,7 @@ static status_t avgpool_bwd_handler(
 
 static status_t binary_handler(
         const std::shared_ptr<op_t> &op, subgraph_rewriter_t &rewriter) {
-    auto new_op = std::make_shared<op_t>(op_kind::_dnnl_binary);
+    auto new_op = std::make_shared<op_t>(op_kind::_binary);
     new_op->set_attr<int64_t>(op_attr::alg_kind,
             static_cast<int64_t>(get_binary_alg_map().at(op->get_kind())));
     new_op->merge_attributes(op->get_attributes());
@@ -141,7 +141,7 @@ static status_t identity_handler(
     }
 
     // connect Identity op between new src_val and dst_val
-    auto identity_op = std::make_shared<op_t>(op_kind::_dnnl_identity);
+    auto identity_op = std::make_shared<op_t>(op_kind::_identity);
     new_src_val->add_consumer(*identity_op, 0);
     identity_op->add_input(new_src_val);
     identity_op->add_output(dst_val);
@@ -153,7 +153,7 @@ static status_t identity_handler(
 
 static status_t bias_add_handler(
         const std::shared_ptr<op_t> &op, subgraph_rewriter_t &rewriter) {
-    auto new_op = std::make_shared<op_t>(op_kind::_dnnl_binary);
+    auto new_op = std::make_shared<op_t>(op_kind::_binary);
     new_op->set_attr<int64_t>(op_attr::alg_kind,
             static_cast<int64_t>(dnnl::algorithm::binary_add));
     new_op->set_attr<bool>(op_attr::is_bias_add, true);
@@ -165,7 +165,7 @@ static status_t bias_add_handler(
 
 static status_t eltwise_fwd_handler(
         const std::shared_ptr<op_t> &op, subgraph_rewriter_t &rewriter) {
-    auto new_op = std::make_shared<op_t>(op_kind::_dnnl_eltwise);
+    auto new_op = std::make_shared<op_t>(op_kind::_eltwise);
     new_op->set_attr<int64_t>(op_attr::alg_kind,
             static_cast<int64_t>(get_eltwise_alg(op, false)));
     merge_common_eltwise_attrs(op, new_op);
@@ -176,7 +176,7 @@ static status_t eltwise_fwd_handler(
 
 static status_t eltwise_bwd_handler(
         const std::shared_ptr<op_t> &op, subgraph_rewriter_t &rewriter) {
-    auto new_op = std::make_shared<op_t>(op_kind::_dnnl_eltwise_bwd);
+    auto new_op = std::make_shared<op_t>(op_kind::_eltwise_bwd);
     merge_common_eltwise_attrs(op, new_op);
     const bool use_dst = op->has_attr(op_attr::use_dst)
             ? op->get_attr<bool>(op_attr::use_dst)
@@ -206,9 +206,9 @@ static status_t softplus_handler(
     const auto beta = op->get_attr<float>(op_attr::beta);
     const auto algo = dnnl::algorithm::eltwise_soft_relu;
     if (op->get_kind() == graph::op_kind::SoftPlus) {
-        new_op = std::make_shared<op_t>(op_kind::_dnnl_eltwise);
+        new_op = std::make_shared<op_t>(op_kind::_eltwise);
     } else { // SoftPlusBackward
-        new_op = std::make_shared<op_t>(op_kind::_dnnl_eltwise_bwd);
+        new_op = std::make_shared<op_t>(op_kind::_eltwise_bwd);
         new_op->set_attr(op_attr::fwd_alg_kind, static_cast<int64_t>(algo));
         new_op->set_attr(op_attr::use_dst, false);
     }
@@ -222,7 +222,7 @@ static status_t softplus_handler(
 
 static status_t batchnorm_fwd_handler(
         const std::shared_ptr<op_t> &op, subgraph_rewriter_t &rewriter) {
-    auto new_op = std::make_shared<op_t>(op_kind::_dnnl_batchnorm);
+    auto new_op = std::make_shared<op_t>(op_kind::_batchnorm);
 
     // decide if this is for training or inference
     if (op->get_kind() == graph::op_kind::BatchNormInference)
@@ -247,7 +247,7 @@ static status_t reduction_handler(
     if (src_nelems > 65535) { return status::unimplemented; }
 #endif
 
-    auto new_op = std::make_shared<op_t>(op_kind::_dnnl_reduction);
+    auto new_op = std::make_shared<op_t>(op_kind::_reduction);
     new_op->set_attr<int64_t>(
             op_attr::alg_kind, static_cast<int64_t>(op->get_kind()));
     new_op->set_attr<int64_t>(op_attr::alg_kind,
@@ -265,7 +265,7 @@ static status_t reduction_handler(
 
 static status_t reorder_handler(
         const std::shared_ptr<op_t> &op, subgraph_rewriter_t &rewriter) {
-    auto new_op = std::make_shared<op_t>(op_kind::_dnnl_reorder);
+    auto new_op = std::make_shared<op_t>(op_kind::_reorder);
     new_op->set_attr<bool>(op_attr::change_layout, true);
     new_op->merge_attributes(op->get_attributes());
 
@@ -276,7 +276,7 @@ static status_t reorder_handler(
 
 static status_t typecast_handler(
         const std::shared_ptr<op_t> &op, subgraph_rewriter_t &rewriter) {
-    auto new_op = std::make_shared<op_t>(op_kind::_dnnl_reorder);
+    auto new_op = std::make_shared<op_t>(op_kind::_reorder);
     new_op->set_attr<bool>(op_attr::change_layout, false);
     new_op->merge_attributes(op->get_attributes());
 
@@ -287,7 +287,7 @@ static status_t typecast_handler(
 
 static status_t reciprocal_handler(
         const std::shared_ptr<op_t> &op, subgraph_rewriter_t &rewriter) {
-    auto new_op = std::make_shared<op_t>(op_kind::_dnnl_eltwise);
+    auto new_op = std::make_shared<op_t>(op_kind::_eltwise);
     new_op->set_attr<int64_t>(op_attr::alg_kind,
             static_cast<int64_t>(dnnl::algorithm::eltwise_pow));
     new_op->set_attr<float>(op_attr::alpha, 1.f);
@@ -300,7 +300,7 @@ static status_t reciprocal_handler(
 
 static status_t static_reshape_handler(
         const std::shared_ptr<op_t> &op, subgraph_rewriter_t &rewriter) {
-    auto new_op = std::make_shared<op_t>(op_kind::_dnnl_reshape);
+    auto new_op = std::make_shared<op_t>(op_kind::_reshape);
     new_op->merge_attributes(op->get_attributes());
     rewriter.replace_op(op, new_op);
     return status::success;
@@ -308,7 +308,7 @@ static status_t static_reshape_handler(
 
 static status_t static_transpose_handler(
         const std::shared_ptr<op_t> &op, subgraph_rewriter_t &rewriter) {
-    auto new_op = std::make_shared<op_t>(op_kind::_dnnl_transpose);
+    auto new_op = std::make_shared<op_t>(op_kind::_transpose);
     new_op->merge_attributes(op->get_attributes());
     rewriter.replace_op(op, new_op);
     return status::success;
@@ -334,7 +334,7 @@ static status_t maxpool_bwd_handler(
     VCHECK_INVALID_ARGUMENT(!src_ltw.is_shape_unknown(),
             "MaxPoolBackward op's src input must have valid shape");
 
-    op_ptr maxpool_bwd = std::make_shared<op_t>(op_kind::_dnnl_pool_bwd);
+    op_ptr maxpool_bwd = std::make_shared<op_t>(op_kind::_pool_bwd);
     maxpool_bwd->merge_attributes(cur_op->get_attributes());
     maxpool_bwd->set_attr<std::string>(op_attr::kind, "maxpool");
     maxpool_bwd->set_attr<std::vector<int64_t>>(
@@ -348,7 +348,7 @@ static status_t maxpool_bwd_handler(
 
     // no indices. we need to insert a maxpool fwd to re-compute the
     // indices from src
-    op_ptr maxpool_fwd = std::make_shared<op_t>(op_kind::_dnnl_pool);
+    op_ptr maxpool_fwd = std::make_shared<op_t>(op_kind::_pool);
     maxpool_fwd->merge_attributes(cur_op->get_attributes());
     maxpool_fwd->set_attr<std::string>(op_attr::kind, "maxpool");
 
@@ -403,13 +403,13 @@ static status_t maxpool_bwd_handler(
 static status_t squared_difference_handler(
         const std::shared_ptr<op_t> &cur_op, subgraph_rewriter_t &rewriter) {
     if (cur_op->get_kind() == graph::op_kind::SquaredDifference) {
-        op_ptr subtract = std::make_shared<op_t>(op_kind::_dnnl_binary);
+        op_ptr subtract = std::make_shared<op_t>(op_kind::_binary);
         subtract->set_attr<int64_t>(op_attr::alg_kind,
                 static_cast<int64_t>(dnnl::algorithm::binary_sub));
 
         rewriter.replace_op(cur_op, subtract);
 
-        op_ptr square = std::make_shared<op_t>(op_kind::_dnnl_eltwise);
+        op_ptr square = std::make_shared<op_t>(op_kind::_eltwise);
         square->set_attr<int64_t>(op_attr::alg_kind,
                 static_cast<int64_t>(dnnl::algorithm::eltwise_square));
 
@@ -446,8 +446,8 @@ static status_t static_quant_handler(
                                     [](float i) { return i != 0.f; }),
             "scales can't be zero");
     // int8 = f32 / scales + zps
-    op_ptr mul_scales_op = std::make_shared<op_t>(op_kind::_dnnl_mul_scales);
-    op_ptr add_zps_op = std::make_shared<op_t>(op_kind::_dnnl_add_zps);
+    op_ptr mul_scales_op = std::make_shared<op_t>(op_kind::_mul_scales);
+    op_ptr add_zps_op = std::make_shared<op_t>(op_kind::_add_zps);
 
     std::vector<float> inv_scales
             = dnnl_impl::utils::fmap(scales, [](float s) { return 1.f / s; });
@@ -501,8 +501,8 @@ static status_t static_dequant_handler(
             in_vals.size(), out_vals.size());
 
     // f32 = scales * (int8 - zps)
-    op_ptr sub_zps_op = std::make_shared<op_t>(op_kind::_dnnl_sub_zps);
-    op_ptr mul_scales_op = std::make_shared<op_t>(op_kind::_dnnl_mul_scales);
+    op_ptr sub_zps_op = std::make_shared<op_t>(op_kind::_sub_zps);
+    op_ptr mul_scales_op = std::make_shared<op_t>(op_kind::_mul_scales);
 
     sub_zps_op->set_attr<std::vector<int64_t>>(op_attr::zps, zps);
     mul_scales_op->set_attr<std::vector<float>>(op_attr::scales, scales);
@@ -555,7 +555,7 @@ static status_t dynamic_quant_handler(
     if (has_zps) zps = in_vals[2];
 
     // int8 = f32 / scales + zps
-    op_ptr mul_scales = std::make_shared<op_t>(op_kind::_dnnl_mul_scales);
+    op_ptr mul_scales = std::make_shared<op_t>(op_kind::_mul_scales);
 
     mul_scales->connect_input(1, scales);
     scales->remove_consumer(*cur_op, 1);
@@ -570,7 +570,7 @@ static status_t dynamic_quant_handler(
     rewriter.to_insert(mul_scales);
 
     // op used to inverse the scales
-    auto inv_scales_op = std::make_shared<op_t>(op_kind::_dnnl_eltwise);
+    auto inv_scales_op = std::make_shared<op_t>(op_kind::_eltwise);
     // y = alpha*x^beta
     inv_scales_op->set_attr<int64_t>(op_attr::alg_kind,
             static_cast<int64_t>(dnnl::algorithm::eltwise_pow));
@@ -580,7 +580,7 @@ static status_t dynamic_quant_handler(
     insert_empty_scratchpad(inv_scales_op);
 
     if (has_zps) {
-        op_ptr add_zps = std::make_shared<op_t>(op_kind::_dnnl_add_zps);
+        op_ptr add_zps = std::make_shared<op_t>(op_kind::_add_zps);
         add_zps->connect_input(1, zps);
         zps->remove_consumer(*cur_op, 2);
         add_zps->set_attr<int64_t>(op_attr::axis, axis);
@@ -657,7 +657,7 @@ static status_t dynamic_dequant_handler(
     const int64_t scales_data_type = scales->get_logical_tensor().data_type;
     // f32 = scales * (int8 - zps)
     // connect scales to mul_scales op
-    op_ptr mul_scales = std::make_shared<op_t>(op_kind::_dnnl_mul_scales);
+    op_ptr mul_scales = std::make_shared<op_t>(op_kind::_mul_scales);
     mul_scales->connect_input(1, scales);
     scales->remove_consumer(*cur_op, 1);
     mul_scales->set_attr<int64_t>(op_attr::axis, axis);
@@ -680,7 +680,7 @@ static status_t dynamic_dequant_handler(
 
     if (has_zps) {
         const int64_t zps_data_type = zps->get_logical_tensor().data_type;
-        op_ptr sub_zps = std::make_shared<op_t>(op_kind::_dnnl_sub_zps);
+        op_ptr sub_zps = std::make_shared<op_t>(op_kind::_sub_zps);
         sub_zps->connect_input(1, zps);
         zps->remove_consumer(*cur_op, 2);
         sub_zps->set_attr<int64_t>(op_attr::axis, axis);
@@ -725,7 +725,7 @@ static status_t select_handler(
     // only be of `s8` data type.
     cond->set_data_type(dnnl::impl::data_type::s8);
 
-    op_ptr new_op = std::make_shared<op_t>(op_kind::_dnnl_binary);
+    op_ptr new_op = std::make_shared<op_t>(op_kind::_binary);
     new_op->set_attr<int64_t>(op_attr::alg_kind,
             static_cast<int64_t>(get_binary_alg_map().at(op->get_kind())));
     new_op->merge_attributes(op->get_attributes());
@@ -759,7 +759,7 @@ static status_t softmax_handler(
     const auto &dst = op->get_output_value(0);
     bool no_stats = op->num_outputs() == 1;
 
-    auto new_softmax_op = std::make_shared<op_t>(op_kind::_dnnl_softmax);
+    auto new_softmax_op = std::make_shared<op_t>(op_kind::_softmax);
     new_softmax_op->merge_attributes(op->get_attributes());
 
     src->remove_consumer(*op, 0);
@@ -791,7 +791,7 @@ static status_t softmax_handler(
         insert_empty_scratchpad(new_softmax_op);
 
         // create reorder op to convert the output to the original data type
-        auto reorder_op = std::make_shared<op_t>(op_kind::_dnnl_reorder);
+        auto reorder_op = std::make_shared<op_t>(op_kind::_reorder);
         reorder_op->set_attr<bool>(op_attr::change_layout, false);
         reorder_op->add_input(f32_dst);
         f32_dst->add_consumer(*reorder_op, 0);
@@ -817,7 +817,7 @@ static status_t softmax_handler(
     auto reduce_dst_op_out_val = f32_dst;
     if (need_reduction) {
         // create reduce_src op
-        auto reduce_src_op = std::make_shared<op_t>(op_kind::_dnnl_reduction);
+        auto reduce_src_op = std::make_shared<op_t>(op_kind::_reduction);
         reduce_src_op->set_attr<std::vector<int64_t>>(op_attr::axes,
                 {new_softmax_op->get_attr<int64_t>(op_attr::axis)});
         reduce_src_op->set_attr<bool>(op_attr::keep_dims, true);
@@ -835,7 +835,7 @@ static status_t softmax_handler(
         insert_empty_scratchpad(reduce_src_op);
 
         // create reduce_dst op
-        auto reduce_dst_op = std::make_shared<op_t>(op_kind::_dnnl_reduction);
+        auto reduce_dst_op = std::make_shared<op_t>(op_kind::_reduction);
         reduce_dst_op->set_attr<std::vector<int64_t>>(op_attr::axes,
                 {new_softmax_op->get_attr<int64_t>(op_attr::axis)});
         reduce_dst_op->set_attr<bool>(op_attr::keep_dims, true);
@@ -857,7 +857,7 @@ static status_t softmax_handler(
     }
 
     // create log op
-    auto log_op = std::make_shared<op_t>(op_kind::_dnnl_eltwise);
+    auto log_op = std::make_shared<op_t>(op_kind::_eltwise);
     log_op->set_attr<int64_t>(op_attr::alg_kind,
             static_cast<int64_t>(dnnl::algorithm::eltwise_log));
     log_op->add_input(reduce_dst_op_out_val);
@@ -871,7 +871,7 @@ static status_t softmax_handler(
     insert_empty_scratchpad(log_op);
 
     // create subtract op
-    auto sub_op = std::make_shared<op_t>(op_kind::_dnnl_binary);
+    auto sub_op = std::make_shared<op_t>(op_kind::_binary);
     sub_op->set_attr<int64_t>(op_attr::alg_kind,
             static_cast<int64_t>(dnnl::algorithm::binary_sub));
     sub_op->add_input(reduce_src_op_out_val);
@@ -891,8 +891,7 @@ static status_t softmax_handler(
     // create reduce_sum_dst op
     auto reduce_or_reorder_op_out_val = f32_dst;
     if (need_reduction) {
-        auto reduce_sum_dst_op
-                = std::make_shared<op_t>(op_kind::_dnnl_reduction);
+        auto reduce_sum_dst_op = std::make_shared<op_t>(op_kind::_reduction);
         reduce_sum_dst_op->set_attr<std::vector<int64_t>>(op_attr::axes,
                 {new_softmax_op->get_attr<int64_t>(op_attr::axis)});
         reduce_sum_dst_op->set_attr<bool>(op_attr::keep_dims, true);
@@ -912,7 +911,7 @@ static status_t softmax_handler(
         rewriter.to_insert(reduce_sum_dst_op);
     } else {
         // create reorder op to convert f32_dst to s8
-        auto reorder_s8_op = std::make_shared<op_t>(op_kind::_dnnl_reorder);
+        auto reorder_s8_op = std::make_shared<op_t>(op_kind::_reorder);
         reorder_s8_op->set_attr<bool>(op_attr::change_layout, false);
         reorder_s8_op->add_input(f32_dst);
         f32_dst->add_consumer(*reorder_s8_op, 0);
@@ -928,7 +927,7 @@ static status_t softmax_handler(
     }
 
     // create select op
-    auto select_op = std::make_shared<op_t>(op_kind::_dnnl_binary);
+    auto select_op = std::make_shared<op_t>(op_kind::_binary);
     select_op->set_attr<int64_t>(op_attr::alg_kind,
             static_cast<int64_t>(dnnl::algorithm::binary_select));
     select_op->add_input(sub_op_out_val);
@@ -950,7 +949,7 @@ static status_t softmax_handler(
 
 static status_t dropout_handler(
         const std::shared_ptr<op_t> &op, subgraph_rewriter_t &rewriter) {
-    auto new_op = std::make_shared<op_t>(op_kind::_dnnl_dropout);
+    auto new_op = std::make_shared<op_t>(op_kind::_dropout);
     new_op->merge_attributes(op->get_attributes());
     rewriter.replace_op(op, new_op);
     return status::success;
@@ -958,7 +957,7 @@ static status_t dropout_handler(
 
 static status_t gen_index_handler(
         const std::shared_ptr<op_t> &op, subgraph_rewriter_t &rewriter) {
-    auto new_op = std::make_shared<op_t>(op_kind::_dnnl_gen_index);
+    auto new_op = std::make_shared<op_t>(op_kind::_gen_index);
     new_op->merge_attributes(op->get_attributes());
     int64_t axis = new_op->get_attr<int64_t>(op_attr::axis);
     const int64_t ndims = static_cast<int64_t>(
@@ -973,7 +972,7 @@ static status_t gen_index_handler(
 
 static status_t rmsnorm_handler(
         const std::shared_ptr<op_t> &op, subgraph_rewriter_t &rewriter) {
-    auto new_op = std::make_shared<op_t>(op_kind::_dnnl_layernorm);
+    auto new_op = std::make_shared<op_t>(op_kind::_layernorm);
     new_op->set_attr<bool>(op_attr::is_rms, true);
     if (op->get_input_values().size() == 2) {
         new_op->set_attr<bool>(op_attr::use_affine, true);
@@ -997,19 +996,18 @@ static status_t rmsnorm_handler(
 
 static const std::unordered_map<graph::op_kind_t, handler_func> handler_table {
         // matmul
-        ITEM(MatMul, common_handler<op_kind::_dnnl_matmul>),
+        ITEM(MatMul, common_handler<op_kind::_matmul>),
         // conv
-        ITEM(Convolution, common_handler<op_kind::_dnnl_convolution>),
-        ITEM(ConvolutionBackwardData,
-                common_handler<op_kind::_dnnl_conv_bwd_data>),
+        ITEM(Convolution, common_handler<op_kind::_convolution>),
+        ITEM(ConvolutionBackwardData, common_handler<op_kind::_conv_bwd_data>),
         ITEM(ConvolutionBackwardWeights,
-                common_handler<op_kind::_dnnl_conv_bwd_weights>),
+                common_handler<op_kind::_conv_bwd_weights>),
         // convtranspose
-        ITEM(ConvTranspose, common_handler<op_kind::_dnnl_convtranspose>),
+        ITEM(ConvTranspose, common_handler<op_kind::_convtranspose>),
         ITEM(ConvTransposeBackwardData,
-                common_handler<op_kind::_dnnl_convtranspose_bwd_data>),
+                common_handler<op_kind::_convtranspose_bwd_data>),
         ITEM(ConvTransposeBackwardWeights,
-                common_handler<op_kind::_dnnl_convtranspose_bwd_weights>),
+                common_handler<op_kind::_convtranspose_bwd_weights>),
         // pooling
         ITEM(MaxPool, pool_fwd_handler),
         ITEM(AvgPool, pool_fwd_handler),
@@ -1017,9 +1015,9 @@ static const std::unordered_map<graph::op_kind_t, handler_func> handler_table {
         ITEM(MaxPoolBackward, maxpool_bwd_handler),
         // softmax
         ITEM(SoftMax, softmax_handler),
-        ITEM(LogSoftmax, common_handler<op_kind::_dnnl_logsoftmax>),
-        ITEM(SoftMaxBackward, common_handler<op_kind::_dnnl_softmax_bwd>),
-        ITEM(LogSoftmaxBackward, common_handler<op_kind::_dnnl_logsoftmax_bwd>),
+        ITEM(LogSoftmax, common_handler<op_kind::_logsoftmax>),
+        ITEM(SoftMaxBackward, common_handler<op_kind::_softmax_bwd>),
+        ITEM(LogSoftmaxBackward, common_handler<op_kind::_logsoftmax_bwd>),
         // binary
         ITEM(Add, binary_handler),
         ITEM(Subtract, binary_handler),
@@ -1061,10 +1059,10 @@ static const std::unordered_map<graph::op_kind_t, handler_func> handler_table {
         ITEM(BatchNormInference, batchnorm_fwd_handler),
         ITEM(BatchNormForwardTraining, batchnorm_fwd_handler),
         ITEM(BatchNormTrainingBackward,
-                common_handler<op_kind::_dnnl_batchnorm_bwd>),
+                common_handler<op_kind::_batchnorm_bwd>),
         // prelu
-        ITEM(PReLU, common_handler<op_kind::_dnnl_prelu>),
-        ITEM(PReLUBackward, common_handler<op_kind::_dnnl_prelu_bwd>),
+        ITEM(PReLU, common_handler<op_kind::_prelu>),
+        ITEM(PReLUBackward, common_handler<op_kind::_prelu_bwd>),
         // reduction
         ITEM(ReduceL1, reduction_handler),
         ITEM(ReduceL2, reduction_handler),
@@ -1078,15 +1076,14 @@ static const std::unordered_map<graph::op_kind_t, handler_func> handler_table {
         ITEM(SoftPlus, softplus_handler),
         ITEM(SoftPlusBackward, softplus_handler),
         // interpolate
-        ITEM(Interpolate, common_handler<op_kind::_dnnl_resampling>),
-        ITEM(InterpolateBackward,
-                common_handler<op_kind::_dnnl_resampling_bwd>),
+        ITEM(Interpolate, common_handler<op_kind::_resampling>),
+        ITEM(InterpolateBackward, common_handler<op_kind::_resampling_bwd>),
         // layernorm
-        ITEM(LayerNorm, common_handler<op_kind::_dnnl_layernorm>),
-        ITEM(LayerNormBackward, common_handler<op_kind::_dnnl_layernorm_bwd>),
-        ITEM(RMSNorm, common_handler<op_kind::_dnnl_layernorm>),
+        ITEM(LayerNorm, common_handler<op_kind::_layernorm>),
+        ITEM(LayerNormBackward, common_handler<op_kind::_layernorm_bwd>),
+        ITEM(RMSNorm, common_handler<op_kind::_layernorm>),
         // groupnorm
-        ITEM(GroupNorm, common_handler<op_kind::_dnnl_groupnorm>),
+        ITEM(GroupNorm, common_handler<op_kind::_groupnorm>),
         // quantization
         ITEM(Quantize, static_quant_handler),
         ITEM(Dequantize, static_dequant_handler),
@@ -1100,7 +1097,7 @@ static const std::unordered_map<graph::op_kind_t, handler_func> handler_table {
         ITEM(Reorder, reorder_handler),
         ITEM(TypeCast, typecast_handler),
         ITEM(Reciprocal, reciprocal_handler),
-        ITEM(Concat, common_handler<op_kind::_dnnl_concat>),
+        ITEM(Concat, common_handler<op_kind::_concat>),
         ITEM(SquaredDifference, squared_difference_handler),
         ITEM(Select, select_handler),
         ITEM(GenIndex, gen_index_handler),

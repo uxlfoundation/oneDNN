@@ -55,7 +55,7 @@ status_t insert_reorder_before(op_ptr &op, size_t offset,
         return status;
 
     // create reorder op, connect it to graph and add it's scratchpad output
-    auto reorder_op = std::make_shared<op_t>(op_kind::_dnnl_reorder);
+    auto reorder_op = std::make_shared<op_t>(op_kind::_reorder);
     rewriter.insert_op_before(reorder_op, op, offset);
     auto scratchpad_val = insert_empty_scratchpad(reorder_op);
     // set optimal layout to reorder's output
@@ -88,7 +88,7 @@ status_t insert_reorder_after(op_ptr &op, size_t offset,
         return status;
 
     // create reorder op, connect it to graph and add it's scratchpad output
-    auto reorder_op = std::make_shared<op_t>(op_kind::_dnnl_reorder);
+    auto reorder_op = std::make_shared<op_t>(op_kind::_reorder);
     rewriter.insert_op_after(reorder_op, op, offset);
     auto scratchpad_val = insert_empty_scratchpad(reorder_op);
     // set optimal layout to reorder's input
@@ -1749,7 +1749,7 @@ status_t layout_propagator_for_sdpa(std::shared_ptr<op_t> &op,
             const auto &consumer_op = dst_val->get_consumers()[0].get_op();
             const logical_tensor_t &consumer_out
                     = consumer_op.get_output_logical_tensor(0);
-            if (consumer_op.get_kind() == op_kind::_dnnl_reshape
+            if (consumer_op.get_kind() == op_kind::_reshape
                     && ltw(consumer_out).ndims() == 5
                     && ltw(consumer_out).is_strided()) {
                 const auto &ori_strides = ltw(consumer_out).vstrides();

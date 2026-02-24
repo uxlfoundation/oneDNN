@@ -1236,8 +1236,7 @@ int attr_args_t::prepare_post_ops_mds(const attr_t &attr, int ndims,
     // iterate over all post ops and prepare md for each binary
     for (int idx = 0; idx < po.len(); ++idx) {
         const auto &e = po.entry[idx];
-        if (e.is_binary_kind() || e.is_prelu_kind()) {
-
+        if (e.is_binary_kind()) {
             const auto &po_rhs_tensor_entry
                     = get_po_rhs_tensor_entry(e, ndims, prim_kind);
             const int mask = po_rhs_tensor_entry.mask;
@@ -1261,7 +1260,14 @@ int attr_args_t::prepare_post_ops_mds(const attr_t &attr, int ndims,
                         (DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_2),
                         std::move(rhs_src2_tensor_desc));
             }
-
+        } else if (e.is_prelu_kind()) {
+            // Prelu doesn't rely on md anywhere so far. Treat it as a quant
+            // entry.
+            const auto &po_rhs_tensor_entry
+                    = get_po_rhs_tensor_entry(e, ndims, prim_kind);
+            entries.insert(std::make_pair(
+                    DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_WEIGHTS,
+                    po_rhs_tensor_entry.mask));
         } else if (e.is_convolution_kind()) {
             // Update dims for post operations appended after conv_dw
             conv_dw_fusion::get_fused_conv_dst_dims(ndims, e, dims, dims);
@@ -1415,8 +1421,8 @@ dnnl_primitive_attr_t create_dnnl_attr(
                         ops, e.binary.alg, src1_md, src2_md));
 
             } else if (e.is_prelu_kind()) {
-                const auto &policy = e.prelu.policy;
-                const auto mask = attr_t::get_default_mask(policy, ndims);
+                const auto mask = attr_args.get_mask(
+                        DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_WEIGHTS);
                 DNN_SAFE_V(dnnl_post_ops_append_prelu(ops, mask));
             } else {
                 assert(!"unknown attr::post_ops::kind");

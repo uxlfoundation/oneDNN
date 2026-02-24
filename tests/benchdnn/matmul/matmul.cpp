@@ -729,7 +729,19 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
             return dnnl::impl::utils::one_of(
                     t, dnnl_s4, dnnl_u4, dnnl_s8, dnnl_u8, dnnl_s32);
         };
-        if (is_int(prb->src_dt()) != is_int(prb->wei_dt())) {
+
+        // Grouped matmul supports weight-only quantization (fp src + int wei)
+        // when fpmath apply_to_int is set. For regular matmul, and for grouped
+        // without apply_to_int, mixed int/fp src+wei is not supported on CPU.
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+        const bool is_grouped_woq
+                = prb->sparse_options.get_encoding(DNNL_ARG_SRC) == dnnl_grouped
+                && !is_int(prb->src_dt()) && is_int(prb->wei_dt())
+                && prb->attr.fpmath_mode.apply_to_int;
+#else
+        const bool is_grouped_woq = false;
+#endif
+        if (!is_grouped_woq && is_int(prb->src_dt()) != is_int(prb->wei_dt())) {
             BENCHDNN_PRINT(2,
                     "[SKIP][%s:%d]: CPU doesn't support mixed integer and "
                     "floating point source and weights.\n",

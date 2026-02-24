@@ -140,11 +140,24 @@ InterfaceHandler GEMMOptions::generateInterface(HW hw) const {
 }
 
 GEMMOptions GEMMOptions::transpose() const {
-      GEMMOptions ret = *this;
-      std::swap(ret.localA, ret.localB);
-      std::swap(ret.scaleA, ret.scaleB);
-      std::swap(ret.offsetA, ret.offsetB);
-      return ret;
+    GEMMOptions ret = *this;
+    std::swap(ret.localA, ret.localB);
+    std::swap(ret.scaleA, ret.scaleB);
+    std::swap(ret.offsetA, ret.offsetB);
+    return ret;
+}
+
+std::string strategyToString(HW hw, GEMMProblem problem, GEMMStrategy strategy) {
+    std::stringstream ss;
+    ss << problem.toString() << " "
+       << std::to_string(strategy.unroll[LoopM])
+       << " "
+       << std::to_string(strategy.unroll[LoopN])
+       << " "
+       << problem.scalarsToString()
+       << " "
+       << unparseStrategy(hw, problem, strategy);
+    return ss.str();
 }
 
 Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams sizes,
@@ -314,7 +327,15 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
         /* Allow caller to adjust strategy further */
         if (strategyAdjuster) strategyAdjuster(strategy);
 
-        strategy.preflight(hw, problem);
+        try {
+            strategy.preflight(hw, problem);
+        } catch (const std::runtime_error &ex) {
+            if (getVerbose(gemmstone::GEMMVerbose::DebugInfo) >= 2) {
+                std::cout << "preflight failed(" << ex.what() << "):"
+                          << strategyToString(hw, problem, strategy) << std::endl;
+            }
+            continue;
+        }
 
         /* Update problem from strategy */
         if (isPacked(problem.A.layout))
@@ -322,23 +343,9 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
         if (isPacked(problem.B.layout))
             problem.B.packSize = strategy.unroll[LoopN];
 
-        if (getVerbose(gemmstone::GEMMVerbose::DebugInfo) >= 10) {
-            if (entry)
-                std::cout << "Selected microkernel catalog entry: " << entry->str() << std::endl;
-            else
-                std::cout << "Microkernel generated heuristically" << std::endl;
-        }
         if (getVerbose(gemmstone::GEMMVerbose::DebugInfo) >= 2) {
-            std::string result = problem.toString();
-            result.append(" ");
-            result.append(std::to_string(strategy.unroll[LoopM]));
-            result.append(" ");
-            result.append(std::to_string(strategy.unroll[LoopN]));
-            result.append(" ");
-            result.append(problem.scalarsToString());
-            result.append(" ");
-            result.append(unparseStrategy(hw, problem, strategy));
-            std::cout << "attempting kernel: " << result << std::endl;
+            std::cout << "attempting " << (entry ? "db " : "heuristic ")
+                      << "strategy: " << strategyToString(hw, problem, strategy) << std::endl;
         }
 
         try {
@@ -364,7 +371,8 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
         } catch (const std::runtime_error &ex) {
             /* Try next strategy */
             if (getVerbose(gemmstone::GEMMVerbose::DebugInfo) >= 2) {
-                std::cout << "strategy failed: " << ex.what() << std::endl;
+                std::cout << "strategy failed(" << ex.what() << "):"
+                          << strategyToString(hw, problem, strategy) << std::endl;
             }
             continue;
         }

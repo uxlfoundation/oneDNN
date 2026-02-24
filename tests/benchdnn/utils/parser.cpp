@@ -69,6 +69,15 @@ void add_option_to_help(const std::string &option,
     help_added.push_back(option);
 }
 
+bool has_only_digits(const std::string &s) {
+    if (s.empty()) return false;
+
+    return std::all_of(s.cbegin(), s.cend(), [](int c) {
+        assert(c < UINT8_MAX);
+        return std::isdigit(c);
+    });
+}
+
 // Covers all integer parsing routines: `atoi`, `atol, `atoll`, `stoi`, `stol`.
 int64_t stoll_safe(const std::string &s) {
     int64_t value = 0;
@@ -273,15 +282,9 @@ attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
 
                 // parse mask input - processed for both src1/src2 tensors.
                 const auto mask_input_str = get_substr(s, src_subpos, delim);
-                // Check if `mask_input_str` consists of only digits.
-                const bool only_digits = std::all_of(mask_input_str.cbegin(),
-                        mask_input_str.cend(), [](int c) {
-                    assert(c < UINT8_MAX);
-                    return std::isdigit(c);
-                });
-
-                if (only_digits) {
-                    // If digits only, then read it as integer value.
+                if (parser_utils::has_only_digits(mask_input_str)) {
+                    // If an input consists of digits only, then read it as the
+                    // int value.
                     const auto src_mask
                             = parser_utils::stoll_safe(mask_input_str);
 

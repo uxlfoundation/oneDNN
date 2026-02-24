@@ -78,6 +78,14 @@ std::string to_string(const config_t &c) {
       << c.wg_m_vs << "," << c.wg_n_vs;
     return s.str();
 }
+std::string to_string(const bwd_config_t &c) {
+    std::stringstream s;
+    s << c.unroll_m_BcBr << "," << c.unroll_n_BcBr << "," << c.unroll_m_DBc
+      << "," << c.unroll_n_DBc << "," << c.unroll_m_DBr << "," << c.unroll_n_DBr
+      << "," << c.wg_m_BcBr << "," << c.wg_n_BcBr << "," << c.wg_m_DBc << ","
+      << c.wg_n_DBc << "," << c.wg_m_DBr << "," << c.wg_n_DBr;
+    return s.str();
+}
 
 // A matching config is a combination of mandatory and optional requirements
 // it is assumed the query criteria are specific whereas key criteria may be approximate
@@ -86,32 +94,35 @@ std::string to_string(const config_t &c) {
 // head size and sequence length must strictly match the inequality with a caveat for
 // the more general key criteria "any = -1"
 // properties must match exactly if they are specified in the key criteria
-bool operator==(const config_record_t &key, const config_query_t &query) {
-    bool result = ((query.arch == key.criteria.arch)
-            && (query.head_size <= key.criteria.head_size)
-            && ((key.criteria.seq_len == -1)
-                    || (key.criteria.seq_len != -1
-                            && query.seq_len <= key.criteria.seq_len))
+bool criteria_matches(
+        const config_criteria_t &key, const config_query_t &query) {
+    return ((query.arch == key.arch) && (query.head_size <= key.head_size)
+            && ((key.seq_len == -1)
+                    || (key.seq_len != -1 && query.seq_len <= key.seq_len))
             && ((((query.prop & property::second_token)
-                        == (key.criteria.prop & property::second_token)))
+                        == (key.prop & property::second_token)))
                     && (((query.prop & property::quantized)
-                            == (key.criteria.prop & property::quantized)))
+                            == (key.prop & property::quantized)))
                     && (((query.prop & property::fma)
-                            == (key.criteria.prop & property::fma)))
-                    && (((key.criteria.prop & property::f32) == property::none)
+                            == (key.prop & property::fma)))
+                    && (((key.prop & property::f32) == property::none)
                             || ((query.prop & property::f32)
-                                    == (key.criteria.prop & property::f32)))
-                    && (((key.criteria.prop & property::f16_accumulate)
+                                    == (key.prop & property::f32)))
+                    && (((key.prop & property::f16_accumulate)
                                 == property::none)
                             || ((query.prop & property::f16_accumulate)
-                                    == (key.criteria.prop
-                                            & property::f16_accumulate)))
-                    && (((key.criteria.prop & property::integrated)
-                                == property::none)
+                                    == (key.prop & property::f16_accumulate)))
+                    && (((key.prop & property::integrated) == property::none)
                             || ((query.prop & property::integrated)
-                                    == (key.criteria.prop
-                                            & property::integrated)))));
-    return result;
+                                    == (key.prop & property::integrated)))));
+}
+
+bool operator==(const config_record_t &key, const config_query_t &query) {
+    return criteria_matches(key.criteria, query);
+}
+
+bool operator==(const bwd_config_record_t &key, const config_query_t &query) {
+    return criteria_matches(key.criteria, query);
 }
 
 template <typename Enum>
@@ -182,6 +193,10 @@ bool operator<(const config_criteria_t &lhs, const config_criteria_t &rhs) {
 }
 
 bool operator<(const config_record_t &lhs, const config_record_t &rhs) {
+    return lhs.criteria < rhs.criteria;
+}
+
+bool operator<(const bwd_config_record_t &lhs, const bwd_config_record_t &rhs) {
     return lhs.criteria < rhs.criteria;
 }
 
@@ -669,11 +684,63 @@ dim_t nearest_conf_seq_interval(compute::gpu_arch_t arch, dim_t head_size,
     return utils::rnd_up_pow2(seq);
 }
 
+// Backward pass kernel configurations:
+// [ arch, head_size, {sequence length}, {properties} ] -> bwd_config
+// bwd_config_t fields: {unroll_m_BcBr, unroll_n_BcBr,
+//                        unroll_m_DBc,  unroll_n_DBc,
+//                        unroll_m_DBr,  unroll_n_DBr,
+//                        wg_m_BcBr, wg_n_BcBr,
+//                        wg_m_DBc,  wg_n_DBc,
+//                        wg_m_DBr,  wg_n_DBr}
+static std::vector<bwd_config_record_t> sorted_bwd_configs = []() {
+    // clang-format off
+    std::vector<bwd_config_record_t> configs = {
+        // xe_hpc
+        {{compute::gpu_arch_t::xe_hpc, 32},  { 16, 32, 16, 16, 16, 16, 4, 8, 2, 4, 2, 16 }},
+        {{compute::gpu_arch_t::xe_hpc, 64},  { 16, 32, 16, 16, 32, 32, 4, 8, 4, 4, 2, 8 }},
+        {{compute::gpu_arch_t::xe_hpc, 128}, { 16, 32, 16, 16, 32, 32, 4, 8, 8, 4, 4, 8 }},
+
+        /* xe2 todo:
+        {{compute::gpu_arch_t::xe2, 64},  {16, 64, 64, 16, 64, 16, 4, 1, 1, 4, 1, 4}},
+        {{compute::gpu_arch_t::xe2, 128}, {16, 64, 64, 16, 64, 16, 4, 2, 2, 4, 2, 4}},
+        {{compute::gpu_arch_t::xe2, 256}, {16, 64, 64, 16, 64, 16, 4, 2, 4, 4, 4, 4}},
+        */
+    };
+    // clang-format on
+
+    // ensures configs appear in order of most to least defined/desirable
+    std::sort(std::begin(configs), std::end(configs));
+    return configs;
+}();
+
+bwd_config_t *choose_bwd_config(compute::gpu_arch_t arch, dim_t head_size,
+        dim_t seq, bool is_thin_q, bool is_quantized, bool is_integrated,
+        bool is_fma, bool is_f32) {
+    const bool is_f16_accumulate = false;
+    compute::gpu_arch_t arch_query = (arch >= compute::gpu_arch_t::xe3)
+            ? compute::gpu_arch_t::xe2
+            : arch;
+    property query_properties = set_properties(is_thin_q, is_quantized,
+            is_integrated, is_fma, is_f32, is_f16_accumulate);
+
+    config_query_t query(arch_query, static_cast<int>(head_size),
+            static_cast<int>(seq), query_properties);
+    auto it = find(begin(sorted_bwd_configs), end(sorted_bwd_configs), query);
+    if (it != end(sorted_bwd_configs)) {
+        VDEBUGINFO(4, primitive, sdpa,
+                "bwd config search: {query %s} -> {%s config:%s},",
+                to_string(query).c_str(), to_string(it->criteria).c_str(),
+                to_string(it->config).c_str());
+        return &it->config;
+    }
+    return nullptr;
+}
+
 void deserialize_config_to_gemmstone(micro::HWInformation &hwInfo,
         gemmstone::GEMMProblem &problem_kq, gemmstone::GEMMProblem &problem_vs,
         micro::GEMMOptions &opts_kq, micro::GEMMOptions &opts_vs,
         gemmstone::SizeParams &sizes_kq, gemmstone::SizeParams &sizes_vs,
-        const micro_ukernel_params_t &ukernel_config) {
+        const micro_fwd_ukernel_params_t &ukernel_config) {
 
     // hardware info
     hwInfo.gmdid = ukernel_config.hwinfo.gmdid;
@@ -684,11 +751,13 @@ void deserialize_config_to_gemmstone(micro::HWInformation &hwInfo,
     auto deserialize_options
             = [](micro::GEMMOptions &gemmstone_opts,
                       const ukernel_serialized_opts_t &serialized_opts) {
+        gemmstone_opts.localA = serialized_opts.localA;
         gemmstone_opts.localB = serialized_opts.localB;
         gemmstone_opts.slmPtr = serialized_opts.slmPtr;
         gemmstone_opts.scaleA = serialized_opts.scaleA;
         gemmstone_opts.offsetA = serialized_opts.offsetA;
     };
+
     deserialize_options(opts_kq, ukernel_config.opts_kq);
     deserialize_options(opts_vs, ukernel_config.opts_vs);
 
@@ -735,6 +804,10 @@ void deserialize_config_to_gemmstone(micro::HWInformation &hwInfo,
         problem.C.layout = static_cast<gemmstone::MatrixLayout>(
                 serialized_problem.C_layout);
         problem.A.setAlignment(serialized_problem.A_alignment);
+        problem.A.crosspack = serialized_problem.A_crosspack;
+        problem.A.tileR = serialized_problem.A_tileR;
+        problem.A.tileC = serialized_problem.A_tileC;
+
         problem.B.setAlignment(serialized_problem.B_alignment);
         problem.B.crosspack = serialized_problem.B_crosspack;
         problem.B.tileR = serialized_problem.B_tileR;
@@ -754,6 +827,113 @@ void deserialize_config_to_gemmstone(micro::HWInformation &hwInfo,
     };
     deserialize_sizes(sizes_kq, ukernel_config.sizes_kq);
     deserialize_sizes(sizes_vs, ukernel_config.sizes_vs);
+}
+
+void deserialize_config_to_gemmstone(micro::HWInformation &hwInfo,
+        gemmstone::GEMMProblem &problem_kq, gemmstone::GEMMProblem &problem_vs,
+        gemmstone::GEMMProblem &problem_vtdA,
+        gemmstone::GEMMProblem &problem_ktq,
+        gemmstone::GEMMProblem &problem_qdSt, micro::GEMMOptions &opts_kq,
+        micro::GEMMOptions &opts_vs, micro::GEMMOptions &opts_vtdA,
+        micro::GEMMOptions &opts_ktq, micro::GEMMOptions &opts_qdSt,
+        gemmstone::SizeParams &sizes_kq, gemmstone::SizeParams &sizes_vs,
+        gemmstone::SizeParams &sizes_vtdA, gemmstone::SizeParams &sizes_ktq,
+        gemmstone::SizeParams &sizes_qdSt,
+        const micro_bwd_ukernel_params_t &ukernel_config) {
+
+    // hardware info
+    hwInfo.gmdid = ukernel_config.hwinfo.gmdid;
+    hwInfo.euCount = ukernel_config.hwinfo.euCount;
+    hwInfo.systolicAvailable = ukernel_config.hwinfo.systolicAvailable;
+
+    // options kq, vs
+    auto deserialize_options
+            = [](micro::GEMMOptions &gemmstone_opts,
+                      const ukernel_serialized_opts_t &serialized_opts) {
+        gemmstone_opts.localA = serialized_opts.localA;
+        gemmstone_opts.localB = serialized_opts.localB;
+        gemmstone_opts.slmPtr = serialized_opts.slmPtr;
+        gemmstone_opts.scaleA = serialized_opts.scaleA;
+        gemmstone_opts.offsetA = serialized_opts.offsetA;
+    };
+    deserialize_options(opts_kq, ukernel_config.opts_kq);
+    deserialize_options(opts_vs, ukernel_config.opts_vs);
+    deserialize_options(opts_vtdA, ukernel_config.opts_vtdA);
+    deserialize_options(opts_ktq, ukernel_config.opts_ktq);
+    deserialize_options(opts_qdSt, ukernel_config.opts_qdSt);
+
+    // problems kq, vs
+    auto deserialize_problem
+            = [](gemmstone::GEMMProblem &problem,
+                      const ukernel_serialized_problem_t &serialized_problem) {
+        problem.Ta_ext = {
+                static_cast<gemmstone::Type::_Type>(serialized_problem.Ta_ext)};
+        problem.Tb_ext = {
+                static_cast<gemmstone::Type::_Type>(serialized_problem.Tb_ext)};
+        problem.Ta
+                = {static_cast<gemmstone::Type::_Type>(serialized_problem.Ta)};
+        problem.Tb
+                = {static_cast<gemmstone::Type::_Type>(serialized_problem.Tb)};
+        problem.Tc_ext = {
+                static_cast<gemmstone::Type::_Type>(serialized_problem.Tc_ext)};
+        problem.Tc
+                = {static_cast<gemmstone::Type::_Type>(serialized_problem.Tc)};
+        problem.Ts
+                = {static_cast<gemmstone::Type::_Type>(serialized_problem.Ts)};
+        problem.A.layout = static_cast<gemmstone::MatrixLayout>(
+                serialized_problem.A_layout);
+
+        problem.Ta_scale = {static_cast<gemmstone::Type::_Type>(
+                serialized_problem.Ta_scale)};
+        problem.A_scale.setAlignment(serialized_problem.A_scale_alignment);
+        problem.A_scale.layout = static_cast<gemmstone::MatrixLayout>(
+                serialized_problem.A_scale_layout);
+        problem.asPtrDims = serialized_problem.asPtrDims;
+        problem.Tao
+                = {static_cast<gemmstone::Type::_Type>(serialized_problem.Tao)};
+        problem.AO.setAlignment(serialized_problem.AO_alignment);
+        problem.AO.layout = static_cast<gemmstone::MatrixLayout>(
+                serialized_problem.AO_layout);
+        problem.aoPtrDims = serialized_problem.aoPtrDims;
+        problem.aOffset
+                = static_cast<gemmstone::ABOffset>(serialized_problem.aOffset);
+        problem.aqGroupM = serialized_problem.aqGroupM;
+        problem.aqGroupK = serialized_problem.aqGroupK;
+
+        problem.B.layout = static_cast<gemmstone::MatrixLayout>(
+                serialized_problem.B_layout);
+        problem.C.layout = static_cast<gemmstone::MatrixLayout>(
+                serialized_problem.C_layout);
+        problem.A.setAlignment(serialized_problem.A_alignment);
+        problem.A.crosspack = serialized_problem.A_crosspack;
+        problem.A.tileR = serialized_problem.A_tileR;
+        problem.A.tileC = serialized_problem.A_tileC;
+
+        problem.B.setAlignment(serialized_problem.B_alignment);
+        problem.B.crosspack = serialized_problem.B_crosspack;
+        problem.B.tileR = serialized_problem.B_tileR;
+        problem.B.tileC = serialized_problem.B_tileC;
+    };
+    deserialize_problem(problem_kq, ukernel_config.problem_kq);
+    deserialize_problem(problem_vs, ukernel_config.problem_vs);
+    deserialize_problem(problem_vtdA, ukernel_config.problem_vtdA);
+    deserialize_problem(problem_ktq, ukernel_config.problem_ktq);
+    deserialize_problem(problem_qdSt, ukernel_config.problem_qdSt);
+
+    // sizes kq, vs
+    auto deserialize_sizes
+            = [](gemmstone::SizeParams &sizes,
+                      const ukernel_serialized_sizes_t &serialized_sizes) {
+        sizes.m = serialized_sizes.m;
+        sizes.n = serialized_sizes.n;
+        sizes.k = serialized_sizes.k;
+        sizes.batch = serialized_sizes.batch;
+    };
+    deserialize_sizes(sizes_kq, ukernel_config.sizes_kq);
+    deserialize_sizes(sizes_vs, ukernel_config.sizes_vs);
+    deserialize_sizes(sizes_vtdA, ukernel_config.sizes_vtdA);
+    deserialize_sizes(sizes_ktq, ukernel_config.sizes_ktq);
+    deserialize_sizes(sizes_qdSt, ukernel_config.sizes_qdSt);
 }
 
 } // namespace sdpa

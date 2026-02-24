@@ -38,6 +38,15 @@ struct config_t {
     int wg_m_vs, wg_n_vs; // Workgroup configuration for V*S GEMM
 };
 
+struct bwd_config_t {
+    int unroll_m_BcBr, unroll_n_BcBr; // Subgroup tile sizes for Br*Bc GEMMs
+    int unroll_m_DBc, unroll_n_DBc; // Subgroup tile sizes for Bc*D GEMMs
+    int unroll_m_DBr, unroll_n_DBr; // Subgroup tile sizes for Br*D GEMMs
+    int wg_m_BcBr, wg_n_BcBr; // Workgroup configuration for Br*Bc GEMMs
+    int wg_m_DBc, wg_n_DBc; // Workgroup configuration for Bc*D GEMMs
+    int wg_m_DBr, wg_n_DBr; // Workgroup configuration for Br*D GEMMs
+};
+
 enum class property : int {
     none = 0x0,
     second_token = 0x1,
@@ -91,17 +100,31 @@ struct config_record_t {
     config_t config;
 };
 
+struct bwd_config_record_t {
+    config_criteria_t criteria;
+    bwd_config_t config;
+};
+
+// Common criteria matching: returns true if query matches key criteria
+bool criteria_matches(
+        const config_criteria_t &key, const config_query_t &query);
+
 std::ostream &operator<<(std::ostream &s, const config_query_t &q);
 std::ostream &operator<<(std::ostream &s, const config_criteria_t &c);
 std::ostream &operator<<(std::ostream &s, const config_t &c);
 
 bool operator==(const config_record_t &key, const config_query_t &query);
+bool operator==(const bwd_config_record_t &key, const config_query_t &query);
 bool operator<(const config_criteria_t &lhs, const config_criteria_t &rhs);
 bool operator<(const config_record_t &lhs, const config_record_t &rhs);
+bool operator<(const bwd_config_record_t &lhs, const bwd_config_record_t &rhs);
 
 config_t *choose_config(compute::gpu_arch_t arch, dim_t head_size, dim_t seq,
         bool is_thin_q, bool is_quantized, bool is_integrated, bool is_fma,
         bool is_f32, bool is_f16_accumulate);
+bwd_config_t *choose_bwd_config(compute::gpu_arch_t arch, dim_t head_size,
+        dim_t seq, bool is_thin_q, bool is_quantized, bool is_integrated,
+        bool is_fma, bool is_f32, bool is_f16_accumulate);
 dim_t round_up_seq_interval(dim_t seq, compute::gpu_arch_t arch);
 
 dim_t nearest_conf_seq_interval(compute::gpu_arch_t arch, dim_t head_size,
@@ -116,12 +139,13 @@ struct ukernel_serialized_opts_t
 
     ukernel_serialized_opts_t() = default;
     ukernel_serialized_opts_t(micro::GEMMOptions opts)
-        : localB(opts.localB)
+        : localA(opts.localA)
+        , localB(opts.localB)
         , slmPtr(opts.slmPtr)
         , scaleA(opts.scaleA)
         , offsetA(opts.offsetA) {}
-    bool localB, slmPtr, scaleA, offsetA;
-    uint8_t padding[4] = {0};
+    bool localA, localB, slmPtr, scaleA, offsetA;
+    uint8_t padding[3] = {0};
 };
 DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(ukernel_serialized_opts_t);
 static_assert(sizeof(ukernel_serialized_opts_t) == 8,
@@ -155,6 +179,8 @@ struct ukernel_serialized_sizes_t
     int64_t m = 0, n = 0, k = 0;
 };
 DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(ukernel_serialized_sizes_t);
+static_assert(sizeof(ukernel_serialized_sizes_t) == 32,
+        "Expected sizeof(ukernel_serialized_sizes_t) == 32");
 
 struct ukernel_serialized_problem_t
     : trivially_serializable_t<ukernel_serialized_problem_t> {
@@ -171,8 +197,11 @@ struct ukernel_serialized_problem_t
         , A_layout(static_cast<int>(problem.A.layout))
         , B_layout(static_cast<int>(problem.B.layout))
         , C_layout(static_cast<int>(problem.C.layout))
+        , A_tileR(problem.A.tileR)
         , B_tileR(problem.B.tileR)
+        , A_tileC(problem.A.tileC)
         , B_tileC(problem.B.tileC)
+        , A_crosspack(problem.A.crosspack)
         , B_crosspack(problem.B.crosspack)
         , A_alignment(problem.A.alignment)
         , A_scale_alignment(problem.A_scale.alignment)
@@ -195,18 +224,18 @@ struct ukernel_serialized_problem_t
     int B_layout;
     int C_layout;
 
-    uint16_t B_tileR;
-    uint16_t B_tileC;
-    uint8_t B_crosspack;
+    uint16_t A_tileR, B_tileR;
+    uint16_t A_tileC, B_tileC;
+    uint8_t A_crosspack, B_crosspack;
 
     uint8_t A_alignment;
     uint8_t A_scale_alignment;
     uint8_t AO_alignment;
     uint8_t B_alignment;
     // trivially serializable classes require alignment to 8-byte boundaries
-    // padding0 bumps class size from 49->56 bytes so uint8_t arguments
+    // padding0 bumps class size from 54->56 bytes so uint8_t arguments
     // related to alignment can be grouped together rather than placed at the end of the struct
-    uint8_t padding0[7] = {0};
+    uint8_t padding0[2] = {0};
 
     int asPtrDims;
     int aOffset;
@@ -219,13 +248,14 @@ struct ukernel_serialized_problem_t
     int aoPtrDims;
     int aqGroupM;
     int aqGroupK;
+    uint8_t padding1[4] = {0};
 };
 DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(ukernel_serialized_problem_t);
-static_assert(sizeof(ukernel_serialized_problem_t) == 92,
-        "Expected sizeof(ukernel_serialized_problem_t) == 92");
+static_assert(sizeof(ukernel_serialized_problem_t) == 96,
+        "Expected sizeof(ukernel_serialized_problem_t) == 96");
 
-struct micro_ukernel_params_t
-    : trivially_serializable_t<micro_ukernel_params_t> {
+struct micro_fwd_ukernel_params_t
+    : trivially_serializable_t<micro_fwd_ukernel_params_t> {
     int unroll_m_kq, unroll_n_kq;
     int unroll_m_vs, unroll_n_vs;
     int wg_m_kq, wg_n_kq;
@@ -238,13 +268,56 @@ struct micro_ukernel_params_t
     ukernel_serialized_opts_t opts_vs;
     ukernel_serialized_sizes_t sizes_kq, sizes_vs;
 };
-DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(micro_ukernel_params_t);
+DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(micro_fwd_ukernel_params_t);
+
+struct micro_bwd_ukernel_params_t
+    : trivially_serializable_t<micro_bwd_ukernel_params_t> {
+    int unroll_m_BcBr, unroll_n_BcBr;
+    int unroll_m_DBc, unroll_n_DBc;
+    int unroll_m_DBr, unroll_n_DBr;
+
+    int wg_m_BcBr, wg_n_BcBr;
+    int wg_m_DBc, wg_n_DBc;
+    int wg_m_DBr, wg_n_DBr;
+
+    ukernel_serialized_hwinfo_t hwinfo;
+
+    ukernel_serialized_problem_t problem_kq;
+    ukernel_serialized_problem_t problem_vs;
+    ukernel_serialized_problem_t problem_vtdA;
+    ukernel_serialized_problem_t problem_ktq;
+    ukernel_serialized_problem_t problem_qdSt;
+
+    ukernel_serialized_opts_t opts_kq;
+    ukernel_serialized_opts_t opts_vs;
+    ukernel_serialized_opts_t opts_vtdA;
+    ukernel_serialized_opts_t opts_ktq;
+    ukernel_serialized_opts_t opts_qdSt;
+
+    ukernel_serialized_sizes_t sizes_kq, sizes_vs;
+    ukernel_serialized_sizes_t sizes_vtdA;
+    ukernel_serialized_sizes_t sizes_ktq;
+    ukernel_serialized_sizes_t sizes_qdSt;
+};
+DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(micro_bwd_ukernel_params_t);
 
 void deserialize_config_to_gemmstone(micro::HWInformation &hwInfo,
         gemmstone::GEMMProblem &problem_kq, gemmstone::GEMMProblem &problem_vs,
         micro::GEMMOptions &opts_kq, micro::GEMMOptions &opts_vs,
         gemmstone::SizeParams &sizes_kq, gemmstone::SizeParams &sizes_vs,
-        const micro_ukernel_params_t &ukernel_config);
+        const micro_fwd_ukernel_params_t &ukernel_config);
+
+void deserialize_config_to_gemmstone(micro::HWInformation &hwInfo,
+        gemmstone::GEMMProblem &problem_kq, gemmstone::GEMMProblem &problem_vs,
+        gemmstone::GEMMProblem &problem_vtdA,
+        gemmstone::GEMMProblem &problem_ktq,
+        gemmstone::GEMMProblem &problem_qdSt, micro::GEMMOptions &opts_kq,
+        micro::GEMMOptions &opts_vs, micro::GEMMOptions &opts_vtdA,
+        micro::GEMMOptions &opts_ktq, micro::GEMMOptions &opts_qdSt,
+        gemmstone::SizeParams &sizes_kq, gemmstone::SizeParams &sizes_vs,
+        gemmstone::SizeParams &sizes_vtdA, gemmstone::SizeParams &sizes_ktq,
+        gemmstone::SizeParams &sizes_qdSt,
+        const micro_bwd_ukernel_params_t &ukernel_config);
 
 } // namespace sdpa
 } // namespace intel

@@ -531,15 +531,15 @@ struct jit_bnorm_fwd_statistics_t : public jit_generator_t {
         mov(reg_ptr_mean_, PARAM_PTR(mean));
         mov(reg_ptr_var_, PARAM_PTR(var));
 #undef PARAM_PTR
-        mov(reg_blk_has_tail_, dword[PARAM_ADDR(blk_has_tail)]);
-        mov(reg_do_normalise_, dword[PARAM_ADDR(do_normalise)]);
+        mov(reg_blk_has_tail_.cvt32(), dword[PARAM_ADDR(blk_has_tail)]);
+        mov(reg_do_normalise_.cvt32(), dword[PARAM_ADDR(do_normalise)]);
     }
 
     void zeroise() {
         Label label_zeroise;
         xor_(reg_off_c_, reg_off_c_);
         uni_vpxor(vzero_, vzero_, vzero_);
-        mov(reg_C_, dword[PARAM_ADDR(C)]);
+        mov(reg_C_.cvt32(), dword[PARAM_ADDR(C)]);
         L(label_zeroise);
         {
             jit_tail_.uni_vmovups_maybe_tail(
@@ -648,14 +648,14 @@ struct jit_bnorm_fwd_statistics_t : public jit_generator_t {
 
     void compute_blocked(bool compute_mean) {
         Label label_C, label_S;
-        mov(reg_C_, dword[PARAM_ADDR(C)]);
+        mov(reg_C_.cvt32(), dword[PARAM_ADDR(C)]);
         L(label_C);
         {
             mov(reg_off_dat_, reg_off_dat_save_);
 
             load_stat(compute_mean);
 
-            mov(reg_S_, dword[PARAM_ADDR(S)]);
+            mov(reg_S_.cvt32(), dword[PARAM_ADDR(S)]);
             L(label_S);
             {
                 compute_stat(compute_mean);
@@ -677,7 +677,7 @@ struct jit_bnorm_fwd_statistics_t : public jit_generator_t {
     }
 
     void compute_nspc(bool compute_mean) {
-        mov(reg_C_, dword[PARAM_ADDR(C)]);
+        mov(reg_C_.cvt32(), dword[PARAM_ADDR(C)]);
 
         // When a variance is computed, two values are unrolled: mean and variance,
         // so number_of_vmms_to_unrolling_variables_ is divided by 2.
@@ -698,7 +698,7 @@ struct jit_bnorm_fwd_statistics_t : public jit_generator_t {
                 load_stat(compute_mean, c_blks_to_unroll);
 
                 Label label_S;
-                mov(reg_S_, dword[PARAM_ADDR(S)]);
+                mov(reg_S_.cvt32(), dword[PARAM_ADDR(S)]);
                 L(label_S);
                 {
                     is_avx2_ne_xf16_
@@ -727,7 +727,7 @@ struct jit_bnorm_fwd_statistics_t : public jit_generator_t {
 
     void compute(bool compute_mean) {
         Label label_N;
-        mov(reg_N_, dword[PARAM_ADDR(N)]);
+        mov(reg_N_.cvt32(), dword[PARAM_ADDR(N)]);
         L(label_N);
         {
             xor_(reg_off_dat_save_, reg_off_dat_save_);
@@ -764,7 +764,7 @@ struct jit_bnorm_fwd_statistics_t : public jit_generator_t {
         uni_vbroadcastss(vNS_, xtmp);
 
         xor_(reg_off_c_, reg_off_c_);
-        mov(reg_C_, dword[PARAM_ADDR(C)]);
+        mov(reg_C_.cvt32(), dword[PARAM_ADDR(C)]);
         L(label_normalise);
         {
             jit_tail_.uni_vmovups_maybe_tail(
@@ -952,7 +952,7 @@ struct jit_bnorm_fwd_t : public jit_generator_t {
         uni_vmovq(x, reg_tmp_);
         uni_vbroadcastss(vone_, x);
 
-        mov(reg_blk_has_tail_, dword[PARAM_ADDR(blk_has_tail)]);
+        mov(reg_blk_has_tail_.cvt32(), dword[PARAM_ADDR(blk_has_tail)]);
 
         mov(reg_tmp_, PARAM_PTR(shift));
         mov(ptr[rsp + stack_off_shift], reg_tmp_);
@@ -1064,7 +1064,7 @@ struct jit_bnorm_fwd_t : public jit_generator_t {
 
     void compute_avx2_ne_xf16(bool stream_store_allowed) {
         Label label_C, label_S, label_C_tail, label_C_end, label_S_C_tail;
-        mov(reg_C_, dword[PARAM_ADDR(C)]);
+        mov(reg_C_.cvt32(), dword[PARAM_ADDR(C)]);
         L(label_C);
         {
             cmp(reg_C_, 1);
@@ -1073,7 +1073,7 @@ struct jit_bnorm_fwd_t : public jit_generator_t {
             mov(reg_off_dat_, reg_off_dat_save_);
             load_two_c_mean_sqrtvar();
 
-            mov(reg_S_, dword[PARAM_ADDR(S)]);
+            mov(reg_S_.cvt32(), dword[PARAM_ADDR(S)]);
             L(label_S);
             {
                 compute_bnorm_avx2_ne_xf16(false, stream_store_allowed);
@@ -1097,7 +1097,7 @@ struct jit_bnorm_fwd_t : public jit_generator_t {
             mov(reg_off_dat_, reg_off_dat_save_);
             load_c_specifics(false);
 
-            mov(reg_S_, dword[PARAM_ADDR(S)]);
+            mov(reg_S_.cvt32(), dword[PARAM_ADDR(S)]);
             L(label_S_C_tail);
             {
                 compute_bnorm_avx2_ne_xf16(true, stream_store_allowed);
@@ -1112,14 +1112,14 @@ struct jit_bnorm_fwd_t : public jit_generator_t {
 
     void compute_blocked(bool stream_store_allowed) {
         Label label_C, label_S;
-        mov(reg_C_, dword[PARAM_ADDR(C)]);
+        mov(reg_C_.cvt32(), dword[PARAM_ADDR(C)]);
         L(label_C);
         {
             mov(reg_off_dat_, reg_off_dat_save_);
 
             load_c_specifics(false);
 
-            mov(reg_S_, dword[PARAM_ADDR(S)]);
+            mov(reg_S_.cvt32(), dword[PARAM_ADDR(S)]);
             L(label_S);
             {
                 compute_bnorm(
@@ -1311,7 +1311,7 @@ struct jit_bnorm_bwd_t : public jit_generator_t {
         uni_vmovq(x, reg_tmp_);
         uni_vbroadcastss(vNS_, x);
 
-        mov(reg_blk_has_tail_, dword[PARAM_ADDR(blk_has_tail)]);
+        mov(reg_blk_has_tail_.cvt32(), dword[PARAM_ADDR(blk_has_tail)]);
     }
 
     void load_c_specifics() {
@@ -1375,14 +1375,14 @@ struct jit_bnorm_bwd_t : public jit_generator_t {
 
     void compute_blocked(bool stream_store_allowed) {
         Label label_C, label_S;
-        mov(reg_C_, dword[PARAM_ADDR(C)]);
+        mov(reg_C_.cvt32(), dword[PARAM_ADDR(C)]);
         L(label_C);
         {
             mov(reg_off_dat_, reg_off_dat_save_);
 
             load_c_specifics();
 
-            mov(reg_S_, dword[PARAM_ADDR(S)]);
+            mov(reg_S_.cvt32(), dword[PARAM_ADDR(S)]);
             L(label_S);
             {
                 compute_bnorm(stream_store_allowed);
@@ -1403,13 +1403,13 @@ struct jit_bnorm_bwd_t : public jit_generator_t {
 
     void compute_nspc(bool stream_store_allowed) {
         Label label_C, label_S;
-        mov(reg_S_, dword[PARAM_ADDR(S)]);
+        mov(reg_S_.cvt32(), dword[PARAM_ADDR(S)]);
         L(label_S);
         {
             mov(reg_off_dat_, reg_off_dat_save_);
             xor_(reg_off_c_, reg_off_c_);
 
-            mov(reg_C_, dword[PARAM_ADDR(C)]);
+            mov(reg_C_.cvt32(), dword[PARAM_ADDR(C)]);
             L(label_C);
             {
                 load_c_specifics();
@@ -1432,7 +1432,7 @@ struct jit_bnorm_bwd_t : public jit_generator_t {
 
     void compute(bool stream_store_allowed) {
         Label label_N;
-        mov(reg_N_, dword[PARAM_ADDR(N)]);
+        mov(reg_N_.cvt32(), dword[PARAM_ADDR(N)]);
         L(label_N);
         {
             xor_(reg_off_dat_save_, reg_off_dat_save_);
@@ -1602,14 +1602,14 @@ struct jit_bnorm_bwd_diff_ss_t : public jit_generator_t {
         uni_vmovq(x, reg_tmp_);
         uni_vbroadcastss(vone_, x);
 
-        mov(reg_blk_has_tail_, dword[PARAM_ADDR(blk_has_tail)]);
+        mov(reg_blk_has_tail_.cvt32(), dword[PARAM_ADDR(blk_has_tail)]);
     }
 
     void zeroise() {
         Label label_zeroise;
         xor_(reg_off_c_, reg_off_c_);
         uni_vpxor(vzero_, vzero_, vzero_);
-        mov(reg_C_, dword[PARAM_ADDR(C)]);
+        mov(reg_C_.cvt32(), dword[PARAM_ADDR(C)]);
         L(label_zeroise);
         {
             jit_tail_.uni_vmovups_maybe_tail(
@@ -1756,7 +1756,7 @@ struct jit_bnorm_bwd_diff_ss_t : public jit_generator_t {
 
     void compute_blocked() {
         Label label_C, label_S;
-        mov(reg_C_, dword[PARAM_ADDR(C)]);
+        mov(reg_C_.cvt32(), dword[PARAM_ADDR(C)]);
         L(label_C);
         {
             mov(reg_off_dat_, reg_off_dat_save_);
@@ -1764,7 +1764,7 @@ struct jit_bnorm_bwd_diff_ss_t : public jit_generator_t {
             load_mean();
             zeroise_diff_beta_and_diff_gamma();
 
-            mov(reg_S_, dword[PARAM_ADDR(S)]);
+            mov(reg_S_.cvt32(), dword[PARAM_ADDR(S)]);
             L(label_S);
             {
                 compute_diff_beta_and_diff_gamma();
@@ -1787,7 +1787,7 @@ struct jit_bnorm_bwd_diff_ss_t : public jit_generator_t {
     }
 
     void compute_nspc() {
-        mov(reg_C_, dword[PARAM_ADDR(C)]);
+        mov(reg_C_.cvt32(), dword[PARAM_ADDR(C)]);
 
         constexpr int max_of_unrolled_c_blks
                 = number_of_vmms_to_unrolling_variables_
@@ -1807,7 +1807,7 @@ struct jit_bnorm_bwd_diff_ss_t : public jit_generator_t {
                 zeroise_diff_beta_and_diff_gamma(c_blks_to_unroll);
 
                 Label label_S;
-                mov(reg_S_, dword[PARAM_ADDR(S)]);
+                mov(reg_S_.cvt32(), dword[PARAM_ADDR(S)]);
                 L(label_S);
                 {
                     compute_diff_beta_and_diff_gamma(c_blks_to_unroll);
@@ -1834,7 +1834,7 @@ struct jit_bnorm_bwd_diff_ss_t : public jit_generator_t {
 
     void compute() {
         Label label_N;
-        mov(reg_N_, dword[PARAM_ADDR(N)]);
+        mov(reg_N_.cvt32(), dword[PARAM_ADDR(N)]);
         L(label_N);
         {
             xor_(reg_off_dat_save_, reg_off_dat_save_);

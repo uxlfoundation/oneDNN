@@ -322,10 +322,15 @@ public:
         auto re = RegExp() + base + offt;
         if (scale) re = re + reg_EVEX_max_8b_offt * scale;
 
+        // Returns ptr[re] (no size annotation) for the non-broadcast path so
+        // that xbyak STRICT_CHECK_MEM_REG_SIZE does not fire when the
+        // result is used with a GPR instruction.  For vector instructions,
+        // xbyak infers the memory operand size from the register (zmm/ymm/xmm)
+        // so the annotation is not needed for correctness.
         if (bcast)
             return zword_b[re];
         else
-            return zword[re];
+            return ptr[re];
     }
 
     template <typename T>

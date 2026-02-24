@@ -211,13 +211,8 @@
 
 // Define this macro as 0 to disable strict checking of memory operand and register size matching.
 // This macro may be removed in future versions.
-// oneDNN-specific note: several JIT kernels intentionally use size-mismatched memory operands
-// (e.g. zword[]-annotated addresses with 64-bit GPR instructions, or dword[] fields loaded into
-// Reg64 registers). These are architecturally correct on x86-64 but trigger this check. Until all
-// call sites are updated to use properly-sized operands or stripped annotations, set this to 0 to
-// suppress the false-positive errors.
 #ifndef XBYAK_STRICT_CHECK_MEM_REG_SIZE
-	#define XBYAK_STRICT_CHECK_MEM_REG_SIZE 0
+	#define XBYAK_STRICT_CHECK_MEM_REG_SIZE 1
 #endif
 
 namespace Xbyak {

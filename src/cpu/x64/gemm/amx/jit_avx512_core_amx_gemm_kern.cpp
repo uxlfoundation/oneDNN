@@ -201,16 +201,16 @@ void jit_avx512_core_amx_gemm_kern_t::generate() {
     sal(bm0, SHIFT_UNROLL_K + SHIFT_A);
     sal(bm1, SHIFT_UNROLL_K + SHIFT_A);
 
-    mov(TILEW(0x10), bm0);
-    mov(TILEW(0x12), bm1);
+    mov(TILEW(0x10), bm0w);
+    mov(TILEW(0x12), bm1w);
 
     sar(bm0, SHIFT_UNROLL_K + SHIFT_A - SHIFT_C);
     sar(bm1, SHIFT_UNROLL_K + SHIFT_A - SHIFT_C);
 
-    mov(TILEW(0x18), bm0);
-    mov(TILEW(0x1a), bm0);
-    mov(TILEW(0x1c), bm1);
-    mov(TILEW(0x1e), bm1);
+    mov(TILEW(0x18), bm0w);
+    mov(TILEW(0x1a), bm0w);
+    mov(TILEW(0x1c), bm1w);
+    mov(TILEW(0x1e), bm1w);
 
     sal(bm, SHIFT_UNROLL_KK + SHIFT_A);
 
@@ -239,13 +239,13 @@ void jit_avx512_core_amx_gemm_kern_t::generate() {
     mov(TILEW(0x14), UNROLL_KK * SIZE_B);
     mov(TILEW(0x16), UNROLL_KK * SIZE_B);
 
-    mov(TILEB(0x32), T0);
-    mov(TILEB(0x33), T1);
+    mov(TILEB(0x32), T0b);
+    mov(TILEB(0x33), T1b);
 
-    mov(TILEB(0x34), T0);
-    mov(TILEB(0x35), T1);
-    mov(TILEB(0x36), T0);
-    mov(TILEB(0x37), T1);
+    mov(TILEB(0x34), T0b);
+    mov(TILEB(0x35), T1b);
+    mov(TILEB(0x36), T0b);
+    mov(TILEB(0x37), T1b);
 
     sal(bn, SHIFT_UNROLL_KK + SHIFT_B);
 

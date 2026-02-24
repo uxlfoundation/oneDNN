@@ -47,6 +47,8 @@ void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
             = args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
     const dnn_mem_t &wei_scales
             = args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
+    const dnn_mem_t &wei_zps
+            = args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
 
     const int64_t group_count = prb->sparse_options.get_group_count();
     const auto &M_dims = prb->sparse_options.get_group_sizes();
@@ -56,15 +58,25 @@ void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
     const bool has_bias = prb->bia_dt != dnnl_data_type_undef;
     const bool has_src_scale = !prb->attr.scales.get(DNNL_ARG_SRC).is_def();
     const bool has_wei_scale = !prb->attr.scales.get(DNNL_ARG_WEIGHTS).is_def();
+    const bool has_wei_zp
+            = !prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).is_def();
 
     const auto &wei_scale_groups
             = prb->attr.scales.get(DNNL_ARG_WEIGHTS).groups;
+    const auto &wei_zp_groups
+            = prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).groups;
 
     // For grouped GEMM, weights are 3D: [group_count, K, N]
     // wei_scale_groups[0] is the K dimension group size
     const int64_t wei_scale_group_k
             = !wei_scale_groups.empty() ? wei_scale_groups[0] : K;
-    const int64_t n_k_groups = K / wei_scale_group_k;
+    const int64_t wei_zp_group_k
+            = !wei_zp_groups.empty() ? wei_zp_groups[0] : K;
+
+    // Use finest granularity k-group (GCD) to handle mixed scale/ZP groups
+    const int64_t smallest_k_group
+            = gcd<int64_t>({wei_scale_group_k, wei_zp_group_k});
+    const int64_t n_k_groups = K / smallest_k_group;
 
     std::vector<int64_t> group_offsets(group_count + 1);
     group_offsets[0] = 0;
@@ -90,31 +102,41 @@ void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
             for (int64_t n = 0; n < N; n++) {
                 float acc = 0.0f;
 
-                for (int64_t n_k_group_idx = 0; n_k_group_idx < n_k_groups;
-                        n_k_group_idx++) {
+                for (int64_t gK = 0; gK < n_k_groups; gK++) {
                     float acc_group = 0.0f;
 
-                    for (int64_t k = 0; k < wei_scale_group_k; k++) {
-                        const int64_t k_idx
-                                = n_k_group_idx * wei_scale_group_k + k;
+                    // Scale and ZP k-group indices for this fine k-group
+                    const int64_t scale_kg
+                            = gK * smallest_k_group / wei_scale_group_k;
+                    const int64_t zp_kg
+                            = gK * smallest_k_group / wei_zp_group_k;
+
+                    float wei_scale = 1.0f;
+                    if (has_wei_scale) {
+                        const int64_t wei_scale_idx
+                                = (g * n_k_groups + scale_kg) * N + n;
+                        wei_scale = wei_scales.get_f32_elem(wei_scale_idx);
+                    }
+
+                    float wei_zp = 0.0f;
+                    if (has_wei_zp) {
+                        const int64_t wei_zp_idx
+                                = (g * n_k_groups + zp_kg) * N + n;
+                        wei_zp = wei_zps.get_f32_elem(wei_zp_idx);
+                    }
+
+                    for (int64_t k = 0; k < smallest_k_group; k++) {
+                        const int64_t k_idx = gK * smallest_k_group + k;
                         const int64_t src_idx = src_offset * K + k_idx;
                         dnnl_dims_t wei_pos = {g, k_idx, n};
                         const int64_t wei_idx = md_off_v(wei_m, wei_pos);
 
                         const float src_val = src_m.get_f32_elem(src_idx);
                         const float wei_val = wei_m.get_f32_elem(wei_idx);
-                        acc_group += src_val * wei_val;
+                        acc_group += src_val * (wei_val - wei_zp);
                     }
 
-                    if (has_wei_scale) { // wei_scales is [num_experts * n_k_groups * N]
-                        const int64_t wei_scale_idx
-                                = (g * n_k_groups + n_k_group_idx) * N + n;
-                        const float wei_scale
-                                = wei_scales.get_f32_elem(wei_scale_idx);
-                        acc_group *= wei_scale;
-                    }
-
-                    acc += acc_group;
+                    acc += acc_group * wei_scale;
                 }
 
                 // Apply per-token scale

@@ -145,14 +145,14 @@ void set_weight_bias_constant(std::shared_ptr<subgraph_t> &sg);
 
 inline bool is_preprocess_op(op_t &op) {
     static const std::set<op_kind_t> preprocess_ops = {
-            op_kind::_dnnl_permute,
-            op_kind::_dnnl_to_group,
-            op_kind::_dnnl_from_group,
-            op_kind::_dnnl_unsqueeze,
-            op_kind::_dnnl_squeeze,
-            op_kind::_dnnl_reshape,
-            op_kind::_dnnl_transpose,
-            op_kind::_dnnl_identity,
+            op_kind::_permute,
+            op_kind::_to_group,
+            op_kind::_from_group,
+            op_kind::_unsqueeze,
+            op_kind::_squeeze,
+            op_kind::_reshape,
+            op_kind::_transpose,
+            op_kind::_identity,
     };
     return preprocess_ops.count(op.get_kind()) != 0;
 }

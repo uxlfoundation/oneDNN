@@ -24,8 +24,8 @@
 namespace graph = dnnl::impl::graph;
 
 TEST(test_fusion_info, GetMutableZeroPoints) {
-    auto zp_op = std::make_shared<graph::op_t>(
-            graph::op_kind::_dnnl_add_zps, "zps_op");
+    auto zp_op
+            = std::make_shared<graph::op_t>(graph::op_kind::_add_zps, "zps_op");
 
     graph::dnnl_impl::fusion_info_t info;
     ASSERT_NO_THROW(info.set_zero_points(zp_op, false, 0));

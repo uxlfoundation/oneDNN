@@ -54,16 +54,16 @@ struct op_inplace_pair_t {
 std::vector<op_inplace_pair_t> get_op_inplace_pairs(op_t &op) {
     // TODO(xxx) extend the set
     const static std::set<op_kind_t> ops {
-            op_kind::_dnnl_mul_scales,
-            op_kind::_dnnl_add_zps,
-            op_kind::_dnnl_reorder,
-            op_kind::_dnnl_binary,
-            op_kind::_dnnl_eltwise,
-            op_kind::_dnnl_softmax,
-            op_kind::_dnnl_logsoftmax,
-            op_kind::_dnnl_softmax_bwd,
-            op_kind::_dnnl_logsoftmax_bwd,
-            op_kind::_dnnl_identity,
+            op_kind::_mul_scales,
+            op_kind::_add_zps,
+            op_kind::_reorder,
+            op_kind::_binary,
+            op_kind::_eltwise,
+            op_kind::_softmax,
+            op_kind::_logsoftmax,
+            op_kind::_softmax_bwd,
+            op_kind::_logsoftmax_bwd,
+            op_kind::_identity,
     };
     std::vector<op_inplace_pair_t> pairs;
 
@@ -77,9 +77,9 @@ std::vector<op_inplace_pair_t> get_op_inplace_pairs(op_t &op) {
 
         // the post-ops input offset
         size_t index = 1;
-        if (op.get_kind() == op_kind::_dnnl_convolution
-                || op.get_kind() == op_kind::_dnnl_matmul
-                || op.get_kind() == op_kind::_dnnl_convtranspose) {
+        if (op.get_kind() == op_kind::_convolution
+                || op.get_kind() == op_kind::_matmul
+                || op.get_kind() == op_kind::_convtranspose) {
             index = op.has_attr(op_attr::with_bias)
                             && op.get_attr<bool>(op_attr::with_bias)
                     ? 3 // src, wei, bias
@@ -88,7 +88,7 @@ std::vector<op_inplace_pair_t> get_op_inplace_pairs(op_t &op) {
             if (fusion_info.with_runtime_scales(true, 1)) { index += 1; }
             if (fusion_info.with_runtime_zero_points(true, 0)) { index += 1; }
             if (fusion_info.with_runtime_zero_points(true, 1)) { index += 1; }
-        } else if (op.get_kind() == op_kind::_dnnl_binary) {
+        } else if (op.get_kind() == op_kind::_binary) {
             index = 2;
         } else {
             // do nothing
@@ -99,10 +99,9 @@ std::vector<op_inplace_pair_t> get_op_inplace_pairs(op_t &op) {
             if (pops[i]->is_post_sum()) {
                 post_sum_input = op.get_input_value(index);
                 break; // assume only one post sum
-            } else if (pops[i]->get_op()->get_kind() == op_kind::_dnnl_binary) {
+            } else if (pops[i]->get_op()->get_kind() == op_kind::_binary) {
                 index++;
-            } else if (pops[i]->get_op()->get_kind()
-                    == op_kind::_dnnl_convolution) {
+            } else if (pops[i]->get_op()->get_kind() == op_kind::_convolution) {
                 // FIXME(xx) fused conv may have bias
                 index++;
             } else {
@@ -118,7 +117,7 @@ std::vector<op_inplace_pair_t> get_op_inplace_pairs(op_t &op) {
             auto post_sum_input_desc = make_dnnl_memory_desc(post_sum_input_lt);
             auto output_desc = make_dnnl_memory_desc(output_lt);
             // allow inplace for conv(u8)+sum(s8)
-            if (op.get_kind() == op_kind::_dnnl_convolution
+            if (op.get_kind() == op_kind::_convolution
                     && post_sum_input_lt.data_type == data_type::s8
                     && output_lt.data_type == data_type::u8) {
                 auto format_tag = md2fmt_tag_str(post_sum_input_desc.get());
@@ -142,14 +141,14 @@ std::vector<op_inplace_pair_t> get_op_inplace_pairs(op_t &op) {
         const bool can_inplace
                 = make_dnnl_memory_desc(in0) == make_dnnl_memory_desc(out0);
         if (can_inplace) { pairs.emplace_back(0, 0); }
-    } else if (op.get_kind() == op_kind::_dnnl_layernorm_bwd) {
+    } else if (op.get_kind() == op_kind::_layernorm_bwd) {
         auto diff_dst = op.get_input_logical_tensor(1);
         auto diff_src = op.get_output_logical_tensor(0);
         const bool can_inplace = make_dnnl_memory_desc(diff_dst)
                 == make_dnnl_memory_desc(diff_src);
         if (can_inplace) { pairs.emplace_back(1, 0); }
-    } else if (op.get_kind() == op_kind::_dnnl_transpose
-            || op.get_kind() == op_kind::_dnnl_reshape) {
+    } else if (op.get_kind() == op_kind::_transpose
+            || op.get_kind() == op_kind::_reshape) {
         pairs.emplace_back(0, 0);
     } else {
         // Do nothing

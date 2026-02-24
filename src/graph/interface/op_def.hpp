@@ -1394,7 +1394,7 @@ DNNL_GRAPH_OP_SCHEMA(RMSNorm, 1,
 template <typename T>
 op_schema_t get_op_schema();
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_mul_scales, 1,
+DNNL_GRAPH_OP_SCHEMA(_mul_scales, 1,
         op_schema_t()
                 .set_inputs_option(op_schema_t::param_num_option::optional)
                 .set_outputs_option(op_schema_t::param_num_option::optional)
@@ -1422,7 +1422,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_mul_scales, 1,
 
 // We define this op to convert a host scalar tensor to a device tensor, as some
 // kernels/primitives may not accept host scalar tensor as input.
-DNNL_GRAPH_OP_SCHEMA(_dnnl_host_scalar, 1,
+DNNL_GRAPH_OP_SCHEMA(_host_scalar, 1,
         op_schema_t()
                 .set_num_inputs(1)
                 .set_num_outputs(1)
@@ -1432,7 +1432,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_host_scalar, 1,
                 .set_shape_inference_function(
                         infer_dnnl_host_scalar_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_constant_scales, 1,
+DNNL_GRAPH_OP_SCHEMA(_constant_scales, 1,
         op_schema_t()
                 .set_num_inputs(0)
                 .set_num_outputs(1)
@@ -1443,7 +1443,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_constant_scales, 1,
                 .SET_ATTR_IS_CONSTANT // used for constant prop and cache
                 .set_shape_inference_function(infer_dnnl_constant_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_add_zps, 1,
+DNNL_GRAPH_OP_SCHEMA(_add_zps, 1,
         op_schema_t()
                 .set_inputs_option(op_schema_t::param_num_option::optional)
                 .set_num_inputs(std::set<size_t>({1, 2}))
@@ -1466,7 +1466,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_add_zps, 1,
                         int64_t(0))
                 .set_shape_inference_function(infer_identity_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_sub_zps, 1,
+DNNL_GRAPH_OP_SCHEMA(_sub_zps, 1,
         op_schema_t()
                 .set_inputs_option(op_schema_t::param_num_option::optional)
                 .set_num_inputs(std::set<size_t>({1, 2}))
@@ -1489,7 +1489,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_sub_zps, 1,
                         int64_t(0))
                 .set_shape_inference_function(infer_identity_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_constant_zps, 1,
+DNNL_GRAPH_OP_SCHEMA(_constant_zps, 1,
         op_schema_t()
                 .set_num_inputs(0)
                 .set_num_outputs(1)
@@ -1500,7 +1500,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_constant_zps, 1,
                 .SET_ATTR_IS_CONSTANT // used for constant prop and cache
                 .set_shape_inference_function(infer_dnnl_constant_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_dropout, 1,
+DNNL_GRAPH_OP_SCHEMA(_dropout, 1,
         op_schema_t()
                 .set_num_inputs(4)
                 .set_outputs_option(op_schema_t::param_num_option::optional)
@@ -1522,7 +1522,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_dropout, 1,
 // and are used in the following manner:
 // for (i = 0; i < ndims(); i++)
 //     new_desc.dims()[i] = dims()[order[i]];
-DNNL_GRAPH_OP_SCHEMA(_dnnl_permute, 1,
+DNNL_GRAPH_OP_SCHEMA(_permute, 1,
         op_schema_t()
                 .set_num_inputs(1)
                 .set_num_outputs(1)
@@ -1532,7 +1532,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_permute, 1,
                 .SET_ATTR_IS_CONSTANT // used for constant prop and cache
                 .set_shape_inference_function(infer_permute_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_to_group, 1,
+DNNL_GRAPH_OP_SCHEMA(_to_group, 1,
         op_schema_t()
                 .set_num_inputs(1)
                 .set_num_outputs(1)
@@ -1548,7 +1548,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_to_group, 1,
 // oc/g, ic, kh, kw] shaped weight tensor to a [oc, ic, kh, kw] weight tensor.
 // The former shaped weight tensor is required by oneDNN primitive, but the
 // later one is required by oneDNN Graph users
-DNNL_GRAPH_OP_SCHEMA(_dnnl_from_group, 1,
+DNNL_GRAPH_OP_SCHEMA(_from_group, 1,
         op_schema_t()
                 .set_num_inputs(1)
                 .set_num_outputs(1)
@@ -1560,7 +1560,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_from_group, 1,
                 .SET_ATTR_IS_CONSTANT // used for constant prop and cache
                 .set_shape_inference_function(infer_from_group_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_unsqueeze, 1,
+DNNL_GRAPH_OP_SCHEMA(_unsqueeze, 1,
         op_schema_t()
                 .set_num_inputs(1)
                 .set_num_outputs(1)
@@ -1570,7 +1570,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_unsqueeze, 1,
                 .SET_ATTR_IS_CONSTANT // used for constant prop and cache
                 .set_shape_inference_function(infer_unsqueeze_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_squeeze, 1,
+DNNL_GRAPH_OP_SCHEMA(_squeeze, 1,
         op_schema_t()
                 .set_num_inputs(1)
                 .set_num_outputs(1)
@@ -1580,7 +1580,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_squeeze, 1,
                 .SET_ATTR_IS_CONSTANT // used for constant prop and cache
                 .set_shape_inference_function(infer_squeeze_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_reshape, 1,
+DNNL_GRAPH_OP_SCHEMA(_reshape, 1,
         op_schema_t()
                 .set_num_inputs(1)
                 .set_num_outputs(1)
@@ -1592,7 +1592,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_reshape, 1,
                 .set_shape_inference_function(
                         infer_static_reshape_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_transpose, 1,
+DNNL_GRAPH_OP_SCHEMA(_transpose, 1,
         op_schema_t()
                 .set_num_inputs(1)
                 .set_num_outputs(1)
@@ -1603,7 +1603,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_transpose, 1,
                 .set_shape_inference_function(
                         infer_static_transpose_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_identity, 1,
+DNNL_GRAPH_OP_SCHEMA(_identity, 1,
         op_schema_t()
                 .set_num_inputs(1)
                 .set_num_outputs(1)
@@ -1612,7 +1612,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_identity, 1,
                 .SET_ATTR_IS_CONSTANT // used for constant prop and cache
                 .set_shape_inference_function(infer_identity_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_convolution, 1,
+DNNL_GRAPH_OP_SCHEMA(_convolution, 1,
         op_schema_t()
                 .set_inputs_option(op_schema_t::param_num_option::variadic)
                 .set_num_inputs(std::set<size_t>({2, 32}))
@@ -1633,7 +1633,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_convolution, 1,
                 // Analysis rules
                 .set_shape_inference_function(infer_dnnl_conv_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_convtranspose, 1,
+DNNL_GRAPH_OP_SCHEMA(_convtranspose, 1,
         op_schema_t()
                 .set_inputs_option(op_schema_t::param_num_option::variadic)
                 .set_num_inputs(std::set<size_t>({2, 32}))
@@ -1658,7 +1658,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_convtranspose, 1,
                 .set_shape_inference_function(
                         infer_dnnl_convtranspose_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_convtranspose_bwd_data, 1,
+DNNL_GRAPH_OP_SCHEMA(_convtranspose_bwd_data, 1,
         op_schema_t()
                 .set_num_inputs(2)
                 .set_num_outputs(2)
@@ -1676,7 +1676,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_convtranspose_bwd_data, 1,
                 .set_shape_inference_function(
                         infer_dnnl_convtranspose_bwd_data_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_convtranspose_bwd_weights, 1,
+DNNL_GRAPH_OP_SCHEMA(_convtranspose_bwd_weights, 1,
         op_schema_t()
                 .set_inputs_option(op_schema_t::param_num_option::optional)
                 .set_num_inputs(std::set<size_t>({2, 3}))
@@ -1698,7 +1698,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_convtranspose_bwd_weights, 1,
                 .set_shape_inference_function(
                         infer_dnnl_convtranspose_bwd_weight_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_pool, 1,
+DNNL_GRAPH_OP_SCHEMA(_pool, 1,
         op_schema_t()
                 .set_inputs_option(op_schema_t::param_num_option::variadic)
                 .set_num_inputs(std::set<size_t>({1, 32}))
@@ -1733,7 +1733,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_pool, 1,
                 // Analysis rules
                 .set_shape_inference_function(infer_dnnl_pool_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_pool_bwd, 1,
+DNNL_GRAPH_OP_SCHEMA(_pool_bwd, 1,
         op_schema_t()
                 .set_inputs_option(op_schema_t::param_num_option::optional)
                 .set_num_inputs(std::set<size_t>({1, 3}))
@@ -1760,7 +1760,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_pool_bwd, 1,
                 .SET_ATTR_IS_CONSTANT // used for constant prop and cache
                 .set_shape_inference_function(infer_dnnl_pool_bwd_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_prelu, 1,
+DNNL_GRAPH_OP_SCHEMA(_prelu, 1,
         op_schema_t()
                 .set_num_inputs(2)
                 .set_num_outputs(2)
@@ -1780,7 +1780,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_prelu, 1,
                 // Analysis rules
                 .set_shape_inference_function(infer_identity_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_prelu_bwd, 1,
+DNNL_GRAPH_OP_SCHEMA(_prelu_bwd, 1,
         op_schema_t()
                 .set_num_inputs(3)
                 .set_num_outputs(3)
@@ -1800,7 +1800,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_prelu_bwd, 1,
                 // Analysis rules
                 .set_shape_inference_function(infer_prelu_bwd_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_bn_folding, 1,
+DNNL_GRAPH_OP_SCHEMA(_bn_folding, 1,
         op_schema_t()
                 .set_inputs_option(op_schema_t::param_num_option::optional)
                 .set_num_inputs(std::set<size_t>({5, 6}))
@@ -1825,7 +1825,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_bn_folding, 1,
                 .SET_ATTR_IS_CONSTANT // used for constant prop and cache
                 .set_shape_inference_function(infer_bn_folding_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_conv_bwd_data, 1,
+DNNL_GRAPH_OP_SCHEMA(_conv_bwd_data, 1,
         op_schema_t()
                 .set_num_inputs(2)
                 .set_num_outputs(2)
@@ -1847,7 +1847,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_conv_bwd_data, 1,
                 .set_shape_inference_function(
                         infer_dnnl_conv_bwd_data_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_conv_bwd_weights, 1,
+DNNL_GRAPH_OP_SCHEMA(_conv_bwd_weights, 1,
         op_schema_t()
                 .set_num_inputs(2)
                 .set_num_outputs(2)
@@ -1869,7 +1869,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_conv_bwd_weights, 1,
 // Note: if `is_training` is False, the `gamma` and `beta` are the second and
 // third input (required), while `is_training` is True, the `gamma` and `beta`
 // are the last two inputs (optional).
-DNNL_GRAPH_OP_SCHEMA(_dnnl_batchnorm, 1,
+DNNL_GRAPH_OP_SCHEMA(_batchnorm, 1,
         op_schema_t()
                 .set_inputs_option(op_schema_t::param_num_option::optional)
                 .set_num_inputs(std::set<size_t>({3, 4, 5}))
@@ -1905,7 +1905,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_batchnorm, 1,
                 .set_shape_inference_function(
                         infer_dnnl_batchnorm_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_batchnorm_bwd, 1,
+DNNL_GRAPH_OP_SCHEMA(_batchnorm_bwd, 1,
         op_schema_t()
                 .set_inputs_option(op_schema_t::param_num_option::optional)
                 .set_num_inputs(std::set<size_t>({4, 5}))
@@ -1929,7 +1929,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_batchnorm_bwd, 1,
                 .set_shape_inference_function(
                         infer_dnnl_batchnorm_bwd_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_resampling_bwd, 1,
+DNNL_GRAPH_OP_SCHEMA(_resampling_bwd, 1,
         op_schema_t()
                 .set_inputs_option(op_schema_t::param_num_option::optional)
                 .set_num_inputs(std::set<size_t>({2, 3}))
@@ -1953,7 +1953,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_resampling_bwd, 1,
                 .SET_ATTR_IS_CONSTANT // used for constant prop and cache
                 .set_shape_inference_function(infer_identity_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_sum, 1,
+DNNL_GRAPH_OP_SCHEMA(_sum, 1,
         op_schema_t()
                 .set_inputs_option(op_schema_t::param_num_option::variadic)
                 .set_num_inputs(std::set<size_t>({2, 32}))
@@ -1965,7 +1965,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_sum, 1,
                 // Analysis rules
                 .set_shape_inference_function(infer_identity_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_binary, 1,
+DNNL_GRAPH_OP_SCHEMA(_binary, 1,
         op_schema_t()
                 .set_inputs_option(op_schema_t::param_num_option::variadic)
                 .set_num_inputs(std::set<size_t>({2, 32}))
@@ -1994,7 +1994,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_binary, 1,
                 // Analysis rules
                 .set_shape_inference_function(infer_dnnl_binary_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_eltwise, 1,
+DNNL_GRAPH_OP_SCHEMA(_eltwise, 1,
         op_schema_t()
                 // dnnl_eltwise can fuse dnnl_binary, so its input number is
                 // variadic
@@ -2015,7 +2015,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_eltwise, 1,
                 // Analysis rules
                 .set_shape_inference_function(infer_identity_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_eltwise_bwd, 1,
+DNNL_GRAPH_OP_SCHEMA(_eltwise_bwd, 1,
         op_schema_t()
                 .set_num_inputs(2)
                 .set_num_outputs(2)
@@ -2035,7 +2035,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_eltwise_bwd, 1,
                 // Analysis rules
                 .set_shape_inference_function(infer_identity_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_gen_index, 1,
+DNNL_GRAPH_OP_SCHEMA(_gen_index, 1,
         op_schema_t()
                 .set_num_inputs(1)
                 .set_num_outputs(1)
@@ -2047,7 +2047,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_gen_index, 1,
                 // Analysis rules
                 .set_shape_inference_function(infer_identity_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_shuffle, 1,
+DNNL_GRAPH_OP_SCHEMA(_shuffle, 1,
         op_schema_t()
                 .set_num_inputs(1)
                 .set_num_outputs(2)
@@ -2062,7 +2062,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_shuffle, 1,
                 // Analysis rules
                 .set_shape_inference_function(infer_identity_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_reduction, 1,
+DNNL_GRAPH_OP_SCHEMA(_reduction, 1,
         op_schema_t()
                 .set_inputs_option(op_schema_t::param_num_option::variadic)
                 .set_num_inputs(std::set<size_t>({1, 32}))
@@ -2082,7 +2082,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_reduction, 1,
                 // Analysis rules
                 .set_shape_inference_function(infer_reduce_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_softmax_bwd, 1,
+DNNL_GRAPH_OP_SCHEMA(_softmax_bwd, 1,
         op_schema_t()
                 .set_num_inputs(2)
                 .set_num_outputs(2)
@@ -2097,7 +2097,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_softmax_bwd, 1,
                 // Analysis rules
                 .set_shape_inference_function(infer_identity_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_logsoftmax_bwd, 1,
+DNNL_GRAPH_OP_SCHEMA(_logsoftmax_bwd, 1,
         op_schema_t()
                 .set_num_inputs(2)
                 .set_num_outputs(2)
@@ -2112,7 +2112,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_logsoftmax_bwd, 1,
                 // Analysis rules
                 .set_shape_inference_function(infer_identity_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_resampling, 1,
+DNNL_GRAPH_OP_SCHEMA(_resampling, 1,
         op_schema_t()
                 .set_inputs_option(op_schema_t::param_num_option::variadic)
                 .set_num_inputs(std::set<size_t>({1, 32}))
@@ -2140,7 +2140,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_resampling, 1,
                 // Analysis rules
                 .set_shape_inference_function(infer_interpolate_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_concat, 1,
+DNNL_GRAPH_OP_SCHEMA(_concat, 1,
         op_schema_t()
                 .set_inputs_option(op_schema_t::param_num_option::variadic)
                 .set_num_inputs(std::set<size_t>({1, 64}))
@@ -2155,7 +2155,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_concat, 1,
                 // Analysis rules
                 .set_shape_inference_function(infer_concat_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_layernorm_bwd, 1,
+DNNL_GRAPH_OP_SCHEMA(_layernorm_bwd, 1,
         op_schema_t()
                 .set_inputs_option(op_schema_t::param_num_option::optional)
                 .set_num_inputs(std::set<size_t>({4, 5, 6}))
@@ -2180,7 +2180,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_layernorm_bwd, 1,
                 .SET_ATTR_IS_CONSTANT // used for constant prop and cache
                 .set_shape_inference_function(infer_norm_bprop_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_matmul, 1,
+DNNL_GRAPH_OP_SCHEMA(_matmul, 1,
         op_schema_t()
                 .set_inputs_option(op_schema_t::param_num_option::variadic)
                 .set_num_inputs(std::set<size_t>({2, 32}))
@@ -2204,7 +2204,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_matmul, 1,
                 // Analysis rules
                 .set_shape_inference_function(infer_matmul_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_softmax, 1,
+DNNL_GRAPH_OP_SCHEMA(_softmax, 1,
         op_schema_t()
                 .set_inputs_option(op_schema_t::param_num_option::variadic)
                 .set_num_inputs(std::set<size_t>({1, 32}))
@@ -2223,7 +2223,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_softmax, 1,
                 // Analysis rules
                 .set_shape_inference_function(infer_identity_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_logsoftmax, 1,
+DNNL_GRAPH_OP_SCHEMA(_logsoftmax, 1,
         op_schema_t()
                 .set_num_inputs(1)
                 .set_num_outputs(2)
@@ -2237,7 +2237,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_logsoftmax, 1,
                 // Analysis rules
                 .set_shape_inference_function(infer_identity_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_layernorm, 1,
+DNNL_GRAPH_OP_SCHEMA(_layernorm, 1,
         op_schema_t()
                 .set_inputs_option(op_schema_t::param_num_option::variadic)
                 .set_num_inputs(std::set<size_t>({1, 32}))
@@ -2265,7 +2265,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_layernorm, 1,
                 .set_shape_inference_function(
                         infer_dnnl_layernorm_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_reorder, 1,
+DNNL_GRAPH_OP_SCHEMA(_reorder, 1,
         op_schema_t()
                 .set_inputs_option(op_schema_t::param_num_option::variadic)
                 .set_outputs_option(op_schema_t::param_num_option::optional)
@@ -2300,7 +2300,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_reorder, 1,
                 // Analysis rules
                 .set_shape_inference_function(infer_identity_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_groupnorm, 1,
+DNNL_GRAPH_OP_SCHEMA(_groupnorm, 1,
         op_schema_t()
                 .set_inputs_option(op_schema_t::param_num_option::variadic)
                 .set_num_inputs(std::set<size_t>({1, 32}))
@@ -2327,7 +2327,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_groupnorm, 1,
                 // Analysis rules
                 .set_shape_inference_function(infer_groupnorm_output_shape))
 
-DNNL_GRAPH_OP_SCHEMA(_dnnl_mask, 1,
+DNNL_GRAPH_OP_SCHEMA(_mask, 1,
         op_schema_t()
                 .set_inputs_option(op_schema_t::param_num_option::optional)
                 .set_num_inputs(std::set<size_t>({2, 4}))
@@ -2350,7 +2350,7 @@ DNNL_GRAPH_OP_SCHEMA(_dnnl_mask, 1,
 // The data types of query/key/value/mask/output must be consistent, and only
 // f16/bf16 are supported. The data type of scale must be consistent with other
 // input and output data types or fp32.
-DNNL_GRAPH_OP_SCHEMA(_dnnl_sdpa, 1,
+DNNL_GRAPH_OP_SCHEMA(_sdpa, 1,
         op_schema_t()
                 .set_inputs_option(op_schema_t::param_num_option::variadic)
                 .set_num_inputs(std::set<size_t>({3, 32}))

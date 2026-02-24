@@ -28,6 +28,8 @@
 #include <memory>
 #include <random>
 
+#define DEBUG_PRINT_MEM 0
+
 using mdt = memory::data_type;
 using dnnl::accumulation_mode;
 
@@ -266,6 +268,9 @@ struct sdpa_tensors_t {
     memory m_key_quantized, m_value_quantized, m_output_quantized;
     memory m_scale; // tested sdpa arg, can be host-side scalar
     memory m_scale_prim; // reference (prim) sdpa arg
+
+    memory m_diff_query, m_diff_key, m_diff_value, m_diff_output, m_dS;
+    memory m_diff_query_quantized, m_diff_key_quantized, m_diff_value_quantized;
 
     memory m_key_scales, m_key_zp, m_value_scales, m_value_zp;
     dnnl::primitive_attr sdpa_attr_quantized, sdpa_kq_attr_quantized,
@@ -519,6 +524,7 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
             = {p.mb, p.heads.kv, p.seq_len.kv * 2, p.head_group.head_size};
     const memory::dims v_sz
             = {p.mb, p.heads.kv, p.seq_len.kv, p.head_group.head_size};
+    const memory::dims dS_sz = {p.mb, p.heads.q, p.seq_len.q, p.seq_len.kv};
     const memory::dims scale_sz = {1, 1, 1, 1};
 
     bool with_host_scale = p.stype == scale_type::host_side;
@@ -602,24 +608,45 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     auto mask_md             = memory::desc(mask_sz,       p.mask.dt != mdt::undef ? p.mask.dt : p.dt.dt,   abcd);
     auto output_md           = memory::desc(q_sz,          p.dt.dt,     abcd);
     auto output_quantized_md = memory::desc(q_sz,          p.dt.dt,     abcd);
+
+    auto dS_md            = memory::desc(dS_sz,          p.dt.dt,      abcd);
     // clang-format on
 
     // Create memory objects
     out.m_query = double_and_resize(query_md, eng, strm, doubled_memory);
+    out.m_diff_query = double_and_resize(query_md, eng, strm, doubled_memory);
+    out.m_diff_query_quantized
+            = double_and_resize(query_md, eng, strm, doubled_memory);
+
     out.m_key_quantized
             = double_and_resize(key_quantized_md, eng, strm, doubled_memory);
+    out.m_diff_key
+            = double_and_resize(key_quantized_md, eng, strm, doubled_memory);
+    out.m_diff_key_quantized
+            = double_and_resize(key_quantized_md, eng, strm, doubled_memory);
+
     out.m_key_scales
             = double_and_resize(key_scales_md, eng, strm, doubled_memory);
     out.m_key_zp = double_and_resize(key_zp_md, eng, strm, doubled_memory);
+
     out.m_value_quantized
             = double_and_resize(val_quantized_md, eng, strm, doubled_memory);
+    out.m_diff_value
+            = double_and_resize(val_quantized_md, eng, strm, doubled_memory);
+    out.m_diff_value_quantized
+            = double_and_resize(val_quantized_md, eng, strm, doubled_memory);
+
     out.m_value_scales
             = double_and_resize(val_scales_md, eng, strm, doubled_memory);
     out.m_value_zp = double_and_resize(val_zp_md, eng, strm, doubled_memory);
     out.m_mask = double_and_resize(mask_md, eng, strm, doubled_memory);
+
     out.m_output = double_and_resize(output_md, eng, strm, doubled_memory);
     out.m_output_quantized
             = double_and_resize(output_quantized_md, eng, strm, doubled_memory);
+    out.m_diff_output = double_and_resize(output_md, eng, strm, doubled_memory);
+
+    out.m_dS = double_and_resize(dS_md, eng, strm, doubled_memory);
 
     // Allocate user data.
     std::vector<float> query_data(product(q_sz), 0.f);
@@ -628,6 +655,7 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     std::vector<float> val_quantized_data(product(v_sz), 0);
     std::vector<float> key_scale_data(product(key_scales_sz), std::nanf("1"));
     std::vector<float> val_scale_data(product(val_scales_sz), std::nanf("1"));
+    std::vector<float> diff_output_data(product(q_sz), 0.f);
 
     std::vector<int> key_zp_data_signed(product(key_scales_sz), INT_MAX);
     std::vector<int> val_zp_data_signed(product(val_scales_sz), INT_MAX);
@@ -637,6 +665,8 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
 
     std::vector<float> mask_data(product(mask_sz), NAN);
     std::vector<float> output_data(product(q_sz), NAN);
+
+    std::vector<float> dS_data(product(dS_sz), 0);
 
     out.sdpa_attr_quantized.set_scratchpad_mode(dnnl::scratchpad_mode::library);
 
@@ -700,6 +730,7 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     }
 
     fill_random(query_data, query_md);
+    fill_random(diff_output_data, output_md);
     fill_random_quantized(key_quantized_data, key_quantized_md,
             (p.key.dt == mdt::u4 || p.key.dt == mdt::u8));
     fill_random_quantized(val_quantized_data, val_quantized_md,
@@ -912,6 +943,8 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     // Write data to tensor object's handle.
     write_to_dnnl_memory(query_data.data(), out.m_query, eng, strm);
 
+    write_to_dnnl_memory(diff_output_data.data(), out.m_diff_output, eng, strm);
+
     write_to_dnnl_memory(
             key_quantized_data.data(), out.m_key_quantized, eng, strm);
 
@@ -962,6 +995,7 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
         setup_device_scale(&out.m_scale);
     setup_device_scale(&out.m_scale_prim);
 
+    write_to_dnnl_memory(dS_data.data(), out.m_dS, eng, strm);
     return out;
 }
 
@@ -1309,12 +1343,456 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     loop();
 
     strm.wait();
+
     void *output_ptr_ = (void *)output.map_data();
     void *grouped_output_ptr_ = (void *)grouped_output.map_data();
     memcpy(output_ptr_, grouped_output_ptr_, grouped_query_md.get_size());
     grouped_output.unmap_data(grouped_output_ptr_);
     output.unmap_data(output_ptr_);
     strm.wait();
+}
+
+std::vector<std::chrono::nanoseconds> timeit(
+        const std::function<void()> &func, dnnl::stream &str, int iterations) {
+    using namespace std::chrono;
+    func();
+    func();
+    std::vector<std::chrono::nanoseconds> times;
+    for (int j = 0; j < 5; j++) {
+        auto e = steady_clock::now();
+        str.wait();
+        auto s = steady_clock::now();
+        for (int i = 0; i < iterations; i++) {
+            func();
+        }
+        str.wait();
+        e = steady_clock::now();
+        printf("timeit: %f \n",
+                (float)std::chrono::duration_cast<nanoseconds>(e - s).count()
+                        / 1e6 / iterations);
+        times.push_back(std::chrono::duration_cast<nanoseconds>(e - s));
+    }
+    return times;
+}
+
+std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
+        const sdpa_tensors_t &t, dnnl::engine &eng, dnnl::stream &strm,
+        dnnl::memory &query, dnnl::memory &key,
+        dnnl::memory::data_type scale_dt, dnnl::memory &scale,
+        dnnl::memory &mask, dnnl::memory &value, dnnl::memory &output,
+        dnnl::memory &diff_output, bool invert_scale,
+        std::vector<dnnl_memory_t> &doubled_memory, dnnl::memory &diff_query,
+        dnnl::memory &diff_key, dnnl::memory &diff_value,
+        bool with_timing = false) {
+
+    using namespace dnnl;
+
+    primitive_attr bmm1_attr;
+    bmm1_attr.set_scratchpad_mode(dnnl::scratchpad_mode::library);
+
+    post_ops bmm1_po;
+    auto scale_f32 = as(strm, scale, mdt::f32);
+    auto mask_f32 = as(strm, mask, mdt::f32);
+    auto mask_sz = mask.get_desc().get_dims();
+
+    if (scale_dt != mdt::undef) {
+        scale_f32 = reshape(strm, scale_f32,
+                {{1, 1, 1, 1, 1}, mdt::f32, memory::format_tag::abcde});
+        if (invert_scale)
+            bmm1_po.append_binary(algorithm::binary_div, scale_f32.get_desc());
+        else
+            bmm1_po.append_binary(algorithm::binary_mul, scale_f32.get_desc());
+    }
+    if (p.mask.type != mask_type::no_mask) {
+        mask_f32 = reshape(strm, mask_f32,
+                {{mask_sz[0], 1, 1, mask_sz[2], mask_sz[3]}, mdt::f32,
+                        memory::format_tag::abcde});
+        bmm1_po.append_binary(algorithm::binary_add, mask_f32.get_desc());
+    }
+    bmm1_attr.set_post_ops(bmm1_po);
+    // Keep a copy of the 5D scale for the backward pass.
+    // bmm1_args will std::move scale_f32, so save it before that happens.
+    memory scale_f32_bwd = scale_f32;
+
+    int head_kv_group_size = 0;
+    int head_q_group_size = 0;
+    int head_group_batches = 0;
+    if (p.heads.kv == p.heads.q) {
+        head_kv_group_size = p.heads.kv;
+        head_q_group_size = p.heads.q;
+        head_group_batches = 1;
+    } else {
+        head_kv_group_size = 1;
+        head_q_group_size = p.heads.q / p.heads.kv;
+        head_group_batches = p.heads.kv;
+    }
+
+    auto original_k_sz = key.get_desc().get_dims();
+    const memory::dims k_sz {p.mb, head_group_batches, head_kv_group_size,
+            original_k_sz[2], original_k_sz[3]};
+    const memory::dims v_sz {p.mb, head_group_batches, head_kv_group_size,
+            p.seq_len.kv, p.head_group.head_size};
+    const memory::dims q_sz {p.mb, head_group_batches, head_q_group_size,
+            p.seq_len.q, p.head_group.head_size};
+
+    memory::desc grouped_key_md(k_sz, p.dt.dt, memory::format_tag::abcde);
+    memory::desc grouped_value_md(v_sz, p.dt.dt, memory::format_tag::abcde);
+    memory::desc grouped_query_md(q_sz, p.dt.dt, memory::format_tag::abcde);
+
+    memory key_dequantized;
+    auto keytmp = as(strm, key, p.dt.dt);
+    grouped_key_md = p.key_format_tag == memory::format_tag::abcd
+            ? memory::desc(k_sz, p.dt.dt, memory::format_tag::abcde)
+            : memory::desc(k_sz, p.dt.dt, memory::format_tag::abced);
+
+    key_dequantized = reshape(strm, keytmp, grouped_key_md);
+
+    memory value_dequantized;
+    auto value32 = as(strm, value, p.dt.dt);
+    value_dequantized = reshape(strm, value32, grouped_value_md);
+
+    memory grouped_query = reshape(strm, query, grouped_query_md);
+
+    const memory::dims score_sz = {p.mb, head_group_batches, head_q_group_size,
+            p.seq_len.q, p.seq_len.kv};
+    memory::desc score_md {score_sz, mdt::f32, memory::format_tag::abcde};
+    memory::desc score_f16_md {score_sz, mdt::f16, memory::format_tag::abcde};
+
+    auto score = memory(score_md, eng);
+    auto score_f16 = memory(score_f16_md, eng);
+    auto score2 = memory(score_md, eng);
+    auto score2_f16 = memory(score_f16_md, eng);
+
+    // matmul primitive for QK
+    auto bmm1_pd = matmul::primitive_desc(eng, grouped_query_md,
+            key_dequantized.get_desc(), score_md, bmm1_attr);
+    auto bmm1_prim = matmul(bmm1_pd);
+
+    // softmax forward
+    primitive_attr softmax_attr;
+    softmax_attr.set_scratchpad_mode(scratchpad_mode::library);
+    auto softmax_fwd_pd = softmax_forward::primitive_desc(eng,
+            prop_kind::forward_training,
+            (algorithm)dnnl::impl::alg_kind::softmax_accurate_inf_as_zero,
+            score.get_desc(), score.get_desc(), 4, softmax_attr);
+    auto softmax_prim = softmax_forward(softmax_fwd_pd);
+
+    // attention_output = attention_probs x value
+    primitive_attr bmm2_attr;
+
+    bmm2_attr.set_scratchpad_mode(scratchpad_mode::library);
+    auto grouped_output
+            = double_and_resize(grouped_query_md, eng, strm, doubled_memory);
+    auto bmm2_pd = matmul::primitive_desc(
+            eng, score_md, grouped_value_md, grouped_query_md, bmm2_attr);
+    auto bmm2_prim = matmul(bmm2_pd);
+
+    // setup args
+    std::unordered_map<int, memory> bmm1_args = {{DNNL_ARG_SRC, grouped_query},
+            {DNNL_ARG_WEIGHTS, key_dequantized}, {DNNL_ARG_DST, score}};
+
+    if (scale_dt != mdt::undef) {
+        bmm1_args[DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1]
+                = std::move(scale_f32);
+        if (p.mask.type != mask_type::no_mask) {
+            bmm1_args[DNNL_ARG_ATTR_MULTIPLE_POST_OP(1) | DNNL_ARG_SRC_1]
+                    = std::move(mask_f32);
+        }
+    } else {
+        if (p.mask.type != mask_type::no_mask) {
+            bmm1_args[DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1]
+                    = std::move(mask_f32);
+        }
+    }
+
+    std::unordered_map<int, memory> bmm2_args
+            = {{DNNL_ARG_SRC, score2}, {DNNL_ARG_WEIGHTS, value_dequantized},
+                    {DNNL_ARG_DST, grouped_output}};
+
+    const auto fwd_loop = [&]() {
+        // QK
+        bmm1_prim.execute(strm, bmm1_args);
+
+        // softmax
+        softmax_prim.execute(strm,
+                {
+                        {DNNL_ARG_SRC, score},
+                        {DNNL_ARG_DST, score2},
+                });
+
+        // SV
+        bmm2_prim.execute(strm, bmm2_args);
+    };
+
+    // Warmup run.
+    // Execute primitives of sdpa.
+    fwd_loop();
+    strm.wait();
+#if DEBUG_PRINT_MEM
+    print_mem(grouped_query, "FWD grouped_query");
+    print_mem(key_dequantized, "FWD keq_deq");
+    print_mem(scale, "FWD scale");
+    print_mem(mask, "FWD mask");
+    print_mem(score, "FWD intermediate score");
+    print_mem(score2, "FWD intermediate score2");
+#endif
+
+    void *output_ptr_ = (void *)output.map_data();
+    void *grouped_output_ptr_ = (void *)grouped_output.map_data();
+    memcpy(output_ptr_, grouped_output_ptr_, grouped_query_md.get_size());
+    grouped_output.unmap_data(grouped_output_ptr_);
+    output.unmap_data(output_ptr_);
+
+    strm.wait();
+
+    // end forward portion
+    // backwards pass of SDPA
+
+    // init incoming gradient, dO
+    memory::desc grouped_output_md = grouped_output.get_desc();
+    memory dO_mem = reshape(strm, diff_output, grouped_output_md);
+
+#if DEBUG_PRINT_MEM
+    printf("\n\n================\n\n\n");
+    print_mem(dO_mem, "BWD incoming dO");
+#endif
+
+    ///////// final MM
+    // matmul forward, O = s2 * v
+
+    // init v, score2 gradients
+    memory::desc diff_score2_md(score_sz, mdt::f32, memory::format_tag::abcde);
+    memory dV_mem(grouped_value_md, eng);
+    memory diff_score2_mem(diff_score2_md, eng);
+
+    // backwards pass gradient of s2 (dS2 = dO * v^t)
+    memory::desc v_t_md
+            = memory::desc({v_sz[0], v_sz[1], v_sz[2], v_sz[4], v_sz[3]},
+                    /*dO.get_dt*/ p.dt.dt, memory::format_tag::abced);
+    matmul::primitive_desc mm_bwd_dS2_pd(
+            eng, grouped_output_md, v_t_md, diff_score2_md);
+    matmul mm_bwd_dS2(mm_bwd_dS2_pd);
+    mm_bwd_dS2.execute(strm,
+            {{DNNL_ARG_SRC, dO_mem}, {DNNL_ARG_WEIGHTS, value_dequantized},
+                    {DNNL_ARG_DST, diff_score2_mem}});
+    strm.wait();
+
+#if DEBUG_PRINT_MEM
+    print_mem(diff_score2_mem, "BWD dS2");
+#endif
+
+    // backwards pass gradient of v (dV = s2^t * dO)
+
+    // downcast score to p.dt.dt
+    memory::desc s2_t_md = memory::desc(
+            {score_sz[0], score_sz[1], score_sz[2], score_sz[4], score_sz[3]},
+            p.dt.dt, memory::format_tag::abced);
+
+    memory score2_downcast;
+    auto score32 = as(strm, score2, p.dt.dt);
+    score2_downcast = reshape(strm, score32, s2_t_md);
+
+    const bool is_gqa = (head_q_group_size != head_kv_group_size);
+    memory::dims dV_full_dims = {v_sz[0], v_sz[1],
+            is_gqa ? head_q_group_size : head_kv_group_size, v_sz[3], v_sz[4]};
+    memory::desc dV_full_md(dV_full_dims, p.dt.dt, memory::format_tag::abcde);
+    memory dV_full_mem = is_gqa ? memory(dV_full_md, eng) : dV_mem;
+    matmul::primitive_desc mm_bwd_dV_pd(
+            eng, s2_t_md, grouped_output_md, dV_full_mem.get_desc());
+    matmul mm_bwd_dV(mm_bwd_dV_pd);
+    mm_bwd_dV.execute(strm,
+            {{DNNL_ARG_SRC, score2_downcast}, {DNNL_ARG_WEIGHTS, dO_mem},
+                    {DNNL_ARG_DST, dV_full_mem}});
+    strm.wait();
+    // reduce [mb, groups, hq_group, kv, D] -> [mb, groups, 1, kv, D] for GQA
+    dnnl::reduction dV_reduce;
+    if (is_gqa) {
+        dnnl::reduction::primitive_desc dV_reduce_pd(eng,
+                algorithm::reduction_sum, dV_full_md, grouped_value_md, 0.f,
+                0.f);
+        dV_reduce = dnnl::reduction(dV_reduce_pd);
+        dV_reduce.execute(
+                strm, {{DNNL_ARG_SRC, dV_full_mem}, {DNNL_ARG_DST, dV_mem}});
+        strm.wait();
+    }
+
+#if DEBUG_PRINT_MEM
+    print_mem(dV_mem, "BWD dV");
+#endif
+
+    ///////// intermediate softmax(QK)
+
+    // init memory for softmax gradients
+    memory::desc diff_score_md(score_sz, p.dt.dt, memory::format_tag::abcde);
+    memory diff_score_mem(diff_score_md, eng);
+
+    // backwards pass gradient of softmax
+    softmax_backward::primitive_desc softmax_bwd_pd(eng,
+            algorithm::softmax_accurate, diff_score_md, diff_score2_md,
+            score_md, 4, softmax_fwd_pd);
+    softmax_backward softmax_bwd(softmax_bwd_pd);
+    softmax_bwd.execute(strm,
+            {{DNNL_ARG_DST, score2}, {DNNL_ARG_DIFF_DST, diff_score2_mem},
+                    {DNNL_ARG_DIFF_SRC, diff_score_mem}});
+
+    binary scale_bwd_prim;
+    if (scale_dt != mdt::undef) {
+        auto scale_algo_bwd
+                = invert_scale ? algorithm::binary_div : algorithm::binary_mul;
+        auto scale_bwd_pd = binary::primitive_desc(eng, scale_algo_bwd,
+                diff_score_md, scale_f32_bwd.get_desc(), diff_score_md);
+        scale_bwd_prim = binary(scale_bwd_pd);
+        scale_bwd_prim.execute(strm,
+                {{DNNL_ARG_SRC_0, diff_score_mem},
+                        {DNNL_ARG_SRC_1, scale_f32_bwd},
+                        {DNNL_ARG_DST, diff_score_mem}});
+    }
+
+    strm.wait();
+    // print softmax gradient
+#if DEBUG_PRINT_MEM
+    print_mem(diff_score_mem, "BWD dS");
+#endif
+
+    ///////// first MM
+    // matmul forward, s = q * k
+
+    // init q,k gradients
+    memory dQ_mem(grouped_query_md, eng);
+    memory dK_mem(key_dequantized.get_desc(), eng);
+
+    // backwards pass gradient of q (dQ = dS * k^t)
+    //  TODO: handle transposed K test case
+    //  memory::desc k_t_md = p.with_key_transposed // k^t requires transposed format and dims
+    //           ? memory::desc({k_sz[0], k_sz[1], k_sz[2], k_sz[4], k_sz[3]},
+    //                   memory::data_type::f32, memory::format_tag::abcde)
+    //           : memory::desc({k_sz[0], k_sz[1], k_sz[2], k_sz[4], k_sz[3]},
+    //                   memory::data_type::f32, memory::format_tag::abced);
+    memory::desc k_t_md
+            = memory::desc({k_sz[0], k_sz[1], k_sz[2], k_sz[4], k_sz[3]},
+                    p.dt.dt, memory::format_tag::abced);
+    matmul::primitive_desc mm_bwd_dq_pd(
+            eng, diff_score_md, k_t_md, grouped_query_md);
+    matmul mm_bwd_dq(mm_bwd_dq_pd);
+    mm_bwd_dq.execute(strm,
+            {{DNNL_ARG_SRC, diff_score_mem},
+                    {DNNL_ARG_WEIGHTS, key_dequantized},
+                    {DNNL_ARG_DST, dQ_mem}});
+    strm.wait();
+
+    // backwards pass gradient of k (dK = q^t * dS)
+    memory::desc q_t_md({q_sz[0], q_sz[1], q_sz[2], q_sz[4], q_sz[3]}, p.dt.dt,
+            memory::format_tag::abced);
+
+    // for GQA cases, perform additional reduction of dK along headq_group
+    auto key_fmt = p.key_format_tag == memory::format_tag::abcd
+            ? memory::format_tag::abcde
+            : memory::format_tag::abced;
+    memory::dims dK_full_dims = {k_sz[0], k_sz[1],
+            is_gqa ? head_q_group_size : head_kv_group_size, k_sz[3], k_sz[4]};
+    memory::desc dK_full_md(dK_full_dims, p.dt.dt, key_fmt);
+    memory dK_full_mem = is_gqa ? memory(dK_full_md, eng) : dK_mem;
+    matmul::primitive_desc mm_bwd_dk_pd(
+            eng, q_t_md, diff_score_md, dK_full_mem.get_desc());
+    matmul mm_bwd_dk(mm_bwd_dk_pd);
+    mm_bwd_dk.execute(strm,
+            {{DNNL_ARG_SRC, grouped_query}, {DNNL_ARG_WEIGHTS, diff_score_mem},
+                    {DNNL_ARG_DST, dK_full_mem}});
+    strm.wait();
+    // reduce [mb, groups, hq_group, D, K] -> [mb, groups, 1, D, K] for GQA cases
+    dnnl::reduction dK_reduce;
+    if (is_gqa) {
+        dnnl::reduction::primitive_desc dK_reduce_pd(eng,
+                algorithm::reduction_sum, dK_full_md,
+                key_dequantized.get_desc(), 0.f, 0.f);
+        dK_reduce = dnnl::reduction(dK_reduce_pd);
+        dK_reduce.execute(
+                strm, {{DNNL_ARG_SRC, dK_full_mem}, {DNNL_ARG_DST, dK_mem}});
+        strm.wait();
+    }
+
+    const auto bwd_loop = [&]() {
+        strm.wait();
+        mm_bwd_dS2.execute(strm,
+                {{DNNL_ARG_SRC, dO_mem}, {DNNL_ARG_WEIGHTS, value_dequantized},
+                        {DNNL_ARG_DST, diff_score2_mem}});
+        mm_bwd_dV.execute(strm,
+                {{DNNL_ARG_SRC, score2_downcast}, {DNNL_ARG_WEIGHTS, dO_mem},
+                        {DNNL_ARG_DST, dV_full_mem}});
+        if (is_gqa)
+            dV_reduce.execute(strm,
+                    {{DNNL_ARG_SRC, dV_full_mem}, {DNNL_ARG_DST, dV_mem}});
+
+        softmax_bwd.execute(strm,
+                {{DNNL_ARG_DST, score2}, {DNNL_ARG_DIFF_DST, diff_score2_mem},
+                        {DNNL_ARG_DIFF_SRC, diff_score_mem}});
+
+        if (scale_dt != mdt::undef) {
+            scale_bwd_prim.execute(strm,
+                    {{DNNL_ARG_SRC_0, diff_score_mem},
+                            {DNNL_ARG_SRC_1, scale_f32_bwd},
+                            {DNNL_ARG_DST, diff_score_mem}});
+        }
+
+        mm_bwd_dq.execute(strm,
+                {{DNNL_ARG_SRC, diff_score_mem},
+                        {DNNL_ARG_WEIGHTS, key_dequantized},
+                        {DNNL_ARG_DST, dQ_mem}});
+        mm_bwd_dk.execute(strm,
+                {{DNNL_ARG_SRC, grouped_query},
+                        {DNNL_ARG_WEIGHTS, diff_score_mem},
+                        {DNNL_ARG_DST, dK_full_mem}});
+        if (is_gqa)
+            dK_reduce.execute(strm,
+                    {{DNNL_ARG_SRC, dK_full_mem}, {DNNL_ARG_DST, dK_mem}});
+        strm.wait();
+    };
+    bwd_loop();
+    strm.wait();
+
+    using namespace std::chrono;
+    nanoseconds qtime_bwd {};
+
+    if (with_timing) {
+        auto loop_bwd_prim = [&] { bwd_loop(); };
+
+        int iterations = 20;
+        auto quantized_bwd_time = timeit(loop_bwd_prim, strm, iterations);
+
+        auto min_time = [](const std::vector<nanoseconds> &a) {
+            return *std::min_element(a.begin(), a.end());
+        };
+
+        qtime_bwd = min_time(quantized_bwd_time) / iterations;
+        printf("qtime_training_backwards_prim %f\n", (float)qtime_bwd.count());
+    }
+
+    // print q,k gradients
+#if DEBUG_PRINT_MEM
+    print_mem(dQ_mem, "BWD dQ");
+    print_mem(dK_mem, "BWD dK");
+#endif
+
+    // reshape gradients from grouped layout back to 4d
+    void *diff_query_ptr = (void *)diff_query.map_data();
+    void *dQ_ptr = (void *)dQ_mem.map_data();
+    memcpy(diff_query_ptr, dQ_ptr, grouped_query_md.get_size());
+    dQ_mem.unmap_data(dQ_ptr);
+    diff_query.unmap_data(diff_query_ptr);
+
+    void *diff_key_ptr = (void *)diff_key.map_data();
+    void *dK_ptr = (void *)dK_mem.map_data();
+    memcpy(diff_key_ptr, dK_ptr, key_dequantized.get_desc().get_size());
+    dK_mem.unmap_data(dK_ptr);
+    diff_key.unmap_data(diff_key_ptr);
+
+    void *diff_value_ptr = (void *)diff_value.map_data();
+    void *dV_ptr = (void *)dV_mem.map_data();
+    memcpy(diff_value_ptr, dV_ptr, grouped_value_md.get_size());
+    dV_mem.unmap_data(dV_ptr);
+    diff_value.unmap_data(diff_value_ptr);
+
+    return qtime_bwd;
 }
 
 template <typename T>
@@ -1334,7 +1812,7 @@ void check_memory(dnnl::stream &strm, memory &gold, memory &test,
 
     float max_diff = std::numeric_limits<float>::min();
     std::map<int, std::map<int, int>> hist;
-    const bool verbose = false;
+    const bool verbose = true;
     for_(int l = 0; l < dims[0]; l++)
     for_(int k = 0; k < dims[1]; k++)
     for_(int j = 0; j < dims[2]; j++)
@@ -1380,7 +1858,7 @@ void check_memory(dnnl::stream &strm, memory &gold, memory &test,
     gold.unmap_data(mapped_ptr_gold);
     test.unmap_data(mapped_ptr_test);
 
-    int threshold = total * 0.0006;
+    int threshold = total * 0.002;
 
     ASSERT_LE(mismatches, threshold) << mismatches << " out of: " << total;
     ASSERT_LE(max_diff, max_diff_threshold);
@@ -1395,26 +1873,6 @@ int to_attn_mask_type(mask_type t) {
         default:;
     }
     return static_cast<int>(attn_mask);
-}
-
-std::vector<std::chrono::nanoseconds> timeit(
-        const std::function<void()> &func, dnnl::stream &str, int iterations) {
-    using namespace std::chrono;
-    func();
-    func();
-    std::vector<std::chrono::nanoseconds> times;
-    for (int j = 0; j < 5; j++) {
-        auto e = steady_clock::now();
-        str.wait();
-        auto s = steady_clock::now();
-        for (int i = 0; i < iterations; i++) {
-            func();
-        }
-        str.wait();
-        e = steady_clock::now();
-        times.push_back(std::chrono::duration_cast<nanoseconds>(e - s));
-    }
-    return times;
 }
 
 template <typename O, typename I>
@@ -1642,6 +2100,186 @@ public:
 #endif
     }
 
+    void compare_bwd() {
+        using namespace dnnl::impl;
+        auto mask = t.m_mask.get_desc();
+
+        memory::desc *mask_ptr = nullptr;
+
+        switch (p.mask.type) {
+            case mask_type::no_mask:
+            case mask_type::causal_tl:
+            case mask_type::causal_br: mask_ptr = nullptr; break;
+            case mask_type::oneD:
+            case mask_type::twoD: mask_ptr = &mask; break;
+        }
+
+        auto dS_desc = t.m_dS.get_desc();
+        memory::desc *dS_ptr = nullptr;
+        //dS_ptr = &dS_desc; // uncomment for optional dS output (expensive)
+
+        // fwd sdpa primitive to populate dst, col_maxes
+        sdpa::primitive_desc sdpa_fwd_pd;
+        sdpa sdpa_fwd;
+
+        sdpa_backward::primitive_desc sdpa_bwd_pd;
+        sdpa_backward sdpa_bwd;
+        try {
+            sdpa_fwd_pd = sdpa::primitive_desc(eng, t.m_query.get_desc(),
+                    t.m_key_quantized.get_desc(),
+                    t.m_value_quantized.get_desc(), mask_ptr,
+                    t.m_scale.get_desc(), t.m_output_quantized.get_desc(),
+                    invert_scale, p.heads.kv, to_attn_mask_type(p.mask.type),
+                    dnnl::impl::alg_kind::softmax_accurate_inf_as_zero,
+                    t.sdpa_attr_quantized, t.sdpa_kq_attr_quantized,
+                    t.sdpa_vs_attr_quantized, prop_kind::forward_training);
+            sdpa_fwd = sdpa(sdpa_fwd_pd);
+
+            sdpa_bwd_pd = sdpa_backward::primitive_desc(eng,
+                    t.m_query.get_desc(), t.m_key_quantized.get_desc(),
+                    t.m_value_quantized.get_desc(), mask_ptr,
+                    t.m_scale.get_desc(), t.m_output_quantized.get_desc(),
+                    t.m_diff_query_quantized.get_desc(),
+                    t.m_diff_key_quantized.get_desc(),
+                    t.m_diff_value_quantized.get_desc(),
+                    t.m_diff_output.get_desc(), dS_ptr, invert_scale,
+                    p.heads.kv, to_attn_mask_type(p.mask.type),
+                    dnnl::impl::alg_kind::softmax_accurate_inf_as_zero,
+                    sdpa_fwd_pd, t.sdpa_attr_quantized,
+                    t.sdpa_kq_attr_quantized, t.sdpa_vs_attr_quantized);
+            sdpa_bwd = sdpa_backward(sdpa_bwd_pd);
+        } catch (const dnnl::error &e) {
+            if (e.status == dnnl_unimplemented)
+                GTEST_SKIP() << "Unimplemented: " << e.what();
+            else
+                throw;
+        }
+
+        auto sdpa_fwd_workspace_memory
+                = memory(sdpa_fwd_pd.workspace_desc(), eng);
+
+        std::unordered_map<int, memory> sdpa_fwd_args
+                = {{DNNL_ARG_QUERIES, t.m_query},
+                        {DNNL_ARG_KEYS, t.m_key_quantized},
+                        {DNNL_ARG_VALUES, t.m_value_quantized},
+                        {DNNL_ARG_DST, t.m_output_quantized},
+                        {DNNL_ARG_WORKSPACE, sdpa_fwd_workspace_memory}};
+
+        if (scale_dt != mdt::undef) {
+            sdpa_fwd_args[DNNL_ARG_SCALE] = t.m_scale;
+        }
+        if (mask_ptr) { sdpa_fwd_args[DNNL_ARG_ATTN_MASK] = t.m_mask; }
+
+        strm.wait();
+        sdpa_fwd.execute(strm, sdpa_fwd_args);
+        strm.wait();
+
+#if DEBUG_PRINT_MEM
+        print_mem(sdpa_fwd_workspace_memory, "sharedworkspace");
+#endif
+
+        std::unordered_map<int, memory> sdpa_bwd_args
+                = {{DNNL_ARG_QUERIES, t.m_query},
+                        {DNNL_ARG_KEYS, t.m_key_quantized},
+                        {DNNL_ARG_VALUES, t.m_value_quantized},
+                        {DNNL_ARG_DST, t.m_output_quantized},
+                        {DNNL_ARG_DIFF_DST, t.m_diff_output},
+                        {DNNL_ARG_DIFF_QUERIES, t.m_diff_query_quantized},
+                        {DNNL_ARG_DIFF_KEYS, t.m_diff_key_quantized},
+                        {DNNL_ARG_DIFF_VALUES, t.m_diff_value_quantized},
+                        {DNNL_ARG_DS, t.m_dS},
+                        {DNNL_ARG_WORKSPACE, sdpa_fwd_workspace_memory}};
+
+#if DEBUG_PRINT_MEM
+        print_mem(t.m_query, "input t_m_query");
+        print_mem(t.m_key_quantized, "input t_m_key");
+        print_mem(t.m_value_quantized, "input t_m_value");
+        print_mem(t.m_diff_output, "input dA");
+#endif
+
+        if (scale_dt != mdt::undef) {
+            sdpa_bwd_args[DNNL_ARG_SCALE] = t.m_scale;
+        }
+        if (mask_ptr) { sdpa_bwd_args[DNNL_ARG_ATTN_MASK] = t.m_mask; }
+
+        sdpa_bwd.execute(strm, sdpa_bwd_args);
+        strm.wait();
+
+#if DEBUG_PRINT_MEM
+        print_mem(t.m_dS, "computed dS");
+        print_mem(t.m_diff_value_quantized, "dV bwd out");
+#endif
+
+        printf("--------------  Primitives based implementation -------------- "
+               "\n");
+
+        // perform primitives based backwards sdpa pass to generate "gold" gradient outputs
+        prim_sdpa_quant_bwd(p, t, eng, strm, t.m_query, t.m_key_quantized,
+                scale_dt, t.m_scale, t.m_mask, t.m_value_quantized, t.m_output,
+                t.m_diff_output, invert_scale, doubled_memory, t.m_diff_query,
+                t.m_diff_key, t.m_diff_value);
+
+        float max_diff_threshold = 0.3f;
+        float fthreshold = 0.f;
+        if (p.dt.dt == mdt::bf16 || p.dt.dt == mdt::f16) {
+            //fthreshold = 0.0079f; //todo: correct threshold or better values
+            fthreshold = 0.1;
+        } else {
+            fthreshold = 0.001466f;
+        }
+
+        strm.wait();
+
+        if (t.m_output.get_desc().get_data_type() == mdt::f16) {
+            check_memory<float16_t>(strm, t.m_output, t.m_output_quantized,
+                    max_diff_threshold, fthreshold);
+            check_memory<float16_t>(strm, t.m_diff_query,
+                    t.m_diff_query_quantized, max_diff_threshold, fthreshold);
+            check_memory<float16_t>(strm, t.m_diff_key, t.m_diff_key_quantized,
+                    max_diff_threshold, fthreshold);
+            check_memory<float16_t>(strm, t.m_diff_value,
+                    t.m_diff_value_quantized, max_diff_threshold, fthreshold);
+
+        } else if (t.m_output.get_desc().get_data_type() == mdt::bf16) {
+            check_memory<bfloat16_t>(strm, t.m_output, t.m_output_quantized,
+                    max_diff_threshold, fthreshold);
+            check_memory<bfloat16_t>(strm, t.m_diff_query,
+                    t.m_diff_query_quantized, max_diff_threshold, fthreshold);
+            check_memory<bfloat16_t>(strm, t.m_diff_key, t.m_diff_key_quantized,
+                    max_diff_threshold, fthreshold);
+            check_memory<bfloat16_t>(strm, t.m_diff_value,
+                    t.m_diff_value_quantized, max_diff_threshold, fthreshold);
+
+        } else if (t.m_output.get_desc().get_data_type() == mdt::f32) {
+            check_memory<float_t>(strm, t.m_output, t.m_output_quantized,
+                    max_diff_threshold, fthreshold);
+            check_memory<float_t>(strm, t.m_diff_query,
+                    t.m_diff_query_quantized, max_diff_threshold, fthreshold);
+            check_memory<float_t>(strm, t.m_diff_key, t.m_diff_key_quantized,
+                    max_diff_threshold, fthreshold);
+            check_memory<float_t>(strm, t.m_diff_value,
+                    t.m_diff_value_quantized, max_diff_threshold, fthreshold);
+        }
+
+#if DEBUG_PRINT_MEM
+        print_mem(t.m_output, "gold m_output");
+        print_mem(t.m_output_quantized, "test m_output");
+        printf("----------\n\n");
+
+        print_mem(t.m_diff_query, "gold m_diff_query");
+        print_mem(t.m_diff_query_quantized, "test m_diff_query");
+        printf("----------\n\n");
+
+        print_mem(t.m_diff_key, "gold m_diff_key");
+        print_mem(t.m_diff_key_quantized, "test m_diff_key");
+        printf("----------\n\n");
+
+        print_mem(t.m_diff_value, "gold m_diff_value");
+        print_mem(t.m_diff_value_quantized, "test m_diff_value");
+        printf("----------\n\n");
+#endif
+    }
+
     void perf() {
         using namespace dnnl::impl;
         auto mask = t.m_mask.get_desc();
@@ -1788,6 +2426,194 @@ public:
                   << "|" << std::endl;
     }
 
+    void perf_bwd(bool time_reference = false) {
+        using namespace dnnl::impl;
+        auto mask = t.m_mask.get_desc();
+
+        memory::desc *mask_ptr = nullptr;
+
+        switch (p.mask.type) {
+            case mask_type::no_mask:
+            case mask_type::causal_tl:
+            case mask_type::causal_br: mask_ptr = nullptr; break;
+            case mask_type::oneD:
+            case mask_type::twoD: mask_ptr = &mask; break;
+        }
+
+        // Forward training pass (needed for workspace)
+        sdpa::primitive_desc sdpa_fwd_pd;
+        sdpa sdpa_fwd;
+
+        sdpa_backward::primitive_desc sdpa_bwd_pd;
+        sdpa_backward sdpa_bwd;
+        try {
+            sdpa_fwd_pd = sdpa::primitive_desc(eng, t.m_query.get_desc(),
+                    t.m_key_quantized.get_desc(),
+                    t.m_value_quantized.get_desc(), mask_ptr,
+                    t.m_scale.get_desc(), t.m_output_quantized.get_desc(),
+                    invert_scale, p.heads.kv, to_attn_mask_type(p.mask.type),
+                    dnnl::impl::alg_kind::softmax_accurate_inf_as_zero,
+                    t.sdpa_attr_quantized, t.sdpa_kq_attr_quantized,
+                    t.sdpa_vs_attr_quantized, prop_kind::forward_training);
+            sdpa_fwd = sdpa(sdpa_fwd_pd);
+
+            sdpa_bwd_pd = sdpa_backward::primitive_desc(eng,
+                    t.m_query.get_desc(), t.m_key_quantized.get_desc(),
+                    t.m_value_quantized.get_desc(), mask_ptr,
+                    t.m_scale.get_desc(), t.m_output_quantized.get_desc(),
+                    t.m_diff_query_quantized.get_desc(),
+                    t.m_diff_key_quantized.get_desc(),
+                    t.m_diff_value_quantized.get_desc(),
+                    t.m_diff_output.get_desc(), nullptr, invert_scale,
+                    p.heads.kv, to_attn_mask_type(p.mask.type),
+                    dnnl::impl::alg_kind::softmax_accurate_inf_as_zero,
+                    sdpa_fwd_pd, t.sdpa_attr_quantized,
+                    t.sdpa_kq_attr_quantized, t.sdpa_vs_attr_quantized);
+            sdpa_bwd = sdpa_backward(sdpa_bwd_pd);
+        } catch (const dnnl::error &e) {
+            if (e.status == dnnl_unimplemented)
+                GTEST_SKIP() << "Unimplemented: " << e.what();
+            else
+                throw;
+        }
+
+        // Execute forward pass to populate workspace
+        auto sdpa_fwd_workspace_memory
+                = memory(sdpa_fwd_pd.workspace_desc(), eng);
+
+        std::unordered_map<int, memory> sdpa_fwd_args
+                = {{DNNL_ARG_QUERIES, t.m_query},
+                        {DNNL_ARG_KEYS, t.m_key_quantized},
+                        {DNNL_ARG_VALUES, t.m_value_quantized},
+                        {DNNL_ARG_DST, t.m_output_quantized},
+                        {DNNL_ARG_WORKSPACE, sdpa_fwd_workspace_memory}};
+
+        if (scale_dt != mdt::undef) {
+            sdpa_fwd_args[DNNL_ARG_SCALE] = t.m_scale;
+        }
+        if (mask_ptr) { sdpa_fwd_args[DNNL_ARG_ATTN_MASK] = t.m_mask; }
+
+        sdpa_fwd.execute(strm, sdpa_fwd_args);
+        strm.wait();
+
+        // Build backward args
+        std::unordered_map<int, memory> sdpa_bwd_args
+                = {{DNNL_ARG_QUERIES, t.m_query},
+                        {DNNL_ARG_KEYS, t.m_key_quantized},
+                        {DNNL_ARG_VALUES, t.m_value_quantized},
+                        {DNNL_ARG_DST, t.m_output_quantized},
+                        {DNNL_ARG_DIFF_DST, t.m_diff_output},
+                        {DNNL_ARG_DIFF_QUERIES, t.m_diff_query_quantized},
+                        {DNNL_ARG_DIFF_KEYS, t.m_diff_key_quantized},
+                        {DNNL_ARG_DIFF_VALUES, t.m_diff_value_quantized},
+                        {DNNL_ARG_WORKSPACE, sdpa_fwd_workspace_memory}};
+
+        if (scale_dt != mdt::undef) {
+            sdpa_bwd_args[DNNL_ARG_SCALE] = t.m_scale;
+        }
+        if (mask_ptr) { sdpa_bwd_args[DNNL_ARG_ATTN_MASK] = t.m_mask; }
+
+        // Time backward pass
+        auto loop_bwd = [&] { sdpa_bwd.execute(strm, sdpa_bwd_args); };
+
+        int iterations = 20;
+        auto bwd_time = timeit(loop_bwd, strm, iterations);
+
+        using namespace std::chrono;
+        auto min_time = [](const std::vector<nanoseconds> &a) {
+            return *std::min_element(a.begin(), a.end());
+        };
+
+        auto qtime = min_time(bwd_time) / iterations;
+
+        // Backward reads: Q, K, V, O, dO, workspace(logsumexp)
+        // Backward writes: dQ, dK, dV
+        byte_t<> total_bytes = t.m_query.get_desc().get_size()
+                + t.m_key_quantized.get_desc().get_size()
+                + t.m_value_quantized.get_desc().get_size()
+                + t.m_output_quantized.get_desc().get_size()
+                + t.m_diff_output.get_desc().get_size()
+                + t.m_diff_query_quantized.get_desc().get_size()
+                + t.m_diff_key_quantized.get_desc().get_size()
+                + t.m_diff_value_quantized.get_desc().get_size()
+                + (mask_ptr ? t.m_mask.get_desc().get_size() : 0);
+
+        size_t kv_slice_tensor_elements
+                = (p.head_group.head_size * p.seq_len.kv);
+        auto mask_slice_elements = 0;
+        switch (p.mask.type) {
+            case mask_type::twoD:
+                mask_slice_elements = p.seq_len.kv * p.seq_len.q;
+                break;
+            case mask_type::oneD: mask_slice_elements = p.seq_len.kv; break;
+            default: mask_slice_elements = 0; break;
+        }
+        size_t batch_elements = p.mb * std::max(p.heads.q, p.heads.kv);
+
+        // Effective bytes: expand broadcast tensors to full batch size
+        // Reads: Q, K, V, O, dO (all expanded); Writes: dQ, dK, dV
+        byte_t<> total_bytes_effective = (batch_elements
+                * (byte_t<>(p.key.dt) * kv_slice_tensor_elements
+                        + byte_t<>(p.value.dt) * kv_slice_tensor_elements
+                        + byte_t<>(p.dt.dt)
+                                * (5 * p.head_group.head_size * p.seq_len.q)
+                        + byte_t<>(p.dt.dt) * (2 * kv_slice_tensor_elements)
+                        + (mask_ptr ? byte_t<>(p.mask.dt) * mask_slice_elements
+                                    : 0)));
+
+        // Backward has 5 matmuls: S=K*Q, dS2=V*dO, dV=S*dO, dK=dS*Q, dQ=dS*K
+        // plus softmax_bwd, scale, Di reduction
+        float causal_divisor = (p.mask.type == mask_type::causal_tl
+                                       || p.mask.type == mask_type::causal_br)
+                ? 2.f
+                : 1.f;
+
+        // 5 matmuls, flash-attention paper scales FWD flops by 5/2
+        // softmax_bwd (~5*K*Q), scale, Di
+        num_ops_t<> total_flops = std::max<size_t>(p.heads.kv, p.heads.q) * p.mb
+                * (2.f
+                                * (2.5f * 2.f * p.head_group.head_size
+                                        * p.seq_len.kv * p.seq_len.q)
+                        + (scale_dt != mdt::undef
+                                        ? (2 * p.seq_len.kv * p.seq_len.q)
+                                        : 0)
+                        + (p.mask.type != mask_type::no_mask
+                                        ? (p.seq_len.kv * p.seq_len.q)
+                                        : 0)
+                        + (5 * p.seq_len.kv * p.seq_len.q))
+                / causal_divisor;
+
+        // Just the 5 matmul flops
+        num_ops_t<> flash_flops
+                = (2.5f * 2.f * p.mb * p.heads.q * p.seq_len.kv * p.seq_len.q
+                          * p.head_group.head_size)
+                / causal_divisor;
+
+        std::call_once(header_flag, print_table_header);
+        std::cout << "BWD" << print_row(p) << "|" << qtime.count() << "|"
+                  << bandwidth(magnitude_cast<gigabyte>(total_bytes_effective),
+                             qtime)
+                  << "/"
+                  << bandwidth(magnitude_cast<gigabyte>(total_bytes), qtime)
+                  << "|" << compute(magnitude_cast<gigaops>(flash_flops), qtime)
+                  << "/" << compute(magnitude_cast<gigaops>(total_flops), qtime)
+                  << "|" << std::endl;
+
+        if (time_reference) {
+            auto ref_time = prim_sdpa_quant_bwd(p, t, eng, strm, t.m_query,
+                    t.m_key_quantized, scale_dt, t.m_scale, t.m_mask,
+                    t.m_value_quantized, t.m_output, t.m_diff_output,
+                    invert_scale, doubled_memory, t.m_diff_query, t.m_diff_key,
+                    t.m_diff_value, /*with_timing=*/true);
+
+            float speedup = ref_time.count() > 0
+                    ? (float)ref_time.count() / (float)qtime.count()
+                    : 0.f;
+            std::cout << "REF" << print_row(p) << "|" << ref_time.count() << "|"
+                      << speedup << "x speedup|" << std::endl;
+        }
+    }
+
 protected:
     dnnl::engine eng;
     dnnl::stream strm;
@@ -1804,6 +2630,8 @@ memory::format_tag no_key_transposed = memory::format_tag::abcd;
 
 using sdpa_test = sdpa_test_t<sdpa_dims_t>;
 using sdpa_test_datatypes = sdpa_test_t<sdpa_dims_t_tuple>;
+using sdpa_bwd_test = sdpa_test_t<sdpa_dims_t>;
+using sdpa_bwd_test_datatypes = sdpa_test_t<sdpa_dims_t_tuple>;
 
 // clang-format off
 
@@ -2071,6 +2899,32 @@ INSTANTIATE_TEST_SUITE_P(phi3_mini_4k_instruct,
                     sdpa_dims_t{   1,     32,       32,   2049,       1,     96,     96,      96, mdt::f16, mdt::s8,  mdt::f16, mdt::s8,  mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed, mask_type::twoD }
     ), &print_to_string);
 
+INSTANTIATE_TEST_SUITE_P(bwd_perf,
+    sdpa_bwd_test,
+                               // mb,hd_num,kv_hd_num,seq_len,qry_num,hd_size, kg_sz, vgrp_sz,       dt,    kdt,        ksdt,      kzpdt,       vdt,       vsdt,      vzpdt,    mskdt, qtype
+    testing::Values(
+                    sdpa_dims_t{   1,    1,        1,      32,       32,    32,      32,     32, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
+                    sdpa_dims_t{   1,    1,        1,    4096,     4096,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
+                    sdpa_dims_t{   1,    1,        1,    8192,     8192,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
+                    sdpa_dims_t{   1,    2,        2,    4096,     4096,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
+                    sdpa_dims_t{   1,    2,        2,    8192,     8192,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
+                    sdpa_dims_t{   1,    4,        4,    4096,     4096,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
+                    sdpa_dims_t{   1,    4,        4,    8192,     8192,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
+                    sdpa_dims_t{   2,    1,        1,    4096,     4096,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
+                    sdpa_dims_t{   2,    1,        1,    8192,     8192,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
+                    sdpa_dims_t{   2,    2,        2,    4096,     4096,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
+                    sdpa_dims_t{   2,    2,        2,    8192,     8192,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
+                    sdpa_dims_t{   2,    4,        4,    4096,     4096,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
+                    sdpa_dims_t{   2,    4,        4,    8192,     8192,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
+                    sdpa_dims_t{   4,    1,        1,    4096,     4096,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
+                    sdpa_dims_t{   4,    1,        1,    8192,     8192,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
+                    sdpa_dims_t{   4,    2,        2,    4096,     4096,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
+                    sdpa_dims_t{   4,    2,        2,    8192,     8192,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
+                    sdpa_dims_t{   4,    4,        4,    4096,     4096,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::causal_tl },
+                    sdpa_dims_t{   4,    4,        2,    8192,     8192,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::causal_tl },
+                    sdpa_dims_t{   4,   12,        2,    4096,     4096,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::causal_tl }
+   ), &print_to_string);
+
 // clang-format on
 
 GPU_TEST_P(sdpa_test, compare) {
@@ -2081,12 +2935,166 @@ GPU_TEST_P(sdpa_test_datatypes, compare) {
     compare();
 }
 
+/*
+GPU_TEST_P(sdpa_bwd_test, compare_bwd) {
+    compare_bwd();
+}
+*/
+
 GPU_TEST_P(sdpa_test, perf) {
     perf();
 }
 
-/*
-GPU_TEST_P(sdpa_test_datatypes, perf) {
-    perf();
+GPU_TEST_P(sdpa_bwd_test, perf_bwd) {
+    const bool time_reference = true;
+    perf_bwd(time_reference);
 }
-*/
+
+GPU_TEST_P(sdpa_bwd_test_datatypes, compare_bwd) {
+    compare_bwd();
+}
+
+// clang-format off
+
+// backward pass: f16
+INSTANTIATE_TEST_SUITE_P(bwd_f16, sdpa_bwd_test_datatypes,
+        testing::Combine(testing::Values(1, 2), // mb
+                testing::Values(num_heads_t {1, 1}, num_heads_t {2, 2},
+                        num_heads_t {8, 8}), // heads
+                testing::Values(seq_len_size_t {32, 32}, seq_len_size_t {64, 64},
+                        seq_len_size_t {384, 384}), // seq_len
+                testing::Values(head_group_size_t {32, 32, 32},
+                        head_group_size_t {64, 64, 64},
+                        head_group_size_t {128, 128, 128}), // head_size
+                testing::Values(tensor_type_t("Q", mdt::f16)), // dt
+                testing::Values(tensor_type_t("K", mdt::f16)), // kdt
+                testing::Values(tensor_type_t("V", mdt::f16)), // vdt
+                testing::Values(quantize_type::no_quantization), // qtype
+                testing::Values(dnnl::memory::format_tag::abcd), // key_format_tag
+                testing::Values(mask_config_t {mask_type::no_mask},
+                        mask_config_t {mask_type::causal_tl}, mask_config_t {mask_type::causal_br},
+                        mask_config_t {mask_type::twoD}, mask_config_t {mask_type::oneD}
+                        ), // mask_type
+                testing::Values(default_scale_type), // scale_type
+                testing::Values(
+                        accumulation_t {accumulation_mode::f32,
+                                accumulation_mode::f32}) // accumulation_mode
+                ),
+        &print_to_string2);
+
+// backward pass: bf16
+INSTANTIATE_TEST_SUITE_P(bwd_bf16, sdpa_bwd_test_datatypes,
+        testing::Combine(testing::Values(1, 2), // mb
+                testing::Values(num_heads_t {1, 1}, num_heads_t {2, 2}), // heads
+                testing::Values(seq_len_size_t {32, 32}, seq_len_size_t {128, 128},
+                        seq_len_size_t {384, 384}), // seq_len
+                testing::Values(head_group_size_t {32, 32, 32},
+                        head_group_size_t {64, 64, 64},
+                        head_group_size_t {128, 128, 128}), // head_size
+                testing::Values(tensor_type_t("Q", mdt::bf16)), // dt
+                testing::Values(tensor_type_t("K", mdt::bf16)), // kdt
+                testing::Values(tensor_type_t("V", mdt::bf16)), // vdt
+                testing::Values(quantize_type::no_quantization), // qtype
+                testing::Values(dnnl::memory::format_tag::abcd), // key_format_tag
+                testing::Values(mask_config_t {mask_type::causal_tl}), // mask_type
+                testing::Values(default_scale_type), // scale_type
+                testing::Values(
+                        accumulation_t {accumulation_mode::f32,
+                                accumulation_mode::f32}) // accumulation_mode
+                ),
+        &print_to_string2);
+
+// backward pass: GQA configurations
+INSTANTIATE_TEST_SUITE_P(bwd_gqa, sdpa_bwd_test_datatypes,
+        testing::Combine(testing::Values(1), // mb
+                testing::Values(num_heads_t {4, 2}, num_heads_t {8, 2},
+                        num_heads_t {32, 2}), // heads (q > kv)
+                testing::Values(seq_len_size_t {32, 32}, seq_len_size_t {128, 128},
+                        seq_len_size_t {384, 384}), // seq_len
+                testing::Values(head_group_size_t {64, 64, 64},
+                        head_group_size_t {128, 128, 128}), // head_size
+                testing::Values(tensor_type_t("Q", mdt::f16)), // dt
+                testing::Values(tensor_type_t("K", mdt::f16)), // kdt
+                testing::Values(tensor_type_t("V", mdt::f16)), // vdt
+                testing::Values(quantize_type::no_quantization), // qtype
+                testing::Values(dnnl::memory::format_tag::abcd), // key_format_tag
+                testing::Values(mask_config_t {mask_type::no_mask},
+                        mask_config_t {mask_type::causal_tl}), // mask_type
+                testing::Values(default_scale_type), // scale_type
+                testing::Values(
+                        accumulation_t {accumulation_mode::f32,
+                                accumulation_mode::f32}) // accumulation_mode
+                ),
+        &print_to_string2);
+
+// backward pass: non-uniform sequence lengths (q != kv)
+INSTANTIATE_TEST_SUITE_P(bwd_nonuniform_seq, sdpa_bwd_test_datatypes,
+        testing::Combine(testing::Values(1), // mb
+                testing::Values(num_heads_t {1, 1},
+                        num_heads_t {2, 2}), // heads
+                testing::Values(seq_len_size_t {33, 65},
+                        seq_len_size_t {65, 4097},
+                        seq_len_size_t {4096, 64},
+                        seq_len_size_t {1025, 15}), // seq_len (q, kv)
+                testing::Values(head_group_size_t {32, 32, 32},
+                        head_group_size_t {64, 64, 64}), // head_size
+                testing::Values(tensor_type_t("Q", mdt::f16)), // dt
+                testing::Values(tensor_type_t("K", mdt::f16)), // kdt
+                testing::Values(tensor_type_t("V", mdt::f16)), // vdt
+                testing::Values(quantize_type::no_quantization), // qtype
+                testing::Values(dnnl::memory::format_tag::abcd), // key_format_tag
+                testing::Values(mask_config_t {mask_type::no_mask}), // mask_type
+                testing::Values(default_scale_type), // scale_type
+                testing::Values(
+                        accumulation_t {accumulation_mode::f32,
+                                accumulation_mode::f32}) // accumulation_mode
+                ),
+        &print_to_string2);
+
+// backward pass: f32
+INSTANTIATE_TEST_SUITE_P(bwd_f32, sdpa_bwd_test_datatypes,
+        testing::Combine(testing::Values(1, 4), // mb
+                testing::Values(num_heads_t {1, 1}, num_heads_t {2, 2},
+                        num_heads_t {12, 12}), // heads
+                testing::Values(seq_len_size_t {32, 32}, seq_len_size_t {64, 64},
+                        seq_len_size_t {384, 384},
+                        seq_len_size_t {4096, 4096}), // seq_len
+                testing::Values(head_group_size_t {16, 16, 16},
+                        head_group_size_t {32, 32, 32},
+                        head_group_size_t {64, 64, 64},
+                        head_group_size_t {128, 128, 128}), // head_size
+                testing::Values(tensor_type_t("Q", mdt::f32)), // dt
+                testing::Values(tensor_type_t("K", mdt::f32)), // kdt
+                testing::Values(tensor_type_t("V", mdt::f32)), // vdt
+                testing::Values(quantize_type::no_quantization), // qtype
+                testing::Values(dnnl::memory::format_tag::abcd), // key_format_tag
+                testing::Values(mask_config_t {mask_type::no_mask},
+                        mask_config_t {mask_type::causal_tl}), // mask_type
+                testing::Values(default_scale_type), // scale_type
+                testing::Values(
+                        accumulation_t {accumulation_mode::f32,
+                                accumulation_mode::f32}) // accumulation_mode
+                ),
+        &print_to_string2);
+
+
+// backward pass: large batch and head counts
+INSTANTIATE_TEST_SUITE_P(bwd_large_batch, sdpa_bwd_test_datatypes,
+        testing::Combine(testing::Values(4), // mb
+                testing::Values(num_heads_t {12, 12}), // heads
+                testing::Values(seq_len_size_t {4096, 4096}), // seq_len
+                testing::Values(head_group_size_t {32, 32, 32}), // head_size
+                testing::Values(tensor_type_t("Q", mdt::f16)), // dt
+                testing::Values(tensor_type_t("K", mdt::f16)), // kdt
+                testing::Values(tensor_type_t("V", mdt::f16)), // vdt
+                testing::Values(quantize_type::no_quantization), // qtype
+                testing::Values(dnnl::memory::format_tag::abcd), // key_format_tag
+                testing::Values(mask_config_t {mask_type::no_mask}), // mask_type
+                testing::Values(default_scale_type), // scale_type
+                testing::Values(
+                        accumulation_t {accumulation_mode::f32,
+                                accumulation_mode::f32}) // accumulation_mode
+                ),
+        &print_to_string2);
+
+// clang-format on

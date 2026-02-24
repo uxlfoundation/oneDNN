@@ -55,9 +55,10 @@ dnnl_status_t DNNL_API sdpa_primitive_desc_create(
         const_dnnl_memory_desc_t diff_value_desc,
         const_dnnl_memory_desc_t diff_dst_desc,
         const_dnnl_memory_desc_t dS_desc, const_dnnl_memory_desc_t mask_desc,
-        dnnl_data_type_t scale_dt, bool invert_scale, dnnl_dim_t kv_head_number,
-        int attn_mask_type, dnnl_alg_kind_t softmax_alg,
-        const_dnnl_primitive_attr_t attr, const_dnnl_primitive_attr_t kq_attr,
+        const_dnnl_memory_desc_t scale_desc, bool invert_scale,
+        dnnl_dim_t kv_head_number, int attn_mask_type,
+        dnnl_alg_kind_t softmax_alg, const_dnnl_primitive_attr_t attr,
+        const_dnnl_primitive_attr_t kq_attr,
         const_dnnl_primitive_attr_t vs_attr,
         const dnnl_primitive_desc *hint_fwd_pd);
 
@@ -117,8 +118,8 @@ struct sdpa_backward : public dnnl::primitive {
 
         primitive_desc(const engine &aengine, const memory::desc &query_desc,
                 const memory::desc &key_desc, const memory::desc &value_desc,
-                const memory::desc *attn_mask_desc, memory::data_type scale_dt,
-                const memory::desc &output_desc,
+                const memory::desc *attn_mask_desc,
+                const memory::desc &scale_desc, const memory::desc &output_desc,
                 const memory::desc &diff_query_desc,
                 const memory::desc &diff_key_desc,
                 const memory::desc &diff_value_desc,
@@ -136,7 +137,7 @@ struct sdpa_backward : public dnnl::primitive {
                     value_desc.get(), output_desc.get(), diff_query_desc.get(),
                     diff_key_desc.get(), diff_value_desc.get(),
                     diff_output_desc.get(), dS_desc ? dS_desc->get() : nullptr,
-                    optional_arg(attn_mask_desc), (dnnl_data_type_t)scale_dt,
+                    optional_arg(attn_mask_desc), scale_desc.get(),
                     invert_scale, kv_head_number, attn_mask_type,
                     (dnnl_alg_kind_t)softmax_alg, attr.get(), kq_attr.get(),
                     vs_attr.get(), hint_fwd_pd.get());

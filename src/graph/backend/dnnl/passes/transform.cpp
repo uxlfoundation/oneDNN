@@ -3874,7 +3874,7 @@ impl::status_t lift_up_weight_reshape_for_depthwiseconv(
             if (to_be_swapped.count(reshape_op))
                 to_be_swapped[reshape_op].emplace_back(producer);
             else
-                to_be_swapped[reshape_op] = {producer};
+                to_be_swapped[reshape_op].assign(1, producer);
         }
     }
 

@@ -246,7 +246,8 @@ status_t sdp_primitive_kernel_t<quantized>::ocl_execute_impl(
         if (subgraph_->is_constant_[i]) continue;
         returned_event = subgraph_->execs_[i]->execute_ocl(
                 p_stream, res->get_exec_args()[i], deps);
-        deps = {returned_event};
+        // WA: deps = {returned_event}; may cause compiler warining with GCC 13+.
+        deps.assign(1, returned_event);
     }
 
     scratchpad.set_deps(returned_event);

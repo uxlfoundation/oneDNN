@@ -198,7 +198,7 @@ status_t shuffle_fwd_t::ocl_execute_impl(const stream_t *g_stream,
         if (subgraph_->is_constant_[i]) continue;
         returned_event = subgraph_->execs_[i]->execute_ocl(
                 p_stream, res->get_exec_args()[i], deps);
-        deps = {returned_event};
+        deps.assign(1, returned_event);
     }
 
     scratchpad.set_deps(returned_event);

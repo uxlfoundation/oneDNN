@@ -93,7 +93,7 @@ struct micro_params_t : trivially_serializable_t<micro_params_t> {
     bool require_stateless_addressing;
     uint8_t padding3[6] = {0};
 
-    micro_ukernel_params_t ukernel_config;
+    micro_fwd_ukernel_params_t ukernel_config;
 };
 DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(micro_params_t);
 

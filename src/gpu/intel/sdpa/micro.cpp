@@ -177,7 +177,7 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
 
     // serializable minimal set of configuration params for ukernels
     // will be used to generate shim ukernels in reusable kernel_ctx
-    micro_ukernel_params_t ukernel_params;
+    micro_fwd_ukernel_params_t ukernel_params;
     ukernel_params.unroll_m_kq = config->unroll_m_kq;
     ukernel_params.unroll_n_kq = config->unroll_n_kq;
     ukernel_params.unroll_m_vs = config->unroll_m_vs;

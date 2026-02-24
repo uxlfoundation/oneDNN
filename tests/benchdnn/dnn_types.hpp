@@ -87,7 +87,6 @@ struct attr_t {
 
     static policy_t str2policy(const std::string &str);
     static const char *policy2str(policy_t policy);
-    static int get_default_mask(policy_t policy, int ndims);
     static int policy2mask(int arg, policy_t policy, int ndims = -1,
             dnnl_primitive_kind_t prim_kind = dnnl_undefined_primitive,
             bool has_groups = false);

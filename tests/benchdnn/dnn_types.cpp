@@ -185,24 +185,24 @@ dnnl_rounding_mode_t str2rounding_mode(const std::string &str) {
     return dnnl_rounding_mode_environment;
 }
 
-int attr_t::get_default_mask(policy_t policy, int ndims) {
+static int get_default_mask(policy_t policy, int ndims) {
     switch (policy) {
-        case PER_DIM_0: return (1 << 0);
-        case PER_OC:
-        case PER_DIM_1: return (1 << 1);
-        case PER_OCIC:
-        case PER_DIM_01: return (1 << 0) + (1 << 1);
-        case PER_DIM_2: return (1 << 2);
-        case PER_DIM_3: return (1 << 3);
-        case MX:
-        case DYNAMIC_FP:
-        case PER_TENSOR:
+        case attr_t::policy_t::PER_DIM_0: return (1 << 0);
+        case attr_t::policy_t::PER_OC:
+        case attr_t::policy_t::PER_DIM_1: return (1 << 1);
+        case attr_t::policy_t::PER_OCIC:
+        case attr_t::policy_t::PER_DIM_01: return (1 << 0) + (1 << 1);
+        case attr_t::policy_t::PER_DIM_2: return (1 << 2);
+        case attr_t::policy_t::PER_DIM_3: return (1 << 3);
+        case attr_t::policy_t::MX:
+        case attr_t::policy_t::DYNAMIC_FP:
+        case attr_t::policy_t::PER_TENSOR:
             assert(ndims > 0 && ndims <= DNNL_MAX_NDIMS);
             return (1 << ndims) - 1;
-        case COMMON: return 0;
-        case HOST_SCALAR:
-            return 0; // mask=0 is required for compatibility with preprocessing logic
-        default: SAFE(FAIL, CRIT); return 0;
+        case attr_t::policy_t::COMMON: return 0;
+        // Note: use mask=0 for compatibility with reference compute paths.
+        case attr_t::policy_t::HOST_SCALAR: return 0;
+        default: SAFE(FAIL, CRIT); return INT_MIN;
     }
 }
 
@@ -218,28 +218,28 @@ int attr_t::policy2mask(int arg, policy_t policy, int ndims,
         dnnl_primitive_kind_t prim_kind, bool has_groups) {
 
     if (policy == policy_t::HOST_SCALAR) { // shortcut
-        return attr_t::get_default_mask(policy, ndims);
+        return get_default_mask(policy, ndims);
     }
 
     // Handle of weights mask for various primitives.
     if (prim_kind == dnnl_convolution || prim_kind == dnnl_deconvolution
             || prim_kind == dnnl_inner_product) {
         if (arg != DNNL_ARG_WEIGHTS || policy == policy_t::COMMON)
-            return attr_t::get_default_mask(policy, ndims);
+            return get_default_mask(policy, ndims);
 
         switch (policy) {
             case PER_OC:
                 if (has_groups)
-                    return attr_t::get_default_mask(PER_DIM_01, ndims);
+                    return get_default_mask(PER_DIM_01, ndims);
                 else
-                    return attr_t::get_default_mask(PER_DIM_0, ndims);
+                    return get_default_mask(PER_DIM_0, ndims);
             default: SAFE(FAIL, CRIT); return -1;
         }
     } else if (prim_kind == dnnl_matmul) {
         if ((arg != DNNL_ARG_SRC && arg != DNNL_ARG_WEIGHTS
                     && arg != DNNL_ARG_DST)
                 || policy == policy_t::COMMON)
-            return attr_t::get_default_mask(policy, ndims);
+            return get_default_mask(policy, ndims);
 
         if (ndims < 2) SAFE_V(FAIL);
         switch (policy) {
@@ -248,12 +248,12 @@ int attr_t::policy2mask(int arg, policy_t policy, int ndims,
             case PER_OCIC: return (1 << (ndims - 1)) + (1 << (ndims - 2));
             case MX:
             case DYNAMIC_FP:
-            case PER_TENSOR: return attr_t::get_default_mask(policy, ndims);
+            case PER_TENSOR: return get_default_mask(policy, ndims);
             default: SAFE_V(FAIL); return -1;
         }
     } else if (prim_kind == dnnl_layer_normalization) {
         if (arg != DNNL_ARG_SRC_1 || policy != policy_t::PER_OC)
-            return attr_t::get_default_mask(policy, ndims);
+            return get_default_mask(policy, ndims);
 
         // PER_OC
         assert(policy == policy_t::PER_OC);
@@ -261,7 +261,7 @@ int attr_t::policy2mask(int arg, policy_t policy, int ndims,
         return 1 << (ndims - 1);
     } else {
         // Default case
-        return attr_t::get_default_mask(policy, ndims);
+        return get_default_mask(policy, ndims);
     }
 }
 

@@ -166,8 +166,8 @@ struct xbyak_gemm_smalln_tn_t : public jit_generator_t {
         mov(LDC, ARG_LDC);
         mov(LDB, ARG_LDB);
 
-        mov(ARG_ALPHA, dword[ARG_ALPHA]);
-        mov(ARG_BETA, dword[ARG_BETA]);
+        mov(ARG_ALPHA.cvt32(), dword[ARG_ALPHA]);
+        mov(ARG_BETA.cvt32(), dword[ARG_BETA]);
         mov(ALPHA, ARG_ALPHA);
         mov(BETA, ARG_BETA);
 

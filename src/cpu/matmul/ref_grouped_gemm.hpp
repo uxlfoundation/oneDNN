@@ -67,14 +67,23 @@ struct ref_grouped_t : public primitive_t {
             const bool is_int_src = utils::one_of(src_type, u8, s8);
             const bool is_int_wei = utils::one_of(wei_type, u8, s8, s4, u4);
 
+            // Supported configurations: fp src + int wei (weight-only quantization),
+            // int src + int wei, fp src + fp wei
             VDISPATCH_MATMUL(is_fp_src || is_int_src, VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_MATMUL(
                     utils::one_of(wei_type, f32, bf16, f16, u8, s8, s4, u4),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_MATMUL(utils::one_of(dst_type, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT);
-            // No support for weights only quantization as of now, both src/wei should be int
             VDISPATCH_MATMUL(IMPLICATION(is_int_src, is_int_wei),
+                    VERBOSE_UNSUPPORTED_DT_CFG);
+            // WOQ requires weight scales and fpmath with apply_to_int
+            VDISPATCH_MATMUL(IMPLICATION(is_fp_src && is_int_wei,
+                                     !attr()->scales_.has_default_values(
+                                             DNNL_ARG_WEIGHTS)),
+                    VERBOSE_UNSUPPORTED_DT_CFG);
+            VDISPATCH_MATMUL(IMPLICATION(is_fp_src && is_int_wei,
+                                     attr()->fpmath_.apply_to_int_),
                     VERBOSE_UNSUPPORTED_DT_CFG);
 
             // Check for supported quantization schemes
@@ -98,7 +107,7 @@ struct ref_grouped_t : public primitive_t {
                 // Allow column-wise or blocked (K grouping) scales for weights
                 VDISPATCH_MATMUL(utils::one_of(attr_scales.get_data_type(
                                                        DNNL_ARG_WEIGHTS),
-                                         f32, bf16),
+                                         f32, bf16, f16),
                         VERBOSE_UNSUPPORTED_SCALES_CFG);
                 VDISPATCH_MATMUL(
                         wei_mask == colwise_mask || wei_mask == blocked_mask,
@@ -117,9 +126,45 @@ struct ref_grouped_t : public primitive_t {
             VDISPATCH_MATMUL(attr_scales.has_default_values(DNNL_ARG_DST),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
 
-            // Zero-points are not supported
-            VDISPATCH_MATMUL(attr()->zero_points_.has_default_values(),
+            // Zero-points are supported for wei: for WOQ (fp src) and for int arithmetic (int src)
+            const auto &attr_zps = attr()->zero_points_;
+            VDISPATCH_MATMUL(attr_zps.has_default_values(DNNL_ARG_SRC),
                     VERBOSE_UNSUPPORTED_ATTR);
+            VDISPATCH_MATMUL(attr_zps.has_default_values(DNNL_ARG_DST),
+                    VERBOSE_UNSUPPORTED_ATTR);
+
+            // Allow column-wise or blocked (K grouping) zps for weights
+            if (!attr_zps.has_default_values(DNNL_ARG_WEIGHTS)) {
+                VDISPATCH_MATMUL(is_int_wei, VERBOSE_UNSUPPORTED_ATTR);
+                VDISPATCH_MATMUL(
+                        utils::one_of(attr_zps.get_data_type(DNNL_ARG_WEIGHTS),
+                                u8, s8, u4, s4, s32),
+                        VERBOSE_UNSUPPORTED_ATTR);
+                const int zp_mask = attr_zps.get_mask(DNNL_ARG_WEIGHTS);
+                const int colwise_mask = wei_qmask_N();
+                const int blocked_mask = wei_qmask_K() | wei_qmask_N();
+                VDISPATCH_MATMUL(
+                        zp_mask == colwise_mask || zp_mask == blocked_mask,
+                        VERBOSE_UNSUPPORTED_ATTR);
+                if (!attr_zps.get(DNNL_ARG_WEIGHTS).has_default_groups()) {
+                    const auto gK = attr_zps.get_group(DNNL_ARG_WEIGHTS, 0);
+                    VDISPATCH_MATMUL(gK > 1, VERBOSE_UNSUPPORTED_ATTR);
+                    VDISPATCH_MATMUL(K() % gK == 0, VERBOSE_UNSUPPORTED_ATTR);
+                    const auto gN = attr_zps.get_group(DNNL_ARG_WEIGHTS, 1);
+                    VDISPATCH_MATMUL(gN == 1, VERBOSE_UNSUPPORTED_ATTR);
+                }
+            }
+
+            // Scales and ZPs groups must match
+            if (!attr_scales.has_default_values(DNNL_ARG_WEIGHTS)
+                    && !attr_zps.has_default_values(DNNL_ARG_WEIGHTS)) {
+                const auto scale_gK
+                        = attr_scales.get_group(DNNL_ARG_WEIGHTS, 0);
+                const auto zp_gK = attr_zps.get_group(DNNL_ARG_WEIGHTS, 0);
+                VDISPATCH_MATMUL(scale_gK == zp_gK, VERBOSE_INCONSISTENT_DIM,
+                        "wei_scale_group_k", (int)scale_gK, "wei_zp_group_k",
+                        (int)zp_gK);
+            }
 
             // No post-ops
             VDISPATCH_MATMUL(attr()->post_ops_.has_default_values(),

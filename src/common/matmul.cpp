@@ -166,8 +166,11 @@ status_t grouped_matmul_attr_check(
     if (attr == nullptr) return status::success;
     if (attr->has_default_values()) return status::success;
 
-    // Grouped matmul only supports scales, no zero points, etc.
-    auto allowed_mask = smask_t::scales_data_type | smask_t::scales_groups;
+    // Grouped matmul supports scales, zero points and woq
+    // no other attributes or post-ops for now
+    auto allowed_mask = smask_t::scales_data_type | smask_t::scales_groups
+            | smask_t::fpmath_mode | smask_t::zero_points_data_type
+            | smask_t::zero_points_groups;
     VCHECK_MATMUL_UNIMPL(
             attr->has_default_values(allowed_mask, desc.dst_desc.data_type),
             VERBOSE_UNSUPPORTED_ATTR);

@@ -411,6 +411,7 @@ The following are supported:
   - Weight Scales: column-wise (per-expert-per-column, `mask = (1 << 0) | (1 << 2)`)
     and K-grouped (per-expert-per-K-group-per-column, `mask = (1 << 0) | (1 << 1) | (1 << 2)`)
     with group specification are supported.
+- Zero points attribute for weights tensors with the same masks as scales.
 - Bias supports per-expert shape.
 - Supported on CPU and GPU engines.
 

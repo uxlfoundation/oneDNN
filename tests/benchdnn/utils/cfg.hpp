@@ -149,12 +149,30 @@ struct base_cfg_t {
     }
 
 protected:
+    base_cfg_t() = default;
+    base_cfg_t(dnnl_accumulation_mode_t acc_mode) : acc_mode_(acc_mode) {}
+
     std::unordered_map<data_kind_t, cfg_entry_t, data_kind_hash_t> cfg_entry_;
     data_kind_t output_data_kind_ = DST; // Assume FWD by default.
+    dnnl_accumulation_mode_t acc_mode_ = dnnl_accumulation_mode_strict;
 
     int64_t get_safe_digits() const {
         return MIN2(digits_dt(cfg_entry_.at(output_data_kind_).get_dt()),
-                digits_dt(dnnl_f32));
+                digits_acc_mode(acc_mode_));
+    }
+
+    static int64_t digits_acc_mode(dnnl_accumulation_mode_t acc_mode) {
+        switch (acc_mode) {
+            case dnnl_accumulation_mode_strict:
+            case dnnl_accumulation_mode_f32: return digits_dt(dnnl_f32);
+            case dnnl_accumulation_mode_f16: return digits_dt(dnnl_f16);
+            case dnnl_accumulation_mode_s32: return digits_dt(dnnl_s32);
+            case dnnl_accumulation_mode_relaxed:
+            case dnnl_accumulation_mode_any:
+                // In practice, the minimum accumulation type is f16.
+                return digits_dt(dnnl_f16);
+            default: assert(!"not expected"); return digits_dt(dnnl_f32);
+        }
     }
 
     bool is_int8(data_kind_t dk = WEI) const {

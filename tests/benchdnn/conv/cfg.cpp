@@ -30,6 +30,16 @@ cfg_t::cfg_t(const prb_t *prb, const std::vector<data_kind_t> &kinds) {
                         kind, orig_data_type, data_type, get_cfg_map(kind)});
     }
 
+    auto eff_acc_mode = prb->attr.acc_mode;
+    // XXX: Convolution can use f16 accumulator when both inputs are f16.
+    bool inputs_f16 = true;
+    for (auto dk : {SRC, WEI, DST}) {
+        if (dk == output_data_kind_) continue;
+        inputs_f16 = inputs_f16 && get_dt(dk) == dnnl_f16;
+    }
+    if (inputs_f16) eff_acc_mode = dnnl_accumulation_mode_f16;
+    set_acc_mode(eff_acc_mode);
+
     // Keep legacy filling for Wino.
     if (prb->alg == WINO) {
         if (prb->dt[0] == dnnl_f32) {

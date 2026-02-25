@@ -459,19 +459,7 @@ jit_avx2_gemm_s8u8s32_kern_t::jit_avx2_gemm_s8u8s32_kern_t(bool beta_zero,
     , enable_offset_c_(enable_offset_c)
     , enable_offset_r_(enable_offset_r)
     , vnni_(mayiuse(avx2_vnni))
-    , unroll_m_(unroll_m)
-    , arg_a_(0)
-    , arg_b_(0)
-    , arg_c_(0)
-    , arg_ldc_(0)
-    , arg_coffset_c_(0)
-    , arg_coffset_r_(0)
-    , coffset_cx_(0)
-    , coffset_cy_(0)
-    , coffset_rx_(0)
-    , coffset_ry_(0)
-    , bcast_k2_(0)
-    , bcast_k1_(0) {
+    , unroll_m_(unroll_m) {
 
     assert(utils::one_of(unroll_m, 24, 16, 8, 4, 2, 1));
 

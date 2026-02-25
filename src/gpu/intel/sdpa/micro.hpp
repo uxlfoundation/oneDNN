@@ -144,7 +144,8 @@ struct micro_bwd_params_t : trivially_serializable_t<micro_bwd_params_t> {
     bool remainder_q;
     bool use_systolic_ukernel;
     bool with_dS;
-    uint8_t padding2[3] = {0};
+    bool require_stateless_addressing;
+    uint8_t padding2[2] = {0};
     int prefetch_d_max;
     uint8_t padding3[4] = {0};
 

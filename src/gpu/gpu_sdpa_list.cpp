@@ -28,19 +28,34 @@ namespace impl {
 namespace gpu {
 
 namespace {
+using namespace dnnl::impl::prop_kind;
 
 // clang-format off
-constexpr impl_list_item_t impl_list[] = REG_SDPA_P({
+const std::map<pk_impl_key_t, std::vector<impl_list_item_t>>
+        impl_list_map REG_SDPA_P({
+    {{forward}, {
         GPU_INSTANCE_INTEL(intel::sdpa::micro_t)
         GPU_INSTANCE_INTEL_DEVMODE(intel::sdpa::ref_t)
         nullptr,
+    }},
+    {{backward}, REG_BWD_PK({
+        GPU_INSTANCE_INTEL(intel::sdpa::micro_bwd_t)
+        nullptr,
+    })},
 });
 // clang-format on
 } // namespace
 
 const impl_list_item_t *get_sdpa_impl_list(const sdpa_desc_t *desc) {
-    UNUSED(desc);
-    return impl_list;
+    static const impl_list_item_t empty_list[] = {nullptr};
+
+    const bool is_fwd = utils::one_of(
+            desc->prop_kind, forward_training, forward_inference);
+    prop_kind_t prop_kind = is_fwd ? forward : backward;
+
+    const auto impl_list_it = impl_list_map.find({prop_kind});
+    return impl_list_it != impl_list_map.cend() ? impl_list_it->second.data()
+                                                : empty_list;
 }
 
 } // namespace gpu

@@ -20,6 +20,7 @@
 
 #include "gemmstone/microkernel/shim.hpp"
 #include "gemmstone/microkernel_selector.hpp"
+#include "gemmstone/strategy_parser.hpp"
 #include "gpu/intel/compute/ukernels.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/gemm/jit/gen_kernel.hpp"
@@ -54,12 +55,9 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
 
     if (hw_info.gmdid == 0) return status::unimplemented;
 
-    auto src_mdw = memory_desc_wrapper(pd()->src_md(0));
-    auto wei_mdw = memory_desc_wrapper(pd()->weights_md());
-
-    int m = static_cast<int>(pd()->M());
-    int n = static_cast<int>(pd()->N());
-    int k = static_cast<int>(pd()->K());
+    memory_desc_wrapper src_mdw(pd()->src_md(0));
+    memory_desc_wrapper wei_mdw(pd()->weights_md());
+    memory_desc_wrapper dst_mdw(pd()->dst_md());
 
     auto convert_dnnl_to_kernel_layout = [](const memory_desc_t *md) {
         return (gemm_desc_t::get_trans(*md) == dnnl_trans) ? MatrixLayout::T
@@ -144,13 +142,34 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
     }
 
     SizeParams sizes;
-    sizes.m = static_cast<uint16_t>(n);
-    sizes.n = static_cast<uint16_t>(m);
-    sizes.k = static_cast<uint16_t>(k);
+    sizes.m = static_cast<uint16_t>(pd()->N());
+    sizes.n = static_cast<uint16_t>(pd()->M());
+    sizes.k = static_cast<uint16_t>(pd()->K());
+
+    auto strat_override = [&](gemmstone::GEMMStrategy &strat) {
+        std::string newStrat;
+        using namespace gemmstone;
+        newStrat = gpu_utils::dev_getenv("GRPGEMM_USTRATEGY", newStrat);
+        if (!newStrat.empty()) {
+            // Example: 16 16 aT32 aM32 aB wg 2x4 sys
+            printf("GRPGEMM_USTRATEGY: %s\n", newStrat.c_str());
+            auto product = ngen::npack::decodeHWIPVersion(hw_info.gmdid);
+            auto hw = getCore(product.family);
+            auto stepping = hw_info.gmdid & 0xFF;
+            strat = GEMMStrategy(hw, stepping);
+            std::stringstream ss(newStrat);
+            ss >> strat.unroll[0];
+            ss >> strat.unroll[1];
+            std::string strategyString;
+            std::getline(ss >> std::ws, strategyString);
+            parseStrategy(strategyString.c_str(), hw, problem, strat);
+            adjustStrategy(hw, problem, strat);
+        }
+    };
 
     auto sg_size = dev_info->min_subgroup_size();
     try {
-        gemm_ = selectGEMM(opts, hw_info, sizes, problem);
+        gemm_ = selectGEMM(opts, hw_info, sizes, problem, {}, strat_override);
     } catch (const std::runtime_error &) {
         std::vector<StrategyRequirement> reqs;
         int m_unroll = problem.Ta.isInt4()
@@ -171,7 +190,8 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
                 == utils::rnd_up_pow2(std::max<dim_t>(
                         1, std::min<dim_t>(pd()->M() / reqs[1].value, 4))));
         try {
-            gemm_ = selectGEMM(opts, hw_info, sizes, problem, reqs);
+            gemm_ = selectGEMM(
+                    opts, hw_info, sizes, problem, reqs, strat_override);
         } catch (const std::runtime_error &ex) {
             VCHECK_MATMUL(false,
                     "gemm microkernel generation failure with message: %s",
@@ -447,7 +467,7 @@ status_t grouped_micro_gemm_t::execute(const exec_ctx_t &ctx) const {
     int ldweiq = 0;
 
     if (with_src_scales || with_src_zero_points) {
-        // Only row-wise cales are supported for src
+        // Only row-wise scales are supported for src
         ldsrcq = 1;
     }
     if (with_wei_scales || with_wei_zero_points) {

@@ -479,8 +479,8 @@ void jit_uni_eltwise_injector_t<isa>::exp_compute_vector_fwd(
     h->and_(ZRegD(t2.getIdx()), ZRegD(t0.getIdx()),
             ZRegD(IDX(table_val(exp_not_mask17, z_tmp))));
     h->fsub(t2, t0, t2);
-    h->movprfx(t0, p_all, ZRegS(IDX(table_val(exp_coeff2, z_tmp))));
-    h->fmad(t0, p_all, t2, ZRegS(IDX(table_val(exp_coeff1, z_tmp))));
+    h->fmad(ZRegS(IDX(table_val(exp_coeff2, t0))), p_all, t2,
+            ZRegS(IDX(table_val(exp_coeff1, z_tmp))));
     h->fmad(t0, p_all, t2, ZRegS(IDX(table_val(one, z_tmp))));
     h->fmul(t0, t1, t0);
 }

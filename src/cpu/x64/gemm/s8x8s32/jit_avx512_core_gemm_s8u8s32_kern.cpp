@@ -511,18 +511,7 @@ jit_avx512_core_gemm_s8u8s32_kern_t::jit_avx512_core_gemm_s8u8s32_kern_t(
     , AA_(is_windows ? rdi : rcx)
     // Assign vector registers
     , dp_scratch_(zmm6)
-    , ones_(zmm7)
-    // Zero-initialize
-    , arg_a_(0)
-    , arg_b_(0)
-    , arg_c_(0)
-    , arg_ldc_(0)
-    , arg_coffset_c_(0)
-    , arg_coffset_r_(0)
-    , coffset_cx_(0)
-    , coffset_cy_(0)
-    , coffset_rx_(0)
-    , coffset_ry_(0) {
+    , ones_(zmm7) {
 
     for (int i = 0; i < (max_unroll_m_ >> 4); i++)
         a_regs_[i] = Zmm(i);

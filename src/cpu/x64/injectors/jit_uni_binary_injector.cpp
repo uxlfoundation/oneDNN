@@ -588,8 +588,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::compute_vector_range(
     static const Vmm zero_vmm(0);
     if (post_op.is_prelu() && is_avx512_) push_opmask(host_, get_aux_kmask());
 
-    Xbyak::Address rhs1_arg_addr(0);
-    Xbyak::Address rhs2_arg_addr(0);
+    Xbyak::Address rhs1_arg_addr {};
+    Xbyak::Address rhs2_arg_addr {};
 
     // Phase 3 Apply binary post-op over all vmms.
     for (const auto vmm_idx : vmm_idxs) {

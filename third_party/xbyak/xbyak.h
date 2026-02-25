@@ -1446,12 +1446,6 @@ public:
 	XBYAK_CONSTEXPR Address()
 		: Operand(0, MEM, 0), e_(), label_(NULL), mode_(inner::M_ModRM), immSize(0),
 		  disp8N(0), permitVsib(false), broadcast_(false), optimize_(true) { }
-	// oneDNN-specific patch: zero-init sentinel; accepts only literal 0 (nullptr_t
-	// rejects any non-zero integer at compile time, unlike size_t which was removed
-	// in xbyak 7.33 and accepted arbitrary addresses).
-	explicit XBYAK_CONSTEXPR Address(std::nullptr_t)
-		: Operand(0, MEM, 0), e_(), label_(nullptr), mode_(inner::M_ModRM), immSize(0),
-		  disp8N(0), permitVsib(false), broadcast_(false), optimize_(true) { }
 	XBYAK_CONSTEXPR Address(uint32_t sizeBit, bool broadcast, const RegExp& e)
 		: Operand(0, MEM, sizeBit), e_(e), label_(e.label_), mode_(), immSize(0),
 		  disp8N(0), permitVsib(false), broadcast_(broadcast), optimize_(true)

@@ -696,15 +696,27 @@ static std::vector<bwd_config_record_t> sorted_bwd_configs = []() {
     // clang-format off
     std::vector<bwd_config_record_t> configs = {
         // xe_hpc
-        {{compute::gpu_arch_t::xe_hpc, 32},  { 16, 32, 16, 16, 16, 16, 4, 8, 2, 4, 2, 16 }},
-        {{compute::gpu_arch_t::xe_hpc, 64},  { 16, 32, 16, 16, 32, 32, 4, 8, 4, 4, 2, 8 }},
+        {{compute::gpu_arch_t::xe_hpc, 32},  { 64, 32, 16, 16, 16, 32, 2, 8, 2, 8, 2, 8 }},
+        {{compute::gpu_arch_t::xe_hpc, 64},  { 32, 16, 16, 16, 32, 32, 1, 8, 4, 2, 2, 4 }},
         {{compute::gpu_arch_t::xe_hpc, 128}, { 16, 32, 16, 16, 32, 32, 4, 8, 8, 4, 4, 8 }},
+        //{{compute::gpu_arch_t::xe_hpc, 256}, {  16, 32, 16, 16, 32, 32, 4, 8, 8, 4, 4, 8 }},
 
-        /* xe2 todo:
-        {{compute::gpu_arch_t::xe2, 64},  {16, 64, 64, 16, 64, 16, 4, 1, 1, 4, 1, 4}},
-        {{compute::gpu_arch_t::xe2, 128}, {16, 64, 64, 16, 64, 16, 4, 2, 2, 4, 2, 4}},
-        {{compute::gpu_arch_t::xe2, 256}, {16, 64, 64, 16, 64, 16, 4, 2, 4, 4, 4, 4}},
-        */
+        {{compute::gpu_arch_t::xe_hpc, 32, second_token},  { 16, 16, 16, 16, 32, 16, 1, 2, 2, 1, 1, 2 }},
+        {{compute::gpu_arch_t::xe_hpc, 64, second_token},  { 32, 16, 16, 32, 32, 32, 1, 4, 4, 1, 2, 2 }},
+        {{compute::gpu_arch_t::xe_hpc, 128, second_token}, { 16, 16, 16, 16, 32, 32, 2, 8, 8, 2, 4, 4 }},
+        //{{compute::gpu_arch_t::xe_hpc, 256, second_token}, {  16, 16, 16, 16, 32, 32, 2, 8, 8, 2, 4, 4 }},
+
+        {{compute::gpu_arch_t::xe_hpc,  32, f32 | fma},  { 32, 32, 16, 16, 32, 32, 1, 4, 2, 2, 1, 4 }},
+        {{compute::gpu_arch_t::xe_hpc,  64, f32 | fma},  { 16, 32, 16, 16, 16, 32, 4, 4, 4, 4, 4, 4 }},
+        {{compute::gpu_arch_t::xe_hpc, 128, f32 | fma},  { 16, 16, 16, 32, 32, 32, 2, 4, 8, 1, 4, 2 }},
+
+        {{compute::gpu_arch_t::xe2, 32, integrated},  { 16, 64, 16, 16, 32, 32, 2, 2, 2, 2, 1, 4 }},
+        {{compute::gpu_arch_t::xe2, 64, integrated},  { 16, 32, 16, 16, 32, 32, 2, 4, 4, 2, 2, 4 }},
+        {{compute::gpu_arch_t::xe2, 128, integrated}, { 16, 32, 16, 16, 32, 32, 4, 8, 8, 4, 4, 8 }},
+
+        {{compute::gpu_arch_t::xe2, 32},  { 16, 64, 16, 16, 32, 32, 2, 2, 2, 2, 1, 4 }},
+        {{compute::gpu_arch_t::xe2, 64},  { 16, 32, 16, 16, 32, 32, 2, 4, 4, 2, 2, 4 }},
+        {{compute::gpu_arch_t::xe2, 128}, { 16, 32, 16, 16, 32, 32, 4, 8, 8, 4, 4, 8 }},
     };
     // clang-format on
 

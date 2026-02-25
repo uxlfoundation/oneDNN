@@ -174,6 +174,9 @@ foreach(driver ${all_drivers})
             register_all_tests(cpu "${driver}" "${test_files_smoke}")
         endif()
     elseif(DNNL_TEST_SET_COVERAGE EQUAL DNNL_TEST_SET_CI)
+        if(NOT DNNL_EXPERIMENTAL_GROUPED_MEMORY)
+            list(REMOVE_ITEM test_files_ci "test_matmul_grouped_ci")
+        endif()
         # gpu_ci files may happen if cpu coverage can not be used on gpu
         # Filter out gpu_ci inputs from ci
         foreach(test_file ${test_files_gpu_ci})

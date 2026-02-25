@@ -728,7 +728,7 @@ status_t micro_params_t::get_kernel_ctx(
     return status::success;
 }
 
-status_t micro_t::execute(const exec_ctx_t &ctx) const {
+status_t micro_t::execute_forward(const exec_ctx_t &ctx) const {
     const auto &conf = pd()->conf;
 
     const auto &qry = CTX_IN_STORAGE(DNNL_ARG_QUERIES);

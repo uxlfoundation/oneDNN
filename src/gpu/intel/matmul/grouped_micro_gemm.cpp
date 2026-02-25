@@ -141,6 +141,20 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
                 utils::rnd_up_pow2(pd()->src_group_sizes_[1]));
     }
 
+    // internal conversions do not work well when both A and B are integers
+    if (problem.Ta.isInteger() && problem.Tb.isInteger()) {
+        Type ctype = Type::f16;
+        if (utils::one_of(Type::bf16, problem.Ta_scale, problem.Tb_scale,
+                    convert_dnnl_to_kernel_type(dst_mdw.data_type())))
+            ctype = Type::bf16;
+
+        if (problem.Ta_ext.bits() < problem.Tb_ext.bits()) {
+            problem.Ta = ctype;
+        } else {
+            problem.Tb = ctype;
+        }
+    }
+
     SizeParams sizes;
     sizes.m = static_cast<uint16_t>(pd()->N());
     sizes.n = static_cast<uint16_t>(pd()->M());

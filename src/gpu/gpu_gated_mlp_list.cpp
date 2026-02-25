@@ -19,6 +19,7 @@
 #include "gpu/gpu_impl_list.hpp"
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
+#include "gpu/intel/gated_mlp/micro_horz.hpp"
 #include "gpu/intel/gated_mlp/ref.hpp"
 #endif
 
@@ -30,6 +31,7 @@ namespace {
 
 // clang-format off
 constexpr impl_list_item_t impl_list[] = REG_GATED_MLP_P({
+        GPU_INSTANCE_INTEL(intel::gated_mlp::micro_horz_t)
         GPU_INSTANCE_INTEL(intel::gated_mlp::ref_t)
         nullptr,
 });

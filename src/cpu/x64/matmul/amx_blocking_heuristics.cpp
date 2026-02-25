@@ -1197,8 +1197,10 @@ void matmul_amx_blocking_params_micro_t::find_best_blocking(
             float cur_score = current_blocking.get_blocking_scores();
             float bst_score = best_blocking.get_blocking_scores();
 
-            int m_chunks = div_up(bgmmc.M, m_blk * m_ch_sz);
-            int n_chunks = div_up(bgmmc.N, n_blk * n_ch_sz);
+            int m_chunks
+                    = bgmmc.is_runtime_M ? 1 : div_up(bgmmc.M, m_blk * m_ch_sz);
+            int n_chunks
+                    = bgmmc.is_runtime_N ? 1 : div_up(bgmmc.N, n_blk * n_ch_sz);
             int work_amount = bgmmc.batch * m_chunks * n_chunks;
 
             bool skip_config = work_amount < nthr_bmn * 3

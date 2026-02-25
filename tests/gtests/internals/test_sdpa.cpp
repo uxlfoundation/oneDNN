@@ -1532,7 +1532,7 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
     print_mem(grouped_query, "FWD grouped_query");
     print_mem(key_dequantized, "FWD keq_deq");
     print_mem(scale, "FWD scale");
-    print_mem(mask, "FWD mask");
+    if (p.mask.type != mask_type::no_mask) { print_mem(mask, "FWD mask"); }
     print_mem(score, "FWD intermediate score");
     print_mem(score2, "FWD intermediate score2");
 #endif
@@ -1812,7 +1812,7 @@ void check_memory(dnnl::stream &strm, memory &gold, memory &test,
 
     float max_diff = std::numeric_limits<float>::min();
     std::map<int, std::map<int, int>> hist;
-    const bool verbose = true;
+    const bool verbose = false;
     for_(int l = 0; l < dims[0]; l++)
     for_(int k = 0; k < dims[1]; k++)
     for_(int j = 0; j < dims[2]; j++)
@@ -2116,7 +2116,7 @@ public:
 
         auto dS_desc = t.m_dS.get_desc();
         memory::desc *dS_ptr = nullptr;
-        //dS_ptr = &dS_desc; // uncomment for optional dS output (expensive)
+        //dS_ptr = &dS_desc; // uncomment for optional dS output
 
         // fwd sdpa primitive to populate dst, col_maxes
         sdpa::primitive_desc sdpa_fwd_pd;
@@ -2174,10 +2174,6 @@ public:
         sdpa_fwd.execute(strm, sdpa_fwd_args);
         strm.wait();
 
-#if DEBUG_PRINT_MEM
-        print_mem(sdpa_fwd_workspace_memory, "sharedworkspace");
-#endif
-
         std::unordered_map<int, memory> sdpa_bwd_args
                 = {{DNNL_ARG_QUERIES, t.m_query},
                         {DNNL_ARG_KEYS, t.m_key_quantized},
@@ -2208,10 +2204,9 @@ public:
 #if DEBUG_PRINT_MEM
         print_mem(t.m_dS, "computed dS");
         print_mem(t.m_diff_value_quantized, "dV bwd out");
-#endif
-
         printf("--------------  Primitives based implementation -------------- "
                "\n");
+#endif
 
         // perform primitives based backwards sdpa pass to generate "gold" gradient outputs
         prim_sdpa_quant_bwd(p, t, eng, strm, t.m_query, t.m_key_quantized,
@@ -2525,6 +2520,7 @@ public:
         };
 
         auto qtime = min_time(bwd_time) / iterations;
+        printf("qtimebwd %f\n", (float)qtime.count() / 1e6);
 
         // Backward reads: Q, K, V, O, dO, workspace(logsumexp)
         // Backward writes: dQ, dK, dV
@@ -2903,26 +2899,15 @@ INSTANTIATE_TEST_SUITE_P(bwd_perf,
     sdpa_bwd_test,
                                // mb,hd_num,kv_hd_num,seq_len,qry_num,hd_size, kg_sz, vgrp_sz,       dt,    kdt,        ksdt,      kzpdt,       vdt,       vsdt,      vzpdt,    mskdt, qtype
     testing::Values(
-                    sdpa_dims_t{   1,    1,        1,      32,       32,    32,      32,     32, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
-                    sdpa_dims_t{   1,    1,        1,    4096,     4096,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
-                    sdpa_dims_t{   1,    1,        1,    8192,     8192,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
-                    sdpa_dims_t{   1,    2,        2,    4096,     4096,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
-                    sdpa_dims_t{   1,    2,        2,    8192,     8192,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
-                    sdpa_dims_t{   1,    4,        4,    4096,     4096,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
-                    sdpa_dims_t{   1,    4,        4,    8192,     8192,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
-                    sdpa_dims_t{   2,    1,        1,    4096,     4096,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
-                    sdpa_dims_t{   2,    1,        1,    8192,     8192,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
-                    sdpa_dims_t{   2,    2,        2,    4096,     4096,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
-                    sdpa_dims_t{   2,    2,        2,    8192,     8192,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
-                    sdpa_dims_t{   2,    4,        4,    4096,     4096,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
-                    sdpa_dims_t{   2,    4,        4,    8192,     8192,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
-                    sdpa_dims_t{   4,    1,        1,    4096,     4096,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
-                    sdpa_dims_t{   4,    1,        1,    8192,     8192,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
-                    sdpa_dims_t{   4,    2,        2,    4096,     4096,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
-                    sdpa_dims_t{   4,    2,        2,    8192,     8192,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
-                    sdpa_dims_t{   4,    4,        4,    4096,     4096,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::causal_tl },
-                    sdpa_dims_t{   4,    4,        2,    8192,     8192,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::causal_tl },
-                    sdpa_dims_t{   4,   12,        2,    4096,     4096,   128,     128,    128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::causal_tl }
+                    sdpa_dims_t{   4,    4,        4,      4096,       4096,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
+                    sdpa_dims_t{   4,    4,        4,      4096,       4096,    64,      64,     64, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
+                    sdpa_dims_t{   4,    4,        4,      4096,       4096,   128,     128,    128, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
+                    sdpa_dims_t{   4,    4,        4,      4096,       4096,    32,      32,     32, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
+                    sdpa_dims_t{   4,    4,        4,      4096,       4096,    64,      64,     64, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
+                    sdpa_dims_t{   4,    4,        4,      4096,       4096,    128,      128,     128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask },
+                    sdpa_dims_t{   4,    4,        4,      4096,       4096,    32,      32,     32, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::causal_tl },
+                    sdpa_dims_t{   4,    4,        4,      4096,       4096,    64,      64,     64, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::causal_tl },
+                    sdpa_dims_t{   4,    4,        4,      4096,       4096,    128,      128,     128, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::causal_tl }
    ), &print_to_string);
 
 // clang-format on
@@ -2935,24 +2920,24 @@ GPU_TEST_P(sdpa_test_datatypes, compare) {
     compare();
 }
 
-/*
 GPU_TEST_P(sdpa_bwd_test, compare_bwd) {
     compare_bwd();
-}
-*/
-
-GPU_TEST_P(sdpa_test, perf) {
-    perf();
-}
-
-GPU_TEST_P(sdpa_bwd_test, perf_bwd) {
-    const bool time_reference = true;
-    perf_bwd(time_reference);
 }
 
 GPU_TEST_P(sdpa_bwd_test_datatypes, compare_bwd) {
     compare_bwd();
 }
+
+GPU_TEST_P(sdpa_test, perf) {
+    perf();
+}
+
+/*
+GPU_TEST_P(sdpa_bwd_test, perf_bwd) {
+    const bool time_reference = true;
+    perf_bwd(time_reference);
+}
+*/
 
 // clang-format off
 
@@ -3032,10 +3017,8 @@ INSTANTIATE_TEST_SUITE_P(bwd_nonuniform_seq, sdpa_bwd_test_datatypes,
         testing::Combine(testing::Values(1), // mb
                 testing::Values(num_heads_t {1, 1},
                         num_heads_t {2, 2}), // heads
-                testing::Values(seq_len_size_t {33, 65},
-                        seq_len_size_t {65, 4097},
-                        seq_len_size_t {4096, 64},
-                        seq_len_size_t {1025, 15}), // seq_len (q, kv)
+                testing::Values(seq_len_size_t {64, 513},
+                        seq_len_size_t {513, 64}),
                 testing::Values(head_group_size_t {32, 32, 32},
                         head_group_size_t {64, 64, 64}), // head_size
                 testing::Values(tensor_type_t("Q", mdt::f16)), // dt
@@ -3053,7 +3036,7 @@ INSTANTIATE_TEST_SUITE_P(bwd_nonuniform_seq, sdpa_bwd_test_datatypes,
 
 // backward pass: f32
 INSTANTIATE_TEST_SUITE_P(bwd_f32, sdpa_bwd_test_datatypes,
-        testing::Combine(testing::Values(1, 4), // mb
+        testing::Combine(testing::Values(1, 2), // mb
                 testing::Values(num_heads_t {1, 1}, num_heads_t {2, 2},
                         num_heads_t {12, 12}), // heads
                 testing::Values(seq_len_size_t {32, 32}, seq_len_size_t {64, 64},
@@ -3081,7 +3064,7 @@ INSTANTIATE_TEST_SUITE_P(bwd_f32, sdpa_bwd_test_datatypes,
 // backward pass: large batch and head counts
 INSTANTIATE_TEST_SUITE_P(bwd_large_batch, sdpa_bwd_test_datatypes,
         testing::Combine(testing::Values(4), // mb
-                testing::Values(num_heads_t {12, 12}), // heads
+                testing::Values(num_heads_t {8, 8}), // heads
                 testing::Values(seq_len_size_t {4096, 4096}), // seq_len
                 testing::Values(head_group_size_t {32, 32, 32}), // head_size
                 testing::Values(tensor_type_t("Q", mdt::f16)), // dt

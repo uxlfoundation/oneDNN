@@ -1632,14 +1632,13 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
 
     auto wg_tile_k = config.unroll_m_BcBr * config.wg_m_BcBr;
     auto wg_tile_q = config.unroll_n_BcBr * config.wg_n_BcBr;
-    auto sg_per_wg = config.wg_m_BcBr * config.wg_n_BcBr;
 
     auto sg_per_wg_BcBr = config.wg_m_BcBr * config.wg_n_BcBr;
     auto sg_per_wg_DBc = config.wg_m_DBc * config.wg_n_DBc;
     auto sg_per_wg_DBr = config.wg_m_DBr * config.wg_n_DBr;
 
     using std::max;
-    sg_per_wg = max(max(sg_per_wg_BcBr, sg_per_wg_DBc), sg_per_wg_DBr);
+    auto sg_per_wg = max(max(sg_per_wg_BcBr, sg_per_wg_DBc), sg_per_wg_DBr);
 
     const memory_desc_wrapper qry_mdw(pd()->qry_md());
     const memory_desc_wrapper key_mdw(pd()->key_md());

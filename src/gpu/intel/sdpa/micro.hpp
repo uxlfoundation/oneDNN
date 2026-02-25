@@ -39,8 +39,9 @@ namespace sdpa {
 struct micro_params_t : trivially_serializable_t<micro_params_t> {
 
     const std::vector<const char *> &get_kernel_names() const {
-        static const std::vector<const char *> kernel_names = {"micro_sdpa"};
-        return kernel_names;
+        static const std::vector<const char *> kernel_names_fwd
+                = {"micro_sdpa"};
+        return kernel_names_fwd;
     }
 
     status_t create_generator(const intel::engine_t &engine,
@@ -91,26 +92,77 @@ struct micro_params_t : trivially_serializable_t<micro_params_t> {
     bool use_systolic_ukernel;
     bool kq_f16_accumulate, vs_f16_accumulate;
     bool require_stateless_addressing;
-    uint8_t padding3[6] = {0};
+    bool is_training;
+    uint8_t padding3[5] = {0};
 
     micro_fwd_ukernel_params_t ukernel_config;
 };
 DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(micro_params_t);
 
+struct micro_bwd_params_t : trivially_serializable_t<micro_bwd_params_t> {
+
+    const std::vector<const char *> &get_kernel_names() const {
+        static const std::vector<const char *> kernel_names_bwd = {
+                "preprocess_Di", "micro_sdpa_bwd", "postprocess_dQ", "zero_dQ"};
+        return kernel_names_bwd;
+    }
+
+    status_t create_generator(const intel::engine_t &engine,
+            compute::kernel_bundle_t &bundle) const {
+        compute::kernel_ctx_t kernel_ctx;
+        CHECK(get_kernel_ctx(kernel_ctx));
+        auto status = engine.create_kernel_bundle(
+                bundle, get_kernel_names(), kernel_ctx);
+        return status;
+    }
+
+    status_t get_kernel_ctx(compute::kernel_ctx_t &) const;
+
+    int ndims;
+    int kv_group_size;
+    data_type_t data_t;
+    data_type_t dst_data_t, key_data_t, qry_data_t, val_data_t, msk_data_t;
+
+    int q_align, k_align, v_align, a_align;
+    bool transpose_k;
+    uint8_t padding0[3] = {0};
+
+    int key_group_size, val_group_size;
+    data_type_t scale_data_t;
+
+    int attn_mask_undef, attn_mask_buffer, attn_mask_top_left,
+            attn_mask_bottom_right;
+    bool invert_scale, with_attn_scale, with_host_scale, with_attn_mask,
+            broadcast_mask_q, with_causal_mask;
+    uint8_t padding1[2] = {0};
+    int subgroup_size, d_max;
+
+    bool d_full, arch_gte_hpc;
+    bool block_k, block_dK, block_dV;
+    bool prefetch_mask, prefetch_k0, prefetch_k, prefetch_v,
+            prefetch_remainder; // TODO: prefetch for bwd
+    bool remainder_q;
+    bool use_systolic_ukernel;
+    bool with_dS;
+    uint8_t padding2[3] = {0};
+    int prefetch_d_max;
+    uint8_t padding3[4] = {0};
+
+    micro_bwd_ukernel_params_t ukernel_config;
+};
+DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(micro_bwd_params_t);
+
 struct micro_t : public primitive_t {
     using primitive_t::primitive_t;
-    struct pd_t : public sdpa::pd_t {
-        using sdpa::pd_t::pd_t;
-        static constexpr int mask_mb_index = 0;
-        static constexpr int mask_q_index = 2;
-        static constexpr int mask_k_index = 3;
-        static constexpr int ndims = 4;
+    struct pd_t : public sdpa_fwd_pd_t {
+        using sdpa_fwd_pd_t::sdpa_fwd_pd_t;
 
         DECLARE_COMMON_PD_T("ocl:micro:reusable", micro_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
 
+            VCHECK_SDPA_COND(is_fwd(), VERBOSE_BAD_PROPKIND);
             VCHECK_SDPA_COND(
                     utils::everyone_is(4, qry_md()->ndims, key_md()->ndims,
                             val_md()->ndims, dst_md()->ndims),
@@ -257,7 +309,6 @@ struct micro_t : public primitive_t {
 
             CHECK(init_conf_microkernels(engine));
             CHECK(init_conf(engine));
-
             VCHECK_SDPA_COND(
                     IMPLICATION((arch() == compute::gpu_arch_t::xe_hpc)
                                     && (qry_md()->data_type == data_type::f32),
@@ -311,11 +362,193 @@ struct micro_t : public primitive_t {
 
     status_t init(impl::engine_t *engine) override;
 
+    status_t execute(const exec_ctx_t &ctx) const override {
+        return execute_forward(ctx);
+    }
+
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    status_t execute(const exec_ctx_t &ctx) const override;
+    status_t execute_forward(const exec_ctx_t &ctx) const;
 
     compute::kernel_t kernel_;
+};
+
+struct micro_bwd_t : public primitive_t {
+
+    using primitive_t::primitive_t;
+    struct pd_t : public sdpa_bwd_pd_t {
+        using sdpa_bwd_pd_t::sdpa_bwd_pd_t;
+
+        DECLARE_COMMON_PD_T("ocl:micro:reusable", micro_bwd_t);
+
+        status_t init(impl::engine_t *engine) {
+            using namespace data_type;
+
+            VCHECK_SDPA_COND(!is_fwd(), VERBOSE_BAD_PROPKIND);
+
+            VCHECK_SDPA_COND(
+                    utils::everyone_is(4, qry_md()->ndims, key_md()->ndims,
+                            val_md()->ndims, dst_md()->ndims),
+                    VERBOSE_UNSUPPORTED_TAG);
+            VCHECK_SDPA_COND(utils::everyone_is(4, diff_qry_md()->ndims,
+                                     diff_key_md()->ndims, diff_val_md()->ndims,
+                                     diff_dst_md()->ndims),
+                    VERBOSE_UNSUPPORTED_TAG);
+            if (with_attn_mask()) {
+                VCHECK_SDPA_COND(
+                        attn_mask_md()->ndims == 4, VERBOSE_UNSUPPORTED_TAG);
+                VCHECK_SDPA_COND(
+                        utils::one_of(attn_mask_md()->dims[mask_q_index],
+                                desc()->queries(), 1),
+                        VERBOSE_INVALID_BROADCAST, "attn_mask", mask_q_index);
+                VCHECK_SDPA_COND(
+                        attn_mask_md()->dims[mask_k_index] == desc()->keys(),
+                        VERBOSE_INVALID_BROADCAST, "attn_mask", mask_k_index);
+                VCHECK_SDPA_COND(
+                        attn_mask_md()->data_type == qry_md()->data_type,
+                        "Mask data type should match Qry/Dst data type.");
+            }
+            VCHECK_SDPA_COND(
+                    (utils::everyone_is(data_type::f16, qry_md()->data_type,
+                             dst_md()->data_type)
+                            || utils::everyone_is(data_type::bf16,
+                                    qry_md()->data_type, dst_md()->data_type)
+                            || utils::everyone_is(data_type::f32,
+                                    qry_md()->data_type, dst_md()->data_type)),
+                    VERBOSE_UNSUPPORTED_DT);
+            VCHECK_SDPA_COND(utils::one_of(key_md()->data_type, f32, bf16, f16),
+                    VERBOSE_UNSUPPORTED_DT);
+            VCHECK_SDPA_COND(utils::one_of(val_md()->data_type, f32, bf16, f16),
+                    VERBOSE_UNSUPPORTED_DT);
+            VCHECK_SDPA_COND(set_default_formats() == status::success,
+                    VERBOSE_UNSUPPORTED_TAG);
+            VCHECK_SDPA_COND(desc()->values() == desc()->head_size(),
+                    "values does not match head size");
+
+            VCHECK_SDPA_COND(qry_md()->dims[1] >= key_md()->dims[1]
+                            && qry_md()->dims[1] >= val_md()->dims[1],
+                    "number of heads in query tensor(%ld) must be greater "
+                    "than the number of heads in the key(%ld) and value(%ld) "
+                    "tensors",
+                    static_cast<long int>(qry_md()->dims[1]),
+                    static_cast<long int>(key_md()->dims[1]),
+                    static_cast<long int>(val_md()->dims[1]));
+            {
+                memory_desc_wrapper diff_qry_mdw(diff_qry_md());
+                memory_desc_wrapper diff_key_mdw(diff_key_md());
+                memory_desc_wrapper diff_val_mdw(diff_val_md());
+                memory_desc_wrapper diff_dst_mdw(diff_dst_md());
+                VCHECK_SDPA_COND(
+                        utils::everyone_is(true, diff_qry_mdw.is_plain(),
+                                diff_key_mdw.is_plain(),
+                                diff_val_mdw.is_plain(),
+                                diff_dst_mdw.is_plain()),
+                        VERBOSE_UNSUPPORTED_TAG);
+            }
+
+            // make sure gradient outputs match input dimensions
+            for (int i = 0; i < qry_md()->ndims; i++)
+                VCHECK_SDPA_COND(diff_qry_md()->dims[i] == qry_md()->dims[i],
+                        "diff_qry dim[%d](%ld) must match qry dim[%d](%ld)", i,
+                        (long)diff_qry_md()->dims[i], i,
+                        (long)qry_md()->dims[i]);
+            for (int i = 0; i < key_md()->ndims; i++)
+                VCHECK_SDPA_COND(diff_key_md()->dims[i] == key_md()->dims[i],
+                        "diff_key dim[%d](%ld) must match key dim[%d](%ld)", i,
+                        (long)diff_key_md()->dims[i], i,
+                        (long)key_md()->dims[i]);
+            for (int i = 0; i < val_md()->ndims; i++)
+                VCHECK_SDPA_COND(diff_val_md()->dims[i] == val_md()->dims[i],
+                        "diff_val dim[%d](%ld) must match val dim[%d](%ld)", i,
+                        (long)diff_val_md()->dims[i], i,
+                        (long)val_md()->dims[i]);
+            // dO.dims() == O.dims()
+            for (int i = 0; i < src_md(4)->ndims; i++)
+                VCHECK_SDPA_COND(diff_dst_md()->dims[i] == src_md(4)->dims[i],
+                        "diff_dst dim[%d](%ld) must match dst dim[%d](%ld)", i,
+                        (long)diff_dst_md()->dims[i], i,
+                        (long)src_md(4)->dims[i]);
+
+            VCHECK_SDPA_COND(
+                    utils::everyone_is(qry_md()->data_type,
+                            diff_qry_md()->data_type, diff_key_md()->data_type,
+                            diff_val_md()->data_type, diff_dst_md()->data_type),
+                    "diff tensor data types must match qry data type(%s) "
+                    " ?= dQ(%s), dK(%s), dV(%s), dO(%s)",
+                    dnnl_dt2str(qry_md()->data_type),
+                    dnnl_dt2str(diff_qry_md()->data_type),
+                    dnnl_dt2str(diff_key_md()->data_type),
+                    dnnl_dt2str(diff_val_md()->data_type),
+                    dnnl_dt2str(diff_dst_md()->data_type));
+
+            init_default_ws();
+            VCHECK_SDPA_COND(compare_ws(hint_fwd_pd_), VERBOSE_WS_MISMATCH);
+
+            CHECK(init_conf_microkernels(engine));
+            CHECK(init_conf(engine));
+            CHECK(init_scratchpad(engine));
+
+            return status::success;
+        }
+
+        status_t set_default_format(memory_desc_t &md, bool allow_transpose) {
+            using namespace format_tag;
+            memory_desc_wrapper mdw(md);
+            if (mdw.format_any()) return status::unimplemented;
+            if (!is_md_gemm_compatible_plain_format(&md))
+                return status::unimplemented;
+            if (gemm_desc_t::get_trans(md) == dnnl_trans && !allow_transpose)
+                return status::unimplemented;
+            return status::success;
+        }
+
+        status_t set_default_formats() {
+            CHECK(set_default_format(desc_.q_desc, false));
+            CHECK(set_default_format(desc_.k_desc, true));
+            CHECK(set_default_format(desc_.v_desc, false));
+            CHECK(set_default_format(desc_.dst_desc, false));
+            CHECK(set_default_format(desc_.diff_dst_desc, false));
+            CHECK(set_default_format(desc_.diff_q_desc, false));
+            CHECK(set_default_format(desc_.diff_k_desc, false));
+            CHECK(set_default_format(desc_.diff_v_desc, false));
+            return status::success;
+        }
+
+        int sg_size() const { return sg_size_; }
+        bool use_systolic_ukernel() const { return use_systolic_ukernel_; }
+
+        // Block size for head_size, which must be hard-coded into the kernel.
+        int d_max() const {
+            int head_size = into<int>(desc()->head_size());
+            for (int i = 32; i <= 1024; i *= 2)
+                if (head_size <= i) return i;
+            return head_size;
+        }
+
+        compute::gpu_arch_t arch() const { return arch_; }
+        micro_bwd_params_t conf;
+
+    private:
+        int sg_size_ = 0;
+        bool use_systolic_ukernel_ = true;
+        compute::gpu_arch_t arch_ = compute::gpu_arch_t::unknown;
+
+        status_t init_scratchpad(impl::engine_t *engine);
+        status_t init_conf_microkernels(impl::engine_t *engine);
+        status_t init_conf(impl::engine_t *engine);
+    };
+
+    status_t init(impl::engine_t *engine) override;
+
+    status_t execute(const exec_ctx_t &ctx) const override {
+        return execute_backward(ctx);
+    }
+
+private:
+    const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
+    status_t execute_backward(const exec_ctx_t &ctx) const;
+
+    compute::kernel_t kernel_, preprocess_, postprocess_, zero_;
 };
 
 } // namespace sdpa

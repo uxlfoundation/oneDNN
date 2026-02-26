@@ -45,6 +45,7 @@ void larger_partition_kernel_t::setup_pipeline_stage1(
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_mul_sigmoid_to_swish);
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_to_dnnl_sum);
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_to_shuffle);
+    BACKEND_DNNL_ADD_PASS(pipeline, decompose_softmax_with_stats);
 
     // TODO(xx) The implementation of these two passes relay on a non-fully
     // lowered subgraph. We need to improve them.

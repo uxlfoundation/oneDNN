@@ -482,7 +482,7 @@ struct micro_bwd_t : public primitive_t {
                     dnnl_dt2str(diff_val_md()->data_type),
                     dnnl_dt2str(diff_dst_md()->data_type));
 
-            init_default_ws();
+            CHECK(init_default_ws());
             VCHECK_SDPA_COND(compare_ws(hint_fwd_pd_), VERBOSE_WS_MISMATCH);
 
             CHECK(init_conf_microkernels(engine));

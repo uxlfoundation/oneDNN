@@ -1009,11 +1009,14 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_matmul, 1,
 DNNL_GRAPH_OP_SCHEMA(dnnl_softmax, 1,
         op_schema_t()
                 .set_inputs_option(op_schema_t::param_num_option::variadic)
+                .set_outputs_option(op_schema_t::param_num_option::optional)
                 .set_num_inputs(std::set<size_t>({1, 32}))
                 .set_num_outputs(2)
+                .set_num_outputs(std::set<size_t>({2, 3}))
                 .set_input(0, "input")
                 .set_output(0, "output")
                 .set_output(1, "scratchpad")
+                .set_output(2, "stats") // optional
                 // Attributes inherited from SoftMax
                 .set_attr(op_attr::axis, false, attribute_kind::i, (int64_t)1)
                 .set_attr(op_attr::mode, false, attribute_kind::s, "none",
@@ -1023,7 +1026,7 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_softmax, 1,
                 .set_attr(op_attr::fusion_info, false,
                         attribute_kind::fusion_info)
                 // Analysis rules
-                .set_shape_inference_function(infer_identity_output_shape)
+                .set_shape_inference_function(infer_dnnl_softmax_output_shape)
                 .SET_LAYOUT_PROPAGATOR(layout_propagator_for_softmax)
                 .SET_EXECUTABLE_CREATOR(
                         executable_creator<softmax_executable_t>)

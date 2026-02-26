@@ -1070,7 +1070,7 @@ TEST_P(mlp_test_t, compare) {
 }
 
 // clang-format off
-INSTANTIATE_TEST_SUITE_P(VEC, mlp_test_t, testing::Values(
+INSTANTIATE_TEST_SUITE_P(VEC, mlp_test_t, ::testing::Values(
     // no quantization
     mlp_dims_t {32, 32, 32, 1, 1,
             quantize_type::no_quantization, dnnl_eltwise_swish,

@@ -1808,176 +1808,176 @@ using sdpa_test_datatypes = sdpa_test_t<sdpa_dims_t_tuple>;
 // clang-format off
 
 INSTANTIATE_TEST_SUITE_P(ScaleTypes_f16, sdpa_test_datatypes,
-        testing::Combine(testing::Values(1), // mb
-                testing::Values(num_heads_t {2, 2}), // hd_num
-                testing::Values(seq_len_size_t {384, 384}, seq_len_size_t {1, 385}), // seq_len
-                testing::Values(head_group_size_t {128, 128, 128}), // hd_size
-                testing::Values(tensor_type_t("Q", mdt::f16)), // dt
-                testing::Values(tensor_type_t("K", mdt::f16)), // kdt
-                testing::Values(tensor_type_t("V", mdt::f16)), // vdt
-                testing::Values(quantize_type::per_token), // qtype
-                testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
-                testing::Values(mask_config_t {mask_type::no_mask}), // mask_type
-                testing::Values(scale_type::device_side,scale_type::host_side), // scale_type
-                testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
+        testing::Combine(::testing::Values(1), // mb
+                ::testing::Values(num_heads_t {2, 2}), // hd_num
+                ::testing::Values(seq_len_size_t {384, 384}, seq_len_size_t {1, 385}), // seq_len
+                ::testing::Values(head_group_size_t {128, 128, 128}), // hd_size
+                ::testing::Values(tensor_type_t("Q", mdt::f16)), // dt
+                ::testing::Values(tensor_type_t("K", mdt::f16)), // kdt
+                ::testing::Values(tensor_type_t("V", mdt::f16)), // vdt
+                ::testing::Values(quantize_type::per_token), // qtype
+                ::testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
+                ::testing::Values(mask_config_t {mask_type::no_mask}), // mask_type
+                ::testing::Values(scale_type::device_side,scale_type::host_side), // scale_type
+                ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
 INSTANTIATE_TEST_SUITE_P(ScaleTypes_bf16, sdpa_test_datatypes,
-        testing::Combine(testing::Values(1), // mb
-                testing::Values(num_heads_t {2, 2}), // hd_num
-                testing::Values(seq_len_size_t {384, 384}, seq_len_size_t {1, 385}), // seq_len
-                testing::Values(head_group_size_t {128, 128, 128}), // hd_size
-                testing::Values(tensor_type_t("Q", mdt::bf16)), // dt
-                testing::Values(tensor_type_t("K", mdt::bf16)), // kdt
-                testing::Values(tensor_type_t("V", mdt::bf16)), // vdt
-                testing::Values(quantize_type::per_token), // qtype
-                testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
-                testing::Values(mask_config_t {mask_type::no_mask}), // mask_type
-                testing::Values(scale_type::device_side,scale_type::host_side), // scale_type
-                testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
+        testing::Combine(::testing::Values(1), // mb
+                ::testing::Values(num_heads_t {2, 2}), // hd_num
+                ::testing::Values(seq_len_size_t {384, 384}, seq_len_size_t {1, 385}), // seq_len
+                ::testing::Values(head_group_size_t {128, 128, 128}), // hd_size
+                ::testing::Values(tensor_type_t("Q", mdt::bf16)), // dt
+                ::testing::Values(tensor_type_t("K", mdt::bf16)), // kdt
+                ::testing::Values(tensor_type_t("V", mdt::bf16)), // vdt
+                ::testing::Values(quantize_type::per_token), // qtype
+                ::testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
+                ::testing::Values(mask_config_t {mask_type::no_mask}), // mask_type
+                ::testing::Values(scale_type::device_side,scale_type::host_side), // scale_type
+                ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
 INSTANTIATE_TEST_SUITE_P(ScaleTypes_f32, sdpa_test_datatypes,
-        testing::Combine(testing::Values(1), // mb
-                testing::Values(num_heads_t {2, 2}), // hd_num
-                testing::Values(seq_len_size_t {384, 384}, seq_len_size_t {1, 385}), // seq_len
-                testing::Values(head_group_size_t {128, 128, 128}), // hd_size
-                testing::Values(tensor_type_t("Q", mdt::f32)), // dt
-                testing::Values(tensor_type_t("K", mdt::f32)), // kdt
-                testing::Values(tensor_type_t("V", mdt::f32)), // vdt
-                testing::Values(quantize_type::per_token), // qtype
-                testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
-                testing::Values(mask_config_t {mask_type::no_mask}), // mask_type
-                testing::Values(scale_type::device_side,scale_type::host_side), // scale_type
-                testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
+        testing::Combine(::testing::Values(1), // mb
+                ::testing::Values(num_heads_t {2, 2}), // hd_num
+                ::testing::Values(seq_len_size_t {384, 384}, seq_len_size_t {1, 385}), // seq_len
+                ::testing::Values(head_group_size_t {128, 128, 128}), // hd_size
+                ::testing::Values(tensor_type_t("Q", mdt::f32)), // dt
+                ::testing::Values(tensor_type_t("K", mdt::f32)), // kdt
+                ::testing::Values(tensor_type_t("V", mdt::f32)), // vdt
+                ::testing::Values(quantize_type::per_token), // qtype
+                ::testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
+                ::testing::Values(mask_config_t {mask_type::no_mask}), // mask_type
+                ::testing::Values(scale_type::device_side,scale_type::host_side), // scale_type
+                ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
 
 INSTANTIATE_TEST_SUITE_P(DataTypes_f16_s8, sdpa_test_datatypes,
-        testing::Combine(testing::Values(1), // mb
-                testing::Values(num_heads_t {2, 2}), // hd_num
-                testing::Values(seq_len_size_t {384, 384}, seq_len_size_t {1, 385}), // seq_len
-                testing::Values(head_group_size_t {128, 128, 128}, head_group_size_t {256, 256, 256}, head_group_size_t {512, 512, 512}), // hd_size
-                testing::Values(tensor_type_t("Q", mdt::f16)), // dt
-                testing::Values(tensor_type_t("K", mdt::f16), tensor_type_t("K", mdt::s8, mdt::f16, mdt::undef), tensor_type_t("K", mdt::s8, mdt::f16, mdt::s8) /*, tensor_type_t("K", mdt::s8, mdt::undef, mdt::s8)*/), // kdt
-                testing::Values(tensor_type_t("V", mdt::f16), tensor_type_t("V", mdt::s8, mdt::f16, mdt::undef), tensor_type_t("V", mdt::s8, mdt::f16, mdt::s8) /*, tensor_type_t("V", mdt::s8, mdt::undef, mdt::s8) */), // vdt
-                testing::Values(quantize_type::per_token), // qtype
-                testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
-                testing::Values(mask_config_t {mask_type::oneD, mdt::f16}, mask_config_t {mask_type::twoD, mdt::f32}), // mask_type
-                testing::Values(default_scale_type), // scale_type
-                testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
+        testing::Combine(::testing::Values(1), // mb
+                ::testing::Values(num_heads_t {2, 2}), // hd_num
+                ::testing::Values(seq_len_size_t {384, 384}, seq_len_size_t {1, 385}), // seq_len
+                ::testing::Values(head_group_size_t {128, 128, 128}, head_group_size_t {256, 256, 256}, head_group_size_t {512, 512, 512}), // hd_size
+                ::testing::Values(tensor_type_t("Q", mdt::f16)), // dt
+                ::testing::Values(tensor_type_t("K", mdt::f16), tensor_type_t("K", mdt::s8, mdt::f16, mdt::undef), tensor_type_t("K", mdt::s8, mdt::f16, mdt::s8) /*, tensor_type_t("K", mdt::s8, mdt::undef, mdt::s8)*/), // kdt
+                ::testing::Values(tensor_type_t("V", mdt::f16), tensor_type_t("V", mdt::s8, mdt::f16, mdt::undef), tensor_type_t("V", mdt::s8, mdt::f16, mdt::s8) /*, tensor_type_t("V", mdt::s8, mdt::undef, mdt::s8) */), // vdt
+                ::testing::Values(quantize_type::per_token), // qtype
+                ::testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
+                ::testing::Values(mask_config_t {mask_type::oneD, mdt::f16}, mask_config_t {mask_type::twoD, mdt::f32}), // mask_type
+                ::testing::Values(default_scale_type), // scale_type
+                ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
 
 INSTANTIATE_TEST_SUITE_P(DataTypes_f16_s4, sdpa_test_datatypes,
-        testing::Combine(testing::Values(1), // mb
-                testing::Values(num_heads_t {2, 2}), // hd_num
-                testing::Values(seq_len_size_t {384, 384}, seq_len_size_t {1, 386}), // seq_len
-                testing::Values(head_group_size_t {128, 128, 128}, head_group_size_t {256, 256, 256}, head_group_size_t {512, 512, 512}), // hd_size
-                testing::Values(tensor_type_t("Q", mdt::f16)), // dt
-                testing::Values(tensor_type_t("K", mdt::f16), tensor_type_t("K", mdt::s4, mdt::f16, mdt::undef), tensor_type_t("K", mdt::s4, mdt::f16, mdt::s8)), // kdt
-                testing::Values(tensor_type_t("V", mdt::f16), tensor_type_t("V", mdt::s4, mdt::f16, mdt::undef), tensor_type_t("V", mdt::s4, mdt::f16, mdt::s8)), // vdt
-                testing::Values(quantize_type::per_token), // qtype
-                testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
-                testing::Values(mask_config_t {mask_type::oneD, mdt::f16}, mask_config_t {mask_type::twoD, mdt::f32}), // mask_type
-                testing::Values(default_scale_type), // scale_type
-                testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
+        testing::Combine(::testing::Values(1), // mb
+                ::testing::Values(num_heads_t {2, 2}), // hd_num
+                ::testing::Values(seq_len_size_t {384, 384}, seq_len_size_t {1, 386}), // seq_len
+                ::testing::Values(head_group_size_t {128, 128, 128}, head_group_size_t {256, 256, 256}, head_group_size_t {512, 512, 512}), // hd_size
+                ::testing::Values(tensor_type_t("Q", mdt::f16)), // dt
+                ::testing::Values(tensor_type_t("K", mdt::f16), tensor_type_t("K", mdt::s4, mdt::f16, mdt::undef), tensor_type_t("K", mdt::s4, mdt::f16, mdt::s8)), // kdt
+                ::testing::Values(tensor_type_t("V", mdt::f16), tensor_type_t("V", mdt::s4, mdt::f16, mdt::undef), tensor_type_t("V", mdt::s4, mdt::f16, mdt::s8)), // vdt
+                ::testing::Values(quantize_type::per_token), // qtype
+                ::testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
+                ::testing::Values(mask_config_t {mask_type::oneD, mdt::f16}, mask_config_t {mask_type::twoD, mdt::f32}), // mask_type
+                ::testing::Values(default_scale_type), // scale_type
+                ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
 
 INSTANTIATE_TEST_SUITE_P(DataTypes_bf16_s8, sdpa_test_datatypes,
-        testing::Combine(testing::Values(1), // mb
-                testing::Values(num_heads_t {2, 2}), // hd_num
-                testing::Values(seq_len_size_t {384, 384}, seq_len_size_t {1, 385}), // seq_len
-                testing::Values(head_group_size_t {128, 128, 128}, head_group_size_t {256, 256, 256}, head_group_size_t {512, 512, 512}), // hd_size
-                testing::Values(tensor_type_t("Q", mdt::bf16)), // dt
-                testing::Values(tensor_type_t("K", mdt::bf16) /*, tensor_type_t("K", mdt::s8, mdt::f16, mdt::s8), tensor_type_t("K", mdt::s8, mdt::f16, mdt::undef), tensor_type_t("K", mdt::s8, mdt::undef, mdt::s8)*/), // kdt
-                testing::Values(tensor_type_t("V", mdt::bf16) /*, tensor_type_t("V", mdt::s8, mdt::f16, mdt::s8), tensor_type_t("V", mdt::s8, mdt::f16, mdt::undef), tensor_type_t("V", mdt::s8, mdt::undef, mdt::s8)*/), // vdt
-                testing::Values(quantize_type::per_token), // qtype
-                testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
-                testing::Values(mask_config_t {mask_type::oneD, mdt::bf16}, mask_config_t {mask_type::twoD, mdt::bf16}), // mask_type
-                testing::Values(default_scale_type), // scale_type
-                testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
+        testing::Combine(::testing::Values(1), // mb
+                ::testing::Values(num_heads_t {2, 2}), // hd_num
+                ::testing::Values(seq_len_size_t {384, 384}, seq_len_size_t {1, 385}), // seq_len
+                ::testing::Values(head_group_size_t {128, 128, 128}, head_group_size_t {256, 256, 256}, head_group_size_t {512, 512, 512}), // hd_size
+                ::testing::Values(tensor_type_t("Q", mdt::bf16)), // dt
+                ::testing::Values(tensor_type_t("K", mdt::bf16) /*, tensor_type_t("K", mdt::s8, mdt::f16, mdt::s8), tensor_type_t("K", mdt::s8, mdt::f16, mdt::undef), tensor_type_t("K", mdt::s8, mdt::undef, mdt::s8)*/), // kdt
+                ::testing::Values(tensor_type_t("V", mdt::bf16) /*, tensor_type_t("V", mdt::s8, mdt::f16, mdt::s8), tensor_type_t("V", mdt::s8, mdt::f16, mdt::undef), tensor_type_t("V", mdt::s8, mdt::undef, mdt::s8)*/), // vdt
+                ::testing::Values(quantize_type::per_token), // qtype
+                ::testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
+                ::testing::Values(mask_config_t {mask_type::oneD, mdt::bf16}, mask_config_t {mask_type::twoD, mdt::bf16}), // mask_type
+                ::testing::Values(default_scale_type), // scale_type
+                ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
 
 INSTANTIATE_TEST_SUITE_P(DataTypes_bf16_s4, sdpa_test_datatypes,
-        testing::Combine(testing::Values(1), // mb
-                testing::Values(num_heads_t {2, 2}), // hd_num
-                testing::Values(seq_len_size_t {384, 384}, seq_len_size_t {1, 386}), // seq_len
-                testing::Values(head_group_size_t {128, 128, 128}, head_group_size_t {256, 256, 256}, head_group_size_t {512, 512, 512}), // hd_size
-                testing::Values(tensor_type_t("Q", mdt::bf16)), // dt
-                testing::Values(tensor_type_t("K", mdt::bf16), tensor_type_t("K", mdt::s4, mdt::bf16, mdt::undef), tensor_type_t("K", mdt::s4, mdt::bf16, mdt::s8)), // kdt
-                testing::Values(tensor_type_t("V", mdt::bf16), tensor_type_t("V", mdt::s4, mdt::bf16, mdt::undef), tensor_type_t("V", mdt::s4, mdt::bf16, mdt::s8)), // vdt
-                testing::Values(quantize_type::per_token), // qtype
-                testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
-                testing::Values(mask_config_t {mask_type::oneD, mdt::bf16}, mask_config_t {mask_type::twoD, mdt::bf16}), // mask_type
-                testing::Values(default_scale_type), // scale_type
-                testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
+        testing::Combine(::testing::Values(1), // mb
+                ::testing::Values(num_heads_t {2, 2}), // hd_num
+                ::testing::Values(seq_len_size_t {384, 384}, seq_len_size_t {1, 386}), // seq_len
+                ::testing::Values(head_group_size_t {128, 128, 128}, head_group_size_t {256, 256, 256}, head_group_size_t {512, 512, 512}), // hd_size
+                ::testing::Values(tensor_type_t("Q", mdt::bf16)), // dt
+                ::testing::Values(tensor_type_t("K", mdt::bf16), tensor_type_t("K", mdt::s4, mdt::bf16, mdt::undef), tensor_type_t("K", mdt::s4, mdt::bf16, mdt::s8)), // kdt
+                ::testing::Values(tensor_type_t("V", mdt::bf16), tensor_type_t("V", mdt::s4, mdt::bf16, mdt::undef), tensor_type_t("V", mdt::s4, mdt::bf16, mdt::s8)), // vdt
+                ::testing::Values(quantize_type::per_token), // qtype
+                ::testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
+                ::testing::Values(mask_config_t {mask_type::oneD, mdt::bf16}, mask_config_t {mask_type::twoD, mdt::bf16}), // mask_type
+                ::testing::Values(default_scale_type), // scale_type
+                ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
 
 INSTANTIATE_TEST_SUITE_P(DataTypes_f32, sdpa_test_datatypes,
-        testing::Combine(testing::Values(1), // mb
-                testing::Values(num_heads_t {2, 2}), // hd_num
-                testing::Values(seq_len_size_t {384, 384}, seq_len_size_t {1, 385}, seq_len_size_t {1024, 1024}, seq_len_size_t {1, 1025}), // seq_len
-                testing::Values(head_group_size_t {32, 32, 32}, head_group_size_t {64, 64, 64}, head_group_size_t {128, 128, 128}, head_group_size_t {256, 256, 256}, head_group_size_t {512, 512, 512}), // hd_size
-                testing::Values(tensor_type_t("Q", mdt::f32)), // dt
-                testing::Values(tensor_type_t("K", mdt::f32), tensor_type_t("K", mdt::s8, mdt::f32)), // kdt
-                testing::Values(tensor_type_t("V", mdt::f32), tensor_type_t("V", mdt::s8, mdt::f32)), // vdt
-                testing::Values(quantize_type::per_token), // qtype
-                testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
-                testing::Values(mask_config_t {mask_type::twoD, mdt::f32}), // mask_type
-                testing::Values(default_scale_type), // scale_type
-                testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
+        testing::Combine(::testing::Values(1), // mb
+                ::testing::Values(num_heads_t {2, 2}), // hd_num
+                ::testing::Values(seq_len_size_t {384, 384}, seq_len_size_t {1, 385}, seq_len_size_t {1024, 1024}, seq_len_size_t {1, 1025}), // seq_len
+                ::testing::Values(head_group_size_t {32, 32, 32}, head_group_size_t {64, 64, 64}, head_group_size_t {128, 128, 128}, head_group_size_t {256, 256, 256}, head_group_size_t {512, 512, 512}), // hd_size
+                ::testing::Values(tensor_type_t("Q", mdt::f32)), // dt
+                ::testing::Values(tensor_type_t("K", mdt::f32), tensor_type_t("K", mdt::s8, mdt::f32)), // kdt
+                ::testing::Values(tensor_type_t("V", mdt::f32), tensor_type_t("V", mdt::s8, mdt::f32)), // vdt
+                ::testing::Values(quantize_type::per_token), // qtype
+                ::testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
+                ::testing::Values(mask_config_t {mask_type::twoD, mdt::f32}), // mask_type
+                ::testing::Values(default_scale_type), // scale_type
+                ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
 
 INSTANTIATE_TEST_SUITE_P(AllMaskTypes, sdpa_test_datatypes,
-        testing::Combine(testing::Values(1), // mb
-                testing::Values(num_heads_t {2, 2}), // hd_num
-                testing::Values(seq_len_size_t {384, 384}, seq_len_size_t {1, 385}), // seq_len
-                testing::Values(head_group_size_t {64, 64, 64}, head_group_size_t {128, 128, 128}), // hd_size
-                testing::Values(tensor_type_t("Q", mdt::f16)), // dt
-                testing::Values(tensor_type_t("K", mdt::s8, mdt::f16, mdt::s8)), // kdt
-                testing::Values(tensor_type_t("V", mdt::s8, mdt::f16, mdt::s8)), // vdt
-                testing::Values(quantize_type::per_token), // qtype
-                testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
-                testing::Values(mask_config_t {mask_type::no_mask}, mask_config_t {mask_type::causal_tl}, mask_config_t {mask_type::causal_br}, mask_config_t {mask_type::oneD, mdt::f16}, mask_config_t {mask_type::twoD, mdt::f16}), // mask_type
-                testing::Values(default_scale_type), // scale_type
-                testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
+        testing::Combine(::testing::Values(1), // mb
+                ::testing::Values(num_heads_t {2, 2}), // hd_num
+                ::testing::Values(seq_len_size_t {384, 384}, seq_len_size_t {1, 385}), // seq_len
+                ::testing::Values(head_group_size_t {64, 64, 64}, head_group_size_t {128, 128, 128}), // hd_size
+                ::testing::Values(tensor_type_t("Q", mdt::f16)), // dt
+                ::testing::Values(tensor_type_t("K", mdt::s8, mdt::f16, mdt::s8)), // kdt
+                ::testing::Values(tensor_type_t("V", mdt::s8, mdt::f16, mdt::s8)), // vdt
+                ::testing::Values(quantize_type::per_token), // qtype
+                ::testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
+                ::testing::Values(mask_config_t {mask_type::no_mask}, mask_config_t {mask_type::causal_tl}, mask_config_t {mask_type::causal_br}, mask_config_t {mask_type::oneD, mdt::f16}, mask_config_t {mask_type::twoD, mdt::f16}), // mask_type
+                ::testing::Values(default_scale_type), // scale_type
+                ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
 
 INSTANTIATE_TEST_SUITE_P(GQA, sdpa_test_datatypes,
-        testing::Combine(testing::Values(1), // mb
-                testing::Values(num_heads_t {4, 2}, num_heads_t {8, 2}, num_heads_t {32, 2}, num_heads_t {64, 2}), // hd_num
-                testing::Values(seq_len_size_t {384, 384}, seq_len_size_t {1, 385}), // seq_len
-                testing::Values(head_group_size_t {128, 128, 128}), // hd_size
-                testing::Values(tensor_type_t("Q", mdt::f16)), // dt
-                testing::Values(tensor_type_t("K", mdt::f16)), // kdt
-                testing::Values(tensor_type_t("V", mdt::f16)), // vdt
-                testing::Values(quantize_type::no_quantization), // qtype
-                testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
-                testing::Values(mask_config_t {mask_type::no_mask}), // mask_type
-                testing::Values(default_scale_type), // scale_type
-                testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
+        testing::Combine(::testing::Values(1), // mb
+                ::testing::Values(num_heads_t {4, 2}, num_heads_t {8, 2}, num_heads_t {32, 2}, num_heads_t {64, 2}), // hd_num
+                ::testing::Values(seq_len_size_t {384, 384}, seq_len_size_t {1, 385}), // seq_len
+                ::testing::Values(head_group_size_t {128, 128, 128}), // hd_size
+                ::testing::Values(tensor_type_t("Q", mdt::f16)), // dt
+                ::testing::Values(tensor_type_t("K", mdt::f16)), // kdt
+                ::testing::Values(tensor_type_t("V", mdt::f16)), // vdt
+                ::testing::Values(quantize_type::no_quantization), // qtype
+                ::testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
+                ::testing::Values(mask_config_t {mask_type::no_mask}), // mask_type
+                ::testing::Values(default_scale_type), // scale_type
+                ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
 
 INSTANTIATE_TEST_SUITE_P(f16_accumulation, sdpa_test_datatypes,
-        testing::Combine(testing::Values(1), // mb
-                testing::Values(num_heads_t {16, 16}, num_heads_t {12, 2}), // hd_num
-                testing::Values(seq_len_size_t {1024, 1024}, seq_len_size_t {407, 407}), // seq_len
-                testing::Values(head_group_size_t {128, 128, 128}, head_group_size_t {80, 80, 80}), // hd_size
-                testing::Values(tensor_type_t("Q", mdt::f16)), // dt
-                testing::Values(tensor_type_t("K", mdt::f16)), // kdt
-                testing::Values(tensor_type_t("V", mdt::f16)), // vdt
-                testing::Values(quantize_type::no_quantization), // qtype
-                testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
-                testing::Values(mask_config_t {mask_type::no_mask}, mask_config_t {mask_type::twoD}, mask_config_t {mask_type::causal_tl}), // mask_type
-                testing::Values(default_scale_type), // scale_type
-                testing::Values(accumulation_t {accumulation_mode::f16, accumulation_mode::f16}, accumulation_t {accumulation_mode::f32, accumulation_mode::f16}, accumulation_t {accumulation_mode::f16, accumulation_mode::f32}) // accumulation_mode
+        testing::Combine(::testing::Values(1), // mb
+                ::testing::Values(num_heads_t {16, 16}, num_heads_t {12, 2}), // hd_num
+                ::testing::Values(seq_len_size_t {1024, 1024}, seq_len_size_t {407, 407}), // seq_len
+                ::testing::Values(head_group_size_t {128, 128, 128}, head_group_size_t {80, 80, 80}), // hd_size
+                ::testing::Values(tensor_type_t("Q", mdt::f16)), // dt
+                ::testing::Values(tensor_type_t("K", mdt::f16)), // kdt
+                ::testing::Values(tensor_type_t("V", mdt::f16)), // vdt
+                ::testing::Values(quantize_type::no_quantization), // qtype
+                ::testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
+                ::testing::Values(mask_config_t {mask_type::no_mask}, mask_config_t {mask_type::twoD}, mask_config_t {mask_type::causal_tl}), // mask_type
+                ::testing::Values(default_scale_type), // scale_type
+                ::testing::Values(accumulation_t {accumulation_mode::f16, accumulation_mode::f16}, accumulation_t {accumulation_mode::f32, accumulation_mode::f16}, accumulation_t {accumulation_mode::f16, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
 
@@ -1991,7 +1991,7 @@ INSTANTIATE_TEST_SUITE_P(f16_accumulation, sdpa_test_datatypes,
 INSTANTIATE_TEST_SUITE_P(llama_2_7b_chat,
     sdpa_test,
                                // mb,hd_num,kv_hd_num,seq_len,qry_num,hd_size, kg_sz, vgrp_sz,       dt,       kdt,        ksdt,      kzpdt,        vdt,       vsdt,      vzpdt,     mskdt, qtype
-    testing::Values(
+    ::testing::Values(
                     sdpa_dims_t{   1,    32,       32,    384,    384,    128,   128,     128, mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal_tl },
                     sdpa_dims_t{   1,    32,       32,    385,      1,    128,   128,     128, mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal_tl },
                     sdpa_dims_t{   1,    32,       32,    512,    512,    128,   128,     128, mdt::f16,   mdt::s8,    mdt::f16,    mdt::s8,    mdt::s8,   mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed,  mask_type::causal_tl },
@@ -2005,7 +2005,7 @@ INSTANTIATE_TEST_SUITE_P(llama_2_7b_chat,
 INSTANTIATE_TEST_SUITE_P(llama_3_8b,
     sdpa_test,
                                // mb,hd_num,kv_hd_num,seq_len,qry_num,hd_size, kg_sz, vgrp_sz,       dt,       kdt,        ksdt,      kzpdt,       vdt,       vsdt,      vzpdt,    mskdt, qtype
-    testing::Values(
+    ::testing::Values(
                     sdpa_dims_t{   1,    32,        8,    384,    384,    128,   128,     128, mdt::f16,  mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,        with_key_transposed, mask_type::twoD },
                     sdpa_dims_t{   1,    32,        8,    386,    386,    128,   128,     128, mdt::f16,  mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,        with_key_transposed, mask_type::twoD },
                     sdpa_dims_t{   1,    32,        8,    385,      1,    128,   128,     128, mdt::f16,  mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,        with_key_transposed, mask_type::twoD },
@@ -2028,7 +2028,7 @@ INSTANTIATE_TEST_SUITE_P(llama_3_8b,
 INSTANTIATE_TEST_SUITE_P(minicpm_1b_st,
     sdpa_test,
                                // mb,hd_num,kv_hd_num,seq_len,qry_num,hd_size, kg_sz, vgrp_sz,       dt,     kdt,      ksdt,      kzpdt,      vdt,     vsdt,      vzpdt,    mskdt, qtype
-    testing::Values(
+    ::testing::Values(
                     sdpa_dims_t{   1,    24,        8,    384,    384,     64,    64,      64, mdt::f16, mdt::s8,  mdt::f16,    mdt::s8,  mdt::s8, mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed, mask_type::twoD },
                     sdpa_dims_t{   1,    24,        8,    385,      1,     64,    64,      64, mdt::f16, mdt::s8,  mdt::f16,    mdt::s8,  mdt::s8, mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed, mask_type::twoD },
                     sdpa_dims_t{   1,    24,        8,    512,    512,     64,    64,      64, mdt::f16, mdt::s8,  mdt::f16,    mdt::s8,  mdt::s8, mdt::f16,    mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed, mask_type::twoD },
@@ -2043,7 +2043,7 @@ INSTANTIATE_TEST_SUITE_P(minicpm_1b_st,
 INSTANTIATE_TEST_SUITE_P(qwen2_7b,
     sdpa_test,
                                // mb,hd_num,kv_hd_num,seq_len,qry_num,hd_size, kg_sz, vgrp_sz,       dt,     kdt,      ksdt,   kzpdt,      vdt,     vsdt,  vzpdt,    mskdt, qtype
-    testing::Values(
+    ::testing::Values(
                     sdpa_dims_t{   1,    28,        4,    384,    384,    128,   128,     128, mdt::f16, mdt::s8,  mdt::f16, mdt::s8,  mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed, mask_type::twoD },
                     sdpa_dims_t{   1,    28,        4,    385,      1,    128,   128,     128, mdt::f16, mdt::s8,  mdt::f16, mdt::s8,  mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed, mask_type::twoD },
                     sdpa_dims_t{   1,    28,        4,    512,    512,    128,   128,     128, mdt::f16, mdt::s8,  mdt::f16, mdt::s8,  mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed, mask_type::twoD },
@@ -2058,7 +2058,7 @@ INSTANTIATE_TEST_SUITE_P(qwen2_7b,
 INSTANTIATE_TEST_SUITE_P(phi3_mini_4k_instruct,
     sdpa_test,
                                // mb, hd_num,kv_grp_sz,seq_len, qry_num,hd_size,  kg_sz, vgrp_sz,       dt,     kdt,      ksdt,   kzpdt,      vdt,     vsdt,   vzpdt,    mskdt, qtype
-    testing::Values(
+    ::testing::Values(
                     sdpa_dims_t{   1,     32,       32,    384,     384,     96,     96,      96, mdt::f16, mdt::s8,  mdt::f16, mdt::s8,  mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed, mask_type::twoD },
                     sdpa_dims_t{   1,     32,       32,    384,     384,     96,     96,      96, mdt::f16, mdt::s8,  mdt::f16, mdt::s8,  mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed, mask_type::oneD },
                     sdpa_dims_t{   1,     32,       32,    384,     384,     96,     96,      96, mdt::f16, mdt::s8,  mdt::f16, mdt::s8,  mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed, mask_type::no_mask },

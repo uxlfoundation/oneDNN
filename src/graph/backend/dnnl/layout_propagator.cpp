@@ -1741,7 +1741,8 @@ status_t layout_propagator_for_sdpa(std::shared_ptr<op_t> &op,
     UNUSED(use_block_layout);
     UNUSED(rewriter);
 
-    value_ptr dst_val = op->get_output_value(0);
+    size_t output_idx = 0;
+    value_ptr dst_val = op->get_output_value(output_idx++);
     const logical_tensor_t &out_lt = dst_val->get_logical_tensor();
 
     dnnl::memory::desc expected_md;
@@ -1782,9 +1783,18 @@ status_t layout_propagator_for_sdpa(std::shared_ptr<op_t> &op,
     status_t status = fill_layout_info(dst_val, expected_md);
 
     // fill scratchpads dimensions and data type to scratchpad value_t
-    value_ptr scratchpad_val = op->get_output_value(1);
+    value_ptr scratchpad_val = op->get_output_value(output_idx++);
     const memory::desc scratchpad_desc;
     status = fill_layout_info(scratchpad_val, scratchpad_desc);
+
+    if (op->get_attr<bool>(op_attr::is_training)) {
+        value_ptr stats_val = op->get_output_value(output_idx);
+        const logical_tensor_t &stats_lt = stats_val->get_logical_tensor();
+        dnnl::memory::desc stats_md = make_dnnl_memory_desc(stats_lt);
+        status = fill_layout_info(stats_val, stats_md);
+        VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+                "failed to fill layout info for sdpa stats");
+    }
     return status;
 }
 

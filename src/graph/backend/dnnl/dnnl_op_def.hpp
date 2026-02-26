@@ -1195,6 +1195,7 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_mask, 1,
 DNNL_GRAPH_OP_SCHEMA(dnnl_sdpa, 1,
         op_schema_t()
                 .set_inputs_option(op_schema_t::param_num_option::variadic)
+                .set_outputs_option(op_schema_t::param_num_option::optional)
                 .set_num_inputs(std::set<size_t>({3, 32}))
                 .set_num_outputs(std::set<size_t>({2, 3}))
                 .set_input(0, "query")
@@ -1203,14 +1204,15 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_sdpa, 1,
                 .set_input(3, "scale") // optional
                 .set_input(4, "mask") // optional
                 .set_output(0, "output")
-                .set_output(1,
+                .set_output(1, "scratchpad")
+                .set_output(2,
                         "softmax_stats") // optional, only used for sdpa training
-                .set_output(2, "scratchpad")
                 .set_attr(op_attr::fusion_info, false,
                         attribute_kind::fusion_info)
                 .set_attr(op_attr::with_scale, true, attribute_kind::b)
                 .set_attr(op_attr::is_invert_scale, false, attribute_kind::b,
                         false)
+                .set_attr(op_attr::is_training, true, attribute_kind::b)
                 // mask_type attribute indicates existence of explicit mask,
                 // top-left implicit causal mask or bottm-right implicit causal mask
                 .set_attr(op_attr::mask_type, true, attribute_kind::i)

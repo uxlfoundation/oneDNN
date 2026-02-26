@@ -2207,11 +2207,13 @@ DNNL_GRAPH_OP_SCHEMA(_matmul, 1,
 DNNL_GRAPH_OP_SCHEMA(_softmax, 1,
         op_schema_t()
                 .set_inputs_option(op_schema_t::param_num_option::variadic)
+                .set_outputs_option(op_schema_t::param_num_option::optional)
                 .set_num_inputs(std::set<size_t>({1, 32}))
-                .set_num_outputs(2)
+                .set_num_outputs(std::set<size_t>({2, 3}))
                 .set_input(0, "input")
                 .set_output(0, "output")
                 .set_output(1, "scratchpad")
+                .set_output(2, "stats") // optional
                 // Attributes inherited from SoftMax
                 .set_attr(op_attr::axis, false, attribute_kind::i, (int64_t)1)
                 .set_attr(op_attr::mode, false, attribute_kind::s, "none",
@@ -2221,7 +2223,7 @@ DNNL_GRAPH_OP_SCHEMA(_softmax, 1,
                 .set_attr(op_attr::fusion_info, false,
                         attribute_kind::fusion_info)
                 // Analysis rules
-                .set_shape_inference_function(infer_identity_output_shape))
+                .set_shape_inference_function(infer_dnnl_softmax_output_shape))
 
 DNNL_GRAPH_OP_SCHEMA(_logsoftmax, 1,
         op_schema_t()
@@ -2353,8 +2355,9 @@ DNNL_GRAPH_OP_SCHEMA(_mask, 1,
 DNNL_GRAPH_OP_SCHEMA(_sdpa, 1,
         op_schema_t()
                 .set_inputs_option(op_schema_t::param_num_option::variadic)
+                .set_outputs_option(op_schema_t::param_num_option::optional)
                 .set_num_inputs(std::set<size_t>({3, 32}))
-                .set_num_outputs(2)
+                .set_num_outputs(std::set<size_t>({2, 3}))
                 .set_input(0, "query")
                 .set_input(1, "key")
                 .set_input(2, "value")
@@ -2362,11 +2365,14 @@ DNNL_GRAPH_OP_SCHEMA(_sdpa, 1,
                 .set_input(4, "mask") // optional
                 .set_output(0, "output")
                 .set_output(1, "scratchpad")
+                .set_output(2,
+                        "softmax_stats") // optional, only used for sdpa training
                 .set_attr(op_attr::fusion_info, false,
                         attribute_kind::fusion_info)
                 .set_attr(op_attr::with_scale, true, attribute_kind::b)
                 .set_attr(op_attr::is_invert_scale, false, attribute_kind::b,
                         false)
+                .set_attr(op_attr::is_training, true, attribute_kind::b)
                 // mask_type attribute indicates existence of explicit mask,
                 // top-left implicit causal mask or bottm-right implicit causal mask
                 .set_attr(op_attr::mask_type, true, attribute_kind::i)

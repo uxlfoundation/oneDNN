@@ -2388,6 +2388,21 @@ status_t infer_dnnl_sdpa_output_shape(op_t *n,
     }
 
     set_shape_and_strides(*outputs[0], inferred_output_shape);
+
+    if (outputs.size() > 2) {
+        auto out1 = logical_tensor_wrapper_t(outputs[2]);
+        dims inferred_stats_shape
+                = {query_dims[0], query_dims[1], query_dims[2], 1};
+
+        if (out1.ndims() != -1) {
+            VCHECK_INVALID_SHAPE(validate(inferred_stats_shape, out1.vdims()),
+                    "%s, given stats shape is not compatible with inferred",
+                    op_t::kind2str(n->get_kind()).c_str());
+        }
+
+        set_shape_and_strides(*outputs[2], inferred_stats_shape);
+    }
+
     return status::success;
 }
 

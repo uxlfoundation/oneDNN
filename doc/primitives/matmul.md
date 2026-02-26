@@ -415,6 +415,21 @@ The following are supported:
 - Bias supports per-expert shape.
 - Supported on CPU and GPU engines.
 
+#### Supported Data Types
+
+The following combinations of data types for source, destination, weights, and bias tensors are supported.
+
+| Source         | Weights              | Destination    | Bias           |
+|:---------------|:---------------------|:---------------|:---------------|
+| f32, bf16, f16 | f32, bf16, f16       | f32, bf16, f16 | f32, bf16, f16 |
+| f32, bf16, f16 | u8, s8, s4, u4 (1)   | f32, bf16, f16 | f32, bf16, f16 |
+| u8, s8         | u8, s8, s4, u4       | f32, bf16, f16 | f32, bf16, f16 |
+
+Footnotes:
+1. Weight-Only Quantization (WOQ): floating-point source with integer weights
+   requires weight scales attribute and `fpmath` mode with `apply_to_int` enabled.
+
+
 ## Examples
 
 See @ref dev_guide_examples page for a complete list. MatMul examples are listed in the

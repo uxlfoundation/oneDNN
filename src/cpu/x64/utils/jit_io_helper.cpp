@@ -310,8 +310,10 @@ void jit_io_helper_t<Xbyak::Zmm>::emu_gather(const Xbyak::Reg64 &src_reg,
     // For f16 we do not need such interleaving.
     const int xmm_size_elem = (data_type_ == data_type::f16) ? 8 : 4;
     const int number_of_xmms = tail
-            ? utils::div_up(tail_conf_->tail_size_, xmm_size_elem)
-            : utils::div_up(gather_conf_->simd_w_, xmm_size_elem);
+            ? utils::div_up(tail_conf_->tail_size_,
+                      static_cast<size_t>(xmm_size_elem))
+            : utils::div_up(gather_conf_->simd_w_,
+                      static_cast<size_t>(xmm_size_elem));
     const int num_indices_in_xmm = 16 / sizeof(int);
     for (int i = 0, idx = 0; i < number_of_xmms; i++) {
 
@@ -392,8 +394,10 @@ void jit_io_helper_t<Xbyak::Ymm>::emu_gather(const Xbyak::Reg64 &src_reg,
     // For f16 we do not need such interleaving.
     const int xmm_size_elem = 4;
     const int number_of_xmms = tail
-            ? utils::div_up(tail_conf_->tail_size_, xmm_size_elem)
-            : utils::div_up(gather_conf_->simd_w_, xmm_size_elem);
+            ? utils::div_up(tail_conf_->tail_size_,
+                      static_cast<size_t>(xmm_size_elem))
+            : utils::div_up(gather_conf_->simd_w_,
+                      static_cast<size_t>(xmm_size_elem));
     for (int i = 0; i < number_of_xmms; i++) {
         host_->vextractf128(xmm_tmp, indices_vmm, i);
 

@@ -132,7 +132,7 @@ inline size_t get_scratchpad_block_elements(const dim_t batch, dim_t M,
     if (use_single_gemm_call_optimization) {
         buffer_size = (size_t)batch * M * N;
     } else {
-        const size_t work_per_thr = utils::div_up((size_t)batch * M * N, nthr);
+        const size_t work_per_thr = utils::div_up<size_t>(batch * M * N, nthr);
         if (work_per_thr >= (size_t)N) {
             buffer_size = nstl::min<size_t>(
                     (size_t)M * N, utils::rnd_dn(work_per_thr, N));

@@ -161,10 +161,10 @@ struct jit_bnorm_conf_t {
                         && mayiuse(avx512_core_amx)) {
                     const size_t data_size
                             = dt_size_ * N * SP * C_blks * simd_w_;
-                    const size_t C_split_data_size
-                            = utils::div_up(data_size, N_nthr);
-                    const size_t N_split_data_size
-                            = utils::div_up(data_size, nthr);
+                    const size_t C_split_data_size = utils::div_up(
+                            data_size, static_cast<size_t>(N_nthr));
+                    const size_t N_split_data_size = utils::div_up(
+                            data_size, static_cast<size_t>(nthr));
                     const size_t l2_size_per_core
                             = platform::get_per_core_cache_size(2);
                     const size_t l3_size_per_core

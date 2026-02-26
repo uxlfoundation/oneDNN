@@ -446,7 +446,7 @@ status_t jit_uni_resampling_fwd_t::interpolate_nearest(const uint8_t *src,
 
     const dim_t MB = pd()->MB();
     const dim_t C = pd()->C();
-    const dim_t CB = utils::div_up(C, inner_stride);
+    const dim_t CB = utils::div_up(C, static_cast<dim_t>(inner_stride));
     const dim_t nsp_outer = MB * CB;
     const dim_t OD = pd()->OD();
     const dim_t OH = pd()->OH();
@@ -516,7 +516,7 @@ status_t jit_uni_resampling_fwd_t::interpolate_linear(const uint8_t *src,
 
     const dim_t MB = pd()->MB();
     const dim_t C = pd()->C();
-    const dim_t CB = utils::div_up(C, inner_stride);
+    const dim_t CB = utils::div_up(C, static_cast<dim_t>(inner_stride));
     const dim_t nsp_outer = MB * CB;
     const dim_t OD = pd()->OD();
     const dim_t OH = pd()->OH();

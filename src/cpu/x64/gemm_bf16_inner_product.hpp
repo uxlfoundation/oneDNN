@@ -280,7 +280,8 @@ struct gemm_bf16_inner_product_bwd_weights_t : public primitive_t {
         void get_bias_partitioning(
                 dim_t &OC_per_thread, int &nthr_OCB, int &nthr_MB) const {
             dim_t OCB = utils::div_up(OC(), bias_blksize);
-            dim_t OCB_per_thread = utils::div_up(OCB, bias_reduction_nthr_);
+            dim_t OCB_per_thread = utils::div_up(
+                    OCB, static_cast<dim_t>(bias_reduction_nthr_));
 
             OC_per_thread = OCB_per_thread * bias_blksize;
             nthr_OCB = utils::div_up(OCB, OCB_per_thread);

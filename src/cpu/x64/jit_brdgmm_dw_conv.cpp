@@ -471,7 +471,8 @@ status_t brdgmm_dw_convolution_fwd_t::pd_t::init_brdgmm_conf() {
         {
             const size_t work_amount = jcp.mb * jcp.od * jcp.oh * jcp.ow;
             if (work_amount % jcp.nthr == 0) {
-                const size_t work_per_thr = div_up(work_amount, jcp.nthr);
+                const size_t work_per_thr
+                        = div_up(work_amount, static_cast<size_t>(jcp.nthr));
                 const size_t ow_tail_block
                         = (work_per_thr / jcp.nb_ch) % jcp.ow;
                 if (ow_tail_block && (jcp.ow % ow_tail_block == 0))
@@ -492,7 +493,8 @@ status_t brdgmm_dw_convolution_fwd_t::pd_t::init_brdgmm_conf() {
             const size_t work_amount
                     = jcp.mb * jcp.nb_ch * jcp.od * jcp.oh * jcp.nb_ow;
             if (work_amount % jcp.nthr == 0) {
-                const size_t work_per_thr = div_up(work_amount, jcp.nthr);
+                const size_t work_per_thr
+                        = div_up(work_amount, static_cast<size_t>(jcp.nthr));
                 const size_t ch_tail_block = work_per_thr % jcp.nb_ch;
                 if (ch_tail_block && (jcp.nb_ch % ch_tail_block == 0))
                     jcp.nb_ch_blocking = ch_tail_block * jcp.ch_block;

@@ -381,7 +381,8 @@ status_t jit_uni_reorder_direct_copy_t::execute(const exec_ctx_t &ctx) const {
     parallel(nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         dim_t start {0}, end {0};
 
-        balance211(utils::div_up(nelems, simd_w), nthr, ithr, start, end);
+        balance211(utils::div_up(nelems, static_cast<dim_t>(simd_w)), nthr,
+                ithr, start, end);
         start = nstl::min(nelems, start * simd_w);
         end = nstl::min(nelems, end * simd_w);
         if (start == end) return;

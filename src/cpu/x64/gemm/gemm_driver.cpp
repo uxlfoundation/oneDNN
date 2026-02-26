@@ -1275,7 +1275,7 @@ static inline void set_thread_opts_pack(int nthrs,
     auto choose_blocking
             = [](dim_t size_z, dim_t &thread_z, int &nthr_z, dim_t block_z_init,
                       dim_t &block_z, dim_t block_align) {
-        thread_z = utils::div_up(size_z, nthr_z);
+        thread_z = utils::div_up(size_z, static_cast<dim_t>(nthr_z));
         auto num_blk = utils::div_up(thread_z, block_z_init);
         block_z = utils::div_up(thread_z, num_blk);
         block_z = utils::rnd_up(block_z, block_align);

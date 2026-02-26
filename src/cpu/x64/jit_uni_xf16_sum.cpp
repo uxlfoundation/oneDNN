@@ -430,9 +430,9 @@ status_t jit_xf16_sum_t<src_data_type, dst_data_type, isa>::execute(
 
     const dim_t half_L1 = 16 * 1024; // bytes
     const dim_t num_elems_in_block = utils::rnd_up(
-            utils::div_up(half_L1,
+            utils::div_up(static_cast<size_t>(half_L1),
                     num_arrs * sizeof(src_data_t) + sizeof(dst_data_t)),
-            pd()->jsp_.size_blocking);
+            static_cast<size_t>(pd()->jsp_.size_blocking));
     const dim_t num_blocks = nelems / num_elems_in_block;
     const dim_t tail = nelems % num_elems_in_block;
 

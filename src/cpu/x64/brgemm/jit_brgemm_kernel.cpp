@@ -2920,7 +2920,7 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
                 = div_up(nstl::max(dim_t(0),
                                  rows_for_rd_tail - brg.bdb_tail
                                          + brg.brgattr.max_bottom_vpad),
-                        brg.bd_block);
+                        static_cast<dim_t>(brg.bd_block));
     }
 
     auto bdb_loop_avx512 = [&](bool skip_accumulation) {

@@ -291,10 +291,12 @@ static inline int thread_checker(
     } else {
         if (trans) {
             if (MIN_WIDTH * nthr > m)
-                nthr = static_cast<int>(utils::div_up(m, MIN_WIDTH));
+                nthr = static_cast<int>(
+                        utils::div_up(m, static_cast<dim_t>(MIN_WIDTH)));
         } else {
             if (MIN_WIDTH * nthr > n)
-                nthr = static_cast<int>(utils::div_up(n, MIN_WIDTH));
+                nthr = static_cast<int>(
+                        utils::div_up(n, static_cast<dim_t>(MIN_WIDTH)));
         }
     }
 
@@ -346,8 +348,9 @@ static inline void part_1d(const dim_t m, const int ithr, const int nthr,
 
             // Find partition size, but it needs to be multiple of cache line.
             dim_t align = CACHE_LINE_SIZE / sizeof(*addr);
-            dim_t width
-                    = utils::rnd_up(utils::div_up(m + cache_off, nthr), align);
+            dim_t width = utils::rnd_up(
+                    utils::div_up(m + cache_off, static_cast<dim_t>(nthr)),
+                    align);
 
             if (width > m + cache_off) width = m + cache_off;
 
@@ -361,7 +364,7 @@ static inline void part_1d(const dim_t m, const int ithr, const int nthr,
             }
         }
     } else {
-        size = utils::div_up(m, nthr);
+        size = utils::div_up(m, static_cast<dim_t>(nthr));
         off = ithr * size;
     }
 

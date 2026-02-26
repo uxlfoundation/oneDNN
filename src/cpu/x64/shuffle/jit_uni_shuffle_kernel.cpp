@@ -79,13 +79,16 @@ void jit_uni_shuffle_kernel_t<avx512_core>::emu_gather_data(
     constexpr unsigned xmm_size_elem_half = xmm_size_elem / 2;
 
     const unsigned number_of_xmms = is_tail
-            ? utils::div_up(conf_.simd_tail, xmm_size_elem)
-            : utils::div_up(conf_.simd_w, xmm_size_elem);
+            ? utils::div_up(conf_.simd_tail,
+                      static_cast<decltype(conf_.simd_tail)>(xmm_size_elem))
+            : utils::div_up(conf_.simd_w,
+                      static_cast<decltype(conf_.simd_w)>(xmm_size_elem));
 
     for (unsigned i = 0; i < number_of_xmms; i++) {
         const unsigned number_of_xmm_halfs = is_tail && i == number_of_xmms - 1
                 ? utils::div_up(conf_.simd_tail,
-                          xmm_size_elem_half + i * xmm_size_elem)
+                          static_cast<decltype(conf_.simd_tail)>(
+                                  xmm_size_elem_half + i * xmm_size_elem))
                 : 2;
 
         for (unsigned j = 0; j < number_of_xmm_halfs; j++) {
@@ -121,8 +124,10 @@ void jit_uni_shuffle_kernel_t<avx>::emu_gather_data(const Reg64 &reg_src_addr,
     constexpr unsigned xmm_size_elem = 4;
 
     const unsigned number_of_xmms = is_tail
-            ? utils::div_up(conf_.simd_tail, xmm_size_elem)
-            : utils::div_up(conf_.simd_w, xmm_size_elem);
+            ? utils::div_up(conf_.simd_tail,
+                      static_cast<decltype(conf_.simd_tail)>(xmm_size_elem))
+            : utils::div_up(conf_.simd_w,
+                      static_cast<decltype(conf_.simd_w)>(xmm_size_elem));
     for (unsigned i = 0; i < number_of_xmms; i++) {
         vextractf128(xmm_tmp, Ymm(indices_idx), i);
 
@@ -292,8 +297,8 @@ void jit_uni_shuffle_kernel_t<isa>::shuffle_blocked_format() {
     const Reg64 &reg_blk_tail = reg_tmp5_;
     const Reg64 &reg_src_save = reg_tmp6_;
     const int simd_in_blk = conf_.blk_size / conf_.simd_w;
-    const int simd_in_tail_blk
-            = utils::div_up(conf_.c % conf_.blk_size, conf_.simd_w);
+    const int simd_in_tail_blk = utils::div_up(conf_.c % conf_.blk_size,
+            static_cast<decltype(conf_.c)>(conf_.simd_w));
     const Vmm vmm_tmp[4] = {Vmm(5), Vmm(6), Vmm(7), Vmm(8)};
 
     auto load_indices = ([&](bool is_blk_tail) {

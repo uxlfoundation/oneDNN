@@ -1078,7 +1078,8 @@ static dim_t divide_block_to_improve_thread_balance(
 
             if (division_block <= block_size) continue;
 
-            const auto blocks = utils::div_up(division_block, block_size);
+            const auto blocks = utils::div_up(division_block,
+                    static_cast<decltype(division_block)>(block_size));
 
             const float work
                     = static_cast<float>(initial_work_amount * blocks) / nthr_f;

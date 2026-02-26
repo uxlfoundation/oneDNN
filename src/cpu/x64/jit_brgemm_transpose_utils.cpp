@@ -1124,7 +1124,7 @@ void jit_brgemm_trans_m_k_f16_t::generate() {
 }
 
 void jit_brgemm_copy_to_coarse_t::copy_row_blks(int num_row_blks) {
-    int rnd_row_blks = div_up(num_row_blks, row_loop_unroll);
+    int rnd_row_blks = div_up(num_row_blks, static_cast<int>(row_loop_unroll));
 
     for (int row_b = 0; row_b < rnd_row_blks; ++row_b) {
         const int row_start = 0;
@@ -1727,7 +1727,8 @@ void jit_copy_f32_t::copy_block(int nrows, int ncolumns) {
     };
 
     for_(int r = 0; r < nrows; r++)
-    for (int cb = 0; cb < div_up(ncolumns, column_step); cb++) {
+    for (int cb = 0; cb < div_up(ncolumns, static_cast<int>(column_step));
+            cb++) {
         load(r, cb);
         store(r, cb);
     }
@@ -1952,7 +1953,8 @@ void jit_copy_f16_t::copy_block(bool is_row_tail, bool is_col_tail) {
     };
 
     for_(int r = 0; r < nrows; r++)
-    for (int cb = 0; cb < div_up(ncolumns, column_step); cb++) {
+    for (int cb = 0; cb < div_up(ncolumns, static_cast<int>(column_step));
+            cb++) {
         load(r, cb);
         store(r, cb);
     }

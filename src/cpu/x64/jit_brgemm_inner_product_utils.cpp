@@ -1615,8 +1615,10 @@ void jit_brgemm_ip_bwd_w_conf_t::init_scratchpad(
     const dim_t ic_chunks = div_up(jbgp.nb_ic, jbgp.nb_ic_blocking);
     const dim_t sp_ic_chunks = jbgp.ks() * ic_chunks;
 
-    dim_t sp_ic_chunks_per_thread = div_up(sp_ic_chunks, jbgp.nthr_ic_b);
-    dim_t os_chunks_per_thread = div_up(os_chunks, jbgp.nthr_mb);
+    dim_t sp_ic_chunks_per_thread
+            = div_up(sp_ic_chunks, static_cast<dim_t>(jbgp.nthr_ic_b));
+    dim_t os_chunks_per_thread
+            = div_up(os_chunks, static_cast<dim_t>(jbgp.nthr_mb));
     if (jbgp.local_buffers_for_input_tensors) {
         sp_ic_chunks_per_thread = 1;
         os_chunks_per_thread = 1;

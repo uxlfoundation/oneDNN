@@ -620,7 +620,8 @@ void jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Vmm>::compute_ker(int ur_w,
         /* Skip the last loads of input
             if (ic % 8) / ic_sub_step < ic_block / ic_sub_step */
         const int icb = (last_ic_block_flag != no_last_block)
-                ? div_up((jcp.ic_without_padding % ic_block), ic_sub_step)
+                ? div_up((jcp.ic_without_padding % ic_block),
+                          static_cast<int>(ic_sub_step))
                 : ic_block / ic_sub_step;
 
         if (compute_kernel) {

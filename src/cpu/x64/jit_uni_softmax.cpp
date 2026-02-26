@@ -1737,7 +1737,8 @@ status_t jit_uni_softmax_fwd_t::execute(const exec_ctx_t &ctx) const {
         outer_size = src_d.nelems(true) / outer_stride;
         if (outer_size == 1) {
             // Divide inner size by blocks and share a piece between threads.
-            n_unrolled_blocks = utils::div_up(axis_stride, unroll_block_size);
+            n_unrolled_blocks = utils::div_up(
+                    axis_stride, static_cast<dim_t>(unroll_block_size));
             inner_size = n_unrolled_blocks;
             inner_stride = unroll_block_size;
         } else {

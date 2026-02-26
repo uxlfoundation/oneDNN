@@ -444,8 +444,8 @@ int jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::compute_ic_step(
     int best_ic_step = 1;
     float best_block_eff = 0.f;
 
-    int max_ic_step
-            = nstl::min(static_cast<size_t>(m_block), div_up(nb_ic_, m_block));
+    int max_ic_step = nstl::min(static_cast<size_t>(m_block),
+            div_up(nb_ic_, static_cast<size_t>(m_block)));
 
     // Introduce ic_step to increase kernel efficiency
     // Compute the ic_step based on the optimal kernel efficiency
@@ -517,7 +517,8 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::generate() {
     const auto blocks = m_block * ic_step;
     const auto icb = nb_ic_ / blocks;
     const auto icb_tail = nb_ic_ % blocks;
-    const auto mb_tail = div_up(icb_tail, ic_step);
+    const auto mb_tail
+            = div_up(icb_tail, static_cast<decltype(icb_tail)>(ic_step));
 
     Xbyak::Label label_kw_without_inversion, label_done;
 

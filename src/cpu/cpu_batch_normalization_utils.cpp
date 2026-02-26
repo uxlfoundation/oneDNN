@@ -40,10 +40,10 @@ void cache_balance(size_t working_set_size, dim_t C_blks, dim_t N, int nthr,
     //
     // TODO: update batchnorm blocking: all blocking stuff should be in one
     // place
-    int C_nthr = nthr;
+    dim_t C_nthr = nthr;
     if (C_blks_per_iter < nthr) {
-        const int N_nthr = (int)nstl::min<dim_t>(N, nthr);
-        C_nthr = (int)nstl::min<dim_t>(C_blks, nthr / N_nthr);
+        const auto N_nthr = nstl::min<dim_t>(N, nthr);
+        C_nthr = nstl::min(C_blks, nthr / N_nthr);
     }
 
     if (C_blks_per_iter > C_nthr)

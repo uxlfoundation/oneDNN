@@ -500,7 +500,8 @@ status_t jit_uni_eltwise_int_fwd_t<isa>::execute_forward(
     parallel(0, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         size_t start {0}, end {0};
 
-        balance211(utils::div_up(nelems, cache_line), nthr, ithr, start, end);
+        balance211(utils::div_up(nelems, static_cast<size_t>(cache_line)), nthr,
+                ithr, start, end);
         start = nstl::min(nelems, start * cache_line);
         end = nstl::min(nelems, end * cache_line);
         if (start == end) return;

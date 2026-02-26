@@ -782,7 +782,7 @@ status_t jit_sse41_1x1_conv_kernel_f32_t::init_conf(jit_1x1_conv_conf_t &jcp,
         load_blocking_max = load_blocking;
         assert(jcp.load_dim % load_blocking == 0);
 
-        bcast_blocking = div_up(jcp.bcast_dim, jcp.bcast_block);
+        bcast_blocking = div_up(jcp.bcast_dim, (dim_t)jcp.bcast_block);
         while (true) {
             if (bcast_blocking <= 9)
                 break;
@@ -816,9 +816,9 @@ status_t jit_sse41_1x1_conv_kernel_f32_t::init_conf(jit_1x1_conv_conf_t &jcp,
     jcp.nb_load_blocking_max = load_blocking_max / jcp.load_block;
     jcp.nb_reduce_blocking = reduce_blocking / jcp.reduce_block;
 
-    jcp.nb_bcast = div_up(jcp.bcast_dim, jcp.bcast_block);
+    jcp.nb_bcast = div_up(jcp.bcast_dim, (dim_t)jcp.bcast_block);
     jcp.nb_load = div_up(jcp.load_dim, jcp.load_block);
-    jcp.nb_reduce = div_up(jcp.reduce_dim, jcp.reduce_block);
+    jcp.nb_reduce = div_up(jcp.reduce_dim, (dim_t)jcp.reduce_block);
 
     return status::success;
 }

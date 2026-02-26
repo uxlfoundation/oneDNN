@@ -976,7 +976,7 @@ void brg_blocking_t::iterate_ker_block(brg_blocking_t &best_brgb, int kd_block_,
     const auto w_block_size = 2 * src_dsz * oc * owp + dst_dsz * iw * ic_block;
     const auto other_size = wei_dsz * kd * kh * kw * oc * ic_block
             + acc_dsz * 2 * amx_h * ic_block;
-    const auto L2_available = nstl::min(static_cast<size_t>(div_up(L2, 2)),
+    const auto L2_available = nstl::min(static_cast<size_t>(div_up(L2, 2u)),
             other_size > L2 ? 0 : L2 - other_size);
     if (odp * ohp * w_block_size > L2_available) {
         id_block = utils::saturate(
@@ -1708,10 +1708,13 @@ void set_k_range(int P, int D, int S, dim_t i, dim_t O, int K, int &k_s,
         s++;
     }
 
-    k_f = is_w ? K : nstl::min(K, static_cast<int>(div_up(i + P + 1, D)));
+    k_f = is_w ? K
+               : nstl::min(K,
+                         static_cast<int>(
+                                 div_up(i + P + 1, static_cast<dim_t>(D))));
     k_s = is_w ? 0
-               : static_cast<int>(
-                         div_up(nstl::max((dim_t)0, i + P - O * S + 1), D));
+               : static_cast<int>(div_up(nstl::max((dim_t)0, i + P - O * S + 1),
+                         static_cast<dim_t>(D)));
 
     while (k_s % S != s)
         k_s++;

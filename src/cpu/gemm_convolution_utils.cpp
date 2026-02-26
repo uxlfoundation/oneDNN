@@ -347,13 +347,13 @@ void im2col_dt_3d(const conv_gemm_conf_t &jcp, const void *__restrict _imtr,
             }
             const im_dt *__restrict imtr_loc = imtr + (ic * jcp.id + id) * IHW;
             const dim_t oh_start = nstl::min(
-                    jcp.oh, div_up(nstl::max(dim_t(0), tp - kh), 2));
-            const dim_t oh_end = nstl::min(
-                    jcp.oh, div_up(nstl::max(dim_t(0), jcp.ih + tp - kh), 2));
+                    jcp.oh, div_up(nstl::max(dim_t(0), tp - kh), dim_t(2)));
+            const dim_t oh_end = nstl::min(jcp.oh,
+                    div_up(nstl::max(dim_t(0), jcp.ih + tp - kh), dim_t(2)));
             const dim_t ow_start = nstl::min(
-                    jcp.ow, div_up(nstl::max(dim_t(0), lp - kw), 2));
-            const dim_t ow_end = nstl::min(
-                    jcp.ow, div_up(nstl::max(dim_t(0), jcp.iw + lp - kw), 2));
+                    jcp.ow, div_up(nstl::max(dim_t(0), lp - kw), dim_t(2)));
+            const dim_t ow_end = nstl::min(jcp.ow,
+                    div_up(nstl::max(dim_t(0), jcp.iw + lp - kw), dim_t(2)));
             for (dim_t oh = oh_start, ih = oh_start * 2 - tp + kh; oh < oh_end;
                     ++oh, ih += 2) {
                 col_dt *__restrict col_h = col_loc + oh * jcp.ow;
@@ -1195,7 +1195,7 @@ status_t init_conf(conv_gemm_conf_t &jcp,
 
     const int vlen = std::max(platform::get_vector_register_size(), 4);
     const int data_size = (is_int8_conv ? 1 : (is_bf16_conv ? 2 : 4));
-    const int simd_w = vlen / data_size;
+    const dim_t simd_w = vlen / data_size;
 
     jcp.os_block = jcp.os;
     jcp.os_nb_block = 1;
@@ -1438,12 +1438,14 @@ status_t init_conf(conv_gemm_conf_t &jcp,
                 // memory for transposition
                 row_size += ic * iw * data_size;
 
-                const size_t L2_rows = div_up(L2, row_size);
+                const size_t L2_rows
+                        = div_up(static_cast<size_t>(L2), row_size);
                 h_block = saturate(size_t {1}, L2_rows, oh);
                 if (h_block == 1) {
                     size_t col_size = ic * jcp.ks * data_size
                             + 2 * (ic + oc) * data_size;
-                    const size_t L2_cols = div_up(L2, col_size);
+                    const size_t L2_cols
+                            = div_up(static_cast<size_t>(L2), col_size);
                     w_block = saturate(size_t {1}, L2_cols, ow);
                 }
 
@@ -1493,7 +1495,8 @@ status_t init_conf(conv_gemm_conf_t &jcp,
                 h_block = nstl::max(size_t {1}, h_block);
                 w_block = nstl::max(size_t {1}, w_block);
                 const size_t inner_work
-                        = div_up(os, simd_w) * div_up(oc, simd_w);
+                        = div_up(os, static_cast<size_t>(simd_w))
+                        * div_up(oc, static_cast<size_t>(simd_w));
                 const float inner_thr_eff
                         = (float)inner_work / rnd_up(inner_work, max_threads);
                 if (thr_eff >= inner_thr_eff / 2 && h_block > 0
@@ -1662,7 +1665,7 @@ status_t init_conf(conv_gemm_conf_t &jcp,
                     size_t max_thr_size = 1;
                     {
                         const dim_t min_os = div_up(
-                                spatial, (dim_t)div_up(max_threads, nthr_oc));
+                                spatial, div_up((dim_t)max_threads, nthr_oc));
                         /* --- compute max_thr_size ------------
                          may not necessarily be (max_oc * max_os)
                          thr_size = thr_oc * (spatial /nthrs_in_slice);
@@ -1684,7 +1687,7 @@ status_t init_conf(conv_gemm_conf_t &jcp,
                     size_t min_thr_size {1};
                     {
                         const dim_t min_os = nstl::max(dim_t(1),
-                                spatial / div_up(max_threads, nthr_oc));
+                                spatial / div_up((dim_t)max_threads, nthr_oc));
                         /* --- compute min_thr_size ------------
                          may not necessarily be (min_oc * min_y)
                          thr_size = thr_oc * (spatial /nthrs_in_slice);

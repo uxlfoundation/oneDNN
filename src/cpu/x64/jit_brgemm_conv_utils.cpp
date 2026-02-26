@@ -470,8 +470,9 @@ void brg_blocking_t::select_ic_block() {
         const auto kh_koef = is_relo_whi() ? kh : 1;
         if (kd * kh * ic * src_dsz > 8 * 1024) {
             // For huge ic try to split it by equal ic_blocks
-            const auto max_ic_block
-                    = rnd_up(div_up(1024, kd * kh * src_dsz), vnni_block);
+            const auto max_ic_block = rnd_up(
+                    div_up(static_cast<size_t>(1024), kd * kh * src_dsz),
+                    vnni_block);
             const auto min_ic_block = rnd_up(simd_w / 2, vnni_block);
             ic_block = ic;
             for (int iic_block = max_ic_block; iic_block >= min_ic_block;
@@ -956,24 +957,26 @@ float brg_blocking_t::est_eff() {
     loop[l].wei.set(wei_is, 1);
 
     const auto dim_oc = (loop_order == loop_ndhwgc) ? 1 : sp_amount;
-    const auto nb_oc_thr
-            = nstl::min(static_cast<dim_t>(nb_oc), div_up(job, dim_oc));
+    const auto nb_oc_thr = nstl::min(
+            static_cast<dim_t>(nb_oc), div_up(job, static_cast<dim_t>(dim_oc)));
     const auto oc_thr = nstl::min(static_cast<dim_t>(oc), nb_oc_thr * oc_block);
-    const auto nsimd_oc_thr = div_up(oc_thr, simd_w);
+    const auto nsimd_oc_thr = div_up(oc_thr, static_cast<dim_t>(simd_w));
 
     const auto dim_sp = (loop_order == loop_ndhwgc) ? ngroups * nb_oc : 1;
-    const auto nb_sp_thr
-            = nstl::min(static_cast<dim_t>(nb_sp), div_up(job, dim_sp));
+    const auto nb_sp_thr = nstl::min(
+            static_cast<dim_t>(nb_sp), div_up(job, static_cast<dim_t>(dim_sp)));
     const auto sp_thr = nstl::min(static_cast<dim_t>(sp), nb_sp_thr * sp_block);
 
     int nb_oh_thr {1}, oh_thr {1}, nb_od_thr {1}, od_thr {1};
     if (!is_os_blocking) {
         const auto dim_oh = nb_sp * dim_sp;
-        nb_oh_thr = nstl::min(static_cast<dim_t>(nb_oh), div_up(job, dim_oh));
+        nb_oh_thr = nstl::min(static_cast<dim_t>(nb_oh),
+                div_up(job, static_cast<dim_t>(dim_oh)));
         oh_thr = nstl::min(oh, nb_oh_thr * oh_block);
 
         const auto dim_od = nb_oh * dim_oh;
-        nb_od_thr = nstl::min(static_cast<dim_t>(nb_od), div_up(job, dim_od));
+        nb_od_thr = nstl::min(static_cast<dim_t>(nb_od),
+                div_up(job, static_cast<dim_t>(dim_od)));
         od_thr = nstl::min(od, nb_od_thr * od_block);
     }
 
@@ -1021,8 +1024,8 @@ float brg_blocking_t::est_eff() {
 
     // -- harness: loop by mb --
     l++;
-    const auto mb_thr = nstl::min(
-            static_cast<dim_t>(mb), div_up(job, sp_amount * ngroups * nb_oc));
+    const auto mb_thr = nstl::min(static_cast<dim_t>(mb),
+            div_up(job, static_cast<dim_t>(sp_amount * ngroups * nb_oc)));
     loop[l].src.set(od_thr * oh_thr * src_is, 1);
     loop[l].dst.set(od_thr * oh_thr * sp_thr * nsimd_oc_thr * simd_w, 1);
     loop[l].wei.set(
@@ -1119,7 +1122,7 @@ void brg_blocking_t::iterate_ker_block(brg_blocking_t &best_brgb, int kd_block_,
                 = 2 * src_dsz * ic_size * iwp + dst_dsz * ow * oc_block;
         const auto other_size = wei_dsz * kd * kh * kw * ic_size * oc_block
                 + acc_dsz * 2 * amx_h * oc_block;
-        const auto L2_available = nstl::min(static_cast<size_t>(div_up(L2, 2)),
+        const auto L2_available = nstl::min(static_cast<size_t>(div_up(L2, 2u)),
                 other_size > L2 ? 0 : L2 - other_size);
         if (idp * ihp * w_block_size > L2_available) {
             od_block = utils::saturate(
@@ -1347,27 +1350,29 @@ float brg_blocking_t::est_eff_1x1() {
     const auto sp_eff = static_cast<float>(sp) / rnd_up(sp, sp_block);
     const auto oc_block_eff = static_cast<float>(oc) / rnd_up(oc, oc_block);
 
-    const auto job = div_up(work_amount, nthr);
+    const auto job = div_up(work_amount, static_cast<dim_t>(nthr));
 
     const auto dim_oc = (loop_order == loop_ndhwgc) ? 1 : sp_amount;
-    const auto nb_oc_thr
-            = nstl::min(static_cast<dim_t>(nb_oc), div_up(job, dim_oc));
+    const auto nb_oc_thr = nstl::min(
+            static_cast<dim_t>(nb_oc), div_up(job, static_cast<dim_t>(dim_oc)));
     const auto oc_thr = nstl::min(static_cast<dim_t>(oc), nb_oc_thr * oc_block);
-    const auto nsimd_oc_thr = div_up(oc_thr, simd_w);
+    const auto nsimd_oc_thr = div_up(oc_thr, static_cast<dim_t>(simd_w));
 
     const auto dim_sp = (loop_order == loop_ndhwgc) ? ngroups * nb_oc : 1;
-    const auto nb_sp_thr
-            = nstl::min(static_cast<dim_t>(nb_sp), div_up(job, dim_sp));
+    const auto nb_sp_thr = nstl::min(
+            static_cast<dim_t>(nb_sp), div_up(job, static_cast<dim_t>(dim_sp)));
     const auto sp_thr = nstl::min(static_cast<dim_t>(sp), nb_sp_thr * sp_block);
 
     dim_t nb_oh_thr {1}, oh_thr {1}, nb_od_thr {1}, od_thr {1};
     if (!is_os_blocking) {
         const auto dim_oh = nb_sp * dim_sp;
-        nb_oh_thr = nstl::min(static_cast<dim_t>(nb_oh), div_up(job, dim_oh));
+        nb_oh_thr = nstl::min(static_cast<dim_t>(nb_oh),
+                div_up(job, static_cast<dim_t>(dim_oh)));
         oh_thr = nstl::min(static_cast<dim_t>(oh), nb_oh_thr * oh_block);
 
         const auto dim_od = nb_oh * dim_oh;
-        nb_od_thr = nstl::min(static_cast<dim_t>(nb_od), div_up(job, dim_od));
+        nb_od_thr = nstl::min(static_cast<dim_t>(nb_od),
+                div_up(job, static_cast<dim_t>(dim_od)));
         od_thr = nstl::min(static_cast<dim_t>(od), nb_od_thr * od_block);
     }
 
@@ -1473,8 +1478,8 @@ float brg_blocking_t::est_eff_1x1() {
 
     // -- harness: loop by mb --
     l++;
-    const auto mb_thr = nstl::min(
-            static_cast<dim_t>(mb), div_up(job, sp_amount * ngroups * nb_oc));
+    const auto mb_thr = nstl::min(static_cast<dim_t>(mb),
+            div_up(job, static_cast<dim_t>(sp_amount * ngroups * nb_oc)));
     loop[l].src.set(od_thr * oh_thr * sp_thr * rnd_simd(ic_blocking_size), 1);
     loop[l].dst.set(nsimd_oc_thr * simd_w * od_thr * oh_thr * sp_thr, 1);
     loop[l].wei.set(nsimd_oc_thr * ic * simd_w, mb_thr);
@@ -1583,8 +1588,9 @@ void brg_blocking_t::calc_blocks_1x1() {
             }
             max_os_block_aliasing += max_os_block_aliasing % 2 ? 0 : 1;
         }
-        max_os_block_aliasing
-                = nstl::min(div_up(1001, dst_dsz), max_os_block_aliasing);
+        max_os_block_aliasing = nstl::min(
+                static_cast<int>(div_up(static_cast<size_t>(1001), dst_dsz)),
+                max_os_block_aliasing);
 
         start_sp_block = utils::saturate(1, os,
                 nstl::min(nstl::min(max_os_block_thr, max_os_block_L2),
@@ -2382,7 +2388,8 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
                           + nstl::max(0, jcp.t_pad) + nstl::max(0, jcp.b_pad))
                 : jcp.ihp;
         if (jcp.is_os_blocking)
-            hs = div_up(rnd_up(hs * jcp.iwp, jcp.brgM), jcp.iwp)
+            hs = div_up(rnd_up(hs * jcp.iwp, jcp.brgM),
+                         static_cast<dim_t>(jcp.iwp))
                     + jcp.kh * (jcp.dilate_h + 1);
 
         jcp.inp_buffer_size = (jcp.is_relo_whi() ? jcp.kh : 1) * ds * hs

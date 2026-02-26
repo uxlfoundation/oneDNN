@@ -965,9 +965,12 @@ void brgemm_convolution_bwd_strided_t<isa>::cal_compensation(
 
                 jit_brgemm_conv_comp_pad_args_t p;
 
-                p.kd_l = div_up(nstl::max((dim_t)0, kd_e - kd_b), SD);
-                p.kh_l = div_up(nstl::max((dim_t)0, kh_e - kh_b), SH);
-                p.kw_l = div_up(nstl::max((dim_t)0, kw_e - kw_b), SW);
+                p.kd_l = div_up(nstl::max((dim_t)0, kd_e - kd_b),
+                        static_cast<dim_t>(SD));
+                p.kh_l = div_up(nstl::max((dim_t)0, kh_e - kh_b),
+                        static_cast<dim_t>(SH));
+                p.kw_l = div_up(nstl::max((dim_t)0, kw_e - kw_b),
+                        static_cast<dim_t>(SW));
                 p.use_inversion = false;
 
                 p.ptr_in = &weights[wei_offs];
@@ -1357,9 +1360,12 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_base(
                 && btc.occ == (oc_chunks - 1);
         if (iw_e - iw_b <= 0 && !do_init && !do_postwork) return;
 
-        const int kd_l = div_up(nstl::max(0, kd_e - kd_b), SD);
-        const int kh_l = div_up(nstl::max(0, kh_e - kh_b), SH);
-        const int kw_l = div_up(nstl::max(0, kw_e - kw_b), SW);
+        const int kd_l
+                = div_up(nstl::max(0, kd_e - kd_b), static_cast<int>(SD));
+        const int kh_l
+                = div_up(nstl::max(0, kh_e - kh_b), static_cast<int>(SH));
+        const int kw_l
+                = div_up(nstl::max(0, kw_e - kw_b), static_cast<int>(SW));
         k_l = kd_l * kh_l * kw_l;
         const auto iw_l = iw_e - iw_b;
 
@@ -1369,7 +1375,9 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_base(
                                 + iw_b * jcp.ic_without_padding);
 
         ptr_C = (jcp.use_buffer) ? btc.c_buffer
-                        + acc_dsz * div_up(nstl::max((dim_t)0, iw_b - iw), SW)
+                        + acc_dsz
+                                * div_up(nstl::max((dim_t)0, iw_b - iw),
+                                        static_cast<dim_t>(SW))
                                 * jcp.LDC
                                  : static_cast<char *>(ptr_D);
 

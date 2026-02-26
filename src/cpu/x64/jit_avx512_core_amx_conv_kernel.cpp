@@ -1909,7 +1909,7 @@ void jit_avx512_core_amx_fwd_kernel_t::dispatch_icb_loop(int width,
         const int oh_step_size = jcp.nb_oh_blocking * jcp.oh_per_tile;
         const size_t height_limit = reduce_to_blocked_dims(
                 jcp.oh, oh_step_size, jcp.t_pad_output, jcp.b_pad_output);
-        const int ur_h = div_up(height_limit, oh_step_size);
+        const int ur_h = div_up(height_limit, (size_t)oh_step_size);
         assert(6 >= ur_h);
 
         // Use a jump-table to execute the corresponding block

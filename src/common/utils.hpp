@@ -354,11 +354,10 @@ constexpr const T &saturate(const T &low, const T &upper, const T &a) {
     return nstl::max(low, nstl::min(upper, a));
 }
 
-template <typename T, typename U>
-inline enable_if_t<std::is_integral<T>::value
-                && (std::is_integral<U>::value || std::is_enum<U>::value),
+template <typename T>
+inline enable_if_t<std::is_integral<T>::value,
         typename remove_reference<T>::type>
-div_up(const T a, const U b) {
+div_up(const T a, const T b) {
     assert(b > 0);
     assert(a >= 0);
     if (a <= 0) return 0;
@@ -366,8 +365,13 @@ div_up(const T a, const U b) {
 }
 
 template <typename T, typename U>
-inline typename remove_reference<T>::type rnd_up(const T a, const U b) {
-    return static_cast<typename remove_reference<T>::type>(div_up(a, b) * b);
+inline enable_if_t<std::is_integral<T>::value,
+        typename remove_reference<T>::type>
+rnd_up(const T a, const U b) {
+    static_assert(
+            sizeof(T) >= sizeof(U), "rnd_up requires sizeof(T) >= sizeof(U)");
+    assert(b > 0);
+    return div_up(a, static_cast<T>(b)) * b;
 }
 
 template <typename T, typename U>

@@ -824,8 +824,10 @@ status_t jit_avx512_common_1x1_conv_kernel_t::init_conf(
         else
             jcp.loop_order = reduce_src ? loop_blr : loop_lbr;
 
-        int nb_bcast = div_up(jcp.bcast_dim, jcp.bcast_block);
-        int nb_reduce = div_up(jcp.reduce_dim, jcp.reduce_block);
+        int nb_bcast
+                = div_up(jcp.bcast_dim, static_cast<dim_t>(jcp.bcast_block));
+        int nb_reduce
+                = div_up(jcp.reduce_dim, static_cast<dim_t>(jcp.reduce_block));
         int nb_load = div_up(jcp.load_dim, jcp.load_block);
         if (is_data_layout_nxc) {
             reduce_blocking = jcp.reduce_dim;
@@ -1089,10 +1091,12 @@ status_t jit_avx512_common_1x1_conv_kernel_t::init_conf(
         assert(IMPLICATION(
                 !is_data_layout_nxc, jcp.load_dim % load_blocking == 0));
 
-        int max_bcast_blocking = div_up(jcp.bcast_dim, jcp.bcast_block);
+        int max_bcast_blocking
+                = div_up(jcp.bcast_dim, static_cast<dim_t>(jcp.bcast_block));
         int min_bcast_blocking = 5;
 
-        bcast_blocking = div_up(jcp.bcast_dim, jcp.bcast_block);
+        bcast_blocking
+                = div_up(jcp.bcast_dim, static_cast<dim_t>(jcp.bcast_block));
         bcast_blocking = best_divider(
                 bcast_blocking, min_bcast_blocking, max_bcast_blocking, false);
         bcast_blocking *= jcp.bcast_block;
@@ -1145,9 +1149,10 @@ status_t jit_avx512_common_1x1_conv_kernel_t::init_conf(
     jcp.nb_reduce_blocking_max
             = utils::div_up(reduce_blocking_max, jcp.reduce_block);
 
-    jcp.nb_bcast = div_up(jcp.bcast_dim, jcp.bcast_block);
+    jcp.nb_bcast = div_up(jcp.bcast_dim, static_cast<dim_t>(jcp.bcast_block));
     jcp.nb_load = div_up(jcp.load_dim, jcp.load_block);
-    jcp.nb_reduce = div_up(jcp.reduce_dim, jcp.reduce_block);
+    jcp.nb_reduce
+            = div_up(jcp.reduce_dim, static_cast<dim_t>(jcp.reduce_block));
 
     return status::success;
 }
@@ -1190,9 +1195,11 @@ void jit_avx512_common_1x1_conv_kernel_t::balance(jit_1x1_conv_conf_t &jcp) {
         /* simplification... fortunately it doesn't hurt much */
         return;
     }
-    const int nb_bcast = div_up(jcp.bcast_dim, jcp.bcast_block);
+    const int nb_bcast
+            = div_up(jcp.bcast_dim, static_cast<dim_t>(jcp.bcast_block));
     const int nb_load = div_up(jcp.load_dim, jcp.load_block);
-    const int nb_reduce = div_up(jcp.reduce_dim, jcp.reduce_block);
+    const int nb_reduce
+            = div_up(jcp.reduce_dim, static_cast<dim_t>(jcp.reduce_block));
 
     jcp.nthr_g = jcp.ngroups;
     const int nthr = nthreads / jcp.nthr_g;

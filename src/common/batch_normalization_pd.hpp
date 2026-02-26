@@ -140,13 +140,13 @@ protected:
         , stat_md_(desc_.stat_desc)
         , scaleshift_md_(desc_.scaleshift_desc) {}
 
-    virtual status_t init_default_ws(size_t bits_per_element) {
+    virtual status_t init_default_ws(dim_t bits_per_element) {
         const auto src_mdw = memory_desc_wrapper(src_md_);
 
         const dim_t nelems = src_mdw.nelems(true);
         const dim_t bits_per_byte = 8;
-        const dims_t ws_sz = {
-                (dim_t)utils::div_up(nelems * bits_per_element, bits_per_byte)};
+        const dims_t ws_sz
+                = {utils::div_up(nelems * bits_per_element, bits_per_byte)};
         return memory_desc_init_by_tag(
                 ws_md_, 1, ws_sz, data_type::u8, format_tag::x);
     }

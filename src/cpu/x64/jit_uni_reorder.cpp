@@ -2238,8 +2238,8 @@ static void prb_thread_kernel_balance(
 
     /* size_drv_min is the minimal size for the parallel
      * driver required for good parallelization */
-    const size_t size_drv_min
-            = nstl::min<size_t>(size_drv_thr, utils::div_up(size_total, 1024));
+    const size_t size_drv_min = nstl::min<size_t>(
+            size_drv_thr, utils::div_up(size_total, static_cast<size_t>(1024)));
 
     /* kdims -- # of dimensions processed by a kernel
      * size_ker_cur -- product of the dimension processed by a kernel

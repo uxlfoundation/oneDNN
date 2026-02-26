@@ -393,7 +393,8 @@ struct memory_desc_wrapper : public c_compatible {
                     case 2:
                         // Return size for bitmask. The bitmask has 1 bit
                         // per each value.
-                        return utils::div_up(nelems(true), CHAR_BIT);
+                        return utils::div_up(
+                                nelems(true), static_cast<dim_t>(CHAR_BIT));
                     default: assert(!"unknown index"); return 0;
                 }
             }

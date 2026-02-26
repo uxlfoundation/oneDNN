@@ -126,8 +126,8 @@ static inline std::tuple<int, int> calc_nthr_2d(int nthrs, dim_t m, dim_t n,
         }
     }
 
-    thread_m = utils::div_up(m, nthr_m) + small_m - 1;
-    thread_n = utils::div_up(n, nthr_n) + small_n - 1;
+    thread_m = utils::div_up(m, static_cast<dim_t>(nthr_m)) + small_m - 1;
+    thread_n = utils::div_up(n, static_cast<dim_t>(nthr_n)) + small_n - 1;
     thread_m -= thread_m % small_m;
     thread_n -= thread_n % small_n;
 

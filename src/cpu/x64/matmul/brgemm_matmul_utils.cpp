@@ -999,8 +999,10 @@ float compute_blocking_heuristic_avx512(brgemm_matmul_conf_t &bgmmc,
             float cur_imbalance = cur_params.get_imbalance();
 
             const int m_chunk_size = 1;
-            int m_chunks = div_up(bgmmc.M, m_blk * m_chunk_size);
-            int n_chunks = div_up(bgmmc.N, n_blk * n_chunk_size);
+            int m_chunks
+                    = div_up(bgmmc.M, static_cast<dim_t>(m_blk * m_chunk_size));
+            int n_chunks
+                    = div_up(bgmmc.N, static_cast<dim_t>(n_blk * n_chunk_size));
             int work_amount = bgmmc.batch * m_chunks * n_chunks;
 
             int nthr_bmn = nthr / nthr_k;
@@ -1119,7 +1121,8 @@ float compute_blocking_heuristic_avx2_f32(brgemm_matmul_conf_t &bgmmc,
     if (req_additional_parallel > 1) {
         min_m_blk = saturate<int>(
                 16, max_m_blk, matmul.M / req_additional_parallel);
-        max_parallel *= div_up(matmul.M, min_m_blk);
+        max_parallel
+                *= div_up(matmul.M, static_cast<decltype(matmul.M)>(min_m_blk));
     } else if (bm_conf_utils.check_is_transposed(bgmmc.src_tag)
             && matmul.K >= 4096) {
         min_m_blk = nstl::max(16, matmul.M / 4);

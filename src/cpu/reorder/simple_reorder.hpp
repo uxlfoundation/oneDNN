@@ -1612,7 +1612,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         constexpr int is_1d = utils::one_of(tag_i, nCw4c, nCw8c);
         constexpr int is_3d = utils::one_of(tag_i, nCdhw4c, nCdhw8c);
 
-        constexpr dim_t blksize_i
+        constexpr int blksize_i
                 = tag_traits_t<tag_i>::inner_blks == ib::_4b ? 4 : 8;
         constexpr dim_t blksize_16 = 16;
 

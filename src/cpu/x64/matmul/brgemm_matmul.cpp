@@ -602,9 +602,12 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
 
         int b {0}, mc {0}, nc {0}, b_per_t {0}, mc_per_t {0}, nc_per_t {0},
                 bt {0}, mt {0}, nt {0};
-        int m_chunks_per_thread = div_up(M_chunks, bgmmc.nthr_m);
-        int n_chunks_per_thread = div_up(N_chunks, bgmmc.nthr_n);
-        int batch_per_thread = div_up(bgmmc.batch, bgmmc.nthr_b);
+        int m_chunks_per_thread = div_up(
+                M_chunks, static_cast<decltype(M_chunks)>(bgmmc.nthr_m));
+        int n_chunks_per_thread = div_up(
+                N_chunks, static_cast<decltype(N_chunks)>(bgmmc.nthr_n));
+        int batch_per_thread = div_up(
+                bgmmc.batch, static_cast<decltype(bgmmc.batch)>(bgmmc.nthr_b));
         if (brgmm_ctx.is_chunks_horizontal_process_order())
             nd_iterator_init(start, bt, bgmmc.nthr_b, mt, bgmmc.nthr_m, nt,
                     bgmmc.nthr_n, b_per_t, batch_per_thread, mc_per_t,

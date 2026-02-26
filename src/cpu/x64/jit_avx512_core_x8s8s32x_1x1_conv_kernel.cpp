@@ -1160,8 +1160,9 @@ status_t jit_avx512_core_x8s8s32x_1x1_conv_kernel_t::init_conf(
 
     jcp.loop_order = reduce_src ? loop_blr : loop_lbr;
 
-    int nb_bcast = div_up(jcp.bcast_dim, jcp.bcast_block);
-    int nb_reduce = div_up(jcp.reduce_dim, jcp.reduce_block);
+    int nb_bcast = div_up(jcp.bcast_dim, static_cast<dim_t>(jcp.bcast_block));
+    int nb_reduce
+            = div_up(jcp.reduce_dim, static_cast<dim_t>(jcp.reduce_block));
 
     reduce_blocking = nb_reduce;
     if (jcp.bcast_dim <= SMALL_SPATIAL && jcp.reduce_dim >= BIG_REDUCE_DIM)
@@ -1234,9 +1235,10 @@ status_t jit_avx512_core_x8s8s32x_1x1_conv_kernel_t::init_conf(
     jcp.nb_reduce_blocking = reduce_blocking / jcp.reduce_block;
     jcp.nb_reduce_blocking_max = reduce_blocking_max / jcp.reduce_block;
 
-    jcp.nb_bcast = div_up(jcp.bcast_dim, jcp.bcast_block);
+    jcp.nb_bcast = div_up(jcp.bcast_dim, static_cast<dim_t>(jcp.bcast_block));
     jcp.nb_load = div_up(jcp.load_dim, jcp.load_block);
-    jcp.nb_reduce = div_up(jcp.reduce_dim, jcp.reduce_block);
+    jcp.nb_reduce
+            = div_up(jcp.reduce_dim, static_cast<dim_t>(jcp.reduce_block));
 
     // miniumum size of load dim chunk for work distribution within threads
     jcp.nb_load_chunk = 1;

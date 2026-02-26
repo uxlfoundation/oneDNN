@@ -143,7 +143,8 @@ bool matmul_amx_blocking_params_macro_t::divs_are_acceptable() const {
 }
 
 size_t determine_tmul_size(size_t num_elements, int full_tile_size) {
-    size_t tmul_tiles = div_up(num_elements, full_tile_size);
+    size_t tmul_tiles
+            = div_up(num_elements, static_cast<size_t>(full_tile_size));
     size_t tmul_size = div_up(num_elements, tmul_tiles);
     return tmul_size;
 }
@@ -200,9 +201,12 @@ bool matmul_amx_blocking_params_macro_t::maybe_small_dims_heuristics(
         best_blocking.n_decomposition
                 = nstl::min(bgmmc.N, (dim_t)bgmmc.wei_n_blk);
         best_blocking.m_decomposition = bgmmc.M;
-        uint32_t n_per_core = div_up(bgmmc.N, bgmmc.nthr);
+        uint32_t n_per_core = div_up(static_cast<uint32_t>(bgmmc.N),
+                static_cast<uint32_t>(bgmmc.nthr));
         n_per_core = rnd_up(n_per_core, best_blocking.n_decomposition);
-        best_blocking.set_core_divs(1, 1, 1, div_up(bgmmc.N, n_per_core));
+        best_blocking.set_core_divs(1, 1, 1,
+                static_cast<int>(
+                        div_up(bgmmc.N, static_cast<dim_t>(n_per_core))));
 
         if (best_blocking.nthr_n_
                 < core_utilization_threshold * best_blocking.nthr) {
@@ -233,8 +237,12 @@ bool matmul_amx_blocking_params_macro_t::maybe_small_dims_heuristics(
 
     } else if (bgmmc.K <= best_blocking.wei_k_blk && bgmmc.batch == 1) {
 
-        const uint32_t m_per_core = div_up(bgmmc.M, bgmmc.nthr);
-        best_blocking.set_core_divs(1, div_up(bgmmc.M, m_per_core), 1, 1);
+        const uint32_t m_per_core = div_up(static_cast<uint32_t>(bgmmc.M),
+                static_cast<uint32_t>(bgmmc.nthr));
+        best_blocking.set_core_divs(1,
+                static_cast<int>(
+                        div_up(bgmmc.M, static_cast<dim_t>(m_per_core))),
+                1, 1);
         best_blocking.set_tmul_sizes();
         best_blocking.set_decomposition();
 
@@ -243,8 +251,8 @@ bool matmul_amx_blocking_params_macro_t::maybe_small_dims_heuristics(
             return false;
         }
         best_blocking.m_blk_ = best_blocking.m_decomposition;
-        best_blocking.m_chunk_size_
-                = div_up(m_per_core, best_blocking.m_decomposition);
+        best_blocking.m_chunk_size_ = div_up(m_per_core,
+                static_cast<uint32_t>(best_blocking.m_decomposition));
         best_blocking.n_blk_ = bgmmc.N;
         best_blocking.n_chunk_size_ = 1;
 
@@ -257,7 +265,8 @@ bool matmul_amx_blocking_params_macro_t::maybe_small_dims_heuristics(
             best_blocking.n_chunk_size_ = div_up(
                     brg_b_size + brg_b_size_tr + brg_d_size, L2_threshold());
             best_blocking.n_blk_ = rnd_up(
-                    div_up(best_blocking.N, best_blocking.n_chunk_size_),
+                    div_up(best_blocking.N,
+                            static_cast<dim_t>(best_blocking.n_chunk_size_)),
                     best_blocking.wei_n_blk);
         } else {
             best_blocking.n_blk_ = bgmmc.N;
@@ -268,7 +277,8 @@ bool matmul_amx_blocking_params_macro_t::maybe_small_dims_heuristics(
 
     } else if (bgmmc.N <= 32 && bgmmc.batch == 1) {
 
-        const uint32_t m_per_core = div_up(bgmmc.M, bgmmc.nthr);
+        const uint32_t m_per_core = div_up(static_cast<uint32_t>(bgmmc.M),
+                static_cast<uint32_t>(bgmmc.nthr));
 
         best_blocking.m_per_thread = m_per_core;
         // in this case 2 full are preferable
@@ -281,8 +291,10 @@ bool matmul_amx_blocking_params_macro_t::maybe_small_dims_heuristics(
 
         const size_t m_per_core_actual = rnd_up(
                 best_blocking.m_per_thread, best_blocking.m_decomposition);
-        best_blocking.set_core_divs(
-                1, div_up(bgmmc.M, m_per_core_actual), 1, 1);
+        best_blocking.set_core_divs(1,
+                static_cast<int>(
+                        div_up(bgmmc.M, static_cast<dim_t>(m_per_core_actual))),
+                1, 1);
 
         if (best_blocking.nthr_m_
                 < core_utilization_threshold * best_blocking.nthr) {
@@ -290,8 +302,8 @@ bool matmul_amx_blocking_params_macro_t::maybe_small_dims_heuristics(
         }
 
         best_blocking.m_blk_ = best_blocking.m_decomposition;
-        best_blocking.m_chunk_size_
-                = div_up(m_per_core, best_blocking.m_decomposition);
+        best_blocking.m_chunk_size_ = div_up(m_per_core,
+                static_cast<uint32_t>(best_blocking.m_decomposition));
         best_blocking.n_blk_ = bgmmc.N;
         best_blocking.n_chunk_size_ = 1;
 
@@ -434,7 +446,8 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
         strip_mid_share_coef = std::max((size_t)1, nthr_n_);
 
         // Calculate the number of cache lines to be processed in AVX postops
-        num_postop_cache_lines = m_decomposition * div_up(n_per_thread, n_tmul);
+        num_postop_cache_lines = m_decomposition
+                * div_up(n_per_thread, static_cast<dim_t>(n_tmul));
 
     } else {
         // Amount of C/D bytes that are written per core
@@ -469,7 +482,9 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
         strip_mid_share_coef = std::max((size_t)1, nthr_m_);
 
         // Calculate the number of cache lines to be processed in AVX postops
-        num_postop_cache_lines = m_per_thread * div_up(n_decomposition, n_tmul);
+        num_postop_cache_lines = m_per_thread
+                * div_up(n_decomposition,
+                        static_cast<decltype(n_decomposition)>(n_tmul));
     }
     // There are 2 L1 misses for the L1 matrix:
     //   1. For the prefetch to the L2 (==L1 miss)
@@ -484,7 +499,9 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
             * rnd_up(n_decomposition * c_dt_sz, 64);
     // C post write total in bytes = m_blk_ * (#n_decompositions in BRGEMM) * (#writes per n_decomposition) * 64
     float c_post_write_total = m_blk_ * div_up(n_blk_, n_decomposition)
-            * div_up(n_decomposition, 16) * 64;
+            * div_up(
+                    n_decomposition, static_cast<decltype(n_decomposition)>(16))
+            * 64;
     float c_post_write_hit = c_post_write_total - c_post_write_miss;
 
     float c_post_read_c_tmp = c_elem_per_strip * acc_dt_sz;
@@ -663,8 +680,9 @@ dim_t matmul_amx_blocking_params_macro_t::calc_k_blk(size_t l1_dim) const {
 
     const dim_t largest_k = available_space_in_l1 / (l1_dim * gemm_dt_sz);
     const dim_t largest_k_tiles = largest_k / this->k_tmul;
-    const dim_t k_tiles = div_up(K, this->k_tmul);
-    const dim_t k_per_thread_tiles = div_up(k_tiles, nthr_k_);
+    const dim_t k_tiles = div_up(K, static_cast<dim_t>(this->k_tmul));
+    const dim_t k_per_thread_tiles
+            = div_up(k_tiles, static_cast<dim_t>(nthr_k_));
     const dim_t num_K_blocks = div_up(k_per_thread_tiles, largest_k_tiles);
     return nstl::min(
             (dim_t)(div_up(k_per_thread_tiles, num_K_blocks) * this->k_tmul),
@@ -673,10 +691,12 @@ dim_t matmul_amx_blocking_params_macro_t::calc_k_blk(size_t l1_dim) const {
 
 std::set<dim_t> matmul_amx_blocking_params_macro_t::blk_candidates(
         dim_t dim_per_thread, dim_t decomposition) const {
-    dim_t num_inner_blocks = div_up(dim_per_thread, decomposition);
+    dim_t num_inner_blocks
+            = div_up(dim_per_thread, static_cast<dim_t>(decomposition));
     std::set<dim_t> dim_set;
     for (int num_groups = 1; num_groups <= num_inner_blocks; ++num_groups) {
-        dim_t group_size = div_up(num_inner_blocks, num_groups);
+        dim_t group_size
+                = div_up(num_inner_blocks, static_cast<dim_t>(num_groups));
         dim_set.insert(group_size);
     }
 
@@ -926,7 +946,8 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters(
                             best_m_v * m_decomposition, k_blk_v, false);
                 }
             }
-            bool repeat_loop_over_k = div_up(K, k_blk_v * best_k_v) != 1;
+            bool repeat_loop_over_k
+                    = div_up(K, static_cast<dim_t>(k_blk_v * best_k_v)) != 1;
             bool critical_l2_set_issues_a
                     = div_up((size_t)K, k_blk_v * best_k_v) != nthr_k_
                     || (size_t)((l2_util_v * nthr_k_)) >= L2_threshold();
@@ -1085,10 +1106,10 @@ void matmul_amx_blocking_params_macro_t::set_core_divs(
     nthr_m_ = nthr_m;
     nthr_k_ = nthr_k;
     nthr_n_ = nthr_n;
-    m_per_thread = div_up(M, nthr_m_);
-    k_per_thread = div_up(K, nthr_k_);
-    n_per_thread = div_up(N, nthr_n_);
-    b_per_thread = div_up(this->batch, nthr_b_);
+    m_per_thread = div_up(M, static_cast<dim_t>(nthr_m_));
+    k_per_thread = div_up(K, static_cast<dim_t>(nthr_k_));
+    n_per_thread = div_up(N, static_cast<dim_t>(nthr_n_));
+    b_per_thread = div_up(this->batch, static_cast<dim_t>(nthr_b_));
 
     nthr_mnb_ = nthr_ / nthr_k_;
 }
@@ -1129,8 +1150,12 @@ void matmul_amx_blocking_params_micro_t::find_best_blocking(
     for (int nthr_k = 1; nthr_k <= max_nthr_k; nthr_k++) {
         int nthr_bmn = bgmmc.nthr / nthr_k;
 
-        int num_M_blk = bgmmc.is_runtime_M ? 1 : div_up(bgmmc.M, bgmmc.M_blk);
-        int num_N_blk = bgmmc.is_runtime_N ? 1 : div_up(bgmmc.N, bgmmc.N_blk);
+        int num_M_blk = bgmmc.is_runtime_M
+                ? 1
+                : div_up(bgmmc.M, static_cast<dim_t>(bgmmc.M_blk));
+        int num_N_blk = bgmmc.is_runtime_N
+                ? 1
+                : div_up(bgmmc.N, static_cast<dim_t>(bgmmc.N_blk));
         int k_parallel_work = nstl::min(max_k_parallel_work, nthr_k);
         int num_parallel_work
                 = bgmmc.batch * num_M_blk * num_N_blk * k_parallel_work;
@@ -1143,7 +1168,7 @@ void matmul_amx_blocking_params_micro_t::find_best_blocking(
         const int min_M_blk = !bgmmc.is_runtime_M
                         && (maybe_low_blocking || low_parallelism)
                         && bgmmc.M_blk > 32
-                ? div_up(bgmmc.M_blk, 2)
+                ? div_up(bgmmc.M_blk, static_cast<decltype(bgmmc.M_blk)>(2))
                 : bgmmc.M_blk;
         const int min_N_blk = !bgmmc.is_runtime_N && low_parallelism
                         && is_amx_xf16 && !bm_conf_utils.check_n_blk_fixed()
@@ -1187,10 +1212,12 @@ void matmul_amx_blocking_params_micro_t::find_best_blocking(
             float cur_score = current_blocking.get_blocking_scores();
             float bst_score = best_blocking.get_blocking_scores();
 
-            int m_chunks
-                    = bgmmc.is_runtime_M ? 1 : div_up(bgmmc.M, m_blk * m_ch_sz);
-            int n_chunks
-                    = bgmmc.is_runtime_N ? 1 : div_up(bgmmc.N, n_blk * n_ch_sz);
+            int m_chunks = bgmmc.is_runtime_M
+                    ? 1
+                    : div_up(bgmmc.M, static_cast<dim_t>(m_blk * m_ch_sz));
+            int n_chunks = bgmmc.is_runtime_N
+                    ? 1
+                    : div_up(bgmmc.N, static_cast<dim_t>(n_blk * n_ch_sz));
             int work_amount = bgmmc.batch * m_chunks * n_chunks;
 
             bool skip_config = work_amount < nthr_bmn * 3
@@ -1243,23 +1270,26 @@ void matmul_amx_blocking_params_micro_t::set_blocking_parameters(
         k_blk_ = is_amx ? rnd_up(K, required_k_granularity) : K;
         brgemm_batch_size_ = 1;
     } else {
-        dim_t k_per_thr = div_up(K, nthr_k_);
+        dim_t k_per_thr = div_up(K, static_cast<dim_t>(nthr_k_));
         k_blk_ = nstl::min(rnd_up(k_per_thr, required_k_granularity),
                 static_cast<dim_t>(wei_k_blk));
         const dim_t num_k_blk = div_up(K, k_blk_);
-        const dim_t num_k_blk_per_thread = div_up(num_k_blk, nthr_k_);
+        const dim_t num_k_blk_per_thread
+                = div_up(num_k_blk, static_cast<dim_t>(nthr_k_));
         brgemm_batch_size_ = num_k_blk_per_thread;
 
         auto chunk_sz = calculate_chunk_memory_size();
         const dim_t div_min = chunk_sz / L2_threshold();
-        const dim_t div_max = div_up(chunk_sz, L2_threshold());
+        const dim_t div_max
+                = div_up(chunk_sz, static_cast<size_t>(L2_threshold()));
         // For big pow2 lda prefer to increase area of linear memory access
         const dim_t adjust_k_divisor_threshold = lda_big_pow2() ? 2 : 0;
         // Adjust K blocking values to fit into L2 cache
         if (div_min > adjust_k_divisor_threshold && brgemm_batch_size_ > 1) {
             const auto kc1 = nstl::max(
                     brgemm_batch_size_ / div_min, static_cast<dim_t>(1));
-            const auto kc2 = div_up(brgemm_batch_size_, div_max);
+            const auto kc2
+                    = div_up(brgemm_batch_size_, static_cast<dim_t>(div_max));
             const auto tail1 = num_k_blk_per_thread % kc1;
             const auto tail2 = num_k_blk_per_thread % kc2;
             // Prefer adjusted chunk size with more equal work distribution

@@ -25,6 +25,7 @@ sdpa_executable_t::sdpa_executable_t(std::shared_ptr<op_t> &op,
         const dnnl::engine &p_engine, pd_cache_t &pd_cache,
         const fpmath_t &fpmath, bool use_block_layout)
     : with_scale_(op->get_attr<bool>(op_attr::with_scale))
+    , is_training_(op->get_attr<bool>(op_attr::is_training))
     , mask_type_(static_cast<attn_mask_type_t>(
               op->get_attr<int64_t>(op_attr::mask_type))) {
 
@@ -76,8 +77,9 @@ sdpa_executable_t::sdpa_executable_t(std::shared_ptr<op_t> &op,
     status_t s = create_sdpa_pd(sdpa_pd_, p_engine.get(), md_q.get(),
             md_k.get(), md_v.get(), md_dst.get(), md_mask.get(), md_scale.get(),
             is_invert_scale_, kv_head_number, mask_type_, softmax_alg,
-            impl::prop_kind::forward_inference, attr.get(), qk_attr.get(),
-            vs_attr.get());
+            is_training_ ? impl::prop_kind::forward_training
+                         : impl::prop_kind::forward_inference,
+            attr.get(), qk_attr.get(), vs_attr.get());
     if (s != dnnl::impl::status::success) {
         is_initialized_ = false;
     } else {
@@ -93,6 +95,9 @@ void sdpa_executable_t::execute(const stream &stream,
     memory_arg_t mem_arg_k = {(args.at(DNNL_ARG_KEYS)).get(), true};
     memory_arg_t mem_arg_v = {(args.at(DNNL_ARG_VALUES)).get(), true};
     memory_arg_t mem_arg_dst = {(args.at(DNNL_ARG_DST)).get(), false};
+    memory_arg_t mem_arg_stats
+            = {is_training_ ? (args.at(DNNL_ARG_WORKSPACE)).get() : nullptr,
+                    false};
     memory_arg_t mem_arg_scale
             = {with_scale_ ? (args.at(DNNL_ARG_SCALE)).get() : nullptr, true};
     memory_arg_t mem_arg_mask = {
@@ -125,6 +130,7 @@ void sdpa_executable_t::execute(const stream &stream,
     exec_args[DNNL_ARG_KEYS] = mem_arg_k;
     exec_args[DNNL_ARG_VALUES] = mem_arg_v;
     exec_args[DNNL_ARG_DST] = mem_arg_dst;
+    exec_args[DNNL_ARG_WORKSPACE] = mem_arg_stats;
     exec_args[DNNL_ARG_SCALE] = mem_arg_scale;
     exec_args[DNNL_ARG_ATTN_MASK] = mem_arg_mask;
     exec_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS] = mem_arg_k_scale;
@@ -148,6 +154,9 @@ void sdpa_executable_t::execute(const stream &stream,
     memory_arg_t mem_arg_k = {(args.at(DNNL_ARG_KEYS)).get(), true};
     memory_arg_t mem_arg_v = {(args.at(DNNL_ARG_VALUES)).get(), true};
     memory_arg_t mem_arg_dst = {(args.at(DNNL_ARG_DST)).get(), false};
+    memory_arg_t mem_arg_stats
+            = {is_training_ ? (args.at(DNNL_ARG_WORKSPACE)).get() : nullptr,
+                    false};
     memory_arg_t mem_arg_scale
             = {with_scale_ ? (args.at(DNNL_ARG_SCALE)).get() : nullptr, true};
     memory_arg_t mem_arg_mask = {
@@ -180,6 +189,7 @@ void sdpa_executable_t::execute(const stream &stream,
     exec_args[DNNL_ARG_KEYS] = mem_arg_k;
     exec_args[DNNL_ARG_VALUES] = mem_arg_v;
     exec_args[DNNL_ARG_DST] = mem_arg_dst;
+    exec_args[DNNL_ARG_WORKSPACE] = mem_arg_stats;
     exec_args[DNNL_ARG_SCALE] = mem_arg_scale;
     exec_args[DNNL_ARG_ATTN_MASK] = mem_arg_mask;
     exec_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS] = mem_arg_k_scale;
@@ -215,6 +225,9 @@ cl_event sdpa_executable_t::execute_ocl(const stream &stream,
     memory_arg_t mem_arg_k = {(args.at(DNNL_ARG_KEYS)).get(), true};
     memory_arg_t mem_arg_v = {(args.at(DNNL_ARG_VALUES)).get(), true};
     memory_arg_t mem_arg_dst = {(args.at(DNNL_ARG_DST)).get(), false};
+    memory_arg_t mem_arg_stats
+            = {is_training_ ? (args.at(DNNL_ARG_WORKSPACE)).get() : nullptr,
+                    false};
     memory_arg_t mem_arg_scale
             = {with_scale_ ? (args.at(DNNL_ARG_SCALE)).get() : nullptr, true};
     memory_arg_t mem_arg_mask = {
@@ -247,6 +260,7 @@ cl_event sdpa_executable_t::execute_ocl(const stream &stream,
     exec_args[DNNL_ARG_KEYS] = mem_arg_k;
     exec_args[DNNL_ARG_VALUES] = mem_arg_v;
     exec_args[DNNL_ARG_DST] = mem_arg_dst;
+    exec_args[DNNL_ARG_WORKSPACE] = mem_arg_stats;
     exec_args[DNNL_ARG_SCALE] = mem_arg_scale;
     exec_args[DNNL_ARG_ATTN_MASK] = mem_arg_mask;
     exec_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS] = mem_arg_k_scale;
@@ -322,6 +336,9 @@ arg_indices_t sdpa_executable_t::get_arg_indices(const op_t *op) {
     // outputs
     args.insert({DNNL_ARG_DST, {indices_t::type_t::output, 0}});
     args.insert({DNNL_ARG_SCRATCHPAD, {indices_t::type_t::output, 1}});
+    if (op->get_attr<bool>(op_attr::is_training)) {
+        args.insert({DNNL_ARG_WORKSPACE, {indices_t::type_t::output, 2}});
+    }
     return args;
 }
 

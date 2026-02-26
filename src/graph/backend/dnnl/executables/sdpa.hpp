@@ -54,6 +54,7 @@ private:
     std::shared_ptr<primitive_desc_t> sdpa_pd_;
     std::shared_ptr<primitive_t> sdpa_prim_;
     bool with_scale_;
+    bool is_training_;
     bool with_explicit_mask_;
     attn_mask_type_t mask_type_;
     bool is_invert_scale_;

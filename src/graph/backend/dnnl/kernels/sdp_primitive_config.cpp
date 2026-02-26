@@ -42,8 +42,6 @@ status_t sdp_primitive_config_t::initial_check(
     // At least 3 inputs: Q, K, V
     VCHECK_SDP_PRIMITIVE(inputs.size() >= 3, status::invalid_arguments,
             "At least 3 inputs are required");
-    VCHECK_SDP_PRIMITIVE(outputs.size() == 1, status::unimplemented,
-            "does not support multiple outputs");
 
     const bool is_f32 = inputs[0].data_type == data_type::f32;
     bool has_genindex = false;
@@ -57,6 +55,9 @@ status_t sdp_primitive_config_t::initial_check(
         VCHECK_SDP_PRIMITIVE(opk != graph::op_kind::Dequantize
                         && opk != graph::op_kind::Quantize,
                 status::unimplemented, "Not support quantized SDPA");
+        // SDPA with Dropout is currently unsupported in the ukernel.
+        VCHECK_SDP_PRIMITIVE(opk != graph::op_kind::Dropout, status::unimplemented,
+                "Not support SDPA with Dropout");
         if (opk == graph::op_kind::GenIndex) { has_genindex = true; }
     }
 

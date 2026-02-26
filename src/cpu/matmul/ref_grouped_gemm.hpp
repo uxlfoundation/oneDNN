@@ -129,29 +129,29 @@ struct ref_grouped_t : public primitive_t {
             // Zero-points are supported for wei: for WOQ (fp src) and for int arithmetic (int src)
             const auto &attr_zps = attr()->zero_points_;
             VDISPATCH_MATMUL(attr_zps.has_default_values(DNNL_ARG_SRC),
-                    VERBOSE_UNSUPPORTED_ATTR);
+                    VERBOSE_UNSUPPORTED_ZP_CFG);
             VDISPATCH_MATMUL(attr_zps.has_default_values(DNNL_ARG_DST),
-                    VERBOSE_UNSUPPORTED_ATTR);
+                    VERBOSE_UNSUPPORTED_ZP_CFG);
 
             // Allow column-wise or blocked (K grouping) zps for weights
             if (!attr_zps.has_default_values(DNNL_ARG_WEIGHTS)) {
-                VDISPATCH_MATMUL(is_int_wei, VERBOSE_UNSUPPORTED_ATTR);
+                VDISPATCH_MATMUL(is_int_wei, VERBOSE_UNSUPPORTED_ZP_CFG);
                 VDISPATCH_MATMUL(
                         utils::one_of(attr_zps.get_data_type(DNNL_ARG_WEIGHTS),
                                 u8, s8, u4, s4, s32),
-                        VERBOSE_UNSUPPORTED_ATTR);
+                        VERBOSE_UNSUPPORTED_ZP_CFG);
                 const int zp_mask = attr_zps.get_mask(DNNL_ARG_WEIGHTS);
                 const int colwise_mask = wei_qmask_N();
                 const int blocked_mask = wei_qmask_K() | wei_qmask_N();
                 VDISPATCH_MATMUL(
                         zp_mask == colwise_mask || zp_mask == blocked_mask,
-                        VERBOSE_UNSUPPORTED_ATTR);
+                        VERBOSE_UNSUPPORTED_ZP_CFG);
                 if (!attr_zps.get(DNNL_ARG_WEIGHTS).has_default_groups()) {
                     const auto gK = attr_zps.get_group(DNNL_ARG_WEIGHTS, -2);
-                    VDISPATCH_MATMUL(gK > 1, VERBOSE_UNSUPPORTED_ATTR);
-                    VDISPATCH_MATMUL(K() % gK == 0, VERBOSE_UNSUPPORTED_ATTR);
+                    VDISPATCH_MATMUL(gK > 1, VERBOSE_UNSUPPORTED_ZP_CFG);
+                    VDISPATCH_MATMUL(K() % gK == 0, VERBOSE_UNSUPPORTED_ZP_CFG);
                     const auto gN = attr_zps.get_group(DNNL_ARG_WEIGHTS, -1);
-                    VDISPATCH_MATMUL(gN == 1, VERBOSE_UNSUPPORTED_ATTR);
+                    VDISPATCH_MATMUL(gN == 1, VERBOSE_UNSUPPORTED_ZP_CFG);
                 }
             }
 

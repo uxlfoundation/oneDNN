@@ -96,6 +96,89 @@ void stream_t::after_exec_hook() {
     if (is_profiling_enabled()) profiler_->stop_profiling();
 }
 
+status_t stream_t::run_verbose_profiler(
+        std::string &pd_info, double start_ms) const {
+
+    // utilize the verbose profiler only for profile_exec verbose levels.
+    if (!is_verbose_profiler_enabled()) return status::invalid_arguments;
+
+    // Captured output event acts as the anchor to track primitive execution
+    ::sycl::event out_evt = get_output_event();
+
+    // as the stamp count increments each time the profiler is unpaused, it
+    // also tracks the primitive exeuctions.
+    uint64_t curr_stamp = profiler_->stamp();
+
+    if (!curr_stamp) {
+        VWARN(primitive, exec,
+                "%s, profiling error: failed to record primitive events in "
+                "context",
+                pd_info.c_str());
+        VPROF(start_ms, primitive, exec, VERBOSE_profile, pd_info.c_str(), 0.f);
+        return status::success;
+    }
+
+    xpu::stream_profiler_t *prof_ptr = profiler_.get();
+
+    struct payload_t {
+        xpu::stream_profiler_t *prof;
+        std::string info_str;
+        double start;
+        uint64_t stamp;
+    };
+
+    std::unique_ptr<payload_t> payload(new payload_t());
+    payload->prof = prof_ptr;
+    payload->info_str = pd_info;
+    payload->start = start_ms;
+    payload->stamp = curr_stamp;
+
+    // The prompt ensures the verbose headers are printed if they aren't
+    // already. Printing the headers asynchronously during the callback can
+    // result in access failures when printing engine-specific info.
+    verbose_printf(verbose_t::exec_profile, "\r");
+
+    try {
+        ::sycl::queue q = queue();
+        payload_t *user = payload.get();
+
+        q.submit([&](::sycl::handler &cgh) {
+            cgh.depends_on(out_evt);
+            cgh.host_task([user]() {
+                std::unique_ptr<payload_t> hold(user);
+
+                double duration_ms = 0.0;
+
+                if (hold->prof) {
+                    // aggregate execution times are calculated from the start and end times
+                    // of the first and last queued events for the primitive respectively
+                    hold->prof->get_aggregate_exec_timing(
+                            hold->stamp, duration_ms);
+                } else {
+                    VWARN(primitive, exec,
+                            "%s, profiling error: profiler absent",
+                            hold->info_str.c_str());
+                }
+
+                VPROF(hold->start, primitive, exec, VERBOSE_profile,
+                        hold->info_str.c_str(), duration_ms);
+            });
+        });
+
+        (void)payload.release();
+
+    } catch (...) {
+        VWARN(primitive, exec,
+                "%s, profiling error: failed to submit host_task for async "
+                "verbose logging",
+                pd_info.c_str());
+        VPROF(start_ms, primitive, exec, VERBOSE_profile, pd_info.c_str(), 0.f);
+        return status::success;
+    }
+
+    return status::success;
+}
+
 // The following code needs sycl::queue::ext_oneapi_get_graph(), but it may
 //  not be defined. Some SFINAE is needed to avoid compile errors in this case.
 namespace syclex = ::sycl::ext::oneapi::experimental;

@@ -58,6 +58,10 @@ struct stream_profiler_t {
             uint64_t *data) const
             = 0;
 
+    virtual status_t get_aggregate_exec_timing(
+            uint64_t stamp, double &duration_ms) const
+            = 0;
+
     uint64_t stamp() const { return stamp_; }
 
     void register_event(std::unique_ptr<xpu::event_t> &&event) {

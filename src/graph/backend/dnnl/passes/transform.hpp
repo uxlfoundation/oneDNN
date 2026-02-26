@@ -302,6 +302,12 @@ status_t fuse_implicit_causal_mask(std::shared_ptr<subgraph_t> &sg);
 /// This pass will transform the sdpa subgraph into a dnnl_sdpa op.
 status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg);
 
+/// This pass will decompose the softmax with stats output into a normal softmax
+/// without stats output and some small ops to compute the stats.
+/// The main reason for this pass is that the current implementation
+/// of softmax primitive doesn't support stats.
+status_t decompose_softmax(std::shared_ptr<subgraph_t> &sg);
+
 } // namespace dnnl_impl
 } // namespace graph
 } // namespace impl

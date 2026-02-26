@@ -169,12 +169,13 @@ protected:
         , desc_(*op_desc_t::to_desc<sdpa_desc_t>(adesc))
         , hint_fwd_pd_(hint_fwd_pd) {}
 
-    void init_default_ws() {
+    status_t init_default_ws() {
         dims_t d;
         d[0] = desc()->batch_size()
                 * desc()->queries(); // (logsumexp) per query
 
-        memory_desc_init_by_tag(ws_md_, 1, d, data_type::f32, format_tag::a);
+        return memory_desc_init_by_tag(
+                ws_md_, 1, d, data_type::f32, format_tag::a);
     }
 
     bool set_default_format(memory_desc_t *md) {
@@ -373,7 +374,10 @@ struct sdpa_bwd_pd_t : public sdpa_pd_t {
     const memory_desc_t *diff_qry_md() const { return &desc_.diff_q_desc; }
     const memory_desc_t *diff_key_md() const { return &desc_.diff_k_desc; }
     const memory_desc_t *diff_val_md() const { return &desc_.diff_v_desc; }
-    const memory_desc_t *diff_dst_md() const { return &desc_.diff_dst_desc; }
+    const memory_desc_t *diff_dst_md(
+            int index = 0, bool user_input = false) const override {
+        return index == 0 ? &desc_.diff_dst_desc : &glob_zero_md;
+    }
 
 protected:
     sdpa_bwd_pd_t(const op_desc_t *adesc, const primitive_attr_t *attr,

@@ -22,6 +22,7 @@
 #include <oneapi/dnnl/dnnl.hpp>
 #include <oneapi/dnnl/dnnl_graph.hpp>
 
+#include <cassert>
 #include <random>
 
 #define DNNL_ARG_WEIGHTS_GATE DNNL_ARG_WEIGHTS_0
@@ -29,6 +30,9 @@
 #define DNNL_ARG_WEIGHTS_DOWN DNNL_ARG_WEIGHTS_2
 
 #include "common/gated_mlp_iface.hpp"
+
+// set to 1 to dump cpu memory buffers
+#define ENABLE_PRINT_MEM 0
 
 namespace dnnl {
 namespace impl {
@@ -108,7 +112,7 @@ struct gmlp_tensors_t {
     memory m_fc_gate, m_fc_up, m_fc_down;
     memory m_fc_retn_t;
 
-    dnnl::primitive_attr gateup_attr_quantized, down_attr_quantized;
+    primitive_attr gateup_attr_quantized, down_attr_quantized;
     memory::dims wgu_groups, wd_groups;
 };
 
@@ -165,62 +169,153 @@ std::string PrintToString(const ::testing::TestParamInfo<mlp_dims_t> &info) {
     return ss.str();
 }
 
-void write_to_dnnl_memory(void *handle, dnnl::memory &mem) {
-    dnnl::engine eng = mem.get_engine();
-    size_t size = mem.get_desc().get_size();
-
-    if (!handle) throw std::runtime_error("handle is nullptr.");
+template <typename Tm, typename Td>
+void write_to_dnnl_memory_common(std::vector<Td> &data, memory &mem) {
+    engine eng = mem.get_engine();
+    assert(mem.get_desc().get_size()
+            == data.size()
+                    * memory::data_type_size(mem.get_desc().get_data_type()));
 
 #ifdef DNNL_WITH_SYCL
     bool is_cpu_sycl = (DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL
-            && eng.get_kind() == dnnl::engine::kind::cpu);
+            && eng.get_kind() == engine::kind::cpu);
     bool is_gpu_sycl = (DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
-            && eng.get_kind() == dnnl::engine::kind::gpu);
+            && eng.get_kind() == engine::kind::gpu);
     if (is_cpu_sycl || is_gpu_sycl) {
-        auto mkind = dnnl::sycl_interop::get_memory_kind(mem);
-        if (mkind == dnnl::sycl_interop::memory_kind::buffer) {
-            auto buffer = dnnl::sycl_interop::get_buffer<uint8_t>(mem);
+        auto mkind = sycl_interop::get_memory_kind(mem);
+        if (mkind == sycl_interop::memory_kind::buffer) {
+            auto buffer = sycl_interop::get_buffer<Tm>(mem);
             auto dst = buffer.get_host_access();
-            uint8_t *dst_ptr = dst.get_pointer();
+            Tm *dst_ptr = dst.get_pointer();
             if (!dst_ptr)
                 throw std::runtime_error("get_pointer returned nullptr.");
-            for (size_t i = 0; i < size; ++i)
-                dst_ptr[i] = ((uint8_t *)handle)[i];
+            for (size_t i = 0; i < data.size(); ++i)
+                dst_ptr[i] = (Tm)data[i];
         } else {
-            assert(mkind == dnnl::sycl_interop::memory_kind::usm);
-            uint8_t *dst_ptr = (uint8_t *)mem.get_data_handle();
+            assert(mkind == sycl_interop::memory_kind::usm);
+            Tm *dst_ptr = (Tm *)mem.get_data_handle();
             if (!dst_ptr)
                 throw std::runtime_error("get_data_handle returned nullptr.");
             if (is_cpu_sycl) {
-                for (size_t i = 0; i < size; ++i)
-                    dst_ptr[i] = ((uint8_t *)handle)[i];
+                for (size_t i = 0; i < data.size(); ++i)
+                    dst_ptr[i] = (Tm)data[i];
             } else {
-                auto sycl_queue
-                        = dnnl::sycl_interop::get_queue(dnnl::stream(eng));
-                sycl_queue.memcpy(dst_ptr, handle, size).wait();
+                std::vector<Tm> tmp(data.size());
+                for (size_t i = 0; i < data.size(); ++i)
+                    tmp[i] = (Tm)data[i];
+                auto sycl_queue = sycl_interop::get_queue(stream(eng));
+                sycl_queue
+                        .memcpy(dst_ptr, tmp.data(), mem.get_desc().get_size())
+                        .wait();
             }
         }
         return;
     }
 #endif
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    if (eng.get_kind() == dnnl::engine::kind::gpu) {
-        void *mapped_ptr = mem.map_data();
-        if (mapped_ptr) std::memcpy(mapped_ptr, handle, size);
+    if (eng.get_kind() == engine::kind::gpu) {
+        std::vector<Tm> tmp(data.size());
+        for (size_t i = 0; i < data.size(); ++i)
+            tmp[i] = (Tm)data[i];
+        Tm *mapped_ptr = (Tm *)mem.map_data();
+        if (mapped_ptr)
+            std::memcpy(mapped_ptr, tmp.data(), mem.get_desc().get_size());
         mem.unmap_data(mapped_ptr);
         return;
     }
 #endif
 
-    if (eng.get_kind() == dnnl::engine::kind::cpu) {
-        uint8_t *dst = static_cast<uint8_t *>(mem.get_data_handle());
+    if (eng.get_kind() == engine::kind::cpu) {
+        Tm *dst = static_cast<Tm *>(mem.get_data_handle());
         if (!dst) throw std::runtime_error("get_data_handle returned nullptr.");
-        for (size_t i = 0; i < size; ++i)
-            dst[i] = ((uint8_t *)handle)[i];
+        for (size_t i = 0; i < data.size(); ++i)
+            dst[i] = (Tm)data[i];
         return;
     }
 
     assert(!"not expected");
+}
+
+template <typename Td>
+void write_to_dnnl_memory_int4(std::vector<Td> &data, memory &mem) {
+#define COPY_INT4(to, from) \
+    for (size_t i = 0; i < (from).size(); ++i) { \
+        uint8_t val = (uint8_t)(from)[i] & 0x0F; \
+        (to)[i >> 1] = (i & 1) ? (to)[i >> 1] | (val << 4) : val; \
+    }
+    engine eng = mem.get_engine();
+    assert(mem.get_desc().get_size() == utils::div_up(data.size(), 2));
+
+#ifdef DNNL_WITH_SYCL
+    bool is_cpu_sycl = (DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL
+            && eng.get_kind() == engine::kind::cpu);
+    bool is_gpu_sycl = (DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
+            && eng.get_kind() == engine::kind::gpu);
+    if (is_cpu_sycl || is_gpu_sycl) {
+        auto mkind = sycl_interop::get_memory_kind(mem);
+        if (mkind == sycl_interop::memory_kind::buffer) {
+            auto buffer = sycl_interop::get_buffer<uint8_t>(mem);
+            auto dst = buffer.get_host_access();
+            auto *dst_ptr = (uint8_t *)dst.get_pointer();
+            if (!dst_ptr)
+                throw std::runtime_error("get_pointer returned nullptr.");
+            COPY_INT4(dst_ptr, data)
+        } else {
+            assert(mkind == sycl_interop::memory_kind::usm);
+            auto *dst_ptr = (uint8_t *)mem.get_data_handle();
+            if (!dst_ptr)
+                throw std::runtime_error("get_data_handle returned nullptr.");
+            if (is_cpu_sycl) {
+                COPY_INT4(dst_ptr, data)
+            } else {
+                std::vector<uint8_t> tmp(mem.get_desc().get_size());
+                COPY_INT4(tmp, data)
+                auto sycl_queue = sycl_interop::get_queue(stream(eng));
+                sycl_queue.memcpy(dst_ptr, tmp.data(), tmp.size()).wait();
+            }
+        }
+        return;
+    }
+#endif
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+    if (eng.get_kind() == engine::kind::gpu) {
+        std::vector<uint8_t> tmp(mem.get_desc().get_size());
+        COPY_INT4(tmp, data)
+        auto *mapped_ptr = (uint8_t *)mem.map_data();
+        if (mapped_ptr) std::memcpy(mapped_ptr, tmp.data(), tmp.size());
+        mem.unmap_data(mapped_ptr);
+        return;
+    }
+#endif
+
+    if (eng.get_kind() == engine::kind::cpu) {
+        auto *dst = (uint8_t *)mem.get_data_handle();
+        if (!dst) throw std::runtime_error("get_data_handle returned nullptr.");
+        COPY_INT4(dst, data)
+        return;
+    }
+
+    assert(!"not expected");
+#undef COPY_INT4
+}
+
+template <typename Td>
+void write_to_dnnl_memory(std::vector<Td> &data, memory &mem) {
+    switch (mem.get_desc().get_data_type()) {
+        case memory::data_type::s4:
+        case memory::data_type::u4: write_to_dnnl_memory_int4(data, mem); break;
+        case memory::data_type::s8:
+        case memory::data_type::u8:
+            write_to_dnnl_memory_common<uint8_t>(data, mem);
+            break;
+        case memory::data_type::f32:
+            write_to_dnnl_memory_common<float>(data, mem);
+            break;
+        case memory::data_type::f16:
+            write_to_dnnl_memory_common<float16_t>(data, mem);
+            break;
+        default: assert(false);
+    }
 }
 
 void fill_const(std::vector<float> &out, const float c) {
@@ -263,11 +358,11 @@ void fill_hceye(std::vector<float16_t> &out, int ldi = 32) {
     static std::vector<float> random_data_f;
 
     for (int i = 0; i < int(out.size()); ++i) {
-        out[i] = float16_t((((i / ldi) % 32 == (i % 32))) ? 1.f : 0.f);
+        out[i] = float16_t((((i / ldi) % ldi == (i % ldi))) ? 1.f : 0.f);
     }
 }
 
-gmlp_tensors_t get_descriptors(dnnl::engine &eng, mlp_dims_t p) {
+gmlp_tensors_t get_descriptors(engine &eng, mlp_dims_t p) {
     gmlp_tensors_t out;
 
     // Prepare input and output shapes to construct the swiglu graph.
@@ -380,17 +475,26 @@ gmlp_tensors_t get_descriptors(dnnl::engine &eng, mlp_dims_t p) {
     std::vector<float> w_up_quantized_data(product(W_up_sz), 1.f);
     std::vector<float> w_down_quantized_data(product(W_down_sz), 1.f);
 
-    std::vector<float> w_gate_scales_data(product(W_gate_sz), 1.f);
-    std::vector<float> w_up_scales_data(product(W_up_sz), 1.f);
-    std::vector<float> w_down_scales_data(product(W_down_sz), 1.f);
+    std::vector<float> w_gate_scales_data(
+            product(out.m_w_gate_scales.get_desc().get_padded_dims()), 1.f);
+    std::vector<float> w_up_scales_data(
+            product(out.m_w_up_scales.get_desc().get_padded_dims()), 1.f);
+    std::vector<float> w_down_scales_data(
+            product(out.m_w_down_scales.get_desc().get_padded_dims()), 1.f);
 
-    std::vector<int> w_gate_zp_data_signed(product(W_gate_sz), 0);
-    std::vector<int> w_up_zp_data_signed(product(W_up_sz), 0);
-    std::vector<int> w_down_zp_data_signed(product(W_down_sz), 0);
+    std::vector<int> w_gate_zp_data_signed(
+            product(out.m_w_gate_zp.get_desc().get_padded_dims()), 0);
+    std::vector<int> w_up_zp_data_signed(
+            product(out.m_w_up_zp.get_desc().get_padded_dims()), 0);
+    std::vector<int> w_down_zp_data_signed(
+            product(out.m_w_down_zp.get_desc().get_padded_dims()), 0);
 
-    std::vector<unsigned> w_gate_zp_data_unsigned(product(W_gate_sz), 0);
-    std::vector<unsigned> w_up_zp_data_unsigned(product(W_up_sz), 0);
-    std::vector<unsigned> w_down_zp_data_unsigned(product(W_down_sz), 0);
+    std::vector<unsigned> w_gate_zp_data_unsigned(
+            product(out.m_w_gate_zp.get_desc().get_padded_dims()), 0);
+    std::vector<unsigned> w_up_zp_data_unsigned(
+            product(out.m_w_up_zp.get_desc().get_padded_dims()), 0);
+    std::vector<unsigned> w_down_zp_data_unsigned(
+            product(out.m_w_down_zp.get_desc().get_padded_dims()), 0);
 
     out.wgu_groups = {};
     out.wd_groups = {};
@@ -411,16 +515,29 @@ gmlp_tensors_t get_descriptors(dnnl::engine &eng, mlp_dims_t p) {
         default: break;
     }
 
-    fill_random(x_data, x_md, -1.f, 1.f);
+    int wgu_group_size = p.gateup_group_size;
+    int wd_group_size = p.down_group_size;
 
-    fill_random_quantized(w_gate_quantized_data, w_gate_qnt_md,
-            (wgu_wt == mdt::u4 || wgu_wt == mdt::u8));
-    fill_random_quantized(w_up_quantized_data, w_up_qnt_md,
-            (wgu_wt == mdt::u4 || wgu_wt == mdt::u8));
-    fill_random_quantized(w_down_quantized_data, w_down_qnt_md,
-            (wgu_wt == mdt::u4 || wgu_wt == mdt::u8));
+    //if (p.qtype == quantize_type::per_tensor) {
+    //    wgu_group_size = W_gate_sz[0] * W_gate_sz[1];
+    //    wd_group_size = W_down_sz[0] * W_down_sz[1];
+    //}
 
-    if (p.qtype != quantize_type::no_quantization) {
+    fill_random(x_data, x_md, -.25f, .25f);
+
+    if (p.qtype == quantize_type::no_quantization) {
+        printf("no quant init\n");
+        fill_random(w_gate_data, w_gate_md, -1.f, 1.f);
+        fill_random(w_up_data, w_up_md, -1.f, 1.f);
+        fill_random(w_down_data, w_down_md, -1.f, 1.f);
+    } else {
+        fill_random_quantized(w_gate_quantized_data, w_gate_qnt_md,
+                (wgu_wt == mdt::u4 || wgu_wt == mdt::u8));
+        fill_random_quantized(w_up_quantized_data, w_up_qnt_md,
+                (wgu_wt == mdt::u4 || wgu_wt == mdt::u8));
+        fill_random_quantized(w_down_quantized_data, w_down_qnt_md,
+                (wgu_wt == mdt::u4 || wgu_wt == mdt::u8));
+
         if (wgu_wt != mdt::f16 && wgu_s_dt != mdt::undef) {
             fill_random_scales(w_gate_scales_data, w_gate_scales_md);
             fill_random_scales(w_up_scales_data, w_up_scales_md);
@@ -437,26 +554,7 @@ gmlp_tensors_t get_descriptors(dnnl::engine &eng, mlp_dims_t p) {
             fill_random_quantized(w_down_zp_data_signed, w_down_zp_md);
             fill_random_quantized(w_down_zp_data_unsigned, w_down_zp_md);
         }
-    }
 
-    int wgu_group_size = p.gateup_group_size;
-    int wd_group_size = p.down_group_size;
-
-    if (p.qtype == quantize_type::per_tensor) {
-        wgu_group_size = W_gate_sz[0] * W_gate_sz[1];
-        wd_group_size = W_down_sz[0] * W_down_sz[1];
-    }
-
-    //vector<float> x_data, w_gate_data, w_up_data, w_down_data;
-    //if(p.qtype == quantize_type::no_quantization) {
-    if (p.qtype == quantize_type::no_quantization) {
-        printf("no quant init\n");
-        fill_random(w_gate_data, w_gate_md, -1.f, 1.f);
-        //fill_hceye(w_gate_data, p.ic); //testdata
-
-        fill_random(w_up_data, w_up_md, -1.f, 1.f);
-        fill_random(w_down_data, w_down_md, -1.f, 1.f);
-    } else {
         if (wgu_zp_dt == mdt::s4 || wgu_zp_dt == mdt::s8) {
             printf("s4/s8 quant init\n");
             w_gate_data = dequantize(w_gate_quantized_data, w_gate_md,
@@ -487,28 +585,28 @@ gmlp_tensors_t get_descriptors(dnnl::engine &eng, mlp_dims_t p) {
     }
 
     // Write data to tensor object's handle.
-    write_to_dnnl_memory(x_data.data(), out.m_x);
-    write_to_dnnl_memory(w_gate_data.data(), out.m_w_gate);
-    write_to_dnnl_memory(w_up_data.data(), out.m_w_up);
-    write_to_dnnl_memory(w_down_data.data(), out.m_w_down);
+    write_to_dnnl_memory(x_data, out.m_x);
+    write_to_dnnl_memory(w_gate_data, out.m_w_gate);
+    write_to_dnnl_memory(w_up_data, out.m_w_up);
+    write_to_dnnl_memory(w_down_data, out.m_w_down);
 
-    write_to_dnnl_memory(w_gate_quantized_data.data(), out.m_w_gate_quantized);
-    write_to_dnnl_memory(w_up_quantized_data.data(), out.m_w_up_quantized);
-    write_to_dnnl_memory(w_down_quantized_data.data(), out.m_w_down_quantized);
+    write_to_dnnl_memory(w_gate_quantized_data, out.m_w_gate_quantized);
+    write_to_dnnl_memory(w_up_quantized_data, out.m_w_up_quantized);
+    write_to_dnnl_memory(w_down_quantized_data, out.m_w_down_quantized);
 
     if (wgu_zp_dt == mdt::s4 || wgu_zp_dt == mdt::s8) {
-        write_to_dnnl_memory(w_gate_zp_data_signed.data(), out.m_w_gate_zp);
-        write_to_dnnl_memory(w_up_zp_data_signed.data(), out.m_w_up_zp);
-        write_to_dnnl_memory(w_down_zp_data_signed.data(), out.m_w_down_zp);
+        write_to_dnnl_memory(w_gate_zp_data_signed, out.m_w_gate_zp);
+        write_to_dnnl_memory(w_up_zp_data_signed, out.m_w_up_zp);
+        write_to_dnnl_memory(w_down_zp_data_signed, out.m_w_down_zp);
     } else {
-        write_to_dnnl_memory(w_gate_zp_data_unsigned.data(), out.m_w_gate_zp);
-        write_to_dnnl_memory(w_up_zp_data_unsigned.data(), out.m_w_up_zp);
-        write_to_dnnl_memory(w_down_zp_data_unsigned.data(), out.m_w_down_zp);
+        write_to_dnnl_memory(w_gate_zp_data_unsigned, out.m_w_gate_zp);
+        write_to_dnnl_memory(w_up_zp_data_unsigned, out.m_w_up_zp);
+        write_to_dnnl_memory(w_down_zp_data_unsigned, out.m_w_down_zp);
     }
 
-    write_to_dnnl_memory(w_gate_scales_data.data(), out.m_w_gate_scales);
-    write_to_dnnl_memory(w_up_scales_data.data(), out.m_w_up_scales);
-    write_to_dnnl_memory(w_down_scales_data.data(), out.m_w_down_scales);
+    write_to_dnnl_memory(w_gate_scales_data, out.m_w_gate_scales);
+    write_to_dnnl_memory(w_up_scales_data, out.m_w_up_scales);
+    write_to_dnnl_memory(w_down_scales_data, out.m_w_down_scales);
 
     printf("memory data types?? %d %d %d\n",
             int(out.m_w_gate_scales.get_desc().get_data_type()),
@@ -520,8 +618,8 @@ gmlp_tensors_t get_descriptors(dnnl::engine &eng, mlp_dims_t p) {
 
 template <typename T>
 void bench_gated_mlp_primitives(std::vector<T> &res, double &avg_time,
-        gmlp_tensors_t &t, dnnl::engine &eng, dnnl::stream &strm,
-        const mlp_dims_t &p, double time_limit = 0.) {
+        gmlp_tensors_t &t, engine &eng, stream &strm, const mlp_dims_t &p,
+        double time_limit = 0.) {
     const bool quick_test = (time_limit == 0.);
 
     // extract memory objects
@@ -581,8 +679,12 @@ void bench_gated_mlp_primitives(std::vector<T> &res, double &avg_time,
     auto bmm2_prim = matmul(bmm2_pd);
 
     const auto loop = [&](bool print = false) {
-//#define PRINT_MEM(mem) if (print) { print_mem(mem, #mem); }
+#if ENABLE_PRINT_MEM != 0
+#define PRINT_MEM(mem) \
+    if (print) { print_mem(mem, #mem " "); }
+#else
 #define PRINT_MEM(mem)
+#endif
         bmm0_prim.execute(strm,
                 {{DNNL_ARG_SRC, m_O_proj}, {DNNL_ARG_WEIGHTS, m_W_up},
                         {DNNL_ARG_DST, m_FC_up}});
@@ -649,7 +751,7 @@ void bench_gated_mlp_primitives(std::vector<T> &res, double &avg_time,
         printf("------inpB\n");
         print_mem(m_W_gate, "-prim");
     }
-#define TEST_VS_TRANSPOSE 1
+#define TEST_VS_TRANSPOSE 0
 #if TEST_VS_TRANSPOSE
     transpose_strides(eng, m_FC_retn_t, m_FC_down);
 
@@ -683,10 +785,8 @@ void bench_gated_mlp_primitives(std::vector<T> &res, double &avg_time,
 
 template <typename T>
 void bench_gated_mlp_internal(std::vector<T> &res, double &avg_time,
-        gmlp_tensors_t &t, dnnl::engine &eng, dnnl::stream strm,
-        const mlp_dims_t &p, double time_limit = 0.) {
-
-    using namespace dnnl::impl;
+        gmlp_tensors_t &t, engine &eng, stream strm, const mlp_dims_t &p,
+        double time_limit = 0.) {
     printf("eng?\n");
     const bool quick_test = (time_limit == 0.);
 
@@ -787,8 +887,12 @@ void bench_gated_mlp_internal(std::vector<T> &res, double &avg_time,
     auto prim_fused_internal = gmlp_t(gmlp_pd);
 
     const auto loop = [&](bool print = false) {
-//#define PRINT_MEM(mem) if (print) { print_mem(mem, #mem); }
+#if ENABLE_PRINT_MEM != 0
+#define PRINT_MEM(mem) \
+    if (print) { print_mem(mem, #mem " "); }
+#else
 #define PRINT_MEM(mem)
+#endif
         if (p.qtype == quantize_type::no_quantization) {
             prim_fused_internal.execute(strm,
                     {{DNNL_ARG_SRC, m_O_proj},
@@ -891,8 +995,8 @@ enum class api_kind { primitive, graph, internal_hack };
 
 template <typename T>
 void bench(std::vector<T> &res, double &avg_time, gmlp_tensors_t &t,
-        api_kind api, dnnl::engine &eng, dnnl::stream &strm,
-        const mlp_dims_t &p, double time_limit = 0.) {
+        api_kind api, engine &eng, stream &strm, const mlp_dims_t &p,
+        double time_limit = 0.) {
 
     try {
         if (api == api_kind::primitive) {
@@ -906,7 +1010,7 @@ void bench(std::vector<T> &res, double &avg_time, gmlp_tensors_t &t,
                     res, avg_time, t, eng, strm, p, time_limit);
             strm.wait();
         }
-    } catch (dnnl::error &e) {
+    } catch (error &e) {
         // Catch and report unimplemented cases.
         if (e.status == dnnl_unimplemented) {
             std::cout << "unsupported mlp" << std::endl;
@@ -996,15 +1100,15 @@ public:
         SKIP_IF(engine::get_count(engine::kind::gpu) == 0,
                 "GMLP tests require gpus.");
         p = GetParam();
-        eng = dnnl::engine(engine::kind::gpu, 0);
-        strm = dnnl::stream(eng);
+        eng = engine(engine::kind::gpu, 0);
+        strm = stream(eng);
         t = get_descriptors(eng, p);
     }
 
 protected:
     mlp_dims_t p;
-    dnnl::engine eng;
-    dnnl::stream strm;
+    engine eng;
+    stream strm;
     gmlp_tensors_t t;
 };
 

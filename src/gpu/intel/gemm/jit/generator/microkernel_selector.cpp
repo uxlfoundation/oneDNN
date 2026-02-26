@@ -256,16 +256,17 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
     /* Call kernel selector */
     EvaluateAuxOutput auxParams;
     std::vector<const kcatalog::Entry*> entries = select(catalog, 1, &matchParams, evalParams, auxParams);
-    if(!kParallelLocal) {
-        auto last_entry = std::remove_if(begin(entries), end(entries), [&](const kcatalog::Entry* e) {
-            GEMMStrategy strategy(hw, stepping);
-            strategy.unroll[LoopM] = e->driverInfo.unroll[LoopM];
-            strategy.unroll[LoopN] = e->driverInfo.unroll[LoopN];
-            parseStrategy(e->strategy, hw, problem, strategy);
-            return !kParallelLocal && strategy.kParallelLocal;
-        });
-        entries.erase(last_entry, end(entries));
-    }
+    auto last_entry = std::remove_if(begin(entries), end(entries), [&](const kcatalog::Entry* e) {
+        GEMMStrategy strategy(hw, stepping);
+        strategy.unroll[LoopM] = e->driverInfo.unroll[LoopM];
+        strategy.unroll[LoopN] = e->driverInfo.unroll[LoopN];
+        parseStrategy(e->strategy, hw, problem, strategy);
+        return !kParallelLocal && strategy.kParallelLocal
+          // named barriers are not supported by generateShim
+          && strategy.namedBarriers[LoopM] > 0
+          && strategy.namedBarriers[LoopN] > 0;
+    });
+    entries.erase(last_entry, end(entries));
     entries.push_back(nullptr); // Try heuristics if no kernel found
 
     for(const kcatalog::Entry *entry : entries) {

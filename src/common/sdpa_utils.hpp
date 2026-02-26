@@ -249,6 +249,38 @@ static inline status_t create_sdpa_pd(
     return status::success;
 }
 
+static inline status_t create_sdpa_pd(
+        std::shared_ptr<primitive_desc_t> &sdpa_pd_, engine_t *engine,
+        const memory_desc_t *q_md, const memory_desc_t *k_md,
+        const memory_desc_t *v_md, const memory_desc_t *dst_md,
+        const memory_desc_t *diff_q_md, const memory_desc_t *diff_k_md,
+        const memory_desc_t *diff_v_md, const memory_desc_t *diff_dst_md,
+        const memory_desc_t *dS_md, const memory_desc_t *attn_mask_md,
+        const memory_desc_t *scale_md, bool invert_scale, dim_t kv_head_number,
+        attn_mask_type_t attn_mask_type, alg_kind_t softmax_alg,
+        const primitive_attr_t *attr, const primitive_desc_t *hint_fwd_pd,
+        const primitive_attr_t *kq_attr = nullptr,
+        const primitive_attr_t *vs_attr = nullptr) {
+    CHECK(sdpa_attr_check(q_md, k_md, v_md, engine, attr, kq_attr, vs_attr));
+    CHECK(sdpa_desc_check(q_md, k_md, v_md, dst_md, attn_mask_md, engine, attr,
+            kq_attr, vs_attr));
+
+    auto sdpa_desc = create_sdpa_desc(q_md, k_md, v_md, dst_md, diff_q_md,
+            diff_k_md, diff_v_md, diff_dst_md, dS_md, attn_mask_md, scale_md,
+            invert_scale, kv_head_number, attn_mask_type, softmax_alg, kq_attr,
+            vs_attr);
+
+    primitive_attr_t sdpa_attr = attr ? *attr : default_attr();
+
+    primitive_desc_iterator_t it(
+            engine, (op_desc_t *)&sdpa_desc, &sdpa_attr, hint_fwd_pd);
+
+    sdpa_pd_ = *(++it);
+    VCHECK_SDPA_COND(sdpa_pd_, "failed to create the backward SDPA primitive");
+
+    return status::success;
+}
+
 } // namespace impl
 } // namespace dnnl
 

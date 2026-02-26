@@ -115,11 +115,11 @@ struct ref_grouped_t : public primitive_t {
                 if (!attr_scales.get(DNNL_ARG_WEIGHTS).has_default_groups()) {
                     VDISPATCH_MATMUL(utils::one_of(wei_type, u8, s8, s4, u4),
                             VERBOSE_UNSUPPORTED_SCALES_CFG);
-                    const auto gK = attr_scales.get_group(DNNL_ARG_WEIGHTS, 0);
+                    const auto gK = attr_scales.get_group(DNNL_ARG_WEIGHTS, -2);
                     VDISPATCH_MATMUL(gK > 1, VERBOSE_UNSUPPORTED_SCALES_CFG);
                     VDISPATCH_MATMUL(
                             K() % gK == 0, VERBOSE_UNSUPPORTED_SCALES_CFG);
-                    const auto gN = attr_scales.get_group(DNNL_ARG_WEIGHTS, 1);
+                    const auto gN = attr_scales.get_group(DNNL_ARG_WEIGHTS, -1);
                     VDISPATCH_MATMUL(gN == 1, VERBOSE_UNSUPPORTED_SCALES_CFG);
                 }
             }
@@ -147,10 +147,10 @@ struct ref_grouped_t : public primitive_t {
                         zp_mask == colwise_mask || zp_mask == blocked_mask,
                         VERBOSE_UNSUPPORTED_ATTR);
                 if (!attr_zps.get(DNNL_ARG_WEIGHTS).has_default_groups()) {
-                    const auto gK = attr_zps.get_group(DNNL_ARG_WEIGHTS, 0);
+                    const auto gK = attr_zps.get_group(DNNL_ARG_WEIGHTS, -2);
                     VDISPATCH_MATMUL(gK > 1, VERBOSE_UNSUPPORTED_ATTR);
                     VDISPATCH_MATMUL(K() % gK == 0, VERBOSE_UNSUPPORTED_ATTR);
-                    const auto gN = attr_zps.get_group(DNNL_ARG_WEIGHTS, 1);
+                    const auto gN = attr_zps.get_group(DNNL_ARG_WEIGHTS, -1);
                     VDISPATCH_MATMUL(gN == 1, VERBOSE_UNSUPPORTED_ATTR);
                 }
             }
@@ -159,8 +159,8 @@ struct ref_grouped_t : public primitive_t {
             if (!attr_scales.has_default_values(DNNL_ARG_WEIGHTS)
                     && !attr_zps.has_default_values(DNNL_ARG_WEIGHTS)) {
                 const auto scale_gK
-                        = attr_scales.get_group(DNNL_ARG_WEIGHTS, 0);
-                const auto zp_gK = attr_zps.get_group(DNNL_ARG_WEIGHTS, 0);
+                        = attr_scales.get_group(DNNL_ARG_WEIGHTS, -2);
+                const auto zp_gK = attr_zps.get_group(DNNL_ARG_WEIGHTS, -2);
                 VDISPATCH_MATMUL(scale_gK == zp_gK, VERBOSE_INCONSISTENT_DIM,
                         "wei_scale_group_k", (int)scale_gK, "wei_zp_group_k",
                         (int)zp_gK);

@@ -42,8 +42,8 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
     // dst: [total_tokens, N] grouped
     const auto &src_grouped = src_d.sparse_desc().grouped_desc;
     const dim_t group_count = src_grouped.group_count;
-    const dim_t K = wei_d.dims()[1];
-    const dim_t N = wei_d.dims()[2];
+    const dim_t K = wei_d.dims()[wei_d.ndims() - 2];
+    const dim_t N = wei_d.dims()[wei_d.ndims() - 1];
     const dim_t total_M = src_d.dims()[0];
 
     const void *src_data = CTX_IN_MEM(const void *, DNNL_ARG_SRC, 0);
@@ -72,7 +72,7 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
     const bool with_wei_scales
             = !attr_scales.has_default_values(DNNL_ARG_WEIGHTS);
     const auto wei_scale_dt = attr_scales.get_data_type(DNNL_ARG_WEIGHTS);
-    const auto wei_scale_group_k = attr_scales.get_group(DNNL_ARG_WEIGHTS, 0);
+    const auto wei_scale_group_k = attr_scales.get_group(DNNL_ARG_WEIGHTS, -2);
     const auto wei_scale_ngroups_k
             = wei_scale_group_k > 1 ? K / wei_scale_group_k : 1;
     const void *wei_scales
@@ -129,8 +129,10 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
         const dim_t src_base_idx = src_offset_start * K;
         const dim_t dst_base_idx = dst_offset_start * N;
         const dim_t wei_group_base = group_id * K * N;
-        const dim_t wei_stride_k = wei_d.blocking_desc().strides[1];
-        const dim_t wei_stride_n = wei_d.blocking_desc().strides[2];
+        const dim_t wei_stride_k
+                = wei_d.blocking_desc().strides[wei_d.ndims() - 2];
+        const dim_t wei_stride_n
+                = wei_d.blocking_desc().strides[wei_d.ndims() - 1];
 
         for (dim_t m = 0; m < M; ++m) {
             for (dim_t n = 0; n < N; ++n) {

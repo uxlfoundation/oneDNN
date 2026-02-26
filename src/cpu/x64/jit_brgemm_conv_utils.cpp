@@ -2718,8 +2718,8 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 void set_amx_wsp_per_thread(jit_brgemm_conv_conf_t &jcp) {
     // ensure buffers for individual threads do not lie on same page and also
     // they are not contiguous.
-    jcp.amx_buf_size_per_thread
-            = utils::rnd_up(jcp.amx_buf_size_per_thread + 1, P4K);
+    jcp.amx_buf_size_per_thread = utils::rnd_up(
+            static_cast<size_t>(jcp.amx_buf_size_per_thread) + 1, P4K);
 }
 
 status_t init_scratchpad(memory_tracking::registrar_t &scratchpad,

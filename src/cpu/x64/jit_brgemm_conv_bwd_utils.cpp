@@ -2059,14 +2059,15 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     jcp.nb_id = div_up(jcp.id, jcp.id_block);
     jcp.nb_ih = div_up(jcp.ih, jcp.ih_block);
 
-    jcp.inp_buffer_size = rnd_up(jcp.odp * jcp.ohp * jcp.owp * jcp.ngroups
-                    * jcp.nb_oc * jcp.oc_block,
+    jcp.inp_buffer_size = rnd_up(static_cast<dim_t>(jcp.odp) * jcp.ohp * jcp.owp
+                    * jcp.ngroups * jcp.nb_oc * jcp.oc_block,
             P4K);
     jcp.inp_buffer_mask_size = rnd_up(static_cast<dim_t>(jcp.nb_id) * jcp.nb_ih
                     * jcp.nb_iw * jcp.ngroups * jcp.nb_oc,
             P4K);
-    jcp.out_buffer_size
-            = rnd_up(jcp.iw_block * jcp.stride_w * jcp.ic_without_padding, P4K);
+    jcp.out_buffer_size = rnd_up(static_cast<dim_t>(jcp.iw_block) * jcp.stride_w
+                    * jcp.ic_without_padding,
+            P4K);
 
     const bool scale_adjust_required
             = jcp.s8s8_compensation_required && !jcp.has_int8_vnni;

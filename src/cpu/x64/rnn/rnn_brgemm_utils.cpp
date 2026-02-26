@@ -1442,7 +1442,8 @@ status_t rnn_brgemm_t<prop_kind::backward>::init_kernels(
         trans_conf.ic_block = blk_size; // src's cols block size
         trans_conf.M = 0;
         const auto rnd_up_size = data_type_vnni_granularity(src_type);
-        const auto os_padded = utils::rnd_up(rnn.mb, rnd_up_size);
+        const auto os_padded
+                = utils::rnd_up(static_cast<size_t>(rnn.mb), rnd_up_size);
         trans_conf.os = os_padded;
         trans_conf.LDA = os_padded; // dst's leading dim
         trans_conf.K_tail = rnn.mb % blk_size; // src's rows tail

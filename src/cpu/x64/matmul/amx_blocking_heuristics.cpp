@@ -203,7 +203,8 @@ bool matmul_amx_blocking_params_macro_t::maybe_small_dims_heuristics(
         best_blocking.m_decomposition = bgmmc.M;
         uint32_t n_per_core = div_up(static_cast<uint32_t>(bgmmc.N),
                 static_cast<uint32_t>(bgmmc.nthr));
-        n_per_core = rnd_up(n_per_core, best_blocking.n_decomposition);
+        n_per_core = rnd_up(
+                static_cast<dim_t>(n_per_core), best_blocking.n_decomposition);
         best_blocking.set_core_divs(1, 1, 1,
                 static_cast<int>(
                         div_up(bgmmc.N, static_cast<dim_t>(n_per_core))));

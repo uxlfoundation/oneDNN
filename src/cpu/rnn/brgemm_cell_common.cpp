@@ -308,7 +308,8 @@ rnn_cell_execution_sig((ref_rnn_bwd_t<src_type, weights_type,
         const auto src_layer_ld_nb = rnn.layer_brgemm_desc(cell_position);
         const auto src_iter_ld_nb = rnn.iter_brgemm_desc(cell_position);
         const auto rnd_up_size = data_type_vnni_granularity(src_type);
-        const auto dst_ld = utils::rnd_up(rnn.mb, rnd_up_size);
+        const auto dst_ld
+                = utils::rnd_up(static_cast<size_t>(rnn.mb), rnd_up_size);
 
         const auto layer_transpose = src_layer_iter_transpose_t(src_layer_ld,
                 dst_ld, rnn.mb, rnn.slc,

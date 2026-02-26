@@ -4705,6 +4705,14 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
         } else if (op->get_kind() == op_kind::_softmax) {
             sdpa_op->set_attr(
                     op_attr::mode, op->get_attr<std::string>(op_attr::mode));
+            if (op->num_outputs() < 3) {
+                sdpa_op->set_attr<bool>(op_attr::is_training, false);
+            } else {
+                sdpa_op->set_attr<bool>(op_attr::is_training, true);
+                auto stats_output = op->get_output_value(2);
+                stats_output->set_producer(*sdpa_op);
+                sdpa_op->connect_output(2, stats_output);
+            }
         }
     }
 
@@ -4767,9 +4775,12 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
 
     auto final_output = vs->get_output_value(0);
     final_output->set_producer(*sdpa_op);
-    sdpa_op->add_output(final_output);
+    sdpa_op->connect_output(0, final_output);
 
-    insert_empty_scratchpad(sdpa_op);
+    logical_tensor_t lt = empty_logical_tensor_with_default_id();
+    auto scratchpad_val = std::make_shared<value_t>(*sdpa_op, 1, lt);
+    sdpa_op->connect_output(1, scratchpad_val);
+    scratchpad_val->set_data_type(graph::data_type::u8);
 
     for (auto &op : candidates) {
         rewriter.to_remove(op);

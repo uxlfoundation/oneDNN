@@ -267,7 +267,24 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
           && strategy.namedBarriers[LoopN] > 0;
     });
     entries.erase(last_entry, end(entries));
-    entries.push_back(nullptr); // Try heuristics if no kernel found
+    if(!reqs.empty())
+        entries.push_back(nullptr); // Try heuristics if no kernel found
+    if (getVerbose(gemmstone::GEMMVerbose::DebugInfo) >= 4) {
+        for(const kcatalog::Entry *e : entries) {
+            if(e) {
+                GEMMStrategy strategy(hw, stepping);
+                strategy.unroll[LoopM] = e->driverInfo.unroll[LoopM];
+                strategy.unroll[LoopN] = e->driverInfo.unroll[LoopN];
+                parseStrategy(e->strategy, hw, problem, strategy);
+                std::cout << "entry candidate: "
+                          << e->selector.hw << " "
+                          << strategyToString(hw, problem, strategy) << std::endl;
+            } else {
+                if(!reqs.empty())
+                    std::cout << "entry candidate: heuristics\n";
+            }
+        }
+    }
 
     for(const kcatalog::Entry *entry : entries) {
         GEMMStrategy strategy(hw, stepping);
@@ -300,7 +317,8 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
                 if (block2DB && strategy.legalBAlignment(problem, 16))
                     problem.B.setAlignment(std::max<int>(problem.B.alignment, 16));
             }
-        } else if (!getStrategyByHeuristics(hw, strategy, localA, localB, problem, hwInfo, sizes, reqs))
+        } else if (!reqs.empty() &&
+                   !getStrategyByHeuristics(hw, strategy, localA, localB, problem, hwInfo, sizes, reqs))
             continue; /* No heuristic strategy found */
 
         strategy.systolicAvailable &= hwInfo.systolicAvailable;

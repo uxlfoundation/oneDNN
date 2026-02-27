@@ -1511,10 +1511,26 @@ void CopyPlan::planInt4Upconversion(CopyInstruction &i)
                 i.src1 = 0xF;
             }
         } else {
-            // High nybbles
-            i.op = s4 ? Opcode::asr : Opcode::shr;
-            i.src0.type = s4 ? DataType::b : DataType::ub;
-            i.src1 = 4;
+            // High nybble
+            bool is_xe3p = one_of(hw, {ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11, ngen::HW::XE3P_UNKNOWN});
+            auto tmp = newTemp(i.dst.type, i.simd, i.dst.stride, 1, 0);
+            if(is_xe3p && (i.src0.offset * getBytes(i.src0.type) != i.dst.offset * getBytes(i.dst.type))){
+                auto ie = splitMultiple<2>(i);
+
+                // High nybble
+                ie[0]->op = s4 ? Opcode::asr : Opcode::shr;
+                ie[0]->src0.type = s4 ? DataType::b : DataType::ub;
+                ie[0]->src1 = 4;
+                ie[0]->dst = tmp;
+
+                ie[1]->op = Opcode::mov;
+                ie[1]->src0 = tmp;
+
+            } else {
+                i.op = s4 ? Opcode::asr : Opcode::shr;
+                i.src0.type = s4 ? DataType::b : DataType::ub;
+                i.src1 = 4;
+            }
         }
     }
 }

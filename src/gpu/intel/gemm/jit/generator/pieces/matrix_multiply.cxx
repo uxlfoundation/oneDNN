@@ -541,7 +541,7 @@ void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, boo
                     else
                         C = state.Bs_layout.find(0, x, state.Bs_regs, &nc, &C_block);
                     AS = NullRegister().setType(Type::ngen_e8m0());
-                    BS = bdpasScaleArg(state.Br_scaleLayout, state.Tb_scaleInt, state.Br_scaleRegs, false, h + hh, x);
+                    BS = bdpasScaleArg(state.Br_scaleLayout, state.Tb_scaleInt, state.Br_scaleRegs, false, x, h + hh);
                 }
 
                 int nv = globalCM ? na : nb;

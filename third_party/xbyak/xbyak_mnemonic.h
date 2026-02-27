@@ -896,7 +896,7 @@ void prefetcht1(const Address& addr) { opMR(addr, Reg32(2), T_0F, 0x18); }
 void prefetcht2(const Address& addr) { opMR(addr, Reg32(3), T_0F, 0x18); }
 void prefetchw(const Address& addr) { opMR(addr, Reg32(1), T_0F, 0x0D); }
 void prefetchwt1(const Address& addr) { opMR(addr, Reg32(2), T_0F, 0x0D); }
-void prefetchrst2(const Address& addr) { opMR(addr, Reg32(11), T_0F, 0x18); }
+void prefetchrst2(const Address& addr) { opMR(addr, Reg32(4), T_0F, 0x18); }
 void psadbw(const Mmx& mmx, const Operand& op) { opMMX(mmx, op, 0xF6); }
 void pshufb(const Mmx& mmx, const Operand& op) { opMMX(mmx, op, 0x00, T_0F38, T_66); }
 void pshufd(const Mmx& mmx, const Operand& op, uint8_t imm8) { opMMX(mmx, op, 0x70, T_0F, T_66, imm8); }

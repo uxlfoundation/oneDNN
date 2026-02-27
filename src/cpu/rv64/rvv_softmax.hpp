@@ -72,6 +72,7 @@ struct rvv_softmax_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_SOFTMAX(src_md()->data_type == dst_md()->data_type,
                     VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_SOFTMAX(mayiuse(v), VERBOSE_UNSUPPORTED_ISA);
             if (is_f16) {
                 VDISPATCH_SOFTMAX(mayiuse(zvfh), VERBOSE_UNSUPPORTED_ISA);
             }

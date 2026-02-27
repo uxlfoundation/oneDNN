@@ -207,7 +207,7 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
             gemm_ = selectGEMM(
                     opts, hw_info, sizes, problem, reqs, strat_override);
         } catch (const std::runtime_error &ex) {
-            VCHECK_MATMUL(false,
+            VDISPATCH_MATMUL_IC(false,
                     "gemm microkernel generation failure with message: %s",
                     ex.what());
         }
@@ -313,6 +313,9 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
     assert(engine->kind() == engine_kind::gpu);
     auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
     auto *dev_info = intel_engine->device_info();
+    // TODO: Limiting support for GPUS >= XeHPC temporarily
+    VDISPATCH_MATMUL(dev_info->gpu_arch() >= compute::gpu_arch_t::xe_hpc,
+            VERBOSE_UNSUPPORTED_ARCH, to_string(dev_info->gpu_arch()));
     VDISPATCH_MATMUL(compute::mayiuse_microkernels(intel_engine),
             VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "microkernels");
 

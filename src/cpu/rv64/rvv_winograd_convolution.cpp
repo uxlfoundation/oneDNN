@@ -25,7 +25,7 @@
 #include "common/nstl.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
-#include "cpu/rv64/gemm/rvv_gemm_f32.hpp"
+#include "cpu/platform.hpp"
 #include "cpu/rv64/rvv_winograd_convolution.hpp"
 
 namespace dnnl {
@@ -59,6 +59,9 @@ constexpr float A[4][2]
 // Filter transform matrix G (4x3)
 constexpr float G[4][3] = {{1.0f, 0.0f, 0.0f}, {0.5f, 0.5f, 0.5f},
         {0.5f, -0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}};
+
+// Maximum supported vector length in floats (for VLEN=1024: 1024/32=32)
+constexpr dim_t MAX_VL_FLOATS = 32;
 
 // Pre-compute filter transform: 3x3 -> 4x4
 // Transform = G * filter * G^T
@@ -278,7 +281,7 @@ status_t rvv_winograd_init_conf(rvv_winograd_conf_t &conf,
     conf.nthr = max_threads;
 
     // Compute Winograd domain specification for GEMM-based execution
-    constexpr dim_t CACHE_LINE_SIZE = 64;
+    constexpr dim_t CACHE_LINE_SIZE = platform::get_cache_line_size();
     constexpr dim_t CACHE_LINE_FLOATS = CACHE_LINE_SIZE / sizeof(float); // 16
 
     // Matrix dimensions: C[M][N] = A[M][K] * B[K][N]
@@ -493,7 +496,7 @@ status_t rvv_wino_convolution_fwd_t::execute_gemm_batched(
 
                         for (dim_t k = 0; k < K; k++) {
                             float a_scalar = A_row[k];
-                            float B_local[16];
+                            float B_local[MAX_VL_FLOATS];
                             for (dim_t i = 0; i < vl_max; i++) {
                                 B_local[i] = B[(n_vec_base + i) * ldb + k];
                             }

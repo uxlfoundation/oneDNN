@@ -2353,17 +2353,17 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         if (!copy_d_required(m_blk_idx, n_blk_idx)) return;
 
         const bool m_tail_overlapping = is_m_tail_overlap(m_blk_idx);
-        dim_t m_start = m_tail_overlapping ? get_M_idx(m_blk_idx + 1, true)
+        dim_t m_start = m_tail_overlapping ? get_M_idx(m_blk_idx, true)
                                            : get_M_idx(m_blk_idx);
         const int rows_to_copy = m_tail_overlapping
-                ? m_tail_processing_[get_M_tail_block_idx(m_blk_idx + 1)].shift
+                ? m_tail_processing_[get_M_tail_block_idx(m_blk_idx)].shift
                 : get_M_kernel_size(m_blk_idx);
 
         const bool n_tail_overlapping = is_n_tail_overlap(n_blk_idx);
-        dim_t n_start = n_tail_overlapping ? get_N_idx(n_blk_idx + 1, true)
+        dim_t n_start = n_tail_overlapping ? get_N_idx(n_blk_idx, true)
                                            : get_N_idx(n_blk_idx);
         const int row_elems = n_tail_overlapping
-                ? n_tail_processing_[get_N_tail_block_idx(n_blk_idx + 1)].shift
+                ? n_tail_processing_[get_N_tail_block_idx(n_blk_idx)].shift
                 : get_N_kernel_size(n_blk_idx);
         const dim_t bytes_to_copy = bgmmc_.c_dt_sz * row_elems;
         assert(!(n_tail_overlapping && m_tail_overlapping)
@@ -2385,17 +2385,17 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         if (!copy_d_required(m_blk_idx, n_blk_idx)) return;
 
         const bool m_tail_overlapping = is_m_tail_overlap(m_blk_idx);
-        dim_t m_start = m_tail_overlapping ? get_M_idx(m_blk_idx + 1, true)
+        dim_t m_start = m_tail_overlapping ? get_M_idx(m_blk_idx, true)
                                            : get_M_idx(m_blk_idx);
         const int rows_to_copy = m_tail_overlapping
-                ? m_tail_processing_[get_M_tail_block_idx(m_blk_idx + 1)].shift
+                ? m_tail_processing_[get_M_tail_block_idx(m_blk_idx)].shift
                 : get_M_kernel_size(m_blk_idx);
 
         const bool n_tail_overlapping = is_n_tail_overlap(n_blk_idx);
-        dim_t n_start = n_tail_overlapping ? get_N_idx(n_blk_idx + 1, true)
+        dim_t n_start = n_tail_overlapping ? get_N_idx(n_blk_idx, true)
                                            : get_N_idx(n_blk_idx);
         const int row_elems = n_tail_overlapping
-                ? n_tail_processing_[get_N_tail_block_idx(n_blk_idx + 1)].shift
+                ? n_tail_processing_[get_N_tail_block_idx(n_blk_idx)].shift
                 : get_N_kernel_size(n_blk_idx);
         const dim_t bytes_to_copy = bgmmc_.c_dt_sz * row_elems;
 
@@ -2556,9 +2556,7 @@ private:
 
     bool is_m_tail_overlap(int m_block_idx) const {
         return is_runtime_M_tail_chunk(m_block_idx)
-                && is_runtime_M_tail_chunk(m_block_idx + 1)
-                && m_tail_processing_[get_M_tail_block_idx(m_block_idx + 1)]
-                           .shift
+                && m_tail_processing_[get_M_tail_block_idx(m_block_idx)].shift
                 > 0;
     }
 
@@ -2577,9 +2575,7 @@ private:
 
     bool is_n_tail_overlap(int n_block_idx) const {
         return is_runtime_N_tail_chunk(n_block_idx)
-                && is_runtime_N_tail_chunk(n_block_idx + 1)
-                && n_tail_processing_[get_N_tail_block_idx(n_block_idx + 1)]
-                           .shift
+                && n_tail_processing_[get_N_tail_block_idx(n_block_idx)].shift
                 > 0;
     }
 

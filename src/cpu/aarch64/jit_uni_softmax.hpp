@@ -76,12 +76,14 @@ struct jit_uni_softmax_fwd_t : public primitive_t {
             const auto src_dt = src_md()->data_type;
             const auto dst_dt = dst_md()->data_type;
             bool ok = mayiuse(isa) && is_fwd() && !has_zero_dim_memory()
-                    && utils::one_of(src_dt, f32, bf16, s8, u8)
-                    && utils::one_of(dst_dt, f32, bf16, s8, u8)
+                    && utils::one_of(src_dt, f32, bf16, f16, s8, u8)
+                    && utils::one_of(dst_dt, f32, bf16, f16, s8, u8)
                     && IMPLICATION(
                             utils::one_of(bf16, src_dt, dst_dt), mayiuse_bf16())
                     && IMPLICATION(isa == asimd,
-                            src_dt == f32 && dst_dt == f32 && is_softmax())
+                            utils::one_of(src_dt, f32, f16)
+                                    && utils::one_of(dst_dt, f32, f16)
+                                    && is_softmax())
                     && attr()->has_default_values(skip_mask_t::scales)
                     && attr_scales_ok()
                     && set_default_formats() == status::success;
@@ -103,7 +105,7 @@ struct jit_uni_softmax_fwd_t : public primitive_t {
     private:
         void init_scratchpad() {
             if (utils::one_of(dst_md()->data_type, data_type::u8, data_type::s8,
-                        data_type::bf16)) {
+                        data_type::bf16, data_type::f16)) {
                 auto scratchpad = scratchpad_registry().registrar();
                 scratchpad.template book<char>(
                         memory_tracking::names::key_softmax_interim_store,

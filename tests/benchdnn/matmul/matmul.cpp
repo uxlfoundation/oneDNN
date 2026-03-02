@@ -140,6 +140,8 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_md(const prb_t *prb,
                 default: assert(!"unsupported encoding"); return nullptr;
             }
         } else {
+            // for grouped matmul, prb->ndims is not equal to the actual number
+            // of dims in weights_rt_dims, so use weights_rt_dims.size() instead
             return dnn_mem_t::init_md((int)weights_rt_dims.size(),
                     weights_rt_dims.data(), dt, prb->wtag,
                     prb->strides[STRIDES_WEI]);
@@ -1155,6 +1157,9 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
                 if (ndims == 3 && is_grouped) {
                     // For 3D grouped weights, use plain abc format (no transpose)
+                    //
+                    // TODO: Remove the special handling once transition to common
+                    // ref computational kernel is done.
                     ref_mem_map.emplace(exec_arg,
                             dnn_mem_t(ndims, dims, dnnl_f32, std::string("abc"),
                                     ref_engine,

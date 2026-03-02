@@ -83,27 +83,6 @@ primitive_cache_iface_t primitive_cache() {
     return global_primitive_cache();
 }
 
-// Undocumented API, for testing only
-status_t get_primitive_cache_size(int *size) {
-    if (size == nullptr) return dnnl::impl::status::invalid_arguments;
-    *size = 0;
-#ifndef DNNL_DISABLE_PRIMITIVE_CACHE
-    *size = global_primitive_cache().get_size();
-#endif
-    return dnnl::impl::status::success;
-}
-
-bool is_pd_in_cache(const primitive_desc_iface_t *pd_iface) {
-    const auto *pd = pd_iface->impl().get();
-    const auto *engine = pd_iface->engine();
-    primitive_hashing::key_t key(pd, engine);
-    return bool(global_primitive_cache().get_pd(key));
-}
-
-bool is_primitive_in_cache(const primitive_iface_t *p_iface) {
-    return is_pd_in_cache(p_iface->pd());
-}
-
 size_t set_primitive_cache_capacity_without_clearing(size_t capacity) {
     size_t old_capacity = global_primitive_cache().get_capacity();
     global_primitive_cache().set_capacity_without_clearing((int)capacity);
@@ -164,4 +143,37 @@ dnnl::impl::status_t dnnl_get_primitive_cache_capacity(int *capacity) {
 
 dnnl::impl::status_t dnnl_set_primitive_cache_capacity(int capacity) {
     return dnnl::impl::set_primitive_cache_capacity(capacity, capacity);
+}
+
+// Undocumented API, for testing only
+using namespace dnnl;
+using namespace dnnl::impl;
+
+extern "C" status_t DNNL_API get_primitive_cache_size(int *size) {
+    if (size == nullptr) return dnnl::impl::status::invalid_arguments;
+    *size = 0;
+#ifndef DNNL_DISABLE_PRIMITIVE_CACHE
+    *size = global_primitive_cache().get_size();
+#endif
+    return dnnl::impl::status::success;
+}
+
+extern "C" int DNNL_API is_pd_in_cache(const primitive_desc_iface_t *pd_iface) {
+    const auto *pd = pd_iface->impl().get();
+    const auto *engine = pd_iface->engine();
+    primitive_hashing::key_t key(pd, engine);
+    return bool(global_primitive_cache().get_pd(key));
+}
+
+extern "C" int DNNL_API is_primitive_in_cache(
+        const primitive_iface_t *p_iface) {
+    return is_pd_in_cache(p_iface->pd());
+}
+
+extern "C" size_t DNNL_API set_primitive_cache_capacity_without_clearing(
+        size_t capacity) {
+#ifndef DNNL_DISABLE_PRIMITIVE_CACHE
+    return dnnl::impl::set_primitive_cache_capacity_without_clearing(capacity);
+#endif
+    return size_t(0);
 }

@@ -1298,6 +1298,8 @@ inline Directive getDirective(const Instruction &insn)
 template <typename Instruction>
 inline bool canDefaultPipe(HW hw, const Instruction &insn)
 {
+    if (hw >= HW::XE3P_35_10 && insn.opcode() == Opcode::mov_gen12)
+        return false;
     if (hw >= HW::XeHP && insn.opcode() == Opcode::mov_gen12 && (insn.dstTypecode() ^ insn.src0Typecode()) & 0x8)
         return false;
     if (hw >= HW::XeHPC && insn.dstTypecode() == 0xB /* :df */)

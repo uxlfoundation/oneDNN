@@ -46,6 +46,7 @@ static inline bool canSwizzle(ngen::HW hw, ngen::DataType dt)
     using namespace ngen;
 
     if (hw < HW::XeHP) return true;
+    if (hw >= HW::XE3P_35_10) return false;
 
     switch (dt) {
         case DataType::b:

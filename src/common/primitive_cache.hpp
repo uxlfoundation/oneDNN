@@ -62,12 +62,6 @@ primitive_cache_iface_t primitive_cache();
 status_t set_primitive_cache_capacity(
         int primitive_capacity, int kernel_capacity);
 
-// Undocumented API for testing.
-status_t DNNL_API get_primitive_cache_size(int *size);
-bool DNNL_API is_primitive_in_cache(const primitive_iface_t *p_iface);
-bool DNNL_API is_pd_in_cache(const primitive_desc_iface_t *pd_iface);
-size_t DNNL_API set_primitive_cache_capacity_without_clearing(size_t capacity);
-
 } // namespace impl
 } // namespace dnnl
 #endif

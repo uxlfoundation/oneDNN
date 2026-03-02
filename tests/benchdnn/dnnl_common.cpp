@@ -40,9 +40,8 @@
 #include "oneapi/dnnl/dnnl_threadpool.h"
 #endif
 
-#ifndef DNNL_DISABLE_PRIMITIVE_CACHE
-#include "src/common/primitive_cache.hpp"
-#endif
+// Uses only publicly available types.
+#include "src/common/primitive_cache_test_api.hpp"
 
 #include "cpu/platform.hpp"
 
@@ -141,7 +140,7 @@ int check_pd_cache(const_dnnl_primitive_desc_t pd, res_t *res) {
         && DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL
     int capacity = 0;
     DNN_SAFE(dnnl_get_primitive_cache_capacity(&capacity), FAIL);
-    if (capacity && !dnnl::impl::is_pd_in_cache(pd)) {
+    if (capacity && !dnnl_test_is_pd_in_cache(pd)) {
         res->state = FAILED;
         BENCHDNN_PRINT(0, "%s\n",
                 "Error: primitive descriptor is expected to be fetched from "
@@ -158,7 +157,7 @@ int check_primitive_cache(dnnl_primitive_t p, res_t *res) {
         && DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL
     int capacity = 0;
     DNN_SAFE(dnnl_get_primitive_cache_capacity(&capacity), WARN);
-    if (capacity && !dnnl::impl::is_primitive_in_cache(p)) {
+    if (capacity && !dnnl_test_is_primitive_in_cache(p)) {
         res->state = FAILED;
         BENCHDNN_PRINT(0, "%s\n",
                 "Error: primitive is expected to be fetched from the primitive "
@@ -167,13 +166,6 @@ int check_primitive_cache(dnnl_primitive_t p, res_t *res) {
     }
 #endif
     return OK;
-}
-
-size_t set_primitive_cache_capacity_without_clearing(size_t capacity) {
-#ifndef DNNL_DISABLE_PRIMITIVE_CACHE
-    return dnnl::impl::set_primitive_cache_capacity_without_clearing(capacity);
-#endif
-    return size_t(0);
 }
 
 int get_cache_blob_id(
@@ -278,7 +270,8 @@ int test_persistent_cache_api(
 
     // 1. Disable primitive cache to make sure that the next primitive will
     // be created from the cache blob and not fetched from the primitive cache.
-    const auto old_capacity = set_primitive_cache_capacity_without_clearing(0);
+    const auto old_capacity
+            = dnnl_test_set_primitive_cache_capacity_without_clearing(0);
     // 2. Get cache blob ID to use it as a key for the `test_cache`.
     std::vector<uint8_t> cache_blob_id;
     auto st = get_cache_blob_id(cache_blob_id, pd);
@@ -307,7 +300,8 @@ int test_persistent_cache_api(
         // may contain no kernels therefore the cache blob will always be empty,
         // which is the correct behavior.
         if (cache_blob.empty()) {
-            set_primitive_cache_capacity_without_clearing(old_capacity);
+            dnnl_test_set_primitive_cache_capacity_without_clearing(
+                    old_capacity);
             if (query_prim_kind(pd) == dnnl_reorder
                     && (res->impl_name.find("cross_engine") != std::string::npos
                             || res->impl_name.find("direct_copy")
@@ -333,7 +327,7 @@ int test_persistent_cache_api(
     prim.reset(p);
 
     // 4. Restore the original primitive cache capacity to make it functional.
-    set_primitive_cache_capacity_without_clearing(old_capacity);
+    dnnl_test_set_primitive_cache_capacity_without_clearing(old_capacity);
 
     return OK;
 }

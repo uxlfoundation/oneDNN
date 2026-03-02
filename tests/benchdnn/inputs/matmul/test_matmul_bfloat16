@@ -88,3 +88,13 @@
 
 # regression
 --batch=harness_matmul_regression_bf16
+
+# runtime M or N (special values for runtime dimensions)
+--reset
+--dt=bf16
+--stag=ab,ba --wtag=ab,ba --dtag=ab
+--runtime_dims_masks=1:0,0:2,1:2
+--attr-post-ops=sum
+132x32:32x130_n"rt_sum_tailed_m_and_n_chunks:0"
+68x32:32x260_n"rt_sum_tailed_m_and_n_chunks:1"
+1x64:64x196_n"rt_sum_tailed_m_and_n_chunks:2"

@@ -283,6 +283,7 @@ struct EmulationImplementation {
                 && dst.getType() == DataType::f) {
             RegData hfTmp = src0;
             hfTmp.setType(DataType::uw);
+            hfTmp.setRegion(hfTmp.getVS(), hfTmp.getWidth(), dst.getHS() * 2);
             g.shl(mod, hfTmp, src0.setType(DataType::ub), 8, loc);
             g.mov(mod, dst, hfTmp.setType(DataType::hf), loc);
         } else

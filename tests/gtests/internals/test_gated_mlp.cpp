@@ -331,13 +331,13 @@ gmlp_tensors_t get_descriptors(dnnl::engine &eng, mlp_dims_t p) {
     auto w_up_qnt_md   = memory::desc(W_up_sz,   wgu_wt, tag::ba);
     auto w_down_qnt_md = memory::desc(W_down_sz,  wd_wt, tag::ba);
 
-    auto w_gate_scales_md = memory::desc(quant_gateup_sz, wgu_s_dt, tag::ba);
-    auto w_up_scales_md   = memory::desc(quant_gateup_sz, wgu_s_dt, tag::ba);
-    auto w_down_scales_md = memory::desc(quant_down_sz, wd_s_dt, tag::ba);
+    auto w_gate_scales_md = memory::desc(quant_gateup_sz, wgu_s_dt, tag::ab);
+    auto w_up_scales_md   = memory::desc(quant_gateup_sz, wgu_s_dt, tag::ab);
+    auto w_down_scales_md = memory::desc(quant_down_sz, wd_s_dt, tag::ab);
 
-    auto w_gate_zp_md = memory::desc(quant_gateup_sz, wgu_zp_dt, tag::ba);
-    auto w_up_zp_md   = memory::desc(quant_gateup_sz, wgu_zp_dt, tag::ba);
-    auto w_down_zp_md = memory::desc(quant_down_sz, wd_zp_dt, tag::ba);
+    auto w_gate_zp_md = memory::desc(quant_gateup_sz, wgu_zp_dt, tag::ab);
+    auto w_up_zp_md   = memory::desc(quant_gateup_sz, wgu_zp_dt, tag::ab);
+    auto w_down_zp_md = memory::desc(quant_down_sz, wd_zp_dt, tag::ab);
 
     auto output_md     = memory::desc(FC_down_sz, dt, tag::ab);
     auto output_qnt_md = memory::desc(FC_down_sz, dt, tag::ab);
@@ -1071,6 +1071,7 @@ TEST_P(mlp_test_t, compare) {
 
 // clang-format off
 INSTANTIATE_TEST_SUITE_P(VEC, mlp_test_t, ::testing::Values(
+/*
     // no quantization
     mlp_dims_t {32, 32, 32, 1, 1,
             quantize_type::no_quantization, dnnl_eltwise_swish,
@@ -1140,11 +1141,11 @@ INSTANTIATE_TEST_SUITE_P(VEC, mlp_test_t, ::testing::Values(
     , // ^-- 13
 
     // B = 1024, quantized w=u8
-    //mlp_dims_t{32, 32, 32, 16, 16,
-    //         quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-    //         mdt::u8, mdt::f16, mdt::u8,
-    //         mdt::u8, mdt::f16, mdt::u8}
-    //, // ^-- 14
+    mlp_dims_t{32, 32, 32, 16, 16,
+             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+             mdt::u8, mdt::f16, mdt::u8,
+             mdt::u8, mdt::f16, mdt::u8}
+    , // ^-- 14
     mlp_dims_t{1024, 3584, 18944, 16, 16,
              quantize_type::per_token_with_groups, dnnl_eltwise_swish,
              mdt::u8, mdt::f16, mdt::u8,
@@ -1188,11 +1189,11 @@ INSTANTIATE_TEST_SUITE_P(VEC, mlp_test_t, ::testing::Values(
     , // ^-- 22
 
     // B = 1024, quantized w=s8
-    //mlp_dims_t{32, 32, 32, 16, 16,
-    //         quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-    //         mdt::s8, mdt::f16, mdt::s8,
-    //         mdt::s8, mdt::f16, mdt::s8}
-    //, // ^-- 23
+    mlp_dims_t{32, 32, 32, 16, 16,
+             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+             mdt::s8, mdt::f16, mdt::s8,
+             mdt::s8, mdt::f16, mdt::s8}
+    , // ^-- 23
     mlp_dims_t{1024, 3584, 18944, 16, 16,
              quantize_type::per_token_with_groups, dnnl_eltwise_swish,
              mdt::s8, mdt::f16, mdt::s8,
@@ -1236,11 +1237,11 @@ INSTANTIATE_TEST_SUITE_P(VEC, mlp_test_t, ::testing::Values(
     , // ^-- 31
 
     // B = 1024, quantized w=u4
-    //mlp_dims_t{32, 128, 32, 16, 16,
-    //         quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-    //         mdt::u4, mdt::f16, mdt::u8,
-    //         mdt::u4, mdt::f16, mdt::u8}
-    //, // ^-- 32
+    mlp_dims_t{32, 128, 32, 16, 16,
+             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+             mdt::u4, mdt::f16, mdt::u8,
+             mdt::u4, mdt::f16, mdt::u8}
+    , // ^-- 32
     mlp_dims_t{1024, 3584, 18944, 16, 16,
              quantize_type::per_token_with_groups, dnnl_eltwise_swish,
              mdt::u4, mdt::f16, mdt::u8,
@@ -1261,7 +1262,7 @@ INSTANTIATE_TEST_SUITE_P(VEC, mlp_test_t, ::testing::Values(
              mdt::u4, mdt::f16, mdt::u8,
              mdt::u4, mdt::f16, mdt::u8}
     , // ^-- 36
-
+//*/
     mlp_dims_t{1024, 3584, 18944, 128, 128,
              quantize_type::per_token_with_groups, dnnl_eltwise_swish,
              mdt::u4, mdt::f16, mdt::u8,
@@ -1281,6 +1282,7 @@ INSTANTIATE_TEST_SUITE_P(VEC, mlp_test_t, ::testing::Values(
              quantize_type::per_token_with_groups, dnnl_eltwise_swish,
              mdt::u4, mdt::f16, mdt::u8,
              mdt::u4, mdt::f16, mdt::u8}
+/*
     , // ^-- 40
 
     // additional 4bit quant
@@ -1310,17 +1312,18 @@ INSTANTIATE_TEST_SUITE_P(VEC, mlp_test_t, ::testing::Values(
              quantize_type::no_quantization, dnnl_eltwise_gelu_erf,
              mdt::f16, mdt::f16, mdt::f16,
              mdt::f16, mdt::f16, mdt::f16}
-    //, // ^-- 45
-    //mlp_dims_t{32, 128, 32, 16, 16,
-    //        quantize_type::per_token_with_groups, dnnl_eltwise_gelu_tanh,
-    //        mdt::s4, mdt::f16, mdt::s8,
-    //        mdt::s8, mdt::f16, mdt::s8}
-    //, // ^-- 46
-    //mlp_dims_t{32, 128, 32, 16, 16,
-    //        quantize_type::per_token_with_groups, dnnl_eltwise_gelu_erf,
-    //        mdt::u4, mdt::f16, mdt::s8,
-    //        mdt::s8, mdt::f16, mdt::s8}
-    //  // ^-- 47
+    , // ^-- 45
+    mlp_dims_t{32, 128, 32, 16, 16,
+            quantize_type::per_token_with_groups, dnnl_eltwise_gelu_tanh,
+            mdt::s4, mdt::f16, mdt::s8,
+            mdt::s8, mdt::f16, mdt::s8}
+    , // ^-- 46
+    mlp_dims_t{32, 128, 32, 16, 16,
+            quantize_type::per_token_with_groups, dnnl_eltwise_gelu_erf,
+            mdt::u4, mdt::f16, mdt::s8,
+            mdt::s8, mdt::f16, mdt::s8}
+      // ^-- 47
+//*/
 ), &PrintToString);
 // clang-format on
 

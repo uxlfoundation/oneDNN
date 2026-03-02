@@ -240,8 +240,8 @@ POST_OP_DATA_T gelu_erf_bwd(POST_OP_DATA_T dd, POST_OP_DATA_T s) {
                     + v * two_over_sqrt_pi * exp(-v * v));
 }
 
-float round_fwd(POST_OP_DATA_T s) {
-    return (float)rint((float)s);
+POST_OP_DATA_T round_fwd(POST_OP_DATA_T s) {
+    return rint(s);
 }
 
 POST_OP_DATA_T hardsigmoid_fwd(POST_OP_DATA_T s, float alpha, float beta) {
@@ -266,8 +266,8 @@ POST_OP_DATA_T hardswish_bwd(
     return (v <= 0.f ? 0.f : v >= 1.f ? dd : dd * w);
 }
 
-float fwd_eltwise_common(int eltwise_alg, POST_OP_DATA_T x, float alpha_,
-        float beta_, float scale_) {
+POST_OP_DATA_T fwd_eltwise_common(int eltwise_alg, POST_OP_DATA_T x,
+        float alpha_, float beta_, float scale_) {
     switch (eltwise_alg) {
         case eltwise_relu: return scale_ * relu_fwd(x, alpha_); break;
         case eltwise_linear:
@@ -311,7 +311,8 @@ float fwd_eltwise_common(int eltwise_alg, POST_OP_DATA_T x, float alpha_,
     }
 }
 
-float fwd_eltwise(POST_OP_DATA_T x, float alpha_, float beta_, float scale_) {
+POST_OP_DATA_T fwd_eltwise(
+        POST_OP_DATA_T x, float alpha_, float beta_, float scale_) {
 #ifdef ELTWISE_ALG
     return fwd_eltwise_common(ELTWISE_ALG, x, alpha_, beta_, scale_);
 #else
@@ -319,7 +320,7 @@ float fwd_eltwise(POST_OP_DATA_T x, float alpha_, float beta_, float scale_) {
 #endif
 }
 
-float bwd_eltwise(
+POST_OP_DATA_T bwd_eltwise(
         POST_OP_DATA_T x, POST_OP_DATA_T y, float alpha_, float beta_) {
 #ifdef ELTWISE_ALG
     switch (ELTWISE_ALG) {

@@ -18,8 +18,11 @@ set(TEST_SOURCES
     test_regression_binary_stride.cpp
 )
 
-if(UNIX AND NOT DNNL_GPU_RUNTIME STREQUAL "NONE" AND DNNL_GPU_VENDOR STREQUAL "INTEL")
-    set(TEST_SOURCES "${TEST_SOURCES};test_regression_pvc_war_wa.cpp")
+if(NOT DNNL_GPU_RUNTIME STREQUAL "NONE" AND DNNL_GPU_VENDOR STREQUAL "INTEL")
+    if(UNIX)
+        set(TEST_SOURCES "${TEST_SOURCES};test_regression_pvc_war_wa.cpp")
+    endif()
+    set(TEST_SOURCES "${TEST_SOURCES};test_regression_matmul_f64_post_ops.cpp")
 endif()
 
 foreach(TEST_FILE ${TEST_SOURCES})

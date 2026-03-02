@@ -158,21 +158,19 @@ void compute_filter_transform_3x3_to_4x4_gemm_layout(const float *filter,
 // RVV-optimized Winograd input transform: d = B^T * input_tile * B (4x4 -> 4x4)
 inline void winograd_input_transform_4x4(
         const float *input_tile, float *output_tile) {
-    const dim_t vl_max = static_cast<dim_t>(__riscv_vsetvlmax_e32m1());
+    constexpr dim_t vl = 4; // Fixed size for 4x4 matrix operations
     float temp[16];
 
     // Step 1: input_tile * B
     for (int i = 0; i < 4; i++) {
-        vfloat32m1_t v_in_row
-                = __riscv_vle32_v_f32m1(input_tile + i * 4, vl_max);
+        vfloat32m1_t v_in_row = __riscv_vle32_v_f32m1(input_tile + i * 4, vl);
         for (int j = 0; j < 4; j++) {
             float B_col[4] = {B[0][j], B[1][j], B[2][j], B[3][j]};
-            vfloat32m1_t v_b_col = __riscv_vle32_v_f32m1(B_col, vl_max);
-            vfloat32m1_t v_prod
-                    = __riscv_vfmul_vv_f32m1(v_in_row, v_b_col, vl_max);
-            vfloat32m1_t v_zero = __riscv_vfmv_v_f_f32m1(0.0f, vl_max);
+            vfloat32m1_t v_b_col = __riscv_vle32_v_f32m1(B_col, vl);
+            vfloat32m1_t v_prod = __riscv_vfmul_vv_f32m1(v_in_row, v_b_col, vl);
+            vfloat32m1_t v_zero = __riscv_vfmv_v_f_f32m1(0.0f, vl);
             vfloat32m1_t v_sum
-                    = __riscv_vfredusum_vs_f32m1_f32m1(v_prod, v_zero, vl_max);
+                    = __riscv_vfredusum_vs_f32m1_f32m1(v_prod, v_zero, vl);
             temp[i * 4 + j] = __riscv_vfmv_f_s_f32m1_f32(v_sum);
         }
     }
@@ -180,16 +178,16 @@ inline void winograd_input_transform_4x4(
     // Step 2: B^T * temp
     for (int i = 0; i < 4; i++) {
         float BT_row[4] = {BT[i][0], BT[i][1], BT[i][2], BT[i][3]};
-        vfloat32m1_t v_bt_row = __riscv_vle32_v_f32m1(BT_row, vl_max);
+        vfloat32m1_t v_bt_row = __riscv_vle32_v_f32m1(BT_row, vl);
         for (int j = 0; j < 4; j++) {
             float temp_col[4] = {temp[0 * 4 + j], temp[1 * 4 + j],
                     temp[2 * 4 + j], temp[3 * 4 + j]};
-            vfloat32m1_t v_temp_col = __riscv_vle32_v_f32m1(temp_col, vl_max);
+            vfloat32m1_t v_temp_col = __riscv_vle32_v_f32m1(temp_col, vl);
             vfloat32m1_t v_prod
-                    = __riscv_vfmul_vv_f32m1(v_bt_row, v_temp_col, vl_max);
-            vfloat32m1_t v_zero = __riscv_vfmv_v_f_f32m1(0.0f, vl_max);
+                    = __riscv_vfmul_vv_f32m1(v_bt_row, v_temp_col, vl);
+            vfloat32m1_t v_zero = __riscv_vfmv_v_f_f32m1(0.0f, vl);
             vfloat32m1_t v_sum
-                    = __riscv_vfredusum_vs_f32m1_f32m1(v_prod, v_zero, vl_max);
+                    = __riscv_vfredusum_vs_f32m1_f32m1(v_prod, v_zero, vl);
             output_tile[i * 4 + j] = __riscv_vfmv_f_s_f32m1_f32(v_sum);
         }
     }
@@ -198,21 +196,21 @@ inline void winograd_input_transform_4x4(
 // RVV-optimized Winograd output transform: m = A^T * winograd_domain * A (4x4 -> 2x2)
 inline void winograd_output_transform_2x2(
         const float *winograd_domain, float *output_tile) {
-    const dim_t vl_max = static_cast<dim_t>(__riscv_vsetvlmax_e32m1());
+    constexpr dim_t vl = 4; // Fixed size for 4-element matrix operations
     float temp[8];
 
     // Step 1: winograd_domain * A
     for (int i = 0; i < 4; i++) {
         vfloat32m1_t v_wino_row
-                = __riscv_vle32_v_f32m1(winograd_domain + i * 4, vl_max);
+                = __riscv_vle32_v_f32m1(winograd_domain + i * 4, vl);
         for (int j = 0; j < 2; j++) {
             float A_col[4] = {A[0][j], A[1][j], A[2][j], A[3][j]};
-            vfloat32m1_t v_a_col = __riscv_vle32_v_f32m1(A_col, vl_max);
+            vfloat32m1_t v_a_col = __riscv_vle32_v_f32m1(A_col, vl);
             vfloat32m1_t v_prod
-                    = __riscv_vfmul_vv_f32m1(v_wino_row, v_a_col, vl_max);
-            vfloat32m1_t v_zero = __riscv_vfmv_v_f_f32m1(0.0f, vl_max);
+                    = __riscv_vfmul_vv_f32m1(v_wino_row, v_a_col, vl);
+            vfloat32m1_t v_zero = __riscv_vfmv_v_f_f32m1(0.0f, vl);
             vfloat32m1_t v_sum
-                    = __riscv_vfredusum_vs_f32m1_f32m1(v_prod, v_zero, vl_max);
+                    = __riscv_vfredusum_vs_f32m1_f32m1(v_prod, v_zero, vl);
             temp[i * 2 + j] = __riscv_vfmv_f_s_f32m1_f32(v_sum);
         }
     }
@@ -220,16 +218,16 @@ inline void winograd_output_transform_2x2(
     // Step 2: A^T * temp
     for (int i = 0; i < 2; i++) {
         float AT_row[4] = {AT[i][0], AT[i][1], AT[i][2], AT[i][3]};
-        vfloat32m1_t v_at_row = __riscv_vle32_v_f32m1(AT_row, vl_max);
+        vfloat32m1_t v_at_row = __riscv_vle32_v_f32m1(AT_row, vl);
         for (int j = 0; j < 2; j++) {
             float temp_col[4] = {temp[0 * 2 + j], temp[1 * 2 + j],
                     temp[2 * 2 + j], temp[3 * 2 + j]};
-            vfloat32m1_t v_temp_col = __riscv_vle32_v_f32m1(temp_col, vl_max);
+            vfloat32m1_t v_temp_col = __riscv_vle32_v_f32m1(temp_col, vl);
             vfloat32m1_t v_prod
-                    = __riscv_vfmul_vv_f32m1(v_at_row, v_temp_col, vl_max);
-            vfloat32m1_t v_zero = __riscv_vfmv_v_f_f32m1(0.0f, vl_max);
+                    = __riscv_vfmul_vv_f32m1(v_at_row, v_temp_col, vl);
+            vfloat32m1_t v_zero = __riscv_vfmv_v_f_f32m1(0.0f, vl);
             vfloat32m1_t v_sum
-                    = __riscv_vfredusum_vs_f32m1_f32m1(v_prod, v_zero, vl_max);
+                    = __riscv_vfredusum_vs_f32m1_f32m1(v_prod, v_zero, vl);
             output_tile[i * 2 + j] = __riscv_vfmv_f_s_f32m1_f32(v_sum);
         }
     }
@@ -432,6 +430,8 @@ status_t rvv_wino_convolution_fwd_t::execute_input_transform(
                             + mb_idx * conf.wspec.input_ld_batch
                             + tile_idx * conf.wspec.input_ld_row + ic_idx;
 
+                    // Scatter: source is contiguous but dest is strided
+                    // Use scalar loop since scatter cannot be vectorized
                     for (dim_t i = 0; i < vl; i++) {
                         dst_base[i * conf.wspec.input_ld_matrix]
                                 = transformed[elem + i];
@@ -517,7 +517,7 @@ status_t rvv_wino_convolution_fwd_t::execute_gemm_batched(
 
                         for (dim_t k = 0; k < K; k++) {
                             float a_scalar = A_row[k];
-                            float B_local[16];
+                            float B_local[MAX_VL_FLOATS];
                             for (dim_t i = 0; i < n_remain; i++) {
                                 B_local[i] = B[(n_vec_base + i) * ldb + k];
                             }
@@ -579,9 +579,23 @@ status_t rvv_wino_convolution_fwd_t::execute_output_transform(
                             + mb_idx * conf.wspec.output_ld_batch
                             + tile_idx * conf.wspec.output_ld_row + oc_idx;
 
-                    for (dim_t i = 0; i < vl; i++) {
-                        winograd_domain_tile[elem + i]
-                                = src_base[i * conf.wspec.output_ld_matrix];
+                    if (vl == vl_max) {
+                        // Vectorized gather: load to temp buffer, then vector store
+                        float gather_buf[MAX_VL_FLOATS];
+                        for (dim_t i = 0; i < vl; i++) {
+                            gather_buf[i]
+                                    = src_base[i * conf.wspec.output_ld_matrix];
+                        }
+                        vfloat32m1_t v_data
+                                = __riscv_vle32_v_f32m1(gather_buf, vl);
+                        __riscv_vse32_v_f32m1(
+                                winograd_domain_tile + elem, v_data, vl);
+                    } else {
+                        // Scalar fallback for remaining elements
+                        for (dim_t i = 0; i < vl; i++) {
+                            winograd_domain_tile[elem + i]
+                                    = src_base[i * conf.wspec.output_ld_matrix];
+                        }
                     }
                 }
 

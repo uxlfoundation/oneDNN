@@ -53,6 +53,7 @@ static inline status_t sdpa_desc_check(const memory_desc_t *q_desc,
         const memory_desc_t *dst_desc, const memory_desc_t *attn_mask_md,
         const engine_t *engine, const primitive_attr_t *attr,
         const primitive_attr_t *kq_attr, const primitive_attr_t *vs_attr) {
+    printf("SDPA desc check\n");
     int ndims = dst_desc->ndims;
     int r = ndims - 2, c = ndims - 1;
     VCHECK_SDPA_COND(utils::everyone_is(ndims, q_desc->ndims, k_desc->ndims,
@@ -138,13 +139,16 @@ static inline status_t sdpa_desc_check(const memory_desc_t *q_desc,
 
 static inline status_t sdpa_attr_check(const memory_desc_t *q_desc,
         const memory_desc_t *k_desc, const memory_desc_t *v_desc,
-        const engine_t *engine, const primitive_attr_t *attr,
-        const primitive_attr_t *kq_attr, const primitive_attr_t *vs_attr) {
+        const memory_desc_t *dst_desc, const engine_t *engine,
+        const primitive_attr_t *attr, const primitive_attr_t *kq_attr,
+        const primitive_attr_t *vs_attr) {
+    printf("sdpa_attr_check ... inline again?\n");
     using smask_t = primitive_attr_t::skip_mask_t;
 
     if (utils::everyone_is(nullptr, attr, kq_attr, vs_attr))
         return status::success;
-    if (attr && attr->has_default_values() && kq_attr
+    if (attr && attr->has_default_values()
+            && attr->dropout_.has_default_values() && kq_attr
             && kq_attr->has_default_values() && vs_attr
             && vs_attr->has_default_values()) {
         return status::success;
@@ -195,9 +199,24 @@ static inline status_t sdpa_attr_check(const memory_desc_t *q_desc,
     }
 
     if (attr) {
-        smask_t attr_mask = smask_t::none;
+        smask_t attr_mask = smask_t::dropout;
         VCHECK_SDPA_UNIMPL(
                 attr->has_default_values(attr_mask), VERBOSE_UNSUPPORTED_ATTR);
+        // dropout_ok check
+        if (!attr->dropout_.has_default_values()) {
+            assert(memory_desc_wrapper(dst_desc).format_kind()
+                    == format_kind::blocked);
+
+            using namespace format_tag;
+            // Note: for `offset = 0` keep the legacy logic without the `offset`.
+            VCHECK_SDPA_UNIMPL(memory_desc_matches_one_of_tag(
+                                       *dst_desc, ncdhw, nchw, ncw, nc)
+                            && IMPLICATION(attr->dropout_.has_output_mask(),
+                                    memory_desc_wrapper(dst_desc).similar_to(
+                                            attr->dropout_.dropout_desc_, true,
+                                            false)),
+                    VERBOSE_UNSUPPORTED_DROPOUT);
+        }
     }
 
     return status::success;
@@ -211,9 +230,28 @@ static inline status_t sdpa_attr_check(
     if (attr && attr->has_default_values()) { return status::success; }
 
     if (attr) {
-        smask_t attr_mask = smask_t::none;
+        printf("inline sdpa_attr_check... small?\n");
+        smask_t attr_mask = smask_t::dropout;
         VCHECK_SDPA_UNIMPL(
                 attr->has_default_values(attr_mask), VERBOSE_UNSUPPORTED_ATTR);
+
+        if (!attr->dropout_.has_default_values()) {
+            if (attr->dropout_.has_output_mask()) {
+                const memory_desc_wrapper mask_mdw(
+                        &attr->dropout_.dropout_desc_);
+                const bool mask_blocked
+                        = (mask_mdw.format_kind() == format_kind::blocked);
+                assert(mask_blocked
+                        && "sdpa dropout check: mask format kind must be blocked");
+                VCHECK_SDPA_UNIMPL(mask_blocked, VERBOSE_UNSUPPORTED_DROPOUT);
+
+                const bool mask_u8 = (attr->dropout_.dropout_desc_.data_type
+                        == data_type::u8);
+                assert(mask_u8
+                        && "sdpa dropout check: mask data_type must be u8");
+                VCHECK_SDPA_UNIMPL(mask_u8, VERBOSE_UNSUPPORTED_DROPOUT);
+            }
+        }
     }
     return status::success;
 }
@@ -224,6 +262,7 @@ static inline sdpa_desc_t create_sdpa_desc(const memory_desc_t *q_md,
         attn_mask_type_t attn_mask_type, alg_kind_t softmax_alg,
         prop_kind_t prop, const primitive_attr_t *kq_attr,
         const primitive_attr_t *vs_attr) {
+    printf("create_sdpa_desc fwd\n");
     auto sdpa_desc = sdpa_desc_t();
     sdpa_desc.primitive_kind = primitive_kind::sdpa;
     sdpa_desc.q_desc = *q_md;
@@ -296,10 +335,11 @@ static inline status_t create_sdpa_pd(
         const memory_desc_t *attn_mask_md, const memory_desc_t *scale_md,
         bool invert_scale, dim_t kv_head_number,
         attn_mask_type_t attn_mask_type, alg_kind_t softmax_alg,
-        prop_kind_t prop, const primitive_attr_t *attr,
-        const primitive_attr_t *kq_attr = nullptr,
-        const primitive_attr_t *vs_attr = nullptr) {
-    CHECK(sdpa_attr_check(q_md, k_md, v_md, engine, attr, kq_attr, vs_attr));
+        const primitive_attr_t *attr, const primitive_attr_t *kq_attr = nullptr,
+        const primitive_attr_t *vs_attr = nullptr,
+        prop_kind_t prop = prop_kind::forward_inference) {
+    CHECK(sdpa_attr_check(
+            q_md, k_md, v_md, dst_md, engine, attr, kq_attr, vs_attr));
     CHECK(sdpa_desc_check(q_md, k_md, v_md, dst_md, attn_mask_md, engine, attr,
             kq_attr, vs_attr));
 
@@ -308,6 +348,10 @@ static inline status_t create_sdpa_pd(
             prop, kq_attr, vs_attr);
 
     primitive_attr_t sdpa_attr = attr ? *attr : default_attr();
+    if (attr && !attr->dropout_.has_default_values()) {
+        // Keep dropout explicitly propagated on the SDPA attr path.
+        sdpa_attr.dropout_ = attr->dropout_;
+    }
 
     primitive_desc_iterator_t it(
             engine, (op_desc_t *)&sdpa_desc, &sdpa_attr, nullptr);
@@ -330,7 +374,8 @@ static inline status_t create_sdpa_pd(
         const primitive_attr_t *attr, const primitive_desc_t *hint_fwd_pd,
         const primitive_attr_t *kq_attr = nullptr,
         const primitive_attr_t *vs_attr = nullptr) {
-    CHECK(sdpa_attr_check(q_md, k_md, v_md, engine, attr, kq_attr, vs_attr));
+    CHECK(sdpa_attr_check(
+            q_md, k_md, v_md, dst_md, engine, attr, kq_attr, vs_attr));
     CHECK(sdpa_desc_check(q_md, k_md, v_md, dst_md, attn_mask_md, engine, attr,
             kq_attr, vs_attr));
 

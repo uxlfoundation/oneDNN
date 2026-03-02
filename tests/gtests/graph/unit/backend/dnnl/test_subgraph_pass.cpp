@@ -1204,8 +1204,6 @@ TEST(test_subgraph_pass, MemoryPlanning) {
     graph::op_t op5(5, op_kind::_permute, "op5");
     graph::op_t op6(6, op_kind::_mul_scales, "op6");
     graph::op_t op7(7, op_kind::_mul_scales, "op7");
-    graph::op_t op8(8, op_kind::_reorder, "op8");
-    graph::op_t op9(9, op_kind::_reorder, "op9");
 
     op1.set_attr<std::vector<float>>(op_attr::scales, {0.5});
     op2.set_attr<std::vector<float>>(op_attr::scales, {0.5});
@@ -1229,10 +1227,6 @@ TEST(test_subgraph_pass, MemoryPlanning) {
             = logical_tensor_init(6, shape_NCX, graph::data_type::f32);
     logical_tensor_t val7
             = logical_tensor_init(7, shape_NCX, graph::data_type::f32);
-    logical_tensor_t val8
-            = logical_tensor_init(8, shape_NCX, graph::data_type::f32);
-    logical_tensor_t val9
-            = logical_tensor_init(9, shape_NCX, graph::data_type::f32);
 
     op1.add_input(val0);
     op1.add_output(val1);
@@ -1248,10 +1242,6 @@ TEST(test_subgraph_pass, MemoryPlanning) {
     op6.add_output(val6);
     op7.add_input(val6);
     op7.add_output(val7);
-    op8.add_input(val1);
-    op8.add_output(val8);
-    op9.add_input(val8);
-    op9.add_output(val9);
 
     graph::graph_t g;
     g.add_op(&op1);
@@ -1261,16 +1251,14 @@ TEST(test_subgraph_pass, MemoryPlanning) {
     g.add_op(&op5);
     g.add_op(&op6);
     g.add_op(&op7);
-    g.add_op(&op8);
-    g.add_op(&op9);
     g.finalize();
     const graph::fpmath_t fpm {fpmath_mode::strict, false};
     auto subgraph = std::make_shared<dnnl_impl::subgraph_t>(
             g.get_ops(), p_eng, fpm, false, /* reset_layout */ false);
-    ASSERT_EQ(subgraph->get_ops().size(), 9U);
+    ASSERT_EQ(subgraph->get_ops().size(), 7U);
 
     std::vector<logical_tensor_t> inputs = {val0};
-    std::vector<logical_tensor_t> outputs = {val7, val9};
+    std::vector<logical_tensor_t> outputs = {val7};
     dnnl_impl::set_given_inputs_outputs(subgraph, inputs, outputs);
 
     // the fusion_info_mgr is dummy here

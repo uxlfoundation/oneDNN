@@ -56,7 +56,6 @@ std::vector<op_inplace_pair_t> get_op_inplace_pairs(op_t &op) {
     const static std::set<op_kind_t> ops {
             op_kind::_mul_scales,
             op_kind::_add_zps,
-            op_kind::_reorder,
             op_kind::_binary,
             op_kind::_eltwise,
             op_kind::_softmax,

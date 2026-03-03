@@ -83,7 +83,7 @@ status_t device_info_t::init(
 
     CHECK(init_attributes_common(engine));
 
-    if (dnnl_version()->gpu_runtime == DNNL_RUNTIME_OCL) {
+    if (engine->is_cache_blob_supported()) {
         CHECK(init_serialized_device_info());
     }
 

@@ -32,16 +32,9 @@ const std::vector<uint8_t> &cache_blob_id_t::get(
     auto engine_kind = engine->kind();
     auto runtime_kind = engine->runtime_kind();
 
-    if (engine_kind != engine_kind::gpu
-            || (engine_kind == engine_kind::gpu
-                    && runtime_kind != runtime_kind::ocl)) {
-        return sstream_.get_data();
-    }
+    if (!engine->is_cache_blob_supported()) { return sstream_.get_data(); }
 
     if (pd->kind() == primitive_kind::zero_pad) { return sstream_.get_data(); }
-
-    assert(engine->kind() == engine_kind::gpu
-            && engine->runtime_kind() == runtime_kind::ocl);
 
     const auto init_id = [&]() {
         serialize_desc(sstream_, pd->op_desc());

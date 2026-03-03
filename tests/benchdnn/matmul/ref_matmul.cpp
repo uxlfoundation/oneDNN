@@ -449,116 +449,37 @@ void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
 #endif // DNNL_EXPERIMENTAL_GROUPED_MEMORY
 
 void compute_ref_matmul(const prb_t *prb, const args_t &args) {
-    const dnn_mem_t &src_m = args.find(DNNL_ARG_SRC);
-    const dnn_mem_t &wei_m = args.find(DNNL_ARG_WEIGHTS);
-    const dnn_mem_t &bia_m = args.find(DNNL_ARG_BIAS);
-    const dnn_mem_t &dst_m = args.find(DNNL_ARG_DST);
-    const dnn_mem_t &src_scales
-            = args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
-    const dnn_mem_t &wei_scales
-            = args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
-    const dnn_mem_t &dst_scales
-            = args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
-    const dnn_mem_t &src_zps
-            = args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
-    const dnn_mem_t &wei_zps
-            = args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
-    const dnn_mem_t &dst_zps
-            = args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
-    const dnn_mem_t &dropout_mask = args.find(DNNL_ARG_ATTR_DROPOUT_MASK);
+    // Fast return if any dim is zero. Common logic doesn't apply because of
+    // broadcast semantics.
+    {
+        const dnn_mem_t &dst_m = args.find(DNNL_ARG_DST);
+        for (int d = 0; d < dst_m.ndims(); d++) {
+            if (prb->src_dims()[d] == 0 || prb->weights_dims()[d] == 0) return;
+        }
+    }
 
+    // Precompute common parameters for the different chunks computations
+    const chunk_params_t params = make_chunk_params(prb, args);
+
+    // Compute output in chunks of dst_M_group x dst_N_group
     const int64_t M = prb->m;
     const int64_t N = prb->n;
     const int64_t K = prb->k;
     const int64_t MB = prb->mb;
+
+    const int64_t M_chunks = div_up(M, params.dst_M_group);
+    const int64_t N_chunks = div_up(N, params.dst_N_group);
+
+    const dnn_mem_t &dst_m = *params.dst_m;
     const int batch_ndims = dst_m.ndims() - 2;
-
-    const bool has_src_scale = !prb->attr.scales.get(DNNL_ARG_SRC).is_def();
-    const bool has_wei_scale = !prb->attr.scales.get(DNNL_ARG_WEIGHTS).is_def();
-    const bool has_dst_scale = !prb->attr.scales.get(DNNL_ARG_DST).is_def();
-    const bool has_dst_dynamic
-            = prb->attr.scales.get(DNNL_ARG_DST).is_dynamic();
-    const bool has_dst_mx = prb->attr.scales.get(DNNL_ARG_DST).is_mx();
-    const bool has_dst_dynamic_fp
-            = prb->attr.scales.get(DNNL_ARG_DST).is_dynamic_fp();
-
-    const int src_scale_mask = prb->attr.scales.get_mask(
-            DNNL_ARG_SRC, dnnl_matmul, src_m.ndims());
-    const int wei_scale_mask = prb->attr.scales.get_mask(
-            DNNL_ARG_WEIGHTS, dnnl_matmul, wei_m.ndims());
-    const int dst_scale_mask = prb->attr.scales.get_mask(
-            DNNL_ARG_DST, dnnl_matmul, dst_m.ndims());
-
-    const bool has_src_single_scale = has_src_scale && src_scale_mask == 0;
-    const bool has_wei_single_scale = has_wei_scale && wei_scale_mask == 0;
-
-    const bool has_src_zp = !prb->attr.zero_points.get(DNNL_ARG_SRC).is_def();
-    const bool has_wei_zp
-            = !prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).is_def();
-    const bool has_dst_zp = !prb->attr.zero_points.get(DNNL_ARG_DST).is_def();
-
-    const int src_zp_mask = has_src_zp
-            ? prb->attr.zero_points.get_mask(
-                      DNNL_ARG_SRC, dnnl_matmul, src_m.ndims())
-            : 0;
-    const int wei_zp_mask = has_wei_zp
-            ? prb->attr.zero_points.get_mask(
-                      DNNL_ARG_WEIGHTS, dnnl_matmul, wei_m.ndims())
-            : 0;
-    const int dst_zp_mask = has_dst_zp
-            ? prb->attr.zero_points.get_mask(
-                      DNNL_ARG_DST, dnnl_matmul, dst_m.ndims())
-            : 0;
-
-    const bool has_src_single_zp = has_src_zp && src_zp_mask == 0;
-    const bool has_wei_single_zp = has_wei_zp && wei_zp_mask == 0;
-
-    const auto &src_scale_groups = prb->attr.scales.get(DNNL_ARG_SRC).groups;
-    const auto &wei_scale_groups
-            = prb->attr.scales.get(DNNL_ARG_WEIGHTS).groups;
-    const auto &src_zp_groups = prb->attr.zero_points.get(DNNL_ARG_SRC).groups;
-    const auto &wei_zp_groups
-            = prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).groups;
-
-    const int64_t src_scale_group = !src_scale_groups.empty()
-            ? src_scale_groups[1]
-            : ((src_scale_mask >> (src_m.ndims() - 1)) % 2) > 0 ? 1
-                                                                : K;
-    const int64_t wei_scale_group = !wei_scale_groups.empty()
-            ? wei_scale_groups[0]
-            : ((wei_scale_mask >> (wei_m.ndims() - 2)) % 2) > 0 ? 1
-                                                                : K;
-    const int64_t src_zp_group = !src_zp_groups.empty()      ? src_zp_groups[1]
-            : ((src_zp_mask >> (src_m.ndims() - 1)) % 2) > 0 ? 1
-                                                             : K;
-    const int64_t wei_zp_group = !wei_zp_groups.empty()      ? wei_zp_groups[0]
-            : ((wei_zp_mask >> (wei_m.ndims() - 2)) % 2) > 0 ? 1
-                                                             : K;
-
-    const auto smallest_k_group = gcd<int64_t>(
-            {src_scale_group, wei_scale_group, src_zp_group, wei_zp_group});
-
-    const auto n_k_groups = K / smallest_k_group;
-
-    // Fast return if any dim is zero. Common logic doesn't apply because of
-    // broadcast semantics.
-    for (int d = 0; d < dst_m.ndims(); d++) {
-        if (prb->src_dims()[d] == 0 || prb->weights_dims()[d] == 0) return;
-    }
 
     const auto src_broadcast_mask = prb->src_broadcast_mask();
     const auto wei_broadcast_mask = prb->weights_broadcast_mask();
     const auto bias_broadcast_mask = prb->bias_broadcast_mask();
-    auto v_po_masks = prb->attr.post_ops.get_po_masks(prb->ndims);
 
-    const auto dst_scale_dt = prb->attr.scales.get(DNNL_ARG_DST).dt;
-    const auto &dst_scale_groups = prb->attr.scales.get(DNNL_ARG_DST).groups;
-    const int64_t dst_M_group
-            = !dst_scale_groups.empty() ? dst_scale_groups[0] : 1;
-    const int64_t dst_N_group
-            = !dst_scale_groups.empty() ? dst_scale_groups[1] : 1;
-    const int64_t M_chunks = div_up(M, dst_M_group);
-    const int64_t N_chunks = div_up(N, dst_N_group);
+    const int wei_ndims = params.wei_m->ndims();
+    const int64_t wei_k_stride = params.wei_m->strides()[wei_ndims - 2];
+    const int64_t wei_n_stride = params.wei_m->strides()[wei_ndims - 1];
 
     benchdnn_parallel_nd(
             MB, M_chunks, N_chunks, [&](int64_t mb, int64_t mc, int64_t nc) {
@@ -569,140 +490,26 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
             wei_mb = dst_m.get_idx(mb, wei_broadcast_mask, batch_ndims);
         }
 
-        int src_zp = has_src_single_zp ? src_zps.get_elem(0) : 0;
-        int wei_zp = has_wei_single_zp ? wei_zps.get_elem(0) : 0;
-        float src_scale
-                = has_src_single_scale ? src_scales.get_f32_elem(0) : 1.f;
-        float wei_scale
-                = has_wei_single_scale ? wei_scales.get_f32_elem(0) : 1.f;
-
-        for_(int64_t m = mc * dst_M_group; m < MIN2((mc + 1) * dst_M_group, M);
-                ++m)
-        for_(int64_t n = nc * dst_N_group; n < MIN2((nc + 1) * dst_N_group, N);
-                ++n)
-        {
-            float dst = 0;
-            for (int64_t gK = 0; gK < n_k_groups; gK++) {
-                const auto src_gK_off
-                        = src_off_f(prb, src_mb, m, gK * smallest_k_group);
-                // Note: scales/zero-points are still always in `tag::abx` format.
-                const auto wei_gK_off
-                        = wei_ab_off_f(prb, wei_mb, gK * smallest_k_group, n);
-
-                if (has_src_zp && !has_src_single_zp) {
-                    const auto src_zp_idx = src_m.get_idx(src_gK_off,
-                            src_zp_mask, src_m.ndims(), src_zp_groups);
-                    src_zp = src_zps.get_elem(src_zp_idx);
-                }
-                if (has_wei_zp && !has_wei_single_zp) {
-                    const auto wei_zp_idx = wei_m.get_idx(wei_gK_off,
-                            wei_zp_mask, wei_m.ndims(), wei_zp_groups);
-                    wei_zp = wei_zps.get_elem(wei_zp_idx);
-                }
-
-                if (has_src_scale && !has_src_single_scale) {
-                    const auto src_scale_idx = src_m.get_idx(src_gK_off,
-                            src_scale_mask, src_m.ndims(), src_scale_groups);
-                    src_scale = src_scales.get_f32_elem(src_scale_idx);
-                }
-                if (has_wei_scale && !has_wei_single_scale) {
-                    const auto wei_scale_idx = wei_m.get_idx(wei_gK_off,
-                            wei_scale_mask, wei_m.ndims(), wei_scale_groups);
-                    wei_scale = wei_scales.get_f32_elem(wei_scale_idx);
-                }
-
-                for (int64_t k = 0; k < smallest_k_group; ++k) {
-                    const auto src_off = src_off_f(
-                            prb, src_mb, m, gK * smallest_k_group + k);
-                    const auto wei_off = wei_ba_off_f(
-                            prb, wei_mb, gK * smallest_k_group + k, n);
-
-                    auto s = src_scale * (src_m.get_f32_elem(src_off) - src_zp);
-                    auto w = wei_scale * (wei_m.get_f32_elem(wei_off) - wei_zp);
-
-                    dst += s * w;
-                }
-            }
-
-            const auto dst_off = dst_off_f(prb, mb, m, n);
-            if (prb->bia_dt != dnnl_data_type_undef) {
-                const auto bia_idx
-                        = dst_m.get_idx(dst_off, bias_broadcast_mask);
-                dst += bia_m.get_f32_elem(bia_idx);
-            }
-
-            const auto v_po_vals
-                    = prepare_po_vals(dst_m, args, v_po_masks, dst_off);
-            maybe_dropout(prb->attr, dst, dst_off, dropout_mask);
-            const auto sum_val = dst_m.get_f32_elem(dst_off);
-            maybe_post_ops(prb->attr, dst, sum_val, v_po_vals);
-
-            // We use dst as temporary storage
-            dst_m.set_f32_elem(dst_off, dst);
+        int64_t bia_base = 0, bia_m_stride = 0, bia_n_stride = 0;
+        if (params.bia_dt != dnnl_data_type_undef) {
+            bia_base = dst_m.get_idx(
+                    dst_off_f(prb, mb, 0, 0), bias_broadcast_mask);
+            bia_m_stride = dst_m.get_idx(dst_off_f(prb, mb, 1, 0),
+                                   bias_broadcast_mask)
+                    - bia_base;
+            bia_n_stride = dst_m.get_idx(dst_off_f(prb, mb, 0, 1),
+                                   bias_broadcast_mask)
+                    - bia_base;
         }
 
-        // Now we can do downconversion and write back to dst
-        // Compute scales if dyn_quant
-        float dst_scale = 1.f;
-        if (has_dst_dynamic) {
-            // Note: Mantissa-less dt would round-up zero to min normal.
-            // Note: Mantissa-ed dt needs initial value to be zero to properly
-            // handle the final value if the block is full of zero values.
-            dst_scale = 0.f;
-            for_(int64_t m = mc * dst_M_group;
-                    m < MIN2((mc + 1) * dst_M_group, M); ++m)
-            for (int64_t n = nc * dst_N_group;
-                    n < MIN2((nc + 1) * dst_N_group, N); ++n) {
-                const auto dst_off = dst_off_f(prb, mb, m, n);
-                dst_scale = MAX2(fabsf(dst_m.get_f32_elem(dst_off)), dst_scale);
-            }
-            if (has_dst_mx) {
-                dst_scale = round_to_nearest_representable(
-                                    dst_scale_dt, dst_scale)
-                        / round_to_nearest_representable(
-                                dst_scale_dt, max_dt(prb->dst_dt()));
-                dst_scale = round_to_nearest_representable(
-                        dst_scale_dt, dst_scale);
-            } else if (has_dst_dynamic_fp) {
-                dst_scale = dst_scale == 0.f
-                        ? 1.f
-                        : round_to_nearest_representable(dst_scale_dt,
-                                  dst_scale / max_dt(prb->dst_dt()));
-            }
-            const auto dst_off
-                    = dst_off_f(prb, mb, mc * dst_M_group, nc * dst_N_group);
-            const auto dscale_idx = dst_m.get_idx(
-                    dst_off, dst_scale_mask, dst_m.ndims(), dst_scale_groups);
-            dst_scales.set_f32_elem(dscale_idx, dst_scale);
-            // Pre-invert the scale to apply it as a multiplier for the group.
-            // Note, that it can't be done upfront, as it must be written to
-            // the memory before. Can't be zero.
-            dst_scale = 1.f / dst_scale;
-        }
+        // Precompute offsets for this chunk
+        const int64_t src_row_base = src_mb * M;
+        const int64_t wei_base = wei_mb * K * N;
+        const int64_t dst_row_base = mb * M;
 
-        // Apply scales and downconvert
-        for_(int64_t m = mc * dst_M_group; m < MIN2((mc + 1) * dst_M_group, M);
-                ++m)
-        for_(int64_t n = nc * dst_N_group; n < MIN2((nc + 1) * dst_N_group, N);
-                ++n)
-        {
-            int dst_zp = 0;
-            const auto dst_off = dst_off_f(prb, mb, m, n);
-
-            if (has_dst_zp) {
-                const auto dst_zp_idx = dst_m.get_idx(dst_off, dst_zp_mask);
-                dst_zp = dst_zps.get_elem(dst_zp_idx);
-            }
-            if (has_dst_scale && !has_dst_dynamic) {
-                dst_scale = 1.f
-                        / dst_scales.get_f32_elem(dst_scale_mask > 0 ? n : 0);
-            }
-            float dst = dst_m.get_f32_elem(dst_off);
-            float dst_val = dst_scale * dst + dst_zp;
-            maybe_round(
-                    prb->attr, DNNL_ARG_DST, dst_val, dst_off, prb->dst_dt());
-            dst_m.set_f32_elem(dst_off, dst_val);
-        }
+        compute_ref_matmul_chunk(params, M, N, K, mc, nc, src_row_base,
+                wei_base, wei_k_stride, wei_n_stride, dst_row_base, bia_base,
+                bia_m_stride, bia_n_stride, prb->attr, args);
     });
 }
 

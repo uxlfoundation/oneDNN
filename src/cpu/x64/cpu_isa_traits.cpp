@@ -263,6 +263,16 @@ status_t set_cpu_isa_hints(dnnl_cpu_isa_hints_t isa_hints) {
         return runtime_error;
 }
 
+bool is_apx_available() {
+    // XSAVE feature must be supported in order to check APX feature
+    const bool xsave_supported = cpu().has(Xbyak::util::Cpu::tOSXSAVE);
+    if (!xsave_supported) return false;
+
+    // Check APX feature in XCR0[19]
+    uint64_t xcr0_features = Xbyak::util::Cpu::getXfeature();
+    return xcr0_features >> 19 == 1;
+}
+
 namespace amx {
 
 int get_max_palette() {

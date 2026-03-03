@@ -180,6 +180,7 @@ cpu_isa_t get_max_cpu_isa();
 cpu_isa_t DNNL_API get_max_cpu_isa_mask(bool soft = false);
 status_t set_max_cpu_isa(dnnl_cpu_isa_t isa);
 dnnl_cpu_isa_t get_effective_cpu_isa();
+bool is_apx_available();
 
 static inline uint32_t get_avx10_version(cpu_isa_t isa) {
     return (static_cast<uint32_t>(isa)
@@ -441,7 +442,8 @@ inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {
         case avx10_2_512:
             REG_AVX512_ISA(return cpu().getAVX10version() >= 2
                     && cpu().has(Cpu::tAVX512F) && mayiuse(avx2_vnni_2, soft)
-                    && cpu().has(Cpu::tAPX_F) && cpu().has(Cpu::tMOVRS));
+                    && cpu().has(Cpu::tAPX_F) && cpu().has(Cpu::tMOVRS)
+                    && x64::is_apx_available());
         case amx_tile:
             REG_AMX_ISA(return cpu().has(Cpu::tAMX_TILE)
                     && x64::amx::is_available());

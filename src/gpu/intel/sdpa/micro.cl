@@ -391,7 +391,18 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         MSK_OFFSETS
 #endif
         ,
-        const int remainder_k) {
+        const int remainder_k
+#if DROPOUT
+        ,
+        __global uchar *dropout_mask_buf,
+#if DROPOUT_HOST_SCALARS
+        long dropout_seed, long dropout_offset, float dropout_p
+#else
+        __global long *dropout_seed_buf, __global long *dropout_offset_buf,
+        __global float *dropout_p_buf
+#endif
+#endif
+) {
 
     uint sg_ij = sub_group_broadcast(get_local_id(1), 0);
     uint b1 = get_group_id(2);

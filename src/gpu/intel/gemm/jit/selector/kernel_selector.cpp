@@ -348,8 +348,8 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
         unrollReq[LoopN] = 8;
     }
  
-    if(problem.hasCMXScale() && unrollReq[LoopN] % 32){
-        unrollReq[LoopN] = 32;
+    if(problem.hasCMXScale()){
+        unrollReq[LoopM] = 32;
     }
 
 

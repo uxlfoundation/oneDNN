@@ -199,11 +199,17 @@ status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
     return status::success;
 }
 
+status_t get_binary_size(
+        ze_module_handle_t module_handle, size_t *binary_size) {
+    CHECK(xpu::ze::zeModuleGetNativeBinary(
+            module_handle, binary_size, nullptr));
+    return status::success;
+}
+
 status_t get_module_binary(
         ze_module_handle_t module_handle, xpu::binary_t &binary) {
     size_t module_binary_size;
-    CHECK(xpu::ze::zeModuleGetNativeBinary(
-            module_handle, &module_binary_size, nullptr));
+    CHECK(get_binary_size(module_handle, &module_binary_size));
 
     binary.resize(module_binary_size);
     CHECK(xpu::ze::zeModuleGetNativeBinary(

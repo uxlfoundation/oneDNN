@@ -33,6 +33,8 @@ status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
         uint64_t &native_extensions, bool &mayiuse_systolic,
         bool &mayiuse_ngen_kernels, bool &is_efficient_64bit);
 
+status_t get_binary_size(ze_module_handle_t module_handle, size_t *binary_size);
+
 status_t get_module_binary(
         ze_module_handle_t module_handle, xpu::binary_t &binary);
 

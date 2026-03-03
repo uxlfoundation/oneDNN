@@ -203,6 +203,24 @@ gpu_utils::device_id_t engine_t::device_id() const {
             std::make_tuple(1), xpu::ze::get_device_uuid(device()));
 }
 
+status_t engine_t::serialize_device(serialization_stream_t &sstream) const {
+    sstream.append_array(
+            device_info()->name().size(), device_info()->name().data());
+    sstream.append(device_info()->runtime_version().major);
+    sstream.append(device_info()->runtime_version().minor);
+    sstream.append(device_info()->runtime_version().build);
+
+    return status::success;
+}
+
+status_t engine_t::get_cache_blob_size(size_t *size) const {
+    return device_info_->get_cache_blob_size(size);
+}
+
+status_t engine_t::get_cache_blob(size_t size, uint8_t *cache_blob) const {
+    return device_info_->get_cache_blob(size, cache_blob);
+}
+
 ze_driver_handle_t engine_t::driver() const {
     return impl()->driver();
 }
@@ -224,16 +242,14 @@ cl_context engine_t::ocl_context() const {
 }
 
 status_t engine_t::init_device_info() {
-    device_info_ = std::make_shared<ze::device_info_t>();
-    CHECK(device_info_->init(this));
-
-    return status::success;
+    return init_device_info({});
 }
 
 status_t engine_t::init_device_info(const std::vector<uint8_t> &cache_blob) {
-    gpu_assert(false) << "unimplemented function init_device_info() called";
+    device_info_ = std::make_shared<ze::device_info_t>();
+    CHECK(device_info_->init(this, cache_blob));
 
-    return status::runtime_error;
+    return status::success;
 }
 
 } // namespace ze

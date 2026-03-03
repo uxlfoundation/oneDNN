@@ -60,6 +60,11 @@ public:
 
     gpu_utils::device_id_t device_id() const override;
 
+    status_t serialize_device(serialization_stream_t &sstream) const override;
+
+    status_t get_cache_blob_size(size_t *size) const override;
+    status_t get_cache_blob(size_t size, uint8_t *cache_blob) const override;
+
     ze_driver_handle_t driver() const;
     ze_device_handle_t device() const;
     ze_context_handle_t context() const;

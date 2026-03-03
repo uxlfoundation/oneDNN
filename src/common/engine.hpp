@@ -154,8 +154,9 @@ struct dnnl_engine : public dnnl::impl::c_compatible {
 
     bool is_cache_blob_supported() const {
         if (kind() != dnnl::impl::engine_kind::gpu) return false;
-        if (!dnnl::impl::utils::one_of(
-                    runtime_kind(), dnnl::impl::runtime_kind::ocl))
+        if (!dnnl::impl::utils::one_of(runtime_kind(),
+                    dnnl::impl::runtime_kind::ocl,
+                    dnnl::impl::runtime_kind::ze))
             return false;
         return true;
     }

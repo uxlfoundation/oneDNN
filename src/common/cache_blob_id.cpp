@@ -50,9 +50,6 @@ const std::vector<uint8_t> &cache_blob_id_t::get(
         }
 
         sstream_.append(engine_kind);
-        // TODO: blob object can probably be re-used for different runtimes
-        // if the engine kind is the same. Check this assumption when extending
-        // this API to DPCPP runtime.
         sstream_.append(runtime_kind);
 
         engine->serialize_device(sstream_);

@@ -46,7 +46,11 @@ public:
             const compute::kernel_arg_list_t &arg_list,
             const xpu::event_t &deps, xpu::event_t &out_dep) override;
 
+    status_t get_binary(
+            const impl::engine_t *engine, xpu::binary_t &binary) const override;
     status_t get_kernel_binary(xpu::binary_t &binary) const override;
+    status_t get_binary_size(
+            const impl::engine_t *engine, size_t *binary_size) const override;
 
     std::string name() const override { return kernel_name_; }
 

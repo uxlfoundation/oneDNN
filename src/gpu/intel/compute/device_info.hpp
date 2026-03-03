@@ -183,27 +183,7 @@ public:
     virtual ~device_info_t() = default;
 
     status_t init(impl::engine_t *engine,
-            const std::vector<uint8_t> &cache_blob = {}) {
-        if (!cache_blob.empty()) {
-            CHECK(init_from_cache_blob(cache_blob));
-            return init_serialized_device_info(cache_blob);
-        }
-
-        CHECK(init_device_name(engine));
-        CHECK(init_arch(engine));
-        CHECK(init_runtime_version(engine));
-        CHECK(init_extensions(engine));
-        CHECK(init_attributes(engine));
-        fixup_l3_cache_size();
-
-        CHECK(init_attributes_common(engine));
-
-        if (dnnl_version()->gpu_runtime == DNNL_RUNTIME_OCL) {
-            CHECK(init_serialized_device_info());
-        }
-
-        return status::success;
-    }
+            const std::vector<uint8_t> &cache_blob = {});
 
     std::string get_cl_ext_options() const;
 

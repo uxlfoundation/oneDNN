@@ -2836,10 +2836,15 @@ protected:
         uni_vpxor(vmm_mask, vmm_mask, vmm_mask);
     }
 
-    inline void maybe_apply_oc_zero_points(
-            const int blk, const int i, bool is_tail) {
+    inline void maybe_apply_oc_zero_points(const Vmm &vmm_src,
+            const int inner_k, bool is_tail, const int ncolumns,
+            const int inner_n_offs = 0) {
         if (!conf_->has_zero_point_b || !conf_->is_wei_zp_per_k) return;
-        const auto vmm_src = get_vmm(blk, i % k_blk_step_);
+
+        const bool has_masks = isa_has_masks(conf_->isa);
+
+        auto &vmm_zp = vmm_zero; // reuse zero-value VMM
+
         mov(reg_tmp, ptr[rsp + reg_cur_k_offs_]);
         mov(ptr[rsp + reg_src_offs_], reg_src); // utilize rax for division
         const bool need_comp = conf_->s8s8_compensation_required;
@@ -2847,22 +2852,38 @@ protected:
             mov(ptr[rsp + reg_comp_ptr_offs_],
                     reg_comp_ptr); // utilize rdx for division
         // Locate the current K group
-        // Based on current K position and i.
+        // Based on current K position and inner k index.
         xor_(rdx, rdx); // zero rdx for division
         mov(rax, reg_tmp);
         mov(reg_tmp, conf_->wei_zp_k_gsize);
-        add(rax, i);
+        add(rax, inner_k);
         div(reg_tmp);
         mov(reg_tmp, conf_->N);
         mul(reg_tmp);
         // Load zero points for current K group
         mov(rdx, ptr[rsp + reg_zp_ptr_offs_]);
         add(rdx, rax);
+        add(rdx, inner_n_offs);
         const auto addr = ptr[rdx];
-        const auto masked_vmm = maybe_mask(vmm_tmp, is_tail);
-        vmovdqu8(masked_vmm, addr);
+        // set_breakpoint();
+        if (has_masks) {
+            // Set proper mask if int4 src.
+            if (is_src_int4_ && is_tail)
+                kmovq(kTail, size_t(((size_t)1 << ncolumns) - 1));
+            const auto masked_vmm = maybe_mask(vmm_zp, is_tail);
+            vmovdqu8(masked_vmm, addr);
+            // Restore mask
+            if (is_src_int4_ && is_tail)
+                kmovq(kTail, div_up(ncolumns, src_elems_per_byte_));
+        } else if (is_tail) {
+            load_bytes(vmm_zp, addr, ncolumns);
+        } else {
+            vmovdqu8(vmm_zp, addr);
+        }
         // Apply zero point shift
-        uni_vpsubb(vmm_src, vmm_src, vmm_tmp);
+        uni_vpsubb(vmm_src, vmm_src, vmm_zp);
+        // Restore VMM zero
+        uni_vpxor(vmm_zero, vmm_zero, vmm_zero);
         // Restore regs
         mov(reg_src, ptr[rsp + reg_src_offs_]);
         if (need_comp) mov(reg_comp_ptr, ptr[rsp + reg_comp_ptr_offs_]);
@@ -3052,11 +3073,8 @@ private:
             if (!zeropad) {
                 for (int i = row_start; i < row_end; i++) {
                     load(k, i, is_tail);
-                    if (is_src_int4_ && is_tail) {
-                        kmovq(kTail, size_t(((size_t)1 << ncolumns) - 1));
-                    }
-                    maybe_apply_oc_zero_points(k, i, is_tail);
-                    if (is_src_int4_ && is_tail) { kmovq(kTail, tail_mask); }
+                    maybe_apply_oc_zero_points(
+                            get_vmm(k, i % k_blk_step_), i, is_tail, ncolumns);
                 }
                 if (row_end == nrows && nrows % k_blk_step_ > 0) {
                     for (int i = nrows; i < rnd_up(nrows, k_blk_step_); i++) {
@@ -3189,8 +3207,11 @@ private:
             dim_t tr_src_off_base = (kb * max_unroll + k) * tr_src_stride_;
 
             if (!zeropad) {
-                for (int i = row_start; i < row_end; i++)
+                for (int i = row_start; i < row_end; i++) {
                     load(k, i, is_tail);
+                    maybe_apply_oc_zero_points(
+                            get_vmm(k, i % k_blk_step_), i, is_tail, ncolumns);
+                }
                 if (row_end == nrows && nrows % k_blk_step_ > 0) {
                     for (int i = nrows; i < rnd_up(nrows, k_blk_step_); i++) {
                         auto src_reg = get_vmm(k, i % k_blk_step_);
@@ -3318,6 +3339,8 @@ private:
                                 = div_up((ncolumns - pass * simd_w_),
                                         src_elems_per_byte_);
                         load_ymm(i % 4, offset, do_tail, tail_size);
+                        maybe_apply_oc_zero_points(get_ymm(i % 4), i, do_tail,
+                                tail_size, pass * simd_w_);
                         if (is_dynamic_stride_) add(reg_src, reg_src_stride);
                     } else {
                         const auto src_ymm_1 = get_ymm(i % 4);

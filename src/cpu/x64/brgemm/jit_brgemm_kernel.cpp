@@ -2319,7 +2319,7 @@ bool jit_brgemm_kernel_t<Wmm>::maybe_dot_product_with_ic_scales(dim_t rd,
         const auto &loc_idx = reg_grouped_k_tmp;
         const auto vmm_scales = vmm_tmp(1);
         const auto vmm_wei_mask = vmm_tmp(1);
-        const auto tmp_acc = vmm_tmp(15);
+        const auto tmp_acc = vmm_tmp(10);
 
         auto prepare_and_apply_mask = [&]() {
             reg_grouped_k.restore();
@@ -2700,6 +2700,9 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                     maybe_pre_process_data(brg.dt_b, load(), vmm_fp8_load());
                 for (dim_t bd = bd_b; bd < bd_e; bd++) {
                     auto vmm = accm(ld_block2, bd, ld);
+                    if (maybe_dot_product_with_ic_scales(
+                                rd, ld, is_ld_tail, vmm, load(), bcst(bd)))
+                        ;
                     if (is_emdbd)
                         uni_vfmadd231ps(vmm, load(),
                                 ptr_b[reg_aux_A + A_offset(bd, rd)]);

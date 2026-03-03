@@ -322,52 +322,19 @@ static void compute_ref_matmul_chunk(const chunk_params_t &p, int64_t M,
 }
 
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
-// Reference implementation for grouped gemm
-// Computes per-expert matmuls: for each expert e, computes dst[e] = src[e] * wei[e]
+// Reference implementation for grouped matmul
+// Computes per-group matmuls: for each group g, dst[g] = src[g] * wei[g]
 //
-// Note, that all tensors are concatenated
-// src and dst in grouped format and wei in 3D [group_count, K, N] format
+// src and dst are in grouped format, stored as concatenated
+// 2D [total_M, K] / [total_M, N] reference buffers
+// wei is 3D [group_count, K, N] (abc) or [group_count, N, K] (acb)
 //
-// TODO: extract common computation kernel from regular matmul and reuse it here
+// Note, that per-group ranges are read from the grouped memory
+// descriptor offsets
 void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
-    const dnn_mem_t &src_m = args.find(DNNL_ARG_SRC);
-    const dnn_mem_t &wei_m = args.find(DNNL_ARG_WEIGHTS);
-    const dnn_mem_t &dst_m = args.find(DNNL_ARG_DST);
-    const dnn_mem_t &bia_m = args.find(DNNL_ARG_BIAS);
-    const dnn_mem_t &src_scales
-            = args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
-    const dnn_mem_t &wei_scales
-            = args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
-    const dnn_mem_t &wei_zps
-            = args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
-
+    // Start of each group in reference buffers
     const int64_t group_count = prb->sparse_options.get_group_count();
     const auto &M_dims = prb->sparse_options.get_group_sizes();
-    const int64_t K = prb->k;
-    const int64_t N = prb->n;
-
-    const bool has_bias = prb->bia_dt != dnnl_data_type_undef;
-    const bool has_src_scale = !prb->attr.scales.get(DNNL_ARG_SRC).is_def();
-    const bool has_wei_scale = !prb->attr.scales.get(DNNL_ARG_WEIGHTS).is_def();
-    const bool has_wei_zp
-            = !prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).is_def();
-
-    const auto &wei_scale_groups
-            = prb->attr.scales.get(DNNL_ARG_WEIGHTS).groups;
-    const auto &wei_zp_groups
-            = prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).groups;
-
-    // For grouped GEMM, weights are 3D: [group_count, K, N]
-    // wei_scale_groups[0] is the K dimension group size
-    const int64_t wei_scale_group_k
-            = !wei_scale_groups.empty() ? wei_scale_groups[0] : K;
-    const int64_t wei_zp_group_k
-            = !wei_zp_groups.empty() ? wei_zp_groups[0] : K;
-
-    // Use finest granularity k-group (GCD) to handle mixed scale/ZP groups
-    const int64_t smallest_k_group
-            = gcd<int64_t>({wei_scale_group_k, wei_zp_group_k});
-    const int64_t n_k_groups = K / smallest_k_group;
 
     std::vector<int64_t> group_offsets(group_count + 1);
     group_offsets[0] = 0;
@@ -375,75 +342,49 @@ void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
         group_offsets[g + 1] = group_offsets[g] + M_dims[g];
     }
 
+    // Precompute common parameters for the different chunks computations
+    const chunk_params_t params = make_chunk_params(prb, args);
+
+    const int wei_ndims = params.wei_m->ndims();
+    const int64_t wei_k_stride = params.wei_m->strides()[wei_ndims - 2];
+    const int64_t wei_n_stride = params.wei_m->strides()[wei_ndims - 1];
+
+    // Parallelize over groups
+    // Each group is a separate matmul of size M_dims[g] x K by K x N
     benchdnn_parallel_nd(group_count, [&](int64_t g) {
         const int64_t M_g = M_dims[g];
         if (M_g == 0) return;
 
-        const int64_t offset = group_offsets[g];
+        // wei ref is always in abc format (see init_ref_memory_args):
+        //   wei(k,n) = g*K*N + k*N + n  (k_stride=N, n_stride=1).
+        // wei_ab uses the same formula and serves scale/zp index lookup.
+        // Precompute offsets for this group
+        //   src(m, k)    = (src_row_base + m) * K + k
+        //   wei_ab(k, n) = wei_base + k * N + n (for scales and zps)
+        //   wei(k, n)    = wei_base + k * wei_k_stride + n * wei_n_stride
+        //   dst(m, n)    = (dst_row_base + m) * N + n
+        //   bia(m, n)    = bia_base + m * bia_m_stride + n * bia_n_stride
+        const int64_t src_row_base = group_offsets[g];
+        const int64_t wei_base = g * prb->k * prb->n;
+        const int64_t dst_row_base = group_offsets[g];
 
-        for (int64_t m = 0; m < M_g; m++) {
-            const int64_t src_offset = offset + m;
-
-            // retrieve row-wise src scale for this row if any
-            float src_scale = 1.0f;
-            if (has_src_scale) {
-                src_scale = src_scales.get_f32_elem(src_offset);
-            }
-
-            for (int64_t n = 0; n < N; n++) {
-                float acc = 0.0f;
-
-                for (int64_t gK = 0; gK < n_k_groups; gK++) {
-                    float acc_group = 0.0f;
-
-                    // Scale and ZP k-group indices for this fine k-group
-                    const int64_t scale_kg
-                            = gK * smallest_k_group / wei_scale_group_k;
-                    const int64_t zp_kg
-                            = gK * smallest_k_group / wei_zp_group_k;
-
-                    float wei_scale = 1.0f;
-                    if (has_wei_scale) {
-                        const int64_t wei_scale_idx
-                                = (g * n_k_groups + scale_kg) * N + n;
-                        wei_scale = wei_scales.get_f32_elem(wei_scale_idx);
-                    }
-
-                    float wei_zp = 0.0f;
-                    if (has_wei_zp) {
-                        const int64_t wei_zp_idx
-                                = (g * n_k_groups + zp_kg) * N + n;
-                        wei_zp = wei_zps.get_f32_elem(wei_zp_idx);
-                    }
-
-                    for (int64_t k = 0; k < smallest_k_group; k++) {
-                        const int64_t k_idx = gK * smallest_k_group + k;
-                        const int64_t src_idx = src_offset * K + k_idx;
-                        dnnl_dims_t wei_pos = {g, k_idx, n};
-                        const int64_t wei_idx = md_off_v(wei_m, wei_pos);
-
-                        const float src_val = src_m.get_f32_elem(src_idx);
-                        const float wei_val = wei_m.get_f32_elem(wei_idx);
-                        acc_group += src_val * (wei_val - wei_zp);
-                    }
-
-                    acc += acc_group * wei_scale;
-                }
-
-                // Apply per-token scale
-                acc *= src_scale;
-
-                // Add bias if present
-                if (has_bias) {
-                    const int64_t bias_idx = g * N + n;
-                    acc += bia_m.get_f32_elem(bias_idx);
-                }
-
-                // dst: plain [total_M, N], indexed as [(offset + m), n]
-                const int64_t dst_idx = src_offset * N + n;
-                dst_m.set_f32_elem(dst_idx, acc);
-            }
+        int64_t bia_base = 0, bia_m_stride = 0, bia_n_stride = 0;
+        if (params.bia_dt != dnnl_data_type_undef) {
+            bia_base = g * prb->n;
+            bia_m_stride = 0; // bias is per-group, not per-row
+            bia_n_stride = 1;
         }
+
+        // Computation: iterate over (mc, nc) dst-scale blocks.
+        const int64_t M_blocks = div_up(M_g, params.dst_M_group);
+        const int64_t N_blocks = div_up(prb->n, params.dst_N_group);
+
+        for (int64_t mc = 0; mc < M_blocks; mc++)
+            for (int64_t nc = 0; nc < N_blocks; nc++)
+                compute_ref_matmul_chunk(params, M_g, prb->n, prb->k, mc, nc,
+                        src_row_base, wei_base, wei_k_stride, wei_n_stride,
+                        dst_row_base, bia_base, bia_m_stride, bia_n_stride,
+                        prb->attr, args);
     });
 }
 #endif // DNNL_EXPERIMENTAL_GROUPED_MEMORY

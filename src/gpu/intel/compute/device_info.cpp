@@ -67,6 +67,29 @@ uint64_t get_future_extensions(
     return extensions;
 }
 
+status_t device_info_t::init(
+        impl::engine_t *engine, const std::vector<uint8_t> &cache_blob) {
+    if (!cache_blob.empty()) {
+        CHECK(init_from_cache_blob(cache_blob));
+        return init_serialized_device_info(cache_blob);
+    }
+
+    CHECK(init_device_name(engine));
+    CHECK(init_arch(engine));
+    CHECK(init_runtime_version(engine));
+    CHECK(init_extensions(engine));
+    CHECK(init_attributes(engine));
+    fixup_l3_cache_size();
+
+    CHECK(init_attributes_common(engine));
+
+    if (dnnl_version()->gpu_runtime == DNNL_RUNTIME_OCL) {
+        CHECK(init_serialized_device_info());
+    }
+
+    return status::success;
+}
+
 ngen::HW device_info_t::ngen_hw() const {
     ngen::Product p = jit::get_ngen_product(*this);
     return ngen::getCore(p.family);

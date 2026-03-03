@@ -259,8 +259,10 @@ int test_persistent_cache_api(
         dnnl_memory_desc_create_with_blob(&new_md, md_blob.data());
         auto mew_mdw = make_benchdnn_dnnl_wrapper(new_md);
 
-        if (dnnl_memory_desc_equal(wei_md, new_md) == 0)
-            return res->state = FAILED, FAIL;
+        if (dnnl_memory_desc_equal(wei_md, new_md) == 0) {
+            res->state = FAILED;
+            SAFE(FAIL, WARN);
+        }
     }
 
     // Start testing persistent cache API.
@@ -275,7 +277,10 @@ int test_persistent_cache_api(
     // 2. Get cache blob ID to use it as a key for the `test_cache`.
     std::vector<uint8_t> cache_blob_id;
     auto st = get_cache_blob_id(cache_blob_id, pd);
-    if (st != OK) return res->state = FAILED, FAIL;
+    if (st != OK) {
+        res->state = FAILED;
+        SAFE(FAIL, WARN);
+    }
     // 3. Check if a cache blob for the obtained cache blob ID is present in the
     //    `test_cache`.
     //    a) If the cache blob is found the primitive is created from it.
@@ -290,11 +295,17 @@ int test_persistent_cache_api(
         const uint8_t *cache_blob = cache_value.data();
         auto dnnl_st = dnnl_primitive_create_from_cache_blob(
                 &p, pd, size, cache_blob);
-        if (dnnl_st != dnnl_success) return res->state = FAILED, FAIL;
+        if (dnnl_st != dnnl_success) {
+            res->state = FAILED;
+            DNN_SAFE(dnnl_st, WARN);
+        }
     } else {
         std::vector<uint8_t> cache_blob;
         st = get_cache_blob(cache_blob, prim);
-        if (st != OK) return res->state = FAILED, FAIL;
+        if (st != OK) {
+            res->state = FAILED;
+            SAFE(FAIL, WARN);
+        }
 
         // The cross-engine and direct copy reorders are special primitives that
         // may contain no kernels therefore the cache blob will always be empty,
@@ -316,12 +327,15 @@ int test_persistent_cache_api(
             BENCHDNN_PRINT(
                     0, "error: %s\n", "cache blob is not expected to be empty");
             res->state = FAILED;
-            return FAIL;
+            SAFE(FAIL, WARN);
         }
 
         auto dnnl_st = dnnl_primitive_create_from_cache_blob(
                 &p, pd, cache_blob.size(), cache_blob.data());
-        if (dnnl_st != dnnl_success) return res->state = FAILED, FAIL;
+        if (dnnl_st != dnnl_success) {
+            res->state = FAILED;
+            DNN_SAFE(dnnl_st, WARN);
+        }
         cache.add(cache_blob_id, cache_blob);
     }
     prim.reset(p);

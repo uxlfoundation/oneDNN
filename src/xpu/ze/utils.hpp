@@ -87,7 +87,7 @@ static inline std::string to_string(ze_result_t r) {
     do { \
         ze_result_t res_ = (f); \
         if (res_ != ZE_RESULT_SUCCESS) { \
-            std::string err_str_ = to_string(res_); \
+            std::string err_str_ = xpu::ze::to_string(res_); \
             VERROR(common, level_zero, "errcode %s", err_str_.c_str()); \
             return status::runtime_error; \
         } \
@@ -149,6 +149,7 @@ INDIRECT_ZE_CALL(zeModuleCreate)
 INDIRECT_ZE_CALL(zeModuleDestroy)
 INDIRECT_ZE_CALL(zeModuleBuildLogGetString)
 INDIRECT_ZE_CALL(zeModuleBuildLogDestroy)
+INDIRECT_ZE_CALL(zeModuleGetKernelNames)
 INDIRECT_ZE_CALL(zeModuleGetNativeBinary)
 INDIRECT_ZE_CALL(zeKernelCreate)
 INDIRECT_ZE_CALL(zeKernelDestroy)

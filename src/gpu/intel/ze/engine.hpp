@@ -29,7 +29,7 @@ namespace ze {
 
 status_t engine_create(impl::engine_t **engine, engine_kind_t engine_kind,
         ze_driver_handle_t dri, ze_device_handle_t dev, ze_context_handle_t ctx,
-        size_t index);
+        size_t index, const std::vector<uint8_t> &cache_blob);
 
 class engine_t : public intel::engine_t {
 public:
@@ -40,6 +40,7 @@ public:
     ~engine_t() override = default;
 
     status_t init() override;
+    status_t init(const std::vector<uint8_t> &cache_blob);
 
     status_t create_stream(
             impl::stream_t **stream, impl::stream_impl_t *stream_impl) override;
@@ -59,6 +60,11 @@ public:
             const std::vector<const char *> &kernel_names) const override;
 
     gpu_utils::device_id_t device_id() const override;
+
+    status_t serialize_device(serialization_stream_t &sstream) const override;
+
+    status_t get_cache_blob_size(size_t *size) const override;
+    status_t get_cache_blob(size_t size, uint8_t *cache_blob) const override;
 
     ze_driver_handle_t driver() const;
     ze_device_handle_t device() const;

@@ -204,11 +204,17 @@ status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
     return status::success;
 }
 
+status_t get_binary_size(
+        ze_module_handle_t module_handle, size_t *binary_size) {
+    CHECK(xpu::ze::zeModuleGetNativeBinary(
+            module_handle, binary_size, nullptr));
+    return status::success;
+}
+
 status_t get_module_binary(
         ze_module_handle_t module_handle, xpu::binary_t &binary) {
     size_t module_binary_size;
-    CHECK(xpu::ze::zeModuleGetNativeBinary(
-            module_handle, &module_binary_size, nullptr));
+    CHECK(get_binary_size(module_handle, &module_binary_size));
 
     binary.resize(module_binary_size);
     CHECK(xpu::ze::zeModuleGetNativeBinary(
@@ -259,9 +265,26 @@ status_t create_kernels(ze_device_handle_t device, ze_context_handle_t context,
     for (size_t i = 0; i < kernel_names.size(); i++) {
         if (kernel_names[i] == nullptr) continue;
 
+        std::string kernel_name(kernel_names[i]);
+        if (kernel_name.empty()) {
+            // (copied from OCL backend).
+            // Handle the ngen cases when kernel name is not available.
+            // Query the kernel name from the program. It's expected that
+            // an ngen based program contains only 1 kernel.
+            if (kernel_names.size() != 1 || kernels.size() != 1)
+                return status::invalid_arguments;
+
+            uint32_t count = 1;
+            const char *name = nullptr;
+            CHECK(xpu::ze::zeModuleGetKernelNames(*module_ptr, &count, &name));
+
+            kernel_name = std::string(name);
+            assert(!kernel_name.empty());
+            if (kernel_name.empty()) return status::runtime_error;
+        }
         ze_kernel_desc_t kernel_desc {};
         kernel_desc.stype = ZE_STRUCTURE_TYPE_KERNEL_DESC;
-        kernel_desc.pKernelName = kernel_names[i];
+        kernel_desc.pKernelName = kernel_name.c_str();
 
         ze_kernel_handle_t kernel;
         CHECK(xpu::ze::zeKernelCreate(*module_ptr, &kernel_desc, &kernel));

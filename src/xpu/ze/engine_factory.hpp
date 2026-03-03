@@ -38,7 +38,7 @@ public:
             impl::engine_t **engine, size_t index) const override;
     status_t engine_create(impl::engine_t **engine, ze_driver_handle_t adriver,
             ze_device_handle_t adevice, ze_context_handle_t acontext,
-            size_t index) const;
+            size_t index, const std::vector<uint8_t> &cache_blob = {}) const;
 
 private:
     engine_factory_t() = delete;

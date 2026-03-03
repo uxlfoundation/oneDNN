@@ -36,12 +36,84 @@ namespace dnnl {
 
 /// @addtogroup dnnl_api_ze_interop Level Zero interoperability API
 /// API extensions to interact with the underlying Level Zero run-time.
-///
-/// @sa @ref dev_guide_level_zero_interoperability in developer guide
 /// @{
 
 /// Level Zero interoperability namespace
 namespace ze_interop {
+
+/// Returns the cache blob ID of the Level Zero device.
+///
+/// @warning
+///     This API is intended to be used with
+///     #dnnl::ze_interop::get_engine_cache_blob(const engine &) and
+///     #dnnl::ze_interop::make_engine(ze_driver_handle_t, ze_device_handle_t, ze_context_handle_t, const std::vector<uint8_t> &).
+///     The returned cache blob ID can only be used as an ID of the cache blob
+///     returned by #dnnl::ze_interop::get_engine_cache_blob(const engine &).
+///
+/// @note The cache blob ID can be empty (@p size will be 0 and
+///     @p cache_blob_id will be nullptr) if oneDNN doesn't have anything to
+///     put in the cache blob. (#dnnl_ze_interop_engine_get_cache_blob will
+///     return an empty cache blob).
+///
+/// @param driver A Level Zero driver.
+/// @param device A Level Zero device.
+///
+/// @returns A vector containing the cache blob ID.
+inline std::vector<uint8_t> get_engine_cache_blob_id(
+        ze_driver_handle_t driver, ze_device_handle_t device) {
+    size_t size = 0;
+    error::wrap_c_api(dnnl_ze_interop_engine_get_cache_blob_id(
+                              driver, device, &size, nullptr),
+            "could not get an engine cache blob id size");
+
+    std::vector<uint8_t> cache_blob_id(size);
+    error::wrap_c_api(dnnl_ze_interop_engine_get_cache_blob_id(
+                              driver, device, &size, cache_blob_id.data()),
+            "could not get an engine cache blob id");
+    return cache_blob_id;
+}
+
+/// Returns a cache blob for the engine.
+///
+/// @note The cache blob vector can be empty if oneDNN doesn't have anything
+///     to put in the cache blob. It's the user's responsibility to check
+///     whether it's empty prior to passing it to
+///     #dnnl::ze_interop::make_engine(ze_driver_handle_t, ze_device_handle_t, ze_context_handle_t, const std::vector<uint8_t> &)
+///
+/// @param aengine Engine to query for the cache blob.
+///
+/// @returns Vector containing the cache blob.
+inline std::vector<uint8_t> get_engine_cache_blob(const engine &aengine) {
+    size_t size = 0;
+    error::wrap_c_api(dnnl_ze_interop_engine_get_cache_blob(
+                              aengine.get(), &size, nullptr),
+            "could not get an engine cache blob size");
+
+    std::vector<uint8_t> cache_blob(size);
+    error::wrap_c_api(dnnl_ze_interop_engine_get_cache_blob(
+                              aengine.get(), &size, cache_blob.data()),
+            "could not get an engine cache blob");
+    return cache_blob;
+}
+
+/// Constructs an engine from the given cache blob.
+///
+/// @param driver The Level Zero driver that this engine will encapsulate.
+/// @param device The Level Zero device that this engine will encapsulate.
+/// @param context The Level Zero context (containing the device) that this
+///     engine will use for all operations.
+/// @param cache_blob Cache blob.
+///
+/// @returns An engine.
+inline engine make_engine(ze_driver_handle_t driver, ze_device_handle_t device,
+        ze_context_handle_t context, const std::vector<uint8_t> &cache_blob) {
+    dnnl_engine_t c_engine;
+    error::wrap_c_api(
+            dnnl_ze_interop_engine_create_from_cache_blob(&c_engine, driver,
+                    device, context, cache_blob.size(), cache_blob.data()),
+            "could not create an engine from cache blob");
+    return engine(c_engine);
+}
 
 /// Constructs an engine from Level Zero device and context objects.
 ///

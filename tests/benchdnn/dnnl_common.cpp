@@ -266,9 +266,7 @@ int test_persistent_cache_api(
     }
 
     // Start testing persistent cache API.
-    if (!is_gpu() || (is_gpu() && DNNL_GPU_RUNTIME != DNNL_RUNTIME_OCL)) {
-        return OK;
-    }
+    if (!is_gpu() || !(is_opencl_engine() || is_ze_engine())) { return OK; }
 
     // 1. Disable primitive cache to make sure that the next primitive will
     // be created from the cache blob and not fetched from the primitive cache.

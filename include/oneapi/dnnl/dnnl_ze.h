@@ -36,6 +36,67 @@ extern "C" {
 /// @addtogroup dnnl_api_ze_interop
 /// @{
 
+/// Retrieves a cache blob ID for the Level Zero device.
+///
+/// @warning
+///     This API is intended to be used with
+///     #dnnl_ze_interop_engine_get_cache_blob() and
+///     #dnnl_ze_interop_engine_create_from_cache_blob(). The returned cache
+///     blob ID can only be used as an ID of the cache blob returned by
+///     #dnnl_ze_interop_engine_get_cache_blob().
+///
+/// @note The cache blob ID can be empty (@p size will be 0 and
+///     @p cache_blob_id will be nullptr) if oneDNN doesn't have anything to
+///     put in the cache blob. (#dnnl_ze_interop_engine_get_cache_blob will
+///     return an empty cache blob).
+///
+/// @param driver A Level Zero driver.
+/// @param device A Level Zero device.
+/// @param size Size of the cache blob ID in bytes.
+/// @param cache_blob_id Cache blob id of size @p size. If
+///     the @p cache_blob_id is nullptr then the size of the cache blob ID is
+///     returned in @p size.
+///
+/// @returns #dnnl_success on success and a status describing the error
+///     otherwise.
+dnnl_status_t DNNL_API dnnl_ze_interop_engine_get_cache_blob_id(
+        ze_driver_handle_t driver, ze_device_handle_t device, size_t *size,
+        uint8_t *cache_blob_id);
+
+/// Retrieves a cache blob associated with the given engine.
+///
+/// @note The cache blob can be empty (@p size will be 0 and @p cache_blob
+///     will be nullptr) if oneDNN doesn't have anything to put in the cache
+///     blob. It's the user's responsibility to check whether it's empty
+///     prior to passing it to
+///     #dnnl_ze_interop_engine_create_from_cache_blob().
+///
+/// @param engine Engine to query for the cache blob.
+/// @param size Size of the cache blob in bytes.
+/// @param cache_blob Cache blob of size @p size. If the @p cache_blob is
+///     nullptr then the size of the cache blob is returned in @p size.
+///
+/// @returns #dnnl_success on success and a status describing the error
+///     otherwise.
+dnnl_status_t DNNL_API dnnl_ze_interop_engine_get_cache_blob(
+        dnnl_engine_t engine, size_t *size, uint8_t *cache_blob);
+
+/// Creates an engine from the given cache blob.
+///
+/// @param engine Output engine.
+/// @param driver The Level Zero driver that this engine will encapsulate.
+/// @param device The Level Zero device that this engine will encapsulate.
+/// @param context The Level Zero context (containing the device) that this
+///     engine will use for all operations.
+/// @param size Size of the cache blob in bytes.
+/// @param cache_blob Cache blob of size @p size.
+/// @returns #dnnl_success on success and a status describing the error
+///     otherwise.
+dnnl_status_t DNNL_API dnnl_ze_interop_engine_create_from_cache_blob(
+        dnnl_engine_t *engine, ze_driver_handle_t driver,
+        ze_device_handle_t device, ze_context_handle_t context, size_t size,
+        const uint8_t *cache_blob);
+
 /// Creates an engine associated with a Level Zero device and a Level Zero
 /// context.
 ///

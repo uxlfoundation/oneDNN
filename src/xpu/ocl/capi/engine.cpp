@@ -135,6 +135,9 @@ status_t dnnl_ocl_interop_engine_get_cache_blob_id(
     OCL_CHECK(err);
 
     if (!cache_blob) {
+        // The last component corresponds to the number of
+        // `sstream.append_array` calls which adds the size itself besides
+        // the content of the array.
         id_size = platform_name_size + device_name_size + driver_version_size
                 + sizeof(version->major) + sizeof(version->minor)
                 + sizeof(version->patch) + std::strlen(version->hash)

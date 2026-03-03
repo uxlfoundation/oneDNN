@@ -227,11 +227,7 @@ status_t dnnl_primitive_create_from_cache_blob(
             || size == 0) {
         return invalid_arguments;
     }
-    const auto ekind = primitive_desc_iface->engine()->kind();
-    const auto runtime_kind = primitive_desc_iface->engine()->runtime_kind();
-    if (ekind != engine_kind::gpu
-            || (ekind == engine_kind::gpu
-                    && runtime_kind != runtime_kind::ocl)) {
+    if (!primitive_desc_iface->engine()->is_cache_blob_supported()) {
         return status::unimplemented;
     }
 
@@ -286,11 +282,7 @@ status_t dnnl_primitive_get_cache_blob(const primitive_iface_t *primitive_iface,
         return status::invalid_arguments;
     }
 
-    const auto ekind = primitive_iface->engine()->kind();
-    const auto runtime_kind = primitive_iface->engine()->runtime_kind();
-    if (ekind != engine_kind::gpu
-            || (ekind == engine_kind::gpu
-                    && runtime_kind != runtime_kind::ocl)) {
+    if (!primitive_iface->engine()->is_cache_blob_supported()) {
         return status::unimplemented;
     }
 

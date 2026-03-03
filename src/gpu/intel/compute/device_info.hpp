@@ -161,18 +161,17 @@ static inline const char *ext2cl_str(device_ext_t ext) {
 }
 
 enum class native_ext_t : uint64_t {
-    // clang-format off
     // OpenCL data types
-    fp32_atomic_add = 1ull << 0,                   
-    fp32_atomic_min_max = 1ull << 1, 
-    fp32_atomic_load_store = 1ull << 2,  
-    fp16_atomic_add = 1ull << 3,                   
-    fp16_atomic_min_max = 1ull << 4,              
-    fp16_atomic_load_store = 1ull << 5,  
+    fp32_atomic_add = 1ull << 0,
+    fp32_atomic_min_max = 1ull << 1,
+    fp32_atomic_load_store = 1ull << 2,
+    fp16_atomic_add = 1ull << 3,
+    fp16_atomic_min_max = 1ull << 4,
+    fp16_atomic_load_store = 1ull << 5,
     fp64_atomic_add = 1ull << 6,
     fp64_atomic_min_max = 1ull << 7,
-    fp64_atomic_load_store = 1ull << 8,  
-    last
+    fp64_atomic_load_store = 1ull << 8,
+    last,
 };
 
 // Needed workaround for future HW extensions
@@ -183,8 +182,8 @@ struct device_info_t {
 public:
     virtual ~device_info_t() = default;
 
-    status_t init(
-            impl::engine_t *engine, const std::vector<uint8_t> &cache_blob = {}) {
+    status_t init(impl::engine_t *engine,
+            const std::vector<uint8_t> &cache_blob = {}) {
         if (!cache_blob.empty()) {
             CHECK(init_from_cache_blob(cache_blob));
             return init_serialized_device_info(cache_blob);
@@ -209,9 +208,11 @@ public:
     std::string get_cl_ext_options() const;
 
     bool has(device_ext_t ext) const { return extensions_ & (uint64_t)ext; }
-    bool has_native(native_ext_t ext) const { return native_extensions_ & (uint64_t)ext; }
+    bool has_native(native_ext_t ext) const {
+        return native_extensions_ & (uint64_t)ext;
+    }
     gpu_arch_t gpu_arch() const { return gpu_arch_; }
-    const gpu_product_t &gpu_product() const {return gpu_product_;}
+    const gpu_product_t &gpu_product() const { return gpu_product_; }
     ngen::HW ngen_hw() const;
     int stepping_id() const;
     uint64_t native_extensions() const { return native_extensions_; }
@@ -226,7 +227,7 @@ public:
     int max_subgroup_size(data_type_t type = data_type::undef) const;
     static int max_subgroup_size(gpu_arch_t gpu_arch);
     static int grf_size(gpu_arch_t gpu_arch);
-    int grf_size() const { return grf_size(gpu_arch_); };
+    int grf_size() const { return grf_size(gpu_arch_); }
     int min_subgroup_size() const;
     size_t max_wg_size(bool large_grf_mode, size_t subgroup_size = 0) const;
     int eu_count() const { return eu_count_; }

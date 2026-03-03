@@ -1529,6 +1529,9 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         K_chunk_tail_ = bgmmc.num_K_blocks % get_K_chunk_size();
         K_chunk_tail_elements_ = K_ % bgmmc.K_chunk_elems;
 
+        const bool avoid_overlap_of_tail_and_non_tail_kernels
+                = bgmmc.nthr > 1 && bgmmc.with_sum;
+
         if (bgmmc.is_runtime_M) {
             M_ = helper.M();
             M_chunks_ = M_ / bgmmc.M_chunk_elems;
@@ -1544,9 +1547,15 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                         ? dynamic_m_tails[tail_idx - 1]
                         : (int)bgmmc.M_blk;
                 bool last_tail_kernel = tail_idx == max_num_dynamic_m_tails - 1;
-                if (tail > tail_ker_size && M_ >= prev_tail_ker_size) {
-                    tail_ker_size = prev_tail_ker_size;
-                    ker_idx--;
+                if (tail > tail_ker_size) {
+                    const auto max_ker_size = m_tail_processing_.empty()
+                            ? (avoid_overlap_of_tail_and_non_tail_kernels ? tail
+                                                                          : M_)
+                            : m_tail_processing_.back().kernel_size;
+                    if (max_ker_size >= prev_tail_ker_size) {
+                        tail_ker_size = prev_tail_ker_size;
+                        ker_idx--;
+                    }
                 } else if (tail < tail_ker_size && !last_tail_kernel) {
                     // skip this tail kernel, try the next one
                     tail_idx++;
@@ -1604,9 +1613,15 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                         ? dynamic_n_tails[tail_idx - 1]
                         : (int)bgmmc.N_blk;
                 bool last_tail_kernel = tail_idx == max_num_dynamic_n_tails - 1;
-                if (tail > tail_ker_size && N_ >= prev_tail_ker_size) {
-                    tail_ker_size = prev_tail_ker_size;
-                    ker_idx--;
+                if (tail > tail_ker_size) {
+                    const auto max_ker_size = n_tail_processing_.empty()
+                            ? (avoid_overlap_of_tail_and_non_tail_kernels ? tail
+                                                                          : N_)
+                            : n_tail_processing_.back().kernel_size;
+                    if (max_ker_size >= prev_tail_ker_size) {
+                        tail_ker_size = prev_tail_ker_size;
+                        ker_idx--;
+                    }
                 } else if (tail < tail_ker_size && !last_tail_kernel) {
                     // skip this tail kernel, try the next one
                     tail_idx++;

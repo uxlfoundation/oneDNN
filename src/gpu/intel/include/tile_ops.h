@@ -373,6 +373,63 @@ DEF_BLOCK2D_LOAD_STORE(float, uint, 8, 16, u32_m8k16v1, 16, 8)
         } \
     } while (0)
 
+#if defined(MICRO_SDPA_DEBUG) && MICRO_SDPA_DEBUG
+#define tile_dropout_debug_print( \
+        off_c, i0, j, off_r, drop, before, after, inv_q) \
+    do { \
+        if (get_sub_group_local_id() == 0 && get_local_id(0) == 0 \
+                && get_local_id(1) == 0 && (off_c) == 0 && (i0) == 0 \
+                && (j) < 4) { \
+            printf("[micro_kernel][dropout_apply] q_col=%d k_row=%d drop=%d " \
+                   "val_before=%f val_after=%f inv_q=%f\\n", \
+                    (off_c), (off_r), (drop), (before), (after), \
+                    (float)(inv_q)); \
+        } \
+    } while (0)
+#else
+#define tile_dropout_debug_print( \
+        off_c, i0, j, off_r, drop, before, after, inv_q) \
+    do { \
+    } while (0)
+#endif
+
+/*
+ * Tile dropout helper modeled after tile_predicated_assignment.
+ *
+ * For each logical tile element it computes (offset_r, offset_c), applies
+ * bounds checks, evaluates rng_expr, and writes either 0 or scaled value.
+ *
+ * The on_valid block can use the following local variables:
+ *   _td_i0, _td_j, _td_i, _td_off_r, _td_off_c,
+ *   _td_drop, _td_before, _td_after
+ */
+#define tile_dropout_assignment(t, tile_offset_r, tile_offset_c, max_r, max_c, \
+        rng_expr, drop_threshold, inv_q, on_valid, sg, br, bc, nbr, nbc) \
+    do { \
+        for (int _td_j = 0; _td_j < (bc * nbc); _td_j++) { \
+            for (int _td_i0 = 0; _td_i0 < (br * nbr); _td_i0 += sg) { \
+                int _td_i = _td_i0 + get_sub_group_local_id(); \
+                int _td_off_r = (tile_offset_r) + _td_i; \
+                int _td_off_c = (tile_offset_c) + _td_j; \
+                if (_td_off_r < (max_r) && _td_off_c < (max_c)) { \
+                    uint _td_rng = (rng_expr); \
+                    uchar _td_drop = (_td_rng > (drop_threshold)); \
+                    float _td_before \
+                            = tile_access(t, _td_i0, _td_j, sg, br, bc, nbr); \
+                    float _td_after = _td_drop ? 0.f : (_td_before * (inv_q)); \
+                    tile_access(t, _td_i0, _td_j, sg, br, bc, nbr) \
+                            = _td_after; \
+                    tile_dropout_debug_print(_td_off_c, _td_i0, _td_j, \
+                            _td_off_r, _td_drop, _td_before, _td_after, \
+                            inv_q); \
+                    on_valid; \
+                } else { \
+                    tile_access(t, _td_i0, _td_j, sg, br, bc, nbr) = 0.f; \
+                } \
+            } \
+        } \
+    } while (0)
+
 #define DECLARE_2D_TILE_OPS(tile_type, element_type, sg, br, bc, nbr, nbc) \
     __attribute__((overloadable)) void tile_load_full(tile_type *t, \
             const global element_type *ptr, int ld, int offset_r, \

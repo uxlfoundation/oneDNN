@@ -14,7 +14,9 @@
 * limitations under the License.
 *******************************************************************************/
 
+#define WITH_DROPOUT DROPOUT
 #include "gpu/intel/include/conversion.h"
+#include "gpu/intel/include/philox.h"
 #include "gpu/intel/include/tile_ops.h"
 #include "gpu/intel/include/types_interop.h"
 #include "gpu/intel/sdpa/utils.h"
@@ -187,6 +189,27 @@ DECLARE_2D_TILE_BLOCK_OPS(a_tile_type_dst, DST_DATA_T, SUBGROUP_SIZE,
 #if BLOCK_2D_A
 DECLARE_2D_TILE_BLOCK2D_OPS(a_tile_type_dst, DST_DATA_T, SUBGROUP_SIZE,
         ugemm_vs_sg_tile_m, 8, 1, ugemm_vs_sg_tile_n / 8)
+#endif
+
+#if DROPOUT
+/*
+ * Tile-coordinate helper for dropout RNG using logical (k_row, q_col).
+ */
+static inline ulong tile_ij_offset(const ulong batch_head_base, const int k,
+        const int k_row, const int q_col) {
+    return batch_head_base + (ulong)q_col * (ulong)k + (ulong)k_row;
+}
+
+static inline uint tile_dropout_rng(const ulong batch_head_base, const int k,
+        const int k_row, const int q_col, const long dropout_seed,
+        const long dropout_offset) {
+    const ulong data_off = tile_ij_offset(batch_head_base, k, k_row, q_col);
+    const uint dropout_rng = DROPOUT_OFFSET
+            ? philox_4x32_s64(
+                      data_off, (ulong)dropout_seed, (ulong)dropout_offset)
+            : philox_4x32((uint)data_off, (uint)dropout_seed);
+    return dropout_rng;
+}
 #endif
 
 #if KQ_F16_ACC
@@ -391,7 +414,18 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         MSK_OFFSETS
 #endif
         ,
-        const int remainder_k) {
+        const int remainder_k
+#if DROPOUT
+        ,
+        __global uchar *dropout_mask_buf,
+#if DROPOUT_HOST_SCALARS
+        long dropout_seed, long dropout_offset, float dropout_p
+#else
+        __global long *dropout_seed_buf, __global long *dropout_offset_buf,
+        __global float *dropout_p_buf
+#endif
+#endif
+) {
 
     uint sg_ij = sub_group_broadcast(get_local_id(1), 0);
     uint b1 = get_group_id(2);
@@ -429,6 +463,16 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     uint ldq = QRY_S2;
     uint ldv = VAL_S2;
     uint lda = DST_S2;
+
+#if DROPOUT
+#if !DROPOUT_HOST_SCALARS
+    long dropout_seed = dropout_seed_buf[0];
+    long dropout_offset = DROPOUT_OFFSET ? dropout_offset_buf[0] : 0;
+    float dropout_p = dropout_p_buf[0];
+#endif
+    uint dropout_threshold = get_dropout_threshold(dropout_p);
+    float dropout_inv_q = (dropout_p != 1.f) ? 1.f / (1.f - dropout_p) : 0.f;
+#endif
 
 #if KEY_SCALES || KEY_ZERO_POINTS
     uint ldkq = KEY_D3;
@@ -799,6 +843,85 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         s_sum_tile_type S_sum_tile1;
         tile_fill(S_sum_tile1, 0.0f);
         tile_vreduce_add(S_tile, &S_sum_tile1);
+
+#if DROPOUT
+        /* DROPOUT TIMING & CORRECTNESS NOTES:
+         * Dropout is applied immediately after softmax (here in registers) to ensure:
+         * 1. CORRECTNESS: Undropped sums were just computed above from the full softmax exp values.
+         *    These sums are needed for:
+         *    - Backward pass: gradient computation requires the original sum of softmax
+         *    - Normalization: inverted dropout (scale by 1/(1-p)) maintains correct softmax semantics
+         * 2. SEMANTICS: Inverted dropout means:
+         *    - Dropped elements (mask=1): set to 0 (no contribution to output)
+         *    - Kept elements (mask=0): scale by 1/(1-p) to maintain expectation
+         *    This ensures E[output_dropped] = E[output_undropped]
+         * 3. FLOW: After dropout, the scaled values (with some zeroed out) are stored to SLM.
+         *    The VS matmul then reads these pre-scaled, post-dropout values.
+         *    Subsequent iterations rescale their accumulators using the undropped sums,
+         *    which is correct because the VS output already incorporates the dropout scaling.
+         */
+
+        /* Save pre-dropout state for debug output */
+        s_tile_type S_tile_pre_dropout;
+#if MICRO_SDPA_DEBUG
+        tile_copy(S_tile, &S_tile_pre_dropout);
+#endif
+
+        /* Apply inverted dropout to attention weights (S_tile).
+         * Note: per-tile drop/keep counters were removed since they are only
+         * debug telemetry and not needed for correctness.
+         */
+        {
+            const int tile_offset_r = k0 + sg_i0_kq;
+            const int tile_offset_c = wg_j0 + sg_j0_kq;
+            const ulong batch_head_base
+                    = ((ulong)b1 * get_num_groups(1) + b0) * (ulong)q * k;
+
+            tile_dropout_assignment(S_tile, tile_offset_r, tile_offset_c, k0end,
+                    q,
+                    tile_dropout_rng(batch_head_base, k, _td_off_r, _td_off_c,
+                            dropout_seed, dropout_offset),
+                    dropout_threshold, dropout_inv_q,
+                    {
+#if DROPOUT_OUTPUT_MASK
+                        const ulong data_off = tile_ij_offset(
+                                batch_head_base, k, _td_off_r, _td_off_c);
+                        dropout_mask_buf[data_off] = _td_drop;
+#endif
+                    },
+                    SUBGROUP_SIZE, ugemm_kq_c_type_block0,
+                    ugemm_kq_c_type_block1, ugemm_kq_c_type_nblock0,
+                    ugemm_kq_c_type_nblock1);
+
+#if MICRO_SDPA_DEBUG
+            /* Side-by-side comparison of pre-dropout (after softmax) vs post-dropout values */
+            if (get_sub_group_local_id() == 0 && get_local_id(0) == 0
+                    && get_local_id(1) == 0 && b0 == 0 && b1 == 0 && k0 == 0) {
+                printf("[micro_kernel][softmax_dropout_compare] k0=%d: ===== "
+                       "SOFTMAX -> DROPOUT TRANSFORMATION =====\n",
+                        k0);
+                for (int i = 0; i < 4 && i < ugemm_kq_c_type_nblock0; i++) {
+                    for (int j = 0; j < 4 && j < ugemm_kq_c_type_nblock1; j++) {
+                        float after_softmax = S_tile_pre_dropout.x[i][j];
+                        float after_dropout = S_tile.x[i][j];
+                        printf("[micro_kernel][softmax_dropout_compare] "
+                               "[%d][%d] softmax=%f -> dropout=%f\n",
+                                i, j, after_softmax, after_dropout);
+                    }
+                }
+                printf("[micro_kernel][softmax_dropout_compare] S_sum_tile1 "
+                       "values (column normalization factors):\n");
+                for (int i = 0; i < 4 && i < ugemm_kq_wg_tile_n; i++) {
+                    printf("[micro_kernel][softmax_dropout_compare]   "
+                           "sum[q_col=%d]=%f\n",
+                            i, S_sum_tile1.x[0][i]);
+                }
+                printf("[micro_kernel][softmax_dropout_compare] ===== END "
+                       "TRANSFORMATION =====\n");
+            }
+#endif
+        }
+#endif
 
         /* Reblock and store to SLM */
         s_tile_type_reblock S_tile_reblock;

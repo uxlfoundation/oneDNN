@@ -95,6 +95,7 @@ struct micro_fwd_params_t : trivially_serializable_t<micro_fwd_params_t> {
     bool is_training;
     bool use_int32_offset;
     uint8_t padding3[4] = {0};
+    bool dropout, dropout_output_mask, dropout_offset, dropout_host_scalars;
 
     micro_fwd_ukernel_params_t ukernel_config;
 };
@@ -145,6 +146,7 @@ struct micro_bwd_params_t : trivially_serializable_t<micro_bwd_params_t> {
     bool with_dS;
     bool require_stateless_addressing;
     uint8_t padding2[7] = {0};
+    bool dropout, dropout_output_mask, dropout_offset, dropout_host_scalars;
 
     micro_bwd_ukernel_params_t ukernel_config;
 };
@@ -159,6 +161,7 @@ struct micro_fwd_t : public primitive_t {
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
+            using smask_t = primitive_attr_t::skip_mask_t;
 
             VCHECK_SDPA_COND(is_fwd(), VERBOSE_BAD_PROPKIND);
             VCHECK_SDPA_COND(utils::everyone_is(4, desc()->qry_md()->ndims,
@@ -174,7 +177,8 @@ struct micro_fwd_t : public primitive_t {
                                      key_mdw.is_plain(), val_mdw.is_plain(),
                                      dst_mdw.is_plain()),
                     VERBOSE_UNSUPPORTED_TAG);
-
+            VCHECK_SDPA_COND(attr()->has_default_values(smask_t::dropout),
+                    VERBOSE_UNSUPPORTED_ATTR);
             if (with_attn_mask()) {
                 VCHECK_SDPA_COND(desc()->attn_mask_md()->ndims == 4,
                         VERBOSE_UNSUPPORTED_TAG);
@@ -308,6 +312,23 @@ struct micro_fwd_t : public primitive_t {
                         "the value group size(%d) must be a power of 2 or "
                         "equal to the number of values(%ld).",
                         vgs, static_cast<long int>(desc()->val_md()->dims[3]));
+            }
+
+            if (!attr()->dropout_.has_default_values()) {
+                assert(memory_desc_wrapper(dst_md(0)).format_kind()
+                        == format_kind::blocked);
+
+                using namespace format_tag;
+                // Note: for `offset = 0` keep the legacy logic without the `offset`.
+                VCHECK_SDPA_COND(memory_desc_matches_one_of_tag(
+                                         *dst_md(0), ncdhw, nchw, ncw, nc)
+                                && IMPLICATION(attr_.dropout_.has_output_mask(),
+                                        memory_desc_wrapper(dst_md(0))
+                                                .similar_to(
+                                                        attr_.dropout_
+                                                                .dropout_desc_,
+                                                        true, false)),
+                        VERBOSE_UNSUPPORTED_DROPOUT);
             }
 
             CHECK(init_conf_microkernels(engine));

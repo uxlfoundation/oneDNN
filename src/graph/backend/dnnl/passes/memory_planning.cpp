@@ -53,11 +53,17 @@ struct op_inplace_pair_t {
 
 std::vector<op_inplace_pair_t> get_op_inplace_pairs(op_t &op) {
     // TODO(xxx) extend the set
-    const static std::set<op_kind_t> ops {op_kind::dnnl_mul_scales,
-            op_kind::dnnl_add_zps, op_kind::dnnl_reorder, op_kind::dnnl_binary,
-            op_kind::dnnl_eltwise, op_kind::dnnl_softmax,
-            op_kind::dnnl_logsoftmax, op_kind::dnnl_softmax_bwd,
-            op_kind::dnnl_logsoftmax_bwd, op_kind::dnnl_identity};
+    const static std::set<op_kind_t> ops {
+            op_kind::dnnl_mul_scales,
+            op_kind::dnnl_add_zps,
+            op_kind::dnnl_binary,
+            op_kind::dnnl_eltwise,
+            op_kind::dnnl_softmax,
+            op_kind::dnnl_logsoftmax,
+            op_kind::dnnl_softmax_bwd,
+            op_kind::dnnl_logsoftmax_bwd,
+            op_kind::dnnl_identity,
+    };
     std::vector<op_inplace_pair_t> pairs;
 
     // Make post-sum inplace has higher priority since it affects both

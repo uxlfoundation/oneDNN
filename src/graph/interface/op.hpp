@@ -545,6 +545,7 @@ public:
             CASE(_host_scalar);
             CASE(_identity);
             CASE(_dropout);
+            CASE(_gated_mlp);
             default: return "undefined_op";
         }
 #undef CASE

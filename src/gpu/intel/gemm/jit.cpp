@@ -168,6 +168,9 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
     if (nocopy_info()->fusedBeta() || nocopy_info()->fusedPostOps()) {
         CHECK(zero_pool->claim(
                 compute_stream, zero_pool_bytes_, zeros, &zp_token));
+        CHECK(compute_stream->fill(*zeros, 0, zero_pool_bytes_,
+                compute_stream->ctx().get_deps(),
+                compute_stream->ctx().get_deps()));
         arg_list.set(argn++, *zeros);
     }
 

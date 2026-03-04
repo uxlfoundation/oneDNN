@@ -30,6 +30,7 @@ cfg_t::cfg_t(const prb_t *prb, const std::vector<data_kind_t> &kinds) {
                         kind, orig_data_type, data_type, get_cfg_map(kind)});
     }
 
+    set_acc_mode(prb->attr.acc_mode);
     adjust_ranges();
 
     // Wider ranges make Nvidia/AMD bf16/f16 test cases to fail by accuracy,

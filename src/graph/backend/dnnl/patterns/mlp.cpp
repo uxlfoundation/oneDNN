@@ -14,6 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "graph/backend/dnnl/kernels/gated_mlp.hpp"
 #include "graph/backend/dnnl/kernels/large_partition.hpp"
 
 #include "graph/backend/dnnl/patterns/fusions.hpp"
@@ -86,7 +87,7 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, gated_mlp)
                             in_edges_t {in_edge(0, pre_tc, 0)});
                 })
         .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
-            return std::make_shared<larger_partition_kernel_t>();
+            return std::make_shared<gated_mlp_base_t>();
         });
 
 // gated mlp with swish decomposed to sigmoid and multiply.
@@ -130,7 +131,7 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, gated_mlp_v1)
                             in_edges_t {in_edge(0, pre_tc, 0)});
                 })
         .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
-            return std::make_shared<larger_partition_kernel_t>();
+            return std::make_shared<gated_mlp_base_t>();
         });
 
 /*

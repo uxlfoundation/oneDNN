@@ -351,10 +351,10 @@ void eltwise_injector_f32_t<ngen_generator_t>::mx_scale_compute_fwd(int simd,
     h->add(16, r.d(0)(1), r.d(0)(1), Immediate::d(0x7F800000));
     h->add(16, r_alt.d(0)(1), r_alt.d(0)(1), Immediate::d(0x7F800000));
 
-    h->sel(8 | ge, max.ud(0)(1), max.ud(0)(2), max.ud(1)(2));
-    h->sel(4 | ge, max.ud(0)(1), max.ud(0)(2), max.ud(1)(2));
-    h->sel(2 | ge, max.ud(0)(1), max.ud(0)(2), max.ud(1)(2));
-    h->sel(1 | ge, max.ud(0)(1), max.ud(0)(1), max.ud(1)(1));
+    h->sel(8 | ge, max.ud(0)(1), max.ud(8)(1), max.ud(0)(1));
+    h->sel(4 | ge, max.ud(0)(1), max.ud(4)(1), max.ud(0)(1));
+    h->sel(2 | ge, max.ud(0)(1), max.ud(2)(1), max.ud(0)(1));
+    h->sel(1 | ge, max.ud(0)(1), max.ud(1)(1), max.ud(0)(1));
 
     h->add(1, max.d(0)(1), max.d(0)(1), Immediate::d(0x7F800000));
 

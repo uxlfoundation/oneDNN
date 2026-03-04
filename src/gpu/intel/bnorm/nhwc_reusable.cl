@@ -203,8 +203,9 @@ nhwc_reusable_calc_mean(__global DATA_T *src, __global float *reduce_temp,
         VECT_FLOAT_T v_mean = 0.0f;
         // reduce
         for (int sp = 0; sp < sp_idx_bnd; ++sp) {
-            v_mean += LOAD_VECT_DATA(
-                    &src[sg * SUB_GROUP_SIZE * VECT_SIZE + sp * ic_size]);
+            VECT_FLOAT_T tmp = block_load(
+                    tmp, &src[sg * SUB_GROUP_SIZE * VECT_SIZE + sp * ic_size]);
+            v_mean += tmp;
         }
         // store res
         if (use_fused_atomics_reduction) {
@@ -215,12 +216,14 @@ nhwc_reusable_calc_mean(__global DATA_T *src, __global float *reduce_temp,
         } else {
             const int sg_off = sg * VECT_SIZE * SUB_GROUP_SIZE;
             for (int v_idx = 0; v_idx < VECT_SIZE; v_idx++) {
-                STORE_FLOAT_1x16(&reduce_temp[sg_off + v_idx * SUB_GROUP_SIZE],
+                float tmp_store =
 #if VECT_SIZE > 1
-                        v_mean[v_idx]);
+                        v_mean[v_idx];
 #else
-                        v_mean);
+                        v_mean;
 #endif
+                block_write(&reduce_temp[sg_off + v_idx * SUB_GROUP_SIZE],
+                        tmp_store);
             }
         }
     }
@@ -229,9 +232,10 @@ nhwc_reusable_calc_mean(__global DATA_T *src, __global float *reduce_temp,
         float v_mean = 0.0f;
         // reduce
         for (int sp = 0; sp < sp_idx_bnd; ++sp) {
-            v_mean += LOAD_DATA_1x16(
+            float tmp = block_load(tmp,
                     &src[(ic_vect_sgroups + sg) * SUB_GROUP_SIZE
                             + sp * ic_size]);
+            v_mean += tmp;
         }
         // store res
         if (use_fused_atomics_reduction) {
@@ -241,7 +245,7 @@ nhwc_reusable_calc_mean(__global DATA_T *src, __global float *reduce_temp,
                     mean, dst_off, &v_mean, local_sum, 1);
         } else {
             const int sg_off = (ic_vect_sgroups + sg) * SUB_GROUP_SIZE;
-            STORE_FLOAT_1x16(&reduce_temp[sg_off], v_mean);
+            block_write(&reduce_temp[sg_off], v_mean);
         }
     }
 }
@@ -279,8 +283,8 @@ nhwc_reusable_calc_mean_buff(__global DATA_T *src, __global float *reduce_temp,
         // vectorized part
         for (int sg = 0; sg < ic_vect_sgroups; ++sg) {
             float s_vect[VECT_SIZE];
-            AS_VECT_FLOAT(s_vect)
-                    = LOAD_VECT_DATA(&src[sg * SUB_GROUP_SIZE * VECT_SIZE]);
+            block_load(
+                    s_vect, &src[sg * SUB_GROUP_SIZE * VECT_SIZE], VECT_SIZE);
             for (int vect = 0; vect < VECT_SIZE; ++vect) {
                 v_mean[sg * VECT_SIZE + vect] += s_vect[vect];
             }
@@ -289,7 +293,8 @@ nhwc_reusable_calc_mean_buff(__global DATA_T *src, __global float *reduce_temp,
         // tails
         for (int sg = 0; sg < ic_tail_sgroups; ++sg) {
             const int sg_idx = ic_vect_sgroups * VECT_SIZE + sg;
-            v_mean[sg_idx] += LOAD_DATA_1x16(&src[sg_idx * SUB_GROUP_SIZE]);
+            float tmp = block_load(tmp, &src[sg_idx * SUB_GROUP_SIZE]);
+            v_mean[sg_idx] += tmp;
         }
 #endif // HAS_IC_VECT_TAIL
         src += ic_size;
@@ -302,7 +307,7 @@ nhwc_reusable_calc_mean_buff(__global DATA_T *src, __global float *reduce_temp,
     } else {
         for (int sg = 0; sg < ic_block_sgroups; ++sg) {
             const int sg_off = sg * SUB_GROUP_SIZE;
-            STORE_FLOAT_1x16(&reduce_temp[sg_off], v_mean[sg]);
+            block_write(&reduce_temp[sg_off], v_mean[sg]);
         }
     }
 }
@@ -339,14 +344,13 @@ nhwc_reusable_calc_var(__global DATA_T *src, __global float *mean,
     // vectorized part
     for (int sg = 0; sg < ic_block_sgroups / VECT_SIZE; ++sg) {
         VECT_FLOAT_T v_var = 0.0f;
-        const VECT_FLOAT_T v_mean
-                = LOAD_VECT_FLOAT(&mean[sg * SUB_GROUP_SIZE * VECT_SIZE]);
+        VECT_FLOAT_T v_mean
+                = block_load(v_mean, &mean[sg * SUB_GROUP_SIZE * VECT_SIZE]);
         // reduce
         for (int sp = 0; sp < sp_idx_bnd; ++sp) {
-            const VECT_FLOAT_T v0
-                    = LOAD_VECT_DATA(&src[sg * SUB_GROUP_SIZE * VECT_SIZE
-                              + sp * ic_size])
-                    - v_mean;
+            VECT_FLOAT_T tmp = block_load(
+                    tmp, &src[sg * SUB_GROUP_SIZE * VECT_SIZE + sp * ic_size]);
+            const VECT_FLOAT_T v0 = tmp - v_mean;
             v_var = fma(v0, v0, v_var);
         }
         // store res
@@ -358,27 +362,28 @@ nhwc_reusable_calc_var(__global DATA_T *src, __global float *mean,
         } else {
             const int sg_off = sg * VECT_SIZE * SUB_GROUP_SIZE;
             for (int v_idx = 0; v_idx < VECT_SIZE; v_idx++) {
-                STORE_FLOAT_1x16(&reduce_temp[sg_off + v_idx * SUB_GROUP_SIZE],
+                float tmp_store =
 #if VECT_SIZE > 1
-                        v_var[v_idx]);
+                        v_var[v_idx];
 #else
-                        v_var);
+                        v_var;
 #endif
+                block_write(&reduce_temp[sg_off + v_idx * SUB_GROUP_SIZE],
+                        tmp_store);
             }
         }
     }
     // tails
     for (int sg = 0; sg < ic_tail_sgroups; ++sg) {
         float v_var = 0.0f;
-        const float v_mean = LOAD_FLOAT_1x16(
-                &mean[(ic_vect_sgroups + sg) * SUB_GROUP_SIZE]);
+        float v_mean = block_load(
+                v_mean, &mean[(ic_vect_sgroups + sg) * SUB_GROUP_SIZE]);
         // reduce
         for (int sp = 0; sp < sp_idx_bnd; ++sp) {
-            const float v0
-                    = LOAD_DATA_1x16(
-                              &src[(ic_vect_sgroups + sg) * SUB_GROUP_SIZE
-                                      + sp * ic_size])
-                    - v_mean;
+            float tmp = block_load(tmp,
+                    &src[(ic_vect_sgroups + sg) * SUB_GROUP_SIZE
+                            + sp * ic_size]);
+            const float v0 = tmp - v_mean;
             v_var = fma(v0, v0, v_var);
         }
         // store res
@@ -389,7 +394,7 @@ nhwc_reusable_calc_var(__global DATA_T *src, __global float *mean,
                     variance, dst_off, &v_var, local_sum, 1);
         } else {
             const int sg_off = (ic_vect_sgroups + sg) * SUB_GROUP_SIZE;
-            STORE_FLOAT_1x16(&reduce_temp[sg_off], v_var);
+            block_write(&reduce_temp[sg_off], v_var);
         }
     }
 }
@@ -426,8 +431,7 @@ nhwc_reusable_calc_var_buff(__global DATA_T *src, __global float *mean,
 
     float v_mean[MAX_IC_BLOCK_SGROUPS] = {0.0f};
     for (int sg = 0; sg < ic_block_sgroups; ++sg) {
-        v_mean[sg] = as_float(intel_sub_group_block_read(
-                (const __global uint *)(&mean[(sg * SUB_GROUP_SIZE)])));
+        v_mean[sg] = block_load(v_mean[sg], &mean[(sg * SUB_GROUP_SIZE)]);
     }
 
     float v_var[MAX_IC_BLOCK_SGROUPS] = {0.0f};
@@ -437,8 +441,8 @@ nhwc_reusable_calc_var_buff(__global DATA_T *src, __global float *mean,
         // vectorized part
         for (int sg = 0; sg < ic_vect_sgroups; ++sg) {
             float s_vect[VECT_SIZE];
-            AS_VECT_FLOAT(s_vect)
-                    = LOAD_VECT_DATA(&src[sg * SUB_GROUP_SIZE * VECT_SIZE]);
+            block_load(
+                    s_vect, &src[sg * SUB_GROUP_SIZE * VECT_SIZE], VECT_SIZE);
             for (int vect = 0; vect < VECT_SIZE; ++vect) {
                 int sg_idx = sg * VECT_SIZE + vect;
                 v0[sg_idx] = s_vect[vect] - v_mean[sg_idx];
@@ -450,7 +454,7 @@ nhwc_reusable_calc_var_buff(__global DATA_T *src, __global float *mean,
         // tails
         for (int sg = 0; sg < ic_tail_sgroups; ++sg) {
             const int sg_idx = ic_vect_sgroups * VECT_SIZE + sg;
-            float s_tail = LOAD_DATA_1x16(&src[sg_idx * SUB_GROUP_SIZE]);
+            float s_tail = block_load(s_tail, &src[sg_idx * SUB_GROUP_SIZE]);
             v0[sg_idx] = s_tail - v_mean[sg_idx];
             v_var[sg_idx] = fma(v0[sg_idx], v0[sg_idx], v_var[sg_idx]);
         }
@@ -465,7 +469,7 @@ nhwc_reusable_calc_var_buff(__global DATA_T *src, __global float *mean,
     } else {
         for (int sg = 0; sg < ic_block_sgroups; ++sg) {
             const int sg_off = sg * SUB_GROUP_SIZE;
-            STORE_FLOAT_1x16(&reduce_temp[sg_off], v_var[sg]);
+            block_write(&reduce_temp[sg_off], v_var[sg]);
         }
     }
 }
@@ -508,7 +512,7 @@ nhwc_reusable_calc_mean_var(__global DATA_T *src, __global float *reduce_temp,
         SUM_DATA_T sum_sq[VECT_SIZE] = {0.0f};
         // reduce
         for (int sp = 0; sp < sp_idx_bnd; ++sp) {
-            const VECT_FLOAT_T s_vect = LOAD_VECT_DATA(
+            VECT_FLOAT_T s_vect = block_load(s_vect,
                     &src[sg * SUB_GROUP_SIZE * VECT_SIZE + sp * ic_size]);
             for (int v_idx = 0; v_idx < VECT_SIZE; ++v_idx) {
 #if VECT_SIZE > 1
@@ -531,8 +535,8 @@ nhwc_reusable_calc_mean_var(__global DATA_T *src, __global float *reduce_temp,
             const int sg_off = sg * VECT_SIZE * SUB_GROUP_SIZE;
             for (int v_idx = 0; v_idx < VECT_SIZE; v_idx++) {
                 const int reduce_off = sg_off + v_idx * SUB_GROUP_SIZE;
-                STORE_FLOAT_1x16(&reduce_temp[reduce_off], sum[v_idx].s0);
-                STORE_FLOAT_1x16(&reduce_temp[variance_off + reduce_off],
+                block_write(&reduce_temp[reduce_off], sum[v_idx].s0);
+                block_write(&reduce_temp[variance_off + reduce_off],
                         sum_sq[v_idx].s0);
             }
         }
@@ -542,7 +546,7 @@ nhwc_reusable_calc_mean_var(__global DATA_T *src, __global float *reduce_temp,
         SUM_DATA_T sum = 0.0f;
         SUM_DATA_T sum_sq = 0.0f;
         for (int sp = 0; sp < sp_idx_bnd; ++sp) {
-            const float src_v = LOAD_DATA_1x16(
+            float src_v = block_load(src_v,
                     &src[(ic_vect_sgroups + sg) * SUB_GROUP_SIZE
                             + sp * ic_size]);
             sum = summation(src_v, sum);
@@ -556,8 +560,8 @@ nhwc_reusable_calc_mean_var(__global DATA_T *src, __global float *reduce_temp,
                     &sum_sq, local_sum, local_sum_sq, 1);
         } else {
             const int sg_off = (ic_vect_sgroups + sg) * SUB_GROUP_SIZE;
-            STORE_FLOAT_1x16(&reduce_temp[sg_off], sum.s0);
-            STORE_FLOAT_1x16(&reduce_temp[variance_off + sg_off], sum_sq.s0);
+            block_write(&reduce_temp[sg_off], sum.s0);
+            block_write(&reduce_temp[variance_off + sg_off], sum_sq.s0);
         }
     }
 }
@@ -603,8 +607,8 @@ nhwc_reusable_calc_mean_var_buff(__global DATA_T *src,
         // vectorized part
         for (int sg = 0; sg < ic_vect_sgroups; ++sg) {
             float s_vect[VECT_SIZE];
-            AS_VECT_FLOAT(s_vect)
-                    = LOAD_VECT_DATA(&src[sg * SUB_GROUP_SIZE * VECT_SIZE]);
+            block_load(
+                    s_vect, &src[sg * SUB_GROUP_SIZE * VECT_SIZE], VECT_SIZE);
             for (int vect = 0; vect < VECT_SIZE; ++vect) {
                 const int sum_idx = sg * VECT_SIZE + vect;
                 sum[sum_idx] = summation(s_vect[vect], sum[sum_idx]);
@@ -616,7 +620,7 @@ nhwc_reusable_calc_mean_var_buff(__global DATA_T *src,
         // tails
         for (int sg = 0; sg < ic_tail_sgroups; ++sg) {
             const int sg_idx = ic_vect_sgroups * VECT_SIZE + sg;
-            float s_tail = LOAD_DATA_1x16(&src[sg_idx * SUB_GROUP_SIZE]);
+            float s_tail = block_load(s_tail, &src[sg_idx * SUB_GROUP_SIZE]);
             sum[sg_idx] = summation(s_tail, sum[sg_idx]);
             sum_sq[sg_idx] = summation(s_tail * s_tail, sum_sq[sg_idx]);
         }
@@ -631,9 +635,8 @@ nhwc_reusable_calc_mean_var_buff(__global DATA_T *src,
     } else {
         for (int sg = 0; sg < ic_block_sgroups; ++sg) {
             const int reduce_off = sg * SUB_GROUP_SIZE;
-            STORE_FLOAT_1x16(&reduce_temp[reduce_off], sum[sg].s0);
-            STORE_FLOAT_1x16(
-                    &reduce_temp[variance_off + reduce_off], sum_sq[sg].s0);
+            block_write(&reduce_temp[reduce_off], sum[sg].s0);
+            block_write(&reduce_temp[variance_off + reduce_off], sum_sq[sg].s0);
         }
     }
 }
@@ -674,31 +677,44 @@ nhwc_reusable_norm_fwd(__global DATA_T *src, __global float *mean,
         // vectorized part
         for (int sg = 0; sg < ic_block_sgroups / VECT_SIZE; ++sg) {
             const int sg_idx = sg * SUB_GROUP_SIZE * VECT_SIZE;
-            const VECT_FLOAT_T sm = USE_SCALE
-                    ? LOAD_VECT_FLOAT(&scaleshift[sg_idx])
-                    : (VECT_FLOAT_T)1.0f;
-            const VECT_FLOAT_T sv = USE_SHIFT ? LOAD_VECT_FLOAT(&shift[sg_idx])
-                                              : (VECT_FLOAT_T)0.0f;
-            const VECT_FLOAT_T s_vect = LOAD_VECT_DATA(&src[sg_idx]);
-            const VECT_FLOAT_T v_mean = LOAD_VECT_FLOAT(&mean[sg_idx]);
-            const VECT_FLOAT_T v_variance = LOAD_VECT_FLOAT(&variance[sg_idx]);
+            VECT_FLOAT_T sm;
+            if (USE_SCALE) {
+                sm = block_load(sm, &scaleshift[sg_idx]);
+            } else {
+                sm = (VECT_FLOAT_T)1.0f;
+            }
+            VECT_FLOAT_T sv;
+            if (USE_SHIFT) {
+                sv = block_load(sv, &shift[sg_idx]);
+            } else {
+                sv = (VECT_FLOAT_T)0.0f;
+            }
+            VECT_FLOAT_T s_vect = block_load(s_vect, &src[sg_idx]);
+            VECT_FLOAT_T v_mean = block_load(v_mean, &mean[sg_idx]);
+            VECT_FLOAT_T v_variance = block_load(v_variance, &variance[sg_idx]);
             const VECT_FLOAT_T sqrt_variance
                     = sm / sqrt(v_variance + (VECT_FLOAT_T)eps);
             VECT_FLOAT_T d_vect = fma(s_vect - v_mean, sqrt_variance, sv);
 
 #if FUSE_BN_RELU
 #if FUSE_BN_ADD_RELU
-            d_vect += LOAD_VECT_DATA(&src_add[sg_idx]);
+            {
+                VECT_FLOAT_T tmp_add = block_load(tmp_add, &src_add[sg_idx]);
+                d_vect += tmp_add;
+            }
 #endif
-            const VECT_INT_T ws_vect = ISGREATER(d_vect, (VECT_FLOAT_T)0.0f);
+            const VECT_N(int) ws_vect = ISGREATER(d_vect, (VECT_FLOAT_T)0.0f);
             d_vect = select((VECT_FLOAT_T)0.0f, d_vect, ws_vect);
 #if IS_TRAINING
-            STORE_VECT_CHAR(&ws[sg_idx], ws_vect);
+            {
+                VECT_N(char) tmp_ws = VECT_N(convert_char)(ws_vect);
+                block_write(&ws[sg_idx], &tmp_ws);
+            }
 #endif // IS_TRAINING
 #endif // FUSE_BN_RELU
 
 #if WITH_RELU && WITH_LEAKY_RELU
-            VECT_INT_T l_vect;
+            VECT_N(int) l_vect;
 #endif //WITH_RELU && WITH_LEAKY_RELU
 #if WITH_RELU
 #if WITH_LEAKY_RELU
@@ -709,7 +725,7 @@ nhwc_reusable_norm_fwd(__global DATA_T *src, __global float *mean,
 #endif //WITH_LEAKY_RELU
 #endif //WITH_RELU
 
-            STORE_VECT_DATA(&dst[sg_idx], d_vect);
+            block_write(&dst[sg_idx], &d_vect);
         } // sg loop
 
         const int ic_tail_sgroups = (ic_block / SUB_GROUP_SIZE) % VECT_SIZE;
@@ -720,27 +736,39 @@ nhwc_reusable_norm_fwd(__global DATA_T *src, __global float *mean,
             for (int sg = 0; sg < ic_tail_sgroups; ++sg) {
                 const int sg_idx = (ic_vect_sgroups + sg) * SUB_GROUP_SIZE;
 
-                const float sm_tail = USE_SCALE
-                        ? LOAD_FLOAT_1x16(&scaleshift[sg_idx])
-                        : 1.0f;
-                const float sv_tail
-                        = USE_SHIFT ? LOAD_FLOAT_1x16(&shift[sg_idx]) : 0.0f;
-                const float v_mean_tail = LOAD_FLOAT_1x16(&mean[sg_idx]);
-                const float v_variance_tail
-                        = LOAD_FLOAT_1x16(&variance[sg_idx]);
+                float sm_tail;
+                if (USE_SCALE) {
+                    sm_tail = block_load(sm_tail, &scaleshift[sg_idx]);
+                } else {
+                    sm_tail = 1.0f;
+                }
+                float sv_tail;
+                if (USE_SHIFT) {
+                    sv_tail = block_load(sv_tail, &shift[sg_idx]);
+                } else {
+                    sv_tail = 0.0f;
+                }
+                float v_mean_tail = block_load(v_mean_tail, &mean[sg_idx]);
+                float v_variance_tail
+                        = block_load(v_variance_tail, &variance[sg_idx]);
                 const float sqrt_variance_tail
                         = sm_tail / sqrt(v_variance_tail + eps);
-                const float s_tail = LOAD_DATA_1x16(&src[sg_idx]);
+                float s_tail = block_load(s_tail, &src[sg_idx]);
                 float d_tail = fma(
                         s_tail - v_mean_tail, sqrt_variance_tail, sv_tail);
 
-                if (FUSE_BN_ADD_RELU)
-                    d_tail += LOAD_DATA_1x16(&src_add[sg_idx]);
+                if (FUSE_BN_ADD_RELU) {
+                    float tmp_add = block_load(tmp_add, &src_add[sg_idx]);
+                    d_tail += tmp_add;
+                }
 #if FUSE_BN_RELU
                 if (d_tail <= 0) d_tail = 0.0f;
 #if IS_TRAINING
                 const int ws_tail = d_tail > 0.0f ? -1 : 0;
-                STORE_CHAR_1x16(&ws[sg_idx], convert_char(ws_tail));
+                {
+                    char tmp_ws = convert_char(ws_tail);
+                    block_write(&ws[sg_idx], tmp_ws);
+                }
 #endif // IS_TRAINING
 #endif // FUSE_BN_RELU
 #if WITH_RELU
@@ -750,7 +778,7 @@ nhwc_reusable_norm_fwd(__global DATA_T *src, __global float *mean,
                 d_tail = max(d_tail, 0.0f);
 #endif //WITH_LEAKY_RELU
 #endif //WITH_RELU
-                STORE_DATA_1x16(&dst[sg_idx], d_tail);
+                block_write(&dst[sg_idx], d_tail);
             }
         } // has_ic_vect_tail
 
@@ -794,9 +822,14 @@ nhwc_reusable_norm_fwd_buff(__global DATA_T *src, __global float *mean,
     ws += d_off;
 #endif
 
-    float sm[MAX_IC_BLOCK_SGROUPS], sv[MAX_IC_BLOCK_SGROUPS],
-            v_mean[MAX_IC_BLOCK_SGROUPS], v_variance[MAX_IC_BLOCK_SGROUPS],
-            sqrt_variance[MAX_IC_BLOCK_SGROUPS];
+    VECT_FLOAT_T sm_v[MAX_IC_VECT_SGROUPS], sv_v[MAX_IC_VECT_SGROUPS],
+            v_mean_v[MAX_IC_VECT_SGROUPS], v_variance_v[MAX_IC_VECT_SGROUPS],
+            sqrt_variance_v[MAX_IC_VECT_SGROUPS];
+#if MAY_HAVE_IC_TAIL
+    float sm_t[MAX_IC_TAIL_SGROUPS], sv_t[MAX_IC_TAIL_SGROUPS],
+            v_mean_t[MAX_IC_TAIL_SGROUPS], v_variance_t[MAX_IC_TAIL_SGROUPS],
+            sqrt_variance_t[MAX_IC_TAIL_SGROUPS];
+#endif
 
     const bool has_sp_block_tail = sp_size % update_sp_block;
     const int sp_idx_bnd = has_sp_block_tail
@@ -811,28 +844,39 @@ nhwc_reusable_norm_fwd_buff(__global DATA_T *src, __global float *mean,
 
     for (int sg = 0; sg < ic_vect_sgroups; ++sg) {
         const int sg_idx = sg * SUB_GROUP_SIZE * VECT_SIZE;
-        const int sgv = sg * VECT_SIZE;
 
-        AS_VECT_FLOAT(&sm[sgv]) = USE_SCALE
-                ? LOAD_VECT_FLOAT(&scaleshift[sg_idx])
-                : (VECT_FLOAT_T)1.0f;
-        AS_VECT_FLOAT(&sv[sgv]) = USE_SHIFT ? LOAD_VECT_FLOAT(&shift[sg_idx])
-                                            : (VECT_FLOAT_T)0.0f;
-        AS_VECT_FLOAT(&v_mean[sgv]) = LOAD_VECT_FLOAT(&mean[sg_idx]);
-        AS_VECT_FLOAT(&v_variance[sgv]) = LOAD_VECT_FLOAT(&variance[sg_idx]);
-        AS_VECT_FLOAT(&sqrt_variance[sgv]) = AS_VECT_FLOAT(&sm[sgv])
-                / sqrt(AS_VECT_FLOAT(&v_variance[sgv]) + (VECT_FLOAT_T)eps);
+        if (USE_SCALE) {
+            sm_v[sg] = block_load(sm_v[sg], &scaleshift[sg_idx]);
+        } else {
+            sm_v[sg] = (VECT_FLOAT_T)1.0f;
+        }
+        if (USE_SHIFT) {
+            sv_v[sg] = block_load(sv_v[sg], &shift[sg_idx]);
+        } else {
+            sv_v[sg] = (VECT_FLOAT_T)0.0f;
+        }
+        v_mean_v[sg] = block_load(v_mean_v[sg], &mean[sg_idx]);
+        v_variance_v[sg] = block_load(v_variance_v[sg], &variance[sg_idx]);
+        sqrt_variance_v[sg]
+                = sm_v[sg] / sqrt(v_variance_v[sg] + (VECT_FLOAT_T)eps);
     }
 
 #if MAY_HAVE_IC_TAIL
     for (int sg = 0; sg < ic_tail_sgroups; ++sg) {
-        const int sgv = ic_vect_sgroups * VECT_SIZE + sg;
         const int sg_idx = (ic_vect_sgroups * VECT_SIZE + sg) * SUB_GROUP_SIZE;
-        sm[sgv] = USE_SCALE ? LOAD_FLOAT_1x16(&scaleshift[sg_idx]) : 1.0f;
-        sv[sgv] = USE_SHIFT ? LOAD_FLOAT_1x16(&shift[sg_idx]) : 0.0f;
-        v_mean[sgv] = LOAD_FLOAT_1x16(&mean[sg_idx]);
-        v_variance[sgv] = LOAD_FLOAT_1x16(&variance[sg_idx]);
-        sqrt_variance[sgv] = sm[sgv] / sqrt(v_variance[sgv] + eps);
+        if (USE_SCALE) {
+            sm_t[sg] = block_load(sm_t[sg], &scaleshift[sg_idx]);
+        } else {
+            sm_t[sg] = 1.0f;
+        }
+        if (USE_SHIFT) {
+            sv_t[sg] = block_load(sv_t[sg], &shift[sg_idx]);
+        } else {
+            sv_t[sg] = 0.0f;
+        }
+        v_mean_t[sg] = block_load(v_mean_t[sg], &mean[sg_idx]);
+        v_variance_t[sg] = block_load(v_variance_t[sg], &variance[sg_idx]);
+        sqrt_variance_t[sg] = sm_t[sg] / sqrt(v_variance_t[sg] + eps);
     }
 #endif //MAY_HAVE_IC_TAIL
 
@@ -840,27 +884,30 @@ nhwc_reusable_norm_fwd_buff(__global DATA_T *src, __global float *mean,
         // vectorized part
         for (int sg = 0; sg < ic_vect_sgroups; ++sg) {
             const int sg_idx = sg * SUB_GROUP_SIZE * VECT_SIZE;
-            const int sgv = sg * VECT_SIZE;
 
             VECT_FLOAT_T d_vect;
-            const VECT_FLOAT_T s_vect = LOAD_VECT_DATA(&src[sg_idx]);
-            d_vect = fma(s_vect - AS_VECT_FLOAT(&v_mean[sgv]),
-                    AS_VECT_FLOAT(&sqrt_variance[sgv]),
-                    AS_VECT_FLOAT(&sv[sgv]));
+            VECT_FLOAT_T s_vect = block_load(s_vect, &src[sg_idx]);
+            d_vect = fma(s_vect - v_mean_v[sg], sqrt_variance_v[sg], sv_v[sg]);
 
 #if FUSE_BN_RELU
 #if FUSE_BN_ADD_RELU
-            d_vect += LOAD_VECT_DATA(&src_add[sg_idx]);
+            {
+                VECT_FLOAT_T tmp_add = block_load(tmp_add, &src_add[sg_idx]);
+                d_vect += tmp_add;
+            }
 #endif
-            const VECT_INT_T ws_vect = ISGREATER(d_vect, (VECT_FLOAT_T)0.0f);
+            const VECT_N(int) ws_vect = ISGREATER(d_vect, (VECT_FLOAT_T)0.0f);
             d_vect = select((VECT_FLOAT_T)0.0f, d_vect, ws_vect);
 #if IS_TRAINING
-            STORE_VECT_CHAR(&ws[sg_idx], ws_vect);
+            {
+                VECT_N(char) tmp_ws = VECT_N(convert_char)(ws_vect);
+                block_write(&ws[sg_idx], &tmp_ws);
+            }
 #endif // IS_TRAINING
 #endif // FUSE_BN_RELU
 
 #if WITH_RELU && WITH_LEAKY_RELU
-            VECT_INT_T l_vect;
+            VECT_N(int) l_vect;
 #endif //WITH_RELU && WITH_LEAKY_RELU
 #if WITH_RELU
 #if WITH_LEAKY_RELU
@@ -870,24 +917,29 @@ nhwc_reusable_norm_fwd_buff(__global DATA_T *src, __global float *mean,
             d_vect = max(d_vect, (VECT_FLOAT_T)0.0f);
 #endif //WITH_LEAKY_RELU
 #endif //WITH_RELU
-            STORE_VECT_DATA(&dst[sg_idx], d_vect);
+            block_write(&dst[sg_idx], &d_vect);
         } // sg loop
 
 #if MAY_HAVE_IC_TAIL
         // tails
         for (int sg = 0; sg < ic_tail_sgroups; ++sg) {
-            const int sgv = ic_vect_sgroups * VECT_SIZE + sg;
             const int sg_idx
                     = (ic_vect_sgroups * VECT_SIZE + sg) * SUB_GROUP_SIZE;
             float d_tail;
-            const float s_tail = LOAD_DATA_1x16(&src[sg_idx]);
-            d_tail = fma(s_tail - v_mean[sgv], sqrt_variance[sgv], sv[sgv]);
-            if (FUSE_BN_ADD_RELU) d_tail += LOAD_DATA_1x16(&src_add[sg_idx]);
+            float s_tail = block_load(s_tail, &src[sg_idx]);
+            d_tail = fma(s_tail - v_mean_t[sg], sqrt_variance_t[sg], sv_t[sg]);
+            if (FUSE_BN_ADD_RELU) {
+                float tmp_add = block_load(tmp_add, &src_add[sg_idx]);
+                d_tail += tmp_add;
+            }
 #if FUSE_BN_RELU
             if (d_tail <= 0) d_tail = 0.0f;
 #if IS_TRAINING
             const int ws_tail = d_tail > 0.0f ? -1 : 0;
-            STORE_CHAR_1x16(&ws[sg_idx], convert_char(ws_tail));
+            {
+                char tmp_ws = convert_char(ws_tail);
+                block_write(&ws[sg_idx], tmp_ws);
+            }
 #endif // IS_TRAINING
 #endif // FUSE_BN_RELU
 #if WITH_RELU
@@ -897,7 +949,7 @@ nhwc_reusable_norm_fwd_buff(__global DATA_T *src, __global float *mean,
             d_tail = max(d_tail, 0.0f);
 #endif //WITH_LEAKY_RELU
 #endif //WITH_RELU
-            STORE_DATA_1x16(&dst[sg_idx], d_tail);
+            block_write(&dst[sg_idx], d_tail);
         }
 #endif //MAY_HAVE_IC_TAIL
         src += ic_size;
@@ -957,7 +1009,8 @@ void nhwc_reusable_bwd_fused_reduction(
 void nhwc_reusable_bwd_fused_reduction_buff(
         volatile __global atomic_float *diff_scale,
         volatile __global atomic_float *diff_shift, off_t dst_offset,
-        float *diff_gamma, float *diff_beta, __local float *local_sums,
+        VECT_FLOAT_T *diff_gamma_v, VECT_FLOAT_T *diff_beta_v,
+        float *diff_gamma_t, float *diff_beta_t, __local float *local_sums,
         off_t ic_block, off_t calc_slm_size) {
     const int local_id = get_local_id(1);
     const int simd_id = get_sub_group_local_id();
@@ -965,31 +1018,71 @@ void nhwc_reusable_bwd_fused_reduction_buff(
     const int group_size = get_local_size(1);
 
     const int ic_block_sgroups = ic_block / SUB_GROUP_SIZE;
+    const int ic_vect_sgroups = ic_block_sgroups / VECT_SIZE;
+    const int ic_tail_sgroups = ic_block_sgroups % VECT_SIZE;
     __local float *local_gamma = local_sums;
     __local float *local_beta = local_sums + calc_slm_size / sizeof(float);
 
     if (local_id > 0) {
-        unroll_16_for(int sg = 0; sg < ic_block_sgroups; sg++) {
-            const int slm_offset
-                    = local_id * row_size + sg * SUB_GROUP_SIZE + simd_id;
-            local_gamma[slm_offset] = diff_gamma[sg];
-            local_beta[slm_offset] = diff_beta[sg];
+        for (int sg = 0; sg < ic_vect_sgroups; sg++) {
+            unroll_16_for(int e = 0; e < VECT_SIZE; e++) {
+                const int flat_sg = sg * VECT_SIZE + e;
+                const int slm_offset = local_id * row_size
+                        + flat_sg * SUB_GROUP_SIZE + simd_id;
+                local_gamma[slm_offset] = VFLOAT(diff_gamma_v[sg], e);
+                local_beta[slm_offset] = VFLOAT(diff_beta_v[sg], e);
+            }
         }
+#if MAY_HAVE_IC_TAIL
+        for (int sg = 0; sg < ic_tail_sgroups; sg++) {
+            const int flat_sg = ic_vect_sgroups * VECT_SIZE + sg;
+            const int slm_offset
+                    = local_id * row_size + flat_sg * SUB_GROUP_SIZE + simd_id;
+            local_gamma[slm_offset] = diff_gamma_t[sg];
+            local_beta[slm_offset] = diff_beta_t[sg];
+        }
+#endif
     }
     barrier(CLK_LOCAL_MEM_FENCE);
     if (local_id == 0) {
         unroll_16_for(int l_id = 1; l_id < group_size; l_id++) {
-            unroll_4_for(int sg = 0; sg < ic_block_sgroups; sg++) {
-                const int off = l_id * row_size + sg * SUB_GROUP_SIZE + simd_id;
-                diff_gamma[sg] += local_gamma[off];
-                diff_beta[sg] += local_beta[off];
+            for (int sg = 0; sg < ic_vect_sgroups; sg++) {
+                unroll_4_for(int e = 0; e < VECT_SIZE; e++) {
+                    const int flat_sg = sg * VECT_SIZE + e;
+                    const int off = l_id * row_size + flat_sg * SUB_GROUP_SIZE
+                            + simd_id;
+                    VFLOAT(diff_gamma_v[sg], e) += local_gamma[off];
+                    VFLOAT(diff_beta_v[sg], e) += local_beta[off];
+                }
+            }
+#if MAY_HAVE_IC_TAIL
+            for (int sg = 0; sg < ic_tail_sgroups; sg++) {
+                const int flat_sg = ic_vect_sgroups * VECT_SIZE + sg;
+                const int off
+                        = l_id * row_size + flat_sg * SUB_GROUP_SIZE + simd_id;
+                diff_gamma_t[sg] += local_gamma[off];
+                diff_beta_t[sg] += local_beta[off];
+            }
+#endif
+        }
+        for (int sg = 0; sg < ic_vect_sgroups; sg++) {
+            unroll_4_for(int e = 0; e < VECT_SIZE; e++) {
+                const int flat_sg = sg * VECT_SIZE + e;
+                const int off = flat_sg * SUB_GROUP_SIZE + simd_id;
+                atomic_add_global(&diff_scale[dst_offset + off],
+                        VFLOAT(diff_gamma_v[sg], e));
+                atomic_add_global(&diff_shift[dst_offset + off],
+                        VFLOAT(diff_beta_v[sg], e));
             }
         }
-        unroll_4_for(int sg = 0; sg < ic_block_sgroups; sg++) {
-            const int off = sg * SUB_GROUP_SIZE + simd_id;
-            atomic_add_global(&diff_scale[dst_offset + off], diff_gamma[sg]);
-            atomic_add_global(&diff_shift[dst_offset + off], diff_beta[sg]);
+#if MAY_HAVE_IC_TAIL
+        for (int sg = 0; sg < ic_tail_sgroups; sg++) {
+            const int flat_sg = ic_vect_sgroups * VECT_SIZE + sg;
+            const int off = flat_sg * SUB_GROUP_SIZE + simd_id;
+            atomic_add_global(&diff_scale[dst_offset + off], diff_gamma_t[sg]);
+            atomic_add_global(&diff_shift[dst_offset + off], diff_beta_t[sg]);
         }
+#endif
     }
     return;
 }
@@ -1035,20 +1128,20 @@ nhwc_reusable_calc_stat(__global DATA_T *src, __global float *mean,
         const int sg_idx = sg * SUB_GROUP_SIZE * VECT_SIZE;
         VECT_FLOAT_T diff_gamma = 0.0f;
         VECT_FLOAT_T diff_beta = 0.0f;
-        const VECT_FLOAT_T v_mean = LOAD_VECT_FLOAT(&mean[(sg_idx)]);
+        VECT_FLOAT_T v_mean = block_load(v_mean, &mean[(sg_idx)]);
 
         // reduce
         for (int sp = 0; sp < sp_idx_bnd; ++sp) {
             const int tn_idx = sg_idx + sp * ic_size;
 #if FUSE_BN_RELU
-            const VECT_CHAR_T ws_vect = LOAD_VECT_CHAR(&ws[tn_idx]);
+            VECT_N(char) ws_vect = block_load(ws_vect, &ws[tn_idx]);
 #endif
-            const VECT_FLOAT_T src_vect = LOAD_VECT_DATA(&src[tn_idx]);
-            VECT_FLOAT_T dd_vect = LOAD_VECT_DATA(&diff_dst[tn_idx]);
+            VECT_FLOAT_T src_vect = block_load(src_vect, &src[tn_idx]);
+            VECT_FLOAT_T dd_vect = block_load(dd_vect, &diff_dst[tn_idx]);
             const VECT_FLOAT_T v0 = src_vect - v_mean;
 #if FUSE_BN_RELU
             dd_vect = select(
-                    (VECT_FLOAT_T)0.0f, dd_vect, CONVERT_VECT_INT_T(ws_vect));
+                    (VECT_FLOAT_T)0.0f, dd_vect, VECT_N(convert_int)(ws_vect));
 #endif
             diff_gamma = fma(v0, dd_vect, diff_gamma);
             diff_beta += dd_vect;
@@ -1071,19 +1164,22 @@ nhwc_reusable_calc_stat(__global DATA_T *src, __global float *mean,
 
             const int sg_off = sg * VECT_SIZE * SUB_GROUP_SIZE;
             for (int v_idx = 0; v_idx < VECT_SIZE; v_idx++) {
-                STORE_FLOAT_1x16(&temp_reduce[sg_off + v_idx * SUB_GROUP_SIZE],
+                float tmp_dg =
 #if VECT_SIZE > 1
-                        diff_gamma[v_idx]);
+                        diff_gamma[v_idx];
 #else
-                        diff_gamma);
+                        diff_gamma;
 #endif
-                STORE_FLOAT_1x16(
-                        &temp_reduce_shift[sg_off + v_idx * SUB_GROUP_SIZE],
+                block_write(
+                        &temp_reduce[sg_off + v_idx * SUB_GROUP_SIZE], tmp_dg);
+                float tmp_db =
 #if VECT_SIZE > 1
-                        diff_beta[v_idx]);
+                        diff_beta[v_idx];
 #else
-                        diff_beta);
+                        diff_beta;
 #endif
+                block_write(&temp_reduce_shift[sg_off + v_idx * SUB_GROUP_SIZE],
+                        tmp_db);
             }
         }
     } // sg loop
@@ -1093,16 +1189,16 @@ nhwc_reusable_calc_stat(__global DATA_T *src, __global float *mean,
         const int sg_idx = (ic_vect_sgroups + sg) * SUB_GROUP_SIZE;
         float diff_gamma = 0.0f;
         float diff_beta = 0.0f;
-        const float v_mean = LOAD_FLOAT_1x16(&mean[(sg_idx)]);
+        float v_mean = block_load(v_mean, &mean[(sg_idx)]);
 
         // reduce
         for (int sp = 0; sp < sp_idx_bnd; ++sp) {
             const int tn_idx = sg_idx + sp * ic_size;
 #if FUSE_BN_RELU
-            const char ws_vect = LOAD_CHAR_1x16(&ws[tn_idx]);
+            char ws_vect = block_load(ws_vect, &ws[tn_idx]);
 #endif
-            const float src_vect = LOAD_DATA_1x16(&src[tn_idx]);
-            float dd_vect = LOAD_DATA_1x16(&diff_dst[tn_idx]);
+            float src_vect = block_load(src_vect, &src[tn_idx]);
+            float dd_vect = block_load(dd_vect, &diff_dst[tn_idx]);
             const float v0 = src_vect - v_mean;
 #if FUSE_BN_RELU
             dd_vect = select(0.0f, dd_vect, convert_int(ws_vect));
@@ -1120,8 +1216,8 @@ nhwc_reusable_calc_stat(__global DATA_T *src, __global float *mean,
                     1, calc_slm_size);
         } else {
             const int sg_off = (ic_vect_sgroups + sg) * SUB_GROUP_SIZE;
-            STORE_FLOAT_1x16(&temp_reduce[sg_off], diff_gamma);
-            STORE_FLOAT_1x16(&temp_reduce_shift[sg_off], diff_beta);
+            block_write(&temp_reduce[sg_off], diff_gamma);
+            block_write(&temp_reduce_shift[sg_off], diff_beta);
         }
     } // sg loop
 }
@@ -1162,57 +1258,63 @@ nhwc_reusable_calc_stat_buff(__global DATA_T *src, __global float *mean,
     const int ic_vect_sgroups = ic_block_sgroups / VECT_SIZE;
     const int ic_tail_sgroups = ic_block_sgroups % VECT_SIZE;
 
-    float v_mean[MAX_IC_BLOCK_SGROUPS];
-    for (int sg = 0; sg < ic_block_sgroups; ++sg) {
-        v_mean[sg] = as_float(intel_sub_group_block_read(
-                (const __global uint *)(&mean[(sg * SUB_GROUP_SIZE)])));
+    VECT_FLOAT_T v_mean_v[MAX_IC_VECT_SGROUPS];
+    VECT_FLOAT_T diff_gamma_v[MAX_IC_VECT_SGROUPS];
+    VECT_FLOAT_T diff_beta_v[MAX_IC_VECT_SGROUPS];
+    for (int sg = 0; sg < ic_vect_sgroups; ++sg) {
+        const int sg_idx = sg * SUB_GROUP_SIZE * VECT_SIZE;
+        v_mean_v[sg] = block_load(v_mean_v[sg], &mean[sg_idx]);
+        diff_gamma_v[sg] = (VECT_FLOAT_T)0.0f;
+        diff_beta_v[sg] = (VECT_FLOAT_T)0.0f;
     }
-
-    float diff_gamma[MAX_IC_BLOCK_SGROUPS] = {0.0f};
-    float diff_beta[MAX_IC_BLOCK_SGROUPS] = {0.0f};
+#if MAY_HAVE_IC_TAIL
+    float v_mean_t[MAX_IC_TAIL_SGROUPS];
+    float diff_gamma_t[MAX_IC_TAIL_SGROUPS];
+    float diff_beta_t[MAX_IC_TAIL_SGROUPS];
+    for (int sg = 0; sg < ic_tail_sgroups; ++sg) {
+        const int sg_idx = (ic_vect_sgroups * VECT_SIZE + sg) * SUB_GROUP_SIZE;
+        v_mean_t[sg] = block_load(v_mean_t[sg], &mean[sg_idx]);
+        diff_gamma_t[sg] = 0.0f;
+        diff_beta_t[sg] = 0.0f;
+    }
+#endif
 
     for (int sp = 0; sp < sp_idx_bnd; ++sp) {
         // vector part
         for (int sg = 0; sg < ic_vect_sgroups; ++sg) {
             const int sg_idx = sg * SUB_GROUP_SIZE * VECT_SIZE;
-            const int sgv = sg * VECT_SIZE;
 #if FUSE_BN_RELU
-            const VECT_CHAR_T ws_vect = LOAD_VECT_CHAR(&ws[sg_idx]);
+            VECT_N(char) ws_vect = block_load(ws_vect, &ws[sg_idx]);
 #endif
 
-            float src_vect[VECT_SIZE];
-            AS_VECT_FLOAT(src_vect) = LOAD_VECT_DATA(&src[sg_idx]);
-            VECT_FLOAT_T dd_vect = LOAD_VECT_DATA(&diff_dst[sg_idx]);
-            float v0[VECT_SIZE];
-            for (int vect = 0; vect < VECT_SIZE; ++vect) {
-                int sg_idx = sg * VECT_SIZE + vect;
-                v0[vect] = src_vect[vect] - v_mean[sg_idx];
-            }
+            VECT_FLOAT_T src_vect = block_load(src_vect, &src[sg_idx]);
+            VECT_FLOAT_T dd_vect = block_load(dd_vect, &diff_dst[sg_idx]);
+            VECT_FLOAT_T v0_vect = src_vect - v_mean_v[sg];
 #if FUSE_BN_RELU
             dd_vect = select(
-                    (VECT_FLOAT_T)0.0f, dd_vect, CONVERT_VECT_INT_T(ws_vect));
+                    (VECT_FLOAT_T)0.0f, dd_vect, VECT_N(convert_int)(ws_vect));
 #endif
-            AS_VECT_FLOAT(&diff_gamma[sgv]) = fma(AS_VECT_FLOAT(v0), dd_vect,
-                    AS_VECT_FLOAT(&diff_gamma[sgv]));
-            AS_VECT_FLOAT(&diff_beta[sgv]) += dd_vect;
+            diff_gamma_v[sg] = fma(v0_vect, dd_vect, diff_gamma_v[sg]);
+            diff_beta_v[sg] += dd_vect;
         }
 
 #if MAY_HAVE_IC_TAIL
         // tails
         for (int sg = 0; sg < ic_tail_sgroups; ++sg) {
-            const int sg_idx = ic_vect_sgroups * VECT_SIZE + sg;
+            const int sg_idx
+                    = (ic_vect_sgroups * VECT_SIZE + sg) * SUB_GROUP_SIZE;
 #if FUSE_BN_RELU
-            char ws_tail = LOAD_CHAR_1x16(&ws[sg_idx * SUB_GROUP_SIZE]);
+            char ws_tail = block_load(ws_tail, &ws[sg_idx]);
 #endif
-            float src_tail = LOAD_DATA_1x16(&src[sg_idx * SUB_GROUP_SIZE]);
-            float dd_tail = LOAD_DATA_1x16(&diff_dst[sg_idx * SUB_GROUP_SIZE]);
-            float v0 = src_tail - v_mean[sg_idx];
+            float src_tail = block_load(src_tail, &src[sg_idx]);
+            float dd_tail = block_load(dd_tail, &diff_dst[sg_idx]);
+            float v0 = src_tail - v_mean_t[sg];
 #if FUSE_BN_RELU
             dd_tail = select(0.0f, dd_tail, convert_int(ws_tail));
 #endif
 
-            diff_gamma[sg_idx] = fma(v0, dd_tail, diff_gamma[sg_idx]);
-            diff_beta[sg_idx] += dd_tail;
+            diff_gamma_t[sg] = fma(v0, dd_tail, diff_gamma_t[sg]);
+            diff_beta_t[sg] += dd_tail;
         }
 #endif
         src += ic_size;
@@ -1225,15 +1327,28 @@ nhwc_reusable_calc_stat_buff(__global DATA_T *src, __global float *mean,
     // store results
     if (use_fused_atomics_reduction) {
         nhwc_reusable_bwd_fused_reduction_buff(diff_scale, diff_shift,
-                ic_block_offset, (float *)(&diff_gamma), (float *)(&diff_beta),
+                ic_block_offset, diff_gamma_v, diff_beta_v,
+#if MAY_HAVE_IC_TAIL
+                diff_gamma_t, diff_beta_t,
+#else
+                NULL, NULL,
+#endif
                 local_sums, ic_block, calc_slm_size);
 
     } else {
-        for (int sg = 0; sg < ic_block_sgroups; ++sg) {
-            const int sg_off = sg * SUB_GROUP_SIZE;
-            STORE_FLOAT_1x16(&temp_reduce[sg_off], diff_gamma[sg]);
-            STORE_FLOAT_1x16(&temp_reduce_shift[sg_off], diff_beta[sg]);
+        for (int sg = 0; sg < ic_vect_sgroups; ++sg) {
+            const int sg_off = sg * SUB_GROUP_SIZE * VECT_SIZE;
+            block_write(&temp_reduce[sg_off], &diff_gamma_v[sg]);
+            block_write(&temp_reduce_shift[sg_off], &diff_beta_v[sg]);
         }
+#if MAY_HAVE_IC_TAIL
+        for (int sg = 0; sg < ic_tail_sgroups; ++sg) {
+            const int sg_off
+                    = (ic_vect_sgroups * VECT_SIZE + sg) * SUB_GROUP_SIZE;
+            block_write(&temp_reduce[sg_off], diff_gamma_t[sg]);
+            block_write(&temp_reduce_shift[sg_off], diff_beta_t[sg]);
+        }
+#endif
     }
 }
 
@@ -1278,35 +1393,38 @@ nhwc_reusable_norm_bwd(__global DATA_T *src, __global float *mean,
         for (int sg = 0; sg < ic_block_sgroups / VECT_SIZE; ++sg) {
             const int sg_idx = sg * SUB_GROUP_SIZE * VECT_SIZE;
 
-            const VECT_FLOAT_T v_variance = LOAD_VECT_FLOAT(&variance[sg_idx]);
+            VECT_FLOAT_T v_variance = block_load(v_variance, &variance[sg_idx]);
             const VECT_FLOAT_T sqrt_variance
                     = (VECT_FLOAT_T)1.0f / sqrt(v_variance + (VECT_FLOAT_T)eps);
-            const VECT_FLOAT_T gamma = USE_SCALE
-                    ? LOAD_VECT_FLOAT(&scaleshift[sg_idx])
-                    : (VECT_FLOAT_T)1.0f;
-            const VECT_FLOAT_T src_vect = LOAD_VECT_DATA(&src[sg_idx]);
-            VECT_FLOAT_T dd_vect = LOAD_VECT_DATA(&diff_dst[sg_idx]);
+            VECT_FLOAT_T gamma;
+            if (USE_SCALE) {
+                gamma = block_load(gamma, &scaleshift[sg_idx]);
+            } else {
+                gamma = (VECT_FLOAT_T)1.0f;
+            }
+            VECT_FLOAT_T src_vect = block_load(src_vect, &src[sg_idx]);
+            VECT_FLOAT_T dd_vect = block_load(dd_vect, &diff_dst[sg_idx]);
 
 #if FUSE_BN_RELU
-            const VECT_CHAR_T ws_vect = LOAD_VECT_CHAR(&ws[sg_idx]);
+            VECT_N(char) ws_vect = block_load(ws_vect, &ws[sg_idx]);
             dd_vect = select(
-                    (VECT_FLOAT_T)0.0f, dd_vect, CONVERT_VECT_INT_T(ws_vect));
+                    (VECT_FLOAT_T)0.0f, dd_vect, VECT_N(convert_int)(ws_vect));
 #if FUSE_BN_ADD_RELU
-            STORE_VECT_DATA(&diff_src_add[sg_idx], dd_vect);
+            block_write(&diff_src_add[sg_idx], &dd_vect);
 #endif
 #endif
 #if CALCULATE_STATS == 1
-            const VECT_FLOAT_T v_mean = LOAD_VECT_FLOAT(&mean[sg_idx]);
-            const VECT_FLOAT_T diff_gamma
-                    = LOAD_VECT_FLOAT(&diff_scale[sg_idx]);
-            const VECT_FLOAT_T diff_beta = LOAD_VECT_FLOAT(&diff_shift[sg_idx]);
+            VECT_FLOAT_T v_mean = block_load(v_mean, &mean[sg_idx]);
+            VECT_FLOAT_T diff_gamma
+                    = block_load(diff_gamma, &diff_scale[sg_idx]);
+            VECT_FLOAT_T diff_beta = block_load(diff_beta, &diff_shift[sg_idx]);
             dd_vect -= (diff_beta
                                + (src_vect - v_mean) * diff_gamma
                                        * sqrt_variance)
                     / sp_size;
 #endif
             dd_vect *= gamma * sqrt_variance;
-            STORE_VECT_DATA(&diff_src[sg_idx], dd_vect);
+            block_write(&diff_src[sg_idx], &dd_vect);
 
         } // sg loop
 
@@ -1317,33 +1435,37 @@ nhwc_reusable_norm_bwd(__global DATA_T *src, __global float *mean,
         for (int sg = 0; sg < ic_tail_sgroups; ++sg) {
             const int sg_idx = (ic_vect_sgroups + sg) * SUB_GROUP_SIZE;
 
-            const float v_variance = LOAD_FLOAT_1x16(&variance[sg_idx]);
+            float v_variance = block_load(v_variance, &variance[sg_idx]);
             const float sqrt_variance
                     = (float)1.0f / sqrt(v_variance + (float)eps);
-            const float gamma
-                    = USE_SCALE ? LOAD_FLOAT_1x16(&scaleshift[sg_idx]) : 1.0f;
-            const float src_vect = LOAD_DATA_1x16(&src[sg_idx]);
-            float dd_vect = LOAD_DATA_1x16(&diff_dst[sg_idx]);
+            float gamma;
+            if (USE_SCALE) {
+                gamma = block_load(gamma, &scaleshift[sg_idx]);
+            } else {
+                gamma = 1.0f;
+            }
+            float src_vect = block_load(src_vect, &src[sg_idx]);
+            float dd_vect = block_load(dd_vect, &diff_dst[sg_idx]);
 
 #if FUSE_BN_RELU
-            const char ws_vect = LOAD_CHAR_1x16(&ws[sg_idx]);
+            char ws_vect = block_load(ws_vect, &ws[sg_idx]);
             dd_vect = select(0.0f, dd_vect, convert_int(ws_vect));
 #if FUSE_BN_ADD_RELU
-            STORE_DATA_1x16(&diff_src_add[sg_idx], dd_vect);
+            block_write(&diff_src_add[sg_idx], dd_vect);
 #endif
 #endif
 
 #if CALCULATE_STATS == 1
-            const float v_mean = LOAD_FLOAT_1x16(&mean[sg_idx]);
-            const float diff_gamma = LOAD_FLOAT_1x16(&diff_scale[sg_idx]);
-            const float diff_beta = LOAD_FLOAT_1x16(&diff_shift[sg_idx]);
+            float v_mean = block_load(v_mean, &mean[sg_idx]);
+            float diff_gamma = block_load(diff_gamma, &diff_scale[sg_idx]);
+            float diff_beta = block_load(diff_beta, &diff_shift[sg_idx]);
             dd_vect -= (diff_beta
                                + (src_vect - v_mean) * diff_gamma
                                        * sqrt_variance)
                     / sp_size;
 #endif
             dd_vect *= gamma * sqrt_variance;
-            STORE_DATA_1x16(&diff_src[sg_idx], dd_vect);
+            block_write(&diff_src[sg_idx], dd_vect);
         }
 
         src += ic_size;
@@ -1397,92 +1519,98 @@ nhwc_reusable_norm_bwd_buff(__global DATA_T *src, __global float *mean,
     const int ic_vect_sgroups = ic_block_sgroups / VECT_SIZE;
     const int ic_tail_sgroups = ic_block_sgroups % VECT_SIZE;
 
-    float v_variance[MAX_IC_BLOCK_SGROUPS], v_mean[MAX_IC_BLOCK_SGROUPS],
-            diff_gamma[MAX_IC_BLOCK_SGROUPS], diff_beta[MAX_IC_BLOCK_SGROUPS],
-            sqrt_variance[MAX_IC_BLOCK_SGROUPS], gamma[MAX_IC_BLOCK_SGROUPS];
+    VECT_FLOAT_T v_variance_v[MAX_IC_VECT_SGROUPS],
+            v_mean_v[MAX_IC_VECT_SGROUPS], diff_gamma_v[MAX_IC_VECT_SGROUPS],
+            diff_beta_v[MAX_IC_VECT_SGROUPS],
+            sqrt_variance_v[MAX_IC_VECT_SGROUPS], gamma_v[MAX_IC_VECT_SGROUPS];
+#if MAY_HAVE_IC_TAIL
+    float v_variance_t[MAX_IC_TAIL_SGROUPS], v_mean_t[MAX_IC_TAIL_SGROUPS],
+            diff_gamma_t[MAX_IC_TAIL_SGROUPS], diff_beta_t[MAX_IC_TAIL_SGROUPS],
+            sqrt_variance_t[MAX_IC_TAIL_SGROUPS], gamma_t[MAX_IC_TAIL_SGROUPS];
+#endif
 
     for (int sg = 0; sg < ic_vect_sgroups; ++sg) {
-        const int sgv = sg * VECT_SIZE;
         const int sg_idx = sg * SUB_GROUP_SIZE * VECT_SIZE;
 
-        AS_VECT_FLOAT(&v_variance[sgv]) = LOAD_VECT_FLOAT(&variance[sg_idx]);
+        v_variance_v[sg] = block_load(v_variance_v[sg], &variance[sg_idx]);
 #if CALCULATE_STATS == 1
-        AS_VECT_FLOAT(&v_mean[sgv]) = LOAD_VECT_FLOAT(&mean[sg_idx]);
-        AS_VECT_FLOAT(&diff_gamma[sgv]) = LOAD_VECT_FLOAT(&diff_scale[sg_idx]);
-        AS_VECT_FLOAT(&diff_beta[sgv]) = LOAD_VECT_FLOAT(&diff_shift[sg_idx]);
+        v_mean_v[sg] = block_load(v_mean_v[sg], &mean[sg_idx]);
+        diff_gamma_v[sg] = block_load(diff_gamma_v[sg], &diff_scale[sg_idx]);
+        diff_beta_v[sg] = block_load(diff_beta_v[sg], &diff_shift[sg_idx]);
 #endif // #if CALCULATE_DIFF_STATS == 1
-        AS_VECT_FLOAT(&gamma[sgv]) = USE_SCALE
-                ? LOAD_VECT_FLOAT(&scaleshift[sg_idx])
-                : (VECT_FLOAT_T)1.0f;
-        AS_VECT_FLOAT(&sqrt_variance[sgv]) = (VECT_FLOAT_T)1.0f
-                / sqrt(AS_VECT_FLOAT(&v_variance[sgv]) + (VECT_FLOAT_T)eps);
+        if (USE_SCALE) {
+            gamma_v[sg] = block_load(gamma_v[sg], &scaleshift[sg_idx]);
+        } else {
+            gamma_v[sg] = (VECT_FLOAT_T)1.0f;
+        }
+        sqrt_variance_v[sg] = (VECT_FLOAT_T)1.0f
+                / sqrt(v_variance_v[sg] + (VECT_FLOAT_T)eps);
     }
 
 #if MAY_HAVE_IC_TAIL
     for (int sg = 0; sg < ic_tail_sgroups; ++sg) {
-        const int sgv = ic_vect_sgroups * VECT_SIZE + sg;
         const int sg_idx = (ic_vect_sgroups * VECT_SIZE + sg) * SUB_GROUP_SIZE;
-        v_variance[sgv] = LOAD_FLOAT_1x16(&variance[sg_idx]);
+        v_variance_t[sg] = block_load(v_variance_t[sg], &variance[sg_idx]);
 #if CALCULATE_STATS == 1
-        v_mean[sgv] = LOAD_FLOAT_1x16(&mean[sg_idx]);
-        diff_gamma[sgv] = LOAD_FLOAT_1x16(&diff_scale[sg_idx]);
-        diff_beta[sgv] = LOAD_FLOAT_1x16(&diff_shift[sg_idx]);
+        v_mean_t[sg] = block_load(v_mean_t[sg], &mean[sg_idx]);
+        diff_gamma_t[sg] = block_load(diff_gamma_t[sg], &diff_scale[sg_idx]);
+        diff_beta_t[sg] = block_load(diff_beta_t[sg], &diff_shift[sg_idx]);
 #endif // #if CALCULATE_DIFF_STATS == 1
-        gamma[sgv] = USE_SCALE ? LOAD_FLOAT_1x16(&scaleshift[sg_idx]) : 1.0f;
-        sqrt_variance[sgv] = 1.0f / sqrt(v_variance[sgv] + eps);
+        if (USE_SCALE) {
+            gamma_t[sg] = block_load(gamma_t[sg], &scaleshift[sg_idx]);
+        } else {
+            gamma_t[sg] = 1.0f;
+        }
+        sqrt_variance_t[sg] = 1.0f / sqrt(v_variance_t[sg] + eps);
     }
 #endif
     for (int sp = 0; sp < sp_idx_bnd; ++sp) {
         // vector part
         for (int sg = 0; sg < ic_vect_sgroups; ++sg) {
             const int sg_idx = sg * SUB_GROUP_SIZE * VECT_SIZE;
-            const int sgv = sg * VECT_SIZE;
 
-            const VECT_FLOAT_T src_vect = LOAD_VECT_DATA(&src[sg_idx]);
-            VECT_FLOAT_T dd_vect = LOAD_VECT_DATA(&diff_dst[sg_idx]);
+            VECT_FLOAT_T src_vect = block_load(src_vect, &src[sg_idx]);
+            VECT_FLOAT_T dd_vect = block_load(dd_vect, &diff_dst[sg_idx]);
 #if FUSE_BN_RELU
-            const VECT_CHAR_T ws_vect = LOAD_VECT_CHAR(&ws[sg_idx]);
+            VECT_N(char) ws_vect = block_load(ws_vect, &ws[sg_idx]);
             dd_vect = select(
-                    (VECT_FLOAT_T)0.0f, dd_vect, CONVERT_VECT_INT_T(ws_vect));
+                    (VECT_FLOAT_T)0.0f, dd_vect, VECT_N(convert_int)(ws_vect));
 #if FUSE_BN_ADD_RELU
-            STORE_VECT_DATA(&diff_src_add[sg_idx], dd_vect);
+            block_write(&diff_src_add[sg_idx], &dd_vect);
 #endif
 #endif
 #if CALCULATE_STATS == 1
-            dd_vect -= (AS_VECT_FLOAT(&diff_beta[sgv])
-                               + (src_vect - AS_VECT_FLOAT(&v_mean[sgv]))
-                                       * AS_VECT_FLOAT(&diff_gamma[sgv])
-                                       * AS_VECT_FLOAT(&sqrt_variance[sgv]))
+            dd_vect -= (diff_beta_v[sg]
+                               + (src_vect - v_mean_v[sg]) * diff_gamma_v[sg]
+                                       * sqrt_variance_v[sg])
                     / sp_size;
 #endif
-            dd_vect *= AS_VECT_FLOAT(&gamma[sgv])
-                    * AS_VECT_FLOAT(&sqrt_variance[sgv]);
-            STORE_VECT_DATA(&diff_src[sg_idx], dd_vect);
+            dd_vect *= gamma_v[sg] * sqrt_variance_v[sg];
+            block_write(&diff_src[sg_idx], &dd_vect);
         } // vector sg loop
 
 #if MAY_HAVE_IC_TAIL
         // tails
         for (int sg = 0; sg < ic_tail_sgroups; ++sg) {
-            const int sgv = ic_vect_sgroups * VECT_SIZE + sg;
             const int sg_idx
                     = (ic_vect_sgroups * VECT_SIZE + sg) * SUB_GROUP_SIZE;
-            const float src_tail = LOAD_DATA_1x16(&src[sg_idx]);
-            float dd_tail = LOAD_DATA_1x16(&diff_dst[sg_idx]);
+            float src_tail = block_load(src_tail, &src[sg_idx]);
+            float dd_tail = block_load(dd_tail, &diff_dst[sg_idx]);
 #if FUSE_BN_RELU
-            const char ws_tail = LOAD_CHAR_1x16(&ws[sg_idx]);
+            char ws_tail = block_load(ws_tail, &ws[sg_idx]);
             dd_tail = select(0.0f, dd_tail, convert_int(ws_tail));
 #if FUSE_BN_ADD_RELU
-            STORE_DATA_1x16(&diff_src_add[sg_idx], dd_tail);
+            block_write(&diff_src_add[sg_idx], dd_tail);
 #endif
 #endif
 #if CALCULATE_STATS == 1
-            dd_tail -= (diff_beta[sgv]
-                               + (src_tail - v_mean[sgv]) * diff_gamma[sgv]
-                                       * sqrt_variance[sgv])
+            dd_tail -= (diff_beta_t[sg]
+                               + (src_tail - v_mean_t[sg]) * diff_gamma_t[sg]
+                                       * sqrt_variance_t[sg])
                     / sp_size;
 #endif
-            dd_tail *= gamma[sgv] * sqrt_variance[sgv];
-            STORE_DATA_1x16(&diff_src[sg_idx], dd_tail);
+            dd_tail *= gamma_t[sg] * sqrt_variance_t[sg];
+            block_write(&diff_src[sg_idx], dd_tail);
         } // tail sg loop
 #endif
         src += ic_size;

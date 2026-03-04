@@ -121,7 +121,7 @@ static void init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
         const conf_t &conf, const compute::dispatch_t &dispatch,
         const offsets_t &off) {
     kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
-    kernel_ctx.set_data_type(conf.data_type, false);
+    kernel_ctx.set_data_type(conf.data_type, /*with_punning=*/false);
 
     kernel_ctx.define_int("NDIMS", conf.ndims);
     kernel_ctx.define_int("MB", conf.mb);

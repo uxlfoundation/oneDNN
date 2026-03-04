@@ -15,6 +15,7 @@
 *******************************************************************************/
 #include "gpu/intel/bnorm/xe.h"
 #include "gpu/intel/bnorm/xe_reduce.h"
+#include "gpu/intel/include/io.h"
 
 // FWD kernels for regular and 1-pass (under USE_STATS_ONE_PASS) bnorm
 // algorithms that support both blocked and NHWC layouts (USE_NHWC definition).
@@ -31,13 +32,13 @@
 #define LOAD_DATA_Nx16_USING_LOOP_IDX(n, dest, src, idx) \
     { \
         for (int k = 0; k < n; ++k) { \
-            dest[k] = LOAD_DATA_1x16(&src[(k + idx) * IC]); \
+            dest[k] = block_load(dest[k], &src[(k + idx) * IC]); \
         } \
     }
 #define LOAD_DATA_Nx16_USING_LOOP_IDX_HALF(n, dest, src, idx) \
     { \
         for (int k = 0; k < n; k += 2) { \
-            dest[k] = LOAD_DATA_1x16(&src[(k + idx) * IC]); \
+            dest[k] = block_load(dest[k], &src[(k + idx) * IC]); \
         } \
     }
 
@@ -81,12 +82,13 @@ __kernel void xe_calc_mean_var(__global DATA_T *src,
 #if USE_NHWC
             float8 s0, s1;
             for (int k = 0; k < 8; ++k)
-                s0[k] = LOAD_DATA_1x16(&src[k * IC]);
+                s0[k] = block_load(s0[k], &src[k * IC]);
             for (int k = 0; k < 8; ++k)
-                s1[k] = LOAD_DATA_1x16(&src[(k + 8) * IC]);
+                s1[k] = block_load(s1[k], &src[(k + 8) * IC]);
 #else
-            float8 s0 = LOAD_DATA_8x16(&src[0]);
-            float8 s1 = LOAD_DATA_8x16(&src[8 * 16]);
+            float8 s0, s1;
+            s0 = block_load(s0, src);
+            s1 = block_load(s1, &src[8 * 16]);
 #endif
             for (int i = 0; i < 8; i++) {
                 sum = summation(s0[i], sum);
@@ -99,7 +101,7 @@ __kernel void xe_calc_mean_var(__global DATA_T *src,
             sp -= 16;
         }
         while (sp >= 1) {
-            float s0 = LOAD_DATA_1x16(&src[0]);
+            float s0 = block_load(s0, src);
             sum = summation(s0, sum);
             sum_sq = summation(s0 * s0, sum_sq);
             src += IC_BLOCK_STRIDE;
@@ -112,12 +114,13 @@ __kernel void xe_calc_mean_var(__global DATA_T *src,
 #if USE_NHWC
             float8 s0, s1;
             for (int k = 0; k < 8; ++k)
-                s0[k] = LOAD_DATA_1x16(&src[k * IC]);
+                s0[k] = block_load(s0[k], &src[k * IC]);
             for (int k = 0; k < 8; ++k)
-                s1[k] = LOAD_DATA_1x16(&src[(k + 8) * IC]);
+                s1[k] = block_load(s1[k], &src[(k + 8) * IC]);
 #else
-            float8 s0 = LOAD_DATA_8x16(&src[0]);
-            float8 s1 = LOAD_DATA_8x16(&src[8 * 16]);
+            float8 s0, s1;
+            s0 = block_load(s0, src);
+            s1 = block_load(s1, &src[8 * 16]);
 #endif
             for (int i = 0; i < 8; i++) {
                 sum = summation(s0[i], sum);
@@ -135,8 +138,8 @@ __kernel void xe_calc_mean_var(__global DATA_T *src,
     xe_mean_var_calc_fused_reduction(
             mean, variance, c, &sum, &sum_sq, local_sum, local_sum_sq);
 #else
-    STORE_FLOAT_1x16(&reduce_temp[group_c_offset + mb_sp_idx * 16], sum.s0);
-    STORE_FLOAT_1x16(&reduce_temp[ver_offs + group_c_offset + mb_sp_idx * 16],
+    block_write(&reduce_temp[group_c_offset + mb_sp_idx * 16], sum.s0);
+    block_write(&reduce_temp[ver_offs + group_c_offset + mb_sp_idx * 16],
             sum_sq.s0);
 #endif
 }
@@ -187,11 +190,9 @@ __kernel void xe_calc_mean(__global DATA_T *src, __global float *reduce_temp,
             const bool is_last_sp = sp == 16;
             if (is_last_sp && is_last_ic_block) {
                 LOAD_DATA_Nx16_USING_LOOP_IDX(7, s0, src, 0);
-                s0[7] = simd_id < 8 ? CONVERT_FLOAT_T(src[7 * IC + simd_id])
-                                    : 0.0f;
+                s0[7] = simd_id < 8 ? into_float(src[7 * IC + simd_id]) : 0.0f;
                 LOAD_DATA_Nx16_USING_LOOP_IDX(7, s1, src, 8);
-                s1[7] = simd_id < 8 ? CONVERT_FLOAT_T(src[15 * IC + simd_id])
-                                    : 0.0f;
+                s1[7] = simd_id < 8 ? into_float(src[15 * IC + simd_id]) : 0.0f;
             } else {
                 LOAD_DATA_Nx16_USING_LOOP_IDX(8, s0, src, 0);
                 LOAD_DATA_Nx16_USING_LOOP_IDX(8, s1, src, 8);
@@ -201,8 +202,9 @@ __kernel void xe_calc_mean(__global DATA_T *src, __global float *reduce_temp,
             LOAD_DATA_Nx16_USING_LOOP_IDX(8, s1, src, 8);
 #endif // IS_IC_EQ_8
 #else
-            float8 s0 = LOAD_DATA_8x16(&src[0]);
-            float8 s1 = LOAD_DATA_8x16(&src[8 * 16]);
+            float8 s0, s1;
+            s0 = block_load(s0, src);
+            s1 = block_load(s1, &src[8 * 16]);
 #endif // USE_NHWC
             res0 += s0;
             res1 += s1;
@@ -214,11 +216,11 @@ __kernel void xe_calc_mean(__global DATA_T *src, __global float *reduce_temp,
 #if HAS_IC_TAIL
             float s0;
             if (sp == 1 && is_last_ic_block)
-                s0 = simd_id < 8 ? CONVERT_FLOAT_T(src[simd_id]) : 0.0f;
+                s0 = simd_id < 8 ? into_float(src[simd_id]) : 0.0f;
             else
-                s0 = LOAD_DATA_1x16(&src[0]);
+                s0 = block_load(s0, src);
 #else
-            float s0 = LOAD_DATA_1x16(&src[0]);
+            float s0 = block_load(s0, src);
 #endif
             v_mean += s0;
             src += IC_BLOCK_STRIDE;
@@ -243,11 +245,9 @@ __kernel void xe_calc_mean(__global DATA_T *src, __global float *reduce_temp,
             const bool is_last_sp = sp == STAT_SP_BLOCK / 16 - 1;
             if (is_last_sp && is_last_ic_block && is_last_sp_block) {
                 LOAD_DATA_Nx16_USING_LOOP_IDX(7, s0, src, 0);
-                s0[7] = simd_id < 8 ? CONVERT_FLOAT_T(src[7 * IC + simd_id])
-                                    : 0.0f;
+                s0[7] = simd_id < 8 ? into_float(src[7 * IC + simd_id]) : 0.0f;
                 LOAD_DATA_Nx16_USING_LOOP_IDX(7, s1, src, 8);
-                s1[7] = simd_id < 8 ? CONVERT_FLOAT_T(src[15 * IC + simd_id])
-                                    : 0.0f;
+                s1[7] = simd_id < 8 ? into_float(src[15 * IC + simd_id]) : 0.0f;
             } else {
                 LOAD_DATA_Nx16_USING_LOOP_IDX(8, s0, src, 0);
                 LOAD_DATA_Nx16_USING_LOOP_IDX(8, s1, src, 8);
@@ -257,8 +257,9 @@ __kernel void xe_calc_mean(__global DATA_T *src, __global float *reduce_temp,
             LOAD_DATA_Nx16_USING_LOOP_IDX(8, s1, src, 8);
 #endif // IS_IC_EQ_8
 #else
-            float8 s0 = LOAD_DATA_8x16(&src[0]);
-            float8 s1 = LOAD_DATA_8x16(&src[8 * 16]);
+            float8 s0, s1;
+            s0 = block_load(s0, src);
+            s1 = block_load(s1, &src[8 * 16]);
 #endif // NHWC
             res0 += s0;
             res1 += s1;
@@ -275,7 +276,7 @@ __kernel void xe_calc_mean(__global DATA_T *src, __global float *reduce_temp,
     xe_calc_fused_reduction(mean, c, &v_mean, local_sum);
 #else
     // reduce_temp is padded to PADDED_IC, no OOB writes
-    STORE_FLOAT_1x16(&reduce_temp[group_c_offset + mb_sp_idx * 16], v_mean);
+    block_write(&reduce_temp[group_c_offset + mb_sp_idx * 16], v_mean);
 #endif
 }
 
@@ -305,7 +306,8 @@ __kernel void xe_calc_variance(__global DATA_T *src, __global float *mean,
     float8 res0 = 0.0f, res1 = 0.0f;
     float v_var = 0.0f;
 
-    float v_mean = MAYBE_LAST_IC_LOAD_FLOAT_1x16(mean, c);
+    float v_mean;
+    MAYBE_LAST_IC_BLOCK_LOAD_1x16(v_mean, mean, c);
 
 #if HAS_STAT_SP_TAIL
     if (sp_block_idx == STAT_SP_TAIL) {
@@ -326,11 +328,9 @@ __kernel void xe_calc_variance(__global DATA_T *src, __global float *mean,
             const bool is_last_sp = sp == 16;
             if (is_last_sp && is_last_ic_block) {
                 LOAD_DATA_Nx16_USING_LOOP_IDX(7, s0, src, 0);
-                s0[7] = simd_id < 8 ? CONVERT_FLOAT_T(src[7 * IC + simd_id])
-                                    : 0.0f;
+                s0[7] = simd_id < 8 ? into_float(src[7 * IC + simd_id]) : 0.0f;
                 LOAD_DATA_Nx16_USING_LOOP_IDX(7, s1, src, 8);
-                s1[7] = simd_id < 8 ? CONVERT_FLOAT_T(src[15 * IC + simd_id])
-                                    : 0.0f;
+                s1[7] = simd_id < 8 ? into_float(src[15 * IC + simd_id]) : 0.0f;
             } else {
                 LOAD_DATA_Nx16_USING_LOOP_IDX(8, s0, src, 0);
                 LOAD_DATA_Nx16_USING_LOOP_IDX(8, s1, src, 8);
@@ -340,8 +340,9 @@ __kernel void xe_calc_variance(__global DATA_T *src, __global float *mean,
             LOAD_DATA_Nx16_USING_LOOP_IDX(8, s1, src, 8);
 #endif
 #else // USE_NHWC
-            float8 s0 = LOAD_DATA_8x16(&src[0]);
-            float8 s1 = LOAD_DATA_8x16(&src[8 * 16]);
+            float8 s0, s1;
+            s0 = block_load(s0, src);
+            s1 = block_load(s1, &src[8 * 16]);
 #endif
 
             float8 v0 = s0 - v_mean;
@@ -357,11 +358,11 @@ __kernel void xe_calc_variance(__global DATA_T *src, __global float *mean,
 #if HAS_IC_TAIL
             float s0;
             if (sp == 1 && is_last_ic_block)
-                s0 = simd_id < 8 ? CONVERT_FLOAT_T(src[simd_id]) : 0.0f;
+                s0 = simd_id < 8 ? into_float(src[simd_id]) : 0.0f;
             else
-                s0 = LOAD_DATA_1x16(&src[0]);
+                s0 = block_load(s0, src);
 #else
-            float s0 = LOAD_DATA_1x16(&src[0]);
+            float s0 = block_load(s0, src);
 #endif
             float v0 = s0 - v_mean;
             v_var = fma(v0, v0, v_var);
@@ -388,11 +389,9 @@ __kernel void xe_calc_variance(__global DATA_T *src, __global float *mean,
             const bool is_last_sp = sp == STAT_SP_BLOCK / 16 - 1;
             if (is_last_sp && is_last_ic_block && is_last_sp_block) {
                 LOAD_DATA_Nx16_USING_LOOP_IDX(7, s0, src, 0);
-                s0[7] = simd_id < 8 ? CONVERT_FLOAT_T(src[7 * IC + simd_id])
-                                    : 0.0f;
+                s0[7] = simd_id < 8 ? into_float(src[7 * IC + simd_id]) : 0.0f;
                 LOAD_DATA_Nx16_USING_LOOP_IDX(7, s1, src, 8);
-                s1[7] = simd_id < 8 ? CONVERT_FLOAT_T(src[15 * IC + simd_id])
-                                    : 0.0f;
+                s1[7] = simd_id < 8 ? into_float(src[15 * IC + simd_id]) : 0.0f;
             } else {
                 LOAD_DATA_Nx16_USING_LOOP_IDX(8, s0, src, 0);
                 LOAD_DATA_Nx16_USING_LOOP_IDX(8, s1, src, 8);
@@ -402,8 +401,9 @@ __kernel void xe_calc_variance(__global DATA_T *src, __global float *mean,
             LOAD_DATA_Nx16_USING_LOOP_IDX(8, s1, src, 8);
 #endif // IS == 8
 #else
-            float8 s0 = LOAD_DATA_8x16(&src[0]);
-            float8 s1 = LOAD_DATA_8x16(&src[8 * 16]);
+            float8 s0, s1;
+            s0 = block_load(s0, src);
+            s1 = block_load(s1, &src[8 * 16]);
 #endif // USE_NHWC
             float8 v0 = s0 - v_mean;
             float8 v1 = s1 - v_mean;
@@ -423,7 +423,7 @@ __kernel void xe_calc_variance(__global DATA_T *src, __global float *mean,
     xe_calc_fused_reduction(variance, c, &v_var, local_sum);
 #else
     // reduce_temp is padded to PADDED_IC, no OOB writes
-    STORE_FLOAT_1x16(&reduce_temp[group_c_offset + mb_sp_idx * 16], v_var);
+    block_write(&reduce_temp[group_c_offset + mb_sp_idx * 16], v_var);
 #endif
 }
 
@@ -442,11 +442,11 @@ inline float8 read_src_block(__global DATA_T *src, int c, int sp) {
 #if HAS_IC_TAIL
             if (k == SP - SP_TAIL - 1 && is_last_ic_block)
                 blockS0[k] = simd_id < 8
-                        ? CONVERT_FLOAT_T(src[k * IC_BLOCK_STRIDE + simd_id])
+                        ? into_float(src[k * IC_BLOCK_STRIDE + simd_id])
                         : 0.0f;
             else
 #endif
-                blockS0[k] = LOAD_DATA_1x16(&src[k * IC_BLOCK_STRIDE]);
+                blockS0[k] = block_load(blockS0[k], &src[k * IC_BLOCK_STRIDE]);
     } else
 #endif // HAS_SP_TAIL
     {
@@ -459,8 +459,7 @@ inline float8 read_src_block(__global DATA_T *src, int c, int sp) {
 #elif HAS_IC_TAIL
         if (is_last_ic_block && is_last_sp_block) {
             LOAD_DATA_Nx16_USING_LOOP_IDX(7, blockS0, src, 0);
-            blockS0[7] = simd_id < 8 ? CONVERT_FLOAT_T(src[7 * IC + simd_id])
-                                     : 0.0f;
+            blockS0[7] = simd_id < 8 ? into_float(src[7 * IC + simd_id]) : 0.0f;
         } else {
             LOAD_DATA_Nx16_USING_LOOP_IDX(8, blockS0, src, 0);
         }
@@ -468,7 +467,7 @@ inline float8 read_src_block(__global DATA_T *src, int c, int sp) {
         LOAD_DATA_Nx16_USING_LOOP_IDX(8, blockS0, src, 0);
 #endif // IS_IC_EQ_8
 #else
-        blockS0 = LOAD_DATA_8x16(&src[0]);
+        blockS0 = block_load(blockS0, src);
 #endif // USE_NHWC
     }
     return blockS0;
@@ -508,27 +507,21 @@ __kernel void xe_bnorm_fwd(__global DATA_T *src, __global float *mean,
     float8 blockD0;
 
 #if USE_SCALE == 1
-    float sm = MAYBE_LAST_IC_LOAD_FLOAT_1x16(scaleshift, c);
+    float sm;
+    MAYBE_LAST_IC_BLOCK_LOAD_1x16(sm, scaleshift, c);
 #else
     float sm = 1.0f;
 #endif
 #if USE_SHIFT == 1
-    float sv = MAYBE_LAST_IC_LOAD_FLOAT_1x16(shift, c);
+    float sv;
+    MAYBE_LAST_IC_BLOCK_LOAD_1x16(sv, shift, c);
 #else
     float sv = 0.0f;
 #endif
 
     float v_mean, v_variance;
-#if HAS_IC_TAIL
-    if (is_last_ic_block) {
-        v_mean = simd_id < 8 ? mean[c + simd_id] : 0.0f;
-        v_variance = simd_id < 8 ? variance[c + simd_id] : 0.0f;
-    } else
-#endif
-    {
-        v_mean = LOAD_FLOAT_1x16(&mean[c]);
-        v_variance = LOAD_FLOAT_1x16(&variance[c]);
-    }
+    MAYBE_LAST_IC_BLOCK_LOAD_1x16(v_mean, mean, c);
+    MAYBE_LAST_IC_BLOCK_LOAD_1x16(v_variance, variance, c);
 
     float sqrt_variance = sm / sqrt(v_variance + eps);
 
@@ -545,18 +538,20 @@ __kernel void xe_bnorm_fwd(__global DATA_T *src, __global float *mean,
 #if HAS_SP_TAIL
     if (sp == SP_TAIL) {
         for (int k = 0; k < SP - SP_TAIL; ++k) {
-            STORE_CHAR_1x16(
-                    &ws[k * IC_BLOCK_STRIDE], convert_char(blockWS0[k]));
+            char ws_val = convert_char(blockWS0[k]);
+            block_write(&ws[k * IC_BLOCK_STRIDE], ws_val);
         }
     } else
 #endif // HAS_SP_TAIL
     {
 #if USE_NHWC
-        for (int k = 0; k < 8; ++k)
-            STORE_CHAR_1x16(
-                    &ws[k * IC_BLOCK_STRIDE], convert_char(blockWS0[k]));
+        for (int k = 0; k < 8; ++k) {
+            char ws_val = convert_char(blockWS0[k]);
+            block_write(&ws[k * IC_BLOCK_STRIDE], ws_val);
+        }
 #else
-        STORE_CHAR_8x16(&ws[0], convert_char8(blockWS0));
+        char8 ws_val8 = convert_char8(blockWS0);
+        block_write(ws, &ws_val8);
 #endif
     }
 #endif // IS_TRAINING
@@ -574,30 +569,31 @@ __kernel void xe_bnorm_fwd(__global DATA_T *src, __global float *mean,
 #if HAS_SP_TAIL
     if (sp == SP_TAIL) {
         for (int k = 0; k < SP - SP_TAIL; ++k) {
+            float dst_val = blockD0[k];
 #if HAS_IC_TAIL
             if (is_last_ic_block) {
                 if (simd_id < 8)
-                    dst[k * IC_BLOCK_STRIDE + simd_id]
-                            = CONVERT_DATA_T(blockD0[k]);
+                    write(dst + k * IC_BLOCK_STRIDE + simd_id, dst_val);
             } else
 #endif
-                STORE_DATA_1x16(&dst[k * IC_BLOCK_STRIDE], blockD0[k]);
+                block_write(&dst[k * IC_BLOCK_STRIDE], dst_val);
         }
     } else
 #endif // HAS_SP_TAIL
     {
 #if USE_NHWC
-        for (int k = 0; k < 8; ++k)
+        for (int k = 0; k < 8; ++k) {
+            float dst_val = blockD0[k];
 #if HAS_IC_TAIL
             if (is_last_ic_block) {
                 if (simd_id < 8)
-                    dst[k * IC_BLOCK_STRIDE + simd_id]
-                            = CONVERT_DATA_T(blockD0[k]);
+                    write(dst + k * IC_BLOCK_STRIDE + simd_id, dst_val);
             } else
 #endif
-                STORE_DATA_1x16(&dst[k * IC_BLOCK_STRIDE], blockD0[k]);
+                block_write(&dst[k * IC_BLOCK_STRIDE], dst_val);
+        }
 #else
-        STORE_DATA_8x16(&dst[0], blockD0);
+        block_write(dst, &blockD0);
 #endif // USE_NHWC
     }
 }

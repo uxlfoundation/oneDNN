@@ -210,7 +210,7 @@ static status_t init_conf_common(nhwc_params_t &bn_conf,
 
 static void init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
         const nhwc_reusable_compile_params_t &cmpl_conf) {
-    kernel_ctx.set_data_type(cmpl_conf.data_type);
+    kernel_ctx.set_data_type(cmpl_conf.data_type, /*with_punning=*/false);
     kernel_ctx.require_stateless_addressing(
             cmpl_conf.require_stateless_addressing);
 

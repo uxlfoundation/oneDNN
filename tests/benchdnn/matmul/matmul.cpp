@@ -49,12 +49,13 @@ namespace matmul {
 // - Input validation is done in verify_grouped_input()
 static benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_grouped_md(
         const prb_t *prb, data_kind_t kind, dnnl_data_type_t dt) {
+    dnnl_memory_desc_t md {};
     int arg = (kind == SRC) ? DNNL_ARG_SRC
             : (kind == DST) ? DNNL_ARG_DST
                             : DNNL_ARG_UNDEF;
-    if (arg == DNNL_ARG_UNDEF) return nullptr;
-    if (prb->sparse_options.get_encoding(arg) != dnnl_grouped) return nullptr;
-    if (prb->sparse_options.get_variable_dim_idx(arg) != 0) return nullptr;
+    if (arg == DNNL_ARG_UNDEF) return md;
+    if (prb->sparse_options.get_encoding(arg) != dnnl_grouped) return md;
+    if (prb->sparse_options.get_variable_dim_idx(arg) != 0) return md;
 
     const int64_t group_count = prb->sparse_options.get_group_count();
 
@@ -85,6 +86,7 @@ dims_t get_runtime_dims(const dims_t &dims, const dims_mask_t &mask) {
 // start supporting it.
 benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_md(const prb_t *prb,
         data_kind_t kind, dnnl_data_type_t dt = dnnl_data_type_undef) {
+    dnnl_memory_desc_t md {};
     if (kind == SRC) {
         if (dt == dnnl_data_type_undef) dt = prb->src_dt();
         const auto &src_rt_dims = get_runtime_dims(
@@ -108,7 +110,7 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_md(const prb_t *prb,
                     return dnn_mem_t::init_coo_md(
                             prb->ndims, src_rt_dims.data(), dt, nnz, dnnl_s32);
                     break;
-                default: assert(!"unsupported encoding"); return nullptr;
+                default: assert(!"unsupported encoding"); return md;
             }
         } else
             return dnn_mem_t::init_md(prb->ndims, src_rt_dims.data(), dt,
@@ -137,7 +139,7 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_md(const prb_t *prb,
                     return dnn_mem_t::init_sparse_packed_md(
                             prb->ndims, weights_rt_dims.data(), dt, nnz);
                     break;
-                default: assert(!"unsupported encoding"); return nullptr;
+                default: assert(!"unsupported encoding"); return md;
             }
         } else {
             // for grouped matmul, prb->ndims is not equal to the actual number
@@ -162,7 +164,7 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_md(const prb_t *prb,
         return dnn_mem_t::init_md(prb->ndims, dst_rt_dims.data(), dt, prb->dtag,
                 prb->strides[STRIDES_DST]);
     }
-    return nullptr;
+    return md;
 }
 
 dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {

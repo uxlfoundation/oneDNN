@@ -4584,6 +4584,111 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
     return status::success;
 }
 
+// The pass is called against a gated mlp subgraph matched by the gated mlp
+// patterns. Hence we have the basic assumptions for the topology which
+// simplifies the pass logic below.
+status_t fuse_gated_mlp(std::shared_ptr<subgraph_t> &sg) {
+    std::vector<op_ptr> candidates;
+    const auto ops = sg->get_ops();
+    size_t matmul_count = 0;
+    dnnl::algorithm act_algo = dnnl::algorithm::undef;
+    op_ptr gate = nullptr, up = nullptr, down = nullptr;
+
+    for (const auto &op : ops) {
+        if (op->get_kind() == op_kind::_matmul) {
+            matmul_count++;
+            candidates.emplace_back(op);
+            // if it has no consumer, it's the down matmul. If it has a binary consumer, it's the up matmul. Otherwise, it's the gate matmul.
+            auto out_val = op->get_output_value(0);
+            auto &consumers = out_val->get_consumers();
+            if (consumers.empty()) {
+                down = op;
+            } else if (consumers.size() == 1
+                    && consumers[0].get_op().get_kind() == op_kind::_binary) {
+                up = op;
+            } else {
+                gate = op;
+            }
+        } else if (op->get_kind() == op_kind::_eltwise) {
+            candidates.emplace_back(op);
+            act_algo = static_cast<dnnl::algorithm>(
+                    op->get_attr<int64_t>(op_attr::alg_kind));
+            if (act_algo == dnnl::algorithm::eltwise_logistic) {
+                // check the consumer of sigmoid, it should be binary_mul
+                auto out_val = op->get_output_value(0);
+                if (out_val->get_consumers().size() != 1) { break; }
+                auto &consumer = out_val->get_consumers()[0].get_op();
+                if (consumer.get_kind() != op_kind::_binary) { break; }
+                auto consumer_alg = static_cast<dnnl::algorithm>(
+                        consumer.get_attr<int64_t>(op_attr::alg_kind));
+                if (consumer_alg != dnnl::algorithm::binary_mul) { break; }
+                // check the consumer of binary_mul, it should be the second matmul or another binary_mul.
+                auto out_val2 = consumer.get_output_value(0);
+                if (out_val2->get_consumers().size() != 1) { break; }
+                auto &consumer2 = out_val2->get_consumers()[0].get_op();
+                if (consumer2.get_kind() != op_kind::_matmul
+                        && consumer2.get_kind() != op_kind::_binary) {
+                    break;
+                }
+                // if it's binary_mul, it's gated mlp with swish activation: sigmoid + binary_mul.
+                if (consumer2.get_kind() == op_kind::_binary) {
+                    act_algo = dnnl::algorithm::eltwise_swish;
+                }
+            }
+        } else if (op->get_kind() == op_kind::_binary) {
+            auto alg = static_cast<dnnl::algorithm>(
+                    op->get_attr<int64_t>(op_attr::alg_kind));
+            if (alg != dnnl::algorithm::binary_mul) { break; }
+            candidates.emplace_back(op);
+        } else if (op->get_kind() == op_kind::_reorder) {
+            // Optional typecast.
+            candidates.emplace_back(op);
+        } else {
+            // strange op for gated mlp pattern, bail out.
+            break;
+        }
+    }
+
+    // seems not a gated mlp pattern, bail out.
+    if (matmul_count != 3) { return status::unimplemented; }
+    if (candidates.size() != ops.size()) { return status::unimplemented; }
+    if (gate == nullptr || up == nullptr || down == nullptr) {
+        return status::unimplemented;
+    }
+
+    subgraph_rewriter_t rewriter(sg);
+    op_ptr gated_mlp_op = std::make_shared<op_t>(op_kind::_gated_mlp);
+    gated_mlp_op->set_attr<int64_t>(
+            op_attr::alg_kind, static_cast<int64_t>(act_algo));
+
+    // connect inputs and outputs
+    auto src_val = gate->get_input_value(0);
+    auto wei0_val = gate->get_input_value(1);
+    auto wei1_val = up->get_input_value(1);
+    auto wei2_val = down->get_input_value(1);
+    src_val->remove_consumer(*gate, 0);
+    wei0_val->remove_consumer(*gate, 1);
+    wei1_val->remove_consumer(*up, 1);
+    wei2_val->remove_consumer(*down, 1);
+    gated_mlp_op->connect_input(0, src_val);
+    gated_mlp_op->connect_input(1, wei0_val);
+    gated_mlp_op->connect_input(2, wei1_val);
+    gated_mlp_op->connect_input(3, wei2_val);
+    auto dst_val = down->get_output_value(0);
+    dst_val->set_producer(*gated_mlp_op);
+    gated_mlp_op->add_output(dst_val);
+
+    insert_empty_scratchpad(gated_mlp_op);
+
+    for (auto &op : candidates) {
+        rewriter.to_remove(op);
+    }
+    rewriter.to_insert(gated_mlp_op);
+    rewriter.run();
+
+    return status::success;
+}
+
 } // namespace dnnl_impl
 } // namespace graph
 } // namespace impl

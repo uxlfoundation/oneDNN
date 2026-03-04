@@ -2375,6 +2375,22 @@ DNNL_GRAPH_OP_SCHEMA(_sdpa, 1,
                 .set_attr(op_attr::vs_acc_mode, true, attribute_kind::s)
                 .set_shape_inference_function(infer_dnnl_sdpa_output_shape))
 
+DNNL_GRAPH_OP_SCHEMA(_gated_mlp, 1,
+        op_schema_t()
+                .set_inputs_option(op_schema_t::param_num_option::variadic)
+                .set_num_inputs(std::set<size_t>({4, 32}))
+                .set_num_outputs(2)
+                .set_input(0, "src")
+                .set_input(1, "gate_weights")
+                .set_input(2, "up_weights")
+                .set_input(3, "down_weights")
+                .set_output(0, "dst")
+                .set_output(1, "scratchpad")
+                .set_attr(op_attr::fusion_info, false,
+                        attribute_kind::fusion_info)
+                .set_attr(op_attr::alg_kind, true, attribute_kind::i)
+                .set_shape_inference_function(infer_gated_mlp_output_shape))
+
 } // namespace graph
 } // namespace impl
 } // namespace dnnl

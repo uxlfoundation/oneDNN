@@ -36,8 +36,8 @@
     }
 
 DEF_fp_minmax_abs(float);
-IF_HALF_SUPPORTED(DEF_fp_minmax_abs(half));
-IF_DOUBLE_SUPPORTED(DEF_fp_minmax_abs(double));
+GUARD_half(DEF_fp_minmax_abs(half));
+GUARD_double(DEF_fp_minmax_abs(double));
 
 #undef DEF_fp_minmax_abs
 
@@ -68,8 +68,8 @@ IF_DOUBLE_SUPPORTED(DEF_fp_minmax_abs(double));
 
 DEF_reduce(float);
 DEF_reduce(int);
-IF_DOUBLE_SUPPORTED(DEF_reduce(double));
-IF_HALF_SUPPORTED(DEF_reduce(half));
+GUARD_double(DEF_reduce(double));
+GUARD_half(DEF_reduce(half));
 
 #undef DEF_reduce
 
@@ -135,8 +135,8 @@ DEF_atomic_reduce(int);
 DEF_init_acc(float, -FLT_MAX, FLT_MAX, 0.0f, 1.0f);
 DEF_init_acc(int, INT_MIN, INT_MAX, 0, 1);
 
-IF_DOUBLE_SUPPORTED(DEF_init_acc(double, -DBL_MAX, DBL_MAX, 0.0, 1.0));
-IF_HALF_SUPPORTED(DEF_init_acc(half, -HALF_MAX, HALF_MAX, 0.0h, 1.0h));
+GUARD_double(DEF_init_acc(double, -DBL_MAX, DBL_MAX, 0.0, 1.0));
+GUARD_half(DEF_init_acc(half, -HALF_MAX, HALF_MAX, 0.0h, 1.0h));
 
 #undef DEF_init_acc
 #undef internal_def_init_acc

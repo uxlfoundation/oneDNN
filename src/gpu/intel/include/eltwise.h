@@ -31,6 +31,8 @@
 #define DATA_MAX CHAR_MAX
 #elif DT_U8 == 1
 #define DATA_MAX UCHAR_MAX
+#elif DT_F64 == 1
+#define DATA_MAX DBL_MAX
 #else
 #define DATA_MAX FLT_MAX
 #endif
@@ -253,7 +255,9 @@ POST_OP_DATA_T hardsigmoid_fwd(POST_OP_DATA_T s, float alpha, float beta) {
 POST_OP_DATA_T hardsigmoid_bwd(
         POST_OP_DATA_T dd, POST_OP_DATA_T s, float alpha, float beta) {
     POST_OP_DATA_T v = alpha * s + beta;
-    return v <= 0.f ? 0.f : v >= 1.f ? 0.f : dd * alpha;
+    return v <= POST_OP_LITERAL(0.)    ? POST_OP_LITERAL(0.)
+            : v >= POST_OP_LITERAL(1.) ? POST_OP_LITERAL(0.)
+                                       : dd * alpha;
 }
 
 POST_OP_DATA_T hardswish_fwd(POST_OP_DATA_T s, float alpha, float beta) {
@@ -263,7 +267,9 @@ POST_OP_DATA_T hardswish_bwd(
         POST_OP_DATA_T dd, POST_OP_DATA_T s, float alpha, float beta) {
     POST_OP_DATA_T v = alpha * s + beta;
     POST_OP_DATA_T w = POST_OP_LITERAL(2.) * alpha * s + beta;
-    return (v <= 0.f ? 0.f : v >= 1.f ? dd : dd * w);
+    return (v <= POST_OP_LITERAL(0.)           ? POST_OP_LITERAL(0.)
+                    : v >= POST_OP_LITERAL(1.) ? dd
+                                               : dd * w);
 }
 
 POST_OP_DATA_T fwd_eltwise_common(int eltwise_alg, POST_OP_DATA_T x,

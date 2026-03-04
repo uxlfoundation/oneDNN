@@ -55,8 +55,8 @@ POST_OP_DATA_T fwd_binary(
 // unused arguments are maintained for interface compatibility
 #define APPLY_PO_BINARY(idx, acc, _sum_src, x0, x1, x2, x3, x4, x5) \
     { \
-        const auto po_off \
-                = OFF_RMD(CONCAT2(PO_, idx), x0, x1, x2, x3, x4, x5); \
+        const auto po_off = CONCAT2(CONCAT2(PO_, idx), _RMD_OFF)( \
+                x0, x1, x2, x3, x4, x5); \
         POST_OP_DATA_T po_src \
                 = load(po_src, (CONCAT3(po, idx, _binary_arg)) + po_off); \
         acc = fwd_binary(CONCAT3(PO_, idx, _ALG), acc, po_src); \

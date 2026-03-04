@@ -19,6 +19,7 @@
 #define VECT_DT_N VECT_SIZE_FUSED
 
 #include "gpu/intel/include/dispatch.h"
+#include "gpu/intel/include/io.h"
 #include "gpu/intel/include/types.h"
 
 #undef SRC_OFF
@@ -46,19 +47,7 @@
     ((C / NUM_NORM_BLOCKS_FUSED) / (SUB_GROUP_SIZE * VECT_DT_N))
 #define C_BLOCK (C / NUM_NORM_BLOCKS_FUSED)
 
-#define LOAD_VECT_FLOAT(ptr) \
-    AS_VECT_FLOAT_T(VECT_UINT_READ((const __global uint *)(ptr)))
-
-#define STORE_FLOAT_SGx1(ptr, val) \
-    intel_sub_group_block_write((__global uint *)(ptr), as_uint(val))
-#define STORE_FLOAT_SGx2(ptr, val) \
-    intel_sub_group_block_write2((__global uint *)(ptr), as_uint2(val))
-#define STORE_FLOAT_SGx4(ptr, val) \
-    intel_sub_group_block_write4((__global uint *)(ptr), as_uint4(val))
-#define STORE_FLOAT_SGx8(ptr, val) \
-    intel_sub_group_block_write8((__global uint *)(ptr), as_uint8(val))
-#define STORE_VECT_FLOAT(ptr, val) CONCAT2(STORE_FLOAT_SGx, VECT_DT_N)(ptr, val)
-
+// Local memory block read/write macros (not covered by IO API)
 #define STORE_LOCAL_FLOAT_SGx1(ptr, val) \
     intel_sub_group_block_write((__local uint *)(ptr), as_uint(val))
 #define STORE_LOCAL_FLOAT_SGx2(ptr, val) \
@@ -69,6 +58,16 @@
     intel_sub_group_block_write8((__local uint *)(ptr), as_uint8(val))
 #define STORE_VECT_LOCAL_FLOAT(ptr, val) \
     CONCAT2(STORE_LOCAL_FLOAT_SGx, VECT_DT_N)(ptr, val)
+
+#define LOAD_LOCAL_FLOAT_SGx1(ptr) \
+    as_float(intel_sub_group_block_read((__local uint *)(ptr)))
+#define LOAD_LOCAL_FLOAT_SGx2(ptr) \
+    as_float2(intel_sub_group_block_read2((__local uint *)(ptr)))
+#define LOAD_LOCAL_FLOAT_SGx4(ptr) \
+    as_float4(intel_sub_group_block_read4((__local uint *)(ptr)))
+#define LOAD_LOCAL_FLOAT_SGx8(ptr) \
+    as_float8(intel_sub_group_block_read8((__local uint *)(ptr)))
+#define LOAD_VECT_LOCAL_FLOAT(ptr) CONCAT2(LOAD_LOCAL_FLOAT_SGx, VECT_DT_N)(ptr)
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
@@ -129,14 +128,9 @@ __kernel void vectorized_lnorm_bwd_fused(__global DATA_T *src,
                 const int src_off = SRC_PLAIN_OFF(n_idx, c_idx);
                 const int dst_off = DST_PLAIN_OFF(n_idx, c_idx);
 
-                const VECT_FLOAT_T src_vect
-                        = CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(
-                                VECT_BLOCK_READ((const __global BLOCK_DATA_T
-                                                *)(&src[src_off]))));
-                const VECT_FLOAT_T diff_dst_vect
-                        = CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(
-                                VECT_BLOCK_READ((const __global BLOCK_DATA_T
-                                                *)(&diff_dst[dst_off]))));
+                VECT_FLOAT_T src_vect = block_load(src_vect, src + src_off);
+                VECT_FLOAT_T diff_dst_vect
+                        = block_load(diff_dst_vect, diff_dst + dst_off);
 
                 diff_gamma_vect += (src_vect - mean_vect) * diff_dst_vect
                         * inv_sqrt_variance;
@@ -162,21 +156,20 @@ __kernel void vectorized_lnorm_bwd_fused(__global DATA_T *src,
                 VECT_FLOAT_T diff_beta_vect = 0;
                 for (int n_idx = 0; n_idx < NUM_ACROSS_BLOCKS; n_idx++) {
                     if (USE_SCALE) {
-                        diff_gamma_vect += AS_VECT_FLOAT_T(VECT_UINT_READ(
-                                (const __local uint *)&tmp_diff_scale[c_slm_idx
-                                        + n_idx * NORM_BLOCK_FUSED]));
+                        diff_gamma_vect += LOAD_VECT_LOCAL_FLOAT(
+                                &tmp_diff_scale[c_slm_idx
+                                        + n_idx * NORM_BLOCK_FUSED]);
                     }
                     if (USE_SHIFT) {
-                        diff_beta_vect += AS_VECT_FLOAT_T(VECT_UINT_READ(
-                                (const __local uint *)&tmp_diff_shift[c_slm_idx
-                                        + n_idx * NORM_BLOCK_FUSED]));
+                        diff_beta_vect += LOAD_VECT_LOCAL_FLOAT(
+                                &tmp_diff_shift[c_slm_idx
+                                        + n_idx * NORM_BLOCK_FUSED]);
                     }
                 }
 
                 if (USE_SCALE)
-                    SAVE_VECT_WEI(&diff_scale[c_idx], diff_gamma_vect);
-                if (USE_SHIFT)
-                    SAVE_VECT_WEI(&diff_shift[c_idx], diff_beta_vect);
+                    block_write(diff_scale + c_idx, &diff_gamma_vect);
+                if (USE_SHIFT) block_write(diff_shift + c_idx, &diff_beta_vect);
             }
         }
     } else if (n_uid < MAX_CHUNKS) {
@@ -227,17 +220,15 @@ __kernel void vectorized_lnorm_bwd_fused(__global DATA_T *src,
         const int src_off = SRC_PLAIN_OFF(n_uni_id, c_idx);
         const int dst_off = DST_PLAIN_OFF(n_uni_id, c_idx);
 
-        v_src[c] = CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(
-                VECT_BLOCK_READ((const __global BLOCK_DATA_T *)&src[src_off])));
-        v_diff_dst[c] = CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(VECT_BLOCK_READ(
-                (const __global BLOCK_DATA_T *)&diff_dst[dst_off])));
+        v_src[c] = block_load(v_src[c], src + src_off);
+        v_diff_dst[c] = block_load(v_diff_dst[c], diff_dst + dst_off);
     }
 
 #if CALCULATE_STATS
     for (int c = 0; c < SRC_BUF_SIZE; c++) {
         const int c_idx = c * SUB_GROUP_SIZE * VECT_DT_N + c_block_off;
         VECT_FLOAT_T gamma = 1.0f;
-        if (scale) { gamma = LOAD_VECT_WEI(&scale[c_idx]); }
+        if (scale) { gamma = block_load(gamma, scale + c_idx); }
         const VECT_FLOAT_T src_vect = v_src[c];
         const VECT_FLOAT_T dst_vect = v_diff_dst[c];
         dd_gamma_vect += dst_vect * gamma;
@@ -269,8 +260,8 @@ __kernel void vectorized_lnorm_bwd_fused(__global DATA_T *src,
     for (int c = 0; c < SRC_BUF_SIZE; c++) {
         VECT_FLOAT_T gamma = 1.0f;
         if (scale) {
-            gamma = LOAD_VECT_WEI(
-                    &scale[c * SUB_GROUP_SIZE * VECT_DT_N + c_block_off]);
+            gamma = block_load(gamma,
+                    scale + c * SUB_GROUP_SIZE * VECT_DT_N + c_block_off);
         }
         const VECT_FLOAT_T src_vect = v_src[c];
         VECT_FLOAT_T v_diff_src_vect = v_diff_dst[c];
@@ -285,7 +276,6 @@ __kernel void vectorized_lnorm_bwd_fused(__global DATA_T *src,
         const int c_idx = c * SUB_GROUP_SIZE * VECT_DT_N + c_block_off;
         const int src_off = SRC_PLAIN_OFF(n_uni_id, c_idx);
 
-        VECT_BLOCK_WRITE((__global BLOCK_DATA_T *)&diff_src[src_off],
-                AS_VECT_BLOCK_DATA_T(CONVERT_VECTOR_DATA_T(v_diff_src_vect)));
+        block_write(diff_src + src_off, &v_diff_src_vect);
     }
 }

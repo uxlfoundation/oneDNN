@@ -471,8 +471,9 @@ static status_t init_conf_common(
 
 static status_t init_kernel_ctx_common(
         kernel_ctx_t &kernel_ctx, const conf_t &conf) {
-    kernel_ctx.set_data_type(conf.src_dt);
-    def_data_type(kernel_ctx, conf.weights_data_type, "WEI");
+    kernel_ctx.set_data_type(conf.src_dt, /*with_punning=*/false);
+    def_data_type(
+            kernel_ctx, conf.weights_data_type, "WEI", /*with_punning=*/false);
     kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
 
     // Since FWD kernel aggressively uses GRF (allocates a private buffer for
@@ -508,9 +509,12 @@ static status_t init_kernel_ctx_common(
     kernel_ctx.define_int("SKIP_MEAN", conf.skip_mean);
 
     kernel_ctx.add_option("-cl-std=CL2.0");
-    def_memory_desc_info(kernel_ctx, conf.src_md_info, "SRC");
-    def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST");
-    def_memory_desc_info(kernel_ctx, conf.stat_md_info, "STAT");
+    def_memory_desc_info(
+            kernel_ctx, conf.src_md_info, "SRC", /*with_punning=*/false);
+    def_memory_desc_info(
+            kernel_ctx, conf.dst_md_info, "DST", /*with_punning=*/false);
+    def_memory_desc_info(
+            kernel_ctx, conf.stat_md_info, "STAT", /*with_punning=*/false);
 
     if (conf.is_fwd)
         def_dispatch(kernel_ctx, conf.dispatch);

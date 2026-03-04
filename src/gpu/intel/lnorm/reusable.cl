@@ -25,7 +25,7 @@ __kernel void lnorm_reusable_calc_mean(__global SRC_STAT_DT *src,
     src = GWS_GET_BUFFER_POS_NAMED(SRC, STAT, gws_params, src);
     mean = GWS_GET_BUFFER_POS_NAMED(STAT, STAT, gws_params, mean);
 
-    ACC_DT sum = SPECIAL(ACC_DT, zero);
+    ACC_DT sum = zero_val(sum);
     for (off_t i = 0; i < reduce_size; i++) {
         ACC_DT src_val = load(src_val, src + i * (off_t)reduce_stride);
         sum += src_val;

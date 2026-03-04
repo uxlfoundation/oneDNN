@@ -235,8 +235,10 @@ static status_t init_conf_common(
 
 static status_t init_kernel_ctx_common(
         compute::kernel_ctx_t &kernel_ctx, const conf_t &conf) {
-    kernel_ctx.set_data_type(conf.is_fwd ? conf.src_dt : conf.dst_dt);
-    def_data_type(kernel_ctx, conf.weights_data_type, "WEI");
+    kernel_ctx.set_data_type(
+            conf.is_fwd ? conf.src_dt : conf.dst_dt, /*with_punning=*/false);
+    def_data_type(
+            kernel_ctx, conf.weights_data_type, "WEI", /*with_punning=*/false);
     kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
 
     kernel_ctx.define_int("C", conf.norm_axis);
@@ -257,9 +259,12 @@ static status_t init_kernel_ctx_common(
     kernel_ctx.define_int("N_CHUNKS", conf.n_chunks);
     kernel_ctx.define_int("SKIP_MEAN", conf.skip_mean);
 
-    def_memory_desc_info(kernel_ctx, conf.src_md_info, "SRC");
-    def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST");
-    def_memory_desc_info(kernel_ctx, conf.stat_md_info, "STAT");
+    def_memory_desc_info(
+            kernel_ctx, conf.src_md_info, "SRC", /*with_punning=*/false);
+    def_memory_desc_info(
+            kernel_ctx, conf.dst_md_info, "DST", /*with_punning=*/false);
+    def_memory_desc_info(
+            kernel_ctx, conf.stat_md_info, "STAT", /*with_punning=*/false);
 
     def_dispatch(kernel_ctx, conf.dispatch);
     if (!conf.is_fwd) {

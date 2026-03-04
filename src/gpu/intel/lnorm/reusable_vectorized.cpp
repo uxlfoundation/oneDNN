@@ -201,11 +201,11 @@ status_t reusable_vectorized_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
 
 compute::kernel_ctx_t reusable_vectorized_params_t::get_kernel_ctx() const {
     compute::kernel_ctx_t kernel_ctx;
-    kernel_ctx.set_data_type(input_dt);
+    kernel_ctx.set_data_type(input_dt, /*with_punning=*/false);
     kernel_ctx.require_stateless_addressing(require_stateless_addressing);
-    def_data_type(kernel_ctx, input_dt, "SRC");
-    def_data_type(kernel_ctx, ss_dt, "WEI");
-    def_data_type(kernel_ctx, output_dt, "DST");
+    def_data_type(kernel_ctx, input_dt, "SRC", /*with_punning=*/false);
+    def_data_type(kernel_ctx, ss_dt, "WEI", /*with_punning=*/false);
+    def_data_type(kernel_ctx, output_dt, "DST", /*with_punning=*/false);
 
     kernel_ctx.define_int("USE_SCALE", use_scale);
     kernel_ctx.define_int("USE_SHIFT", use_shift);

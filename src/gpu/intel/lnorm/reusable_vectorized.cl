@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/include/dispatch.h"
+#include "gpu/intel/include/io.h"
 #include "gpu/intel/include/math_utils.h"
 #include "gpu/intel/include/types.h"
 #include "gpu/intel/include/types_interop.h"
@@ -47,19 +48,15 @@ lnorm_reusable_vectorized(__global SRC_DATA_T *src, __global float *mean,
         FLT_ACC_DATA_T sum = 0;
         unroll_for_by(N_UNROLL)(int sg_idx = 0; sg_idx < reduce_size;
                                 sg_idx += SG_STRIDE) {
-            VECT_FLOAT_T val
-                    = CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(VECT_BLOCK_READ(
-                            (const __global BLOCK_DATA_T *)(&src[sg_idx]))));
+            VECT_FLOAT_T val = block_load(val, src + sg_idx);
             sum += vec_sum(val);
         }
 
         if (!SKIP_MEAN) local_mean = sub_group_reduce_add(sum) * rrs;
         FLT_ACC_DATA_T sumsq = 0;
         unroll_for_by(N_UNROLL)(int i = 0; i < greads; i++) {
-            VECT_FLOAT_T val;
-            val = CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(VECT_BLOCK_READ((
-                          const __global BLOCK_DATA_T *)(&src[i * SG_STRIDE]))))
-                    - local_mean;
+            VECT_FLOAT_T val
+                    = block_load(val, src + i * SG_STRIDE) - local_mean;
             val *= val;
             sumsq += vec_sum(val);
         }
@@ -89,18 +86,21 @@ lnorm_reusable_vectorized(__global SRC_DATA_T *src, __global float *mean,
     float dst_scale_val = dst_scale ? native_recip(*dst_scale) : 1.f;
 
     unroll_for_by(N_UNROLL)(int i = greads - 1; i >= 0; i--) {
-        VECT_FLOAT_T res
-                = CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(VECT_BLOCK_READ((
-                          const __global BLOCK_DATA_T *)(&src[i * SG_STRIDE]))))
-                - local_mean;
+        VECT_FLOAT_T res = block_load(res, src + i * SG_STRIDE) - local_mean;
         res *= sqrt_variance;
-        if (USE_SCALE) res *= LOAD_VECT_WEI(scale);
-        if (USE_SHIFT) res += LOAD_VECT_WEI(shift);
+        if (USE_SCALE) {
+            VECT_FLOAT_T sc = block_load(sc, scale);
+            res *= sc;
+        }
+        if (USE_SHIFT) {
+            VECT_FLOAT_T sh = block_load(sh, shift);
+            res += sh;
+        }
 
         res *= src_scale_val;
         res *= dst_scale_val;
 
-        VECT_DST_BLOCK_WRITE(dst_vect, CONVERT_VECTOR_DST_DATA_T(res));
+        block_write(dst_vect, &res);
         dst_vect -= SG_STRIDE;
         if (USE_SCALE) scale -= SG_STRIDE;
         if (USE_SHIFT) shift -= SG_STRIDE;

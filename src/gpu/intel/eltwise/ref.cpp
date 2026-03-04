@@ -67,7 +67,8 @@ static status_t init_conf_common(
 static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
         const conf_t &conf, const post_ops_t &post_ops,
         const dropout_t &dropout, const memory_desc_t *dst_md) {
-    kernel_ctx.set_data_type(conf.data_type);
+    constexpr bool with_punning = false;
+    kernel_ctx.set_data_type(conf.data_type, with_punning);
     kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
 
     kernel_ctx.define_int("ELTWISE_ALG", conf.alg);

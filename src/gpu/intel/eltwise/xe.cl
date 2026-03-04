@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/include/eltwise.h"
+#include "gpu/intel/include/io.h"
 #include "gpu/intel/include/post_ops.h"
 
 __attribute__((intel_reqd_sub_group_size(SIMD))) __kernel void xe_eltwise_fwd(
@@ -30,42 +31,35 @@ __attribute__((intel_reqd_sub_group_size(SIMD))) __kernel void xe_eltwise_fwd(
     dim_t offset
             = (grid * grsize + sgid * get_max_sub_group_size()) * VECT_DT_N;
 
-    // grsize is a multiple of 16, SIMD is 16 -> offset mod 16 = 0
-    // -> read_pos correctly aligned for block reads
-    // -> write_pos correctly aligned for block writes
-    __global BLOCK_DATA_T *read_pos = (__global BLOCK_DATA_T *)src + offset;
-    __global BLOCK_DATA_T *write_pos = (__global BLOCK_DATA_T *)dst + offset;
-
-    VECT_DATA_T val;
+    POST_OP_DATA_T val[VECT_DT_N];
     const int nel_per_read = SIMD * VECT_DT_N;
 
     // READ
     if (!NELEMS_OVERFLOW || offset + nel_per_read < nelems) {
-        val = AS_VECT_DATA_T(VECT_BLOCK_READ(read_pos));
+        block_load(val, src + offset, VECT_DT_N);
 
     } else {
         // read data in the same access pattern block_reads would
         dim_t pos = offset + lid;
         for (int i = 0; i < VECT_DT_N && pos < nelems; ++i) {
-            val[i] = src[pos];
+            val[i] = load(val[i], src, pos);
             pos += SIMD;
         }
     }
 
     // COMPUTE
     for (int i = 0; i < VECT_DT_N; ++i) {
-        val[i] = CONVERT_DATA_T(
-                fwd_eltwise(DATA_TO_REF(val[i]), alpha, beta, 1.0f));
+        val[i] = fwd_eltwise(val[i], alpha, beta, 1.0f);
     }
 
     // WRITE
     if (!NELEMS_OVERFLOW || offset + nel_per_read < nelems) {
-        VECT_BLOCK_WRITE(write_pos, AS_VECT_BLOCK_DATA_T(val));
+        block_write(dst + offset, val, VECT_DT_N);
 
     } else {
         dim_t pos = offset + lid;
         for (int i = 0; i < VECT_DT_N && pos < nelems; ++i) {
-            dst[pos] = val[i];
+            write(dst + pos, val[i]);
             pos += SIMD;
         }
     }
@@ -83,49 +77,39 @@ __attribute__((intel_reqd_sub_group_size(SIMD))) __kernel void xe_eltwise_bwd(
     //TODO: It should be implemented two distinct offsets
     //The one for src and the second for diff_src
 
-    // grsize is a multiple of 16, SIMD is 16 -> offset mod 16 = 0
-    // -> read_pos correctly aligned for block reads
-    // -> write_pos correctly aligned for block writes
-    __global BLOCK_DATA_T *src_pos = (__global BLOCK_DATA_T *)src + offset;
-    __global BLOCK_DATA_T *diff_pos
-            = (__global BLOCK_DATA_T *)diff_dst + offset;
-    __global BLOCK_DATA_T *write_pos
-            = (__global BLOCK_DATA_T *)diff_src + offset;
-
-    VECT_DATA_T val_dd;
-    VECT_DATA_T val_src;
+    POST_OP_DATA_T val_dd[VECT_DT_N];
+    POST_OP_DATA_T val_src[VECT_DT_N];
     const int nel_per_read = SIMD * VECT_DT_N;
 
     // READ
     if (!NELEMS_OVERFLOW || offset + nel_per_read < nelems) {
-        val_src = AS_VECT_DATA_T(VECT_BLOCK_READ(src_pos));
-        val_dd = AS_VECT_DATA_T(VECT_BLOCK_READ(diff_pos));
+        block_load(val_src, src + offset, VECT_DT_N);
+        block_load(val_dd, diff_dst + offset, VECT_DT_N);
 
     } else {
         // read data in the same access pattern block_reads would
         dim_t pos = offset + lid;
         for (int i = 0; i < VECT_DT_N && pos < nelems; ++i) {
-            val_dd[i] = diff_dst[pos];
-            val_src[i] = src[pos];
+            val_dd[i] = load(val_dd[i], diff_dst, pos);
+            val_src[i] = load(val_src[i], src, pos);
             pos += SIMD;
         }
     }
 
     // COMPUTE
     for (int i = 0; i < VECT_DT_N; ++i) {
-        val_dd[i] = CONVERT_DATA_T(bwd_eltwise(
-                DATA_TO_REF(val_dd[i]), DATA_TO_REF(val_src[i]), alpha, beta));
+        val_dd[i] = bwd_eltwise(val_dd[i], val_src[i], alpha, beta);
     }
 
     // WRITE
     if (!NELEMS_OVERFLOW || offset + nel_per_read < nelems) {
-        VECT_BLOCK_WRITE(write_pos, AS_VECT_BLOCK_DATA_T(val_dd));
+        block_write(diff_src + offset, val_dd, VECT_DT_N);
 
     } else {
         // write data in the same access pattern block_writes would
         dim_t pos = offset + lid;
         for (int i = 0; i < VECT_DT_N && pos < nelems; ++i) {
-            diff_src[pos] = val_dd[i];
+            write(diff_src + pos, val_dd[i]);
             pos += SIMD;
         }
     }

@@ -302,6 +302,9 @@ status_t fuse_implicit_causal_mask(std::shared_ptr<subgraph_t> &sg);
 /// This pass will transform the sdpa subgraph into a dnnl_sdpa op.
 status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg);
 
+/// This pass will transform the gated mlp subgraph into a _gated_mlp op.
+status_t fuse_gated_mlp(std::shared_ptr<subgraph_t> &sg);
+
 } // namespace dnnl_impl
 } // namespace graph
 } // namespace impl

@@ -37,17 +37,12 @@ def_identity_into(float);
 def_identity_into(char);
 def_identity_into(uchar);
 def_identity_into(int);
-def_identity_into(bf16);
-IF_DOUBLE_SUPPORTED(def_identity_into(double));
-IF_HALF_SUPPORTED(def_identity_into(half));
+GUARD_bf16(def_identity_into(bf16));
+GUARD_double(def_identity_into(double));
+GUARD_half(def_identity_into(half));
 
-#ifdef MATH_UTILS_DECLARE_BF8
-def_identity_into(f8_e5m2);
-#endif // MATH_UTILS_DECLARE_BF8
-
-#ifdef MATH_UTILS_DECLARE_HF8
-def_identity_into(f8_e4m3);
-#endif // MATH_UTILS_DECLARE_HF8
+GUARD_f8_e5m2(def_identity_into(f8_e5m2));
+GUARD_f8_e4m3(def_identity_into(f8_e4m3));
 
 #undef def_identity_into
 
@@ -66,34 +61,35 @@ def_identity_into(f8_e4m3);
 def_std_into_sat(char, uchar);
 def_std_into_sat(char, float);
 def_std_into_sat(char, int);
-IF_DOUBLE_SUPPORTED(def_std_into_sat(char, double));
-IF_HALF_SUPPORTED(def_std_into_sat(char, half));
+GUARD_double(def_std_into_sat(char, double));
+GUARD_half(def_std_into_sat(char, half));
 
 def_std_into_sat(uchar, char);
 def_std_into_sat(uchar, float);
 def_std_into_sat(uchar, int);
-IF_DOUBLE_SUPPORTED(def_std_into_sat(uchar, double));
-IF_HALF_SUPPORTED(def_std_into_sat(uchar, half));
+GUARD_double(def_std_into_sat(uchar, double));
+GUARD_half(def_std_into_sat(uchar, half));
 
 def_std_into_sat(int, float);
+GUARD_half(def_std_into_sat(int, half));
 
-IF_HALF_SUPPORTED(def_std_into(half, char));
-IF_HALF_SUPPORTED(def_std_into(half, uchar));
-IF_HALF_SUPPORTED(def_std_into(half, float));
-IF_HALF_SUPPORTED(def_std_into(half, int));
-IF_HALF_SUPPORTED(IF_DOUBLE_SUPPORTED(def_std_into(half, double)));
+GUARD_half(def_std_into(half, char));
+GUARD_half(def_std_into(half, uchar));
+GUARD_half(def_std_into(half, float));
+GUARD_half(def_std_into(half, int));
+GUARD_half(GUARD_double(def_std_into(half, double)));
 
 def_std_into(float, char);
 def_std_into(float, uchar);
 def_std_into(float, int);
-IF_DOUBLE_SUPPORTED(def_std_into(float, double));
-IF_HALF_SUPPORTED(def_std_into(float, half));
+GUARD_double(def_std_into(float, double));
+GUARD_half(def_std_into(float, half));
 
-IF_DOUBLE_SUPPORTED(def_std_into(double, char));
-IF_DOUBLE_SUPPORTED(def_std_into(double, uchar));
-IF_DOUBLE_SUPPORTED(def_std_into(double, float));
-IF_DOUBLE_SUPPORTED(def_std_into(double, int));
-IF_DOUBLE_SUPPORTED(IF_HALF_SUPPORTED(def_std_into(double, half)));
+GUARD_double(def_std_into(double, char));
+GUARD_double(def_std_into(double, uchar));
+GUARD_double(def_std_into(double, float));
+GUARD_double(def_std_into(double, int));
+GUARD_double(GUARD_half(def_std_into(double, half)));
 
 #define def_undef_into(out_type) \
     out_type __attribute__((overloadable)) CONCAT2(into_, out_type)( \
@@ -104,10 +100,65 @@ IF_DOUBLE_SUPPORTED(IF_HALF_SUPPORTED(def_std_into(double, half)));
 
 def_undef_into(float);
 def_undef_into(int);
-IF_DOUBLE_SUPPORTED(def_undef_into(double));
+GUARD_double(def_undef_into(double));
+
+GUARD_double(def_std_into_sat(int, double));
+def_std_into(int, char);
+def_std_into(int, uchar);
+
+// Vector conversions for native OpenCL types
+// Helper macros: expand a conversion for widths 8, 4, 2 in one call.
+#define def_std_into_vecs(out, in) \
+    def_std_into(CONCAT2(out, 8), CONCAT2(in, 8)) \
+            def_std_into(CONCAT2(out, 4), CONCAT2(in, 4)) \
+                    def_std_into(CONCAT2(out, 2), CONCAT2(in, 2))
+
+#define def_std_into_sat_vecs(out, in) \
+    def_std_into_sat(CONCAT2(out, 8), CONCAT2(in, 8)) \
+            def_std_into_sat(CONCAT2(out, 4), CONCAT2(in, 4)) \
+                    def_std_into_sat(CONCAT2(out, 2), CONCAT2(in, 2))
+
+def_std_into_sat_vecs(char, float);
+def_std_into_sat_vecs(uchar, float);
+def_std_into_vecs(float, float);
+def_std_into_vecs(float, char);
+def_std_into_vecs(float, uchar);
+GUARD_half(def_std_into_vecs(float, half));
+GUARD_half(def_std_into_vecs(half, float));
+
+// Native vector identity conversions
+def_std_into_vecs(char, char);
+def_std_into_vecs(uchar, uchar);
+GUARD_half(def_std_into_vecs(half, half));
+GUARD_double(def_std_into_vecs(double, double));
+
+// float <-> double vector conversions
+GUARD_double(def_std_into_vecs(float, double));
+GUARD_double(def_std_into_vecs(double, float));
+
+// double <-> half vector conversions
+GUARD_double(GUARD_half(def_std_into_vecs(double, half)));
+GUARD_double(GUARD_half(def_std_into_vecs(half, double)));
+
+// double <-> char/uchar vector conversions
+GUARD_double(def_std_into_vecs(double, char));
+GUARD_double(def_std_into_vecs(double, uchar));
+GUARD_double(def_std_into_sat_vecs(char, double));
+GUARD_double(def_std_into_sat_vecs(uchar, double));
+
+// double <-> int vector conversions
+GUARD_double(def_std_into_vecs(double, int));
+GUARD_double(def_std_into_sat_vecs(int, double));
+
+// int vector identity and float <-> int vector conversions
+def_std_into_vecs(int, int);
+def_std_into_vecs(float, int);
+def_std_into_sat_vecs(int, float);
 
 #undef def_std_into
 #undef def_std_into_sat
+#undef def_std_into_vecs
+#undef def_std_into_sat_vecs
 
 // Conversions to/from custom types
 
@@ -158,7 +209,7 @@ float __attribute__((overloadable)) into_float(bf16 b) {
 }
 #endif
 def_two_step_conversion(bf16, int, float);
-IF_HALF_SUPPORTED(def_two_step_conversion(bf16, half, float));
+GUARD_half(def_two_step_conversion(bf16, half, float));
 
 // BF8 conversion emulations
 #ifdef MATH_UTILS_DECLARE_BF8
@@ -176,8 +227,8 @@ def_two_step_conversion(f8_e5m2, float, half);
 def_two_step_conversion(f8_e5m2, int, half);
 def_two_step_conversion(float, f8_e5m2, half);
 
-IF_DOUBLE_SUPPORTED(def_two_step_conversion(f8_e5m2, double, float));
-IF_DOUBLE_SUPPORTED(def_two_step_conversion(double, f8_e5m2, float));
+GUARD_double(def_two_step_conversion(f8_e5m2, double, float));
+GUARD_double(def_two_step_conversion(double, f8_e5m2, float));
 #endif
 
 #ifdef MATH_UTILS_DECLARE_HF8
@@ -193,8 +244,8 @@ def_two_step_conversion(f8_e4m3, float, half);
 def_two_step_conversion(f8_e4m3, int, half);
 def_two_step_conversion(float, f8_e4m3, half);
 
-IF_DOUBLE_SUPPORTED(def_two_step_conversion(f8_e4m3, double, float));
-IF_DOUBLE_SUPPORTED(def_two_step_conversion(double, f8_e4m3, float));
+GUARD_double(def_two_step_conversion(f8_e4m3, double, float));
+GUARD_double(def_two_step_conversion(double, f8_e4m3, float));
 #endif // MATH_UTILS_DECLARE_HF8
 
 #ifdef MATH_UTILS_DECLARE_F4_E2M1
@@ -202,7 +253,7 @@ f4_e2m1 __attribute__((overloadable)) into_f4_e2m1(float f) {
     return as_f4_e2m1(cvt_f32_to_f4_e2m1(f));
 }
 
-half __attribute__((overloadable)) into_float(f4_e2m1 b) {
+float __attribute__((overloadable)) into_float(f4_e2m1 b) {
     return cvt_f4_e2m1_to_f32(b.data);
 }
 
@@ -210,8 +261,8 @@ def_two_step_conversion(f4_e2m1, half, float);
 def_two_step_conversion(f4_e2m1, int, float);
 def_two_step_conversion(half, f4_e2m1, float);
 
-IF_DOUBLE_SUPPORTED(def_two_step_conversion(f4_e2m1, double, float));
-IF_DOUBLE_SUPPORTED(def_two_step_conversion(double, f4_e2m1, float));
+GUARD_double(def_two_step_conversion(f4_e2m1, double, float));
+GUARD_double(def_two_step_conversion(double, f4_e2m1, float));
 #endif // MATH_UTILS_DECLARE_F4_E2M1
 
 #ifdef MATH_UTILS_DECLARE_F4_E3M0
@@ -219,7 +270,7 @@ f4_e3m0 __attribute__((overloadable)) into_f4_e3m0(float f) {
     return as_f4_e3m0(cvt_f32_to_f4_e3m0(f));
 }
 
-half __attribute__((overloadable)) into_float(f4_e3m0 b) {
+float __attribute__((overloadable)) into_float(f4_e3m0 b) {
     return cvt_f4_e3m0_to_f32(b.data);
 }
 
@@ -227,19 +278,210 @@ def_two_step_conversion(f4_e3m0, half, float);
 def_two_step_conversion(f4_e3m0, int, float);
 def_two_step_conversion(half, f4_e3m0, float);
 
-IF_DOUBLE_SUPPORTED(def_two_step_conversion(f4_e3m0, double, float));
-IF_DOUBLE_SUPPORTED(def_two_step_conversion(double, f4_e3m0, float));
+GUARD_double(def_two_step_conversion(f4_e3m0, double, float));
+GUARD_double(def_two_step_conversion(double, f4_e3m0, float));
 #endif // MATH_UTILS_DECLARE_F4_E3M0
 
 #ifdef MATH_UTILS_DECLARE_E8M0
 float __attribute__((overloadable)) into_float(e8m0 b) {
     return cvt_e8m0_to_f32(b.data);
 }
+e8m0 __attribute__((overloadable)) into_e8m0(float f) {
+    return as_e8m0(cvt_f32_to_e8m0(f));
+}
 #endif
 
-IF_DOUBLE_SUPPORTED(def_two_step_conversion(bf16, double, float));
-IF_DOUBLE_SUPPORTED(def_two_step_conversion(double, bf16, float));
+#ifdef MATH_UTILS_DECLARE_S4
+int __attribute__((overloadable)) into_int(s4 val) {
+    char sign = (val.data & 0x08) ? (char)0xf0 : (char)0x0;
+    return convert_int((val.data & 0x0f) | sign);
+}
+
+float __attribute__((overloadable)) into_float(s4 val) {
+    return convert_float(into_int(val));
+}
+
+GUARD_half(def_two_step_conversion(half, s4, int));
+#endif // MATH_UTILS_DECLARE_S4
+
+#ifdef MATH_UTILS_DECLARE_U4
+int __attribute__((overloadable)) into_int(u4 val) {
+    return convert_int(val.data);
+}
+
+float __attribute__((overloadable)) into_float(u4 val) {
+    return convert_float(val.data);
+}
+
+GUARD_half(def_two_step_conversion(half, u4, int));
+#endif // MATH_UTILS_DECLARE_U4
+
+GUARD_bf16(GUARD_double(def_two_step_conversion(bf16, double, float)));
+GUARD_bf16(GUARD_double(def_two_step_conversion(double, bf16, float)));
+GUARD_bf16(GUARD_half(def_two_step_conversion(half, bf16, float)));
+GUARD_bf16(def_two_step_conversion(char, bf16, float));
+GUARD_bf16(def_two_step_conversion(uchar, bf16, float));
+GUARD_bf16(def_two_step_conversion(int, bf16, float));
 
 #undef def_two_step_conversion
+
+// Struct vector identity conversions
+#define def_identity_into_vec(t, n) \
+    CONCAT2(t, CONCAT2(x, n)) __attribute__((overloadable)) \
+            CONCAT2(into_, CONCAT2(t, CONCAT2(x, n)))( \
+                    CONCAT2(t, CONCAT2(x, n)) val) { \
+        return val; \
+    }
+
+// Vector conversions -- bf16 (delegate to existing cvt_* vector builtins)
+#ifdef MATH_UTILS_DECLARE_BF16
+#ifdef cl_future_bf16_cvt
+float2 __attribute__((overloadable)) into_float2(bf16x2 v) {
+    return __builtin_IB_bftof_2(v.data);
+}
+float4 __attribute__((overloadable)) into_float4(bf16x4 v) {
+    return __builtin_IB_bftof_4(v.data);
+}
+float8 __attribute__((overloadable)) into_float8(bf16x8 v) {
+    return __builtin_IB_bftof_8(v.data);
+}
+bf16x2 __attribute__((overloadable)) into_bf16x2(float2 v) {
+    bf16x2 r;
+    r.data = __builtin_IB_ftobf_2(v);
+    return r;
+}
+bf16x4 __attribute__((overloadable)) into_bf16x4(float4 v) {
+    bf16x4 r;
+    r.data = __builtin_IB_ftobf_4(v);
+    return r;
+}
+bf16x8 __attribute__((overloadable)) into_bf16x8(float8 v) {
+    bf16x8 r;
+    r.data = __builtin_IB_ftobf_8(v);
+    return r;
+}
+#else
+float2 __attribute__((overloadable)) into_float2(bf16x2 v) {
+    return cvt_bf16_to_f32(as_ushort2(v.data));
+}
+float4 __attribute__((overloadable)) into_float4(bf16x4 v) {
+    return cvt_bf16_to_f32(as_ushort4(v.data));
+}
+float8 __attribute__((overloadable)) into_float8(bf16x8 v) {
+    return cvt_bf16_to_f32(as_ushort8(v.data));
+}
+bf16x2 __attribute__((overloadable)) into_bf16x2(float2 v) {
+    bf16x2 r;
+    r.data = as_short2(cvt_f32_to_bf16(v));
+    return r;
+}
+bf16x4 __attribute__((overloadable)) into_bf16x4(float4 v) {
+    bf16x4 r;
+    r.data = as_short4(cvt_f32_to_bf16(v));
+    return r;
+}
+bf16x8 __attribute__((overloadable)) into_bf16x8(float8 v) {
+    bf16x8 r;
+    r.data = as_short8(cvt_f32_to_bf16(v));
+    return r;
+}
+#endif
+
+def_identity_into_vec(bf16, 2)
+def_identity_into_vec(bf16, 4)
+def_identity_into_vec(bf16, 8)
+#endif // MATH_UTILS_DECLARE_BF16
+
+// bf16 <-> double vector conversions (two-step through float)
+GUARD_bf16(GUARD_double(
+double2 __attribute__((overloadable)) into_double2(bf16x2 v) {
+    return into_double2(into_float2(v));
+}
+double4 __attribute__((overloadable)) into_double4(bf16x4 v) {
+    return into_double4(into_float4(v));
+}
+double8 __attribute__((overloadable)) into_double8(bf16x8 v) {
+    return into_double8(into_float8(v));
+}
+bf16x2 __attribute__((overloadable)) into_bf16x2(double2 v) {
+    return into_bf16x2(into_float2(v));
+}
+bf16x4 __attribute__((overloadable)) into_bf16x4(double4 v) {
+    return into_bf16x4(into_float4(v));
+}
+bf16x8 __attribute__((overloadable)) into_bf16x8(double8 v) {
+    return into_bf16x8(into_float8(v));
+}
+)) // GUARD_bf16(GUARD_double(...))
+
+// Vector conversions -- scalar loop macros for types without vector builtins
+// Native output <- struct input (e.g. float8 <- f8_e4m3x8)
+#define def_vec_into(out_vec, in_vec, as_scalar, scalar_fn, N) \
+    out_vec __attribute__((overloadable)) CONCAT2(into_, out_vec)(in_vec val) { \
+        out_vec r; \
+        for (int i = 0; i < N; i++) \
+            r[i] = scalar_fn(as_scalar(val.data[i])); \
+        return r; \
+    }
+
+// Struct output <- native input (e.g. f8_e4m3x8 <- float8)
+#define def_vec_into_struct(out_vec, in_vec, scalar_fn, N) \
+    out_vec __attribute__((overloadable)) CONCAT2(into_, out_vec)(in_vec val) { \
+        out_vec r; \
+        for (int i = 0; i < N; i++) \
+            r.data[i] = scalar_fn(val[i]).data; \
+        return r; \
+    }
+
+#ifdef MATH_UTILS_DECLARE_HF8
+// f8_e4m3 <-> float
+def_vec_into(float2, f8_e4m3x2, as_f8_e4m3, into_float, 2)
+def_vec_into(float4, f8_e4m3x4, as_f8_e4m3, into_float, 4)
+def_vec_into(float8, f8_e4m3x8, as_f8_e4m3, into_float, 8)
+def_vec_into_struct(f8_e4m3x2, float2, into_f8_e4m3, 2)
+def_vec_into_struct(f8_e4m3x4, float4, into_f8_e4m3, 4)
+def_vec_into_struct(f8_e4m3x8, float8, into_f8_e4m3, 8)
+def_identity_into_vec(f8_e4m3, 2)
+def_identity_into_vec(f8_e4m3, 4)
+def_identity_into_vec(f8_e4m3, 8)
+#endif // MATH_UTILS_DECLARE_HF8
+
+#ifdef MATH_UTILS_DECLARE_BF8
+// f8_e5m2 <-> float
+def_vec_into(float2, f8_e5m2x2, as_f8_e5m2, into_float, 2)
+def_vec_into(float4, f8_e5m2x4, as_f8_e5m2, into_float, 4)
+def_vec_into(float8, f8_e5m2x8, as_f8_e5m2, into_float, 8)
+def_vec_into_struct(f8_e5m2x2, float2, into_f8_e5m2, 2)
+def_vec_into_struct(f8_e5m2x4, float4, into_f8_e5m2, 4)
+def_vec_into_struct(f8_e5m2x8, float8, into_f8_e5m2, 8)
+def_identity_into_vec(f8_e5m2, 2)
+def_identity_into_vec(f8_e5m2, 4)
+def_identity_into_vec(f8_e5m2, 8)
+#endif // MATH_UTILS_DECLARE_BF8
+
+#undef def_identity_into_vec
+
+#ifdef MATH_UTILS_DECLARE_F4_E2M1
+// f4_e2m1 <-> float
+def_vec_into(float2, f4_e2m1x2, as_f4_e2m1, into_float, 2)
+def_vec_into(float4, f4_e2m1x4, as_f4_e2m1, into_float, 4)
+def_vec_into(float8, f4_e2m1x8, as_f4_e2m1, into_float, 8)
+def_vec_into_struct(f4_e2m1x2, float2, into_f4_e2m1, 2)
+def_vec_into_struct(f4_e2m1x4, float4, into_f4_e2m1, 4)
+def_vec_into_struct(f4_e2m1x8, float8, into_f4_e2m1, 8)
+#endif // MATH_UTILS_DECLARE_F4_E2M1
+
+#ifdef MATH_UTILS_DECLARE_F4_E3M0
+// f4_e3m0 <-> float
+def_vec_into(float2, f4_e3m0x2, as_f4_e3m0, into_float, 2)
+def_vec_into(float4, f4_e3m0x4, as_f4_e3m0, into_float, 4)
+def_vec_into(float8, f4_e3m0x8, as_f4_e3m0, into_float, 8)
+def_vec_into_struct(f4_e3m0x2, float2, into_f4_e3m0, 2)
+def_vec_into_struct(f4_e3m0x4, float4, into_f4_e3m0, 4)
+def_vec_into_struct(f4_e3m0x8, float8, into_f4_e3m0, 8)
+#endif // MATH_UTILS_DECLARE_F4_E3M0
+
+#undef def_vec_into
+#undef def_vec_into_struct
 
 #endif

@@ -17,6 +17,7 @@
 #ifndef GPU_INTEL_INCLUDE_MATH_UTILS_H
 #define GPU_INTEL_INCLUDE_MATH_UTILS_H
 
+#include "gpu/intel/include/config.h"
 #include "gpu/intel/include/custom_types.h"
 #include "gpu/intel/include/utils.h"
 
@@ -65,56 +66,6 @@ int __attribute__((overloadable)) rnd_down(long a, unsigned int b) {
 }
 
 #pragma OPENCL EXTENSION cl_khr_fp16 : enable
-
-#if DT_BF8 || SRC_DT_BF8 || WEI_DT_BF8 || DST_DT_BF8 || BIA_DT_BF8 || A_DT_BF8 \
-        || B_DT_BF8 || C_DT_BF8 || DATA_DT_BF8 || POST_OP_USING_BF8 \
-        || SRC_SCALES_DT_BF8 || WEI_SCALES_DT_BF8 || DST_SCALES_DT_BF8 \
-        || BIAS_DT_BF8
-#define MATH_UTILS_DECLARE_BF8 1
-#endif
-
-#if DT_HF8 || SRC_DT_HF8 || WEI_DT_HF8 || DST_DT_HF8 || BIA_DT_HF8 || A_DT_HF8 \
-        || A_DT_HF8 || B_DT_HF8 || C_DT_HF8 || DATA_DT_HF8 \
-        || POST_OP_USING_HF8 || SRC_SCALES_DT_HF8 || WEI_SCALES_DT_HF8 \
-        || DST_SCALES_DT_HF8 || BIAS_DT_HF8
-#define MATH_UTILS_DECLARE_HF8 1
-#endif
-
-#if DT_F4_E2M1 || SRC_DT_F4_E2M1 || WEI_DT_F4_E2M1 || DST_DT_F4_E2M1 \
-        || BIA_DT_F4_E2M1 || A_DT_F4_E2M1 || A_DT_F4_E2M1 || B_DT_F4_E2M1 \
-        || C_DT_F4_E2M1 || DATA_DT_F4_E2M1 || POST_OP_USING_F4_E2M1 \
-        || BIAS_DT_F4_E2M1
-#define MATH_UTILS_DECLARE_F4_E2M1 1
-#endif
-
-#if DT_F4_E3M0 || SRC_DT_F4_E3M0 || WEI_DT_F4_E3M0 || DST_DT_F4_E3M0 \
-        || BIA_DT_F4_E3M0 || A_DT_F4_E3M0 || A_DT_F4_E3M0 || B_DT_F4_E3M0 \
-        || C_DT_F4_E3M0 || DATA_DT_F4_E3M0 || POST_OP_USING_F4_E3M0 \
-        || BIAS_DT_F4_E3M0
-#define MATH_UTILS_DECLARE_F4_E3M0 1
-#endif
-
-#if DT_S4 || SRC_DT_S4 || WEI_DT_S4 || DST_DT_S4 || BIA_DT_S4 || A_DT_S4 \
-        || B_DT_S4 || C_DT_S4 || DATA_DT_S4 || WEI_ZP_DT_S4 || SRC_ZP_DT_S4
-#define MATH_UTILS_DECLARE_S4 1
-#endif
-
-#if DT_U4 || SRC_DT_U4 || WEI_DT_U4 || DST_DT_U4 || BIA_DT_U4 || A_DT_U4 \
-        || A_DT_U4 || B_DT_U4 || C_DT_U4 || DATA_DT_U4 || WEI_ZP_DT_U4 \
-        || SRC_ZP_DT_U4
-#define MATH_UTILS_DECLARE_U4 1
-#endif
-
-#if DT_BF16 || SRC_DT_BF16 || WEI_DT_BF16 || DST_DT_BF16 || BIA_DT_BF16 \
-        || A_DT_BF16 || B_DT_BF16 || C_DT_BF16 || SUM_DT_BF16 || DATA_DT_BF16 \
-        || POST_OP_USING_BF16 || SRC_SCALES_DT_BF16 || WEI_SCALES_DT_BF16 \
-        || DST_SCALES_DT_BF16
-#define MATH_UTILS_DECLARE_BF16 1
-#endif
-
-#if DST_SCALES_DT_E8M0 || SRC_SCALES_DT_E8M0 || WEI_SCALES_DT_E8M0
-#define MATH_UTILS_DECLARE_E8M0 1
-#endif
 
 ulong8 __builtin_IB_simd_block_read_8_global_l(const __global ulong *);
 ushort16 __builtin_IB_simd_block_read_16_global_h(const __global ushort *);
@@ -582,6 +533,10 @@ DECLARE_BLOCK_WRITE(2, intel_sub_group_block_write2, uint2, __global, uint)
 DECLARE_BLOCK_WRITE(4, intel_sub_group_block_write4, uint4, __global, uint)
 DECLARE_BLOCK_WRITE(8, intel_sub_group_block_write8, uint8, __global, uint)
 
+DECLARE_BLOCK_WRITE(, intel_sub_group_block_write_ul, ulong, __global, ulong)
+DECLARE_BLOCK_WRITE(, intel_sub_group_block_write_us, ushort, __global, ushort)
+DECLARE_BLOCK_WRITE(, intel_sub_group_block_write_uc, uchar, __global, uchar)
+
 #ifdef cl_intel_subgroups_char
 void __attribute__((overloadable)) intel_sub_group_block_write_uc16(
         __global uchar *p, uchar16 data);
@@ -804,7 +759,7 @@ float __attribute__((overloadable)) cvt_f4_e3m0_to_f32(uchar a) {
 
 #if MATH_UTILS_DECLARE_S4 || MATH_UTILS_DECLARE_U4 \
         || MATH_UTILS_DECLARE_F4_E2M1 || MATH_UTILS_DECLARE_F4_E3M0
-#define GET_HALF_BYTE(x, y) get_half_byte(x, y)
+#define GET_HALF_BYTE(x, y) get_half_byte((__global const uchar *)(x), y)
 
 uchar __attribute__((overloadable)) get_half_byte(
         const __global uchar *x, off_t y) {
@@ -817,14 +772,33 @@ uchar __attribute__((overloadable)) get_half_byte(
     return ret;
 }
 
-char __attribute__((overloadable)) get_half_byte(
-        const __global char *x, off_t y) {
-    if (y % 2) {
-        return (x[y / 2] & 0xf0) >> 4;
-    } else {
-        return x[y / 2] & 0x0f;
-    }
+#if MATH_UTILS_DECLARE_S4
+s4 __attribute__((overloadable)) get_half_byte(
+        s4 dst, const __global uchar *x, off_t y) {
+    return as_s4((char)get_half_byte(x, y));
 }
+#endif
+
+#if MATH_UTILS_DECLARE_U4
+u4 __attribute__((overloadable)) get_half_byte(
+        u4 dst, const __global uchar *x, off_t y) {
+    return as_u4(get_half_byte(x, y));
+}
+#endif
+
+#if MATH_UTILS_DECLARE_F4_E2M1
+f4_e2m1 __attribute__((overloadable)) get_half_byte(
+        f4_e2m1 dst, const __global uchar *x, off_t y) {
+    return as_f4_e2m1(get_half_byte(x, y));
+}
+#endif
+
+#if MATH_UTILS_DECLARE_F4_E3M0
+f4_e3m0 __attribute__((overloadable)) get_half_byte(
+        f4_e3m0 dst, const __global uchar *x, off_t y) {
+    return as_f4_e3m0(get_half_byte(x, y));
+}
+#endif
 
 void __attribute__((overloadable)) set_double_half_byte(
         __global uchar *x, off_t y, uchar z) {

@@ -15,6 +15,7 @@
 *******************************************************************************/
 #include "gpu/intel/bnorm/xe.h"
 #include "gpu/intel/bnorm/xe_reduce.h"
+#include "gpu/intel/include/io.h"
 
 // BWD kernels that support both blocked and NHWC layouts (USE_NHWC definition).
 // These kernels perform IC tail processing for NHWC and for ic % 8 == 0
@@ -30,21 +31,14 @@
 #define LOAD_DATA_Nx16_USING_LOOP(n, dest, src) \
     { \
         for (int k = 0; k < n; ++k) { \
-            dest[k] = LOAD_DATA_1x16(&src[k * IC_BLOCK_STRIDE]); \
-        } \
-    }
-
-#define LOAD_UINT_Nx16_USING_LOOP(n, dest, src) \
-    { \
-        for (int k = 0; k < n; ++k) { \
-            dest[k] = LOAD_UINT_1x16(&src[k * IC_BLOCK_STRIDE]); \
+            dest[k] = block_load(dest[k], &src[k * IC_BLOCK_STRIDE]); \
         } \
     }
 
 #define LOAD_CHAR_Nx16_USING_LOOP(n, dest, src) \
     { \
         for (int k = 0; k < n; ++k) { \
-            dest[k] = LOAD_CHAR_1x16(&src[k * IC_BLOCK_STRIDE]); \
+            dest[k] = block_load(dest[k], &src[k * IC_BLOCK_STRIDE]); \
         } \
     }
 
@@ -53,16 +47,7 @@
         if (USE_NHWC) { \
             LOAD_DATA_Nx16_USING_LOOP(8, dest, src); \
         } else { \
-            dest = LOAD_DATA_8x16(src); \
-        } \
-    }
-
-#define LOAD_UINT_8x16_USING_LAYOUT(dest, src) \
-    { \
-        if (USE_NHWC) { \
-            LOAD_UINT_Nx16_USING_LOOP(8, dest, src); \
-        } else { \
-            dest = LOAD_UINT_8x16(src); \
+            dest = block_load(dest, src); \
         } \
     }
 
@@ -71,14 +56,14 @@
         if (USE_NHWC) { \
             LOAD_CHAR_Nx16_USING_LOOP(8, dest, src); \
         } else { \
-            dest = LOAD_CHAR_8x16(src); \
+            dest = block_load(dest, src); \
         } \
     }
 
 #define LOAD_DATA_Nx16_USING_LOOP_HALF(n, dest, src) \
     { \
         for (int k = 0; k < n; k += 2) { \
-            dest[k] = LOAD_DATA_1x16(&src[k * IC_BLOCK_STRIDE]); \
+            dest[k] = block_load(dest[k], &src[k * IC_BLOCK_STRIDE]); \
         } \
     }
 
@@ -111,7 +96,8 @@ __kernel void xe_calculate_stats(__global DATA_T *src, __global float *mean,
     diff_dst += offset;
     ws += offset;
 
-    float v_mean = MAYBE_LAST_IC_LOAD_FLOAT_1x16(mean, c);
+    float v_mean;
+    MAYBE_LAST_IC_BLOCK_LOAD_1x16(v_mean, mean, c);
 
     float8 diff_gamma = 0.0f;
     float8 diff_beta = 0.0f;
@@ -153,10 +139,10 @@ __kernel void xe_calculate_stats(__global DATA_T *src, __global float *mean,
             LOAD_DATA_Nx16_USING_LOOP(7, src_data, src);
             LOAD_DATA_Nx16_USING_LOOP(7, dd_data, diff_dst);
             dd_data[7] = simd_id < 8
-                    ? CONVERT_FLOAT_T(diff_dst[7 * IC_BLOCK_STRIDE + simd_id])
+                    ? into_float(diff_dst[7 * IC_BLOCK_STRIDE + simd_id])
                     : 0.0f;
             src_data[7] = simd_id < 8
-                    ? CONVERT_FLOAT_T(src[7 * IC_BLOCK_STRIDE + simd_id])
+                    ? into_float(src[7 * IC_BLOCK_STRIDE + simd_id])
                     : 0.0f;
         } else {
             LOAD_DATA_Nx16_USING_LOOP(8, src_data, src);
@@ -188,7 +174,8 @@ __kernel void xe_calculate_stats(__global DATA_T *src, __global float *mean,
         sp = (SP - STAT_SP_TAIL * STAT_SP_BLOCK) % C_PARALLEL_FACTOR;
         while (sp-- >= 1) {
 #if FUSE_BN_RELU == 1
-            const char ws_data = LOAD_CHAR_1x16(&ws[0]);
+            char ws_data;
+            ws_data = block_load(ws_data, ws);
 #else
             const char ws_data = 1;
 #endif // #if FUSE_BN_RELU == 1
@@ -196,16 +183,17 @@ __kernel void xe_calculate_stats(__global DATA_T *src, __global float *mean,
 #if HAS_IC_TAIL
             float src_data, dd_data;
             if (sp == 0 && is_last_ic_block) {
-                src_data = simd_id < 8 ? CONVERT_FLOAT_T(src[simd_id]) : 0.0f;
-                dd_data = simd_id < 8 ? CONVERT_FLOAT_T(diff_dst[simd_id])
+                src_data = simd_id < 8 ? into_float(src[simd_id]) : 0.0f;
+                dd_data = simd_id < 8 ? into_float(diff_dst[simd_id])
                                       : 0.0f;
             } else {
-                src_data = LOAD_DATA_1x16(&src[0]);
-                dd_data = LOAD_DATA_1x16(&diff_dst[0]);
+                src_data = block_load(src_data, src);
+                dd_data = block_load(dd_data, diff_dst);
             }
 #else
-            const float src_data = LOAD_DATA_1x16(&src[0]);
-            const float dd_data = LOAD_DATA_1x16(&diff_dst[0]);
+            float src_data, dd_data;
+            src_data = block_load(src_data, src);
+            dd_data = block_load(dd_data, diff_dst);
 #endif
 
             src += IC_BLOCK_STRIDE;
@@ -240,11 +228,11 @@ __kernel void xe_calculate_stats(__global DATA_T *src, __global float *mean,
     // REDUCE_STAT_NBLOCKS * PADDED_IC - diff_gamma stats calculated by this kernel
     // PADDED_IC - diff_beta reduction, wrote by xe_reduce_stats kernel
     // REDUCE_STAT_NBLOCKS * PADDED_IC - diff_beta stats calculated by this kernel
-    STORE_FLOAT_1x16(&temp_reduce[PADDED_IC + mb_sp_idx * 16], diff_gamma[0]);
-    STORE_FLOAT_1x16(
+    block_write(&temp_reduce[PADDED_IC + mb_sp_idx * 16], &diff_gamma[0], 1);
+    block_write(
             &temp_reduce[2 * PADDED_IC + REDUCE_STAT_NBLOCKS * PADDED_IC
                     + mb_sp_idx * 16],
-            diff_beta[0]);
+            &diff_beta[0], 1);
 #endif // FUSED_ATOMICS_REDUCTION
 }
 
@@ -256,14 +244,14 @@ inline void write_8x16_block(__global DATA_T *ptr, int c, float8 val) {
     if (is_last_ic_block) {
         if (simd_id < 8) {
             for (int k = 0; k < 8; ++k)
-                ptr[k * IC_BLOCK_STRIDE + simd_id] = CONVERT_DATA_T(val[k]);
+                write(ptr + k * IC_BLOCK_STRIDE + simd_id, val[k]);
         }
     } else
 #endif // HAS_IC_TAIL
         for (int k = 0; k < 8; ++k)
-            STORE_DATA_1x16(&ptr[k * IC_BLOCK_STRIDE], val[k]);
+            block_write(&ptr[k * IC_BLOCK_STRIDE], &val[k], 1);
 #else
-    STORE_DATA_8x16(&ptr[0], val);
+    block_write(ptr, &val);
 #endif // #if USE_NHWC
 }
 inline void write_1x16_block(__global DATA_T *ptr, int c, float val) {
@@ -271,12 +259,12 @@ inline void write_1x16_block(__global DATA_T *ptr, int c, float val) {
     const int simd_id = get_sub_group_local_id();
     const bool is_last_ic_block = c + 16 > IC;
     if (!is_last_ic_block) {
-        STORE_DATA_1x16(&ptr[0], val);
+        block_write(ptr, &val, 1);
     } else {
-        if (simd_id < 8) { ptr[simd_id] = CONVERT_DATA_T(val); }
+        if (simd_id < 8) { write(ptr + simd_id, val); }
     }
 #else
-    STORE_DATA_1x16(&ptr[0], val);
+    block_write(ptr, &val, 1);
 #endif
 }
 
@@ -293,20 +281,26 @@ __kernel void xe_bnorm_bwd(__global DATA_T *src, __global float *mean,
     const bool is_last_ic_block = c + 16 > IC;
 #endif
 
-    const float v_variance = MAYBE_LAST_IC_LOAD_FLOAT_1x16(variance, c);
+    float v_variance;
+    MAYBE_LAST_IC_BLOCK_LOAD_1x16(v_variance, variance, c);
 #if CALCULATE_DIFF_STATS == 1
-    const float v_mean = MAYBE_LAST_IC_LOAD_FLOAT_1x16(mean, c);
-    const float diff_gamma = MAYBE_LAST_IC_LOAD_FLOAT_1x16(diff_scale, c);
+    float v_mean;
+    MAYBE_LAST_IC_BLOCK_LOAD_1x16(v_mean, mean, c);
+    float diff_gamma;
+    MAYBE_LAST_IC_BLOCK_LOAD_1x16(diff_gamma, diff_scale, c);
 #if DIFF_SHIFT == 1
-    const float diff_beta = MAYBE_LAST_IC_LOAD_FLOAT_1x16(diff_shift, c);
+    float diff_beta;
+    MAYBE_LAST_IC_BLOCK_LOAD_1x16(diff_beta, diff_shift, c);
 #else
-    const float diff_beta = MAYBE_LAST_IC_LOAD_FLOAT_1x16(
-            diff_shift, PADDED_IC + REDUCE_STAT_NBLOCKS * PADDED_IC + c);
+    float diff_beta;
+    MAYBE_LAST_IC_BLOCK_LOAD_1x16(diff_beta, diff_shift,
+            PADDED_IC + REDUCE_STAT_NBLOCKS * PADDED_IC + c);
 #endif // #if DIFF_SHIFT == 1
 #endif // #if CALCULATE_DIFF_STATS == 1
 
 #if USE_SCALE == 1
-    const float gamma = MAYBE_LAST_IC_LOAD_FLOAT_1x16(scaleshift, c);
+    float gamma;
+    MAYBE_LAST_IC_BLOCK_LOAD_1x16(gamma, scaleshift, c);
 #else
     const float gamma = 1;
 #endif // #if USE_SCALE == 1
@@ -370,10 +364,10 @@ __kernel void xe_bnorm_bwd(__global DATA_T *src, __global float *mean,
             LOAD_DATA_Nx16_USING_LOOP(7, src_data, src);
             LOAD_DATA_Nx16_USING_LOOP(7, dd_data, diff_dst);
             dd_data[7] = simd_id < 8
-                    ? CONVERT_FLOAT_T(diff_dst[7 * IC_BLOCK_STRIDE + simd_id])
+                    ? into_float(diff_dst[7 * IC_BLOCK_STRIDE + simd_id])
                     : 0.0f;
             src_data[7] = simd_id < 8
-                    ? CONVERT_FLOAT_T(src[7 * IC_BLOCK_STRIDE + simd_id])
+                    ? into_float(src[7 * IC_BLOCK_STRIDE + simd_id])
                     : 0.0f;
         } else {
             LOAD_DATA_Nx16_USING_LOOP(8, src_data, src);
@@ -418,27 +412,30 @@ __kernel void xe_bnorm_bwd(__global DATA_T *src, __global float *mean,
         sp = (SP - SP_TAIL) % C_PARALLEL_FACTOR;
         while (sp-- >= 1) {
 #if FUSE_BN_RELU == 1
-            const char ws_data = LOAD_CHAR_1x16(&ws[0]);
+            char ws_data;
+            ws_data = block_load(ws_data, ws);
 #endif // #if FUSE_BN_RELU == 1
 
 #if HAS_IC_TAIL
             float dd_data;
             if (sp == 0 && is_last_ic_block)
-                dd_data = simd_id < 8 ? CONVERT_FLOAT_T(diff_dst[simd_id])
+                dd_data = simd_id < 8 ? into_float(diff_dst[simd_id])
                                       : 0.0f;
             else
-                dd_data = LOAD_DATA_1x16(&diff_dst[0]);
+                dd_data = block_load(dd_data, diff_dst);
 #if CALCULATE_DIFF_STATS == 1
             float src_data;
             if (sp == 0 && is_last_ic_block)
-                src_data = simd_id < 8 ? CONVERT_FLOAT_T(src[simd_id]) : 0.0f;
+                src_data = simd_id < 8 ? into_float(src[simd_id]) : 0.0f;
             else
-                src_data = LOAD_DATA_1x16(&src[0]);
+                src_data = block_load(src_data, src);
 #endif // #if CALCULATE_DIFF_STATS == 1
 #else
-            float dd_data = LOAD_DATA_1x16(&diff_dst[0]);
+            float dd_data;
+            dd_data = block_load(dd_data, diff_dst);
 #if CALCULATE_DIFF_STATS == 1
-            const float src_data = LOAD_DATA_1x16(&src[0]);
+            float src_data;
+            src_data = block_load(src_data, src);
 #endif // #if CALCULATE_DIFF_STATS == 1
 #endif // HAS_IC_TAIL
 

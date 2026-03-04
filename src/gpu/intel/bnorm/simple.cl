@@ -15,13 +15,8 @@
 *******************************************************************************/
 
 #include "gpu/intel/include/dispatch.h"
+#include "gpu/intel/include/io.h"
 #include "gpu/intel/include/types.h"
-
-#if VECT_DT_N == 1
-#define VECT_CHAR_TO_INT convert_int
-#else
-#define VECT_CHAR_TO_INT CONCAT2(convert_int, VECT_DT_N)
-#endif
 
 int simple_reduce_index(int x[5]) {
     int dim[5] = {MB, IC, ID, IH, IW};
@@ -41,29 +36,30 @@ __kernel void simple_calculate_mean_variance(
     x[4] = GWS_GET_STAT_IW();
 
     // sum of all src elements from given C
-    VECT_FLOAT_T src_sum = 0;
+    float src_sum[VECT_DT_N];
     // sum of all src^2 elements from given C
-    VECT_FLOAT_T src_pow_sum = 0;
+    float src_pow_sum[VECT_DT_N];
+    for (int i = 0; i < VECT_DT_N; i++) {
+        src_sum[i] = 0;
+        src_pow_sum[i] = 0;
+    }
 
     for (int i = 0; i < REDUCE_DIM; i += SUB_GROUP_SIZE * VECT_DT_N) {
         x[REDUCE_DIM_IDX] = i;
         int src_off = SRC_OFF(x[0], x[1], x[2], x[3], x[4]);
-        VECT_FLOAT_T src_vect = CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(
-                VECT_BLOCK_READ((const __global BLOCK_DATA_T *)&src[src_off])));
-        src_sum += src_vect;
-        src_pow_sum += src_vect * src_vect;
+        float src_arr[VECT_DT_N];
+        block_load(src_arr, src + src_off, VECT_DT_N);
+        for (int j = 0; j < VECT_DT_N; j++) {
+            src_sum[j] += src_arr[j];
+            src_pow_sum[j] += src_arr[j] * src_arr[j];
+        }
     }
-#if VECT_DT_N == 1
-    float sum = src_sum;
-    float pow_sum = src_pow_sum;
-#else // VECT_DT_N == 1
     float sum = 0;
     float pow_sum = 0;
-    for (int i = 0; i < VECT_DT_N; ++i) {
+    for (int i = 0; i < VECT_DT_N; i++) {
         sum += src_sum[i];
         pow_sum += src_pow_sum[i];
     }
-#endif // VECT_DT_N == 1
 
     x[REDUCE_DIM_IDX] = 0;
     int reduce_idx = simple_reduce_index(x);
@@ -107,11 +103,11 @@ __kernel void simple_bnorm_fwd(__global DATA_T *src, __global float *mean,
     float v_mean = mean[c];
     float v_variance = variance[c];
     const int off = SRC_OFF(n, c, d, h, w);
-    float v0 = TO_DEF_ACC_DATA_T(src[off]);
+    float v0 = load(v0, src + off);
     float sqrt_variance = 1.0f / sqrt(v_variance + eps);
     float bn_res = sm * (v0 - v_mean) * sqrt_variance + sv;
 #if FUSE_BN_ADD_RELU == 1
-    bn_res += TO_DEF_ACC_DATA_T(src_add[off]);
+    bn_res += load(bn_res, src_add + off);
 #endif
 
 #if FUSE_BN_RELU == 1
@@ -133,7 +129,7 @@ __kernel void simple_bnorm_fwd(__global DATA_T *src, __global float *mean,
 #endif //WITH_LEAKY_RELU
 #endif //WITH_RELU
 
-    dst[off] = TO_DATA_T(bn_res);
+    write(dst + off, bn_res);
 }
 
 #if IS_BWD
@@ -166,51 +162,67 @@ __kernel void simple_calculate_stats(__global DATA_T *src, __global float *mean,
 #if FUSE_BN_RELU == 1
     ws += s_off;
 #endif
-    VECT_FLOAT_T diff_gamma0 = 0.0f, diff_beta0 = 0.0f;
-    VECT_FLOAT_T diff_gamma1 = 0.0f, diff_beta1 = 0.0f;
+    float diff_gamma0[VECT_DT_N], diff_beta0[VECT_DT_N];
+    float diff_gamma1[VECT_DT_N], diff_beta1[VECT_DT_N];
+    for (int i = 0; i < VECT_DT_N; i++) {
+        diff_gamma0[i] = 0.0f;
+        diff_beta0[i] = 0.0f;
+        diff_gamma1[i] = 0.0f;
+        diff_beta1[i] = 0.0f;
+    }
     float v_mean = as_float(
             intel_sub_group_block_read((const __global uint *)&mean[c]));
 
     for (int sp = sp_beg; sp < sp_beg + stat_sp_block; sp++) {
-        VECT_FLOAT_T dd0 = CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(
-                VECT_BLOCK_READ((const __global BLOCK_DATA_T *)&diff_dst[0])));
-        VECT_FLOAT_T ss0 = CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(
-                VECT_BLOCK_READ((const __global BLOCK_DATA_T *)&src[0])));
+        float dd0[VECT_DT_N];
+        block_load(dd0, diff_dst, VECT_DT_N);
+        float ss0[VECT_DT_N];
+        block_load(ss0, src, VECT_DT_N);
 #ifdef MB16
-        VECT_FLOAT_T dd1 = CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(VECT_BLOCK_READ(
-                (const __global BLOCK_DATA_T *)&diff_dst[8 * 16])));
-        VECT_FLOAT_T ss1 = CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(
-                VECT_BLOCK_READ((const __global BLOCK_DATA_T *)&src[8 * 16])));
+        float dd1[VECT_DT_N];
+        block_load(dd1, diff_dst + 8 * 16, VECT_DT_N);
+        float ss1[VECT_DT_N];
+        block_load(ss1, src + 8 * 16, VECT_DT_N);
 #endif
 #if FUSE_BN_RELU == 1
-        VECT_INT_T ws0 = VECT_CHAR_TO_INT(AS_VECT_CHAR_T(
-                VECT_UCHAR_READ((const __global uchar *)&ws[0])));
-        dd0 = select((VECT_FLOAT_T)0.0f, dd0, ws0);
+        int ws0_v[VECT_DT_N];
+        block_load(ws0_v, ws, VECT_DT_N);
+        for (int i = 0; i < VECT_DT_N; i++) {
+            if (!ws0_v[i]) dd0[i] = 0.0f;
+        }
 #ifdef MB16
-        VECT_INT_T ws1 = VECT_CHAR_TO_INT(AS_VECT_CHAR_T(
-                VECT_UCHAR_READ((const __global uchar *)&ws[8 * 16])));
-        dd1 = select((VECT_FLOAT_T)0.0f, dd1, ws1);
+        int ws1_v[VECT_DT_N];
+        block_load(ws1_v, ws + 8 * 16, VECT_DT_N);
+        for (int i = 0; i < VECT_DT_N; i++) {
+            if (!ws1_v[i]) dd1[i] = 0.0f;
+        }
 #endif
         ws += MB_BLOCK * IC_BLOCK;
 #endif
-        diff_gamma0 = fma((ss0 - (VECT_FLOAT_T)v_mean), dd0, diff_gamma0);
-        diff_beta0 += dd0;
+        for (int i = 0; i < VECT_DT_N; i++) {
+            diff_gamma0[i] = fma(ss0[i] - v_mean, dd0[i], diff_gamma0[i]);
+            diff_beta0[i] += dd0[i];
+        }
 #ifdef MB16
-        diff_gamma1 = fma((ss1 - (VECT_FLOAT_T)v_mean), dd1, diff_gamma1);
-        diff_beta1 += dd1;
+        for (int i = 0; i < VECT_DT_N; i++) {
+            diff_gamma1[i] = fma(ss1[i] - v_mean, dd1[i], diff_gamma1[i]);
+            diff_beta1[i] += dd1[i];
+        }
 #endif
 
         src += MB_BLOCK * IC_BLOCK;
         diff_dst += MB_BLOCK * IC_BLOCK;
     }
-#ifdef MB16
-    float v_diff_gamma = 0.0f, v_diff_beta = 0.0;
-    for (int i = 0; i < 8; i++) {
-        v_diff_gamma += diff_gamma0[i] + diff_gamma1[i];
-        v_diff_beta += diff_beta0[i] + diff_beta1[i];
+    float v_diff_gamma = 0.0f, v_diff_beta = 0.0f;
+    for (int i = 0; i < VECT_DT_N; i++) {
+        v_diff_gamma += diff_gamma0[i];
+        v_diff_beta += diff_beta0[i];
     }
-#else
-    float v_diff_gamma = diff_gamma0, v_diff_beta = diff_beta0;
+#ifdef MB16
+    for (int i = 0; i < VECT_DT_N; i++) {
+        v_diff_gamma += diff_gamma1[i];
+        v_diff_beta += diff_beta1[i];
+    }
 #endif
     intel_sub_group_block_write(
             (__global uint *)&reduce_temp[mb_sp_idx * IC + c],
@@ -289,28 +301,26 @@ __kernel void simple_bnorm_bwd(__global DATA_T *src, __global float *mean,
     diff_dst += d_off;
     src += d_off;
 
-    VECT_FLOAT_T blockD0 = CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(
-            VECT_BLOCK_READ((const __global BLOCK_DATA_T *)&diff_dst[0])));
+    VECT_FLOAT_T blockD0;
+    blockD0 = block_load(blockD0, diff_dst);
 #ifdef MB16
-    VECT_FLOAT_T blockD1 = CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(VECT_BLOCK_READ(
-            (const __global BLOCK_DATA_T *)&diff_dst[8 * IC_BLOCK])));
+    VECT_FLOAT_T blockD1;
+    blockD1 = block_load(blockD1, diff_dst + 8 * IC_BLOCK);
 #endif
 #if FUSE_BN_RELU == 1
     ws += d_off;
-    VECT_INT_T blockWS0 = VECT_CHAR_TO_INT(
-            AS_VECT_CHAR_T(VECT_UCHAR_READ((const __global uchar *)&ws[0])));
-    blockD0 = select((VECT_FLOAT_T)0.0f, blockD0, blockWS0);
+    VECT_CHAR_T blockWS0;
+    blockWS0 = block_load(blockWS0, ws);
+    blockD0 = select((VECT_FLOAT_T)0.0f, blockD0, CONVERT_VECT_INT_T(blockWS0));
 #if FUSE_BN_ADD_RELU == 1
-    VECT_BLOCK_WRITE((__global BLOCK_DATA_T *)&diff_src_add[0],
-            AS_VECT_BLOCK_DATA_T(CONVERT_VECTOR_DATA_T(blockD0)));
+    block_write(diff_src_add, &blockD0);
 #endif
 #ifdef MB16
-    VECT_INT_T blockWS1 = VECT_CHAR_TO_INT(AS_VECT_CHAR_T(
-            VECT_UCHAR_READ((const __global uchar *)&ws[8 * IC_BLOCK])));
-    blockD1 = select((VECT_FLOAT_T)0.0f, blockD1, blockWS1);
+    VECT_CHAR_T blockWS1;
+    blockWS1 = block_load(blockWS1, ws + 8 * IC_BLOCK);
+    blockD1 = select((VECT_FLOAT_T)0.0f, blockD1, CONVERT_VECT_INT_T(blockWS1));
 #if FUSE_BN_ADD_RELU == 1
-    VECT_BLOCK_WRITE((__global BLOCK_DATA_T *)&diff_src_add[8 * 16],
-            AS_VECT_BLOCK_DATA_T(CONVERT_VECTOR_DATA_T(blockD1)));
+    block_write(diff_src_add + 8 * 16, &blockD1);
 #endif
 #endif
 #endif
@@ -322,24 +332,22 @@ __kernel void simple_bnorm_bwd(__global DATA_T *src, __global float *mean,
     diff_gamma /= (MB * ID * IH * IW);
     diff_beta /= (MB * ID * IH * IW);
 
-    VECT_FLOAT_T blockS0 = CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(
-            VECT_BLOCK_READ((const __global BLOCK_DATA_T *)&src[0])));
-    blockD0 -= fma((VECT_FLOAT_T)diff_gamma, (blockS0 - (VECT_FLOAT_T)v_mean),
+    VECT_FLOAT_T blockS0;
+    blockS0 = block_load(blockS0, src);
+    blockD0 -= fma((VECT_FLOAT_T)diff_gamma, blockS0 - (VECT_FLOAT_T)v_mean,
             (VECT_FLOAT_T)diff_beta);
 #ifdef MB16
-    VECT_FLOAT_T blockS1 = CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(VECT_BLOCK_READ(
-            (const __global BLOCK_DATA_T *)&src[8 * IC_BLOCK])));
-    blockD1 -= fma((VECT_FLOAT_T)diff_gamma, (blockS1 - (VECT_FLOAT_T)v_mean),
+    VECT_FLOAT_T blockS1;
+    blockS1 = block_load(blockS1, src + 8 * IC_BLOCK);
+    blockD1 -= fma((VECT_FLOAT_T)diff_gamma, blockS1 - (VECT_FLOAT_T)v_mean,
             (VECT_FLOAT_T)diff_beta);
 #endif
 #endif
     blockD0 *= gamma;
-    VECT_BLOCK_WRITE((__global BLOCK_DATA_T *)&diff_src[0],
-            AS_VECT_BLOCK_DATA_T(CONVERT_VECTOR_DATA_T(blockD0)));
+    block_write(diff_src, &blockD0);
 #ifdef MB16
     blockD1 *= gamma;
-    VECT_BLOCK_WRITE((__global BLOCK_DATA_T *)&diff_src[8 * 16],
-            AS_VECT_BLOCK_DATA_T(CONVERT_VECTOR_DATA_T(blockD1)));
+    block_write(diff_src + 8 * 16, &blockD1);
 #endif
 }
 

@@ -15,6 +15,7 @@
 *******************************************************************************/
 #include "gpu/intel/bnorm/xe.h"
 #include "gpu/intel/bnorm/xe_reduce.h"
+#include "gpu/intel/include/io.h"
 
 // FWD kernels for regular and 1-pass (under USE_STATS_ONE_PASS) bnorm
 // algorithms that are specially optimized for NHWC layout
@@ -61,8 +62,8 @@ __kernel void xe_calc_mean_var_nhwc(__global DATA_T *src,
 #endif
         // vectorized part
         for (int sg = 0; sg < IC_BLOCK_SGROUPS / VECT_SIZE; ++sg) {
-            VECT_FLOAT_T s_vect
-                    = LOAD_VECT_DATA(&src[sg * SG_SIZE * VECT_SIZE]);
+            VECT_FLOAT_T s_vect;
+            s_vect = block_load(s_vect, &src[sg * SG_SIZE * VECT_SIZE]);
 
             for (int vect = 0; vect < VECT_SIZE; ++vect) {
                 const int sum_idx = sg * VECT_SIZE + vect;
@@ -80,8 +81,8 @@ __kernel void xe_calc_mean_var_nhwc(__global DATA_T *src,
         // tails
         for (int sg = 0; sg < IC_TAIL_SGROUPS; ++sg) {
             const int sg_idx = IC_VECT_SGROUPS + sg;
-            float s_tail
-                    = LOAD_DATA_1x16(&src[(IC_VECT_SGROUPS + sg) * SG_SIZE]);
+            float s_tail;
+            s_tail = block_load(s_tail, &src[(IC_VECT_SGROUPS + sg) * SG_SIZE]);
             sum[sg_idx] = summation(s_tail, sum[sg_idx]);
             sum_sq[sg_idx] = summation(s_tail * s_tail, sum_sq[sg_idx]);
         }
@@ -98,8 +99,8 @@ __kernel void xe_calc_mean_var_nhwc(__global DATA_T *src,
     for (int sg = 0; sg < IC_BLOCK_SGROUPS; ++sg) {
         const int reduce_off
                 = group_c_offset + sg * SG_SIZE * REDUCE_STAT_NBLOCKS;
-        STORE_FLOAT_1x16(&reduce_temp[reduce_off], sum[sg].s0);
-        STORE_FLOAT_1x16(&reduce_temp[ver_offs + reduce_off], sum_sq[sg].s0);
+        block_write(&reduce_temp[reduce_off], &sum[sg].s0, 1);
+        block_write(&reduce_temp[ver_offs + reduce_off], &sum_sq[sg].s0, 1);
     }
 #endif
 }
@@ -130,8 +131,8 @@ __kernel void xe_calc_mean_nhwc(__global DATA_T *src,
 #endif
         // vectorized part
         for (int sg = 0; sg < IC_BLOCK_SGROUPS / VECT_SIZE; ++sg) {
-            VECT_FLOAT_T s_vect
-                    = LOAD_VECT_DATA(&src[sg * SG_SIZE * VECT_SIZE]);
+            VECT_FLOAT_T s_vect;
+            s_vect = block_load(s_vect, &src[sg * SG_SIZE * VECT_SIZE]);
             for (int vect = 0; vect < VECT_SIZE; ++vect) {
                 v_mean[sg * VECT_SIZE + vect]
 #if VECT_SIZE > 1
@@ -144,8 +145,8 @@ __kernel void xe_calc_mean_nhwc(__global DATA_T *src,
 #if HAS_IC_VECT_TAIL
         // tails
         for (int sg = 0; sg < IC_TAIL_SGROUPS; ++sg) {
-            float s_tail
-                    = LOAD_DATA_1x16(&src[(IC_VECT_SGROUPS + sg) * SG_SIZE]);
+            float s_tail;
+            s_tail = block_load(s_tail, &src[(IC_VECT_SGROUPS + sg) * SG_SIZE]);
             v_mean[IC_VECT_SGROUPS + sg] += s_tail;
         }
 #endif // HAS_IC_VECT_TAIL
@@ -159,7 +160,7 @@ __kernel void xe_calc_mean_nhwc(__global DATA_T *src,
     for (int sg = 0; sg < IC_BLOCK_SGROUPS; ++sg) {
         const int reduce_off
                 = group_c_offset + sg * SG_SIZE * REDUCE_STAT_NBLOCKS;
-        STORE_FLOAT_1x16(&reduce_temp[reduce_off], v_mean[sg]);
+        block_write(&reduce_temp[reduce_off], &v_mean[sg], 1);
     }
 #endif
 }
@@ -182,8 +183,7 @@ __kernel void xe_calc_variance_nhwc(__global DATA_T *src, __global float *mean,
 
     float v_mean[IC_BLOCK_SGROUPS];
     for (int sg = 0; sg < IC_BLOCK_SGROUPS; ++sg) {
-        v_mean[sg] = as_float(intel_sub_group_block_read(
-                (const __global uint *)(&mean[(sg * SG_SIZE)])));
+        v_mean[sg] = block_load(v_mean[sg], &mean[sg * SG_SIZE]);
     }
 
     float v_var[IC_BLOCK_SGROUPS] = {0.0f};
@@ -196,8 +196,8 @@ __kernel void xe_calc_variance_nhwc(__global DATA_T *src, __global float *mean,
     for (int sp = 0; sp < STAT_SP_BLOCK; ++sp) {
 #endif
         for (int sg = 0; sg < IC_BLOCK_SGROUPS / VECT_SIZE; ++sg) {
-            VECT_FLOAT_T s_vect
-                    = LOAD_VECT_DATA(&src[sg * SG_SIZE * VECT_SIZE]);
+            VECT_FLOAT_T s_vect;
+            s_vect = block_load(s_vect, &src[sg * SG_SIZE * VECT_SIZE]);
 
             for (int vect = 0; vect < VECT_SIZE; ++vect) {
                 int sg_idx = sg * VECT_SIZE + vect;
@@ -213,8 +213,8 @@ __kernel void xe_calc_variance_nhwc(__global DATA_T *src, __global float *mean,
         // tails
         for (int sg = 0; sg < IC_TAIL_SGROUPS; ++sg) {
             const int sg_idx = IC_VECT_SGROUPS + sg;
-            float s_tail
-                    = LOAD_DATA_1x16(&src[(IC_VECT_SGROUPS + sg) * SG_SIZE]);
+            float s_tail;
+            s_tail = block_load(s_tail, &src[(IC_VECT_SGROUPS + sg) * SG_SIZE]);
             v0[sg_idx] = s_tail - v_mean[sg_idx];
             v_var[sg_idx] = fma(v0[sg_idx], v0[sg_idx], v_var[sg_idx]);
         }
@@ -229,7 +229,7 @@ __kernel void xe_calc_variance_nhwc(__global DATA_T *src, __global float *mean,
     for (int sg = 0; sg < IC_BLOCK_SGROUPS; ++sg) {
         const int reduce_off
                 = group_c_offset + sg * SG_SIZE * REDUCE_STAT_NBLOCKS;
-        STORE_FLOAT_1x16(&reduce_temp[reduce_off], v_var[sg]);
+        block_write(&reduce_temp[reduce_off], &v_var[sg], 1);
     }
 #endif
 }
@@ -270,17 +270,17 @@ __kernel void xe_bnorm_fwd_nhwc(__global DATA_T *src, __global float *mean,
     for (int sg = 0; sg < IC_BLOCK_SGROUPS / VECT_SIZE; ++sg) {
         const int sg_idx = sg * SG_SIZE * VECT_SIZE;
 #if USE_SCALE == 1
-        sm[sg] = LOAD_VECT_FLOAT(&scaleshift[sg_idx]);
+        sm[sg] = block_load(sm[sg], &scaleshift[sg_idx]);
 #else
         sm[sg] = (VECT_FLOAT_T)1.0f;
 #endif
 #if USE_SHIFT == 1
-        sv[sg] = LOAD_VECT_FLOAT(&shift[sg_idx]);
+        sv[sg] = block_load(sv[sg], &shift[sg_idx]);
 #else
         sv[sg] = (VECT_FLOAT_T)0.0f;
 #endif
-        v_mean[sg] = LOAD_VECT_FLOAT(&mean[sg_idx]);
-        v_variance[sg] = LOAD_VECT_FLOAT(&variance[sg_idx]);
+        v_mean[sg] = block_load(v_mean[sg], &mean[sg_idx]);
+        v_variance[sg] = block_load(v_variance[sg], &variance[sg_idx]);
         sqrt_variance[sg] = sm[sg] / sqrt(v_variance[sg] + (VECT_FLOAT_T)eps);
     }
 
@@ -291,17 +291,17 @@ __kernel void xe_bnorm_fwd_nhwc(__global DATA_T *src, __global float *mean,
     for (int sg = 0; sg < IC_TAIL_SGROUPS; ++sg) {
         const int sg_idx = (IC_VECT_SGROUPS + sg) * SG_SIZE;
 #if USE_SCALE == 1
-        sm_tail[sg] = LOAD_FLOAT_1x16(&scaleshift[sg_idx]);
+        sm_tail[sg] = block_load(sm_tail[sg], &scaleshift[sg_idx]);
 #else
         sm_tail[sg] = 1.0f;
 #endif
 #if USE_SHIFT == 1
-        sv_tail[sg] = LOAD_FLOAT_1x16(&shift[sg_idx]);
+        sv_tail[sg] = block_load(sv_tail[sg], &shift[sg_idx]);
 #else
         sv_tail[sg] = 0.0f;
 #endif
-        v_mean_tail[sg] = LOAD_FLOAT_1x16(&mean[sg_idx]);
-        v_variance_tail[sg] = LOAD_FLOAT_1x16(&variance[sg_idx]);
+        v_mean_tail[sg] = block_load(v_mean_tail[sg], &mean[sg_idx]);
+        v_variance_tail[sg] = block_load(v_variance_tail[sg], &variance[sg_idx]);
         sqrt_variance_tail[sg] = sm_tail[sg] / sqrt(v_variance_tail[sg] + eps);
     }
 #endif
@@ -318,7 +318,7 @@ __kernel void xe_bnorm_fwd_nhwc(__global DATA_T *src, __global float *mean,
 
             VECT_FLOAT_T s_vect[UPDATE_SP_UNROLL];
             unroll_for(int i = 0; i < UPDATE_SP_UNROLL; i++) {
-                s_vect[i] = LOAD_VECT_DATA(&src[sg_idx + IC * i]);
+                s_vect[i] = block_load(s_vect[i], &src[sg_idx + IC * i]);
             }
 
             VECT_FLOAT_T d_vect[UPDATE_SP_UNROLL];
@@ -331,7 +331,7 @@ __kernel void xe_bnorm_fwd_nhwc(__global DATA_T *src, __global float *mean,
 #if FUSE_BN_ADD_RELU
             VECT_FLOAT_T s_add_vect[UPDATE_SP_UNROLL];
             unroll_for(int i = 0; i < UPDATE_SP_UNROLL; i++) {
-                s_add_vect[i] = LOAD_VECT_DATA(&src_add[sg_idx + IC * i]);
+                s_add_vect[i] = block_load(s_add_vect[i], &src_add[sg_idx + IC * i]);
                 d_vect[i] += s_add_vect[i];
             }
 #endif
@@ -342,7 +342,8 @@ __kernel void xe_bnorm_fwd_nhwc(__global DATA_T *src, __global float *mean,
             }
 #if IS_TRAINING
             unroll_for(int i = 0; i < UPDATE_SP_UNROLL; i++) {
-                STORE_VECT_CHAR(&ws[sg_idx + IC * i], ws_vect[i]);
+                VECT_CHAR_T ws_char = CONVERT_VECT_CHAR_T(ws_vect[i]);
+                block_write(&ws[sg_idx + IC * i], &ws_char);
             }
 
 #endif // IS_TRAINING
@@ -361,7 +362,7 @@ __kernel void xe_bnorm_fwd_nhwc(__global DATA_T *src, __global float *mean,
                 d_vect[i] = max(d_vect[i], (VECT_FLOAT_T)0.0f);
 #endif //WITH_LEAKY_RELU
 #endif //WITH_RELU
-                STORE_VECT_DATA(&dst[sg_idx + IC * i], d_vect[i]);
+                block_write(&dst[sg_idx + IC * i], &d_vect[i]);
             }
         }
 
@@ -371,7 +372,7 @@ __kernel void xe_bnorm_fwd_nhwc(__global DATA_T *src, __global float *mean,
             const int sg_idx = (IC_VECT_SGROUPS + sg) * SG_SIZE;
             float s_tail[UPDATE_SP_UNROLL], d_tail[UPDATE_SP_UNROLL];
             unroll_for(int i = 0; i < UPDATE_SP_UNROLL; i++) {
-                s_tail[i] = LOAD_DATA_1x16(&src[sg_idx + IC * i]);
+                s_tail[i] = block_load(s_tail[i], &src[sg_idx + IC * i]);
                 d_tail[i] = fma(s_tail[i] - v_mean_tail[sg],
                         sqrt_variance_tail[sg], sv_tail[sg]);
             }
@@ -379,7 +380,7 @@ __kernel void xe_bnorm_fwd_nhwc(__global DATA_T *src, __global float *mean,
 #if FUSE_BN_ADD_RELU
             float s_add_tail[UPDATE_SP_UNROLL];
             unroll_for(int i = 0; i < UPDATE_SP_UNROLL; i++) {
-                s_add_tail[i] = LOAD_DATA_1x16(&src_add[sg_idx + IC * i]);
+                s_add_tail[i] = block_load(s_add_tail[i], &src_add[sg_idx + IC * i]);
                 d_tail[i] += s_add_tail[i];
             }
 #endif
@@ -390,7 +391,8 @@ __kernel void xe_bnorm_fwd_nhwc(__global DATA_T *src, __global float *mean,
             }
 #if IS_TRAINING
             unroll_for(int i = 0; i < UPDATE_SP_UNROLL; i++) {
-                STORE_CHAR_1x16(&ws[sg_idx + IC * i], convert_char(ws_tail[i]));
+                char ws_c = convert_char(ws_tail[i]);
+                block_write(&ws[sg_idx + IC * i], &ws_c, 1);
             }
 #endif // IS_TRAINING
 #endif // FUSE_BN_RELU
@@ -408,7 +410,7 @@ __kernel void xe_bnorm_fwd_nhwc(__global DATA_T *src, __global float *mean,
                 d_tail[i] = max(d_tail[i], 0.0f);
 #endif //WITH_LEAKY_RELU
 #endif //WITH_RELU
-                STORE_DATA_1x16(&dst[sg_idx + IC * i], d_tail[i]);
+                block_write(&dst[sg_idx + IC * i], &d_tail[i], 1);
             }
         }
 #endif

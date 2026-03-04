@@ -15,6 +15,7 @@
 *******************************************************************************/
 #include "gpu/intel/bnorm/xe.h"
 #include "gpu/intel/bnorm/xe_reduce.h"
+#include "gpu/intel/include/io.h"
 
 // BWD kernels that are that are specially optimized for NHWC layout
 // (NHWC_OPTIMIZED definition).
@@ -46,8 +47,7 @@ __kernel void xe_calculate_stats_nhwc(__global DATA_T *src,
 
     float v_mean[IC_BLOCK_SGROUPS];
     for (int sg = 0; sg < IC_BLOCK_SGROUPS; ++sg) {
-        v_mean[sg] = as_float(intel_sub_group_block_read(
-                (const __global uint *)(&mean[(sg * SG_SIZE)])));
+        v_mean[sg] = block_load(v_mean[sg], &mean[sg * SG_SIZE]);
     }
 
     VECT_FLOAT_T diff_gamma[IC_BLOCK_SGROUPS / VECT_SIZE] = {0.0f};
@@ -74,10 +74,10 @@ __kernel void xe_calculate_stats_nhwc(__global DATA_T *src,
         for (int sg = 0; sg < IC_BLOCK_SGROUPS / VECT_SIZE; ++sg) {
             const int sg_idx = sg * SG_SIZE * VECT_SIZE;
 #if FUSE_BN_RELU
-            VECT_CHAR_T ws_vect = LOAD_VECT_CHAR(&ws[sg_idx]);
+            VECT_N(char) ws_vect = block_load(ws_vect, &ws[sg_idx]);
 #endif
-            VECT_FLOAT_T src_vect = LOAD_VECT_DATA(&src[sg_idx]);
-            VECT_FLOAT_T dd_vect = LOAD_VECT_DATA(&diff_dst[sg_idx]);
+            VECT_FLOAT_T src_vect = block_load(src_vect, &src[sg_idx]);
+            VECT_FLOAT_T dd_vect = block_load(dd_vect, &diff_dst[sg_idx]);
             VECT_FLOAT_T v0;
             for (int vect = 0; vect < VECT_SIZE; ++vect) {
                 int sg_idx = sg * VECT_SIZE + vect;
@@ -90,7 +90,7 @@ __kernel void xe_calculate_stats_nhwc(__global DATA_T *src,
 
 #if FUSE_BN_RELU
             dd_vect = select(
-                    (VECT_FLOAT_T)0.0f, dd_vect, CONVERT_VECT_INT_T(ws_vect));
+                    (VECT_FLOAT_T)0.0f, dd_vect, VECT_N(convert_int)(ws_vect));
 #endif
 
             diff_gamma[sg] = fma(v0, dd_vect, diff_gamma[sg]);
@@ -100,10 +100,10 @@ __kernel void xe_calculate_stats_nhwc(__global DATA_T *src,
         for (int sg = 0; sg < IC_TAIL_SGROUPS; ++sg) {
             const int sg_idx = IC_VECT_SGROUPS + sg;
 #if FUSE_BN_RELU
-            char ws_tail = LOAD_CHAR_1x16(&ws[sg_idx * SG_SIZE]);
+            char ws_tail = block_load(ws_tail, &ws[sg_idx * SG_SIZE]);
 #endif
-            float src_tail = LOAD_DATA_1x16(&src[sg_idx * SG_SIZE]);
-            float dd_tail = LOAD_DATA_1x16(&diff_dst[sg_idx * SG_SIZE]);
+            float src_tail = block_load(src_tail, &src[sg_idx * SG_SIZE]);
+            float dd_tail = block_load(dd_tail, &diff_dst[sg_idx * SG_SIZE]);
             float v0 = src_tail - v_mean[sg_idx];
 #if FUSE_BN_RELU
             dd_tail = select(0.0f, dd_tail, convert_int(ws_tail));
@@ -143,21 +143,21 @@ __kernel void xe_calculate_stats_nhwc(__global DATA_T *src,
 
 #if HAS_IC_VECT_TAIL
         if (sg >= IC_VECT_SGROUPS) {
-            STORE_FLOAT_1x16(&temp_reduce[diff_gamma_offset],
+            block_write(&temp_reduce[diff_gamma_offset],
                     diff_gamma_tail[sg - IC_VECT_SGROUPS]);
-            STORE_FLOAT_1x16(&temp_reduce[diff_beta_offset],
+            block_write(&temp_reduce[diff_beta_offset],
                     diff_beta_tail[sg - IC_VECT_SGROUPS]);
         } else
 #endif
         {
 #if VECT_SIZE > 1
-            STORE_FLOAT_1x16(&temp_reduce[diff_gamma_offset],
+            block_write(&temp_reduce[diff_gamma_offset],
                     diff_gamma[sg / VECT_SIZE][sg % VECT_SIZE]);
-            STORE_FLOAT_1x16(&temp_reduce[diff_beta_offset],
+            block_write(&temp_reduce[diff_beta_offset],
                     diff_beta[sg / VECT_SIZE][sg % VECT_SIZE]);
 #else
-            STORE_FLOAT_1x16(&temp_reduce[diff_gamma_offset], diff_gamma[sg]);
-            STORE_FLOAT_1x16(&temp_reduce[diff_beta_offset], diff_beta[sg]);
+            block_write(&temp_reduce[diff_gamma_offset], diff_gamma[sg]);
+            block_write(&temp_reduce[diff_beta_offset], diff_beta[sg]);
 #endif
         }
     }
@@ -188,19 +188,19 @@ __kernel void xe_bnorm_bwd_nhwc(__global DATA_T *src, __global float *mean,
             gamma[IC_BLOCK_SGROUPS / VECT_SIZE];
     for (int sg = 0; sg < IC_BLOCK_SGROUPS / VECT_SIZE; ++sg) {
         const int sg_idx = sg * SG_SIZE * VECT_SIZE;
-        v_variance[sg] = LOAD_VECT_FLOAT(&variance[sg_idx]);
+        v_variance[sg] = block_load(v_variance[sg], &variance[sg_idx]);
 #if CALCULATE_DIFF_STATS == 1
-        v_mean[sg] = LOAD_VECT_FLOAT(&mean[sg_idx]);
-        diff_gamma[sg] = LOAD_VECT_FLOAT(&diff_scale[sg_idx]);
+        v_mean[sg] = block_load(v_mean[sg], &mean[sg_idx]);
+        diff_gamma[sg] = block_load(diff_gamma[sg], &diff_scale[sg_idx]);
 #if DIFF_SHIFT == 1
-        diff_beta[sg] = LOAD_VECT_FLOAT(&diff_shift[sg_idx]);
+        diff_beta[sg] = block_load(diff_beta[sg], &diff_shift[sg_idx]);
 #else
-        diff_beta[sg] = LOAD_VECT_FLOAT(
+        diff_beta[sg] = block_load(diff_beta[sg],
                 &diff_shift[IC + REDUCE_STAT_NBLOCKS * IC + sg_idx]);
 #endif // #if DIFF_SHIFT == 1
 #endif // #if CALCULATE_DIFF_STATS == 1
 #if USE_SCALE == 1
-        gamma[sg] = LOAD_VECT_FLOAT(&scaleshift[sg_idx]);
+        gamma[sg] = block_load(gamma[sg], &scaleshift[sg_idx]);
 #else
         gamma[sg] = (VECT_FLOAT_T)1.0f;
 #endif
@@ -213,20 +213,23 @@ __kernel void xe_bnorm_bwd_nhwc(__global DATA_T *src, __global float *mean,
             sqrt_variance_tail[IC_TAIL_SGROUPS], gamma_tail[IC_TAIL_SGROUPS];
     for (int sg = 0; sg < IC_TAIL_SGROUPS; ++sg) {
         const int sg_idx = (IC_VECT_SGROUPS + sg) * SG_SIZE;
-        v_variance_tail[sg] = LOAD_FLOAT_1x16(&variance[sg_idx]);
+        v_variance_tail[sg]
+                = block_load(v_variance_tail[sg], &variance[sg_idx]);
 
 #if CALCULATE_DIFF_STATS == 1
-        v_mean_tail[sg] = LOAD_FLOAT_1x16(&mean[sg_idx]);
-        diff_gamma_tail[sg] = LOAD_FLOAT_1x16(&diff_scale[sg_idx]);
+        v_mean_tail[sg] = block_load(v_mean_tail[sg], &mean[sg_idx]);
+        diff_gamma_tail[sg]
+                = block_load(diff_gamma_tail[sg], &diff_scale[sg_idx]);
 #if DIFF_SHIFT == 1
-        diff_beta_tail[sg] = LOAD_FLOAT_1x16(&diff_shift[sg_idx]);
+        diff_beta_tail[sg]
+                = block_load(diff_beta_tail[sg], &diff_shift[sg_idx]);
 #else
-        diff_beta_tail[sg] = LOAD_FLOAT_1x16(
+        diff_beta_tail[sg] = block_load(diff_beta_tail[sg],
                 &diff_shift[IC + REDUCE_STAT_NBLOCKS * IC + sg_idx]);
 #endif // #if DIFF_SHIFT == 1
 #endif // #if CALCULATE_DIFF_STATS == 1
 #if USE_SCALE == 1
-        gamma_tail[sg] = LOAD_FLOAT_1x16(&scaleshift[sg_idx]);
+        gamma_tail[sg] = block_load(gamma_tail[sg], &scaleshift[sg_idx]);
 #else
         gamma_tail[sg] = 1.0f;
 #endif
@@ -257,23 +260,23 @@ __kernel void xe_bnorm_bwd_nhwc(__global DATA_T *src, __global float *mean,
 
             VECT_FLOAT_T src_vect[UPDATE_SP_UNROLL];
             unroll_for(int i = 0; i < UPDATE_SP_UNROLL; i++) {
-                src_vect[i] = LOAD_VECT_DATA(&src[sg_idx + IC * i]);
+                src_vect[i] = block_load(src_vect[i], &src[sg_idx + IC * i]);
             }
             VECT_FLOAT_T dd_vect[UPDATE_SP_UNROLL];
             unroll_for(int i = 0; i < UPDATE_SP_UNROLL; i++) {
-                dd_vect[i] = LOAD_VECT_DATA(&diff_dst[sg_idx + IC * i]);
+                dd_vect[i] = block_load(dd_vect[i], &diff_dst[sg_idx + IC * i]);
             }
 
 #if FUSE_BN_RELU
-            VECT_CHAR_T ws_vect[UPDATE_SP_UNROLL];
+            VECT_N(char) ws_vect[UPDATE_SP_UNROLL];
             unroll_for(int i = 0; i < UPDATE_SP_UNROLL; i++) {
-                ws_vect[i] = LOAD_VECT_CHAR(&ws[sg_idx + IC * i]);
+                ws_vect[i] = block_load(ws_vect[i], &ws[sg_idx + IC * i]);
                 dd_vect[i] = select((VECT_FLOAT_T)0.0f, dd_vect[i],
-                        CONVERT_VECT_INT_T(ws_vect[i]));
+                        VECT_N(convert_int)(ws_vect[i]));
             }
 #if FUSE_BN_ADD_RELU
             unroll_for(int i = 0; i < UPDATE_SP_UNROLL; i++) {
-                STORE_VECT_DATA(&diff_src_add[sg_idx + IC * i], dd_vect[i]);
+                block_write(&diff_src_add[sg_idx + IC * i], &dd_vect[i]);
             }
 #endif
 #endif
@@ -291,7 +294,7 @@ __kernel void xe_bnorm_bwd_nhwc(__global DATA_T *src, __global float *mean,
                 dd_vect[i] *= gamma[sg] * sqrt_variance[sg];
             }
             unroll_for(int i = 0; i < UPDATE_SP_UNROLL; i++) {
-                STORE_VECT_DATA(&diff_src[sg_idx + IC * i], dd_vect[i]);
+                block_write(&diff_src[sg_idx + IC * i], &dd_vect[i]);
             }
         }
 #if HAS_IC_VECT_TAIL
@@ -299,21 +302,21 @@ __kernel void xe_bnorm_bwd_nhwc(__global DATA_T *src, __global float *mean,
             const int sg_idx = (IC_VECT_SGROUPS + sg) * SG_SIZE;
             float src_tail[UPDATE_SP_UNROLL];
             unroll_for(int i = 0; i < UPDATE_SP_UNROLL; i++) {
-                src_tail[i] = LOAD_DATA_1x16(&src[sg_idx + IC * i]);
+                src_tail[i] = block_load(src_tail[i], &src[sg_idx + IC * i]);
             }
             float dd_tail[UPDATE_SP_UNROLL];
             unroll_for(int i = 0; i < UPDATE_SP_UNROLL; i++) {
-                dd_tail[i] = LOAD_DATA_1x16(&diff_dst[sg_idx + IC * i]);
+                dd_tail[i] = block_load(dd_tail[i], &diff_dst[sg_idx + IC * i]);
             }
 #if FUSE_BN_RELU
             char ws_tail[UPDATE_SP_UNROLL];
             unroll_for(int i = 0; i < UPDATE_SP_UNROLL; i++) {
-                ws_tail[i] = LOAD_CHAR_1x16(&ws[sg_idx + IC * i]);
+                ws_tail[i] = block_load(ws_tail[i], &ws[sg_idx + IC * i]);
                 dd_tail[i] = select(0.0f, dd_tail[i], convert_int(ws_tail[i]));
             }
 #if FUSE_BN_ADD_RELU
             unroll_for(int i = 0; i < UPDATE_SP_UNROLL; i++) {
-                STORE_DATA_1x16(&diff_src_add[sg_idx + IC * i], dd_tail[i]);
+                block_write(&diff_src_add[sg_idx + IC * i], dd_tail[i]);
             }
 #endif
 #endif
@@ -328,7 +331,7 @@ __kernel void xe_bnorm_bwd_nhwc(__global DATA_T *src, __global float *mean,
 #endif // #if CALCULATE_DIFF_STATS == 1
             unroll_for(int i = 0; i < UPDATE_SP_UNROLL; i++) {
                 dd_tail[i] *= gamma_tail[sg] * sqrt_variance_tail[sg];
-                STORE_DATA_1x16(&diff_src[sg_idx + IC * i], dd_tail[i]);
+                block_write(&diff_src[sg_idx + IC * i], dd_tail[i]);
             }
         }
 #endif

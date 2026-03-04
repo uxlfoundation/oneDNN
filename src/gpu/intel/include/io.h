@@ -93,8 +93,36 @@ DECLARE_AS_BLOCK(float)
 DECLARE_AS_BLOCK(double)
 #endif
 
+// Vector struct as_block_data
+#define DECLARE_AS_STRUCT_BLOCK_VEC(t, n, block_vec_t) \
+    block_vec_t __attribute__((overloadable)) \
+            as_block_data(CONCAT2(t, CONCAT2(x, n)) a) { \
+        return CONCAT2(as_, block_vec_t)(a.data); \
+    }
+
+DECLARE_AS_STRUCT_BLOCK_VEC(bf16, 2, ushort2)
+DECLARE_AS_STRUCT_BLOCK_VEC(bf16, 4, ushort4)
+DECLARE_AS_STRUCT_BLOCK_VEC(bf16, 8, ushort8)
+
+DECLARE_AS_STRUCT_BLOCK_VEC(f8_e5m2, 2, uchar2)
+DECLARE_AS_STRUCT_BLOCK_VEC(f8_e5m2, 4, uchar4)
+DECLARE_AS_STRUCT_BLOCK_VEC(f8_e5m2, 8, uchar8)
+
+DECLARE_AS_STRUCT_BLOCK_VEC(f8_e4m3, 2, uchar2)
+DECLARE_AS_STRUCT_BLOCK_VEC(f8_e4m3, 4, uchar4)
+DECLARE_AS_STRUCT_BLOCK_VEC(f8_e4m3, 8, uchar8)
+
+DECLARE_AS_STRUCT_BLOCK_VEC(f4_e2m1, 2, uchar2)
+DECLARE_AS_STRUCT_BLOCK_VEC(f4_e2m1, 4, uchar4)
+DECLARE_AS_STRUCT_BLOCK_VEC(f4_e2m1, 8, uchar8)
+
+DECLARE_AS_STRUCT_BLOCK_VEC(f4_e3m0, 2, uchar2)
+DECLARE_AS_STRUCT_BLOCK_VEC(f4_e3m0, 4, uchar4)
+DECLARE_AS_STRUCT_BLOCK_VEC(f4_e3m0, 8, uchar8)
+
 #undef DECLARE_AS_BLOCK
 #undef DECLARE_AS_STRUCT_BLOCK
+#undef DECLARE_AS_STRUCT_BLOCK_VEC
 
 #define DEF_load(dst_dt, src_dt) \
     void __attribute__((overloadable)) load( \
@@ -177,6 +205,13 @@ DECLARE_AS_BLOCK(double)
         BLOCK_DT(src_dt) block_val = BLOCK_READ_FUNC(src_dt)(data); \
         src_dt src_val = CONCAT2(as_, src_dt)(block_val); \
         *dst = CONCAT2(into_, dst_dt)(src_val); \
+    } \
+    __attribute__((overloadable, warn_unused_result)) dst_dt block_load( \
+            dst_dt dst, __global src_dt *src) { \
+        __global BLOCK_DT(src_dt) *data = (__global BLOCK_DT(src_dt) *)(src); \
+        BLOCK_DT(src_dt) block_val = BLOCK_READ_FUNC(src_dt)(data); \
+        src_dt src_val = CONCAT2(as_, src_dt)(block_val); \
+        return CONCAT2(into_, dst_dt)(src_val); \
     }
 
 #define DEF_load_half_byte(dst_dt, src_dt) \
@@ -257,6 +292,14 @@ DECLARE_AS_BLOCK(double)
                     = (__global BLOCK_DT(dst_dt) *)(dst); \
             BLOCK_WRITE_FUNC(dst_dt)(data, block_val); \
         } \
+    } \
+    __attribute__((overloadable)) void block_write( \
+            __global dst_dt *dst, __private const src_dt *src) { \
+        BLOCK_DT(dst_dt) block_val; \
+        dst_dt val = CONCAT2(into_, dst_dt)(*src); \
+        block_val = as_block_data(val); \
+        __global BLOCK_DT(dst_dt) *data = (__global BLOCK_DT(dst_dt) *)(dst); \
+        BLOCK_WRITE_FUNC(dst_dt)(data, block_val); \
     }
 
 // Loads
@@ -268,10 +311,15 @@ DEF_load(int, char);
 DEF_load(int, uchar);
 DEF_load(int, int);
 DEF_load(float, bf16);
+DEF_load(int, bf16);
 
 // Included for compile time compatibility
 DEF_load(int, undef_data);
 DEF_load(float, undef_data);
+
+// char/uchar identity block I/O (workspace flags, etc.)
+DEF_load(char, char);
+DEF_write(char, char);
 
 // Writes
 DEF_write(char, float);
@@ -292,6 +340,10 @@ DEF_write(int, float);
 // Loads
 DEF_load(half, half);
 DEF_load(float, half);
+DEF_load(half, char);
+DEF_load(half, uchar);
+DEF_load(half, int);
+DEF_load(half, bf16);
 
 // Writes
 DEF_write(half, float);
@@ -299,8 +351,8 @@ DEF_write(half, int);
 DEF_write(half, half);
 DEF_write(char, half);
 DEF_write(uchar, half);
-DEF_write(float, half);
 DEF_write(bf16, half);
+DEF_write(int, half);
 
 #ifdef MATH_UTILS_DECLARE_BF8
 // Loads
@@ -376,6 +428,8 @@ DEF_write(bf16, double);
 DEF_write(float, double);
 DEF_write(double, double);
 DEF_write(double, float);
+DEF_write(double, int);
+DEF_write(int, double);
 #endif
 
 //******* Interactions between extended data types *********//
@@ -395,5 +449,176 @@ DEF_load(double, f8_e4m3);
 DEF_write(f8_e4m3, double);
 #endif // MATH_UTILS_DECLARE_HF8
 #endif
+
+//******* Vector block_load / block_write *********//
+
+// Macro for types with vector cvt_* builtins (no loop):
+#define DEF_block_load_vec(acc_vec, src_dt, block_read_func, \
+        block_dt_vec, cvt_func) \
+    void __attribute__((overloadable)) block_load( \
+            __private acc_vec *dst, __global const src_dt *src) { \
+        block_dt_vec raw = block_read_func( \
+                (const __global BLOCK_DT(src_dt) *)src); \
+        *dst = cvt_func(raw); \
+    } \
+    acc_vec __attribute__((overloadable, warn_unused_result)) block_load( \
+            acc_vec dst, __global const src_dt *src) { \
+        block_dt_vec raw = block_read_func( \
+                (const __global BLOCK_DT(src_dt) *)src); \
+        return cvt_func(raw); \
+    }
+
+// Macro for types without vector builtins (scalar loop fallback):
+#define DEF_block_load_vec_loop(acc_vec, src_dt, block_read_func, \
+        block_dt_vec, as_scalar, scalar_fn, n) \
+    void __attribute__((overloadable)) block_load( \
+            __private acc_vec *dst, __global const src_dt *src) { \
+        block_dt_vec raw = block_read_func( \
+                (const __global BLOCK_DT(src_dt) *)src); \
+        for (int i = 0; i < n; i++) \
+            (*dst)[i] = scalar_fn(as_scalar(raw[i])); \
+    } \
+    acc_vec __attribute__((overloadable, warn_unused_result)) block_load( \
+            acc_vec dst, __global const src_dt *src) { \
+        block_dt_vec raw = block_read_func( \
+                (const __global BLOCK_DT(src_dt) *)src); \
+        for (int i = 0; i < n; i++) \
+            dst[i] = scalar_fn(as_scalar(raw[i])); \
+        return dst; \
+    }
+
+// Macro for types with vector cvt_* builtins (no loop):
+#define DEF_block_write_vec(dst_dt, acc_vec, block_write_func, \
+        block_dt_vec, cvt_func) \
+    void __attribute__((overloadable)) block_write( \
+            __global dst_dt *dst, __private const acc_vec *src) { \
+        block_dt_vec raw = cvt_func(*src); \
+        block_write_func((__global BLOCK_DT(dst_dt) *)dst, raw); \
+    }
+
+// Macro for types without vector builtins (scalar loop fallback):
+#define DEF_block_write_vec_loop(dst_dt, acc_vec, block_write_func, \
+        block_dt_vec, scalar_fn, n) \
+    void __attribute__((overloadable)) block_write( \
+            __global dst_dt *dst, __private const acc_vec *src) { \
+        block_dt_vec raw; \
+        for (int i = 0; i < n; i++) \
+            raw[i] = as_block_data(scalar_fn((*src)[i])); \
+        block_write_func((__global BLOCK_DT(dst_dt) *)dst, raw); \
+    }
+
+// Raw block_load/write for custom vector struct types (no conversion)
+#define DEF_block_load_vec_raw(struct_vec, scalar_dt, block_read_func, \
+        block_vec, raw_vec) \
+    void __attribute__((overloadable)) block_load( \
+            __private struct_vec *dst, __global const scalar_dt *src) { \
+        block_vec raw = block_read_func( \
+                (const __global BLOCK_DT(scalar_dt) *)src); \
+        dst->data = CONCAT2(as_, raw_vec)(raw); \
+    } \
+    struct_vec __attribute__((overloadable, warn_unused_result)) block_load( \
+            struct_vec dst, __global const scalar_dt *src) { \
+        block_vec raw = block_read_func( \
+                (const __global BLOCK_DT(scalar_dt) *)src); \
+        dst.data = CONCAT2(as_, raw_vec)(raw); \
+        return dst; \
+    }
+
+#define DEF_block_write_vec_raw(scalar_dt, struct_vec, block_write_func, \
+        block_vec) \
+    void __attribute__((overloadable)) block_write( \
+            __global scalar_dt *dst, __private const struct_vec *src) { \
+        block_write_func((__global BLOCK_DT(scalar_dt) *)dst, \
+                CONCAT2(as_, block_vec)(src->data)); \
+    }
+
+// --- block_load instantiations ---
+
+#if MATH_UTILS_DECLARE_BF16
+// bf16 source (vector cvt_bf16_to_f32 exists)
+DEF_block_load_vec(float8, bf16, intel_sub_group_block_read_us8, ushort8, cvt_bf16_to_f32)
+DEF_block_load_vec(float4, bf16, intel_sub_group_block_read_us4, ushort4, cvt_bf16_to_f32)
+DEF_block_load_vec(float2, bf16, intel_sub_group_block_read_us2, ushort2, cvt_bf16_to_f32)
+
+// float source (as_float* reinterpret only)
+DEF_block_load_vec(float8, float, intel_sub_group_block_read8, uint8, as_float8)
+DEF_block_load_vec(float4, float, intel_sub_group_block_read4, uint4, as_float4)
+DEF_block_load_vec(float2, float, intel_sub_group_block_read2, uint2, as_float2)
+
+// char/uchar source (scalar loop, no vector cvt_*)
+DEF_block_load_vec_loop(float8, char, intel_sub_group_block_read_uc8, uchar8, as_char, into_float, 8)
+DEF_block_load_vec_loop(float8, uchar, intel_sub_group_block_read_uc8, uchar8, as_uchar, into_float, 8)
+DEF_block_load_vec_loop(float2, char, intel_sub_group_block_read_uc2, uchar2, as_char, into_float, 2)
+DEF_block_load_vec_loop(float2, uchar, intel_sub_group_block_read_uc2, uchar2, as_uchar, into_float, 2)
+
+// --- block_write instantiations ---
+
+// bf16 destination (vector cvt_f32_to_bf16 exists)
+DEF_block_write_vec(bf16, float8, intel_sub_group_block_write_us8, ushort8, cvt_f32_to_bf16)
+DEF_block_write_vec(bf16, float4, intel_sub_group_block_write_us4, ushort4, cvt_f32_to_bf16)
+#endif // MATH_UTILS_DECLARE_BF16
+
+// float destination (as_uint* reinterpret only)
+DEF_block_write_vec(float, float8, intel_sub_group_block_write8, uint8, as_uint8)
+
+// char/uchar destination (scalar loop)
+DEF_block_write_vec_loop(char, float8, intel_sub_group_block_write_uc8, uchar8, into_char, 8)
+DEF_block_write_vec_loop(uchar, float8, intel_sub_group_block_write_uc8, uchar8, into_uchar, 8)
+
+// Raw char8 block I/O (no conversion)
+void __attribute__((overloadable)) block_load(
+        __private char8 *dst, __global const char *src) {
+    uchar8 raw = intel_sub_group_block_read_uc8((const __global uchar *)src);
+    *dst = as_char8(raw);
+}
+char8 __attribute__((overloadable, warn_unused_result)) block_load(
+        char8 dst, __global const char *src) {
+    uchar8 raw = intel_sub_group_block_read_uc8((const __global uchar *)src);
+    return as_char8(raw);
+}
+void __attribute__((overloadable)) block_write(
+        __global char *dst, __private const char8 *src) {
+    intel_sub_group_block_write_uc8((__global uchar *)dst, as_uchar8(*src));
+}
+
+// Raw bf16 vector struct block_load/write
+DEF_block_load_vec_raw(bf16x8, bf16, intel_sub_group_block_read_us8, ushort8, short8)
+DEF_block_load_vec_raw(bf16x4, bf16, intel_sub_group_block_read_us4, ushort4, short4)
+DEF_block_write_vec_raw(bf16, bf16x8, intel_sub_group_block_write_us8, ushort8)
+DEF_block_write_vec_raw(bf16, bf16x4, intel_sub_group_block_write_us4, ushort4)
+
+#ifdef cl_khr_fp16
+// half source (scalar loop: reinterpret ushort as half, then convert to float)
+DEF_block_load_vec_loop(float8, half, intel_sub_group_block_read_us8, ushort8, as_half, into_float, 8)
+DEF_block_load_vec_loop(float4, half, intel_sub_group_block_read_us4, ushort4, as_half, into_float, 4)
+DEF_block_load_vec_loop(float2, half, intel_sub_group_block_read_us2, ushort2, as_half, into_float, 2)
+
+// half destination (scalar loop: convert float to half, then reinterpret as ushort)
+DEF_block_write_vec_loop(half, float8, intel_sub_group_block_write_us8, ushort8, into_half, 8)
+
+#ifdef MATH_UTILS_DECLARE_HF8
+// f8_e4m3 block_load/write (scalar loop)
+DEF_block_load_vec_loop(float8, f8_e4m3, intel_sub_group_block_read_uc8, uchar8, as_f8_e4m3, into_float, 8)
+DEF_block_load_vec_loop(float4, f8_e4m3, intel_sub_group_block_read_uc4, uchar4, as_f8_e4m3, into_float, 4)
+DEF_block_load_vec_loop(float2, f8_e4m3, intel_sub_group_block_read_uc2, uchar2, as_f8_e4m3, into_float, 2)
+DEF_block_write_vec_loop(f8_e4m3, float8, intel_sub_group_block_write_uc8, uchar8, into_f8_e4m3, 8)
+DEF_block_write_vec_loop(f8_e4m3, float4, intel_sub_group_block_write_uc4, uchar4, into_f8_e4m3, 4)
+
+// Raw f8_e4m3 vector struct block_load/write
+DEF_block_load_vec_raw(f8_e4m3x8, f8_e4m3, intel_sub_group_block_read_uc8, uchar8, char8)
+DEF_block_write_vec_raw(f8_e4m3, f8_e4m3x8, intel_sub_group_block_write_uc8, uchar8)
+#endif // MATH_UTILS_DECLARE_HF8
+
+#ifdef MATH_UTILS_DECLARE_BF8
+// f8_e5m2 block_load/write (scalar loop)
+DEF_block_load_vec_loop(float8, f8_e5m2, intel_sub_group_block_read_uc8, uchar8, as_f8_e5m2, into_float, 8)
+DEF_block_load_vec_loop(float2, f8_e5m2, intel_sub_group_block_read_uc2, uchar2, as_f8_e5m2, into_float, 2)
+DEF_block_write_vec_loop(f8_e5m2, float8, intel_sub_group_block_write_uc8, uchar8, into_f8_e5m2, 8)
+
+// Raw f8_e5m2 vector struct block_load/write
+DEF_block_load_vec_raw(f8_e5m2x8, f8_e5m2, intel_sub_group_block_read_uc8, uchar8, char8)
+DEF_block_write_vec_raw(f8_e5m2, f8_e5m2x8, intel_sub_group_block_write_uc8, uchar8)
+#endif // MATH_UTILS_DECLARE_BF8
+#endif // cl_khr_fp16
 
 #endif

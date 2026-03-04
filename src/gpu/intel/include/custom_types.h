@@ -98,6 +98,28 @@ f4_e3m0 as_f4_e3m0(unsigned char data) {
     return res;
 }
 
+/******* Vector custom types *******/
+
+typedef struct { short2  data; } bf16x2;
+typedef struct { short4  data; } bf16x4;
+typedef struct { short8  data; } bf16x8;
+
+typedef struct { char2   data; } f8_e5m2x2;
+typedef struct { char4   data; } f8_e5m2x4;
+typedef struct { char8   data; } f8_e5m2x8;
+
+typedef struct { char2   data; } f8_e4m3x2;
+typedef struct { char4   data; } f8_e4m3x4;
+typedef struct { char8   data; } f8_e4m3x8;
+
+typedef struct { char2   data; } f4_e2m1x2;
+typedef struct { char4   data; } f4_e2m1x4;
+typedef struct { char8   data; } f4_e2m1x8;
+
+typedef struct { char2   data; } f4_e3m0x2;
+typedef struct { char4   data; } f4_e3m0x4;
+typedef struct { char8   data; } f4_e3m0x8;
+
 /*****************************/
 
 typedef struct {

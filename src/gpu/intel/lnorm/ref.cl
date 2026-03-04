@@ -33,7 +33,7 @@ __kernel void ref_lnorm_fwd(__global DATA_T *src, __global float *mean,
         for (int c = 0; c < C; ++c) {
             x[NDIMS - 1] = c;
             int dst_off = DST_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
-            dst[dst_off] = TO_DST(CONVERT_DATA_T(0.f));
+            write(dst + dst_off, (ACC_DATA_T)0);
         }
         return;
     }
@@ -49,7 +49,7 @@ __kernel void ref_lnorm_fwd(__global DATA_T *src, __global float *mean,
                 x[NDIMS - 1] = c;
                 int src_off = SRC_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
 
-                v_mean += SRC_TO_REF(src[src_off]);
+                v_mean += load(v_mean, src, src_off);
             }
             v_mean /= C;
         }
@@ -58,22 +58,25 @@ __kernel void ref_lnorm_fwd(__global DATA_T *src, __global float *mean,
             x[NDIMS - 1] = c;
             int src_off = SRC_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
 
-            ACC_DATA_T m = SRC_TO_REF(src[src_off]) - v_mean;
+            ACC_DATA_T m = load(m, src, src_off) - v_mean;
             v_variance += m * m;
         }
         v_variance /= C;
     }
     ACC_DATA_T rsqrt_variance = rsqrt(v_variance + eps);
     for (int c = 0; c < C; ++c) {
-        ACC_DATA_T sm = (scale ? CONVERT_WEI_FLOAT_T(scale[c]) : 1.0f)
-                * rsqrt_variance;
-        ACC_DATA_T sv = shift ? CONVERT_WEI_FLOAT_T(shift[c]) : 0.0f;
+        ACC_DATA_T sm = 1.0f;
+        if (scale) sm = load(sm, scale, c);
+        sm *= rsqrt_variance;
+        ACC_DATA_T sv = 0.0f;
+        if (shift) sv = load(sv, shift, c);
 
         x[NDIMS - 1] = c;
         int src_off = SRC_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
         int dst_off = DST_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
 
-        ACC_DATA_T d = (sm * (SRC_TO_REF(src[src_off]) - v_mean) + sv);
+        ACC_DATA_T d = load(d, src, src_off);
+        d = sm * (d - v_mean) + sv;
 
 #if WITH_SRC_SCALES
         d *= src_scale[0];
@@ -81,7 +84,7 @@ __kernel void ref_lnorm_fwd(__global DATA_T *src, __global float *mean,
 #if WITH_DST_SCALES
         d /= dst_scale[0];
 #endif
-        dst[dst_off] = TO_DST(d);
+        write(dst + dst_off, d);
     }
 
     if (CALCULATE_STATS) {
@@ -122,18 +125,18 @@ __kernel void ref_lnorm_bwd_scaleshift(__global SRC_DATA_T *src,
 
                     const float inv_sqrt_variance
                             = rsqrt(variance[s_off] + eps);
-                    const float dd = DST_TO_REF(diff_dst[dst_off]);
+                    const float dd = load(dd, diff_dst, dst_off);
 
                     const float mean_val = SKIP_MEAN ? 0 : mean[s_off];
-                    diff_gamma += (SRC_TO_REF(src[src_off]) - mean_val) * dd
-                            * inv_sqrt_variance;
+                    diff_gamma += (load(diff_gamma, src, src_off) - mean_val)
+                            * dd * inv_sqrt_variance;
                     diff_beta += dd;
                 }
             }
         }
     }
-    if (diff_scale) diff_scale[c] = CONVERT_WEI_DATA_T(diff_gamma);
-    if (diff_shift) diff_shift[c] = CONVERT_WEI_DATA_T(diff_beta);
+    if (diff_scale) write(diff_scale + c, diff_gamma);
+    if (diff_shift) write(diff_shift + c, diff_beta);
 }
 
 #endif
@@ -157,35 +160,36 @@ __kernel void ref_lnorm_bwd(__global SRC_DATA_T *src, __global float *mean,
 
     if (CALCULATE_STATS) {
         for (int c = 0; c < C; ++c) {
-            const ACC_DATA_T gamma
-                    = scale ? CONVERT_WEI_FLOAT_T(scale[c]) : 1.0f;
+            ACC_DATA_T gamma = 1.0f;
+            if (scale) gamma = load(gamma, scale, c);
 
             x[NDIMS - 1] = c;
             const int src_off = SRC_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
             const int dst_off = DST_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
 
-            const ACC_DATA_T dd = DST_TO_REF(diff_dst[dst_off]);
+            const ACC_DATA_T dd = load(dd, diff_dst, dst_off);
             dd_gamma += dd * gamma;
-            dd_gamma_x += dd * gamma * (SRC_TO_REF(src[src_off]) - mean_val);
+            dd_gamma_x += dd * gamma * (load(dd, src, src_off) - mean_val);
         }
         dd_gamma_x *= inv_sqrt_variance;
     }
 
     for (int c = 0; c < C; ++c) {
-        const ACC_DATA_T gamma = scale ? CONVERT_WEI_FLOAT_T(scale[c]) : 1.0f;
+        ACC_DATA_T gamma = 1.0f;
+        if (scale) gamma = load(gamma, scale, c);
 
         x[NDIMS - 1] = c;
         const int src_off = SRC_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
         const int dst_off = DST_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
 
-        ACC_DATA_T v_diff_src = DST_TO_REF(diff_dst[dst_off]) * gamma;
+        ACC_DATA_T v_diff_src = load(v_diff_src, diff_dst, dst_off) * gamma;
         if (CALCULATE_STATS) {
             v_diff_src -= dd_gamma / C
-                    + (SRC_TO_REF(src[src_off]) - mean_val) * dd_gamma_x
+                    + (load(v_diff_src, src, src_off) - mean_val) * dd_gamma_x
                             * inv_sqrt_variance / C;
         }
         v_diff_src *= inv_sqrt_variance;
-        diff_src[src_off] = TO_SRC(v_diff_src);
+        write(diff_src + src_off, v_diff_src);
     }
 }
 

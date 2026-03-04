@@ -88,8 +88,9 @@ static status_t init_conf_common(
 
 static status_t init_kernel_ctx_common(
         compute::kernel_ctx_t &kernel_ctx, const conf_t &conf) {
-    kernel_ctx.set_data_type(conf.is_fwd ? conf.src_dt : conf.dst_dt);
-    def_data_type(kernel_ctx, conf.weights_data_type, "WEI");
+    constexpr bool with_punning = false;
+    kernel_ctx.set_data_type(conf.is_fwd ? conf.src_dt : conf.dst_dt, with_punning);
+    def_data_type(kernel_ctx, conf.weights_data_type, "WEI", with_punning);
     kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
 
     kernel_ctx.define_int("C", conf.norm_axis);

@@ -471,8 +471,9 @@ static status_t init_conf_common(
 
 static status_t init_kernel_ctx_common(
         kernel_ctx_t &kernel_ctx, const conf_t &conf) {
-    kernel_ctx.set_data_type(conf.src_dt);
-    def_data_type(kernel_ctx, conf.weights_data_type, "WEI");
+    constexpr bool with_punning = false;
+    kernel_ctx.set_data_type(conf.src_dt, with_punning);
+    def_data_type(kernel_ctx, conf.weights_data_type, "WEI", with_punning);
     kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
 
     // Since FWD kernel aggressively uses GRF (allocates a private buffer for

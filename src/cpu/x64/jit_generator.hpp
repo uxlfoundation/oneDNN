@@ -2734,6 +2734,13 @@ public:
             data_type_t dt,
             /*rest of vmms used only if there are tails*/ Xbyak::Ymm &ymm_tmp,
             Xbyak::Ymm &ymm_mask, Xbyak::Xmm &xmm_upper_mask);
+
+    void transpose2(const Xbyak::Reg64 &reg_src, const Xbyak::Reg64 &reg_dst,
+            dim_t src_stride, dim_t dst_stride, int nrows, int ncolumns,
+            data_type_t dt,
+            /*rest of vmms used only if there are tails*/ Xbyak::Ymm &ymm_tmp,
+            Xbyak::Ymm &ymm_mask, Xbyak::Xmm &xmm_upper_mask);
+
     DNNL_DISALLOW_COPY_AND_ASSIGN(jit_generator_t);
 
     /* All uni_ instructions -- apart from uni_vzeroupper() -- will comply with

@@ -21,6 +21,165 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
+void jit_generator_t::transpose2(const Xbyak::Reg64 &reg_src,
+        const Xbyak::Reg64 &reg_dst, dim_t src_stride, dim_t dst_stride,
+        int nrows, int ncolumns, data_type_t dt, Xbyak::Ymm &ymm_tmp,
+        Xbyak::Ymm &ymm_mask, Xbyak::Xmm &xmm_upper_mask) {
+    // no row padding for dst, so no work needed to be done
+    if (ncolumns == 0) return;
+
+    // Note: For stores we assume, the memory is padded, hence avoiding use of
+    // mask stores.
+    const auto xmm_lower_mask = Xbyak::Xmm(ymm_mask.getIdx());
+    const auto xmm_tmp = Xbyak::Xmm(ymm_tmp.getIdx());
+
+    // only avx2 version is supported for now. TODO for others
+    const int transpose_size = vreg_traits_t<Xbyak::Ymm>::vlen
+            / types::data_type_size(data_type::f32);
+    assert(is_valid_isa(avx2));
+    assert(nrows <= transpose_size && ncolumns <= transpose_size);
+
+    assert((dt == data_type::f32 || dt == data_type::bf16)
+            && "transpose utils not supported for current data type");
+
+    if (transpose_size > nrows) uni_vxorps(ymm_tmp, ymm_tmp, ymm_tmp);
+
+    auto load_bf16_xmm_to_f32
+            = [= WA_THIS_COPY_CAPTURE](const Xbyak::Xmm &xmm_dst,
+                      int r, int c, int valid /* 0..4 */) {
+                  if (valid <= 0) {
+                      uni_vxorps(xmm_dst, xmm_dst, xmm_dst);
+                      return;
+                  }
+
+                  auto base = reg_src + r * src_stride + c * 2;
+
+                  // xmm_tmp is scratch
+                  if (valid == 4) {
+                      movq(xmm_tmp, ptr[base]); // load 8 bytes = 3xbf16
+                  } else {
+                      pxor(xmm_tmp, xmm_tmp);
+                      for (int i = 0; i < valid; i++) {
+                          pinsrw(xmm_tmp, word[base + i * 2], i);
+                      }
+                  }
+
+                  pmovzxwd(xmm_dst, xmm_tmp); // 4x u16 -> 4x u32
+                  pslld(xmm_dst, 16); // bf16 -> fp32 bits (bf16 in high 16)
+              };
+
+    auto load_src_xmm_f32 = [= WA_THIS_COPY_CAPTURE](
+                                    Xbyak::Xmm vmm, int r, int c) {
+        const int xmm_simd_w = 4;
+
+        if (r >= nrows) { uni_vxorps(vmm, vmm, vmm); }
+
+        if (dt == data_type::f32) {
+            const auto addr = ptr[reg_src + r * src_stride
+                    + c * types::data_type_size(dt)];
+            if (c + xmm_simd_w <= ncolumns) {
+                vmovups(vmm, addr);
+            } else if (c == 0) {
+                vmaskmovps(vmm, xmm_lower_mask, addr);
+            } else {
+                vmaskmovps(vmm, xmm_upper_mask, addr);
+            }
+        } else { // bf16
+            const int valid = std::min(xmm_simd_w, std::max(0, ncolumns - c));
+            load_bf16_xmm_to_f32(vmm, r, c, valid);
+        }
+    };
+
+    auto vinsert_upper4 = [= WA_THIS_COPY_CAPTURE](
+                                  Xbyak::Ymm ymm, int r, int c) {
+        const int xmm_simd_w = 4;
+
+        if (r <= nrows) {
+            // upper xmm of ymm_tmp is initialized to zero
+            vperm2i128(ymm, ymm, ymm_tmp, 0x30);
+            return;
+        }
+
+        if (dt == data_type::f32) {
+            const auto addr = ptr[reg_src + r * src_stride
+                    + c * types::data_type_size(dt)];
+            if (c + xmm_simd_w <= ncolumns) {
+                vinsertf128(ymm, ymm, addr, 1);
+            } else {
+                vmaskmovps(xmm_tmp, c == 0 ? xmm_lower_mask : xmm_upper_mask,
+                        addr);
+                vinsertf128(ymm, ymm, xmm_tmp, 1);
+            }
+        } else { // bf16
+            const int valid = std::min(xmm_simd_w, std::max(0, ncolumns - c));
+            load_bf16_xmm_to_f32(xmm_tmp, r, c, valid);
+            vinsertf128(ymm, ymm, xmm_tmp, 1);
+        }
+    };
+
+    auto store_ymm_f32_as_bf16
+            = [= WA_THIS_COPY_CAPTURE](
+                      const Xbyak::Address &dst, const Xbyak::Ymm &src) {
+                  // ymm_tmp is scatch YMM
+                  vpsrld(ymm_tmp, src, 16); // move bf16 to low 16 of each dword
+                  vpackusdw(ymm_tmp, ymm_tmp,
+                          ymm_tmp); // pack -> 16-bit words (we use low 8)
+                  // store low 16 bytes = 8 bf16
+                  vmovdqu(dst, Xbyak::Xmm(ymm_tmp.getIdx()));
+              };
+
+    auto store_dst = [= WA_THIS_COPY_CAPTURE](int col, const Xbyak::Ymm &v) {
+        const auto dst = ptr[reg_dst + col * dst_stride];
+        if (dt == data_type::f32)
+            vmovups(dst, v);
+        else
+            store_ymm_f32_as_bf16(dst, v);
+    };
+
+    // Intel(R) Software Optimization manual
+    // Example 15-20. 8x8 Matrix Transpose Using VINSERTPS
+    auto transpose_8x4 = [= WA_THIS_COPY_CAPTURE](int col) {
+        load_src_xmm_f32(xmm0, 0, col);
+        vinsert_upper4(ymm0, 4, col);
+        load_src_xmm_f32(xmm1, 1, col);
+        vinsert_upper4(ymm1, 5, col);
+        vunpcklpd(ymm8, ymm0, ymm1);
+        vunpckhpd(ymm9, ymm0, ymm1);
+
+        load_src_xmm_f32(xmm2, 2, col);
+        vinsert_upper4(ymm2, 6, col);
+        load_src_xmm_f32(xmm3, 3, col);
+        vinsert_upper4(ymm3, 7, col);
+        vunpcklpd(ymm10, ymm2, ymm3);
+        vunpckhpd(ymm11, ymm2, ymm3);
+
+        vshufps(ymm4, ymm8, ymm10, 0x88);
+        //vmovups(ptr[reg_dst + col * dst_stride], ymm4);
+        store_dst(col, ymm4);
+
+        if (col + 1 < ncolumns) {
+            vshufps(ymm5, ymm8, ymm10, 0xDD);
+            //    vmovups(ptr[reg_dst + (col + 1) * dst_stride], ymm5);
+            store_dst(col + 1, ymm5);
+        }
+
+        if (col + 2 < ncolumns) {
+            vshufps(ymm6, ymm9, ymm11, 0x88);
+            //   vmovups(ptr[reg_dst + (col + 2) * dst_stride], ymm6);
+            store_dst(col + 2, ymm6);
+        }
+
+        if (col + 3 < ncolumns) {
+            vshufps(ymm7, ymm9, ymm11, 0xDD);
+            // vmovups(ptr[reg_dst + (col + 3) * dst_stride], ymm7);
+            store_dst(col + 3, ymm7);
+        }
+    };
+
+    transpose_8x4(0);
+    if (ncolumns > 4) transpose_8x4(4);
+}
+
 void jit_generator_t::transpose(const Xbyak::Reg64 &reg_src,
         const Xbyak::Reg64 &reg_dst, dim_t src_stride, dim_t dst_stride,
         int nrows, int ncolumns, data_type_t dt, Xbyak::Ymm &ymm_tmp,

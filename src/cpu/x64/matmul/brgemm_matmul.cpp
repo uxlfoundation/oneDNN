@@ -381,11 +381,13 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
             CHECK(brgemv_desc_init(&brg, kernel_isa, bgmmc_.brg_type,
                     bgmmc_.src_dt, bgmmc_.wei_dt, false, alpha, vbeta, LDA,
                     bgmmc_.LDC, vM, vK));
-        else
+        else {
+            printf("bgmmc_.src_dt:%d\n", (int)bgmmc_.src_dt);
             CHECK(brgemm_desc_init(&brg, kernel_isa, bgmmc_.brg_type,
                     bgmmc_.src_dt, bgmmc_.wei_dt, false, false,
                     brgemm_row_major, alpha, vbeta, LDA, bgmmc_.LDB, bgmmc_.LDC,
                     vM, vN, vK, nullptr, bgmmc_.is_tf32));
+        }
 
         auto LDD = bgmmc_.LDD;
         if (bgmmc_.with_wei_decompression && bgmmc_.has_zero_point_b)
@@ -491,8 +493,10 @@ status_t brgemm_matmul_t<isa>::init(engine_t *engine) {
     if (bgmmc.use_buffer_b && !bgmmc.packed_sparse_weights)
         CHECK(create_brgemm_matmul_copy_b(copy_B_kernel_, &bgmmc));
 
-    if (bgmmc.use_buffer_a || bgmmc.use_buffer_a_tail_only)
+    if (bgmmc.use_buffer_a || bgmmc.use_buffer_a_tail_only) {
+        printf("need copy a\n");
         CHECK(create_brgemm_matmul_copy_a(copy_A_kernel_, &bgmmc));
+    }
 
     if (pd()->with_reduce() || (bgmmc.nthr_k > 1 && bgmmc.acc_dt == f32)) {
         CHECK(safe_ptr_assign(

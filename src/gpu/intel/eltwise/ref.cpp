@@ -67,7 +67,7 @@ static status_t init_conf_common(
 static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
         const conf_t &conf, const post_ops_t &post_ops,
         const dropout_t &dropout, const memory_desc_t *dst_md) {
-    kernel_ctx.set_data_type(conf.data_type);
+    kernel_ctx.set_data_type(conf.data_type, /*with_punning=*/false);
     kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
 
     kernel_ctx.define_int("ELTWISE_ALG", conf.alg);
@@ -86,16 +86,20 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     kernel_ctx.define_int(
             "USE_GWS_GET", conf.with_zero_padding || with_binary_post_ops);
 
-    def_data_type(kernel_ctx, conf.data_md_info.data_type, "SRC", false);
-    def_memory_desc_info(kernel_ctx, conf.data_md_info, "DST", false);
+    def_data_type(kernel_ctx, conf.data_md_info.data_type, "SRC",
+            /*with_punning=*/false);
+    def_memory_desc_info(
+            kernel_ctx, conf.data_md_info, "DST", /*with_punning=*/false);
 
     if (!conf.is_forward) {
-        def_memory_desc_info(kernel_ctx, conf.data_diff_md_info, "DIFF", false);
+        def_memory_desc_info(kernel_ctx, conf.data_diff_md_info, "DIFF",
+                /*with_punning=*/false);
     } else {
         kernel_ctx.define_int("IS_FWD", 1);
     }
 
-    CHECK(def_attr_info(kernel_ctx, conf.attr_info, post_ops, *dst_md));
+    CHECK(def_attr_info(kernel_ctx, conf.attr_info, post_ops, *dst_md,
+            /*with_punning=*/false));
     def_dispatch(kernel_ctx, conf.dispatch);
 
     return status::success;

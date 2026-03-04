@@ -76,11 +76,7 @@ __kernel void ref_eltwise_fwd(__global SRC_DATA_T *src,
     const dim_t d5 = 0;
 #endif
 
-#if DT_F16 == 1
     float tmp_s = load(tmp_s, src + data_off);
-#else
-    float tmp_s = load(tmp_s, src + data_off);
-#endif
     tmp_s = fwd_eltwise(tmp_s, alpha, beta, 1.0f);
 
     float dst_data;

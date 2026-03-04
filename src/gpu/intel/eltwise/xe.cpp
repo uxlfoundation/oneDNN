@@ -67,7 +67,7 @@ compute::kernel_ctx_t xe_jit_params_t::get_kernel_ctx() const {
     compute::kernel_ctx_t kernel_ctx;
     kernel_ctx.require_stateless_addressing(require_stateless_addressing);
 
-    kernel_ctx.set_data_type(data_type);
+    kernel_ctx.set_data_type(data_type, /*with_punning=*/false);
 
     kernel_ctx.define_int("ELTWISE_ALG", alg_kind);
 

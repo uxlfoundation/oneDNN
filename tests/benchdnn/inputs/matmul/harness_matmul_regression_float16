@@ -6,3 +6,11 @@
 # Test that cases when M == 1 are handled correctly.
 --reset
 --stag=ba,ab --wtag=ab --dtag=ab --dt=f16 1x2:2x256
+
+# regression: binary post-op with explicit 2D format tag and transposed dst (swap_ab path)
+--reset
+--allow-enum-tags-only=0
+--dt=f16:f16:f16
+--stag=ab,ba --wtag=ab,ba --dtag=ba
+--attr-post-ops=linear:1.2+add:f16:3:ab+linear:1,linear:1.2+add:f16:3:ba+linear:1
+10x50:50x25

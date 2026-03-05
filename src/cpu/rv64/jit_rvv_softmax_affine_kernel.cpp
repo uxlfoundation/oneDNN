@@ -42,8 +42,6 @@ void jit_rvv_softmax_affine_kernel_t::generate() {
     const FReg f_mul = fa1;
 
     const VReg v_src(0);
-    const VReg v_sub(1);
-    const VReg v_mul(2);
 
     // call_params_t layout:
     //  0: src, 8: dst, 16: len, 24: sub, 28: mul
@@ -60,11 +58,9 @@ void jit_rvv_softmax_affine_kernel_t::generate() {
     L(loop);
     beqz(reg_len, done);
     vsetvli(reg_vl, reg_len, SEW::e32, LMUL::m1);
-    vfmv_v_f(v_sub, f_sub);
-    vfmv_v_f(v_mul, f_mul);
     vle32_v(v_src, reg_src);
-    vfsub_vv(v_src, v_src, v_sub);
-    vfmul_vv(v_src, v_src, v_mul);
+    vfsub_vf(v_src, v_src, f_sub);
+    vfmul_vf(v_src, v_src, f_mul);
     vse32_v(v_src, reg_dst);
     slli(reg_bytes, reg_vl, 2);
     add(reg_src, reg_src, reg_bytes);

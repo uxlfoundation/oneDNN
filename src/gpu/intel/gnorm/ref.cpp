@@ -33,7 +33,8 @@ static status_t init_kernel_ctx_common(
     const memory_desc_wrapper output_data_mdw(
             pd->is_fwd() ? pd->dst_md() : pd->diff_dst_md());
 
-    kernel_ctx.set_data_type(input_data_mdw.data_type());
+    kernel_ctx.set_data_type(
+            input_data_mdw.data_type(), /*with_punning=*/false);
     kernel_ctx.require_stateless_addressing(pd->has_large_buffers());
 
     kernel_ctx.define_int("NDIMS", input_data_mdw.ndims()); // for SRC_OFF macro
@@ -52,12 +53,15 @@ static status_t init_kernel_ctx_common(
             = memory_desc_info_t::create(input_data_mdw);
     const memory_desc_info_t output_data_mdw_info
             = memory_desc_info_t::create(output_data_mdw);
-    def_memory_desc_info(kernel_ctx, input_data_mdw_info, "SRC");
-    def_memory_desc_info(kernel_ctx, output_data_mdw_info, "DST");
+    def_memory_desc_info(
+            kernel_ctx, input_data_mdw_info, "SRC", /*with_punning=*/false);
+    def_memory_desc_info(
+            kernel_ctx, output_data_mdw_info, "DST", /*with_punning=*/false);
 
     // create post-op macro required definitions
     CHECK(def_attr_info(kernel_ctx, attr_info_t::create(pd->attr()),
-            pd->attr()->post_ops_, *pd->invariant_dst_md()));
+            pd->attr()->post_ops_, *pd->invariant_dst_md(),
+            /*with_punning=*/false));
 
     offsets_t off;
     set_offsets(input_data_mdw, off.src_off);

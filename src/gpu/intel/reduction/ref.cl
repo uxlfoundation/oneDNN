@@ -19,13 +19,13 @@
 #include "gpu/intel/include/types.h"
 
 #if defined(IS_MAX)
-#define INIT_ACC TO_DEF_ACC_DATA_T(DATA_MIN)
+#define INIT_ACC min_val((DEF_ACC_DATA_T)0)
 #elif defined(IS_MIN)
-#define INIT_ACC TO_DEF_ACC_DATA_T(DATA_MAX)
+#define INIT_ACC max_val((DEF_ACC_DATA_T)0)
 #elif defined(IS_MUL)
-#define INIT_ACC TO_DEF_ACC_DATA_T(DATA_ONE)
+#define INIT_ACC one_val((DEF_ACC_DATA_T)0)
 #else
-#define INIT_ACC TO_DEF_ACC_DATA_T(DATA_ZERO)
+#define INIT_ACC zero_val((DEF_ACC_DATA_T)0)
 #endif
 
 #if defined(IS_MAX)
@@ -37,8 +37,6 @@
 #elif defined(IS_MIN)
 #if defined(SRC_DT_S8) || defined(SRC_DT_U8)
 #define ACCUMULATE(x, y) min(x, y)
-#elif defined(SRC_DT_BF8) || defined(SRC_DT_HF8)
-#define ACCUMULATE(x, y) fmin(TO_DEF_ACC_DATA(x), TO_DEF_ACC_DATA(y))
 #else
 #define ACCUMULATE(x, y) fmin(x, y)
 #endif

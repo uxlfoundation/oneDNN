@@ -290,7 +290,7 @@ status_t xe_t::pd_t::init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const {
     kernel_ctx.define_int(
             "IS_TERNARY", (conf.alg == alg_kind::binary_select) ? 1 : 0);
 
-    kernel_ctx.set_data_type(conf.src0_data_type);
+    kernel_ctx.set_data_type(conf.src0_data_type, /*with_punning=*/false);
     kernel_ctx.define_int("SUB_GROUP_SIZE", 16);
     kernel_ctx.define_int("NDIMS", conf.ndims);
     kernel_ctx.define_int("IS_PLAIN_LAYOUT", conf.is_plain_layout);
@@ -313,16 +313,20 @@ status_t xe_t::pd_t::init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const {
     kernel_ctx.add_option("-Dcl_intel_subgroups_char");
     kernel_ctx.add_option("-Dcl_intel_subgroups_uchar");
 
-    def_memory_desc_info(kernel_ctx, conf.src0_md_info, "SRC0");
-    def_memory_desc_info(kernel_ctx, conf.src1_md_info, "SRC1");
-    def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST");
+    def_memory_desc_info(
+            kernel_ctx, conf.src0_md_info, "SRC0", /*with_punning=*/false);
+    def_memory_desc_info(
+            kernel_ctx, conf.src1_md_info, "SRC1", /*with_punning=*/false);
+    def_memory_desc_info(
+            kernel_ctx, conf.dst_md_info, "DST", /*with_punning=*/false);
 
     if (conf.alg == alg_kind::binary_select) {
-        def_memory_desc_info(kernel_ctx, conf.src2_md_info, "SRC2");
+        def_memory_desc_info(
+                kernel_ctx, conf.src2_md_info, "SRC2", /*with_punning=*/false);
     }
 
-    CHECK(def_attr_info(
-            kernel_ctx, conf.attr_info, attr()->post_ops_, *dst_md()));
+    CHECK(def_attr_info(kernel_ctx, conf.attr_info, attr()->post_ops_,
+            *dst_md(), /*with_punning=*/false));
 
     def_dispatch(kernel_ctx, conf.dispatch);
 

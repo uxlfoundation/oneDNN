@@ -26,8 +26,8 @@ __kernel void simple_binary(__global DATA_T *src0, __global DATA_T *src1,
         __global float *src1_scale) {
     int off = GWS_GET_IDX();
 
-    float tmp_src0 = SRC0_TO_FLOAT(src0[off]);
-    float tmp_src1 = SRC1_TO_FLOAT(src1[off]);
+    float tmp_src0 = into_float(src0[off]);
+    float tmp_src1 = into_float(src1[off]);
 #if IS_TERNARY
     char tmp_src2 = src2[off];
 #endif
@@ -47,11 +47,11 @@ __kernel void simple_binary(__global DATA_T *src0, __global DATA_T *src1,
 
     float dst_data;
 #if WITH_SUM
-    dst_data = CONVERT_FLOAT_T(dst[off]);
+    dst_data = into_float(dst[off]);
 #endif
 
     APPLY_POST_OPS_SERIAL(d, dst_data, 0, 0, 0, 0, 0, 0);
-    dst[off] = TO_DST(d);
+    write(dst + off, d);
 }
 #else
 KERNEL_ATTR
@@ -112,7 +112,7 @@ __kernel void simple_binary(__global SRC0_DATA_T *src0,
 
     if (dims0[0] >= DST_D0) {
         for (int ic = 0; ic < block_size; ++ic) {
-            dst[dst_off] = TO_DST(0.0f);
+            write(dst + dst_off, 0.0f);
             dst_off++;
         }
 
@@ -121,8 +121,8 @@ __kernel void simple_binary(__global SRC0_DATA_T *src0,
 
     if (d1_init + block_size <= DST_D1) {
         for (int ic = 0; ic < block_size; ++ic) {
-            float tmp_src0 = SRC0_TO_FLOAT(src0[src0_off]);
-            float tmp_src1 = SRC1_TO_FLOAT(src1[src1_off]);
+            float tmp_src0 = into_float(src0[src0_off]);
+            float tmp_src1 = into_float(src1[src1_off]);
 #if IS_TERNARY
             char tmp_src2 = src2[src2_off];
 #endif
@@ -143,12 +143,12 @@ __kernel void simple_binary(__global SRC0_DATA_T *src0,
 
             float dst_data;
 #if WITH_SUM
-            dst_data = CONVERT_FLOAT_T(dst[dst_off]);
+            dst_data = into_float(dst[dst_off]);
 #endif
             APPLY_POST_OPS_SERIAL(d, dst_data, dims0_po[0], dims0_po[1],
                     dims0_po[2], dims0_po[3], dims0_po[4], dims0_po[5]);
 
-            dst[dst_off] = TO_DST(d);
+            write(dst + dst_off, d);
 
 #if USE_UNROLL_16B || SRC0_UNROLL_16B
             src0_off++;
@@ -163,8 +163,8 @@ __kernel void simple_binary(__global SRC0_DATA_T *src0,
         }
     } else {
         for (int ic = 0; ic < DST_D1 - d1_init; ic++) {
-            float tmp_src0 = SRC0_TO_FLOAT(src0[src0_off]);
-            float tmp_src1 = SRC1_TO_FLOAT(src1[src1_off]);
+            float tmp_src0 = into_float(src0[src0_off]);
+            float tmp_src1 = into_float(src1[src1_off]);
 #if IS_TERNARY
             char tmp_src2 = src2[src2_off];
 #endif
@@ -185,12 +185,12 @@ __kernel void simple_binary(__global SRC0_DATA_T *src0,
 
             float dst_data;
 #if WITH_SUM
-            dst_data = CONVERT_FLOAT_T(dst[dst_off]);
+            dst_data = into_float(dst[dst_off]);
 #endif
             APPLY_POST_OPS_SERIAL(d, dst_data, dims0_po[0], dims0_po[1],
                     dims0_po[2], dims0_po[3], dims0_po[4], dims0_po[5]);
 
-            dst[dst_off] = TO_DST(d);
+            write(dst + dst_off, d);
 
 #if USE_UNROLL_16B || SRC0_UNROLL_16B
             src0_off++;
@@ -205,7 +205,7 @@ __kernel void simple_binary(__global SRC0_DATA_T *src0,
         }
 #if DST_D1 != DST_PD1
         for (int ic = 0; ic < min(DST_PD1 - DST_D1, block_size); ic++) {
-            dst[dst_off] = TO_DST(0.0f);
+            write(dst + dst_off, 0.0f);
             dst_off++;
         }
 #endif

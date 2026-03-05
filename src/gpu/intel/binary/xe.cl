@@ -73,20 +73,26 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
 #define src1_scale_val 1
 #endif
     float tmp_src0[NVECT];
-    READ_DATA(NVECT, SRC0, (&src0[0]), (&tmp_src0[0]), src0_scale_val);
+    block_load(tmp_src0, src0, NVECT);
+    unroll_for(unsigned idx = 0; idx < NVECT; ++idx) {
+        tmp_src0[idx] *= src0_scale_val;
+    }
 
 #if BCAST_AT_INNERMOST_DIM
     float tmp_src1[1];
-    tmp_src1[0] = src1_scale_val * CONVERT_FLOAT_T(src1[0]);
+    tmp_src1[0] = src1_scale_val * into_float(src1[0]);
 #define SRC1_IDX_MASK 0
 #else
     float tmp_src1[NVECT];
-    READ_DATA(NVECT, SRC1, (&src1[0]), (&tmp_src1[0]), src1_scale_val);
+    block_load(tmp_src1, src1, NVECT);
+    unroll_for(unsigned idx = 0; idx < NVECT; ++idx) {
+        tmp_src1[idx] *= src1_scale_val;
+    }
 #define SRC1_IDX_MASK 1
 #endif
 #if IS_TERNARY
     char tmp_src2[NVECT];
-    READ_CHAR_DATA(NVECT, SRC2, (&src2[0]), (&tmp_src2[0]));
+    block_load(tmp_src2, src2, NVECT);
 #endif
 
     float tmp[NVECT];
@@ -102,7 +108,7 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
 
     float dst_data[NVECT];
 #if WITH_SUM
-    READ_DATA(NVECT, DST, (&dst[0]), (&dst_data[0]), 1);
+    block_load(dst_data, dst, NVECT);
 #endif
 
 #if HAS_TAIL
@@ -133,7 +139,7 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
         tmp[idx] = d_i;
         po_dims0[NDIMS - 1] += SUB_GROUP_SIZE;
     }
-    WRITE_DATA(NVECT, DST, (&tmp[0]), (&dst[0]));
+    block_write(dst, tmp, NVECT);
 }
 
 #elif PLAIN_TO_ABCD4AXB
@@ -188,8 +194,8 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
             if (SRC0_S3_0 == 1) {
                 // abcd layout.
                 src0_off = SRC0_OFF(d0 + d0_inner, d1 + d1_inner, d2, d3, 0, 0);
-                tmp_buf0[d0_inner * d1_block + d1_inner]
-                        = SRC0_BLOCK_READ(&src0[src0_off]);
+                block_load(&tmp_buf0[d0_inner * d1_block + d1_inner],
+                        src0 + src0_off);
                 src1_off = SRC1_OFF((d0 + d0_inner) * (!BCAST_DIM0),
                         (d1 + d1_inner) * (!BCAST_DIM1), d2 * (!BCAST_DIM2),
                         d3 * (!BCAST_DIM3), 0, 0);
@@ -214,8 +220,8 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
 #if BCAST_AT_INNERMOST_DIM == 1
             tmp_buf1[d0_inner * d1_block + d1_inner] = src1[src1_off];
 #else
-            tmp_buf1[d0_inner * d1_block + d1_inner]
-                    = SRC1_BLOCK_READ(&src1[src1_off]);
+            block_load(
+                    &tmp_buf1[d0_inner * d1_block + d1_inner], src1 + src1_off);
 #endif //BCAST_AT_INNERMOST_DIM
         }
     }
@@ -224,8 +230,8 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
     for (int d0_i = 0; d0_i < d0_block; d0_i++) {
         for (int d1_i = 0; d1_i < d1_block; d1_i++) {
 
-            float tmp_src0 = CONVERT_FLOAT_T(tmp_buf0[i]);
-            float tmp_src1 = CONVERT_FLOAT_T(tmp_buf1[i]);
+            float tmp_src0 = into_float(tmp_buf0[i]);
+            float tmp_src1 = into_float(tmp_buf1[i]);
 #if IS_TERNARY
             char tmp_src2 = tmp_buf2[i];
 #endif
@@ -247,7 +253,7 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
             APPLY_POST_OPS_SERIAL(res, dst_data, d0 + d0_i, d1 + d1_i, d2,
                     d3 + sglid, d4, d5);
 
-            res_buf[i] = TO_DST(res);
+            write(&res_buf[i], res);
             ++i;
         }
     }
@@ -257,12 +263,12 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
         for (int j = 0; j < SUB_GROUP_SIZE; j++)
             res_all[i][j] = intel_sub_group_shuffle(res_buf[i], j);
     for (int d = 0; d < SUB_GROUP_SIZE; d += 8) {
-        DST_DATA8_T res_tmp;
+        CONCAT2(DST_DATA_T, 8) res_tmp;
         for (int i = 0; i < 8; i++)
             res_tmp[i] = res_all[sglid][d + i];
         int dst_off = DST_OFF(d0, d1, d2, d3 + d, 0, 0);
 
-        DST_BLOCK_WRITE8(&dst[dst_off], res_tmp);
+        block_write(dst + dst_off, &res_tmp);
     }
 }
 #elif IS_XA16B
@@ -310,10 +316,13 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
                 && (dims0[1] + sub_grp_id) >= SRC0_D1) {
             d = 0;
         } else {
-            float8 tmp_src0 = CONVERT_FLOAT8_T(SRC0_BLOCK_READ8(&t_src0[0]));
-            float8 tmp_src1 = CONVERT_FLOAT8_T(SRC1_BLOCK_READ8(&t_src1[0]));
+            float8 tmp_src0;
+            block_load(&tmp_src0, t_src0);
+            float8 tmp_src1;
+            block_load(&tmp_src1, t_src1);
 #if IS_TERNARY
-            char8 tmp_src2 = SRC2_BLOCK_READ8(&t_src2[0]);
+            char8 tmp_src2;
+            block_load(&tmp_src2, t_src2);
 #endif
 #if WITH_SRC0_SCALE
             tmp_src0 = tmp_src0 * src0_scale[0];
@@ -328,7 +337,7 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
 #endif
 
 #if WITH_SUM
-            dst_data = CONVERT_FLOAT8_T(DST_BLOCK_READ8(&t_dst[0]));
+            block_load(&dst_data, t_dst);
 #endif
 
             const int po_mb = dims0[0];
@@ -346,7 +355,7 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
             }
         }
 
-        DST_BLOCK_WRITE8(&t_dst[0], TO_DST8(d));
+        block_write(t_dst, &d);
 
         src0_off += MB_BLOCK * SUB_GROUP_SIZE * SRC0_PD2 * SRC0_PD3 * SRC0_PD4
                 * SRC0_PD5;
@@ -387,35 +396,21 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
             dims0[2] * (!BCAST_DIM2), dims0[3] * (!BCAST_DIM3),
             dims0[4] * (!BCAST_DIM4), dims0[5] * (!BCAST_DIM5));
     src1 += src1_off;
-#if NVECT == 1
-    float d = 0;
-    float dst_data;
-    float tmp_src0 = CONVERT_FLOAT_T(SRC0_BLOCK_READ(&src0[0]));
-#elif NVECT == 2
-    float2 d = 0;
-    float2 dst_data;
-    float2 tmp_src0 = CONVERT_FLOAT2_T(SRC0_BLOCK_READ2(&src0[0]));
-#elif NVECT == 4
-    float4 d = 0;
-    float4 dst_data;
-    float4 tmp_src0 = CONVERT_FLOAT4_T(SRC0_BLOCK_READ4(&src0[0]));
-#elif NVECT == 8
-    float8 d = 0;
-    float8 dst_data;
-    float8 tmp_src0 = CONVERT_FLOAT8_T(SRC0_BLOCK_READ8(&src0[0]));
-#endif
+
+    ELEM_DATA_T d = 0;
+    ELEM_DATA_T dst_data;
+    ELEM_DATA_T tmp_src0;
+    block_load(&tmp_src0, src0);
 
 #if BCAST_DIM1
-    float tmp_src1 = CONVERT_FLOAT_T(src1[0]);
+    float tmp_src1 = into_float(src1[0]);
 #else
 #if BCAST_AT_INNERMOST_DIM == 1 || NVECT == 1
-    float tmp_src1 = CONVERT_FLOAT_T(SRC1_BLOCK_READ(&src1[0]));
-#elif NVECT == 2
-    float2 tmp_src1 = CONVERT_FLOAT2_T(SRC1_BLOCK_READ2(&src1[0]));
-#elif NVECT == 4
-    float4 tmp_src1 = CONVERT_FLOAT4_T(SRC1_BLOCK_READ4(&src1[0]));
-#elif NVECT == 8
-    float8 tmp_src1 = CONVERT_FLOAT8_T(SRC1_BLOCK_READ8(&src1[0]));
+    float tmp_src1;
+    block_load(&tmp_src1, src1);
+#else
+    ELEM_DATA_T tmp_src1;
+    block_load(&tmp_src1, src1);
 #endif
 #endif
 
@@ -429,15 +424,7 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
     d = binary_op(BINARY_ALG, tmp_src0, tmp_src1);
 
 #if WITH_SUM
-#if NVECT == 1
-    dst_data = CONVERT_FLOAT_T(DST_BLOCK_READ(&dst[0]));
-#elif NVECT == 2
-    dst_data = CONVERT_FLOAT2_T(DST_BLOCK_READ2(&dst[0]));
-#elif NVECT == 4
-    dst_data = CONVERT_FLOAT4_T(DST_BLOCK_READ4(&dst[0]));
-#elif NVECT == 8
-    dst_data = CONVERT_FLOAT8_T(DST_BLOCK_READ8(&dst[0]));
-#endif
+    block_load(&dst_data, dst);
 #endif
 
     const int po_mb = dims0[0];
@@ -456,15 +443,7 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
     }
 #endif
 
-#if NVECT == 1
-    DST_BLOCK_WRITE(&dst[0], TO_DST(d));
-#elif NVECT == 2
-    DST_BLOCK_WRITE2(&dst[0], TO_DST2(d));
-#elif NVECT == 4
-    DST_BLOCK_WRITE4(&dst[0], TO_DST4(d));
-#elif NVECT == 8
-    DST_BLOCK_WRITE8(&dst[0], TO_DST8(d));
-#endif
+    block_write(dst, &d);
 
 #else // mixed_layout with no broadcast in src1
     int local_channel = get_sub_group_local_id();
@@ -506,13 +485,11 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
         float dst_data;
 
 #if IS_SRC0_BLOCKED
-        float tmp_src0
-                = CONVERT_FLOAT_T(src0[local_channel + sub_group_size * idx]);
-        float tmp_src1 = CONVERT_FLOAT_T(src1[idx]);
+        float tmp_src0 = into_float(src0[local_channel + sub_group_size * idx]);
+        float tmp_src1 = into_float(src1[idx]);
 #else // IS_SRC1_BLOCKED
-        float tmp_src0 = CONVERT_FLOAT_T(src0[idx]);
-        float tmp_src1
-                = CONVERT_FLOAT_T(src1[local_channel + sub_group_size * idx]);
+        float tmp_src0 = into_float(src0[idx]);
+        float tmp_src1 = into_float(src1[local_channel + sub_group_size * idx]);
 #endif
 #if WITH_SRC0_SCALE
         tmp_src0 = tmp_src0 * src0_scale[0];
@@ -524,8 +501,7 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
         d = binary_op(BINARY_ALG, tmp_src0, tmp_src1);
 
 #if WITH_SUM
-        dst_data = CONVERT_FLOAT_T(
-                DST_BLOCK_READ(&dst[local_channel + sub_group_size * idx]));
+        block_load(&dst_data, dst + local_channel + sub_group_size * idx);
 #endif
         const int po_mb = dims0[0];
         const int po_oc = dims0[1] + get_sub_group_local_id();
@@ -533,7 +509,7 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
                 dims0[4], dims0[5]);
         ++dims0[NDIMS - 1];
 
-        DST_BLOCK_WRITE(&dst[local_channel + sub_group_size * idx], TO_DST(d));
+        block_write(dst + local_channel + sub_group_size * idx, &d);
     }
 
 #endif // IS_SRC1_BRAODCAST

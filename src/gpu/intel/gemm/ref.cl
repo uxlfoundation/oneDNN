@@ -14,6 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "gpu/intel/include/io.h"
 #include "gpu/intel/include/post_ops.h"
 #include "gpu/intel/include/types.h"
 
@@ -108,8 +109,9 @@ __kernel void ref_gemm(__global A_DATA_T *a, __global B_DATA_T *b,
     for (long k = 0; k < K; ++k) {
         long off_a = mb * stride_a_mb + m * stride_a_m + k * stride_a_k;
         long off_b = mb * stride_b_mb + k * stride_b_k + n * stride_b_n;
-        acc += TO_ACC(A_TO_REF(a[off_a]) - ATTR_A0)
-                * TO_ACC(B_TO_REF(b[off_b]) - ATTR_B0);
+        ACC_DATA_T a_val = load(a_val, a, off_a);
+        ACC_DATA_T b_val = load(b_val, b, off_b);
+        acc += (a_val - (ACC_DATA_T)ATTR_A0) * (b_val - (ACC_DATA_T)ATTR_B0);
     }
 
     long off_c = mb * stride_c + n * ldc + m;
@@ -117,11 +119,11 @@ __kernel void ref_gemm(__global A_DATA_T *a, __global B_DATA_T *b,
     POST_OP_DATA_T temp = (POST_OP_DATA_T)acc;
 #if WITH_BIAS
     long off_bias = mb * b_strides[0] + m * b_strides[1] + n * b_strides[2];
-    temp += BIA_TO_REF(bias[off_bias]);
+    temp += CONCAT2(into_, POST_OP_DATA_T)(bias[off_bias]);
 #endif
 #if WITH_POST_OP
 #if WITH_SUM
-    temp += (POST_OP_DATA_T)(beta * C_TO_REF(c[off_c]));
+    temp += (POST_OP_DATA_T)(beta * CONCAT2(into_, POST_OP_DATA_T)(c[off_c]));
 #endif
     temp = fwd_eltwise(temp, eltwise_alpha, eltwise_beta, eltwise_scale);
 #endif
@@ -129,8 +131,8 @@ __kernel void ref_gemm(__global A_DATA_T *a, __global B_DATA_T *b,
     long off_c0 = mb * c0_strides[0] + m * c0_strides[1] + n * c0_strides[2];
     temp += c0[off_c0];
 #endif
-    c[off_c] = TO_C(temp);
+    write(c + off_c, temp);
 #else
-    c[off_c] = TO_C(acc);
+    write(c + off_c, acc);
 #endif
 }

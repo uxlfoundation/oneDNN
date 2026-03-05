@@ -14,6 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "gpu/intel/include/io.h"
 #include "gpu/intel/include/philox.h"
 #include "gpu/intel/include/post_ops.h"
 #include "gpu/intel/include/types.h"
@@ -180,26 +181,16 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
                 long wei_zp_off = wei_zp_stride_n * (n / wei_zp_group_n)
                         + wei_zp_stride_k * (k / wei_zp_group_k)
                         + wei_zp_stride_d0 * d0 + wei_zp_stride_d1 * d1;
-                wei_zp = WEI_ZP_TO_REF(b0, wei_zp_off);
+                wei_zp = load(wei_zp, b0, wei_zp_off);
 #endif
                 int src_zp = 0;
 #if WITH_SRC_ZPOINTS && !WITH_SRC_GROUP_SUMS
                 long src_zp_off = src_zp_stride_k * (k / src_zp_group_k)
                         + src_zp_stride_m * m;
-                src_zp = SRC_ZP_TO_REF(a0, src_zp_off);
+                src_zp = load(src_zp, a0, src_zp_off);
 #endif
-#if SRC_DT_F4_E2M1 || SRC_DT_F4_E3M0
-                ACC_DATA_T s = TO_ACC(
-                        SRC_TO_REF(GET_HALF_BYTE(A, src_off)) - src_zp);
-#else
-                ACC_DATA_T s = TO_ACC(SRC_TO_REF(A[src_off]) - src_zp);
-#endif
-#if WEI_DT_S4 || WEI_DT_U4 || WEI_DT_F4_E2M1 || WEI_DT_F4_E3M0
-                ACC_DATA_T w_raw = WEI_TO_REF(GET_HALF_BYTE(B, wei_off));
-#else
-                ACC_DATA_T w_raw = WEI_TO_REF(B[wei_off]);
-#endif
-                ACC_DATA_T w = TO_ACC(w_raw - wei_zp);
+                ACC_DATA_T s = load(s, A, src_off) - (ACC_DATA_T)src_zp;
+                ACC_DATA_T w = load(w, B, wei_off) - (ACC_DATA_T)wei_zp;
                 acc_g += s * w;
             }
 
@@ -209,16 +200,16 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
             long src_scale_off = src_scale_stride_m * (m / src_scale_group_m)
                     + src_scale_stride_k * (g * group_K / src_scale_group_k)
                     + src_scale_stride_d0 * d0 + src_scale_stride_d1 * d1;
-            src_scale = SRC_SCALES_TO_REF(src_scales[src_scale_off]);
+            src_scale = into_float(src_scales[src_scale_off]);
 #endif
 #if WITH_WEI_SCALES
             long wei_scale_off = wei_scale_stride_n * (n / wei_scale_group_n)
                     + wei_scale_stride_k * (g * group_K / wei_scale_group_k)
                     + wei_scale_stride_d0 * d0 + wei_scale_stride_d1 * d1;
-            wei_scale = WEI_SCALES_TO_REF(wei_scales[wei_scale_off]);
+            wei_scale = into_float(wei_scales[wei_scale_off]);
 #endif
             FLT_ACC_DATA_T acc_g_to_f
-                    = ACC_TO_REF(acc_g) * src_scale * wei_scale;
+                    = (FLT_ACC_DATA_T)acc_g * src_scale * wei_scale;
             acc += acc_g_to_f;
         }
 #if WITH_SRC_GROUP_SUMS
@@ -230,23 +221,23 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
             long src_scale_off = src_scale_stride_m * (m / wei_scale_group_n)
                     + src_scale_stride_k * src_scale_g
                     + src_scale_stride_d0 * d0 + src_scale_stride_d1 * d1;
-            src_scale = SRC_SCALES_TO_REF(src_scales[src_scale_off]);
+            src_scale = into_float(src_scales[src_scale_off]);
 #endif
 #if WITH_WEI_SCALES
             long wei_scale_g = g * src_gs_group_k / wei_scale_group_k;
             long wei_scale_off = wei_scale_stride_n * (n / wei_scale_group_n)
                     + wei_scale_stride_k * wei_scale_g
                     + wei_scale_stride_d0 * d0 + wei_scale_stride_d1 * d1;
-            wei_scale = WEI_SCALES_TO_REF(wei_scales[wei_scale_off]);
+            wei_scale = into_float(wei_scales[wei_scale_off]);
 #endif
             long src_gs_off = src_gs_stride_m * m + src_gs_stride_k * g
                     + src_gs_stride_d0 * d0 + src_gs_stride_d1 * d1;
-            int src_gs = SRC_ZP_TO_REF(ag, src_gs_off);
+            int src_gs = load(src_gs, ag, src_gs_off);
             long wei_zp_off = wei_zp_stride_n * (n / wei_zp_group_n)
                     + wei_zp_stride_k * (g * src_gs_group_k / wei_zp_group_k)
                     + wei_zp_stride_d0 * d0 + wei_zp_stride_d1 * d1;
-            int wei_zp = WEI_ZP_TO_REF(b0, wei_zp_off);
-            acc -= src_scale * wei_scale * TO_ACC(src_gs) * TO_ACC(wei_zp);
+            int wei_zp = load(wei_zp, b0, wei_zp_off);
+            acc -= src_scale * wei_scale * src_gs * wei_zp;
         }
 #endif
 #if RUNTIME_DIMS
@@ -270,12 +261,12 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
         long bia_off = offset6D(m, n, d0, d1, d2, d3, bia_stride_m,
                 bia_stride_n, bia_stride_d0, bia_stride_d1, bia_stride_d2,
                 bia_stride_d3);
-        temp += BIA_TO_REF(bia[bia_off]);
+        temp += load(temp, bia, bia_off);
 #endif // WITH_BIAS
 
         POST_OP_DATA_T dst_data;
 #if WITH_SUM
-        dst_data = (POST_OP_DATA_T)DATA_TO_REF(C[dst_off]);
+        dst_data = load(dst_data, C, dst_off);
 #endif // WITH_SUM
 
         POST_OP_DATA_T po_acc = temp;
@@ -311,9 +302,9 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
 
 #if WITH_DST_SCALES
 #if DST_SCALES_MASK == 0
-        po_acc /= DST_SCALES_TO_REF(dst_scales[0]);
+        po_acc /= into_float(dst_scales[0]);
 #elif WITH_DYN_DST_SCALE == 0
-        po_acc /= DST_SCALES_TO_REF(dst_scales[n]);
+        po_acc /= into_float(dst_scales[n]);
 #endif
 #endif
         po_acc += dst_zp;
@@ -321,13 +312,13 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
 #if WITH_DYN_DST_SCALE
         ((__global ACC_DATA_T *)C)[dst_off] = po_acc;
 #else
-        C[dst_off] = TO_DST(po_acc);
+        write(C + dst_off, po_acc);
 #endif
 #else // WITH_BIAS || NON_DEFAULT_ATTRS
 #if WITH_DYN_DST_SCALE
         ((__global ACC_DATA_T *)C)[dst_off] = acc;
 #else
-        C[dst_off] = TO_DST(acc);
+        write(C + dst_off, acc);
 #endif
 #endif // WITH_BIAS || NON_DEFAULT_ATTRS
     }

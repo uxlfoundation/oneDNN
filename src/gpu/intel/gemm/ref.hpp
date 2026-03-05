@@ -42,13 +42,13 @@ struct ref_jit_params_t : public trivially_serializable_t<ref_jit_params_t> {
 
     compute::kernel_ctx_t get_kernel_ctx() const {
         compute::kernel_ctx_t kernel_ctx;
-        kernel_ctx.set_data_type(c_dt);
+        kernel_ctx.set_data_type(c_dt, /*with_punning=*/false);
         kernel_ctx.require_stateless_addressing(require_stateless_addressing);
-        def_data_type(kernel_ctx, a_dt, "A");
-        def_data_type(kernel_ctx, b_dt, "B");
-        def_data_type(kernel_ctx, c_dt, "C");
-        def_data_type(kernel_ctx, bia_dt, "BIA");
-        def_data_type(kernel_ctx, acc_dt, "ACC");
+        def_data_type(kernel_ctx, a_dt, "A", /*with_punning=*/false);
+        def_data_type(kernel_ctx, b_dt, "B", /*with_punning=*/false);
+        def_data_type(kernel_ctx, c_dt, "C", /*with_punning=*/false);
+        def_data_type(kernel_ctx, bia_dt, "BIA", /*with_punning=*/false);
+        def_data_type(kernel_ctx, acc_dt, "ACC", /*with_punning=*/false);
 
         kernel_ctx.define_int("WITH_BIAS", bia_dt != data_type::undef);
         kernel_ctx.define_int("NON_DEFAULT_ATTRS",

@@ -260,9 +260,10 @@ struct ref_t : public primitive_t {
         kernel_ctx.define_int("DST_DT_DIGITS",
                 dnnl::impl::types::digits<uint32_t>(pd()->dst_dt_));
 
-        kernel_ctx.set_data_type(pd()->dst_dt_);
+        kernel_ctx.set_data_type(pd()->dst_dt_, /*with_punning=*/false);
         CHECK(def_attr_info(kernel_ctx, pd()->attr_info_,
-                pd()->attr()->post_ops_, *pd()->dst_md()));
+                pd()->attr()->post_ops_, *pd()->dst_md(),
+                /*with_punning=*/false));
         kernel_ctx.require_stateless_addressing(pd()->has_large_buffers());
 
         if (!pd()->attr()->precomputed_reductions_.has_default_values(
@@ -288,10 +289,10 @@ struct ref_t : public primitive_t {
         }
         kernel_ctx.define_int("RUNTIME_DIMS", runtime_dims);
 
-        def_data_type(kernel_ctx, pd()->src_dt_, "SRC");
-        def_data_type(kernel_ctx, pd()->wei_dt_, "WEI");
-        def_data_type(kernel_ctx, pd()->dst_dt_, "DST");
-        def_data_type(kernel_ctx, pd()->bia_dt_, "BIA");
+        def_data_type(kernel_ctx, pd()->src_dt_, "SRC", /*with_punning=*/false);
+        def_data_type(kernel_ctx, pd()->wei_dt_, "WEI", /*with_punning=*/false);
+        def_data_type(kernel_ctx, pd()->dst_dt_, "DST", /*with_punning=*/false);
+        def_data_type(kernel_ctx, pd()->bia_dt_, "BIA", /*with_punning=*/false);
         data_type_t acc_type = pd()->desc()->accum_data_type;
         data_type_t seed_type = pd()->attr()->dropout_.seed_dt_;
         switch (pd()->attr()->acc_mode_) {
@@ -303,27 +304,27 @@ struct ref_t : public primitive_t {
             case accumulation_mode::s32: acc_type = data_type::s32; break;
             default: break;
         }
-        def_data_type(kernel_ctx, acc_type, "ACC");
-        def_data_type(kernel_ctx, seed_type, "SEED");
+        def_data_type(kernel_ctx, acc_type, "ACC", /*with_punning=*/false);
+        def_data_type(kernel_ctx, seed_type, "SEED", /*with_punning=*/false);
         def_data_type(kernel_ctx,
                 pd()->attr()->scales_.get_data_type(DNNL_ARG_WEIGHTS),
-                "WEI_SCALES");
+                "WEI_SCALES", /*with_punning=*/false);
         def_data_type(kernel_ctx,
                 pd()->attr()->zero_points_.get_data_type(DNNL_ARG_WEIGHTS),
-                "WEI_ZP");
+                "WEI_ZP", /*with_punning=*/false);
         def_data_type(kernel_ctx,
-                pd()->attr()->scales_.get_data_type(DNNL_ARG_SRC),
-                "SRC_SCALES");
+                pd()->attr()->scales_.get_data_type(DNNL_ARG_SRC), "SRC_SCALES",
+                /*with_punning=*/false);
         def_data_type(kernel_ctx,
                 pd()->attr()->zero_points_.get_data_type(DNNL_ARG_SRC),
-                "SRC_ZP");
+                "SRC_ZP", /*with_punning=*/false);
         def_data_type(kernel_ctx,
                 pd()->attr()->precomputed_reductions_.get_data_type(
                         DNNL_ARG_SRC),
-                "SRC_GS");
+                "SRC_GS", /*with_punning=*/false);
         def_data_type(kernel_ctx,
-                pd()->attr()->scales_.get_data_type(DNNL_ARG_DST),
-                "DST_SCALES");
+                pd()->attr()->scales_.get_data_type(DNNL_ARG_DST), "DST_SCALES",
+                /*with_punning=*/false);
         CHECK(create_kernel(engine, &kernels_[0], "ref_matmul", kernel_ctx));
         if (pd()->dynamic_scales_)
             CHECK(create_kernel(

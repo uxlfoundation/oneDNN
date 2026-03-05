@@ -126,12 +126,13 @@ struct ref_grouped_t : public primitive_t {
     status_t init(impl::engine_t *engine) override {
         compute::kernel_ctx_t kernel_ctx;
 
-        kernel_ctx.set_data_type(pd()->dst_dt_);
+        kernel_ctx.set_data_type(pd()->dst_dt_, /*with_punning=*/false);
 
-        def_data_type(kernel_ctx, pd()->src_dt_, "SRC");
-        def_data_type(kernel_ctx, pd()->wei_dt_, "WEI");
-        def_data_type(kernel_ctx, pd()->dst_dt_, "DST");
-        def_data_type(kernel_ctx, pd()->desc()->accum_data_type, "ACC");
+        def_data_type(kernel_ctx, pd()->src_dt_, "SRC", /*with_punning=*/false);
+        def_data_type(kernel_ctx, pd()->wei_dt_, "WEI", /*with_punning=*/false);
+        def_data_type(kernel_ctx, pd()->dst_dt_, "DST", /*with_punning=*/false);
+        def_data_type(kernel_ctx, pd()->desc()->accum_data_type, "ACC",
+                /*with_punning=*/false);
 
         kernel_ctx.define_int("K", pd()->src_md()->dims[1]);
         kernel_ctx.define_int("N", pd()->weights_md(0)->dims[2]);
@@ -145,7 +146,8 @@ struct ref_grouped_t : public primitive_t {
         const bool with_bias = pd()->with_bias();
         kernel_ctx.define_int("WITH_BIAS", with_bias ? 1 : 0);
         if (with_bias) {
-            def_data_type(kernel_ctx, pd()->weights_md(1)->data_type, "BIA");
+            def_data_type(kernel_ctx, pd()->weights_md(1)->data_type, "BIA",
+                    /*with_punning=*/false);
         }
 
         const auto &attr_scales = pd()->attr()->scales_;

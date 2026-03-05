@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/include/dispatch.h"
+#include "gpu/intel/include/io.h"
 #include "gpu/intel/include/post_ops.h"
 #include "gpu/intel/include/types.h"
 
@@ -44,7 +45,7 @@ __kernel void ref_inner_product_fwd(__global SRC_DATA_T *src,
         const off_t src_off = mb * IC_TOTAL + ic;
         const off_t wei_off = oc * IC_TOTAL + ic;
 #endif
-                    d += SRC_TO_REF(src[src_off]) * WEI_TO_REF(wei[wei_off]);
+                    d += into_float(src[src_off]) * into_float(wei[wei_off]);
                 }
     DATA_T tmp = d;
 #if WITH_SRC_SCALES
@@ -59,12 +60,12 @@ __kernel void ref_inner_product_fwd(__global SRC_DATA_T *src,
 #endif
 
 #if WITH_BIAS
-    tmp += BIA_TO_REF(bias[oc]);
+    tmp += into_float(bias[oc]);
 #endif
 
     float dest_data;
 #if WITH_SUM
-    dest_data = DST_TO_REF(dst[mb * OC + oc]);
+    dest_data = into_float(dst[mb * OC + oc]);
 #endif
 
     APPLY_POST_OPS_SERIAL(tmp, dest_data, mb, oc, 0, 0, 0, 0);
@@ -73,7 +74,7 @@ __kernel void ref_inner_product_fwd(__global SRC_DATA_T *src,
     tmp /= dst_scales[0];
 #endif
 
-    dst[mb * OC + oc] = TO_DST(tmp);
+    write(dst + mb * OC + oc, tmp);
 }
 #endif
 
@@ -92,10 +93,10 @@ __kernel void ref_inner_product_bwd_data(__global SRC_DATA_T *diff_src,
     for (off_t oc = 0; oc < OC; ++oc) {
         const off_t diff_dst_off = DST_OFF(mb, oc, 0, 0, 0);
         const off_t wei_off = WEI_OFF(0, oc, ic, kd, kh, kw);
-        ds += DST_TO_REF(diff_dst[diff_dst_off]) * WEI_TO_REF(wei[wei_off]);
+        ds += into_float(diff_dst[diff_dst_off]) * into_float(wei[wei_off]);
     }
     const off_t diff_src_off = SRC_OFF(mb, ic, kd, kh, kw);
-    diff_src[diff_src_off] = REF_TO_SRC(ds);
+    write(diff_src + diff_src_off, ds);
 }
 #endif
 
@@ -115,18 +116,18 @@ __kernel void ref_inner_product_bwd_weights(__global SRC_DATA_T *src,
     for (off_t mb = 0; mb < MB; ++mb) {
         const off_t diff_dst_off = DST_OFF(mb, oc, 0, 0, 0);
         const off_t src_off = SRC_OFF(mb, ic, kd, kh, kw);
-        ds += DST_TO_REF(diff_dst[diff_dst_off]) * SRC_TO_REF(src[src_off]);
+        ds += into_float(diff_dst[diff_dst_off]) * into_float(src[src_off]);
     }
     const off_t diff_wei_off = WEI_OFF(0, oc, ic, kd, kh, kw);
-    diff_wei[diff_wei_off] = REF_TO_WEI(ds);
+    write(diff_wei + diff_wei_off, ds);
 #if WITH_BIAS == 1
     if (ic == 0) {
         float db = 0.0f;
         for (off_t mb = 0; mb < MB; ++mb) {
             const off_t diff_dst_off = DST_OFF(mb, oc, 0, 0, 0);
-            db += DST_TO_REF(diff_dst[diff_dst_off]);
+            db += into_float(diff_dst[diff_dst_off]);
         }
-        diff_bias[oc] = REF_TO_BIA(db);
+        write(diff_bias + oc, db);
     }
 #endif
 }

@@ -14,6 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "gpu/intel/include/io.h"
 #include "gpu/intel/include/post_ops.h"
 #include "gpu/intel/include/types.h"
 
@@ -26,17 +27,17 @@ __kernel void ref_sparse_matmul(__global const SRC_DATA_T *A_values,
 
     // initialize dense destination tensor
     dim_t dst_off = DST_OFF(m, n, 0, 0, 0);
-    float accum = 0.0f;
+    ACC_DATA_T accum = 0;
 
     for (dim_t idx = 0; idx < nnz; idx++) {
         int a_row = A_rows[idx];
         if (a_row == m) {
             int a_col = A_cols[idx];
-            float val = SRC_TO_REF(A_values[idx]);
+            ACC_DATA_T val = CONCAT2(into_, ACC_DATA_T)(A_values[idx]);
             dim_t wei_off = WEI_OFF(0, a_col, n, 0, 0, 0);
-            accum += val * WEI_TO_REF(B[wei_off]);
+            accum += val * CONCAT2(into_, ACC_DATA_T)(B[wei_off]);
         }
     }
 
-    C[dst_off] = TO_DST(accum);
+    write(C + dst_off, accum);
 }

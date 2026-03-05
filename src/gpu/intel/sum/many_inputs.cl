@@ -14,7 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/include/types.h"
+#include "gpu/intel/include/io.h"
 
 #define INIT_N_INPUTS(i) \
     if (i < N_INPUTS) inputs[i] = input##i;
@@ -23,7 +23,7 @@
 
 float get_value(__global SRC_DATA_T *src, ptrdiff_t offset) {
     if (offset >= N_ELEMS) return 0;
-    return CONVERT_FLOAT_T(src[offset]);
+    return load((float)0, src, offset);
 }
 #define many_inputs_sum_impl(inputs, output, scales, num_inputs, local_val) \
     const uint group_id = get_group_id(0); \
@@ -40,7 +40,7 @@ float get_value(__global SRC_DATA_T *src, ptrdiff_t offset) {
         for (int i = 0; i < num_inputs; i++) { \
             final_val += local_val[local_id + i]; \
         } \
-        output[offset] = TO_DST(final_val + CONVERT_FLOAT_T(output[offset])); \
+        write(output + offset, final_val + load((float)0, output, offset)); \
     }
 
 __kernel void many_inputs_sum(__global SRC_DATA_T *input0,

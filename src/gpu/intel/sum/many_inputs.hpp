@@ -61,7 +61,7 @@ struct many_inputs_t : public primitive_t {
         const memory_desc_wrapper data_d(pd()->dst_md());
         const memory_desc_wrapper data_s(pd()->src_md());
 
-        kernel_ctx.set_data_type(data_s.data_type());
+        kernel_ctx.set_data_type(data_s.data_type(), /*with_punning=*/false);
         kernel_ctx.require_stateless_addressing(pd()->has_large_buffers());
 
         kernel_ctx.define_int("N_ELEMS", data_d.nelems(true));
@@ -72,10 +72,10 @@ struct many_inputs_t : public primitive_t {
         kernel_ctx.define_int("N_INPUTS", N_INPUTS);
         kernel_ctx.define_int("MAX_N_INPUTS", max_num_arrs);
 
-        def_memory_desc_info(
-                kernel_ctx, memory_desc_info_t::create(data_d), "SRC");
-        def_memory_desc_info(
-                kernel_ctx, memory_desc_info_t::create(data_s), "DST");
+        def_memory_desc_info(kernel_ctx, memory_desc_info_t::create(data_s),
+                "SRC", /*with_punning=*/false);
+        def_memory_desc_info(kernel_ctx, memory_desc_info_t::create(data_d),
+                "DST", /*with_punning=*/false);
 
         std::vector<compute::kernel_t> kernels;
         std::vector<const char *> kernel_names;

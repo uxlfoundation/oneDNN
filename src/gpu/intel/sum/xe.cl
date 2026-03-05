@@ -13,76 +13,18 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
-#if DST_DT_S8
-#define DST_BLOCK_READ8(src) \
-    as_char8(intel_sub_group_block_read_uc8((const __global uchar *)(src)))
-#define DST_BLOCK_WRITE8(dst, val) \
-    intel_sub_group_block_write_uc8((__global uchar *)(dst), as_uchar8(val))
-#endif // DST_DT_S8
-
-#if DST_DT_U8
-#define DST_BLOCK_READ8(src) \
-    as_uchar8(intel_sub_group_block_read_uc8((const __global uchar *)(src)))
-#define DST_BLOCK_WRITE8(dst, val) \
-    intel_sub_group_block_write_uc8((__global uchar *)(dst), as_uchar8(val))
-#endif // SRC_DT_U8
-
-#if DST_DT_BF8
-#define DST_BLOCK_READ8(src) \
-    as_char8(intel_sub_group_block_read_uc8((const __global uchar *)(src)))
-#define DST_BLOCK_WRITE8(dst, val) \
-    intel_sub_group_block_write_uc8((__global uchar *)(dst), as_uchar8(val))
-#endif // DST_DT_BF8
-
-#if DST_DT_HF8
-#define DST_BLOCK_READ8(src) \
-    as_char8(intel_sub_group_block_read_uc8((const __global uchar *)(src)))
-#define DST_BLOCK_WRITE8(dst, val) \
-    intel_sub_group_block_write_uc8((__global uchar *)(dst), as_uchar8(val))
-#endif // DST_DT_HF8
-
-#if DST_DT_F16
-#define DST_BLOCK_READ8(src) \
-    as_half8(intel_sub_group_block_read_us8((const __global ushort *)(src)))
-#define DST_BLOCK_WRITE8(dst, val) \
-    intel_sub_group_block_write_us8((__global ushort *)(dst), as_ushort8(val))
-#endif // DST_DT_F16
-
-#if DST_DT_S32
-#define DST_BLOCK_READ8(src) \
-    as_int8(intel_sub_group_block_read8((const __global uint *)(src)))
-#define DST_BLOCK_WRITE8(dst, val) \
-    intel_sub_group_block_write8((__global uint *)(dst), as_uint8(val))
-#endif // DST_DT_S32
-
-#if DST_DT_F32
-#define DST_BLOCK_READ8(src) \
-    as_float8(intel_sub_group_block_read8((const __global uint *)(src)))
-#define DST_BLOCK_WRITE8(dst, val) \
-    intel_sub_group_block_write8((__global uint *)(dst), as_uint8(val))
-#endif // DST_DT_F32
-
-#if DST_DT_BF16
-#define DST_BLOCK_READ8(src) \
-    as_ushort8(intel_sub_group_block_read_us8((const __global ushort *)(src)))
-#define DST_BLOCK_WRITE8(dst, val) \
-    intel_sub_group_block_write_us8((__global ushort *)(dst), as_ushort8(val))
-#endif // SRC_DT_F16
-
-#include "gpu/intel/include/types.h"
+#include "gpu/intel/include/io.h"
 
 float8 get_values(__global SRC_DATA_T *src, ptrdiff_t offset) {
-    float8 val;
+    float8 val = 0;
     const uint max_sub_group_size = get_max_sub_group_size();
-    __global BLOCK_DATA_T *read_pos = (__global BLOCK_DATA_T *)src + offset;
-
     if (offset + VECT_DT_N * max_sub_group_size < N_ELEMS) {
-        val = CONVERT_FLOAT8_T(AS_DATA8_T(BLOCK_READ8(read_pos)));
+        val = block_load(val, src + offset);
     } else {
         const uint sub_group_local_id = get_sub_group_local_id();
         uint pos = offset + sub_group_local_id;
         for (uint i = 0; pos < N_ELEMS && i < VECT_DT_N; i++) {
-            val[i] = CONVERT_FLOAT_T(src[pos]);
+            val[i] = load(val[i], src, pos);
             pos += max_sub_group_size;
         }
     }
@@ -109,8 +51,6 @@ __kernel void xe_sum(__global SRC_DATA_T *input0, __global SRC_DATA_T *input1,
             = (group_id * group_size + sub_group_id * max_sub_group_size)
             * VECT_DT_N;
 
-    __global BLOCK_DATA_T *write_pos = (__global BLOCK_DATA_T *)output + offset;
-
     int id = 0;
     float8 sum = 0;
     if (id < N_INPUTS) sum += get_values(input0, offset) * scales[id++];
@@ -131,11 +71,11 @@ __kernel void xe_sum(__global SRC_DATA_T *input0, __global SRC_DATA_T *input1,
     if (id < N_INPUTS) sum += get_values(input15, offset) * scales[id++];
 
     if (offset + VECT_DT_N * max_sub_group_size < N_ELEMS) {
-        DST_BLOCK_WRITE8(write_pos, TO_DST8(sum));
+        block_write(output + offset, &sum);
     } else {
         uint pos = offset + sub_group_local_id;
         for (uint i = 0; pos < N_ELEMS && i < VECT_DT_N; i++) {
-            output[pos] = TO_DST(sum[i]);
+            write(output + pos, sum[i]);
             pos += max_sub_group_size;
         }
     }

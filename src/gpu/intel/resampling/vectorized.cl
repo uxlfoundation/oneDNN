@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/include/dispatch.h"
+#include "gpu/intel/include/io.h"
 #include "gpu/intel/include/post_ops.h"
 #include "gpu/intel/include/types.h"
 
@@ -57,7 +58,7 @@ __kernel void vectorized_resampling_bwd(
     const uint iw = (get_global_id(0) / IW_STRIDE) % IW;
     const uint src_index = SRC_OFF(mb, c_start, id, ih, iw);
 
-    VECT_DEF_ACC_DATA_T src_val = 0.0f;
+    VECT_N(DEF_ACC_DATA_T) src_val = 0.0f;
 
 #if RESAMPLING_ALG_NEAREST
     if (mb >= MB || c >= C) return;
@@ -73,11 +74,11 @@ __kernel void vectorized_resampling_bwd(
     for (int k = ow_start; k < ow_end; k++) {
         const int dst_index = DST_OFF(mb, c_start, i, j, k);
 #if VECT_DT_N == 1
-        src_val += AS_VECT_DEF_ACC_DATA_T(diff_dst[dst_index + sglid]);
+        src_val += load(src_val, diff_dst, dst_index + sglid);
 #else
         for (int i = 0; i < VECT_DT_N && c + GWS_SGS_DEFAULT * i < C; i++) {
-            src_val[i] += TO_DEF_ACC_DATA_T(
-                    diff_dst[dst_index + sglid + GWS_SGS_DEFAULT * i]);
+            src_val[i] += load(src_val[i], diff_dst,
+                    dst_index + sglid + GWS_SGS_DEFAULT * i);
         }
 #endif
     }
@@ -236,15 +237,15 @@ __kernel void vectorized_resampling_bwd(
                                k < MAX_NUM_W && ow < ow_end[c3]; k++, ow++) {
                 const uint dst_off = h_off + OW_STRIDE(ow);
 #if VECT_DT_N == 1
-                VECT_DEF_ACC_DATA_T dst_val
-                        = AS_VECT_DEF_ACC_DATA_T(diff_dst[dst_off + sglid]);
+                VECT_N(DEF_ACC_DATA_T)
+                dst_val = load(dst_val, diff_dst, dst_off + sglid);
 #else
-                VECT_DEF_ACC_DATA_T dst_val = 0;
+                VECT_N(DEF_ACC_DATA_T) dst_val = 0;
                 for (int idx = 0;
                         idx < VECT_DT_N && c + GWS_SGS_DEFAULT * idx < C;
                         idx++) {
-                    dst_val[idx] = TO_DEF_ACC_DATA_T(
-                            diff_dst[dst_off + sglid + GWS_SGS_DEFAULT * idx]);
+                    dst_val[idx] = load(dst_val[idx], diff_dst,
+                            dst_off + sglid + GWS_SGS_DEFAULT * idx);
                 }
 #endif
                 float Wiw = w_list[c3][k];
@@ -255,10 +256,10 @@ __kernel void vectorized_resampling_bwd(
 #endif
 
 #if VECT_DT_N == 1
-    diff_src[src_index + sglid] = TO_DST(src_val);
+    write(diff_src + src_index + sglid, src_val);
 #else
     for (int i = 0; i < VECT_DT_N && c + GWS_SGS_DEFAULT * i < C; i++) {
-        diff_src[src_index + sglid + GWS_SGS_DEFAULT * i] = TO_DST(src_val[i]);
+        write(diff_src + src_index + sglid + GWS_SGS_DEFAULT * i, src_val[i]);
     }
 #endif
 }

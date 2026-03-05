@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/include/dispatch.h"
+#include "gpu/intel/include/io.h"
 #include "gpu/intel/include/post_ops.h"
 #include "gpu/intel/include/types.h"
 
@@ -35,13 +36,13 @@ __kernel void ref_resampling_fwd(
     const uint dst_index = DST_OFF(mb, c, od, oh, ow);
 
     if (mb >= DST_D0 || c >= DST_D1) {
-        dst[dst_index] = TO_DST(0.0f);
+        write(dst + dst_index, 0.0f);
         return;
     }
 
 #if RESAMPLING_ALG_NEAREST
     const uint src_index = SRC_OFF(mb, c, (uint)id, (uint)ih, (uint)iw);
-    result = CONVERT_FLOAT_T(src[src_index]);
+    result = into_float(src[src_index]);
 #else
     const int id0 = max((int)floor(id - .5f), 0);
     const int id1 = min((int)ceil(id - .5f), ID - 1);
@@ -60,11 +61,9 @@ __kernel void ref_resampling_fwd(
     float cd[2][2];
     for_(int i = 0; i < 2; i++)
     for (int j = 0; j < 2; j++)
-        cd[i][j] = CONVERT_FLOAT_T(
-                           src[SRC_OFF(mb, c, id0, ih_arr[i], iw_arr[j])])
+        cd[i][j] = into_float(src[SRC_OFF(mb, c, id0, ih_arr[i], iw_arr[j])])
                         * wd[0]
-                + CONVERT_FLOAT_T(
-                          src[SRC_OFF(mb, c, id1, ih_arr[i], iw_arr[j])])
+                + into_float(src[SRC_OFF(mb, c, id1, ih_arr[i], iw_arr[j])])
                         * wd[1];
     float ch[2];
     for (int i = 0; i < 2; i++)
@@ -76,7 +75,7 @@ __kernel void ref_resampling_fwd(
 
     float sum_src;
 #if WITH_SUM
-    sum_src = DST_TO_REF(dst[dst_index]);
+    sum_src = into_float(dst[dst_index]);
 #endif
 #if NDIMS == 3
     const unsigned po_d2 = ow;
@@ -96,7 +95,7 @@ __kernel void ref_resampling_fwd(
     const unsigned po_d4 = 0;
 #endif
     APPLY_POST_OPS_SERIAL(result, sum_src, mb, c, po_d2, po_d3, po_d4, 0);
-    dst[dst_index] = TO_DST(result);
+    write(dst + dst_index, result);
 }
 #endif
 #if IS_BWD == 1
@@ -122,7 +121,7 @@ __kernel void ref_resampling_bwd(
     const uint src_index = SRC_OFF(mb, c, id, ih, iw);
 
     if (mb >= DST_D0 || c >= DST_D1) {
-        diff_src[src_index] = TO_DST(0.f);
+        write(diff_src + src_index, 0.f);
         return;
     }
 #if RESAMPLING_ALG_NEAREST
@@ -137,7 +136,7 @@ __kernel void ref_resampling_bwd(
         for (int j = oh_start; j < oh_end; j++) {
             for (int k = ow_start; k < ow_end; k++) {
                 const int dst_index = DST_OFF(mb, c, i, j, k);
-                src_val += DST_TO_REF(diff_dst[dst_index]);
+                src_val += into_float(diff_dst[dst_index]);
             }
         }
     }
@@ -167,7 +166,7 @@ __kernel void ref_resampling_bwd(
                 for (int i = od_start[c1]; i < od_end[c1]; i++) {
                     for (int j = oh_start[c2]; j < oh_end[c2]; j++) {
                         for (int k = ow_start[c3]; k < ow_end[c3]; k++) {
-                            float dst_val = DST_TO_REF(
+                            float dst_val = into_float(
                                     diff_dst[DST_OFF(mb, c, i, j, k)]);
                             float d = L(i, ID, OD);
                             float h = L(j, IH, OH);
@@ -186,10 +185,6 @@ __kernel void ref_resampling_bwd(
         }
     }
 #endif
-#if DT_S32 == 1
-    diff_src[src_index] = CONVERT_DATA_T(src_val);
-#else // #if DT_S32 == 1
-    diff_src[src_index] = TO_DATA_T(src_val);
-#endif // #else // #if DT_S32 == 1
+    write(diff_src + src_index, src_val);
 }
 #endif

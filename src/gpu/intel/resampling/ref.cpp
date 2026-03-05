@@ -98,18 +98,20 @@ status_t ref_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
 
 status_t ref_fwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
-    kernel_ctx.set_data_type(src_md()->data_type);
+    kernel_ctx.set_data_type(src_md()->data_type, /*with_punning=*/false);
     kernel_ctx.require_stateless_addressing(has_large_buffers());
     kernel_ctx.define_int("IS_FWD", 1);
 
     status_t status = init_kernel_ctx_common(kernel_ctx, conf, desc());
 
-    def_data_type(kernel_ctx, src_md()->data_type, "SRC");
-    def_data_type(kernel_ctx, dst_md()->data_type, "DST");
+    def_data_type(
+            kernel_ctx, src_md()->data_type, "SRC", /*with_punning=*/false);
+    def_data_type(
+            kernel_ctx, dst_md()->data_type, "DST", /*with_punning=*/false);
 
     // Set post-op variables
     CHECK(def_attr_info(kernel_ctx, conf.attr_info, attr()->post_ops_,
-            *invariant_dst_md()));
+            *invariant_dst_md(), /*with_punning=*/false));
 
     return status;
 }
@@ -174,14 +176,16 @@ status_t ref_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
 
 status_t ref_bwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
-    kernel_ctx.set_data_type(diff_src_md()->data_type);
+    kernel_ctx.set_data_type(diff_src_md()->data_type, /*with_punning=*/false);
     kernel_ctx.require_stateless_addressing(has_large_buffers());
     kernel_ctx.define_int("IS_BWD", 1);
 
     status_t status = init_kernel_ctx_common(kernel_ctx, conf, desc());
 
-    def_data_type(kernel_ctx, diff_src_md()->data_type, "SRC");
-    def_data_type(kernel_ctx, diff_dst_md()->data_type, "DST");
+    def_data_type(kernel_ctx, diff_src_md()->data_type, "SRC",
+            /*with_punning=*/false);
+    def_data_type(kernel_ctx, diff_dst_md()->data_type, "DST",
+            /*with_punning=*/false);
 
     return status;
 }

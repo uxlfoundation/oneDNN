@@ -82,12 +82,13 @@ struct with_post_ops_t : public primitive_t {
             dnnl_memory_desc dst_md(*(pd()->dst_md(0)));
             dst_md.data_type = pd()->dst_type_;
             memory_desc_wrapper dst_d(dst_md);
-            def_memory_desc_info(alt_ctx, src_info, "SRC", false);
             def_memory_desc_info(
-                    alt_ctx, memory_desc_info_t::create(dst_d), "DST", false);
+                    alt_ctx, src_info, "SRC", /*with_punning=*/false);
+            def_memory_desc_info(alt_ctx, memory_desc_info_t::create(dst_d),
+                    "DST", /*with_punning=*/false);
             def_data_type(alt_ctx,
                     pd()->attr()->scales_.get_data_type(DNNL_ARG_DST),
-                    "DST_SCALES", false);
+                    "DST_SCALES", /*with_punning=*/false);
             const int ndims = dst_d.ndims();
             bool runtime_dims
                     = pd()->has_runtime_dims_or_strides() || ndims > 5;

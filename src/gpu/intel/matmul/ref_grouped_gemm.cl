@@ -14,6 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "gpu/intel/include/io.h"
 #include "gpu/intel/include/types.h"
 
 // Grouped GEMM OCL reference kernel
@@ -99,8 +100,8 @@ __kernel void ref_grouped_gemm_matmul(
 #else
         const long wei_idx = (long)k * N + n;
 #endif
-        ACC_DATA_T src_val = SRC_TO_REF(src_group[src_idx]);
-        ACC_DATA_T wei_val = WEI_TO_REF(wei_group[wei_idx]);
+        ACC_DATA_T src_val = CONCAT2(into_, ACC_DATA_T)(src_group[src_idx]);
+        ACC_DATA_T wei_val = CONCAT2(into_, ACC_DATA_T)(wei_group[wei_idx]);
         acc += src_val * wei_val;
     }
 
@@ -120,10 +121,10 @@ __kernel void ref_grouped_gemm_matmul(
 
 #if WITH_BIAS
     const long bias_idx = (long)group_id * N + n;
-    acc += BIA_TO_REF(bias[bias_idx]);
+    acc += CONCAT2(into_, ACC_DATA_T)(bias[bias_idx]);
 #endif
 
     const long out_idx = (long)m * N + n;
 
-    dst_group[out_idx] = REF_TO_DST(acc);
+    write(dst_group + out_idx, acc);
 }

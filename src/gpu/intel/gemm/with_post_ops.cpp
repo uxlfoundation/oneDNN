@@ -213,21 +213,22 @@ status_t with_post_ops_t::pd_t::init_kernel_ctx(
         return info;
     }();
 
-    def_memory_desc_info(kernel_ctx, src_info, "SRC", false);
-    def_memory_desc_info(kernel_ctx, bias_info, "BIAS", false);
+    def_memory_desc_info(kernel_ctx, src_info, "SRC", /*with_punning=*/false);
+    def_memory_desc_info(kernel_ctx, bias_info, "BIAS", /*with_punning=*/false);
     if (dynamic_scales_) {
         dnnl_memory_desc d_md(*dst_md(0));
         d_md.data_type = acc_type_;
         memory_desc_wrapper d_mdw(d_md);
-        def_memory_desc_info(
-                kernel_ctx, memory_desc_info_t::create(d_mdw), "DST", false);
+        def_memory_desc_info(kernel_ctx, memory_desc_info_t::create(d_mdw),
+                "DST", /*with_punning=*/false);
     } else {
         def_memory_desc_info(kernel_ctx, memory_desc_info_t::create(dst_md(0)),
-                "DST", false);
+                "DST", /*with_punning=*/false);
     }
 
     int ndims = src_info.ndims;
-    kernel_ctx.set_data_type(dynamic_scales_ ? acc_type_ : c_type);
+    kernel_ctx.set_data_type(
+            dynamic_scales_ ? acc_type_ : c_type, /*with_punning=*/false);
     kernel_ctx.require_stateless_addressing(has_large_buffers());
 
     const auto &attr_scales = attr()->scales_;
@@ -246,11 +247,11 @@ status_t with_post_ops_t::pd_t::init_kernel_ctx(
             acc_type = data_type::f32;
         }
     }
-    def_data_type(kernel_ctx, acc_type, "ACC");
+    def_data_type(kernel_ctx, acc_type, "ACC", /*with_punning=*/false);
 
     kernel_ctx.define_int("NDIMS", ndims);
-    CHECK(def_attr_info(
-            kernel_ctx, attr_info_, attr()->post_ops_, *pd_->dst_md(), false));
+    CHECK(def_attr_info(kernel_ctx, attr_info_, attr()->post_ops_,
+            *pd_->dst_md(), /*with_punning=*/false));
     kernel_ctx.define_int("A_SCALES", with_src_scales);
     kernel_ctx.define_int("B_SCALES", with_wei_scales);
     kernel_ctx.define_int("C_SCALES", with_dst_scales);

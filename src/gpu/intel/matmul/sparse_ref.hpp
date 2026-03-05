@@ -84,7 +84,7 @@ struct ref_sparse_t : public primitive_t {
 
         int ndims = pd()->dst_md()->ndims;
 
-        kernel_ctx.set_data_type(pd()->dst_dt_);
+        kernel_ctx.set_data_type(pd()->dst_dt_, /*with_punning=*/false);
         kernel_ctx.require_stateless_addressing(pd()->has_large_buffers());
 
         const memory_desc_wrapper src_d(pd()->src_md(0));
@@ -99,10 +99,11 @@ struct ref_sparse_t : public primitive_t {
         def_offsets(off.dst_off, kernel_ctx, "DST", ndims);
         kernel_ctx.define_int("NDIMS", ndims);
 
-        def_data_type(kernel_ctx, pd()->src_dt_, "SRC");
-        def_data_type(kernel_ctx, pd()->wei_dt_, "WEI");
-        def_data_type(kernel_ctx, pd()->dst_dt_, "DST");
-        def_data_type(kernel_ctx, pd()->desc()->accum_data_type, "ACC");
+        def_data_type(kernel_ctx, pd()->src_dt_, "SRC", /*with_punning=*/false);
+        def_data_type(kernel_ctx, pd()->wei_dt_, "WEI", /*with_punning=*/false);
+        def_data_type(kernel_ctx, pd()->dst_dt_, "DST", /*with_punning=*/false);
+        def_data_type(kernel_ctx, pd()->desc()->accum_data_type, "ACC",
+                /*with_punning=*/false);
 
         CHECK(create_kernel(engine, &kernel_, "ref_sparse_matmul", kernel_ctx));
         if (!kernel_) return status::runtime_error;

@@ -139,23 +139,23 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
         kernel_ctx.define_int("IS_BWD_W", 1);
 
     CHECK(def_attr_info(kernel_ctx, conf.attr_info, pd.attr()->post_ops_,
-            *pd.invariant_dst_md()));
+            *pd.invariant_dst_md(), /*with_punning=*/false));
 
     def_offsets(off.src_off, kernel_ctx, "SRC", conf.src_ndims);
     def_offsets(off.wei_off, kernel_ctx, "WEI", conf.wei_ndims);
     def_offsets(off.dst_off, kernel_ctx, "DST", conf.dst_ndims);
 
     if (conf.src_dt == data_type::f16)
-        kernel_ctx.set_data_type(data_type::f16);
+        kernel_ctx.set_data_type(data_type::f16, /*with_punning=*/false);
     else
-        kernel_ctx.set_data_type(data_type::f32);
+        kernel_ctx.set_data_type(data_type::f32, /*with_punning=*/false);
     kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
 
-    def_data_type(kernel_ctx, conf.src_dt, "SRC");
-    def_data_type(kernel_ctx, conf.wei_dt, "WEI");
-    def_data_type(kernel_ctx, conf.bia_dt, "BIA");
-    def_data_type(kernel_ctx, conf.dst_dt, "DST");
-    def_data_type(kernel_ctx, conf.acc_dt, "ACC");
+    def_data_type(kernel_ctx, conf.src_dt, "SRC", /*with_punning=*/false);
+    def_data_type(kernel_ctx, conf.wei_dt, "WEI", /*with_punning=*/false);
+    def_data_type(kernel_ctx, conf.bia_dt, "BIA", /*with_punning=*/false);
+    def_data_type(kernel_ctx, conf.dst_dt, "DST", /*with_punning=*/false);
+    def_data_type(kernel_ctx, conf.acc_dt, "ACC", /*with_punning=*/false);
 
     def_dispatch(kernel_ctx, conf.dispatch);
 

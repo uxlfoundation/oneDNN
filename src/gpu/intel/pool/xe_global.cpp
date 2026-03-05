@@ -123,7 +123,8 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
         const conf_t &conf, const offsets_t &off, const post_ops_t &post_ops,
         const memory_desc_t *dst_md) {
     using namespace dnnl::impl::alg_kind;
-    kernel_ctx.set_data_type(conf.src_dt);
+    constexpr bool with_punning = false;
+    kernel_ctx.set_data_type(conf.src_dt, with_punning);
     kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
 
     kernel_ctx.define_int("NDIMS", conf.ndims);

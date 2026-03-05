@@ -15,26 +15,21 @@
 *******************************************************************************/
 
 #include "gpu/intel/include/dispatch.h"
+#include "gpu/intel/include/io.h"
 #include "gpu/intel/include/post_ops.h"
 #include "gpu/intel/include/types.h"
 
 // Read functions.
-inline VECT_DATA_T read_vect_c_block(int idx, const __global DATA_T *ptr,
+inline VECT_FLOAT_T read_vect_c_block(int idx, const __global DATA_T *ptr,
         off_t c, off_t blocks_stride, int chunks_per_block);
 inline VECT_INT_T read_vect_c_block_int(int idx, const __global int *ptr,
         off_t c, off_t blocks_stride, int chunks_per_block);
 
 // Write functions.
 inline void write_vect_c_block(int idx, __global DATA_T *ptr, off_t c,
-        off_t blocks_stride, int chunks_per_block, VECT_DATA_T block);
+        off_t blocks_stride, int chunks_per_block, VECT_FLOAT_T block);
 inline void write_vect_c_block_int(int idx, __global int *ptr, off_t c,
         off_t blocks_stride, int chunks_per_block, VECT_INT_T block);
-
-#if DT_BF16 || DT_F16
-#define USE_FLOATS true
-#else
-#define USE_FLOATS (ALG_AVG_NP || ALG_AVG_P)
-#endif
 
 #if IS_FWD
 KERNEL_ATTR
@@ -72,7 +67,7 @@ __kernel void xe_pooling_fwd(__global DATA_T *src, __global int *ws,
     const int ws_chunks_per_c_block = dst_chunks_per_c_block;
 
     if (mb0 >= SRC_D0) {
-        VECT_DATA_T dst_zero = DATA_ZERO;
+        VECT_FLOAT_T dst_zero = 0.f;
         VECT_INT_T ws_zero = 0;
         off_t off = DST_OFF(mb0, c, od, oh, ow);
         write_vect_c_block(
@@ -92,15 +87,10 @@ __kernel void xe_pooling_fwd(__global DATA_T *src, __global int *ws,
     const off_t id = od * SD - PD;
     const off_t ih = oh * SH - PH;
     const off_t iw = ow * SW - PW;
-#if USE_FLOATS
     // Convert DATA_MIN to float instead of using -FLT_MAX to avoid -inf
     // Can use 0.0f safely, however
     VECT_FLOAT_T D0 = ALG_MAX ? CONVERT_FLOAT_T(DATA_MIN) : 0.0f;
     VECT_FLOAT_T D1 = ALG_MAX ? CONVERT_FLOAT_T(DATA_MIN) : 0.0f;
-#else // USE_FLOATS
-    VECT_DATA_T D0 = ALG_MAX ? DATA_MIN : DATA_ZERO;
-    VECT_DATA_T D1 = ALG_MAX ? DATA_MIN : DATA_ZERO;
-#endif // USE_FLOATS
     VECT_INT_T WS0 = 0, WS1 = 0;
 
     for (int kd = 0; kd < KD; ++kd) {
@@ -114,27 +104,15 @@ __kernel void xe_pooling_fwd(__global DATA_T *src, __global int *ws,
 #if UNROLL_MB_COUNT > 1
                 off_t src_off1 = SRC_OFF(mb1, c, id + kd, ih + kh, iw + kw);
 #endif
-#if USE_FLOATS
-                VECT_FLOAT_T S0 = CONVERT_VECT_FLOAT_T(read_vect_c_block(0,
-                        &src[src_off0], c, src_stride, src_chunks_per_c_block));
-#if UNROLL_MB_COUNT > 1
-                VECT_FLOAT_T S1 = CONVERT_VECT_FLOAT_T(read_vect_c_block(0,
-                        &src[src_off1], c, src_stride, src_chunks_per_c_block));
-#else
-                VECT_FLOAT_T S1 = CONVERT_VECT_FLOAT_T(read_vect_c_block(1,
-                        &src[src_off0], c, src_stride, src_chunks_per_c_block));
-#endif
-#else // USE_FLOATS
-                VECT_DATA_T S0 = read_vect_c_block(0, &src[src_off0], c,
+                VECT_FLOAT_T S0 = read_vect_c_block(0, &src[src_off0], c,
                         src_stride, src_chunks_per_c_block);
 #if UNROLL_MB_COUNT > 1
-                VECT_DATA_T S1 = read_vect_c_block(0, &src[src_off1], c,
+                VECT_FLOAT_T S1 = read_vect_c_block(0, &src[src_off1], c,
                         src_stride, src_chunks_per_c_block);
 #else
-                VECT_DATA_T S1 = read_vect_c_block(1, &src[src_off0], c,
+                VECT_FLOAT_T S1 = read_vect_c_block(1, &src[src_off0], c,
                         src_stride, src_chunks_per_c_block);
 #endif
-#endif // USE_FLOATS
 
 #if ALG_MAX
 #if IS_TRAINING
@@ -181,8 +159,8 @@ __kernel void xe_pooling_fwd(__global DATA_T *src, __global int *ws,
 #if UNROLL_MB_COUNT > 1
     off_t dst_off1 = DST_OFF(mb1, c, od, oh, ow);
 #endif
-    VECT_DATA_T sum0;
-    VECT_DATA_T sum1;
+    VECT_FLOAT_T sum0;
+    VECT_FLOAT_T sum1;
 #if WITH_SUM
     sum0 = read_vect_c_block(
             0, &dst[dst_off0], c, dst_stride, dst_chunks_per_c_block);
@@ -201,15 +179,15 @@ __kernel void xe_pooling_fwd(__global DATA_T *src, __global int *ws,
     const off_t po_mb = mb0;
     const off_t po_oc = c + local_id;
     if (po_oc < C_WO_PADDING) {
-        POST_OP_DATA_T po_sum0 = DATA_TO_REF(sum0);
-        float po_D0 = USE_FLOATS ? D0 : CONVERT_FLOAT_T(D0);
+        POST_OP_DATA_T po_sum0 = sum0;
+        float po_D0 = D0;
         APPLY_POST_OPS_SERIAL(po_D0, po_sum0, po_mb, po_oc, 0, 0, 0, 0);
-        D0 = USE_FLOATS ? po_D0 : CONVERT_DATA_T(po_D0);
+        D0 = po_D0;
 
-        POST_OP_DATA_T po_sum1 = DATA_TO_REF(sum1);
-        float po_D1 = USE_FLOATS ? D1 : CONVERT_FLOAT_T(D1);
+        POST_OP_DATA_T po_sum1 = sum1;
+        float po_D1 = D1;
         APPLY_POST_OPS_SERIAL(po_D1, po_sum1, po_mb, po_oc, 0, 0, 0, 0);
-        D1 = USE_FLOATS ? po_D1 : CONVERT_DATA_T(po_D1);
+        D1 = po_D1;
     }
 
 #else
@@ -224,18 +202,18 @@ __kernel void xe_pooling_fwd(__global DATA_T *src, __global int *ws,
         off_t po_mb = mb0;
 #endif // USE_MB_C_BLOCK
 
-        float d0_i = USE_FLOATS ? D0[idx] : CONVERT_FLOAT_T(D0[idx]);
-        POST_OP_DATA_T sum0_i = DATA_TO_REF(sum0[idx]);
+        float d0_i = D0[idx];
+        POST_OP_DATA_T sum0_i = sum0[idx];
         if (po_mb >= MB_WO_PADDING || po_oc >= C_WO_PADDING) {
             D0[idx] = 0;
             WS0[idx] = 0;
         } else {
             APPLY_POST_OPS_SERIAL(d0_i, sum0_i, po_mb, po_oc, 0, 0, 0, 0);
-            D0[idx] = USE_FLOATS ? d0_i : CONVERT_DATA_T(d0_i);
+            D0[idx] = d0_i;
         }
 
-        float d1_i = USE_FLOATS ? D1[idx] : CONVERT_FLOAT_T(D1[idx]);
-        POST_OP_DATA_T sum1_i = DATA_TO_REF(sum1[idx]);
+        float d1_i = D1[idx];
+        POST_OP_DATA_T sum1_i = sum1[idx];
         if (UNROLL_MB_COUNT > 1)
             po_mb += MB / 2;
         else {
@@ -249,25 +227,18 @@ __kernel void xe_pooling_fwd(__global DATA_T *src, __global int *ws,
             WS1[idx] = 0;
         } else {
             APPLY_POST_OPS_SERIAL(d1_i, sum1_i, po_mb, po_oc, 0, 0, 0, 0);
-            D1[idx] = USE_FLOATS ? d1_i : CONVERT_DATA_T(d1_i);
+            D1[idx] = d1_i;
         }
     }
 #endif // #if VECT_DT_N == 1
-#if USE_FLOATS
-    VECT_DATA_T res0 = CONVERT_VECTOR_DATA_T(D0);
-    VECT_DATA_T res1 = CONVERT_VECTOR_DATA_T(D1);
-#else
-    VECT_DATA_T res0 = D0;
-    VECT_DATA_T res1 = D1;
-#endif
     write_vect_c_block(
-            0, &dst[dst_off0], c, dst_stride, dst_chunks_per_c_block, res0);
+            0, &dst[dst_off0], c, dst_stride, dst_chunks_per_c_block, D0);
 #if UNROLL_MB_COUNT > 1
     write_vect_c_block(
-            0, &dst[dst_off1], c, dst_stride, dst_chunks_per_c_block, res1);
+            0, &dst[dst_off1], c, dst_stride, dst_chunks_per_c_block, D1);
 #else
     write_vect_c_block(
-            1, &dst[dst_off0], c, dst_stride, dst_chunks_per_c_block, res1);
+            1, &dst[dst_off0], c, dst_stride, dst_chunks_per_c_block, D1);
 #endif
 
 #if ALG_MAX && IS_TRAINING
@@ -356,18 +327,15 @@ __kernel void xe_pooling_bwd(__global DATA_T *diff_src, __global int *ws,
                     dst_off[i] = DST_OFF(mb[i], c, od, oh, ow);
                 }
 #endif
-                VECT_FLOAT_T D0 = CONVERT_VECT_FLOAT_T(
-                        read_vect_c_block(0, &diff_dst[dst_off0], c, dst_stride,
-                                dst_chunks_per_c_block));
-                VECT_FLOAT_T D1 = CONVERT_VECT_FLOAT_T(
-                        read_vect_c_block(1, &diff_dst[dst_off0], c, dst_stride,
-                                dst_chunks_per_c_block));
+                VECT_FLOAT_T D0 = read_vect_c_block(0, &diff_dst[dst_off0], c,
+                        dst_stride, dst_chunks_per_c_block);
+                VECT_FLOAT_T D1 = read_vect_c_block(1, &diff_dst[dst_off0], c,
+                        dst_stride, dst_chunks_per_c_block);
 #if UNROLL_MB_COUNT > 1
                 VECT_FLOAT_T D[UNROLL_MB_COUNT];
                 unroll_for(int i = 0; i < UNROLL_MB_COUNT; i++) {
-                    D[i] = CONVERT_VECT_FLOAT_T(
-                            read_vect_c_block(0, &diff_dst[dst_off[i]], c,
-                                    dst_stride, dst_chunks_per_c_block));
+                    D[i] = read_vect_c_block(0, &diff_dst[dst_off[i]], c,
+                            dst_stride, dst_chunks_per_c_block);
                 }
 #endif
 
@@ -449,26 +417,28 @@ __kernel void xe_pooling_bwd(__global DATA_T *diff_src, __global int *ws,
     }
 #endif
     write_vect_c_block(0, &diff_src[src_off0], c, src_stride,
-            src_chunks_per_c_block, CONVERT_VECTOR_DATA_T(S0));
+            src_chunks_per_c_block, S0);
 #if UNROLL_MB_COUNT > 1
     unroll_for(int i = 0; i < UNROLL_MB_COUNT; i++) {
         write_vect_c_block(0, &diff_src[src_off[i]], c, src_stride,
-                src_chunks_per_c_block, CONVERT_VECTOR_DATA_T(S[i]));
+                src_chunks_per_c_block, S[i]);
     }
 #else
     write_vect_c_block(1, &diff_src[src_off0], c, src_stride,
-            src_chunks_per_c_block, CONVERT_VECTOR_DATA_T(S1));
+            src_chunks_per_c_block, S1);
 #endif
 }
 #endif
 
-inline DATA_T read_c_block(const __global DATA_T *ptr, off_t c) {
+inline float read_c_block(const __global DATA_T *ptr, off_t c) {
 #if C_W_PADDING % SUB_GROUP_SIZE != 0
     int local_id = get_sub_group_local_id();
     off_t tail = C_WO_PADDING - c;
-    return (local_id < tail) ? ptr[local_id] : 0;
+    return (local_id < tail) ? into_float(ptr[local_id]) : 0.f;
 #else
-    return AS_DATA_T(BLOCK_READ((const __global BLOCK_DATA_T *)ptr));
+    float result;
+    result = block_load(result, ptr);
+    return result;
 #endif
 }
 
@@ -483,16 +453,18 @@ inline DATA_T read_c_block(const __global DATA_T *ptr, off_t c) {
         size; \
     })
 
-inline VECT_DATA_T read_vect_c_block(int idx, const __global DATA_T *ptr,
+inline VECT_FLOAT_T read_vect_c_block(int idx, const __global DATA_T *ptr,
         off_t c, off_t blocks_stride, int chunks_per_block) {
     if (idx >= NVECT) return 0;
 
     if ((blocks_stride == chunks_per_block * SUB_GROUP_SIZE)
             && (C_WO_PADDING % (chunks_per_block * SUB_GROUP_SIZE) == 0)) {
-        return AS_VECT_DATA_T(VECT_BLOCK_READ((const __global BLOCK_DATA_T *)ptr
-                + idx * VECT_DT_N * SUB_GROUP_SIZE));
+        VECT_FLOAT_T result;
+        block_load((float *)&result, ptr + idx * VECT_DT_N * SUB_GROUP_SIZE,
+                VECT_DT_N);
+        return result;
     } else {
-        VECT_DATA_T ret;
+        VECT_FLOAT_T ret;
         for (int i = 0; i < CALC_VECT_LEN(); i++) {
             const int offset_index = (idx * VECT_DT_N + i);
             const int local_c_block_index = offset_index % chunks_per_block;
@@ -556,35 +528,34 @@ inline VECT_INT_T read_vect_c_block_int(int idx, const __global int *ptr,
     }
 }
 
-inline void write_c_block(__global DATA_T *ptr, off_t c, DATA_T value) {
+inline void write_c_block(__global DATA_T *ptr, off_t c, float value) {
 #if C_W_PADDING % SUB_GROUP_SIZE != 0
     int local_id = get_sub_group_local_id();
     off_t tail = C_WO_PADDING - c;
 
-    if (local_id < tail) ptr[local_id] = value;
+    if (local_id < tail) write(ptr + local_id, value);
 #else
 #if C_WO_PADDING % SUB_GROUP_SIZE != 0
     int local_id = get_sub_group_local_id();
     if (local_id >= C_WO_PADDING - c && local_id < C_W_PADDING - c) value = 0;
 #endif
     if (c >= C_WO_PADDING) {
-        BLOCK_WRITE((__global BLOCK_DATA_T *)ptr,
-                AS_BLOCK_DATA_T(CONVERT_DATA_T(DATA_ZERO)));
+        float zero = 0.f;
+        block_write(ptr, &zero);
         return;
     }
-    BLOCK_WRITE((__global BLOCK_DATA_T *)ptr, AS_BLOCK_DATA_T(value));
+    block_write(ptr, &value);
 #endif
 }
 
 inline void write_vect_c_block(int idx, __global DATA_T *ptr, off_t c,
-        off_t blocks_stride, int chunks_per_block, VECT_DATA_T block) {
+        off_t blocks_stride, int chunks_per_block, VECT_FLOAT_T block) {
     if (idx >= NVECT) return;
 
     if ((blocks_stride == chunks_per_block * SUB_GROUP_SIZE)
             && (C_WO_PADDING % (chunks_per_block * SUB_GROUP_SIZE) == 0)) {
-        VECT_BLOCK_WRITE(
-                (__global BLOCK_DATA_T *)ptr + idx * VECT_DT_N * SUB_GROUP_SIZE,
-                AS_VECT_BLOCK_DATA_T(block));
+        block_write(ptr + idx * VECT_DT_N * SUB_GROUP_SIZE, (float *)&block,
+                VECT_DT_N);
     } else {
         for (int i = 0; i < VECT_DT_N; i++) {
             const int offset_index = (idx * VECT_DT_N + i);

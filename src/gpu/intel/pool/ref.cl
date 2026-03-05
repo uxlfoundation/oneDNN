@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/include/dispatch.h"
+#include "gpu/intel/include/io.h"
 #include "gpu/intel/include/post_ops.h"
 #include "gpu/intel/include/types.h"
 
@@ -61,7 +62,7 @@ __kernel void ref_pooling_fwd(__global DATA_T *src, __global int *ws,
 
     if (mb >= SRC_D0 || oc >= SRC_D1) {
         const off_t dst_off = DST_OFF(mb, oc, od, oh, ow);
-        dst[dst_off] = TO_DST(0.0f);
+        write(dst + dst_off, 0.0f);
 #if ALG_MAX && IS_TRAINING
         ws[dst_off] = 0;
 #endif
@@ -98,13 +99,8 @@ __kernel void ref_pooling_fwd(__global DATA_T *src, __global int *ws,
 #if IS_TRAINING
                 if (ws[dst_off] < 0) ws[dst_off] = kd * KH * KW + kh * KW + kw;
 #endif
-#if DT_BF16
-                DEF_ACC_DATA_T s = DATA_TO_REF(src[src_off]);
-#elif DT_F64
-                ACC_DATA_T s = src[src_off];
-#else
-                ACC_DATA_T s = DATA_TO_REF(src[src_off]);
-#endif // DT_BF16
+                ACC_DATA_T s;
+                load(&s, src, src_off);
                 if (s > d) {
                     d = s;
 #if IS_TRAINING
@@ -112,11 +108,9 @@ __kernel void ref_pooling_fwd(__global DATA_T *src, __global int *ws,
 #endif
                 }
 #else // ALG_MAX == 0
-#if DT_F64
-                d += src[src_off];
-#else
-                d += DATA_TO_REF(src[src_off]);
-#endif // DT_F64
+                ACC_DATA_T s;
+                load(&s, src, src_off);
+                d += s;
 #endif // ALG_MAX
             }
         }
@@ -157,14 +151,10 @@ __kernel void ref_pooling_fwd(__global DATA_T *src, __global int *ws,
 #endif
 
         // post op service
-#if DT_BF16 || DT_F64
-    POST_OP_DATA_T tmp = d;
-#else
-    POST_OP_DATA_T tmp = (POST_OP_DATA_T)DATA_TO_REF(d);
-#endif // DT_BF16
+    POST_OP_DATA_T tmp = (POST_OP_DATA_T)d;
     POST_OP_DATA_T sum_src;
 #if WITH_SUM
-    sum_src = (POST_OP_DATA_T)DATA_TO_REF(dst[dst_off]);
+    load(&sum_src, dst, dst_off);
 #endif
 #if NDIMS == 3
     const unsigned po_d2 = ow;
@@ -186,11 +176,7 @@ __kernel void ref_pooling_fwd(__global DATA_T *src, __global int *ws,
     APPLY_POST_OPS_SERIAL(tmp, sum_src, mb, oc, po_d2, po_d3, po_d4, 0);
 
     // store result
-#if DT_F64
-    dst[dst_off] = tmp;
-#else
-    dst[dst_off] = TO_DST(tmp);
-#endif
+    write(dst + dst_off, tmp);
 }
 #endif
 
@@ -269,9 +255,13 @@ __kernel void ref_pooling_bwd(__global DATA_T *diff_src, __global int *ws,
                         * (KW - iw_start_excluded - iw_end_excluded);
 #endif
 #if ALG_MAX || ALG_AVG_P
-                s += TO_DEF_ACC_DATA_T(diff_dst[dst_off]);
+                DEF_ACC_DATA_T dd;
+                load(&dd, diff_dst, dst_off);
+                s += dd;
 #elif ALG_AVG_NP
-                s += TO_DEF_ACC_DATA_T(diff_dst[dst_off]) / denom;
+                DEF_ACC_DATA_T dd;
+                load(&dd, diff_dst, dst_off);
+                s += dd / denom;
 #endif
             }
         }
@@ -283,6 +273,6 @@ __kernel void ref_pooling_bwd(__global DATA_T *diff_src, __global int *ws,
 #endif
 
     off_t diff_src_offset = SRC_OFF(mb, oc, id, ih, iw);
-    diff_src[diff_src_offset] = CONVERT_DATA_T(s);
+    write(diff_src + diff_src_offset, s);
 }
 #endif

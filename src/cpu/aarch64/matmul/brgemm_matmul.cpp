@@ -836,6 +836,8 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                     = weights_d.size() - weights_d.additional_buffer_size();
             const size_t b_batch
                     = get_bb_idx(bgmmc.batch - 1, bgmmc_.bcast_B_desc) + 1;
+            assert(IMPLICATION(bgmmc.s8s8_compensation_required,
+                    !is_runtime_value(bgmmc.s8s8_comp_b_str)));
             const size_t s8s8_buffer_sz = bgmmc.s8s8_compensation_required
                     ? sizeof(int32_t) * b_batch * bgmmc.s8s8_comp_b_str
                     : 0;
@@ -1224,6 +1226,7 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         const int n_blk_local = bgmmc_.use_buffer_b
                 ? n_blk_idx % bgmmc_.N_chunk_size
                 : n_blk_idx;
+        assert(!is_runtime_value(bgmmc_.s8s8_comp_b_str));
         return s8s8_compensation_ptr_ + ithr * bgmmc_.s8s8_comp_ithr_str
                 + get_bb_idx(b, bgmmc_.bcast_B_desc) * bgmmc_.s8s8_comp_b_str
                 + n_blk_local * bgmmc_.s8s8_comp_n_str;

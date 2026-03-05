@@ -385,10 +385,14 @@ private:
        */
       lastDataCacheLevel_ = 2; // It is assumed L1 and L2 cache exist.
 
+#ifndef __OHOS__
       cacheInfo_.levelCache[0].size[0] = sysconf(_SC_LEVEL1_ICACHE_SIZE); // L1, ICache
       cacheInfo_.levelCache[0].size[1] = sysconf(_SC_LEVEL1_DCACHE_SIZE); // L1, DCache
       cacheInfo_.levelCache[1].size[2] = sysconf(_SC_LEVEL2_CACHE_SIZE);  // L2, UCache
       cacheInfo_.levelCache[2].size[2] = sysconf(_SC_LEVEL3_CACHE_SIZE);  // L3, UCache
+#else
+      printf("not support\n");
+#endif
     }
   }
 

@@ -371,7 +371,7 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     kernel_ctx.define_int("REDUCTION_ALG", to_int(alg));
     kernel_ctx.define_int("SECONDARY_REDUCTION_ALG", to_int(secondary_alg));
 
-    kernel_ctx.set_data_type(phase.src_type);
+    kernel_ctx.set_data_type(phase.src_type, /*with_punning=*/false);
     kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
 
     kernel_ctx.define_int("SUBGROUP_SIZE", phase.subgroup_size);
@@ -431,8 +431,8 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
                 conf.is_reduction_dim[phase.dst_zpads[i].dim_idx]);
     }
 
-    def_data_type(kernel_ctx, phase.src_type, "SRC");
-    def_data_type(kernel_ctx, phase.dst_type, "DST");
+    def_data_type(kernel_ctx, phase.src_type, "SRC", /*with_punning=*/false);
+    def_data_type(kernel_ctx, phase.dst_type, "DST", /*with_punning=*/false);
 
     return status::success;
 }
@@ -447,10 +447,12 @@ status_t combined_t::pd_t::init_kernel_ctx(
     const auto &actual_po = &attr()->post_ops_;
     const post_ops_t *po = phase.is_final ? actual_po : &empty_po;
 
-    CHECK(def_attr_info(kernel_ctx, conf.attr_info, *po, *dst_md()));
+    CHECK(def_attr_info(kernel_ctx, conf.attr_info, *po, *dst_md(),
+            /*with_punning=*/false));
     if (attr()->post_ops_.len() > 0 && phase.is_final) {
         // Can only do this for the final phase, since it overwrites def_data_type for DST
-        def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST");
+        def_memory_desc_info(
+                kernel_ctx, conf.dst_md_info, "DST", /*with_punning=*/false);
         def_offsets(conf.off.dst_off, kernel_ctx, "DST", conf.ndims);
     }
 

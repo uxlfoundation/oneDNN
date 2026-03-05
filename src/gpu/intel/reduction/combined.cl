@@ -14,6 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "gpu/intel/include/io.h"
 #include "gpu/intel/include/post_ops.h"
 #include "gpu/intel/include/types.h"
 #include "gpu/intel/include/utils.h"
@@ -40,11 +41,6 @@
 #else
 #define DUMP(...)
 #endif
-
-// Define how to read data
-#define BLOCK_READ_DATA_T(data_ptr) \
-    AS_DATA_T(BLOCK_READ((const __global BLOCK_DATA_T *)data_ptr))
-#define READ_DATA(val) WITH_BLOCK_READ ? BLOCK_READ_DATA_T(&val) : val
 
 // Zero-padding defines
 #if NUM_SRC_ZPAD > 2 || NUM_DST_ZPAD > 2
@@ -144,31 +140,21 @@ void reverse_indexing(dim_t dst_off, int *res) {
 }
 #endif
 
-__attribute__((overloadable)) void write_dst(
-        __global DST_DATA_T *dst, DST_DATA_T val) {
-    *dst = val;
-}
-
-__attribute__((overloadable)) DST_DATA_T load(__global DST_DATA_T *dst) {
-    return *dst;
-}
-
 void write_padded_zeros(__global DST_DATA_T *dst) {
 #if DST_Z0_IS_REDUCED && DST_Z1_IS_REDUCED
     for (int i = 0; i < DST_Z0_SIZE0; i++) {
         for (int j = 0; j < DST_Z1_SIZE0; j++) {
             if (i == 0 && j == 0) continue;
-            write_dst(dst + i * DST_Z0_STRIDE0 + j * DST_Z1_STRIDE0,
-                    TO_DST(0.0f));
+            write(dst + i * DST_Z0_STRIDE0 + j * DST_Z1_STRIDE0, 0.0f);
         }
     }
 #elif DST_Z0_IS_REDUCED
     for (int i = 1; i < DST_Z0_SIZE0; i++) {
-        write_dst(dst + i * DST_Z0_STRIDE0, TO_DST(0.0f));
+        write(dst + i * DST_Z0_STRIDE0, 0.0f);
     }
 #elif DST_Z1_IS_REDUCED
     for (int j = 1; j < DST_Z1_SIZE0; j++) {
-        write_dst(dst + j * DST_Z1_STRIDE0, TO_DST(0.0f));
+        write(dst + j * DST_Z1_STRIDE0, 0.0f);
     }
 #endif
 }
@@ -235,19 +221,26 @@ combined_reduce(
                     outer_idx, red_off_tg - red_off_sg, inner_idx_start);
             if (!WITH_BLOCK_READ) src_off += sglid;
             for (int iters = num_horiz_reductions; iters > 0; --iters) {
-                const DATA_T src_val = READ_DATA(src[src_off]);
-                acc = reduce(
-                        REDUCTION_ALG, acc, TO_DEF_ACC_DATA_T(src_val), POWER);
+                DEF_ACC_DATA_T src_acc;
+#if WITH_BLOCK_READ
+                block_load(&src_acc, src + src_off);
+#else
+                load(&src_acc, src, src_off);
+#endif
+                acc = reduce(REDUCTION_ALG, acc, src_acc, POWER);
                 DUMP("(iter +%d) src[%d] = %f\n", iters, src_off,
-                        CONVERT_FLOAT_T(src_val));
+                        convert_float(src_acc));
                 src_off += loop_stride;
             }
             if (red_off_tg < tail_reductions) {
-                const DATA_T src_val = READ_DATA(src[src_off]);
-                acc = reduce(
-                        REDUCTION_ALG, acc, TO_DEF_ACC_DATA_T(src_val), POWER);
-                DUMP("(tail) src[%d] = %f\n", src_off,
-                        CONVERT_FLOAT_T(src_val));
+                DEF_ACC_DATA_T src_acc;
+#if WITH_BLOCK_READ
+                block_load(&src_acc, src + src_off);
+#else
+                load(&src_acc, src, src_off);
+#endif
+                acc = reduce(REDUCTION_ALG, acc, src_acc, POWER);
+                DUMP("(tail) src[%d] = %f\n", src_off, convert_float(src_acc));
             }
         }
 
@@ -297,7 +290,7 @@ combined_reduce(
 #if WITH_POST_OP
             float dst_val;
 #if WITH_SUM
-            dst_val = DST_TO_REF(load(dst + dst_off));
+            load(&dst_val, dst, dst_off);
 #endif // WITH_SUM
             int idxs[6];
             reverse_indexing(dst_off, idxs);
@@ -311,10 +304,10 @@ combined_reduce(
             }
 #endif
             if (is_dst_zero_padded(dst_off)) res = 0.0f;
-            write_dst(dst + dst_off, IS_FINAL ? TO_DST(res) : res);
+            write(dst + dst_off, res);
             DUMP("Wrote dst[%ld] = %f\n", dst_off, res);
             write_padded_zeros(dst + dst_off);
-            DUMP("dst[%ld] <- %f\n", dst_off, TO_DST(res));
+            DUMP("dst[%ld] <- %f\n", dst_off, res);
         }
     }
 }

@@ -96,7 +96,7 @@ GUARD_half(DEF_reduce(half));
             case (REDUCTION_MEAN): return atomic_add_global(dst, rhs); \
         } \
         printf("Atomic reduction on unsupported alg: %d\n", alg); \
-        return SPECIAL(dt, zero); \
+        return zero_val(rhs); \
     }
 
 #if ATOMIC_FLOAT_SUPPORTED

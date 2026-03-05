@@ -104,8 +104,9 @@ status_t ref_t::pd_t::init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const {
     kernel_ctx.define_int("DST_DT_DIGITS",
             dnnl::impl::types::digits<uint32_t>(conf.dst_md_info.data_type));
 
-    def_memory_desc_info(kernel_ctx, conf.src_md_info, "SRC");
-    def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST");
+    constexpr bool with_punning = false;
+    def_memory_desc_info(kernel_ctx, conf.src_md_info, "SRC", with_punning);
+    def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST", with_punning);
 
     return status::success;
 }

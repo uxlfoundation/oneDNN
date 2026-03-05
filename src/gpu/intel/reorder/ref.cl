@@ -86,13 +86,10 @@ ref_reorder(__global SRC_DATA_T *restrict src,
         int pad_d4 = NDIMS > 4 && d4 >= SRC_D4;
         int pad_d5 = NDIMS > 5 && d5 >= SRC_D5;
         if (pad_d0 || pad_d1 || pad_d2 || pad_d3 || pad_d4 || pad_d5) {
-            dst[dst_off] = 0;
+            write(dst + dst_off, 0.f);
             continue;
         }
 #endif
-        // Both scales and zero-points include groups in their offsets.
-        // It involves division by a group value of a correspondent dX value,
-        // and also adjusting stride for a dimension with a group.
 #if WITH_SRC_ZPOINT
         off_t zp_off = ZPOINT_OFF(SRC, d0, d1, d2, d3, d4, d5);
         src_zp = SRC_ZP_TO_REF(src_zps, zp_off);
@@ -115,7 +112,13 @@ ref_reorder(__global SRC_DATA_T *restrict src,
 #define ROUND DEFAULT_ROUND
 #endif
 
-        REORDER(ROUND, dst[dst_off], src_value, src_scale, dst_scale, sum_scale,
-                src_zp, dst_zp, sum_zp);
+        float src_val = into_float(src_value);
+        float dst_val = 0.f;
+#if WITH_SUM_MOD
+        load(&dst_val, dst, dst_off);
+#endif
+        float result = ROUND(AXPY(src_val, dst_val, src_scale, dst_scale,
+                sum_scale, src_zp, dst_zp, sum_zp));
+        write(dst + dst_off, result);
     }
 }

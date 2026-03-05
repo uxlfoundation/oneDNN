@@ -887,8 +887,9 @@ status_t generic_t::pd_t::init_kernel_ctx(
 
     kernel_ctx.define_int("PAD_FILL_ZERO", conf.has_padding);
 
-    def_memory_desc_info(kernel_ctx, conf.src_md_info, "SRC");
-    def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST");
+    constexpr bool with_punning = false;
+    def_memory_desc_info(kernel_ctx, conf.src_md_info, "SRC", with_punning);
+    def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST", with_punning);
 
     kernel_ctx.define_int("GENERIC_REORDER", 1);
     kernel_ctx.define_int("VECT_DIM", conf.aux_data.vld.vector_dim);

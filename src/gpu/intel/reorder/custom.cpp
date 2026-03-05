@@ -802,8 +802,9 @@ status_t custom_t::pd_t::init_kernel_ctx(
         kernel_ctx.define_int("USE_DENSE_VECT", 1);
     }
 
-    def_memory_desc_info(kernel_ctx, conf.src_md_info, "SRC");
-    def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST");
+    constexpr bool with_punning = false;
+    def_memory_desc_info(kernel_ctx, conf.src_md_info, "SRC", with_punning);
+    def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST", with_punning);
 
     // distinguish between various flavors of unroll kernel
     if (src_mdw.matches_one_of_tag(

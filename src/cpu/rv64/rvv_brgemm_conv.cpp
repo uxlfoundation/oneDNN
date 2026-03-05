@@ -184,8 +184,10 @@ status_t rvv_brgemm_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
                             float *C = dst_base + oh_s * dst_h_str
                                     + ow_s * OC_all;
                             dim_t M = OC, K_dim = IC;
-                            extended_sgemm("N", "N", &M, &N, &K_dim, &one, A,
-                                    &LDA, B, &LDB, &one, C, &LDC);
+                            status_t st = extended_sgemm("N", "N", &M, &N,
+                                    &K_dim, &one, A, &LDA, B, &LDB, &one, C,
+                                    &LDC);
+                            if (st != status::success) return;
                         } else {
                             // Edge (partial width): per-row GEMM.
                             for (int oh = oh_s; oh < oh_e; oh++) {
@@ -196,8 +198,10 @@ status_t rvv_brgemm_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
                                 float *C = dst_base + oh * dst_h_str
                                         + ow_s * OC_all;
                                 dim_t M = OC, N_dim = valid_ow, K_dim = IC;
-                                extended_sgemm("N", "N", &M, &N_dim, &K_dim,
-                                        &one, A, &LDA, B, &LDB, &one, C, &LDC);
+                                status_t st = extended_sgemm("N", "N", &M,
+                                        &N_dim, &K_dim, &one, A, &LDA, B, &LDB,
+                                        &one, C, &LDC);
+                                if (st != status::success) return;
                             }
                         }
                     }
@@ -261,8 +265,10 @@ status_t rvv_brgemm_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
                             float *C = dst_row + ow_s * OC_all;
 
                             dim_t M = OC, N = valid_ow, K_dim = IC;
-                            extended_sgemm("N", "N", &M, &N, &K_dim, &one, A,
-                                    &LDA, B, &LDB, &one, C, &LDC);
+                            status_t st = extended_sgemm("N", "N", &M, &N,
+                                    &K_dim, &one, A, &LDA, B, &LDB, &one, C,
+                                    &LDC);
+                            if (st != status::success) return;
                         }
                     }
                 }

@@ -1110,10 +1110,9 @@ status_t init_conf(brgemm_matmul_conf_t &conf, dim_t batch, dim_t M, dim_t K,
     // Zero initialize the `conf` to avoid access to 'garbage' in members.
     conf = brgemm_matmul_conf_t();
 
-    const bool is_bf16 = one_of(in_type, bf16) || one_of(out_type, bf16);
     const bool is_s8u8 = one_of(in_type, s8, u8) || one_of(out_type, s8, u8);
 
-    VCONDCHECK_BG(!(is_bf16 || is_s8u8), VERBOSE_UNSUPPORTED_DT);
+    VCONDCHECK_BG(!is_s8u8, VERBOSE_UNSUPPORTED_DT);
 
     const bool is_copyB = N > 0;
     conf.isa = get_max_cpu_isa(); // Just use the best ISA possible.

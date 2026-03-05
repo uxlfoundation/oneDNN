@@ -14,6 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "gpu/intel/include/io.h"
 #include "gpu/intel/include/philox.h"
 #include "gpu/intel/softmax/simple.h"
 
@@ -101,7 +102,7 @@ simple_softmax_fwd_generic(__global SRC_DATA_T *src, __global DATA_T *dst,
         for (int i = begin; i < end && i < DD(SOFTMAX_AXIS_IDX); ++i) {
             off_t data_off
                     = DATA_OFF(dim[0], dim[1], dim[2], dim[3], dim[4], i);
-            d[i - begin] = SRC_TO_REF(src[data_off]);
+            d[i - begin] = load(d[i - begin], src, data_off);
             max_ = max(max_, d[i - begin]);
         }
     }
@@ -159,7 +160,7 @@ simple_softmax_fwd_generic(__global SRC_DATA_T *src, __global DATA_T *dst,
         // post op service
         POST_OP_DATA_T sum_src;
 #if WITH_SUM
-        sum_src = (POST_OP_DATA_T)DATA_TO_REF(dst[data_off]);
+        sum_src = load(sum_src, dst, data_off);
 #endif
 
 #define GET_DATA_IDX(dim_idx) \
@@ -201,7 +202,7 @@ simple_softmax_fwd_generic(__global SRC_DATA_T *src, __global DATA_T *dst,
         dropout_mask_buf[data_off] = dropout;
 #endif
 #endif
-        dst[data_off] = TO_DST(tmp);
+        write(dst + data_off, tmp);
     }
 }
 
@@ -258,8 +259,8 @@ simple_softmax_bwd_generic(__global DST_DATA_T *dst,
     if (!(NEEDS_PADDING(dim[0], dim[1], dim[2], dim[3], dim[4], begin))) {
         for (int i = begin; i < end && i < DD(SOFTMAX_AXIS_IDX); ++i) {
             off_t idx = DATA_OFF(dim[0], dim[1], dim[2], dim[3], dim[4], i);
-            diff_d[i - begin] = DST_TO_REF(diff_dst[idx]);
-            d[i - begin] = DST_TO_REF(dst[idx]);
+            diff_d[i - begin] = load(diff_d[i - begin], diff_dst, idx);
+            d[i - begin] = load(d[i - begin], dst, idx);
 #if LOGSOFTMAX
             sbr += diff_d[i - begin];
 #else
@@ -278,14 +279,13 @@ simple_softmax_bwd_generic(__global DST_DATA_T *dst,
         off_t idx = DATA_OFF(dim[0], dim[1], dim[2], dim[3], dim[4], i);
 
         if (NEEDS_PADDING(dim[0], dim[1], dim[2], dim[3], dim[4], i)) {
-            diff_src[idx] = REF_TO_SRC(acc_zero);
+            write(diff_src + idx, acc_zero);
         } else {
 #if LOGSOFTMAX
-            diff_src[idx]
-                    = REF_TO_SRC(diff_d[i - begin] - exp(d[i - begin]) * sbr);
+            write(diff_src + idx, diff_d[i - begin] - exp(d[i - begin]) * sbr);
 #else
             acc_t inner_data = diff_d[i - begin] - sbr;
-            diff_src[idx] = REF_TO_SRC(d[i - begin] * inner_data);
+            write(diff_src + idx, d[i - begin] * inner_data);
 #endif
         }
     }

@@ -220,9 +220,11 @@ struct xe_fwd_t : public primitive_t {
         const memory_desc_wrapper src_mdw(pd()->src_md());
         const auto dst_md_info = memory_desc_info_t::create(dst_mdw);
         const auto src_md_info = memory_desc_info_t::create(src_mdw);
-        def_memory_desc_info(kernel_ctx, dst_md_info, "DST");
-        def_memory_desc_info(kernel_ctx, src_md_info, "SRC");
-        kernel_ctx.set_data_type(dst_mdw.data_type());
+        def_memory_desc_info(
+                kernel_ctx, dst_md_info, "DST", /*with_punning=*/false);
+        def_memory_desc_info(
+                kernel_ctx, src_md_info, "SRC", /*with_punning=*/false);
+        kernel_ctx.set_data_type(dst_mdw.data_type(), /*with_punning=*/false);
         kernel_ctx.require_stateless_addressing(pd()->has_large_buffers());
         set_offsets(kernel_ctx, pd()->dst_md(), "DATA");
 
@@ -350,9 +352,12 @@ struct xe_bwd_t : public primitive_t {
         const memory_desc_wrapper diff_dst_mdw(pd()->diff_dst_md());
         const auto diff_src_md_info = memory_desc_info_t::create(diff_src_mdw);
         const auto diff_dst_md_info = memory_desc_info_t::create(diff_dst_mdw);
-        def_memory_desc_info(kernel_ctx, diff_src_md_info, "SRC");
-        def_memory_desc_info(kernel_ctx, diff_dst_md_info, "DST");
-        kernel_ctx.set_data_type(pd()->diff_src_md()->data_type);
+        def_memory_desc_info(
+                kernel_ctx, diff_src_md_info, "SRC", /*with_punning=*/false);
+        def_memory_desc_info(
+                kernel_ctx, diff_dst_md_info, "DST", /*with_punning=*/false);
+        kernel_ctx.set_data_type(
+                pd()->diff_src_md()->data_type, /*with_punning=*/false);
         kernel_ctx.register_buffer_size(*pd()->dst_md());
         kernel_ctx.require_stateless_addressing(pd()->has_large_buffers());
         set_offsets(kernel_ctx, *pd()->diff_src_md(), "DATA");

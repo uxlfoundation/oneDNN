@@ -242,9 +242,9 @@ compute::kernel_ctx_t reusable_params_t::get_kernel_ctx() const {
         kernel_ctx.define_int("USE_GENERAL_KERNEL", true);
     }
 
-    kernel_ctx.set_data_type(src_data_type);
-    def_data_type(kernel_ctx, src_data_type, "SRC");
-    def_data_type(kernel_ctx, dst_data_type, "DST");
+    kernel_ctx.set_data_type(src_data_type, /*with_punning=*/false);
+    def_data_type(kernel_ctx, src_data_type, "SRC", /*with_punning=*/false);
+    def_data_type(kernel_ctx, dst_data_type, "DST", /*with_punning=*/false);
 
     gws_params.def_kernel_macros(kernel_ctx);
     return kernel_ctx;

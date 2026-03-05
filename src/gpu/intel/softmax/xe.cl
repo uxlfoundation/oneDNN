@@ -14,47 +14,20 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "gpu/intel/include/io.h"
 #include "gpu/intel/include/types.h"
 
-#define LOAD_FLOAT8(prefix, ptr) \
-    DATA_TO_FLOAT8(prefix, \
-            BLOCK_TO_DATA8(prefix, \
-                    READ_BLOCK8(prefix, \
-                            (__global BLOCK_T(ALIAS(prefix)) *)(ptr))))
-
-#define STORE_FLOAT8(prefix, ptr, val) \
-    WRITE_BLOCK8(prefix, (__global BLOCK_T(ALIAS(prefix)) *)(ptr), \
-            DATA_TO_BLOCK8(prefix, FLOAT_TO_DATA8(prefix, val)))
-
-#define LOAD_DOUBLE8(prefix, ptr) \
-    DATA_TO_DOUBLE8(prefix, \
-            BLOCK_TO_DATA8(prefix, \
-                    READ_BLOCK8(prefix, \
-                            (__global BLOCK_T(ALIAS(prefix)) *)(ptr))))
-
-#define STORE_DOUBLE8(prefix, ptr, val) \
-    WRITE_BLOCK8(prefix, (__global BLOCK_T(ALIAS(prefix)) *)(ptr), \
-            DATA_TO_BLOCK8(prefix, DOUBLE_TO_DATA8(prefix, val)))
-
 #if DST_DT_F64
-#define UP_CASE_DATA DOUBLE
 #define COMMON_DATA_T double
 #define COMMON_DATA_MAX DBL_MAX
 #define COMMON_DATA_ZERO 0.0
 #else
-#define UP_CASE_DATA FLOAT
 #define COMMON_DATA_T float
 #define COMMON_DATA_MAX FLT_MAX
 #define COMMON_DATA_ZERO 0.0f
 #endif
 
 #define COMMON_DATA8_T CONCAT2(COMMON_DATA_T, 8)
-
-#define COMMON_DATA_TO_X(x, y) CONCAT2(DATA_TO_, UP_CASE_DATA)(x, y)
-#define COMMON_X_TO_DATA(x, y) CONCAT2(UP_CASE_DATA, _TO_DATA)(x, y)
-
-#define COMMON_LOAD_DATA8(x, y) CONCAT3(LOAD_, UP_CASE_DATA, 8)(x, y)
-#define COMMON_STORE_DATA8(x, y, z) CONCAT3(STORE_, UP_CASE_DATA, 8)(x, y, z)
 
 #define VECT_SIZE 8
 #define SV (GROUP_SIZE * VECT_SIZE)
@@ -153,7 +126,7 @@ xe_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
         src_copy += data_off;
         for (int k = 0, axis_channel_id = CHANNELS * buf_chunk; k < buf_reads;
                 ++k, axis_channel_id += CHANNELS) {
-            d[i][k] = COMMON_DATA_TO_X(SRC, src_copy[axis_channel_id]);
+            d[i][k] = load(d[i][k], src_copy, (off_t)axis_channel_id);
             max_ = max(d[i][k], max_);
         }
     }
@@ -206,7 +179,7 @@ xe_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
 #else
             d[i][k] = d[i][k] * denom_;
 #endif
-            dst_copy[axis_channel_id] = COMMON_X_TO_DATA(DST, d[i][k] * scale);
+            write(dst_copy + axis_channel_id, d[i][k] * scale);
         }
     }
 
@@ -241,7 +214,7 @@ xe_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
     src += data_off;
     for (int k = 0, axis_channel_id = CHANNELS * buf_chunk; k < buf_reads;
             ++k, axis_channel_id += CHANNELS) {
-        d[k] = COMMON_DATA_TO_X(SRC, src[axis_channel_id]);
+        d[k] = load(d[k], src, (off_t)axis_channel_id);
         max_ = max(d[k], max_);
     }
 
@@ -279,7 +252,7 @@ xe_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
 #else
         d[k] = d[k] * denom_;
 #endif
-        dst[axis_channel_id] = COMMON_X_TO_DATA(DST, d[k] * scale);
+        write(dst + axis_channel_id, d[k] * scale);
     }
 #endif
 
@@ -303,7 +276,7 @@ xe_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
 #else
         int idx = HAS_TAIL ? k * SUB_GROUP_SIZE : sid * SUB_GROUP_SIZE;
 #endif
-        d[k] = COMMON_LOAD_DATA8(SRC, &src[idx * VECT_SIZE]);
+        d[k] = block_load(d[k], src + idx * VECT_SIZE);
         for (int i = 0; i < VECT_SIZE; ++i) {
             max_ = max(d[k][i], max_);
         }
@@ -314,7 +287,7 @@ xe_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
         for (int i = 0; i < VECT_SIZE; ++i) {
             int off = k * VECT_SIZE * SUB_GROUP_SIZE + i * SUB_GROUP_SIZE
                     + get_sub_group_local_id();
-            d[k][i] = (off < SOFTMAX_AXIS_SIZE ? COMMON_DATA_TO_X(SRC, src[off])
+            d[k][i] = (off < SOFTMAX_AXIS_SIZE ? load(d[k][i], src, (off_t)off)
                                                : -COMMON_DATA_MAX);
             max_ = max(d[k][i], max_);
         }
@@ -325,7 +298,7 @@ xe_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
         for (int i = 0; i < VECT_SIZE; ++i) {
             int off = k * VECT_SIZE * SUB_GROUP_SIZE + i * SUB_GROUP_SIZE
                     + get_sub_group_local_id();
-            d[k][i] = (off < SOFTMAX_AXIS_SIZE ? DATA_TO_FLOAT(SRC, src[off])
+            d[k][i] = (off < SOFTMAX_AXIS_SIZE ? load(d[k][i], src, (off_t)off)
                                                : -FLT_MAX);
             max_ = max(d[k][i], max_);
         }
@@ -395,7 +368,10 @@ xe_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
         d[k] = d[k] * denom_;
 #endif
 
-        COMMON_STORE_DATA8(DST, &dst[idx * VECT_SIZE], scale * d[k]);
+        {
+            COMMON_DATA8_T _tmp = scale * d[k];
+            block_write(dst + idx * VECT_SIZE, &_tmp);
+        }
     }
 #if HAS_TAIL // subgroup block write requires 16-byte alignment
     {
@@ -408,8 +384,7 @@ xe_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
         for (int i = 0; i < VECT_SIZE; i++) {
             int off = k * VECT_SIZE * SUB_GROUP_SIZE + i * SUB_GROUP_SIZE
                     + get_sub_group_local_id();
-            if (off < SOFTMAX_AXIS_SIZE)
-                dst[off] = COMMON_X_TO_DATA(DST, scale * d[k][i]);
+            if (off < SOFTMAX_AXIS_SIZE) write(dst + off, scale * d[k][i]);
         }
     }
 #endif
@@ -423,8 +398,7 @@ xe_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
         for (int i = 0; i < VECT_SIZE; i++) {
             int off = k * VECT_SIZE * SUB_GROUP_SIZE + i * SUB_GROUP_SIZE
                     + get_sub_group_local_id();
-            if (off < SOFTMAX_AXIS_SIZE)
-                dst[off] = COMMON_X_TO_DATA(DST, scale * d[k][i]);
+            if (off < SOFTMAX_AXIS_SIZE) write(dst + off, scale * d[k][i]);
         }
     }
 #endif
@@ -466,8 +440,8 @@ xe_softmax_bwd(__global DST_DATA_T *dst, __global SRC_DATA_T *diff_src,
 
     for (int i = 0, idx = IC * slice * SOFTMAX_BUF; i < VECT_SIZE;
             ++i, idx += IC) {
-        diff_d[i] = COMMON_DATA_TO_X(DST, diff_dst[idx]);
-        dst_[i] = COMMON_DATA_TO_X(DST, dst[idx]);
+        diff_d[i] = load(diff_d[i], diff_dst, (off_t)idx);
+        dst_[i] = load(dst_[i], dst, (off_t)idx);
 #if LOGSOFTMAX
         sbr += diff_d[i];
 #else
@@ -488,7 +462,7 @@ xe_softmax_bwd(__global DST_DATA_T *dst, __global SRC_DATA_T *diff_src,
 #else
         diff_d[i] = (diff_d[i] - sbr) * dst_[i];
 #endif
-        diff_src[idx] = COMMON_X_TO_DATA(SRC, diff_d[i]);
+        write(diff_src + idx, diff_d[i]);
     }
 
 #else
@@ -502,9 +476,9 @@ xe_softmax_bwd(__global DST_DATA_T *dst, __global SRC_DATA_T *diff_src,
     diff_dst += data_off;
     dst += data_off;
     for (int k = 0; k < NUM_BUF; ++k) {
-        diff_d[k] = COMMON_LOAD_DATA8(
-                DST, &diff_dst[k * VECT_SIZE * SUB_GROUP_SIZE]);
-        dst_[k] = COMMON_LOAD_DATA8(DST, &dst[k * VECT_SIZE * SUB_GROUP_SIZE]);
+        diff_d[k] = block_load(
+                diff_d[k], diff_dst + k * VECT_SIZE * SUB_GROUP_SIZE);
+        dst_[k] = block_load(dst_[k], dst + k * VECT_SIZE * SUB_GROUP_SIZE);
 
         for (int i = 0; i < VECT_SIZE; ++i) {
 #if LOGSOFTMAX
@@ -525,8 +499,7 @@ xe_softmax_bwd(__global DST_DATA_T *dst, __global SRC_DATA_T *diff_src,
 #else
         diff_d[k] = (diff_d[k] - sbr) * dst_[k];
 #endif
-        COMMON_STORE_DATA8(
-                SRC, &diff_src[k * VECT_SIZE * SUB_GROUP_SIZE], diff_d[k]);
+        block_write(diff_src + k * VECT_SIZE * SUB_GROUP_SIZE, &diff_d[k]);
     }
 #endif
 }

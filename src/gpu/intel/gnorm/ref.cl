@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/include/dispatch.h"
+#include "gpu/intel/include/io.h"
 #include "gpu/intel/include/post_ops.h"
 #include "gpu/intel/include/types.h"
 
@@ -25,8 +26,8 @@
 // DEF_ACC_DATA_T can not be used - it is "int" for small datatypes
 #define GNORM_ACC POST_OP_DATA_T
 // accumulator type specific constants
-#define GNORM_ACC_CONST_0 0.0f
-#define GNORM_ACC_CONST_1 1.0f
+#define GNORM_ACC_CONST_0 CONCAT2(into_, GNORM_ACC)(0)
+#define GNORM_ACC_CONST_1 CONCAT2(into_, GNORM_ACC)(1)
 
 #if IS_FWD
 
@@ -80,7 +81,7 @@ __kernel void ref_gnorm_fwd(__global const SRC_DATA_T *src,
         for_(size_t height = 0; height < H; ++height)
         for (size_t width = 0; width < W; ++width) {
             const size_t idx = SRC_OFF(id_batch, channel, depth, height, width);
-            const GNORM_ACC input_val = SRC_TO_REF(src[idx]);
+            const GNORM_ACC input_val = CONCAT2(into_, GNORM_ACC)(src[idx]);
             mean_val += input_val;
         }
         mean_val /= stat_divisor;
@@ -96,7 +97,7 @@ __kernel void ref_gnorm_fwd(__global const SRC_DATA_T *src,
         for_(size_t height = 0; height < H; ++height)
         for (size_t width = 0; width < W; ++width) {
             const size_t idx = SRC_OFF(id_batch, channel, depth, height, width);
-            const GNORM_ACC input_val = SRC_TO_REF(src[idx]);
+            const GNORM_ACC input_val = CONCAT2(into_, GNORM_ACC)(src[idx]);
             const GNORM_ACC var1 = input_val - mean_val;
             variance_val += var1 * var1;
         }
@@ -125,7 +126,7 @@ __kernel void ref_gnorm_fwd(__global const SRC_DATA_T *src,
         for_(size_t height = 0; height < H; ++height)
         for (size_t width = 0; width < W; ++width) {
             const size_t idx = SRC_OFF(id_batch, channel, depth, height, width);
-            const GNORM_ACC input_val = SRC_TO_REF(src[idx]);
+            const GNORM_ACC input_val = CONCAT2(into_, GNORM_ACC)(src[idx]);
             GNORM_ACC result_val = (input_val - mean_val) * variance_rsqrt;
 
             result_val = scale_val * result_val + shift_val;
@@ -133,8 +134,9 @@ __kernel void ref_gnorm_fwd(__global const SRC_DATA_T *src,
             result_val *= src_scale_val;
 
             // post-op operation
-            GNORM_ACC post_op_acc
-                    = WITH_SUM ? DST_TO_REF(dst[idx]) : GNORM_ACC_CONST_0;
+            GNORM_ACC post_op_acc = WITH_SUM
+                    ? CONCAT2(into_, GNORM_ACC)(dst[idx])
+                    : GNORM_ACC_CONST_0;
 
 // the macro changes meaning of the input parameters with diffrent ndims
 #if NDIMS == 3
@@ -152,7 +154,7 @@ __kernel void ref_gnorm_fwd(__global const SRC_DATA_T *src,
 #endif
             result_val *= r_dst_scale_val;
 
-            dst[idx] = TO_DST(result_val);
+            write(dst + idx, result_val);
         }
     }
 }
@@ -213,8 +215,9 @@ __kernel void ref_gnorm_bwd(__global const SRC_DATA_T *src,
 
             // load main data values
             const size_t idx = SRC_OFF(batch, id_channel, depth, height, width);
-            const GNORM_ACC src_val = SRC_TO_REF(src[idx]);
-            const GNORM_ACC diff_dst_val = DST_TO_REF(diff_dst[idx]);
+            const GNORM_ACC src_val = CONCAT2(into_, GNORM_ACC)(src[idx]);
+            const GNORM_ACC diff_dst_val
+                    = CONCAT2(into_, GNORM_ACC)(diff_dst[idx]);
 
             diff_scale += (src_val - mean_val) * diff_dst_val * variance_recip;
             diff_shift += diff_dst_val;
@@ -238,8 +241,8 @@ __kernel void ref_gnorm_bwd(__global const SRC_DATA_T *src,
         for (size_t width = 0; width < W; ++width) {
             // load main data values
             const size_t idx = SRC_OFF(batch, id_channel, depth, height, width);
-            const GNORM_ACC src_val = SRC_TO_REF(src[idx]);
-            GNORM_ACC result = DST_TO_REF(diff_dst[idx]);
+            const GNORM_ACC src_val = CONCAT2(into_, GNORM_ACC)(src[idx]);
+            GNORM_ACC result = CONCAT2(into_, GNORM_ACC)(diff_dst[idx]);
 
             if (CALCULATE_STATS) {
                 const GNORM_ACC diff_stat = diff_shift * CSP_recip
@@ -249,7 +252,7 @@ __kernel void ref_gnorm_bwd(__global const SRC_DATA_T *src,
             }
             result *= scale_val * variance_recip;
 
-            out_diff_src[idx] = TO_SRC(result);
+            write(out_diff_src + idx, result);
         }
     }
 }

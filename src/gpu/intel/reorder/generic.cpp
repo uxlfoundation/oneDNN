@@ -876,8 +876,8 @@ status_t generic_t::pd_t::init_kernel_ctx(
     kernel_ctx.define_int("NDIMS", conf.ndims);
     kernel_ctx.add_option("-cl-std=CL2.0");
 
-    conf.src_quant.define_macros(kernel_ctx, "SRC");
-    conf.dst_quant.define_macros(kernel_ctx, "DST");
+    conf.src_quant.define_macros(kernel_ctx, "SRC", /*with_punning=*/false);
+    conf.dst_quant.define_macros(kernel_ctx, "DST", /*with_punning=*/false);
     conf.sum_quant.define_macros(kernel_ctx, "SUM");
 
     def_dispatch(kernel_ctx, conf.dispatch);
@@ -886,9 +886,10 @@ status_t generic_t::pd_t::init_kernel_ctx(
     kernel_ctx.define_int("SUB_GROUP_SIZE", conf.sub_group_size);
 
     kernel_ctx.define_int("PAD_FILL_ZERO", conf.has_padding);
-
-    def_memory_desc_info(kernel_ctx, conf.src_md_info, "SRC");
-    def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST");
+    def_memory_desc_info(
+            kernel_ctx, conf.src_md_info, "SRC", /*with_punning=*/false);
+    def_memory_desc_info(
+            kernel_ctx, conf.dst_md_info, "DST", /*with_punning=*/false);
 
     kernel_ctx.define_int("GENERIC_REORDER", 1);
     kernel_ctx.define_int("VECT_DIM", conf.aux_data.vld.vector_dim);

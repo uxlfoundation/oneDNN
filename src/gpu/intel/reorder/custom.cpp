@@ -782,8 +782,8 @@ status_t custom_t::pd_t::init_kernel_ctx(
     kernel_ctx.define_int("NDIMS", conf.ndims);
     kernel_ctx.add_option("-cl-std=CL2.0");
 
-    conf.src_quant.define_macros(kernel_ctx, "SRC");
-    conf.dst_quant.define_macros(kernel_ctx, "DST");
+    conf.src_quant.define_macros(kernel_ctx, "SRC", /*with_punning=*/false);
+    conf.dst_quant.define_macros(kernel_ctx, "DST", /*with_punning=*/false);
     conf.sum_quant.define_macros(kernel_ctx, "SUM");
 
     def_dispatch(kernel_ctx, conf.dispatch);
@@ -801,9 +801,10 @@ status_t custom_t::pd_t::init_kernel_ctx(
         kernel_ctx.add_option("-Dcl_intel_subgroups_char");
         kernel_ctx.define_int("USE_DENSE_VECT", 1);
     }
-
-    def_memory_desc_info(kernel_ctx, conf.src_md_info, "SRC");
-    def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST");
+    def_memory_desc_info(
+            kernel_ctx, conf.src_md_info, "SRC", /*with_punning=*/false);
+    def_memory_desc_info(
+            kernel_ctx, conf.dst_md_info, "DST", /*with_punning=*/false);
 
     // distinguish between various flavors of unroll kernel
     if (src_mdw.matches_one_of_tag(

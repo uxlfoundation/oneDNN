@@ -185,7 +185,6 @@ __kernel void generic_reorder(__global SRC_DATA_T *restrict src,
         const off_t dst_off = DST_OFF(d[0] + b[0], d[1] + b[1], d[2] + b[2],
                 d[3] + b[3], d[4] + b[4], d[5] + b[5]);
 
-        DST_DATA_T dst_tmp;
         uint cache_idx = sg_off + b[5] * CACHE_STRIDE_5 + b[4] * CACHE_STRIDE_4
                 + b[3] * CACHE_STRIDE_3 + b[2] * CACHE_STRIDE_2
                 + b[1] * CACHE_STRIDE_1 + b[0] * CACHE_STRIDE_0;
@@ -202,9 +201,10 @@ __kernel void generic_reorder(__global SRC_DATA_T *restrict src,
 
         if (!pad) {
             SRC_DATA_T from_cache = cache[cache_idx];
+            float dst_val = 0.f;
 #if WITH_SUM_SCALE || WITH_SUM_ZPOINT
             // TODO: move to separate loop to enable burst reads from dst?
-            dst_tmp = dst[dst_off];
+            load(&dst_val, dst, dst_off);
 #endif
 #if WITH_SRC_SCALE
             off_t src_scale_idx = SCALE_OFF(SRC, d[0] + b[0], d[1] + b[1],
@@ -220,9 +220,10 @@ __kernel void generic_reorder(__global SRC_DATA_T *restrict src,
                     ? dst_scales[dst_scale_idx]
                     : 0.0f;
 #endif
-            REORDER(DEFAULT_ROUND, dst_tmp, from_cache, src_scale, dst_scale,
+            float src_val = into_float(from_cache);
+            float result = AXPY(src_val, dst_val, src_scale, dst_scale,
                     sum_scale, src_zp, dst_zp, sum_zp);
-            dst[dst_off] = dst_tmp;
+            write(dst + dst_off, result);
         }
     }
 }

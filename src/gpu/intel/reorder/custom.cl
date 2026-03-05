@@ -72,7 +72,7 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
         int pad_d4 = NDIMS > 4 && d4 >= SRC_D4;
         int pad_d5 = NDIMS > 5 && d5 >= SRC_D5;
         if (pad_d0 || pad_d1 || pad_d2 || pad_d3 || pad_d4 || pad_d5) {
-            dst[dst_off] = 0;
+            write(dst + dst_off, 0.f);
             continue;
         }
 #endif
@@ -82,8 +82,16 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
 #if WITH_DST_SCALE && DST_NUM_SCALES > 1
         dst_scale = dst_scales[SCALE_OFF(DST, d0, d1, d2, d3, d4, d5)];
 #endif
-        REORDER(DEFAULT_ROUND, dst[dst_off], src[src_off], src_scale, dst_scale,
-                sum_scale, src_zp, dst_zp, sum_zp);
+        {
+            float _sf = into_float(src[src_off]);
+            float _df = 0.f;
+#if WITH_SUM_MOD
+            _df = into_float(dst[dst_off]);
+#endif
+            write(dst + dst_off,
+                    AXPY(_sf, _df, src_scale, dst_scale, sum_scale, src_zp,
+                            dst_zp, sum_zp));
+        }
     }
 
 #elif ALT_OFFSETS
@@ -108,8 +116,16 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
     for (int db = 0; db < BLK; ++db) {
         const int src_off = src_base + db * SB;
         const int dst_off = dst_base + db * DB;
-        REORDER(DEFAULT_ROUND, dst[dst_off], src[src_off], src_scale, dst_scale,
-                sum_scale, src_zp, dst_zp, sum_zp);
+        {
+            float _sf = into_float(src[src_off]);
+            float _df = 0.f;
+#if WITH_SUM_MOD
+            _df = into_float(dst[dst_off]);
+#endif
+            write(dst + dst_off,
+                    AXPY(_sf, _df, src_scale, dst_scale, sum_scale, src_zp,
+                            dst_zp, sum_zp));
+        }
     }
 
 #elif PLAIN_xFxE_TO_ABCDEF
@@ -133,7 +149,7 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
         unroll_for(unsigned sidx = 0; sidx < block_size; ++sidx) { \
             const unsigned src_off \
                     = SRC_OFF(d0, d1, d2, d3, d4, sidx + src_offset); \
-            src_memory[sidx] = SRC_BLOCK_READ(&src[src_off]); \
+            block_load(&src_memory[sidx], src + src_off); \
         } \
         unroll_for(int j = 0; j < SUB_GROUP_SIZE; j++) \
                 unroll_for(int i = 0; i < block_size; i++) { \
@@ -150,10 +166,16 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
         unroll_for(unsigned sidx = 0; sidx < block_size; ++sidx) { \
             if (block_size >= 16) \
                 dst_off = DST_OFF(d0, d1, d2, d3, d4 + sidx, src_offset); \
-            if (SUM_OUTPUT) dst_tmp = DST_BLOCK_READ(&dst[dst_off]); \
-            REORDER(DEFAULT_ROUND, dst_tmp, src_swap[sidx][sglid], src_scale, \
-                    dst_scale, sum_scale, src_zp, dst_zp, sum_zp); \
-            DST_BLOCK_WRITE(&dst[dst_off], dst_tmp); \
+            float _df = 0.f; \
+            if (SUM_OUTPUT) { \
+                block_load(&dst_tmp, dst + dst_off); \
+                _df = into_float(dst_tmp); \
+            } \
+            float _sf = into_float(src_swap[sidx][sglid]); \
+            write(&dst_tmp, \
+                    AXPY(_sf, _df, src_scale, dst_scale, sum_scale, src_zp, \
+                            dst_zp, sum_zp)); \
+            block_write(dst + dst_off, &dst_tmp); \
             if (block_size < 16) dst_off += SUB_GROUP_SIZE; \
         } \
     }
@@ -195,7 +217,7 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
     const int d5_block = GWS_GET_D5_BLOCK();
 
     SRC_DATA_T src_buf[SUB_GROUP_SIZE];
-    SRC_DATA_T dst_buf[SUB_GROUP_SIZE];
+    SRC_DATA_T tr_buf[SUB_GROUP_SIZE];
     SRC_DATA_T send_buf;
 
 #if PAD_FILL_ZERO == 1
@@ -219,14 +241,14 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
             const int iter = d0i + d1i + d2i + d3i + d4i + d5i;
             const int src_off = SRC_OFF(
                     d0 + d0i, d1 + d1i, d2 + d2i, d3 + d3i, d4 + d4i, d5 + d5i);
-            src_buf[iter] = SRC_BLOCK_READ(&src[src_off]);
+            block_load(&src_buf[iter], src + src_off);
         }
         // Share and transpose. Each work item keeps 1 own value and
         // gets (N-1) values from other work items
-        dst_buf[sgId] = src_buf[sgId];
+        tr_buf[sgId] = src_buf[sgId];
         for (int i = 1; i < SUB_GROUP_SIZE; i++) {
             send_buf = src_buf[(i + sgId) % BATCH_SIZE];
-            dst_buf[(BATCH_SIZE + sgId - i) % BATCH_SIZE]
+            tr_buf[(BATCH_SIZE + sgId - i) % BATCH_SIZE]
                     = intel_sub_group_shuffle(
                             send_buf, (BATCH_SIZE + sgId - i) % BATCH_SIZE);
         }
@@ -253,8 +275,10 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
 #endif
         DST_DATA_T dst_tmp;
         if (!pad) {
+            float _df = 0.f;
 #if WITH_SUM_SCALE || WITH_SUM_ZPOINT
-            dst_tmp = DST_BLOCK_READ(&dst[dst_off]);
+            block_load(&dst_tmp, dst + dst_off);
+            _df = into_float(dst_tmp);
 #endif
 #if WITH_SRC_SCALE && SRC_NUM_SCALES > 1
             src_scale = src_scales[SCALE_OFF(SRC, d0, d1, d2, d3, d4, d5)];
@@ -262,12 +286,14 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
 #if WITH_DST_SCALE && DST_NUM_SCALES > 1
             dst_scale = dst_scales[SCALE_OFF(DST, d0, d1, d2, d3, d4, d5)];
 #endif
-            REORDER(DEFAULT_ROUND, dst_tmp, dst_buf[iter], src_scale, dst_scale,
-                    sum_scale, src_zp, dst_zp, sum_zp);
+            float _sf = into_float(tr_buf[iter]);
+            write(&dst_tmp,
+                    AXPY(_sf, _df, src_scale, dst_scale, sum_scale, src_zp,
+                            dst_zp, sum_zp));
         } else {
-            dst_tmp = 0;
+            write(&dst_tmp, 0.f);
         }
-        DST_BLOCK_WRITE(&dst[dst_off], dst_tmp);
+        block_write(dst + dst_off, &dst_tmp);
     }
 
 #elif REORDER_NCHW
@@ -284,7 +310,7 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
     const int d1_block = GWS_GET_D1_BLOCK();
 
     SRC_DATA_T src_buf[SUB_GROUP_SIZE];
-    SRC_DATA_T dst_buf[SUB_GROUP_SIZE];
+    SRC_DATA_T tr_buf[SUB_GROUP_SIZE];
 #if BIGGER_THAN_16
     SRC_DATA_T send_buf;
 #else
@@ -300,12 +326,12 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
 
     for (int i = 0; i < d1_block; i++) {
         int src_off = SRC_OFF(d0, d1, d2, d3, 0, 0) + STRIDE_S * i;
-        src_buf[i] = SRC_BLOCK_READ(&src[src_off]);
+        block_load(&src_buf[i], src + src_off);
     }
 #if BIGGER_THAN_16
     for (int i = 0; i < SUB_GROUP_SIZE; i++) {
         send_buf = src_buf[(i + sgId) % 16];
-        dst_buf[(16 + sgId - i) % 16]
+        tr_buf[(16 + sgId - i) % 16]
                 = intel_sub_group_shuffle(send_buf, (16 + sgId - i) % 16);
     }
 #else
@@ -316,19 +342,23 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
     }
     for (int i = 0; i < d1_block; i++) {
         int ofs = i + sgId * d1_block;
-        dst_buf[i] = exch_buf[ofs / SUB_GROUP_SIZE][ofs % SUB_GROUP_SIZE];
+        tr_buf[i] = exch_buf[ofs / SUB_GROUP_SIZE][ofs % SUB_GROUP_SIZE];
     }
 #endif
 
     for (int i = 0; i < d1_block; i++) {
         int dst_off = DST_OFF(d0, d1, d2, d3, 0, 0) + STRIDE_D * i;
         DST_DATA_T dst_tmp;
+        float _df = 0.f;
 #if WITH_SUM_SCALE || WITH_SUM_ZPOINT
-        dst_tmp = DST_BLOCK_READ(&dst[dst_off]);
+        block_load(&dst_tmp, dst + dst_off);
+        _df = into_float(dst_tmp);
 #endif
-        REORDER(DEFAULT_ROUND, dst_tmp, dst_buf[i], src_scale, dst_scale,
-                sum_scale, src_zp, dst_zp, sum_zp);
-        DST_BLOCK_WRITE(&dst[dst_off], dst_tmp);
+        float _sf = into_float(tr_buf[i]);
+        write(&dst_tmp,
+                AXPY(_sf, _df, src_scale, dst_scale, sum_scale, src_zp, dst_zp,
+                        sum_zp));
+        block_write(dst + dst_off, &dst_tmp);
     }
 
 #elif PLAIN_TO_ABCD84A42B
@@ -378,36 +408,30 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
     }
     if (SRC_D3_ALIGNED || d3 + SUB_GROUP_SIZE < SRC_D3) {
         for (int d = 0; d < SUB_GROUP_SIZE; d += 8) {
-            SRC_DATA8_T src_tmp;
-            for (int i = 0; i < 8; i++) {
-                src_tmp[i] = loc_buf[sg][sglid][d + i];
-            }
             const int dst_off = DST_OFF(d0, d1, d2, d3 + d, 0, 0);
-
-            DST_DATA8_T dst_tmp;
+            for (int n = 0; n < 8; n++) {
+                float _sf = into_float(loc_buf[sg][sglid][d + n]);
+                float _df = 0.f;
 #if WITH_SUM_SCALE || WITH_SUM_ZPOINT
-            for (int n = 0; n < 8; n++) {
-                dst_tmp[n] = dst[dst_off + sglid + n * SUB_GROUP_SIZE];
-            }
+                load(&_df, dst, dst_off + sglid + n * SUB_GROUP_SIZE);
 #endif // WITH_SUM_SCALE || WITH_SUM_ZPOINT
-            REORDER8(DEFAULT_ROUND, dst_tmp, src_tmp, src_scale, dst_scale,
-                    sum_scale, src_zp, dst_zp, sum_zp);
-            for (int n = 0; n < 8; n++) {
-                dst[dst_off + sglid + n * SUB_GROUP_SIZE] = dst_tmp[n];
+                write(dst + dst_off + sglid + n * SUB_GROUP_SIZE,
+                        AXPY(_sf, _df, src_scale, dst_scale, sum_scale, src_zp,
+                                dst_zp, sum_zp));
             }
         }
     } else {
         for (int d = 0; d < SUB_GROUP_SIZE; d++) {
             if (d3 + d < SRC_D3) {
-                const SRC_DATA_T src_tmp = loc_buf[sg][sglid][d];
                 const int dst_off = DST_OFF(d0, d1, d2, d3 + d, 0, 0);
-                DST_DATA_T dst_tmp;
+                float _sf = into_float(loc_buf[sg][sglid][d]);
+                float _df = 0.f;
 #if WITH_SUM_SCALE || WITH_SUM_ZPOINT
-                dst_tmp[n] = dst[dst_off + sglid];
+                load(&_df, dst, dst_off + sglid);
 #endif // WITH_SUM_SCALE || WITH_SUM_ZPOINT
-                REORDER(DEFAULT_ROUND, dst_tmp, src_tmp, src_scale, dst_scale,
-                        sum_scale, src_zp, dst_zp, sum_zp);
-                dst[dst_off + sglid] = dst_tmp;
+                write(dst + dst_off + sglid,
+                        AXPY(_sf, _df, src_scale, dst_scale, sum_scale, src_zp,
+                                dst_zp, sum_zp));
             }
         }
     }
@@ -435,11 +459,11 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
     const int d1b = GWS_GET_D1_BLOCK();
 
     SRC_DATA_T src_buf[d0b];
-    DST_DATA_T dst_buf[d0b];
+    SRC_DATA_T dst_buf[d0b];
 
     for (int d0i = 0; d0i < d0b; ++d0i) {
         const int src_off = SRC_OFF(d0 + d0i, d1, 0, 0, 0, 0);
-        src_buf[d0i] = SRC_BLOCK_READ(&src[src_off]);
+        block_load(&src_buf[d0i], src + src_off);
     }
 
     SRC_DATA_T tmp_buf[d0b][SUB_GROUP_SIZE];
@@ -462,12 +486,16 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
         const int dst_off = DST_OFF(d0, d1, 0, 0, 0, 0) + SUB_GROUP_SIZE * d0i;
 
         DST_DATA_T dst_tmp;
+        float _df = 0.f;
 #if WITH_SUM_SCALE || WITH_SUM_ZPOINT
-        dst_tmp = DST_BLOCK_READ(&dst[dst_off]);
+        block_load(&dst_tmp, dst + dst_off);
+        _df = into_float(dst_tmp);
 #endif
-        REORDER(DEFAULT_ROUND, dst_tmp, dst_buf[d0i], src_scale, dst_scale,
-                sum_scale, src_zp, dst_zp, sum_zp);
-        DST_BLOCK_WRITE(&dst[dst_off], dst_tmp);
+        float _sf = into_float(dst_buf[d0i]);
+        write(&dst_tmp,
+                AXPY(_sf, _df, src_scale, dst_scale, sum_scale, src_zp, dst_zp,
+                        sum_zp));
+        block_write(dst + dst_off, &dst_tmp);
     }
 
 #elif VECTORIZE_LAST_DIM
@@ -493,17 +521,22 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
 
         int src_off
                 = SRC_OFF(d0 + d0i, d1 + d1i, d2 + d2i, d3 + d3i, d4 + d4i, d5);
-        SRC_DATA_T src_tmp = SRC_BLOCK_READ(&src[src_off]);
+        SRC_DATA_T src_tmp;
+        block_load(&src_tmp, src + src_off);
 
         int dst_off
                 = DST_OFF(d0 + d0i, d1 + d1i, d2 + d2i, d3 + d3i, d4 + d4i, d5);
         DST_DATA_T dst_tmp;
+        float _df = 0.f;
 #if WITH_SUM_SCALE || WITH_SUM_ZPOINT
-        dst_tmp = DST_BLOCK_READ(&dst[dst_off]);
+        block_load(&dst_tmp, dst + dst_off);
+        _df = into_float(dst_tmp);
 #endif
-        REORDER(DEFAULT_ROUND, dst_tmp, src_tmp, src_scale, dst_scale,
-                sum_scale, src_zp, dst_zp, sum_zp);
-        DST_BLOCK_WRITE(&dst[dst_off], dst_tmp);
+        float _sf = into_float(src_tmp);
+        write(&dst_tmp,
+                AXPY(_sf, _df, src_scale, dst_scale, sum_scale, src_zp, dst_zp,
+                        sum_zp));
+        block_write(dst + dst_off, &dst_tmp);
     }
 
 #elif PAD_INNERMOST
@@ -572,13 +605,14 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
         unroll_for(int j = 0; j < GROUP; j++) {
             const int coff = sg_off + VECT_SIZE * GROUP * j + VECT_SIZE * i;
             const int doff = dst_off + VECT_SIZE * j;
-            DST_DATA_T dst_tmp;
+            float _sf = into_float(cache[coff + sgId]);
+            float _df = 0.f;
 #if WITH_SUM_SCALE || WITH_SUM_ZPOINT
-            dst_tmp = dst[doff + sgId * DST_INNERMOST_STRIDE];
+            load(&_df, dst, doff + sgId * DST_INNERMOST_STRIDE);
 #endif
-            REORDER(DEFAULT_ROUND, dst_tmp, cache[coff + sgId], src_scale,
-                    dst_scale, sum_scale, src_zp, dst_zp, sum_zp);
-            dst[doff + sgId * DST_INNERMOST_STRIDE] = dst_tmp;
+            write(dst + doff + sgId * DST_INNERMOST_STRIDE,
+                    AXPY(_sf, _df, src_scale, dst_scale, sum_scale, src_zp,
+                            dst_zp, sum_zp));
         }
     }
 
@@ -629,7 +663,7 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
                 continue;
             }
 #endif
-            cache[cidx] = SRC_BLOCK_READ(&src[sidx]);
+            block_load(&cache[cidx], src + sidx);
         }
     }
     b[SRC_LOOP_DIM] = 0;
@@ -653,8 +687,10 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
             int cidx = i + j * GROUP;
             int didx = dst_off + get_sub_group_size() * j;
             DST_DATA_T dst_tmp;
+            float _df = 0.f;
 #if WITH_SUM_SCALE || WITH_SUM_ZPOINT
-            dst_tmp = DST_BLOCK_READ(&dst[didx]);
+            block_load(&dst_tmp, dst + didx);
+            _df = into_float(dst_tmp);
 #endif
 #if WITH_SRC_SCALE && SRC_NUM_SCALES > 1
             src_scale = src_scales[SCALE_OFF(SRC, d[0] + b[0], d[1] + b[1],
@@ -665,9 +701,11 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
                     d[2] + b[2], d[3] + b[3], d[4] + b[4], d[5] + b[5])];
 #endif
 
-            REORDER(DEFAULT_ROUND, dst_tmp, cache[cidx], src_scale, dst_scale,
-                    sum_scale, src_zp, dst_zp, sum_zp);
-            DST_BLOCK_WRITE(&dst[didx], dst_tmp);
+            float _sf = into_float(cache[cidx]);
+            write(&dst_tmp,
+                    AXPY(_sf, _df, src_scale, dst_scale, sum_scale, src_zp,
+                            dst_zp, sum_zp));
+            block_write(dst + didx, &dst_tmp);
         }
     }
 
@@ -675,14 +713,17 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
     const int d0_blk_start = GWS_GET_D0();
     const int d0_blk_end = d0_blk_start + (GWS_GET_D0_BLOCK() * 16);
     for (int d0 = d0_blk_start; d0 < d0_blk_end; d0 += 128) {
-        SRC_DATA8_T src_tmp = SRC_BLOCK_READ8(&src[d0]);
-        DST_DATA8_T dst_tmp;
+        float src_f[8];
+        block_load(src_f, src + d0, 8);
+        float dst_f[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 #if WITH_SUM_SCALE || WITH_SUM_ZPOINT
-        dst_tmp = DST_BLOCK_READ8(&dst[d0]);
+        block_load(dst_f, dst + d0, 8);
 #endif
-        REORDER8(DEFAULT_ROUND, dst_tmp, src_tmp, src_scale, dst_scale,
-                sum_scale, src_zp, dst_zp, sum_zp);
-        DST_BLOCK_WRITE8(&dst[d0], dst_tmp);
+        for (int _i = 0; _i < 8; _i++) {
+            dst_f[_i] = AXPY(src_f[_i], dst_f[_i], src_scale, dst_scale,
+                    sum_scale, src_zp, dst_zp, sum_zp);
+        }
+        block_write(dst + d0, dst_f, 8);
     }
 
 // xb -> xab and xb -> xba, where size of dst's innermost dim is less than 16
@@ -755,13 +796,14 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
         dst_scale = dst_scales[SCALE_OFF(DST, d[0] + b[0], d[1] + b[1],
                 d[2] + b[2], d[3] + b[3], d[4] + b[4], d[5] + b[5])];
 #endif
-        DST_DATA_T dst_tmp;
+        float _sf = into_float(data);
+        float _df = 0.f;
 #if WITH_SUM_SCALE || WITH_SUM_ZPOINT
-        dst_tmp = dst[dst_off + sgId];
+        load(&_df, dst, dst_off + sgId);
 #endif
-        REORDER(DEFAULT_ROUND, dst_tmp, data, src_scale, dst_scale, sum_scale,
-                src_zp, dst_zp, sum_zp);
-        dst[dst_off + sgId] = dst_tmp;
+        write(dst + dst_off + sgId,
+                AXPY(_sf, _df, src_scale, dst_scale, sum_scale, src_zp, dst_zp,
+                        sum_zp));
     }
 
 //###################################################################################
@@ -780,10 +822,10 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
     src += SRC_OFF(d0, d1, d2, d3, d4, d5);
     dst += DST_OFF(d0, d1, d2, d3, d4, d5);
 
-    SRC_DATA8_T in0, in1;
+    SRC_DATA_T in0[8], in1[8];
 #if SRC_16A16B || SRC_16B16A
-    in0 = SRC_BLOCK_READ8(&src[0]);
-    in1 = SRC_BLOCK_READ8(&src[8 * 16]);
+    block_load(in0, src, 8);
+    block_load(in1, src + 8 * 16, 8);
 #else
     for (int i = 0; i < 8; i++) {
 #if DST_16B16A
@@ -796,7 +838,7 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
     }
 #endif // SRC_16A16B || SRC_16B16A
 
-    DST_DATA8_T dst0, dst1;
+    DST_DATA_T dst0[8], dst1[8];
 #if (SRC_16A16B || SRC_16B16A) && (DST_16A16B || DST_16B16A)
 #if WITH_SUM_SCALE || WITH_SUM_ZPOINT
     for (int i = 0; i < 8; i++) {
@@ -811,8 +853,8 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
 #endif // WITH_SUM_SCALE || WITH_SUM_ZPOINT
 #elif DST_16A16B || DST_16B16A
 #if WITH_SUM_SCALE || WITH_SUM_ZPOINT
-    dst0 = DST_BLOCK_READ8(&dst[0]);
-    dst1 = DST_BLOCK_READ8(&dst[8 * 16]);
+    block_load(dst0, dst, 8);
+    block_load(dst1, dst + 8 * 16, 8);
 #endif // WITH_SUM_SCALE || WITH_SUM_ZPOINT
 #else
 #if WITH_SUM_SCALE || WITH_SUM_ZPOINT
@@ -828,10 +870,26 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
 #endif // WITH_SUM_SCALE || WITH_SUM_ZPOINT
 #endif // (SRC_16A16B || SRC_16B16A) && (DST_16A16B || DST_16B16A)
 
-    REORDER8(DEFAULT_ROUND, dst0, in0, src_scale, dst_scale, sum_scale, src_zp,
-            dst_zp, sum_zp);
-    REORDER8(DEFAULT_ROUND, dst1, in1, src_scale, dst_scale, sum_scale, src_zp,
-            dst_zp, sum_zp);
+    for (int _i = 0; _i < 8; _i++) {
+        float _sf = into_float(in0[_i]);
+        float _df = 0.f;
+#if WITH_SUM_SCALE || WITH_SUM_ZPOINT
+        _df = into_float(dst0[_i]);
+#endif
+        write(&dst0[_i],
+                AXPY(_sf, _df, src_scale, dst_scale, sum_scale, src_zp, dst_zp,
+                        sum_zp));
+    }
+    for (int _i = 0; _i < 8; _i++) {
+        float _sf = into_float(in1[_i]);
+        float _df = 0.f;
+#if WITH_SUM_SCALE || WITH_SUM_ZPOINT
+        _df = into_float(dst1[_i]);
+#endif
+        write(&dst1[_i],
+                AXPY(_sf, _df, src_scale, dst_scale, sum_scale, src_zp, dst_zp,
+                        sum_zp));
+    }
 
 #if (SRC_16A16B || SRC_16B16A) && (DST_16A16B || DST_16B16A)
     for (int i = 0; i < 8; i++) {
@@ -844,8 +902,8 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
 #endif // SRC_16B16A
     }
 #elif DST_16A16B || DST_16B16A
-    DST_BLOCK_WRITE8(&dst[0], dst0);
-    DST_BLOCK_WRITE8(&dst[8 * 16], dst1);
+    block_write(dst, dst0, 8);
+    block_write(dst + 8 * 16, dst1, 8);
 #else
     for (int i = 0; i < 8; i++) {
 #if SRC_16B16A
@@ -863,30 +921,34 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
     SRC_DATA_T src_tmp;
 #if SRC_16B
     src += SRC_OFF(d0, d1, d2, d3, d4, d5);
-    src_tmp = SRC_BLOCK_READ(&src[0]);
+    block_load(&src_tmp, src);
 #else
     src += SRC_OFF(d0, d1 + local_id, d2, d3, d4, d5);
     src_tmp = src[0];
 #endif // SRC_16B
 
     DST_DATA_T dst_tmp;
+    float _df = 0.f;
 #if DST_16B
     dst += DST_OFF(d0, d1, d2, d3, d4, d5);
 #if WITH_SUM_SCALE || WITH_SUM_ZPOINT
-    dst_tmp = DST_BLOCK_READ(&dst[0]);
+    block_load(&dst_tmp, dst);
+    _df = into_float(dst_tmp);
 #endif // WITH_SUM_SCALE || WITH_SUM_ZPOINT
 #else
     dst += DST_OFF(d0, d1 + local_id, d2, d3, d4, d5);
 #if WITH_SUM_SCALE || WITH_SUM_ZPOINT
-    dst_tmp = dst[0];
+    _df = into_float(dst[0]);
 #endif // WITH_SUM_SCALE || WITH_SUM_ZPOINT
 #endif // DST_16B
 
-    REORDER(DEFAULT_ROUND, dst_tmp, src_tmp, src_scale, dst_scale, sum_scale,
-            src_zp, dst_zp, sum_zp);
+    float _sf = into_float(src_tmp);
+    write(&dst_tmp,
+            AXPY(_sf, _df, src_scale, dst_scale, sum_scale, src_zp, dst_zp,
+                    sum_zp));
 
 #if DST_16B
-    DST_BLOCK_WRITE(&dst[0], dst_tmp);
+    block_write(dst, &dst_tmp);
 #else
     dst[0] = dst_tmp;
 #endif // DST_16B
@@ -895,11 +957,11 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
 #elif SRC_16B16C || DST_16B16C || SRC_16C16B || DST_16C16B
     const int g = d0;
 
-    SRC_DATA8_T in0, in1;
+    SRC_DATA_T in0[8], in1[8];
 #if SRC_16B16C || SRC_16C16B
     src += SRC_OFF_G(g, d1, d2, d3, d4, d5);
-    in0 = SRC_BLOCK_READ8(&src[0]);
-    in1 = SRC_BLOCK_READ8(&src[8 * 16]);
+    block_load(in0, src, 8);
+    block_load(in1, src + 8 * 16, 8);
 #else
     for (int i = 0; i < 8; i++) {
 #if DST_16C16B
@@ -912,7 +974,7 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
     }
 #endif // SRC_16B16C || SRC_16C16B
 
-    DST_DATA8_T dst0, dst1;
+    DST_DATA_T dst0[8], dst1[8];
 
 #if (SRC_16B16C || SRC_16C16B) && (DST_16B16C || DST_16C16B)
 #if WITH_SUM_SCALE || WITH_SUM_ZPOINT
@@ -929,8 +991,8 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
 #elif DST_16B16C || DST_16C16B
     dst += DST_OFF_G(g, d1, d2, d3, d4, d5);
 #if WITH_SUM_SCALE || WITH_SUM_ZPOINT
-    dst0 = DST_BLOCK_READ8(&dst[0]);
-    dst1 = DST_BLOCK_READ8(&dst[8 * 16]);
+    block_load(dst0, dst, 8);
+    block_load(dst1, dst + 8 * 16, 8);
 #endif // WITH_SUM_SCALE || WITH_SUM_ZPOINT
 #else
 #if WITH_SUM_SCALE || WITH_SUM_ZPOINT
@@ -946,10 +1008,26 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
 #endif // WITH_SUM_SCALE || WITH_SUM_ZPOINT
 #endif // (SRC_16B16C || SRC_16C16B) && (DST_16B16C || DST_16C16B)
 
-    REORDER8(DEFAULT_ROUND, dst0, in0, src_scale, dst_scale, sum_scale, src_zp,
-            dst_zp, sum_zp);
-    REORDER8(DEFAULT_ROUND, dst1, in1, src_scale, dst_scale, sum_scale, src_zp,
-            dst_zp, sum_zp);
+    for (int _i = 0; _i < 8; _i++) {
+        float _sf = into_float(in0[_i]);
+        float _df = 0.f;
+#if WITH_SUM_SCALE || WITH_SUM_ZPOINT
+        _df = into_float(dst0[_i]);
+#endif
+        write(&dst0[_i],
+                AXPY(_sf, _df, src_scale, dst_scale, sum_scale, src_zp, dst_zp,
+                        sum_zp));
+    }
+    for (int _i = 0; _i < 8; _i++) {
+        float _sf = into_float(in1[_i]);
+        float _df = 0.f;
+#if WITH_SUM_SCALE || WITH_SUM_ZPOINT
+        _df = into_float(dst1[_i]);
+#endif
+        write(&dst1[_i],
+                AXPY(_sf, _df, src_scale, dst_scale, sum_scale, src_zp, dst_zp,
+                        sum_zp));
+    }
 
 #if (SRC_16B16C || SRC_16C16B) && (DST_16B16C || DST_16C16B)
     for (int i = 0; i < 8; i++) {
@@ -962,8 +1040,8 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
 #endif // SRC_16C16B
     }
 #elif DST_16B16C || DST_16C16B
-    DST_BLOCK_WRITE8(&dst[0], dst0);
-    DST_BLOCK_WRITE8(&dst[8 * 16], dst1);
+    block_write(dst, dst0, 8);
+    block_write(dst + 8 * 16, dst1, 8);
 #else
     for (int i = 0; i < 8; i++) {
 #if SRC_16C16B

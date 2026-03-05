@@ -15,13 +15,52 @@
 *******************************************************************************/
 
 #define DT_UNDEF 1
+#include "gpu/intel/include/io.h"
 #include "gpu/intel/include/math_utils.h"
 #include "gpu/intel/include/types.h"
 #include "gpu/intel/include/types_interop.h"
 #include "gpu/intel/include/types_specific.h"
 
+#if NDIMS == 2
+#define DST_SCALE_OFF(x0, x1, d, h, w, g0, g1) \
+    (((x0) % DST_B0) * DST_SB0 + ((x0) / DST_B0) * (DST_S0 / (g0)) \
+            + ((x1) % DST_B1) * DST_SB1 + ((x1) / DST_B1) * (DST_S1 / (g1)))
+#elif NDIMS == 3
+#define DST_SCALE_OFF(x0, x1, d, h, x2, g0, g1) \
+    (((x0) % DST_B0) * (DST_SB0 / (g0 * g1)) \
+            + ((x0) / DST_B0) * (DST_S0 / (g0)) \
+            + ((x1) % DST_B1) * (DST_SB1 / (g0 * g1)) \
+            + ((x1) / DST_B1) * (DST_S1 / (g0 * g1)) \
+            + ((x2) % DST_B2) * (DST_SB2 / (g0 * g1)) \
+            + ((x2) / DST_B2) * (DST_S2 / (g0 * g1)))
+#elif NDIMS == 4
+#define DST_SCALE_OFF(x0, x1, d, x2, x3, g0, g1) \
+    (((x0) % DST_B0) * (DST_SB0 / (g0 * g1)) \
+            + ((x0) / DST_B0) * (DST_S0 / (g0)) \
+            + ((x1) % DST_B1) * (DST_SB1 / (g0 * g1)) \
+            + ((x1) / DST_B1) * (DST_S1 / (g0 * g1)) \
+            + ((x2) % DST_B2) * (DST_SB2 / (g0 * g1)) \
+            + ((x2) / DST_B2) * (DST_S2 / (g0 * g1)) \
+            + ((x3) % DST_B3) * (DST_SB3 / (g0 * g1)) \
+            + ((x3) / DST_B3) * (DST_S3 / (g0 * g1)))
+#elif NDIMS == 5
+#define DST_SCALE_OFF(x0, x1, x2, x3, x4, g0, g1) \
+    (((x0) % DST_B0) * (DST_SB0 / (g0 * g1)) \
+            + ((x0) / DST_B0) * (DST_S0 / (g0)) \
+            + ((x1) % DST_B1) * (DST_SB1 / (g0 * g1)) \
+            + ((x1) / DST_B1) * (DST_S1 / (g0 * g1)) \
+            + ((x2) % DST_B2) * (DST_SB2 / (g0 * g1)) \
+            + ((x2) / DST_B2) * (DST_S2 / (g0 * g1)) \
+            + ((x3) % DST_B3) * (DST_SB3 / (g0 * g1)) \
+            + ((x3) / DST_B3) * (DST_S3 / (g0 * g1)) \
+            + ((x4) % DST_B4) * (DST_SB4 / (g0 * g1)) \
+            + ((x4) / DST_B4) * (DST_S4 / (g0 * g1)))
+#endif
+
 inline float clamp_scale(float value) {
-    return DST_SCALES_TO_REF(REF_TO_DST_SCALES(value));
+    DST_SCALES_DATA_T tmp;
+    write(&tmp, value);
+    return into_float(tmp);
 }
 
 inline float mx_recipe(float group_max) {
@@ -93,7 +132,7 @@ __kernel void dynamic_scale_dst(__global float *restrict src,
         off = DST_OFF(m, n_iter, 0, 0, 0);
 #endif
 #endif
-        dst[off] = TO_DST(src[off] / scale_val);
+        write(dst + off, src[off] / scale_val);
     }
 
     long scale_off = 0;
@@ -113,5 +152,5 @@ __kernel void dynamic_scale_dst(__global float *restrict src,
     scale_off = DST_SCALE_OFF(m, n, 0, 0, 0, groupSize, 1);
 #endif
 #endif
-    dst_scales[scale_off] = REF_TO_DST_SCALES(scale_val);
+    write((__global DST_SCALES_DATA_T *)dst_scales + scale_off, scale_val);
 }

@@ -125,6 +125,9 @@ void bench_gated_mlp(engine::kind ekind, logical_tensor::data_type dt,
     // Incremental IDs used to create logical tensors and operations.
     size_t id = 0;
 
+    // Intermediate data type
+    const logical_tensor::data_type dt_inter = logical_tensor::data_type::f32;
+
     // This logical tensor is not part of the graph but is used to generate the
     // big chunk of device memory which should be already there in real user
     // application or framework.
@@ -134,41 +137,50 @@ void bench_gated_mlp(engine::kind ekind, logical_tensor::data_type dt,
     // fc_gate: wei0 is non-contiguous now.
     auto src = logical_tensor(id++, dt, src_sz, layout_type::strided);
     auto wei0 = logical_tensor(id++, dt, wei0_sz, combined_wei0_st);
-    auto out0 = logical_tensor(id++, dt, hd_sz, layout_type::strided);
+    auto out0 = logical_tensor(id++, dt_inter, hd_sz, layout_type::strided);
     auto fc_gate = op(id++, op::kind::MatMul, "fc_gate");
     fc_gate.add_inputs({src, wei0});
     fc_gate.add_outputs({out0});
 
     // fc_up: wei1 is non-contiguous now.
     auto wei1 = logical_tensor(id++, dt, wei0_sz, combined_wei0_st);
-    auto out1 = logical_tensor(id++, dt, hd_sz, layout_type::strided);
+    auto out1 = logical_tensor(id++, dt_inter, hd_sz, layout_type::strided);
     auto fc_up = op(id++, op::kind::MatMul, "fc_up");
     fc_up.add_inputs({src, wei1});
     fc_up.add_outputs({out1});
 
     // activation swish: sigmoid
-    auto out2 = logical_tensor(id++, dt, hd_sz, layout_type::strided);
+    auto out2 = logical_tensor(id++, dt_inter, hd_sz, layout_type::strided);
     auto swi_sig = op(id++, op::kind::Sigmoid, "swish/sigmoid");
     swi_sig.add_inputs({out0});
     swi_sig.add_outputs({out2});
 
     // activation swish: multiply
-    auto out3 = logical_tensor(id++, dt, hd_sz, layout_type::strided);
+    auto out3 = logical_tensor(id++, dt_inter, hd_sz, layout_type::strided);
     auto swi_mul = op(id++, op::kind::Multiply, "swish/multiply");
     swi_mul.add_inputs({out0, out2});
     swi_mul.add_outputs({out3});
 
     // multiplication
-    auto out4 = logical_tensor(id++, dt, hd_sz, layout_type::strided);
+    auto out4 = logical_tensor(id++, dt_inter, hd_sz, layout_type::strided);
     auto mul = op(id++, op::kind::Multiply, "mul");
     mul.add_inputs({out3, out1});
     mul.add_outputs({out4});
+
+    // downconversion when needed
+    auto out4_dt = out4;
+    auto typecast = op(id++, op::kind::TypeCast, "typecast");
+    if (dt != dt_inter) {
+        out4_dt = logical_tensor(id++, dt, hd_sz, layout_type::strided);
+        typecast.add_inputs({out4});
+        typecast.add_outputs({out4_dt});
+    }
 
     // fc_down
     auto wei2 = logical_tensor(id++, dt, wei2_sz, layout_type::strided);
     auto dst = logical_tensor(id++, dt, out_sz, layout_type::strided);
     auto fc_down = op(id++, op::kind::MatMul, "fc_down");
-    fc_down.add_inputs({out4, wei2});
+    fc_down.add_inputs({out4_dt, wei2});
     fc_down.add_outputs({dst});
 
     // Construct a gated mlp graph with engine kind and operations.
@@ -178,6 +190,7 @@ void bench_gated_mlp(engine::kind ekind, logical_tensor::data_type dt,
     mlp.add_op(swi_sig);
     mlp.add_op(swi_mul);
     mlp.add_op(mul);
+    if (dt != dt_inter) mlp.add_op(typecast);
     mlp.add_op(fc_down);
     mlp.finalize();
 

@@ -17,6 +17,8 @@
 #ifndef GPU_INTEL_CONCAT_COMMON_H
 #define GPU_INTEL_CONCAT_COMMON_H
 
+#include "gpu/intel/include/io.h"
+
 #define REDUCE_STAGE_0(cat, f)
 #define REDUCE_STAGE_1(cat, f) f(0)
 #define REDUCE_STAGE_2(cat, f) cat(REDUCE_STAGE_1(cat, f), f(1))
@@ -89,8 +91,6 @@
 #define CS_PARAM(p0, p1, p2, p3, p4) \
     JOIN_COMMA(p0, JOIN_COMMA(p1, JOIN_COMMA(p2, JOIN_COMMA(p3, p4))))
 
-#define INTERNAL_CAT(a, b) a##b
-#define CAT(a, b) INTERNAL_CAT(a, b)
 #define DIV_UP(a, b) (((a) + ((b) - 1)) / (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
@@ -104,49 +104,84 @@
 
 #if DATA_TYPE_SIZE == 8
 #define DATA_T ulong
-#define BLOCK_READ intel_sub_group_block_read_ul
-#define BLOCK_WRITE intel_sub_group_block_write_ul
 #elif DATA_TYPE_SIZE == 4
 #define DATA_T uint
-#define BLOCK_READ intel_sub_group_block_read
-#define BLOCK_WRITE intel_sub_group_block_write
 #elif DATA_TYPE_SIZE == 2
 #define DATA_T ushort
-#define BLOCK_READ intel_sub_group_block_read_us
-#define BLOCK_WRITE intel_sub_group_block_write_us
 #elif DATA_TYPE_SIZE == 1
 #define DATA_T uchar
-#define BLOCK_READ intel_sub_group_block_read_uc
-#define BLOCK_WRITE intel_sub_group_block_write_uc
 #endif
 
-#define DATA2_T CAT(DATA_T, 2)
-#define BLOCK_READ2 CAT(BLOCK_READ, 2)
-#define BLOCK_WRITE2 CAT(BLOCK_WRITE, 2)
+#define DATA2_T CONCAT2(DATA_T, 2)
+#define DATA4_T CONCAT2(DATA_T, 4)
+#define DATA8_T CONCAT2(DATA_T, 8)
+#define DATA16_T CONCAT2(DATA_T, 16)
 
-#define DATA4_T CAT(DATA_T, 4)
-#define BLOCK_READ4 CAT(BLOCK_READ, 4)
-#define BLOCK_WRITE4 CAT(BLOCK_WRITE, 4)
+// Block I/O overloads for raw integer types (no fp64/fp16 dependency).
+// Generates scalar + vec2/4/8 block_load and block_write matching the io.h
+// interface, using the given intrinsic prefix (e.g. intel_sub_group_block_read_ul).
+#define DEF_CONCAT_BLOCK_LOAD_VEC(T, n, rd) \
+    void __attribute__((overloadable)) block_load( \
+            __private CONCAT2(T, n) * dst, __global const T *src) { \
+        *dst = CONCAT2(rd, n)(src); \
+    } \
+    CONCAT2(T, n) \
+    __attribute__((overloadable, warn_unused_result)) block_load( \
+            CONCAT2(T, n) dst, __global const T *src) { \
+        return CONCAT2(rd, n)(src); \
+    }
 
-#define DATA8_T CAT(DATA_T, 8)
-#define BLOCK_READ8 CAT(BLOCK_READ, 8)
-#define BLOCK_WRITE8 CAT(BLOCK_WRITE, 8)
+#define DEF_CONCAT_BLOCK_WRITE_VEC(T, n, wr) \
+    void __attribute__((overloadable)) block_write( \
+            __global T *dst, CONCAT2(T, n) src) { \
+        CONCAT2(wr, n)(dst, src); \
+    } \
+    void __attribute__((overloadable)) block_write( \
+            __global T *dst, __private const CONCAT2(T, n) * src) { \
+        CONCAT2(wr, n)(dst, *src); \
+    }
 
-#define DATA16_T CAT(DATA_T, 16)
-#if DATA_TYPE_SIZE == 1
-#define BLOCK_READ16 CAT(BLOCK_READ, 16)
-#define BLOCK_WRITE16 CAT(BLOCK_WRITE, 16)
-#else
-#define BLOCK_READ16(ptr) \
-    (DATA16_T)((DATA8_T)(BLOCK_READ8(ptr)), \
-            (DATA8_T)(BLOCK_READ8((ptr) + 8 * SIMD)))
-#define BLOCK_WRITE16(ptr, v) \
-    do { \
-        DATA16_T tmp = v; \
-        BLOCK_WRITE8((ptr), tmp.s01234567); \
-        BLOCK_WRITE8((ptr) + 8 * SIMD, tmp.s89abcdef); \
-    } while (0)
+// block_write(T*, T) scalar value form is provided by math_utils.h for all
+// sizes (uint via pre-existing DECLARE_BLOCK_WRITE; ulong/ushort/uchar added
+// alongside it). Only block_load, pointer-form block_write, and vector
+// overloads are defined here.
+#define DEF_CONCAT_BLOCK_IO(T, rd, wr) \
+    void __attribute__((overloadable)) block_load( \
+            __private T *dst, __global const T *src) { \
+        *dst = rd(src); \
+    } \
+    T __attribute__((overloadable, warn_unused_result)) block_load( \
+            T dst, __global const T *src) { \
+        return rd(src); \
+    } \
+    void __attribute__((overloadable)) block_write( \
+            __global T *dst, __private const T *src) { \
+        wr(dst, *src); \
+    } \
+    DEF_CONCAT_BLOCK_LOAD_VEC(T, 2, rd) \
+    DEF_CONCAT_BLOCK_LOAD_VEC(T, 4, rd) \
+    DEF_CONCAT_BLOCK_LOAD_VEC(T, 8, rd) \
+    DEF_CONCAT_BLOCK_WRITE_VEC(T, 2, wr) \
+    DEF_CONCAT_BLOCK_WRITE_VEC(T, 4, wr) \
+    DEF_CONCAT_BLOCK_WRITE_VEC(T, 8, wr)
+
+#if DATA_TYPE_SIZE == 8
+DEF_CONCAT_BLOCK_IO(
+        ulong, intel_sub_group_block_read_ul, intel_sub_group_block_write_ul)
+#elif DATA_TYPE_SIZE == 4
+DEF_CONCAT_BLOCK_IO(
+        uint, intel_sub_group_block_read, intel_sub_group_block_write)
+#elif DATA_TYPE_SIZE == 2
+DEF_CONCAT_BLOCK_IO(
+        ushort, intel_sub_group_block_read_us, intel_sub_group_block_write_us)
+#elif DATA_TYPE_SIZE == 1
+DEF_CONCAT_BLOCK_IO(
+        uchar, intel_sub_group_block_read_uc, intel_sub_group_block_write_uc)
 #endif
+
+#undef DEF_CONCAT_BLOCK_IO
+#undef DEF_CONCAT_BLOCK_LOAD_VEC
+#undef DEF_CONCAT_BLOCK_WRITE_VEC
 
 #define DATA1_T DATA_T
 #define VECTOR(n) DATA##n##_T v##n[DIV_UP(READ_BLOCK, n)]

@@ -169,7 +169,7 @@ __kernel void xe_concat(__global DST_DATA_T *dst, long dst_offset0,
 
         FLT_ACC_DATA_T src_val;
 #if SUB_GROUP_SIZE > 1
-        block_load(&src_val, (__global SRC_DATA_T *)src + src_off);
+        src_val = block_load(src_val, (__global SRC_DATA_T *)src + src_off);
 #if SCALES_MASK > 0
         src_val = SCALES_MASK ? src_val * tmp_src_scale : src_val;
 #endif

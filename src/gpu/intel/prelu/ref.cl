@@ -16,6 +16,7 @@
 
 #include "gpu/intel/include/dispatch.h"
 #include "gpu/intel/include/eltwise.h"
+#include "gpu/intel/include/io.h"
 #include "gpu/intel/include/types.h"
 
 #if IS_FWD
@@ -34,13 +35,13 @@ __kernel void ref_prelu_fwd(const __global SRC_DATA_T *src,
     const off_t wei_off = OFF_MD(WEI, d0 % WEI_D0, d1 % WEI_D1, d2 % WEI_D2,
             d3 % WEI_D3, d4 % WEI_D4, d5 % WEI_D5);
 
-    const float src_data = SRC_TO_REF(src[data_off]);
+    const float src_data = into_float(src[data_off]);
 
-    const float wei_data = WEI_TO_REF(weights[wei_off]);
+    const float wei_data = into_float(weights[wei_off]);
 
     const float res_data = relu_fwd(src_data, wei_data);
 
-    dst[data_off] = TO_DST(res_data);
+    write(dst + data_off, res_data);
 }
 
 #else // #if IS_FWD
@@ -63,9 +64,9 @@ __kernel void ref_prelu_bwd(const __global SRC_DATA_T *src,
     const off_t wei_off = OFF_MD(WEI, d0 % WEI_D0, d1 % WEI_D1, d2 % WEI_D2,
             d3 % WEI_D3, d4 % WEI_D4, d5 % WEI_D5);
 
-    const float src_data = SRC_TO_REF(src[data_off]);
-    const float diff_dst_data = DST_TO_REF(diff_dst[data_off]);
-    const float wei_data = WEI_TO_REF(weights[wei_off]);
+    const float src_data = into_float(src[data_off]);
+    const float diff_dst_data = into_float(diff_dst[data_off]);
+    const float wei_data = into_float(weights[wei_off]);
 
     float diff_src_data
             = src_data > 0 ? diff_dst_data : diff_dst_data * wei_data;
@@ -83,7 +84,7 @@ __kernel void ref_prelu_bwd(const __global SRC_DATA_T *src,
     })
 
     if (COORDINATES_ARE_IN_RANGE(SRC))
-        diff_src[data_off_pd] = TO_SRC(diff_src_data);
+        write(diff_src + data_off_pd, diff_src_data);
     if (!COORDINATES_ARE_IN_RANGE(DIFF_WEI)) return;
 
     const off_t diff_wei_off = OFF_MD(DIFF_WEI, d0 % DIFF_WEI_D0,
@@ -96,11 +97,7 @@ __kernel void ref_prelu_bwd(const __global SRC_DATA_T *src,
     float diff_wei_data = src_data > 0 ? 0 : diff_dst_data * src_data;
     if (diff_wei_off != diff_wei_off_pd) diff_wei_data = 0.f;
 
-#if DIFF_WEI_DT_F32
-    diff_weights[diff_wei_off_pd] = diff_wei_data;
-#else // #if DIFF_WEI_DT_F32
-    diff_weights[diff_wei_off_pd] = TO_DIFF_WEI(diff_wei_data);
-#endif // #else // #if DIFF_WEI_DT_F32
+    write(diff_weights + diff_wei_off_pd, diff_wei_data);
 }
 
 #endif // #else // #if IS_FWD

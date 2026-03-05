@@ -82,17 +82,23 @@ static status_t init_conf_common(
 static status_t init_kernel_ctx_common(
         compute::kernel_ctx_t &kernel_ctx, const conf_t &conf) {
 
-    kernel_ctx.set_data_type(conf.dst_md_info.data_type);
+    kernel_ctx.set_data_type(
+            conf.dst_md_info.data_type, /*with_punning=*/false);
     kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
 
     kernel_ctx.define_int("IS_FWD", conf.is_forward);
 
-    def_memory_desc_info(kernel_ctx, conf.src_md_info, "SRC");
-    def_memory_desc_info(kernel_ctx, conf.wei_md_info, "WEI");
-    def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST");
+    def_memory_desc_info(
+            kernel_ctx, conf.src_md_info, "SRC", /*with_punning=*/false);
+    def_memory_desc_info(
+            kernel_ctx, conf.wei_md_info, "WEI", /*with_punning=*/false);
+    def_memory_desc_info(
+            kernel_ctx, conf.dst_md_info, "DST", /*with_punning=*/false);
     if (!conf.is_forward) {
-        def_memory_desc_info(kernel_ctx, conf.diff_src_md_info, "DIFF_SRC");
-        def_memory_desc_info(kernel_ctx, conf.diff_wei_md_info, "DIFF_WEI");
+        def_memory_desc_info(kernel_ctx, conf.diff_src_md_info, "DIFF_SRC",
+                /*with_punning=*/false);
+        def_memory_desc_info(kernel_ctx, conf.diff_wei_md_info, "DIFF_WEI",
+                /*with_punning=*/false);
     }
 
     def_dispatch(kernel_ctx, conf.dispatch);

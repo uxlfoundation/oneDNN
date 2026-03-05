@@ -57,8 +57,9 @@ struct pd_t : public gemm::pd_t {
     using gemm::pd_t::pd_t;
 
     // Assumes desc() was already initialized with default formats
-    status_t init(impl::engine_t *engine) {
+    status_t init(impl::engine_t *engine, compute::gpu_arch_t arch) {
 
+        arch_ = arch;
         with_sround_ = attr()->rounding_mode_.get(DNNL_ARG_DST)
                 == rounding_mode::stochastic;
 
@@ -147,6 +148,7 @@ struct pd_t : public gemm::pd_t {
     bool transa_ = false, transb_ = false;
     bool with_sround_ = false;
     bool with_mx_scale_ = false;
+    compute::gpu_arch_t arch_ = compute::gpu_arch_t::unknown;
 
     float alpha() const {
         auto attr_info = attr_info_t::create(attr());

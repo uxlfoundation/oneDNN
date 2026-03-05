@@ -38,12 +38,17 @@ Xbyak::util::CoreType get_core_type();
 
 enum class behavior_t {
     p_core, // Performance core
-    e_core, // Efficiency core
+    lp_core, // Efficiency core (E-core with shared L3)
+    lpe_core, // Low-power efficiency core no L3 cache (e.g. Meteor Lake's SoC tile E-core island).
     current, // Current core
     min, // (default) used to select the smallest value for all the cores
     max, // used to select the largest value for all the cores
     legacy // legacy get_per_core_cache_size behavior (uses CPUID doesn't consider hybrid)
 };
+
+// Returns true if this hybrid CPU has a low-power E-core island (LP E-cores),
+// i.e. Efficient cores that have no L3 cache. Only meaningful on hybrid CPUs.
+bool has_lpe_core();
 
 // Use Xbyak_utils cache topology methods to determine the per-core cache size.
 //
@@ -51,8 +56,10 @@ enum class behavior_t {
 // values on hybrid CPUs.
 //
 // The behavior_t argument specifies the behavior of the query on hybrid CPUs.
+// On non-hybrid CPUs, the behavior_t argument is ignored and the function
+// returns the per-core cache size as normal.
 //
-// - if behavior_t is p_core/e_core, the function returns the per-core cache
+// - if behavior_t is p_core/lp_core/lpe_core, the function returns the per-core cache
 //   size for that core type.
 // - if behavior_t is min/max, the function returns the min/max per-core cache
 //   size among all cores
@@ -63,12 +70,10 @@ enum class behavior_t {
 //   hybrid CPUs.
 //
 // Assumption each core type on a system is homogeneous in terms of cache
-// topology e.g. all P-cores have the same cache topology, all E-cores have the
-// same cache topology. This is true for most Intel hybrid CPUs. However, this
-// is not guaranteed. Some known Meteor Lake systems have a low-power island that has
-// a different cache topology from the main E-core clusters. This function finds a
-// representative core for each core type and returns the cache size based on that
-// representative.
+// topology e.g. all P-cores have the same cache topology, all LP-cores have the
+// same cache topology, all LPE-cores have the same cache topology. The LPE-core
+// type is a subset of the E-core type, so the presence of LPE-cores is determined
+// by checking for E-cores with no L3 cache.
 unsigned get_per_core_cache_size(int level, behavior_t btype = behavior_t::min);
 
 } // namespace platform

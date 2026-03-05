@@ -1333,6 +1333,32 @@ inline bool is_runtime_value(dim_t val) {
     return val == DNNL_RUNTIME_DIM_VAL;
 }
 
+template <typename T>
+constexpr T runtime_value_for() {
+    static_assert(sizeof(T) == 0, "no runtime value defined for this type");
+    return T {};
+}
+
+template <>
+inline float runtime_value_for<float>() {
+    return DNNL_RUNTIME_F32_VAL_REP.f;
+}
+
+template <>
+constexpr int runtime_value_for<int>() {
+    return DNNL_RUNTIME_S32_VAL;
+}
+
+template <>
+constexpr dim_t runtime_value_for<dim_t>() {
+    return DNNL_RUNTIME_DIM_VAL;
+}
+
+template <typename T>
+inline T runtime_value_for(T) {
+    return runtime_value_for<typename utils::remove_reference<T>::type>();
+}
+
 inline bool memory_desc_sanity_check(int ndims, const dims_t dims,
         data_type_t data_type, format_kind_t format_kind) {
     using namespace data_type;

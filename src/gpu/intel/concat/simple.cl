@@ -158,20 +158,22 @@ reusable_simple_concat(__global DATA_T *dst, const ulong dst_offset0,
         for (int i = 0; i < thr_elems; ++i)
             buf.v1[i] = src[i * SIMD + lane];
     } else {
-#define MAYBE_BLOCK_READ(n, read, elems) \
+#define MAYBE_BLOCK_READ(n, elems) \
     do { \
         if ((elems) & (n)) { \
             const uint rel = (elems) & ~(((n) << 1) - 1); \
-            buf.v##n[rel / (n)] = read(&src[rel * SIMD]); \
+            block_load(&buf.v##n[rel / (n)], &src[rel * SIMD]); \
         } \
     } while (0)
 
-        for (int i = 0; i < thr_elems / 16; ++i)
-            buf.v16[i] = BLOCK_READ16(&src[16 * i * SIMD]);
-        MAYBE_BLOCK_READ(8, BLOCK_READ8, thr_elems);
-        MAYBE_BLOCK_READ(4, BLOCK_READ4, thr_elems);
-        MAYBE_BLOCK_READ(2, BLOCK_READ2, thr_elems);
-        MAYBE_BLOCK_READ(1, BLOCK_READ, thr_elems);
+        for (int i = 0; i < thr_elems / 16; ++i) {
+            block_load(&buf.v8[2 * i], &src[16 * i * SIMD]);
+            block_load(&buf.v8[2 * i + 1], &src[(16 * i + 8) * SIMD]);
+        }
+        MAYBE_BLOCK_READ(8, thr_elems);
+        MAYBE_BLOCK_READ(4, thr_elems);
+        MAYBE_BLOCK_READ(2, thr_elems);
+        MAYBE_BLOCK_READ(1, thr_elems);
 #undef MAYBE_BLOCK_READ
     }
     if (lane < READ_BLOCK % SIMD)
@@ -204,22 +206,26 @@ reusable_simple_concat(__global DATA_T *dst, const ulong dst_offset0,
             const uint thr_iter_elems = iter_elems / SIMD;
             struct write_info_t info = WRITE_INFO(block_off);
             __global DATA_T *iter_dst = dst + info.idx;
-#define MAYBE_BLOCK_WRITE(n, write, elems) \
+#define MAYBE_BLOCK_WRITE(n, elems) \
     do { \
         if ((elems) & (n)) { \
             const uint rel = (elems) & ~(((n) << 1) - 1); \
-            write(&iter_dst[rel * SIMD], load_vec##n(&buf, buf_off + rel)); \
+            block_write( \
+                    &iter_dst[rel * SIMD], load_vec##n(&buf, buf_off + rel)); \
         } \
     } while (0)
 
             if (info.write) {
-                for (int i = 0; i < thr_iter_elems / 16; ++i)
-                    BLOCK_WRITE16(&iter_dst[16 * i * SIMD],
-                            load_vec16(&buf, buf_off + i * 16));
-                MAYBE_BLOCK_WRITE(8, BLOCK_WRITE8, thr_iter_elems);
-                MAYBE_BLOCK_WRITE(4, BLOCK_WRITE4, thr_iter_elems);
-                MAYBE_BLOCK_WRITE(2, BLOCK_WRITE2, thr_iter_elems);
-                MAYBE_BLOCK_WRITE(1, BLOCK_WRITE, thr_iter_elems);
+                for (int i = 0; i < thr_iter_elems / 16; ++i) {
+                    block_write(&iter_dst[16 * i * SIMD],
+                            load_vec8(&buf, buf_off + i * 16));
+                    block_write(&iter_dst[(16 * i + 8) * SIMD],
+                            load_vec8(&buf, buf_off + i * 16 + 8));
+                }
+                MAYBE_BLOCK_WRITE(8, thr_iter_elems);
+                MAYBE_BLOCK_WRITE(4, thr_iter_elems);
+                MAYBE_BLOCK_WRITE(2, thr_iter_elems);
+                MAYBE_BLOCK_WRITE(1, thr_iter_elems);
             }
 #undef MAYBE_BLOCK_WRITE
 
@@ -270,27 +276,34 @@ inline ulong2 shiftr(ulong2 v, unsigned s) {
 #if DATA_TYPE_SIZE == 8
 #define NPERSG 2
 #define DDATA_T DATA2_T
-#define AS_VEC as_ulong2
-#define BLOCK_READ_UL BLOCK_READ2
-#define BLOCK_WRITE_UL BLOCK_WRITE2
 #elif DATA_TYPE_SIZE == 4
 #define NPERSG 4
 #define DDATA_T DATA4_T
-#define AS_VEC as_uint4
-#define BLOCK_READ_UL BLOCK_READ4
-#define BLOCK_WRITE_UL BLOCK_WRITE4
 #elif DATA_TYPE_SIZE == 2
 #define NPERSG 8
 #define DDATA_T DATA8_T
-#define AS_VEC as_ushort8
-#define BLOCK_READ_UL BLOCK_READ8
-#define BLOCK_WRITE_UL BLOCK_WRITE8
 #elif DATA_TYPE_SIZE == 1
 #define NPERSG 16
 #define DDATA_T DATA16_T
-#define AS_VEC as_uchar16
-#define BLOCK_READ_UL BLOCK_READ16
-#define BLOCK_WRITE_UL BLOCK_WRITE16
+#endif
+
+#define AS_VEC CONCAT2(as_, DDATA_T)
+
+#if NPERSG <= 8
+#define BLOCK_READ_UL(ptr) block_load((DDATA_T)0, ptr)
+#define BLOCK_WRITE_UL(ptr, val) block_write(ptr, val)
+#else
+inline DDATA_T block_read_ul16(__global const DATA_T *ptr) {
+    DATA8_T lo = block_load(lo, ptr);
+    DATA8_T hi = block_load(hi, ptr + 8 * SIMD);
+    return (DDATA_T)(lo, hi);
+}
+inline void block_write_ul16(__global DATA_T *ptr, DDATA_T val) {
+    block_write(ptr, val.lo);
+    block_write(ptr + 8 * SIMD, val.hi);
+}
+#define BLOCK_READ_UL(ptr) block_read_ul16(ptr)
+#define BLOCK_WRITE_UL(ptr, val) block_write_ul16(ptr, val)
 #endif
 
 #define SHUFFLE_UP(p, c, dt) \
@@ -315,32 +328,23 @@ inline ulong2 shiftr(ulong2 v, unsigned s) {
 #define SHUFFLE_DOWN intel_sub_group_shuffle_down
 #define SHUFFLE intel_sub_group_shuffle
 
-#define DATA1_T DATA_T
 #if DATA_TYPE_SIZE == 8
 #define NPERSG 1
-#define DDATA_T DATA1_T
-#define AS_VEC as_ulong
-#define BLOCK_READ_UL BLOCK_READ
-#define BLOCK_WRITE_UL BLOCK_WRITE
+#define DDATA_T DATA_T
 #elif DATA_TYPE_SIZE == 4
 #define NPERSG 2
 #define DDATA_T DATA2_T
-#define AS_VEC as_uint2
-#define BLOCK_READ_UL BLOCK_READ2
-#define BLOCK_WRITE_UL BLOCK_WRITE2
 #elif DATA_TYPE_SIZE == 2
 #define NPERSG 4
 #define DDATA_T DATA4_T
-#define AS_VEC as_ushort4
-#define BLOCK_READ_UL BLOCK_READ4
-#define BLOCK_WRITE_UL BLOCK_WRITE4
 #elif DATA_TYPE_SIZE == 1
 #define NPERSG 8
 #define DDATA_T DATA8_T
-#define AS_VEC as_uchar8
-#define BLOCK_READ_UL BLOCK_READ8
-#define BLOCK_WRITE_UL BLOCK_WRITE8
 #endif
+
+#define AS_VEC CONCAT2(as_, DDATA_T)
+#define BLOCK_READ_UL(ptr) block_load((DDATA_T)0, ptr)
+#define BLOCK_WRITE_UL(ptr, val) block_write(ptr, val)
 
 #define SHIFTL(v, s) ((v) << (s))
 #define SHIFTR(v, s) ((v) >> (s))
@@ -472,7 +476,7 @@ internal_padding_block_concat2(__global DATA_T *dst,
             bVal = AS_FULL(v);
 #else
             for (int b = get_sub_group_local_id(); b < rem_elems; b += SIMD) {
-                bVal = src1[batch_offset1 + next_block * B0 + b];
+                bVal = AS_FULL(src1[batch_offset1 + next_block * B0 + b]);
             }
 #endif
         } else {
@@ -532,7 +536,7 @@ internal_padding_block_concat2(__global DATA_T *dst,
             }
 #else
             for (int b = get_sub_group_local_id(); b < rem_elems; b += SIMD) {
-                dst[ext_batch_offset + sg_first_bii * B0 + b] = aVal;
+                dst[ext_batch_offset + sg_first_bii * B0 + b] = AS_VEC(aVal);
             }
 #endif
         } else {

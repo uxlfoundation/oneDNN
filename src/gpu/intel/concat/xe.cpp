@@ -170,16 +170,15 @@ status_t xe_t::pd_t::init_conf(impl::engine_t *engine) {
 
 static status_t init_kernel_ctx_common(
         compute::kernel_ctx_t &kernel_ctx, const conf_t &conf) {
-    constexpr bool with_punning = false;
-
     for (int i = 0; i < conf.n; ++i) {
         kernel_ctx.define_int(utils::format("SRC%d_END", i), conf.offset[i]);
         def_memory_desc_info(kernel_ctx, conf.src_md_infos[i],
-                utils::format("SRC%d", i).c_str(), with_punning);
+                utils::format("SRC%d", i).c_str(), /*with_punning=*/false);
     }
-    def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST", with_punning);
+    def_memory_desc_info(
+            kernel_ctx, conf.dst_md_info, "DST", /*with_punning=*/false);
 
-    kernel_ctx.set_data_type(conf.src_type, with_punning);
+    kernel_ctx.set_data_type(conf.src_type, /*with_punning=*/false);
     kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
 
     kernel_ctx.define_int("NDIMS", conf.ndims);

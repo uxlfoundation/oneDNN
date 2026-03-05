@@ -135,9 +135,9 @@ void store_vanilla_rnn(__global AUX_DATA_T *ws_gates, int gates_ws_ld,
         __global WS_STATE_DATA_T *h_states_t_l, int states_ws_ld, int dhc,
         int n, int c, float g) {
     if (!RECOMPUTE_GATES && IS_TRAINING) {
-        ws_gates[cell_ws_gates(gates_ws_ld, dhc, n, 0, c)] = g;
+        write(ws_gates + cell_ws_gates(gates_ws_ld, dhc, n, 0, c), g);
     }
-    h_states_t_l[cell_ws_state(states_ws_ld, n, c)] = TO_WS_STATE(g);
+    write(h_states_t_l + cell_ws_state(states_ws_ld, n, c), g);
 }
 
 typedef struct vanilla_lstm_gates_t {
@@ -168,23 +168,27 @@ void vanilla_lstm_store(__global AUX_DATA_T *ws_gates, int gates_ws_ld,
     float g_o = gates.G[3];
 
     if (!RECOMPUTE_GATES && IS_TRAINING) {
-        ws_gates[cell_ws_gates(gates_ws_ld, dhc, n, 0, c)] = g_i;
-        ws_gates[cell_ws_gates(gates_ws_ld, dhc, n, 1, c)] = g_f;
-        ws_gates[cell_ws_gates(gates_ws_ld, dhc, n, 2, c)] = g_z;
-        ws_gates[cell_ws_gates(gates_ws_ld, dhc, n, 3, c)] = g_o;
+        write(ws_gates + cell_ws_gates(gates_ws_ld, dhc, n, 0, c), g_i);
+        write(ws_gates + cell_ws_gates(gates_ws_ld, dhc, n, 1, c), g_f);
+        write(ws_gates + cell_ws_gates(gates_ws_ld, dhc, n, 2, c), g_z);
+        write(ws_gates + cell_ws_gates(gates_ws_ld, dhc, n, 3, c), g_o);
     }
 
-    float Ct = g_f * c_states_tm1_l[cell_ws_state(states_ws_ld, n, c)]
+    float Ct = g_f
+                    * into_float(
+                            c_states_tm1_l[cell_ws_state(states_ws_ld, n, c)])
             + g_i * g_z;
     float Ht = g_o * tanh_fwd_tm(Ct, tm_cscale);
 
-    h_states_t_l[cell_ws_state(states_ws_ld, n, c)] = TO_WS_STATE(Ht);
-    c_states_t_l[cell_ws_state(states_ws_ld, n, c)] = Ct;
+    write(h_states_t_l + cell_ws_state(states_ws_ld, n, c), Ht);
+    write(c_states_t_l + cell_ws_state(states_ws_ld, n, c), Ct);
 }
 
 #if IS_INT8 && CELL_KIND == VANILLA_LSTM
 inline WS_STATE_DATA_T q_d(float f, float data_scale, float data_shift) {
-    return TO_WS_STATE(f * data_scale + data_shift);
+    WS_STATE_DATA_T result;
+    write(&result, f * data_scale + data_shift);
+    return result;
 }
 inline float deq_w(ACC_DATA_T s, int gate, int j, __global float *scales,
         float data_scale, int dhc) {
@@ -249,16 +253,16 @@ void lbr_gru_store(__global AUX_DATA_T *ws_gates, int gates_ws_ld,
     float G1 = gates.G[1];
     float G2 = gates.G[2];
 
-    float Ht = G0 * TO_REF(src_iter[cell_ws_state(states_ws_ld, i, j)])
+    float Ht = G0 * into_float(src_iter[cell_ws_state(states_ws_ld, i, j)])
             + (1 - G0) * G2;
 
-    h_states_t_l[cell_ws_state(states_ws_ld, i, j)] = TO_WS_STATE(Ht);
+    write(h_states_t_l + cell_ws_state(states_ws_ld, i, j), Ht);
 
     if (!RECOMPUTE_GATES && IS_TRAINING) {
-        ws_gates[cell_ws_gates(gates_ws_ld, dhc, i, 0, j)] = G0;
-        ws_gates[cell_ws_gates(gates_ws_ld, dhc, i, 1, j)] = G1;
-        ws_gates[cell_ws_gates(gates_ws_ld, dhc, i, 2, j)] = G2;
-        ws_grid[cell_ws_grid_comp(dhc, i, j)] = Wh_b;
+        write(ws_gates + cell_ws_gates(gates_ws_ld, dhc, i, 0, j), G0);
+        write(ws_gates + cell_ws_gates(gates_ws_ld, dhc, i, 1, j), G1);
+        write(ws_gates + cell_ws_gates(gates_ws_ld, dhc, i, 2, j), G2);
+        write(ws_grid + cell_ws_grid_comp(dhc, i, j), Wh_b);
     }
 }
 

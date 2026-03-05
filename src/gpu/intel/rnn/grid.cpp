@@ -416,23 +416,23 @@ status_t ocl_conf_t::init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const {
     }
 
     if (src_dt == data_type::f16) {
-        kernel_ctx.set_data_type(data_type::f16);
+        kernel_ctx.set_data_type(data_type::f16, /*with_punning=*/false);
     } else
-        kernel_ctx.set_data_type(data_type::f32);
+        kernel_ctx.set_data_type(data_type::f32, /*with_punning=*/false);
 
-    def_data_type(kernel_ctx, ws_state_dt, "WS_STATE");
-    def_data_type(kernel_ctx, src_dt, "SRC");
-    def_data_type(kernel_ctx, src_c_dt, "SRC_C");
-    def_data_type(kernel_ctx, wei_dt, "WEI_LAYER");
-    def_data_type(kernel_ctx, wei_dt, "WEI_ITER");
-    def_data_type(kernel_ctx, acc_dt, "ACC");
-    def_data_type(kernel_ctx, aux_dt, "AUX");
-    def_data_type(kernel_ctx, bia_dt, "BIAS");
-    def_data_type(kernel_ctx, dst_dt, "DST");
-    def_data_type(kernel_ctx, dst_c_dt, "DST_C");
-    def_data_type(kernel_ctx, input_dt, "INPUT");
-    def_data_type(kernel_ctx, output_dt, "OUTPUT");
-    def_data_type(kernel_ctx, diff_dt, "DIFF");
+    def_data_type(kernel_ctx, ws_state_dt, "WS_STATE", /*with_punning=*/false);
+    def_data_type(kernel_ctx, src_dt, "SRC", /*with_punning=*/false);
+    def_data_type(kernel_ctx, src_c_dt, "SRC_C", /*with_punning=*/false);
+    def_data_type(kernel_ctx, wei_dt, "WEI_LAYER", /*with_punning=*/false);
+    def_data_type(kernel_ctx, wei_dt, "WEI_ITER", /*with_punning=*/false);
+    def_data_type(kernel_ctx, acc_dt, "ACC", /*with_punning=*/false);
+    def_data_type(kernel_ctx, aux_dt, "AUX", /*with_punning=*/false);
+    def_data_type(kernel_ctx, bia_dt, "BIAS", /*with_punning=*/false);
+    def_data_type(kernel_ctx, dst_dt, "DST", /*with_punning=*/false);
+    def_data_type(kernel_ctx, dst_c_dt, "DST_C", /*with_punning=*/false);
+    def_data_type(kernel_ctx, input_dt, "INPUT", /*with_punning=*/false);
+    def_data_type(kernel_ctx, output_dt, "OUTPUT", /*with_punning=*/false);
+    def_data_type(kernel_ctx, diff_dt, "DIFF", /*with_punning=*/false);
 
     kernel_ctx.define_int("IS_INT8", is_int8);
     kernel_ctx.define_int("COPY_BIAS", copy_bias);

@@ -17,32 +17,9 @@
 #ifndef GPU_INTEL_RNN_COMMON_H
 #define GPU_INTEL_RNN_COMMON_H
 
+#include "gpu/intel/include/io.h"
 #include "gpu/intel/include/types.h"
 #include "gpu/intel/include/types_interop.h"
-
-#if OUTPUT_DT_U8
-#define TO_OUTPUT(x) convert_uchar_sat_rte(x)
-#elif OUTPUT_DT_S8
-#define TO_OUTPUT(x) convert_char_sat_rte(x)
-#elif OUTPUT_DT_S32
-#define TO_OUTPUT(x) convert_int_sat_rte(x)
-#else
-#define TO_OUTPUT(x) (x)
-#endif
-
-#if INPUT_DT_BF16
-#define TO_REF(x) cvt_bf16_to_f32(x)
-#else
-#define TO_REF(x) convert_float(x)
-#endif
-
-#if AUX_DT_F16
-#define TO_AUX(x) convert_half(x)
-#elif AUX_DT_F32
-#define TO_AUX(x) convert_float(x)
-#else
-#error "Unimplemented AUX_DATA_T type"
-#endif
 
 #if NEED_BIAS_ATOMIC_REDUCE
 #define MAYBE_ATOMIC volatile __global
@@ -53,7 +30,6 @@
 #endif
 
 #define OFFTYPE ulong
-#define TO_WS_STATE(x) TO_SRC(x)
 
 #define OFF6(i0, D0, i1, D1, i2, D2, i3, D3, i4, D4, i5, D5) \
     ((((((i0) * (D1) + (i1)) * (D2) + (i2)) * (D3) + (i3)) * (D4) + (i4)) \

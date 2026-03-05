@@ -446,6 +446,7 @@ status_t brgemm_matmul_copy_reorder_t::execute_body(
             ker_exec_ctx.current_N_blk
                     = is_N_tail ? kernel_conf.N_tail : kernel_conf.N_blk;
 
+            assert(!is_runtime_value(kernel_conf.s8s8_comp_b_str));
             const auto comp_offset = batch * kernel_conf.s8s8_comp_b_str
                     + n_blk_idx * kernel_conf.s8s8_comp_n_str;
 

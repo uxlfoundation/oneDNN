@@ -1,0 +1,403 @@
+{
+  "version": "3.12.0",
+  "engine_kind": "cpu",
+  "fpmath_mode": "strict",
+  "fpmath_mode_apply_to_int": "false",
+  "input_ports": [
+    0,
+    1,
+    0,
+    4,
+    15
+  ],
+  "output_ports": [
+    16
+  ],
+  "graph": [
+    {
+      "id": 3,
+      "name": "fc_gate",
+      "kind": "MatMul",
+      "attrs": {
+        "transpose_a": {
+          "type": "bool",
+          "value": 0
+        },
+        "transpose_b": {
+          "type": "bool",
+          "value": 0
+        },
+        "accumulation_mode": {
+          "type": "string",
+          "value": "strict"
+        }
+      },
+      "inputs": [
+        {
+          "id": 0,
+          "dtype": "f16",
+          "shape": [
+            1,
+            4096
+          ],
+          "stride": [
+            4096,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 1,
+          "dtype": "f16",
+          "shape": [
+            4096,
+            14336
+          ],
+          "stride": [
+            14336,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 2,
+          "dtype": "f32",
+          "shape": [
+            1,
+            14336
+          ],
+          "stride": [
+            14336,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "swish/sigmoid",
+      "kind": "Sigmoid",
+      "attrs": {},
+      "inputs": [
+        {
+          "id": 2,
+          "dtype": "f32",
+          "shape": [
+            1,
+            14336
+          ],
+          "stride": [
+            14336,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 7,
+          "dtype": "f32",
+          "shape": [
+            1,
+            14336
+          ],
+          "stride": [
+            14336,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "swish/multiply",
+      "kind": "Multiply",
+      "attrs": {
+        "auto_broadcast": {
+          "type": "string",
+          "value": "numpy"
+        }
+      },
+      "inputs": [
+        {
+          "id": 2,
+          "dtype": "f32",
+          "shape": [
+            1,
+            14336
+          ],
+          "stride": [
+            14336,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 7,
+          "dtype": "f32",
+          "shape": [
+            1,
+            14336
+          ],
+          "stride": [
+            14336,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 9,
+          "dtype": "f32",
+          "shape": [
+            1,
+            14336
+          ],
+          "stride": [
+            14336,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "fc_up",
+      "kind": "MatMul",
+      "attrs": {
+        "transpose_a": {
+          "type": "bool",
+          "value": 0
+        },
+        "transpose_b": {
+          "type": "bool",
+          "value": 0
+        },
+        "accumulation_mode": {
+          "type": "string",
+          "value": "strict"
+        }
+      },
+      "inputs": [
+        {
+          "id": 0,
+          "dtype": "f16",
+          "shape": [
+            1,
+            4096
+          ],
+          "stride": [
+            4096,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 4,
+          "dtype": "f16",
+          "shape": [
+            4096,
+            14336
+          ],
+          "stride": [
+            14336,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 5,
+          "dtype": "f32",
+          "shape": [
+            1,
+            14336
+          ],
+          "stride": [
+            14336,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "name": "mul",
+      "kind": "Multiply",
+      "attrs": {
+        "auto_broadcast": {
+          "type": "string",
+          "value": "numpy"
+        }
+      },
+      "inputs": [
+        {
+          "id": 9,
+          "dtype": "f32",
+          "shape": [
+            1,
+            14336
+          ],
+          "stride": [
+            14336,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 5,
+          "dtype": "f32",
+          "shape": [
+            1,
+            14336
+          ],
+          "stride": [
+            14336,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 11,
+          "dtype": "f32",
+          "shape": [
+            1,
+            14336
+          ],
+          "stride": [
+            14336,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "name": "typecast",
+      "kind": "TypeCast",
+      "attrs": {},
+      "inputs": [
+        {
+          "id": 11,
+          "dtype": "f32",
+          "shape": [
+            1,
+            14336
+          ],
+          "stride": [
+            14336,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 14,
+          "dtype": "f16",
+          "shape": [
+            1,
+            14336
+          ],
+          "stride": [
+            14336,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "name": "fc_down",
+      "kind": "MatMul",
+      "attrs": {
+        "transpose_a": {
+          "type": "bool",
+          "value": 0
+        },
+        "transpose_b": {
+          "type": "bool",
+          "value": 0
+        },
+        "accumulation_mode": {
+          "type": "string",
+          "value": "strict"
+        }
+      },
+      "inputs": [
+        {
+          "id": 14,
+          "dtype": "f16",
+          "shape": [
+            1,
+            14336
+          ],
+          "stride": [
+            14336,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 15,
+          "dtype": "f16",
+          "shape": [
+            14336,
+            4096
+          ],
+          "stride": [
+            4096,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 16,
+          "dtype": "f16",
+          "shape": [
+            1,
+            4096
+          ],
+          "stride": [
+            4096,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    }
+  ]
+}

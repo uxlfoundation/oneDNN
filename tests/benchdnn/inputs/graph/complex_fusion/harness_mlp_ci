@@ -1,4 +1,5 @@
---reset --dt=bf16,f16 --case=complex_fusion/mlp/gated-mlp-f32.json
+--reset --case=complex_fusion/mlp/gated-mlp-f16-f32.json
+--reset --dt=0:bf16+1:bf16+4:bf16+14:bf16+15:bf16+16:bf16 --case=complex_fusion/mlp/gated-mlp-f16-f32.json
 
 # WA1: use smaller problem to pass correctness check for f32 on pvc.
 # WA2: use subtract binary to avoid precision issue for f32 on xe-lpg.

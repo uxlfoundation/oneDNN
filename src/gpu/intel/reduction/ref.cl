@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/include/dispatch.h"
+#include "gpu/intel/include/io.h"
 #include "gpu/intel/include/post_ops.h"
 #include "gpu/intel/include/types.h"
 
@@ -78,7 +79,7 @@ __kernel void ref_reduce(
     const off_t dst_off = _DST_OFF(d0, d1, d2, d3, d4, d5);
     if (d0 >= DST_D0 || d1 >= DST_D1 || d2 >= DST_D2 || d3 >= DST_D3
             || d4 >= DST_D4 || d5 >= DST_D5) {
-        dst[dst_off] = TO_DST(0.0f);
+        write(dst + dst_off, 0.0f);
         return;
     }
 
@@ -92,7 +93,8 @@ __kernel void ref_reduce(
     {
         const off_t src_off = _SRC_OFF(d0 + d0_off, d1 + d1_off, d2 + d2_off,
                 d3 + d3_off, d4 + d4_off, d5 + d5_off);
-        acc = ACCUMULATE(acc, TO_DEF_ACC_DATA_T(src[src_off]));
+        DEF_ACC_DATA_T src_val = load(src_val, src, src_off);
+        acc = ACCUMULATE(acc, src_val);
     }
 
     float res = convert_float(acc);
@@ -100,10 +102,10 @@ __kernel void ref_reduce(
 
     float dst_val;
 #if WITH_SUM
-    dst_val = DST_TO_REF(dst[dst_off]);
+    load(&dst_val, dst, dst_off);
 #endif
 
     APPLY_POST_OPS_SERIAL(res, dst_val, d0, d1, d2, d3, d4, d5);
 
-    dst[dst_off] = TO_DST(res);
+    write(dst + dst_off, res);
 }

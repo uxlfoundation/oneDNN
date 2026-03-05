@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/include/dispatch.h"
+#include "gpu/intel/include/io.h"
 #include "gpu/intel/include/types.h"
 #include "gpu/intel/include/types_interop.h"
 #include "gpu/intel/reduction/common.h"
@@ -35,12 +36,11 @@ __kernel void reusable_ref_reduce(__global DATA_T *src,
     init_acc(REDUCTION_ALG, &acc);
     for (off_t i = 0; i < reduction_size; i++) {
         const off_t src_off = i * reduction_stride;
-        const DEF_ACC_DATA_T src_val = TO_DEF_ACC_DATA_T(src[src_off]);
+        DEF_ACC_DATA_T src_val = load(src_val, src, src_off);
         acc = reduce(REDUCTION_ALG, acc, src_val, power);
     }
 
     // Finalize data, then accumulate into to dst
-    DST_DATA_T dst_data = TO_DST(
-            finalize(REDUCTION_ALG, convert_float(acc), div, power, eps));
-    *dst = dst_data;
+    float res = finalize(REDUCTION_ALG, convert_float(acc), div, power, eps);
+    write(dst, res);
 }

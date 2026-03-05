@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/include/dispatch.h"
+#include "gpu/intel/include/io.h"
 #include "gpu/intel/include/types.h"
 
 #define ALG_AVG (ALG_AVG_NP || ALG_AVG_P)
@@ -32,31 +33,19 @@ __kernel void xe_global_pooling_fwd(
     const off_t dst_off = DST_OFF(mb, oc, 0, 0, 0);
 
 #if ALG_MAX
-#if DT_BF16
-    DEF_ACC_DATA_T dst_val = DATA_TO_REF(src[SRC_OFF(mb, oc, 0, 0, 0)]);
-#else
-    float dst_val = src[SRC_OFF(mb, oc, 0, 0, 0)];
-#endif
+    float dst_val = load(dst_val, src, SRC_OFF(mb, oc, 0, 0, 0));
 #if IS_TRAINING
     off_t max_idx = 0;
 #endif
 #else
-#if DT_BF16
-    DEF_ACC_DATA_T dst_val = DATA_TO_REF(0.f);
-#else
     float dst_val = 0.f;
-#endif
 #endif
 
     for (off_t id = 0; id < ID; id++) {
         for (off_t ih = 0; ih < IH; ih++) {
             for (off_t iw = 0; iw < IW; iw++) {
                 off_t src_off = SRC_OFF(mb, oc, id, ih, iw);
-#if DT_BF16
-                DEF_ACC_DATA_T val = DATA_TO_REF(src[src_off]);
-#else
-                float val = DATA_TO_REF(src[src_off]);
-#endif
+                float val = load(val, src, src_off);
 #if ALG_MAX
                 if (val > dst_val) {
                     dst_val = val;
@@ -72,26 +61,17 @@ __kernel void xe_global_pooling_fwd(
     }
 
 #if ALG_MAX
-    dst[dst_off] = TO_DST(dst_val);
+    write(dst + dst_off, dst_val);
 #if IS_TRAINING
     ws[dst_off] = max_idx;
 #endif
 #else
-    dst[dst_off] = TO_DST(dst_val / convert_float(ID * IH * IW));
+    write(dst + dst_off, dst_val / convert_float(ID * IH * IW));
 #endif
 }
 #endif // IS_FWD
 
 #if IS_BWD
-
-#if DT_BF16 || DT_F16
-#define DST_BLOCK_WRITE(dst, val) \
-    BLOCK_WRITE((__global ushort *)(dst), as_ushort(val))
-#endif // DT_BF16
-#if DT_F32
-#define DST_BLOCK_WRITE(dst, val) \
-    BLOCK_WRITE((__global uint *)(dst), as_uint(val))
-#endif // DT_F32
 
 KERNEL_ATTR
 __kernel void xe_global_pooling_bwd(__global DATA_T *diff_src, __global int *ws,
@@ -120,28 +100,27 @@ __kernel void xe_global_pooling_bwd(__global DATA_T *diff_src, __global int *ws,
         const off_t iw = sp_idx % IW;
         const off_t ih = ((sp_idx - iw) % (IH * IW)) / IW;
         const off_t id = (sp_idx - iw - ih * IW) / (IH * IW);
-        DATA_T val_to_write;
+        float val_to_write;
         if (is_in_padded_area)
-            val_to_write = DATA_ZERO;
+            val_to_write = 0.f;
         else {
 #if ALG_MAX
             // Read dst value only in case it's going to be used
             const off_t current_input_idx = id * IH * IW + ih * IW + iw;
             if (current_input_idx == ws_val) {
-                val_to_write = diff_dst[dst_off];
+                load(&val_to_write, diff_dst, dst_off);
             } else {
-                val_to_write = DATA_ZERO;
+                val_to_write = 0.f;
             }
 #else // ALG_MAX
-            float dst_val_f = DATA_TO_REF(dst_val) / SPATIAL_DIM;
-            val_to_write = CONVERT_DATA_T(dst_val_f);
+            val_to_write = into_float(dst_val) / SPATIAL_DIM;
 #endif // ALG_MAX
         }
         const off_t src_off = SRC_OFF(mb, GWS_GET_C(), id, ih, iw);
 #if IS_VECTORIZED
-        DST_BLOCK_WRITE(&diff_src[src_off], val_to_write);
+        block_write(&diff_src[src_off], &val_to_write);
 #else
-        diff_src[src_off] = val_to_write;
+        write(diff_src + src_off, val_to_write);
 #endif
     }
 }

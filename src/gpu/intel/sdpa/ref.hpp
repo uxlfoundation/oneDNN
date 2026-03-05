@@ -61,7 +61,8 @@ struct ref_t : public primitive_t {
     status_t init(impl::engine_t *engine) override {
         compute::kernel_ctx_t kernel_ctx;
 
-        kernel_ctx.set_data_type(pd()->dst_md()->data_type);
+        kernel_ctx.set_data_type(
+                pd()->dst_md()->data_type, /*with_punning=*/false);
         kernel_ctx.require_stateless_addressing(pd()->has_large_buffers());
 
         int ndims = 4;
@@ -90,12 +91,18 @@ struct ref_t : public primitive_t {
         kernel_ctx.define_int("WITH_ATTN_SCALE", pd()->with_attn_scale());
         kernel_ctx.define_int("WITH_ATTN_MASK", pd()->with_attn_mask());
 
-        def_data_type(kernel_ctx, pd()->qry_md()->data_type, "QRY");
-        def_data_type(kernel_ctx, pd()->key_md()->data_type, "KEY");
-        def_data_type(kernel_ctx, pd()->val_md()->data_type, "VAL");
-        def_data_type(kernel_ctx, pd()->dst_md()->data_type, "DST");
-        def_data_type(kernel_ctx, pd()->attn_mask_md()->data_type, "MSK");
-        def_data_type(kernel_ctx, pd()->scale_md()->data_type, "SCALE");
+        def_data_type(kernel_ctx, pd()->qry_md()->data_type, "QRY",
+                /*with_punning=*/false);
+        def_data_type(kernel_ctx, pd()->key_md()->data_type, "KEY",
+                /*with_punning=*/false);
+        def_data_type(kernel_ctx, pd()->val_md()->data_type, "VAL",
+                /*with_punning=*/false);
+        def_data_type(kernel_ctx, pd()->dst_md()->data_type, "DST",
+                /*with_punning=*/false);
+        def_data_type(kernel_ctx, pd()->attn_mask_md()->data_type, "MSK",
+                /*with_punning=*/false);
+        def_data_type(kernel_ctx, pd()->scale_md()->data_type, "SCALE",
+                /*with_punning=*/false);
         CHECK(create_kernel(engine, &kernel_, "ref_sdpa", kernel_ctx));
         if (!kernel_) return status::runtime_error;
         return status::success;

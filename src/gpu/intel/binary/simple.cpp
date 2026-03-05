@@ -129,9 +129,10 @@ status_t simple_t::pd_t::init_kernel_ctx(
     kernel_ctx.define_int("BINARY_ALG", conf.alg);
     kernel_ctx.define_int("IS_TERNARY", (conf.alg == alg_kind::binary_select));
 
-    kernel_ctx.set_data_type(conf.src0_data_type);
-    kernel_ctx.set_data_type(conf.src1_data_type);
-    kernel_ctx.set_data_type(conf.dst_data_type);
+    constexpr bool with_punning = false;
+    kernel_ctx.set_data_type(conf.src0_data_type, with_punning);
+    kernel_ctx.set_data_type(conf.src1_data_type, with_punning);
+    kernel_ctx.set_data_type(conf.dst_data_type, with_punning);
     kernel_ctx.define_int("NDIMS", conf.ndims);
     kernel_ctx.define_int("IS_PLAIN_LAYOUT", true);
     kernel_ctx.define_int("IS_TENSOR_OP", conf.is_tensor_op);
@@ -158,9 +159,9 @@ status_t simple_t::pd_t::init_kernel_ctx(
     kernel_ctx.define_int("SRC0_UNROLL_16B", conf.src0_unroll_16b);
     kernel_ctx.define_int("SUB_GROUP_SIZE", 1);
 
-    def_memory_desc_info(kernel_ctx, conf.src0_md_info, "SRC0");
-    def_memory_desc_info(kernel_ctx, conf.src1_md_info, "SRC1");
-    def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST");
+    def_memory_desc_info(kernel_ctx, conf.src0_md_info, "SRC0", with_punning);
+    def_memory_desc_info(kernel_ctx, conf.src1_md_info, "SRC1", with_punning);
+    def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST", with_punning);
 
     if (conf.alg == alg_kind::binary_select) {
         kernel_ctx.define_int("SRC2_BCAST_DIM0", conf.src2_bcast_dims[0]);
@@ -169,7 +170,7 @@ status_t simple_t::pd_t::init_kernel_ctx(
         kernel_ctx.define_int("SRC2_BCAST_DIM3", conf.src2_bcast_dims[3]);
         kernel_ctx.define_int("SRC2_BCAST_DIM4", conf.src2_bcast_dims[4]);
         kernel_ctx.define_int("SRC2_BCAST_DIM5", conf.src2_bcast_dims[5]);
-        def_memory_desc_info(kernel_ctx, conf.src2_md_info, "SRC2");
+        def_memory_desc_info(kernel_ctx, conf.src2_md_info, "SRC2", with_punning);
     }
 
     CHECK(def_attr_info(

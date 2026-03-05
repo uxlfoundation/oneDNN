@@ -200,14 +200,14 @@ DECLARE_AS_STRUCT_BLOCK_VEC(f4_e3m0, 8, uchar8)
         } \
     } \
     __attribute__((overloadable)) void block_load( \
-            __private dst_dt *dst, __global src_dt *src) { \
+            __private dst_dt *dst, __global const src_dt *src) { \
         __global BLOCK_DT(src_dt) *data = (__global BLOCK_DT(src_dt) *)(src); \
         BLOCK_DT(src_dt) block_val = BLOCK_READ_FUNC(src_dt)(data); \
         src_dt src_val = CONCAT2(as_, src_dt)(block_val); \
         *dst = CONCAT2(into_, dst_dt)(src_val); \
     } \
     __attribute__((overloadable, warn_unused_result)) dst_dt block_load( \
-            dst_dt dst, __global src_dt *src) { \
+            dst_dt dst, __global const src_dt *src) { \
         __global BLOCK_DT(src_dt) *data = (__global BLOCK_DT(src_dt) *)(src); \
         BLOCK_DT(src_dt) block_val = BLOCK_READ_FUNC(src_dt)(data); \
         src_dt src_val = CONCAT2(as_, src_dt)(block_val); \

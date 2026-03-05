@@ -252,6 +252,7 @@ def_two_step_conversion(int, bf16, float);
 #undef def_two_step_conversion
 
 // Vector conversions -- bf16 (delegate to existing cvt_* vector builtins)
+#if MATH_UTILS_DECLARE_BF16
 #ifdef cl_future_bf16_cvt
 float2 __attribute__((overloadable)) into_float2(bf16x2 v) {
     return __builtin_IB_bftof_2(v.data);
@@ -303,6 +304,7 @@ bf16x8 __attribute__((overloadable)) into_bf16x8(float8 v) {
     return r;
 }
 #endif
+#endif // MATH_UTILS_DECLARE_BF16
 
 // Vector conversions -- scalar loop macros for types without vector builtins
 // Native output <- struct input (e.g. float8 <- f8_e4m3x8)

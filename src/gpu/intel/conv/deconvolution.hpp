@@ -185,7 +185,8 @@ struct conv_bwd_weights_t : public primitive_t {
         compute::kernel_ctx_t kernel_ctx;
 
         memory_desc_wrapper diff_dst_mdw(pd()->diff_dst_md());
-        kernel_ctx.set_data_type(pd()->diff_dst_md()->data_type);
+        kernel_ctx.set_data_type(
+                pd()->diff_dst_md()->data_type, /*with_punning=*/false);
         kernel_ctx.require_stateless_addressing(pd()->has_large_buffers());
         offsets_t off;
         set_offsets(diff_dst_mdw, off.dst_off);
@@ -205,9 +206,11 @@ struct conv_bwd_weights_t : public primitive_t {
         bias_data_type = pd()->diff_weights_md(1)->data_type;
         accum_data_type = pd()->desc()->accum_data_type;
 
-        def_data_type(kernel_ctx, dst_data_type, "DST");
-        def_data_type(kernel_ctx, bias_data_type, "BIA");
-        def_data_type(kernel_ctx, accum_data_type, "ACC");
+        def_data_type(kernel_ctx, dst_data_type, "DST", /*with_punning=*/false);
+        def_data_type(
+                kernel_ctx, bias_data_type, "BIA", /*with_punning=*/false);
+        def_data_type(
+                kernel_ctx, accum_data_type, "ACC", /*with_punning=*/false);
 
         CHECK(create_kernel(
                 engine, &bias_kernel_, "deconv_backward_bias", kernel_ctx));

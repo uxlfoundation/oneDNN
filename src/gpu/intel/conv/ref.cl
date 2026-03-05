@@ -24,9 +24,39 @@
 #undef WEI_OFF
 #undef DST_OFF
 
-#define SRC_OFF CONV_SRC_OFF
-#define WEI_OFF CONV_WEI_OFF
-#define DST_OFF CONV_DST_OFF
+#if SRC_NDIMS == 3
+#define SRC_OFF(n, c, d, h, w) OFF_MD(SRC, n, c, w, 0, 0, 0)
+#elif SRC_NDIMS == 4
+#define SRC_OFF(n, c, d, h, w) OFF_MD(SRC, n, c, h, w, 0, 0)
+#elif SRC_NDIMS == 5
+#define SRC_OFF(n, c, d, h, w) OFF_MD(SRC, n, c, d, h, w, 0)
+#endif
+
+#if WEI_NDIMS == 3
+#define WEI_OFF(g, o, i, d, h, w) OFF_MD(WEI, o, i, w, 0, 0, 0)
+#elif WEI_NDIMS == 4
+#if WITH_GROUPS == 0
+#define WEI_OFF(g, o, i, d, h, w) OFF_MD(WEI, o, i, h, w, 0, 0)
+#else
+#define WEI_OFF(g, o, i, d, h, w) OFF_MD(WEI, g, o, i, w, 0, 0)
+#endif
+#elif WEI_NDIMS == 5
+#if WITH_GROUPS == 0
+#define WEI_OFF(g, o, i, d, h, w) OFF_MD(WEI, o, i, d, h, w, 0)
+#else
+#define WEI_OFF(g, o, i, d, h, w) OFF_MD(WEI, g, o, i, h, w, 0)
+#endif
+#elif WEI_NDIMS == 6
+#define WEI_OFF(g, o, i, d, h, w) OFF_MD(WEI, g, o, i, d, h, w)
+#endif
+
+#if DST_NDIMS == 3
+#define DST_OFF(n, c, d, h, w) OFF_MD(DST, n, c, w, 0, 0, 0)
+#elif DST_NDIMS == 4
+#define DST_OFF(n, c, d, h, w) OFF_MD(DST, n, c, h, w, 0, 0)
+#elif DST_NDIMS == 5
+#define DST_OFF(n, c, d, h, w) OFF_MD(DST, n, c, d, h, w, 0)
+#endif
 
 #if WITH_WEI_ZPOINTS_DT_S8
 #define WEI_ZP_T char
@@ -164,7 +194,9 @@ __kernel void ref_convolution_fwd(
 
     POST_OP_DATA_T sum_src;
 #if WITH_SUM
-    sum_src = load(tmp, dst + DST_OFF(n, g * OC + oc, od, oh, ow));
+    sum_src = load(tmp,
+            (const __global SUM_DATA_T *)(dst
+                    + DST_OFF(n, g * OC + oc, od, oh, ow)));
 #endif
 
 #if NDIMS == 3
@@ -325,7 +357,9 @@ __kernel void ref_convolution_bwd_data(__global SRC_DATA_T *diff_src,
 
     POST_OP_DATA_T sum_src;
 #if WITH_SUM
-    load(&sum_src, diff_src + SRC_OFF(n, g * IC + ic, id, ih, iw));
+    sum_src = load(sum_src,
+            (const __global SUM_DATA_T *)(diff_src
+                    + SRC_OFF(n, g * IC + ic, id, ih, iw)));
 #endif
 
 #if NDIMS == 3

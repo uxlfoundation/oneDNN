@@ -83,7 +83,7 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
         const memory_desc_t *dst_md) {
     using namespace alg_kind;
 
-    kernel_ctx.set_data_type(conf.src_type);
+    kernel_ctx.set_data_type(conf.src_type, false);
     kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
 
     int max_ndims = 6;
@@ -124,8 +124,8 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     kernel_ctx.define_float("POWER", conf.power);
     kernel_ctx.define_float("EPS", conf.eps);
 
-    def_memory_desc_info(kernel_ctx, conf.src_md_info, "SRC");
-    def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST");
+    def_memory_desc_info(kernel_ctx, conf.src_md_info, "SRC", false);
+    def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST", false);
 
     CHECK(def_attr_info(kernel_ctx, conf.attr_info, post_ops, *dst_md));
 

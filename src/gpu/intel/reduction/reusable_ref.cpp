@@ -200,8 +200,8 @@ static void init_kernel_ctx_common(
     using namespace alg_kind;
 
     // Data types
-    kernel_ctx.set_data_type(conf.src_dt);
-    def_data_type(kernel_ctx, conf.dst_dt, "DST");
+    kernel_ctx.set_data_type(conf.src_dt, false);
+    def_data_type(kernel_ctx, conf.dst_dt, "DST", false);
 
     // Stateless addressing model
     kernel_ctx.require_stateless_addressing(

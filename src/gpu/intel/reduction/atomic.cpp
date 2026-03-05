@@ -459,11 +459,11 @@ static void init_kernel_ctx_common(
         compute::kernel_ctx_t &kernel_ctx, const atomic_key_params_t &conf) {
     using namespace alg_kind;
 
-    kernel_ctx.set_data_type(conf.src_type);
+    kernel_ctx.set_data_type(conf.src_type, false);
     kernel_ctx.require_stateless_addressing(
             conf.params.require_stateless_addressing);
-    def_data_type(kernel_ctx, conf.src_type, "SRC");
-    def_data_type(kernel_ctx, conf.dst_type, "DST");
+    def_data_type(kernel_ctx, conf.src_type, "SRC", false);
+    def_data_type(kernel_ctx, conf.dst_type, "DST", false);
 
     conf.params.def_kernel_macros(kernel_ctx);
 

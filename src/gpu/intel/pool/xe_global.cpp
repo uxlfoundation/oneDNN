@@ -123,7 +123,7 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
         const conf_t &conf, const offsets_t &off, const post_ops_t &post_ops,
         const memory_desc_t *dst_md) {
     using namespace dnnl::impl::alg_kind;
-    kernel_ctx.set_data_type(conf.src_dt);
+    kernel_ctx.set_data_type(conf.src_dt, /*with_punning=*/false);
     kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
 
     kernel_ctx.define_int("NDIMS", conf.ndims);
@@ -147,13 +147,16 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     kernel_ctx.define_int("NEED_ZERO_PADDING",
             (conf.mb != conf.mb_padded || conf.c != conf.c_padded));
 
-    CHECK(def_attr_info(kernel_ctx, conf.attr_info, post_ops, *dst_md));
+    CHECK(def_attr_info(kernel_ctx, conf.attr_info, post_ops, *dst_md,
+            /*with_punning=*/false));
 
     def_offsets(off.src_off, kernel_ctx, "SRC", conf.ndims);
     def_offsets(off.dst_off, kernel_ctx, "DST", conf.ndims);
 
-    def_memory_desc_info(kernel_ctx, conf.src_md_info, "SRC");
-    def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST");
+    def_memory_desc_info(
+            kernel_ctx, conf.src_md_info, "SRC", /*with_punning=*/false);
+    def_memory_desc_info(
+            kernel_ctx, conf.dst_md_info, "DST", /*with_punning=*/false);
 
     def_dispatch(kernel_ctx, conf.dispatch);
 

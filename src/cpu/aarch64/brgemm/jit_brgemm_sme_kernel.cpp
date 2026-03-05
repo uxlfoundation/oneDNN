@@ -219,7 +219,7 @@ void jit_brgemm_sme_kernel_base_t::generate() {
     auto st1w_tiles_to_D =
             [=](const std::vector<ZReg> &D_zregs, const PReg &pD /*==pB*/,
                     const PReg &pD_tail /*==pB_tail*/, const WReg &zaRegOffset,
-                    const XReg &D_ptr, int stride, int bd, int ld) {
+                    const XReg &D_ptr, int bd, int ld) {
         int step_offset
                 = 0; // used to increase base offset of ZA tile to access lines > 3 (for mova instruction)
         int cycles = (bd > sme_capacity) ? sme_capacity : bd;
@@ -243,7 +243,7 @@ void jit_brgemm_sme_kernel_base_t::generate() {
                 st1w(D_zregs[0].s, pD, ptr(D_ptr));
                 st1w(D_zregs[1].s, pD, ptr(D_ptr, 1 /*mul vl*/));
                 st1w(D_zregs[2].s, pD_last, ptr(D_ptr, 2 /*mul vl*/));
-                add(D_ptr, D_ptr, stride);
+                add(D_ptr, D_ptr, x30);
             }
         } else if (2 == used_tiles) {
             assert(D_zregs.size() >= 2);
@@ -256,7 +256,7 @@ void jit_brgemm_sme_kernel_base_t::generate() {
                 mova(D_zregs[1].s, pD_last / T_m, za2h.s(zaRegOffset, i & 0x3));
                 st1w(D_zregs[0].s, pD, ptr(D_ptr));
                 st1w(D_zregs[1].s, pD_last, ptr(D_ptr, 1 /*mul vl*/));
-                add(D_ptr, D_ptr, stride);
+                add(D_ptr, D_ptr, x30);
             }
         } else {
             assert(!D_zregs.empty());
@@ -267,7 +267,73 @@ void jit_brgemm_sme_kernel_base_t::generate() {
                 }
                 mova(D_zregs[0].s, pD_last / T_m, za1h.s(zaRegOffset, i & 0x3));
                 st1w(D_zregs[0].s, pD_last, ptr(D_ptr));
-                add(D_ptr, D_ptr, stride);
+                add(D_ptr, D_ptr, x30);
+            }
+        }
+    };
+
+    /** Load ZA tile(s) 1(,2,3) from D pointer
+     *
+     * @param D_zregs Vector of Z registers which are allowed
+     * @param pD Predicate for active elements of D to load (always all true)
+     * @param pD_tail Predicate for active elements of D to load (if tail along load (N) dim)
+     * @param zaRegOffset (temporary) Register to use as base offset of ZA tile
+     * @param D_ptr (temporary) X register which contains pointer to D
+     * @param bd Number of rows to load along M (broadcast) dim
+     * @param ld Number of elements to load per row (load (N) dim)
+     */
+    auto ld1w_D_to_tiles =
+            [=](const std::vector<ZReg> &D_zregs, const PReg &pD /*==pB*/,
+                    const PReg &pD_tail /*==pB_tail*/, const WReg &zaRegOffset,
+                    const XReg &D_ptr, int bd, int ld) {
+        int step_offset
+                = 0; // used to increase base offset of ZA tile to access lines > 3 (for mova instruction)
+        int cycles = (bd > sme_capacity) ? sme_capacity : bd;
+        int used_tiles = std::min((ld / sme_capacity),
+                3); // Up to 3 tiles can be used (4th is used for A)
+        int ld_tail = ld % sme_capacity; // Load dim tail (along N of B)
+        bool isTail = (used_tiles < 3) && ld_tail;
+        auto pD_last = isTail ? pD_tail : pD;
+        if (isTail) used_tiles += 1;
+
+        if (3 == used_tiles) {
+            assert(D_zregs.size() >= 3);
+            for (int i = 0; i < cycles; ++i) {
+                if (0 == (i & 0x3)) {
+                    mov(zaRegOffset, step_offset);
+                    step_offset += 4;
+                }
+                ld1w(D_zregs[0].s, pD, ptr(D_ptr));
+                ld1w(D_zregs[1].s, pD, ptr(D_ptr, 1 /*mul vl*/));
+                ld1w(D_zregs[2].s, pD_last, ptr(D_ptr, 2 /*mul vl*/));
+                mova(za1h.s(zaRegOffset, i & 0x3), pD / T_m, D_zregs[0].s);
+                mova(za2h.s(zaRegOffset, i & 0x3), pD / T_m, D_zregs[1].s);
+                mova(za3h.s(zaRegOffset, i & 0x3), pD_last / T_m, D_zregs[2].s);
+                add(D_ptr, D_ptr, x30);
+            }
+        } else if (2 == used_tiles) {
+            assert(D_zregs.size() >= 2);
+            for (int i = 0; i < cycles; ++i) {
+                if (0 == (i & 0x3)) {
+                    mov(zaRegOffset, step_offset);
+                    step_offset += 4;
+                }
+                ld1w(D_zregs[0].s, pD, ptr(D_ptr));
+                ld1w(D_zregs[1].s, pD_last, ptr(D_ptr, 1 /*mul vl*/));
+                mova(za1h.s(zaRegOffset, i & 0x3), pD / T_m, D_zregs[0].s);
+                mova(za2h.s(zaRegOffset, i & 0x3), pD_last / T_m, D_zregs[1].s);
+                add(D_ptr, D_ptr, x30);
+            }
+        } else {
+            assert(!D_zregs.empty());
+            for (int i = 0; i < cycles; ++i) {
+                if (0 == (i & 0x3)) {
+                    mov(zaRegOffset, step_offset);
+                    step_offset += 4;
+                }
+                ld1w(D_zregs[0].s, pD_last, ptr(D_ptr));
+                mova(za1h.s(zaRegOffset, i & 0x3), pD_last / T_m, D_zregs[0].s);
+                add(D_ptr, D_ptr, x30);
             }
         }
     };
@@ -292,7 +358,6 @@ void jit_brgemm_sme_kernel_base_t::generate() {
     std::vector<ZReg> B_zregs = {z0, z1, z2, z3, z4, z5, z6, z7, z8, z9, z10,
             z11, z12, z13, z14, z15, z16, z17, z18, z19, z20, z21, z22, z23};
     std::vector<ZReg> D_zregs = {z0, z1, z2};
-
     struct p_block_desc_t {
         const PReg &pReg;
         int size;
@@ -310,7 +375,12 @@ void jit_brgemm_sme_kernel_base_t::generate() {
     auto rd_loop = [=](p_block_desc_t &bd, p_block_desc_t &ld) {
         Label bs_loop, rdb_loop;
         add(x23, x0, GET_OFF(batch));
-        zero(za);
+        if (0 == brg.beta) {
+            zero(za);
+        } else {
+            mov(x24, x10);
+            ld1w_D_to_tiles(D_zregs, p0, p2, w13, x24, bd.size, ld.size);
+        }
         ldr(x9, ptr(x23)); // restore Batch pointer
         mov(x16, x19); // Batch size
         L(bs_loop);
@@ -348,7 +418,7 @@ void jit_brgemm_sme_kernel_base_t::generate() {
         b(GT, bs_loop);
         // Store Tile(s)
         mov(x23, x10);
-        st1w_tiles_to_D(D_zregs, p0, p2, w13, x23, D_stride, bd.size, ld.size);
+        st1w_tiles_to_D(D_zregs, p0, p2, w13, x23, bd.size, ld.size);
         add(x10, x10, ld.size * brg.typesize_D);
         add(x8, x8, ld.size * brg.typesize_B);
     };

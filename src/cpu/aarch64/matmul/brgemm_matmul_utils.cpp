@@ -814,6 +814,7 @@ status_t compute_blocking_heuristic(brgemm_matmul_conf_t &bgmmc,
         //
         // Batch_Size:
         // - unused.
+        case sme:
         case sve_512:
             best_imbalance = compute_blocking_heuristic_sve_512(
                     bgmmc, bm_conf_utils, matmul, best_blocking);
@@ -970,7 +971,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.wei_n_blk = get_default_n_block(bgmmc.wei_tag, bgmmc);
 
     bgmmc.blocked_B = bm_conf_utils.get_blocked_B();
-    bgmmc.use_buffer_b = bm_conf_utils.use_buffer_b();
+    bgmmc.use_buffer_b = bm_conf_utils.use_buffer_b() && (sme != isa);
 
     const bool transposed_A = bm_conf_utils.check_is_transposed(bgmmc.src_tag);
     // if M == 1 we can still treat formally transposed A as plain

@@ -223,7 +223,11 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
     brg->attr = attr;
     brg->dst_md = dst_md;
 
-    if (brg->is_sme && ((data_type::undef != dt_bias) || attr->post_ops_.len()))
+    if (brg->is_sme
+            && ((data_type::undef != dt_bias) || attr->post_ops_.len()
+                    || !attr->scales_.get(DNNL_ARG_SRC).has_default_values()
+                    || !attr->scales_.get(DNNL_ARG_WEIGHTS).has_default_values()
+                    || !attr->scales_.get(DNNL_ARG_DST).has_default_values()))
         brg->is_sme = false;
     if (!brg->is_sme && !brg->is_sve) return status::unimplemented;
 

@@ -227,6 +227,13 @@ inline uint64_t get_sve_length(data_type_t data_type) {
     return get_sve_length() / dt_size;
 }
 
+// SME length in element type
+inline uint64_t get_sme_length(data_type_t data_type) {
+    const size_t dt_size = types::data_type_size(data_type);
+    assert(dt_size > 0);
+    return get_sme_length() / dt_size;
+}
+
 inline int isa_max_vlen(cpu_isa_t isa) {
     if (isa == sve_512)
         return cpu_isa_traits<sve_512>::vlen;
@@ -285,7 +292,8 @@ inline int isa_num_vregs(cpu_isa_t isa) {
     ((isa) == sve_128 ? prefix STRINGIFY(sve_128) : \
     ((isa) == sve_256 ? prefix STRINGIFY(sve_256) : \
     ((isa) == sve_512 ? prefix STRINGIFY(sve_512) : \
-    prefix suffix_if_any))))))
+    ((isa) == sme ? prefix STRINGIFY(sme) : \
+    prefix suffix_if_any)))))))
 /* clang-format on */
 
 inline size_t data_type_vnni_granularity(data_type_t data_type) {
@@ -320,6 +328,7 @@ inline size_t simd_elems(data_type_t dt, cpu_isa_t cpu_isa) {
         case sve_128:
         case asimd: return data_type_vnni_simd_elems<sve_128>(dt);
         case sve: return get_sve_length(dt);
+        case sme: return get_sme_length(dt);
         default: {
             // If this ISA does implement SIMD, then you need to add support for
             // it in this function. If not, then you need to check earlier in

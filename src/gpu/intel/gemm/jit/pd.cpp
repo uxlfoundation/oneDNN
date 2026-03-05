@@ -437,7 +437,8 @@ bool pd_t::scales_ok() {
             // Dynamic Dst Quant only supported with `1x32` groups.
             if (s == DNNL_ARG_C && with_mx_scale()
                     && (x_scales.get_group(0) != 1
-                            || x_scales.get_group(1) != 32))
+                            || x_scales.get_group(1) != 32
+                            || arch_ < compute::gpu_arch_t::xe_hpc))
                 return false;
         }
     }

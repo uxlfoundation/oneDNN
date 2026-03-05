@@ -14,6 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "gpu/intel/include/io.h"
 #include "gpu/intel/include/post_ops.h"
 #include "gpu/intel/include/types.h"
 #include "gpu/intel/sdpa/utils.h"
@@ -36,7 +37,7 @@ __kernel void ref_sdpa(const __global QRY_DATA_T *Q,
             long qry_off = QRY_OFF(b1 % QRY_D0, b0 % QRY_D1, q, h);
             long key_off = KEY_OFF(b1 % KEY_D0, b0 % KEY_D1, h, k);
 
-            acc += convert_float(Q[qry_off]) * convert_float(K[key_off]);
+            acc += into_float(Q[qry_off]) * into_float(K[key_off]);
         }
         s[k] = acc;
     }
@@ -55,7 +56,7 @@ __kernel void ref_sdpa(const __global QRY_DATA_T *Q,
 
 #if WITH_ATTN_MASK
         long msk_off = MSK_OFF(b1 % MSK_D0, b0 % MSK_D1, q, k);
-        s[k] += convert_float(mask[msk_off]);
+        s[k] += into_float(mask[msk_off]);
 #endif
         s[k] = exp(s[k]);
         s_sum += s[k];
@@ -69,10 +70,10 @@ __kernel void ref_sdpa(const __global QRY_DATA_T *Q,
         float acc = 0;
         for (long k = 0; k < SIZE_K; k++) {
             long val_off = VAL_OFF(b1 % VAL_D0, b0 % VAL_D1, k, v);
-            acc += convert_float(V[val_off]) * s[k];
+            acc += into_float(V[val_off]) * s[k];
         }
 
         long dst_off = DST_OFF(b1 % DST_D0, b0 % DST_D1, 0, q, v);
-        dst[dst_off] = TO_DST(acc);
+        write(dst + dst_off, acc);
     }
 }

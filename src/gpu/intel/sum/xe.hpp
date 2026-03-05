@@ -69,7 +69,7 @@ struct xe_t : public primitive_t {
         const memory_desc_wrapper data_d(pd()->dst_md());
         const memory_desc_wrapper data_s(pd()->src_md());
 
-        kernel_ctx.set_data_type(data_s.data_type());
+        kernel_ctx.set_data_type(data_s.data_type(), false);
         kernel_ctx.require_stateless_addressing(pd()->has_large_buffers());
         size_t io_bytes = (pd()->n_inputs() + 1) * data_d.data_type_size()
                 * data_d.nelems(true);
@@ -80,9 +80,9 @@ struct xe_t : public primitive_t {
         kernel_ctx.define_int("N_ELEMS", data_d.nelems(true));
 
         def_memory_desc_info(
-                kernel_ctx, memory_desc_info_t::create(data_d), "SRC");
+                kernel_ctx, memory_desc_info_t::create(data_d), "SRC", false);
         def_memory_desc_info(
-                kernel_ctx, memory_desc_info_t::create(data_s), "DST");
+                kernel_ctx, memory_desc_info_t::create(data_s), "DST", false);
 
         CHECK(create_kernel(engine, &kernel_, "xe_sum", kernel_ctx));
 

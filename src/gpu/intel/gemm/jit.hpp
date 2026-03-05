@@ -74,7 +74,7 @@ struct gen_t : public primitive_t {
             const auto d = desc();
 
             CHECK(set_default_formats(false));
-            CHECK(jit::pd_t::init(engine));
+            CHECK(jit::pd_t::init(engine, arch_));
 
             auto m = desc()->m();
             auto n = desc()->n();

@@ -340,7 +340,7 @@ status_t xe_wino_fwd_t::pd_t::init_kernel_ctx(
     kernel_ctx.define_int("IC_BLOCK", conf.ic_block);
     kernel_ctx.define_int("VECT_DT_N", conf.vect_size);
 
-    kernel_ctx.set_data_type(conf.src_data_type);
+    kernel_ctx.set_data_type(conf.src_data_type, /*with_punning=*/false);
     kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
 
     kernel_ctx.define_int("VER_8OW16C", conf.ver == ver_8ow16c);
@@ -364,7 +364,7 @@ status_t xe_wino_fwd_t::pd_t::init_kernel_ctx(
     kernel_ctx.define_int("WITH_BIAS", conf.with_bias);
 
     CHECK(def_attr_info(kernel_ctx, conf.attr_info, attr()->post_ops_,
-            *invariant_dst_md()));
+            *invariant_dst_md(), /*with_punning=*/false));
 
     return status::success;
 }

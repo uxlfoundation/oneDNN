@@ -14,6 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "gpu/intel/include/io.h"
 #include "gpu/intel/include/post_ops.h"
 #include "gpu/intel/include/types.h"
 
@@ -32,8 +33,8 @@
 
 #define VECT_SIZE 4
 #define VECT_DATA_T CONCAT2(DATA_T, VECT_SIZE)
-#define AS_VECT_DATA_T AS_DATA4_T
-#define AS_VECT_BLOCK_DATA_T AS_BLOCK_DATA4_T
+#define AS_VECT_DATA_T(x) CONCAT2(as_, VECT_DATA_T)(x)
+#define AS_VECT_BLOCK_DATA_T(x) CONCAT2(as_, BLOCK_DT_N(DATA_T, VECT_SIZE))(x)
 
 #define OC_OUTER_BLOCK OC_BLOCK
 #define IC_OUTER_BLOCK IC_BLOCK
@@ -247,7 +248,7 @@ __kernel void xe_wino_dst_transform_2x3(__global DATA_T *dst,
                     C[c_off] += (OC_WO_PADDING % OC_BLOCK == 0
                                         || bc_off < OC_WO_PADDING)
                             ? bias[bc_off]
-                            : DATA_ZERO;
+                            : (DATA_T)0;
                 }
             }
         }
@@ -267,11 +268,11 @@ __kernel void xe_wino_dst_transform_2x3(__global DATA_T *dst,
             BLOCKED_WRITE(S2, &S[OC_BLOCK]);
         }
         for (int didx = 0; didx < c_size; ++didx) {
-            float accum = CONVERT_FLOAT_T(C[didx]);
-            float sum = CONVERT_FLOAT_T(S[didx]);
+            float accum = into_float(C[didx]);
+            float sum = into_float(S[didx]);
             int po_oc = oc + c_size % OC_BLOCK;
             APPLY_POST_OPS_SERIAL(accum, sum, n, po_oc, 0, 0, 0);
-            C[didx] = TO_DATA_T(accum);
+            write(&C[didx], accum);
         }
 
         C1 = BLOCKED_READ(&C[0]);

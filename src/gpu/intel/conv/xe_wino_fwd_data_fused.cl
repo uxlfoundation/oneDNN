@@ -14,6 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "gpu/intel/include/io.h"
 #include "gpu/intel/include/offsets.h"
 #include "gpu/intel/include/post_ops.h"
 #include "gpu/intel/include/types.h"
@@ -48,22 +49,14 @@
 
 #define UTRANS_BLOCK VECT_DT_N
 #define UTRANS_DATA_T VECT_DATA_T
-#define AS_UTRANS_DATA_T AS_VECT_DATA_T
-#define UTRANS_BLOCK_READ(ptr) \
-    AS_UTRANS_DATA_T(VECT_BLOCK_READ((const __global BLOCK_DATA_T *)ptr))
-#define UTRANS_BLOCK_WRITE(data, ptr) \
-    VECT_BLOCK_WRITE((__global BLOCK_DATA_T *)ptr, AS_VECT_BLOCK_DATA_T(data))
 
 #define VTRANS_BLOCK 4 // = (WINO_IC_BLOCK / (LWS_0 * LWS_1 / WINO_IW_BLOCK))
 #define VTRANS_DATA_T CONCAT2(DATA_T, VTRANS_BLOCK)
 
 #define COMP_BLOCK VECT_DT_N
 #define COMP_DATA_T VECT_DATA_T
-#define AS_COMP_DATA_T AS_VECT_DATA_T
 #define COMP_READ(ptr) CONCAT2(vload, COMP_BLOCK)(0, ptr)
 #define COMP_WRITE(data, ptr) CONCAT2(vstore, COMP_BLOCK)(data, 0, ptr)
-#define COMP_BLOCK_READ(ptr) \
-    AS_COMP_DATA_T(VECT_BLOCK_READ((const __global BLOCK_DATA_T *)ptr))
 
 #define COMP_UNROLL (IC_BLOCK / COMP_BLOCK)
 
@@ -369,7 +362,7 @@ xe_wino_wei_transform(__global DATA_T *U, const __global DATA_T *weights) {
     uint out_idx = U_off(oc0, ic, out_kh, out_kw);
 
     unroll_for(int i = 0; i < WINO_D; i++) {
-        UTRANS_BLOCK_WRITE(out_tile[i], &U[out_idx]);
+        block_write(&U[out_idx], &out_tile[i]);
         out_idx += U_off(0, 0, 1, 0);
     }
 }
@@ -510,7 +503,7 @@ xe_wino_conv_fwd(__global DATA_T *dst, const __global DATA_T *src,
                        c_inner += COMP_BLOCK) {
                 unroll_for(int kw_in = 0; kw_in < KW; kw_in++) {
                     unroll_for(int c_out = 0; c_out < COMP_OC_COUNT; c_out++) {
-                        const COMP_DATA_T f0 = COMP_BLOCK_READ(
+                        COMP_DATA_T f0 = block_load(f0,
                                 &U[U_off(c_out * COMP_OC_STRIDE, 0, 0, kw_in)]);
                         unroll_for(int c_in = 0; c_in < COMP_BLOCK; c_in++) {
                             unroll_for(int ow_in = 0; ow_in < OW_BLOCK;
@@ -593,7 +586,7 @@ xe_wino_conv_fwd(__global DATA_T *dst, const __global DATA_T *src,
                             += (OC_WO_PADDING % OC_BLOCK == 0
                                        || oc_tmp < OC_WO_PADDING)
                             ? bias[oc_tmp]
-                            : DATA_ZERO;
+                            : TO_TYPE(0);
                 }
             }
 
@@ -638,7 +631,7 @@ xe_wino_conv_fwd(__global DATA_T *dst, const __global DATA_T *src,
                                     = (OC_WO_PADDING % OC_BLOCK == 0
                                               || oc + oc_off < OC_WO_PADDING)
                                     ? C[oc_off][h_off][w_off]
-                                    : DATA_ZERO;
+                                    : TO_TYPE(0);
                     }
                 }
             }

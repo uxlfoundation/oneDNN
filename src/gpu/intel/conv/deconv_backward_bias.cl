@@ -14,6 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "gpu/intel/include/io.h"
 #include "gpu/intel/include/types.h"
 
 __kernel void deconv_backward_bias(
@@ -27,8 +28,8 @@ __kernel void deconv_backward_bias(
                 for (off_t ow = 0; ow < OW; ++ow) {
                     const off_t diff_dst_off
                             = DST_OFF(mb, g * OC + oc, od, oh, ow);
-                    db += DST_TO_REF(diff_dst[diff_dst_off]);
+                    db += load(db, diff_dst, diff_dst_off);
                 }
 
-    diff_bias[g * OC + oc] = TO_BIA(db);
+    write(diff_bias + g * OC + oc, db);
 }

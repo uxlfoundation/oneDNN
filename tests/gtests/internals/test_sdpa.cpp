@@ -1367,9 +1367,6 @@ std::vector<std::chrono::nanoseconds> timeit(
         }
         str.wait();
         e = steady_clock::now();
-        printf("timeit: %f \n",
-                (float)std::chrono::duration_cast<nanoseconds>(e - s).count()
-                        / 1e6 / iterations);
         times.push_back(std::chrono::duration_cast<nanoseconds>(e - s));
     }
     return times;
@@ -2218,7 +2215,7 @@ public:
         float fthreshold = 0.f;
         if (p.dt.dt == mdt::bf16 || p.dt.dt == mdt::f16) {
             //fthreshold = 0.0079f; //todo: correct threshold or better values
-            fthreshold = 0.1;
+            fthreshold = 0.1f;
         } else {
             fthreshold = 0.001466f;
         }

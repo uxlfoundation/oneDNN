@@ -1155,19 +1155,6 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
             if (exec_arg == DNNL_ARG_WEIGHTS) {
                 const auto ndims = mem.ndims();
                 const auto &dims = mem.dims();
-
-#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
-                if (ndims == 3 && is_grouped) {
-                    // For 3D grouped weights, use plain abc format (no transpose)
-                    //
-                    // TODO: Remove the special handling once transition to common
-                    // ref computational kernel is done.
-                    ref_mem_map.emplace(exec_arg,
-                            dnn_mem_t(ndims, dims, dnnl_f32, std::string("abc"),
-                                    ref_engine,
-                                    /* prefill = */ false));
-                } else
-#endif
                 {
                     // Switch the format tag from "ab" to "ba" but to handle batched
                     // cases, use strides instead.

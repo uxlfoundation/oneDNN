@@ -644,11 +644,11 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
         const dim_t b_dim = with_bias ? op_d.bias_desc.dims[d] : 0;
         const dim_t r_dim = with_reduce ? op_d.reduce_desc.dims[d] : 0;
 
-        if (one_of(DNNL_RUNTIME_DIM_VAL, s_dim, w_dim, d_dim, b_dim)) {
+        if (any_runtime_value(s_dim, w_dim, d_dim, b_dim)) {
 
-            VCHECK_MATMUL(everyone_is(DNNL_RUNTIME_DIM_VAL, s_dim, w_dim, d_dim)
+            VCHECK_MATMUL(all_runtime_values(s_dim, w_dim, d_dim)
                             && IMPLICATION((bia_mask & (1 << d)) && with_bias,
-                                    b_dim == DNNL_RUNTIME_DIM_VAL),
+                                    is_runtime_value(b_dim)),
                     VERBOSE_RUNTIMEDIM_INCONSISTENT, d);
         } else {
             // This follows numpy semantics of broadcasting when 0 is involved.

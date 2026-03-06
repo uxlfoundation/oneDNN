@@ -105,10 +105,9 @@ status_t memory_desc_init_by_strides(memory_desc_t &memory_desc, int ndims,
         bool has_runtime_strides = false;
         default_strides[md.ndims - 1] = 1;
         for (int d = md.ndims - 2; d >= 0; --d) {
-            if (md.padded_dims[d] == DNNL_RUNTIME_DIM_VAL)
-                has_runtime_strides = true;
+            if (is_runtime_value(md.padded_dims[d])) has_runtime_strides = true;
             default_strides[d] = has_runtime_strides
-                    ? DNNL_RUNTIME_DIM_VAL
+                    ? runtime_value_for(default_strides[d])
                     : default_strides[d + 1] * md.padded_dims[d + 1];
         }
         strides = default_strides;
@@ -255,7 +254,7 @@ status_t memory_desc_init_with_grouped_encoding(memory_desc_t &memory_desc,
             "variable_dim_idx");
 
     for (int d = 0; d < ndims; ++d) {
-        VCHECK_MEMORY(dims[d] != DNNL_RUNTIME_DIM_VAL, invalid_arguments,
+        VCHECK_MEMORY(!is_runtime_value(dims[d]), invalid_arguments,
                 VERBOSE_RUNTIMEDIM_UNSUPPORTED);
         VCHECK_MEMORY(
                 dims[d] > 0, invalid_arguments, VERBOSE_BAD_DIM, "dims", d);
@@ -297,9 +296,8 @@ status_t memory_desc_init_submemory(memory_desc_t &memory_desc,
             VERBOSE_UNSUPPORTED_MEM_STRIDE);
 
     for (int d = 0; d < src_d.ndims(); ++d) {
-        VCHECK_MEMORY(
-                !(utils::one_of(DNNL_RUNTIME_DIM_VAL, dims[d], offsets[d])),
-                unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+        VCHECK_MEMORY(!any_runtime_value(dims[d], offsets[d]), unimplemented,
+                VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
         const bool dim_offsets_oob = (dims[d] < 0 || offsets[d] < 0
                 || (offsets[d] + dims[d] > src_d.dims()[d]));
@@ -346,7 +344,7 @@ status_t memory_desc_reshape(memory_desc_t &out_memory_desc,
     auto volume = [](const dim_t *dims, int ndims) -> dim_t {
         dim_t prod = 1;
         for (int i = 0; i < ndims; ++i) {
-            if (dims[i] == DNNL_RUNTIME_DIM_VAL) return DNNL_RUNTIME_DIM_VAL;
+            if (is_runtime_value(dims[i])) return runtime_value_for(prod);
             prod *= dims[i] > 0 ? dims[i] : 1;
         }
         return prod;
@@ -653,12 +651,12 @@ status_t memory_desc_init_by_string_tag(memory_desc_t &md, int ndims,
             blk.strides[dim_idx] = stride;
 
             dim_t fib = full_inner_blks[dim_idx];
-            dim_t padded_dim = md.dims[dim_idx] == DNNL_RUNTIME_DIM_VAL
-                    ? DNNL_RUNTIME_DIM_VAL
+            const auto padded_dim = is_runtime_value(md.dims[dim_idx])
+                    ? runtime_value_for(md.padded_dims[dim_idx])
                     : (md.dims[dim_idx] + fib - 1) / fib * fib;
             md.padded_dims[dim_idx] = padded_dim;
-            if (one_of(DNNL_RUNTIME_DIM_VAL, padded_dim, stride))
-                stride = DNNL_RUNTIME_DIM_VAL;
+            if (any_runtime_value(padded_dim, stride))
+                stride = runtime_value_for(stride);
             else
                 stride *= (padded_dim / fib);
         } else {

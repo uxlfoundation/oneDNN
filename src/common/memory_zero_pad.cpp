@@ -199,7 +199,7 @@ status_t typed_zero_pad(const memory_t *memory, const exec_ctx_t &ctx) {
     if (mdw.nelems(false) == mdw.nelems(true)) return success;
 
     const size_t map_size = mdw.size();
-    assert(map_size != DNNL_RUNTIME_SIZE_VAL);
+    assert(!is_runtime_value(map_size));
 
     void *mapped_ptr
             = ctx.map_memory_storage(memory_storage, ctx.stream(), map_size);

@@ -119,7 +119,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
                 && !attr()->scales_.has_default_values(DNNL_ARG_WEIGHTS)
                 && attr()->scales_.get_mask(DNNL_ARG_WEIGHTS) > 0) {
             // This case requires scratchpad
-            if (N() == DNNL_RUNTIME_DIM_VAL) ok = false;
+            if (is_runtime_value(N())) ok = false;
         }
 
         if (!attr()->post_ops_.sum_with_default_dt()) return false;

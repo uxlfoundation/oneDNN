@@ -54,7 +54,7 @@ status_t gemm_f32_matmul_t::pd_t::init(engine_t *engine) {
                 && !attr()->scales_.has_default_values(DNNL_ARG_WEIGHTS)
                 && attr()->scales_.get_mask(DNNL_ARG_WEIGHTS) > 0) {
             // This case requires scratchpad with unknown size
-            if (N() == DNNL_RUNTIME_DIM_VAL) ok = false;
+            if (is_runtime_value(N())) ok = false;
         }
         return ok;
     };
@@ -81,7 +81,7 @@ status_t gemm_f32_matmul_t::pd_t::init(engine_t *engine) {
                 && IMPLICATION(is_binary_po_per_oc,
                         gemm_based::check_gemm_binary_per_oc_compatible_formats(
                                 *this))
-                && IMPLICATION(N() == DNNL_RUNTIME_DIM_VAL, !has_prelu);
+                && IMPLICATION(is_runtime_value(N()), !has_prelu);
     };
 
     const bool problem_dt_correct = src_md()->data_type == src_type
@@ -160,8 +160,8 @@ status_t gemm_f32_matmul_t::pd_t::configure_attributes() {
                     data_type::undef);
 
     // `C_is_abx` limitation comes from `extended_sgemm`.
-    const bool C_is_abx = helper.ldc() >= helper.N()
-            && helper.ldc() != DNNL_RUNTIME_DIM_VAL;
+    const bool C_is_abx
+            = !is_runtime_value(helper.ldc()) && helper.ldc() >= helper.N();
     params_.dst_is_acc_ = C_is_abx
             && IMPLICATION(attr()->post_ops_.find(primitive_kind::sum) != -1,
                     sum_po_via_gemm_beta);

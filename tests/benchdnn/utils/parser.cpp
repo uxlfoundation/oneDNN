@@ -36,7 +36,7 @@ static const std::string benchdnn_url
         = "https://github.com/uxlfoundation/oneDNN/blob/main/tests/benchdnn";
 static const std::string doc_url = benchdnn_url + "/doc/";
 
-namespace parser_utils {
+namespace utils {
 
 // Current definition works only through the build system. It can be generalized
 // through C++11 `__has_feature` macro, but not every sanitizer has a macro
@@ -168,8 +168,11 @@ size_t compute_distance(const std::string &in, const std::string &opt,
     return std::min(std::min(shift_in_dist, shift_opt_dist), shift_both_dist)
             + 1;
 }
+} // namespace utils
 
-attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
+namespace parsers {
+
+attr_t::post_ops_t str2attr_post_ops(const std::string &s) {
     attr_t::post_ops_t v;
     if (s.empty()) return v;
 
@@ -194,12 +197,11 @@ attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
 
         auto &e = v.entry.back();
         if (e.is_sum_kind()) {
-            e.sum.scale
-                    = parser_utils::stof_safe(get_substr(subs, subs_pos, ':'));
+            e.sum.scale = utils::stof_safe(get_substr(subs, subs_pos, ':'));
             if (subs_pos == std::string::npos) continue;
 
             auto zp_str = get_substr(subs, subs_pos, ':');
-            e.sum.zero_point = parser_utils::stoll_safe(zp_str);
+            e.sum.zero_point = utils::stoll_safe(zp_str);
             if (subs_pos == std::string::npos) continue;
 
             const auto dt_str = get_substr(subs, subs_pos, ':');
@@ -275,12 +277,10 @@ attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
                 SAFE_V(FAIL);
             }
         } else if (e.is_eltwise_kind()) {
-            e.eltwise.alpha
-                    = parser_utils::stof_safe(get_substr(subs, subs_pos, ':'));
+            e.eltwise.alpha = utils::stof_safe(get_substr(subs, subs_pos, ':'));
             if (subs_pos == std::string::npos) continue;
 
-            e.eltwise.beta
-                    = parser_utils::stof_safe(get_substr(subs, subs_pos, ':'));
+            e.eltwise.beta = utils::stof_safe(get_substr(subs, subs_pos, ':'));
             if (subs_pos == std::string::npos) continue;
         } else if (e.is_binary_kind()) {
 
@@ -334,11 +334,10 @@ attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
 
                 // parse mask input - processed for both src1/src2 tensors.
                 const auto mask_input_str = get_substr(s, src_subpos, delim);
-                if (parser_utils::has_only_digits(mask_input_str)) {
+                if (utils::has_only_digits(mask_input_str)) {
                     // If an input consists of digits only, then read it as the
                     // int value.
-                    const auto src_mask
-                            = parser_utils::stoll_safe(mask_input_str);
+                    const auto src_mask = utils::stoll_safe(mask_input_str);
 
                     if (!is_ternary) {
                         e.binary.mask = src_mask;
@@ -405,7 +404,7 @@ attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
                 const auto strides_str = get_substr(s, src_subpos, delim);
                 if (!strides_str.empty()) {
                     parse_vector_str(e.binary.strides, dims_t(),
-                            parser_utils::stoll_safe, strides_str, 'x');
+                            utils::stoll_safe, strides_str, 'x');
                 }
 
                 if (src_subpos != std::string::npos) {
@@ -427,11 +426,11 @@ attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
 
         } else if (e.is_prelu_kind()) {
             const auto mask_input_str = get_substr(subs, subs_pos, ':');
-            if (parser_utils::has_only_digits(mask_input_str)) {
+            if (utils::has_only_digits(mask_input_str)) {
                 // If an input consists of digits only, then read it as the int
                 // value.
                 e.prelu.mask_input = attr_t::mask_input_t::mask;
-                e.prelu.mask = parser_utils::stoll_safe(mask_input_str);
+                e.prelu.mask = utils::stoll_safe(mask_input_str);
             } else {
                 // Otherwise, re-direct to policy parsing.
                 e.prelu.mask_input = attr_t::mask_input_t::policy;
@@ -450,7 +449,7 @@ attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
     return v;
 }
 
-attr_t::deterministic_t parse_attr_deterministic_func(const std::string &s) {
+attr_t::deterministic_t str2attr_deterministic(const std::string &s) {
     attr_t::deterministic_t v;
     if (s.empty()) return v;
 
@@ -458,7 +457,7 @@ attr_t::deterministic_t parse_attr_deterministic_func(const std::string &s) {
     return v;
 }
 
-attr_t::fpmath_mode_t parse_attr_fpmath_mode_func(const std::string &s) {
+attr_t::fpmath_mode_t str2attr_fpmath_mode(const std::string &s) {
     attr_t::fpmath_mode_t v;
     if (s.empty()) return v;
 
@@ -473,7 +472,7 @@ attr_t::fpmath_mode_t parse_attr_fpmath_mode_func(const std::string &s) {
     return v;
 }
 
-attr_t::rounding_mode_t parse_attr_rounding_mode_func(const std::string &s) {
+attr_t::rounding_mode_t str2attr_rounding_mode(const std::string &s) {
     attr_t::rounding_mode_t rm;
 
     if (s.empty()) return rm;
@@ -492,18 +491,18 @@ attr_t::rounding_mode_t parse_attr_rounding_mode_func(const std::string &s) {
             rm.set(arg,
                     str2rounding_mode(parser::get_substr(subs, subs_pos, ':')));
         if (subs_pos != std::string::npos)
-            rm.set_seed(stoll_safe(get_substr(subs, subs_pos, ':')));
+            rm.set_seed(utils::stoll_safe(get_substr(subs, subs_pos, ':')));
     }
     return rm;
 }
 
-attr_t::dropout_t parse_attr_dropout_func(const std::string &s) {
+attr_t::dropout_t str2attr_dropout(const std::string &s) {
     attr_t::dropout_t v;
     if (s.empty()) return v;
 
     size_t start_pos = 0;
     auto subs = get_substr(s, start_pos, ':');
-    v.p = stof_safe(subs);
+    v.p = utils::stof_safe(subs);
     if ((v.p < 0.f) || (v.p > 1.f)) {
         BENCHDNN_PRINT(0, "Error: bad dropout probability value: %f\n", v.p);
         SAFE_V(FAIL);
@@ -511,7 +510,7 @@ attr_t::dropout_t parse_attr_dropout_func(const std::string &s) {
     if (start_pos == std::string::npos) return v;
 
     subs = get_substr(s, start_pos, ':');
-    v.seed = stoll_safe(subs);
+    v.seed = utils::stoll_safe(subs);
     if (start_pos == std::string::npos) return v;
 
     v.tag = get_substr(s, start_pos, ':');
@@ -523,7 +522,7 @@ attr_t::dropout_t parse_attr_dropout_func(const std::string &s) {
     if (start_pos == std::string::npos) return v;
 
     subs = get_substr(s, start_pos, ':');
-    v.offset = stoll_safe(subs);
+    v.offset = utils::stoll_safe(subs);
     if (v.offset < 0) {
         BENCHDNN_PRINT(
                 0, "Error: bad dropout offset value: %" PRId64 "\n", v.offset);
@@ -537,7 +536,7 @@ attr_t::dropout_t parse_attr_dropout_func(const std::string &s) {
     return v;
 }
 
-bool parse_impl_filter(impl_filter_t &impl_filter,
+bool str2impl_filter(impl_filter_t &impl_filter,
         const impl_filter_t &def_impl_filter, bool use_impl, const char *str,
         const std::string &option_name, const std::string &help) {
     const auto chars2chars = [](const char *str) { return str; };
@@ -561,7 +560,7 @@ bool parse_impl_filter(impl_filter_t &impl_filter,
             str2impl_filter, str, option_name, help);
 }
 
-summary_t parse_summary_str(const std::string &s) {
+summary_t str2summary(const std::string &s) {
     // Allowed input: (no-)option+...
     summary_t v;
     if (s.empty()) return v;
@@ -650,7 +649,7 @@ cold_cache_input_t str2cold_cache_input(const std::string &s) {
                 std::string size_str = ext_aux_str;
                 // Remove size modifier to feed the rest for value verification.
                 size_str.pop_back();
-                const float size = stof_safe(size_str);
+                const float size = utils::stof_safe(size_str);
                 c.cold_tlb_size_ = static_cast<size_t>(
                         size * 1024 * 1024 * (last_char == 'G' ? 1024 : 1));
 
@@ -669,7 +668,7 @@ cold_cache_input_t str2cold_cache_input(const std::string &s) {
     return c;
 }
 
-} // namespace parser_utils
+} // namespace parsers
 
 // vector types
 bool parse_dir(std::vector<dir_t> &dir, const std::vector<dir_t> &def_dir,
@@ -791,9 +790,9 @@ bool parse_grouped(std::vector<sparse_options_t> &sparse_options,
               "    Example: --grouped=0:8:32+64+32+96+48+80+56+72:96\n"
               "    Example: --grouped=0:4:8+8+8+8,0:3:2+6+8\n";
 
-    parser_utils::add_option_to_help(option_name, help);
-    const std::string pattern = parser_utils::get_pattern(option_name);
-    if (!parser_utils::option_matched(pattern, str)) return false;
+    utils::add_option_to_help(option_name, help);
+    const std::string pattern = utils::get_pattern(option_name);
+    if (!utils::option_matched(pattern, str)) return false;
 
     str = str + pattern.size();
     std::string full_str(str);
@@ -826,8 +825,7 @@ bool parse_grouped(std::vector<sparse_options_t> &sparse_options,
             SAFE_V(FAIL);
         }
 
-        int variable_dim_idx
-                = static_cast<int>(parser_utils::stoll_safe(dim_idx_str));
+        int variable_dim_idx = static_cast<int>(utils::stoll_safe(dim_idx_str));
 
         // Validate dimension index (0=M, 1=K, 2=N)
         if (variable_dim_idx < 0 || variable_dim_idx > 2) {
@@ -846,7 +844,7 @@ bool parse_grouped(std::vector<sparse_options_t> &sparse_options,
             SAFE_V(FAIL);
         }
 
-        dnnl_dim_t group_count = parser_utils::stoll_safe(group_count_str);
+        dnnl_dim_t group_count = utils::stoll_safe(group_count_str);
 
         // Get sizes string: "size0+size1+...+sizeN" or
         // "size0+size1+...+sizeN:max_size" (optional max_variable_dim at end)
@@ -856,13 +854,13 @@ bool parse_grouped(std::vector<sparse_options_t> &sparse_options,
         std::vector<dnnl_dim_t> sizes;
         size_t size_pos = 0;
         while (size_pos != std::string::npos) {
-            sizes.push_back(parser_utils::stoll_safe(
-                    get_substr(sizes_str, size_pos, '+')));
+            sizes.push_back(
+                    utils::stoll_safe(get_substr(sizes_str, size_pos, '+')));
         }
 
         dnnl_dim_t max_variable_dim = 0;
         if (start_pos != std::string::npos)
-            max_variable_dim = parser_utils::stoll_safe(s.substr(start_pos));
+            max_variable_dim = utils::stoll_safe(s.substr(start_pos));
 
         // Validate number of sizes
         if (sizes.size() != (size_t)group_count) {
@@ -925,7 +923,7 @@ bool parse_mb(std::vector<int64_t> &mb, const std::vector<int64_t> &def_mb,
               "specified in a problem descriptor with `UINT` value.\n    When "
               "set to `0`, takes no effect.\n";
     return parse_vector_option(
-            mb, def_mb, parser_utils::stoll_safe, str, option_name, help);
+            mb, def_mb, utils::stoll_safe, str, option_name, help);
 }
 
 bool parse_attr_post_ops(std::vector<attr_t::post_ops_t> &po, const char *str,
@@ -938,8 +936,8 @@ bool parse_attr_post_ops(std::vector<attr_t::post_ops_t> &po, const char *str,
               "More details at "
             + doc_url + "knobs_attr.md\n";
     std::vector<attr_t::post_ops_t> def {attr_t::post_ops_t()};
-    return parse_vector_option(po, def, parser_utils::parse_attr_post_ops_func,
-            str, option_name, help);
+    return parse_vector_option(
+            po, def, parsers::str2attr_post_ops, str, option_name, help);
 }
 
 bool parse_attr_scales(std::vector<attr_t::arg_scales_t> &scales,
@@ -981,9 +979,8 @@ bool parse_attr_rounding_mode(std::vector<attr_t::rounding_mode_t> &rm,
               "rounding mode MODE to be applied upon conversion of argument "
               "ARG.\n    More details at "
             + doc_url + "knobs_attr.md\n";
-    return parse_vector_option(rm, {},
-            parser_utils::parse_attr_rounding_mode_func, str, option_name,
-            help);
+    return parse_vector_option(
+            rm, {}, parsers::str2attr_rounding_mode, str, option_name, help);
 }
 
 bool parse_attr_scratchpad_mode(
@@ -1008,7 +1005,7 @@ bool parse_attr_fpmath_mode(std::vector<attr_t::fpmath_mode_t> &fpmath_mode,
               "fpmath_mode attribute. `MODE` values can be `strict` or "
               "`bf16`. `APPLY_TO_INT` values can be `true` or `false`.\n";
     return parse_vector_option(fpmath_mode, def_fpmath_mode,
-            parser_utils::parse_attr_fpmath_mode_func, str, option_name, help);
+            parsers::str2attr_fpmath_mode, str, option_name, help);
 }
 
 bool parse_attr_dropout(std::vector<attr_t::dropout_t> &dropout,
@@ -1018,8 +1015,8 @@ bool parse_attr_dropout(std::vector<attr_t::dropout_t> &dropout,
             = "PROBABILITY[:SEED[:TAG[:OFFSET[:USE_HOST_SCALARS]]]]\n    "
               "Specifies dropout attribute.\n    More details at "
             + doc_url + "knobs_attr.md\n";
-    return parse_vector_option(dropout, def_dropout,
-            parser_utils::parse_attr_dropout_func, str, option_name, help);
+    return parse_vector_option(dropout, def_dropout, parsers::str2attr_dropout,
+            str, option_name, help);
 }
 
 bool parse_attr_acc_mode(std::vector<dnnl_accumulation_mode_t> &acc_mode,
@@ -1042,8 +1039,7 @@ bool parse_attr_deterministic(
             = "MODE    (Default: `false`)\n    Specifies deterministic mode "
               "attribute. `MODE` values can be `true`, or `false`.\n";
     return parse_vector_option(deterministic, def_deterministic,
-            parser_utils::parse_attr_deterministic_func, str, option_name,
-            help);
+            parsers::str2attr_deterministic, str, option_name, help);
 }
 
 bool parse_attributes(
@@ -1068,7 +1064,7 @@ bool parse_axis(std::vector<int> &axis, const std::vector<int> &def_axis,
             = "UINT    (Default: `1`)\n    Specifies axis dimension `UINT` for "
               "an operation.\n";
     return parse_vector_option(
-            axis, def_axis, parser_utils::stoll_safe, str, option_name, help);
+            axis, def_axis, utils::stoll_safe, str, option_name, help);
 }
 
 bool parse_test_pattern_match(const char *&match, const char *str,
@@ -1096,7 +1092,7 @@ bool parse_impl(impl_filter_t &impl_filter,
               "option has no effect. The option is opposite to "
               "`--skip-impl`.\n";
 
-    return parser_utils::parse_impl_filter(impl_filter, def_impl_filter,
+    return parsers::str2impl_filter(impl_filter, def_impl_filter,
             /* use_impl = */ true, str, option_name, help);
 }
 
@@ -1111,7 +1107,7 @@ bool parse_skip_impl(impl_filter_t &impl_filter,
               "string literal entries with no spaces.\n    When empty, the "
               "option has no effect. The option is opposite to `--impl`.\n";
 
-    return parser_utils::parse_impl_filter(impl_filter, def_impl_filter,
+    return parsers::str2impl_filter(impl_filter, def_impl_filter,
             /* use_impl = */ false, str, option_name, help);
 }
 
@@ -1148,7 +1144,7 @@ bool parse_strides(std::vector<vdims_t> &strides,
     auto str2strides = [&](const char *str) -> vdims_t {
         vdims_t strides(STRIDES_SIZE);
         parse_multivector_str(
-                strides, vdims_t(), parser_utils::stoll_safe, str, ':', 'x');
+                strides, vdims_t(), utils::stoll_safe, str, ':', 'x');
         return strides;
     };
     return parse_vector_option(
@@ -1187,9 +1183,9 @@ bool parse_perf_template(const char *&pt, const char *pt_def,
     const auto str2pt = [&pt_def, &pt_csv](const char *str_) {
         const std::string csv_pattern = "csv";
         const std::string def_pattern = "def";
-        if (parser_utils::option_matched(csv_pattern, str_))
+        if (utils::option_matched(csv_pattern, str_))
             return pt_csv;
-        else if (parser_utils::option_matched(def_pattern, str_))
+        else if (utils::option_matched(def_pattern, str_))
             return pt_def;
         else
             return str_;
@@ -1213,8 +1209,8 @@ bool parse_batch(const bench_f bench, const char *str,
 }
 
 bool parse_help(const char *str, const std::string &option_name /* = "help"*/) {
-    std::string pattern = parser_utils::get_pattern(option_name, false);
-    if (!parser_utils::option_matched(pattern, str)) return false;
+    std::string pattern = utils::get_pattern(option_name, false);
+    if (!utils::option_matched(pattern, str)) return false;
 
     BENCHDNN_PRINT(0, "%s\n", help_ss.str().c_str());
     exit(0);
@@ -1222,8 +1218,8 @@ bool parse_help(const char *str, const std::string &option_name /* = "help"*/) {
 
 bool parse_main_help(
         const char *str, const std::string &option_name /* = "help"*/) {
-    std::string pattern = parser_utils::get_pattern(option_name, false);
-    if (!parser_utils::option_matched(pattern, str)) return false;
+    std::string pattern = utils::get_pattern(option_name, false);
+    if (!utils::option_matched(pattern, str)) return false;
 
     static const std::string main_help
             = "Usage:\n    benchdnn --<driver> [global_options] "
@@ -1264,8 +1260,8 @@ void parse_prb_vdims(
     if (start_pos != std::string::npos) name = str.substr(start_pos);
 
     vdims_t vdims;
-    parse_multivector_str(vdims, {dims_t()}, parser_utils::stoll_safe,
-            vdims_str, ':', 'x', /* allow_empty = */ false);
+    parse_multivector_str(vdims, {dims_t()}, utils::stoll_safe, vdims_str, ':',
+            'x', /* allow_empty = */ false);
     // Expect at least two inputs provided
     SAFE_V(vdims.size() >= min_inputs ? OK : FAIL);
 
@@ -1279,8 +1275,7 @@ void parse_prb_dims(prb_dims_t &prb_dims, const std::string &str) {
     // Potential trailing underscore before `n` shouldn't be parsed as dims.
     if (dims_str.back() == '_') dims_str.pop_back();
 
-    parse_vector_str(
-            prb_dims.dims, dims_t(), parser_utils::stoll_safe, dims_str, 'x');
+    parse_vector_str(prb_dims.dims, dims_t(), utils::stoll_safe, dims_str, 'x');
 
     prb_dims.ndims = static_cast<int>(prb_dims.dims.size());
 
@@ -1352,7 +1347,7 @@ static bool parse_cold_cache(
               "(Gigabytes) characters, e.g., `tlb:500M`.\n";
 
     return parse_single_value_option(cold_cache_input,
-            default_cold_cache_input(), parser_utils::str2cold_cache_input, str,
+            default_cold_cache_input(), parsers::str2cold_cache_input, str,
             option_name, help);
 }
 
@@ -1401,7 +1396,7 @@ static bool parse_engine(
         std::string index_str(str + start_pos);
         // If the index is a valid number, let the library catch potential
         // issues around unavailable devices, etc.
-        engine_index = parser_utils::stoll_safe(index_str);
+        engine_index = utils::stoll_safe(index_str);
     }
 
     return true;
@@ -1435,7 +1430,7 @@ static bool parse_global_impl(
               "overrides any values from `--impl` or `--skip-impl` options met "
               "on the way.\n";
 
-    return parser_utils::parse_impl_filter(global_impl_filter, impl_filter_t(),
+    return parsers::str2impl_filter(global_impl_filter, impl_filter_t(),
             /* use_impl = */ true, str, option_name, help);
 }
 
@@ -1446,7 +1441,7 @@ static bool parse_global_skip_impl(
               "but overrides any values from `--impl` or `--skip-impl` options "
               "met on the way.\n";
 
-    return parser_utils::parse_impl_filter(global_impl_filter, impl_filter_t(),
+    return parsers::str2impl_filter(global_impl_filter, impl_filter_t(),
             /* use_impl = */ false, str, option_name, help);
 }
 
@@ -1516,8 +1511,8 @@ static bool parse_fix_times_per_prb(
               "is greater than `0`, the number of rounds criterion takes place "
               "over the time criterion.\n";
     bool parsed = parse_single_value_option(fix_times_per_prb,
-            default_fix_times_per_prb, parser_utils::stoll_safe, str,
-            option_name, help);
+            default_fix_times_per_prb, utils::stoll_safe, str, option_name,
+            help);
     if (parsed) fix_times_per_prb = MAX2(0, fix_times_per_prb);
     return parsed;
 }
@@ -1528,9 +1523,8 @@ static bool parse_max_ms_per_prb(
             = "MS    (Default: `3000`)\n    Specifies the limit in `MS` "
               "milliseconds for performance benchmarking per problem.\n    "
               "`MS` is a positive integer in a range [10, 60000].\n";
-    bool parsed
-            = parse_single_value_option(max_ms_per_prb, default_max_ms_per_prb,
-                    parser_utils::stof_safe, str, option_name, help);
+    bool parsed = parse_single_value_option(max_ms_per_prb,
+            default_max_ms_per_prb, utils::stof_safe, str, option_name, help);
     if (parsed) {
         if (bench_mode == bench_mode_t::perf_fast) {
             BENCHDNN_PRINT(0, "%s\n",
@@ -1551,7 +1545,7 @@ static bool parse_num_streams(
               "used for performance benchmarking.\n    `N` is a positive "
               "integer.\n";
     bool parsed = parse_single_value_option(num_streams, default_num_streams,
-            parser_utils::stoll_safe, str, option_name, help);
+            utils::stoll_safe, str, option_name, help);
     if (parsed) {
         if (num_streams <= 0) {
             BENCHDNN_PRINT(
@@ -1568,8 +1562,7 @@ static bool parse_repeats_per_prb(
             = "N    (Default: `1`)\n    Specifies the number of times to "
               "repeat testing of the problem.\n";
     bool parsed = parse_single_value_option(repeats_per_prb,
-            default_repeats_per_prb, parser_utils::stoll_safe, str, option_name,
-            help);
+            default_repeats_per_prb, utils::stoll_safe, str, option_name, help);
     if (parsed) repeats_per_prb = MAX2(1, repeats_per_prb);
     return parsed;
 }
@@ -1653,7 +1646,7 @@ static bool parse_mode(
                 case 'r':
                 case 'R':
                     mode = bench_mode_t::exec;
-                    if (!parser_utils::has_clang_sanitizers())
+                    if (!utils::has_clang_sanitizers())
                         bench_mode_modifier |= mode_modifier_t::no_ref_memory;
                     break;
                 case 'c':
@@ -1729,7 +1722,7 @@ static bool parse_start(
               "`UINT` to start execution. All test cases up to `UINT` will be "
               "skipped.\n";
     return parse_single_value_option(
-            test_start, 0, parser_utils::stoll_safe, str, option_name, help);
+            test_start, 0, utils::stoll_safe, str, option_name, help);
 }
 
 static bool parse_buffer_prefix(
@@ -1775,8 +1768,8 @@ static bool parse_summary(
             = "STRING    (Default: `failures`)\n    Instructs benchdnn to "
               "print additional statistics and information based on the STRING "
               "values.\n";
-    return parse_single_value_option(summary, summary_t(),
-            parser_utils::parse_summary_str, str, option_name, help);
+    return parse_single_value_option(
+            summary, summary_t(), parsers::str2summary, str, option_name, help);
 }
 
 static bool parse_verbose(
@@ -1787,12 +1780,12 @@ static bool parse_verbose(
               "details at "
             + doc_url + "knobs_verbose.md\n";
     bool parsed = parse_single_value_option(
-            verbose, 0, parser_utils::stoll_safe, str, option_name, help);
+            verbose, 0, utils::stoll_safe, str, option_name, help);
     if (parsed) return parsed;
 
     const std::string pattern("-v"); // check short option first
-    if (parser_utils::option_matched(pattern, str)) {
-        verbose = parser_utils::stoll_safe(str + pattern.size());
+    if (utils::option_matched(pattern, str)) {
+        verbose = utils::stoll_safe(str + pattern.size());
         return true;
     }
     return false;
@@ -1870,7 +1863,7 @@ void catch_unknown_options(const char *str) {
     last_parsed_is_problem = true; // if reached, means problem parsing
 
     std::string pattern = "--";
-    if (parser_utils::option_matched(pattern, str)) {
+    if (utils::option_matched(pattern, str)) {
         std::string s(str);
         auto equal_pos = s.find_first_of('=');
         s = s.substr(2, equal_pos - 2);
@@ -1883,9 +1876,9 @@ void catch_unknown_options(const char *str) {
         const size_t good_dist = std::min(s.size() - 1, size_t(6));
         std::multimap<size_t, std::string> opt_distances;
         size_t n_candidates = 0;
-        for (const auto &opt : parser_utils::get_option_names()) {
-            size_t dist = parser_utils::compute_distance(
-                    s, opt, /* reset_cache = */ true);
+        for (const auto &opt : utils::get_option_names()) {
+            size_t dist
+                    = utils::compute_distance(s, opt, /* reset_cache = */ true);
             opt_distances.emplace(dist, opt);
             if (dist <= good_dist) n_candidates++;
         }
@@ -1907,7 +1900,7 @@ void catch_unknown_options(const char *str) {
 
     // Must stay after `--` check.
     pattern = "-";
-    if (parser_utils::option_matched(pattern, str)) {
+    if (utils::option_matched(pattern, str)) {
         BENCHDNN_PRINT(0, "%s\n%s \'%s\'\n",
                 "ERROR: options should be passed with `--` prefix.",
                 "Given input:", str);

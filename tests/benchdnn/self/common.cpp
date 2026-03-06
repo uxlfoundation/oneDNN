@@ -498,21 +498,21 @@ static int check_str2post_ops() {
         return OK;
     };
 
-    using namespace parser::parser_utils;
+    using namespace parser::parsers;
 
-    ops = parse_attr_post_ops_func("");
+    ops = str2attr_post_ops("");
     SELF_CHECK_EQ(ops.is_def(), true);
 
-    ops = parse_attr_post_ops_func("sum:2");
+    ops = str2attr_post_ops("sum:2");
     SELF_CHECK_EQ(quick(1), OK);
 
-    ops = parse_attr_post_ops_func("sum:2+relu");
+    ops = str2attr_post_ops("sum:2+relu");
     SELF_CHECK_EQ(quick(2), OK);
 
-    ops = parse_attr_post_ops_func("sum:2+relu+sum:3");
+    ops = str2attr_post_ops("sum:2+relu+sum:3");
     SELF_CHECK_EQ(quick(3), OK);
 
-    ops = parse_attr_post_ops_func("sum:2+relu+sum:3+relu");
+    ops = str2attr_post_ops("sum:2+relu+sum:3+relu");
     SELF_CHECK_EQ(quick(4), OK);
 
     return OK;

@@ -38,7 +38,7 @@ namespace parser {
 extern bool last_parsed_is_problem;
 extern dnnl::impl::stringstream_t help_ss;
 
-namespace parser_utils {
+namespace utils {
 
 std::string get_pattern(const std::string &option_name, bool with_args = true);
 
@@ -52,8 +52,6 @@ float stof_safe(const std::string &s);
 // Checks if a `string` consists of only digits. Useful for mask_input parsing.
 bool has_only_digits(const std::string &s);
 
-attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s);
-
 // `option_str` is a string in a format `--option-name=`.
 inline bool option_matched(const std::string &option_str, const char *str) {
     // [str, str + option_str.size()) must be a valid range.
@@ -61,7 +59,13 @@ inline bool option_matched(const std::string &option_str, const char *str) {
             && option_str.find(str, 0, option_str.size()) != std::string::npos;
 }
 
-} // namespace parser_utils
+} // namespace utils
+
+namespace parsers {
+
+attr_t::post_ops_t str2attr_post_ops(const std::string &s);
+
+} // namespace parsers
 
 // `parse_vector_str` is a heart parser routine which splits input string `str`
 // into "chunks" separated by `delimiter` and redirect a chunk into
@@ -134,9 +138,9 @@ template <typename T, typename F>
 static bool parse_vector_option(T &vec, const T &def, F process_func,
         const char *str, const std::string &option_name,
         const std::string &help_message = "") {
-    parser_utils::add_option_to_help(option_name, help_message);
-    const std::string pattern = parser_utils::get_pattern(option_name);
-    if (!parser_utils::option_matched(pattern, str)) return false;
+    utils::add_option_to_help(option_name, help_message);
+    const std::string pattern = utils::get_pattern(option_name);
+    if (!utils::option_matched(pattern, str)) return false;
     return parse_vector_str(vec, def, process_func, str + pattern.size());
 }
 
@@ -145,9 +149,9 @@ static bool parse_multivector_option(std::vector<T> &vec,
         const std::vector<T> &def, F process_func, const char *str,
         const std::string &option_name, const std::string &help_message = "",
         char vector_delim = ',', char element_delim = ':') {
-    parser_utils::add_option_to_help(option_name, help_message);
-    const std::string pattern = parser_utils::get_pattern(option_name);
-    if (!parser_utils::option_matched(pattern, str)) return false;
+    utils::add_option_to_help(option_name, help_message);
+    const std::string pattern = utils::get_pattern(option_name);
+    if (!utils::option_matched(pattern, str)) return false;
     return parse_multivector_str(vec, def, process_func, str + pattern.size(),
             vector_delim, element_delim);
 }
@@ -156,9 +160,9 @@ template <typename T, typename F>
 static bool parse_single_value_option(T &val, const T &def_val, F process_func,
         const char *str, const std::string &option_name,
         const std::string &help_message = "") {
-    parser_utils::add_option_to_help(option_name, help_message);
-    const std::string pattern = parser_utils::get_pattern(option_name);
-    if (!parser_utils::option_matched(pattern, str)) return false;
+    utils::add_option_to_help(option_name, help_message);
+    const std::string pattern = utils::get_pattern(option_name);
+    if (!utils::option_matched(pattern, str)) return false;
     str = str + pattern.size();
     if (*str == '\0') return val = def_val, true;
     return val = process_func(str), true;
@@ -209,10 +213,10 @@ bool parse_reset(S &settings, const char *str,
             = "\n    Instructs the driver to reset driver specific options to "
               "their default values.\n    Neither global options nor "
               "`--perf-template` option would be reset.";
-    parser_utils::add_option_to_help(option_name, help, false);
+    utils::add_option_to_help(option_name, help, false);
 
-    const std::string pattern = parser_utils::get_pattern(option_name, false);
-    if (!parser_utils::option_matched(pattern, str)) return false;
+    const std::string pattern = utils::get_pattern(option_name, false);
+    if (!utils::option_matched(pattern, str)) return false;
     settings.reset();
     return true;
 }

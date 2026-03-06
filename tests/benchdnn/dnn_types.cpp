@@ -302,10 +302,10 @@ int attr_t::arg_scales_t::entry_t::from_str(const std::string &s) {
 
     size_t start_pos = 0;
     const auto mask_input_str = parser::get_substr(s, start_pos, ':');
-    if (parser::parser_utils::has_only_digits(mask_input_str)) {
+    if (parser::utils::has_only_digits(mask_input_str)) {
         // If an input consists of digits only, then read it as the int value.
         this->mask_input = attr_t::mask_input_t::mask;
-        this->mask = parser::parser_utils::stoll_safe(mask_input_str);
+        this->mask = parser::utils::stoll_safe(mask_input_str);
     } else {
         // Otherwise, re-direct to policy parsing.
         this->mask_input = attr_t::mask_input_t::policy;
@@ -343,8 +343,8 @@ int attr_t::arg_scales_t::entry_t::from_str(const std::string &s) {
 
     // process groups
     const auto g_str = parser::get_substr(s, start_pos, ':');
-    parser::parse_vector_str(this->groups, dims_t(),
-            parser::parser_utils::stoll_safe, g_str, 'x');
+    parser::parse_vector_str(
+            this->groups, dims_t(), parser::utils::stoll_safe, g_str, 'x');
 
     if (!this->groups.empty() && this->groups.size() != 2) {
         BENCHDNN_PRINT(
@@ -362,10 +362,10 @@ int attr_t::zero_points_t::entry_t::from_str(const std::string &s) {
 
     size_t start_pos = 0;
     const auto mask_input_str = parser::get_substr(s, start_pos, ':');
-    if (parser::parser_utils::has_only_digits(mask_input_str)) {
+    if (parser::utils::has_only_digits(mask_input_str)) {
         // If an input consists of digits only, then read it as the int value.
         this->mask_input = attr_t::mask_input_t::mask;
-        this->mask = parser::parser_utils::stoll_safe(mask_input_str);
+        this->mask = parser::utils::stoll_safe(mask_input_str);
     } else {
         // Otherwise, re-direct to policy parsing.
         this->mask_input = attr_t::mask_input_t::policy;
@@ -406,8 +406,8 @@ int attr_t::zero_points_t::entry_t::from_str(const std::string &s) {
 
     // process groups
     const auto g_str = parser::get_substr(s, start_pos, ':');
-    parser::parse_vector_str(this->groups, dims_t(),
-            parser::parser_utils::stoll_safe, g_str, 'x');
+    parser::parse_vector_str(
+            this->groups, dims_t(), parser::utils::stoll_safe, g_str, 'x');
     if (!this->groups.empty() && this->groups.size() != 2) {
         BENCHDNN_PRINT(
                 0, "%s\n", "Error: the number of groups is expected to be 2.");
@@ -424,10 +424,10 @@ int attr_t::precomputed_reductions_t::entry_t::from_str(const std::string &s) {
 
     size_t start_pos = 0;
     const auto mask_input_str = parser::get_substr(s, start_pos, ':');
-    if (parser::parser_utils::has_only_digits(mask_input_str)) {
+    if (parser::utils::has_only_digits(mask_input_str)) {
         // If an input consists of digits only, then read it as the int value.
         this->mask_input = attr_t::mask_input_t::mask;
-        this->mask = parser::parser_utils::stoll_safe(mask_input_str);
+        this->mask = parser::utils::stoll_safe(mask_input_str);
     } else {
         // Otherwise, re-direct to policy parsing.
         this->mask_input = attr_t::mask_input_t::policy;
@@ -454,8 +454,8 @@ int attr_t::precomputed_reductions_t::entry_t::from_str(const std::string &s) {
 
     // process groups
     const auto g_str = parser::get_substr(s, start_pos, ':');
-    parser::parse_vector_str(this->groups, dims_t(),
-            parser::parser_utils::stoll_safe, g_str, 'x');
+    parser::parse_vector_str(
+            this->groups, dims_t(), parser::utils::stoll_safe, g_str, 'x');
     if (!this->groups.empty() && this->groups.size() != 2) {
         BENCHDNN_PRINT(
                 0, "%s\n", "Error: the number of groups is expected to be 2.");

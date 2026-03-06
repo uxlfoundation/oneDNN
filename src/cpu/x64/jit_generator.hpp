@@ -297,6 +297,11 @@ public:
     Xbyak::Address EVEX_compress_addr(
             Xbyak::Reg64 base, T raw_offt, bool bcast = false) {
         assert(is_valid_isa(avx512_core));
+        // Returns ptr[re] (no size annotation) for the non-broadcast path so
+        // that xbyak v7.33.3+ STRICT_CHECK_MEM_REG_SIZE does not fire when the
+        // result is used with a GPR instruction.  For vector instructions,
+        // xbyak infers the memory operand size from the register (zmm/ymm/xmm)
+        // so the annotation is not needed for correctness.
 
         using Xbyak::Address;
         using Xbyak::Reg64;
@@ -325,7 +330,7 @@ public:
         if (bcast)
             return zword_b[re];
         else
-            return zword[re];
+            return ptr[re];
     }
 
     template <typename T>

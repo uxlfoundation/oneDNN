@@ -237,7 +237,7 @@ private:
             case arg_t::scale: return scale_ptr(off);
             default: assert(!"unsupported arg_num"); break;
         }
-        return Xbyak::Address(0);
+        return Xbyak::Address {};
     }
 
     Xbyak::Reg64 get_reg_address(const arg_t arg_num) {

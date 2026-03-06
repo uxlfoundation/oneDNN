@@ -517,12 +517,7 @@ jit_avx512_core_gemv_bf16bf16f32_kern_t::
         jit_avx512_core_gemv_bf16bf16f32_kern_t(bool trans)
     : jit_generator_t(jit_name())
     , trans_(trans)
-    , bfloat16_(mayiuse(avx512_core_bf16))
-    , arg_lda_(0)
-    , arg_x_(0)
-    , arg_incx_(0)
-    , arg_y_(0)
-    , arg_incy_(0) {
+    , bfloat16_(mayiuse(avx512_core_bf16)) {
 
     assert(mayiuse(avx512_core));
 

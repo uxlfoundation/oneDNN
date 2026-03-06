@@ -60,9 +60,11 @@
 #else
 	#define XBYAK_CONSTEXPR
 #endif
+#define XBYAK_CPUMASK_COMPACT 0
 #endif
 #else
 #include <string.h>
+#include <stdio.h>
 
 /**
 	utility class and functions for Xbyak
@@ -131,6 +133,32 @@
 	#define XBYAK_USE_PERF
 #endif
 
+#ifndef XBYAK_CPU_CACHE
+	#define XBYAK_CPU_CACHE 1
+#endif
+#if XBYAK_CPU_CACHE == 1
+#include <vector>
+#ifndef XBYAK_CPUMASK_COMPACT
+	#define XBYAK_CPUMASK_COMPACT 1
+#endif
+#if XBYAK_CPUMASK_COMPACT == 0
+	#include <set>
+#endif
+#ifdef _WIN32
+#include <windows.h>
+#endif
+namespace Xbyak { namespace util {
+class CpuTopology;
+class Cpu;
+namespace impl {
+
+bool initCpuTopology(CpuTopology& cpuTopo);
+
+} // Xbyak::util::impl
+} } // Xbyak::util
+#endif // XBYAK_CPU_CACHE
+
+
 namespace Xbyak { namespace util {
 
 typedef enum {
@@ -159,6 +187,10 @@ inline T min_(T x, T y) { return x < y ? x : y; }
 	CPU detection class
 	@note static inline const member is supported by c++17 or later, so use template hack
 */
+#ifdef _MSC_VER
+	#pragma warning(push)
+	#pragma warning(disable : 4459)
+#endif
 class Cpu {
 public:
 	class Type {
@@ -199,16 +231,15 @@ private:
 	{
 		return (1U << n) - 1;
 	}
-	// [EBX:ECX:EDX] == s?
-	bool isEqualStr(uint32_t EBX, uint32_t ECX, uint32_t EDX, const char s[12]) const
+	// [ebx:ecx:edx] == s?
+	bool isEqualStr(uint32_t ebx, uint32_t ecx, uint32_t edx, const char s[12]) const
 	{
-		return get32bitAsBE(&s[0]) == EBX && get32bitAsBE(&s[4]) == EDX && get32bitAsBE(&s[8]) == ECX;
+		return get32bitAsBE(&s[0]) == ebx && get32bitAsBE(&s[4]) == edx && get32bitAsBE(&s[8]) == ecx;
 	}
 	uint32_t extractBit(uint32_t val, uint32_t base, uint32_t end) const
 	{
 		return (val >> base) & ((1u << (end + 1 - base)) - 1);
 	}
-
 	void setFamily()
 	{
 		uint32_t data[4] = {};
@@ -269,7 +300,7 @@ private:
 			int physicalThreadCount = 0;
 			getCpuid(0x1, data);
 			int logicalProcessorCount = extractBit(data[1], 16, 23);
-			int htt = extractBit(data[3], 28, 28);
+			int htt = extractBit(data[3], 28, 28); // Hyper-threading technology.
 			getCpuid(0x80000000, data);
 			uint32_t highestExtendedLeaf = data[0];
 			if (highestExtendedLeaf >= 0x80000008) {
@@ -295,12 +326,11 @@ private:
 		} else {
 			/*
 				Intel - Legacy Method
-
 			*/
 			int physicalThreadCount = 0;
 			getCpuid(0x1, data);
 			int logicalProcessorCount = extractBit(data[1], 16, 23);
-			int htt = extractBit(data[3], 28, 28);
+			int htt = extractBit(data[3], 28, 28); // Hyper-threading technology.
 			getCpuid(0, data);
 			if (data[0] >= 0x4) {
 				getCpuid(0x4, data);
@@ -464,7 +494,7 @@ public:
 	static inline void getCpuidEx(uint32_t eaxIn, uint32_t ecxIn, uint32_t data[4])
 	{
 #ifdef XBYAK_INTEL_CPU_SPECIFIC
-	#ifdef _WIN32
+	#ifdef _MSC_VER
 		__cpuidex(reinterpret_cast<int*>(data), eaxIn, ecxIn);
 	#else
 		__cpuid_count(eaxIn, ecxIn, data[0], data[1], data[2], data[3]);
@@ -601,6 +631,7 @@ public:
 	XBYAK_DEFINE_TYPE(94, tAMX_MOVRS);
 	XBYAK_DEFINE_TYPE(95, tAMX_FP8);
 	XBYAK_DEFINE_TYPE(96, tMOVRS);
+	XBYAK_DEFINE_TYPE(97, tHYBRID);
 
 #undef XBYAK_SPLIT_ID
 #undef XBYAK_DEFINE_TYPE
@@ -614,173 +645,173 @@ public:
 		, avx10version_(0)
 	{
 		uint32_t data[4] = {};
-		const uint32_t& EAX = data[0];
-		const uint32_t& EBX = data[1];
-		const uint32_t& ECX = data[2];
-		const uint32_t& EDX = data[3];
+		const uint32_t& eax = data[0];
+		const uint32_t& ebx = data[1];
+		const uint32_t& ecx = data[2];
+		const uint32_t& edx = data[3];
 		getCpuid(0, data);
-		const uint32_t maxNum = EAX;
-		if (isEqualStr(EBX, ECX, EDX, "AuthenticAMD")) {
+		const uint32_t maxNum = eax;
+		if (isEqualStr(ebx, ecx, edx, "AuthenticAMD")) {
 			type_ |= tAMD;
 			getCpuid(0x80000001, data);
-			if (EDX & (1U << 31)) {
+			if (edx & (1U << 31)) {
 				type_ |= t3DN;
 				// 3DNow! implies support for PREFETCHW on AMD
 				type_ |= tPREFETCHW;
 			}
 
-			if (EDX & (1U << 29)) {
+			if (edx & (1U << 29)) {
 				// Long mode implies support for PREFETCHW on AMD
 				type_ |= tPREFETCHW;
 			}
-		}
-		if (isEqualStr(EBX, ECX, EDX, "GenuineIntel")) {
+		} else if (isEqualStr(ebx, ecx, edx, "GenuineIntel")) {
 			type_ |= tINTEL;
 		}
 
 		// Extended flags information
 		getCpuid(0x80000000, data);
-		const uint32_t maxExtendedNum = EAX;
+		const uint32_t maxExtendedNum = eax;
 		if (maxExtendedNum >= 0x80000001) {
 			getCpuid(0x80000001, data);
 
-			if (ECX & (1U << 5)) type_ |= tLZCNT;
-			if (ECX & (1U << 6)) type_ |= tSSE4a;
-			if (ECX & (1U << 8)) type_ |= tPREFETCHW;
-			if (EDX & (1U << 15)) type_ |= tCMOV;
-			if (EDX & (1U << 22)) type_ |= tMMX2;
-			if (EDX & (1U << 27)) type_ |= tRDTSCP;
-			if (EDX & (1U << 30)) type_ |= tE3DN;
-			if (EDX & (1U << 31)) type_ |= t3DN;
+			if (ecx & (1U << 5)) type_ |= tLZCNT;
+			if (ecx & (1U << 6)) type_ |= tSSE4a;
+			if (ecx & (1U << 8)) type_ |= tPREFETCHW;
+			if (edx & (1U << 15)) type_ |= tCMOV;
+			if (edx & (1U << 22)) type_ |= tMMX2;
+			if (edx & (1U << 27)) type_ |= tRDTSCP;
+			if (edx & (1U << 30)) type_ |= tE3DN;
+			if (edx & (1U << 31)) type_ |= t3DN;
 		}
 
 		if (maxExtendedNum >= 0x80000008) {
 			getCpuid(0x80000008, data);
-			if (EBX & (1U << 0)) type_ |= tCLZERO;
+			if (ebx & (1U << 0)) type_ |= tCLZERO;
 		}
 
 		getCpuid(1, data);
-		if (ECX & (1U << 0)) type_ |= tSSE3;
-		if (ECX & (1U << 1)) type_ |= tPCLMULQDQ;
-		if (ECX & (1U << 9)) type_ |= tSSSE3;
-		if (ECX & (1U << 19)) type_ |= tSSE41;
-		if (ECX & (1U << 20)) type_ |= tSSE42;
-		if (ECX & (1U << 22)) type_ |= tMOVBE;
-		if (ECX & (1U << 23)) type_ |= tPOPCNT;
-		if (ECX & (1U << 25)) type_ |= tAESNI;
-		if (ECX & (1U << 26)) type_ |= tXSAVE;
-		if (ECX & (1U << 27)) type_ |= tOSXSAVE;
-		if (ECX & (1U << 29)) type_ |= tF16C;
-		if (ECX & (1U << 30)) type_ |= tRDRAND;
+		if (ecx & (1U << 0)) type_ |= tSSE3;
+		if (ecx & (1U << 1)) type_ |= tPCLMULQDQ;
+		if (ecx & (1U << 9)) type_ |= tSSSE3;
+		if (ecx & (1U << 19)) type_ |= tSSE41;
+		if (ecx & (1U << 20)) type_ |= tSSE42;
+		if (ecx & (1U << 22)) type_ |= tMOVBE;
+		if (ecx & (1U << 23)) type_ |= tPOPCNT;
+		if (ecx & (1U << 25)) type_ |= tAESNI;
+		if (ecx & (1U << 26)) type_ |= tXSAVE;
+		if (ecx & (1U << 27)) type_ |= tOSXSAVE;
+		if (ecx & (1U << 29)) type_ |= tF16C;
+		if (ecx & (1U << 30)) type_ |= tRDRAND;
 
-		if (EDX & (1U << 15)) type_ |= tCMOV;
-		if (EDX & (1U << 23)) type_ |= tMMX;
-		if (EDX & (1U << 25)) type_ |= tMMX2 | tSSE;
-		if (EDX & (1U << 26)) type_ |= tSSE2;
+		if (edx & (1U << 15)) type_ |= tCMOV;
+		if (edx & (1U << 23)) type_ |= tMMX;
+		if (edx & (1U << 25)) type_ |= tMMX2 | tSSE;
+		if (edx & (1U << 26)) type_ |= tSSE2;
 
 		if (type_ & tOSXSAVE) {
 			// check XFEATURE_ENABLED_MASK[2:1] = '11b'
 			uint64_t bv = getXfeature();
 			if ((bv & 6) == 6) {
-				if (ECX & (1U << 12)) type_ |= tFMA;
-				if (ECX & (1U << 28)) type_ |= tAVX;
+				if (ecx & (1U << 12)) type_ |= tFMA;
+				if (ecx & (1U << 28)) type_ |= tAVX;
 				// do *not* check AVX-512 state on macOS because it has on-demand AVX-512 support
 #if !defined(__APPLE__)
 				if (((bv >> 5) & 7) == 7)
 #endif
 				{
 					getCpuidEx(7, 0, data);
-					if (EBX & (1U << 16)) type_ |= tAVX512F;
+					if (ebx & (1U << 16)) type_ |= tAVX512F;
 					if (type_ & tAVX512F) {
-						if (EBX & (1U << 17)) type_ |= tAVX512DQ;
-						if (EBX & (1U << 21)) type_ |= tAVX512_IFMA;
-						if (EBX & (1U << 26)) type_ |= tAVX512PF;
-						if (EBX & (1U << 27)) type_ |= tAVX512ER;
-						if (EBX & (1U << 28)) type_ |= tAVX512CD;
-						if (EBX & (1U << 30)) type_ |= tAVX512BW;
-						if (EBX & (1U << 31)) type_ |= tAVX512VL;
-						if (ECX & (1U << 1)) type_ |= tAVX512_VBMI;
-						if (ECX & (1U << 6)) type_ |= tAVX512_VBMI2;
-						if (ECX & (1U << 11)) type_ |= tAVX512_VNNI;
-						if (ECX & (1U << 12)) type_ |= tAVX512_BITALG;
-						if (ECX & (1U << 14)) type_ |= tAVX512_VPOPCNTDQ;
-						if (EDX & (1U << 2)) type_ |= tAVX512_4VNNIW;
-						if (EDX & (1U << 3)) type_ |= tAVX512_4FMAPS;
-						if (EDX & (1U << 8)) type_ |= tAVX512_VP2INTERSECT;
-						if ((type_ & tAVX512BW) && (EDX & (1U << 23))) type_ |= tAVX512_FP16;
+						if (ebx & (1U << 17)) type_ |= tAVX512DQ;
+						if (ebx & (1U << 21)) type_ |= tAVX512_IFMA;
+						if (ebx & (1U << 26)) type_ |= tAVX512PF;
+						if (ebx & (1U << 27)) type_ |= tAVX512ER;
+						if (ebx & (1U << 28)) type_ |= tAVX512CD;
+						if (ebx & (1U << 30)) type_ |= tAVX512BW;
+						if (ebx & (1U << 31)) type_ |= tAVX512VL;
+						if (ecx & (1U << 1)) type_ |= tAVX512_VBMI;
+						if (ecx & (1U << 6)) type_ |= tAVX512_VBMI2;
+						if (ecx & (1U << 11)) type_ |= tAVX512_VNNI;
+						if (ecx & (1U << 12)) type_ |= tAVX512_BITALG;
+						if (ecx & (1U << 14)) type_ |= tAVX512_VPOPCNTDQ;
+						if (edx & (1U << 2)) type_ |= tAVX512_4VNNIW;
+						if (edx & (1U << 3)) type_ |= tAVX512_4FMAPS;
+						if (edx & (1U << 8)) type_ |= tAVX512_VP2INTERSECT;
+						if ((type_ & tAVX512BW) && (edx & (1U << 23))) type_ |= tAVX512_FP16;
 					}
 				}
 			}
 		}
 		if (maxNum >= 7) {
 			getCpuidEx(7, 0, data);
-			const uint32_t maxNumSubLeaves = EAX;
-			if (type_ & tAVX && (EBX & (1U << 5))) type_ |= tAVX2;
-			if (EBX & (1U << 3)) type_ |= tBMI1;
-			if (EBX & (1U << 4)) type_ |= tHLE;
-			if (EBX & (1U << 8)) type_ |= tBMI2;
-			if (EBX & (1U << 9)) type_ |= tENHANCED_REP;
-			if (EBX & (1U << 11)) type_ |= tRTM;
-			if (EBX & (1U << 14)) type_ |= tMPX;
-			if (EBX & (1U << 18)) type_ |= tRDSEED;
-			if (EBX & (1U << 19)) type_ |= tADX;
-			if (EBX & (1U << 20)) type_ |= tSMAP;
-			if (EBX & (1U << 23)) type_ |= tCLFLUSHOPT;
-			if (EBX & (1U << 24)) type_ |= tCLWB;
-			if (EBX & (1U << 29)) type_ |= tSHA;
-			if (ECX & (1U << 0)) type_ |= tPREFETCHWT1;
-			if (ECX & (1U << 5)) type_ |= tWAITPKG;
-			if (ECX & (1U << 8)) type_ |= tGFNI;
-			if (ECX & (1U << 9)) type_ |= tVAES;
-			if (ECX & (1U << 10)) type_ |= tVPCLMULQDQ;
-			if (ECX & (1U << 23)) type_ |= tKEYLOCKER;
-			if (ECX & (1U << 25)) type_ |= tCLDEMOTE;
-			if (ECX & (1U << 27)) type_ |= tMOVDIRI;
-			if (ECX & (1U << 28)) type_ |= tMOVDIR64B;
-			if (EDX & (1U << 5)) type_ |= tUINTR;
-			if (EDX & (1U << 14)) type_ |= tSERIALIZE;
-			if (EDX & (1U << 16)) type_ |= tTSXLDTRK;
-			if (EDX & (1U << 22)) type_ |= tAMX_BF16;
-			if (EDX & (1U << 24)) type_ |= tAMX_TILE;
-			if (EDX & (1U << 25)) type_ |= tAMX_INT8;
+			const uint32_t maxNumSubLeaves = eax;
+			if (type_ & tAVX && (ebx & (1U << 5))) type_ |= tAVX2;
+			if (ebx & (1U << 3)) type_ |= tBMI1;
+			if (ebx & (1U << 4)) type_ |= tHLE;
+			if (ebx & (1U << 8)) type_ |= tBMI2;
+			if (ebx & (1U << 9)) type_ |= tENHANCED_REP;
+			if (ebx & (1U << 11)) type_ |= tRTM;
+			if (ebx & (1U << 14)) type_ |= tMPX;
+			if (ebx & (1U << 18)) type_ |= tRDSEED;
+			if (ebx & (1U << 19)) type_ |= tADX;
+			if (ebx & (1U << 20)) type_ |= tSMAP;
+			if (ebx & (1U << 23)) type_ |= tCLFLUSHOPT;
+			if (ebx & (1U << 24)) type_ |= tCLWB;
+			if (ebx & (1U << 29)) type_ |= tSHA;
+			if (ecx & (1U << 0)) type_ |= tPREFETCHWT1;
+			if (ecx & (1U << 5)) type_ |= tWAITPKG;
+			if (ecx & (1U << 8)) type_ |= tGFNI;
+			if (ecx & (1U << 9)) type_ |= tVAES;
+			if (ecx & (1U << 10)) type_ |= tVPCLMULQDQ;
+			if (ecx & (1U << 23)) type_ |= tKEYLOCKER;
+			if (ecx & (1U << 25)) type_ |= tCLDEMOTE;
+			if (ecx & (1U << 27)) type_ |= tMOVDIRI;
+			if (ecx & (1U << 28)) type_ |= tMOVDIR64B;
+			if (edx & (1U << 5)) type_ |= tUINTR;
+			if (edx & (1U << 14)) type_ |= tSERIALIZE;
+			if (edx & (1U << 15)) type_ |= tHYBRID;
+			if (edx & (1U << 16)) type_ |= tTSXLDTRK;
+			if (edx & (1U << 22)) type_ |= tAMX_BF16;
+			if (edx & (1U << 24)) type_ |= tAMX_TILE;
+			if (edx & (1U << 25)) type_ |= tAMX_INT8;
 			if (maxNumSubLeaves >= 1) {
 				getCpuidEx(7, 1, data);
-				if (EAX & (1U << 0)) type_ |= tSHA512;
-				if (EAX & (1U << 1)) type_ |= tSM3;
-				if (EAX & (1U << 2)) type_ |= tSM4;
-				if (EAX & (1U << 3)) type_ |= tRAO_INT;
-				if (EAX & (1U << 4)) type_ |= tAVX_VNNI;
+				if (eax & (1U << 0)) type_ |= tSHA512;
+				if (eax & (1U << 1)) type_ |= tSM3;
+				if (eax & (1U << 2)) type_ |= tSM4;
+				if (eax & (1U << 3)) type_ |= tRAO_INT;
+				if (eax & (1U << 4)) type_ |= tAVX_VNNI;
 				if (type_ & tAVX512F) {
-					if (EAX & (1U << 5)) type_ |= tAVX512_BF16;
+					if (eax & (1U << 5)) type_ |= tAVX512_BF16;
 				}
-				if (EAX & (1U << 7)) type_ |= tCMPCCXADD;
-				if (EAX & (1U << 21)) type_ |= tAMX_FP16;
-				if (EAX & (1U << 23)) type_ |= tAVX_IFMA;
-				if (EAX & (1U << 31)) type_ |= tMOVRS;
-				if (EDX & (1U << 4)) type_ |= tAVX_VNNI_INT8;
-				if (EDX & (1U << 5)) type_ |= tAVX_NE_CONVERT;
-				if (EDX & (1U << 10)) type_ |= tAVX_VNNI_INT16;
-				if (EDX & (1U << 14)) type_ |= tPREFETCHITI;
-				if (EDX & (1U << 19)) type_ |= tAVX10;
-				if (EDX & (1U << 21)) type_ |= tAPX_F;
+				if (eax & (1U << 7)) type_ |= tCMPCCXADD;
+				if (eax & (1U << 21)) type_ |= tAMX_FP16;
+				if (eax & (1U << 23)) type_ |= tAVX_IFMA;
+				if (eax & (1U << 31)) type_ |= tMOVRS;
+				if (edx & (1U << 4)) type_ |= tAVX_VNNI_INT8;
+				if (edx & (1U << 5)) type_ |= tAVX_NE_CONVERT;
+				if (edx & (1U << 10)) type_ |= tAVX_VNNI_INT16;
+				if (edx & (1U << 14)) type_ |= tPREFETCHITI;
+				if (edx & (1U << 19)) type_ |= tAVX10;
+				if (edx & (1U << 21)) type_ |= tAPX_F;
 
 				getCpuidEx(0x1e, 1, data);
-				if (EAX & (1U << 4)) type_ |= tAMX_FP8;
-				if (EAX & (1U << 5)) type_ |= tAMX_TRANSPOSE;
-				if (EAX & (1U << 6)) type_ |= tAMX_TF32;
-				if (EAX & (1U << 7)) type_ |= tAMX_AVX512;
-				if (EAX & (1U << 8)) type_ |= tAMX_MOVRS;
+				if (eax & (1U << 4)) type_ |= tAMX_FP8;
+				if (eax & (1U << 5)) type_ |= tAMX_TRANSPOSE;
+				if (eax & (1U << 6)) type_ |= tAMX_TF32;
+				if (eax & (1U << 7)) type_ |= tAMX_AVX512;
+				if (eax & (1U << 8)) type_ |= tAMX_MOVRS;
 			}
 		}
 		if (maxNum >= 0x19) {
 			getCpuidEx(0x19, 0, data);
-			if (EBX & (1U << 0)) type_ |= tAESKLE;
-			if (EBX & (1U << 2)) type_ |= tWIDE_KL;
+			if (ebx & (1U << 0)) type_ |= tAESKLE;
+			if (ebx & (1U << 2)) type_ |= tWIDE_KL;
 			if (type_ & (tKEYLOCKER|tAESKLE|tWIDE_KL)) type_ |= tKEYLOCKER_WIDE;
 		}
 		if (has(tAVX10) && maxNum >= 0x24) {
 			getCpuidEx(0x24, 0, data);
-			avx10version_ = EBX & mask(7);
+			avx10version_ = ebx & mask(7);
 		}
 		setFamily();
 		setNumCores();
@@ -800,8 +831,825 @@ public:
 	}
 	int getAVX10version() const { return avx10version_; }
 };
+#ifdef _MSC_VER
+	#pragma warning(pop)
+#endif
 
 #ifndef XBYAK_ONLY_CLASS_CPU
+#if XBYAK_CPU_CACHE == 1
+
+enum CoreType {
+	Unknown,
+	Performance, // P-core (Intel)
+	Efficient, // E-core (Intel)
+	Standard // Non-hybrid
+};
+
+inline const char *getCoreTypeStr(int coreType)
+{
+	switch (coreType) {
+	case Performance: return "P-core";
+	case Efficient: return "E-core";
+	case Standard: return "Standard";
+	default: return "Unknown";
+	}
+}
+
+enum CacheType {
+	L1i,
+	L1d,
+	L2,
+	L3,
+	CACHE_UNKNOWN,
+	CACHE_TYPE_NUM = CACHE_UNKNOWN
+};
+
+inline const char* getCacheTypeStr(int type)
+{
+	switch (type) {
+	case L1i: return "L1i";
+	case L1d: return "L1d";
+	case L2: return "L2";
+	case L3: return "L3";
+	default: return "Unknown";
+	}
+}
+
+namespace impl {
+
+inline void appendStr(std::string& s, uint32_t v)
+{
+#if __cplusplus >= 201103L
+	s += std::to_string(v);
+#else
+	char buf[16];
+	snprintf(buf, sizeof(buf), "%u", v);
+	s += buf;
+#endif
+}
+
+// str = "(int|range)[,(int|range)]*"
+// range = int-int
+// e.g. "1,3,5", "0-3,5-7", ""
+template<class T>
+bool setStr(T& x, const char *str)
+{
+	const char *p = str;
+	while (*p) {
+		if (p != str) {
+			if (*p != ',') return false;
+			p++;
+		}
+		char *endp;
+		uint32_t v = uint32_t(strtoul(p, &endp, 10));
+		if (endp == p) return false;
+		if (*endp == '-') {
+			const char *rangeStart = endp + 1;
+			uint32_t next = uint32_t(strtoul(rangeStart, &endp, 10));
+			if (endp == rangeStart) return false;
+			if (!x.appendRange(v, next)) return false;
+		} else {
+			if (!x.append(v)) return false;
+		}
+		if (*endp == '\0') return true;
+		p = endp;
+	}
+	return true;
+}
+
+} // impl
+
+#ifndef XBYAK_CPUMASK_N
+#define XBYAK_CPUMASK_N 6
+#endif
+#ifndef XBYAK_CPUMASK_BITN
+#define XBYAK_CPUMASK_BITN 10 // max number of logical cpu = 1024
+#endif
+#if XBYAK_CPUMASK_COMPACT == 1
+/*
+	a_ is treated as an array of N elements, each being bitN bits
+	a_ = 1<<bitN and n_ = 0 and range_ = 0 means empty set
+	n_ is length of a_[] - 1
+	When range_ is false (discrete values):
+		Values satisfy a_[i] + 1 < a_[i+1] for all 0 <= i <= n_
+	When range_ is true (intervals):
+		v = a_[i*2] is the start of the interval
+		n = a_[i*2+1] is the interval length - 1
+		Represents the interval [v, v+n]
+	Max number of cpu = 2**bitN - 1
+	Max value that can be stored = N
+	Max interval length = N/2
+*/
+class CpuMask {
+	static const uint32_t N = XBYAK_CPUMASK_N;
+	static const uint32_t bitN = XBYAK_CPUMASK_BITN;
+	static const uint64_t mask = (uint64_t(1) << bitN) - 1;
+	uint64_t a_:N*bitN;
+	uint64_t n_:3;
+	uint64_t range_:1;
+
+	// Set a_[idx] = v
+	void set_a(size_t idx, uint32_t v)
+	{
+		assert(idx < N);
+		assert(v <= mask);
+		a_ &= ~(mask << (idx*bitN));
+		a_ |= (v & mask) << (idx*bitN);
+	}
+	// Get a_[idx]
+	uint32_t get_a(size_t idx) const
+	{
+		assert(idx < N);
+		return (a_ >> (idx*bitN)) & mask;
+	}
+#ifndef NDEBUG
+	// Return true if the idx-th value exists
+	bool hasNext(uint32_t idx) const
+	{
+		if (empty()) return false;
+		if (!range_) return idx <= n_;
+		uint32_t n = 0;
+		for (uint32_t i = 1; i <= n_; i += 2) {
+			n += get_a(i) + 1;
+			if (idx < n) return true;
+		}
+		return false;
+	}
+#endif
+public:
+	CpuMask() { clear(); }
+	class ConstIterator {
+		const CpuMask& parent_;
+		uint32_t idx_;
+		uint32_t size_;
+		friend class CpuMask;
+	public:
+		ConstIterator(const CpuMask& parent)
+			: parent_(parent), idx_(0), size_(uint32_t(parent.size())) {}
+		uint32_t operator*() const { return parent_.get(idx_); }
+		ConstIterator& operator++() { idx_++; return *this; }
+		bool operator==(const ConstIterator& rhs) const { return idx_ == rhs.idx_; }
+		bool operator!=(const ConstIterator& rhs) const { return !operator==(rhs); }
+	};
+	ConstIterator begin() const { return ConstIterator(*this); }
+	ConstIterator end() const {
+		ConstIterator it(*this);
+		it.idx_ = uint32_t(size());
+		return it;
+	}
+	typedef ConstIterator iterator;
+	typedef ConstIterator const_iterator;
+	void clear() { a_ = 1 << bitN; n_ = 0; range_ = 0; }
+	bool empty() const
+	{
+		return a_ == 1 << bitN && n_ == 0 && range_ == 0;
+	}
+	uint64_t to_u64() const { return a_ | (uint64_t(n_) << (N * bitN)) | (uint64_t(range_) << (N * bitN + 3)); }
+	bool operator<(const CpuMask& rhs) const { return to_u64() < rhs.to_u64(); }
+	bool operator>(const CpuMask& rhs) const { return to_u64() > rhs.to_u64(); }
+	bool operator>=(const CpuMask& rhs) const { return !operator<(rhs); }
+	bool operator<=(const CpuMask& rhs) const { return !operator>(rhs); }
+	bool operator==(const CpuMask& rhs) const { return to_u64() == rhs.to_u64(); }
+	bool operator!=(const CpuMask& rhs) const { return !operator==(rhs); }
+	// Add element v
+	// v should be monotonically increasing
+	bool append(uint32_t v)
+	{
+		uint32_t prev = 0, n = 0;
+		if (v > mask) goto ERR;
+		// When adding for the first time, treat as discrete value
+		if (empty()) {
+			a_ = v;
+			n_ = 0;
+			return true;
+		}
+		if (!range_) {
+			prev = get_a(n_);
+			if (v <= prev) goto ERR;
+			// If there's one discrete value and it forms an interval with the new value, switch to interval mode
+			if (n_ == 0 && prev + 1 == v) {
+				set_a(1, 1);
+				range_ = 1;
+				n_ = 1;
+				return true;
+			}
+			if (n_ >= N - 1) goto ERR;
+			// Add discrete value
+			n_++;
+			set_a(n_, v);
+			return true;
+		}
+		// If the value to add is 1 greater than the end of the current interval
+		n = get_a(n_);
+		prev = get_a(n_ - 1) + n;
+		if (prev >= v) goto ERR;
+		if (prev + 1 == v) {
+			// Increase the interval length by one
+			set_a(n_, n + 1);
+			return true;
+		} else {
+			if (n_ >= N - 1) goto ERR;
+			// If not continuous with the previous interval
+			// Add a new interval [v]
+			set_a(n_ + 1, v);
+			n_ += 2;
+			return true;
+		}
+	ERR:
+		XBYAK_THROW_RET(ERR_INVALID_CPUMASK_INDEX, false)
+		return false;
+	}
+	// add range [a, b] which means a, a+1, ..., b
+	bool appendRange(uint32_t a, uint32_t b)
+	{
+		if ((empty() || (range_ && n_ < N - 1)) && (a <= b && b <= mask)) {
+			range_ = true;
+			n_ += n_ == 0 ? 1 : 2;
+			set_a(n_ - 1, a);
+			set_a(n_, b - a);
+			return true;
+		}
+		return false;
+	}
+	// str = "(int|range)[,(int|range)]*"
+	// range = int-int
+	bool setStr(const char *str)
+	{
+		return impl::setStr(*this, str);
+	}
+	bool setStr(const std::string& str) { return setStr(str.c_str()); }
+	std::string getStr() const
+	{
+		std::string s;
+		if (empty()) return s;
+		if (!range_) {
+			for (uint32_t i = 0; i <= n_; i++) {
+				if (!s.empty()) s += ",";
+				impl::appendStr(s, get_a(i));
+			}
+			return s;
+		}
+		for (uint32_t i = 0; i <= n_; i += 2) {
+			uint32_t v = get_a(i);
+			uint32_t len = get_a(i + 1);
+			if (!s.empty()) s += ",";
+			impl::appendStr(s, v);
+			if (len > 0) {
+				s += "-";
+				impl::appendStr(s, v + len);
+			}
+		}
+		return s;
+	}
+	size_t size() const
+	{
+		if (empty()) return 0;
+		if (!range_) return n_ + 1;
+		size_t n = 0;
+		for (uint32_t i = 1; i <= n_; i += 2) {
+			n += get_a(i) + 1;
+		}
+		return n;
+	}
+
+	uint32_t get(uint32_t idx) const
+	{
+		assert(hasNext(idx));
+		if (!range_) return get_a(idx);
+		uint32_t n = 0;
+		for (uint32_t i = 1; i <= n_; i += 2) {
+			uint32_t range = get_a(i) + 1;
+			if (idx < n + range) {
+				return get_a(i - 1) + (idx - n);
+			}
+			n += range;
+		}
+		return false;
+	}
+	void dump() const
+	{
+		printf("a_:");
+		for (int i = int(N) - 1; i >= 0; i--) {
+			printf("%u ", uint32_t((a_ >> (i * bitN)) & mask));
+		}
+		printf("\n");
+		printf("n_: %u\n", (uint32_t)n_);
+		printf("range_: %u\n", (uint32_t)range_);
+	}
+	void put(const char *label = NULL) const
+	{
+		if (label) printf("%s: ", label);
+		printf("%s\n", getStr().c_str());
+	}
+};
+#else
+class CpuMask {
+	typedef std::set<uint32_t> IntSet;
+	IntSet indices_;
+public:
+	CpuMask() : indices_() {}
+	typedef IntSet::const_iterator const_iterator;
+	typedef const_iterator iterator;
+	const_iterator begin() const { return indices_.begin(); }
+	const_iterator end() const { return indices_.end(); }
+
+	void clear() { indices_.clear(); }
+	bool empty() const { return indices_.empty(); }
+	bool operator<(const CpuMask& rhs) const { return indices_ < rhs.indices_; }
+	bool operator>(const CpuMask& rhs) const { return indices_ > rhs.indices_; }
+	bool operator>=(const CpuMask& rhs) const { return !operator<(rhs); }
+	bool operator<=(const CpuMask& rhs) const { return !operator>(rhs); }
+	bool operator==(const CpuMask& rhs) const { return indices_ == rhs.indices_; }
+	bool operator!=(const CpuMask& rhs) const { return !operator==(rhs); }
+	// idx should be monotonically increasing
+	bool append(uint32_t idx)
+	{
+		if (idx >= (1u << XBYAK_CPUMASK_BITN)) return false;
+		if (!indices_.empty() && *indices_.rbegin() >= idx) return false;
+		indices_.insert(idx);
+		return true;
+	}
+	// add range [a, b] which means a, a+1, ..., b
+	bool appendRange(uint32_t a, uint32_t b)
+	{
+		if (a > b) return false;
+		while (a <= b) {
+			if (!append(a)) return false;
+			a++;
+		}
+		return true;
+	}
+	bool setStr(const char *str)
+	{
+		return impl::setStr(*this, str);
+	}
+	bool setStr(const std::string& str) { return setStr(str.c_str()); }
+	std::string getStr() const
+	{
+		std::string s;
+		bool inRange = false;
+		uint32_t prev = 0x80000000;
+		for (const_iterator i = indices_.begin(); i != indices_.end(); ++i) {
+			uint32_t v = *i;
+			if (inRange) {
+				if (prev + 1 != v) {
+					impl::appendStr(s, prev);
+					inRange = false;
+					s += ',';
+					impl::appendStr(s, v);
+				}
+			} else {
+				if (prev + 1 == v) {
+					// start range
+					s += '-';
+					inRange = true;
+				} else {
+					if (!s.empty()) s += ',';
+					impl::appendStr(s, v);
+				}
+			}
+			prev = v;
+		}
+		if (inRange) {
+			impl::appendStr(s, prev);
+		}
+		return s;
+	}
+	size_t size() const { return indices_.size(); }
+	uint32_t get(uint32_t idx) const
+	{
+		assert(idx < size());
+		const_iterator it = indices_.begin();
+		std::advance(it, idx);
+		return *it;
+	}
+	void put(const char *label = NULL) const
+	{
+		if (label) printf("%s: ", label);
+		printf("%s\n", getStr().c_str());
+	}
+};
+#endif
+
+class CpuCache {
+public:
+	CpuCache() : size(0), associativity(0) {}
+
+	// Cache size in bytes
+	uint32_t size;
+
+	// number of ways of associativity
+	uint32_t associativity;
+
+	// Set of logical CPU indices sharing this cache
+	CpuMask sharedCpuIndices;
+
+	// Whether this is a shared cache
+	bool isShared() const { return sharedCpuIndices.size() > 1; }
+
+	// Number of logical CPUs sharing this cache
+	size_t getSharedCpuNum() const { return sharedCpuIndices.size(); }
+
+	void put(const char *label = NULL) const
+	{
+		if (label) printf("%s: ", label);
+		printf("%u KiB, assoc. %u, shared ", size / 1024, associativity);
+		sharedCpuIndices.put();
+	}
+};
+
+struct LogicalCpu {
+	LogicalCpu()
+		: coreId(0)
+		, coreType(Unknown)
+		, cache()
+	{
+	}
+	uint32_t coreId; // index of physical core
+	CoreType coreType; // for hybrid systems
+	CpuCache cache[CACHE_TYPE_NUM];
+	const CpuMask& getSiblings() const { return cache[L1i].sharedCpuIndices; }
+
+	void put(const char *label = NULL) const
+	{
+		if (label) printf("%s: ", label);
+		printf("coreId %u, type %s\n", coreId, getCoreTypeStr(coreType));
+		for (int i = 0; i < CACHE_TYPE_NUM; i++) {
+			cache[i].put(getCacheTypeStr(i));
+		}
+	}
+};
+
+class CpuTopology {
+public:
+	explicit CpuTopology(const Cpu& cpu)
+		: logicalCpus_()
+		, physicalCoreNum_(0)
+		, lineSize_(0)
+		, isHybrid_(cpu.has(cpu.tHYBRID))
+	{
+		if (!impl::initCpuTopology(*this)) {
+			XBYAK_THROW(ERR_CANT_INIT_CPUTOPOLOGY);
+		}
+	}
+
+	// Number of logical CPUs
+	size_t getLogicalCpuNum() const { return logicalCpus_.size(); }
+
+	// Number of physical cores
+	size_t getPhysicalCoreNum() const { return physicalCoreNum_; }
+
+	// Cache line size in bytes
+	uint32_t getLineSize() const { return lineSize_; }
+
+	// Get logical CPU information
+	const LogicalCpu& getLogicalCpu(size_t cpuIdx) const
+	{
+		return logicalCpus_[cpuIdx];
+	}
+
+	// Get cache information for a specific logical CPU
+	const CpuCache& getCache(size_t cpuIdx, CacheType type) const
+	{
+		return logicalCpus_[cpuIdx].cache[type];
+	}
+
+	// Whether this is a hybrid system
+	bool isHybrid() const { return isHybrid_; }
+private:
+	friend bool impl::initCpuTopology(CpuTopology&);
+	std::vector<LogicalCpu> logicalCpus_;
+	size_t physicalCoreNum_;
+	uint32_t lineSize_;
+	bool isHybrid_;
+};
+
+namespace impl {
+
+inline uint32_t popcnt(uint64_t mask)
+{
+#if defined(_M_X64) || defined(_M_AMD64)
+	return (int)__popcnt64(mask);
+#elif defined(__GNUC__) || defined(__clang__)
+	return __builtin_popcountll(mask);
+#else
+	uint32_t count = 0;
+	while (mask) {
+		count += (mask & 1);
+		mask >>= 1;
+	}
+	return count;
+#endif
+}
+
+#ifdef _WIN32
+
+typedef std::vector<uint32_t> U32Vec;
+typedef SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX ProcInfo;
+
+// return total logical cpus if sucessful, 0 if failed
+inline uint32_t getGroupAcc(U32Vec& v)
+{
+	DWORD len = 0;
+	GetLogicalProcessorInformationEx(RelationGroup, NULL, &len);
+	std::vector<char> buf(len);
+	if (!GetLogicalProcessorInformationEx(RelationGroup, reinterpret_cast<ProcInfo*>(buf.data()), &len)) {
+		return 0;
+	}
+	const auto& entry = *reinterpret_cast<const ProcInfo*>(buf.data());
+	const GROUP_RELATIONSHIP& gr = entry.Group;
+
+	const uint32_t n = gr.ActiveGroupCount;
+	if (n == 0) return 0;
+
+	v.resize(n);
+
+	uint32_t acc = 0;
+	for (uint32_t g = 0; g < n; g++) {
+		v[g] = acc;
+		acc += gr.GroupInfo[g].ActiveProcessorCount;
+	}
+	return acc;
+}
+
+// return number of physical cores if successful, 0 if failed
+static inline uint32_t getCores(std::vector<LogicalCpu>& cpus, bool isHybrid, const U32Vec& groupAcc) {
+	DWORD len = 0;
+	GetLogicalProcessorInformationEx(RelationProcessorCore, NULL, &len);
+	std::vector<char> buf(len);
+	if (!GetLogicalProcessorInformationEx(RelationProcessorCore, reinterpret_cast<ProcInfo*>(buf.data()), &len)) return 0;
+
+	// get core indices
+	const char *p = buf.data();
+	const char *end = p + len;
+	uint32_t coreIdx = 0;
+
+	while (p < end) {
+		const auto& entry = *reinterpret_cast<const ProcInfo*>(p);
+		if (entry.Relationship == RelationProcessorCore) {
+			const PROCESSOR_RELATIONSHIP& core = entry.Processor;
+			LogicalCpu cpu;
+			cpu.coreId = coreIdx++;
+			if (!isHybrid) {
+				cpu.coreType = Standard;
+			} else if (core.EfficiencyClass > 0) {
+				cpu.coreType = Performance;
+			} else {
+				cpu.coreType = Efficient;
+			}
+
+			const GROUP_AFFINITY* masks = core.GroupMask;
+			for (WORD i = 0; i < core.GroupCount; i++) {
+				const WORD group = masks[i].Group;
+				const KAFFINITY m = masks[i].Mask;
+				const uint32_t base = groupAcc[group];
+
+				for (uint32_t b = 0; b < sizeof(KAFFINITY) * 8; b++) {
+					if (m & (KAFFINITY(1) << b)) {
+						const uint32_t idx = base + b;
+						if (idx >= cpus.size()) return 0;
+						cpus[idx] = cpu;
+					}
+				}
+			}
+		}
+		p += entry.Size;
+	}
+	return coreIdx;
+}
+
+inline bool convertMask(CpuMask& mask, const U32Vec& groupAcc, const CACHE_RELATIONSHIP& cache)
+{
+	const GROUP_AFFINITY* masks = cache.GroupMasks;
+
+	for (WORD i = 0; i < cache.GroupCount; i++) {
+		const WORD group = masks[i].Group;
+		const KAFFINITY m = masks[i].Mask;
+		const uint32_t base = groupAcc[group];
+
+		for (uint32_t b = 0; b < sizeof(KAFFINITY) * 8; b++) {
+			if (m & (KAFFINITY(1) << b)) {
+				if (!mask.append(base + b)) return false;
+			}
+		}
+	}
+	return true;
+}
+
+inline bool initCpuTopology(CpuTopology& cpuTopo)
+{
+	U32Vec groupAcc;
+	const uint32_t logicalCpuNum = getGroupAcc(groupAcc);
+	if (logicalCpuNum == 0) return false;
+	if (logicalCpuNum >= (1u << XBYAK_CPUMASK_BITN)) return false;
+
+	cpuTopo.logicalCpus_.resize(logicalCpuNum);
+	cpuTopo.physicalCoreNum_ = getCores(cpuTopo.logicalCpus_, cpuTopo.isHybrid(), groupAcc);
+	if (cpuTopo.physicalCoreNum_ == 0) return false;
+
+	DWORD len = 0;
+	GetLogicalProcessorInformationEx(RelationCache, NULL, &len);
+	std::vector<char> buf(len);
+	if (!GetLogicalProcessorInformationEx(RelationCache, reinterpret_cast<ProcInfo*>(buf.data()), &len)) return false;
+
+	const char *p = buf.data();
+	const char *end = p + len;
+
+	while (p < end) {
+		const auto& entry = *reinterpret_cast<const ProcInfo*>(p);
+		if (entry.Relationship == RelationCache) {
+			const CACHE_RELATIONSHIP& cache = entry.Cache;
+			uint32_t type = CACHE_UNKNOWN;
+			if (cache.Level == 1) {
+				if (cache.Type == CacheInstruction) {
+					type = L1i;
+				} else if (cache.Type == CacheData) {
+					type = L1d;
+				}
+			} else if (cache.Level == 2) {
+				type = L2;
+			} else if (cache.Level == 3) {
+				type = L3;
+			}
+			if (type != CACHE_UNKNOWN) {
+				CpuMask mask;
+				if (!convertMask(mask, groupAcc, cache)) return false;
+				for (const auto& i : mask) {
+					if (i >= cpuTopo.logicalCpus_.size()) return false;
+					cpuTopo.logicalCpus_[i].cache[type].size = cache.CacheSize;
+					if (cpuTopo.lineSize_ == 0) cpuTopo.lineSize_ = cache.LineSize;
+					cpuTopo.logicalCpus_[i].cache[type].associativity = cache.Associativity;
+					cpuTopo.logicalCpus_[i].cache[type].sharedCpuIndices = mask;
+				}
+			}
+		}
+		p += entry.Size;
+	}
+	return true;
+}
+#elif defined(__linux__) // Linux
+
+struct WrapFILE {
+	FILE *f;
+	explicit WrapFILE(const char *name)
+		: f(fopen(name, "r"))
+	{
+	}
+	~WrapFILE() { if (f) fclose(f); }
+};
+
+inline uint32_t readIntFromFile(const char* path) {
+	WrapFILE wf(path);
+	if (!wf.f) return 0;
+	uint32_t val = 0;
+	int n = fscanf(wf.f, "%u", &val);
+	return (n == 1) ? val : 0;
+}
+
+inline bool parseCpuList(CpuMask& mask, const char* path) {
+	WrapFILE wf(path);
+	if (!wf.f) return false;
+	char buf[1024];
+	if (!fgets(buf, sizeof(buf), wf.f)) return false;
+	size_t n = strlen(buf);
+	if (n > 0 && buf[n - 1] == '\n') buf[n - 1] = '\0';
+	return setStr(mask, buf);
+}
+
+inline bool initCpuTopology(CpuTopology& cpuTopo)
+{
+	const uint32_t logicalCpuNum = sysconf(_SC_NPROCESSORS_ONLN);
+
+	if (logicalCpuNum == 0) return false;
+	if (logicalCpuNum >= (1u << XBYAK_CPUMASK_BITN)) return false;
+
+	cpuTopo.logicalCpus_.resize(logicalCpuNum);
+	uint32_t maxPhisicalIdx = 0;
+
+	for (uint32_t cpuIdx = 0; cpuIdx < logicalCpuNum; cpuIdx++) {
+		char path[256];
+		LogicalCpu& logCpu = cpuTopo.logicalCpus_[cpuIdx];
+
+		snprintf(path, sizeof(path),
+			"/sys/devices/system/cpu/cpu%u/topology/core_id", cpuIdx);
+		logCpu.coreId = readIntFromFile(path);
+		maxPhisicalIdx = (std::max)(maxPhisicalIdx, logCpu.coreId);
+
+		logCpu.coreType = Standard;
+
+		for (uint32_t cacheIdx = 0; cacheIdx < CACHE_TYPE_NUM; cacheIdx++) {
+			CacheType cacheType = CACHE_UNKNOWN;
+
+			// Map cache index to cache type
+			{
+				snprintf(path, sizeof(path),
+					"/sys/devices/system/cpu/cpu%u/cache/index%u/type", cpuIdx, cacheIdx);
+				char typeStr[32];
+				WrapFILE wf(path);
+
+				if (wf.f && fgets(typeStr, sizeof(typeStr), wf.f)) {
+					if (strncmp(typeStr, "Instruction", 11) == 0) {
+						cacheType = L1i;
+					} else if (strncmp(typeStr, "Data", 4) == 0) {
+						// Determine level
+						char path[256];
+						snprintf(path, sizeof(path),
+							"/sys/devices/system/cpu/cpu%u/cache/index%u/level", cpuIdx, cacheIdx);
+						switch (readIntFromFile(path)) {
+						case 1: cacheType = L1d; break;
+						case 2: cacheType = L2; break;
+						case 3: cacheType = L3; break;
+						default: break;;
+						}
+					} else if (strncmp(typeStr, "Unified", 7) == 0) {
+						snprintf(path, sizeof(path),
+							"/sys/devices/system/cpu/cpu%u/cache/index%u/level", cpuIdx, cacheIdx);
+						switch (readIntFromFile(path)) {
+						case 2: cacheType = L2; break;
+						case 3: cacheType = L3; break;
+						default: break;;
+						}
+					}
+				}
+			}
+			if (cacheType == CACHE_UNKNOWN) continue;
+			CpuCache& cache = logCpu.cache[cacheType];
+
+			// Read cache size
+			{
+				snprintf(path, sizeof(path),
+					"/sys/devices/system/cpu/cpu%u/cache/index%u/size", cpuIdx, cacheIdx);
+				char sizeStr[32];
+				WrapFILE wf(path);
+				if (wf.f && fgets(sizeStr, sizeof(sizeStr), wf.f)) {
+					char *endp;
+					uint32_t size = (uint32_t)strtoul(sizeStr, &endp, 10);
+					switch (*endp) {
+					case '\0': case '\n': cache.size = size; break;
+					case 'K': case 'k':   cache.size = size * 1024; break;
+					case 'M': case 'm':   cache.size = size * 1024 * 1024; break;
+					default: break;
+					}
+				}
+			}
+
+			// Read ways of associativity
+			snprintf(path, sizeof(path),
+				"/sys/devices/system/cpu/cpu%u/cache/index%u/ways_of_associativity", cpuIdx, cacheIdx);
+			cache.associativity = readIntFromFile(path);
+
+			// Read shared CPU list
+			snprintf(path, sizeof(path),
+				"/sys/devices/system/cpu/cpu%u/cache/index%u/shared_cpu_list", cpuIdx, cacheIdx);
+			parseCpuList(cache.sharedCpuIndices, path);
+
+		}
+	}
+
+	// Assign core types for hybrid architectures
+	const bool isHybrid = cpuTopo.isHybrid();
+	if (isHybrid) {
+		// For hybrid systems, read P-core and E-core lists from sysfs
+		CpuMask pCoreMask;
+		if (parseCpuList(pCoreMask, "/sys/devices/cpu_core/cpus")) {
+			// Set Performance core types
+			for (CpuMask::const_iterator it = pCoreMask.begin(); it != pCoreMask.end(); ++it) {
+				uint32_t cpuIdx = *it;
+				if (cpuIdx < logicalCpuNum) {
+					cpuTopo.logicalCpus_[cpuIdx].coreType = Performance;
+				}
+			}
+		}
+		CpuMask eCoreMask;
+		if (parseCpuList(eCoreMask, "/sys/devices/cpu_atom/cpus")) {
+			// Set Efficient core types
+			for (CpuMask::const_iterator it = eCoreMask.begin(); it != eCoreMask.end(); ++it) {
+				uint32_t cpuIdx = *it;
+				if (cpuIdx < logicalCpuNum) {
+					cpuTopo.logicalCpus_[cpuIdx].coreType = Efficient;
+				}
+			}
+		}
+	}
+
+	// Read coherency line size
+	cpuTopo.lineSize_ = readIntFromFile("/sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size");
+
+	cpuTopo.physicalCoreNum_ = maxPhisicalIdx + 1;
+	return true;
+}
+#else // Other OS (e.g., macOS)
+inline bool initCpuTopology(CpuTopology& cpuTopo)
+{
+	// CPU topology detection not yet implemented
+	(void)cpuTopo;
+	return false;
+}
+#endif // _WIN32 / __linux__ / other OS
+
+} // namespace impl
+#endif // XBYAK_CPU_CACHE
+
 class Clock {
 public:
 	static inline uint64_t getRdtsc()
@@ -1210,5 +2058,20 @@ public:
 #endif // XBYAK_ONLY_CLASS_CPU
 
 } } // end of util
+
+#if XBYAK_CPUMASK_COMPACT == 1 && __cplusplus >= 201103
+
+namespace std {
+
+template<>
+struct hash<Xbyak::util::CpuMask> {
+	size_t operator()(const Xbyak::util::CpuMask& m) const noexcept {
+		return std::hash<uint64_t>{}(m.to_u64());
+	}
+};
+
+} // std
+
+#endif
 
 #endif

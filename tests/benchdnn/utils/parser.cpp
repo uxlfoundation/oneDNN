@@ -570,14 +570,18 @@ cold_cache_input_t str2cold_cache_input(const std::string &s) {
 
     size_t start_pos = 0;
     std::string mode_str = get_substr(s, start_pos, '+');
-    if (mode_str == "none") {
-        c.cold_cache_mode_ = cold_cache_mode_t::none;
-    } else if (mode_str == "wei") {
-        c.cold_cache_mode_ = cold_cache_mode_t::wei;
-    } else if (mode_str == "all") {
-        c.cold_cache_mode_ = cold_cache_mode_t::all;
-    } else if (mode_str == "custom") {
-        c.cold_cache_mode_ = cold_cache_mode_t::custom;
+    if (mode_str == "wei") {
+        c.enabled_ = true;
+        static std::once_flag flag;
+        std::call_once(flag, [&]() {
+            BENCHDNN_PRINT(0, "%s\n",
+                    "Warning: cold-cache mode \'wei\' is re-directed to "
+                    "\'all\'.");
+        });
+    } else if (mode_str == "all" || parser_utils::parse_bool(mode_str)) {
+        c.enabled_ = true;
+    } else if (mode_str == "none" || !parser_utils::parse_bool(mode_str)) {
+        c.enabled_ = false;
     } else {
         BENCHDNN_PRINT(0,
                 "Error: unknown cold-cache mode \'%s\'. Supported values are "
@@ -586,8 +590,7 @@ cold_cache_input_t str2cold_cache_input(const std::string &s) {
         SAFE_V(FAIL);
     }
 
-    if (c.cold_cache_mode_ == cold_cache_mode_t::none
-            && start_pos != std::string::npos) {
+    if (!c.enabled_ && start_pos != std::string::npos) {
         BENCHDNN_PRINT(0, "%s\n",
                 "Error: cold-cache extensions can't be enabled with cold-cache "
                 "disabled");

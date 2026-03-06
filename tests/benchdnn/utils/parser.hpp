@@ -52,8 +52,6 @@ float stof_safe(const std::string &s);
 // Checks if a `string` consists of only digits. Useful for mask_input parsing.
 bool has_only_digits(const std::string &s);
 
-attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s);
-
 // `option_str` is a string in a format `--option-name=`.
 inline bool option_matched(const std::string &option_str, const char *str) {
     // [str, str + option_str.size()) must be a valid range.
@@ -62,6 +60,12 @@ inline bool option_matched(const std::string &option_str, const char *str) {
 }
 
 } // namespace parser_utils
+
+namespace parser_functions {
+
+attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s);
+
+} // namespace parser_functions
 
 // `parse_vector_str` is a heart parser routine which splits input string `str`
 // into "chunks" separated by `delimiter` and redirect a chunk into

@@ -217,7 +217,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
                 && !asc.has_default_values(DNNL_ARG_WEIGHTS)
                 && asc.get_mask(DNNL_ARG_WEIGHTS) > 0) {
             // This case requires scratchpad
-            if (N() == DNNL_RUNTIME_DIM_VAL) ok = false;
+            if (is_runtime_value(N())) ok = false;
         }
         // Impl suppports f32 scales only for non-weight decompression
         if (!(is_bf16_with_int_wei || is_f16_with_int_wei

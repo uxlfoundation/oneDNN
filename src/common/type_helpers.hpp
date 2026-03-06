@@ -1109,8 +1109,8 @@ inline bool memory_desc_strides_check(
         if (md.padded_dims[d] == 0) return true;
 
         // no strides verification for runtime dims
-        const bool has_runtime_dim = utils::one_of(
-                DNNL_RUNTIME_DIM_VAL, strides[d], md.padded_dims[d]);
+        const bool has_runtime_dim
+                = any_runtime_value(strides[d], md.padded_dims[d]);
         if (has_runtime_dim) return true;
 
         perm[d] = d;
@@ -1238,8 +1238,10 @@ inline status_t memory_desc_init_by_blocking_desc(
 
     utils::simultaneous_sort(
             mblk.strides, ou_blocks, perm, ndims, [](stride_t a, stride_t b) {
-        if (utils::one_of(DNNL_RUNTIME_DIM_VAL, a, b))
-            return DNNL_RUNTIME_DIM_VAL;
+        static_assert(runtime_value_for<stride_t>() < 0,
+                "negative value is expected");
+        if (any_runtime_value(a, b))
+            return runtime_value_for<stride_t>(); // negative: preserves order
         return b - a;
     });
 
@@ -1318,21 +1320,6 @@ format_tag_t memory_desc_matches_one_of_tag(
     return format_tag::undef;
 }
 
-/** returns true if fp32 value denotes DNNL_RUNTIME_F32_VAL */
-inline bool is_runtime_value(float val) {
-    return utils::bit_cast<unsigned>(val) == DNNL_RUNTIME_F32_VAL_REP.u;
-}
-
-/** returns true if s32 value denotes DNNL_RUNTIME_S32_VAL */
-inline bool is_runtime_value(int val) {
-    return val == DNNL_RUNTIME_S32_VAL;
-}
-
-/** returns true if dim_t value denotes DNNL_RUNTIME_DIM_VAL */
-inline bool is_runtime_value(dim_t val) {
-    return val == DNNL_RUNTIME_DIM_VAL;
-}
-
 inline bool memory_desc_sanity_check(int ndims, const dims_t dims,
         data_type_t data_type, format_kind_t format_kind) {
     using namespace data_type;
@@ -1346,8 +1333,8 @@ inline bool memory_desc_sanity_check(int ndims, const dims_t dims,
 
     bool has_runtime_dims = false;
     for (int d = 0; d < ndims; ++d) {
-        if (dims[d] != DNNL_RUNTIME_DIM_VAL && dims[d] < 0) return false;
-        if (dims[d] == DNNL_RUNTIME_DIM_VAL) has_runtime_dims = true;
+        if (!is_runtime_value(dims[d]) && dims[d] < 0) return false;
+        if (is_runtime_value(dims[d])) has_runtime_dims = true;
     }
 
     if (has_runtime_dims) {

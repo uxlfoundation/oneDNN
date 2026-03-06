@@ -61,7 +61,7 @@ struct gemm_f32_matmul_t : public primitive_t {
 
             // mb value is calculated based on work-sharing using
             // balance211 in execute()
-            dim_t mb = DNNL_RUNTIME_DIM_VAL;
+            auto mb = runtime_value_for<dim_t>();
             if (!has_runtime_dims && ((batch * M) % nthr == 0)) {
                 const dim_t m_per_thr = nstl::max<dim_t>(1, (batch * M) / nthr);
                 if (m_per_thr >= M && m_per_thr % M == 0) {

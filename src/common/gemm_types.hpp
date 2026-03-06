@@ -91,8 +91,8 @@ struct gemm_desc_t : public op_desc_t {
         // if ndims < 3, it should return 1
         int64_t batch = 1;
         for (int i = 0; i < c_desc.ndims - 2; ++i) {
-            if (c_desc.dims[i] == DNNL_RUNTIME_DIM_VAL)
-                return DNNL_RUNTIME_DIM_VAL;
+            if (is_runtime_value(c_desc.dims[i]))
+                return runtime_value_for<dnnl_dim_t>();
             batch *= c_desc.dims[i];
         }
         return batch;

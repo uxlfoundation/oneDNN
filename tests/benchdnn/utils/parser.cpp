@@ -30,7 +30,6 @@
 namespace parser {
 
 bool last_parsed_is_problem = false;
-const size_t eol = std::string::npos;
 dnnl::impl::stringstream_t help_ss;
 
 static const std::string benchdnn_url
@@ -550,9 +549,9 @@ bool parse_impl_filter(impl_filter_t &impl_filter,
         for_(auto &e : v)
         for (auto c : {'"', '\''}) {
             size_t start_pos = 0;
-            while (start_pos != eol) {
+            while (start_pos != std::string::npos) {
                 start_pos = e.find_first_of(c, start_pos);
-                if (start_pos != eol) e.erase(start_pos, 1);
+                if (start_pos != std::string::npos) e.erase(start_pos, 1);
             }
         }
 
@@ -1223,7 +1222,7 @@ void parse_prb_vdims(
     }
 
     std::string name;
-    if (start_pos != eol) name = str.substr(start_pos);
+    if (start_pos != std::string::npos) name = str.substr(start_pos);
 
     vdims_t vdims;
     parse_multivector_str(vdims, {dims_t()}, parser_utils::stoll_safe,
@@ -1246,7 +1245,7 @@ void parse_prb_dims(prb_dims_t &prb_dims, const std::string &str) {
 
     prb_dims.ndims = static_cast<int>(prb_dims.dims.size());
 
-    if (start_pos != eol) prb_dims.name = str.substr(start_pos);
+    if (start_pos != std::string::npos) prb_dims.name = str.substr(start_pos);
 }
 
 // Global options
@@ -1438,11 +1437,15 @@ bool parse_ctx(std::vector<thr_ctx_t> &ctx,
             std::string val_str = get_substr(str, start_pos, ':');
             if (val_str != "auto") result.max_concurrency = std::stoll(val_str);
             /* core_type piece */
-            val_str = start_pos != eol ? get_substr(str, start_pos, ':') : "";
+            val_str = start_pos != std::string::npos
+                    ? get_substr(str, start_pos, ':')
+                    : "";
             if (val_str != "auto" && !val_str.empty())
                 result.core_type = std::stoll(val_str);
             /* nthr_per_core piece */
-            val_str = start_pos != eol ? get_substr(str, start_pos, ':') : "";
+            val_str = start_pos != std::string::npos
+                    ? get_substr(str, start_pos, ':')
+                    : "";
             if (val_str != "auto" && !val_str.empty())
                 result.nthr_per_core = std::stoll(val_str);
         } catch (const std::invalid_argument &) {
@@ -1885,7 +1888,7 @@ std::string get_substr(const std::string &s, size_t &start_pos, char delim,
         bool allow_dangling) {
     auto end_pos = s.find_first_of(delim, start_pos);
     auto sub = s.substr(start_pos, end_pos - start_pos);
-    start_pos = end_pos + (end_pos != eol);
+    start_pos = end_pos + (end_pos != std::string::npos);
     if (!allow_dangling && start_pos == s.size()) {
         BENCHDNN_PRINT(0, "%s \'%s\'\n",
                 "Error: dangling symbol at the end of input", s.c_str());

@@ -812,13 +812,13 @@ void Generator<hw>::applyLateABOffset(bool isA, int h, const GEMMProblem &proble
             auto C = C_layout.find(ir, jr, C_regs, &nc);
 
             if (!scalarA) {
-                A = isA ? state.Ar_offsetLayout.find(i, haq, state.Ar_offsetRegs, &na)
-                        : state.Agr_layout.find(i, haq, state.Agr_regs, &na);
+                A = isA ? state.Ar_offsetLayout.find(i / problem.aqGroupM, haq, state.Ar_offsetRegs, &na)
+                        : state.Agr_layout.find(i / problem.aqGroupM, haq, state.Agr_regs, &na);
             }
 
             if (!scalarB) {
-                B = isA ? state.Bgr_layout.find(hbq, j, state.Bgr_regs, &nb)
-                        : state.Br_offsetLayout.find(hbq, j, state.Br_offsetRegs, &nb);
+                B = isA ? state.Bgr_layout.find(hbq, j / problem.bqGroupN, state.Bgr_regs, &nb)
+                        : state.Br_offsetLayout.find(hbq, j / problem.bqGroupN, state.Br_offsetRegs, &nb);
             }
 
             int nv = cm ? na : nb;

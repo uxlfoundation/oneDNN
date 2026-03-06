@@ -34,8 +34,8 @@ using namespace dnnl::impl::prop_kind;
 const std::map<pk_impl_key_t, std::vector<impl_list_item_t>>
         impl_list_map REG_SDPA_P({
     {{forward}, {
-        GPU_INSTANCE_INTEL(intel::sdpa::micro_t)
-        GPU_INSTANCE_INTEL_DEVMODE(intel::sdpa::ref_t)
+        GPU_INSTANCE_INTEL(intel::sdpa::micro_fwd_t)
+        GPU_INSTANCE_INTEL_DEVMODE(intel::sdpa::ref_fwd_t)
         nullptr,
     }},
     {{backward}, REG_BWD_PK({

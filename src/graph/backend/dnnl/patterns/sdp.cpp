@@ -18,6 +18,7 @@
 #include "graph/backend/dnnl/kernels/large_partition.hpp"
 #include "graph/backend/dnnl/kernels/matmul.hpp"
 #include "graph/backend/dnnl/kernels/mqa.hpp"
+#include "graph/backend/dnnl/kernels/sdp_bwd.hpp"
 
 #include "graph/backend/dnnl/patterns/fusions.hpp"
 #include "graph/backend/dnnl/patterns/pattern_matcher_pass.hpp"
@@ -197,16 +198,26 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_sdp_backward_fusion)
                             graph::op_kind::MatMul, {in_edge(0, exp, 0)});
                     auto matmul_v_do
                             = pgraph->append_op(graph::op_kind::MatMul);
+                    // Decompose softmax_bwd: dS = P * (dP - ReduceSum(O * dO))
+                    // where P = exp, dP = matmul_v_do output
+                    auto o_do = pgraph->append_op(graph::op_kind::Multiply);
+                    auto correction = pgraph->append_op(
+                            graph::op_kind::ReduceSum, {in_edge(0, o_do, 0)});
+                    auto dp_corrected
+                            = pgraph->append_op(graph::op_kind::Subtract,
+                                    {in_edge(0, matmul_v_do, 0),
+                                            in_edge(1, correction, 0)});
                     auto softmax_bwd = pgraph->append_op(
-                            graph::op_kind::SoftMaxBackward,
-                            {in_edge(0, matmul_v_do, 0), in_edge(1, exp, 0)});
+                            graph::op_kind::Multiply,
+                            {in_edge(0, exp, 0), in_edge(1, dp_corrected, 0)});
                     auto ds = pgraph->append_alternation(
                             {graph::op_kind::Multiply, graph::op_kind::Divide},
                             {in_edge(0, softmax_bwd, 0)});
-                    auto matmul_dq = pgraph->append_op(
-                            graph::op_kind::MatMul, {in_edge(0, ds, 0)});
                     auto matmul_dk = pgraph->append_op(
                             graph::op_kind::MatMul, {in_edge(0, ds, 0)});
+                    auto matmul_dq = pgraph->append_op(
+                            graph::op_kind::MatMul, {in_edge(0, ds, 0)});
+
                     // Q is a shared input for matmul_qk and matmul_dk
                     pgraph->create_input_port(0, matmul_qk, 0);
                     pgraph->create_input_port(0, matmul_dk, 1);
@@ -216,6 +227,8 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_sdp_backward_fusion)
                     // dO is a shared input for matmul_dv and matmul_v_do
                     pgraph->create_input_port(2, matmul_dv, 1);
                     pgraph->create_input_port(2, matmul_v_do, 0);
+                    // dO is also shared input for o_do (O * dO correction)
+                    pgraph->create_input_port(2, o_do, 1);
                 })
         .set_attr<FCreatePattern>("FCreatePattern",
                 [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
@@ -233,18 +246,28 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_sdp_backward_fusion)
                             graph::op_kind::MatMul, {in_edge(0, tc, 0)});
                     auto matmul_v_do
                             = pgraph->append_op(graph::op_kind::MatMul);
+                    // Decompose softmax_bwd: dS = P * (dP - ReduceSum(O * dO))
+                    // where P = exp, dP = matmul_v_do output
+                    auto o_do = pgraph->append_op(graph::op_kind::Multiply);
+                    auto correction = pgraph->append_op(
+                            graph::op_kind::ReduceSum, {in_edge(0, o_do, 0)});
+                    auto dp_corrected
+                            = pgraph->append_op(graph::op_kind::Subtract,
+                                    {in_edge(0, matmul_v_do, 0),
+                                            in_edge(1, correction, 0)});
                     auto softmax_bwd = pgraph->append_op(
-                            graph::op_kind::SoftMaxBackward,
-                            {in_edge(0, matmul_v_do, 0), in_edge(1, exp, 0)});
+                            graph::op_kind::Multiply,
+                            {in_edge(0, exp, 0), in_edge(1, dp_corrected, 0)});
                     auto ds = pgraph->append_alternation(
                             {graph::op_kind::Multiply, graph::op_kind::Divide},
                             {in_edge(0, softmax_bwd, 0)});
                     auto tc2 = pgraph->append_op(
                             graph::op_kind::TypeCast, {in_edge(0, ds, 0)});
-                    auto matmul_dq = pgraph->append_op(
-                            graph::op_kind::MatMul, {in_edge(0, tc2, 0)});
+
                     auto matmul_dk = pgraph->append_op(
                             graph::op_kind::MatMul, {in_edge(0, tc2, 0)});
+                    auto matmul_dq = pgraph->append_op(
+                            graph::op_kind::MatMul, {in_edge(0, tc2, 0)});                    
                     // Q is a shared input for matmul_qk and matmul_dk
                     pgraph->create_input_port(0, matmul_qk, 0);
                     pgraph->create_input_port(0, matmul_dk, 1);
@@ -254,6 +277,8 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_sdp_backward_fusion)
                     // dO is a shared input for matmul_dv and matmul_v_do
                     pgraph->create_input_port(2, matmul_dv, 1);
                     pgraph->create_input_port(2, matmul_v_do, 0);
+                    // dO is also shared input for o_do (O * dO correction)
+                    pgraph->create_input_port(2, o_do, 1);
                 })
         .set_attr<FCreatePattern>("FCreatePattern",
                 [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
@@ -275,9 +300,18 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_sdp_backward_fusion)
                             = pgraph->append_op(graph::op_kind::MatMul);
                     auto dropout2 = pgraph->append_op(graph::op_kind::Dropout,
                             {in_edge(0, matmul_v_do, 0)});
+                    // Decompose softmax_bwd: dS = P * (dP - ReduceSum(O * dO))
+                    // where P = exp, dP = dropout2 output
+                    auto o_do = pgraph->append_op(graph::op_kind::Multiply);
+                    auto correction = pgraph->append_op(
+                            graph::op_kind::ReduceSum, {in_edge(0, o_do, 0)});
+                    auto dp_corrected
+                            = pgraph->append_op(graph::op_kind::Subtract,
+                                    {in_edge(0, dropout2, 0),
+                                            in_edge(1, correction, 0)});
                     auto softmax_bwd = pgraph->append_op(
-                            graph::op_kind::SoftMaxBackward,
-                            {in_edge(0, dropout2, 0), in_edge(1, exp, 0)});
+                            graph::op_kind::Multiply,
+                            {in_edge(0, exp, 0), in_edge(1, dp_corrected, 0)});
                     auto ds = pgraph->append_alternation(
                             {graph::op_kind::Multiply, graph::op_kind::Divide},
                             {in_edge(0, softmax_bwd, 0)});
@@ -294,6 +328,8 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_sdp_backward_fusion)
                     // dO is a shared input for matmul_dv and matmul_v_do
                     pgraph->create_input_port(2, matmul_dv, 1);
                     pgraph->create_input_port(2, matmul_v_do, 0);
+                    // dO is also shared input for o_do (O * dO correction)
+                    pgraph->create_input_port(2, o_do, 1);
                 })
         .set_attr<FCreatePattern>("FCreatePattern",
                 [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
@@ -316,9 +352,18 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_sdp_backward_fusion)
                             = pgraph->append_op(graph::op_kind::MatMul);
                     auto dropout2 = pgraph->append_op(graph::op_kind::Dropout,
                             {in_edge(0, matmul_v_do, 0)});
+                    // Decompose softmax_bwd: dS = P * (dP - ReduceSum(O * dO))
+                    // where P = exp, dP = dropout2 output
+                    auto o_do = pgraph->append_op(graph::op_kind::Multiply);
+                    auto correction = pgraph->append_op(
+                            graph::op_kind::ReduceSum, {in_edge(0, o_do, 0)});
+                    auto dp_corrected
+                            = pgraph->append_op(graph::op_kind::Subtract,
+                                    {in_edge(0, dropout2, 0),
+                                            in_edge(1, correction, 0)});
                     auto softmax_bwd = pgraph->append_op(
-                            graph::op_kind::SoftMaxBackward,
-                            {in_edge(0, dropout2, 0), in_edge(1, exp, 0)});
+                            graph::op_kind::Multiply,
+                            {in_edge(0, exp, 0), in_edge(1, dp_corrected, 0)});
                     auto ds = pgraph->append_alternation(
                             {graph::op_kind::Multiply, graph::op_kind::Divide},
                             {in_edge(0, softmax_bwd, 0)});
@@ -337,6 +382,8 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_sdp_backward_fusion)
                     // dO is a shared input for matmul_dv and matmul_v_do
                     pgraph->create_input_port(2, matmul_dv, 1);
                     pgraph->create_input_port(2, matmul_v_do, 0);
+                    // dO is also shared input for o_do (O * dO correction)
+                    pgraph->create_input_port(2, o_do, 1);
                 })
         .set_attr<FCreatePattern>("FCreatePattern",
                 [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
@@ -354,14 +401,18 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_sdp_backward_fusion)
                             graph::op_kind::MatMul, {in_edge(0, exp, 0)});
                     auto matmul_v_do
                             = pgraph->append_op(graph::op_kind::MatMul);
+                    // Decompose softmax_bwd: dS = P * (dP - ReduceSum(O * dO))
+                    // where P = exp, dP = matmul_v_do output
+                    auto o_do = pgraph->append_op(graph::op_kind::Multiply);
+                    auto correction = pgraph->append_op(
+                            graph::op_kind::ReduceSum, {in_edge(0, o_do, 0)});
+                    auto dp_corrected
+                            = pgraph->append_op(graph::op_kind::Subtract,
+                                    {in_edge(0, matmul_v_do, 0),
+                                            in_edge(1, correction, 0)});
                     auto softmax_bwd = pgraph->append_op(
-                            graph::op_kind::SoftMaxBackward,
-                            {in_edge(0, matmul_v_do, 0), in_edge(1, exp, 0)});
-
-                    // End op to mark dMask as output
-                    pgraph->append_op(
-                            graph::op_kind::End, {in_edge(0, softmax_bwd, 0)});
-
+                            graph::op_kind::Multiply,
+                            {in_edge(0, exp, 0), in_edge(1, dp_corrected, 0)});
                     auto ds = pgraph->append_alternation(
                             {graph::op_kind::Multiply, graph::op_kind::Divide},
                             {in_edge(0, softmax_bwd, 0)});
@@ -378,6 +429,8 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_sdp_backward_fusion)
                     // dO is a shared input for matmul_dv and matmul_v_do
                     pgraph->create_input_port(2, matmul_dv, 1);
                     pgraph->create_input_port(2, matmul_v_do, 0);
+                    // dO is also shared input for o_do (O * dO correction)
+                    pgraph->create_input_port(2, o_do, 1);
                 })
         .set_attr<FCreatePattern>("FCreatePattern",
                 [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
@@ -395,9 +448,18 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_sdp_backward_fusion)
                             graph::op_kind::MatMul, {in_edge(0, tc, 0)});
                     auto matmul_v_do
                             = pgraph->append_op(graph::op_kind::MatMul);
+                    // dedS = P * (dP - ReduceSum(O * dO))
+                    // where P = exp, dP = matmul_v_do output
+                    auto o_do = pgraph->append_op(graph::op_kind::Multiply);
+                    auto correction = pgraph->append_op(
+                            graph::op_kind::ReduceSum, {in_edge(0, o_do, 0)});
+                    auto dp_corrected
+                            = pgraph->append_op(graph::op_kind::Subtract,
+                                    {in_edge(0, matmul_v_do, 0),
+                                            in_edge(1, correction, 0)});
                     auto softmax_bwd = pgraph->append_op(
-                            graph::op_kind::SoftMaxBackward,
-                            {in_edge(0, matmul_v_do, 0), in_edge(1, exp, 0)});
+                            graph::op_kind::Multiply,
+                            {in_edge(0, exp, 0), in_edge(1, dp_corrected, 0)});
 
                     // End op to mark dMask as output
                     pgraph->append_op(
@@ -421,9 +483,11 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_sdp_backward_fusion)
                     // dO is a shared input for matmul_dv and matmul_v_do
                     pgraph->create_input_port(2, matmul_dv, 1);
                     pgraph->create_input_port(2, matmul_v_do, 0);
+                    // dO is also shared input for o_do (O * dO correction)
+                    pgraph->create_input_port(2, o_do, 1);
                 })
         .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
-            return std::make_shared<larger_partition_kernel_t>();
+            return std::make_shared<sdp_bwd_base_t>();
         });
 
 DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_gqa_fusion)
@@ -492,15 +556,24 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_gqa_backward_fusion)
                             {in_edge(0, matmul_dv, 0)});
                     auto matmul_v_do
                             = pgraph->append_op(graph::op_kind::MatMul);
+                    // Decompose softmax_bwd: dS = P * (dP - ReduceSum(O * dO))
+                    // where P = exp, dP = matmul_v_do output
+                    auto o_do = pgraph->append_op(graph::op_kind::Multiply);
+                    auto correction = pgraph->append_op(
+                            graph::op_kind::ReduceSum, {in_edge(0, o_do, 0)});
+                    auto dp_corrected
+                            = pgraph->append_op(graph::op_kind::Subtract,
+                                    {in_edge(0, matmul_v_do, 0),
+                                            in_edge(1, correction, 0)});
                     auto softmax_bwd = pgraph->append_op(
-                            graph::op_kind::SoftMaxBackward,
-                            {in_edge(0, matmul_v_do, 0), in_edge(1, exp, 0)});
+                            graph::op_kind::Multiply,
+                            {in_edge(0, exp, 0), in_edge(1, dp_corrected, 0)});
                     auto ds = pgraph->append_alternation(
                             {graph::op_kind::Multiply, graph::op_kind::Divide},
                             {in_edge(0, softmax_bwd, 0)});
-                    auto matmul_dq = pgraph->append_op(
-                            graph::op_kind::MatMul, {in_edge(0, ds, 0)});
                     auto matmul_dk = pgraph->append_op(
+                            graph::op_kind::MatMul, {in_edge(0, ds, 0)});
+                    auto matmul_dq = pgraph->append_op(
                             graph::op_kind::MatMul, {in_edge(0, ds, 0)});
                     // reduction_dk
                     pgraph->append_op(graph::op_kind::ReduceSum,
@@ -514,6 +587,8 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_gqa_backward_fusion)
                     // dO is a shared input for matmul_dv and matmul_v_do
                     pgraph->create_input_port(2, matmul_dv, 1);
                     pgraph->create_input_port(2, matmul_v_do, 0);
+                    // dO is also shared input for o_do (O * dO correction)
+                    pgraph->create_input_port(2, o_do, 1);
                 })
         .set_attr<FCreatePattern>("FCreatePattern",
                 [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
@@ -534,18 +609,28 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_gqa_backward_fusion)
                             {in_edge(0, matmul_dv, 0)});
                     auto matmul_v_do
                             = pgraph->append_op(graph::op_kind::MatMul);
+                    // dS = P * (dP - ReduceSum(O * dO))
+                    // where P = exp, dP = matmul_v_do output
+                    auto o_do = pgraph->append_op(graph::op_kind::Multiply);
+                    auto correction = pgraph->append_op(
+                            graph::op_kind::ReduceSum, {in_edge(0, o_do, 0)});
+                    auto dp_corrected
+                            = pgraph->append_op(graph::op_kind::Subtract,
+                                    {in_edge(0, matmul_v_do, 0),
+                                            in_edge(1, correction, 0)});
                     auto softmax_bwd = pgraph->append_op(
-                            graph::op_kind::SoftMaxBackward,
-                            {in_edge(0, matmul_v_do, 0), in_edge(1, exp, 0)});
+                            graph::op_kind::Multiply,
+                            {in_edge(0, exp, 0), in_edge(1, dp_corrected, 0)});
                     auto ds = pgraph->append_alternation(
                             {graph::op_kind::Multiply, graph::op_kind::Divide},
                             {in_edge(0, softmax_bwd, 0)});
                     auto tc2 = pgraph->append_op(
                             graph::op_kind::TypeCast, {in_edge(0, ds, 0)});
-                    auto matmul_dq = pgraph->append_op(
-                            graph::op_kind::MatMul, {in_edge(0, tc2, 0)});
                     auto matmul_dk = pgraph->append_op(
                             graph::op_kind::MatMul, {in_edge(0, tc2, 0)});
+                    auto matmul_dq = pgraph->append_op(
+                            graph::op_kind::MatMul, {in_edge(0, tc2, 0)});
+              
                     // reduction_dk
                     pgraph->append_op(graph::op_kind::ReduceSum,
                             {in_edge(0, matmul_dk, 0)});
@@ -558,6 +643,8 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_gqa_backward_fusion)
                     // dO is a shared input for matmul_dv and matmul_v_do
                     pgraph->create_input_port(2, matmul_dv, 1);
                     pgraph->create_input_port(2, matmul_v_do, 0);
+                    // dO is also shared input for o_do (O * dO correction)
+                    pgraph->create_input_port(2, o_do, 1);
                 })
         .set_attr<FCreatePattern>("FCreatePattern",
                 [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
@@ -582,9 +669,18 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_gqa_backward_fusion)
                             = pgraph->append_op(graph::op_kind::MatMul);
                     auto dropout2 = pgraph->append_op(graph::op_kind::Dropout,
                             {in_edge(0, matmul_v_do, 0)});
+                    // dS = P * (dP - ReduceSum(O * dO))
+                    // where P = exp, dP = dropout2 output
+                    auto o_do = pgraph->append_op(graph::op_kind::Multiply);
+                    auto correction = pgraph->append_op(
+                            graph::op_kind::ReduceSum, {in_edge(0, o_do, 0)});
+                    auto dp_corrected
+                            = pgraph->append_op(graph::op_kind::Subtract,
+                                    {in_edge(0, dropout2, 0),
+                                            in_edge(1, correction, 0)});
                     auto softmax_bwd = pgraph->append_op(
-                            graph::op_kind::SoftMaxBackward,
-                            {in_edge(0, dropout2, 0), in_edge(1, exp, 0)});
+                            graph::op_kind::Multiply,
+                            {in_edge(0, exp, 0), in_edge(1, dp_corrected, 0)});
                     auto ds = pgraph->append_alternation(
                             {graph::op_kind::Multiply, graph::op_kind::Divide},
                             {in_edge(0, softmax_bwd, 0)});
@@ -604,6 +700,8 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_gqa_backward_fusion)
                     // dO is a shared input for matmul_dv and matmul_v_do
                     pgraph->create_input_port(2, matmul_dv, 1);
                     pgraph->create_input_port(2, matmul_v_do, 0);
+                    // dO is also shared input for o_do (O * dO correction)
+                    pgraph->create_input_port(2, o_do, 1);
                 })
         .set_attr<FCreatePattern>("FCreatePattern",
                 [](const std::shared_ptr<pb_graph_t> &pgraph)
@@ -629,9 +727,18 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_gqa_backward_fusion)
                             = pgraph->append_op(graph::op_kind::MatMul);
                     auto dropout2 = pgraph->append_op(graph::op_kind::Dropout,
                             {in_edge(0, matmul_v_do, 0)});
+                    // dS = P * (dP - ReduceSum(O * dO))
+                    // where P = exp, dP = dropout2 output
+                    auto o_do = pgraph->append_op(graph::op_kind::Multiply);
+                    auto correction = pgraph->append_op(
+                            graph::op_kind::ReduceSum, {in_edge(0, o_do, 0)});
+                    auto dp_corrected
+                            = pgraph->append_op(graph::op_kind::Subtract,
+                                    {in_edge(0, dropout2, 0),
+                                            in_edge(1, correction, 0)});
                     auto softmax_bwd = pgraph->append_op(
-                            graph::op_kind::SoftMaxBackward,
-                            {in_edge(0, dropout2, 0), in_edge(1, exp, 0)});
+                            graph::op_kind::Multiply,
+                            {in_edge(0, exp, 0), in_edge(1, dp_corrected, 0)});
                     auto ds = pgraph->append_alternation(
                             {graph::op_kind::Multiply, graph::op_kind::Divide},
                             {in_edge(0, softmax_bwd, 0)});
@@ -653,6 +760,8 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_gqa_backward_fusion)
                     // dO is a shared input for matmul_dv and matmul_v_do
                     pgraph->create_input_port(2, matmul_dv, 1);
                     pgraph->create_input_port(2, matmul_v_do, 0);
+                    // dO is also shared input for o_do (O * dO correction)
+                    pgraph->create_input_port(2, o_do, 1);
                 })
         .set_attr<FCreatePattern>("FCreatePattern",
                 [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
@@ -672,9 +781,19 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_gqa_backward_fusion)
                             {in_edge(0, matmul_dv, 0)});
                     auto matmul_v_do
                             = pgraph->append_op(graph::op_kind::MatMul);
+                    // dS = P * (dP - ReduceSum(O * dO))
+                    // where P = exp, dP = matmul_v_do output
+                    auto o_do = pgraph->append_op(graph::op_kind::Multiply);
+                    auto correction = pgraph->append_op(
+                            graph::op_kind::ReduceSum, {in_edge(0, o_do, 0)});
+                    auto dp_corrected
+                            = pgraph->append_op(graph::op_kind::Subtract,
+                                    {in_edge(0, matmul_v_do, 0),
+                                            in_edge(1, correction, 0)});
+
                     auto softmax_bwd = pgraph->append_op(
-                            graph::op_kind::SoftMaxBackward,
-                            {in_edge(0, matmul_v_do, 0), in_edge(1, exp, 0)});
+                            graph::op_kind::Multiply,
+                            {in_edge(0, exp, 0), in_edge(1, dp_corrected, 0)});
 
                     // End op to mark dMask as output
                     pgraph->append_op(
@@ -699,6 +818,8 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_gqa_backward_fusion)
                     // dO is a shared input for matmul_dv and matmul_v_do
                     pgraph->create_input_port(2, matmul_dv, 1);
                     pgraph->create_input_port(2, matmul_v_do, 0);
+                    // dO is also shared input for o_do (O * dO correction)
+                    pgraph->create_input_port(2, o_do, 1);
                 })
         .set_attr<FCreatePattern>("FCreatePattern",
                 [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
@@ -719,9 +840,18 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_gqa_backward_fusion)
                             {in_edge(0, matmul_dv, 0)});
                     auto matmul_v_do
                             = pgraph->append_op(graph::op_kind::MatMul);
+                    // dS = P * (dP - ReduceSum(O * dO))
+                    // where P = exp, dP = matmul_v_do output
+                    auto o_do = pgraph->append_op(graph::op_kind::Multiply);
+                    auto correction = pgraph->append_op(
+                            graph::op_kind::ReduceSum, {in_edge(0, o_do, 0)});
+                    auto dp_corrected
+                            = pgraph->append_op(graph::op_kind::Subtract,
+                                    {in_edge(0, matmul_v_do, 0),
+                                            in_edge(1, correction, 0)});
                     auto softmax_bwd = pgraph->append_op(
-                            graph::op_kind::SoftMaxBackward,
-                            {in_edge(0, matmul_v_do, 0), in_edge(1, exp, 0)});
+                            graph::op_kind::Multiply,
+                            {in_edge(0, exp, 0), in_edge(1, dp_corrected, 0)});
 
                     // End op to mark dMask as output
                     pgraph->append_op(
@@ -748,9 +878,11 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_gqa_backward_fusion)
                     // dO is a shared input for matmul_dv and matmul_v_do
                     pgraph->create_input_port(2, matmul_dv, 1);
                     pgraph->create_input_port(2, matmul_v_do, 0);
+                    // dO is also shared input for o_do (O * dO correction)
+                    pgraph->create_input_port(2, o_do, 1);
                 })
         .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
-            return std::make_shared<larger_partition_kernel_t>();
+            return std::make_shared<sdp_bwd_base_t>();
         });
 
 DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_sdp_jax_fusion)

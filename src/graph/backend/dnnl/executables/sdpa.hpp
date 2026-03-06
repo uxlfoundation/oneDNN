@@ -61,6 +61,40 @@ private:
     bool is_initialized_;
 };
 
+struct sdpa_bwd_executable_t : public op_executable_t {
+    DECLARE_ARG_INDICES_GETTER;
+
+    sdpa_bwd_executable_t(std::shared_ptr<op_t> &op,
+            const dnnl::engine &p_engine, pd_cache_t &pd_cache,
+            const fpmath_t &fpmath, bool use_block_layout);
+
+    bool is_initialized() const { return is_initialized_; }
+
+    void execute(const stream &stream,
+            const std::unordered_map<int, memory> &args) const override;
+
+#ifdef DNNL_WITH_SYCL
+    ::sycl::event execute_sycl(const stream &stream,
+            const std::unordered_map<int, memory> &args,
+            const std::vector<::sycl::event> &deps) const override;
+#endif
+
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+    cl_event execute_ocl(const stream &stream,
+            const std::unordered_map<int, memory> &args,
+            const std::vector<cl_event> &deps) const override;
+#endif
+
+private:
+    std::shared_ptr<primitive_desc_t> sdpa_bwd_pd_;
+    std::shared_ptr<primitive_t> sdpa_bwd_prim_;
+    bool with_scale_;
+    attn_mask_type_t mask_type_;
+    bool is_invert_scale_;
+    bool with_explicit_mask_;
+    bool is_initialized_;
+};
+
 } // namespace dnnl_impl
 } // namespace graph
 } // namespace impl

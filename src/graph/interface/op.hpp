@@ -546,6 +546,7 @@ public:
             CASE(_identity);
             CASE(_dropout);
             CASE(_gated_mlp);
+            CASE(_sdpa_bwd);
             default: return "undefined_op";
         }
 #undef CASE

@@ -61,7 +61,15 @@ status_t compile_ops(std::shared_ptr<subgraph_t> &sg) {
                     status::unimplemented,
                     "failed to create executable for op %s",
                     op->get_name().c_str());
+        } else if (cur_op->get_kind() == op_kind::_sdpa_bwd) {
+            auto sdpa_bwd_exec
+                    = std::dynamic_pointer_cast<sdpa_bwd_executable_t>(exec);
+            VCHECK_COMPILE_OPS(sdpa_bwd_exec->is_initialized(),
+                    status::unimplemented,
+                    "failed to create executable for op %s",
+                    op->get_name().c_str());
         }
+
         sg->execs_.emplace_back(exec);
 
         sg->is_constant_.push_back(op->has_attr(op_attr::is_constant)

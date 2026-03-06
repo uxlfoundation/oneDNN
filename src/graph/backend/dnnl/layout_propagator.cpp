@@ -1824,6 +1824,141 @@ status_t layout_propagator_for_sdpa(std::shared_ptr<op_t> &op,
     return status;
 }
 
+status_t layout_propagator_for_sdpa_bwd(std::shared_ptr<op_t> &op,
+        const dnnl::engine &p_engine, pd_cache_t &pd_cache,
+        const fpmath_t &fpmath, bool use_block_layout,
+        subgraph_rewriter_t &rewriter) {
+    UNUSED(pd_cache);
+    UNUSED(use_block_layout);
+    UNUSED(rewriter);
+
+    // Helper: derive a memory desc for a diff output from the corresponding
+    // forward input logical tensor. If the input layout is already fixed, reuse
+    // it; otherwise fall back to the canonical acbd format used by sdpa.
+    auto get_md_for_diff = [](const logical_tensor_t &lt) {
+        if (!ltw(lt).is_any()) return make_dnnl_memory_desc(lt);
+        return dnnl::memory::desc {ltw(lt).vdims(),
+                static_cast<dnnl::memory::data_type>(ltw(lt).data_type()),
+                dnnl::memory::format_tag::acbd};
+    };
+
+    status_t status = status::success;
+    size_t output_idx = 0;
+
+    // diff_query (output 0): propagate layout from query (input 0)
+    value_ptr diff_query_val = op->get_output_value(output_idx++);
+    const logical_tensor_t &query_lt = op->get_input_logical_tensor(0);
+    status = fill_layout_info(diff_query_val, get_md_for_diff(query_lt));
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for sdpa_bwd diff_query");
+
+    // diff_key (output 1): propagate layout from key (input 1)
+    value_ptr diff_key_val = op->get_output_value(output_idx++);
+    const logical_tensor_t &key_lt = op->get_input_logical_tensor(1);
+    status = fill_layout_info(diff_key_val, get_md_for_diff(key_lt));
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for sdpa_bwd diff_key");
+
+    // diff_value (output 2): propagate layout from value (input 2)
+    value_ptr diff_value_val = op->get_output_value(output_idx++);
+    const logical_tensor_t &value_lt = op->get_input_logical_tensor(2);
+    status = fill_layout_info(diff_value_val, get_md_for_diff(value_lt));
+    VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+            "failed to fill layout info for sdpa_bwd diff_value");
+
+    // scratchpad (output 3): create the pd to get the real scratchpad size
+    {
+        const bool with_scale = op->get_attr<bool>(op_attr::with_scale);
+        const auto mask_type = static_cast<attn_mask_type_t>(
+                op->get_attr<int64_t>(op_attr::mask_type));
+        const bool is_invert_scale = op->has_attr(op_attr::is_invert_scale)
+                ? op->get_attr<bool>(op_attr::is_invert_scale)
+                : false;
+        const bool with_explicit_mask = mask_type == attn_mask_type::buffer;
+
+        auto md_q = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
+        auto md_k = make_dnnl_memory_desc(op->get_input_logical_tensor(1));
+        auto md_v = make_dnnl_memory_desc(op->get_input_logical_tensor(2));
+        auto md_dst = make_dnnl_memory_desc(op->get_input_logical_tensor(3));
+        auto md_diff_dst
+                = make_dnnl_memory_desc(op->get_input_logical_tensor(5));
+        auto md_diff_q = get_md_for_diff(op->get_input_logical_tensor(0));
+        auto md_diff_k = get_md_for_diff(op->get_input_logical_tensor(1));
+        auto md_diff_v = get_md_for_diff(op->get_input_logical_tensor(2));
+
+        dnnl::memory::desc md_scale, md_attn_mask, md_dS;
+        size_t idx = 6;
+        if (with_scale)
+            md_scale = make_dnnl_memory_desc(
+                    op->get_input_logical_tensor(idx++));
+        if (with_explicit_mask) {
+            md_attn_mask = make_dnnl_memory_desc(
+                    op->get_input_logical_tensor(idx++));
+            if (op->num_outputs() > 4)
+                md_dS = make_dnnl_memory_desc(op->get_output_logical_tensor(4));
+        }
+
+        const auto &sdpa_fusion_info = op->has_attr(op_attr::fusion_info)
+                ? op->get_attr<fusion_info_t>(op_attr::fusion_info)
+                : fusion_info_t();
+        dnnl::primitive_attr attr, qk_attr, vs_attr;
+        if (op->has_attr(op_attr::fusion_info)) {
+            qk_attr = make_dnnl_sdpa_primitive_attr(
+                    op, sdpa_fusion_info, attr_type_t::QK);
+            vs_attr = make_dnnl_sdpa_primitive_attr(
+                    op, sdpa_fusion_info, attr_type_t::VS);
+        }
+        qk_attr.set_accumulation_mode(str2accumulation_mode(
+                op->get_attr<std::string>(op_attr::qk_acc_mode)));
+        vs_attr.set_accumulation_mode(str2accumulation_mode(
+                op->get_attr<std::string>(op_attr::vs_acc_mode)));
+        attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+        attr.set_fpmath_mode(static_cast<dnnl::fpmath_mode>(fpmath.mode_));
+
+        dim_t kv_head_number = op->get_input_logical_tensor(1).dims[1];
+        const alg_kind_t softmax_alg = alg_kind::softmax_accurate_inf_as_zero;
+
+        std::shared_ptr<primitive_desc_t> hint_fwd_pd;
+        status = create_sdpa_pd(hint_fwd_pd, p_engine.get(), md_q.get(),
+                md_k.get(), md_v.get(), md_dst.get(), md_attn_mask.get(),
+                md_scale.get(), is_invert_scale, kv_head_number, mask_type,
+                softmax_alg, impl::prop_kind::forward_training, attr.get(),
+                qk_attr.get(), vs_attr.get());
+        VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+                "failed to create hint fwd pd for sdpa_bwd scratchpad");
+
+        std::shared_ptr<primitive_desc_t> sdpa_bwd_pd;
+        status = create_sdpa_pd(sdpa_bwd_pd, p_engine.get(), md_q.get(),
+                md_k.get(), md_v.get(), md_dst.get(), md_diff_q.get(),
+                md_diff_k.get(), md_diff_v.get(), md_diff_dst.get(),
+                md_dS.get(), md_attn_mask.get(), md_scale.get(),
+                is_invert_scale, kv_head_number, mask_type, softmax_alg,
+                attr.get(), hint_fwd_pd.get(), qk_attr.get(), vs_attr.get());
+        VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+                "failed to create pd for sdpa_bwd scratchpad");
+
+        value_ptr scratchpad_val = op->get_output_value(output_idx++);
+        dnnl_memory_desc_t cloned_md = nullptr;
+        dnnl_memory_desc_clone(&cloned_md, sdpa_bwd_pd->scratchpad_md());
+        dnnl::memory::desc scratchpad_desc;
+        scratchpad_desc.reset(cloned_md);
+        status = fill_layout_info(scratchpad_val, scratchpad_desc);
+    }
+
+    // diff_mask (output 4, optional)
+    if (op->num_outputs() > output_idx) {
+        value_ptr diff_mask_val = op->get_output_value(output_idx);
+        const logical_tensor_t &diff_mask_lt
+                = diff_mask_val->get_logical_tensor();
+        status = fill_layout_info(
+                diff_mask_val, make_dnnl_memory_desc(diff_mask_lt));
+        VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
+                "failed to fill layout info for sdpa_bwd diff_mask");
+    }
+
+    return status;
+}
+
 status_t layout_propagator_for_host_scalar(std::shared_ptr<op_t> &op,
         const dnnl::engine &p_engine, pd_cache_t &pd_cache,
         const fpmath_t &fpmath, bool use_block_layout,

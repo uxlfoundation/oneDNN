@@ -2501,6 +2501,60 @@ status_t infer_dnnl_softmax_output_shape(op_t *n,
     return status::success;
 }
 
+status_t infer_dnnl_sdpa_bwd_output_shape(op_t *n,
+        std::vector<logical_tensor_t *> &inputs,
+        std::vector<logical_tensor_t *> &outputs) {
+    // [batch_size, num_heads_q, seq_len_q, head_size_qk]
+    auto query = ltw(inputs[0]);
+    // [batch_size, num_heads_q, head_size_qk, seq_len_kv,]
+    auto key = ltw(inputs[1]);
+    // [batch_size, num_heads_v, seq_len_kv, head_size_v]
+    auto value = ltw(inputs[2]);
+
+    auto dquery = ltw(outputs[0]);
+    auto dkey = ltw(outputs[1]);
+    auto dvalue = ltw(outputs[2]);
+
+    if (dquery.ndims() != -1) {
+        VCHECK_INVALID_SHAPE(validate(dquery.vdims(), query.vdims()),
+                "%s, inferred out shape and output shape are not compatible",
+                op_t::kind2str(n->get_kind()).c_str());
+    }
+    set_shape_and_strides(*outputs[0], query.vdims());
+
+    if (dkey.ndims() != -1) {
+        VCHECK_INVALID_SHAPE(validate(dkey.vdims(), key.vdims()),
+                "%s, inferred out shape and output shape are not compatible",
+                op_t::kind2str(n->get_kind()).c_str());
+    }
+    set_shape_and_strides(*outputs[1], key.vdims());
+
+    if (dvalue.ndims() != -1) {
+        VCHECK_INVALID_SHAPE(validate(dvalue.vdims(), value.vdims()),
+                "%s, inferred out shape and output shape are not compatible",
+                op_t::kind2str(n->get_kind()).c_str());
+    }
+    set_shape_and_strides(*outputs[2], value.vdims());
+
+    if (outputs.size() > 4) {
+        // dmask exists
+        auto dmask = ltw(outputs[4]);
+        dims inferred_dmask_shape = query.vdims();
+        size_t ndims = query.ndims();
+        // [batch_size, num_heads_q, seq_len_q, seq_len_kv]
+        inferred_dmask_shape[ndims - 1] = value.vdims()[ndims - 1];
+
+        if (dmask.ndims() != -1) {
+            VCHECK_INVALID_SHAPE(validate(inferred_dmask_shape, dmask.vdims()),
+                    "%s, given dmask shape is not compatible with inferred",
+                    op_t::kind2str(n->get_kind()).c_str());
+        }
+
+        set_shape_and_strides(*outputs[4], inferred_dmask_shape);
+    }
+
+    return status::success;
+}
 
 } // namespace graph
 } // namespace impl

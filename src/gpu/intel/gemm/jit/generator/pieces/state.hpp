@@ -340,6 +340,8 @@ struct GEMMState : public CommonState {
     ngen::Subregister statusFlagAddr;                        // uq
     bool systolicSumA = false, systolicSumB = false;
     bool useBDPAS = false;
+    bool upConvertATo8Bit = false;
+    bool upConvertBTo8Bit = false;
     bool lateKLoopCheck = false;
     bool splitBarrierAlways = false;
     int ka_loadRem, kb_loadRem;

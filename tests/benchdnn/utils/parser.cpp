@@ -116,6 +116,10 @@ float stof_safe(const std::string &s) {
     return value;
 }
 
+} // namespace parser_utils
+
+namespace parser_functions {
+
 attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
     attr_t::post_ops_t v;
     if (s.empty()) return v;
@@ -439,7 +443,8 @@ attr_t::rounding_mode_t parse_attr_rounding_mode_func(const std::string &s) {
             rm.set(arg,
                     str2rounding_mode(parser::get_substr(subs, subs_pos, ':')));
         if (subs_pos != std::string::npos)
-            rm.set_seed(stoll_safe(get_substr(subs, subs_pos, ':')));
+            rm.set_seed(
+                    parser_utils::stoll_safe(get_substr(subs, subs_pos, ':')));
     }
     return rm;
 }
@@ -450,7 +455,7 @@ attr_t::dropout_t parse_attr_dropout_func(const std::string &s) {
 
     size_t start_pos = 0;
     auto subs = get_substr(s, start_pos, ':');
-    v.p = stof_safe(subs);
+    v.p = parser_utils::stof_safe(subs);
     if ((v.p < 0.f) || (v.p > 1.f)) {
         BENCHDNN_PRINT(0, "Error: bad dropout probability value: %f\n", v.p);
         SAFE_V(FAIL);
@@ -458,7 +463,7 @@ attr_t::dropout_t parse_attr_dropout_func(const std::string &s) {
     if (start_pos == std::string::npos) return v;
 
     subs = get_substr(s, start_pos, ':');
-    v.seed = stoll_safe(subs);
+    v.seed = parser_utils::stoll_safe(subs);
     if (start_pos == std::string::npos) return v;
 
     v.tag = get_substr(s, start_pos, ':');
@@ -470,7 +475,7 @@ attr_t::dropout_t parse_attr_dropout_func(const std::string &s) {
     if (start_pos == std::string::npos) return v;
 
     subs = get_substr(s, start_pos, ':');
-    v.offset = stoll_safe(subs);
+    v.offset = parser_utils::stoll_safe(subs);
     if (v.offset < 0) {
         BENCHDNN_PRINT(
                 0, "Error: bad dropout offset value: %" PRId64 "\n", v.offset);
@@ -597,7 +602,7 @@ cold_cache_input_t str2cold_cache_input(const std::string &s) {
                 std::string size_str = ext_aux_str;
                 // Remove size modifier to feed the rest for value verification.
                 size_str.pop_back();
-                const float size = stof_safe(size_str);
+                const float size = parser_utils::stof_safe(size_str);
                 c.cold_tlb_size_ = static_cast<size_t>(
                         size * 1024 * 1024 * (last_char == 'G' ? 1024 : 1));
 
@@ -616,7 +621,7 @@ cold_cache_input_t str2cold_cache_input(const std::string &s) {
     return c;
 }
 
-} // namespace parser_utils
+} // namespace parser_functions
 
 // vector types
 bool parse_dir(std::vector<dir_t> &dir, const std::vector<dir_t> &def_dir,
@@ -846,8 +851,8 @@ bool parse_attr_post_ops(std::vector<attr_t::post_ops_t> &po, const char *str,
               "More details at "
             + doc_url + "knobs_attr.md\n";
     std::vector<attr_t::post_ops_t> def {attr_t::post_ops_t()};
-    return parse_vector_option(po, def, parser_utils::parse_attr_post_ops_func,
-            str, option_name, help);
+    return parse_vector_option(po, def,
+            parser_functions::parse_attr_post_ops_func, str, option_name, help);
 }
 
 bool parse_attr_scales(std::vector<attr_t::arg_scales_t> &scales,
@@ -890,7 +895,7 @@ bool parse_attr_rounding_mode(std::vector<attr_t::rounding_mode_t> &rm,
               "ARG.\n    More details at "
             + doc_url + "knobs_attr.md\n";
     return parse_vector_option(rm, {},
-            parser_utils::parse_attr_rounding_mode_func, str, option_name,
+            parser_functions::parse_attr_rounding_mode_func, str, option_name,
             help);
 }
 
@@ -916,7 +921,8 @@ bool parse_attr_fpmath_mode(std::vector<attr_t::fpmath_mode_t> &fpmath_mode,
               "fpmath_mode attribute. `MODE` values can be `strict` or "
               "`bf16`. `APPLY_TO_INT` values can be `true` or `false`.\n";
     return parse_vector_option(fpmath_mode, def_fpmath_mode,
-            parser_utils::parse_attr_fpmath_mode_func, str, option_name, help);
+            parser_functions::parse_attr_fpmath_mode_func, str, option_name,
+            help);
 }
 
 bool parse_attr_dropout(std::vector<attr_t::dropout_t> &dropout,
@@ -927,7 +933,7 @@ bool parse_attr_dropout(std::vector<attr_t::dropout_t> &dropout,
               "Specifies dropout attribute.\n    More details at "
             + doc_url + "knobs_attr.md\n";
     return parse_vector_option(dropout, def_dropout,
-            parser_utils::parse_attr_dropout_func, str, option_name, help);
+            parser_functions::parse_attr_dropout_func, str, option_name, help);
 }
 
 bool parse_attr_acc_mode(std::vector<dnnl_accumulation_mode_t> &acc_mode,
@@ -950,7 +956,7 @@ bool parse_attr_deterministic(
             = "MODE    (Default: `false`)\n    Specifies deterministic mode "
               "attribute. `MODE` values can be `true`, or `false`.\n";
     return parse_vector_option(deterministic, def_deterministic,
-            parser_utils::parse_attr_deterministic_func, str, option_name,
+            parser_functions::parse_attr_deterministic_func, str, option_name,
             help);
 }
 
@@ -1004,7 +1010,7 @@ bool parse_impl(impl_filter_t &impl_filter,
               "option has no effect. The option is opposite to "
               "`--skip-impl`.\n";
 
-    return parser_utils::parse_impl_filter(impl_filter, def_impl_filter,
+    return parser_functions::parse_impl_filter(impl_filter, def_impl_filter,
             /* use_impl = */ true, str, option_name, help);
 }
 
@@ -1019,7 +1025,7 @@ bool parse_skip_impl(impl_filter_t &impl_filter,
               "string literal entries with no spaces.\n    When empty, the "
               "option has no effect. The option is opposite to `--impl`.\n";
 
-    return parser_utils::parse_impl_filter(impl_filter, def_impl_filter,
+    return parser_functions::parse_impl_filter(impl_filter, def_impl_filter,
             /* use_impl = */ false, str, option_name, help);
 }
 
@@ -1260,8 +1266,8 @@ static bool parse_cold_cache(
               "(Gigabytes) characters, e.g., `tlb:500M`.\n";
 
     return parse_single_value_option(cold_cache_input,
-            default_cold_cache_input(), parser_utils::str2cold_cache_input, str,
-            option_name, help);
+            default_cold_cache_input(), parser_functions::str2cold_cache_input,
+            str, option_name, help);
 }
 
 static bool parse_cpu_isa_hints(
@@ -1343,7 +1349,8 @@ static bool parse_global_impl(
               "overrides any values from `--impl` or `--skip-impl` options met "
               "on the way.\n";
 
-    return parser_utils::parse_impl_filter(global_impl_filter, impl_filter_t(),
+    return parser_functions::parse_impl_filter(global_impl_filter,
+            impl_filter_t(),
             /* use_impl = */ true, str, option_name, help);
 }
 
@@ -1354,7 +1361,8 @@ static bool parse_global_skip_impl(
               "but overrides any values from `--impl` or `--skip-impl` options "
               "met on the way.\n";
 
-    return parser_utils::parse_impl_filter(global_impl_filter, impl_filter_t(),
+    return parser_functions::parse_impl_filter(global_impl_filter,
+            impl_filter_t(),
             /* use_impl = */ false, str, option_name, help);
 }
 
@@ -1684,7 +1692,7 @@ static bool parse_summary(
               "print additional statistics and information based on the STRING "
               "values.\n";
     return parse_single_value_option(summary, summary_t(),
-            parser_utils::parse_summary_str, str, option_name, help);
+            parser_functions::parse_summary_str, str, option_name, help);
 }
 
 static bool parse_verbose(

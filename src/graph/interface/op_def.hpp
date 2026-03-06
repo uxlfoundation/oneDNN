@@ -2397,6 +2397,38 @@ DNNL_GRAPH_OP_SCHEMA(_gated_mlp, 1,
                 .set_attr(op_attr::alg_kind, true, attribute_kind::i)
                 .set_shape_inference_function(infer_gated_mlp_output_shape))
 
+// Backward op for SDPA
+DNNL_GRAPH_OP_SCHEMA(_sdpa_bwd, 1,
+        op_schema_t()
+                .set_inputs_option(op_schema_t::param_num_option::variadic)
+                .set_outputs_option(op_schema_t::param_num_option::optional)
+                // Inputs: query, key, value, dst, diff_dst, [dS], [scale], [mask]
+                .set_num_inputs(std::set<size_t>({5, 32}))
+                .set_num_outputs(std::set<size_t>({4, 5}))
+                .set_input(0, "query")
+                .set_input(1, "key")
+                .set_input(2, "value")
+                .set_input(3, "dst")
+                .set_input(4, "stats")
+                .set_input(5, "diff_dst")
+                .set_input(6, "scale") // optional
+                .set_input(7, "mask") // optional
+                // Outputs: diff_query, diff_key, diff_value, scratchpad, diff_mask
+                .set_output(0, "diff_query")
+                .set_output(1, "diff_key")
+                .set_output(2, "diff_value")
+                .set_output(3, "scratchpad")
+                .set_output(4, "diff_mask") // optional
+                .set_attr(op_attr::fusion_info, false,
+                        attribute_kind::fusion_info)
+                .set_attr(op_attr::with_scale, true, attribute_kind::b)
+                .set_attr(op_attr::is_invert_scale, false, attribute_kind::b,
+                        false)
+                .set_attr(op_attr::mask_type, true, attribute_kind::i)
+                .set_attr(op_attr::qk_acc_mode, true, attribute_kind::s)
+                .set_attr(op_attr::vs_acc_mode, true, attribute_kind::s)
+                .set_shape_inference_function(infer_dnnl_sdpa_bwd_output_shape))
+
 } // namespace graph
 } // namespace impl
 } // namespace dnnl

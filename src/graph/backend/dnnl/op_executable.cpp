@@ -78,6 +78,7 @@ executable_creator_func op_func_t::get_executable_creator(op_kind_t kind) {
             {_identity, executable_creator<memory_reparser_t>},
             {_dropout, dummy_executable_creator},
             {_gated_mlp, executable_creator<gated_mlp_executable_t>},
+            {_sdpa_bwd, executable_creator<sdpa_bwd_executable_t>},
     };
 
     if (_map.count(kind) == 0) {
@@ -142,6 +143,7 @@ arg_indices_getter_func op_func_t::get_arg_indices_getter(op_kind_t kind) {
             {_identity, memory_reparser_t::get_arg_indices},
             {_dropout, dummy_arg_indices_getter},
             {_gated_mlp, gated_mlp_executable_t::get_arg_indices},
+            {_sdpa_bwd, sdpa_bwd_executable_t::get_arg_indices},
     };
 
     if (_map.count(kind) == 0) {
@@ -204,6 +206,7 @@ layout_propagator_func op_func_t::get_layout_propagator(op_kind_t kind) {
             {_host_scalar, layout_propagator_for_host_scalar},
             {_identity, layout_propagator_for_identity},
             {_gated_mlp, layout_propagator_for_gated_mlp},
+            {_sdpa_bwd, layout_propagator_for_sdpa_bwd},
     };
 
     if (_map.count(kind) == 0) {

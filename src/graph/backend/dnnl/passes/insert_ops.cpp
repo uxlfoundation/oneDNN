@@ -482,6 +482,35 @@ status_t insert_permute_for_matmul(std::shared_ptr<subgraph_t> &sg) {
     return infer_shape(sg);
 }
 
+status_t insert_permute_for_sdpa_bwd(std::shared_ptr<subgraph_t> &sg) {
+    subgraph_rewriter_t rewriter(sg);
+
+    for (auto &cur_op : sg->get_ops()) {
+        if (cur_op->get_kind() != op_kind::_sdpa_bwd) continue;
+
+        for (size_t i = 0; i <= 2; ++i) {
+            // check if Q,K,V has permute op in front of sdpa_bwd, if yes,
+            // inserting permute for corresponding dQ, dK, dV to keep the
+            // consistency of data layout
+            if (!cur_op->get_input_value(i)->has_producer()
+                    || cur_op->get_input_value(i)->get_producer().get_kind()
+                            != op_kind::_permute)
+                continue;
+            op_t &input_permute_op = cur_op->get_input_value(i)->get_producer();
+            auto perm = input_permute_op.get_attr<std::vector<int64_t>>(
+                    op_attr::permutation);
+            op_ptr output_permute_op
+                    = std::make_shared<op_t>(op_kind::_permute);
+            output_permute_op->set_attr<std::vector<int64_t>>(
+                    op_attr::permutation, perm);
+            rewriter.insert_op_after(output_permute_op, cur_op, i);
+        }
+    }
+
+    rewriter.run();
+    return infer_shape(sg);
+}
+
 status_t insert_reshape_for_ndx2d_matmul(std::shared_ptr<subgraph_t> &sg) {
     using ltw = logical_tensor_wrapper_t;
     subgraph_rewriter_t rewriter(sg);
@@ -637,15 +666,135 @@ status_t insert_reshape_for_sdpa(std::shared_ptr<subgraph_t> &sg) {
         // Insert reshape for optional stats output (output 2)
         if (cur_op->get_attr<bool>(op_attr::is_training)) {
             auto stats_dims = ltw(cur_op->get_output_logical_tensor(2)).vdims();
-            dims expected_stats_dims = stats_dims;
+            const dims &expected_stats_dims = stats_dims;
             op_ptr reshape_stats
-                    = std::make_shared<op_t>(op_kind::dnnl_reshape);
+                    = std::make_shared<op_t>(op_kind::_reshape);
             reshape_stats->set_attr<bool>(op_attr::special_zero, false);
             reshape_stats->set_attr<std::vector<int64_t>>(
                     op_attr::shape, expected_stats_dims);
             rewriter.insert_op_after(reshape_stats, cur_op, 2);
         }
     }
+    rewriter.run();
+    return infer_shape(sg);
+}
+
+status_t insert_reshape_for_sdpa_bwd(std::shared_ptr<subgraph_t> &sg) {
+    using ltw = logical_tensor_wrapper_t;
+
+    subgraph_rewriter_t rewriter(sg);
+
+    for (auto &cur_op : sg->get_ops()) {
+        if (cur_op->get_kind() != op_kind::_sdpa_bwd) continue;
+
+        int32_t query_ndims = cur_op->get_input_logical_tensor(0).ndims;
+        if (query_ndims != 5) continue;
+
+        // Helper lambda: create a reshape op collapsing dims[1]*dims[2] -> -1
+        // for a 5D tensor [batch, g, h, seq, d] -> [batch, -1, seq, d]
+        auto make_reshape_5d_to_4d = [](const dims &in_dims) {
+            dims out_dims {in_dims[0], -1, in_dims[3], in_dims[4]};
+            op_ptr reshape = std::make_shared<op_t>(op_kind::_reshape);
+            reshape->set_attr<bool>(op_attr::special_zero, false);
+            reshape->set_attr<std::vector<int64_t>>(op_attr::shape, out_dims);
+            return reshape;
+        };
+
+        // Insert reshape for Query (input 0)
+        auto query_dims = ltw(cur_op->get_input_logical_tensor(0)).vdims();
+        rewriter.insert_op_before(make_reshape_5d_to_4d(query_dims), cur_op, 0);
+
+        // Insert reshape for Key (input 1)
+        auto key_dims = ltw(cur_op->get_input_logical_tensor(1)).vdims();
+        rewriter.insert_op_before(make_reshape_5d_to_4d(key_dims), cur_op, 1);
+
+        // Insert reshape for Value (input 2)
+        auto value_dims = ltw(cur_op->get_input_logical_tensor(2)).vdims();
+        rewriter.insert_op_before(make_reshape_5d_to_4d(value_dims), cur_op, 2);
+
+        // Insert reshape for dst (input 3, forward output, 5D)
+        auto dst_dims = ltw(cur_op->get_input_logical_tensor(3)).vdims();
+        rewriter.insert_op_before(make_reshape_5d_to_4d(dst_dims), cur_op, 3);
+
+        // Insert reshape for stats (input 4)
+        auto stats_dims = ltw(cur_op->get_input_logical_tensor(4)).vdims();
+        rewriter.insert_op_before(make_reshape_5d_to_4d(stats_dims), cur_op, 4);
+
+        // Insert reshape for diff_dst (input 5, 5D same as dst)
+        auto diff_dst_dims = ltw(cur_op->get_input_logical_tensor(5)).vdims();
+        rewriter.insert_op_before(
+                make_reshape_5d_to_4d(diff_dst_dims), cur_op, 5);
+
+        size_t index = 6;
+        // Insert reshape for scale (optional)
+        if (cur_op->get_attr<bool>(op_attr::with_scale)) {
+            int32_t scale_ndims = cur_op->get_input_logical_tensor(index).ndims;
+            if (scale_ndims == 5) {
+                auto scale_dims
+                        = ltw(cur_op->get_input_logical_tensor(index)).vdims();
+                rewriter.insert_op_before(
+                        make_reshape_5d_to_4d(scale_dims), cur_op, index);
+            }
+            index += 1;
+        }
+        // Insert reshape for mask (optional)
+        if (cur_op->get_attr<int64_t>(op_attr::mask_type)
+                == static_cast<int64_t>(attn_mask_type::buffer)) {
+            int32_t mask_ndims = cur_op->get_input_logical_tensor(index).ndims;
+
+            if (mask_ndims == 5) {
+                auto mask_dims
+                        = ltw(cur_op->get_input_logical_tensor(index)).vdims();
+                rewriter.insert_op_before(
+                        make_reshape_5d_to_4d(mask_dims), cur_op, index);
+            }
+        }
+
+        // Insert reshape for diff_query output (output 0) -> 4D to 5D
+        auto diff_query_dims
+                = ltw(cur_op->get_output_logical_tensor(0)).vdims();
+        const dims &expected_diff_query_dims = diff_query_dims;
+        op_ptr reshape_diff_query
+                = std::make_shared<op_t>(op_kind::_reshape);
+        reshape_diff_query->set_attr<bool>(op_attr::special_zero, false);
+        reshape_diff_query->set_attr<std::vector<int64_t>>(
+                op_attr::shape, expected_diff_query_dims);
+        rewriter.insert_op_after(reshape_diff_query, cur_op, 0);
+
+        // Insert reshape for diff_key output (output 1) -> 4D to 5D
+        auto diff_key_dims = ltw(cur_op->get_output_logical_tensor(1)).vdims();
+        const dims &expected_diff_key_dims = diff_key_dims;
+        op_ptr reshape_diff_key = std::make_shared<op_t>(op_kind::_reshape);
+        reshape_diff_key->set_attr<bool>(op_attr::special_zero, false);
+        reshape_diff_key->set_attr<std::vector<int64_t>>(
+                op_attr::shape, expected_diff_key_dims);
+        rewriter.insert_op_after(reshape_diff_key, cur_op, 1);
+
+        // Insert reshape for diff_value output (output 2) -> 4D to 5D
+        auto diff_value_dims
+                = ltw(cur_op->get_output_logical_tensor(2)).vdims();
+        const dims &expected_diff_value_dims = diff_value_dims;
+        op_ptr reshape_diff_value
+                = std::make_shared<op_t>(op_kind::_reshape);
+        reshape_diff_value->set_attr<bool>(op_attr::special_zero, false);
+        reshape_diff_value->set_attr<std::vector<int64_t>>(
+                op_attr::shape, expected_diff_value_dims);
+        rewriter.insert_op_after(reshape_diff_value, cur_op, 2);
+
+        // Insert reshape for diff_mask output (output 4) -> 4D to 5D
+        if (cur_op->num_outputs() > 4) {
+            auto diff_mask_dims
+                    = ltw(cur_op->get_output_logical_tensor(4)).vdims();
+            const dims &expected_diff_mask_dims = diff_mask_dims;
+            op_ptr reshape_diff_mask
+                    = std::make_shared<op_t>(op_kind::_reshape);
+            reshape_diff_mask->set_attr<bool>(op_attr::special_zero, false);
+            reshape_diff_mask->set_attr<std::vector<int64_t>>(
+                    op_attr::shape, expected_diff_mask_dims);
+            rewriter.insert_op_after(reshape_diff_mask, cur_op, 4);
+        }
+    }
+
     rewriter.run();
     return infer_shape(sg);
 }

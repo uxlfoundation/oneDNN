@@ -36,7 +36,6 @@
 namespace parser {
 
 extern bool last_parsed_is_problem;
-extern const size_t eol;
 extern dnnl::impl::stringstream_t help_ss;
 
 namespace parser_utils {
@@ -108,7 +107,7 @@ static bool parse_vector_str(T &vec, const T &def, F process_func,
         vec.push_back(
                 process_func(str.substr(pos_st, pos_en - pos_st).c_str()));
         //NOLINTEND(readability-redundant-string-cstr)
-        if (pos_en == eol) break;
+        if (pos_en == std::string::npos) break;
         idx++;
     }
     return true;

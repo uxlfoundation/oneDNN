@@ -95,7 +95,7 @@ void parse_key_value(std::vector<std::map<size_t, std::string>> &res_v,
 std::string get_substr(const std::string &s, size_t &start_pos, char delim) {
     auto end_pos = s.find_first_of(delim, start_pos);
     auto sub = s.substr(start_pos, end_pos - start_pos);
-    start_pos = end_pos + (end_pos != eol);
+    start_pos = end_pos + (end_pos != std::string::npos);
     return sub;
 }
 

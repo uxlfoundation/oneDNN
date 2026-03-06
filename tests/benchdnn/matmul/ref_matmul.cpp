@@ -327,7 +327,8 @@ static void compute_ref_matmul_chunk(const chunk_params_t &p, int64_t M,
 //
 // src and dst are in grouped format, stored as concatenated
 // 2D [total_M, K] / [total_M, N] reference buffers
-// wei is 3D [group_count, K, N] (abc) or [group_count, N, K] (acb)
+// wei ref is always stored in acb layout [G, N, K], since init_ref_memory_args
+// creates the ref buffer with strides [N*K, 1, K]
 //
 // Note, that per-group ranges are read from the grouped memory
 // descriptor offsets
@@ -355,9 +356,6 @@ void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
         const int64_t M_g = M_dims[g];
         if (M_g == 0) return;
 
-        // wei ref is always in abc format (see init_ref_memory_args):
-        //   wei(k,n) = g*K*N + k*N + n  (k_stride=N, n_stride=1).
-        // wei_ab uses the same formula and serves scale/zp index lookup.
         // Precompute offsets for this group
         //   src(m, k)    = (src_row_base + m) * K + k
         //   wei_ab(k, n) = wei_base + k * N + n (for scales and zps)

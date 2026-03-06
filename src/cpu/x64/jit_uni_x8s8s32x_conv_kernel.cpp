@@ -943,8 +943,8 @@ void jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Vmm>::generate() {
     int in_ic_shift = jcp.is_fused_conv ? jcp.dw_conv_buffer_oc
                                         : jcp.ic_without_padding * jcp.ngroups;
     const int urw_inp_stride = jcp.ur_w * jcp.stride_w;
-    const int n_urw_l_pad
-            = nstl::min(div_up(jcp.l_pad, urw_inp_stride), jcp.ow / jcp.ur_w);
+    const int n_urw_l_pad = nstl::min(
+            div_up(nstl::max(0, jcp.l_pad), urw_inp_stride), jcp.ow / jcp.ur_w);
     const int inp_shift_pad = nstl::max(0,
             jcp.typesize_in * (n_urw_l_pad * urw_inp_stride - jcp.l_pad)
                     * in_ic_shift);
@@ -1007,8 +1007,10 @@ void jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Vmm>::generate() {
                       - extended_filter_size)
                     / jcp.stride_w;
     const int n_urw_per_ow_block = jcp.ow_block / jcp.ur_w;
-    const int max_safe_iw = nstl::max(
-            0, jcp.iw - div_up(ic_sub_step, jcp.ic_without_padding));
+    const int max_safe_iw = nstl::max(0,
+            jcp.iw
+                    - div_up(static_cast<int>(ic_sub_step),
+                            jcp.ic_without_padding));
     const int max_safe_ow = jcp.ic_without_padding % ic_sub_step == 0
             ? jcp.ow
             : (max_safe_iw + jcp.l_pad - extended_filter_size) / jcp.stride_w;

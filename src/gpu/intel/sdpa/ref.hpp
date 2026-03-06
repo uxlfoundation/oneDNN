@@ -27,12 +27,12 @@ namespace gpu {
 namespace intel {
 namespace sdpa {
 
-struct ref_t : public primitive_t {
+struct ref_fwd_t : public primitive_t {
     using primitive_t::primitive_t;
     struct pd_t : public sdpa_fwd_pd_t {
         using sdpa_fwd_pd_t::sdpa_fwd_pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:ref:any", ref_t);
+        DECLARE_COMMON_PD_T("ocl:ref:any", ref_fwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;

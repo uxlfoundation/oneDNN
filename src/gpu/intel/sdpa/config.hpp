@@ -25,7 +25,8 @@ namespace gpu {
 namespace intel {
 namespace sdpa {
 
-using pd_t = sdpa_pd_t;
+using fwd_pd_t = sdpa_fwd_pd_t;
+using bwd_pd_t = sdpa_bwd_pd_t;
 
 } // namespace sdpa
 } // namespace intel

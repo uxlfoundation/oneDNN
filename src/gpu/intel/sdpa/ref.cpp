@@ -25,7 +25,7 @@ namespace gpu {
 namespace intel {
 namespace sdpa {
 
-status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
+status_t ref_fwd_t::execute_ref(const exec_ctx_t &ctx) const {
     const auto &qry = CTX_IN_STORAGE(DNNL_ARG_QUERIES);
     const auto &key = CTX_IN_STORAGE(DNNL_ARG_KEYS);
     const auto &val = CTX_IN_STORAGE(DNNL_ARG_VALUES);

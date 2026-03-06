@@ -36,7 +36,7 @@ namespace gpu {
 namespace intel {
 namespace sdpa {
 
-struct micro_params_t : trivially_serializable_t<micro_params_t> {
+struct micro_fwd_params_t : trivially_serializable_t<micro_fwd_params_t> {
 
     const std::vector<const char *> &get_kernel_names() const {
         static const std::vector<const char *> kernel_names_fwd
@@ -97,7 +97,7 @@ struct micro_params_t : trivially_serializable_t<micro_params_t> {
 
     micro_fwd_ukernel_params_t ukernel_config;
 };
-DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(micro_params_t);
+DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(micro_fwd_params_t);
 
 struct micro_bwd_params_t : trivially_serializable_t<micro_bwd_params_t> {
 
@@ -153,12 +153,12 @@ struct micro_bwd_params_t : trivially_serializable_t<micro_bwd_params_t> {
 };
 DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(micro_bwd_params_t);
 
-struct micro_t : public primitive_t {
+struct micro_fwd_t : public primitive_t {
     using primitive_t::primitive_t;
     struct pd_t : public sdpa_fwd_pd_t {
         using sdpa_fwd_pd_t::sdpa_fwd_pd_t;
 
-        DECLARE_COMMON_PD_T("ocl:micro:reusable", micro_t);
+        DECLARE_COMMON_PD_T("ocl:micro:reusable", micro_fwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
@@ -350,7 +350,7 @@ struct micro_t : public primitive_t {
         }
 
         compute::gpu_arch_t arch() const { return arch_; }
-        micro_params_t conf;
+        micro_fwd_params_t conf;
 
     private:
         int sg_size_ = 0;

@@ -168,6 +168,7 @@ size_t compute_distance(const std::string &in, const std::string &opt,
     return std::min(std::min(shift_in_dist, shift_opt_dist), shift_both_dist)
             + 1;
 }
+
 } // namespace parser_utils
 
 namespace parser_functions {
@@ -457,7 +458,7 @@ attr_t::deterministic_t parse_attr_deterministic_func(const std::string &s) {
     attr_t::deterministic_t v;
     if (s.empty()) return v;
 
-    v.enabled = str2bool(s.c_str());
+    v.enabled = parser_functions::parse_bool(s);
     return v;
 }
 
@@ -471,7 +472,7 @@ attr_t::fpmath_mode_t parse_attr_fpmath_mode_func(const std::string &s) {
     if (start_pos == std::string::npos) return v;
 
     subs = get_substr(s, start_pos, '\0');
-    v.apply_to_int = str2bool(subs.c_str());
+    v.apply_to_int = parser_functions::parse_bool(subs);
 
     return v;
 }
@@ -536,7 +537,7 @@ attr_t::dropout_t parse_attr_dropout_func(const std::string &s) {
     if (start_pos == std::string::npos) return v;
 
     subs = get_substr(s, start_pos, '\0');
-    v.use_host_scalars = str2bool(subs.c_str());
+    v.use_host_scalars = parser_functions::parse_bool(subs);
 
     return v;
 }
@@ -671,6 +672,21 @@ cold_cache_input_t str2cold_cache_input(const std::string &s) {
     }
 
     return c;
+}
+
+bool parse_bool(const std::string &s) {
+    if (s == "1" || s == "true" || s == "TRUE") {
+        return true;
+    } else if (s == "0" || s == "false" || s == "FALSE") {
+        return false;
+    } else {
+        BENCHDNN_PRINT(0,
+                "Error: parsed value \'%s\' is expected to be a boolean value "
+                "or 0/1 integer value\n",
+                s.c_str());
+        SAFE_V(FAIL);
+    }
+    return false;
 }
 
 } // namespace parser_functions
@@ -1088,8 +1104,8 @@ bool parse_inplace(std::vector<bool> &inplace,
             = "BOOL    (Default: `false`)\n    Instructs the driver to use "
               "same memory data handle for source and destination when set to "
               "`true`.\n";
-    return parse_vector_option(
-            inplace, def_inplace, str2bool, str, option_name, help);
+    return parse_vector_option(inplace, def_inplace,
+            parser_functions::parse_bool, str, option_name, help);
 }
 
 bool parse_skip_nonlinear(std::vector<bool> &skip,
@@ -1098,8 +1114,8 @@ bool parse_skip_nonlinear(std::vector<bool> &skip,
     static const std::string help
             = "BOOL    (Default: `false`)\n    Instructs the driver to treat "
               "transcendental activations as linear when set to `true`.\n";
-    return parse_vector_option(
-            skip, def_skip, str2bool, str, option_name, help);
+    return parse_vector_option(skip, def_skip, parser_functions::parse_bool,
+            str, option_name, help);
 }
 
 bool parse_strides(std::vector<vdims_t> &strides,
@@ -1127,7 +1143,8 @@ bool parse_trivial_strides(std::vector<bool> &ts,
     static const std::string help
             = "BOOL    (Default: `false`)\n    Instructs the driver to use "
               "dense (trivial) strides when set to `true`.\n";
-    return parse_vector_option(ts, def_ts, str2bool, str, option_name, help);
+    return parse_vector_option(
+            ts, def_ts, parser_functions::parse_bool, str, option_name, help);
 }
 
 bool parse_scale_policy(std::vector<policy_t> &policy,
@@ -1262,8 +1279,8 @@ static bool parse_allow_enum_tags_only(const char *str,
               "`dnnl_format_tag_t` enumeration only.\n    When set to `true`, "
               "the only allowed format tags are the ones from "
               "`dnnl_format_tag_t` enumeration.\n";
-    return parse_single_value_option(
-            allow_enum_tags_only, true, str2bool, str, option_name, help);
+    return parse_single_value_option(allow_enum_tags_only, true,
+            parser_functions::parse_bool, str, option_name, help);
 }
 
 static bool parse_attr_same_pd_check(const char *str,
@@ -1274,8 +1291,8 @@ static bool parse_attr_same_pd_check(const char *str,
               "one without them.\n    When set to `true`, check would return "
               "an error if attributes caused fallback to a different "
               "implementation.\n";
-    return parse_single_value_option(
-            attr_same_pd_check, false, str2bool, str, option_name, help);
+    return parse_single_value_option(attr_same_pd_check, false,
+            parser_functions::parse_bool, str, option_name, help);
 }
 
 static bool parse_canonical(
@@ -1285,8 +1302,8 @@ static bool parse_canonical(
               "canonical form of a reproducer line.\n    When set to `true`, "
               "the driver prints all options and their values, including "
               "default ones.\n";
-    return parse_single_value_option(
-            canonical, false, str2bool, str, option_name, help);
+    return parse_single_value_option(canonical, false,
+            parser_functions::parse_bool, str, option_name, help);
 }
 
 static bool parse_check_ref_impl(
@@ -1296,8 +1313,8 @@ static bool parse_check_ref_impl(
               "an implementation name against the \'ref\' string pattern.\n    "
               "When set to `true`, the check would return an error if the "
               "implementation name contains such pattern.\n";
-    return parse_single_value_option(
-            check_ref_impl, false, str2bool, str, option_name, help);
+    return parse_single_value_option(check_ref_impl, false,
+            parser_functions::parse_bool, str, option_name, help);
 }
 
 static bool parse_cold_cache(
@@ -1380,8 +1397,8 @@ static bool parse_fast_ref(
               "faster reference path when doing correctness testing for "
               "`--engine=gpu`.\n    When set to `true`, the library best fit "
               "CPU implementation is used to compute the reference path.\n";
-    bool parsed = parse_single_value_option(
-            fast_ref, default_fast_ref, str2bool, str, option_name, help);
+    bool parsed = parse_single_value_option(fast_ref, default_fast_ref,
+            parser_functions::parse_bool, str, option_name, help);
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_NONE
     if (parsed && fast_ref) {
         fast_ref = false;
@@ -1548,8 +1565,8 @@ static bool parse_mem_check(
             = "BOOL    (Default: `true`)\n    Instructs the driver to perform "
               "a device RAM capability check if a problem fits a device, when "
               "set to `true`.\n";
-    return parse_single_value_option(
-            mem_check, true, str2bool, str, option_name, help);
+    return parse_single_value_option(mem_check, true,
+            parser_functions::parse_bool, str, option_name, help);
 }
 
 static bool parse_memory_kind(

@@ -65,6 +65,8 @@ namespace parser_functions {
 
 attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s);
 
+bool parse_bool(const std::string &s);
+
 } // namespace parser_functions
 
 // `parse_vector_str` is a heart parser routine which splits input string `str`

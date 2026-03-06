@@ -24,6 +24,7 @@
 #include "graph/backend/dnnl/executables/conv.hpp"
 #include "graph/backend/dnnl/executables/deconv.hpp"
 #include "graph/backend/dnnl/executables/eltwise.hpp"
+#include "graph/backend/dnnl/executables/gated_mlp.hpp"
 #include "graph/backend/dnnl/executables/gen_index.hpp"
 #include "graph/backend/dnnl/executables/group_norm.hpp"
 #include "graph/backend/dnnl/executables/host_scalar.hpp"

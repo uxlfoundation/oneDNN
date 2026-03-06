@@ -83,7 +83,8 @@ namespace op_kind {
     X(dnnl_sdpa, Dnnl_sdpa) \
     X(dnnl_host_scalar, Dnnl_host_scalar) \
     X(dnnl_identity, Dnnl_identity) \
-    X(dnnl_dropout, Dnnl_dropout)
+    X(dnnl_dropout, Dnnl_dropout) \
+    X(dnnl_sdpa_bwd, Dnnl_sdpa_bwd)
 
 enum kind_t {
     kDNNL_INTERNAL_OP_STARTER = 0x1234,

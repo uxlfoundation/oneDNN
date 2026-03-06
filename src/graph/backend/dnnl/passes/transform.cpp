@@ -4792,6 +4792,329 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
     return status::success;
 }
 
+// Fuses a backward SDPA subgraph into a single dnnl_sdpa_bwd op.
+//
+// Pattern (all optional nodes indicated with []):
+//
+// [Q,K] → matmul_qk → [scale_pre] → [mask] → sub(stats) → exp (=P)
+//                                                           /                |
+//                                     [dropout_fwd]→[tc_fwd]→matmul_dv       |
+//                                                                         softmax_bwd = Mul(P, dp_corrected)
+//                             matmul_v_do → [dropout_bwd] ─→ dp_corrected = Sub(dP, correction)
+//                                                                            /
+//                                      o_do = Mul(O, dO) → ReduceSum ──────
+//
+// From softmax_bwd:
+//   → [scale_post] → [End (dMask)] → [tc_bwd] → matmul_dq + matmul_dk
+//
+// Resulting dnnl_sdpa_bwd inputs:
+//   0:Q  1:K  2:V  3:O(dst)  4:stats  5:dO  [6:scale]  [7:mask]
+// Outputs:
+//   0:dQ  1:dK  2:dV  3:scratchpad  [4:dMask]
+status_t fuse_sdpa_bwd(std::shared_ptr<subgraph_t> &sg) {
+    if (sg->get_ops().size() < 11) return status::success;
+
+    // ── Helpers ───────────────────────────────────────────────────────────
+    auto is_binary = [](const op_ptr &op, dnnl::algorithm alg) -> bool {
+        if (op->get_kind() != op_kind::dnnl_binary) return false;
+        return static_cast<dnnl::algorithm>(
+                       op->get_attr<int64_t>(op_attr::alg_kind))
+                == alg;
+    };
+
+    auto is_exp = [](const op_ptr &op) -> bool {
+        if (op->get_kind() != op_kind::dnnl_eltwise) return false;
+        return static_cast<dnnl::algorithm>(
+                       op->get_attr<int64_t>(op_attr::alg_kind))
+                == dnnl::algorithm::eltwise_exp;
+    };
+
+    // Walk the sole consumer chain one step; return nullptr if none or >1.
+    auto sole_consumer = [](const op_ptr &op, size_t out_idx = 0) -> op_ptr {
+        auto out_val = op->get_output_value(out_idx);
+        if (!out_val || out_val->get_consumers().size() != 1) return nullptr;
+        return out_val->get_consumers()[0].get_op().shared_from_this();
+    };
+
+    auto consumers_of
+            = [](const op_ptr &op, size_t out_idx = 0) -> std::vector<op_ptr> {
+        auto out_val = op->get_output_value(out_idx);
+        if (!out_val) return {};
+        std::vector<op_ptr> res;
+        for (auto &c : out_val->get_consumers())
+            res.push_back(c.get_op().shared_from_this());
+        return res;
+    };
+
+    // ── Main search loop ─────────────────────────────────────────────────
+    for (auto &cur_op : sg->get_ops()) {
+        if (cur_op->get_kind() != op_kind::dnnl_matmul) continue;
+
+        // Step 1 – walk matmul_qk → [scale_pre] → [mask] → sub → exp
+        op_ptr matmul_qk = cur_op;
+        op_ptr scale_pre = nullptr, mask_op = nullptr;
+        op_ptr sub_op = nullptr, exp_op = nullptr;
+
+        {
+            op_ptr w = sole_consumer(matmul_qk);
+            while (w) {
+                if (is_exp(w)) {
+                    exp_op = w;
+                    break;
+                } else if (is_binary(w, dnnl::algorithm::binary_mul)
+                        || is_binary(w, dnnl::algorithm::binary_div)) {
+                    if (!scale_pre) scale_pre = w;
+                } else if (w->get_kind() == op_kind::dnnl_mask
+                        || is_binary(w, dnnl::algorithm::binary_add)) {
+                    mask_op = w;
+                } else if (is_binary(w, dnnl::algorithm::binary_sub)) {
+                    sub_op = w;
+                } else {
+                    break;
+                }
+                w = sole_consumer(w);
+            }
+        }
+        if (!exp_op || !sub_op) continue;
+
+        // stats tensor feeds Subtract at input 1
+        value_ptr stats_val = sub_op->get_input_value(1);
+
+        // Step 2 – classify consumers of exp: matmul_dv branch and
+        //          softmax_bwd (P * dp_corrected).
+        op_ptr dropout_fwd = nullptr, tc_fwd = nullptr;
+        op_ptr matmul_dv = nullptr, softmax_bwd = nullptr;
+
+        for (auto &c : consumers_of(exp_op)) {
+            if (c->get_kind() == op_kind::dnnl_matmul)
+                matmul_dv = c;
+            else if (is_binary(c, dnnl::algorithm::binary_mul))
+                softmax_bwd = c;
+            else if (c->get_kind() == op_kind::dnnl_reorder)
+                tc_fwd = c;
+            else if (c->get_kind() == op_kind::dnnl_dropout)
+                dropout_fwd = c;
+        }
+
+        // Resolve matmul_dv through optional dropout / typecast chain
+        if (!matmul_dv) {
+            if (dropout_fwd) {
+                tc_fwd = sole_consumer(dropout_fwd);
+                if (tc_fwd && tc_fwd->get_kind() == op_kind::dnnl_reorder) {
+                    matmul_dv = sole_consumer(tc_fwd);
+                } else {
+                    matmul_dv = dropout_fwd->get_output_value(0)
+                                        ->get_consumers()[0]
+                                        .get_op()
+                                        .shared_from_this();
+                }
+            } else if (tc_fwd) {
+                matmul_dv = sole_consumer(tc_fwd);
+            }
+        }
+
+        if (!matmul_dv || !softmax_bwd) continue;
+
+        // Step 3 – decode softmax_bwd = Mul(P=exp, dp_corrected)
+        //   dp_corrected = Sub(dP_maybe_dropouted, correction)
+        //   correction   = ReduceSum(o_do)
+        //   o_do         = Mul(O, dO)
+        value_ptr dp_corr_val = softmax_bwd->get_input_value(1);
+        if (!dp_corr_val->has_producer()) continue;
+        op_ptr dp_corrected_op = dp_corr_val->get_producer().shared_from_this();
+        if (!is_binary(dp_corrected_op, dnnl::algorithm::binary_sub)) continue;
+
+        // dP side (input 0): matmul_v_do, optionally via Dropout
+        value_ptr dP_val = dp_corrected_op->get_input_value(0);
+        if (!dP_val->has_producer()) continue;
+        op_ptr dP_prod = dP_val->get_producer().shared_from_this();
+
+        op_ptr dropout_bwd = nullptr, matmul_v_do = nullptr;
+        if (dP_prod->get_kind() == op_kind::dnnl_matmul) {
+            matmul_v_do = dP_prod;
+        } else if (dP_prod->get_kind() == op_kind::dnnl_dropout) {
+            dropout_bwd = dP_prod;
+            value_ptr mm_out = dropout_bwd->get_input_value(0);
+            if (!mm_out->has_producer()) continue;
+            auto mm_prod = mm_out->get_producer().shared_from_this();
+            if (mm_prod->get_kind() != op_kind::dnnl_matmul) continue;
+            matmul_v_do = mm_prod;
+        } else {
+            continue;
+        }
+
+        // correction side (input 1): ReduceSum → o_do = Mul(O, dO)
+        value_ptr corr_val = dp_corrected_op->get_input_value(1);
+        if (!corr_val->has_producer()) continue;
+        op_ptr correction_op = corr_val->get_producer().shared_from_this();
+        if (correction_op->get_kind() != op_kind::dnnl_reduction) continue;
+
+        value_ptr o_do_out = correction_op->get_input_value(0);
+        if (!o_do_out->has_producer()) continue;
+        op_ptr o_do_op = o_do_out->get_producer().shared_from_this();
+        if (!is_binary(o_do_op, dnnl::algorithm::binary_mul)) continue;
+
+        value_ptr O_val = o_do_op->get_input_value(0); // forward output O
+        value_ptr dO_val = o_do_op->get_input_value(1); // diff_dst dO
+        value_ptr V_val = matmul_v_do->get_input_value(1); // value tensor V
+
+        // Step 4 – walk forward from softmax_bwd to find:
+        //   [scale_post], [End/dMask], [tc_bwd], matmul_dq, matmul_dk
+        op_ptr scale_post = nullptr, end_op = nullptr, tc_bwd = nullptr;
+        op_ptr matmul_dq = nullptr, matmul_dk = nullptr;
+
+        auto classify_sbwd_consumers = [&](const std::vector<op_ptr> &cs) {
+            for (auto &c : cs) {
+                if (is_binary(c, dnnl::algorithm::binary_mul)
+                        || is_binary(c, dnnl::algorithm::binary_div))
+                    scale_post = c;
+                else if (c->get_kind() == op_kind::dnnl_identity)
+                    end_op = c;
+                else if (c->get_kind() == op_kind::dnnl_reorder)
+                    tc_bwd = c;
+                else if (c->get_kind() == op_kind::dnnl_matmul) {
+                    if (!matmul_dq)
+                        matmul_dq = c;
+                    else
+                        matmul_dk = c;
+                }
+            }
+        };
+
+        classify_sbwd_consumers(consumers_of(softmax_bwd));
+
+        // If there's a scale_post, also classify its consumers
+        if (scale_post) classify_sbwd_consumers(consumers_of(scale_post));
+
+        // If there's a typecast, its consumers are the matmuls
+        if (tc_bwd && (!matmul_dq || !matmul_dk))
+            classify_sbwd_consumers(consumers_of(tc_bwd));
+
+        if (!matmul_dq || !matmul_dk) continue;
+
+        // ── Step 5: Build dnnl_sdpa_bwd ──────────────────────────────────
+        subgraph_rewriter_t rewriter(sg);
+        op_ptr bwd_op = std::make_shared<op_t>(op_kind::dnnl_sdpa_bwd);
+
+        // Attributes
+        const bool with_scale = (scale_post != nullptr);
+        bwd_op->set_attr<bool>(op_attr::with_scale, with_scale);
+        if (with_scale) {
+            auto alg = static_cast<dnnl::algorithm>(
+                    scale_post->get_attr<int64_t>(op_attr::alg_kind));
+            bwd_op->set_attr<bool>(op_attr::is_invert_scale,
+                    alg == dnnl::algorithm::binary_div);
+        }
+
+        int64_t mtype = static_cast<int64_t>(attn_mask_type::undef);
+        if (mask_op) {
+            mtype = (mask_op->get_kind() == op_kind::dnnl_mask)
+                    ? mask_op->get_attr<int64_t>(op_attr::mask_type)
+                    : static_cast<int64_t>(attn_mask_type::buffer);
+        }
+        bwd_op->set_attr<int64_t>(op_attr::mask_type, mtype);
+
+        const std::string qk_acc
+                = matmul_qk->has_attr(op_attr::accumulation_mode)
+                ? matmul_qk->get_attr<std::string>(op_attr::accumulation_mode)
+                : "strict";
+        const std::string vs_acc
+                = matmul_dv->has_attr(op_attr::accumulation_mode)
+                ? matmul_dv->get_attr<std::string>(op_attr::accumulation_mode)
+                : "strict";
+        bwd_op->set_attr<std::string>(op_attr::qk_acc_mode, qk_acc);
+        bwd_op->set_attr<std::string>(op_attr::vs_acc_mode, vs_acc);
+
+        // Connect inputs
+        // 0: Q
+        auto Qv = matmul_qk->get_input_value(0);
+        Qv->remove_consumer(*matmul_qk, 0);
+        bwd_op->connect_input(0, Qv);
+
+        // 1: K
+        auto Kv = matmul_qk->get_input_value(1);
+        Kv->remove_consumer(*matmul_qk, 1);
+        bwd_op->connect_input(1, Kv);
+
+        // 2: V
+        V_val->remove_consumer(*matmul_v_do, 1);
+        bwd_op->connect_input(2, V_val);
+
+        // 3: O (forward output / dst)
+        O_val->remove_consumer(*o_do_op, 0);
+        bwd_op->connect_input(3, O_val);
+
+        // 4: stats
+        stats_val->remove_consumer(*sub_op, 1);
+        bwd_op->connect_input(4, stats_val);
+
+        // 5: dO (diff_dst); shared across matmul_dv, matmul_v_do, o_do
+        dO_val->remove_consumer(*o_do_op, 1);
+        bwd_op->connect_input(5, dO_val);
+
+        size_t in_idx = 6;
+
+        // 6: scale (optional)
+        if (with_scale) {
+            auto sv = scale_post->get_input_value(1);
+            sv->remove_consumer(*scale_post, 1);
+            bwd_op->connect_input(in_idx++, sv);
+        }
+
+        // 7: explicit mask (optional, only for buffer-type masks)
+        if (mask_op && mask_op->get_kind() != op_kind::dnnl_mask) {
+            auto mv = mask_op->get_input_value(1);
+            mv->remove_consumer(*mask_op, 1);
+            bwd_op->connect_input(in_idx++, mv);
+        }
+
+        // Connect outputs
+        // 0: dQ
+        auto dQ_val = matmul_dq->get_output_value(0);
+        dQ_val->set_producer(*bwd_op);
+        bwd_op->connect_output(0, dQ_val);
+
+        // 1: dK
+        auto dK_val = matmul_dk->get_output_value(0);
+        dK_val->set_producer(*bwd_op);
+        bwd_op->connect_output(1, dK_val);
+
+        // 2: dV
+        auto dV_val = matmul_dv->get_output_value(0);
+        dV_val->set_producer(*bwd_op);
+        bwd_op->connect_output(2, dV_val);
+
+        // 3: scratchpad
+        logical_tensor_t lt = empty_logical_tensor_with_default_id();
+        auto scratch = std::make_shared<value_t>(*bwd_op, 3, lt);
+        scratch->set_data_type(graph::data_type::u8);
+        bwd_op->connect_output(3, scratch);
+
+        // 4: diff_mask (optional)
+        if (end_op) {
+            auto dM_val = end_op->get_output_value(0);
+            dM_val->set_producer(*bwd_op);
+            bwd_op->connect_output(4, dM_val);
+        }
+
+        // Remove all pattern ops
+        std::vector<op_ptr> to_remove = {matmul_qk, sub_op, exp_op, matmul_dv,
+                matmul_v_do, o_do_op, correction_op, dp_corrected_op,
+                softmax_bwd, matmul_dq, matmul_dk};
+        for (auto *opt : {&scale_pre, &mask_op, &dropout_fwd, &tc_fwd,
+                     &dropout_bwd, &scale_post, &end_op, &tc_bwd})
+            if (*opt) to_remove.push_back(*opt);
+
+        for (auto &op : to_remove)
+            rewriter.to_remove(op);
+        rewriter.to_insert(bwd_op);
+        rewriter.run();
+        return status::success;
+    }
+
+    return status::success;
+}
+
 } // namespace dnnl_impl
 } // namespace graph
 } // namespace impl

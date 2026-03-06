@@ -84,11 +84,11 @@ void jit_avx2_conv_fwd_kernel_f32_t::oh_step_unroll_kw(
     int ic_tail = jcp.ic_tail;
 
     for (int ki = 0; ki < kw; ki++) {
-        int jj_start = nstl::max(0, div_up(pad_l - ki * dilate_w, stride_w));
+        int jj_start = div_up(nstl::max(0, pad_l - ki * dilate_w), stride_w);
         int jj_end = ur_w
-                - nstl::max(0,
-                        div_up(ki * dilate_w + pad_r - (kw - 1) * dilate_w,
-                                stride_w));
+                - div_up(nstl::max(0,
+                                 ki * dilate_w + pad_r - (kw - 1) * dilate_w),
+                        stride_w);
 
         auto compute = [&](int cur_ic_blk) {
             for (int ifm2 = 0; ifm2 < cur_ic_blk; ifm2++) {

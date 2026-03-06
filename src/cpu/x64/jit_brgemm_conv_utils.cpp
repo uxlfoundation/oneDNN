@@ -1248,8 +1248,8 @@ status_t brg_blocking_t::calc_blocks() {
 
     const auto thr_eff_threshold = 0.9f;
     const auto max_ow_block_thr = utils::saturate(1, ow,
-            static_cast<int>(div_up(
-                    mb * ngroups * nb_oc * os, thr_eff_threshold * nthr)));
+            static_cast<int>(ceil(
+                    mb * ngroups * nb_oc * os / (thr_eff_threshold * nthr))));
 
     ow_block = os_block = sp_block = -1;
     brg_blocking_t best_brgb = *this;
@@ -1594,8 +1594,8 @@ void brg_blocking_t::calc_blocks_1x1() {
         os_block = 0;
 
         const auto max_ow_block_thr = utils::saturate(1, ow,
-                static_cast<int>(div_up(
-                        mb * ngroups * nb_oc * os, thr_eff_threshold * nthr)));
+                static_cast<int>(ceil(mb * ngroups * nb_oc * os
+                        / (thr_eff_threshold * nthr))));
         const auto max_ow_block_L2 = max_sp_block_L2;
 
         start_sp_block = utils::saturate(
@@ -2115,8 +2115,8 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     // TODO: this logic seems not taking dilation into which can avoid pure
     // kernel-in-pad cases.
-    if (!is_amx(isa) && div_up(jcp.l_pad, jcp.stride_w) < jcp.kw
-            && div_up(jcp.r_pad, jcp.stride_w) < jcp.kw) {
+    if (!is_amx(isa) && div_up(nstl::max(0, jcp.l_pad), jcp.stride_w) < jcp.kw
+            && div_up(nstl::max(0, jcp.r_pad), jcp.stride_w) < jcp.kw) {
         try_exec_vpad = true;
     }
 

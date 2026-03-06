@@ -62,7 +62,8 @@ bool with_quantize_common(const quant_entry_t &entry) {
 
 } /* anonymous namespace */
 
-status_t update_config_from_devenv_values(config_t *config, bool quantized) {
+status_t update_config_from_devenv_values(
+        fwd_config_t *config, bool quantized) {
     std::string q_config_str
             = gpu_utils::dev_getenv("QUANTIZED_SDPA_CONFIG", std::string(""));
     std::string config_str
@@ -141,7 +142,7 @@ status_t update_config_from_devenv_values(bwd_config_t *config) {
     return status::success;
 }
 
-status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
+status_t micro_fwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     using namespace jit;
     using gemm::jit::convert_dnnl_to_kernel_type;
 
@@ -155,7 +156,7 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             "Microkernels not supported by the OpenCL driver.");
 
     /* Retrieve pre-tuned kernel configuration */
-    config_t *config = nullptr;
+    fwd_config_t *config = nullptr;
     const dim_t thin_q_threshold = 16;
     auto queries = d->queries();
     if (queries == 1) { queries = (d->q_desc.dims[1] / d->kv_head_number); }
@@ -746,7 +747,7 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     return status::success;
 }
 
-status_t micro_t::init(impl::engine_t *engine) {
+status_t micro_fwd_t::init(impl::engine_t *engine) {
     CHECK(create_kernel(
             engine, kernel_, pd()->conf.get_kernel_names()[0], pd()->conf));
 
@@ -834,7 +835,7 @@ static void init_conf_common(conf_t &conf, pd_type *pd) {
     conf.use_systolic_ukernel = pd->use_systolic_ukernel();
 }
 
-status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t micro_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     using namespace micro;
 
     auto *pd = this;
@@ -896,7 +897,7 @@ status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
         conf.val_group_size = pd->value_group_size();
 
     /* Set up microkernel strategy */
-    const config_t config = {conf.ukernel_config.unroll_m_kq,
+    const fwd_config_t config = {conf.ukernel_config.unroll_m_kq,
             conf.ukernel_config.unroll_n_kq, conf.ukernel_config.unroll_m_vs,
             conf.ukernel_config.unroll_n_vs, conf.ukernel_config.wg_m_kq,
             conf.ukernel_config.wg_n_kq, conf.ukernel_config.wg_m_vs,
@@ -1044,7 +1045,7 @@ status_t micro_bwd_t::pd_t::init_scratchpad(impl::engine_t *engine) {
     return status::success;
 }
 
-status_t micro_params_t::get_kernel_ctx(
+status_t micro_fwd_params_t::get_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     using namespace micro;
 
@@ -1132,7 +1133,7 @@ status_t micro_params_t::get_kernel_ctx(
     micro::Package gemm_kq, gemm_vs;
 
     /* Set up microkernel strategy */
-    const config_t config
+    const fwd_config_t config
             = {ukernel_config.unroll_m_kq, ukernel_config.unroll_n_kq,
                     ukernel_config.unroll_m_vs, ukernel_config.unroll_n_vs,
                     ukernel_config.wg_m_kq, ukernel_config.wg_n_kq,
@@ -1455,7 +1456,7 @@ status_t micro_bwd_params_t::get_kernel_ctx(
     return status::success;
 }
 
-status_t micro_t::execute_forward(const exec_ctx_t &ctx) const {
+status_t micro_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     const auto &conf = pd()->conf;
 
     const auto &qry = CTX_IN_STORAGE(DNNL_ARG_QUERIES);
@@ -1481,7 +1482,7 @@ status_t micro_t::execute_forward(const exec_ctx_t &ctx) const {
     const dim_t D = pd()->desc()->head_size();
     const dim_t Q_per_kv_group = (Q == 1 ? Q * kv_group_size : Q);
 
-    const config_t config = {conf.ukernel_config.unroll_m_kq,
+    const fwd_config_t config = {conf.ukernel_config.unroll_m_kq,
             conf.ukernel_config.unroll_n_kq, conf.ukernel_config.unroll_m_vs,
             conf.ukernel_config.unroll_n_vs, conf.ukernel_config.wg_m_kq,
             conf.ukernel_config.wg_n_kq, conf.ukernel_config.wg_m_vs,

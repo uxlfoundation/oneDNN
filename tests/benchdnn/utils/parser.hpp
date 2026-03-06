@@ -59,6 +59,8 @@ inline bool option_matched(const std::string &option_str, const char *str) {
             && option_str.find(str, 0, option_str.size()) != std::string::npos;
 }
 
+bool parse_bool(const std::string &s);
+
 } // namespace parser_utils
 
 namespace parser_functions {

@@ -166,7 +166,6 @@ void parse_result(res_t &res, const char *pstr);
 /* misc */
 void init_fp_mode();
 
-bool str2bool(const char *str);
 const char *bool2str(bool value);
 
 bool match_regex(const char *str, const char *pattern);

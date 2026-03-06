@@ -2625,7 +2625,7 @@ void CopyPlan::legalizeRegions()
         auto dt = i.dst.type;
 
         if (!i.dst && (hw < ngen::HW::XeHPC || i.op != Opcode::cmp)) continue;
-	    if (i.dst.stride == 0) stub("Illegal dst stride");
+        if (i.dst.width > 1 && i.dst.stride == 0) stub("Illegal dst stride");
         if (isFP4(dt)) continue;
 
         /* Check for special packed conversion cases */

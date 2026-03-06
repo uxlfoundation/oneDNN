@@ -176,6 +176,8 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
             = utils::one_of(wei_dt, data_type::f4_e2m1, data_type::f4_e3m0);
     const bool is_f32_with_int_wei
             = src_dt == f32 && one_of(wei_dt, s8, u8, s4, u4) && dst_dt == f32;
+    const bool is_int8_with_quant_wei
+            = one_of(src_dt, u8, s8) && one_of(wei_dt, s4, u4);
 
     auto check_bias = [&]() -> bool {
         const auto bia_dt = weights_md(1)->data_type;
@@ -220,8 +222,8 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
             if (N() == DNNL_RUNTIME_DIM_VAL) ok = false;
         }
         // Impl suppports f32 scales only for non-weight decompression
-        if (!(is_bf16_with_int_wei || is_f16_with_int_wei
-                    || is_f32_with_int_wei)) {
+        if (!(is_bf16_with_int_wei || is_f16_with_int_wei || is_f32_with_int_wei
+                    || is_int8_with_quant_wei)) {
             ok = ok && one_of(asc.get_data_type(DNNL_ARG_SRC), undef, f32);
             ok = ok && one_of(asc.get_data_type(DNNL_ARG_WEIGHTS), undef, f32);
             ok = ok && one_of(asc.get_data_type(DNNL_ARG_DST), undef, f32);
@@ -277,7 +279,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
     };
     const bool problem_dt_correct = one_of(true, is_f4, is_int8, is_f8, is_bf16,
             is_f32, is_f16, is_f32_f16, is_f32_bf16, is_bf16_with_int_wei,
-            is_f16_with_int_wei, is_f32_with_int_wei);
+            is_f16_with_int_wei, is_f32_with_int_wei, is_int8_with_quant_wei);
 
     auto src_d = memory_desc_wrapper(src_md_);
     auto weights_d = memory_desc_wrapper(weights_md_);
@@ -403,6 +405,14 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         if (bgmmc_.with_wei_decompression && bgmmc_.has_zero_point_b)
             brg.skip_zp_b_compensation = true;
         if (bgmmc_.apply_scales_in_buffer_b) brg.skip_scales = true;
+        // Fill up the scales info in case it's computing in brgemm
+        if (!brg.skip_scales && bgmmc_.with_wei_scales) {
+            brg.is_single_wei_scale = bgmmc_.is_wei_scale_common;
+            brg.is_oc_wei_scales = bgmmc_.is_wei_scale_per_n;
+            brg.is_ic_wei_scales = bgmmc_.is_wei_scale_per_k;
+            brg.wei_scale_k_group_size = bgmmc_.wei_scales_k_gsize;
+            brg.dt_wei_scales = bgmmc_.wei_scales_dt;
+        }
         CHECK(brgemm_desc_set_postops(
                 &brg, attr(), &dst_md_, LDD, bgmmc_.bia_dt));
 
@@ -799,6 +809,11 @@ void brgemm_matmul_t<isa>::compute_kernel(
                     = batch_first_dim_idx * (M * N)
                     + (dst_row_logical_off * N + n);
             const char *dst_anchor_point = brgmm_ctx.get_data_C_ptr(0, 0, 0);
+            // k_idx in group is used for postops scales apply when it over IC
+            const auto k_idx_in_group = bgmmc.wei_scales_k_gsize > 0
+                    ? k_blk_idx * bgmmc.K_blk * bgmmc.brgemm_batch_size
+                            % bgmmc.wei_scales_k_gsize
+                    : 0;
             const brgemm_post_ops_data_t post_ops_data {
                     static_cast<const void *>(ptr_bias),
                     post_ops_binary_rhs_arg_vec.data(), static_cast<size_t>(n),
@@ -809,7 +824,8 @@ void brgemm_matmul_t<isa>::compute_kernel(
                     brgmm_ctx.get_zp_c_ptr(), false, 1, false, false,
                     brgmm_ctx.get_src_scales_ptr(),
                     brgmm_ctx.get_wei_scales_ptr(n),
-                    brgmm_ctx.get_dst_scales_inv_ptr(ithr)};
+                    brgmm_ctx.get_dst_scales_inv_ptr(ithr), nullptr,
+                    k_idx_in_group};
             brgemm_kernel_execute_postops(brg_kernel, gemm_batch, addr_batch,
                     (void *)ptr_C, (void *)ptr_D, post_ops_data, scratch,
                     &leading_dimensions);
@@ -1326,7 +1342,9 @@ void brgemm_matmul_t<isa>::copy_b_chunk_in_buffer(
     };
 
     // grouped zero points &-or scales
-    if (bgmmc.is_wei_zp_per_k || bgmmc.is_wei_scale_per_k) {
+    const bool is_grouped = (bgmmc.is_wei_zp_per_k || bgmmc.is_wei_scale_per_k)
+            && !bgmmc.is_int8_with_quant_wei;
+    if (is_grouped) {
         const auto &k_group = bgmmc.is_wei_zp_per_k ? bgmmc.wei_zp_k_gsize
                                                     : bgmmc.wei_scales_k_gsize;
         const auto brgemm_k_blk = nstl::min(bgmmc.K, bgmmc.K_blk);

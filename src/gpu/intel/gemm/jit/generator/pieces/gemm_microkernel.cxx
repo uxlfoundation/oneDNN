@@ -50,7 +50,7 @@ void Generator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, 
     state.isNested = true;
 
     /* Leave some space for host kernel arguments */
-    state.ra.claim((GRF::bytes(hw) >= 64) ? r0-r6 : r0-r8);
+    state.ra.claim((GRF::bytes(hw) >= 64) ? r0-r9 : r0-r8);
 
     state.fullK = state.inputs.k;
 

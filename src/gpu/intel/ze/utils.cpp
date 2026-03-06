@@ -49,7 +49,7 @@ status_t get_ze_device_enabled_systolic_intel(
 }
 
 status_t get_ze_device_enabled_native_float_atomics(
-        ze_device_handle_t device, uint64_t &native_extensions) {
+        ze_device_handle_t device, uint64_t &native_extensions, bool is_xelpg) {
     using namespace gpu::intel::compute;
 
     auto fltAtom = ze_float_atomic_ext_properties_t();
@@ -85,12 +85,15 @@ status_t get_ze_device_enabled_native_float_atomics(
     if ((fltAtom.fp32Flags & atomic_min_max) == atomic_min_max)
         native_extensions |= (uint64_t)native_ext_t::fp32_atomic_min_max;
 
-    if ((fltAtom.fp64Flags & atomic_load_store) == atomic_load_store)
-        native_extensions |= (uint64_t)native_ext_t::fp64_atomic_load_store;
-    if ((fltAtom.fp64Flags & atomic_add) == atomic_add)
-        native_extensions |= (uint64_t)native_ext_t::fp64_atomic_add;
-    if ((fltAtom.fp64Flags & atomic_min_max) == atomic_min_max)
-        native_extensions |= (uint64_t)native_ext_t::fp64_atomic_min_max;
+    // XeLPG lacks native support for f64 atomics.
+    if (!is_xelpg) {
+        if ((fltAtom.fp64Flags & atomic_load_store) == atomic_load_store)
+            native_extensions |= (uint64_t)native_ext_t::fp64_atomic_load_store;
+        if ((fltAtom.fp64Flags & atomic_add) == atomic_add)
+            native_extensions |= (uint64_t)native_ext_t::fp64_atomic_add;
+        if ((fltAtom.fp64Flags & atomic_min_max) == atomic_min_max)
+            native_extensions |= (uint64_t)native_ext_t::fp64_atomic_min_max;
+    }
 
     return status::success;
 }
@@ -183,8 +186,10 @@ status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
         default: break;
     }
 
+    bool is_xelpg = (product.family == ProductFamily::ARL
+            || product.family == ProductFamily::MTL);
     CHECK(get_ze_device_enabled_native_float_atomics(
-            device, native_extensions));
+            device, native_extensions, is_xelpg));
 
     is_efficient_64bit
             = LevelZeroCodeGenerator<HW::Unknown>::detectEfficient64Bit(

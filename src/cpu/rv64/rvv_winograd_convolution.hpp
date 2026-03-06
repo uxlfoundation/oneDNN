@@ -155,13 +155,26 @@ struct rvv_wino_convolution_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_FEATURE,
                     "input spatial dimensions must be <= 112 for winograd");
 
-            // Check channels: ic >= 64, oc >= 64
-            VDISPATCH_CONV(src_d.dims()[1] >= 64 && dst_d.dims()[1] >= 64,
+            // Check channels: ic >= 128, oc >= 128
+            // Small channels (e.g. IC=OC=64) cause regression vs gemm:rvv
+            // due to Winograd transform overhead and small GEMM dimensions.
+            VDISPATCH_CONV(src_d.dims()[1] >= 128 && dst_d.dims()[1] >= 128,
                     VERBOSE_UNSUPPORTED_FEATURE,
-                    "ic and oc must be >= 64 for winograd");
+                    "ic and oc must be >= 128 for winograd");
 
-            // Initialize configuration
+            // Thread-count-adaptive output spatial check.
+            // Single-core: Winograd's 2.25x FLOPs reduction dominates for
+            //   all layers with sufficient channels. Dispatch with oh >= 7.
+            // Multi-core: Winograd's 16 small GEMMs (K=IC) have lower
+            //   arithmetic intensity than im2col's single GEMM (K=IC*9).
+            //   Only large-spatial layers (oh >= 14) have enough tiles per
+            //   thread to compensate via the FLOPs advantage.
             const int max_threads = dnnl_get_max_threads();
+            const dim_t min_spatial = (max_threads > 1) ? 14 : 7;
+            VDISPATCH_CONV(dst_d.dims()[2] >= min_spatial
+                            && dst_d.dims()[3] >= min_spatial,
+                    VERBOSE_UNSUPPORTED_FEATURE,
+                    "output spatial dimensions too small for winograd");
             auto scratchpad = scratchpad_registry().registrar();
             CHECK(rvv_winograd_init_conf(conf_, scratchpad, *desc(), src_md_,
                     weights_md_, dst_md_, bias_md_, attr_, max_threads));

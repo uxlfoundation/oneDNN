@@ -139,14 +139,14 @@ xe_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
 
     int num_buf = (subgroup_id < SUBGROUPS_REPEATED) ? 2 : 1;
 
-    int local_off = get_local_off(subgroup_id, subgroup_local_id);
+    long local_off = get_local_off(subgroup_id, subgroup_local_id);
 
     for (int i = 0; i < num_buf; i++) {
         if (i > 0 && local_off >= SOFTMAX_AXIS_SIZE) break;
 
         __global SRC_DATA_T *src_copy = src;
-        int axis_offset = find_axis_offset(i, subgroup_local_id, subgroup_id);
-        int data_off = mb * CHANNELS_PADDED * SOFTMAX_AXIS_SIZE + axis_offset
+        long axis_offset = find_axis_offset(i, subgroup_local_id, subgroup_id);
+        long data_off = mb * CHANNELS_PADDED * SOFTMAX_AXIS_SIZE + axis_offset
                 + channel_id;
         int buf_reads = get_buffer_size(i, subgroup_id, local_off);
 
@@ -194,8 +194,8 @@ xe_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
         if (i > 0 && local_off >= SOFTMAX_AXIS_SIZE) break;
 
         __global DST_DATA_T *dst_copy = dst;
-        int axis_offset = find_axis_offset(i, subgroup_local_id, subgroup_id);
-        int data_off = mb * CHANNELS_PADDED * SOFTMAX_AXIS_SIZE + axis_offset
+        long axis_offset = find_axis_offset(i, subgroup_local_id, subgroup_id);
+        long data_off = mb * CHANNELS_PADDED * SOFTMAX_AXIS_SIZE + axis_offset
                 + channel_id;
         int buf_reads = get_buffer_size(i, subgroup_id, local_off);
         dst_copy += data_off;
@@ -219,11 +219,11 @@ xe_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
     const int channel_block = channel_id / CHANNELS;
     const int channel_in_block = channel_id % CHANNELS;
 
-    int data_off = mb * CHANNELS * SOFTMAX_AXIS_SIZE + channel_offset
+    long data_off = mb * CHANNELS * SOFTMAX_AXIS_SIZE + channel_offset
             + channel_in_block;
     const int buf_reads = THREAD_BUF_SIZE;
 #else
-    int data_off = mb * CHANNELS_PADDED * SOFTMAX_AXIS_SIZE + channel_offset
+    long data_off = mb * CHANNELS_PADDED * SOFTMAX_AXIS_SIZE + channel_offset
             + channel_id;
 
     const int local_off = local_id * THREAD_BUF_SIZE;
@@ -284,7 +284,7 @@ xe_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
 #endif
 
 #else // NCHW kernel starts here
-    const int data_off = (get_global_id(0) / GROUP_SIZE) * SOFTMAX_AXIS_SIZE;
+    const long data_off = (get_global_id(0) / GROUP_SIZE) * SOFTMAX_AXIS_SIZE;
 
     COMMON_DATA8_T d[NUM_BUF];
     COMMON_DATA_T max_ = -COMMON_DATA_MAX;
@@ -322,7 +322,7 @@ xe_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
 #else // subgroup block read requires 4-byte alignment
     for (int k = 0; k < NUM_BUF; ++k) {
         for (int i = 0; i < VECT_SIZE; ++i) {
-            int off = k * VECT_SIZE * SUB_GROUP_SIZE + i * SUB_GROUP_SIZE
+            long off = k * VECT_SIZE * SUB_GROUP_SIZE + i * SUB_GROUP_SIZE
                     + get_sub_group_local_id();
             d[k][i] = (off < SOFTMAX_AXIS_SIZE ? DATA_TO_FLOAT(SRC, src[off])
                                                : -FLT_MAX);
@@ -353,14 +353,14 @@ xe_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
         int k = last_buf;
 #if LOGSOFTMAX
         for (int i = 0; i < VECT_SIZE; ++i) {
-            int off = k * VECT_SIZE * SUB_GROUP_SIZE + i * SUB_GROUP_SIZE
+            long off = k * VECT_SIZE * SUB_GROUP_SIZE + i * SUB_GROUP_SIZE
                     + get_sub_group_local_id();
             if (off < SOFTMAX_AXIS_SIZE) denom_ += exp(d[k][i] - max_);
         }
 #else
         d[k] = exp(d[k] - max_);
         for (int i = 0; i < VECT_SIZE; ++i) {
-            int off = k * VECT_SIZE * SUB_GROUP_SIZE + i * SUB_GROUP_SIZE
+            long off = k * VECT_SIZE * SUB_GROUP_SIZE + i * SUB_GROUP_SIZE
                     + get_sub_group_local_id();
             if (off < SOFTMAX_AXIS_SIZE) denom_ += d[k][i];
         }
@@ -405,7 +405,7 @@ xe_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
         d[k] = d[k] * denom_;
 #endif
         for (int i = 0; i < VECT_SIZE; i++) {
-            int off = k * VECT_SIZE * SUB_GROUP_SIZE + i * SUB_GROUP_SIZE
+            long off = k * VECT_SIZE * SUB_GROUP_SIZE + i * SUB_GROUP_SIZE
                     + get_sub_group_local_id();
             if (off < SOFTMAX_AXIS_SIZE)
                 dst[off] = COMMON_X_TO_DATA(DST, scale * d[k][i]);
@@ -420,7 +420,7 @@ xe_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
         d[k] = d[k] * denom_;
 #endif
         for (int i = 0; i < VECT_SIZE; i++) {
-            int off = k * VECT_SIZE * SUB_GROUP_SIZE + i * SUB_GROUP_SIZE
+            long off = k * VECT_SIZE * SUB_GROUP_SIZE + i * SUB_GROUP_SIZE
                     + get_sub_group_local_id();
             if (off < SOFTMAX_AXIS_SIZE)
                 dst[off] = COMMON_X_TO_DATA(DST, scale * d[k][i]);

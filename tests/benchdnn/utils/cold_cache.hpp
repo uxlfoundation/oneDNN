@@ -25,22 +25,9 @@
 
 #include "dnnl_memory.hpp"
 
-enum class cold_cache_mode_t : unsigned {
-    // Cold cache is disabled.
-    none = 0x0,
-    // Cold cache is enabled for weights execution argument.
-    wei = 0x1,
-    // Cold cache is enabled for all execution arguments.
-    all = 0x2,
-    // Cold cache is enabled for custom execution arguments, which must be
-    // specified directly in code.
-    custom = 0x4,
-};
-
 // User's choices for enabling cold-cache.
 struct cold_cache_input_t {
-    // Requested mode.
-    cold_cache_mode_t cold_cache_mode_ = cold_cache_mode_t::none;
+    bool enabled_ = false;
     // Optional cold TLB (Translation Lookaside Buffer) enabling.
     bool cold_tlb_ = false;
     // If TLB is enabled, the size of extra memory to touch.
@@ -56,8 +43,7 @@ struct cold_cache_input_t {
     bool operator==(const cold_cache_input_t &other) const {
         // Don't compare `cold_tlb_size_` as it's the product of
         // `cold_tlb_size_str_`.
-        return cold_cache_mode_ == other.cold_cache_mode_
-                && cold_tlb_ == other.cold_tlb_
+        return enabled_ == other.enabled_ && cold_tlb_ == other.cold_tlb_
                 && cold_tlb_size_str_ == other.cold_tlb_size_str_;
     }
     bool operator!=(const cold_cache_input_t &other) const {
@@ -71,7 +57,6 @@ const cold_cache_input_t &default_cold_cache_input();
 
 dnn_mem_t &flush_cache_memory();
 
-std::ostream &operator<<(std::ostream &s, cold_cache_mode_t cold_cache_mode);
 std::ostream &operator<<(
         std::ostream &s, const cold_cache_input_t &cold_cache_input);
 
@@ -111,7 +96,6 @@ struct cold_cache_t {
 
 private:
     cold_cache_input_t cold_cache_input_;
-    bool enabled_ = false;
     size_t n_buffers_top_limit_ = 0;
     size_t n_buffers_bottom_limit_ = 0;
     // `n_buffers` is responsible for the number of allocated buffers per arg.
@@ -138,8 +122,7 @@ private:
 
     size_t cc_counter_ = 0;
 
-    // Returns `true`, if cold-cache was requested and eligible.
-    bool use_cold_cache(const std::vector<dnnl_exec_arg_t> &dnnl_args) const;
+    bool enabled() const { return cold_cache_input_.enabled_; }
 
     int thrash_reorder(size_t mem_size, size_t granularity) const;
 

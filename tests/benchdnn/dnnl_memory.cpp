@@ -1101,8 +1101,7 @@ int dnn_mem_t::initialize(
             // initializing cold cache buffers.
             // TODO: consider enabling broadly for perf mode.
             if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)
-                    || cold_cache_input.cold_cache_mode_
-                            != default_cold_cache_input().cold_cache_mode_) {
+                    || cold_cache_input.enabled_) {
 #if (DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
         && DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL)
                 if (!is_cpu(engine_))

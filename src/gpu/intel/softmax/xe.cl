@@ -146,8 +146,8 @@ xe_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
 
         __global SRC_DATA_T *src_copy = src;
         int axis_offset = find_axis_offset(i, subgroup_local_id, subgroup_id);
-        int data_off = mb * CHANNELS_PADDED * SOFTMAX_AXIS_SIZE + axis_offset
-                + channel_id;
+        off_t data_off = (off_t)mb * CHANNELS_PADDED * SOFTMAX_AXIS_SIZE
+                + axis_offset + channel_id;
         int buf_reads = get_buffer_size(i, subgroup_id, local_off);
 
         src_copy += data_off;
@@ -195,8 +195,8 @@ xe_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
 
         __global DST_DATA_T *dst_copy = dst;
         int axis_offset = find_axis_offset(i, subgroup_local_id, subgroup_id);
-        int data_off = mb * CHANNELS_PADDED * SOFTMAX_AXIS_SIZE + axis_offset
-                + channel_id;
+        off_t data_off = (off_t)mb * CHANNELS_PADDED * SOFTMAX_AXIS_SIZE
+                + axis_offset + channel_id;
         int buf_reads = get_buffer_size(i, subgroup_id, local_off);
         dst_copy += data_off;
         for (int k = 0, axis_channel_id = CHANNELS * buf_chunk; k < buf_reads;
@@ -219,12 +219,12 @@ xe_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
     const int channel_block = channel_id / CHANNELS;
     const int channel_in_block = channel_id % CHANNELS;
 
-    int data_off = mb * CHANNELS * SOFTMAX_AXIS_SIZE + channel_offset
+    off_t data_off = (off_t)mb * CHANNELS * SOFTMAX_AXIS_SIZE + channel_offset
             + channel_in_block;
     const int buf_reads = THREAD_BUF_SIZE;
 #else
-    int data_off = mb * CHANNELS_PADDED * SOFTMAX_AXIS_SIZE + channel_offset
-            + channel_id;
+    off_t data_off = (off_t)mb * CHANNELS_PADDED * SOFTMAX_AXIS_SIZE
+            + channel_offset + channel_id;
 
     const int local_off = local_id * THREAD_BUF_SIZE;
     int buf_reads;
@@ -284,7 +284,8 @@ xe_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
 #endif
 
 #else // NCHW kernel starts here
-    const int data_off = (get_global_id(0) / GROUP_SIZE) * SOFTMAX_AXIS_SIZE;
+    const off_t data_off
+            = (off_t)(get_global_id(0) / GROUP_SIZE) * SOFTMAX_AXIS_SIZE;
 
     COMMON_DATA8_T d[NUM_BUF];
     COMMON_DATA_T max_ = -COMMON_DATA_MAX;
@@ -448,10 +449,12 @@ xe_softmax_bwd(__global DST_DATA_T *dst, __global SRC_DATA_T *diff_src,
 #if IS_16C
     const int ic_blk = ic / IC;
     const int ic_in_blk = ic % IC;
-    int data_off = BATCH * IC * SOFTMAX_AXIS_SIZE * ic_blk
-            + batch * IC * SOFTMAX_AXIS_SIZE + ic_buff * sub_grp_id + ic_in_blk;
+    off_t data_off = (off_t)BATCH * IC * SOFTMAX_AXIS_SIZE * ic_blk
+            + (off_t)batch * IC * SOFTMAX_AXIS_SIZE + ic_buff * sub_grp_id
+            + ic_in_blk;
 #else
-    int data_off = batch * IC * SOFTMAX_AXIS_SIZE + ic_buff * sub_grp_id + ic;
+    off_t data_off
+            = (off_t)batch * IC * SOFTMAX_AXIS_SIZE + ic_buff * sub_grp_id + ic;
 #endif
 
     COMMON_DATA_T sbr = COMMON_DATA_ZERO;
@@ -489,7 +492,8 @@ xe_softmax_bwd(__global DST_DATA_T *dst, __global SRC_DATA_T *diff_src,
     }
 
 #else
-    const int data_off = (get_global_id(0) / GROUP_SIZE) * SOFTMAX_AXIS_SIZE;
+    const off_t data_off
+            = (off_t)(get_global_id(0) / GROUP_SIZE) * SOFTMAX_AXIS_SIZE;
 
     COMMON_DATA_T sbr = COMMON_DATA_ZERO;
     COMMON_DATA8_T diff_d[NUM_BUF];

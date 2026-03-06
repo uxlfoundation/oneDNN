@@ -123,6 +123,10 @@ status_t infer_dnnl_softmax_output_shape(op_t *n,
         std::vector<logical_tensor_t *> &inputs,
         std::vector<logical_tensor_t *> &outputs);
 
+status_t infer_dnnl_sdpa_bwd_output_shape(op_t *n,
+        std::vector<logical_tensor_t *> &inputs,
+        std::vector<logical_tensor_t *> &outputs);
+
 } // namespace dnnl_impl
 } // namespace graph
 } // namespace impl

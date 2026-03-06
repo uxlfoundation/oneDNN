@@ -47,6 +47,15 @@
 --stag=abcd --dtag=abcd
 --alg=LOGSOFTMAX --axis=3 64x3x224x224
 
+# regression: large-axis inf-as-zero
+--reset
+--allow-enum-tags-only=0
+--dir=FWD_I
+--stag=abcd --dtag=abcd
+--alg=SOFTMAX_INF_AS_ZERO
+--attr-scratchpad=user
+--axis=3 1x1x65536x65536
+
 # tail cases for byte-alignment
 --reset
 --dir=FWD_I

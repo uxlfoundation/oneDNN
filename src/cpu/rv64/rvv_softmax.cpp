@@ -27,11 +27,18 @@ namespace impl {
 namespace cpu {
 namespace rv64 {
 
+rvv_softmax_fwd_t::rvv_softmax_fwd_t(const pd_t *apd) : primitive_t(apd) {
+    if (pd()->use_jit_) {
+        affine_kernel_.reset(new jit_rvv_softmax_affine_kernel_t());
+    }
+}
+
 namespace {
 
 // f32 compute kernel
-void compute_softmax_f32_rvv(
-        const float *src, float *dst, dim_t len, bool is_logsoftmax) {
+void compute_softmax_f32_rvv(const float *src, float *dst, dim_t len,
+        bool is_logsoftmax,
+        const jit_rvv_softmax_affine_kernel_t *affine_kernel) {
     float max_val = -INFINITY;
     for (dim_t i = 0; i < len; ++i)
         max_val = src[i] > max_val ? src[i] : max_val;
@@ -43,13 +50,17 @@ void compute_softmax_f32_rvv(
         }
         const float log_sum = logf(sum_exp);
 
-        for (dim_t i = 0; i < len;) {
-            size_t vl = __riscv_vsetvl_e32m1((size_t)(len - i));
-            vfloat32m1_t vx = __riscv_vle32_v_f32m1(src + i, vl);
-            vfloat32m1_t vdelta = __riscv_vfsub_vf_f32m1(vx, max_val, vl);
-            vfloat32m1_t vy = __riscv_vfsub_vf_f32m1(vdelta, log_sum, vl);
-            __riscv_vse32_v_f32m1(dst + i, vy, vl);
-            i += (dim_t)vl;
+        if (affine_kernel) {
+            jit_rvv_softmax_affine_kernel_t::call_params_t p;
+            p.src = src;
+            p.dst = dst;
+            p.len = len;
+            p.sub = max_val + log_sum;
+            p.mul = 1.f;
+            (*affine_kernel)(&p);
+        } else {
+            for (dim_t i = 0; i < len; ++i)
+                dst[i] = src[i] - max_val - log_sum;
         }
     } else {
         float sum_exp = 0.f;
@@ -60,12 +71,17 @@ void compute_softmax_f32_rvv(
         }
 
         const float inv_sum = 1.0f / sum_exp;
-        for (dim_t i = 0; i < len;) {
-            size_t vl = __riscv_vsetvl_e32m1((size_t)(len - i));
-            vfloat32m1_t vy = __riscv_vle32_v_f32m1(dst + i, vl);
-            vy = __riscv_vfmul_vf_f32m1(vy, inv_sum, vl);
-            __riscv_vse32_v_f32m1(dst + i, vy, vl);
-            i += (dim_t)vl;
+        if (affine_kernel) {
+            jit_rvv_softmax_affine_kernel_t::call_params_t p;
+            p.src = dst;
+            p.dst = dst;
+            p.len = len;
+            p.sub = 0.f;
+            p.mul = inv_sum;
+            (*affine_kernel)(&p);
+        } else {
+            for (dim_t i = 0; i < len; ++i)
+                dst[i] *= inv_sum;
         }
     }
 }
@@ -145,7 +161,8 @@ status_t rvv_softmax_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
                 parallel_nd(rsp.outer_size, [&](dim_t outer) {
                     const dim_t base = outer * outer_stride;
                     compute_softmax_f32_rvv(src_f32 + base, dst_f32 + base,
-                            rsp.axis_size, rsp.is_logsoftmax);
+                            rsp.axis_size, rsp.is_logsoftmax,
+                            affine_kernel_.get());
                 });
             } else {
                 auto scratch = ctx.get_scratchpad_grantor().template get<char>(
@@ -169,8 +186,8 @@ status_t rvv_softmax_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
                             tmp[a] = src_f32[base + a * rsp.inner_size];
 
                         // contiguous kernel (in-place)
-                        compute_softmax_f32_rvv(
-                                tmp, tmp, rsp.axis_size, rsp.is_logsoftmax);
+                        compute_softmax_f32_rvv(tmp, tmp, rsp.axis_size,
+                                rsp.is_logsoftmax, affine_kernel_.get());
 
                         // write back
                         for (dim_t a = 0; a < rsp.axis_size; ++a)

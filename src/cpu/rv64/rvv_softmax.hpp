@@ -17,11 +17,14 @@
 #ifndef CPU_RV64_RVV_SOFTMAX_HPP
 #define CPU_RV64_RVV_SOFTMAX_HPP
 
+#include <memory>
+
 #include "common/dnnl_thread.hpp"
 #include "common/memory_tracking.hpp"
 #include "common/primitive.hpp"
 #include "cpu/cpu_softmax_pd.hpp"
 #include "cpu/rv64/cpu_isa_traits.hpp"
+#include "cpu/rv64/jit_rvv_softmax_affine_kernel.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -42,6 +45,7 @@ struct rvv_softmax_fwd_t : public primitive_t {
         DECLARE_COMMON_PD_T("RISCV64GCV", rvv_softmax_fwd_t);
 
         rvv_softmax_conf_t rsp_;
+        bool use_jit_ = false;
 
         status_t init(engine_t *engine) {
             UNUSED(engine);
@@ -68,6 +72,7 @@ struct rvv_softmax_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_SOFTMAX(src_md()->data_type == dst_md()->data_type,
                     VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_SOFTMAX(mayiuse(v), VERBOSE_UNSUPPORTED_ISA);
             if (is_f16) {
                 VDISPATCH_SOFTMAX(mayiuse(zvfh), VERBOSE_UNSUPPORTED_ISA);
             }
@@ -77,6 +82,11 @@ struct rvv_softmax_fwd_t : public primitive_t {
             VDISPATCH_SOFTMAX(
                     check_layouts(src_d, dst_d), VERBOSE_UNSUPPORTED_TAG);
 
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
+            use_jit_ = rsp_.data_type == data_type::f32;
+#else
+            use_jit_ = false;
+#endif
             init_scratchpad();
 
             return status::success;
@@ -105,7 +115,7 @@ struct rvv_softmax_fwd_t : public primitive_t {
         int nthr_ = 0;
     };
 
-    rvv_softmax_fwd_t(const pd_t *apd) : primitive_t(apd) {}
+    rvv_softmax_fwd_t(const pd_t *apd);
     status_t execute(const exec_ctx_t &ctx) const override {
         return execute_forward(ctx);
     }
@@ -113,6 +123,7 @@ struct rvv_softmax_fwd_t : public primitive_t {
 private:
     status_t execute_forward(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
+    std::unique_ptr<jit_rvv_softmax_affine_kernel_t> affine_kernel_;
 };
 
 } // namespace rv64

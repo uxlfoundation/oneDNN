@@ -405,6 +405,14 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         if (bgmmc_.with_wei_decompression && bgmmc_.has_zero_point_b)
             brg.skip_zp_b_compensation = true;
         if (bgmmc_.apply_scales_in_buffer_b) brg.skip_scales = true;
+        // Fill up the scales info in case it's computing in brgemm
+        if (!brg.skip_scales && bgmmc_.with_wei_scales) {
+            brg.is_single_wei_scale = bgmmc_.is_wei_scale_common;
+            brg.is_oc_wei_scales = bgmmc_.is_wei_scale_per_n;
+            brg.is_ic_wei_scales = bgmmc_.is_wei_scale_per_k;
+            brg.wei_scale_k_group_size = bgmmc_.wei_scales_k_gsize;
+            brg.dt_wei_scales = bgmmc_.wei_scales_dt;
+        }
         CHECK(brgemm_desc_set_postops(
                 &brg, attr(), &dst_md_, LDD, bgmmc_.bia_dt));
 
@@ -801,6 +809,11 @@ void brgemm_matmul_t<isa>::compute_kernel(
                     = batch_first_dim_idx * (M * N)
                     + (dst_row_logical_off * N + n);
             const char *dst_anchor_point = brgmm_ctx.get_data_C_ptr(0, 0, 0);
+            // k_idx in group is used for postops scales apply when it over IC
+            const auto k_idx_in_group = bgmmc.wei_scales_k_gsize > 0
+                    ? k_blk_idx * bgmmc.K_blk * bgmmc.brgemm_batch_size
+                            % bgmmc.wei_scales_k_gsize
+                    : 0;
             const brgemm_post_ops_data_t post_ops_data {
                     static_cast<const void *>(ptr_bias),
                     post_ops_binary_rhs_arg_vec.data(), static_cast<size_t>(n),
@@ -811,7 +824,8 @@ void brgemm_matmul_t<isa>::compute_kernel(
                     brgmm_ctx.get_zp_c_ptr(), false, 1, false, false,
                     brgmm_ctx.get_src_scales_ptr(),
                     brgmm_ctx.get_wei_scales_ptr(n),
-                    brgmm_ctx.get_dst_scales_inv_ptr(ithr)};
+                    brgmm_ctx.get_dst_scales_inv_ptr(ithr), nullptr,
+                    k_idx_in_group};
             brgemm_kernel_execute_postops(brg_kernel, gemm_batch, addr_batch,
                     (void *)ptr_C, (void *)ptr_D, post_ops_data, scratch,
                     &leading_dimensions);

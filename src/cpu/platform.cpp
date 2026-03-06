@@ -32,6 +32,7 @@
 
 #if DNNL_X64
 #include "cpu/x64/cpu_isa_traits.hpp"
+#include "cpu/x64/platform.hpp"
 #elif DNNL_AARCH64
 #include "cpu/aarch64/cpu_isa_traits.hpp"
 #if defined(DNNL_AARCH64_USE_ACL)
@@ -256,8 +257,11 @@ unsigned get_per_core_cache_size(int level) {
             default: return 0U;
         }
     };
-
+// TODO: George Remove before final PR
+// Enable legacy per-core cache size calculation for comparison/testing
+#define USE_LEGACY_PER_CORE_CACHE_SIZE 0
 #if DNNL_X64
+#if USE_LEGACY_PER_CORE_CACHE_SIZE
     using namespace x64;
     if (cpu().getDataCacheLevels() == 0) return guess(level);
 
@@ -267,7 +271,58 @@ unsigned get_per_core_cache_size(int level) {
     } else
         return 0;
 #else
+    if (x64::cpu().getDataCacheLevels() == 0) return guess(level);
+    // For hybrid CPUs, the per-core cache size returned will be minimum cache size available across P-cores and E-cores
+    // for the given cache level, which is a more conservative estimate for performance portability. Experiments indicate,
+    // the performance impact of under utilizing cache is less severe than the performance impact of cache misses from
+    // over utilizing cache.
+    return x64::platform::get_per_core_cache_size(level);
+#endif
+#else
     return guess(level);
+#endif
+}
+
+unsigned get_per_core_cache_size_pcore(int level) {
+#if DNNL_X64
+    return x64::platform::get_per_core_cache_size(
+            level, x64::platform::behavior_t::p_core);
+#else
+    return get_per_core_cache_size(level);
+#endif
+}
+
+unsigned get_per_core_cache_size_lp_core(int level) {
+#if DNNL_X64
+    return x64::platform::get_per_core_cache_size(
+            level, x64::platform::behavior_t::lp_core);
+#else
+    return get_per_core_cache_size(level);
+#endif
+}
+
+unsigned get_per_core_cache_size_lpe_core(int level) {
+#if DNNL_X64
+    return x64::platform::get_per_core_cache_size(
+            level, x64::platform::behavior_t::lpe_core);
+#else
+    return 0;
+#endif
+}
+
+bool is_hybrid_cpu() {
+#if DNNL_X64
+    return x64::platform::is_hybrid();
+#else
+    return false;
+#endif
+}
+
+bool has_lpe_core_cpu() {
+#if DNNL_X64
+    return x64::platform::has_lpe_core();
+#else
+    return false;
 #endif
 }
 

@@ -318,12 +318,7 @@ jit_sse41_gemv_n_f32_kern_t::jit_sse41_gemv_n_f32_kern_t(void)
     , has_avx512_(mayiuse(avx512_core) && __BUILD_GEMM_AVX512)
     , has_avx2_(mayiuse(avx2) && __BUILD_GEMM_AVX2)
     , has_avx_(mayiuse(avx) && __BUILD_GEMM_AVX2)
-    , has_sse41_(mayiuse(sse41) && __BUILD_GEMM_SSE41)
-    , arg_lda_(0)
-    , arg_x_(0)
-    , arg_incx_(0)
-    , arg_y_(0)
-    , arg_incy_(0) {
+    , has_sse41_(mayiuse(sse41) && __BUILD_GEMM_SSE41) {
 
     int unroll_m = 0;
     int unroll_n = 0;

@@ -283,12 +283,7 @@ jit_sse41_gemv_t_f32_kern_t::jit_sse41_gemv_t_f32_kern_t()
     , AO_(r14)
     , XO_(r15)
     , YO_(rbx)
-    , YO2_(rbp)
-    , arg_lda_(0)
-    , arg_x_(0)
-    , arg_incx_(0)
-    , arg_y_(0)
-    , arg_incy_(0) {
+    , YO2_(rbp) {
 
     // Assign integer registers
     M_ = abi_param1;

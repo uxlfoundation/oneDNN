@@ -273,12 +273,12 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
         temp += BIA_TO_REF(bia[bia_off]);
 #endif // WITH_BIAS
 
-        float dst_data;
+        POST_OP_DATA_T dst_data;
 #if WITH_SUM
-        dst_data = convert_float(DATA_TO_REF(C[dst_off]));
+        dst_data = (POST_OP_DATA_T)DATA_TO_REF(C[dst_off]);
 #endif // WITH_SUM
 
-        float po_acc = convert_float(temp);
+        POST_OP_DATA_T po_acc = temp;
 
 #if WITH_DROPOUT
 #if WITH_SEED_S64 && USE_OFFSET

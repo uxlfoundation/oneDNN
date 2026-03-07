@@ -64,13 +64,7 @@ struct settings_t : public base_settings_t {
 
 // TODO evaluate prb_t struct
 struct prb_t {
-    prb_t(const deserialized_graph_t &dg, const size_t &expected_n_partition)
-        : dg(dg), expected_n_partition(expected_n_partition) {
-
-        const auto &fpmath = dg.get_fpmath_mode();
-        fpmath_mode.mode_ = fpmath.first;
-        fpmath_mode.apply_to_int_ = str2bool(fpmath.second.c_str());
-    }
+    prb_t(const deserialized_graph_t &dg, const size_t &expected_n_partition);
 
     deserialized_graph_t dg;
     size_t expected_n_partition;

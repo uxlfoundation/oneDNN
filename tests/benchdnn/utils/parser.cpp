@@ -28,7 +28,6 @@
 namespace parser {
 
 bool last_parsed_is_problem = false;
-const size_t eol = std::string::npos;
 dnnl::impl::stringstream_t help_ss;
 
 static const std::string benchdnn_url
@@ -116,6 +115,25 @@ float stof_safe(const std::string &s) {
     }
     return value;
 }
+
+bool parse_bool(const std::string &s) {
+    if (s == "true" || s == "1") {
+        return true;
+    } else if (s == "false" || s == "0") {
+        return false;
+    } else {
+        BENCHDNN_PRINT(0,
+                "Error: parsed value \'%s\' is expected to be a boolean value "
+                "or 0/1 integer value\n",
+                s.c_str());
+        SAFE_V(FAIL);
+    }
+    return false;
+}
+
+} // namespace parser_utils
+
+namespace parser_functions {
 
 attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
     attr_t::post_ops_t v;
@@ -402,7 +420,7 @@ attr_t::deterministic_t parse_attr_deterministic_func(const std::string &s) {
     attr_t::deterministic_t v;
     if (s.empty()) return v;
 
-    v.enabled = str2bool(s.c_str());
+    v.enabled = parser_utils::parse_bool(s);
     return v;
 }
 
@@ -416,7 +434,7 @@ attr_t::fpmath_mode_t parse_attr_fpmath_mode_func(const std::string &s) {
     if (start_pos == std::string::npos) return v;
 
     subs = get_substr(s, start_pos, '\0');
-    v.apply_to_int = str2bool(subs.c_str());
+    v.apply_to_int = parser_utils::parse_bool(subs);
 
     return v;
 }
@@ -440,7 +458,8 @@ attr_t::rounding_mode_t parse_attr_rounding_mode_func(const std::string &s) {
             rm.set(arg,
                     str2rounding_mode(parser::get_substr(subs, subs_pos, ':')));
         if (subs_pos != std::string::npos)
-            rm.set_seed(stoll_safe(get_substr(subs, subs_pos, ':')));
+            rm.set_seed(
+                    parser_utils::stoll_safe(get_substr(subs, subs_pos, ':')));
     }
     return rm;
 }
@@ -451,7 +470,7 @@ attr_t::dropout_t parse_attr_dropout_func(const std::string &s) {
 
     size_t start_pos = 0;
     auto subs = get_substr(s, start_pos, ':');
-    v.p = stof_safe(subs);
+    v.p = parser_utils::stof_safe(subs);
     if ((v.p < 0.f) || (v.p > 1.f)) {
         BENCHDNN_PRINT(0, "Error: bad dropout probability value: %f\n", v.p);
         SAFE_V(FAIL);
@@ -459,7 +478,7 @@ attr_t::dropout_t parse_attr_dropout_func(const std::string &s) {
     if (start_pos == std::string::npos) return v;
 
     subs = get_substr(s, start_pos, ':');
-    v.seed = stoll_safe(subs);
+    v.seed = parser_utils::stoll_safe(subs);
     if (start_pos == std::string::npos) return v;
 
     v.tag = get_substr(s, start_pos, ':');
@@ -471,7 +490,7 @@ attr_t::dropout_t parse_attr_dropout_func(const std::string &s) {
     if (start_pos == std::string::npos) return v;
 
     subs = get_substr(s, start_pos, ':');
-    v.offset = stoll_safe(subs);
+    v.offset = parser_utils::stoll_safe(subs);
     if (v.offset < 0) {
         BENCHDNN_PRINT(
                 0, "Error: bad dropout offset value: %" PRId64 "\n", v.offset);
@@ -480,7 +499,7 @@ attr_t::dropout_t parse_attr_dropout_func(const std::string &s) {
     if (start_pos == std::string::npos) return v;
 
     subs = get_substr(s, start_pos, '\0');
-    v.use_host_scalars = str2bool(subs.c_str());
+    v.use_host_scalars = parser_utils::parse_bool(subs);
 
     return v;
 }
@@ -497,9 +516,9 @@ bool parse_impl_filter(impl_filter_t &impl_filter,
         for_(auto &e : v)
         for (auto c : {'"', '\''}) {
             size_t start_pos = 0;
-            while (start_pos != eol) {
+            while (start_pos != std::string::npos) {
                 start_pos = e.find_first_of(c, start_pos);
-                if (start_pos != eol) e.erase(start_pos, 1);
+                if (start_pos != std::string::npos) e.erase(start_pos, 1);
             }
         }
 
@@ -551,14 +570,18 @@ cold_cache_input_t str2cold_cache_input(const std::string &s) {
 
     size_t start_pos = 0;
     std::string mode_str = get_substr(s, start_pos, '+');
-    if (mode_str == "none") {
-        c.cold_cache_mode_ = cold_cache_mode_t::none;
-    } else if (mode_str == "wei") {
-        c.cold_cache_mode_ = cold_cache_mode_t::wei;
-    } else if (mode_str == "all") {
-        c.cold_cache_mode_ = cold_cache_mode_t::all;
-    } else if (mode_str == "custom") {
-        c.cold_cache_mode_ = cold_cache_mode_t::custom;
+    if (mode_str == "wei") {
+        c.enabled_ = true;
+        static std::once_flag flag;
+        std::call_once(flag, [&]() {
+            BENCHDNN_PRINT(0, "%s\n",
+                    "Warning: cold-cache mode \'wei\' is re-directed to "
+                    "\'all\'.");
+        });
+    } else if (mode_str == "all" || parser_utils::parse_bool(mode_str)) {
+        c.enabled_ = true;
+    } else if (mode_str == "none" || !parser_utils::parse_bool(mode_str)) {
+        c.enabled_ = false;
     } else {
         BENCHDNN_PRINT(0,
                 "Error: unknown cold-cache mode \'%s\'. Supported values are "
@@ -567,8 +590,7 @@ cold_cache_input_t str2cold_cache_input(const std::string &s) {
         SAFE_V(FAIL);
     }
 
-    if (c.cold_cache_mode_ == cold_cache_mode_t::none
-            && start_pos != std::string::npos) {
+    if (!c.enabled_ && start_pos != std::string::npos) {
         BENCHDNN_PRINT(0, "%s\n",
                 "Error: cold-cache extensions can't be enabled with cold-cache "
                 "disabled");
@@ -598,7 +620,7 @@ cold_cache_input_t str2cold_cache_input(const std::string &s) {
                 std::string size_str = ext_aux_str;
                 // Remove size modifier to feed the rest for value verification.
                 size_str.pop_back();
-                const float size = stof_safe(size_str);
+                const float size = parser_utils::stof_safe(size_str);
                 c.cold_tlb_size_ = static_cast<size_t>(
                         size * 1024 * 1024 * (last_char == 'G' ? 1024 : 1));
 
@@ -617,7 +639,7 @@ cold_cache_input_t str2cold_cache_input(const std::string &s) {
     return c;
 }
 
-} // namespace parser_utils
+} // namespace parser_functions
 
 // vector types
 bool parse_dir(std::vector<dir_t> &dir, const std::vector<dir_t> &def_dir,
@@ -847,8 +869,8 @@ bool parse_attr_post_ops(std::vector<attr_t::post_ops_t> &po, const char *str,
               "More details at "
             + doc_url + "knobs_attr.md\n";
     std::vector<attr_t::post_ops_t> def {attr_t::post_ops_t()};
-    return parse_vector_option(po, def, parser_utils::parse_attr_post_ops_func,
-            str, option_name, help);
+    return parse_vector_option(po, def,
+            parser_functions::parse_attr_post_ops_func, str, option_name, help);
 }
 
 bool parse_attr_scales(std::vector<attr_t::arg_scales_t> &scales,
@@ -891,7 +913,7 @@ bool parse_attr_rounding_mode(std::vector<attr_t::rounding_mode_t> &rm,
               "ARG.\n    More details at "
             + doc_url + "knobs_attr.md\n";
     return parse_vector_option(rm, {},
-            parser_utils::parse_attr_rounding_mode_func, str, option_name,
+            parser_functions::parse_attr_rounding_mode_func, str, option_name,
             help);
 }
 
@@ -917,7 +939,8 @@ bool parse_attr_fpmath_mode(std::vector<attr_t::fpmath_mode_t> &fpmath_mode,
               "fpmath_mode attribute. `MODE` values can be `strict` or "
               "`bf16`. `APPLY_TO_INT` values can be `true` or `false`.\n";
     return parse_vector_option(fpmath_mode, def_fpmath_mode,
-            parser_utils::parse_attr_fpmath_mode_func, str, option_name, help);
+            parser_functions::parse_attr_fpmath_mode_func, str, option_name,
+            help);
 }
 
 bool parse_attr_dropout(std::vector<attr_t::dropout_t> &dropout,
@@ -928,7 +951,7 @@ bool parse_attr_dropout(std::vector<attr_t::dropout_t> &dropout,
               "Specifies dropout attribute.\n    More details at "
             + doc_url + "knobs_attr.md\n";
     return parse_vector_option(dropout, def_dropout,
-            parser_utils::parse_attr_dropout_func, str, option_name, help);
+            parser_functions::parse_attr_dropout_func, str, option_name, help);
 }
 
 bool parse_attr_acc_mode(std::vector<dnnl_accumulation_mode_t> &acc_mode,
@@ -951,7 +974,7 @@ bool parse_attr_deterministic(
             = "MODE    (Default: `false`)\n    Specifies deterministic mode "
               "attribute. `MODE` values can be `true`, or `false`.\n";
     return parse_vector_option(deterministic, def_deterministic,
-            parser_utils::parse_attr_deterministic_func, str, option_name,
+            parser_functions::parse_attr_deterministic_func, str, option_name,
             help);
 }
 
@@ -1005,7 +1028,7 @@ bool parse_impl(impl_filter_t &impl_filter,
               "option has no effect. The option is opposite to "
               "`--skip-impl`.\n";
 
-    return parser_utils::parse_impl_filter(impl_filter, def_impl_filter,
+    return parser_functions::parse_impl_filter(impl_filter, def_impl_filter,
             /* use_impl = */ true, str, option_name, help);
 }
 
@@ -1020,7 +1043,7 @@ bool parse_skip_impl(impl_filter_t &impl_filter,
               "string literal entries with no spaces.\n    When empty, the "
               "option has no effect. The option is opposite to `--impl`.\n";
 
-    return parser_utils::parse_impl_filter(impl_filter, def_impl_filter,
+    return parser_functions::parse_impl_filter(impl_filter, def_impl_filter,
             /* use_impl = */ false, str, option_name, help);
 }
 
@@ -1031,8 +1054,8 @@ bool parse_inplace(std::vector<bool> &inplace,
             = "BOOL    (Default: `false`)\n    Instructs the driver to use "
               "same memory data handle for source and destination when set to "
               "`true`.\n";
-    return parse_vector_option(
-            inplace, def_inplace, str2bool, str, option_name, help);
+    return parse_vector_option(inplace, def_inplace, parser_utils::parse_bool,
+            str, option_name, help);
 }
 
 bool parse_skip_nonlinear(std::vector<bool> &skip,
@@ -1042,7 +1065,7 @@ bool parse_skip_nonlinear(std::vector<bool> &skip,
             = "BOOL    (Default: `false`)\n    Instructs the driver to treat "
               "transcendental activations as linear when set to `true`.\n";
     return parse_vector_option(
-            skip, def_skip, str2bool, str, option_name, help);
+            skip, def_skip, parser_utils::parse_bool, str, option_name, help);
 }
 
 bool parse_strides(std::vector<vdims_t> &strides,
@@ -1070,7 +1093,8 @@ bool parse_trivial_strides(std::vector<bool> &ts,
     static const std::string help
             = "BOOL    (Default: `false`)\n    Instructs the driver to use "
               "dense (trivial) strides when set to `true`.\n";
-    return parse_vector_option(ts, def_ts, str2bool, str, option_name, help);
+    return parse_vector_option(
+            ts, def_ts, parser_utils::parse_bool, str, option_name, help);
 }
 
 bool parse_scale_policy(std::vector<policy_t> &policy,
@@ -1170,7 +1194,7 @@ void parse_prb_vdims(
     }
 
     std::string name;
-    if (start_pos != eol) name = str.substr(start_pos);
+    if (start_pos != std::string::npos) name = str.substr(start_pos);
 
     vdims_t vdims;
     parse_multivector_str(vdims, {dims_t()}, parser_utils::stoll_safe,
@@ -1193,7 +1217,7 @@ void parse_prb_dims(prb_dims_t &prb_dims, const std::string &str) {
 
     prb_dims.ndims = static_cast<int>(prb_dims.dims.size());
 
-    if (start_pos != eol) prb_dims.name = str.substr(start_pos);
+    if (start_pos != std::string::npos) prb_dims.name = str.substr(start_pos);
 }
 
 // Global options
@@ -1205,8 +1229,8 @@ static bool parse_allow_enum_tags_only(const char *str,
               "`dnnl_format_tag_t` enumeration only.\n    When set to `true`, "
               "the only allowed format tags are the ones from "
               "`dnnl_format_tag_t` enumeration.\n";
-    return parse_single_value_option(
-            allow_enum_tags_only, true, str2bool, str, option_name, help);
+    return parse_single_value_option(allow_enum_tags_only, true,
+            parser_utils::parse_bool, str, option_name, help);
 }
 
 static bool parse_attr_same_pd_check(const char *str,
@@ -1217,8 +1241,8 @@ static bool parse_attr_same_pd_check(const char *str,
               "one without them.\n    When set to `true`, check would return "
               "an error if attributes caused fallback to a different "
               "implementation.\n";
-    return parse_single_value_option(
-            attr_same_pd_check, false, str2bool, str, option_name, help);
+    return parse_single_value_option(attr_same_pd_check, false,
+            parser_utils::parse_bool, str, option_name, help);
 }
 
 static bool parse_canonical(
@@ -1229,7 +1253,7 @@ static bool parse_canonical(
               "the driver prints all options and their values, including "
               "default ones.\n";
     return parse_single_value_option(
-            canonical, false, str2bool, str, option_name, help);
+            canonical, false, parser_utils::parse_bool, str, option_name, help);
 }
 
 static bool parse_check_ref_impl(
@@ -1239,8 +1263,8 @@ static bool parse_check_ref_impl(
               "an implementation name against the \'ref\' string pattern.\n    "
               "When set to `true`, the check would return an error if the "
               "implementation name contains such pattern.\n";
-    return parse_single_value_option(
-            check_ref_impl, false, str2bool, str, option_name, help);
+    return parse_single_value_option(check_ref_impl, false,
+            parser_utils::parse_bool, str, option_name, help);
 }
 
 static bool parse_cold_cache(
@@ -1261,8 +1285,8 @@ static bool parse_cold_cache(
               "(Gigabytes) characters, e.g., `tlb:500M`.\n";
 
     return parse_single_value_option(cold_cache_input,
-            default_cold_cache_input(), parser_utils::str2cold_cache_input, str,
-            option_name, help);
+            default_cold_cache_input(), parser_functions::str2cold_cache_input,
+            str, option_name, help);
 }
 
 static bool parse_cpu_isa_hints(
@@ -1323,8 +1347,8 @@ static bool parse_fast_ref(
               "faster reference path when doing correctness testing for "
               "`--engine=gpu`.\n    When set to `true`, the library best fit "
               "CPU implementation is used to compute the reference path.\n";
-    bool parsed = parse_single_value_option(
-            fast_ref, default_fast_ref, str2bool, str, option_name, help);
+    bool parsed = parse_single_value_option(fast_ref, default_fast_ref,
+            parser_utils::parse_bool, str, option_name, help);
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_NONE
     if (parsed && fast_ref) {
         fast_ref = false;
@@ -1344,7 +1368,8 @@ static bool parse_global_impl(
               "overrides any values from `--impl` or `--skip-impl` options met "
               "on the way.\n";
 
-    return parser_utils::parse_impl_filter(global_impl_filter, impl_filter_t(),
+    return parser_functions::parse_impl_filter(global_impl_filter,
+            impl_filter_t(),
             /* use_impl = */ true, str, option_name, help);
 }
 
@@ -1355,7 +1380,8 @@ static bool parse_global_skip_impl(
               "but overrides any values from `--impl` or `--skip-impl` options "
               "met on the way.\n";
 
-    return parser_utils::parse_impl_filter(global_impl_filter, impl_filter_t(),
+    return parser_functions::parse_impl_filter(global_impl_filter,
+            impl_filter_t(),
             /* use_impl = */ false, str, option_name, help);
 }
 
@@ -1385,11 +1411,15 @@ bool parse_ctx(std::vector<thr_ctx_t> &ctx,
             std::string val_str = get_substr(str, start_pos, ':');
             if (val_str != "auto") result.max_concurrency = std::stoll(val_str);
             /* core_type piece */
-            val_str = start_pos != eol ? get_substr(str, start_pos, ':') : "";
+            val_str = start_pos != std::string::npos
+                    ? get_substr(str, start_pos, ':')
+                    : "";
             if (val_str != "auto" && !val_str.empty())
                 result.core_type = std::stoll(val_str);
             /* nthr_per_core piece */
-            val_str = start_pos != eol ? get_substr(str, start_pos, ':') : "";
+            val_str = start_pos != std::string::npos
+                    ? get_substr(str, start_pos, ':')
+                    : "";
             if (val_str != "auto" && !val_str.empty())
                 result.nthr_per_core = std::stoll(val_str);
         } catch (const std::invalid_argument &) {
@@ -1486,7 +1516,7 @@ static bool parse_mem_check(
               "a device RAM capability check if a problem fits a device, when "
               "set to `true`.\n";
     return parse_single_value_option(
-            mem_check, true, str2bool, str, option_name, help);
+            mem_check, true, parser_utils::parse_bool, str, option_name, help);
 }
 
 static bool parse_memory_kind(
@@ -1681,7 +1711,7 @@ static bool parse_summary(
               "print additional statistics and information based on the STRING "
               "values.\n";
     return parse_single_value_option(summary, summary_t(),
-            parser_utils::parse_summary_str, str, option_name, help);
+            parser_functions::parse_summary_str, str, option_name, help);
 }
 
 static bool parse_verbose(
@@ -1803,7 +1833,7 @@ std::string get_substr(const std::string &s, size_t &start_pos, char delim,
         bool allow_dangling) {
     auto end_pos = s.find_first_of(delim, start_pos);
     auto sub = s.substr(start_pos, end_pos - start_pos);
-    start_pos = end_pos + (end_pos != eol);
+    start_pos = end_pos + (end_pos != std::string::npos);
     if (!allow_dangling && start_pos == s.size()) {
         BENCHDNN_PRINT(0, "%s \'%s\'\n",
                 "Error: dangling symbol at the end of input", s.c_str());

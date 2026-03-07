@@ -19,11 +19,22 @@
 #include "utils/cold_cache.hpp"
 #include "utils/fill.hpp"
 
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
+extern "C" dnnl_status_t dnnl_impl_gpu_flush_cache(
+        dnnl_stream_t stream, size_t bytes, dnnl_memory_t data);
+#endif
+
 cold_cache_input_t cold_cache_input;
 
 const cold_cache_input_t &default_cold_cache_input() {
     static const cold_cache_input_t cold_cache_input;
     return cold_cache_input;
+}
+
+dnn_mem_t &flush_cache_memory() {
+    static dnn_mem_t flush_cache_mem;
+    return flush_cache_mem;
 }
 
 namespace cold_cache_utils {
@@ -33,26 +44,17 @@ int get_arg_idx(const std::vector<dnnl_exec_arg_t> &dnnl_args, int arg) {
         if (dnnl_args[i].arg == arg) return i;
     return -1;
 }
-
-size_t get_arg_size(const std::vector<dnnl_exec_arg_t> &dnnl_args, int arg) {
-    const int arg_idx = get_arg_idx(dnnl_args, arg);
-    if (arg_idx < 0) return 0; // `arg` was not found, return empty size.
-
-    const auto &mem = dnnl_args[arg_idx].memory;
-    return dnnl_memory_desc_get_size(query_md(mem));
-}
 } // namespace cold_cache_utils
 
 cold_cache_t::cold_cache_t(
         const std::vector<dnnl_exec_arg_t> &dnnl_args, dnnl_stream_t stream)
     : cold_cache_input_(cold_cache_input)
-    , enabled_(use_cold_cache(dnnl_args))
     , n_buffers_top_limit_(
               is_gpu() ? gpu_n_buffers_top_limit_ : cpu_n_buffers_top_limit_) {
 
     // Note: there's an additional return from ctor below if it was identified
     // that no buffers are needed.
-    if (!enabled_) return;
+    if (!enabled()) return;
 
     static cpu_cache_args_t cpu_cache_args {};
     SAFE_V(get_cpu_cache_size(cpu_cache_args));
@@ -66,66 +68,31 @@ cold_cache_t::cold_cache_t(
 
     const auto cache_capacity
             = is_gpu() ? gpu_cache_capacity : cpu_cache_capacity;
-    const auto cache_size_upper_bound = is_gpu() ? gpu_cache_size_upper_bound
-                                                 : cpu_cache_size_upper_bound;
+    const size_t cold_mem_pool_size = is_gpu() ? gpu_cache_size_upper_bound
+                                               : cpu_cache_size_upper_bound;
 
-    size_t full_args_size = 0;
+    size_t cold_args_size = 0;
     for (auto &e : dnnl_args) {
         if (!e.memory) continue;
         // Scratchpad is never meant to be cold, remove it from counting.
         if (e.arg == DNNL_ARG_SCRATCHPAD) continue;
 
-        full_args_size += dnnl_memory_desc_get_size(query_md(e.memory));
-    }
-    size_t hot_args_size = full_args_size;
-    size_t cold_args_size = 0;
-
-    std::vector<int> cc_args; // future keys for cold_cache object.
-    if (cold_cache_input_.cold_cache_mode_ == cold_cache_mode_t::wei) {
-        cc_args = {DNNL_ARG_WEIGHTS};
-        const auto wei_size
-                = cold_cache_utils::get_arg_size(dnnl_args, DNNL_ARG_WEIGHTS);
-        hot_args_size -= wei_size;
-        cold_args_size += wei_size;
-    } else if (cold_cache_input_.cold_cache_mode_ == cold_cache_mode_t::all) {
-        cc_args.reserve(dnnl_args.size());
-        for (auto &e : dnnl_args) {
-            if (e.arg == DNNL_ARG_SCRATCHPAD) continue;
-
-            cc_args.push_back(e.arg);
-        }
-        hot_args_size = 0;
-        cold_args_size = full_args_size;
-    } else if (cold_cache_input_.cold_cache_mode_
-            == cold_cache_mode_t::custom) {
-        const std::vector<int> user_args = {/* DNNL_ARG_WEIGHTS, ... */};
-        cc_args = user_args;
-        if (cc_args.empty()) {
-            BENCHDNN_PRINT(0, "%s\n",
-                    "Error: execution args for custom cold cache weren't "
-                    "specified.");
-            SAFE_V(FAIL);
-        }
-        for (int arg : cc_args) {
-            const auto arg_size
-                    = cold_cache_utils::get_arg_size(dnnl_args, arg);
-            hot_args_size -= arg_size;
-            cold_args_size += arg_size;
-        }
-    } else {
-        assert(!"unknown cold cache mode!");
+        cold_args_size += dnnl_memory_desc_get_size(query_md(e.memory));
     }
 
-    BENCHDNN_PRINT(3,
-            "[COLD_CACHE]%s Size:%s; Limit:%s; Hot args:%s; Cold args:%s;\n",
+    // future keys for cold_cache object.
+    std::vector<int> cc_args;
+    cc_args.reserve(dnnl_args.size());
+    for (auto &e : dnnl_args) {
+        if (e.arg == DNNL_ARG_SCRATCHPAD) continue;
+
+        cc_args.push_back(e.arg);
+    }
+
+    BENCHDNN_PRINT(3, "[COLD_CACHE]%s Size:%s; Limit:%s; Cold args:%s;\n",
             (is_gpu() ? "[GPU]" : "[CPU]"), smart_bytes(cache_capacity).c_str(),
-            smart_bytes(cache_size_upper_bound).c_str(),
-            smart_bytes(hot_args_size).c_str(),
+            smart_bytes(cold_mem_pool_size).c_str(),
             smart_bytes(cold_args_size).c_str());
-
-    const size_t cold_mem_pool_size = cache_size_upper_bound > hot_args_size
-            ? cache_size_upper_bound - hot_args_size
-            : 0;
 
     size_t n_mem_pool_buffers = 0;
     // If `cold_args_size` are greater then allowed pool_size, it means there's
@@ -246,6 +213,8 @@ cold_cache_t::cold_cache_t(
         // Exact cache size for src is needed to secure from potential
         // non-temporal dst stores or addresses collisions which would result
         // in part cache update.
+        //
+        // TODO: maybe flush_kernel instead for GPU?
         const size_t mem_size = cache_capacity;
         static constexpr size_t cache_line_size = 64;
         SAFE_V(thrash_reorder(mem_size, /* granularity = */ cache_line_size));
@@ -270,7 +239,6 @@ cold_cache_t &cold_cache_t::operator=(cold_cache_t &&rhs) {
     // Not expected to move a cold cache in the middle of the executions.
     assert(rhs.cc_counter_ == 0);
 
-    enabled_ = rhs.enabled_;
     n_buffers_top_limit_ = rhs.n_buffers_top_limit_;
     n_buffers_bottom_limit_ = rhs.n_buffers_bottom_limit_;
     n_buffers_ = rhs.n_buffers_;
@@ -321,8 +289,29 @@ int cold_cache_t::thrash_reorder(size_t mem_size, size_t granularity) const {
     return OK;
 }
 
-bool cold_cache_t::update_dnnl_args(std::vector<dnnl_exec_arg_t> &dnnl_args) {
-    if (!enabled_) return true;
+void cold_cache_t::flush_cache(dnnl_stream_t stream) const {
+    // Flushing is only applied for GPU.
+    if (!is_gpu()) return;
+
+    // Keep initialization separately from a global reference to have an option
+    // to clean up that memory.
+    static std::once_flag flag;
+    std::call_once(flag, [&]() {
+        const dnnl_dims_t dims = {flush_cache_size_};
+        flush_cache_memory() = dnn_mem_t(
+                1, dims, dnnl_s8, "a", get_test_engine(), /* prefill = */ true);
+    });
+
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
+    DNN_SAFE_V(dnnl_impl_gpu_flush_cache(
+            stream, flush_cache_size_, flush_cache_memory().m_));
+#endif
+}
+
+bool cold_cache_t::update_dnnl_args(
+        dnnl_stream_t stream, std::vector<dnnl_exec_arg_t> &dnnl_args) {
+    if (!enabled()) return true;
     if (should_stop()) return false;
 
     for (const auto &cc_entry : cache_) {
@@ -353,6 +342,13 @@ bool cold_cache_t::update_dnnl_args(std::vector<dnnl_exec_arg_t> &dnnl_args) {
         if (st != OK) return false;
     }
 
+    // Flush GPU's L3 cache if memory arguments update was successful.
+    // Flushing is necessary to stabilize performance results for cases when L3
+    // data wasn't modified. The observation is in such scenario the eviction
+    // doesn't happen which leads to some buffers continue residing in L3
+    // showing faster results than they should.
+    flush_cache(stream);
+
     // Update counter outside of the loop to make **all** arguments use same
     // order element from the cache.
     cc_counter_++;
@@ -364,44 +360,9 @@ bool cold_cache_t::should_stop() const {
     return override_n_buffers_ && cc_counter_ == n_buffers_;
 }
 
-bool cold_cache_t::use_cold_cache(
-        const std::vector<dnnl_exec_arg_t> &dnnl_args) const {
-    const bool cc_wei
-            = cold_cache_input_.cold_cache_mode_ == cold_cache_mode_t::wei;
-    const bool cc_all
-            = cold_cache_input_.cold_cache_mode_ == cold_cache_mode_t::all;
-    const bool cc_custom
-            = cold_cache_input_.cold_cache_mode_ == cold_cache_mode_t::custom;
-    const bool has_weights
-            = cold_cache_utils::get_arg_idx(dnnl_args, DNNL_ARG_WEIGHTS) >= 0;
-    static int warning_printed = 0;
-    if (cc_wei && !has_weights && !warning_printed) {
-        BENCHDNN_PRINT(0, "%s\n",
-                "Warning: cold cache for weights was requested but weights "
-                "were not identified in execution arguments. Cold cache will "
-                "not be enabled.");
-        warning_printed = 1;
-    }
-
-    return (cc_wei && has_weights) || cc_all || cc_custom;
-}
-
-std::ostream &operator<<(std::ostream &s, cold_cache_mode_t cold_cache_mode) {
-    if (cold_cache_mode == cold_cache_mode_t::none)
-        s << "";
-    else if (cold_cache_mode == cold_cache_mode_t::wei)
-        s << "wei";
-    else if (cold_cache_mode == cold_cache_mode_t::all)
-        s << "all";
-    else if (cold_cache_mode == cold_cache_mode_t::custom)
-        s << "custom";
-    else { assert(!"unsupported cold cache mode"); }
-    return s;
-}
-
 std::ostream &operator<<(
         std::ostream &s, const cold_cache_input_t &cold_cache_input) {
-    s << cold_cache_input.cold_cache_mode_;
+    s << cold_cache_input.enabled_;
     if (cold_cache_input.cold_tlb_) {
         s << "+tlb";
         if (cold_cache_input.cold_tlb_size_str_

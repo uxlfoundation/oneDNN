@@ -267,9 +267,10 @@ int collect_mem_size(check_mem_size_args_t &mem_size_args,
 
 inline bool should_stop(const timer::timer_t &t) {
     const bool stop = false
-            || (fix_times_per_prb && t.times() >= fix_times_per_prb)
+            || (fix_times_per_prb
+                    && t.times() >= static_cast<size_t>(fix_times_per_prb))
             || (!fix_times_per_prb && t.total_ms() >= max_ms_per_prb
-                    && t.times() >= min_times_per_prb);
+                    && t.times() >= static_cast<size_t>(min_times_per_prb));
     return stop;
 }
 

@@ -63,6 +63,9 @@ status_t fill_blocked(memory_desc_t &md, std::initializer_list<int> perm,
                 ? DNNL_RUNTIME_DIM_VAL
                 : utils::rnd_up(md.dims[d], blocks[d]);
 
+    // tracks max stride for integral overflow checks
+    dim_t max_stride = 1;
+
     // setting the strides
     {
         dim_t stride = block_size;
@@ -77,7 +80,21 @@ status_t fill_blocked(memory_desc_t &md, std::initializer_list<int> perm,
             else if (pdim != 0)
                 stride *= pdim / blocks[d];
 
+            max_stride = nstl::max(max_stride, stride);
+
         } while (iter_d != perm.begin());
+    }
+
+    const size_t dt_size = types::data_type_size(md.data_type);
+
+    // guard against integral overflow due to strides exceeding numeric limits
+    for (int d = 0; d < md.ndims; ++d) {
+        size_t dim_val = static_cast<size_t>(md.padded_dims[d] / blocks[d]);
+        dim_val = dim_val == (size_t)max_stride ? 1 : dim_val;
+        if (md.padded_dims[d] == DNNL_RUNTIME_DIM_VAL) continue;
+        if (dim_val > SIZE_MAX / max_stride) return status::invalid_arguments;
+        if (dt_size && ((dim_val * max_stride) > SIZE_MAX / dt_size))
+            return status::invalid_arguments;
     }
 
     return status::success;

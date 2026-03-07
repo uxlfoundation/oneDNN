@@ -1135,6 +1135,9 @@ inline bool memory_desc_strides_check(
     };
     std::sort(perm, perm + md.ndims, idx_sorter);
 
+    // tracks max stride for integral overflow checks
+    dim_t max_stride = 1;
+
     dim_t min_stride = block_size;
     for (int idx = 0; idx < md.ndims; ++idx) {
         const int d = perm[idx];
@@ -1154,6 +1157,19 @@ inline bool memory_desc_strides_check(
         // update min_stride for next iteration
         const auto padded_dim = md.padded_dims[d];
         min_stride = block_size * strides[d] * (padded_dim / blocks[d]);
+        max_stride = nstl::max(max_stride, strides[d]);
+    }
+
+    const size_t dt_size = types::data_type_size(md.data_type);
+
+    // guard against integral overflow due to strides exceeding numeric limits
+    for (int d = 0; d < md.ndims; ++d) {
+        if (md.padded_dims[d] == DNNL_RUNTIME_DIM_VAL) continue;
+        size_t dim_val = static_cast<size_t>(md.padded_dims[d] / blocks[d]);
+        dim_val = dim_val == (size_t)max_stride ? 1 : dim_val;
+        if (dim_val > SIZE_MAX / max_stride) return false;
+        if (dt_size && ((dim_val * max_stride) > SIZE_MAX / dt_size))
+            return false;
     }
     return true;
 }
@@ -1344,9 +1360,22 @@ inline bool memory_desc_sanity_check(int ndims, const dims_t dims,
                     f8_e4m3, f16, bf16, f32, f64, s64, s32, s8, u8, s4, u4);
     if (!ok) return false;
 
+    // A bounds check on the dimensions ensures that the tensor size
+    // computation does not trigger a overflow during memory creation.
+    dim_t prod = 1;
+    for (int d = 0; d < ndims; ++d) {
+        if (dims[d] != DNNL_RUNTIME_DIM_VAL) {
+            if (dims[d] < 0) return false;
+            if (dims[d] > 0) {
+                if (prod > std::numeric_limits<dim_t>::max() / dims[d])
+                    return false;
+                prod *= dims[d];
+            }
+        }
+    }
+
     bool has_runtime_dims = false;
     for (int d = 0; d < ndims; ++d) {
-        if (dims[d] != DNNL_RUNTIME_DIM_VAL && dims[d] < 0) return false;
         if (dims[d] == DNNL_RUNTIME_DIM_VAL) has_runtime_dims = true;
     }
 

@@ -25,6 +25,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 #include <locale>
 #include <sstream>
 #include <string>
@@ -296,8 +297,16 @@ constexpr T array_product(const T *arr) {
 template <typename T, typename R = T>
 inline R array_product(const T *arr, size_t size) {
     R prod = 1;
-    for (size_t i = 0; i < size; ++i)
+    for (size_t i = 0; i < size; ++i) {
+        if (arr[i] > 0) {
+            assert(prod <= std::numeric_limits<R>::max() / arr[i]
+                    && prod >= std::numeric_limits<R>::min() / arr[i]);
+        } else if (arr[i] < 0) {
+            assert(prod <= std::numeric_limits<R>::min() / arr[i]
+                    && prod >= std::numeric_limits<R>::max() / arr[i]);
+        }
         prod *= arr[i];
+    }
     return prod;
 }
 

@@ -53,7 +53,7 @@ void Generator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, 
     // The host side arguments with 32 byte size registers (DG2)
     // use 16 registers include padding bytes (aligned with 128 bytes)
     // r0, r4 are reserved for system threads
-    state.ra.claim((GRF::bytes(hw) >= 64) ? r0-r6 : r0-r15);
+    state.ra.claim((GRF::bytes(hw) >= 64) ? r0-r9 : r0-r15);
 
     state.fullK = state.inputs.k;
 

@@ -144,3 +144,12 @@
 # precomputed reductions for zero points
 --reset
 --batch=harness_matmul_precomp_reductions
+
+# regression: binary post-op with explicit 2D format tag and transposed dst (swap_ab path)
+# MFDNN-14726: MatrixAddressing layout in problem.binary was not updated on swap_ab
+--reset
+--allow-enum-tags-only=0
+--dt=f16:f16:f16
+--stag=ab,ba --wtag=ab,ba --dtag=ba
+--attr-post-ops=linear:1.2+add:f16:3:ab+linear:1,linear:1.2+add:f16:3:ba+linear:1
+10x50:50x25

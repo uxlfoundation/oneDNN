@@ -694,7 +694,11 @@ status_t pd_t::init_GEMMProblem(
             gpu_post_ops, post_ops_, dst_md(), get_post_op_specializations()));
 
     CHECK(transfer_post_ops(problem, std::move(gpu_post_ops)));
-    if (swap_ab()) problem.postOps.transpose();
+    if (swap_ab()) {
+        problem.postOps.transpose();
+        for (auto &b : problem.binary)
+            b.transpose();
+    }
 
     auto reduce_ab = sum_ab();
     if (c_offset || bias || reduce_ab != sum_ab::sum_none) {

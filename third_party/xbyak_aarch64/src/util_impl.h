@@ -61,11 +61,13 @@ protected:
   uint32_t lastDataCacheLevel_;
   Type type_ = 0;
   uint64_t sveLen_ = 0;
+  uint64_t smeLen_ = 0;
   const char *implementer_ = nullptr;
 
   void init();
   void setImplementer();
   void setLastDataCacheLevel();
+  void setSmeLen();
 
 public:
   CpuInfo() {}
@@ -79,6 +81,7 @@ public:
   int getLastDataCacheLevel() const;
   int getNumCores(Arm64CpuTopologyLevel level = CoreLevel) const;
   uint64_t getSveLen() const;
+  uint64_t getSmeLen() const;
   Type getType() const;
   int getUnifiedCacheSize(int level) const;
   void put() const;

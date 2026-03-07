@@ -1514,6 +1514,7 @@ private:
     std::vector<tail_processing_t> m_tail_processing_;
 };
 
+template struct brgemm_matmul_t<sme>;
 template struct brgemm_matmul_t<sve_512>;
 template struct brgemm_matmul_t<sve_256>;
 template struct brgemm_matmul_t<sve_128>;

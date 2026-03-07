@@ -20,7 +20,7 @@
 class Operand {
 public:
   static const int VL = 4;
-  enum Kind { NONE, RREG, VREG_SC, VREG_VEC, ZREG, PREG_Z, PREG_M, OPMASK };
+  enum Kind { NONE, RREG, VREG_SC, VREG_VEC, ZREG, ZAREG, PREG_Z, PREG_M, OPMASK };
 
   enum Code {
     X0 = 0,
@@ -620,4 +620,118 @@ public:
   PRegH h;
   PRegS s;
   PRegD d;
+};
+
+// SME ZA register
+class _ZAReg : public Reg {
+public:
+  explicit _ZAReg(uint32_t index, uint32_t bits = 0) : Reg(index, ZAREG, bits) {}
+};
+
+class ZARegS : public _ZAReg {
+public:
+  explicit ZARegS(uint32_t index) : _ZAReg(index, 32) {}
+};
+
+class ZARegD : public _ZAReg {
+  public:
+    explicit ZARegD(uint32_t index) : _ZAReg(index, 64) {}
+  };
+
+// Matrix Register for SME
+class ZAReg : public _ZAReg {
+  uint32_t _wvIdx;
+  uint32_t _offs;
+public:
+  explicit ZAReg(uint32_t index) : _ZAReg(index), s(index), d(index) {}
+  explicit ZAReg(uint32_t index, uint32_t bits, const WReg &wv, uint32_t offs) : _ZAReg(index, bits), _wvIdx(wv.getIdx()), _offs(offs), s(index), d(index) {}
+  ZAReg operator()(const WReg &wv, uint32_t offs) const { return ZAReg(getIdx(), getBit(), wv, offs); }
+  uint32_t getWvIdx() const { return _wvIdx; }
+  uint32_t getOffs() const { return _offs; }
+  ZARegS s;
+  ZARegD d;
+};
+
+class _ZAHVReg : public Reg {
+  bool _isVertical;
+  uint32_t _wsIdx;
+  uint32_t _offs;
+public:
+  explicit _ZAHVReg(uint32_t index, bool isVertical = false, uint32_t bits = 0) : Reg(index, ZAREG, bits), _isVertical(isVertical), _wsIdx(31), _offs(31) {}
+  explicit _ZAHVReg(uint32_t index, bool isVertical, uint32_t bits, const WReg &ws, uint32_t offs) : Reg(index, ZAREG, bits), _isVertical(isVertical), _wsIdx(ws.getIdx()), _offs(offs) {}
+  _ZAHVReg operator()(const WReg &ws, uint32_t offs) const { return _ZAHVReg(getIdx(), _isVertical, getBit(), ws, offs); }
+  bool isV() const { return _isVertical; }
+  uint32_t getWsIdx() const { return _wsIdx; }
+  uint32_t getOffs() const { return _offs; }
+};
+
+class ZAHRegB : public _ZAHVReg {
+public:
+  explicit ZAHRegB(uint32_t index) : _ZAHVReg(index, false, 8) {}
+};
+
+class ZAHRegH : public _ZAHVReg {
+public:
+  explicit ZAHRegH(uint32_t index) : _ZAHVReg(index, false, 16) {}
+};
+
+class ZAHRegS : public _ZAHVReg {
+public:
+  explicit ZAHRegS(uint32_t index) : _ZAHVReg(index, false, 32) {}
+};
+
+class ZAHRegD : public _ZAHVReg {
+public:
+  explicit ZAHRegD(uint32_t index) : _ZAHVReg(index, false, 64) {}
+};
+
+class ZAHRegQ : public _ZAHVReg {
+public:
+  explicit ZAHRegQ(uint32_t index) : _ZAHVReg(index, false, 128) {}
+};
+class ZAHReg : public _ZAHVReg {
+public:
+  explicit ZAHReg(uint32_t index) : _ZAHVReg(index), b(index), h(index), s(index), d(index), q(index) {}
+
+  ZAHRegB b;
+  ZAHRegH h;
+  ZAHRegS s;
+  ZAHRegD d;
+  ZAHRegQ q;
+};
+
+class ZAVRegB : public _ZAHVReg {
+public:
+  explicit ZAVRegB(uint32_t index) : _ZAHVReg(index, true, 8) {}
+};
+
+class ZAVRegH : public _ZAHVReg {
+public:
+  explicit ZAVRegH(uint32_t index) : _ZAHVReg(index, true, 16) {}
+};
+
+class ZAVRegS : public _ZAHVReg {
+public:
+  explicit ZAVRegS(uint32_t index) : _ZAHVReg(index, true, 32) {}
+};
+
+class ZAVRegD : public _ZAHVReg {
+public:
+  explicit ZAVRegD(uint32_t index) : _ZAHVReg(index, true, 64) {}
+};
+
+class ZAVRegQ : public _ZAHVReg {
+public:
+  explicit ZAVRegQ(uint32_t index) : _ZAHVReg(index, true, 128) {}
+};
+  
+class ZAVReg : public _ZAHVReg {
+public:
+  explicit ZAVReg(uint32_t index) : _ZAHVReg(index, true), b(index), h(index), s(index), d(index), q(index) {}
+
+  ZAVRegB b;
+  ZAVRegH h;
+  ZAVRegS s;
+  ZAVRegD d;
+  ZAVRegQ q;
 };

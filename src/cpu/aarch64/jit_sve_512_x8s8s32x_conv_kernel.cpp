@@ -1160,7 +1160,7 @@ status_t jit_sve_512_x8s8s32x_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
                         data_type::s8, data_type::u8)))
         return status::unimplemented;
 
-    jcp = zero<decltype(jcp)>();
+    jcp = utils::zero<decltype(jcp)>();
     jcp.nthr = nthreads;
     jcp.ndims = ndims;
     jcp.prop_kind = cd.prop_kind;

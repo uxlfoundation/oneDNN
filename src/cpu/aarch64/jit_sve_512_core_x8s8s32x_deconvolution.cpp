@@ -70,7 +70,7 @@ status_t jit_sve_512_core_x8s8s32x_deconv_fwd_kernel_wrapper_t::init_conf(
                         data_type::s8, data_type::u8)))
         return status::unimplemented;
 
-    jcp = zero<decltype(jcp)>();
+    jcp = utils::zero<decltype(jcp)>();
     jcp.nthr = nthreads;
 
     const bool with_groups = weights_d.ndims() == src_d.ndims() + 1;

@@ -1609,7 +1609,7 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     const bool with_groups = weights_d.ndims() == src_d.ndims() + 1;
     int ndims = src_d.ndims();
 
-    jcp = zero<decltype(jcp)>();
+    jcp = utils::zero<decltype(jcp)>();
     jcp.isa = isa;
 
     jcp.ndims = ndims;
@@ -1838,14 +1838,14 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     MAYBE_UNUSED(selected_ur);
 
     auto try_exec_type = [&]() {
-        brg_blocking_t best_brgb = zero<decltype(best_brgb)>();
+        brg_blocking_t best_brgb = utils::zero<decltype(best_brgb)>();
         best_brgb.oc_block = min_oc_block;
         auto start_ocb = 4;
         start_ocb = nstl::min(div_up(jcp.oc, jcp.acc_simd_w), start_ocb);
 
         auto finish_ocb = 1;
         for (auto ocb = start_ocb; ocb >= finish_ocb; ocb--) {
-            brg_blocking_t cur_brgb = zero<decltype(best_brgb)>();
+            brg_blocking_t cur_brgb = utils::zero<decltype(best_brgb)>();
             cur_brgb.get_from_jcp(jcp);
             cur_brgb.oc_block = ocb * jcp.acc_simd_w;
             cur_brgb.nb_oc = utils::div_up(jcp.oc, cur_brgb.oc_block);
@@ -2082,7 +2082,7 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     // max_batch is 1 for 1x1 convolutions
     jcp.max_batch = 1;
 
-    brg_blocking_t best_brgb = zero<decltype(best_brgb)>();
+    brg_blocking_t best_brgb = utils::zero<decltype(best_brgb)>();
     best_brgb.oc_block = min_oc_block;
     auto start_ocb = 4;
     start_ocb = nstl::min(div_up(jcp.oc, jcp.acc_simd_w), start_ocb);
@@ -2097,7 +2097,7 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     }
 
     for (auto ocb = start_ocb; ocb >= finish_ocb; ocb--) {
-        brg_blocking_t cur_brgb = zero<decltype(cur_brgb)>();
+        brg_blocking_t cur_brgb = utils::zero<decltype(cur_brgb)>();
         cur_brgb.get_from_jcp(jcp);
         cur_brgb.oc_block = ocb * min_oc_block;
         cur_brgb.nb_oc = utils::div_up(jcp.oc, cur_brgb.oc_block);

@@ -63,6 +63,7 @@ using namespace dnnl::impl::cpu::matmul;
 
 // clang-format off
 constexpr impl_list_item_t impl_list[] = REG_MATMUL_P({
+        CPU_INSTANCE_AARCH64(brgemm_matmul_t<sme>)
         CPU_INSTANCE_AARCH64(brgemm_matmul_t<sve_512>)
         CPU_INSTANCE_AARCH64_ACL(acl_lowp_matmul_sq_t)
         CPU_INSTANCE_AARCH64_ACL(acl_lowp_matmul_t)

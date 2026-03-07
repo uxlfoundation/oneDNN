@@ -119,10 +119,14 @@ void Generator<hw>::emul(const ngen::InstructionModifier &mod, const ngen::RegDa
 {
     bool is_xe3p = one_of(hw, {ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11, ngen::HW::XE3P_UNKNOWN});
     if (is_xe3p && (dst.getType() == DataType::bf && src1.getType() == DataType::f)){
-        auto tempRange = state.ra.alloc_range(div_up(mod.getExecSize(), elementsPerGRF(hw, DataType::bf)));;
-        auto temp = tempRange[0].bf(dst.getOffset())(1);
-        mov(mod, temp, src1);
-        mul(mod, dst, src0, temp);
+        auto tempRange = state.ra.alloc_range(div_up(mod.getExecSize(), elementsPerGRF(hw, DataType::bf)));
+        bool bcastSrc1 = src1.getHS() == 0;
+        int tmp_elems = bcastSrc1 ? 1 : mod.getExecSize();
+        auto tmp_mod = InstructionModifier(mod);
+        tmp_mod.setExecSize(tmp_elems);
+        auto temp = tempRange[0].bf(dst.getOffset());
+        mov(tmp_mod, temp(1), src1);
+        mul(mod, dst, src0, temp(bcastSrc1 ? 0 : 1));
         state.ra.safeRelease(tempRange);
     } else {
         ngen::EmulationImplementation::emul<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate, loc);

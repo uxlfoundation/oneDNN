@@ -370,7 +370,7 @@ inline void tile_store_t_slm_src1(q_tile_type *Q_tile, local QRY_DATA_T *Q_slm,
 
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) kernel void
 micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
-        const global VAL_DATA_T *V, global DST_DATA_T *A,
+        const global VAL_DATA_T *V, global float *ws, global DST_DATA_T *A,
 #if WITH_HOST_SCALE
         float scalar_scale, float inv_scalar_scale,
 #else
@@ -541,7 +541,6 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #endif
 #endif
 #endif
-        scale *= 1.442695f; // log2(e)
     }
 
 #if PREFETCH_K0
@@ -684,6 +683,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                         ldkq
 #endif
                 );
+
 #if KQ_F16_ACC
         s_tile_type_float S_tile;
         tile_copy_reblock(S_tile_f16, &S_tile);
@@ -778,11 +778,10 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                 /* cache */ LSC_LDCC_L1C_L3C);
 #endif
 #endif
-#ifndef ALT_MAX
+
         /* Read back WG-wide maxima */
         intel_work_group_barrier_wait(CLK_LOCAL_MEM_FENCE);
         tile_load_full(&S_max_tile, S_max_slm, ugemm_kq_wg_tile_n, sg_j0_kq, 0);
-#endif
 
 #if SOFTMAX_INF_AS_ZERO
 #define set_zeros(v) vselect(-FLT_MAX, v, visfinite(v))
@@ -792,39 +791,23 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         tile_vbroadcast_sub(&S_tile, S_max_tile);
 
 /* Scale + exponentiate */
-#define scaled_exp(x) native_vexp2(x *scale)
+#define scaled_exp(x) native_vexp2(x *scale * 1.442695f)
         tile_elementwise(S_tile, scaled_exp);
-
-#ifdef ALT_MAX
-        /* Read back WG-wide maxima and adjust S to match */
-        intel_work_group_barrier_wait(CLK_LOCAL_MEM_FENCE);
-        s_sum_tile_type S_max_tile1;
-        tile_copy(S_max_tile, S_max_tile1);
-        tile_load_full(&S_max_tile, S_max_slm, ugemm_kq_wg_tile_n, sg_j0_kq, 0);
-
-#define binary_exp_neg(x, y) native_vexp2(scale *((x) - (y)))
-        tile_binary(S_max_tile1, S_max_tile, binary_exp_neg);
-        tile_vbroadcast_mul(&S_tile, S_max_tile1);
-#endif
+#undef scaled_exp
 
         /* Accumulate sums. S tile is transposed for easy summation. */
         s_sum_tile_type S_sum_tile1;
         tile_fill(S_sum_tile1, 0.0f);
         tile_vreduce_add(S_tile, &S_sum_tile1);
 
-#if USE_SYSTOLIC_UKERNEL
-        /* Convert to half or bf16, VNNI format */
-        s_tile_type_packed S_tile_packed;
-        tile_copy_to_vec2(S_tile, S_tile_packed, VEC_TYPE2);
-
-        /* Store to SLM, in packed format */
-        tile_store_t_sys_src2(S_tile_packed, (local uint *)S_slm,
-                ugemm_vs_sg_tile_n, ugemm_kq_wg_tile_m / 2, sg_i0_kq / 2,
-                sg_j0_kq);
-#else
         /* Reblock and store to SLM */
         s_tile_type_reblock S_tile_reblock;
         tile_copy_reblock(S_tile, &S_tile_reblock);
+
+#if USE_SYSTOLIC_UKERNEL
+        tile_store_t_sys_src2(S_tile_reblock, (local FMA_TYPE *)S_slm,
+                ugemm_vs_sg_tile_n, ugemm_kq_wg_tile_m, sg_i0_kq, sg_j0_kq);
+#else
         tile_store_block_packed(S_tile_reblock, S_slm, ugemm_vs_sg_tile_n,
                 ugemm_kq_wg_tile_m, sg_j0_kq, sg_i0_kq);
 #endif
@@ -833,7 +816,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
         /* Rescale existing accumulator and sums to match new maxima */
         if (!first) {
-#define binary_exp_sub(x, y) native_vexp2(scale *((x) - (y)))
+#define binary_exp_sub(x, y) native_vexp2(scale * 1.442695f * ((x) - (y)))
 #define binary_mul(x, y) ((x) * (y))
             tile_binary(S_max_tile_old, S_max_tile, binary_exp_sub);
             tile_binary(S_sum_tile, S_max_tile_old, binary_mul);
@@ -997,6 +980,31 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         /* Wait for column sums to be ready */
         if (need_sum_barrier)
             intel_work_group_barrier_wait(CLK_LOCAL_MEM_FENCE);
+
+#if IS_TRAINING
+        s_sum_tile_type S_sum_total, S_sum_load;
+        tile_fill(S_sum_total, 0.f);
+#pragma unroll
+        for (uint sg1 = 0; sg1 < ugemm_kq_sg_per_wg_m; sg1++) {
+            tile_load_full(&S_sum_load, S_sum_slm, ugemm_kq_wg_tile_n,
+                    ugemm_kq_sg_tile_n * sg_j_kq, sg1);
+            tile_binary(S_sum_total, S_sum_load, binary_add);
+        }
+
+#define log2(x) (native_vlog2(x) * 0.6931471805f)
+        tile_elementwise(S_sum_total, log2);
+#define scale_op(x) ((x) * scale)
+        tile_elementwise(S_max_tile_old, scale_op);
+        tile_binary(S_max_tile_old, S_sum_total, binary_add);
+
+        // save columns logsumexp to workspace for training pass
+        const uint preprocess_batch = b1 * (DST_D1 * q) + b0 * q;
+
+        global float *ws_logsumexp = ws + preprocess_batch;
+        tile_store(S_max_tile_old, ws_logsumexp, q, 1, q, sg_j0_kq + wg_j0,
+                sg_i0_kq);
+        // sg_i0 specified to avoid OOB subgroups from aliasing
+#endif
 
         /* Load column sums from SLM + reduce in registers */
         a_scale_tile_type A_scale_tile, A_scale_tile_load;

@@ -16,6 +16,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <map>
+#include <unordered_map>
 
 #include "utils/cold_cache.hpp"
 #include "utils/fill.hpp"
@@ -58,15 +60,19 @@ std::string get_pattern(const std::string &option_name, bool with_args) {
     return s;
 }
 
+std::vector<std::string> &get_option_names() {
+    static std::vector<std::string> options;
+    return options;
+}
+
 void add_option_to_help(const std::string &option,
         const std::string &help_message, bool with_args) {
-    static std::vector<std::string> help_added;
-    for (const auto &e : help_added)
+    for (const auto &e : get_option_names())
         if (e == option) return;
 
     std::string option_str = get_pattern(option, with_args);
     help_ss << option_str << help_message << "\n";
-    help_added.push_back(option);
+    get_option_names().push_back(option);
 }
 
 bool has_only_digits(const std::string &s) {
@@ -115,6 +121,53 @@ float stof_safe(const std::string &s) {
         SAFE_V(FAIL);
     }
     return value;
+}
+
+// Computes Levenshtein distance between two strings, which indicated how many
+// symbols should be appended, replaced, or removed to obtain the input string.
+// The implementation follows this article:
+// https://en.wikipedia.org/wiki/Levenshtein_distance
+//
+// The function is designed to be called recursively, decreasing symbols in `in`
+// and `opt` by one.
+//
+// Note: to improve the performance of the routine, an internal cache is used.
+// Between different options there would be low similarity, thus, `reset_cache`
+// instructs to clear its content (called externally, not during recurse).
+size_t compute_distance(const std::string &in, const std::string &opt,
+        bool reset_cache = false) {
+    if (in.empty()) return opt.size();
+    if (opt.empty()) return in.size();
+    if (in.front() == opt.front())
+        return compute_distance(in.substr(1), opt.substr(1));
+
+    static std::map<std::pair<std::string, std::string>, size_t> cache;
+    if (reset_cache) cache.clear();
+    std::map<std::pair<std::string, std::string>, size_t>::iterator it {};
+
+    auto cache_shift_in_key = std::make_pair(in.substr(1), opt);
+    it = cache.find(cache_shift_in_key);
+    size_t shift_in_dist = SIZE_MAX;
+    if (it != cache.end()) {
+        shift_in_dist = it->second;
+    } else {
+        shift_in_dist = compute_distance(in.substr(1), opt);
+        cache.emplace(cache_shift_in_key, shift_in_dist);
+    }
+
+    auto cache_shift_opt_key = std::make_pair(in, opt.substr(1));
+    it = cache.find(cache_shift_opt_key);
+    size_t shift_opt_dist = SIZE_MAX;
+    if (it != cache.end()) {
+        shift_opt_dist = it->second;
+    } else {
+        shift_opt_dist = compute_distance(in, opt.substr(1));
+        cache.emplace(cache_shift_opt_key, shift_opt_dist);
+    }
+
+    size_t shift_both_dist = compute_distance(in.substr(1), opt.substr(1));
+    return std::min(std::min(shift_in_dist, shift_opt_dist), shift_both_dist)
+            + 1;
 }
 
 attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
@@ -1776,8 +1829,37 @@ void catch_unknown_options(const char *str) {
 
     std::string pattern = "--";
     if (parser_utils::option_matched(pattern, str)) {
-        BENCHDNN_PRINT(0, "%s %s \'%s\'\n",
-                "driver: ERROR: unknown option:", driver_name.c_str(), str);
+        std::string s(str);
+        auto equal_pos = s.find_first_of('=');
+        s = s.substr(2, equal_pos - 2);
+
+        // Try to provide similar options in case of minor typos.
+        // The search is based on Levenshtein distance between two strings.
+        //
+        // Note: print options when there's some similarity, but limit it by 6
+        // (taken experimentally) for long given options.
+        const size_t good_dist = std::min(s.size() - 1, size_t(6));
+        std::multimap<size_t, std::string> opt_distances;
+        size_t n_candidates = 0;
+        for (const auto &opt : parser_utils::get_option_names()) {
+            size_t dist = parser_utils::compute_distance(
+                    s, opt, /* reset_cache = */ true);
+            opt_distances.emplace(dist, opt);
+            if (dist <= good_dist) n_candidates++;
+        }
+
+        BENCHDNN_PRINT(0, "Error: unknown option for \'%s\' driver: \'%s\'.\n",
+                driver_name.c_str(), str);
+        if (n_candidates == 0) exit(2);
+
+        BENCHDNN_PRINT(0, "The most similar %s\n",
+                n_candidates == 1 ? "option is:" : "options are:");
+
+        for (const auto &e : opt_distances) {
+            if (e.first > good_dist) continue;
+            BENCHDNN_PRINT(0, "        %s\n", e.second.c_str());
+        }
+
         exit(2);
     }
 

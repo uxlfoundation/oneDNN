@@ -970,6 +970,76 @@ public:
     }
 };
 
+/** returns true if fp32 value denotes DNNL_RUNTIME_F32_VAL */
+inline bool is_runtime_value(float val) {
+    return utils::bit_cast<unsigned>(val) == DNNL_RUNTIME_F32_VAL_REP.u;
+}
+
+/** returns true if s32 value denotes DNNL_RUNTIME_S32_VAL */
+inline bool is_runtime_value(int val) {
+    return val == DNNL_RUNTIME_S32_VAL;
+}
+
+/** returns true if dim_t value denotes DNNL_RUNTIME_DIM_VAL */
+inline bool is_runtime_value(dim_t val) {
+    return val == DNNL_RUNTIME_DIM_VAL;
+}
+
+/** returns true if size_t value denotes DNNL_RUNTIME_SIZE_VAL */
+inline bool is_runtime_value(size_t val) {
+    return val == DNNL_RUNTIME_SIZE_VAL;
+}
+
+template <typename T>
+constexpr bool any_runtime_value(T item) {
+    return is_runtime_value(item);
+}
+template <typename T, typename... Args>
+bool any_runtime_value(T item, Args... item_others) {
+    return is_runtime_value(item) || any_runtime_value(item_others...);
+}
+
+template <typename T>
+constexpr bool all_runtime_values(T item) {
+    return is_runtime_value(item);
+}
+template <typename T, typename... Args>
+constexpr bool all_runtime_values(T item, Args... item_others) {
+    return is_runtime_value(item) && all_runtime_values(item_others...);
+}
+
+template <typename T>
+constexpr T runtime_value_for() {
+    static_assert(sizeof(T) == 0, "no runtime value defined for this type");
+    return T {};
+}
+
+template <>
+inline float runtime_value_for<float>() {
+    return DNNL_RUNTIME_F32_VAL;
+}
+
+template <>
+constexpr int runtime_value_for<int>() {
+    return DNNL_RUNTIME_S32_VAL;
+}
+
+template <>
+constexpr dim_t runtime_value_for<dim_t>() {
+    return DNNL_RUNTIME_DIM_VAL;
+}
+
+template <>
+constexpr size_t runtime_value_for<size_t>() {
+    return DNNL_RUNTIME_SIZE_VAL;
+}
+
+/** returns the runtime placeholder constant for the argument type T */
+template <typename T>
+inline T runtime_value_for(T) {
+    return runtime_value_for<typename utils::remove_reference<T>::type>();
+}
+
 } // namespace impl
 } // namespace dnnl
 

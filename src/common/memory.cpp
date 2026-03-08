@@ -48,7 +48,7 @@ namespace {
 // Returns the size required for memory descriptor mapping.
 // Caveats:
 // 1. If memory descriptor with run-time parameters, the mapping cannot be done;
-//    hence return DNNL_RUNTIME_SIZE_VAL
+//    hence return runtime_value_for<size_t>()
 // 2. Otherwise, the size returned includes `offset0` and holes (for the case
 //    of non-trivial strides). Strictly speaking, the mapping should happen only
 //    for elements accessible with `md.off_l(0 .. md.nelems())`. However, for
@@ -59,7 +59,7 @@ namespace {
 size_t memory_desc_map_size(const memory_desc_t *md, int index = 0) {
     auto mdw = memory_desc_wrapper(md);
 
-    if (mdw.has_runtime_dims_or_strides()) return DNNL_RUNTIME_SIZE_VAL;
+    if (mdw.has_runtime_dims_or_strides()) return runtime_value_for<size_t>();
 
     return mdw.size(index, true, true);
 }
@@ -350,7 +350,7 @@ status_t dnnl_memory_map_data_v2(
     if (map_size == 0) {
         *mapped_ptr = nullptr;
         return success;
-    } else if (map_size == DNNL_RUNTIME_SIZE_VAL) {
+    } else if (is_runtime_value(map_size)) {
         return invalid_arguments;
     }
 

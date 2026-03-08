@@ -213,7 +213,8 @@ private:
         dim_t batch_size = 1;
         for (int b_idx = 0; b_idx < batch_dims; b_idx++) {
             dim_t batch_dim = tensor_md.dims()[b_idx];
-            if (DNNL_RUNTIME_DIM_VAL == batch_dim) return DNNL_RUNTIME_DIM_VAL;
+            if (is_runtime_value(batch_dim))
+                return runtime_value_for(batch_size);
 
             batch_size *= batch_dim;
         }

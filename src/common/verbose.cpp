@@ -637,7 +637,7 @@ namespace {
 int get_runtime_mask(const memory_desc_t *md) {
     int mask = 0;
     for (int d = md->ndims - 1; d >= 0; --d) {
-        mask += md->dims[d] == DNNL_RUNTIME_DIM_VAL ? 1 << d : 0;
+        mask += is_runtime_value(md->dims[d]) ? 1 << d : 0;
     }
     return mask;
 }

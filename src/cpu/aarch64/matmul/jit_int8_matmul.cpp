@@ -1,4 +1,5 @@
 /*******************************************************************************
+* Copyright 2026 Intel Corporation
 * Copyright 2025 FUJITSU LIMITED
 * Copyright 2025-2026 Arm Ltd. and affiliates
 *
@@ -815,7 +816,7 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
 
         if (is_src_scl && is_wei_scl && wei_scl_msk > 0) {
             // This case requires scratchpad.
-            if (N() == DNNL_RUNTIME_DIM_VAL) ok = false;
+            if (is_runtime_value(N())) ok = false;
         }
         return ok;
     };

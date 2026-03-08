@@ -45,8 +45,9 @@ struct ref_t : public primitive_t {
             VDISPATCH_GATED_MLP(pd_ok(), VERBOSE_INCONSISTENT_PRB);
             VDISPATCH_GATED_MLP(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
 
-            memory_desc_t inter_md;
-            CHECK(get_inter_md(inter_md));
+            memory_desc_t gate_dst_md, up_dst_md;
+            CHECK(get_gate_dst_md(gate_dst_md));
+            CHECK(get_up_dst_md(up_dst_md));
 
             primitive_attr_t gate_attr;
             CHECK(move_attr(
@@ -54,11 +55,11 @@ struct ref_t : public primitive_t {
             CHECK(gate_attr.post_ops_.append_eltwise(
                     1.f, activation(), 1.f, 0.f));
             CHECK(gate_attr.post_ops_.append_binary(
-                    alg_kind::binary_mul, &inter_md));
+                    alg_kind::binary_mul, &up_dst_md));
             VDISPATCH_GATED_MLP_SC(
                     create_matmul(gemm_gate_pd_, engine, gate_attr,
                             arg_md(DNNL_ARG_SRC), arg_md(DNNL_ARG_WEIGHTS_GATE),
-                            &inter_md),
+                            &gate_dst_md),
                     "internal error in gemm_gate_pd");
 
             primitive_attr_t up_attr;
@@ -66,24 +67,25 @@ struct ref_t : public primitive_t {
             VDISPATCH_GATED_MLP_SC(
                     create_matmul(gemm_up_pd_, engine, up_attr,
                             arg_md(DNNL_ARG_SRC), arg_md(DNNL_ARG_WEIGHTS_UP),
-                            &inter_md),
+                            &up_dst_md),
                     "internal error in gemm_up_pd");
 
             primitive_attr_t down_attr;
             CHECK(move_attr(
                     down_attr, DNNL_ARG_WEIGHTS_DOWN, DNNL_ARG_WEIGHTS));
             VDISPATCH_GATED_MLP_SC(
-                    create_matmul(gemm_down_pd_, engine, down_attr, &inter_md,
-                            arg_md(DNNL_ARG_WEIGHTS_DOWN),
+                    create_matmul(gemm_down_pd_, engine, down_attr,
+                            &gate_dst_md, arg_md(DNNL_ARG_WEIGHTS_DOWN),
                             arg_md(DNNL_ARG_DST)),
                     "internal error in gemm_down_pd");
 
             using namespace memory_tracking::names;
             auto scratchpad = scratchpad_registry().registrar();
-            const memory_desc_wrapper inter_mdw(inter_md);
-            scratchpad.book(key_matmul_src_trans, inter_mdw.size(), 1,
+            scratchpad.book(key_matmul_wei_trans,
+                    memory_desc_wrapper(gate_dst_md).size(), 1,
                     OCL_BUFFER_ALIGNMENT);
-            scratchpad.book(key_matmul_wei_trans, inter_mdw.size(), 1,
+            scratchpad.book(key_matmul_src_trans,
+                    memory_desc_wrapper(up_dst_md).size(), 1,
                     OCL_BUFFER_ALIGNMENT);
             scratchpad.book(key_nested_multiple + DNNL_ARG_WEIGHTS_GATE,
                     gemm_gate_pd_->scratchpad_registry());
@@ -94,17 +96,40 @@ struct ref_t : public primitive_t {
             return status::success;
         }
 
-        status_t get_inter_md(memory_desc_t &retn) const {
-            std::vector<dim_t> dims {MB(), OC()};
-            CHECK(memory_desc_init_by_tag(retn, int(dims.size()), dims.data(),
-                    data_type::f16, format_tag::ab));
-            return status::success;
+        status_t get_gate_dst_md(memory_desc_t &retn) const {
+            data_type_t dt = arg_md(DNNL_ARG_WEIGHTS_DOWN)->data_type;
+            switch (dt) {
+                case data_type::f32:
+                case data_type::bf16:
+                case data_type::f16: break;
+                case data_type::u4:
+                case data_type::s4:
+                case data_type::u8:
+                case data_type::s8:
+                    dt = arg_md(DNNL_ARG_SRC)->data_type;
+                    if (!utils::one_of(dt, data_type::bf16, data_type::f16))
+                        dt = data_type::f16;
+                    break;
+                default: return status::unimplemented;
+            }
+            return get_gate_up_dst_md(retn, dt);
+        }
+
+        status_t get_up_dst_md(memory_desc_t &retn) const {
+            return get_gate_up_dst_md(retn, data_type::f32);
         }
 
         std::shared_ptr<primitive_desc_t> gemm_gate_pd_, gemm_up_pd_,
                 gemm_down_pd_;
 
     private:
+        status_t get_gate_up_dst_md(memory_desc_t &retn, data_type_t dt) const {
+            std::vector<dim_t> dims {MB(), OC()};
+            CHECK(memory_desc_init_by_tag(
+                    retn, int(dims.size()), dims.data(), dt, format_tag::ab));
+            return status::success;
+        }
+
         status_t move_attr(primitive_attr_t &retn, int from, int to) {
             CHECK(retn.set_fpmath_mode(
                     attr()->fpmath_.mode_, attr()->fpmath_.apply_to_int_));
@@ -154,21 +179,22 @@ struct ref_t : public primitive_t {
             CHECK(prim->execute(nested_ctx));
             return status::success;
         };
-        memory_desc_t inter_md;
-        CHECK(pd()->get_inter_md(inter_md));
+        memory_desc_t gate_dst_md, up_dst_md;
+        CHECK(pd()->get_gate_dst_md(gate_dst_md));
+        CHECK(pd()->get_up_dst_md(up_dst_md));
 
         std::unique_ptr<memory_t, memory_deleter_t> inter_src_mem;
         auto inter_src_stor = ctx.get_scratchpad_grantor().get_memory_storage(
                 memory_tracking::names::key_matmul_src_trans);
         CHECK(safe_ptr_assign(inter_src_mem,
-                new memory_t(ctx.stream()->engine(), &inter_md,
+                new memory_t(ctx.stream()->engine(), &up_dst_md,
                         std::move(inter_src_stor))));
 
         std::unique_ptr<memory_t, memory_deleter_t> inter_wei_mem;
         auto inter_wei_stor = ctx.get_scratchpad_grantor().get_memory_storage(
                 memory_tracking::names::key_matmul_wei_trans);
         CHECK(safe_ptr_assign(inter_wei_mem,
-                new memory_t(ctx.stream()->engine(), &inter_md,
+                new memory_t(ctx.stream()->engine(), &gate_dst_md,
                         std::move(inter_wei_stor))));
 
         do {

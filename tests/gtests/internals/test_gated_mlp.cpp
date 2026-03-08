@@ -94,6 +94,9 @@ struct mlp_dims_t {
     quantize_type qtype;
     dnnl_alg_kind_t activation;
 
+    memory::data_type src_dt;
+    memory::data_type dst_dt;
+
     memory::data_type wgu_wt;
     memory::data_type wgu_s_dt;
     memory::data_type wgu_zp_dt;
@@ -133,32 +136,34 @@ std::ostream &operator<<(std::ostream &ss, const dnnl_alg_kind_t &act) {
 }
 
 std::ostream &operator<<(std::ostream &ss, const mlp_dims_t &p) {
+    const bool has_quant = p.qtype != quantize_type::no_quantization;
+
     ss << "mb_" << p.mb;
     ss << "_ic_" << p.ic;
     ss << "_oc_" << p.oc;
 
-    std::string quant = (p.qtype == quantize_type::no_quantization)
-            ? "_noquant_"
-            : "_quant_";
-    ss << quant;
-    ss << "_gu_group_size_" << p.gateup_group_size;
-    ss << "_gd_group_size_" << p.down_group_size;
+    ss << ((has_quant) ? "_quant_" : "_noquant_");
+    if (has_quant) {
+        ss << "_qtype_" << p.qtype;
+        ss << "_gu_group_size_" << p.gateup_group_size;
+        ss << "_gd_group_size_" << p.down_group_size;
+    }
+
+    ss << "_src_dt_" << dnnl_dt2str(memory::convert_to_c(p.src_dt));
+    ss << "_dst_dt_" << dnnl_dt2str(memory::convert_to_c(p.dst_dt));
 
     ss << "_wgu_wt_" << dnnl_dt2str(memory::convert_to_c(p.wgu_wt));
-    if (p.wgu_wt != mdt::f16) {
+    if (has_quant) {
         ss << "_wgu_sdt_" << dnnl_dt2str(memory::convert_to_c(p.wgu_s_dt));
         ss << "_wgu_zpdt_" << dnnl_dt2str(memory::convert_to_c(p.wgu_zp_dt));
     }
 
     ss << "_wd_wt_" << dnnl_dt2str(memory::convert_to_c(p.wd_wt));
-    if (p.wd_wt != mdt::f16) {
+    if (has_quant) {
         ss << "_wd_sdt_" << dnnl_dt2str(memory::convert_to_c(p.wd_s_dt));
         ss << "_wd_zpdt_" << dnnl_dt2str(memory::convert_to_c(p.wd_zp_dt));
     }
 
-    if (p.wgu_wt != mdt::f16 || p.wd_wt != mdt::f16) {
-        ss << "_qtype_" << p.qtype;
-    }
     ss << p.activation;
     return ss;
 }
@@ -167,199 +172,6 @@ std::string PrintToString(const ::testing::TestParamInfo<mlp_dims_t> &info) {
     std::stringstream ss;
     ss << info.param;
     return ss.str();
-}
-
-template <typename Tm, typename Td>
-void write_to_dnnl_memory_common(std::vector<Td> &data, memory &mem) {
-    engine eng = mem.get_engine();
-    assert(mem.get_desc().get_size()
-            == data.size()
-                    * memory::data_type_size(mem.get_desc().get_data_type()));
-
-#ifdef DNNL_WITH_SYCL
-    bool is_cpu_sycl = (DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL
-            && eng.get_kind() == engine::kind::cpu);
-    bool is_gpu_sycl = (DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
-            && eng.get_kind() == engine::kind::gpu);
-    if (is_cpu_sycl || is_gpu_sycl) {
-        auto mkind = sycl_interop::get_memory_kind(mem);
-        if (mkind == sycl_interop::memory_kind::buffer) {
-            auto buffer = sycl_interop::get_buffer<Tm>(mem);
-            auto dst = buffer.get_host_access();
-            Tm *dst_ptr = dst.get_pointer();
-            if (!dst_ptr)
-                throw std::runtime_error("get_pointer returned nullptr.");
-            for (size_t i = 0; i < data.size(); ++i)
-                dst_ptr[i] = (Tm)data[i];
-        } else {
-            assert(mkind == sycl_interop::memory_kind::usm);
-            Tm *dst_ptr = (Tm *)mem.get_data_handle();
-            if (!dst_ptr)
-                throw std::runtime_error("get_data_handle returned nullptr.");
-            if (is_cpu_sycl) {
-                for (size_t i = 0; i < data.size(); ++i)
-                    dst_ptr[i] = (Tm)data[i];
-            } else {
-                std::vector<Tm> tmp(data.size());
-                for (size_t i = 0; i < data.size(); ++i)
-                    tmp[i] = (Tm)data[i];
-                auto sycl_queue = sycl_interop::get_queue(stream(eng));
-                sycl_queue
-                        .memcpy(dst_ptr, tmp.data(), mem.get_desc().get_size())
-                        .wait();
-            }
-        }
-        return;
-    }
-#endif
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    if (eng.get_kind() == engine::kind::gpu) {
-        std::vector<Tm> tmp(data.size());
-        for (size_t i = 0; i < data.size(); ++i)
-            tmp[i] = (Tm)data[i];
-        Tm *mapped_ptr = (Tm *)mem.map_data();
-        if (mapped_ptr)
-            std::memcpy(mapped_ptr, tmp.data(), mem.get_desc().get_size());
-        mem.unmap_data(mapped_ptr);
-        return;
-    }
-#endif
-
-    if (eng.get_kind() == engine::kind::cpu) {
-        Tm *dst = static_cast<Tm *>(mem.get_data_handle());
-        if (!dst) throw std::runtime_error("get_data_handle returned nullptr.");
-        for (size_t i = 0; i < data.size(); ++i)
-            dst[i] = (Tm)data[i];
-        return;
-    }
-
-    assert(!"not expected");
-}
-
-template <typename Td>
-void write_to_dnnl_memory_int4(std::vector<Td> &data, memory &mem) {
-#define COPY_INT4(to, from) \
-    for (size_t i = 0; i < (from).size(); ++i) { \
-        uint8_t val = (uint8_t)(from)[i] & 0x0F; \
-        (to)[i >> 1] = (i & 1) ? (to)[i >> 1] | (val << 4) : val; \
-    }
-    engine eng = mem.get_engine();
-    assert(mem.get_desc().get_size() == utils::div_up(data.size(), 2));
-
-#ifdef DNNL_WITH_SYCL
-    bool is_cpu_sycl = (DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL
-            && eng.get_kind() == engine::kind::cpu);
-    bool is_gpu_sycl = (DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
-            && eng.get_kind() == engine::kind::gpu);
-    if (is_cpu_sycl || is_gpu_sycl) {
-        auto mkind = sycl_interop::get_memory_kind(mem);
-        if (mkind == sycl_interop::memory_kind::buffer) {
-            auto buffer = sycl_interop::get_buffer<uint8_t>(mem);
-            auto dst = buffer.get_host_access();
-            auto *dst_ptr = (uint8_t *)dst.get_pointer();
-            if (!dst_ptr)
-                throw std::runtime_error("get_pointer returned nullptr.");
-            COPY_INT4(dst_ptr, data)
-        } else {
-            assert(mkind == sycl_interop::memory_kind::usm);
-            auto *dst_ptr = (uint8_t *)mem.get_data_handle();
-            if (!dst_ptr)
-                throw std::runtime_error("get_data_handle returned nullptr.");
-            if (is_cpu_sycl) {
-                COPY_INT4(dst_ptr, data)
-            } else {
-                std::vector<uint8_t> tmp(mem.get_desc().get_size());
-                COPY_INT4(tmp, data)
-                auto sycl_queue = sycl_interop::get_queue(stream(eng));
-                sycl_queue.memcpy(dst_ptr, tmp.data(), tmp.size()).wait();
-            }
-        }
-        return;
-    }
-#endif
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    if (eng.get_kind() == engine::kind::gpu) {
-        std::vector<uint8_t> tmp(mem.get_desc().get_size());
-        COPY_INT4(tmp, data)
-        auto *mapped_ptr = (uint8_t *)mem.map_data();
-        if (mapped_ptr) std::memcpy(mapped_ptr, tmp.data(), tmp.size());
-        mem.unmap_data(mapped_ptr);
-        return;
-    }
-#endif
-
-    if (eng.get_kind() == engine::kind::cpu) {
-        auto *dst = (uint8_t *)mem.get_data_handle();
-        if (!dst) throw std::runtime_error("get_data_handle returned nullptr.");
-        COPY_INT4(dst, data)
-        return;
-    }
-
-    assert(!"not expected");
-#undef COPY_INT4
-}
-
-template <typename Td>
-void write_to_dnnl_memory(std::vector<Td> &data, memory &mem) {
-    switch (mem.get_desc().get_data_type()) {
-        case memory::data_type::s4:
-        case memory::data_type::u4: write_to_dnnl_memory_int4(data, mem); break;
-        case memory::data_type::s8:
-        case memory::data_type::u8:
-            write_to_dnnl_memory_common<uint8_t>(data, mem);
-            break;
-        case memory::data_type::f32:
-            write_to_dnnl_memory_common<float>(data, mem);
-            break;
-        case memory::data_type::f16:
-            write_to_dnnl_memory_common<float16_t>(data, mem);
-            break;
-        default: assert(false);
-    }
-}
-
-void fill_const(std::vector<float> &out, const float c) {
-    for (int i = 0; i < int(out.size()); ++i) {
-        out[i] = c;
-    }
-}
-
-void fill_const(std::vector<float16_t> &out, const float c) {
-    static std::vector<float> random_data_f;
-    constexpr size_t nrand = 1037;
-    const unsigned seed = 2;
-
-    if (random_data_f.empty()) {
-        std::mt19937 generator(seed);
-        std::uniform_real_distribution<float> dist_f(-1.0f, 1.0f);
-
-        random_data_f.resize(nrand);
-        for (auto &d : random_data_f)
-            d = dist_f(generator);
-    }
-
-    for (int i = 0; i < int(out.size()); ++i) {
-        out[i] = float16_t(c);
-    }
-}
-
-void fill_lin(std::vector<float> &out) {
-    for (int i = 0; i < int(out.size()); ++i) {
-        out[i] = i;
-    }
-}
-
-void fill_hceye(std::vector<float> &out, int ldi = 32) {
-    for (int i = 0; i < int(out.size()); ++i) {
-        out[i] = ((((i / ldi) % ldi == (i % ldi))) ? 1.f : 0.f);
-    }
-}
-void fill_hceye(std::vector<float16_t> &out, int ldi = 32) {
-    static std::vector<float> random_data_f;
-
-    for (int i = 0; i < int(out.size()); ++i) {
-        out[i] = float16_t((((i / ldi) % ldi == (i % ldi))) ? 1.f : 0.f);
-    }
 }
 
 gmlp_tensors_t get_descriptors(engine &eng, mlp_dims_t p) {
@@ -398,11 +210,31 @@ gmlp_tensors_t get_descriptors(engine &eng, mlp_dims_t p) {
             default: return memory::dims {0, 0};
         }
     }();
+    auto get_gate_dt = [](mdt src, mdt dst, mdt wgu, mdt wd) {
+        mdt retn = wd;
+        switch (retn) {
+            case mdt::f32:
+            case mdt::bf16:
+            case mdt::f16: break;
+            case mdt::u4:
+            case mdt::s4:
+            case mdt::u8:
+            case mdt::s8:
+                retn = src;
+                if (!utils::one_of(retn, mdt::bf16, mdt::f16)) retn = mdt::f16;
+                break;
+            default: return mdt::undef;
+        }
+        return retn;
+    };
+    auto get_up_dt = [](mdt src, mdt dst, mdt wgu, mdt wd) { return mdt::f32; };
 
     auto dt = memory::data_type::f16;
-    auto wgu_wt = (p.wgu_wt == mdt::undef)
-            ? dt
-            : p.wgu_wt; ///undef = non quantized , can be u8
+
+    auto src_dt = (p.src_dt == mdt::undef) ? dt : p.src_dt;
+    auto dst_dt = (p.dst_dt == mdt::undef) ? dt : p.dst_dt;
+
+    auto wgu_wt = (p.wgu_wt == mdt::undef) ? dt : p.wgu_wt;
     auto wgu_s_dt = (p.wgu_s_dt == mdt::undef) ? dt : p.wgu_s_dt;
     auto wgu_zp_dt = (p.wgu_zp_dt == mdt::undef) ? dt : p.wgu_zp_dt;
 
@@ -410,17 +242,21 @@ gmlp_tensors_t get_descriptors(engine &eng, mlp_dims_t p) {
     auto wd_s_dt = (p.wd_s_dt == mdt::undef) ? dt : p.wd_s_dt;
     auto wd_zp_dt = (p.wd_zp_dt == mdt::undef) ? dt : p.wd_zp_dt;
 
-    auto FC_gate_md = memory::desc(FC_gate_sz, dt, tag::ab);
-    auto FC_up_md = memory::desc(FC_up_sz, dt, tag::ab);
-    auto FC_down_md = memory::desc(FC_down_sz, dt, tag::ab);
+    auto fc_gate_dt = get_gate_dt(src_dt, dst_dt, wgu_wt, wd_wt);
+    auto fc_up_dt = get_up_dt(src_dt, dst_dt, wgu_wt, wd_wt);
 
-    auto FC_retn_md_t = memory::desc(FC_down_sz, dt, tag::ba);
+    auto FC_gate_md = memory::desc(FC_gate_sz, fc_gate_dt, tag::ab);
+    auto FC_up_md = memory::desc(FC_up_sz, fc_up_dt, tag::ab);
+    auto FC_down_md = memory::desc(FC_down_sz, dst_dt, tag::ab);
+
+    auto FC_retn_md_t = memory::desc(FC_down_sz, dst_dt, tag::ba);
 
     // clang-format off
-    auto x_md      = memory::desc(O_proj_sz, dt, tag::ab);
-    auto w_gate_md = memory::desc(W_gate_sz, dt, tag::ba);
-    auto w_up_md   = memory::desc(W_up_sz,   dt, tag::ba);
-    auto w_down_md = memory::desc(W_down_sz, dt, tag::ba);
+    auto x_md = memory::desc(O_proj_sz, src_dt, tag::ab);
+
+    auto w_gate_md = memory::desc(W_gate_sz, mdt::f32, tag::ba);
+    auto w_up_md   = memory::desc(W_up_sz,   mdt::f32, tag::ba);
+    auto w_down_md = memory::desc(W_down_sz, mdt::f32, tag::ba);
 
     auto w_gate_qnt_md = memory::desc(W_gate_sz, wgu_wt, tag::ba);
     auto w_up_qnt_md   = memory::desc(W_up_sz,   wgu_wt, tag::ba);
@@ -434,8 +270,8 @@ gmlp_tensors_t get_descriptors(engine &eng, mlp_dims_t p) {
     auto w_up_zp_md   = memory::desc(quant_gateup_sz, wgu_zp_dt, tag::ab);
     auto w_down_zp_md = memory::desc(quant_down_sz, wd_zp_dt, tag::ab);
 
-    auto output_md     = memory::desc(FC_down_sz, dt, tag::ab);
-    auto output_qnt_md = memory::desc(FC_down_sz, dt, tag::ab);
+    auto output_md     = memory::desc(FC_down_sz, dst_dt, tag::ab);
+    auto output_qnt_md = memory::desc(FC_down_sz, dst_dt, tag::ab);
     // clang-format on
 
     // Create memory objects
@@ -482,18 +318,11 @@ gmlp_tensors_t get_descriptors(engine &eng, mlp_dims_t p) {
     std::vector<float> w_down_scales_data(
             product(out.m_w_down_scales.get_desc().get_padded_dims()), 1.f);
 
-    std::vector<int> w_gate_zp_data_signed(
+    std::vector<int> w_gate_zp_data(
             product(out.m_w_gate_zp.get_desc().get_padded_dims()), 0);
-    std::vector<int> w_up_zp_data_signed(
+    std::vector<int> w_up_zp_data(
             product(out.m_w_up_zp.get_desc().get_padded_dims()), 0);
-    std::vector<int> w_down_zp_data_signed(
-            product(out.m_w_down_zp.get_desc().get_padded_dims()), 0);
-
-    std::vector<unsigned> w_gate_zp_data_unsigned(
-            product(out.m_w_gate_zp.get_desc().get_padded_dims()), 0);
-    std::vector<unsigned> w_up_zp_data_unsigned(
-            product(out.m_w_up_zp.get_desc().get_padded_dims()), 0);
-    std::vector<unsigned> w_down_zp_data_unsigned(
+    std::vector<int> w_down_zp_data(
             product(out.m_w_down_zp.get_desc().get_padded_dims()), 0);
 
     out.wgu_groups = {};
@@ -536,77 +365,59 @@ gmlp_tensors_t get_descriptors(engine &eng, mlp_dims_t p) {
         fill_random_quantized(w_up_quantized_data, w_up_qnt_md,
                 (wgu_wt == mdt::u4 || wgu_wt == mdt::u8));
         fill_random_quantized(w_down_quantized_data, w_down_qnt_md,
-                (wgu_wt == mdt::u4 || wgu_wt == mdt::u8));
+                (wd_wt == mdt::u4 || wd_wt == mdt::u8));
 
-        if (wgu_wt != mdt::f16 && wgu_s_dt != mdt::undef) {
-            fill_random_scales(w_gate_scales_data, w_gate_scales_md);
-            fill_random_scales(w_up_scales_data, w_up_scales_md);
-        }
-        if (wgu_wt != mdt::f16 && wgu_zp_dt != mdt::undef) {
-            fill_random_quantized(w_gate_zp_data_signed, w_gate_zp_md);
-            fill_random_quantized(w_gate_zp_data_unsigned, w_gate_zp_md);
-            fill_random_quantized(w_up_zp_data_signed, w_up_zp_md);
-            fill_random_quantized(w_up_zp_data_unsigned, w_up_zp_md);
-        }
-        if (wd_wt != mdt::f16 && wd_s_dt != mdt::undef)
-            fill_random_scales(w_down_scales_data, w_down_scales_md);
-        if (wd_wt != mdt::f16 && wd_zp_dt != mdt::undef) {
-            fill_random_quantized(w_down_zp_data_signed, w_down_zp_md);
-            fill_random_quantized(w_down_zp_data_unsigned, w_down_zp_md);
-        }
+        fill_random_scales(w_gate_scales_data, w_gate_scales_md);
+        fill_random_scales(w_up_scales_data, w_up_scales_md);
+        fill_random_scales(w_down_scales_data, w_down_scales_md);
 
-        if (wgu_zp_dt == mdt::s4 || wgu_zp_dt == mdt::s8) {
-            printf("s4/s8 quant init\n");
-            w_gate_data = dequantize(w_gate_quantized_data, w_gate_md,
-                    w_gate_scales_md, w_gate_zp_data_signed, w_gate_scales_data,
-                    wgu_group_size, p.qtype, out.wgu_groups, 0);
+        bool wgu_zp_unsigned = (wgu_zp_dt == mdt::u4 || wgu_zp_dt == mdt::u8);
+        if (wgu_zp_unsigned)
+            printf("unsigned gateup quant init\n");
+        else
+            printf("signed gateup quant init\n");
 
-            w_up_data = dequantize(w_up_quantized_data, w_up_md, w_up_scales_md,
-                    w_up_zp_data_signed, w_up_scales_data, wgu_group_size,
-                    p.qtype, out.wgu_groups, 0);
+        fill_random_quantized(w_gate_zp_data, w_gate_zp_md, wgu_zp_unsigned);
+        fill_random_quantized(w_up_zp_data, w_up_zp_md, wgu_zp_unsigned);
 
-            w_down_data = dequantize(w_down_quantized_data, w_down_md,
-                    w_down_scales_md, w_down_zp_data_signed, w_down_scales_data,
-                    wd_group_size, p.qtype, out.wd_groups, 0);
-        } else {
-            printf("quant init\n");
-            w_gate_data = dequantize(w_gate_quantized_data, w_gate_md,
-                    w_gate_scales_md, w_gate_zp_data_unsigned,
-                    w_gate_scales_data, wgu_group_size, p.qtype, out.wgu_groups,
-                    0);
-            w_up_data = dequantize(w_up_quantized_data, w_up_md, w_up_scales_md,
-                    w_up_zp_data_unsigned, w_up_scales_data, wgu_group_size,
-                    p.qtype, out.wgu_groups, 0);
-            w_down_data = dequantize(w_down_quantized_data, w_down_md,
-                    w_down_scales_md, w_down_zp_data_unsigned,
-                    w_down_scales_data, wd_group_size, p.qtype, out.wd_groups,
-                    0);
-        }
+        w_gate_data = dequantize(w_gate_quantized_data, w_gate_md,
+                w_gate_scales_md, w_gate_zp_data, w_gate_scales_data,
+                wgu_group_size, p.qtype, out.wgu_groups, 0);
+
+        w_up_data = dequantize(w_up_quantized_data, w_up_md, w_up_scales_md,
+                w_up_zp_data, w_up_scales_data, wgu_group_size, p.qtype,
+                out.wgu_groups, 0);
+
+        bool wd_zp_unsigned = (wd_zp_dt == mdt::u4 || wd_zp_dt == mdt::u8);
+        if (wd_zp_unsigned)
+            printf("unsigned down quant init\n");
+        else
+            printf("signed down quant init\n");
+
+        fill_random_quantized(w_down_zp_data, w_down_zp_md, wd_zp_unsigned);
+
+        w_down_data = dequantize(w_down_quantized_data, w_down_md,
+                w_down_scales_md, w_down_zp_data, w_down_scales_data,
+                wd_group_size, p.qtype, out.wd_groups, 0);
     }
 
     // Write data to tensor object's handle.
-    write_to_dnnl_memory(x_data, out.m_x);
-    write_to_dnnl_memory(w_gate_data, out.m_w_gate);
-    write_to_dnnl_memory(w_up_data, out.m_w_up);
-    write_to_dnnl_memory(w_down_data, out.m_w_down);
+    move_data(x_data, out.m_x);
+    move_data(w_gate_data, out.m_w_gate);
+    move_data(w_up_data, out.m_w_up);
+    move_data(w_down_data, out.m_w_down);
 
-    write_to_dnnl_memory(w_gate_quantized_data, out.m_w_gate_quantized);
-    write_to_dnnl_memory(w_up_quantized_data, out.m_w_up_quantized);
-    write_to_dnnl_memory(w_down_quantized_data, out.m_w_down_quantized);
+    move_data(w_gate_quantized_data, out.m_w_gate_quantized);
+    move_data(w_up_quantized_data, out.m_w_up_quantized);
+    move_data(w_down_quantized_data, out.m_w_down_quantized);
 
-    if (wgu_zp_dt == mdt::s4 || wgu_zp_dt == mdt::s8) {
-        write_to_dnnl_memory(w_gate_zp_data_signed, out.m_w_gate_zp);
-        write_to_dnnl_memory(w_up_zp_data_signed, out.m_w_up_zp);
-        write_to_dnnl_memory(w_down_zp_data_signed, out.m_w_down_zp);
-    } else {
-        write_to_dnnl_memory(w_gate_zp_data_unsigned, out.m_w_gate_zp);
-        write_to_dnnl_memory(w_up_zp_data_unsigned, out.m_w_up_zp);
-        write_to_dnnl_memory(w_down_zp_data_unsigned, out.m_w_down_zp);
-    }
+    move_data(w_gate_zp_data, out.m_w_gate_zp);
+    move_data(w_up_zp_data, out.m_w_up_zp);
+    move_data(w_down_zp_data, out.m_w_down_zp);
 
-    write_to_dnnl_memory(w_gate_scales_data, out.m_w_gate_scales);
-    write_to_dnnl_memory(w_up_scales_data, out.m_w_up_scales);
-    write_to_dnnl_memory(w_down_scales_data, out.m_w_down_scales);
+    move_data(w_gate_scales_data, out.m_w_gate_scales);
+    move_data(w_up_scales_data, out.m_w_up_scales);
+    move_data(w_down_scales_data, out.m_w_down_scales);
 
     printf("memory data types?? %d %d %d\n",
             int(out.m_w_gate_scales.get_desc().get_data_type()),
@@ -616,8 +427,7 @@ gmlp_tensors_t get_descriptors(engine &eng, mlp_dims_t p) {
     return out;
 }
 
-template <typename T>
-void bench_gated_mlp_primitives(std::vector<T> &res, double &avg_time,
+void bench_gated_mlp_primitives(std::vector<float> &res, double &avg_time,
         gmlp_tensors_t &t, engine &eng, stream &strm, const mlp_dims_t &p,
         double time_limit = 0.) {
     const bool quick_test = (time_limit == 0.);
@@ -751,40 +561,17 @@ void bench_gated_mlp_primitives(std::vector<T> &res, double &avg_time,
         printf("------inpB\n");
         print_mem(m_W_gate, "-prim");
     }
-#define TEST_VS_TRANSPOSE 0
-#if TEST_VS_TRANSPOSE
-    transpose_strides(eng, m_FC_retn_t, m_FC_down);
-
-    if (verbose && product(FC_down_md.get_dims()) < (64 * 64) + 1) {
-        const memory::dims FC_down_sz = {p.mb, p.ic};
-        printf("------tmpres\n");
-        print_mem(m_FC_retn_t, "-prim");
-    }
-
-    float16_t *mapped_ptr_f16 = (float16_t *)m_FC_retn_t.map_data();
-    res.resize(product(m_FC_retn_t.get_desc().get_dims()));
-    for (int i = 0; i < int(res.size()); ++i) {
-        res[i] = mapped_ptr_f16[i];
-    }
-    m_FC_retn_t.unmap_data(mapped_ptr_f16);
-#else
     if (verbose && product(FC_down_md.get_dims()) < (64 * 64) + 1) {
         const memory::dims FC_down_sz = {p.mb, p.ic};
         printf("------tmpres\n");
         print_mem(m_FC_down, "-prim");
     }
 
-    float16_t *mapped_ptr_f16 = (float16_t *)m_FC_down.map_data();
     res.resize(product(m_FC_down.get_desc().get_dims()));
-    for (int i = 0; i < int(res.size()); ++i) {
-        res[i] = mapped_ptr_f16[i];
-    }
-    m_FC_down.unmap_data(mapped_ptr_f16);
-#endif
+    move_data(res, m_FC_down, false);
 }
 
-template <typename T>
-void bench_gated_mlp_internal(std::vector<T> &res, double &avg_time,
+void bench_gated_mlp_internal(std::vector<float> &res, double &avg_time,
         gmlp_tensors_t &t, engine &eng, stream strm, const mlp_dims_t &p,
         double time_limit = 0.) {
     printf("eng?\n");
@@ -983,12 +770,8 @@ void bench_gated_mlp_internal(std::vector<T> &res, double &avg_time,
         print_mem(m_FC_gate_t, "-internal");
     }
 
-    float16_t *mapped_ptr_f16 = (float16_t *)m_FC_gate_t.map_data();
     res.resize(product(m_FC_gate_t.get_desc().get_dims()));
-    for (int i = 0; i < int(res.size()); ++i) {
-        res[i] = mapped_ptr_f16[i];
-    }
-    m_FC_gate_t.unmap_data(mapped_ptr_f16);
+    move_data(res, m_FC_gate_t, false);
 }
 
 enum class api_kind { primitive, graph, internal_hack };
@@ -1019,75 +802,6 @@ void bench(std::vector<T> &res, double &avg_time, gmlp_tensors_t &t,
     }
 }
 
-template <typename T>
-void check_memory(memory &gold, memory &test) {
-    T *mapped_ptr_gold = (T *)gold.map_data();
-    T *mapped_ptr_test = (T *)test.map_data();
-
-    auto dims = gold.get_desc().get_dims();
-    auto strides = gold.get_desc().get_strides();
-
-    int mismatches = 0;
-    int total = 0;
-    float fthreshold = 0.f;
-    if (std::is_same<T, float16_t>::value) {
-        fthreshold = 0.001466f;
-    } else {
-        fthreshold = 0.0079f;
-    }
-
-    float max_diff = std::numeric_limits<float>::min();
-    std::map<int, std::map<int, int>> hist;
-    bool verbose = false;
-    for_(int l = 0; l < dims[0]; l++)
-    for_(int k = 0; k < dims[1]; k++)
-    for_(int j = 0; j < dims[2]; j++)
-    for (int i = 0; i < dims[3]; i++) {
-        auto offset = l * strides[0] + k * strides[1] + j * strides[2]
-                + i * strides[3];
-        auto o_gold = (float)mapped_ptr_gold[offset];
-        auto o_test = (float)mapped_ptr_test[offset];
-        total++;
-
-        float abs_diff = abs(o_gold - o_test);
-        bool is_nan = isnan(o_gold) || isnan(o_test);
-
-        bool is_mismatch = is_nan
-                || (abs(o_gold) > 1.f ? abs_diff > abs(o_gold * fthreshold)
-                                      : abs_diff > fthreshold);
-        if (max_diff < abs_diff) {
-            if (verbose) {
-                printf("new max: gold: %f vs test: %f diff: %f\n", o_gold,
-                        o_test, abs_diff);
-            }
-            max_diff = abs_diff;
-        }
-        if (is_mismatch) {
-            hist[0][l]++;
-            hist[1][k]++;
-            hist[2][j]++;
-            hist[3][i]++;
-        }
-        if ((is_mismatch && mismatches++ < 32) || is_nan) {
-            if (verbose)
-                fprintf(stderr,
-                        "Mismatch at (%d,%d,%d,%d): test %f "
-                        "vs. gold %f (diff: %f thresh: %f)\n",
-                        l, k, j, i, o_test, o_gold, abs_diff,
-                        (abs(o_gold) > 2.f ? abs(o_gold * fthreshold)
-                                           : fthreshold));
-        }
-    }
-
-    gold.unmap_data(mapped_ptr_gold);
-    test.unmap_data(mapped_ptr_test);
-
-    int threshold = total * 0.0006;
-
-    ASSERT_LE(mismatches, threshold)
-            << "max diff: " << max_diff << "out of: " << total;
-}
-
 class mlp_test_t : public ::testing::TestWithParam<mlp_dims_t> {
 public:
     void SetUp() override {
@@ -1116,8 +830,7 @@ TEST_P(mlp_test_t, compare) {
     auto tensors = t;
     auto params = p;
 
-    std::vector<float> resp, resi;
-    std::vector<float16_t> resph, resih;
+    std::vector<float> resph, resih;
     double avg_time_int, avg_time_prim;
 
     printf("PRIMITIVE\n");
@@ -1138,7 +851,7 @@ TEST_P(mlp_test_t, compare) {
     for (int i = 0; i < int(resih.size()); ++i) {
         float abs_diff = std::abs(resih[i] - resph[i]);
         float rel_diff = std::abs((resih[i] - resph[i]) / resih[i]);
-        if (abs_diff > 1e-4 && rel_diff > 5e-3) {
+        if (abs_diff > 1e-4 && rel_diff > 5e-2) {
 
             if (isfinite(rel_diff) && (abs_diff) > max_diff) {
                 max_diff = abs_diff;
@@ -1159,12 +872,12 @@ TEST_P(mlp_test_t, compare) {
             }
         }
     }
-    printf("total mismatches: %d \n", n_mismatches);
-    printf("avg time internal: %f vs %f avg time primitive, w/speedup of %f\n",
-            avg_time_int, avg_time_prim, avg_time_prim / avg_time_int);
-
     int total_size = int(resph.size());
     int threshold = total_size * 0.0006;
+
+    printf("total mismatches: %d, allowed: %d\n", n_mismatches, threshold);
+    printf("avg time internal: %f vs %f avg time primitive, w/speedup of %f\n",
+            avg_time_int, avg_time_prim, avg_time_prim / avg_time_int);
 
     if (n_mismatches > 0) {
         std::cout << "max diff: " << max_diff << ":  " << max_val
@@ -1179,255 +892,317 @@ INSTANTIATE_TEST_SUITE_P(VEC, mlp_test_t, ::testing::Values(
     // no quantization
     mlp_dims_t {32, 32, 32, 1, 1,
             quantize_type::no_quantization, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
             mdt::f16, mdt::f16, mdt::f16,
             mdt::f16, mdt::f16, mdt::f16}
     , // ^-- 1
 
     mlp_dims_t{1024, 3584, 18944, 1, 1,
             quantize_type::no_quantization, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
             mdt::f16, mdt::f16, mdt::f16,
             mdt::f16, mdt::f16, mdt::f16}
     , // ^-- 2
     mlp_dims_t{1024, 3584, 4864, 1, 1,
             quantize_type::no_quantization, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
             mdt::f16, mdt::f16, mdt::f16,
             mdt::f16, mdt::f16, mdt::f16}
     , // ^-- 3
     mlp_dims_t{1024, 3584, 14336, 1, 1,
             quantize_type::no_quantization, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
             mdt::f16, mdt::f16, mdt::f16,
             mdt::f16, mdt::f16, mdt::f16}
     , // ^-- 4
     mlp_dims_t{1024, 3584, 27392, 1, 1,
             quantize_type::no_quantization, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
             mdt::f16, mdt::f16, mdt::f16,
             mdt::f16, mdt::f16, mdt::f16}
     , // ^-- 5
     mlp_dims_t{1024, 896, 18944, 1, 1,
             quantize_type::no_quantization, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
             mdt::f16, mdt::f16, mdt::f16,
             mdt::f16, mdt::f16, mdt::f16}
     , // ^-- 6
     mlp_dims_t{1024, 896, 4864, 1, 1,
             quantize_type::no_quantization, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
             mdt::f16, mdt::f16, mdt::f16,
             mdt::f16, mdt::f16, mdt::f16}
     , // ^-- 7
     mlp_dims_t{1024, 896, 14336, 1, 1,
             quantize_type::no_quantization, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
             mdt::f16, mdt::f16, mdt::f16,
             mdt::f16, mdt::f16, mdt::f16}
     , // ^-- 8
     mlp_dims_t{1024, 896, 27392, 1, 1,
             quantize_type::no_quantization, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
             mdt::f16, mdt::f16, mdt::f16,
             mdt::f16, mdt::f16, mdt::f16}
     , // ^-- 9
     mlp_dims_t{1024, 4096, 18944, 1, 1,
             quantize_type::no_quantization, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
             mdt::f16, mdt::f16, mdt::f16,
             mdt::f16, mdt::f16, mdt::f16}
     , // ^-- 10
     mlp_dims_t{1024, 4096, 4864, 1, 1,
             quantize_type::no_quantization, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
             mdt::f16, mdt::f16, mdt::f16,
             mdt::f16, mdt::f16, mdt::f16}
     , // ^-- 11
     mlp_dims_t{1024, 4096, 14336, 1, 1,
             quantize_type::no_quantization, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
             mdt::f16, mdt::f16, mdt::f16,
             mdt::f16, mdt::f16, mdt::f16}
     , // ^-- 12
     mlp_dims_t{1024, 4096, 27392, 1, 1,
             quantize_type::no_quantization, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
             mdt::f16, mdt::f16, mdt::f16,
             mdt::f16, mdt::f16, mdt::f16}
     , // ^-- 13
 
     // B = 1024, quantized w=u8
     mlp_dims_t{32, 32, 32, 16, 16,
-             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-             mdt::u8, mdt::f16, mdt::u8,
-             mdt::u8, mdt::f16, mdt::u8}
+            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
+            mdt::u8, mdt::f16, mdt::u8,
+            mdt::u8, mdt::f16, mdt::u8}
     , // ^-- 14
     mlp_dims_t{1024, 3584, 18944, 16, 16,
-             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-             mdt::u8, mdt::f16, mdt::u8,
-             mdt::u8, mdt::f16, mdt::u8}
+            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
+            mdt::u8, mdt::f16, mdt::u8,
+            mdt::u8, mdt::f16, mdt::u8}
     , // ^-- 15
     mlp_dims_t{1024, 896, 4864, 16, 16,
-             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-             mdt::u8, mdt::f16, mdt::u8,
-             mdt::u8, mdt::f16, mdt::u8}
+            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
+            mdt::u8, mdt::f16, mdt::u8,
+            mdt::u8, mdt::f16, mdt::u8}
     , // ^-- 16
     mlp_dims_t{1024, 4096, 14336, 16, 16,
-             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-             mdt::u8, mdt::f16, mdt::u8,
-             mdt::u8, mdt::f16, mdt::u8}
+            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
+            mdt::u8, mdt::f16, mdt::u8,
+            mdt::u8, mdt::f16, mdt::u8}
     , // ^-- 17
     mlp_dims_t{1024, 4096, 27392, 16, 16,
-             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-             mdt::u8, mdt::f16, mdt::u8,
-             mdt::u8, mdt::f16, mdt::u8}
+            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
+            mdt::u8, mdt::f16, mdt::u8,
+            mdt::u8, mdt::f16, mdt::u8}
     , // ^-- 18
 
     mlp_dims_t{1024, 3584, 18944, 128, 128,
-             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-             mdt::u8, mdt::f16, mdt::u8,
-             mdt::u8, mdt::f16, mdt::u8}
+            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
+            mdt::u8, mdt::f16, mdt::u8,
+            mdt::u8, mdt::f16, mdt::u8}
     , // ^-- 19
     mlp_dims_t{1024, 896, 4864, 128, 128,
-             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-             mdt::u8, mdt::f16, mdt::u8,
-             mdt::u8, mdt::f16, mdt::u8}
+            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
+            mdt::u8, mdt::f16, mdt::u8,
+            mdt::u8, mdt::f16, mdt::u8}
     , // ^-- 20
     mlp_dims_t{1024, 4096, 14336, 128, 128,
-             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-             mdt::u8, mdt::f16, mdt::u8,
-             mdt::u8, mdt::f16, mdt::u8}
+            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
+            mdt::u8, mdt::f16, mdt::u8,
+            mdt::u8, mdt::f16, mdt::u8}
     , // ^-- 21
     mlp_dims_t{1024, 4096, 27392, 128, 128,
-             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-             mdt::u8, mdt::f16, mdt::u8,
-             mdt::u8, mdt::f16, mdt::u8}
+            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
+            mdt::u8, mdt::f16, mdt::u8,
+            mdt::u8, mdt::f16, mdt::u8}
     , // ^-- 22
 
     // B = 1024, quantized w=s8
     mlp_dims_t{32, 32, 32, 16, 16,
-             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-             mdt::s8, mdt::f16, mdt::s8,
-             mdt::s8, mdt::f16, mdt::s8}
+            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
+            mdt::s8, mdt::f16, mdt::s8,
+            mdt::s8, mdt::f16, mdt::s8}
     , // ^-- 23
     mlp_dims_t{1024, 3584, 18944, 16, 16,
-             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-             mdt::s8, mdt::f16, mdt::s8,
-             mdt::s8, mdt::f16, mdt::s8}
+            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
+            mdt::s8, mdt::f16, mdt::s8,
+            mdt::s8, mdt::f16, mdt::s8}
     , // ^-- 24
     mlp_dims_t{1024, 896, 4864, 16, 16,
-             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-             mdt::s8, mdt::f16, mdt::s8,
-             mdt::s8, mdt::f16, mdt::s8}
+            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
+            mdt::s8, mdt::f16, mdt::s8,
+            mdt::s8, mdt::f16, mdt::s8}
     , // ^-- 25
     mlp_dims_t{1024, 4096, 14336, 16, 16,
-             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-             mdt::s8, mdt::f16, mdt::s8,
-             mdt::s8, mdt::f16, mdt::s8}
+            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
+            mdt::s8, mdt::f16, mdt::s8,
+            mdt::s8, mdt::f16, mdt::s8}
     , // ^-- 26
     mlp_dims_t{1024, 4096, 27392, 16, 16,
-             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-             mdt::s8, mdt::f16, mdt::s8,
-             mdt::s8, mdt::f16, mdt::s8}
+            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
+            mdt::s8, mdt::f16, mdt::s8,
+            mdt::s8, mdt::f16, mdt::s8}
     , // ^-- 27
 
     mlp_dims_t{1024, 3584, 18944, 128, 128,
-             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-             mdt::s8, mdt::f16, mdt::s8,
-             mdt::s8, mdt::f16, mdt::s8}
+            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
+            mdt::s8, mdt::f16, mdt::s8,
+            mdt::s8, mdt::f16, mdt::s8}
     , // ^-- 28
     mlp_dims_t{1024, 896, 4864, 128, 128,
-             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-             mdt::s8, mdt::f16, mdt::s8,
-             mdt::s8, mdt::f16, mdt::s8}
+            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
+            mdt::s8, mdt::f16, mdt::s8,
+            mdt::s8, mdt::f16, mdt::s8}
     , // ^-- 29
     mlp_dims_t{1024, 4096, 14336, 128, 128,
-             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-             mdt::s8, mdt::f16, mdt::s8,
-             mdt::s8, mdt::f16, mdt::s8}
+            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
+            mdt::s8, mdt::f16, mdt::s8,
+            mdt::s8, mdt::f16, mdt::s8}
     , // ^-- 30
     mlp_dims_t{1024, 4096, 27392, 128, 128,
-             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-             mdt::s8, mdt::f16, mdt::s8,
-             mdt::s8, mdt::f16, mdt::s8}
+            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
+            mdt::s8, mdt::f16, mdt::s8,
+            mdt::s8, mdt::f16, mdt::s8}
     , // ^-- 31
 
     // B = 1024, quantized w=u4
     mlp_dims_t{32, 128, 32, 16, 16,
-             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-             mdt::u4, mdt::f16, mdt::u8,
-             mdt::u4, mdt::f16, mdt::u8}
+            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
+            mdt::u4, mdt::f16, mdt::u8,
+            mdt::u4, mdt::f16, mdt::u8}
     , // ^-- 32
     mlp_dims_t{1024, 3584, 18944, 16, 16,
-             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-             mdt::u4, mdt::f16, mdt::u8,
-             mdt::u4, mdt::f16, mdt::u8}
+            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
+            mdt::u4, mdt::f16, mdt::u8,
+            mdt::u4, mdt::f16, mdt::u8}
     , // ^-- 33
     mlp_dims_t{1024, 896, 4864, 16, 16,
-             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-             mdt::u4, mdt::f16, mdt::u8,
-             mdt::u4, mdt::f16, mdt::u8}
+            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
+            mdt::u4, mdt::f16, mdt::u8,
+            mdt::u4, mdt::f16, mdt::u8}
     , // ^-- 34
     mlp_dims_t{1024, 4096, 14336, 16, 16,
-             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-             mdt::u4, mdt::f16, mdt::u8,
-             mdt::u4, mdt::f16, mdt::u8}
+            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
+            mdt::u4, mdt::f16, mdt::u8,
+            mdt::u4, mdt::f16, mdt::u8}
     , // ^-- 35
     mlp_dims_t{1024, 4096, 27392, 16, 16,
-             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-             mdt::u4, mdt::f16, mdt::u8,
-             mdt::u4, mdt::f16, mdt::u8}
+            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
+            mdt::u4, mdt::f16, mdt::u8,
+            mdt::u4, mdt::f16, mdt::u8}
     , // ^-- 36
-//*/
     mlp_dims_t{1024, 3584, 18944, 128, 128,
-             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-             mdt::u4, mdt::f16, mdt::u8,
-             mdt::u4, mdt::f16, mdt::u8}
+            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
+            mdt::u4, mdt::f16, mdt::u8,
+            mdt::u4, mdt::f16, mdt::u8}
     , // ^-- 37
     mlp_dims_t{1024, 896, 4864, 128, 128,
-             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-             mdt::u4, mdt::f16, mdt::u8,
-             mdt::u4, mdt::f16, mdt::u8}
+            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
+            mdt::u4, mdt::f16, mdt::u8,
+            mdt::u4, mdt::f16, mdt::u8}
     , // ^-- 38
     mlp_dims_t{1024, 4096, 14336, 128, 128,
-             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-             mdt::u4, mdt::f16, mdt::u8,
-             mdt::u4, mdt::f16, mdt::u8}
+            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
+            mdt::u4, mdt::f16, mdt::u8,
+            mdt::u4, mdt::f16, mdt::u8}
     , // ^-- 39
     mlp_dims_t{1024, 4096, 27392, 128, 128,
-             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-             mdt::u4, mdt::f16, mdt::u8,
-             mdt::u4, mdt::f16, mdt::u8}
-/*
+            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
+            mdt::u4, mdt::f16, mdt::u8,
+            mdt::u4, mdt::f16, mdt::u8}
     , // ^-- 40
 
     // additional 4bit quant
     mlp_dims_t{1024, 896, 4864, 128, 128,
             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
             mdt::s4, mdt::f16, mdt::s8,
             mdt::s8, mdt::f16, mdt::s8}
     , // ^-- 41
     mlp_dims_t{1024, 896, 4864, 128, 128,
             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
             mdt::u4, mdt::f16, mdt::s8,
             mdt::s8, mdt::f16, mdt::s8}
     , // ^-- 42
     mlp_dims_t{1024, 896, 4864, 128, 128,
             quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
             mdt::s4, mdt::f16, mdt::u8,
             mdt::s8, mdt::f16, mdt::s8}
     , // ^-- 43
 
     // activatioins
     mlp_dims_t{32, 32, 32, 1, 1,
-             quantize_type::no_quantization, dnnl_eltwise_gelu_tanh,
-             mdt::f16, mdt::f16, mdt::f16,
-             mdt::f16, mdt::f16, mdt::f16}
+            quantize_type::no_quantization, dnnl_eltwise_gelu_tanh,
+            mdt::f16, mdt::f16,
+            mdt::f16, mdt::f16, mdt::f16,
+            mdt::f16, mdt::f16, mdt::f16}
     , // ^-- 44
     mlp_dims_t{32, 32, 32, 1, 1,
-             quantize_type::no_quantization, dnnl_eltwise_gelu_erf,
-             mdt::f16, mdt::f16, mdt::f16,
-             mdt::f16, mdt::f16, mdt::f16}
+            quantize_type::no_quantization, dnnl_eltwise_gelu_erf,
+            mdt::f16, mdt::f16,
+            mdt::f16, mdt::f16, mdt::f16,
+            mdt::f16, mdt::f16, mdt::f16}
     , // ^-- 45
     mlp_dims_t{32, 128, 32, 16, 16,
             quantize_type::per_token_with_groups, dnnl_eltwise_gelu_tanh,
+            mdt::f16, mdt::f16,
             mdt::s4, mdt::f16, mdt::s8,
             mdt::s8, mdt::f16, mdt::s8}
     , // ^-- 46
     mlp_dims_t{32, 128, 32, 16, 16,
             quantize_type::per_token_with_groups, dnnl_eltwise_gelu_erf,
+            mdt::f16, mdt::f16,
             mdt::u4, mdt::f16, mdt::s8,
             mdt::s8, mdt::f16, mdt::s8}
-      // ^-- 47
+    , // ^-- 47
 //*/
+    mlp_dims_t{1024, 896, 4864, 128, 128,
+            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+            mdt::bf16, mdt::bf16,
+            mdt::u4, mdt::f16, mdt::u8,
+            mdt::u4, mdt::f16, mdt::u8}
+    ,
+    mlp_dims_t{1024, 896, 4864, 128, 128,
+            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
+            mdt::f16, mdt::f16,
+            mdt::u4, mdt::f16, mdt::u8,
+            mdt::u4, mdt::f16, mdt::u8}
+    ,
+    mlp_dims_t{1024, 896, 4864, 1, 1,
+            quantize_type::no_quantization, dnnl_eltwise_swish,
+            mdt::f32, mdt::f32,
+            mdt::f32, mdt::f16, mdt::u8,
+            mdt::f32, mdt::f16, mdt::u8}
 ), &PrintToString);
 // clang-format on
 

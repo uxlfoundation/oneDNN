@@ -183,7 +183,7 @@ struct memory_desc_wrapper : public c_compatible {
      * is true, and the number of data elements otherwise */
     dim_t nelems(bool with_padding = false) const {
         if (is_zero()) return 0;
-        if (has_runtime_dims()) return DNNL_RUNTIME_DIM_VAL;
+        if (has_runtime_dims()) return runtime_value_for<dim_t>();
         return utils::array_product(
                 with_padding ? padded_dims() : dims(), ndims());
     }
@@ -301,7 +301,7 @@ struct memory_desc_wrapper : public c_compatible {
             return 0;
         }
 
-        if (has_runtime_dims_or_strides()) return DNNL_RUNTIME_SIZE_VAL;
+        if (has_runtime_dims_or_strides()) return runtime_value_for<size_t>();
 
         if (is_wino_desc()) {
             return wino_desc().size;
@@ -433,7 +433,7 @@ struct memory_desc_wrapper : public c_compatible {
     /** returns true if at least one dim is not known */
     bool has_runtime_dims() const {
         for (int d = 0; d < ndims(); ++d)
-            if (dims()[d] == DNNL_RUNTIME_DIM_VAL) return true;
+            if (is_runtime_value(dims()[d])) return true;
         return false;
     }
 
@@ -441,7 +441,7 @@ struct memory_desc_wrapper : public c_compatible {
     bool has_runtime_strides() const {
         if (!is_blocking_desc()) return false;
         for (int d = 0; d < ndims(); ++d)
-            if (blocking_desc().strides[d] == DNNL_RUNTIME_DIM_VAL) return true;
+            if (is_runtime_value(blocking_desc().strides[d])) return true;
         return false;
     }
 

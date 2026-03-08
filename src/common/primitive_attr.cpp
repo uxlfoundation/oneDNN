@@ -242,7 +242,7 @@ status_t post_ops_t::validate_binary(alg_kind_t alg,
 
     // Additional check to restrict run-time dimension usage until supported.
     for (int d = 0; d < user_src1_desc->ndims; ++d) {
-        VCHECK_ATTR(user_src1_desc->dims[d] != DNNL_RUNTIME_DIM_VAL,
+        VCHECK_ATTR(!is_runtime_value(user_src1_desc->dims[d]),
                 VERBOSE_RUNTIMEDIM_UNSUPPORTED);
     }
 
@@ -251,7 +251,7 @@ status_t post_ops_t::validate_binary(alg_kind_t alg,
         VCHECK_ATTR(memory_desc_sanity_check(*user_src2_desc),
                 VERBOSE_MEM_DESC_CHECK_FAIL);
         for (int d = 0; d < user_src2_desc->ndims; ++d) {
-            VCHECK_ATTR(user_src2_desc->dims[d] != DNNL_RUNTIME_DIM_VAL,
+            VCHECK_ATTR(!is_runtime_value(user_src2_desc->dims[d]),
                     VERBOSE_RUNTIMEDIM_UNSUPPORTED);
         }
     }

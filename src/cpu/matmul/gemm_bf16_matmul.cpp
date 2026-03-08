@@ -111,7 +111,7 @@ status_t gemm_bf16_matmul_t<dst_type>::pd_t::check_and_configure_attributes(
                 && !attr()->scales_.has_default_values(DNNL_ARG_WEIGHTS)
                 && attr()->scales_.get_mask(DNNL_ARG_WEIGHTS) > 0) {
             // This case requires scratchpad with unknown size
-            if (N() == DNNL_RUNTIME_DIM_VAL) ok = false;
+            if (is_runtime_value(N())) ok = false;
         }
         return ok;
     };
@@ -138,7 +138,7 @@ status_t gemm_bf16_matmul_t<dst_type>::pd_t::check_and_configure_attributes(
                 && IMPLICATION(is_binary_po_per_oc,
                         gemm_based::check_gemm_binary_per_oc_compatible_formats(
                                 *this))
-                && IMPLICATION(N() == DNNL_RUNTIME_DIM_VAL, !has_prelu);
+                && IMPLICATION(is_runtime_value(N()), !has_prelu);
     };
 
     // check basic attributes

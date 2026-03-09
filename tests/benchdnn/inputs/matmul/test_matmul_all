@@ -88,3 +88,6 @@
 --attr-scales=src:common:0.25+wei:common:0.5+dst:common:4
 --attr-post-ops=,relu,sum,sum+relu+add:f32,binary_mul:f32+sum
 --batch=shapes_4d
+
+# matmul with binary injector with non-trivial strides
+--batch=harness_matmul_binary_injector_non_trivial_strides

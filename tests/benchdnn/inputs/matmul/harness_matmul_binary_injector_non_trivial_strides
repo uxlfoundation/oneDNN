@@ -1,0 +1,74 @@
+# binary injector with non-trivial RHS strides (per_mb_spatial path).
+
+# f16
+--reset
+--allow-enum-tags-only=0
+--dt=f16:f16:f32
+--stag=abcd --wtag=abdc --dtag=abcd
+--strides=::
+--attr-post-ops=binary_div:f16:0+binary_add:f16:13:abcd:16512x16512x129x1
+--attr-scratchpad=user
+2x16x128x64:2x16x64x128
+
+--reset
+--allow-enum-tags-only=0
+--dt=f16:f16:f32
+--stag=abcd --wtag=abdc --dtag=abcd
+--strides=::
+--attr-post-ops=binary_add:f16:13:abcd:4160x4160x65x1
+--attr-scratchpad=user
+4x32x64x64:4x32x64x64
+
+--reset
+--allow-enum-tags-only=0
+--engine=cpu
+--runtime_dims_masks=
+--dt=f16:f16:f32
+--stag=abcd
+--wtag=abdc
+--dtag=abcd
+--strides=::
+--attr-post-ops=binary_div:f16:0+binary_add:f16:12:abcd:147840x147840x385x1
+--attr-scales=
+--attr-zero-points=
+--attr-precomputed-reductions=
+--attr-scratchpad=user
+1x16x384x64:1x16x64x384
+
+# bf16
+--reset
+--allow-enum-tags-only=0
+--dt=bf16:bf16:f32
+--stag=abcd --wtag=abdc --dtag=abcd
+--strides=::
+--attr-post-ops=binary_add:bf16:13:abcd:16512x16512x129x1
+--attr-scratchpad=user
+2x16x128x64:2x16x64x128
+
+--reset
+--allow-enum-tags-only=0
+--dt=bf16:bf16:f32
+--stag=abcd --wtag=abdc --dtag=abcd
+--strides=::
+--attr-post-ops=binary_add:bf16:13:abcd:65792x65792x257x1+binary_mul:bf16:13:abcd:65792x65792x257x1
+--attr-scratchpad=user
+2x8x256x64:2x8x64x256
+
+# int8
+--reset
+--allow-enum-tags-only=0
+--dt=s8:s8:f32
+--stag=abcd --wtag=abdc --dtag=abcd
+--strides=::
+--attr-post-ops=binary_add:f32:13:abcd:16512x16512x129x1
+--attr-scratchpad=user
+2x16x128x64:2x16x64x128
+
+--reset
+--allow-enum-tags-only=0
+--dt=s8:s8:f32
+--stag=abcd --wtag=abdc --dtag=abcd
+--strides=::
+--attr-post-ops=binary_add:f32:13:abcd:16512x16512x129x1+binary_mul:f32:13:abcd:16512x16512x129x1
+--attr-scratchpad=user
+4x16x128x64:4x16x64x128

@@ -117,9 +117,58 @@ bool is_supported(cpu_isa_t isa, const dnnl::impl::memory_desc_t &src1_desc,
         const bcast_set_t &supported_strategy_set) {
     VCHECK_BIN_INJ_BOOL(is_data_supported(isa, src1_desc.data_type),
             VERBOSE_ISA_DT_MISMATCH);
-    VCHECK_BIN_INJ_BOOL(memory_desc_wrapper(src1_desc).is_dense(true),
-            VERBOSE_NONTRIVIAL_STRIDE);
+    const memory_desc_wrapper rhs_d(src1_desc);
+    const bool rhs_nontrivial_strides = !rhs_d.is_dense(true);
+    if (rhs_nontrivial_strides) {
+        VCHECK_BIN_INJ_BOOL(rhs_d.is_plain(), VERBOSE_NONTRIVIAL_STRIDE);
+        const auto bcast_type = get_rhs_arg_broadcasting_strategy(
+                src1_desc, dst_d, supported_strategy_set);
+        VCHECK_BIN_INJ_BOOL(
+                bcast_type == broadcasting_strategy_t::per_mb_spatial,
+                VERBOSE_NONTRIVIAL_STRIDE);
+        VCHECK_BIN_INJ_BOOL(dst_d.is_plain()
+                        && injector_utils::get_layout_type(dst_d)
+                                == injector_utils::layout_t::ncsp,
+                VERBOSE_NONTRIVIAL_STRIDE);
+    }
     return is_bcast_supported(src1_desc, dst_d, supported_strategy_set);
+}
+
+static dim_t rhs_offset_per_mb_spatial(const memory_desc_wrapper &dst_d,
+        const memory_desc_wrapper &rhs_d, dim_t dst_offset_bytes) {
+    // dst_off = n*dst_stride_n + c*dst_stride_c + d*dst_stride_d + h*dst_stride_h + w*dst_stride_w
+    // rhs_off = n*rhs_stride_n + d*rhs_stride_d + h*rhs_stride_h + w*rhs_stride_w
+    // per_mb_spatial: channel c is broadcast, so rem = (dst_off % dst_stride_n) % dst_stride_c.
+    const auto &dst_strides = dst_d.blocking_desc().strides;
+    const auto &rhs_strides = rhs_d.blocking_desc().strides;
+    const int ndims = dst_d.ndims();
+    const int dst_dt_shift
+            = math::ilog2q(types::data_type_size(dst_d.data_type()));
+    const dim_t dst_offset_elems = dst_offset_bytes >> dst_dt_shift;
+
+    const dim_t n = dst_offset_elems / dst_strides[0];
+    dim_t rem = dst_offset_elems % dst_strides[0];
+    if (dst_strides[1] != 0) rem %= dst_strides[1];
+
+    dim_t d = 0;
+    dim_t h = 0;
+    dim_t w = 0;
+    if (ndims >= 5) {
+        d = rem / dst_strides[ndims - 3];
+        rem %= dst_strides[ndims - 3];
+    }
+    if (ndims >= 4) {
+        h = rem / dst_strides[ndims - 2];
+        rem %= dst_strides[ndims - 2];
+    }
+    if (ndims >= 3) w = rem / dst_strides[ndims - 1];
+
+    // output = rhs_off (in elements)
+    dim_t rhs_offset = n * rhs_strides[0];
+    if (ndims >= 5) rhs_offset += d * rhs_strides[ndims - 3];
+    if (ndims >= 4) rhs_offset += h * rhs_strides[ndims - 2];
+    if (ndims >= 3) rhs_offset += w * rhs_strides[ndims - 1];
+    return rhs_offset;
 }
 
 bool binary_args_broadcast_supported(const post_ops_t &post_ops,
@@ -681,11 +730,11 @@ Xbyak::Address jit_uni_binary_injector_t<isa, Vmm>::prepare_rhs_arg_addr(
     const auto &rhs_addr_reg = rhs_arg_static_params_.rhs_addr_reg;
     const auto &abi_param_offset = rhs_arg_static_params_.abi_param_offset;
     const auto &rhs_helper_reg = rhs_arg_static_params_.rhs_helper_reg;
-    const auto rhs_arg_elem_size = types::data_type_size(is_ternary_input
-                    ? get_src2_desc(post_op, rhs_arg_static_params_.dst_d)
-                              .data_type
-                    : get_src1_desc(post_op, rhs_arg_static_params_.dst_d)
-                              .data_type);
+    const auto &rhs_md = is_ternary_input
+            ? get_src2_desc(post_op, rhs_arg_static_params_.dst_d)
+            : get_src1_desc(post_op, rhs_arg_static_params_.dst_d);
+    const auto rhs_arg_elem_size = types::data_type_size(rhs_md.data_type);
+    const memory_desc_wrapper rhs_d(rhs_md);
 
     if (is_first || is_ternary_input) {
         host_->mov(rhs_addr_reg, host_->ptr[param1_ + abi_param_offset]);
@@ -740,7 +789,8 @@ Xbyak::Address jit_uni_binary_injector_t<isa, Vmm>::prepare_rhs_arg_addr(
             append_mb_sp_offset(rhs_arg_params.vmm_idx_to_out_addr,
                     rhs_arg_params.vmm_idx_to_out_reg,
                     rhs_arg_params.vmm_idx_to_out_elem_off_val, vmm_idx,
-                    rhs_addr_reg, rhs_helper_reg, rhs_arg_elem_size, is_first);
+                    rhs_addr_reg, rhs_helper_reg, rhs_arg_elem_size, is_first,
+                    rhs_d);
 
             return host_->ptr[rhs_addr_reg];
         }
@@ -1215,7 +1265,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::append_mb_sp_offset(
         const std::map<int, Xbyak::Reg64> &vmm_idx_to_out_reg,
         const std::map<int, size_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
         const Xbyak::Reg64 &addr_reg, const Xbyak::Reg64 &tmp_reg,
-        std::size_t elem_size_bytes, bool is_first) const {
+        std::size_t elem_size_bytes, bool is_first,
+        const memory_desc_wrapper &rhs_d) const {
 
     const auto it_out_addr = vmm_idx_to_out_addr.find(vmm_idx);
     const auto it_out_reg = vmm_idx_to_out_reg.find(vmm_idx);
@@ -1249,29 +1300,35 @@ void jit_uni_binary_injector_t<isa, Vmm>::append_mb_sp_offset(
                             host_,
                             {is_out_reg ? it_out_reg->second : Xbyak::Reg64()}};
 
-            switch (layout) {
-                case injector_utils::layout_t::ncsp:
-                    calculate_mb_sp_ncsp_base(strides, tmp_reg);
-                    break;
-                case injector_utils::layout_t::c_blocked:
-                    calculate_mb_sp_blocked_base(strides, tmp_reg);
-                    break;
-                case injector_utils::layout_t::nspc:
-                    calculate_mb_sp_nspc_base(strides, tmp_reg);
-                    break;
-                case injector_utils::layout_t::cspn:
-                    calculate_mb_sp_cspn_base(strides, tmp_reg);
-                    break;
-                default: assert(!"Unknown layout");
-            }
-
-            if (elem_size_bytes == 1) {
-                host_->add(addr_reg, rax);
+            if (layout == injector_utils::layout_t::ncsp && rhs_d.is_plain()
+                    && !rhs_d.is_dense(true)) {
+                calculate_mb_sp_ncsp_base_rhs_strided(dst_d, rhs_d, strides,
+                        addr_reg, tmp_reg, elem_size_bytes);
             } else {
-                const int shift_val = std::log2(elem_size_bytes);
-                host_->mov(tmp_reg, rax);
-                host_->sal(tmp_reg, shift_val);
-                host_->add(addr_reg, tmp_reg);
+                switch (layout) {
+                    case injector_utils::layout_t::ncsp:
+                        calculate_mb_sp_ncsp_base(strides, tmp_reg);
+                        break;
+                    case injector_utils::layout_t::c_blocked:
+                        calculate_mb_sp_blocked_base(strides, tmp_reg);
+                        break;
+                    case injector_utils::layout_t::nspc:
+                        calculate_mb_sp_nspc_base(strides, tmp_reg);
+                        break;
+                    case injector_utils::layout_t::cspn:
+                        calculate_mb_sp_cspn_base(strides, tmp_reg);
+                        break;
+                    default: assert(!"Unknown layout");
+                }
+
+                if (elem_size_bytes == 1) {
+                    host_->add(addr_reg, rax);
+                } else {
+                    const int shift_val = std::log2(elem_size_bytes);
+                    host_->mov(tmp_reg, rax);
+                    host_->sal(tmp_reg, shift_val);
+                    host_->add(addr_reg, tmp_reg);
+                }
             }
             host_->mov(addr_cache_reg, addr_reg);
         } else {
@@ -1279,27 +1336,140 @@ void jit_uni_binary_injector_t<isa, Vmm>::append_mb_sp_offset(
         }
 
         if (it_off_val != vmm_idx_to_out_elem_off_val.end()) {
-            switch (layout) {
-                case injector_utils::layout_t::ncsp:
-                    calculate_mb_sp_ncsp_partial(strides, it_off_val->second,
-                            tmp_reg, elem_size_bytes);
-                    break;
-                case injector_utils::layout_t::c_blocked:
-                    calculate_mb_sp_blocked_partial(strides, it_off_val->second,
-                            tmp_reg, elem_size_bytes);
-                    break;
-                case injector_utils::layout_t::nspc:
-                    calculate_mb_sp_nspc_partial(strides, it_off_val->second,
-                            tmp_reg, elem_size_bytes);
-                    break;
-                case injector_utils::layout_t::cspn:
-                    calculate_mb_sp_cspn_partial(strides, it_off_val->second,
-                            tmp_reg, elem_size_bytes);
-                    break;
-                default: assert(!"Unknown layout");
+            if (layout == injector_utils::layout_t::ncsp && rhs_d.is_plain()
+                    && !rhs_d.is_dense(true)) {
+                calculate_mb_sp_ncsp_partial_rhs_strided(dst_d, rhs_d,
+                        it_off_val->second, addr_reg, tmp_reg, elem_size_bytes);
+            } else {
+                switch (layout) {
+                    case injector_utils::layout_t::ncsp:
+                        calculate_mb_sp_ncsp_partial(strides,
+                                it_off_val->second, tmp_reg, elem_size_bytes);
+                        break;
+                    case injector_utils::layout_t::c_blocked:
+                        calculate_mb_sp_blocked_partial(strides,
+                                it_off_val->second, tmp_reg, elem_size_bytes);
+                        break;
+                    case injector_utils::layout_t::nspc:
+                        calculate_mb_sp_nspc_partial(strides,
+                                it_off_val->second, tmp_reg, elem_size_bytes);
+                        break;
+                    case injector_utils::layout_t::cspn:
+                        calculate_mb_sp_cspn_partial(strides,
+                                it_off_val->second, tmp_reg, elem_size_bytes);
+                        break;
+                    default: assert(!"Unknown layout");
+                }
+                host_->add(addr_reg, tmp_reg);
             }
-            host_->add(addr_reg, tmp_reg);
         }
+    }
+}
+
+template <cpu_isa_t isa, typename Vmm>
+void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_ncsp_base_rhs_strided(
+        const memory_desc_wrapper &dst_d, const memory_desc_wrapper &rhs_d,
+        const dim_t *dst_strides, const Xbyak::Reg64 &addr_reg,
+        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
+    // offset = n*dst_stride_n + c*dst_stride_c + d*dst_stride_d + h*dst_stride_h + w*dst_stride_w
+    // rhs_off = n*rhs_stride_n + d*rhs_stride_d + h*rhs_stride_h + w*rhs_stride_w
+    // per_mb_spatial: channel c is broadcast, so rem = (offset % dst_stride_n) % dst_stride_c.
+    // output = r8
+    const auto ndims = dst_d.ndims();
+    const auto &rhs_strides = rhs_d.blocking_desc().strides;
+
+    const auto rax = host_->rax;
+    const auto rdx = host_->rdx;
+    const auto r8 = host_->r8;
+
+    host_->xor_(r8, r8);
+    host_->mov(rax, tmp_reg);
+    host_->mov(tmp_reg, dst_strides[0]);
+    host_->xor_(rdx, rdx);
+    host_->div(tmp_reg);
+    // rax = n, rdx = rem
+    if (rhs_strides[0] != 0) {
+        host_->mov(tmp_reg, rhs_strides[0]);
+        host_->imul(rax, tmp_reg);
+        host_->add(r8, rax);
+        // rhs_off += n * rhs_stride_n
+    }
+
+    host_->mov(rax, rdx);
+    host_->mov(tmp_reg, dst_strides[1]);
+    host_->xor_(rdx, rdx);
+    host_->div(tmp_reg);
+
+    if (ndims >= 5) {
+        host_->mov(rax, rdx);
+        host_->mov(tmp_reg, dst_strides[ndims - 3]);
+        host_->xor_(rdx, rdx);
+        host_->div(tmp_reg);
+        if (rhs_strides[ndims - 3] != 0) {
+            host_->mov(tmp_reg, rhs_strides[ndims - 3]);
+            host_->imul(rax, tmp_reg);
+            host_->add(r8, rax);
+            // rhs_off += d * rhs_stride_d
+        }
+    }
+
+    if (ndims >= 4) {
+        host_->mov(rax, rdx);
+        host_->mov(tmp_reg, dst_strides[ndims - 2]);
+        host_->xor_(rdx, rdx);
+        host_->div(tmp_reg);
+        if (rhs_strides[ndims - 2] != 0) {
+            host_->mov(tmp_reg, rhs_strides[ndims - 2]);
+            host_->imul(rax, tmp_reg);
+            host_->add(r8, rax);
+            // rhs_off += h * rhs_stride_h
+        }
+    }
+
+    if (ndims >= 3) {
+        host_->mov(rax, rdx);
+        if (dst_strides[ndims - 1] != 1) {
+            host_->mov(tmp_reg, dst_strides[ndims - 1]);
+            host_->xor_(rdx, rdx);
+            host_->div(tmp_reg);
+        }
+        if (rhs_strides[ndims - 1] != 0) {
+            host_->mov(tmp_reg, rhs_strides[ndims - 1]);
+            host_->imul(rax, tmp_reg);
+            host_->add(r8, rax);
+            // rhs_off += w * rhs_stride_w
+        }
+    }
+
+    if (elem_size_bytes == 1) {
+        host_->add(addr_reg, r8);
+    } else {
+        const int shift_val = std::log2(elem_size_bytes);
+        host_->mov(tmp_reg, r8);
+        host_->sal(tmp_reg, shift_val);
+        host_->add(addr_reg, tmp_reg);
+    }
+}
+
+template <cpu_isa_t isa, typename Vmm>
+void jit_uni_binary_injector_t<isa,
+        Vmm>::calculate_mb_sp_ncsp_partial_rhs_strided(const memory_desc_wrapper
+                                                               &dst_d,
+        const memory_desc_wrapper &rhs_d, std::size_t dst_offset_bytes,
+        const Xbyak::Reg64 &addr_reg, const Xbyak::Reg64 &tmp_reg,
+        std::size_t elem_size_bytes) const {
+    const dim_t rhs_offset
+            = rhs_offset_per_mb_spatial(dst_d, rhs_d, dst_offset_bytes);
+    if (rhs_offset == 0) return;
+
+    if (elem_size_bytes == 1) {
+        host_->add(addr_reg, rhs_offset);
+    } else {
+        const int shift_val = std::log2(elem_size_bytes);
+        const uint64_t rhs_offset_bytes = static_cast<uint64_t>(rhs_offset)
+                << shift_val;
+        host_->mov(tmp_reg, rhs_offset_bytes);
+        host_->add(addr_reg, tmp_reg);
     }
 }
 

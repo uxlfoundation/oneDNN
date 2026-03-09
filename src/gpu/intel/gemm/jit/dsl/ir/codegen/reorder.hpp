@@ -419,8 +419,10 @@ private:
         // int4 -> fp16 has special conversion paths
         if (s.is_x4() && (d.is_f16() || d.is_bf16())) return d;
         if (d.is_x4() && (s.is_f16() || s.is_bf16())) return s;
-        if (s.is_u4() || d.is_u4()) return type_t::u16();
-        if (s.is_s4() || d.is_s4()) return type_t::s16();
+        if (s.is_u4() || d.is_u4())
+            return hw_ >= ngen::HW::XeHPC ? type_t::u8() : type_t::u16();
+        if (s.is_s4() || d.is_s4())
+            return hw_ >= ngen::HW::XeHPC ? type_t::s8() : type_t::s16();
 
         if (s == d) return d; // Swizzle only
         if (s.is_fp8() || d.is_fp8()) return type_t::f16();

@@ -261,10 +261,10 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
         strategy.unroll[LoopM] = e->driverInfo.unroll[LoopM];
         strategy.unroll[LoopN] = e->driverInfo.unroll[LoopN];
         parseStrategy(e->strategy, hw, problem, strategy);
-        return !kParallelLocal && strategy.kParallelLocal
-          // named barriers are not supported by generateShim
-          && strategy.namedBarriers[LoopM] > 0
-          && strategy.namedBarriers[LoopN] > 0;
+        return (!kParallelLocal && strategy.kParallelLocal) ||
+            // named barriers are not supported by generateShim
+            (strategy.namedBarriers[LoopM] > 0 ||
+            strategy.namedBarriers[LoopN] > 0);
     });
     entries.erase(last_entry, end(entries));
     if(!reqs.empty())

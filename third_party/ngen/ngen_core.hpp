@@ -842,6 +842,7 @@ public:
     constexpr int getVS()              const { return vs; }
     constexpr int getWidth()           const { return width; }
     constexpr int getHS()              const { return hs; }
+    constexpr14 int getByteHS()        const { return (hs * getBits()) >> 3; }
     constexpr bool getNeg()            const { return mods & 2; }
     constexpr bool getAbs()            const { return mods & 1; }
     constexpr int getMods()            const { return mods; }

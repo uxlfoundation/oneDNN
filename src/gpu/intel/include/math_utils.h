@@ -800,15 +800,5 @@ f4_e3m0 __attribute__((overloadable)) get_half_byte(
 }
 #endif
 
-void __attribute__((overloadable)) set_double_half_byte(
-        __global uchar *x, off_t y, uchar z) {
-    x[y / 2] = z;
-}
-
-void __attribute__((overloadable)) set_double_half_byte(
-        __global char *x, off_t y, uchar z) {
-    x[y / 2] = z;
-}
-
 #endif
 #endif

@@ -76,7 +76,8 @@ sdpa_executable_t::sdpa_executable_t(std::shared_ptr<op_t> &op,
     status_t s = create_sdpa_pd(sdpa_pd_, p_engine.get(), md_q.get(),
             md_k.get(), md_v.get(), md_dst.get(), md_mask.get(), md_scale.get(),
             is_invert_scale_, kv_head_number, mask_type_, softmax_alg,
-            attr.get(), qk_attr.get(), vs_attr.get());
+            impl::prop_kind::forward_inference, attr.get(), qk_attr.get(),
+            vs_attr.get());
     if (s != dnnl::impl::status::success) {
         is_initialized_ = false;
     } else {

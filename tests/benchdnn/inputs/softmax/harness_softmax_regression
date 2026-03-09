@@ -5,3 +5,5 @@
 --ddt=s8
 --attr-scales=dst:common:0.125,src:common:2
 --axis=3 1x4x192x256 1x4x16x32
+
+--reset --allow-enum-tags-only=0 --dir=FWD_I --stag=abcd --dtag=abcd --alg=SOFTMAX --attr-scratchpad=user --axis=3 1x1x65536x65536

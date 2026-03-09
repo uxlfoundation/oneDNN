@@ -40,7 +40,7 @@ simple_softmax_fwd_generic(__global SRC_DATA_T *src, __global DATA_T *dst,
 #endif
                 POST_OP_ARGS) {
 
-    const int dim[] = {
+    const off_t dim[] = {
             (get_global_id(0) / GROUP_SIZE) % BLOCK_0,
             get_global_id(1) % BLOCK_1,
             get_global_id(2) % BLOCK_2,
@@ -99,7 +99,7 @@ simple_softmax_fwd_generic(__global SRC_DATA_T *src, __global DATA_T *dst,
     // finding max value for each sub_group
     if (!(NEEDS_PADDING(dim[0], dim[1], dim[2], dim[3], dim[4], begin))) {
         for (int i = begin; i < end && i < DD(SOFTMAX_AXIS_IDX); ++i) {
-            dim_t data_off
+            off_t data_off
                     = DATA_OFF(dim[0], dim[1], dim[2], dim[3], dim[4], i);
             d[i - begin] = SRC_TO_REF(src[data_off]);
             max_ = max(max_, d[i - begin]);
@@ -142,7 +142,7 @@ simple_softmax_fwd_generic(__global SRC_DATA_T *src, __global DATA_T *dst,
 #endif
 
     for (int i = begin; i < end; ++i) {
-        dim_t data_off = DATA_OFF(dim[0], dim[1], dim[2], dim[3], dim[4], i);
+        off_t data_off = DATA_OFF(dim[0], dim[1], dim[2], dim[3], dim[4], i);
 
         POST_OP_DATA_T tmp;
         if (NEEDS_PADDING(dim[0], dim[1], dim[2], dim[3], dim[4], i)) {
@@ -216,7 +216,7 @@ __kernel void
 simple_softmax_bwd_generic(__global DST_DATA_T *dst,
         __global SRC_DATA_T *diff_src, __global DST_DATA_T *diff_dst) {
 
-    const int dim[] = {
+    const off_t dim[] = {
             (get_global_id(0) / GROUP_SIZE) % BLOCK_0,
             get_global_id(1) % BLOCK_1,
             get_global_id(2) % BLOCK_2,
@@ -257,7 +257,7 @@ simple_softmax_bwd_generic(__global DST_DATA_T *dst,
 
     if (!(NEEDS_PADDING(dim[0], dim[1], dim[2], dim[3], dim[4], begin))) {
         for (int i = begin; i < end && i < DD(SOFTMAX_AXIS_IDX); ++i) {
-            size_t idx = DATA_OFF(dim[0], dim[1], dim[2], dim[3], dim[4], i);
+            off_t idx = DATA_OFF(dim[0], dim[1], dim[2], dim[3], dim[4], i);
             diff_d[i - begin] = DST_TO_REF(diff_dst[idx]);
             d[i - begin] = DST_TO_REF(dst[idx]);
 #if LOGSOFTMAX
@@ -275,7 +275,7 @@ simple_softmax_bwd_generic(__global DST_DATA_T *dst,
 #endif
 
     for (int i = begin; i < end; ++i) {
-        size_t idx = DATA_OFF(dim[0], dim[1], dim[2], dim[3], dim[4], i);
+        off_t idx = DATA_OFF(dim[0], dim[1], dim[2], dim[3], dim[4], i);
 
         if (NEEDS_PADDING(dim[0], dim[1], dim[2], dim[3], dim[4], i)) {
             diff_src[idx] = REF_TO_SRC(acc_zero);

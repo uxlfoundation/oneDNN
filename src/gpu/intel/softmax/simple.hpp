@@ -328,6 +328,7 @@ struct simple_bwd_t : public primitive_t {
         def_memory_desc_info(kernel_ctx, diff_src_md_info, "SRC");
         def_memory_desc_info(kernel_ctx, diff_dst_md_info, "DST");
         kernel_ctx.set_data_type(diff_src_mdw.data_type());
+        kernel_ctx.register_buffer_size(*pd()->dst_md());
         kernel_ctx.require_stateless_addressing(pd()->has_large_buffers());
         set_offsets(kernel_ctx, *pd()->diff_src_md(), "DATA");
 

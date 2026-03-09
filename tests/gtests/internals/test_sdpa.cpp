@@ -2008,8 +2008,8 @@ public:
                     t.m_scale.get_desc(), t.m_output_quantized.get_desc(),
                     invert_scale, p.heads.kv, to_attn_mask_type(p.mask.type),
                     dnnl::impl::alg_kind::softmax_accurate_inf_as_zero,
-                    t.sdpa_attr_quantized, t.sdpa_kq_attr_quantized,
-                    t.sdpa_vs_attr_quantized);
+                    prop_kind::forward_inference, t.sdpa_attr_quantized,
+                    t.sdpa_kq_attr_quantized, t.sdpa_vs_attr_quantized);
             sdpa_quantized_p = sdpa(sdpa_quantized_pd);
         } catch (const dnnl::error &e) {
             if (e.status == dnnl_unimplemented)
@@ -2128,8 +2128,8 @@ public:
                     t.m_scale.get_desc(), t.m_output_quantized.get_desc(),
                     invert_scale, p.heads.kv, to_attn_mask_type(p.mask.type),
                     dnnl::impl::alg_kind::softmax_accurate_inf_as_zero,
-                    t.sdpa_attr_quantized, t.sdpa_kq_attr_quantized,
-                    t.sdpa_vs_attr_quantized, prop_kind::forward_training);
+                    prop_kind::forward_training, t.sdpa_attr_quantized,
+                    t.sdpa_kq_attr_quantized, t.sdpa_vs_attr_quantized);
             sdpa_fwd = sdpa(sdpa_fwd_pd);
 
             sdpa_bwd_pd = sdpa_backward::primitive_desc(eng,
@@ -2295,8 +2295,8 @@ public:
                     t.m_scale.get_desc(), t.m_output_quantized.get_desc(),
                     invert_scale, p.heads.kv, to_attn_mask_type(p.mask.type),
                     alg_kind::softmax_accurate_inf_as_zero,
-                    t.sdpa_attr_quantized, t.sdpa_kq_attr_quantized,
-                    t.sdpa_vs_attr_quantized);
+                    prop_kind::forward_inference, t.sdpa_attr_quantized,
+                    t.sdpa_kq_attr_quantized, t.sdpa_vs_attr_quantized);
             sdpa_quantized_p = sdpa(sdpa_quantized_pd);
         } catch (const dnnl::error &e) {
             if (e.status == dnnl_unimplemented)
@@ -2445,8 +2445,8 @@ public:
                     t.m_scale.get_desc(), t.m_output_quantized.get_desc(),
                     invert_scale, p.heads.kv, to_attn_mask_type(p.mask.type),
                     dnnl::impl::alg_kind::softmax_accurate_inf_as_zero,
-                    t.sdpa_attr_quantized, t.sdpa_kq_attr_quantized,
-                    t.sdpa_vs_attr_quantized, prop_kind::forward_training);
+                    prop_kind::forward_training, t.sdpa_attr_quantized,
+                    t.sdpa_kq_attr_quantized, t.sdpa_vs_attr_quantized);
             sdpa_fwd = sdpa(sdpa_fwd_pd);
 
             sdpa_bwd_pd = sdpa_backward::primitive_desc(eng,

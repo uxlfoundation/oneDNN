@@ -42,9 +42,9 @@ dnnl_status_t DNNL_API sdpa_primitive_desc_create(
         const_dnnl_memory_desc_t value_desc, const_dnnl_memory_desc_t dst_desc,
         const_dnnl_memory_desc_t mask_desc, const_dnnl_memory_desc_t scale_desc,
         bool invert_scale, dnnl_dim_t kv_head_number, int attn_mask_type,
-        dnnl_alg_kind_t softmax_alg, const_dnnl_primitive_attr_t attr,
-        const_dnnl_primitive_attr_t kq_attr,
-        const_dnnl_primitive_attr_t vs_attr, dnnl_prop_kind_t prop);
+        dnnl_alg_kind_t softmax_alg, dnnl_prop_kind_t prop,
+        const_dnnl_primitive_attr_t attr, const_dnnl_primitive_attr_t kq_attr,
+        const_dnnl_primitive_attr_t vs_attr);
 
 dnnl_status_t DNNL_API sdpa_primitive_desc_create(
         dnnl_primitive_desc_t *primitive_desc_iface, dnnl_engine_t engine,
@@ -79,10 +79,10 @@ struct sdpa : public dnnl::primitive {
                 const memory::desc &scale_desc, const memory::desc &output_desc,
                 bool invert_scale, memory::dim kv_head_number,
                 int attn_mask_type, int softmax_alg,
+                prop_kind_t prop_kind = prop_kind::forward_inference,
                 const primitive_attr &attr = default_attr(),
                 const primitive_attr &kq_attr = default_attr(),
-                const primitive_attr &vs_attr = default_attr(),
-                prop_kind_t prop_kind = prop_kind::forward_inference) {
+                const primitive_attr &vs_attr = default_attr()) {
 
             dnnl_primitive_desc_t pd = nullptr;
             dnnl_status_t status = sdpa_primitive_desc_create(&pd,
@@ -90,8 +90,8 @@ struct sdpa : public dnnl::primitive {
                     value_desc.get(), output_desc.get(),
                     optional_arg(attn_mask_desc), scale_desc.get(),
                     invert_scale, kv_head_number, attn_mask_type,
-                    (dnnl_alg_kind_t)softmax_alg, attr.get(), kq_attr.get(),
-                    vs_attr.get(), (prop_kind_t)prop_kind);
+                    (dnnl_alg_kind_t)softmax_alg, (prop_kind_t)prop_kind,
+                    attr.get(), kq_attr.get(), vs_attr.get());
 
             dnnl::error::wrap_c_api(status,
                     "could not create a primitive descriptor for a sdpa "

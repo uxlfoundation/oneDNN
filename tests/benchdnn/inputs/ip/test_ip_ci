@@ -40,3 +40,11 @@
                 prelu:per_oc, \
                 mul:s8:per_oc+sum:0.25+relu:0.5+add:f32:per_tensor
 --batch=shapes_ci
+
+## Check wtag=ba on fwd_training
+--reset
+--dir=FWD_D
+--dt=f32,bf16,f16
+--stag=ab
+--wtag=ba
+--batch=shapes_dlrm # no spatial shapes, fits wtag=ba.

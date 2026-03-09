@@ -83,7 +83,7 @@ status_t init_matmul_md(memory_desc_t &mm_md, const memory_desc_t &ip_md,
 
 static bool check_training_formats(const memory_desc_wrapper &src_d,
         const memory_desc_wrapper &wei_d, const memory_desc_wrapper &bias_d,
-        const memory_desc_wrapper &dst_d) {
+        const memory_desc_wrapper &dst_d, prop_kind_t prop_kind) {
     using namespace format_tag;
     using namespace utils;
 
@@ -92,17 +92,25 @@ static bool check_training_formats(const memory_desc_wrapper &src_d,
 
     if (!bias_d.is_zero()) ok = ok && bias_d.matches_tag(x);
 
-    ok = ok && IMPLICATION(src_d.matches_tag(ab), wei_d.matches_tag(ab))
-            && IMPLICATION(src_d.matches_tag(acb), wei_d.matches_tag(acb))
-            && IMPLICATION(src_d.matches_tag(acdb), wei_d.matches_tag(acdb))
-            && IMPLICATION(src_d.matches_tag(acdeb), wei_d.matches_tag(acdeb));
+    auto tag = utils::pick(src_d.ndims() - 2, ab, acb, acdb, acdeb);
+    bool tag_matches
+            = IMPLICATION(src_d.matches_tag(tag), wei_d.matches_tag(tag));
+    // Note: allow forward_training weights' OC to be the innermost.
+    if (!tag_matches && prop_kind == prop_kind::forward_training) {
+        tag = utils::pick(src_d.ndims() - 2, ba, bca, bcda, bcdea);
+        tag_matches
+                = IMPLICATION(src_d.matches_tag(tag), wei_d.matches_tag(tag));
+    }
 
-    ok = ok && src_d.is_dense() && wei_d.is_dense() && dst_d.is_dense();
+    ok = ok && tag_matches && src_d.is_dense() && wei_d.is_dense()
+            && dst_d.is_dense();
     return ok;
 }
 
 status_t set_training_formats(memory_desc_t *src_md, memory_desc_t *wei_md,
-        memory_desc_t *bias_md, memory_desc_t *dst_md) {
+        memory_desc_t *bias_md, memory_desc_t *dst_md, prop_kind_t prop_kind) {
+    assert(prop_kind != prop_kind::forward_inference);
+
     using namespace format_tag;
 
     const int ndims = src_md->ndims;
@@ -119,7 +127,7 @@ status_t set_training_formats(memory_desc_t *src_md, memory_desc_t *wei_md,
     if (bias_md && bias_md->format_kind == format_kind::any)
         CHECK(memory_desc_init_by_tag(*bias_md, x));
 
-    return check_training_formats(src_md, wei_md, bias_md, dst_md)
+    return check_training_formats(src_md, wei_md, bias_md, dst_md, prop_kind)
             ? status::success
             : status::unimplemented;
 }
@@ -127,6 +135,7 @@ status_t set_training_formats(memory_desc_t *src_md, memory_desc_t *wei_md,
 int matmul_inner_product_fwd_t::pd_t::get_k_blk(format_tag_t tag) const {
     using namespace format_tag;
     switch (tag) {
+        case ab:
         case ba: return 0;
         case BA8a8b:
         case BA8a24b: return 8;
@@ -172,6 +181,7 @@ status_t matmul_inner_product_fwd_t::pd_t::init_matmul_params(
     // clang-format off
     static const std::map<format_tag_t, std::vector<format_tag_t>> mm_wei_to_ip_wei = {
         { ba, {ab, acb, acdb, acdeb}},
+        { ab, {ba, bca, bcda, bcdea}},
         { BA8a8b, {AB8b8a, AcB8b8a, AcdB8b8a, AcdeB8b8a}},
         { BA8a24b, {AB8b24a, AcB8b24a, AcdB8b24a, AcdeB8b24a}},
         { BA16a16b, {AB16b16a, AcB16b16a, AcdB16b16a, AcdeB16b16a}},
@@ -316,13 +326,6 @@ status_t matmul_inner_product_fwd_t::pd_t::init_matmul_params(
             // (mask: 2 -> 1).
             weights_md_.extra.compensation_mask = 1;
         }
-    } else {
-        // At this point it's guaranteed that the table contains the requested
-        // layout that can be handled.
-        const auto &ip_wei_tags = mm_wei_to_ip_wei.at(mm_wei_tag);
-        const auto ip_wei_tag = ip_wei_tags[weights_md()->ndims - 2];
-        CHECK(memory_desc_init_by_tag(weights_md_, weights_md_.ndims,
-                weights_md_.dims, weights_md_.data_type, ip_wei_tag));
     }
 
     return status::success;

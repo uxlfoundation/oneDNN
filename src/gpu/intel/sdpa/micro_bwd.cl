@@ -652,7 +652,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     if (qdiag0 < q0end) {
         /* Load K tile, destined for SLM */
         k_tile_type K_tile;
-        tile_fill(K_tile, TO_DATA_T(0.f));
+        tile_fill(K_tile, CONVERT_DATA_T(0.f));
 
         tile_load_k(&K_tile, K, k, d, ldk, wg_i0, sg_ij, remainder_k);
 
@@ -1092,8 +1092,8 @@ preprocess_Di(global float *Di, const global DST_DATA_T *A,
 #else
         dq_tile_type dA_tile, A_tile;
         q_tile_type dA_tile_reblock, A_tile_reblock; // load native type
-        tile_fill(A_tile_reblock, TO_DATA_T(0.f));
-        tile_fill(dA_tile_reblock, TO_DATA_T(0.f));
+        tile_fill(A_tile_reblock, CONVERT_DATA_T(0.f));
+        tile_fill(dA_tile_reblock, CONVERT_DATA_T(0.f));
 
         tile_load(&dA_tile_reblock, (global FMA_TYPE *)dA, d, q, ldda, 0,
                 wg_j0 + q0_copy);
@@ -1146,6 +1146,6 @@ postprocess_dQ(global DST_DATA_T *dst, global const float *src, int nelems,
         size_t col = idx % QRY_D3;
         size_t src_idx = (size_t)row * DQ_S2 + col * DQ_S3;
         size_t dst_idx = (size_t)row * QRY_S2 + col * QRY_S3;
-        dst[dst_idx] = TO_DATA_T(src[src_idx]);
+        dst[dst_idx] = CONVERT_DATA_T(src[src_idx]);
     }
 }

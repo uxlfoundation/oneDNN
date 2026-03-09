@@ -35,23 +35,23 @@
 #define GUARD_undef_data(x) x
 
 // Hardware extension types
-// Define extension macros if the corresponding DT_* macros are set but the
+// Define extension macros if the corresponding MATH_UTILS_* macros are set but the
 // compiler hasn't defined the extension macro (e.g. cl_khr_fp16 is not
 // automatically defined by the pragma).
-#if !defined(cl_khr_fp16) \
-        && (defined(DT_F16) || defined(SRC_DT_F16) || defined(SRC0_DT_F16) \
-                || defined(SRC1_DT_F16) || defined(DST_DT_F16) \
-                || defined(WEI_DT_F16) || defined(BIA_DT_F16) \
-                || defined(ACC_DT_F16))
+#if !defined(cl_khr_fp16) && MATH_UTILS_DECLARE_FP16
 #define cl_khr_fp16 1
 #endif
 
-#if !defined(cl_khr_fp64) \
-        && (defined(DT_F64) || defined(SRC_DT_F64) || defined(SRC0_DT_F64) \
-                || defined(SRC1_DT_F64) || defined(DST_DT_F64) \
-                || defined(WEI_DT_F64) || defined(BIA_DT_F64) \
-                || defined(ACC_DT_F64))
+#if !defined(cl_khr_fp64) && MATH_UTILS_DECLARE_FP64
 #define cl_khr_fp64 1
+#endif
+
+#if MATH_UTILS_DECLARE_FP16
+#pragma OPENCL EXTENSION cl_khr_fp16 : enable
+#endif
+
+#if MATH_UTILS_DECLARE_FP64
+#pragma OPENCL EXTENSION cl_khr_fp64 : enable
 #endif
 
 #ifdef cl_khr_fp64

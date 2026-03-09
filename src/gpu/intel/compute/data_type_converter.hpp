@@ -46,19 +46,15 @@ inline std::string get_ocl_type(data_type_t type) {
 class data_type_converter_t {
 public:
     void def_kernel_macros(kernel_ctx_t &kernel_ctx) const {
-        bool uses_f8 = false;
         for (const auto &it : types) {
             std::string type_name = it.first;
             data_type_t type = it.second;
 
-            uses_f8 |= utils::one_of(
-                    type, data_type::f8_e4m3, data_type::f8_e5m2);
-
             std::string ocl_type = get_ocl_type(type);
             kernel_ctx.add_option(
                     utils::format("-D%s_DT=%s", type_name, ocl_type));
+            kernel_ctx.declare_math_utils_data_type(type);
         }
-        if (uses_f8) kernel_ctx.add_option("-DMATH_UTILS_DECLARE_BF8");
     }
 
     void register_type(const std::string &name, data_type_t type) {

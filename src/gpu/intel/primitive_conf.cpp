@@ -291,6 +291,7 @@ const char *get_type_name(data_type_t dt, bool with_punning) {
 void def_data_type(compute::kernel_ctx_t &kernel_ctx, data_type_t dt,
         const char *str, bool with_punning) {
     const char *name = get_type_name(dt, with_punning);
+    kernel_ctx.declare_math_utils_data_type(dt);
 
     switch (dt) {
         case data_type::undef:
@@ -478,14 +479,8 @@ status_t def_post_ops_cfg(compute::kernel_ctx_t &kernel_ctx,
         const post_ops_t &post_ops, const memory_desc_t &dst_md) {
     std::string po_kernel_args = "-DPOST_OP_ARGS=\"";
 
-    bool post_op_uses_bf16 = false;
-    bool post_op_uses_bf8 = false;
-    bool post_op_uses_hf8 = false;
-
     auto set_post_op_uses = [&](data_type_t type) {
-        post_op_uses_bf16 |= (type == data_type::bf16);
-        post_op_uses_bf8 |= (type == data_type::f8_e5m2);
-        post_op_uses_hf8 |= (type == data_type::f8_e4m3);
+        kernel_ctx.declare_math_utils_data_type(type);
     };
 
     auto define_float = [&](const std::string &name, float value,
@@ -575,9 +570,6 @@ status_t def_post_ops_cfg(compute::kernel_ctx_t &kernel_ctx,
     }
 
     kernel_ctx.define_int("POST_OP_CHAIN_LENGTH", post_ops.len());
-    if (post_op_uses_bf16) kernel_ctx.define_int("POST_OP_USING_BF16", 1);
-    if (post_op_uses_bf8) kernel_ctx.define_int("POST_OP_USING_BF8", 1);
-    if (post_op_uses_hf8) kernel_ctx.define_int("POST_OP_USING_HF8", 1);
 
     po_kernel_args += "\"";
     kernel_ctx.add_option(po_kernel_args);

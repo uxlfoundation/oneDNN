@@ -75,10 +75,10 @@ lnorm_reusable_vectorized(__global SRC_DATA_T *src, __global float *mean,
 
     if (USE_SCALE)
         scale = GWS_GET_BUFFER_POS(SS, gws_params, scale)
-                + ((greads - 1) * SG_STRIDE);
+                - get_sub_group_local_id() + ((greads - 1) * SG_STRIDE);
     if (USE_SHIFT)
         shift = GWS_GET_BUFFER_POS(SS, gws_params, shift)
-                + ((greads - 1) * SG_STRIDE);
+                - get_sub_group_local_id() + ((greads - 1) * SG_STRIDE);
 
     /// Normalize layer
     FLT_ACC_DATA_T sqrt_variance = rsqrt(local_variance + eps);

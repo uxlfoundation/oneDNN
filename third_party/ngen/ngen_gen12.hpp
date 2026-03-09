@@ -852,6 +852,12 @@ static inline void encodeTernary512GRF(Instruction12 &i, D dst, S0 src0, S1 src1
     encodeTernary512GRF(i, getHighBit(dst), getHighBit(src0), getHighBit(src1), getHighBit(src2), checkSrc1Scalar(i.opcode(), src1, dst, tag), tag);
 }
 
+static inline bool checkFlatRegion(RegData dst, RegData r) {
+        int reqHS = dst.getHS() * dst.getBytes() / r.getBytes();
+        return (r.getHS() == reqHS && r.getVS() == r.getWidth() * reqHS)
+                || (r.getHS() == 0 && r.getWidth() == 1 && r.getVS() == reqHS);
+}
+
 template <typename Tag>
 static inline bool checkSrc1Scalar(Opcode op, RegData r, RegData dst, Tag tag) { return false; }
 
@@ -868,10 +874,7 @@ static inline bool checkSrc1Scalar(Opcode op, RegData r, RegData dst, EncodingTa
 
 #ifdef NGEN_SAFE
     if (!r.isARF()) {
-        int reqHS = dst.getHS() * dst.getBytes() / r.getBytes();
-        bool flat = (r.getHS() == reqHS && r.getVS() == r.getWidth() * reqHS)
-                || (r.getHS() == 0 && r.getWidth() == 1 && r.getVS() == reqHS);
-        if (!flat)
+        if (!checkFlatRegion(dst, r))
             throw invalid_region_exception();
     }
 #endif

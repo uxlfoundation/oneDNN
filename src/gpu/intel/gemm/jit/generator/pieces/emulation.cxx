@@ -118,11 +118,18 @@ template <typename DT>
 void Generator<hw>::emul(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, const ngen::RegData &src1, const CommonStrategy &strategy,  CommonState &state,  ngen::SourceLocation loc)
 {
     bool is_xe3p = one_of(hw, {ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11, ngen::HW::XE3P_UNKNOWN});
-    if (is_xe3p && (dst.getType() == DataType::bf && src1.getType() == DataType::f)){
-        auto tempRange = state.ra.alloc_range(div_up(mod.getExecSize(), elementsPerGRF(hw, DataType::bf)));;
-        auto temp = tempRange[0].bf(dst.getOffset())(1);
-        mov(mod, temp, src1);
-        mul(mod, dst, src0, temp);
+    bool dstBf = dst.getType() == DataType::bf;
+    bool src1F = src1.getType() == DataType::f;
+    // Xe3p has specific restrictions for mixed bf16/f32 mul.
+    if (is_xe3p && (dstBf && src1F) && dst.getByteHS() != src1.getByteHS()){
+        bool bcastSrc1 = src1.getHS() == 0 && src1.getVS() == 0;
+        int tmp_elems = bcastSrc1 ? 1 : mod.getExecSize();
+        auto tempRange = state.ra.alloc_range(div_up(tmp_elems, elementsPerGRF(hw, dst.getType())));
+        auto tmp_mod = InstructionModifier(mod);
+        tmp_mod.setExecSize(tmp_elems);
+        auto temp = tempRange[0].sub(dst.getOffset(), dst.getType());
+        mov(tmp_mod, temp(1), src1);
+        mul(mod, dst, src0, temp(src1.getVS(), src1.getWidth(), src1.getHS()));
         state.ra.safeRelease(tempRange);
     } else {
         ngen::EmulationImplementation::emul<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate, loc);

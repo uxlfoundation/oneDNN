@@ -14,7 +14,6 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include <algorithm>
 #include <float.h>
 
 #include "utils/parallel.hpp"
@@ -339,8 +338,10 @@ void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
 
     std::vector<int64_t> group_offsets(group_count + 1);
     group_offsets[0] = 0;
+    int64_t max_M_g = 0;
     for (int64_t g = 0; g < group_count; g++) {
         group_offsets[g + 1] = group_offsets[g] + M_dims[g];
+        max_M_g = MAX2(max_M_g, M_dims[g]);
     }
 
     // Precompute common parameters for the different chunks computations
@@ -350,11 +351,15 @@ void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
     const int64_t wei_k_stride = params.wei_m->strides()[wei_ndims - 2];
     const int64_t wei_n_stride = params.wei_m->strides()[wei_ndims - 1];
 
-    // Parallelize over groups
-    // Each group is a separate matmul of size M_dims[g] x K by K x N
-    benchdnn_parallel_nd(group_count, [&](int64_t g) {
+    const int64_t N_chunks = div_up(prb->n, params.dst_N_group);
+    const int64_t max_M_chunks = div_up(max_M_g, params.dst_M_group);
+
+    // Parallelize over groups and (mc, nc) chunks within each group
+    benchdnn_parallel_nd(group_count, max_M_chunks, N_chunks,
+            [&](int64_t g, int64_t mc, int64_t nc) {
         const int64_t M_g = M_dims[g];
         if (M_g == 0) return;
+        if (mc * params.dst_M_group >= M_g) return;
 
         // Precompute offsets for this group
         //   src(m, k)    = (src_row_base + m) * K + k
@@ -373,16 +378,10 @@ void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
             bia_n_stride = 1;
         }
 
-        // Computation: iterate over (mc, nc) dst-scale blocks.
-        const int64_t M_blocks = div_up(M_g, params.dst_M_group);
-        const int64_t N_blocks = div_up(prb->n, params.dst_N_group);
-
-        for (int64_t mc = 0; mc < M_blocks; mc++)
-            for (int64_t nc = 0; nc < N_blocks; nc++)
-                compute_ref_matmul_chunk(params, M_g, prb->n, prb->k, mc, nc,
-                        src_row_base, wei_base, wei_k_stride, wei_n_stride,
-                        dst_row_base, bia_base, bia_m_stride, bia_n_stride,
-                        prb->attr, args);
+        compute_ref_matmul_chunk(params, M_g, prb->n, prb->k, mc, nc,
+                src_row_base, wei_base, wei_k_stride, wei_n_stride,
+                dst_row_base, bia_base, bia_m_stride, bia_n_stride, prb->attr,
+                args);
     });
 }
 #endif // DNNL_EXPERIMENTAL_GROUPED_MEMORY

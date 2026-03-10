@@ -15,3 +15,11 @@
 10x9216x64:10x64x77_n"stable_diffusion:mm1*5"
 1152x1280:1280x1280_n"stable_diffusion:mm6*78"
 18432x1280:1280x320_n"stable_diffusion:mm13*10"
+
+# LLaMA 3.1 8B
+30x14336:14336x4096_n"llama_3_8b:mm2*32"
+30x4096:4096x28672_n"llama_3_8b:mm3*32"
+
+# Vision Transformer
+88256x3072:3072x768_n"vit:mm3*12"
+88256x768:768x768_n"vit:mm6*48"

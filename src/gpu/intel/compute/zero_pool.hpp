@@ -72,6 +72,10 @@ status_t lookup_zero_pool(intel::engine_t *engine, intel::stream_t *stream,
         size_t chunk_size, zero_pool_t **out_pool);
 void release_zero_pool(zero_pool_t *pool);
 
+inline bool use_zero_pool() {
+    return true;
+}
+
 } // namespace intel
 } // namespace gpu
 } // namespace impl

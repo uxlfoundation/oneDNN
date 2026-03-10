@@ -390,6 +390,21 @@ inline int get_max_palette_size() {
 
 } // namespace amx
 
+namespace apx {
+
+// Returns true if the OS has enabled APX Extended General Purpose Register
+// (EGR) state save/restore (XCR0 bit 19). Without this, any instruction that
+// accesses extended registers r16-r31 via the REX2 prefix will raise #UD.
+inline bool egr_available() {
+    // XSAVE feature must be supported in order to check APX EGR state.
+    const bool xsave_supported = cpu().has(Xbyak::util::Cpu::tOSXSAVE);
+    if (!xsave_supported) return false;
+    constexpr int XSAVE_APX_EGR = 19;
+    return (Xbyak::util::Cpu::getXfeature() >> XSAVE_APX_EGR) & 1;
+}
+
+} // namespace apx
+
 namespace {
 
 inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {

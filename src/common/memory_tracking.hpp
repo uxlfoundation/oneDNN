@@ -239,6 +239,7 @@ enum {
     key_gemm_blocked_a,
     key_gemm_blocked_b,
     key_gemm_accumulator,
+    key_gemm_zero_buffer,
     key_gemm_interleaved_lhs,
     key_gemm_mm_result_s32,
     key_gemm_mm_signed_a,

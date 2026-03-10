@@ -406,6 +406,7 @@ gen_nocopy_desc_t::select_kernel(const compute::device_info_t &dev_info,
     // Select a kernel from the catalog.
     std::vector<MatchParams> match_params;
     MatchParams base(hw_, dev_info.mayiuse_systolic(), product_, problem);
+    eval_params_.hwTag = base.selector.hw;
     /* Reuse PVC strategies for legacy mode on Xe3p */
     if (hw_ == ngen::HW::Xe3p && !efficient_64b_)
         base.selector.hw = kcatalog::HWTagXeHPC;
@@ -732,6 +733,7 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
     eval_params.cConvert = (acc_type != c_type);
     eval_params.batch = (batch_dims > 0);
     eval_params.Tc_ext = problem_.Tc_ext;
+    eval_params.hwTag = match_params.selector.hw;
 
     SelectionObserver observer = entryObserver;
 

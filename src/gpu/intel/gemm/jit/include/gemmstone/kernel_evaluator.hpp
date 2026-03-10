@@ -39,6 +39,8 @@ struct EvaluateParams {
     bool batch = false;
     bool deterministic = false;
     Type Tc_ext = Type::invalid;    // External C element type; Type::invalid = use catalog precision
+    char hwTag = 0;                 // Device HW tag (kcatalog::HWTag*); entries may carry an older
+                                    //   tag due to catalog fallback.
 };
 
 struct DerivedEvaluateParams : public EvaluateParams {

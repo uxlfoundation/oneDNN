@@ -20,11 +20,23 @@
 #include "gemmstone/problem.hpp"
 #include "internal/utils.hpp"
 
+#include "common/utils.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
 
 GEMMSTONE_NAMESPACE_START
+
+// Per-execution cost of the zero-fill dispatch that may be
+// needed by fused-beta/fused-post-op kernels. Only Xe-HPC
+// is corrected, as its higher kernel-launch overhead makes
+// the extra dispatch significant. Other architectures are
+// left unchanged to preserve their calibrated selection.
+static double zeroInitCorrection(char hw)
+{
+    return (hw == kcatalog::HWTagXeHPC) ? 1e6 : 0.;
+}
 
 static inline int grfPerEU(char hw)
 {
@@ -364,6 +376,9 @@ double evaluateECore(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, 
     }
 
     double time = ctime + std::max(mtime, etime);
+
+    if (e.driverInfo.fusedBeta() || e.driverInfo.fusedPostOps())
+        time += zeroInitCorrection(dp.hwTag);
 
     return time;
 #undef PARAM

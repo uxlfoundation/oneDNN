@@ -2039,12 +2039,21 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
     bgmmc.N_chunk_elems = bgmmc.N_blk * bgmmc.N_chunk_size;
     bgmmc.K_chunk_elems
             = bgmmc.K_blk * bgmmc.K_chunk_size * bgmmc.brgemm_batch_size;
-    bgmmc.M_chunks = div_up(bgmmc.M, bgmmc.M_chunk_elems);
-    bgmmc.N_chunks = div_up(bgmmc.N, bgmmc.N_chunk_elems);
-    bgmmc.K_chunks = div_up(bgmmc.K, bgmmc.K_chunk_elems);
-    bgmmc.num_M_blocks = div_up(bgmmc.M, bgmmc.M_blk);
-    bgmmc.num_N_blocks = div_up(bgmmc.N, bgmmc.N_blk);
-    bgmmc.num_K_blocks = div_up(bgmmc.K, bgmmc.K_blk * bgmmc.brgemm_batch_size);
+    bgmmc.M_chunks = bgmmc.is_runtime_M ? runtime_value_for(bgmmc.M_chunks)
+                                        : div_up(bgmmc.M, bgmmc.M_chunk_elems);
+    bgmmc.N_chunks = bgmmc.is_runtime_N ? runtime_value_for(bgmmc.N_chunks)
+                                        : div_up(bgmmc.N, bgmmc.N_chunk_elems);
+    bgmmc.K_chunks = bgmmc.is_runtime_K ? runtime_value_for(bgmmc.K_chunks)
+                                        : div_up(bgmmc.K, bgmmc.K_chunk_elems);
+    bgmmc.num_M_blocks = bgmmc.is_runtime_M
+            ? runtime_value_for(bgmmc.num_M_blocks)
+            : div_up(bgmmc.M, bgmmc.M_blk);
+    bgmmc.num_N_blocks = bgmmc.is_runtime_N
+            ? runtime_value_for(bgmmc.num_N_blocks)
+            : div_up(bgmmc.N, bgmmc.N_blk);
+    bgmmc.num_K_blocks = bgmmc.is_runtime_K
+            ? runtime_value_for(bgmmc.num_K_blocks)
+            : div_up(bgmmc.K, bgmmc.K_blk * bgmmc.brgemm_batch_size);
 
     const int last_chunck_batch_size
             = (nstl::max(bgmmc.K, bgmmc.K_blk)
@@ -2127,7 +2136,8 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
             = bgmmc.use_buffer_b ? bgmmc.wei_n_blk * bgmmc.N_chunk_size : 0;
     bgmmc.s8s8_comp_b_str = bgmmc.use_buffer_b
             ? 0
-            : div_up(bgmmc.N, bgmmc.wei_n_blk) * bgmmc.wei_n_blk;
+            : (bgmmc.is_runtime_N ? runtime_value_for(bgmmc.s8s8_comp_b_str)
+                                  : rnd_up(bgmmc.N, bgmmc.wei_n_blk));
     bgmmc.s8s8_comp_n_str = bgmmc.wei_n_blk;
 
     bgmmc.A_ptr_shift_b = 0;

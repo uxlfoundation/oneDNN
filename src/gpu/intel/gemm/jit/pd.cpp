@@ -46,10 +46,21 @@ int quant_entry_ndims(
         if (qmd.dims[i] > 1) { count++; }
     }
 
+    if (count == 0) return 0;
+
     // for gemmstone, 1D quantization implies a full column vector
     // (i.e. not on the K dimension). If quantization varies over K,
     // we have to send these as 2D
     if (k_idx >= 0 && count == 1 && qmd.dims[k_idx] > 1) return 2;
+
+    // If M/N quantization requires broadcast it is unsupported
+    // by post-ops and must be submitted as 2D.
+    int gcount = 0;
+    for (int i = 0; i < 2; ++i) {
+        if (entry.get_group(i) > 1) { gcount++; }
+    }
+
+    if (gcount == 2) return 2;
 
     return count;
 }
@@ -127,12 +138,13 @@ status_t pd_t::init_post_ops() {
     non_scale_po_ |= bias_via_binary_;
 
     auto maybe_convert_scales_to_postop
-            = [this](const memory_desc_t &scale_md, int arg, data_type_t dt,
+            = [this](const memory_desc_t &scale_md, int arg, int scale_ndims,
                       bool mx, bool &converted) -> status_t {
         auto ndims = desc()->c_desc.ndims;
         // Scales on A/B can be converted to postops if
-        // the scales md has K=1
+        // the scales md has K=1 and M/N is not bcast.
         converted = false;
+        if (scale_ndims > 1) return status::success;
         int inner_dim = (arg == DNNL_ARG_A ? ndims - 2 : ndims - 1);
         bool convert = (scale_md.dims[inner_dim] <= 1) || (arg == DNNL_ARG_C);
         convert &= !mx;
@@ -155,14 +167,14 @@ status_t pd_t::init_post_ops() {
         // Host scalar scale will be converted to Alpha
         bool converted;
         CHECK(maybe_convert_scales_to_postop(a_scale_md_, DNNL_ARG_A,
-                a_scales.get_data_type(), a_scales.is_mx(), converted));
+                a_quant.scale_ndims, a_scales.is_mx(), converted));
         if (converted) a_quant.scale_ndims = -1;
     }
 
     if (!b_scales.has_default_values() && !b_scales.is_host_scalar()) {
         bool converted;
         CHECK(maybe_convert_scales_to_postop(b_scale_md_, DNNL_ARG_B,
-                b_scales.get_data_type(), b_scales.is_mx(), converted));
+                b_quant.scale_ndims, b_scales.is_mx(), converted));
         if (converted) b_quant.scale_ndims = -1;
     }
 
@@ -171,7 +183,7 @@ status_t pd_t::init_post_ops() {
     if (!c_scales.has_default_values() && try_c_scale) {
         bool converted;
         CHECK(maybe_convert_scales_to_postop(c_scale_md_, DNNL_ARG_C,
-                c_scales.get_data_type(), c_scales.is_mx(), converted));
+                c_quant.scale_ndims, c_scales.is_mx(), converted));
         // Conversion of dst scales to post ops is currently supported for all
         // cases supported in the library.
         gpu_assert(converted || c_scales.is_mx())

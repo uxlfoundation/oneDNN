@@ -651,6 +651,14 @@ void notify_gpu_profiling_complete(dnnl_stream_t stream) {
 
 void finalize() {
     finalize_tbb();
+
+#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
+    // See: DUMMY_PARALLEL.
+    if (is_cpu()) {
+        auto tp = dnnl::testing::get_threadpool();
+        tp->parallel_for(1, [](int, int) {});
+    }
+#endif
 }
 
 inline int measure_perf_individual(timer::timer_t &t, dnnl_stream_t stream,

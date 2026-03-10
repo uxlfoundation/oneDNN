@@ -378,11 +378,19 @@ auto dst_mem = memory(dst_md, engine, {dst_data, offsets.data()});
 
 Setting attributes for grouped GEMM follows the regular matmul attribute API.
 Below are some examples of common use cases for MoE workloads.
+For more details on how to set attributes, refer to the @ref dev_guide_attributes page.
 
 Per-token source scales:
 ~~~cpp
 attr.set_scales_mask(DNNL_ARG_SRC, (1 << 0));  // Varies along M dimension
 // Scale tensor: [total_tokens] - one scale per token
+// Layout: concatenated like source data, uses same offsets
+~~~
+
+K-grouped source scales with group size of 128:
+~~~cpp
+attr.set_scales(DNNL_ARG_SRC, (1 << 0) | (1 << 1), {1, 128}, memory::data_type::f16);
+// Scale tensor: [total_tokens, K/128] - one scale per (token, K-block)
 // Layout: concatenated like source data, uses same offsets
 ~~~
 
@@ -407,10 +415,13 @@ The following are supported:
 - Currently, only single dimension `0` can vary.
 - Source and destination must use identical grouping.
 - Scales attribute for source and weights tensors:
-  - Source Scales: row-wise (per-token, `mask = (1 << 0)`) are applied to all experts equally.
-  - Weight Scales: column-wise (per-expert-per-column, `mask = (1 << 0) | (1 << 2)`)
-    and K-grouped (per-expert-per-K-group-per-column, `mask = (1 << 0) | (1 << 1) | (1 << 2)`)
-    with group specification are supported.
+  - Source Scales: row-wise (`mask = (1 << 0)`) and K-grouped
+    (`mask = (1 << 0) | (1 << 1)`) with group specification are supported.
+    The scale tensor follows the same concatenated layout as src, with total
+    size `[total_tokens, K/gK]`.
+  - Weight Scales: column-wise (`mask = (1 << 0) | (1 << 2)`) and
+    K-grouped (`mask = (1 << 0) | (1 << 1) | (1 << 2)`) with group specification
+    are supported.
 - Zero points attribute for weights tensors with the same masks as scales.
 - Bias supports per-expert shape.
 - Supported on CPU and GPU engines.

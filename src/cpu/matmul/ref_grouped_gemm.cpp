@@ -18,6 +18,7 @@
 
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
 
+#include <algorithm>
 #include <atomic>
 
 #include "common/c_types_map.hpp"
@@ -62,9 +63,13 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
     const auto bia_dt
             = with_bias ? pd()->weights_md(1)->data_type : data_type::undef;
 
-    // src scales: row-wise
+    // src scales: row-wise or blocked (K grouping)
     const auto &attr_scales = pd()->attr()->scales_;
     const bool with_src_scales = !attr_scales.has_default_values(DNNL_ARG_SRC);
+    const auto src_scale_dt = attr_scales.get_data_type(DNNL_ARG_SRC);
+    const auto src_scale_group_k = attr_scales.get_group(DNNL_ARG_SRC, -1);
+    const auto src_scale_ngroups_k
+            = src_scale_group_k > 1 ? K / src_scale_group_k : 1;
     const void *src_scales
             = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
 
@@ -82,11 +87,14 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
     const auto &attr_zps = pd()->attr()->zero_points_;
     const bool with_wei_zps = !attr_zps.has_default_values(DNNL_ARG_WEIGHTS);
     const auto wei_zp_dt = attr_zps.get_data_type(DNNL_ARG_WEIGHTS);
+    const auto wei_zp_group_k = attr_zps.get_group(DNNL_ARG_WEIGHTS, -2);
+    const dim_t wei_zp_ngroups_k = wei_zp_group_k > 1 ? K / wei_zp_group_k : 1;
     const void *wei_zps = CTX_IN_MEM(
             const void *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
 
-    // Number of groups for zps and scales must be the same
-    const dim_t n_k_groups = wei_scale_ngroups_k;
+    // Use the finest K-group granularity across src/wei scales and wei ZPs
+    const dim_t n_k_groups = std::max(
+            {src_scale_ngroups_k, wei_scale_ngroups_k, wei_zp_ngroups_k});
     const dim_t k_group_size = K / n_k_groups;
 
     // Check if int arithmetic (int4/int8 src and wei)
@@ -147,14 +155,18 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
                         int wei_zp_val = 0;
 
                         if (with_wei_scales) {
-                            const dim_t idx = group_id * n_k_groups * N
-                                    + i_group * N + n;
+                            const dim_t wei_k_group = i_group
+                                    * wei_scale_ngroups_k / n_k_groups;
+                            const dim_t idx = group_id * wei_scale_ngroups_k * N
+                                    + wei_k_group * N + n;
                             wei_scale = io::load_float_value(
                                     wei_scale_dt, wei_scales, idx);
                         }
                         if (with_wei_zps) {
-                            const dim_t idx = group_id * n_k_groups * N
-                                    + i_group * N + n;
+                            const dim_t wei_k_group
+                                    = i_group * wei_zp_ngroups_k / n_k_groups;
+                            const dim_t idx = group_id * wei_zp_ngroups_k * N
+                                    + wei_k_group * N + n;
                             wei_zp_val = io::load_int_value(
                                     wei_zp_dt, wei_zps, idx);
                         }
@@ -195,9 +207,13 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
                         }
 
                         if (with_src_scales) {
-                            const dim_t idx = src_offset_start + m;
+                            const dim_t src_k_group = i_group
+                                    * src_scale_ngroups_k / n_k_groups;
+                            const dim_t idx = (src_offset_start + m)
+                                            * src_scale_ngroups_k
+                                    + src_k_group;
                             const float src_scale = io::load_float_value(
-                                    data_type::f32, src_scales, idx);
+                                    src_scale_dt, src_scales, idx);
                             acc *= src_scale;
                         }
 
@@ -222,7 +238,7 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
                     if (with_src_scales) {
                         const dim_t idx = src_offset_start + m;
                         const float scale = io::load_float_value(
-                                data_type::f32, src_scales, idx);
+                                src_scale_dt, src_scales, idx);
                         acc *= scale;
                     }
 

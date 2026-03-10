@@ -91,14 +91,26 @@ struct ref_grouped_t : public primitive_t {
             if (!attr_scales.has_default_values(DNNL_ARG_SRC)) {
                 const int src_mask = attr_scales.get_mask(DNNL_ARG_SRC);
                 const int rowwise_mask = src_qmask_M();
-                // Only rowwise f32 scales supported for src
-                VDISPATCH_MATMUL(src_mask == rowwise_mask,
-                        VERBOSE_UNSUPPORTED_SCALES_CFG);
-                VDISPATCH_MATMUL(attr_scales.get_data_type(DNNL_ARG_SRC) == f32,
+                const int blocked_mask = src_qmask_M() | src_qmask_K();
+                // Allow row-wise or blocked (K-grouping) scales for src
+                VDISPATCH_MATMUL(
+                        src_mask == rowwise_mask || src_mask == blocked_mask,
                         VERBOSE_UNSUPPORTED_SCALES_CFG);
                 VDISPATCH_MATMUL(
-                        attr_scales.get(DNNL_ARG_SRC).has_default_groups(),
+                        utils::one_of(attr_scales.get_data_type(DNNL_ARG_SRC),
+                                f32, bf16, f16),
                         VERBOSE_UNSUPPORTED_SCALES_CFG);
+                if (!attr_scales.get(DNNL_ARG_SRC).has_default_groups()) {
+                    // K-grouped src scales only supported with int src types
+                    VDISPATCH_MATMUL(
+                            is_int_src, VERBOSE_UNSUPPORTED_SCALES_CFG);
+                    const auto gM = attr_scales.get_group(DNNL_ARG_SRC, -2);
+                    VDISPATCH_MATMUL(gM == 1, VERBOSE_UNSUPPORTED_SCALES_CFG);
+                    const auto gK = attr_scales.get_group(DNNL_ARG_SRC, -1);
+                    VDISPATCH_MATMUL(gK > 1, VERBOSE_UNSUPPORTED_SCALES_CFG);
+                    VDISPATCH_MATMUL(
+                            K() % gK == 0, VERBOSE_UNSUPPORTED_SCALES_CFG);
+                }
             }
             if (!attr_scales.has_default_values(DNNL_ARG_WEIGHTS)) {
                 const int wei_mask = attr_scales.get_mask(DNNL_ARG_WEIGHTS);
@@ -113,8 +125,9 @@ struct ref_grouped_t : public primitive_t {
                         wei_mask == colwise_mask || wei_mask == blocked_mask,
                         VERBOSE_UNSUPPORTED_SCALES_CFG);
                 if (!attr_scales.get(DNNL_ARG_WEIGHTS).has_default_groups()) {
-                    VDISPATCH_MATMUL(utils::one_of(wei_type, u8, s8, s4, u4),
-                            VERBOSE_UNSUPPORTED_SCALES_CFG);
+                    // K-grouped wei scales only supported with int wei types
+                    VDISPATCH_MATMUL(
+                            is_int_wei, VERBOSE_UNSUPPORTED_SCALES_CFG);
                     const auto gK = attr_scales.get_group(DNNL_ARG_WEIGHTS, -2);
                     VDISPATCH_MATMUL(gK > 1, VERBOSE_UNSUPPORTED_SCALES_CFG);
                     VDISPATCH_MATMUL(
@@ -153,6 +166,21 @@ struct ref_grouped_t : public primitive_t {
                     const auto gN = attr_zps.get_group(DNNL_ARG_WEIGHTS, -1);
                     VDISPATCH_MATMUL(gN == 1, VERBOSE_UNSUPPORTED_ZP_CFG);
                 }
+            }
+
+            // for src/wei scales group size in case of K grouping,
+            // one must be a multiple of the other
+            if (!attr_scales.has_default_values(DNNL_ARG_SRC)
+                    && !attr_scales.get(DNNL_ARG_SRC).has_default_groups()) {
+                VDISPATCH_MATMUL(
+                        !attr_scales.has_default_values(DNNL_ARG_WEIGHTS)
+                                && !attr_scales.get(DNNL_ARG_WEIGHTS)
+                                            .has_default_groups(),
+                        VERBOSE_UNSUPPORTED_SCALES_CFG);
+                const auto src_gK = attr_scales.get_group(DNNL_ARG_SRC, -1);
+                const auto wei_gK = attr_scales.get_group(DNNL_ARG_WEIGHTS, -2);
+                VDISPATCH_MATMUL(src_gK % wei_gK == 0 || wei_gK % src_gK == 0,
+                        VERBOSE_UNSUPPORTED_SCALES_CFG);
             }
 
             // Scales and ZPs groups must match

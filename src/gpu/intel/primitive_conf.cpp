@@ -517,6 +517,7 @@ status_t def_post_ops_cfg(compute::kernel_ctx_t &kernel_ctx,
 
             post_op::relative_md_t src_rmd;
             if (e.is_binary()) {
+                kernel_ctx.register_buffer_size(e.binary.src1_desc);
                 kernel_ctx.define_int("PO_" + idx + "_ALG", e.binary.alg);
                 CHECK(post_op::relative_md_t::make(
                         src_rmd, e.binary.src1_desc, {}));
@@ -526,6 +527,7 @@ status_t def_post_ops_cfg(compute::kernel_ctx_t &kernel_ctx,
                 memory_desc_t weight_mem_desc;
                 CHECK(get_prelu_md(e.prelu.mask, dst_md.dims, weight_mem_desc,
                         dst_md.ndims));
+                kernel_ctx.register_buffer_size(weight_mem_desc);
                 CHECK(post_op::relative_md_t::make(
                         src_rmd, weight_mem_desc, {}));
             }

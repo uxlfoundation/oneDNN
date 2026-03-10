@@ -12,9 +12,10 @@
 # - Data types: f32, bf16, f16, u8/s8 with s4/u4 weights
 # - Bias: --bia-dt=f32/bf16/f16, --bia_mask=2 (per-expert bias [num_experts, N])
 # - Empty groups (M_g = 0)
-# - Row-wise (per-token) src scales: --attr-scales=src:1
+# - Row-wise src scales: --attr-scales=src:1
+# - Grouped src scales: 3:f16:1x32 (grouped along K, mask = (1<<0) | (1<<1))
 # - Column-wise wei scales: 5 (scales vary by expert and N, mask = (1<<0) | (1<<2))
-# - Grouped wei scales: 7:32x1 (grouped along K, mask = (1<<0) | (1<<1) | (1<<2))
+# - Grouped wei scales: 7:f32:32x1 (grouped along K, mask = (1<<0) | (1<<1) | (1<<2))
 # - Column-wise weight zero points: --attr-zero-points=wei:5:s8 (mask = (1<<0) | (1<<2))
 # - Grouped weight zero points: --attr-zero-points=wei:7:s8:32x1 (grouped along K)
 # - WOQ (weight-only quantization) with f16 activations and s4/u4/8-bit weights
@@ -125,3 +126,11 @@
 --attr-zero-points=wei:5:u8
 32x64:4x64x32
 
+# int src + int wei with K-grouped f16 src scales and K-grouped wei scales and ZPs
+--reset
+--dt=u8:s8:f32,s8:s8:f32,u8:u8:f32
+--wtag=abc,acb
+--grouped=0:4:8,16,0,8
+--attr-scales=src:3:f16:1x128+wei:7:f16:128x1
+--attr-zero-points=,wei:7:s8:128x1
+32x512:4x512x256

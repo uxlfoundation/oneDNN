@@ -19,3 +19,6 @@ mb1ic960ih96oc320oh96kh1ph0n"stable_diffusion:conv42*1"
 # 3D Unet
 mb1ic128id28ih30iw30oc128od26oh28ow28kd3kh3kw3pd0ph0pw0n"3d_unet:conv_5"
 mb1ic256id10ih11iw11oc512od8oh9ow9kd3kh3kw3pd0ph0pw0n"3d_unet:conv_8"
+
+# Vision transformer
+mb448ic3ih224oc768oh14kh16sh16ph0n"vit:conv1*1"

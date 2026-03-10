@@ -60,6 +60,33 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         bool swap_ab, bool disable_hilbert) const {
     if (pd()->desc()->batch() == 0) return status::success;
 
+    std::unique_ptr<memory_storage_t> zeros;
+    int zp_token = 0;
+    if (nocopy_info()->fusedBeta() || nocopy_info()->fusedPostOps()) {
+        CHECK(zero_pool->claim(
+                compute_stream, zero_pool_bytes_, zeros, &zp_token));
+        bool zp_fill = true;
+        if (gpu_utils::dev_getenv("ZP", false)) zp_fill = false;
+        if (zp_fill) {
+#if 1
+            auto nelems = uint32_t(zero_pool_bytes_ / sizeof(uint32_t));
+            compute::kernel_arg_list_t zero_arg_list;
+            zero_arg_list.set(0, *zeros);
+            zero_arg_list.set(1, nelems);
+            compute::range_t zero_gws = {size_t(nelems)};
+            compute::range_t zero_lws
+                    = {size_t(std::min(256, (int)utils::max_pow2_div(nelems)))};
+            auto zero_nd_range = compute::nd_range_t(zero_gws, zero_lws);
+            CHECK(parallel_for(
+                    ctx, zero_nd_range, zero_fill_kernel_, zero_arg_list));
+#else
+            CHECK(compute_stream->fill(*zeros, 0, zero_pool_bytes_,
+                    compute_stream->ctx().get_deps(),
+                    compute_stream->ctx().get_deps()));
+#endif
+        }
+    }
+
     uint32_t flags = 0;
     bool k_parallel_fixed
             = (nocopy_info()->kParallel() || nocopy_info()->kParallelLocal())
@@ -163,11 +190,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
             arg_list.set(argn++, int32_t(pd()->ld_binary(i)));
     }
 
-    std::unique_ptr<memory_storage_t> zeros;
-    int zp_token = 0;
     if (nocopy_info()->fusedBeta() || nocopy_info()->fusedPostOps()) {
-        CHECK(zero_pool->claim(
-                compute_stream, zero_pool_bytes_, zeros, &zp_token));
         arg_list.set(argn++, *zeros);
     }
 

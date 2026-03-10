@@ -167,22 +167,7 @@ status_t gen_desc_t::finalize(const char *tags) {
 
         ovr_strategy = ss.str().substr(ss.tellg()); // remaining string
         parseStrategy(ovr_strategy.c_str(), hw_, problem_, strategy_);
-
-        // TODO: override derived values in aux_params_ in a way that's
-        // consistent with the kernel evaluator (typically requires extra
-        // benchmarking data not supplied with the kernel override string)
-        // Currently: assume the W model because it's simple
-        if (strategy_.kParallelLocal) {
-            aux_params_.k0
-                    = utils::rnd_up(utils::div_up(k_, strategy_.wg[LoopK]),
-                            strategy_.unroll[LoopK]);
-            aux_params_.wgK = std::max(1,
-                    std::min(strategy_.wg[LoopK],
-                            int(utils::div_up(k_, aux_params_.k0))));
-        } else {
-            aux_params_.k0 = EvaluateAuxOutput().k0;
-            aux_params_.wgK = EvaluateAuxOutput().wgK;
-        }
+        modifyStrategy(strategy_, aux_params_);
     } else {
 #endif
         strategy_.unroll[LoopM] = entry_->driverInfo.unroll[LoopM];

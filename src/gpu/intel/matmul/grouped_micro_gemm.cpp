@@ -157,7 +157,7 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
 
     SizeParams sizes;
     sizes.m = static_cast<uint16_t>(pd()->N());
-    sizes.n = static_cast<uint16_t>(pd()->M());
+    sizes.n = std::max<int>(1, static_cast<float>(pd()->M()) / pd()->ngroups_);
     sizes.k = static_cast<uint16_t>(pd()->K());
 
     auto strat_override = [&](gemmstone::GEMMStrategy &strat) {

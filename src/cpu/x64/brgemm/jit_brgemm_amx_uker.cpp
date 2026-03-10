@@ -1178,6 +1178,11 @@ void jit_brgemm_amx_uker_base_t::prepare_post_ops_registers(
                                     Xmm(zmm_scale.getIdx()));
                             vbroadcastss(zmm_scale, Xmm(zmm_scale.getIdx()));
                             break;
+                        case data_type::e8m0:
+                            vpbroadcastb(Xmm(zmm_scale.getIdx()), scales_ptr);
+                            uni_vpslld(zmm_scale, zmm_scale, 23);
+                            vbroadcastss(zmm_scale, Xmm(zmm_scale.getIdx()));
+                            break;
                         default: assert(!"unsupported wei_scales data type");
                     }
                 }
@@ -1196,6 +1201,10 @@ void jit_brgemm_amx_uker_base_t::prepare_post_ops_registers(
                     break;
                 case data_type::f16:
                     vcvtph2ps(zmm_wei_scale_masked, scales_ptr);
+                    break;
+                case data_type::e8m0:
+                    uni_vpmovzxbd(zmm_wei_scale_masked, scales_ptr);
+                    uni_vpslld(zmm_wei_scale, zmm_wei_scale, 23);
                     break;
                 default: assert(!"unsupported wei_scales data type");
             }
@@ -1975,7 +1984,7 @@ void jit_brgemm_amx_uker_base_t::tdpbxxd(brgemm_iteration_t &bi, int bdb_idx,
     const Tmm &x2 = Tmm(brg.get_A_tensor(bdb_idx, bi.bdi->is_tail(bdb_idx)));
     const Tmm &x3 = Tmm(brg.get_B_tensor(ldb_idx, bi.ldi->is_tail(ldb_idx)));
 
-    using namespace data_type;
+   using namespace data_type;
     if (brg.is_tf32) {
         tmmultf32ps(x1, x2, x3);
     } else if (brg.is_bf32 || (brg.dt_a == bf16 && brg.dt_b == bf16)) {
@@ -1992,6 +2001,16 @@ void jit_brgemm_amx_uker_base_t::tdpbxxd(brgemm_iteration_t &bi, int bdb_idx,
         tdphf8ps(x1, x2, x3);
     } else if (brg.dt_a == f8_e4m3 && brg.dt_b == f8_e5m2) {
         tdphbf8ps(x1, x2, x3);
+    } else if (brg.dt_a == f32 && brg.dt_b == f4_e2m1) {
+        tmmultf32ps(x1, x2, x3);
+    } else if (brg.dt_a == bf16 && brg.dt_b == f4_e2m1) {
+        tdpbf16ps(x1, x2, x3);
+    } else if (brg.dt_a == f16 && brg.dt_b == f4_e2m1) {
+        tdpfp16ps(x1, x2, x3);
+    } else if (brg.dt_a == f8_e5m2 && brg.dt_b == f4_e2m1) {
+        tdpbf8ps(x1, x2, x3);
+    } else if (brg.dt_a == f8_e4m3 && brg.dt_b == f4_e2m1) {
+        tdphf8ps(x1, x2, x3);
     } else if (brg.dt_a == u8 && brg.dt_b == u8) {
         tdpbuud(x1, x2, x3);
     } else if (brg.dt_a == u8 && brg.dt_b == s8) {

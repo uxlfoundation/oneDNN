@@ -295,7 +295,14 @@ struct brgemm_desc_t {
     brgemm_broadcast_t zp_type_a = brgemm_broadcast_t::none;
     brgemm_broadcast_t zp_type_b = brgemm_broadcast_t::none;
     brgemm_broadcast_t zp_type_c = brgemm_broadcast_t::none;
-
+    
+    bool with_wei_decomp = false;
+    bool with_grouped_wei_decomp = false;
+    bool with_wei_decomp_scales = false;
+    int wei_decomp_scales_stride = 0;
+    int wei_decomp_scales_group_size = 0;
+    impl::data_type_t wei_decomp_scales_dt = data_type::undef;
+    
     // `skip_scales` is controlled by the implementation and not by kernel API.
     bool skip_scales = false;
     int is_oc_scale = 0;

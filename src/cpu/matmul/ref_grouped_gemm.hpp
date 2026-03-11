@@ -62,17 +62,18 @@ struct ref_grouped_t : public primitive_t {
             VDISPATCH_MATMUL(wei_d.is_blocking_desc() && wei_d.ndims() == 3,
                     VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
-            // Supported data types: fp and int8/int4 for src/wei
-            const bool is_fp_src = utils::one_of(src_type, f32, bf16, f16);
+            // Supported data types: fp and int for src/wei
+            const bool is_fp_src
+                    = utils::one_of(src_type, f32, bf16, f16, f8_e5m2, f8_e4m3);
+            const bool is_fp_wei
+                    = utils::one_of(wei_type, f32, bf16, f16, f8_e5m2, f8_e4m3);
             const bool is_int_src = utils::one_of(src_type, u8, s8);
             const bool is_int_wei = utils::one_of(wei_type, u8, s8, s4, u4);
 
             // Supported configurations: fp src + int wei (weight-only quantization),
             // int src + int wei, fp src + fp wei
             VDISPATCH_MATMUL(is_fp_src || is_int_src, VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_MATMUL(
-                    utils::one_of(wei_type, f32, bf16, f16, u8, s8, s4, u4),
-                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_MATMUL(is_fp_wei || is_int_wei, VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_MATMUL(utils::one_of(dst_type, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_MATMUL(IMPLICATION(is_int_src, is_int_wei),

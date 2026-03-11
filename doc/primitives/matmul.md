@@ -430,11 +430,12 @@ The following are supported:
 
 The following combinations of data types for source, destination, weights, and bias tensors are supported.
 
-| Source         | Weights              | Destination    | Bias           |
-|:---------------|:---------------------|:---------------|:---------------|
-| f32, bf16, f16 | f32, bf16, f16       | f32, bf16, f16 | f32, bf16, f16 |
-| f32, bf16, f16 | u8, s8, s4, u4 (1)   | f32, bf16, f16 | f32, bf16, f16 |
-| u8, s8         | u8, s8, s4, u4       | f32, bf16, f16 | f32, bf16, f16 |
+| Source           | Weights            | Destination    | Bias           |
+|:-----------------|:-------------------|:---------------|:---------------|
+| f32, bf16, f16   | f32, bf16, f16     | f32, bf16, f16 | f32, bf16, f16 |
+| f8_e5m2, f8_e4m3 | f8_e5m2, f8_e4m3   | f32, bf16, f16 |                |
+| f32, bf16, f16   | u8, s8, s4, u4 (1) | f32, bf16, f16 | f32, bf16, f16 |
+| u8, s8           | u8, s8, s4, u4     | f32, bf16, f16 | f32, bf16, f16 |
 
 Footnotes:
 1. Weight-Only Quantization (WOQ): floating-point source with integer weights

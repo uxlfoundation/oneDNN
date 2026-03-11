@@ -1659,15 +1659,12 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
     memory dK_mem(key_dequantized.get_desc(), eng);
 
     // backwards pass gradient of q (dQ = dS * k^t)
-    //  TODO: handle transposed K test case
-    //  memory::desc k_t_md = p.with_key_transposed // k^t requires transposed format and dims
-    //           ? memory::desc({k_sz[0], k_sz[1], k_sz[2], k_sz[4], k_sz[3]},
-    //                   memory::data_type::f32, memory::format_tag::abcde)
-    //           : memory::desc({k_sz[0], k_sz[1], k_sz[2], k_sz[4], k_sz[3]},
-    //                   memory::data_type::f32, memory::format_tag::abced);
-    memory::desc k_t_md
-            = memory::desc({k_sz[0], k_sz[1], k_sz[2], k_sz[4], k_sz[3]},
-                    p.dt.dt, memory::format_tag::abced);
+    // k^t requires transposed format and dims
+    auto k_t_fmt = p.key_format_tag == memory::format_tag::abcd
+            ? memory::format_tag::abced
+            : memory::format_tag::abcde;
+    memory::desc k_t_md = memory::desc(
+            {k_sz[0], k_sz[1], k_sz[2], k_sz[4], k_sz[3]}, p.dt.dt, k_t_fmt);
     matmul::primitive_desc mm_bwd_dq_pd(
             eng, diff_score_md, k_t_md, grouped_query_md);
     matmul mm_bwd_dq(mm_bwd_dq_pd);
@@ -2952,7 +2949,8 @@ INSTANTIATE_TEST_SUITE_P(bwd_f16, sdpa_bwd_test_datatypes,
                 testing::Values(tensor_type_t("K", mdt::f16)), // kdt
                 testing::Values(tensor_type_t("V", mdt::f16)), // vdt
                 testing::Values(quantize_type::no_quantization), // qtype
-                testing::Values(dnnl::memory::format_tag::abcd), // key_format_tag
+                testing::Values(dnnl::memory::format_tag::abcd,
+                                dnnl::memory::format_tag::abdc), // key_format_tag
                 testing::Values(mask_config_t {mask_type::no_mask},
                         mask_config_t {mask_type::causal_tl}, mask_config_t {mask_type::causal_br},
                         mask_config_t {mask_type::twoD}, mask_config_t {mask_type::oneD}
@@ -2977,7 +2975,8 @@ INSTANTIATE_TEST_SUITE_P(bwd_bf16, sdpa_bwd_test_datatypes,
                 testing::Values(tensor_type_t("K", mdt::bf16)), // kdt
                 testing::Values(tensor_type_t("V", mdt::bf16)), // vdt
                 testing::Values(quantize_type::no_quantization), // qtype
-                testing::Values(dnnl::memory::format_tag::abcd), // key_format_tag
+                testing::Values(dnnl::memory::format_tag::abcd,
+                                dnnl::memory::format_tag::abdc), // key_format_tag
                 testing::Values(mask_config_t {mask_type::causal_tl}), // mask_type
                 testing::Values(default_scale_type), // scale_type
                 testing::Values(
@@ -2999,7 +2998,8 @@ INSTANTIATE_TEST_SUITE_P(bwd_gqa, sdpa_bwd_test_datatypes,
                 testing::Values(tensor_type_t("K", mdt::f16)), // kdt
                 testing::Values(tensor_type_t("V", mdt::f16)), // vdt
                 testing::Values(quantize_type::no_quantization), // qtype
-                testing::Values(dnnl::memory::format_tag::abcd), // key_format_tag
+                testing::Values(dnnl::memory::format_tag::abcd,
+                                dnnl::memory::format_tag::abdc), // key_format_tag
                 testing::Values(mask_config_t {mask_type::no_mask},
                         mask_config_t {mask_type::causal_tl}), // mask_type
                 testing::Values(default_scale_type), // scale_type

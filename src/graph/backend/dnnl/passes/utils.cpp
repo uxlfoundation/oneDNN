@@ -27,8 +27,6 @@
 #include <unordered_set>
 
 #include "common/broadcast_strategy.hpp"
-#include "common/memory_desc.hpp"
-#include "common/memory_desc_wrapper.hpp"
 
 #include "graph/interface/shape_infer.hpp"
 #include "graph/interface/value.hpp"
@@ -267,6 +265,10 @@ bool binary_doable(
     return true;
 }
 
+// TODO: ekind is kept because CPU and GPU backends may support different
+// broadcasting patterns for binary post-ops and should be checked
+// independently. Ideally, an interface to query supported broadcasting
+// strategies from optimized implementations should be introduced.
 static bool post_binary_fusible_impl(const op_t *base_op,
         const std::vector<dim_t> &fused_shape,
         const std::vector<dim_t> &other_shape, engine_kind_t ekind) {
@@ -282,26 +284,48 @@ static bool post_binary_fusible_impl(const op_t *base_op,
         return true;
 
     int32_t output_ndims = static_cast<int32_t>(fused_shape.size());
-    // For MatMul, use the common broadcasting strategy infrastructure
-    // to determine if the broadcasting pattern is supported. The 2-arg
-    // overload classifies against all known strategies (including
-    // shared_axes). A concrete strategy (anything other than shared_axes
-    // or unsupported) means the pattern has an optimized code-path in
-    // the JIT binary injector and is safe to fuse.
     if (base_op->get_kind() == op_kind::_matmul
             && (output_ndims == 4 || output_ndims == 5)) {
-        memory_desc_t dst_md, src1_md;
-        impl::dims_t dst_dims, src1_dims;
-        std::copy(fused_shape.begin(), fused_shape.end(), dst_dims);
-        std::copy(other_shape.begin(), other_shape.end(), src1_dims);
-        memory_desc_init_by_strides(
-                dst_md, output_ndims, dst_dims, impl::data_type::f32, nullptr);
-        memory_desc_init_by_strides(src1_md, output_ndims, src1_dims,
-                impl::data_type::f32, nullptr);
-        const auto bcast_type = get_rhs_arg_broadcasting_strategy(
-                src1_md, memory_desc_wrapper(dst_md));
-        return bcast_type != broadcasting_strategy_t::unsupported
-                && bcast_type != broadcasting_strategy_t::shared_axes;
+        // For CPU, verify that the binary post-op broadcast pattern maps
+        // to a concrete strategy recognized by the common broadcasting
+        // infrastructure. Patterns classified as shared_axes or
+        // unsupported do not have optimized code-paths in the JIT binary
+        // injector and would cause a fallback to the reference
+        // implementation.
+        if (ekind == dnnl_cpu) {
+            // Build lightweight plain memory descriptors so that
+            // get_rhs_arg_broadcasting_strategy can classify the
+            // broadcast pattern.
+            memory_desc_t rhs_md {}, dst_md {};
+            rhs_md.ndims = dst_md.ndims = output_ndims;
+            rhs_md.format_kind = dst_md.format_kind
+                    = impl::format_kind::blocked;
+            rhs_md.format_desc.blocking.strides[output_ndims - 1] = 1;
+            dst_md.format_desc.blocking.strides[output_ndims - 1] = 1;
+            for (int i = 0; i < output_ndims; i++) {
+                rhs_md.dims[i] = other_shape[i];
+                dst_md.dims[i] = fused_shape[i];
+            }
+            for (int i = output_ndims - 2; i >= 0; i--) {
+                rhs_md.format_desc.blocking.strides[i]
+                        = rhs_md.format_desc.blocking.strides[i + 1]
+                        * other_shape[i + 1];
+                dst_md.format_desc.blocking.strides[i]
+                        = dst_md.format_desc.blocking.strides[i + 1]
+                        * fused_shape[i + 1];
+            }
+            const auto bcast = get_rhs_arg_broadcasting_strategy(
+                    rhs_md, memory_desc_wrapper(dst_md));
+            return bcast != broadcasting_strategy_t::unsupported
+                    && bcast != broadcasting_strategy_t::shared_axes;
+        }
+        // For GPU and other backends, allow any broadcast where each
+        // dimension is either 1 or matches the destination.
+        for (int32_t i = output_ndims - 1; i >= 0; i--) {
+            if (other_shape[i] == 1) continue;
+            if (fused_shape[i] != other_shape[i]) { return false; }
+        }
+        return true;
     }
 
     // allow fusion for conv + [N,C,1,1] shape post-binary src

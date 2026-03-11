@@ -988,8 +988,9 @@ status_t micro_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
 
     conf.block_k = conf.block_dK = conf.block_dV = false;
     if (d_full) {
-        conf.block_dK = conf.block_k
-                = (ldk % 4 == 0) && (d->keys() % tile_k == 0);
+        bool can_block_load_k = (ldk % 4 == 0) && (d->keys() % tile_k == 0);
+        conf.block_k = can_block_load_k;
+        conf.block_dK = can_block_load_k && !conf.transpose_k;
         conf.block_dV = (ldv % 4 == 0) && (dv_full);
     }
 

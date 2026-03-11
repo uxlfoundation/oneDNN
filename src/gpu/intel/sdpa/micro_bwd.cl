@@ -36,7 +36,6 @@
 #define sg_per_wg MAX(sg_per_wg_BcBr, MAX(sg_per_wg_BcD, sg_per_wg_BrD))
 
 #define q_tile_sg_n DIV_UP(ugemm_kq_wg_tile_n, sg_per_wg)
-#define dmax_tile_sg_n DIV_UP(D_MAX, sg_per_wg)
 
 /* Instantiate tile types and operations */
 typedef ugemm_kq_c_type s_tile_type; // Bc*Br tile
@@ -72,11 +71,25 @@ DECLARE_2D_TILE_COPY_REBLOCK(q_tile_type, SUBGROUP_SIZE, D_MAX, 1, 1,
         q_tile_sg_n, dq_tile_type, SUBGROUP_SIZE, D_MAX, 1, 1, q_tile_sg_n,
         CONVERT_FLOAT_T)
 
+#if TRANSPOSE_K
+
+#define k_tile_t_sg_n DIV_UP(ugemm_kq_wg_tile_m, sg_per_wg)
+DECLARE_2D_TILE(
+        k_tile_type, FMA_TYPE, SUBGROUP_SIZE, D_MAX, 1, 1, k_tile_t_sg_n)
+#if BLOCK_K
+DECLARE_2D_TILE_BLOCK_OPS(
+        k_tile_type, FMA_TYPE, SUBGROUP_SIZE, D_MAX, 1, 1, k_tile_t_sg_n)
+#endif
+
+#else
+
+#define dmax_tile_sg_n DIV_UP(D_MAX, sg_per_wg)
 DECLARE_2D_TILE(k_tile_type, FMA_TYPE, SUBGROUP_SIZE, ugemm_kq_wg_tile_m, 1, 1,
         dmax_tile_sg_n)
 #if BLOCK_K
 DECLARE_2D_TILE_BLOCK_OPS(k_tile_type, FMA_TYPE, SUBGROUP_SIZE,
         ugemm_kq_wg_tile_m, 1, 1, dmax_tile_sg_n)
+#endif
 #endif
 
 DECLARE_2D_TILE(s_tile_type_packed, uint, SUBGROUP_SIZE, ugemm_kq_c_type_block0,
@@ -233,13 +246,57 @@ DECLARE_2D_TILE_VREDUCE(s_tile_type, SUBGROUP_SIZE, ugemm_kq_c_type_block0,
 
 #define binary_add(x, y) ((x) + (y))
 
-inline void tile_load_k(k_tile_type *K_tile, const global KEY_DATA_T *K, int m,
-        int n, int ldk, int offset_r, int offset_c, int load_rem) {
+inline void tile_load_k(k_tile_type *K_tile, const global KEY_DATA_T *K,
+        int seq_len, int ldk, int seq_off, int sg_ij, int load_rem) {
+
+#if TRANSPOSE_K
+    // Bc / n_sg -- each sg loads k_tile_t_sg_n k-columns
+    uint k0_copy = k_tile_t_sg_n * sg_ij;
+    // Coalesced load from d×k column-major memory (d contiguous, k strided)
+#if BLOCK_K
+    tile_load_block(K_tile, K, ldk, 0, seq_off + k0_copy);
+#else
+    tile_load(K_tile, K, D_MAX, seq_len, ldk, 0, seq_off + k0_copy);
+#endif
+
+#else
+    // D_MAX / n_sg
+    uint k0_copy = dmax_tile_sg_n * sg_ij;
 #if BLOCK_K
     // can ignore load_rem due to d_full requirement
-    tile_load_block(K_tile, K, ldk, offset_r, offset_c);
+    tile_load_block(K_tile, K, ldk, seq_off, k0_copy);
 #else
-    tile_load(K_tile, K, m, n, ldk, offset_r, offset_c);
+    tile_load(K_tile, K, seq_len, D_MAX, ldk, seq_off, k0_copy);
+#endif
+
+#endif
+}
+
+inline void tile_store_k_slm(
+        k_tile_type *K_tile, local KEY_DATA_T *K_slm, int sg_ij) {
+
+#if TRANSPOSE_K
+    // Bc / n_sg -- tile is D*Bc, write transposed to SLM (Bc*D)
+    uint k0_copy = k_tile_t_sg_n * sg_ij;
+#if USE_SYSTOLIC_UKERNEL
+    tile_store_t_sys_src11(*K_tile, K_slm, SUBGROUP_SIZE, D_MAX, D_MAX,
+            ugemm_kq_wg_tile_m, 0, k0_copy);
+#else
+    tile_store_t_packed_src1(
+            *K_tile, K_slm, ugemm_kq_sg_tile_m, D_MAX, k0_copy, 0);
+#endif
+
+#else
+
+    uint k0_copy = dmax_tile_sg_n * sg_ij;
+#if USE_SYSTOLIC_UKERNEL
+    tile_store_sys_src1(*K_tile, K_slm, SUBGROUP_SIZE, D_MAX,
+            ugemm_kq_wg_tile_m, D_MAX, 0, k0_copy);
+#else
+    tile_store_packed_src1(
+            *K_tile, K_slm, ugemm_kq_sg_tile_m, D_MAX, 0, k0_copy);
+#endif
+
 #endif
 }
 
@@ -267,15 +324,32 @@ inline void tile_store_dV(dv_tile_type *dV_tile_slm, global DST_DATA_T_DKDV *dV,
 #endif
 }
 
-inline void tile_store_dK(a_tile_type *dK_tile_slm, global DST_DATA_T_DKDV *dK,
+#if TRANSPOSE_K
+// uses transposed dv_tile_type (D*Bc) for dK update
+inline void tile_store_dK_t(dv_tile_type *dK_tile, global DST_DATA_T_DKDV *dK,
+        int m, int n, int ld, int offset_r, int offset_c, int rem) {
+
+#if KV_GROUP_SIZE > 1 // GQA update
+    tile_atomic_add(*dK_tile, dK, m, n, ld, offset_r, offset_c);
+#else // MHA update
+    dv_tile_type_dst dK_tile_dst;
+    tile_copy_reblock(*dK_tile, &dK_tile_dst);
+    tile_store(dK_tile_dst, dK, m, n, ld, offset_r, offset_c);
+#endif
+}
+
+#else
+
+// uses qdSt tile (Bc*D) for dK update
+inline void tile_store_dK(a_tile_type *dK_tile, global DST_DATA_T_DKDV *dK,
         int m, int n, int ld, int offset_r, int offset_c) {
 
 #if KV_GROUP_SIZE > 1 // GQA update
-    tile_atomic_add(*dK_tile_slm, dK, m, n, ld, offset_r, offset_c);
+    tile_atomic_add(*dK_tile, dK, m, n, ld, offset_r, offset_c);
 #else // MHA update
 
-    a_tile_type_dst dK_tile_dst; // convert to half
-    tile_copy_reblock(*dK_tile_slm, &dK_tile_dst);
+    a_tile_type_dst dK_tile_dst;
+    tile_copy_reblock(*dK_tile, &dK_tile_dst);
 #if BLOCK_DK
     tile_store_block(dK_tile_dst, dK, ld, offset_r, offset_c);
 #else
@@ -284,6 +358,8 @@ inline void tile_store_dK(a_tile_type *dK_tile_slm, global DST_DATA_T_DKDV *dK,
 
 #endif
 }
+
+#endif
 
 #define DO_MM 1
 
@@ -427,21 +503,13 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
     if (qdiag0 < q0end) {
         /* Load K tile, destined for SLM */
-
         k_tile_type K_tile;
         tile_fill(K_tile, TO_DATA_T(0.f));
 
-        uint k0_copy = dmax_tile_sg_n
-                * sg_ij; //each sg will be responsible for dmax_tile_sg_n columns
-        tile_load_k(&K_tile, K, k, d, ldk, wg_i0, k0_copy, remainder_k);
-        ///* Store K tile to SLM */
-#if USE_SYSTOLIC_UKERNEL
-        tile_store_sys_src1(K_tile, &K_slm[0], SUBGROUP_SIZE, D_MAX,
-                ugemm_kq_wg_tile_m, D_MAX, 0, k0_copy);
-#else
-        tile_store_packed_src1(
-                K_tile, K_slm, ugemm_kq_sg_tile_m, D_MAX, 0, k0_copy);
-#endif
+        tile_load_k(&K_tile, K, k, ldk, wg_i0, sg_ij, remainder_k);
+
+        /* Store K tile to SLM */
+        tile_store_k_slm(&K_tile, K_slm, sg_ij);
     }
 
     /* Load scale */
@@ -608,7 +676,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         uint sg_i0_vs = sg_i_vs * ugemm_vs_sg_tile_m;
         uint sg_j0_vs = sg_j_vs * ugemm_vs_sg_tile_n;
 
-        //slm dv tile
+        // accumulate dv tile to slm
         dv_tile_type dV_tile_slm;
         tile_load(&dV_tile_slm, dV_slm, D_MAX, ugemm_kq_wg_tile_m, D_MAX,
                 sg_i0_vs, sg_j0_vs);
@@ -691,13 +759,22 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         uint sg_i0_dk = sg_i_qdSt * ugemm_qdSt_sg_tile_m;
         uint sg_j0_dk = sg_j_qdSt * ugemm_qdSt_sg_tile_n;
 
-        //// dk slm tile
+        // dk slm tile
         a_tile_type dK_tile_slm;
+#if TRANSPOSE_K
+        // accumulate transposed to slm
+        tile_load_t(&dK_tile_slm, dK_slm, ugemm_kq_wg_tile_m, D_MAX, D_MAX,
+                sg_i0_dk, sg_j0_dk);
+        tile_binary(dK_tile_slm, dK_tile1, binary_add);
+        tile_store_t(dK_tile_slm, dK_slm, ugemm_kq_wg_tile_m, D_MAX, D_MAX,
+                sg_i0_dk, sg_j0_dk);
+#else
         tile_load(&dK_tile_slm, dK_slm, ugemm_kq_wg_tile_m, D_MAX,
                 ugemm_kq_wg_tile_m, sg_i0_dk, sg_j0_dk);
         tile_binary(dK_tile_slm, dK_tile1, binary_add);
         tile_store(dK_tile_slm, dK_slm, ugemm_kq_wg_tile_m, D_MAX,
                 ugemm_kq_wg_tile_m, sg_i0_dk, sg_j0_dk);
+#endif
 
         p_tile_type_reblock dS_transpose_tile;
 #if USE_SYSTOLIC_UKERNEL
@@ -719,9 +796,15 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         // dQ = dS * K
 #if DO_MM
         ktq_tile_type dQ_tile;
-        dQ_tile = ugemm_ktq(K + k0, ldk, dS_slm, ugemm_kq_wg_tile_m, d,
-                q_nchunk, k_chunk, 0, 0, 0, sg_i_ktq, sg_j_ktq,
-                (local char *)ugemm_slm);
+
+        dQ_tile = ugemm_ktq(
+#if TRANSPOSE_K
+                K + k0 * ldk,
+#else
+                K + k0,
+#endif
+                ldk, dS_slm, ugemm_kq_wg_tile_m, d, q_nchunk, k_chunk, 0, 0, 0,
+                sg_i_ktq, sg_j_ktq, (local char *)ugemm_slm);
 #else
         ktq_tile_type dQ_tile;
 #endif
@@ -747,6 +830,16 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     // /update dV
 
     //////// update dK
+#if TRANSPOSE_K
+    // transposed dK_slm (D*Bc) matches dV tile layout
+    dv_tile_type dK_tile_t;
+    tile_load(&dK_tile_t, dK_slm, D_MAX, ugemm_kq_wg_tile_m, D_MAX, sg_i0_vs,
+            sg_j0_vs);
+
+    tile_store_dK_t(
+            &dK_tile_t, dK, d, k, ldk, sg_i0_vs, wg_i0 + sg_j0_vs, remainder_k);
+#else
+    // non-transposed dK_slm uses qdSt layout (Bc*D) and indexing
     uint sg_i0_dk = sg_i_qdSt * ugemm_qdSt_sg_tile_m;
     uint sg_j0_dk = sg_j_qdSt * ugemm_qdSt_sg_tile_n;
 
@@ -757,6 +850,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     int wg_k_chunk = min(k - k0, ugemm_kq_wg_tile_m);
     tile_store_dK(
             &dK_tile_slm, dK + wg_i0, wg_k_chunk, d, ldk, sg_i0_dk, sg_j0_dk);
+#endif
     // /update dK
 }
 

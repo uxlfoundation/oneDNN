@@ -36,7 +36,8 @@ struct rvv_layer_normalization_fwd_t : public primitive_t {
         using cpu_layer_normalization_fwd_pd_t::
                 cpu_layer_normalization_fwd_pd_t;
 
-        DECLARE_COMMON_PD_T("RISCV64GCV", rvv_layer_normalization_fwd_t);
+        DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("jit_lnorm:", v, ""),
+                rvv_layer_normalization_fwd_t);
 
         status_t init(engine_t *engine) {
             using namespace data_type;
@@ -60,6 +61,7 @@ struct rvv_layer_normalization_fwd_t : public primitive_t {
 
             VDISPATCH_LNORM(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
+            VDISPATCH_LNORM(mayiuse(v), VERBOSE_UNSUPPORTED_ISA);
 
             VDISPATCH_LNORM(!(desc()->flags & dnnl_rms_norm),
                     VERBOSE_UNSUPPORTED_FEATURE, "RMSNorm not supported");
@@ -86,8 +88,6 @@ struct rvv_layer_normalization_fwd_t : public primitive_t {
                         stats_are_src() ? stat_md() : &reordered_stat_md_,
                         stats_are_src() ? &reordered_stat_md_ : stat_md()));
             }
-
-            init_jit_conf();
             init_scratchpad();
             return status::success;
         }
@@ -96,31 +96,8 @@ struct rvv_layer_normalization_fwd_t : public primitive_t {
 
         std::shared_ptr<primitive_desc_t> reorder_pd_;
         memory_desc_t reordered_stat_md_;
-        // The current RVV JIT kernel targets f32 forward paths with scale enabled.
-        // For shift-only or no-flag paths, the existing RVV non-JIT implementation
-        // is more stable and is kept as the default fallback.
-        // We also gate JIT usage by norm_axis() (C dimension) to avoid performance
-        // regressions on large-C cases.
-        // The current threshold is based on CI-validated performance results and
-        // can be revisited with further analysis.
-        bool use_jit_ = false;
 
     private:
-        void init_jit_conf() {
-            // Enable JIT only for the following cases:
-            //   1) use_scale && !use_shift  (C)
-            //   2) use_scale && use_shift   (CH)
-            // Other paths are intentionally excluded to avoid performance regressions.
-            const dim_t jit_norm_axis_threshold = 512;
-            const unsigned flags = desc()->flags;
-            const bool use_scale = flags & dnnl_use_scale;
-            const bool use_shift = flags & dnnl_use_shift;
-            const bool allow_c = use_scale && !use_shift;
-            const bool allow_ch = use_scale && use_shift;
-            use_jit_ = norm_axis() <= jit_norm_axis_threshold
-                    && (allow_c || allow_ch);
-        }
-
         void init_scratchpad() {
             using namespace memory_tracking::names;
             auto scratchpad = scratchpad_registry().registrar();
@@ -206,7 +183,8 @@ private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
     std::shared_ptr<primitive_t> reorder_;
-    std::unique_ptr<jit_rvv_layernorm_kernel_t> kernel_;
+    std::unique_ptr<jit_rvv_layernorm_fused_kernel_t> fused_kernel_;
+    std::unique_ptr<jit_rvv_layernorm_data_kernel_t> data_kernel_;
 };
 
 } // namespace rv64

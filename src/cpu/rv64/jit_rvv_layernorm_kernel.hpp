@@ -25,7 +25,35 @@ namespace impl {
 namespace cpu {
 namespace rv64 {
 
-struct jit_rvv_layernorm_kernel_t : public jit_generator_t {
+struct jit_rvv_layernorm_fused_kernel_t : public jit_generator_t {
+    struct call_params_t {
+        const float *src;
+        float *dst;
+        const float *scale;
+        const float *shift;
+        dim_t len;
+        float eps;
+        float *mean;
+        float *variance;
+    };
+
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_rvv_layernorm_fused_kernel_t)
+
+    jit_rvv_layernorm_fused_kernel_t(bool with_scale, bool with_shift);
+
+    void operator()(const call_params_t *p) const {
+        jit_generator_t::operator()(p);
+    }
+
+protected:
+    void generate() override;
+
+private:
+    const bool with_scale_;
+    const bool with_shift_;
+};
+
+struct jit_rvv_layernorm_data_kernel_t : public jit_generator_t {
     struct call_params_t {
         const float *src;
         float *dst;
@@ -36,9 +64,9 @@ struct jit_rvv_layernorm_kernel_t : public jit_generator_t {
         float inv_std;
     };
 
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_rvv_layernorm_kernel_t)
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_rvv_layernorm_data_kernel_t)
 
-    jit_rvv_layernorm_kernel_t(bool with_scale, bool with_shift);
+    jit_rvv_layernorm_data_kernel_t(bool with_scale, bool with_shift);
 
     void operator()(const call_params_t *p) const {
         jit_generator_t::operator()(p);

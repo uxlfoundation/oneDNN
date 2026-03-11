@@ -151,6 +151,19 @@ partition_kind_t str2partition_kind(const std::string &str) {
 #undef IF_HANDLE
 }
 
+// dims [a, b, c] -> string "axbxc"
+std::string dims2str(const std::vector<dim_t> &dims) {
+    std::string s;
+    if (dims.empty()) return s;
+
+    s += std::to_string(dims[0]);
+    for (size_t i = 1; i < dims.size(); ++i) {
+        s += "x";
+        s += std::to_string(dims[i]);
+    }
+    return s;
+}
+
 } // namespace utils
 } // namespace graph
 } // namespace impl

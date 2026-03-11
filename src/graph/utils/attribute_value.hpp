@@ -267,6 +267,41 @@ public:
 private:
     std::unique_ptr<attribute_value_cell_t> value_cell_;
 };
+
+inline std::ostream &operator<<(
+        std::ostream &ss, const attribute_value_t &val) {
+    switch (val.get_kind()) {
+        case attribute_kind::i: ss << val.get<int64_t>(); break;
+        case attribute_kind::is: {
+            const auto &vec = val.get<std::vector<int64_t>>();
+            ss << "[";
+            for (size_t i = 0; i < vec.size(); ++i) {
+                ss << vec[i];
+                if (i != vec.size() - 1) ss << ", ";
+            }
+            ss << "]";
+            break;
+        }
+        case attribute_kind::f: ss << val.get<float>(); break;
+        case attribute_kind::fs: {
+            const auto &vec = val.get<std::vector<float>>();
+            ss << "[";
+            for (size_t i = 0; i < vec.size(); ++i) {
+                ss << vec[i];
+                if (i != vec.size() - 1) ss << ", ";
+            }
+            ss << "]";
+            break;
+        }
+        case attribute_kind::s: ss << val.get<std::string>(); break;
+        case attribute_kind::b:
+            ss << (val.get<bool>() ? "true" : "false");
+            break;
+        default: ss << "unknown attribute type";
+    }
+    return ss;
+}
+
 } // namespace utils
 } // namespace graph
 } // namespace impl

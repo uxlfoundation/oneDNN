@@ -116,9 +116,39 @@ arg_indices_t gated_mlp_executable_t::get_arg_indices(const op_t *op) {
     args.insert({DNNL_ARG_WEIGHTS_UP, {indices_t::type_t::input, idx++}});
     args.insert({DNNL_ARG_WEIGHTS_DOWN, {indices_t::type_t::input, idx++}});
 
+    // optional scales/zps for quantization
+    const auto &fusion_info = op->has_attr(op_attr::fusion_info)
+            ? op->get_attr<fusion_info_t>(op_attr::fusion_info)
+            : fusion_info_t();
+    if (fusion_info.with_runtime_scales(true, DNNL_ARG_WEIGHTS_GATE)) {
+        args.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS_GATE,
+                {indices_t::type_t::input, idx++}});
+    }
+    if (fusion_info.with_runtime_zero_points(true, DNNL_ARG_WEIGHTS_GATE)) {
+        args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS_GATE,
+                {indices_t::type_t::input, idx++}});
+    }
+    if (fusion_info.with_runtime_scales(true, DNNL_ARG_WEIGHTS_UP)) {
+        args.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS_UP,
+                {indices_t::type_t::input, idx++}});
+    }
+    if (fusion_info.with_runtime_zero_points(true, DNNL_ARG_WEIGHTS_UP)) {
+        args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS_UP,
+                {indices_t::type_t::input, idx++}});
+    }
+    if (fusion_info.with_runtime_scales(true, DNNL_ARG_WEIGHTS_DOWN)) {
+        args.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS_DOWN,
+                {indices_t::type_t::input, idx++}});
+    }
+    if (fusion_info.with_runtime_zero_points(true, DNNL_ARG_WEIGHTS_DOWN)) {
+        args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS_DOWN,
+                {indices_t::type_t::input, idx++}});
+    }
+
     // outputs
     args.insert({DNNL_ARG_DST, {indices_t::type_t::output, 0}});
     args.insert({DNNL_ARG_SCRATCHPAD, {indices_t::type_t::output, 1}});
+
     return args;
 }
 

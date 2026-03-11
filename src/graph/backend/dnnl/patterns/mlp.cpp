@@ -178,11 +178,20 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, quantized_gated_mlp)
                     auto bin = pgraph->append_alternation(
                             get_binary_ops(), edges);
 
+                    // optional typecast
+                    auto tc = std::make_shared<pb_graph_t>();
+                    pm::pb_op_t *ptypecast
+                            = tc->append_op(graph::op_kind::TypeCast);
+                    tc->create_input_port(0, ptypecast, 0);
+                    tc->create_output_port(0, ptypecast, 0);
+                    auto pre_tc
+                            = pgraph->append_optional(tc, {in_edge(0, bin, 0)});
+
                     // fc_down
                     pm::pb_op_t *deq_down = pgraph->append_op(
                             graph::op_kind::DynamicDequantize);
                     in_edges_t fc_down_edges
-                            = {in_edge(0, bin, 0), in_edge(1, deq_down, 0)};
+                            = {in_edge(0, pre_tc, 0), in_edge(1, deq_down, 0)};
                     pgraph->append_op(graph::op_kind::MatMul, fc_down_edges);
                 })
         .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
@@ -220,11 +229,20 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, quantized_gated_mlp_v1)
                     auto bin = pgraph->append_alternation(
                             get_binary_ops(), edges);
 
+                    // optional typecast
+                    auto tc = std::make_shared<pb_graph_t>();
+                    pm::pb_op_t *ptypecast
+                            = tc->append_op(graph::op_kind::TypeCast);
+                    tc->create_input_port(0, ptypecast, 0);
+                    tc->create_output_port(0, ptypecast, 0);
+                    auto pre_tc
+                            = pgraph->append_optional(tc, {in_edge(0, bin, 0)});
+
                     // fc_down
                     pm::pb_op_t *deq_down = pgraph->append_op(
                             graph::op_kind::DynamicDequantize);
                     in_edges_t fc_down_edges
-                            = {in_edge(0, bin, 0), in_edge(1, deq_down, 0)};
+                            = {in_edge(0, pre_tc, 0), in_edge(1, deq_down, 0)};
                     pgraph->append_op(graph::op_kind::MatMul, fc_down_edges);
                 })
         .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {

@@ -4584,6 +4584,10 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
     return status::success;
 }
 
+#define DNNL_ARG_WEIGHTS_GATE DNNL_ARG_WEIGHTS_0
+#define DNNL_ARG_WEIGHTS_UP DNNL_ARG_WEIGHTS_1
+#define DNNL_ARG_WEIGHTS_DOWN DNNL_ARG_WEIGHTS_2
+
 // The pass is called against a gated mlp subgraph matched by the gated mlp
 // patterns. Hence we have the basic assumptions for the topology which
 // simplifies the pass logic below.
@@ -4656,10 +4660,36 @@ status_t fuse_gated_mlp(std::shared_ptr<subgraph_t> &sg) {
         return status::unimplemented;
     }
 
+    fusion_info_t fusion_info;
+    auto handle_fusion_info = [&fusion_info](const op_ptr &op, int arg) {
+        if (op->has_attr(op_attr::fusion_info)) {
+            auto op_fusion_info
+                    = op->get_attr<fusion_info_t>(op_attr::fusion_info);
+            if (op_fusion_info.get_mutable_scales(true, 1)) {
+                fusion_info.set_runtime_scales(
+                        op_fusion_info.get_mutable_scales(true, 1)
+                                ->shared_from_this(),
+                        true, arg);
+            }
+            if (op_fusion_info.with_runtime_zero_points(true, 1)) {
+                fusion_info.set_zero_points(
+                        op_fusion_info.get_mutable_zero_points(true, 1)
+                                ->shared_from_this(),
+                        true, arg);
+            }
+        }
+    };
+
+    handle_fusion_info(gate, DNNL_ARG_WEIGHTS_GATE);
+    handle_fusion_info(up, DNNL_ARG_WEIGHTS_UP);
+    handle_fusion_info(down, DNNL_ARG_WEIGHTS_DOWN);
+
     subgraph_rewriter_t rewriter(sg);
     op_ptr gated_mlp_op = std::make_shared<op_t>(op_kind::_gated_mlp);
     gated_mlp_op->set_attr<int64_t>(
             op_attr::alg_kind, static_cast<int64_t>(act_algo));
+
+    gated_mlp_op->set_attr<fusion_info_t>(op_attr::fusion_info, fusion_info);
 
     // connect inputs and outputs
     auto src_val = gate->get_input_value(0);
@@ -4674,6 +4704,18 @@ status_t fuse_gated_mlp(std::shared_ptr<subgraph_t> &sg) {
     gated_mlp_op->connect_input(1, wei0_val);
     gated_mlp_op->connect_input(2, wei1_val);
     gated_mlp_op->connect_input(3, wei2_val);
+
+    size_t input_idx = 4;
+    // Handle quantization parameters from matmuls
+    for (const auto &matmul : {gate, up, down}) {
+        auto inputs = matmul->get_input_values();
+        for (size_t idx = 2; idx < inputs.size(); ++idx) {
+            const auto &qparam_val = inputs[idx];
+            qparam_val->remove_consumer(*matmul, idx);
+            gated_mlp_op->connect_input(input_idx++, qparam_val);
+        }
+    }
+
     auto dst_val = down->get_output_value(0);
     dst_val->set_producer(*gated_mlp_op);
     gated_mlp_op->add_output(dst_val);

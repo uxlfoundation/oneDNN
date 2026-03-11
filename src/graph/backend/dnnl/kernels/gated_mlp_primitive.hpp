@@ -38,6 +38,7 @@ namespace impl {
 namespace graph {
 namespace dnnl_impl {
 
+template <bool quantized>
 struct gated_mlp_primitive_kernel_t : public kernel_base_t {
 private:
     allocator_t *g_alloc_ = nullptr;

@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2019 Intel Corporation
+* Copyright 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -214,6 +215,13 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
             int mask = 1 << (prb->ndims - 1);
             if (policy == policy_t::PER_OCIC) mask += 1 << (prb->ndims - 2);
             attr_args.prepare_quant(prb->attr, arg, mask);
+            return;
+        }
+
+        // Overload PER_DIM_0 mask definition for batched cases.
+        if (policy == policy_t::PER_DIM_0
+                && arg == (DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC)) {
+            attr_args.prepare_quant(prb->attr, arg, 1 << (prb->ndims - 2));
         }
     };
 
@@ -257,6 +265,13 @@ int init_prim_ref(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &prim_ref,
             || prb->sparse_options.get_encoding(DNNL_ARG_WEIGHTS)
                     != dnnl_sparse_encoding_undef)
         return OK;
+
+    // prim_ref doesn't support matmul src:per_dim_0 scales, so fall back
+    // to the benchdnn matmul reference for this exact mask
+    const int src_scale_mask
+            = prb->attr.scales.get_mask(DNNL_ARG_SRC, dnnl_matmul, prb->ndims);
+    const int src_per_dim_0_mask = 1 << (prb->ndims - 2);
+    if (src_scale_mask == src_per_dim_0_mask) return OK;
 
     std::vector<std::vector<dnnl_data_type_t>> prim_ref_dt {
             prb->dt, {dnnl_f32}};

@@ -72,6 +72,16 @@
 --batch=shapes_2d
 --batch=shapes_3d
 
+# AArch64 jit:int8 src per_dim_0 scales
+--reset
+--impl=jit:int8
+--dt=s8:s8:f32
+--attr-scales=src:per_dim_0+wei:per_oc
+32x64:64x48
+17x64:64x19
+3x17x64:3x64x19
+5x32x64:5x64x48
+
 # Zero-points check
 --reset
 --dt=s8:s8:s8,u8:s8:f32,u8:s8:bf16,s8:s8:f16,u8:s8:f16

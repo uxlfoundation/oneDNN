@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2017 Intel Corporation
+* Copyright 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -242,6 +243,7 @@ int attr_t::policy2mask(int arg, policy_t policy, int ndims,
 
         if (ndims < 2) SAFE_V(FAIL);
         switch (policy) {
+            case PER_DIM_0: return (1 << (ndims - 2));
             case PER_DIM_1:
             case PER_OC: return (1 << (ndims - 1));
             case PER_OCIC: return (1 << (ndims - 1)) + (1 << (ndims - 2));

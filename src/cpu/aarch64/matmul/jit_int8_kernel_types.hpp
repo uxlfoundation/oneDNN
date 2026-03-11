@@ -70,8 +70,11 @@ struct brg_int8_t {
     bool is_s8, is_u8_s8;
     bool is_bias;
     bool with_scales;
+    bool with_src_scales;
+    bool with_wei_scales;
     bool with_dst_scales;
     bool is_oc_scales;
+    bool is_per_m_scales = false;
     jit_int8_broadcast_t zp_type_a = jit_int8_broadcast_t::none;
     jit_int8_broadcast_t zp_type_b = jit_int8_broadcast_t::none;
     jit_int8_broadcast_t zp_type_c = jit_int8_broadcast_t::none;
@@ -85,6 +88,8 @@ struct call_params_t {
     const uint8_t *src, *wei;
     float *dst;
     const float *bias, *scales, *dst_scales;
+    const float *src_scales; // optional per-row src scales for src:per_dim_0
+    const float *wei_scales; // optional kernel-ready weight scales
     dim_t M, K, N;
     char *buf_B_ptr_;
     int *na, *nb;

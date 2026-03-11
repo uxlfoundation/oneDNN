@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2019 Intel Corporation
+* Copyright 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -299,7 +300,7 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
             const int mask_src = sc.get_mask(DNNL_ARG_SRC);
 
             VCHECK_MATMUL_UNIMPL(
-                    utils::one_of(mask_src, 0, src_qmask_K,
+                    utils::one_of(mask_src, 0, src_qmask_M, src_qmask_K,
                             src_qmask_M + src_qmask_K, full_tensor_mask),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
 

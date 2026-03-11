@@ -90,7 +90,10 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
     XReg reg_bias = x17;
     XReg reg_zp_a = x18;
 
-    XReg reg_scales = x20;
+    XReg reg_src_scales = x20;
+    XReg reg_aux_src_scales = x1;
+    XReg reg_wei_scales = x19;
+
     XReg reg_aux_scales = x24; //used X_TMP_1
     XReg reg_na = x25; //used X_TMP_2
     XReg reg_zp_b = x26; //used X_TMP_3
@@ -102,7 +105,8 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
     PReg prd_zp_b_tl = p5;
     XReg reg_zp_val_c = x2;
 
-    XReg reg_zp_val_a = reg_scales;
+    XReg reg_zp_val_a = reg_src_scales;
+
     XReg reg_zp_val_b = reg_bias;
 
     call_params_t inp;
@@ -198,14 +202,42 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
             for (int b = 0; b < ldb; b += 2) {
                 PReg p = (brg_.is_n_tail && b >= ldb - 2) ? prd_b : P_ALL_ONE;
                 if (brg_.is_oc_scales) {
-                    ld1w(z31.s, p, ptr(reg_scales, b / 2, MUL_VL));
+                    ld1w(z31.s, p, ptr(reg_wei_scales, b / 2, MUL_VL));
                 } else {
-                    ld1w(z31.s, p, ptr(reg_scales));
+                    ld1w(z31.s, p, ptr(reg_wei_scales));
                 }
 
-                for (int a = 0; a < bdb; a++) {
-                    fmul(acc(a, b).s, acc(a, b).s, z31.s);
-                    fmul(acc(a, b + 1).s, acc(a, b + 1).s, z31.s);
+                if (!brg_.is_per_m_scales) {
+                    if (brg_.with_src_scales) {
+                        ld1rw(z0.s, P_ALL_ONE, ptr(reg_src_scales));
+                        fmul(z31.s, z31.s, z0.s);
+                    }
+
+                    for (int a = 0; a < bdb; a++) {
+                        fmul(acc(a, b).s, acc(a, b).s, z31.s);
+                        fmul(acc(a, b + 1).s, acc(a, b + 1).s, z31.s);
+                    }
+                } else {
+                    for (int a = 0; a < bdb; a++) {
+                        auto apply_row_scale
+                                = [&](int row_off, const ZReg &scale,
+                                          const ZReg &acc) {
+                            add_imm(reg_tmp, reg_aux_src_scales, row_off,
+                                    X_TMP_0);
+                            ld1rw(scale.s, P_ALL_ONE, ptr(reg_tmp));
+                            fmul(scale.s, scale.s, z31.s);
+                            fmul(acc.s, acc.s, scale.s);
+                        };
+
+                        const bool has_second_row
+                                = !brg_.is_m_tail || (2 * a + 1) < brg_.m_tail;
+                        const int row_off = (2 * a) * sizeof(float);
+
+                        apply_row_scale(row_off, z0, acc(a, b));
+                        if (has_second_row)
+                            apply_row_scale(
+                                    row_off + sizeof(float), z2, acc(a, b + 1));
+                    }
                 }
             }
         }
@@ -511,6 +543,8 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
         mov(reg_zp_aux_b, reg_zp_b);
 
         asm_do_while(reg_ld_loop, [&]() {
+            if (brg_.is_per_m_scales)
+                LDR_IMM(reg_aux_src_scales, reg_param, GET_OFF(src_scales));
             ldr(WReg(reg_bd_loop.getIdx()), ptr(reg_na));
             asm_do_while(reg_bd_loop, [&]() {
                 loop_k(bdb, ldb, 0);
@@ -521,6 +555,9 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
                         brg_.N * brg_.bd_block * brg_.dst_dt_sz, X_TMP_0);
                 add_imm(reg_zp_aux_b, reg_zp_aux_b, brg_.m_blk * brg_.dst_dt_sz,
                         X_TMP_0);
+                if (brg_.is_per_m_scales)
+                    add_imm(reg_aux_src_scales, reg_aux_src_scales,
+                            brg_.m_blk * sizeof(float), X_TMP_0);
             });
 
             mov(reg_aux_a1, reg_a);
@@ -534,7 +571,7 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
             add_imm(reg_zp_a, reg_zp_a,
                     brg_.n_blk * brg_.ld_block * brg_.dst_dt_sz, X_TMP_0);
             if (brg_.is_oc_scales)
-                add_imm(reg_scales, reg_scales,
+                add_imm(reg_wei_scales, reg_wei_scales,
                         brg_.dst_dt_sz * (brg_.n_blk * brg_.ld_block), X_TMP_0);
             add_imm(reg_bias, reg_bias,
                     brg_.dst_dt_sz * (brg_.n_blk * brg_.ld_block), X_TMP_0);
@@ -700,7 +737,8 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
         } else {
 
             LDR_IMM(reg_bias, reg_param, GET_OFF(bias));
-            LDR_IMM(reg_scales, reg_param, GET_OFF(scales));
+            LDR_IMM(reg_src_scales, reg_param, GET_OFF(scales));
+            LDR_IMM(reg_wei_scales, reg_param, GET_OFF(wei_scales));
             LDR_IMM(reg_aux_scales, reg_param, GET_OFF(dst_scales));
             LDR_IMM(reg_zp_aux_b_buf, reg_param, GET_OFF(wei_zero_point_buf));
             han_blk();
@@ -762,22 +800,46 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
     bool is_s8 = utils::everyone_is(s8, src_type, wei_type);
     bool is_u8_s8 = utils::everyone_is(u8, src_type)
             && utils::everyone_is(s8, wei_type);
+    const bool is_per_m_scales
+            = attr()->scales_.get_mask(DNNL_ARG_SRC) == src_qmask_M();
 
     int dims = src_d.ndims();
 
     auto check_attr_scales = [&]() -> bool {
         const std::vector<int> supported_args
                 = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST};
-        bool ok = attr_scales_ok(supported_args);
-        auto is_src_scl
-                = !attr()->scales_.get(DNNL_ARG_SRC).has_default_values();
-        auto is_wei_scl
-                = !attr()->scales_.get(DNNL_ARG_WEIGHTS).has_default_values();
-        auto dst_scl_msk = attr()->scales_.get(DNNL_ARG_DST).get_mask();
-        auto wei_scl_msk = attr()->scales_.get(DNNL_ARG_WEIGHTS).get_mask();
-        auto src_scl_msk = attr()->scales_.get(DNNL_ARG_SRC).get_mask();
+        const auto &scales = attr()->scales_;
+        const auto &src_scales = scales.get(DNNL_ARG_SRC);
+        const auto &wei_scales = scales.get(DNNL_ARG_WEIGHTS);
+        auto is_src_scl = !scales.get(DNNL_ARG_SRC).has_default_values();
+        auto is_wei_scl = !scales.get(DNNL_ARG_WEIGHTS).has_default_values();
+        auto dst_scl_msk = scales.get(DNNL_ARG_DST).get_mask();
+        auto wei_scl_msk = wei_scales.get_mask();
+        auto src_scl_msk = src_scales.get_mask();
 
-        if (src_scl_msk > 0
+        bool ok = attr_scales_ok(supported_args);
+        if (!ok && src_scl_msk == src_qmask_M()) {
+            ok = scales.has_default_values(supported_args);
+            for (int arg : supported_args) {
+                if (scales.has_default_values(arg)) continue;
+                ok = ok
+                        && scales.get(arg).get_quantization_mode()
+                                == quantization_mode::static_sazp;
+            }
+
+            const auto &wei_g0 = wei_scales.get_group(0);
+            const auto &wei_g1 = wei_scales.get_group(1);
+            ok = ok && src_scales.has_default_groups()
+                    && IMPLICATION(wei_g0 > 1, K() % wei_g0 == 0)
+                    && IMPLICATION(wei_g1 > 1, N() % wei_g1 == 0)
+                    && IMPLICATION(!wei_scales.has_default_groups(),
+                            utils::one_of(1, wei_g0, wei_g1));
+        }
+
+        if (is_src_scl && !scales.has_default_data_type(DNNL_ARG_SRC))
+            return false;
+
+        if ((src_scl_msk > 0 && src_scl_msk != src_qmask_M())
                 || (wei_scl_msk > 0 && wei_scl_msk != 1 << (dims - 1))
                 || dst_scl_msk > 0)
             return false;
@@ -1038,8 +1100,11 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
         default: return status::unimplemented;
     }
 
-    bool is_scales = !attr()->scales_.get(DNNL_ARG_SRC).has_default_values()
-            || !attr()->scales_.get(DNNL_ARG_WEIGHTS).has_default_values();
+    const bool has_src_scales
+            = !attr()->scales_.get(DNNL_ARG_SRC).has_default_values();
+    const bool has_wei_scales
+            = !attr()->scales_.get(DNNL_ARG_WEIGHTS).has_default_values();
+    bool is_scales = has_src_scales || has_wei_scales;
 
     bool is_dst_scales
             = !attr()->scales_.get(DNNL_ARG_DST).has_default_values();
@@ -1056,8 +1121,11 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
     brg_.is_u8_s8 = is_u8_s8;
     brg_.is_bias = with_bias();
     brg_.with_scales = is_scales;
+    brg_.with_src_scales = has_src_scales;
+    brg_.with_wei_scales = has_wei_scales;
     brg_.with_dst_scales = is_dst_scales;
     brg_.is_oc_scales = wei_scales.get_mask() > 0;
+    brg_.is_per_m_scales = is_per_m_scales;
     dyn_.K = brg_.K;
     dyn_.N = brg_.N;
     dyn_.M = brg_.M;
@@ -1135,8 +1203,11 @@ status_t jit_int8_matmul_t<isa>::init(engine_t *engine) {
     b.is_zp_b_int8 = b1.is_zp_b_int8;
     b.zp_b_dt = b1.zp_b_dt;
     b.with_scales = b1.with_scales;
+    b.with_src_scales = b1.with_src_scales;
+    b.with_wei_scales = b1.with_wei_scales;
     b.with_dst_scales = b1.with_dst_scales;
     b.is_oc_scales = b1.is_oc_scales;
+    b.is_per_m_scales = b1.is_per_m_scales;
     b.b_reo = b1.b_reo;
     b.ld_block = b1.ld_block;
 
@@ -1226,8 +1297,16 @@ status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
     if (b.zp_type_b != jit_int8_broadcast_t::none)
         zp_ptr_b
                 = scratchpad.template get<char>(key_brgemm_primitive_zp_comp_b);
-    const float *oscales = precompute_scales(
-            scratchpad, src_scales, wei_scales, pd()->N(), pd()->attr());
+    alignas(16) float unit_scale_buf[16];
+    utils::array_set(unit_scale_buf, 1.0f, 16);
+    const auto &attr_scales = pd()->attr()->scales_;
+    const bool need_wei_scale_copy = b.with_wei_scales
+            && (!attr_scales.has_default_data_type(DNNL_ARG_WEIGHTS)
+                    || !attr_scales.get(DNNL_ARG_WEIGHTS).has_default_groups());
+    const float *kernel_wei_scales = need_wei_scale_copy
+            ? precompute_scales(scratchpad, unit_scale_buf, wei_scales,
+                      pd()->N(), pd()->attr())
+            : wei_scales;
 
     const dim_t B = b.B;
     const dim_t M = b.M;
@@ -1449,10 +1528,10 @@ status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
         });
     };
 
-    auto kernel_execute
-            = [&](int idx, int na, int nb, int m_blk_adr, int n_blk_adr,
-                      int dst_adr, int bias_addr, int scl_addr,
-                      int zp_ptr_a_adr, int zp_ptr_b_adr, int zp_b_buf) {
+    auto kernel_execute =
+            [&](int idx, int na, int nb, int m_blk_adr, int n_blk_adr,
+                    int dst_adr, int bias_addr, int scl_addr, int zp_ptr_a_adr,
+                    int zp_ptr_b_adr, int zp_b_buf, int m_row_start) {
         call_params_t p;
         p.na = &na;
         p.nb = &nb;
@@ -1460,7 +1539,9 @@ status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
         p.wei = (uint8_t *)weights + n_blk_adr;
         p.dst = dst + dst_adr;
         p.bias = (float *)bias + bias_addr;
-        p.scales = oscales + scl_addr;
+        p.scales = src_scales;
+        p.wei_scales = kernel_wei_scales + scl_addr;
+        p.src_scales = b.is_per_m_scales ? src_scales + m_row_start : nullptr;
         p.dst_scales = dst_scales;
         p.src_zero_point = src_zero_points;
         if (b.is_zp_b_int8)
@@ -1505,8 +1586,8 @@ status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
                 }
                 int n_a = m_ed - m_st;
                 if (mtail) n_a -= 1;
-                kernel_execute(
-                        idx, n_a, 0, m_blk_adr, 0, 0, 0, 0, 0, zp_ptr_b_adr, 0);
+                kernel_execute(idx, n_a, 0, m_blk_adr, 0, 0, 0, 0, 0,
+                        zp_ptr_b_adr, 0, 0);
 
                 if (mtail) {
                     idx = pd()->get_idx(1, mtail, ktail, 0, b);
@@ -1518,7 +1599,7 @@ status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
                     m_blk_adr += n_a * b.m_blk * div_up(K, b.k_blk) * b.k_blk;
                     zp_ptr_b_adr += n_a * b.m_blk;
                     kernel_execute(idx, 1, 0, m_blk_adr, 0, 0, 0, 0, 0,
-                            zp_ptr_b_adr, 0);
+                            zp_ptr_b_adr, 0, 0);
                 }
                 start++;
             });
@@ -1551,8 +1632,8 @@ status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
                 int n_b = n_ed - n_st;
                 if (ntail == 1) n_b -= 1;
 
-                kernel_execute(
-                        idx, 0, n_b, 0, n_blk_adr, 0, 0, 0, zp_ptr_a_adr, 0, 0);
+                kernel_execute(idx, 0, n_b, 0, n_blk_adr, 0, 0, 0, zp_ptr_a_adr,
+                        0, 0, 0);
 
                 if (ntail) {
                     idx = pd()->get_idx(1, 0, ktail, 1, b);
@@ -1565,7 +1646,7 @@ status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
                             * div_up(K, b.k_blk) * b.k_blk;
                     zp_ptr_a_adr += n_b * (b.n_blk * b.ld_block);
                     kernel_execute(idx, 0, 1, 0, n_blk_adr, 0, 0, 0,
-                            zp_ptr_a_adr, 0, 0);
+                            zp_ptr_a_adr, 0, 0, 0);
                 }
 
                 start++;
@@ -1646,7 +1727,7 @@ status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
 
                 kernel_execute(idx, n_a, n_b, m_blk_adr, n_blk_adr, dst_adr,
                         bias_addr, scl_addr, zp_ptr_a_adr, zp_ptr_b_adr,
-                        zp_b_buf);
+                        zp_b_buf, m_block * m_block_sz);
             }
 
             if (mtail && b.m_tail > 0 && n_b > 0) {
@@ -1662,7 +1743,8 @@ status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
                 int na = 1;
                 kernel_execute(idx, na, n_b, new_m_blk_adr, n_blk_adr,
                         new_dst_adr, bias_addr, scl_addr, zp_ptr_a_adr,
-                        new_zp_ptr_b_adr, zp_b_buf);
+                        new_zp_ptr_b_adr, zp_b_buf,
+                        m_block * m_block_sz + n_a * b.m_blk);
             }
 
             if (ntail && b.n_tail > 0 && n_a > 0) {
@@ -1686,7 +1768,8 @@ status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
 
                 kernel_execute(idx, n_a, nb, m_blk_adr, new_n_blk_adr,
                         new_dst_adr, new_bias_addr, new_scl_addr,
-                        new_zp_ptr_a_adr, zp_ptr_b_adr, new_zp_b_buf);
+                        new_zp_ptr_a_adr, zp_ptr_b_adr, new_zp_b_buf,
+                        m_block * m_block_sz);
             }
 
             if (mtail && b.m_tail > 0 && ntail && b.n_tail > 0) {
@@ -1713,7 +1796,8 @@ status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
                 int nb = 1, na = 1;
                 kernel_execute(idx, na, nb, new_m_blk_adr, new_n_blk_adr,
                         new_dst_adr, new_bias_addr, new_scl_addr,
-                        new_zp_ptr_a_adr, new_zp_ptr_b_adr, new_zp_b_buf);
+                        new_zp_ptr_a_adr, new_zp_ptr_b_adr, new_zp_b_buf,
+                        m_block * m_block_sz + n_a * b.m_blk);
             }
             start++;
         }

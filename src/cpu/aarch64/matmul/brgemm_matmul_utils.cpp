@@ -21,6 +21,7 @@
 #include "common/dnnl_thread.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
+#include "cpu/aarch64/cpu_isa_traits.hpp"
 #include "cpu/aarch64/injectors/jit_uni_postops_injector.hpp"
 
 #include "cpu/binary_injector_utils.hpp"
@@ -221,6 +222,13 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(
                     = bgmmc.b_dt_sz * B_d.blocking_desc().strides[dim];
         }
     } else {
+        // Allows tranposed only for sve_256, since it has a copy_b_transpose
+        // implemented, and for gemv cases since they do not use copy_b.
+        // TODO: a working copy_b_transpose for sve_128
+        const bool allow_transposed_b = bgmmc.isa == sve_256
+                || (bgmmc.M == 1
+                        && transposed_tensor_layout_tag == format_tag::ba)
+                || bgmmc.N == 1;
         switch (bgmmc.wei_dt) {
             case f32:
                 // If the B memory descriptor matches both the transposed
@@ -233,15 +241,18 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(
                 }
                 if (blocked_B_layouts_allowed) {
                     bgmmc.wei_tag = memory_desc_matches_one_of_tag(B_md,
-                            plain_tensor_layout_tag, blocked_64n_B_layout_tag,
-                            blocked_48n_B_layout_tag, blocked_32n_B_layout_tag,
-                            blocked_16n_B_layout_tag);
+                            plain_tensor_layout_tag,
+                            transposed_tensor_layout_tag,
+                            blocked_64n_B_layout_tag, blocked_48n_B_layout_tag,
+                            blocked_32n_B_layout_tag, blocked_16n_B_layout_tag);
                 } else {
-                    bgmmc.wei_tag = memory_desc_matches_one_of_tag(
-                            B_md, plain_tensor_layout_tag);
-                    if (bgmmc.wei_tag != plain_tensor_layout_tag)
-                        return status::unimplemented;
+                    bgmmc.wei_tag = memory_desc_matches_one_of_tag(B_md,
+                            plain_tensor_layout_tag,
+                            transposed_tensor_layout_tag);
                 }
+                if (!allow_transposed_b
+                        && bgmmc.wei_tag == transposed_tensor_layout_tag)
+                    return status::unimplemented;
                 break;
 
             case bf16:

@@ -605,6 +605,8 @@ public:
         return dnnl::impl::graph::status::success;
     }
 
+    std::string str() const;
+
 private:
     size_t id_ {};
     op_kind_t kind_ {};

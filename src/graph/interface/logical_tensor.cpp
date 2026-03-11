@@ -188,6 +188,29 @@ size_t logical_tensor_wrapper_t::hash() const noexcept {
     return seed;
 }
 
+std::string logical_tensor_wrapper_t::str() const {
+    dnnl::impl::stringstream_t ss;
+
+    ss << utils::data_type2str(data_type()) << ":";
+    ss << this->id() << ":";
+    ss << utils::layout_type2str(layout_type()) << ":";
+    ss << utils::property_type2str(property_type()) << ":";
+    // dims
+    ss << utils::dims2str(vdims()) << ":";
+    // layout
+    if (layout_type() == layout_type::strided) {
+        ss << utils::dims2str(vstrides());
+    } else if (layout_type() == layout_type::opaque) {
+        ss << layout_id();
+    } else if (layout_type() == layout_type::any) {
+        ss << "*";
+    } else {
+        assert(!"layout type must be any, strided or opaque.");
+        ss << "?";
+    }
+    return ss.str();
+}
+
 status_t DNNL_API dnnl_graph_logical_tensor_init(
         logical_tensor_t *logical_tensor, size_t tid, data_type_t dtype,
         int32_t ndims, layout_type_t ltype, property_type_t ptype) {

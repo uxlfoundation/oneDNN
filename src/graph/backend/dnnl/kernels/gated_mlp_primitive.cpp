@@ -38,7 +38,8 @@ namespace impl {
 namespace graph {
 namespace dnnl_impl {
 
-status_t gated_mlp_primitive_kernel_t::compile_impl(
+template <bool quantized>
+status_t gated_mlp_primitive_kernel_t<quantized>::compile_impl(
         const dnnl_partition_impl_t *part, const engine_t *eng,
         const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
@@ -62,6 +63,16 @@ status_t gated_mlp_primitive_kernel_t::compile_impl(
     pass_pipeline_t pipeline = pass_pipeline_t(vis);
 
     BACKEND_DNNL_ADD_PASS(pipeline, lower_down);
+
+    if (quantized) {
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_typecast_to_matmul_or_conv);
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_post_typecast_to_predecessor);
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_src_scales);
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_src_zero_points);
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_dst_scales);
+        BACKEND_DNNL_ADD_PASS(pipeline, fuse_dst_zero_points);
+    }
+
     pipeline.reset_visualize_arg(true, false);
     BACKEND_DNNL_ADD_PASS(pipeline, infer_shape);
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_gated_mlp);
@@ -97,7 +108,8 @@ status_t gated_mlp_primitive_kernel_t::compile_impl(
     return status::success;
 }
 
-void gated_mlp_primitive_kernel_t::prepare_args_set(
+template <bool quantized>
+void gated_mlp_primitive_kernel_t<quantized>::prepare_args_set(
         const execution_args_set_t *res, const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const scratchpad_t &scratchpad) {
     // update the data of partition in/outputs args
@@ -129,8 +141,9 @@ void gated_mlp_primitive_kernel_t::prepare_args_set(
     }
 }
 
-status_t gated_mlp_primitive_kernel_t::execute_impl(const stream_t *stream,
-        const std::vector<tensor_t> &inputs,
+template <bool quantized>
+status_t gated_mlp_primitive_kernel_t<quantized>::execute_impl(
+        const stream_t *stream, const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs) {
     dnnl::stream p_stream = make_dnnl_stream(p_engine_, *stream);
 
@@ -151,8 +164,9 @@ status_t gated_mlp_primitive_kernel_t::execute_impl(const stream_t *stream,
 }
 
 #ifdef DNNL_WITH_SYCL
-status_t gated_mlp_primitive_kernel_t::sycl_execute_impl(const stream_t *stream,
-        const std::vector<tensor_t> &inputs,
+template <bool quantized>
+status_t gated_mlp_primitive_kernel_t<quantized>::sycl_execute_impl(
+        const stream_t *stream, const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs,
         const std::vector<::sycl::event> &sycl_deps, ::sycl::event *ret_event) {
 // gated_mlp_primitive_kernel_t only supports Intel GPU.
@@ -188,8 +202,9 @@ status_t gated_mlp_primitive_kernel_t::sycl_execute_impl(const stream_t *stream,
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-status_t gated_mlp_primitive_kernel_t::ocl_execute_impl(const stream_t *stream,
-        const std::vector<tensor_t> &inputs,
+template <bool quantized>
+status_t gated_mlp_primitive_kernel_t<quantized>::ocl_execute_impl(
+        const stream_t *stream, const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs,
         const std::vector<cl_event> &ocl_deps, cl_event *ret_event) {
     auto deps = ocl_deps;
@@ -219,6 +234,9 @@ status_t gated_mlp_primitive_kernel_t::ocl_execute_impl(const stream_t *stream,
     return status::success;
 }
 #endif
+
+template struct gated_mlp_primitive_kernel_t<true>;
+template struct gated_mlp_primitive_kernel_t<false>;
 
 } // namespace dnnl_impl
 } // namespace graph

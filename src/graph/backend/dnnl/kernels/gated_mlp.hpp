@@ -37,6 +37,7 @@ namespace impl {
 namespace graph {
 namespace dnnl_impl {
 
+template <bool quantized = false>
 struct gated_mlp_base_t : public kernel_base_t {
 private:
     std::shared_ptr<kernel_base_t> kernel;
@@ -53,7 +54,8 @@ public:
         status_t ret = status::unimplemented;
 
         if (enable_ukernel) {
-            kernel = std::make_shared<gated_mlp_primitive_kernel_t>();
+            kernel = std::make_shared<
+                    gated_mlp_primitive_kernel_t<quantized>>();
             ret = kernel->compile_impl(part, engine, inputs, outputs);
         }
 

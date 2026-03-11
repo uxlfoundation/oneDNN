@@ -199,6 +199,52 @@ std::ostream &operator<<(std::ostream &ss, const accumulation_t &accs) {
     return ss;
 }
 
+// Mirrors benchdnn attr_t::dropout_t (--attr-dropout=PROB[:SEED[:TAG[:OFFSET[:HOST_SCALARS]]]]).
+struct dropout_config_t {
+    float probability = 0.0f;
+    int64_t seed = 0; // 64-bit Philox seed
+    memory::data_type seed_dt = mdt::s64; // s32 or s64
+    int64_t offset = 0; // 64-bit RNG offset; 0 = unset
+    bool use_host_scalars = false;
+    memory::format_tag mask_tag
+            = memory::format_tag::any; // any = output mask; undef = no mask
+
+    dropout_config_t() = default;
+    dropout_config_t(float probability_, int64_t seed_,
+            memory::data_type seed_dt_ = mdt::s64, int64_t offset_ = 0,
+            bool use_host_scalars_ = false,
+            memory::format_tag mask_tag_ = memory::format_tag::any)
+        : probability(probability_)
+        , seed(seed_)
+        , seed_dt(seed_dt_)
+        , offset(offset_)
+        , use_host_scalars(use_host_scalars_)
+        , mask_tag(mask_tag_) {}
+
+    bool enabled() const { return probability > 0.0f; }
+    bool has_output_mask() const {
+        return mask_tag != memory::format_tag::undef;
+    }
+};
+
+std::ostream &operator<<(std::ostream &ss, const dropout_config_t &d) {
+    if (!d.enabled()) {
+        ss << "dropout_none";
+    } else {
+        // Replace '.' in probability float with 'p' so the name stays
+        // alphanumeric-plus-underscore (GTest requirement).
+        std::string prob_str = std::to_string(d.probability);
+        for (char &c : prob_str)
+            if (c == '.') c = 'p';
+        ss << "dropout_" << prob_str << "_s" << d.seed;
+        if (d.offset != 0) ss << "_o" << d.offset;
+        if (!d.has_output_mask()) ss << "_nomask";
+    }
+    return ss;
+}
+
+static const dropout_config_t no_dropout {};
+
 using sdpa_dims_t_tuple = std::tuple<int, num_heads_t, seq_len_size_t,
         head_group_size_t, tensor_type_t, tensor_type_t, tensor_type_t,
         quantize_type, tag_t, mask_config_t, scale_type, accumulation_t>;
@@ -219,6 +265,7 @@ struct sdpa_dims_t {
     mask_config_t mask;
     scale_type stype;
     accumulation_t acc_modes;
+    dropout_config_t dropout;
 
     sdpa_dims_t() = default;
     sdpa_dims_t(memory::dim mb_, memory::dim head_num_,
@@ -234,7 +281,8 @@ struct sdpa_dims_t {
             mask_type mask_ = mask_type::no_mask,
             scale_type stype_ = default_scale_type,
             accumulation_mode kq_acc_ = accumulation_mode::f32,
-            accumulation_mode vs_acc_ = accumulation_mode::f32)
+            accumulation_mode vs_acc_ = accumulation_mode::f32,
+            dropout_config_t dropout_ = no_dropout)
         : mb(mb_)
         , heads {head_num_, kv_head_num_}
         , seq_len {query_num_, seq_len_}
@@ -246,7 +294,8 @@ struct sdpa_dims_t {
         , key_format_tag(key_format_tag_)
         , mask {mask_, mskdt_}
         , stype(stype_)
-        , acc_modes {kq_acc_, vs_acc_} {}
+        , acc_modes {kq_acc_, vs_acc_}
+        , dropout(dropout_) {}
 
     sdpa_dims_t(const sdpa_dims_t_tuple &dims)
         : mb(std::get<0>(dims))
@@ -328,6 +377,7 @@ std::ostream &operator<<(std::ostream &ss, const sdpa_dims_t &p) {
         ss << "_devicescale";
     if (p.acc_modes.kq_acc == accumulation_mode::f16) ss << "_kqf16acc";
     if (p.acc_modes.vs_acc == accumulation_mode::f16) ss << "_vsf16acc";
+    if (p.dropout.enabled()) ss << "_" << p.dropout;
     return ss;
 }
 
@@ -665,7 +715,6 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
 
     std::vector<float> mask_data(product(mask_sz), NAN);
     std::vector<float> output_data(product(q_sz), NAN);
-
     std::vector<float> dS_data(product(dS_sz), 0);
 
     out.sdpa_attr_quantized.set_scratchpad_mode(dnnl::scratchpad_mode::library);
@@ -727,6 +776,16 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
             out.sdpa_vs_attr_quantized.set_zero_points(
                     DNNL_ARG_WEIGHTS, out.vs_mask, out.vs_groups, p.value.zpdt);
         }
+    }
+
+    if (p.dropout.enabled()) {
+        // Mask descriptor: u8, same shape as dst (sdpa_utils.hpp constraint).
+        // Empty memory::desc() = no mask output (has_output_mask() == false).
+        memory::desc mask_desc;
+        if (p.dropout.has_output_mask())
+            mask_desc = memory::desc(q_sz, mdt::u8, p.dropout.mask_tag);
+        out.sdpa_attr_quantized.set_dropout(mask_desc, p.dropout.seed_dt,
+                p.dropout.offset != 0, p.dropout.use_host_scalars);
     }
 
     fill_random(query_data, query_md);
@@ -1221,13 +1280,67 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     // softmax primitive
     primitive_attr softmax_attr;
     softmax_attr.set_scratchpad_mode(scratchpad_mode::library);
-    auto softmax_pd = softmax_forward::primitive_desc(eng,
-            prop_kind::forward_inference,
-            (algorithm)dnnl::impl::alg_kind::softmax_accurate_inf_as_zero,
-            score.get_desc(), score.get_desc(), 4, softmax_attr);
-    auto softmax_prim = softmax_forward(softmax_pd);
-
-    // reorder primitive to convert f32 to f16 before bmm2
+    if (p.dropout.enabled()) {
+        memory::desc mask_desc;
+        if (p.dropout.has_output_mask()) {
+            // Dropout mask must match the softmax src/dst shape (score_sz),
+            // not q_sz (which has head_size in the last dim, not seq_len.kv).
+            // score_sz is 5D so always use abcde.
+            mask_desc = memory::desc(
+                    score_sz, mdt::u8, memory::format_tag::abcde);
+        }
+        softmax_attr.set_dropout(mask_desc, p.dropout.seed_dt,
+                p.dropout.offset != 0, p.dropout.use_host_scalars);
+    }
+    softmax_forward::primitive_desc softmax_pd;
+    softmax_forward softmax_prim;
+    try {
+        softmax_pd = softmax_forward::primitive_desc(eng,
+                prop_kind::forward_inference,
+                (algorithm)dnnl::impl::alg_kind::softmax_accurate_inf_as_zero,
+                score.get_desc(), score.get_desc(), 4, softmax_attr);
+        softmax_prim = softmax_forward(softmax_pd);
+    } catch (const dnnl::error &e) {
+        ADD_FAILURE() << "Failed to create softmax primitive in prim_sdpa_quant"
+                      << ": status=" << e.status << ", what=" << e.what()
+                      << ", dropout_enabled=" << p.dropout.enabled()
+                      << ", has_output_mask=" << p.dropout.has_output_mask();
+        return;
+    }
+    memory m_dropout_prob, m_dropout_seed, m_dropout_offset;
+    if (p.dropout.enabled()) {
+        if (p.dropout.use_host_scalars) {
+            m_dropout_prob = memory(
+                    memory::desc::host_scalar(mdt::f32), p.dropout.probability);
+            if (p.dropout.seed_dt != mdt::s64) {
+                throw std::runtime_error(
+                        "SDPA dropout host scalar seed_dt must be s64");
+            }
+            m_dropout_seed = memory(memory::desc::host_scalar(mdt::s64),
+                    static_cast<int64_t>(p.dropout.seed));
+            if (p.dropout.offset != 0) {
+                m_dropout_offset = memory(memory::desc::host_scalar(mdt::s64),
+                        static_cast<int64_t>(p.dropout.offset));
+            }
+        } else {
+            auto prob_md = memory::desc({1}, mdt::f32, memory::format_tag::a);
+            auto seed_md = memory::desc(
+                    {1}, p.dropout.seed_dt, memory::format_tag::a);
+            m_dropout_prob = memory(prob_md, eng);
+            m_dropout_seed = memory(seed_md, eng);
+            float prob = p.dropout.probability;
+            int64_t seed = p.dropout.seed;
+            write_to_dnnl_memory(&prob, m_dropout_prob, eng, strm);
+            write_to_dnnl_memory(&seed, m_dropout_seed, eng, strm);
+            if (p.dropout.offset != 0) {
+                auto offset_md
+                        = memory::desc({1}, mdt::s64, memory::format_tag::a);
+                m_dropout_offset = memory(offset_md, eng);
+                int64_t off = p.dropout.offset;
+                write_to_dnnl_memory(&off, m_dropout_offset, eng, strm);
+            }
+        }
+    }
     auto f32_to_f16_pd
             = dnnl::reorder::primitive_desc(eng, score_md, eng, score_f16_md);
     auto f32_to_f16_prim = dnnl::reorder(f32_to_f16_pd);
@@ -1315,11 +1428,22 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
         }
 
         // softmax
-        softmax_prim.execute(strm,
-                {
-                        {DNNL_ARG_SRC, score},
-                        {DNNL_ARG_DST, score2},
-                });
+        std::unordered_map<int, memory> softmax_args
+                = {{DNNL_ARG_SRC, score}, {DNNL_ARG_DST, score2}};
+        if (p.dropout.enabled()) {
+            softmax_args[DNNL_ARG_ATTR_DROPOUT_PROBABILITY] = m_dropout_prob;
+            softmax_args[DNNL_ARG_ATTR_DROPOUT_SEED] = m_dropout_seed;
+            if (p.dropout.offset != 0) {
+                softmax_args[DNNL_ARG_ATTR_DROPOUT_OFFSET] = m_dropout_offset;
+            }
+            if (p.dropout.has_output_mask()) {
+                auto dropout_mask_md = softmax_pd.query_md(
+                        dnnl::query::exec_arg_md, DNNL_ARG_ATTR_DROPOUT_MASK);
+                softmax_args[DNNL_ARG_ATTR_DROPOUT_MASK]
+                        = memory(dropout_mask_md, eng);
+            }
+        }
+        softmax_prim.execute(strm, softmax_args);
 
         if (is_vs_acc_f16) {
             // convert f16 output back to f32
@@ -2005,6 +2129,44 @@ public:
             case mask_type::twoD: mask_ptr = &mask; break;
         }
 
+        // Dropout runtime memories (allocated only when dropout is enabled).
+        memory m_dropout_prob, m_dropout_seed, m_dropout_offset;
+        if (p.dropout.enabled()) {
+            if (p.dropout.use_host_scalars) {
+                m_dropout_prob = memory(memory::desc::host_scalar(mdt::f32),
+                        p.dropout.probability);
+                if (p.dropout.seed_dt != mdt::s64) {
+                    throw std::runtime_error(
+                            "SDPA dropout host scalar seed_dt must be s64");
+                }
+                m_dropout_seed = memory(memory::desc::host_scalar(mdt::s64),
+                        static_cast<int64_t>(p.dropout.seed));
+                if (p.dropout.offset != 0) {
+                    m_dropout_offset
+                            = memory(memory::desc::host_scalar(mdt::s64),
+                                    static_cast<int64_t>(p.dropout.offset));
+                }
+            } else {
+                auto prob_md
+                        = memory::desc({1}, mdt::f32, memory::format_tag::a);
+                auto seed_md = memory::desc(
+                        {1}, p.dropout.seed_dt, memory::format_tag::a);
+                m_dropout_prob = memory(prob_md, eng);
+                m_dropout_seed = memory(seed_md, eng);
+                float prob = p.dropout.probability;
+                int64_t seed = p.dropout.seed;
+                write_to_dnnl_memory(&prob, m_dropout_prob, eng, strm);
+                write_to_dnnl_memory(&seed, m_dropout_seed, eng, strm);
+                if (p.dropout.offset != 0) {
+                    auto offset_md = memory::desc(
+                            {1}, mdt::s64, memory::format_tag::a);
+                    m_dropout_offset = memory(offset_md, eng);
+                    int64_t off = p.dropout.offset;
+                    write_to_dnnl_memory(&off, m_dropout_offset, eng, strm);
+                }
+            }
+        }
+
         sdpa::primitive_desc sdpa_quantized_pd;
         sdpa sdpa_quantized_p;
         try {
@@ -2053,6 +2215,19 @@ public:
                         = t.m_value_zp;
         }
         if (mask_ptr) { sdpa_args[DNNL_ARG_ATTN_MASK] = t.m_mask; }
+        if (p.dropout.enabled()) {
+            sdpa_args[DNNL_ARG_ATTR_DROPOUT_PROBABILITY] = m_dropout_prob;
+            sdpa_args[DNNL_ARG_ATTR_DROPOUT_SEED] = m_dropout_seed;
+            if (p.dropout.offset != 0)
+                sdpa_args[DNNL_ARG_ATTR_DROPOUT_OFFSET] = m_dropout_offset;
+            // Query mask md from pd (benchdnn pattern); only when has_output_mask.
+            if (p.dropout.has_output_mask()) {
+                auto dropout_mask_md = sdpa_quantized_pd.query_md(
+                        dnnl::query::exec_arg_md, DNNL_ARG_ATTR_DROPOUT_MASK);
+                sdpa_args[DNNL_ARG_ATTR_DROPOUT_MASK]
+                        = memory(dropout_mask_md, eng);
+            }
+        }
 
         sdpa_quantized_p.execute(strm, sdpa_args);
 
@@ -2949,6 +3124,33 @@ GPU_TEST_P(sdpa_bwd_test, perf_bwd) {
     //  perf_bwd(time_reference);
     //
 }
+
+// Equivalent of benchdnn --attr-dropout=PROBABILITY[:SEED[:TAG[:OFFSET[:HOST_SCALARS]]]]
+// Case 1: 0.5:12345678           -> no tag field => benchdnn default tag=any => has_output_mask
+// Case 2: 0.75:12345678:undef    -> tag=undef => no mask buffer written
+// Case 3: 0.25:843921:any:1238976:true -> output mask + non-zero offset + host scalars
+#define SDPA_DIMS_DROPOUT_BASE \
+    1, 1, 1, 32, 32, 32, 32, 32, mdt::f16, mdt::f16, mdt::undef, mdt::undef, \
+            mdt::f16, mdt::undef, mdt::undef, mdt::f16, \
+            quantize_type::no_quantization, no_key_transposed, \
+            mask_type::no_mask, default_scale_type, accumulation_mode::f32, \
+            accumulation_mode::f32
+INSTANTIATE_TEST_SUITE_P(dropout_minimal, sdpa_test,
+        testing::Values(
+                // 0.5:12345678:abcd — concrete tag => blocked format => has_output_mask
+                sdpa_dims_t {SDPA_DIMS_DROPOUT_BASE,
+                        dropout_config_t {0.5f, 12345678, mdt::s64, 0, false,
+                                memory::format_tag::abcd}},
+                // 0.75:12345678:undef — explicit undef => no mask output
+                sdpa_dims_t {SDPA_DIMS_DROPOUT_BASE,
+                        dropout_config_t {0.75f, 12345678, mdt::s64, 0, false,
+                                memory::format_tag::undef}},
+                // 0.25:843921:abcd:1238976:true — output mask, offset, host scalars, concrete tag
+                sdpa_dims_t {SDPA_DIMS_DROPOUT_BASE,
+                        dropout_config_t {0.25f, 843921, mdt::s64, 1238976,
+                                true, memory::format_tag::abcd}}),
+        &print_to_string);
+#undef SDPA_DIMS_DROPOUT_BASE
 
 // clang-format off
 

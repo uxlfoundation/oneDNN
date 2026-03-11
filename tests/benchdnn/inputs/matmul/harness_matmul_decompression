@@ -365,3 +365,12 @@
 1x1:1x8
 1x16:16x8
 3x65:65x8
+
+## Int8 with int4 weights and scales (AVX512)
+--reset
+--skip-impl=ref
+--dt=u8:s4:u8,s8:s4:s8
+--attr-scales=wei:common:2,wei:per_oc:f32,wei:per_ocic:f32:32x1,wei:per_ocic:f32:64x1,wei:per_ocic:f32:128x1
+--attr-zero-points=,wei:common:2,wei:per_oc:s8,wei:per_ocic:s8:32x1
+--attr-fpmath=strict:true
+2x32:32x32

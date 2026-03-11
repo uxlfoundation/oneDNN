@@ -355,7 +355,7 @@ gmlp_tensors_t get_descriptors(engine &eng, mlp_dims_t p) {
     fill_random(x_data, x_md, -.25f, .25f);
 
     if (p.qtype == quantize_type::no_quantization) {
-        printf("no quant init\n");
+        if (verbose) printf("no quant init\n");
         fill_random(w_gate_data, w_gate_md, -1.f, 1.f);
         fill_random(w_up_data, w_up_md, -1.f, 1.f);
         fill_random(w_down_data, w_down_md, -1.f, 1.f);
@@ -372,11 +372,12 @@ gmlp_tensors_t get_descriptors(engine &eng, mlp_dims_t p) {
         fill_random_scales(w_down_scales_data, w_down_scales_md);
 
         bool wgu_zp_unsigned = (wgu_zp_dt == mdt::u4 || wgu_zp_dt == mdt::u8);
-        if (wgu_zp_unsigned)
-            printf("unsigned gateup quant init\n");
-        else
-            printf("signed gateup quant init\n");
-
+        if (verbose) {
+            if (wgu_zp_unsigned)
+                printf("unsigned gateup quant init\n");
+            else
+                printf("signed gateup quant init\n");
+        }
         fill_random_quantized(w_gate_zp_data, w_gate_zp_md, wgu_zp_unsigned);
         fill_random_quantized(w_up_zp_data, w_up_zp_md, wgu_zp_unsigned);
 
@@ -389,11 +390,12 @@ gmlp_tensors_t get_descriptors(engine &eng, mlp_dims_t p) {
                 out.wgu_groups, 0);
 
         bool wd_zp_unsigned = (wd_zp_dt == mdt::u4 || wd_zp_dt == mdt::u8);
-        if (wd_zp_unsigned)
-            printf("unsigned down quant init\n");
-        else
-            printf("signed down quant init\n");
-
+        if (verbose) {
+            if (wd_zp_unsigned)
+                printf("unsigned down quant init\n");
+            else
+                printf("signed down quant init\n");
+        }
         fill_random_quantized(w_down_zp_data, w_down_zp_md, wd_zp_unsigned);
 
         w_down_data = dequantize(w_down_quantized_data, w_down_md,
@@ -419,10 +421,11 @@ gmlp_tensors_t get_descriptors(engine &eng, mlp_dims_t p) {
     move_data(w_up_scales_data, out.m_w_up_scales);
     move_data(w_down_scales_data, out.m_w_down_scales);
 
-    printf("memory data types?? %d %d %d\n",
-            int(out.m_w_gate_scales.get_desc().get_data_type()),
-            int(out.m_w_up_scales.get_desc().get_data_type()),
-            int(out.m_w_down_scales.get_desc().get_data_type()));
+    if (verbose)
+        printf("memory data types?? %d %d %d\n",
+                int(out.m_w_gate_scales.get_desc().get_data_type()),
+                int(out.m_w_up_scales.get_desc().get_data_type()),
+                int(out.m_w_down_scales.get_desc().get_data_type()));
 
     return out;
 }
@@ -550,9 +553,10 @@ void bench_gated_mlp_primitives(std::vector<float> &res, double &avg_time,
 
     // Display the results.
     avg_time = (duration.count() - dur_first.count()) / runs;
-    std::cout << "primitive runs: " << runs + 1 << "; ";
-    std::cout << "avg_time: " << avg_time << " ms" << std::endl;
-
+    if (verbose) {
+        std::cout << "primitive runs: " << runs + 1 << "; ";
+        std::cout << "avg_time: " << avg_time << " ms" << std::endl;
+    }
     if (verbose && product(FC_down_md.get_dims()) < (64 * 64) + 1) {
         const memory::dims FC_down_sz = {p.mb, p.ic};
         printf("resprim----------[%d %d]\n", int(p.mb), int(p.ic));
@@ -574,7 +578,7 @@ void bench_gated_mlp_primitives(std::vector<float> &res, double &avg_time,
 void bench_gated_mlp_internal(std::vector<float> &res, double &avg_time,
         gmlp_tensors_t &t, engine &eng, stream strm, const mlp_dims_t &p,
         double time_limit = 0.) {
-    printf("eng?\n");
+    if (verbose) printf("eng?\n");
     const bool quick_test = (time_limit == 0.);
 
     // Create memory objects
@@ -757,9 +761,10 @@ void bench_gated_mlp_internal(std::vector<float> &res, double &avg_time,
 
     // Display the results.
     avg_time = (duration.count() - dur_first.count()) / runs;
-    std::cout << "internal gmlp primitive runs: " << runs + 1 << "; ";
-    std::cout << "avg_time: " << avg_time << " ms" << std::endl;
-
+    if (verbose) {
+        std::cout << "internal gmlp primitive runs: " << runs + 1 << "; ";
+        std::cout << "avg_time: " << avg_time << " ms" << std::endl;
+    }
     if (verbose && product(FC_down_md.get_dims()) < (64 * 64) + 1) {
         printf("resint----------[%d %d]\n", int(p.mb), int(p.ic));
         printf("------inpA\n");
@@ -833,20 +838,21 @@ TEST_P(mlp_test_t, compare) {
     std::vector<float> resph, resih;
     double avg_time_int, avg_time_prim;
 
-    printf("PRIMITIVE\n");
+    if (verbose) printf("PRIMITIVE\n");
     bench(resph, avg_time_prim, tensors, api_kind::primitive, eng, strm, params,
             2000.0 /*ms*/);
 
-    printf("INTERNAL\n");
+    if (verbose) printf("INTERNAL\n");
     bench(resih, avg_time_int, tensors, api_kind::internal_hack, eng, strm,
             params, 2000.0 /*ms*/);
 
     if (resih.empty()) {
-        printf("[WARNING] Empty output: internal kernel failure!\n");
+        if (verbose)
+            printf("[WARNING] Empty output: internal kernel failure!\n");
         EXPECT_TRUE(false);
     }
     int n_mismatches = 0, n_matches = 0;
-    printf("resih.size() %zu\n", resih.size());
+    if (verbose) printf("resih.size() %zu\n", resih.size());
     float max_diff = 0.0f, max_val, max_gold;
     for (int i = 0; i < int(resih.size()); ++i) {
         float abs_diff = std::abs(resih[i] - resph[i]);
@@ -860,13 +866,13 @@ TEST_P(mlp_test_t, compare) {
             }
 
             n_mismatches++;
-            if (n_mismatches < 10)
+            if (verbose && (n_mismatches < 10))
                 printf("mismatch @ %d, %f != %f\n", i, float(resih[i]),
                         float(resph[i])); //TODO: improve
         } else {
             if (std::abs(float16_t(resih[i])) > 5e-3) {
                 n_matches++;
-                if (n_matches < 10)
+                if (verbose && (n_matches < 10))
                     printf("vs @ %d, %f == %f\n", i, float(resih[i]),
                             float(resph[i])); //TODO: improve
             }
@@ -875,13 +881,14 @@ TEST_P(mlp_test_t, compare) {
     int total_size = int(resph.size());
     int threshold = total_size * 0.0006;
 
-    printf("total mismatches: %d, allowed: %d\n", n_mismatches, threshold);
-    printf("avg time internal: %f vs %f avg time primitive, w/speedup of %f\n",
-            avg_time_int, avg_time_prim, avg_time_prim / avg_time_int);
-
-    if (n_mismatches > 0) {
-        std::cout << "max diff: " << max_diff << ":  " << max_val
-                  << " != " << max_gold << std::endl;
+    if (verbose) {
+        printf("total mismatches: %d, allowed: %d\n", n_mismatches, threshold);
+        printf("avg time internal vs primitive: %f vs %f, w/speedup of %f\n",
+                avg_time_int, avg_time_prim, avg_time_prim / avg_time_int);
+        if (n_mismatches > 0) {
+            std::cout << "max diff: " << max_diff << ":  " << max_val
+                      << " != " << max_gold << std::endl;
+        }
     }
     ASSERT_LE(n_mismatches, threshold) << "out of: " << total_size;
 }

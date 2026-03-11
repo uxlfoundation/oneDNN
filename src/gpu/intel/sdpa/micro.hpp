@@ -510,7 +510,7 @@ struct micro_bwd_t : public primitive_t {
             CHECK(set_default_format(desc_.dst_desc, false));
             CHECK(set_default_format(desc_.diff_dst_desc, false));
             CHECK(set_default_format(desc_.diff_q_desc, false));
-            CHECK(set_default_format(desc_.diff_k_desc, false));
+            CHECK(set_default_format(desc_.diff_k_desc, true));
             CHECK(set_default_format(desc_.diff_v_desc, false));
             return status::success;
         }

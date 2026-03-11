@@ -357,3 +357,11 @@
 --attr-zero-points=,wei:common:2,wei:per_oc:s4,wei:per_ocic:s4:192x1
 --attr-fpmath=strict:true
 12x4x576:12x576x192
+
+## Int8 with int4 weights
+### Upconversion int4->int8
+--reset
+--dt=u8:s4:u8,s8:s4:s8,u8:u4:u8
+1x1:1x8
+1x16:16x8
+3x65:65x8

@@ -58,7 +58,7 @@ void jit_rvv_layernorm_fused_kernel_t::generate() {
 
     const FReg f_zero = ft0;
     const FReg f_sum = ft1;
-    const FReg f_sumsq = ft2;
+    const FReg f_var_sum = ft2;
     const FReg f_len = ft3;
     const FReg f_mean = ft4;
     const FReg f_var = ft5;
@@ -74,10 +74,10 @@ void jit_rvv_layernorm_fused_kernel_t::generate() {
     const VReg v_sum1(5);
     const VReg v_sum2(6);
     const VReg v_sum3(7);
-    const VReg v_sq0(8);
-    const VReg v_sq1(9);
-    const VReg v_sq2(10);
-    const VReg v_sq3(11);
+    const VReg v_acc0(8);
+    const VReg v_acc1(9);
+    const VReg v_acc2(10);
+    const VReg v_acc3(11);
     const VReg v_mean(12);
     const VReg v_inv(13);
     const VReg v_scale0(14);
@@ -104,17 +104,18 @@ void jit_rvv_layernorm_fused_kernel_t::generate() {
     vfmv_v_f(v_sum1, f_zero);
     vfmv_v_f(v_sum2, f_zero);
     vfmv_v_f(v_sum3, f_zero);
-    vfmv_v_f(v_sq0, f_zero);
-    vfmv_v_f(v_sq1, f_zero);
-    vfmv_v_f(v_sq2, f_zero);
-    vfmv_v_f(v_sq3, f_zero);
+    vfmv_v_f(v_acc0, f_zero);
+    vfmv_v_f(v_acc1, f_zero);
+    vfmv_v_f(v_acc2, f_zero);
+    vfmv_v_f(v_acc3, f_zero);
 
-    Label stat_main_loop, stat_tail_loop, reduce_stats;
+    Label mean_main_loop, mean_tail_loop, reduce_mean;
+    Label var_main_loop, var_tail_loop, reduce_var;
     Label store_mean, store_var, start_data, data_main_loop, data_tail_loop,
             done;
 
-    L(stat_main_loop);
-    blt(reg_len, reg_block, stat_tail_loop);
+    L(mean_main_loop);
+    blt(reg_len, reg_block, mean_tail_loop);
 
     vsetvli(x0, reg_vlmax, SEW::e32, LMUL::m1);
 
@@ -131,50 +132,92 @@ void jit_rvv_layernorm_fused_kernel_t::generate() {
     vfadd_vv(v_sum2, v_sum2, v_in2);
     vfadd_vv(v_sum3, v_sum3, v_in3);
 
-    vfmacc_vv(v_sq0, v_in0, v_in0);
-    vfmacc_vv(v_sq1, v_in1, v_in1);
-    vfmacc_vv(v_sq2, v_in2, v_in2);
-    vfmacc_vv(v_sq3, v_in3, v_in3);
-
     add(reg_src, reg_src, reg_bytes4);
     sub(reg_len, reg_len, reg_block);
-    j_(stat_main_loop);
+    j_(mean_main_loop);
 
-    L(stat_tail_loop);
-    beqz(reg_len, reduce_stats);
+    L(mean_tail_loop);
+    beqz(reg_len, reduce_mean);
 
     vsetvli(reg_vl, reg_len, SEW::e32, LMUL::m1);
     vle32_v(v_in0, reg_src);
     vfadd_vv(v_sum0, v_sum0, v_in0);
-    vfmacc_vv(v_sq0, v_in0, v_in0);
 
     slli(reg_bytes, reg_vl, 2);
     add(reg_src, reg_src, reg_bytes);
     sub(reg_len, reg_len, reg_vl);
-    j_(stat_tail_loop);
+    j_(mean_tail_loop);
 
-    L(reduce_stats);
+    L(reduce_mean);
     vfadd_vv(v_sum0, v_sum0, v_sum1);
     vfadd_vv(v_sum2, v_sum2, v_sum3);
     vfadd_vv(v_sum0, v_sum0, v_sum2);
-
-    vfadd_vv(v_sq0, v_sq0, v_sq1);
-    vfadd_vv(v_sq2, v_sq2, v_sq3);
-    vfadd_vv(v_sq0, v_sq0, v_sq2);
 
     vsetvli(x0, reg_vlmax, SEW::e32, LMUL::m1);
     vfmv_v_f(v_zero, f_zero);
     vfredusum_vs(v_red, v_sum0, v_zero);
     vfmv_f_s(f_sum, v_red);
-    vfredusum_vs(v_red, v_sq0, v_zero);
-    vfmv_f_s(f_sumsq, v_red);
 
     ld(reg_len, reg_param, GET_FUSED_OFF(len));
     fcvt_s_l(f_len, reg_len);
     fdiv_s(f_mean, f_sum, f_len);
-    fdiv_s(f_sumsq, f_sumsq, f_len);
-    fmul_s(f_var, f_mean, f_mean);
-    fsub_s(f_var, f_sumsq, f_var);
+
+    ld(reg_src, reg_param, GET_FUSED_OFF(src));
+    ld(reg_len, reg_param, GET_FUSED_OFF(len));
+    vfmv_v_f(v_mean, f_mean);
+    vfmv_v_f(v_acc0, f_zero);
+    vfmv_v_f(v_acc1, f_zero);
+    vfmv_v_f(v_acc2, f_zero);
+    vfmv_v_f(v_acc3, f_zero);
+
+    L(var_main_loop);
+    blt(reg_len, reg_block, var_tail_loop);
+
+    vsetvli(x0, reg_vlmax, SEW::e32, LMUL::m1);
+    vle32_v(v_in0, reg_src);
+    add(reg_tmp, reg_src, reg_bytes);
+    vle32_v(v_in1, reg_tmp);
+    add(reg_tmp, reg_tmp, reg_bytes);
+    vle32_v(v_in2, reg_tmp);
+    add(reg_tmp, reg_tmp, reg_bytes);
+    vle32_v(v_in3, reg_tmp);
+
+    vfsub_vv(v_in0, v_in0, v_mean);
+    vfsub_vv(v_in1, v_in1, v_mean);
+    vfsub_vv(v_in2, v_in2, v_mean);
+    vfsub_vv(v_in3, v_in3, v_mean);
+    vfmacc_vv(v_acc0, v_in0, v_in0);
+    vfmacc_vv(v_acc1, v_in1, v_in1);
+    vfmacc_vv(v_acc2, v_in2, v_in2);
+    vfmacc_vv(v_acc3, v_in3, v_in3);
+
+    add(reg_src, reg_src, reg_bytes4);
+    sub(reg_len, reg_len, reg_block);
+    j_(var_main_loop);
+
+    L(var_tail_loop);
+    beqz(reg_len, reduce_var);
+
+    vsetvli(reg_vl, reg_len, SEW::e32, LMUL::m1);
+    vle32_v(v_in0, reg_src);
+    vfsub_vv(v_in0, v_in0, v_mean);
+    vfmacc_vv(v_acc0, v_in0, v_in0);
+
+    slli(reg_bytes, reg_vl, 2);
+    add(reg_src, reg_src, reg_bytes);
+    sub(reg_len, reg_len, reg_vl);
+    j_(var_tail_loop);
+
+    L(reduce_var);
+    vfadd_vv(v_acc0, v_acc0, v_acc1);
+    vfadd_vv(v_acc2, v_acc2, v_acc3);
+    vfadd_vv(v_acc0, v_acc0, v_acc2);
+    vsetvli(x0, reg_vlmax, SEW::e32, LMUL::m1);
+    vfredusum_vs(v_red, v_acc0, v_zero);
+    vfmv_f_s(f_var_sum, v_red);
+    ld(reg_len, reg_param, GET_FUSED_OFF(len));
+    fcvt_s_l(f_len, reg_len);
+    fdiv_s(f_var, f_var_sum, f_len);
     fmax_s(f_var, f_var, f_zero);
 
     ld(reg_mean_ptr, reg_param, GET_FUSED_OFF(mean));

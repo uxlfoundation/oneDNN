@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -17,22 +17,19 @@
 #ifndef CPU_AARCH64_REF_ELTWISE_LUT_HPP
 #define CPU_AARCH64_REF_ELTWISE_LUT_HPP
 
-#include <mutex>
-#include <vector>
 #include <cstdint>
-#include <cstring>
-#include <cmath>
+#include <vector>
 
+#include "common/bfloat16.hpp"
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
-#include "common/bfloat16.hpp"
-#include "common/dnnl_thread.hpp"
 
-#include "cpu/platform.hpp"
-#include "cpu/primitive_attr_postops.hpp"
 #include "cpu/cpu_eltwise_pd.hpp"
+#include "cpu/platform.hpp"
+
+#include "cpu/primitive_attr_postops.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -55,24 +52,67 @@ struct ref_eltwise_lut_fwd_t : public primitive_t {
 
             VDISPATCH_ELTWISE(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_ELTWISE(everyone_is(data_type, src_md()->data_type,
-                                          dst_md()->data_type),
+                                      dst_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_ELTWISE(platform::has_data_type_support(data_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_ELTWISE(set_default_formats_common(),
-                    VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_ELTWISE(src_d == dst_d, VERBOSE_INCONSISTENT_MDS, "src", "dst");
             VDISPATCH_ELTWISE(
-                    attr_.set_default_formats(dst_md(0)) == status::success,
-                    VERBOSE_UNSUPPORTED_POSTOP);
+                    set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
+            VDISPATCH_ELTWISE(src_d.is_dense(true), VERBOSE_NONTRIVIAL_STRIDE);
+            VDISPATCH_ELTWISE(
+                    src_d == dst_d, VERBOSE_INCONSISTENT_MDS, "src", "dst");
+            VDISPATCH_ELTWISE(
+                    attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
 
-            // Only bf16 + GELU(erf) is implemented here.
-            if (desc()->alg_kind != ::dnnl::impl::alg_kind::eltwise_gelu_erf)
-                return status::unimplemented;
-            if (data_type != ::dnnl::impl::data_type::bf16)
-                return status::unimplemented;
+            VDISPATCH_ELTWISE(data_type == ::dnnl::impl::data_type::bf16,
+                    VERBOSE_UNSUPPORTED_DT);
+
+            const auto *spec = get_bf16_fwd_lut_spec_(desc()->alg_kind);
+            VDISPATCH_ELTWISE(spec != nullptr, VERBOSE_BAD_ALGORITHM);
+
+            const float alpha = spec->ignore_alpha_beta ? 0.f : desc()->alpha;
+            const float beta = spec->ignore_alpha_beta ? 0.f : desc()->beta;
+            bf16_lut_.resize(1u << 16);
+            for (uint32_t raw = 0; raw < (1u << 16); ++raw) {
+                const bfloat16_t x_bf16(
+
+                        static_cast<uint16_t>(raw), /*ignored=*/true);
+                const float x = static_cast<float>(x_bf16);
+                const float y = compute_eltwise_scalar_fwd(
+                        desc()->alg_kind, x, alpha, beta);
+                bf16_lut_[raw] = bfloat16_t(y);
+            }
 
             return status::success;
+        }
+
+        std::vector<bfloat16_t> bf16_lut_;
+
+    private:
+        struct bf16_fwd_lut_spec_t {
+            alg_kind_t alg_kind;
+            bool ignore_alpha_beta;
+        };
+
+        static const bf16_fwd_lut_spec_t *get_bf16_fwd_lut_spec_(
+                alg_kind_t alg_kind) {
+            // Add new LUT eltwise algos
+            static const bf16_fwd_lut_spec_t specs[] = {
+                    {alg_kind::eltwise_gelu_erf, /*ignore_alpha_beta*/ true},
+                    // SiLU is swish with alpha = 1.
+                    {alg_kind::eltwise_swish, /*ignore_alpha_beta*/ false},
+                    {alg_kind::eltwise_gelu_tanh, /*ignore_alpha_beta*/ true},
+                    {alg_kind::eltwise_tanh, /*ignore_alpha_beta*/ true},
+                    {alg_kind::eltwise_logistic, /*ignore_alpha_beta*/ true},
+                    {alg_kind::eltwise_exp, /*ignore_alpha_beta*/ true},
+                    {alg_kind::eltwise_log, /*ignore_alpha_beta*/ true},
+                    {alg_kind::eltwise_sqrt, /*ignore_alpha_beta*/ true},
+            };
+
+            for (const auto &s : specs) {
+                if (s.alg_kind == alg_kind) return &s;
+            }
+            return nullptr;
         }
     };
 
@@ -85,26 +125,6 @@ struct ref_eltwise_lut_fwd_t : public primitive_t {
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-
-    void maybe_build_gelu_bf16_lut_() const {
-        std::call_once(gelu_bf16_once_, [&]() {
-            constexpr float inv_sqrt2 = 0.70710678118654752440f; // 1/sqrt(2)
-            // gelu_bf16_lut_.resize(1u << 16);
-            for (uint32_t i = 0; i < (1u << 16); ++i) {
-                // Expand bf16 payload to f32
-                const uint32_t expanded = (i << 16);
-                float x;
-                std::memcpy(&x, &expanded, sizeof(float));
-                const float y = x * 0.5f * (1.0f + std::erf(x * inv_sqrt2));
-                gelu_bf16_lut_[i] = data_t(y);
-            }
-        });
-    }
-
-    // Per-primitive-instance storage.
-    mutable std::once_flag gelu_bf16_once_;
-    // mutable std::vector<data_t> gelu_bf16_lut_;
-   mutable  bfloat16_t gelu_bf16_lut_[1u << 16];
 };
 
 } // namespace cpu

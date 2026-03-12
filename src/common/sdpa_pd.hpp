@@ -43,13 +43,9 @@ struct sdpa_fwd_pd_t;
 struct sdpa_pd_t : public primitive_desc_t {
     static constexpr auto base_pkind = primitive_kind::sdpa;
 
-    static constexpr int mask_mb_index = 0;
     static constexpr int mask_q_index = 2;
     static constexpr int mask_k_index = 3;
     static constexpr int ndims = 4;
-
-    using base_class = sdpa_pd_t;
-    using hint_class = sdpa_fwd_pd_t;
 
     const sdpa_desc_t *desc() const { return &desc_; }
     const op_desc_t *op_desc() const override {
@@ -62,19 +58,15 @@ struct sdpa_pd_t : public primitive_desc_t {
     }
 
     bool with_attn_scale() const {
-        return (scale_md()->data_type != data_type::undef);
+        return (desc()->scale_md()->data_type != data_type::undef);
     }
 
     bool with_host_scale() const {
-        return (scale_md()->format_kind == format_kind::host_scalar);
+        return (desc()->scale_md()->format_kind == format_kind::host_scalar);
     }
 
     bool with_attn_mask() const {
-        return (attn_mask_md()->data_type != data_type::undef);
-    }
-
-    bool with_dS() const {
-        return (desc_.dS_desc.data_type != data_type::undef);
+        return (desc()->attn_mask_md()->data_type != data_type::undef);
     }
 
     /// Returns the accumulation data type of the KQ matmul
@@ -133,9 +125,9 @@ struct sdpa_pd_t : public primitive_desc_t {
     int key_group_size() const {
         int out = 0;
         if (with_key_scales())
-            out = group_size(desc()->kq_scales, *key_md());
+            out = group_size(desc()->kq_scales, *desc()->key_md());
         else if (with_key_zp()) {
-            out = group_size(desc()->kq_zero_points, *key_md());
+            out = group_size(desc()->kq_zero_points, *desc()->key_md());
         }
         return out;
     }
@@ -144,18 +136,12 @@ struct sdpa_pd_t : public primitive_desc_t {
     int value_group_size() const {
         int out = 0;
         if (with_value_scales())
-            out = group_size(desc()->vs_scales, *val_md());
+            out = group_size(desc()->vs_scales, *desc()->val_md());
         else if (with_value_zp()) {
-            out = group_size(desc()->vs_zero_points, *val_md());
+            out = group_size(desc()->vs_zero_points, *desc()->val_md());
         }
         return out;
     }
-
-    const memory_desc_t *qry_md() const { return &desc_.q_desc; }
-    const memory_desc_t *key_md() const { return &desc_.k_desc; }
-    const memory_desc_t *val_md() const { return &desc_.v_desc; }
-    const memory_desc_t *attn_mask_md() const { return &desc_.attn_mask_desc; }
-    const memory_desc_t *scale_md() const { return &desc_.scale_desc; }
 
 protected:
     sdpa_desc_t desc_;
@@ -164,14 +150,14 @@ protected:
     memory_desc_t ws_md_;
 
     sdpa_pd_t(const op_desc_t *adesc, const primitive_attr_t *attr,
-            const hint_class *hint_fwd_pd)
+            const sdpa_fwd_pd_t *hint_fwd_pd)
         : primitive_desc_t(attr, base_pkind)
         , desc_(*op_desc_t::to_desc<sdpa_desc_t>(adesc))
         , hint_fwd_pd_(hint_fwd_pd) {}
 
     status_t init_default_ws() {
         dims_t d;
-        d[0] = desc()->batch_size()
+        d[0] = desc()->batch() * desc()->num_q_heads()
                 * desc()->queries(); // (logsumexp) per query
 
         return memory_desc_init_by_tag(
@@ -300,12 +286,6 @@ struct sdpa_bwd_pd_t : public sdpa_pd_t {
                     DNNL_ARG_SCALE))
             return arg_usage_t::input;
 
-        if (utils::one_of(arg, DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS,
-                    DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES,
-                    DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS,
-                    DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES))
-            return arg_usage_t::unused;
-
         if (utils::one_of(arg, DNNL_ARG_DIFF_QUERIES, DNNL_ARG_DIFF_KEYS,
                     DNNL_ARG_DIFF_VALUES))
             return arg_usage_t::output;
@@ -313,9 +293,7 @@ struct sdpa_bwd_pd_t : public sdpa_pd_t {
         if (arg == DNNL_ARG_DS)
             return with_dS() ? arg_usage_t::output : arg_usage_t::unused;
 
-        if (arg == DNNL_ARG_WORKSPACE)
-            return !types::is_zero_md(workspace_md()) ? arg_usage_t::input
-                                                      : arg_usage_t::unused;
+        if (arg == DNNL_ARG_WORKSPACE) return arg_usage_t::input;
 
         return primitive_desc_t::arg_usage(arg);
     }
@@ -364,6 +342,10 @@ struct sdpa_bwd_pd_t : public sdpa_pd_t {
                                                          : &glob_zero_md;
     }
 
+    bool with_dS() const {
+        return (desc_.dS_desc.data_type != data_type::undef);
+    }
+
     int n_inputs() const override {
         // Q, K, V, O, dO
         return 5 + int(with_attn_mask()) + int(with_attn_scale())
@@ -371,9 +353,6 @@ struct sdpa_bwd_pd_t : public sdpa_pd_t {
     }
     int n_outputs() const override { return 3 + int(with_dS()); }
 
-    const memory_desc_t *diff_qry_md() const { return &desc_.diff_q_desc; }
-    const memory_desc_t *diff_key_md() const { return &desc_.diff_k_desc; }
-    const memory_desc_t *diff_val_md() const { return &desc_.diff_v_desc; }
     const memory_desc_t *diff_dst_md(
             int index = 0, bool user_input = false) const override {
         return index == 0 ? &desc_.diff_dst_desc : &glob_zero_md;

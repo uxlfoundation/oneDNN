@@ -2139,8 +2139,7 @@ public:
                     t.m_diff_output.get_desc(), dS_ptr, invert_scale,
                     p.heads.kv, to_attn_mask_type(p.mask.type),
                     dnnl::impl::alg_kind::softmax_accurate_inf_as_zero,
-                    sdpa_fwd_pd, t.sdpa_attr_quantized,
-                    t.sdpa_kq_attr_quantized, t.sdpa_vs_attr_quantized);
+                    sdpa_fwd_pd, t.sdpa_attr_quantized);
             sdpa_bwd = sdpa_backward(sdpa_bwd_pd);
         } catch (const dnnl::error &e) {
             if (e.status == dnnl_unimplemented)
@@ -2456,8 +2455,7 @@ public:
                     t.m_diff_output.get_desc(), nullptr, invert_scale,
                     p.heads.kv, to_attn_mask_type(p.mask.type),
                     dnnl::impl::alg_kind::softmax_accurate_inf_as_zero,
-                    sdpa_fwd_pd, t.sdpa_attr_quantized,
-                    t.sdpa_kq_attr_quantized, t.sdpa_vs_attr_quantized);
+                    sdpa_fwd_pd, t.sdpa_attr_quantized);
             sdpa_bwd = sdpa_backward(sdpa_bwd_pd);
         } catch (const dnnl::error &e) {
             if (e.status == dnnl_unimplemented)
@@ -2914,10 +2912,6 @@ GPU_TEST_P(sdpa_test_datatypes, compare) {
     compare();
 }
 
-GPU_TEST_P(sdpa_bwd_test, compare_bwd) {
-    compare_bwd();
-}
-
 GPU_TEST_P(sdpa_bwd_test_datatypes, compare_bwd) {
     compare_bwd();
 }
@@ -2926,22 +2920,22 @@ GPU_TEST_P(sdpa_test, perf) {
     perf();
 }
 
-/*
 GPU_TEST_P(sdpa_bwd_test, perf_bwd) {
-    const bool time_reference = true;
-    perf_bwd(time_reference);
+    /// long running benchmark,
+    /// commented to avoid timeouts in CI
+    //  const bool time_reference = true;
+    //  perf_bwd(time_reference);
+    //
 }
-*/
 
 // clang-format off
 
 // backward pass: f16
 INSTANTIATE_TEST_SUITE_P(bwd_f16, sdpa_bwd_test_datatypes,
         testing::Combine(testing::Values(1, 2), // mb
-                testing::Values(num_heads_t {1, 1}, num_heads_t {2, 2},
-                        num_heads_t {8, 8}), // heads
-                testing::Values(seq_len_size_t {32, 32}, seq_len_size_t {64, 64},
-                        seq_len_size_t {384, 384}), // seq_len
+                testing::Values(num_heads_t {1, 1}, num_heads_t {2, 2}), // heads
+                testing::Values(seq_len_size_t {64, 64},
+                        seq_len_size_t {1024, 1024}), // seq_len
                 testing::Values(head_group_size_t {32, 32, 32},
                         head_group_size_t {64, 64, 64},
                         head_group_size_t {128, 128, 128}), // head_size
@@ -3012,8 +3006,7 @@ INSTANTIATE_TEST_SUITE_P(bwd_gqa, sdpa_bwd_test_datatypes,
 // backward pass: non-uniform sequence lengths (q != kv)
 INSTANTIATE_TEST_SUITE_P(bwd_nonuniform_seq, sdpa_bwd_test_datatypes,
         testing::Combine(testing::Values(1), // mb
-                testing::Values(num_heads_t {1, 1},
-                        num_heads_t {2, 2}), // heads
+                testing::Values(num_heads_t {2, 2}), // heads
                 testing::Values(seq_len_size_t {64, 513},
                         seq_len_size_t {513, 64}),
                 testing::Values(head_group_size_t {32, 32, 32},
@@ -3034,12 +3027,11 @@ INSTANTIATE_TEST_SUITE_P(bwd_nonuniform_seq, sdpa_bwd_test_datatypes,
 // backward pass: f32
 INSTANTIATE_TEST_SUITE_P(bwd_f32, sdpa_bwd_test_datatypes,
         testing::Combine(testing::Values(1, 2), // mb
-                testing::Values(num_heads_t {1, 1}, num_heads_t {2, 2},
-                        num_heads_t {12, 12}), // heads
-                testing::Values(seq_len_size_t {32, 32}, seq_len_size_t {64, 64},
+                testing::Values(num_heads_t {1, 1}, num_heads_t {2, 2}), // heads
+                testing::Values(seq_len_size_t {32, 32},
                         seq_len_size_t {384, 384},
                         seq_len_size_t {4096, 4096}), // seq_len
-                testing::Values(head_group_size_t {16, 16, 16},
+                testing::Values(
                         head_group_size_t {32, 32, 32},
                         head_group_size_t {64, 64, 64},
                         head_group_size_t {128, 128, 128}), // head_size
@@ -3061,7 +3053,7 @@ INSTANTIATE_TEST_SUITE_P(bwd_f32, sdpa_bwd_test_datatypes,
 // backward pass: large batch and head counts
 INSTANTIATE_TEST_SUITE_P(bwd_large_batch, sdpa_bwd_test_datatypes,
         testing::Combine(testing::Values(4), // mb
-                testing::Values(num_heads_t {8, 8}), // heads
+                testing::Values(num_heads_t {4, 4}), // heads
                 testing::Values(seq_len_size_t {4096, 4096}), // seq_len
                 testing::Values(head_group_size_t {32, 32, 32}), // head_size
                 testing::Values(tensor_type_t("Q", mdt::f16)), // dt

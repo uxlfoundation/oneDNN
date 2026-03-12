@@ -40,7 +40,7 @@ static status_t init_conf_common(
     conf.dst_dt = dst_mdw.data_type();
     conf.require_stateless_addressing = pd->has_large_buffers();
     conf.ndims = ndims;
-    conf.norm_axis = into<dim_idx_t>(pd->norm_axis());
+    conf.norm_axis = pd->norm_axis();
     conf.src_md_info = memory_desc_info_t::create(src_mdw);
     conf.dst_md_info = memory_desc_info_t::create(dst_mdw);
     conf.stat_md_info = memory_desc_info_t::create(stat_mdw);

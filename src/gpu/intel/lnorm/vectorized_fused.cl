@@ -105,7 +105,7 @@ __kernel void vectorized_lnorm_bwd_fused(__global DATA_T *src,
     __local float local_reduce_mem[2 * NUM_ACROSS_BLOCKS * NORM_BLOCK_FUSED];
 
     if (n_uid < NUM_ACROSS_BLOCKS) {
-        const int c_block_off = (c_uid / SUB_GROUP_SIZE) * NORM_BLOCK_FUSED;
+        const off_t c_block_off = (c_uid / SUB_GROUP_SIZE) * NORM_BLOCK_FUSED;
         const int n_start = ACROSS_BLOCK * n_uid;
         const int n_end = MIN(n_start + ACROSS_BLOCK, N);
 
@@ -116,7 +116,7 @@ __kernel void vectorized_lnorm_bwd_fused(__global DATA_T *src,
                 = tmp_diff_scale + NUM_ACROSS_BLOCKS * NORM_BLOCK_FUSED;
 
         for (int c = 0; c < VLEN_C_BLOCK; c++) {
-            const int c_idx = c * SUB_GROUP_SIZE * VECT_DT_N + c_block_off;
+            const off_t c_idx = c * SUB_GROUP_SIZE * VECT_DT_N + c_block_off;
             const int c_slm_idx = c * SUB_GROUP_SIZE * VECT_DT_N;
 
             VECT_FLOAT_T diff_gamma_vect = 0;
@@ -126,8 +126,8 @@ __kernel void vectorized_lnorm_bwd_fused(__global DATA_T *src,
                 const float variance_vect = variance[n_idx];
                 const float inv_sqrt_variance = rsqrt(variance_vect + eps);
 
-                const int src_off = SRC_PLAIN_OFF(n_idx, c_idx);
-                const int dst_off = DST_PLAIN_OFF(n_idx, c_idx);
+                const off_t src_off = SRC_PLAIN_OFF(n_idx, c_idx);
+                const off_t dst_off = DST_PLAIN_OFF(n_idx, c_idx);
 
                 const VECT_FLOAT_T src_vect
                         = CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(
@@ -155,7 +155,8 @@ __kernel void vectorized_lnorm_bwd_fused(__global DATA_T *src,
 
         if (n_uid == 0) {
             for (int c = 0; c < VLEN_C_BLOCK; c++) {
-                const int c_idx = c * SUB_GROUP_SIZE * VECT_DT_N + c_block_off;
+                const off_t c_idx
+                        = c * SUB_GROUP_SIZE * VECT_DT_N + c_block_off;
                 const int c_slm_idx = c * SUB_GROUP_SIZE * VECT_DT_N;
 
                 VECT_FLOAT_T diff_gamma_vect = 0;
@@ -212,8 +213,8 @@ __kernel void vectorized_lnorm_bwd_fused(__global DATA_T *src,
     }
 
     const float rC = 1.0 / C;
-    const int s_off = STAT_PLAIN_OFF(n_uni_id);
-    const int c_block_off = c_block_id * NORM_BLOCK_FUSED;
+    const off_t s_off = STAT_PLAIN_OFF(n_uni_id);
+    const off_t c_block_off = c_block_id * NORM_BLOCK_FUSED;
 
     VECT_FLOAT_T dd_gamma_vect = 0, dd_gamma_x_vect = 0;
     VECT_FLOAT_T v_src[SRC_BUF_SIZE];
@@ -222,10 +223,10 @@ __kernel void vectorized_lnorm_bwd_fused(__global DATA_T *src,
     const float mean_val = mean[s_off];
     const float inv_sqrt_variance = rsqrt(variance[s_off] + eps);
 
-    for (int c = 0; c < SRC_BUF_SIZE; c++) {
-        const int c_idx = c * SUB_GROUP_SIZE * VECT_DT_N + c_block_off;
-        const int src_off = SRC_PLAIN_OFF(n_uni_id, c_idx);
-        const int dst_off = DST_PLAIN_OFF(n_uni_id, c_idx);
+    for (off_t c = 0; c < SRC_BUF_SIZE; c++) {
+        const off_t c_idx = c * SUB_GROUP_SIZE * VECT_DT_N + c_block_off;
+        const off_t src_off = SRC_PLAIN_OFF(n_uni_id, c_idx);
+        const off_t dst_off = DST_PLAIN_OFF(n_uni_id, c_idx);
 
         v_src[c] = CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(
                 VECT_BLOCK_READ((const __global BLOCK_DATA_T *)&src[src_off])));
@@ -234,8 +235,8 @@ __kernel void vectorized_lnorm_bwd_fused(__global DATA_T *src,
     }
 
 #if CALCULATE_STATS
-    for (int c = 0; c < SRC_BUF_SIZE; c++) {
-        const int c_idx = c * SUB_GROUP_SIZE * VECT_DT_N + c_block_off;
+    for (off_t c = 0; c < SRC_BUF_SIZE; c++) {
+        const off_t c_idx = c * SUB_GROUP_SIZE * VECT_DT_N + c_block_off;
         VECT_FLOAT_T gamma = 1.0f;
         if (scale) { gamma = LOAD_VECT_WEI(&scale[c_idx]); }
         const VECT_FLOAT_T src_vect = v_src[c];
@@ -266,7 +267,7 @@ __kernel void vectorized_lnorm_bwd_fused(__global DATA_T *src,
     dd_gamma_x *= inv_sqrt_variance;
 #endif // CALCULATE_STATS
 
-    for (int c = 0; c < SRC_BUF_SIZE; c++) {
+    for (off_t c = 0; c < SRC_BUF_SIZE; c++) {
         VECT_FLOAT_T gamma = 1.0f;
         if (scale) {
             gamma = LOAD_VECT_WEI(
@@ -282,8 +283,8 @@ __kernel void vectorized_lnorm_bwd_fused(__global DATA_T *src,
 #endif
         v_diff_src_vect *= inv_sqrt_variance;
 
-        const int c_idx = c * SUB_GROUP_SIZE * VECT_DT_N + c_block_off;
-        const int src_off = SRC_PLAIN_OFF(n_uni_id, c_idx);
+        const off_t c_idx = c * SUB_GROUP_SIZE * VECT_DT_N + c_block_off;
+        const off_t src_off = SRC_PLAIN_OFF(n_uni_id, c_idx);
 
         VECT_BLOCK_WRITE((__global BLOCK_DATA_T *)&diff_src[src_off],
                 AS_VECT_BLOCK_DATA_T(CONVERT_VECTOR_DATA_T(v_diff_src_vect)));

@@ -1293,6 +1293,11 @@ public:
     static constexpr int bytesToGRFs(HW hw, unsigned x)    { return (x + bytes(hw) - 1) >> log2Bytes(hw); }
 
     static constexpr int maxRegs()                         { return 512; }
+    static constexpr int maxRegs(HW hw) {
+        return (hw < HW::XeHP) ? 128
+            : (hw == HW::XE3P_35_11) ? 512
+            : 256;
+    }
 };
 
 class ARF : public Register

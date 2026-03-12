@@ -204,8 +204,8 @@ protected:
     using mtype = uint16_t;
 
     HW hw;                                      // HW generation.
-    uint8_t freeGRF[GRF::maxRegs() / 8];        // Bitmap of free whole GRFs.
-    mtype freeSub[GRF::maxRegs()];              // Bitmap of free partial GRFs, at dword granularity.
+    uint8_t freeGRF[GRF::maxRegs() / 8]{};      // Bitmap of free whole GRFs.
+    mtype freeSub[GRF::maxRegs()]{};            // Bitmap of free partial GRFs, at dword granularity.
     uint16_t regCount;                          // # of registers.
     uint8_t freeFlag;                           // Bitmap of free flag registers.
     mtype fullSubMask;
@@ -367,7 +367,7 @@ Bundle Bundle::locate(HW hw, RegData reg)
 
 void RegisterAllocator::init()
 {
-    constexpr int maxRegs = GRF::maxRegs();
+    const int maxRegs = GRF::maxRegs(hw);
 
     fullSubMask = (GRF::bytes(hw) == 32) ? 0xFF : 0xFFFF;
     for (int r = 0; r < maxRegs; r++)
@@ -377,12 +377,6 @@ void RegisterAllocator::init()
 
     freeFlag = (1u << FlagRegister::subcount(hw)) - 1;
     regCount = maxRegs;
-
-    if (hw < HW::XeHP)
-        setRegisterCount(128);
-    else if (hw < HW::XE3P_35_10)
-        setRegisterCount(256);
-
 }
 
 void RegisterAllocator::claim(GRF reg)

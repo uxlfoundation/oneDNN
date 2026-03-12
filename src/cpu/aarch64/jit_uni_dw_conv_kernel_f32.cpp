@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2021-2024 FUJITSU LIMITED
-* Copyright 2024-2025 Arm Ltd. and affiliates
+* Copyright 2024-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -46,26 +46,33 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::load_src(
     const auto ocb_stride = dst_layout_nxc ? ch_blk : jcp.oh * jcp.ow * ch_blk;
     const auto ow_stride = dst_layout_nxc ? jcp.ngroups : ch_blk;
     for (int ch = 0; ch < ur_ch_blocks; ch++) {
+        // adjust the src offset so it's always within the range expected by LD_MUL_VL.
+        if (this->jcp.with_sum) {
+            add_imm(reg_tmp_addr, reg_output,
+                    (ch * ocb_stride) * jcp.typesize_out, reg_tmp_imm);
+        }
+        int b_off = ch * ch_blk;
+        if (this->jcp.with_bias) {
+            LD_MUL_VL(ld1w, ZRegS(1), P_ALL_ONE, reg_bias,
+                    b_off * sizeof(float), sizeof(float));
+        }
         for (int ow = 0; ow < ur_w; ow++) {
             ZRegS zregs_acc = get_acc_reg_s(ch * ur_w + ow);
 
-            int b_off = ch * ch_blk;
-            if (this->jcp.with_bias) {
-                add_imm(reg_tmp_addr, reg_bias, b_off * sizeof(float),
-                        reg_tmp_imm);
-                ld1w(zregs_acc, P_ALL_ONE, ptr(reg_tmp_addr));
+            if (this->jcp.with_bias && zregs_acc.getIdx() != 1) {
+                mov(zregs_acc, P_ALL_ONE, ZRegS(1));
             } else
                 fmov(zregs_acc); // zero clear
 
-            int o_off = ch * ocb_stride + ow * ow_stride;
+            int o_off = ow * ow_stride;
             if (this->jcp.with_sum) {
-                add_imm(reg_tmp_addr, reg_output, o_off * jcp.typesize_out,
-                        reg_tmp_imm);
                 if (jcp.dst_dt == data_type::f32) {
-                    ld1w(ZRegS(0), P_ALL_ONE, ptr(reg_tmp_addr));
+                    LD_MUL_VL(ld1w, ZRegS(0), P_ALL_ONE, reg_tmp_addr,
+                            o_off * jcp.typesize_out, jcp.typesize_out);
                     fadd(zregs_acc, zregs_acc, ZRegS(0));
                 } else if (jcp.dst_dt == data_type::bf16) {
-                    ld1h(ZRegS(0), P_ALL_ONE, ptr(reg_tmp_addr));
+                    LD_MUL_VL(ld1h, ZRegS(0), P_ALL_ONE, reg_tmp_addr,
+                            o_off * jcp.typesize_out, jcp.typesize_out);
                     // Convert BF16 input to FP32
                     lsl(ZRegS(0), ZRegS(0), 16);
                     fadd(zregs_acc, zregs_acc, ZRegS(0));
@@ -108,17 +115,21 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::apply_filter_unrolled(
         }
 
         for (int ch = 0; ch < ur_ch_blocks; ch++) {
+            // adjust the src offset so it's always within the range expected by LD_MUL_VL.
+            add_imm(reg_tmp_addr, aux_reg_input,
+                    (ch * icb_stride) * jcp.typesize_in, reg_tmp_imm);
+            add_imm(reg_tmp2_addr, aux_reg_kernel,
+                    (ch * jcp.kh * jcp.kw * ch_blk) * jcp.typesize_in,
+                    reg_tmp_imm);
             for (int kw = 0; kw < jcp.kw; kw++) {
-                int ker_off = ch * jcp.kh * jcp.kw * ch_blk + kw * ch_blk;
-
+                int ker_off = kw * ch_blk;
                 ZReg zregs_ker = get_ker_reg(0);
-                add_imm(reg_tmp_addr, aux_reg_kernel, ker_off * jcp.typesize_in,
-                        reg_tmp_imm);
-
                 if (jcp.dst_dt == data_type::f32) {
-                    ld1w(zregs_ker.s, P_ALL_ONE, ptr(reg_tmp_addr));
+                    LD_MUL_VL(ld1w, zregs_ker.s, P_ALL_ONE, reg_tmp2_addr,
+                            ker_off * jcp.typesize_in, jcp.typesize_in);
                 } else if (jcp.dst_dt == data_type::bf16) {
-                    ld1h(zregs_ker.s, P_ALL_ONE, ptr(reg_tmp_addr));
+                    LD_MUL_VL(ld1h, zregs_ker.s, P_ALL_ONE, reg_tmp2_addr,
+                            ker_off * jcp.typesize_in, jcp.typesize_in);
                 } else {
                     assert(!"Unsupported: data type");
                 }
@@ -126,20 +137,17 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::apply_filter_unrolled(
                 int ow_start = get_ow_start(kw, pad_l);
                 int ow_end = get_ow_end(ur_w, kw, pad_r);
                 for (int ow = ow_start; ow < ow_end; ow++) {
-                    int inp_off = ch * icb_stride
-                            + (ow * stride_w - pad_l) * iw_stride
+                    int inp_off = (ow * stride_w - pad_l) * iw_stride
                             + kw * dilate_w * iw_stride;
-
                     ZReg zregs_src = get_src_reg(0);
-                    add_imm(reg_tmp_addr, aux_reg_input,
-                            inp_off * jcp.typesize_in, reg_tmp_imm);
-
                     if (jcp.dst_dt == data_type::f32) {
-                        ld1w(zregs_src.s, P_ALL_ONE, ptr(reg_tmp_addr));
+                        LD_MUL_VL(ld1w, zregs_src.s, P_ALL_ONE, reg_tmp_addr,
+                                inp_off * jcp.typesize_in, jcp.typesize_in);
                         ZRegS zregs_acc = get_acc_reg_s(ch * ur_w + ow);
                         fmla(zregs_acc, P_ALL_ONE, zregs_src.s, zregs_ker.s);
                     } else if (jcp.dst_dt == data_type::bf16) {
-                        ld1h(zregs_src.s, P_ALL_ONE, ptr(reg_tmp_addr));
+                        LD_MUL_VL(ld1h, zregs_src.s, P_ALL_ONE, reg_tmp_addr,
+                                inp_off * jcp.typesize_in, jcp.typesize_in);
                         ZRegS zregs_acc = get_acc_reg_s(ch * ur_w + ow);
                         bfmlalb(zregs_acc, zregs_src.h, zregs_ker.h);
                     } else {
@@ -185,19 +193,22 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::store_dst(
     const auto ow_stride = dst_layout_nxc ? jcp.ngroups : ch_blk;
 
     for (int ch = 0; ch < ur_ch_blocks; ch++) {
+        // adjust the output offset so it's always within the range expected by ST_MUL_VL.
+        add_imm(reg_tmp_addr, reg_output, (ch * ocb_stride) * jcp.typesize_out,
+                reg_tmp_imm);
         for (int ow = 0; ow < ur_w; ow++) {
-            const int o_off = ch * ocb_stride + ow * ow_stride;
-            add_imm(reg_tmp_addr, reg_output, o_off * jcp.typesize_out,
-                    reg_tmp_imm);
+            const int o_off = ow * ow_stride;
             if (jcp.dst_dt == data_type::f32) {
                 ZRegS zreg_dst = get_acc_reg_s(ch * ur_w + ow);
-                st1w(zreg_dst, P_ALL_ONE, ptr(reg_tmp_addr));
+                ST_MUL_VL(st1w, zreg_dst, P_ALL_ONE, reg_tmp_addr,
+                        o_off * jcp.typesize_out, jcp.typesize_out);
             } else if (jcp.dst_dt == data_type::bf16) {
                 ZReg zreg_dst = get_acc_reg(ch * ur_w + ow);
                 // Convert fp32 to bf16
                 bfcvt(zreg_dst.h, P_ALL_ONE, zreg_dst.s);
                 // Store the bf16 value doing the downcast
-                st1h(zreg_dst.s, P_ALL_ONE, ptr(reg_tmp_addr));
+                ST_MUL_VL(st1h, zreg_dst.s, P_ALL_ONE, reg_tmp_addr,
+                        o_off * jcp.typesize_out, jcp.typesize_out);
             } else {
                 assert(!"Unsupported: data type");
             }

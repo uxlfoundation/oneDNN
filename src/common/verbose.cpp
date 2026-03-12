@@ -1618,14 +1618,16 @@ std::string init_info_sdpa(const engine_t *e, const pd_t *pd) {
 
     const sdpa_desc_t *desc = pd->desc();
     ss << md2fmt_str(
-            "query", pd->qry_md(), pd->invariant_src_user_format_kind(0))
+            "query", desc->qry_md(), pd->invariant_src_user_format_kind(0))
        << " ";
-    ss << md2fmt_str("key", pd->key_md(), pd->invariant_src_user_format_kind(1))
+    ss << md2fmt_str(
+            "key", desc->key_md(), pd->invariant_src_user_format_kind(1))
        << " ";
-    ss << md2fmt_str("val", pd->val_md(), pd->invariant_src_user_format_kind(2))
+    ss << md2fmt_str(
+            "val", desc->val_md(), pd->invariant_src_user_format_kind(2))
        << " ";
     if (pd->with_attn_mask())
-        ss << md2fmt_str("msk", pd->attn_mask_md(),
+        ss << md2fmt_str("msk", desc->attn_mask_md(),
                 pd->invariant_src_user_format_kind(3))
            << " ";
     ss << md2fmt_str("dst", pd->dst_md(), pd->invariant_dst_user_format_kind())
@@ -1663,7 +1665,7 @@ std::string init_info_sdpa(const engine_t *e, const pd_t *pd) {
     delimiter = " ";
     ss << ",alg:" << desc->softmax_alg;
     if (pd->with_attn_mask()) {
-        auto *md = pd->attn_mask_md();
+        auto *md = desc->attn_mask_md();
         ss << delimiter << "msk:" << (md->dims[2] == 1 ? 1 : 2) << 'd';
     } else if (pd->with_causal_mask()) {
         ss << delimiter;
@@ -1678,15 +1680,15 @@ std::string init_info_sdpa(const engine_t *e, const pd_t *pd) {
             ss << "div:";
         else
             ss << "mul:";
-        ss << dnnl_dt2str(pd->scale_md()->data_type) << ":";
+        ss << dnnl_dt2str(desc->scale_md()->data_type) << ":";
         if (pd->with_host_scale())
             ss << "host";
         else
             ss << "device";
     }
 
-    ss << "," << md2dim_str(pd->qry_md()) << ":" << md2dim_str(pd->key_md())
-       << ":" << md2dim_str(pd->val_md());
+    ss << "," << md2dim_str(desc->qry_md()) << ":" << md2dim_str(desc->key_md())
+       << ":" << md2dim_str(desc->val_md());
 
     return ss.str();
 }

@@ -4773,7 +4773,7 @@ status_t fuse_sdpa_bwd(std::shared_ptr<subgraph_t> &sg) {
         if (cur_op->get_kind() != op_kind::dnnl_matmul) continue;
 
         // Step 1 – walk matmul_qk → [scale_pre] → [mask] → sub → exp
-        op_ptr matmul_qk = cur_op;
+        const op_ptr &matmul_qk = cur_op;
         op_ptr scale_pre = nullptr, mask_op = nullptr;
         op_ptr sub_op = nullptr, exp_op = nullptr;
 

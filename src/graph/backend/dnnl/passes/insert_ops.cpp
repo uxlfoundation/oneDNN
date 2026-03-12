@@ -669,8 +669,9 @@ status_t insert_reshape_for_sdpa(std::shared_ptr<subgraph_t> &sg) {
         // Insert reshape for optional stats output (output 2)
         if (cur_op->get_attr<bool>(op_attr::is_training)) {
             auto stats_dims = ltw(cur_op->get_output_logical_tensor(2)).vdims();
-            dims expected_stats_dims = stats_dims;
-            op_ptr reshape_stats = std::make_shared<op_t>(op_kind::_reshape);
+            const dims &expected_stats_dims = stats_dims;
+            op_ptr reshape_stats
+                    = std::make_shared<op_t>(op_kind::dnnl_reshape);
             reshape_stats->set_attr<bool>(op_attr::special_zero, false);
             reshape_stats->set_attr<std::vector<int64_t>>(
                     op_attr::shape, expected_stats_dims);

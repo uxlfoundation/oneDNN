@@ -209,6 +209,8 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
 
     checkBeta1 |= C.atomic && !problem.beta1();
 
+    GRFs = std::min(GRFs, GRF::maxRegs(hw));
+
     // Fixed systolic kernel handling.
     if (fixedSystolic) {
         if (wg[LoopM] == 0) wg[LoopM] = 4;

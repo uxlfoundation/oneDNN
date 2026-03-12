@@ -127,7 +127,7 @@ __kernel void ref_bnorm_fwd(__global DATA_T *src, __global float *mean,
 #endif
     float v_mean = mean[c];
     float v_variance = variance[c];
-    const int off = SRC_OFF(n, c, d, h, w);
+    const off_t off = SRC_OFF(n, c, d, h, w);
     float v0 = load(v0, src + off);
     float sqrt_variance = 1.0f / sqrt(v_variance + eps);
     float bn_res = sm * (v0 - v_mean) * sqrt_variance + sv;
@@ -174,7 +174,7 @@ __kernel void ref_calculate_stats(__global DATA_T *src, __global float *mean,
     x[4] = GWS_GET_STAT_IW();
     for (int i = 0; i < REDUCE_DIM; i++) {
         x[REDUCE_DIM_IDX] = i;
-        int off = SRC_OFF(x[0], x[1], x[2], x[3], x[4]);
+        off_t off = SRC_OFF(x[0], x[1], x[2], x[3], x[4]);
         float dd = load(dd, diff_dst + off);
 #if FUSE_BN_RELU == 1
         if (!ws[off]) dd = 0;
@@ -183,7 +183,7 @@ __kernel void ref_calculate_stats(__global DATA_T *src, __global float *mean,
         diff_beta += dd;
     }
 
-    int ss_off = MB * ID * IH * IW * IC / REDUCE_DIM;
+    off_t ss_off = MB * ID * IH * IW * IC / REDUCE_DIM;
     x[REDUCE_DIM_IDX] = 0;
     int reduce_idx = reduce_index(x);
 
@@ -245,7 +245,7 @@ __kernel void ref_bnorm_bwd(__global DATA_T *src, __global float *mean,
 #endif // #if USE_SHIFT == 1
 #endif
 
-    const int off = SRC_OFF(n, c, d, h, w);
+    const off_t off = SRC_OFF(n, c, d, h, w);
     float dd = load(dd, diff_dst + off);
 #if FUSE_BN_RELU == 1
     if (!ws[off]) dd = 0;

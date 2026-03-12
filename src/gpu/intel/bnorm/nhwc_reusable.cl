@@ -67,7 +67,7 @@ void nhwc_reusable_1pass_fused_reduction_buff(
         volatile __global atomic_float *mean,
         volatile __global atomic_float *variance, off_t dst_offset,
         SUM_DATA_T *sum, SUM_DATA_T *sum_sq, __local SUM_DATA_T *local_sum,
-        __local SUM_DATA_T *local_sum_sq, off_t ic_block) {
+        __local SUM_DATA_T *local_sum_sq, int ic_block) {
     const int local_id = get_local_id(1);
     const int simd_id = get_sub_group_local_id();
     const int row_size = ic_block;
@@ -140,8 +140,7 @@ void nhwc_reusable_reg_fused_reduction(volatile __global atomic_float *dst,
 // Atomic-based reduction for regular algorithm,
 // for kernels with private buffers.
 void nhwc_reusable_reg_fused_reduction_buff(volatile __global atomic_float *dst,
-        off_t dst_offset, float *sum, __local float *local_sum,
-        off_t ic_block) {
+        off_t dst_offset, float *sum, __local float *local_sum, int ic_block) {
 
     const int local_id = get_local_id(1);
     const int simd_id = get_sub_group_local_id();
@@ -175,18 +174,18 @@ void nhwc_reusable_reg_fused_reduction_buff(volatile __global atomic_float *dst,
 // Calculate mean, regular algorithm, no private memory buffers used.
 __attribute__((intel_reqd_sub_group_size(SUB_GROUP_SIZE))) __kernel void
 nhwc_reusable_calc_mean(__global DATA_T *src, __global float *reduce_temp,
-        volatile __global atomic_float *mean, off_t ic_size, off_t ic_block,
+        volatile __global atomic_float *mean, off_t ic_size, int ic_block,
         off_t sp_size, off_t stat_sp_block, off_t reduce_stat_nblocks,
         int use_fused_atomics_reduction, __local float *local_sum) {
-    const int c = get_global_id(0);
-    const int sp_block_idx = get_global_id(1);
+    const off_t c = get_global_id(0);
+    const off_t sp_block_idx = get_global_id(1);
 
-    const int ic_block_offset = (c / SUB_GROUP_SIZE) * ic_block;
-    const int src_off
+    const off_t ic_block_offset = (c / SUB_GROUP_SIZE) * ic_block;
+    const off_t src_off
             = ic_block_offset + sp_block_idx * stat_sp_block * ic_size;
 
     // reduce_temp layout: reduce_stat_nblocks rows x ic columns
-    const int reduce_off = ic_block_offset + sp_block_idx * ic_size;
+    const off_t reduce_off = ic_block_offset + sp_block_idx * ic_size;
 
     src += src_off;
     reduce_temp += reduce_off;
@@ -208,7 +207,7 @@ nhwc_reusable_calc_mean(__global DATA_T *src, __global float *reduce_temp,
         }
         // store res
         if (use_fused_atomics_reduction) {
-            const int dst_off
+            const off_t dst_off
                     = ic_block_offset + sg * VECT_SIZE * SUB_GROUP_SIZE;
             nhwc_reusable_reg_fused_reduction(
                     mean, dst_off, (float *)(&v_mean), local_sum, VECT_SIZE);
@@ -235,7 +234,7 @@ nhwc_reusable_calc_mean(__global DATA_T *src, __global float *reduce_temp,
         }
         // store res
         if (use_fused_atomics_reduction) {
-            const int dst_off
+            const off_t dst_off
                     = ic_block_offset + (ic_vect_sgroups + sg) * SUB_GROUP_SIZE;
             nhwc_reusable_reg_fused_reduction(
                     mean, dst_off, &v_mean, local_sum, 1);
@@ -249,19 +248,19 @@ nhwc_reusable_calc_mean(__global DATA_T *src, __global float *reduce_temp,
 // Calculate mean, regular algorithm, private memory buffers used.
 __attribute__((intel_reqd_sub_group_size(SUB_GROUP_SIZE))) __kernel void
 nhwc_reusable_calc_mean_buff(__global DATA_T *src, __global float *reduce_temp,
-        volatile __global atomic_float *mean, off_t ic_size, off_t ic_block,
+        volatile __global atomic_float *mean, off_t ic_size, int ic_block,
         off_t sp_size, off_t stat_sp_block, off_t reduce_stat_nblocks,
         int use_fused_atomics_reduction, __local float *local_sum) {
 
-    const int c = get_global_id(0);
-    const int sp_block_idx = get_global_id(1);
+    const off_t c = get_global_id(0);
+    const off_t sp_block_idx = get_global_id(1);
 
-    const int ic_block_offset = (c / SUB_GROUP_SIZE) * ic_block;
-    const int src_off
+    const off_t ic_block_offset = (c / SUB_GROUP_SIZE) * ic_block;
+    const off_t src_off
             = ic_block_offset + sp_block_idx * stat_sp_block * ic_size;
 
     // reduce_temp layout: reduce_stat_nblocks rows x ic columns
-    const int reduce_off = ic_block_offset + sp_block_idx * ic_size;
+    const off_t reduce_off = ic_block_offset + sp_block_idx * ic_size;
 
     src += src_off;
     reduce_temp += reduce_off;
@@ -311,19 +310,19 @@ nhwc_reusable_calc_mean_buff(__global DATA_T *src, __global float *reduce_temp,
 __attribute__((intel_reqd_sub_group_size(SUB_GROUP_SIZE))) __kernel void
 nhwc_reusable_calc_var(__global DATA_T *src, __global float *mean,
         __global float *reduce_temp, volatile __global atomic_float *variance,
-        off_t ic_size, off_t ic_block, off_t sp_size, off_t stat_sp_block,
+        off_t ic_size, int ic_block, off_t sp_size, off_t stat_sp_block,
         off_t reduce_stat_nblocks, int use_fused_atomics_reduction,
         __local float *local_sum) {
 
-    const int c = get_global_id(0);
-    const int sp_block_idx = get_global_id(1);
+    const off_t c = get_global_id(0);
+    const off_t sp_block_idx = get_global_id(1);
 
-    const int ic_block_offset = (c / SUB_GROUP_SIZE) * ic_block;
-    const int src_off
+    const off_t ic_block_offset = (c / SUB_GROUP_SIZE) * ic_block;
+    const off_t src_off
             = ic_block_offset + sp_block_idx * stat_sp_block * ic_size;
 
     // reduce_temp layout: reduce_stat_nblocks rows x ic columns
-    const int reduce_off = ic_block_offset + sp_block_idx * ic_size;
+    const off_t reduce_off = ic_block_offset + sp_block_idx * ic_size;
 
     src += src_off;
     reduce_temp += reduce_off + reduce_stat_nblocks * ic_size;
@@ -351,7 +350,7 @@ nhwc_reusable_calc_var(__global DATA_T *src, __global float *mean,
         }
         // store res
         if (use_fused_atomics_reduction) {
-            const int dst_off
+            const off_t dst_off
                     = ic_block_offset + sg * VECT_SIZE * SUB_GROUP_SIZE;
             nhwc_reusable_reg_fused_reduction(
                     variance, dst_off, (float *)(&v_var), local_sum, VECT_SIZE);
@@ -383,7 +382,7 @@ nhwc_reusable_calc_var(__global DATA_T *src, __global float *mean,
         }
         // store res
         if (use_fused_atomics_reduction) {
-            const int dst_off
+            const off_t dst_off
                     = ic_block_offset + (ic_vect_sgroups + sg) * SUB_GROUP_SIZE;
             nhwc_reusable_reg_fused_reduction(
                     variance, dst_off, &v_var, local_sum, 1);
@@ -398,19 +397,19 @@ nhwc_reusable_calc_var(__global DATA_T *src, __global float *mean,
 __attribute__((intel_reqd_sub_group_size(SUB_GROUP_SIZE))) __kernel void
 nhwc_reusable_calc_var_buff(__global DATA_T *src, __global float *mean,
         __global float *reduce_temp, volatile __global atomic_float *variance,
-        off_t ic_size, off_t ic_block, off_t sp_size, off_t stat_sp_block,
+        off_t ic_size, int ic_block, off_t sp_size, off_t stat_sp_block,
         off_t reduce_stat_nblocks, int use_fused_atomics_reduction,
         __local float *local_sum) {
 
-    const int c = get_global_id(0);
-    const int sp_block_idx = get_global_id(1);
+    const off_t c = get_global_id(0);
+    const off_t sp_block_idx = get_global_id(1);
 
-    const int ic_block_offset = (c / SUB_GROUP_SIZE) * ic_block;
-    const int src_off
+    const off_t ic_block_offset = (c / SUB_GROUP_SIZE) * ic_block;
+    const off_t src_off
             = ic_block_offset + sp_block_idx * stat_sp_block * ic_size;
 
     // reduce_temp layout: reduce_stat_nblocks rows x ic columns
-    const int reduce_off = ic_block_offset + sp_block_idx * ic_size;
+    const off_t reduce_off = ic_block_offset + sp_block_idx * ic_size;
 
     src += src_off;
     reduce_temp += reduce_off + reduce_stat_nblocks * ic_size;
@@ -475,22 +474,22 @@ nhwc_reusable_calc_var_buff(__global DATA_T *src, __global float *mean,
 __attribute__((intel_reqd_sub_group_size(SUB_GROUP_SIZE))) __kernel void
 nhwc_reusable_calc_mean_var(__global DATA_T *src, __global float *reduce_temp,
         volatile __global atomic_float *mean,
-        volatile __global atomic_float *variance, off_t ic_size, off_t ic_block,
+        volatile __global atomic_float *variance, off_t ic_size, int ic_block,
         off_t sp_size, off_t stat_sp_block, off_t reduce_stat_nblocks,
         int use_fused_atomics_reduction, __local SUM_DATA_T *local_sum,
         __local SUM_DATA_T *local_sum_sq) {
-    const int c = get_global_id(0);
-    const int sp_block_idx = get_global_id(1);
+    const off_t c = get_global_id(0);
+    const off_t sp_block_idx = get_global_id(1);
     const int simd_id = get_sub_group_local_id();
 
-    const int ic_block_offset = (c / SUB_GROUP_SIZE) * ic_block;
-    const int src_off
+    const off_t ic_block_offset = (c / SUB_GROUP_SIZE) * ic_block;
+    const off_t src_off
             = ic_block_offset + sp_block_idx * stat_sp_block * ic_size;
 
     // reduce_temp layout: reduce_stat_nblocks rows x ic columns
-    const int reduce_off = ic_block_offset + sp_block_idx * ic_size;
+    const off_t reduce_off = ic_block_offset + sp_block_idx * ic_size;
 
-    const int variance_off = reduce_stat_nblocks * ic_size;
+    const off_t variance_off = reduce_stat_nblocks * ic_size;
 
     src += src_off;
     reduce_temp += reduce_off;
@@ -522,7 +521,7 @@ nhwc_reusable_calc_mean_var(__global DATA_T *src, __global float *reduce_temp,
         }
         // store res
         if (use_fused_atomics_reduction) {
-            const int dst_off
+            const off_t dst_off
                     = ic_block_offset + sg * VECT_SIZE * SUB_GROUP_SIZE;
             nhwc_reusable_1pass_fused_reduction(mean, variance, dst_off, sum,
                     sum_sq, local_sum, local_sum_sq, VECT_SIZE);
@@ -550,7 +549,7 @@ nhwc_reusable_calc_mean_var(__global DATA_T *src, __global float *reduce_temp,
         }
         // store res
         if (use_fused_atomics_reduction) {
-            const int dst_off
+            const off_t dst_off
                     = ic_block_offset + (ic_vect_sgroups + sg) * SUB_GROUP_SIZE;
             nhwc_reusable_1pass_fused_reduction(mean, variance, dst_off, &sum,
                     &sum_sq, local_sum, local_sum_sq, 1);
@@ -567,23 +566,23 @@ nhwc_reusable_calc_mean_var(__global DATA_T *src, __global float *reduce_temp,
 __attribute__((intel_reqd_sub_group_size(SUB_GROUP_SIZE))) __kernel void
 nhwc_reusable_calc_mean_var_buff(__global DATA_T *src,
         __global float *reduce_temp, volatile __global atomic_float *mean,
-        volatile __global atomic_float *variance, off_t ic_size, off_t ic_block,
+        volatile __global atomic_float *variance, off_t ic_size, int ic_block,
         off_t sp_size, off_t stat_sp_block, off_t reduce_stat_nblocks,
         int use_fused_atomics_reduction, __local SUM_DATA_T *local_sum,
         __local SUM_DATA_T *local_sum_sq) {
 
-    const int c = get_global_id(0);
-    const int sp_block_idx = get_global_id(1);
+    const off_t c = get_global_id(0);
+    const off_t sp_block_idx = get_global_id(1);
     const int simd_id = get_sub_group_local_id();
 
-    const int ic_block_offset = (c / SUB_GROUP_SIZE) * ic_block;
-    const int src_off
+    const off_t ic_block_offset = (c / SUB_GROUP_SIZE) * ic_block;
+    const off_t src_off
             = ic_block_offset + sp_block_idx * stat_sp_block * ic_size;
 
     // reduce_temp layout: reduce_stat_nblocks rows x ic columns
-    const int reduce_off = ic_block_offset + sp_block_idx * ic_size;
+    const off_t reduce_off = ic_block_offset + sp_block_idx * ic_size;
 
-    const int variance_off = reduce_stat_nblocks * ic_size;
+    const off_t variance_off = reduce_stat_nblocks * ic_size;
 
     src += src_off;
     reduce_temp += reduce_off;
@@ -645,16 +644,16 @@ nhwc_reusable_norm_fwd(__global DATA_T *src, __global float *mean,
         __global float *variance, __global DATA_T *dst,
         __global float *scaleshift, __global float *shift, __global char *ws,
         float eps, __global DATA_T *src_add, float relu_alpha, off_t ic_size,
-        off_t ic_block, off_t sp_size, off_t update_sp_block) {
-    const int c = get_global_id(0);
-    const int sp = get_global_id(1) * update_sp_block;
+        int ic_block, off_t sp_size, off_t update_sp_block) {
+    const off_t c = get_global_id(0);
+    const off_t sp = get_global_id(1) * update_sp_block;
 
-    const int ic_block_offset = (c / SUB_GROUP_SIZE) * ic_block;
+    const off_t ic_block_offset = (c / SUB_GROUP_SIZE) * ic_block;
     mean += ic_block_offset;
     variance += ic_block_offset;
     shift += ic_block_offset;
     scaleshift += ic_block_offset;
-    const uint d_off = sp * ic_size + ic_block_offset;
+    const off_t d_off = sp * ic_size + ic_block_offset;
 
     src += d_off;
 #if FUSE_BN_ADD_RELU
@@ -772,18 +771,18 @@ nhwc_reusable_norm_fwd_buff(__global DATA_T *src, __global float *mean,
         __global float *variance, __global DATA_T *dst,
         __global float *scaleshift, __global float *shift, __global char *ws,
         float eps, __global DATA_T *src_add, float relu_alpha, off_t ic_size,
-        off_t ic_block, off_t sp_size, off_t update_sp_block) {
+        int ic_block, off_t sp_size, off_t update_sp_block) {
 
-    const int c = get_global_id(0);
-    const int sp = get_global_id(1) * update_sp_block;
+    const off_t c = get_global_id(0);
+    const off_t sp = get_global_id(1) * update_sp_block;
 
-    const int ic_block_offset = (c / SUB_GROUP_SIZE) * ic_block;
+    const off_t ic_block_offset = (c / SUB_GROUP_SIZE) * ic_block;
 
     mean += ic_block_offset;
     variance += ic_block_offset;
     shift += ic_block_offset;
     scaleshift += ic_block_offset;
-    const uint d_off = sp * ic_size + ic_block_offset;
+    const off_t d_off = sp * ic_size + ic_block_offset;
 
     src += d_off;
 #if FUSE_BN_ADD_RELU
@@ -958,7 +957,8 @@ void nhwc_reusable_bwd_fused_reduction_buff(
         volatile __global atomic_float *diff_scale,
         volatile __global atomic_float *diff_shift, off_t dst_offset,
         float *diff_gamma, float *diff_beta, __local float *local_sums,
-        off_t ic_block, off_t calc_slm_size) {
+        int ic_block, off_t calc_slm_size) {
+
     const int local_id = get_local_id(1);
     const int simd_id = get_sub_group_local_id();
     const int row_size = ic_block;
@@ -1001,14 +1001,15 @@ nhwc_reusable_calc_stat(__global DATA_T *src, __global float *mean,
         __global DATA_T *diff_dst, __global char *ws,
         __global float *temp_reduce, __global float *temp_reduce_shift,
         volatile __global atomic_float *diff_scale,
-        volatile __global atomic_float *diff_shift, off_t ic_size,
-        off_t ic_block, off_t sp_size, off_t stat_sp_block,
-        off_t reduce_stat_nblocks, int use_fused_atomics_reduction,
-        __local float *local_sums, off_t calc_slm_size) {
-    const int c = get_global_id(0);
-    const int sp_block_idx = get_global_id(1);
-    const int ic_block_offset = (c / SUB_GROUP_SIZE) * ic_block;
-    const int offset = ic_block_offset + sp_block_idx * stat_sp_block * ic_size;
+        volatile __global atomic_float *diff_shift, off_t ic_size, int ic_block,
+        off_t sp_size, off_t stat_sp_block, off_t reduce_stat_nblocks,
+        int use_fused_atomics_reduction, __local float *local_sums,
+        off_t calc_slm_size) {
+    const off_t c = get_global_id(0);
+    const off_t sp_block_idx = get_global_id(1);
+    const off_t ic_block_offset = (c / SUB_GROUP_SIZE) * ic_block;
+    const off_t offset
+            = ic_block_offset + sp_block_idx * stat_sp_block * ic_size;
 
     mean += ic_block_offset;
     src += offset;
@@ -1016,7 +1017,7 @@ nhwc_reusable_calc_stat(__global DATA_T *src, __global float *mean,
     ws += offset;
 
     // scratchpad layout: (reduce_stat_nblocks + 1) rows x ic columns
-    const int reduce_off = ic_block_offset + (sp_block_idx + 1) * ic_size;
+    const off_t reduce_off = ic_block_offset + (sp_block_idx + 1) * ic_size;
 
     temp_reduce += reduce_off;
     temp_reduce_shift += reduce_off;
@@ -1039,7 +1040,7 @@ nhwc_reusable_calc_stat(__global DATA_T *src, __global float *mean,
 
         // reduce
         for (int sp = 0; sp < sp_idx_bnd; ++sp) {
-            const int tn_idx = sg_idx + sp * ic_size;
+            const off_t tn_idx = sg_idx + sp * ic_size;
 #if FUSE_BN_RELU
             const VECT_CHAR_T ws_vect = LOAD_VECT_CHAR(&ws[tn_idx]);
 #endif
@@ -1056,7 +1057,7 @@ nhwc_reusable_calc_stat(__global DATA_T *src, __global float *mean,
 
         // store results
         if (use_fused_atomics_reduction) {
-            const int dst_off
+            const off_t dst_off
                     = ic_block_offset + sg * VECT_SIZE * SUB_GROUP_SIZE;
             nhwc_reusable_bwd_fused_reduction(diff_scale, diff_shift, dst_off,
                     (float *)(&diff_gamma), (float *)(&diff_beta), local_sums,
@@ -1097,7 +1098,7 @@ nhwc_reusable_calc_stat(__global DATA_T *src, __global float *mean,
 
         // reduce
         for (int sp = 0; sp < sp_idx_bnd; ++sp) {
-            const int tn_idx = sg_idx + sp * ic_size;
+            const off_t tn_idx = sg_idx + sp * ic_size;
 #if FUSE_BN_RELU
             const char ws_vect = LOAD_CHAR_1x16(&ws[tn_idx]);
 #endif
@@ -1113,7 +1114,7 @@ nhwc_reusable_calc_stat(__global DATA_T *src, __global float *mean,
 
         // store results
         if (use_fused_atomics_reduction) {
-            const int dst_off
+            const off_t dst_off
                     = ic_block_offset + (ic_vect_sgroups + sg) * SUB_GROUP_SIZE;
             nhwc_reusable_bwd_fused_reduction(diff_scale, diff_shift, dst_off,
                     (float *)(&diff_gamma), (float *)(&diff_beta), local_sums,
@@ -1132,15 +1133,16 @@ nhwc_reusable_calc_stat_buff(__global DATA_T *src, __global float *mean,
         __global DATA_T *diff_dst, __global char *ws,
         __global float *temp_reduce, __global float *temp_reduce_shift,
         volatile __global atomic_float *diff_scale,
-        volatile __global atomic_float *diff_shift, off_t ic_size,
-        off_t ic_block, off_t sp_size, off_t stat_sp_block,
-        off_t reduce_stat_nblocks, int use_fused_atomics_reduction,
-        __local float *local_sums, off_t calc_slm_size) {
+        volatile __global atomic_float *diff_shift, off_t ic_size, int ic_block,
+        off_t sp_size, off_t stat_sp_block, off_t reduce_stat_nblocks,
+        int use_fused_atomics_reduction, __local float *local_sums,
+        off_t calc_slm_size) {
 
-    const int c = get_global_id(0);
-    const int sp_block_idx = get_global_id(1);
-    const int ic_block_offset = (c / SUB_GROUP_SIZE) * ic_block;
-    const int offset = ic_block_offset + sp_block_idx * stat_sp_block * ic_size;
+    const off_t c = get_global_id(0);
+    const off_t sp_block_idx = get_global_id(1);
+    const off_t ic_block_offset = (c / SUB_GROUP_SIZE) * ic_block;
+    const off_t offset
+            = ic_block_offset + sp_block_idx * stat_sp_block * ic_size;
 
     mean += ic_block_offset;
     src += offset;
@@ -1148,7 +1150,7 @@ nhwc_reusable_calc_stat_buff(__global DATA_T *src, __global float *mean,
     ws += offset;
 
     // scratchpad layout: (reduce_stat_nblocks + 1) rows x ic columns
-    const int reduce_off = ic_block_offset + (sp_block_idx + 1) * ic_size;
+    const off_t reduce_off = ic_block_offset + (sp_block_idx + 1) * ic_size;
 
     temp_reduce += reduce_off;
     temp_reduce_shift += reduce_off;
@@ -1245,9 +1247,9 @@ nhwc_reusable_norm_bwd(__global DATA_T *src, __global float *mean,
         __global float *scaleshift, __global char *ws,
         __global DATA_T *diff_src, __global float *diff_scale,
         __global float *diff_shift, float eps, __global DATA_T *diff_src_add,
-        off_t ic_size, off_t ic_block, off_t sp_size, off_t update_sp_block) {
-    const int c = get_global_id(0);
-    const int ic_block_offset = (c / SUB_GROUP_SIZE) * ic_block;
+        off_t ic_size, int ic_block, off_t sp_size, off_t update_sp_block) {
+    const off_t c = get_global_id(0);
+    const off_t ic_block_offset = (c / SUB_GROUP_SIZE) * ic_block;
 
     variance += ic_block_offset;
     mean += ic_block_offset;
@@ -1256,7 +1258,7 @@ nhwc_reusable_norm_bwd(__global DATA_T *src, __global float *mean,
     scaleshift += ic_block_offset;
 
     const int sp_block_idx = get_global_id(1);
-    const int offset
+    const off_t offset
             = ic_block_offset + sp_block_idx * update_sp_block * ic_size;
 
     src += offset;
@@ -1365,10 +1367,10 @@ nhwc_reusable_norm_bwd_buff(__global DATA_T *src, __global float *mean,
         __global float *scaleshift, __global char *ws,
         __global DATA_T *diff_src, __global float *diff_scale,
         __global float *diff_shift, float eps, __global DATA_T *diff_src_add,
-        off_t ic_size, off_t ic_block, off_t sp_size, off_t update_sp_block) {
+        off_t ic_size, int ic_block, off_t sp_size, off_t update_sp_block) {
 
-    const int c = get_global_id(0);
-    const int ic_block_offset = (c / SUB_GROUP_SIZE) * ic_block;
+    const off_t c = get_global_id(0);
+    const off_t ic_block_offset = (c / SUB_GROUP_SIZE) * ic_block;
 
     variance += ic_block_offset;
     mean += ic_block_offset;
@@ -1377,7 +1379,7 @@ nhwc_reusable_norm_bwd_buff(__global DATA_T *src, __global float *mean,
     scaleshift += ic_block_offset;
 
     const int sp_block_idx = get_global_id(1);
-    const int offset
+    const off_t offset
             = ic_block_offset + sp_block_idx * update_sp_block * ic_size;
 
     src += offset;
@@ -1530,14 +1532,14 @@ nhwc_reusable_reduce_fwd_reg(__global float *reduce_scratchpad,
         off_t scratchpad_off, __global float *dst, off_t ic_size,
         off_t reduce_ic_sub_groups, off_t reduce_stat_nblocks, off_t sp_size,
         __local float *local_sum) {
-    const int ic_sub_group = get_global_id(0) / SUB_GROUP_SIZE;
-    const int group_c = get_global_id(1);
+    const off_t ic_sub_group = get_global_id(0) / SUB_GROUP_SIZE;
+    const off_t group_c = get_global_id(1);
     const int simd_id = get_sub_group_local_id();
-    const int c = group_c * SUB_GROUP_SIZE + simd_id;
+    const off_t c = group_c * SUB_GROUP_SIZE + simd_id;
     float sum = 0.0f;
 
     const int reduce_chunk = reduce_stat_nblocks / reduce_ic_sub_groups;
-    const int reduce_scratchpad_off
+    const off_t reduce_scratchpad_off
             = scratchpad_off + c + ic_sub_group * reduce_chunk * ic_size;
     reduce_scratchpad += reduce_scratchpad_off;
 
@@ -1563,10 +1565,10 @@ nhwc_reusable_reduce_fwd_1pass(__global float *reduce_temp,
         __global float *mean, __global float *variance, off_t ic_size,
         off_t reduce_ic_sub_groups, off_t reduce_stat_nblocks, off_t sp_size,
         __local SUM_DATA_T *local_sum, __local SUM_DATA_T *local_sum_sq) {
-    const int ic_sub_group = get_global_id(0) / SUB_GROUP_SIZE;
-    const int group_c = get_global_id(1);
+    const off_t ic_sub_group = get_global_id(0) / SUB_GROUP_SIZE;
+    const off_t group_c = get_global_id(1);
     const int simd_id = get_sub_group_local_id();
-    const int c = group_c * SUB_GROUP_SIZE + simd_id;
+    const off_t c = group_c * SUB_GROUP_SIZE + simd_id;
     SUM_DATA_T sum;
     SUM_DATA_T sum_sq;
     sum.s0 = 0;
@@ -1574,9 +1576,9 @@ nhwc_reusable_reduce_fwd_1pass(__global float *reduce_temp,
     sum_sq.s0 = 0;
     sum_sq.s1 = 0;
 
-    const int offs_sq = reduce_stat_nblocks * ic_size;
-    const int reduce_chunk = reduce_stat_nblocks / reduce_ic_sub_groups;
-    const int offs = c + ic_sub_group * reduce_chunk * ic_size;
+    const off_t offs_sq = reduce_stat_nblocks * ic_size;
+    const off_t reduce_chunk = reduce_stat_nblocks / reduce_ic_sub_groups;
+    const off_t offs = c + ic_sub_group * reduce_chunk * ic_size;
 
     unroll_16_for(int i = 0; i < reduce_chunk; i++) {
         float tmp = reduce_temp[offs + i * ic_size];
@@ -1615,16 +1617,16 @@ nhwc_reusable_reduce_stat(__global float *temp_reduce,
         __global float *diff_shift, __global float *variance, float eps,
         off_t ic_size, off_t reduce_ic_sub_groups, off_t reduce_stat_nblocks,
         __local float *local_gamma, __local float *local_beta) {
-    const int ic_sub_group = get_global_id(0) / SUB_GROUP_SIZE;
-    const int group_c = get_global_id(1);
+    const off_t ic_sub_group = get_global_id(0) / SUB_GROUP_SIZE;
+    const off_t group_c = get_global_id(1);
     const int simd_id = get_sub_group_local_id();
-    const int c = group_c * SUB_GROUP_SIZE + simd_id;
+    const off_t c = group_c * SUB_GROUP_SIZE + simd_id;
 
     float diff_gamma = 0.0f;
     float diff_beta = 0.0f;
 
     const int reduce_chunk = reduce_stat_nblocks / reduce_ic_sub_groups;
-    const int scratchpad_off
+    const off_t scratchpad_off
             = ic_size + c + ic_sub_group * reduce_chunk * ic_size;
 
     temp_reduce += scratchpad_off;

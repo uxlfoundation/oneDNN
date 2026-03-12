@@ -33,11 +33,11 @@ __kernel void xe_calculate_stats_nhwc(__global DATA_T *src,
         __global float *temp_reduce, volatile __global atomic_float *diff_scale,
         volatile __global atomic_float *diff_shift) {
 
-    const int mb = GWS_GET_STAT_MB();
-    const int c = GWS_GET_STAT_IC();
-    const int sp_block_idx = GWS_GET_STAT_SP();
-    const int ic_block_offset = (c / SG_SIZE) * IC_BLOCK;
-    const int offset = ic_block_offset + sp_block_idx * STAT_SP_BLOCK * IC;
+    const off_t mb = GWS_GET_STAT_MB();
+    const off_t c = GWS_GET_STAT_IC();
+    const off_t sp_block_idx = GWS_GET_STAT_SP();
+    const off_t ic_block_offset = (c / SG_SIZE) * IC_BLOCK;
+    const off_t offset = ic_block_offset + sp_block_idx * STAT_SP_BLOCK * IC;
 
     mean += ic_block_offset;
     src += offset;
@@ -133,12 +133,12 @@ __kernel void xe_calculate_stats_nhwc(__global DATA_T *src,
     // REDUCE_STAT_NBLOCKS * PADDED_IC - diff_beta stats calculated by this kernel
 
     for (int sg = 0; sg < IC_BLOCK_SGROUPS; ++sg) {
-        const int reduce_off = sp_block_idx * SG_SIZE
+        const off_t reduce_off = sp_block_idx * SG_SIZE
                 + REDUCE_STAT_NBLOCKS * SG_SIZE
                         * (sg + (int)(c / SG_SIZE) * (IC_BLOCK / SG_SIZE));
 
-        const int diff_gamma_offset = PADDED_IC + reduce_off;
-        const int diff_beta_offset
+        const off_t diff_gamma_offset = PADDED_IC + reduce_off;
+        const off_t diff_beta_offset
                 = 2 * PADDED_IC + REDUCE_STAT_NBLOCKS * PADDED_IC + reduce_off;
 
 #if HAS_IC_VECT_TAIL
@@ -171,8 +171,8 @@ __kernel void xe_bnorm_bwd_nhwc(__global DATA_T *src, __global float *mean,
         __global DATA_T *diff_src, __global float *diff_scale,
         __global float *diff_shift, float eps, __global DATA_T *diff_src_add) {
 
-    const int c = GWS_GET_IC();
-    const int ic_block_offset = (c / SG_SIZE) * IC_BLOCK;
+    const off_t c = GWS_GET_IC();
+    const off_t ic_block_offset = (c / SG_SIZE) * IC_BLOCK;
 
     variance += ic_block_offset;
     mean += ic_block_offset;
@@ -234,8 +234,8 @@ __kernel void xe_bnorm_bwd_nhwc(__global DATA_T *src, __global float *mean,
     }
 #endif
 
-    const int sp_block_idx = GWS_GET_SP();
-    const int offset = ic_block_offset + sp_block_idx * UPDATE_SP_BLOCK * IC;
+    const off_t sp_block_idx = GWS_GET_SP();
+    const off_t offset = ic_block_offset + sp_block_idx * UPDATE_SP_BLOCK * IC;
 
     src += offset;
     diff_dst += offset;

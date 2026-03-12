@@ -67,7 +67,7 @@ status_t rvv_layer_normalization_fwd_t::execute_forward(
     const float eps = pd()->desc()->layer_norm_epsilon;
     const bool save_stats = pd()->is_training();
     const bool calculate_stats = !pd()->stats_are_src();
-    const bool use_fused_stats = calculate_stats && C >= 512;
+    const bool use_fused_stats = calculate_stats;
 
     parallel_nd(N, [&](dim_t n) {
         const float *src_row = src + n * C;

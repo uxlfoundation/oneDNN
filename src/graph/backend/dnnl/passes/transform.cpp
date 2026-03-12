@@ -3280,8 +3280,7 @@ status_t decompose_softmax(std::shared_ptr<subgraph_t> &sg) {
         auto reduce_dst_op_out_val = f32_dst;
         if (need_reduction) {
             // create reduce_src op
-            auto reduce_src_op
-                    = std::make_shared<op_t>(op_kind::_reduction);
+            auto reduce_src_op = std::make_shared<op_t>(op_kind::_reduction);
             reduce_src_op->set_attr<std::vector<int64_t>>(
                     op_attr::axes, {cur_op->get_attr<int64_t>(op_attr::axis)});
             reduce_src_op->set_attr<bool>(op_attr::keep_dims, true);
@@ -3299,8 +3298,7 @@ status_t decompose_softmax(std::shared_ptr<subgraph_t> &sg) {
             insert_empty_scratchpad(reduce_src_op);
 
             // create reduce_dst op
-            auto reduce_dst_op
-                    = std::make_shared<op_t>(op_kind::_reduction);
+            auto reduce_dst_op = std::make_shared<op_t>(op_kind::_reduction);
             reduce_dst_op->set_attr<std::vector<int64_t>>(
                     op_attr::axes, {cur_op->get_attr<int64_t>(op_attr::axis)});
             reduce_dst_op->set_attr<bool>(op_attr::keep_dims, true);
@@ -4957,7 +4955,7 @@ status_t fuse_sdpa_bwd(std::shared_ptr<subgraph_t> &sg) {
         if (cur_op->get_kind() != op_kind::_matmul) continue;
 
         // Step 1 – walk matmul_qk → [scale_pre] → [mask] → sub → exp
-        op_ptr matmul_qk = cur_op;
+        const op_ptr &matmul_qk = cur_op;
         op_ptr scale_pre = nullptr, mask_op = nullptr;
         op_ptr sub_op = nullptr, exp_op = nullptr;
 
@@ -4981,8 +4979,7 @@ status_t fuse_sdpa_bwd(std::shared_ptr<subgraph_t> &sg) {
                 w = sole_consumer(w);
             }
         }
-        if (!exp_op || !sub_op)
-            continue;
+        if (!exp_op || !sub_op) continue;
 
         // stats tensor feeds Subtract at input 1
         value_ptr stats_val = sub_op->get_input_value(1);
@@ -5023,13 +5020,11 @@ status_t fuse_sdpa_bwd(std::shared_ptr<subgraph_t> &sg) {
                 permute_p = sole_consumer(permute_p);
             }
         }
-        if (!permute_p || permute_p->get_kind() != op_kind::_permute)
-            continue;
+        if (!permute_p || permute_p->get_kind() != op_kind::_permute) continue;
 
         matmul_dv = sole_consumer(permute_p);
 
-        if (!matmul_dv || !softmax_bwd)
-            continue;
+        if (!matmul_dv || !softmax_bwd) continue;
 
         // Optional reduce after matmul_dv (e.g., GQA dV accumulation)
         op_ptr reduce_dv = nullptr;
@@ -5045,17 +5040,14 @@ status_t fuse_sdpa_bwd(std::shared_ptr<subgraph_t> &sg) {
         //   correction   = ReduceSum(o_do)
         //   o_do         = Mul(O, dO)
         value_ptr dp_corr_val = softmax_bwd->get_input_value(1);
-        if (!dp_corr_val->has_producer())
-            continue;
+        if (!dp_corr_val->has_producer()) continue;
 
         op_ptr dp_corrected_op = dp_corr_val->get_producer().shared_from_this();
-        if (!is_binary(dp_corrected_op, dnnl::algorithm::binary_sub))
-            continue;
+        if (!is_binary(dp_corrected_op, dnnl::algorithm::binary_sub)) continue;
 
         // dP side (input 0): matmul_v_do, optionally via Dropout
         value_ptr dP_val = dp_corrected_op->get_input_value(0);
-        if (!dP_val->has_producer())
-            continue;
+        if (!dP_val->has_producer()) continue;
 
         op_ptr dP_prod = dP_val->get_producer().shared_from_this();
 
@@ -5065,12 +5057,10 @@ status_t fuse_sdpa_bwd(std::shared_ptr<subgraph_t> &sg) {
         } else if (dP_prod->get_kind() == op_kind::_dropout) {
             dropout_bwd = dP_prod;
             value_ptr mm_out = dropout_bwd->get_input_value(0);
-            if (!mm_out->has_producer())
-                continue;
+            if (!mm_out->has_producer()) continue;
 
             auto mm_prod = mm_out->get_producer().shared_from_this();
-            if (mm_prod->get_kind() != op_kind::_matmul)
-                continue;
+            if (mm_prod->get_kind() != op_kind::_matmul) continue;
 
             matmul_vt_do = mm_prod;
         } else {
@@ -5080,26 +5070,23 @@ status_t fuse_sdpa_bwd(std::shared_ptr<subgraph_t> &sg) {
         // get permute before matmul_vt_do
         op_ptr permute_v = nullptr;
         if (matmul_vt_do->get_input_value(1)->has_producer()) {
-            permute_v = matmul_vt_do->get_input_value(1)->get_producer().shared_from_this();
-            if (permute_v->get_kind() != op_kind::_permute)
-                continue;
+            permute_v = matmul_vt_do->get_input_value(1)
+                                ->get_producer()
+                                .shared_from_this();
+            if (permute_v->get_kind() != op_kind::_permute) continue;
         }
 
         // correction side (input 1): ReduceSum → o_do = Mul(O, dO)
         value_ptr corr_val = dp_corrected_op->get_input_value(1);
-        if (!corr_val->has_producer())
-            continue;
+        if (!corr_val->has_producer()) continue;
         op_ptr correction_op = corr_val->get_producer().shared_from_this();
-        if (correction_op->get_kind() != op_kind::_reduction)
-            continue;
+        if (correction_op->get_kind() != op_kind::_reduction) continue;
 
         value_ptr o_do_out = correction_op->get_input_value(0);
-        if (!o_do_out->has_producer())
-            continue;
+        if (!o_do_out->has_producer()) continue;
 
         op_ptr o_do_op = o_do_out->get_producer().shared_from_this();
-        if (!is_binary(o_do_op, dnnl::algorithm::binary_mul))
-            continue;
+        if (!is_binary(o_do_op, dnnl::algorithm::binary_mul)) continue;
 
         value_ptr O_val = o_do_op->get_input_value(0); // forward output O
         value_ptr dO_val = o_do_op->get_input_value(1); // diff_dst dO
@@ -5139,12 +5126,10 @@ status_t fuse_sdpa_bwd(std::shared_ptr<subgraph_t> &sg) {
 
         if (permute_ds && !matmul_dk) {
             auto next = sole_consumer(permute_ds);
-            if (next && next->get_kind() == op_kind::_matmul)
-                matmul_dk = next;
+            if (next && next->get_kind() == op_kind::_matmul) matmul_dk = next;
         }
-                    
-        if (!matmul_dq || !matmul_dk)
-            continue;
+
+        if (!matmul_dq || !matmul_dk) continue;
 
         // Detect and handle the permute of K that feeds matmul_dq input 1
         // (matmul_dq computes dS * permute(K), where permute transposes K)
@@ -5153,8 +5138,7 @@ status_t fuse_sdpa_bwd(std::shared_ptr<subgraph_t> &sg) {
             auto dq_in1 = matmul_dq->get_input_value(1);
             if (dq_in1->has_producer()) {
                 auto prod = dq_in1->get_producer().shared_from_this();
-                if (prod->get_kind() == op_kind::_permute)
-                    permute_k = prod;
+                if (prod->get_kind() == op_kind::_permute) permute_k = prod;
             }
         }
 
@@ -5169,7 +5153,8 @@ status_t fuse_sdpa_bwd(std::shared_ptr<subgraph_t> &sg) {
         // Optional reduce after matmul_dk (e.g., GQA dK accumulation)
         op_ptr reduce_dk = nullptr;
         {
-            auto next = transpose_dk? sole_consumer(transpose_dk): sole_consumer(matmul_dk);
+            auto next = transpose_dk ? sole_consumer(transpose_dk)
+                                     : sole_consumer(matmul_dk);
             if (next && next->get_kind() == op_kind::_reduction)
                 reduce_dk = next;
         }
@@ -5217,11 +5202,8 @@ status_t fuse_sdpa_bwd(std::shared_ptr<subgraph_t> &sg) {
         // 1: K (original transposed key from matmul_qk)
         auto Kv = matmul_qk->get_input_value(1);
         Kv->remove_consumer(*matmul_qk, 1);
-        if (permute_k) {
-            Kv->remove_consumer(*permute_k, 0);
-        }
+        if (permute_k) { Kv->remove_consumer(*permute_k, 0); }
         bwd_op->connect_input(1, Kv);
-
 
         // 2: V
         V_val->remove_consumer(*permute_v, 0);
@@ -5263,7 +5245,8 @@ status_t fuse_sdpa_bwd(std::shared_ptr<subgraph_t> &sg) {
 
         // 1: dK (possibly through optional reduce)
         auto dK_val = reduce_dk ? reduce_dk->get_output_value(0)
-                                : transpose_dk ? transpose_dk->get_output_value(0) : matmul_dk->get_output_value(0);
+                : transpose_dk  ? transpose_dk->get_output_value(0)
+                                : matmul_dk->get_output_value(0);
         dK_val->set_producer(*bwd_op);
         bwd_op->connect_output(1, dK_val);
 
@@ -5287,12 +5270,13 @@ status_t fuse_sdpa_bwd(std::shared_ptr<subgraph_t> &sg) {
         }
 
         // Remove all pattern ops
-        std::vector<op_ptr> to_remove = {matmul_qk, sub_op, exp_op, matmul_dv,
-                matmul_vt_do, o_do_op, correction_op, dp_corrected_op,
-                softmax_bwd, matmul_dq, matmul_dk, permute_p, permute_ds, permute_v};
+        std::vector<op_ptr> to_remove
+                = {matmul_qk, sub_op, exp_op, matmul_dv, matmul_vt_do, o_do_op,
+                        correction_op, dp_corrected_op, softmax_bwd, matmul_dq,
+                        matmul_dk, permute_p, permute_ds, permute_v};
         for (auto *opt : {&scale_pre, &mask_op, &dropout_fwd, &tc_fwd,
-                     &dropout_bwd, &scale_post, &end_op, &tc_bwd,
-                     &reduce_dv, &reduce_dk, &permute_k, &transpose_dk})
+                     &dropout_bwd, &scale_post, &end_op, &tc_bwd, &reduce_dv,
+                     &reduce_dk, &permute_k, &transpose_dk})
             if (*opt) to_remove.push_back(*opt);
 
         for (auto &op : to_remove)

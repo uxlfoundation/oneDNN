@@ -69,7 +69,7 @@ status_t compile_ops(std::shared_ptr<subgraph_t> &sg) {
                     "failed to create executable for op %s",
                     op->get_name().c_str());
         }
-        
+
         sg->execs_.emplace_back(exec);
 
         sg->is_constant_.push_back(op->has_attr(op_attr::is_constant)

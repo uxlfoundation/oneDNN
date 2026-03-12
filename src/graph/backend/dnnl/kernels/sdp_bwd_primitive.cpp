@@ -51,8 +51,7 @@ status_t sdp_bwd_primitive_kernel_t::initial_check(
         const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
     const bool is_f32 = inputs[0].data_type == data_type::f32;
-    VCHECK_SDP_BWD_PRIMITIVE(!is_f32,
-            status::unimplemented,
+    VCHECK_SDP_BWD_PRIMITIVE(!is_f32, status::unimplemented,
             "SDPA bwd primitive doesn't support f32 because of performance");
 
     bool has_dropout = false;
@@ -63,8 +62,7 @@ status_t sdp_bwd_primitive_kernel_t::initial_check(
             break;
         }
     }
-    VCHECK_SDP_BWD_PRIMITIVE(!has_dropout,
-            status::unimplemented,
+    VCHECK_SDP_BWD_PRIMITIVE(!has_dropout, status::unimplemented,
             "SDPA bwd primitive doesn't support Dropout for now");
 
     bool has_host_scalar = false;
@@ -74,8 +72,7 @@ status_t sdp_bwd_primitive_kernel_t::initial_check(
             break;
         }
     }
-    VCHECK_SDP_BWD_PRIMITIVE(!has_host_scalar,
-            status::unimplemented,
+    VCHECK_SDP_BWD_PRIMITIVE(!has_host_scalar, status::unimplemented,
             "SDPA bwd primitive doesn't support host scalar inputs for now");
 
     return status::success;

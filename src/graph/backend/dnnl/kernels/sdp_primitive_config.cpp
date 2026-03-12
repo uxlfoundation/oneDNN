@@ -56,8 +56,8 @@ status_t sdp_primitive_config_t::initial_check(
                         && opk != graph::op_kind::Quantize,
                 status::unimplemented, "Not support quantized SDPA");
         // SDPA with Dropout is currently unsupported in the ukernel.
-        VCHECK_SDP_PRIMITIVE(opk != graph::op_kind::Dropout, status::unimplemented,
-                "Not support SDPA with Dropout");
+        VCHECK_SDP_PRIMITIVE(opk != graph::op_kind::Dropout,
+                status::unimplemented, "Not support SDPA with Dropout");
         if (opk == graph::op_kind::GenIndex) { has_genindex = true; }
     }
 

@@ -666,9 +666,8 @@ status_t insert_reshape_for_sdpa(std::shared_ptr<subgraph_t> &sg) {
         // Insert reshape for optional stats output (output 2)
         if (cur_op->get_attr<bool>(op_attr::is_training)) {
             auto stats_dims = ltw(cur_op->get_output_logical_tensor(2)).vdims();
-            dims expected_stats_dims = stats_dims;
-            op_ptr reshape_stats
-                    = std::make_shared<op_t>(op_kind::_reshape);
+            const dims &expected_stats_dims = stats_dims;
+            op_ptr reshape_stats = std::make_shared<op_t>(op_kind::_reshape);
             reshape_stats->set_attr<bool>(op_attr::special_zero, false);
             reshape_stats->set_attr<std::vector<int64_t>>(
                     op_attr::shape, expected_stats_dims);
@@ -728,8 +727,7 @@ status_t insert_reshape_for_sdpa_bwd(std::shared_ptr<subgraph_t> &sg) {
         size_t index = 6;
         // Insert reshape for scale (optional)
         if (cur_op->get_attr<bool>(op_attr::with_scale)) {
-            int32_t scale_ndims
-                    = cur_op->get_input_logical_tensor(index).ndims;
+            int32_t scale_ndims = cur_op->get_input_logical_tensor(index).ndims;
             if (scale_ndims == 5) {
                 auto scale_dims
                         = ltw(cur_op->get_input_logical_tensor(index)).vdims();
@@ -741,9 +739,8 @@ status_t insert_reshape_for_sdpa_bwd(std::shared_ptr<subgraph_t> &sg) {
         // Insert reshape for mask (optional)
         if (cur_op->get_attr<int64_t>(op_attr::mask_type)
                 == static_cast<int64_t>(attn_mask_type::buffer)) {
-            int32_t mask_ndims
-                    = cur_op->get_input_logical_tensor(index).ndims;
-             
+            int32_t mask_ndims = cur_op->get_input_logical_tensor(index).ndims;
+
             if (mask_ndims == 5) {
                 auto mask_dims
                         = ltw(cur_op->get_input_logical_tensor(index)).vdims();
@@ -753,10 +750,10 @@ status_t insert_reshape_for_sdpa_bwd(std::shared_ptr<subgraph_t> &sg) {
         }
 
         // Insert reshape for diff_query output (output 0) -> 4D to 5D
-        auto diff_query_dims = ltw(cur_op->get_output_logical_tensor(0)).vdims();
+        auto diff_query_dims
+                = ltw(cur_op->get_output_logical_tensor(0)).vdims();
         const dims &expected_diff_query_dims = diff_query_dims;
-        op_ptr reshape_diff_query
-                = std::make_shared<op_t>(op_kind::_reshape);
+        op_ptr reshape_diff_query = std::make_shared<op_t>(op_kind::_reshape);
         reshape_diff_query->set_attr<bool>(op_attr::special_zero, false);
         reshape_diff_query->set_attr<std::vector<int64_t>>(
                 op_attr::shape, expected_diff_query_dims);
@@ -772,10 +769,10 @@ status_t insert_reshape_for_sdpa_bwd(std::shared_ptr<subgraph_t> &sg) {
         rewriter.insert_op_after(reshape_diff_key, cur_op, 1);
 
         // Insert reshape for diff_value output (output 2) -> 4D to 5D
-        auto diff_value_dims = ltw(cur_op->get_output_logical_tensor(2)).vdims();
+        auto diff_value_dims
+                = ltw(cur_op->get_output_logical_tensor(2)).vdims();
         const dims &expected_diff_value_dims = diff_value_dims;
-        op_ptr reshape_diff_value
-                = std::make_shared<op_t>(op_kind::_reshape);
+        op_ptr reshape_diff_value = std::make_shared<op_t>(op_kind::_reshape);
         reshape_diff_value->set_attr<bool>(op_attr::special_zero, false);
         reshape_diff_value->set_attr<std::vector<int64_t>>(
                 op_attr::shape, expected_diff_value_dims);
@@ -783,15 +780,15 @@ status_t insert_reshape_for_sdpa_bwd(std::shared_ptr<subgraph_t> &sg) {
 
         // Insert reshape for diff_mask output (output 4) -> 4D to 5D
         if (cur_op->num_outputs() > 4) {
-                auto diff_mask_dims
-                        = ltw(cur_op->get_output_logical_tensor(4)).vdims();
-                const dims &expected_diff_mask_dims = diff_mask_dims;
-                op_ptr reshape_diff_mask
-                        = std::make_shared<op_t>(op_kind::_reshape);
-                reshape_diff_mask->set_attr<bool>(op_attr::special_zero, false);
-                reshape_diff_mask->set_attr<std::vector<int64_t>>(
-                        op_attr::shape, expected_diff_mask_dims);
-                rewriter.insert_op_after(reshape_diff_mask, cur_op, 4);
+            auto diff_mask_dims
+                    = ltw(cur_op->get_output_logical_tensor(4)).vdims();
+            const dims &expected_diff_mask_dims = diff_mask_dims;
+            op_ptr reshape_diff_mask
+                    = std::make_shared<op_t>(op_kind::_reshape);
+            reshape_diff_mask->set_attr<bool>(op_attr::special_zero, false);
+            reshape_diff_mask->set_attr<std::vector<int64_t>>(
+                    op_attr::shape, expected_diff_mask_dims);
+            rewriter.insert_op_after(reshape_diff_mask, cur_op, 4);
         }
     }
 

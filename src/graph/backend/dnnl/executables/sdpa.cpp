@@ -404,7 +404,8 @@ sdpa_bwd_executable_t::sdpa_bwd_executable_t(std::shared_ptr<op_t> &op,
     status_t s = create_sdpa_pd(hint_fwd_pd, p_engine.get(), md_q.get(),
             md_k.get(), md_v.get(), md_dst.get(), md_attn_mask.get(),
             md_scale.get(), is_invert_scale_, kv_head_number, mask_type_,
-            softmax_alg, impl::prop_kind::forward_training, attr.get(), qk_attr.get(), vs_attr.get());
+            softmax_alg, impl::prop_kind::forward_training, attr.get(),
+            qk_attr.get(), vs_attr.get());
     if (s != dnnl::impl::status::success) {
         is_initialized_ = false;
         return;
@@ -423,7 +424,6 @@ sdpa_bwd_executable_t::sdpa_bwd_executable_t(std::shared_ptr<op_t> &op,
         s = sdpa_bwd_pd_->create_primitive(sdpa_bwd_prim_, p_engine.get());
         is_initialized_ = s == status::success;
     }
-
 }
 
 void sdpa_bwd_executable_t::execute(const stream &stream,
@@ -466,8 +466,7 @@ void sdpa_bwd_executable_t::execute(const stream &stream,
     // Set up scratchpad grantor required by the primitive's execute
     const memory_storage_t *mem_storage = nullptr;
     memory_t *scratchpad_memory = ctx.output(DNNL_ARG_SCRATCHPAD);
-    if (scratchpad_memory)
-        mem_storage = scratchpad_memory->memory_storage();
+    if (scratchpad_memory) mem_storage = scratchpad_memory->memory_storage();
     const void *host_ptr
             = ctx.host_ptr(mem_storage, /* require_host_ptr = */ true);
     auto *scratchpad_grantor

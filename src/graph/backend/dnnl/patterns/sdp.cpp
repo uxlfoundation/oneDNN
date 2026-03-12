@@ -267,7 +267,7 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_sdp_backward_fusion)
                     auto matmul_dk = pgraph->append_op(
                             graph::op_kind::MatMul, {in_edge(0, tc2, 0)});
                     auto matmul_dq = pgraph->append_op(
-                            graph::op_kind::MatMul, {in_edge(0, tc2, 0)});                    
+                            graph::op_kind::MatMul, {in_edge(0, tc2, 0)});
                     // Q is a shared input for matmul_qk and matmul_dk
                     pgraph->create_input_port(0, matmul_qk, 0);
                     pgraph->create_input_port(0, matmul_dk, 1);
@@ -630,7 +630,7 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_gqa_backward_fusion)
                             graph::op_kind::MatMul, {in_edge(0, tc2, 0)});
                     auto matmul_dq = pgraph->append_op(
                             graph::op_kind::MatMul, {in_edge(0, tc2, 0)});
-              
+
                     // reduction_dk
                     pgraph->append_op(graph::op_kind::ReduceSum,
                             {in_edge(0, matmul_dk, 0)});

@@ -1836,8 +1836,7 @@ status_t layout_propagator_for_sdpa_bwd(std::shared_ptr<op_t> &op,
     // forward input logical tensor. If the input layout is already fixed, reuse
     // it; otherwise fall back to the canonical acbd format used by sdpa.
     auto get_md_for_diff = [](const logical_tensor_t &lt) {
-        if (!ltw(lt).is_any())
-            return make_dnnl_memory_desc(lt);
+        if (!ltw(lt).is_any()) return make_dnnl_memory_desc(lt);
         return dnnl::memory::desc {ltw(lt).vdims(),
                 static_cast<dnnl::memory::data_type>(ltw(lt).data_type()),
                 dnnl::memory::format_tag::acbd};
@@ -1872,12 +1871,10 @@ status_t layout_propagator_for_sdpa_bwd(std::shared_ptr<op_t> &op,
         const bool with_scale = op->get_attr<bool>(op_attr::with_scale);
         const auto mask_type = static_cast<attn_mask_type_t>(
                 op->get_attr<int64_t>(op_attr::mask_type));
-        const bool is_invert_scale
-                = op->has_attr(op_attr::is_invert_scale)
+        const bool is_invert_scale = op->has_attr(op_attr::is_invert_scale)
                 ? op->get_attr<bool>(op_attr::is_invert_scale)
                 : false;
-        const bool with_explicit_mask
-                = mask_type == attn_mask_type::buffer;
+        const bool with_explicit_mask = mask_type == attn_mask_type::buffer;
 
         auto md_q = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
         auto md_k = make_dnnl_memory_desc(op->get_input_logical_tensor(1));
@@ -1898,8 +1895,7 @@ status_t layout_propagator_for_sdpa_bwd(std::shared_ptr<op_t> &op,
             md_attn_mask = make_dnnl_memory_desc(
                     op->get_input_logical_tensor(idx++));
             if (op->num_outputs() > 4)
-                md_dS = make_dnnl_memory_desc(
-                        op->get_output_logical_tensor(4));
+                md_dS = make_dnnl_memory_desc(op->get_output_logical_tensor(4));
         }
 
         const auto &sdpa_fusion_info = op->has_attr(op_attr::fusion_info)
@@ -1917,18 +1913,17 @@ status_t layout_propagator_for_sdpa_bwd(std::shared_ptr<op_t> &op,
         vs_attr.set_accumulation_mode(str2accumulation_mode(
                 op->get_attr<std::string>(op_attr::vs_acc_mode)));
         attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
-        attr.set_fpmath_mode(
-                static_cast<dnnl::fpmath_mode>(fpmath.mode_));
+        attr.set_fpmath_mode(static_cast<dnnl::fpmath_mode>(fpmath.mode_));
 
         dim_t kv_head_number = op->get_input_logical_tensor(1).dims[1];
-        const alg_kind_t softmax_alg
-                = alg_kind::softmax_accurate_inf_as_zero;
+        const alg_kind_t softmax_alg = alg_kind::softmax_accurate_inf_as_zero;
 
         std::shared_ptr<primitive_desc_t> hint_fwd_pd;
         status = create_sdpa_pd(hint_fwd_pd, p_engine.get(), md_q.get(),
                 md_k.get(), md_v.get(), md_dst.get(), md_attn_mask.get(),
                 md_scale.get(), is_invert_scale, kv_head_number, mask_type,
-                softmax_alg, impl::prop_kind::forward_training, attr.get(), qk_attr.get(), vs_attr.get());
+                softmax_alg, impl::prop_kind::forward_training, attr.get(),
+                qk_attr.get(), vs_attr.get());
         VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
                 "failed to create hint fwd pd for sdpa_bwd scratchpad");
 
@@ -1938,8 +1933,7 @@ status_t layout_propagator_for_sdpa_bwd(std::shared_ptr<op_t> &op,
                 md_diff_k.get(), md_diff_v.get(), md_diff_dst.get(),
                 md_dS.get(), md_attn_mask.get(), md_scale.get(),
                 is_invert_scale, kv_head_number, mask_type, softmax_alg,
-                attr.get(), hint_fwd_pd.get(), qk_attr.get(),
-                vs_attr.get());
+                attr.get(), hint_fwd_pd.get(), qk_attr.get(), vs_attr.get());
         VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
                 "failed to create pd for sdpa_bwd scratchpad");
 

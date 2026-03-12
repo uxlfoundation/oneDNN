@@ -441,8 +441,8 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {}
 
 void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
         const args_t &ref_args) {
-    const bool compare_with_norm = (prb->alg & WINO);
-    cmp.set_norm_validation_mode(compare_with_norm);
+    const bool allow_norm_check = (prb->alg & WINO);
+    cmp.set_allow_norm_check(allow_norm_check);
 
     float trh = 0.f;
     if (prb->alg & WINO) {

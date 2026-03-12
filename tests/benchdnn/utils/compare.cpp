@@ -146,6 +146,14 @@ bool negative_converts_to_zero(const attr_t &attr, dnnl_data_type_t target_dt) {
 
     return false;
 }
+
+void reset_case_stats(res_t *res) {
+    // TODO: introduce res->stats and ctor to replace just the stats part.
+    res->state = EXECUTED;
+    res->total = 0;
+    res->errors = 0;
+}
+
 } // namespace
 
 bool compare_extreme_values(float a, float b) {
@@ -196,7 +204,7 @@ int compare_t::compare_norm(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
 
         // Specifiers to keep data accumulated over several `i`.
         static thread_local diff_norm_t diff_norm_ithr;
-        driver_check_func_args_t args(exp_mem, got_f32, i, dt, trh_);
+        driver_check_func_args_t args(exp_mem, got_f32, i, dt, trh_norm_);
 
         if ((std::isnan(args.exp_f32)) || std::isinf(args.exp)) {
             // Don't include nan inf values into norm as they make it
@@ -237,7 +245,7 @@ int compare_t::compare_norm(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
         }
     }
 
-    bool ok = diff_norm.rel_diff(norm_t::L2) <= trh_;
+    bool ok = diff_norm.rel_diff(norm_t::L2) <= trh_norm_;
     if (!ok) res->errors = 1;
 
     const bool dump = need_dump || !ok;
@@ -248,7 +256,7 @@ int compare_t::compare_norm(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
     // Status may be propagated from previous tensor. Use stats from cur tensor.
     BENCHDNN_PRINT((res->errors ? 0 : 6),
             "[COMPARE_STATS]%s: trh=%g (compare against [L2] rel_diff)\n",
-            get_kind_str().c_str(), trh_);
+            get_kind_str().c_str(), trh_norm_);
 
     if (res->state == EXECUTED) res->state = PASSED;
 
@@ -618,13 +626,43 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
 
 int compare_t::compare(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
         const attr_t &attr, res_t *res) const {
-    std::string add_args = std::string(use_norm_ ? "use_norm:true;" : "")
+    std::string add_args
+            = std::string(allow_norm_check_ ? "allow_norm:true;" : "")
             + std::string(op_output_has_nans_ ? "has_nans:true;" : "")
             + std::string(has_prim_ref_ ? "has_prim_ref:true;" : "");
     BENCHDNN_PRINT(6, "[COMPARE]%s: zero_trust%%=%.2f%% extra=%s\n",
             get_kind_str().c_str(), zero_trust_percent_, add_args.c_str());
-    if (use_norm_) return compare_norm(exp_mem, got_mem, attr, res);
-    return compare_p2p(exp_mem, got_mem, attr, res);
+    auto st = compare_p2p(exp_mem, got_mem, attr, res);
+    if (st != OK) {
+        bool call_norm_check = allow_norm_check_;
+        // Note: the following code specifies additional driver's individual
+        // desires when to enable norm check. This one purely depends on the
+        // result of p2p comparison. So far graph is the only driver needing
+        // such. When this becomes a trend, move it to a registered function
+        // mechanism.
+        if (driver_name == "graph") {
+            // For graph driver there's additional runtime check based on the
+            // number of failed points. This is done to limit the risk of hiding
+            // issues. If the number of failed points is reasonably low, let it
+            // try the norm approach.
+            const size_t allowed_error_points = res->total / 1024;
+            const bool norm_check_allowed = allowed_error_points >= res->errors;
+
+            BENCHDNN_PRINT(0,
+                    "[COMPARE_STATS] Norm check is %s; error_to_total_ratio: "
+                    "%zu/%zu; allowed_ratio: %zu/%zu;\n",
+                    norm_check_allowed ? "allowed" : "prohibited", res->errors,
+                    res->total, allowed_error_points, res->total);
+
+            call_norm_check = call_norm_check && norm_check_allowed;
+        }
+
+        if (call_norm_check) {
+            reset_case_stats(res);
+            st = compare_norm(exp_mem, got_mem, attr, res);
+        }
+    }
+    return st;
 }
 
 } // namespace compare

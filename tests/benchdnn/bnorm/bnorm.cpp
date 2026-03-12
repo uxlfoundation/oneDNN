@@ -513,8 +513,8 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
     // Since bwd testing is done using results from forward which are random
     // fp32 values, diff_scale starts fluctuating, so we check norm for both
     // data, SC, and SH.
-    const bool compare_with_norm = (prb->dir & FLAG_BWD);
-    cmp.set_norm_validation_mode(compare_with_norm);
+    const bool allow_norm_check = (prb->dir & FLAG_BWD);
+    cmp.set_allow_norm_check(allow_norm_check);
 
     // Digits must be non-negative for safe left-shifting when `digits_dt`
     // exceeds `digits_f32`.

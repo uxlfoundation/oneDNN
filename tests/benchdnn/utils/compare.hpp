@@ -45,8 +45,14 @@ struct compare_t {
 
     compare_t() = default;
 
-    void set_norm_validation_mode(bool un) { use_norm_ = un; }
-    void set_threshold(float trh) { trh_ = trh; }
+    void set_allow_norm_check(bool anc) { allow_norm_check_ = anc; }
+    // Sets both thresholds - for p2p and norm. If needed an updated norm
+    // threshold, use `set_threshold_norm`.
+    void set_threshold(float trh) {
+        trh_ = trh;
+        trh_norm_ = trh;
+    }
+    void set_threshold_norm(float trhn) { trh_norm_ = trhn; }
     void set_zero_trust_percent(float ztp) { zero_trust_percent_ = ztp; }
     void set_data_kind(data_kind_t dk) { kind_ = dk; }
     void set_op_output_has_nans(bool ohn) { op_output_has_nans_ = ohn; }
@@ -69,10 +75,12 @@ struct compare_t {
             const attr_t &attr, res_t *res) const;
 
 private:
-    // Switch between point-to-point and norm comparison.
-    bool use_norm_ = false;
+    // If point-to-point comparison fails, allows fallback to norm check.
+    bool allow_norm_check_ = false;
     // Threshold for a point-to-point comparison.
     float trh_ = 0.f;
+    // Threshold for norm comparison.
+    float trh_norm_ = 0.f;
     // The percent value of zeros allowed in the output.
     float default_zero_trust_percent_ = 30.f;
     float zero_trust_percent_ = default_zero_trust_percent_;

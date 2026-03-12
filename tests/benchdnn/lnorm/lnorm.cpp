@@ -497,8 +497,8 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
 
 void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
         const args_t &ref_args) {
-    const bool compare_with_norm = (prb->dir & FLAG_BWD);
-    cmp.set_norm_validation_mode(compare_with_norm);
+    const bool allow_norm_check = (prb->dir & FLAG_BWD);
+    cmp.set_allow_norm_check(allow_norm_check);
 
     const auto dt = prb->dir & FLAG_FWD ? prb->dt[1] : prb->dt[0];
     // Digits must be non-negative for safe left-shifting when `digits_dt`

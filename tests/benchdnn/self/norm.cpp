@@ -124,7 +124,7 @@ static int check_compare_norm() {
     res_t res_bad {};
     res_bad.state = EXECUTED;
     compare::compare_t cmp;
-    cmp.set_norm_validation_mode(true);
+    cmp.set_allow_norm_check(true);
     cmp.set_threshold(
             sqrt(N) / sqrt(exp_sq_sum0) - 10.f * epsilon_dt(dnnl_f32));
     cmp.compare(m0, m1, attr_t(), &res_bad);

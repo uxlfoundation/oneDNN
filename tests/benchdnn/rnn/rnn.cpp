@@ -1039,10 +1039,10 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
     //   as long as we get precise u8 intermediate results (and so far we do),
     //   the f32 result should be pretty accurate -- the dequantization is just
     //   two simple ops: f32 = scale * u8 + shift.
-    bool check_p2p = (prb->skip_nonlinear
-            || ((prb->n_layer == 1) && (prb->n_iter == 1)));
-    if (prb->is_int8() && rnn_kind == DST_ITER_C) check_p2p = false;
-    cmp.set_norm_validation_mode(!check_p2p);
+    const bool disallow_norm_check = prb->skip_nonlinear
+            || (prb->n_layer == 1 && prb->n_iter == 1)
+            || (prb->is_int8() && rnn_kind == DST_ITER_C);
+    cmp.set_allow_norm_check(!disallow_norm_check);
 
     const auto rnn_add_check =
             [&, prb](const compare::compare_t::driver_check_func_args_t &args) {

@@ -113,13 +113,18 @@ struct sdpa_desc_t : public op_desc_t {
     dnnl_dim_t values() const { return v_desc.dims[v_desc.ndims - 1]; }
     dim_t num_q_heads() const { return q_desc.dims[1]; }
     dim_t num_kv_heads() const { return kv_head_number; }
-    // Total batch size.
-    dnnl_dim_t batch_size() const {
-        dnnl_dim_t batch = 1;
-        for (int i = 0; i < dst_desc.ndims - 2; i++)
-            batch *= dst_desc.dims[i];
-        return batch;
-    }
+    // Batch size (outer batch dimension, excluding heads).
+    dnnl_dim_t batch() const { return dst_desc.dims[0]; }
+
+    // Memory descriptors
+    const memory_desc_t *qry_md() const { return &q_desc; }
+    const memory_desc_t *key_md() const { return &k_desc; }
+    const memory_desc_t *val_md() const { return &v_desc; }
+    const memory_desc_t *attn_mask_md() const { return &attn_mask_desc; }
+    const memory_desc_t *scale_md() const { return &scale_desc; }
+    const memory_desc_t *diff_qry_md() const { return &diff_q_desc; }
+    const memory_desc_t *diff_key_md() const { return &diff_k_desc; }
+    const memory_desc_t *diff_val_md() const { return &diff_v_desc; }
 };
 
 } // namespace impl

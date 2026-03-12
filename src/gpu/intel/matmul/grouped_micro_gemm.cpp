@@ -91,7 +91,7 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
             && pd()->src_group_sizes_[1] < pd()->K();
     opts.offsetB = pd()->src_quant_.with_zp();
     opts.slmPtr = true;
-    opts.kParallelLocal = true;
+    opts.kParallelLocal = !pd()->is_prefill_;
 
     if (opts.scaleA) {
         data_type_t wei_scale_dt = pd()->wei_quant_.scale_dt();
@@ -157,7 +157,7 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
 
     SizeParams sizes;
     sizes.m = static_cast<uint16_t>(pd()->N());
-    sizes.n = std::max<int>(1, static_cast<float>(pd()->M()) / pd()->ngroups_);
+    sizes.n = pd()->is_prefill_ ? 32 : 8;
     sizes.k = static_cast<uint16_t>(pd()->K());
 
     auto strat_override = [&](gemmstone::GEMMStrategy &strat) {
@@ -274,6 +274,11 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
             (int)src_grouped.group_count, (int)dst_grouped.group_count);
 
     ngroups_ = src_grouped.group_count;
+
+    // Prefill shapes have many entries per expert. We are determining
+    // prefill shapes checking the average number of entries per expert
+    is_prefill_ = (M() / static_cast<float>(ngroups_)) >= 2.f;
+
     // only supported dt for now
     VDISPATCH_MATMUL(utils::one_of(src_dt, f32, f16, bf16, u8, s8, s4, u4),
             VERBOSE_UNSUPPORTED_DT_CFG);
@@ -450,6 +455,9 @@ status_t grouped_micro_gemm_t::init(impl::engine_t *engine) {
     auto bia_dt = pd()->weights_md(1)->data_type;
     def_data_type(kernel_ctx_, bia_dt, "BIA");
     kernel_ctx_.define_int("WITH_BIAS", pd()->with_bias());
+
+    kernel_ctx_.define_int("K_PARALLEL_LOCAL", !pd()->is_prefill_);
+    kernel_ctx_.define_int("WITH_SLM", gemm_.getSetting("slm_size") > 0);
 
     return create_kernel(engine, &kernel_, "grouped_micro_gemm", kernel_ctx_);
 }

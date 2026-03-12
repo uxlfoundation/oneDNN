@@ -75,6 +75,7 @@ struct grouped_micro_gemm_t : public primitive_t {
         std::array<int, 3> wei_group_sizes_ = {0, 0, 0};
         quantization_t src_quant_;
         quantization_t wei_quant_;
+        bool is_prefill_ = false;
     };
     status_t init(impl::engine_t *engine) override;
     status_t init_microkernels(impl::engine_t *engine);

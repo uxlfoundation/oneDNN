@@ -93,7 +93,16 @@ int get_wei_k_blk(data_type_t wei_dt) {
 
 void mem_advice_init(brgemm_matmul_conf_t &bgmmc) {
 
-    dim_t parallel_work_amount = bgmmc.batch * bgmmc.M_chunks * bgmmc.N_chunks;
+    // TODO: Verify whether using a chunk count of 1 for runtime M and N is optimal for
+    // this heuristic. The previous implementation inadvertently used values calculated
+    // as div_up(bgmmc.M, bgmmc.M_chunk_elems) and div_up(bgmmc.N, bgmmc.N_chunk_elems)
+    // respectively with bgmmc.M or bgmmc.N being equal to DNNL_RUNTIME_DIM_VAL, and
+    // div_up(a,b) calculated as ((a + b - 1) / b). If e.g. bgmmc.M_chunk_elems==256
+    // then (DNNL_RUNTIME_DIM_VAL + 256 - 1)/256==0xff80000000000001, and
+    // static_cast<int>(0xff80000000000001) == 1, so bgmmc.M_chunks=1.
+    const auto M_chunks = is_runtime_value(bgmmc.M_chunks) ? 1 : bgmmc.M_chunks;
+    const auto N_chunks = is_runtime_value(bgmmc.N_chunks) ? 1 : bgmmc.N_chunks;
+    const dim_t parallel_work_amount = bgmmc.batch * M_chunks * N_chunks;
     int nthr_bmn = bgmmc.nthr / bgmmc.nthr_k;
     dim_t start {0}, end {0};
     balance211(parallel_work_amount, nthr_bmn, 0, start, end);
@@ -108,7 +117,7 @@ void mem_advice_init(brgemm_matmul_conf_t &bgmmc) {
     if (bgmmc.is_thread_chunks_exec_order_horizontal) {
         bgmmc.mem_advice
                 = brgemm_kernel_hint_mem_advice_t::brgemm_hint_mem_advice_B;
-        if (nchunks_per_thread % bgmmc.N_chunks && bgmmc.is_amx)
+        if (nchunks_per_thread % N_chunks && bgmmc.is_amx)
             bgmmc.mem_advice = brgemm_kernel_hint_mem_advice_t::
                     brgemm_hint_mem_advice_A_B;
     } else {
@@ -116,7 +125,7 @@ void mem_advice_init(brgemm_matmul_conf_t &bgmmc) {
                 && "this mode is not operational at the moment");
         bgmmc.mem_advice
                 = brgemm_kernel_hint_mem_advice_t::brgemm_hint_mem_advice_A;
-        if (nchunks_per_thread % bgmmc.M_chunks)
+        if (nchunks_per_thread % M_chunks)
             bgmmc.mem_advice = brgemm_kernel_hint_mem_advice_t::
                     brgemm_hint_mem_advice_A_B;
     }

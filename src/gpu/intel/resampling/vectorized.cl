@@ -27,20 +27,28 @@ inline int ceil_pos(float x) {
     return max((int)ceil(x), (int)0);
 }
 
-#define DST_MB_STRIDE(x) (x % DST_B0) * DST_SB0 + (x / DST_B0) * DST_S0
-#define DST_C_STRIDE(x) (x % DST_B1) * DST_SB1 + (x / DST_B1) * DST_S1
+#define DST_MB_STRIDE(x) \
+    ((off_t)((x) % DST_B0) * DST_SB0 + (off_t)((x) / DST_B0) * DST_S0)
+#define DST_C_STRIDE(x) \
+    ((off_t)((x) % DST_B1) * DST_SB1 + (off_t)((x) / DST_B1) * DST_S1)
 #if NDIMS == 3
-#define OW_STRIDE(x) (x % DST_B2) * DST_SB2 + (x / DST_B2) * DST_S2
+#define OW_STRIDE(x) \
+    ((off_t)((x) % DST_B2) * DST_SB2 + (off_t)((x) / DST_B2) * DST_S2)
 #define OH_STRIDE(x) 0
 #define OD_STRIDE(x) 0
 #elif NDIMS == 4
-#define OW_STRIDE(x) (x % DST_B3) * DST_SB3 + (x / DST_B3) * DST_S3
-#define OH_STRIDE(x) (x % DST_B2) * DST_SB2 + (x / DST_B2) * DST_S2
+#define OW_STRIDE(x) \
+    ((off_t)((x) % DST_B3) * DST_SB3 + (off_t)((x) / DST_B3) * DST_S3)
+#define OH_STRIDE(x) \
+    ((off_t)((x) % DST_B2) * DST_SB2 + (off_t)((x) / DST_B2) * DST_S2)
 #define OD_STRIDE(x) 0
 #elif NDIMS == 5
-#define OW_STRIDE(x) (x % DST_B4) * DST_SB4 + (x / DST_B4) * DST_S4
-#define OH_STRIDE(x) (x % DST_B3) * DST_SB3 + (x / DST_B3) * DST_S3
-#define OD_STRIDE(x) (x % DST_B2) * DST_SB2 + (x / DST_B2) * DST_S2
+#define OW_STRIDE(x) \
+    ((off_t)((x) % DST_B4) * DST_SB4 + (off_t)((x) / DST_B4) * DST_S4)
+#define OH_STRIDE(x) \
+    ((off_t)((x) % DST_B3) * DST_SB3 + (off_t)((x) / DST_B3) * DST_S3)
+#define OD_STRIDE(x) \
+    ((off_t)((x) % DST_B2) * DST_SB2 + (off_t)((x) / DST_B2) * DST_S2)
 #endif
 
 KERNEL_ATTR
@@ -55,7 +63,7 @@ __kernel void vectorized_resampling_bwd(
     const uint id = (get_global_id(0) / ID_STRIDE) % ID;
     const uint ih = (get_global_id(0) / IH_STRIDE) % IH;
     const uint iw = (get_global_id(0) / IW_STRIDE) % IW;
-    const uint src_index = SRC_OFF(mb, c_start, id, ih, iw);
+    const off_t src_index = SRC_OFF(mb, c_start, id, ih, iw);
 
     VECT_DEF_ACC_DATA_T src_val = 0.0f;
 
@@ -71,7 +79,7 @@ __kernel void vectorized_resampling_bwd(
     for_(int i = od_start; i < od_end; i++)
     for_(int j = oh_start; j < oh_end; j++)
     for (int k = ow_start; k < ow_end; k++) {
-        const int dst_index = DST_OFF(mb, c_start, i, j, k);
+        const off_t dst_index = DST_OFF(mb, c_start, i, j, k);
 #if VECT_DT_N == 1
         src_val += AS_VECT_DEF_ACC_DATA_T(diff_dst[dst_index + sglid]);
 #else
@@ -220,21 +228,21 @@ __kernel void vectorized_resampling_bwd(
     // Have to wait to drop out until shuffles are done
     if (mb >= MB || c >= C) return;
 
-    const uint mb_c_off = DST_MB_STRIDE(mb) + DST_C_STRIDE(c_start);
+    const off_t mb_c_off = DST_MB_STRIDE(mb) + DST_C_STRIDE(c_start);
     for_(int c1 = 0; c1 < 2; c1++)
     for (int od = od_start[c1], i = 0; i < MAX_NUM_D && od < od_end[c1];
             od++, i++) {
-        const uint d_off = mb_c_off + OD_STRIDE(od);
+        const off_t d_off = mb_c_off + OD_STRIDE(od);
         float Wid = d_list[c1][i];
         for_(int c2 = 0; c2 < 2; c2++)
         for (int oh = oh_start[c2], j = 0; j < MAX_NUM_H && oh < oh_end[c2];
                 oh++, j++) {
-            const uint h_off = d_off + OH_STRIDE(oh);
+            const off_t h_off = d_off + OH_STRIDE(oh);
             float Wih = h_list[c2][j];
             unroll_for(int c3 = 0; c3 < 2; c3++)
                     unroll_for(int k = 0, ow = ow_start[c3];
                                k < MAX_NUM_W && ow < ow_end[c3]; k++, ow++) {
-                const uint dst_off = h_off + OW_STRIDE(ow);
+                const off_t dst_off = h_off + OW_STRIDE(ow);
 #if VECT_DT_N == 1
                 VECT_DEF_ACC_DATA_T dst_val
                         = AS_VECT_DEF_ACC_DATA_T(diff_dst[dst_off + sglid]);

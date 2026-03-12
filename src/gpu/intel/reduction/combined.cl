@@ -51,19 +51,19 @@
 #error "At most 2 zero pad patterns permitted"
 #endif
 
-bool is_dst_zero_padded(const dim_t dst_off) {
+bool is_dst_zero_padded(const off_t dst_off) {
     bool ret = false;
 #if NUM_DST_ZPAD >= 1
     {
-        const dim_t outer_idx = (dst_off / DST_Z0_STRIDE1) % DST_Z0_SIZE1;
-        const dim_t inner_idx = (dst_off / DST_Z0_STRIDE0) % DST_Z0_SIZE0;
+        const off_t outer_idx = (dst_off / DST_Z0_STRIDE1) % DST_Z0_SIZE1;
+        const off_t inner_idx = (dst_off / DST_Z0_STRIDE0) % DST_Z0_SIZE0;
         ret |= (outer_idx * DST_Z0_SIZE0 + inner_idx >= DST_Z0_SIZE);
     }
 #endif
 #if NUM_DST_ZPAD >= 2
     {
-        const dim_t outer_idx = (dst_off / DST_Z1_STRIDE1) % DST_Z1_SIZE1;
-        const dim_t inner_idx = (dst_off / DST_Z1_STRIDE0) % DST_Z1_SIZE0;
+        const off_t outer_idx = (dst_off / DST_Z1_STRIDE1) % DST_Z1_SIZE1;
+        const off_t inner_idx = (dst_off / DST_Z1_STRIDE0) % DST_Z1_SIZE0;
         ret |= (outer_idx * DST_Z1_SIZE0 + inner_idx >= DST_Z1_SIZE);
     }
 #endif
@@ -74,8 +74,8 @@ bool is_dst_zero_padded(const dim_t dst_off) {
 // increase strides to skip over zeros
 // XXX: Relies on zero padding being sorted by inner stride
 // i.e. DST_Z0_STRIDE0 < DST_Z1_STRIDE0
-dim_t dst_off_w_zero_padding(dim_t outer, dim_t inner) {
-    dim_t outer_stride = INNER_DIM_SIZE;
+off_t dst_off_w_zero_padding(off_t outer, off_t inner) {
+    off_t outer_stride = INNER_DIM_SIZE;
 
 #if NUM_DST_ZPAD >= 1 && DST_Z0_IS_REDUCED
 #if DST_Z0_SIZE1 != 1 || DST_Z0_SIZE != 1
@@ -87,8 +87,8 @@ dim_t dst_off_w_zero_padding(dim_t outer, dim_t inner) {
     // In cases with split-reductions (i.e. aBx16b for 8x1024x32:8x1x32)
     // the zero-padding is inserted in the middle (potentially) of the inner
     // block, so we need to wrap inner indexing around it
-    const dim_t inside0 = inner % DST_Z0_STRIDE0;
-    const dim_t idx0 = inner / DST_Z0_STRIDE0;
+    const off_t inside0 = inner % DST_Z0_STRIDE0;
+    const off_t idx0 = inner / DST_Z0_STRIDE0;
     inner = inside0 + idx0 * DST_Z0_SIZE0 * DST_Z0_STRIDE0;
 #endif
 #if NUM_DST_ZPAD >= 2 && DST_Z1_IS_REDUCED
@@ -97,16 +97,16 @@ dim_t dst_off_w_zero_padding(dim_t outer, dim_t inner) {
 #endif
     // Increase to account for DST_Z1
     outer_stride *= DST_Z1_SIZE0;
-    const dim_t inside1 = inner % DST_Z1_STRIDE0;
-    const dim_t idx1 = inner / DST_Z1_STRIDE0;
+    const off_t inside1 = inner % DST_Z1_STRIDE0;
+    const off_t idx1 = inner / DST_Z1_STRIDE0;
     inner = inside1 + idx1 * DST_Z1_SIZE0 * DST_Z1_STRIDE0;
 #endif
     return outer * outer_stride + inner;
 }
 
 #define _SRC_OFF(outer, reduction, inner) \
-    ((outer) * REDUCTION_SIZE * INNER_DIM_SIZE + (reduction) * INNER_DIM_SIZE \
-            + (inner))
+    ((off_t)(outer) * REDUCTION_SIZE * INNER_DIM_SIZE \
+            + (off_t)(reduction) * INNER_DIM_SIZE + (off_t)(inner))
 
 #define _DST_OFF(outer, inner) dst_off_w_zero_padding(outer, inner)
 
@@ -121,7 +121,7 @@ dim_t dst_off_w_zero_padding(dim_t outer, dim_t inner) {
 #endif
 
 #if WITH_POST_OP
-void reverse_indexing(dim_t dst_off, int *res) {
+void reverse_indexing(off_t dst_off, int *res) {
     // Reconstruct dimension indices from dst_off
     res[0] = (DST_S0 == 0) ? 0
                            : dst_off / DST_S0 % div_up(DST_D0, DST_B0) * DST_B0
@@ -219,9 +219,9 @@ combined_reduce(
             SUBGROUP_SIZE, red_per_sg * (INNER_DIM_SIZE - inner_idx_start));
     ASSUME(active_channels == SUBGROUP_SIZE || !WITH_BLOCK_READ);
 
-    const int loop_stride = _SRC_OFF(0, other_reductions, 0);
+    const off_t loop_stride = _SRC_OFF(0, other_reductions, 0);
     __local DEF_ACC_DATA_T slm_acc[SLM_PER_SG * wg_reductions];
-    unroll_for(int oid = 0; oid < OUTER_TILE_SIZE; oid++) {
+    unroll_for(off_t oid = 0; oid < OUTER_TILE_SIZE; oid++) {
         const int outer_idx = outer_idx_start + oid;
 
         // ---- Work item (loop) reductions ----
@@ -231,14 +231,14 @@ combined_reduce(
         // Each thread reduces in a loop
         if (sglid < active_channels) {
             // red_off_tg - red_off_sg to get the starting point for the subgroup
-            int src_off = _SRC_OFF(
+            off_t src_off = _SRC_OFF(
                     outer_idx, red_off_tg - red_off_sg, inner_idx_start);
             if (!WITH_BLOCK_READ) src_off += sglid;
             for (int iters = num_horiz_reductions; iters > 0; --iters) {
                 const DATA_T src_val = READ_DATA(src[src_off]);
                 acc = reduce(
                         REDUCTION_ALG, acc, TO_DEF_ACC_DATA_T(src_val), POWER);
-                DUMP("(iter +%d) src[%d] = %f\n", iters, src_off,
+                DUMP("(iter +%d) src[%ld] = %f\n", iters, (long)src_off,
                         CONVERT_FLOAT_T(src_val));
                 src_off += loop_stride;
             }
@@ -246,7 +246,7 @@ combined_reduce(
                 const DATA_T src_val = READ_DATA(src[src_off]);
                 acc = reduce(
                         REDUCTION_ALG, acc, TO_DEF_ACC_DATA_T(src_val), POWER);
-                DUMP("(tail) src[%d] = %f\n", src_off,
+                DUMP("(tail) src[%ld] = %f\n", (long)src_off,
                         CONVERT_FLOAT_T(src_val));
             }
         }
@@ -287,7 +287,7 @@ combined_reduce(
             }
         }
 
-        const dim_t dst_off = _DST_OFF(outer_idx, inner_idx);
+        const off_t dst_off = _DST_OFF(outer_idx, inner_idx);
 
         // ---- Finalize results and clean up ----
 

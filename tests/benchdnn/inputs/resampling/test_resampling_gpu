@@ -46,6 +46,14 @@
 ic3iw5ow35
 ic3iw5ow30
 
+# large test case
+--reset
+--dir=FWD_D,BWD_D
+--sdt=f32,bf16
+--ddt=f32,bf16
+--alg=nearest,linear
+mb1ic512_iw65536_ow32768
+
 # Test layers of some key GPU DL Frameworks
 --reset
 --batch=option_set_fwks_key_gpu

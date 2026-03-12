@@ -19,3 +19,11 @@
 # Test CI in Nightly
 --reset
 --batch=test_lrn_ci
+
+#large-tensor case
+--reset
+--dt=f32
+--alg=ACROSS,WITHIN
+--dir=FWD_D,BWD_D
+--tag=abx
+ic512_ih1iw65536_n"lrn_ci_2d:large_axis_index"

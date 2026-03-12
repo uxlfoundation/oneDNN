@@ -36,6 +36,12 @@
 14745600:1
 10000000x15:1x15
 
+--reset
+--sdt=bf16,f16,f32
+--ddt=f32
+--alg=sum
+33554432:1
+
 # Test CI in Nightly
 --reset
 --batch=test_reduction_ci

@@ -1,4 +1,4 @@
-/*******************************************************************************simple_simple_reduce_index
+/*******************************************************************************
 * Copyright 2019 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,8 +23,8 @@
 #define VECT_CHAR_TO_INT CONCAT2(convert_int, VECT_DT_N)
 #endif
 
-int simple_reduce_index(int x[5]) {
-    int dim[5] = {MB, IC, ID, IH, IW};
+off_t simple_reduce_index(off_t x[5]) {
+    off_t dim[5] = {MB, IC, ID, IH, IW};
     dim[REDUCE_DIM_IDX] = 1;
     return x[0] * (dim[2] * dim[3] * dim[4]) + x[2] * (dim[3] * dim[4])
             + x[3] * dim[4] + x[4];
@@ -33,7 +33,7 @@ int simple_reduce_index(int x[5]) {
 NAMED_KERNEL_ATTR(CALC)
 __kernel void simple_calculate_mean_variance(
         __global DATA_T *src, __global float *mean, __global float *variance) {
-    int x[5];
+    off_t x[5];
     x[0] = GWS_GET_STAT_MB();
     x[1] = GWS_GET_STAT_IC();
     x[2] = GWS_GET_STAT_ID();
@@ -47,7 +47,7 @@ __kernel void simple_calculate_mean_variance(
 
     for (int i = 0; i < REDUCE_DIM; i += SUB_GROUP_SIZE * VECT_DT_N) {
         x[REDUCE_DIM_IDX] = i;
-        int src_off = SRC_OFF(x[0], x[1], x[2], x[3], x[4]);
+        off_t src_off = SRC_OFF(x[0], x[1], x[2], x[3], x[4]);
         VECT_FLOAT_T src_vect = CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(
                 VECT_BLOCK_READ((const __global BLOCK_DATA_T *)&src[src_off])));
         src_sum += src_vect;
@@ -66,7 +66,7 @@ __kernel void simple_calculate_mean_variance(
 #endif // VECT_DT_N == 1
 
     x[REDUCE_DIM_IDX] = 0;
-    int reduce_idx = simple_reduce_index(x);
+    off_t reduce_idx = simple_reduce_index(x);
 
     float total_sum = sub_group_reduce_add(sum);
     float total_pow_sum = sub_group_reduce_add(pow_sum);
@@ -85,11 +85,11 @@ __kernel void simple_bnorm_fwd(__global DATA_T *src, __global float *mean,
         __global float *variance, __global DATA_T *dst, __global float *scale,
         __global float *shift, __global char *ws, float eps,
         __global DATA_T *src_add, float relu_alpha) {
-    const int n = GWS_GET_MB();
-    const int c = GWS_GET_IC();
-    const int d = GWS_GET_ID();
-    const int h = GWS_GET_IH();
-    const int w = GWS_GET_IW();
+    const off_t n = GWS_GET_MB();
+    const off_t c = GWS_GET_IC();
+    const off_t d = GWS_GET_ID();
+    const off_t h = GWS_GET_IH();
+    const off_t w = GWS_GET_IW();
 #if USE_SCALE == 1
     float sm = scale[c];
 #else
@@ -106,7 +106,7 @@ __kernel void simple_bnorm_fwd(__global DATA_T *src, __global float *mean,
 #endif
     float v_mean = mean[c];
     float v_variance = variance[c];
-    const int off = SRC_OFF(n, c, d, h, w);
+    const off_t off = SRC_OFF(n, c, d, h, w);
     float v0 = TO_DEF_ACC_DATA_T(src[off]);
     float sqrt_variance = 1.0f / sqrt(v_variance + eps);
     float bn_res = sm * (v0 - v_mean) * sqrt_variance + sv;
@@ -146,20 +146,20 @@ NAMED_KERNEL_ATTR(CALC)
 __kernel void simple_calculate_stats(__global DATA_T *src, __global float *mean,
         __global DATA_T *diff_dst, __global char *ws,
         __global float *reduce_temp) {
-    const int mb = GWS_GET_STAT_MB();
-    const int stat_mb_block_idx = mb / MB_BLOCK;
+    const off_t mb = GWS_GET_STAT_MB();
+    const off_t stat_mb_block_idx = mb / MB_BLOCK;
 
-    const int c = GWS_GET_STAT_IC();
+    const off_t c = GWS_GET_STAT_IC();
 
-    const int sp_beg = GWS_GET_STAT_SP();
-    const int stat_sp_block = GWS_GET_STAT_SP_BLOCK();
-    const int stat_sp_nblocks = ID * IH * IW / stat_sp_block;
-    const int stat_sp_block_idx = sp_beg / stat_sp_block;
+    const off_t sp_beg = GWS_GET_STAT_SP();
+    const off_t stat_sp_block = GWS_GET_STAT_SP_BLOCK();
+    const off_t stat_sp_nblocks = ID * IH * IW / stat_sp_block;
+    const off_t stat_sp_block_idx = sp_beg / stat_sp_block;
 
-    const int mb_sp_idx
+    const off_t mb_sp_idx
             = stat_mb_block_idx * stat_sp_nblocks + stat_sp_block_idx;
 
-    const int s_off = c * ID * IH * IW * MB_BLOCK + mb * IC * ID * IH * IW
+    const off_t s_off = c * ID * IH * IW * MB_BLOCK + mb * IC * ID * IH * IW
             + sp_beg * MB_BLOCK * IC_BLOCK;
     src += s_off;
     diff_dst += s_off;
@@ -225,7 +225,7 @@ NAMED_KERNEL_ATTR(REDUCE)
 __kernel void simple_reduce_stats(__global float *reduce_temp,
         __global float *diff_scale, __global float *diff_shift,
         __global float *variance, float eps) {
-    const int c = GWS_GET_REDUCE_STAT_IC();
+    const off_t c = GWS_GET_REDUCE_STAT_IC();
     reduce_temp += c;
     float diff_gamma = 0.0f, diff_beta = 0.0f;
     for (int i = 0; i < REDUCE_STAT_NBLOCKS; i++) {
@@ -250,11 +250,11 @@ __kernel void simple_bnorm_bwd(__global DATA_T *src, __global float *mean,
         __global float *scale, __global char *ws, __global DATA_T *diff_src,
         __global float *diff_scale, __global float *diff_shift, float eps,
         __global DATA_T *diff_src_add) {
-    const int n = GWS_GET_MB();
-    const int c = GWS_GET_IC();
-    const int d = GWS_GET_ID();
-    const int h = GWS_GET_IH();
-    const int w = GWS_GET_IW();
+    const off_t n = GWS_GET_MB();
+    const off_t c = GWS_GET_IC();
+    const off_t d = GWS_GET_ID();
+    const off_t h = GWS_GET_IH();
+    const off_t w = GWS_GET_IW();
 
 #if USE_SCALE == 1
     float gamma = as_float(
@@ -281,7 +281,7 @@ __kernel void simple_bnorm_bwd(__global DATA_T *src, __global float *mean,
 #endif // #if USE_SHIFT == 1
 #endif
 
-    const uint d_off = SRC_OFF(n, c, d, h, w);
+    const off_t d_off = SRC_OFF(n, c, d, h, w);
     diff_src += d_off;
 #if FUSE_BN_ADD_RELU == 1
     diff_src_add += d_off;

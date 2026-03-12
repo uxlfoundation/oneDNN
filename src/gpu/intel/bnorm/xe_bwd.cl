@@ -88,11 +88,11 @@ __kernel void xe_calculate_stats(__global DATA_T *src, __global float *mean,
         __global float *temp_reduce, volatile __global atomic_float *diff_scale,
         volatile __global atomic_float *diff_shift) {
 
-    const int mb = GWS_GET_STAT_MB();
-    const int c = GWS_GET_STAT_IC();
-    const int sp_block_idx = GWS_GET_STAT_SP();
-    const int mb_sp_idx = mb * STAT_SP_NBLOCKS + sp_block_idx;
-    const int group_c_offset = REDUCE_STAT_NBLOCKS * 16 * (int)(c / 16);
+    const off_t mb = GWS_GET_STAT_MB();
+    const off_t c = GWS_GET_STAT_IC();
+    const off_t sp_block_idx = GWS_GET_STAT_SP();
+    const off_t mb_sp_idx = mb * STAT_SP_NBLOCKS + sp_block_idx;
+    const off_t group_c_offset = REDUCE_STAT_NBLOCKS * 16 * (c / 16);
     const int simd_id = get_sub_group_local_id();
 #if HAS_IC_TAIL
     const bool is_last_ic_block = c + 16 > IC;
@@ -102,9 +102,9 @@ __kernel void xe_calculate_stats(__global DATA_T *src, __global float *mean,
     temp_reduce += group_c_offset;
 
 #if USE_NHWC
-    const int offset = c + sp_block_idx * STAT_SP_BLOCK * IC;
+    const off_t offset = c + sp_block_idx * STAT_SP_BLOCK * IC;
 #else
-    const int offset = (c & 15) + sp_block_idx * STAT_SP_BLOCK * 16
+    const off_t offset = (c & 15) + sp_block_idx * STAT_SP_BLOCK * 16
             + (c & ~15) * SP + mb * SP * IC;
 #endif
     src += offset;
@@ -287,7 +287,7 @@ __kernel void xe_bnorm_bwd(__global DATA_T *src, __global float *mean,
         __global DATA_T *diff_src, __global float *diff_scale,
         __global float *diff_shift, float eps, __global DATA_T *diff_src_add) {
 
-    const int c = GWS_GET_IC();
+    const off_t c = GWS_GET_IC();
     const int simd_id = get_sub_group_local_id();
 #if HAS_IC_TAIL
     const bool is_last_ic_block = c + 16 > IC;
@@ -311,13 +311,13 @@ __kernel void xe_bnorm_bwd(__global DATA_T *src, __global float *mean,
     const float gamma = 1;
 #endif // #if USE_SCALE == 1
 
-    const int sp_block_idx = GWS_GET_SP();
+    const off_t sp_block_idx = GWS_GET_SP();
 #if USE_NHWC
-    const int offset = c + sp_block_idx * VECT_SIZE * IC;
+    const off_t offset = c + sp_block_idx * VECT_SIZE * IC;
 #else
-    const int mb = GWS_GET_MB();
-    const int offset = (c & 15) + sp_block_idx * VECT_SIZE * 16 + (c & ~15) * SP
-            + mb * SP * IC;
+    const off_t mb = GWS_GET_MB();
+    const off_t offset = (c & 15) + sp_block_idx * VECT_SIZE * 16
+            + (c & ~15) * SP + mb * SP * IC;
 #endif
 
 #if HAS_IC_TAIL

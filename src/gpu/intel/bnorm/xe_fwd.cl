@@ -52,13 +52,13 @@ __kernel void xe_calc_mean_var(__global DATA_T *src,
         volatile __global atomic_float *mean,
         volatile __global atomic_float *variance) {
 
-    const int mb = GWS_GET_STAT_MB();
-    const int c = GWS_GET_STAT_IC();
-    const int sp_block_idx = GWS_GET_STAT_SP();
-    const int mb_sp_idx = mb * STAT_SP_NBLOCKS + sp_block_idx;
-    const int group_c_offset = REDUCE_STAT_NBLOCKS * 16 * (int)(c / 16);
+    const off_t mb = GWS_GET_STAT_MB();
+    const off_t c = GWS_GET_STAT_IC();
+    const off_t sp_block_idx = GWS_GET_STAT_SP();
+    const off_t mb_sp_idx = mb * STAT_SP_NBLOCKS + sp_block_idx;
+    const off_t group_c_offset = REDUCE_STAT_NBLOCKS * 16 * (c / 16);
     const int simd_id = get_sub_group_local_id();
-    const int ver_offs = REDUCE_STAT_NBLOCKS * IC;
+    const off_t ver_offs = REDUCE_STAT_NBLOCKS * IC;
 
 #if USE_NHWC
     src += c + sp_block_idx * STAT_SP_BLOCK * IC;
@@ -147,11 +147,11 @@ NAMED_KERNEL_ATTR(CALC)
 __kernel void xe_calc_mean(__global DATA_T *src, __global float *reduce_temp,
         volatile __global atomic_float *mean) {
 
-    const int mb = GWS_GET_STAT_MB();
-    const int c = GWS_GET_STAT_IC();
-    const int sp_block_idx = GWS_GET_STAT_SP();
-    const int mb_sp_idx = mb * STAT_SP_NBLOCKS + sp_block_idx;
-    const int group_c_offset = REDUCE_STAT_NBLOCKS * 16 * (int)(c / 16);
+    const off_t mb = GWS_GET_STAT_MB();
+    const off_t c = GWS_GET_STAT_IC();
+    const off_t sp_block_idx = GWS_GET_STAT_SP();
+    const off_t mb_sp_idx = mb * STAT_SP_NBLOCKS + sp_block_idx;
+    const off_t group_c_offset = REDUCE_STAT_NBLOCKS * 16 * (c / 16);
     const int simd_id = get_sub_group_local_id();
 #if HAS_IC_TAIL
     const bool is_last_ic_block = c + 16 > IC;
@@ -283,11 +283,11 @@ NAMED_KERNEL_ATTR(CALC)
 __kernel void xe_calc_variance(__global DATA_T *src, __global float *mean,
         __global float *reduce_temp, __global atomic_float *variance) {
 
-    const int mb = GWS_GET_STAT_MB();
-    const int c = GWS_GET_STAT_IC();
-    const int sp_block_idx = GWS_GET_STAT_SP();
-    const int mb_sp_idx = mb * STAT_SP_NBLOCKS + sp_block_idx;
-    const int group_c_offset = REDUCE_STAT_NBLOCKS * 16 * (int)(c / 16);
+    const off_t mb = GWS_GET_STAT_MB();
+    const off_t c = GWS_GET_STAT_IC();
+    const off_t sp_block_idx = GWS_GET_STAT_SP();
+    const off_t mb_sp_idx = mb * STAT_SP_NBLOCKS + sp_block_idx;
+    const off_t group_c_offset = REDUCE_STAT_NBLOCKS * 16 * (c / 16);
     const int simd_id = get_sub_group_local_id();
 #if HAS_IC_TAIL
     const bool is_last_ic_block = c + 16 > IC;
@@ -480,9 +480,9 @@ __kernel void xe_bnorm_fwd(__global DATA_T *src, __global float *mean,
         __global float *scaleshift, __global float *shift, __global char *ws,
         float eps, __global DATA_T *src_add, float relu_alpha) {
 
-    const int n = GWS_GET_MB();
-    const int c = GWS_GET_IC();
-    const int sp = GWS_GET_SP() * VECT_SIZE;
+    const off_t n = GWS_GET_MB();
+    const off_t c = GWS_GET_IC();
+    const off_t sp = GWS_GET_SP() * VECT_SIZE;
 
     const int simd_id = get_sub_group_local_id();
 #if HAS_IC_TAIL
@@ -491,9 +491,9 @@ __kernel void xe_bnorm_fwd(__global DATA_T *src, __global float *mean,
 #endif
 
 #if USE_NHWC
-    const uint d_off = sp * IC + c;
+    const off_t d_off = sp * IC + c;
 #else
-    const uint d_off = (c & 15) + sp * 16 + (c & ~15) * SP + n * SP * IC;
+    const off_t d_off = (c & 15) + sp * 16 + (c & ~15) * SP + n * SP * IC;
 #endif
 
     src += d_off;

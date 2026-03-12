@@ -345,7 +345,7 @@ status_t nhwc_reusable_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
         calc_mean_arg_list.append(*tmp_reduce);
         calc_mean_arg_list.append(mean);
         calc_mean_arg_list.append(rt_conf.ic_size);
-        calc_mean_arg_list.append(rt_conf.ic_block);
+        calc_mean_arg_list.append(into<int>(rt_conf.ic_block));
         calc_mean_arg_list.append(rt_conf.sp_size);
         calc_mean_arg_list.append(rt_conf.stat_sp_block);
         calc_mean_arg_list.append(rt_conf.reduce_stat_nblocks);
@@ -398,7 +398,7 @@ status_t nhwc_reusable_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
         calc_var_arg_list.append(*tmp_reduce);
         calc_var_arg_list.append(variance);
         calc_var_arg_list.append(rt_conf.ic_size);
-        calc_var_arg_list.append(rt_conf.ic_block);
+        calc_var_arg_list.append(into<int>(rt_conf.ic_block));
         calc_var_arg_list.append(rt_conf.sp_size);
         calc_var_arg_list.append(rt_conf.stat_sp_block);
         calc_var_arg_list.append(rt_conf.reduce_stat_nblocks);
@@ -454,7 +454,7 @@ status_t nhwc_reusable_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
         arg_list.append(mean);
         arg_list.append(variance);
         arg_list.append(rt_conf.ic_size);
-        arg_list.append(rt_conf.ic_block);
+        arg_list.append(into<int>(rt_conf.ic_block));
         arg_list.append(rt_conf.sp_size);
         arg_list.append(rt_conf.stat_sp_block);
         arg_list.append(rt_conf.reduce_stat_nblocks);
@@ -516,7 +516,7 @@ status_t nhwc_reusable_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     arg_list.append(src_add);
     arg_list.append(rt_conf.relu_negative_slope);
     arg_list.append(rt_conf.ic_size);
-    arg_list.append(rt_conf.ic_block);
+    arg_list.append(into<int>(rt_conf.ic_block));
     arg_list.append(rt_conf.sp_size);
     arg_list.append(rt_conf.update_sp_block);
 
@@ -596,7 +596,7 @@ status_t nhwc_reusable_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     calc_stats_arg_list.append(diff_scale);
     calc_stats_arg_list.append(diff_shift);
     calc_stats_arg_list.append(rt_conf.ic_size);
-    calc_stats_arg_list.append(rt_conf.ic_block);
+    calc_stats_arg_list.append(into<int>(rt_conf.ic_block));
     calc_stats_arg_list.append(rt_conf.sp_size);
     calc_stats_arg_list.append(rt_conf.stat_sp_block);
     calc_stats_arg_list.append(rt_conf.reduce_stat_nblocks);
@@ -658,7 +658,7 @@ status_t nhwc_reusable_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     arg_list.append(rt_conf.eps);
     arg_list.append(diff_src_add);
     arg_list.append(rt_conf.ic_size);
-    arg_list.append(rt_conf.ic_block);
+    arg_list.append(into<int>(rt_conf.ic_block));
     arg_list.append(rt_conf.sp_size);
     arg_list.append(rt_conf.update_sp_block);
 

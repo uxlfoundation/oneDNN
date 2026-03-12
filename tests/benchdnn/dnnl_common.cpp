@@ -663,6 +663,10 @@ void finalize() {
 
 inline int measure_perf_individual(timer::timer_t &t, dnnl_stream_t stream,
         perf_function_t &perf_func, std::vector<dnnl_exec_arg_t> &dnnl_args) {
+    // Warm-up run.
+    DNN_SAFE(perf_func(stream, dnnl_args), WARN);
+    DNN_SAFE(dnnl_stream_wait(stream), CRIT);
+
     cold_cache_t cold_cache(dnnl_args, stream);
 
     t.reset();

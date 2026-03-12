@@ -81,6 +81,61 @@ static inline status_t sdpa_desc_check(const memory_desc_t *q_desc,
     return status::success;
 }
 
+static inline status_t sdpa_desc_check(const memory_desc_t *q_desc,
+        const memory_desc_t *k_desc, const memory_desc_t *v_desc,
+        const memory_desc_t *dst_desc, const memory_desc_t *attn_mask_md,
+        const memory_desc_t *diff_q_desc, const memory_desc_t *diff_k_desc,
+        const memory_desc_t *diff_v_desc, const memory_desc_t *diff_dst_desc,
+        const engine_t *engine, const primitive_attr_t *attr) {
+    int ndims = dst_desc->ndims;
+    int r = ndims - 2, c = ndims - 1;
+    VCHECK_SDPA_COND(
+            utils::everyone_is(ndims, q_desc->ndims, k_desc->ndims,
+                    v_desc->ndims, diff_q_desc->ndims, diff_k_desc->ndims,
+                    diff_v_desc->ndims, diff_dst_desc->ndims),
+            "number of dimensions have to match. expected: %d q: %d k: %d v: "
+            "%d dQ: %d dK: %d dV: %d dO: %d",
+            ndims, q_desc->ndims, k_desc->ndims, v_desc->ndims,
+            diff_q_desc->ndims, diff_k_desc->ndims, diff_v_desc->ndims,
+            diff_dst_desc->ndims);
+
+    VCHECK_SDPA_COND(q_desc->dims[c] == k_desc->dims[r],
+            "q_desc->dims[%d](%s) must match k_desc->dims[%d](%s)", c,
+            md2dim_str(q_desc).c_str(), r, md2dim_str(k_desc).c_str());
+    VCHECK_SDPA_COND(k_desc->dims[c] == v_desc->dims[r],
+            "k_desc->dims[%d](%s) must match v_desc->dims[%d](%s)", c,
+            md2dim_str(k_desc).c_str(), r, md2dim_str(v_desc).c_str());
+    VCHECK_SDPA_COND(dst_desc->dims[r] == q_desc->dims[r],
+            "dst_desc->dims[%d](%s) == q_desc->dims[%d](%s)", r,
+            md2dim_str(dst_desc).c_str(), r, md2dim_str(q_desc).c_str());
+    VCHECK_SDPA_COND(dst_desc->dims[c] == v_desc->dims[c],
+            "dst_desc->dims[%d](%s) == v_desc->dims[%d](%s)", c,
+            md2dim_str(dst_desc).c_str(), c, md2dim_str(v_desc).c_str());
+
+    for (int i = 0; i < ndims; i++) {
+        VCHECK_SDPA_COND(diff_q_desc->dims[i] == q_desc->dims[i],
+                "diff_q_desc->dims[%d](%s) must match q_desc->dims[%d](%s)", i,
+                md2dim_str(diff_q_desc).c_str(), i, md2dim_str(q_desc).c_str());
+        VCHECK_SDPA_COND(diff_k_desc->dims[i] == k_desc->dims[i],
+                "diff_k_desc->dims[%d](%s) must match k_desc->dims[%d](%s)", i,
+                md2dim_str(diff_k_desc).c_str(), i, md2dim_str(k_desc).c_str());
+        VCHECK_SDPA_COND(diff_v_desc->dims[i] == v_desc->dims[i],
+                "diff_v_desc->dims[%d](%s) must match v_desc->dims[%d](%s)", i,
+                md2dim_str(diff_v_desc).c_str(), i, md2dim_str(v_desc).c_str());
+        VCHECK_SDPA_COND(diff_dst_desc->dims[i] == dst_desc->dims[i],
+                "diff_dst_desc->dims[%d](%s) must match dst_desc->dims[%d](%s)",
+                i, md2dim_str(diff_dst_desc).c_str(), i,
+                md2dim_str(dst_desc).c_str());
+    }
+
+    VCHECK_SDPA_COND(!any_memory_desc_host_scalar(q_desc, k_desc, v_desc,
+                             dst_desc, attn_mask_md, diff_q_desc, diff_k_desc,
+                             diff_v_desc, diff_dst_desc),
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
+
+    return status::success;
+}
+
 static inline status_t sdpa_attr_check(const memory_desc_t *q_desc,
         const memory_desc_t *k_desc, const memory_desc_t *v_desc,
         const engine_t *engine, const primitive_attr_t *attr,
@@ -148,6 +203,20 @@ static inline status_t sdpa_attr_check(const memory_desc_t *q_desc,
     return status::success;
 }
 
+static inline status_t sdpa_attr_check(
+        const engine_t *engine, const primitive_attr_t *attr) {
+    using smask_t = primitive_attr_t::skip_mask_t;
+
+    if (attr == nullptr) return status::success;
+    if (attr && attr->has_default_values()) { return status::success; }
+
+    if (attr) {
+        smask_t attr_mask = smask_t::none;
+        VCHECK_SDPA_UNIMPL(
+                attr->has_default_values(attr_mask), VERBOSE_UNSUPPORTED_ATTR);
+    }
+    return status::success;
+}
 static inline sdpa_desc_t create_sdpa_desc(const memory_desc_t *q_md,
         const memory_desc_t *k_md, const memory_desc_t *v_md,
         const memory_desc_t *dst_md, const memory_desc_t *attn_mask_md,
@@ -189,13 +258,12 @@ static inline sdpa_desc_t create_sdpa_desc(const memory_desc_t *q_md,
 
 static inline sdpa_desc_t create_sdpa_desc(const memory_desc_t *q_md,
         const memory_desc_t *k_md, const memory_desc_t *v_md,
-        const memory_desc_t *dst_md, const memory_desc_t *diff_q_md,
+        const memory_desc_t *dst_md, const memory_desc_t *attn_mask_md,
+        const memory_desc_t *scale_md, const memory_desc_t *diff_q_md,
         const memory_desc_t *diff_k_md, const memory_desc_t *diff_v_md,
         const memory_desc_t *diff_dst_md, const memory_desc_t *dS_md,
-        const memory_desc_t *attn_mask_md, const memory_desc_t *scale_md,
         bool invert_scale, dim_t kv_head_number,
-        attn_mask_type_t attn_mask_type, alg_kind_t softmax_alg,
-        const primitive_attr_t *kq_attr, const primitive_attr_t *vs_attr) {
+        attn_mask_type_t attn_mask_type, alg_kind_t softmax_alg) {
     auto sdpa_desc = sdpa_desc_t();
     sdpa_desc.primitive_kind = primitive_kind::sdpa;
     sdpa_desc.q_desc = *q_md;
@@ -210,6 +278,7 @@ static inline sdpa_desc_t create_sdpa_desc(const memory_desc_t *q_md,
     sdpa_desc.diff_q_desc = *diff_q_md;
     sdpa_desc.diff_k_desc = *diff_k_md;
     sdpa_desc.diff_v_desc = *diff_v_md;
+
     if (attn_mask_md) sdpa_desc.attn_mask_desc = *attn_mask_md;
     sdpa_desc.scale_desc = *scale_md;
     sdpa_desc.invert_scale = invert_scale;
@@ -265,10 +334,9 @@ static inline status_t create_sdpa_pd(
     CHECK(sdpa_desc_check(q_md, k_md, v_md, dst_md, attn_mask_md, engine, attr,
             kq_attr, vs_attr));
 
-    auto sdpa_desc = create_sdpa_desc(q_md, k_md, v_md, dst_md, diff_q_md,
-            diff_k_md, diff_v_md, diff_dst_md, dS_md, attn_mask_md, scale_md,
-            invert_scale, kv_head_number, attn_mask_type, softmax_alg, kq_attr,
-            vs_attr);
+    auto sdpa_desc = create_sdpa_desc(q_md, k_md, v_md, dst_md, attn_mask_md,
+            scale_md, diff_q_md, diff_k_md, diff_v_md, diff_dst_md, dS_md,
+            invert_scale, kv_head_number, attn_mask_type, softmax_alg);
 
     primitive_attr_t sdpa_attr = attr ? *attr : default_attr();
 

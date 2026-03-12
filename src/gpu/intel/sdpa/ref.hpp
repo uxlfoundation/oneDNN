@@ -44,13 +44,13 @@ struct ref_fwd_t : public primitive_t {
 
             VDISPATCH_SDPA(attr()->has_default_values(smask_t::scales),
                     VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_SDPA(
-                    utils::everyone_is(4, qry_md()->ndims, key_md()->ndims,
-                            val_md()->ndims, dst_md()->ndims),
+            VDISPATCH_SDPA(utils::everyone_is(4, desc()->qry_md()->ndims,
+                                   desc()->key_md()->ndims,
+                                   desc()->val_md()->ndims, dst_md()->ndims),
                     VERBOSE_UNSUPPORTED_TAG);
             if (with_attn_mask()) {
-                VDISPATCH_SDPA(
-                        attn_mask_md()->ndims == 4, VERBOSE_UNSUPPORTED_TAG);
+                VDISPATCH_SDPA(desc()->attn_mask_md()->ndims == 4,
+                        VERBOSE_UNSUPPORTED_TAG);
             }
             VDISPATCH_SDPA(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
 
@@ -66,11 +66,11 @@ struct ref_fwd_t : public primitive_t {
 
         int ndims = 4;
 
-        const memory_desc_wrapper qry_mdw(pd()->qry_md());
-        const memory_desc_wrapper key_mdw(pd()->key_md());
-        const memory_desc_wrapper val_mdw(pd()->val_md());
+        const memory_desc_wrapper qry_mdw(pd()->desc()->qry_md());
+        const memory_desc_wrapper key_mdw(pd()->desc()->key_md());
+        const memory_desc_wrapper val_mdw(pd()->desc()->val_md());
         const memory_desc_wrapper dst_mdw(pd()->dst_md());
-        const memory_desc_wrapper msk_mdw(pd()->attn_mask_md());
+        const memory_desc_wrapper msk_mdw(pd()->desc()->attn_mask_md());
         using offset_t = decltype(offsets_t().src_off);
         offset_t qry_off, key_off, val_off, dst_off, msk_off;
         set_offsets(qry_mdw, qry_off);
@@ -90,12 +90,13 @@ struct ref_fwd_t : public primitive_t {
         kernel_ctx.define_int("WITH_ATTN_SCALE", pd()->with_attn_scale());
         kernel_ctx.define_int("WITH_ATTN_MASK", pd()->with_attn_mask());
 
-        def_data_type(kernel_ctx, pd()->qry_md()->data_type, "QRY");
-        def_data_type(kernel_ctx, pd()->key_md()->data_type, "KEY");
-        def_data_type(kernel_ctx, pd()->val_md()->data_type, "VAL");
+        def_data_type(kernel_ctx, pd()->desc()->qry_md()->data_type, "QRY");
+        def_data_type(kernel_ctx, pd()->desc()->key_md()->data_type, "KEY");
+        def_data_type(kernel_ctx, pd()->desc()->val_md()->data_type, "VAL");
         def_data_type(kernel_ctx, pd()->dst_md()->data_type, "DST");
-        def_data_type(kernel_ctx, pd()->attn_mask_md()->data_type, "MSK");
-        def_data_type(kernel_ctx, pd()->scale_md()->data_type, "SCALE");
+        def_data_type(
+                kernel_ctx, pd()->desc()->attn_mask_md()->data_type, "MSK");
+        def_data_type(kernel_ctx, pd()->desc()->scale_md()->data_type, "SCALE");
         CHECK(create_kernel(engine, &kernel_, "ref_sdpa", kernel_ctx));
         if (!kernel_) return status::runtime_error;
         return status::success;

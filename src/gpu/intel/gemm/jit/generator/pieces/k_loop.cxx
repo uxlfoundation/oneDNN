@@ -1570,11 +1570,11 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
 
     // Sync any tokens nGEN thinks might still be outstanding, except for DPAS.
     // nGEN cannot always discover that these tokens are no longer alive.
-    bool isC[GRF::maxRegs()] = {};
+    bool isC[GRF::maxRegs(hw)] = {};
     for (const auto &C_regs: state.C_regs)
         for (int r = 0; r < C_regs.getLen(); r++)
             isC[C_regs[r].getBase()] = true;
-    for (int i = 0; i < GRF::maxRegs(); i++)
+    for (int i = 0; i < GRF::maxRegs(hw); i++)
         if (!isC[i])
             wrdep(GRF(i));
 }

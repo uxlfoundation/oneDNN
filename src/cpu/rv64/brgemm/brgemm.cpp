@@ -21,7 +21,7 @@
 #include "cpu/rv64/brgemm/brgemm.hpp"
 #include "cpu/rv64/brgemm/jit_brgemm_kernel.hpp"
 
-#include "xbyak_riscv/xbyak_riscv_util.hpp"
+#include "cpu/rv64/cpu_isa_traits.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -70,9 +70,7 @@ status_t brgemm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
 
     // Determine bd_block from VLEN. Using LMUL=m4 so that each logical
     // vector register holds VLEN*4/32 f32 elements.
-    const uint32_t vlen_bits
-            = Xbyak_riscv::CPU::getInstance().getVlen(); // e.g. 128
-    const int vlen_f32 = static_cast<int>(vlen_bits) / 32; // elements per m1
+    const int vlen_f32 = get_platform_vlen() / 32; // elements per m1
     brg->bd_block = vlen_f32 * 4; // LMUL=m4 → 4× elements
 
     brg->bdb = static_cast<int>(M) / brg->bd_block;

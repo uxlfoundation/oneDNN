@@ -20,6 +20,7 @@
 
 #include <type_traits>
 
+#include "common/math_utils.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 #include "dnnl_types.h"
@@ -56,15 +57,18 @@ public:
 
     bool get_has_v() const { return has_v; }
     bool get_has_zvfh() const { return has_zvfh; }
+    uint32_t get_vlen() const { return vlen; }
 
 private:
     bool has_v = false;
     bool has_zvfh = false;
+    uint32_t vlen = 0;
 
     Riscv64Cpu() {
         const auto &xbyak_cpu = Xbyak_riscv::CPU::getInstance();
 
         has_v = xbyak_cpu.hasExtension(Xbyak_riscv::RISCVExtension::V);
+        vlen = xbyak_cpu.getVlen();
 
         if (has_v) {
             has_zvfh
@@ -89,6 +93,24 @@ inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {
 }
 
 cpu_isa_t get_max_cpu_isa();
+
+inline uint32_t get_platform_vlen() {
+    const Riscv64Cpu &cpu = Riscv64Cpu::getInstance();
+    return cpu.get_vlen();
+}
+
+/// Returns an index derived from a given vector length in bits (vlen).
+/// @details Computes log2(vlen) relative to the minimum supported value,
+/// producing a zero-based index. The smallest vlen (128-bits) maps to 0,
+/// and each subsequent power-of-two step maps to the next integer.
+inline int get_vlen_implementation_id(int vlen) {
+    static constexpr int VLEN_MIN = 128;
+    if (math::is_pow2(vlen) && vlen >= VLEN_MIN) {
+        return math::ilog2q(vlen) - (math::ilog2q(VLEN_MIN) + 1);
+    } else {
+        return -1;
+    }
+}
 
 #include "common/z_magic.hpp"
 /* clang-format off */

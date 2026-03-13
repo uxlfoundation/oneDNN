@@ -85,8 +85,15 @@ static bool check_abs_err(const prb_t *prb, const float &s, const float &trh) {
         case alg_t::ELU_DST:
             // catch catastrophic cancellation when (exp(s) - 1), s < 0 and
             // s is close to zero.
-            return (prb->dir & FLAG_FWD) && std::signbit(s)
-                    && (fabsf(expf(s) - 1.f) <= comp_err);
+            if ((prb->dir & FLAG_FWD) && std::signbit(s)
+                    && (fabsf(expf(s) - 1.f) <= comp_err))
+                return true;
+            // catch catastrophic cancellation in elu_dst backward:
+            // dd * (d + alpha) when d + alpha is close to zero.
+            if ((prb->dir & FLAG_BWD) && prb->use_dst() && std::signbit(s)
+                    && (fabsf(s + prb->alpha) <= comp_err))
+                return true;
+            return false;
         case alg_t::GELU_TANH: {
             // catch catastrophic cancellation
             // (4.f is magic scale for f32)

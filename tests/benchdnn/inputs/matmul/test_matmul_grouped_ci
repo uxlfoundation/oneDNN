@@ -135,10 +135,26 @@
 --attr-zero-points=,wei:7:s8:128x1
 32x512:4x512x256
 
-# f8_e5m2 with row-wise src scales + column-wise wei scales
+# f8_e5m2 with row-wise/block src scales + column-wise wei scales
 --reset
 --dt=f8_e5m2:f8_e5m2:bf16
---wtag=abc
---attr-scales=,src:1+wei:5
---grouped=0:4:0,8,16,8
-32x64:4x64x32
+--wtag=abc,acb
+--attr-scales=,src:1+wei:5,src:3:e8m0:1x32+wei:7:e8m0:32x1
+--grouped=0:4:16,8,0,8
+32x128:4x128x64
+
+# f8_e4m3 with e8m0 block scales
+--reset
+--dt=f8_e4m3:f8_e4m3:bf16
+--wtag=abc,acb
+--grouped=0:4:8,8,8,8
+--attr-scales=src:3:e8m0:1x32+wei:7:e8m0:32x1,src:3:e8m0:1x32+wei:5,src:1+wei:7:e8m0:32x1
+32x128:4x128x64
+
+# f4_e2m1 with e8m0 block scales
+--reset
+--dt=f4_e2m1:f4_e2m1:bf16
+--wtag=abc,acb
+--grouped=0:4:8,8,8,8
+--attr-scales=src:3:e8m0:1x32+wei:7:e8m0:32x1
+32x128:4x128x64

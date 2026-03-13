@@ -63,10 +63,10 @@ struct ref_grouped_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
             // Supported data types: fp and int for src/wei
-            const bool is_fp_src
-                    = utils::one_of(src_type, f32, bf16, f16, f8_e5m2, f8_e4m3);
-            const bool is_fp_wei
-                    = utils::one_of(wei_type, f32, bf16, f16, f8_e5m2, f8_e4m3);
+            const bool is_fp_src = utils::one_of(
+                    src_type, f32, bf16, f16, f8_e5m2, f8_e4m3, f4_e2m1);
+            const bool is_fp_wei = utils::one_of(
+                    wei_type, f32, bf16, f16, f8_e5m2, f8_e4m3, f4_e2m1);
             const bool is_int_src = utils::one_of(src_type, u8, s8);
             const bool is_int_wei = utils::one_of(wei_type, u8, s8, s4, u4);
 
@@ -99,12 +99,12 @@ struct ref_grouped_t : public primitive_t {
                         VERBOSE_UNSUPPORTED_SCALES_CFG);
                 VDISPATCH_MATMUL(
                         utils::one_of(attr_scales.get_data_type(DNNL_ARG_SRC),
-                                f32, bf16, f16),
+                                f32, bf16, f16, e8m0),
                         VERBOSE_UNSUPPORTED_SCALES_CFG);
                 if (!attr_scales.get(DNNL_ARG_SRC).has_default_groups()) {
-                    // K-grouped src scales only supported with int src types
-                    VDISPATCH_MATMUL(
-                            is_int_src, VERBOSE_UNSUPPORTED_SCALES_CFG);
+                    // K-grouped src scales supported with int and fp types
+                    VDISPATCH_MATMUL(is_int_src || is_fp_src,
+                            VERBOSE_UNSUPPORTED_SCALES_CFG);
                     const auto gM = attr_scales.get_group(DNNL_ARG_SRC, -2);
                     VDISPATCH_MATMUL(gM == 1, VERBOSE_UNSUPPORTED_SCALES_CFG);
                     const auto gK = attr_scales.get_group(DNNL_ARG_SRC, -1);
@@ -120,15 +120,15 @@ struct ref_grouped_t : public primitive_t {
                 // Allow column-wise or blocked (K grouping) scales for weights
                 VDISPATCH_MATMUL(utils::one_of(attr_scales.get_data_type(
                                                        DNNL_ARG_WEIGHTS),
-                                         f32, bf16, f16),
+                                         f32, bf16, f16, e8m0),
                         VERBOSE_UNSUPPORTED_SCALES_CFG);
                 VDISPATCH_MATMUL(
                         wei_mask == colwise_mask || wei_mask == blocked_mask,
                         VERBOSE_UNSUPPORTED_SCALES_CFG);
                 if (!attr_scales.get(DNNL_ARG_WEIGHTS).has_default_groups()) {
-                    // K-grouped wei scales only supported with int wei types
-                    VDISPATCH_MATMUL(
-                            is_int_wei, VERBOSE_UNSUPPORTED_SCALES_CFG);
+                    // K-grouped wei scales supported with int and fp types
+                    VDISPATCH_MATMUL(is_int_wei || is_fp_wei,
+                            VERBOSE_UNSUPPORTED_SCALES_CFG);
                     const auto gK = attr_scales.get_group(DNNL_ARG_WEIGHTS, -2);
                     VDISPATCH_MATMUL(gK > 1, VERBOSE_UNSUPPORTED_SCALES_CFG);
                     VDISPATCH_MATMUL(
@@ -172,12 +172,10 @@ struct ref_grouped_t : public primitive_t {
             // for src/wei scales group size in case of K grouping,
             // one must be a multiple of the other
             if (!attr_scales.has_default_values(DNNL_ARG_SRC)
-                    && !attr_scales.get(DNNL_ARG_SRC).has_default_groups()) {
-                VDISPATCH_MATMUL(
-                        !attr_scales.has_default_values(DNNL_ARG_WEIGHTS)
-                                && !attr_scales.get(DNNL_ARG_WEIGHTS)
-                                            .has_default_groups(),
-                        VERBOSE_UNSUPPORTED_SCALES_CFG);
+                    && !attr_scales.get(DNNL_ARG_SRC).has_default_groups()
+                    && !attr_scales.has_default_values(DNNL_ARG_WEIGHTS)
+                    && !attr_scales.get(DNNL_ARG_WEIGHTS)
+                                .has_default_groups()) {
                 const auto src_gK = attr_scales.get_group(DNNL_ARG_SRC, -1);
                 const auto wei_gK = attr_scales.get_group(DNNL_ARG_WEIGHTS, -2);
                 VDISPATCH_MATMUL(src_gK % wei_gK == 0 || wei_gK % src_gK == 0,

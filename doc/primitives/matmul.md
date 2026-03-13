@@ -422,6 +422,8 @@ The following are supported:
   - Weight Scales: column-wise (`mask = (1 << 0) | (1 << 2)`) and
     K-grouped (`mask = (1 << 0) | (1 << 1) | (1 << 2)`) with group specification
     are supported.
+  - Scale data type can be `f32`, `bf16`, `f16`, or `e8m0` (for MXFP8 and MXFP4
+    types following the OCP MX specification).
 - Zero points attribute for weights tensors with the same masks as scales.
 - Bias supports per-expert shape.
 - Supported on CPU and GPU engines.
@@ -434,6 +436,7 @@ The following combinations of data types for source, destination, weights, and b
 |:-----------------|:-------------------|:---------------|:---------------|
 | f32, bf16, f16   | f32, bf16, f16     | f32, bf16, f16 | f32, bf16, f16 |
 | f8_e5m2, f8_e4m3 | f8_e5m2, f8_e4m3   | f32, bf16, f16 |                |
+| f4_e2m1          | f4_e2m1            | f32, bf16, f16 |                |
 | f32, bf16, f16   | u8, s8, s4, u4 (1) | f32, bf16, f16 | f32, bf16, f16 |
 | u8, s8           | u8, s8, s4, u4     | f32, bf16, f16 | f32, bf16, f16 |
 

@@ -225,6 +225,8 @@ private:
 
     size_t get_vec_len();
     void exp_compute_vector_fwd(const TRegS &vmm_src);
+    void exp_compute_vector_fwd(
+            const TRegS &vmm_src, float min_input, float max_input);
     void relu_compute_vector_fwd(const TRegS &vmm_src);
     void relu_zero_ns_compute_vector_fwd(const TReg &vmm_src);
     void elu_compute_vector_fwd(const TRegS &vmm_src);

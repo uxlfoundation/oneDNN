@@ -55,9 +55,11 @@ bool is_supported(cpu_isa_t isa, alg_kind_t alg) {
     if (is_isa_supported(isa)) {
         if (isa == asimd) {
             using namespace alg_kind;
-            return utils::one_of(alg, eltwise_relu, eltwise_square, eltwise_abs,
-                    eltwise_sqrt, eltwise_linear, eltwise_exp,
-                    eltwise_hardsigmoid, eltwise_hardswish, eltwise_clip,
+            return utils::one_of(alg, eltwise_relu, eltwise_tanh, eltwise_elu,
+                    eltwise_square, eltwise_abs, eltwise_sqrt, eltwise_linear,
+                    eltwise_soft_relu, eltwise_logistic, eltwise_mish,
+                    eltwise_exp, eltwise_gelu_tanh, eltwise_hardsigmoid,
+                    eltwise_hardswish, eltwise_swish, eltwise_clip,
                     eltwise_clip_v2, eltwise_round,
                     eltwise_clip_v2_use_dst_for_bwd);
         } else {
@@ -232,7 +234,9 @@ void jit_uni_eltwise_injector_t<isa>::set_coef_to_regs() {
                 if (alpha_ != 0.f) table_val(alpha, z_tmp);
                 break;
             case eltwise_elu_use_dst_for_bwd:
-            case eltwise_elu: table_val(alpha, vmm_aux4); break;
+            case eltwise_elu:
+                table_val(alpha, isa == asimd ? vmm_aux4 : vmm_aux2);
+                break;
             case eltwise_tanh_use_dst_for_bwd:
             case eltwise_tanh:
             case eltwise_square:
@@ -457,16 +461,21 @@ void jit_uni_eltwise_injector_t<isa>::blend_with_mask(
 template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_t<isa>::exp_compute_vector_fwd(
         const TRegS &vmm_src) {
+    exp_compute_vector_fwd(vmm_src, min_input_, max_input_);
+}
+
+template <cpu_isa_t isa>
+void jit_uni_eltwise_injector_t<isa>::exp_compute_vector_fwd(
+        const TRegS &vmm_src, float min_input, float max_input) {
 
     const auto &t0 = ZRegS(IDX(vmm_src));
     const auto &t1 = ZRegS(IDX(vmm_aux0));
     const auto &t2 = ZRegS(IDX(vmm_aux1));
     const float ln_flt_max = logf(FLT_MAX);
     const float ln_flt_min = logf(FLT_MIN);
-
-    if (max_input_ > ln_flt_max)
+    if (max_input > ln_flt_max)
         h->fmin(t0, p_all, ZRegS(IDX(table_val(exp_ln_flt_max_f, z_tmp))));
-    if (min_input_ < ln_flt_min)
+    if (min_input < ln_flt_min)
         h->fmax(t0, p_all, ZRegS(IDX(table_val(exp_ln_flt_min_f, z_tmp))));
     h->fmul(t0, t0, ZRegS(IDX(table_val(exp_log2ef, t1))));
     h->frintm(t1, p_all, t0);
@@ -506,15 +515,18 @@ void jit_uni_eltwise_injector_t<isa>::relu_zero_ns_compute_vector_fwd(
 template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_t<isa>::elu_compute_vector_fwd(
         const TRegS &vmm_src) {
-    // IMPORTANT: we use vmm_aux3 for the mask as exp_compute does not use it.
+    // IMPORTANT: we use vmm_aux3 to save src as exp does not use it.
     h->mov(ZRegD(vmm_aux3.getIdx()), ZRegD(vmm_src.getIdx()));
 
     // compute exponent
-    exp_compute_vector_fwd(vmm_src);
+    exp_compute_vector_fwd(vmm_src, min_input_, 0.f);
 
-    // alpha * (exp(x) - 1)
-    h->fsub(vmm_src, p_all / T_m, 1.);
-    h->fmul(vmm_src, vmm_src, vmm_aux4);
+    // alpha * (exp(x) - 1) = alpha * exp(x) - alpha
+    if (alpha_ != 1.f) {
+        h->fnmsb(vmm_src, p_all / T_m, vmm_aux2, vmm_aux2);
+    } else {
+        h->fsub(vmm_src, p_all / T_m, 1.);
+    }
 
     // combine with mask
     h->fcmgt(p_mask.s, p_all / T_z, vmm_aux3, 0.);
@@ -532,9 +544,9 @@ void jit_uni_eltwise_injector_t<isa>::tanh_polynomial_approx_compute_vector_fwd(
     const int tanh_n_polynomials = 32;
 
     // Register mapping
-    TRegS vmm_dst = vmm_aux1, vmm_src_shift = vmm_aux1, vmm_coeff = vmm_aux1,
-          vmm_pol = vmm_aux2, vmm_indices = vmm_aux3, vmm_tmp = vmm_aux3,
-          vmm_src_pos = vmm_aux4, vmm_sign = vmm_aux4;
+    TRegS vmm_dst = vmm_aux0, vmm_src_shift = vmm_aux0, vmm_coeff = vmm_aux0,
+          vmm_pol = vmm_aux1, vmm_indices = vmm_aux2, vmm_tmp = vmm_aux2,
+          vmm_src_pos = vmm_aux3, vmm_sign = vmm_aux3;
 
     const auto &mask = PReg(6); // avoid pred regs used in *conv_kernel*
 
@@ -605,18 +617,17 @@ void jit_uni_eltwise_injector_t<isa>::tanh_compute_vector_fwd(
     // tanh(x) = x(1 + (-1/3)x^2) for |x| < tanh_range
     // tanh(x) = 1 - 2/(1 + exp(2 x)) for otherwise
 
-    const auto &t0 = ZRegS(IDX(vmm_src));
-    const auto &t1 = ZRegS(IDX(vmm_aux1));
-    const auto &t2 = ZRegS(IDX(vmm_aux2));
-    const auto &t3 = ZRegS(IDX(vmm_aux3));
-    const auto &oneS = ZRegS(IDX(vmm_aux4));
+    const auto &t0 = vmm_src;
+    const auto &t1 = vmm_aux1;
+    const auto &t2 = vmm_aux2;
+    const auto &oneS = vmm_aux3;
     const auto &mask = PReg(6); // avoid pred regs used in *conv_kernel*
 
     h->fcpy(oneS, p_all, 1);
     // make mask for small x
-    h->mov(t3, p_all, t0);
+    h->mov(t2, p_all, t0);
     h->fabs(t1, p_all, t0);
-    h->cmplt(mask.s, p_all, t1, ZRegS(IDX(table_val(tanh_range, z_tmp))));
+    h->cmplt(mask.s, p_all, t1, table_val(tanh_range, z_tmp));
 
     // 2x
     h->fadd(t0, t0, t0);
@@ -624,25 +635,15 @@ void jit_uni_eltwise_injector_t<isa>::tanh_compute_vector_fwd(
     exp_compute_vector_fwd(t0);
     // 1+exp(2x)
     h->fadd(t0, t0, oneS);
-    // 1/(1+exp(2x))
-    // 1st aprox ; a = 1/x + e
-    h->frecpe(t1, t0);
-    // 2nd aprox ; a' = (2 - ax)a = 1/x - e^2 x
-    h->frecps(t2, t0, t1);
-    h->fmul(t2, t2, t1);
-    // 3rd aprox ; a'' = (2 - a'x)a'
-    h->frecps(t0, t0, t2);
-    h->fmul(t0, t0, t2);
-
     // 2/(1+exp(2x))
-    h->fadd(t0, t0, t0);
+    h->fdiv(table_val(two, t1), p_all, t0);
     // 1-2/(1+exp(2x))
-    h->fsub(t0, oneS, t0);
+    h->fsub(t0, oneS, t1);
 
     // tanh(x) = x(1 - x^2/3) for |x| < tanh_range
-    h->fmul(t1, t3, t3);
-    h->fmad(t1, p_all, ZRegS(IDX(table_val(tanh_m1d3, z_tmp))), oneS);
-    h->fmul(t1, p_all, t3);
+    h->fmul(t1, t2, t2);
+    h->fmad(t1, p_all, table_val(tanh_m1d3, z_tmp), oneS);
+    h->fmul(t1, p_all, t2);
     // select the correct value according to mask
     h->mov(t0, mask, t1);
 }
@@ -650,37 +651,22 @@ void jit_uni_eltwise_injector_t<isa>::tanh_compute_vector_fwd(
 template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_t<isa>::gelu_tanh_compute_vector_fwd(
         const TRegS &vmm_src) {
-    h->mov(ZRegD(IDX(vmm_aux0)), ZRegD(IDX(vmm_src)));
+    // IMPORTANT: we use vmm_aux4 to save src as tanh does not use it.
+    h->mov(ZRegD(IDX(vmm_aux4)), ZRegD(IDX(vmm_src)));
 
     // compute G(x) = sqrt_root_two_over_pi * x * (1 + fitting_const * x * x)
     h->fmul(vmm_src, vmm_src, vmm_src);
-    h->mov(ZRegD(IDX(vmm_aux1)),
-            ZRegD(IDX(table_val(gelu_tanh_fitting_const, z_tmp))));
-    /* Do not use 1.f, which is a float constant,
-       but 1., which is a double constant. */
-    h->fmov(z_tmp, 1.);
-    h->fmad(vmm_src, p_all / T_m, vmm_aux1, ZRegS(IDX(table_val(one, z_tmp))));
-    h->fmul(vmm_src, vmm_src, vmm_aux0);
-    h->fmul(vmm_src, vmm_src,
-            ZRegS(IDX(table_val(gelu_tanh_sqrt_two_over_pi, z_tmp))));
-
-    // save x on stack as tanh uses vmm_aux0
-    h->sub_imm(h->X_SP, h->X_SP, vlen, h->X_TMP_0);
-
-    h->add_imm(h->X_TMP_0, h->X_SP, 0, h->X_TMP_1);
-    h->str(ZReg(IDX(vmm_aux0)), ptr(h->X_TMP_0));
+    h->fmad(vmm_src, p_all / T_m, table_val(gelu_tanh_fitting_const, vmm_aux0),
+            table_val(one, z_tmp));
+    h->fmul(vmm_aux2, vmm_aux4, table_val(gelu_tanh_sqrt_two_over_pi, z_tmp));
+    h->fmul(vmm_src, vmm_src, vmm_aux2);
 
     // compute tanh(G(x))
     tanh_compute_vector_fwd(vmm_src);
 
-    h->add_imm(h->X_TMP_0, h->X_SP, 0, h->X_TMP_1);
-    h->ldr(ZReg(IDX(vmm_aux0)), ptr(h->X_TMP_0));
-    h->add_imm(h->X_SP, h->X_SP, vlen, h->X_TMP_0);
-
     // compute 0.5 * x * (1 + tanh(G(x)))
-    h->fadd(vmm_src, p_all / T_m, 1.);
+    h->fmad(vmm_src, p_all / T_m, vmm_aux4, vmm_aux4);
     h->fmul(vmm_src, p_all / T_m, 0.5f);
-    h->fmul(vmm_src, vmm_src, vmm_aux0);
 }
 
 template <cpu_isa_t isa>
@@ -742,24 +728,24 @@ void jit_uni_eltwise_injector_t<isa>::mish_compute_vector_fwd(
     // than exp, and also requires more constants to be stored in memory,
     // making the algorithm slower.
 
-    // IMPORTANT: we use vmm_aux3 to save src as exp does not use it.
-    h->mov(ZRegD(vmm_aux3.getIdx()), ZRegD(vmm_src.getIdx())); // vmm_aux3 = x
+    // IMPORTANT: we use vmm_aux2 to save src as exp does not use it.
+    h->mov(ZRegD(vmm_aux2.getIdx()), ZRegD(vmm_src.getIdx()));
+
+    // mish uses (exp(x)+1)^2;
+    // avoid overflow by x <= log(sqrt(FLT_MAX))
     h->fminnm(vmm_src, p_all / T_m,
             table_val(fwd_mish_max_x_for_equation_f, z_tmp));
-    exp_compute_vector_fwd(vmm_src);
+    exp_compute_vector_fwd(vmm_src, min_input_, 0.5f * logf(FLT_MAX));
 
     // (e^x+1)^2
     h->fadd(vmm_src, p_all / T_m, 1.);
     h->fmul(vmm_src, vmm_src, vmm_src);
 
-    // save (e^x+1)^2 as it appears in both the denominator and the numerator
-    h->mov(ZRegD(vmm_aux1.getIdx()), ZRegD(vmm_src.getIdx()));
-
     // x * ((e^x + 1)^2 - 1) / ((e^x + 1)^2 + 1)
+    h->fadd(vmm_aux0, vmm_src, table_val(one, z_tmp));
     h->fsub(vmm_src, p_all / T_m, 1.);
-    h->fadd(vmm_aux1, p_all / T_m, 1.);
-    h->fdiv(vmm_src, p_all / T_m, vmm_aux1);
-    h->fmul(vmm_src, vmm_src, vmm_aux3);
+    h->fdiv(vmm_src, p_all / T_m, vmm_aux0);
+    h->fmul(vmm_src, vmm_src, vmm_aux2);
 }
 
 template <cpu_isa_t isa>
@@ -788,11 +774,13 @@ void jit_uni_eltwise_injector_t<isa>::soft_relu_compute_vector_fwd(
     // alpha scaling
     if (alpha_ == 1.f) {
         // Nothing to do
-    }
-    if (alpha_ == 0.5 || alpha_ == 2.0)
+    } else if (alpha_ == -1) {
+        h->fneg(vmm_src, p_all / T_m, vmm_src);
+    } else if (alpha_ == 0.5 || alpha_ == 2.0) {
         h->fmul(vmm_src, p_all / T_m, alpha_);
-    else
+    } else {
         h->fmul(vmm_src, vmm_src, table_val(alpha, z_tmp));
+    }
 
     // ln(1 + exp(x)) =
     // = ln(1 + exp(n * ln(2) + r)) // divide x by ln(2) and get quot and rem
@@ -805,11 +793,8 @@ void jit_uni_eltwise_injector_t<isa>::soft_relu_compute_vector_fwd(
     // keep src for further computations
     h->mov(ZRegD(IDX(vmm_aux2)), ZRegD(IDX(vmm_src)));
 
-    h->fminnm(ZRegS(IDX(table_val(exp_ln_flt_max_f, z_tmp))), p_all, vmm_src);
-    h->mov(ZRegD(IDX(vmm_src)), ZRegD(IDX(z_tmp)));
-    h->fmaxnm(ZRegS(IDX(table_val(exp_ln_flt_min_f, z_tmp))), p_all, vmm_src);
-
-    h->mov(ZRegD(IDX(vmm_src)), ZRegD(IDX(z_tmp)));
+    h->fminnm(vmm_src, p_all / T_m, table_val(exp_ln_flt_max_f, z_tmp));
+    h->fmaxnm(vmm_src, p_all / T_m, table_val(exp_ln_flt_min_f, z_tmp));
     h->mov(ZRegD(IDX(vmm_aux1)), ZRegD(IDX(vmm_src)));
 
     // calculate exp(x)
@@ -827,7 +812,7 @@ void jit_uni_eltwise_injector_t<isa>::soft_relu_compute_vector_fwd(
     h->fmul(vmm_aux0, vmm_aux0, ZRegS(IDX(table_val(ln2f, z_tmp))));
     h->fsub(vmm_aux1, vmm_aux1, vmm_aux0);
     // compute exponent polynomial
-    h->mov(ZRegD(IDX(vmm_aux3)), ZRegD(IDX(table_val(exp_pol, z_tmp, 4))));
+    table_val(exp_pol, vmm_aux3, 4);
     h->fmad(vmm_aux3, p_all / T_m, vmm_aux1,
             ZRegS(IDX(table_val(exp_pol, z_tmp, 3))));
     h->fmad(vmm_aux3, p_all / T_m, vmm_aux1,
@@ -847,13 +832,12 @@ void jit_uni_eltwise_injector_t<isa>::soft_relu_compute_vector_fwd(
     // vmm_src now represents n-1
     h->fsub(vmm_src, p_all / T_m, 1.);
     h->fneg(vmm_aux1, p_all / T_m, vmm_src);
-
-    h->frinti(vmm_aux1, p_all / T_m, vmm_aux1);
     h->fcvtzs(vmm_aux1, p_all / T_m, vmm_aux1);
     // restore vmm_src to n
     h->fadd(vmm_src, p_all / T_m, 1.);
 
-    h->add(vmm_aux1, vmm_aux1, ZRegS(IDX(table_val(exponent_bias, z_tmp))));
+    const auto exponent_bias = 0x0000007f;
+    h->add(vmm_aux1, exponent_bias);
     h->lsl(vmm_aux1, vmm_aux1, n_mantissa_bits);
     // calculate ln(1 + y)
     h->fmul(vmm_aux3, p_all / T_m, 2.); // 2*exp(r)
@@ -908,10 +892,9 @@ void jit_uni_eltwise_injector_t<isa>::soft_relu_compute_vector_fwd(
     if (alpha_ == 1.f) { // standard soft_relu case
         // Skip an instruction.
     } else if (alpha_ == -1) { // logsigmoid case
-        /* Do not use -1.f, which is a float constant,
-       but -1., which is a double constant. */
-        h->fmov(z_tmp, -1.);
-        h->fmul(vmm_src, vmm_src, z_tmp);
+        h->fneg(vmm_src, p_all / T_m, vmm_src);
+    } else if (alpha_ == 0.5 || alpha_ == 2.0) {
+        h->fmul(vmm_src, p_all / T_m, 1.f / alpha_);
     } else { // General case.
         h->fdiv(vmm_src, p_all / T_m, table_val(alpha, z_tmp));
     }
@@ -922,53 +905,39 @@ void jit_uni_eltwise_injector_t<isa>::logistic_compute_vector_fwd(
         const TRegS &vmm_src) {
     // To avoid exp(x) overflow happened at x > logf(FLT_MAX), negate positive,
     // compute exp(x), where x <= 0 to get 0 <= exp(x) <= 1 and restore value
-    // sign at the end. This is possible due to logistic is symmetric function.
-    // IMPORTANT: we use vmm_aux3 for the mask as exp_compute does not use it.
-    h->mov(ZRegD(IDX(vmm_aux3)), ZRegD(IDX(vmm_src)));
-    // we store the original sign and make x negative
-    h->and_(ZRegD(IDX(vmm_aux3)), ZRegD(IDX(vmm_aux3)),
-            ZRegD(IDX(table_val(sign_mask, z_tmp))));
-    h->orr(ZRegD(IDX(vmm_src)), ZRegD(IDX(vmm_src)),
-            ZRegD(IDX(table_val(sign_mask, z_tmp))));
+    // sign at the end. This is possible due to logistic being a symmetric function.
 
-    exp_compute_vector_fwd(vmm_src);
+    // Store the original sign and make x negative
+    constexpr unsigned sign_mask = 0x80000000;
+    h->fcmgt(p_mask.s, p_all / T_z, vmm_src, 0.);
+    h->orr(vmm_src, sign_mask);
 
-    // dup exp(x)
-    h->mov(ZRegD(IDX(vmm_aux1)), ZRegD(IDX(vmm_src)));
+    // Compute exponent
+    exp_compute_vector_fwd(vmm_src, min_input_, 0.f);
+
     // (exp(x) + 1)
-    h->fadd(vmm_aux1, vmm_aux1, ZRegS(IDX(table_val(one, z_tmp))));
+    h->fadd(vmm_aux0, vmm_src, table_val(one, z_tmp));
     // y = exp(x) / (exp(x) + 1)
-    h->fdiv(vmm_src, p_all, vmm_aux1);
+    h->fdiv(vmm_src, p_all, vmm_aux0);
 
     // Now we have to apply the "symmetry" based on original sign
-    h->mov(ZRegD(IDX(vmm_aux2)), ZRegD(IDX(table_val(one, z_tmp))));
-    h->fsub(vmm_aux2, vmm_aux2, vmm_src);
+    h->fsub(vmm_aux0, z_tmp, vmm_src);
 
-    h->and_(ZRegD(IDX(z_tmp)), ZRegD(IDX(vmm_aux3)), ZRegD(IDX(vmm_aux3)));
-    h->cmpne(PRegS(IDX(p_mask)), p_all / T_z, z_tmp, 0);
-
-    blend_with_mask(vmm_aux2, vmm_src);
-
-    h->mov(ZRegD(IDX(vmm_src)), ZRegD(IDX(vmm_aux2)));
+    // Combine using mask
+    blend_with_mask(vmm_src, vmm_aux0);
 }
 
 template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_t<isa>::swish_compute_vector_fwd(
         const TRegS &vmm_src) {
-    // Save src data on stack for later usage
-    h->sub_imm(h->X_SP, h->X_SP, vlen, h->X_TMP_0);
-    h->add_imm(h->X_TMP_0, h->X_SP, 0, h->X_TMP_1);
-    h->str(ZReg(IDX(vmm_src)), ptr(h->X_TMP_0));
+    // IMPORTANT: we use vmm_aux2 to save src as logistic does not use it.
+    h->mov(ZRegD(vmm_aux2.getIdx()), ZRegD(IDX(vmm_src)));
     // x*alpha
-    h->fmul(vmm_src, vmm_src, ZRegS(IDX(table_val(alpha, z_tmp))));
+    if (alpha_ != 1.f) { h->fmul(vmm_src, vmm_src, table_val(alpha, z_tmp)); }
     // sigmoid(x*alpha)
     logistic_compute_vector_fwd(vmm_src);
     // x*sigmoid(alpha*x)
-    h->add_imm(h->X_TMP_0, h->X_SP, 0, h->X_TMP_1);
-    h->ldr(ZReg(IDX(vmm_aux0)), ptr(h->X_TMP_0));
-    h->add_imm(h->X_SP, h->X_SP, vlen, h->X_TMP_0);
-
-    h->fmul(vmm_src, vmm_src, vmm_aux0);
+    h->fmul(vmm_src, vmm_src, vmm_aux2);
 }
 
 template <cpu_isa_t isa>
@@ -1607,22 +1576,25 @@ size_t jit_uni_eltwise_injector_t<isa>::aux_vecs_count() {
             case eltwise_relu_use_dst_for_bwd:
             case eltwise_relu: return (alpha_ == 0.f) ? 2 : 3;
             case eltwise_elu_use_dst_for_bwd:
-            case eltwise_elu: return 6; /* = exp + 2 */
+            case eltwise_elu: return (isa == asimd) ? 7 : 5; /* = exp + 2 */
             case eltwise_tanh_use_dst_for_bwd:
-            case eltwise_tanh: return 9;
+            case eltwise_tanh: return (isa == asimd) ? 7 : 5; /* = exp + 2 */
             case eltwise_square: return 0;
             case eltwise_abs: return 2;
             case eltwise_sqrt_use_dst_for_bwd:
             case eltwise_sqrt: return 0;
             case eltwise_linear: return 2;
-            case eltwise_soft_relu: return 5;
-            case eltwise_mish: return 5; /* = exp + 1 */
+            case eltwise_soft_relu: return (isa == asimd) ? 7 : 5;
+            case eltwise_mish: return (isa == asimd) ? 6 : 4; /* = exp + 1 */
             case eltwise_logistic_use_dst_for_bwd:
-            case eltwise_logistic: return 5; /* = exp + 1 */
+            case eltwise_logistic:
+                return (isa == asimd) ? 6 : 3; /* = exp (+ 1) */
             case eltwise_exp_use_dst_for_bwd:
             case eltwise_exp: return (isa == asimd) ? 5 : 3;
-            case eltwise_gelu_tanh: return 9; /* = tanh */
-            case eltwise_swish: return 6; /* = logistic */
+            case eltwise_gelu_tanh:
+                return (isa == asimd) ? 8 : 6; /* = tanh + 1 */
+            case eltwise_swish:
+                return (isa == asimd) ? 7 : 4; /* = logistic + 1 */
             case eltwise_log: return 6;
             case eltwise_clip:
             case eltwise_clip_v2_use_dst_for_bwd:
@@ -2520,7 +2492,7 @@ size_t jit_uni_eltwise_injector_t<sve>::get_vec_len() {
 
 template <>
 void jit_uni_eltwise_injector_t<asimd>::exp_compute_vector_fwd(
-        const TRegS &vmm_src) {
+        const TRegS &vmm_src, float min_input, float max_input) {
     /*
     * Based on the expf implementation from Arm Optimized Routines (AOR)
     * Accuracy: maxerr ≈ 1.95 ULP.
@@ -2536,17 +2508,17 @@ void jit_uni_eltwise_injector_t<asimd>::exp_compute_vector_fwd(
     */
 
     Xbyak_aarch64::Label L_done, L_special;
-    const auto &t0 = VReg4S(vmm_src.getIdx());
-    const auto &t1 = VReg4S(vmm_aux0.getIdx());
-    const auto &t2 = VReg4S(vmm_aux1.getIdx());
-    const auto &t3 = VReg4S(vmm_aux2.getIdx());
-    const auto &t4 = VReg4S(vmm_aux3.getIdx());
-    const auto &t_tmp = VReg4S(vmm_tmp.getIdx());
+    const auto &t0 = vmm_src;
+    const auto &t1 = vmm_aux0;
+    const auto &t2 = vmm_aux1;
+    const auto &t3 = vmm_aux2;
+    const auto &t4 = vmm_aux3;
+    const auto &t_tmp = vmm_tmp;
 
     const float special_case_input_threshold = 126.5f * logf(2.0f); // ~87.6831f
     const float ln_flt_min = logf(FLT_MIN); // ~-87.3365f
-    bool need_clamp = min_input_ < ln_flt_min;
-    bool need_special_case = max_input_ >= special_case_input_threshold;
+    bool need_clamp = min_input < ln_flt_min;
+    bool need_special_case = max_input >= special_case_input_threshold;
 
     if (!need_special_case && need_clamp) {
         // Clamp x to avoid overflow of f32 exponent bits
@@ -2696,6 +2668,86 @@ void jit_uni_eltwise_injector_t<asimd>::relu_compute_vector_fwd(
 }
 
 template <>
+void jit_uni_eltwise_injector_t<asimd>::elu_compute_vector_fwd(
+        const TRegS &vmm_src) {
+    // IMPORTANT: keep original src in vmm_src for blending positive lanes.
+    h->mov(VReg16B(vmm_aux5.getIdx()), VReg16B(vmm_src.getIdx()));
+
+    // Compute exponent
+    exp_compute_vector_fwd(vmm_aux5, min_input_, 0.f);
+
+    // alpha * (exp(x) - 1) = -alpha - (-alpha * exp(x))
+    if (alpha_ != 1.f) {
+        h->fneg(vmm_aux1, vmm_aux4);
+        h->fmls(vmm_aux1, vmm_aux1, vmm_aux5);
+    } else {
+        h->fsub(vmm_aux1, vmm_aux5, vmm_aux4);
+    }
+
+    // Combine with mask
+    h->fcmle(vmm_aux0, vmm_src, 0.);
+    h->bit(VReg16B(vmm_src.getIdx()), VReg16B(vmm_aux1.getIdx()),
+            VReg16B(vmm_aux0.getIdx()));
+}
+
+template <>
+void jit_uni_eltwise_injector_t<asimd>::tanh_compute_vector_fwd(
+        const TRegS &vmm_src) {
+    // tanh(x) = x(1 + (-1/3)x^2) for |x| < tanh_range
+    // tanh(x) = 1 - 2/(1 + exp(2 x)) for otherwise
+
+    const auto &t0 = vmm_src;
+    const auto &t1 = vmm_aux0;
+    const auto &t2 = vmm_aux1;
+    const auto &t3 = vmm_aux4;
+    const auto &mask = vmm_aux5;
+
+    // Make mask for small x
+    h->mov(VReg16B(t3.getIdx()), VReg16B(t0.getIdx()));
+    h->facge(mask, table_val(tanh_range, z_tmp), t0);
+
+    // 2x
+    h->fadd(t0, t0, t0);
+    // exp(2x)
+    exp_compute_vector_fwd(t0);
+
+    // 1+exp(2x)
+    h->fadd(t0, t0, table_val(one, t2));
+    // 2/(1+exp(2x))
+    h->fdiv(t0, table_val(two, t1), t0);
+    // 1-2/(1+exp(2x))
+    h->fsub(t0, t2, t0);
+
+    // tanh(x) = x(1 - x^2/3) for |x| < tanh_range
+    h->fmul(t1, t3, t3);
+    h->fmla(t2, table_val(tanh_m1d3, z_tmp), t1);
+    h->fmul(t1, t3, t2);
+    // Select the correct value according to mask
+    h->bit(VReg16B(t0.getIdx()), VReg16B(t1.getIdx()), VReg16B(mask.getIdx()));
+}
+
+template <>
+void jit_uni_eltwise_injector_t<asimd>::gelu_tanh_compute_vector_fwd(
+        const TRegS &vmm_src) {
+    // IMPORTANT: we use vmm_aux6 to save src as tanh does not use it.
+    h->mov(VReg16B(IDX(vmm_aux6)), VReg16B(IDX(vmm_src)));
+
+    // Compute G(x) = sqrt_root_two_over_pi * x * (1 + fitting_const * x * x)
+    h->fmul(vmm_src, vmm_src, vmm_src);
+    h->fmla(table_val(one, vmm_aux1),
+            table_val(gelu_tanh_fitting_const, vmm_aux0), vmm_src);
+    h->fmul(vmm_aux2, vmm_aux6, table_val(gelu_tanh_sqrt_two_over_pi, z_tmp));
+    h->fmul(vmm_src, vmm_aux1, vmm_aux2);
+
+    // Compute tanh(G(x))
+    tanh_compute_vector_fwd(vmm_src);
+
+    // Compute 0.5 * x * (1 + tanh(G(x)))
+    h->fmla(vmm_aux6, vmm_src, vmm_aux6);
+    h->fmul(vmm_src, vmm_aux6, table_val(half, z_tmp));
+}
+
+template <>
 void jit_uni_eltwise_injector_t<asimd>::abs_compute_vector_fwd(
         const TReg &vmm_src) {
     if (d_type_ == data_type::f16)
@@ -2734,6 +2786,40 @@ void jit_uni_eltwise_injector_t<asimd>::clip_compute_vector_fwd(
 }
 
 template <>
+void jit_uni_eltwise_injector_t<asimd>::mish_compute_vector_fwd(
+        const TRegS &vmm_src) {
+    // An equation other than mish(x) = x*tanh(srelu(x)) was used
+    // to calculate mish, but it should be remembered that it is equivalent
+    // equation, it uses the following rule:
+    // tanh(x) = (e^x - e^-x) / (e^x + e^-x),
+    // hence the equation for mish can take the form:
+    // mish(x) = x * ((e^x + 1)^2 - 1)/((e^x + 1)^2 + 1).
+    // This option was chosen because computing tanh requires more registers
+    // than exp, and also requires more constants to be stored in memory,
+    // making the algorithm slower.
+
+    // IMPORTANT: we use vmm_aux4 to save src as exp does not use it.
+    h->mov(VReg16B(vmm_aux4.getIdx()),
+            VReg16B(vmm_src.getIdx())); // vmm_aux4 = x
+
+    // mish uses (exp(x)+1)^2;
+    // avoid overflow by x <= log(sqrt(FLT_MAX))
+    h->fminnm(
+            vmm_src, vmm_src, table_val(fwd_mish_max_x_for_equation_f, z_tmp));
+    exp_compute_vector_fwd(vmm_src, min_input_, 0.5f * logf(FLT_MAX));
+
+    // (e^x+1)^2
+    h->fadd(vmm_src, vmm_src, table_val(one, z_tmp));
+    h->fmul(vmm_src, vmm_src, vmm_src);
+
+    // x * ((e^x + 1)^2 - 1) / ((e^x + 1)^2 + 1)
+    h->fsub(vmm_aux0, vmm_src, z_tmp);
+    h->fadd(vmm_aux1, vmm_src, z_tmp);
+    h->fdiv(vmm_src, vmm_aux0, vmm_aux1);
+    h->fmul(vmm_src, vmm_src, vmm_aux4);
+}
+
+template <>
 void jit_uni_eltwise_injector_t<asimd>::hardsigmoid_compute_vector_fwd(
         const TRegS &vmm_src) {
     // alpha:z_tmp, beta:vmm_aux0
@@ -2751,6 +2837,168 @@ void jit_uni_eltwise_injector_t<asimd>::hardswish_compute_vector_fwd(
     h->mov(VReg16B(vmm_aux2.getIdx()), VReg16B(vmm_src.getIdx()));
     hardsigmoid_compute_vector_fwd(vmm_src);
     h->fmul(vmm_src, vmm_src, vmm_aux2);
+}
+
+template <>
+void jit_uni_eltwise_injector_t<asimd>::soft_relu_compute_vector_fwd(
+        const TRegS &vmm_src) {
+
+    const auto &oneS = table_val(one, vmm_aux4);
+    const auto &halfS = table_val(half, vmm_aux5);
+
+    // alpha scaling
+    if (alpha_ == 1.f) {
+        // Nothing to do
+    } else if (alpha_ == -1) {
+        h->fneg(vmm_src, vmm_src);
+    } else {
+        h->fmul(vmm_src, vmm_src, table_val(alpha, z_tmp));
+    }
+
+    // ln(1 + exp(x)) =
+    // = ln(1 + exp(n * ln(2) + r)) // divide x by ln(2) and get quot and rem
+    // = ln(1 + 2^n * exp(r)) // simplify the exp(n*ln(2)) expression
+    // = ln(2 ^ 0 + 2^n * exp(r)) // note 1 = 2^0
+    // = ln(2 ^ (n - n) + 2^n * exp(r)) // 2^0 = 2^(n-n)
+    // = ln(2 ^ n * (2^-n + exp(r))) // factorize with 2^n
+    // = n * ln(2) + ln(2^-n + exp(r)) // take the 2^n factor out of the ln
+
+    // Keep src for further computations
+    h->mov(VReg16B(IDX(vmm_aux2)), VReg16B(IDX(vmm_src)));
+
+    h->fminnm(vmm_src, table_val(exp_ln_flt_max_f, z_tmp), vmm_src);
+    h->fmaxnm(vmm_src, table_val(exp_ln_flt_min_f, z_tmp), vmm_src);
+    h->mov(VReg16B(IDX(vmm_aux1)), VReg16B(IDX(vmm_src)));
+
+    // Calculate exp(x)
+    // fx = x * log2ef + 0.5
+    h->fmul(vmm_src, vmm_src, table_val(exp_log2ef, z_tmp));
+    h->fadd(vmm_src, vmm_src, halfS);
+
+    // tmp = floorf(fx)
+    h->frintm(vmm_aux0, vmm_src);
+
+    // Keep vmm_src = fx for further computations
+    h->mov(VReg16B(IDX(vmm_src)), VReg16B(IDX(vmm_aux0)));
+
+    // x = x - fx * ln2
+    h->fmul(vmm_aux0, vmm_aux0, table_val(ln2f, z_tmp));
+    h->fsub(vmm_aux1, vmm_aux1, vmm_aux0);
+    // Compute exponent polynomial
+    table_val(exp_pol, z_tmp, 4);
+    h->fmla(table_val(exp_pol, vmm_aux3, 3), z_tmp, vmm_aux1);
+    h->fmla(table_val(exp_pol, z_tmp, 2), vmm_aux3, vmm_aux1);
+    h->fmla(table_val(exp_pol, vmm_aux3, 1), z_tmp, vmm_aux1);
+    h->fmla(table_val(exp_pol, z_tmp, 0), vmm_aux3, vmm_aux1);
+    h->mov(VReg16B(IDX(vmm_aux3)), VReg16B(IDX(oneS)));
+    h->fmla(vmm_aux3, z_tmp, vmm_aux1);
+
+    // We do not count 2^-n here, because n can reach 128 and 2^(-128) is not
+    // representable by fp32, so to get around this problem, instead of computing
+    // 2^-n + exp(r) will be counted (2^-(n-1) + 2*exp(r))/2, because 2^(-127)
+    // and 2 are numbers representable in fp32.
+
+    // Compute 2^-(n-1)
+    h->fsub(vmm_aux1, vmm_src, oneS);
+    h->fneg(vmm_aux1, vmm_aux1);
+    h->fcvtzs(vmm_aux1, vmm_aux1);
+    h->add(vmm_aux1, vmm_aux1, table_val(exponent_bias, z_tmp));
+    h->shl(vmm_aux1, vmm_aux1, n_mantissa_bits);
+
+    // Calculate ln(1 + y)
+    h->fadd(vmm_aux3, vmm_aux3, vmm_aux3); // 2*exp(r)
+    h->fadd(vmm_aux3, vmm_aux3,
+            vmm_aux1); // 2^-(n-1) + 2*exp(r)
+    h->fmul(vmm_aux3, vmm_aux3, halfS); // (2^-(n-1) + 2*exp(r))/2
+
+    // frexp()
+    h->ushr(vmm_src, vmm_aux3, n_mantissa_bits);
+    h->scvtf(vmm_src, vmm_src);
+    // Got n. where n is x = 2^n * y. y = 0.5 .. 1
+    h->fsub(vmm_src, vmm_src, table_val(soft_relu_one_twenty_six, z_tmp));
+
+    // And with mask (to get 0.5 * mantissa)
+    h->and_(VReg16B(IDX(vmm_aux3)), VReg16B(IDX(vmm_aux3)),
+            VReg16B(IDX(table_val(soft_relu_mantissa_sign_mask, z_tmp))));
+    // Got y. (mantisa)  0.5 < y < 1 (or with (to get 0.5 * mantissa))
+    h->orr(VReg16B(IDX(vmm_aux3)), VReg16B(IDX(vmm_aux3)), VReg16B(IDX(halfS)));
+    // y  = y - 1
+    h->fsub(vmm_aux3, vmm_aux3, oneS);
+
+    // Compute log1p polynomial
+    table_val(soft_relu_pol, vmm_aux1, 8);
+    h->fmla(table_val(soft_relu_pol, z_tmp, 7), vmm_aux1, vmm_aux3);
+    h->fmla(table_val(soft_relu_pol, vmm_aux1, 6), z_tmp, vmm_aux3);
+    h->fmla(table_val(soft_relu_pol, z_tmp, 5), vmm_aux1, vmm_aux3);
+    h->fmla(table_val(soft_relu_pol, vmm_aux1, 4), z_tmp, vmm_aux3);
+    h->fmla(table_val(soft_relu_pol, z_tmp, 3), vmm_aux1, vmm_aux3);
+    h->fmla(table_val(soft_relu_pol, vmm_aux1, 2), z_tmp, vmm_aux3);
+    h->fmla(table_val(soft_relu_pol, z_tmp, 1), vmm_aux1, vmm_aux3);
+    h->fmla(table_val(soft_relu_pol, vmm_aux1, 0), z_tmp, vmm_aux3);
+
+    // Calculate ln(2) * n
+    h->fmul(vmm_src, vmm_src, table_val(ln2f, z_tmp));
+    h->fadd(vmm_src, vmm_src, vmm_aux1);
+    h->fadd(vmm_src, vmm_src, vmm_aux0);
+
+    // Get vmm_mask = src > max logf
+    // y = (x < max log f) ? soft_relu(x) : x
+    h->fcmgt(vmm_aux1, vmm_aux2, table_val(exp_ln_flt_max_f, z_tmp));
+    h->bit(VReg16B(IDX(vmm_src)), VReg16B(IDX(vmm_aux2)),
+            VReg16B(IDX(vmm_aux1)));
+    if (alpha_ == 1.f) { // standard soft_relu case
+        // Skip an instruction.
+    } else if (alpha_ == -1) { // logsigmoid case
+        h->fneg(vmm_src, vmm_src);
+    } else if (alpha_ == 0.5) {
+        h->fadd(vmm_src, vmm_src, vmm_src);
+    } else if (alpha_ == 2.0) {
+        h->fmul(vmm_src, vmm_src, halfS);
+    } else { // General case.
+        h->fdiv(vmm_src, vmm_src, table_val(alpha, z_tmp));
+    }
+}
+
+template <>
+void jit_uni_eltwise_injector_t<asimd>::logistic_compute_vector_fwd(
+        const TRegS &vmm_src) {
+    // To avoid exp(x) overflow happening at x > logf(FLT_MAX), negate positive,
+    // compute exp(x), where x <= 0 to get 0 <= exp(x) <= 1 and restore value
+    // sign at the end. This is possible due to logistic being a symmetric function.
+    // IMPORTANT: we use vmm_aux4 for the mask as exp_compute does not use it.
+    h->fcmgt(vmm_aux4, vmm_src, 0.);
+
+    // Force input negative
+    h->orr(VReg16B(IDX(vmm_src)), VReg16B(IDX(vmm_src)),
+            VReg16B(IDX(table_val(sign_mask, z_tmp))));
+
+    // Compute exponent
+    exp_compute_vector_fwd(vmm_src, min_input_, 0.f);
+
+    // (exp(x) + 1)
+    h->fadd(vmm_aux0, vmm_src, table_val(one, z_tmp));
+    // y = exp(x) / (exp(x) + 1)
+    h->fdiv(vmm_src, vmm_src, vmm_aux0);
+
+    // Now we have to apply the "symmetry" based on original sign
+    h->fsub(vmm_aux0, z_tmp, vmm_src);
+
+    // Combine with mask
+    h->bit(VReg16B(IDX(vmm_src)), VReg16B(IDX(vmm_aux0)),
+            VReg16B(IDX(vmm_aux4)));
+}
+
+template <>
+void jit_uni_eltwise_injector_t<asimd>::swish_compute_vector_fwd(
+        const TRegS &vmm_src) {
+    // IMPORTANT: we use vmm_aux5 to save src as logistic does not use it.
+    h->mov(VReg16B(vmm_aux5.getIdx()), VReg16B(vmm_src.getIdx()));
+    // x*alpha
+    if (alpha_ != 1.f) { h->fmul(vmm_src, vmm_src, table_val(alpha, z_tmp)); }
+    // sigmoid(x*alpha)
+    logistic_compute_vector_fwd(vmm_src);
+    // x*sigmoid(alpha*x)
+    h->fmul(vmm_src, vmm_src, vmm_aux5);
 }
 
 template <>
@@ -2784,13 +3032,6 @@ void jit_uni_eltwise_injector_t<sve>::load_vector(
 #define DEFINE_ASIMD_EMPTY_FUNC(func_name) \
     template <> \
     void jit_uni_eltwise_injector_t<asimd>::func_name(const TRegS &) {}
-DEFINE_ASIMD_EMPTY_FUNC(mish_compute_vector_fwd);
-DEFINE_ASIMD_EMPTY_FUNC(elu_compute_vector_fwd);
-DEFINE_ASIMD_EMPTY_FUNC(tanh_compute_vector_fwd);
-DEFINE_ASIMD_EMPTY_FUNC(gelu_tanh_compute_vector_fwd);
-DEFINE_ASIMD_EMPTY_FUNC(soft_relu_compute_vector_fwd);
-DEFINE_ASIMD_EMPTY_FUNC(logistic_compute_vector_fwd);
-DEFINE_ASIMD_EMPTY_FUNC(swish_compute_vector_fwd);
 DEFINE_ASIMD_EMPTY_FUNC(log_compute_vector_fwd);
 DEFINE_ASIMD_EMPTY_FUNC(gelu_erf_compute_vector_fwd);
 DEFINE_ASIMD_EMPTY_FUNC(tanh_polynomial_approx_compute_vector_fwd);

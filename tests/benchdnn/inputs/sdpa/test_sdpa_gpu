@@ -1,0 +1,41 @@
+--reset
+
+# GPU-specific SDPA tests (require 4D shapes: batch x heads x seq x dim)
+
+# Basic data types
+--dt=f32,f16,bf16
+--batch=shapes_gpu_basic
+
+# With buffer attention mask
+--mask_type=buffer
+--dt=f32,f16,bf16
+--batch=shapes_gpu_basic
+
+# With causal masks
+--mask_type=causal_top_left
+--dt=f32,f16
+--batch=shapes_gpu_basic
+
+--mask_type=causal_bottom_right
+--dt=f32,f16
+--batch=shapes_gpu_basic
+
+# With explicit scale
+--mask_type=none
+--scale_type=mul
+--dt=f32,f16,bf16
+--batch=shapes_gpu_basic
+
+--scale_type=div
+--dt=f32,f16
+--batch=shapes_gpu_basic
+
+# Transformer shapes
+--reset
+--dt=f16,bf16
+--mask_type=none
+--batch=shapes_transformer
+
+--dt=f16,bf16
+--mask_type=causal_top_left
+--batch=shapes_transformer

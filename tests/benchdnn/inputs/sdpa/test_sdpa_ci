@@ -1,0 +1,28 @@
+--reset
+
+# CI tests for SDPA
+
+# Basic data types, no mask
+--dt=f32,f16,bf16
+--batch=shapes_basic
+
+# With buffer attention mask
+--mask_type=buffer
+--dt=f32,f16
+--batch=shapes_basic
+
+# With causal mask
+--mask_type=causal_top_left
+--dt=f32,f16
+--batch=shapes_basic
+
+# With scale
+--mask_type=none
+--scale_type=mul
+--dt=f32,f16
+--batch=shapes_basic
+
+# Transformer-like shapes
+--reset
+--dt=f16,bf16
+--batch=shapes_transformer

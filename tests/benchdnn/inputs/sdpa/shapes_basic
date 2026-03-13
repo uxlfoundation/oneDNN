@@ -1,0 +1,22 @@
+# SDPA shapes: Q_dims:K_dims:V_dims
+# Format: batch x heads x seq_q x head_size : batch x heads x head_size x seq_k : batch x heads x seq_k x head_v
+#
+# Standard MHA shapes (batch=1, heads=1, small sizes for smoke testing)
+
+# Basic 2D (no batch): queries x head_size : head_size x keys : keys x values
+4x8:8x4:4x8
+8x16:16x8:8x16
+
+# 3D (single batch dim): batch x queries x head_size : batch x head_size x keys : batch x keys x values
+2x4x8:2x8x4:2x4x8
+1x8x16:1x16x8:1x8x16
+
+# 4D (batch x heads): typical transformer shapes
+1x1x4x8:1x1x8x4:1x1x4x8
+1x2x8x16:1x2x16x8:1x2x8x16
+2x4x16x32:2x4x32x16:2x4x16x32
+1x8x32x64:1x8x64x32:1x8x32x64
+
+# Asymmetric seq lengths (seq_q != seq_k) - common in KV cache scenarios
+1x1x1x64:1x1x64x128:1x1x128x64
+1x4x1x64:1x4x64x256:1x4x256x64

@@ -1141,7 +1141,7 @@ bool parse_main_help(
               "bnorm\n    * concat\n    * conv\n    * deconv\n    * eltwise\n  "
               "  * ip\n    * lnorm\n    * lrn\n    * matmul\n    * pool\n    * "
               "prelu\n    * reduction\n    * reorder\n    * resampling\n    * "
-              "rnn\n    * shuffle\n    * softmax\n    * sum\n    * "
+              "rnn\n    * sdpa\n    * shuffle\n    * softmax\n    * sum\n    * "
               "zeropad\n\nFor global and specific driver options, use:\n    "
               "benchdnn --<driver> --help\n\nMore details at "
             + benchdnn_url + "\n";

@@ -1,0 +1,29 @@
+--reset
+
+# Basic f32 SDPA without mask
+--dt=f32
+--batch=shapes_basic
+
+# f16 SDPA without mask
+--dt=f16
+--batch=shapes_basic
+
+# bf16 SDPA without mask
+--dt=bf16
+--batch=shapes_basic
+
+# f32 SDPA with buffer attention mask
+--dt=f32
+--mask_type=buffer
+--batch=shapes_basic
+
+# f32 SDPA with causal mask (top-left diagonal)
+--dt=f32
+--mask_type=causal_top_left
+--batch=shapes_basic
+
+# f32 SDPA with explicit scale (multiply)
+--dt=f32
+--mask_type=none
+--scale_type=mul
+--batch=shapes_basic

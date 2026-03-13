@@ -900,10 +900,14 @@ inline RegData abs(const RegData &r)
     return result.setMods(1);
 }
 
+// Forward declare
+static constexpr int maxRegs(HW hw);
+
 inline void RegData::fixup(HW hw, int execSize, int execWidth, DataType defaultType, int srcN, int arity)
 {
 #ifdef NGEN_SAFE
     if (isInvalid()) throw invalid_object_exception();
+    if (!isARF() && !isIndirect() && static_cast<int>(base) >= maxRegs(hw)) throw grf_out_of_bounds_exception();
 #endif
 
     if (getType() == DataType::invalid) {
@@ -1299,6 +1303,10 @@ public:
             : 256;
     }
 };
+
+static constexpr int maxRegs(HW hw) {
+    return GRF::maxRegs(hw);
+}
 
 class ARF : public Register
 {

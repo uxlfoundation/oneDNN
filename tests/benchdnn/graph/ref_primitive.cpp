@@ -323,7 +323,7 @@ void ref_primitive_t::check_correctness(
                     {DNNL_ARG_BIAS, BIA},
                     {DNNL_ARG_DIFF_BIAS, BIA},
                     {DNNL_ARG_DST, DST},
-                    {DNNL_ARG_DST_1, DST_1},
+                    {DNNL_ARG_DST_1, SDPA_STATS},
                     {DNNL_ARG_DIFF_SRC_0, DST},
                     {DNNL_ARG_SRC_1, SRC_1},
                     {DNNL_ARG_MEAN, MEAN},
@@ -355,8 +355,8 @@ void ref_primitive_t::check_correctness(
         const auto &mem_dt = args.find(arg);
         const auto &mem_fp = args_.find(arg);
 
-        if (dnnl_arg_2_data_kind_map.find(arg)
-                == dnnl_arg_2_data_kind_map.end()) {
+        auto it = dnnl_arg_2_data_kind_map.find(arg);
+        if (it == dnnl_arg_2_data_kind_map.end()) {
             BENCHDNN_PRINT(1, "Output arg %d is unsupported!\n", arg);
             res->state = UNIMPLEMENTED;
             return;
@@ -365,6 +365,7 @@ void ref_primitive_t::check_correctness(
         attr_t attr;
         SWITCH_DRIVER(CASE_CHECK_CORRECTNESS, CASE_CUSTOM_CHECK_CORRECTNESS);
 
+        cmp.set_data_kind(it->second);
         cmp.set_has_eltwise_post_op(has_eltwise);
         cmp.set_op_output_has_nans(has_nans);
         // `cmp` object has internal knowledge on when this check must be

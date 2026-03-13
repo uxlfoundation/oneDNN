@@ -283,7 +283,7 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
     const float trh = is_flt_or_dbl || is_relaxed_xf16 ? trh_f32 : 0.f;
 #endif
     cmp.set_threshold(trh);
-    if (driver_name == "graph" && kind == DST_1) {
+    if (driver_name == "graph" && kind == SDPA_STATS) {
         // softmax stats is computed with eltwise-log, which has a different
         // and larger threshold than softmax. So we need to adjust the threshold
         // for this case.

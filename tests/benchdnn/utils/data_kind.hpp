@@ -42,10 +42,10 @@ enum data_kind_t {
     WEI_PROJECTION,
     DROPOUT_MASK,
     DST_SCALES,
+    // SDPA softmax stats
+    SDPA_STATS,
 
     DAT_TOTAL,
-    // softmax stats
-    DST_1,
 };
 
 const char *data_kind2str(data_kind_t dk);

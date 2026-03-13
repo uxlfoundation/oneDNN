@@ -71,6 +71,7 @@ const std::map<data_kind_t, data_kind_entry_t> &data_kind_table() {
                             "WEI_PROJECTION"}},
             {DROPOUT_MASK, {{DNNL_ARG_ATTR_DROPOUT_MASK}, "DROPOUT_MASK"}},
             {DST_SCALES, {{DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST}, "DST_SCALES"}},
+            {SDPA_STATS, {{DNNL_ARG_DST_1}, "SDPA_STATS"}},
             {DAT_TOTAL, {{DNNL_ARG_UNDEF}, "incorrect data kind"}},
     };
     return data_kind_table_;

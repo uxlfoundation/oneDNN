@@ -57,8 +57,9 @@ status_t xe_jit_params_t::init(impl::engine_t *engine,
     vector_size = std::min(load_size / (dt_size * sub_group_size), 8);
     work_group_size = local_threads * sub_group_size;
 
+    nelems = data_d.nelems(true);
     const int local_block_size = work_group_size * vector_size;
-    with_overflow = (data_d.nelems(true) % local_block_size) != 0;
+    with_overflow = (nelems % local_block_size) != 0;
 
     return status::success;
 }
@@ -66,6 +67,7 @@ status_t xe_jit_params_t::init(impl::engine_t *engine,
 compute::kernel_ctx_t xe_jit_params_t::get_kernel_ctx() const {
     compute::kernel_ctx_t kernel_ctx;
     kernel_ctx.require_stateless_addressing(require_stateless_addressing);
+    if (nelems > INT32_MAX) kernel_ctx.use_int32_offset(false);
 
     kernel_ctx.set_data_type(data_type, /*with_punning=*/false);
 

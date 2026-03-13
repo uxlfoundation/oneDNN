@@ -18,8 +18,8 @@
 
 #include "cpu/cpu_engine.hpp"
 
-#include "cpu/ref_eltwise.hpp"
 #include "cpu/aarch64/ref_eltwise_lut.hpp"
+#include "cpu/ref_eltwise.hpp"
 
 #if DNNL_X64
 #include "cpu/x64/jit_uni_eltwise.hpp"

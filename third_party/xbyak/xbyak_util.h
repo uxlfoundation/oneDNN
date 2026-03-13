@@ -131,6 +131,7 @@
 #endif
 #ifdef __linux__
 	#define XBYAK_USE_PERF
+	#include <sched.h>
 #endif
 
 #ifndef XBYAK_CPU_CACHE
@@ -1609,10 +1610,10 @@ inline bool initCpuTopology(CpuTopology& cpuTopo)
 	// Assign core types for hybrid architectures
 	const bool isHybrid = cpuTopo.isHybrid();
 	if (isHybrid) {
-		// For hybrid systems, read P-core and E-core lists from sysfs
+		// For hybrid systems, try to read P-core and E-core lists from sysfs first
 		CpuMask pCoreMask;
-		if (parseCpuList(pCoreMask, "/sys/devices/cpu_core/cpus")) {
-			// Set Performance core types
+		const bool hasPCoreSysfs = parseCpuList(pCoreMask, "/sys/devices/cpu_core/cpus");
+		if (hasPCoreSysfs) {
 			for (CpuMask::const_iterator it = pCoreMask.begin(); it != pCoreMask.end(); ++it) {
 				uint32_t cpuIdx = *it;
 				if (cpuIdx < logicalCpuNum) {
@@ -1621,14 +1622,45 @@ inline bool initCpuTopology(CpuTopology& cpuTopo)
 			}
 		}
 		CpuMask eCoreMask;
-		if (parseCpuList(eCoreMask, "/sys/devices/cpu_atom/cpus")) {
-			// Set Efficient core types
+		const bool hasECoreSysfs = parseCpuList(eCoreMask, "/sys/devices/cpu_atom/cpus");
+		if (hasECoreSysfs) {
 			for (CpuMask::const_iterator it = eCoreMask.begin(); it != eCoreMask.end(); ++it) {
 				uint32_t cpuIdx = *it;
 				if (cpuIdx < logicalCpuNum) {
 					cpuTopo.logicalCpus_[cpuIdx].coreType = Efficient;
 				}
 			}
+		}
+		// Fallback: if sysfs paths are unavailable, detect core type per-CPU
+		// via CPUID leaf 0x1A (Hybrid Information) by pinning each logical CPU.
+		if (!hasPCoreSysfs || !hasECoreSysfs) {
+			cpu_set_t originalMask;
+			CPU_ZERO(&originalMask);
+			sched_getaffinity(0, sizeof(cpu_set_t), &originalMask);
+
+			// CPUID leaf 0x1A EAX[31:24] core type identifiers
+			static constexpr uint32_t Cpuid_StandardCoreType = 0x40; // P-core (Performance)
+			static constexpr uint32_t Cpuid_AtomCoreType = 0x20; // E-core (Efficient)
+
+			for (uint32_t cpu = 0; cpu < logicalCpuNum; cpu++) {
+				cpu_set_t cpuMask;
+				CPU_ZERO(&cpuMask);
+				CPU_SET(cpu, &cpuMask);
+				if (sched_setaffinity(0, sizeof(cpu_set_t), &cpuMask) == 0) {
+					// CPUID leaf 0x1A: Hybrid Information
+					uint32_t data[4] = {};
+					Cpu::getCpuidEx(0x1A, 0, data);
+					const uint32_t coreTypeField = (data[0] >> 24) & 0xFF;
+					if (coreTypeField == Cpuid_StandardCoreType) {
+						cpuTopo.logicalCpus_[cpu].coreType = Performance;
+					} else if (coreTypeField == Cpuid_AtomCoreType) {
+						cpuTopo.logicalCpus_[cpu].coreType = Efficient;
+					}
+				}
+			}
+
+			// Restore the original CPU affinity mask
+			sched_setaffinity(0, sizeof(cpu_set_t), &originalMask);
 		}
 	}
 

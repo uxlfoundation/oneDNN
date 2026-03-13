@@ -43,6 +43,26 @@ struct compare_t {
         float trh = 0.f;
     };
 
+    struct dump_point_ctx_t {
+        dump_point_ctx_t(const_dnnl_memory_desc_t md, int64_t l_offset,
+                float exp_f32, float exp, float got, float diff, float rel_diff)
+            : md(md)
+            , l_offset(l_offset)
+            , exp_f32(exp_f32)
+            , exp(exp)
+            , got(got)
+            , diff(diff)
+            , rel_diff(rel_diff) {}
+
+        const_dnnl_memory_desc_t md;
+        int64_t l_offset;
+        float exp_f32;
+        float exp;
+        float got;
+        float diff;
+        float rel_diff;
+    };
+
     compare_t() = default;
 
     void set_allow_norm_check(bool anc) { allow_norm_check_ = anc; }
@@ -102,11 +122,17 @@ private:
     // layout for proper comparison.
     bool has_prim_ref_ = false;
 
+    // Internal members.
+    //
+    // `mutable` to preserve `const`antness of compare methods.
+    mutable std::vector<dump_point_ctx_t> p2p_dumps_;
+
     // Internal validation methods under `compare` interface.
     int compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
             const attr_t &attr, res_t *res) const;
     int compare_norm(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
             const attr_t &attr, res_t *res) const;
+    void dump_p2p_errors() const;
 
     std::string get_kind_str() const {
         std::string kind_str;

@@ -32,28 +32,8 @@
 namespace compare {
 
 namespace {
-struct dump_point_ctx_t {
-    dump_point_ctx_t(const_dnnl_memory_desc_t md, int64_t l_offset,
-            float exp_f32, float exp, float got, float diff, float rel_diff)
-        : md(md)
-        , l_offset(l_offset)
-        , exp_f32(exp_f32)
-        , exp(exp)
-        , got(got)
-        , diff(diff)
-        , rel_diff(rel_diff) {}
-
-    const_dnnl_memory_desc_t md;
-    int64_t l_offset;
-    float exp_f32;
-    float exp;
-    float got;
-    float diff;
-    float rel_diff;
-};
-
 void dump_point_values(
-        const std::string &kind_str, const dump_point_ctx_t &ctx) {
+        const std::string &kind_str, const compare_t::dump_point_ctx_t &ctx) {
     dnnl::impl::stringstream_t ss;
     dims_t l_dims = md2dims(ctx.md);
     dims_t dims_idx = off2dims_idx(l_dims, ctx.l_offset);
@@ -235,21 +215,14 @@ int compare_t::compare_norm(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
 
     diff_norm.done();
 
-    // Serial point dump with enabled dumping when needed for nicer output.
-    if (need_dump) {
-        for (int64_t i = 0; i < nelems; ++i) {
-            driver_check_func_args_t args(exp_mem, got_f32, i, dt, trh_);
-            dump_point_values(get_kind_str(),
-                    {got_mem.md_, i, args.exp_f32, args.exp, args.got,
-                            args.diff, args.rel_diff});
-        }
-    }
-
     bool ok = diff_norm.rel_diff(norm_t::L2) <= trh_norm_;
     if (!ok) res->errors = 1;
 
     const bool dump = need_dump || !ok;
-    if (dump) dump_norm_values(diff_norm, get_kind_str());
+    if (dump) {
+        dump_p2p_errors();
+        dump_norm_values(diff_norm, get_kind_str());
+    }
 
     if (res->errors) res->state = FAILED;
 
@@ -321,7 +294,7 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
     static struct {
         struct data_t {
             int64_t n_errors;
-            std::vector<dump_point_ctx_t> dumps;
+            std::vector<compare_t::dump_point_ctx_t> dumps;
         };
 
         data_t &get() {
@@ -574,20 +547,19 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
     }
     // serial comparison with enabled dumping when needed for nicer output.
     if (n_errors > 0 || need_dump) {
-        std::vector<dump_point_ctx_t> dumps;
         for (auto &d : thread_data.data) {
-            dumps.insert(
-                    dumps.end(), d.second.dumps.begin(), d.second.dumps.end());
+            p2p_dumps_.insert(p2p_dumps_.end(), d.second.dumps.begin(),
+                    d.second.dumps.end());
         }
-        std::sort(dumps.begin(), dumps.end(),
-                [](const dump_point_ctx_t &a, const dump_point_ctx_t &b) {
+        std::sort(p2p_dumps_.begin(), p2p_dumps_.end(),
+                [](const compare_t::dump_point_ctx_t &a,
+                        const compare_t::dump_point_ctx_t &b) {
             return a.l_offset < b.l_offset;
         });
-        size_t max_dump_size
-                = (verbose >= 10 || dumps.size() < 10) ? dumps.size() : 10;
-        for (size_t i = 0; i < max_dump_size; i++) {
-            dump_point_values(get_kind_str(), dumps[i]);
-        }
+        // If norm fallback is allowed, these dumps will be printed there.
+        // This is done to avoid an output disturbance if p2p check fails but
+        // norm passes.
+        if (!allow_norm_check_) dump_p2p_errors();
     }
 
     // Set state to FAILED in case of any errors.
@@ -622,6 +594,15 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
     if (res->state == EXECUTED) res->state = PASSED;
 
     return res->state == FAILED ? FAIL : OK;
+}
+
+void compare_t::dump_p2p_errors() const {
+    size_t max_dump_size = (verbose >= 10 || p2p_dumps_.size() < 10)
+            ? p2p_dumps_.size()
+            : 10;
+    for (size_t i = 0; i < max_dump_size; i++) {
+        dump_point_values(get_kind_str(), p2p_dumps_[i]);
+    }
 }
 
 int compare_t::compare(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,

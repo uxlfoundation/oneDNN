@@ -390,9 +390,9 @@ void ref_primitive_t::check_correctness(
         // different hardware.
         cmp.set_threshold_norm(2.5e-3f);
         dnn_mem_t mem_fp_abx(mem_fp, dnnl_f32, tag::abx, ::get_cpu_engine());
-        // Reset `res` counters when more than a single arg is checked.
-        res->errors = 0;
-        res->total = 0;
+        // Clear previous output stats.
+        auto cur_res_state = res->state;
+        res->reset_stats(cur_res_state);
         cmp.compare(mem_fp_abx, mem_dt, attr, res);
     }
 }

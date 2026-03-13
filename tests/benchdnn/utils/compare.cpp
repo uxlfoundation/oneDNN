@@ -127,13 +127,6 @@ bool negative_converts_to_zero(const attr_t &attr, dnnl_data_type_t target_dt) {
     return false;
 }
 
-void reset_case_stats(res_t *res) {
-    // TODO: introduce res->stats and ctor to replace just the stats part.
-    res->state = EXECUTED;
-    res->total = 0;
-    res->errors = 0;
-}
-
 } // namespace
 
 bool compare_extreme_values(float a, float b) {
@@ -643,7 +636,7 @@ int compare_t::compare(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
         }
 
         if (call_norm_check) {
-            reset_case_stats(res);
+            res->reset_stats(EXECUTED);
             st = compare_norm(exp_mem, got_mem, attr, res);
         }
     }

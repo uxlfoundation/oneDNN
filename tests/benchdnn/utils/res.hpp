@@ -108,15 +108,39 @@ struct check_mem_size_args_t {
 };
 
 struct res_t {
-    res_state_t state;
-    size_t errors, total;
-    timer::timer_map_t timer_map;
-    std::string impl_name;
-    std::string prim_ref_repro;
+    // The state of the `res` object. Changes as the flow continues. The typical
+    // progression starts with UNTESTED and follows steps:
+    // Creation: -> INITIALIZED/INVALID_ARGUMENTS/UNIMPLEMENTED/SKIPPED;
+    // Execution: -> EXECUTED;
+    // Result: -> PASSED/FAILED/MISTRUSTED.
+    res_state_t state = UNTESTED;
+    // A short description of the reason of the obtained status.
     std::string reason;
+    // The number of failed points if case FAILED.
+    size_t errors = 0;
+    // The total number of points tested.
+    size_t total = 0;
+    // Registered timers during the run.
+    timer::timer_map_t timer_map;
+    // The implementation name of the validated primitive.
+    std::string impl_name;
+    // The repro line for a primitive used as a baseline over benchdnn ref.
+    std::string prim_ref_repro;
+    // The amount of bytes of 'i'nput and 'o'utput.
     // TODO: fuse `ibytes` and `obytes` into `mem_size_args`.
-    size_t ibytes, obytes;
+    size_t ibytes = 0;
+    size_t obytes = 0;
+    // Detailed information about test case memory requirements.
     check_mem_size_args_t mem_size_args;
+
+    // Resets `state`, `errors`, `total`, `reason` field with default values
+    // and a given `new_state`.
+    void reset_stats(res_state_t new_state) {
+        state = new_state;
+        reason.clear();
+        errors = 0;
+        total = 0;
+    }
 };
 
 #endif

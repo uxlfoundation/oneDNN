@@ -21,7 +21,7 @@
 #include "common/utils.hpp"
 #include "common/verbose.hpp"
 
-#include "cpu/gemm/gemm.hpp"
+#include "cpu/rv64/brgemm/brgemm.hpp"
 #include "cpu/rv64/rvv_brgemm_conv.hpp"
 
 namespace dnnl {
@@ -68,6 +68,24 @@ status_t rvv_brgemm_convolution_fwd_t::pd_t::init(engine_t *engine) {
                               src_md_, weights_md_, dst_md_, bias_md_, attr_,
                               dnnl_get_max_threads()),
             VERBOSE_PRIMITIVE_CREATION_FAIL, "brgemm_conv");
+
+    // Create the JIT BRGEMM kernel for the convolution's GEMM shape.
+    const dim_t M = jcp_.oc;
+    const dim_t K = jcp_.ic;
+    const dim_t OC_all = static_cast<dim_t>(jcp_.ngroups) * jcp_.oc;
+    const dim_t IC_all = static_cast<dim_t>(jcp_.ngroups) * jcp_.ic;
+    const dim_t LDA = OC_all;
+    const dim_t LDB = static_cast<dim_t>(jcp_.stride_w) * IC_all;
+    const dim_t LDC = OC_all;
+
+    brgemm_desc_t brg_desc;
+    CHECK(brgemm_desc_init(&brg_desc, v, brgemm_strd, data_type::f32,
+            data_type::f32, brgemm_col_major, 1.0f, 1.0f, LDA, LDB, LDC, M,
+            jcp_.ow, K));
+
+    brgemm_kernel_t *kernel = nullptr;
+    CHECK(brgemm_kernel_create(&kernel, brg_desc));
+    brg_kernel_.reset(kernel);
 
     return status::success;
 }
@@ -125,100 +143,11 @@ status_t rvv_brgemm_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
     // Weight strides (hwio / dhwio / hwigo / dhwigo).
     const dim_t wei_kpos_str = static_cast<dim_t>(IC) * OC_all;
 
-    // GEMM leading dimensions (column-major / BLAS convention).
-    const dim_t LDA = OC_all; // weight: M=OC, K=IC
-    const dim_t LDB = static_cast<dim_t>(SW) * IC_all; // source
-    const dim_t LDC = OC_all; // destination
+    const auto *brg_kernel = pd()->brg_kernel_.get();
 
-    const float one = 1.0f;
-
-    // When SH=SW=1 and IW=OW (padding-preserved spatial), consecutive
-    // output rows correspond to contiguous source/dst in nhwc layout.
-    const bool can_batch_rows = (SH == 1 && SW == 1 && IW == OW);
-
-    if (can_batch_rows) {
-        // Parallel over (mb, groups, od) — each thread handles all OH rows.
-        parallel_nd(jcp.mb, G, OD, [&](dim_t n, dim_t g, dim_t od) {
-            float *dst_base = dst + n * dst_mb_str + od * dst_d_str + g * OC;
-
-            // Zero entire output slice for this (n, g, od).
-            if (!jcp.with_sum) {
-                for (dim_t s = 0; s < OH * OW; s++) {
-                    float *d = dst_base + s * OC_all;
-                    for (dim_t oc = 0; oc < OC; oc++)
-                        d[oc] = 0.0f;
-                }
-            }
-
-            for (int kd = 0; kd < KD; kd++) {
-                const int id = od * SD + kd * DD - FP;
-                if (id < 0 || id >= ID) continue;
-
-                for (int kh = 0; kh < KH; kh++) {
-                    // Valid oh range: need 0 <= oh + kh*DH - TP < IH.
-                    const int oh_s
-                            = nstl::max(0, TP - kh * DH); // DH already +1
-                    const int oh_e = nstl::min(OH, IH + TP - kh * DH);
-                    if (oh_s >= oh_e) continue;
-                    const int ih_start = oh_s + kh * DH - TP; // SH=1
-
-                    for (int kw = 0; kw < KW; kw++) {
-                        const int iw_base = kw * DW - LP;
-                        int ow_s = iw_base < 0 ? -iw_base : 0;
-                        int ow_e = nstl::min(OW, IW - iw_base);
-                        const dim_t valid_ow = ow_e - ow_s;
-                        if (valid_ow <= 0) continue;
-                        const int iw_start = iw_base + ow_s; // SW=1
-
-                        const float *A = wei
-                                + ((kd * KH + kh) * KW + kw) * wei_kpos_str
-                                + g * OC;
-
-                        if (ow_s == 0 && ow_e == OW) {
-                            // Full-width: source/dst contiguous across rows.
-                            dim_t num_rows = oh_e - oh_s;
-                            dim_t N = num_rows * OW;
-                            const float *B = src + n * src_mb_str
-                                    + id * src_d_str + ih_start * src_h_str
-                                    + iw_start * src_w_str + g * IC;
-                            float *C = dst_base + oh_s * dst_h_str
-                                    + ow_s * OC_all;
-                            dim_t M = OC, K_dim = IC;
-                            status_t st = extended_sgemm("N", "N", &M, &N,
-                                    &K_dim, &one, A, &LDA, B, &LDB, &one, C,
-                                    &LDC);
-                            if (st != status::success) return;
-                        } else {
-                            // Edge (partial width): per-row GEMM.
-                            for (int oh = oh_s; oh < oh_e; oh++) {
-                                const int ih = oh + kh * DH - TP;
-                                const float *B = src + n * src_mb_str
-                                        + id * src_d_str + ih * src_h_str
-                                        + iw_start * src_w_str + g * IC;
-                                float *C = dst_base + oh * dst_h_str
-                                        + ow_s * OC_all;
-                                dim_t M = OC, N_dim = valid_ow, K_dim = IC;
-                                status_t st = extended_sgemm("N", "N", &M,
-                                        &N_dim, &K_dim, &one, A, &LDA, B, &LDB,
-                                        &one, C, &LDC);
-                                if (st != status::success) return;
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (jcp.with_bias) {
-                const float *bia_g = bia + g * OC;
-                for (dim_t s = 0; s < OH * OW; s++) {
-                    float *d = dst_base + s * OC_all;
-                    for (dim_t oc = 0; oc < OC; oc++)
-                        d[oc] += bia_g[oc];
-                }
-            }
-        });
-    } else {
-        // Strided convolutions: parallel over (mb, groups, od, oh).
+    {
+        // Parallel over (mb, groups, od, oh) for good multi-core scaling.
+        // Each thread handles one or more output rows independently.
         const dim_t work = static_cast<dim_t>(jcp.mb) * G * OD * OH;
 
         parallel(jcp.nthr, [&](const int ithr, const int nthr) {
@@ -237,6 +166,8 @@ status_t rvv_brgemm_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
                         for (int oc = 0; oc < OC; oc++)
                             dst_row[ow * OC_all + oc] = 0.0f;
                 }
+
+                bool first_kpos = !jcp.with_sum;
 
                 for (int kd = 0; kd < KD; kd++) {
                     const int id = od * SD + kd * DD - FP;
@@ -264,11 +195,10 @@ status_t rvv_brgemm_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
                                     + iw_start * src_w_str + g * IC;
                             float *C = dst_row + ow_s * OC_all;
 
-                            dim_t M = OC, N = valid_ow, K_dim = IC;
-                            status_t st = extended_sgemm("N", "N", &M, &N,
-                                    &K_dim, &one, A, &LDA, B, &LDB, &one, C,
-                                    &LDC);
-                            if (st != status::success) return;
+                            const float beta_val = first_kpos ? 0.0f : 1.0f;
+                            brgemm_kernel_execute(
+                                    brg_kernel, A, B, C, valid_ow, beta_val);
+                            first_kpos = false;
                         }
                     }
                 }

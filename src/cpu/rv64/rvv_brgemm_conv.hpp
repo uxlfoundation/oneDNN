@@ -17,6 +17,8 @@
 #ifndef CPU_RV64_RVV_BRGEMM_CONV_HPP
 #define CPU_RV64_RVV_BRGEMM_CONV_HPP
 
+#include <memory>
+
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
 #include "common/verbose.hpp"
@@ -24,6 +26,7 @@
 #include "cpu/cpu_convolution_pd.hpp"
 #include "cpu/cpu_engine.hpp"
 
+#include "cpu/rv64/brgemm/brgemm.hpp"
 #include "cpu/rv64/cpu_isa_traits.hpp"
 #include "cpu/rv64/rvv_brgemm_conv_utils.hpp"
 
@@ -42,6 +45,7 @@ struct rvv_brgemm_convolution_fwd_t : public primitive_t {
         status_t init(engine_t *engine);
 
         brgemm_conv_conf_t jcp_ = utils::zero<decltype(jcp_)>();
+        std::shared_ptr<brgemm_kernel_t> brg_kernel_;
     };
 
     rvv_brgemm_convolution_fwd_t(const pd_t *apd) : primitive_t(apd) {}

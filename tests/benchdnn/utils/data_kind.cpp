@@ -23,48 +23,63 @@
 #include "utils/data_kind.hpp"
 
 struct data_kind_entry_t {
-    data_kind_t dk;
     std::vector<int> exec_args;
+    std::string label;
 };
 
-static data_kind_entry_t data_kind_table[] = {
-        // Important implementation detail:
-        // `arg` to `kind` conversion is 2-to-1, and transparent.
-        // Since `kind` to `arg` conversion is 1-to-2, it is done according to
-        // comparison logic. To maintain it easier, first element of arg vector
-        // is the one that corresponts to the argument expected in comparison.
-        {SRC, {DNNL_ARG_DIFF_SRC, DNNL_ARG_SRC}},
-        {SRC_1, {DNNL_ARG_DIFF_SRC_1, DNNL_ARG_SRC_1}},
-        {SRC_2, {DNNL_ARG_DIFF_SRC_2, DNNL_ARG_SRC_2}},
-        {SRC_ITER, {DNNL_ARG_DIFF_SRC_ITER, DNNL_ARG_SRC_ITER}},
-        {SRC_ITER_C, {DNNL_ARG_DIFF_SRC_ITER_C, DNNL_ARG_SRC_ITER_C}},
-        {WEI, {DNNL_ARG_DIFF_WEIGHTS, DNNL_ARG_WEIGHTS}},
-        {WEI_ITER, {DNNL_ARG_DIFF_WEIGHTS_ITER, DNNL_ARG_WEIGHTS_ITER}},
-        {BIA, {DNNL_ARG_DIFF_BIAS, DNNL_ARG_BIAS}},
-        {DST, {DNNL_ARG_DST, DNNL_ARG_DIFF_DST}},
-        {DST_ITER, {DNNL_ARG_DST_ITER, DNNL_ARG_DIFF_DST_ITER}},
-        {DST_ITER_C, {DNNL_ARG_DST_ITER_C, DNNL_ARG_DIFF_DST_ITER_C}},
-        {MEAN, {DNNL_ARG_MEAN}},
-        {VAR, {DNNL_ARG_VARIANCE}},
-        {SC, {DNNL_ARG_DIFF_SCALE, DNNL_ARG_SCALE}},
-        {SH, {DNNL_ARG_DIFF_SHIFT, DNNL_ARG_SHIFT}},
-        {AUGRU_ATTENTION,
-                {DNNL_ARG_DIFF_AUGRU_ATTENTION, DNNL_ARG_AUGRU_ATTENTION}},
-        {WEI_PEEPHOLE,
-                {DNNL_ARG_DIFF_WEIGHTS_PEEPHOLE, DNNL_ARG_WEIGHTS_PEEPHOLE}},
-        {WEI_PROJECTION,
-                {DNNL_ARG_DIFF_WEIGHTS_PROJECTION,
-                        DNNL_ARG_WEIGHTS_PROJECTION}},
-        {DROPOUT_MASK, {DNNL_ARG_ATTR_DROPOUT_MASK}},
-        {DST_SCALES, {DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST}},
-        // Always keep this entry the last in the list
-        {DAT_TOTAL, {DNNL_ARG_UNDEF}},
-};
+const std::map<data_kind_t, data_kind_entry_t> &data_kind_table() {
+    static const std::map<data_kind_t, data_kind_entry_t> data_kind_table_ {
+            // Important implementation detail:
+            // `arg` to `kind` conversion is 2-to-1, and transparent.
+            // Since `kind` to `arg` conversion is 1-to-2, it is done according
+            // to comparison logic. To maintain it easier, first element of arg
+            // vector is the one that corresponts to the argument expected in
+            // comparison.
+            {SRC, {{DNNL_ARG_DIFF_SRC, DNNL_ARG_SRC}, "SRC"}},
+            {SRC_1, {{DNNL_ARG_DIFF_SRC_1, DNNL_ARG_SRC_1}, "SRC_ADD"}},
+            {SRC_2, {{DNNL_ARG_DIFF_SRC_2, DNNL_ARG_SRC_2}, "SRC_2"}},
+            {SRC_ITER,
+                    {{DNNL_ARG_DIFF_SRC_ITER, DNNL_ARG_SRC_ITER}, "SRC_ITER"}},
+            {SRC_ITER_C,
+                    {{DNNL_ARG_DIFF_SRC_ITER_C, DNNL_ARG_SRC_ITER_C},
+                            "SRC_ITER_C"}},
+            {WEI, {{DNNL_ARG_DIFF_WEIGHTS, DNNL_ARG_WEIGHTS}, "WEI"}},
+            {WEI_ITER,
+                    {{DNNL_ARG_DIFF_WEIGHTS_ITER, DNNL_ARG_WEIGHTS_ITER},
+                            "WEI_ITER"}},
+            {BIA, {{DNNL_ARG_DIFF_BIAS, DNNL_ARG_BIAS}, "BIA"}},
+            {DST, {{DNNL_ARG_DST, DNNL_ARG_DIFF_DST}, "DST"}},
+            {DST_ITER,
+                    {{DNNL_ARG_DST_ITER, DNNL_ARG_DIFF_DST_ITER}, "DST_ITER"}},
+            {DST_ITER_C,
+                    {{DNNL_ARG_DST_ITER_C, DNNL_ARG_DIFF_DST_ITER_C},
+                            "DST_ITER_C"}},
+            {MEAN, {{DNNL_ARG_MEAN}, "MEAN"}},
+            {VAR, {{DNNL_ARG_VARIANCE}, "VAR"}},
+            {SC, {{DNNL_ARG_DIFF_SCALE, DNNL_ARG_SCALE}, "SC"}},
+            {SH, {{DNNL_ARG_DIFF_SHIFT, DNNL_ARG_SHIFT}, "SH"}},
+            {AUGRU_ATTENTION,
+                    {{DNNL_ARG_DIFF_AUGRU_ATTENTION, DNNL_ARG_AUGRU_ATTENTION},
+                            "AUGRU_ATTENTION"}},
+            {WEI_PEEPHOLE,
+                    {{DNNL_ARG_DIFF_WEIGHTS_PEEPHOLE,
+                             DNNL_ARG_WEIGHTS_PEEPHOLE},
+                            "WEI_PEEPHOLE"}},
+            {WEI_PROJECTION,
+                    {{DNNL_ARG_DIFF_WEIGHTS_PROJECTION,
+                             DNNL_ARG_WEIGHTS_PROJECTION},
+                            "WEI_PROJECTION"}},
+            {DROPOUT_MASK, {{DNNL_ARG_ATTR_DROPOUT_MASK}, "DROPOUT_MASK"}},
+            {DST_SCALES, {{DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST}, "DST_SCALES"}},
+            {DAT_TOTAL, {{DNNL_ARG_UNDEF}, "incorrect data kind"}},
+    };
+    return data_kind_table_;
+}
 
 data_kind_t exec_arg2data_kind(int arg) {
-    for (const auto &e : data_kind_table) {
-        for (const auto &a : e.exec_args) {
-            if (a == arg) return e.dk;
+    for (const auto &e : data_kind_table()) {
+        for (const auto &a : e.second.exec_args) {
+            if (a == arg) return e.first;
         }
     }
 
@@ -82,14 +97,13 @@ data_kind_t exec_arg2data_kind(int arg) {
             && !is_zero_point_arg && !is_dropout_arg)
         BENCHDNN_PRINT(0, "Error: arg \'%d\' was not recognized\n", arg);
 
-    const auto table_size = sizeof(data_kind_table) / sizeof(*data_kind_table);
-    return data_kind_table[table_size - 1].dk;
+    return DAT_TOTAL;
 }
 
 int data_kind2exec_arg(data_kind_t dk) {
-    for (const auto &e : data_kind_table) {
-        // See `data_kind_table` comment. It explains why `0` index is taken.
-        if (e.dk == dk) return e.exec_args[0];
+    for (const auto &e : data_kind_table()) {
+        // See `data_kind_table()` comment. It explains why `0` index is taken.
+        if (e.first == dk) return e.second.exec_args[0];
     }
 
     BENCHDNN_PRINT(0, "Error: data_kind \'%s\' was not recognized\n",
@@ -97,31 +111,10 @@ int data_kind2exec_arg(data_kind_t dk) {
     return DNNL_ARG_UNDEF;
 }
 
-const char *data_kind2str(data_kind_t kind) {
-    switch (kind) {
-        case SRC: return "SRC";
-        case SRC_1: return "SRC_ADD";
-        case SRC_2: return "SRC_2";
-        case WEI: return "WEI";
-        case BIA: return "BIA";
-        case DST: return "DST";
-        case DIFF_DST: return "DIFF_DST";
-        case ACC: return "ACC";
-        case MEAN: return "MEAN";
-        case VAR: return "VAR";
-        case SC: return "SC";
-        case SH: return "SH";
-        case DST_ITER: return "DST_ITER";
-        case DST_ITER_C: return "DST_ITER_C";
-        case AUGRU_ATTENTION: return "AUGRU_ATTENTION";
-        case SRC_ITER: return "SRC_ITER";
-        case SRC_ITER_C: return "SRC_ITER_C";
-        case WEI_ITER: return "WEI_ITER";
-        case WEI_PEEPHOLE: return "WEI_PEEPHOLE";
-        case WEI_PROJECTION: return "WEI_PROJECTION";
-        case DROPOUT_MASK: return "DROPOUT_MASK";
-        case DST_SCALES: return "DST_SCALES";
-        default: assert(!"incorrect data kind");
+const char *data_kind2str(data_kind_t dk) {
+    for (const auto &e : data_kind_table()) {
+        if (e.first == dk) return e.second.label.c_str();
     }
-    return "incorrect data kind";
+
+    return data_kind_table().at(DAT_TOTAL).label.c_str();
 }

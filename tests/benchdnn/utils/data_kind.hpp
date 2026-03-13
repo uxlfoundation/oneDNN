@@ -23,7 +23,6 @@ enum data_kind_t {
     BIA,
     DST,
     DIFF_DST,
-    ACC,
     // bnorm, lnorm
     SRC_1,
     // select
@@ -48,7 +47,8 @@ enum data_kind_t {
     // softmax stats
     DST_1,
 };
-const char *data_kind2str(data_kind_t kind);
+
+const char *data_kind2str(data_kind_t dk);
 
 // Returns correspondent `data_kind_t` value to a given execution `arg` value.
 data_kind_t exec_arg2data_kind(int arg);

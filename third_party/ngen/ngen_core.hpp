@@ -231,9 +231,9 @@ class invalid_address_modifier_exception : public std::runtime_error {
 public:
     invalid_address_modifier_exception(SourceLocation loc = {}) : std::runtime_error("Invalid address offset or scaling factor" + loc.str(" at ")) {}
 };
-class limited_to_256_grf_exception : public std::runtime_error {
+class grf_out_of_bounds_exception : public std::runtime_error {
 public:
-    limited_to_256_grf_exception(SourceLocation loc = {}) : std::runtime_error("This instruction only supports r0-r255" + loc.str(" at ")) {}
+    grf_out_of_bounds_exception(SourceLocation loc = {}) : std::runtime_error("This instruction uses an unsupported register" + loc.str(" at ")) {}
 };
 class r511_not_allowed_exception : public std::runtime_error {
 public:

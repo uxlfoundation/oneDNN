@@ -2694,7 +2694,7 @@ BinaryCodeGenerator<hw>::opSend(Opcode op, const InstructionModifier &mod, Share
 
 #ifdef NGEN_SAFE
     if (getHighBit(dst) || getHighBit(src0) || getHighBit(src1))
-        throw limited_to_256_grf_exception();
+        throw grf_out_of_bounds_exception();
 #endif
 
     db(i, loc);
@@ -2879,7 +2879,7 @@ void BinaryCodeGenerator<hw>::opSendg(Opcode op, const InstructionModifier &mod,
 
 #ifdef NGEN_SAFE
         if (getHighBit(dst) || getHighBit(src0) || getHighBit(src1))
-            throw limited_to_256_grf_exception();
+            throw grf_out_of_bounds_exception();
 #endif
     }
 

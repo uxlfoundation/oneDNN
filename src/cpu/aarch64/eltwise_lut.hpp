@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_AARCH64_REF_ELTWISE_LUT_HPP
-#define CPU_AARCH64_REF_ELTWISE_LUT_HPP
+#ifndef CPU_AARCH64_ELTWISE_LUT_HPP
+#define CPU_AARCH64_ELTWISE_LUT_HPP
 
 #include <cstdint>
 #include <vector>
@@ -36,12 +36,12 @@ namespace impl {
 namespace cpu {
 
 template <::dnnl::impl::data_type_t data_type>
-struct ref_eltwise_lut_fwd_t : public primitive_t {
+struct eltwise_lut_fwd_t : public primitive_t {
     using data_t = typename ::dnnl::impl::prec_traits_t<data_type>::type;
 
     struct pd_t : public cpu_eltwise_fwd_pd_t {
         using cpu_eltwise_fwd_pd_t::cpu_eltwise_fwd_pd_t;
-        DECLARE_COMMON_PD_T("ref_eltwise_lut", ref_eltwise_lut_fwd_t);
+        DECLARE_COMMON_PD_T("eltwise_lut", eltwise_lut_fwd_t);
 
         status_t init(engine_t *engine) {
             using namespace ::dnnl::impl;
@@ -116,7 +116,7 @@ struct ref_eltwise_lut_fwd_t : public primitive_t {
         }
     };
 
-    ref_eltwise_lut_fwd_t(const pd_t *apd) : primitive_t(apd) {}
+    eltwise_lut_fwd_t(const pd_t *apd) : primitive_t(apd) {}
     status_t init(engine_t * /*engine*/) override { return status::success; }
 
     status_t execute(const exec_ctx_t & /*ctx*/) const override {
@@ -131,4 +131,4 @@ private:
 } // namespace impl
 } // namespace dnnl
 
-#endif // CPU_AARCH64_REF_ELTWISE_LUT_HPP
+#endif // CPU_AARCH64_ELTWISE_LUT_HPP

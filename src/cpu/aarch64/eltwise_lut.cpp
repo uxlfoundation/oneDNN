@@ -14,7 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "cpu/aarch64/ref_eltwise_lut.hpp"
+#include "cpu/aarch64/eltwise_lut.hpp"
 
 #include "common/dnnl_thread.hpp"
 
@@ -25,7 +25,7 @@ namespace cpu {
 // bf16 specialization
 
 template <>
-status_t ref_eltwise_lut_fwd_t<::dnnl::impl::data_type::bf16>::execute(
+status_t eltwise_lut_fwd_t<::dnnl::impl::data_type::bf16>::execute(
         const exec_ctx_t &ctx) const {
     using namespace ::dnnl::impl;
 
@@ -63,7 +63,7 @@ status_t ref_eltwise_lut_fwd_t<::dnnl::impl::data_type::bf16>::execute(
 }
 
 // Explicit instantiation for bf16 data type.
-template struct ref_eltwise_lut_fwd_t<::dnnl::impl::data_type::bf16>;
+template struct eltwise_lut_fwd_t<::dnnl::impl::data_type::bf16>;
 
 } // namespace cpu
 } // namespace impl

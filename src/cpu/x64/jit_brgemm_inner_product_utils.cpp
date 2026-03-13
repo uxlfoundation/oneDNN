@@ -18,6 +18,7 @@
 #include "common/math_utils.hpp"
 
 #include "cpu/x64/brgemm/brgemm.hpp"
+#include "cpu/x64/brgemm/brgemm_utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -33,6 +34,8 @@ using namespace prop_kind;
 using namespace data_type;
 
 namespace brgemm_inner_product_utils {
+
+using brgemm_utils::safe_dim_to_int;
 
 // Returns amount of work on a thread when using parallel reduction.
 static int comp_work(
@@ -121,8 +124,10 @@ int jit_brgemm_ip_conf_t::get_os_block(
             const bool small_work_amt_per_thread
                     = min_nb_os * jbgp.nb_oc < 1.8f * jbgp.nthr;
             if (small_work_amt_per_thread)
-                max_os_block = saturate(16, max_os_block,
-                        div_up(jbgp.os * jbgp.nb_oc, 2 * jbgp.nthr));
+                max_os_block
+                        = static_cast<int>(saturate<dim_t>(16, max_os_block,
+                                div_up(static_cast<dim_t>(jbgp.os) * jbgp.nb_oc,
+                                        2 * jbgp.nthr)));
         }
     } else if (is_bwd_d) {
         int plat_max_os_block = 0;
@@ -136,7 +141,9 @@ int jit_brgemm_ip_conf_t::get_os_block(
         }
         max_os_block = nstl::min(plat_max_os_block, jbgp.os);
         min_os_block = is_amx_xf16 ? 16 : is_avx512 ? 6 : 4;
-        if (jbgp.isa == avx2 && jbgp.os * jbgp.oc > 512 * 1024) return jbgp.os;
+        if (jbgp.isa == avx2
+                && static_cast<dim_t>(jbgp.os) * jbgp.oc > 512 * 1024)
+            return jbgp.os;
 
     } else if (is_bwd_w) {
         constexpr int amx_xf16_row = 64;
@@ -722,8 +729,10 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
     jbgp.N_tail = jbgp.oc % jbgp.oc_block;
     jbgp.K_tail = jbgp.use_buffer_a ? 0 : jbgp.ic % jbgp.K;
 
-    jbgp.LDA = jbgp.use_buffer_a ? jbgp.K * jbgp.gemm_batch_size
-                                 : jbgp.ic_without_padding * jbgp.ks();
+    const auto LDA = jbgp.use_buffer_a
+            ? static_cast<dim_t>(jbgp.K) * jbgp.gemm_batch_size
+            : static_cast<dim_t>(jbgp.ic_without_padding) * jbgp.ks();
+    CHECK(safe_dim_to_int(jbgp.LDA, LDA));
     jbgp.LDB = jbgp.N;
     jbgp.LDD = jbgp.oc_without_padding;
     jbgp.LDC = jbgp.LDD;
@@ -742,8 +751,8 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
     if (jbgp.is_bf32) {
         const float M = static_cast<float>(jbgp.M);
         const float N = nstl::min<float>(jbgp.N, jbgp.oc);
-        const float K
-                = nstl::min<float>(jbgp.K * jbgp.gemm_batch_size, jbgp.ic);
+        const float K = nstl::min<float>(
+                static_cast<dim_t>(jbgp.K) * jbgp.gemm_batch_size, jbgp.ic);
         const float tmul_efficiency = (M / 16) * (N / 16) * (K / 32);
         // TODO: Adjust blocking such that bigger M, N, K are generated.
         if (one_of(true, M <= 8, K <= 8, N < 16, tmul_efficiency <= 2.25))
@@ -918,17 +927,19 @@ status_t jit_brgemm_ip_bwd_d_conf_t::init_conf(cpu_isa_t isa,
     jbgp.N_tail = jbgp.ic % jbgp.ic_block;
     jbgp.K_tail = jbgp.use_buffer_a ? 0 : jbgp.oc % jbgp.oc_block;
 
-    jbgp.LDA = jbgp.use_buffer_a ? jbgp.K * jbgp.nb_oc_blocking
-                                 : jbgp.oc_without_padding;
+    jbgp.LDA = jbgp.use_buffer_a
+            ? static_cast<dim_t>(jbgp.K) * jbgp.nb_oc_blocking
+            : jbgp.oc_without_padding;
     jbgp.LDB = jbgp.N;
-    jbgp.LDD = jbgp.ic_without_padding * jbgp.ks();
+    CHECK(safe_dim_to_int(
+            jbgp.LDD, static_cast<dim_t>(jbgp.ic_without_padding) * jbgp.ks()));
     jbgp.LDC = jbgp.use_buffer && jbgp.nthr_oc_b == 1 ? jbgp.N : jbgp.LDD;
 
     if (jbgp.is_bf32) {
         const float M = static_cast<float>(jbgp.M);
         const float N = nstl::min<float>(jbgp.N, jbgp.ic);
-        const float K
-                = nstl::min<float>(jbgp.K * jbgp.gemm_batch_size, jbgp.oc);
+        const float K = nstl::min<float>(
+                static_cast<dim_t>(jbgp.K) * jbgp.gemm_batch_size, jbgp.oc);
         const float tmul_efficiency = (M / 16) * (N / 16) * (K / 32);
         // TODO: Adjust blocking such that bigger M, N, K are generated.
         if (one_of(true, M <= 8, K <= 8, N < 16, tmul_efficiency <= 2.25))
@@ -968,7 +979,7 @@ void jit_brgemm_ip_bwd_w_conf_t::thread_balance(int &nb_os_blocking_,
 
         float oi_channels_ratio = 0;
         if (is_xf16) {
-            oi_channels_ratio = ((j.oc > 3 * j.ic && os_chunks > 1)
+            oi_channels_ratio = ((j.oc > (dim_t)3 * j.ic && os_chunks > 1)
                                         || (os_chunks == 1 && j.ic > j.oc))
                     ? src_size / dst_size
                     : dst_size / src_size;
@@ -1055,8 +1066,8 @@ void jit_brgemm_ip_bwd_w_conf_t::thread_balance(int &nb_os_blocking_,
             wei_r = get_wei_coef() * div_up(wei_r_mb_par_work, nthr_mb)
                     * j.oc_block * j.ic_block
                     * (wei_dt_sz
-                            + (is_f32 ? div_up(j.os, 1024) : 1) * nthr_mb
-                                    * acc_dt_sz);
+                            + acc_dt_sz * nthr_mb
+                                    * (is_f32 ? div_up(j.os, 1024) : 1));
         }
 
         return src_tr + dst_tr + src_v + dst_v + wei_v + wei_r;
@@ -1095,7 +1106,8 @@ void jit_brgemm_ip_bwd_w_conf_t::thread_balance(int &nb_os_blocking_,
         int nb_os_blocking = j.nb_os_blocking;
         int os_chunks = div_up(j.nb_os, nb_os_blocking);
         if (os_chunks < nthr_mb) {
-            int coef = saturate(1, 4, 2 * j.mb / (j.oc + j.ic));
+            int coef = static_cast<int>(saturate<dim_t>(
+                    1, 4, (dim_t)2 * j.mb / (static_cast<dim_t>(j.oc) + j.ic)));
             int os_blocking_max = div_up(div_up(j.nb_os, coef), nthr_mb);
             nb_os_blocking = max_div(j.nb_os, os_blocking_max);
         }
@@ -1206,7 +1218,8 @@ status_t jit_brgemm_ip_bwd_w_conf_t::init_conf(cpu_isa_t isa,
     const bool is_oc_big_2_pow = jbgp.oc >= 512 && math::is_pow2(jbgp.oc);
     const bool is_huge_oc = jbgp.oc >= (jbgp.isa == avx2 ? 2 : 4) * 1024;
     jbgp.use_buffer_b = jbgp.dst_dt != f32 || is_oc_big_2_pow || is_huge_oc;
-    const bool os_dim_dominating = jbgp.os >= 5 * (jbgp.ic + jbgp.oc);
+    const bool os_dim_dominating
+            = jbgp.os >= 5 * (static_cast<dim_t>(jbgp.ic) + jbgp.oc);
     const int big_nb_os_threshold = is_amx_xf16 ? 64 : 256;
     jbgp.local_buffers_for_input_tensors
             = is_amx_xf16 && jbgp.nb_os >= big_nb_os_threshold;
@@ -1250,8 +1263,8 @@ status_t jit_brgemm_ip_bwd_w_conf_t::init_conf(cpu_isa_t isa,
     if (jbgp.is_bf32) {
         const float M = static_cast<float>(jbgp.M);
         const float N = nstl::min<float>(jbgp.N, jbgp.oc);
-        const float K
-                = nstl::min<float>(jbgp.K * jbgp.gemm_batch_size, jbgp.os);
+        const float K = nstl::min<float>(
+                static_cast<dim_t>(jbgp.K) * jbgp.gemm_batch_size, jbgp.os);
         const float tmul_efficiency = (M / 16) * (N / 16) * (K / 32);
         // TODO: Adjust blocking such that bigger M, N, K are generated.
         if (one_of(true, M <= 8, K <= 8, N < 16, tmul_efficiency <= 2.25))
@@ -1289,20 +1302,26 @@ status_t jit_brgemm_ip_conf_t::init_conf_base(cpu_isa_t isa,
     jbgp.is_amx = is_superset(jbgp.isa, avx512_core_amx);
     jbgp.prop_kind = ipd.prop_kind;
     jbgp.ngroups = 1;
-    jbgp.mb = src_d.dims()[0];
+
+    CHECK(safe_dim_to_int(jbgp.mb, src_d.dims()[0]));
     jbgp.os = jbgp.mb;
-    jbgp.oc_without_padding = dst_d.dims()[1];
+    CHECK(safe_dim_to_int(jbgp.oc_without_padding, dst_d.dims()[1]));
     jbgp.oc = jbgp.oc_without_padding;
-    jbgp.ic_without_padding = src_d.dims()[1];
+    CHECK(safe_dim_to_int(jbgp.ic_without_padding, src_d.dims()[1]));
     jbgp.ic = jbgp.ic_without_padding;
-    jbgp.id = (ndims == 5) ? src_d.dims()[2] : 1;
-    jbgp.ih = (ndims < 4) ? 1 : src_d.dims()[ndims - 2];
-    jbgp.iw = (ndims < 3) ? 1 : src_d.dims()[ndims - 1];
+    CHECK(safe_dim_to_int(jbgp.id, (ndims == 5) ? src_d.dims()[2] : 1));
+    CHECK(safe_dim_to_int(jbgp.ih, (ndims < 4) ? 1 : src_d.dims()[ndims - 2]));
+    CHECK(safe_dim_to_int(jbgp.iw, (ndims < 3) ? 1 : src_d.dims()[ndims - 1]));
     jbgp.od = jbgp.oh = jbgp.ow = 1;
-    jbgp.kd = (ndims == 5) ? weights_d.dims()[2] : 1;
-    jbgp.kh = (ndims < 4) ? 1 : weights_d.dims()[ndims - 2];
-    jbgp.kw = (ndims < 3) ? 1 : weights_d.dims()[ndims - 1];
+    CHECK(safe_dim_to_int(jbgp.kd, (ndims == 5) ? weights_d.dims()[2] : 1));
+    CHECK(safe_dim_to_int(
+            jbgp.kh, (ndims < 4) ? 1 : weights_d.dims()[ndims - 2]));
+    CHECK(safe_dim_to_int(
+            jbgp.kw, (ndims < 3) ? 1 : weights_d.dims()[ndims - 1]));
     jbgp.stride_d = jbgp.stride_h = jbgp.stride_w = 1;
+
+    if (static_cast<dim_t>(jbgp.kd) * jbgp.kh * jbgp.kw > INT_MAX)
+        return status::unimplemented;
 
     if (!everyone_is(1, jbgp.ow, jbgp.oh, jbgp.od))
         return status::unimplemented;
@@ -1480,11 +1499,15 @@ status_t jit_brgemm_ip_conf_t::init_conf_base(cpu_isa_t isa,
     const auto ic_padded = weights_d.padded_dims()[1];
     const bool is_wei_ic_padded = ic != ic_padded;
     if (!is_wei_ic_padded) {
-        jbgp.ic_without_padding *= jbgp.kd * jbgp.kh * jbgp.kw;
-        jbgp.ic = jbgp.ic_without_padding;
-        jbgp.id = jbgp.ih = jbgp.iw = 1;
-        jbgp.od = jbgp.oh = jbgp.ow = 1;
-        jbgp.kd = jbgp.kh = jbgp.kw = 1;
+        const dim_t ic_squashed = static_cast<dim_t>(jbgp.ic_without_padding)
+                * jbgp.kd * jbgp.kh * jbgp.kw;
+        if (ic_squashed <= INT_MAX) {
+            jbgp.ic_without_padding = static_cast<int>(ic_squashed);
+            jbgp.ic = jbgp.ic_without_padding;
+            jbgp.id = jbgp.ih = jbgp.iw = 1;
+            jbgp.od = jbgp.oh = jbgp.ow = 1;
+            jbgp.kd = jbgp.kh = jbgp.kw = 1;
+        }
     }
 
     return status::success;
@@ -1535,7 +1558,7 @@ void jit_brgemm_ip_fwd_conf_t::init_scratchpad(
                     break;
                 case osc_occ_icc_osb_ocb:
                     nbuffers = jbgp.nthr;
-                    nrows = jbgp.os_block * nb_os_blocking;
+                    nrows = static_cast<size_t>(jbgp.os_block) * nb_os_blocking;
                     break;
                 case icc_osc_occ_osb_ocb:
                 case icc_occ_osc_ocb_osb:
@@ -1589,7 +1612,7 @@ void jit_brgemm_ip_bwd_d_conf_t::init_scratchpad(
     }
 
     if (jbgp.use_buffer_b) {
-        auto size_B = (size_t)jbgp.LDB * rnd_up(jbgp.K, 2);
+        auto size_B = (dim_t)jbgp.LDB * rnd_up((dim_t)jbgp.K, 2);
 
         if (!jbgp.global_b_transpose)
             scratchpad.book(key_brgemm_primitive_buffer_b,

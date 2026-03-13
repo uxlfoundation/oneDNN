@@ -64,6 +64,8 @@ status_t init_brdgmm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
         dim_t LDA, dim_t LDC, dim_t M, dim_t N,
         const brgemm_strides_t *strides = nullptr);
 
+/** assigns dimension to int with range check */
+status_t safe_dim_to_int(int &dst, dim_t src);
 } // namespace brgemm_utils
 
 } // namespace x64

@@ -955,7 +955,6 @@ status_t brdgmm_blocking(brgemm_desc_t *brg) {
     return status::success;
 }
 
-/** assigns dimension to int with range check */
 status_t safe_dim_to_int(int &dst, dim_t src) {
     assert(src >= 0 || is_runtime_value(src));
     // TODO: should DNNL_RUNTIME_DIM_VAL be converted to DNNL_RUNTIME_S32_VAL?

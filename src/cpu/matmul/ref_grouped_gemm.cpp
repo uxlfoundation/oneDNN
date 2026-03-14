@@ -110,6 +110,8 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
                     data_type::s4, data_type::u4)
             && pd()->attr()->fpmath_.apply_to_int_;
 
+    const bool with_post_ops = !pd()->attr()->post_ops_.has_default_values();
+
     // Parallelize over groups (experts in MoE)
     // Expectation is to see 128-256+ groups, with varying M per group
     // and possibly some empty groups (M == 0)
@@ -269,6 +271,18 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
                 }
 
                 const dim_t dst_idx = dst_base_idx + m * N + n;
+
+                // Apply post-ops (binary mul for NVFP4 global scale)
+                if (with_post_ops) {
+                    ref_post_ops_t::args_t args;
+                    args.dst_val
+                            = io::load_float_value(dst_dt, dst_data, dst_idx);
+                    args.ctx = &ctx;
+                    args.l_offset = dst_idx;
+                    args.dst_md = pd()->dst_md();
+                    ref_post_ops->execute(result, args);
+                }
+
                 io::store_float_value(dst_dt, result, dst_data, dst_idx);
             }
         }

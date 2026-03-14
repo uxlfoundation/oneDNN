@@ -20,6 +20,11 @@
 # - Grouped weight zero points: --attr-zero-points=wei:7:s8:32x1 (grouped along K)
 # - WOQ (weight-only quantization) with f16 activations and s4/u4/8-bit weights
 # - Transposed weights: --wtag=acb (weights layout [num_experts, N, K] vs abc [num_experts, K, N])
+# - FP8 row-wise: f8_e5m2/f8_e4m3 dtypes with row-wise src + column-wise wei f32 scales
+# - MXFP8: f8_e4m3 dtypes, e8m0 block scales, block size 32
+# - MXFP4: f4_e2m1 dtypes, e8m0 block scales, block size 32
+# - NVFP4: f4_e2m1 dtypes, f8_e4m3 block scales (block size 16) + global f32 scale via
+#           binary mul post-op (--attr-post-ops=mul:f32:0)
 
 --reset
 
@@ -157,4 +162,13 @@
 --wtag=abc,acb
 --grouped=0:4:8,8,8,8
 --attr-scales=src:3:e8m0:1x32+wei:7:e8m0:32x1
+32x128:4x128x64
+
+# NVFP4: f4_e2m1 dt with f8_e4m3 block scales + global f32 scale via binary mul
+--reset
+--dt=f4_e2m1:f4_e2m1:bf16
+--wtag=abc,acb
+--grouped=0:4:8,8,8,8
+--attr-scales=src:3:f8_e4m3:1x16+wei:7:f8_e4m3:16x1
+--attr-post-ops=mul:f32:0
 32x128:4x128x64

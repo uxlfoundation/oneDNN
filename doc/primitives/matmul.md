@@ -422,9 +422,12 @@ The following are supported:
   - Weight Scales: column-wise (`mask = (1 << 0) | (1 << 2)`) and
     K-grouped (`mask = (1 << 0) | (1 << 1) | (1 << 2)`) with group specification
     are supported.
-  - Scale data type can be `f32`, `bf16`, `f16`, or `e8m0` (for MXFP8 and MXFP4
-    types following the OCP MX specification).
+  - Scale data type includes: `f32`, `bf16`, `f16`, `e8m0` for MXFP8 and MXFP4,
+    `f8_e4m3` for NVFP4 block scales.
 - Zero points attribute for weights tensors with the same masks as scales.
+- Post-ops: binary post-ops are supported (e.g., binary `mul` with a scalar
+  `f32` tensor can be used to apply a global scale factor, as needed for NVFP4
+  two-level scaling).
 - Bias supports per-expert shape.
 - Supported on CPU and GPU engines.
 

@@ -28,6 +28,7 @@
 #include "common/utils.hpp"
 
 #include "cpu/matmul/cpu_matmul_pd.hpp"
+#include "cpu/primitive_attr_postops.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -99,7 +100,7 @@ struct ref_grouped_t : public primitive_t {
                         VERBOSE_UNSUPPORTED_SCALES_CFG);
                 VDISPATCH_MATMUL(
                         utils::one_of(attr_scales.get_data_type(DNNL_ARG_SRC),
-                                f32, bf16, f16, e8m0),
+                                f32, bf16, f16, e8m0, f8_e4m3, f8_e5m2),
                         VERBOSE_UNSUPPORTED_SCALES_CFG);
                 if (!attr_scales.get(DNNL_ARG_SRC).has_default_groups()) {
                     // K-grouped src scales supported with int and fp types
@@ -118,9 +119,10 @@ struct ref_grouped_t : public primitive_t {
                 const int colwise_mask = wei_qmask_N();
                 const int blocked_mask = wei_qmask_K() | wei_qmask_N();
                 // Allow column-wise or blocked (K grouping) scales for weights
-                VDISPATCH_MATMUL(utils::one_of(attr_scales.get_data_type(
-                                                       DNNL_ARG_WEIGHTS),
-                                         f32, bf16, f16, e8m0),
+                VDISPATCH_MATMUL(
+                        utils::one_of(
+                                attr_scales.get_data_type(DNNL_ARG_WEIGHTS),
+                                f32, bf16, f16, e8m0, f8_e4m3, f8_e5m2),
                         VERBOSE_UNSUPPORTED_SCALES_CFG);
                 VDISPATCH_MATMUL(
                         wei_mask == colwise_mask || wei_mask == blocked_mask,
@@ -193,8 +195,17 @@ struct ref_grouped_t : public primitive_t {
                         (int)zp_gK);
             }
 
-            // No post-ops
-            VDISPATCH_MATMUL(attr()->post_ops_.has_default_values(),
+            // Post-ops: only binary mul is supported (for NVFP4 global scale)
+            const auto &po = attr()->post_ops_;
+            bool po_ok = true;
+            for (int i = 0; i < po.len(); ++i) {
+                const auto &e = po.entry_[i];
+                po_ok = po_ok && e.is_binary()
+                        && e.binary.alg == alg_kind::binary_mul;
+            }
+            VDISPATCH_MATMUL(po_ok, VERBOSE_UNSUPPORTED_POSTOP);
+            VDISPATCH_MATMUL(attr_.post_ops_.set_default_formats(dst_md(0))
+                            == status::success,
                     VERBOSE_UNSUPPORTED_POSTOP);
 
             return status::success;
@@ -203,10 +214,19 @@ struct ref_grouped_t : public primitive_t {
 
     ref_grouped_t(const pd_t *apd) : primitive_t(apd) {}
 
+    status_t init(engine_t *engine) override {
+        ref_post_ops
+                = utils::make_unique<ref_post_ops_t>(pd()->attr()->post_ops_);
+        if (!ref_post_ops) return status::out_of_memory;
+        CHECK(ref_post_ops->init(pd()->dst_md()));
+        return status::success;
+    }
+
     status_t execute(const exec_ctx_t &ctx) const override;
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
+    std::unique_ptr<ref_post_ops_t> ref_post_ops;
 };
 
 } // namespace matmul

@@ -439,6 +439,8 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
 
 status_t combined_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx, const phase_conf_t &phase) const {
+    kernel_ctx.register_buffer_size(*src_md());
+    kernel_ctx.register_buffer_size(*dst_md());
     status_t status = init_kernel_ctx_common(kernel_ctx, conf, phase);
     if (status != status_t::dnnl_success) return status;
 

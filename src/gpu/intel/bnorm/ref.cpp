@@ -165,6 +165,7 @@ void ref_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
 }
 
 void ref_fwd_t::pd_t::init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const {
+    kernel_ctx.register_buffer_size(*src_md());
     kernel_ctx.define_int("IS_FWD", 1);
 
     if (conf.calculate_stats) {
@@ -292,6 +293,7 @@ void ref_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
 }
 
 void ref_bwd_t::pd_t::init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const {
+    kernel_ctx.register_buffer_size(*diff_src_md());
 
     def_dispatch(kernel_ctx, dispatch_calc_stat);
     def_dispatch(kernel_ctx, dispatch_reduce_stat);

@@ -400,6 +400,7 @@ status_t xe_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
 
 status_t xe_fwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
+    kernel_ctx.register_buffer_size(*src_md());
     return init_kernel_ctx_common(kernel_ctx, conf, dispatch_calc_stat,
             dispatch_reduce_stat, dispatch, dispatch_reduce_aux, off);
 }
@@ -602,6 +603,7 @@ status_t xe_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
 
 status_t xe_bwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
+    kernel_ctx.register_buffer_size(*diff_src_md());
     return init_kernel_ctx_common(kernel_ctx, conf, dispatch_calc_stat,
             dispatch_reduce_stat, dispatch, dispatch_reduce_aux, off);
 }

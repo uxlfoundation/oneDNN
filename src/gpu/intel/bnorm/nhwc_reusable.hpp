@@ -81,7 +81,8 @@ struct nhwc_reusable_compile_params_t {
     bool calculate_stats;
     bool use_stats_one_pass;
     bool require_stateless_addressing;
-    uint8_t padding[2] = {0};
+    bool use_int32_offset;
+    uint8_t padding[1] = {0};
 };
 
 struct nhwc_reusable_runtime_params_t {

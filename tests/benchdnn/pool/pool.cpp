@@ -217,6 +217,15 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
     // and `kind` by value to avoid using dangling references.
     const auto pooling_add_check =
             [&, prb](const compare::compare_t::driver_check_func_args_t &args) {
+        // For f64 max pooling, the kernel initializes accumulators to -DBL_MAX.
+        // When no src elements fall in the pooling window the output is -DBL_MAX,
+        // which overflows to -inf when read back as float for comparison here
+        // (prec_traits<dnnl_f64>::type is float, so lowest_dt(f64) = -FLT_MAX).
+        // Accept -inf when expected is -FLT_MAX, but only for max pooling fwd.
+        if (prb->alg == alg_t::max && !(prb->dir & FLAG_BWD)
+                && args.dt == dnnl_f64 && args.exp == lowest_dt(dnnl_f64)
+                && std::isinf(args.got) && std::signbit(args.got))
+            return true;
         return cuda_check_correctness(prb, args);
     };
     cmp.set_driver_check_function(pooling_add_check);

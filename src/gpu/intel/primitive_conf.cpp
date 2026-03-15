@@ -162,8 +162,8 @@ attr_info_t attr_info_t::create(const primitive_attr_t *attr) {
     return attr_info;
 }
 
-void quantization_t::define_macros(
-        compute::kernel_ctx_t &kernel_ctx, const std::string &name) const {
+void quantization_t::define_macros(compute::kernel_ctx_t &kernel_ctx,
+        const std::string &name, bool with_punning) const {
     if (with_scale()) {
         kernel_ctx.define_int("WITH_" + name + "_SCALE", 1);
         kernel_ctx.define_int(name + "_SCALE_MASK", scale_mask());
@@ -173,7 +173,7 @@ void quantization_t::define_macros(
     }
     // Unconditionally as this defines types in kernels.
     // Note: consistent with ocl_types.hpp
-    def_data_type(kernel_ctx, scale_dt(), name + "_SCALES");
+    def_data_type(kernel_ctx, scale_dt(), name + "_SCALES", with_punning);
 
     if (with_zp()) {
         kernel_ctx.define_int("WITH_" + name + "_ZPOINT", 1);
@@ -184,7 +184,7 @@ void quantization_t::define_macros(
     }
     // Unconditionally as this defines types in kernels.
     // Note: consistent with ocl_types.hpp
-    def_data_type(kernel_ctx, zp_dt(), name + "_ZP");
+    def_data_type(kernel_ctx, zp_dt(), name + "_ZP", with_punning);
 }
 
 void sum_quantization_t::define_macros(

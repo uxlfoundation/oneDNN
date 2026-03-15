@@ -142,8 +142,8 @@ struct quantization_t : public gpu::quantization_t {
 public:
     using gpu::quantization_t::quantization_t;
 
-    void define_macros(
-            compute::kernel_ctx_t &kernel_ctx, const std::string &name) const;
+    void define_macros(compute::kernel_ctx_t &kernel_ctx,
+            const std::string &name, bool with_punning = true) const;
 };
 
 struct sum_quantization_t : public gpu::sum_quantization_t {

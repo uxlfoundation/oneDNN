@@ -46,7 +46,7 @@ struct gen_t : public primitive_t {
         DECLARE_COMMON_PD_T("jit:gemm:any", gen_t);
 
         status_t init(impl::engine_t *engine) {
-                        VDEBUGINFO(4, primitive, postops, "MY: gen_t::pd_t::init");
+            //VDEBUGINFO(4, primitive, postops, "MY: gen_t::pd_t::init");
             using namespace prop_kind;
             using namespace data_type;
             using namespace primitive_kind;

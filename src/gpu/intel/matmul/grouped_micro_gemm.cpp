@@ -35,7 +35,7 @@ namespace gpu {
 namespace intel {
 namespace matmul {
 
-status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
+status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
     using namespace jit;
     using namespace gemmstone;
     using namespace gemmstone::microkernel;
@@ -55,9 +55,9 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
 
     if (hw_info.gmdid == 0) return status::unimplemented;
 
-    memory_desc_wrapper src_mdw(pd()->src_md(0));
-    memory_desc_wrapper wei_mdw(pd()->weights_md());
-    memory_desc_wrapper dst_mdw(pd()->dst_md());
+    memory_desc_wrapper src_mdw(src_md(0));
+    memory_desc_wrapper wei_mdw(weights_md());
+    memory_desc_wrapper dst_mdw(dst_md());
 
     auto convert_dnnl_to_kernel_layout = [](const memory_desc_t *md) {
         return (gemm_desc_t::get_trans(*md) == dnnl_trans) ? MatrixLayout::T
@@ -76,7 +76,7 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
             alignmentForLD(static_cast<int>(gemm_desc_t::get_ld(*wei_mdw.md_))
                     * problem.Ta_ext));
     problem.B.setAlignment(
-            alignmentForLD(static_cast<int>(pd()->K()) * problem.Tb_ext));
+            alignmentForLD(static_cast<int>(K()) * problem.Tb_ext));
     problem.C.setAlignment(problem.Tc.size());
 
     problem.A.layout = convert_dnnl_to_kernel_layout(wei_mdw.md_);
@@ -84,17 +84,15 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
     problem.C.layout = MatrixLayout::N;
 
     GEMMOptions opts;
-    opts.scaleA = pd()->wei_quant_.with_scale()
-            && pd()->wei_group_sizes_[1] < pd()->K();
-    opts.offsetA = pd()->wei_quant_.with_zp();
-    opts.scaleB = pd()->src_quant_.with_scale()
-            && pd()->src_group_sizes_[1] < pd()->K();
-    opts.offsetB = pd()->src_quant_.with_zp();
+    opts.scaleA = wei_quant_.with_scale() && wei_group_sizes_[1] < K();
+    opts.offsetA = wei_quant_.with_zp();
+    opts.scaleB = src_quant_.with_scale() && src_group_sizes_[1] < K();
+    opts.offsetB = src_quant_.with_zp();
     opts.slmPtr = true;
     opts.kParallelLocal = true;
 
     if (opts.scaleA) {
-        data_type_t wei_scale_dt = pd()->wei_quant_.scale_dt();
+        data_type_t wei_scale_dt = wei_quant_.scale_dt();
         problem.Ta_scale = convert_dnnl_to_kernel_type(wei_scale_dt);
         problem.A_scale.setAlignment(alignmentForLD(
                 static_cast<int>(types::data_type_size(wei_scale_dt))));
@@ -103,7 +101,7 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
     }
 
     if (opts.offsetA) {
-        data_type_t wei_zp_dt = pd()->wei_quant_.zp_dt();
+        data_type_t wei_zp_dt = wei_quant_.zp_dt();
         problem.Tao = convert_dnnl_to_kernel_type(wei_zp_dt);
         problem.AO.setAlignment(
                 static_cast<int>(types::data_type_size(wei_zp_dt)));
@@ -113,7 +111,7 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
     }
 
     if (opts.scaleB) {
-        data_type_t src_scale_dt = pd()->src_quant_.scale_dt();
+        data_type_t src_scale_dt = src_quant_.scale_dt();
         problem.Tb_scale = convert_dnnl_to_kernel_type(src_scale_dt);
         problem.B_scale.setAlignment(
                 static_cast<int>(types::data_type_size(src_scale_dt)));
@@ -121,7 +119,7 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
         problem.bsPtrDims = 2;
     }
     if (opts.offsetB) {
-        data_type_t src_zp_dt = pd()->src_quant_.zp_dt();
+        data_type_t src_zp_dt = src_quant_.zp_dt();
         problem.Tbo = convert_dnnl_to_kernel_type(src_zp_dt);
         problem.BO.setAlignment(
                 static_cast<int>(types::data_type_size(src_zp_dt)));
@@ -131,14 +129,14 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
     }
 
     if (opts.scaleA || opts.offsetA) {
-        problem.aqGroupM = pd()->wei_group_sizes_[2];
-        problem.aqGroupK = utils::rnd_up_pow2(pd()->wei_group_sizes_[1]);
+        problem.aqGroupM = wei_group_sizes_[2];
+        problem.aqGroupK = utils::rnd_up_pow2(wei_group_sizes_[1]);
     }
 
     if (opts.scaleB || opts.offsetB) {
-        problem.bqGroupN = pd()->src_group_sizes_[0];
-        problem.bqGroupK = static_cast<int>(
-                utils::rnd_up_pow2(pd()->src_group_sizes_[1]));
+        problem.bqGroupN = src_group_sizes_[0];
+        problem.bqGroupK
+                = static_cast<int>(utils::rnd_up_pow2(src_group_sizes_[1]));
     }
 
     // internal conversions do not work well when both A and B are integers
@@ -156,9 +154,9 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
     }
 
     SizeParams sizes;
-    sizes.m = static_cast<uint16_t>(pd()->N());
-    sizes.n = static_cast<uint16_t>(pd()->M());
-    sizes.k = static_cast<uint16_t>(pd()->K());
+    sizes.m = static_cast<uint16_t>(N());
+    sizes.n = static_cast<uint16_t>(M());
+    sizes.k = static_cast<uint16_t>(K());
 
     auto strat_override = [&](gemmstone::GEMMStrategy &strat) {
         std::string newStrat;
@@ -197,12 +195,11 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
 
         reqs.push_back(StrategyRequirement::UnrollM == m_unroll);
         reqs.push_back(StrategyRequirement::UnrollN
-                == utils::rnd_up_pow2(
-                        std::min<dim_t>(pd()->M(), max_n_unroll)));
+                == utils::rnd_up_pow2(std::min<dim_t>(M(), max_n_unroll)));
         reqs.push_back(StrategyRequirement::WGM == 2);
         reqs.push_back(StrategyRequirement::WGN
                 == utils::rnd_up_pow2(std::max<dim_t>(
-                        1, std::min<dim_t>(pd()->M() / reqs[1].value, 4))));
+                        1, std::min<dim_t>(M() / reqs[1].value, 4))));
         try {
             gemm_ = selectGEMM(
                     opts, hw_info, sizes, problem, reqs, strat_override);
@@ -389,23 +386,10 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
     }
     sg_size_ = dev_info->min_subgroup_size();
 
-    return status::success;
-}
-
-status_t grouped_micro_gemm_t::init(impl::engine_t *engine) {
-
     CHECK(init_microkernels(engine));
 
-    auto src_mdw = memory_desc_wrapper(pd()->src_md(0));
-    auto wei_mdw = memory_desc_wrapper(pd()->weights_md());
-    auto dst_mdw = memory_desc_wrapper(pd()->dst_md());
-
-    auto src_dt = src_mdw.data_type();
-    auto wei_dt = wei_mdw.data_type();
-    auto dst_dt = dst_mdw.data_type();
-
-    pd()->src_quant_.define_macros(kernel_ctx_, "SRC");
-    pd()->wei_quant_.define_macros(kernel_ctx_, "WEI");
+    src_quant_.define_macros(kernel_ctx_, "SRC");
+    wei_quant_.define_macros(kernel_ctx_, "WEI");
 
     kernel_ctx_.set_data_type(dst_dt);
 
@@ -416,42 +400,45 @@ status_t grouped_micro_gemm_t::init(impl::engine_t *engine) {
     def_data_type(kernel_ctx_, wei_dt, "WEI");
     def_data_type(kernel_ctx_, dst_dt, "DST");
 
-    kernel_ctx_.define_int("WITH_SRC_SCALES", pd()->src_quant_.with_scale());
-    kernel_ctx_.define_int("WITH_WEI_SCALES", pd()->wei_quant_.with_scale());
-    kernel_ctx_.define_int("WITH_SRC_ZP", pd()->src_quant_.with_zp());
-    kernel_ctx_.define_int("WITH_WEI_ZP", pd()->wei_quant_.with_zp());
-    if (pd()->src_quant_.with_scale() || pd()->src_quant_.with_zp()) {
-        kernel_ctx_.define_int("SRC_GROUP_SIZE", pd()->src_group_sizes_[1]);
+    kernel_ctx_.define_int("WITH_SRC_SCALES", src_quant_.with_scale());
+    kernel_ctx_.define_int("WITH_WEI_SCALES", wei_quant_.with_scale());
+    kernel_ctx_.define_int("WITH_SRC_ZP", src_quant_.with_zp());
+    kernel_ctx_.define_int("WITH_WEI_ZP", wei_quant_.with_zp());
+    if (src_quant_.with_scale() || src_quant_.with_zp()) {
+        kernel_ctx_.define_int("SRC_GROUP_SIZE", src_group_sizes_[1]);
     }
-    if (pd()->wei_quant_.with_scale() || pd()->wei_quant_.with_zp()) {
-        kernel_ctx_.define_int("WEI_GROUP_SIZE", pd()->wei_group_sizes_[1]);
+    if (wei_quant_.with_scale() || wei_quant_.with_zp()) {
+        kernel_ctx_.define_int("WEI_GROUP_SIZE", wei_group_sizes_[1]);
     }
 
     kernel_ctx_.define_int("SRC_SCALES_GROUPED",
-            pd()->src_quant_.with_scale()
-                    && pd()->src_group_sizes_[1] < pd()->K());
+            src_quant_.with_scale() && src_group_sizes_[1] < K());
     kernel_ctx_.define_int("WEI_SCALES_GROUPED",
-            pd()->wei_quant_.with_scale()
-                    && pd()->wei_group_sizes_[1] < pd()->K());
+            wei_quant_.with_scale() && wei_group_sizes_[1] < K());
     kernel_ctx_.define_int(
             "SRC_ELEMS_PER_BYTE", types::bytes_to_elements(src_dt, 1));
     kernel_ctx_.define_int(
             "WEI_ELEMS_PER_BYTE", types::bytes_to_elements(wei_dt, 1));
 
-    if (pd()->src_quant_.with_zp()) {
+    if (src_quant_.with_zp()) {
         kernel_ctx_.define_int("SRC_ZP_ELEMS_PER_BYTE",
-                types::bytes_to_elements(pd()->src_quant_.zp_dt(), 1));
+                types::bytes_to_elements(src_quant_.zp_dt(), 1));
     }
-    if (pd()->wei_quant_.with_zp()) {
+    if (wei_quant_.with_zp()) {
         kernel_ctx_.define_int("WEI_ZP_ELEMS_PER_BYTE",
-                types::bytes_to_elements(pd()->wei_quant_.zp_dt(), 1));
+                types::bytes_to_elements(wei_quant_.zp_dt(), 1));
     }
 
-    auto bia_dt = pd()->weights_md(1)->data_type;
+    auto bia_dt = weights_md(1)->data_type;
     def_data_type(kernel_ctx_, bia_dt, "BIA");
-    kernel_ctx_.define_int("WITH_BIAS", pd()->with_bias());
+    kernel_ctx_.define_int("WITH_BIAS", with_bias());
 
-    return create_kernel(engine, &kernel_, "grouped_micro_gemm", kernel_ctx_);
+    return status::success;
+}
+
+status_t grouped_micro_gemm_t::init(impl::engine_t *engine) {
+    return create_kernel(
+            engine, &kernel_, "grouped_micro_gemm", pd()->kernel_ctx_);
 }
 
 status_t grouped_micro_gemm_t::execute(const exec_ctx_t &ctx) const {
@@ -527,11 +514,11 @@ status_t grouped_micro_gemm_t::execute(const exec_ctx_t &ctx) const {
 
     arg_list.append(bias_data);
 
-    size_t sg_per_wg_m = gemm_.getSetting("sg_per_wg_m");
-    size_t sg_per_wg_n = gemm_.getSetting("sg_per_wg_n");
-    size_t sg_per_wg_k = gemm_.getSetting("sg_per_wg_k");
-    size_t wg_tile_m = gemm_.getSetting("wg_tile_m");
-    size_t wg_tile_n = gemm_.getSetting("wg_tile_n");
+    size_t sg_per_wg_m = pd()->gemm_.getSetting("sg_per_wg_m");
+    size_t sg_per_wg_n = pd()->gemm_.getSetting("sg_per_wg_n");
+    size_t sg_per_wg_k = pd()->gemm_.getSetting("sg_per_wg_k");
+    size_t wg_tile_m = pd()->gemm_.getSetting("wg_tile_m");
+    size_t wg_tile_n = pd()->gemm_.getSetting("wg_tile_n");
 
     // Use total_tokens as upper bound for M dimension
     compute::range_t lws = compute::range_t::one(3);

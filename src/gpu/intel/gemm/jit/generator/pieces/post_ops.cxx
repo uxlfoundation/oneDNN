@@ -110,8 +110,10 @@ template <HW hw>
 void Generator<hw>::binaryOp(BinaryOp op, int simd, const RegData &dst, const RegData &src0, const RegData &src1, CommonState &state)
 {
     VDEBUGINFO(4, primitive, postops, "MY: Generator<hw>::binaryOp");
+    const char *add_post_env = std::getenv("ADD_POST");
+    const bool do_add_post = !(add_post_env && std::string(add_post_env) == "0");
     switch (op) {
-        case BinaryOp::Add: add(simd, dst, src0, src1); break;
+        case BinaryOp::Add: if (do_add_post) { add(simd, dst, src0, src1); } break;
         case BinaryOp::Sub: add(simd, dst, src0, -src1); break;
         case BinaryOp::Mul: mul(simd, dst, src0, src1); break;
         case BinaryOp::Div: stub();
@@ -191,7 +193,8 @@ void Generator<hw>::gemmVectorBinaryOpC(BinaryOp op, bool column, const GRFMulti
                                         const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state,
                                         Type Tco, RegisterLayout CO_layout, int y0, int y1)
 {
-    VDEBUGINFO(4, primitive, postops, "MY: Generator<hw>::gemmVectorBinaryOpC +++ >");
+    VDEBUGINFO(4, primitive, postops,
+            "MY: Generator<hw>::gemmVectorBinaryOpC");
     auto Tacc = state.Tacc;
     auto ne = elementsPerGRF(hw, Tacc);
     auto globalCM = state.C_layout.colMajor();
@@ -205,7 +208,6 @@ void Generator<hw>::gemmVectorBinaryOpC(BinaryOp op, bool column, const GRFMulti
     if (Tco == Type::invalid) Tco = Tacc;
 
     if (Tacc == Type::f32 && scale.isValid() && scale.getType() != DataType::f) {
-        VDEBUGINFO(4, primitive, postops, "MY: gemmVectorBinaryOpC +++ ");
         scale = state.ra.alloc_sub<float>();
         mov(1, scale, scaleIn);
     }
@@ -215,7 +217,6 @@ void Generator<hw>::gemmVectorBinaryOpC(BinaryOp op, bool column, const GRFMulti
 
     GRFMultirange repackOffsets;
     if (needRepack) {
-        VDEBUGINFO(4, primitive, postops, "MY: gemmVectorBinaryOpC +++ ");
         // Repack data to unit stride as float pipe can't swizzle.
         int r =  column ? 1 : strategy.unroll[LoopM];
         int c = !column ? 1 : strategy.unroll[LoopN];
@@ -248,7 +249,6 @@ void Generator<hw>::gemmVectorBinaryOpC(BinaryOp op, bool column, const GRFMulti
             auto nco = (column ? j : i) * crosspack;
             auto offBase = (*offsetsPtr)[nco / ne].sub(nco % ne, Tacc.ngen());
             if (scale.isValid()) {
-                VDEBUGINFO(4, primitive, postops, "MY: gemmVectorBinaryOpC +++ ");
                 if (op != BinaryOp::Add) stub();
                 mad(nc, C(1), C(1), offBase(stride()), scale);
             } else if (strategy.dotVL > 0) {
@@ -257,26 +257,18 @@ void Generator<hw>::gemmVectorBinaryOpC(BinaryOp op, bool column, const GRFMulti
                 for (int off = 0; off < nc; off++) {
                     auto val = C.offset(off)(1);
                     auto src1 = offBase.offset(off)(stride());
-                    VDEBUGINFO(4, primitive, postops, "MY: gemmVectorBinaryOpC : call binaryOp +++");
                     binaryOp(op, 1, val, val, src1, state);
                 }
-            } else{
-                VDEBUGINFO(4, primitive, postops, "MY: gemmVectorBinaryOpC : call binaryOp +++");
+            } else
                 binaryOp(op, nc, C(1), C(1), offBase(stride()), state);
-            }
 
             x += nc;
         }
     }
 
-    if (scale != scaleIn){
-        VDEBUGINFO(4, primitive, postops, "MY: gemmVectorBinaryOpC +++ ");
+    if (scale != scaleIn)
         state.ra.safeRelease(scale);
-    }
-    VDEBUGINFO(4, primitive, postops, "MY: gemmVectorBinaryOpC +++ ");
     safeReleaseRanges(repackOffsets, state);
-
-    VDEBUGINFO(4, primitive, postops, "MY: Generator<hw>::gemmVectorBinaryOpC < +++");
 }
 
 // Apply binary operation to C.
@@ -574,11 +566,9 @@ void Generator<hw>::gemmLoadBinaryOpArgs(const GEMMProblem &problem, const GEMMS
 template <HW hw>
 void Generator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
-    VDEBUGINFO(4, primitive, postops,"MY: Generator<hw>::gemmApplyPostOps --------->");
-    if (poMin >= poMax && !problem.binaryPostProcess()) {
-        VDEBUGINFO(4, primitive, postops,"MY: Generator<hw>::gemmApplyPostOps early ret <---------");
-        return;
-    }
+    VDEBUGINFO(4, primitive, postops,
+            "MY: Generator<hw>::gemmApplyPostOps");
+    if (poMin >= poMax && !problem.binaryPostProcess()) return;
 
     Label lSkip;
     and_(1 | nz | state.flagAP, null.ud(), state.inputs.flags, FlagNonfinalKBlock);
@@ -592,7 +582,6 @@ void Generator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const GEMMProbl
         auto &postOps = problem.postOps;
         size_t poCount = postOps.len();
 
-        VDEBUGINFO(4, primitive, postops,"MY: gemmApplyPostOps: call gemmLoadBinaryOpArgs ----");
         gemmLoadBinaryOpArgs(problem, strategy, state);
 
 #define FOR_EACH_BINARY \
@@ -629,7 +618,6 @@ void Generator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const GEMMProbl
             }
         }
 
-        VDEBUGINFO(4, primitive, postops,"MY: gemmApplyPostOps: call gemmOffsetABC ----");
         gemmOffsetABC(true, state.i0, state.j0, state.h0, Subregister(), Subregister(), problem, strategy, state, false, false, false, true);
 
         state.effBinary.resize(poCount);
@@ -658,7 +646,6 @@ void Generator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const GEMMProbl
             auto &eff = state.effBinary[i];
             auto op = PostOpsProblem::toBinaryOp(entry);
 
-            VDEBUGINFO(4, primitive, postops,"MY: gemmApplyPostOps: call gemmBinaryOpC ----");
             bool ok = gemmBinaryOpC(op, problem.postOps.binaryRow[i], problem.postOps.binaryCol[i],
                                     problem.Tbinary[i], problem.binary[i], strategy.binary[i],
                                     eff, ld, problem, strategy, state);
@@ -677,7 +664,6 @@ void Generator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const GEMMProbl
         problem.postOps.injectStochasticRound(this, state.ra, C_grfs, C_ngrf, state.inputs.sroundSeed, problem.Tc_ext.ngen());
     }
     if(problem.hasCMXScale()) {
-        VDEBUGINFO(4, primitive, postops,"MY: gemmApplyPostOps: if(problem.hasCMXScale()) ----");
         auto unrollM = strategy.unroll[LoopM];
         auto unrollN = strategy.unroll[LoopN];
         int n_elems = (unrollN / problem.cqGroupN) * (unrollM / problem.cqGroupM);
@@ -695,8 +681,6 @@ void Generator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const GEMMProbl
     }
 
     mark(lSkip);
-
-    VDEBUGINFO(4, primitive, postops,"MY: Generator<hw>::gemmApplyPostOps <---------");
 }
 
 

@@ -370,6 +370,18 @@ inline const Xbyak::util::Cpu &cpu() {
     return cpu_;
 }
 
+namespace apx {
+
+inline bool is_available() {
+    const bool xsave_supported = cpu().has(Xbyak::util::Cpu::tOSXSAVE);
+    if (!xsave_supported) return false;
+
+    const uint64_t xcr0_features = Xbyak::util::Cpu::getXfeature();
+    return ((xcr0_features >> 19) & 1) == 1;
+}
+
+} // namespace apx
+
 namespace amx {
 
 // Return the target palette for AMX instructions. Currently this is `0` if AMX
@@ -441,7 +453,8 @@ inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {
         case avx10_2_512:
             REG_AVX512_ISA(return cpu().getAVX10version() >= 2
                     && cpu().has(Cpu::tAVX512F) && mayiuse(avx2_vnni_2, soft)
-                    && cpu().has(Cpu::tAPX_F) && cpu().has(Cpu::tMOVRS));
+                    && cpu().has(Cpu::tAPX_F) && cpu().has(Cpu::tMOVRS)
+                    && x64::apx::is_available());
         case amx_tile:
             REG_AMX_ISA(return cpu().has(Cpu::tAMX_TILE)
                     && x64::amx::is_available());

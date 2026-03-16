@@ -109,17 +109,11 @@ void Generator<hw>::gemmBetaScale(const GEMMProblem &problem, const GEMMStrategy
 template <HW hw>
 void Generator<hw>::binaryOp(BinaryOp op, int simd, const RegData &dst, const RegData &src0, const RegData &src1, CommonState &state)
 {
-//    VDEBUGINFO(4, primitive, postops, "MY: Generator<hw>::binaryOp");
+    VDEBUGINFO(4, primitive, postops, "MY: Generator<hw>::binaryOp");
     const char *add_post_env = std::getenv("ADD_POST");
     const bool do_add_post = !(add_post_env && std::string(add_post_env) == "0");
     switch (op) {
-        case BinaryOp::Add: if (do_add_post) {
-                                VDEBUGINFO(4, primitive, postops, "MY: binaryOp - add");
-                                add(simd, dst, src0, src1);
-                            } else{
-                                VDEBUGINFO(4, primitive, postops, "MY: binaryOp - NO add");
-                            }
-                            break;
+        case BinaryOp::Add: if (do_add_post) { add(simd, dst, src0, src1); } break;
         case BinaryOp::Sub: add(simd, dst, src0, -src1); break;
         case BinaryOp::Mul: mul(simd, dst, src0, src1); break;
         case BinaryOp::Div: stub();
@@ -285,6 +279,8 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
                                   const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     VDEBUGINFO(4, primitive, postops, "MY: Generator<hw>::gemmBinaryOpC");
+    const char *load_post_env = std::getenv("LOAD_POST");
+    const bool do_load_post = !(load_post_env && std::string(load_post_env) == "0");
     std::vector<GRFRange> CO_addrs;
     std::vector<MaskAssignment> masks;
     auto globalCM = state.C_layout.colMajor();
@@ -370,7 +366,8 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
                     simtCF ? goto12(16 | ~state.flagAP, lDoneLoading)
                            :   jmpi(1  | ~state.flagAP, lDoneLoading);
                 }
-                loadMatrix(CO_regs, CO_layout, CO_addrs, strategy, state);
+                if (do_load_post)
+                    loadMatrix(CO_regs, CO_layout, CO_addrs, strategy, state);
                 if (checkRemY && (y + 1 < unrollY))
                     cmp(simt | gt | state.flagAP, remY, y + 1);
                 if (coColMajor == globalCM)
@@ -409,7 +406,8 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
         if (simtCF) join(16);
     } else {
         auto CO_regs = state.ra.allocRange(CO_layout.regs());
-        loadMatrix(CO_regs, CO_layout, CO_addrs, strategy, state);
+        if (do_load_post)
+            loadMatrix(CO_regs, CO_layout, CO_addrs, strategy, state);
         if (recip) map(hw, Tco, CO_regs, CO_regs, strategy, [&](int simd, GRF r, GRF) {
             inv(simd, r, r);
         });
@@ -506,7 +504,8 @@ bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const G
 template <HW hw>
 void Generator<hw>::gemmLoadBinaryOpArgs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
-    VDEBUGINFO(4, primitive, postops, "MY: Generator<hw>::gemmLoadBinaryOpArgs");
+    VDEBUGINFO(4, primitive, postops,
+            "MY: Generator<hw>::gemmLoadBinaryOpArgs");
     if (hw < HW::XeHP) stub();
 
     std::vector<ngen::Subregister *> argList;

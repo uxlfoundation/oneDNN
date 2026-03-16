@@ -58,8 +58,7 @@ struct jit_uni_pooling_fwd_t : public primitive_t {
             // Disabling verbose dispatch messages for unsupported dt for better
             // readability.
             // TODO: restore once `d_type` template argument is removed.
-            if (!everyone_is(
-                        d_type, src_md()->data_type, dst_md()->data_type)) {
+            if (!everyone_is(d_type, src_md()->data_type)) {
                 return status::unimplemented;
             }
 

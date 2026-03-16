@@ -752,7 +752,9 @@ void jit_uni_pooling_fwd_t<isa, d_type>::execute_forward(
             }
         } else {
             args.dst = static_cast<const void *>(
-                    &dst[dst_d.blk_off(n, c_off, oh)]);
+                    reinterpret_cast<const uint8_t *>(dst)
+                    + dst_d.blk_off(n, c_off, oh)
+                            * types::data_type_size(dst_d.data_type()));
         }
 
         if (indices) {
@@ -882,7 +884,9 @@ void jit_uni_pooling_fwd_t<isa, d_type>::execute_forward_3d(
                 args.dst_po_helper = static_cast<const void *>(&dst[blk_off]);
             }
         } else {
-            args.dst = &dst[dst_d.blk_off(n, c_off, od, oh)];
+            args.dst = static_cast<const void *>(
+                    reinterpret_cast<const uint8_t *>(dst)
+                    + dst_d.blk_off(n, c_off, od, oh) * dst_d.data_type_size());
         }
 
         if (indices) {

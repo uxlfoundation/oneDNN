@@ -107,6 +107,7 @@ void Generator<hw>::gemmBetaScale(const GEMMProblem &problem, const GEMMStrategy
 template <HW hw>
 void Generator<hw>::binaryOp(BinaryOp op, int simd, const RegData &dst, const RegData &src0, const RegData &src1, CommonState &state)
 {
+    VDEBUGINFO(4, primitive, postops, "MY: Generator<hw>::binaryOp >>>>");
     switch (op) {
         case BinaryOp::Add: add(simd, dst, src0, src1); break;
         case BinaryOp::Sub: add(simd, dst, src0, -src1); break;
@@ -133,6 +134,7 @@ template <HW hw>
 void Generator<hw>::gemmScalarBinaryOpC(BinaryOp op, Type Tco, const GRFMultirange &offsets,
                                         const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
+    VDEBUGINFO(4, primitive, postops, "MY: temp");
     auto Tacc = state.Tacc;
     auto offsetTc = offsets[0].sub(0, Tacc.ngen());
 
@@ -155,6 +157,7 @@ template <HW hw>
 void Generator<hw>::gemmScalarBinaryOpC(BinaryOp op, Type Tco, const Subregister &scalar,
                                         const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
+    VDEBUGINFO(4, primitive, postops, "MY: temp");
     auto Tacc = state.Tacc;
     auto offsetTc = scalar;
 
@@ -184,6 +187,7 @@ void Generator<hw>::gemmVectorBinaryOpC(BinaryOp op, bool column, const GRFMulti
                                         const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state,
                                         Type Tco, RegisterLayout CO_layout, int y0, int y1)
 {
+    VDEBUGINFO(4, primitive, postops, "MY: temp");
     auto Tacc = state.Tacc;
     auto ne = elementsPerGRF(hw, Tacc);
     auto globalCM = state.C_layout.colMajor();
@@ -267,6 +271,7 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
                                   Subregister base, Subregister ld,
                                   const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
+    VDEBUGINFO(4, primitive, postops, "MY: temp");
     std::vector<GRFRange> CO_addrs;
     std::vector<MaskAssignment> masks;
     auto globalCM = state.C_layout.colMajor();
@@ -413,6 +418,7 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
 template <HW hw>
 bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
+    VDEBUGINFO(4, primitive, postops, "MY: temp");
     Label labelCOColumn, labelCORow, labelCOMatrix, labelCODone;
     bool doMatrix = problem.allowMatrixOffset();
     auto Tco = problem.Tco;
@@ -486,6 +492,7 @@ bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const G
 template <HW hw>
 void Generator<hw>::gemmLoadBinaryOpArgs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
+    VDEBUGINFO(4, primitive, postops, "MY: temp");
     if (hw < HW::XeHP) stub();
 
     std::vector<ngen::Subregister *> argList;
@@ -550,6 +557,7 @@ void Generator<hw>::gemmLoadBinaryOpArgs(const GEMMProblem &problem, const GEMMS
 template <HW hw>
 void Generator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
+    VDEBUGINFO(4, primitive, postops, "MY: temp");
     if (poMin >= poMax && !problem.binaryPostProcess()) return;
 
     Label lSkip;
@@ -670,6 +678,7 @@ void Generator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const GEMMProbl
 template <HW hw>
 void Generator<hw>::gemmCalcABOffsetAddrs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
+    VDEBUGINFO(4, primitive, postops, "MY: temp");
     bool doA = (problem.bOffset == ABOffset::Load);
     bool doB = (problem.aOffset == ABOffset::Load);
 
@@ -695,6 +704,7 @@ void Generator<hw>::gemmCalcABOffsetAddrs(const GEMMProblem &problem, const GEMM
 template <HW hw>
 bool Generator<hw>::gemmLoadABOffset(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
+    VDEBUGINFO(4, primitive, postops, "MY: temp");
     bool doA = (problem.bOffset == ABOffset::Load);
     bool doB = (problem.aOffset == ABOffset::Load);
     if (!doA && !doB)
@@ -753,6 +763,7 @@ bool Generator<hw>::gemmLoadABOffset(const GEMMProblem &problem, const GEMMStrat
 template <HW hw>
 void Generator<hw>::gemmRank1UpdateC(const GRFMultirange &r, const GRFMultirange &c, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
+    VDEBUGINFO(4, primitive, postops, "MY: temp");
     auto Tacc = state.Tacc;
     auto ne = elementsPerGRF(hw, Tacc);
     auto globalCM = state.C_layout.colMajor();
@@ -786,6 +797,7 @@ void Generator<hw>::gemmRank1UpdateC(const GRFMultirange &r, const GRFMultirange
 template <HW hw>
 void Generator<hw>::gemmApplyABOffset(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
+    VDEBUGINFO(4, primitive, postops, "MY: temp");
     bool aOffset = (problem.aOffset != ABOffset::None) && !problem.earlyDequantizeA() && !problem.quantized2DA();
     bool bOffset = (problem.bOffset != ABOffset::None) && !problem.earlyDequantizeB() && !problem.quantized2DB();
     if (!aOffset && !bOffset)

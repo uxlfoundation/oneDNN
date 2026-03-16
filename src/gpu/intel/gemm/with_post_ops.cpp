@@ -24,6 +24,7 @@ namespace intel {
 namespace gemm {
 
 status_t with_post_ops_t::pd_t::init(impl::engine_t *engine) {
+        VDEBUGINFO(4, primitive, postops, "MY: with_post_ops_t::pd_t::init");
     using namespace data_type;
 
     const auto &d = desc();
@@ -203,6 +204,8 @@ status_t with_post_ops_t::pd_t::init(impl::engine_t *engine) {
 }
 status_t with_post_ops_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
+        VDEBUGINFO(4, primitive, postops,
+                        "MY: with_post_ops_t::pd_t::init_kernel_ctx");
     auto c_type = dst_md(0)->data_type;
     const auto src_info = memory_desc_info_t::create(pd_->dst_md(0));
     const auto bias_info = [&]() {

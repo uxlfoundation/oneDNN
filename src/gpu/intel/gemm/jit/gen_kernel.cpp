@@ -63,6 +63,7 @@ bool enable_generator_dsl() {
 
 status_t gen_desc_t::create_generator(
         const intel::engine_t &engine, compute::kernel_t &kernel) const {
+    VDEBUGINFO(4, primitive, postops, "MY: gen_desc_t::create_generator");
     gen_kernel_t kd(*this);
     return engine.create_kernel(&kernel, &kd);
 }
@@ -102,6 +103,7 @@ static gemmstone::Scalar stringToScalar(std::string val) {
 #endif
 
 status_t gen_desc_t::finalize(const char *tags) {
+    VDEBUGINFO(4, primitive, postops, "MY: gen_desc_t::finalize");
     // Update problem alignments to match catalog entry.
     if (!isPacked(problem_.A.layout)
             && problem_.Ta_ext.paddedSize() >= problem_.Ta.paddedSize()) {
@@ -365,6 +367,7 @@ status_t gen_desc_t::finalize(const char *tags) {
 }
 
 void gen_desc_t::update_driver_info() {
+    VDEBUGINFO(4, primitive, postops, "MY: gen_desc_t::update_driver_info");
 #define ARCH_DISPATCH(arch) \
     case ngen::HW::arch: \
         driver_info_ = gemm_kernel_generator_t<ngen::HW::arch>::driverInfo( \
@@ -394,6 +397,7 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
         int eu_count, bool has_systolic, bool is_integrated, compute_mode mode,
         const gemmstone::GEMMProblem &problem, float alpha, float beta, dim_t m,
         dim_t n, dim_t k, dim_t lda, dim_t ldb, dim_t ldc, dim_t batch) {
+    VDEBUGINFO(4, primitive, postops, "MY: gen_nocopy_desc_t::select_kernel");
     using namespace ngen;
     using namespace kcatalog;
 
@@ -566,6 +570,7 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
 }
 
 status_t gen_nocopy_desc_t::finalize() {
+    VDEBUGINFO(4, primitive, postops, "MY: gen_nocopy_desc_t::finalize");
     // Update A/B/C types from entry.
     Type Ta_new, Ta_ext_new, Tb_new, Tb_ext_new, Tc_new;
     parsePrecisions(entry_->selector.precisions[0], Ta_ext_new, Ta_new);
@@ -778,6 +783,7 @@ void gen_xe_systolic_kernel_desc_t::choose_unrolls(compute::gpu_arch_t arch,
 }
 
 void gen_kernel_t::init_interface() {
+    VDEBUGINFO(4, primitive, postops, "MY: gen_kernel_t::init_interface");
     using namespace ngen;
 
     auto &problem = *desc()->problem();
@@ -970,6 +976,7 @@ void gen_kernel_t::init_interface() {
 dsl::kernel_t get_dsl_kernel(const GEMMProblem &problem,
         const GEMMStrategy &strategy, const ngen::InterfaceHandler &iface,
         const dsl::hw_t &hw, int m, int n, int k) {
+    VDEBUGINFO(4, primitive, postops, "MY: get_dsl_kernel");
     auto gemm_desc
             = gemmstone::generator_dsl_desc_t(problem, strategy, iface, hw);
     if (gpu_utils::dev_getenv("generator_dsl_specialize", false)) {
@@ -993,6 +1000,7 @@ std::string dump_kernel(ngen::HW hw, const gemmstone::GEMMProblem &problem,
 
 status_t gen_kernel_t::get_kernel(
         compute::kernel_t &kernel, const intel::engine_t *engine) {
+    VDEBUGINFO(4, primitive, postops, "MY: gen_kernel_t::get_kernel");
     init_interface();
     maybe_print_verbose();
 
@@ -1040,6 +1048,7 @@ status_t gen_kernel_t::get_kernel(
 }
 
 void gen_kernel_t::maybe_print_verbose() {
+    VDEBUGINFO(4, primitive, postops, "MY: gen_kernel_t::maybe_print_verbose");
     int level = get_verbose(verbose_t::debuginfo);
     if (level < 2) return;
 

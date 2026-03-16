@@ -23,6 +23,7 @@
 
 #include "common/c_types_map.hpp"
 #include "common/gemm_utils.hpp"
+#include "common/verbose.hpp"
 #include "common/utils.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/compute/kernel.hpp"
@@ -45,6 +46,7 @@ struct gen_t : public primitive_t {
         DECLARE_COMMON_PD_T("jit:gemm:any", gen_t);
 
         status_t init(impl::engine_t *engine) {
+                        VDEBUGINFO(4, primitive, postops, "MY: gen_t::pd_t::init");
             using namespace prop_kind;
             using namespace data_type;
             using namespace primitive_kind;

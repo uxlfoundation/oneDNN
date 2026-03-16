@@ -16,6 +16,7 @@
 
 #include "gemmstone/kernel_selector.hpp"
 #include "gemmstone/kernel_evaluator.hpp"
+#include "common/verbose.hpp"
 
 #include <cassert>
 #include <cctype>
@@ -167,6 +168,7 @@ struct EntryData {
 // Choose the best entry, if any, matching one of the given patterns.
 const std::vector<const kcatalog::Entry *> getEntries(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, EvaluateAuxOutput &aux,  SelectionObserver * observer)
 {
+    VDEBUGINFO(4, primitive, postops, "MY: getEntries");
     // TODO: omit evaluation if only one match, if aux output not needed.
     std::vector<EntryData> keys;
     for (int ipattern = 0; ipattern < npatterns; ipattern++) {
@@ -210,11 +212,13 @@ const std::vector<const kcatalog::Entry *> getEntries(const kcatalog::Catalog &c
 // Includes architecture and data type fallbacks.
 const std::vector<const kcatalog::Entry *> select(const kcatalog::Catalog &catalog, const MatchParams &pattern, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver *observer)
 {
+    VDEBUGINFO(4, primitive, postops, "MY: select");
     return select(catalog, 1, &pattern, eparams, aux, observer);
 }
 
 const std::vector<const kcatalog::Entry *> select(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver *observer)
 {
+    VDEBUGINFO(4, primitive, postops, "MY: select");
     using namespace kcatalog;
 
     std::vector<const kcatalog::Entry *> entries;

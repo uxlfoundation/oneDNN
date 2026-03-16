@@ -661,16 +661,30 @@ void jit_uni_i8i8_pooling_fwd_ker_t<sse41>::store_dst_avg_op(
 
     const Vmm &vr_dst = vreg_dst_s32(jj, ll);
 
-    if (jpp.src_dt == s32) {
+    if (jpp.dst_dt == f32) {
+        const Xmm &xmm_dst = Xmm(vreg_dst_f32(jj, ll).getIdx());
+        if (!masked) {
+            movups(ptr[reg_ptr_dst_i8 + offset], xmm_dst);
+        } else {
+            const int msk_gran
+                    = cpu_isa_traits_t<sse41>::vlen / data_type_size(f32);
+            for (int i = 0; i < msk_gran; i++) {
+                if (msk & (1ULL << i))
+                    vextractps(ptr[reg_ptr_dst_i8 + offset
+                                       + i * data_type_size(f32)],
+                            xmm_dst, i);
+            }
+        }
+    } else if (jpp.dst_dt == s32) {
         if (masked)
             for (size_t i = 0; i < static_cast<size_t>(jpp.c_tail); i++)
                 pextrd(ptr[reg_ptr_dst_i8 + offset + i * data_type_size(s32)],
                         vr_dst, i);
         else
             movups(ptr[reg_ptr_dst_i8 + offset], vr_dst);
-    } else if (utils::one_of(jpp.src_dt, s8, u8)) {
+    } else if (utils::one_of(jpp.dst_dt, s8, u8)) {
         packssdw(vr_dst, vr_dst);
-        if (jpp.src_dt == s8)
+        if (jpp.dst_dt == s8)
             packsswb(vr_dst, vr_dst);
         else
             packuswb(vr_dst, vr_dst);
@@ -771,6 +785,49 @@ void jit_uni_i8i8_pooling_fwd_ker_t<avx2>::store_dst_avg_op(
     };
 
     switch (jpp.dst_dt) {
+        case f32: {
+            const Vmm &vr_dst = vreg_dst_f32(jj, ll);
+            if (!masked) {
+                vmovups(ptr[reg_ptr_dst_i8 + offset], vr_dst);
+            } else {
+                const int msk_gran
+                        = cpu_isa_traits_t<avx2>::vlen / sizeof(float);
+                Xmm xmm_hi = xreg_mask_hi;
+                for (int i = 0; i < msk_gran; i++) {
+                    if (msk & (1ULL << i)) {
+                        if (i < 4) {
+                            vextractps(ptr[reg_ptr_dst_i8 + offset
+                                               + i * sizeof(float)],
+                                    Xmm(vr_dst.getIdx()), i);
+                        } else {
+                            vextractf128(xmm_hi, vr_dst, 1);
+                            vextractps(ptr[reg_ptr_dst_i8 + offset
+                                               + i * sizeof(float)],
+                                    xmm_hi, i - 4);
+                        }
+                    }
+                }
+            }
+            break;
+        }
+        case f16: {
+            const Vmm &vr_dst = vreg_dst_f32(jj, ll);
+            const Xmm xmm_dst(vr_dst.getIdx());
+            uni_vcvtps2phx(xmm_dst, vr_dst);
+            if (!masked) {
+                movups(ptr[reg_ptr_dst_i8 + offset], xmm_dst);
+            } else {
+                const int msk_gran
+                        = cpu_isa_traits_t<avx2>::vlen / sizeof(float);
+                for (int i = 0; i < msk_gran; i++) {
+                    if (msk & (1ULL << i))
+                        pextrw(ptr[reg_ptr_dst_i8 + offset
+                                       + i * data_type_size(f16)],
+                                xmm_dst, i);
+                }
+            }
+            break;
+        }
         case s32:
             if (masked) {
                 vpmaskmovd(ptr[reg_ptr_dst_i8 + offset], vreg_mask,
@@ -796,6 +853,38 @@ void jit_uni_i8i8_pooling_fwd_ker_t<avx512_core>::store_dst_avg_op(
             = masked ? vreg_dst_s32(jj, ll) | mask(ll) : vreg_dst_s32(jj, ll);
 
     switch (jpp.dst_dt) {
+        case f32:
+            vmovups(ptr[reg_ptr_dst_i8 + offset],
+                    masked ? vreg_dst_f32(jj, ll) | mask(ll)
+                           : vreg_dst_f32(jj, ll));
+            break;
+        case f16: {
+            const Vmm &vr_dst = vreg_dst_f32(jj, ll);
+            const Ymm ymm_dst(vr_dst.getIdx());
+            const Xmm xmm_lo(ymm_dst.getIdx());
+            const Xmm xmm_hi = xreg_mask_hi;
+            uni_vcvtps2phx(ymm_dst, vr_dst);
+            if (!masked) {
+                vmovups(ptr[reg_ptr_dst_i8 + offset], ymm_dst);
+            } else {
+                vextracti128(xmm_hi, ymm_dst, 1);
+                const int msk_gran
+                        = cpu_isa_traits_t<avx512_core>::vlen / sizeof(float);
+                for (int i = 0; i < msk_gran; i++) {
+                    if (msk & (1ULL << i)) {
+                        if (i < 8)
+                            pextrw(ptr[reg_ptr_dst_i8 + offset
+                                           + i * data_type_size(f16)],
+                                    xmm_lo, i);
+                        else
+                            pextrw(ptr[reg_ptr_dst_i8 + offset
+                                           + i * data_type_size(f16)],
+                                    xmm_hi, i - 8);
+                    }
+                }
+            }
+            break;
+        }
         case s32: vmovups(ptr[reg_ptr_dst_i8 + offset], vr_dst); break;
         case s8: vpmovsdb(ptr[reg_ptr_dst_i8 + offset], vr_dst); break;
         case u8: vpmovusdb(ptr[reg_ptr_dst_i8 + offset], vr_dst); break;
@@ -1015,13 +1104,17 @@ void jit_uni_i8i8_pooling_fwd_ker_t<isa>::compute_avg_step(
                             reg_dst_f32.getIdx(), rhs_arg_params);
                 }
 
-                uni_vcvtps2dq(reg_dst_s32, reg_dst_f32);
+                if (jpp.dst_dt == f32 || jpp.dst_dt == f16) {
+                    store_dst(jj, ll, c_tail);
+                } else {
+                    uni_vcvtps2dq(reg_dst_s32, reg_dst_f32);
 
-                if (jpp.with_postops)
-                    if (jpp.dst_dt == u8) {
-                        uni_vpmaxsd(reg_dst_s32, reg_dst_s32, vreg_zeros);
-                    }
-                store_dst(jj, ll, c_tail);
+                    if (jpp.with_postops)
+                        if (jpp.dst_dt == u8) {
+                            uni_vpmaxsd(reg_dst_s32, reg_dst_s32, vreg_zeros);
+                        }
+                    store_dst(jj, ll, c_tail);
+                }
             }
         }
     }

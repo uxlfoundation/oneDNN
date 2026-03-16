@@ -506,8 +506,7 @@ bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const G
 template <HW hw>
 void Generator<hw>::gemmLoadBinaryOpArgs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
-    VDEBUGINFO(4, primitive, postops,
-            "MY: Generator<hw>::gemmLoadBinaryOpArgs");
+    VDEBUGINFO(4, primitive, postops, "MY: Generator<hw>::gemmLoadBinaryOpArgs");
     if (hw < HW::XeHP) stub();
 
     std::vector<ngen::Subregister *> argList;

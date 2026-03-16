@@ -1020,7 +1020,7 @@ void Generator<hw>::updateCLayout(const RegisterLayout &layoutExt, const GRFRang
                 // Load C data.
                 auto &sublayoutLoad = (loadOnly && !copyC) ? sublayoutAcc : sublayoutExt;
                 auto &C_loadRange   = (loadOnly && !copyC) ? C_accRange   : C_extRange;
-                    loadMatrix(C_loadRange, sublayoutLoad, C_addrs[0], strategy, state);
+                    loadMatrix(C_loadRange, sublayoutLoad, C_addrs[0], strategy, state, false, "dst");
 
                 // Set up a0.0 descriptor for stores (and save load descriptors) if needed.
                 if (haveDescs && !loadOnly) {
@@ -2262,7 +2262,7 @@ void Generator<hw>::gemmAccessSums(COperation op, const GEMMProblem &problem, co
                 CO_regsLoadConv = state.ra.alloc_range(Xs_nregs);
         }
 
-        loadMatrix(CO_regsLoad, CO_layout, CO_addrs, strategy, state);
+        loadMatrix(CO_regsLoad, CO_layout, CO_addrs, strategy, state, false, "dst");
         if (!share)
             copyRegisters(CO_layout, Xs_layout, CO_regsLoad, CO_regsLoadConv, strategy, state);
 
@@ -2466,7 +2466,7 @@ void Generator<hw>::gemmKReduce(const GEMMProblem &problem, const GEMMStrategy &
         jmpi(1 | ~state.flagAP, lSkipReduce);
 
         auto doLoad = [&](int b) {
-            loadMatrix(C_load[b], C_slmLayout, C_slmAddrs, strategy, state);
+            loadMatrix(C_load[b], C_slmLayout, C_slmAddrs, strategy, state, false, "dst");
         };
 
         auto doInc = [&] {
@@ -2670,7 +2670,7 @@ void Generator<hw>::gemmPrefetchC(const GEMMProblem &problem, GEMMStrategy &stra
 
     state.Cp_regs = state.ra.alloc_range(state.Cp_layout.regs());
 
-    loadMatrix(state.Cp_regs, state.Cp_layout, state.Cp_addrs, strategy, state);
+    loadMatrix(state.Cp_regs, state.Cp_layout, state.Cp_addrs, strategy, state, false, "dst");
 
     safeReleaseRanges(state.Cp_regs, state);
     safeReleaseRanges(state.Cp_addrs, state);

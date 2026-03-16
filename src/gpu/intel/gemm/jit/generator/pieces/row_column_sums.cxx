@@ -480,7 +480,7 @@ bool Generator<hw>::gemmFinalizeSums(const GEMMProblem &problem, const GEMMStrat
             allocAddrRegs(ABs_addrs[isB], ABs_layoutSLM[isB], state);
             setupAddr(ABs_addrs[isB], ABs_base[isB], ABs_layoutSLM[isB], Subregister(), strategy, state);
         }
-        loadMatrix(*ABs_regs[isB], ABs_layoutSLM[isB], ABs_addrs[isB], strategy, state);
+        loadMatrix(*ABs_regs[isB], ABs_layoutSLM[isB], ABs_addrs[isB], strategy, state, false, isB ? "wei" : "src");
         *ABs_layout[isB] = std::move(ABs_layoutSLM[isB]);
     };
 

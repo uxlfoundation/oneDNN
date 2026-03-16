@@ -1650,7 +1650,7 @@ template <HW hw>
 void Generator<hw>::gemmALoad(const GRFMultirange &regs, const RegisterLayout &layout, const std::vector<GRFRange> &addrs,
                               const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
-    loadMatrix(regs, layout, addrs, strategy, state);
+    loadMatrix(regs, layout, addrs, strategy, state, false, "src");
 }
 
 template <HW hw>
@@ -1731,7 +1731,7 @@ template <HW hw>
 void Generator<hw>::gemmBLoad(const GRFMultirange &regs, const RegisterLayout &layout, const std::vector<GRFRange> &addrs,
                               const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
-    loadMatrix(regs, layout, addrs, strategy, state);
+    loadMatrix(regs, layout, addrs, strategy, state, false, "wei");
 }
 
 template <HW hw>

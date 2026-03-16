@@ -454,8 +454,8 @@ protected:
     ngen::InstructionModifier registerBlockMasking(const RegisterBlock &block, CommonState &state, ngen::FlagRegister *outFlag = nullptr);
     void finishRegisterBlockMasking(CommonState &state);
 
-    void loadMatrixBlock(const ngen::Register &dest, const RegisterBlock &layout, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy, const ngen::GRFRange &addr, const CommonStrategy &strategy, CommonState &state, bool readCheck = false, bool series = false);
-    void loadMatrix(const GRFMultirange &dest, const RegisterLayout &layout, const std::vector<ngen::GRFRange> &addrs, const CommonStrategy &strategy, CommonState &state, bool readCheck = false);
+    void loadMatrixBlock(const ngen::Register &dest, const RegisterBlock &layout, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy, const ngen::GRFRange &addr, const CommonStrategy &strategy, CommonState &state, bool readCheck = false, bool series = false, const char *matrixTag = "");
+    void loadMatrix(const GRFMultirange &dest, const RegisterLayout &layout, const std::vector<ngen::GRFRange> &addrs, const CommonStrategy &strategy, CommonState &state, bool readCheck = false, const char *matrixTag = "");
     void prefetchMatrix(const RegisterLayout &layout, const std::vector<ngen::GRFRange> &addrs, const CommonStrategy &strategy, CommonState &state);
     void storeMatrixBlock(const ngen::GRF &src, const RegisterBlock &layout, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy, const ngen::GRFRange &addr, const CommonStrategy &strategy, CommonState &state, bool series = false);
     void storeMatrix(const GRFMultirange &src, const RegisterLayout &layout, const std::vector<ngen::GRFRange> &addrs, const CommonStrategy &strategy, CommonState &state);

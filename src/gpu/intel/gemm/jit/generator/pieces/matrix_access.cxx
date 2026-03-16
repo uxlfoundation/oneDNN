@@ -49,8 +49,9 @@ void Generator<hw>::prefetchMatrix(const RegisterLayout &layout, const vector<GR
 // Output code for loading a matrix chunk into registers.
 template <HW hw>
 void Generator<hw>::loadMatrix(const GRFMultirange &dest, const RegisterLayout &layout, const vector<GRFRange> &addrs,
-                               const CommonStrategy &strategy, CommonState &state, bool readCheck)
+                               const CommonStrategy &strategy, CommonState &state, bool readCheck, const char *matrixTag)
 {
+    VDEBUGINFO(4, primitive, postops, "MY: loadMatrix tag=%s blocks=%d", matrixTag, layout.blocks());
     if (layout.empty()) return;
 
     auto &astrategy = layout.addressingStrategy();
@@ -65,7 +66,7 @@ void Generator<hw>::loadMatrix(const GRFMultirange &dest, const RegisterLayout &
     for (int l = 0; l < layout.blocks(); l++) {
         auto offsetReg = contiguityCheck(hw, layout[l], dest);
         prepareSeriesRegisterBlockMasking(layout, state, l);
-        loadMatrixBlock(dest[offsetReg], layout[l], layout.addressing(), astrategy, addrs[l], strategy, state, readCheck, true);
+        loadMatrixBlock(dest[offsetReg], layout[l], layout.addressing(), astrategy, addrs[l], strategy, state, readCheck, true, matrixTag);
     }
 
     finishRegisterBlockMasking(state);
@@ -76,8 +77,9 @@ template <HW hw>
 void Generator<hw>::loadMatrixBlock(const Register &dest, const RegisterBlock &block, const MatrixAddressing &atype,
                                     const MatrixAddressingStrategy &astrategy, const GRFRange &addr,
                                     const CommonStrategy &strategy, CommonState &state,
-                                    bool readCheck, bool series)
+                                    bool readCheck, bool series, const char *matrixTag)
 {
+    VDEBUGINFO(4, primitive, postops, "MY: loadMatrixBlock tag=%s simdSize=%d", matrixTag, block.simdSize);
     InstructionModifier maskMod;
     InstructionModifier mod = block.simdSize;
 

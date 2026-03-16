@@ -109,11 +109,17 @@ void Generator<hw>::gemmBetaScale(const GEMMProblem &problem, const GEMMStrategy
 template <HW hw>
 void Generator<hw>::binaryOp(BinaryOp op, int simd, const RegData &dst, const RegData &src0, const RegData &src1, CommonState &state)
 {
-    VDEBUGINFO(4, primitive, postops, "MY: Generator<hw>::binaryOp");
+//    VDEBUGINFO(4, primitive, postops, "MY: Generator<hw>::binaryOp");
     const char *add_post_env = std::getenv("ADD_POST");
     const bool do_add_post = !(add_post_env && std::string(add_post_env) == "0");
     switch (op) {
-        case BinaryOp::Add: if (do_add_post) { add(simd, dst, src0, src1); } break;
+        case BinaryOp::Add: if (do_add_post) {
+                                VDEBUGINFO(4, primitive, postops, "MY: binaryOp - add");
+                                add(simd, dst, src0, src1);
+                            } else{
+                                VDEBUGINFO(4, primitive, postops, "MY: binaryOp - NO add");
+                            }
+                            break;
         case BinaryOp::Sub: add(simd, dst, src0, -src1); break;
         case BinaryOp::Mul: mul(simd, dst, src0, src1); break;
         case BinaryOp::Div: stub();

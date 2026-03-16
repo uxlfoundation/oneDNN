@@ -67,6 +67,7 @@ int quant_entry_ndims(
 } // anonymous namespace
 
 status_t pd_t::init_post_ops() {
+    VDEBUGINFO(4, primitive, postops, "MY: pd_t::init_post_ops");
     using namespace primitive_kind;
     using namespace alg_kind;
     using namespace data_type;
@@ -223,6 +224,7 @@ bool pd_t::quant_enabled() {
 }
 
 status_t pd_t::init_attrs() {
+    VDEBUGINFO(4, primitive, postops, "MY: pd_t::init_attrs");
     wei_decomp_ = wei_decomp();
     dy_quant_enabled_ = dy_quant_enabled();
     quant_enabled_ = quant_enabled();
@@ -451,6 +453,7 @@ bool pd_t::valid_2d_mask(int mask, int ndims, bool per_tensor_ok) {
 
 status_t transfer_post_ops(
         gemmstone::GEMMProblem &problem, gpu_post_ops_t &&post_ops_) {
+    VDEBUGINFO(4, primitive, postops, "MY: transfer_post_ops");
     using namespace gemmstone;
     problem.postOps = std::move(post_ops_);
     const auto &post_ops = problem.postOps;
@@ -508,6 +511,7 @@ status_t transfer_post_ops(
 
 status_t pd_t::init_GEMMProblem(
         gemmstone::GEMMProblem &problem, const intel::engine_t *engine) const {
+    VDEBUGINFO(4, primitive, postops, "MY: pd_t::init_GEMMProblem");
     // Set up problem structure.
     using namespace gemmstone;
     problem = {};

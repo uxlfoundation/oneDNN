@@ -38,6 +38,7 @@ using std::vector;
 template <HW hw>
 void Generator<hw>::gemm(GEMMProblem problem, GEMMStrategy strategy, const InterfaceHandler &interface_)
 {
+    VDEBUGINFO(4, primitive, postops, "MY: Generator<hw>::gemm");
     GEMMState state(hw, strategy);
     interface = interface_;
     gemm(problem, strategy, state);
@@ -46,6 +47,7 @@ void Generator<hw>::gemm(GEMMProblem problem, GEMMStrategy strategy, const Inter
 template <HW hw>
 void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state)
 {
+    VDEBUGINFO(4, primitive, postops, "MY: Generator<hw>::gemm");
     const bool inFusedGEMM = false;
     bool anyKParallelFixed = strategy.kParallelLocal || strategy.kParallel;
 

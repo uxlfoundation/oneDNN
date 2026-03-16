@@ -197,6 +197,7 @@ bool Generator<hw>::gemmAccessC(COperation op, const GEMMProblem &problem, const
         for (poSum = 0; poSum < problem.postOps.len(); poSum++)
             if (problem.postOps[poSum].is_sum())
                 break;
+        VDEBUGINFO(4, primitive, postops,"MY: calling gemmApplyPostOps");
         gemmApplyPostOps(0, poSum, problem, strategy, state);
         splitUpdateStore |= (poSum + 1 < problem.postOps.len());
     }
@@ -216,8 +217,10 @@ bool Generator<hw>::gemmAccessC(COperation op, const GEMMProblem &problem, const
         storeProblem.beta = 0;
 
         // Do any post-sum post-ops.
-        if (newPostOps)
+        if (newPostOps){
+            VDEBUGINFO(4, primitive, postops,"MY: calling gemmApplyPostOps");
             gemmApplyPostOps(poSum + 1, problem.postOps.len(), problem, strategy, state);
+        }
         storeProblem.postOps = PostOps{};
 
         if (problem.cOffset == COffset::Post)

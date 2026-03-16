@@ -212,7 +212,7 @@ bool pd_t::quant_enabled() {
 }
 
 status_t pd_t::init_attrs() {
-    VDEBUGINFO(4, primitive, postops, "MY: pd_t::init_attrs");
+    //VDEBUGINFO(4, primitive, postops, "MY: pd_t::init_attrs");
     wei_decomp_ = wei_decomp();
     dy_quant_enabled_ = dy_quant_enabled();
     quant_enabled_ = quant_enabled();

@@ -59,7 +59,7 @@ struct pd_t : public gemm::pd_t {
 
     // Assumes desc() was already initialized with default formats
     status_t init(impl::engine_t *engine, compute::gpu_arch_t arch) {
-    VDEBUGINFO(4, primitive, postops, "MY: jit::pd_t::init");
+    //VDEBUGINFO(4, primitive, postops, "MY: jit::pd_t::init");
 
         arch_ = arch;
         with_sround_ = attr()->rounding_mode_.get(DNNL_ARG_DST)

@@ -121,6 +121,7 @@ void gates_reduction(
         const prb_t &prb, const float *b_gates_, float *diff_bias_);
 
 rnn_data_kind_t data_kind2rnn_data_kind(data_kind_t data_kind);
+data_kind_t rnn_data_kind2data_kind(rnn_data_kind_t rnn_data_kind);
 
 }; // namespace rnn
 

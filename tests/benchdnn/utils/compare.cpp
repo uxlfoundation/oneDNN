@@ -145,7 +145,7 @@ bool compare_extreme_values(float a, float b) {
 
 compare_t::driver_check_func_args_t::driver_check_func_args_t(
         const dnn_mem_t &exp_mem, const dnn_mem_t &got_f32, const int64_t i,
-        const dnnl_data_type_t data_type, const float trh)
+        const dnnl_data_type_t data_type, const float trh, data_kind_t dk)
     : dt(data_type)
     , idx(i)
     , exp_f32(exp_mem.get_f32_elem(idx))
@@ -153,7 +153,8 @@ compare_t::driver_check_func_args_t::driver_check_func_args_t(
     , got(got_f32.get_f32_elem(idx))
     , diff(fabsf(exp - got))
     , rel_diff(diff / (fabsf(exp) > FLT_MIN ? fabsf(exp) : 1))
-    , trh(trh) {}
+    , trh(trh)
+    , dk(dk) {}
 
 int compare_t::compare_norm(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
         const attr_t &attr, res_t *res) const {
@@ -184,7 +185,8 @@ int compare_t::compare_norm(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
 
         // Specifiers to keep data accumulated over several `i`.
         static thread_local diff_norm_t diff_norm_ithr;
-        driver_check_func_args_t args(exp_mem, got_f32, i, dt, trh_norm_);
+        driver_check_func_args_t args(
+                exp_mem, got_f32, i, dt, trh_norm_, kind_);
 
         if ((std::isnan(args.exp_f32)) || std::isinf(args.exp)) {
             // Don't include nan inf values into norm as they make it
@@ -337,7 +339,8 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
 
         static thread_local driver_check_func_args_t args;
         for (int z = ok; z < 1; z++) {
-            args = driver_check_func_args_t(exp_f32, got_f32, i, dt, trh_);
+            args = driver_check_func_args_t(
+                    exp_f32, got_f32, i, dt, trh_, kind_);
 
             if (std::isnan(args.exp_f32) && is_integral_dt(dt)) {
                 // Relax output requirements for this case, since different
@@ -502,7 +505,8 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
         if (dump) {
             // Need to initialize `args` in case they weren't.
             if (args.dt == dnnl_data_type_undef)
-                args = driver_check_func_args_t(exp_f32, got_f32, i, dt, trh_);
+                args = driver_check_func_args_t(
+                        exp_f32, got_f32, i, dt, trh_, kind_);
 
             out_data.dumps.emplace_back(got_mem.md_, i, args.exp_f32, args.exp,
                     got_val, args.diff, args.rel_diff);

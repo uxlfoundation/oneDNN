@@ -1054,6 +1054,21 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
                 && prb->prop == dnnl_backward) {
             return args.diff < args.trh;
         }
+
+        // When a problem uses int computations, DST_ITER(_C) is computed using
+        // DST_LAYER. However, the library part can compute LAYER and ITER in
+        // parallel, which can lead to off-by-1 issue for ITER part.
+        // Reconstruct original DST_LAYER values on got and exp sides and if
+        // they are off-by-1, let them through.
+        if (prb->cfg.is_int8()
+                && (args.dk == rnn_data_kind2data_kind(DST_ITER)
+                        || args.dk == rnn_data_kind2data_kind(DST_ITER_C))) {
+            const int exp_q = static_cast<int>(
+                    args.exp * prb->data_scale + prb->data_shift);
+            const int got_q = static_cast<int>(
+                    args.got * prb->data_scale + prb->data_shift);
+            return abs(got_q - exp_q) <= 1;
+        }
         return false;
     };
     cmp.set_driver_check_function(rnn_add_check);

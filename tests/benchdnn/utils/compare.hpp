@@ -31,7 +31,8 @@ struct compare_t {
         driver_check_func_args_t() = default;
         driver_check_func_args_t(const dnn_mem_t &exp_mem,
                 const dnn_mem_t &got_f32, const int64_t i,
-                const dnnl_data_type_t data_type, const float trh);
+                const dnnl_data_type_t data_type, const float trh,
+                data_kind_t dk);
 
         dnnl_data_type_t dt = dnnl_data_type_undef;
         int64_t idx = 0;
@@ -41,6 +42,7 @@ struct compare_t {
         float diff = 0.f;
         float rel_diff = 0.f;
         float trh = 0.f;
+        data_kind_t dk = DAT_TOTAL;
     };
 
     struct dump_point_ctx_t {

@@ -177,6 +177,7 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
             parseStrategy(strategyString.c_str(), hw, problem, strat);
             adjustStrategy(hw, problem, strat);
         }
+        strategyGRFs_ = strat.GRFs;
     };
 
     auto sg_size = dev_info->min_subgroup_size();
@@ -393,7 +394,7 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
 
     kernel_ctx_.set_data_type(dst_dt);
 
-    if (gemm_.grfMin > 128)
+    if (gemm_.grfMin > 128 || strategyGRFs_ > 128)
         kernel_ctx_.add_option("-cl-intel-256-GRF-per-thread");
 
     def_data_type(kernel_ctx_, src_dt, "SRC");

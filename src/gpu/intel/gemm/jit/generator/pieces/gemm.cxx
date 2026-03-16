@@ -38,7 +38,7 @@ using std::vector;
 template <HW hw>
 void Generator<hw>::gemm(GEMMProblem problem, GEMMStrategy strategy, const InterfaceHandler &interface_)
 {
-    VDEBUGINFO(4, primitive, postops, "MY: Generator<hw>::gemm");
+    //VDEBUGINFO(4, primitive, postops, "MY: Generator<hw>::gemm");
     GEMMState state(hw, strategy);
     interface = interface_;
     gemm(problem, strategy, state);

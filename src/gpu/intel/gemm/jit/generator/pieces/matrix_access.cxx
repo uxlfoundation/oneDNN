@@ -16,6 +16,8 @@
 
 
 #include "gemmstone/generator.hpp"
+#include <cstdlib>
+#include <cstring>
 #include "hw_utils.hpp"
 #include "layout_utils.hpp"
 #include "ngen_object_helpers.hpp"
@@ -80,6 +82,9 @@ void Generator<hw>::loadMatrixBlock(const Register &dest, const RegisterBlock &b
                                     bool readCheck, bool series, const char *matrixTag)
 {
     VDEBUGINFO(4, primitive, postops, "MY: loadMatrixBlock tag=%s simdSize=%d", matrixTag, block.simdSize);
+    const char *load_post_env = std::getenv("LOAD_POST");
+    const bool do_load_post = !(load_post_env && !std::strcmp(load_post_env, "0"));
+    const bool skip_post_load = matrixTag && !std::strcmp(matrixTag, "post") && !do_load_post;
     InstructionModifier maskMod;
     InstructionModifier mod = block.simdSize;
 
@@ -101,7 +106,10 @@ void Generator<hw>::loadMatrixBlock(const Register &dest, const RegisterBlock &b
         }
     }
 
-    if (astrategy.newDP) switch (block.implAccessType(atype, astrategy)) {
+    if (skip_post_load)
+        VDEBUGINFO(4, primitive, postops, "MY: loadMatrixBlock skip post load, LOAD_POST=0");
+
+    if (!skip_post_load && astrategy.newDP) switch (block.implAccessType(atype, astrategy)) {
         case AccessType::Block:
         case AccessType::Scattered:
         case AccessType::ChannelScattered: {
@@ -132,9 +140,9 @@ void Generator<hw>::loadMatrixBlock(const Register &dest, const RegisterBlock &b
             break;
         }
         default: stub();
-    } else if (block.descAssigned)
+    } else if (!skip_post_load && block.descAssigned)
         send(mod, static_cast<SharedFunction>(block.sfid), dest, addr, null, block.sfid, a0[0]);
-    else switch (block.implAccessType(atype, astrategy)) {
+    else if (!skip_post_load) switch (block.implAccessType(atype, astrategy)) {
         case AccessType::ChannelScattered: {
             static const ChannelMask cmasks[4] = {ChannelMask::r, ChannelMask::rg, ChannelMask::rgb, ChannelMask::rgba};
             if (block.ebytes != 4) stub();

@@ -89,7 +89,7 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
     opts.scaleB = src_quant_.with_scale() && src_group_sizes_[1] < K();
     opts.offsetB = src_quant_.with_zp();
     opts.slmPtr = true;
-    opts.kParallelLocal = true;
+    opts.kParallelLocal = is_gemv_;
 
     if (opts.scaleA) {
         data_type_t wei_scale_dt = wei_quant_.scale_dt();
@@ -155,7 +155,7 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
 
     SizeParams sizes;
     sizes.m = static_cast<uint16_t>(N());
-    sizes.n = static_cast<uint16_t>(M());
+    sizes.n = is_gemv_ ? 1 : 32;
     sizes.k = static_cast<uint16_t>(K());
 
     auto strat_override = [&](gemmstone::GEMMStrategy &strat) {
@@ -272,6 +272,8 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
             (int)src_grouped.group_count, (int)dst_grouped.group_count);
 
     ngroups_ = src_grouped.group_count;
+    is_gemv_ = M() < ngroups_;
+
     // only supported dt for now
     VDISPATCH_MATMUL(utils::one_of(src_dt, f32, f16, bf16, u8, s8, s4, u4),
             VERBOSE_UNSUPPORTED_DT_CFG);
@@ -433,6 +435,8 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
     auto bia_dt = weights_md(1)->data_type;
     def_data_type(kernel_ctx_, bia_dt, "BIA");
     kernel_ctx_.define_int("WITH_BIAS", with_bias());
+    kernel_ctx_.define_int("K_PARALLEL_LOCAL", is_gemv_);
+    kernel_ctx_.define_int("WITH_SLM", gemm_.getSetting("slm_size") > 0);
 
     return status::success;
 }

@@ -68,6 +68,7 @@ DECLARE_2D_TILE(c_tile_type_dst, DST_DATA_T, SUBGROUP_SIZE,
     OPTIONAL(AND(WITH_WEI_SCALES, WEI_SCALES_GROUPED), wei_attr_scales)
 #define WEI_ZP_ARGS OPTIONAL(WITH_WEI_ZP, wei_attr_zp)
 #define WEI_LD_ARGS OPTIONAL(OR(WITH_WEI_ZP, WEI_SCALES_GROUPED), ldweiq)
+#define K_PARALLEL_LOCAL_ARGS OPTIONAL(K_PARALLEL_LOCAL, sg_k)
 
 void store_results(ugemm_grouped_c_type *tile, global DST_DATA_T *ptr, int n,
         int m, int lddst, int sg_i0, int sg_j0) {
@@ -146,7 +147,9 @@ void load_wei_attr_scales(wei_attr_scales_tile_type *tile,
 }
 #endif
 
-__attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) kernel void
+__attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE)))
+__attribute__((reqd_work_group_size(ugemm_grouped_sg_per_wg_m * SUBGROUP_SIZE,
+        ugemm_grouped_sg_per_wg_n, ugemm_grouped_sg_per_wg_k))) kernel void
 grouped_micro_gemm(const global SRC_DATA_T *src, int ldsrc,
         const global WEI_DATA_T *wei, long4 wei_strides, global DST_DATA_T *dst,
         int lddst, const global int *src_offsets, const global int *dst_offsets,
@@ -155,15 +158,21 @@ grouped_micro_gemm(const global SRC_DATA_T *src, int ldsrc,
         const global WEI_SCALES_DATA_T *wei_attr_scales,
         const global WEI_ZP_DATA_T *wei_attr_zp, const int ldweiq, int n, int k,
         const global BIA_DATA_T *bias) {
-    local char slm[MAX(ugemm_grouped_slm_size, 1)];
+#if WITH_SLM
+    local char slm[ugemm_grouped_slm_size];
+#else
+    local char *slm = NULL;
+#endif
 
-    unsigned long batch = get_group_id(2);
+    unsigned long batch = sub_group_broadcast(get_group_id(2), 0);
     int2 src_offset
             = *(global int2 *)(src_offsets + (batch > 0 ? batch - 1 : batch));
 
     int sg_i = sub_group_broadcast(get_local_id(0) / SUBGROUP_SIZE, 0);
     int sg_j = sub_group_broadcast(get_local_id(1), 0);
+#if K_PARALLEL_LOCAL
     int sg_k = sub_group_broadcast(get_local_id(2), 0);
+#endif
 
     unsigned long wg_i0 = get_group_id(0) * ugemm_grouped_wg_tile_m;
     unsigned long wg_j0 = get_group_id(1) * ugemm_grouped_wg_tile_n;
@@ -195,10 +204,12 @@ grouped_micro_gemm(const global SRC_DATA_T *src, int ldsrc,
 #endif
 
     ugemm_grouped_c_type c_tile = ugemm_grouped(wei, ldwei, src, ldsrc, n, m, k,
-            wg_i0, wg_j0, 0, sg_i, sg_j, sg_k,
+            wg_i0, wg_j0, 0, sg_i, sg_j K_PARALLEL_LOCAL_ARGS,
             slm WEI_SCALE_ARGS WEI_ZP_ARGS WEI_LD_ARGS SRC_SCALE_ARGS
                     SRC_ZP_ARGS SRC_LD_ARGS);
+#if K_PARALLEL_LOCAL
     if (sg_k > 0) return;
+#endif
 
 #if WITH_SRC_SCALES && !SRC_SCALES_GROUPED
     src_attr_scales_tile_type src_attr_scales_tile;

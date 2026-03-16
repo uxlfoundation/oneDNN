@@ -70,6 +70,7 @@ struct grouped_micro_gemm_t : public primitive_t {
         status_t init(impl::engine_t *engine);
         status_t init_microkernels(impl::engine_t *engine);
 
+        bool is_gemv_ = false;
         int sg_size_ = 0;
         int strategyGRFs_ = 0;
         dim_t ngroups_ = 0;

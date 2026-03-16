@@ -280,11 +280,6 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
 {
     VDEBUGINFO(4, primitive, postops, "MY: Generator<hw>::gemmBinaryOpC");
 
-    const char *load_post_env = std::getenv("LOAD_POST");
-    const bool do_load_post = !(load_post_env && std::string(load_post_env) == "0");
-
-
-
     std::vector<GRFRange> CO_addrs;
     std::vector<MaskAssignment> masks;
     auto globalCM = state.C_layout.colMajor();
@@ -370,8 +365,7 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
                     simtCF ? goto12(16 | ~state.flagAP, lDoneLoading)
                            :   jmpi(1  | ~state.flagAP, lDoneLoading);
                 }
-                if (do_load_post)
-                    loadMatrix(CO_regs, CO_layout, CO_addrs, strategy, state, false, "post");
+                loadMatrix(CO_regs, CO_layout, CO_addrs, strategy, state, false, "post");
                 if (checkRemY && (y + 1 < unrollY))
                     cmp(simt | gt | state.flagAP, remY, y + 1);
                 if (coColMajor == globalCM)
@@ -410,8 +404,7 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
         if (simtCF) join(16);
     } else {
         auto CO_regs = state.ra.allocRange(CO_layout.regs());
-        if (do_load_post)
-            loadMatrix(CO_regs, CO_layout, CO_addrs, strategy, state, false, "post");
+        loadMatrix(CO_regs, CO_layout, CO_addrs, strategy, state, false, "post");
         if (recip) map(hw, Tco, CO_regs, CO_regs, strategy, [&](int simd, GRF r, GRF) {
             inv(simd, r, r);
         });

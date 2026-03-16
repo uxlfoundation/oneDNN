@@ -82,9 +82,11 @@ void Generator<hw>::loadMatrixBlock(const Register &dest, const RegisterBlock &b
                                     bool readCheck, bool series, const char *matrixTag)
 {
     VDEBUGINFO(4, primitive, postops, "MY: loadMatrixBlock tag=%s simdSize=%d", matrixTag, block.simdSize);
+
     const char *load_post_env = std::getenv("LOAD_POST");
     const bool do_load_post = !(load_post_env && !std::strcmp(load_post_env, "0"));
     const bool skip_post_load = matrixTag && !std::strcmp(matrixTag, "post") && !do_load_post;
+
     InstructionModifier maskMod;
     InstructionModifier mod = block.simdSize;
 

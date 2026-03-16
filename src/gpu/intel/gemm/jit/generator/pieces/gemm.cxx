@@ -26,6 +26,8 @@
 #include "map.hpp"
 #include "ngen_object_helpers.hpp"
 #include "state_utils.hpp"
+#include <cstdlib>
+#include <cstring>
 
 GEMMSTONE_NAMESPACE_START
 
@@ -38,7 +40,7 @@ using std::vector;
 template <HW hw>
 void Generator<hw>::gemm(GEMMProblem problem, GEMMStrategy strategy, const InterfaceHandler &interface_)
 {
-    //VDEBUGINFO(4, primitive, postops, "MY: Generator<hw>::gemm");
+    VDEBUGINFO(4, primitive, postops, "MY: Generator<hw>::gemm");
     GEMMState state(hw, strategy);
     interface = interface_;
     gemm(problem, strategy, state);
@@ -73,8 +75,18 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
     if (problem.usesCOPtr())
         strategy.CO.assignSurface(state.inputs.surfaceCO);
 
-    for (size_t i = 0; i < strategy.binary.size(); i++)
+    const char *pref_post_env = std::getenv("PREF_POST");
+    const bool use_pref_post_env = (pref_post_env != nullptr);
+    const bool pref_post = use_pref_post_env && std::strcmp(pref_post_env, "0");
+
+    for (size_t i = 0; i < strategy.binary.size(); i++) {
         strategy.binary[i].assignSurface(state.inputs.binarySurfaces[i]);
+        if (use_pref_post_env)
+            strategy.binary[i].prefetch = pref_post;
+    }
+
+    if (use_pref_post_env)
+        VDEBUGINFO(4, primitive, postops, "MY: PREF_POST=%s -> binary prefetch=%d", pref_post_env, int(pref_post));
 
     strategy.AO.assignSurface(state.inputs.surfaceAO);
     strategy.BO.assignSurface(state.inputs.surfaceBO);

@@ -1978,17 +1978,17 @@ public:
         }
         if (status == plan_status_t::success) return status::success;
 
-        if (a_direct_view_ || b_direct_view_) {
-            gpu_trace() << "Retry plan initialization without direct view";
-            enable_direct_view(false);
-            status = try_init_plan();
-            if (status == plan_status_t::success) return status::success;
-        }
-
         if ((use_slm(abc_kind_t::a) || use_slm(abc_kind_t::b))
                 && !cfg_.slm().is_overridden()) {
             gpu_trace() << "Retry plan initialization without SLM";
             enable_slm(false);
+            status = try_init_plan();
+            if (status == plan_status_t::success) return status::success;
+        }
+
+        if (a_direct_view_ || b_direct_view_) {
+            gpu_trace() << "Retry plan initialization without direct view";
+            enable_direct_view(false);
             status = try_init_plan();
             if (status == plan_status_t::success) return status::success;
         }

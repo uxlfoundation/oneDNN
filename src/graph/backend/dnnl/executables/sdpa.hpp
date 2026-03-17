@@ -33,6 +33,8 @@ struct sdpa_executable_t : public op_executable_t {
             pd_cache_t &pd_cache, const fpmath_t &fpmath,
             bool use_block_layout);
 
+    ~sdpa_executable_t() override;
+
     bool is_initialized() const { return is_initialized_; }
 
     void execute(const stream &stream,
@@ -51,8 +53,8 @@ struct sdpa_executable_t : public op_executable_t {
 #endif
 
 private:
-    std::shared_ptr<primitive_desc_t> sdpa_pd_;
-    std::shared_ptr<primitive_t> sdpa_prim_;
+    dnnl_primitive_desc_t pd_ = nullptr;
+    dnnl_primitive_t prim_ = nullptr;
     bool with_scale_;
     bool with_explicit_mask_;
     attn_mask_type_t mask_type_;

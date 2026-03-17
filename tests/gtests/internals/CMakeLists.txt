@@ -50,4 +50,11 @@ register_exe(${TEST_EXE}_env_vars_onednn
         "test" "dnnl_gtest")
 list(REMOVE_ITEM TEST_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/test_env_vars_onednn.cpp)
 
+# Register GMLP tests as a separate executable
+register_exe(${TEST_EXE}_gmlp
+    "${MAIN_SRC_GTEST};${CMAKE_CURRENT_SOURCE_DIR}/test_gated_mlp.cpp;${CMAKE_CURRENT_SOURCE_DIR}/test_utils.cpp"
+        "test" "dnnl_gtest")
+
+list(REMOVE_ITEM TEST_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/test_gated_mlp.cpp)
+
 register_exe(${TEST_EXE} "${TEST_SOURCES}" "test" "dnnl_gtest")

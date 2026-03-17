@@ -2040,6 +2040,15 @@ private:
             plan_.reuse_headers = cfg_.pipeline().reuse_headers();
         }
         PLAN_CHECK(fixup_grf_usage(plan_));
+        auto k_tile = plan_.fma.bmnk_stop_idx(bmnk_kind_t::k, 0)
+                - plan_.fma.bmnk_start_idx(bmnk_kind_t::k, 0);
+        auto is_dpas = utils::one_of(
+                plan_.fma.fma_kind, fma_kind_t::dpas, fma_kind_t::dpasw);
+        auto k_blk_dpas_aligned
+                = plan_.fma.m_blk == 1 || plan_.fma.k_blk == k_tile;
+        if (cfg_.hw() >= ngen::HW::XE3P_35_10 && is_dpas
+                && plan_.fma.m_blk % 2 != 0 && !k_blk_dpas_aligned)
+            return plan_status_t::invalid_fma_layout;
         set_plan();
         return plan_status_t::success;
     }

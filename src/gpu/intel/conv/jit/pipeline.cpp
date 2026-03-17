@@ -908,7 +908,9 @@ public:
                 auto &c = s.as<func_call_t>();
                 auto *mod_attr = c.attr.as_ptr<instruction_modifier_attr_t>();
                 if (!c.func.as<dpas_t>().is_dp4a() && // dp4a-s do not need SBID
-                        (!mod_attr || !mod_attr->mod.isAtomic())) {
+                        (!mod_attr
+                                || (!mod_attr->mod.isAtomic()
+                                        && !mod_attr->mod.isFwd()))) {
                     // Last dpas in Atomic chain.
                     auto sbid = get_sbid(dpas_t::arg_src1(s));
                     s = update_call_with_sbid(s, sbid);

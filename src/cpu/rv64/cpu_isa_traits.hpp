@@ -106,7 +106,7 @@ inline uint32_t get_platform_vlen() {
 inline int get_vlen_implementation_id(int vlen) {
     static constexpr int VLEN_MIN = 128;
     if (math::is_pow2(vlen) && vlen >= VLEN_MIN) {
-        return math::ilog2q(vlen) - (math::ilog2q(VLEN_MIN) + 1);
+        return math::ilog2q(vlen) - math::ilog2q(VLEN_MIN);
     } else {
         return -1;
     }

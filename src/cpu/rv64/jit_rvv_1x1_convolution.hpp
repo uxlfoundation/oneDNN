@@ -19,6 +19,7 @@
 
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
+#include "common/math_utils.hpp"
 #include "common/memory_tracking.hpp"
 #include "common/primitive.hpp"
 #include "common/utils.hpp"
@@ -61,33 +62,6 @@ struct jit_rvv_1x1_convolution_fwd_t : public primitive_t {
             VDISPATCH_CONV(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_CONV(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
 
-            // Only support: data = nwc/nhwc/ndhwc, weights = blocked formats (Oiw4o/gOiw4o/etc)
-            const int n = ndims();
-            const bool g = with_groups();
-            const auto dat_tag_nxc = utils::pick(n - 3, nwc, nhwc, ndhwc);
-            const auto wei_tag_blocked = utils::pick(2 * n - 6 + (g ? 1 : 0),
-                    Oiw4o, gOiw4o, Oihw4o, gOihw4o, Oidhw4o, gOidhw4o);
-
-            // Check if src/dst match supported format (nxc)
-            // Only accept format_kind::any as a fallback, reject explicit
-            // unsupported formats
-            VDISPATCH_CONV(IMPLICATION(src_d.matches_one_of_tag(dat_tag_nxc)
-                                           != dat_tag_nxc,
-                                   src_d.format_kind() == format_kind::any),
-                    VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_CONV(IMPLICATION(dst_d.matches_one_of_tag(dat_tag_nxc)
-                                           != dat_tag_nxc,
-                                   dst_d.format_kind() == format_kind::any),
-                    VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_CONV(
-                    IMPLICATION(weights_d.matches_one_of_tag(wei_tag_blocked)
-                                    != wei_tag_blocked,
-                            weights_d.format_kind() == format_kind::any),
-                    VERBOSE_UNSUPPORTED_TAG);
-
-            // Set default formats if format_kind == any
-            VDISPATCH_CONV(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
-
             // ISA check
             VDISPATCH_CONV(mayiuse(v), VERBOSE_UNSUPPORTED_ISA);
 
@@ -107,10 +81,34 @@ struct jit_rvv_1x1_convolution_fwd_t : public primitive_t {
                         "padding is not supported");
             }
 
+            // Only support data = nwc/nhwc/ndhwc
+            const auto dat_tag = get_dat_tag();
+            VDISPATCH_CONV(
+                    IMPLICATION(src_d.matches_one_of_tag(dat_tag) != dat_tag,
+                            src_d.format_kind() == format_kind::any),
+                    VERBOSE_UNSUPPORTED_TAG);
+            VDISPATCH_CONV(
+                    IMPLICATION(dst_d.matches_one_of_tag(dat_tag) != dat_tag,
+                            dst_d.format_kind() == format_kind::any),
+                    VERBOSE_UNSUPPORTED_TAG);
+
+            // Init configurations before deciding weights format
             VDISPATCH_CONV_SC(jit_rvv_1x1_conv_kernel_t::init_conf(jcp_,
                                       *desc(), src_d, weights_d, dst_d, *attr(),
                                       dnnl_get_max_threads(), false),
                     VERBOSE_UNSUPPORTED_FEATURE, "init_conf failed");
+
+            // Only support wei = (OiwXo/gOiwXo/etc)
+            const auto wei_tag = get_wei_tag();
+            VDISPATCH_CONV(IMPLICATION(weights_d.matches_one_of_tag(wei_tag)
+                                           != wei_tag,
+                                   weights_d.format_kind() == format_kind::any),
+                    VERBOSE_UNSUPPORTED_TAG);
+
+            // Set default formats if format_kind == any
+            VDISPATCH_CONV(
+                    set_default_formats_common(dat_tag, wei_tag, dat_tag),
+                    VERBOSE_UNSUPPORTED_TAG);
 
             auto scratchpad = scratchpad_registry().registrar();
             jit_rvv_1x1_conv_kernel_t::init_scratchpad(scratchpad, jcp_);
@@ -125,15 +123,27 @@ struct jit_rvv_1x1_convolution_fwd_t : public primitive_t {
             // TODO: Post-ops support is not implemented yet.
             return attr()->post_ops_.len() == 0;
         }
-        bool set_default_formats() {
-            using namespace format_tag;
-            const int n = ndims();
-            const bool g = with_groups();
-            const auto dat_tag = utils::pick(n - 3, nwc, nhwc, ndhwc);
-            const auto wei_tag = utils::pick(2 * n - 6 + (g ? 1 : 0), Oiw4o,
-                    gOiw4o, Oihw4o, gOihw4o, Oidhw4o, gOidhw4o);
 
-            return set_default_formats_common(dat_tag, wei_tag, dat_tag);
+        inline format_tag_t get_dat_tag() const {
+            using namespace format_tag;
+            return utils::pick(ndims() - 3, nwc, nhwc, ndhwc);
+        }
+
+        inline format_tag_t get_wei_tag() const {
+            using namespace format_tag;
+            const int vlen = jcp_.oc_block * jcp_.typesize_in * 8;
+            const int v = get_vlen_implementation_id(vlen);
+            const int n = ndims() - 3;
+            const int g = with_groups() ? 1 : 0;
+            // Pick from a flat 3d array indexed by [blksize, ndims, grouped]
+            // - grouped has two options: false, true;
+            // - ndims has three options: 3d, 4d, or 5d;
+            // - block size has four options: 4, 8, 16, 32;
+            return utils::pick(v * 6 + n * 2 + g, Oiw4o, gOiw4o, Oihw4o,
+                    gOihw4o, Oidhw4o, gOidhw4o, Oiw8o, gOiw8o, Oihw8o, gOihw8o,
+                    Oidhw8o, gOidhw8o, Oiw16o, gOiw16o, Oihw16o, gOihw16o,
+                    Oidhw16o, gOidhw16o, Oiw32o, gOiw32o, Oihw32o, gOihw32o,
+                    Oidhw32o, gOidhw32o);
         }
     };
 

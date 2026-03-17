@@ -63,12 +63,13 @@ status_t jit_rvv_1x1_conv_kernel_t::init_conf(jit_1x1_conv_conf_t &jcp,
     jcp.oc = jcp.oc_without_padding;
     jcp.ic = jcp.ic_without_padding;
 
-    // Targeting SEW=32 (float), LMUL=1, VLEN=128 -> simd_w = 4
-    const int simd_w = 4;
+    // Targeting SEW=32 (float), LMUL=1, VLEN <= 1024
+    const int vlen = nstl::min(1024u, get_platform_vlen());
+    jcp.simd_w = vlen / (sizeof(float) * 8);
 
-    // OC is padded to match oc_block in weights format (Oihw4o)
+    // OC is padded to match oc_block in weights format (OihwXo)
     // IC is not padded; kernel handles IC tail processing
-    jcp.oc = rnd_up(jcp.oc, simd_w);
+    jcp.oc = rnd_up(jcp.oc, jcp.simd_w);
 
     // 3D convolution support
     jcp.id = (ndims == 5) ? src_d.dims()[2] : 1;
@@ -83,8 +84,8 @@ status_t jit_rvv_1x1_conv_kernel_t::init_conf(jit_1x1_conv_conf_t &jcp,
     jcp.os = jcp.od * jcp.oh * jcp.ow;
     jcp.is = jcp.id * jcp.ih * jcp.iw;
 
-    jcp.oc_block = simd_w;
-    jcp.ic_block = simd_w;
+    jcp.oc_block = jcp.simd_w;
+    jcp.ic_block = jcp.simd_w;
 
     // Dynamic parameter calculation
     // Register constraint: (ur * load_loop_blk) + (unroll * load_loop_blk) + 1 <= 32

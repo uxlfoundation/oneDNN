@@ -638,10 +638,40 @@ private:
 
     void transpose_f32(reg64_t dst, reg64_t src, int nrows, int ncolumns);
     void transpose_bf16(reg64_t dst, reg64_t src, int nrows, int ncolumns);
+
+    // Transpose an up-to-8x8 block using AVX2 fp32 transpose algorithm.
+    //
+    // For bf16 inputs we first upconvert values to fp32 then run the same
+    // transpose algorithm and then convert back to bf16 on store.
+    //
+    // Layout:
+    // - loads read rows from the source matrix
+    // - stores write columns to the destination matrix (transposed)
+    //
+    // The kernel processes columns in groups of 4 using two 128-bit halves
+    // of a YMM register (lower rows 0..3, upper rows 4..7).
+    template <typename T = Vmm,
+            typename = typename utils::enable_if<
+                    std::is_same<T, Xbyak::Ymm>::value>::type>
+    void transpose_common_ymm(
+            data_type_t dt, reg64_t dst, reg64_t src, int nrows, int ncolumns);
+
     void deploy_transpose(reg64_t dst, reg64_t src, int nrows, int ncolumns);
     void init_masks();
     void generate() override;
 };
+
+template <typename Vmm>
+void jit_brgemm_matmul_copy_a_transposed_impl_t<Vmm>::transpose_bf16(
+        reg64_t reg_dst, reg64_t reg_src, int nrows, int ncolumns) {
+    assert(!"unsupported transpose_bf16 copy_a_transposed_impl");
+}
+
+template <typename Vmm>
+void jit_brgemm_matmul_copy_a_transposed_impl_t<Vmm>::transpose_f32(
+        reg64_t reg_dst, reg64_t reg_src, int nrows, int ncolumns) {
+    assert(!"unsupported transpose_f32 copy_a_transposed_impl");
+}
 
 template <>
 void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Zmm>::transpose_bf16(
@@ -840,20 +870,9 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Zmm>::transpose_bf16(
 }
 
 template <typename Vmm>
-void jit_brgemm_matmul_copy_a_transposed_impl_t<Vmm>::transpose_bf16(
-        reg64_t dst, reg64_t src, int nrows, int ncolumns) {
-    assert(!"unsupported transpose_bf16 copy_a_transposed_impl");
-}
-
-template <typename Vmm>
-void jit_brgemm_matmul_copy_a_transposed_impl_t<Vmm>::transpose_f32(
-        reg64_t reg_dst, reg64_t reg_src, int nrows, int ncolumns) {
-    assert(!"unsupported transpose_f32 copy_a_transposed_impl");
-}
-
-template <>
-void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Ymm>::transpose_f32(
-        reg64_t reg_dst, reg64_t reg_src, int nrows, int ncolumns) {
+template <typename T, typename>
+void jit_brgemm_matmul_copy_a_transposed_impl_t<Vmm>::transpose_common_ymm(
+        data_type_t dt, reg64_t dst, reg64_t src, int nrows, int ncolumns) {
     Ymm ymm_tail_mask = ymm15;
     Ymm ymm_upper_tail_mask = ymm14;
     Xmm xmm_upper_tail_mask = xmm14;
@@ -866,56 +885,71 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Ymm>::transpose_f32(
     // |C, D|        |Bt, Dt|
 
     constexpr int avx2_transpose_size = 8;
-    const int tail_size = ncolumns % avx2_transpose_size;
-    if (tail_size > 0) {
-        Xbyak::Reg64 reg_tmp = regq_tmp;
-        init_f32_avx2_mask_ymm(ymm_tail_mask, reg_tmp, tail_size);
-        const int upper_xmm_tail_size = tail_size - 4;
-        if (upper_xmm_tail_size > 0)
-            init_f32_avx2_mask_ymm(
-                    ymm_upper_tail_mask, reg_tmp, upper_xmm_tail_size);
+    // Tails masks are only needed for f32.
+    // The bf16 path handles tails directly while loading values.
+    if (dt == data_type::f32) {
+        const int tail_size = ncolumns % avx2_transpose_size;
+        if (tail_size > 0) {
+            Xbyak::Reg64 reg_tmp = regq_tmp;
+            init_f32_avx2_mask_ymm(ymm_tail_mask, reg_tmp, tail_size);
+            const int upper_xmm_tail_size = tail_size - 4;
+            if (upper_xmm_tail_size > 0)
+                init_f32_avx2_mask_ymm(
+                        ymm_upper_tail_mask, reg_tmp, upper_xmm_tail_size);
+        }
     }
+
+    // Source element size used for calculating block offsets.
+    const dim_t dt_size = types::data_type_size(dt);
 
     const int A_rows = nstl::min(avx2_transpose_size, nrows);
     const int A_columns = nstl::min(avx2_transpose_size, ncolumns);
-    jit_generator_t::transpose(reg_src, reg_dst, src_stride, dst_stride, A_rows,
-            A_columns, data_type::f32, ymm_tmp, ymm_tail_mask,
-            xmm_upper_tail_mask);
+    jit_generator_t::transpose(src, dst, src_stride, dst_stride, A_rows,
+            A_columns, dt, ymm_tmp, ymm_tail_mask, xmm_upper_tail_mask);
     if (rows_step <= 8) return;
 
-    const dim_t src_B_offset = sizeof(float) * avx2_transpose_size;
+    const dim_t src_B_offset = dt_size * avx2_transpose_size;
     const dim_t dst_B_offset = dst_stride * avx2_transpose_size;
     const int B_rows = nstl::min(avx2_transpose_size, nrows);
     const int B_columns = nstl::max(ncolumns - avx2_transpose_size, 0);
-    add(reg_src, src_B_offset);
-    add(reg_dst, dst_B_offset);
-    jit_generator_t::transpose(reg_src, reg_dst, src_stride, dst_stride, B_rows,
-            B_columns, data_type::f32, ymm_tmp, ymm_tail_mask,
-            xmm_upper_tail_mask);
+    add(src, src_B_offset);
+    add(dst, dst_B_offset);
+    jit_generator_t::transpose(src, dst, src_stride, dst_stride, B_rows,
+            B_columns, dt, ymm_tmp, ymm_tail_mask, xmm_upper_tail_mask);
 
     const dim_t src_C_offset = src_stride * avx2_transpose_size;
-    const dim_t dst_C_offset = sizeof(float) * avx2_transpose_size;
+    const dim_t dst_C_offset = dt_size * avx2_transpose_size;
     const int C_rows = nstl::max(nrows - avx2_transpose_size, 0);
     const int C_columns = nstl::min(avx2_transpose_size, ncolumns);
-    add(reg_src, -src_B_offset + src_C_offset);
-    add(reg_dst, -dst_B_offset + dst_C_offset);
-    jit_generator_t::transpose(reg_src, reg_dst, src_stride, dst_stride, C_rows,
-            C_columns, data_type::f32, ymm_tmp, ymm_tail_mask,
-            xmm_upper_tail_mask);
+    add(src, -src_B_offset + src_C_offset);
+    add(dst, -dst_B_offset + dst_C_offset);
+    jit_generator_t::transpose(src, dst, src_stride, dst_stride, C_rows,
+            C_columns, dt, ymm_tmp, ymm_tail_mask, xmm_upper_tail_mask);
 
-    const dim_t src_D_offset = src_stride * avx2_transpose_size
-            + sizeof(float) * avx2_transpose_size;
-    const dim_t dst_D_offset = dst_stride * avx2_transpose_size
-            + sizeof(float) * avx2_transpose_size;
+    const dim_t src_D_offset
+            = src_stride * avx2_transpose_size + dt_size * avx2_transpose_size;
+    const dim_t dst_D_offset
+            = dst_stride * avx2_transpose_size + dt_size * avx2_transpose_size;
     const int D_rows = nstl::max(nrows - avx2_transpose_size, 0);
     const int D_columns = nstl::max(ncolumns - avx2_transpose_size, 0);
-    add(reg_src, -src_C_offset + src_D_offset);
-    add(reg_dst, -dst_C_offset + dst_D_offset);
-    jit_generator_t::transpose(reg_src, reg_dst, src_stride, dst_stride, D_rows,
-            D_columns, data_type::f32, ymm_tmp, ymm_tail_mask,
-            xmm_upper_tail_mask);
-    sub(reg_src, src_D_offset);
-    sub(reg_dst, dst_D_offset);
+    add(src, -src_C_offset + src_D_offset);
+    add(dst, -dst_C_offset + dst_D_offset);
+    jit_generator_t::transpose(src, dst, src_stride, dst_stride, D_rows,
+            D_columns, dt, ymm_tmp, ymm_tail_mask, xmm_upper_tail_mask);
+    sub(src, src_D_offset);
+    sub(dst, dst_D_offset);
+}
+
+template <>
+void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Ymm>::transpose_bf16(
+        reg64_t dst, reg64_t src, int nrows, int ncolumns) {
+    transpose_common_ymm(data_type::bf16, dst, src, nrows, ncolumns);
+}
+
+template <>
+void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Ymm>::transpose_f32(
+        reg64_t dst, reg64_t src, int nrows, int ncolumns) {
+    transpose_common_ymm(data_type::f32, dst, src, nrows, ncolumns);
 }
 
 template <>

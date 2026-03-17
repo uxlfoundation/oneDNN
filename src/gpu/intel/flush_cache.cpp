@@ -39,6 +39,7 @@ static status_t get_cached_kernel(
     }
 
     compute::kernel_ctx_t ctx;
+    ctx.add_option("-cl-no-subgroup-ifp");
     std::vector<compute::kernel_t> kernels;
     CHECK(engine->create_kernels(&kernels, {"flush_cache"}, ctx));
     kernel = cache.emplace(engine->engine_id(), kernels[0]).first->second;
@@ -56,7 +57,8 @@ status_t flush(impl::stream_t *stream, size_t bytes, impl::memory_t *data) {
     CHECK(get_cached_kernel(intel_engine, kernel));
 
     compute::range_t gws = {bytes / 64, 1, 1};
-    compute::range_t lws = {256, 1, 1};
+    compute::range_t lws
+            = {std::min((size_t)256, utils::max_pow2_div(bytes / 64)), 1, 1};
     compute::nd_range_t nd_range(gws, lws);
     compute::kernel_arg_list_t arg_list;
     arg_list.set(0, *data->memory_storage());

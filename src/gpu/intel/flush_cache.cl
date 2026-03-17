@@ -14,7 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
-__kernel void flush_cache(__global uint *data) {
+__kernel void flush_cache(__global volatile uint *data) {
     uint id = get_global_id(0);
-    data[id * 16] += 1;
+    (void)data[id * 16];
 }

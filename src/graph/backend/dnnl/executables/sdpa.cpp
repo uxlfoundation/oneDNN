@@ -16,6 +16,8 @@
 
 #include "graph/backend/dnnl/executables/sdpa.hpp"
 
+#include "common/sdpa_test_iface.hpp"
+
 namespace dnnl {
 namespace impl {
 namespace graph {
@@ -74,144 +76,56 @@ sdpa_executable_t::sdpa_executable_t(std::shared_ptr<op_t> &op,
     const alg_kind_t softmax_alg = softmax_mode == "inf_as_zero"
             ? alg_kind::softmax_accurate_inf_as_zero
             : alg_kind::softmax_accurate;
-    status_t s = create_sdpa_pd(sdpa_pd_, p_engine.get(), md_q.get(),
+
+    const auto prop
+            = is_training_ ? dnnl_forward_training : dnnl_forward_inference;
+
+    dnnl_primitive_desc_t pd = nullptr;
+    auto ret = sdpa_primitive_desc_create(&pd, p_engine.get(), md_q.get(),
             md_k.get(), md_v.get(), md_dst.get(), md_mask.get(), md_scale.get(),
-            is_invert_scale_, kv_head_number, mask_type_, softmax_alg,
-            is_training_ ? impl::prop_kind::forward_training
-                         : impl::prop_kind::forward_inference,
-            attr.get(), qk_attr.get(), vs_attr.get());
-    if (s != dnnl::impl::status::success) {
-        is_initialized_ = false;
+            is_invert_scale_, kv_head_number, mask_type_,
+            static_cast<dnnl_alg_kind_t>(softmax_alg), prop, attr.get(),
+            qk_attr.get(), vs_attr.get());
+
+    if (pd && ret == dnnl_success) {
+        pd_.reset(pd);
     } else {
-        status_t s = sdpa_pd_->create_primitive(sdpa_prim_, p_engine.get());
-        is_initialized_ = s == status::success ? true : false;
+        is_initialized_ = false;
+        return;
+    }
+
+    dnnl_primitive_t prim = nullptr;
+    ret = dnnl_primitive_create(&prim, pd_.get());
+    if (prim && ret == dnnl_success) {
+        prim_.reset(prim);
+        is_initialized_ = true;
+    } else {
+        is_initialized_ = false;
     }
 }
 
 void sdpa_executable_t::execute(const stream &stream,
         const std::unordered_map<int, memory> &args) const {
-    exec_args_t exec_args;
-    memory_arg_t mem_arg_q = {(args.at(DNNL_ARG_QUERIES)).get(), true};
-    memory_arg_t mem_arg_k = {(args.at(DNNL_ARG_KEYS)).get(), true};
-    memory_arg_t mem_arg_v = {(args.at(DNNL_ARG_VALUES)).get(), true};
-    memory_arg_t mem_arg_dst = {(args.at(DNNL_ARG_DST)).get(), false};
-    memory_arg_t mem_arg_stats
-            = {is_training_ ? (args.at(DNNL_ARG_WORKSPACE)).get() : nullptr,
-                    false};
-    memory_arg_t mem_arg_scale
-            = {with_scale_ ? (args.at(DNNL_ARG_SCALE)).get() : nullptr, true};
-    memory_arg_t mem_arg_mask = {
-            with_explicit_mask_ ? (args.at(DNNL_ARG_ATTN_MASK)).get() : nullptr,
-            true};
-    memory_arg_t mem_arg_k_scale = {
-            args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS) != args.end()
-                    ? (args.at(DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS)).get()
-                    : nullptr,
-            true};
-
-    memory_arg_t mem_arg_v_scale = {
-            args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES) != args.end()
-                    ? (args.at(DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES)).get()
-                    : nullptr,
-            true};
-    memory_arg_t mem_arg_k_zero_points = {
-            args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS) != args.end()
-                    ? (args.at(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS)).get()
-                    : nullptr,
-            true};
-    memory_arg_t mem_arg_v_zero_points = {
-            args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES) != args.end()
-                    ? (args.at(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES))
-                              .get()
-                    : nullptr,
-            true};
-
-    exec_args[DNNL_ARG_QUERIES] = mem_arg_q;
-    exec_args[DNNL_ARG_KEYS] = mem_arg_k;
-    exec_args[DNNL_ARG_VALUES] = mem_arg_v;
-    exec_args[DNNL_ARG_DST] = mem_arg_dst;
-    exec_args[DNNL_ARG_WORKSPACE] = mem_arg_stats;
-    exec_args[DNNL_ARG_SCALE] = mem_arg_scale;
-    exec_args[DNNL_ARG_ATTN_MASK] = mem_arg_mask;
-    exec_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS] = mem_arg_k_scale;
-    exec_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES] = mem_arg_v_scale;
-    exec_args[DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS]
-            = mem_arg_k_zero_points;
-    exec_args[DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES]
-            = mem_arg_v_zero_points;
-
-    exec_ctx_t ctx(stream.get(), std::move(exec_args));
-    sdpa_prim_->execute(ctx);
+    UNUSED(stream);
+    UNUSED(args);
+    assert(!"sdpa_executable_t::execute() is not implemented on cpu");
 }
 
 #ifdef DNNL_WITH_SYCL
 ::sycl::event sdpa_executable_t::execute_sycl(const stream &stream,
         const std::unordered_map<int, memory> &args,
         const std::vector<::sycl::event> &deps) const {
+    std::vector<dnnl_exec_arg_t> c_args;
+    c_args.reserve(args.size());
+    for (const auto &a : args)
+        c_args.push_back({a.first, a.second.get()});
 
-    exec_args_t exec_args;
-    memory_arg_t mem_arg_q = {(args.at(DNNL_ARG_QUERIES)).get(), true};
-    memory_arg_t mem_arg_k = {(args.at(DNNL_ARG_KEYS)).get(), true};
-    memory_arg_t mem_arg_v = {(args.at(DNNL_ARG_VALUES)).get(), true};
-    memory_arg_t mem_arg_dst = {(args.at(DNNL_ARG_DST)).get(), false};
-    memory_arg_t mem_arg_stats
-            = {is_training_ ? (args.at(DNNL_ARG_WORKSPACE)).get() : nullptr,
-                    false};
-    memory_arg_t mem_arg_scale
-            = {with_scale_ ? (args.at(DNNL_ARG_SCALE)).get() : nullptr, true};
-    memory_arg_t mem_arg_mask = {
-            with_explicit_mask_ ? (args.at(DNNL_ARG_ATTN_MASK)).get() : nullptr,
-            true};
-    memory_arg_t mem_arg_k_scale = {
-            args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS) != args.end()
-                    ? (args.at(DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS)).get()
-                    : nullptr,
-            true};
+    sycl::event return_event;
+    auto ret = dnnl_sycl_interop_primitive_execute(prim_.get(), stream.get(),
+            c_args.size(), c_args.data(), &deps, &return_event);
+    dnnl::error::wrap_c_api(
+            ret, "could not execute sdpa primitive with sycl runtime");
 
-    memory_arg_t mem_arg_v_scale = {
-            args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES) != args.end()
-                    ? (args.at(DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES)).get()
-                    : nullptr,
-            true};
-    memory_arg_t mem_arg_k_zero_points = {
-            args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS) != args.end()
-                    ? (args.at(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS)).get()
-                    : nullptr,
-            true};
-    memory_arg_t mem_arg_v_zero_points = {
-            args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES) != args.end()
-                    ? (args.at(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES))
-                              .get()
-                    : nullptr,
-            true};
-
-    exec_args[DNNL_ARG_QUERIES] = mem_arg_q;
-    exec_args[DNNL_ARG_KEYS] = mem_arg_k;
-    exec_args[DNNL_ARG_VALUES] = mem_arg_v;
-    exec_args[DNNL_ARG_DST] = mem_arg_dst;
-    exec_args[DNNL_ARG_WORKSPACE] = mem_arg_stats;
-    exec_args[DNNL_ARG_SCALE] = mem_arg_scale;
-    exec_args[DNNL_ARG_ATTN_MASK] = mem_arg_mask;
-    exec_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS] = mem_arg_k_scale;
-    exec_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES] = mem_arg_v_scale;
-    exec_args[DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS]
-            = mem_arg_k_zero_points;
-    exec_args[DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES]
-            = mem_arg_v_zero_points;
-
-    auto strm_t = stream.get();
-    exec_ctx_t ctx(strm_t, std::move(exec_args));
-    auto *sycl_stream_impl = dnnl::impl::utils::downcast<
-            dnnl::impl::xpu::sycl::stream_impl_t *>(strm_t->impl());
-
-    strm_t->before_exec_hook();
-
-    if (!deps.empty()) sycl_stream_impl->sycl_ctx().set_deps(deps);
-
-    sdpa_prim_->execute(ctx);
-
-    ::sycl::event return_event = sycl_stream_impl->get_output_event();
-    strm_t->after_exec_hook();
     return return_event;
 }
 #endif
@@ -220,79 +134,20 @@ void sdpa_executable_t::execute(const stream &stream,
 cl_event sdpa_executable_t::execute_ocl(const stream &stream,
         const std::unordered_map<int, memory> &args,
         const std::vector<cl_event> &deps) const {
-    exec_args_t exec_args;
-    memory_arg_t mem_arg_q = {(args.at(DNNL_ARG_QUERIES)).get(), true};
-    memory_arg_t mem_arg_k = {(args.at(DNNL_ARG_KEYS)).get(), true};
-    memory_arg_t mem_arg_v = {(args.at(DNNL_ARG_VALUES)).get(), true};
-    memory_arg_t mem_arg_dst = {(args.at(DNNL_ARG_DST)).get(), false};
-    memory_arg_t mem_arg_stats
-            = {is_training_ ? (args.at(DNNL_ARG_WORKSPACE)).get() : nullptr,
-                    false};
-    memory_arg_t mem_arg_scale
-            = {with_scale_ ? (args.at(DNNL_ARG_SCALE)).get() : nullptr, true};
-    memory_arg_t mem_arg_mask = {
-            with_explicit_mask_ ? (args.at(DNNL_ARG_ATTN_MASK)).get() : nullptr,
-            true};
-    memory_arg_t mem_arg_k_scale = {
-            args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS) != args.end()
-                    ? (args.at(DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS)).get()
-                    : nullptr,
-            true};
+    std::vector<dnnl_exec_arg_t> c_args;
+    c_args.reserve(args.size());
+    for (const auto &a : args)
+        c_args.push_back({a.first, a.second.get()});
 
-    memory_arg_t mem_arg_v_scale = {
-            args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES) != args.end()
-                    ? (args.at(DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES)).get()
-                    : nullptr,
-            true};
-    memory_arg_t mem_arg_k_zero_points = {
-            args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS) != args.end()
-                    ? (args.at(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS)).get()
-                    : nullptr,
-            true};
-    memory_arg_t mem_arg_v_zero_points = {
-            args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES) != args.end()
-                    ? (args.at(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES))
-                              .get()
-                    : nullptr,
-            true};
-
-    exec_args[DNNL_ARG_QUERIES] = mem_arg_q;
-    exec_args[DNNL_ARG_KEYS] = mem_arg_k;
-    exec_args[DNNL_ARG_VALUES] = mem_arg_v;
-    exec_args[DNNL_ARG_DST] = mem_arg_dst;
-    exec_args[DNNL_ARG_WORKSPACE] = mem_arg_stats;
-    exec_args[DNNL_ARG_SCALE] = mem_arg_scale;
-    exec_args[DNNL_ARG_ATTN_MASK] = mem_arg_mask;
-    exec_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS] = mem_arg_k_scale;
-    exec_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES] = mem_arg_v_scale;
-    exec_args[DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS]
-            = mem_arg_k_zero_points;
-    exec_args[DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES]
-            = mem_arg_v_zero_points;
-
-    exec_ctx_t ctx(stream.get(), std::move(exec_args));
-
-    auto *ocl_stream = dnnl::impl::utils::downcast<gpu::intel::ocl::stream_t *>(
-            stream.get());
-
-    ocl_stream->before_exec_hook();
-
-    if (!deps.empty()) {
-        std::vector<xpu::ocl::wrapper_t<cl_event>> events(deps.size());
-        for (size_t i = 0; i < deps.size(); i++)
-            events[i] = xpu::ocl::wrapper_t<cl_event>(deps[i], true);
-        ocl_stream->ocl_ctx().set_deps(events);
-    }
-
-    sdpa_prim_->execute(ctx);
+    const cl_event *c_deps = deps.empty() ? nullptr : deps.data();
 
     cl_event return_event = nullptr;
-    if ((ocl_stream->flags() & stream_flags::in_order) == 0) {
-        auto last = ocl_stream->get_output_event();
-        return_event = last.release();
-    }
+    auto ret = dnnl_ocl_interop_primitive_execute(prim_.get(), stream.get(),
+            static_cast<int>(c_args.size()), c_args.data(), c_deps,
+            static_cast<int>(deps.size()), &return_event);
+    dnnl::error::wrap_c_api(
+            ret, "could not execute sdpa primitive with ocl runtime");
 
-    ocl_stream->after_exec_hook();
     return return_event;
 }
 #endif
@@ -402,29 +257,43 @@ sdpa_bwd_executable_t::sdpa_bwd_executable_t(std::shared_ptr<op_t> &op,
     const alg_kind_t softmax_alg = alg_kind::softmax_accurate_inf_as_zero;
 
     // create hint_fwd pd
-    std::shared_ptr<primitive_desc_t> hint_fwd_pd;
-    status_t s = create_sdpa_pd(hint_fwd_pd, p_engine.get(), md_q.get(),
+    dnnl_primitive_desc_t hint_pd = nullptr;
+    auto ret = sdpa_primitive_desc_create(&hint_pd, p_engine.get(), md_q.get(),
             md_k.get(), md_v.get(), md_dst.get(), md_attn_mask.get(),
             md_scale.get(), is_invert_scale_, kv_head_number, mask_type_,
-            softmax_alg, impl::prop_kind::forward_training, attr.get(),
-            qk_attr.get(), vs_attr.get());
-    if (s != dnnl::impl::status::success) {
+            static_cast<dnnl_alg_kind_t>(softmax_alg), dnnl_forward_training,
+            attr.get(), qk_attr.get(), vs_attr.get());
+
+    if (hint_pd && ret == dnnl_success) {
+        hint_pd_.reset(hint_pd);
+    } else {
         is_initialized_ = false;
         return;
     }
 
-    s = create_sdpa_pd(sdpa_bwd_pd_, p_engine.get(), md_q.get(), md_k.get(),
-            md_v.get(), md_dst.get(), md_diff_q.get(), md_diff_k.get(),
-            md_diff_v.get(), md_diff_dst.get(), md_dS.get(), md_attn_mask.get(),
-            md_scale.get(), is_invert_scale_, kv_head_number, mask_type_,
-            softmax_alg, attr.get(), hint_fwd_pd.get(), qk_attr.get(),
-            vs_attr.get());
+    dnnl_primitive_desc_t pd = nullptr;
+    ret = sdpa_primitive_desc_create(&pd, p_engine.get(), md_q.get(),
+            md_k.get(), md_v.get(), md_dst.get(), md_diff_q.get(),
+            md_diff_k.get(), md_diff_v.get(), md_diff_dst.get(), md_dS.get(),
+            md_attn_mask.get(), md_scale.get(), is_invert_scale_,
+            kv_head_number, mask_type_,
+            static_cast<dnnl_alg_kind_t>(softmax_alg), attr.get(),
+            hint_pd_.get());
 
-    if (s != dnnl::impl::status::success) {
-        is_initialized_ = false;
+    if (pd && ret == dnnl_success) {
+        pd_.reset(pd);
     } else {
-        s = sdpa_bwd_pd_->create_primitive(sdpa_bwd_prim_, p_engine.get());
-        is_initialized_ = s == status::success;
+        is_initialized_ = false;
+        return;
+    }
+
+    dnnl_primitive_t prim = nullptr;
+    ret = dnnl_primitive_create(&prim, pd_.get());
+    if (prim && ret == dnnl_success) {
+        prim_.reset(prim);
+        is_initialized_ = true;
+    } else {
+        is_initialized_ = false;
     }
 }
 
@@ -439,52 +308,16 @@ void sdpa_bwd_executable_t::execute(const stream &stream,
 ::sycl::event sdpa_bwd_executable_t::execute_sycl(const stream &stream,
         const std::unordered_map<int, memory> &args,
         const std::vector<::sycl::event> &deps) const {
-    exec_args_t exec_args;
-    exec_args[DNNL_ARG_QUERIES] = {args.at(DNNL_ARG_QUERIES).get(), true};
-    exec_args[DNNL_ARG_KEYS] = {args.at(DNNL_ARG_KEYS).get(), true};
-    exec_args[DNNL_ARG_VALUES] = {args.at(DNNL_ARG_VALUES).get(), true};
-    exec_args[DNNL_ARG_DST] = {args.at(DNNL_ARG_DST).get(), true};
-    exec_args[DNNL_ARG_DIFF_DST] = {args.at(DNNL_ARG_DIFF_DST).get(), true};
-    exec_args[DNNL_ARG_WORKSPACE] = {args.at(DNNL_ARG_WORKSPACE).get(), true};
-    exec_args[DNNL_ARG_SCALE]
-            = {with_scale_ ? args.at(DNNL_ARG_SCALE).get() : nullptr, true};
-    exec_args[DNNL_ARG_ATTN_MASK] = {
-            with_explicit_mask_ ? args.at(DNNL_ARG_ATTN_MASK).get() : nullptr,
-            true};
-    exec_args[DNNL_ARG_DIFF_QUERIES]
-            = {args.at(DNNL_ARG_DIFF_QUERIES).get(), false};
-    exec_args[DNNL_ARG_DIFF_KEYS] = {args.at(DNNL_ARG_DIFF_KEYS).get(), false};
-    exec_args[DNNL_ARG_DIFF_VALUES]
-            = {args.at(DNNL_ARG_DIFF_VALUES).get(), false};
-    exec_args[DNNL_ARG_SCRATCHPAD]
-            = {args.at(DNNL_ARG_SCRATCHPAD).get(), false};
-    if (args.count(DNNL_ARG_DS))
-        exec_args[DNNL_ARG_DS] = {args.at(DNNL_ARG_DS).get(), false};
+    std::vector<dnnl_exec_arg_t> c_args;
+    c_args.reserve(args.size());
+    for (const auto &a : args)
+        c_args.push_back({a.first, a.second.get()});
 
-    auto strm_t = stream.get();
-    exec_ctx_t ctx(strm_t, std::move(exec_args));
-    auto *sycl_stream_impl = dnnl::impl::utils::downcast<
-            dnnl::impl::xpu::sycl::stream_impl_t *>(strm_t->impl());
-
-    // Set up scratchpad grantor required by the primitive's execute
-    const memory_storage_t *mem_storage_sycl = nullptr;
-    memory_t *scratchpad_memory_sycl = ctx.output(DNNL_ARG_SCRATCHPAD);
-    if (scratchpad_memory_sycl)
-        mem_storage_sycl = scratchpad_memory_sycl->memory_storage();
-    const void *host_ptr_sycl
-            = ctx.host_ptr(mem_storage_sycl, /* require_host_ptr = */ true);
-    auto *scratchpad_grantor_sycl
-            = sdpa_bwd_pd_->scratchpad_registry().create_grantor(
-                    mem_storage_sycl, host_ptr_sycl);
-    ctx.set_scratchpad_grantor(scratchpad_grantor_sycl);
-
-    strm_t->before_exec_hook();
-    if (!deps.empty()) sycl_stream_impl->sycl_ctx().set_deps(deps);
-
-    sdpa_bwd_prim_->execute(ctx);
-
-    ::sycl::event return_event = sycl_stream_impl->get_output_event();
-    strm_t->after_exec_hook();
+    sycl::event return_event;
+    auto ret = dnnl_sycl_interop_primitive_execute(prim_.get(), stream.get(),
+            c_args.size(), c_args.data(), &deps, &return_event);
+    dnnl::error::wrap_c_api(
+            ret, "could not execute sdpa backward with sycl runtime");
     return return_event;
 }
 #endif
@@ -493,62 +326,18 @@ void sdpa_bwd_executable_t::execute(const stream &stream,
 cl_event sdpa_bwd_executable_t::execute_ocl(const stream &stream,
         const std::unordered_map<int, memory> &args,
         const std::vector<cl_event> &deps) const {
-    exec_args_t exec_args;
-    exec_args[DNNL_ARG_QUERIES] = {args.at(DNNL_ARG_QUERIES).get(), true};
-    exec_args[DNNL_ARG_KEYS] = {args.at(DNNL_ARG_KEYS).get(), true};
-    exec_args[DNNL_ARG_VALUES] = {args.at(DNNL_ARG_VALUES).get(), true};
-    exec_args[DNNL_ARG_DST] = {args.at(DNNL_ARG_DST).get(), true};
-    exec_args[DNNL_ARG_DIFF_DST] = {args.at(DNNL_ARG_DIFF_DST).get(), true};
-    exec_args[DNNL_ARG_WORKSPACE] = {args.at(DNNL_ARG_WORKSPACE).get(), true};
-    exec_args[DNNL_ARG_SCALE]
-            = {with_scale_ ? args.at(DNNL_ARG_SCALE).get() : nullptr, true};
-    exec_args[DNNL_ARG_ATTN_MASK] = {
-            with_explicit_mask_ ? args.at(DNNL_ARG_ATTN_MASK).get() : nullptr,
-            true};
-    exec_args[DNNL_ARG_DIFF_QUERIES]
-            = {args.at(DNNL_ARG_DIFF_QUERIES).get(), false};
-    exec_args[DNNL_ARG_DIFF_KEYS] = {args.at(DNNL_ARG_DIFF_KEYS).get(), false};
-    exec_args[DNNL_ARG_DIFF_VALUES]
-            = {args.at(DNNL_ARG_DIFF_VALUES).get(), false};
-    exec_args[DNNL_ARG_SCRATCHPAD]
-            = {args.at(DNNL_ARG_SCRATCHPAD).get(), false};
-    if (args.count(DNNL_ARG_DS))
-        exec_args[DNNL_ARG_DS] = {args.at(DNNL_ARG_DS).get(), false};
+    std::vector<dnnl_exec_arg_t> c_args;
+    c_args.reserve(args.size());
+    for (const auto &a : args)
+        c_args.push_back({a.first, a.second.get()});
 
-    exec_ctx_t ctx(stream.get(), std::move(exec_args));
-
-    // Set up scratchpad grantor required by the primitive's execute
-    const memory_storage_t *mem_storage_ocl = nullptr;
-    memory_t *scratchpad_memory_ocl = ctx.output(DNNL_ARG_SCRATCHPAD);
-    if (scratchpad_memory_ocl)
-        mem_storage_ocl = scratchpad_memory_ocl->memory_storage();
-    const void *host_ptr_ocl
-            = ctx.host_ptr(mem_storage_ocl, /* require_host_ptr = */ true);
-    auto *scratchpad_grantor_ocl
-            = sdpa_bwd_pd_->scratchpad_registry().create_grantor(
-                    mem_storage_ocl, host_ptr_ocl);
-    ctx.set_scratchpad_grantor(scratchpad_grantor_ocl);
-
-    auto *ocl_stream = dnnl::impl::utils::downcast<gpu::intel::ocl::stream_t *>(
-            stream.get());
-    ocl_stream->before_exec_hook();
-
-    if (!deps.empty()) {
-        std::vector<xpu::ocl::wrapper_t<cl_event>> events(deps.size());
-        for (size_t i = 0; i < deps.size(); i++)
-            events[i] = xpu::ocl::wrapper_t<cl_event>(deps[i], true);
-        ocl_stream->ocl_ctx().set_deps(events);
-    }
-
-    sdpa_bwd_prim_->execute(ctx);
-
+    const cl_event *c_deps = deps.empty() ? nullptr : deps.data();
     cl_event return_event = nullptr;
-    if ((ocl_stream->flags() & stream_flags::in_order) == 0) {
-        auto last = ocl_stream->get_output_event();
-        return_event = last.release();
-    }
-
-    ocl_stream->after_exec_hook();
+    auto ret = dnnl_ocl_interop_primitive_execute(prim_.get(), stream.get(),
+            static_cast<int>(c_args.size()), c_args.data(), c_deps,
+            static_cast<int>(deps.size()), &return_event);
+    dnnl::error::wrap_c_api(
+            ret, "could not execute sdpa backward with ocl runtime");
     return return_event;
 }
 #endif

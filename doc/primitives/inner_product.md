@@ -49,19 +49,22 @@ update.
 When executed, the inputs and outputs should be mapped to an execution
 argument index as specified by the following table.
 
-| Primitive input/output      | Execution argument index                                                   |
-|-----------------------------|----------------------------------------------------------------------------|
-| \src                        | DNNL_ARG_SRC                                                               |
-| \weights                    | DNNL_ARG_WEIGHTS                                                           |
-| \bias                       | DNNL_ARG_BIAS                                                              |
-| \dst                        | DNNL_ARG_DST                                                               |
-| \diffsrc                    | DNNL_ARG_DIFF_SRC                                                          |
-| \diffweights                | DNNL_ARG_DIFF_WEIGHTS                                                      |
-| \diffbias                   | DNNL_ARG_DIFF_BIAS                                                         |
-| \diffdst                    | DNNL_ARG_DIFF_DST                                                          |
-| \f$\text{binary post-op}\f$ | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_1, |
-|                             | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_2  |
-| \f$\text{prelu post-op}\f$  | DNNL_ARG_ATTR_MULTIPLE_POST_OP(prelu_post_op_position) \| DNNL_ARG_WEIGHTS |
+| Argument                    | Index                                                                      | Type   |
+|-----------------------------|----------------------------------------------------------------------------|--------|
+| \src                        | DNNL_ARG_SRC                                                               | Input  |
+| \weights                    | DNNL_ARG_WEIGHTS                                                           | Input  |
+| \bias                       | DNNL_ARG_BIAS                                                              | Input  |
+| \dst                        | DNNL_ARG_DST                                                               | Output |
+| \diffsrc                    | DNNL_ARG_DIFF_SRC                                                          | Output |
+| \diffweights                | DNNL_ARG_DIFF_WEIGHTS                                                      | Output |
+| \diffbias                   | DNNL_ARG_DIFF_BIAS                                                         | Output |
+| \diffdst                    | DNNL_ARG_DIFF_DST                                                          | Input  |
+| \f$\text{binary post-op}\f$ | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_1  | Input  |
+|                             | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_2  | Input  |
+| \f$\text{prelu post-op}\f$  | DNNL_ARG_ATTR_MULTIPLE_POST_OP(prelu_post_op_position) \| DNNL_ARG_WEIGHTS | Input  |
+| [scratchpad]                | DNNL_ARG_SCRATCHPAD                                                        | Output |
+
+[scratchpad]: @ref dev_guide_attributes_scratchpad
 
 ## Implementation Details
 

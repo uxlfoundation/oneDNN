@@ -77,14 +77,17 @@ dimensions, since \f$\diffweights\f$ tensor must match \f$\weights\f$ tensor.
 When executed, the inputs and outputs should be mapped to an execution
 argument index as specified by the following table.
 
-| Primitive input/output | Execution argument index |
-|------------------------|--------------------------|
-| \f$\src\f$             | DNNL_ARG_SRC             |
-| \f$\dst\f$             | DNNL_ARG_DST             |
-| \f$\weights\f$         | DNNL_ARG_WEIGHTS         |
-| \f$\diffsrc\f$         | DNNL_ARG_DIFF_SRC        |
-| \f$\diffdst\f$         | DNNL_ARG_DIFF_DST        |
-| \f$\diffweights\f$     | DNNL_ARG_DIFF_WEIGHTS    |
+| Argument           | Index                 | Type   |
+|--------------------|-----------------------|--------|
+| \f$\src\f$         | DNNL_ARG_SRC          | Input  |
+| \f$\weights\f$     | DNNL_ARG_WEIGHTS      | Input  |
+| \f$\dst\f$         | DNNL_ARG_DST          | Output |
+| \f$\diffsrc\f$     | DNNL_ARG_DIFF_SRC     | Output |
+| \f$\diffdst\f$     | DNNL_ARG_DIFF_DST     | Input  |
+| \f$\diffweights\f$ | DNNL_ARG_DIFF_WEIGHTS | Output |
+| [scratchpad]       | DNNL_ARG_SCRATCHPAD   | Output |
+
+[scratchpad]: @ref dev_guide_attributes_scratchpad
 
 
 ## Implementation Details

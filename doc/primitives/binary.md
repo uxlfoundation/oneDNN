@@ -36,16 +36,19 @@ The binary primitive does not have a notion of forward or backward propagations.
 When executed, the inputs and outputs should be mapped to an execution
 argument index as specified by the following table.
 
-| Primitive input/output      | Execution argument index                                                  |
-|-----------------------------|---------------------------------------------------------------------------|
-| \f$\src_0\f$                | DNNL_ARG_SRC_0                                                            |
-| \f$\src_1\f$                | DNNL_ARG_SRC_1                                                            |
-| \f$\src_2\f$                | DNNL_ARG_SRC_2                                                            |
-| \dst                        | DNNL_ARG_DST                                                              |
-| \f$\text{binary post-op}\f$ | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_1,|
-|                             | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_2 |
-| \f$binary scale0\f$         | DNNL_ARG_ATTR_SCALES \| DNNL_ARG_SRC_0                                    |
-| \f$binary scale1\f$         | DNNL_ARG_ATTR_SCALES \| DNNL_ARG_SRC_1                                    |
+| Argument                    | Index                                                                     | Type   |
+|-----------------------------|---------------------------------------------------------------------------|--------|
+| \f$\src_0\f$                | DNNL_ARG_SRC_0                                                            | Input  |
+| \f$\src_1\f$                | DNNL_ARG_SRC_1                                                            | Input  |
+| \f$\src_2\f$                | DNNL_ARG_SRC_2                                                            | Input  |
+| \dst                        | DNNL_ARG_DST                                                              | Output |
+| \f$\text{binary post-op}\f$ | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_1 | Input  |
+|                             | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_2 | Input  |
+| \f$binary scale0\f$         | DNNL_ARG_ATTR_SCALES \| DNNL_ARG_SRC_0                                    | Input  |
+| \f$binary scale1\f$         | DNNL_ARG_ATTR_SCALES \| DNNL_ARG_SRC_1                                    | Input  |
+| [scratchpad]                | DNNL_ARG_SCRATCHPAD                                                       | Output |
+
+[scratchpad]: @ref dev_guide_attributes_scratchpad
 
 ## Implementation Details
 

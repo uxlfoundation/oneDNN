@@ -114,22 +114,25 @@ requires different inputs and outputs. For clarity, a summary is shown below.
 When executed, the inputs and outputs should be mapped to an execution
 argument index as specified by the following table.
 
-| Primitive input/output      | Execution argument index                                                  |
-|-----------------------------|---------------------------------------------------------------------------|
-| \src                        | DNNL_ARG_SRC                                                              |
-| \f$\gamma\f$                | DNNL_ARG_SCALE                                                            |
-| \f$\beta\f$                 | DNNL_ARG_SHIFT                                                            |
-| mean (\f$\mu\f$)            | DNNL_ARG_MEAN                                                             |
-| variance* (\f$\sigma\f$)    | DNNL_ARG_VARIANCE                                                         |
-| \dst                        | DNNL_ARG_DST                                                              |
-| \diffdst                    | DNNL_ARG_DIFF_DST                                                         |
-| \diffsrc                    | DNNL_ARG_DIFF_SRC                                                         |
-| \diffgamma                  | DNNL_ARG_DIFF_SCALE                                                       |
-| \diffbeta                   | DNNL_ARG_DIFF_SHIFT                                                       |
-| \f$src scale\f$             | DNNL_ARG_ATTR_SCALES \| DNNL_ARG_SRC                                      |
-| \f$dst scale\f$             | DNNL_ARG_ATTR_SCALES \| DNNL_ARG_DST                                      |
-| \f$\text{binary post-op}\f$ | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_1,|
-|                             | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_2 |
+| Argument                    | Index                                                                     | Type         |
+|-----------------------------|---------------------------------------------------------------------------|--------------|
+| \src                        | DNNL_ARG_SRC                                                              | Input        |
+| \f$\gamma\f$                | DNNL_ARG_SCALE                                                            | Input        |
+| \f$\beta\f$                 | DNNL_ARG_SHIFT                                                            | Input        |
+| mean (\f$\mu\f$)            | DNNL_ARG_MEAN                                                             | Input/Output |
+| variance* (\f$\sigma\f$)    | DNNL_ARG_VARIANCE                                                         | Input/Output |
+| \dst                        | DNNL_ARG_DST                                                              | Output       |
+| \diffdst                    | DNNL_ARG_DIFF_DST                                                         | Input        |
+| \diffsrc                    | DNNL_ARG_DIFF_SRC                                                         | Output       |
+| \diffgamma                  | DNNL_ARG_DIFF_SCALE                                                       | Output       |
+| \diffbeta                   | DNNL_ARG_DIFF_SHIFT                                                       | Output       |
+| \f$src scale\f$             | DNNL_ARG_ATTR_SCALES \| DNNL_ARG_SRC                                      | Input        |
+| \f$dst scale\f$             | DNNL_ARG_ATTR_SCALES \| DNNL_ARG_DST                                      | Input        |
+| \f$\text{binary post-op}\f$ | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_1 | Input        |
+|                             | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_2 | Input        |
+| [scratchpad]                | DNNL_ARG_SCRATCHPAD                                                       | Output       |
+
+[scratchpad]: @ref dev_guide_attributes_scratchpad
 
 The variance is marked with an asterisk because, for RMS normalization, the root
 mean square statistic is computed in place of the variance.

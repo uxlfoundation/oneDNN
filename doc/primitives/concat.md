@@ -27,10 +27,13 @@ simply an identity operation.
 When executed, the inputs and outputs should be mapped to an execution
 argument index as specified by the following table.
 
-| Primitive input/output | Execution argument index |
-|------------------------|--------------------------|
-| \src                   | DNNL_ARG_MULTIPLE_SRC    |
-| \dst                   | DNNL_ARG_DST             |
+| Argument     | Index                 | Type   |
+|--------------|-----------------------|--------|
+| \src         | DNNL_ARG_MULTIPLE_SRC | Input  |
+| \dst         | DNNL_ARG_DST          | Output |
+| [scratchpad] | DNNL_ARG_SCRATCHPAD   | Output |
+
+[scratchpad]: @ref dev_guide_attributes_scratchpad
 
 ## Implementation Details
 

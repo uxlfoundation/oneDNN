@@ -350,33 +350,36 @@ flag is set weight gradients will be initialized by zeros by the RNN primitive.
 When executed, the inputs and outputs should be mapped to an execution
 argument index as specified by the following table.
 
-| Primitive input/output | Execution argument index          |
-|------------------------|-----------------------------------|
-| \srclayer              | DNNL_ARG_SRC_LAYER                |
-| \srclayerattention     | DNNL_ARG_SRC_LAYER_ATTENTION      |
-| \srciter               | DNNL_ARG_SRC_ITER                 |
-| \srciterc              | DNNL_ARG_SRC_ITER_C               |
-| \weightslayer          | DNNL_ARG_WEIGHTS_LAYER            |
-| \weightsiter           | DNNL_ARG_WEIGHTS_ITER             |
-| \weightspeephole       | DNNL_ARG_WEIGHTS_PEEPHOLE         |
-| \weightsprojection     | DNNL_ARG_WEIGHTS_PROJECTION       |
-| \bias                  | DNNL_ARG_BIAS                     |
-| \dstlayer              | DNNL_ARG_DST_LAYER                |
-| \dstiter               | DNNL_ARG_DST_ITER                 |
-| \dstiterc              | DNNL_ARG_DST_ITER_C               |
-| \workspace             | DNNL_WORKSPACE                    |
-| \diffsrclayer          | DNNL_ARG_DIFF_SRC_LAYER           |
-| \diffsrclayerattention | DNNL_ARG_DIFF_SRC_LAYER_ATTENTION |
-| \diffsrciter           | DNNL_ARG_DIFF_SRC_ITER            |
-| \diffsrciterc          | DNNL_ARG_DIFF_SRC_ITER_C          |
-| \diffweightslayer      | DNNL_ARG_DIFF_WEIGHTS_LAYER       |
-| \diffweightsiter       | DNNL_ARG_DIFF_WEIGHTS_ITER        |
-| \diffweightspeephole   | DNNL_ARG_DIFF_WEIGHTS_PEEPHOLE    |
-| \diffweightsprojection | DNNL_ARG_DIFF_WEIGHTS_PROJECTION  |
-| \diffbias              | DNNL_ARG_DIFF_BIAS                |
-| \diffdstlayer          | DNNL_ARG_DIFF_DST_LAYER           |
-| \diffdstiter           | DNNL_ARG_DIFF_DST_ITER            |
-| \diffdstiterc          | DNNL_ARG_DIFF_DST_ITER_C          |
+| Argument               | Index                             | Type         |
+|------------------------|-----------------------------------|--------------|
+| \srclayer              | DNNL_ARG_SRC_LAYER                | Input        |
+| \srclayerattention     | DNNL_ARG_SRC_LAYER_ATTENTION      | Input        |
+| \srciter               | DNNL_ARG_SRC_ITER                 | Input        |
+| \srciterc              | DNNL_ARG_SRC_ITER_C               | Input        |
+| \weightslayer          | DNNL_ARG_WEIGHTS_LAYER            | Input        |
+| \weightsiter           | DNNL_ARG_WEIGHTS_ITER             | Input        |
+| \weightspeephole       | DNNL_ARG_WEIGHTS_PEEPHOLE         | Input        |
+| \weightsprojection     | DNNL_ARG_WEIGHTS_PROJECTION       | Input        |
+| \bias                  | DNNL_ARG_BIAS                     | Input        |
+| \dstlayer              | DNNL_ARG_DST_LAYER                | Output       |
+| \dstiter               | DNNL_ARG_DST_ITER                 | Output       |
+| \dstiterc              | DNNL_ARG_DST_ITER_C               | Output       |
+| \workspace             | DNNL_WORKSPACE                    | Input/Output |
+| \diffsrclayer          | DNNL_ARG_DIFF_SRC_LAYER           | Output       |
+| \diffsrclayerattention | DNNL_ARG_DIFF_SRC_LAYER_ATTENTION | Output       |
+| \diffsrciter           | DNNL_ARG_DIFF_SRC_ITER            | Output       |
+| \diffsrciterc          | DNNL_ARG_DIFF_SRC_ITER_C          | Output       |
+| \diffweightslayer      | DNNL_ARG_DIFF_WEIGHTS_LAYER       | Output       |
+| \diffweightsiter       | DNNL_ARG_DIFF_WEIGHTS_ITER        | Output       |
+| \diffweightspeephole   | DNNL_ARG_DIFF_WEIGHTS_PEEPHOLE    | Output       |
+| \diffweightsprojection | DNNL_ARG_DIFF_WEIGHTS_PROJECTION  | Output       |
+| \diffbias              | DNNL_ARG_DIFF_BIAS                | Output       |
+| \diffdstlayer          | DNNL_ARG_DIFF_DST_LAYER           | Input        |
+| \diffdstiter           | DNNL_ARG_DIFF_DST_ITER            | Input        |
+| \diffdstiterc          | DNNL_ARG_DIFF_DST_ITER_C          | Input        |
+| [scratchpad]           | DNNL_ARG_SCRATCHPAD               | Output       |
+
+[scratchpad]: @ref dev_guide_attributes_scratchpad
 
 ## Implementation Details
 

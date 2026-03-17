@@ -44,18 +44,21 @@ dimension, the following constraint must hold true:
 When executed, the inputs and outputs should be mapped to an execution
 argument index as specified by the following table.
 
-| Primitive input/output           | Execution argument index                                                   |
-|----------------------------------|----------------------------------------------------------------------------|
-| \src                             | #DNNL_ARG_SRC                                                               |
-| \weights                         | #DNNL_ARG_WEIGHTS                                                           |
-| \bias                            | #DNNL_ARG_BIAS                                                              |
-| \dst                             | #DNNL_ARG_DST                                                               |
-| \f$\text{dropout output mask}\f$ | #DNNL_ARG_ATTR_DROPOUT_MASK                                                 |
-| \f$\text{dropout probability}\f$ | #DNNL_ARG_ATTR_DROPOUT_PROBABILITY                                          |
-| \f$\text{dropout rng seed}\f$    | #DNNL_ARG_ATTR_DROPOUT_SEED                                                 |
-| \f$\text{binary post-op}\f$      | #DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| #DNNL_ARG_SRC_1, |
-|                                  | #DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| #DNNL_ARG_SRC_2  |
-| \f$\text{prelu post-op}\f$       | #DNNL_ARG_ATTR_MULTIPLE_POST_OP(prelu_post_op_position) \| #DNNL_ARG_WEIGHTS |
+| Argument                         | Index                                                                      | Type   |
+|----------------------------------|----------------------------------------------------------------------------|--------|
+| \src                             | DNNL_ARG_SRC                                                               | Input  |
+| \weights                         | DNNL_ARG_WEIGHTS                                                           | Input  |
+| \bias                            | DNNL_ARG_BIAS                                                              | Input  |
+| \dst                             | DNNL_ARG_DST                                                               | Output |
+| \f$\text{dropout output mask}\f$ | DNNL_ARG_ATTR_DROPOUT_MASK                                                 | Output |
+| \f$\text{dropout probability}\f$ | DNNL_ARG_ATTR_DROPOUT_PROBABILITY                                          | Input  |
+| \f$\text{dropout rng seed}\f$    | DNNL_ARG_ATTR_DROPOUT_SEED                                                 | Input  |
+| \f$\text{binary post-op}\f$      | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_1  | Input  |
+|                                  | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_2  | Input  |
+| \f$\text{prelu post-op}\f$       | DNNL_ARG_ATTR_MULTIPLE_POST_OP(prelu_post_op_position) \| DNNL_ARG_WEIGHTS | Input  |
+| [scratchpad]                     | DNNL_ARG_SCRATCHPAD                                                        | Output |
+
+[scratchpad]: @ref dev_guide_attributes_scratchpad
 
 ## Implementation Details
 

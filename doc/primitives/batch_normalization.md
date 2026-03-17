@@ -111,21 +111,24 @@ requires different inputs and outputs.  For clarity, a summary is shown below.
 When executed, the inputs and outputs should be mapped to an execution
 argument index as specified by the following table.
 
-| Primitive Input/Output    | Execution Argument Index |
-|---------------------------|--------------------------|
-| \src                      | DNNL_ARG_SRC             |
-| \f$\src_1\f$              | DNNL_ARG_SRC_1           |
-| \f$\gamma\f$              | DNNL_ARG_SCALE           |
-| \f$\beta\f$               | DNNL_ARG_SHIFT           |
-| mean (\f$\mu\f$)          | DNNL_ARG_MEAN            |
-| variance (\f$\sigma^2\f$) | DNNL_ARG_VARIANCE        |
-| \dst                      | DNNL_ARG_DST             |
-| workspace                 | DNNL_ARG_WORKSPACE       |
-| \diffdst                  | DNNL_ARG_DIFF_DST        |
-| \diffsrc                  | DNNL_ARG_DIFF_SRC        |
-| \f$\diffsrc_1\f$          | DNNL_ARG_DIFF_SRC_1      |
-| \f$\diffgamma\f$          | DNNL_ARG_DIFF_SCALE      |
-| \f$\diffbeta\f$           | DNNL_ARG_DIFF_SHIFT      |
+| Argument                  | Index                    | Type         |
+|---------------------------|--------------------------|--------------|
+| \src                      | DNNL_ARG_SRC             | Input        |
+| \f$\src_1\f$              | DNNL_ARG_SRC_1           | Input        |
+| \f$\gamma\f$              | DNNL_ARG_SCALE           | Input        |
+| \f$\beta\f$               | DNNL_ARG_SHIFT           | Input        |
+| mean (\f$\mu\f$)          | DNNL_ARG_MEAN            | Input/Output |
+| variance (\f$\sigma^2\f$) | DNNL_ARG_VARIANCE        | Input/Output |
+| \dst                      | DNNL_ARG_DST             | Output       |
+| workspace                 | DNNL_ARG_WORKSPACE       | Input/Output |
+| \diffdst                  | DNNL_ARG_DIFF_DST        | Input        |
+| \diffsrc                  | DNNL_ARG_DIFF_SRC        | Output       |
+| \f$\diffsrc_1\f$          | DNNL_ARG_DIFF_SRC_1      | Output       |
+| \f$\diffgamma\f$          | DNNL_ARG_DIFF_SCALE      | Output       |
+| \f$\diffbeta\f$           | DNNL_ARG_DIFF_SHIFT      | Output       |
+| [scratchpad]              | DNNL_ARG_SCRATCHPAD      | Output       |
+
+[scratchpad]: @ref dev_guide_attributes_scratchpad
 
 ## Implementation Details
 

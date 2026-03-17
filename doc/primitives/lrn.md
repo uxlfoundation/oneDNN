@@ -52,14 +52,16 @@ The backward propagation computes \f$\diffsrc(n, c, h, w)\f$, based on
 When executed, the inputs and outputs should be mapped to an execution
 argument index as specified by the following table.
 
-| Primitive input/output | Execution argument index |
-|------------------------|--------------------------|
-| \src                   | DNNL_ARG_SRC             |
-| \dst                   | DNNL_ARG_DST             |
-| workspace              | DNNL_ARG_WORKSPACE       |
-| \diffsrc               | DNNL_ARG_DIFF_SRC        |
-| \diffdst               | DNNL_ARG_DIFF_DST        |
+| Argument     | Index               | Type         |
+|--------------|---------------------|--------------|
+| \src         | DNNL_ARG_SRC        | Input        |
+| \dst         | DNNL_ARG_DST        | Output       |
+| workspace    | DNNL_ARG_WORKSPACE  | Input/Output |
+| \diffsrc     | DNNL_ARG_DIFF_SRC   | Output       |
+| \diffdst     | DNNL_ARG_DIFF_DST   | Input        |
+| [scratchpad] | DNNL_ARG_SCRATCHPAD | Output       |
 
+[scratchpad]: @ref dev_guide_attributes_scratchpad
 
 ## Implementation Details
 

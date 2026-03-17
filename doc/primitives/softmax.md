@@ -74,16 +74,19 @@ The backward propagation computes \f$\diffsrc(ou, c, in)\f$, based on
 When executed, the inputs and outputs should be mapped to an execution
 argument index as specified by the following table.
 
-| Primitive input/output      | Execution argument index                                                  |
-|-----------------------------|---------------------------------------------------------------------------|
-| \src                        | DNNL_ARG_SRC                                                              |
-| \dst                        | DNNL_ARG_DST                                                              |
-| \diffsrc                    | DNNL_ARG_DIFF_SRC                                                         |
-| \diffdst                    | DNNL_ARG_DIFF_DST                                                         |
-| \f$src scale\f$             | DNNL_ARG_ATTR_SCALES \| DNNL_ARG_SRC                                      |
-| \f$dst scale\f$             | DNNL_ARG_ATTR_SCALES \| DNNL_ARG_DST                                      |
-| \f$\text{binary post-op}\f$ | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_1,|
-|                             | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_2 |
+| Argument                    | Index                                                                     | Type   |
+|-----------------------------|---------------------------------------------------------------------------|--------|
+| \src                        | DNNL_ARG_SRC                                                              | Input  |
+| \dst                        | DNNL_ARG_DST                                                              | Output |
+| \diffsrc                    | DNNL_ARG_DIFF_SRC                                                         | Output |
+| \diffdst                    | DNNL_ARG_DIFF_DST                                                         | Input  |
+| \f$src scale\f$             | DNNL_ARG_ATTR_SCALES \| DNNL_ARG_SRC                                      | Input  |
+| \f$dst scale\f$             | DNNL_ARG_ATTR_SCALES \| DNNL_ARG_DST                                      | Input  |
+| \f$\text{binary post-op}\f$ | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_1 | Input  |
+|                             | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_2 | Input  |
+| [scratchpad]                | DNNL_ARG_SCRATCHPAD                                                       | Output |
+
+[scratchpad]: @ref dev_guide_attributes_scratchpad
 
 ## Implementation Details
 

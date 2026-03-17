@@ -1460,13 +1460,25 @@ struct fma_context_t {
                 = [](const layout_t &layout, const pvar_t &dim, int block) {
             if (block == 1) return true;
             if (layout.nblocks() == 0) return false;
+
+            auto check = [&](const layout_block_t &b) {
+                bool ok = true;
+                ok &= (b.idx == dim);
+                ok &= (b.size % block == 0);
+
+                bool stride_ok = (b.stride == 1)
+                        || (layout.type().is_x16() && b.stride == 2);
+                ok &= stride_ok;
+                return ok;
+            };
             auto &b0 = layout[0];
-            if (b0.idx != dim) return false;
-            if (b0.size % block != 0) return false;
-            bool stride_ok = (b0.stride == 1)
-                    || (layout.type().is_x16() && b0.stride == 2);
-            if (!stride_ok) return false;
-            return true;
+            if (check(b0)) return true;
+
+            if (layout.nblocks() > 1) {
+                auto &b1 = layout[1];
+                if (b1.stride == b0.stride && check(b1)) return true;
+            }
+            return false;
         };
         if (a_vec_idx != -1 && !is_blocked_by(a, a_vec_idx, vec_size))
             return false;

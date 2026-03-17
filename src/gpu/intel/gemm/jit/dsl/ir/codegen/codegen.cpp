@@ -900,7 +900,7 @@ public:
                             if (src_base == dst_base) {
                                 auto &ra = scope_.register_allocator();
                                 const auto src_type = src.getType();
-                                const int nregs = dst_bytes / grf_size;
+                                const int nregs = div_up(dst_bytes, grf_size);
                                 auto tmp = ra.alloc_range(nregs);
                                 auto t = tmp.sub(hw(), 0, src_type)(dst_stride);
                                 host_->emov(exec_size, t, src);

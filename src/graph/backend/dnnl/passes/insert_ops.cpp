@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "graph/interface/c_types_map.hpp"
 
@@ -1232,7 +1233,11 @@ status_t insert_unsqueeze_and_squeeze_for_reduction(
 
 status_t insert_host_scalar(std::shared_ptr<subgraph_t> &sg) {
     subgraph_rewriter_t rewriter(sg);
+    std::unordered_set<value_t *> visited;
     for (const auto &val : sg->get_input_values()) {
+        // Skip duplicate input values to avoid creating chained host_scalar
+        // ops when the same host scalar value is consumed by multiple ops.
+        if (!visited.insert(val).second) continue;
         logical_tensor_t lt = val->get_logical_tensor();
         if (lt.property == property_type::host_scalar) {
             // Create a new dnnl_host_scalar op

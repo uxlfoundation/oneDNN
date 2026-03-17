@@ -855,6 +855,235 @@ class ShuffleConverter(Converter):
         return " ".join(args)
 
 
+class SDPAConverter(Converter):
+    """Converter for SDPA (Scaled Dot-Product Attention) primitive"""
+    driver: str = "graph"
+    
+    def __init__(self, entry: ir.Entry):
+        super().__init__(entry)
+        # Base JSON files for different configurations
+        # key: (dtype, mask type, scale), value: corresponding base case JSON file
+        # TODO: extend the list to cover more cases.
+        self.base_cases = {
+            # f32 base cases
+            ('f32', 'explicit', True): 'complex_fusion/mha/sdpa-plain-simplified-f32.json',
+            ('f32', 'no', True): 'complex_fusion/mha/sdpa-plain-wo-mask-f32.json',
+            ('f32', 'explicit', False): 'complex_fusion/mha/sdpa-plain-wo-scale-f32.json',
+            ('f32', 'no', False): 'complex_fusion/mha/sdpa-plain-wo-mask-scale-f32.json',
+            # Add f16 base cases
+            ('f16', 'explicit', True): 'complex_fusion/mha/sdpa-plain-simplified-f16-f32.json',
+            ('f16', 'no', True): 'complex_fusion/mha/sdpa-plain-wo-mask-f16-f32.json',
+            ('f16', 'explicit', False): 'complex_fusion/mha/sdpa-plain-wo-scale-f16-f32.json',
+            ('f16', 'no', False): 'complex_fusion/mha/sdpa-plain-wo-mask-scale-f16-f32.json',
+        }
+
+        # Map tensor arguments to tensor IDs based on mask presence
+        self.tensor_id_map = {
+            'query': 1,    # First input port in masked cases
+            'key': 2,      # Second input port  
+            'val': 3,      # Value input port
+            'value': 3,    # Alternative name
+            'mask': 5,     # Mask input port
+            'msk': 5,      # Alternative name for mask
+            'scale': 4,    # Scale input port
+            'output': 6,   # Output port
+        }
+
+        self.op_id_map = {
+            'qk': 101,
+            'scale': 102,
+            'mask': 103,
+            'softmax': 104,
+            'vs': 105,
+        }
+    
+    def _get_mask_type(self) -> str:
+        """Check if the SDPA operation has a mask tensor: 1d, 2d, causal:bottom_right, causal:top_left, or no mask."""
+        # Check memory descriptors for mask argument
+        for md in self.entry.mds:
+            if md.arg == 'msk' or md.arg == 'mask':
+                # Check auxiliary info for mask type (e.g., 'msk': '2d')
+                if 'msk' in self.entry.aux:
+                    mask_val = self.entry.aux["msk"]
+                    return mask_val
+        
+        return 'no'
+    
+    def _determine_primary_dtype(self) -> str:
+        """Determine the primary data type for the case from memory descriptors."""
+        # Check for int8 tensors (s8 or u8) first
+        for md in self.entry.mds:
+            if md.arg in ['key', 'val', 'value'] and md.data_type in ['s8', 'u8']:
+                return 's8'
+        
+        # Look for query tensor type first, as it's typically the primary input
+        for md in self.entry.mds:
+            if md.arg == 'query' and md.data_type != 'undef':
+                return md.data_type
+                
+        # Default to any available data type from memory descriptors
+        for md in self.entry.mds:
+            if md.data_type != 'undef':
+                return md.data_type
+        
+        return 'f32'
+    
+    def _choose_base_case(self, dtype: str, mask_type: str, scale: bool) -> str:
+        """Choose the appropriate base JSON case."""
+        mask_type_key = mask_type
+        if mask_type in ['1d', '2d']:
+            mask_type_key = 'explicit'
+
+        key = (dtype, mask_type_key, scale)
+        
+        # Try exact match first
+        if key in self.base_cases and self.base_cases[key]:
+            return self.base_cases[key]
+        
+        # Fallback: try f32 equivalent for unsupported dtypes
+        fallback_key = ('f32', mask_type, scale)
+        if fallback_key in self.base_cases:
+            return self.base_cases[fallback_key]
+            
+        # Last resort fallback.
+        print(f"Debug Warning: No specific base case found for dtype={dtype}, mask_type={mask_type}, scale={scale}. Falling back to a default case.")
+        return 'complex_fusion/mha/sdpa-plain-simplified-f32.json'
+    
+    def _get_scale_operation(self) -> str:
+        """Extract scale operation type from aux info or algorithm."""
+        # Check aux info for scale operation (format: scl:div:f16:device or scl:mul:f32:host)
+        if 'scl' in self.entry.aux:
+            scl_value = self.entry.aux['scl']
+            if scl_value.startswith('div:') or 'div' in scl_value:
+                return 'div'
+            elif scl_value.startswith('mul:') or 'mul' in scl_value:
+                return 'mul'
+        
+        # Check for scale operation in other aux keys
+        for key, value in self.entry.aux.items():
+            if 'scl:' in key or 'scl:' in value:
+                if 'mul' in value:
+                    return 'mul'
+                elif 'div' in value:
+                    return 'div'
+        
+        return 'no'  # default
+    
+    def _get_qkv_shape(self) -> str:
+        """Extract shapes for query, key, and value tensors."""
+        # Split shapes from entry.shapes and create --in-shapes format
+        shapes_list = self.entry.shapes.split(':')
+        
+        if len(shapes_list) >= 3:
+            query_shape = shapes_list[0]
+            key_shape = shapes_list[1]
+            value_shape = shapes_list[2]
+
+            assert len(query_shape.split('x')) == 4, "Expected query shape to be 4D"
+            assert len(key_shape.split('x')) == 4, "Expected key shape to be 4D"
+            assert len(value_shape.split('x')) == 4, "Expected value shape to be 4D"
+            
+            # Get tensor IDs from tensor_id_map
+            query_id = self.tensor_id_map['query']  # 1
+            key_id = self.tensor_id_map['key']      # 2
+            value_id = self.tensor_id_map['val']    # 3
+            
+            # Build --in-shapes format
+            in_shapes = f"--in-shapes={query_id}:{query_shape}+{key_id}:{key_shape}+{value_id}:{value_shape}"
+
+            # if mask is present, add mask shape as well
+            mask_type = self._get_mask_type()
+            if mask_type == '1d':
+                mask_id = self.tensor_id_map['mask']
+                mask_shape = "1x1x1x" + key_shape.split('x')[-1]
+                in_shapes += f"+{mask_id}:{mask_shape}"
+            elif mask_type == '2d':
+                mask_id = self.tensor_id_map['mask']
+                mask_shape = "1x1x" + query_shape.split('x')[2] + "x" + key_shape.split('x')[3]
+                in_shapes += f"+{mask_id}:{mask_shape}"
+
+            return in_shapes
+        else:
+            # Fallback to original shapes if parsing fails
+            return ""
+    
+    @property
+    def dts(self) -> str:
+        """Generate data type overrides based on tensor types."""
+        mask_type = self._get_mask_type()
+        overrides = []
+        
+        # Generate overrides based on memory descriptors
+        for md in self.entry.mds:
+            if md.arg in self.tensor_id_map and md.data_type != 'undef':
+                tensor_id = self.tensor_id_map[md.arg]
+                overrides.append(f'{tensor_id}:{md.data_type}')
+
+        if overrides:
+            # output tensor data type is determined by query tensor
+            query_dt = None
+            for md in self.entry.mds:
+                if md.arg == 'query' and md.data_type != 'undef':
+                    query_dt = md.data_type
+                    break
+            if query_dt is not None:
+                output_id = self.tensor_id_map['output']
+                overrides.append(f'{output_id}:{query_dt}')
+        
+        if not overrides:
+            return ""
+        
+        return f"--dt={'+'.join(overrides)}"
+    
+    @property
+    def aux(self) -> str:
+        """Generate auxiliary flags including operation kind and case selection."""        
+        # Add operation kind override for multiply operations
+        flags = []
+        scale_op = self._get_scale_operation()
+        if scale_op == 'mul':
+            flags.append(f'--op-kind={self.op_id_map["scale"]}:Multiply')
+        elif scale_op == 'div':
+            flags.append(f'--op-kind={self.op_id_map["scale"]}:Divide')
+
+        # extract algorithm from aux if available and add to flags
+        alg = self._get_alg()
+        if alg is not None:
+            if alg == 'softmax_accurate_inf_as_zero':
+                flags.append(f"--op-attr={self.op_id_map['softmax']}:mode:inf_as_zero")
+            else:
+                print(f"Debug Warning: Unrecognized algorithm '{alg}' for SDPA. No specific flags will be set for it.")
+        
+        return ' '.join(flags)
+    
+    @property
+    def shapes(self) -> str:
+        """Return shapes with base case."""
+        mask_type = self._get_mask_type()
+        primary_dtype = self._determine_primary_dtype()
+        scale_op = self._get_scale_operation()
+        shape_str = self._get_qkv_shape()
+        
+        # Choose base case
+        base_case = self._choose_base_case(primary_dtype, mask_type, scale_op != 'no')
+        
+        flags = [shape_str, f'--case={base_case}']
+        
+        return ' '.join(flags)
+    
+    @property
+    def tags(self) -> str:
+        """Return tag specifications - currently not implemented for SDPA."""
+        return ""
+    
+    @property
+    def attrs(self) -> str:
+        """Return attributes - graph driver has limited attribute support."""
+        # Graph driver doesn't support the standard attributes like scratchpad
+        # so return empty string to avoid unsupported attribute errors
+        return ""
+
+
 class SoftmaxConverter(TagTripletMixin, CommonDataTypeMixin, Converter):
     driver: str = "softmax"
 
@@ -903,6 +1132,7 @@ def get_converter(primitive: str) -> ConverterMeta:
         "reorder": ReorderConverter,
         "resampling": ResamplingConverter,
         "rnn": RNNConverter,
+        "sdpa": SDPAConverter,
         "shuffle": ShuffleConverter,
         "softmax": SoftmaxConverter,
         "sum": SumConverter,

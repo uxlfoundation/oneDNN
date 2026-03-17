@@ -26,6 +26,18 @@ namespace impl {
 namespace graph {
 namespace dnnl_impl {
 
+struct pd_deleter_t {
+    void operator()(dnnl_primitive_desc_t pd) const {
+        dnnl_primitive_desc_destroy(pd);
+    }
+};
+
+struct prim_deleter_t {
+    void operator()(dnnl_primitive_t prim) const {
+        dnnl_primitive_destroy(prim);
+    }
+};
+
 struct sdpa_executable_t : public op_executable_t {
     DECLARE_ARG_INDICES_GETTER;
 
@@ -51,8 +63,9 @@ struct sdpa_executable_t : public op_executable_t {
 #endif
 
 private:
-    std::shared_ptr<primitive_desc_t> sdpa_pd_;
-    std::shared_ptr<primitive_t> sdpa_prim_;
+    std::unique_ptr<dnnl_primitive_desc, pd_deleter_t> pd_;
+    std::unique_ptr<dnnl_primitive, prim_deleter_t> prim_;
+
     bool with_scale_;
     bool is_training_;
     bool with_explicit_mask_;
@@ -86,8 +99,9 @@ struct sdpa_bwd_executable_t : public op_executable_t {
 #endif
 
 private:
-    std::shared_ptr<primitive_desc_t> sdpa_bwd_pd_;
-    std::shared_ptr<primitive_t> sdpa_bwd_prim_;
+    std::unique_ptr<dnnl_primitive_desc, pd_deleter_t> hint_pd_;
+    std::unique_ptr<dnnl_primitive_desc, pd_deleter_t> pd_;
+    std::unique_ptr<dnnl_primitive, prim_deleter_t> prim_;
     bool with_scale_;
     attn_mask_type_t mask_type_;
     bool is_invert_scale_;

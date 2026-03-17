@@ -14,6 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "common/sdpa_test_iface.hpp"
+
 #include "common/c_types_map.hpp"
 #include "common/primitive_desc_iface.hpp"
 #include "common/sdpa_pd.hpp"

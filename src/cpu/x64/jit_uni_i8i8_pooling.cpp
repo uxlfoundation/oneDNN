@@ -975,6 +975,105 @@ void jit_uni_i8i8_pooling_fwd_ker_t<isa>::compute_max_step(
     int iw = jpp.iw;
     int c = jpp.c;
 
+    if (utils::one_of(jpp.src_dt, data_type::s8, data_type::u8)
+            && jpp.dst_dt != jpp.src_dt) {
+        const int num_ll
+                = data_type_size(avg_proc_dt) / data_type_size(jpp.src_dt);
+
+        if (jpp.dst_dt == data_type::u8)
+            mov(reg_tmp, static_cast<int32_t>(0));
+        else if (jpp.src_dt == data_type::s8)
+            mov(reg_tmp,
+                    static_cast<int32_t>(
+                            nstl::numeric_limits<int8_t>::lowest()));
+        else
+            mov(reg_tmp, static_cast<int32_t>(0));
+        uni_vmovq(xmm_tmp, reg_tmp);
+        uni_vpbroadcastd(vreg_tmp, xmm_tmp);
+
+        for (int jj = 0; jj < ur_c; jj++) {
+            for (int ll = 0; ll < num_ll; ll++) {
+                bool masked = jj == ur_c - 1 && c_tail;
+                size_t msk = jpp.tail[ll];
+                if (!(masked && !msk))
+                    uni_vmovups(vreg_dst_s32(jj, ll), vreg_tmp);
+            }
+        }
+
+        mov(aux_reg_src_d, reg_ptr_src_i8);
+        xor_(reg_kd_index, reg_kd_index);
+        L(l_kd);
+        {
+            mov(aux_reg_src_h, aux_reg_src_d);
+            xor_(reg_kh_index, reg_kh_index);
+            L(l_kh);
+            {
+                mov(aux_reg_src_w, aux_reg_src_h);
+                xor_(reg_kw_index, reg_kw_index);
+                L(l_kw);
+                {
+                    for (int jj = 0; jj < ur_c; jj++) {
+                        for (int ll = 0; ll < num_ll; ll++) {
+                            bool masked = jj == ur_c - 1 && c_tail;
+                            size_t msk = jpp.tail[ll];
+                            if (!(masked && !msk)) {
+                                auto offset = (ll * (jpp.c_block / max_num_ll)
+                                                      + jj * jpp.c_block)
+                                        * sizeof_src_dt();
+                                load_src_avg_op(jj, ll, offset, masked, msk);
+
+                                if (utils::one_of(isa, sse41)) {
+                                    pmaxsd(vreg_dst_s32(jj, ll),
+                                            vreg_src_s32(jj, ll));
+                                } else if (utils::one_of(isa, avx2)) {
+                                    vpmaxsd(vreg_dst_s32(jj, ll),
+                                            vreg_dst_s32(jj, ll),
+                                            vreg_src_s32(jj, ll));
+                                } else {
+                                    vpcmpd(k_cmp_mask, vreg_dst_s32(jj, ll),
+                                            vreg_src_s32(jj, ll), _cmp_lt_os);
+                                    vpblendmd(vreg_dst_s32(jj, ll) | k_cmp_mask,
+                                            vreg_dst_s32(jj, ll),
+                                            vreg_src_s32(jj, ll));
+                                }
+                            }
+                        }
+                    }
+                    add(aux_reg_src_w, c * sizeof_src_dt());
+                    inc(reg_kw_index);
+                    cmp(reg_kw_index, reg_kw);
+                    jl(l_kw, T_NEAR);
+                }
+                add(aux_reg_src_h, iw * c * sizeof_src_dt());
+                inc(reg_kh_index);
+                cmp(reg_kh_index, reg_kh);
+                jl(l_kh, T_NEAR);
+            }
+            add(aux_reg_src_d, ih * iw * c * sizeof_src_dt());
+            inc(reg_kd_index);
+            cmp(reg_kd_index, reg_kd);
+            jl(l_kd, T_NEAR);
+        }
+
+        for (int jj = 0; jj < ur_c; jj++) {
+            for (int ll = 0; ll < num_ll; ll++) {
+                const bool masked = jj == ur_c - 1 && c_tail;
+                const size_t msk = jpp.tail[ll];
+                if (!(masked && !msk)) {
+                    if (utils::one_of(
+                                jpp.dst_dt, data_type::f32, data_type::f16))
+                        uni_vcvtdq2ps(
+                                vreg_dst_f32(jj, ll), vreg_dst_s32(jj, ll));
+                    store_dst_avg_op(jj, ll,
+                            (ll * (jpp.c_block / max_num_ll) + jj * jpp.c_block)
+                                    * sizeof_dst_dt(),
+                            masked, msk);
+                }
+            }
+        }
+        return;
+    }
+
     for (int jj = 0; jj < ur_c; jj++)
         uni_vmovups(vreg_dst(jj), vreg_tmp);
 
@@ -1246,10 +1345,19 @@ void jit_uni_i8i8_pooling_fwd_ker_t<avx2>::init_mask() {
     };
 
     uint64_t tail_mask = (1ULL << jpp.c_tail) - 1;
+    const bool max_mixed_dt = jpp.alg == pooling_max
+            && utils::one_of(jpp.src_dt, s8, u8) && jpp.dst_dt != jpp.src_dt;
     switch (jpp.alg) {
         case pooling_max:
-            // For "max" we need mask only in case of non-zero tail
-            if (tail_mask) init(tail_mask);
+            if (max_mixed_dt) {
+                if (utils::one_of(jpp.dst_dt, s8, u8)) {
+                    init(tail_mask ? tail_mask : ~0ULL, tail_mask != 0, true);
+                } else {
+                    if (tail_mask) init(tail_mask);
+                }
+            } else {
+                if (tail_mask) init(tail_mask);
+            }
             break;
         case pooling_avg_include_padding:
         case pooling_avg_exclude_padding:
@@ -1436,6 +1544,9 @@ status_t jit_uni_i8i8_pooling_fwd_ker_t<isa>::init_conf(
     jpp.ur_c_tail = jpp.c_tail != 0;
 
     size_t tail_mask = (1ULL << jpp.c_tail) - 1;
+    const bool max_mixed_dt = jpp.alg == pooling_max
+            && utils::one_of(jpp.src_dt, data_type::s8, data_type::u8)
+            && jpp.dst_dt != jpp.src_dt;
 
     /* If channel_size is bigger than vlen, we can safely assume there is no
      * underflow of memory boundary, so always perform c_tail and save
@@ -1444,10 +1555,21 @@ status_t jit_uni_i8i8_pooling_fwd_ker_t<isa>::init_conf(
 
     switch (jpp.alg) {
         case pooling_max:
-            jpp.tail[0] = tail_mask;
-            jpp.tail[1] = 0;
-            jpp.tail[2] = 0;
-            jpp.tail[3] = 0;
+            if (max_mixed_dt) {
+                const size_t msk_gran = cpu_isa_traits_t<isa>::vlen
+                        / data_type_size(avg_proc_dt);
+                const size_t msk_msk = (1ULL << msk_gran) - 1;
+                size_t m = tail_mask;
+                for (size_t ll = 0; ll < max_num_ll; ll++) {
+                    jpp.tail[ll] = m & msk_msk;
+                    m = m >> msk_gran;
+                }
+            } else {
+                jpp.tail[0] = tail_mask;
+                jpp.tail[1] = 0;
+                jpp.tail[2] = 0;
+                jpp.tail[3] = 0;
+            }
             break;
         case pooling_avg_include_padding:
         case pooling_avg_exclude_padding: {

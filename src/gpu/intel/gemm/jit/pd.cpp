@@ -357,7 +357,8 @@ bool pd_t::zp_ok() {
                 return false;
             // Weights zp can only be performantly enabled during upconversion
             // for cases that perform decompression.
-            if (!wei_decomp_ && !a_int4 && a_scales_2d()) return false;
+            if (b_int4 && !wei_decomp_ && !a_int4 && a_scales_2d())
+                return false;
         }
     }
 

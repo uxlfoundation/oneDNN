@@ -1298,6 +1298,12 @@ bool get_lnorm_dt(const deserialized_op_t &base_op_ref, dnnl_data_type_t &dt) {
     return true;
 }
 
+bool get_lnorm_eps(const deserialized_op_t &base_op_ref, float &eps) {
+    auto ret = base_op_ref.get_attr_f32(eps, "epsilon");
+    if (!ret) { eps = 1e-5f; }
+    return true;
+}
+
 bool get_lnorm_flags(
         const deserialized_op_t &base_op_ref, ::lnorm::flags_t &flags) {
     bool use_affine = false;
@@ -1371,6 +1377,8 @@ bool get_lnorm_flags(
             lnorm::get_lnorm_flags(base_op_ref, op_setting.flags.front()), res);
     DNN_GRAPH_CHECK_SETTINGS(
             get_graph_attr(base_op_ref, op_setting.fpmath_mode.front()), res);
+    DNN_GRAPH_CHECK_SETTINGS(
+            lnorm::get_lnorm_eps(base_op_ref, op_setting.eps.front()), res);
 
     return op_setting;
 }

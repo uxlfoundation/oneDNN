@@ -38,6 +38,9 @@ genindex_executable_t::genindex_executable_t(std::shared_ptr<op_t> &op,
         output_dims_[i] = output_lt.dims[i];
         output_strides_[i] = output_lt.layout.strides[i];
     }
+    info_ = std::string(dnnl_engine_kind2str(
+                    static_cast<dnnl_engine_kind_t>(p_engine.get_kind())))
+            + "," + op->str();
 #if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
         && DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
     if (p_engine.get_kind() == engine::kind::gpu) {
@@ -59,7 +62,7 @@ genindex_executable_t::genindex_executable_t(std::shared_ptr<op_t> &op,
 #endif
 }
 
-void genindex_executable_t::execute(const stream &stream,
+void genindex_executable_t::execute_impl(const stream &stream,
         const std::unordered_map<int, memory> &args) const {
     const auto &it_dst = args.find(DNNL_ARG_DST);
     if (it_dst == args.end()) return;
@@ -79,8 +82,24 @@ void genindex_executable_t::execute(const stream &stream,
     stream.get()->after_exec_hook();
 }
 
+void genindex_executable_t::execute(const stream &stream,
+        const std::unordered_map<int, memory> &args) const {
+    if (get_verbose(dnnl::impl::verbose_t::exec_profile,
+                dnnl::impl::component_t::graph)) {
+        stream.get()->wait();
+        double start_ms = dnnl::impl::get_msec();
+        execute_impl(stream, args);
+        stream.get()->wait();
+        double duration_ms = dnnl::impl::get_msec() - start_ms;
+        VPROF(start_ms, graph, exec, VERBOSE_profile, info_.c_str(),
+                duration_ms);
+    } else {
+        execute_impl(stream, args);
+    }
+}
+
 #ifdef DNNL_WITH_SYCL
-::sycl::event genindex_executable_t::execute_sycl(const stream &stream,
+::sycl::event genindex_executable_t::execute_sycl_impl(const stream &stream,
         const std::unordered_map<int, memory> &args,
         const std::vector<::sycl::event> &deps) const {
     if (stream.get_engine().get_kind() == engine::kind::cpu) {
@@ -127,10 +146,28 @@ void genindex_executable_t::execute(const stream &stream,
     throw std::runtime_error("Unimplement");
 #endif
 }
+
+::sycl::event genindex_executable_t::execute_sycl(const stream &stream,
+        const std::unordered_map<int, memory> &args,
+        const std::vector<::sycl::event> &deps) const {
+    if (get_verbose(dnnl::impl::verbose_t::exec_profile,
+                dnnl::impl::component_t::graph)) {
+        stream.get()->wait();
+        double start_ms = dnnl::impl::get_msec();
+        execute_sycl_impl(stream, args, deps);
+        stream.get()->wait();
+        double duration_ms = dnnl::impl::get_msec() - start_ms;
+        VPROF(start_ms, graph, exec, VERBOSE_profile, info_.c_str(),
+                duration_ms);
+        return {}; // no event returned in profiling mode
+    } else {
+        return execute_sycl_impl(stream, args, deps);
+    }
+}
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-cl_event genindex_executable_t::execute_ocl(const stream &stream,
+cl_event genindex_executable_t::execute_ocl_impl(const stream &stream,
         const std::unordered_map<int, memory> &args,
         const std::vector<cl_event> &deps) const {
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
@@ -173,6 +210,24 @@ cl_event genindex_executable_t::execute_ocl(const stream &stream,
             "under OCL runtime ");
     throw std::runtime_error("Unimplement");
 #endif
+}
+
+cl_event genindex_executable_t::execute_ocl(const stream &stream,
+        const std::unordered_map<int, memory> &args,
+        const std::vector<cl_event> &deps) const {
+    if (get_verbose(dnnl::impl::verbose_t::exec_profile,
+                dnnl::impl::component_t::graph)) {
+        stream.get()->wait();
+        double start_ms = dnnl::impl::get_msec();
+        execute_ocl_impl(stream, args, deps);
+        stream.get()->wait();
+        double duration_ms = dnnl::impl::get_msec() - start_ms;
+        VPROF(start_ms, graph, exec, VERBOSE_profile, info_.c_str(),
+                duration_ms);
+        return nullptr; // no event returned in profiling mode
+    } else {
+        return execute_ocl_impl(stream, args, deps);
+    }
 }
 #endif
 

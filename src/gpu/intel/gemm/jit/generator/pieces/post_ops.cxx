@@ -22,10 +22,21 @@
 #include "ngen_object_helpers.hpp"
 #include "state_utils.hpp"
 
+#include <cstdlib>
+
 GEMMSTONE_NAMESPACE_START
 
 using namespace ngen;
 using std::vector;
+
+namespace {
+
+bool binaryPostPrefetchEnabled() {
+    const char *env = std::getenv("BINARY_POST_PREFETCH");
+    return (env != nullptr) && (env[0] == '1') && (env[1] == '\0');
+}
+
+}
 
 
 // Perform alpha scaling and update problem to reflect it.
@@ -308,6 +319,20 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
     auto coc  = column ? strategy.unroll[LoopN] : 1;
     auto remR = row    && !CO_strategy.padded && strategy.remHandling[LoopM] != RemainderHandling::Ignore;
     auto remC = column && !CO_strategy.padded && strategy.remHandling[LoopN] != RemainderHandling::Ignore;
+
+    // Experimental binary post-op prefetch path.
+    // Keep this path conservative: prefetch only full-tile cases (no m/n remainder masking).
+    if (binaryPostPrefetchEnabled() && CO_strategy.newDP && !remR && !remC) {
+        auto CO_prefetch_strategy = CO_strategy;
+        CO_prefetch_strategy.prefetch = true;
+
+        RegisterLayout CO_prefetch_layout(hw, Tco, cor, coc, CO, CO_prefetch_strategy, false, false, false);
+        std::vector<GRFRange> CO_prefetch_addrs;
+        allocAddrRegs(CO_prefetch_addrs, CO_prefetch_layout, state);
+        setupAddr(CO_prefetch_addrs, base, CO_prefetch_layout, ld, strategy, state);
+        prefetchMatrix(CO_prefetch_layout, CO_prefetch_addrs, strategy, state);
+        safeReleaseRanges(CO_prefetch_addrs, state);
+    }
 
     RegisterLayout CO_layout(hw, Tco, cor, coc, CO, CO_strategy, remR, remC, false);
 

@@ -1613,8 +1613,8 @@ std::string init_info_sum(const engine_t *e, const pd_t *pd) {
 template <typename pd_t>
 std::string init_info_sdpa(const engine_t *e, const pd_t *pd) {
     stringstream_t ss;
-    ss << e << "," << pd->kind() << "," << pd->name() << "," << prop_kind::undef
-       << ",";
+    ss << e << "," << pd->kind() << "," << pd->name() << ","
+       << pd->desc()->prop_kind << ",";
 
     const sdpa_desc_t *desc = pd->desc();
     ss << md2fmt_str(

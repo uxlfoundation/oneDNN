@@ -772,12 +772,10 @@ status_t micro_bwd_t::init(impl::engine_t *engine) {
     preprocess_ = kernels[0];
     kernel_ = kernels[1];
     postprocess_ = kernels[2];
-    zero_ = kernels[3];
 
     if (!preprocess_) return status::runtime_error;
     if (!kernel_) return status::runtime_error;
     if (!postprocess_) return status::runtime_error;
-    if (!zero_) return status::runtime_error;
     return status::success;
 }
 
@@ -1002,11 +1000,6 @@ status_t micro_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
         conf.block_dK = can_block_load_k && !conf.transpose_k;
         conf.block_dV = (ldv % 4 == 0) && (dv_full);
     }
-
-    //TODO: remove or add prefetching to BWD
-    conf.prefetch_mask = conf.prefetch_k0 = conf.prefetch_k = conf.prefetch_v
-            = conf.prefetch_remainder = false;
-    conf.prefetch_d_max = 0;
 
     return status::success;
 }
@@ -1286,13 +1279,6 @@ status_t micro_bwd_params_t::get_kernel_ctx(
     kernel_ctx.define_int("BLOCK_K", block_k);
     kernel_ctx.define_int("BLOCK_DK", block_dK);
     kernel_ctx.define_int("BLOCK_DV", block_dV);
-
-    kernel_ctx.define_int("PREFETCH_MASK", prefetch_mask);
-    kernel_ctx.define_int("PREFETCH_K0", prefetch_k0);
-    kernel_ctx.define_int("PREFETCH_K", prefetch_k);
-    kernel_ctx.define_int("PREFETCH_V", prefetch_v);
-    kernel_ctx.define_int("PREFETCH_REMAINDER", prefetch_remainder);
-    kernel_ctx.define_int("PREFETCH_D_MAX", prefetch_d_max);
 
     kernel_ctx.define_int("USE_SYSTOLIC_UKERNEL", use_systolic_ukernel);
 
@@ -1717,38 +1703,39 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     // zero f32 intermediates before atomic adds in the main kernel
     // dQ always needs atomics, dK/dV only for GQA cases
     {
+        auto compute_stream = utils::downcast<intel::stream_t *>(ctx.stream());
+        auto &fill_deps = compute_stream->ctx().get_deps();
+
+        const dim_t batch = pd()->dst_md()->dims[0];
         const dim_t num_kv_heads = d->num_kv_heads();
         const dim_t num_q_heads = d->num_q_heads();
-        static constexpr size_t lws_zero = 256;
 
-        auto dispatch_zero
-                = [&](const memory_storage_t &buf, dim_t count,
-                          const offset_t &offs, dim_t num_heads) -> status_t {
-            compute::kernel_arg_list_t args;
-            args.append(buf);
-            args.append((int)count);
-            append_offs(args, offs);
-
-            compute::range_t lws_z = {(size_t)lws_zero, 1, 1};
-            compute::range_t gws_z = lws_z;
-            gws_z[0] *= utils::div_up(count, lws_zero);
-            gws_z[1] *= num_heads;
-            gws_z[2] *= pd()->desc()->batch();
-            return parallel_for(
-                    ctx, compute::nd_range_t(gws_z, lws_z), zero_, args);
+        auto zero_fill
+                = [&](const memory_storage_t &buf, size_t bytes) -> status_t {
+            return compute_stream->fill(buf, 0, bytes, fill_deps, fill_deps);
         };
 
         // always zero dQ
         auto &dQ_buf = needs_intermediate_dQ ? *diff_q_scratch : diff_q;
-        CHECK(dispatch_zero(dQ_buf, Q * D, qry_off, num_q_heads));
+        const size_t dQ_bytes = needs_intermediate_dQ
+                ? size_t(batch * num_q_heads * Q * D) * sizeof(float)
+                : diff_qry_mdw.size();
+        CHECK(zero_fill(dQ_buf, dQ_bytes));
 
         // zero dK/dV for GQA cases
         if (needs_zero_dKV) {
             auto &dK_buf = needs_intermediate_dKV ? *diff_k_scratch : diff_k;
             auto &dV_buf = needs_intermediate_dKV ? *diff_v_scratch : diff_v;
-
-            CHECK(dispatch_zero(dK_buf, K * D, key_off, num_kv_heads));
-            CHECK(dispatch_zero(dV_buf, K * D, val_off, num_kv_heads));
+            const size_t scratch_kv_bytes
+                    = size_t(batch * num_kv_heads * K * D) * sizeof(float);
+            const size_t dK_bytes = needs_intermediate_dKV
+                    ? scratch_kv_bytes
+                    : diff_key_mdw.size();
+            const size_t dV_bytes = needs_intermediate_dKV
+                    ? scratch_kv_bytes
+                    : diff_val_mdw.size();
+            CHECK(zero_fill(dK_buf, dK_bytes));
+            CHECK(zero_fill(dV_buf, dV_bytes));
         }
     }
 

@@ -102,8 +102,8 @@ DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(micro_fwd_params_t);
 struct micro_bwd_params_t : trivially_serializable_t<micro_bwd_params_t> {
 
     const std::vector<const char *> &get_kernel_names() const {
-        static const std::vector<const char *> kernel_names_bwd = {
-                "preprocess_Di", "micro_sdpa_bwd", "postprocess_dQ", "zero_dQ"};
+        static const std::vector<const char *> kernel_names_bwd
+                = {"preprocess_Di", "micro_sdpa_bwd", "postprocess_dQ"};
         return kernel_names_bwd;
     }
 
@@ -139,15 +139,11 @@ struct micro_bwd_params_t : trivially_serializable_t<micro_bwd_params_t> {
 
     bool d_full, arch_gte_hpc;
     bool block_k, block_dK, block_dV;
-    bool prefetch_mask, prefetch_k0, prefetch_k, prefetch_v,
-            prefetch_remainder; // TODO: prefetch for bwd
     bool remainder_q;
     bool use_systolic_ukernel;
     bool with_dS;
     bool require_stateless_addressing;
-    uint8_t padding2[2] = {0};
-    int prefetch_d_max;
-    uint8_t padding3[4] = {0};
+    uint8_t padding2[7] = {0};
 
     micro_bwd_ukernel_params_t ukernel_config;
 };
@@ -546,7 +542,7 @@ private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     status_t execute_backward(const exec_ctx_t &ctx) const;
 
-    compute::kernel_t kernel_, preprocess_, postprocess_, zero_;
+    compute::kernel_t kernel_, preprocess_, postprocess_;
 };
 
 } // namespace sdpa

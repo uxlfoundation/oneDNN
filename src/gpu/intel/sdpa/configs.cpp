@@ -696,9 +696,15 @@ static std::vector<bwd_config_record_t> sorted_bwd_configs = []() {
     // clang-format off
     std::vector<bwd_config_record_t> configs = {
         // xe_hpc
-        {{compute::gpu_arch_t::xe_hpc, 32},  { 64, 32, 16, 16, 16, 32, 2, 8, 2, 8, 2, 8 }},
-        {{compute::gpu_arch_t::xe_hpc, 64},  { 32, 16, 16, 16, 32, 32, 1, 8, 4, 2, 2, 4 }},
-        {{compute::gpu_arch_t::xe_hpc, 128}, { 16, 32, 16, 16, 32, 32, 4, 8, 8, 4, 4, 8 }},
+        {{compute::gpu_arch_t::xe_hpc, 32},  { 16, 16, 16, 16, 16, 16, 2, 16, 2, 2, 2, 16 }},
+        {{compute::gpu_arch_t::xe_hpc, 32, 128},  { 16, 16, 16, 16, 16, 16, 2, 4, 2, 2, 2, 4 }},
+
+        {{compute::gpu_arch_t::xe_hpc, 64},  { 16, 32, 16, 16, 32, 32, 2, 16, 4, 2, 2, 16 }},
+        {{compute::gpu_arch_t::xe_hpc, 64, 64},   { 16, 16, 16, 16, 16, 32, 2, 4, 4, 2, 4, 2 }},
+        {{compute::gpu_arch_t::xe_hpc, 64, 77},   { 16, 16, 16, 16, 32, 32, 1, 8, 4, 1, 2, 4 }},
+        {{compute::gpu_arch_t::xe_hpc, 64, 128},  { 16, 16, 16, 16, 16, 16, 4, 4, 4, 4, 4, 4 }},
+
+        {{compute::gpu_arch_t::xe_hpc, 128}, { 16, 16, 16, 16, 32, 32, 2, 8, 8, 2, 4, 4 }},
         //{{compute::gpu_arch_t::xe_hpc, 256}, {  16, 32, 16, 16, 32, 32, 4, 8, 8, 4, 4, 8 }},
 
         {{compute::gpu_arch_t::xe_hpc, 32, second_token},  { 16, 16, 16, 16, 32, 16, 1, 2, 2, 1, 1, 2 }},

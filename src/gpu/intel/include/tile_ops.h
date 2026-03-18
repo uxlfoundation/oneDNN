@@ -1297,4 +1297,33 @@ __attribute__((overloadable)) void cooperative_prefetch_2d_internal(
     }
 }
 
+// inplace load-add-store to SLM, avoids allocating a full intermediate
+// accumulator tile.
+#define DECLARE_2D_TILE_SLM_ADD(tile_type, element_type, sg, br, bc, nbr, nbc) \
+    __attribute__((overloadable)) inline void tile_slm_add(tile_type addend, \
+            local element_type *ptr, int ld, int offset_r, int offset_c) { \
+        ptr += ld * offset_c + offset_r; \
+        _Pragma("unroll") for (int j = 0; j < (bc) * (nbc); j++, ptr += ld) { \
+            _Pragma("unroll") for (int i0 = 0; i0 < (br) * (nbr); \
+                                   i0 += (sg)) { \
+                int i = i0 + get_sub_group_local_id(); \
+                ptr[i] += tile_access(addend, i0, j, sg, br, bc, nbr); \
+            } \
+        } \
+    }
+
+#define DECLARE_2D_TILE_SLM_ADD_T( \
+        tile_type, element_type, sg, br, bc, nbr, nbc) \
+    __attribute__((overloadable)) inline void tile_slm_add_t(tile_type addend, \
+            local element_type *ptr, int ld, int offset_r, int offset_c) { \
+        ptr += ld * offset_r + offset_c; \
+        _Pragma("unroll") for (int j = 0; j < (bc) * (nbc); j++, ptr++) { \
+            _Pragma("unroll") for (int i0 = 0; i0 < (br) * (nbr); \
+                                   i0 += (sg)) { \
+                int i = ld * (i0 + get_sub_group_local_id()); \
+                ptr[i] += tile_access(addend, i0, j, sg, br, bc, nbr); \
+            } \
+        } \
+    }
+
 #endif

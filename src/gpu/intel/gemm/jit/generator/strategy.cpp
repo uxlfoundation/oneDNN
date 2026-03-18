@@ -23,9 +23,124 @@
 #include "pieces/layout_utils.hpp"
 #include "pieces/ngen_object_helpers.hpp"
 
+#include <cstdlib>
+#include <iostream>
+#include <sstream>
+
 GEMMSTONE_NAMESPACE_START
 
 using namespace ngen;
+
+namespace {
+
+bool dumpMatrixAccessEnabled() {
+    const char *env = std::getenv("DUMP_MATRIX_ACCESS");
+    return (env != nullptr) && (env[0] == '1') && (env[1] == '\0');
+}
+
+const char *toString(AccessType type) {
+    switch (type) {
+        case AccessType::Scattered: return "Scattered";
+        case AccessType::ChannelScattered: return "ChannelScattered";
+        case AccessType::Block: return "Block";
+        case AccessType::PseudoBlock: return "PseudoBlock";
+        case AccessType::Block2D: return "Block2D";
+        case AccessType::Block2DTranspose: return "Block2DTranspose";
+        case AccessType::Block2DVNNI: return "Block2DVNNI";
+        case AccessType::CacheLine: return "CacheLine";
+    }
+    return "Unknown";
+}
+
+const char *toString(ScatterSIMD smode) {
+    switch (smode) {
+        case ScatterSIMD::Default: return "Default";
+        case ScatterSIMD::Wide: return "Wide";
+        case ScatterSIMD::Narrow: return "Narrow";
+    }
+    return "Unknown";
+}
+
+const char *toString(ngen::AddressModel model) {
+    switch (model) {
+        case ngen::AddressModel::ModelA32: return "A32";
+        case ngen::AddressModel::ModelA64: return "A64";
+        case ngen::AddressModel::ModelScratch: return "Scratch";
+        case ngen::AddressModel::ModelSS: return "SS";
+        case ngen::AddressModel::ModelBSS: return "BSS";
+        case ngen::AddressModel::ModelCC: return "CC";
+        case ngen::AddressModel::ModelSC: return "SC";
+        case ngen::AddressModel::ModelBTS: return "BTS";
+        case ngen::AddressModel::ModelSLM: return "SLM";
+        case ngen::AddressModel::ModelA64A32U: return "A64A32U";
+        case ngen::AddressModel::ModelA64A32S: return "A64A32S";
+        case ngen::AddressModel::ModelInvalid: return "Invalid";
+    }
+    return "Unknown";
+}
+
+std::string matrixAccessToString(const MatrixAddressingStrategy &s) {
+    std::ostringstream oss;
+    oss << "  base=" << toString(s.base.getModel()) << '\n'
+        << "  accessType=" << toString(s.accessType) << '\n';
+
+    if (isTransposing(s.accessType))
+        oss << "  Transpose ";
+    else
+        oss << "  ";
+
+    oss << "tile=" << int(s.tileR) << "x" << int(s.tileC) << '\n'
+        << "  smode=" << toString(s.smode) << '\n'
+        << "  flags{"
+        << "padded=" << int(s.padded)
+        << ",atomic=" << int(s.atomic)
+        << ",address2D=" << int(s.address2D)
+        << ",prefetch=" << int(s.prefetch)
+        << ",pfLoad=" << int(s.pfLoad)
+        << ",newDP=" << int(s.newDP)
+        << ",dpasw=" << int(s.dpasw)
+        << ",noExtraPad=" << int(s.noExtraPad)
+        << ",noCoalesce=" << int(s.noCoalesce)
+        << "}" << '\n'
+        << "  cachingR=" << int(s.cachingR) << '\n'
+        << "  cachingW=" << int(s.cachingW);
+    return oss.str();
+}
+
+void dumpFinalMatrixAccessStrategies(const GEMMStrategy &strategy) {
+    if (!dumpMatrixAccessEnabled()) return;
+
+    auto dumpOne = [](const char *name, const MatrixAddressingStrategy &s) {
+        std::cout << "Strategy for accessing a matrix from memory [" << name
+                  << "]:" << std::endl
+                  << matrixAccessToString(s) << std::endl;
+    };
+
+    dumpOne("A", strategy.A);
+    dumpOne("B", strategy.B);
+    dumpOne("C", strategy.C);
+    dumpOne("AO", strategy.AO);
+    dumpOne("BO", strategy.BO);
+    dumpOne("CO", strategy.CO);
+    dumpOne("A_scale", strategy.A_scale);
+    dumpOne("B_scale", strategy.B_scale);
+    dumpOne("Ag", strategy.Ag);
+    dumpOne("Bg", strategy.Bg);
+    dumpOne("A_prefetch", strategy.A_prefetch);
+    dumpOne("B_prefetch", strategy.B_prefetch);
+    dumpOne("C_prefetch", strategy.C_prefetch);
+    dumpOne("AB_prefetchL3", strategy.AB_prefetchL3);
+
+    for (size_t i = 0; i < strategy.binary.size(); i++) {
+        std::ostringstream name;
+        name << "post_op_binary[" << i << "]";
+        std::cout << "Strategy for accessing a matrix from memory ["
+                  << name.str() << "]: "
+                  << matrixAccessToString(strategy.binary[i]) << std::endl;
+    }
+}
+
+} // namespace
 
 
 /* CommonStrategy member functions */
@@ -488,6 +603,9 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
         activeThreads = wg[LoopM] * wg[LoopN] * wg[LoopK] * (splitCopy ? 2 : 1);
 
     CommonStrategy::preflight(hw, problem);
+
+    // Dump final matrix addressing strategies after all preflight updates.
+    dumpFinalMatrixAccessStrategies(*this);
 }
 
 // Reduce register pressure. Returns true if successful.

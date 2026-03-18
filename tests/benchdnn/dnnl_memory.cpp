@@ -659,7 +659,8 @@ void dnn_mem_t::memset(int value, size_t size, int buffer_index) const {
 #if (DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
         && DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL)
 extern "C" dnnl_status_t dnnl_impl_gpu_fill_random(dnnl_stream_t stream,
-        size_t size, dnnl_memory_t memory, int buffer_index, uint32_t seed);
+        size_t size, dnnl_memory_t memory, int buffer_index, uint32_t seed,
+        dnnl_data_type_t dt);
 
 // Fills buffer with pseudo-random data generated directly on the device.
 // This mitigates GPU driver data compression, which could otherwise yield
@@ -672,7 +673,8 @@ int dnn_mem_t::gpu_fill_random(size_t size, int buffer_index) const {
     static constexpr uint32_t seed = 123456789;
     auto mem = m_padded_ ? m_padded_ : m_;
     stream_t stream(engine_);
-    DNN_SAFE(dnnl_impl_gpu_fill_random(stream, size, mem, buffer_index, seed),
+    DNN_SAFE(dnnl_impl_gpu_fill_random(
+                     stream, size, mem, buffer_index, seed, dt(buffer_index)),
             WARN);
     DNN_SAFE(dnnl_stream_wait(stream), WARN);
     return OK;

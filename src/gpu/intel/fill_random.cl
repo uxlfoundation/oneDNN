@@ -22,13 +22,12 @@
 #define BYTES_PER_SG (SG_SIZE * 4 * 4)
 
 __attribute__((intel_reqd_sub_group_size(SG_SIZE))) __kernel void fill_random(
-        __global uchar *buf, uint seed, ulong byte_count) {
+        __global uchar *buf, uint seed, ulong byte_count, uint mask) {
     const ulong base = (get_global_id(0) / SG_SIZE) * BYTES_PER_SG;
     if (base >= byte_count) return;
 
     const uint b = (uint)get_global_id(0) * 4;
-    uchar16 rnd
-            = as_uchar16(philox_4x32_vec4(b, b ^ seed) & (uint4)(0xEEEEEEEEu));
+    uchar16 rnd = as_uchar16(philox_4x32_vec4(b, b ^ seed) & (uint4)(mask));
 
     if (base + BYTES_PER_SG <= byte_count) {
         intel_sub_group_block_write_uc16(buf + base, rnd);

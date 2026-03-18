@@ -16,28 +16,23 @@
 
 #include "gpu/intel/include/philox.h"
 
-// Fills a buffer with pseudo-random data using Philox RNG and subgroup block
-// writes. Each subgroup (16 work-items) writes 256 bytes.
-#define SG_SIZE 16
-#define BYTES_PER_SG (SG_SIZE * 4 * 4)
+// Fills a buffer with pseudo-random data using Philox RNG.
+// Each work-item generates 4 × uint32 (16 bytes) via vstore4.
+// The mask clears exponent LSBs to prevent NaN/Inf for FP types.
+__kernel void fill_random(
+        __global uint *buf, uint seed, ulong byte_count, uint mask) {
+    const ulong start = (ulong)get_global_id(0) * 16;
+    if (start >= byte_count) return;
 
-__attribute__((intel_reqd_sub_group_size(SG_SIZE))) __kernel void fill_random(
-        __global uchar *buf, uint seed, ulong byte_count) {
-    const ulong base = (get_global_id(0) / SG_SIZE) * BYTES_PER_SG;
-    if (base >= byte_count) return;
+    uint b = (uint)(start >> 2);
+    uint4 rnd = philox_4x32_vec4(b, b ^ seed) & (uint4)(mask);
 
-    const uint b = (uint)get_global_id(0) * 4;
-    uchar16 rnd
-            = as_uchar16(philox_4x32_vec4(b, b ^ seed) & (uint4)(0xEEEEEEEEu));
-
-    if (base + BYTES_PER_SG <= byte_count) {
-        intel_sub_group_block_write_uc16(buf + base, rnd);
-        return;
-    }
-
-    const uint lid = get_sub_group_local_id();
-    unroll_for(int i = 0; i < 16; i++) {
-        ulong off = base + lid + (ulong)i * SG_SIZE;
-        if (off < byte_count) buf[off] = rnd[i];
+    if (start + 16 <= byte_count) {
+        vstore4(rnd, get_global_id(0), buf);
+    } else {
+        __global uchar *p = (__global uchar *)buf;
+        uchar16 bytes = as_uchar16(rnd);
+        for (ulong i = 0; i < byte_count - start; i++)
+            p[start + i] = bytes[i];
     }
 }

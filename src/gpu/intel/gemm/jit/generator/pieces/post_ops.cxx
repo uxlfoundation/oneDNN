@@ -109,7 +109,7 @@ void Generator<hw>::gemmBetaScale(const GEMMProblem &problem, const GEMMStrategy
 template <HW hw>
 void Generator<hw>::binaryOp(BinaryOp op, int simd, const RegData &dst, const RegData &src0, const RegData &src1, CommonState &state)
 {
-    VDEBUGINFO(4, primitive, postops, "MY: Generator<hw>::binaryOp");
+    //VDEBUGINFO(4, primitive, postops, "MY: Generator<hw>::binaryOp");
     const char *add_post_env = std::getenv("ADD_POST");
     const bool do_add_post = !(add_post_env && std::string(add_post_env) == "0");
     switch (op) {
@@ -162,8 +162,7 @@ template <HW hw>
 void Generator<hw>::gemmScalarBinaryOpC(BinaryOp op, Type Tco, const Subregister &scalar,
                                         const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
-    VDEBUGINFO(4, primitive, postops,
-            "MY: Generator<hw>::gemmScalarBinaryOpC");
+    VDEBUGINFO(4, primitive, postops,"MY: Generator<hw>::gemmScalarBinaryOpC");
     auto Tacc = state.Tacc;
     auto offsetTc = scalar;
 
@@ -193,8 +192,7 @@ void Generator<hw>::gemmVectorBinaryOpC(BinaryOp op, bool column, const GRFMulti
                                         const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state,
                                         Type Tco, RegisterLayout CO_layout, int y0, int y1)
 {
-    VDEBUGINFO(4, primitive, postops,
-            "MY: Generator<hw>::gemmVectorBinaryOpC");
+    //VDEBUGINFO(4, primitive, postops,"MY: Generator<hw>::gemmVectorBinaryOpC");
     auto Tacc = state.Tacc;
     auto ne = elementsPerGRF(hw, Tacc);
     auto globalCM = state.C_layout.colMajor();

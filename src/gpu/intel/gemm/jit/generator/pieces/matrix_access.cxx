@@ -53,7 +53,7 @@ template <HW hw>
 void Generator<hw>::loadMatrix(const GRFMultirange &dest, const RegisterLayout &layout, const vector<GRFRange> &addrs,
                                const CommonStrategy &strategy, CommonState &state, bool readCheck, const char *matrixTag)
 {
-    VDEBUGINFO(4, primitive, postops, "MY: loadMatrix tag=%s blocks=%d", matrixTag, layout.blocks());
+    //VDEBUGINFO(4, primitive, postops, "MY: loadMatrix tag=%s blocks=%d", matrixTag, layout.blocks());
     if (layout.empty()) return;
 
     auto &astrategy = layout.addressingStrategy();
@@ -81,7 +81,7 @@ void Generator<hw>::loadMatrixBlock(const Register &dest, const RegisterBlock &b
                                     const CommonStrategy &strategy, CommonState &state,
                                     bool readCheck, bool series, const char *matrixTag)
 {
-    VDEBUGINFO(4, primitive, postops, "MY: loadMatrixBlock tag=%s simdSize=%d", matrixTag, block.simdSize);
+    //VDEBUGINFO(4, primitive, postops, "MY: loadMatrixBlock tag=%s simdSize=%d", matrixTag, block.simdSize);
 
     const char *load_post_env = std::getenv("LOAD_POST");
     const bool do_load_post = !(load_post_env && !std::strcmp(load_post_env, "0"));

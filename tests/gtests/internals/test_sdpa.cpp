@@ -1197,7 +1197,7 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
             = dnnl::reorder::primitive_desc(eng, score_f16_md, eng, score_md);
     auto f16_to_f32_prim = dnnl::reorder(f16_to_f32_pd);
 
-    // binary primitive for scaling (f32)
+    // binary primitive for scaling
     primitive_attr binary_attr;
     auto scale_algo
             = invert_scale ? algorithm::binary_div : algorithm::binary_mul;
@@ -1619,31 +1619,38 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
 
     ///////// intermediate softmax(QK)
 
-    // init memory for softmax gradients
-    memory::desc diff_score_md(score_sz, p.dt.dt, memory::format_tag::abcde);
-    memory diff_score_mem(diff_score_md, eng);
+    // compute softmax backward and scale in f32 to match kernel/graph
+    memory::desc diff_score_f32_md(
+            score_sz, mdt::f32, memory::format_tag::abcde);
+    memory diff_score_f32_mem(diff_score_f32_md, eng);
 
     // backwards pass gradient of softmax
     softmax_backward::primitive_desc softmax_bwd_pd(eng,
-            algorithm::softmax_accurate, diff_score_md, diff_score2_md,
+            algorithm::softmax_accurate, diff_score_f32_md, diff_score2_md,
             score_md, 4, softmax_fwd_pd);
     softmax_backward softmax_bwd(softmax_bwd_pd);
     softmax_bwd.execute(strm,
             {{DNNL_ARG_DST, score2}, {DNNL_ARG_DIFF_DST, diff_score2_mem},
-                    {DNNL_ARG_DIFF_SRC, diff_score_mem}});
+                    {DNNL_ARG_DIFF_SRC, diff_score_f32_mem}});
 
     binary scale_bwd_prim;
     if (scale_dt != mdt::undef) {
         auto scale_algo_bwd
                 = invert_scale ? algorithm::binary_div : algorithm::binary_mul;
         auto scale_bwd_pd = binary::primitive_desc(eng, scale_algo_bwd,
-                diff_score_md, scale_f32_bwd.get_desc(), diff_score_md);
+                diff_score_f32_md, scale_f32_bwd.get_desc(), diff_score_f32_md);
         scale_bwd_prim = binary(scale_bwd_pd);
         scale_bwd_prim.execute(strm,
-                {{DNNL_ARG_SRC_0, diff_score_mem},
+                {{DNNL_ARG_SRC_0, diff_score_f32_mem},
                         {DNNL_ARG_SRC_1, scale_f32_bwd},
-                        {DNNL_ARG_DST, diff_score_mem}});
+                        {DNNL_ARG_DST, diff_score_f32_mem}});
     }
+
+    // downcast dS from f32 to p.dt.dt for dQ/dK matmuls
+    memory::desc diff_score_md(score_sz, p.dt.dt, memory::format_tag::abcde);
+    memory diff_score_mem(diff_score_md, eng);
+    dnnl::reorder diff_score_cast(diff_score_f32_mem, diff_score_mem);
+    diff_score_cast.execute(strm, diff_score_f32_mem, diff_score_mem);
 
     strm.wait();
     // print softmax gradient
@@ -1719,14 +1726,16 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
 
         softmax_bwd.execute(strm,
                 {{DNNL_ARG_DST, score2}, {DNNL_ARG_DIFF_DST, diff_score2_mem},
-                        {DNNL_ARG_DIFF_SRC, diff_score_mem}});
+                        {DNNL_ARG_DIFF_SRC, diff_score_f32_mem}});
 
         if (scale_dt != mdt::undef) {
             scale_bwd_prim.execute(strm,
-                    {{DNNL_ARG_SRC_0, diff_score_mem},
+                    {{DNNL_ARG_SRC_0, diff_score_f32_mem},
                             {DNNL_ARG_SRC_1, scale_f32_bwd},
-                            {DNNL_ARG_DST, diff_score_mem}});
+                            {DNNL_ARG_DST, diff_score_f32_mem}});
         }
+
+        diff_score_cast.execute(strm, diff_score_f32_mem, diff_score_mem);
 
         mm_bwd_dq.execute(strm,
                 {{DNNL_ARG_SRC, diff_score_mem},
@@ -2208,12 +2217,16 @@ public:
                 t.m_diff_key, t.m_diff_value);
 
         float max_diff_threshold = 0.3f;
+        // backward thresholds are higher than forward due to chained matmuls
+        // softmax backward potential catastrophic cancellation S*(dP - Di)
+        // and atomic adds across dQ accumulation
         float fthreshold = 0.f;
-        if (p.dt.dt == mdt::bf16 || p.dt.dt == mdt::f16) {
-            //fthreshold = 0.0079f; //todo: correct threshold or better values
+        if (p.dt.dt == mdt::bf16) {
             fthreshold = 0.1f;
+        } else if (p.dt.dt == mdt::f16) {
+            fthreshold = 0.035f;
         } else {
-            fthreshold = 0.001466f;
+            fthreshold = 0.002f;
         }
 
         strm.wait();

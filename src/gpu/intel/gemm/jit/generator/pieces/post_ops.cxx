@@ -336,6 +336,14 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
         auto CO_prefetch_strategy = CO_strategy;
         CO_prefetch_strategy.prefetch = true;
 
+        // Override caching policy for prefetch. Default (inherited from CO_strategy) is L1C_L3C.
+        // BINARY_POST_PREFETCH_L3ONLY=1 L1UC_L3C (bypass L1, fill only L3).
+        {
+            const char *env_l3 = std::getenv("BINARY_POST_PREFETCH_L3ONLY");
+            if (env_l3 != nullptr && env_l3[0] == '1' && env_l3[1] == '\0')
+                CO_prefetch_strategy.cachingR = CacheSettingsLSC::L1UC_L3C;
+        }
+
         RegisterLayout CO_prefetch_layout(hw, Tco, cor, coc, CO, CO_prefetch_strategy, false, false, false);
         std::vector<GRFRange> CO_prefetch_addrs;
         allocAddrRegs(CO_prefetch_addrs, CO_prefetch_layout, state);

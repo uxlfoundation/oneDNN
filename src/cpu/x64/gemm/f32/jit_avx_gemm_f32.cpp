@@ -811,13 +811,15 @@ struct xbyak_gemm_t : public jit_generator_t {
             const Ymm &reg18, const Ymm &reg19, const Ymm &reg20,
             const Ymm &reg21, const Ymm &reg22, const Ymm &reg23) {
         if (!isDirect) {
-            lea(AO1, ptr[rsp + 256 + OFFSET * SIZE]);
+            mov(AO1, WS_BUF);
+            lea(AO1, ptr[AO1 + OFFSET * SIZE]);
         } else {
             mov(AO1, A);
         }
 
         if (isCopy) {
-            lea(LDA4, ptr[rsp + 256 + OFFSET * SIZE]);
+            mov(LDA4, WS_BUF);
+            lea(LDA4, ptr[LDA4 + OFFSET * SIZE]);
         } else {
             lea(LDA4, ptr[LDA * 8 + (8 - 1 - OFFSET) * SIZE]);
         }
@@ -1313,7 +1315,8 @@ struct xbyak_gemm_t : public jit_generator_t {
         Reg64 reg;
 
         mov(BO1, A);
-        lea(AO1, ptr[rsp + 256 + OFFSET * SIZE]);
+        mov(AO1, WS_BUF);
+        lea(AO1, ptr[AO1 + OFFSET * SIZE]);
 
         if (isTransA) {
             lea(BO2, ptr[BO1 + LDA * 4]);
@@ -1983,18 +1986,22 @@ struct xbyak_gemm_t : public jit_generator_t {
         cmp(K, STACK_K_CAPACITY);
         jg(buffer_in_ws, T_NEAR);
 
-        // Create buffer and align to 4kB page
+        // Using 4kB aligned buffer on stack as workspace
         lea(rax, ptr[K * SIZE]);
         sal(rax, math::ilog2q(UNROLL_M));
         add(rax, 256);
         sub(rsp, rax);
         and_(rsp, -PAGE_4K);
+        lea(rax, ptr[rsp + 256]);
         jmp(buffer_allocated, T_NEAR);
 
         L(buffer_in_ws);
-        mov(rsp, ARG_WS);
+        // Using buffer in heap as workspace
+        mov(rax, ARG_WS);
+        sub(rsp, 256);
 
         L(buffer_allocated);
+        mov(WS_BUF, rax);
 
         mov(ORIG_SP, rbp);
         mov(M, ARG_M);
@@ -2162,8 +2169,10 @@ private:
     const Address BETA = qword[rsp + 64];
     const Address ORIG_A = qword[rsp + 80];
     const Address MASK = dword[rsp + 88];
+    // STRIDE requires padding to 32 bytes to accomodate ymm loads/stores
     const Address STRIDE = qword[rsp + 120];
-    const Address ORIG_SP = qword[rsp + 152];
+    const Address WS_BUF = qword[rsp + 152];
+    const Address ORIG_SP = qword[rsp + 160];
 
     const Ymm VALPHA = ymm1;
     const Ymm VBETA = ymm2;

@@ -38,22 +38,31 @@ struct genindex_executable_t : public op_executable_t {
 
     void execute(const stream &stream,
             const std::unordered_map<int, memory> &args) const override;
+    void execute_impl(const stream &stream,
+            const std::unordered_map<int, memory> &args) const;
 
 #ifdef DNNL_WITH_SYCL
     ::sycl::event execute_sycl(const stream &stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<::sycl::event> &deps) const override;
+    ::sycl::event execute_sycl_impl(const stream &stream,
+            const std::unordered_map<int, memory> &args,
+            const std::vector<::sycl::event> &deps) const;
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     cl_event execute_ocl(const stream &stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<cl_event> &deps) const override;
+    cl_event execute_ocl_impl(const stream &stream,
+            const std::unordered_map<int, memory> &args,
+            const std::vector<cl_event> &deps) const;
 #endif
 
 private:
     int axis_, nelems_, ndims_;
     dims_t output_dims_, output_strides_;
+    std::string info_;
 
 #if (DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE) \
         && (DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL)

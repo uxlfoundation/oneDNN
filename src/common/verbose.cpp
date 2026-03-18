@@ -558,7 +558,15 @@ std::string md2fmt_str(
         case format_kind::wino:
         case format_kind::rnn_packed:
         case format_kind::opaque: ss << "::"; break;
-        case format_kind::sparse: ss << ":" << mdw.encoding() << ":"; break;
+        case format_kind::sparse: ss << ":" << mdw.encoding();
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+            if (mdw.is_grouped_desc()) {
+                ss << ":" << mdw.sparse_desc().grouped_desc.variable_dim_idx;
+                ss << ":" << mdw.sparse_desc().grouped_desc.group_count;
+            }
+#endif
+            ss << ":";
+            break;
         case format_kind::any: ss << ":any:"; break;
         default:
             assert(!"unsupported format_kind");

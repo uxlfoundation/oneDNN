@@ -17,19 +17,7 @@
 #ifndef GEMMSTONE_INCLUDE_GEMMSTONE_DSL_RUNTIME_HPP
 #define GEMMSTONE_INCLUDE_GEMMSTONE_DSL_RUNTIME_HPP
 
-#include "gemmstone/dsl/dsl.hpp"
-
-#ifdef GEMMSTONE_WITH_BINARY_RUNTIME
-#include <vector>
-#endif
-
-#ifdef GEMMSTONE_WITH_SYCL_RUNTIME
-#include <sycl/sycl.hpp>
-#endif
-
-#ifdef GEMMSTONE_WITH_OPENCL_RUNTIME
-#include <CL/cl.h>
-#endif
+#include "gemmstone/runtime.hpp"
 
 GEMMSTONE_NAMESPACE_START
 namespace dsl {
@@ -47,6 +35,10 @@ std::vector<uint8_t> make_binary(const kernel_t &kernel);
 #endif
 #ifdef GEMMSTONE_WITH_OPENCL_RUNTIME
 cl_kernel make_kernel(const kernel_t &kernel, cl_context ctx, cl_device_id dev);
+#endif
+#ifdef GEMMSTONE_WITH_L0_RUNTIME
+LevelZeroKernelAndModule make_kernel(const kernel_t &kernel,
+        ze_context_handle_t ctx, ze_device_handle_t dev);
 #endif
 
 } // namespace dsl

@@ -871,7 +871,7 @@ public:
 
     layout_t normalized_tlayout() const {
         auto blocks = move_size_1_blocks_outer();
-        blocks = dsl::layout::normalize_blocks(blocks, false);
+        blocks = dsl::layout::merge_blocks(blocks);
         auto layout = tlayout_.with(blocks, false);
         return layout;
     }

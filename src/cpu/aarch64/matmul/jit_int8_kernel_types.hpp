@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2025 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -55,7 +55,10 @@ struct dyn_params_t {
 
 struct brg_int8_t {
     int M, K, N;
-    const int m_blk = 8, n_blk = 4, k_blk = 8;
+    const int m_blk = 8, k_blk = 8;
+    // Number of N columns packed per B vector load. Depends on SVE vector length:
+    // sve_256 -> 4, sve_128 -> 2.
+    int n_blk = 4;
     // rd_block represents the loop unroll factor along K dimension and bd_block represents the blocking along M dimension
     const int rd_block = 4, bd_block = 8;
     // ld_block represents the number of vector registers used to load along the N dimension

@@ -81,8 +81,11 @@ struct hw_context_t {
             case ngen::HW::XeHPG: return 8;
             case ngen::HW::XeHPC:
             case ngen::HW::Xe2:
-            case ngen::HW::Xe3: return 16;
-            default: stub();
+            case ngen::HW::Xe3:
+            case ngen::HW::XE3P_35_10:
+            case ngen::HW::XE3P_35_11:
+            case ngen::HW::XE3P_UNKNOWN: return 16;
+            default: gpu_error_not_expected();
         }
         return -1;
     }
@@ -251,7 +254,7 @@ struct reg_mask_t : public stringify_t<reg_mask_t> {
     }
 
     static const int chunk_bits = 64;
-    static const int max_regs = 256;
+    static const int max_regs = 512;
     static const int max_nchunks = max_regs / chunk_bits;
 
     const hw_context_t *hw_ctx = nullptr;

@@ -189,9 +189,9 @@ struct CommonState {
 // GEMM kernel generator state.
 struct GEMMState : public CommonState {
     struct Inputs {
-        ngen::Subregister A, B, C[2], CO, base, tempC;      // q
-        ngen::Subregister ao, bo, abo;                      // w/w/ud
-        ngen::Subregister aoPtr, boPtr;                     // q
+        ngen::Subregister A, B, C[2], base, tempC;          // q
+        ngen::Subregister ao, bo, abo, co;                  // w/w/ud/w
+        ngen::Subregister aoPtr, boPtr, coPtr;              // q
         ngen::Subregister aScalePtr, bScalePtr, cScalePtr;  // q
         ngen::Subregister agPtr, bgPtr;                     // q
         ngen::Subregister offsetA, offsetB, offsetC[2];     // q
@@ -307,6 +307,7 @@ struct GEMMState : public CommonState {
     ngen::Subregister i0, j0, h0;                           // d
     ngen::Subregister wgI0, wgJ0;                           // d
     ngen::Subregister unclampedI0;                          // d
+    ngen::Subregister ctiShiftJ0;                           // d
     ngen::Subregister threadK0, k0Rem, wgK;                 // ud
     ngen::Subregister remainders[3];                        // d (todo: w)
     ngen::Subregister remaindersFused[2];                   // w
@@ -338,6 +339,9 @@ struct GEMMState : public CommonState {
     ngen::GRF tmpCScales;                                   // Internal storage of dynamic scales
     ngen::Subregister statusFlagAddr;                        // uq
     bool systolicSumA = false, systolicSumB = false;
+    bool useBDPAS = false;
+    bool upConvertATo8Bit = false;
+    bool upConvertBTo8Bit = false;
     bool lateKLoopCheck = false;
     bool splitBarrierAlways = false;
     int ka_loadRem, kb_loadRem;
@@ -442,6 +446,7 @@ struct GEMMState : public CommonState {
 
     int internalSIMD() const { return simd32KMasks ? 32 : 16; }
 
+    ngen::GRF r0InfoGRF() const;
     void setTacc(Type T);
 
 };

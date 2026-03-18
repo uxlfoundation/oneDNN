@@ -110,6 +110,18 @@ template <typename T>
 struct scalar_type_traits_t {};
 
 template <>
+struct scalar_type_traits_t<float8_e8m0_t> {
+    static const auto type = scalar_type_t::_uchar;
+};
+template <>
+struct scalar_type_traits_t<float8_e4m3_t> {
+    static const auto type = scalar_type_t::_hfloat8;
+};
+template <>
+struct scalar_type_traits_t<float8_e5m2_t> {
+    static const auto type = scalar_type_t::_bfloat8;
+};
+template <>
 struct scalar_type_traits_t<float16_t> {
     static const auto type = scalar_type_t::_half;
 };
@@ -297,6 +309,9 @@ public:
                 = utils::downcast<const host_scalar_memory_storage_t *>(
                         &storage);
         switch ((int)host_storage->data_type()) {
+            SET_STORED_SCALAR_VALUE(f8_e4m3, float8_e4m3_t)
+            SET_STORED_SCALAR_VALUE(f8_e5m2, float8_e5m2_t)
+            SET_STORED_SCALAR_VALUE(e8m0, float8_e8m0_t)
             SET_STORED_SCALAR_VALUE(f16, float16_t)
             SET_STORED_SCALAR_VALUE(bf16, bfloat16_t)
             SET_STORED_SCALAR_VALUE(f32, float)

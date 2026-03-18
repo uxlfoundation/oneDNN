@@ -134,6 +134,7 @@
 --reset --in-shapes=0:384x4096+1:4096x1024+2:384x1 --case=pattern/f32/matmul_post_ops_swish_fusion.json
 --reset --in-shapes=0:384x4096+1:4096x1024+2:1024 --case=pattern/f32/matmul_post_ops_swish_fusion.json
 --reset --case=pattern/f32/matmul_select.json
+--reset --case=pattern/f32/matmul_dropout.json
 # 1D x nD matmul with post mul fusion broadcasting rule tests
 # 1D x 1D matmul, mul with scalar [1]
 --reset --in-shapes=0:128+1:128+3:1 --case=pattern/f32/matmul_post_ops_mul_fusion.json
@@ -170,6 +171,7 @@
 --reset --in-shapes=0:64x512x28x28*abcd+1:1x1x1x1*abcd --case=pattern/f32/unary_post_ops_hardswish_fusion.json
 --reset --in-shapes=0:64x512x28x28+1:1x1x1x1 --case=pattern/f32/unary_post_ops_sqrt_fusion.json
 --reset --in-shapes=0:64x512x28x28+1:1x1x1x1 --case=pattern/f32/unary_post_ops_tanh_fusion.json
+--reset --case=pattern/f32/unary_dropout_fusion.json
 # reduction
 --reset --in-shapes=0:64x20x7x7+1:1x20x1x1+2:1x20x1x1+3:1x20x1x1 --op-attrs=11:axes:2x3 --case=pattern/f32/reduction_post_ops_max_chain_fusion.json
 --reset --in-shapes=0:16x1024+1:1x1024+2:1x1024+3:1x1024 --op-attrs=11:axes:0 --case=pattern/f32/reduction_post_ops_prod_chain_fusion.json

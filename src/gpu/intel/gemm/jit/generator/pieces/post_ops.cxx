@@ -150,6 +150,34 @@ void Generator<hw>::gemmScalarBinaryOpC(BinaryOp op, Type Tco, const GRFMultiran
     });
 }
 
+// Apply binary operation to C with a scalar operand from a Subregister (e.g., host side scalar)
+template <HW hw>
+void Generator<hw>::gemmScalarBinaryOpC(BinaryOp op, Type Tco, const Subregister &scalar,
+                                        const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+{
+    auto Tacc = state.Tacc;
+    auto offsetTc = scalar;
+
+    if (Tco != Tacc) {
+        offsetTc = state.ra.alloc_sub(Tacc.ngen());
+        CopyPlan plan(hw, strategy.systolicAvailable);
+        plan.append(Opcode::mov, 1, offsetTc, scalar);
+        copyExecute(std::move(plan), state);
+    }
+
+    if (op == BinaryOp::Div && one_of(state.Tacc, {Type::f32, Type::f16})) {
+        inv(1, offsetTc, offsetTc);
+        op = BinaryOp::Mul;
+    }
+
+    map(hw, state.Tacc, state.C_regs[0], state.C_layout, strategy, [&](int simd, const RegData &r) {
+        binaryOp(op, simd, r, r, offsetTc, state);
+    });
+
+    if (Tco != Tacc)
+        state.ra.safeRelease(offsetTc);
+}
+
 // Apply binary operation to C with a vector operand, optionally multiplied by a scalar.
 template <HW hw>
 void Generator<hw>::gemmVectorBinaryOpC(BinaryOp op, bool column, const GRFMultirange &offsets, const Subregister &scaleIn,
@@ -414,21 +442,30 @@ bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const G
 
     if (state.flagSwizzle.isValid()) state.raVFlag.claim(state.flagSwizzle);
 
-    status << "Applying fixed C offset" << status_stream::endl;
-    ok = ok && gemmBinaryOpC(BinaryOp::Add, false, false, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
+    if (problem.cOffsetHostScalar() && state.inputs.co.isValid()) {
+        status << "Applying host scalar C offset" << status_stream::endl;
+        gemmScalarBinaryOpC(BinaryOp::Add, Tco, state.inputs.co, problem, strategy, state);
+    } else {
+        status << "Applying fixed C offset" << status_stream::endl;
+        ok = ok && gemmBinaryOpC(BinaryOp::Add, false, false, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
+    }
     jmpi(1, labelCODone);
 
     mark(labelCOColumn);
-    if (doMatrix) jmpi(1 | flagCOR, labelCOMatrix);
-    status << "Applying column-wise C offset" << status_stream::endl;
-    ok = ok && gemmBinaryOpC(BinaryOp::Add, false, true, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
+    if (!problem.cOffsetHostScalar()) {
+        if (doMatrix) jmpi(1 | flagCOR, labelCOMatrix);
+        status << "Applying column-wise C offset" << status_stream::endl;
+        ok = ok && gemmBinaryOpC(BinaryOp::Add, false, true, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
+    }
     jmpi(1, labelCODone);
 
     mark(labelCORow);
-    status << "Applying row-wise C offset" << status_stream::endl;
-    ok = ok && gemmBinaryOpC(BinaryOp::Add, true, false, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
+    if (!problem.cOffsetHostScalar()) {
+        status << "Applying row-wise C offset" << status_stream::endl;
+        ok = ok && gemmBinaryOpC(BinaryOp::Add, true, false, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);
+    }
 
-    if (doMatrix) {
+    if (doMatrix && !problem.cOffsetHostScalar()) {
         jmpi(1, labelCODone);
 
         mark(labelCOMatrix);
@@ -488,6 +525,23 @@ void Generator<hw>::gemmLoadBinaryOpArgs(const GEMMProblem &problem, const GEMMS
     for (auto arg: argList) {
         arg->setBase(arg->getBase() + grfOffset);
         state.ra.claim(*arg);
+    }
+
+    // CTI: Shift to the starting column + increase LDs due to interleaving
+    if (strategy.cInterleaveChunk > 1) {
+        for (size_t i = 0; i < problem.postOps.len(); i++) {
+            auto offset = state.inputs.binaryOffsets[i];
+            if (!offset.isValid()) continue;
+
+            bool row = problem.postOps.binaryRow[i];
+            bool col = problem.postOps.binaryCol[i];
+            if (!(row && col)) continue;
+            
+            auto ld = state.inputs.binaryLDs[i];
+            emad(1, offset, offset, state.ctiShiftJ0, ld, strategy, state);
+            mulConstant(1, ld, ld, strategy.cInterleaveChunk);
+        }
+        if (!strategy.persistentLoop()) state.ra.safeRelease(state.ctiShiftJ0);
     }
 
     state.ra.safeRelease(temp);

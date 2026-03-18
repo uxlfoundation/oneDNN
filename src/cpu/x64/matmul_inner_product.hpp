@@ -41,7 +41,7 @@ status_t init_matmul_md(memory_desc_t &mm_md, const memory_desc_t &ip_md,
         format_tag_t tag, bool swap_dims = false);
 
 status_t set_training_formats(memory_desc_t *src_md, memory_desc_t *wei_md,
-        memory_desc_t *bias_md, memory_desc_t *dst_md);
+        memory_desc_t *bias_md, memory_desc_t *dst_md, prop_kind_t prop_kind);
 
 struct matmul_inner_product_fwd_t : public primitive_t {
     using primitive_t::primitive_t;
@@ -74,8 +74,8 @@ struct matmul_inner_product_fwd_t : public primitive_t {
 
             if (get_prop_kind() == prop_kind::forward_training) {
                 VDISPATCH_INNER_PRODUCT_SC(
-                        set_training_formats(
-                                &src_md_, &weights_md_, &bias_md_, &dst_md_),
+                        set_training_formats(&src_md_, &weights_md_, &bias_md_,
+                                &dst_md_, get_prop_kind()),
                         VERBOSE_UNSUPPORTED_TAG);
             }
 
@@ -167,8 +167,8 @@ struct matmul_inner_product_bwd_data_t : public primitive_t {
     private:
         status_t init_matmul_params(engine_t *engine);
         status_t set_formats() {
-            return set_training_formats(
-                    &diff_src_md_, &weights_md_, nullptr, &diff_dst_md_);
+            return set_training_formats(&diff_src_md_, &weights_md_, nullptr,
+                    &diff_dst_md_, get_prop_kind());
         }
 
         void init_scratchpad() {
@@ -243,8 +243,8 @@ struct matmul_inner_product_bwd_weights_t : public primitive_t {
     private:
         status_t init_matmul_params(engine_t *engine);
         status_t set_formats() {
-            return set_training_formats(
-                    &src_md_, &diff_weights_md_, &diff_bias_md_, &diff_dst_md_);
+            return set_training_formats(&src_md_, &diff_weights_md_,
+                    &diff_bias_md_, &diff_dst_md_, get_prop_kind());
         }
 
         void init_scratchpad() {

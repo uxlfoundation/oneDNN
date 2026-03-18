@@ -50,6 +50,9 @@ int64_t stoll_safe(const std::string &s);
 
 float stof_safe(const std::string &s);
 
+// Checks if a `string` consists of only digits. Useful for mask_input parsing.
+bool has_only_digits(const std::string &s);
+
 attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s);
 
 // `option_str` is a string in a format `--option-name=`.
@@ -233,6 +236,9 @@ bool parse_tag(std::vector<std::string> &tag,
 
 bool parse_encoding(std::vector<sparse_options_t> &sparse_options,
         const char *str, const std::string &option_name = "encoding");
+
+bool parse_grouped(std::vector<sparse_options_t> &sparse_options,
+        const char *str, const std::string &option_name = "grouped");
 
 bool parse_multi_tag(std::vector<std::vector<std::string>> &tag,
         const std::vector<std::vector<std::string>> &def_tag, const char *str,

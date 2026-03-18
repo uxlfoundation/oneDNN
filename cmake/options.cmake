@@ -127,7 +127,7 @@ set(DNNL_ENABLE_PRIMITIVE "ALL" CACHE STRING
     - ALL (the default). Includes all primitives to be enabled.
     - <PRIMITIVE_NAME>. Includes only the selected primitive to be enabled.
       Possible values are: BATCH_NORMALIZATION, BINARY, CONCAT, CONVOLUTION,
-      DECONVOLUTION, ELTWISE, GROUP_NORMALIZATION, INNER_PRODUCT,
+      DECONVOLUTION, ELTWISE, GATED_MLP, GROUP_NORMALIZATION, INNER_PRODUCT,
       LAYER_NORMALIZATION, LRN, MATMUL, POOLING, PRELU, REDUCTION, REORDER,
       RESAMPLING, RNN, SDPA, SHUFFLE, SOFTMAX, SUM.
     - <PRIMITIVE_NAME>;<PRIMITIVE_NAME>;... Includes only selected primitives to
@@ -151,7 +151,7 @@ set(DNNL_ENABLE_PRIMITIVE_GPU_ISA "ALL" CACHE STRING
     implementations will always be available. Valid values:
     - ALL (the default). Includes all ISA to be enabled.
     - <ISA_NAME>;<ISA_NAME>;... Includes only selected ISA to be enabled.
-      Possible values are: XELP, XEHP, XEHPG, XEHPC, XE2, XE3.")
+      Possible values are: XELP, XEHP, XEHPG, XEHPC, XE2, XE3, XE3P.")
 
 set(ONEDNN_ENABLE_GEMM_KERNELS_ISA "ALL" CACHE STRING
     "Specifies an ISA set of GeMM kernels residing in x64/gemm folder to be
@@ -211,6 +211,11 @@ option(DNNL_EXPERIMENTAL
 option(DNNL_EXPERIMENTAL_UKERNEL
     "Enable experimental functionality for ukernels. This option works
     independently from DNNL_EXPERIMENTAL."
+    OFF) # disabled by default
+
+option(DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    "Enable experimental support for grouped memory format and grouped GEMM.
+    This option works independently from DNNL_EXPERIMENTAL."
     OFF) # disabled by default
 
 option(DNNL_EXPERIMENTAL_PROFILING
@@ -287,7 +292,7 @@ set(DNNL_GPU_RUNTIME "NONE" CACHE STRING
 
     Using OpenCL for GPU requires setting OPENCLROOT if the libraries are
     installed in a non-standard location.")
-if(NOT "${DNNL_GPU_RUNTIME}" MATCHES "^(OCL|NONE|DPCPP|SYCL)$")
+if(NOT "${DNNL_GPU_RUNTIME}" MATCHES "^(OCL|NONE|DPCPP|SYCL|ZE)$")
     message(FATAL_ERROR "Unsupported GPU runtime: ${DNNL_GPU_RUNTIME}")
 endif()
 

@@ -80,10 +80,13 @@ optional.
 
 ## Data Types
 
-oneDNN supports the floating-point Gated-MLP pattern with data types f32, bf16,
-and f16. You can specify the data type via the input and output data type fields
-of logical tensors for each operation. oneDNN does not support mixing different
-floating data types in a floating-point Gated-MLP pattern.
+oneDNN supports the floating-point Gated-MLP pattern with data types `f32`, `bf16`,
+and `f16`. You can specify the data type via the input and output data type fields
+of logical tensors for each operation. For `bf16` and `f16` Gated-MLP, the output
+data types of the UP and Gate MatMuls need to be `f32` to preserve the accuracy of
+intermediate results. A [TypeCast](@ref dev_guide_op_typecast) operation is
+needed before the Down MatMul to downconvert the intermediate results from `f32`
+to `bf16` or `f16`.
 
 The definition of the data types and support status on different CPU and GPU
 platforms follow the general description in @ref dev_guide_data_types.

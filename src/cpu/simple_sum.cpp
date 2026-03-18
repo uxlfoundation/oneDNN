@@ -14,9 +14,11 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "cpu/simple_sum.hpp"
 #include "common/bfloat16.hpp"
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
+
+#include "cpu/simple_sum.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -46,7 +48,8 @@ status_t simple_sum_t<src_data_type, dst_data_type>::execute(
 
     const auto scales = pd()->scales();
 
-    auto sum_block_xf16 = [&](dim_t start, dim_t end, int ithr) {
+    auto sum_block_xf16
+            = [= COMPAT_THIS_CAPTURE](dim_t start, dim_t end, int ithr) {
         const bool is_dst_xf16
                 = utils::one_of(dst_data_type, data_type::bf16, data_type::f16);
         const auto xf16_params = pd()->xf16_params_;
@@ -76,7 +79,7 @@ status_t simple_sum_t<src_data_type, dst_data_type>::execute(
         }
     };
 
-    auto sum_block = [&](dim_t start, dim_t end, int ithr) {
+    auto sum_block = [=](dim_t start, dim_t end, int ithr) {
         PRAGMA_OMP_SIMD()
         for (dim_t e = start; e < end; e++) {
             output[e] = dst_data_t(scales[0] * input_ptrs[0][e]);
@@ -90,7 +93,7 @@ status_t simple_sum_t<src_data_type, dst_data_type>::execute(
     };
 
     const int max_nthr = pd()->nthr_;
-    parallel(max_nthr, [&](const int ithr, const int nthr) {
+    parallel(max_nthr, [=](const int ithr, const int nthr) {
         dim_t start {0}, end {0};
         balance211(blocks_number, nthr, ithr, start, end);
 

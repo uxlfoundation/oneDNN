@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2018 Intel Corporation
+* Copyright 2025 Institute of Software, Chinese Academy of Sciences
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -33,9 +34,9 @@ struct gemm_traits_t {};
 
 template <bool isTransA, bool isTransB>
 struct gemm_traits_t<float, isTransA, isTransB> {
-    static constexpr dim_t m = 8;
+    static constexpr dim_t m = 16;
     static constexpr dim_t BM = 4032;
-    static constexpr dim_t BN = isTransA ? 96 : 48;
+    static constexpr dim_t BN = isTransA ? 96 : 256;
     static constexpr dim_t BK = isTransB ? 96 : 256;
 };
 
@@ -86,6 +87,14 @@ void calc_nthr_nocopy_rvv(dim_t m, dim_t n, dim_t k, int nthrs, int *nthrs_m,
 
 void partition_unit_diff(
         int ithr, int nthr, dim_t n, dim_t *t_offset, dim_t *t_block);
+
+// RVV JIT micro-kernel used from rvv_gemm_f32.cpp to replace the hand-written
+// RVV intrinsics implementation of the 8x4 or 16x4 micro-kernel when
+//   isTransA = false, isTransB = false, n_unroll = 4.
+// The m parameter must be either 8 or 16.
+void jit_rvv_gemm_kernel(const float *A, const float *B, float *C, dim_t lda,
+        dim_t ldb, dim_t ldc, dim_t K, float alpha, float beta, dim_t m);
+
 } // namespace gemm_utils
 } // namespace rv64
 } // namespace cpu

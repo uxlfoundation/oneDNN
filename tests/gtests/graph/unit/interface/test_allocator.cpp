@@ -39,28 +39,56 @@ TEST(test_interface_allocator, DefaultCpuAllocator) {
 }
 
 TEST(test_interface_allocator, AllocatorEarlyDestroy) {
-    dnnl::impl::graph::allocator_t *alloc
-            = new dnnl::impl::graph::allocator_t();
-    graph::engine_t *eng = get_engine();
+    using namespace dnnl::impl::graph;
+
+    allocator_t *alloc = new allocator_t();
+    engine_t *eng = get_engine();
     eng->set_allocator(alloc);
-    delete alloc;
-    dnnl::impl::graph::allocator_t *engine_alloc
-            = reinterpret_cast<dnnl::impl::graph::allocator_t *>(
-                    eng->get_allocator());
-#ifndef DNNL_WITH_SYCL
-    void *mem_ptr = engine_alloc->allocate(static_cast<size_t>(16));
+    delete alloc; // destroy after setting to engine.
+
+    allocator_t *engine_alloc
+            = reinterpret_cast<allocator_t *>(eng->get_allocator());
+    void *mem_ptr = nullptr;
+    const size_t alloc_size = 16;
+    if (get_test_engine_kind() == engine_kind::cpu) {
+#if DNNL_CPU_RUNTIME != DNNL_RUNTIME_SYCL
+        mem_ptr = engine_alloc->allocate(alloc_size);
 #else
-    void *mem_ptr = engine_alloc->allocate(
-            static_cast<size_t>(16), get_device(), get_context());
+        mem_ptr = engine_alloc->allocate(
+                alloc_size, get_device(), get_context());
 #endif
+    } else {
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
+        mem_ptr = engine_alloc->allocate(
+                alloc_size, get_device(), get_context());
+#elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+        // In gtests, GPU OCL runtime uses library managed device and context.
+        mem_ptr = engine_alloc->allocate(alloc_size);
+#else
+        ASSERT_TRUE(false);
+#endif
+    }
+
     if (mem_ptr == nullptr) {
         ASSERT_TRUE(false);
     } else {
-#ifndef DNNL_WITH_SYCL
-        engine_alloc->deallocate(mem_ptr);
+        if (get_test_engine_kind() == engine_kind::cpu) {
+#if DNNL_CPU_RUNTIME != DNNL_RUNTIME_SYCL
+            engine_alloc->deallocate(mem_ptr);
 #else
-        sycl::event e;
-        engine_alloc->deallocate(mem_ptr, get_device(), get_context(), e);
+            sycl::event e;
+            engine_alloc->deallocate(mem_ptr, get_device(), get_context(), e);
 #endif
+        } else {
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
+            sycl::event e;
+            engine_alloc->deallocate(mem_ptr, get_device(), get_context(), e);
+#elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+            // In gtests, GPU OCL runtime uses library managed device and context.
+            engine_alloc->deallocate(mem_ptr);
+#else
+            ASSERT_TRUE(false);
+#endif
+        }
     }
 }

@@ -425,7 +425,7 @@ private:
 
         object_eq_map_t<expr_t, expr_t> and_ops;
         object_eq_map_t<expr_t, expr_t> mask_exprs;
-        for (auto &kv : hoisted_masks_) {
+        for (auto &kv : sort_var_map_by_value(hoisted_masks_)) {
             if (split_by_and_) {
                 auto e = split_by_and_ops(kv.first, and_ops);
                 mask_exprs.emplace(e, kv.second);

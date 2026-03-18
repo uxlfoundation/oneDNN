@@ -21,10 +21,6 @@
 
 #include "oneapi/dnnl/dnnl.h"
 
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_DPCPP
-#include "oneapi/dnnl/dnnl_sycl.h"
-#endif
-
 #include "common.hpp"
 #include "utils/dims.hpp"
 #include "utils/wrapper.hpp"
@@ -61,7 +57,8 @@ struct dnn_mem_t {
     dnn_mem_t(const dnn_mem_t &rhs, dnnl_data_type_t dt, const std::string &tag,
             dnnl_engine_t engine);
 
-    dnn_mem_t(const_dnnl_memory_desc_t md, void *value);
+    // Construct a host-scalar memory object, initialized with 0x3F pattern.
+    dnn_mem_t(const_dnnl_memory_desc_t md);
 
     dnn_mem_t(const dnn_mem_t &rhs) = delete;
     dnn_mem_t &operator=(const dnn_mem_t &rhs) = delete;
@@ -97,15 +94,11 @@ struct dnn_mem_t {
 
     size_t size(int index = 0) const;
 
-    int64_t nelems(bool with_padded_dims = false) const {
-        const auto &_dims = with_padded_dims ? padded_dims() : dims();
-        if (ndims() == 0) return 0;
+    int64_t nelems(bool with_padded_dims = false) const;
 
-        int64_t n = 1;
-        for (int i = 0; i < ndims(); ++i)
-            n *= _dims[i];
-        return n;
-    }
+    // Returns `true` if there're no "holes" between memory dimensions, and
+    // `false`, otherwise.
+    bool is_dense() const;
 
     // Queries from memory descriptor.
     int ndims() const;
@@ -180,6 +173,10 @@ struct dnn_mem_t {
     void map() const;
     void unmap() const;
     void memset(int value, size_t size, int buffer_index) const;
+#if (DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL)
+    int gpu_fill_random(size_t size, int buffer_index) const;
+#endif
 
     static dnn_mem_t create_from_host_ptr(
             const dnnl_memory_desc_t &md, dnnl_engine_t engine, void *host_ptr);
@@ -213,6 +210,13 @@ struct dnn_mem_t {
     // Initializes memory descriptor for host scalar memory.
     static benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> init_host_scalar_md(
             dnnl_data_type_t data_type);
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    // Initializes memory descriptor for grouped encoding.
+    static benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> init_grouped_md(
+            int ndims, const dnnl_dims_t dims, dnnl_data_type_t data_type,
+            int variable_dim_idx, dnnl_dim_t group_count,
+            dnnl_data_type_t offsets_dt = dnnl_s32);
+#endif
 
     /* fields */
     dnnl_memory_desc_t md_ {};
@@ -236,6 +240,7 @@ private:
 
     int initialize_memory_create_sycl(const handle_info_t &handle_info);
     int initialize_memory_create_opencl(const handle_info_t &handle_info);
+    int initialize_memory_create_ze(const handle_info_t &handle_info);
     int initialize_memory_create(const handle_info_t &handle_info);
 
     // `prefill` is a flag that controls whether the underlying memory buffer
@@ -251,6 +256,7 @@ private:
     // when in doubt, always use `true` to stay on the safe side of things.
     int initialize(dnnl_engine_t engine, bool prefill,
             const handle_info_t &handle_info = handle_info_t::allocate());
+    int initialize_by_host_scalar(const_dnnl_memory_desc_t md, void *value);
 
     void set_dt(dnnl_data_type_t dt) const;
 

@@ -17,10 +17,11 @@
 # limitations under the License.
 # *******************************************************************************
 import argparse
-import ctest_utils
 import os
 import pathlib
 import subprocess
+
+import ctest_utils
 
 F_PATH = pathlib.Path(__file__).parent.resolve()
 
@@ -70,7 +71,7 @@ def main():
 
     results_dict = {}
     for case in cases:
-        bisect_cmd = str(F_PATH / f"git_bisect.sh")
+        bisect_cmd = str(F_PATH / "git_bisect.sh")
         build_dir = str(args.build)
         result = subprocess.run(
             args=[f'bash {bisect_cmd} {args.good} HEAD {build_dir} "{case}"'],

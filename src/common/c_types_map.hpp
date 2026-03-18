@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2016 Intel Corporation
 * Copyright 2024-2025 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -228,6 +228,9 @@ const sparse_encoding_t undef = dnnl_sparse_encoding_undef;
 const sparse_encoding_t csr = dnnl_csr;
 const sparse_encoding_t coo = dnnl_coo;
 const sparse_encoding_t packed = dnnl_packed;
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+const sparse_encoding_t grouped = dnnl_grouped;
+#endif
 } // namespace sparse_encoding
 
 using format_kind_t = dnnl_format_kind_t;
@@ -377,6 +380,9 @@ const format_tag_t aCB16b64c = dnnl_aCB16b64c;
 const format_tag_t BA24b8a = dnnl_BA24b8a;
 const format_tag_t aCB24c8b = dnnl_aCB24c8b;
 const format_tag_t abDC24d8c = dnnl_abDC24d8c;
+const format_tag_t BA12b8a = dnnl_BA12b8a;
+const format_tag_t aCB12c8b = dnnl_aCB12c8b;
+const format_tag_t abDC12d8c = dnnl_abDC12d8c;
 const format_tag_t aCB16b16c2b = dnnl_aCB16b16c2b;
 const format_tag_t aCB16b32c2b = dnnl_aCB16b32c2b;
 const format_tag_t aCB16b48c2b = dnnl_aCB16b48c2b;
@@ -1101,6 +1107,9 @@ const format_tag_t aCB8c8b = dnnl_aCB8c8b;
 const format_tag_t aCB16c8b = dnnl_aCB16c8b;
 const format_tag_t BA8b8a = dnnl_BA8b8a;
 const format_tag_t BA16b8a = dnnl_BA16b8a;
+const format_tag_t BA4b8a = dnnl_BA4b8a;
+const format_tag_t aCB4c8b = dnnl_aCB4c8b;
+const format_tag_t abDC4d8c = dnnl_abDC4d8c;
 const format_tag_t AB2a4b = dnnl_AB2a4b;
 
 const format_tag_t last = dnnl_format_tag_last;
@@ -1969,6 +1978,7 @@ enum runtime_kind_t {
     dnnl_runtime_threadpool,
     dnnl_runtime_ocl,
     dnnl_runtime_sycl,
+    dnnl_runtime_ze,
 };
 
 namespace runtime_kind {
@@ -1979,6 +1989,7 @@ const runtime_kind_t tbb = dnnl_runtime_tbb;
 const runtime_kind_t threadpool = dnnl_runtime_threadpool;
 const runtime_kind_t ocl = dnnl_runtime_ocl;
 const runtime_kind_t sycl = dnnl_runtime_sycl;
+const runtime_kind_t ze = dnnl_runtime_ze;
 } // namespace runtime_kind
 
 using primitive_kind_t = dnnl_primitive_kind_t;
@@ -2010,6 +2021,7 @@ const primitive_kind_t group_normalization = dnnl_group_normalization;
 const primitive_kind_t internal_only_start = (primitive_kind_t)(1 << 12);
 const primitive_kind_t zero_pad = internal_only_start;
 const primitive_kind_t sdpa = (primitive_kind_t)(internal_only_start + 1);
+const primitive_kind_t gated_mlp = (primitive_kind_t)(internal_only_start + 2);
 } // namespace primitive_kind
 
 using query_t = dnnl_query_t;

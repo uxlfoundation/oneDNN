@@ -490,7 +490,6 @@ std::string maybe_fixup_1st_conv_wei_tag(
         const config_t &cfg, const std::string &tag) {
     auto &prb = cfg.prb();
 
-    if (!cfg.is_dp_fma()) return tag;
     if (!is_small_ic(prb) || prb.is_dw) return tag;
     if (prb.ab_swap_transpose) return tag;
     if (!prb.is_fwd) return tag;
@@ -1094,6 +1093,8 @@ status_t init_vec_size(config_t &cfg) {
 
 int default_regs(const config_t &cfg) {
     if (!cfg.hw().large_grf_support()) return 128;
+    if (cfg.hw() == ngen::HW::XE3P_35_11 && cfg.is_dpas_or_dpasw_fma())
+        return 512;
     if (cfg.is_dpas_or_dpasw_fma()) return 256;
     return 128;
 }

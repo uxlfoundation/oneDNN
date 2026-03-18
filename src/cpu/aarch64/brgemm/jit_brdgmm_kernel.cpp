@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
-* Copyright 2024-2025 FUJITSU LIMITED
+* Copyright 2024-2026 FUJITSU LIMITED
 * Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -246,7 +246,7 @@ void jit_brdgmm_kernel_base_t::cvt2ps(data_type_t type_in, const ZReg vmm_in,
         default: assert(!"unsupported data type");
     }
     if (types::is_integral_dt(type_in)) {
-        scvtf(vmm_in.s, P_ALL_ONE / T_m, vmm_in.s);
+        scvtf(vmm_in.s, P_ALL_ONE / T_z, vmm_in.s);
     }
 }
 
@@ -302,14 +302,18 @@ void jit_brdgmm_kernel_base_t::apply_post_ops(
         const injector_utils::conditional_register_preserve_guard_t<sve_512>
                 register_guard_sum_zp(p_sum_zp_reg_set, this, {reg_ptr_sum_zp});
 
-        if (p_sum_scale_reg_set)
-            mov_imm(reg_ptr_sum_scale, reinterpret_cast<size_t>(p_sum_scale));
-
         auto vmm_sum_zp = vmm_tmp(0);
+        auto vmm_sum_scale = vmm_tmp(1);
+
+        if (p_sum_scale_reg_set) {
+            mov_imm(reg_ptr_sum_scale, reinterpret_cast<size_t>(p_sum_scale));
+            ld1rw(vmm_sum_scale.s, P_ALL_ONE / T_z, ptr(reg_ptr_sum_scale));
+        }
+
         if (p_sum_zp_reg_set) {
             mov_imm(reg_ptr_sum_zp, reinterpret_cast<size_t>(p_sum_zp));
-            dup(vmm_sum_zp.s, WReg(reg_ptr_sum_zp.getIdx()));
-            scvtf(vmm_sum_zp.s, P_ALL_ONE / T_m, vmm_sum_zp.s);
+            ld1rw(vmm_sum_zp.s, P_ALL_ONE / T_z, ptr(reg_ptr_sum_zp));
+            scvtf(vmm_sum_zp.s, P_ALL_ONE / T_z, vmm_sum_zp.s);
         }
 
         for_(int m_i = 0; m_i < m_blocks; m_i++)
@@ -321,7 +325,7 @@ void jit_brdgmm_kernel_base_t::apply_post_ops(
             add_imm(X_DEFAULT_ADDR, reg_aux_D, D_offset(m_i, n_i, v_i),
                     X_TMP_0);
             const auto addr = ptr(X_DEFAULT_ADDR);
-            const auto vmm_prev_dst = vmm_tmp(1);
+            const auto vmm_prev_dst = vmm_tmp(2);
             cvt2ps(brg.sum_dt, vmm_prev_dst, addr, substep_simd != simd_w_,
                     false);
             if (p_sum_zp_reg_set)
@@ -329,10 +333,7 @@ void jit_brdgmm_kernel_base_t::apply_post_ops(
             if (!p_sum_scale_reg_set)
                 fadd(vmm.s, vmm.s, vmm_prev_dst.s);
             else {
-                const ZReg z_tmp = push_z_tmp(vmm, vmm_prev_dst);
-                ld1rw(z_tmp.s, P_ALL_ONE / T_z, ptr(reg_ptr_sum_scale));
-                fmla(vmm.s, P_ALL_ONE / T_m, vmm_prev_dst.s, z_tmp.s);
-                pop_z_tmp(z_tmp);
+                fmla(vmm.s, P_ALL_ONE / T_z, vmm_prev_dst.s, vmm_sum_scale.s);
             }
         }
     };
@@ -365,7 +366,7 @@ void jit_brdgmm_kernel_base_t::store_accumulators_apply_post_ops(
             if (substep_simd <= 0) continue;
             const bool mask_flag = substep_simd < simd_w_;
             const ZReg vmm = accm(m_blocks, n_blocks, m, n, v_i);
-            if (dq2ps_required) { scvtf(vmm.s, P_ALL_ONE / T_m, vmm.s); }
+            if (dq2ps_required) { scvtf(vmm.s, P_ALL_ONE / T_z, vmm.s); }
             const ZReg z_tmp = push_z_tmp(vmm, vmm);
             if (brg.is_oc_scale) {
                 add_imm(X_DEFAULT_ADDR, reg_aux_scales, scales_offset(n, v_i),
@@ -416,7 +417,7 @@ void jit_brdgmm_kernel_base_t::store_accumulators_apply_post_ops(
         for (int m = 0; m < m_blocks; m++) {
             auto vmm = accm(m_blocks, n_blocks, m, n, v_i);
             if (dq2ps_required && !brg.with_scales)
-                scvtf(vmm.s, P_ALL_ONE / T_m, vmm.s);
+                scvtf(vmm.s, P_ALL_ONE / T_z, vmm.s);
             if (brg.with_bias) { fadd(vmm.s, vmm.s, vmm_bias.s); }
         }
     }
@@ -460,8 +461,6 @@ void jit_brdgmm_kernel_base_t::store_accumulators_apply_post_ops(
     }
 
     for (int m = 0; m < m_blocks; m++) {
-        if (dt_requires_saturation) { assert(!"unsupported\n"); }
-
         for_(int n = 0; n < n_blocks; n++)
         for (int v_i = 0; v_i < v_substep; ++v_i) {
             const int substep_simd = get_substep_simd(n, v_i, has_n_tail);
@@ -470,6 +469,11 @@ void jit_brdgmm_kernel_base_t::store_accumulators_apply_post_ops(
             add_imm(X_DEFAULT_ADDR, reg_aux_D, offset, X_TMP_0);
             auto addr = ptr(X_DEFAULT_ADDR);
             auto vmm = accm(m_blocks, n_blocks, m, n, v_i);
+            if (dt_requires_saturation) {
+                saturate_f32(vmm, vmm_lbound, vmm_ubound, brg.dt_d, P_ALL_ONE);
+                frinti(vmm.s, P_ALL_ONE, vmm.s);
+                fcvtzs(vmm.s, P_ALL_ONE, vmm.s);
+            }
             const bool mask_flag = n + 1 == n_blocks && has_n_tail;
             auto mask = mask_flag ? k_mask / T_m : P_ALL_ONE / T_m;
             switch (brg.dt_d) {
@@ -479,8 +483,15 @@ void jit_brdgmm_kernel_base_t::store_accumulators_apply_post_ops(
                     bfcvt(vmm.h, mask, vmm.s);
                     st1h(vmm.s, mask, addr);
                     break;
-                case data_type::s8: assert(!"unsupported data type\n"); break;
-                case data_type::u8: assert(!"unsupported data type\n"); break;
+                case data_type::s8:
+                    smin(vmm.s, std::numeric_limits<int8_t>::max());
+                    smax(vmm.s, std::numeric_limits<int8_t>::min());
+                    st1b(vmm.s, mask, addr);
+                    break;
+                case data_type::u8:
+                    umin(vmm.s, std::numeric_limits<uint8_t>::max());
+                    st1b(vmm.s, mask, addr);
+                    break;
                 default: assert(!"unknown dst_dt");
             }
         }
@@ -506,7 +517,11 @@ void jit_brdgmm_kernel_base_t::store_accumulators_without_post_ops(
         if (substep_simd <= 0) continue;
         const bool mask_flag = substep_simd < simd_w_;
         auto vmm_acc = accm(m_blocks, n_blocks, m, n, v_i);
-        if (dt_requires_saturation) { assert(!"unsupported\n"); }
+        if (dt_requires_saturation) {
+            saturate_f32(vmm_acc, vmm_lbound, vmm_ubound, brg.dt_d, P_ALL_ONE);
+            frinti(vmm_acc.s, P_ALL_ONE, vmm_acc.s);
+            fcvtzs(vmm_acc.s, P_ALL_ONE, vmm_acc.s);
+        }
         const auto offset = C_offset(m, n, v_i);
         add_imm(X_DEFAULT_ADDR, reg_aux_C, offset, X_TMP_0);
         st1w(vmm_acc.s, (mask_flag ? k_mask : P_ALL_ONE) / T_m,

@@ -1204,8 +1204,8 @@ status_t brg_blocking_t::calc_blocks() {
 
     const auto thr_eff_threshold = 0.9f;
     const auto max_ow_block_thr = utils::saturate(1, ow,
-            static_cast<int>(div_up(
-                    mb * ngroups * nb_oc * os, thr_eff_threshold * nthr)));
+            static_cast<int>(ceil(
+                    mb * ngroups * nb_oc * os / (thr_eff_threshold * nthr))));
 
     ow_block = os_block = sp_block = -1;
     brg_blocking_t best_brgb = *this;
@@ -1554,8 +1554,8 @@ void brg_blocking_t::calc_blocks_1x1() {
         os_block = 0;
 
         const auto max_ow_block_thr = utils::saturate(1, ow,
-                static_cast<int>(div_up(
-                        mb * ngroups * nb_oc * os, thr_eff_threshold * nthr)));
+                static_cast<int>(ceil(mb * ngroups * nb_oc * os
+                        / (thr_eff_threshold * nthr))));
         const auto max_ow_block_L2 = max_sp_block_L2;
 
         start_sp_block = utils::saturate(
@@ -1685,12 +1685,20 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     if (jcp.wei_plain)
         CHECK(pick_tags(jcp, src_md, weights_md, dst_md, bias_md));
 
+    const bool is_f32
+            = jcp.src_dt == data_type::f32 && jcp.wei_dt == data_type::f32;
+
     if (one_of(jcp.prop_kind, prop_kind::forward_training,
                 prop_kind::forward_inference)
             && jcp.ngroups == 1 && jcp.dilate_w == 0 && jcp.kw > 1
-            && jcp.stride_w > 1 && jcp.l_pad <= 0 && jcp.r_pad <= 0) {
+            && jcp.stride_w > 1 && jcp.l_pad <= 0 && jcp.r_pad <= 0 && is_f32) {
         // such convolutions are equivalent to
         // [iw / k][kw / k][stride_w / k][ic * k]
+        // Folding is limited to f32 because int8/bf16 dot-product instructions
+        // (sdot/bfdot) require 4-byte contiguity in the K-dimension. Folding
+        // requires interleaving weights across spatial positions (KW) into
+        // these VNNI-style 4-byte blocks, which is not supported by current
+        // AArch64 reorders.
         const bool pure_1d = (jcp.mb == 1 && jcp.id == 1 && jcp.ih == 1);
         int w_koef = 1;
         auto w_koef_max = nstl::min(jcp.kw, nstl::min(jcp.stride_w, jcp.iw));
@@ -1876,8 +1884,8 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     bool try_exec_trans = false;
     bool try_exec_base = true;
 
-    if (div_up(jcp.l_pad, jcp.stride_w) < jcp.kw
-            && div_up(jcp.r_pad, jcp.stride_w) < jcp.kw) {
+    if (div_up(nstl::max(0, jcp.l_pad), jcp.stride_w) < jcp.kw
+            && div_up(nstl::max(0, jcp.r_pad), jcp.stride_w) < jcp.kw) {
         try_exec_vpad = true;
     }
 

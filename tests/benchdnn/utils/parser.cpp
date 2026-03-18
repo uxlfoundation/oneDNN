@@ -16,6 +16,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <map>
+#include <unordered_map>
 
 #include "utils/cold_cache.hpp"
 #include "utils/fill.hpp"
@@ -58,15 +60,28 @@ std::string get_pattern(const std::string &option_name, bool with_args) {
     return s;
 }
 
+std::vector<std::string> &get_option_names() {
+    static std::vector<std::string> options;
+    return options;
+}
+
 void add_option_to_help(const std::string &option,
         const std::string &help_message, bool with_args) {
-    static std::vector<std::string> help_added;
-    for (const auto &e : help_added)
+    for (const auto &e : get_option_names())
         if (e == option) return;
 
     std::string option_str = get_pattern(option, with_args);
     help_ss << option_str << help_message << "\n";
-    help_added.push_back(option);
+    get_option_names().push_back(option);
+}
+
+bool has_only_digits(const std::string &s) {
+    if (s.empty()) return false;
+
+    return std::all_of(s.cbegin(), s.cend(), [](int c) {
+        assert(c < UINT8_MAX);
+        return std::isdigit(c);
+    });
 }
 
 // Covers all integer parsing routines: `atoi`, `atol, `atoll`, `stoi`, `stol`.
@@ -106,6 +121,53 @@ float stof_safe(const std::string &s) {
         SAFE_V(FAIL);
     }
     return value;
+}
+
+// Computes Levenshtein distance between two strings, which indicated how many
+// symbols should be appended, replaced, or removed to obtain the input string.
+// The implementation follows this article:
+// https://en.wikipedia.org/wiki/Levenshtein_distance
+//
+// The function is designed to be called recursively, decreasing symbols in `in`
+// and `opt` by one.
+//
+// Note: to improve the performance of the routine, an internal cache is used.
+// Between different options there would be low similarity, thus, `reset_cache`
+// instructs to clear its content (called externally, not during recurse).
+size_t compute_distance(const std::string &in, const std::string &opt,
+        bool reset_cache = false) {
+    if (in.empty()) return opt.size();
+    if (opt.empty()) return in.size();
+    if (in.front() == opt.front())
+        return compute_distance(in.substr(1), opt.substr(1));
+
+    static std::map<std::pair<std::string, std::string>, size_t> cache;
+    if (reset_cache) cache.clear();
+    std::map<std::pair<std::string, std::string>, size_t>::iterator it {};
+
+    auto cache_shift_in_key = std::make_pair(in.substr(1), opt);
+    it = cache.find(cache_shift_in_key);
+    size_t shift_in_dist = SIZE_MAX;
+    if (it != cache.end()) {
+        shift_in_dist = it->second;
+    } else {
+        shift_in_dist = compute_distance(in.substr(1), opt);
+        cache.emplace(cache_shift_in_key, shift_in_dist);
+    }
+
+    auto cache_shift_opt_key = std::make_pair(in, opt.substr(1));
+    it = cache.find(cache_shift_opt_key);
+    size_t shift_opt_dist = SIZE_MAX;
+    if (it != cache.end()) {
+        shift_opt_dist = it->second;
+    } else {
+        shift_opt_dist = compute_distance(in, opt.substr(1));
+        cache.emplace(cache_shift_opt_key, shift_opt_dist);
+    }
+
+    size_t shift_both_dist = compute_distance(in.substr(1), opt.substr(1));
+    return std::min(std::min(shift_in_dist, shift_opt_dist), shift_both_dist)
+            + 1;
 }
 
 attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
@@ -273,26 +335,18 @@ attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
 
                 // parse mask input - processed for both src1/src2 tensors.
                 const auto mask_input_str = get_substr(s, src_subpos, delim);
-                // Check if `mask_input_str` consists of only digits.
-                const bool only_digits = std::all_of(mask_input_str.cbegin(),
-                        mask_input_str.cend(), [](int c) {
-                    assert(c < UINT8_MAX);
-                    return std::isdigit(c);
-                });
-
-                using mask_input_t
-                        = attr_t::post_ops_t::entry_t::binary_t::mask_input_t;
-                if (only_digits) {
-                    // If digits only, then read it as integer value.
+                if (parser_utils::has_only_digits(mask_input_str)) {
+                    // If an input consists of digits only, then read it as the
+                    // int value.
                     const auto src_mask
                             = parser_utils::stoll_safe(mask_input_str);
 
                     if (!is_ternary) {
                         e.binary.mask = src_mask;
-                        e.binary.mask_input = mask_input_t::mask;
+                        e.binary.mask_input = attr_t::mask_input_t::mask;
                     } else {
                         e.binary.src2_mask = src_mask;
-                        e.binary.src2_mask_input = mask_input_t::mask;
+                        e.binary.src2_mask_input = attr_t::mask_input_t::mask;
                         if (e.binary.src2_mask > 0)
                             BENCHDNN_PRINT(0, "%s \'%s\' %s\n",
                                     "Error: binary post-op policy for the "
@@ -307,7 +361,7 @@ attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
 
                     if (!is_ternary) {
                         e.binary.policy = src_policy;
-                        e.binary.mask_input = mask_input_t::policy;
+                        e.binary.mask_input = attr_t::mask_input_t::policy;
 
                         if (e.binary.policy == attr_t::policy_t::POLICY_TOTAL) {
                             BENCHDNN_PRINT(0, "%s \'%s\' %s\n",
@@ -321,7 +375,7 @@ attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
                         }
                     } else {
                         e.binary.src2_policy = src_policy;
-                        e.binary.src2_mask_input = mask_input_t::policy;
+                        e.binary.src2_mask_input = attr_t::mask_input_t::policy;
 
                         if (e.binary.src2_policy != attr_t::policy_t::COMMON) {
                             BENCHDNN_PRINT(0, "%s \'%s\' %s\n",
@@ -347,6 +401,14 @@ attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
                 }
                 e.binary.tag = tag_str;
 
+                if (src_subpos == std::string::npos) return;
+
+                const auto strides_str = get_substr(s, src_subpos, delim);
+                if (!strides_str.empty()) {
+                    parse_vector_str(e.binary.strides, dims_t(),
+                            parser_utils::stoll_safe, strides_str, 'x');
+                }
+
                 if (src_subpos != std::string::npos) {
                     const auto unknown_str = get_substr(s, src_subpos, delim);
                     BENCHDNN_PRINT(0, "%s \'%s\' %s\n",
@@ -365,13 +427,22 @@ attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
             }
 
         } else if (e.is_prelu_kind()) {
-            const auto policy_str = get_substr(subs, subs_pos, ':');
-            e.prelu.policy = attr_t::str2policy(policy_str);
-            if (e.prelu.policy == attr_t::policy_t::POLICY_TOTAL) {
-                BENCHDNN_PRINT(0, "%s \'%s\' %s\n",
-                        "Error: prelu post-op policy", policy_str.c_str(),
-                        "is not recognized.");
-                SAFE_V(FAIL);
+            const auto mask_input_str = get_substr(subs, subs_pos, ':');
+            if (parser_utils::has_only_digits(mask_input_str)) {
+                // If an input consists of digits only, then read it as the int
+                // value.
+                e.prelu.mask_input = attr_t::mask_input_t::mask;
+                e.prelu.mask = parser_utils::stoll_safe(mask_input_str);
+            } else {
+                // Otherwise, re-direct to policy parsing.
+                e.prelu.mask_input = attr_t::mask_input_t::policy;
+                e.prelu.policy = attr_t::str2policy(mask_input_str);
+                if (e.prelu.policy == attr_t::policy_t::POLICY_TOTAL) {
+                    BENCHDNN_PRINT(0, "%s \'%s\' %s\n",
+                            "Error: prelu post-op policy",
+                            mask_input_str.c_str(), "is not recognized.");
+                    SAFE_V(FAIL);
+                }
             }
         }
         if (subs_pos == std::string::npos) continue;
@@ -692,6 +763,110 @@ bool parse_encoding(std::vector<sparse_options_t> &sparse_options,
             str, option_name, help);
 }
 
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+// Format: DIM_IDX:NUM_GROUPS:size0,size1,...,sizeN
+// - DIM_IDX is the dimension index, where src MxK * weights KxN = dst MxN
+//   0 = M,  1 = K, 2 = N
+// - NUM_GROUPS is the number of tensors in the group (number of experts)
+// - size0, size1,..., sizeN are the sizes for each in the group, with sum
+//   equal to the total size along DIM_IDX
+//
+// TODO: move to parse_single_value_option once feature is moved out of experimental
+bool parse_grouped(std::vector<sparse_options_t> &sparse_options,
+        const char *str, const std::string &option_name /* = "grouped"*/) {
+    static const std::string help
+            = "DIM_IDX:NUM_GROUPS:size0,size1,...,sizeN\n   "
+              "Specifies grouped encoding for MoE workloads.\n"
+              "    DIM_IDX is the dimension index (0=M, 1=K, 2=N)\n"
+              "    NUM_GROUPS is the number of expert groups\n"
+              "    size0,size1,...,sizeN are the sizes for each in the group "
+              "(comma-separated)\n"
+              "    Example: --grouped=0:8:32,64,32,96,48,80,56,72\n";
+
+    parser_utils::add_option_to_help(option_name, help);
+    const std::string pattern = parser_utils::get_pattern(option_name);
+    if (!parser_utils::option_matched(pattern, str)) return false;
+
+    str = str + pattern.size();
+    std::string s(str);
+
+    if (s.empty()) {
+        sparse_options.assign({sparse_options_t()});
+        return true;
+    }
+
+    sparse_options_t v;
+
+    // Parse format: DIM_IDX:NUM_GROUPS:size0,size1,...
+    size_t start_pos = 0;
+
+    // Parse dimension index
+    const auto dim_idx_str = get_substr(s, start_pos, ':');
+    if (start_pos == std::string::npos) {
+        BENCHDNN_PRINT(0, "%s\n",
+                "Error: grouped format requires DIM_IDX:NUM_GROUPS:sizes");
+        SAFE_V(FAIL);
+    }
+
+    int variable_dim_idx
+            = static_cast<int>(parser_utils::stoll_safe(dim_idx_str));
+
+    // Validate dimension index (0=M, 1=K, 2=N)
+    if (variable_dim_idx < 0 || variable_dim_idx > 2) {
+        BENCHDNN_PRINT(0,
+                "Error: dimension index must be 0 (M), 1 (K), or 2 (N), "
+                "got %d\n",
+                variable_dim_idx);
+        SAFE_V(FAIL);
+    }
+
+    // Parse number of groups
+    const auto group_count_str = get_substr(s, start_pos, ':');
+    if (start_pos == std::string::npos) {
+        BENCHDNN_PRINT(0, "%s\n",
+                "Error: grouped format requires NUM_GROUPS and sizes");
+        SAFE_V(FAIL);
+    }
+
+    dnnl_dim_t group_count = parser_utils::stoll_safe(group_count_str);
+
+    // Get the sizes (comma-separated)
+    std::vector<dnnl_dim_t> sizes;
+    size_t size_pos = start_pos;
+    while (size_pos != std::string::npos) {
+        sizes.push_back(parser_utils::stoll_safe(get_substr(s, size_pos, ',')));
+    }
+
+    // Validate number of sizes
+    if (sizes.size() != (size_t)group_count) {
+        BENCHDNN_PRINT(0,
+                "Error: number of sizes (%zu) doesn't match "
+                "group_count (%lld)\n",
+                sizes.size(), (long long)group_count);
+        SAFE_V(FAIL);
+    }
+
+    // Set grouped encoding based on variable_dim_idx
+    // For matmul: src is MxK, weights is KxN, dst is MxN
+    // - dim 0 (M): affects src and dst
+    // - dim 1 (K): affects src and weights
+    // - dim 2 (N): affects weights and dst
+    if (variable_dim_idx == 0) {
+        v.set_grouped(DNNL_ARG_SRC, variable_dim_idx, group_count, sizes);
+        v.set_grouped(DNNL_ARG_DST, variable_dim_idx, group_count, sizes);
+    } else if (variable_dim_idx == 1) {
+        v.set_grouped(DNNL_ARG_SRC, variable_dim_idx, group_count, sizes);
+        v.set_grouped(DNNL_ARG_WEIGHTS, variable_dim_idx, group_count, sizes);
+    } else if (variable_dim_idx == 2) {
+        v.set_grouped(DNNL_ARG_WEIGHTS, variable_dim_idx, group_count, sizes);
+        v.set_grouped(DNNL_ARG_DST, variable_dim_idx, group_count, sizes);
+    }
+
+    sparse_options.assign({v});
+    return true;
+}
+#endif
+
 bool parse_multi_tag(std::vector<std::vector<std::string>> &tag,
         const std::vector<std::vector<std::string>> &def_tag, const char *str,
         const std::string &option_name /* = "stag"*/) {
@@ -721,7 +896,8 @@ bool parse_attr_post_ops(std::vector<attr_t::post_ops_t> &po, const char *str,
             = "POST-OPS\n    Specifies post-ops attribute. `POST-OPS` syntax "
               "is one of those:\n    * SUM[:SCALE[:ZERO_POINT[:DATA_TYPE]]]\n  "
               "  * ELTWISE[:ALPHA[:BETA[:SCALE]]]\n    * DW:KkSsPp[:DST_DT]\n  "
-              "  * BINARY:DT[:MASK_INPUT[:TAG]]\n    More details at "
+              "  * BINARY:DT[:MASK_INPUT[:TAG]]\n    * PRELU[:MASK_INPUT]\n    "
+              "More details at "
             + doc_url + "knobs_attr.md\n";
     std::vector<attr_t::post_ops_t> def {attr_t::post_ops_t()};
     return parse_vector_option(po, def, parser_utils::parse_attr_post_ops_func,
@@ -731,7 +907,7 @@ bool parse_attr_post_ops(std::vector<attr_t::post_ops_t> &po, const char *str,
 bool parse_attr_scales(std::vector<attr_t::arg_scales_t> &scales,
         const char *str, const std::string &option_name = "attr-scales") {
     static const std::string help
-            = "ARG:POLICY[:SCALE[:DATA_TYPE[:GROUPS]]][+...]\n"
+            = "ARG:MASK_INPUT[:SCALE[:DATA_TYPE[:GROUPS]]][+...]\n"
               "    Specifies input scales attribute.\n"
               "    More details at "
             + doc_url + "knobs_attr.md\n";
@@ -741,7 +917,7 @@ bool parse_attr_scales(std::vector<attr_t::arg_scales_t> &scales,
 bool parse_attr_zero_points(std::vector<attr_t::zero_points_t> &zp,
         const char *str, const std::string &option_name = "attr-zero-points") {
     static const std::string help
-            = "ARG:POLICY[:ZEROPOINT[:DATA_TYPE[:GROUPS]]][+...]\n"
+            = "ARG:MASK_INPUT[:ZEROPOINT[:DATA_TYPE[:GROUPS]]][+...]\n"
               "    Specifies zero-points attribute.\n"
               "    More details at "
             + doc_url + "knobs_attr.md\n";
@@ -752,10 +928,9 @@ bool parse_attr_precomputed_reductions(
         std::vector<attr_t::precomputed_reductions_t> &pr, const char *str,
         const std::string &option_name = "attr-precomputed-reductions") {
     static const std::string help
-            = "ARG:POLICY:DATA_TYPE:GROUPS[+...]\n    Specifies precomputed "
-              "reductions attribute.\n    More details at "
-              "https://github.com/uxlfoundation/oneDNN/blob/main/tests/"
-              "benchdnn/doc/knobs_attr.md\n";
+            = "ARG:MASK_INPUT:DATA_TYPE:GROUPS[+...]\n    Specifies "
+              "precomputed reductions attribute.\n    More details at "
+            + doc_url + "knobs_attr.md\n";
     return parse_subattr(pr, str, option_name, help);
 }
 
@@ -1377,7 +1552,8 @@ static bool parse_memory_kind(
     bool parsed = parse_single_value_option(memory_kind, default_memory_kind,
             str2memory_kind, str, option_name, help);
 
-#if !defined(DNNL_WITH_SYCL) && DNNL_GPU_RUNTIME != DNNL_RUNTIME_OCL
+#if !defined(DNNL_WITH_SYCL) && DNNL_GPU_RUNTIME != DNNL_RUNTIME_OCL \
+        && DNNL_GPU_RUNTIME != DNNL_RUNTIME_ZE
     if (parsed) {
         fprintf(stderr,
                 "ERROR: option `--%s` is supported with DPC++ and OpenCL "
@@ -1538,7 +1714,8 @@ static bool parse_stream_kind(
     bool parsed = parse_single_value_option(stream_kind, default_stream_kind,
             str2stream_kind, str, option_name, help);
 
-#if !defined(DNNL_WITH_SYCL) && DNNL_GPU_RUNTIME != DNNL_RUNTIME_OCL
+#if !defined(DNNL_WITH_SYCL) && DNNL_GPU_RUNTIME != DNNL_RUNTIME_OCL \
+        && DNNL_GPU_RUNTIME != DNNL_RUNTIME_ZE
     if (parsed) {
         BENCHDNN_PRINT(0,
                 "Error: option `--%s` is supported with DPC++ and OpenCL "
@@ -1652,8 +1829,37 @@ void catch_unknown_options(const char *str) {
 
     std::string pattern = "--";
     if (parser_utils::option_matched(pattern, str)) {
-        BENCHDNN_PRINT(0, "%s %s \'%s\'\n",
-                "driver: ERROR: unknown option:", driver_name.c_str(), str);
+        std::string s(str);
+        auto equal_pos = s.find_first_of('=');
+        s = s.substr(2, equal_pos - 2);
+
+        // Try to provide similar options in case of minor typos.
+        // The search is based on Levenshtein distance between two strings.
+        //
+        // Note: print options when there's some similarity, but limit it by 6
+        // (taken experimentally) for long given options.
+        const size_t good_dist = std::min(s.size() - 1, size_t(6));
+        std::multimap<size_t, std::string> opt_distances;
+        size_t n_candidates = 0;
+        for (const auto &opt : parser_utils::get_option_names()) {
+            size_t dist = parser_utils::compute_distance(
+                    s, opt, /* reset_cache = */ true);
+            opt_distances.emplace(dist, opt);
+            if (dist <= good_dist) n_candidates++;
+        }
+
+        BENCHDNN_PRINT(0, "Error: unknown option for \'%s\' driver: \'%s\'.\n",
+                driver_name.c_str(), str);
+        if (n_candidates == 0) exit(2);
+
+        BENCHDNN_PRINT(0, "The most similar %s\n",
+                n_candidates == 1 ? "option is:" : "options are:");
+
+        for (const auto &e : opt_distances) {
+            if (e.first > good_dist) continue;
+            BENCHDNN_PRINT(0, "        %s\n", e.second.c_str());
+        }
+
         exit(2);
     }
 

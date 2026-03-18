@@ -205,10 +205,10 @@ protected:
         workspace = test::make_memory(p_workspace_desc, eng);
 
         EXPECT_ANY_THROW(pooling_forward(pool_prim_desc, {}));
-        pooling_forward(pool_prim_desc)
-                .execute(strm,
-                        {{DNNL_ARG_SRC, src}, {DNNL_ARG_DST, dst},
-                                {DNNL_ARG_WORKSPACE, workspace}});
+        pooling_forward prim(pool_prim_desc);
+        prim.execute(strm,
+                {{DNNL_ARG_SRC, src}, {DNNL_ARG_DST, dst},
+                        {DNNL_ARG_WORKSPACE, workspace}});
 
         strm.wait();
 
@@ -239,11 +239,10 @@ protected:
                 ker, dilation, pad_l, pad_r);
         check_prim_desc(pool_bwd_prim_desc);
 
-        pooling_backward(pool_bwd_prim_desc)
-                .execute(strm,
-                        {{DNNL_ARG_DIFF_DST, diff_dst},
-                                {DNNL_ARG_DIFF_SRC, diff_src},
-                                {DNNL_ARG_WORKSPACE, workspace}});
+        pooling_backward prim(pool_bwd_prim_desc);
+        prim.execute(strm,
+                {{DNNL_ARG_DIFF_DST, diff_dst}, {DNNL_ARG_DIFF_SRC, diff_src},
+                        {DNNL_ARG_WORKSPACE, workspace}});
         strm.wait();
 
         check_zero_tail<data_t>(0, diff_src);

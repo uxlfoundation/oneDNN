@@ -44,7 +44,7 @@ status_t device_info_t::init_arch(impl::engine_t *engine) {
 
     CHECK(init_gpu_hw_info(engine, device, context, ip_version_, gpu_arch_,
             gpu_product_, native_extensions_, mayiuse_systolic_,
-            mayiuse_ngen_kernels_));
+            mayiuse_ngen_kernels_, is_efficient_64bit_));
 
     err = xpu::ocl::clReleaseContext(context);
     OCL_CHECK(err);
@@ -92,19 +92,11 @@ status_t device_info_t::init_runtime_version(impl::engine_t *engine) {
 }
 
 status_t device_info_t::init_extensions(impl::engine_t *engine) {
-    cl_int err = CL_SUCCESS;
     auto device = utils::downcast<const engine_t *>(engine)->device();
 
     // query device for extensions
-    size_t param_size = 0;
-    err = xpu::ocl::clGetDeviceInfo(
-            device, CL_DEVICE_EXTENSIONS, 0, nullptr, &param_size);
-    OCL_CHECK(err);
-
-    std::string extension_string(param_size, '\0');
-    err = xpu::ocl::clGetDeviceInfo(device, CL_DEVICE_EXTENSIONS, param_size,
-            &extension_string[0], &param_size);
-    OCL_CHECK(err);
+    std::string extension_string;
+    CHECK(xpu::ocl::get_extensions(device, extension_string));
 
     // convert to ours
     using namespace compute;

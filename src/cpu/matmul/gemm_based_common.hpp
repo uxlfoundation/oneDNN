@@ -111,7 +111,7 @@ inline bool check_gemm_binary_per_oc_compatible_formats(const matmul_pd_t &pd) {
     const int ndims = dst_d.ndims();
 
     for (auto d : dims)
-        if (d == DNNL_RUNTIME_DIM_VAL) return false;
+        if (is_runtime_value(d)) return false;
 
     // check d, h, w... (b2, m, n... for matmul) dimensions are continuous
     bool ok = true;

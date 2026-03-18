@@ -34,6 +34,7 @@ const char *property_type2str(property_type_t v);
 
 std::string partition_kind2str(partition_kind_t v);
 partition_kind_t str2partition_kind(const std::string &str);
+std::string dims2str(const std::vector<dim_t> &dims);
 
 } // namespace utils
 } // namespace graph

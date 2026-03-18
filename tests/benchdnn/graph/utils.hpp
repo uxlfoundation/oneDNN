@@ -204,6 +204,7 @@ struct cpp_stream_t {
             void *interop_obj = nullptr);
     void wait() { stream_.wait(); }
     operator dnnl::stream &() { return stream_; }
+    dnnl::engine get_engine() const { return stream_.get_engine(); }
 
 private:
     BENCHDNN_DISALLOW_COPY_AND_ASSIGN(cpp_stream_t);

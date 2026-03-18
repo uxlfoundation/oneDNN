@@ -10,9 +10,9 @@ performance library of basic building blocks for deep learning applications.
 oneDNN project is part of the [UXL Foundation] and is an implementation
 of the [oneAPI specification] for oneDNN component.
 
-The library is optimized for Intel(R) Architecture Processors, Intel Graphics,
-and Arm(R) 64-bit Architecture (AArch64)-based processors. oneDNN has
-experimental support for the following architectures: NVIDIA\* GPU,
+The library is optimized for Intel 64/AMD64 architecture based processors,
+Arm(R) 64-bit Architecture (AArch64)-based processors, and Intel Graphics.
+oneDNN has experimental support for the following architectures: NVIDIA\* GPU,
 AMD\* GPU, OpenPOWER\* Power ISA (PPC64), IBMz\* (s390x), and RISC-V.
 
 oneDNN is intended for deep learning applications and framework
@@ -110,17 +110,18 @@ require the use of run-time controls to enable them. See
 > [Linking Guide] for more details.
 
 The library is optimized for the following GPUs:
-* Intel Graphics for 11th-14th Generation Intel Core Processors
-* Intel Iris Xe MAX Graphics (formerly DG1)
-* Intel Arc(TM) A-Series Graphics (formerly Alchemist)
-* Intel Data Center GPU Flex Series (formerly Arctic Sound)
-* Intel Data Center GPU Max Series (formerly Ponte Vecchio)
-* Intel Graphics and Intel Arc Graphics for Intel Core Ultra processors
-  (formerly Meteor Lake, Arrow Lake and Lunar Lake)
-* Intel Arc B-Series Graphics and Intel Arc Pro B-Series Graphics
-  (formerly Battlemage)
-* Intel Arc Graphics for future Intel Core Ultra processors
-  (code name Panther Lake)
+* Intel discrete GPUs:
+  * Intel Iris Xe MAX Graphics (formerly DG1)
+  * Intel Arc(TM) A-Series Graphics (formerly Alchemist)
+  * Intel Data Center GPU Flex Series (formerly Arctic Sound)
+  * Intel Data Center GPU Max Series (formerly Ponte Vecchio)
+  * Intel Arc B-Series Graphics and Intel Arc Pro B-Series Graphics
+   (formerly Battlemage)
+* Intel Graphics integrated with:
+  * 11th-14th Generation Intel Core Processors
+  * Intel Graphics for Intel Core Ultra Series 1 processors (formerly Meteor Lake)
+  * Intel Graphics for Intel Core Ultra Series 2 processors (formerly Arrow Lake and Lunar Lake)
+  * Intel Graphics for Intel Core Ultra Series 3 processors (formerly Panther Lake)
 
 [CPU dispatcher control]: https://uxlfoundation.github.io/oneDNN/dev_guide_cpu_dispatcher_control.html
 [Linking Guide]: https://uxlfoundation.github.io/oneDNN/dev_guide_link.html
@@ -128,7 +129,7 @@ The library is optimized for the following GPUs:
 ### Requirements for Building from Source
 
 oneDNN supports systems meeting the following requirements:
-* Operating system with Intel 64 / Arm 64 / Power / IBMz architecture support
+* Operating system with Intel 64/AMD64, AArch 64, PPC64, or s390x architecture support
 * C++ compiler with C++11 standard support
 * [CMake] 3.13 or later
 
@@ -153,9 +154,9 @@ dependencies.
 
 #### CPU Engine
 
-oneDNN CPU engine is used to execute primitives on Intel Architecture
-Processors, 64-bit Arm Architecture (AArch64) processors,
-64-bit Power ISA (PPC64) processors, IBMz (s390x), and compatible devices.
+oneDNN CPU engine is used to execute primitives on Intel 64/AMD64 based processors,
+64-bit Arm Architecture (AArch64) processors, 64-bit Power ISA (PPC64) processors,
+IBMz (s390x), and compatible devices.
 
 The CPU engine is built by default but can be disabled at build time by setting
 `ONEDNN_CPU_RUNTIME` to `NONE`. In this case, GPU engine must be enabled.
@@ -273,8 +274,8 @@ Common dependencies:
 
 Runtime-specific dependencies:
 
-| Runtime configuration    | Compiler                      | Dependency
-| :----------------------- | :---------------------------- | :---------
+| Runtime configuration      | Compiler                      | Dependency
+| :------------------------- | :---------------------------- | :---------
 | `ONEDNN_CPU_RUNTIME=OMP`   | GCC                           | GNU OpenMP runtime (`libgomp.so`)
 | `ONEDNN_CPU_RUNTIME=OMP`   | Intel C/C++ Compiler          | Intel OpenMP runtime (`libiomp5.so`)
 | `ONEDNN_CPU_RUNTIME=OMP`   | Clang                         | Intel OpenMP runtime (`libiomp5.so`)
@@ -290,8 +291,8 @@ Common dependencies:
 
 Runtime-specific dependencies:
 
-| Runtime configuration    | Compiler                      | Dependency
-| :----------------------- | :---------------------------- | :---------
+| Runtime configuration      | Compiler                      | Dependency
+| :------------------------- | :---------------------------- | :---------
 | `ONEDNN_CPU_RUNTIME=OMP`   | Microsoft Visual C++ Compiler | No additional requirements
 | `ONEDNN_CPU_RUNTIME=OMP`   | Intel C/C++ Compiler          | Intel OpenMP runtime (`iomp5.dll`)
 | `ONEDNN_CPU_RUNTIME=TBB`   | any                           | TBB (`tbb.dll`)
@@ -306,8 +307,8 @@ Common dependencies:
 
 Runtime-specific dependencies:
 
-| Runtime configuration  | Compiler                      | Dependency
-| :--------------------- | :---------------------------- | :---------
+| Runtime configuration    | Compiler                      | Dependency
+| :----------------------- | :---------------------------- | :---------
 | `ONEDNN_CPU_RUNTIME=OMP` | Intel C/C++ Compiler          | Intel OpenMP runtime (`libiomp5.dylib`)
 | `ONEDNN_CPU_RUNTIME=TBB` | any                           | TBB (`libtbb.dylib`)
 

@@ -17,10 +17,14 @@
 #ifndef CPU_RV64_RVV_SOFTMAX_HPP
 #define CPU_RV64_RVV_SOFTMAX_HPP
 
+#include <memory>
+
 #include "common/dnnl_thread.hpp"
 #include "common/memory_tracking.hpp"
 #include "common/primitive.hpp"
 #include "cpu/cpu_softmax_pd.hpp"
+#include "cpu/rv64/cpu_isa_traits.hpp"
+#include "cpu/rv64/jit_rvv_softmax_affine_kernel.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -41,6 +45,7 @@ struct rvv_softmax_fwd_t : public primitive_t {
         DECLARE_COMMON_PD_T("RISCV64GCV", rvv_softmax_fwd_t);
 
         rvv_softmax_conf_t rsp_;
+        bool use_jit_ = false;
 
         status_t init(engine_t *engine) {
             UNUSED(engine);
@@ -61,12 +66,27 @@ struct rvv_softmax_fwd_t : public primitive_t {
             rsp_.outer_size
                     = src_d.nelems(true) / (rsp_.inner_size * axis_size(true));
 
-            VDISPATCH_SOFTMAX(rsp_.data_type == data_type::f32
-                            && dst_md()->data_type == rsp_.data_type,
+            const bool is_f16 = src_md()->data_type == data_type::f16;
+            VDISPATCH_SOFTMAX(utils::one_of(src_md()->data_type, data_type::f32,
+                                      data_type::f16),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_SOFTMAX(src_md()->data_type == dst_md()->data_type,
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_SOFTMAX(mayiuse(v), VERBOSE_UNSUPPORTED_ISA);
+            if (is_f16) {
+                VDISPATCH_SOFTMAX(mayiuse(zvfh), VERBOSE_UNSUPPORTED_ISA);
+            }
+            VDISPATCH_SOFTMAX(
+                    platform::has_data_type_support(src_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_SOFTMAX(
                     check_layouts(src_d, dst_d), VERBOSE_UNSUPPORTED_TAG);
 
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
+            use_jit_ = rsp_.data_type == data_type::f32;
+#else
+            use_jit_ = false;
+#endif
             init_scratchpad();
 
             return status::success;
@@ -83,10 +103,11 @@ struct rvv_softmax_fwd_t : public primitive_t {
         void init_scratchpad() {
             auto scratchpad = scratchpad_registry().registrar();
             nthr_ = rsp_.inner_size > 1 ? dnnl_get_max_threads() : 1;
+            const size_t dt_size = types::data_type_size(rsp_.data_type);
             if (rsp_.inner_size > 1) {
                 scratchpad.template book<char>(
                         memory_tracking::names::key_softmax_interim_store,
-                        static_cast<size_t>(axis_size(true)) * sizeof(float)
+                        static_cast<size_t>(axis_size(true)) * dt_size
                                 * static_cast<size_t>(nthr_));
             }
         }
@@ -94,7 +115,7 @@ struct rvv_softmax_fwd_t : public primitive_t {
         int nthr_ = 0;
     };
 
-    rvv_softmax_fwd_t(const pd_t *apd) : primitive_t(apd) {}
+    rvv_softmax_fwd_t(const pd_t *apd);
     status_t execute(const exec_ctx_t &ctx) const override {
         return execute_forward(ctx);
     }
@@ -102,6 +123,7 @@ struct rvv_softmax_fwd_t : public primitive_t {
 private:
     status_t execute_forward(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
+    std::unique_ptr<jit_rvv_softmax_affine_kernel_t> affine_kernel_;
 };
 
 } // namespace rv64

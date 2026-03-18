@@ -3299,8 +3299,9 @@ void jit_avx512_common_conv_bwd_weights_kernel_f32_t ::
         }
     }
 
-    const int oj_end_value = nstl::min(
-            oh, utils::div_up(ihp - b_pad - (kh - 1) * dilate_h, stride_h));
+    const int oj_end_value = nstl::min(oh,
+            utils::div_up(
+                    nstl::max(0, ihp - b_pad - (kh - 1) * dilate_h), stride_h));
     cmp(reg_oj, oj_end_value);
     jge(oh_label_end, T_NEAR);
 
@@ -3365,8 +3366,8 @@ void jit_avx512_common_conv_bwd_weights_kernel_f32_t::
             : (jcp.is_1stconv ? 1 : jcp.ic_block);
     const int out_mult
             = is_ddst_layout_nxc() ? jcp.ngroups * jcp.oc : jcp.oc_block;
-    const int input_bottom_padding_overlap
-            = div_up(jcp.ih + jcp.t_pad - (jcp.kh - 1), jcp.stride_h);
+    const int input_bottom_padding_overlap = div_up(
+            nstl::max(0, jcp.ih + jcp.t_pad - (jcp.kh - 1)), jcp.stride_h);
     const int bottom_pad_input_correction
             = jcp.ih + jcp.t_pad - input_bottom_padding_overlap * jcp.stride_h;
 
@@ -3497,8 +3498,8 @@ void jit_avx512_common_conv_bwd_weights_kernel_f32_t::
 
     int iw = jcp.iw;
     int ow = jcp.ow;
-    const int input_backpad_overlap
-            = div_up(jcp.id + jcp.f_pad - (jcp.kd - 1), jcp.stride_d);
+    const int input_backpad_overlap = div_up(
+            nstl::max(0, jcp.id + jcp.f_pad - (jcp.kd - 1)), jcp.stride_d);
     const int back_pad_input_correction
             = jcp.id + jcp.f_pad - input_backpad_overlap * jcp.stride_d;
 

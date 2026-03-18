@@ -20,19 +20,20 @@
 #include "common/impl_registration.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
+#include "gemmstone/../../generator/pieces/compute_utils.hpp"
 #include "gemmstone/../../generator_dsl/builder.hpp"
 #include "gemmstone/../../generator_dsl/kernel_desc.hpp"
 #include "gemmstone/dsl/dsl.hpp"
 #include "gemmstone/generator.hpp"
+#include "gemmstone/kernel_evaluator.hpp"
+#include "gemmstone/kernel_selector.hpp"
 #include "gemmstone/strategy_parser.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/gemm/jit/gen_kernel_db.hpp"
-#include "gpu/intel/gemm/jit/generator/pieces/compute_utils.hpp"
+#include "gpu/intel/gemm/jit/pd.hpp"
 #include "gpu/intel/jit/ir/hw.hpp"
 #include "gpu/intel/jit/utils/type_bridge.hpp"
 #include "gpu/intel/utils.hpp"
-#include "kernel_evaluator.hpp"
-#include "kernel_selector.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -221,6 +222,16 @@ status_t gen_desc_t::finalize(const char *tags) {
             problem_.B.setAlignment(nstl::max<int>(problem_.B.alignment, 16));
     }
 
+    if (utils::one_of(hw_, ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11,
+                ngen::HW::XE3P_UNKNOWN)) {
+        // Use XeHPC banking if reusing XeHPC strategies (legacy mode)
+        if (!efficient_64b_) strategy_.raHW = ngen::HW::XeHPC;
+
+        // Disable named barriers to avoid simulator errors, allow fallback to pvc strategies.
+        strategy_.namedBarriers[0] = 0;
+        strategy_.namedBarriers[1] = 0;
+    }
+
     // Disable global k parallelization if it wouldn't be used.
     if (strategy_.kParallel && k_ >= 0) {
         auto k_min = aux_params_.k0 * aux_params_.wgK;
@@ -309,23 +320,35 @@ status_t gen_desc_t::finalize(const char *tags) {
     if (problem_.aScale2D()
             && problem_.aqGroupK
                             % minOuterProductCount(hw_, problem_, strategy_)
-                    != 0)
-        return status::unimplemented;
+                    != 0) {
+        if (!problem_.Ta.isF4() || !problem_.Tb.isF4())
+            return status::unimplemented;
+    }
     if (problem_.bScale2D()
             && problem_.bqGroupK
                             % minOuterProductCount(hw_, problem_, strategy_)
-                    != 0)
-        return status::unimplemented;
+                    != 0) {
+        if (!problem_.Ta.isF4() || !problem_.Tb.isF4())
+            return status::unimplemented;
+    }
+
+    // TODO: Fix kChain handling with BDPAS.
+    if (problem_.preferBDPAS(hw_)) { strategy_.kChain = 1; }
 
     // If the M/N group size is equal to M or N, align up to a multiple of unroll size
     // XXX: Increase group size to a large value before aligning to increase reusability
+    // TODO: Refactor M/N groups/thread setting to preserve MN group count.
     constexpr int perMNGroupSize = 1 << 24;
-    if (problem_.aqGroupM == m_) {
+    if (problem_.aqGroupM == m_
+            && ((!problem_.forceGroupSumsA && !problem_.preferBDPAS(hw_))
+                    || m_ > 1)) {
         problem_.aqGroupM = std::max(problem_.aqGroupM, perMNGroupSize);
         problem_.aqGroupM
                 = utils::rnd_up(problem_.aqGroupM, strategy_.unroll[LoopM]);
     }
-    if (problem_.bqGroupN == n_) {
+    if (problem_.bqGroupN == n_
+            && ((!problem_.forceGroupSumsB && !problem_.preferBDPAS(hw_))
+                    || n_ > 1)) {
         problem_.bqGroupN = std::max(problem_.bqGroupN, perMNGroupSize);
         problem_.bqGroupN
                 = utils::rnd_up(problem_.bqGroupN, strategy_.unroll[LoopN]);
@@ -334,6 +357,8 @@ status_t gen_desc_t::finalize(const char *tags) {
     strategy_.kInterleaveChunk
             = std::min(strategy_.kInterleaveChunk, (int)aux_params_.k0);
     if (strategy_.kInterleave) aux_params_.wgK = strategy_.wg[LoopK];
+    if (aux_params_.wgK > strategy_.wg[LoopK])
+        aux_params_.wgK = strategy_.wg[LoopK];
     update_driver_info();
 
     return status::success;
@@ -353,6 +378,9 @@ void gen_desc_t::update_driver_info() {
         REG_XEHPC_ISA(ARCH_DISPATCH(XeHPC))
         REG_XE2_ISA(ARCH_DISPATCH(Xe2))
         REG_XE3_ISA(ARCH_DISPATCH(Xe3))
+        REG_XE3P_ISA(ARCH_DISPATCH(XE3P_35_10))
+        REG_XE3P_ISA(ARCH_DISPATCH(XE3P_35_11))
+        REG_XE3P_ISA(ARCH_DISPATCH(XE3P_UNKNOWN))
         default:
             assert(!"Unsupported architecture");
             driver_info_ = entry_->driverInfo;
@@ -361,78 +389,11 @@ void gen_desc_t::update_driver_info() {
 #undef ARCH_DISPATCH
 }
 
-status_t gen_desc_t::transfer_post_ops(
-        gpu_post_ops_t &&post_ops_, bool swap_ab) {
-    problem_.postOps = std::move(post_ops_);
-    const auto &post_ops = problem_.postOps;
-
-    if (post_ops.len() > 0) {
-
-        size_t po_count = post_ops.len();
-        problem_.Tbinary.reserve(po_count);
-        problem_.binary.reserve(po_count);
-        problem_.postOps.binaryRow = {};
-        problem_.postOps.binaryCol = {};
-        problem_.postOps.binaryBatch = {};
-        problem_.postOps.binaryTrans = {};
-
-        if (problem_.Ta == Type::f16) problem_.Ts = Type::f32;
-        if (problem_.Ta.isF8() || problem_.Tb.isF8()) problem_.Ts = Type::f32;
-
-        for (size_t i = 0; i < po_count; i++) {
-            const auto &entry = post_ops[i];
-            if (!entry.is_binary()) {
-                problem_.Tbinary.push_back(Type::invalid);
-                problem_.binary.push_back(MatrixAddressing {});
-                continue;
-            }
-
-            auto &src_rmd = entry.as_binary().src1_desc;
-
-            auto T = convert_dnnl_to_kernel_type(src_rmd.dt);
-            bool is_multi_row = (src_rmd.broadcast_mask & 1) == 0;
-            bool is_multi_col = (src_rmd.broadcast_mask & 2) == 0;
-
-            bool is_compatible = src_rmd.inner_layout.empty();
-            if (!is_compatible) return status::unimplemented;
-
-            bool trans = is_multi_row && !src_rmd.inner_dim.is_innermost();
-
-            if (swap_ab) {
-                trans = !trans;
-                std::swap(is_multi_row, is_multi_col);
-            }
-
-            problem_.Tbinary.push_back(T);
-            problem_.postOps.binaryRow[i] = is_multi_row;
-            problem_.postOps.binaryCol[i] = is_multi_col;
-            problem_.postOps.binaryBatch[i] = src_rmd.ndims() >= 3;
-            problem_.postOps.binaryTrans[i] = trans;
-
-            MatrixAddressing atype;
-            atype.layout = trans ? MatrixLayout::T : MatrixLayout::N;
-            atype.crosspack = 1;
-            atype.packSize = 0;
-            atype.setAlignment(T.size());
-
-            problem_.binary.push_back(atype);
-        }
-    }
-
-    return status::success;
-}
-
 std::vector<const gemmstone::kcatalog::Entry *>
 gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
         int eu_count, bool has_systolic, bool is_integrated, compute_mode mode,
-        int batch_dims, bool trans_a, bool trans_b, bool trans_co, bool swap_ab,
-        const quant_params &a_quant, const quant_params &b_quant,
-        const quant_params &c_quant, bool dst_sround, bool c_offset, bool bias,
-        sum_ab_t reduce_ab, float alpha, float beta, data_type_t a_type,
-        data_type_t b_type, data_type_t c_type, data_type_t co_type,
-        data_type_t acc_type, int align_a, int align_b, int align_c, dim_t m,
-        dim_t n, dim_t k, dim_t lda, dim_t ldb, dim_t ldc, dim_t batch,
-        gpu_post_ops_t &&post_ops) {
+        const gemmstone::GEMMProblem &problem, float alpha, float beta, dim_t m,
+        dim_t n, dim_t k, dim_t lda, dim_t ldb, dim_t ldc, dim_t batch) {
     using namespace ngen;
     using namespace kcatalog;
 
@@ -446,167 +407,14 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     disable_systolic_ = !has_systolic;
     relaxed_acc_ = mode & mode_relaxed_acc;
 
-    auto a_type_size = types::data_type_size(a_type);
-    auto b_type_size = types::data_type_size(b_type);
-    auto c_type_size = types::data_type_size(c_type);
-
-    align_a = nstl::max(align_a, int(a_type_size));
-    align_b = nstl::max(align_b, int(b_type_size));
-    align_c = nstl::max(align_c, int(c_type_size));
-
-    // Set up problem structure.
-    problem_.Ta = problem_.Ta_ext = convert_dnnl_to_kernel_type(a_type);
-    problem_.Tb = problem_.Tb_ext = convert_dnnl_to_kernel_type(b_type);
-    problem_.Tc = convert_dnnl_to_kernel_type(acc_type);
-    problem_.Tc_ext = convert_dnnl_to_kernel_type(c_type);
-    problem_.Ts = problem_.Tc;
-    problem_.Tao = convert_dnnl_to_kernel_type(a_quant.zp_type);
-    problem_.Tbo = convert_dnnl_to_kernel_type(b_quant.zp_type);
-    problem_.Tco = convert_dnnl_to_kernel_type(co_type);
-    problem_.A.layout = trans_a ? MatrixLayout::T : MatrixLayout::N;
-    problem_.B.layout = trans_b ? MatrixLayout::T : MatrixLayout::N;
-    problem_.C.layout = MatrixLayout::N;
-    problem_.A.crosspack = problem_.B.crosspack = problem_.C.crosspack = 1;
-    problem_.A.packSize = problem_.B.packSize = problem_.C.packSize = 0;
-    problem_.A.setAlignment(align_a);
-    problem_.B.setAlignment(align_b);
-    problem_.C.setAlignment(align_c);
-
-    auto a_size = (trans_a ? m : k) * lda * a_type_size;
-    auto b_size = (trans_b ? k : n) * ldb * b_type_size;
-    auto c_size = n * ldc * c_type_size;
-
-    // Consolidate specialization logic to limit large buffer configurations
-    bool needA64 = std::max({a_size, b_size, c_size})
-            > std::numeric_limits<uint32_t>::max();
-    problem_.A.needA64 = needA64;
-    problem_.B.needA64 = needA64;
-    problem_.C.needA64 = needA64;
-
-    if (batch_dims > 0) {
-        problem_.batch = BatchMode::Strided;
-        problem_.batchDims = batch_dims;
-    }
-    if (a_quant.zp_ndims >= 0 || a_quant.zp_hostscalar)
-        problem_.aOffset = ABOffset::Calc;
-    if (b_quant.zp_ndims >= 0 || b_quant.zp_hostscalar)
-        problem_.bOffset = ABOffset::Calc;
-    problem_.aoPtrDims = a_quant.zp_hostscalar ? -1 : a_quant.zp_ndims;
-    problem_.boPtrDims = b_quant.zp_hostscalar ? -1 : b_quant.zp_ndims;
-    problem_.AO.layout = MatrixLayout::N;
-    problem_.BO.layout
-            = (problem_.bOffset2D()) ? MatrixLayout::N : MatrixLayout::T;
-    problem_.AO.crosspack = problem_.BO.crosspack = 1;
-    problem_.AO.packSize = problem_.BO.packSize = 0;
-    problem_.A_scale = problem_.Ag = problem_.AO;
-    problem_.B_scale = problem_.Bg = problem_.BO;
-    if (a_quant.zp_type != data_type::undef)
-        problem_.AO.setAlignment(int(types::data_type_size(a_quant.zp_type)));
-    if (b_quant.zp_type != data_type::undef)
-        problem_.BO.setAlignment(int(types::data_type_size(b_quant.zp_type)));
-    if (!swap_ab) {
-        problem_.asPtrDims = a_quant.scale_ndims;
-        problem_.bsPtrDims = b_quant.scale_ndims;
-        problem_.aqGroupK = a_quant.group_k;
-        problem_.bqGroupK = b_quant.group_k;
-        problem_.aqGroupM = a_quant.group_m;
-        problem_.bqGroupN = b_quant.group_n;
-        if (a_quant.scales_type != data_type::undef) {
-            problem_.Ta_scale
-                    = convert_dnnl_to_kernel_type(a_quant.scales_type);
-            problem_.A_scale.setAlignment(
-                    int(types::data_type_size(a_quant.scales_type)));
-        }
-        if (b_quant.scales_type != data_type::undef) {
-            problem_.Tb_scale
-                    = convert_dnnl_to_kernel_type(b_quant.scales_type);
-            problem_.B_scale.layout = MatrixLayout::N;
-            problem_.B_scale.setAlignment(
-                    int(types::data_type_size(b_quant.scales_type)));
-        }
-    } else {
-        problem_.bsPtrDims = a_quant.scale_ndims;
-        problem_.asPtrDims = b_quant.scale_ndims;
-        problem_.bqGroupK = a_quant.group_k;
-        problem_.aqGroupK = b_quant.group_k;
-        problem_.bqGroupN = a_quant.group_n;
-        problem_.aqGroupM = b_quant.group_n;
-        if (a_quant.scales_type != data_type::undef) {
-            problem_.Tb_scale
-                    = convert_dnnl_to_kernel_type(a_quant.scales_type);
-            problem_.B_scale.setAlignment(
-                    int(types::data_type_size(a_quant.scales_type)));
-        }
-        if (b_quant.scales_type != data_type::undef) {
-            problem_.Ta_scale
-                    = convert_dnnl_to_kernel_type(b_quant.scales_type);
-            problem_.A_scale.layout = MatrixLayout::T;
-            problem_.A_scale.setAlignment(
-                    int(types::data_type_size(b_quant.scales_type)));
-        }
-    }
-
-    if (c_quant.scales_type != data_type::undef) {
-        problem_.csPtrDims = c_quant.scale_ndims;
-        problem_.cMXScale = c_quant.mx;
-        problem_.Tc_scale = convert_dnnl_to_kernel_type(c_quant.scales_type);
-        problem_.cqGroupM = c_quant.group_m;
-        problem_.cqGroupN = c_quant.group_n;
-    }
-
-    if (problem_.Ta_ext.isInt4() && problem_.Tb_ext.isInt8()
-            && a_quant.zp_ndims >= 0)
-        problem_.Ta = Type::s8;
-    if (problem_.Tb_ext.isInt4() && problem_.Ta_ext.isInt8()
-            && b_quant.zp_ndims >= 0)
-        problem_.Tb = Type::s8;
-
-    if (problem_.Ta.isInteger()) problem_.Ts = Type::f32;
-
-    if (alpha == 1.0f) problem_.alpha = alpha;
-    if (beta == 0.0f || beta == 1.0f) problem_.beta = beta;
-
-    auto status = transfer_post_ops(std::move(post_ops), swap_ab);
-    if (status != status::success)
-        return std::vector<const gemmstone::kcatalog::Entry *>();
-
-    if (c_offset || bias || reduce_ab != sum_ab::sum_none) {
-        assert(!(c_offset && bias));
-        if (bias) problem_.cOffset = COffset::Pre;
-        if (c_offset) problem_.cOffset = COffset::Post;
-        problem_.CO.crosspack = 1;
-        problem_.CO.alignment = problem_.C.alignment;
-        problem_.CO.layout = trans_co ? MatrixLayout::T : MatrixLayout::N;
-    }
-
-    problem_.sumA = (reduce_ab == sum_ab::sum_b_col);
-    problem_.sumB = (reduce_ab == sum_ab::sum_a_row);
-    problem_.forceGroupSumsA = a_quant.force_gs;
-    problem_.forceGroupSumsB = b_quant.force_gs;
-
-    problem_.postOps.cStochasticRound = dst_sround;
-
-    if (problem_.needsAGroupSums() || problem_.needsBGroupSums())
-        problem_.autoTypeConversions(hw_, has_systolic);
-
-    if (problem_.needsAGroupSums()) {
-        problem_.Tag = convert_dnnl_to_kernel_type(a_quant.gs_type);
-        problem_.Ag.layout = MatrixLayout::N;
-        problem_.Ag.setAlignment(problem_.Tag.paddedSize());
-        if (problem_.bqGroupK == 0) problem_.bqGroupK = problem_.aqGroupK;
-        if (problem_.aqGroupK == 0) problem_.aqGroupK = problem_.bqGroupK;
-    }
-    if (problem_.needsBGroupSums()) {
-        problem_.Tbg = convert_dnnl_to_kernel_type(b_quant.gs_type);
-        problem_.Bg.layout = MatrixLayout::N;
-        problem_.Bg.setAlignment(problem_.Tbg.paddedSize());
-        if (problem_.aqGroupK == 0) problem_.aqGroupK = problem_.bqGroupK;
-        if (problem_.bqGroupK == 0) problem_.bqGroupK = problem_.aqGroupK;
-    }
-
     // Select a kernel from the catalog.
     std::vector<MatchParams> match_params;
-    MatchParams base(hw_, has_systolic, is_integrated, problem_);
+    MatchParams base(hw_, has_systolic, is_integrated, problem);
+    /* Reuse PVC strategies for legacy mode on Xe3p */
+    if (utils::one_of(hw_, ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11,
+                ngen::HW::XE3P_UNKNOWN)
+            && !efficient_64b_)
+        base.selector.hw = kcatalog::HWTagXeHPC;
 
     // By default gemmstone assumes that the accumulation type must be at least
     // as wide as the output type. For oneDNN this restriction is not needed.
@@ -619,21 +427,21 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     base.stepping = stepping;
     base.ignoreCase = true;
 
-    bool can_2d_a = (lda * problem_.Ta_ext <= 16777216);
-    bool can_2d_b = (ldb * problem_.Tb_ext <= 16777216);
-    bool can_2d_c = (ldc * problem_.Tc_ext <= 16777216);
+    bool can_2d_a = (lda * problem.Ta_ext <= 16777216);
+    bool can_2d_b = (ldb * problem.Tb_ext <= 16777216);
+    bool can_2d_c = (ldc * problem.Tc_ext <= 16777216);
 
     // Xe2 requires stronger alignment for block 2D.
     if (arch == compute::gpu_arch_t::xe2 || arch == compute::gpu_arch_t::xe3) {
-        can_2d_a &= (align_a % 16 == 0);
-        can_2d_b &= (align_b % 16 == 0);
-        can_2d_c &= (align_c % 16 == 0);
+        can_2d_a &= (problem.A.alignment % 16 == 0);
+        can_2d_b &= (problem.B.alignment % 16 == 0);
+        can_2d_c &= (problem.C.alignment % 16 == 0);
     }
 
     auto tags = const_cast<char *>(base.tags);
     while (*tags)
         tags++;
-    if (problem_.A.needA64 || problem_.B.needA64 || problem_.C.needA64)
+    if (problem.A.needA64 || problem.B.needA64 || problem.C.needA64)
         *tags++ = kcatalog::ReqBatchN;
     if (can_2d_a) *tags++ = kcatalog::ReqBlock2DA;
     if (can_2d_b) *tags++ = kcatalog::ReqBlock2DB;
@@ -643,22 +451,22 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     auto mod_match = [&](MatchParams &params, bool has_mode,
                              const char *(*match)(Type)) {
         if (!has_mode) return;
-        if (match(problem_.Ta)) {
-            params.selector.precisions[0] = match(problem_.Ta);
+        if (match(problem.Ta)) {
+            params.selector.precisions[0] = match(problem.Ta);
         }
-        if (match(problem_.Tb)) {
-            params.selector.precisions[1] = match(problem_.Tb);
+        if (match(problem.Tb)) {
+            params.selector.precisions[1] = match(problem.Tb);
         }
     };
 
     // Workaround limited attribute support with int8 dynamic quant,
     // upconvert to f16.
     mod_match(base,
-            (((a_quant.scale_ndims >= 2 || b_quant.scale_ndims >= 2)
-                     || b_quant.zp_ndims > -1)
-                    && a_quant.zp_ndims > -1 && problem_.Ta_ext.isInt8()
-                    && problem_.Tb_ext.isInt8() && problem_.Tc.isFP()
-                    && !problem_.forceGroupSumsA && !problem_.forceGroupSumsB),
+            (((problem.asPtrDims >= 2 || problem.bsPtrDims >= 2)
+                     || problem.boPtrDims > -1)
+                    && problem.aoPtrDims > -1 && problem.Ta_ext.isInt8()
+                    && problem.Tb_ext.isInt8() && problem.Tc.isFP()
+                    && !problem.forceGroupSumsA && !problem.forceGroupSumsB),
             [](Type dt) -> const char * {
         if (dt.isInt8()) return "[OH]";
         return nullptr;
@@ -671,18 +479,18 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     bool fpmath_f16 = mode & mode_f16x1;
 
     auto add_matches = [&](MatchParams start, const char *(*match)(Type)) {
-        if (match(problem_.Ta_ext)) {
+        if (match(problem.Ta_ext)) {
             match_params.push_back(start);
-            match_params.back().selector.precisions[0] = match(problem_.Ta_ext);
+            match_params.back().selector.precisions[0] = match(problem.Ta_ext);
         }
-        if (match(problem_.Tb_ext)) {
+        if (match(problem.Tb_ext)) {
             match_params.push_back(start);
-            match_params.back().selector.precisions[1] = match(problem_.Tb_ext);
+            match_params.back().selector.precisions[1] = match(problem.Tb_ext);
         }
-        if (match(problem_.Ta_ext) && match(problem_.Tb_ext)) {
+        if (match(problem.Ta_ext) && match(problem.Tb_ext)) {
             match_params.push_back(start);
-            match_params.back().selector.precisions[0] = match(problem_.Ta_ext);
-            match_params.back().selector.precisions[1] = match(problem_.Tb_ext);
+            match_params.back().selector.precisions[0] = match(problem.Ta_ext);
+            match_params.back().selector.precisions[1] = match(problem.Tb_ext);
         }
     };
 
@@ -734,9 +542,8 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     // but only if there are no grouped scales (in these cases,
     // we apply scales before dpas, and we must use fp dpas)
     bool allow = gpu_utils::dev_getenv("ALLOW_IACC", true);
-    bool is_int
-            = types::is_integral_dt(a_type) && types::is_integral_dt(b_type);
-    if (a_quant.scale_ndims < 1 && b_quant.scale_ndims < 1 && is_int && allow) {
+    bool is_int = problem.Ta_ext.isInteger() && problem.Tb_ext.isInteger();
+    if (problem.asPtrDims < 1 && problem.bsPtrDims < 1 && is_int && allow) {
         match_params.push_back(base);
         match_params.back().selector.precisions[2] = "I";
     }
@@ -744,16 +551,16 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     eval_params_.sizes = base.sizes;
     eval_params_.alpha = alpha;
     eval_params_.beta = beta;
-    eval_params_.postOps = !problem_.postOps.empty();
-    eval_params_.cConvert = (acc_type != c_type);
+    eval_params_.postOps = !problem.postOps.empty();
+    eval_params_.cConvert = (problem.Tc != problem.Tc_ext);
     eval_params_.euCount = eu_count;
-    eval_params_.batch = (batch_dims > 0);
+    eval_params_.batch = (problem.batchDims > 0);
     eval_params_.deterministic = (mode & mode_deterministic);
 
     SelectionObserver observer = entryObserver;
     tags_ = match_params[0].tags;
-    Ts_ = problem_.Ts;
-    beta_ = problem_.beta;
+    Ts_ = problem.Ts;
+    beta_ = problem.beta;
     return select(catalog(), static_cast<int>(match_params.size()),
             match_params.data(), eval_params_, aux_params_, &observer);
 }
@@ -867,7 +674,7 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     if (alpha == 1.0f) problem_.alpha = alpha;
     if (beta == 0.0f || beta == 1.0f) problem_.beta = beta;
 
-    auto status = transfer_post_ops(std::move(post_ops), false);
+    auto status = transfer_post_ops(problem_, std::move(post_ops));
     if (status != status::success) return status;
 
     if (c_offset) problem_.cOffset = COffset::Post;
@@ -947,6 +754,9 @@ void gen_xe_systolic_kernel_desc_t::choose_unrolls(compute::gpu_arch_t arch,
         case compute::gpu_arch_t::xe_hpc:
         case compute::gpu_arch_t::xe2:
         case compute::gpu_arch_t::xe3:
+        case compute::gpu_arch_t::xe3p_35_10:
+        case compute::gpu_arch_t::xe3p_35_11:
+        case compute::gpu_arch_t::xe3p_35_unknown:
             if (utils::one_of(a_type, f16, bf16)) {
                 if (unroll_m != 0)
                     unroll_n = (unroll_m > 16) ? 32 : 16;
@@ -1024,17 +834,24 @@ void gen_kernel_t::init_interface() {
     if (problem.needsBGroupSums())
         interface_.newArgument(
                 "bg_ptr", ExternalArgumentType::GlobalPtr, bg_access);
-    if (problem.aOffset2D() || problem.aScale2D() || problem.needsAGroupSums())
+    if (problem.aOffset2D() || problem.aScale2D()
+            || problem.needsAGroupSums()) {
         interface_.newArgument("ldaq", DataType::d);
-    if (problem.bOffset2D() || problem.bScale2D() || problem.needsBGroupSums())
+    }
+    if (problem.bOffset2D() || problem.bScale2D()
+            || problem.needsBGroupSums()) {
         interface_.newArgument("ldbq", DataType::d);
+    }
+
     if (problem.hasCMXScale()) interface_.newArgument("ldcq", DataType::d);
-    if (problem.cOffset != COffset::None || problem.sumA || problem.sumB) {
+    if (problem.usesCOPtr()) {
         interface_.newArgument(
-                "CO", ExternalArgumentType::GlobalPtr, co_access);
+                "co_ptr", ExternalArgumentType::GlobalPtr, co_access);
         interface_.newArgument("offset_CO", DataType::q);
         if (problem.cOffset == COffset::Pre)
             interface_.newArgument("ldco", DataType::d);
+    } else if (problem.cOffsetHostScalar()) {
+        interface_.newArgument("co", DataType::w);
     }
     if (problem.postOps.cStochasticRound) {
         interface_.newArgument("sround_seed", ExternalArgumentType::GlobalPtr);
@@ -1147,6 +964,7 @@ void gen_kernel_t::init_interface() {
 
     if (desc()->hw_ >= HW::XeHPG) interface_.allowArgumentRearrangement(false);
     interface_.externalName(kernel_name());
+    interface_.setEfficient64Bit(desc_.efficient_64b_);
 }
 
 dsl::kernel_t get_dsl_kernel(const GEMMProblem &problem,
@@ -1203,6 +1021,9 @@ status_t gen_kernel_t::get_kernel(
             REG_XEHPC_ISA(ARCH_DISPATCH(XeHPC))
             REG_XE2_ISA(ARCH_DISPATCH(Xe2))
             REG_XE3_ISA(ARCH_DISPATCH(Xe3))
+            REG_XE3P_ISA(ARCH_DISPATCH(XE3P_35_10))
+            REG_XE3P_ISA(ARCH_DISPATCH(XE3P_35_11))
+            REG_XE3P_ISA(ARCH_DISPATCH(XE3P_UNKNOWN))
             default: assert(!"Unsupported architecture"); break;
         }
     } catch (const ngen::out_of_registers_exception &err) {

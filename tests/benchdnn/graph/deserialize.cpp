@@ -87,6 +87,8 @@ logical_tensor::data_type deserialized_lt_t::get_data_type() const {
         return logical_tensor::data_type::s4;
     } else if (data_type_ == "u4") {
         return logical_tensor::data_type::u4;
+    } else if (data_type_ == "s64") {
+        return logical_tensor::data_type::s64;
     } else {
         return logical_tensor::data_type::undef;
     }
@@ -223,6 +225,7 @@ dnnl_driver_t deserialized_op_t::opkind2driver() const {
                             dnnl_driver_t::deconv},
                     {dnnl::graph::op::kind::Dequantize, dnnl_driver_t::reorder},
                     {dnnl::graph::op::kind::Divide, dnnl_driver_t::binary},
+                    {dnnl::graph::op::kind::Dropout, dnnl_driver_t::eltwise},
                     {dnnl::graph::op::kind::DynamicDequantize,
                             dnnl_driver_t::reorder},
                     {dnnl::graph::op::kind::DynamicQuantize,
@@ -701,10 +704,13 @@ void deserialized_graph_t::detect_recognized_patterns() {
 }
 
 bool deserialized_graph_t::detect_sdpa_fwd_impl() const {
-
+    static const std::unordered_set<std::string> mm1_pre_op_kind
+            = {"Dequantize", "TypeCast", "DynamicDequantize"};
     static const std::unordered_set<std::string> mm1_post_op_kind
             = {"Divide", "Multiply", "Add", "Subtract", "Select", "GenIndex",
                     "GreaterEqual", "StaticReshape", "StaticTranspose"};
+    static const std::unordered_set<std::string> mm2_pre_op_kind
+            = {"Dequantize", "TypeCast", "Quantize", "Dropout"};
     const auto is_root_op = [&](const deserialized_op_t &op) {
         return std::none_of(op.in_lts_.begin(), op.in_lts_.end(),
                 [&](const deserialized_lt_t &lt) {
@@ -719,7 +725,8 @@ bool deserialized_graph_t::detect_sdpa_fwd_impl() const {
 
     for (const auto &starter : starter_ops) {
         // find the first MatMul
-        auto cur_op_ref = find_next_until(starter.get(), "MatMul", {});
+        auto cur_op_ref
+                = find_next_until(starter.get(), "MatMul", mm1_pre_op_kind);
         if (cur_op_ref.empty()) {
             BENCHDNN_PRINT(8, "%s\n",
                     "[DETECT_SDPA_FWD]: failed due to no MatMul for QK");
@@ -737,7 +744,7 @@ bool deserialized_graph_t::detect_sdpa_fwd_impl() const {
 
         // find the second MatMul
         cur_op_ref = get_child_ops(cur_op_ref)[0];
-        cur_op_ref = find_next_until(cur_op_ref, "MatMul", {});
+        cur_op_ref = find_next_until(cur_op_ref, "MatMul", mm2_pre_op_kind);
         if (cur_op_ref.empty()) {
             BENCHDNN_PRINT(8, "%s\n",
                     "[DETECT_SDPA_FWD]: failed due to no MatMul for PV");
@@ -759,7 +766,8 @@ bool deserialized_graph_t::detect_sdpa_bwd_impl() const {
                     "GreaterEqual"};
     static const std::unordered_set<std::string> softmax_bwd_post_op_kind
             = {"Divide", "Multiply", "TypeCast"};
-    static const std::unordered_set<std::string> mm2_pre_op_kind = {"TypeCast"};
+    static const std::unordered_set<std::string> mm2_pre_op_kind
+            = {"TypeCast", "Dropout"};
     const auto is_root_op = [&](const deserialized_op_t &op) {
         return std::none_of(op.in_lts_.begin(), op.in_lts_.end(),
                 [&](const deserialized_lt_t &lt) {
@@ -871,7 +879,8 @@ const deserialized_op_t &deserialized_graph_t::find_next_until(
         const std::unordered_set<std::string> &allowed_skips) const {
     const deserialized_op_t *cur_op_ptr = &start_op;
     while (!cur_op_ptr->empty() && cur_op_ptr->kind_ != target_kind) {
-        if (!allowed_skips.empty() && !allowed_skips.count(cur_op_ptr->kind_)) {
+        if (IMPLICATION(!allowed_skips.empty(),
+                    !allowed_skips.count(cur_op_ptr->kind_))) {
             break;
         }
         const auto &child_ops = get_child_ops(*cur_op_ptr);

@@ -27,18 +27,23 @@
 /src/cpu/rnn/ @uxlfoundation/onednn-cpu-x64
 
 # GPU Engine
-/src/gpu/amd/ @uxlfoundation/onednn-gpu-amd
 /src/gpu/intel/ @uxlfoundation/onednn-gpu-intel
-/src/gpu/nvidia/ @uxlfoundation/onednn-gpu-nvidia
 /src/gpu/generic/ @uxlfoundation/onednn-arch
-/src/gpu/generic/sycl/ @uxlfoundation/onednn-gpu-generic
+
+# /src/gpu/amd/ @uxlfoundation/onednn-gpu-amd
+# /src/gpu/nvidia/ @uxlfoundation/onednn-gpu-nvidia
+# /src/gpu/generic/sycl/ @uxlfoundation/onednn-gpu-generic
 
 # Tests
 /tests/benchdnn/inputs/ @uxlfoundation/onednn-maintain
 /tests/benchdnn/graph/ @uxlfoundation/onednn-graph @uxlfoundation/onednn-arch
 /tests/benchdnn/inputs/graph/ @uxlfoundation/onednn-graph @uxlfoundation/onednn-arch
 /tests/gtests/graph/ @uxlfoundation/onednn-graph
+## Special case of internal tests
 /tests/gtests/internals/test_sdpa.cpp @uxlfoundation/onednn-gpu-intel
+/tests/gtests/internals/test_utils.cpp @uxlfoundation/onednn-gpu-intel
+/tests/gtests/internals/test_utils.hpp @uxlfoundation/onednn-gpu-intel
+/tests/gtests/internals/test_gated_mlp.cpp @uxlfoundation/onednn-gpu-intel
 
 # Graph API
 /src/graph/ @uxlfoundation/onednn-graph
@@ -55,6 +60,7 @@
 /third_party/ngen/ @uxlfoundation/onednn-gpu-intel
 /third_party/xbyak/ @uxlfoundation/onednn-cpu-x64
 /third_party/xbyak_aarch64/ @uxlfoundation/onednn-cpu-aarch64
+/third_party/xbyak_riscv/ @uxlfoundation/onednn-cpu-rv64
 
 # Governance and process
 /.github/CODEOWNERS @uxlfoundation/onednn-maintain

@@ -27,24 +27,20 @@ class stmt_t;
 class ir_context_t;
 
 // Trace for debugging purposes.
-#ifdef GEMMSTONE_ASSERTIONS
+#if GEMMSTONE_ASSERTIONS
 void trace_start();
 void trace_reset();
 void trace_stamp(const char *pass_name);
 void trace_stop(const char *pass_name);
 void trace_perf();
+void trace_pass(
+        const char *pass_name, const stmt_t &stmt, const ir_context_t &ir_ctx);
 #else
 inline void trace_start() {};
 inline void trace_reset() {};
 inline void trace_stamp(const char *) {};
 inline void trace_stop(const char *) {};
 inline void trace_perf() {};
-#endif
-
-#ifdef GEMMSTONE_ASSERTIONS
-void trace_pass(
-        const char *pass_name, const stmt_t &stmt, const ir_context_t &ir_ctx);
-#else
 inline void trace_pass(const char *pass_name, const stmt_t &stmt,
         const ir_context_t &ir_ctx) {};
 #endif

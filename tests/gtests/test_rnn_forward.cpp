@@ -182,6 +182,10 @@ protected:
         SKIP_IF_CUDA(
                 is_lstm || is_gru || is_lbr_gru || is_augru || is_lbr_augru,
                 "Unsupported cell type");
+        SKIP_IF(get_test_engine_kind() == engine::kind::cpu
+                        && DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL,
+                "Asynchronous Threadpool runtime is not supported");
+
         catch_expected_failures(
                 [&]() { Test(); }, p.expect_to_fail, p.expected_status, false);
     }

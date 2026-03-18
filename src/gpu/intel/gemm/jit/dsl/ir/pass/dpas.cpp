@@ -96,6 +96,53 @@ public:
     }
 };
 
+class dpas_fwd_mutator_t : public mul_mutator_t {
+public:
+    stmt_t mutate_mul_impl(
+            const std::vector<entry_t> &_entries) const override {
+        auto entries = _entries;
+        int nentries = (int)entries.size();
+        stmt_t ret;
+        for (int i = 0; i < nentries; i++) {
+            auto &ei = entries[i];
+            if (ei.stmt.is_empty()) continue;
+            if (!ei.is_dpas_8x8()) {
+                ret = ret.append(ei.stmt);
+                continue;
+            }
+            auto &cur_dst = dpas_t::arg_dst(ei.stmt);
+            int fwd_idx = -1;
+            for (int j = i + 1; j < nentries; j++) {
+                auto &ej = entries[j];
+                if (ej.stmt.is_empty() || !ej.is_dpas_8x8()) continue;
+                auto &dst = dpas_t::arg_dst(ej.stmt);
+                auto &src0 = dpas_t::arg_src0(ej.stmt);
+                if (dst.is_equal(cur_dst) && src0.is_equal(cur_dst)) {
+                    fwd_idx = j;
+                    break;
+                }
+            }
+            if (fwd_idx != -1) {
+                auto tmp_mod = ngen::InstructionModifier();
+                tmp_mod.setBranchCtrl(true);
+                auto fwd_attr = instruction_modifier_attr_t::make(tmp_mod);
+                auto s = ei.stmt;
+                s = fwd_attr.apply_to(s);
+                ret = ret.append(s);
+                ret = ret.append(entries[fwd_idx].stmt);
+                entries[fwd_idx].stmt = stmt_t();
+                continue;
+            }
+            ret = ret.append(ei.stmt);
+        }
+        return ret;
+    }
+};
+
+stmt_t inject_dpas_fwd(const stmt_t &stmt) {
+    return dpas_fwd_mutator_t().mutate(stmt);
+}
+
 stmt_t inject_dpas_atomic(const stmt_t &stmt, bool filter_by_label) {
     if (filter_by_label) return dpas_atomic_mutator_t().mutate(stmt);
     auto ret = dpas_atomic_mutator_t().mutate_mul(stmt);

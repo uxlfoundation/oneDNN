@@ -22,19 +22,6 @@
     ((d0) * (s0) + (d1) * (s1) + (d2) * (s2) + (d3) * (s3) + (d4) * (s4) \
             + (d5) * (s5))
 
-#if WITH_DROPOUT
-// No need to enable fp64 extensions just to compute (double)p * 0xFFFFFFFFu
-uint get_dropout_threshold(float p) {
-    if (p >= 1.f) return 0xFFFFFFFFu;
-    char exponent = 126 - ((as_uint(p) >> 23) & 0x7F);
-    if ((p <= 0.f) || (exponent > 31)) return 0u;
-    uint mantissa = (as_uint(p) << 8) | 0x80000000u;
-    if (!exponent) return (convert_ulong(mantissa) * 0xFFFFFFFFuL) >> 32;
-    return ((convert_ulong(mantissa >> exponent) * 0xFFFFFFFFuL) >> 32)
-            + !!(mantissa & ((1u << exponent) - 1u));
-}
-#endif
-
 __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
         __global DST_DATA_T *C, __global BIA_DATA_T *bia,
 #if WITH_HOST_SRC_ZP
@@ -62,7 +49,7 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
 #endif
         long src_scale_stride_k, long src_scale_stride_m,
         long src_scale_stride_d0, long src_scale_stride_d1,
-        long src_scale_group_k,
+        long src_scale_group_m, long src_scale_group_k,
 #if WITH_HOST_WEI_SCALE
         WEI_SCALES_DATA_T wei_scale_value,
 #else
@@ -219,7 +206,7 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
             FLT_ACC_DATA_T src_scale = 1.f;
             FLT_ACC_DATA_T wei_scale = 1.f;
 #if WITH_SRC_SCALES
-            long src_scale_off = src_scale_stride_m * m
+            long src_scale_off = src_scale_stride_m * (m / src_scale_group_m)
                     + src_scale_stride_k * (g * group_K / src_scale_group_k)
                     + src_scale_stride_d0 * d0 + src_scale_stride_d1 * d1;
             src_scale = SRC_SCALES_TO_REF(src_scales[src_scale_off]);
@@ -240,7 +227,7 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
             FLT_ACC_DATA_T wei_scale = 1.f;
 #if WITH_SRC_SCALES
             long src_scale_g = g * src_gs_group_k / src_scale_group_k;
-            long src_scale_off = src_scale_stride_m * m
+            long src_scale_off = src_scale_stride_m * (m / wei_scale_group_n)
                     + src_scale_stride_k * src_scale_g
                     + src_scale_stride_d0 * d0 + src_scale_stride_d1 * d1;
             src_scale = SRC_SCALES_TO_REF(src_scales[src_scale_off]);
@@ -294,7 +281,7 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
         float po_acc = convert_float(temp);
 
 #if WITH_DROPOUT
-#if USE_OFFSET
+#if WITH_SEED_S64 && USE_OFFSET
         uint res = philox_4x32_s64(
                 dst_off, (ulong)dropout_seed, (ulong)dropout_offset);
 #else
@@ -325,19 +312,19 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
 #if WITH_DST_SCALES
 #if DST_SCALES_MASK == 0
         po_acc /= DST_SCALES_TO_REF(dst_scales[0]);
-#elif WITH_MX_DST_SCALE == 0
+#elif WITH_DYN_DST_SCALE == 0
         po_acc /= DST_SCALES_TO_REF(dst_scales[n]);
 #endif
 #endif
         po_acc += dst_zp;
 
-#if WITH_MX_DST_SCALE
+#if WITH_DYN_DST_SCALE
         ((__global ACC_DATA_T *)C)[dst_off] = po_acc;
 #else
         C[dst_off] = TO_DST(po_acc);
 #endif
 #else // WITH_BIAS || NON_DEFAULT_ATTRS
-#if WITH_MX_DST_SCALE
+#if WITH_DYN_DST_SCALE
         ((__global ACC_DATA_T *)C)[dst_off] = acc;
 #else
         C[dst_off] = TO_DST(acc);

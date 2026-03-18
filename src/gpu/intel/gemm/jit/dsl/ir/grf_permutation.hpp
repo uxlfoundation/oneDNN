@@ -63,7 +63,7 @@ public:
 private:
     static const int max_regs = 256;
 
-    std::array<int, max_regs> permutation_;
+    std::array<int, max_regs> permutation_ = {};
     bool is_empty_ = true;
 };
 

@@ -19,7 +19,6 @@
 
 #include <functional>
 #include <limits>
-#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -42,9 +41,9 @@ namespace jit {
 // - M:  shared only by A and C
 // - N:  shared only by B and C
 // - K:  shared only by A and B (reduction dimension)
-enum class bmnk_kind_t { undef = -1, b = 0, m = 1, n = 2, k = 3 };
+enum class bmnk_kind_t : int { undef = -1, b = 0, m = 1, n = 2, k = 3 };
 
-enum class abc_kind_t { undef, a, b, c };
+enum class abc_kind_t : int { undef, a, b, c };
 
 inline std::ostream &operator<<(std::ostream &out, abc_kind_t abc) {
     switch (abc) {
@@ -676,6 +675,16 @@ public:
         }
     }
 
+    bool is_inner_loop(const expr_t &v) const {
+        for (size_t i = 0; i < vars_.size(); i++) {
+            auto &loop = find_loop(vars_[i]);
+            if (!loop.is_leaf() || loop.kind() != loop_kind_t::serial) continue;
+            if (to_cpp<dim_t>(loop.bound()) == 1) continue;
+            return find_root_var(vars_[i]).is_same(v);
+        }
+        return false;
+    }
+
     // Sets init and step for loop defined by `var`.
     // Used to create loop that avoids skip conditions:
     //   for (var = init ; var < bound; var += step) {
@@ -977,6 +986,14 @@ private:
         return loops_[var];
     }
 
+    expr_t find_root_var(const expr_t &var) const {
+        auto *loop = &find_loop(var);
+        while (!loop->is_root()) {
+            loop = &find_loop(loop->parent_vars()[0]);
+        }
+        return loop->var();
+    }
+
     int loop_level(const expr_t &var) const {
         for (int i = 0; i < int(vars_.size()); i++) {
             if (vars_[i].is_same(var)) return i;
@@ -1004,8 +1021,9 @@ private:
     static expr_t create_var(
             const std::vector<expr_t> &vars, const std::string &suffix) {
         std::string var_name;
+        const std::string idx_suffix = "_idx";
         for (auto &v : vars) {
-            auto name = strip_suffix(v.as<var_t>().name, "_idx");
+            auto name = strip_suffix(v.as<var_t>().name, idx_suffix);
             var_name += name + "_";
         }
         var_name += suffix;

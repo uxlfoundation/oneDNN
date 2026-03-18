@@ -31,8 +31,6 @@
 #include "graph/interface/value.hpp"
 #include "graph/utils/utils.hpp"
 
-#include "graph/backend/dnnl/internal_attrs.hpp"
-#include "graph/backend/dnnl/internal_ops.hpp"
 #include "graph/backend/dnnl/utils.hpp"
 
 #include "oneapi/dnnl/dnnl.hpp"
@@ -57,9 +55,9 @@ class fusion_info_t {
     class meta_op_t {
     public:
         // for scales and zps
-        meta_op_t(const op_ptr &op) : op_(op) {};
+        meta_op_t(const op_ptr &op) : op_(op) {}
         // for post-eltwise
-        meta_op_t(const op_ptr &op, float scale) : op_(op), scale_(scale) {};
+        meta_op_t(const op_ptr &op, float scale) : op_(op), scale_(scale) {}
         // for post-sum and post_binary
         meta_op_t(const op_ptr &op,
                 const std::vector<size_t> &extra_input_indices, float scale,
@@ -67,11 +65,11 @@ class fusion_info_t {
             : op_(op)
             , scale_(scale)
             , zp_(zp)
-            , unfused_input_indices_(extra_input_indices) {};
+            , unfused_input_indices_(extra_input_indices) {}
         // for post-conv
         meta_op_t(const op_ptr &op,
                 const std::vector<size_t> &extra_input_indices)
-            : op_(op), unfused_input_indices_(extra_input_indices) {};
+            : op_(op), unfused_input_indices_(extra_input_indices) {}
 
         bool operator==(const meta_op_t &other) const {
             return *op_ == *other.op_ && scale_ == other.scale_
@@ -89,11 +87,11 @@ class fusion_info_t {
         const op_t *get_op() const { return op_.get(); }
 
         bool is_post_sum() const {
-            return op_->get_kind() == op_kind::dnnl_binary && is_post_sum_;
+            return op_->get_kind() == op_kind::_binary && is_post_sum_;
         }
 
         bool is_post_binary() const {
-            return op_->get_kind() == op_kind::dnnl_binary && !is_post_sum_;
+            return op_->get_kind() == op_kind::_binary && !is_post_sum_;
         }
 
         void set_post_sum() { is_post_sum_ = true; }
@@ -158,6 +156,11 @@ public:
                 && !(*dst_scales_ == *other.dst_scales_))
             return false;
 
+        // dropout_
+        if ((dropout_ == nullptr) != (other.dropout_ == nullptr)) return false;
+        if (dropout_ && other.dropout_ && !(*dropout_ == *other.dropout_))
+            return false;
+
         // post_ops_
         if (post_ops_.size() != other.post_ops_.size()) return false;
         for (size_t i = 0; i < post_ops_.size(); ++i) {
@@ -202,6 +205,10 @@ public:
         } else {
             dst_scales_ = std::move(fused_scales);
         }
+    }
+
+    void set_dropout(const op_ptr &op) {
+        dropout_ = std::make_shared<meta_op_t>(op);
     }
 
     // used to modify the fused zps, like modifying it's axis after inserting
@@ -254,7 +261,7 @@ public:
     bool has_post_dw_conv() const {
         auto pos = std::find_if(post_ops_.begin(), post_ops_.end(),
                 [](const std::shared_ptr<meta_op_t> &mop) {
-            return mop->get_op()->get_kind() == op_kind::dnnl_convolution;
+            return mop->get_op()->get_kind() == op_kind::_convolution;
         });
         return pos != post_ops_.end();
     }
@@ -262,7 +269,7 @@ public:
     const std::shared_ptr<meta_op_t> &get_post_dw_conv() const {
         auto pos = std::find_if(post_ops_.begin(), post_ops_.end(),
                 [](const std::shared_ptr<meta_op_t> &mop) {
-            return mop->get_op()->get_kind() == op_kind::dnnl_convolution;
+            return mop->get_op()->get_kind() == op_kind::_convolution;
         });
 
         VCHECK_FUSION_INFO(
@@ -320,11 +327,14 @@ public:
         }
     }
 
+    bool with_dropout() const { return dropout_ != nullptr; }
+
 private:
     std::unordered_map<size_t, std::shared_ptr<meta_op_t>> input_zps_;
     std::shared_ptr<meta_op_t> output_zps_;
     std::unordered_map<size_t, std::shared_ptr<meta_op_t>> input_scales_;
     std::shared_ptr<meta_op_t> dst_scales_;
+    std::shared_ptr<meta_op_t> dropout_;
     std::vector<std::shared_ptr<meta_op_t>> post_ops_;
 };
 

@@ -4,7 +4,7 @@
 --sdt=f32,bf16
 --ddt=f32,bf16
 
---attr-dropout=0.5:12345678,0.75:12345678:undef,0.25:843921:any:1238976:true
+--attr-dropout=0.5:12345678,0.75:12345678:undef,0.25:843921:any:1238976:true,0.75:111786:any:121716:false
 
 --stag=abx --dtag=any
 --batch=shapes_ci

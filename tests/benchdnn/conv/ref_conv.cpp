@@ -70,19 +70,16 @@ void compute_ref_direct_fwd(const prb_t *prb, const args_t &args) {
             = !prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).is_def();
     const bool has_dst_zp = !prb->attr.zero_points.get(DNNL_ARG_DST).is_def();
     const int src_zp_mask = has_src_zp
-            ? attr_t::get_default_mask(
-                      prb->attr.zero_points.get(DNNL_ARG_SRC).policy,
-                      src_m.ndims())
+            ? prb->attr.zero_points.get_mask(DNNL_ARG_SRC, dnnl_convolution,
+                      src_m.ndims(), prb->has_groups)
             : 0;
     const int wei_zp_mask = has_wei_zp
-            ? attr_t::get_default_mask(
-                      prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).policy,
-                      wei_m.ndims())
+            ? prb->attr.zero_points.get_mask(DNNL_ARG_WEIGHTS, dnnl_convolution,
+                      wei_m.ndims(), prb->has_groups)
             : 0;
     const int dst_zp_mask = has_dst_zp
-            ? attr_t::get_default_mask(
-                      prb->attr.zero_points.get(DNNL_ARG_DST).policy,
-                      dst_m.ndims())
+            ? prb->attr.zero_points.get_mask(DNNL_ARG_DST, dnnl_convolution,
+                      dst_m.ndims(), prb->has_groups)
             : 0;
 
     /* help compiler optimize the code */
@@ -208,12 +205,18 @@ void compute_ref_direct_bwd_d(const prb_t *prb, const args_t &args) {
     const bool has_wei_zp
             = !prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).is_def();
     const bool has_dst_zp = !prb->attr.zero_points.get(DNNL_ARG_DST).is_def();
-    const int src_zp_mask = attr_t::get_default_mask(
-            prb->attr.zero_points.get(DNNL_ARG_SRC).policy, diff_src_m.ndims());
-    const int wei_zp_mask = attr_t::get_default_mask(
-            prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).policy, wei_m.ndims());
-    const int dst_zp_mask = attr_t::get_default_mask(
-            prb->attr.zero_points.get(DNNL_ARG_DST).policy, diff_dst_m.ndims());
+    const int src_zp_mask = has_src_zp
+            ? prb->attr.zero_points.get_mask(DNNL_ARG_SRC, dnnl_convolution,
+                      diff_src_m.ndims(), prb->has_groups)
+            : 0;
+    const int wei_zp_mask = has_wei_zp
+            ? prb->attr.zero_points.get_mask(DNNL_ARG_WEIGHTS, dnnl_convolution,
+                      wei_m.ndims(), prb->has_groups)
+            : 0;
+    const int dst_zp_mask = has_dst_zp
+            ? prb->attr.zero_points.get_mask(DNNL_ARG_DST, dnnl_convolution,
+                      diff_dst_m.ndims(), prb->has_groups)
+            : 0;
 
     /* help compiler optimize the code */
     const int64_t MB = prb->mb, G = prb->g, OC = prb->oc, IC = prb->ic;

@@ -35,9 +35,17 @@ namespace NGEN_NAMESPACE {
 // Exceptions.
 class level_zero_error : public std::runtime_error {
 public:
-    level_zero_error(ze_result_t status_ = ZE_RESULT_SUCCESS) : std::runtime_error("A Level Zero error occurred."), status(status_) {}
+    level_zero_error(ze_result_t status_ = ZE_RESULT_SUCCESS) : std::runtime_error("A Level Zero error occurred: " + to_hex(status_)), status(status_) {}
 protected:
     ze_result_t status;
+
+private:
+    static std::string to_hex(ze_result_t status) {
+        std::ostringstream oss;
+        oss.imbue(std::locale::classic());
+        oss << std::hex << status;
+        return "0x" + oss.str();
+    }
 };
 
 // Dynamic loading support.
@@ -73,6 +81,9 @@ NGEN_L0_INDIRECT_API(zeModuleCreate)
 NGEN_L0_INDIRECT_API(zeModuleDestroy)
 NGEN_L0_INDIRECT_API(zeModuleGetNativeBinary)
 NGEN_L0_INDIRECT_API(zeKernelCreate)
+NGEN_L0_INDIRECT_API(zeDeviceGetComputeProperties)
+NGEN_L0_INDIRECT_API(zeDeviceGetCacheProperties)
+NGEN_L0_INDIRECT_API(zeDeviceGetModuleProperties)
 
 #undef NGEN_L0_INDIRECT_API
 
@@ -92,12 +103,13 @@ public:
     explicit LevelZeroCodeGenerator(DebugConfig debugConfig) : LevelZeroCodeGenerator({genericProductFamily(hw), 0}, debugConfig) {}
     LevelZeroCodeGenerator(LevelZeroCodeGenerator&&) = default;
 
-    inline ze_module_handle_t getModule(ze_context_handle_t context, ze_device_handle_t device, const std::string &options = "");
+    inline std::pair<ze_module_handle_t, ze_kernel_handle_t> getModuleAndKernel(ze_context_handle_t context, ze_device_handle_t device, const std::string &options = "");
     static inline HW detectHW(ze_context_handle_t context, ze_device_handle_t device);
     static inline Product detectHWInfo(ze_context_handle_t context, ze_device_handle_t device);
 
     static bool binaryIsZebin() { return true; }
 
+    static inline bool detectEfficient64Bit(ze_context_handle_t context, ze_device_handle_t device, HW inHW = HW::Unknown);
 };
 
 #define NGEN_FORWARD_LEVEL_ZERO(hw) NGEN_FORWARD_ELF(hw)
@@ -109,6 +121,10 @@ static inline void handleL0(ze_result_t result)
     if (result != ZE_RESULT_SUCCESS)
         throw level_zero_error{result};
 }
+
+struct ze_module_deleter_t {
+    void operator()(ze_module_handle_t *h) const { handleL0(dynamic::zeModuleDestroy(*h)); }
+};
 
 static inline std::vector<uint8_t> getDummyModuleBinary(ze_context_handle_t context, ze_device_handle_t device) {
     static const uint8_t dummySPV[] = {0x03, 0x02, 0x23, 0x07, 0x00, 0x00, 0x01, 0x00, 0x0E, 0x00, 0x06, 0x00, 0x07, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x11, 0x00, 0x02, 0x00, 0x04, 0x00, 0x00, 0x00, 0x11, 0x00, 0x02, 0x00, 0x06, 0x00, 0x00, 0x00, 0x0B, 0x00, 0x05, 0x00, 0x01, 0x00, 0x00, 0x00, 0x4F, 0x70, 0x65, 0x6E, 0x43, 0x4C, 0x2E, 0x73, 0x74, 0x64, 0x00, 0x00, 0x0E, 0x00, 0x03, 0x00, 0x02, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x0F, 0x00, 0x04, 0x00, 0x06, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x5F, 0x00, 0x00, 0x00, 0x07, 0x00, 0x07, 0x00, 0x06, 0x00, 0x00, 0x00, 0x6B, 0x65, 0x72, 0x6E, 0x65, 0x6C, 0x5F, 0x61, 0x72, 0x67, 0x5F, 0x74, 0x79, 0x70, 0x65, 0x2E, 0x5F, 0x2E, 0x00, 0x00, 0x03, 0x00, 0x03, 0x00, 0x03, 0x00, 0x00, 0x00, 0x70, 0x8E, 0x01, 0x00, 0x05, 0x00, 0x04, 0x00, 0x05, 0x00, 0x00, 0x00, 0x65, 0x6E, 0x74, 0x72, 0x79, 0x00, 0x00, 0x00, 0x13, 0x00, 0x02, 0x00, 0x02, 0x00, 0x00, 0x00, 0x21, 0x00, 0x03, 0x00, 0x03, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x36, 0x00, 0x05, 0x00, 0x02, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0xF8, 0x00, 0x02, 0x00, 0x05, 0x00, 0x00, 0x00, 0xFD, 0x00, 0x01, 0x00, 0x38, 0x00, 0x01, 0x00};
@@ -122,25 +138,26 @@ static inline std::vector<uint8_t> getDummyModuleBinary(ze_context_handle_t cont
         nullptr
     };
 
-    ze_module_handle_t module;
-    handleL0(dynamic::zeModuleCreate(context, device, &moduleDesc, &module, nullptr));
+    ze_module_handle_t rawModule = nullptr;
+    handleL0(dynamic::zeModuleCreate(context, device, &moduleDesc, &rawModule, nullptr));
 
-    if (module == nullptr)
+    if (rawModule == nullptr)
         throw level_zero_error{};
+
+    std::unique_ptr<ze_module_handle_t, detail::ze_module_deleter_t> moduleHandle(&rawModule);
 
     std::vector<uint8_t> binary;
     size_t binarySize;
-    handleL0(dynamic::zeModuleGetNativeBinary(module, &binarySize, nullptr));
+    handleL0(dynamic::zeModuleGetNativeBinary(*moduleHandle, &binarySize, nullptr));
     binary.resize(binarySize);
-    handleL0(dynamic::zeModuleGetNativeBinary(module, &binarySize, binary.data()));
-    handleL0(dynamic::zeModuleDestroy(module));
+    handleL0(dynamic::zeModuleGetNativeBinary(*moduleHandle, &binarySize, binary.data()));
     return binary;
 }
 
-}; /* namespace detail */
+} /* namespace detail */
 
 template <HW hw>
-ze_module_handle_t LevelZeroCodeGenerator<hw>::getModule(ze_context_handle_t context, ze_device_handle_t device, const std::string &options)
+std::pair<ze_module_handle_t, ze_kernel_handle_t> LevelZeroCodeGenerator<hw>::getModuleAndKernel(ze_context_handle_t context, ze_device_handle_t device, const std::string &options)
 {
     using super = ELFCodeGenerator<hw>;
 
@@ -156,13 +173,30 @@ ze_module_handle_t LevelZeroCodeGenerator<hw>::getModule(ze_context_handle_t con
         nullptr
     };
 
-    ze_module_handle_t module;
-    detail::handleL0(dynamic::zeModuleCreate(context, device, &moduleDesc, &module, nullptr));
+    ze_module_handle_t rawModule = nullptr;
+    detail::handleL0(dynamic::zeModuleCreate(context, device, &moduleDesc, &rawModule, nullptr));
 
-    if (module == nullptr)
+    if (rawModule == nullptr)
         throw level_zero_error{};
 
-    return module;
+    std::unique_ptr<ze_module_handle_t, detail::ze_module_deleter_t> moduleHandle(&rawModule);
+
+    auto kernelName = ELFCodeGenerator<hw>::interface_.getExternalName().c_str();
+
+    ze_kernel_desc_t kernelDesc = {
+        ZE_STRUCTURE_TYPE_KERNEL_DESC,
+        nullptr,
+        0,
+        kernelName
+    };
+
+    ze_kernel_handle_t kernelHandle = nullptr;
+    detail::handleL0(dynamic::zeKernelCreate(*moduleHandle, &kernelDesc, &kernelHandle));
+
+    if (kernelHandle == nullptr)
+        throw level_zero_error{};
+
+    return std::make_pair(*(moduleHandle.release()), kernelHandle);
 }
 
 template <HW hw>
@@ -199,6 +233,16 @@ Product LevelZeroCodeGenerator<hw>::detectHWInfo(ze_context_handle_t context, ze
     product.type = (dprop.flags & ZE_DEVICE_PROPERTY_FLAG_INTEGRATED) ? PlatformType::Integrated : PlatformType::Discrete;
 
     return product;
+}
+
+template <HW hw>
+bool LevelZeroCodeGenerator<hw>::detectEfficient64Bit(ze_context_handle_t context, ze_device_handle_t device, HW inHW)
+{
+    if (inHW == HW::Unknown) inHW = hw;
+    if (inHW < HW::XE3P_35_10) return false;
+
+    auto binary = detail::getDummyModuleBinary(context, device);
+    return npack::isBinaryEfficient64Bit(binary, inHW);
 }
 
 } /* namespace NGEN_NAMESPACE */

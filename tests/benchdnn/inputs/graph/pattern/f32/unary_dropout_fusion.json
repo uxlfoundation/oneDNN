@@ -1,0 +1,133 @@
+{
+  "version": "3.11.0",
+  "engine_kind": "cpu",
+  "fpmath_mode": "strict",
+  "fpmath_mode_apply_to_int": "false",
+  "input_ports": [
+    0,
+    2,
+    3,
+    4
+  ],
+  "output_ports": [
+    5
+  ],
+  "graph": [
+    {
+      "id": 0,
+      "name": "exp",
+      "kind": "Exp",
+      "attrs": {},
+      "inputs": [
+        {
+          "id": 0,
+          "dtype": "f32",
+          "shape": [
+            64,
+            512,
+            28,
+            28
+          ],
+          "stride": [
+            401408,
+            784,
+            28,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 1,
+          "dtype": "f32",
+          "shape": [
+            64,
+            512,
+            28,
+            28
+          ],
+          "stride": [
+            401408,
+            784,
+            28,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "name": "dropout",
+      "kind": "Dropout",
+      "attrs": {},
+      "inputs": [
+        {
+          "id": 1,
+          "dtype": "f32",
+          "shape": [
+            64,
+            512,
+            28,
+            28
+          ],
+          "stride": [
+            401408,
+            784,
+            28,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 2,
+          "dtype": "s64",
+          "shape": [],
+          "stride": [],
+          "layout_type": "strided",
+          "property_type": "host_scalar"
+        },
+        {
+          "id": 3,
+          "dtype": "s64",
+          "shape": [],
+          "stride": [],
+          "layout_type": "strided",
+          "property_type": "host_scalar"
+        },
+        {
+          "id": 4,
+          "dtype": "f32",
+          "shape": [],
+          "stride": [],
+          "layout_type": "strided",
+          "property_type": "host_scalar"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 5,
+          "dtype": "f32",
+          "shape": [
+            64,
+            512,
+            28,
+            28
+          ],
+          "stride": [
+            401408,
+            784,
+            28,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    }
+  ]
+}

@@ -53,14 +53,24 @@ add_subdirectory("conv/jit/v2/planner")
 endif()
 
 add_subdirectory(compute)
-add_subdirectory(microkernels)
 add_subdirectory(jit)
 
 if(DNNL_GPU_RUNTIME STREQUAL "OCL")
     add_subdirectory(ocl)
-elseif(DNNL_WITH_SYCL)
+endif()
+if(DNNL_GPU_RUNTIME STREQUAL "ZE")
+    add_subdirectory(ze)
+endif()
+if(DNNL_WITH_SYCL)
     add_subdirectory(sycl)
+# INCLUDE_EXTRA_DIRS_FOR_SYCL:
+# For the code sharing purpose, SYCL backend includes headers from OpenCL and
+# Level Zero backends but this puts certain restrictions on what can compile in
+# the latter files. To avoid extra manipulations with files, some functions are
+# guarded with evident runtime selection but this guarding is done solely for
+# the purpose of compilation under SYCL backend.
     add_subdirectory(ocl)
+    add_subdirectory(ze)
 endif()
 
 set(OBJ_LIB ${LIB_PACKAGE_NAME}_gpu_intel)

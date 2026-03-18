@@ -833,16 +833,9 @@ void init_memory_args(
         int ndims = 2;
         dims_t dims = prb->dst_dims;
 
-        using mask_input_t
-                = attr_t::post_ops_t::entry_t::binary_t::mask_input_t;
-        int mask = -1;
-        if (b.mask_input == mask_input_t::mask) {
-            mask = b.mask;
-        } else if (b.mask_input == mask_input_t::policy) {
-            mask = attr_t::policy2mask(po_arg, b.policy, 2, dnnl_matmul);
-        } else {
-            mask = attr_t::get_default_mask(b.policy, ndims);
-        }
+        const int mask = b.mask_input == attr_t::mask_input_t::mask
+                ? b.mask
+                : attr_t::policy2mask(po_arg, b.policy, ndims, dnnl_matmul);
 
         switch (mask) {
             case 0: dims = {1, 1}; break;

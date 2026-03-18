@@ -131,9 +131,9 @@ bool matches(const kcatalog::Entry &e, const MatchParams &p)
         }
     }
 
-    if (p.reqNUnroll32){
-        ok = ok && (e.driverInfo.unroll[LoopM] % 32 == 0);
-    }
+    ok = ok && (e.driverInfo.unroll[LoopM] % p.unrollReq[LoopM] == 0);
+    ok = ok && (e.driverInfo.unroll[LoopN] % p.unrollReq[LoopN] == 0);
+    ok = ok && (e.driverInfo.unroll[LoopK] % p.unrollReq[LoopK] == 0);
 
     for (int i = 0; i < p.nExtraReqs; i++)
         ok = ok && strategyMatch(e.driverInfo, p.extraReqs[i]);
@@ -289,6 +289,7 @@ const std::vector<const kcatalog::Entry *> select(const kcatalog::Catalog &catal
         switch (hw) {
             case HWTagXe2:  hw = HWTagXeHPC; break;
             case HWTagXe3:  hw = HWTagXe2; break;
+	        case HWTagXe3p: hw = HWTagXe3; break;
             default:        hw = 0; break;
         }
     } while (hw);
@@ -332,7 +333,25 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
     using namespace kcatalog;
 
     auto problem = problem_;
-    reqNUnroll32 = problem.hasCMXScale();
+
+    if(problem.Tao.is4() || problem.Ta_scale.is4()){
+        unrollReq[LoopM] = 2;
+    }
+    if(problem.Tbo.is4() || problem.Tb_scale.is4()){
+        unrollReq[LoopN] = 2;
+    }
+
+    ReqBDPASDims = problem.preferBDPAS(hw);
+
+    if (ReqBDPASDims) {
+        unrollReq[LoopM] = 8;
+        unrollReq[LoopN] = 8;
+    }
+ 
+    if(problem.hasCMXScale()){
+        unrollReq[LoopM] = 32;
+    }
+
 
     switch (hw) {
         default: assert(!"Unknown architecture");
@@ -341,6 +360,9 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
         case ngen::HW::XeHPC:   selector.hw = kcatalog::HWTagXeHPC;   break;
         case ngen::HW::Xe2:     selector.hw = kcatalog::HWTagXe2;     break;
         case ngen::HW::Xe3:     selector.hw = kcatalog::HWTagXe3;   break;
+        case ngen::HW::XE3P_35_10:
+        case ngen::HW::XE3P_35_11:
+        case ngen::HW::XE3P_UNKNOWN:     selector.hw = kcatalog::HWTagXe3p;   break;
     }
 
     auto &C = problem.C;
@@ -418,10 +440,8 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
     if (problem.needsASums() && !problem.sumA) *tagPtr++ = ReqSumA;
     if (problem.needsBSums() && !problem.sumB) *tagPtr++ = ReqSumB;
 
-    if (hw == ngen::HW::Xe2)
-        *tagPtr++ = ReqXe2Block2D;
-    if (hw == ngen::HW::Xe3)
-        *tagPtr++ = ReqXe2Block2D;
+    if (one_of(hw, {ngen::HW::Xe2, ngen::HW::Xe3, ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11, ngen::HW::XE3P_UNKNOWN})) *tagPtr++ = ReqXe2Block2D;
+
 
     sizes.batch = sizes.m = sizes.n = sizes.k = 0;
 }

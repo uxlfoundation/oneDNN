@@ -63,6 +63,38 @@ static constexpr_reg GRF r224{224}, r225{225}, r226{226}, r227{227}, r228{228}, 
 static constexpr_reg GRF r232{232}, r233{233}, r234{234}, r235{235}, r236{236}, r237{237}, r238{238}, r239{239};
 static constexpr_reg GRF r240{240}, r241{241}, r242{242}, r243{243}, r244{244}, r245{245}, r246{246}, r247{247};
 static constexpr_reg GRF r248{248}, r249{249}, r250{250}, r251{251}, r252{252}, r253{253}, r254{254}, r255{255};
+static constexpr_reg GRF r256{256}, r257{257}, r258{258}, r259{259}, r260{260}, r261{261}, r262{262}, r263{263};
+static constexpr_reg GRF r264{264}, r265{265}, r266{266}, r267{267}, r268{268}, r269{269}, r270{270}, r271{271};
+static constexpr_reg GRF r272{272}, r273{273}, r274{274}, r275{275}, r276{276}, r277{277}, r278{278}, r279{279};
+static constexpr_reg GRF r280{280}, r281{281}, r282{282}, r283{283}, r284{284}, r285{285}, r286{286}, r287{287};
+static constexpr_reg GRF r288{288}, r289{289}, r290{290}, r291{291}, r292{292}, r293{293}, r294{294}, r295{295};
+static constexpr_reg GRF r296{296}, r297{297}, r298{298}, r299{299}, r300{300}, r301{301}, r302{302}, r303{303};
+static constexpr_reg GRF r304{304}, r305{305}, r306{306}, r307{307}, r308{308}, r309{309}, r310{310}, r311{311};
+static constexpr_reg GRF r312{312}, r313{313}, r314{314}, r315{315}, r316{316}, r317{317}, r318{318}, r319{319};
+static constexpr_reg GRF r320{320}, r321{321}, r322{322}, r323{323}, r324{324}, r325{325}, r326{326}, r327{327};
+static constexpr_reg GRF r328{328}, r329{329}, r330{330}, r331{331}, r332{332}, r333{333}, r334{334}, r335{335};
+static constexpr_reg GRF r336{336}, r337{337}, r338{338}, r339{339}, r340{340}, r341{341}, r342{342}, r343{343};
+static constexpr_reg GRF r344{344}, r345{345}, r346{346}, r347{347}, r348{348}, r349{349}, r350{350}, r351{351};
+static constexpr_reg GRF r352{352}, r353{353}, r354{354}, r355{355}, r356{356}, r357{357}, r358{358}, r359{359};
+static constexpr_reg GRF r360{360}, r361{361}, r362{362}, r363{363}, r364{364}, r365{365}, r366{366}, r367{367};
+static constexpr_reg GRF r368{368}, r369{369}, r370{370}, r371{371}, r372{372}, r373{373}, r374{374}, r375{375};
+static constexpr_reg GRF r376{376}, r377{377}, r378{378}, r379{379}, r380{380}, r381{381}, r382{382}, r383{383};
+static constexpr_reg GRF r384{384}, r385{385}, r386{386}, r387{387}, r388{388}, r389{389}, r390{390}, r391{391};
+static constexpr_reg GRF r392{392}, r393{393}, r394{394}, r395{395}, r396{396}, r397{397}, r398{398}, r399{399};
+static constexpr_reg GRF r400{400}, r401{401}, r402{402}, r403{403}, r404{404}, r405{405}, r406{406}, r407{407};
+static constexpr_reg GRF r408{408}, r409{409}, r410{410}, r411{411}, r412{412}, r413{413}, r414{414}, r415{415};
+static constexpr_reg GRF r416{416}, r417{417}, r418{418}, r419{419}, r420{420}, r421{421}, r422{422}, r423{423};
+static constexpr_reg GRF r424{424}, r425{425}, r426{426}, r427{427}, r428{428}, r429{429}, r430{430}, r431{431};
+static constexpr_reg GRF r432{432}, r433{433}, r434{434}, r435{435}, r436{436}, r437{437}, r438{438}, r439{439};
+static constexpr_reg GRF r440{440}, r441{441}, r442{442}, r443{443}, r444{444}, r445{445}, r446{446}, r447{447};
+static constexpr_reg GRF r448{448}, r449{449}, r450{450}, r451{451}, r452{452}, r453{453}, r454{454}, r455{455};
+static constexpr_reg GRF r456{456}, r457{457}, r458{458}, r459{459}, r460{460}, r461{461}, r462{462}, r463{463};
+static constexpr_reg GRF r464{464}, r465{465}, r466{466}, r467{467}, r468{468}, r469{469}, r470{470}, r471{471};
+static constexpr_reg GRF r472{472}, r473{473}, r474{474}, r475{475}, r476{476}, r477{477}, r478{478}, r479{479};
+static constexpr_reg GRF r480{480}, r481{481}, r482{482}, r483{483}, r484{484}, r485{485}, r486{486}, r487{487};
+static constexpr_reg GRF r488{488}, r489{489}, r490{490}, r491{491}, r492{492}, r493{493}, r494{494}, r495{495};
+static constexpr_reg GRF r496{496}, r497{497}, r498{498}, r499{499}, r500{500}, r501{501}, r502{502}, r503{503};
+static constexpr_reg GRF r504{504}, r505{505}, r506{506}, r507{507}, r508{508}, r509{509}, r510{510}, r511{511};
 
 static constexpr_reg NullRegister null{};
 static constexpr_reg AddressRegister a0{0};
@@ -95,6 +127,7 @@ static constexpr_reg InstructionModifier NoDDClr = InstructionModifier::createNo
 static constexpr_reg InstructionModifier NoDDChk = InstructionModifier::createNoDDChk();
 static constexpr_reg InstructionModifier AccWrEn = InstructionModifier::createAccWrCtrl();
 static constexpr_reg InstructionModifier NoSrcDepSet = AccWrEn;
+static constexpr_reg InstructionModifier Fwd = InstructionModifier::createFwd();
 static constexpr_reg InstructionModifier Breakpoint = InstructionModifier::createDebugCtrl();
 static constexpr_reg InstructionModifier sat = InstructionModifier::createSaturate();
 static constexpr_reg InstructionModifier NoMask = InstructionModifier::createMaskCtrl(true);
@@ -170,6 +203,9 @@ static constexpr_reg AddressBase A64 = AddressBase::createA64(true);
 static constexpr_reg AddressBase A64NC = AddressBase::createA64(false);
 static constexpr_reg AddressBase SLM = AddressBase::createSLM();
 
+static constexpr_reg AddressBase A64_A32U = AddressBase::createA64A32U();
+static constexpr_reg AddressBase A64_A32S = AddressBase::createA64A32S();
+
 static inline AddressBase Surface(uint8_t index) { return AddressBase::createBTS(index); }
 static inline AddressBase CC(uint8_t index) { return AddressBase::createCC(index); }
 static inline AddressBase SC(uint8_t index) { return AddressBase::createSC(index); }
@@ -212,6 +248,7 @@ static constexpr_reg DataSpecLSC V64T = DataSpecLSC::createV(64,7) | DataSpecLSC
 
 static constexpr_reg DataSpecLSC transpose = DataSpecLSC::createTranspose();
 static constexpr_reg DataSpecLSC vnni = DataSpecLSC::createVNNI();
+static constexpr_reg DataSpecLSC Overfetch = DataSpecLSC::createOverfetch();
 
 static constexpr_reg CacheSettingsLSC L1UC_L3UC = CacheSettingsLSC::L1UC_L3UC;
 static constexpr_reg CacheSettingsLSC L1UC_L3C  = CacheSettingsLSC::L1UC_L3C;
@@ -227,4 +264,27 @@ static constexpr_reg CacheSettingsLSC L1S_L3WB  = CacheSettingsLSC::L1S_L3WB;
 static constexpr_reg CacheSettingsLSC L1WB_L3WB = CacheSettingsLSC::L1WB_L3WB;
 static constexpr_reg CacheSettingsLSC L1C_L3CC  = CacheSettingsLSC::L1C_L3CC;
 static constexpr_reg CacheSettingsLSC L1UC_L3CC = CacheSettingsLSC::L1UC_L3CC;
+static constexpr_reg CacheSettingsLSC L1UC_L2UC_L3UC    = CacheSettingsLSC::L1UC_L2UC_L3UC;
+static constexpr_reg CacheSettingsLSC L1UC_L2UC_L3C     = CacheSettingsLSC::L1UC_L2UC_L3C;
+static constexpr_reg CacheSettingsLSC L1UC_L2C_L3UC     = CacheSettingsLSC::L1UC_L2C_L3UC;
+static constexpr_reg CacheSettingsLSC L1UC_L2C_L3C      = CacheSettingsLSC::L1UC_L2C_L3C;
+static constexpr_reg CacheSettingsLSC L1C_L2UC_L3UC     = CacheSettingsLSC::L1C_L2UC_L3UC;
+static constexpr_reg CacheSettingsLSC L1C_L2UC_L3C      = CacheSettingsLSC::L1C_L2UC_L3C;
+static constexpr_reg CacheSettingsLSC L1C_L2C_L3UC      = CacheSettingsLSC::L1C_L2C_L3UC;
+static constexpr_reg CacheSettingsLSC L1C_L2C_L3C       = CacheSettingsLSC::L1C_L2C_L3C;
+static constexpr_reg CacheSettingsLSC L1S_L2UC_L3UC     = CacheSettingsLSC::L1S_L2UC_L3UC;
+static constexpr_reg CacheSettingsLSC L1S_L2UC_L3C      = CacheSettingsLSC::L1S_L2UC_L3C;
+static constexpr_reg CacheSettingsLSC L1S_L2C_L3UC      = CacheSettingsLSC::L1S_L2C_L3UC;
+static constexpr_reg CacheSettingsLSC L1S_L2C_L3C       = CacheSettingsLSC::L1S_L2C_L3C;
+static constexpr_reg CacheSettingsLSC L1IAR_L2IAR_L3IAR = CacheSettingsLSC::L1IAR_L2IAR_L3IAR;
+static constexpr_reg CacheSettingsLSC L1UC_L2UC_L3WB    = CacheSettingsLSC::L1UC_L2UC_L3WB;
+static constexpr_reg CacheSettingsLSC L1UC_L2WB_L3UC    = CacheSettingsLSC::L1UC_L2WB_L3UC;
+static constexpr_reg CacheSettingsLSC L1WT_L2UC_L3UC    = CacheSettingsLSC::L1WT_L2UC_L3UC;
+static constexpr_reg CacheSettingsLSC L1WT_L2UC_L3WB    = CacheSettingsLSC::L1WT_L2UC_L3WB;
+static constexpr_reg CacheSettingsLSC L1WT_L2WB_L3UC    = CacheSettingsLSC::L1WT_L2WB_L3UC;
+static constexpr_reg CacheSettingsLSC L1S_L2UC_L3WB     = CacheSettingsLSC::L1S_L2UC_L3WB;
+static constexpr_reg CacheSettingsLSC L1S_L2WB_L3UC     = CacheSettingsLSC::L1S_L2WB_L3UC;
+static constexpr_reg CacheSettingsLSC L1S_L2WB_L3WB     = CacheSettingsLSC::L1S_L2WB_L3WB;
+static constexpr_reg CacheSettingsLSC L1WB_L2WB_L3UC    = CacheSettingsLSC::L1WB_L2WB_L3UC;
+static constexpr_reg CacheSettingsLSC L1WB_L2UC_L3WB    = CacheSettingsLSC::L1WB_L2UC_L3WB;
 

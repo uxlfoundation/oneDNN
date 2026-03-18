@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2021-2024 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -79,6 +79,7 @@ private:
     reg64_t reg_output_stack = x27;
     reg64_t reg_bias_stack = x19;
     reg64_t reg_tmp_addr = x20;
+    reg64_t reg_tmp2_addr = x18;
 
     inline void load_src(int ur_ch_blocks, int ur_w);
     inline void compute_loop(int ur_w, int ur_ch_blocks, int pad_l, int pad_r);
@@ -115,16 +116,16 @@ private:
     }
 
     int get_ow_start(int ki, int pad_l) {
-        return nstl::max(0,
-                utils::div_up(pad_l - ki * (jcp.dilate_w + 1), jcp.stride_w));
+        return utils::div_up(
+                nstl::max(0, pad_l - ki * (jcp.dilate_w + 1)), jcp.stride_w);
     }
 
     int get_ow_end(int ur_w, int ki, int pad_r) {
         return ur_w
-                - nstl::max(0,
-                        utils::div_up(
-                                pad_r - (jcp.kw - 1 - ki) * (jcp.dilate_w + 1),
-                                jcp.stride_w));
+                - utils::div_up(
+                        nstl::max(0,
+                                pad_r - (jcp.kw - 1 - ki) * (jcp.dilate_w + 1)),
+                        jcp.stride_w);
     }
 
     inline bool is_src_layout_nxc() {

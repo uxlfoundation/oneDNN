@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
-* Copyright 2024-2025 Arm Ltd. and affiliates
+* Copyright 2024-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -93,9 +93,6 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
     const auto wei_dt = weights_md_.data_type;
     const auto dst_dt = dst_md_.data_type;
 
-    // skip unsupported shapes until issue caused by PR #4100 is sorted
-    if (src_md_.ndims == 4) { return status::unimplemented; }
-
     const bool is_f32 = everyone_is(f32, src_dt, wei_dt, dst_dt);
     const bool is_int8 = one_of(src_dt, u8, s8) && wei_dt == s8
             && one_of(dst_dt, u8, s8, s32, f32, bf16);
@@ -122,7 +119,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
                 && !attr()->scales_.has_default_values(DNNL_ARG_WEIGHTS)
                 && attr()->scales_.get_mask(DNNL_ARG_WEIGHTS) > 0) {
             // This case requires scratchpad
-            if (N() == DNNL_RUNTIME_DIM_VAL) ok = false;
+            if (is_runtime_value(N())) ok = false;
         }
 
         if (!attr()->post_ops_.sum_with_default_dt()) return false;
@@ -154,6 +151,8 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
     VDISPATCH_MATMUL(is_dense_format_kind(), VERBOSE_NONTRIVIAL_STRIDE);
     VDISPATCH_MATMUL(mayiuse(isa), VERBOSE_UNSUPPORTED_ISA);
     VDISPATCH_MATMUL(problem_dt_correct, VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_MATMUL(
+            IMPLICATION(is_bf16, mayiuse_bf16()), VERBOSE_UNSUPPORTED_ISA);
     VDISPATCH_MATMUL(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
     VDISPATCH_MATMUL(
             no_dynamic_strides_for_B_and_C, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
@@ -180,7 +179,6 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
     const int max_m_ker_idx
             = bgmmc_.is_runtime_M ? max_num_dynamic_m_tails + 1 : 2;
 
-    assert(!is_bf16);
     const auto backup_isa = isa;
     for_(int i_bs = 0; i_bs < 2; i_bs++)
     for_(int i_init = 0; i_init < 2; i_init++)
@@ -838,6 +836,8 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                     = weights_d.size() - weights_d.additional_buffer_size();
             const size_t b_batch
                     = get_bb_idx(bgmmc.batch - 1, bgmmc_.bcast_B_desc) + 1;
+            assert(IMPLICATION(bgmmc.s8s8_compensation_required,
+                    !is_runtime_value(bgmmc.s8s8_comp_b_str)));
             const size_t s8s8_buffer_sz = bgmmc.s8s8_compensation_required
                     ? sizeof(int32_t) * b_batch * bgmmc.s8s8_comp_b_str
                     : 0;
@@ -1226,6 +1226,7 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         const int n_blk_local = bgmmc_.use_buffer_b
                 ? n_blk_idx % bgmmc_.N_chunk_size
                 : n_blk_idx;
+        assert(!is_runtime_value(bgmmc_.s8s8_comp_b_str));
         return s8s8_compensation_ptr_ + ithr * bgmmc_.s8s8_comp_ithr_str
                 + get_bb_idx(b, bgmmc_.bcast_B_desc) * bgmmc_.s8s8_comp_b_str
                 + n_blk_local * bgmmc_.s8s8_comp_n_str;
@@ -1518,6 +1519,7 @@ private:
 
 template struct brgemm_matmul_t<sve_512>;
 template struct brgemm_matmul_t<sve_256>;
+template struct brgemm_matmul_t<sve_128>;
 
 } // namespace matmul
 } // namespace aarch64

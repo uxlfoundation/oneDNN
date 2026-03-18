@@ -1355,7 +1355,8 @@ struct fma_context_t {
         bool is_dpas = is_dp_fma(fma);
         bool is_a = (abc == abc_kind_t::a);
         auto type = (is_a ? a_type : b_type);
-        bool cvt_f16 = (layout.type().is_fp8() || layout.type().is_fp4());
+        bool cvt_f16 = ((hw < ngen::HW::XE3P_35_10 && layout.type().is_fp8())
+                || (hw < ngen::HW::XE3P_35_11 && layout.type().is_fp4()));
         int type_size = (cvt_f16 ? 2 : type.size());
         if (is_dpas) {
             int sdepth = 8;
@@ -1462,6 +1463,9 @@ struct fma_context_t {
             auto &b0 = layout[0];
             if (b0.idx != dim) return false;
             if (b0.size % block != 0) return false;
+            bool stride_ok = (b0.stride == 1)
+                    || (layout.type().is_x16() && b0.stride == 2);
+            if (!stride_ok) return false;
             return true;
         };
         if (a_vec_idx != -1 && !is_blocked_by(a, a_vec_idx, vec_size))
@@ -2209,11 +2213,51 @@ private:
         return plan_status_t::success;
     }
 
+    // Extends the view to cover 256 contiguous bytes for more efficient
+    // prefetching.
+    void maybe_extend_prefetch_thread_view_to_256_bytes(
+            view_t &thr_view) const {
+        auto thr_layout = thr_view.create_pseudo_vlayout();
+        auto &blocks = thr_layout.blocks();
+        if (blocks.size() <= 1) return;
+
+        auto &b0 = blocks[0];
+        auto &b1 = blocks[1];
+        if (!b1.stride.is_fixed() || !b0.stride.is_fixed()) return;
+        auto inner_var = thr_view.vvars()[b0.idx];
+        bool is_block_strided
+                = (b0.stride == stride_t(1)) && (b1.stride > b0.size);
+        int type_size = thr_layout.type().size();
+        dim_t full_dim_size
+                = gemm_schedule_.a_view().vdims()[b0.idx] * type_size;
+        bool size_ge_256b = (full_dim_size >= 256);
+        dim_t b0_size = b0.size * type_size;
+        bool prefetch_lt_256b = (b0_size < 256);
+        bool is_inner_loop = gemm_schedule_.is_inner_loop(inner_var);
+        // Extend if the following conditions are satisfied:
+        // - The inner block (b0) is dense and smaller than 256 bytes
+        // - The original tensor has at least 256 bytes across b0 dimension
+        // - The inner block dimensions corresponds to the inner loop
+        //   dimension. We want to prefetch extra cache lines only if they are
+        //   going to be used by the next iterations.
+        if (is_block_strided && size_ge_256b && prefetch_lt_256b
+                && is_inner_loop) {
+            gpu_assert(thr_view.vdims()[b0.idx] == b0.size);
+            int factor = 256 / b0_size;
+            thr_view.set_vdim(inner_var, b0.size * factor,
+                    thr_view.vstart()[b0.idx],
+                    /*overwrite=*/true);
+        }
+    }
+
     plan_status_t init_x_prefetch_plan(abc_kind_t abc, const view_t &tg_view,
             grid_info_t &grid, send_plan_t &prefetch) const {
         if (!use_prefetch(abc)) return plan_status_t::success;
         auto &tg = cfg_.thread_group_grid();
         auto thr_view = tg_view.split(tg, &grid);
+        if (cfg_.hw() == ngen::HW::XE3P_35_11) {
+            maybe_extend_prefetch_thread_view_to_256_bytes(thr_view);
+        }
         auto params = get_send_params(cfg_.options(), send_op_t::prefetch,
                 send_address_t::a64, fma_kind_t::undef, abc, thr_view,
                 gemm_schedule_);
@@ -2496,7 +2540,10 @@ private:
         auto c_layout = get_c_layout(a_layout, b_layout, c_blk_layout);
         bmnk_block_mapper_t c_mapper(mapper);
         c_mapper.push_blocks(abc_kind_t::a, x2r.a_layout.blocks());
-        c_mapper.push_blocks(abc_kind_t::b, x2r.b_layout.blocks());
+        for (auto &block : x2r.b_layout.blocks()) {
+            if (mapper.bmnk_kind(abc_kind_t::b, block.idx) == bmnk_kind_t::n)
+                c_mapper.push_block(abc_kind_t::b, block);
+        }
         auto c_prb_layout = c_mapper.map_from_bmnk(abc_kind_t::c,
                 {bmnk_kind_t::b, bmnk_kind_t::m, bmnk_kind_t::n}, c_layout);
 

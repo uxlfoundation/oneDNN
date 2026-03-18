@@ -22,7 +22,6 @@
 #include "oneapi/dnnl/dnnl_ocl_types.h"
 
 #include <CL/cl.h>
-/// @endcond
 
 #ifdef __cplusplus
 extern "C" {

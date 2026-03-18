@@ -16,8 +16,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # *******************************************************************************
-from collections import defaultdict
 import xml.etree.ElementTree as ET
+from collections import defaultdict
 
 
 def failed_benchdnn_tests(file, unique):
@@ -25,16 +25,16 @@ def failed_benchdnn_tests(file, unique):
         r = f.readlines()
 
     failed_cases = defaultdict(list)
-    for i, l in enumerate(r[:-1]):
+    for i, line in enumerate(r[:-1]):
         if (
             (":PASSED" not in r[i + 1])
             and (":SKIPPED" not in r[i + 1])
             and (":MISTRUSTED" not in r[i + 1])
-            and ("run: --" in l)
+            and ("run: --" in line)
         ):
-            l = l.split("run: ")[1]
-            op = l.split(" ")[0]
-            failed_cases[op].append(l.replace("\n", ""))
+            line = line.split("run: ")[1]
+            op = line.split(" ")[0]
+            failed_cases[op].append(line.replace("\n", ""))
 
     if unique:
         return [x[0] for x in failed_cases.values()]

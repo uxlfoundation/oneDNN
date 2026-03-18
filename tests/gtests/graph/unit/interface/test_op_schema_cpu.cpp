@@ -4809,7 +4809,7 @@ TEST(test_interface_op_schema, InferStaticReshapeShape) {
 
     logical_tensor_t lt_in8
             = logical_tensor_init(8, {0, 2, 8, 6}, data_type::f32);
-    lt_in = {&lt_in8};
+    lt_in[0] = &lt_in8;
     logical_tensor_t lt_o9
             = logical_tensor_init(9, data_type::f32, layout_type::strided);
     std::vector<logical_tensor_t *> lt_out9 {&lt_o9};
@@ -4870,7 +4870,7 @@ public:
     void Test() {
         const op_schema_t *schema = op_schema_registry_t::get_op_schema(kind);
 
-        auto params = ::testing::TestWithParam<
+        const auto &params = ::testing::TestWithParam<
                 dynamic_quantization_params_t>::GetParam();
 
         op_t dynamic_quantize {0, kind, "dynamic_quantize"};

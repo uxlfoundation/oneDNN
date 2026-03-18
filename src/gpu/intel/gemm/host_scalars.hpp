@@ -60,6 +60,18 @@ inline status_t maybe_get_host_scalar_value(
             status = get_scalar_value<bfloat16_t, float>(
                     scalar_value, scalar_storage);
             break;
+        case f8_e4m3:
+            status = get_scalar_value<float8_e4m3_t, float>(
+                    scalar_value, scalar_storage);
+            break;
+        case f8_e5m2:
+            status = get_scalar_value<float8_e5m2_t, float>(
+                    scalar_value, scalar_storage);
+            break;
+        case e8m0:
+            status = get_scalar_value<float8_e8m0_t, float>(
+                    scalar_value, scalar_storage);
+            break;
         case s32:
             status = get_scalar_value<int32_t, float>(
                     scalar_value, scalar_storage);
@@ -109,6 +121,30 @@ inline status_t maybe_get_host_scalar_value(
     return status;
 }
 
+inline status_t maybe_get_host_scalar_value(
+        const memory_storage_t &mem_storage, int64_t &scalar_value) {
+    using namespace data_type;
+    const host_scalar_memory_storage_t *scalar_storage
+            = utils::downcast<const host_scalar_memory_storage_t *>(
+                    &mem_storage);
+    status_t status = status::success;
+
+    switch ((int)scalar_storage->data_type()) {
+        case s64:
+            status = get_scalar_value<int64_t, int64_t>(
+                    scalar_value, scalar_storage);
+            break;
+        case s32:
+            status = get_scalar_value<int32_t, int64_t>(
+                    scalar_value, scalar_storage);
+            break;
+        default:
+            assert(!"Support for requested data type is missing for host-side "
+                    "scalars");
+            status = status::invalid_arguments;
+    }
+    return status;
+}
 } // namespace gemm
 } // namespace intel
 } // namespace gpu

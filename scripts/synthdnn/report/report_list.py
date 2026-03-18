@@ -14,10 +14,8 @@
 # limitations under the License.
 ################################################################################
 
-from matmul.primitive import Primitive as matmul
-
-import report.plotter as plotter
-import report.metrics as metrics
+from ..matmul.primitive import Primitive as matmul
+from . import metrics, plotter
 
 
 class Sample:

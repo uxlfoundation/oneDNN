@@ -50,6 +50,10 @@ struct exec_args_t {
     const memory_storage_t *b_group_sums = nullptr;
     const memory_storage_t *sum_ab = nullptr;
     const memory_storage_t *sround_seed = nullptr;
+    const memory_storage_t *dropout_mask = nullptr;
+    const memory_storage_t *dropout_seed = nullptr;
+    const memory_storage_t *dropout_offset = nullptr;
+    const memory_storage_t *dropout_prob = nullptr;
     impl::exec_args_t exec_args;
 };
 

@@ -119,13 +119,20 @@ status_t engine_t::create_kernels(
             "No OpenCL source was found for kernel");
 
     stringstream_t pp_code;
-    CHECK(gpu::intel::ocl::preprocess_headers(pp_code, source, kernel_ctx));
+    CHECK(compute::preprocess_headers(pp_code, source, kernel_ctx));
+    std::string code_str = pp_code.str();
 
     std::string build_options = kernel_ctx.options();
     build_options += " " + device_info()->get_cl_ext_options();
 
+    gpu::intel::compute::program_src_t src(code_str);
+    if (src) { build_options += " -g -s " + std::string(src.name()); }
+
+    compute::debugdump_processed_source(
+            code_str, build_options, device_info()->get_cl_ext_options());
+
     auto kb_src = syclex::create_kernel_bundle_from_source(
-            context(), syclex::source_language::opencl, pp_code.str());
+            context(), syclex::source_language::opencl, code_str);
     auto kb_exe = syclex::build(
             kb_src, syclex::properties {syclex::build_options(build_options)});
     *kernels = std::vector<compute::kernel_t>(kernel_names.size());
@@ -133,8 +140,7 @@ status_t engine_t::create_kernels(
         if (!kernel_names[i]) continue;
 
         CHECK(interop_kernel_t::make((*kernels)[i],
-                kb_exe.ext_oneapi_get_kernel(kernel_names[i]),
-                gpu::intel::compute::program_src_t(pp_code.str())));
+                kb_exe.ext_oneapi_get_kernel(kernel_names[i]), src));
     }
 
     return status::success;

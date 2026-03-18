@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2018 Intel Corporation
 * Copyright 2024-2025 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -101,6 +101,9 @@ const char *dnnl_sparse_encoding2str(dnnl_sparse_encoding_t v) {
     if (v == dnnl_csr) return "csr";
     if (v == dnnl_packed) return "packed";
     if (v == dnnl_coo) return "coo";
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    if (v == dnnl_grouped) return "grouped";
+#endif
     assert(!"unknown sparse_encoding");
     return "unknown sparse_encoding";
 }
@@ -971,6 +974,12 @@ const char *dnnl_fmt_tag2str(dnnl_format_tag_t v) {
     if (v == dnnl_BAc4a4b) return "BAc4a4b";
     if (v == dnnl_BAcd4a4b) return "BAcd4a4b";
     if (v == dnnl_BAcde4a4b) return "BAcde4a4b";
+    if (v == dnnl_BA12b8a) return "BA12b8a";
+    if (v == dnnl_aCB12c8b) return "aCB12c8b";
+    if (v == dnnl_abDC12d8c) return "abDC12d8c";
+    if (v == dnnl_BA4b8a) return "BA4b8a";
+    if (v == dnnl_aCB4c8b) return "aCB4c8b";
+    if (v == dnnl_abDC4d8c) return "abDC4d8c";
     if (v == dnnl_format_tag_last) return "format_tag_last";
     if (v == dnnl_x) return "x";
     if (v == dnnl_nc) return "nc";
@@ -1800,6 +1809,7 @@ const char *dnnl_prim_kind2str(dnnl_primitive_kind_t v) {
     if (v == dnnl_group_normalization) return "group_normalization";
     if (v == dnnl_primitive_kind_max) return "primitive_kind_max";
     if (v == dnnl::impl::primitive_kind::sdpa) return "sdpa";
+    if (v == dnnl::impl::primitive_kind::gated_mlp) return "gated_mlp";
     assert(!"unknown prim_kind");
     return "unknown prim_kind";
 }
@@ -1876,7 +1886,8 @@ const char *dnnl_alg_kind2str(dnnl_alg_kind_t v) {
     if (v == dnnl_reduction_norm_lp_power_p_sum) return "reduction_norm_lp_power_p_sum";
     if (v == dnnl_softmax_accurate) return "softmax_accurate";
     if (v == dnnl_softmax_log) return "softmax_log";
-    if (v == dnnl::impl::alg_kind::softmax_accurate_inf_as_zero) return "softmax_accurate_inf_as_zero";
+    if (v == dnnl::impl::alg_kind::softmax_accurate_inf_as_zero)
+        return "softmax_accurate_inf_as_zero";
     assert(!"unknown alg_kind");
     return "unknown alg_kind";
 }

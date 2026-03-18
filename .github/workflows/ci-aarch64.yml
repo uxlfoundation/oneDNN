@@ -77,9 +77,10 @@ jobs:
     runs-on: ubuntu-22.04-arm
     steps:
       - name: Checkout oneDNN
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-            path: oneDNN
+          persist-credentials: false
+          path: oneDNN
 
       - name: Build oneDNN
         uses: ./oneDNN/.github/actions/build-onednn-aarch64
@@ -104,8 +105,9 @@ jobs:
     runs-on: ${{ matrix.config.label }}
     steps:
       - name: Checkout oneDNN
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          persist-credentials: false
           path: oneDNN
 
       - name: Read version file
@@ -136,7 +138,7 @@ jobs:
 
       - if: ${{ (contains(matrix.config.label,'ubuntu') && (matrix.config.toolset == 'clang')) }}
         name: Install clang
-        uses: KyleMayes/install-llvm-action@98e68e10c96dffcb7bfed8b2144541a66b49aa02 # v2.0.8
+        uses: KyleMayes/install-llvm-action@ebc0426251bc40c7cd31162802432c68818ab8f0 # v2.0.9
         with:
           version: ${{ fromJson(steps.get-versions.outputs.output).dependencies.clang }}
 
@@ -170,8 +172,9 @@ jobs:
     runs-on: ${{ matrix.config.label }}
     steps:
       - name: Checkout oneDNN
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          persist-credentials: false
           path: oneDNN
 
       - name: Read version file
@@ -195,7 +198,7 @@ jobs:
           sudo apt install -y libomp-dev g++-${{ fromJson(steps.get-versions.outputs.output).dependencies.gcc }}
 
       - name: Download oneDNN
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: onednn-unit
           path: oneDNN_pkg
@@ -224,9 +227,10 @@ jobs:
     runs-on: ${{ matrix.config.label }}
     steps:
       - name: Checkout oneDNN
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-            path: oneDNN
+          persist-credentials: false
+          path: oneDNN
 
       - name: Read version file
         id: get-versions
@@ -236,7 +240,7 @@ jobs:
           echo "output=$content" >> $GITHUB_OUTPUT
 
       - name: setup python
-        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: '3.10'
 
@@ -249,7 +253,7 @@ jobs:
             pip install scipy statistics gitpython
 
       - name: Download oneDNN base
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: onednn-perf-base
           path: oneDNN_pkg
@@ -261,7 +265,7 @@ jobs:
           patchelf --add-rpath ${{ github.workspace }}/oneDNN_base/ComputeLibrary/build ${{ github.workspace }}/oneDNN_base/oneDNN/build/src/libdnnl.so.3
 
       - name: Download oneDNN new
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: onednn-perf-new
           path: oneDNN_pkg
@@ -297,7 +301,9 @@ jobs:
     runs-on: windows-11-arm
     steps:
       - name: Checkout oneDNN
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Install Build Tools
         run: choco install ninja --force --limit-output --no-progress

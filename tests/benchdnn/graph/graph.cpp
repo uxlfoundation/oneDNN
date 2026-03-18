@@ -589,10 +589,26 @@ int skip_unimplemented_partitions(const std::vector<partition> &partitions,
     return OK;
 }
 
+int skip_unimplemented_memory_kind(res_t *res) {
+    // currently, only USM memory is supported by graph driver, skip other
+    // memory kinds (eg., buffer).
+    if (memory_kind != memory_kind_ext_t::usm) {
+        BENCHDNN_PRINT(2, "%s\n",
+                "[INFO]: only USM memory is supported by graph driver");
+        res->state = SKIPPED;
+        res->reason = skip_reason::case_not_supported;
+    }
+
+    return OK;
+}
+
 int doit(const prb_t *prb, res_t *res) {
     if (bench_mode == bench_mode_t::list) return res->state = LISTED, OK;
 
     skip_start(res);
+    if (res->state == SKIPPED) return OK;
+
+    skip_unimplemented_memory_kind(res);
     if (res->state == SKIPPED) return OK;
 
     const auto &dg = prb->dg;

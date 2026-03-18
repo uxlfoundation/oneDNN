@@ -31,7 +31,7 @@ static inline bool isW(ngen::DataType dt) { return one_of(dt, {ngen::DataType::u
 static inline bool isD(ngen::DataType dt) { return one_of(dt, {ngen::DataType::ud, ngen::DataType::d}); }
 static inline bool isQ(ngen::DataType dt) { return one_of(dt, {ngen::DataType::uq, ngen::DataType::q}); }
 static inline bool isFP8(ngen::DataType dt) { return one_of(dt, {ngen::DataType::bf8, ngen::DataType::hf8, Type::ngen_e8m0()}); }
-static inline bool isFP4(ngen::DataType dt) { return one_of(dt, {Type::ngen_e2m1(), Type::ngen_e3m0(), Type::ngen_nf4()}); }
+static inline bool isFP4(ngen::DataType dt) { return one_of(dt, {ngen::DataType::e2m1, ngen::DataType::e3m0, Type::ngen_nf4()}); }
 static inline bool is4(ngen::DataType dt) { return isInt4(dt) || isFP4(dt); }
 
 static inline bool isFP(ngen::DataType dt) {

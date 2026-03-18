@@ -72,6 +72,14 @@ struct memory_desc_wrapper : public c_compatible {
         return format_kind() == format_kind::cublaslt_blocked;
     }
     bool is_sparse_desc() const { return format_kind() == format_kind::sparse; }
+    bool is_grouped_desc() const {
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+        return is_sparse_desc()
+                && sparse_desc().encoding == sparse_encoding::grouped;
+#else
+        return false;
+#endif
+    }
 
     bool is_host_scalar_desc() const {
         return format_kind() == format_kind::host_scalar;
@@ -183,7 +191,7 @@ struct memory_desc_wrapper : public c_compatible {
      * is true, and the number of data elements otherwise */
     dim_t nelems(bool with_padding = false) const {
         if (is_zero()) return 0;
-        if (has_runtime_dims()) return DNNL_RUNTIME_DIM_VAL;
+        if (has_runtime_dims()) return runtime_value_for<dim_t>();
         return utils::array_product(
                 with_padding ? padded_dims() : dims(), ndims());
     }
@@ -301,7 +309,7 @@ struct memory_desc_wrapper : public c_compatible {
             return 0;
         }
 
-        if (has_runtime_dims_or_strides()) return DNNL_RUNTIME_SIZE_VAL;
+        if (has_runtime_dims_or_strides()) return runtime_value_for<size_t>();
 
         if (is_wino_desc()) {
             return wino_desc().size;
@@ -388,7 +396,25 @@ struct memory_desc_wrapper : public c_compatible {
                         return utils::div_up(nelems(true), CHAR_BIT);
                     default: assert(!"unknown index"); return 0;
                 }
-            } else {
+            }
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+            else if (sparse_desc().encoding == sparse_encoding::grouped) {
+                // Grouped encoding has values buffer and offsets buffer
+                switch (index) {
+                    case 0:
+                        // Return size for values.
+                        return nnz() * data_type_size();
+                    case 1: {
+                        // Return size for offsets (group_count offsets).
+                        const auto offsets_dt = metadata_type(0);
+                        return (sparse_desc().grouped_desc.group_count)
+                                * types::data_type_size(offsets_dt);
+                    }
+                    default: assert(!"unknown index"); return 0;
+                }
+            }
+#endif
+            else {
                 assert(!"unknown sparse encoding");
                 return 0;
             }
@@ -433,7 +459,7 @@ struct memory_desc_wrapper : public c_compatible {
     /** returns true if at least one dim is not known */
     bool has_runtime_dims() const {
         for (int d = 0; d < ndims(); ++d)
-            if (dims()[d] == DNNL_RUNTIME_DIM_VAL) return true;
+            if (is_runtime_value(dims()[d])) return true;
         return false;
     }
 
@@ -441,7 +467,7 @@ struct memory_desc_wrapper : public c_compatible {
     bool has_runtime_strides() const {
         if (!is_blocking_desc()) return false;
         for (int d = 0; d < ndims(); ++d)
-            if (blocking_desc().strides[d] == DNNL_RUNTIME_DIM_VAL) return true;
+            if (is_runtime_value(blocking_desc().strides[d])) return true;
         return false;
     }
 

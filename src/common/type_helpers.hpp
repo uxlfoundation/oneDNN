@@ -440,6 +440,15 @@ inline bool sparse_desc_is_equal(
     bool ok = lhs.encoding == rhs.encoding && lhs.nnz == rhs.nnz;
     if (!ok) return false;
 
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    if (lhs.encoding == sparse_encoding::grouped) {
+        ok = ok && lhs.grouped_desc.group_count == rhs.grouped_desc.group_count
+                && lhs.grouped_desc.variable_dim_idx
+                        == rhs.grouped_desc.variable_dim_idx;
+        if (!ok) return false;
+    }
+#endif
+
     for (int i = 0; i < sparse_desc_t::max_metadata_types; i++)
         ok = ok && lhs.metadata_types[i] == rhs.metadata_types[i];
 
@@ -1032,6 +1041,17 @@ inline bool operator==(const sdpa_desc_t &lhs, const sdpa_desc_t &rhs) {
     return ret;
 }
 
+inline bool operator==(const gated_mlp_desc_t &lhs, const gated_mlp_desc_t &rhs) {
+    bool ret = COMPARE_DESC_MEMBERS(primitive_kind)
+            && COMPARE_DESC_MEMBERS(src_desc)
+            && COMPARE_DESC_MEMBERS(w_gate_desc)
+            && COMPARE_DESC_MEMBERS(w_up_desc)
+            && COMPARE_DESC_MEMBERS(w_down_desc)
+            && COMPARE_DESC_MEMBERS(dst_desc)
+            && COMPARE_DESC_MEMBERS(activation);
+    return ret;
+}
+
 // clang-format on
 
 #undef COMPARE_DESC_MEMBERS
@@ -1089,8 +1109,8 @@ inline bool memory_desc_strides_check(
         if (md.padded_dims[d] == 0) return true;
 
         // no strides verification for runtime dims
-        const bool has_runtime_dim = utils::one_of(
-                DNNL_RUNTIME_DIM_VAL, strides[d], md.padded_dims[d]);
+        const bool has_runtime_dim
+                = any_runtime_value(strides[d], md.padded_dims[d]);
         if (has_runtime_dim) return true;
 
         perm[d] = d;
@@ -1115,6 +1135,10 @@ inline bool memory_desc_strides_check(
     };
     std::sort(perm, perm + md.ndims, idx_sorter);
 
+    // tracks max stride for integral overflow checks
+    dim_t max_stride = 1;
+    int max_stride_d = 0;
+
     dim_t min_stride = block_size;
     for (int idx = 0; idx < md.ndims; ++idx) {
         const int d = perm[idx];
@@ -1134,6 +1158,22 @@ inline bool memory_desc_strides_check(
         // update min_stride for next iteration
         const auto padded_dim = md.padded_dims[d];
         min_stride = block_size * strides[d] * (padded_dim / blocks[d]);
+        if (max_stride <= strides[d]) {
+            max_stride = strides[d];
+            max_stride_d = d;
+        }
+    }
+
+    const size_t dt_size = types::data_type_size(md.data_type);
+
+    // guard against integral overflow due to strides exceeding numeric limits
+    if (!is_runtime_value(md.padded_dims[max_stride_d])) {
+        size_t dim_val = static_cast<size_t>(
+                md.padded_dims[max_stride_d] / blocks[max_stride_d]);
+        dim_val = dim_val == (size_t)max_stride ? 1 : dim_val;
+        if (dim_val > SIZE_MAX / max_stride) return false;
+        if (dt_size && ((dim_val * max_stride) > SIZE_MAX / dt_size))
+            return false;
     }
     return true;
 }
@@ -1218,8 +1258,10 @@ inline status_t memory_desc_init_by_blocking_desc(
 
     utils::simultaneous_sort(
             mblk.strides, ou_blocks, perm, ndims, [](stride_t a, stride_t b) {
-        if (utils::one_of(DNNL_RUNTIME_DIM_VAL, a, b))
-            return DNNL_RUNTIME_DIM_VAL;
+        static_assert(runtime_value_for<stride_t>() < 0,
+                "negative value is expected");
+        if (any_runtime_value(a, b))
+            return runtime_value_for<stride_t>(); // negative: preserves order
         return b - a;
     });
 
@@ -1298,21 +1340,6 @@ format_tag_t memory_desc_matches_one_of_tag(
     return format_tag::undef;
 }
 
-/** returns true if fp32 value denotes DNNL_RUNTIME_F32_VAL */
-inline bool is_runtime_value(float val) {
-    return utils::bit_cast<unsigned>(val) == DNNL_RUNTIME_F32_VAL_REP.u;
-}
-
-/** returns true if s32 value denotes DNNL_RUNTIME_S32_VAL */
-inline bool is_runtime_value(int val) {
-    return val == DNNL_RUNTIME_S32_VAL;
-}
-
-/** returns true if dim_t value denotes DNNL_RUNTIME_DIM_VAL */
-inline bool is_runtime_value(dim_t val) {
-    return val == DNNL_RUNTIME_DIM_VAL;
-}
-
 inline bool memory_desc_sanity_check(int ndims, const dims_t dims,
         data_type_t data_type, format_kind_t format_kind) {
     using namespace data_type;
@@ -1324,10 +1351,23 @@ inline bool memory_desc_sanity_check(int ndims, const dims_t dims,
                     f8_e4m3, f16, bf16, f32, f64, s64, s32, s8, u8, s4, u4);
     if (!ok) return false;
 
+    // A bounds check on the dimensions ensures that the tensor size
+    // computation does not trigger a overflow during memory creation.
+    dim_t prod = 1;
+    for (int d = 0; d < ndims; ++d) {
+        if (dims[d] != DNNL_RUNTIME_DIM_VAL) {
+            if (dims[d] < 0) return false;
+            if (dims[d] > 0) {
+                if (prod > std::numeric_limits<dim_t>::max() / dims[d])
+                    return false;
+                prod *= dims[d];
+            }
+        }
+    }
+
     bool has_runtime_dims = false;
     for (int d = 0; d < ndims; ++d) {
-        if (dims[d] != DNNL_RUNTIME_DIM_VAL && dims[d] < 0) return false;
-        if (dims[d] == DNNL_RUNTIME_DIM_VAL) has_runtime_dims = true;
+        if (is_runtime_value(dims[d])) has_runtime_dims = true;
     }
 
     if (has_runtime_dims) {

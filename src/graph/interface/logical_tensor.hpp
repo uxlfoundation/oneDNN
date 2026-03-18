@@ -308,6 +308,8 @@ struct logical_tensor_wrapper_t {
 
     size_t hash() const noexcept;
 
+    std::string str() const;
+
 private:
     bool is_identical(
             const logical_tensor_t &lhs, const logical_tensor_t &rhs) const;

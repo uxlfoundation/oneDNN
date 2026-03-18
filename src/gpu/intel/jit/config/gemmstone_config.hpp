@@ -24,8 +24,6 @@
 #include "common/verbose.hpp"
 #include "gpu/intel/jit/generator.hpp"
 #include "gpu/intel/jit/post_op_injector.hpp"
-#include "gpu/intel/microkernels/entrance_agent.hpp"
-#include "gpu/intel/microkernels/package.hpp"
 #include "gpu/intel/post_ops.hpp"
 #include "ngen_register_allocator.hpp"
 
@@ -36,10 +34,12 @@
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
 #define ZEBIN_OUTPUT
 #define GEMMSTONE_WITH_SYCL_RUNTIME
-#define GEMMSTONE_WITH_OPENCL_RUNTIME
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 #define OPENCL_OUTPUT
 #define GEMMSTONE_WITH_OPENCL_RUNTIME
+#elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+#define ZEBIN_OUTPUT
+#define GEMMSTONE_WITH_L0_RUNTIME
 #endif
 
 #if !defined(NDEBUG) || defined(DNNL_DEV_MODE)
@@ -82,8 +82,6 @@ template <typename... Args>
 inline void verbosePrintf(const char *fmtStr, Args... args) {
     return dnnl::impl::verbose_printf(fmtStr, args...);
 }
-
-namespace micro = dnnl::impl::gpu::intel::micro;
 
 using SerializationStream = dnnl::impl::serialization_stream_t;
 

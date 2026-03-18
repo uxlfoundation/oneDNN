@@ -1,0 +1,69 @@
+/*******************************************************************************
+* Copyright 2024 Intel Corporation
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*     http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*******************************************************************************/
+
+#ifndef GEMMSTONE_INCLUDE_GEMMSTONE_MICROKERNEL_SELECTOR_HPP
+#define GEMMSTONE_INCLUDE_GEMMSTONE_MICROKERNEL_SELECTOR_HPP
+
+#include "gemmstone/config.hpp"
+#include "gemmstone/kernel_selector.hpp"
+#include "gemmstone/kernel_evaluator.hpp"
+#include "gemmstone/microkernel/package.hpp"
+#include "gemmstone/microkernel/protocol.hpp"
+
+GEMMSTONE_NAMESPACE_START
+namespace microkernel {
+
+/* Hardware information for microkernel provider */
+struct HWInformation {
+    uint32_t gmdid;
+    int euCount;
+    bool systolicAvailable;
+};
+
+struct GEMMOptions {
+    bool localA = false;
+    bool localB = false;
+    bool addToC = false;
+    bool slmPtr = false;
+    bool offsetA = false;
+    bool offsetB = false;
+    bool scaleA = false;
+    bool scaleB = false;
+    bool kParallelLocal = false;
+
+    GEMMOptions() = default;
+    ngen::InterfaceHandler generateInterface(ngen::HW hw) const;
+    GEMMOptions transpose() const;
+};
+
+/* Main entrypoint for microkernel auto-selection */
+using StrategyAdjuster = std::function<void(GEMMStrategy&)>;
+Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams sizes, const GEMMProblem &problem,
+                                     const std::vector<StrategyRequirement> &reqs = std::vector<StrategyRequirement>(),
+                                     StrategyAdjuster strategyAdjuster = {}, SelectionObserver *observer = nullptr);
+
+/* Helpers */
+static inline int alignmentForLD(int ld)
+{
+    for (int x = 1; x <= 64; x <<= 1)
+        if (ld & x) return x;
+    return 128;
+};
+
+}
+GEMMSTONE_NAMESPACE_END
+
+#endif /* header guard */

@@ -41,6 +41,7 @@
 #include "convolution_pd.hpp"
 #include "deconvolution_pd.hpp"
 #include "eltwise_pd.hpp"
+#include "gated_mlp_pd.hpp"
 #include "gemm_pd.hpp"
 #include "group_normalization_pd.hpp"
 #include "inner_product_pd.hpp"
@@ -69,6 +70,10 @@
 
 #ifdef DNNL_WITH_SYCL
 #include "xpu/sycl/verbose.hpp"
+#endif
+
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+#include "xpu/ze/verbose.hpp"
 #endif
 
 #ifdef DNNL_EXPERIMENTAL
@@ -116,6 +121,9 @@ void print_header() noexcept {
 #endif
 #ifdef DNNL_WITH_SYCL
             xpu::sycl::print_verbose_header();
+#endif
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+            xpu::ze::print_verbose_header();
 #endif
 #ifdef ONEDNN_BUILD_GRAPH
             graph::utils::print_verbose_header();
@@ -629,7 +637,7 @@ namespace {
 int get_runtime_mask(const memory_desc_t *md) {
     int mask = 0;
     for (int d = md->ndims - 1; d >= 0; --d) {
-        mask += md->dims[d] == DNNL_RUNTIME_DIM_VAL ? 1 << d : 0;
+        mask += is_runtime_value(md->dims[d]) ? 1 << d : 0;
     }
     return mask;
 }
@@ -654,7 +662,9 @@ std::string get_arg(int arg) {
         case DNNL_ARG_SRC_1:
         case DNNL_ARG_SRC_2: s = "src"; break;
         case DNNL_ARG_DST: s = "dst"; break;
-        case DNNL_ARG_WEIGHTS: s = "wei"; break;
+        case DNNL_ARG_WEIGHTS: // DNNL_ARG_WEIGHTS_0
+        case DNNL_ARG_WEIGHTS_1:
+        case DNNL_ARG_WEIGHTS_2: s = "wei"; break;
         case DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_DST:
             s = "attr_post_op_dw_dst";
             break;
@@ -791,8 +801,13 @@ std::ostream &operator<<(std::ostream &ss, const primitive_attr_t *attr) {
                     const memory_desc_wrapper mdw(md);
                     switch (mdw.format_kind()) {
                         case format_kind::blocked:
-                            if (!mdw.count_non_unit_dims(1))
+                            if (!mdw.count_non_unit_dims(1)) {
                                 ss << ":" << md2fmt_tag_str(&eb.src1_desc);
+                                const auto &strides_str
+                                        = md2fmt_strides_str(&eb.src1_desc);
+                                if (!strides_str.empty())
+                                    ss << ":" << strides_str;
+                            }
                             break;
                         case format_kind::any: ss << ":any"; break;
                         default: assert(!"unsupported format_kind");
@@ -1026,6 +1041,32 @@ std::string init_info_eltwise(const engine_t *e, const pd_t *pd) {
     ss << "alg:" << pd->desc()->alg_kind << " alpha:" << pd->desc()->alpha
        << " beta:" << pd->desc()->beta << ",";
     ss << md2dim_str(data_md);
+
+    return ss.str();
+}
+
+template <typename pd_t>
+std::string init_info_gated_mlp(const engine_t *e, const pd_t *pd) {
+    stringstream_t ss;
+    ss << e << "," << pd->kind() << "," << pd->name() << "," << prop_kind::undef
+       << ",";
+
+    ss << md2fmt_str("src", pd->arg_md(DNNL_ARG_SRC), format_kind::undef)
+       << " ";
+    ss << md2fmt_str(
+            "wei_gate", pd->arg_md(DNNL_ARG_WEIGHTS_GATE), format_kind::undef)
+       << " ";
+    ss << md2fmt_str(
+            "wei_up", pd->arg_md(DNNL_ARG_WEIGHTS_UP), format_kind::undef)
+       << " ";
+    ss << md2fmt_str(
+            "wei_down", pd->arg_md(DNNL_ARG_WEIGHTS_DOWN), format_kind::undef)
+       << " ";
+    ss << md2fmt_str("dst", pd->arg_md(DNNL_ARG_DST), format_kind::undef);
+
+    ss << "," << pd->attr() << ",";
+    ss << "alg:" << pd->activation() << ",";
+    ss << "mb" << pd->MB() << "ic" << pd->IC() << "oc" << pd->OC();
 
     return ss.str();
 }
@@ -1782,6 +1823,7 @@ void pd_info_t::init(engine_t *engine, const primitive_desc_t *pd) {
             CASE(convolution);
             CASE(deconvolution);
             CASE(eltwise);
+            CASE(gated_mlp);
             CASE(gemm);
             CASE(group_normalization);
             CASE(inner_product);

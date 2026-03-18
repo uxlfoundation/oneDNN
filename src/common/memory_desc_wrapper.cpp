@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2016 Intel Corporation
 * Copyright 2024-2025 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -59,9 +59,13 @@ status_t fill_blocked(memory_desc_t &md, std::initializer_list<int> perm,
 
     utils::array_set(md.padded_offsets, 0, md.ndims);
     for (int d = 0; d < md.ndims; ++d)
-        md.padded_dims[d] = md.dims[d] == DNNL_RUNTIME_DIM_VAL
-                ? DNNL_RUNTIME_DIM_VAL
+        md.padded_dims[d] = is_runtime_value(md.dims[d])
+                ? runtime_value_for(md.padded_dims[d])
                 : utils::rnd_up(md.dims[d], blocks[d]);
+
+    // tracks max stride for integral overflow checks
+    dim_t max_stride = 1;
+    int max_stride_d = 0;
 
     // setting the strides
     {
@@ -72,12 +76,29 @@ status_t fill_blocked(memory_desc_t &md, std::initializer_list<int> perm,
             blk.strides[d] = stride;
 
             const dim_t pdim = md.padded_dims[d];
-            if (utils::one_of(DNNL_RUNTIME_DIM_VAL, stride, pdim))
-                stride = DNNL_RUNTIME_DIM_VAL;
+            if (any_runtime_value(stride, pdim))
+                stride = runtime_value_for(stride);
             else if (pdim != 0)
                 stride *= pdim / blocks[d];
 
+            if (max_stride <= stride) {
+                max_stride = stride;
+                max_stride_d = d;
+            }
+
         } while (iter_d != perm.begin());
+    }
+
+    const size_t dt_size = types::data_type_size(md.data_type);
+
+    // guard against integral overflow due to strides exceeding numeric limits
+    if (!is_runtime_value(md.padded_dims[max_stride_d])) {
+        size_t dim_val = static_cast<size_t>(
+                md.padded_dims[max_stride_d] / blocks[max_stride_d]);
+        dim_val = dim_val == (size_t)max_stride ? 1 : dim_val;
+        if (dim_val > SIZE_MAX / max_stride) return status::invalid_arguments;
+        if (dt_size && ((dim_val * max_stride) > SIZE_MAX / dt_size))
+            return status::invalid_arguments;
     }
 
     return status::success;
@@ -206,6 +227,9 @@ status_t memory_desc_wrapper::compute_blocking(
         C(BA24b8a, {1, 0}, {24, 8}, {1, 0});
         C(aCB24c8b, {0, 2, 1}, {24, 8}, {2, 1});
         C(abDC24d8c, {0, 1, 3, 2}, {24, 8}, {3, 2});
+        C(BA12b8a, {1, 0}, {12, 8}, {1, 0});
+        C(aCB12c8b, {0, 2, 1}, {12, 8}, {2, 1});
+        C(abDC12d8c, {0, 1, 3, 2}, {12, 8}, {3, 2});
         C(BA16a16b2a, {1, 0}, {16, 16, 2}, {0, 1, 0});
         C(BA16a32b2a, {1, 0}, {16, 32, 2}, {0, 1, 0});
         C(BA16a48b2a, {1, 0}, {16, 48, 2}, {0, 1, 0});
@@ -1007,10 +1031,13 @@ status_t memory_desc_wrapper::compute_blocking(
         C(aCB8b8c, {0, 2, 1}, {8, 8}, {1, 2});
         C(BA16b8a, {1, 0}, {16, 8}, {1, 0});
         C(BA8b8a, {1, 0}, {8, 8}, {1, 0});
+        C(BA4b8a, {1, 0}, {4, 8}, {1, 0});
         C(aCB16c8b, {0, 2, 1}, {16, 8}, {2, 1});
         C(aCB8c8b, {0, 2, 1}, {8, 8}, {2, 1});
+        C(aCB4c8b, {0, 2, 1}, {4, 8}, {2, 1});
         C(abDC16d8c, {0, 1, 3, 2}, {16, 8}, {3, 2});
         C(abDC8d8c, {0, 1, 3, 2}, {8, 8}, {3, 2});
+        C(abDC4d8c, {0, 1, 3, 2}, {4, 8}, {3, 2});
         C(AB2a4b, {0, 1}, {2, 4}, {0, 1});
         default: break;
     }

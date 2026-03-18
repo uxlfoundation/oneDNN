@@ -59,10 +59,12 @@ xpu::runtime_version_t get_driver_version(cl_device_id device) {
 status_t init_gpu_hw_info(impl::engine_t *engine, cl_device_id device,
         cl_context ctx, uint32_t &ip_version, compute::gpu_arch_t &gpu_arch,
         compute::gpu_product_t &product_, uint64_t &native_extensions,
-        bool &mayiuse_systolic, bool &mayiuse_ngen_kernels) {
+        bool &mayiuse_systolic, bool &mayiuse_ngen_kernels,
+        bool &is_efficient_64bit) {
     using namespace ngen;
     ngen::Product product
             = ngen::OpenCLCodeGenerator<HW::Unknown>::detectHWInfo(ctx, device);
+    HW hw = getCore(product.family);
     bool is_xelpg = (product.family == ngen::ProductFamily::ARL
             || product.family == ngen::ProductFamily::MTL);
 
@@ -74,13 +76,20 @@ status_t init_gpu_hw_info(impl::engine_t *engine, cl_device_id device,
     CHECK(get_ocl_device_enabled_native_float_atomics(
             device, native_extensions, is_xelpg));
 
-    auto status
-            = jit::gpu_supports_binary_format(&mayiuse_ngen_kernels, engine);
-    if (status != status::success) {
-        VWARN(common, runtime,
-                "ngen fallback (gpu does not support binary format kernels)");
-        mayiuse_ngen_kernels = false;
-    }
+    if (hw <= ngen::HW::Xe3) {
+        auto status = jit::gpu_supports_binary_format(
+                &mayiuse_ngen_kernels, engine);
+        if (status != status::success) {
+            VWARN(common, runtime,
+                    "ngen fallback (gpu does not support binary format "
+                    "kernels)");
+            mayiuse_ngen_kernels = false;
+        }
+    } else if (hw != ngen::HW::Unknown)
+        mayiuse_ngen_kernels = true;
+
+    is_efficient_64bit = OpenCLCodeGenerator<HW::Unknown>::detectEfficient64Bit(
+            ctx, device, hw);
 
     ip_version = 0;
     OCL_CHECK(xpu::ocl::clGetDeviceInfo(device, CL_DEVICE_IP_VERSION_INTEL,

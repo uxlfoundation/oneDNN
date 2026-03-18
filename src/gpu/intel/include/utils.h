@@ -95,4 +95,23 @@ IF_HALF_SUPPORTED(DEF_special_vals(half, 0.0h, 1.0h, -HALF_MAX, HALF_MAX));
 #define ASSUME(x)
 #endif
 
+/* Conditionally insert text if enabled is true */
+#define OPTIONAL(condition, text) CONCAT2(OPTIONAL_, condition)(text)
+#define OPTIONAL_0(text)
+#define OPTIONAL_1(text) , text
+
+// Boolean OR preprocessor
+#define OR(a, b) CONCAT2(OR_RESULT, CONCAT2(a, b))
+#define OR_RESULT00 0
+#define OR_RESULT01 1
+#define OR_RESULT10 1
+#define OR_RESULT11 1
+
+// Boolean AND preprocessor
+#define AND(a, b) CONCAT2(AND_RESULT, CONCAT2(a, b))
+#define AND_RESULT00 0
+#define AND_RESULT01 0
+#define AND_RESULT10 0
+#define AND_RESULT11 1
+
 #endif // GPU_INTEL_INCLUDE_UTILS_H

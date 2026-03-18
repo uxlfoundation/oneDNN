@@ -18,7 +18,8 @@
 
 namespace matmul {
 
-cfg_t::cfg_t(const prb_t *prb, const std::vector<data_kind_t> &kinds) {
+cfg_t::cfg_t(const prb_t *prb, const std::vector<data_kind_t> &kinds)
+    : base_cfg_t {prb->attr.acc_mode} {
     for (const auto kind : kinds) {
         auto orig_data_type = prb->get_dt(kind);
         auto data_type = deduce_cfg_data_type(orig_data_type, prb->attr, kind);

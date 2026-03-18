@@ -10,6 +10,9 @@ The following sparse encodings are supported:
 | coo             | Co-ordinate Sparse (COO) encoding
 | packed          | Packed Sparse encoding
 
+> **Note:**  to use grouped encoding for MatMul, the `--grouped` option must be specified
+> (see [MatMul driver documentation](driver_matmul.md) for details).
+
 ## Usage
 ```
     --encoding=ENCODING[+SPARSITY]:ENCODING[+SPARSITY]:ENCODING[+SPARSITY]

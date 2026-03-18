@@ -43,6 +43,7 @@ void CommonStrategy::preflight(HW hw, const CommonProblem &problem)
     bool emulateNeedsAcc = emulate.emulate64 || emulate.emulateDWxDW || emulate.emulate64_mul;
     if (moveR0 == MoveR0::Acc && emulateNeedsAcc)
         moveR0 = MoveR0::None;
+    if (hw >= HW::XE3P_35_10) moveR0 = MoveR0::None;
 
     spf &= !fused;
 }
@@ -208,6 +209,8 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
 
     checkBeta1 |= C.atomic && !problem.beta1();
 
+    GRFs = std::min(GRFs, GRF::maxRegs(hw));
+
     // Fixed systolic kernel handling.
     if (fixedSystolic) {
         if (wg[LoopM] == 0) wg[LoopM] = 4;
@@ -233,6 +236,10 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     // Priority: k chaining > extra C registers > r0 header storage.
     //                         64-bit emulation > r0 header storage.
     if (AccumulatorRegister::count(hw, GRFs, problem.Tc.real().ngen()) == 0)
+        kChain = 1;
+    // Using acc and mad not working on xe3p
+    bool is_xe3p = one_of(hw, {ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11, ngen::HW::XE3P_UNKNOWN});
+    if (!systolic && !dotVL && is_xe3p)
         kChain = 1;
     cAccumulators &= (kChain == 1);
 
@@ -284,7 +291,7 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
 
     // Systolic handling.
     if (systolic) {
-        auto params = systolicParams(hw, problem, *this);
+        auto params = systolicParams(hw, problem);
 
         ukAlign = lcm(ukAlign, params.ksys);
         auto tileX = params.osys;
@@ -324,7 +331,7 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     }
 
     if (dpasw) {
-        auto params = systolicParams(hw, problem, *this);
+        auto params = systolicParams(hw, problem);
         if (globalCM) {
             if (!fusedM()) stub();
             B.dpasw = true;
@@ -477,7 +484,7 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
 
     kPadding = align_up(kPadding, kAlign(problem));
 
-    if (fixedWG(problem) && (!kParallelLocal || wgPadFactor > 1))
+    if (fixedWG(problem) && (!kParallelLocal || fixedWGK()))
         activeThreads = wg[LoopM] * wg[LoopN] * wg[LoopK] * (splitCopy ? 2 : 1);
 
     CommonStrategy::preflight(hw, problem);

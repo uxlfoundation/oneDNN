@@ -88,7 +88,7 @@ public:
         const auto ker_first = ker_first_.get();
         const auto ker_last = ker_last_.get();
 
-        parallel(0, [&](const int ithr, const int nthr) {
+        parallel(0, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
             size_t start {0}, end {0};
             const int C16 = C_ / vsize_;
             const size_t work_amount
@@ -227,7 +227,7 @@ public:
         const auto ker_first = ker_first_.get();
         const auto ker_last = ker_last_.get();
 
-        parallel(0, [&](const int ithr, const int nthr) {
+        parallel(0, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
             size_t start {0}, end {0};
             const int C16 = C_ / vsize_;
             const size_t work_amount

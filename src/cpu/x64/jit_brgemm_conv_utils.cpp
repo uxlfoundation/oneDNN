@@ -870,8 +870,11 @@ dim_t brg_blocking_t::grid_coverage(
 }
 
 float brg_blocking_t::est_eff() {
-    const auto brgemm_microkernel_eff = (static_cast<float>(adj_ocblock) * ur)
-            / ((ur + adj_ocblock) * max_regs);
+    const auto N_regs = static_cast<float>(adj_ocblock);
+    const auto M_regs = is_amx(isa) ? div_up(ur, amx_h) : ur;
+    const auto tot_regs = is_amx(isa) ? brgemm_desc_t::AMX_TILES_NUM : max_regs;
+    const auto brgemm_microkernel_eff
+            = (N_regs * M_regs) / ((N_regs + M_regs) * tot_regs);
 
     const auto ur_eff = static_cast<float>(sp_block) / rnd_up(sp_block, ur);
     const auto brgemm_eff = squeeze_val(ur
@@ -1245,8 +1248,8 @@ status_t brg_blocking_t::calc_blocks() {
 
     const auto thr_eff_threshold = 0.9f;
     const auto max_ow_block_thr = utils::saturate(1, ow,
-            static_cast<int>(div_up(
-                    mb * ngroups * nb_oc * os, thr_eff_threshold * nthr)));
+            static_cast<int>(ceil(
+                    mb * ngroups * nb_oc * os / (thr_eff_threshold * nthr))));
 
     ow_block = os_block = sp_block = -1;
     brg_blocking_t best_brgb = *this;
@@ -1591,8 +1594,8 @@ void brg_blocking_t::calc_blocks_1x1() {
         os_block = 0;
 
         const auto max_ow_block_thr = utils::saturate(1, ow,
-                static_cast<int>(div_up(
-                        mb * ngroups * nb_oc * os, thr_eff_threshold * nthr)));
+                static_cast<int>(ceil(mb * ngroups * nb_oc * os
+                        / (thr_eff_threshold * nthr))));
         const auto max_ow_block_L2 = max_sp_block_L2;
 
         start_sp_block = utils::saturate(
@@ -2112,8 +2115,8 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     // TODO: this logic seems not taking dilation into which can avoid pure
     // kernel-in-pad cases.
-    if (!is_amx(isa) && div_up(jcp.l_pad, jcp.stride_w) < jcp.kw
-            && div_up(jcp.r_pad, jcp.stride_w) < jcp.kw) {
+    if (!is_amx(isa) && div_up(nstl::max(0, jcp.l_pad), jcp.stride_w) < jcp.kw
+            && div_up(nstl::max(0, jcp.r_pad), jcp.stride_w) < jcp.kw) {
         try_exec_vpad = true;
     }
 
@@ -2712,8 +2715,13 @@ void set_amx_wsp_per_thread(jit_brgemm_conv_conf_t &jcp) {
             = utils::rnd_up(jcp.amx_buf_size_per_thread + 1, P4K);
 }
 
-void init_scratchpad(memory_tracking::registrar_t &scratchpad,
-        const jit_brgemm_conv_conf_t &jcp) {
+status_t init_scratchpad(memory_tracking::registrar_t &scratchpad,
+        const jit_brgemm_conv_conf_t &jcp, const memory_desc_t &src_md,
+        const memory_desc_t &weights_md, const memory_desc_t &dst_md) {
+    const memory_desc_wrapper src_d(&src_md);
+    const memory_desc_wrapper weights_d(&weights_md);
+    const memory_desc_wrapper dst_d(&dst_md);
+
     if (uses_batch_elements(jcp.brg_type, jcp.exec_type)) {
         scratchpad.book(key_brgemm_primitive_batch,
                 static_cast<size_t>(jcp.nthr) * jcp.adjusted_batch_size,
@@ -2772,6 +2780,20 @@ void init_scratchpad(memory_tracking::registrar_t &scratchpad,
         scratchpad.book(key_conv_dst_scales,
                 static_cast<size_t>(jcp.nthr) * sizeof(float), P4K);
     }
+
+    // Check scratchpad size to avoid allocating huge buffers
+    if (jcp.exec_type == exec_trans) {
+        constexpr size_t scratchpad_limit_by_absolute_value = (size_t)32
+                << 30; // 32Gb - TODO: may it's too large?
+        const size_t scratchpad_limit_by_tensor_sizes = (size_t)64 * jcp.nthr
+                * (src_d.size() + weights_d.size() + dst_d.size());
+        const size_t scratchpad_limit
+                = nstl::min(scratchpad_limit_by_absolute_value,
+                        scratchpad_limit_by_tensor_sizes);
+        if (scratchpad.size() > scratchpad_limit) return status::unimplemented;
+    }
+
+    return status::success;
 }
 
 void balance_bwd_w(jit_brgemm_conv_conf_t &jcp) {

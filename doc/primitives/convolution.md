@@ -167,25 +167,29 @@ N/A.
 Convolution primitive supports the following combination of data types for
 source, destination, and weights memory objects:
 
-| Propagation    | Source           | Weights               | Destination                      | Bias                        |
-|:---------------|:-----------------|:----------------------|:---------------------------------|:----------------------------|
-| forward        | f32              | f32                   | f32, u8, s8                      | f32                         |
-| forward        | f16              | f16                   | f16, f32, u8, s8                 | f16, f32                    |
-| forward        | u8, s8           | s8                    | u8, s8, s32, f32, f16, bf16      | u8, s8, s32, f32, f16, bf16 |
-| forward        | bf16             | bf16                  | f32, bf16                        | f32, bf16                   |
-| forward        | f8_e5m2, f8_e4m3 | f8_e5m2, f8_e4m3      | f8_e5m2, f8_e4m3, f32, f16, bf16 | f32                         |
-| forward        | f4_e2m1, f4_e3m0 | f4_e2m1, f4_e3m0      | f4_e2m1, f4_e3m0, f32, f16, bf16 | f32                         |
-| forward        | f64              | f64                   | f64                              | f64                         |
-| backward       | f32, bf16        | bf16                  | bf16                             |                             |
-| backward       | f32, f16         | f16                   | f16                              |                             |
-| backward       | f8_e5m2, f8_e4m3 | f8_e5m2, f8_e4m3      | f8_e5m2, f8_e4m3                 |                             |
-| backward       | f4_e2m1, f4_e3m0 | f4_e2m1, f4_e3m0      | f4_e2m1, f4_e3m0                 |                             |
-| backward       | f32              | f32                   | f32                              | f32                         |
-| backward       | f64              | f64                   | f64                              | f64                         |
-| weights update | bf16             | f32, bf16             | bf16, s8, u8                     | f32, bf16                   |
-| weights update | f16              | f32, f16              | f16                              | f32, f16                    |
-| weights update | f8_e5m2, f8_e4m3 | f32, f8_e5m2, f8_e4m3 | f8_e5m2, f8_e4m3                 | f32                         |
-| weights update | f4_e2m1, f4_e3m0 | f32, f4_e2m1, f4_e3m0 | f4_e2m1, f4_e3m0                 | f32                         |
+| Propagation    | Source              | Weights                  | Destination                         | Bias                        |
+|:---------------|:--------------------|:-------------------------|:------------------------------------|:----------------------------|
+| forward        | f32                 | f32                      | f32, u8, s8                         | f32                         |
+| forward        | f16                 | f16                      | f16, f32, u8, s8                    | f16, f32                    |
+| forward        | u8, s8              | s8                       | u8, s8, s32, f32, f16, bf16         | u8, s8, s32, f32, f16, bf16 |
+| forward        | bf16                | bf16                     | f32, bf16                           | f32, bf16                   |
+| forward        | f8_e5m2, f8_e4m3    | f8_e5m2, f8_e4m3         | f8_e5m2, f8_e4m3, f32, f16, bf16    | f32                         |
+| forward        | f4_e2m1, f4_e3m0(1) | f4_e2m1, f4_e3m0(1)      | f4_e2m1, f4_e3m0(1), f32, f16, bf16 | f32                         |
+| forward        | f64                 | f64                      | f64                                 | f64                         |
+| backward       | f32, bf16           | bf16                     | bf16                                |                             |
+| backward       | f32, f16            | f16                      | f16                                 |                             |
+| backward       | f8_e5m2, f8_e4m3    | f8_e5m2, f8_e4m3         | f8_e5m2, f8_e4m3                    |                             |
+| backward       | f4_e2m1, f4_e3m0(1) | f4_e2m1, f4_e3m0(1)      | f4_e2m1, f4_e3m0(1)                 |                             |
+| backward       | f32                 | f32                      | f32                                 | f32                         |
+| backward       | f64                 | f64                      | f64                                 | f64                         |
+| weights update | bf16                | f32, bf16                | bf16, s8, u8                        | f32, bf16                   |
+| weights update | f16                 | f32, f16                 | f16                                 | f32, f16                    |
+| weights update | f8_e5m2, f8_e4m3    | f32, f8_e5m2, f8_e4m3    | f8_e5m2, f8_e4m3                    | f32                         |
+| weights update | f4_e2m1, f4_e3m0(1) | f32, f4_e2m1, f4_e3m0(1) | f4_e2m1, f4_e3m0(1)                 | f32                         |
+
+
+Footnotes:
+1. f4\_e3m0 is deprecated, and will be removed in a future release.
 
 @warning
     There might be hardware and/or implementation specific restrictions.

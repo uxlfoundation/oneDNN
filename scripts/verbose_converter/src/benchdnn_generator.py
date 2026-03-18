@@ -61,34 +61,18 @@ class Converter(metaclass=ConverterMeta):
     def _get_alg(self):
         return self.entry.aux.get("alg")
 
-    @staticmethod
-    def _get_policies():
-        return "common", "per_oc"
-
-    @staticmethod
-    def _get_policy_map():
-        return 0, 1, 1, 1
-
-    def policy(self, mask: int):
-        policies = self._get_policies()
-        policy_map = self._get_policy_map()
-
-        if mask >= len(policy_map) or policy_map[mask] >= len(policies):
-            return "per_tensor"
-        return policies[policy_map[mask]]
-
     @property
     def engine(self):
         return f"--engine={self.entry.engine}"
 
     @property
-    def dir(self):
+    def dir(self) -> str:
         if self._get_dir():
             return f"--dir={self._get_dir()}"
         return ""
 
     @property
-    def bias_mask(self):
+    def bias_mask(self) -> str:
         return ""
 
     @property
@@ -108,7 +92,7 @@ class Converter(metaclass=ConverterMeta):
         return ""
 
     @property
-    def flags(self):
+    def flags(self) -> str:
         return ""
 
     def _get_nondefault_args(self, values, defaults):
@@ -132,7 +116,7 @@ class Converter(metaclass=ConverterMeta):
 
     def _convert_prelu_post_op(self, po: ir.PreLUPostOp):
         if po.mask != 0:
-            return f"prelu:{self.policy(po.mask)}"
+            return f"prelu:{po.mask}"
         return "prelu"
 
     def _convert_eltwise_post_op(self, po: ir.EltwisePostOp):
@@ -150,6 +134,8 @@ class Converter(metaclass=ConverterMeta):
         return ":".join([po.alg, src1_arg, src2_arg])
 
     def _convert_binary_post_op(self, po: ir.BinaryPostOp):
+        if po.strides != "":
+            return f"{po.alg}:{po.dt}:{po.mask}:{po.tag}:{po.strides}"
         if po.tag != "any":
             return f"{po.alg}:{po.dt}:{po.mask}:{po.tag}"
         return f"{po.alg}:{po.dt}:{po.mask}"
@@ -191,14 +177,17 @@ class Converter(metaclass=ConverterMeta):
             return ""
         results = []
         for arg, param in params.items():
-            policy = self.policy(param.mask)
+            mask = param.mask
+            policy = ""
             # Set policy to "host_scalar" if is_host_scalar is True
             if param.is_host_scalar:
                 policy = "host_scalar"
             if param.quantization_mode == "dynamic_mx":
                 policy = "mx"
-            result = f"{arg}:{policy}"
-            if policy == "common" or policy == "host_scalar":
+            if param.quantization_mode == "dynamic_fp":
+                policy = "dynamic_fp"
+            result = f"{arg}:{policy or mask}"
+            if mask == 0 or policy == "host_scalar":
                 result += f":{def_value}"
             dt = param.data_type
             groups = param.groups
@@ -212,19 +201,19 @@ class Converter(metaclass=ConverterMeta):
     @property
     def scales(self):
         params = self._get_quantization(self.entry.exts.scales, 0.5, "f32")
-        return f"--attr-scales={params}"
+        return f"--attr-scales={params}" if params else ""
 
     @property
     def zero_points(self):
         params = self._get_quantization(self.entry.exts.zero_points, 1, "s32")
-        return f"--attr-zero-points={params}"
+        return f"--attr-zero-points={params}" if params else ""
 
     @property
     def precomputed_reductions(self):
         params = self._get_quantization(
             self.entry.exts.precomputed_reductions, 1, "s32"
         )
-        return f"--attr-precomputed-reductions={params}"
+        return f"--attr-precomputed-reductions={params}" if params else ""
 
     @property
     def rounding_mode(self):
@@ -248,14 +237,15 @@ class Converter(metaclass=ConverterMeta):
         # Use default p=0.5 and seed=12345 since those values are user data and
         # can't be obtained properly.
         result = "0.5:12345"
-        if dropout.tag:
-            result += f":{dropout.tag}"
+        if not dropout.tag:
+            return f"--attr-dropout={result}"
+        result += f":{dropout.tag}"
         # Seed dt is always s64 in benchdnn and is not passed to driver
-        if dropout.use_offset == "1":
+        if dropout.use_offset:
             result += ":987654321"
         else:
             result += ":0"
-        if dropout.use_host_scalars == "1":
+        if dropout.use_host_scalars:
             result += f":{dropout.use_host_scalars}"
         return f"--attr-dropout={result}"
 
@@ -616,14 +606,6 @@ class LRNConverter(AlgorithmMixin, Converter):
 class MatmulConverter(StridesMixin, MultiDataTypeWithBiasMixin, Converter):
     driver: str = "matmul"
 
-    @staticmethod
-    def _get_policies():
-        return "common", "per_oc", "per_ocic"
-
-    @staticmethod
-    def _get_policy_map():
-        return 0, 1, 1, 2, 1, 3, 2, 3, 1, 3, 3, 3, 2
-
     @property
     def bias_mask(self):
         for md in self.entry.mds:
@@ -709,14 +691,6 @@ class ReorderConverter(StridesMixin, CommonDataTypeMixin, Converter):
         if flags:
             return f"--{prefix}flag=" + "+".join(flags)
         return ""
-
-    @staticmethod
-    def _get_policies():
-        return "common", "per_dim_0", "per_dim_1", "per_dim_01"
-
-    @staticmethod
-    def _get_policy_map():
-        return 0, 1, 2, 3
 
     @property
     def flags(self):

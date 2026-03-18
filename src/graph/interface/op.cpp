@@ -41,6 +41,39 @@ dnnl_graph_op::dnnl_graph_op(
     if (name_.empty()) { name_ = kind2str(kind_) + "_" + std::to_string(id_); }
 }
 
+std::string dnnl_graph_op::str() const {
+    dnnl::impl::stringstream_t ss;
+
+    // kind, name, id
+    ss << kind2str(get_kind()) << "(" << get_name() << ")" << "," << get_id();
+    // all attributes
+    if (!attributes_.empty()) {
+        ss << ",attrs:{";
+        size_t attr_count = 0;
+        for (const auto &attr : attributes_) {
+            if (attr.first >= op_attr::end) continue;
+            if (attr_count++) ss << ";";
+            ss << attr2str(attr.first) << ":" << attr.second;
+        }
+        ss << "}";
+    }
+
+    // all inputs and outputs
+    ss << ",inputs:{";
+    for (size_t i = 0; i < num_inputs(); ++i) {
+        if (i != 0) ss << ";";
+        ss << logical_tensor_wrapper_t(get_input_logical_tensor(i)).str();
+    }
+    ss << "},outputs:{";
+    for (size_t i = 0; i < num_outputs(); ++i) {
+        if (i != 0) ss << ";";
+        ss << logical_tensor_wrapper_t(get_output_logical_tensor(i)).str();
+    }
+    ss << "}";
+    return ss.str();
+}
+
+/// C API implementations
 status_t DNNL_API dnnl_graph_op_create(op_t **op, size_t id,
         dnnl_graph_op_kind_t kind, const char *verbose_name) {
     if (utils::any_null(op, verbose_name)) return status::invalid_arguments;

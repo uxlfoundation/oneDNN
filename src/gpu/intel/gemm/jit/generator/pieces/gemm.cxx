@@ -18,14 +18,14 @@
 #include "atomic_fusions.hpp"
 #include "cooperative_split.hpp"
 #include "gemmstone/generator.hpp"
+#include "gemmstone/problem.hpp"
+#include "gemmstone/strategy.hpp"
 #include "hw_utils.hpp"
 #include "kernel_queries.hpp"
 #include "layout_utils.hpp"
 #include "map.hpp"
 #include "ngen_object_helpers.hpp"
-#include "problem.hpp"
 #include "state_utils.hpp"
-#include "strategy.hpp"
 
 GEMMSTONE_NAMESPACE_START
 
@@ -68,7 +68,7 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
     if (!strategy.C.base.isStateless() && state.C_count > 1) stub();
     if (state.useTempC)
         state.tempCStrategy.assignSurface(state.inputs.surfaceTempC);
-    if (problem.usesCO())
+    if (problem.usesCOPtr())
         strategy.CO.assignSurface(state.inputs.surfaceCO);
 
     for (size_t i = 0; i < strategy.binary.size(); i++)
@@ -525,6 +525,10 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
         if (state.wgJ0.isValid()) {
             add(1, state.j0, state.j0, -shiftJ0);
             divUp(state.j0, state.j0, strategy.cInterleaveChunk, strategy, state);
+        }
+        if (problem.hasBinaryPostOp() && strategy.cInterleaveChunk > 1) {
+            state.ctiShiftJ0 = state.ra.alloc_sub<int32_t>();
+            mov(1, state.ctiShiftJ0, shiftJ0);
         }
         mov(1, shiftJ0, 0);
 

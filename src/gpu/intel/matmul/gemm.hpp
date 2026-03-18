@@ -54,8 +54,7 @@ struct gemm_t : public primitive_t {
             gemm_attr.precomputed_reductions_ = attr()->precomputed_reductions_;
             gemm_attr.zero_points_ = attr()->zero_points_;
             gemm_attr.post_ops_ = attr()->post_ops_;
-            VDISPATCH_MATMUL(attr()->dropout_.has_default_values(),
-                    VERBOSE_UNSUPPORTED_ATTR);
+            gemm_attr.dropout_ = attr()->dropout_;
 
             auto a_md = src_md(), b_md = weights_md(), c_md = dst_md(),
                  bias_md = weights_md(1);
@@ -64,6 +63,10 @@ struct gemm_t : public primitive_t {
                     bia_md_reshaped;
             bool with_bia = bias_md->ndims > 0;
             auto orig_dims = a_md->ndims;
+
+            // Check for grouped encoding early before reshape attempts
+            VDISPATCH_MATMUL(
+                    is_dense_format_kind(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
             auto maybe_reshape = [&]() -> status_t {
                 int batch_b_dims = 1;
@@ -109,7 +112,7 @@ struct gemm_t : public primitive_t {
                 squash_dims(bia_dims, bias_md->dims, ndims, reshape_size);
 
                 // Cannot reshape if bias is broadcast across a subset of squashed dimensions
-                bool bcast_not_ok = IMPLICATION(
+                bool bcast_ok = IMPLICATION(
                         with_bia, utils::one_of(bia_dims[0], 1, c_dims[0]));
 
                 // 3D reshaping is only possible if A and B batch sizes allow.
@@ -123,8 +126,8 @@ struct gemm_t : public primitive_t {
                     if (b_md->dims[i] == 1 && a_md->dims[i] > 1)
                         b_broadcast = true;
                 }
-                bcast_not_ok = bcast_not_ok && !(a_broadcast && b_broadcast);
-                bcast_not_ok = bcast_not_ok
+                bcast_ok = bcast_ok && !(a_broadcast && b_broadcast);
+                bcast_ok = bcast_ok
                         && IMPLICATION(reshape_size == 3,
                                 a_dims[0] == b_dims[0]
                                         || utils::one_of(
@@ -138,17 +141,17 @@ struct gemm_t : public primitive_t {
                     CHECK_BOOL(memory_desc_reshape(out_md, in_md, ndims, dims));
                     return true;
                 };
-                bcast_not_ok = bcast_not_ok
+                bcast_ok = bcast_ok
                         && safe_reshape(
                                 a_md_reshaped, *a_md, reshape_size, a_dims);
-                bcast_not_ok = bcast_not_ok
+                bcast_ok = bcast_ok
                         && safe_reshape(
                                 b_md_reshaped, *b_md, reshape_size, b_dims);
-                bcast_not_ok = bcast_not_ok
+                bcast_ok = bcast_ok
                         && safe_reshape(
                                 c_md_reshaped, *c_md, reshape_size, c_dims);
                 if (with_bia) {
-                    bcast_not_ok = bcast_not_ok
+                    bcast_ok = bcast_ok
                             && safe_reshape(bia_md_reshaped, *bias_md,
                                     reshape_size, bia_dims);
                 }
@@ -182,7 +185,7 @@ struct gemm_t : public primitive_t {
                                     : 1;
                         }
                         memory_desc_t tmp_po_desc;
-                        bcast_not_ok = bcast_not_ok
+                        bcast_ok = bcast_ok
                                 && safe_reshape(tmp_po_desc, po_desc,
                                         reshape_size, po_dims);
                         reshaped_post_ops.entry_[i].binary.src1_desc
@@ -219,7 +222,6 @@ struct gemm_t : public primitive_t {
                         reshaped_post_ops.entry_[i].prelu.mask = new_mask;
                     }
                 }
-                if (!bcast_not_ok) return status::success;
 
                 // Quantization has a few wrinkles...
                 // Example: --attr-scales=src:per_ocic:f16:1x128 4x1x4096:1x4096x16
@@ -286,6 +288,43 @@ struct gemm_t : public primitive_t {
                     return status::success;
                 };
 
+                // Quantization attributes are unsupported in Gemmstone with any
+                // non-trivial (neither broadcast nor full dimension) modification
+                // of groups during reshape.
+                // TODO: Enable arbitrary reshaped grouped quant.
+                auto safe_bcast_quant = [&](const quant_entry_t &entry,
+                                                const dims_t orig_dims,
+                                                dims_t reshape_dims) -> bool {
+                    int full_tensor_mask = ((1 << c_md->ndims) - 1);
+                    int per_oc_mask = (1 << 1);
+                    if (!reshape_2d || entry.has_default_values()
+                            || utils::one_of(entry.get_mask(), 0, per_oc_mask,
+                                    full_tensor_mask))
+                        return true;
+
+                    if (utils::one_of(orig_dims[diff_dims], reshape_dims[0], 1))
+                        return true;
+
+                    return false;
+                };
+
+                bcast_ok = bcast_ok
+                        && safe_bcast_quant(gemm_attr.scales_.get(DNNL_ARG_SRC),
+                                a_md->dims, a_dims);
+                bcast_ok = bcast_ok
+                        && safe_bcast_quant(
+                                gemm_attr.scales_.get(DNNL_ARG_WEIGHTS),
+                                b_md->dims, b_dims);
+                bcast_ok = bcast_ok
+                        && safe_bcast_quant(
+                                gemm_attr.zero_points_.get(DNNL_ARG_SRC),
+                                a_md->dims, a_dims);
+                bcast_ok = bcast_ok
+                        && safe_bcast_quant(
+                                gemm_attr.zero_points_.get(DNNL_ARG_WEIGHTS),
+                                b_md->dims, b_dims);
+                if (!bcast_ok) return status::success;
+
                 scales_t reshaped_scales = gemm_attr.scales_;
                 zero_points_t reshaped_zp = gemm_attr.zero_points_;
                 precomputed_reductions_t reshaped_pr
@@ -324,8 +363,6 @@ struct gemm_t : public primitive_t {
                     "2D/3D reshaping");
 
             // We create a gemm_pd and resolve 'any' desc by querying gemm_pd
-            VDISPATCH_MATMUL(
-                    is_dense_format_kind(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
             VDISPATCH_MATMUL_SC(create_gemm_pd(gemm_pd_, engine, a_md, b_md,
                                         c_md, bias_md, acc_dt, &gemm_attr),
                     VERBOSE_PRIMITIVE_CREATION_FAIL, "gemm");

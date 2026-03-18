@@ -30,8 +30,6 @@
 #include "graph/utils/utils.hpp"
 
 #include "graph/backend/dnnl/fusion_info.hpp"
-#include "graph/backend/dnnl/internal_attrs.hpp"
-#include "graph/backend/dnnl/internal_ops.hpp"
 #include "graph/backend/dnnl/utils.hpp"
 
 #include "oneapi/dnnl/dnnl.hpp"
@@ -101,13 +99,12 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
                             ? in_scales_op->get_attr<int64_t>(op_attr::axis)
                             : 1;
                     if (impl::utils::one_of(op->get_kind(),
-                                op_kind::dnnl_convolution,
-                                op_kind::dnnl_convtranspose)
+                                op_kind::_convolution, op_kind::_convtranspose)
                             && in_scales_indices == 1) {
                         bool with_groups = false;
                         if (op->get_input_value(1)->has_producer()
                                 && op->get_input_op(1)->get_kind()
-                                        == op_kind::dnnl_to_group) {
+                                        == op_kind::_to_group) {
                             const auto &to_group = op->get_input_op(1);
                             if (to_group->get_attr<int64_t>(op_attr::groups)
                                     > 1) {
@@ -126,7 +123,7 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
                 } else { // per-group quantization
                     // oneDNN only supports weights-decompressed matmul
                     if (in_scales_indices != 1
-                            || op->get_kind() != op_kind::dnnl_matmul)
+                            || op->get_kind() != op_kind::_matmul)
                         continue;
                     const auto &group_shape
                             = in_scales_op->get_attr<std::vector<int64_t>>(
@@ -167,7 +164,7 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
                 if (qtype == "per_group") {
                     // oneDNN only supports weights-decompressed matmul
                     if (in_zps_indices != 1
-                            || op->get_kind() != op_kind::dnnl_matmul)
+                            || op->get_kind() != op_kind::_matmul)
                         break;
                     const auto &group_shape
                             = in_zps_op->get_attr<std::vector<int64_t>>(
@@ -211,12 +208,19 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
                 static_cast<dnnl::memory::data_type>(zps_data_type));
     }
 
+    if (fusion_info.dropout_) {
+        // TODO: output mask and non-host-scalar seed/offset/probability are not enabled yet
+        memory::desc mask_desc;
+        attr.set_dropout(mask_desc, /*seed_dt*/ memory::data_type::s64,
+                /*use_offset*/ true, /*use_host_scalars*/ true);
+    }
+
     // convert post ops
     dnnl::post_ops dnnl_pops;
     for (auto &pop : fusion_info.get_post_ops()) {
         const op_t *fused_op = pop->get_op();
         const auto fused_op_kind = fused_op->get_kind();
-        if (fused_op_kind == op_kind::dnnl_eltwise) {
+        if (fused_op_kind == op_kind::_eltwise) {
             float alpha = 0.f;
             float beta = 0.f;
             if (fused_op->has_attr(op_attr::alpha)) {
@@ -228,7 +232,7 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
             const auto alg = static_cast<dnnl::algorithm>(
                     fused_op->get_attr<int64_t>(op_attr::alg_kind));
             dnnl_pops.append_eltwise(alg, alpha, beta);
-        } else if (fused_op_kind == op_kind::dnnl_binary) {
+        } else if (fused_op_kind == op_kind::_binary) {
             const auto alg = static_cast<dnnl::algorithm>(
                     fused_op->get_attr<int64_t>(op_attr::alg_kind));
             const auto &extra_inputs = pop->get_unfused_input_indices();
@@ -242,9 +246,9 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
             bool is_post_sum = alg == dnnl::algorithm::binary_add;
             // base_op should not be eltwise, pool, or softmax.
             is_post_sum = is_post_sum
-                    && !impl::utils::one_of(op->get_kind(),
-                            op_kind::dnnl_eltwise, op_kind::dnnl_pool,
-                            op_kind::dnnl_softmax, op_kind::dnnl_logsoftmax);
+                    && !impl::utils::one_of(op->get_kind(), op_kind::_eltwise,
+                            op_kind::_pool, op_kind::_softmax,
+                            op_kind::_logsoftmax);
             // only support one post-sum
             is_post_sum = is_post_sum
                     && !(op->has_attr(op_attr::with_sum)
@@ -320,11 +324,11 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
                         "input scale and zp",
                         op->get_name().c_str());
                 auto md = make_dnnl_memory_desc(psrc);
-                if (op->get_kind() == op_kind::dnnl_convolution)
+                if (op->get_kind() == op_kind::_convolution)
                     md = to_format_any(md);
                 dnnl_pops.append_binary(alg, md);
             }
-        } else if (fused_op_kind == op_kind::dnnl_convolution) {
+        } else if (fused_op_kind == op_kind::_convolution) {
             const auto &extra_input_indices = pop->get_unfused_input_indices();
 
             auto get_dnn_dt = [](const std::shared_ptr<value_t> &val) {

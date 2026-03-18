@@ -144,3 +144,6 @@
 # precomputed reductions for zero points
 --reset
 --batch=harness_matmul_precomp_reductions
+
+# float16 regressions
+--batch=harness_matmul_regression_float16

@@ -398,6 +398,7 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
     if (!hint.type.is_undef()) vlayout = reinterpret(vlayout, hint.type);
 
     bool is_store = (send_op_ == send_op_t::store);
+    bool is_prefetch = (send_op_ == send_op_t::prefetch);
     auto send_type = dsl::type_t::u(vlayout.type().size() * 8);
     auto blocks = vlayout.blocks();
     if (blocks.size() < 2) return false;
@@ -464,8 +465,8 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
 
     // Try to reduce the number of messages by increasing count per message.
     int try_count = count * 2;
-    int max_count
-            = block_2d_max_count(is_store, transpose, width, mem_type_.size());
+    int max_count = block_2d_max_count(ir_ctx_->hw(), is_prefetch, is_store,
+            transpose, width, mem_type_.size());
     while (try_count <= max_count) {
         if (b0.size % (try_count * width) != 0) break;
         count = try_count;
@@ -501,11 +502,19 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
     }
     reg_layout_ = reg_layout_.with_block({b0.idx, count});
 
-    int w_outermost
-            = ir_utils::safe_divide(vlayout.elems(b0.idx), count * width);
-    int h_outermost = ir_utils::safe_divide(vlayout.elems(b1.idx), height);
-    reg_layout_ = reg_layout_.with_block({b0.idx, w_outermost});
-    reg_layout_ = reg_layout_.with_block({b1.idx, h_outermost});
+    auto maybe_add_outer = [](layout_t &l, const layout_t::block_t &b, int &i) {
+        if ((b.size > 1) && (b.size > i))
+            l = l.with_block({b.idx, ir_utils::safe_divide(b.size, i)});
+        i = utils::div_up(i, b.size);
+    };
+    int b0_inner = count * width;
+    int b1_inner = height;
+    for (auto &iter : blocks) {
+        if (iter.idx == b0.idx)
+            maybe_add_outer(reg_layout_, iter, b0_inner);
+        else if (iter.idx == b1.idx)
+            maybe_add_outer(reg_layout_, iter, b1_inner);
+    }
 
     if (type_factor != 1) {
         auto blocks = reg_layout_.blocks();
@@ -654,8 +663,10 @@ bool access_builder_t::fixup_send_2d_params(const dsl::type_t &send_type,
     int factor = 64 / surface_width_size;
     if (h % factor != 0) return false;
 
-    int max_count = block_2d_max_count(
-            send_op_ == send_op_t::store, transpose, w, send_type.size());
+    int max_count = block_2d_max_count(ir_ctx_->hw(),
+            send_op_ == send_op_t::prefetch, send_op_ == send_op_t::store,
+            transpose, w, send_type.size());
+
     if (factor > max_count) return false;
 
     vnni_permute_factor = factor;

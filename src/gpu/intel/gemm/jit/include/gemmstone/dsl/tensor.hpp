@@ -613,8 +613,8 @@ struct block_t : public stringify_t<block_t> {
     stride_t stride;
 };
 
-std::vector<block_t> normalize_blocks(
-        const std::vector<block_t> &blocks, bool remove_size_1_blocks = true);
+std::vector<block_t> merge_blocks(const std::vector<block_t> &blocks);
+std::vector<block_t> normalize_blocks(const std::vector<block_t> &blocks);
 
 // Iterates through subtiles of the layout by returning the coordinates for
 // each tile. The iteration order is defined by the layout blocks.

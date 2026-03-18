@@ -426,8 +426,6 @@ int ref_partition_t::check_partition_correctness(
                 res->reason = skip_reason::case_not_supported;
                 return OK;
             }
-            BENCHDNN_PRINT(
-                    2, "Op failed: {(%zu) %s}\n", op_id, op_kind.c_str());
             return FAIL;
         }
 

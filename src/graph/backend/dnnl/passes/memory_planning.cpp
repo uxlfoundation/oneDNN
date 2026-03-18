@@ -53,11 +53,17 @@ struct op_inplace_pair_t {
 
 std::vector<op_inplace_pair_t> get_op_inplace_pairs(op_t &op) {
     // TODO(xxx) extend the set
-    const static std::set<op_kind_t> ops {op_kind::dnnl_mul_scales,
-            op_kind::dnnl_add_zps, op_kind::dnnl_reorder, op_kind::dnnl_binary,
-            op_kind::dnnl_eltwise, op_kind::dnnl_softmax,
-            op_kind::dnnl_logsoftmax, op_kind::dnnl_softmax_bwd,
-            op_kind::dnnl_logsoftmax_bwd, op_kind::dnnl_identity};
+    const static std::set<op_kind_t> ops {
+            op_kind::_mul_scales,
+            op_kind::_add_zps,
+            op_kind::_binary,
+            op_kind::_eltwise,
+            op_kind::_softmax,
+            op_kind::_logsoftmax,
+            op_kind::_softmax_bwd,
+            op_kind::_logsoftmax_bwd,
+            op_kind::_identity,
+    };
     std::vector<op_inplace_pair_t> pairs;
 
     // Make post-sum inplace has higher priority since it affects both
@@ -70,9 +76,9 @@ std::vector<op_inplace_pair_t> get_op_inplace_pairs(op_t &op) {
 
         // the post-ops input offset
         size_t index = 1;
-        if (op.get_kind() == op_kind::dnnl_convolution
-                || op.get_kind() == op_kind::dnnl_matmul
-                || op.get_kind() == op_kind::dnnl_convtranspose) {
+        if (op.get_kind() == op_kind::_convolution
+                || op.get_kind() == op_kind::_matmul
+                || op.get_kind() == op_kind::_convtranspose) {
             index = op.has_attr(op_attr::with_bias)
                             && op.get_attr<bool>(op_attr::with_bias)
                     ? 3 // src, wei, bias
@@ -81,7 +87,7 @@ std::vector<op_inplace_pair_t> get_op_inplace_pairs(op_t &op) {
             if (fusion_info.with_runtime_scales(true, 1)) { index += 1; }
             if (fusion_info.with_runtime_zero_points(true, 0)) { index += 1; }
             if (fusion_info.with_runtime_zero_points(true, 1)) { index += 1; }
-        } else if (op.get_kind() == op_kind::dnnl_binary) {
+        } else if (op.get_kind() == op_kind::_binary) {
             index = 2;
         } else {
             // do nothing
@@ -92,10 +98,9 @@ std::vector<op_inplace_pair_t> get_op_inplace_pairs(op_t &op) {
             if (pops[i]->is_post_sum()) {
                 post_sum_input = op.get_input_value(index);
                 break; // assume only one post sum
-            } else if (pops[i]->get_op()->get_kind() == op_kind::dnnl_binary) {
+            } else if (pops[i]->get_op()->get_kind() == op_kind::_binary) {
                 index++;
-            } else if (pops[i]->get_op()->get_kind()
-                    == op_kind::dnnl_convolution) {
+            } else if (pops[i]->get_op()->get_kind() == op_kind::_convolution) {
                 // FIXME(xx) fused conv may have bias
                 index++;
             } else {
@@ -111,7 +116,7 @@ std::vector<op_inplace_pair_t> get_op_inplace_pairs(op_t &op) {
             auto post_sum_input_desc = make_dnnl_memory_desc(post_sum_input_lt);
             auto output_desc = make_dnnl_memory_desc(output_lt);
             // allow inplace for conv(u8)+sum(s8)
-            if (op.get_kind() == op_kind::dnnl_convolution
+            if (op.get_kind() == op_kind::_convolution
                     && post_sum_input_lt.data_type == data_type::s8
                     && output_lt.data_type == data_type::u8) {
                 auto format_tag = md2fmt_tag_str(post_sum_input_desc.get());
@@ -135,14 +140,14 @@ std::vector<op_inplace_pair_t> get_op_inplace_pairs(op_t &op) {
         const bool can_inplace
                 = make_dnnl_memory_desc(in0) == make_dnnl_memory_desc(out0);
         if (can_inplace) { pairs.emplace_back(0, 0); }
-    } else if (op.get_kind() == op_kind::dnnl_layernorm_bwd) {
+    } else if (op.get_kind() == op_kind::_layernorm_bwd) {
         auto diff_dst = op.get_input_logical_tensor(1);
         auto diff_src = op.get_output_logical_tensor(0);
         const bool can_inplace = make_dnnl_memory_desc(diff_dst)
                 == make_dnnl_memory_desc(diff_src);
         if (can_inplace) { pairs.emplace_back(1, 0); }
-    } else if (op.get_kind() == op_kind::dnnl_transpose
-            || op.get_kind() == op_kind::dnnl_reshape) {
+    } else if (op.get_kind() == op_kind::_transpose
+            || op.get_kind() == op_kind::_reshape) {
         pairs.emplace_back(0, 0);
     } else {
         // Do nothing
@@ -160,7 +165,11 @@ std::shared_ptr<execution_args_set_t> execution_args_set_t::clone() const {
         memory cloned_mem;
         if (val_mem.second.get_desc().get_format_kind()
                 == dnnl::memory::format_kind::host_scalar) {
-            cloned_mem = dnnl::memory(val_mem.second.get_desc(), 0);
+            DNNL_HOST_SCALAR_TYPE_SWITCH(
+                    val_mem.second.get_desc().get_data_type(), DType, {
+                        cloned_mem = dnnl::memory(val_mem.second.get_desc(),
+                                static_cast<DType>(0));
+                    });
         } else if (val_mem.second.get_engine().get_kind()
                 == dnnl::engine::kind::gpu) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
@@ -770,9 +779,13 @@ status_t memory_planner_t::prepare_execution_args_set(
             const logical_tensor_t in_lt = in->get_logical_tensor();
             const logical_tensor_wrapper_t ltw(in_lt);
             auto md = make_dnnl_memory_desc(in_lt);
-            auto mem = ltw.is_host_scalar()
-                    ? dnnl::memory(md, 0)
-                    : make_dnnl_memory(md, p_engine, nullptr);
+            dnnl::memory mem;
+            if (ltw.is_host_scalar()) {
+                DNNL_HOST_SCALAR_TYPE_SWITCH(md.get_data_type(), DType,
+                        { mem = dnnl::memory(md, static_cast<DType>(0)); });
+            } else {
+                mem = make_dnnl_memory(md, p_engine, nullptr);
+            }
             exec_args_set_.add_value_mem_map({in.get(), mem});
             classify_mem(mem, in.get());
             prepared.insert(in.get());
@@ -792,18 +805,10 @@ status_t memory_planner_t::prepare_execution_args_set(
 
     // construct the dnnl execution args for each op
     ret = topo_order_visit(sg->get_output_ops(), [&](op_t *op) {
-        const op_schema_t *opm
-                = op_schema_registry_t::get_op_schema(op->get_kind());
-        VCHECK_MEMORY_PLANNING(opm != nullptr, status::invalid_graph_op,
-                "no schema for current op: %s", op->get_name().c_str());
-
-        VCHECK_MEMORY_PLANNING(opm->has_additional_item("arg_indices_getter"),
-                status::invalid_graph_op,
+        auto getter = op_func_t::get_arg_indices_getter(op->get_kind());
+        VCHECK_MEMORY_PLANNING(getter != nullptr, status::invalid_graph_op,
                 "no arg indices getter in the schema of op: %s",
                 op->get_name().c_str());
-
-        auto getter = opm->get_additional_item<arg_indices_getter_func>(
-                "arg_indices_getter");
 
         auto arg_indices = getter(op);
 

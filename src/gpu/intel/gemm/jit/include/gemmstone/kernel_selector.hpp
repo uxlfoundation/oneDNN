@@ -48,9 +48,10 @@ struct MatchParamsBase
     char precisionCExt = 0;
     bool ignoreSizes = false;
     bool ignoreCase = false;
-    bool reqNUnroll32 = false;
+    bool ReqBDPASDims = false;
     int stepping = 0;
     int alignment[3] = {0, 0, 0};
+    int unrollReq[3] = {1, 1, 1};
     kcatalog::string tags, lateTags;
     int nExtraReqs = 0;
     const StrategyRequirement *extraReqs = nullptr;

@@ -92,6 +92,7 @@ void larger_partition_kernel_t::setup_pipeline_stage1(
     BACKEND_DNNL_ADD_PASS(pipeline, lift_up_post_add_for_matmul);
 
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_post_ops);
+    BACKEND_DNNL_ADD_PASS(pipeline, fuse_dropout);
     BACKEND_DNNL_ADD_PASS(pipeline, fold_mul_scales);
     BACKEND_DNNL_ADD_PASS(pipeline, convert_to_runtime_dst_scales);
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_dst_scales);
@@ -446,7 +447,7 @@ status_t larger_partition_kernel_t::ocl_execute_impl(const stream_t *g_stream,
                 if (!subgraph_->is_constant_[i]) continue;
                 returned_event = subgraph_->execs_[i]->execute_ocl(
                         p_stream, res->get_exec_args()[i], deps);
-                deps = {returned_event};
+                deps.assign(1, returned_event);
             }
 
             c_promise.set_value(c_buffer);
@@ -457,7 +458,7 @@ status_t larger_partition_kernel_t::ocl_execute_impl(const stream_t *g_stream,
         if (subgraph_->is_constant_[i]) continue;
         returned_event = subgraph_->execs_[i]->execute_ocl(
                 p_stream, res->get_exec_args()[i], deps);
-        deps = {returned_event};
+        deps.assign(1, returned_event);
     }
 
     scratchpad.set_deps(returned_event);

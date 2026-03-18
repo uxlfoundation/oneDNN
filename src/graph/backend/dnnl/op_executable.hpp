@@ -24,6 +24,7 @@
 #include "graph/backend/dnnl/executables/conv.hpp"
 #include "graph/backend/dnnl/executables/deconv.hpp"
 #include "graph/backend/dnnl/executables/eltwise.hpp"
+#include "graph/backend/dnnl/executables/gated_mlp.hpp"
 #include "graph/backend/dnnl/executables/gen_index.hpp"
 #include "graph/backend/dnnl/executables/group_norm.hpp"
 #include "graph/backend/dnnl/executables/host_scalar.hpp"
@@ -38,5 +39,27 @@
 #include "graph/backend/dnnl/executables/shuffle.hpp"
 #include "graph/backend/dnnl/executables/softmax.hpp"
 #include "graph/backend/dnnl/executables/sum.hpp"
+
+#include "graph/backend/dnnl/layout_propagator.hpp"
+
+namespace dnnl {
+namespace impl {
+namespace graph {
+namespace dnnl_impl {
+
+class op_func_t {
+public:
+    static executable_creator_func get_executable_creator(op_kind_t kind);
+    static arg_indices_getter_func get_arg_indices_getter(op_kind_t kind);
+    static layout_propagator_func get_layout_propagator(op_kind_t kind);
+
+private:
+    op_func_t() = delete;
+};
+
+} // namespace dnnl_impl
+} // namespace graph
+} // namespace impl
+} // namespace dnnl
 
 #endif

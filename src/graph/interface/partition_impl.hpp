@@ -282,7 +282,7 @@ public:
         : engine_(&engine)
         , inputs_(inputs)
         , outputs_(outputs)
-        , inplace_pairs_(inplace_pairs) {};
+        , inplace_pairs_(inplace_pairs) {}
 
     virtual ~compiled_partition_impl_t() = default;
 

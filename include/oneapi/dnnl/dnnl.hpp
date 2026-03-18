@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2016 Intel Corporation
 * Copyright 2024-2025 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -908,6 +908,8 @@ struct memory : public handle<dnnl_memory_t> {
         /// Undefined data type (used for empty memory descriptors).
         undef = dnnl_data_type_undef,
         /// 4-bit float data type with 3-bit exponent and 0 bit mantissa.
+        ///
+        /// @deprecated The f4_e3m0 data type will be removed in a future release.
         f4_e3m0 = dnnl_f4_e3m0,
         /// [MX-compliant 4-bit float data type](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf) with 2-bit exponent and 1 bit mantissa.
         f4_e2m1 = dnnl_f4_e2m1,
@@ -928,6 +930,8 @@ struct memory : public handle<dnnl_memory_t> {
         f32 = dnnl_f32,
         //// [64-bit/double-precision floating point](https://en.wikipedia.org/wiki/Double-precision_floating-point_format).
         f64 = dnnl_f64,
+        /// 64-bit signed integer
+        s64 = dnnl_s64,
         /// 32-bit signed integer.
         s32 = dnnl_s32,
         /// 8-bit signed integer.
@@ -979,6 +983,10 @@ struct memory : public handle<dnnl_memory_t> {
         packed = dnnl_packed,
         /// Coordinate Sparse (COO) encoding.
         coo = dnnl_coo,
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+        /// Grouped Encoding.
+        grouped = dnnl_grouped,
+#endif
     };
 
     /// Memory format tag specification.
@@ -1668,6 +1676,9 @@ struct memory : public handle<dnnl_memory_t> {
         BA24b8a = dnnl_BA24b8a,
         aCB24c8b = dnnl_aCB24c8b,
         abDC24d8c = dnnl_abDC24d8c,
+        BA12b8a = dnnl_BA12b8a,
+        aCB12c8b = dnnl_aCB12c8b,
+        abDC12d8c = dnnl_abDC12d8c,
         decbA16a = dnnl_decbA16a,
         decbA8a = dnnl_decbA8a,
         defcbA16a = dnnl_defcbA16a,
@@ -1730,6 +1741,9 @@ struct memory : public handle<dnnl_memory_t> {
         aCB16c8b = dnnl_aCB16c8b,
         BA8b8a = dnnl_BA8b8a,
         BA16b8a = dnnl_BA16b8a,
+        BA4b8a = dnnl_BA4b8a,
+        aCB4c8b = dnnl_aCB4c8b,
+        abDC4d8c = dnnl_abDC4d8c,
         AB2a4b = dnnl_AB2a4b,
 
         format_tag_last = dnnl_format_tag_last,
@@ -2999,6 +3013,57 @@ struct memory : public handle<dnnl_memory_t> {
                         "sparse encoding");
             return desc {md};
         }
+
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+        /// Creates a memory descriptor for grouped encoding, that
+        /// stores multiple independent sub-buffers (groups) with one
+        /// dimension varying in size.
+        ///
+        /// Common use case is Mixture-of-Experts (MoE) workloads where each expert
+        /// processes different numbers of tokens.
+        ///
+        /// Memory layout consists of two buffers:
+        /// - Buffer 0 (values): Concatenated data [group0 | group1 | ... | groupN-1]
+        /// - Buffer 1 (offsets): Cumulative indices [size0, size0 + size1, ...]
+        ///
+        /// Example in the context of MoE:
+        /// Below is how to describe 3 experts with token counts [1, 3, 5] and feature dim 256
+        /// - Descriptor dims: {9, 256} where 9 is 1 + 3 + 5 (total tokens)
+        /// - Variable dimension: 0 (token count varies per expert)
+        /// - Group count: 3 (number of experts)
+        /// - Values buffer: 9 x 256 elements
+        /// - Offsets buffer: [1, 4, 9] (cumulative token counts)
+        ///
+        /// @note
+        ///     Only s32 offsets are currently supported.
+        ///
+        /// @param adims Tensor dimensions. For the variable dimension,
+        ///     specify the total size (sum across all groups).
+        /// @param adata_type Data type of tensor elements.
+        /// @param variable_dim_idx Index of dimension that varies between groups.
+        /// @param group_count Number of groups (e.g., number of experts in MoE).
+        /// @param offsets_dt Data type of offsets buffer. Default: s32.
+        /// @param allow_empty Allow construction to fail without exception.
+        ///     Returns zero descriptor on failure. Default: false.
+        /// @returns Memory descriptor for grouped encoding.
+        static desc grouped(const dims &adims, data_type adata_type,
+                int variable_dim_idx, dim group_count,
+                data_type offsets_dt = data_type::s32,
+                bool allow_empty = false) {
+
+            validate_dims(adims);
+            dnnl_memory_desc_t md = nullptr;
+            dnnl_status_t status
+                    = dnnl_memory_desc_create_with_grouped_encoding(&md,
+                            (int)adims.size(), adims.data(),
+                            convert_to_c(adata_type), variable_dim_idx,
+                            group_count, convert_to_c(offsets_dt));
+            if (!allow_empty)
+                error::wrap_c_api(
+                        status, "could not create a grouped memory descriptor");
+            return desc {md};
+        }
+#endif
 
         /// Creates a memory descriptor for a scalar value that resides on the host.
         ///

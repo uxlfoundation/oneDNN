@@ -53,8 +53,9 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
 void set_amx_wsp_per_thread(jit_brgemm_conv_conf_t &jcp);
 
-void init_scratchpad(memory_tracking::registrar_t &scratchpad,
-        const jit_brgemm_conv_conf_t &jcp);
+status_t init_scratchpad(memory_tracking::registrar_t &scratchpad,
+        const jit_brgemm_conv_conf_t &jcp, const memory_desc_t &src_md,
+        const memory_desc_t &weights_md, const memory_desc_t &dst_md);
 
 status_t init_conf_bwd_w(jit_brgemm_conv_conf_t &jcp,
         const convolution_desc_t &cd, memory_desc_t &src_md,

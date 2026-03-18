@@ -77,6 +77,7 @@ enum HWTags : char {
     HWTagXeHPC = 'F',
     HWTagXe2 = 'G',
     HWTagXe3 = 'H',
+    HWTagXe3p = 'I',
 };
 
 struct Selector {

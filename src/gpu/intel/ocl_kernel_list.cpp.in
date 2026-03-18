@@ -77,13 +77,14 @@ const char *get_kernel_source(const char *name) {
 
     if (!name) return nullptr;
 
+    std::string kernel_name = name;
     // Missing kernels are expected as they may be included via header files to
     // enable better reuse between implementations.
-    gpu_assert(kernel_list.count(name) <= 1)
-            << "Found " << kernel_list.count(name) << " kernels with the name "
-            << name << ". Expected at most 1.";
+    gpu_assert(kernel_list.count(kernel_name) <= 1)
+            << "Found " << kernel_list.count(kernel_name)
+            << " kernels with the name " << name << ". Expected at most 1.";
 
-    auto r = kernel_list.find(name);
+    auto r = kernel_list.find(kernel_name);
     return r != kernel_list.end() ? r->second : nullptr;
 }
 

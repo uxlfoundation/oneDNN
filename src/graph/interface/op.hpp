@@ -365,6 +365,37 @@ public:
             CASE(partition_id);
             CASE(op_depth);
             CASE(accumulation_mode);
+            CASE(canonicalized);
+            CASE(change_layout);
+            CASE(is_constant);
+            CASE(is_convtranspose);
+            CASE(is_training);
+            CASE(fwd_alg_kind);
+            CASE(fuse_relu);
+            CASE(with_bias);
+            CASE(with_runtime_scales);
+            CASE(with_runtime_zps);
+            CASE(with_runtime_src_zps);
+            CASE(with_runtime_dst_zps);
+            CASE(is_bias_add);
+            CASE(with_sum);
+            CASE(keep_dst_layout);
+            CASE(with_scale);
+            CASE(is_invert_scale);
+            CASE(mask_type);
+            CASE(alg_kind);
+            CASE(axis_row);
+            CASE(axis_col);
+            CASE(dw_type);
+            CASE(kind);
+            CASE(p);
+            CASE(dst_zps);
+            CASE(src_zps);
+            CASE(permutation);
+            CASE(fusion_info);
+            CASE(qk_acc_mode);
+            CASE(vs_acc_mode);
+            CASE(is_rms);
             default: return "undefined_attr";
         }
 #undef CASE
@@ -397,6 +428,7 @@ public:
             CASE(ConvTransposeBackwardWeights);
             CASE(Dequantize);
             CASE(Divide);
+            CASE(Dropout);
             CASE(DynamicDequantize);
             CASE(DynamicQuantize);
             CASE(Elu);
@@ -464,7 +496,57 @@ public:
             CASE(TypeCast);
             CASE(Wildcard);
             CASE(LastSymbol);
-            default: return "internal_op";
+            CASE(_mul_scales);
+            CASE(_constant_scales);
+            CASE(_add_zps);
+            CASE(_sub_zps);
+            CASE(_constant_zps);
+            CASE(_permute);
+            CASE(_to_group);
+            CASE(_from_group);
+            CASE(_unsqueeze);
+            CASE(_squeeze);
+            CASE(_reshape);
+            CASE(_transpose);
+            CASE(_convolution);
+            CASE(_convtranspose);
+            CASE(_pool);
+            CASE(_bn_folding);
+            CASE(_conv_bwd_data);
+            CASE(_batchnorm);
+            CASE(_binary);
+            CASE(_eltwise);
+            CASE(_eltwise_bwd);
+            CASE(_shuffle);
+            CASE(_sum);
+            CASE(_reduction);
+            CASE(_prelu);
+            CASE(_prelu_bwd);
+            CASE(_batchnorm_bwd);
+            CASE(_softmax_bwd);
+            CASE(_logsoftmax_bwd);
+            CASE(_resampling);
+            CASE(_resampling_bwd);
+            CASE(_concat);
+            CASE(_layernorm_bwd);
+            CASE(_conv_bwd_weights);
+            CASE(_pool_bwd);
+            CASE(_matmul);
+            CASE(_softmax);
+            CASE(_logsoftmax);
+            CASE(_layernorm);
+            CASE(_reorder);
+            CASE(_convtranspose_bwd_data);
+            CASE(_convtranspose_bwd_weights);
+            CASE(_groupnorm);
+            CASE(_gen_index);
+            CASE(_mask);
+            CASE(_sdpa);
+            CASE(_host_scalar);
+            CASE(_identity);
+            CASE(_dropout);
+            CASE(_gated_mlp);
+            default: return "undefined_op";
         }
 #undef CASE
     }
@@ -523,6 +605,8 @@ public:
         writer->end_object();
         return dnnl::impl::graph::status::success;
     }
+
+    std::string str() const;
 
 private:
     size_t id_ {};

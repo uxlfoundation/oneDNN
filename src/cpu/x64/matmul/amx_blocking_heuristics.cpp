@@ -185,7 +185,7 @@ bool matmul_amx_blocking_params_macro_t::maybe_small_dims_heuristics(
         best_blocking.set_nt_ = true;
         best_blocking.need_prefetch_a_ = false;
         best_blocking.need_prefetch_b_ = false;
-        best_blocking.use_fused_copy_a = false;
+        best_blocking.use_fused_copy_a_ = false;
         best_blocking.efficiency_score_ = 1;
         best_blocking.current_lda_ = best_blocking.get_actual_lda();
     };
@@ -360,9 +360,13 @@ bool matmul_amx_blocking_params_macro_t::find_best_blocking(
         current_blocking.nthr_ = best_blocking.nthr_b_ * best_blocking.nthr_m_
                 * best_blocking.nthr_n_ * best_blocking.nthr_k_;
         current_blocking.set_core_divs(best_blocking.nthr_b_,
-                best_blocking.nthr_m_, best_blocking.nthr_n_,
-                best_blocking.nthr_k_);
+                best_blocking.nthr_m_, best_blocking.nthr_k_,
+                best_blocking.nthr_n_);
         if (current_blocking.set_blocking_parameters(true)
+                && current_blocking > best_blocking) {
+            best_blocking = current_blocking;
+        }
+        if (current_blocking.set_blocking_parameters(true, true)
                 && current_blocking > best_blocking) {
             best_blocking = current_blocking;
         }
@@ -374,8 +378,7 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
 
     bool strip1_b_tranform_h = is_horizontal && use_buffer_b;
     bool strips_b_tranform_v = !is_horizontal && use_buffer_b;
-    bool strip1_b_in_mlc_h
-            = strip1_b_tranform_h && b_transform_fits_in_mlc(n_blk_, k_blk_);
+    bool strip1_b_in_mlc_h = strip1_b_tranform_h && b_transform_fits_in_l2();
 
     size_t a_size = m_per_thread * k_per_thread * gemm_dt_sz;
     size_t b_size = n_per_thread * k_per_thread * gemm_dt_sz;
@@ -588,24 +591,12 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
     return peak_cycles / total_cycles;
 }
 
-bool matmul_amx_blocking_params_macro_t::b_transform_fits_in_mlc(
-        size_t n_blk, size_t k_blk) const {
-    bool b_transform_in_mlc;
+bool matmul_amx_blocking_params_macro_t::b_transform_fits_in_l2() const {
+    bool b_transform_in_l2;
     auto max_l2_usage = l2_matrix_usage(
-            1, rnd_up(n_per_thread, n_blk), rnd_up(k_per_thread, k_blk), true);
-    if (transposed_B) {
-        b_transform_in_mlc = max_l2_usage
-                        + rnd_up(n_per_thread, n_blk)
-                                * nstl::min(
-                                        (size_t)(K * b_dt_sz), (size_t)PAGE_4K)
-                < L2_threshold();
-    } else {
-        b_transform_in_mlc = max_l2_usage
-                        + nstl::min((size_t)(N * b_dt_sz), (size_t)PAGE_4K)
-                                * rnd_up(k_per_thread, k_blk)
-                < L2_threshold();
-    }
-    return b_transform_in_mlc;
+            k_chunk_size_, n_blk_, k_blk_, true, true); /* B transform size */
+    b_transform_in_l2 = max_l2_usage < L2_threshold();
+    return b_transform_in_l2;
 }
 
 bool matmul_amx_blocking_params_macro_t::operator==(
@@ -693,7 +684,8 @@ std::set<dim_t> matmul_amx_blocking_params_macro_t::blk_candidates(
 }
 
 size_t matmul_amx_blocking_params_macro_t::l2_matrix_usage(size_t k_chunk_size,
-        size_t m_or_n_blk, size_t k_blk, bool is_horizontal) const {
+        size_t m_or_n_blk, size_t k_blk, bool is_horizontal,
+        bool force_transform_matrix_to_l2) const {
     int decomposition = is_horizontal ? m_decomposition : n_decomposition;
     int l1_matrix_size = 2 * decomposition
             * nstl::min(k_blk * k_chunk_size, (size_t)k_per_thread)
@@ -701,7 +693,11 @@ size_t matmul_amx_blocking_params_macro_t::l2_matrix_usage(size_t k_chunk_size,
     int l2_matrix_size = m_or_n_blk
             * nstl::min(k_blk * k_chunk_size, (size_t)k_per_thread)
             * gemm_dt_sz;
-
+    if (force_transform_matrix_to_l2) {
+        /* L2 matrix orig size */
+        l2_matrix_size += m_or_n_blk * k_blk * k_chunk_size
+                * (is_horizontal ? b_dt_sz : a_dt_sz);
+    }
     // Calculate C post size (output buffer)
     int c_post_size;
     if (is_horizontal) {
@@ -772,8 +768,9 @@ float matmul_amx_blocking_params_macro_t::ratio(size_t m_blk,
 
 float matmul_amx_blocking_params_macro_t::evaluate_single_core_blocking(
         size_t k_chunk_size, size_t m_or_n_blk, size_t k_blk,
-        bool is_horizontal) const {
-    if (l2_matrix_usage(k_chunk_size, m_or_n_blk, k_blk, is_horizontal)
+        bool is_horizontal, bool force_transform_matrix_to_l2) const {
+    if (l2_matrix_usage(k_chunk_size, m_or_n_blk, k_blk, is_horizontal,
+                force_transform_matrix_to_l2)
             <= L2_threshold()) {
         size_t m_blk, n_blk;
         if (is_horizontal) {
@@ -829,7 +826,7 @@ bool matmul_amx_blocking_params_macro_t::is_horizontal_selected(
 }
 
 bool matmul_amx_blocking_params_macro_t::set_blocking_parameters(
-        bool force_horizontal) {
+        bool force_horizontal, bool force_b_transform_to_l2) {
 
     std::set<dim_t> m_candidates
             = blk_candidates(m_per_thread, m_decomposition);
@@ -857,14 +854,20 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters(
                 for (std::set<dim_t>::reverse_iterator it_k
                         = k_candidates_h.rbegin();
                         it_k != k_candidates_h.rend(); it_k++) {
-                    float cur_score = evaluate_single_core_blocking(
-                            *it_k, *it_n * n_decomposition, k_blk_h, true);
+                    float cur_score = evaluate_single_core_blocking(*it_k,
+                            *it_n * n_decomposition, k_blk_h, true,
+                            force_b_transform_to_l2);
                     if (cur_score > best_score_h && *it_k >= min_k_chunk_size) {
                         best_score_h = cur_score;
                         best_k_h = *it_k;
                         best_n_h = *it_n;
                     }
                 }
+            }
+
+            if (best_n_h == 0) {
+                horizontal_not_possible = true;
+                return;
             }
 
             if (rnd_up(n_per_thread, best_n_h * n_decomposition) * (nthr_n_ - 1)
@@ -906,6 +909,11 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters(
                         best_m_v = *it_m;
                     }
                 }
+            }
+
+            if (best_m_v == 0) {
+                vertical_not_possible = true;
+                return;
             }
 
             if (rnd_up(m_per_thread, best_m_v * m_decomposition) * (nthr_m_ - 1)
@@ -1037,7 +1045,7 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters(
         is_a_nt_ = true;
         is_b_nt_ = false;
         need_prefetch_a_ = false;
-        need_prefetch_b_ = (n_per_thread / n_blk_) >= 2;
+        need_prefetch_b_ = ((n_per_thread / n_blk_) >= 2) && !use_buffer_b;
         use_fused_copy_a_ = false;
 
         extendable_k_ = K % wei_k_blk != 0 && !skip_extendable_k();
@@ -1054,7 +1062,8 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters(
     current_lda_ = get_actual_lda();
 
     // Need a temp C buffer if a BRGEMM creates partial results
-    need_buf_c_ = (nthr_k_ != 1) || (k_blk_ != K && acc_dt != dst_dt);
+    need_buf_c_
+            = (nthr_k_ != 1) || (k_blk_ != K && (with_sum || acc_dt != dst_dt));
 
     efficiency_score_ = calculate_blocking_scores();
 
@@ -1188,8 +1197,13 @@ void matmul_amx_blocking_params_micro_t::find_best_blocking(
             float cur_score = current_blocking.get_blocking_scores();
             float bst_score = best_blocking.get_blocking_scores();
 
-            int m_chunks = div_up(bgmmc.M, m_blk * m_ch_sz);
-            int n_chunks = div_up(bgmmc.N, n_blk * n_ch_sz);
+            // TODO: Verify whether using a chunk count of 1 for runtime M and N is optimal for
+            // this heuristic. The previous implementation inadvertently used DNNL_RUNTIME_DIM_VAL
+            // for M and N in arithmetic, producing incorrect work_amount values.
+            int m_chunks
+                    = bgmmc.is_runtime_M ? 1 : div_up(bgmmc.M, m_blk * m_ch_sz);
+            int n_chunks
+                    = bgmmc.is_runtime_N ? 1 : div_up(bgmmc.N, n_blk * n_ch_sz);
             int work_amount = bgmmc.batch * m_chunks * n_chunks;
 
             bool skip_config = work_amount < nthr_bmn * 3

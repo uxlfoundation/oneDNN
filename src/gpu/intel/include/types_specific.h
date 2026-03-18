@@ -771,14 +771,19 @@
 #ifdef DST_SCALES_DATA_T
 #if DST_SCALES_DT_HF8
 #define DST_SCALES_TO_REF(x) convert_float(cvt_f8_e4m3_to_hf(x))
+#define REF_TO_DST_SCALES(x) cvt_hf_to_f8_e4m3(convert_half(x))
 #elif DST_SCALES_DT_BF8
 #define DST_SCALES_TO_REF(x) convert_float(cvt_f8_e5m2_to_hf(x))
+#define REF_TO_DST_SCALES(x) cvt_hf_to_f8_e5m2(convert_half(x))
 #elif DST_SCALES_DT_F16
 #define DST_SCALES_TO_REF(x) convert_float(x)
+#define REF_TO_DST_SCALES(x) convert_half(x)
 #elif DST_SCALES_DT_BF16
 #define DST_SCALES_TO_REF(x) cvt_bf16_to_f32(x)
+#define REF_TO_DST_SCALES(x) cvt_f32_to_bf16(x)
 #elif DST_SCALES_DT_E8M0
 #define DST_SCALES_TO_REF(x) cvt_e8m0_to_f32(x)
+#define REF_TO_DST_SCALES(x) cvt_f32_to_e8m0(x)
 #else
 #define DST_SCALES_TO_REF(x) (x)
 #endif
@@ -787,16 +792,19 @@
 #ifdef WEI_SCALES_DATA_T
 #if WEI_SCALES_DT_HF8
 #define WEI_SCALES_TO_REF(x) convert_float(cvt_f8_e4m3_to_hf(x))
+#define REF_TO_WEI_SCALES(x) cvt_hf_to_f8_e4m3(convert_half(x))
 #elif WEI_SCALES_DT_BF8
 #define WEI_SCALES_TO_REF(x) convert_float(cvt_f8_e5m2_to_hf(x))
-#elif WEI_SCALES_DT_E8M0
-#define WEI_SCALES_TO_REF(x) cvt_e8m0_to_f32(x)
+#define REF_TO_WEI_SCALES(x) cvt_hf_to_f8_e5m2(convert_half(x))
 #elif WEI_SCALES_DT_F16
 #define WEI_SCALES_TO_REF(x) convert_float(x)
+#define REF_TO_WEI_SCALES(x) convert_half(x)
 #elif WEI_SCALES_DT_BF16
 #define WEI_SCALES_TO_REF(x) cvt_bf16_to_f32(x)
+#define REF_TO_WEI_SCALES(x) cvt_f32_to_bf16(x)
 #elif WEI_SCALES_DT_E8M0
 #define WEI_SCALES_TO_REF(x) cvt_e8m0_to_f32(x)
+#define REF_TO_WEI_SCALES(x) cvt_f32_to_e8m0(x)
 #else
 #define WEI_SCALES_TO_REF(x) (x)
 #endif
@@ -805,16 +813,19 @@
 #ifdef SRC_SCALES_DATA_T
 #if SRC_SCALES_DT_HF8
 #define SRC_SCALES_TO_REF(x) convert_float(cvt_f8_e4m3_to_hf(x))
+#define REF_TO_SRC_SCALES(x) cvt_hf_to_f8_e4m3(convert_half(x))
 #elif SRC_SCALES_DT_BF8
 #define SRC_SCALES_TO_REF(x) convert_float(cvt_f8_e5m2_to_hf(x))
-#elif SRC_SCALES_DT_E8M0
-#define SRC_SCALES_TO_REF(x) cvt_e8m0_to_f32(x)
+#define REF_TO_SRC_SCALES(x) cvt_hf_to_f8_e5m2(convert_half(x))
 #elif SRC_SCALES_DT_F16
 #define SRC_SCALES_TO_REF(x) convert_float(x)
+#define REF_TO_SRC_SCALES(x) convert_half(x)
 #elif SRC_SCALES_DT_BF16
 #define SRC_SCALES_TO_REF(x) cvt_bf16_to_f32(x)
+#define REF_TO_SRC_SCALES(x) cvt_f32_to_bf16(x)
 #elif SRC_SCALES_DT_E8M0
 #define SRC_SCALES_TO_REF(x) cvt_e8m0_to_f32(x)
+#define REF_TO_SRC_SCALES(x) cvt_f32_to_e8m0(x)
 #else
 #define SRC_SCALES_TO_REF(x) (x)
 #endif

@@ -329,7 +329,7 @@ class matmul_shape_infer_t
     : public ::testing::TestWithParam<matmul_shape_infer_params_t> {
 public:
     void TestMatMulShapeInfer() {
-        auto params = ::testing::TestWithParam<
+        const auto &params = ::testing::TestWithParam<
                 matmul_shape_infer_params_t>::GetParam();
 
         graph::op_t matmul {0, graph::op_kind::MatMul, std::string("matmul")};

@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2025 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -116,11 +116,11 @@ void jit_int8_matmul_utils_kernel_t::reo_B_8xN(int lp, int nt) {
 
     str(ZReg(0), ptr(reg_aux_b, 0, MUL_VL));
     str(ZReg(2), ptr(reg_aux_b, 1, MUL_VL));
-    if (dyn_.n_blk > 8) {
+    if (dyn_.n_blk > 2 * cols_per_b_vec_) {
         str(ZReg(1), ptr(reg_aux_b, 2, MUL_VL));
         str(ZReg(6), ptr(reg_aux_b, 3, MUL_VL));
     }
-    if (dyn_.n_blk > 16) {
+    if (dyn_.n_blk > 4 * cols_per_b_vec_) {
         str(ZReg(8), ptr(reg_aux_b, 4, MUL_VL));
         str(ZReg(10), ptr(reg_aux_b, 5, MUL_VL));
     }
@@ -292,6 +292,7 @@ void jit_int8_matmul_utils_kernel_t::generate() {
 
     postamble();
 }
+
 } // namespace matmul
 } // namespace aarch64
 } // namespace cpu

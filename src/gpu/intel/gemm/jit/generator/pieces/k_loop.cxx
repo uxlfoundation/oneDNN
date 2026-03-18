@@ -154,10 +154,8 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
 
     // Get r0 information where needed.
     GRF r0_info;
-    if (needBarrier && state.r0_info.isValid()) {
-        if (state.r0_info.isARF()) stub();
-        r0_info = GRF{state.r0_info.getBase()};
-    }
+    if (needBarrier)
+        r0_info = state.r0InfoGRF();
 
     // Unified barrier and SLM fence handling for k loop.
     auto &modBarrierFence = state.modBarrierFence;
@@ -1572,11 +1570,11 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
 
     // Sync any tokens nGEN thinks might still be outstanding, except for DPAS.
     // nGEN cannot always discover that these tokens are no longer alive.
-    bool isC[GRF::maxRegs()] = {};
+    bool isC[GRF::maxRegs(hw)] = {};
     for (const auto &C_regs: state.C_regs)
         for (int r = 0; r < C_regs.getLen(); r++)
             isC[C_regs[r].getBase()] = true;
-    for (int i = 0; i < GRF::maxRegs(); i++)
+    for (int i = 0; i < GRF::maxRegs(hw); i++)
         if (!isC[i])
             wrdep(GRF(i));
 }

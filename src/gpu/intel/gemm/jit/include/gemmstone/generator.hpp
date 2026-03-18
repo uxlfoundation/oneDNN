@@ -34,6 +34,7 @@
 #include "gemmstone/type.hpp"
 #include "gemmstone/problem.hpp"
 #include "gemmstone/strategy.hpp"
+#include "gemmstone/microkernel_selector.hpp"
 #include "generator/pieces/copy_plan.hpp"
 #include "generator/pieces/register_layout.hpp"
 #include "generator/pieces/state.hpp"
@@ -46,7 +47,15 @@ GEMMSTONE_NAMESPACE_START
 #ifndef GENERATOR_BASE
 
 #define GENERATOR_SUPER(hw) ngen::OpenCLCodeGenerator<hw>
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
+#define FORWARD(hw) NGEN_FORWARD_SYCL(hw)
+#endif
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 #define FORWARD(hw) NGEN_FORWARD_OPENCL(hw)
+#endif
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+#define FORWARD(hw) NGEN_FORWARD_LEVEL_ZERO(hw)
+#endif
 #define GENERATOR_DEBUGINFO {__FILE__, __LINE__}
 
 #define GENERATOR_BASE(hw) GENERATOR_SUPER(hw)
@@ -63,7 +72,7 @@ public:
     // Kernel generation entrypoints.
     void gemm(GEMMProblem problem, GEMMStrategy strategy, const ngen::InterfaceHandler &interface_);
     void gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, const ngen::InterfaceHandler &interface_);
-    micro::Package gemmMicrokernelPackage(const GEMMProblem &problem, const GEMMStrategy &strategy, const ngen::InterfaceHandler &interface_, micro::GEMMProtocol protocol, uint32_t gmdid, bool transposeC = false);
+    microkernel::Package gemmMicrokernelPackage(const GEMMProblem &problem, const GEMMStrategy &strategy, const ngen::InterfaceHandler &interface_, const microkernel::Protocol &protocol, uint32_t gmdid, bool transposeC = false);
 
     // Driver information retrieval.
     static CommonDriverInfo driverInfo(GEMMProblem problem, const GEMMStrategy &strategy);
@@ -268,7 +277,7 @@ protected:
     template <typename DT = void> void emov(const ngen::InstructionModifier &mod, ngen::RegData dst, ngen::Immediate src0, const CommonStrategy &strategy, CommonState &state, ngen::SourceLocation loc = {})                                              { ngen::EmulationImplementation::emov<DT>(*this, mod, dst, src0, strategy.emulate, loc); }
     template <typename DT = void> void eadd(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, const ngen::RegData &src1, const CommonStrategy &strategy, CommonState &state, ngen::SourceLocation loc = {});
     template <typename DT = void> void eadd(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, ngen::Immediate src1,      const CommonStrategy &strategy, const CommonState &state, ngen::SourceLocation loc = {}) { ngen::EmulationImplementation::eadd<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate, loc); }
-    template <typename DT = void> void emul(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, const ngen::RegData &src1, const CommonStrategy &strategy, const CommonState &state, ngen::SourceLocation loc = {}) { ngen::EmulationImplementation::emul<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate, loc); }
+    template <typename DT = void> void emul(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, const ngen::RegData &src1, const CommonStrategy &strategy, CommonState &state, ngen::SourceLocation loc = {});
     template <typename DT = void> void emul(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, ngen::Immediate src1,      const CommonStrategy &strategy, const CommonState &state, ngen::SourceLocation loc = {}) { ngen::EmulationImplementation::emul<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate, loc); }
     template <typename DT = void> void eshl(const ngen::InstructionModifier &mod, ngen::RegData dst, ngen::RegData src0, uint16_t src1, const CommonStrategy &strategy, const CommonState &state, ngen::SourceLocation loc = {})                           { ngen::EmulationImplementation::eshl<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate, loc); }
     template <typename DT = void> void eshr(const ngen::InstructionModifier &mod, ngen::RegData dst, ngen::RegData src0, uint16_t src1, const CommonStrategy &strategy, const CommonState &state, ngen::SourceLocation loc = {})                           { ngen::EmulationImplementation::eshr<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate, loc); }
@@ -491,6 +500,7 @@ protected:
     void gemmBetaScale(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void binaryOp(BinaryOp op, int simd, const ngen::RegData &dst, const ngen::RegData &src0, const ngen::RegData &src1, CommonState &state);
     void gemmScalarBinaryOpC(BinaryOp op, Type Tco, const GRFMultirange &offsets, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
+    void gemmScalarBinaryOpC(BinaryOp op, Type Tco, const ngen::Subregister &scalar, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void gemmVectorBinaryOpC(BinaryOp op, bool column, const GRFMultirange &offsets, const ngen::Subregister &scale, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, Type Tco = Type::invalid, RegisterLayout CO_layout = RegisterLayout(), int y0 = -1, int y1 = -1);
     void gemmRank1UpdateC(const GRFMultirange &r, const GRFMultirange &c, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void gemmCalcABOffsetAddrs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
@@ -509,9 +519,8 @@ protected:
     void gemmRepack2DOffsetData(Type Text, const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst, const GRFMultirange &src, const GRFMultirange &dst, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void dequantizeInt4Shift(Type Tsrc, GRFMultirange src, const CommonStrategy &strategy);
     void dequantizeInt4(bool doA, const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst, const RegisterLayout &layoutOffset, const RegisterLayout &layoutScale, const GRFMultirange &src, const GRFMultirange &dst, const GRFMultirange &offset, const GRFMultirange &scale, int offR, int offC, int h, int kab_load, int kq_load, const GEMMProblem *problem, const CommonStrategy &strategy, CommonState &state, bool s4Shift = true);
-    void gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp op, const RegisterLayout &layout, const RegisterLayout &qlayout, const GRFMultirange &regs, const GRFMultirange &qregs, int h, int kab_load, int kq_load, const GEMMProblem &problem, CommonState &state);
+    void gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp op, const RegisterLayout &layout, const RegisterLayout &qlayout, const GRFMultirange &regs, const GRFMultirange &qregs, int h, int kab_load, int kq_load, const GEMMProblem &problem, const CommonStrategy &strategy, CommonState &state);
     void gemmDequantizeAB(bool doA, const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst, const GRFMultirange &src, const GRFMultirange &dst, int h, int kab_load, int kab_repack, int kq_load, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, bool s4Shift = true);
-
     // register_allocation.cxx
     ngen::Bundle getHint(HintType type);
     ngen::Bundle getHint(HintType type, const CommonStrategy &strategy);

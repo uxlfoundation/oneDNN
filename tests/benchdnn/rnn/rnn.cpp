@@ -797,6 +797,18 @@ void skip_unimplemented_prb(const prb_t *prb_, res_t *res) {
             return;
         }
 #endif
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
+        // RNN is not supported with async threadpool runtime.
+        auto *tp = dnnl::testing::get_threadpool();
+        if (tp
+                && (tp->get_flags()
+                        & dnnl::threadpool_interop::threadpool_iface::
+                                ASYNCHRONOUS)) {
+            res->state = SKIPPED;
+            res->reason = skip_reason::case_not_supported;
+            return;
+        }
+#endif
         const auto wei_tag
                 = normalize_tag(prb.tag[1], prb.ndims(WEIGHTS_LAYER));
         // cpu backward only supports `any` layout for weights.
@@ -981,6 +993,16 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
     if (prb->prop == dnnl_backward) acc_dim *= MAX2(bwdd_acc_dim, bwdw_acc_dim);
     // Here the factor 4 just gives some wiggle room for fp32 testing
 
+    // Note: the following process of picking a `trh` is likely fine for
+    // floating-point problems but doesn't suit well for int8. It may happen
+    // that underlying target implementation will compute DST[i] and DST_ITER[i]
+    // with small difference around X.5f point ending up rounded differently
+    // leading to a difference in the output. Turned out, one incorrect point
+    // leads to norm comparison failure which doesn't make norm validation
+    // meaningful.
+    // TODO: consider moving int8 config (DST_ITER only?) on per point check
+    // with additional verification that underlying sources can have diff_1
+    // (though slightly changing shapes can work around failures).
     float trh = 4
             * (1 + (prb->prop == dnnl_backward)) // double wiggle room for bwd
             * ((prb->direction == dnnl_bidirectional_sum)
@@ -1329,7 +1351,16 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
     args_t args(mem_map), ref_args(ref_mem_map);
 
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
+    auto st = run_execution(v_prim[0], args, res);
+    if (st == FAIL) {
+        skip_unimplemented_prb(&prb, res);
+        if (res->state == SKIPPED || res->state == DEFERRED) return OK;
+        return FAIL;
+    }
+#else
     SAFE(run_execution(v_prim[0], args, res), WARN);
+#endif
 
     check_correctness(&prb, get_kinds_to_check(&prb, FLAG_FWD), args, ref_args,
             setup_cmp, res, FLAG_FWD);

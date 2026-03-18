@@ -59,9 +59,7 @@ void bmnk_block_mapper_t::push_block(
         abc_kind_t abc_kind, const layout_block_t &b) {
     auto bmnk_kind = bmnk_mapper_.bmnk_kind(abc_kind, b.idx);
     switch (bmnk_kind) {
-        case bmnk_kind_t::b:
-            if (abc_kind == abc_kind_t::a) b_blocks_.emplace_back(abc_kind, b);
-            break;
+        case bmnk_kind_t::b: b_blocks_.emplace_back(abc_kind, b); break;
         case bmnk_kind_t::m: m_blocks_.emplace_back(abc_kind, b); break;
         case bmnk_kind_t::n: n_blocks_.emplace_back(abc_kind, b); break;
         case bmnk_kind_t::k: k_blocks_.emplace_back(abc_kind, b); break;

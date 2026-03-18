@@ -70,6 +70,10 @@ using namespace dnnl::impl::utils;
             typedef int32_t DType; \
             { __VA_ARGS__ } \
         } break; \
+        case graph::data_type::s64: { \
+            typedef int64_t DType; \
+            { __VA_ARGS__ } \
+        } break; \
         default: assert(!"unsupported host scalar data type"); \
     }
 

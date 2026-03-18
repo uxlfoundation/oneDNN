@@ -25,6 +25,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 #include <locale>
 #include <sstream>
 #include <string>
@@ -296,8 +297,11 @@ constexpr T array_product(const T *arr) {
 template <typename T, typename R = T>
 inline R array_product(const T *arr, size_t size) {
     R prod = 1;
-    for (size_t i = 0; i < size; ++i)
+    for (size_t i = 0; i < size; ++i) {
+        assert(IMPLICATION(arr[i] > 0 && prod > 0,
+                prod <= std::numeric_limits<R>::max() / arr[i]));
         prod *= arr[i];
+    }
     return prod;
 }
 
@@ -355,9 +359,14 @@ constexpr const T &saturate(const T &low, const T &upper, const T &a) {
 }
 
 template <typename T, typename U>
-inline typename remove_reference<T>::type div_up(const T a, const U b) {
-    assert(b);
-    return static_cast<typename remove_reference<T>::type>((a + b - 1) / b);
+inline enable_if_t<std::is_integral<T>::value
+                && (std::is_integral<U>::value || std::is_enum<U>::value),
+        typename remove_reference<T>::type>
+div_up(const T a, const U b) {
+    assert(b > 0);
+    assert(a >= 0);
+    if (a <= 0) return 0;
+    return static_cast<typename remove_reference<T>::type>(1 + (a - 1) / b);
 }
 
 template <typename T, typename U>
@@ -969,6 +978,76 @@ public:
         return mask_ != other.mask_ || index_ != other.index_;
     }
 };
+
+/** returns true if fp32 value denotes DNNL_RUNTIME_F32_VAL */
+inline bool is_runtime_value(float val) {
+    return utils::bit_cast<unsigned>(val) == DNNL_RUNTIME_F32_VAL_REP.u;
+}
+
+/** returns true if s32 value denotes DNNL_RUNTIME_S32_VAL */
+inline bool is_runtime_value(int val) {
+    return val == DNNL_RUNTIME_S32_VAL;
+}
+
+/** returns true if dim_t value denotes DNNL_RUNTIME_DIM_VAL */
+inline bool is_runtime_value(dim_t val) {
+    return val == DNNL_RUNTIME_DIM_VAL;
+}
+
+/** returns true if size_t value denotes DNNL_RUNTIME_SIZE_VAL */
+inline bool is_runtime_value(size_t val) {
+    return val == DNNL_RUNTIME_SIZE_VAL;
+}
+
+template <typename T>
+constexpr bool any_runtime_value(T item) {
+    return is_runtime_value(item);
+}
+template <typename T, typename... Args>
+bool any_runtime_value(T item, Args... item_others) {
+    return is_runtime_value(item) || any_runtime_value(item_others...);
+}
+
+template <typename T>
+constexpr bool all_runtime_values(T item) {
+    return is_runtime_value(item);
+}
+template <typename T, typename... Args>
+constexpr bool all_runtime_values(T item, Args... item_others) {
+    return is_runtime_value(item) && all_runtime_values(item_others...);
+}
+
+template <typename T>
+constexpr T runtime_value_for() {
+    static_assert(sizeof(T) == 0, "no runtime value defined for this type");
+    return T {};
+}
+
+template <>
+inline float runtime_value_for<float>() {
+    return DNNL_RUNTIME_F32_VAL;
+}
+
+template <>
+constexpr int runtime_value_for<int>() {
+    return DNNL_RUNTIME_S32_VAL;
+}
+
+template <>
+constexpr dim_t runtime_value_for<dim_t>() {
+    return DNNL_RUNTIME_DIM_VAL;
+}
+
+template <>
+constexpr size_t runtime_value_for<size_t>() {
+    return DNNL_RUNTIME_SIZE_VAL;
+}
+
+/** returns the runtime placeholder constant for the argument type T */
+template <typename T>
+inline T runtime_value_for(T) {
+    return runtime_value_for<typename utils::remove_reference<T>::type>();
+}
 
 } // namespace impl
 } // namespace dnnl

@@ -78,8 +78,9 @@ cl_event resampling_executable_t::execute_ocl(const stream &stream,
             auto e = dnnl::ocl_interop::execute(prim, stream,
                     {{DNNL_ARG_FROM, const_cast<memory &>(psrc_mem)},
                             {DNNL_ARG_TO, const_cast<memory &>(dst_mem)}},
-                    ocl_deps);
-            ocl_deps = {e};
+                    deps);
+            // WA: ocl_deps = {e}; may cause compiler warining with GCC 13+.
+            ocl_deps.assign(1, e);
         }
     }
     auto e = dnnl::ocl_interop::execute(prim_, stream, args, ocl_deps);

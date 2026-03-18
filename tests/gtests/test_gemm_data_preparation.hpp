@@ -106,7 +106,8 @@ struct test_gemm_data_t {
 template <typename data_t>
 void prepare_matrix(const test_memory &M_mem, int64_t off_beg, layout_t layout,
         int64_t R, int64_t C, int64_t LD, const mapper_t &mapper) {
-    auto M = map_memory<data_t>(M_mem);
+    auto M_mapped = map_memory<data_t>(M_mem);
+    data_t *M = M_mapped;
     auto dt = data_traits_t<data_t>::data_type;
     bool is_fp = (false || dt == memory::data_type::f16
             || dt == memory::data_type::bf16 || dt == memory::data_type::f32);
@@ -117,13 +118,13 @@ void prepare_matrix(const test_memory &M_mem, int64_t off_beg, layout_t layout,
     const int R_test = mapper.dim_test();
 
     if (layout == layout_t::COL_MAJOR) {
-        dnnl::impl::parallel_nd(C, R_test, [&](int64_t c, int64_t r) {
+        dnnl::impl::parallel_nd(C, R_test, [=](int64_t c, int64_t r) {
             const int64_t off = c * LD + r;
             M[off_beg + off] = set_value<data_t>(off, mean, var, 1.);
         });
         if (R > R_test) {
             const int64_t R_rest = R - R_test;
-            dnnl::impl::parallel_nd(C, R_rest, [&](int64_t c, int64_t r_) {
+            dnnl::impl::parallel_nd(C, R_rest, [=](int64_t c, int64_t r_) {
                 const int64_t r = R_test + r_;
                 const int64_t off = c * LD + r;
                 const int64_t off0 = c * LD + mapper[r];
@@ -131,13 +132,13 @@ void prepare_matrix(const test_memory &M_mem, int64_t off_beg, layout_t layout,
             });
         }
     } else {
-        dnnl::impl::parallel_nd(R_test, C, [&](int64_t r, int64_t c) {
+        dnnl::impl::parallel_nd(R_test, C, [=](int64_t r, int64_t c) {
             const int64_t off = r * LD + c;
             M[off_beg + off] = set_value<data_t>(off, mean, var, 1.);
         });
         if (R > R_test) {
             const int64_t R_rest = R - R_test;
-            dnnl::impl::parallel_nd(R_rest, C, [&](int64_t r_, int64_t c) {
+            dnnl::impl::parallel_nd(R_rest, C, [=](int64_t r_, int64_t c) {
                 const int64_t r = R_test + r_;
                 const int64_t off = r * LD + c;
                 const int64_t off0 = mapper[r] * LD + c;
@@ -158,12 +159,13 @@ void prepare_matrix(const test_memory &M_mem, int64_t off_beg, layout_t layout,
 template <typename data_t>
 void extend_matrix_cols(const test_memory &M_mem, int64_t off, int64_t R,
         int64_t C, int64_t LD, const mapper_t &mapper_c) {
-    auto M = map_memory<data_t>(M_mem);
+    auto M_mapped = map_memory<data_t>(M_mem);
+    data_t *M = M_mapped;
     ASSERT_EQ(C, mapper_c.dim());
     const int64_t C_test = mapper_c.dim_test();
     if (C_test == C) return;
 
-    dnnl::impl::parallel_nd(R, C - C_test, [&](int64_t r, int64_t c_) {
+    dnnl::impl::parallel_nd(R, C - C_test, [=](int64_t r, int64_t c_) {
         const int64_t c = C_test + c_;
         const int64_t c0 = mapper_c[c];
         M[off + r * LD + c] = M[off + r * LD + c0];
@@ -174,12 +176,13 @@ void extend_matrix_cols(const test_memory &M_mem, int64_t off, int64_t R,
 template <typename data_t>
 void extend_matrix_rows(const test_memory &M_mem, int64_t off, int64_t R,
         int64_t C, int64_t LD, const mapper_t &mapper_r) {
-    auto M = map_memory<data_t>(M_mem);
+    auto M_mapped = map_memory<data_t>(M_mem);
+    data_t *M = M_mapped;
     ASSERT_EQ(R, mapper_r.dim());
     const int64_t R_test = mapper_r.dim_test();
     if (R_test == R) return;
 
-    dnnl::impl::parallel_nd(R - R_test, [&](int64_t r_) {
+    dnnl::impl::parallel_nd(R - R_test, [=](int64_t r_) {
         const int64_t r = R_test + r_;
         const int64_t r0 = mapper_r[r];
         for (int64_t c = 0; c < C; ++c)
@@ -227,10 +230,12 @@ void fill_matrices(const test_params_t &p, const mapper_t &mapper_m,
     fill_data<c_dt>(p.off.c + p.sizeC(), c_mem.get());
     extend_matrix<c_dt>(c_mem, p.off.c, p.M, p.N, p.ldc, mapper_m, mapper_n);
     {
-        auto C = map_memory<c_dt>(c_mem);
-        auto C_ref = map_memory<c_dt>(c_ref_mem);
+        auto C_mapped = map_memory<c_dt>(c_mem);
+        c_dt *C = C_mapped;
+        auto C_ref_mapped = map_memory<c_dt>(c_ref_mem);
+        c_dt *C_ref = C_ref_mapped;
         dnnl::impl::parallel_nd(p.sizeC(),
-                [&](int64_t i) { C_ref[p.off.c + i] = C[p.off.c + i]; });
+                [=](int64_t i) { C_ref[p.off.c + i] = C[p.off.c + i]; });
     }
 
     if (oc_mem.get_size() == 0) return;
@@ -272,6 +277,7 @@ void prepare_data_for_gemm_testing(
     fill_matrices<a_dt, b_dt, c_dt>(p, *gemm_data.mapper_m, *gemm_data.mapper_n,
             *gemm_data.a_mem, *gemm_data.b_mem, *gemm_data.c_mem,
             *gemm_data.c_ref_mem, *gemm_data.oc_mem);
+    synchronize_threadpool((*gemm_data.c_mem).get().get_engine().get_kind());
 }
 
 } // namespace dnnl

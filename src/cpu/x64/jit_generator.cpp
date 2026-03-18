@@ -41,7 +41,7 @@ void jit_generator_t::transpose(const Xbyak::Reg64 &reg_src,
     assert(is_valid_isa(avx2));
     assert(nrows <= transpose_size && ncolumns <= transpose_size);
 
-    assert(utils::one_of(dt, data_type::f32, data_type::bf16));
+    assert(utils::one_of(dt, data_type::f32, data_type::bf16, data_type::f16));
 
     if (transpose_size > nrows) uni_vxorps(ymm_tmp, ymm_tmp, ymm_tmp);
 
@@ -66,7 +66,7 @@ void jit_generator_t::transpose(const Xbyak::Reg64 &reg_src,
     };
 
     // Load up to 4 bf16 values and convert them to f32.
-    auto load_src_bf16 = [= COMPAT_THIS_CAPTURE](Xbyak::Xmm vmm, int r, int c) {
+    auto load_src_xf16 = [= COMPAT_THIS_CAPTURE](Xbyak::Xmm vmm, int r, int c) {
         if (r >= nrows) {
             vpxor(vmm, vmm, vmm);
             return;
@@ -76,34 +76,40 @@ void jit_generator_t::transpose(const Xbyak::Reg64 &reg_src,
 
         const int simd_w = 4;
         const int rem = ncolumns - c;
-
-        const auto base = reg_src + r * src_stride
-                + c * types::data_type_size(data_type::bf16);
+        const dim_t dt_size = 2;
 
         if (rem >= simd_w) {
-            // Load 4xbf16 -> 4xu32
-            vmovq(xmm_tmp, ptr[base]);
+            // Load 4 x xf16
+            vmovq(xmm_tmp, ptr[reg_src + r * src_stride + c * dt_size]);
         } else {
-            // Load the remaining bf16 values one by one.
+            // Load the remaining xf16 values one by one.
             for (int i = 0; i < rem; i++) {
                 vpinsrw(xmm_tmp, xmm_tmp,
-                        ptr[base + i * types::data_type_size(data_type::bf16)],
-                        i);
+                        ptr[reg_src + r * src_stride + (c + i) * dt_size], i);
             }
         }
 
-        // Upconvert 4x16-bit values to 4x32-bit values.
-        vpmovzxwd(vmm, xmm_tmp);
-        // Shift bf16 bits into the upper 16 bits.
-        vpslld(vmm, vmm, 16);
+        if (dt == data_type::bf16) {
+            // Upconvert 4x16-bit values to 4x32-bit values.
+            vpmovzxwd(vmm, xmm_tmp);
+            // Shift bf16 bits into the upper 16 bits.
+            vpslld(vmm, vmm, 16);
+        } else if (dt == data_type::f16) {
+            // Convert 4 x f16 to 4 x f32
+            vcvtph2ps(vmm, xmm_tmp);
+        } else {
+            assert(!"unsupported data type");
+        }
     };
 
     // Choose the load path based on source data type.
     auto load_src = [= COMPAT_THIS_CAPTURE](Xbyak::Xmm vmm, int r, int c) {
         if (dt == data_type::f32) {
             load_src_f32(vmm, r, c);
+        } else if (utils::one_of(dt, data_type::bf16, data_type::f16)) {
+            load_src_xf16(vmm, r, c);
         } else {
-            load_src_bf16(vmm, r, c);
+            assert(!"unsupported data type");
         }
     };
 
@@ -125,13 +131,13 @@ void jit_generator_t::transpose(const Xbyak::Reg64 &reg_src,
         }
     };
 
-    // Fill the upper 128-bit half of the YMM register for the bf16 path.
+    // Fill the upper 128-bit half of the YMM register for the xf16 path.
     // Values are first loaded and upconverted to f32.
-    auto vinsert_bf16 = [= COMPAT_THIS_CAPTURE](Xbyak::Ymm ymm, int r, int c) {
+    auto vinsert_xf16 = [= COMPAT_THIS_CAPTURE](Xbyak::Ymm ymm, int r, int c) {
         if (r >= nrows) {
             vperm2i128(ymm, ymm, ymm_tmp, 0x30);
         } else {
-            load_src_bf16(xmm_tmp, r, c);
+            load_src_xf16(xmm_tmp, r, c);
             vinsertf128(ymm, ymm, xmm_tmp, 1);
         }
     };
@@ -140,8 +146,10 @@ void jit_generator_t::transpose(const Xbyak::Reg64 &reg_src,
     auto vinsert = [= COMPAT_THIS_CAPTURE](Xbyak::Ymm ymm, int r, int c) {
         if (dt == data_type::f32) {
             vinsert_f32(ymm, r, c);
+        } else if (utils::one_of(dt, data_type::bf16, data_type::f16)) {
+            vinsert_xf16(ymm, r, c);
         } else {
-            vinsert_bf16(ymm, r, c);
+            assert(!"unsupported data type");
         }
     };
 
@@ -163,12 +171,34 @@ void jit_generator_t::transpose(const Xbyak::Reg64 &reg_src,
         vmovdqu(ptr[reg_dst + col * dst_stride], xmm_store_tmp);
     };
 
+    // Convert f32 values back to f16 and store one transposed column.
+    auto store_dst_f16 = [= COMPAT_THIS_CAPTURE](int col, Xbyak::Ymm ymm) {
+        Xbyak::Xmm xmm_lo = xmm_tmp;
+        Xbyak::Xmm xmm_hi = xmm_lower_mask; // reuse as temp
+        Xbyak::Xmm xmm_src_hi = xmm_upper_mask; // reuse as temp
+
+        // Convert lower 4 f32 values to f16
+        vcvtps2ph(xmm_lo, Xbyak::Xmm(ymm.getIdx()), 0);
+
+        // Convert upper 4 f32 values to f16
+        vextractf128(xmm_src_hi, ymm, 1);
+        vcvtps2ph(xmm_hi, xmm_src_hi, 0);
+
+        // Combine two 64-bit f16 halves into one Xmm and store 8 f16 values.
+        punpcklqdq(xmm_lo, xmm_hi);
+        vmovdqu(ptr[reg_dst + col * dst_stride], xmm_lo);
+    };
+
     // Choose the store path based on source data type.
     auto store_dst = [= COMPAT_THIS_CAPTURE](int col, Xbyak::Ymm ymm) {
         if (dt == data_type::f32) {
             store_dst_f32(col, ymm);
-        } else {
+        } else if (dt == data_type::bf16) {
             store_dst_bf16(col, ymm);
+        } else if (dt == data_type::f16) {
+            store_dst_f16(col, ymm);
+        } else {
+            assert(!"unsupported data type");
         }
     };
 

@@ -27,8 +27,17 @@
 
 #include <memory>
 #include <random>
+#include <cstdlib>
 
 #define DEBUG_PRINT_MEM 0
+
+static inline bool sdpa_dropout_debug_enabled() {
+    static const bool enabled = []() {
+        const char *v = std::getenv("ONEDNN_SDPA_DROPOUT_DEBUG");
+        return v && v[0] != '\0' && v[0] != '0';
+    }();
+    return enabled;
+}
 
 using mdt = memory::data_type;
 using dnnl::accumulation_mode;
@@ -1410,21 +1419,57 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
         // KQ
         if (is_kq_acc_f16) {
             // f16 accumulation needs separate binary post-ops
-            bmm1_prim.execute(strm, bmm1_args);
+            try {
+                bmm1_prim.execute(strm, bmm1_args);
+            } catch (const dnnl::error &e) {
+                ADD_FAILURE() << "prim_sdpa_quant: bmm1 execute failed"
+                              << ": status=" << e.status
+                              << ", what=" << e.what();
+                throw;
+            }
 
             // convert f16 to f32 for binary operations
-            f16_to_f32_prim.execute(
-                    strm, {{DNNL_ARG_FROM, score_f16}, {DNNL_ARG_TO, score}});
+            try {
+                f16_to_f32_prim.execute(strm,
+                        {{DNNL_ARG_FROM, score_f16}, {DNNL_ARG_TO, score}});
+            } catch (const dnnl::error &e) {
+                ADD_FAILURE() << "prim_sdpa_quant: f16_to_f32 execute failed"
+                              << ": status=" << e.status
+                              << ", what=" << e.what();
+                throw;
+            }
 
             // binary scale
-            bin_prim.execute(strm, scale_args);
+            try {
+                bin_prim.execute(strm, scale_args);
+            } catch (const dnnl::error &e) {
+                ADD_FAILURE() << "prim_sdpa_quant: scale binary execute failed"
+                              << ": status=" << e.status
+                              << ", what=" << e.what();
+                throw;
+            }
 
             // execute masking if needed
             if (p.mask.type != mask_type::no_mask) {
-                mask_prim.execute(strm, mask_args);
+                try {
+                    mask_prim.execute(strm, mask_args);
+                } catch (const dnnl::error &e) {
+                    ADD_FAILURE()
+                            << "prim_sdpa_quant: mask binary execute failed"
+                            << ": status=" << e.status
+                            << ", what=" << e.what();
+                    throw;
+                }
             }
         } else {
-            bmm1_prim.execute(strm, bmm1_args);
+            try {
+                bmm1_prim.execute(strm, bmm1_args);
+            } catch (const dnnl::error &e) {
+                ADD_FAILURE() << "prim_sdpa_quant: bmm1 execute failed"
+                              << ": status=" << e.status
+                              << ", what=" << e.what();
+                throw;
+            }
         }
 
         // softmax
@@ -1443,28 +1488,72 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
                         = memory(dropout_mask_md, eng);
             }
         }
-        softmax_prim.execute(strm, softmax_args);
+        try {
+            softmax_prim.execute(strm, softmax_args);
+        } catch (const dnnl::error &e) {
+            ADD_FAILURE() << "prim_sdpa_quant: softmax execute failed"
+                          << ": status=" << e.status
+                          << ", what=" << e.what()
+                          << ", dropout=" << p.dropout
+                          << ", has_softmax_ws=" << has_softmax_ws
+                          << ", has_output_mask="
+                          << p.dropout.has_output_mask();
+            throw;
+        }
 
         if (is_vs_acc_f16) {
             // convert f16 output back to f32
-            f32_to_f16_prim.execute(
-                    strm, {{DNNL_ARG_FROM, score2}, {DNNL_ARG_TO, score2_f16}});
+            try {
+                f32_to_f16_prim.execute(strm,
+                        {{DNNL_ARG_FROM, score2}, {DNNL_ARG_TO, score2_f16}});
+            } catch (const dnnl::error &e) {
+                ADD_FAILURE() << "prim_sdpa_quant: f32_to_f16 execute failed"
+                              << ": status=" << e.status
+                              << ", what=" << e.what();
+                throw;
+            }
         }
 
         // SV
-        bmm2_prim.execute(strm, bmm2_args);
+        try {
+            bmm2_prim.execute(strm, bmm2_args);
+        } catch (const dnnl::error &e) {
+            ADD_FAILURE() << "prim_sdpa_quant: bmm2 execute failed"
+                          << ": status=" << e.status
+                          << ", what=" << e.what();
+            throw;
+        }
 
         if (is_vs_acc_f16) {
             // convert f16 output back to f32
-            f16_to_f32_output_prim.execute(strm,
-                    {{DNNL_ARG_FROM, grouped_output_f16},
-                            {DNNL_ARG_TO, grouped_output}});
+            try {
+                f16_to_f32_output_prim.execute(strm,
+                        {{DNNL_ARG_FROM, grouped_output_f16},
+                                {DNNL_ARG_TO, grouped_output}});
+            } catch (const dnnl::error &e) {
+                ADD_FAILURE()
+                        << "prim_sdpa_quant: output f16_to_f32 execute failed"
+                        << ": status=" << e.status
+                        << ", what=" << e.what();
+                throw;
+            }
         }
     };
 
     // Warmup run.
     // Execute primitives of sdpa.
-    loop();
+    try {
+        loop();
+    } catch (const dnnl::error &e) {
+        ADD_FAILURE() << "prim_sdpa_quant: warmup loop failed"
+                      << ": status=" << e.status << ", what=" << e.what()
+                      << ", dropout=" << p.dropout;
+        return;
+    } catch (const std::exception &e) {
+        ADD_FAILURE() << "prim_sdpa_quant: warmup loop std::exception: "
+                      << e.what() << ", dropout=" << p.dropout;
+        return;
+    }
 
     strm.wait();
 
@@ -2220,6 +2309,11 @@ public:
             sdpa_args[DNNL_ARG_ATTR_DROPOUT_SEED] = m_dropout_seed;
             if (p.dropout.offset != 0)
                 sdpa_args[DNNL_ARG_ATTR_DROPOUT_OFFSET] = m_dropout_offset;
+            // Workspace required for forward_training (holds logsumexp).
+            auto ws_md = sdpa_quantized_pd.query_md(
+                    dnnl::query::exec_arg_md, DNNL_ARG_WORKSPACE);
+            if (!dnnl::impl::types::is_zero_md(ws_md.get()))
+                sdpa_args[DNNL_ARG_WORKSPACE] = memory(ws_md, eng);
             // Query mask md from pd (benchdnn pattern); only when has_output_mask.
             if (p.dropout.has_output_mask()) {
                 auto dropout_mask_md = sdpa_quantized_pd.query_md(
@@ -2229,12 +2323,30 @@ public:
             }
         }
 
-        sdpa_quantized_p.execute(strm, sdpa_args);
+        try {
+            sdpa_quantized_p.execute(strm, sdpa_args);
+        } catch (const dnnl::error &e) {
+            ADD_FAILURE() << "compare: sdpa primitive execute failed"
+                          << ": status=" << e.status
+                          << ", what=" << e.what()
+                          << ", dropout=" << p.dropout
+                          << ", has_output_mask="
+                          << p.dropout.has_output_mask();
+            return;
+        }
 
-        prim_sdpa_quant(p, t, eng, strm, t.m_query, t.m_key_quantized,
-                t.m_key_scales, t.m_key_zp, scale_dt, t.m_scale_prim, t.m_mask,
-                t.m_value_quantized, t.m_value_scales, t.m_value_zp, t.m_output,
-                invert_scale, doubled_memory);
+        try {
+            prim_sdpa_quant(p, t, eng, strm, t.m_query, t.m_key_quantized,
+                    t.m_key_scales, t.m_key_zp, scale_dt, t.m_scale_prim,
+                    t.m_mask, t.m_value_quantized, t.m_value_scales,
+                    t.m_value_zp, t.m_output, invert_scale, doubled_memory);
+        } catch (const dnnl::error &e) {
+            ADD_FAILURE() << "compare: reference prim_sdpa_quant failed"
+                          << ": status=" << e.status
+                          << ", what=" << e.what()
+                          << ", dropout=" << p.dropout;
+            return;
+        }
 
 #if 0
     if (::getenv("SKIP_CHECK")) return;
@@ -2348,7 +2460,14 @@ public:
         if (mask_ptr) { sdpa_fwd_args[DNNL_ARG_ATTN_MASK] = t.m_mask; }
 
         strm.wait();
-        sdpa_fwd.execute(strm, sdpa_fwd_args);
+        try {
+            sdpa_fwd.execute(strm, sdpa_fwd_args);
+        } catch (const dnnl::error &e) {
+            ADD_FAILURE() << "compare_bwd: sdpa forward execute failed"
+                          << ": status=" << e.status
+                          << ", what=" << e.what();
+            return;
+        }
         strm.wait();
 
         std::unordered_map<int, memory> sdpa_bwd_args
@@ -2375,7 +2494,14 @@ public:
         }
         if (mask_ptr) { sdpa_bwd_args[DNNL_ARG_ATTN_MASK] = t.m_mask; }
 
-        sdpa_bwd.execute(strm, sdpa_bwd_args);
+        try {
+            sdpa_bwd.execute(strm, sdpa_bwd_args);
+        } catch (const dnnl::error &e) {
+            ADD_FAILURE() << "compare_bwd: sdpa backward execute failed"
+                          << ": status=" << e.status
+                          << ", what=" << e.what();
+            return;
+        }
         strm.wait();
 
 #if DEBUG_PRINT_MEM
@@ -2519,8 +2645,19 @@ public:
         }
         if (mask_ptr) { sdpa_args[DNNL_ARG_ATTN_MASK] = t.m_mask; }
 
-        auto loop_quantized
-                = [&] { sdpa_quantized_p.execute(strm, sdpa_args); };
+        auto loop_quantized = [&] {
+            try {
+                sdpa_quantized_p.execute(strm, sdpa_args);
+            } catch (const dnnl::error &e) {
+                ADD_FAILURE() << "perf: sdpa primitive execute failed"
+                              << ": status=" << e.status
+                              << ", what=" << e.what()
+                              << ", dropout=" << p.dropout
+                              << ", has_output_mask="
+                              << p.dropout.has_output_mask();
+                throw;
+            }
+        };
 
         int iterations = 20;
         auto quantized_time = timeit(loop_quantized, strm, iterations);
@@ -2677,7 +2814,14 @@ public:
         }
         if (mask_ptr) { sdpa_fwd_args[DNNL_ARG_ATTN_MASK] = t.m_mask; }
 
-        sdpa_fwd.execute(strm, sdpa_fwd_args);
+        try {
+            sdpa_fwd.execute(strm, sdpa_fwd_args);
+        } catch (const dnnl::error &e) {
+            ADD_FAILURE() << "perf_bwd: sdpa forward execute failed"
+                          << ": status=" << e.status
+                          << ", what=" << e.what();
+            return;
+        }
         strm.wait();
 
         // Build backward args
@@ -2698,7 +2842,16 @@ public:
         if (mask_ptr) { sdpa_bwd_args[DNNL_ARG_ATTN_MASK] = t.m_mask; }
 
         // Time backward pass
-        auto loop_bwd = [&] { sdpa_bwd.execute(strm, sdpa_bwd_args); };
+        auto loop_bwd = [&] {
+            try {
+                sdpa_bwd.execute(strm, sdpa_bwd_args);
+            } catch (const dnnl::error &e) {
+                ADD_FAILURE() << "perf_bwd: sdpa backward execute failed"
+                              << ": status=" << e.status
+                              << ", what=" << e.what();
+                throw;
+            }
+        };
 
         int iterations = 20;
         auto bwd_time = timeit(loop_bwd, strm, iterations);

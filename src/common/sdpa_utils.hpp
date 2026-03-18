@@ -17,6 +17,9 @@
 #ifndef COMMON_SDPA_UTILS_HPP
 #define COMMON_SDPA_UTILS_HPP
 
+#include <cstdio>
+#include <cstdlib>
+
 #include "oneapi/dnnl/dnnl.h"
 
 #include "common/c_types_map.hpp"
@@ -48,12 +51,19 @@ namespace impl {
     VCONDCHECK(primitive, create, check, sdpa, (cond), status::unimplemented, \
             msg, ##__VA_ARGS__);
 
+static inline bool sdpa_dropout_debug_enabled() {
+        static const bool enabled = []() {
+                const char *v = std::getenv("ONEDNN_SDPA_DROPOUT_DEBUG");
+                return v && v[0] != '\0' && v[0] != '0';
+        }();
+        return enabled;
+}
+
 static inline status_t sdpa_desc_check(const memory_desc_t *q_desc,
         const memory_desc_t *k_desc, const memory_desc_t *v_desc,
         const memory_desc_t *dst_desc, const memory_desc_t *attn_mask_md,
         const engine_t *engine, const primitive_attr_t *attr,
         const primitive_attr_t *kq_attr, const primitive_attr_t *vs_attr) {
-    printf("SDPA desc check\n");
     int ndims = dst_desc->ndims;
     int r = ndims - 2, c = ndims - 1;
     VCHECK_SDPA_COND(utils::everyone_is(ndims, q_desc->ndims, k_desc->ndims,
@@ -142,7 +152,6 @@ static inline status_t sdpa_attr_check(const memory_desc_t *q_desc,
         const memory_desc_t *dst_desc, const engine_t *engine,
         const primitive_attr_t *attr, const primitive_attr_t *kq_attr,
         const primitive_attr_t *vs_attr) {
-    printf("sdpa_attr_check ... inline again?\n");
     using smask_t = primitive_attr_t::skip_mask_t;
 
     if (utils::everyone_is(nullptr, attr, kq_attr, vs_attr))
@@ -204,17 +213,45 @@ static inline status_t sdpa_attr_check(const memory_desc_t *q_desc,
                 attr->has_default_values(attr_mask), VERBOSE_UNSUPPORTED_ATTR);
         // dropout_ok check
         if (!attr->dropout_.has_default_values()) {
-            assert(memory_desc_wrapper(dst_desc).format_kind()
-                    == format_kind::blocked);
+            const memory_desc_wrapper dst_mdw(dst_desc);
+            const bool dst_blocked
+                    = (dst_mdw.format_kind() == format_kind::blocked);
+            if (sdpa_dropout_debug_enabled()) {
+                std::fprintf(stderr,
+                        "[sdpa-utils][dropout] dst_fk=%d dst_dt=%d "
+                        "has_output_mask=%d\n",
+                        (int)dst_mdw.format_kind(), (int)dst_desc->data_type,
+                        (int)attr->dropout_.has_output_mask());
+            }
+            assert(dst_blocked
+                    && "sdpa dropout check: dst format kind must be blocked");
+
+            VCHECK_SDPA_UNIMPL(dst_blocked,
+                    VERBOSE_UNSUPPORTED_DROPOUT);
+
+            if (attr->dropout_.has_output_mask()) {
+                const memory_desc_wrapper mask_mdw(
+                        &attr->dropout_.dropout_desc_);
+                const bool mask_blocked
+                        = (mask_mdw.format_kind() == format_kind::blocked);
+               VCHECK_SDPA_UNIMPL(mask_blocked,
+                        VERBOSE_UNSUPPORTED_DROPOUT);
+                const bool mask_u8
+                        = (attr->dropout_.dropout_desc_.data_type
+                                == data_type::u8);
+               VCHECK_SDPA_UNIMPL(mask_u8,
+                        VERBOSE_UNSUPPORTED_DROPOUT);
+            }
 
             using namespace format_tag;
             // Note: for `offset = 0` keep the legacy logic without the `offset`.
-            VCHECK_SDPA_UNIMPL(memory_desc_matches_one_of_tag(
-                                       *dst_desc, ncdhw, nchw, ncw, nc)
-                            && IMPLICATION(attr->dropout_.has_output_mask(),
-                                    memory_desc_wrapper(dst_desc).similar_to(
-                                            attr->dropout_.dropout_desc_, true,
-                                            false)),
+            const bool dropout_layout_ok
+                    = memory_desc_matches_one_of_tag(*dst_desc, ncdhw, nchw,
+                            ncw, nc)
+                    && IMPLICATION(attr->dropout_.has_output_mask(),
+                            dst_mdw.similar_to(attr->dropout_.dropout_desc_,
+                                    true, false));
+           VCHECK_SDPA_UNIMPL(dropout_layout_ok,
                     VERBOSE_UNSUPPORTED_DROPOUT);
         }
     }
@@ -230,7 +267,6 @@ static inline status_t sdpa_attr_check(
     if (attr && attr->has_default_values()) { return status::success; }
 
     if (attr) {
-        printf("inline sdpa_attr_check... small?\n");
         smask_t attr_mask = smask_t::dropout;
         VCHECK_SDPA_UNIMPL(
                 attr->has_default_values(attr_mask), VERBOSE_UNSUPPORTED_ATTR);
@@ -241,12 +277,25 @@ static inline status_t sdpa_attr_check(
                         &attr->dropout_.dropout_desc_);
                 const bool mask_blocked
                         = (mask_mdw.format_kind() == format_kind::blocked);
+                if (sdpa_dropout_debug_enabled()) {
+                    std::fprintf(stderr,
+                            "[sdpa-utils][dropout-attr-only] mask_fk=%d "
+                            "mask_dt=%d mask_blocked=%d\n",
+                            (int)mask_mdw.format_kind(),
+                            (int)attr->dropout_.dropout_desc_.data_type,
+                            (int)mask_blocked);
+                }
                 assert(mask_blocked
                         && "sdpa dropout check: mask format kind must be blocked");
                 VCHECK_SDPA_UNIMPL(mask_blocked, VERBOSE_UNSUPPORTED_DROPOUT);
 
                 const bool mask_u8 = (attr->dropout_.dropout_desc_.data_type
                         == data_type::u8);
+                if (sdpa_dropout_debug_enabled()) {
+                    std::fprintf(stderr,
+                            "[sdpa-utils][dropout-attr-only] mask_u8=%d\n",
+                            (int)mask_u8);
+                }
                 assert(mask_u8
                         && "sdpa dropout check: mask data_type must be u8");
                 VCHECK_SDPA_UNIMPL(mask_u8, VERBOSE_UNSUPPORTED_DROPOUT);
@@ -262,7 +311,6 @@ static inline sdpa_desc_t create_sdpa_desc(const memory_desc_t *q_md,
         attn_mask_type_t attn_mask_type, alg_kind_t softmax_alg,
         prop_kind_t prop, const primitive_attr_t *kq_attr,
         const primitive_attr_t *vs_attr) {
-    printf("create_sdpa_desc fwd\n");
     auto sdpa_desc = sdpa_desc_t();
     sdpa_desc.primitive_kind = primitive_kind::sdpa;
     sdpa_desc.q_desc = *q_md;

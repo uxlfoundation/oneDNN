@@ -18,6 +18,8 @@
 #define GPU_INTEL_SDPA_MICRO_HPP
 
 #include <assert.h>
+#include <cstdio>
+#include <cstdlib>
 
 #include "common/c_types_map.hpp"
 #include "common/gemm_types.hpp"
@@ -35,6 +37,14 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace sdpa {
+
+static inline bool micro_sdpa_dropout_debug_enabled() {
+        static const bool enabled = []() {
+                const char *v = std::getenv("ONEDNN_SDPA_DROPOUT_DEBUG");
+                return v && v[0] != '\0' && v[0] != '0';
+        }();
+        return enabled;
+}
 
 struct micro_fwd_params_t : trivially_serializable_t<micro_fwd_params_t> {
 

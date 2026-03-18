@@ -846,6 +846,13 @@ static void init_conf_common(conf_t &conf, pd_type *pd) {
     conf.dropout_output_mask = pd->attr()->dropout_.has_output_mask();
     conf.dropout_offset = pd->attr()->dropout_.use_offset_;
     conf.dropout_host_scalars = pd->attr()->dropout_.use_host_scalars_;
+        if (micro_sdpa_dropout_debug_enabled()) {
+                std::fprintf(stderr,
+                                "[micro-sdpa][fwd][conf] dropout=%d output_mask=%d "
+                                "offset=%d host_scalars=%d\n",
+                                (int)conf.dropout, (int)conf.dropout_output_mask,
+                                (int)conf.dropout_offset, (int)conf.dropout_host_scalars);
+        }
     conf.use_systolic_ukernel = pd->use_systolic_ukernel();
 }
 
@@ -1632,7 +1639,15 @@ status_t micro_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
         const auto &dropout_seed = CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_SEED);
         const auto &dropout_offset
                 = CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_OFFSET);
-        arg_list.append(CTX_OUT_STORAGE(DNNL_ARG_ATTR_DROPOUT_MASK));
+        if (micro_sdpa_dropout_debug_enabled()) {
+            std::fprintf(stderr,
+                    "[micro-sdpa][fwd][exec] dropout path active "
+                    "output_mask=%d offset=%d host_scalars=%d\n",
+                    (int)pd()->conf.dropout_output_mask,
+                    (int)pd()->conf.dropout_offset,
+                    (int)pd()->conf.dropout_host_scalars);
+        }
+                arg_list.append(CTX_OUT_STORAGE(DNNL_ARG_ATTR_DROPOUT_MASK));
         if (pd()->conf.dropout_host_scalars) {
             int64_t scalar_seed = 0;
             int64_t scalar_offset = 0;
@@ -1654,12 +1669,23 @@ status_t micro_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
                             &dropout_p);
             CHECK(prob_storage->get_scalar_value(
                     &scalar_prob, sizeof(scalar_prob)));
+                        if (micro_sdpa_dropout_debug_enabled()) {
+                                std::fprintf(stderr,
+                                                "[micro-sdpa][fwd][exec] host scalars "
+                                                "seed=%lld offset=%lld prob=%g\n",
+                                                (long long)scalar_seed, (long long)scalar_offset,
+                                                (double)scalar_prob);
+                        }
             arg_list.append(scalar_seed);
             arg_list.append(scalar_offset);
             arg_list.append(scalar_prob);
         } else {
+                        if (micro_sdpa_dropout_debug_enabled()) {
+                                std::fprintf(stderr,
+                                                "[micro-sdpa][fwd][exec] device scalar tensors used\n");
+                        }
             arg_list.append(dropout_seed);
-            arg_list.append(dropout_offset);
+                        arg_list.append(dropout_offset);
             arg_list.append(dropout_p);
         }
     }

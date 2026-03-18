@@ -36,6 +36,15 @@ bool binaryPostPrefetchEnabled() {
     return (env != nullptr) && (env[0] == '1') && (env[1] == '\0');
 }
 
+int getBinaryPostPrefetchLookahead() {
+    const char *env = std::getenv("BINARY_POST_PREFETCH_LOOKAHEAD");
+    if (env == nullptr) return 0;
+    int val = 0;
+    for (const char *p = env; *p >= '0' && *p <= '9'; p++)
+        val = val * 10 + (*p - '0');
+    return val;
+}
+
 }
 
 
@@ -320,8 +329,9 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
     auto remR = row    && !CO_strategy.padded && strategy.remHandling[LoopM] != RemainderHandling::Ignore;
     auto remC = column && !CO_strategy.padded && strategy.remHandling[LoopN] != RemainderHandling::Ignore;
 
-    // Experimental binary post-op prefetch path.
+    // Experimental binary post-op prefetch path with optional lookahead distance.
     // Keep this path conservative: prefetch only full-tile cases (no m/n remainder masking).
+    // BINARY_POST_PREFETCH_LOOKAHEAD can be set to prefetch further tiles (e.g. =1 for next tile, =2 for tile+2).
     if (binaryPostPrefetchEnabled() && CO_strategy.newDP && !remR && !remC) {
         auto CO_prefetch_strategy = CO_strategy;
         CO_prefetch_strategy.prefetch = true;
@@ -330,9 +340,22 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
         std::vector<GRFRange> CO_prefetch_addrs;
         allocAddrRegs(CO_prefetch_addrs, CO_prefetch_layout, state);
         setupAddr(CO_prefetch_addrs, base, CO_prefetch_layout, ld, strategy, state);
+        
+        // Apply lookahead offset if configured.
+        int lookahead = getBinaryPostPrefetchLookahead();
+        for (int la = 0; la < lookahead; la++) {
+            // Increment by stride to reach lookahead distance.
+            // Use ld stride (leading dimension) for row-wise lookahead advance.
+            if (coColMajor == globalCM)
+                incAddr(CO_prefetch_addrs, ld, int(row), int(column), CO_prefetch_layout, strategy, state);
+            else
+                incAddr(CO_prefetch_addrs, Tco.size(), int(row), int(column), CO_prefetch_layout, strategy, state);
+        }
+        
         prefetchMatrix(CO_prefetch_layout, CO_prefetch_addrs, strategy, state);
         safeReleaseRanges(CO_prefetch_addrs, state);
     }
+
 
     RegisterLayout CO_layout(hw, Tco, cor, coc, CO, CO_strategy, remR, remC, false);
 

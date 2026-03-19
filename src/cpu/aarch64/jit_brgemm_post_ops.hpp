@@ -21,13 +21,11 @@
 #include <memory>
 
 #include "common/c_types_map.hpp"
-#include "common/memory_tracking.hpp"
 #include "common/utils.hpp"
 
 #include "cpu/aarch64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/aarch64/jit_brgemm_primitive_conf.hpp"
 #include "cpu/aarch64/jit_generator.hpp"
-#include "cpu/cpu_engine.hpp"
 
 using namespace Xbyak_aarch64;
 
@@ -995,7 +993,14 @@ private:
             }
         }
 
-        for (int mb_ = 0; mb_ < mb; mb_++) {
+        // Unrolling over mb can result in very large post-op assembly being
+        // generated (see Issue #4089), so branch and loop instead.
+        if (mb > 0) {
+            Label mb_loop;
+            mov_imm(x16, mb);
+
+            L(mb_loop);
+
             loop_by_N(m_block, nb2, nb2_tail, nb_tail);
 
             if (brg.alpha != 0)
@@ -1003,7 +1008,11 @@ private:
                         X_TMP_0);
             add_imm(reg_out, reg_out, out_typesize_ * (m_block * LDD_),
                     X_TMP_0);
+
+            subs(x16, x16, 1);
+            bgt(mb_loop);
         }
+
         if (mb_tail > 0) loop_by_N(mb_tail, nb2, nb2_tail, nb_tail);
 
         add_imm(X_SP, X_SP, stack_space_needed_, X_TMP_0);

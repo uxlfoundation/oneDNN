@@ -26,7 +26,6 @@
 #include "cpu/cpu_primitive.hpp"
 #include "cpu/scale_utils.hpp"
 
-#include "cpu/aarch64/injectors/jit_uni_binary_injector.hpp"
 #include "cpu/aarch64/jit_brgemm_conv.hpp"
 
 namespace dnnl {
@@ -485,20 +484,6 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     brgemm_descriptors_->resize(brgs_sz_);
 
     const auto &p = attr()->post_ops_;
-
-    // TODO: fix failing post ops for bf16 on sve 128
-    const bool is_bf16
-            = src_type == data_type::bf16 && wei_type == data_type::bf16;
-    if (is_bf16 && get_max_cpu_isa() == sve_128) {
-        for (auto const &entry : p.entry_) {
-            const bool is_failing_po = entry.is_eltwise()
-                    && one_of(entry.eltwise.alg,
-                            // these fail due to label offset being too large
-                            alg_kind::eltwise_tanh, alg_kind::eltwise_gelu_tanh,
-                            alg_kind::eltwise_gelu_erf);
-            VDISPATCH_CONV(!is_failing_po, VERBOSE_BAD_ALGORITHM);
-        }
-    }
 
     const int sum_idx = p.find(primitive_kind::sum);
     with_sum = (sum_idx != -1);

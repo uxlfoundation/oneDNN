@@ -50,18 +50,16 @@ static status_t get_cached_kernel(
 }
 
 static uint32_t nan_safe_mask(data_type_t dt) {
-    int mantissa_bits;
     switch (dt) {
-        case data_type::f32: mantissa_bits = 23; break;
-        case data_type::f64: mantissa_bits = 52; break;
-        case data_type::f16: mantissa_bits = 10; break;
-        case data_type::bf16: mantissa_bits = 7; break;
-        case data_type::f8_e5m2: mantissa_bits = 2; break;
-        case data_type::f8_e4m3: mantissa_bits = 3; break;
-        case data_type::e8m0: mantissa_bits = 0; break;
+        case data_type::f32: return 0xFF7FFFFFu;
+        case data_type::f16: return 0xFBFFFBFFu;
+        case data_type::bf16: return 0xFF7FFF7Fu;
+        case data_type::f8_e5m2: return 0xFBFBFBFBu;
+        case data_type::f8_e4m3: return 0xF7F7F7F7u;
+        case data_type::e8m0: return 0xFEFEFEFEu;
+        case data_type::f64: return 0xFFEFFFFFu;
         default: return 0xFFFFFFFFu;
     }
-    return ~((1u << (mantissa_bits % 8)) * 0x01010101u);
 }
 
 status_t fill_random(impl::stream_t *stream, size_t size,
@@ -74,12 +72,9 @@ status_t fill_random(impl::stream_t *stream, size_t size,
     compute::kernel_t kernel;
     CHECK(get_cached_kernel(intel_engine, kernel));
 
-    // Each subgroup (16 work-items) processes 256 bytes (16 * 4 * sizeof(uint)).
-    static constexpr size_t subgroup_size = 16;
-    static constexpr size_t bytes_per_subgroup
-            = subgroup_size * 4 * sizeof(uint32_t);
-    size_t num_subgroups = utils::div_up(size, bytes_per_subgroup);
-    compute::nd_range_t nd_range({num_subgroups * subgroup_size, 1, 1});
+    // Each work-item writes 16 bytes (4 × uint32) via vstore4.
+    static constexpr size_t bytes_per_item = 16;
+    compute::nd_range_t nd_range({utils::div_up(size, bytes_per_item), 1, 1});
     compute::kernel_arg_list_t arg_list;
     arg_list.set(0, *memory->memory_storage(buffer_index));
     arg_list.set(1, seed);

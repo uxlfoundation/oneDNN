@@ -191,7 +191,7 @@ grouped_micro_gemm(const global SRC_DATA_T *src, int ldsrc,
     int ldwei = wei_strides[2] == 1 ? wei_strides[1] : wei_strides[2];
 
 #if WITH_SRC_SCALES
-    src_attr_scales += src_offset.x;
+    src_attr_scales += src_offset.x * ldsrcq;
 #endif
 #if WITH_SRC_ZP
     src_attr_zp += src_offset.x / SRC_ZP_ELEMS_PER_BYTE;

@@ -2273,13 +2273,13 @@ void CopyPlan::planEmulatedHFToF4(CopyInstruction &i)
         ie[2]->simd = simd / 4;
         ie[2]->dst = t0;
         ie[2]->dst.type = y.type;
-        ie[2]->dst.stride = 1;
+        ie[2]->dst.stride = 8;
         ie[2]->src0 = t0;
         ie[2]->src0.type = x.type;
-        ie[2]->src0.stride = 1;
+        ie[2]->src0.stride = 2;
         ie[2]->src1 = t1;
         ie[2]->src1.type = x.type;
-        ie[2]->src1.stride = 1;
+        ie[2]->src1.stride = 2;
         ie[2]->src2.type = DataType::ud;
 
         ie[3]->op = Opcode::mov;

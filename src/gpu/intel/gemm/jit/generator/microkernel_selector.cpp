@@ -430,7 +430,6 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
         if (systolic)
             s.ka_load = (problem.A.layout == MatrixLayout::T) ? (64 / problem.Ta_ext) : 16;
         s.slmA = true;
-
     } else if (problem.A.layout == MatrixLayout::T) {
         s.A.accessType = AccessType::Block2DTranspose;
         s.ka_load = 64.f / ceil(( 1.f * problem.Ta) +
@@ -522,8 +521,11 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
     if (s.wgTile(LoopM) * s.wgTile(LoopN) == 0)
         return false;
 
-    if(s.A.accessType == AccessType::Block2DVNNI)
+    if(s.A.accessType == AccessType::Block2DVNNI) {
         s.ka_load =  s.unroll[LoopN] / problem.Ta_ext;
+    } else if(s.A.accessType == AccessType::Block2DTranspose) {
+        s.ka_load = std::min(s.ka_load, s.unroll[LoopM] * 2);
+    }
 
     s.systolic = systolic;
     if (systolic && hw >= HW::XeHPC)

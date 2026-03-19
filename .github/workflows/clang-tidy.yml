@@ -20,7 +20,7 @@ name: "Clang-Tidy"
 
 on:
   pull_request:
-    types: [opened, edited, synchronize, reopened]
+    types: [opened, synchronize, reopened]
     paths:
       - ".github/automation/aarch64/**"
       - ".github/automation/x64/**"

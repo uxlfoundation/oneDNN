@@ -20,7 +20,7 @@ name: "PR Linters"
 
 on:
   pull_request:
-    types: [opened, edited, synchronize, reopened]
+    types: [opened, synchronize, reopened]
 
 # Declare default permissions as read only.
 permissions: read-all

@@ -202,14 +202,8 @@ status_t interop_kernel_t::check_alignment(
         if (!arg.is_global()) continue;
         auto *mem_storage = static_cast<const memory_storage_t *>(arg.value());
         if (!*mem_storage) continue;
-        auto *sycl_mem_storage
-                = utils::downcast<const xpu::sycl::memory_storage_base_t *>(
-                        mem_storage);
-        if (sycl_mem_storage->memory_kind() != xpu::sycl::memory_kind::usm)
-            continue;
-        auto *m = utils::downcast<const xpu::sycl::usm_memory_storage_t *>(
-                mem_storage);
-        CHECK(compute::kernel_impl_t::check_alignment(m->usm_ptr(), i));
+        CHECK(compute_kernel_impl_t::check_alignment(
+                mem_storage->data_handle(), i));
     }
     return status::success;
 }

@@ -420,6 +420,14 @@ bool post_binary_fusible(
         if (fused_in_off != 0) return false;
     }
 
+    // Disable matmul + binary_sub fusion
+    if (base_op->get_kind() == op_kind::dnnl_matmul
+            && static_cast<dnnl::algorithm>(
+                       bin_op->get_attr<int64_t>(op_attr::alg_kind))
+                    == dnnl::algorithm::binary_sub) {
+        return false;
+    }
+
     return post_binary_fusible_impl(
             base_op, ltw(fused_in).vdims(), ltw(other_in).vdims(), ekind);
 }

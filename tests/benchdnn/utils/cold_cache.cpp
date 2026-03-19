@@ -295,9 +295,12 @@ void cold_cache_t::flush_cache(dnnl_stream_t stream) const {
 
     // Keep initialization separately from a global reference to have an option
     // to clean up that memory.
+    static size_t flush_size = 0;
     static std::once_flag flag;
     std::call_once(flag, [&]() {
-        const dnnl_dims_t dims = {flush_cache_size_};
+        SAFE_V(get_gpu_cache_size(flush_size));
+        if (flush_size == 0) flush_size = (32 << 20); // 32 MB fallback
+        const dnnl_dims_t dims = {(dnnl_dim_t)flush_size};
         flush_cache_memory() = dnn_mem_t(
                 1, dims, dnnl_s8, "a", get_test_engine(), /* prefill = */ true);
     });
@@ -305,7 +308,7 @@ void cold_cache_t::flush_cache(dnnl_stream_t stream) const {
 #if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
         && DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
     DNN_SAFE_V(dnnl_impl_gpu_flush_cache(
-            stream, flush_cache_size_, flush_cache_memory().m_));
+            stream, flush_size, flush_cache_memory().m_));
 #endif
 }
 

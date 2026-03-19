@@ -23,10 +23,11 @@
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 #include "cpu/aarch64/cpu_isa_traits.hpp"
+#include "cpu/aarch64/jit_brgemm_conv.hpp"
+#include "cpu/aarch64/jit_brgemm_conv_comp_pad_kernel.hpp"
+#include "cpu/aarch64/jit_brgemm_conv_utils.hpp"
 #include "cpu/cpu_primitive.hpp"
 #include "cpu/scale_utils.hpp"
-
-#include "cpu/aarch64/jit_brgemm_conv.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -654,7 +655,7 @@ status_t brgemm_convolution_fwd_t<isa>::add_po_kernel(
     bcfg->beta = is_init ? 0 : 1;
     CHECK(safe_ptr_assign(kernels_po_[ker_idx],
             new jit_brgemm_kernel_post_ops_t<isa>(jcp, *bcfg, *_pd->attr())));
-    kernels_po_[ker_idx]->create_kernel();
+    kernels_po_.at(ker_idx)->create_kernel();
     return status::success;
 }
 
@@ -675,7 +676,7 @@ void brgemm_convolution_fwd_t<isa>::add_po_kernels(
         if (brgs[brg_idx]) {
             auto init_cfg = *(brgs[brg_idx]);
             auto ker_init_idx = get_ker_po_idx(init_bcast_dim - 1, false, i_N);
-            if (init_cfg.load_dim > 0 && kernels_po_[ker_init_idx] == nullptr) {
+            if (init_cfg.load_dim > 0 && kernels_po_.count(ker_init_idx) == 0) {
                 init_cfg.bcast_dim = init_bcast_dim;
                 add_po_kernel(&init_cfg, ker_init_idx, true);
             }
@@ -686,7 +687,7 @@ void brgemm_convolution_fwd_t<isa>::add_po_kernels(
         if (brgs[brg_idx]) {
             auto po_cfg = *(brgs[brg_idx]);
             auto ker_po_idx = get_ker_po_idx(po_bcast_dim - 1, true, i_N);
-            if (po_cfg.load_dim > 0 && kernels_po_[ker_po_idx] == nullptr) {
+            if (po_cfg.load_dim > 0 && kernels_po_.count(ker_po_idx) == 0) {
                 po_cfg.bcast_dim = po_bcast_dim;
                 add_po_kernel(&po_cfg, ker_po_idx, false);
             }
@@ -811,14 +812,6 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
             ? 1
             : 0;
     int i_init_end = 2;
-
-    int num_po_kernels = nstl::max(jcp.M, jcp.M_tail);
-    kernels_po_.resize(num_po_kernels * 2 * 2);
-    for (int i = 0; i < num_po_kernels; i++) {
-        for_(int i_init = 0; i_init < 2; i_init++)
-        for (int i_N = 0; i_N < 2; i_N++)
-            kernels_po_[get_ker_po_idx(i, i_init, i_N)] = nullptr;
-    }
 
     if (jcp.exec_type == exec_trans) {
         CHECK(safe_ptr_assign(copy_to_pbuffer_,
@@ -1381,7 +1374,7 @@ void brgemm_convolution_fwd_t<isa>::perform_outwork(
     auto call_outwork_ker = [&](bool is_postwork, bool has_postcomp,
                                     int ow_pw_s, int ow_pw_l) {
         auto ker_po_idx = get_ker_po_idx(ow_pw_l - 1, is_postwork, is_oc_tail);
-        const auto outwork_ker = kernels_po_[ker_po_idx].get();
+        const auto outwork_ker = kernels_po_.at(ker_po_idx).get();
         assert(outwork_ker != nullptr && ow_pw_l == outwork_ker->brg.bcast_dim);
         if (is_postwork) {
             p.apply_comp = has_postcomp;

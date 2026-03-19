@@ -20,25 +20,17 @@
 #define CPU_AARCH64_JIT_BRGEMM_CONV_HPP
 
 #include <array>
+#include <map>
 #include <unordered_map>
 
 #include "common/c_types_map.hpp"
-#include "common/dnnl_thread.hpp"
 #include "common/memory_tracking.hpp"
 #include "common/primitive.hpp"
 #include "common/utils.hpp"
-
-#include "cpu/cpu_convolution_pd.hpp"
-#include "cpu/platform.hpp"
-
-#include "cpu/aarch64/brgemm/brgemm.hpp"
 #include "cpu/aarch64/brgemm/brgemm_containers.hpp"
-#include "cpu/aarch64/cpu_barrier.hpp"
-#include "cpu/aarch64/cpu_reducer.hpp"
-#include "cpu/aarch64/jit_brgemm_conv_comp_pad_kernel.hpp"
 #include "cpu/aarch64/jit_brgemm_conv_trans_kernel.hpp"
-#include "cpu/aarch64/jit_brgemm_conv_utils.hpp"
 #include "cpu/aarch64/jit_brgemm_post_ops.hpp"
+#include "cpu/cpu_convolution_pd.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -259,7 +251,8 @@ private:
 
     brgemm_containers::brgemm_kernel_container_t brgemm_kernels_;
 
-    std::vector<std::unique_ptr<jit_brgemm_kernel_post_ops_t<isa>>> kernels_po_;
+    std::map<size_t, std::unique_ptr<jit_brgemm_kernel_post_ops_t<isa>>>
+            kernels_po_;
     std::unique_ptr<jit_sve_core_brgemm_conv_trans_kernel::
                     jit_sve_core_brgemm_conv_trans_kernel_t>
             copy_to_pbuffer_;

@@ -67,64 +67,40 @@ status_t rvv_layer_normalization_fwd_t::execute_forward(
     const float eps = pd()->desc()->layer_norm_epsilon;
     const bool save_stats = pd()->is_training();
     const bool calculate_stats = !pd()->stats_are_src();
-    const bool use_fused_stats = calculate_stats;
+
+    if (!calculate_stats) {
+        parallel_nd(N, [&](dim_t n) {
+            const float *src_row = src + n * C;
+            float *dst_row = dst + n * C;
+            const float mean_val = mean_ptr[n];
+            const float inv_std = 1.f / sqrtf(variance_ptr[n] + eps);
+
+            jit_rvv_layernorm_data_kernel_t::call_params_t data_p;
+            data_p.src = src_row;
+            data_p.dst = dst_row;
+            data_p.scale = scale;
+            data_p.shift = shift;
+            data_p.len = C;
+            data_p.mean = mean_val;
+            data_p.inv_std = inv_std;
+            (*data_kernel_)(&data_p);
+        });
+        return status::success;
+    }
 
     parallel_nd(N, [&](dim_t n) {
         const float *src_row = src + n * C;
         float *dst_row = dst + n * C;
-        if (!calculate_stats) {
-            float mean_val = mean_ptr[n];
-            float var_val = variance_ptr[n];
-            jit_rvv_layernorm_data_kernel_t::call_params_t data_p;
-            data_p.src = src_row;
-            data_p.dst = dst_row;
-            data_p.scale = scale;
-            data_p.shift = shift;
-            data_p.len = C;
-            data_p.mean = mean_val;
-            data_p.inv_std = 1.f / sqrtf(var_val + eps);
-            (*data_kernel_)(&data_p);
-        } else if (use_fused_stats) {
-            jit_rvv_layernorm_fused_kernel_t::call_params_t fused_p;
-            fused_p.src = src_row;
-            fused_p.dst = dst_row;
-            fused_p.scale = scale;
-            fused_p.shift = shift;
-            fused_p.len = C;
-            fused_p.eps = eps;
-            fused_p.mean = save_stats ? mean_ptr + n : nullptr;
-            fused_p.variance = save_stats ? variance_ptr + n : nullptr;
-            (*fused_kernel_)(&fused_p);
-        } else {
-            double sum = 0.0;
-            double sumsq = 0.0;
-            for (dim_t c = 0; c < C; ++c) {
-                const double s = src_row[c];
-                sum += s;
-                sumsq += s * s;
-            }
-
-            const double mean_d = sum / static_cast<double>(C);
-            double var_d = sumsq / static_cast<double>(C) - mean_d * mean_d;
-            if (var_d < 0 && var_d > -1e-6) var_d = 0.0;
-
-            const float mean_val = static_cast<float>(mean_d);
-            const float var_val = static_cast<float>(var_d);
-            if (save_stats) {
-                mean_ptr[n] = mean_val;
-                variance_ptr[n] = var_val;
-            }
-
-            jit_rvv_layernorm_data_kernel_t::call_params_t data_p;
-            data_p.src = src_row;
-            data_p.dst = dst_row;
-            data_p.scale = scale;
-            data_p.shift = shift;
-            data_p.len = C;
-            data_p.mean = mean_val;
-            data_p.inv_std = 1.f / sqrtf(var_val + eps);
-            (*data_kernel_)(&data_p);
-        }
+        jit_rvv_layernorm_fused_kernel_t::call_params_t fused_p;
+        fused_p.src = src_row;
+        fused_p.dst = dst_row;
+        fused_p.scale = scale;
+        fused_p.shift = shift;
+        fused_p.len = C;
+        fused_p.eps = eps;
+        fused_p.mean = save_stats ? mean_ptr + n : nullptr;
+        fused_p.variance = save_stats ? variance_ptr + n : nullptr;
+        (*fused_kernel_)(&fused_p);
     });
     return status::success;
 }

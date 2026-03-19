@@ -17,51 +17,57 @@
 #ifndef CPU_RV64_RVV_WINOGRAD_CONVOLUTION_HPP
 #define CPU_RV64_RVV_WINOGRAD_CONVOLUTION_HPP
 
+#include <memory>
+
 #include "common/broadcast_strategy.hpp"
 #include "common/c_types_map.hpp"
 #include "common/memory_tracking.hpp"
 #include "common/primitive.hpp"
+#include "common/resource.hpp"
 #include "common/utils.hpp"
 
 #include "cpu/binary_injector_utils.hpp"
 #include "cpu/cpu_convolution_pd.hpp"
 #include "cpu/primitive_attr_postops.hpp"
 
+#include "cpu/rv64/brgemm/brgemm.hpp"
+#include "cpu/rv64/cpu_isa_traits.hpp"
+
 namespace dnnl {
 namespace impl {
 namespace cpu {
 namespace rv64 {
 
-// Winograd domain specification (ARM-style)
+// Winograd domain specification for GEMM-based Winograd convolution.
+// Single-core execution: processes batches sequentially with
+// local input/output buffers to keep working set in cache.
 struct WinogradDomainSpec {
-    // Matrix dimensions for GEMM: C[M][N] = A[M][K] * B[K][N]
-    dim_t M; // Total tiles = ceil(oh/2) * ceil(ow/2)
+    // Matrix dimensions for brgemm: C[OC×tiles] = A[OC×IC] × B[IC×tiles]
+    dim_t M; // Total tiles per batch = ceil(oh/2) * ceil(ow/2)
     dim_t K; // Input channels (IC)
     dim_t N; // Output channels (OC)
 
     dim_t n_gemms; // = 16 (Winograd F(2×2, 3×3) has 16 transformed elements)
     dim_t n_batches; // = mb (batch size)
 
-    // 64-byte aligned strides (16 floats per cache line)
-    dim_t input_ld_row; // Leading dimension for input rows
-    dim_t input_ld_batch; // Leading dimension for batches
-    dim_t input_ld_matrix; // Leading dimension for matrices (16 GEMMs)
+    // Weight layout: [16][IC_rounded × OC_rounded] col-major per element
+    dim_t weight_ld_row; // LDA for brgemm = oc_rounded
+    dim_t weight_ld_matrix; // Per-element size = oc_rounded × ic_rounded
+    dim_t weight_ic_rounded; // Round up IC for cache-line alignment
+    dim_t weight_oc_rounded; // Round up OC for cache-line alignment
 
-    dim_t weight_ld_row; // Leading dimension for weight rows
-    dim_t weight_ld_matrix; // Leading dimension for matrices (16 GEMMs)
+    // Input buffer: [16][tiles × IC_rounded] per element
+    dim_t input_ld_row; // LDB for brgemm = ic_rounded
+    dim_t input_ld_batch; // Per-element stride = tiles × ic_rounded
 
-    // Rounded dimensions for weight transform buffer allocation
-    dim_t weight_ic_rounded; // Round up K for IC dimension
-    dim_t weight_oc_rounded; // Round up N for OC dimension
+    // Output buffer: [16][tiles × OC] per element
+    dim_t output_ld_row; // LDC for brgemm = OC
+    dim_t output_ld_batch; // Per-element stride = tiles × OC
 
-    dim_t output_ld_row; // Leading dimension for output rows
-    dim_t output_ld_batch; // Leading dimension for batches
-    dim_t output_ld_matrix; // Leading dimension for matrices (16 GEMMs)
-
-    // Matrix sizes in bytes
-    size_t input_matrix_size; // Size of transformed input buffer
-    size_t weight_matrix_size; // Size of transformed weights buffer
-    size_t output_matrix_size; // Size of Winograd domain output buffer
+    // Buffer sizes in floats
+    size_t weight_matrix_size; // Total weight buffer = 16 × weight_ld_matrix
+    size_t V_buffer_size; // Input buffer size
+    size_t M_buffer_size; // Output buffer size
 };
 
 struct rvv_winograd_conf_t {
@@ -79,7 +85,6 @@ struct rvv_winograd_conf_t {
 
     // Winograd transform parameters
     dim_t mb; // Batch size
-    dim_t nthr; // Number of threads
 
     // Winograd domain specification for GEMM-based execution
     WinogradDomainSpec wspec;
@@ -89,7 +94,29 @@ status_t rvv_winograd_init_conf(rvv_winograd_conf_t &conf,
         memory_tracking::registrar_t &scratchpad, const convolution_desc_t &cd,
         const memory_desc_t &src_md, const memory_desc_t &weights_md,
         const memory_desc_t &dst_md, const memory_desc_t &bias_md,
-        const primitive_attr_t &attr, int max_threads);
+        const primitive_attr_t &attr);
+
+// Resource for persistent weight transform buffer.
+// Weights are transformed on first execute() and cached for reuse.
+struct rvv_wino_resource_t : public resource_t {
+    rvv_wino_resource_t() = default;
+
+    status_t configure(size_t weight_buf_size) {
+        weight_buf_.reset(new float[weight_buf_size]);
+        if (!weight_buf_) return status::out_of_memory;
+        return status::success;
+    }
+
+    float *get_weight_buffer() const { return weight_buf_.get(); }
+    bool weights_valid() const { return weights_valid_; }
+    void set_weights_valid() const { weights_valid_ = true; }
+
+    DNNL_DISALLOW_COPY_AND_ASSIGN(rvv_wino_resource_t);
+
+private:
+    std::unique_ptr<float[]> weight_buf_;
+    mutable bool weights_valid_ = false;
+};
 
 struct rvv_wino_convolution_fwd_t : public primitive_t {
     struct pd_t : public cpu_convolution_fwd_pd_t {
@@ -101,6 +128,7 @@ struct rvv_wino_convolution_fwd_t : public primitive_t {
         status_t init(engine_t *engine) {
             using namespace data_type;
 
+            VDISPATCH_CONV(mayiuse(v), VERBOSE_UNSUPPORTED_ISA);
             VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
 
             // Check data types: f32 only
@@ -155,29 +183,44 @@ struct rvv_wino_convolution_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_FEATURE,
                     "input spatial dimensions must be <= 112 for winograd");
 
-            // Check channels: ic >= 128, oc >= 128
+            // Check channels: IC >= 128 && OC >= 128
             // Small channels (e.g. IC=OC=64) cause regression vs gemm:rvv
             // due to Winograd transform overhead and small GEMM dimensions.
+            // Layers with IC or OC < 128 (e.g. VGG conv3_1 IC=128/OC=96)
+            // regress vs brgemm:rvv, so threshold stays at 128.
             VDISPATCH_CONV(src_d.dims()[1] >= 128 && dst_d.dims()[1] >= 128,
                     VERBOSE_UNSUPPORTED_FEATURE,
                     "ic and oc must be >= 128 for winograd");
 
-            // Thread-count-adaptive output spatial check.
-            // Single-core: Winograd's 2.25x FLOPs reduction dominates for
-            //   all layers with sufficient channels. Dispatch with oh >= 7.
-            // Multi-core: Winograd's 16 small GEMMs (K=IC) have lower
-            //   arithmetic intensity than im2col's single GEMM (K=IC*9).
-            //   Only large-spatial layers (oh >= 14) have enough tiles per
-            //   thread to compensate via the FLOPs advantage.
-            const int max_threads = dnnl_get_max_threads();
-            const dim_t min_spatial = (max_threads > 1) ? 14 : 7;
-            VDISPATCH_CONV(dst_d.dims()[2] >= min_spatial
-                            && dst_d.dims()[3] >= min_spatial,
+            // Winograd dispatch is restricted to single-core execution.
+            // Sequential batch processing keeps working set in L2 cache and
+            // gives 1.1-1.4x speedup over brgemm:rvv on single-core.
+            // On multi-core, brgemm's spatial parallelism is superior.
+            VDISPATCH_CONV(dnnl_get_max_threads() <= 1,
+                    VERBOSE_UNSUPPORTED_FEATURE,
+                    "winograd only beneficial for single-thread execution");
+
+            // Minimum output spatial dimensions for Winograd benefit
+            VDISPATCH_CONV(dst_d.dims()[2] >= 7 && dst_d.dims()[3] >= 7,
                     VERBOSE_UNSUPPORTED_FEATURE,
                     "output spatial dimensions too small for winograd");
             auto scratchpad = scratchpad_registry().registrar();
             CHECK(rvv_winograd_init_conf(conf_, scratchpad, *desc(), src_md_,
-                    weights_md_, dst_md_, bias_md_, attr_, max_threads));
+                    weights_md_, dst_md_, bias_md_, attr_));
+
+            // Create brgemm kernel for Winograd GEMM.
+            // col-major: C[OC×tiles] = A[OC×IC] × B[IC×tiles]
+            {
+                brgemm_desc_t brg_desc;
+                CHECK(brgemm_desc_init(&brg_desc, v, brgemm_strd,
+                        data_type::f32, data_type::f32, brgemm_col_major, 1.0f,
+                        0.0f, conf_.wspec.weight_ld_row,
+                        conf_.wspec.input_ld_row, conf_.wspec.N, conf_.wspec.N,
+                        conf_.wspec.M, conf_.wspec.K));
+                brgemm_kernel_t *kernel = nullptr;
+                CHECK(brgemm_kernel_create(&kernel, brg_desc));
+                brg_kernel_.reset(kernel);
+            }
 
             if (desc()->alg_kind == alg_kind::convolution_auto) {
                 set_default_alg_kind(alg_kind::convolution_winograd);
@@ -187,6 +230,7 @@ struct rvv_wino_convolution_fwd_t : public primitive_t {
         }
 
         rvv_winograd_conf_t conf_ = {};
+        std::shared_ptr<brgemm_kernel_t> brg_kernel_;
 
     protected:
         bool set_default_formats() {
@@ -206,10 +250,19 @@ struct rvv_wino_convolution_fwd_t : public primitive_t {
         }
     };
 
-    rvv_wino_convolution_fwd_t(const pd_t *apd)
-        : primitive_t(apd), post_ops_(nullptr) {}
+    rvv_wino_convolution_fwd_t(const pd_t *apd) : primitive_t(apd) {}
 
     using data_t = typename prec_traits_t<data_type::f32>::type;
+
+    status_t create_resource(
+            engine_t *engine, resource_mapper_t &mapper) const override {
+        if (mapper.has_resource(this)) return status::success;
+        auto r = utils::make_unique<rvv_wino_resource_t>();
+        if (!r) return status::out_of_memory;
+        CHECK(r->configure(pd()->conf_.wspec.weight_matrix_size));
+        mapper.add(this, std::move(r));
+        return status::success;
+    }
 
     status_t execute(const exec_ctx_t &ctx) const override {
         return execute_forward(ctx);
@@ -218,17 +271,7 @@ struct rvv_wino_convolution_fwd_t : public primitive_t {
 private:
     status_t execute_forward(const exec_ctx_t &ctx) const;
 
-    // GEMM-based execution: process all tiles in batch
-    status_t execute_input_transform(
-            const data_t *src, float *transformed_input) const;
-    status_t execute_gemm_batched(const float *transformed_input,
-            const float *transformed_weights, float *winograd_output) const;
-    status_t execute_output_transform(const float *winograd_output,
-            const data_t *bias, data_t *dst) const;
-
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-
-    std::unique_ptr<ref_post_ops_t> post_ops_;
 };
 
 } // namespace rv64

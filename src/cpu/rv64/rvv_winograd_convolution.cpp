@@ -17,7 +17,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
-#include <vector>
 #include <riscv_vector.h>
 
 #include "common/c_types_map.hpp"
@@ -25,7 +24,6 @@
 #include "common/nstl.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
-#include "cpu/gemm/gemm.hpp"
 #include "cpu/platform.hpp"
 #include "cpu/rv64/rvv_winograd_convolution.hpp"
 
@@ -100,26 +98,18 @@ __attribute__((unused)) static void compute_filter_transform_3x3_to_4x4(
 
 // Pre-compute filter transform with GEMM-layout: 3x3 -> 4x4
 // Transform = G * filter * G^T
-// Output layout: [16][ic_rounded][oc_rounded] for BLAS N,N column-major access
-// Column-major interpretation: OC x IC matrix with ld = oc_rounded
-// Pads with zeros for non-multiple-of-n dimensions
+// Output layout: [16][ic_rounded][oc_rounded] for brgemm col-major access
+// Computes directly without intermediate allocation.
 void compute_filter_transform_3x3_to_4x4_gemm_layout(const float *filter,
         float *transformed, int oc, int ic, int ic_rounded, int oc_rounded) {
 
-    for (size_t i = 0; i < static_cast<size_t>(16 * ic_rounded * oc_rounded);
-            i++) {
-        transformed[i] = 0.0f;
-    }
+    std::memset(transformed, 0, 16 * ic_rounded * oc_rounded * sizeof(float));
 
-    float *temp_std = static_cast<float *>(
-            impl::malloc(oc * ic * 16 * sizeof(float), 64));
-
-    // Step 1: Compute Winograd transform into standard [oc][ic][16] layout
     for (int oc_idx = 0; oc_idx < oc; oc_idx++) {
         for (int ic_idx = 0; ic_idx < ic; ic_idx++) {
             const float *f = &filter[(oc_idx * ic + ic_idx) * 9];
-            float *out = &temp_std[(oc_idx * ic + ic_idx) * 16];
 
+            // Step 1: temp = G * filter (4x3)
             float temp[4][3];
             for (int i = 0; i < 4; i++) {
                 for (int j = 0; j < 3; j++) {
@@ -131,31 +121,22 @@ void compute_filter_transform_3x3_to_4x4_gemm_layout(const float *filter,
                 }
             }
 
+            // Step 2: result = temp * G^T, store directly to GEMM layout
+            // Layout: [elem][ic_idx * oc_rounded + oc_idx]
             for (int i = 0; i < 4; i++) {
                 for (int j = 0; j < 4; j++) {
                     float sum = 0.0f;
                     for (int k = 0; k < 3; k++) {
                         sum += temp[i][k] * G[j][k];
                     }
-                    out[i * 4 + j] = sum;
+                    int elem = i * 4 + j;
+                    transformed[elem * oc_rounded * ic_rounded
+                            + ic_idx * oc_rounded + oc_idx]
+                            = sum;
                 }
             }
         }
     }
-
-    // Step 2: Rearrange to [elem][ic][oc] row-major layout
-    // Column-major: OC x IC with ld = oc_rounded (for BLAS N,N path)
-    for (int elem = 0; elem < 16; elem++) {
-        for (int ic_idx = 0; ic_idx < ic; ic_idx++) {
-            for (int oc_idx = 0; oc_idx < oc; oc_idx++) {
-                transformed[elem * oc_rounded * ic_rounded + ic_idx * oc_rounded
-                        + oc_idx]
-                        = temp_std[oc_idx * ic * 16 + ic_idx * 16 + elem];
-            }
-        }
-    }
-
-    impl::free(temp_std);
 }
 
 // RVV-optimized Winograd input transform: d = B^T * input_tile * B (4x4 -> 4x4)
@@ -247,7 +228,7 @@ status_t rvv_winograd_init_conf(rvv_winograd_conf_t &conf,
         memory_tracking::registrar_t &scratchpad, const convolution_desc_t &cd,
         const memory_desc_t &src_md, const memory_desc_t &weights_md,
         const memory_desc_t &dst_md, const memory_desc_t &bias_md,
-        const primitive_attr_t &attr, int max_threads) {
+        const primitive_attr_t &attr) {
     using namespace prop_kind;
 
     const memory_desc_wrapper src_d(&src_md);
@@ -279,8 +260,6 @@ status_t rvv_winograd_init_conf(rvv_winograd_conf_t &conf,
 
     conf.with_bias = cd.bias_desc.data_type != data_type::undef;
 
-    conf.nthr = max_threads;
-
     // Compute Winograd domain specification for GEMM-based execution
     constexpr dim_t CACHE_LINE_SIZE = platform::get_cache_line_size();
     constexpr dim_t CACHE_LINE_FLOATS = CACHE_LINE_SIZE / sizeof(float); // 16
@@ -305,37 +284,29 @@ status_t rvv_winograd_init_conf(rvv_winograd_conf_t &conf,
             = conf.wspec.weight_oc_rounded * conf.wspec.weight_ic_rounded;
 
     // Input matrix: A[K][M] column-major where K=IC, M=tiles
-    // A[k][m] stored as A[m * lda + k] where lda = round_up(K, CACHE_LINE_FLOATS)
+    // Input buffer per thread: [16][tile_chunk × IC_rounded] per element
     conf.wspec.input_ld_row
-            = round_up(conf.wspec.K, CACHE_LINE_FLOATS); // lda = K rounded
+            = round_up(conf.wspec.K, CACHE_LINE_FLOATS); // LDB = IC_rounded
     conf.wspec.input_ld_batch
-            = conf.wspec.input_ld_row * conf.wspec.M; // M columns per batch
-    conf.wspec.input_ld_matrix
-            = conf.wspec.input_ld_batch * conf.wspec.n_batches;
+            = conf.wspec.input_ld_row * conf.wspec.M; // per-elem stride
 
-    // Output matrix: C^T[M][N] row-major where M=tiles, N=OC
-    // GEMM computes C^T where C^T[m][n] = C[n][m]
-    // C^T[m][n] stored as C^T[m * N + n]
-    conf.wspec.output_ld_row = conf.wspec.N; // N columns per row of C^T
+    // Output buffer per thread: [16][tiles x OC] per element
+    conf.wspec.output_ld_row = conf.wspec.N; // LDC = OC
     conf.wspec.output_ld_batch
-            = conf.wspec.output_ld_row * conf.wspec.M; // M rows per batch
-    conf.wspec.output_ld_matrix
-            = conf.wspec.output_ld_batch * conf.wspec.n_batches;
+            = conf.wspec.output_ld_row * conf.wspec.M; // per-elem stride
 
-    // Matrix sizes in floats
+    // Buffer sizes in floats
     conf.wspec.weight_matrix_size
             = conf.wspec.n_gemms * conf.wspec.weight_ld_matrix;
-    conf.wspec.input_matrix_size
-            = conf.wspec.n_gemms * conf.wspec.input_ld_matrix;
-    conf.wspec.output_matrix_size
-            = conf.wspec.n_gemms * conf.wspec.output_ld_matrix;
+    conf.wspec.V_buffer_size = conf.wspec.n_gemms * conf.wspec.input_ld_batch;
+    conf.wspec.M_buffer_size = conf.wspec.n_gemms * conf.wspec.output_ld_batch;
 
-    // GEMM-layout scratchpad allocation
+    // Scratchpad: V and M buffers for single-thread execution
+    // Weight buffer is in persistent resource_t (not scratchpad)
     using namespace memory_tracking::names;
 
-    scratchpad.book<float>(key_wino_U, conf.wspec.weight_matrix_size);
-    scratchpad.book<float>(key_wino_V, conf.wspec.input_matrix_size);
-    scratchpad.book<float>(key_wino_M, conf.wspec.output_matrix_size);
+    scratchpad.book<float>(key_wino_V, conf.wspec.V_buffer_size);
+    scratchpad.book<float>(key_wino_M, conf.wspec.M_buffer_size);
 
     return status::success;
 }
@@ -350,236 +321,116 @@ status_t rvv_wino_convolution_fwd_t::execute_forward(
 
     const auto &conf = pd()->conf_;
     const auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto *brg_kernel = pd()->brg_kernel_.get();
+
+    // Get persistent weight buffer from resource (cached across execute calls)
+    auto *wino_resource
+            = ctx.get_resource_mapper()->get<rvv_wino_resource_t>(this);
+    float *transformed_weights = wino_resource->get_weight_buffer();
+
+    // Transform weights on first execute, cache for subsequent calls
+    if (!wino_resource->weights_valid()) {
+        compute_filter_transform_3x3_to_4x4_gemm_layout(weights,
+                transformed_weights, conf.wspec.N, conf.wspec.K,
+                conf.wspec.weight_ic_rounded, conf.wspec.weight_oc_rounded);
+        wino_resource->set_weights_valid();
+    }
 
     using namespace memory_tracking::names;
-    float *transformed_weights = scratchpad.template get<float>(key_wino_U);
-    float *transformed_input = scratchpad.template get<float>(key_wino_V);
-    float *winograd_output = scratchpad.template get<float>(key_wino_M);
+    float *V = scratchpad.template get<float>(key_wino_V);
+    float *M = scratchpad.template get<float>(key_wino_M);
 
-    // Phase 1: Weight transform
-    compute_filter_transform_3x3_to_4x4_gemm_layout(weights,
-            transformed_weights, conf.wspec.N, conf.wspec.K,
-            conf.wspec.weight_ic_rounded, conf.wspec.weight_oc_rounded);
-
-    // Phase 2: Input transform
-    CHECK(execute_input_transform(src, transformed_input));
-
-    // Phase 3: Batched GEMM (16 independent matrix multiplications)
-    CHECK(execute_gemm_batched(
-            transformed_input, transformed_weights, winograd_output));
-
-    // Phase 4: Output transform
-    CHECK(execute_output_transform(winograd_output, bias, dst));
-
-    return status::success;
-}
-
-status_t rvv_wino_convolution_fwd_t::execute_input_transform(
-        const data_t *src, float *transformed_input) const {
-
-    const auto &conf = pd()->conf_;
+    // Sequential batch processing: input transform → GEMM → output transform
+    // per batch, keeping working set in L2 cache.
     const dim_t nb_oh = (conf.oh + 1) / 2;
     const dim_t nb_ow = (conf.ow + 1) / 2;
     const dim_t total_tiles = nb_oh * nb_ow;
+    const dim_t input_ld_row = conf.wspec.input_ld_row;
+    const dim_t V_elem_stride = conf.wspec.input_ld_batch;
+    const dim_t M_elem_stride = conf.wspec.output_ld_batch;
 
-    // Parallelize over tiles
-    parallel(conf.nthr, [&](const int ithr, const int nthr) {
-        dim_t start = 0, end = 0;
-        balance211(conf.mb * total_tiles, nthr, ithr, start, end);
+    for (dim_t mb_idx = 0; mb_idx < conf.mb; mb_idx++) {
+        const float *src_batch = src + mb_idx * conf.ic * conf.ih * conf.iw;
 
-        for (dim_t iwork = start; iwork < end; ++iwork) {
-            const dim_t mb_idx = iwork / total_tiles;
-            const dim_t tile_idx = iwork % total_tiles;
+        // Step 1: Input transform for this batch
+        for (dim_t tile_idx = 0; tile_idx < total_tiles; tile_idx++) {
             const dim_t oh_tile = tile_idx / nb_ow;
             const dim_t ow_tile = tile_idx % nb_ow;
-            const dim_t oh_start = oh_tile * 2;
-            const dim_t ow_start = ow_tile * 2;
+            const dim_t oh_s = oh_tile * 2;
+            const dim_t ow_s = ow_tile * 2;
 
-            const float *src_base = src + mb_idx * conf.ic * conf.ih * conf.iw;
-
-            // Transform each input channel's 4x4 tile
-            // Output layout: transformed_input[elem][batch][k][m]
             for (dim_t ic_idx = 0; ic_idx < conf.ic; ic_idx++) {
                 float input_tile[16];
                 for (dim_t i = 0; i < 4; i++) {
-                    dim_t ih_idx = oh_start + i - conf.pad_t;
+                    dim_t ih_idx = oh_s + i - conf.pad_t;
                     for (dim_t j = 0; j < 4; j++) {
-                        dim_t iw_idx = ow_start + j - conf.pad_l;
+                        dim_t iw_idx = ow_s + j - conf.pad_l;
                         if (ih_idx >= 0 && ih_idx < conf.ih && iw_idx >= 0
                                 && iw_idx < conf.iw) {
-                            size_t offset = ic_idx * conf.ih * conf.iw
-                                    + ih_idx * conf.iw + iw_idx;
-                            input_tile[i * 4 + j] = src_base[offset];
+                            input_tile[i * 4 + j]
+                                    = src_batch[ic_idx * conf.ih * conf.iw
+                                            + ih_idx * conf.iw + iw_idx];
                         } else {
                             input_tile[i * 4 + j] = 0.0f;
                         }
                     }
                 }
 
-                // Winograd transform this 4x4 tile
                 float transformed[16];
                 winograd_input_transform_4x4(input_tile, transformed);
 
-                // Store in GEMM layout: transformed_input[elem][batch][m][k]
-                // where m=tile_idx, k=ic_idx
-                const dim_t vl_max
-                        = static_cast<dim_t>(__riscv_vsetvlmax_e32m1());
-                for (int elem = 0; elem < 16; elem += vl_max) {
-                    const dim_t vl
-                            = (elem + vl_max <= 16) ? vl_max : (16 - elem);
-
-                    float *dst_base = transformed_input
-                            + elem * conf.wspec.input_ld_matrix
-                            + mb_idx * conf.wspec.input_ld_batch
-                            + tile_idx * conf.wspec.input_ld_row + ic_idx;
-
-                    // Scatter: source is contiguous but dest is strided
-                    // Use scalar loop since scatter cannot be vectorized
-                    for (dim_t i = 0; i < vl; i++) {
-                        dst_base[i * conf.wspec.input_ld_matrix]
-                                = transformed[elem + i];
-                    }
+                for (int elem = 0; elem < 16; elem++) {
+                    V[elem * V_elem_stride + tile_idx * input_ld_row + ic_idx]
+                            = transformed[elem];
                 }
             }
         }
-    });
 
-    return status::success;
-}
-
-status_t rvv_wino_convolution_fwd_t::execute_gemm_batched(
-        const float *transformed_input, const float *transformed_weights,
-        float *winograd_output) const {
-
-    const auto &conf = pd()->conf_;
-
-    // Combine all batches into one large GEMM per Winograd element.
-    // BLAS column-major: C = A * B (transa='N', transb='N')
-    //   A = weights: OC×IC col-major with lda = oc_rounded
-    //   B = input:   IC×M_total col-major with ldb = ic_rounded
-    //   C = output:  OC×M_total col-major with ldc = OC
-    const dim_t M_total = conf.wspec.M * conf.mb;
-    const dim_t K = conf.wspec.K;
-    const dim_t N = conf.wspec.N;
-    const float alpha = 1.0f;
-    const float beta = 0.0f;
-    const dim_t lda = conf.wspec.weight_ld_row;
-    const dim_t ldb = conf.wspec.input_ld_row;
-    const dim_t ldc = N;
-
-    // Tile-partitioned parallelism: partition the tile dimension (M_total)
-    // across threads. Each thread processes ALL 16 Winograd elements for its
-    // tile chunk. This gives:
-    // 1. Single parallel region (vs 16 separate multi-threaded GEMM calls
-    //    with 16× barrier overhead)
-    // 2. Weight matrix (A) reused across all 16 elements → stays in cache
-    // 3. No cross-thread contention on output buffers
-    // 4. Good scaling for both small and large GEMM sizes
-    status_t st = status::success;
-    parallel(conf.nthr, [&](const int ithr, const int nthr) {
-        dim_t n_start = 0, n_end = 0;
-        balance211(M_total, nthr, ithr, n_start, n_end);
-        const dim_t my_n = n_end - n_start;
-        if (my_n <= 0) return;
-
+        // Step 2: GEMM using brgemm kernel (16 elements)
         for (int elem = 0; elem < 16; elem++) {
             const float *A_weights
                     = transformed_weights + elem * conf.wspec.weight_ld_matrix;
-            const float *B_input = transformed_input
-                    + elem * conf.wspec.input_ld_matrix + n_start * ldb;
-            float *C_output = winograd_output
-                    + elem * conf.wspec.output_ld_matrix + n_start * ldc;
+            const float *B_input = V + elem * V_elem_stride;
+            float *C_output = M + elem * M_elem_stride;
 
-            auto ret = extended_sgemm("N", "N", &N, &my_n, &K, &alpha,
-                    A_weights, &lda, B_input, &ldb, &beta, C_output, &ldc);
-            if (ret != status::success) st = ret;
+            brgemm_kernel_execute(brg_kernel, A_weights, B_input, C_output,
+                    total_tiles, 0.0f);
         }
-    });
 
-    return st;
-}
-
-status_t rvv_wino_convolution_fwd_t::execute_output_transform(
-        const float *winograd_output, const data_t *bias, data_t *dst) const {
-
-    const auto &conf = pd()->conf_;
-    const dim_t nb_oh = (conf.oh + 1) / 2;
-    const dim_t nb_ow = (conf.ow + 1) / 2;
-    const dim_t total_tiles = nb_oh * nb_ow;
-
-    // Each output pixel is written exactly once by its owning tile,
-    // so no zero-initialization is needed.
-
-    // Parallelize over tiles
-    parallel(conf.nthr, [&](const int ithr, const int nthr) {
-        dim_t start = 0, end = 0;
-        balance211(conf.mb * total_tiles, nthr, ithr, start, end);
-
-        for (dim_t iwork = start; iwork < end; ++iwork) {
-            const dim_t mb_idx = iwork / total_tiles;
-            const dim_t tile_idx = iwork % total_tiles;
+        // Step 3: Output transform for this batch
+        data_t *dst_batch = dst + mb_idx * conf.oc * conf.oh * conf.ow;
+        for (dim_t tile_idx = 0; tile_idx < total_tiles; tile_idx++) {
             const dim_t oh_tile = tile_idx / nb_ow;
             const dim_t ow_tile = tile_idx % nb_ow;
-            const dim_t oh_start = oh_tile * 2;
-            const dim_t ow_start = ow_tile * 2;
-
-            // For each output channel, extract 16 Winograd elements and inverse transform
-            const dim_t vl_max = static_cast<dim_t>(__riscv_vsetvlmax_e32m1());
+            const dim_t oh_s = oh_tile * 2;
+            const dim_t ow_s = ow_tile * 2;
 
             for (dim_t oc_idx = 0; oc_idx < conf.oc; oc_idx++) {
-                float winograd_domain_tile[16];
-
-                for (int elem = 0; elem < 16; elem += vl_max) {
-                    const dim_t vl
-                            = (elem + vl_max <= 16) ? vl_max : (16 - elem);
-                    const float *src_base = winograd_output
-                            + elem * conf.wspec.output_ld_matrix
-                            + mb_idx * conf.wspec.output_ld_batch
-                            + tile_idx * conf.wspec.output_ld_row + oc_idx;
-
-                    if (vl == vl_max) {
-                        // Vectorized gather: load to temp buffer, then vector store
-                        float gather_buf[MAX_VL_FLOATS];
-                        for (dim_t i = 0; i < vl; i++) {
-                            gather_buf[i]
-                                    = src_base[i * conf.wspec.output_ld_matrix];
-                        }
-                        vfloat32m1_t v_data
-                                = __riscv_vle32_v_f32m1(gather_buf, vl);
-                        __riscv_vse32_v_f32m1(
-                                winograd_domain_tile + elem, v_data, vl);
-                    } else {
-                        // Scalar fallback for remaining elements
-                        for (dim_t i = 0; i < vl; i++) {
-                            winograd_domain_tile[elem + i]
-                                    = src_base[i * conf.wspec.output_ld_matrix];
-                        }
-                    }
+                float wino_tile[16];
+                for (int elem = 0; elem < 16; elem++) {
+                    wino_tile[elem] = M[elem * M_elem_stride
+                            + tile_idx * conf.wspec.N + oc_idx];
                 }
 
-                float output_tile_2x2[4];
-                winograd_output_transform_2x2(
-                        winograd_domain_tile, output_tile_2x2);
+                float output_2x2[4];
+                winograd_output_transform_2x2(wino_tile, output_2x2);
 
-                // Write output tile with optional bias fusion
                 const float bias_val
                         = (conf.with_bias && bias) ? bias[oc_idx] : 0.0f;
-                data_t *dst_base = dst + mb_idx * conf.oc * conf.oh * conf.ow
-                        + oc_idx * conf.oh * conf.ow;
                 for (dim_t i = 0; i < 2; i++) {
-                    dim_t oh = oh_start + i;
+                    dim_t oh = oh_s + i;
                     if (oh >= conf.oh) continue;
-                    dim_t row_start = oh * conf.ow + ow_start;
                     for (dim_t j = 0; j < 2; j++) {
-                        dim_t ow = ow_start + j;
+                        dim_t ow = ow_s + j;
                         if (ow >= conf.ow) continue;
-                        dst_base[row_start + j]
-                                = output_tile_2x2[i * 2 + j] + bias_val;
+                        dst_batch[oc_idx * conf.oh * conf.ow + oh * conf.ow
+                                + ow]
+                                = output_2x2[i * 2 + j] + bias_val;
                     }
                 }
             }
         }
-    });
+    }
 
     return status::success;
 }

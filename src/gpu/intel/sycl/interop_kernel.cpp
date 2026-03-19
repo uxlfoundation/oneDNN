@@ -202,7 +202,7 @@ status_t interop_kernel_t::check_alignment(
         if (!arg.is_global()) continue;
         auto *mem_storage = static_cast<const memory_storage_t *>(arg.value());
         if (!*mem_storage) continue;
-        CHECK(compute_kernel_impl_t::check_alignment(
+        CHECK(compute::kernel_impl_t::check_alignment(
                 mem_storage->data_handle(), i));
     }
     return status::success;

@@ -1103,6 +1103,9 @@ static inline uint8_t encodeDnsclCtrl(uint8_t mode, RoundingType rnd, RegData &d
     dst.setOffset(dst.getByteOffset() >> 2);
     src0.setOffset(src0.getByteOffset() >> 2);
     src1.setOffset(src1.getByteOffset() >> 2);
+    dst.setRegion(dst.getVS()/ 8, dst.getWidth(), dst.getHS()/ 8);
+    src0.setRegion(src0.getVS()/ 2, src0.getWidth(), src0.getHS()/ 2);
+    src1.setRegion(src1.getVS()/ 2, src1.getWidth(), src1.getHS()/ 2);
     dst.setType(DataType::ud);
     src0.setType(DataType::ud);
     src1.setType(DataType::ud);

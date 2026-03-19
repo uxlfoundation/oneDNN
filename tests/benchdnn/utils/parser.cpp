@@ -1617,30 +1617,15 @@ static bool parse_mode(
               "    * `P` for performance testing.\n"
               "    * `F` for fast performance testing (GPU only).\n"
               "    * `B` for bitwise (numerical determinism) testing.\n"
-              "    * `CP` for both correctness and performance testing.\n"
               "    More details at "
             + doc_url + "benchdnn_general_info.md\n";
 
     const auto str2bench_mode = [](const std::string &_str) {
         bench_mode_t mode = default_bench_mode;
-        if (_str.size() > 2) {
+        if (_str.size() > 1) {
             BENCHDNN_PRINT(
                     0, "%s\n%s", "Error: mode value is invalid.", help.c_str());
             SAFE_V(FAIL);
-        } else if (_str.size() == 2) {
-            for (size_t i = 0; i < _str.size(); i++) {
-                switch (_str[i]) {
-                    case 'c':
-                    case 'C':
-                    case 'p':
-                    case 'P': break;
-                    default:
-                        BENCHDNN_PRINT(0, "%s\n%s",
-                                "Error: mode value is invalid.", help.c_str());
-                        SAFE_V(FAIL);
-                }
-            }
-            mode = bench_mode_t::corr_perf;
         } else if (_str.size() == 1) {
             switch (_str[0]) {
                 case 'l':
@@ -1656,7 +1641,11 @@ static bool parse_mode(
                 case 'c':
                 case 'C': mode = bench_mode_t::corr; break;
                 case 'p':
-                case 'P': mode = bench_mode_t::perf; break;
+                case 'P':
+                    mode = bench_mode_t::perf;
+                    if (is_gpu())
+                        bench_mode_modifier |= mode_modifier_t::no_ref_memory;
+                    break;
                 case 'f':
                 case 'F':
                     mode = bench_mode_t::perf_fast;

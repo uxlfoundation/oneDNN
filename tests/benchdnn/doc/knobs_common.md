@@ -150,10 +150,10 @@ runtimes. `KIND` values can be `usm` (default), `buffer`, `usm_device`
 `--mode=MODE` specifies **benchdnn** mode to be used for benchmarking.
 `MODE` values can be:
   - `C` or `c` for correctness testing (the default)
-  - `P` or `p` for performance testing
+  - `P` or `p` for performance testing. On a GPU engine, the `M` modifier is
+               automatically enabled to align data filling with `--mode=F`
   - `F` or `f` for fast performance testing, an alias for
                `--mode=P --mode-modifier=PM --max-ms-per-prb=10`
-  - `CP` or `cp` for both correctness and performance testing
   - `B` or `b` for bitwise (numerical determinism) testing
   - `R` or `r` for run mode, enables `--mode-modifier=M`
   - `I` or `i` for initialization mode

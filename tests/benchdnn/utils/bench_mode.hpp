@@ -67,7 +67,6 @@ enum class bench_mode_t : unsigned {
     corr = exec | static_cast<unsigned>(mode_bit_t::corr),
     perf = exec | static_cast<unsigned>(mode_bit_t::perf),
     perf_fast = perf | static_cast<unsigned>(mode_bit_t::fast),
-    corr_perf = corr | perf,
     bitwise = exec | static_cast<unsigned>(mode_bit_t::bitwise),
 };
 

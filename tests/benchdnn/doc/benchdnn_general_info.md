@@ -92,11 +92,10 @@ otherwise. The following modes (`--mode`) are supported:
   if the case is passing, it doesn't necessarily mean the problem is free of
   issues; it may happen that it was not triggered.
 * Performance (`P`): This flow executes all steps, skipping steps 6 and 7.
+  When running on a GPU engine, the `M` modifier (see below) is automatically
+  enabled to align data filling with the Fast Performance mode.
 * Fast Performance (`F`): This flow executes Performance mode with `P` and `M`
   modifiers (see below) enabled and updated maximum measuring time per case.
-* Correctness & performance (`CP`). This flow executes all steps, skipping the
-  bitwise step. It's not recommended for the usage due to filling data conflicts
-  between correctness and performance modes.
 
 ## Mode modifiers
 

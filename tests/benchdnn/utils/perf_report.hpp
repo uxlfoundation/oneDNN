@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2019 Intel Corporation
+* Copyright 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -65,6 +66,7 @@ struct base_perf_report_t {
     virtual void dump_cfg(std::ostream &) const { SAFE_V(FAIL); }
     virtual void dump_desc(std::ostream &) const { SAFE_V(FAIL); }
     virtual void dump_desc_csv(std::ostream &) const { SAFE_V(FAIL); }
+    virtual void dump_desc_csv_header(std::ostream &s) const { s << "desc"; }
     virtual void dump_flags(std::ostream &) const { SAFE_V(FAIL); }
     virtual void dump_rnn_activation(std::ostream &) const { SAFE_V(FAIL); }
     virtual void dump_rnn_direction(std::ostream &) const { SAFE_V(FAIL); }
@@ -82,6 +84,9 @@ private:
             footer_printed = true;
         }
     }
+
+    void dump_perf_csv_header() const;
+    void handle_csv_header_option(std::ostream &s, const char *&option) const;
 
     static timer::timer_t::mode_t modifier2mode(char c) {
         if (c == '-') return timer::timer_t::min;

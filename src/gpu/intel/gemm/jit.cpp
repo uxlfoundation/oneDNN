@@ -140,7 +140,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         arg_list.set(argn++, *po_srcs[i]);
         arg_list.set(argn++, offset_po_src[i]);
 
-        if (problem->postOps.binaryRow[i] && problem->postOps.binaryCol[i])
+        if (problem->postOps.binaryCol[i])
             arg_list.set(argn++, int32_t(pd()->ld_binary(i)));
     }
 
@@ -602,8 +602,10 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
                                 : (Bm * ld + Bn);
                     } else if (row)
                         po_offsets[i] += Bm;
-                    else if (col)
-                        po_offsets[i] += Bn;
+                    else if (col) {
+                        auto ld = pd()->ld_binary(i);
+                        po_offsets[i] += Bn * ld;
+                    }
                 }
 
                 float eff_beta = (Bk == 0) ? beta : 1.0f;

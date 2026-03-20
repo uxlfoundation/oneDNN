@@ -491,8 +491,10 @@ void Generator<hw>::gemmOffsetABC(bool initial, Subregister i0, Subregister j0, 
             eadd(1, offset, offset, tempQ0.reinterpret(0, offset.getType()), strategy, state);
         } else if (row)
             eaddScaled(1, offset, offset, i0, T, strategy, state);
-        else if (col)
-            eaddScaled(1, offset, offset, j0, T, strategy, state);
+        else if (col) {
+            emul(1, tempQ0, j0, ld, strategy, state);
+            eadd(1, offset, offset, tempQ0.reinterpret(0, offset.getType()), strategy, state);
+        }
     }
     if (doC && problem.sumA) eaddScaled(1, offsetCO, offsetCO, i0, Tco, strategy, state);
     if (doC && problem.sumB) eaddScaled(1, offsetCO, offsetCO, j0, Tco, strategy, state);

@@ -412,6 +412,17 @@ status_t gen_desc_t::transfer_post_ops(
             problem_.postOps.binaryBatch[i] = src_rmd.ndims() >= 3;
             problem_.postOps.binaryTrans[i] = trans;
 
+            // For col-only binary, check whether the col direction has unit stride.
+            // Col direction corresponds to dim[ndims-2] (no swap) or dim[ndims-1] (swap_ab).
+            bool col_only = is_multi_col && !is_multi_row;
+            int rmd_ndims = src_rmd.ndims();
+            bool col_unit = !col_only
+                    || (swap_ab ? src_rmd.is_inner_dim(rmd_ndims - 1, rmd_ndims)
+                                : src_rmd.is_inner_dim(rmd_ndims - 2, rmd_ndims));
+            // Non-unit stride requires Scattered access with correct multi-block offsets,
+            // which is not yet supported. Reject at PD time to avoid silent wrong results.
+            if (!col_unit) return status::unimplemented;
+
             MatrixAddressing atype;
             atype.layout = trans ? MatrixLayout::T : MatrixLayout::N;
             atype.crosspack = 1;
@@ -1056,7 +1067,7 @@ void gen_kernel_t::init_interface() {
         interface_.newArgument(bname, ExternalArgumentType::GlobalPtr,
                 strategy.binary[i].getGlobalAccessType());
         interface_.newArgument("offset_" + bname, DataType::q);
-        if (problem.postOps.binaryRow[i] && problem.postOps.binaryCol[i])
+        if (problem.postOps.binaryCol[i])
             interface_.newArgument("ld" + bname, DataType::d);
     }
     if (problem.batch == BatchMode::Strided) {

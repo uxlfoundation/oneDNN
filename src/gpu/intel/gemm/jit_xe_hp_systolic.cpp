@@ -864,7 +864,7 @@ status_t xe_hp_systolic_t::launch_compute(const exec_ctx_t &ctx, int32_t m,
         arg_list.set(argn++, *po_srcs[i]);
         arg_list.set(argn++, offset_po_src[i]);
 
-        if (problem_.postOps.binaryRow[i] && problem_.postOps.binaryCol[i])
+        if (problem_.postOps.binaryCol[i])
             arg_list.set(argn++, int32_t(pd()->ld_binary(i)));
     }
 
@@ -1106,8 +1106,10 @@ status_t xe_hp_systolic_t::execute(const exec_ctx_t &ctx) const {
                                 : (Bm * ld + Bn);
                     } else if (row)
                         po_offsets[i] += Bm;
-                    else if (col)
-                        po_offsets[i] += Bn;
+                    else if (col) {
+                        auto ld = pd()->ld_binary(i);
+                        po_offsets[i] += Bn * ld;
+                    }
                 }
 
                 float this_beta = first_k_block ? beta : 1.0f;

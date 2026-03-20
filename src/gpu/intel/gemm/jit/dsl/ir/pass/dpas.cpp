@@ -67,27 +67,53 @@ class dpas_atomic_mutator_t : public mul_mutator_t {
 public:
     stmt_t mutate_mul_impl(const std::vector<entry_t> &entries) const override {
         stmt_t ret;
+        auto is_dpas_fwd = [&](size_t i) {
+            auto &e = entries[i];
+            if (!e.is_dpas) return false;
+            auto &call = e.stmt.as<func_call_t>();
+            auto *attr = call.attr.as_ptr<instruction_modifier_attr_t>();
+            return attr && attr->mod.isFwd();
+        };
+        auto can_chain
+                = [&](size_t i, const expr_t &src1, const expr_t &src2_base) {
+            if (is_dpas_fwd(i)) return true;
+            if (i + 1 >= entries.size()) return false;
+            auto &next = entries[i + 1];
+            if (!next.is_dpas) return false;
+            auto &next_src1 = dpas_t::arg_src1(next.stmt);
+            auto &next_src2 = dpas_t::arg_src2(next.stmt);
+            auto &next_src2_base = next_src2.as<ptr_t>().base;
+            if (next_src1.is_equal(src1) && next_src2_base.is_equal(src2_base))
+                return true;
+            // If the current dpas is Fwd-chained with the previous one then
+            // use previous/next buffers to decide if it's Atomic-chain
+            // compatible.
+            // Example:
+            //     dpas8x8.x16(c[0], c[0], b[0], a[0]) {Atomic, Fwd}        <- previous dpas
+            //     dpas8x8.x16(c[0], c[0], b[1024], a[1024]) {Atomic}
+            //     dpas8x8.x16(c[512], c[512], b[0], a[256]) {Atomic, Fwd}  <- next dpas (src1 is the same, src2_base is the same)
+            if (i > 0 && is_dpas_fwd(i - 1)) {
+                auto &prev = entries[i - 1];
+                auto &prev_src1 = dpas_t::arg_src1(prev.stmt);
+                auto &prev_src2 = dpas_t::arg_src2(prev.stmt);
+                auto &prev_src2_base = prev_src2.as<ptr_t>().base;
+                if (prev_src1.is_equal(next_src1)
+                        && prev_src2_base.is_equal(next_src2_base))
+                    return true;
+            }
+            return false;
+        };
         for (size_t i = 0; i < entries.size(); i++) {
             auto s = entries[i].stmt;
-            if (i != entries.size() - 1 && entries[i].is_dpas
-                    && entries[i + 1].is_dpas) {
-                auto &cur_src1 = dpas_t::arg_src1(entries[i].stmt);
-                auto &next_src1 = dpas_t::arg_src1(entries[i + 1].stmt);
-                auto &cur_src2 = dpas_t::arg_src2(entries[i].stmt);
-                auto &next_src2 = dpas_t::arg_src2(entries[i + 1].stmt);
-                auto &cur_src2_base = cur_src2.as<ptr_t>().base;
-                auto &next_src2_base = next_src2.as<ptr_t>().base;
-                if (cur_src1.is_equal(next_src1)
-                        && cur_src2_base.is_equal(next_src2_base)) {
+            if (entries[i].is_dpas) {
+                auto &src1 = dpas_t::arg_src1(entries[i].stmt);
+                auto &src2 = dpas_t::arg_src2(entries[i].stmt);
+                auto &src2_base = src2.as<ptr_t>().base;
+                if (can_chain(i, src1, src2_base)) {
                     auto atomic_attr = instruction_modifier_attr_t::make(
                             ngen::InstructionModifier(
                                     ngen::ThreadCtrl::Atomic));
-                    auto &call = s.as<func_call_t>();
-                    auto *attr
-                            = call.attr.as_ptr<instruction_modifier_attr_t>();
-                    if (!attr || !attr->mod.isAtomic()) {
-                        s = atomic_attr.apply_to(s);
-                    }
+                    s = atomic_attr.apply_to(s);
                 }
             }
             ret = ret.append(s);

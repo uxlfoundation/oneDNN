@@ -132,7 +132,7 @@ To ensure accurate tracking of timing information for GPU runtimes, the verbose
 mode uses a non-blocking approach which prints device-measured 
 times for primitive execution instead of relying on the wall time 
 measurements. Asynchronous profiling is currently supported only for OpenCL 
-and SYCL GPU runtimes and can be optionally disabled by using 
+and SYCL runtimes for Intel GPUs and can be optionally disabled by using 
 `ONEDNN_VERBOSE_USE_SYNC=1` environment variable:
 
 ##### Example Output (with the asynchronous mode enabled):

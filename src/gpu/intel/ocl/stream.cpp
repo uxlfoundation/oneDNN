@@ -127,6 +127,14 @@ status_t stream_t::run_verbose_profiler(
     if (!is_verbose_profiler_enabled()) return status::invalid_arguments;
 
     // Captured output event acts as the anchor to track primitive execution
+    auto &deps = xpu::ocl::event_t::from(ctx().get_deps());
+    if (deps.size() < 1) {
+        double duration_ms = get_msec() - start_ms;
+        VPROF(start_ms, primitive, exec, VERBOSE_profile, pd_info.c_str(),
+                duration_ms);
+        return status::success;
+    }
+
     cl_event out_evt = get_output_event();
 
     // as the stamp count increments each time the profiler is unpaused, it

@@ -300,6 +300,10 @@ void cold_cache_t::flush_cache(dnnl_stream_t stream) const {
     std::call_once(flag, [&]() {
         SAFE_V(get_gpu_cache_size(flush_size));
         if (flush_size == 0) flush_size = (32 << 20); // 32 MB fallback
+        // Allow overriding via CACHE_SIZE env variable (value in bytes).
+        const auto env_str = benchdnn_getenv_string("CACHE_SIZE");
+        if (!env_str.empty())
+            flush_size = strtoull(env_str.c_str(), nullptr, 0);
         const dnnl_dims_t dims = {(dnnl_dim_t)flush_size};
         flush_cache_memory() = dnn_mem_t(
                 1, dims, dnnl_s8, "a", get_test_engine(), /* prefill = */ true);
@@ -360,7 +364,10 @@ bool cold_cache_t::update_dnnl_args(
 }
 
 bool cold_cache_t::should_stop() const {
+    return false;
+#if 0
     return override_n_buffers_ && cc_counter_ == n_buffers_;
+#endif
 }
 
 std::ostream &operator<<(

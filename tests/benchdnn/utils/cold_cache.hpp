@@ -117,7 +117,7 @@ private:
     // objects in cold-cache run won't be "cold" any longer.
     // Thus, introducing an extra reorder with brand new memory objects which
     // sole purpose is to reset the state of the cache by entirely thrashing it.
-    static constexpr size_t gpu_n_buffers_top_limit_ = 100;
+    static constexpr size_t gpu_n_buffers_top_limit_ = 1;
     static constexpr size_t cpu_n_buffers_top_limit_ = 1000;
 
     size_t cc_counter_ = 0;

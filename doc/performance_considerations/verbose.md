@@ -98,8 +98,8 @@ onednn_verbose,v0,info,cpu,runtime:OpenMP,nthr:128
 onednn_verbose,v0,info,cpu,isa:Intel AVX-512 with Intel DL Boost
 onednn_verbose,v0,info,gpu,runtime:none
 onednn_verbose,v0,info,graph,backend,0:dnnl_backend
-onednn_verbose,v0,primitive,info,template:operation,engine,primitive,implementation,prop_kind,memory_descriptors,attributes,auxiliary,problem_desc,exec_time
-onednn_verbose,v0,graph,info,template:operation,engine,partition_id,partition_kind,op_names,data_formats,logical_tensors,fpmath_mode,backend,exec_time
+onednn_verbose,v0,primitive,info,engine,primitive,implementation,prop_kind,memory_descriptors,attributes,auxiliary,problem_desc,exec_time
+onednn_verbose,v0,graph,info,engine,partition_id,partition_kind,op_names,data_formats,logical_tensors,fpmath_mode,backend,exec_time
 onednn_verbose,v0,primitive,create:check,matmul,dimension src:1 is inconsistent with weights:0,src/common/matmul.cpp:144
 ~~~
 
@@ -139,8 +139,8 @@ onednn_verbose,v0,info,cpu,runtime:OpenMP,nthr:128
 onednn_verbose,v0,info,cpu,isa:Intel AVX-512 with Intel DL Boost
 onednn_verbose,v0,info,gpu,runtime:none
 onednn_verbose,v0,info,graph,backend,0:dnnl_backend
-onednn_verbose,v0,primitive,info,template:operation,engine,primitive,implementation,prop_kind,memory_descriptors,attributes,auxiliary,problem_desc,exec_time
-onednn_verbose,v0,graph,info,template:operation,engine,partition_id,partition_kind,op_names,data_formats,logical_tensors,fpmath_mode,backend,exec_time
+onednn_verbose,v0,primitive,info,engine,primitive,implementation,prop_kind,memory_descriptors,attributes,auxiliary,problem_desc,exec_time
+onednn_verbose,v0,graph,info,engine,partition_id,partition_kind,op_names,data_formats,logical_tensors,fpmath_mode,backend,exec_time
 onednn_verbose,v0,primitive,create:dispatch,matmul,cpu,matmul,brg:avx512_core_amx_fp16,undef,src_u8:a:any:any::f0 wei_s8:a:any:any::f0 dst_f32:a:any:any::f0,,,256x256:256x256,unsupported isa,src/cpu/x64/matmul/brgemm_matmul.cpp:97
 onednn_verbose,v0,primitive,create:dispatch,matmul,cpu,matmul,brg:avx512_core_amx,undef,src_u8:a:any:any::f0 wei_s8:a:any:any::f0 dst_f32:a:any:any::f0,,,256x256:256x256,unsupported isa,src/cpu/x64/matmul/brgemm_matmul.cpp:97
 onednn_verbose,v0,primitive,create:dispatch,matmul,cpu,matmul,brg:avx512_core_fp16,undef,src_u8:a:any:any::f0 wei_s8:a:any:any::f0 dst_f32:a:any:any::f0,,,256x256:256x256,unsupported isa,src/cpu/x64/matmul/brgemm_matmul.cpp:97
@@ -167,8 +167,8 @@ onednn_verbose,v0,info,cpu,runtime:OpenMP,nthr:128
 onednn_verbose,v0,info,cpu,isa:Intel AVX-512 with Intel DL Boost
 onednn_verbose,v0,info,gpu,runtime:none
 onednn_verbose,v0,info,graph,backend,0:dnnl_backend
-onednn_verbose,v0,primitive,info,template:timestamp,operation,engine,primitive,implementation,prop_kind,memory_descriptors,attributes,auxiliary,problem_desc,exec_time
-onednn_verbose,v0,graph,info,template:timestamp,operation,engine,partition_id,partition_kind,op_names,data_formats,logical_tensors,fpmath_mode,backend,exec_time
+onednn_verbose,v0,primitive,info,timestamp,engine,primitive,implementation,prop_kind,memory_descriptors,attributes,auxiliary,problem_desc,exec_time
+onednn_verbose,v0,graph,info,timestamp,engine,partition_id,partition_kind,op_names,data_formats,logical_tensors,fpmath_mode,backend,exec_time
 onednn_verbose,v0,1693533460193.346924,primitive,create:cache_miss,cpu,convolution,jit:avx512_core,forward_training,src_f32:a:blocked:aBcd16b::f0 wei_f32:a:blocked:ABcd16b16a::f0 bia_f32:a:blocked:a::f0 dst_f32:a:blocked:aBcd16b::f0,,alg:convolution_direct,mb2_ic16oc16_ih7oh7kh5sh1dh0ph2_iw7ow7kw5sw1dw0pw2,0.709961
 onednn_verbose,v0,1693533460194.199951,primitive,create:cache_hit,cpu,convolution,jit:avx512_core,forward_training,src_f32:a:blocked:aBcd16b::f0 wei_f32:a:blocked:ABcd16b16a::f0 bia_f32:a:blocked:a::f0 dst_f32:a:blocked:aBcd16b::f0,,alg:convolution_direct,mb2_ic16oc16_ih7oh7kh5sh1dh0ph2_iw7ow7kw5sw1dw0pw2,0.0161133
 onednn_verbose,v0,1693533460228.559082,primitive,create:cache_miss,cpu,reorder,jit:uni,undef,src_f32::blocked:abcd::f0 dst_f32::blocked:ABcd16b16a::f0,,,16x16x5x5,0.724854
@@ -187,10 +187,10 @@ onednn_verbose,v0,1693533460314.072021,primitive,exec,cpu,reorder,jit:blk,undef,
 
 The first lines of verbose information, which are denoted with `info`, contain
 the build version and git hash, if available, as well as CPU and GPU runtimes.
-It also includes graph API backends, the supported instruction set architecture,
-and the verbose output format template since the amount of fields may vary
-depending on the set of enabled environment variables. This verbose header is
-printed when information is first logged.
+It also includes graph API backends, the supported instruction set architecture
+and the verbose graph and primitive format templates (as CSV headers) because
+the fields may vary depending on the set of enabled environment variables. This
+verbose header is printed when information is first logged.
 
 Each subsequent line of primitive verbose information is formatted as a
 comma-separated list and contains the following, in order of appearance in the

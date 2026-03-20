@@ -45,6 +45,25 @@ int getBinaryPostPrefetchLookahead() {
     return val;
 }
 
+bool postOpsBinaryPostPrefetchIgnoreRemEnabled() {
+    const char *env = std::getenv("BINARY_POST_PREFETCH_IGNORE_REM");
+    return (env != nullptr) && (env[0] == '1') && (env[1] == '\0');
+}
+
+// Return cache settings override for binary post-op matrix loads (not prefetch).
+// Controlled by BINARY_POST_LOAD_CACHING env variable.
+// Values: default | l1c_l3c | l1uc_l3c | l1uc_l3uc | l1c_l3uc
+// If unset or "default", no override is applied (returns CacheSettingsLSC::Default as sentinel).
+static bool getBinaryPostLoadCaching(CacheSettingsLSC &out) {
+    const char *env = std::getenv("BINARY_POST_LOAD_CACHING");
+    if (env == nullptr || env[0] == '\0') return false;
+    if (strcmp(env, "l1c_l3c")   == 0) { out = CacheSettingsLSC::L1C_L3C;   return true; }
+    if (strcmp(env, "l1uc_l3c")  == 0) { out = CacheSettingsLSC::L1UC_L3C;  return true; }
+    if (strcmp(env, "l1uc_l3uc") == 0) { out = CacheSettingsLSC::L1UC_L3UC; return true; }
+    if (strcmp(env, "l1c_l3uc")  == 0) { out = CacheSettingsLSC::L1C_L3UC;  return true; }
+    return false; // "default" or unrecognized — no override
+}
+
 }
 
 
@@ -338,7 +357,9 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
         return (env != nullptr) && (env[0] == '1') && (env[1] == '\0');
     }();
     
-    if (binaryPostPrefetchEnabled() && !kloopPrefetchActive && CO_strategy.newDP && !remR && !remC) {
+    bool ignoreRem = postOpsBinaryPostPrefetchIgnoreRemEnabled();
+
+    if (binaryPostPrefetchEnabled() && !kloopPrefetchActive && CO_strategy.newDP && (ignoreRem || (!remR && !remC))) {
         auto CO_prefetch_strategy = CO_strategy;
         CO_prefetch_strategy.prefetch = true;
 
@@ -368,8 +389,19 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
         
         prefetchMatrix(CO_prefetch_layout, CO_prefetch_addrs, strategy, state);
         safeReleaseRanges(CO_prefetch_addrs, state);
+    } else if (binaryPostPrefetchEnabled()) {
+        VDEBUGINFO(4, primitive, postops,
+                "MY: postops binary prefetch skip newDP=%d remR=%d remC=%d padded=%d kloop=%d remHM=%d remHN=%d ignore_rem=%d",
+                int(CO_strategy.newDP), int(remR), int(remC), int(CO_strategy.padded), int(kloopPrefetchActive),
+                int(strategy.remHandling[LoopM]), int(strategy.remHandling[LoopN]), int(ignoreRem));
     }
 
+    // Apply load cache hint override from BINARY_POST_LOAD_CACHING env var.
+    {
+        CacheSettingsLSC load_caching {};
+        if (getBinaryPostLoadCaching(load_caching))
+            CO_strategy.cachingR = load_caching;
+    }
 
     RegisterLayout CO_layout(hw, Tco, cor, coc, CO, CO_strategy, remR, remC, false);
 

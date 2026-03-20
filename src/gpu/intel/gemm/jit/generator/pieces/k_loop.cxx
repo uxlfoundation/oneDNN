@@ -36,14 +36,14 @@ namespace {
 
 // Environment variable helpers for k-loop prefetch experiments.
 // These work only if BINARY_POST_PREFETCH=1 is set.
-bool binaryPostPrefetchEnabled() {
+bool kLoopBinaryPostPrefetchEnabled() {
     const char *env = std::getenv("BINARY_POST_PREFETCH");
     return (env != nullptr) && (env[0] == '1') && (env[1] == '\0');
 }
 
 bool binaryPostPrefetchKLoopEnabled() {
     // Only enable if both BINARY_POST_PREFETCH=1 and BINARY_POST_PREFETCH_KLOOP=1
-    if (!binaryPostPrefetchEnabled()) return false;
+    if (!kLoopBinaryPostPrefetchEnabled()) return false;
     const char *env = std::getenv("BINARY_POST_PREFETCH_KLOOP");
     return (env != nullptr) && (env[0] == '1') && (env[1] == '\0');
 }
@@ -59,6 +59,11 @@ int getBinaryPostPrefetchKLoopLookahead() {
 
 bool getBinaryPostPrefetchL3Only() {
     const char *env = std::getenv("BINARY_POST_PREFETCH_L3ONLY");
+    return (env != nullptr) && (env[0] == '1') && (env[1] == '\0');
+}
+
+bool kLoopBinaryPostPrefetchIgnoreRemEnabled() {
+    const char *env = std::getenv("BINARY_POST_PREFETCH_IGNORE_REM");
     return (env != nullptr) && (env[0] == '1') && (env[1] == '\0');
 }
 
@@ -1347,13 +1352,22 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
     int binaryKLoopPrefetchLookahead = 0;
     std::vector<RegisterLayout> binaryKLoopPrefetchLayouts;
     std::vector<std::vector<GRFRange>> binaryKLoopPrefetchAddrs;
+    std::vector<bool> binaryKLoopPrefetchGuardRemM;
+    std::vector<bool> binaryKLoopPrefetchGuardRemN;
 
     if (binaryPostPrefetchKLoopEnabled() && problem.hasBinaryPostOp()) {
         bool prefetchL3Only = getBinaryPostPrefetchL3Only();
+        bool ignoreRem = kLoopBinaryPostPrefetchIgnoreRemEnabled();
         binaryKLoopPrefetchLookahead = getBinaryPostPrefetchKLoopLookahead();
         VDEBUGINFO(4, primitive, postops,
             "MY: kloop binary prefetch init, lookahead=%d l3only=%d",
             binaryKLoopPrefetchLookahead, int(prefetchL3Only));
+        VDEBUGINFO(4, primitive, postops,
+            "MY: kloop binary prefetch ignore_rem=%d",
+            int(ignoreRem));
+        VDEBUGINFO(4, primitive, postops,
+            "MY: kloop binary prefetch strategy remHandling[M]=%d remHandling[N]=%d C_colmajor=%d",
+            int(strategy.remHandling[LoopM]), int(strategy.remHandling[LoopN]), int(state.C_layout.colMajor()));
 
         // Ensure binary source addresses are available before entering k-loop.
         gemmPrepareBinaryPostOpAddrs(problem, strategy, state);
@@ -1364,6 +1378,8 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
 
         binaryKLoopPrefetchLayouts.resize(poCount);
         binaryKLoopPrefetchAddrs.resize(poCount);
+        binaryKLoopPrefetchGuardRemM.resize(poCount);
+        binaryKLoopPrefetchGuardRemN.resize(poCount);
 
         for (size_t i = 0; i < poCount; i++) {
             if (!postOps[i].is_binary()) continue;
@@ -1389,12 +1405,20 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
             auto coc = column ? strategy.unroll[LoopN] : 1;
             bool remR = row && !CO_strategy.padded && strategy.remHandling[LoopM] != RemainderHandling::Ignore;
             bool remC = column && !CO_strategy.padded && strategy.remHandling[LoopN] != RemainderHandling::Ignore;
+            bool remBlocked = remR || remC;
+
+                VDEBUGINFO(4, primitive, postops,
+                    "MY: kloop binary prefetch candidate i=%d row=%d col=%d rowAdj=%d colAdj=%d padded=%d newDP=%d remHM=%d remHN=%d",
+                    int(i), int(postOps.binaryRow[i]), int(postOps.binaryCol[i]), int(row), int(column),
+                    int(CO_strategy.padded), int(CO_strategy.newDP),
+                    int(strategy.remHandling[LoopM]), int(strategy.remHandling[LoopN]));
 
             // Keep parity with existing post-op prefetch guard.
-            if (!(CO_strategy.newDP && !remR && !remC)) {
+            if (!(CO_strategy.newDP && (ignoreRem || !remBlocked))) {
                 VDEBUGINFO(4, primitive, postops,
-                        "MY: kloop binary prefetch skip i=%d newDP=%d remR=%d remC=%d",
-                        int(i), int(CO_strategy.newDP), int(remR), int(remC));
+                        "MY: kloop binary prefetch skip i=%d newDP=%d remR=%d remC=%d rowAdj=%d colAdj=%d padded=%d ignore_rem=%d",
+                        int(i), int(CO_strategy.newDP), int(remR), int(remC), int(row), int(column),
+                        int(CO_strategy.padded), int(ignoreRem));
                 continue;
             }
 
@@ -1408,9 +1432,12 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
             layout = RegisterLayout(hw, problem.Tbinary[i], cor, coc, CO, CO_strategy, false, false, false);
             allocAddrRegs(addrs, layout, state);
             setupAddr(addrs, state.effBinary[i], layout, state.inputs.binaryLDs[i], strategy, state);
+                binaryKLoopPrefetchGuardRemM[i] = ignoreRem && remR;
+                binaryKLoopPrefetchGuardRemN[i] = ignoreRem && remC;
             VDEBUGINFO(4, primitive, postops,
-                    "MY: kloop binary prefetch armed i=%d row=%d col=%d",
-                    int(i), int(postOps.binaryRow[i]), int(postOps.binaryCol[i]));
+                    "MY: kloop binary prefetch armed i=%d row=%d col=%d remBlocked=%d guardM=%d guardN=%d",
+                    int(i), int(postOps.binaryRow[i]), int(postOps.binaryCol[i]), int(remBlocked),
+                    int(binaryKLoopPrefetchGuardRemM[i]), int(binaryKLoopPrefetchGuardRemN[i]));
             binaryKLoopPrefetchActive = true;
         }
 
@@ -1551,8 +1578,25 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
                     binaryKLoopPrefetchLookahead);
 
             for (size_t i = 0; i < binaryKLoopPrefetchAddrs.size(); i++) {
-                if (!binaryKLoopPrefetchAddrs[i].empty())
+                if (!binaryKLoopPrefetchAddrs[i].empty()) {
+                    Label lSkipThisBinaryKLoopPrefetch;
+                    bool hasRuntimeGuard = false;
+
+                    if (binaryKLoopPrefetchGuardRemM[i]) {
+                        cmp(1 | eq | state.flagAP, state.remainders[LoopM], uint16_t(strategy.unroll[LoopM]));
+                        jmpi(1 | ~state.flagAP, lSkipThisBinaryKLoopPrefetch);
+                        hasRuntimeGuard = true;
+                    }
+                    if (binaryKLoopPrefetchGuardRemN[i]) {
+                        cmp(1 | eq | state.flagAP, state.remainders[LoopN], uint16_t(strategy.unroll[LoopN]));
+                        jmpi(1 | ~state.flagAP, lSkipThisBinaryKLoopPrefetch);
+                        hasRuntimeGuard = true;
+                    }
+
                     prefetchMatrix(binaryKLoopPrefetchLayouts[i], binaryKLoopPrefetchAddrs[i], strategy, state);
+                    if (hasRuntimeGuard)
+                        mark(lSkipThisBinaryKLoopPrefetch);
+                }
             }
 
             mark(lSkipBinaryKLoopPrefetch);

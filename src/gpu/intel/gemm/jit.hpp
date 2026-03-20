@@ -86,9 +86,9 @@ struct gen_t : public primitive_t {
                     || d->transc() == dnnl_trans;
 
             // We cannot swap A/B if we don't have kernels to support the
-            // swapped data type/alignment requirements
-            swap_ab_ &= !(utils::one_of(d->a_type(), f8_e5m2, f8_e4m3)
-                    && d->b_type() == bf16);
+            // swapped data type/alignment requirements. Currently mostly affects
+            // weights-only compression cases, since A/B have different data types
+            swap_ab_ &= !wei_decomp_;
 
             if (swap_ab_) {
                 // Do not use transposed B when it is unnecessary

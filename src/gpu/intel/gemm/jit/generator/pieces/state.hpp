@@ -403,6 +403,7 @@ struct GEMMState : public CommonState {
     ngen::FlagRegister barrierM, barrierN;
     bool firstKLoopSegment;
     bool isNested = false;
+
     int C_accCount;
     bool cSwapActive = false;
     bool haveCSwap = false;

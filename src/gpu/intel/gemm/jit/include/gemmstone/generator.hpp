@@ -511,6 +511,7 @@ protected:
 
     void gemmApplyPostOps(size_t poMin, size_t poMax, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void gemmLoadBinaryOpArgs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
+    void gemmPrepareBinaryPostOpAddrs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
 
     // quantization.cxx
     bool gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state);

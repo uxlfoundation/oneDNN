@@ -332,7 +332,13 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
     // Experimental binary post-op prefetch path with optional lookahead distance.
     // Keep this path conservative: prefetch only full-tile cases (no m/n remainder masking).
     // BINARY_POST_PREFETCH_LOOKAHEAD can be set to prefetch further tiles (e.g. =1 for next tile, =2 for tile+2).
-    if (binaryPostPrefetchEnabled() && CO_strategy.newDP && !remR && !remC) {
+    // Skip this if BINARY_POST_PREFETCH_KLOOP=1, as prefetch is done inside k-loop instead.
+    bool kloopPrefetchActive = [](){ 
+        const char *env = std::getenv("BINARY_POST_PREFETCH_KLOOP");
+        return (env != nullptr) && (env[0] == '1') && (env[1] == '\0');
+    }();
+    
+    if (binaryPostPrefetchEnabled() && !kloopPrefetchActive && CO_strategy.newDP && !remR && !remC) {
         auto CO_prefetch_strategy = CO_strategy;
         CO_prefetch_strategy.prefetch = true;
 
@@ -619,6 +625,65 @@ void Generator<hw>::gemmLoadBinaryOpArgs(const GEMMProblem &problem, const GEMMS
 }
 
 template <HW hw>
+void Generator<hw>::gemmPrepareBinaryPostOpAddrs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+{
+    if (!problem.hasBinaryPostOp() || !state.effBinary.empty()) return;
+
+    auto &postOps = problem.postOps;
+    size_t poCount = postOps.len();
+
+    gemmLoadBinaryOpArgs(problem, strategy, state);
+
+#define FOR_EACH_BINARY \
+    for (size_t i = 0; i < poCount; i++) \
+        if (postOps[i].is_binary())
+
+    FOR_EACH_BINARY {
+        const auto &ld = state.inputs.binaryLDs[i];
+        auto T = problem.Tbinary[i];
+        if (ld.isValid())
+            emulConstant(1, ld, ld, T, strategy, state);
+        emulConstant(1, state.inputs.binaryOffsets[i], state.inputs.binaryOffsets[i], T, strategy, state);
+        if (problem.batch == BatchMode::Strided) for (int b = 0; b < problem.batchDims; b++) {
+            const auto &stride = state.inputs.binaryStrides[i][b];
+            if (stride.isValid())
+                emulConstant(1, stride, stride, T, strategy, state);
+        }
+    }
+
+    for (int b = 0; b < problem.batchDims; b++) {
+        FOR_EACH_BINARY {
+            const auto &stride = state.inputs.binaryStrides[i][b];
+            if (stride.isValid())
+                emul(1, stride, stride, state.batchID[b], strategy, state);
+        }
+    }
+
+    for (int b = 0; b < problem.batchDims; b++) {
+        FOR_EACH_BINARY {
+            auto &offsetStride = state.inputs.binaryStrides[i][b];
+            if (offsetStride.isValid())
+                eadd(1, state.inputs.binaryOffsets[i], state.inputs.binaryOffsets[i], offsetStride, strategy, state);
+            state.ra.safeRelease(offsetStride);
+        }
+    }
+
+    gemmOffsetABC(true, state.i0, state.j0, state.h0, Subregister(), Subregister(), problem, strategy, state, false, false, false, true);
+
+    state.effBinary.resize(poCount);
+
+    FOR_EACH_BINARY {
+        if (strategy.binary[i].base.isStateless()) {
+            state.effBinary[i] = state.inputs.binarySrcs[i];
+            eadd(1, state.effBinary[i], state.inputs.binarySrcs[i], state.inputs.binaryOffsets[i], strategy, state);
+            state.ra.safeRelease(state.inputs.binaryOffsets[i]);
+        } else
+            state.effBinary[i] = state.inputs.binaryOffsets[i];
+    }
+#undef FOR_EACH_BINARY
+}
+
+template <HW hw>
 void Generator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     VDEBUGINFO(4, primitive, postops,
@@ -633,60 +698,7 @@ void Generator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const GEMMProbl
     jmpi(1 | state.flagAP, lSkip);
 
     // Binary preparations: load binary-related args + calculate starting addresses
-    if (problem.hasBinaryPostOp() && state.effBinary.empty()) {
-        auto &postOps = problem.postOps;
-        size_t poCount = postOps.len();
-
-        gemmLoadBinaryOpArgs(problem, strategy, state);
-
-#define FOR_EACH_BINARY \
-    for (size_t i = 0; i < poCount; i++) \
-        if (postOps[i].is_binary())
-
-        FOR_EACH_BINARY {
-            const auto &ld = state.inputs.binaryLDs[i];
-            auto T = problem.Tbinary[i];
-            if (ld.isValid())
-                emulConstant(1, ld, ld, T, strategy, state);
-            emulConstant(1, state.inputs.binaryOffsets[i], state.inputs.binaryOffsets[i], T, strategy, state);
-            if (problem.batch == BatchMode::Strided) for (int b = 0; b < problem.batchDims; b++) {
-                const auto &stride = state.inputs.binaryStrides[i][b];
-                if (stride.isValid())
-                    emulConstant(1, stride, stride, T, strategy, state);
-            }
-        }
-
-        for (int b = 0; b < problem.batchDims; b++) {
-            FOR_EACH_BINARY {
-                const auto &stride = state.inputs.binaryStrides[i][b];
-                if (stride.isValid())
-                    emul(1, stride, stride, state.batchID[b], strategy, state);
-            }
-        }
-
-        for (int b = 0; b < problem.batchDims; b++) {
-            FOR_EACH_BINARY {
-                auto &offsetStride = state.inputs.binaryStrides[i][b];
-                if (offsetStride.isValid())
-                    eadd(1, state.inputs.binaryOffsets[i], state.inputs.binaryOffsets[i], offsetStride, strategy, state);
-                state.ra.safeRelease(offsetStride);
-            }
-        }
-
-        gemmOffsetABC(true, state.i0, state.j0, state.h0, Subregister(), Subregister(), problem, strategy, state, false, false, false, true);
-
-        state.effBinary.resize(poCount);
-
-        FOR_EACH_BINARY {
-            if (strategy.binary[i].base.isStateless()) {
-                state.effBinary[i] = state.inputs.binarySrcs[i];
-                eadd(1, state.effBinary[i], state.inputs.binarySrcs[i], state.inputs.binaryOffsets[i], strategy, state);
-                state.ra.safeRelease(state.inputs.binaryOffsets[i]);
-            } else
-                state.effBinary[i] = state.inputs.binaryOffsets[i];
-        }
-#undef FOR_EACH_BINARY
-    }
+    gemmPrepareBinaryPostOpAddrs(problem, strategy, state);
 
     // Apply post-ops to all of C.
     int C_grfs[GRF::maxRegs()];

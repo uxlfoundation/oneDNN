@@ -25,10 +25,44 @@
 #include "state_utils.hpp"
 #include "quantization.hpp"
 
+#include <cstdlib>
+
 GEMMSTONE_NAMESPACE_START
 
 using namespace ngen;
 using std::vector;
+
+namespace {
+
+// Environment variable helpers for k-loop prefetch experiments.
+// These work only if BINARY_POST_PREFETCH=1 is set.
+bool binaryPostPrefetchEnabled() {
+    const char *env = std::getenv("BINARY_POST_PREFETCH");
+    return (env != nullptr) && (env[0] == '1') && (env[1] == '\0');
+}
+
+bool binaryPostPrefetchKLoopEnabled() {
+    // Only enable if both BINARY_POST_PREFETCH=1 and BINARY_POST_PREFETCH_KLOOP=1
+    if (!binaryPostPrefetchEnabled()) return false;
+    const char *env = std::getenv("BINARY_POST_PREFETCH_KLOOP");
+    return (env != nullptr) && (env[0] == '1') && (env[1] == '\0');
+}
+
+int getBinaryPostPrefetchKLoopLookahead() {
+    const char *env = std::getenv("BINARY_POST_PREFETCH_LOOKAHEAD");
+    if (env == nullptr) return 0;
+    int val = 0;
+    for (const char *p = env; *p >= '0' && *p <= '9'; p++)
+        val = val * 10 + (*p - '0');
+    return val;
+}
+
+bool getBinaryPostPrefetchL3Only() {
+    const char *env = std::getenv("BINARY_POST_PREFETCH_L3ONLY");
+    return (env != nullptr) && (env[0] == '1') && (env[1] == '\0');
+}
+
+}
 
 
 // Create 1-segment inner loop for a GEMM-like kernel.
@@ -1307,6 +1341,85 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
         });
     }
 
+    // Binary post-op prefetch in k-loop (for BINARY_POST_PREFETCH_KLOOP=1).
+    // New semantics: BINARY_POST_PREFETCH_LOOKAHEAD=N means "N k-loop iterations remaining".
+    bool binaryKLoopPrefetchActive = false;
+    int binaryKLoopPrefetchLookahead = 0;
+    std::vector<RegisterLayout> binaryKLoopPrefetchLayouts;
+    std::vector<std::vector<GRFRange>> binaryKLoopPrefetchAddrs;
+
+    if (binaryPostPrefetchKLoopEnabled() && problem.hasBinaryPostOp()) {
+        bool prefetchL3Only = getBinaryPostPrefetchL3Only();
+        binaryKLoopPrefetchLookahead = getBinaryPostPrefetchKLoopLookahead();
+        VDEBUGINFO(4, primitive, postops,
+            "MY: kloop binary prefetch init, lookahead=%d l3only=%d",
+            binaryKLoopPrefetchLookahead, int(prefetchL3Only));
+
+        // Ensure binary source addresses are available before entering k-loop.
+        gemmPrepareBinaryPostOpAddrs(problem, strategy, state);
+
+        auto &postOps = problem.postOps;
+        size_t poCount = postOps.len();
+        auto globalCM = state.C_layout.colMajor();
+
+        binaryKLoopPrefetchLayouts.resize(poCount);
+        binaryKLoopPrefetchAddrs.resize(poCount);
+
+        for (size_t i = 0; i < poCount; i++) {
+            if (!postOps[i].is_binary()) continue;
+
+            auto CO = problem.binary[i];
+            auto CO_strategy = strategy.binary[i];
+            bool row = postOps.binaryRow[i];
+            bool column = postOps.binaryCol[i];
+
+            bool matrix = row && column;
+            if (matrix) {
+                row &= globalCM;
+                column &= !globalCM;
+                CO_strategy.accessType = (isColMajor(CO.layout) == row) ? AccessType::Block :
+                                         CO_strategy.base.isStateless() ? AccessType::Scattered
+                                                                        : AccessType::ChannelScattered;
+            } else {
+                CO.layout = column ? MatrixLayout::T : MatrixLayout::N;
+                CO_strategy.accessType = AccessType::Block;
+            }
+
+            auto cor = row ? strategy.unroll[LoopM] : 1;
+            auto coc = column ? strategy.unroll[LoopN] : 1;
+            bool remR = row && !CO_strategy.padded && strategy.remHandling[LoopM] != RemainderHandling::Ignore;
+            bool remC = column && !CO_strategy.padded && strategy.remHandling[LoopN] != RemainderHandling::Ignore;
+
+            // Keep parity with existing post-op prefetch guard.
+            if (!(CO_strategy.newDP && !remR && !remC)) {
+                VDEBUGINFO(4, primitive, postops,
+                        "MY: kloop binary prefetch skip i=%d newDP=%d remR=%d remC=%d",
+                        int(i), int(CO_strategy.newDP), int(remR), int(remC));
+                continue;
+            }
+
+            CO_strategy.prefetch = true;
+            if (prefetchL3Only)
+                CO_strategy.cachingR = CacheSettingsLSC::L1UC_L3C;
+
+            auto &layout = binaryKLoopPrefetchLayouts[i];
+            auto &addrs = binaryKLoopPrefetchAddrs[i];
+
+            layout = RegisterLayout(hw, problem.Tbinary[i], cor, coc, CO, CO_strategy, false, false, false);
+            allocAddrRegs(addrs, layout, state);
+            setupAddr(addrs, state.effBinary[i], layout, state.inputs.binaryLDs[i], strategy, state);
+            VDEBUGINFO(4, primitive, postops,
+                    "MY: kloop binary prefetch armed i=%d row=%d col=%d",
+                    int(i), int(postOps.binaryRow[i]), int(postOps.binaryCol[i]));
+            binaryKLoopPrefetchActive = true;
+        }
+
+        if (!binaryKLoopPrefetchActive)
+            VDEBUGINFO(4, primitive, postops,
+                    "MY: kloop binary prefetch not armed (no eligible binary post-ops)");
+    }
+
+
     // Save pre-loop state.
     auto statePreLoop = state;
 
@@ -1424,6 +1537,27 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
             gemmPrefetchC(problem, strategy, state);
             jmpi(1 | state.flagAP, lTop);
         }
+        
+        // Binary post-op prefetch in k-loop. Prefetch current binary tiles near loop end.
+        if (binaryKLoopPrefetchActive) {
+            Label lSkipBinaryKLoopPrefetch;
+            if (binaryKLoopPrefetchLookahead > 0) {
+                cmp(1 | le | state.flagAP, state.K, binaryKLoopPrefetchLookahead * unrollK);
+                jmpi(1 | ~state.flagAP, lSkipBinaryKLoopPrefetch);
+            }
+
+            VDEBUGINFO(4, primitive, postops,
+                    "MY: kloop binary prefetch emit, lookahead=%d",
+                    binaryKLoopPrefetchLookahead);
+
+            for (size_t i = 0; i < binaryKLoopPrefetchAddrs.size(); i++) {
+                if (!binaryKLoopPrefetchAddrs[i].empty())
+                    prefetchMatrix(binaryKLoopPrefetchLayouts[i], binaryKLoopPrefetchAddrs[i], strategy, state);
+            }
+
+            mark(lSkipBinaryKLoopPrefetch);
+        }
+        
         mark(lBottom);
         if (strategy.prefetchABL3) {
             Label lPeelDone;
@@ -1567,6 +1701,10 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
 
     // Similarly vflags may not be consistent.
     state.wipeActiveVFlags();
+
+    // Clean up k-loop binary post-op prefetch resources.
+    for (auto &addrs : binaryKLoopPrefetchAddrs)
+        safeReleaseRanges(addrs, state);
 
     // Sync any tokens nGEN thinks might still be outstanding, except for DPAS.
     // nGEN cannot always discover that these tokens are no longer alive.

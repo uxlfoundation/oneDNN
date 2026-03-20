@@ -546,6 +546,8 @@ struct jit_brgemm_matmul_copy_a_transposed_impl_t
         , k_loop_src_shift(rows_step * src_stride)
         , k_loop_dst_shift(rows_step * tr_typesize)
         , is_f32(conf_->src_dt == data_type::f32)
+        , is_bf16(conf_->src_dt == data_type::bf16)
+        , is_f16(conf_->src_dt == data_type::f16)
         , is_bf32(conf_->is_bf32)
         , is_dynamic_src_ld(conf_->is_runtime_M)
         // See the note in `create_brgemm_matmul_copy_b` why `orig_src_dt` used.
@@ -573,6 +575,8 @@ private:
     const dim_t k_loop_src_shift;
     const dim_t k_loop_dst_shift;
     const bool is_f32;
+    const bool is_bf16;
+    const bool is_f16;
     const bool is_bf32;
     const bool is_dynamic_src_ld;
     const bool use_fp16_instructions_;
@@ -638,6 +642,7 @@ private:
 
     void transpose_f32(reg64_t dst, reg64_t src, int nrows, int ncolumns);
     void transpose_bf16(reg64_t dst, reg64_t src, int nrows, int ncolumns);
+    void transpose_f16(reg64_t dst, reg64_t src, int nrows, int ncolumns);
 
     // Transpose an up-to-8x8 block using AVX2 fp32 transpose algorithm.
     //
@@ -662,6 +667,12 @@ private:
 };
 
 template <typename Vmm>
+void jit_brgemm_matmul_copy_a_transposed_impl_t<Vmm>::transpose_f16(
+        reg64_t reg_dst, reg64_t reg_src, int nrows, int ncolumns) {
+    assert(!"unsupported transpose_f16 copy_a_transposed_impl");
+}
+
+template <typename Vmm>
 void jit_brgemm_matmul_copy_a_transposed_impl_t<Vmm>::transpose_bf16(
         reg64_t reg_dst, reg64_t reg_src, int nrows, int ncolumns) {
     assert(!"unsupported transpose_bf16 copy_a_transposed_impl");
@@ -679,7 +690,6 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Zmm>::transpose_bf16(
     assert(nrows >= 0 && nrows <= rows_step && ncolumns >= 0
             && ncolumns <= columns_step);
     if (!nrows) return;
-
     auto src_zmm = [](int i) { return Zmm(i); };
 
     auto src_ymm = [](int i) {
@@ -941,6 +951,12 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Vmm>::transpose_common_ymm(
 }
 
 template <>
+void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Ymm>::transpose_f16(
+        reg64_t dst, reg64_t src, int nrows, int ncolumns) {
+    transpose_common_ymm(data_type::f16, dst, src, nrows, ncolumns);
+}
+
+template <>
 void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Ymm>::transpose_bf16(
         reg64_t dst, reg64_t src, int nrows, int ncolumns) {
     transpose_common_ymm(data_type::bf16, dst, src, nrows, ncolumns);
@@ -1124,10 +1140,22 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Zmm>::transpose_f32(
 template <typename Vmm>
 void jit_brgemm_matmul_copy_a_transposed_impl_t<Vmm>::deploy_transpose(
         reg64_t dst, reg64_t src, int nrows, int ncolumns) {
-    if (is_f32 || use_fp16_instructions_)
-        transpose_f32(dst, src, nrows, ncolumns);
-    else
-        transpose_bf16(dst, src, nrows, ncolumns);
+
+    if (std::is_same<Vmm, Xbyak::Ymm>::value) {
+        if (is_f32 || use_fp16_instructions_)
+            transpose_f32(dst, src, nrows, ncolumns);
+        else if (is_bf16)
+            transpose_bf16(dst, src, nrows, ncolumns);
+        else if (is_f16)
+            transpose_f16(dst, src, nrows, ncolumns);
+        else
+            assert(!"unsupported data type");
+    } else {
+        if (is_f32 || use_fp16_instructions_)
+            transpose_f32(dst, src, nrows, ncolumns);
+        else
+            transpose_bf16(dst, src, nrows, ncolumns);
+    }
 }
 
 template <typename Vmm>

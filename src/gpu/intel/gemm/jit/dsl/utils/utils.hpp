@@ -158,6 +158,9 @@ inline const name_map_t<ngen::HW> &get_name_map() {
             {ngen::HW::XeHPC, "XeHPC"},
             {ngen::HW::Xe2, "Xe2"},
             {ngen::HW::Xe3, "Xe3"},
+            {ngen::HW::XE3P_35_10, "XE3P_35_10"},
+            {ngen::HW::XE3P_35_11, "XE3P_35_11"},
+            {ngen::HW::XE3P_UNKNOWN, "XE3P_UNKNOWN"},
     };
     return names;
 }

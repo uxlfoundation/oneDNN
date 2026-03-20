@@ -599,12 +599,22 @@ struct EmulationImplementation {
                 g.mov(mod, dstLo, accLo, loc);
             } else if(s1D) {
                 auto s1Lo = lowWord(src1);
-                g.mul(mod, accLo, s0Lo, s1Lo, loc);
-                g.mach(mod, dstLo, s0Lo, src1, loc);
-                g.mul(mod, accHi, s0Hi, s1Lo, loc);
-                g.macl(mod, dstHi, s0Hi, src1, loc);
-                g.add(mod, dstHi, dstHi, dstLo, loc);
-                g.mov(mod, dstLo, accLo, loc);
+                if (emulateDWxDW){
+                    g.mul(mod, accLo, s0Lo, s1Lo, loc);
+                    g.mach(mod, dstLo, s0Lo, src1, loc);
+                    g.mul(mod, accHi, s0Hi, s1Lo, loc);
+                    g.macl(mod, dstHi, s0Hi, src1, loc);
+                    g.add(mod, dstHi, dstHi, dstLo, loc);
+                    g.mov(mod, dstLo, accLo, loc);
+                }else{
+                    auto acc= g.acc0.retype(dst.getType())[dst.getOffset()](dst.getHS());
+                    dstHi.setType(isSigned(dst.getType())? DataType::d : DataType::ud);
+                    g.mov(mod, dst, 0);
+                    g.mul(mod, acc, s0Lo, src1, loc);
+                    g.mul(mod, dstHi, s0Hi, src1, loc);
+                    g.add(mod, dst, dst, acc);
+                }
+
             } else stub();
         } else if (s1Q) {
             if(!s1Immed) {

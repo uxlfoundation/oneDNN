@@ -214,8 +214,7 @@ void jit_rvv_layernorm_fused_kernel_t::generate() {
     fsw(f_var, reg_var_ptr, 0);
 
     L(start_data);
-    lw(reg_tmp, reg_param, GET_FUSED_OFF(eps));
-    fmv_w_x(f_aux, reg_tmp);
+    flw(f_aux, reg_param, GET_FUSED_OFF(eps));
     fadd_s(f_aux, f_var, f_aux);
     fsqrt_s(f_inv, f_aux);
     li(reg_tmp, 0x3f800000);
@@ -411,10 +410,8 @@ void jit_rvv_layernorm_data_kernel_t::generate() {
     ld(reg_scale, reg_param, GET_DATA_OFF(scale));
     ld(reg_shift, reg_param, GET_DATA_OFF(shift));
     ld(reg_len, reg_param, GET_DATA_OFF(len));
-    lw(reg_tmp, reg_param, GET_DATA_OFF(mean));
-    fmv_w_x(f_mean, reg_tmp);
-    lw(reg_tmp, reg_param, GET_DATA_OFF(inv_std));
-    fmv_w_x(f_inv, reg_tmp);
+    flw(f_mean, reg_param, GET_DATA_OFF(mean));
+    flw(f_inv, reg_param, GET_DATA_OFF(inv_std));
 
     vsetvli(reg_vlmax, x0, SEW::e32, LMUL::m1);
     slli(reg_bytes, reg_vlmax, 2);

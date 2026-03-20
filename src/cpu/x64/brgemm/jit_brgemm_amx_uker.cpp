@@ -853,8 +853,7 @@ dim_t jit_brgemm_amx_uker_base_t::zp_comp_b_offset(int bd) const noexcept {
 dim_t jit_brgemm_amx_uker_base_t::zp_c_values_offset(
         brgemm_iteration_t &bi, int ldb) const noexcept {
     if (brg.zp_type_c == brgemm_broadcast_t::per_n) {
-        return (bi.ldi->is_tail(ldb)) ? ldb_tail_zp_size_
-                                      : bi.ldi->pos(ldb) * ld_block_zp_size_;
+        return bi.ldi->pos(ldb) * ld_block_zp_size_;
     }
 
     return 0;

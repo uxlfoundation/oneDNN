@@ -92,6 +92,10 @@ class Converter(metaclass=ConverterMeta):
         return ""
 
     @property
+    def grouped(self) -> str:
+        return ""
+
+    @property
     def flags(self) -> str:
         return ""
 
@@ -606,6 +610,10 @@ class LRNConverter(AlgorithmMixin, Converter):
 class MatmulConverter(StridesMixin, MultiDataTypeWithBiasMixin, Converter):
     driver: str = "matmul"
 
+    def __init__(self, entry):
+        super().__init__(entry)
+        self._is_grouped = any(md.is_grouped for md in entry.mds)
+
     @property
     def bias_mask(self):
         for md in self.entry.mds:
@@ -615,6 +623,40 @@ class MatmulConverter(StridesMixin, MultiDataTypeWithBiasMixin, Converter):
                 mask = md.flags.value.split("_")[1][4:]
                 return f"--bia_mask={mask}"
         return ""
+
+    @property
+    def tags(self):
+        if not self._is_grouped:
+            return super().tags
+        # Grouped src/dst have no tag; only emit wtag since the library
+        # requires a concrete format (abc/acb) for weights.
+        md_map = {md.arg: md for md in self.entry.mds}
+        wei_md = md_map.get("wei")
+        if wei_md:
+            return f"--wtag={maybe_make_any_tag(wei_md)}"
+        return ""
+
+    @property
+    def grouped(self) -> str:
+        if not self._is_grouped:
+            return ""
+        # Extract var_dim_idx and group_count from the first grouped MD.
+        md = next(md for md in self.entry.mds if md.is_grouped)
+        var_dim_idx = md.variable_dim_idx
+        group_count = md.group_count
+        assert var_dim_idx is not None and group_count is not None
+        # Compute group sizes by dividing the variable dimension of src
+        # by the number of groups.
+        # WARN: This may not reflect the original grouping, however,
+        # currently this is the only way to provide correct benchdnn input line.
+        src_dims = self.entry.shapes.split(":")[0].split("x")
+        total_dim = int(src_dims[var_dim_idx])
+        group_size, remainder = divmod(total_dim, group_count)
+        sizes = [group_size] * group_count
+        for i in range(remainder):
+            sizes[i] += 1
+        group_sizes = ",".join(map(str, sizes))
+        return f"--grouped={var_dim_idx}:{group_count}:{group_sizes}"
 
     @property
     def aux(self):
@@ -918,10 +960,19 @@ class InputGenerator:
 
     def __init__(self, logger: Optional[logging.Logger] = None):
         self.logger = logger
+        self._warned_grouped = False
 
     def _generate_case(self, entry: ir.Entry):
         Converter = get_converter(entry.prim_kind)
         converter = Converter(entry)
+        grouped = converter.grouped
+        if grouped and not self._warned_grouped and self.logger is not None:
+            self._warned_grouped = True
+            self.logger.warning(
+                "Verbose does not report per-group sizes; group sizes in"
+                " --grouped are inferred by dividing the total dimension"
+                " by the number of groups and may not match the original."
+            )
         args = [
             "--reset",
             "--allow-enum-tags-only=0",
@@ -933,6 +984,7 @@ class InputGenerator:
             converter.tags,
             converter.flags,
             converter.attrs,
+            grouped,
             converter.shapes,
         ]
         return converter.driver, " ".join(arg for arg in args if arg)

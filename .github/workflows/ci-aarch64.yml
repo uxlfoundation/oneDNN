@@ -157,6 +157,16 @@ jobs:
           CTEST_PARALLEL_LEVEL: 6
           DYLD_LIBRARY_PATH: ${{ github.workspace }}/oneDNN_pkg/ComputeLibrary/build:${{ github.workspace }}/oneDNN_pkg/oneDNN/build/src
           ONEDNN_THREADING: ${{ matrix.config.threading }}
+      
+      - if: ${{ contains(matrix.config.label,'ubuntu') }}
+        name: Install QEMU
+        run: |
+          sudo apt install -y qemu-user-static
+      
+      - if: ${{ contains(matrix.config.label,'ubuntu') }}
+        name: Run QEMU Test Matmul
+        run: qemu-aarch64-static -cpu max,sme512=on -E ONEDNN_VERBOSE=2 tests/gtests/test_matmul
+        working-directory: ${{ github.workspace }}/oneDNN_pkg/oneDNN/build
 
   unit-test:
     needs: build-artifacts

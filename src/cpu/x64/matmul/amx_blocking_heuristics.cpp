@@ -110,8 +110,7 @@ bool matmul_amx_blocking_params_macro_t::is_supported(
             bm_conf_utils.check_b_layout_blocked_32_by_n(bgmmc.wei_tag));
 
     bool has_zp = bgmmc.src_zp_type != brgemm_broadcast_t::none
-            || bgmmc.wei_zp_type != brgemm_broadcast_t::none
-            || bgmmc.dst_zp_type != brgemm_broadcast_t::none;
+            || bgmmc.wei_zp_type != brgemm_broadcast_t::none;
 
     return bgmmc.orig_src_dt == bgmmc.src_dt
             && bgmmc.orig_wei_dt == bgmmc.wei_dt && bgmmc.is_amx

@@ -254,13 +254,13 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
 
     auto check_attr_zero_points = [&](bool allow_multiple_wei_zp) -> bool {
         const auto &zp = attr()->zero_points_;
-        static const std::vector<int> supported_args {
-                DNNL_ARG_SRC, DNNL_ARG_DST};
-        for (int arg : supported_args) {
-            if (!zp.has_default_values(arg)) {
-                const int mask = zp.get_mask(arg);
-                if (mask > 0) return false;
-            }
+        if (!zp.has_default_values(DNNL_ARG_SRC)) {
+            const int mask = zp.get_mask(DNNL_ARG_SRC);
+            if (mask > 0) return false;
+        }
+        if (!zp.has_default_values(DNNL_ARG_DST)) {
+            const int mask = zp.get_mask(DNNL_ARG_DST);
+            if (!utils::one_of(mask, 0, dst_qmask_N())) return false;
         }
         if (!zp.has_default_values(DNNL_ARG_WEIGHTS)) {
             const auto mask = zp.get_mask(DNNL_ARG_WEIGHTS);
@@ -403,8 +403,18 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         if (bgmmc_.with_wei_decompression && bgmmc_.has_zero_point_b)
             brg.skip_zp_b_compensation = true;
         if (bgmmc_.apply_scales_in_buffer_b) brg.skip_scales = true;
+        // brgemm expects a 2D dst zp mask; remap `dst_qmask_N()` to 1 << 1
+        const primitive_attr_t *brg_attr = attr();
+        primitive_attr_t local_attr;
+        if (!attr()->zero_points_.has_default_values(DNNL_ARG_DST)
+                && attr()->zero_points_.get_mask(DNNL_ARG_DST) == dst_qmask_N()
+                && dst_qmask_N() != (1 << 1)) {
+            CHECK(local_attr.copy_from(*attr()));
+            CHECK(local_attr.zero_points_.set(DNNL_ARG_DST, 1 << 1));
+            brg_attr = &local_attr;
+        }
         CHECK(brgemm_desc_set_postops(
-                &brg, attr(), &dst_md_, LDD, bgmmc_.bia_dt));
+                &brg, brg_attr, &dst_md_, LDD, bgmmc_.bia_dt));
 
         brgemm_attr_t brgattr;
         brgattr.generate_skip_accumulation
@@ -806,7 +816,7 @@ void brgemm_matmul_t<isa>::compute_kernel(
                     first_mb_matrix_addr_off,
                     static_cast<const void *>(zp_comp_a),
                     static_cast<const void *>(zp_comp_b),
-                    brgmm_ctx.get_zp_c_ptr(), false, 1, false, false,
+                    brgmm_ctx.get_zp_c_ptr(n), false, 1, false, false,
                     brgmm_ctx.get_src_scales_ptr(),
                     brgmm_ctx.get_wei_scales_ptr(n),
                     brgmm_ctx.get_dst_scales_inv_ptr(ithr)};
@@ -862,7 +872,7 @@ void brgemm_matmul_t<isa>::compute_kernel(
                     first_mb_matrix_addr_off,
                     static_cast<const void *>(zp_comp_a),
                     static_cast<const void *>(zp_comp_b),
-                    brgmm_ctx.get_zp_c_ptr(), false, 1, false, false,
+                    brgmm_ctx.get_zp_c_ptr(n), false, 1, false, false,
                     brgmm_ctx.get_src_scales_ptr(),
                     brgmm_ctx.get_wei_scales_ptr(n),
                     brgmm_ctx.get_dst_scales_inv_ptr(ithr)};
@@ -1203,7 +1213,7 @@ void brgemm_matmul_t<isa>::maybe_reduce_partial_results_and_apply_postops(
                             dst_anchor_point, first_mb_matrix_addr_off,
                             static_cast<const void *>(zp_comp_a),
                             static_cast<const void *>(zp_comp_b),
-                            brgmm_ctx.get_zp_c_ptr(), skip_accumulation, 1,
+                            brgmm_ctx.get_zp_c_ptr(n), skip_accumulation, 1,
                             false, false, brgmm_ctx.get_src_scales_ptr(),
                             brgmm_ctx.get_wei_scales_ptr(n),
                             brgmm_ctx.get_dst_scales_inv_ptr(ithr)};
@@ -2195,7 +2205,11 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         return (char *)wei_zp_ptr_ + offset;
     }
 
-    const void *get_zp_c_ptr() const { return dst_zp_ptr_; }
+    const void *get_zp_c_ptr(int n = 0) const {
+        if (bgmmc_.dst_zp_type == brgemm_broadcast_t::per_n)
+            return static_cast<const char *>(dst_zp_ptr_) + n * sizeof(int32_t);
+        return dst_zp_ptr_;
+    }
 
     int32_t *get_zp_a_compensation_ptr(
             int ithr, int b_idx, int n_blk_idx) const {

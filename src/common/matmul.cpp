@@ -438,8 +438,7 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
         if (!zp.has_default_values(DNNL_ARG_DST)) {
             const int mask_dst = zp.get_mask(DNNL_ARG_DST);
 
-            VCHECK_MATMUL_UNIMPL(mask_dst == 0
-                            || (desc.dst_desc.ndims == 2 && mask_dst == 1 << 1),
+            VCHECK_MATMUL_UNIMPL(mask_dst == 0 || mask_dst == dst_qmask_N,
                     VERBOSE_UNSUPPORTED_ZP_CFG);
         }
 

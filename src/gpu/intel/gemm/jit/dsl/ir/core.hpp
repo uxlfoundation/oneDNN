@@ -1680,6 +1680,9 @@ public:
     // Returns a function call with the attribute applied. The input statement
     // must be a function call.
     stmt_t apply_to(const stmt_t &s) const;
+
+private:
+    func_call_attr_t merge(const func_call_attr_t &other) const;
 };
 
 // Instruction modifier, relies on nGEN API.
@@ -1727,6 +1730,18 @@ private:
     instruction_modifier_attr_t(const ngen::InstructionModifier &mod)
         : func_call_attr_impl_t(get_info()), mod(mod) {}
 };
+
+inline func_call_attr_t func_call_attr_t::merge(
+        const func_call_attr_t &other) const {
+    if (other.is_empty()) return *this;
+    if (is_empty()) return other;
+    auto *mod_attr1 = this->as_ptr<instruction_modifier_attr_t>();
+    auto *mod_attr2 = other.as_ptr<instruction_modifier_attr_t>();
+    dsl_assert(mod_attr1 && mod_attr2)
+            << "Merging of attributes is not supported: " << *this << " and "
+            << other;
+    return instruction_modifier_attr_t::make(mod_attr1->mod | mod_attr2->mod);
+}
 
 // Base class for function IR objects.
 class func_impl_t : public object::impl_t {
@@ -1826,9 +1841,7 @@ inline stmt_t func_impl_t::call(
 
 inline stmt_t func_call_attr_t::apply_to(const stmt_t &s) const {
     auto &c = s.as<func_call_t>();
-    dsl_assert(c.attr.is_empty())
-            << "Merging of attributes is not supported: " << s;
-    return func_call_t::make(c.func, c.args, *this);
+    return func_call_t::make(c.func, c.args, c.attr.merge(*this));
 }
 
 template <typename F>

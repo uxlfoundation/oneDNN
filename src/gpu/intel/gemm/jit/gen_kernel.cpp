@@ -729,6 +729,30 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
         return nullptr;
     });
 
+    // Compound precisions like [OH] may fail to locate simple catalog
+    // entries (e.g. "O") during binary search because Selector::operator<
+    // tupleizes [XY] as (X&0x1F, Y&0x1F), which sorts differently from
+    // simple "X" = (X&0x1F, X&0x1F). Add simple-precision fallback
+    // patterns so that the binary search can find these entries.
+    auto add_simple_fallbacks = [&](bool has_mode,
+                                        const char *(*match)(Type)) {
+        if (!has_mode) return;
+        add_matches(base, match);
+    };
+    add_simple_fallbacks(fpmath_f16, [](Type dt) -> const char * {
+        if (dt.isInt8() || dt.isInt4()) return "O";
+        return nullptr;
+    });
+    add_simple_fallbacks(fpmath_bf16, [](Type dt) -> const char * {
+        if (dt.isInt8() || dt.isInt4()) return "O";
+        return nullptr;
+    });
+    add_simple_fallbacks(!(fpmath_f16 || fpmath_bf16),
+            [](Type dt) -> const char * {
+                if (dt.isInt4()) return "O";
+                return nullptr;
+            });
+
     // Add allowed variants of each valid kernel.
     // Should be used after all valid kernels are added to match_params
     auto add_variants = [&](const char *(*match)(Type)) {
@@ -778,6 +802,12 @@ status_t gen_nocopy_desc_t::finalize() {
     parsePrecisions(entry_->selector.precisions[0], Ta_ext_new, Ta_new);
     parsePrecisions(entry_->selector.precisions[1], Tb_ext_new, Tb_new);
     Tc_new = charToType(entry_->selector.precisions[2][0]);
+
+    // Current JIT strategies for int8 B loading do not correctly handle
+    // int4 external data (s4->s8 conversion on B side). Reject entries
+    // that would require this conversion.
+    if (problem_.Tb_ext.isInt4() && Tb_new.isInt8())
+        return status::unimplemented;
 
     auto update_type = [](Type &T, Type T_new) {
         if (T.isF8() && T_new.isF8()) return;

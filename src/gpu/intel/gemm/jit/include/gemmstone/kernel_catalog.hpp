@@ -86,6 +86,12 @@ struct Selector {
     string layouts[3];
 
     friend bool operator<(const Selector &sel1, const Selector &sel2) {
+        // NOTE: Compound precisions [XY] tupleize as (X&0x1F, Y&0x1F)
+        // while simple precisions "X" tupleize as (X&0x1F, X&0x1F).
+        // This means binary search ranges for compound patterns may not
+        // include simple entries (e.g. [OH] range misses simple "O").
+        // Simple-precision fallback patterns are added in gen_kernel.cpp
+        // to work around this limitation.
         auto tupleize = [](const Selector &sel) {
             bool compoundA = sel.precisions[0][0] == '[';
             bool compoundB = sel.precisions[1][0] == '[';

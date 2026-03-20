@@ -468,29 +468,28 @@ template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_t<isa>::exp_compute_vector_fwd(
         const TRegS &vmm_src, float min_input, float max_input) {
 
-    const auto &t0 = ZRegS(IDX(vmm_src));
-    const auto &t1 = ZRegS(IDX(vmm_aux0));
-    const auto &t2 = ZRegS(IDX(vmm_aux1));
+    const auto &t0 = vmm_src;
+    const auto &t1 = vmm_aux0;
+    const auto &t2 = vmm_aux1;
     const float ln_flt_max = logf(FLT_MAX);
     const float ln_flt_min = logf(FLT_MIN);
     if (max_input > ln_flt_max)
-        h->fmin(t0, p_all, ZRegS(IDX(table_val(exp_ln_flt_max_f, z_tmp))));
+        h->fmin(t0, p_all, table_val(exp_ln_flt_max_f, z_tmp));
     if (min_input < ln_flt_min)
-        h->fmax(t0, p_all, ZRegS(IDX(table_val(exp_ln_flt_min_f, z_tmp))));
-    h->fmul(t0, t0, ZRegS(IDX(table_val(exp_log2ef, t1))));
+        h->fmax(t0, p_all, table_val(exp_ln_flt_min_f, z_tmp));
+    h->fmul(t0, t0, table_val(exp_log2ef, t1));
     h->frintm(t1, p_all, t0);
     h->fcvtzs(t2, p_all, t1);
     h->fsub(t1, t0, t1);
-    h->fadd(t0, t1, ZRegS(IDX(table_val(one, z_tmp))));
+    h->fadd(t0, t1, table_val(one, z_tmp));
     h->lsr(t1, t0, 17);
     h->fexpa(t1, t1);
     h->fscale(t1, p_all, t2);
     h->and_(ZRegD(t2.getIdx()), ZRegD(t0.getIdx()),
             ZRegD(IDX(table_val(exp_not_mask17, z_tmp))));
     h->fsub(t2, t0, t2);
-    h->fmad(ZRegS(IDX(table_val(exp_coeff2, t0))), p_all, t2,
-            ZRegS(IDX(table_val(exp_coeff1, z_tmp))));
-    h->fmad(t0, p_all, t2, ZRegS(IDX(table_val(one, z_tmp))));
+    h->fmad(table_val(exp_coeff2, t0), p_all, t2, table_val(exp_coeff1, z_tmp));
+    h->fmad(t0, p_all, t2, table_val(one, z_tmp));
     h->fmul(t0, t1, t0);
 }
 
@@ -556,8 +555,7 @@ void jit_uni_eltwise_injector_t<isa>::tanh_polynomial_approx_compute_vector_fwd(
         h->add_imm(h->X_TMP_1, x_table,
                 table_off(tanh_pol_table, coeff_idx * tanh_n_polynomials),
                 h->X_TMP_0);
-        h->ld1w(ZRegS(IDX(vmm_coeff)), p_all,
-                ptr(h->X_TMP_1, ZRegS(IDX(vmm_pol_idx)), SXTW));
+        h->ld1w(vmm_coeff, p_all, ptr(h->X_TMP_1, vmm_pol_idx, SXTW));
     };
 
     // because tanh(x) = -tanh(-x), we extract sign to make x postive
@@ -565,8 +563,7 @@ void jit_uni_eltwise_injector_t<isa>::tanh_polynomial_approx_compute_vector_fwd(
     h->fabs(vmm_src_pos, p_all / T_z, vmm_src);
 
     // Compute indices for the table lookup
-    h->sub(ZRegS(IDX(vmm_indices)), ZRegS(IDX(vmm_src_pos)),
-            ZRegS(IDX(table_val(tanh_idx_bias, z_tmp))));
+    h->sub(vmm_indices, vmm_src_pos, table_val(tanh_idx_bias, z_tmp));
     h->and_(ZRegD(IDX(vmm_indices)), ZRegD(IDX(vmm_indices)),
             ZRegD(IDX(table_val(tanh_idx_mask, z_tmp))));
     h->lsr(ZRegD(IDX(vmm_indices)), ZRegD(IDX(vmm_indices)), 20);
@@ -574,7 +571,7 @@ void jit_uni_eltwise_injector_t<isa>::tanh_polynomial_approx_compute_vector_fwd(
     // Argument reduction
     h->and_(ZRegD(IDX(vmm_src_shift)), ZRegD(IDX(vmm_src_pos)),
             ZRegD(IDX(table_val(tanh_idx_mask, z_tmp))));
-    h->fsub(vmm_src_pos, vmm_src_pos, ZRegS(IDX(vmm_src_shift)));
+    h->fsub(vmm_src_pos, vmm_src_pos, vmm_src_shift);
 
     gather_coefficient(vmm_pol, 6, vmm_indices);
     for (int deg = 5; deg >= 0; --deg) {
@@ -799,7 +796,7 @@ void jit_uni_eltwise_injector_t<isa>::soft_relu_compute_vector_fwd(
 
     // calculate exp(x)
     // fx = x * log2ef + 0.5
-    h->fmul(vmm_src, vmm_src, ZRegS(IDX(table_val(exp_log2ef, z_tmp))));
+    h->fmul(vmm_src, vmm_src, table_val(exp_log2ef, z_tmp));
     h->fadd(vmm_src, p_all / T_m, 0.5f);
 
     // tmp = floorf(fx)
@@ -809,19 +806,15 @@ void jit_uni_eltwise_injector_t<isa>::soft_relu_compute_vector_fwd(
     h->mov(ZRegD(IDX(vmm_src)), ZRegD(IDX(vmm_aux0)));
 
     // x = x - fx * ln2
-    h->fmul(vmm_aux0, vmm_aux0, ZRegS(IDX(table_val(ln2f, z_tmp))));
+    h->fmul(vmm_aux0, vmm_aux0, table_val(ln2f, z_tmp));
     h->fsub(vmm_aux1, vmm_aux1, vmm_aux0);
     // compute exponent polynomial
     table_val(exp_pol, vmm_aux3, 4);
-    h->fmad(vmm_aux3, p_all / T_m, vmm_aux1,
-            ZRegS(IDX(table_val(exp_pol, z_tmp, 3))));
-    h->fmad(vmm_aux3, p_all / T_m, vmm_aux1,
-            ZRegS(IDX(table_val(exp_pol, z_tmp, 2))));
-    h->fmad(vmm_aux3, p_all / T_m, vmm_aux1,
-            ZRegS(IDX(table_val(exp_pol, z_tmp, 1))));
-    h->fmad(vmm_aux3, p_all / T_m, vmm_aux1,
-            ZRegS(IDX(table_val(exp_pol, z_tmp, 0))));
-    h->fmad(vmm_aux3, p_all / T_m, vmm_aux1, ZRegS(IDX(table_val(one, z_tmp))));
+    h->fmad(vmm_aux3, p_all / T_m, vmm_aux1, table_val(exp_pol, z_tmp, 3));
+    h->fmad(vmm_aux3, p_all / T_m, vmm_aux1, table_val(exp_pol, z_tmp, 2));
+    h->fmad(vmm_aux3, p_all / T_m, vmm_aux1, table_val(exp_pol, z_tmp, 1));
+    h->fmad(vmm_aux3, p_all / T_m, vmm_aux1, table_val(exp_pol, z_tmp, 0));
+    h->fmad(vmm_aux3, p_all / T_m, vmm_aux1, table_val(one, z_tmp));
 
     // We do not count 2^-n here, because n can reach 128 and 2^(-128) is not
     // representable by fp32, so to get around this problem, instead of computing
@@ -849,8 +842,7 @@ void jit_uni_eltwise_injector_t<isa>::soft_relu_compute_vector_fwd(
     h->lsr(vmm_src, vmm_aux3, n_mantissa_bits);
     h->scvtf(vmm_src, p_all / T_m, vmm_src);
     // got n. where n is x = 2^n * y. y = 0.5 .. 1
-    h->fsub(vmm_src, vmm_src,
-            ZRegS(IDX(table_val(soft_relu_one_twenty_six, z_tmp))));
+    h->fsub(vmm_src, vmm_src, table_val(soft_relu_one_twenty_six, z_tmp));
 
     // and with mask (to get 0.5 * mantissa)
     h->and_(ZRegD(IDX(vmm_aux3)), ZRegD(IDX(vmm_aux3)),
@@ -865,23 +857,23 @@ void jit_uni_eltwise_injector_t<isa>::soft_relu_compute_vector_fwd(
     h->mov(ZRegD(IDX(vmm_aux1)),
             ZRegD(IDX(table_val(soft_relu_pol, z_tmp, 8))));
     h->fmad(vmm_aux1, p_all / T_m, vmm_aux3,
-            ZRegS(IDX(table_val(soft_relu_pol, z_tmp, 7))));
+            table_val(soft_relu_pol, z_tmp, 7));
     h->fmad(vmm_aux1, p_all / T_m, vmm_aux3,
-            ZRegS(IDX(table_val(soft_relu_pol, z_tmp, 6))));
+            table_val(soft_relu_pol, z_tmp, 6));
     h->fmad(vmm_aux1, p_all / T_m, vmm_aux3,
-            ZRegS(IDX(table_val(soft_relu_pol, z_tmp, 5))));
+            table_val(soft_relu_pol, z_tmp, 5));
     h->fmad(vmm_aux1, p_all / T_m, vmm_aux3,
-            ZRegS(IDX(table_val(soft_relu_pol, z_tmp, 4))));
+            table_val(soft_relu_pol, z_tmp, 4));
     h->fmad(vmm_aux1, p_all / T_m, vmm_aux3,
-            ZRegS(IDX(table_val(soft_relu_pol, z_tmp, 3))));
+            table_val(soft_relu_pol, z_tmp, 3));
     h->fmad(vmm_aux1, p_all / T_m, vmm_aux3,
-            ZRegS(IDX(table_val(soft_relu_pol, z_tmp, 2))));
+            table_val(soft_relu_pol, z_tmp, 2));
     h->fmad(vmm_aux1, p_all / T_m, vmm_aux3,
-            ZRegS(IDX(table_val(soft_relu_pol, z_tmp, 1))));
+            table_val(soft_relu_pol, z_tmp, 1));
     h->fmad(vmm_aux1, p_all / T_m, vmm_aux3,
-            ZRegS(IDX(table_val(soft_relu_pol, z_tmp, 0))));
+            table_val(soft_relu_pol, z_tmp, 0));
     //calculate ln(2) * n
-    h->fmul(vmm_src, vmm_src, ZRegS(IDX(table_val(ln2f, z_tmp))));
+    h->fmul(vmm_src, vmm_src, table_val(ln2f, z_tmp));
     h->fadd(vmm_src, vmm_src, vmm_aux1);
     h->fadd(vmm_src, vmm_src, vmm_aux0);
 
@@ -944,11 +936,11 @@ template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_t<isa>::log_compute_vector_fwd(
         const TRegS &vmm_src) {
 
-    const auto &t0 = ZRegS(IDX(vmm_src));
-    const auto &t1 = ZRegS(IDX(vmm_aux1));
-    const auto &t2 = ZRegS(IDX(vmm_aux2));
-    const auto &t3 = ZRegS(IDX(vmm_aux3));
-    const auto &t4 = ZRegS(IDX(vmm_aux4));
+    const auto &t0 = vmm_src;
+    const auto &t1 = vmm_aux1;
+    const auto &t2 = vmm_aux2;
+    const auto &t3 = vmm_aux3;
+    const auto &t4 = vmm_aux4;
     const auto &mask = p_tmp0.s;
     const auto &wt0 = h->W_TMP_0;
     const auto &xt0 = h->X_TMP_0;
@@ -1067,8 +1059,7 @@ void jit_uni_eltwise_injector_t<
                 table_off(gelu_erf_minimax_pol,
                         coeff_idx * gelu_erf_n_polynomials),
                 h->X_TMP_0);
-        h->ld1w(ZRegS(IDX(vmm_coeff)), p_all / T_z,
-                ptr(h->X_TMP_1, ZRegS(IDX(vmm_pol_idx)), SXTW));
+        h->ld1w(vmm_coeff, p_all / T_z, ptr(h->X_TMP_1, vmm_pol_idx, SXTW));
     };
 
     // we use the erf function symmetry erf(-x) = -erf(x)
@@ -1076,30 +1067,27 @@ void jit_uni_eltwise_injector_t<
     h->fabs(vmm_src_pos, p_all / T_z, vmm_src);
 
     // Compute indices for table lookup
-    h->add(vmm_indices, vmm_src_pos,
-            ZRegS(IDX(table_val(gelu_erf_idx_bias, z_tmp, 0))));
+    h->add(vmm_indices, vmm_src_pos, table_val(gelu_erf_idx_bias, z_tmp, 0));
 
     // An arithmetic shift is needed to properly map denormals to
     // their polynomial. we shift by 21 as we use 2 bits of mantissa
     // for indexing.
-    h->asr(ZRegS(IDX(vmm_indices)), ZRegS(IDX(vmm_indices)), 21);
+    h->asr(vmm_indices, vmm_indices, 21);
 
     // Apply special rules
-    h->smax(vmm_indices, p_all / T_z,
-            ZRegS(IDX(table_val(gelu_erf_one, z_tmp))));
-    h->smin(vmm_indices, p_all / T_z,
-            ZRegS(IDX(table_val(gelu_erf_twenty_four, z_tmp))));
+    h->smax(vmm_indices, p_all / T_z, table_val(gelu_erf_one, z_tmp));
+    h->smin(vmm_indices, p_all / T_z, table_val(gelu_erf_twenty_four, z_tmp));
 
     // We have to check
     //     index = x_pos > rbound ? 23 : index;
     // for erf to return -1/1 when we should.
     h->fcmlt(p_mask.s, p_all / T_z, vmm_src_pos,
-            ZRegS(IDX(table_val(gelu_erf_rbound, z_tmp))));
+            table_val(gelu_erf_rbound, z_tmp));
     h->sel(vmm_indices, p_mask, vmm_indices,
-            ZRegS(IDX(table_val(gelu_erf_twenty_three, z_tmp))));
+            table_val(gelu_erf_twenty_three, z_tmp));
 
     // Adjusting indices
-    h->mul(ZRegS(IDX(vmm_indices)), sizeof(float));
+    h->mul(vmm_indices, sizeof(float));
 
     // Evaluate the polynomial
     gather_coefficient(vmm_pol, 5, vmm_indices);
@@ -1115,9 +1103,9 @@ void jit_uni_eltwise_injector_t<
     h->eor(ZRegD(IDX(vmm_pol)), p_all / T_z, ZRegD(IDX(vmm_tmp)));
 
     // Compute the final output
-    h->fadd(vmm_pol, vmm_pol, ZRegS(IDX(table_val(one, z_tmp))));
+    h->fadd(vmm_pol, vmm_pol, table_val(one, z_tmp));
     h->fmul(vmm_src, p_all / T_z, vmm_pol);
-    h->fmul(vmm_src, vmm_src, ZRegS(IDX(table_val(half, z_tmp))));
+    h->fmul(vmm_src, vmm_src, table_val(half, z_tmp));
 }
 template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_t<isa>::gelu_erf_compute_vector_fwd(
@@ -1142,8 +1130,7 @@ void jit_uni_eltwise_injector_t<isa>::gelu_erf_compute_vector_fwd(
     h->mov(ZRegD(IDX(vmm_aux3)), ZRegD(IDX(vmm_src)));
 
     // x = s / sqrt(2)
-    h->fmul(vmm_src, vmm_src,
-            ZRegS(IDX(table_val(gelu_erf_one_over_sqrt_two, z_tmp))));
+    h->fmul(vmm_src, vmm_src, table_val(gelu_erf_one_over_sqrt_two, z_tmp));
 
     // abs(x)
     h->fabs(vmm_aux1, p_all / T_m, vmm_src);
@@ -1169,17 +1156,13 @@ void jit_uni_eltwise_injector_t<isa>::gelu_erf_compute_vector_fwd(
 
     // compute polynomialial r
     table_val(gelu_erf_pol, vmm_aux1, 4);
-    h->fmad(vmm_aux1, p_all / T_m, vmm_aux4,
-            ZRegS(IDX(table_val(gelu_erf_pol, z_tmp, 3))));
-    h->fmad(vmm_aux1, p_all / T_m, vmm_aux4,
-            ZRegS(IDX(table_val(gelu_erf_pol, z_tmp, 2))));
-    h->fmad(vmm_aux1, p_all / T_m, vmm_aux4,
-            ZRegS(IDX(table_val(gelu_erf_pol, z_tmp, 1))));
-    h->fmad(vmm_aux1, p_all / T_m, vmm_aux4,
-            ZRegS(IDX(table_val(gelu_erf_pol, z_tmp, 0))));
+    h->fmad(vmm_aux1, p_all / T_m, vmm_aux4, table_val(gelu_erf_pol, z_tmp, 3));
+    h->fmad(vmm_aux1, p_all / T_m, vmm_aux4, table_val(gelu_erf_pol, z_tmp, 2));
+    h->fmad(vmm_aux1, p_all / T_m, vmm_aux4, table_val(gelu_erf_pol, z_tmp, 1));
+    h->fmad(vmm_aux1, p_all / T_m, vmm_aux4, table_val(gelu_erf_pol, z_tmp, 0));
 
     // erf = sign * (1 - r * t * exp(-x*x))
-    h->fmad(vmm_src, p_all / T_m, vmm_aux1, ZRegS(IDX(table_val(one, z_tmp))));
+    h->fmad(vmm_src, p_all / T_m, vmm_aux1, table_val(one, z_tmp));
     h->eor(ZRegD(IDX(vmm_src)), ZRegD(IDX(vmm_src)), ZRegD(IDX(vmm_aux0)));
 
     // S = 0.5 * s
@@ -1207,12 +1190,12 @@ void jit_uni_eltwise_injector_t<isa>::elu_compute_vector_bwd(
         // after exponentiation, get mask by comparing with exp(0)=1.f, not 0.f
         compute_cmp_mask(vmm_src, table_val(one, z_tmp), _cmp_gt_os);
         // R * alpha, then blend with 1.f
-        h->fmul(vmm_src, vmm_src, ZRegS(IDX(table_val(alpha, z_tmp))));
+        h->fmul(vmm_src, vmm_src, table_val(alpha, z_tmp));
     } else {
         // get mask of `d` > 0
         compute_cmp_mask(vmm_src, table_val(zero, z_tmp), _cmp_gt_os);
         // R = `d` + alpha, then blend with 1.f
-        h->fadd(vmm_src, vmm_src, ZRegS(IDX(table_val(alpha, z_tmp))));
+        h->fadd(vmm_src, vmm_src, table_val(alpha, z_tmp));
     }
     blend_with_mask(vmm_src, table_val(one, z_tmp));
 }
@@ -1241,13 +1224,12 @@ void jit_uni_eltwise_injector_t<isa>::gelu_tanh_compute_vector_bwd(
     // keep G2 in a separate register
     h->mov(ZRegD(IDX(vmm_aux2)),
             ZRegD(IDX(table_val(gelu_tanh_fitting_const_times_three, z_tmp))));
-    h->fmad(vmm_aux2, p_all / T_m, vmm_src, ZRegS(IDX(table_val(one, z_tmp))));
+    h->fmad(vmm_aux2, p_all / T_m, vmm_src, table_val(one, z_tmp));
 
     h->mov(ZRegD(IDX(vmm_aux1)),
             ZRegD(IDX(table_val(gelu_tanh_fitting_const, z_tmp))));
-    h->fmad(vmm_src, p_all / T_m, vmm_aux1, ZRegS(IDX(table_val(one, z_tmp))));
-    h->fmul(vmm_aux0, vmm_aux0,
-            ZRegS(IDX(table_val(gelu_tanh_sqrt_two_over_pi, z_tmp))));
+    h->fmad(vmm_src, p_all / T_m, vmm_aux1, table_val(one, z_tmp));
+    h->fmul(vmm_aux0, vmm_aux0, table_val(gelu_tanh_sqrt_two_over_pi, z_tmp));
     h->fmul(vmm_src, vmm_src, vmm_aux0);
     h->fmul(vmm_aux2, vmm_aux2, vmm_aux0);
 
@@ -1267,11 +1249,11 @@ void jit_uni_eltwise_injector_t<isa>::gelu_tanh_compute_vector_bwd(
     // 1) R = G2 * (1 - T) = G2 - G2 * T
     h->fmls(vmm_aux2, p_all / T_m, vmm_aux2, vmm_src);
     // 2) Q = 1 + T
-    h->fadd(vmm_src, vmm_src, ZRegS(IDX(table_val(one, z_tmp))));
+    h->fadd(vmm_src, vmm_src, table_val(one, z_tmp));
     // 3) res = Q * (1 + R) = Q + Q * R
     h->fmla(vmm_src, p_all / T_m, vmm_src, vmm_aux2);
 
-    h->fmul(vmm_src, vmm_src, ZRegS(IDX(table_val(half, z_tmp))));
+    h->fmul(vmm_src, vmm_src, table_val(half, z_tmp));
 }
 
 template <cpu_isa_t isa>
@@ -1387,7 +1369,7 @@ template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_t<isa>::swish_compute_vector_bwd(
         const TRegS &vmm_src) {
     // R = alpha * s
-    h->fmul(vmm_src, vmm_src, ZRegS(IDX(table_val(alpha, z_tmp))));
+    h->fmul(vmm_src, vmm_src, table_val(alpha, z_tmp));
 
     // Save R on stack for later usage
     h->sub_imm(h->X_SP, h->X_SP, vlen, h->X_TMP_0);
@@ -1444,8 +1426,7 @@ template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_t<isa>::gelu_erf_compute_vector_bwd(
         const TRegS &vmm_src) {
     // R = s / sqrt(2)
-    h->fmul(vmm_src, vmm_src,
-            ZRegS(IDX(table_val(gelu_erf_one_over_sqrt_two, z_tmp))));
+    h->fmul(vmm_src, vmm_src, table_val(gelu_erf_one_over_sqrt_two, z_tmp));
 
     // Save R on stack for later usage
     h->sub_imm(h->X_SP, h->X_SP, vlen, h->X_TMP_0);
@@ -1461,8 +1442,7 @@ void jit_uni_eltwise_injector_t<isa>::gelu_erf_compute_vector_bwd(
     // T = R / sqrt(pi) * Q
     h->add_imm(h->X_TMP_0, h->X_SP, 0, h->X_TMP_1);
     h->ldr(ZReg(IDX(vmm_aux2)), ptr(h->X_TMP_0));
-    h->fmul(vmm_aux2, vmm_aux2,
-            ZRegS(IDX(table_val(gelu_erf_one_over_sqrt_pi, z_tmp))));
+    h->fmul(vmm_aux2, vmm_aux2, table_val(gelu_erf_one_over_sqrt_pi, z_tmp));
     h->fmul(vmm_aux2, vmm_aux2, vmm_src);
 
     // -Q
@@ -1494,23 +1474,19 @@ void jit_uni_eltwise_injector_t<isa>::gelu_erf_compute_vector_bwd(
 
     // compute polynomial r
     h->mov(ZRegD(IDX(vmm_aux1)), ZRegD(IDX(table_val(gelu_erf_pol, z_tmp, 4))));
-    h->fmad(vmm_aux1, p_all / T_m, vmm_aux4,
-            ZRegS(IDX(table_val(gelu_erf_pol, z_tmp, 3))));
-    h->fmad(vmm_aux1, p_all / T_m, vmm_aux4,
-            ZRegS(IDX(table_val(gelu_erf_pol, z_tmp, 2))));
-    h->fmad(vmm_aux1, p_all / T_m, vmm_aux4,
-            ZRegS(IDX(table_val(gelu_erf_pol, z_tmp, 1))));
-    h->fmad(vmm_aux1, p_all / T_m, vmm_aux4,
-            ZRegS(IDX(table_val(gelu_erf_pol, z_tmp, 0))));
+    h->fmad(vmm_aux1, p_all / T_m, vmm_aux4, table_val(gelu_erf_pol, z_tmp, 3));
+    h->fmad(vmm_aux1, p_all / T_m, vmm_aux4, table_val(gelu_erf_pol, z_tmp, 2));
+    h->fmad(vmm_aux1, p_all / T_m, vmm_aux4, table_val(gelu_erf_pol, z_tmp, 1));
+    h->fmad(vmm_aux1, p_all / T_m, vmm_aux4, table_val(gelu_erf_pol, z_tmp, 0));
 
     // erf = sign * (1 - r * t * exp(-x*x))
-    h->fmad(vmm_src, p_all / T_m, vmm_aux1, ZRegS(IDX(table_val(one, z_tmp))));
+    h->fmad(vmm_src, p_all / T_m, vmm_aux1, table_val(one, z_tmp));
     h->eor(ZRegD(IDX(vmm_src)), ZRegD(IDX(vmm_src)), ZRegD(IDX(vmm_aux0)));
 
     // P = T + 0.5
-    h->fadd(vmm_aux2, vmm_aux2, ZRegS(IDX(table_val(half, z_tmp))));
+    h->fadd(vmm_aux2, vmm_aux2, table_val(half, z_tmp));
     // res = P + 0.5 * erf
-    h->fmla(vmm_aux2, p_all / T_m, vmm_src, ZRegS(IDX(table_val(half, z_tmp))));
+    h->fmla(vmm_aux2, p_all / T_m, vmm_src, table_val(half, z_tmp));
     h->mov(ZRegD(IDX(vmm_src)), ZRegD(IDX(vmm_aux2)));
 }
 
@@ -1748,8 +1724,7 @@ void jit_uni_eltwise_injector_t<isa>::compute_body(
             }
         }
         if (scale_ != 1.f) {
-            h->fmul(ZRegS(IDX(TRegS(idx))), ZRegS(IDX(TRegS(idx))),
-                    ZRegS(IDX(table_val(scale, vmm_mask))));
+            h->fmul(TRegS(idx), TRegS(idx), table_val(scale, vmm_mask));
         }
     });
 }

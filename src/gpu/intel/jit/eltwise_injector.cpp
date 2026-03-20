@@ -457,18 +457,33 @@ void eltwise_injector_f32_t<ngen_generator_t>::philox_4x32(
         h->mov(4, key.ud(1)(4, 4, 2), uint32_t(0xBB67AE85u));
     }
 
-    h->template mov<uint16_t>(4, offs.uw(16)(1), Immediate::uv(0x00009988));
-    h->template mul<uint32_t>(
-            4, offs.ud(8)(1), key.ud(0)(4, 4, 1), offs.uw(16)(4, 4, 1));
-    h->add(4, offs.ud(8)(1), offs.ud(8)(4, 4, 1), sround_seed);
+    if (hw() < gpu_xe3p_35_10) {
+        h->template mov<uint16_t>(4, offs.uw(16)(1), Immediate::uv(0x00009988));
+        h->template mul<uint32_t>(
+                4, offs.ud(8)(1), key.ud(0)(4, 4, 1), offs.uw(16)(4, 4, 1));
+        h->add(4, offs.ud(8)(1), offs.ud(8)(4, 4, 1), sround_seed);
 
-    h->template mov<uint16_t>(8, offs.uw(8)(1), Immediate::uv(0x77665544));
-    h->template mov<uint16_t>(8, offs.uw(0)(1), Immediate::uv(0x33221100));
-    h->template mul<uint32_t>(
-            8, key.ud(8)(1), key.ud(0)(8, 8, 1), offs.uw(8)(8, 8, 1));
-    h->template mul<uint32_t>(
-            8, key.ud(0)(1), key.ud(0)(8, 8, 1), offs.uw(0)(8, 8, 1));
-    h->add(16, key, key, sround_seed);
+        h->template mov<uint16_t>(8, offs.uw(8)(1), Immediate::uv(0x77665544));
+        h->template mov<uint16_t>(8, offs.uw(0)(1), Immediate::uv(0x33221100));
+        h->template mul<uint32_t>(
+                8, key.ud(8)(1), key.ud(0)(8, 8, 1), offs.uw(8)(8, 8, 1));
+        h->template mul<uint32_t>(
+                8, key.ud(0)(1), key.ud(0)(8, 8, 1), offs.uw(0)(8, 8, 1));
+        h->add(16, key, key, sround_seed);
+    } else {
+        h->template mov<uint16_t>(4, offs.ud(0)(1), Immediate::uv(0x00009988));
+        h->template mul<uint32_t>(
+                4, offs.ud(0)(1), key.ud(0)(4, 4, 1), offs.ud(0)(4, 4, 1));
+        h->template mov<uint16_t>(8, offs.ud(8)(1), Immediate::uv(0x77665544));
+        h->template mov<uint16_t>(8, key.ud(8)(8, 8, 1), key.ud(0)(8, 8, 1));
+        h->template mul<uint32_t>(
+                8, key.ud(8)(1), key.ud(8)(8, 8, 1), offs.ud(8)(8, 8, 1));
+        h->template mov<uint16_t>(8, offs.ud(0)(1), Immediate::uv(0x33221100));
+        h->template mul<uint32_t>(
+                8, key.ud(0)(1), key.ud(0)(8, 8, 1), offs.ud(0)(8, 8, 1));
+        h->add(16, key, key, sround_seed);
+    }
+
     // Compute ctr_mul.
     h->mov(4, ctr_mul.ud(2)(4), 0xCD9E8D57);
     h->mov(4, ctr_mul.ud(0)(4), 0xD2511F53);
@@ -509,15 +524,20 @@ void eltwise_injector_f32_t<ngen_generator_t>::philox_4x32(
         const auto grf_size = ngen::GRF::bytes(hw());
         const int esize = grf_size / 8; // 8 = 2 * dword bytes
         const int steps = utils::div_up(8, esize);
-
-        auto acc = h->acc0.retype(DataType::ud);
-        for (int i = 0, off = 0; i < steps; ++i, off += 2 * esize)
-            h->mul(esize, acc[i](2), ctr.ud(off)(8, 4, 2),
-                    ctr_mul.uw(off)(8, 2, 4));
-        h->mach(8, ctrLo, ctr.ud(0)(8, 4, 2), ctr_mul.ud(0)(8, 4, 2));
-        h->mov(8, ctrHi, ctrLo);
-        for (int i = 0, off = 0; i < steps; ++i, off += 2 * esize)
-            h->mov(esize, ctr.ud(off)(2), acc[i](2));
+        if (hw() < gpu_xe3p_35_10) {
+            auto acc = h->acc0.retype(DataType::ud);
+            for (int i = 0, off = 0; i < steps; ++i, off += 2 * esize)
+                h->mul(esize, acc[i](2), ctr.ud(off)(8, 4, 2),
+                        ctr_mul.uw(off)(8, 2, 4));
+            h->mach(8, ctrLo, ctr.ud(0)(8, 4, 2), ctr_mul.ud(0)(8, 4, 2));
+            h->mov(8, ctrHi, ctrLo);
+            for (int i = 0, off = 0; i < steps; ++i, off += 2 * esize)
+                h->mov(esize, ctr.ud(off)(2), acc[i](2));
+        } else {
+            for (int i = 0, off = 0; i < steps; ++i, off += 2 * esize)
+                h->mul(esize, ctr.uq(off)(1), ctr.ud(off)(8, 4, 2),
+                        ctr_mul.ud(off)(8, 4, 2));
+        }
 
         // xor results
         h->xor_(8, ctr.ud(1)(2), ctr.ud(1)(8, 4, 2), ctr_mul.ud(1)(8, 4, 2));

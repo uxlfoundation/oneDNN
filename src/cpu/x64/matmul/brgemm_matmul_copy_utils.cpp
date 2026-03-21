@@ -3370,10 +3370,12 @@ private:
                         auto offset = (is_dynamic_stride_ ? 0 : i * src_stride_)
                                 + pass * simd_w_;
                         offset /= src_elems_per_byte_;
+                        const auto tail_elements = ncolumns - pass * simd_w_;
                         const auto tail_size
-                                = div_up((ncolumns - pass * simd_w_),
-                                        src_elems_per_byte_);
+                                = div_up(tail_elements, src_elems_per_byte_);
                         load_ymm(i % 4, offset, do_tail, tail_size);
+                        maybe_apply_zero_points(get_ymm(i % 4), i, do_tail,
+                                tail_elements, pass * simd_w_);
                         if (is_dynamic_stride_) add(reg_src, reg_src_stride);
                     } else {
                         const auto src_ymm_1 = get_ymm(i % 4);

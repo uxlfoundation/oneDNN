@@ -889,6 +889,27 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
 }
 
 void skip_invalid_prb(const prb_t *prb, res_t *res) {
+    if (is_gpu()) {
+        const bool is_x8s4x8
+                = dnnl::impl::utils::one_of(prb->src_dt(), dnnl_u8, dnnl_s8)
+                && dnnl::impl::utils::one_of(prb->wei_dt(), dnnl_s4, dnnl_u4)
+                && dnnl::impl::utils::one_of(
+                        prb->dst_dt(), dnnl_u8, dnnl_s8, dnnl_s32);
+        const auto &wei_scales = prb->attr.scales.get(DNNL_ARG_WEIGHTS);
+        const bool has_grouped_scales
+                = !wei_scales.is_def() && !wei_scales.groups.empty();
+        if (is_x8s4x8 && has_grouped_scales) {
+            BENCHDNN_PRINT(2,
+                    "[SKIP][%s:%d]: GPU doesn't support int8 source with "
+                    "int4 weights, integer destination and grouped "
+                    "scales.\n",
+                    __FILE__, __LINE__);
+            res->state = SKIPPED;
+            res->reason = skip_reason::case_not_supported;
+            return;
+        }
+    }
+
     if (!prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).is_def()
             && (prb->wei_dt() != dnnl_s8 && prb->wei_dt() != dnnl_u8
                     && prb->wei_dt() != dnnl_s4 && prb->wei_dt() != dnnl_u4)) {

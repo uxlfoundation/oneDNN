@@ -2682,12 +2682,16 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
         }
 
         if (brg.req_s8s8_compensation) {
-            if (brg.is_ic_wei_scales) {
-                // vmm_inp_shift() corrupted in IC scales + compensation.
-                mov(reg_s8_input_shift, 128);
-                uni_vpbroadcastb(vmm_inp_shift(), reg_s8_input_shift.cvt8());
-            }
             uni_vpaddb(vmm_bcast, vmm_bcast, vmm_inp_shift());
+        }
+    };
+
+    // vmm_inp_shift() is corrupted in dot-product with IC scales
+    // and this lambda restores it when needed for compensation.
+    auto maybe_restore_vmm_inp_shift = [&]() {
+        if (brg.req_s8s8_compensation && brg.is_ic_wei_scales) {
+            mov(reg_s8_input_shift, 128);
+            uni_vpbroadcastb(vmm_inp_shift(), reg_s8_input_shift.cvt8());
         }
     };
 
@@ -2777,6 +2781,7 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
 
     for (dim_t rd = 0; rd < rd_loop; rd += brg.rd_step) {
         if (brg.n_bcast_1_load) {
+            if (rd > 0) maybe_restore_vmm_inp_shift();
             for (dim_t bd = bd_b; bd < bd_e && !is_emdbd; bd++)
                 broadcast_A(bcst(bd), bd, rd);
             for (dim_t ld = 0; ld < ld_block2; ld++) {
@@ -2811,6 +2816,7 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
             }
 
             for (dim_t bd = bd_b; bd < bd_e; bd++) {
+                if (rd > 0 || bd > bd_b) maybe_restore_vmm_inp_shift();
                 if (!is_emdbd) broadcast_A(bcst(), bd, rd);
                 if (brg.is_fp8_via_convert_non_amx())
                     maybe_pre_process_data(brg.dt_a, bcst(), vmm_fp8_bcst());

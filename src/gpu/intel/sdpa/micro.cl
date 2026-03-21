@@ -997,6 +997,12 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         tile_elementwise(S_max_tile_old, scale_op);
         tile_binary(S_max_tile_old, S_sum_total, binary_add);
 
+#if SOFTMAX_INF_AS_ZERO
+#define lse_set_zeros(v) vselect(0.f, v, visfinite(v))
+        tile_elementwise(S_max_tile_old, lse_set_zeros);
+#undef lse_set_zeros
+#endif
+
         // save columns logsumexp to workspace for training pass
         const uint preprocess_batch = b1 * (DST_D1 * q) + b0 * q;
 

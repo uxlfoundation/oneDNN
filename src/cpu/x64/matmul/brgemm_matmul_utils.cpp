@@ -1257,6 +1257,12 @@ status_t compute_blocking_heuristic(brgemm_matmul_conf_t &bgmmc,
         bgmmc.brgemm_batch_size
                 = nstl::max(bgmmc.K / bgmmc.K_blk, static_cast<dim_t>(1));
 
+        // Force K_blk alignment to wei_scales group size for AMX IC scales.
+        if (bgmmc.is_wei_scale_per_k && bgmmc.wei_scales_k_gsize > 0) {
+            bgmmc.K_blk = bgmmc.wei_scales_k_gsize;
+            bgmmc.brgemm_batch_size = 1;
+        }
+
         matmul_amx_blocking_params_micro_t best_blocking(bgmmc);
 
         matmul_amx_blocking_params_micro_t::find_best_blocking(
@@ -1475,6 +1481,13 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         bgmmc.wei_scales_dt = wei_scales.get_data_type();
         bgmmc.wei_scales_dt_sz = types::data_type_size(bgmmc.wei_scales_dt);
         bgmmc.wei_scales_k_gsize = wei_scales.get_group(0);
+
+        // Due to hardware restrictions of AMX the effective group size should
+        // be divisible by tile-size 64
+        // Otherwise fallback to AVX512 kernels.
+        VCONDCHECK_BG(IMPLICATION(bgmmc.is_wei_scale_per_k && bgmmc.is_amx,
+                              bgmmc.wei_scales_k_gsize % 64 == 0),
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
 
         // only common and per-oc-channel scales are supported
         // only per-ic-channel scales is supprted with weight decompression

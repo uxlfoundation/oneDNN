@@ -60,6 +60,18 @@ void matmul_amx_blocking_params_t::update_configuration(
     bgmmc.is_macro_heuristics
             = dynamic_cast<const matmul_amx_blocking_params_macro_t *>(this)
             != nullptr;
+
+    // Force K_blk alignment to wei_scales group size for AMX IC scales.
+    // Each brgemm call must cover exactly one scale group so that
+    // post-gemm-ops can apply a single scale row per call.
+    if (bgmmc.is_wei_scale_per_k && bgmmc.wei_scales_k_gsize > 0) {
+        bgmmc.K_blk = bgmmc.wei_scales_k_gsize;
+        bgmmc.brgemm_batch_size = 1;
+        bgmmc.K_chunk_size = 1;
+        bgmmc.extendable_k = false;
+        bgmmc.use_fused_copy_a = false;
+        bgmmc.use_buffer_c = bgmmc.use_buffer_c || bgmmc.K > bgmmc.K_blk;
+    }
 }
 
 dim_t matmul_amx_blocking_params_t::get_actual_lda() const {

@@ -28,8 +28,7 @@
 #define VAL_OFF(x0, x1, x2, x3) _4D_OFF(VAL, x0, x1, x2, x3)
 #define MSK_OFF(x0, x1, x2, x3) _4D_OFF(MSK, x0, x1, x2, x3)
 
-#define _BATCH_OFF(tag, x0, x1) \
-    ((x0) * tag##_S.array[0] + (x1) * tag##_S.array[1])
+#define _BATCH_OFF(tag, x0, x1) ((x0) * tag##_S0 + (x1) * tag##_S1)
 
 #define QRY_BATCH(x0, x1) _BATCH_OFF(QRY, x0, x1)
 #define KEY_BATCH(x0, x1) _BATCH_OFF(KEY, x0, x1)
@@ -37,29 +36,15 @@
 #define DST_BATCH(x0, x1) _BATCH_OFF(DST, x0, x1)
 #define MSK_BATCH(x0, x1) _BATCH_OFF(MSK, x0, x1)
 
-#define JOIN_COMMA(x, y) x, y
-
-#define RT_DIM4(varname) const int64x4_t varname
-#define RT_OFFSETS(basename) \
-    JOIN_COMMA(RT_DIM4(basename##_D), RT_DIM4(basename##_S))
-
-#define KEY_OFFSETS RT_OFFSETS(KEY)
-#define QRY_OFFSETS RT_OFFSETS(QRY)
-#define VAL_OFFSETS RT_OFFSETS(VAL)
-#define DST_OFFSETS RT_OFFSETS(DST)
-#define MSK_OFFSETS RT_OFFSETS(MSK)
-
-// helper shorthands for accessing individual dimensions
-#define KEY_D3 KEY_D.array[3]
-#define KEY_S3 KEY_S.array[3]
-#define KEY_S2 KEY_S.array[2]
-#define QRY_S2 QRY_S.array[2]
-#define VAL_S2 VAL_S.array[2]
-#define DST_S2 DST_S.array[2]
-#define DST_D0 DST_D.array[0]
-#define DST_D1 DST_D.array[1]
-#define MSK_D0 MSK_D.array[0]
-#define MSK_D1 MSK_D.array[1]
-#define MSK_S2 MSK_S.array[2]
+#define KEY_OFFSETS \
+    const long KEY_S0, const long KEY_S1, const long KEY_S2, \
+            const long KEY_S3, const long KEY_D3
+#define QRY_OFFSETS const long QRY_S0, const long QRY_S1, const long QRY_S2
+#define VAL_OFFSETS const long VAL_S0, const long VAL_S1, const long VAL_S2
+#define DST_OFFSETS \
+    const long DST_S0, const long DST_S1, const long DST_S2, const long DST_D1
+#define MSK_OFFSETS \
+    const long MSK_S0, const long MSK_S1, const long MSK_S2, \
+            const long MSK_D0, const long MSK_D1
 
 #endif

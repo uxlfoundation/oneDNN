@@ -1497,14 +1497,42 @@ status_t micro_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     //TODO: change arg_list type based on large_idx
     //bool use_int32_offset = conf.use_int32_offset;
 
-    auto append_offs
+    // pass only the individual stride/dim values
+    // actually consumed by the kernel to minimize register pressure
+    auto append_key_offs
             = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
-        compute::int64x4_t dims4
-                = {offs[3][0], offs[3][1], offs[3][2], offs[3][3]};
-        compute::int64x4_t strides4
-                = {offs[1][0], offs[1][1], offs[1][2], offs[1][3]};
-        arg_list.append(dims4);
-        arg_list.append(strides4);
+        arg_list.append((int64_t)offs[1][0]); // KEY_S0
+        arg_list.append((int64_t)offs[1][1]); // KEY_S1
+        arg_list.append((int64_t)offs[1][2]); // KEY_S2
+        arg_list.append((int64_t)offs[1][3]); // KEY_S3
+        arg_list.append((int64_t)offs[3][3]); // KEY_D3
+    };
+    auto append_qry_offs
+            = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
+        arg_list.append((int64_t)offs[1][0]); // QRY_S0
+        arg_list.append((int64_t)offs[1][1]); // QRY_S1
+        arg_list.append((int64_t)offs[1][2]); // QRY_S2
+    };
+    auto append_val_offs
+            = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
+        arg_list.append((int64_t)offs[1][0]); // VAL_S0
+        arg_list.append((int64_t)offs[1][1]); // VAL_S1
+        arg_list.append((int64_t)offs[1][2]); // VAL_S2
+    };
+    auto append_dst_offs
+            = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
+        arg_list.append((int64_t)offs[1][0]); // DST_S0
+        arg_list.append((int64_t)offs[1][1]); // DST_S1
+        arg_list.append((int64_t)offs[1][2]); // DST_S2
+        arg_list.append((int64_t)offs[3][1]); // DST_D1
+    };
+    auto append_msk_offs
+            = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
+        arg_list.append((int64_t)offs[1][0]); // MSK_S0
+        arg_list.append((int64_t)offs[1][1]); // MSK_S1
+        arg_list.append((int64_t)offs[1][2]); // MSK_S2
+        arg_list.append((int64_t)offs[3][0]); // MSK_D0
+        arg_list.append((int64_t)offs[3][1]); // MSK_D1
     };
 
     const memory_desc_wrapper scale_mdw(pd()->desc()->scale_md());
@@ -1545,12 +1573,12 @@ status_t micro_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     arg_list.append(mask_type);
     if (pd()->with_attn_mask()) arg_list.append(attn_mask);
 
-    append_offs(arg_list, key_off);
-    append_offs(arg_list, qry_off);
-    append_offs(arg_list, val_off);
-    append_offs(arg_list, dst_off);
+    append_key_offs(arg_list, key_off);
+    append_qry_offs(arg_list, qry_off);
+    append_val_offs(arg_list, val_off);
+    append_dst_offs(arg_list, dst_off);
 
-    if (pd()->with_attn_mask()) { append_offs(arg_list, msk_off); }
+    if (pd()->with_attn_mask()) { append_msk_offs(arg_list, msk_off); }
     const int remainder_k = (K % kq_wg_tile_m) != 0;
 
     arg_list.append(remainder_k);
@@ -1647,14 +1675,42 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     set_offsets(dst_mdw, dst_off);
     set_offsets(msk_mdw, msk_off);
 
-    auto append_offs
+    // pass only the individual stride/dim values
+    // actually consumed by the kernel to minimize register pressure
+    auto append_key_offs
             = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
-        compute::int64x4_t dims4
-                = {offs[3][0], offs[3][1], offs[3][2], offs[3][3]};
-        compute::int64x4_t strides4
-                = {offs[1][0], offs[1][1], offs[1][2], offs[1][3]};
-        arg_list.append(dims4);
-        arg_list.append(strides4);
+        arg_list.append((int64_t)offs[1][0]); // KEY_S0
+        arg_list.append((int64_t)offs[1][1]); // KEY_S1
+        arg_list.append((int64_t)offs[1][2]); // KEY_S2
+        arg_list.append((int64_t)offs[1][3]); // KEY_S3
+        arg_list.append((int64_t)offs[3][3]); // KEY_D3
+    };
+    auto append_qry_offs
+            = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
+        arg_list.append((int64_t)offs[1][0]); // QRY_S0
+        arg_list.append((int64_t)offs[1][1]); // QRY_S1
+        arg_list.append((int64_t)offs[1][2]); // QRY_S2
+    };
+    auto append_val_offs
+            = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
+        arg_list.append((int64_t)offs[1][0]); // VAL_S0
+        arg_list.append((int64_t)offs[1][1]); // VAL_S1
+        arg_list.append((int64_t)offs[1][2]); // VAL_S2
+    };
+    auto append_dst_offs
+            = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
+        arg_list.append((int64_t)offs[1][0]); // DST_S0
+        arg_list.append((int64_t)offs[1][1]); // DST_S1
+        arg_list.append((int64_t)offs[1][2]); // DST_S2
+        arg_list.append((int64_t)offs[3][1]); // DST_D1
+    };
+    auto append_msk_offs
+            = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
+        arg_list.append((int64_t)offs[1][0]); // MSK_S0
+        arg_list.append((int64_t)offs[1][1]); // MSK_S1
+        arg_list.append((int64_t)offs[1][2]); // MSK_S2
+        arg_list.append((int64_t)offs[3][0]); // MSK_D0
+        arg_list.append((int64_t)offs[3][1]); // MSK_D1
     };
 
     int mask_type = static_cast<int>(pd()->desc()->mask_type);
@@ -1693,8 +1749,8 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     preprocess_arg_list.append((int)K);
     preprocess_arg_list.append((int)Q);
 
-    append_offs(preprocess_arg_list, qry_off);
-    append_offs(preprocess_arg_list, dst_off);
+    append_qry_offs(preprocess_arg_list, qry_off);
+    append_dst_offs(preprocess_arg_list, dst_off);
 
     CHECK(parallel_for(
             ctx, nd_range_preprocess, preprocess_, preprocess_arg_list));
@@ -1764,12 +1820,12 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     arg_list.append(mask_type);
     if (pd()->with_attn_mask()) arg_list.append(attn_mask);
 
-    append_offs(arg_list, key_off);
-    append_offs(arg_list, qry_off);
-    append_offs(arg_list, val_off);
-    append_offs(arg_list, dst_off);
+    append_key_offs(arg_list, key_off);
+    append_qry_offs(arg_list, qry_off);
+    append_val_offs(arg_list, val_off);
+    append_dst_offs(arg_list, dst_off);
 
-    if (pd()->with_attn_mask()) { append_offs(arg_list, msk_off); }
+    if (pd()->with_attn_mask()) { append_msk_offs(arg_list, msk_off); }
     const int remainder_k = (K % wg_tile_k) != 0;
 
     const bool d_full = (d->head_size() == pd()->d_max());
@@ -1801,7 +1857,7 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
         pp.append(diff_q);
         pp.append(*diff_q_scratch);
         pp.append((int)(Q * D));
-        append_offs(pp, qry_off);
+        append_qry_offs(pp, qry_off);
         CHECK(parallel_for(
                 ctx, compute::nd_range_t(gws_p, lws_p), postprocess_, pp));
     }
@@ -1822,7 +1878,7 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
             pp.append(diff_k);
             pp.append(*diff_k_scratch);
             pp.append((int)(K * D));
-            append_offs(pp, key_off);
+            append_qry_offs(pp, key_off);
             CHECK(parallel_for(
                     ctx, compute::nd_range_t(gws_p, lws_p), postprocess_, pp));
         }
@@ -1837,7 +1893,7 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
             pp.append(diff_v);
             pp.append(*diff_v_scratch);
             pp.append((int)(K * D));
-            append_offs(pp, val_off);
+            append_qry_offs(pp, val_off);
             CHECK(parallel_for(
                     ctx, compute::nd_range_t(gws_p, lws_p), postprocess_, pp));
         }

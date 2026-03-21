@@ -1802,6 +1802,28 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
         else
             mov(reg_stride_ld_block, brg.LDC * brg.typesize_C);
 
+        /**
+         * Optionally applies IC weights scales for AMX.
+         * NOTE: Stores f32 values after applying in order not to loose precision.
+         * @param ldb the current ldb idx
+         * @param vmm_acc accumulator register to apply the scales to
+        */
+        auto maybe_apply_ic_scales_amx
+                = [&](const int ldb, const Vmm &vmm_acc) {
+            if (brg.is_ic_wei_scales) {
+                reg_aux_wei_scales.restore();
+                const auto addr
+                        = ptr[reg_aux_wei_scales + wei_scales_offset(ldb)];
+                const bool is_tail = is_ld_tail && ldb + 1 == ld_block2;
+                const bool is_single_scale = brg.is_single_wei_scale;
+                const Vmm vmm_wei_scales = vmm_tmp(0);
+                load_scales_to_vmm(brg.dt_wei_scales, vmm_wei_scales, addr,
+                        is_tail, is_single_scale);
+                uni_vcvtdq2ps(vmm_acc, vmm_acc);
+                uni_vmulps(vmm_acc, vmm_acc, vmm_wei_scales);
+            }
+        };
+
         auto store_accumulators_amx
                 = [&](const bool apply_post_ops,
                           const bool apply_zp_a_compensation = false) {
@@ -1854,6 +1876,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
                                         : accm(1, bd, 0);
                                 uni_vmovups(
                                         vreg_acc, ptr[reg_buf + buf_offset]);
+                                maybe_apply_ic_scales_amx(ldb, vreg_acc);
                             }
                         }
 

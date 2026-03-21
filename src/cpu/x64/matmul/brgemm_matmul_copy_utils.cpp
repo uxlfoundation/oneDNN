@@ -3224,10 +3224,10 @@ protected:
         maybe_apply_ic_zero_points(
                 vmm_src, inner_k, is_tail, ncolumns, inner_n_offs);
 
-        if (is_src_int4_ && is_tail && isa_has_masks(conf_->isa))
-            kmovq(kTail,
-                    size_t(((size_t)1 << div_up(ncolumns, src_elems_per_byte_))
-                            - 1));
+        if (is_src_int4_ && is_tail && isa_has_masks(conf_->isa)) {
+            const auto tail_size = div_up(ncolumns, src_elems_per_byte_);
+            kmovq(kTail, size_t(((size_t)1 << tail_size) - 1));
+        }
     }
 
     void generate() override;

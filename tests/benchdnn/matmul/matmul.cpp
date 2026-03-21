@@ -822,6 +822,23 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
             return;
         }
 
+        // GPU doesn't support int8 source with int4 weights and integer
+        // destination through non-ref implementations.
+        const bool is_x8s4x8
+                = dnnl::impl::utils::one_of(prb->src_dt(), dnnl_u8, dnnl_s8)
+                && dnnl::impl::utils::one_of(prb->wei_dt(), dnnl_s4, dnnl_u4)
+                && dnnl::impl::utils::one_of(
+                        prb->dst_dt(), dnnl_u8, dnnl_s8, dnnl_s32);
+        if (is_x8s4x8) {
+            BENCHDNN_PRINT(2,
+                    "[SKIP][%s:%d]: GPU doesn't support int8 source with "
+                    "int4 weights and integer destination.\n",
+                    __FILE__, __LINE__);
+            res->state = SKIPPED;
+            res->reason = skip_reason::case_not_supported;
+            return;
+        }
+
         const bool is_bf16 = prb->src_dt() == dnnl_bf16
                 && prb->wei_dt() == dnnl_bf16
                 && (prb->dst_dt() == dnnl_bf16 || prb->dst_dt() == dnnl_f32);

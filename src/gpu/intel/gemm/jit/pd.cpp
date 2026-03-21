@@ -487,6 +487,17 @@ status_t transfer_post_ops(
 
             bool trans = is_multi_row && !src_rmd.inner_dim.is_innermost();
 
+            // Reject col-only binary post-ops with non-unit stride in the
+            // col direction. Non-unit stride requires Scattered access with
+            // correct multi-block offsets, which is not yet supported.
+            {
+                int rmd_ndims = src_rmd.ndims();
+                bool col_only = is_multi_col && !is_multi_row;
+                if (col_only
+                        && !src_rmd.is_inner_dim(rmd_ndims - 2, rmd_ndims))
+                    return status::unimplemented;
+            }
+
             problem.Tbinary.push_back(T);
             problem.postOps.binaryRow[i] = is_multi_row;
             problem.postOps.binaryCol[i] = is_multi_col;
@@ -695,6 +706,19 @@ status_t pd_t::init_GEMMProblem(
         problem.postOps.transpose();
         for (auto &b : problem.binary)
             b.transpose();
+
+        // After swap, what was row-only in matmul terms becomes col-only in
+        // gemm terms. The col direction is now ndims-1 in the src descriptor.
+        for (size_t i = 0; i < problem.postOps.len(); i++) {
+            if (!problem.postOps[i].is_binary()) continue;
+            bool col_only = problem.postOps.binaryCol[i]
+                    && !problem.postOps.binaryRow[i];
+            if (!col_only) continue;
+            auto &src_rmd = problem.postOps[i].as_binary().src1_desc;
+            int rmd_ndims = src_rmd.ndims();
+            if (!src_rmd.is_inner_dim(rmd_ndims - 1, rmd_ndims))
+                return status::unimplemented;
+        }
     }
 
     auto reduce_ab = sum_ab();

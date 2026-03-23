@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2019 Intel Corporation
-* Copyright 2024 Arm Ltd. and affiliates
+* Copyright 2024, 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -270,12 +270,8 @@ void setup_cmp(compare::compare_t &cmp, const base_prb_t *base_prb,
     const float trh_coeff_bwd = (prb->dir & FLAG_FWD) ? 1.f : 4.f;
     const float trh_f32 = trh_coeff_log * trh_coeff_bwd * trh_coeff_f32
             * epsilon_dt(trh_dt);
-#if defined(DNNL_AARCH64) || defined(DNNL_SYCL_HIP) || defined(DNNL_SYCL_CUDA)
-    // MIOpen and ACL softmax accumulate in F16, but oneDNN now expects accumulation in
-    // F32, this partially reverts 6727bbe8. For more information on ACL softmax, see
-    // https://github.com/uxlfoundation/oneDNN/issues/1819
-    // Similarly, for bf16 on AArch64, the relaxed threshold is necessary due to
-    // minor accuracy drops observed compared to f32
+#if defined(DNNL_SYCL_HIP) || defined(DNNL_SYCL_CUDA)
+    // MIOpen softmax accumulates in F16, but oneDNN now expects accumulation in F32
     const float trh = trh_f32;
 #else
     const bool is_strict_acc
@@ -310,11 +306,9 @@ void setup_cmp(compare::compare_t &cmp, const base_prb_t *base_prb,
 
     const auto softmax_add_check
             = [&](const compare::compare_t::driver_check_func_args_t &args) {
-#if defined(DNNL_AARCH64_USE_ACL)
-        auto diff_trh = epsilon_dt(args.dt);
-#else
+
         auto diff_trh = epsilon_dt(dnnl_f32);
-#endif
+
         // SSE4.1 and OpenCL rdiff tolerance is too high for
         // certain scenarios.
         // Additionally, OpenCL expf implementation may return 1e-38f

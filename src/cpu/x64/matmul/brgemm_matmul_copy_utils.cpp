@@ -548,7 +548,11 @@ struct jit_brgemm_matmul_copy_a_transposed_impl_t
         , k_loop_src_shift(rows_step * src_stride)
         , k_loop_dst_shift(rows_step * tr_typesize)
         , is_f32(conf_->src_dt == data_type::f32)
+        , is_bf16(conf_->src_dt == data_type::bf16)
+        , is_f16(conf_->src_dt == data_type::f16)
         , is_bf32(conf_->is_bf32)
+        , is_f8(utils::one_of(
+                  conf_->src_dt, data_type::f8_e4m3, data_type::f8_e5m2))
         , is_dynamic_src_ld(conf_->is_runtime_M)
         // See the note in `create_brgemm_matmul_copy_b` why `orig_src_dt` used.
         , use_fp16_instructions_(conf_->isa == avx512_core_fp16
@@ -578,7 +582,10 @@ private:
     const dim_t k_loop_src_shift;
     const dim_t k_loop_dst_shift;
     const bool is_f32;
+    const bool is_bf16;
+    const bool is_f16;
     const bool is_bf32;
+    const bool is_f8;
     const bool is_dynamic_src_ld;
     const bool use_fp16_instructions_;
     const int vnni_granularity_for_store_;
@@ -644,10 +651,253 @@ private:
 
     void transpose_f32(reg64_t dst, reg64_t src, int nrows, int ncolumns);
     void transpose_bf16(reg64_t dst, reg64_t src, int nrows, int ncolumns);
+    void transpose_f16(reg64_t dst, reg64_t src, int nrows, int ncolumns);
+
+    void transpose_f8(reg64_t dst, reg64_t src, int nrows, int ncolumns);
+
+    // Transpose an up-to-8x8 block using AVX2 fp32 transpose algorithm.
+    //
+    // For bf16 inputs we first upconvert values to fp32 then run the same
+    // transpose algorithm and then convert back to bf16 on store.
+    //
+    // Layout:
+    // - loads read rows from the source matrix
+    // - stores write columns to the destination matrix (transposed)
+    //
+    // The kernel processes columns in groups of 4 using two 128-bit halves
+    // of a YMM register (lower rows 0..3, upper rows 4..7).
+    template <typename T = Vmm,
+            typename = typename utils::enable_if<
+                    std::is_same<T, Xbyak::Ymm>::value>::type>
+    void transpose_common_ymm(
+            data_type_t dt, reg64_t dst, reg64_t src, int nrows, int ncolumns);
+
     void deploy_transpose(reg64_t dst, reg64_t src, int nrows, int ncolumns);
     void init_masks();
     void generate() override;
 };
+
+template <typename Vmm>
+void jit_brgemm_matmul_copy_a_transposed_impl_t<Vmm>::transpose_f8(
+        reg64_t dst, reg64_t src, int nrows, int ncolumns) {
+    assert(!"unsupported transpose_f8 copy_a_transposed_impl");
+}
+
+template <typename Vmm>
+void jit_brgemm_matmul_copy_a_transposed_impl_t<Vmm>::transpose_f16(
+        reg64_t reg_dst, reg64_t reg_src, int nrows, int ncolumns) {
+    assert(!"unsupported transpose_f16 copy_a_transposed_impl");
+}
+
+template <typename Vmm>
+void jit_brgemm_matmul_copy_a_transposed_impl_t<Vmm>::transpose_bf16(
+        reg64_t reg_dst, reg64_t reg_src, int nrows, int ncolumns) {
+    assert(!"unsupported transpose_bf16 copy_a_transposed_impl");
+}
+
+template <typename Vmm>
+void jit_brgemm_matmul_copy_a_transposed_impl_t<Vmm>::transpose_f32(
+        reg64_t reg_dst, reg64_t reg_src, int nrows, int ncolumns) {
+    assert(!"unsupported transpose_f32 copy_a_transposed_impl");
+}
+
+template <>
+void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Zmm>::transpose_f8(
+        reg64_t dst, reg64_t src, int nrows, int ncolumns) {
+    assert(nrows >= 0 && nrows <= rows_step && ncolumns >= 0
+            && ncolumns <= columns_step);
+    if (!nrows) return;
+
+    // This kernel handles one 16x16 tile of fp8 values.
+    //
+    // The data is transposed directly as raw bytes:
+    // - no conversions
+    // - no numeric interpretation
+    //
+    // rows_step / columns_step are expected to match this 16x16 tile shape.
+    assert(rows_step == 16);
+    assert(columns_step == 16);
+
+    auto src_xmm = [](int i) {
+        assert(i >= 0 && i < 32);
+        return Xmm(i);
+    };
+
+    Label transpose_f8_done;
+
+    // ncolumns == 0 together with dynamic src ld means the effective number
+    // of columns is driven by reg_loop_m and handled through a mask.
+    const bool dynamic_columns_size = ncolumns == 0 && is_dynamic_src_ld;
+
+    auto kmovx = [this, dynamic_columns_size](
+                         Opmask k, unsigned w, bool load_mask_stage = false) {
+        if (dynamic_columns_size && load_mask_stage) {
+            // Build a mask of the form (1 << reg_loop_m) - 1.
+            //
+            // reg_opmask_shift_compute is rcx so cl can be used as the shift
+            // count. The resulting value is written into the destination mask.
+            mov(reg_opmask_shift_compute, reg_loop_m);
+            mov(regq_tmp, 1);
+            shl(regq_tmp, cl);
+            sub(regq_tmp, 1);
+        } else {
+            mov(regw_tmp, w);
+        }
+        jit_generator_t::kmovw(k, regw_tmp);
+    };
+
+    auto store = [this, dst](Xmm r, int i) {
+        auto addr = EVEX_compress_addr(dst, i * dst_stride);
+        vmovdqu8(addr, r);
+    };
+
+    // The load mask is in units of bytes / f8 elements.
+    const int load_mask
+            = ncolumns < columns_step ? (1 << ncolumns) - 1 : 0xffff;
+    kmovx(kFFFF, load_mask, true);
+
+    // Load up to 16 source rows.
+    //
+    // Register layout after load:
+    //   xmm0 .. xmm(nrows-1) = source rows
+    //   xmm(nrows) .. xmm15  = zero-filled rows
+    //
+    // Each row occupies 16 bytes.
+    if (is_dynamic_src_ld) {
+        mov(reg_aux_src0, src);
+        for (int i = 0; i < nrows; i++) {
+            vmovdqu8(src_xmm(i) | kFFFF | T_z, ptr[reg_aux_src0]);
+            if (i + 1 < nrows)
+                add(reg_aux_src0, ptr[rsp + dynamic_src_ld_offt_]);
+        }
+    } else {
+        for (int i = 0; i < nrows; i++) {
+            auto src_addr = EVEX_compress_addr(src, i * src_stride);
+            vmovdqu8(src_xmm(i) | kFFFF | T_z, src_addr);
+        }
+    }
+
+    // For tail tiles (nrows < 16), zero rows beyond nrows so that the transpose
+    // produces correctly zero-padded output. Store the filled rows to avoid
+    // leaving garbage in dst.
+    //
+    // This is required because matmul may read that data (currently the case
+    // for the f8 data type).
+    for (int i = nrows; i < rows_step; i++) {
+        vpxord(src_xmm(i), src_xmm(i), src_xmm(i));
+    }
+
+    // 16x16 byte transpose algorithm.
+    //
+    // The algorithm uses staged unpack:
+    //   stage 1: bytes  -> combine row pairs
+    //   stage 2: words  -> combine 2-row groups into 4-row groups
+    //   stage 3: dwords -> combine 4-row groups into 8-row groups
+    //   stage 4: qwords -> combine 8-row groups into 16-row groups
+    //
+    // Temporary register usage:
+    // xmm16 .. xmm31 are used as intermediates.
+    //
+    // Important:
+    // After the final stage the output columns are NOT in natural order.
+    // The algorithm produces:
+    //   xmm0..7 = even columns (0, 2, 4, ..., 14)
+    //   xmm8..15 = odd columns (1, 3, 5, ..., 15)
+    //
+    // A small remap is therefore needed at store time.
+
+    // Stage 1: interleave bytes from pairs of rows.
+    for (int i = 0; i < 8; i++) {
+        const int idx0 = 2 * i;
+        const int idx1 = 2 * i + 1;
+        const int tmp0 = 16 + 2 * i;
+        const int tmp1 = 16 + 2 * i + 1;
+
+        vpunpcklbw(src_xmm(tmp0), src_xmm(idx0), src_xmm(idx1));
+        vpunpckhbw(src_xmm(tmp1), src_xmm(idx0), src_xmm(idx1));
+    }
+
+    // Stage 2: interleave 2-byte groups.
+    for (int i = 0; i < 4; i++) {
+        const int base_tmp = 16 + 4 * i;
+        const int base_dst = 4 * i;
+
+        vpunpcklwd(src_xmm(base_dst + 0), src_xmm(base_tmp + 0),
+                src_xmm(base_tmp + 2));
+        vpunpckhwd(src_xmm(base_dst + 1), src_xmm(base_tmp + 0),
+                src_xmm(base_tmp + 2));
+        vpunpcklwd(src_xmm(base_dst + 2), src_xmm(base_tmp + 1),
+                src_xmm(base_tmp + 3));
+        vpunpckhwd(src_xmm(base_dst + 3), src_xmm(base_tmp + 1),
+                src_xmm(base_tmp + 3));
+    }
+
+    // Stage 3: interleave 4-byte groups.
+    for (int i = 0; i < 2; i++) {
+        const int base_src = 8 * i;
+        const int base_tmp = 16 + 8 * i;
+
+        vpunpckldq(src_xmm(base_tmp + 0), src_xmm(base_src + 0),
+                src_xmm(base_src + 4));
+        vpunpckhdq(src_xmm(base_tmp + 1), src_xmm(base_src + 0),
+                src_xmm(base_src + 4));
+
+        vpunpckldq(src_xmm(base_tmp + 2), src_xmm(base_src + 1),
+                src_xmm(base_src + 5));
+        vpunpckhdq(src_xmm(base_tmp + 3), src_xmm(base_src + 1),
+                src_xmm(base_src + 5));
+
+        vpunpckldq(src_xmm(base_tmp + 4), src_xmm(base_src + 2),
+                src_xmm(base_src + 6));
+        vpunpckhdq(src_xmm(base_tmp + 5), src_xmm(base_src + 2),
+                src_xmm(base_src + 6));
+
+        vpunpckldq(src_xmm(base_tmp + 6), src_xmm(base_src + 3),
+                src_xmm(base_src + 7));
+        vpunpckhdq(src_xmm(base_tmp + 7), src_xmm(base_src + 3),
+                src_xmm(base_src + 7));
+    }
+
+    // Stage 4: interleave 8-byte groups.
+    for (int i = 0; i < 8; i++) {
+        vpunpcklqdq(src_xmm(i), src_xmm(16 + i), src_xmm(24 + i));
+        vpunpckhqdq(src_xmm(i + 8), src_xmm(16 + i), src_xmm(24 + i));
+    }
+
+    // The transpose algorithm leaves columns grouped as:
+    //   xmm0..7 = even columns
+    //   xmm8..15 = odd columns
+    //
+    // Mapping:
+    //   col 0 -> xmm0
+    //   col 1 -> xmm8
+    //   col 2 -> xmm1
+    //   col 3 -> xmm9
+    //   ...
+    //   col 14 -> xmm7
+    //   col 15 -> xmm15
+    //
+    // We need to map logical columns index -> register index.
+    auto get_vec_idx = [](int col_idx) {
+        assert(col_idx >= 0 && col_idx < 16);
+        const bool is_odd = col_idx % 2;
+        // index within even/odd group
+        const int position = col_idx / 2;
+        return position + (is_odd ? 8 : 0);
+    };
+
+    const int columns_to_store = dynamic_columns_size ? columns_step : ncolumns;
+
+    for (int col_idx = 0; col_idx < columns_to_store; col_idx++) {
+        store(src_xmm(get_vec_idx(col_idx)), col_idx);
+        if (dynamic_columns_size) {
+            dec(reg_opmask_shift_compute);
+            jz(transpose_f8_done, T_NEAR);
+        }
+    }
+
+    L(transpose_f8_done);
+}
 
 template <>
 void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Zmm>::transpose_bf16(
@@ -655,7 +905,6 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Zmm>::transpose_bf16(
     assert(nrows >= 0 && nrows <= rows_step && ncolumns >= 0
             && ncolumns <= columns_step);
     if (!nrows) return;
-
     auto src_zmm = [](int i) { return Zmm(i); };
 
     auto src_ymm = [](int i) {
@@ -846,20 +1095,9 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Zmm>::transpose_bf16(
 }
 
 template <typename Vmm>
-void jit_brgemm_matmul_copy_a_transposed_impl_t<Vmm>::transpose_bf16(
-        reg64_t dst, reg64_t src, int nrows, int ncolumns) {
-    assert(!"unsupported transpose_bf16 copy_a_transposed_impl");
-}
-
-template <typename Vmm>
-void jit_brgemm_matmul_copy_a_transposed_impl_t<Vmm>::transpose_f32(
-        reg64_t reg_dst, reg64_t reg_src, int nrows, int ncolumns) {
-    assert(!"unsupported transpose_f32 copy_a_transposed_impl");
-}
-
-template <>
-void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Ymm>::transpose_f32(
-        reg64_t reg_dst, reg64_t reg_src, int nrows, int ncolumns) {
+template <typename T, typename>
+void jit_brgemm_matmul_copy_a_transposed_impl_t<Vmm>::transpose_common_ymm(
+        data_type_t dt, reg64_t dst, reg64_t src, int nrows, int ncolumns) {
     Ymm ymm_tail_mask = ymm15;
     Ymm ymm_upper_tail_mask = ymm14;
     Xmm xmm_upper_tail_mask = xmm14;
@@ -872,56 +1110,77 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Ymm>::transpose_f32(
     // |C, D|        |Bt, Dt|
 
     constexpr int avx2_transpose_size = 8;
-    const int tail_size = ncolumns % avx2_transpose_size;
-    if (tail_size > 0) {
-        Xbyak::Reg64 reg_tmp = regq_tmp;
-        init_f32_avx2_mask_ymm(ymm_tail_mask, reg_tmp, tail_size);
-        const int upper_xmm_tail_size = tail_size - 4;
-        if (upper_xmm_tail_size > 0)
-            init_f32_avx2_mask_ymm(
-                    ymm_upper_tail_mask, reg_tmp, upper_xmm_tail_size);
+    // Tails masks are only needed for f32.
+    // The bf16 path handles tails directly while loading values.
+    if (dt == data_type::f32) {
+        const int tail_size = ncolumns % avx2_transpose_size;
+        if (tail_size > 0) {
+            Xbyak::Reg64 reg_tmp = regq_tmp;
+            init_f32_avx2_mask_ymm(ymm_tail_mask, reg_tmp, tail_size);
+            const int upper_xmm_tail_size = tail_size - 4;
+            if (upper_xmm_tail_size > 0)
+                init_f32_avx2_mask_ymm(
+                        ymm_upper_tail_mask, reg_tmp, upper_xmm_tail_size);
+        }
     }
+
+    // Source element size used for calculating block offsets.
+    const dim_t dt_size = types::data_type_size(dt);
 
     const int A_rows = nstl::min(avx2_transpose_size, nrows);
     const int A_columns = nstl::min(avx2_transpose_size, ncolumns);
-    jit_generator_t::transpose(reg_src, reg_dst, src_stride, dst_stride, A_rows,
-            A_columns, data_type::f32, ymm_tmp, ymm_tail_mask,
-            xmm_upper_tail_mask);
+    jit_generator_t::transpose(src, dst, src_stride, dst_stride, A_rows,
+            A_columns, dt, ymm_tmp, ymm_tail_mask, xmm_upper_tail_mask);
     if (rows_step <= 8) return;
 
-    const dim_t src_B_offset = sizeof(float) * avx2_transpose_size;
+    const dim_t src_B_offset = dt_size * avx2_transpose_size;
     const dim_t dst_B_offset = dst_stride * avx2_transpose_size;
     const int B_rows = nstl::min(avx2_transpose_size, nrows);
     const int B_columns = nstl::max(ncolumns - avx2_transpose_size, 0);
-    add(reg_src, src_B_offset);
-    add(reg_dst, dst_B_offset);
-    jit_generator_t::transpose(reg_src, reg_dst, src_stride, dst_stride, B_rows,
-            B_columns, data_type::f32, ymm_tmp, ymm_tail_mask,
-            xmm_upper_tail_mask);
+    add(src, src_B_offset);
+    add(dst, dst_B_offset);
+    jit_generator_t::transpose(src, dst, src_stride, dst_stride, B_rows,
+            B_columns, dt, ymm_tmp, ymm_tail_mask, xmm_upper_tail_mask);
 
     const dim_t src_C_offset = src_stride * avx2_transpose_size;
-    const dim_t dst_C_offset = sizeof(float) * avx2_transpose_size;
+    const dim_t dst_C_offset = dt_size * avx2_transpose_size;
     const int C_rows = nstl::max(nrows - avx2_transpose_size, 0);
     const int C_columns = nstl::min(avx2_transpose_size, ncolumns);
-    add(reg_src, -src_B_offset + src_C_offset);
-    add(reg_dst, -dst_B_offset + dst_C_offset);
-    jit_generator_t::transpose(reg_src, reg_dst, src_stride, dst_stride, C_rows,
-            C_columns, data_type::f32, ymm_tmp, ymm_tail_mask,
-            xmm_upper_tail_mask);
+    add(src, -src_B_offset + src_C_offset);
+    add(dst, -dst_B_offset + dst_C_offset);
+    jit_generator_t::transpose(src, dst, src_stride, dst_stride, C_rows,
+            C_columns, dt, ymm_tmp, ymm_tail_mask, xmm_upper_tail_mask);
 
-    const dim_t src_D_offset = src_stride * avx2_transpose_size
-            + sizeof(float) * avx2_transpose_size;
-    const dim_t dst_D_offset = dst_stride * avx2_transpose_size
-            + sizeof(float) * avx2_transpose_size;
+    const dim_t src_D_offset
+            = src_stride * avx2_transpose_size + dt_size * avx2_transpose_size;
+    const dim_t dst_D_offset
+            = dst_stride * avx2_transpose_size + dt_size * avx2_transpose_size;
     const int D_rows = nstl::max(nrows - avx2_transpose_size, 0);
     const int D_columns = nstl::max(ncolumns - avx2_transpose_size, 0);
-    add(reg_src, -src_C_offset + src_D_offset);
-    add(reg_dst, -dst_C_offset + dst_D_offset);
-    jit_generator_t::transpose(reg_src, reg_dst, src_stride, dst_stride, D_rows,
-            D_columns, data_type::f32, ymm_tmp, ymm_tail_mask,
-            xmm_upper_tail_mask);
-    sub(reg_src, src_D_offset);
-    sub(reg_dst, dst_D_offset);
+    add(src, -src_C_offset + src_D_offset);
+    add(dst, -dst_C_offset + dst_D_offset);
+    jit_generator_t::transpose(src, dst, src_stride, dst_stride, D_rows,
+            D_columns, dt, ymm_tmp, ymm_tail_mask, xmm_upper_tail_mask);
+    sub(src, src_D_offset);
+    sub(dst, dst_D_offset);
+}
+
+template <>
+void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Ymm>::transpose_f16(
+        reg64_t dst, reg64_t src, int nrows, int ncolumns) {
+    transpose_common_ymm(data_type::f16, dst, src, nrows, ncolumns);
+}
+
+template <>
+void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Ymm>::transpose_bf16(
+        reg64_t dst, reg64_t src, int nrows, int ncolumns) {
+    transpose_common_ymm(data_type::bf16, dst, src, nrows, ncolumns);
+}
+
+template <>
+void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Ymm>::transpose_f32(
+        reg64_t dst, reg64_t src, int nrows, int ncolumns) {
+    transpose_common_ymm(data_type::f32, dst, src, nrows, ncolumns);
 }
 
 template <>
@@ -1096,10 +1355,24 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Zmm>::transpose_f32(
 template <typename Vmm>
 void jit_brgemm_matmul_copy_a_transposed_impl_t<Vmm>::deploy_transpose(
         reg64_t dst, reg64_t src, int nrows, int ncolumns) {
-    if (is_f32 || use_fp16_instructions_)
-        transpose_f32(dst, src, nrows, ncolumns);
-    else
-        transpose_bf16(dst, src, nrows, ncolumns);
+
+    if (std::is_same<Vmm, Xbyak::Ymm>::value) {
+        if (is_f32 || use_fp16_instructions_)
+            transpose_f32(dst, src, nrows, ncolumns);
+        else if (is_bf16)
+            transpose_bf16(dst, src, nrows, ncolumns);
+        else if (is_f16)
+            transpose_f16(dst, src, nrows, ncolumns);
+        else
+            assert(!"unsupported data type");
+    } else {
+        if (is_f32 || use_fp16_instructions_)
+            transpose_f32(dst, src, nrows, ncolumns);
+        else if (is_f8)
+            transpose_f8(dst, src, nrows, ncolumns);
+        else
+            transpose_bf16(dst, src, nrows, ncolumns);
+    }
 }
 
 template <typename Vmm>
@@ -1146,7 +1419,8 @@ template <typename Vmm>
 void jit_brgemm_matmul_copy_a_transposed_impl_t<Vmm>::generate() {
 
     // only bf16, f16 and f32 supported for now
-    if (!one_of(conf_->src_dt, data_type::bf16, data_type::f32, data_type::f16))
+    if (!one_of(conf_->src_dt, data_type::bf16, data_type::f32, data_type::f16,
+                data_type::f8_e5m2, data_type::f8_e4m3))
         return;
     preamble();
     sub(rsp, stack_space_needed_);
@@ -1173,7 +1447,7 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Vmm>::generate() {
         mov(ptr[rsp + dynamic_src_ld_x_kstep_offt_], regq_tmp);
     }
 
-    init_masks();
+    if (!is_f8) init_masks();
 
     const int k_block_tail = conf_->K_blk % rows_step;
     const int last_k_block_tail = (conf_->K % conf_->K_blk) % rows_step;
@@ -2148,7 +2422,7 @@ protected:
         vmovdqa(vmm_permd, ptr[reg_tmp]);
     }
 
-    /** Loaded in register(half of it) containing bytes.
+    /** Loaded in register(half of it) containing bytes (2 int4 values)
     * The idea is duplicate each byte in two dwords
     * using `copy_half_reg` and `vpermd`. Then shift bytes left or right
     * depending on the position (odd/even) and signed/unsigned type.
@@ -2221,10 +2495,13 @@ protected:
     * @param vmm_permd Vector register containing permutation indices for INT4 processing
     * @param dt Data type being loaded
     * @param is_tail Flag indicating if tail processing is needed
+    * @param vmm_f4_lut Vector register containing lookup table for FP4 conversion
+    * (default is Vmm(4) for kernel jit_brgemm_matmul_copy_b_f32_t)
     */
     template <typename Vmm>
     void load_value(const Vmm &reg, const Xbyak::Operand &op,
-            const Vmm &vmm_permd, data_type_t dt, bool is_tail = false) {
+            const Vmm &vmm_permd, data_type_t dt, bool is_tail = false,
+            const Vmm &vmm_f4_lut = Vmm(4)) {
         using Vmm_lower_t = typename vreg_traits_t<Vmm>::Vmm_lower_t;
         const auto vmm_in = maybe_mask(reg, is_tail);
         const auto vmm_lower = Vmm_lower_t(vmm_in.getIdx());
@@ -2272,6 +2549,16 @@ protected:
                         maybe_mask(vmm_lower, is_tail, /* is_int4 = */ true),
                         op);
                 prepare_loaded_int4(reg, vmm_permd, /* is_signed = */ false);
+                break;
+            case data_type::f4_e2m1:
+            case data_type::f4_e3m0:
+                uni_vpmovzxbd(maybe_mask(vmm_lower, is_tail), op);
+                copy_half_reg(vmm_in, vmm_lower);
+                vpermd(vmm_in, vmm_permd, vmm_in);
+                uni_vpslld(vmm_in | k5555, vmm_in, 28);
+                vpsrld(vmm_in | k5555, vmm_in, 28);
+                vpsrld(vmm_in | kAAAA, vmm_in, 4);
+                vpermps(vmm_in, vmm_in, vmm_f4_lut);
                 break;
             default: assert(!"unsupported data type");
         }
@@ -3341,7 +3628,7 @@ void jit_brgemm_matmul_copy_b_int8_t<Vmm>::generate() {
                     const int idx_offset = i + out_ur * n_iters;
                     const auto addr = !is_ymm_
                             ? EVEX_compress_addr(
-                                    reg_comp_ptr, idx_offset * simd_w_)
+                                      reg_comp_ptr, idx_offset * simd_w_)
                             : ptr[reg_comp_ptr + idx_offset * simd_w_];
                     uni_vmovups(addr, vmm_res);
                 }
@@ -3919,12 +4206,14 @@ struct jit_brgemm_matmul_copy_b_f32_t
         : jit_brgemm_matmul_copy_b_common_t(conf)
         , dt_in_(conf->orig_wei_dt)
         , simd_w_(vreg_traits_t<Vmm>::vlen / sizeof(float))
+        , is_src_f4_(one_of(
+                  conf->orig_wei_dt, data_type::f4_e2m1, data_type::f4_e3m0))
         , is_src_int4_(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
         , req_zp_b_shift_(
                   conf->has_zero_point_b && conf->with_wei_decompression)
         , req_apply_wei_scales_(conf->apply_scales_in_buffer_b)
         , typesize_in_(types::data_type_size(dt_in_))
-        , src_elems_per_byte_(is_src_int4_ ? 2 : 1)
+        , src_elems_per_byte_(is_src_int4_ || is_src_f4_ ? 2 : 1)
         , src_stride_(conf_->copy_B_wei_stride)
         , tr_src_stride_(conf_->LDB * typesize_out_) {}
 
@@ -3942,7 +4231,7 @@ private:
     static constexpr bool is_ymm_ = std::is_same<Vmm, Xbyak::Ymm>::value;
     const data_type_t dt_in_;
     const int simd_w_;
-    const bool is_src_int4_, req_zp_b_shift_, req_apply_wei_scales_;
+    const bool is_src_f4_, is_src_int4_, req_zp_b_shift_, req_apply_wei_scales_;
     const size_t typesize_in_, src_elems_per_byte_;
     const size_t typesize_out_ = sizeof(float);
     dim_t src_stride_, tr_src_stride_;
@@ -3962,6 +4251,7 @@ private:
     Vmm vmm_wei_scales = Vmm(1);
     Vmm vmm_permd = Vmm(2);
     Vmm vmm_zp_b_shift = Vmm(3);
+    Vmm vmm_f4_lut = Vmm(4);
     Ymm ymm_tail_mask = ymm1;
 
     inline void kmovw(Opmask k, unsigned w) {
@@ -3979,7 +4269,10 @@ template <typename Vmm>
 void jit_brgemm_matmul_copy_b_f32_t<Vmm>::copy_16_x_n_block(
         int nrows, int ncolumns) {
     const int max_isa_regs = isa_num_vregs(conf_->isa);
-    const int reserved_regs = req_zp_b_shift_ ? 4 : is_src_int4_ ? 3 : 2;
+    const int reserved_regs = is_src_f4_ ? 5
+            : req_zp_b_shift_            ? 4
+            : is_src_int4_               ? 3
+                                         : 2;
     const int max_regs_available = max_isa_regs - reserved_regs;
 
     auto get_vmm = [max_regs_available, reserved_regs](int reg_idx) {
@@ -4051,10 +4344,10 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::copy_16_x_n_block(
         if (isa_has_masks(conf_->isa)) {
             const auto tail_mask = (1 << columns_tail) - 1;
             kmovw(kTail, tail_mask);
-            if (is_src_int4_) {
-                const auto int4_tail_mask
+            if (is_src_int4_ || is_src_f4_) {
+                const auto tail_mask_4bit
                         = (1 << (columns_tail / src_elems_per_byte_)) - 1;
-                kmovw(kTail_int4, int4_tail_mask);
+                kmovw(kTail_int4, tail_mask_4bit);
             }
         }
     }
@@ -4120,7 +4413,8 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::generate() {
     mov(reg_wei_scales, ptr[param1 + GET_OFF(wei_scales_ptr)]);
     mov(reg_zp_ptr, ptr[param1 + GET_OFF(zp_b_value_ptr)]);
     kmovw(kFFFF, 0xffff); // 1111111111111111
-    if (is_src_int4_) {
+
+    if (is_src_int4_ || is_src_f4_) {
         kmovw(kAAAA, 0xaaaa);
         kmovw(k5555, 0x5555);
         if (is_superset(conf_->isa, avx512_core)) {
@@ -4134,6 +4428,26 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::generate() {
             mov(reg_tmp, reinterpret_cast<size_t>(int4_permute_avx2));
             vmovdqa(vmm_permd, ptr[reg_tmp]);
         }
+    }
+
+    if (is_src_f4_ && is_superset(conf_->isa, avx512_core)) {
+        alignas(64) static constexpr const float f4_e2m1_table[16]
+                = {0.0f, .5f, 1.0f, 1.5f, 2.0f, 3.0f, 4.0f, 6.0f, -0.0f, -.5f,
+                        -1.0f, -1.5f, -2.0f, -3.0f, -4.0f, -6.0f};
+        alignas(64) static constexpr const float f4_e3m0_table[16]
+                = {0.0f, .25f, .5f, 1.0f, 2.0f, 4.0f, 8.0f, 16.0f, -0.0f, -.25f,
+                        -.5f, -1.0f, -2.0f, -4.0f, -8.0f, -16.0f};
+        switch (dt_in_) {
+            case data_type::f4_e2m1:
+                mov(reg_tmp, reinterpret_cast<size_t>(f4_e2m1_table));
+                break;
+            case data_type::f4_e3m0:
+                mov(reg_tmp, reinterpret_cast<size_t>(f4_e3m0_table));
+                break;
+
+            default: break;
+        }
+        vmovdqa32(vmm_f4_lut, ptr[reg_tmp]);
     }
 
     load_common_zp_value(vmm_zp_b_shift, reg_zp_ptr);
@@ -4200,10 +4514,10 @@ struct jit_brgemm_matmul_copy_b_transposed_t
         , max_tmp_idx(16
                   - (avx512_core_dot_product_
                                   ? 8
-                                  : (do_compute_compensation_       ? 6
-                                                  : is_src_int4_    ? 2
-                                                  : req_zp_b_shift_ ? 1
-                                                                    : 0)))
+                                  : (do_compute_compensation_         ? 6
+                                                    : is_src_int4_    ? 2
+                                                    : req_zp_b_shift_ ? 1
+                                                                      : 0)))
         , src_stride_(conf_->copy_B_wei_stride)
         , tr_src_stride_(conf_->LDB * vnni_granularity_ * tr_typesize_)
         , src_elems_per_byte_(is_src_int4_ ? 2 : 1)
@@ -4294,12 +4608,12 @@ private:
     void kmovw(Opmask k, unsigned w) {
         mov(regw_tmp, w);
         jit_generator_t::kmovw(k, regw_tmp);
-    };
+    }
 
     void kmovq(Opmask k, size_t q) {
         mov(regq_tmp, q);
         jit_generator_t::kmovq(k, regq_tmp);
-    };
+    }
 
     Vmm src_vmm(int i) {
         assert(i >= 0 && i < n_blk_step_);

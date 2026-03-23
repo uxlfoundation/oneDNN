@@ -168,6 +168,12 @@ The following masks are supported by the primitive:
 - 2, which applies a scale / zero point values per column along the
   `n`-dimension for #DNNL_ARG_WEIGHTS.
 
+For batched matmul (3D and higher), scales and zero points can additionally
+be grouped over the batch dimension. When batch grouping is specified (via
+a third group element), the corresponding batch dimension bit is added to
+the mask. This allows different quantization parameters per batch group,
+enabling per-batch-group weight decompression.
+
 When scales and/or zero-points masks are specified, the user must
 provide the corresponding scales and/or zero-points as additional
 input memory objects with argument `DNNL_ARG_ATTR_SCALES |

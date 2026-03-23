@@ -357,3 +357,13 @@
 --attr-zero-points=,wei:common:2,wei:per_oc:s4,wei:per_ocic:s4:192x1
 --attr-fpmath=strict:true
 12x4x576:12x576x192
+
+## Grouping over batch dimension (3D scales/ZP groups)
+--reset
+--dt=bf16:s8:bf16
+--wtag=any,abc
+--attr-scales=wei:per_ocic:bf16:128x1x1,wei:per_ocic:bf16:128x1x3
+--attr-zero-points=,wei:per_ocic:s8:128x1x1,wei:per_ocic:s8:128x1x3
+--attr-fpmath=bf16:true
+6x5x256:6x256x64
+9x8x384:9x384x64

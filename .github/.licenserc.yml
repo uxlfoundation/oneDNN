@@ -55,8 +55,6 @@ header:
 
 # Third party components
     - 'third_party/**'
-    - 'cmake/ACL.cmake'
-    - 'cmake/FindACL.cmake'
     - 'cmake/FindBLAS.cmake'
     - 'cmake/FindOpenCL.cmake'
 

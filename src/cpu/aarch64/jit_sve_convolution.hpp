@@ -45,13 +45,11 @@ struct jit_sve_convolution_fwd_t : public primitive_t {
                 jit_sve_convolution_fwd_t);
 
         status_t init(const engine_t *engine) {
-#if defined(DNNL_AARCH64_USE_ACL)
             if (attr()->fpmath_.mode_ == fpmath_mode::bf16) {
-                // prefer ACL to jit for fpmath_mode::bf16 if available
+                // prefer kai to jit for fpmath_mode::bf16 if available
                 // since it supports lower precision calculation
                 return status::unimplemented;
             }
-#endif
 
             VDISPATCH_CONV(
                     DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,

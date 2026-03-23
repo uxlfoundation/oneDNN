@@ -33,9 +33,6 @@ using namespace dnnl::impl::cpu::x64;
 using namespace dnnl::impl::cpu::x64::zen::inner_product;
 #endif
 #elif DNNL_AARCH64
-#if defined(DNNL_AARCH64_USE_ACL)
-#include "cpu/aarch64/acl_inner_product.hpp"
-#endif
 #include "cpu/aarch64/matmul_inner_product.hpp"
 using namespace dnnl::impl::cpu::aarch64;
 #elif DNNL_RV64
@@ -59,7 +56,6 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
         {{forward, "f32:xf:*"}, {
             CPU_INSTANCE_X64_ZEN(zen_inner_product_fwd_t)
             CPU_INSTANCE_X64(matmul_inner_product_fwd_t)
-            CPU_INSTANCE_AARCH64_ACL(acl_inner_product_fwd_t)
             CPU_INSTANCE_AARCH64(matmul_inner_product_fwd_t)
             CPU_INSTANCE_RV64(rvv_brgemm_inner_product_fwd_t)
             CPU_INSTANCE_RV64(rvv_gemm_inner_product_fwd_t)
@@ -72,7 +68,6 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_X64(matmul_inner_product_fwd_t)
             CPU_INSTANCE_AVX512(gemm_bf16_inner_product_fwd_t<f32>)
             CPU_INSTANCE_AVX512(gemm_bf16_inner_product_fwd_t<bf16>)
-            CPU_INSTANCE_AARCH64_ACL(acl_inner_product_fwd_t)
             CPU_INSTANCE_AARCH64(matmul_inner_product_fwd_t)
             CPU_INSTANCE_RV64(rvv_brgemm_inner_product_fwd_t)
             CPU_INSTANCE(ref_inner_product_fwd_t)
@@ -80,7 +75,6 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
         }},
         {{forward, "f16:f16:*"}, {
             CPU_INSTANCE_X64(matmul_inner_product_fwd_t)
-            CPU_INSTANCE_AARCH64_ACL(acl_inner_product_fwd_t)
             CPU_INSTANCE_AARCH64(matmul_inner_product_fwd_t)
             CPU_INSTANCE_RV64(rvv_brgemm_inner_product_fwd_t)
             CPU_INSTANCE(ref_inner_product_fwd_t)

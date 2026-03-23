@@ -150,20 +150,18 @@ You can build the library on Linux, macOS, or Windows using the compiler of your
    cmake --build . --parallel $(sysctl -n hw.ncpu)
    ~~~
 
-#### Use GCC targeting AArch64 on x64 host
+#### Use GCC on AArch64
 
 1. Set up the environment for the compiler
    ~~~sh
-   export CC=aarch64-linux-gnu-gcc
-   export CXX=aarch64-linux-gnu-g++
+   export CC=gcc
+   export CXX=g++
    ~~~
 
 2. Generate the build system
    ~~~sh
    mkdir -p build ; cd build
-   cmake .. -DCMAKE_SYSTEM_NAME=Linux \
-         -DCMAKE_SYSTEM_PROCESSOR=AARCH64 \
-         -DCMAKE_LIBRARY_PATH=/usr/aarch64-linux-gnu/lib
+   cmake ..
    ~~~
 
 3. Build the library
@@ -178,23 +176,20 @@ You can build the library on Linux, macOS, or Windows using the compiler of your
    cmake --build . --parallel $(sysctl -n hw.ncpu)
    ~~~
 
-#### Use GCC with Arm Compute Library (ACL) on AArch64 host
+#### Use GCC targeting AArch64 on x64 host
 
 1. Set up the environment for the compiler
-
-   Download [Arm Compute Library](https://github.com/ARM-software/ComputeLibrary)
-   or build it from source and set `ACL_ROOT_DIR` to directory where it is
-   installed.
    ~~~sh
-   export ACL_ROOT_DIR=<path/to/ComputeLibrary>
-   export CC=gcc
-   export CXX=g++
+   export CC=aarch64-linux-gnu-gcc
+   export CXX=aarch64-linux-gnu-g++
    ~~~
 
 2. Generate the build system
    ~~~sh
    mkdir -p build ; cd build
-   cmake .. -DONEDNN_AARCH64_USE_ACL=ON
+   cmake .. -DCMAKE_SYSTEM_NAME=Linux \
+         -DCMAKE_SYSTEM_PROCESSOR=AARCH64 \
+         -DCMAKE_LIBRARY_PATH=/usr/aarch64-linux-gnu/lib
    ~~~
 
 3. Build the library

@@ -26,8 +26,6 @@ SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 # Defines MP, CC, CXX and OS.
 source ${SCRIPT_DIR}/common.sh
 
-export ACL_ROOT_DIR=${ACL_ROOT_DIR:-"${PWD}/ComputeLibrary"}
-
 CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE:-"Release"}
 ONEDNN_TEST_SET=${ONEDNN_TEST_SET:-"SMOKE"}
 ONEDNN_BUILD_GRAPH=${ONEDNN_BUILD_GRAPH:-"ON"}
@@ -38,7 +36,6 @@ if [[ "$ONEDNN_ACTION" == "configure" ]]; then
         CC=clang CXX=clang++ \
         cmake \
             -Bbuild -S. \
-            -DDNNL_AARCH64_USE_ACL=ON \
             -DONEDNN_BUILD_GRAPH=ON \
             -DDNNL_CPU_RUNTIME=OMP \
             -DONEDNN_WERROR=ON \
@@ -52,7 +49,6 @@ if [[ "$ONEDNN_ACTION" == "configure" ]]; then
         set -x
         cmake \
             -Bbuild -S. \
-            -DDNNL_AARCH64_USE_ACL=ON \
             -DONEDNN_BUILD_GRAPH=$ONEDNN_BUILD_GRAPH \
             -DDNNL_CPU_RUNTIME=$ONEDNN_THREADING \
             -DONEDNN_WERROR=ON \

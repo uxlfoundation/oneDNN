@@ -28,14 +28,6 @@ on:
         required: false
         type: string
         description: 'New oneDNN commit'
-      acl_base_hash:
-        required: false
-        type: string
-        description: 'Baseline ACL commit'
-      acl_new_hash:
-        required: false
-        type: string
-        description: 'New ACL commit'
       num_threads:
         required: false
         type: string
@@ -82,7 +74,6 @@ jobs:
           toolset: gcc
           build: Release
           testset: SMOKE
-          acl_hash: ${{ inputs.acl_base_hash }}
           onednn_hash: ${{ inputs.onednn_base_hash || fromJson(steps.get-versions.outputs.output).dependencies.onednn-base }}
           cache: ${{ inputs.onednn_base_hash == '' && 'true' || 'false'}}
 
@@ -103,7 +94,6 @@ jobs:
           toolset: gcc
           build: Release
           testset: SMOKE
-          acl_hash: ${{ inputs.acl_new_hash }}
           onednn_hash: ${{ inputs.onednn_new_hash }}
 
   build-and-test-performance:

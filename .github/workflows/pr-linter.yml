@@ -193,30 +193,6 @@ jobs:
           content="${content//[$'\t\r\n$ ']}"
           echo "output=$content" >> $GITHUB_OUTPUT
 
-      - if: ${{ steps.sources.outputs.changed == 'true' && matrix.config.arch == 'AArch64' }}
-        name: Clone ACL
-        run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/build_acl.sh
-        env:
-          ACL_ACTION: clone
-          ACL_ROOT_DIR: ${{ github.workspace }}/ComputeLibrary
-          ACL_VERSION: ${{ fromJson(steps.get-versions.outputs.output).dependencies.acl }}
-
-      # We can avoid having to actually build ComputeLibrary by faking the files
-      # that cmake/FindACL.cmake and cmake/ACL.cmake expect to see.
-      - if: ${{ steps.sources.outputs.changed == 'true' && matrix.config.arch == 'AArch64' }}
-        name: Fake ACL Build
-        working-directory: ${{ github.workspace }}/ComputeLibrary/
-        env:
-          ACL_VERSION: ${{ fromJson(steps.get-versions.outputs.output).dependencies.acl }}
-        run: |
-          mkdir ./build
-          echo "arm_compute_version=${ACL_VERSION}" > ./build/arm_compute_version.embed
-          touch ./build/libarm_compute.so
-          touch ./build/libarm_compute_graph.so
-          # Delete this since clang-tidy seems to get confused and read this
-          # external config
-          rm .clang-tidy
-
       - if: ${{ steps.sources.outputs.changed == 'true' && matrix.config.arch == 'x64' }}
         name: Configure oneDNN - x64
         working-directory: ${{github.workspace}}/oneDNN
@@ -231,7 +207,6 @@ jobs:
         run: .github/automation/aarch64/build.sh
         env:
           BUILD_TOOLSET: ${{matrix.config.compiler}}
-          ACL_ROOT_DIR: ${{github.workspace}}/ComputeLibrary
           ONEDNN_ACTION: configure
 
       - if: ${{ steps.sources.outputs.changed == 'true' }}

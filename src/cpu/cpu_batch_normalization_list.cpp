@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2019 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
-* Copyright 2022 Arm Ltd. and affiliates
+* Copyright 2022, 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -30,9 +30,6 @@ using namespace dnnl::impl::cpu::x64;
 #elif DNNL_AARCH64
 #include "cpu/aarch64/jit_uni_batch_normalization.hpp"
 #include "cpu/aarch64/jit_uni_batch_normalization_s8.hpp"
-#if defined(DNNL_AARCH64_USE_ACL)
-#include "cpu/aarch64/acl_batch_normalization.hpp"
-#endif
 using namespace dnnl::impl::cpu::aarch64;
 #elif DNNL_RV64
 #if defined(DNNL_RISCV_USE_RVV_INTRINSICS)
@@ -63,7 +60,6 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
             CPU_INSTANCE_AARCH64(jit_uni_batch_normalization_fwd_t<sve_512>)
             CPU_INSTANCE_AARCH64(jit_uni_batch_normalization_fwd_t<sve_256>)
             CPU_INSTANCE_AARCH64(jit_uni_batch_normalization_fwd_t<asimd>)
-            CPU_INSTANCE_AARCH64_ACL(acl_batch_normalization_fwd_t)
             CPU_INSTANCE_RV64GCV(rvv_batch_normalization_fwd_t)
             CPU_INSTANCE(ncsp_batch_normalization_fwd_t<f32>)
             CPU_INSTANCE(ncsp_batch_normalization_fwd_t<bf16>)

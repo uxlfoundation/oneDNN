@@ -120,6 +120,11 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
         if (xqGroupMN <= 1 && xqGroupK > 1) tileC = 1;
         if (xqGroupMN > 1 && (xqGroupMN % strategy.unroll[LoopM] && strategy.unroll[LoopM] % xqGroupMN))
             stub("Tile size not compatible with group size in m dimension");
+        VDEBUGINFO(4, primitive, gemm,
+                "MY quant_tile,A,groupM=%d,groupK=%d,unrollM=%d,ka_load=%d"
+                ",scale_tile=[%dx%d]=%d_f16_elems(~%d_GRF)",
+                xqGroupMN, xqGroupK, strategy.unroll[LoopM], strategy.ka_load,
+                r, c, r * c, (r * c * 2 + 31) / 32);
     } else {
         bool slmB = strategy.slmB;
         cNoSLM = strategy.unroll[LoopN];
@@ -136,6 +141,11 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
         if (xqGroupMN <= 1 && xqGroupK > 1) tileR = 1;
         if (xqGroupMN > 1 && (xqGroupMN % strategy.unroll[LoopN] && strategy.unroll[LoopN] % xqGroupMN))
             stub("Tile size not compatible with group size in n dimension");
+        VDEBUGINFO(4, primitive, gemm,
+                "MY quant_tile,B,groupN=%d,groupK=%d,unrollN=%d,kb_load=%d"
+                ",scale_tile=[%dx%d]=%d_f16_elems(~%d_GRF)",
+                xqGroupMN, xqGroupK, strategy.unroll[LoopN], strategy.kb_load,
+                c, r, r * c, (r * c * 2 + 31) / 32);
     }
 
     int ro = lateOffset ? rNoSLM : r;

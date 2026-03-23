@@ -26,19 +26,23 @@ SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 # Defines MP, CC, CXX and OS.
 source ${SCRIPT_DIR}/common.sh
 
-export ACL_ROOT_DIR=${ACL_ROOT_DIR:-"${PWD}/ComputeLibrary"}
-
 CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE:-"Release"}
 ONEDNN_TEST_SET=${ONEDNN_TEST_SET:-"SMOKE"}
 ONEDNN_BUILD_GRAPH=${ONEDNN_BUILD_GRAPH:-"ON"}
 ONEDNN_EXPERIMENTAL_UKERNEL=${ONEDNN_EXPERIMENTAL_UKERNEL:-"OFF"}
 
 if [[ "$ONEDNN_ACTION" == "configure" ]]; then
+    # The caller supplies ACL_ROOT_DIR only when it requests the ACL backend.
+    acl_options=()
+    if [[ -n "${ACL_ROOT_DIR:-}" ]]; then
+        acl_options=(-DDNNL_AARCH64_USE_ACL=ON)
+    fi
+
     if [[ "$GITHUB_JOB" == "pr-clang-tidy" ]]; then
         CC=clang CXX=clang++ \
         cmake \
             -Bbuild -S. \
-            -DDNNL_AARCH64_USE_ACL=ON \
+            "${acl_options[@]}" \
             -DONEDNN_BUILD_GRAPH=ON \
             -DDNNL_CPU_RUNTIME=OMP \
             -DONEDNN_WERROR=ON \
@@ -52,7 +56,7 @@ if [[ "$ONEDNN_ACTION" == "configure" ]]; then
         set -x
         cmake \
             -Bbuild -S. \
-            -DDNNL_AARCH64_USE_ACL=ON \
+            "${acl_options[@]}" \
             -DONEDNN_BUILD_GRAPH=$ONEDNN_BUILD_GRAPH \
             -DDNNL_CPU_RUNTIME=$ONEDNN_THREADING \
             -DONEDNN_WERROR=ON \
@@ -63,6 +67,14 @@ if [[ "$ONEDNN_ACTION" == "configure" ]]; then
             -DCMAKE_BUILD_RPATH_USE_ORIGIN=ON \
             -DDNNL_EXPERIMENTAL_UKERNEL=$ONEDNN_EXPERIMENTAL_UKERNEL
         set +x
+    fi
+
+    # CMake only warns about unused options. Fail if the requested backend was
+    # ignored, for example when building a revision that has removed ACL.
+    if [[ -n "${ACL_ROOT_DIR:-}" ]] && ! grep -Eq \
+            '^DNNL_AARCH64_USE_ACL:(BOOL|INTERNAL)=ON$' build/CMakeCache.txt; then
+        echo "ACL was requested but was not enabled by oneDNN" >&2
+        exit 1
     fi
 elif [[ "$ONEDNN_ACTION" == "build" ]]; then
     set -x

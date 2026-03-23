@@ -62,9 +62,6 @@ status_t cpu_engine_factory_t::engine_create(
             engine_kind::cpu, get_cpu_native_runtime(), index));
 #endif
 
-#if DNNL_AARCH64 && defined(DNNL_AARCH64_USE_ACL)
-    dnnl::impl::cpu::aarch64::acl_thread_utils::set_acl_threading();
-#endif
     return status::success;
 }
 

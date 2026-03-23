@@ -31,11 +31,11 @@ on:
       acl_base_hash:
         required: false
         type: string
-        description: 'Baseline ACL commit'
+        description: 'Baseline ACL revision (defaults to the pinned ACL for the default oneDNN baseline)'
       acl_new_hash:
         required: false
         type: string
-        description: 'New ACL commit'
+        description: 'New ACL revision (leave empty to build without ACL)'
       num_threads:
         required: false
         type: string
@@ -82,7 +82,8 @@ jobs:
           toolset: gcc
           build: Release
           testset: SMOKE
-          acl_hash: ${{ inputs.acl_base_hash }}
+          # Use paired pins for the default baseline; custom revisions opt in to ACL.
+          acl_hash: ${{ inputs.acl_base_hash || (inputs.onednn_base_hash == '' && fromJson(steps.get-versions.outputs.output).dependencies.acl-base) || '' }}
           onednn_hash: ${{ inputs.onednn_base_hash || fromJson(steps.get-versions.outputs.output).dependencies.onednn-base }}
           cache: ${{ inputs.onednn_base_hash == '' && 'true' || 'false'}}
 

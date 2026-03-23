@@ -55,13 +55,11 @@ struct jit_sve_1x1_convolution_fwd_t : public primitive_t {
 
         status_t init(engine_t *engine) {
             using namespace utils;
-#if defined(DNNL_AARCH64_USE_ACL)
             if (attr()->fpmath_.mode_ == fpmath_mode::bf16) {
-                // prefer ACL to jit for fpmath_mode::bf16 if available
+                // prefer kai to jit for fpmath_mode::bf16 if available
                 // since it supports lower precision calculation
                 return status::unimplemented;
             }
-#endif
 
             bool ok = true && is_fwd()
                     && set_default_alg_kind(alg_kind::convolution_direct)

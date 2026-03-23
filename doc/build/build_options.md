@@ -411,38 +411,6 @@ instructions on building the ZenDNN binary (build it with
 
 [ZenDNN]: https://github.com/amd/ZenDNN
 
-### AArch64 CPU options
-
-| CMake Option             | Default | Supported values | Description                                                     |
-|:-------------------------|:--------|:-----------------|:----------------------------------------------------------------|
-| [ONEDNN_AARCH64_USE_ACL] | **OFF** | ON               | Enables integration with Arm Compute Library for AArch64 builds |
-
-[ONEDNN_AARCH64_USE_ACL]: @ref opt_aarch64_use_acl
-
-@anchor opt_aarch64_use_acl
-#### ONEDNN_AARCH64_USE_ACL
-
-This option enables [Arm Compute Library] based primitives. ACL is an
-open-source library for machine learning applications.
-The `ONEDNN_AARCH64_USE_ACL` CMake option is used to enable ACL integration:
-
-~~~sh
-$ cmake -DONEDNN_AARCH64_USE_ACL=ON ..
-~~~
-
-This assumes that the environment variable `ACL_ROOT_DIR` is
-set to the location of Arm Compute Library (`ACL_ROOT_DIR=</path/to/ComputeLibrary>`),
-which must be downloaded and built independently of oneDNN.
-
-@warning
-For a debug build of oneDNN it is advisable to specify a Compute Library build
-which has also been built with debug enabled.
-
-@warning
-oneDNN only supports builds with Compute Library v23.11 or later.
-
-[Arm Compute Library]: https://github.com/ARM-software/ComputeLibrary
-
 @anchor opt_gpu
 ## GPU Options
 

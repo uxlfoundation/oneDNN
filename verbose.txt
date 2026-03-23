@@ -1,0 +1,18 @@
+onednn_verbose,v1,info,oneDNN v3.13.0 (commit ecadcd16e0b15186c98a89f54d39be0958bd30d7)
+onednn_verbose,v1,info,cpu,runtime:OpenMP,nthr:32
+onednn_verbose,v1,info,cpu,isa:AArch64 SVE (256 bits)
+onednn_verbose,v1,info,gpu,runtime:none
+onednn_verbose,v1,info,graph,backend,0:dnnl_backend
+onednn_verbose,v1,primitive,info,template:operation,engine,primitive,implementation,prop_kind,memory_descriptors,attributes,auxiliary,problem_desc,exec_time
+onednn_verbose,v1,graph,info,template:operation,engine,partition_id,partition_kind,op_names,data_formats,logical_tensors,fpmath_mode,implementation,backend,exec_time
+onednn_verbose,v1,primitive,exec,cpu,reorder,jit:uni,undef,src:f32::blocked:a::f0 dst:f32::blocked:a::f0,,,1,0.00390625
+onednn_verbose,v1,primitive,exec,cpu,eltwise,jit:sve,forward_training,data:f32::blocked:a::f0,,alg:eltwise_relu alpha:0 beta:0,1,0.868896
+onednn_verbose,v1,primitive,exec,cpu,reorder,jit:uni,undef,src:f32::blocked:a::f0 dst:f32::blocked:a::f0,,,1,0.00195312
+0:PASSED (1 ms) __REPRO: --eltwise --alg=relu --alpha=0 --beta=0 1
+============================================================
+= Implementation statistics (--summary=no-impl to disable) =
+============================================================
+| jit:sve : 1 (100%)                                       |
+============================================================
+tests:1 passed:1 skipped:0 mistrusted:0 unimplemented:0 invalid_arguments:0 failed:0 listed:0
+total: 0.00s; create_pd: 0.00s (3%); create_prim: 0.00s (10%); fill: 0.00s (12%); execute: 0.00s (37%); compute_ref: 0.00s (0%); compare: 0.00s (13%);

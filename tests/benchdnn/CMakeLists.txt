@@ -83,8 +83,15 @@ function(register_benchdnn_test engine driver test_file)
 
     foreach(tm ${test_mode})
         string(REPLACE "test_" "test_benchdnn_mode${tm}_" target_name ${test_file})
-        set(cmd "--mode=${tm} ${mode_modifier} -v1 --engine=${engine} --${driver} --batch=${test_file}")
-        set(benchdnn_target ${target_name}_${engine})
+        # Disable USM memory for simulation.
+        string(FIND ${test_file} "sim" sim_idx)
+        if( NOT ${sim_idx} EQUAL -1)
+            set(cmd "--mode=${tm} ${mode_modifier} -v1 --engine=${engine} --memory-kind=buffer --${driver} --batch=${test_file}")
+        else()
+            set(cmd "--mode=${tm} ${mode_modifier} -v1 --engine=${engine} --${driver} --batch=${test_file}")
+        endif()
+
+	set(benchdnn_target ${target_name}_${engine})
 
         if(DNNL_TEST_SET_HAS_GRAPH_EXE EQUAL 1)
             string(PREPEND cmd "--execution-mode=graph ")
@@ -158,6 +165,8 @@ foreach(driver ${all_drivers})
             inputs/${driver}/test_*_large$)
     file(GLOB test_files_gpu_ci RELATIVE ${driver_dir}
             inputs/${driver}/test_*_gpu_ci)
+    file(GLOB test_files_gpu_sim_ci RELATIVE ${driver_dir}
+            inputs/${driver}/test_*_gpu_sim_ci)
     file(GLOB test_files_gpu RELATIVE ${driver_dir} inputs/${driver}/test_*_gpu)
     file(GLOB test_files_ci RELATIVE ${driver_dir} inputs/${driver}/test_*_ci)
     file(GLOB test_files_smoke RELATIVE ${driver_dir} inputs/${driver}/test_*_smoke)
@@ -179,7 +188,7 @@ foreach(driver ${all_drivers})
         endif()
         # gpu_ci files may happen if cpu coverage can not be used on gpu
         # Filter out gpu_ci inputs from ci
-        foreach(test_file ${test_files_gpu_ci})
+        foreach(test_file ${test_files_gpu_ci} ${test_files_gpu_sim_ci})
             string(REPLACE "${test_file}" "" test_files_ci "${test_files_ci}")
         endforeach()
 
@@ -194,10 +203,35 @@ foreach(driver ${all_drivers})
         if(has_cpu)
             register_all_tests(cpu "${driver}" "${test_files_ci}")
         endif()
+    elseif(DNNL_TEST_SET_COVERAGE EQUAL DNNL_TEST_SET_SIM_CI)
+        if(NOT DNNL_EXPERIMENTAL_SPARSE)
+            list(REMOVE_ITEM test_files_ci "test_matmul_sparse_ci")
+        endif()
+
+        # gpu_ci files may happen if cpu coverage can not be used on gpu
+        # Filter out gpu_ci inputs from ci
+        foreach(test_file ${test_files_gpu_ci} ${test_files_gpu_sim_ci})
+            string(REPLACE "${test_file}" "" test_files_ci "${test_files_ci}")
+        endforeach()
+
+        # use gpu_ci if not empty
+        if(has_gpu)
+            if(test_files_gpu_ci)
+                register_all_tests(gpu "${driver}" "${test_files_gpu_ci}")
+            else()
+                register_all_tests(gpu "${driver}" "${test_files_ci}")
+            endif()
+	    register_all_tests(gpu "${driver}" "${test_files_gpu_sim_ci}")
+        endif()
+        if(has_cpu)
+            register_all_tests(cpu "${driver}" "${test_files_ci}")
+        endif()
     elseif(DNNL_TEST_SET_COVERAGE EQUAL DNNL_TEST_SET_NIGHTLY)
         ## Filter out gpu, large cpu and invalid inputs from cpu
         foreach(test_file ${test_files_large_cpu} ${test_files_gpu_ci}
-            ${test_files_gpu} ${test_files_ci} ${test_files_smoke})
+            ${test_files_gpu} ${test_files_ci} ${test_files_smoke}
+	    ${test_files_gpu_sim_ci})
+
             string(REPLACE "${test_file}" "" test_files_cpu "${test_files_cpu}")
         endforeach()
         ## Then filter files with "all" suffix by exact name since there may

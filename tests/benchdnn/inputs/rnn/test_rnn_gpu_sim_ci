@@ -1,0 +1,12 @@
+--reset
+
+--skip-nonlinear=false
+
+# test FWD_I
+--reset
+--alg=VANILLA_RNN,VANILLA_LSTM,VANILLA_GRU,LBR_GRU,VANILLA_AUGRU,LBR_AUGRU
+--cfg=f32,bf16,bf16f32
+--prop=FWD_I
+--direction=left2right,right2left,sum,concat
+--tag=abc:any:abc
+--batch=shapes_small

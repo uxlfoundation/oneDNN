@@ -1,0 +1,14 @@
+--reset
+
+--mb=1
+
+# Training
+## Forward
+--dir=FWD_D
+--dt=f32,bf16,f16
+--batch=shapes_ncf
+## Backward
+--dir=BWD_D,BWD_W
+--attr-post-ops=
+--batch=shapes_ncf
+

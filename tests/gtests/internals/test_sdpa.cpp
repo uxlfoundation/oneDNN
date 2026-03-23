@@ -29,7 +29,7 @@
 #include <random>
 #include <cstdlib>
 
-#define DEBUG_PRINT_MEM 0
+#define DEBUG_PRINT_MEM 1
 
 static inline bool sdpa_dropout_debug_enabled() {
     static const bool enabled = []() {
@@ -1461,6 +1461,12 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
                     throw;
                 }
             }
+            if (sdpa_dropout_debug_enabled()) {
+                strm.wait();
+                std::fprintf(stderr,
+                        "[sdpa-ref][step] after_kq_scale_mask(score)\n");
+                print_mem(score, "REF after_kq_scale_mask score");
+            }
         } else {
             try {
                 bmm1_prim.execute(strm, bmm1_args);
@@ -1469,6 +1475,11 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
                               << ": status=" << e.status
                               << ", what=" << e.what();
                 throw;
+            }
+            if (sdpa_dropout_debug_enabled()) {
+                strm.wait();
+                std::fprintf(stderr, "[sdpa-ref][step] after_kq(score)\n");
+                print_mem(score, "REF after_kq score");
             }
         }
 
@@ -1495,10 +1506,21 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
                           << ": status=" << e.status
                           << ", what=" << e.what()
                           << ", dropout=" << p.dropout
-                          << ", has_softmax_ws=" << has_softmax_ws
                           << ", has_output_mask="
                           << p.dropout.has_output_mask();
             throw;
+        }
+        if (sdpa_dropout_debug_enabled()) {
+            strm.wait();
+            std::fprintf(stderr,
+                    "[sdpa-ref][step] after_softmax_dropout(score2)\n");
+            print_mem(score2, "REF after_softmax_dropout score2");
+            if (p.dropout.enabled() && p.dropout.has_output_mask()) {
+                std::fprintf(stderr,
+                        "[sdpa-ref][step] after_softmax_dropout(mask)\n");
+                print_mem(softmax_args[DNNL_ARG_ATTR_DROPOUT_MASK],
+                        "REF dropout_mask");
+            }
         }
 
         if (is_vs_acc_f16) {
@@ -1537,6 +1559,11 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
                         << ", what=" << e.what();
                 throw;
             }
+        }
+        if (sdpa_dropout_debug_enabled()) {
+            strm.wait();
+            std::fprintf(stderr, "[sdpa-ref][step] after_sv(dst_grouped)\n");
+            print_mem(grouped_output, "REF after_sv grouped_output");
         }
     };
 

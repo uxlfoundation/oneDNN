@@ -118,6 +118,10 @@ struct ref_matmul_int8_t : public primitive_t {
                     // Only one non-unit group is supported.
                     ok = utils::one_of(1, gK, gN);
                     if (!ok) return false;
+
+                    const auto gB = zp.get_group(DNNL_ARG_WEIGHTS, 2);
+                    ok = IMPLICATION(gB > 1, batched() && batch() % gB == 0);
+                    if (!ok) return false;
                 }
             }
             if (!zp.has_default_values(DNNL_ARG_DST)) {

@@ -97,6 +97,7 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
     const auto &wei_zp_dt = attr_zps.get_data_type(DNNL_ARG_WEIGHTS);
     const auto wei_zp_group_k = attr_zps.get_group(DNNL_ARG_WEIGHTS, 0);
     const auto wei_zp_group_n = attr_zps.get_group(DNNL_ARG_WEIGHTS, 1);
+    const auto wei_zp_group_b = attr_zps.get_group(DNNL_ARG_WEIGHTS, 2);
     const auto wei_zp_ngroups_k = wei_zp_group_k > 1 ? K / wei_zp_group_k : 1;
     // Initialize a memory desc for quant entries for easier offset calculation.
     memory_desc_t wei_zp_md {};
@@ -121,6 +122,7 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
     const auto wei_scale_dt = attr_scales.get_data_type(DNNL_ARG_WEIGHTS);
     const auto wei_scale_group_k = attr_scales.get_group(DNNL_ARG_WEIGHTS, 0);
     const auto wei_scale_group_n = attr_scales.get_group(DNNL_ARG_WEIGHTS, 1);
+    const auto wei_scale_group_b = attr_scales.get_group(DNNL_ARG_WEIGHTS, 2);
     const auto wei_scale_ngroups_k
             = wei_scale_group_k > 1 ? K / wei_scale_group_k : 1;
     // Initialize a memory desc for quant entries for easier offset calculation.
@@ -198,9 +200,10 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
                     s -= src_zp;
                 }
                 if (with_wei_zero_points && !with_src_pr) {
-                    const dim_t wei_zp_offset = matmul_helper_t::get_quant_off(
-                            weights_dims_idx, ndims, wei_zp_mask,
-                            wei_zp_group_k, wei_zp_group_n, wei_zp_md);
+                    const dim_t wei_zp_offset
+                            = matmul_helper_t::get_quant_off(weights_dims_idx,
+                                    ndims, wei_zp_mask, wei_zp_group_k,
+                                    wei_zp_group_n, wei_zp_md, wei_zp_group_b);
                     const auto wei_zp = io::load_int_value(
                             wei_zp_dt, wei_zero_points, wei_zp_offset);
                     w -= wei_zp;
@@ -218,7 +221,7 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
 
                 const dim_t wei_zp_offset = matmul_helper_t::get_quant_off(
                         weights_dims_idx, ndims, wei_zp_mask, wei_zp_group_k,
-                        wei_zp_group_n, wei_zp_md);
+                        wei_zp_group_n, wei_zp_md, wei_zp_group_b);
                 const auto wei_zp = io::load_int_value(
                         wei_zp_dt, wei_zero_points, wei_zp_offset);
                 acc -= src_pr * wei_zp;
@@ -237,7 +240,8 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
             if (with_wei_scales) {
                 const dim_t wei_scale_offset = matmul_helper_t::get_quant_off(
                         weights_dims_idx, ndims, wei_scale_mask,
-                        wei_scale_group_k, wei_scale_group_n, wei_scale_md);
+                        wei_scale_group_k, wei_scale_group_n, wei_scale_md,
+                        wei_scale_group_b);
                 const float wei_scale = io::load_float_value(
                         wei_scale_dt, wei_scales, wei_scale_offset);
                 acc_f *= wei_scale;

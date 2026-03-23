@@ -212,10 +212,13 @@ struct matmul_pd_t : public primitive_desc_t {
             if (arg == DNNL_ARG_WEIGHTS) {
                 const auto &g0 = scales.get_group(arg, 0);
                 const auto &g1 = scales.get_group(arg, 1);
+                const auto &g2 = scales.get_group(arg, 2);
                 const bool wei_k_group_ok = IMPLICATION(g0 > 1, K() % g0 == 0);
                 const bool wei_n_group_ok = IMPLICATION(g1 > 1, N() % g1 == 0);
+                const bool wei_b_group_ok
+                        = IMPLICATION(g2 > 1, batched() && batch() % g2 == 0);
 
-                ok = ok && wei_k_group_ok && wei_n_group_ok;
+                ok = ok && wei_k_group_ok && wei_n_group_ok && wei_b_group_ok;
 
                 // Mask over K dim is allowed for fp types or weights decompression only.
                 if (types::is_integral_dt(weights_md(0)->data_type)) {

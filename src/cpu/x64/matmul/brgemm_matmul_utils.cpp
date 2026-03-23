@@ -1461,6 +1461,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         bgmmc.wei_scales_dt = wei_scales.get_data_type();
         bgmmc.wei_scales_dt_sz = types::data_type_size(bgmmc.wei_scales_dt);
         bgmmc.wei_scales_k_gsize = wei_scales.get_group(0);
+        bgmmc.wei_scales_batch_gsize = wei_scales.get_group(2);
 
         // only common and per-oc-channel scales are supported
         // only per-ic-channel scales is supprted with weight decompression
@@ -1496,6 +1497,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         bgmmc.is_wei_zp_per_n = wei_zp_mask & (1 << (bgmmc.ndims - 1));
         bgmmc.wei_zp_dt = wei_zp.get_data_type();
         bgmmc.wei_zp_k_gsize = wei_zp.get_group(0);
+        bgmmc.wei_zp_batch_gsize = wei_zp.get_group(2);
 
         VCONDCHECK_BG(wei_zp_mask == 0 || bgmmc.is_wei_zp_per_k
                         || bgmmc.is_wei_zp_per_n,
@@ -1537,6 +1539,18 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.is_runtime_M = is_runtime_value(bgmmc.M);
     bgmmc.is_runtime_N = is_runtime_value(bgmmc.N);
     bgmmc.is_runtime_K = is_runtime_value(bgmmc.K);
+
+    // Set quantization batch offset if it's required
+    if (bgmmc.wei_scales_batch_gsize > 0) {
+        const auto scales_k_dim = bgmmc.K / bgmmc.wei_scales_k_gsize;
+        const auto scales_n_dim = bgmmc.N / wei_scales.get_group(1);
+        bgmmc.wei_scales_batch_offset = scales_k_dim * scales_n_dim;
+    }
+    if (bgmmc.wei_zp_batch_gsize > 0) {
+        const auto zp_k_dim = bgmmc.K / bgmmc.wei_zp_k_gsize;
+        const auto zp_n_dim = bgmmc.N / wei_zp.get_group(1);
+        bgmmc.wei_zp_batch_offset = zp_k_dim * zp_n_dim;
+    }
 
     bgmmc.is_gemv = is_gemv_applicable(
             bgmmc, bm_conf_utils, src_md, weights_md, attr);

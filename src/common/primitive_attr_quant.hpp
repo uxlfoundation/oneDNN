@@ -130,8 +130,14 @@ struct quant_entry_t : public c_compatible {
         utils::copy_dims_with_mask(quant_dims, in_dims, ndims, mask_,
                 /* fill_with_ones = */ true);
         if (!has_default_groups()) {
-            quant_dims[ndims - 2] /= get_group(0);
-            quant_dims[ndims - 1] /= get_group(1);
+            // Note: nstl::max guards are needed because get_group()
+            // returns 0 for out-of-bound access and MSVC raises C4723
+            // warning (potential divide by 0) treated as error.
+            quant_dims[ndims - 2] /= nstl::max(get_group(0), (dim_t)1);
+            quant_dims[ndims - 1] /= nstl::max(get_group(1), (dim_t)1);
+            if (group_ndims_ > 2 && ndims >= 3) {
+                quant_dims[ndims - 3] /= nstl::max(get_group(2), (dim_t)1);
+            }
         }
 
         CHECK(memory_desc_init_by_tag(

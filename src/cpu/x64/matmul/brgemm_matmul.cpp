@@ -1344,8 +1344,8 @@ void brgemm_matmul_t<isa>::copy_b_chunk_in_buffer(
         ctx.current_K_iters = k_iters;
         ctx.current_K_pad = brgmm_ctx.get_current_K_pad(k_iters);
         ctx.src_scales_ptr = brgmm_ctx.get_src_scales_ptr();
-        ctx.wei_scales_ptr = brgmm_ctx.get_wei_scales_ptr(n, k);
-        ctx.zp_b_value_ptr = brgmm_ctx.get_wei_zp_ptr(n, k);
+        ctx.wei_scales_ptr = brgmm_ctx.get_wei_scales_ptr(n, b_idx, k);
+        ctx.zp_b_value_ptr = brgmm_ctx.get_wei_zp_ptr(n, b_idx, k);
         if (bgmmc.blocked_B && !bgmmc.is_f16_with_int_wei
                 && isa == avx512_core_fp16) {
             cvt_float16_to_float((float *)ctx.tr_src, (float16_t *)ctx.src,
@@ -2136,13 +2136,18 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
 
     // Returns a pointer to the weights scales for the correspondent block based
     // on @p n and @p k.
-    const void *get_wei_scales_ptr(dim_t n, dim_t k = 0) const {
+    const void *get_wei_scales_ptr(dim_t n, dim_t b = 0, dim_t k = 0) const {
         if (bgmmc_.is_wei_scale_common) return wei_scales_;
         auto offset = n;
         if (bgmmc_.is_wei_scale_per_k) {
             const auto &k_group_sz = bgmmc_.wei_scales_k_gsize;
             const auto k_idx = k / k_group_sz;
             offset += k_idx * bgmmc_.N;
+        }
+
+        if (bgmmc_.wei_scales_batch_gsize > 0) {
+            const auto b_idx = b / bgmmc_.wei_scales_batch_gsize;
+            offset += b_idx * bgmmc_.wei_scales_batch_offset;
         }
 
         offset = offset * bgmmc_.wei_scales_dt_sz;
@@ -2174,17 +2179,22 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         return -cpu::io::load_int_value(bgmmc_.wei_zp_dt, wei_zp_ptr_, 0);
     }
 
-    const void *get_wei_zp_ptr(dim_t n, dim_t k = 0) const {
+    const void *get_wei_zp_ptr(dim_t n, dim_t b = 0, dim_t k = 0) const {
         if (!bgmmc_.has_zero_point_b) return nullptr;
         if (bgmmc_.is_wei_zp_common)
             return wei_zp_ptr_; // single zero point value
-        // Locate the group based on (n,k)
+        // Locate the group based on (n, b, k)
         auto offset = n;
 
         if (bgmmc_.is_wei_zp_per_k) {
             const auto &k_group_sz = bgmmc_.wei_zp_k_gsize;
             const auto k_idx = k / k_group_sz;
             offset += k_idx * bgmmc_.N;
+        }
+
+        if (bgmmc_.wei_zp_batch_gsize > 0) {
+            const auto b_idx = b / bgmmc_.wei_zp_batch_gsize;
+            offset += b_idx * bgmmc_.wei_zp_batch_offset;
         }
 
         const auto dt_sz = types::data_type_size(bgmmc_.wei_zp_dt);

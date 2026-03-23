@@ -38,10 +38,6 @@
 #include "tests/test_thread_decl.hpp"
 #endif
 
-#if defined(DNNL_AARCH64_USE_ACL)
-#include "tests/test_isa_common.hpp"
-#endif
-
 // Using hidden attr API for testing RNN
 dnnl_status_t dnnl_primitive_attr_set_rnn_tparams(dnnl_primitive_attr_t attr,
         bool mode, dnnl_dim_t ngates, const float *scales, float cscale);
@@ -842,16 +838,6 @@ void prb_t::skip_unimplemented(res_t *res) const {
             res->reason = reason_t::skip_not_supported;
             return;
         }
-
-#if defined(DNNL_AARCH64_USE_ACL)
-        const bool is_acl_f16_not_ok = prb.cfg[SRC_LAYER].dt == dnnl_f16
-                && dnnl::impl::cpu::platform::has_data_type_support(dnnl_f16);
-        if (is_acl_f16_not_ok) {
-            res->state = SKIPPED;
-            res->reason = reason_t::skip_not_supported;
-            return;
-        }
-#endif
     }
 
     // int8 weights reorder does not support non trivial strides;

@@ -1890,13 +1890,19 @@ dims_t md2dims(const_dnnl_memory_desc_t md, int mask, bool extend_by_ones,
     for (int d = 0; d < ndims; ++d) {
         if (mask & (1 << d)) {
             dims.push_back(query_md_dims(md)[d]);
-            // Note: groups are done for matmul's last two dimensions.
+            // Note: groups are done for matmul's last two dimensions
+            // and optionally the batch dimension (ndims-3).
             const auto group_dim = d - (ndims - 2);
-            if (!groups.empty() && group_dim >= 0) {
+            if (!groups.empty() && group_dim >= 0
+                    && group_dim < (int)groups.size()) {
                 // If groups are passed, divide dims on the correspondent group
                 // size. It's needed to pass proper memory objects.
                 assert(dims.back() % groups[group_dim] == 0);
                 dims.back() /= groups[group_dim];
+            }
+            if (groups.size() > 2 && d == ndims - 3) {
+                assert(dims.back() % groups[2] == 0);
+                dims.back() /= groups[2];
             }
         } else if (extend_by_ones) {
             dims.push_back(1);

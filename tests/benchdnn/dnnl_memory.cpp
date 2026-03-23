@@ -438,12 +438,13 @@ int64_t dnn_mem_t::get_idx(int64_t logical_idx, int dims_mask, const int ndims,
     int64_t stride = 1;
     int64_t offset = 0;
 
-    assert(groups.empty() || groups.size() == 2);
+    assert(groups.empty() || groups.size() == 2 || groups.size() == 3);
     assert(groups.size() <= static_cast<size_t>(ndims));
     dims_t groups_ext(ndims, 1);
     if (!groups.empty()) {
         groups_ext[ndims - 2] = groups[0];
         groups_ext[ndims - 1] = groups[1];
+        if (groups.size() > 2 && ndims >= 3) groups_ext[ndims - 3] = groups[2];
     }
 
     for (int i = 0; i < ndims; ++i) {

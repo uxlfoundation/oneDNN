@@ -1028,9 +1028,13 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
             dims_t dims = {};
             int64_t ndims = 1;
             const auto &arg_md = query_md(const_pd, exec_arg);
-            const auto mask = sc.get_mask(exec_arg, prim_kind,
-                    query_md_ndims(arg_md), has_channel_groups);
+            const int arg_ndims = query_md_ndims(arg_md);
+            auto mask = sc.get_mask(
+                    exec_arg, prim_kind, arg_ndims, has_channel_groups);
             const auto &groups = sc.get(exec_arg).groups;
+
+            if (groups.size() > 2 && arg_ndims >= 3)
+                mask |= (1 << (arg_ndims - 3));
 
             if (mask > 0) {
                 const auto &md = query_md(const_pd, exec_arg);
@@ -1086,9 +1090,12 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
             int64_t ndims = 1;
             dims_t dims = {};
             const auto &arg_md = query_md(const_pd, exec_arg);
-            const auto mask
-                    = zp.get_mask(exec_arg, prim_kind, query_md_ndims(arg_md));
+            const int arg_ndims = query_md_ndims(arg_md);
+            auto mask = zp.get_mask(exec_arg, prim_kind, arg_ndims);
             const auto &groups = e.groups;
+
+            if (groups.size() > 2 && arg_ndims >= 3)
+                mask |= (1 << (arg_ndims - 3));
 
             if (mask > 0) {
                 const auto &md = query_md(const_pd, exec_arg);

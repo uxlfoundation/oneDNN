@@ -105,6 +105,9 @@ static chunk_params_t make_chunk_params(const prb_t *prb, const args_t &args) {
             DNNL_ARG_SRC, dnnl_matmul, p.src_m->ndims());
     p.wei_scale_mask = prb->attr.scales.get_mask(
             DNNL_ARG_WEIGHTS, dnnl_matmul, p.wei_m->ndims());
+    if (prb->attr.scales.get(DNNL_ARG_WEIGHTS).groups.size() > 2
+            && p.wei_m->ndims() >= 3)
+        p.wei_scale_mask |= (1 << (p.wei_m->ndims() - 3));
     p.dst_scale_mask = prb->attr.scales.get_mask(
             DNNL_ARG_DST, dnnl_matmul, p.dst_m->ndims());
 
@@ -122,6 +125,9 @@ static chunk_params_t make_chunk_params(const prb_t *prb, const args_t &args) {
             ? prb->attr.zero_points.get_mask(
                       DNNL_ARG_WEIGHTS, dnnl_matmul, p.wei_m->ndims())
             : 0;
+    if (prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).groups.size() > 2
+            && p.wei_m->ndims() >= 3)
+        p.wei_zp_mask |= (1 << (p.wei_m->ndims() - 3));
     p.dst_zp_mask = p.has_dst_zp ? prb->attr.zero_points.get_mask(DNNL_ARG_DST,
                                            dnnl_matmul, p.dst_m->ndims())
                                  : 0;

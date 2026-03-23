@@ -207,28 +207,37 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
     attr_args_t attr_args;
     attr_args.prepare_post_ops_mds(prb->attr, prb->ndims, prb->dst_dims.data());
 
-    const auto overload_quant_mask = [&](policy_t policy, int arg) {
+    const auto overload_quant_mask
+            = [&](policy_t policy, int arg, const dims_t &groups = {}) {
         // Overload PER_OC/PER_OCIC mask definition for batched cases.
         if (policy == policy_t::PER_OC || policy == policy_t::PER_OCIC) {
             int mask = 1 << (prb->ndims - 1);
             if (policy == policy_t::PER_OCIC) mask += 1 << (prb->ndims - 2);
+            if (groups.size() > 2 && prb->ndims >= 3)
+                mask += 1 << (prb->ndims - 3);
             attr_args.prepare_quant(prb->attr, arg, mask);
         }
     };
 
     overload_quant_mask(prb->attr.scales.get(DNNL_ARG_SRC).policy,
-            DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+            DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC,
+            prb->attr.scales.get(DNNL_ARG_SRC).groups);
     overload_quant_mask(prb->attr.scales.get(DNNL_ARG_WEIGHTS).policy,
-            DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
+            DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS,
+            prb->attr.scales.get(DNNL_ARG_WEIGHTS).groups);
     overload_quant_mask(prb->attr.scales.get(DNNL_ARG_DST).policy,
-            DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
+            DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST,
+            prb->attr.scales.get(DNNL_ARG_DST).groups);
     overload_quant_mask(prb->attr.zero_points.get(DNNL_ARG_SRC).policy,
-            DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+            DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC,
+            prb->attr.zero_points.get(DNNL_ARG_SRC).groups);
     overload_quant_mask(prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).policy,
-            DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
+            DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS,
+            prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).groups);
     overload_quant_mask(
             prb->attr.precomputed_reductions.get(DNNL_ARG_SRC).policy,
-            DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS | DNNL_ARG_SRC);
+            DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS | DNNL_ARG_SRC,
+            prb->attr.precomputed_reductions.get(DNNL_ARG_SRC).groups);
 
     auto dnnl_attr = make_benchdnn_dnnl_wrapper(
             create_dnnl_attr(prb->attr, attr_args, prb->ndims));
@@ -912,15 +921,35 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
                 res->state = SKIPPED;
                 res->reason = skip_reason::invalid_case;
                 return;
-            } else if (groups.size() > 2) {
+            } else if (groups.size() > 3) {
                 BENCHDNN_PRINT(2,
                         "[INVALID][%s:%d]: Weight-only quantization scales "
                         "groups "
-                        "support only two dimensions\n",
+                        "support up to three dimensions\n",
                         __FILE__, __LINE__);
                 res->state = SKIPPED;
                 res->reason = skip_reason::invalid_case;
                 return;
+            } else if (groups.size() == 3 && prb->ndims < 3) {
+                BENCHDNN_PRINT(2,
+                        "[INVALID][%s:%d]: Weight-only quantization scales "
+                        "3D groups require at least 3 dimensions\n",
+                        __FILE__, __LINE__);
+                res->state = SKIPPED;
+                res->reason = skip_reason::invalid_case;
+                return;
+            } else if (groups.size() == 3 && prb->ndims >= 3) {
+                const auto batch_dim = prb->weights_dims()[prb->ndims - 3];
+                if (batch_dim % groups[2]) {
+                    BENCHDNN_PRINT(2,
+                            "[INVALID][%s:%d]: Weight-only quantization "
+                            "scales require batch dim ('%d') to be "
+                            "divisible by batch group ('%d')\n",
+                            __FILE__, __LINE__, (int)batch_dim, (int)groups[2]);
+                    res->state = SKIPPED;
+                    res->reason = skip_reason::invalid_case;
+                    return;
+                }
             }
         }
     }
@@ -937,15 +966,36 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
                 res->state = SKIPPED;
                 res->reason = skip_reason::invalid_case;
                 return;
-            } else if (groups.size() > 2) {
+            } else if (groups.size() > 3) {
                 BENCHDNN_PRINT(2,
                         "[INVALID][%s:%d]: Weight-only quantization "
                         "zero-points "
-                        "groups support only two dimensions\n",
+                        "groups support up to three dimensions\n",
                         __FILE__, __LINE__);
                 res->state = SKIPPED;
                 res->reason = skip_reason::invalid_case;
                 return;
+            } else if (groups.size() == 3 && prb->ndims < 3) {
+                BENCHDNN_PRINT(2,
+                        "[INVALID][%s:%d]: Weight-only quantization "
+                        "zero-points 3D groups require at least 3 "
+                        "dimensions\n",
+                        __FILE__, __LINE__);
+                res->state = SKIPPED;
+                res->reason = skip_reason::invalid_case;
+                return;
+            } else if (groups.size() == 3 && prb->ndims >= 3) {
+                const auto batch_dim = prb->weights_dims()[prb->ndims - 3];
+                if (batch_dim % groups[2]) {
+                    BENCHDNN_PRINT(2,
+                            "[INVALID][%s:%d]: Weight-only quantization "
+                            "zero-points require batch dim ('%d') to be "
+                            "divisible by batch group ('%d')\n",
+                            __FILE__, __LINE__, (int)batch_dim, (int)groups[2]);
+                    res->state = SKIPPED;
+                    res->reason = skip_reason::invalid_case;
+                    return;
+                }
             }
         }
     }

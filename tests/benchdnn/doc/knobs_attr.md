@@ -151,7 +151,10 @@ value for any other policies will trigger an error.
 `f32` (the default), `f16`, `bf16`, `e8m0`, `f8_e5m2`, `f8_e4m3`.
 
 `GROUPS` specifies how scales are grouped along dimensions where multiple scale
-factors are used.
+factors are used. Groups are specified as `KxN` for 2D grouping or `KxNxB` for
+3D grouping with a batch dimension. For the 3D case, the third element specifies
+the group size along the batch dimension (e.g., `32x1x3` means K-group=32,
+N-group=1, batch-group=3).
 
 To specify more than one memory argument for this attribute, `+` delimiter is
 used.
@@ -180,7 +183,8 @@ a value for any other policies will trigger an error.
 `s32` (the default), `s8`, `u8`, `s4`, `u4`.
 
 `GROUPS` specifies how zero points are grouped along dimensions where multiple
-zero points are used.
+zero points are used. Groups are specified as `KxN` for 2D grouping or `KxNxB`
+for 3D grouping with a batch dimension (same format as for scales).
 
 To specify more than one memory argument for this attribute, `+` delimiter is
 used.
@@ -392,6 +396,14 @@ Run a matmul problem with weight-only quantization where weights `bf16` scales a
   ./benchdnn --matmul --dt=f32:s8:f32 --attr-fpmath=bf16:true \
              --attr-scales=wei:per_ocic:bf16:2x1 \
              --attr-zero-points=wei:per_ocic:s8:2x1 6x4:4x5
+```
+
+Run a batched matmul problem with weight-only quantization where scales and
+zero points are grouped over both `ic` and batch dimensions:
+``` sh
+  ./benchdnn --matmul --dt=bf16:s8:bf16 --attr-fpmath=bf16:true \
+             --attr-scales=wei:per_ocic:bf16:32x1x3 \
+             --attr-zero-points=wei:per_ocic:u8:32x1x3 6x5x128:6x128x64
 ```
 
 Run a matmul problem with MXFP4 semantics:

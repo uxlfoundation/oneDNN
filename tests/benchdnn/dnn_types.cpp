@@ -346,9 +346,10 @@ int attr_t::arg_scales_t::entry_t::from_str(const std::string &s) {
     parser::parse_vector_str(this->groups, dims_t(),
             parser::parser_utils::stoll_safe, g_str, 'x');
 
-    if (!this->groups.empty() && this->groups.size() != 2) {
-        BENCHDNN_PRINT(
-                0, "%s\n", "Error: the number of groups is expected to be 2.");
+    if (!this->groups.empty() && this->groups.size() != 2
+            && this->groups.size() != 3) {
+        BENCHDNN_PRINT(0, "%s\n",
+                "Error: the number of groups is expected to be 2 or 3.");
         SAFE_V(FAIL);
     }
     HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING();
@@ -408,9 +409,10 @@ int attr_t::zero_points_t::entry_t::from_str(const std::string &s) {
     const auto g_str = parser::get_substr(s, start_pos, ':');
     parser::parse_vector_str(this->groups, dims_t(),
             parser::parser_utils::stoll_safe, g_str, 'x');
-    if (!this->groups.empty() && this->groups.size() != 2) {
-        BENCHDNN_PRINT(
-                0, "%s\n", "Error: the number of groups is expected to be 2.");
+    if (!this->groups.empty() && this->groups.size() != 2
+            && this->groups.size() != 3) {
+        BENCHDNN_PRINT(0, "%s\n",
+                "Error: the number of groups is expected to be 2 or 3.");
         SAFE_V(FAIL);
     }
     HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING();
@@ -456,9 +458,10 @@ int attr_t::precomputed_reductions_t::entry_t::from_str(const std::string &s) {
     const auto g_str = parser::get_substr(s, start_pos, ':');
     parser::parse_vector_str(this->groups, dims_t(),
             parser::parser_utils::stoll_safe, g_str, 'x');
-    if (!this->groups.empty() && this->groups.size() != 2) {
-        BENCHDNN_PRINT(
-                0, "%s\n", "Error: the number of groups is expected to be 2.");
+    if (!this->groups.empty() && this->groups.size() != 2
+            && this->groups.size() != 3) {
+        BENCHDNN_PRINT(0, "%s\n",
+                "Error: the number of groups is expected to be 2 or 3.");
         SAFE_V(FAIL);
     }
     HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING();

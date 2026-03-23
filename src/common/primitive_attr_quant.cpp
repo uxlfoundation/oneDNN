@@ -68,6 +68,8 @@ std::string quant_entry_t::get_verbose() const {
                 .append(std::to_string(group_dims_[0]))
                 .append("x")
                 .append(std::to_string(group_dims_[1]));
+        if (group_ndims_ > 2)
+            s.append("x").append(std::to_string(group_dims_[2]));
     }
     if (is_host_scalar_) { s.append(":host_scalar"); }
     if (qmode_ != quantization_mode::static_sazp) {

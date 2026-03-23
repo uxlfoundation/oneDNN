@@ -45,6 +45,9 @@ struct gemm_t : public primitive_t {
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
 
+            // 3D (batch) groups for scales/zero points not supported on GPU.
+            if (!batch_groups_ok()) return status::unimplemented;
+
             primitive_attr_t gemm_attr;
             gemm_attr.fpmath_ = attr()->fpmath_;
             gemm_attr.acc_mode_ = attr()->acc_mode_;

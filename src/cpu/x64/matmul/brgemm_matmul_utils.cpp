@@ -324,7 +324,7 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
               && IMPLICATION(attr.fpmath_.mode_ == fpmath_mode::bf16,
                       bgmmc.src_dt == bf16)
               && IMPLICATION(attr.fpmath_.mode_ == fpmath_mode::strict,
-                      bgmmc.src_dt == f32)
+                      one_of(bgmmc.src_dt, f32, u8, s8))
               && attr.fpmath_.apply_to_int_)
     , bf16_with_int_wei_dt(weights_decompression_support && bgmmc.src_dt == bf16
               && one_of(bgmmc.dst_dt, bf16, f32))
@@ -721,9 +721,22 @@ format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
 }
 
 brgemm_broadcast_t get_zp_type(const primitive_attr_t &attr, int arg) {
-    return attr.zero_points_.has_default_values(arg)
-            ? brgemm_broadcast_t::none
-            : brgemm_broadcast_t::per_tensor;
+    if (attr.zero_points_.has_default_values(arg)) {
+        return brgemm_broadcast_t::none;
+    }
+
+    const int mask = attr.zero_points_.get_mask(arg);
+    if (mask == 0) {
+        return brgemm_broadcast_t::per_tensor;
+    } else if (mask == 2
+            && utils::one_of(arg, DNNL_ARG_WEIGHTS, DNNL_ARG_DST)) {
+        return brgemm_broadcast_t::per_n;
+    } else if ((mask & 1) > 0 // In current implementation must also be per n
+            && utils::one_of(arg, DNNL_ARG_WEIGHTS)) {
+        return brgemm_broadcast_t::per_k;
+    } else {
+        return brgemm_broadcast_t::none;
+    }
 }
 
 struct matmul_avx512_blocking_params_t {
@@ -1467,7 +1480,8 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         bgmmc.is_wei_scale_per_k = wei_scale_mask & 1 << (bgmmc.ndims - 2);
         bgmmc.is_wei_scale_per_n = wei_scale_mask & 1 << (bgmmc.ndims - 1);
         bgmmc.apply_scales_in_buffer_b = bgmmc.is_wei_scale_per_k
-                && bgmmc.with_wei_decompression && bgmmc.N * bgmmc.K != 1;
+                && bgmmc.with_wei_decompression && bgmmc.N * bgmmc.K != 1
+                && !bgmmc.is_int8_with_quant_wei;
         bgmmc.wei_scales_dt = wei_scales.get_data_type();
         bgmmc.wei_scales_dt_sz = types::data_type_size(bgmmc.wei_scales_dt);
         bgmmc.wei_scales_k_gsize = wei_scales.get_group(0);
@@ -1547,6 +1561,15 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.is_runtime_M = is_runtime_value(bgmmc.M);
     bgmmc.is_runtime_N = is_runtime_value(bgmmc.N);
     bgmmc.is_runtime_K = is_runtime_value(bgmmc.K);
+
+    // When wei_scales group size covers the entire K dimension there is
+    // effectively only one scale row (size N) — the same as plain per_oc.
+    // Downgrade to per_oc to avoid the expensive IC-scales JIT path which
+    // is not needed for this case.
+    if (bgmmc.is_wei_scale_per_k && !bgmmc.is_runtime_K
+            && bgmmc.wei_scales_k_gsize >= bgmmc.K) {
+        bgmmc.is_wei_scale_per_k = false;
+    }
 
     bgmmc.is_gemv = is_gemv_applicable(
             bgmmc, bm_conf_utils, src_md, weights_md, attr);

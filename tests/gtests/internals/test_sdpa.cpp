@@ -2231,15 +2231,22 @@ public:
 
         strm.wait();
 
+        // GQA atomic adds across kv_group_size Q-heads introduce
+        // nondeterministic rounding in dK/dV. Relax threshold by sqrt(group)
+        const int kv_group_size = static_cast<int>(p.heads.q / p.heads.kv);
+        const float gqa_fthreshold
+                = fthreshold * std::sqrt(static_cast<float>(kv_group_size));
+
         if (t.m_output.get_desc().get_data_type() == mdt::f16) {
             check_memory<float16_t>(strm, t.m_output, t.m_output_quantized,
                     max_diff_threshold, fthreshold);
             check_memory<float16_t>(strm, t.m_diff_query,
                     t.m_diff_query_quantized, max_diff_threshold, fthreshold);
             check_memory<float16_t>(strm, t.m_diff_key, t.m_diff_key_quantized,
-                    max_diff_threshold, fthreshold);
+                    max_diff_threshold, gqa_fthreshold);
             check_memory<float16_t>(strm, t.m_diff_value,
-                    t.m_diff_value_quantized, max_diff_threshold, fthreshold);
+                    t.m_diff_value_quantized, max_diff_threshold,
+                    gqa_fthreshold);
 
         } else if (t.m_output.get_desc().get_data_type() == mdt::bf16) {
             check_memory<bfloat16_t>(strm, t.m_output, t.m_output_quantized,
@@ -2247,9 +2254,10 @@ public:
             check_memory<bfloat16_t>(strm, t.m_diff_query,
                     t.m_diff_query_quantized, max_diff_threshold, fthreshold);
             check_memory<bfloat16_t>(strm, t.m_diff_key, t.m_diff_key_quantized,
-                    max_diff_threshold, fthreshold);
+                    max_diff_threshold, gqa_fthreshold);
             check_memory<bfloat16_t>(strm, t.m_diff_value,
-                    t.m_diff_value_quantized, max_diff_threshold, fthreshold);
+                    t.m_diff_value_quantized, max_diff_threshold,
+                    gqa_fthreshold);
 
         } else if (t.m_output.get_desc().get_data_type() == mdt::f32) {
             check_memory<float_t>(strm, t.m_output, t.m_output_quantized,
@@ -2257,9 +2265,10 @@ public:
             check_memory<float_t>(strm, t.m_diff_query,
                     t.m_diff_query_quantized, max_diff_threshold, fthreshold);
             check_memory<float_t>(strm, t.m_diff_key, t.m_diff_key_quantized,
-                    max_diff_threshold, fthreshold);
+                    max_diff_threshold, gqa_fthreshold);
             check_memory<float_t>(strm, t.m_diff_value,
-                    t.m_diff_value_quantized, max_diff_threshold, fthreshold);
+                    t.m_diff_value_quantized, max_diff_threshold,
+                    gqa_fthreshold);
         }
 
 #if DEBUG_PRINT_MEM

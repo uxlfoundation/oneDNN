@@ -117,4 +117,21 @@ TEST(test_bfloat16_converting_constructor_and_assignment,
     assert_same_bits_from_integer_as_from_float<long long>();
 }
 
+TEST(test_bfloat16_rounding, RoundToNearestEven) {
+    // Test round-to-nearest-even (RNE) behavior during float->bfloat16
+    // conversion. A bfloat16 keeps the upper 16 bits of a float. The lower
+    // 16 bits are the "tail" that gets rounded off. When the tail is exactly
+    // at the halfway point, RNE rounds to make the result LSB even.
+
+    // Halfway with odd result LSB: should round up to even.
+    // float 1.01171875f is 0x3F818000 (bf16 candidate 0x3F81, tail 0x8000).
+    constexpr float halfway_odd_lsb {1.01171875f};
+    ASSERT_EQ(bfloat16_t {halfway_odd_lsb}.raw_bits_, 0x3F82u);
+
+    // Halfway with even result LSB: should stay even (no round up).
+    // float 1.00390625f is 0x3F808000 (bf16 candidate 0x3F80, tail 0x8000).
+    constexpr float halfway_even_lsb {1.00390625f};
+    ASSERT_EQ(bfloat16_t {halfway_even_lsb}.raw_bits_, 0x3F80u);
+}
+
 } // namespace dnnl

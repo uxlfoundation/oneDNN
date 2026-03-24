@@ -3319,8 +3319,8 @@ GPU_TEST_P(sdpa_bwd_test, perf_bwd) {
 // Case 2: 0.75:12345678:undef    -> tag=undef => no mask buffer written
 // Case 3: 0.25:843921:any:1238976:true -> output mask + non-zero offset + host scalars
 #define SDPA_DIMS_DROPOUT_BASE \
-    1, 1, 1, 32, 32, 32, 32, 32, mdt::f16, mdt::f16, mdt::undef, mdt::undef, \
-            mdt::f16, mdt::undef, mdt::undef, mdt::f16, \
+    1, 1, 1, 32, 32, 32, 32, 32, mdt::f32, mdt::f32, mdt::undef, mdt::undef, \
+            mdt::f32, mdt::undef, mdt::undef, mdt::f32, \
             quantize_type::no_quantization, no_key_transposed, \
             mask_type::no_mask, default_scale_type, accumulation_mode::f32, \
             accumulation_mode::f32

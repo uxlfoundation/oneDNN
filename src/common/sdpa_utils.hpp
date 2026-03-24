@@ -19,6 +19,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <vector>
 
 #include "oneapi/dnnl/dnnl.h"
 
@@ -30,6 +31,48 @@
 
 namespace dnnl {
 namespace impl {
+
+// Fill the last two dimensions of `out` as an identity matrix.
+// All outer dimensions (batch, heads, …) are iterated automatically.
+inline void fill_eye(std::vector<float> &out,
+        const std::vector<int64_t> &dims, const std::vector<int64_t> &strides,
+        float diag_value = 1.f, float offdiag_value = 0.f) {
+    out.assign(out.size(), offdiag_value);
+    if (dims.empty() || strides.size() != dims.size()) return;
+    if (dims.size() < 2) {
+        if (!out.empty()) out[0] = diag_value;
+        return;
+    }
+    const size_t row_dim = dims.size() - 2;
+    const size_t col_dim = dims.size() - 1;
+    std::vector<int64_t> idx(dims.size(), 0);
+    while (true) {
+        size_t offset = 0;
+        for (size_t i = 0; i < dims.size(); ++i)
+            offset += static_cast<size_t>(idx[i] * strides[i]);
+        if (idx[row_dim] == idx[col_dim] && offset < out.size())
+            out[offset] = diag_value;
+        size_t d = dims.size();
+        while (d > 0) {
+            --d;
+            idx[d]++;
+            if (idx[d] < dims[d]) break;
+            idx[d] = 0;
+        }
+        if (d == 0 && idx[0] == 0) break;
+    }
+}
+
+// Debug helper for isolating the VS matmul contribution in SDPA:
+// fills V as identity on the last two dims so the VS matmul acts as
+// a pass-through.  Returns true iff K == D (exact identity).
+inline bool fill_v_debug_passthrough(std::vector<float> &out,
+        const std::vector<int64_t> &dims, const std::vector<int64_t> &strides,
+        float diag_value = 1.f, float offdiag_value = 0.f) {
+    fill_eye(out, dims, strides, diag_value, offdiag_value);
+    if (dims.size() < 2) return true;
+    return dims[dims.size() - 2] == dims[dims.size() - 1];
+}
 
 #define VCHECK_SDPA(f, msg, ...) \
     VCHECK(primitive, create, check, sdpa, (f), msg, ##__VA_ARGS__);

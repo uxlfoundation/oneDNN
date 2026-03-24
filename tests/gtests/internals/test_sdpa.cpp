@@ -17,6 +17,7 @@
 #include <dnnl_test_common.hpp>
 #include <gtest/gtest.h>
 
+#include "common/sdpa_utils.hpp"
 #include "sdpa_internal.hpp"
 #include "test_utils.hpp"
 
@@ -801,8 +802,16 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     fill_random(diff_output_data, output_md);
     fill_random_quantized(key_quantized_data, key_quantized_md,
             (p.key.dt == mdt::u4 || p.key.dt == mdt::u8));
-    fill_random_quantized(val_quantized_data, val_quantized_md,
-            (p.value.dt == mdt::u4 || p.value.dt == mdt::u8));
+        const bool exact_vs_passthrough = dnnl::impl::fill_v_debug_passthrough(
+            val_quantized_data, val_quantized_md.get_dims(),
+            val_quantized_md.get_strides());
+        if (!exact_vs_passthrough && sdpa_dropout_debug_enabled()) {
+        std::fprintf(stderr,
+            "[test-sdpa][debug] V passthrough fallback used: non-square "
+            "KxD in V (K=%lld, D=%lld)\n",
+            (long long)val_quantized_md.get_dims()[2],
+            (long long)val_quantized_md.get_dims()[3]);
+        }
     if (p.qtype != quantize_type::no_quantization) {
         if (p.key.dt != mdt::f16 && p.key.dt != mdt::bf16
                 && p.key.sdt != mdt::undef) {

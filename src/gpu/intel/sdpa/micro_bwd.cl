@@ -316,6 +316,16 @@ inline void tile_store_k_slm(
 }
 
 #if KV_GROUP_SIZE > 1
+#define IS_GQA 1
+#if DST_DATA_T != float
+#define NEEDS_INTERMEDIATE_DKV 1
+#endif
+#endif
+#if QRY_DATA_T != float
+#define NEEDS_INTERMEDIATE_DQ 1
+#endif
+
+#if IS_GQA
 #define DST_DATA_T_DKDV float
 #else
 #define DST_DATA_T_DKDV DST_DATA_T
@@ -324,7 +334,7 @@ inline void tile_store_k_slm(
 inline void tile_store_dV(dv_tile_type *dV_tile_slm, global DST_DATA_T_DKDV *dV,
         int m, int n, int ld, int offset_r, int offset_c, int rem) {
 
-#if KV_GROUP_SIZE > 1 // GQA update
+#if IS_GQA
     tile_atomic_add(*dV_tile_slm, dV, m, n, ld, offset_r, offset_c);
 #else // MHA update
 
@@ -344,12 +354,16 @@ inline void tile_store_dV(dv_tile_type *dV_tile_slm, global DST_DATA_T_DKDV *dV,
 inline void tile_store_dK_t(dv_tile_type *dK_tile, global DST_DATA_T_DKDV *dK,
         int m, int n, int ld, int offset_r, int offset_c, int rem) {
 
-#if KV_GROUP_SIZE > 1 // GQA update
+#if IS_GQA
     tile_atomic_add(*dK_tile, dK, m, n, ld, offset_r, offset_c);
 #else // MHA update
     dv_tile_type_dst dK_tile_dst;
     tile_copy_reblock(*dK_tile, &dK_tile_dst);
+#if BLOCK_DK
+    tile_store_block_rem_q(dK_tile_dst, dK, n, ld, offset_r, offset_c, rem)
+#else
     tile_store(dK_tile_dst, dK, m, n, ld, offset_r, offset_c);
+#endif
 #endif
 }
 
@@ -359,7 +373,7 @@ inline void tile_store_dK_t(dv_tile_type *dK_tile, global DST_DATA_T_DKDV *dK,
 inline void tile_store_dK(a_tile_type *dK_tile, global DST_DATA_T_DKDV *dK,
         int m, int n, int ld, int offset_r, int offset_c) {
 
-#if KV_GROUP_SIZE > 1 // GQA update
+#if IS_GQA
     tile_atomic_add(*dK_tile, dK, m, n, ld, offset_r, offset_c);
 #else // MHA update
 
@@ -399,13 +413,13 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         const global MSK_DATA_T *msk
 #endif
         ,
-        KEY_OFFSETS, QRY_OFFSETS, VAL_OFFSETS, DST_OFFSETS
+        constant long *stride_params, const int remainder_k,
+        const int remainder_q) {
+
+    BWD_UNPACK_STRIDE_PARAMS(stride_params)
 #if WITH_ATTN_MASK
-        ,
-        MSK_OFFSETS
+    BWD_UNPACK_MSK_PARAMS(stride_params)
 #endif
-        ,
-        const int remainder_k, const int remainder_q) {
 
     uint wg_k = get_group_id(0);
 
@@ -440,6 +454,28 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     uint ldq = QRY_S2;
     uint ldv = VAL_S2;
     uint lda = DST_S2;
+    uint ldda = DA_S2;
+
+    /* leading dimensions for gradient outputs */
+#if NEEDS_INTERMEDIATE_DKV
+#if TRANSPOSE_K
+    uint lddk = (uint)d;
+#else
+    uint lddk = (uint)k;
+#endif
+    uint lddv = (uint)d;
+#else
+    /* diff_key_md may not share key_md's transpose, use max to get the
+     * sequence stride regardless of dK orientation */
+    uint lddk = TRANSPOSE_K ? MAX(DK_S2, DK_S3) : DK_S2;
+    uint lddv = DV_S2;
+#endif
+
+#if NEEDS_INTERMEDIATE_DQ
+    uint lddq = (uint)d;
+#else
+    uint lddq = DQ_S2;
+#endif
 
     /* Subgroup IDs for each GEMM, although total number of
      * sg per wg may be shared
@@ -504,6 +540,11 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     const size_t v_offset = VAL_BATCH(b1, b0_kv);
     const size_t q_offset = QRY_BATCH(b1, b0);
     const size_t a_offset = DST_BATCH(b1, b0);
+    const size_t da_offset = DA_BATCH(b1, b0);
+
+    const size_t dk_offset = DK_BATCH(b1, b0_kv);
+    const size_t dv_offset = DV_BATCH(b1, b0_kv);
+    const size_t dq_offset = DQ_BATCH(b1, b0);
 
     /* Locate K/Q/V/A matrices within batch */
     K += k_offset;
@@ -511,10 +552,10 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     V += v_offset;
     A += a_offset;
 
-    dK += k_offset;
-    dQ += q_offset;
-    dV += v_offset;
-    dA += a_offset;
+    dK += dk_offset;
+    dQ += dq_offset;
+    dV += dv_offset;
+    dA += da_offset;
 
 #if WITH_DS
     dS += b1 * (DST_D1 * q * k) + b0 * (q * k);
@@ -695,7 +736,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         {
 #if DO_MM
             dv_tile_type dV_tile1;
-            dV_tile1 = ugemm_vs(dA + q0 * lda, lda, (local FMA_TYPE *)S_slm,
+            dV_tile1 = ugemm_vs(dA + q0 * ldda, ldda, (local FMA_TYPE *)S_slm,
                     ugemm_kq_wg_tile_n, d, k_chunk, q_nchunk, 0, 0, 0, sg_i_vs,
                     sg_j_vs, (local char *)ugemm_slm);
 #else
@@ -711,8 +752,8 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         }
 
 #if DO_MM
-        p_tile_type dP_tile = ugemm_vtdA(V + k0 * ldv, ldv, dA + q0 * lda, lda,
-                k_chunk, q_nchunk, d, 0, 0, 0, sg_i_kq, sg_j_kq,
+        p_tile_type dP_tile = ugemm_vtdA(V + k0 * ldv, ldv, dA + q0 * ldda,
+                ldda, k_chunk, q_nchunk, d, 0, 0, 0, sg_i_kq, sg_j_kq,
                 (local char *)ugemm_slm);
 #else
         p_tile_type dP_tile;
@@ -836,7 +877,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             uint sg_j0_dq = sg_j_ktq * ugemm_ktq_sg_tile_n + q0;
 
             if (sg_ij < sg_per_wg_BrD)
-                tile_atomic_add(dQ_tile, dQ, d, q, ldq, sg_i0_dq, sg_j0_dq);
+                tile_atomic_add(dQ_tile, dQ, d, q, lddq, sg_i0_dq, sg_j0_dq);
         }
     }
 
@@ -852,7 +893,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     if (sg_ij < sg_per_wg_BcD) {
         tile_load(&dV_tile_slm, dV_slm, D_MAX, ugemm_kq_wg_tile_m, D_MAX,
                 sg_i0_vs, sg_j0_vs);
-        tile_store_dV(&dV_tile_slm, dV, d, k, ldv, sg_i0_vs, wg_i0 + sg_j0_vs,
+        tile_store_dV(&dV_tile_slm, dV, d, k, lddv, sg_i0_vs, wg_i0 + sg_j0_vs,
                 remainder_k);
     }
     // /update dV
@@ -865,7 +906,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     if (sg_ij < sg_per_wg_BcD) {
         tile_load(&dK_tile_t, dK_slm, D_MAX, ugemm_kq_wg_tile_m, D_MAX,
                 sg_i0_vs, sg_j0_vs);
-        tile_store_dK_t(&dK_tile_t, dK, d, k, ldk, sg_i0_vs, wg_i0 + sg_j0_vs,
+        tile_store_dK_t(&dK_tile_t, dK, d, k, lddk, sg_i0_vs, wg_i0 + sg_j0_vs,
                 remainder_k);
     }
 #else
@@ -878,7 +919,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     if (sg_ij < sg_per_wg_BcD) {
         tile_load(&dK_tile_slm, dK_slm, ugemm_kq_wg_tile_m, D_MAX,
                 ugemm_kq_wg_tile_m, sg_i0_dk, sg_j0_dk);
-        tile_store_dK(&dK_tile_slm, dK + wg_i0, wg_k_chunk, d, ldk, sg_i0_dk,
+        tile_store_dK(&dK_tile_slm, dK + wg_i0, wg_k_chunk, d, lddk, sg_i0_dk,
                 sg_j0_dk);
     }
 #endif
@@ -887,10 +928,11 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) kernel void
 preprocess_Di(global float *Di, const global DST_DATA_T *A,
-        const global DST_DATA_T *dA, int d, int k, int q, QRY_OFFSETS,
-        DST_OFFSETS) {
+        const global DST_DATA_T *dA, int d, int k, int q, BWD_QRY_OFFSETS,
+        BWD_DST_OFFSETS, BWD_DA_OFFSETS) {
 
     uint lda = DST_S2;
+    uint ldda = DA_S2;
     uint ldq = QRY_S2;
 
     uint sg_ij = sub_group_broadcast(get_local_id(1), 0);
@@ -903,12 +945,12 @@ preprocess_Di(global float *Di, const global DST_DATA_T *A,
 
     const uint preprocess_batch = b1 * (DST_D1 * q) + b0 * q;
 
-    const size_t q_offset = QRY_BATCH(b1, b0);
     const size_t a_offset = DST_BATCH(b1, b0);
+    const size_t da_offset = DA_BATCH(b1, b0);
 
     /* Locate A/dA matrices within batch */
     A += a_offset;
-    dA += a_offset;
+    dA += da_offset;
 
     Di += preprocess_batch;
 
@@ -931,8 +973,8 @@ preprocess_Di(global float *Di, const global DST_DATA_T *A,
         dq_tile_type dA_tile, A_tile;
         tile_fill(A_tile, 0.f);
         tile_fill(dA_tile, 0.f);
-        tile_load(
-                &dA_tile, (global FMA_TYPE *)dA, d, q, lda, 0, wg_j0 + q0_copy);
+        tile_load(&dA_tile, (global FMA_TYPE *)dA, d, q, ldda, 0,
+                wg_j0 + q0_copy);
         tile_load(&A_tile, (global FMA_TYPE *)A, d, q, lda, 0, wg_j0 + q0_copy);
 #else
         dq_tile_type dA_tile, A_tile;
@@ -940,7 +982,7 @@ preprocess_Di(global float *Di, const global DST_DATA_T *A,
         tile_fill(A_tile_reblock, TO_DATA_T(0.f));
         tile_fill(dA_tile_reblock, TO_DATA_T(0.f));
 
-        tile_load(&dA_tile_reblock, (global FMA_TYPE *)dA, d, q, lda, 0,
+        tile_load(&dA_tile_reblock, (global FMA_TYPE *)dA, d, q, ldda, 0,
                 wg_j0 + q0_copy);
         tile_load(&A_tile_reblock, (global FMA_TYPE *)A, d, q, lda, 0,
                 wg_j0 + q0_copy);
@@ -975,15 +1017,22 @@ preprocess_Di(global float *Di, const global DST_DATA_T *A,
 
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) kernel void
 postprocess_dQ(global DST_DATA_T *dst, global const float *src, int nelems,
-        QRY_OFFSETS) {
+        DQ_STRIDES, FULL_QRY_OFFSETS) {
     uint b0 = get_group_id(1);
     uint b1 = get_group_id(2);
 
-    const size_t offset = QRY_BATCH(b1, b0);
+    const size_t src_offset = DQ_BATCH(b1, b0);
+    const size_t dst_offset = QRY_BATCH(b1, b0);
 
-    /* Locate dQ/dV/dK matrices within batch */
-    src += offset;
-    dst += offset;
+    /* Locate dQ matrices within batch */
+    src += src_offset;
+    dst += dst_offset;
     size_t idx = get_global_id(0);
-    if (idx < (nelems)) { dst[idx] = TO_DATA_T(src[idx]); }
+    if (idx < nelems) {
+        size_t row = idx / QRY_D3;
+        size_t col = idx % QRY_D3;
+        size_t src_idx = (size_t)row * DQ_S2 + col * DQ_S3;
+        size_t dst_idx = (size_t)row * QRY_S2 + col * QRY_S3;
+        dst[dst_idx] = TO_DATA_T(src[src_idx]);
+    }
 }

@@ -4,17 +4,17 @@
   "fpmath_mode": "strict",
   "fpmath_mode_apply_to_int": "false",
   "input_ports": [
-    0,
     1,
+    2,
     5,
-    8
+    3
   ],
   "output_ports": [
-    9
+    6
   ],
   "graph": [
     {
-      "id": 0,
+      "id": 101,
       "name": "matmul_qk",
       "kind": "MatMul",
       "attrs": {
@@ -33,7 +33,7 @@
       },
       "inputs": [
         {
-          "id": 0,
+          "id": 1,
           "dtype": "f32",
           "shape": [
             1,
@@ -51,7 +51,7 @@
           "property_type": "undef"
         },
         {
-          "id": 1,
+          "id": 2,
           "dtype": "f32",
           "shape": [
             1,
@@ -71,7 +71,7 @@
       ],
       "outputs": [
         {
-          "id": 2,
+          "id": 7,
           "dtype": "f32",
           "shape": [
             1,
@@ -91,7 +91,7 @@
       ]
     },
     {
-      "id": 2,
+      "id": 103,
       "name": "mask_add",
       "kind": "Add",
       "attrs": {
@@ -102,7 +102,7 @@
       },
       "inputs": [
         {
-          "id": 2,
+          "id": 7,
           "dtype": "f32",
           "shape": [
             1,
@@ -140,7 +140,7 @@
       ],
       "outputs": [
         {
-          "id": 6,
+          "id": 9,
           "dtype": "f32",
           "shape": [
             1,
@@ -160,7 +160,7 @@
       ]
     },
     {
-      "id": 3,
+      "id": 104,
       "name": "softmax",
       "kind": "SoftMax",
       "attrs": {
@@ -175,7 +175,7 @@
       },
       "inputs": [
         {
-          "id": 6,
+          "id": 9,
           "dtype": "f32",
           "shape": [
             1,
@@ -195,7 +195,7 @@
       ],
       "outputs": [
         {
-          "id": 7,
+          "id": 10,
           "dtype": "f32",
           "shape": [
             1,
@@ -215,7 +215,7 @@
       ]
     },
     {
-      "id": 4,
+      "id": 105,
       "name": "matmul_v",
       "kind": "MatMul",
       "attrs": {
@@ -234,7 +234,7 @@
       },
       "inputs": [
         {
-          "id": 7,
+          "id": 10,
           "dtype": "f32",
           "shape": [
             1,
@@ -252,7 +252,7 @@
           "property_type": "undef"
         },
         {
-          "id": 8,
+          "id": 3,
           "dtype": "f32",
           "shape": [
             1,
@@ -272,7 +272,7 @@
       ],
       "outputs": [
         {
-          "id": 9,
+          "id": 6,
           "dtype": "f32",
           "shape": [
             1,

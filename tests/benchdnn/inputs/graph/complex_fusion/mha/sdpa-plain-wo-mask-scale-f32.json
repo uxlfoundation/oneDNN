@@ -91,69 +91,6 @@
       ]
     },
     {
-      "id": 102,
-      "name": "scale_div",
-      "kind": "Divide",
-      "attrs": {
-        "auto_broadcast": {
-          "type": "string",
-          "value": "numpy"
-        }
-      },
-      "inputs": [
-        {
-          "id": 7,
-          "dtype": "f32",
-          "shape": [
-            32,
-            16,
-            384,
-            384
-          ],
-          "stride": [
-            2359296,
-            147456,
-            384,
-            1
-          ],
-          "layout_type": "strided",
-          "property_type": "undef"
-        },
-        {
-          "id": 4,
-          "dtype": "f32",
-          "shape": [
-            1
-          ],
-          "stride": [
-            1
-          ],
-          "layout_type": "strided",
-          "property_type": "undef"
-        }
-      ],
-      "outputs": [
-        {
-          "id": 8,
-          "dtype": "f32",
-          "shape": [
-            32,
-            16,
-            384,
-            384
-          ],
-          "stride": [
-            2359296,
-            147456,
-            384,
-            1
-          ],
-          "layout_type": "strided",
-          "property_type": "undef"
-        }
-      ]
-    },
-    {
       "id": 104,
       "name": "softmax",
       "kind": "SoftMax",
@@ -169,7 +106,7 @@
       },
       "inputs": [
         {
-          "id": 8,
+          "id": 7,
           "dtype": "f32",
           "shape": [
             32,

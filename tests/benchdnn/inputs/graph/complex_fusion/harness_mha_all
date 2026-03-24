@@ -1,5 +1,5 @@
 # f32 graphs
---reset --op-kind=1:Multiply,1:Divide --case=complex_fusion/mha/sdpa-plain-simplified-f32.json
+--reset --op-kind=102:Multiply,102:Divide --case=complex_fusion/mha/sdpa-plain-simplified-f32.json
 --reset --case=complex_fusion/mha/gqa-plain-implicit-causal-mask-fp32-bs1.json
 --reset --case=complex_fusion/mha/sdpa-plain-implicit-causal-mask-fp32-bs1.json
 --reset --case=complex_fusion/mha/JAX-MHA-inf-fp32.json
@@ -18,7 +18,7 @@
 --reset --dt=0:f32+1:f32+4:f32+10:f32+13:f32+14:f32 --case=complex_fusion/mha/gqa-plain-training-forward-bf16-f32.json
 
 # f16 inputs + f32 intermediates + f16 outputs
---reset --op-kind=1:Multiply,1:Divide --case=complex_fusion/mha/sdpa-plain-simplified-f16-f32.json
+--reset --op-kind=102:Multiply,102:Divide --case=complex_fusion/mha/sdpa-plain-simplified-f16-f32.json
 --reset --dt=1:f16+3:f16+16:f16+19:f16+20:f16 --case=complex_fusion/mha/GQA-f32-v2.json
 --reset --dt=1:f16+2:f16+3:f16+4:f16+6:f16+104:f16 --case=complex_fusion/mha/sdpa-plain-implicit-causal-mask-fp32-bs1.json
 --reset --dt=1:f16+3:f16+8:f16+16:f16+19:f16+20:f16 --case=complex_fusion/mha/gqa-plain-implicit-causal-mask-fp32-bs1.json
@@ -30,14 +30,14 @@
 --reset --dt=16:f16+17:f16+20:f16+32:f16+33:f16+34:f16+36:f16+38:f16+46:f16+47:f16+49:f16+51:f16 --case=complex_fusion/mha/gqa-plain-training-backward-bf16-f32.json
 --reset --dt=3:f16+4:f16+2:f16+1:f16+11:f16+0:f16+12:f16+14:f16+16:f16 --case=complex_fusion/mha/MHA-bert_large-inf-fp32-bs1.json
 --reset --dt=0:f16+1:f16+3:f16+7:f16+2:f16+8:f16 --case=complex_fusion/mha/MHA-stable_diffusion-inf-fp32-bs1.json
---reset --dt=0:f16+1:f16+7:f16+9:f16+10:f16 --case=complex_fusion/mha/sdpa-plain-wo-mask-f32.json
---reset --dt=0:f16+1:f16+7:f16+8:f16+9:f16 --case=complex_fusion/mha/sdpa-plain-wo-scale-f32.json
+--reset --dt=1:f16+2:f16+3:f16+10:f16+6:f16 --case=complex_fusion/mha/sdpa-plain-wo-mask-f32.json
+--reset --dt=1:f16+2:f16+3:f16+10:f16+6:f16 --case=complex_fusion/mha/sdpa-plain-wo-scale-f32.json
 --reset --in-shapes=0:2x1x1024x128*131072x128x128x1+1:2x1x1024x128*131072x128x128x1+2:1*1+5:2x1x1024x128*131072x128x128x1 --case=complex_fusion/mha/sdpa-training-fwd-no-mask-f16-f32.json
 --reset --dt=16:f16+17:f16+32:f16+33:f16+34:f16+36:f16+44:f16+45:f16+47:f16 --case=complex_fusion/mha/sdpa-plain-training-backward-w-dmask-bf16-f32.json
 --reset --dt=16:f16+17:f16+20:f16+32:f16+33:f16+34:f16+36:f16+38:f16+46:f16+47:f16+49:f16+51:f16 --case=complex_fusion/mha/gqa-plain-training-backward-w-dmask-bf16-f32.json
 
 # bf16 inputs + f32 intermediates + bf16 outputs
---reset --op-kind=1:Multiply,1:Divide --dt=1:bf16+2:bf16+3:bf16+4:bf16+5:bf16+6:bf16+104:bf16 --case=complex_fusion/mha/sdpa-plain-simplified-f16-f32.json
+--reset --op-kind=102:Multiply,102:Divide --dt=1:bf16+2:bf16+3:bf16+4:bf16+5:bf16+6:bf16+10:bf16 --case=complex_fusion/mha/sdpa-plain-simplified-f16-f32.json
 --reset --dt=3:bf16+4:bf16+2:bf16+1:bf16+11:bf16+0:bf16+12:bf16+14:bf16+16:bf16 --case=complex_fusion/mha/MHA-bert_large-inf-fp32-bs1.json
 --reset --dt=1:bf16+3:bf16+16:bf16+19:bf16+20:bf16 --case=complex_fusion/mha/GQA-f32-v2.json
 --reset --dt=1:bf16+3:bf16+8:bf16+16:bf16+19:bf16+20:bf16 --case=complex_fusion/mha/gqa-plain-implicit-causal-mask-fp32-bs1.json
@@ -51,8 +51,8 @@
 --reset --case=complex_fusion/mha/codegemma-bf16-f32.json
 --reset --case=complex_fusion/mha/gemma2-bf16-f32.json
 --reset --dt=1:bf16+2:bf16+3:bf16+4:bf16+6:bf16+104:bf16 --case=complex_fusion/mha/sdpa-plain-implicit-causal-mask-fp32-bs1.json
---reset --dt=0:bf16+1:bf16+7:bf16+9:bf16+10:bf16 --case=complex_fusion/mha/sdpa-plain-wo-mask-f32.json
---reset --dt=0:bf16+1:bf16+7:bf16+8:bf16+9:bf16 --case=complex_fusion/mha/sdpa-plain-wo-scale-f32.json
+--reset --dt=1:bf16+2:bf16+3:bf16+6:bf16+10:bf16 --case=complex_fusion/mha/sdpa-plain-wo-mask-f32.json
+--reset --dt=1:bf16+2:bf16+3:bf16+6:bf16+10:bf16 --case=complex_fusion/mha/sdpa-plain-wo-scale-f32.json
 --reset --case=complex_fusion/mha/sdpa-plain-training-backward-w-dmask-bf16-f32.json
 --reset --case=complex_fusion/mha/gqa-plain-training-backward-w-dmask-bf16-f32.json
 
@@ -110,22 +110,22 @@
 --reset --in-shapes=2:1x1x1x128 --case=complex_fusion/mha/MHA-distill_bert-inf-fp32-bs1.json
 --reset --in-shapes=0:56x8x1024x80+1:56x8x77x80+2:56x8x77x80 --case=complex_fusion/mha/MHA-stable_diffusion-inf-fp32-bs1.json
 --reset --dt=0:f16+1:f16+3:f16+7:f16+2:f16+8:f16,0:bf16+1:bf16+3:bf16+7:bf16+2:bf16+8:bf16 --in-shapes=0:56x8x1024x80+1:56x8x77x80+2:56x8x77x80 --case=complex_fusion/mha/MHA-stable_diffusion-inf-fp32-bs1.json
---reset --in-shapes=0:20x16x384x64+1:20x16x384x64+8:20x16x384x64+5:20x1x1x384 --case=complex_fusion/mha/sdpa-plain-wo-scale-f32.json
---reset --dt=0:f16+1:f16+7:f16+8:f16+9:f16,0:bf16+1:bf16+7:bf16+8:bf16+9:bf16 --in-shapes=0:20x16x384x64+1:20x16x384x64+8:20x16x384x64+5:20x1x1x384 --case=complex_fusion/mha/sdpa-plain-wo-scale-f32.json
+--reset --in-shapes=1:20x16x384x64+2:20x16x384x64+3:20x16x384x64+5:20x1x1x384 --case=complex_fusion/mha/sdpa-plain-wo-scale-f32.json
+--reset --dt=1:f16+2:f16+3:f16+6:f16+10:f16,1:bf16+2:bf16+3:bf16+6:bf16+10:bf16 --in-shapes=1:20x16x384x64+2:20x16x384x64+3:20x16x384x64+5:20x1x1x384 --case=complex_fusion/mha/sdpa-plain-wo-scale-f32.json
 
 --reset --in-shapes=5:1x1x384x384,5:1x16x384x384 --case=complex_fusion/mha/sdpa-plain-simplified-f32.json
---reset --in-shapes=0:2x16x384x64+1:2x16x384x64+5:2x1x1x384+8:2x16x384x64  --case=complex_fusion/mha/sdpa-plain-simplified-f32.json
---reset --in-shapes=0:32x16x128x64+1:32x16x128x64+5:32x16x128x128+8:32x16x128x64  --case=complex_fusion/mha/sdpa-plain-simplified-f32.json
---reset --in-shapes=0:*acbd+1:*acbd+8:*acbd  --case=complex_fusion/mha/sdpa-plain-simplified-f32.json
---reset --op-kind=1:Multiply,1:Divide --in-shapes=3:384,3:384x384,3:1x16x384x384 --case=complex_fusion/mha/sdpa-plain-simplified-f32.json
---reset --op-kind=1:Multiply,1:Divide --in-shapes=5:384,5:1x384 --case=complex_fusion/mha/sdpa-plain-simplified-f32.json
+--reset --in-shapes=1:2x16x384x64+2:2x16x384x64+5:2x1x1x384+3:2x16x384x64  --case=complex_fusion/mha/sdpa-plain-simplified-f32.json
+--reset --in-shapes=1:32x16x128x64+2:32x16x128x64+5:32x16x128x128+3:32x16x128x64  --case=complex_fusion/mha/sdpa-plain-simplified-f32.json
+--reset --in-shapes=1:*acbd+2:*acbd+3:*acbd  --case=complex_fusion/mha/sdpa-plain-simplified-f32.json
+--reset --op-kind=102:Multiply,102:Divide --in-shapes=4:384,4:384x384,4:1x16x384x384 --case=complex_fusion/mha/sdpa-plain-simplified-f32.json
+--reset --op-kind=102:Multiply,102:Divide --in-shapes=5:384,5:1x384 --case=complex_fusion/mha/sdpa-plain-simplified-f32.json
 
 --reset --in-shapes=5:1x1x384x384,5:1x16x384x384 --case=complex_fusion/mha/sdpa-plain-simplified-f16-f32.json
 --reset --in-shapes=1:2x16x384x64+2:2x16x384x64+5:2x1x1x384+3:2x16x384x64  --case=complex_fusion/mha/sdpa-plain-simplified-f16-f32.json
 --reset --in-shapes=1:32x16x128x64+2:32x16x128x64+5:32x16x128x128+3:32x16x128x64  --case=complex_fusion/mha/sdpa-plain-simplified-f16-f32.json
 --reset --in-shapes=1:*acbd+2:*acbd+3:*acbd  --case=complex_fusion/mha/sdpa-plain-simplified-f16-f32.json
---reset --op-kind=1:Multiply,1:Divide --in-shapes=4:384,4:384x384,4:1x16x384x384 --case=complex_fusion/mha/sdpa-plain-simplified-f16-f32.json
---reset --op-kind=1:Multiply,1:Divide --in-shapes=5:384,5:1x384 --case=complex_fusion/mha/sdpa-plain-simplified-f16-f32.json
+--reset --op-kind=102:Multiply,102:Divide --in-shapes=4:384,4:384x384,4:1x16x384x384 --case=complex_fusion/mha/sdpa-plain-simplified-f16-f32.json
+--reset --op-kind=102:Multiply,102:Divide --in-shapes=5:384,5:1x384 --case=complex_fusion/mha/sdpa-plain-simplified-f16-f32.json
 
 --reset --dt=1:f16+2:f16+3:f16+4:f16+6:f16+104:f16,1:bf16+2:bf16+3:bf16+4:bf16+6:bf16+104:bf16
         --op-attrs=40:axis:-2+41:axis:-1 --in-shapes=1:1x32x128x64+2:1x32x128x64+3:1x32x128x64
@@ -204,7 +204,7 @@
 --reset --op-attrs=34107656704:qtype:per_channel*axis:3 --in-shapes=1:32+2:1 --case=complex_fusion/mha/sdpa-compressed-k-int8-gs32.json
 
 # d_qk != d_v
---reset --in-shapes=8:1x16x384x32,8:1x16x384x64,8:1x16x384x128 --case=complex_fusion/mha/sdpa-plain-simplified-f32.json
+--reset --in-shapes=3:1x16x384x32,3:1x16x384x64,3:1x16x384x128 --case=complex_fusion/mha/sdpa-plain-simplified-f32.json
 --reset --in-shapes=3:1x16x384x32,3:1x16x384x64,3:1x16x384x128 --case=complex_fusion/mha/sdpa-plain-simplified-f16-f32.json
 --reset --in-shapes=3:1x16x384x32,3:1x16x384x64,3:1x16x384x128 --case=complex_fusion/mha/sdpa-plain-implicit-causal-mask-fp32-bs1.json
 --reset --in-shapes=24:1x16x384x32,24:1x16x384x64,24:1x16x384x128 --case=complex_fusion/mha/sdpa-plain-bottom-right-implicit-causal-mask-f16-f32.json
@@ -214,7 +214,7 @@
 
 # regression tests
 --reset --in-shapes=1:1x8x4096x16+2:1x8x5x16+5:1x1x4096x5+3:1x8x5x16 --case=complex_fusion/mha/sdpa-plain-simplified-f16-f32.json
---reset --dt=1:bf16+2:bf16+3:bf16+4:bf16+5:bf16+6:bf16+104:bf16 --in-shapes=1:1x8x4096x16+2:1x8x5x16+5:1x1x4096x5+3:1x8x5x16 --case=complex_fusion/mha/sdpa-plain-simplified-f16-f32.json
+--reset --dt=1:bf16+2:bf16+3:bf16+4:bf16+5:bf16+6:bf16+10:bf16 --in-shapes=1:1x8x4096x16+2:1x8x5x16+5:1x1x4096x5+3:1x8x5x16 --case=complex_fusion/mha/sdpa-plain-simplified-f16-f32.json
 # kv_seq_len = 1
 --reset --dt=0:f32+1:f32+4:f32+7:f32+10:f32+13:f32+14:f32 --in-shapes=1:1x16x1x64+7:1x16x384x1+13:1x16x1x64 --case=complex_fusion/mha/sdpa-plain-training-forward-bf16-f32.json
 
@@ -230,5 +230,5 @@
 --reset --in-shapes=1:2x10x2304x64*acbd+2:2x10x77x64*acbd+3:2x10x77x64*acbd --case=complex_fusion/mha/sdpa-plain-implicit-causal-mask-fp32-bs1.json
 
 # accumulation mode: only QK in f16 acc, and both QK and VS in f16 acc.
---reset --op-attrs=0:accumulation_mode:f16 --case=complex_fusion/mha/sdpa-plain-simplified-f16-f32.json
+--reset --op-attrs=101:accumulation_mode:f16 --case=complex_fusion/mha/sdpa-plain-simplified-f16-f32.json
 --reset --op-attrs=7:accumulation_mode:f16 --dt=1:f16+3:f16+8:f16+16:f16+19:f16+20:f16 --case=complex_fusion/mha/gqa-plain-implicit-causal-mask-fp32-bs1.json

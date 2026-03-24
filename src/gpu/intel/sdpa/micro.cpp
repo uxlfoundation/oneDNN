@@ -33,6 +33,7 @@
 
 #include <cstdio>
 #include <iostream>
+#include <limits>
 #include <vector>
 
 namespace dnnl {
@@ -997,7 +998,15 @@ status_t micro_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
         bool can_block_load_k
                 = (ldk % 4 == 0) && (desc()->keys() % tile_k == 0);
         conf.block_k = can_block_load_k;
-        conf.block_dK = can_block_load_k && !conf.transpose_k;
+        if (conf.transpose_k) {
+            // tile_store_dK_t uses lddk = max(DK_S2, DK_S3)
+            const memory_desc_wrapper dk_mdw(desc()->diff_key_md());
+            auto lddk_bytes = std::max(dk_mdw.strides()[2], dk_mdw.strides()[3])
+                    * dk_mdw.data_type_size();
+            conf.block_dK = (lddk_bytes % 4 == 0);
+        } else {
+            conf.block_dK = can_block_load_k;
+        }
         conf.block_dV = (ldv % 4 == 0) && (dv_full);
     }
 
@@ -1034,6 +1043,11 @@ status_t micro_bwd_t::pd_t::init_scratchpad(impl::engine_t *engine) {
             = desc()->batch() * desc()->num_q_heads() * desc()->queries();
     scratchpad.book(memory_tracking::names::key_sdpa_Di, Di_size, sizeof(float),
             gpu_align);
+
+    // buffer for stride/offset parameters passed to backwards kernel
+    // through global pointer to reduce kernel arguments size
+    scratchpad.book(memory_tracking::names::key_sdpa_bwd_strides, 32,
+            sizeof(int64_t), gpu_align);
 
     return status::success;
 }
@@ -1443,6 +1457,53 @@ status_t micro_bwd_params_t::get_kernel_ctx(
     return status::success;
 }
 
+using fwd_offset_t = dim_t[4][MAX_NDIMS];
+
+template <typename T>
+static void append_key_offs(
+        compute::kernel_arg_list_t &arg_list, const fwd_offset_t &offs) {
+    arg_list.append(static_cast<T>(offs[1][0])); // KEY_S0
+    arg_list.append(static_cast<T>(offs[1][1])); // KEY_S1
+    arg_list.append(static_cast<T>(offs[1][2])); // KEY_S2
+    arg_list.append(static_cast<T>(offs[1][3])); // KEY_S3
+    arg_list.append(static_cast<T>(offs[3][3])); // KEY_D3
+}
+
+template <typename T>
+static void append_qry_offs(
+        compute::kernel_arg_list_t &arg_list, const fwd_offset_t &offs) {
+    arg_list.append(static_cast<T>(offs[1][0])); // QRY_S0
+    arg_list.append(static_cast<T>(offs[1][1])); // QRY_S1
+    arg_list.append(static_cast<T>(offs[1][2])); // QRY_S2
+}
+
+template <typename T>
+static void append_val_offs(
+        compute::kernel_arg_list_t &arg_list, const fwd_offset_t &offs) {
+    arg_list.append(static_cast<T>(offs[1][0])); // VAL_S0
+    arg_list.append(static_cast<T>(offs[1][1])); // VAL_S1
+    arg_list.append(static_cast<T>(offs[1][2])); // VAL_S2
+}
+
+template <typename T>
+static void append_dst_offs(
+        compute::kernel_arg_list_t &arg_list, const fwd_offset_t &offs) {
+    arg_list.append(static_cast<T>(offs[1][0])); // DST_S0
+    arg_list.append(static_cast<T>(offs[1][1])); // DST_S1
+    arg_list.append(static_cast<T>(offs[1][2])); // DST_S2
+    arg_list.append(static_cast<T>(offs[3][1])); // DST_D1
+}
+
+template <typename T>
+static void append_msk_offs(
+        compute::kernel_arg_list_t &arg_list, const fwd_offset_t &offs) {
+    arg_list.append(static_cast<T>(offs[1][0])); // MSK_S0
+    arg_list.append(static_cast<T>(offs[1][1])); // MSK_S1
+    arg_list.append(static_cast<T>(offs[1][2])); // MSK_S2
+    arg_list.append(static_cast<T>(offs[3][0])); // MSK_D0
+    arg_list.append(static_cast<T>(offs[3][1])); // MSK_D1
+}
+
 status_t micro_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     const auto &conf = pd()->conf;
 
@@ -1484,56 +1545,14 @@ status_t micro_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     const memory_desc_wrapper val_mdw(pd()->desc()->val_md());
     const memory_desc_wrapper dst_mdw(pd()->dst_md());
     const memory_desc_wrapper msk_mdw(pd()->desc()->attn_mask_md());
-    using offset_t = decltype(offsets_t().src_off);
 
-    offset_t key_off, qry_off, val_off, dst_off, msk_off;
+    fwd_offset_t key_off, qry_off, val_off, dst_off, msk_off;
 
     set_offsets(key_mdw, key_off);
     set_offsets(qry_mdw, qry_off);
     set_offsets(val_mdw, val_off);
     set_offsets(dst_mdw, dst_off);
     set_offsets(msk_mdw, msk_off);
-
-    //TODO: change arg_list type based on large_idx
-    //bool use_int32_offset = conf.use_int32_offset;
-
-    // pass only the individual stride/dim values
-    // actually consumed by the kernel to minimize register pressure
-    auto append_key_offs
-            = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
-        arg_list.append((int64_t)offs[1][0]); // KEY_S0
-        arg_list.append((int64_t)offs[1][1]); // KEY_S1
-        arg_list.append((int64_t)offs[1][2]); // KEY_S2
-        arg_list.append((int64_t)offs[1][3]); // KEY_S3
-        arg_list.append((int64_t)offs[3][3]); // KEY_D3
-    };
-    auto append_qry_offs
-            = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
-        arg_list.append((int64_t)offs[1][0]); // QRY_S0
-        arg_list.append((int64_t)offs[1][1]); // QRY_S1
-        arg_list.append((int64_t)offs[1][2]); // QRY_S2
-    };
-    auto append_val_offs
-            = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
-        arg_list.append((int64_t)offs[1][0]); // VAL_S0
-        arg_list.append((int64_t)offs[1][1]); // VAL_S1
-        arg_list.append((int64_t)offs[1][2]); // VAL_S2
-    };
-    auto append_dst_offs
-            = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
-        arg_list.append((int64_t)offs[1][0]); // DST_S0
-        arg_list.append((int64_t)offs[1][1]); // DST_S1
-        arg_list.append((int64_t)offs[1][2]); // DST_S2
-        arg_list.append((int64_t)offs[3][1]); // DST_D1
-    };
-    auto append_msk_offs
-            = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
-        arg_list.append((int64_t)offs[1][0]); // MSK_S0
-        arg_list.append((int64_t)offs[1][1]); // MSK_S1
-        arg_list.append((int64_t)offs[1][2]); // MSK_S2
-        arg_list.append((int64_t)offs[3][0]); // MSK_D0
-        arg_list.append((int64_t)offs[3][1]); // MSK_D1
-    };
 
     const memory_desc_wrapper scale_mdw(pd()->desc()->scale_md());
     float scalar_scale = 1.f;
@@ -1573,12 +1592,11 @@ status_t micro_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     arg_list.append(mask_type);
     if (pd()->with_attn_mask()) arg_list.append(attn_mask);
 
-    append_key_offs(arg_list, key_off);
-    append_qry_offs(arg_list, qry_off);
-    append_val_offs(arg_list, val_off);
-    append_dst_offs(arg_list, dst_off);
-
-    if (pd()->with_attn_mask()) { append_msk_offs(arg_list, msk_off); }
+    append_key_offs<int64_t>(arg_list, key_off);
+    append_qry_offs<int64_t>(arg_list, qry_off);
+    append_val_offs<int64_t>(arg_list, val_off);
+    append_dst_offs<int64_t>(arg_list, dst_off);
+    if (pd()->with_attn_mask()) { append_msk_offs<int64_t>(arg_list, msk_off); }
     const int remainder_k = (K % kq_wg_tile_m) != 0;
 
     arg_list.append(remainder_k);
@@ -1622,6 +1640,8 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
             memory_tracking::names::key_sdpa_dK_reduction);
     auto diff_v_scratch = ctx.get_scratchpad_grantor().get_memory_storage(
             memory_tracking::names::key_sdpa_dV_reduction);
+    auto strides_scratch = ctx.get_scratchpad_grantor().get_memory_storage(
+            memory_tracking::names::key_sdpa_bwd_strides);
 
     const bool with_dS = pd()->with_dS();
 
@@ -1667,35 +1687,52 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     const memory_desc_wrapper diff_val_mdw(pd()->desc()->diff_val_md());
     using offset_t = decltype(offsets_t().src_off);
 
-    offset_t qry_off, key_off, val_off, dst_off, msk_off;
+    offset_t qry_off, key_off, val_off, dst_off, msk_off, da_off;
+    offset_t dq_off, dk_off, dv_off;
 
     set_offsets(qry_mdw, qry_off);
     set_offsets(key_mdw, key_off);
     set_offsets(val_mdw, val_off);
     set_offsets(dst_mdw, dst_off);
     set_offsets(msk_mdw, msk_off);
+    set_offsets(diff_dst_mdw, da_off);
 
-    // pass only the individual stride/dim values
-    // actually consumed by the kernel to minimize register pressure
-    auto append_key_offs
-            = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
-        arg_list.append((int64_t)offs[1][0]); // KEY_S0
-        arg_list.append((int64_t)offs[1][1]); // KEY_S1
-        arg_list.append((int64_t)offs[1][2]); // KEY_S2
-        arg_list.append((int64_t)offs[1][3]); // KEY_S3
-        arg_list.append((int64_t)offs[3][3]); // KEY_D3
+    // scratch buffers are allocated as flat B*H*S*D element buffers
+    auto set_contiguous_offsets
+            = [](offset_t &offs, dim_t B, dim_t H, dim_t S, dim_t D) {
+        offs[3][0] = B;
+        offs[3][1] = H;
+        offs[3][2] = S;
+        offs[3][3] = D;
+
+        offs[1][0] = H * S * D;
+        offs[1][1] = S * D;
+        offs[1][2] = D;
+        offs[1][3] = 1;
     };
+
+    if (needs_intermediate_dQ) {
+        set_contiguous_offsets(dq_off, pd()->desc()->batch(),
+                pd()->desc()->num_q_heads(), Q, D);
+    }
+    if (needs_intermediate_dKV) {
+        // match the tile orientation used by the kernel in dK write
+        if (conf.transpose_k) {
+            set_contiguous_offsets(dk_off, pd()->desc()->batch(),
+                    pd()->desc()->num_kv_heads(), K, D);
+        } else {
+            set_contiguous_offsets(dk_off, pd()->desc()->batch(),
+                    pd()->desc()->num_kv_heads(), D, K);
+        }
+        set_contiguous_offsets(dv_off, pd()->desc()->batch(),
+                pd()->desc()->num_kv_heads(), K, D);
+    }
+
     auto append_qry_offs
             = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
         arg_list.append((int64_t)offs[1][0]); // QRY_S0
         arg_list.append((int64_t)offs[1][1]); // QRY_S1
         arg_list.append((int64_t)offs[1][2]); // QRY_S2
-    };
-    auto append_val_offs
-            = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
-        arg_list.append((int64_t)offs[1][0]); // VAL_S0
-        arg_list.append((int64_t)offs[1][1]); // VAL_S1
-        arg_list.append((int64_t)offs[1][2]); // VAL_S2
     };
     auto append_dst_offs
             = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
@@ -1704,13 +1741,11 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
         arg_list.append((int64_t)offs[1][2]); // DST_S2
         arg_list.append((int64_t)offs[3][1]); // DST_D1
     };
-    auto append_msk_offs
+    auto append_da_offs
             = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
-        arg_list.append((int64_t)offs[1][0]); // MSK_S0
-        arg_list.append((int64_t)offs[1][1]); // MSK_S1
-        arg_list.append((int64_t)offs[1][2]); // MSK_S2
-        arg_list.append((int64_t)offs[3][0]); // MSK_D0
-        arg_list.append((int64_t)offs[3][1]); // MSK_D1
+        arg_list.append((int64_t)offs[1][0]); // DA_S0
+        arg_list.append((int64_t)offs[1][1]); // DA_S1
+        arg_list.append((int64_t)offs[1][2]); // DA_S2
     };
 
     int mask_type = static_cast<int>(pd()->desc()->mask_type);
@@ -1751,6 +1786,7 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
 
     append_qry_offs(preprocess_arg_list, qry_off);
     append_dst_offs(preprocess_arg_list, dst_off);
+    append_da_offs(preprocess_arg_list, da_off);
 
     CHECK(parallel_for(
             ctx, nd_range_preprocess, preprocess_, preprocess_arg_list));
@@ -1820,12 +1856,59 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     arg_list.append(mask_type);
     if (pd()->with_attn_mask()) arg_list.append(attn_mask);
 
-    append_key_offs(arg_list, key_off);
-    append_qry_offs(arg_list, qry_off);
-    append_val_offs(arg_list, val_off);
-    append_dst_offs(arg_list, dst_off);
+    // pack all stride/offset parameters into a global buffer to reduce
+    // kernel argument pressure (replaces 27-32 int64 args with 1 pointer).
+    offset_t diff_key_off, diff_qry_off, diff_val_off;
+    set_offsets(diff_key_mdw, diff_key_off);
+    set_offsets(diff_qry_mdw, diff_qry_off);
+    set_offsets(diff_val_mdw, diff_val_off);
 
-    if (pd()->with_attn_mask()) { append_msk_offs(arg_list, msk_off); }
+    const auto &dk_off_ref = needs_intermediate_dKV ? dk_off : diff_key_off;
+    const auto &dq_off_ref = needs_intermediate_dQ ? dq_off : diff_qry_off;
+    const auto &dv_off_ref = needs_intermediate_dKV ? dv_off : diff_val_off;
+    {
+        void *mapped = nullptr;
+        CHECK(strides_scratch->map_data(
+                &mapped, ctx.stream(), 32 * sizeof(int64_t)));
+        auto *buf = static_cast<int64_t *>(mapped);
+        buf[0] = key_off[1][0]; // KEY_S0
+        buf[1] = key_off[1][1]; // KEY_S1
+        buf[2] = key_off[1][2]; // KEY_S2
+        buf[3] = key_off[1][3]; // KEY_S3
+        buf[4] = qry_off[1][0]; // QRY_S0
+        buf[5] = qry_off[1][1]; // QRY_S1
+        buf[6] = qry_off[1][2]; // QRY_S2
+        buf[7] = val_off[1][0]; // VAL_S0
+        buf[8] = val_off[1][1]; // VAL_S1
+        buf[9] = val_off[1][2]; // VAL_S2
+        buf[10] = dst_off[1][0]; // DST_S0
+        buf[11] = dst_off[1][1]; // DST_S1
+        buf[12] = dst_off[1][2]; // DST_S2
+        buf[13] = dst_off[3][1]; // DST_D1
+        buf[14] = da_off[1][0]; // DA_S0
+        buf[15] = da_off[1][1]; // DA_S1
+        buf[16] = da_off[1][2]; // DA_S2
+        buf[17] = dk_off_ref[1][0]; // DK_S0
+        buf[18] = dk_off_ref[1][1]; // DK_S1
+        buf[19] = dk_off_ref[1][2]; // DK_S2
+        buf[20] = dk_off_ref[1][3]; // DK_S3
+        buf[21] = dq_off_ref[1][0]; // DQ_S0
+        buf[22] = dq_off_ref[1][1]; // DQ_S1
+        buf[23] = dq_off_ref[1][2]; // DQ_S2
+        buf[24] = dv_off_ref[1][0]; // DV_S0
+        buf[25] = dv_off_ref[1][1]; // DV_S1
+        buf[26] = dv_off_ref[1][2]; // DV_S2
+        if (pd()->with_attn_mask()) {
+            buf[27] = msk_off[1][0]; // MSK_S0
+            buf[28] = msk_off[1][1]; // MSK_S1
+            buf[29] = msk_off[1][2]; // MSK_S2
+            buf[30] = msk_off[3][0]; // MSK_D0
+            buf[31] = msk_off[3][1]; // MSK_D1
+        }
+        CHECK(strides_scratch->unmap_data(mapped, ctx.stream()));
+    }
+    arg_list.append(*strides_scratch);
+
     const int remainder_k = (K % wg_tile_k) != 0;
 
     const bool d_full = (d->head_size() == pd()->d_max());
@@ -1843,6 +1926,27 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
 
     CHECK(parallel_for(ctx, nd_range, kernel_, arg_list));
 
+    auto append_offs
+            = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
+        // dims
+        arg_list.append((int64_t)offs[3][0]);
+        arg_list.append((int64_t)offs[3][1]);
+        arg_list.append((int64_t)offs[3][2]);
+        arg_list.append((int64_t)offs[3][3]);
+        // strides
+        arg_list.append((int64_t)offs[1][0]);
+        arg_list.append((int64_t)offs[1][1]);
+        arg_list.append((int64_t)offs[1][2]);
+        arg_list.append((int64_t)offs[1][3]);
+    };
+    // postprocess kernels use int64 strides
+    auto append_strides
+            = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
+        arg_list.append((int64_t)offs[1][0]);
+        arg_list.append((int64_t)offs[1][1]);
+        arg_list.append((int64_t)offs[1][2]);
+        arg_list.append((int64_t)offs[1][3]);
+    };
     /// postprocessing kernels
     // will cast dQ/dK/dV to lower precision outputs if needed
     if (needs_intermediate_dQ) {
@@ -1857,7 +1961,8 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
         pp.append(diff_q);
         pp.append(*diff_q_scratch);
         pp.append((int)(Q * D));
-        append_qry_offs(pp, qry_off);
+        append_strides(pp, dq_off);
+        append_offs(pp, diff_qry_off);
         CHECK(parallel_for(
                 ctx, compute::nd_range_t(gws_p, lws_p), postprocess_, pp));
     }
@@ -1878,7 +1983,18 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
             pp.append(diff_k);
             pp.append(*diff_k_scratch);
             pp.append((int)(K * D));
-            append_qry_offs(pp, key_off);
+
+            pp.append((int64_t)dk_off[1][0]);
+            pp.append((int64_t)dk_off[1][1]);
+            // match TRANSPOSE_K write order for dK
+            if (conf.transpose_k) {
+                pp.append((int64_t)dk_off[1][3]);
+                pp.append((int64_t)dk_off[1][2]);
+            } else {
+                pp.append((int64_t)dk_off[1][2]);
+                pp.append((int64_t)dk_off[1][3]);
+            }
+            append_offs(pp, diff_key_off);
             CHECK(parallel_for(
                     ctx, compute::nd_range_t(gws_p, lws_p), postprocess_, pp));
         }
@@ -1893,7 +2009,8 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
             pp.append(diff_v);
             pp.append(*diff_v_scratch);
             pp.append((int)(K * D));
-            append_qry_offs(pp, val_off);
+            append_strides(pp, dv_off);
+            append_offs(pp, diff_val_off);
             CHECK(parallel_for(
                     ctx, compute::nd_range_t(gws_p, lws_p), postprocess_, pp));
         }

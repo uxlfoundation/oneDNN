@@ -93,7 +93,8 @@ struct micro_fwd_params_t : trivially_serializable_t<micro_fwd_params_t> {
     bool kq_f16_accumulate, vs_f16_accumulate;
     bool require_stateless_addressing;
     bool is_training;
-    uint8_t padding3[5] = {0};
+    bool use_int32_offset;
+    uint8_t padding3[4] = {0};
 
     micro_fwd_ukernel_params_t ukernel_config;
 };

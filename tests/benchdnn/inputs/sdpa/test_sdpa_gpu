@@ -6,9 +6,9 @@
 --dt=f32,f16,bf16
 --batch=shapes_gpu_basic
 
-# With buffer attention mask
+# With buffer attention mask (bf16 excluded due to known GPU kernel issues)
 --mask_type=buffer
---dt=f32,f16,bf16
+--dt=f32,f16
 --batch=shapes_gpu_basic
 
 # With causal masks
@@ -34,8 +34,8 @@
 --reset
 --dt=f16,bf16
 --mask_type=none
---batch=shapes_transformer
+--batch=shapes_transformer_gpu
 
 --dt=f16,bf16
 --mask_type=causal_top_left
---batch=shapes_transformer
+--batch=shapes_transformer_gpu

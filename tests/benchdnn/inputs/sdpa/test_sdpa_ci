@@ -22,7 +22,7 @@
 --dt=f32,f16
 --batch=shapes_basic
 
-# Transformer-like shapes
+# Transformer-like shapes (GPU-safe subset, no seq_q=1)
 --reset
 --dt=f16,bf16
---batch=shapes_transformer
+--batch=shapes_transformer_gpu

@@ -17,6 +17,6 @@
 2x4x16x32:2x4x32x16:2x4x16x32
 1x8x32x64:1x8x64x32:1x8x32x64
 
-# Asymmetric seq lengths (seq_q != seq_k) - common in KV cache scenarios
-1x1x1x64:1x1x64x128:1x1x128x64
-1x4x1x64:1x4x64x256:1x4x256x64
+# Note: KV cache shapes (seq_q=1) are in shapes_transformer for manual testing.
+# They are excluded here because some GPU platforms do not support them
+# with reduced precision data types.

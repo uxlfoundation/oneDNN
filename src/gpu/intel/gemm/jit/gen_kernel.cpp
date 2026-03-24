@@ -557,6 +557,33 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     eval_params_.batch = (problem.batchDims > 0);
     eval_params_.deterministic = (mode & mode_deterministic);
 
+    // GROUP_SCALE_OPT=1: bias selector toward smaller wg[LoopM] when grouped
+    // B scales are present. Each thread column duplicates the same B scale
+    // loads, so fewer M-threads per WG reduces total scale memory traffic.
+    // GROUP_SCALE_OPT > 1 is reserved for future experiments.
+    int group_scale_opt = gpu_utils::dev_getenv("GROUP_SCALE_OPT", 0);
+    StrategyRequirement wgm_req = StrategyRequirement::WGM <= 4;
+    bool group_scale_opt_active = group_scale_opt == 1
+            && (problem.bScale2D() || problem.bOffset2D())
+            && problem.bqGroupN > 0 && problem.bqGroupN < n;
+    VDEBUGINFO(4, primitive, gemm,
+            "MY GROUP_SCALE_OPT=%d,bScale2D=%d,bOffset2D=%d"
+            ",bqGroupN=%d,n=%lld,active=%d",
+            group_scale_opt, (int)problem.bScale2D(), (int)problem.bOffset2D(),
+            problem.bqGroupN, (long long)n, (int)group_scale_opt_active);
+    if (group_scale_opt_active) {
+        for (auto &mp : match_params) {
+            if (mp.nExtraReqs == 0) {
+                mp.extraReqs = &wgm_req;
+                mp.nExtraReqs = 1;
+            }
+        }
+        VDEBUGINFO(4, primitive, gemm,
+                "MY GROUP_SCALE_OPT active: wg[LoopM]<=4 applied"
+                " to %d match_params",
+                (int)match_params.size());
+    }
+
     SelectionObserver observer = entryObserver;
     tags_ = match_params[0].tags;
     Ts_ = problem.Ts;

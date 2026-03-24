@@ -2435,7 +2435,6 @@ protected:
             // TODO: Unify register usage over kernels
             const auto mask_vmm = Vmm(conf_->transposed_B ? 13 : 0);
             const auto tmp_vmm = vmm_permd;
-            // const auto tmp_vmm2 = Vmm(conf_->transposed_B ? 13: 4);
             // f32 and transposed used the same register for regq_tmp
             const auto reg_tmp = r15;
             alignas(64) static constexpr const uint32_t odd_indices[8] = {
@@ -2870,7 +2869,10 @@ protected:
     constexpr static int reg_src_offs_ = 0;
     constexpr static int reg_tr_src_offs_ = 8;
     constexpr static int reg_current_K_pad_offs_ = 16;
-    constexpr static int stack_space_needed_ = 24;
+    constexpr static int reg_cur_k_offs_ = 24;
+    constexpr static int reg_comp_ptr_offs_ = 32;
+    constexpr static int reg_zp_ptr_offs_ = 40;
+    constexpr static int stack_space_needed_ = 48;
 
     reg64_t reg_src = rax;
     reg64_t reg_tr_src = rbx;
@@ -3107,6 +3109,127 @@ protected:
         uni_vpxor(vmm_mask, vmm_mask, vmm_mask);
     }
 
+    /*
+     * @brief Applies zero point shift for per-K quantization granularity
+     * (only s8 dt is supported for int8 quantization).
+     * @param vmm_src Source data vector
+     * @param inner_k The offset inside the K-block
+     * @param is_tail Tail flag over N-dimension
+     * @param ncolumns Number of columns
+     * @param inner_n_offs Offset for inner N dimension, used for AVX2
+    */
+    inline void maybe_apply_ic_zero_points(const Vmm &vmm_src,
+            const int inner_k, bool is_tail, const int ncolumns,
+            const int inner_n_offs = 0) {
+        if (!conf_->has_zero_point_b || !conf_->is_wei_zp_per_k) return;
+
+        const bool mask_supported = isa_has_masks(conf_->isa);
+        auto &vmm_zp = vmm_tmp;
+
+        mov(reg_tmp, ptr[rsp + reg_cur_k_offs_]);
+        mov(ptr[rsp + reg_src_offs_], reg_src); // utilize rax for division
+        const bool need_comp = conf_->s8s8_compensation_required;
+        if (need_comp)
+            mov(ptr[rsp + reg_comp_ptr_offs_],
+                    reg_comp_ptr); // utilize rdx for division
+        // Locate the current K group
+        // Based on current K position and inner k index.
+        xor_(rdx, rdx); // zero rdx for division
+        mov(rax, reg_tmp);
+        mov(reg_tmp, conf_->wei_zp_k_gsize);
+        add(rax, inner_k);
+        div(reg_tmp);
+        mov(reg_tmp, conf_->N);
+        mul(reg_tmp);
+        // Load zero points for current K group
+        mov(rdx, ptr[rsp + reg_zp_ptr_offs_]);
+        add(rdx, rax);
+        add(rdx, inner_n_offs);
+        const auto addr = ptr[rdx];
+        if (is_tail && !mask_supported) {
+            load_bytes(vmm_zp, addr, ncolumns);
+        } else {
+            const auto masked_vmm = maybe_mask(vmm_zp, is_tail);
+            vmovdqu8(masked_vmm, addr);
+        }
+        // Apply zero point shift
+        uni_vpsubb(vmm_src, vmm_src, vmm_zp);
+        // Restore regs
+        mov(reg_src, ptr[rsp + reg_src_offs_]);
+        if (need_comp) mov(reg_comp_ptr, ptr[rsp + reg_comp_ptr_offs_]);
+    }
+
+    /**
+     * @brief Applies zero point shift for per-N quantization granularity
+     * (only s8 dt is supported for int8 quantization).
+     * @param vmm_src Source data vector
+     * @param is_tail Tail flag over N-dimension
+     * @param ncolumns Number of columns
+     * @param inner_n_offs Offset for inner N dimension, used for AVX2
+     */
+    inline void maybe_apply_oc_zero_points(const Vmm &vmm_src, bool is_tail,
+            const int ncolumns, const int inner_n_offs = 0) {
+        if (!conf_->has_zero_point_b || !conf_->is_wei_zp_per_n
+                || conf_->is_wei_zp_per_k)
+            return;
+
+        const bool mask_supported = isa_has_masks(conf_->isa);
+        auto &vmm_zp = vmm_tmp;
+        mov(reg_tmp, ptr[rsp + reg_zp_ptr_offs_]);
+        add(reg_tmp, inner_n_offs);
+        const auto addr = ptr[reg_tmp];
+        if (is_tail && !mask_supported) {
+            load_bytes(vmm_zp, addr, ncolumns);
+        } else {
+            const auto masked_vmm = maybe_mask(vmm_zp, is_tail);
+            vmovdqu8(masked_vmm, addr);
+        }
+        // Apply zero point shift
+        uni_vpsubb(vmm_src, vmm_src, vmm_zp);
+    }
+
+    /**
+     * @brief Applies common zero point shift
+     * @param vmm_src Source data vector
+    */
+    inline void maybe_apply_common_zero_points(const Vmm &vmm_src) {
+        if (!conf_->has_zero_point_b || !conf_->is_wei_zp_common) return;
+
+        auto &vmm_zp = vmm_tmp;
+        mov(reg_tmp, ptr[rsp + reg_zp_ptr_offs_]);
+        const auto addr = byte[reg_tmp];
+        mov(reg_tmp.cvt8(), addr);
+        uni_vpbroadcastb(vmm_zp, reg_tmp.cvt8());
+        uni_vpsubb(vmm_src, vmm_src, vmm_zp);
+    }
+
+    /**
+     * @brief Optionally applies zero point shift if the configuration requires it.
+     * @param vmm_src Source data vector
+     * @param inner_k Inner K dimension index
+     * @param is_tail Tail flag over N-dimension
+     * @param ncolumns Number of columns
+     * @param inner_n_offs Offset for inner N dimension, used for AVX2
+     */
+    inline void maybe_apply_zero_points(const Vmm &vmm_src, const int inner_k,
+            bool is_tail, const int ncolumns, const int inner_n_offs = 0) {
+        if (!conf_->with_wei_decompression) return;
+
+        maybe_apply_common_zero_points(vmm_src);
+
+        if (is_src_int4_ && is_tail && isa_has_masks(conf_->isa))
+            kmovq(kTail, size_t(((size_t)1 << ncolumns) - 1));
+
+        maybe_apply_oc_zero_points(vmm_src, is_tail, ncolumns, inner_n_offs);
+        maybe_apply_ic_zero_points(
+                vmm_src, inner_k, is_tail, ncolumns, inner_n_offs);
+
+        if (is_src_int4_ && is_tail && isa_has_masks(conf_->isa))
+            kmovq(kTail,
+                    size_t(((size_t)1 << div_up(ncolumns, src_elems_per_byte_))
+                            - 1));
+    }
+
     void generate() override;
 };
 
@@ -3289,8 +3412,11 @@ private:
             dim_t tr_src_off_base = (kb * max_unroll + k) * tr_src_stride_;
 
             if (!zeropad) {
-                for (int i = row_start; i < row_end; i++)
+                for (int i = row_start; i < row_end; i++) {
                     load(k, i, is_tail);
+                    maybe_apply_zero_points(
+                            get_vmm(k, i % k_blk_step_), i, is_tail, ncolumns);
+                }
                 if (row_end == nrows && nrows % k_blk_step_ > 0) {
                     for (int i = nrows; i < rnd_up(nrows, k_blk_step_); i++) {
                         auto src_reg = get_vmm(k, i % k_blk_step_);
@@ -3400,15 +3526,24 @@ private:
         vmovdqa64(vreg_idx_hi_256, (const void *)idx_hi_256);
         vmovdqa64(vreg_idx_lo_128, (const void *)idx_lo_128);
         vmovdqa64(vreg_idx_hi_128, (const void *)idx_hi_128);
+
+        if (is_src_int4_) {
+            alignas(64) static constexpr const uint8_t int4_permute[64]
+                    = {0, 32, 1, 33, 2, 34, 3, 35, 4, 36, 5, 37, 6, 38, 7, 39,
+                            8, 40, 9, 41, 10, 42, 11, 43, 12, 44, 13, 45, 14,
+                            46, 15, 47, 16, 48, 17, 49, 18, 50, 19, 51, 20, 52,
+                            21, 53, 22, 54, 23, 55, 24, 56, 25, 57, 26, 58, 27,
+                            59, 28, 60, 29, 61, 30, 62, 31, 63};
+            vmovdqa64(int4_permute_table, (const void *)int4_permute);
+        }
     }
 
     void copy_4x64(int nrows, int ncolumns, bool zeropad) override {
         const bool is_tail = ncolumns < n_blk_step_;
-        if (is_tail) {
-            const auto tail_size = div_up(ncolumns, src_elems_per_byte_);
-            const auto tail_mask = size_t(((size_t)1 << tail_size) - 1);
-            kmovq(kTail, tail_mask);
-        }
+        const auto tail_size = div_up(ncolumns, src_elems_per_byte_);
+        const auto tail_mask = size_t(((size_t)1 << tail_size) - 1);
+
+        if (is_tail) kmovq(kTail, tail_mask);
 
         const int max_unroll = (do_compute_compensation_ ? 21 : 25) / blk_sz_;
 
@@ -3422,8 +3557,11 @@ private:
             dim_t tr_src_off_base = (kb * max_unroll + k) * tr_src_stride_;
 
             if (!zeropad) {
-                for (int i = row_start; i < row_end; i++)
+                for (int i = row_start; i < row_end; i++) {
                     load(k, i, is_tail);
+                    maybe_apply_zero_points(
+                            get_vmm(k, i % k_blk_step_), i, is_tail, ncolumns);
+                }
                 if (row_end == nrows && nrows % k_blk_step_ > 0) {
                     for (int i = nrows; i < rnd_up(nrows, k_blk_step_); i++) {
                         auto src_reg = get_vmm(k, i % k_blk_step_);
@@ -3627,6 +3765,22 @@ void jit_brgemm_matmul_copy_b_int8_t<Vmm>::generate() {
         vpbroadcastw(vmm_ones_words, reg_tmp.cvt16());
     }
 
+    if (conf_->has_zero_point_b && conf_->with_wei_decompression) {
+        mov(reg_tmp, ptr[param1 + GET_OFF(zp_b_value_ptr)]);
+        mov(ptr[rsp + reg_zp_ptr_offs_], reg_tmp);
+
+        if (conf_->is_wei_zp_per_k) {
+            // Used for grouped zero-point applying
+            // Shift current K starting from group start.
+            // Since `brgmm_ctx.get_wei_zp_ptr(n, k);`
+            mov(reg_tmp, conf_->wei_zp_k_gsize);
+            xor_(rdx, rdx);
+            mov(rax, ptr[param1 + GET_OFF(current_K_start)]);
+            div(reg_tmp);
+            mov(ptr[rsp + reg_cur_k_offs_], rdx);
+        }
+    }
+
     uni_vpxor(vmm_zero, vmm_zero, vmm_zero);
     mov(reg_src, ptr[param1 + GET_OFF(src)]);
     mov(reg_tr_src, ptr[param1 + GET_OFF(tr_src)]);
@@ -3658,6 +3812,7 @@ void jit_brgemm_matmul_copy_b_int8_t<Vmm>::generate() {
             add(reg_src,
                     k_unroll * k_blk_step_ * src_stride_ / src_elems_per_byte_);
         add(reg_tr_src, k_unroll * tr_src_stride_);
+        add(dword[rsp + reg_cur_k_offs_], k_unroll * k_blk_step_);
 
         sub(reg_K, k_unroll * k_blk_step_);
         cmp(reg_K, k_unroll * k_blk_step_);
@@ -3671,6 +3826,7 @@ void jit_brgemm_matmul_copy_b_int8_t<Vmm>::generate() {
         if (!zeropad && !is_dynamic_stride_)
             add(reg_src, k_blk_step_ * src_stride_ / src_elems_per_byte_);
         add(reg_tr_src, tr_src_stride_);
+        add(dword[rsp + reg_cur_k_offs_], k_blk_step_);
 
         sub(reg_K, k_blk_step_);
         jmp(K_loop_single, T_NEAR);

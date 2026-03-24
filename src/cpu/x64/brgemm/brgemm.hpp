@@ -246,6 +246,13 @@ void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, int bs,
         void *scratch = nullptr,
         const brgemm_dynamic_values_t *dynamic_values = nullptr);
 
+/// Execute BRGEMM kernel with pre-set params
+/// @param brg_kernel BRGEMM kernel
+/// @param params Pre-set parameters for the BRGEMM kernel
+/// Useful for setting addtitional parameters, like IC scales or post-ops.
+void brgemm_kernel_execute_params(
+        const brgemm_kernel_t *brg_kernel, brgemm_kernel_params_t &params);
+
 /// Execute BRGEMM kernel (brgemm_addr version)
 ///
 /// @note

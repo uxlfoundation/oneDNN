@@ -298,7 +298,10 @@ struct brgemm_desc_t {
 
     // `skip_scales` is controlled by the implementation and not by kernel API.
     bool skip_scales = false;
-    int is_oc_scale = 0;
+    int is_single_wei_scale = 0;
+    int is_oc_wei_scales = 0;
+    int is_ic_wei_scales = 0;
+    int wei_scale_k_group_size = 0;
     bool with_src_scales = false;
     bool with_wei_scales = false;
     // `dst_scales` passed as a bare pointer making kernel change multiplication
@@ -602,33 +605,35 @@ struct brgemm_dynamic_values_t {
 };
 
 struct brgemm_kernel_params_t {
-    const void *ptr_A;
-    const void *ptr_B;
-    const brgemm_batch_element_t *batch;
-    void *ptr_C;
+    const void *ptr_A = nullptr;
+    const void *ptr_B = nullptr;
+    const brgemm_batch_element_t *batch = nullptr;
+    void *ptr_C = nullptr;
 
-    const void *ptr_bias;
-    void *ptr_D;
+    const void *ptr_bias = nullptr;
+    void *ptr_D = nullptr;
 
     const void *ptr_src_scales = nullptr;
     const void *ptr_wei_scales = nullptr;
     const void *ptr_dst_scales = nullptr;
-    void *ptr_buf;
+    void *ptr_buf = nullptr;
 
-    size_t do_post_ops;
-    size_t do_apply_comp;
-    size_t BS;
+    size_t do_post_ops = 0;
+    size_t do_apply_comp = 0;
+    size_t BS = 0;
+    // Used for K-grouped scales application
+    dim_t k_start = 0;
 
     /*
      * ptr to table of void * elements that are pointers to post_op binary
      * src1 tensors
      */
-    const void *post_ops_binary_rhs_arg_vec;
-    size_t oc_logical_off;
-    size_t first_mb_matrix_addr_off;
-    size_t dst_row_logical_off;
+    const void *post_ops_binary_rhs_arg_vec = nullptr;
+    size_t oc_logical_off = 0;
+    size_t first_mb_matrix_addr_off = 0;
+    size_t dst_row_logical_off = 0;
 
-    const char *data_C_ptr_;
+    const char *data_C_ptr_ = nullptr;
 
     const void *a_zp_compensations = nullptr;
     const void *b_zp_compensations = nullptr;

@@ -588,8 +588,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::compute_vector_range(
     static const Vmm zero_vmm(0);
     if (post_op.is_prelu() && is_avx512_) push_opmask(host_, get_aux_kmask());
 
-    Xbyak::Address rhs1_arg_addr(0);
-    Xbyak::Address rhs2_arg_addr(0);
+    Xbyak::Address rhs1_arg_addr {};
+    Xbyak::Address rhs2_arg_addr {};
 
     // Phase 3 Apply binary post-op over all vmms.
     for (const auto vmm_idx : vmm_idxs) {
@@ -840,7 +840,11 @@ void jit_uni_binary_injector_t<isa, Vmm>::append_no_broadcast_offset(
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::calculate_no_broadcast_base(
         Xbyak::Address addr, const Xbyak::Reg64 &out_reg) const {
-    host_->lea(out_reg, addr);
+    // addr may carry a zword[] (512-bit) size annotation because it was built
+    // for a Zmm vmm access. LEA only needs the address computation, not the
+    // size, so strip the annotation to avoid xbyak STRICT_CHECK_MEM_REG_SIZE
+    // flagging the Reg64 vs zword size mismatch.
+    host_->lea(out_reg, host_->ptr[addr.getRegExp()]);
     host_->sub(out_reg,
             host_->ptr[param1_ + rhs_arg_static_params_.dst_orig_offset]);
     host_->shr(out_reg,

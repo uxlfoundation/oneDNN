@@ -429,13 +429,7 @@ jit_avx512_core_gemm_bf16bf16f32_kern_t::
     : jit_generator_t(jit_name())
     , beta_zero_(beta_zero)
     , alpha_one_(alpha_one)
-    , bfloat16_(mayiuse(avx512_core_bf16))
-    , arg_a_(0)
-    , arg_b_(0)
-    , arg_c_(0)
-    , arg_ldc_(0)
-    , arg_coffset_c_(0)
-    , arg_coffset_r_(0) {
+    , bfloat16_(mayiuse(avx512_core_bf16)) {
 
     assert(mayiuse(avx512_core));
     assert(IMPLICATION(!use_zmm, bfloat16_));

@@ -46,6 +46,10 @@
 #define XBYAK_NO_EXCEPTION
 #endif
 
+#if !defined(XBYAK_STRICT_CHECK_MEM_REG_SIZE)
+#define XBYAK_STRICT_CHECK_MEM_REG_SIZE 1
+#endif
+
 #if defined(_MSC_VER) && !defined(__INTEL_COMPILER)
 /* turn off `size_t to other-type implicit casting` warning
  * currently we have a lot of jit-generated instructions that

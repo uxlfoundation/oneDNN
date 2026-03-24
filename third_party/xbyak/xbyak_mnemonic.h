@@ -42,7 +42,8 @@
 * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
 * THE POSSIBILITY OF SUCH DAMAGE.
 *******************************************************************************/
-const char *getVersionString() const { return "7.23.1"; }
+
+const char *getVersionString() const { return "7.35.3"; }
 void aadd(const Address& addr, const Reg32e &reg) { opMR(addr, reg, T_0F38, 0x0FC, T_APX); }
 void aand(const Address& addr, const Reg32e &reg) { opMR(addr, reg, T_0F38|T_66, 0x0FC, T_APX|T_66); }
 void adc(const Operand& op, uint32_t imm) { opOI(op, imm, 0x10, 2); }
@@ -731,8 +732,8 @@ void movaps(const Address& addr, const Xmm& xmm) { opSSE(xmm, addr, T_0F|T_NONE,
 void movaps(const Xmm& xmm, const Operand& op) { opMMX(xmm, op, 0x28, T_0F, T_NONE); }
 void movbe(const Address& addr, const Reg& reg) { opMR(addr, reg, T_0F38, 0xF1, T_APX, 0x61); }
 void movbe(const Reg& reg, const Address& addr) { opMR(addr, reg, T_0F38, 0xF0, T_APX, 0x60); }
-void movd(const Mmx& mmx, const Operand& op) { if (!(op.isMEM() || op.isREG(32))) XBYAK_THROW(ERR_BAD_COMBINATION) if (mmx.isXMM()) db(0x66); opSSE(mmx, op, T_0F, 0x6E); }
-void movd(const Operand& op, const Mmx& mmx) { if (!(op.isMEM() || op.isREG(32))) XBYAK_THROW(ERR_BAD_COMBINATION) if (mmx.isXMM()) db(0x66); opSSE(mmx, op, T_0F, 0x7E); }
+void movd(const Mmx& mmx, const Operand& op) { if (!(op.isMEM() || op.isREG(32))) XBYAK_THROW(ERR_BAD_COMBINATION) if (mmx.isXMM()) db(0x66); opSSE(mmx, op, T_0F | T_ALLOW_DIFF_SIZE, 0x6E); }
+void movd(const Operand& op, const Mmx& mmx) { if (!(op.isMEM() || op.isREG(32))) XBYAK_THROW(ERR_BAD_COMBINATION) if (mmx.isXMM()) db(0x66); opSSE(mmx, op, T_0F | T_ALLOW_DIFF_SIZE, 0x7E); }
 void movddup(const Xmm& xmm, const Operand& op) { opSSE(xmm, op, T_DUP|T_F2|T_0F|T_EW1|T_YMM|T_EVEX, 0x12, isXMM_XMMorMEM, NONE); }
 void movdir64b(const Reg& reg, const Address& addr) { opMR(addr, reg.cvt32(), T_66|T_0F38, 0xF8, T_APX|T_66); }
 void movdiri(const Address& addr, const Reg32e& reg) { opMR(addr, reg, T_0F38, 0xF9, T_APX); }
@@ -755,8 +756,8 @@ void movnti(const Address& addr, const Reg32e& reg) { opMR(addr, reg, T_0F, 0xC3
 void movntpd(const Address& addr, const Xmm& reg) { if (reg.getIdx() >= 16) XBYAK_THROW(ERR_BAD_PARAMETER) opSSE(Reg16(reg.getIdx()), addr, T_0F, 0x2B); }
 void movntps(const Address& addr, const Xmm& xmm) { opSSE(Xmm(xmm.getIdx()), addr, T_0F, 0x2B); }
 void movntq(const Address& addr, const Mmx& mmx) { if (!mmx.isMMX()) XBYAK_THROW(ERR_BAD_COMBINATION) opSSE(mmx, addr, T_0F, 0xE7); }
-void movq(const Address& addr, const Mmx& mmx) { if (mmx.isXMM()) db(0x66); opSSE(mmx, addr, T_0F, mmx.isXMM() ? 0xD6 : 0x7F); }
-void movq(const Mmx& mmx, const Operand& op) { if (!op.isMEM() && mmx.getKind() != op.getKind()) XBYAK_THROW(ERR_BAD_COMBINATION) if (mmx.isXMM()) db(0xF3); opSSE(mmx, op, T_0F, mmx.isXMM() ? 0x7E : 0x6F); }
+void movq(const Address& addr, const Mmx& mmx) { if (mmx.isXMM()) db(0x66); opSSE(mmx, addr, T_0F | T_ALLOW_DIFF_SIZE, mmx.isXMM() ? 0xD6 : 0x7F); }
+void movq(const Mmx& mmx, const Operand& op) { if (!op.isMEM() && mmx.getKind() != op.getKind()) XBYAK_THROW(ERR_BAD_COMBINATION) if (mmx.isXMM()) db(0xF3); opSSE(mmx, op, T_0F | T_ALLOW_DIFF_SIZE, mmx.isXMM() ? 0x7E : 0x6F); }
 void movq2dq(const Xmm& xmm, const Mmx& mmx) { opSSE(xmm, mmx, T_F3 | T_0F, 0xD6); }
 void movsb() { db(0xA4); }
 void movsd() { db(0xA5); }
@@ -865,6 +866,7 @@ void pminsd(const Xmm& xmm, const Operand& op) { opSSE(xmm, op, T_66 | T_0F38, 0
 void pminsw(const Mmx& mmx, const Operand& op) { opMMX(mmx, op, 0xEA); }
 void pminub(const Mmx& mmx, const Operand& op) { opMMX(mmx, op, 0xDA); }
 void pminud(const Xmm& xmm, const Operand& op) { opSSE(xmm, op, T_66 | T_0F38, 0x3B, isXMM_XMMorMEM); }
+void pminuw(const Xmm& xmm, const Operand& op) { opSSE(xmm, op, T_66 | T_0F38, 0x3A, isXMM_XMMorMEM); }
 void pmovmskb(const Reg32e& reg, const Mmx& mmx) { if (mmx.isXMM()) db(0x66); opSSE(reg, mmx, T_0F, 0xD7); }
 void pmovsxbd(const Xmm& xmm, const Operand& op) { opSSE(xmm, op, T_N4|T_N_VL|T_66|T_0F38|T_YMM|T_EVEX, 0x21, isXMM_XMMorMEM, NONE); }
 void pmovsxbq(const Xmm& xmm, const Operand& op) { opSSE(xmm, op, T_N2|T_N_VL|T_66|T_0F38|T_YMM|T_EVEX, 0x22, isXMM_XMMorMEM, NONE); }
@@ -1476,7 +1478,7 @@ void vpermpd(const Ymm& y, const Operand& op, uint8_t imm) { opAVX_X_XM_IMM(y, o
 void vpermpd(const Ymm& y1, const Ymm& y2, const Operand& op) { opAVX_X_X_XM(y1, y2, op, T_66|T_0F38|T_EW1|T_YMM|T_MUST_EVEX|T_B64, 0x16); }
 void vpermps(const Ymm& y1, const Ymm& y2, const Operand& op) { opAVX_X_X_XM(y1, y2, op, T_66|T_0F38|T_W0|T_YMM|T_EVEX|T_B32, 0x16); }
 void vpermq(const Ymm& y, const Operand& op, uint8_t imm) { opAVX_X_XM_IMM(y, op, T_66|T_0F3A|T_W1|T_EW1|T_YMM|T_EVEX|T_B64, 0x00, imm); }
-void vpermq(const Ymm& y1, const Ymm& y2, const Operand& op) { opAVX_X_X_XM(y1, y2, op, T_66|T_0F38|T_W0|T_EW1|T_YMM|T_EVEX|T_B64, 0x36); }
+void vpermq(const Ymm& y1, const Ymm& y2, const Operand& op) { opAVX_X_X_XM(y1, y2, op, T_66|T_0F38|T_EW1|T_YMM|T_EVEX|T_B64, 0x36); }
 void vpextrb(const Operand& op, const Xmm& x, uint8_t imm) { if (!((op.isREG(8|16|i32e) || op.isMEM()) && x.isXMM())) XBYAK_THROW(ERR_BAD_COMBINATION) opVex(x, 0, op, T_0F3A | T_66 | T_EVEX | T_N1, 0x14, imm); }
 void vpextrd(const Operand& op, const Xmm& x, uint8_t imm) { if (!((op.isREG(32) || op.isMEM()) && x.isXMM())) XBYAK_THROW(ERR_BAD_COMBINATION) opVex(x, 0, op, T_0F3A | T_66 | T_W0 | T_EVEX | T_N4, 0x16, imm); }
 void vpextrq(const Operand& op, const Xmm& x, uint8_t imm) { if (!((op.isREG(64) || op.isMEM()) && x.isXMM())) XBYAK_THROW(ERR_BAD_COMBINATION) opVex(x, 0, op, T_0F3A | T_66 | T_W1 | T_EVEX | T_EW1 | T_N8, 0x16, imm); }
@@ -1918,7 +1920,7 @@ void clui() { db(0xF3); db(0x0F); db(0x01); db(0xEE); }
 void stui() { db(0xF3); db(0x0F); db(0x01); db(0xEF); }
 void testui() { db(0xF3); db(0x0F); db(0x01); db(0xED); }
 void uiret() { db(0xF3); db(0x0F); db(0x01); db(0xEC); }
-void cmpxchg16b(const Address& addr) { opMR(addr, Reg64(1), T_0F, 0xC7); }
+void cmpxchg16b(const Address& addr) { opMR(addr, Reg64(1), T_0F|T_ALLOW_DIFF_SIZE, 0xC7); }
 void fxrstor64(const Address& addr) { opMR(addr, Reg64(1), T_0F, 0xAE); }
 void movq(const Reg64& reg, const Mmx& mmx) { if (mmx.isXMM()) db(0x66); opSSE(mmx, reg, T_0F, 0x7E); }
 void movq(const Mmx& mmx, const Reg64& reg) { if (mmx.isXMM()) db(0x66); opSSE(mmx, reg, T_0F, 0x6E); }
@@ -2270,8 +2272,8 @@ void vcvtbiasph2bf8s(const Xmm& x1, const Xmm& x2, const Operand& op) { opCvt6(x
 void vcvtbiasph2hf8(const Xmm& x1, const Xmm& x2, const Operand& op) { opCvt6(x1, x2, op, T_MAP5|T_W0|T_YMM|T_MUST_EVEX|T_B16, 0x18); }
 void vcvtbiasph2hf8s(const Xmm& x1, const Xmm& x2, const Operand& op) { opCvt6(x1, x2, op, T_MAP5|T_W0|T_YMM|T_MUST_EVEX|T_B16, 0x1B); }
 void vcvtdq2ph(const Xmm& x, const Operand& op) { checkCvt4(x, op); opCvt(x, op, T_N16|T_N_VL|T_MAP5|T_W0|T_YMM|T_ER_Z|T_MUST_EVEX|T_B32, 0x5B); }
+void vcvthf82ph(const Xmm& x, const Operand& op) { checkCvt1(x, op); opVex(x, 0, op, T_MUST_EVEX | T_F2 | T_MAP5 | T_W0 | T_YMM | T_N1, 0x1E); }
 void vcvtne2ps2bf16(const Xmm& x1, const Xmm& x2, const Operand& op) { opAVX_X_X_XM(x1, x2, op, T_F2|T_0F38|T_W0|T_YMM|T_SAE_Z|T_MUST_EVEX|T_B32, 0x72); }
-void vcvthf82ph(const Xmm& x, const Operand& op) { opVex(x, 0, op, T_N8|T_N_VL|T_F2|T_MAP5|T_W0|T_YMM|T_MUST_EVEX, 0x1e); }
 void vcvtpd2ph(const Xmm& x, const Operand& op) { opCvt5(x, op, T_N16|T_N_VL|T_66|T_MAP5|T_EW1|T_ER_Z|T_MUST_EVEX|T_B64, 0x5A); }
 void vcvtpd2qq(const Xmm& x, const Operand& op) { opAVX_X_XM_IMM(x, op, T_66|T_0F|T_EW1|T_YMM|T_ER_Z|T_MUST_EVEX|T_B64, 0x7B); }
 void vcvtpd2udq(const Xmm& x, const Operand& op) { opCvt2(x, op, T_0F|T_EW1|T_YMM|T_ER_Z|T_MUST_EVEX|T_B64, 0x79); }
@@ -2729,6 +2731,8 @@ void vucomxsh(const Xmm& x, const Operand& op) { opAVX_X_XM_IMM(x, op, T_N2|T_F3
 void vucomxss(const Xmm& x, const Operand& op) { opAVX_X_XM_IMM(x, op, T_N4|T_F3|T_0F|T_W0|T_SAE_X|T_MUST_EVEX, 0x2E); }
 #ifdef XBYAK64
 void kmovq(const Reg64& r, const Opmask& k) { opKmov(k, r, true, 64); }
+void tcvtrowd2ps(const Zmm& z, const Tmm& t, const Reg32& r) { opVex(z, &r, t, T_F3|T_0F38|T_W0|T_MUST_EVEX, 0x4A); }
+void tcvtrowd2ps(const Zmm& z, const Tmm& t, uint8_t imm) { opVex(z, 0, t, T_F3|T_0F3A|T_W0|T_MUST_EVEX, 0x07, imm); }
 void tcvtrowps2bf16h(const Zmm& z, const Tmm& t, const Reg32& r) { opVex(z, &r, t, T_F2|T_0F38|T_W0|T_MUST_EVEX, 0x6D); }
 void tcvtrowps2bf16h(const Zmm& z, const Tmm& t, uint8_t imm) { opVex(z, 0, t, T_F2|T_0F3A|T_W0|T_MUST_EVEX, 0x07, imm); }
 void tcvtrowps2bf16l(const Zmm& z, const Tmm& t, const Reg32& r) { opVex(z, &r, t, T_F3|T_0F38|T_W0|T_MUST_EVEX, 0x6D); }

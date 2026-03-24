@@ -109,6 +109,34 @@ void print_header() noexcept {
                 dnnl_runtime2str(dnnl_version()->cpu_runtime),
                 dnnl_get_max_threads());
         verbose_printf("info,cpu,isa:%s\n", cpu::platform::get_isa_info());
+        if (cpu::platform::is_hybrid_cpu()) {
+            verbose_printf(
+                    "info,cpu,per_core_cache,pcore:L1d:%uKiB,L2:%uKiB,L3:%"
+                    "uKiB\n",
+                    cpu::platform::get_per_core_cache_size_pcore(1) / 1024,
+                    cpu::platform::get_per_core_cache_size_pcore(2) / 1024,
+                    cpu::platform::get_per_core_cache_size_pcore(3) / 1024);
+            verbose_printf(
+                    "info,cpu,per_core_cache,lp_core:L1d:%uKiB,L2:%uKiB,L3:%"
+                    "uKiB\n",
+                    cpu::platform::get_per_core_cache_size_lp_core(1) / 1024,
+                    cpu::platform::get_per_core_cache_size_lp_core(2) / 1024,
+                    cpu::platform::get_per_core_cache_size_lp_core(3) / 1024);
+            if (cpu::platform::has_lpe_core_cpu()) {
+                verbose_printf(
+                        "info,cpu,per_core_cache,lpe_core:L1d:%uKiB,L2:%uKiB\n",
+                        cpu::platform::get_per_core_cache_size_lpe_core(1)
+                                / 1024,
+                        cpu::platform::get_per_core_cache_size_lpe_core(2)
+                                / 1024);
+            }
+        } else {
+            verbose_printf(
+                    "info,cpu,per_core_cache:L1d:%uKiB,L2:%uKiB,L3:%uKiB\n",
+                    cpu::platform::get_per_core_cache_size(1) / 1024,
+                    cpu::platform::get_per_core_cache_size(2) / 1024,
+                    cpu::platform::get_per_core_cache_size(3) / 1024);
+        }
 #endif
         verbose_printf("info,gpu,runtime:%s\n",
                 dnnl_runtime2str(dnnl_version()->gpu_runtime));

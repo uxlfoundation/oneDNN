@@ -27,6 +27,7 @@
 
 #include "cpu/cpu_primitive.hpp"
 #include "cpu/matmul/matmul_utils.hpp"
+#include "cpu/platform.hpp"
 #include "cpu/scale_utils.hpp"
 
 #include "cpu/aarch64/injectors/jit_uni_eltwise_injector.hpp"
@@ -294,16 +295,39 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
         mov(reg_tmp, reg_aux_c);
         add_imm(reg_tmp_1, reg_aux_c, brg_.N * brg_.dst_dt_sz, X_TMP_0);
         for (int a = 0; a < bdb; a++) {
-            for (int b = 0; b < ldb; b += 2) {
-                PReg p = (brg_.is_n_tail && b >= ldb - 2) ? prd_st : P_ALL_ONE;
-                int vl = b / 2;
-                st1w(acc(a, b).s, p, ptr(reg_tmp, vl, MUL_VL));
-                if (a >= bdb - 1 && brg_.is_m_tail) {
-                    if (brg_.m_tail % 2 == 0)
-                        st1w(acc(a, b + 1).s, p, ptr(reg_tmp_1, vl, MUL_VL));
-                } else {
-                    st1w(acc(a, b + 1).s, p, ptr(reg_tmp_1, vl, MUL_VL));
-                }
+            const bool store_second_row
+                    = !brg_.is_m_tail || (2 * a + 1) < brg_.m_tail;
+            switch (brg_.dst_dt) {
+                case f32:
+                    for (int b = 0; b < ldb; b += 2) {
+                        PReg p = (brg_.is_n_tail && b >= ldb - 2) ? prd_st
+                                                                  : P_ALL_ONE;
+                        const int vl = b / 2;
+                        st1w(acc(a, b).s, p, ptr(reg_tmp, vl, MUL_VL));
+                        if (store_second_row)
+                            st1w(acc(a, b + 1).s, p,
+                                    ptr(reg_tmp_1, vl, MUL_VL));
+                    }
+                    break;
+                case bf16:
+                    for (int b = 0; b < ldb; b += 2) {
+                        PReg p = (brg_.is_n_tail && b >= ldb - 2) ? prd_st
+                                                                  : P_ALL_ONE;
+                        bfcvt(acc(a, b).h, p / T_m, acc(a, b).s);
+                        if (store_second_row)
+                            bfcvt(acc(a, b + 1).h, p / T_m, acc(a, b + 1).s);
+                    }
+                    for (int b = 0; b < ldb; b += 2) {
+                        PReg p = (brg_.is_n_tail && b >= ldb - 2) ? prd_st
+                                                                  : P_ALL_ONE;
+                        const int vl = b / 2;
+                        st1h(acc(a, b).s, p, ptr(reg_tmp, vl, MUL_VL));
+                        if (store_second_row)
+                            st1h(acc(a, b + 1).s, p,
+                                    ptr(reg_tmp_1, vl, MUL_VL));
+                    }
+                    break;
+                default: assert(!"unsupported dst_dt");
             }
             add_imm(reg_tmp, reg_tmp, 2 * brg_.N * brg_.dst_dt_sz, X_TMP_0);
             add_imm(reg_tmp_1, reg_tmp_1, 2 * brg_.N * brg_.dst_dt_sz, X_TMP_0);
@@ -553,7 +577,7 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
                         X_TMP_0);
                 add_imm(reg_aux_c, reg_aux_c,
                         brg_.N * brg_.bd_block * brg_.dst_dt_sz, X_TMP_0);
-                add_imm(reg_zp_aux_b, reg_zp_aux_b, brg_.m_blk * brg_.dst_dt_sz,
+                add_imm(reg_zp_aux_b, reg_zp_aux_b, brg_.m_blk * brg_.acc_dt_sz,
                         X_TMP_0);
                 if (brg_.is_per_m_scales)
                     add_imm(reg_aux_src_scales, reg_aux_src_scales,
@@ -569,12 +593,12 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
             add_imm(reg_aux_c1, reg_aux_c1,
                     brg_.dst_dt_sz * (brg_.n_blk * brg_.ld_block), X_TMP_0);
             add_imm(reg_zp_a, reg_zp_a,
-                    brg_.n_blk * brg_.ld_block * brg_.dst_dt_sz, X_TMP_0);
+                    brg_.n_blk * brg_.ld_block * brg_.acc_dt_sz, X_TMP_0);
             if (brg_.is_oc_scales)
                 add_imm(reg_wei_scales, reg_wei_scales,
-                        brg_.dst_dt_sz * (brg_.n_blk * brg_.ld_block), X_TMP_0);
+                        brg_.acc_dt_sz * (brg_.n_blk * brg_.ld_block), X_TMP_0);
             add_imm(reg_bias, reg_bias,
-                    brg_.dst_dt_sz * (brg_.n_blk * brg_.ld_block), X_TMP_0);
+                    brg_.acc_dt_sz * (brg_.n_blk * brg_.ld_block), X_TMP_0);
             mov(reg_aux_c, reg_aux_c1);
         });
     }
@@ -592,7 +616,7 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
                 add_imm(reg_aux_a1, reg_aux_a1,
                         div_up(brg_.K, brg_.k_blk) * brg_.k_blk * brg_.bd_block,
                         X_TMP_0);
-                add_imm(reg_zp_b, reg_zp_b, brg_.m_blk * brg_.dst_dt_sz,
+                add_imm(reg_zp_b, reg_zp_b, brg_.m_blk * brg_.acc_dt_sz,
                         X_TMP_0);
             });
         }
@@ -600,7 +624,7 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
             asm_for(reg_ld_loop, reg_ld_loop, [&]() {
                 loop_k_zp(bdb, ldb, 1, 0);
                 add_imm(reg_zp_a, reg_zp_a,
-                        brg_.n_blk * brg_.ld_block * brg_.dst_dt_sz, X_TMP_0);
+                        brg_.n_blk * brg_.ld_block * brg_.acc_dt_sz, X_TMP_0);
                 add_imm(reg_b, reg_b,
                         (brg_.n_blk * brg_.ld_block)
                                 * div_up(brg_.K, brg_.k_blk) * brg_.k_blk,
@@ -608,7 +632,6 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
             });
         }
     }
-
     void zp_comp(int rdb, int bdb, int ldb, int is_a, int is_b) {
         const ZReg zp_b_sum0 = ZReg(3);
         const ZReg zp_b_sum1 = ZReg(4);
@@ -683,7 +706,7 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
 
     void config() {
         const int vlen_bytes = simd_bytes(isa);
-        const int sv_len = vlen_bytes / brg_.dst_dt_sz;
+        const int sv_len = vlen_bytes / brg_.acc_dt_sz;
         int m, pred_st = 0, pred_ld = 0, pred_b = sv_len;
         const int n_full = brg_.n_blk * brg_.ld_block;
         const int n_cols = brg_.is_n_tail ? brg_.n_tail : n_full;
@@ -931,8 +954,9 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
         return true;
     };
 
-    const bool problem_dt_correct
-            = (is_s8 || is_u8 || is_u8_s8) && utils::everyone_is(f32, dst_type);
+    const bool problem_dt_correct = (is_s8 || is_u8 || is_u8_s8)
+            && utils::one_of(dst_type, f32, bf16)
+            && platform::has_data_type_support(dst_type);
 
     VDISPATCH_MATMUL(problem_dt_correct, VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_MATMUL(no_post_ops || with_eltwise(), VERBOSE_UNSUPPORTED_ATTR);
@@ -1111,7 +1135,8 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
 
     const auto &wei_scales = attr()->scales_.get(DNNL_ARG_WEIGHTS);
 
-    brg_.dst_dt_sz = 4;
+    brg_.dst_dt = dst_type;
+    brg_.dst_dt_sz = types::data_type_size(dst_type);
     brg_.na = 1;
     brg_.nb = 1;
     brg_.m_tail = brg_.M % brg_.m_blk;
@@ -1141,12 +1166,12 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
     if (brg_.zp_type_a != jit_int8_broadcast_t::none)
         scratchpad.book(key_brgemm_primitive_zp_comp_a,
                 div_up(brg_.N, (brg_.n_blk * brg_.ld_block))
-                        * (brg_.n_blk * brg_.ld_block) * brg_.dst_dt_sz
+                        * (brg_.n_blk * brg_.ld_block) * brg_.acc_dt_sz
                         * brg_.B,
                 sizeof(char));
     if (brg_.zp_type_b != jit_int8_broadcast_t::none)
         scratchpad.book(key_brgemm_primitive_zp_comp_b,
-                div_up(brg_.M, brg_.m_blk) * brg_.m_blk * brg_.dst_dt_sz
+                div_up(brg_.M, brg_.m_blk) * brg_.m_blk * brg_.acc_dt_sz
                         * brg_.B,
                 sizeof(char));
     scratchpad.book(key_brgemm_primitive_buffer_a,
@@ -1192,6 +1217,7 @@ status_t jit_int8_matmul_t<isa>::init(engine_t *engine) {
     b.m_tail = b1.m_tail;
     b.n_tail = b1.n_tail;
     b.k_tail = b1.k_tail;
+    b.dst_dt = b1.dst_dt;
     b.dst_dt_sz = b1.dst_dt_sz;
     b.is_s8 = b1.is_s8;
     b.is_u8_s8 = b1.is_u8_s8;
@@ -1265,7 +1291,7 @@ template <cpu_isa_t isa>
 status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
     const auto *weights_b = CTX_IN_MEM(const float *, DNNL_ARG_WEIGHTS);
     const auto *src_b = CTX_IN_MEM(const float *, DNNL_ARG_SRC);
-    auto dst = CTX_OUT_MEM(float *, DNNL_ARG_DST);
+    auto dst = CTX_OUT_MEM(uint8_t *, DNNL_ARG_DST);
     const auto *bias = CTX_IN_MEM(const float *, DNNL_ARG_BIAS);
 
     const int32_t *src_zero_points = CTX_IN_MEM(
@@ -1528,16 +1554,17 @@ status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
         });
     };
 
-    auto kernel_execute =
-            [&](int idx, int na, int nb, int m_blk_adr, int n_blk_adr,
-                    int dst_adr, int bias_addr, int scl_addr, int zp_ptr_a_adr,
-                    int zp_ptr_b_adr, int zp_b_buf, int m_row_start) {
+    auto kernel_execute
+            = [&](int idx, int na, int nb, int m_blk_adr, int n_blk_adr,
+                      dim_t dst_byte_offset, int bias_addr, int scl_addr,
+                      int zp_ptr_a_adr, int zp_ptr_b_adr, int zp_b_buf,
+                      int m_row_start) {
         call_params_t p;
         p.na = &na;
         p.nb = &nb;
         p.src = (uint8_t *)src + m_blk_adr;
         p.wei = (uint8_t *)weights + n_blk_adr;
-        p.dst = dst + dst_adr;
+        p.dst = dst + dst_byte_offset;
         p.bias = (float *)bias + bias_addr;
         p.scales = src_scales;
         p.wei_scales = kernel_wei_scales + scl_addr;
@@ -1690,8 +1717,10 @@ status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
                     = (m_block1_rs != 0 && m_block == num_a_blocks - 1) ? 1 : 0;
             int ntail
                     = (n_block1_rs != 0 && n_block == num_b_blocks - 1) ? 1 : 0;
-            int dst_adr = (batch * M * N) + m_block * b.m_blk * m_block1 * N
-                    + n_block * (b.n_blk * b.ld_block) * n_block1;
+            dim_t dst_byte_offset
+                    = ((batch * M * N) + m_block * b.m_blk * m_block1 * N
+                              + n_block * (b.n_blk * b.ld_block) * n_block1)
+                    * b.dst_dt_sz;
             int m_blk_adr = (batch
                                     * (num_a_blocks_act * b.m_blk
                                             * div_up(K, b.k_blk) * b.k_blk))
@@ -1725,13 +1754,14 @@ status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
 
             if (n_a > 0 && n_b > 0) {
 
-                kernel_execute(idx, n_a, n_b, m_blk_adr, n_blk_adr, dst_adr,
-                        bias_addr, scl_addr, zp_ptr_a_adr, zp_ptr_b_adr,
-                        zp_b_buf, m_block * m_block_sz);
+                kernel_execute(idx, n_a, n_b, m_blk_adr, n_blk_adr,
+                        dst_byte_offset, bias_addr, scl_addr, zp_ptr_a_adr,
+                        zp_ptr_b_adr, zp_b_buf, m_block * m_block_sz);
             }
 
             if (mtail && b.m_tail > 0 && n_b > 0) {
-                int new_dst_adr = dst_adr + b.m_blk * n_a * N;
+                dim_t new_dst_byte_offset
+                        = dst_byte_offset + b.m_blk * n_a * N * b.dst_dt_sz;
                 int new_m_blk_adr = m_blk_adr
                         + b.m_blk * n_a * div_up(K, b.k_blk) * b.k_blk;
                 int new_zp_ptr_b_adr = zp_ptr_b_adr + b.m_blk * n_a;
@@ -1742,13 +1772,14 @@ status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
                 }
                 int na = 1;
                 kernel_execute(idx, na, n_b, new_m_blk_adr, n_blk_adr,
-                        new_dst_adr, bias_addr, scl_addr, zp_ptr_a_adr,
+                        new_dst_byte_offset, bias_addr, scl_addr, zp_ptr_a_adr,
                         new_zp_ptr_b_adr, zp_b_buf,
                         m_block * m_block_sz + n_a * b.m_blk);
             }
 
             if (ntail && b.n_tail > 0 && n_a > 0) {
-                int new_dst_adr = dst_adr + (b.n_blk * b.ld_block) * n_b;
+                dim_t new_dst_byte_offset = dst_byte_offset
+                        + (b.n_blk * b.ld_block) * n_b * b.dst_dt_sz;
                 int new_n_blk_adr = n_blk_adr
                         + (b.n_blk * b.ld_block) * n_b * div_up(K, b.k_blk)
                                 * b.k_blk;
@@ -1767,14 +1798,15 @@ status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
                 int nb = 1;
 
                 kernel_execute(idx, n_a, nb, m_blk_adr, new_n_blk_adr,
-                        new_dst_adr, new_bias_addr, new_scl_addr,
+                        new_dst_byte_offset, new_bias_addr, new_scl_addr,
                         new_zp_ptr_a_adr, zp_ptr_b_adr, new_zp_b_buf,
                         m_block * m_block_sz);
             }
 
             if (mtail && b.m_tail > 0 && ntail && b.n_tail > 0) {
-                int new_dst_adr = dst_adr + (b.n_blk * b.ld_block) * n_b
-                        + b.m_blk * n_a * N;
+                dim_t new_dst_byte_offset = dst_byte_offset
+                        + ((b.n_blk * b.ld_block) * n_b + b.m_blk * n_a * N)
+                                * b.dst_dt_sz;
                 int new_m_blk_adr = m_blk_adr
                         + b.m_blk * n_a * div_up(K, b.k_blk) * b.k_blk;
                 int new_n_blk_adr = n_blk_adr
@@ -1795,7 +1827,7 @@ status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
                 }
                 int nb = 1, na = 1;
                 kernel_execute(idx, na, nb, new_m_blk_adr, new_n_blk_adr,
-                        new_dst_adr, new_bias_addr, new_scl_addr,
+                        new_dst_byte_offset, new_bias_addr, new_scl_addr,
                         new_zp_ptr_a_adr, new_zp_ptr_b_adr, new_zp_b_buf,
                         m_block * m_block_sz + n_a * b.m_blk);
             }

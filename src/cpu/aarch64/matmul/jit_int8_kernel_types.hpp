@@ -66,6 +66,8 @@ struct brg_int8_t {
     int na, nb;
     int m_tail, n_tail, k_tail;
     int is_m_tail, is_k_tail, is_n_tail, is_zp_cal;
+    data_type_t dst_dt;
+    const int acc_dt_sz = sizeof(float);
     int dst_dt_sz;
     bool is_s8, is_u8_s8;
     bool is_bias;
@@ -86,7 +88,7 @@ struct brg_int8_t {
 
 struct call_params_t {
     const uint8_t *src, *wei;
-    float *dst;
+    uint8_t *dst;
     const float *bias, *scales, *dst_scales;
     const float *src_scales; // optional per-row src scales for src:per_dim_0
     const float *wei_scales; // optional kernel-ready weight scales

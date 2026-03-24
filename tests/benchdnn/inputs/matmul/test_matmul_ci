@@ -75,7 +75,7 @@
 # AArch64 jit:int8 src per_dim_0 scales
 --reset
 --impl=jit:int8
---dt=s8:s8:f32
+--dt=s8:s8:f32,s8:s8:bf16
 --attr-scales=src:per_dim_0+wei:per_oc
 32x64:64x48
 17x64:64x19

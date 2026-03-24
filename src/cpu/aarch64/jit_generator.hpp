@@ -674,6 +674,45 @@ public:
             dup(v_tmp, w_tmp);
     }
 
+    // Roughly equivalent to:
+    // for(index = max - 1; index >= 0; --index) {
+    //   body();
+    // }
+    template <typename TReg, typename Func>
+    void asm_for(const TReg &index_reg, const TReg &max_reg, const Func &body) {
+        Xbyak_aarch64::Label loop_begin, loop_end;
+
+        // check for early exit
+        cmp(max_reg, 0);
+        ble(loop_end);
+
+        sub(index_reg, max_reg, 1);
+        L(loop_begin);
+
+        body();
+
+        subs(index_reg, index_reg, 1);
+        bge(loop_begin);
+
+        L(loop_end);
+    }
+
+    // Roughly equivalent to:
+    // do {
+    //   body();
+    // } while (--n > 0)
+    template <typename TReg, typename Func>
+    void asm_do_while(const TReg &index_reg, const Func &body) {
+        Xbyak_aarch64::Label loop_begin, loop_end;
+
+        L(loop_begin);
+
+        body();
+
+        subs(index_reg, index_reg, 1);
+        bgt(loop_begin);
+    }
+
     template <typename Vmm>
     void init_saturate_f32(Vmm vmm_lbound, Vmm vmm_ubound,
             Xbyak_aarch64::XReg reg_tmp, data_type_t idt, data_type_t odt,

@@ -210,13 +210,13 @@ struct jit_uni_i8i8_pooling_fwd_ker_t : public jit_generator_t {
 
     void load_src_max_op(
             int jj, int ll, size_t offset, bool masked, uint64_t msk);
-    void load_src_avg_op(
+    void load_src_s32_op(
             int jj, int ll, size_t offset, bool masked, uint64_t msk);
     void load_src(int jj, int ll, int c_tail);
 
     void store_dst_max_op(
             int jj, int ll, size_t offset, bool masked, uint64_t msk);
-    void store_dst_avg_op(
+    void store_dst_s32_op(
             int jj, int ll, size_t offset, bool masked, uint64_t msk);
     void store_dst(int jj, int ll, int c_tail);
 
@@ -374,7 +374,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<avx512_core>::load_src_max_op(
 }
 
 template <>
-void jit_uni_i8i8_pooling_fwd_ker_t<sse41>::load_src_avg_op(
+void jit_uni_i8i8_pooling_fwd_ker_t<sse41>::load_src_s32_op(
         int jj, int ll, size_t offset, bool masked, uint64_t msk) {
     using namespace data_type;
 
@@ -409,7 +409,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<sse41>::load_src_avg_op(
 }
 
 template <>
-void jit_uni_i8i8_pooling_fwd_ker_t<avx2>::load_src_avg_op(
+void jit_uni_i8i8_pooling_fwd_ker_t<avx2>::load_src_s32_op(
         int jj, int ll, size_t offset, bool masked, uint64_t msk) {
     using namespace data_type;
 
@@ -499,7 +499,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<avx2>::load_src_avg_op(
 }
 
 template <>
-void jit_uni_i8i8_pooling_fwd_ker_t<avx512_core>::load_src_avg_op(
+void jit_uni_i8i8_pooling_fwd_ker_t<avx512_core>::load_src_s32_op(
         int jj, int ll, size_t offset, bool masked, uint64_t msk) {
     using namespace data_type;
 
@@ -533,7 +533,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<isa>::load_src(int jj, int ll, int c_tail) {
             auto offset = (ll * (c_block / max_num_ll) + jj * c_block)
                     * sizeof_src_dt();
             bool masked = jj == ur_c - 1 && c_tail;
-            load_src_avg_op(jj, ll, offset, masked, jpp.tail[ll]);
+            load_src_s32_op(jj, ll, offset, masked, jpp.tail[ll]);
             break;
         }
         default: assert(!"unsupported algorithm");
@@ -652,7 +652,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<avx512_core>::store_dst_max_op(
 }
 
 template <>
-void jit_uni_i8i8_pooling_fwd_ker_t<sse41>::store_dst_avg_op(
+void jit_uni_i8i8_pooling_fwd_ker_t<sse41>::store_dst_s32_op(
         int jj, int ll, size_t offset, bool masked, uint64_t msk) {
     using namespace data_type;
 
@@ -699,7 +699,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<sse41>::store_dst_avg_op(
 }
 
 template <>
-void jit_uni_i8i8_pooling_fwd_ker_t<avx2>::store_dst_avg_op(
+void jit_uni_i8i8_pooling_fwd_ker_t<avx2>::store_dst_s32_op(
         int jj, int ll, size_t offset, bool masked, uint64_t msk) {
     using namespace data_type;
 
@@ -842,7 +842,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<avx2>::store_dst_avg_op(
 }
 
 template <>
-void jit_uni_i8i8_pooling_fwd_ker_t<avx512_core>::store_dst_avg_op(
+void jit_uni_i8i8_pooling_fwd_ker_t<avx512_core>::store_dst_s32_op(
         int jj, int ll, size_t offset, bool masked, uint64_t msk) {
     using namespace data_type;
 
@@ -912,7 +912,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<isa>::store_dst(
             auto offset = (ll * (c_block / max_num_ll) + jj * c_block)
                     * sizeof_dst_dt();
             bool masked = jj == ur_c - 1 && c_tail;
-            store_dst_avg_op(jj, ll, offset, masked, jpp.tail[ll]);
+            store_dst_s32_op(jj, ll, offset, masked, jpp.tail[ll]);
             break;
         }
         default: assert(!"unsupported pooling algorithm");
@@ -1020,7 +1020,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<isa>::compute_max_step(
                                 auto offset = (ll * (jpp.c_block / max_num_ll)
                                                       + jj * jpp.c_block)
                                         * sizeof_src_dt();
-                                load_src_avg_op(jj, ll, offset, masked, msk);
+                                load_src_s32_op(jj, ll, offset, masked, msk);
 
                                 if (utils::one_of(isa, sse41)) {
                                     pmaxsd(vreg_dst_s32(jj, ll),
@@ -1064,7 +1064,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<isa>::compute_max_step(
                                 jpp.dst_dt, data_type::f32, data_type::f16))
                         uni_vcvtdq2ps(
                                 vreg_dst_f32(jj, ll), vreg_dst_s32(jj, ll));
-                    store_dst_avg_op(jj, ll,
+                    store_dst_s32_op(jj, ll,
                             (ll * (jpp.c_block / max_num_ll) + jj * jpp.c_block)
                                     * sizeof_dst_dt(),
                             masked, msk);

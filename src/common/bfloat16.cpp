@@ -23,36 +23,33 @@ bfloat16_t &bfloat16_t::operator=(float f) {
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
     if (try_cvt_float_to_bfloat16(this, &f)) { return *this; }
 #endif
-    auto iraw = utils::bit_cast<std::array<uint16_t, 2>>(f);
+    const uint32_t f_raw = utils::bit_cast<uint32_t>(f);
+
     switch (std::fpclassify(f)) {
         case FP_SUBNORMAL:
         case FP_ZERO:
-            // sign preserving zero (denormal go to zero)
-            raw_bits_ = iraw[1];
-            raw_bits_ &= 0x8000;
+            // sign-preserving zero (denormals flush to zero)
+            raw_bits_ = static_cast<uint16_t>(f_raw >> 16) & 0x8000;
             break;
-        case FP_INFINITE: raw_bits_ = iraw[1]; break;
+        case FP_INFINITE: raw_bits_ = static_cast<uint16_t>(f_raw >> 16); break;
         case FP_NAN:
-            // truncate and set MSB of the mantissa force QNAN
-            raw_bits_ = iraw[1];
-            raw_bits_ |= 1 << 6;
+            // truncate and set MSB of mantissa to force QNAN
+            raw_bits_ = static_cast<uint16_t>(f_raw >> 16) | (1 << 6);
             break;
-        case FP_NORMAL:
-            // round to nearest even and truncate
-            const uint32_t rounding_bias = 0x00007FFF + (iraw[1] & 0x1);
-            const uint32_t int_raw
-                    = utils::bit_cast<uint32_t>(f) + rounding_bias;
-            iraw = utils::bit_cast<std::array<uint16_t, 2>>(int_raw);
-            raw_bits_ = iraw[1];
+        case FP_NORMAL: {
+            // round to nearest even, then truncate
+            const uint16_t result_lsb = (f_raw >> 16) & 0x1u;
+            const uint32_t rounding_bias = 0x00007FFFu + result_lsb;
+            raw_bits_ = static_cast<uint16_t>((f_raw + rounding_bias) >> 16);
             break;
+        }
     }
 
     return *this;
 }
 
 bfloat16_t::operator float() const {
-    std::array<uint16_t, 2> iraw = {{0, raw_bits_}};
-    return utils::bit_cast<float>(iraw);
+    return utils::bit_cast<float>(static_cast<uint32_t>(raw_bits_) << 16);
 }
 
 } // namespace impl

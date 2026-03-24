@@ -162,6 +162,13 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
         res->reason = skip_reason::case_not_supported;
         return;
     }
+
+    // GPU implementation requires 4D tensors (batch x heads x seq x head_dim).
+    if (is_gpu() && prb->ndims < 4) {
+        res->state = SKIPPED;
+        res->reason = skip_reason::case_not_supported;
+        return;
+    }
 }
 
 void skip_invalid_prb(const prb_t *prb, res_t *res) {

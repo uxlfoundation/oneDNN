@@ -21,7 +21,6 @@
 
 #include <limits.h>
 
-#include "common/bit_cast.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 
@@ -672,6 +671,65 @@ public:
             dup(z_tmp, w_tmp);
         else
             dup(v_tmp, w_tmp);
+    }
+
+    // Roughly equivalent to:
+    // for(index = max - 1; index >= 0; --index) {
+    //   body();
+    // }
+    template <typename TReg, typename Func>
+    void asm_for(const TReg &index_reg, const TReg &max_reg, const Func &body) {
+        Xbyak_aarch64::Label loop_begin, loop_end;
+
+        // check for early exit
+        cmp(max_reg, 0);
+        ble(loop_end);
+
+        sub(index_reg, max_reg, 1);
+        L(loop_begin);
+
+        body();
+
+        subs(index_reg, index_reg, 1);
+        bge(loop_begin);
+
+        L(loop_end);
+    }
+
+    // Only providing a 64-bit version so we don't have to worry about bad
+    // immediate ranges, and signed vs unsigned concerns
+    // (e.g, Using a WReg but providing max_imm > INT32_MAX).
+    template <typename Func>
+    void asm_for(const Xbyak_aarch64::XReg &index_reg, int64_t max_imm,
+            const Func &body) {
+        Xbyak_aarch64::Label loop_begin;
+
+        // check for early exit
+        if (max_imm <= 0) { return; }
+
+        mov_imm(index_reg, max_imm - 1);
+        L(loop_begin);
+
+        body();
+
+        subs(index_reg, index_reg, 1);
+        bge(loop_begin);
+    }
+
+    // Roughly equivalent to:
+    // do {
+    //   body();
+    // } while (--n > 0)
+    template <typename TReg, typename Func>
+    void asm_do_while(const TReg &index_reg, const Func &body) {
+        Xbyak_aarch64::Label loop_begin;
+
+        L(loop_begin);
+
+        body();
+
+        subs(index_reg, index_reg, 1);
+        bgt(loop_begin);
     }
 
     template <typename Vmm>

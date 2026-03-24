@@ -1462,16 +1462,21 @@ int flex_rewrite_t::op_kind_rewrite(deserialized_graph_t &dgraph) {
     if (op_kind_map_.size() == 1 && op_kind_map_.begin()->second == "default")
         return OK;
 
-    for_(auto &aop : dgraph.ops_)
     for (const auto &v : op_kind_map_) {
-        if (aop.id_ != v.first) continue;
-
-        if (aop.empty()) {
+        // find the op with the matched ID in dgraph.ops_
+        auto it = std::find_if(dgraph.ops_.begin(), dgraph.ops_.end(),
+                [&v](const deserialized_op_t &aop) {
+            return aop.id_ == v.first;
+        });
+        if (it == dgraph.ops_.end()) {
             BENCHDNN_PRINT(0,
-                    "graph: rewrite: ID `%zd` is not found in the graph\n",
+                    "graph: rewrite: operation with ID `%zd` is not found in "
+                    "the graph\n",
                     v.first);
             SAFE(FAIL, WARN);
         }
+
+        auto &aop = *it;
         auto op_driver = aop.opkind2driver();
 
         auto target_kind = opstr2kind(v.second);

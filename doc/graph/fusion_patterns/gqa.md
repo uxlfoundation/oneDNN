@@ -132,15 +132,17 @@ The blue nodes are required while the brown nodes are optional.
 7. The Dropout operation takes the gradients of the dropped probabilities as
    input and computes gradients with respect to the normalized probabilities.
    See [Dropout](@ref dev_guide_op_dropout) in Graph API.
-8. The SoftMaxBackward operation computes the gradients of the scaled output.
-   See [SoftMaxBackward](@ref dev_guide_op_softmaxbackward) in Graph API.
-9. The Scale node after SoftMaxBackward corresponds to the forward Scale node
+8. The Multiply, ReduceSum, Subtract, and Multiply operations are used to
+   compute the gradients with respect to the scaled output according to the
+   formula: dS = P * (dP - ReduceSum(O * dO)), where P denotes the normalized
+   probabilities and dP denotes the gradients with respect to them.
+9. The Scale node after Multiply corresponds to the forward Scale node
    and is used to compute the gradients of the score.
 10. The TypeCast, two MatMul and ReduceSum operations after the Scale node
    compute the gradients with respect to Query and Key, respectively. TypeCast
    is required for bf16 and f16 training scenarios. ReduceSum reduces the Key
    gradients from (N, H_kv, N_rep, S, D) to (N, H_kv, 1, S, D).
-11. The optional End operation marks the output of SoftMaxBackward as a
+11. The optional End operation marks the output of Multiply as a
     partition output, representing the gradients with respect to the Mask. Note
     that the output shape of `dM` is (N, H_kv, N_rep, S, S) and the data
     type is f32. The library does not perform any reduction or typecast on this

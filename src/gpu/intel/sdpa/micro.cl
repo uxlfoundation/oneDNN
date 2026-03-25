@@ -894,6 +894,21 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                     ugemm_kq_c_type_nblock1);
 
 #if MICRO_SDPA_DEBUG
+                        if (get_sub_group_local_id() == 0 && get_local_id(0) == 0
+                                        && get_local_id(1) == 0 && get_local_id(2) == 0
+                                        && b0 == 0 && b1 == 0 && wg_j0 == 0 && k0 == 0
+                                        && sg_i_kq == 0 && sg_j_kq == 0) {
+                                printf("[micro_kernel][compact_dump] POST_DROPOUT_S_TILE "
+                                           "(4x8 logical window)\n");
+                                for (int i = 0; i < 4 && i < ugemm_kq_c_type_nblock0; i++) {
+                                        printf("[micro_kernel][compact_dump] S_tile row %d:", i);
+                                        for (int j = 0; j < 8 && j < ugemm_kq_c_type_nblock1; j++) {
+                                                printf(" %+.6f", (float)S_tile.x[i][j]);
+                                        }
+                                        printf("\n");
+                                }
+                        }
+
             /* Side-by-side comparison of pre-dropout (after softmax) vs post-dropout values */
             if (get_sub_group_local_id() == 0 && get_local_id(0) == 0
                     && get_local_id(1) == 0 && b0 == 0 && b1 == 0 && k0 == 0) {
@@ -1058,6 +1073,26 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         /* Wait for S stores */
         intel_work_group_barrier_wait(CLK_LOCAL_MEM_FENCE);
 
+#if MICRO_SDPA_DEBUG
+        if (get_sub_group_local_id() == 0 && get_local_id(0) == 0
+                && get_local_id(1) == 0 && get_local_id(2) == 0 && b0 == 0
+                && b1 == 0 && wg_j0 == 0 && k0 == 0 && sg_i_kq == 0
+                && sg_j_kq == 0) {
+            printf("[micro_kernel][compact_dump] POST_STORE_S_SLM "
+                   "(4x8 via row+col*ld, ld=%d)\n",
+                    ugemm_kq_wg_tile_m);
+            for (int r = 0; r < 4 && r < ugemm_kq_wg_tile_m; r++) {
+                printf("[micro_kernel][compact_dump] S_slm row %d:", r);
+                for (int c = 0; c < 8 && c < ugemm_kq_wg_tile_n; c++) {
+                    float v = CONVERT_FLOAT_T(
+                            S_slm[r + c * ugemm_kq_wg_tile_m]);
+                    printf(" %+.6f", v);
+                }
+                printf("\n");
+            }
+        }
+#endif
+
         /* Last iteration: signal column sums are ready */
         if (last && need_sum_barrier)
             intel_work_group_barrier_arrive(CLK_LOCAL_MEM_FENCE);
@@ -1163,6 +1198,21 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     a_tile_type_dst A_tile_dst;
     if (k0end > 0) {
         /* Convert to half precision and store */
+#if MICRO_SDPA_DEBUG
+                if (get_sub_group_local_id() == 0 && get_local_id(0) == 0
+                                && get_local_id(1) == 0 && get_local_id(2) == 0 && b0 == 0
+                                && b1 == 0 && wg_j0 == 0 && sg_i_vs == 0 && sg_j_vs == 0) {
+                        printf("[micro_kernel][compact_dump] PRE_STORE_A_TILE "
+                                   "(4x8 window)\n");
+                        for (int i = 0; i < 4 && i < ugemm_vs_c_type_nblock0; i++) {
+                                printf("[micro_kernel][compact_dump] A_tile row %d:", i);
+                                for (int j = 0; j < 8 && j < ugemm_vs_c_type_nblock1; j++) {
+                                        printf(" %+.6f", (float)A_tile.x[i][j]);
+                                }
+                                printf("\n");
+                        }
+                }
+#endif
         tile_copy_reblock(A_tile, &A_tile_dst);
     } else {
         tile_fill(A_tile_dst, 0.0f);

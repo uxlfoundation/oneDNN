@@ -444,8 +444,8 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             && !is_f32; // f32 -> non-systolic kernel only
 
     bool use_fma_config = !use_systolic_ukernel_;
-    config = choose_bwd_config(arch_, d->head_size(), d->keys(), thin_q,
-            quantized, is_integrated, use_fma_config, is_f32);
+    config = choose_bwd_config(arch_, d->head_size(), d->queries(), d->keys(),
+            thin_q, quantized, is_integrated, use_fma_config, is_f32);
 
     VCHECK_SDPA_COND(config != nullptr,
             "No suitable kernel configuration found for the given problem "

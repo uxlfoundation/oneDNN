@@ -123,8 +123,8 @@ fwd_config_t *choose_config(compute::gpu_arch_t arch, dim_t head_size,
         dim_t seq, bool is_thin_q, bool is_quantized, bool is_integrated,
         bool is_fma, bool is_f32, bool is_f16_accumulate);
 bwd_config_t *choose_bwd_config(compute::gpu_arch_t arch, dim_t head_size,
-        dim_t seq, bool is_thin_q, bool is_quantized, bool is_integrated,
-        bool is_fma, bool is_f32);
+        dim_t qry, dim_t seq, bool is_thin_q, bool is_quantized,
+        bool is_integrated, bool is_fma, bool is_f32);
 dim_t round_up_seq_interval(dim_t seq, compute::gpu_arch_t arch);
 
 dim_t nearest_conf_seq_interval(compute::gpu_arch_t arch, dim_t head_size,

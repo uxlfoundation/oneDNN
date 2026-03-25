@@ -173,18 +173,8 @@ status_t sdp_primitive_config_t::initial_check(
     VCHECK_SDP_PRIMITIVE(q_id != -1 && k_id != -1 && v_id != -1,
             status::unimplemented, "Q, K, V are not found");
 
-    dims q_dims = ltw(inputs[q_id]).vdims();
-    size_t q_ndims = q_dims.size();
-    const dim_t seq_len_q = q_dims[q_ndims - 2];
-    const dim_t head_size_qk = q_dims[q_ndims - 1];
-    const bool thinq = seq_len_q < 16;
-    const bool opt_prefill = head_size_qk <= 64 && !thinq;
-
-    VCHECK_SDP_PRIMITIVE(!is_f32 || (!has_genindex && !opt_prefill),
-            status::unimplemented,
-            "f32 fused sdpa supported for: causal mask or cases with "
-            "head_size(%d) <= 64, seq_len(%d) >= 16",
-            static_cast<int>(head_size_qk), static_cast<int>(seq_len_q));
+    VCHECK_SDP_PRIMITIVE(!is_f32 || has_genindex, status::unimplemented,
+            "f32 fused sdpa supported for causal mask only");
 
     // sdp_primitive only supports single scale value.
     if (scale) {

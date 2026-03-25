@@ -62,10 +62,6 @@ template <typename T, int dims>
 using local_accessor = ::sycl::accessor<T, dims,
         ::sycl::access::mode::read_write, ::sycl::access::target::local>;
 
-using ext_intel_gpu_slices = ::sycl::ext::intel::info::device::gpu_slices;
-using ext_intel_gpu_subslices_per_slice
-        = ::sycl::ext::intel::info::device::gpu_subslices_per_slice;
-
 inline const auto &cpu_selector_v = ::sycl::cpu_selector_v;
 inline const auto &gpu_selector_v = ::sycl::gpu_selector_v;
 

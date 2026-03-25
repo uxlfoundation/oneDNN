@@ -325,6 +325,7 @@ struct sdpa_dims_t {
 struct sdpa_tensors_t {
     memory m_query, m_mask, m_output;
     memory m_key_quantized, m_value_quantized, m_output_quantized;
+    memory m_dropout_mask;
     memory m_scale; // tested sdpa arg, can be host-side scalar
     memory m_scale_prim; // reference (prim) sdpa arg
 
@@ -1470,12 +1471,6 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
                     throw;
                 }
             }
-            if (sdpa_dropout_debug_enabled()) {
-                strm.wait();
-                std::fprintf(stderr,
-                        "[sdpa-ref][step] after_kq_scale_mask(score)\n");
-                print_mem(score, "REF after_kq_scale_mask score");
-            }
         } else {
             try {
                 bmm1_prim.execute(strm, bmm1_args);
@@ -1521,12 +1516,8 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
         }
         if (sdpa_dropout_debug_enabled()) {
             strm.wait();
-            std::fprintf(stderr,
-                    "[sdpa-ref][step] after_softmax_dropout(score2)\n");
             print_mem(score2, "REF after_softmax_dropout score2");
             if (p.dropout.enabled() && p.dropout.has_output_mask()) {
-                std::fprintf(stderr,
-                        "[sdpa-ref][step] after_softmax_dropout(mask)\n");
                 print_mem(softmax_args[DNNL_ARG_ATTR_DROPOUT_MASK],
                         "REF dropout_mask");
             }
@@ -1568,11 +1559,6 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
                         << ", what=" << e.what();
                 throw;
             }
-        }
-        if (sdpa_dropout_debug_enabled()) {
-            strm.wait();
-            std::fprintf(stderr, "[sdpa-ref][step] after_sv(dst_grouped)\n");
-            print_mem(grouped_output, "REF after_sv grouped_output");
         }
     };
 
@@ -2360,8 +2346,8 @@ public:
             if (p.dropout.has_output_mask()) {
                 auto dropout_mask_md = sdpa_quantized_pd.query_md(
                         dnnl::query::exec_arg_md, DNNL_ARG_ATTR_DROPOUT_MASK);
-                sdpa_args[DNNL_ARG_ATTR_DROPOUT_MASK]
-                        = memory(dropout_mask_md, eng);
+                t.m_dropout_mask = memory(dropout_mask_md, eng);
+                sdpa_args[DNNL_ARG_ATTR_DROPOUT_MASK] = t.m_dropout_mask;
             }
         }
 
@@ -2376,6 +2362,12 @@ public:
                           << p.dropout.has_output_mask();
             return;
         }
+
+#if DEBUG_PRINT_MEM
+        if (p.dropout.enabled() && p.dropout.has_output_mask()) {
+            print_mem(t.m_dropout_mask, "FUSED t.dropout_mask");
+        }
+#endif
 
         try {
             prim_sdpa_quant(p, t, eng, strm, t.m_query, t.m_key_quantized,

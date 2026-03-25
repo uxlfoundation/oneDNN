@@ -417,7 +417,7 @@ DEF_BLOCK2D_LOAD_STORE(float, uint, 8, 16, u32_m8k16v1, 16, 8)
                     uchar _td_drop = (_td_rng > (drop_threshold)); \
                     float _td_before \
                             = tile_access(t, _td_i0, _td_j, sg, br, bc, nbr); \
-                    float _td_after = _td_drop ? 0.f : (_td_before * (inv_q)); \
+                    float _td_after = _td_drop ? (_td_before * (inv_q)) : 0.f; \
                     tile_access(t, _td_i0, _td_j, sg, br, bc, nbr) \
                             = _td_after; \
                     tile_dropout_debug_print(_td_off_c, _td_i0, _td_j, \
@@ -444,7 +444,7 @@ DEF_BLOCK2D_LOAD_STORE(float, uint, 8, 16, u32_m8k16v1, 16, 8)
                     uchar _td_drop = (_td_rng > (drop_threshold)); \
                     float _td_before \
                             = tile_access(t, _td_i0, _td_j, sg, br, bc, nbr); \
-                    float _td_after = _td_drop ? 0.f : (_td_before * (inv_q)); \
+                    float _td_after = _td_drop ? (_td_before * (inv_q)) : 0.f; \
                     tile_access(t, _td_i0, _td_j, sg, br, bc, nbr) \
                             = _td_after; \
                     tile_dropout_debug_print(_td_off_c, _td_i0, _td_j, \

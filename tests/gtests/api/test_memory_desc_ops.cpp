@@ -97,6 +97,34 @@ TEST(memory_desc_properties_test, TestMemoryDescSize) {
     ASSERT_EQ(md2_blocked.get_size(), 8 * sizeof(float));
 }
 
+TEST(memory_desc_properties_test, TestMemoryDescSizeSubByte) {
+    using dt = memory::data_type;
+
+    const memory::dim M = 10;
+    const memory::dim K = 256;
+    const size_t nelems = static_cast<size_t>(M * K);
+    const size_t ref_size = (nelems + 1) / 2;
+
+    const std::vector<dt> sub_byte_types
+            = {dt::s4, dt::u4, dt::f4_e2m1, dt::f4_e3m0};
+
+    for (auto data_type : sub_byte_types) {
+        auto md = memory::desc({M, K}, data_type, fmt::ab);
+        ASSERT_EQ(md.get_size(), ref_size) << "Dense 2D size mismatch for dt="
+                                           << static_cast<int>(data_type);
+    }
+
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    const int ngroups = 3;
+    for (auto data_type : sub_byte_types) {
+        auto md = memory::desc::grouped({M, K}, data_type, 0, ngroups);
+        ASSERT_EQ(md.get_size(0), ref_size)
+                << "Grouped size(0) mismatch for dt="
+                << static_cast<int>(data_type);
+    }
+#endif
+}
+
 } // namespace properties
 
 namespace reshape {

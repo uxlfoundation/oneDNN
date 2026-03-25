@@ -466,8 +466,8 @@ status_t grouped_micro_gemm_t::execute(const exec_ctx_t &ctx) const {
     const bool with_wei_scales = pd()->wei_quant_.with_scale();
     const bool with_wei_zero_points = pd()->wei_quant_.with_zp();
 
-    int ldsrcq = 0;
-    int ldweiq = 0;
+    dim_t ldsrcq = 0;
+    dim_t ldweiq = 0;
 
     if (with_src_scales || with_src_zero_points) {
         const memory_desc_t *src_quant_md = with_src_scales
@@ -483,12 +483,12 @@ status_t grouped_micro_gemm_t::execute(const exec_ctx_t &ctx) const {
         ldweiq = static_cast<int>(
                 wei_quant_md->format_desc.blocking.strides[1]);
     }
-    int m_all = static_cast<int>(dst_md->dims[dst_md->ndims - 2]);
-    int n = static_cast<int>(dst_md->dims[dst_md->ndims - 1]);
-    int k = static_cast<int>(src_md->dims[src_md->ndims - 1]);
+    dim_t m_all = dst_md->dims[dst_md->ndims - 2];
+    dim_t n = dst_md->dims[dst_md->ndims - 1];
+    dim_t k = src_md->dims[src_md->ndims - 1];
 
-    int ldsrc = static_cast<int>(src_md->dims[src_md->ndims - 1]);
-    int lddst = static_cast<int>(dst_md->dims[dst_md->ndims - 1]);
+    dim_t ldsrc = src_md->dims[src_md->ndims - 1];
+    dim_t lddst = dst_md->dims[dst_md->ndims - 1];
     const dims_t &wei_strides_ = wei_md->format_desc.blocking.strides;
     compute::int64x4_t wei_strides
             = {static_cast<int64_t>(wei_strides_[wei_md->ndims - 3]),

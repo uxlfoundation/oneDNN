@@ -720,9 +720,17 @@ static std::vector<bwd_config_record_t> sorted_bwd_configs = []() {
         {{compute::gpu_arch_t::xe2, 64, integrated},  { 16, 32, 16, 16, 32, 32, 2, 4, 4, 2, 2, 4 }},
         {{compute::gpu_arch_t::xe2, 128, integrated}, { 16, 32, 16, 16, 32, 32, 4, 8, 8, 4, 4, 8 }},
 
-        {{compute::gpu_arch_t::xe2, 32},  { 16, 64, 16, 16, 32, 32, 2, 2, 2, 2, 1, 4 }},
+        {{compute::gpu_arch_t::xe2, 32},       { 16, 64, 16, 16, 32, 32, 2, 2, 2, 2, 1, 4 }},
+        {{compute::gpu_arch_t::xe2, 32, 128},  { 16, 16, 16, 16, 16, 16, 4, 4, 2, 4, 2, 4 }},
+        {{compute::gpu_arch_t::xe2, 32, 196},  { 16, 16, 16, 16, 16, 32, 1, 2, 2, 1, 2, 1 }},
         {{compute::gpu_arch_t::xe2, 64},  { 16, 32, 16, 16, 32, 32, 2, 4, 4, 2, 2, 4 }},
-        {{compute::gpu_arch_t::xe2, 128}, { 16, 32, 16, 16, 32, 32, 4, 8, 8, 4, 4, 8 }},
+        {{compute::gpu_arch_t::xe2, 64, 50},   { 16, 16, 16, 16, 32, 32, 1, 4, 4, 1, 2, 2 }},
+        {{compute::gpu_arch_t::xe2, 64, 64},   { 16, 16, 16, 32, 32, 32, 2, 4, 4, 1, 2, 2}},
+        {{compute::gpu_arch_t::xe2, 64, 65},   { 16, 16, 16, 16, 16, 32, 2, 4, 4, 2, 4, 2 }},
+        {{compute::gpu_arch_t::xe2, 64, 128},  { 16, 16, 32, 32, 16, 16, 4, 4, 2, 2, 4, 4 }},
+        {{compute::gpu_arch_t::xe2, 64, 512},  { 16, 16, 16, 32, 16, 16, 4, 4, 4, 2, 4, 4 }},
+        {{compute::gpu_arch_t::xe2, 88},  { 16, 16, 16, 32, 32, 32, 2, 8, 8, 1, 4, 4 }},
+        {{compute::gpu_arch_t::xe2, 128}, { 16, 16, 16, 16, 32, 32, 2, 8, 8, 2, 4, 4 }},
     };
     // clang-format on
 
@@ -732,16 +740,24 @@ static std::vector<bwd_config_record_t> sorted_bwd_configs = []() {
 }();
 
 bwd_config_t *choose_bwd_config(compute::gpu_arch_t arch, dim_t head_size,
-        dim_t seq, bool is_thin_q, bool is_quantized, bool is_integrated,
-        bool is_fma, bool is_f32) {
+        dim_t qry, dim_t seq, bool is_thin_q, bool is_quantized,
+        bool is_integrated, bool is_fma, bool is_f32) {
+    // limit configs to tuned architectures and problem sizes
+    if (arch >= compute::gpu_arch_t::xe3) return nullptr;
+    if (compute::gpu_arch_t::xe2 == arch && is_integrated) return nullptr;
+    if (compute::gpu_arch_t::xe2 == arch
+            && (seq == qry && seq <= 128 && head_size >= 64)) {
+        return nullptr;
+    }
+    if (arch == compute::gpu_arch_t::xe_hpc && (qry < 256 && head_size > 32)) {
+        return nullptr;
+    }
+
     const bool is_f16_accumulate = false;
-    compute::gpu_arch_t arch_query = (arch >= compute::gpu_arch_t::xe3)
-            ? compute::gpu_arch_t::xe2
-            : arch;
     property query_properties = set_properties(is_thin_q, is_quantized,
             is_integrated, is_fma, is_f32, is_f16_accumulate);
 
-    config_query_t query(arch_query, static_cast<int>(head_size),
+    config_query_t query(arch, static_cast<int>(head_size),
             static_cast<int>(seq), query_properties);
     auto it = find(begin(sorted_bwd_configs), end(sorted_bwd_configs), query);
     if (it != end(sorted_bwd_configs)) {

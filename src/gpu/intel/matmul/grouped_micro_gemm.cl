@@ -150,14 +150,15 @@ void load_wei_attr_scales(wei_attr_scales_tile_type *tile,
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE)))
 __attribute__((reqd_work_group_size(ugemm_grouped_sg_per_wg_m * SUBGROUP_SIZE,
         ugemm_grouped_sg_per_wg_n, ugemm_grouped_sg_per_wg_k))) kernel void
-grouped_micro_gemm(const global SRC_DATA_T *src, int ldsrc,
+grouped_micro_gemm(const global SRC_DATA_T *src, long ldsrc,
         const global WEI_DATA_T *wei, long4 wei_strides, global DST_DATA_T *dst,
-        int lddst, const global int *src_offsets, const global int *dst_offsets,
+        long lddst, const global int *src_offsets,
+        const global int *dst_offsets,
         const global SRC_SCALES_DATA_T *src_attr_scales,
-        const global SRC_ZP_DATA_T *src_attr_zp, const int ldsrcq,
+        const global SRC_ZP_DATA_T *src_attr_zp, const long ldsrcq,
         const global WEI_SCALES_DATA_T *wei_attr_scales,
-        const global WEI_ZP_DATA_T *wei_attr_zp, const int ldweiq, int n, int k,
-        const global BIA_DATA_T *bias) {
+        const global WEI_ZP_DATA_T *wei_attr_zp, const long ldweiq,
+        const long n, const long k, const global BIA_DATA_T *bias) {
 #if WITH_SLM
     local char slm[ugemm_grouped_slm_size];
 #else

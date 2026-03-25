@@ -52,16 +52,17 @@ bool postOpsBinaryPostPrefetchIgnoreRemEnabled() {
 
 // Return cache settings override for binary post-op matrix loads (not prefetch).
 // Controlled by BINARY_POST_LOAD_CACHING env variable.
-// Values: default | l1c_l3c | l1uc_l3c | l1uc_l3uc | l1c_l3uc
-// If unset or "default", no override is applied (returns CacheSettingsLSC::Default as sentinel).
+// Values: auto | l1c_l3c | l1uc_l3c | l1uc_l3uc | l1c_l3uc
+// If unset, "" or "auto", no override is applied (default nGen behavior).
 static bool getBinaryPostLoadCaching(CacheSettingsLSC &out) {
     const char *env = std::getenv("BINARY_POST_LOAD_CACHING");
     if (env == nullptr || env[0] == '\0') return false;
+    if (strcmp(env, "auto")      == 0) return false;
     if (strcmp(env, "l1c_l3c")   == 0) { out = CacheSettingsLSC::L1C_L3C;   return true; }
     if (strcmp(env, "l1uc_l3c")  == 0) { out = CacheSettingsLSC::L1UC_L3C;  return true; }
     if (strcmp(env, "l1uc_l3uc") == 0) { out = CacheSettingsLSC::L1UC_L3UC; return true; }
     if (strcmp(env, "l1c_l3uc")  == 0) { out = CacheSettingsLSC::L1C_L3UC;  return true; }
-    return false; // "default" or unrecognized — no override
+    return false; // unrecognized — no override
 }
 
 }
@@ -363,12 +364,12 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
         auto CO_prefetch_strategy = CO_strategy;
         CO_prefetch_strategy.prefetch = true;
 
-        // Override caching policy for prefetch. Default (inherited from CO_strategy) is L1C_L3C.
-        // BINARY_POST_PREFETCH_L3ONLY=1 L1UC_L3C (bypass L1, fill only L3).
+        // Override caching policy for prefetch via BINARY_POST_PREFETCH_CACHING.
+        // Values: l1c_l3c | l1uc_l3c | l1uc_l3uc | l1c_l3uc | auto (unset = default nGen).
         {
-            const char *env_l3 = std::getenv("BINARY_POST_PREFETCH_L3ONLY");
-            if (env_l3 != nullptr && env_l3[0] == '1' && env_l3[1] == '\0')
-                CO_prefetch_strategy.cachingR = CacheSettingsLSC::L1UC_L3C;
+            CacheSettingsLSC prefetchCaching {};
+            if (getBinaryPostPrefetchCaching(prefetchCaching))
+                CO_prefetch_strategy.cachingR = prefetchCaching;
         }
 
         RegisterLayout CO_prefetch_layout(hw, Tco, cor, coc, CO, CO_prefetch_strategy, false, false, false);

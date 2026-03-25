@@ -57,9 +57,19 @@ int getBinaryPostPrefetchKLoopLookahead() {
     return val;
 }
 
-bool getBinaryPostPrefetchL3Only() {
-    const char *env = std::getenv("BINARY_POST_PREFETCH_L3ONLY");
-    return (env != nullptr) && (env[0] == '1') && (env[1] == '\0');
+// Return cache settings override for binary post-op prefetch.
+// Controlled by BINARY_POST_PREFETCH_CACHING env variable.
+// Values: auto | l1c_l3c | l1uc_l3c | l1uc_l3uc | l1c_l3uc
+// If unset, "" or "auto", no override is applied (default nGen prefetch behavior).
+bool getBinaryPostPrefetchCaching(CacheSettingsLSC &out) {
+    const char *env = std::getenv("BINARY_POST_PREFETCH_CACHING");
+    if (env == nullptr || env[0] == '\0') return false;
+    if (strcmp(env, "auto")      == 0) return false;
+    if (strcmp(env, "l1c_l3c")   == 0) { out = CacheSettingsLSC::L1C_L3C;   return true; }
+    if (strcmp(env, "l1uc_l3c")  == 0) { out = CacheSettingsLSC::L1UC_L3C;  return true; }
+    if (strcmp(env, "l1uc_l3uc") == 0) { out = CacheSettingsLSC::L1UC_L3UC; return true; }
+    if (strcmp(env, "l1c_l3uc")  == 0) { out = CacheSettingsLSC::L1C_L3UC;  return true; }
+    return false; // unrecognized — no override
 }
 
 bool kLoopBinaryPostPrefetchIgnoreRemEnabled() {
@@ -1356,12 +1366,13 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
     std::vector<bool> binaryKLoopPrefetchGuardRemN;
 
     if (binaryPostPrefetchKLoopEnabled() && problem.hasBinaryPostOp()) {
-        bool prefetchL3Only = getBinaryPostPrefetchL3Only();
+        CacheSettingsLSC prefetchCaching {};
+        bool hasPrefetchCaching = getBinaryPostPrefetchCaching(prefetchCaching);
         bool ignoreRem = kLoopBinaryPostPrefetchIgnoreRemEnabled();
         binaryKLoopPrefetchLookahead = getBinaryPostPrefetchKLoopLookahead();
         VDEBUGINFO(4, primitive, postops,
-            "MY: kloop binary prefetch init, lookahead=%d l3only=%d",
-            binaryKLoopPrefetchLookahead, int(prefetchL3Only));
+            "MY: kloop binary prefetch init, lookahead=%d hasCachingOverride=%d",
+            binaryKLoopPrefetchLookahead, int(hasPrefetchCaching));
         VDEBUGINFO(4, primitive, postops,
             "MY: kloop binary prefetch ignore_rem=%d",
             int(ignoreRem));
@@ -1423,8 +1434,8 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
             }
 
             CO_strategy.prefetch = true;
-            if (prefetchL3Only)
-                CO_strategy.cachingR = CacheSettingsLSC::L1UC_L3C;
+            if (hasPrefetchCaching)
+                CO_strategy.cachingR = prefetchCaching;
 
             auto &layout = binaryKLoopPrefetchLayouts[i];
             auto &addrs = binaryKLoopPrefetchAddrs[i];

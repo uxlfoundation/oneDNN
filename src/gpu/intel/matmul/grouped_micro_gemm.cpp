@@ -180,18 +180,17 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
         strategyGRFs_ = strat.GRFs;
     };
 
-    auto sg_size = dev_info->min_subgroup_size();
     try {
         gemm_ = selectGEMM(opts, hw_info, sizes, problem, {}, strat_override);
     } catch (const std::runtime_error &) {
         std::vector<StrategyRequirement> reqs;
         int m_unroll = problem.Ta.isInt4()
                         && dev_info->gpu_arch() > compute::gpu_arch_t::xe_hpc
-                ? sg_size / problem.Ta
-                : sg_size;
+                ? sg_size_ / problem.Ta
+                : sg_size_;
         int max_n_unroll = problem.Ta.isInt4()
                         && dev_info->gpu_arch() > compute::gpu_arch_t::xe_hpc
-                ? 16 * problem.Ta
+                ? sg_size_ * problem.Ta
                 : 32;
 
         reqs.push_back(StrategyRequirement::UnrollM == m_unroll);
@@ -213,11 +212,11 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
 
     /* Generate microkernel shims */
     ShimOptions shimOptions;
-    shimOptions.subgroupSize = sg_size;
+    shimOptions.subgroupSize = sg_size_;
     shimOptions.useTileOps = true;
     shimOptions.decorator = "grouped";
 
-    kernel_ctx_.define_int("SUBGROUP_SIZE", sg_size);
+    kernel_ctx_.define_int("SUBGROUP_SIZE", sg_size_);
     kernel_ctx_.add_custom_header("gemm_grouped.h",
             generateShim(gemm_, HostLanguage::OpenCL_C, shimOptions));
 

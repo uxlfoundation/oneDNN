@@ -742,7 +742,7 @@ status_t pd_t::init_GEMMProblem(
     // Disable bdpas with unsupported k dim.
     // TODO: Enable 2D block, masking scale loads.
     if (problem.nativeBDPAS(hw)) {
-        if ((!(problem.Ta.isF4() || problem.Tb.isF4()) || k % 64 == 0))
+        if (((!problem.Ta.isF4() || !problem.Tb.isF4()) || k % 64 == 0))
             problem.bdpasEnabled = true;
     }
 

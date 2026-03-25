@@ -270,7 +270,9 @@ struct GEMMProblem : public CommonProblem {
 
 
     bool nativeBDPAS(ngen::HW hw) const {
-        return (((Ta == Tb) && (Ta.isF8() || Ta == Type::f16 || Ta == Type::bf16) && hw >= ngen::Core::XE3P_35_10) || (Ta.isF4() && Tb.isF4() && hw >= ngen::Core::XE3P_35_11));
+        return ((Ta.isF4() || Ta.isF8() || Ta == Type::f16 || Ta == Type::bf16) &&
+                (Tb.isF4() || Tb.isF8() || Tb == Type::f16 || Tb == Type::bf16) && 
+        hw >= ngen::Core::XE3P_35_10);
     }
     bool forceLateQuant(ngen::HW hw, int minOPCount) const {
         bool fp4_fp8_dpas = ((Ta.isF8() && Tb.isF8()) || (Ta.isF4() && Tb.isF4())) && nativeBDPAS(hw);
@@ -370,8 +372,13 @@ void GEMMProblem::autoTypeConversions(ngen::HW hw, bool systolicAvailable)
     }
     if (hw < HW::XE3P_35_11 || !systolicAvailable || forceUpconvertQuant(hw))
     {
-        if (Ta.isF4()) Ta = Type::f16;
-        if (Tb.isF4()) Tb = Type::f16;
+        if ( hw == HW::XE3P_35_10){
+            if (Ta.isF4()) Ta = Type::bf8;
+            if (Tb.isF4()) Tb = Type::bf8;
+        } else {
+            if (Ta.isF4()) Ta = Type::f16;
+            if (Tb.isF4()) Tb = Type::f16;
+        }
     }
 
     if (!systolicAvailable && Tc == Type::f32) {

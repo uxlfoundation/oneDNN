@@ -1480,11 +1480,11 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
                               << ", what=" << e.what();
                 throw;
             }
-            if (sdpa_dropout_debug_enabled()) {
+            /*if (sdpa_dropout_debug_enabled()) {
                 strm.wait();
                 std::fprintf(stderr, "[sdpa-ref][step] after_kq(score)\n");
                 print_mem(score, "REF after_kq score");
-            }
+            }*/
         }
 
         // softmax

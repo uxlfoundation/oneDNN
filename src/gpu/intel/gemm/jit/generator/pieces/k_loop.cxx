@@ -1432,8 +1432,12 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
 
             // Full-tile mode: prefetch unrollY rows by pre-allocating separate address sets.
             // For matrix post-op (row && column), unrollY = unroll[LoopM] (row-major C) or [LoopN].
+            // Only effective for Block/Block2D — Scattered generates too many in-flight sends
+            // (all sharing SBID $0), overflowing the LSC request queue across concurrent WGs.
+            bool scatteredAccess = (CO_strategy.accessType == AccessType::Scattered ||
+                                    CO_strategy.accessType == AccessType::ChannelScattered);
             auto LoopY = globalCM ? LoopN : LoopM;
-            int rowCount = (fullTile && matrix) ? strategy.unroll[LoopY] : 1;
+            int rowCount = (fullTile && matrix && !scatteredAccess) ? strategy.unroll[LoopY] : 1;
 
                 VDEBUGINFO(4, primitive, postops,
                     "MY: kloop binary prefetch candidate i=%d row=%d col=%d rowAdj=%d colAdj=%d padded=%d newDP=%d remHM=%d remHN=%d rowCount=%d",

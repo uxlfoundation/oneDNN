@@ -362,8 +362,13 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
 
     // Full-tile mode: issue prefetches for all unrollY rows of the matrix tile.
     // Uses the same per-row layout (cor x coc after adjustment) iterated row-by-row.
+    // Only effective for Block/Block2D access — Scattered generates too many in-flight sends
+    // (all sharing SBID $0), overflowing the LSC request queue across concurrent WGs.
     bool fullTile = getBinaryPostPrefetchFullTile();
-    int prefetchRowCount = (fullTile && matrix) ? strategy.unroll[globalCM ? LoopN : LoopM] : 1;
+    bool scatteredAccess = (CO_strategy.accessType == AccessType::Scattered ||
+                            CO_strategy.accessType == AccessType::ChannelScattered);
+    int prefetchRowCount = (fullTile && matrix && !scatteredAccess)
+        ? strategy.unroll[globalCM ? LoopN : LoopM] : 1;
 
     if (binaryPostPrefetchEnabled() && !kloopPrefetchActive && CO_strategy.newDP && (ignoreRem || (!remR && !remC))) {
         auto CO_prefetch_strategy = CO_strategy;

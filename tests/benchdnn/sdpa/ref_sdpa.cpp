@@ -42,8 +42,8 @@ namespace sdpa {
 namespace {
 
 // Execute a matmul primitive on CPU: dst = src x wei.
-void exec_matmul(dnnl_engine_t eng, dnnl_stream_t strm,
-        const dnn_mem_t &src, const dnn_mem_t &wei, dnn_mem_t &dst) {
+void exec_matmul(dnnl_engine_t eng, dnnl_stream_t strm, const dnn_mem_t &src,
+        const dnn_mem_t &wei, dnn_mem_t &dst) {
     dnnl_primitive_desc_t pd {};
     DNN_SAFE_V(dnnl_matmul_primitive_desc_create(
             &pd, eng, src.md_, wei.md_, nullptr, dst.md_, nullptr));
@@ -95,9 +95,8 @@ dnn_mem_t make_3d(dnnl_engine_t eng, int64_t d0, int64_t d1, int64_t d2) {
 // GQA/MQA helper: replicate KV-heads so their count matches Q-heads.
 // `src` has [outer_batch * kv_heads, ...] rows, `dst` has
 // [outer_batch * q_heads, ...] rows. Each KV-head is copied `groups` times.
-void expand_kv_heads(const dnn_mem_t &src, dnn_mem_t &dst,
-        int64_t outer_batch, int64_t q_heads, int64_t kv_heads,
-        int64_t head_elems) {
+void expand_kv_heads(const dnn_mem_t &src, dnn_mem_t &dst, int64_t outer_batch,
+        int64_t q_heads, int64_t kv_heads, int64_t head_elems) {
     const float *s = static_cast<float *>(src);
     float *d = static_cast<float *>(dst);
     const int64_t groups = q_heads / kv_heads;
@@ -105,8 +104,7 @@ void expand_kv_heads(const dnn_mem_t &src, dnn_mem_t &dst,
         for (int64_t kvh = 0; kvh < kv_heads; kvh++) {
             const float *head = s + (ob * kv_heads + kvh) * head_elems;
             for (int64_t g = 0; g < groups; g++) {
-                float *out
-                        = d + (ob * q_heads + kvh * groups + g) * head_elems;
+                float *out = d + (ob * q_heads + kvh * groups + g) * head_elems;
                 std::memcpy(out, head, head_elems * sizeof(float));
             }
         }
@@ -191,8 +189,7 @@ void compute_ref(
         for (int64_t b = 0; b < MB; b++)
             for (int64_t q = 0; q < SQ; q++)
                 for (int64_t k = 0; k < SK; k++) {
-                    const bool masked
-                            = (prb->mask_type == MASK_CAUSAL_TOP_LEFT)
+                    const bool masked = (prb->mask_type == MASK_CAUSAL_TOP_LEFT)
                             ? (k > q)
                             : (k > q + (SK - SQ));
                     if (masked)

@@ -58,8 +58,8 @@ struct settings_t : public base_settings_t {
 
     // Data types: Q, K, V, DST (4 entries).
     std::vector<std::vector<dnnl_data_type_t>> dt {{dnnl_f32}};
-    std::vector<std::string> qtag {tag::abx}, ktag {tag::abx},
-            vtag {tag::abx}, dtag {tag::abx};
+    std::vector<std::string> qtag {tag::abx}, ktag {tag::abx}, vtag {tag::abx},
+            dtag {tag::abx};
     std::vector<mask_type_t> mask_type {MASK_NONE};
     std::vector<scale_type_t> scale_type {SCALE_NONE};
     std::vector<dnnl_dim_t> kv_head_number {0};
@@ -73,9 +73,8 @@ struct settings_t : public base_settings_t {
 
     bool has_single_setup() const override {
         return dt.size() == 1 && qtag.size() == 1 && ktag.size() == 1
-                && vtag.size() == 1 && dtag.size() == 1
-                && mask_type.size() == 1 && scale_type.size() == 1
-                && kv_head_number.size() == 1
+                && vtag.size() == 1 && dtag.size() == 1 && mask_type.size() == 1
+                && scale_type.size() == 1 && kv_head_number.size() == 1
                 && base_settings_t::has_single_setup();
     }
 };
@@ -101,13 +100,13 @@ struct prb_t : public prb_vdims_t {
         SAFE_V(s.has_single_setup() ? OK : FAIL);
     }
 
-    prb_t(const prb_vdims_t &prb_vdims,
-            const std::vector<dnnl_data_type_t> &dt, const std::string &qtag,
-            const std::string &ktag, const std::string &vtag,
-            const std::string &dtag, mask_type_t mask_type,
-            scale_type_t scale_type, dnnl_dim_t kv_head_number,
-            const attr_t &attr, const thr_ctx_t &ctx_init,
-            const thr_ctx_t &ctx_exe, const impl_filter_t &impl_filter)
+    prb_t(const prb_vdims_t &prb_vdims, const std::vector<dnnl_data_type_t> &dt,
+            const std::string &qtag, const std::string &ktag,
+            const std::string &vtag, const std::string &dtag,
+            mask_type_t mask_type, scale_type_t scale_type,
+            dnnl_dim_t kv_head_number, const attr_t &attr,
+            const thr_ctx_t &ctx_init, const thr_ctx_t &ctx_exe,
+            const impl_filter_t &impl_filter)
         : prb_vdims_t(prb_vdims)
         , dt(dt)
         , qtag(qtag)
@@ -185,9 +184,7 @@ struct prb_t : public prb_vdims_t {
     const dims_t &k_dims() const { return vdims[1]; }
     const dims_t &v_dims() const { return vdims[2]; }
 
-    bool with_mask() const {
-        return mask_type == MASK_BUFFER;
-    }
+    bool with_mask() const { return mask_type == MASK_BUFFER; }
     bool with_causal_mask() const {
         return mask_type == MASK_CAUSAL_TOP_LEFT
                 || mask_type == MASK_CAUSAL_BOTTOM_RIGHT;

@@ -78,8 +78,7 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> prb_t::get_md(int arg) const {
         case DNNL_ARG_SRC_2: // Values
             return dnn_mem_t::init_md(ndims, v_dims().data(), v_dt(), vtag);
         case DNNL_ARG_DST:
-            return dnn_mem_t::init_md(
-                    ndims, dst_dims.data(), dst_dt(), dtag);
+            return dnn_mem_t::init_md(ndims, dst_dims.data(), dst_dt(), dtag);
         case DNNL_ARG_SHIFT: // Attention mask
             if (with_mask())
                 return dnn_mem_t::init_md(

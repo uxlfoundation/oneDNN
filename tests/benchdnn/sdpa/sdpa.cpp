@@ -32,9 +32,8 @@
 
 namespace sdpa {
 
-benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_md(
-        int ndims, const dims_t &dims, dnnl_data_type_t dt,
-        const std::string &tag) {
+benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_md(int ndims,
+        const dims_t &dims, dnnl_data_type_t dt, const std::string &tag) {
     return dnn_mem_t::init_md(ndims, dims.data(), dt, tag);
 }
 
@@ -79,11 +78,10 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
     auto dnnl_attr = make_benchdnn_dnnl_wrapper(
             create_dnnl_attr(prb->attr, attr_args_t(), prb->ndims));
 
-    TIME_C_PD(DNN_SAFE_STATUS(sdpa_primitive_desc_create(
-            &init_pd_args.pd, init_pd_args.engine, q_d, k_d, v_d, dst_d,
+    TIME_C_PD(DNN_SAFE_STATUS(sdpa_primitive_desc_create(&init_pd_args.pd,
+            init_pd_args.engine, q_d, k_d, v_d, dst_d,
             prb->with_mask() ? (const_dnnl_memory_desc_t)mask_d : nullptr,
-            scale_d, invert, kv_hn, attn_mask_type_val,
-            softmax_alg, dnnl_attr,
+            scale_d, invert, kv_hn, attn_mask_type_val, softmax_alg, dnnl_attr,
             /* kq_attr = */ nullptr, /* vs_attr = */ nullptr)));
 
     return dnnl_success;

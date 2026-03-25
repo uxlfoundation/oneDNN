@@ -41,8 +41,8 @@ void check_correctness(
     for_(const auto &i_ctx_init : s.ctx_init)
     for (const auto &i_ctx_exe : s.ctx_exe) {
         const prb_t prb(s.prb_vdims, i_dt, i_qtag, i_ktag, i_vtag, i_dtag,
-                i_mask_type, i_scale_type, i_kv_head_number, i_attr,
-                i_ctx_init, i_ctx_exe, s.impl_filter);
+                i_mask_type, i_scale_type, i_kv_head_number, i_attr, i_ctx_init,
+                i_ctx_exe, s.impl_filter);
         if (s.pattern && !match_regex(prb.str(), s.pattern)) return;
 
         task_executor.submit(prb, s.perf_template, createit, checkit, doit);
@@ -108,8 +108,7 @@ int bench(int argc, char **argv) {
                 || parse_vector_option(s.mask_type, def.mask_type,
                         str2mask_type, argv[0], "mask_type", help_mask_type)
                 || parse_vector_option(s.scale_type, def.scale_type,
-                        str2scale_type, argv[0], "scale_type",
-                        help_scale_type)
+                        str2scale_type, argv[0], "scale_type", help_scale_type)
                 || parse_vector_option(s.kv_head_number, def.kv_head_number,
                         atoi, argv[0], "kv_head_number", help_kv_head_number)
                 || parse_driver_shared_settings(s, def, argv[0]);

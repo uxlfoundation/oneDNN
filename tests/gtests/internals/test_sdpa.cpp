@@ -2050,11 +2050,17 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
 template <typename T>
 void check_memory(dnnl::stream &strm, memory &gold, memory &test,
         float max_diff_threshold = 0.03f, float fthreshold = 0.001466) {
+    strm.wait();
+
+#if DEBUG_PRINT_MEM
+    print_mem(gold, "Reference (Gold) Output ~");
+    print_mem(test, "FUSED (Test) Output ~");
+#endif
+
     T *mapped_ptr_gold = nullptr;
     T *mapped_ptr_test = nullptr;
     mapped_ptr_gold = (T *)gold.map_data();
     mapped_ptr_test = (T *)test.map_data();
-    strm.wait();
 
     auto dims = gold.get_desc().get_dims();
     auto strides = gold.get_desc().get_strides();
@@ -2384,6 +2390,7 @@ public:
             return;
         }
 
+
 #if 0
     if (::getenv("SKIP_CHECK")) return;
 #endif
@@ -2416,6 +2423,7 @@ public:
         else if (t.m_output.get_desc().get_data_type() == mdt::f32)
             check_memory<float_t>(strm, t.m_output, t.m_output_quantized,
                     max_diff_threshold, fthreshold);
+
 
 #if 0
     for (auto &kv : hist) {

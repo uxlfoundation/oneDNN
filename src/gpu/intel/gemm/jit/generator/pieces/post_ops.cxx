@@ -360,7 +360,19 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
     
     bool ignoreRem = postOpsBinaryPostPrefetchIgnoreRemEnabled();
 
-    if (binaryPostPrefetchEnabled() && !kloopPrefetchActive && CO_strategy.newDP && (ignoreRem || (!remR && !remC))) {
+    // Full-tile mode: expand prefetch to unrollM x unrollN for matrix post-op,
+    // so a single Block2D covers the entire tile instead of a 1-row slice.
+    bool fullTile = getBinaryPostPrefetchFullTile();
+    auto cor_pf  = (fullTile && matrix) ? strategy.unroll[LoopM] : cor;
+    auto coc_pf  = (fullTile && matrix) ? strategy.unroll[LoopN] : coc;
+    bool remR_pf = (fullTile && matrix)
+        ? (!CO_strategy.padded && strategy.remHandling[LoopM] != RemainderHandling::Ignore)
+        : remR;
+    bool remC_pf = (fullTile && matrix)
+        ? (!CO_strategy.padded && strategy.remHandling[LoopN] != RemainderHandling::Ignore)
+        : remC;
+
+    if (binaryPostPrefetchEnabled() && !kloopPrefetchActive && CO_strategy.newDP && (ignoreRem || (!remR_pf && !remC_pf))) {
         auto CO_prefetch_strategy = CO_strategy;
         CO_prefetch_strategy.prefetch = true;
 
@@ -372,7 +384,7 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
                 CO_prefetch_strategy.cachingR = prefetchCaching;
         }
 
-        RegisterLayout CO_prefetch_layout(hw, Tco, cor, coc, CO, CO_prefetch_strategy, false, false, false);
+        RegisterLayout CO_prefetch_layout(hw, Tco, cor_pf, coc_pf, CO, CO_prefetch_strategy, false, false, false);
         std::vector<GRFRange> CO_prefetch_addrs;
         allocAddrRegs(CO_prefetch_addrs, CO_prefetch_layout, state);
         setupAddr(CO_prefetch_addrs, base, CO_prefetch_layout, ld, strategy, state);

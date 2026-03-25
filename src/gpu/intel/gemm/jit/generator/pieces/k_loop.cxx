@@ -77,6 +77,13 @@ bool kLoopBinaryPostPrefetchIgnoreRemEnabled() {
     return (env != nullptr) && (env[0] == '1') && (env[1] == '\0');
 }
 
+// BINARY_POST_PREFETCH_FULL_TILE=1: prefetch full unrollM x unrollN tile instead of
+// the matrix-loop-adjusted slice (e.g. 1 x unrollN for row-major C).
+bool getBinaryPostPrefetchFullTile() {
+    const char *env = std::getenv("BINARY_POST_PREFETCH_FULL_TILE");
+    return (env != nullptr) && (env[0] == '1') && (env[1] == '\0');
+}
+
 }
 
 
@@ -1369,10 +1376,11 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
         CacheSettingsLSC prefetchCaching {};
         bool hasPrefetchCaching = getBinaryPostPrefetchCaching(prefetchCaching);
         bool ignoreRem = kLoopBinaryPostPrefetchIgnoreRemEnabled();
+        bool fullTile = getBinaryPostPrefetchFullTile();
         binaryKLoopPrefetchLookahead = getBinaryPostPrefetchKLoopLookahead();
         VDEBUGINFO(4, primitive, postops,
-            "MY: kloop binary prefetch init, lookahead=%d hasCachingOverride=%d",
-            binaryKLoopPrefetchLookahead, int(hasPrefetchCaching));
+            "MY: kloop binary prefetch init, lookahead=%d hasCachingOverride=%d fullTile=%d",
+            binaryKLoopPrefetchLookahead, int(hasPrefetchCaching), int(fullTile));
         VDEBUGINFO(4, primitive, postops,
             "MY: kloop binary prefetch ignore_rem=%d",
             int(ignoreRem));
@@ -1416,19 +1424,31 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
             auto coc = column ? strategy.unroll[LoopN] : 1;
             bool remR = row && !CO_strategy.padded && strategy.remHandling[LoopM] != RemainderHandling::Ignore;
             bool remC = column && !CO_strategy.padded && strategy.remHandling[LoopN] != RemainderHandling::Ignore;
-            bool remBlocked = remR || remC;
+
+            // Full-tile mode: expand prefetch to unrollM x unrollN (both dimensions),
+            // overriding the matrix-loop-adjusted slice. Rem check covers both M and N.
+            auto cor_pf = (fullTile && matrix) ? strategy.unroll[LoopM] : cor;
+            auto coc_pf = (fullTile && matrix) ? strategy.unroll[LoopN] : coc;
+            bool remR_pf = (fullTile && matrix)
+                ? (!CO_strategy.padded && strategy.remHandling[LoopM] != RemainderHandling::Ignore)
+                : remR;
+            bool remC_pf = (fullTile && matrix)
+                ? (!CO_strategy.padded && strategy.remHandling[LoopN] != RemainderHandling::Ignore)
+                : remC;
+            bool remBlocked_pf = remR_pf || remC_pf;
 
                 VDEBUGINFO(4, primitive, postops,
-                    "MY: kloop binary prefetch candidate i=%d row=%d col=%d rowAdj=%d colAdj=%d padded=%d newDP=%d remHM=%d remHN=%d",
+                    "MY: kloop binary prefetch candidate i=%d row=%d col=%d rowAdj=%d colAdj=%d padded=%d newDP=%d remHM=%d remHN=%d fullTile=%d cor_pf=%d coc_pf=%d",
                     int(i), int(postOps.binaryRow[i]), int(postOps.binaryCol[i]), int(row), int(column),
                     int(CO_strategy.padded), int(CO_strategy.newDP),
-                    int(strategy.remHandling[LoopM]), int(strategy.remHandling[LoopN]));
+                    int(strategy.remHandling[LoopM]), int(strategy.remHandling[LoopN]),
+                    int(fullTile && matrix), cor_pf, coc_pf);
 
             // Keep parity with existing post-op prefetch guard.
-            if (!(CO_strategy.newDP && (ignoreRem || !remBlocked))) {
+            if (!(CO_strategy.newDP && (ignoreRem || !remBlocked_pf))) {
                 VDEBUGINFO(4, primitive, postops,
-                        "MY: kloop binary prefetch skip i=%d newDP=%d remR=%d remC=%d rowAdj=%d colAdj=%d padded=%d ignore_rem=%d",
-                        int(i), int(CO_strategy.newDP), int(remR), int(remC), int(row), int(column),
+                        "MY: kloop binary prefetch skip i=%d newDP=%d remR_pf=%d remC_pf=%d rowAdj=%d colAdj=%d padded=%d ignore_rem=%d",
+                        int(i), int(CO_strategy.newDP), int(remR_pf), int(remC_pf), int(row), int(column),
                         int(CO_strategy.padded), int(ignoreRem));
                 continue;
             }
@@ -1440,14 +1460,14 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
             auto &layout = binaryKLoopPrefetchLayouts[i];
             auto &addrs = binaryKLoopPrefetchAddrs[i];
 
-            layout = RegisterLayout(hw, problem.Tbinary[i], cor, coc, CO, CO_strategy, false, false, false);
+            layout = RegisterLayout(hw, problem.Tbinary[i], cor_pf, coc_pf, CO, CO_strategy, false, false, false);
             allocAddrRegs(addrs, layout, state);
             setupAddr(addrs, state.effBinary[i], layout, state.inputs.binaryLDs[i], strategy, state);
-                binaryKLoopPrefetchGuardRemM[i] = ignoreRem && remR;
-                binaryKLoopPrefetchGuardRemN[i] = ignoreRem && remC;
+                binaryKLoopPrefetchGuardRemM[i] = ignoreRem && remR_pf;
+                binaryKLoopPrefetchGuardRemN[i] = ignoreRem && remC_pf;
             VDEBUGINFO(4, primitive, postops,
-                    "MY: kloop binary prefetch armed i=%d row=%d col=%d remBlocked=%d guardM=%d guardN=%d",
-                    int(i), int(postOps.binaryRow[i]), int(postOps.binaryCol[i]), int(remBlocked),
+                    "MY: kloop binary prefetch armed i=%d row=%d col=%d remBlocked_pf=%d guardM=%d guardN=%d",
+                    int(i), int(postOps.binaryRow[i]), int(postOps.binaryCol[i]), int(remBlocked_pf),
                     int(binaryKLoopPrefetchGuardRemM[i]), int(binaryKLoopPrefetchGuardRemN[i]));
             binaryKLoopPrefetchActive = true;
         }

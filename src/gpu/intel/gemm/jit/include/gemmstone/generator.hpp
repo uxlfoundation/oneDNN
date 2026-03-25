@@ -461,7 +461,6 @@ protected:
     void storeMatrix(const GRFMultirange &src, const RegisterLayout &layout, const std::vector<ngen::GRFRange> &addrs, const CommonStrategy &strategy, CommonState &state);
     void atomicAddMatrixBlock(Type T, const ngen::GRF &src, const RegisterBlock &layout, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy, const ngen::GRFRange &addr, const CommonProblem &problem, const CommonStrategy &strategy, CommonState &state, bool series = false);
     void atomicAddMatrix(const GRFMultirange &src, const RegisterLayout &layout, const std::vector<ngen::GRFRange> &addrs, const CommonProblem &problem, const CommonStrategy &strategy, CommonState &state);
-
     // matrix_multiply.cxx
     void innerProductFMA(int h, int ha, int hb, int opCount, bool rem, const RegisterLayout &A_layout, const RegisterLayout &B_layout, const GRFMultirange &A_regs, const GRFMultirange &B_regs, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void outerProductFMA(int h, int ha, int hb, int opCount, bool rem, const RegisterLayout &A_layout, const RegisterLayout &B_layout, const GRFMultirange &A_regs, const GRFMultirange &B_regs, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);

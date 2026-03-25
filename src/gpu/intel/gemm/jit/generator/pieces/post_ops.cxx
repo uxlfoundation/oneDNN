@@ -360,19 +360,12 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
     
     bool ignoreRem = postOpsBinaryPostPrefetchIgnoreRemEnabled();
 
-    // Full-tile mode: expand prefetch to unrollM x unrollN for matrix post-op,
-    // so a single Block2D covers the entire tile instead of a 1-row slice.
+    // Full-tile mode: issue prefetches for all unrollY rows of the matrix tile.
+    // Uses the same per-row layout (cor x coc after adjustment) iterated row-by-row.
     bool fullTile = getBinaryPostPrefetchFullTile();
-    auto cor_pf  = (fullTile && matrix) ? strategy.unroll[LoopM] : cor;
-    auto coc_pf  = (fullTile && matrix) ? strategy.unroll[LoopN] : coc;
-    bool remR_pf = (fullTile && matrix)
-        ? (!CO_strategy.padded && strategy.remHandling[LoopM] != RemainderHandling::Ignore)
-        : remR;
-    bool remC_pf = (fullTile && matrix)
-        ? (!CO_strategy.padded && strategy.remHandling[LoopN] != RemainderHandling::Ignore)
-        : remC;
+    int prefetchRowCount = (fullTile && matrix) ? strategy.unroll[globalCM ? LoopN : LoopM] : 1;
 
-    if (binaryPostPrefetchEnabled() && !kloopPrefetchActive && CO_strategy.newDP && (ignoreRem || (!remR_pf && !remC_pf))) {
+    if (binaryPostPrefetchEnabled() && !kloopPrefetchActive && CO_strategy.newDP && (ignoreRem || (!remR && !remC))) {
         auto CO_prefetch_strategy = CO_strategy;
         CO_prefetch_strategy.prefetch = true;
 
@@ -384,23 +377,30 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
                 CO_prefetch_strategy.cachingR = prefetchCaching;
         }
 
-        RegisterLayout CO_prefetch_layout(hw, Tco, cor_pf, coc_pf, CO, CO_prefetch_strategy, false, false, false);
+        RegisterLayout CO_prefetch_layout(hw, Tco, cor, coc, CO, CO_prefetch_strategy, false, false, false);
         std::vector<GRFRange> CO_prefetch_addrs;
         allocAddrRegs(CO_prefetch_addrs, CO_prefetch_layout, state);
         setupAddr(CO_prefetch_addrs, base, CO_prefetch_layout, ld, strategy, state);
-        
-        // Apply lookahead offset if configured.
+
+        // Apply lookahead offset to advance to the target tile.
         int lookahead = getBinaryPostPrefetchLookahead();
         for (int la = 0; la < lookahead; la++) {
-            // Increment by stride to reach lookahead distance.
-            // Use ld stride (leading dimension) for row-wise lookahead advance.
             if (coColMajor == globalCM)
                 incAddr(CO_prefetch_addrs, ld, int(row), int(column), CO_prefetch_layout, strategy, state);
             else
                 incAddr(CO_prefetch_addrs, Tco.size(), int(row), int(column), CO_prefetch_layout, strategy, state);
         }
-        
-        prefetchMatrix(CO_prefetch_layout, CO_prefetch_addrs, strategy, state);
+
+        // Full-tile: loop over prefetchRowCount rows (addr is local temp, no restore needed).
+        for (int y = 0; y < prefetchRowCount; y++) {
+            prefetchMatrix(CO_prefetch_layout, CO_prefetch_addrs, strategy, state);
+            if (y + 1 < prefetchRowCount) {
+                if (coColMajor == globalCM)
+                    incAddr(CO_prefetch_addrs, ld, int(row), int(column), CO_prefetch_layout, strategy, state);
+                else
+                    incAddr(CO_prefetch_addrs, Tco.size(), int(row), int(column), CO_prefetch_layout, strategy, state);
+            }
+        }
         safeReleaseRanges(CO_prefetch_addrs, state);
     } else if (binaryPostPrefetchEnabled()) {
         VDEBUGINFO(4, primitive, postops,

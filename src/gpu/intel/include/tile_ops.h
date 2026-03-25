@@ -403,6 +403,34 @@ DEF_BLOCK2D_LOAD_STORE(float, uint, 8, 16, u32_m8k16v1, 16, 8)
  *   _td_i0, _td_j, _td_i, _td_off_r, _td_off_c,
  *   _td_drop, _td_before, _td_after
  */
+#define tile_dropout_assignment_t(t, tile_offset_r, tile_offset_c, max_r, \
+        max_c, rng_expr, drop_threshold, inv_q, on_valid, sg, br, bc, nbr, \
+        nbc) \
+    do { \
+        for (int _td_j = 0; _td_j < (bc * nbc); _td_j++) { \
+            for (int _td_i0 = 0; _td_i0 < (br * nbr); _td_i0 += sg) { \
+                int _td_i = _td_i0 + get_sub_group_local_id(); \
+                int _td_off_r = (tile_offset_r) + _td_j; \
+                int _td_off_c = (tile_offset_c) + _td_i; \
+                if (_td_off_r < (max_r) && _td_off_c < (max_c)) { \
+                    uint _td_rng = (rng_expr); \
+                    uchar _td_drop = (_td_rng > (drop_threshold)); \
+                    float _td_before \
+                            = tile_access(t, _td_i0, _td_j, sg, br, bc, nbr); \
+                    float _td_after = _td_drop ? 0.f : (_td_before * (inv_q)); \
+                    tile_access(t, _td_i0, _td_j, sg, br, bc, nbr) \
+                            = _td_after; \
+                    tile_dropout_debug_print(_td_off_c, _td_i0, _td_j, \
+                            _td_off_r, _td_drop, _td_before, _td_after, \
+                            inv_q); \
+                    on_valid; \
+                } else { \
+                    tile_access(t, _td_i0, _td_j, sg, br, bc, nbr) = 0.f; \
+                } \
+            } \
+        } \
+    } while (0)
+
 #define tile_dropout_assignment(t, tile_offset_r, tile_offset_c, max_r, max_c, \
         rng_expr, drop_threshold, inv_q, on_valid, sg, br, bc, nbr, nbc) \
     do { \

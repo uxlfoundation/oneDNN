@@ -877,7 +877,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             const ulong batch_head_base
                     = ((ulong)b1 * get_num_groups(1) + b0) * (ulong)q * k;
 
-            tile_dropout_assignment(S_tile, tile_offset_r, tile_offset_c, k0end,
+            tile_dropout_assignment_t(S_tile, tile_offset_r, tile_offset_c, k0end,
                     q,
                     tile_dropout_rng(batch_head_base, k, _td_off_r, _td_off_c,
                             dropout_seed, dropout_offset),

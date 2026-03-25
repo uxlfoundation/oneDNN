@@ -37,7 +37,7 @@ namespace {
 
 // f32 compute kernel
 void compute_softmax_f32_rvv(const float *src, float *dst, dim_t len,
-        bool is_logsoftmax,
+        bool is_logsoftmax, bool is_softmax_inf_as_zero,
         const jit_rvv_softmax_affine_kernel_t *affine_kernel) {
     float max_val = -INFINITY;
     for (dim_t i = 0; i < len; ++i)
@@ -64,13 +64,15 @@ void compute_softmax_f32_rvv(const float *src, float *dst, dim_t len,
         }
     } else {
         float sum_exp = 0.f;
+        const bool all_minus_inf
+                = is_softmax_inf_as_zero && (max_val == -INFINITY);
         for (dim_t i = 0; i < len; ++i) {
-            float e = expf(src[i] - max_val);
+            float e = all_minus_inf ? 0.f : expf(src[i] - max_val);
             dst[i] = e;
             sum_exp += e;
         }
 
-        const float inv_sum = 1.0f / sum_exp;
+        const float inv_sum = sum_exp ? (1.0f / sum_exp) : 1.0f;
         if (affine_kernel) {
             jit_rvv_softmax_affine_kernel_t::call_params_t p;
             p.src = dst;
@@ -89,7 +91,8 @@ void compute_softmax_f32_rvv(const float *src, float *dst, dim_t len,
 #if defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
 // f16 compute kernel
 void compute_softmax_f16_rvv(const dnnl::impl::float16_t *src,
-        dnnl::impl::float16_t *dst, dim_t len, bool is_logsoftmax) {
+        dnnl::impl::float16_t *dst, dim_t len, bool is_logsoftmax,
+        bool is_softmax_inf_as_zero) {
 
     float max_val
             = (float)nstl::numeric_limits<dnnl::impl::float16_t>::lowest();
@@ -119,12 +122,14 @@ void compute_softmax_f16_rvv(const dnnl::impl::float16_t *src,
     } else {
         float *tmp_dst = new float[len];
         float sum_exp = 0.f;
+        const bool all_minus_inf
+                = is_softmax_inf_as_zero && (max_val == -INFINITY);
         for (dim_t i = 0; i < len; ++i) {
-            float e = expf((float)src[i] - max_val);
+            float e = all_minus_inf ? 0.f : expf((float)src[i] - max_val);
             tmp_dst[i] = e;
             sum_exp += e;
         }
-        const float inv_sum = 1.0f / sum_exp;
+        const float inv_sum = sum_exp ? (1.0f / sum_exp) : 1.0f;
 
         for (dim_t i = 0; i < len;) {
             size_t vl = __riscv_vsetvl_e16m1((size_t)(len - i));
@@ -148,6 +153,8 @@ status_t rvv_softmax_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     auto dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
 
     const auto &rsp = pd()->rsp_;
+    const bool is_softmax_inf_as_zero
+            = pd()->alg_kind() == alg_kind::softmax_accurate_inf_as_zero;
 
     switch (rsp.data_type) {
         case data_type::f32: {
@@ -162,7 +169,7 @@ status_t rvv_softmax_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
                     const dim_t base = outer * outer_stride;
                     compute_softmax_f32_rvv(src_f32 + base, dst_f32 + base,
                             rsp.axis_size, rsp.is_logsoftmax,
-                            affine_kernel_.get());
+                            is_softmax_inf_as_zero, affine_kernel_.get());
                 });
             } else {
                 auto scratch = ctx.get_scratchpad_grantor().template get<char>(
@@ -187,7 +194,8 @@ status_t rvv_softmax_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 
                         // contiguous kernel (in-place)
                         compute_softmax_f32_rvv(tmp, tmp, rsp.axis_size,
-                                rsp.is_logsoftmax, affine_kernel_.get());
+                                rsp.is_logsoftmax, is_softmax_inf_as_zero,
+                                affine_kernel_.get());
 
                         // write back
                         for (dim_t a = 0; a < rsp.axis_size; ++a)
@@ -209,7 +217,8 @@ status_t rvv_softmax_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
                 parallel_nd(rsp.outer_size, [&](dim_t outer) {
                     const dim_t base = outer * outer_stride;
                     compute_softmax_f16_rvv(src_f16 + base, dst_f16 + base,
-                            rsp.axis_size, rsp.is_logsoftmax);
+                            rsp.axis_size, rsp.is_logsoftmax,
+                            is_softmax_inf_as_zero);
                 });
             } else {
                 auto scratch = ctx.get_scratchpad_grantor().template get<char>(
@@ -242,8 +251,8 @@ status_t rvv_softmax_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
                             a += (dim_t)vl;
                         }
 
-                        compute_softmax_f16_rvv(
-                                tmp, tmp, rsp.axis_size, rsp.is_logsoftmax);
+                        compute_softmax_f16_rvv(tmp, tmp, rsp.axis_size,
+                                rsp.is_logsoftmax, is_softmax_inf_as_zero);
 
                         for (dim_t a = 0; a < rsp.axis_size;) {
                             size_t vl = __riscv_vsetvl_e16m1(rsp.axis_size - a);

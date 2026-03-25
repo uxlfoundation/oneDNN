@@ -115,7 +115,7 @@ void expand_kv_heads(const dnn_mem_t &src, dnn_mem_t &dst, int64_t outer_batch,
 
 void compute_ref(
         const prb_t *prb, dir_t dir, const args_t &args, dnnl_primitive_t) {
-    const auto eng = get_cpu_engine();
+    const auto &eng = get_cpu_engine();
     dnnl_stream_t strm {};
     DNN_SAFE_V(dnnl_stream_create(&strm, eng, dnnl_stream_default_flags));
 

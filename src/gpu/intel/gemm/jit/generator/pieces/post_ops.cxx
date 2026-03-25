@@ -329,6 +329,10 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
         op = BinaryOp::Mul;
     }
 
+    // Save original accessType before matrix-case override, so prefetch can use original
+    // (e.g. Block2DTranspose) rather than the reduced Block/Scattered assigned below.
+    auto origAccessType = CO_strategy.accessType;
+
     bool matrix = row && column;
     if (matrix) {
         // Matrix case implemented as loop over rows/columns, depending on C's layout.
@@ -365,13 +369,16 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
     // Only effective for Block/Block2D access — Scattered generates too many in-flight sends
     // (all sharing SBID $0), overflowing the LSC request queue across concurrent WGs.
     bool fullTile = getBinaryPostPrefetchFullTile();
-    bool scatteredAccess = (CO_strategy.accessType == AccessType::Scattered ||
-                            CO_strategy.accessType == AccessType::ChannelScattered);
+    // Use origAccessType (before matrix override) for scattered check and prefetch layout:
+    // ensures Block2DTranspose/Block2D is preserved for prefetch, not reduced to Block/Scattered.
+    bool scatteredAccess = (origAccessType == AccessType::Scattered ||
+                            origAccessType == AccessType::ChannelScattered);
     int prefetchRowCount = (fullTile && matrix && !scatteredAccess)
         ? strategy.unroll[globalCM ? LoopN : LoopM] : 1;
 
     if (binaryPostPrefetchEnabled() && !kloopPrefetchActive && CO_strategy.newDP && (ignoreRem || (!remR && !remC))) {
         auto CO_prefetch_strategy = CO_strategy;
+        CO_prefetch_strategy.accessType = origAccessType;  // restore original Block2DTranspose/Block2D
         CO_prefetch_strategy.prefetch = true;
 
         // Override caching policy for prefetch via BINARY_POST_PREFETCH_CACHING.

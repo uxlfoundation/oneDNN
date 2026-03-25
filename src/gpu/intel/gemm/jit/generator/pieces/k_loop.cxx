@@ -1412,6 +1412,10 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
             bool row = postOps.binaryRow[i];
             bool column = postOps.binaryCol[i];
 
+            // Save original accessType before matrix-case override, so prefetch layout
+            // uses original Block2DTranspose/Block2D rather than reduced Block/Scattered.
+            auto origAccessType = CO_strategy.accessType;
+
             bool matrix = row && column;
             if (matrix) {
                 row &= globalCM;
@@ -1434,8 +1438,9 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
             // For matrix post-op (row && column), unrollY = unroll[LoopM] (row-major C) or [LoopN].
             // Only effective for Block/Block2D — Scattered generates too many in-flight sends
             // (all sharing SBID $0), overflowing the LSC request queue across concurrent WGs.
-            bool scatteredAccess = (CO_strategy.accessType == AccessType::Scattered ||
-                                    CO_strategy.accessType == AccessType::ChannelScattered);
+            // Use origAccessType (before matrix override) to correctly identify Block2DTranspose etc.
+            bool scatteredAccess = (origAccessType == AccessType::Scattered ||
+                                    origAccessType == AccessType::ChannelScattered);
             auto LoopY = globalCM ? LoopN : LoopM;
             int rowCount = (fullTile && matrix && !scatteredAccess) ? strategy.unroll[LoopY] : 1;
 
@@ -1454,6 +1459,7 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
                 continue;
             }
 
+            CO_strategy.accessType = origAccessType;  // restore original Block2DTranspose/Block2D
             CO_strategy.prefetch = true;
             if (hasPrefetchCaching)
                 CO_strategy.cachingR = prefetchCaching;

@@ -212,7 +212,9 @@ struct memory_desc_wrapper : public c_compatible {
     /** For sub-byte data types returns number of elements per byte.
      * For the rest data types returns 1. */
     size_t sub_byte_data_type_multiplier() const {
-        if (utils::one_of(data_type(), data_type::s4, data_type::u4)) return 2;
+        if (utils::one_of(data_type(), data_type::s4, data_type::u4,
+                    data_type::f4_e2m1, data_type::f4_e3m0))
+            return 2;
         return 1;
     }
 
@@ -403,7 +405,8 @@ struct memory_desc_wrapper : public c_compatible {
                 switch (index) {
                     case 0:
                         // Return size for values.
-                        return nnz() * data_type_size();
+                        return utils::div_up(nnz() * data_type_size(),
+                                sub_byte_data_type_multiplier());
                     case 1: {
                         // Return size for offsets (group_count offsets).
                         const auto offsets_dt = metadata_type(0);

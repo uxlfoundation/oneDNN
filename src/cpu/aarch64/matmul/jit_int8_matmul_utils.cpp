@@ -17,8 +17,6 @@
 
 #include <cassert>
 
-#include "common/math_utils.hpp"
-#include "cpu/aarch64/jit_generator.hpp"
 #include "cpu/aarch64/matmul/jit_int8_matmul_utils.hpp"
 
 #define GET_OFF(field) (uint32_t) offsetof(dyn_params_t, field)
@@ -129,81 +127,70 @@ void jit_int8_matmul_utils_kernel_t::reo_B_8xN(int lp, int nt) {
 }
 
 void jit_int8_matmul_utils_kernel_t::gen_reo_a() {
-
-    int ktl = (dyn_.ktail) ? dyn_.ktail : dyn_.k_blk;
+    const int ktl = (dyn_.ktail) ? dyn_.ktail : dyn_.k_blk;
 
     set_preg(prd_ld.b, ktl, X_TMP_0, X_TMP_1);
     set_preg(prd_st.b, dyn_.k_blk, X_TMP_0, X_TMP_1);
-
-    int lp = (dyn_.mtail) ? dyn_.mtail : dyn_.m_blk;
-
-    Label m_loop, last_m, m_end, k_loop, last_k, k_end, k_loop_1, last_k_1,
-            k_end_1;
 
     LDR_IMM(reg_max, reg_param, GET_OFF(nk));
     LDR_IMM(reg_min, reg_param, GET_OFF(nm));
 
     LDR_IMM(reg_tmp_2, reg_param, GET_OFF(tl));
-    ldr(WReg(reg_tail.getIdx()), ptr(reg_tmp_2));
+    ldr(WReg(reg_k_tail.getIdx()), ptr(reg_tmp_2));
 
     LDR_IMM(reg_tmp_2, reg_param, GET_OFF(mtl));
     ldr(WReg(reg_m_tail.getIdx()), ptr(reg_tmp_2));
 
     ldr(WReg(reg_m_loop.getIdx()), ptr(reg_min));
 
-    cmp(reg_m_loop, 1);
-    b(EQ, last_m);
-    L(m_loop);
-    ldr(WReg(reg_k_loop.getIdx()), ptr(reg_max));
-    mov(reg_tmp, reg_src);
-    cmp(reg_k_loop, 1);
-    b(EQ, last_k);
-    L(k_loop);
-    reo_A_8x8(dyn_.m_blk, 0);
-    add_imm(reg_tmp, reg_tmp, dyn_.k_blk, X_TMP_0);
-    sub(reg_k_loop, reg_k_loop, 1);
-    cmp(reg_k_loop, 1);
-    b(GT, k_loop);
-    b(LT, k_end);
-    L(last_k);
-    sub(reg_k_loop, reg_k_loop, 1);
-    cmp(reg_tail, 0);
-    b(EQ, k_loop);
-    reo_A_8x8(dyn_.m_blk, 1);
-    L(k_end);
-    add_imm(reg_src, reg_src, dyn_.K * dyn_.m_blk, X_TMP_0);
-    sub(reg_m_loop, reg_m_loop, 1);
-    cmp(reg_m_loop, 1);
-    b(GT, m_loop);
-    b(LT, m_end);
+    const auto &k_loop_body = [&](int p) {
+        Label k_non_tail;
+        Label k_continue;
 
-    L(last_m);
-    sub(reg_m_loop, reg_m_loop, 1);
-    cmp(reg_m_tail, 0);
-    b(EQ, m_loop);
-    ldr(WReg(reg_k_loop.getIdx()), ptr(reg_max));
-    mov(reg_tmp, reg_src);
-    cmp(reg_k_loop, 1);
-    b(EQ, last_k_1);
-    L(k_loop_1);
-    reo_A_8x8(lp, 0);
-    add_imm(reg_tmp, reg_tmp, dyn_.k_blk, X_TMP_0);
-    sub(reg_k_loop, reg_k_loop, 1);
-    cmp(reg_k_loop, 1);
-    b(GT, k_loop_1);
-    b(LT, k_end_1);
-    L(last_k_1);
-    sub(reg_k_loop, reg_k_loop, 1);
-    cmp(reg_tail, 0);
-    b(EQ, k_loop_1);
-    reo_A_8x8(lp, 1);
-    L(k_end_1);
-    L(m_end);
+        cmp(reg_k_loop, 0);
+        bgt(k_non_tail);
+        cmp(reg_k_tail, 0);
+        beq(k_non_tail);
+
+        // k_tail
+        reo_A_8x8(p, 1);
+        b(k_continue);
+
+        L(k_non_tail);
+        reo_A_8x8(p, 0);
+        add_imm(reg_tmp, reg_tmp, dyn_.k_blk, X_TMP_0);
+
+        L(k_continue);
+    };
+
+    asm_for(reg_m_loop, reg_m_loop, [&]() {
+        const int lp = (dyn_.mtail) ? dyn_.mtail : dyn_.m_blk;
+
+        Label m_non_tail;
+        Label m_continue;
+        cmp(reg_m_loop, 0);
+        bgt(m_non_tail);
+        cmp(reg_m_tail, 0);
+        beq(m_non_tail);
+
+        ldr(WReg(reg_k_loop.getIdx()), ptr(reg_max));
+        mov(reg_tmp, reg_src);
+        // m-tail's k-loop
+        asm_for(reg_k_loop, reg_k_loop, [&]() { k_loop_body(lp); });
+        b(m_continue);
+
+        L(m_non_tail);
+        mov(reg_tmp, reg_src);
+        ldr(WReg(reg_k_loop.getIdx()), ptr(reg_max));
+        // m-non-tail k-loop
+        asm_for(reg_k_loop, reg_k_loop, [&]() { k_loop_body(dyn_.k_blk); });
+
+        add_imm(reg_src, reg_src, dyn_.K * dyn_.m_blk, X_TMP_0);
+        L(m_continue);
+    });
 }
 
 void jit_int8_matmul_utils_kernel_t::gen_reo_b() {
-
-    int lp = (dyn_.ktail > 0) ? dyn_.ktail : dyn_.k_blk;
 
     set_preg(prd_ld.b, dyn_.n_blk, X_TMP_4, X_TMP_1);
     set_preg(prd_p3.b, dyn_.ntail, X_TMP_4, X_TMP_1);
@@ -212,7 +199,7 @@ void jit_int8_matmul_utils_kernel_t::gen_reo_b() {
     LDR_IMM(reg_min, reg_param, GET_OFF(nk));
 
     LDR_IMM(reg_tmp_2, reg_param, GET_OFF(tl));
-    ldr(WReg(reg_tail.getIdx()), ptr(reg_tmp_2));
+    ldr(WReg(reg_k_tail.getIdx()), ptr(reg_tmp_2));
 
     LDR_IMM(reg_tmp_2, reg_param, GET_OFF(ntl));
     ldr(WReg(reg_n_tail.getIdx()), ptr(reg_tmp_2));
@@ -223,57 +210,51 @@ void jit_int8_matmul_utils_kernel_t::gen_reo_b() {
     mov(reg_aux_a, reg_src);
     mov(reg_aux_b, reg_dst);
 
-    Label n_loop, last_n, n_end, k_loop, last_k, k_end, k_loop_1, last_k_1,
-            k_end_1;
+    const auto &k_loop_body = [&](int ntail) {
+        Label k_non_tail;
+        Label k_continue;
 
-    cmp(reg_n_loop, 1);
-    b(EQ, last_n);
-    L(n_loop);
-    ldr(WReg(reg_k_loop.getIdx()), ptr(reg_min));
-    mov(reg_aux_a, reg_src);
-    cmp(reg_k_loop, 1);
-    b(EQ, last_k);
-    L(k_loop);
-    reo_B_8xN(dyn_.k_blk, 0);
-    add_imm(reg_aux_a, reg_aux_a, dyn_.k_blk * dyn_.N, X_TMP_4);
-    sub(reg_k_loop, reg_k_loop, 1);
-    cmp(reg_k_loop, 1);
-    b(GT, k_loop);
-    b(LT, k_end);
-    L(last_k);
-    sub(reg_k_loop, reg_k_loop, 1);
-    cmp(reg_tail, 0);
-    b(EQ, k_loop);
-    reo_B_8xN(lp, 0);
-    L(k_end);
-    add_imm(reg_src, reg_src, dyn_.n_blk, X_TMP_4);
-    sub(reg_n_loop, reg_n_loop, 1);
-    cmp(reg_n_loop, 1);
-    b(GT, n_loop);
-    b(LT, n_end);
+        const int lp = (dyn_.ktail > 0) ? dyn_.ktail : dyn_.k_blk;
 
-    L(last_n);
-    sub(reg_n_loop, reg_n_loop, 1);
-    cmp(reg_n_tail, 0);
-    b(EQ, n_loop);
-    ldr(WReg(reg_k_loop.getIdx()), ptr(reg_min));
-    mov(reg_aux_a, reg_src);
-    cmp(reg_k_loop, 1);
-    b(EQ, last_k_1);
-    L(k_loop_1);
-    reo_B_8xN(dyn_.k_blk, dyn_.ntail);
-    add_imm(reg_aux_a, reg_aux_a, dyn_.k_blk * dyn_.N, X_TMP_4);
-    sub(reg_k_loop, reg_k_loop, 1);
-    cmp(reg_k_loop, 1);
-    b(GT, k_loop_1);
-    b(LT, k_end_1);
-    L(last_k_1);
-    sub(reg_k_loop, reg_k_loop, 1);
-    cmp(reg_tail, 0);
-    b(EQ, k_loop_1);
-    reo_B_8xN(lp, dyn_.ntail);
-    L(k_end_1);
-    L(n_end);
+        cmp(reg_k_loop, 0);
+        bgt(k_non_tail);
+        cmp(reg_k_tail, 0);
+        beq(k_non_tail);
+
+        // k_tail
+        reo_B_8xN(lp, ntail);
+        b(k_continue);
+
+        L(k_non_tail);
+        reo_B_8xN(dyn_.k_blk, ntail);
+        add_imm(reg_aux_a, reg_aux_a, dyn_.k_blk * dyn_.N, X_TMP_4);
+
+        L(k_continue);
+    };
+
+    asm_for(reg_n_loop, reg_n_loop, [&]() {
+        Label n_non_tail;
+        Label n_continue;
+        cmp(reg_n_loop, 0);
+        bgt(n_non_tail);
+        cmp(reg_n_tail, 0);
+        beq(n_non_tail);
+
+        ldr(WReg(reg_k_loop.getIdx()), ptr(reg_min));
+        mov(reg_aux_a, reg_src);
+        // n-tail's k-loop
+        asm_for(reg_k_loop, reg_k_loop, [&]() { k_loop_body(dyn_.ntail); });
+        b(n_continue);
+
+        L(n_non_tail);
+        mov(reg_aux_a, reg_src);
+        ldr(WReg(reg_k_loop.getIdx()), ptr(reg_min));
+        // n-non-tail k-loop
+        asm_for(reg_k_loop, reg_k_loop, [&]() { k_loop_body(0); });
+
+        add_imm(reg_src, reg_src, dyn_.n_blk, X_TMP_4);
+        L(n_continue);
+    });
 }
 
 void jit_int8_matmul_utils_kernel_t::generate() {

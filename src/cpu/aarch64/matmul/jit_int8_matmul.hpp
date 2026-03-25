@@ -20,16 +20,10 @@
 
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
-#include "common/type_helpers.hpp"
-#include "common/utils.hpp"
 
-#include "cpu/platform.hpp"
-#include "cpu/primitive_attr_postops.hpp"
-
+#include "cpu/aarch64/cpu_isa_traits.hpp"
 #include "cpu/aarch64/matmul/jit_int8_kernel_types.hpp"
 #include "cpu/matmul/cpu_matmul_pd.hpp"
-
-#include "cpu/aarch64/injectors/jit_uni_eltwise_injector.hpp"
 
 namespace dnnl {
 namespace impl {

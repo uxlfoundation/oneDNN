@@ -46,7 +46,7 @@ struct jit_int8_matmul_utils_kernel_t : public jit_generator_t {
     XReg reg_k_loop = x12;
     XReg reg_m_loop = x13;
     XReg reg_loop = x14;
-    XReg reg_tail = x15;
+    XReg reg_k_tail = x15;
     XReg reg_m_tail = x16;
     XReg reg_aux_b = x17;
     XReg reg_aux_a = x18;

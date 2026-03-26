@@ -36,6 +36,13 @@ bool binaryPostPrefetchEnabled() {
     return (env != nullptr) && (env[0] == '1') && (env[1] == '\0');
 }
 
+// If BINARY_POST_SKIP_OP=1: do prefetches but skip the actual postop (binary load + apply).
+// C is written as plain GEMM result. Useful for measuring prefetch overhead independently.
+bool binaryPostSkipOpEnabled() {
+    const char *env = std::getenv("BINARY_POST_SKIP_OP");
+    return (env != nullptr) && (env[0] == '1') && (env[1] == '\0');
+}
+
 int getBinaryPostPrefetchLookahead() {
     const char *env = std::getenv("BINARY_POST_PREFETCH_LOOKAHEAD");
     if (env == nullptr) return 0;
@@ -775,6 +782,15 @@ void Generator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const GEMMProbl
 
     // Binary preparations: load binary-related args + calculate starting addresses
     gemmPrepareBinaryPostOpAddrs(problem, strategy, state);
+
+    // BINARY_POST_SKIP_OP=1: prefetches already fired (in k-loop), skip the actual
+    // binary load + apply. C is stored as plain GEMM result.
+    if (binaryPostSkipOpEnabled()) {
+        VDEBUGINFO(4, primitive, postops,
+                "MY: gemmApplyPostOps SKIP (BINARY_POST_SKIP_OP=1)");
+        mark(lSkip);
+        return;
+    }
 
     // Apply post-ops to all of C.
     int C_grfs[GRF::maxRegs()];

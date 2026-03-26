@@ -1,31 +1,27 @@
 {
-  "version": "3.11.0",
-  "engine_kind": "cpu",
+  "version": "3.12.0",
+  "engine_kind": "gpu",
   "fpmath_mode": "strict",
   "fpmath_mode_apply_to_int": "false",
   "input_ports": [
-    200,
-    201,
-    202,
-    203,
+    100,
+    101,
+    102,
+    103,
     8,
-    205,
-    206,
-    207,
     105,
     105,
-    204,
-    205,
-    206,
-    207,
-    202,
-    201,
-    200
+    104,
+    10,
+    105,
+    102,
+    100,
+    101
   ],
   "output_ports": [
-    17,
-    29,
-    33
+    15,
+    31,
+    35
   ],
   "graph": [
     {
@@ -33,6 +29,10 @@
       "name": "bmm1",
       "kind": "MatMul",
       "attrs": {
+        "transpose_a": {
+          "type": "bool",
+          "value": 0
+        },
         "accumulation_mode": {
           "type": "string",
           "value": "strict"
@@ -40,15 +40,11 @@
         "transpose_b": {
           "type": "bool",
           "value": 1
-        },
-        "transpose_a": {
-          "type": "bool",
-          "value": 0
         }
       },
       "inputs": [
         {
-          "id": 200,
+          "id": 100,
           "dtype": "bf16",
           "shape": [
             2,
@@ -68,7 +64,7 @@
           "property_type": "undef"
         },
         {
-          "id": 201,
+          "id": 101,
           "dtype": "bf16",
           "shape": [
             2,
@@ -113,8 +109,8 @@
     },
     {
       "id": 4,
-      "name": "scale_div",
-      "kind": "Divide",
+      "name": "scale_mul",
+      "kind": "Multiply",
       "attrs": {
         "auto_broadcast": {
           "type": "string",
@@ -143,7 +139,7 @@
           "property_type": "undef"
         },
         {
-          "id": 202,
+          "id": 102,
           "dtype": "bf16",
           "shape": [
             1
@@ -210,7 +206,7 @@
           "property_type": "undef"
         },
         {
-          "id": 203,
+          "id": 103,
           "dtype": "bf16",
           "shape": [
             2,
@@ -379,7 +375,7 @@
       ]
     },
     {
-      "id": 12,
+      "id": 40,
       "name": "dropout",
       "kind": "Dropout",
       "attrs": {},
@@ -431,7 +427,7 @@
       ],
       "outputs": [
         {
-          "id": 11,
+          "id": 41,
           "dtype": "f32",
           "shape": [
             2,
@@ -453,13 +449,13 @@
       ]
     },
     {
-      "id": 13,
+      "id": 11,
       "name": "typecast",
       "kind": "TypeCast",
       "attrs": {},
       "inputs": [
         {
-          "id": 11,
+          "id": 41,
           "dtype": "f32",
           "shape": [
             2,
@@ -481,7 +477,7 @@
       ],
       "outputs": [
         {
-          "id": 14,
+          "id": 12,
           "dtype": "bf16",
           "shape": [
             2,
@@ -503,17 +499,17 @@
       ]
     },
     {
-      "id": 16,
+      "id": 14,
       "name": "bmm_dv",
       "kind": "MatMul",
       "attrs": {
-        "accumulation_mode": {
-          "type": "string",
-          "value": "strict"
-        },
         "transpose_b": {
           "type": "bool",
           "value": 0
+        },
+        "accumulation_mode": {
+          "type": "string",
+          "value": "strict"
         },
         "transpose_a": {
           "type": "bool",
@@ -522,7 +518,7 @@
       },
       "inputs": [
         {
-          "id": 14,
+          "id": 12,
           "dtype": "bf16",
           "shape": [
             2,
@@ -564,7 +560,7 @@
       ],
       "outputs": [
         {
-          "id": 15,
+          "id": 13,
           "dtype": "bf16",
           "shape": [
             2,
@@ -586,7 +582,7 @@
       ]
     },
     {
-      "id": 18,
+      "id": 16,
       "name": "reduce_dv",
       "kind": "ReduceSum",
       "attrs": {
@@ -603,7 +599,7 @@
       },
       "inputs": [
         {
-          "id": 15,
+          "id": 13,
           "dtype": "bf16",
           "shape": [
             2,
@@ -625,7 +621,7 @@
       ],
       "outputs": [
         {
-          "id": 17,
+          "id": 15,
           "dtype": "bf16",
           "shape": [
             2,
@@ -647,10 +643,14 @@
       ]
     },
     {
-      "id": 20,
+      "id": 18,
       "name": "bmm_dprobs",
       "kind": "MatMul",
       "attrs": {
+        "transpose_a": {
+          "type": "bool",
+          "value": 0
+        },
         "accumulation_mode": {
           "type": "string",
           "value": "strict"
@@ -658,10 +658,6 @@
         "transpose_b": {
           "type": "bool",
           "value": 1
-        },
-        "transpose_a": {
-          "type": "bool",
-          "value": 0
         }
       },
       "inputs": [
@@ -686,7 +682,7 @@
           "property_type": "undef"
         },
         {
-          "id": 204,
+          "id": 104,
           "dtype": "bf16",
           "shape": [
             2,
@@ -708,7 +704,7 @@
       ],
       "outputs": [
         {
-          "id": 19,
+          "id": 17,
           "dtype": "f32",
           "shape": [
             2,
@@ -730,13 +726,13 @@
       ]
     },
     {
-      "id": 22,
+      "id": 42,
       "name": "dropout",
       "kind": "Dropout",
       "attrs": {},
       "inputs": [
         {
-          "id": 19,
+          "id": 17,
           "dtype": "f32",
           "shape": [
             2,
@@ -756,7 +752,7 @@
           "property_type": "undef"
         },
         {
-          "id": 205,
+          "id": 208,
           "dtype": "s64",
           "shape": [],
           "stride": [],
@@ -764,7 +760,7 @@
           "property_type": "host_scalar"
         },
         {
-          "id": 206,
+          "id": 209,
           "dtype": "s64",
           "shape": [],
           "stride": [],
@@ -772,12 +768,148 @@
           "property_type": "host_scalar"
         },
         {
-          "id": 207,
+          "id": 210,
           "dtype": "f32",
           "shape": [],
           "stride": [],
           "layout_type": "strided",
           "property_type": "host_scalar"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 43,
+          "dtype": "f32",
+          "shape": [
+            2,
+            2,
+            8,
+            128,
+            128
+          ],
+          "stride": [
+            262144,
+            131072,
+            16384,
+            128,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "name": "mul_o_do",
+      "kind": "Multiply",
+      "attrs": {
+        "auto_broadcast": {
+          "type": "string",
+          "value": "numpy"
+        }
+      },
+      "inputs": [
+        {
+          "id": 10,
+          "dtype": "bf16",
+          "shape": [
+            2,
+            2,
+            8,
+            128,
+            64
+          ],
+          "stride": [
+            131072,
+            65536,
+            8192,
+            64,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 105,
+          "dtype": "bf16",
+          "shape": [
+            2,
+            2,
+            8,
+            128,
+            64
+          ],
+          "stride": [
+            131072,
+            65536,
+            8192,
+            64,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 19,
+          "dtype": "f32",
+          "shape": [
+            2,
+            2,
+            8,
+            128,
+            64
+          ],
+          "stride": [
+            131072,
+            65536,
+            8192,
+            64,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "name": "reducesum_correction",
+      "kind": "ReduceSum",
+      "attrs": {
+        "keep_dims": {
+          "type": "bool",
+          "value": 1
+        },
+        "axes": {
+          "type": "s64[]",
+          "value": [
+            4
+          ]
+        }
+      },
+      "inputs": [
+        {
+          "id": 19,
+          "dtype": "f32",
+          "shape": [
+            2,
+            2,
+            8,
+            128,
+            64
+          ],
+          "stride": [
+            131072,
+            65536,
+            8192,
+            64,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
         }
       ],
       "outputs": [
@@ -789,13 +921,13 @@
             2,
             8,
             128,
-            128
+            1
           ],
           "stride": [
-            262144,
-            131072,
-            16384,
+            2048,
+            1024,
             128,
+            1,
             1
           ],
           "layout_type": "strided",
@@ -805,17 +937,17 @@
     },
     {
       "id": 24,
-      "name": "softmax_bwd",
-      "kind": "SoftMaxBackward",
+      "name": "sub_dp_corrected",
+      "kind": "Subtract",
       "attrs": {
-        "axis": {
-          "type": "s64",
-          "value": -1
+        "auto_broadcast": {
+          "type": "string",
+          "value": "numpy"
         }
       },
       "inputs": [
         {
-          "id": 21,
+          "id": 43,
           "dtype": "f32",
           "shape": [
             2,
@@ -835,20 +967,20 @@
           "property_type": "undef"
         },
         {
-          "id": 9,
+          "id": 21,
           "dtype": "f32",
           "shape": [
             2,
             2,
             8,
             128,
-            128
+            1
           ],
           "stride": [
-            262144,
-            131072,
-            16384,
+            2048,
+            1024,
             128,
+            1,
             1
           ],
           "layout_type": "strided",
@@ -880,8 +1012,8 @@
     },
     {
       "id": 26,
-      "name": "scale_div",
-      "kind": "Divide",
+      "name": "mul_softmax_bwd",
+      "kind": "Multiply",
       "attrs": {
         "auto_broadcast": {
           "type": "string",
@@ -889,6 +1021,26 @@
         }
       },
       "inputs": [
+        {
+          "id": 9,
+          "dtype": "f32",
+          "shape": [
+            2,
+            2,
+            8,
+            128,
+            128
+          ],
+          "stride": [
+            262144,
+            131072,
+            16384,
+            128,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
         {
           "id": 23,
           "dtype": "f32",
@@ -908,18 +1060,6 @@
           ],
           "layout_type": "strided",
           "property_type": "undef"
-        },
-        {
-          "id": 202,
-          "dtype": "bf16",
-          "shape": [
-            1
-          ],
-          "stride": [
-            1
-          ],
-          "layout_type": "strided",
-          "property_type": "undef"
         }
       ],
       "outputs": [
@@ -946,13 +1086,80 @@
       ]
     },
     {
-      "id": 27,
+      "id": 28,
+      "name": "scale_mul",
+      "kind": "Multiply",
+      "attrs": {
+        "auto_broadcast": {
+          "type": "string",
+          "value": "numpy"
+        }
+      },
+      "inputs": [
+        {
+          "id": 25,
+          "dtype": "f32",
+          "shape": [
+            2,
+            2,
+            8,
+            128,
+            128
+          ],
+          "stride": [
+            262144,
+            131072,
+            16384,
+            128,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 102,
+          "dtype": "bf16",
+          "shape": [
+            1
+          ],
+          "stride": [
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 27,
+          "dtype": "f32",
+          "shape": [
+            2,
+            2,
+            8,
+            128,
+            128
+          ],
+          "stride": [
+            262144,
+            131072,
+            16384,
+            128,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 29,
       "name": "typecast",
       "kind": "TypeCast",
       "attrs": {},
       "inputs": [
         {
-          "id": 25,
+          "id": 27,
           "dtype": "f32",
           "shape": [
             2,
@@ -974,7 +1181,7 @@
       ],
       "outputs": [
         {
-          "id": 28,
+          "id": 30,
           "dtype": "bf16",
           "shape": [
             2,
@@ -988,172 +1195,6 @@
             131072,
             16384,
             128,
-            1
-          ],
-          "layout_type": "strided",
-          "property_type": "undef"
-        }
-      ]
-    },
-    {
-      "id": 30,
-      "name": "bmm_dq",
-      "kind": "MatMul",
-      "attrs": {
-        "transpose_b": {
-          "type": "bool",
-          "value": 0
-        },
-        "transpose_a": {
-          "type": "bool",
-          "value": 0
-        },
-        "accumulation_mode": {
-          "type": "string",
-          "value": "strict"
-        }
-      },
-      "inputs": [
-        {
-          "id": 28,
-          "dtype": "bf16",
-          "shape": [
-            2,
-            2,
-            8,
-            128,
-            128
-          ],
-          "stride": [
-            262144,
-            131072,
-            16384,
-            128,
-            1
-          ],
-          "layout_type": "strided",
-          "property_type": "undef"
-        },
-        {
-          "id": 201,
-          "dtype": "bf16",
-          "shape": [
-            2,
-            2,
-            1,
-            128,
-            64
-          ],
-          "stride": [
-            16384,
-            8192,
-            8192,
-            64,
-            1
-          ],
-          "layout_type": "strided",
-          "property_type": "undef"
-        }
-      ],
-      "outputs": [
-        {
-          "id": 29,
-          "dtype": "bf16",
-          "shape": [
-            2,
-            2,
-            8,
-            128,
-            64
-          ],
-          "stride": [
-            131072,
-            65536,
-            8192,
-            64,
-            1
-          ],
-          "layout_type": "strided",
-          "property_type": "undef"
-        }
-      ]
-    },
-    {
-      "id": 32,
-      "name": "bmm_dk",
-      "kind": "MatMul",
-      "attrs": {
-        "accumulation_mode": {
-          "type": "string",
-          "value": "strict"
-        },
-        "transpose_b": {
-          "type": "bool",
-          "value": 0
-        },
-        "transpose_a": {
-          "type": "bool",
-          "value": 1
-        }
-      },
-      "inputs": [
-        {
-          "id": 28,
-          "dtype": "bf16",
-          "shape": [
-            2,
-            2,
-            8,
-            128,
-            128
-          ],
-          "stride": [
-            262144,
-            131072,
-            16384,
-            128,
-            1
-          ],
-          "layout_type": "strided",
-          "property_type": "undef"
-        },
-        {
-          "id": 200,
-          "dtype": "bf16",
-          "shape": [
-            2,
-            2,
-            8,
-            128,
-            64
-          ],
-          "stride": [
-            131072,
-            65536,
-            8192,
-            64,
-            1
-          ],
-          "layout_type": "strided",
-          "property_type": "undef"
-        }
-      ],
-      "outputs": [
-        {
-          "id": 31,
-          "dtype": "bf16",
-          "shape": [
-            2,
-            2,
-            8,
-            128,
-            64
-          ],
-          "stride": [
-            131072,
-            65536,
-            8192,
-            64,
             1
           ],
           "layout_type": "strided",
@@ -1163,23 +1204,45 @@
     },
     {
       "id": 34,
-      "name": "reduce_dk",
-      "kind": "ReduceSum",
+      "name": "bmm_dk",
+      "kind": "MatMul",
       "attrs": {
-        "keep_dims": {
+        "transpose_b": {
+          "type": "bool",
+          "value": 0
+        },
+        "accumulation_mode": {
+          "type": "string",
+          "value": "strict"
+        },
+        "transpose_a": {
           "type": "bool",
           "value": 1
-        },
-        "axes": {
-          "type": "s64[]",
-          "value": [
-            2
-          ]
         }
       },
       "inputs": [
         {
-          "id": 31,
+          "id": 30,
+          "dtype": "bf16",
+          "shape": [
+            2,
+            2,
+            8,
+            128,
+            128
+          ],
+          "stride": [
+            262144,
+            131072,
+            16384,
+            128,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 100,
           "dtype": "bf16",
           "shape": [
             2,
@@ -1202,6 +1265,150 @@
       "outputs": [
         {
           "id": 33,
+          "dtype": "bf16",
+          "shape": [
+            2,
+            2,
+            8,
+            128,
+            64
+          ],
+          "stride": [
+            131072,
+            65536,
+            8192,
+            64,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 32,
+      "name": "bmm_dq",
+      "kind": "MatMul",
+      "attrs": {
+        "transpose_a": {
+          "type": "bool",
+          "value": 0
+        },
+        "transpose_b": {
+          "type": "bool",
+          "value": 0
+        },
+        "accumulation_mode": {
+          "type": "string",
+          "value": "strict"
+        }
+      },
+      "inputs": [
+        {
+          "id": 30,
+          "dtype": "bf16",
+          "shape": [
+            2,
+            2,
+            8,
+            128,
+            128
+          ],
+          "stride": [
+            262144,
+            131072,
+            16384,
+            128,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 101,
+          "dtype": "bf16",
+          "shape": [
+            2,
+            2,
+            1,
+            128,
+            64
+          ],
+          "stride": [
+            16384,
+            8192,
+            8192,
+            64,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 31,
+          "dtype": "bf16",
+          "shape": [
+            2,
+            2,
+            8,
+            128,
+            64
+          ],
+          "stride": [
+            131072,
+            65536,
+            8192,
+            64,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 36,
+      "name": "reduce_dk",
+      "kind": "ReduceSum",
+      "attrs": {
+        "keep_dims": {
+          "type": "bool",
+          "value": 1
+        },
+        "axes": {
+          "type": "s64[]",
+          "value": [
+            2
+          ]
+        }
+      },
+      "inputs": [
+        {
+          "id": 33,
+          "dtype": "bf16",
+          "shape": [
+            2,
+            2,
+            8,
+            128,
+            64
+          ],
+          "stride": [
+            131072,
+            65536,
+            8192,
+            64,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 35,
           "dtype": "bf16",
           "shape": [
             2,

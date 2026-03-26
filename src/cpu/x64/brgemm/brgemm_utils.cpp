@@ -728,6 +728,39 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
  *     acc[bd] += dot(a0_reg, x_reg)            // Accumulate partial results
  */
 status_t brgemm_blocking_vmm_gemv(brgemm_desc_t *brg) {
+    const int simd_w = 8;
+
+    if (::getenv("USE_GEMV")) {
+        assert(brg->transA);
+
+        brg->ld_block = 1;
+        brg->ldb = brg->load_dim / brg->ld_block;
+        brg->ldb_tail = brg->load_dim % brg->ld_block;
+
+        brg->ld_block2 = 1;
+        brg->ldb2 = brg->ldb / brg->ld_block2;
+        brg->ldb2_tail = brg->ldb % brg->ld_block2;
+        assert(brg->ldb2_tail == 0);
+
+        brg->bd_block = simd_w;
+        brg->bdb = brg->bcast_dim / brg->bd_block;
+        brg->bdb_tail = brg->bcast_dim % brg->bd_block;
+
+        brg->rd_block = 1; // unroll
+        brg->rdb = brg->reduce_dim / brg->rd_block;
+        brg->rdb_tail = brg->reduce_dim % brg->rd_block;
+
+        printf("ld_block:%d, ldb:%d, ldb_tail:%d, ld_block2:%d, ldb2:%d, "
+               "ldb2_tail:%d, bd_block:%d, bdb:%d, bdb_tail:%d, rd_block:%d, "
+               "rdb:%d, rdb_tail:%d\n",
+                (int)brg->ld_block, (int)brg->ldb, (int)brg->ldb_tail,
+                (int)brg->ld_block2, (int)brg->ldb2, (int)brg->ldb2_tail,
+                (int)brg->bd_block, (int)brg->bdb, (int)brg->bdb_tail,
+                (int)brg->rd_block, (int)brg->rdb, (int)brg->rdb_tail);
+
+        return status::success;
+    }
+
     assert(utils::one_of(brg->isa_impl, avx2, avx2_vnni, avx2_vnni_2));
     assert(brg->load_dim == 1);
 
@@ -744,8 +777,6 @@ status_t brgemm_blocking_vmm_gemv(brgemm_desc_t *brg) {
     brg->bd_block = 8;
     brg->bdb = brg->bcast_dim / brg->bd_block;
     brg->bdb_tail = brg->bcast_dim % brg->bd_block;
-
-    const int simd_w = 8;
 
     brg->rd_block = simd_w;
     brg->rdb = brg->reduce_dim / brg->rd_block;

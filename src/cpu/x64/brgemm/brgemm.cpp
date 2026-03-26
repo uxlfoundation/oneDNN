@@ -288,14 +288,16 @@ status_t brgemv_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
     if (!utils::everyone_is(data_type::f32, dt_a, dt_x))
         return status::unimplemented;
 
-    // y = A^t * x is not yet implemented.
-    if (transA) return status::unimplemented;
-
-    CHECK(brgemm_desc_init(brg, isa, type, dt_a, dt_x, transA, false,
+    CHECK(brgemm_desc_init(brg, isa, type, dt_a, dt_x, false, false,
             brgemm_row_major, alpha, beta, LDA, 1, INCY, M, 1, N, nullptr,
             false));
 
     brg->is_gemv = true;
+    // Initialize transA here becuaee `brgemm_desc_init` would return
+    // unimplemented because brgemm doesn't support it and we don't pass
+    // `is_gemv` flag to brgemm_desc_init.
+    // TODO: find a better way!
+    brg->transA = transA;
     brg->treat_y_as_row = treat_y_as_row;
 
     return status::success;

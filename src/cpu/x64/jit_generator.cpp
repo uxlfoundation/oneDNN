@@ -103,7 +103,7 @@ void jit_generator_t::transpose(const Xbyak::Reg64 &reg_src,
     };
 
     // Choose the load path based on source data type.
-    auto load_src = [= COMPAT_THIS_CAPTURE](Xbyak::Xmm vmm, int r, int c) {
+    auto load_src = [=](Xbyak::Xmm vmm, int r, int c) {
         if (dt == data_type::f32) {
             load_src_f32(vmm, r, c);
         } else if (utils::one_of(dt, data_type::bf16, data_type::f16)) {
@@ -143,7 +143,7 @@ void jit_generator_t::transpose(const Xbyak::Reg64 &reg_src,
     };
 
     // Choose the upper-half insert path based on source data.
-    auto vinsert = [= COMPAT_THIS_CAPTURE](Xbyak::Ymm ymm, int r, int c) {
+    auto vinsert = [=](Xbyak::Ymm ymm, int r, int c) {
         if (dt == data_type::f32) {
             vinsert_f32(ymm, r, c);
         } else if (utils::one_of(dt, data_type::bf16, data_type::f16)) {
@@ -190,7 +190,7 @@ void jit_generator_t::transpose(const Xbyak::Reg64 &reg_src,
     };
 
     // Choose the store path based on source data type.
-    auto store_dst = [= COMPAT_THIS_CAPTURE](int col, Xbyak::Ymm ymm) {
+    auto store_dst = [=](int col, Xbyak::Ymm ymm) {
         if (dt == data_type::f32) {
             store_dst_f32(col, ymm);
         } else if (dt == data_type::bf16) {

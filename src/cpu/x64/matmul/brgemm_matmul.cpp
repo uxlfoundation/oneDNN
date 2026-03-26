@@ -387,11 +387,21 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         const auto kernel_isa = i_M == max_m_ker_idx - 1 ? backup_isa : isa;
 
         if (bgmmc_.is_gemv) {
-            const dim_t gemv_m = bgmmc_.gemv_swap_a_b ? vN : vM;
-            const bool treat_y_as_row = bgmmc_.gemv_swap_a_b;
-            CHECK(brgemv_desc_init(&brg, kernel_isa, bgmmc_.brg_type,
-                    bgmmc_.src_dt, bgmmc_.wei_dt, false, alpha, vbeta, LDA,
-                    bgmmc_.LDC, gemv_m, vK, treat_y_as_row));
+            printf("bgmmc_.gemv_swap_a_b:%d\n", bgmmc_.gemv_swap_a_b);
+            const bool swap_a_b = bgmmc_.gemv_swap_a_b;
+            const dim_t gemv_m = swap_a_b ? vN : vM;
+            const bool treat_y_as_row = swap_a_b;
+            const bool transA = swap_a_b;
+
+            const auto dt_a = swap_a_b ? bgmmc_.wei_dt : bgmmc_.src_dt;
+            const auto dt_x = swap_a_b ? bgmmc_.src_dt : bgmmc_.wei_dt;
+            const dim_t gemv_lda = swap_a_b ? bgmmc_.LDB : LDA;
+
+            printf("gemv_m:%d, vK:%d, gemv_lda:%d\n", (int)gemv_m, (int)vK,
+                    (int)gemv_lda);
+            CHECK(brgemv_desc_init(&brg, kernel_isa, bgmmc_.brg_type, dt_a,
+                    dt_x, transA, alpha, vbeta, gemv_lda, bgmmc_.LDC, gemv_m,
+                    vK, treat_y_as_row));
         } else {
             CHECK(brgemm_desc_init(&brg, kernel_isa, bgmmc_.brg_type,
                     bgmmc_.src_dt, bgmmc_.wei_dt, false, false,

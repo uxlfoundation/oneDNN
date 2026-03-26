@@ -379,6 +379,8 @@ int brgemm_matmul_conf_utils_t::get_default_n_block(
  */
 format_tag_t brgemm_matmul_conf_utils_t::get_gemv_A_tag(
         const memory_desc_t &A_md) const {
+    if (::getenv("USE_GEMV")) return plain_tensor_layout_tag;
+
     assert(utils::one_of(1, bgmmc.N, bgmmc.M));
     const bool is_m1 = bgmmc.M == 1;
 
@@ -397,6 +399,8 @@ format_tag_t brgemm_matmul_conf_utils_t::get_gemv_A_tag(
  */
 format_tag_t brgemm_matmul_conf_utils_t::get_gemv_B_tag(
         const memory_desc_t &B_md) const {
+    if (::getenv("USE_GEMV")) return plain_tensor_layout_tag;
+
     assert(utils::one_of(1, bgmmc.N, bgmmc.M));
     const bool is_n1 = bgmmc.N == 1;
 
@@ -1171,7 +1175,8 @@ float compute_blocking_heuristic_avx2_f32(brgemm_matmul_conf_t &bgmmc,
         std::swap(best_blocking.m_blk, best_blocking.n_blk);
         std::swap(best_blocking.m_tail, best_blocking.n_tail);
     }
-
+    printf("best_blocking.m_blk:%d, best_blocking.n_blk:%d\n",
+            (int)best_blocking.m_blk, (int)best_blocking.n_blk);
     return best_imbalance;
 }
 
@@ -1547,7 +1552,12 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     // N=1 case, which requires the B tensor to be transposed. If it is
     // transposed (`bgmmc.is_gemv` is `true`), then `bgmmc.gemv_swap_a_b`
     // is set to `true`.
-    bgmmc.gemv_swap_a_b = bgmmc.is_gemv && bgmmc.M == 1 && bgmmc.N > 1;
+
+    // XXX: always enable it for a x ab case for experimenting
+    bgmmc.gemv_swap_a_b
+            = true; //false; //bgmmc.is_gemv && bgmmc.M == 1 && bgmmc.N > 1;
+
+    bgmmc.is_gemv = ::getenv("USE_GEMV");
 
     if (!bgmmc.is_gemv && bm_conf_utils.is_f32() && bgmmc.isa == avx2
             && (bgmmc.N == 1 || bgmmc.M == 1)) {

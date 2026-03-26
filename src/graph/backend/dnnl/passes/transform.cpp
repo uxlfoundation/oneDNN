@@ -853,7 +853,7 @@ status_t fuse_subtract_exp_to_softmax(std::shared_ptr<subgraph_t> &sg) {
 
         auto &exp_op = sub_consumers[0].get_op();
         if (!is_eltwise(&exp_op, dnnl::algorithm::eltwise_exp)
-                || visited.count(&exp_op) != 0 || exp_op.num_outputs() != 1)
+                || visited.count(&exp_op) != 0)
             continue;
 
         fusion_groups.emplace_back(std::vector<op_t *>{cur_op.get(), &exp_op});

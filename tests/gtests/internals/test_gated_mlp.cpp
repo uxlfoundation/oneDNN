@@ -31,8 +31,11 @@
 
 #include "common/gated_mlp_iface.hpp"
 
-// set to 1 to dump cpu memory buffers
-#define ENABLE_PRINT_MEM 0
+// uncomment to dump cpu memory buffers
+//#define ENABLE_PRINT_MEM
+
+// uncomment to disable everything except Up
+//#define ENABLE_UP_ONLY
 
 namespace dnnl {
 namespace impl {
@@ -249,7 +252,7 @@ gmlp_tensors_t get_descriptors(engine &eng, mlp_dims_t p) {
     auto FC_up_md = memory::desc(FC_up_sz, fc_up_dt, tag::ab);
     auto FC_down_md = memory::desc(FC_down_sz, dst_dt, tag::ab);
 
-    auto FC_retn_md_t = memory::desc(FC_down_sz, dst_dt, tag::ba);
+    auto FC_retn_md_t = memory::desc(FC_down_sz, dst_dt, tag::ab);
 
     // clang-format off
     auto x_md = memory::desc(O_proj_sz, src_dt, tag::ab);
@@ -264,11 +267,11 @@ gmlp_tensors_t get_descriptors(engine &eng, mlp_dims_t p) {
 
     auto w_gate_scales_md = memory::desc(quant_gateup_sz, wgu_s_dt, tag::ab);
     auto w_up_scales_md   = memory::desc(quant_gateup_sz, wgu_s_dt, tag::ab);
-    auto w_down_scales_md = memory::desc(quant_down_sz, wd_s_dt, tag::ab);
+    auto w_down_scales_md = memory::desc(quant_down_sz,    wd_s_dt, tag::ab);
 
     auto w_gate_zp_md = memory::desc(quant_gateup_sz, wgu_zp_dt, tag::ab);
     auto w_up_zp_md   = memory::desc(quant_gateup_sz, wgu_zp_dt, tag::ab);
-    auto w_down_zp_md = memory::desc(quant_down_sz, wd_zp_dt, tag::ab);
+    auto w_down_zp_md = memory::desc(quant_down_sz,    wd_zp_dt, tag::ab);
 
     auto output_md     = memory::desc(FC_down_sz, dst_dt, tag::ab);
     auto output_qnt_md = memory::desc(FC_down_sz, dst_dt, tag::ab);
@@ -379,6 +382,7 @@ gmlp_tensors_t get_descriptors(engine &eng, mlp_dims_t p) {
                 printf("signed gateup quant init\n");
         }
         fill_random_quantized(w_gate_zp_data, w_gate_zp_md, wgu_zp_unsigned);
+
         fill_random_quantized(w_up_zp_data, w_up_zp_md, wgu_zp_unsigned);
 
         w_gate_data = dequantize(w_gate_quantized_data, w_gate_md,
@@ -409,18 +413,23 @@ gmlp_tensors_t get_descriptors(engine &eng, mlp_dims_t p) {
     move_data(w_up_data, out.m_w_up);
     move_data(w_down_data, out.m_w_down);
 
-    move_data(w_gate_quantized_data, out.m_w_gate_quantized);
-    move_data(w_up_quantized_data, out.m_w_up_quantized);
-    move_data(w_down_quantized_data, out.m_w_down_quantized);
+    if (p.qtype == quantize_type::no_quantization) {
+        move_data(w_gate_data, out.m_w_gate_quantized);
+        move_data(w_up_data, out.m_w_up_quantized);
+        move_data(w_down_data, out.m_w_down_quantized);
+    } else {
+        move_data(w_gate_quantized_data, out.m_w_gate_quantized);
+        move_data(w_up_quantized_data, out.m_w_up_quantized);
+        move_data(w_down_quantized_data, out.m_w_down_quantized);
 
-    move_data(w_gate_zp_data, out.m_w_gate_zp);
-    move_data(w_up_zp_data, out.m_w_up_zp);
-    move_data(w_down_zp_data, out.m_w_down_zp);
+        move_data(w_gate_zp_data, out.m_w_gate_zp);
+        move_data(w_up_zp_data, out.m_w_up_zp);
+        move_data(w_down_zp_data, out.m_w_down_zp);
 
-    move_data(w_gate_scales_data, out.m_w_gate_scales);
-    move_data(w_up_scales_data, out.m_w_up_scales);
-    move_data(w_down_scales_data, out.m_w_down_scales);
-
+        move_data(w_gate_scales_data, out.m_w_gate_scales);
+        move_data(w_up_scales_data, out.m_w_up_scales);
+        move_data(w_down_scales_data, out.m_w_down_scales);
+    }
     if (verbose)
         printf("memory data types?? %d %d %d\n",
                 int(out.m_w_gate_scales.get_desc().get_data_type()),
@@ -455,19 +464,26 @@ void bench_gated_mlp_primitives(std::vector<float> &res, double &avg_time,
 
     auto m_FC_retn_t = t.m_fc_retn_t;
 
-    // fc_up
-    primitive_attr bmm0_attr;
-    bmm0_attr.set_fpmath_mode(
-            static_cast<enum fpmath_mode>(fpmath_mode::any), true);
+    auto gen_default_attr = [](quantize_type qtype) {
+        primitive_attr attr;
+        switch (qtype) {
+            default: break;
+            case quantize_type::per_token_with_groups:
+            case quantize_type::per_tensor:
+                attr.set_fpmath_mode(
+                        static_cast<enum fpmath_mode>(fpmath_mode::any), true);
+                break;
+        }
+        return attr;
+    };
 
+    // fc_up
     auto bmm0_pd = matmul::primitive_desc(
-            eng, O_proj_md, W_up_md, FC_up_md, bmm0_attr);
+            eng, O_proj_md, W_up_md, FC_up_md, gen_default_attr(p.qtype));
     auto bmm0_prim = matmul(bmm0_pd);
 
     // fc_gate -> swish -> mul
-    primitive_attr bmm1_attr;
-    bmm1_attr.set_fpmath_mode(
-            static_cast<enum fpmath_mode>(fpmath_mode::any), true);
+    auto bmm1_attr = gen_default_attr(p.qtype);
     post_ops bmm1_po;
     if (p.activation == dnnl_eltwise_swish) {
         bmm1_po.append_eltwise(algorithm::eltwise_swish, 1.f, 1.f);
@@ -476,7 +492,6 @@ void bench_gated_mlp_primitives(std::vector<float> &res, double &avg_time,
     } else if (p.activation == dnnl_eltwise_gelu_tanh) {
         bmm1_po.append_eltwise(algorithm::eltwise_gelu_tanh, 0.f, 0.f);
     }
-
     bmm1_po.append_binary(algorithm::binary_mul, m_FC_up.get_desc());
     bmm1_attr.set_post_ops(bmm1_po);
 
@@ -484,15 +499,12 @@ void bench_gated_mlp_primitives(std::vector<float> &res, double &avg_time,
             eng, O_proj_md, W_gate_md, FC_gate_md, bmm1_attr);
     auto bmm1_prim = matmul(bmm1_pd);
 
-    primitive_attr bmm2_attr;
-    bmm2_attr.set_fpmath_mode(
-            static_cast<enum fpmath_mode>(fpmath_mode::any), true);
     auto bmm2_pd = matmul::primitive_desc(
-            eng, FC_gate_md, W_down_md, FC_down_md, bmm2_attr);
+            eng, FC_gate_md, W_down_md, FC_down_md, gen_default_attr(p.qtype));
     auto bmm2_prim = matmul(bmm2_pd);
 
     const auto loop = [&](bool print = false) {
-#if ENABLE_PRINT_MEM != 0
+#ifdef ENABLE_PRINT_MEM
 #define PRINT_MEM(mem) \
     if (print) { print_mem(mem, #mem " "); }
 #else
@@ -501,8 +513,7 @@ void bench_gated_mlp_primitives(std::vector<float> &res, double &avg_time,
         bmm0_prim.execute(strm,
                 {{DNNL_ARG_SRC, m_O_proj}, {DNNL_ARG_WEIGHTS, m_W_up},
                         {DNNL_ARG_DST, m_FC_up}});
-
-        // each primitive will use all threads
+#ifndef ENABLE_UP_ONLY
         bmm1_prim.execute(strm,
                 {{DNNL_ARG_SRC, m_O_proj}, {DNNL_ARG_WEIGHTS, m_W_gate},
                         {DNNL_ARG_DST, m_FC_gate},
@@ -512,14 +523,18 @@ void bench_gated_mlp_primitives(std::vector<float> &res, double &avg_time,
         bmm2_prim.execute(strm,
                 {{DNNL_ARG_SRC, m_FC_gate}, {DNNL_ARG_WEIGHTS, m_W_down},
                         {DNNL_ARG_DST, m_FC_down}});
-
+#endif
         PRINT_MEM(m_O_proj)
         PRINT_MEM(m_W_up)
+#ifndef ENABLE_UP_ONLY
         PRINT_MEM(m_W_gate)
         PRINT_MEM(m_W_down)
+#endif
         PRINT_MEM(m_FC_up)
+#ifndef ENABLE_UP_ONLY
         PRINT_MEM(m_FC_gate)
         PRINT_MEM(m_FC_down)
+#endif
 #undef PRINT_MEM
     };
 
@@ -571,8 +586,13 @@ void bench_gated_mlp_primitives(std::vector<float> &res, double &avg_time,
         print_mem(m_FC_down, "-prim");
     }
 
+#ifndef ENABLE_UP_ONLY
     res.resize(product(m_FC_down.get_desc().get_dims()));
     move_data(res, m_FC_down, false);
+#else
+    res.resize(product(m_FC_up.get_desc().get_dims()));
+    move_data(res, m_FC_up, false);
+#endif
 }
 
 void bench_gated_mlp_internal(std::vector<float> &res, double &avg_time,
@@ -619,17 +639,14 @@ void bench_gated_mlp_internal(std::vector<float> &res, double &avg_time,
     auto m_W_down_scales_md = t.m_w_down_scales.get_desc();
     auto m_W_down_zp_md = t.m_w_down_zp.get_desc();
 
+#ifdef ENABLE_UP_ONLY
+    const memory::dims FC_retn_sz_t = {p.mb, p.oc};
+#else
     const memory::dims FC_retn_sz_t = {p.mb, p.ic};
+#endif
     auto FC_retn_md_t
             = memory::desc(FC_retn_sz_t, FC_down_md.get_data_type(), tag::ab);
     auto m_FC_gate_t = memory(FC_retn_md_t, eng);
-
-    if (verbose) {
-        printf("memquant\n");
-        print_mem(t.m_w_gate_quantized, "-gen_desc_wgate_quant");
-        print_mem(t.m_w_gate_scales, "-gen_desc_wgate_scale");
-        print_mem(m_W_gate_zp, "-gen_desc_wgate_zp");
-    }
 
     primitive_attr attr;
     int mask = 0;
@@ -665,20 +682,14 @@ void bench_gated_mlp_internal(std::vector<float> &res, double &avg_time,
         //activation = dnnl_alg_kind_t::dnnl_eltwise_gelu_erf;
         //activation = dnnl_alg_kind_t::dnnl_eltwise_gelu_tanh;
         //activation = dnnl_alg_kind_t::dnnl_eltwise_exp; // should fail
-        if (p.qtype == quantize_type::no_quantization) {
-            return gmlp_t::pd_t(eng, O_proj_md, W_gate_md, W_up_md, W_down_md,
-                    FC_retn_md_t, activation, attr);
-        } else {
-            return gmlp_t::pd_t(eng, O_proj_md, m_W_gate_quant_md,
-                    m_W_up_quant_md, m_W_down_quant_md, FC_retn_md_t,
-                    activation, attr);
-        }
+        return gmlp_t::pd_t(eng, O_proj_md, m_W_gate_quant_md, m_W_up_quant_md,
+                m_W_down_quant_md, FC_retn_md_t, activation, attr);
     }();
 
     auto prim_fused_internal = gmlp_t(gmlp_pd);
 
     const auto loop = [&](bool print = false) {
-#if ENABLE_PRINT_MEM != 0
+#ifdef ENABLE_PRINT_MEM
 #define PRINT_MEM(mem) \
     if (print) { print_mem(mem, #mem " "); }
 #else
@@ -687,14 +698,16 @@ void bench_gated_mlp_internal(std::vector<float> &res, double &avg_time,
         if (p.qtype == quantize_type::no_quantization) {
             prim_fused_internal.execute(strm,
                     {{DNNL_ARG_SRC, m_O_proj},
-                            {DNNL_ARG_WEIGHTS_GATE, m_W_gate},
-                            {DNNL_ARG_WEIGHTS_UP, m_W_up},
-                            {DNNL_ARG_WEIGHTS_DOWN, m_W_down},
+                            {DNNL_ARG_WEIGHTS_GATE, m_W_gate_quant},
+                            {DNNL_ARG_WEIGHTS_UP, m_W_up_quant},
+                            {DNNL_ARG_WEIGHTS_DOWN, m_W_down_quant},
                             {DNNL_ARG_DST, m_FC_gate_t}});
+#ifndef ENABLE_UP_ONLY
             PRINT_MEM(m_O_proj)
-            PRINT_MEM(m_W_up)
-            PRINT_MEM(m_W_gate)
-            PRINT_MEM(m_W_down)
+            PRINT_MEM(m_W_up_quant)
+            PRINT_MEM(m_W_gate_quant)
+            PRINT_MEM(m_W_down_quant)
+#endif
             PRINT_MEM(m_FC_gate_t)
         } else {
             prim_fused_internal.execute(strm,
@@ -715,6 +728,7 @@ void bench_gated_mlp_internal(std::vector<float> &res, double &avg_time,
                                     m_W_down_scales},
                             {DNNL_ARG_WEIGHTS_DOWN | DNNL_ARG_ATTR_ZERO_POINTS,
                                     m_W_down_zp}});
+#ifndef ENABLE_UP_ONLY
             PRINT_MEM(m_O_proj)
             PRINT_MEM(m_W_up_quant)
             PRINT_MEM(m_W_gate_quant)
@@ -725,6 +739,11 @@ void bench_gated_mlp_internal(std::vector<float> &res, double &avg_time,
             PRINT_MEM(m_W_gate_zp)
             PRINT_MEM(m_W_down_scales)
             PRINT_MEM(m_W_down_zp)
+#else
+            PRINT_MEM(m_W_up_quant)
+            PRINT_MEM(m_W_up_scales)
+            PRINT_MEM(m_W_up_zp)
+#endif
             PRINT_MEM(m_FC_gate_t)
         }
 #undef PRINT_MEM

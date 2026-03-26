@@ -44,11 +44,26 @@ void fill_random(std::vector<float> &out, const dnnl::memory::desc &desc,
 void fill_random_scales(
         std::vector<float> &out, const dnnl::memory::desc &desc);
 
-void fill_const(std::vector<float> &out, const float c);
+template <typename T>
+void fill_const(std::vector<T> &out, const float c) {
+    for (int i = 0; i < int(out.size()); ++i) {
+        out[i] = c;
+    }
+}
 
-void fill_lin(std::vector<float> &out);
+template <typename T>
+void fill_lin(std::vector<T> &out, float mult = 1.f) {
+    for (int i = 0; i < int(out.size()); ++i) {
+        out[i] = i * mult;
+    }
+}
 
-void fill_hceye(std::vector<float> &out, int ldi = 32);
+template <typename T>
+void fill_hceye(std::vector<T> &out, int ldi = 32, float mult = 1.f) {
+    for (int i = 0; i < int(out.size()); ++i) {
+        out[i] = ((((i / ldi) % ldi == (i % ldi))) ? mult : 0.f);
+    }
+}
 
 void print_mem(const dnnl::memory &mem, const std::string &name = "");
 

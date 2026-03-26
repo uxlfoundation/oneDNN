@@ -79,24 +79,6 @@ void fill_random_scales(std::vector<float> &out, const memory::desc &desc) {
     }
 }
 
-void fill_const(std::vector<float> &out, const float c) {
-    for (int i = 0; i < int(out.size()); ++i) {
-        out[i] = c;
-    }
-}
-
-void fill_lin(std::vector<float> &out) {
-    for (int i = 0; i < int(out.size()); ++i) {
-        out[i] = i;
-    }
-}
-
-void fill_hceye(std::vector<float> &out, int ldi) {
-    for (int i = 0; i < int(out.size()); ++i) {
-        out[i] = ((((i / ldi) % ldi == (i % ldi))) ? 1.f : 0.f);
-    }
-}
-
 inline int get_idxs_str_len(size_t ndims) {
     return static_cast<int>(std::string("( ):").size() + 4 * (ndims - 1));
 }

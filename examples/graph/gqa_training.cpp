@@ -317,13 +317,33 @@ bool bench_gqa_backward(engine::kind ekind, logical_tensor::data_type dt,
     bmm_do_v.add_inputs({doutput, value});
     bmm_do_v.add_outputs({dprobs});
 
-    // compute dmasked_score =  dsoftmax(dprobs)
+    // compute dmasked_score = P * (dprobs - ReduceSum(O * dO))
+    // decomposed softmax backward: dS = P * (dP - rowsum(O * dO))
+    auto o_do_out
+            = logical_tensor(id++, dt_inter, output_sz, layout_type::strided);
+    auto o_do_mul = op(id++, op::kind::Multiply, "mul_o_do");
+    o_do_mul.add_inputs({output, doutput});
+    o_do_mul.add_outputs({o_do_out});
+
+    auto correction_out
+            = logical_tensor(id++, dt_inter, stats_sz, layout_type::strided);
+    auto correction = op(id++, op::kind::ReduceSum, "reducesum_correction");
+    correction.set_attr<std::vector<int64_t>>(op::attr::axes, {4});
+    correction.set_attr<bool>(op::attr::keep_dims, true);
+    correction.add_inputs({o_do_out});
+    correction.add_outputs({correction_out});
+
+    auto dp_corrected_out
+            = logical_tensor(id++, dt_inter, score_sz, layout_type::strided);
+    auto dp_corrected_op = op(id++, op::kind::Subtract, "sub_dp_corrected");
+    dp_corrected_op.add_inputs({dprobs, correction_out});
+    dp_corrected_op.add_outputs({dp_corrected_out});
+
     auto dmasked_score
             = logical_tensor(id++, dt_inter, score_sz, layout_type::strided);
-    auto softmax_grad = op(id++, op::kind::SoftMaxBackward, "softmax_bwd");
-    softmax_grad.set_attr<int64_t>(op::attr::axis, -1);
-    softmax_grad.add_inputs({dprobs, probs});
-    softmax_grad.add_outputs({dmasked_score});
+    auto softmax_bwd_mul = op(id++, op::kind::Multiply, "mul_softmax_bwd");
+    softmax_bwd_mul.add_inputs({probs, dp_corrected_out});
+    softmax_bwd_mul.add_outputs({dmasked_score});
 
     // compute dscored_score = dmasked_score / scale
     auto dscaled_score
@@ -372,10 +392,13 @@ bool bench_gqa_backward(engine::kind ekind, logical_tensor::data_type dt,
     gqa_bwd.add_op(exp);
     gqa_bwd.add_op(bmm_p_do);
     gqa_bwd.add_op(bmm_do_v);
-    gqa_bwd.add_op(softmax_grad);
+    gqa_bwd.add_op(o_do_mul);
+    gqa_bwd.add_op(correction);
+    gqa_bwd.add_op(dp_corrected_op);
+    gqa_bwd.add_op(softmax_bwd_mul);
     gqa_bwd.add_op(scale_div2);
-    gqa_bwd.add_op(bmm_dscaled_score_k);
     gqa_bwd.add_op(bmm_dscaled_score_q);
+    gqa_bwd.add_op(bmm_dscaled_score_k);
     gqa_bwd.add_op(reduce_dv);
     gqa_bwd.add_op(reduce_dk);
     if (dt != dt_inter) {

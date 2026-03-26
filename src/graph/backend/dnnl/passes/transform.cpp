@@ -820,6 +820,80 @@ status_t fuse_to_shuffle(std::shared_ptr<subgraph_t> &sg) {
     return status::success;
 }
 
+status_t fuse_subtract_exp_to_softmax(std::shared_ptr<subgraph_t> &sg) {
+    auto is_binary = [](const op_t *op, dnnl::algorithm alg) -> bool {
+        return op->get_kind() == op_kind::dnnl_binary
+                && static_cast<dnnl::algorithm>(
+                           op->get_attr<int64_t>(op_attr::alg_kind))
+                        == alg;
+    };
+
+    auto is_eltwise = [](const op_t *op, dnnl::algorithm alg) -> bool {
+        return op->get_kind() == op_kind::dnnl_eltwise
+                && static_cast<dnnl::algorithm>(
+                           op->get_attr<int64_t>(op_attr::alg_kind))
+                        == alg;
+    };
+
+    std::vector<std::tuple<op_t *, op_t *, int64_t>> fusion_groups;
+    std::set<op_t *> visited;
+
+    for (const auto &cur_op : sg->get_ops()) {
+        if (!is_binary(cur_op.get(), dnnl::algorithm::binary_sub)
+                || visited.count(cur_op.get()) != 0)
+            continue;
+
+        auto src = cur_op->get_input_value(0);
+        auto stats = cur_op->get_input_value(1);
+        if (stats->has_producer()) continue;
+
+        auto sub_out = cur_op->get_output_value(0);
+        auto sub_consumers = sub_out->get_consumers();
+        if (sub_consumers.size() != 1) continue;
+
+        auto &exp_op = sub_consumers[0].get_op();
+        if (!is_eltwise(&exp_op, dnnl::algorithm::eltwise_exp)
+                || visited.count(&exp_op) != 0 || exp_op.num_outputs() != 1)
+            continue;
+
+        fusion_groups.emplace_back(cur_op.get(), &exp_op);
+        visited.insert(cur_op.get());
+        visited.insert(&exp_op);
+    }
+
+    if (fusion_groups.empty()) return status::success;
+
+    subgraph_rewriter_t rewriter(sg);
+    for (auto &fusion_group : fusion_groups) {
+        op_t *sub_op = std::get<0>(fusion_group);
+        op_t *exp_op = std::get<1>(fusion_group);
+        int64_t axis = -1;
+
+        auto src = sub_op->get_input_value(0);
+        auto stats = sub_op->get_input_value(1);
+        auto dst = exp_op->get_output_value(0);
+
+        op_ptr softmax_op = std::make_shared<op_t>(op_kind::dnnl_softmax);
+        softmax_op->set_attr<int64_t>(op_attr::axis, axis);
+        softmax_op->set_attr<std::string>(op_attr::mode, "inf_as_zero");
+
+        src->remove_consumer(*sub_op, 0);
+        stats->remove_consumer(*sub_op, 1);
+        src->add_consumer(*softmax_op, 0);
+        softmax_op->add_input(src);
+        softmax_op->add_output(dst);
+        dst->set_producer(*softmax_op);
+        insert_empty_scratchpad(softmax_op);
+
+        rewriter.to_insert(softmax_op);
+        rewriter.to_remove(sub_op->shared_from_this());
+        rewriter.to_remove(exp_op->shared_from_this());
+    }
+
+    rewriter.run();
+    return infer_shape(sg);
+}
+
 status_t fuse_post_ops(std::shared_ptr<subgraph_t> &sg) {
     // lambda function to fuse one post op into base primitive
     auto fuse_post_ops_func = [&](bool &changed) -> status_t {

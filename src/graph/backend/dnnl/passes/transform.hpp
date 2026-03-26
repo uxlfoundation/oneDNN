@@ -43,6 +43,10 @@ status_t fuse_to_int8_concat(std::shared_ptr<subgraph_t> &sg);
 
 status_t fuse_to_shuffle(std::shared_ptr<subgraph_t> &sg);
 
+// This pass is used in sdpa backward to fuse subtract+exp to softmax,
+// which can be optimized by oneDNN softmax primitive.
+status_t fuse_subtract_exp_to_softmax(std::shared_ptr<subgraph_t> &sg);
+
 status_t replace_quant_data_with_binary_post_op(
         std::shared_ptr<subgraph_t> &sg);
 

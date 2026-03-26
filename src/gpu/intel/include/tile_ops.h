@@ -272,6 +272,61 @@ DEF_BLOCK2D_LOAD_STORE(ushort, ushort, 16, 16, u16_m8k32v1, 32, 8)
 
 DEF_BLOCK2D_LOAD_STORE(float, uint, 8, 16, u32_m8k16v1, 16, 8)
 
+/* Native 2D block ops for u32 with br=32 (u32_m4k32v1, u32_m8k32v1) are not valid
+   Compose from valid u32_m8k16v1 (br=16, bc=8) block2d ops where possible,
+   falling back to subgroup-wide element access otherwise */
+__attribute__((overloadable)) float8 block2d_load(const global float *p, int w,
+        int h, int ld, int x, int y, int br, int bc, int sg)
+        __attribute__((enable_if(br == 32, "wrong #rows")))
+        __attribute__((enable_if(bc == 4, "wrong #columns")))
+        __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
+    /* Load two 16x8 blocks via valid u32_m8k16v1 and extract first 4 cols */
+    float8 lo = block2d_load(p, w, h, ld, x, y, 16, 8, 16);
+    float8 hi = block2d_load(p, w, h, ld, x + 16, y, 16, 8, 16);
+    return (float8)(lo[0], hi[0], lo[1], hi[1], lo[2], hi[2], lo[3], hi[3]);
+}
+
+__attribute__((overloadable)) void block2d_store(float8 v,
+        const global float *p, int w, int h, int ld, int x, int y, int br,
+        int bc, int sg) __attribute__((enable_if(br == 32, "wrong #rows")))
+__attribute__((enable_if(bc == 4, "wrong #columns")))
+__attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
+    /* Cannot use bc=8 block2d_store (would write extra columns)
+       Fall back to subgroup-wide element stores */
+    int lid = get_sub_group_local_id();
+    int ld_f = ld / (int)sizeof(float);
+    _Pragma("unroll") for (int c = 0; c < 4; c++) {
+        global float *col = (global float *)p + (long)(y + c) * ld_f + x;
+        col[lid] = v[2 * c];
+        col[16 + lid] = v[2 * c + 1];
+    }
+}
+
+__attribute__((overloadable)) float16 block2d_load(const global float *p, int w,
+        int h, int ld, int x, int y, int br, int bc, int sg)
+        __attribute__((enable_if(br == 32, "wrong #rows")))
+        __attribute__((enable_if(bc == 8, "wrong #columns")))
+        __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
+    /* Compose from two valid u32_m8k16v1 (br=16, bc=8) block2d loads */
+    float8 lo = block2d_load(p, w, h, ld, x, y, 16, 8, 16);
+    float8 hi = block2d_load(p, w, h, ld, x + 16, y, 16, 8, 16);
+    return (float16)(lo[0], hi[0], lo[1], hi[1], lo[2], hi[2], lo[3], hi[3],
+            lo[4], hi[4], lo[5], hi[5], lo[6], hi[6], lo[7], hi[7]);
+}
+
+__attribute__((overloadable)) void block2d_store(float16 v,
+        const global float *p, int w, int h, int ld, int x, int y, int br,
+        int bc, int sg) __attribute__((enable_if(br == 32, "wrong #rows")))
+__attribute__((enable_if(bc == 8, "wrong #columns")))
+__attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
+    /* Decompose into two u32_m8k16v1 (br=16, bc=8) block2d stores.
+       Even vector indices hold rows 0-15, odd hold rows 16-31 */
+    float8 lo = (float8)(v[0], v[2], v[4], v[6], v[8], v[10], v[12], v[14]);
+    float8 hi = (float8)(v[1], v[3], v[5], v[7], v[9], v[11], v[13], v[15]);
+    block2d_store(lo, p, w, h, ld, x, y, 16, 8, 16);
+    block2d_store(hi, p, w, h, ld, x + 16, y, 16, 8, 16);
+}
+
 #define tile_fill(t, v) \
     do { \
         _Pragma("unroll") for (int i = 0; i < sizeof(t.x) / sizeof(t.x[0]); \

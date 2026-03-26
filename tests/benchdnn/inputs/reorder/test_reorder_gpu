@@ -272,3 +272,7 @@
 2147483648_n"int_overflow"
 4294967296_n"uint_overflow"
 2147483869_n"nd_range_overflow"
+
+# Regression tests
+--reset --sdt=f16 --ddt=f16 --stag=abcd --dtag=AcdB8a2b 20x1x3x3
+--reset --sdt=f16 --ddt=f16 --stag=abcd --dtag=AcdB16a2b 56x1x5x5

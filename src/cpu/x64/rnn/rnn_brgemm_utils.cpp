@@ -85,9 +85,8 @@ x64::cpu_isa_t brgemm_calc_isa(
             if (rnn.is_cell_dt_f16()) {
                 return x64::avx512_core_amx_fp16;
             } else if (rnn.is_cell_dt_int8()) {
-                return (mayiuse(x64::avx10_2_512_amx_2))
-                        ? x64::avx10_2_512_amx_2
-                        : x64::avx512_core_amx;
+                return (mayiuse(x64::avx10_2_amx_2)) ? x64::avx10_2_amx_2
+                                                     : x64::avx512_core_amx;
             } else {
                 return x64::avx512_core_amx;
             }
@@ -95,8 +94,8 @@ x64::cpu_isa_t brgemm_calc_isa(
     }
 
     if (rnn.is_cell_dt_int8()) {
-        return utils::map(true, x64::isa_undef, mayiuse(avx10_2_512),
-                avx10_2_512, mayiuse(avx512_core_vnni), avx512_core_vnni,
+        return utils::map(true, x64::isa_undef, mayiuse(avx10_2), avx10_2,
+                mayiuse(avx512_core_vnni), avx512_core_vnni,
                 mayiuse(avx512_core), avx512_core, mayiuse(avx2), avx2);
     } else if (rnn.is_cell_dt_bf16()) {
         return x64::avx512_core_bf16;
@@ -288,7 +287,7 @@ x64::cpu_isa_t adjust_isa_by_m_block(
      * throughput.
      */
     if (is_int8_amx && m_block < 4) {
-        if (x64::mayiuse(x64::avx10_2_512_amx_2)) return x64::avx10_2_512_amx_2;
+        if (x64::mayiuse(x64::avx10_2_amx_2)) return x64::avx10_2_amx_2;
         if (x64::mayiuse(x64::avx512_core_amx)) return x64::avx512_core_amx;
     }
 

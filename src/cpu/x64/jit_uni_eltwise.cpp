@@ -305,7 +305,7 @@ status_t jit_uni_eltwise_fwd_t<isa>::pd_t::init(engine_t *engine) {
             VERBOSE_ISA_DT_MISMATCH);
     VDISPATCH_ELTWISE(
             IMPLICATION(utils::one_of(src_md()->data_type, f8_e5m2, f8_e4m3),
-                    mayiuse(avx10_2_512) || mayiuse(avx512_core_amx)),
+                    mayiuse(avx10_2) || mayiuse(avx512_core_amx)),
             VERBOSE_ISA_DT_MISMATCH);
     VDISPATCH_ELTWISE(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "data");
     VDISPATCH_ELTWISE(src_d.is_dense(true), VERBOSE_UNSUPPORTED_SPARSE_CFG);
@@ -397,7 +397,7 @@ status_t jit_uni_eltwise_bwd_t<isa>::pd_t::init(engine_t *engine) {
             VERBOSE_ISA_DT_MISMATCH);
     VDISPATCH_ELTWISE(
             IMPLICATION(utils::one_of(data_md()->data_type, f8_e5m2, f8_e4m3),
-                    mayiuse(avx10_2_512) || mayiuse(avx512_core_amx)),
+                    mayiuse(avx10_2) || mayiuse(avx512_core_amx)),
             VERBOSE_ISA_DT_MISMATCH);
     VDISPATCH_ELTWISE(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "data");
     VDISPATCH_ELTWISE(set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
@@ -474,7 +474,7 @@ template struct jit_uni_eltwise_fwd_t<avx2_vnni_2>;
 template struct jit_uni_eltwise_fwd_t<avx512_core>;
 template struct jit_uni_eltwise_fwd_t<avx512_core_bf16>;
 template struct jit_uni_eltwise_fwd_t<avx512_core_fp16>;
-template struct jit_uni_eltwise_fwd_t<avx10_2_512>;
+template struct jit_uni_eltwise_fwd_t<avx10_2>;
 template struct jit_uni_eltwise_fwd_t<avx512_core_amx>;
 
 template struct jit_uni_eltwise_bwd_t<sse41>;
@@ -483,7 +483,7 @@ template struct jit_uni_eltwise_bwd_t<avx2>;
 template struct jit_uni_eltwise_bwd_t<avx512_core>;
 template struct jit_uni_eltwise_bwd_t<avx512_core_bf16>;
 template struct jit_uni_eltwise_bwd_t<avx512_core_fp16>;
-template struct jit_uni_eltwise_bwd_t<avx10_2_512>;
+template struct jit_uni_eltwise_bwd_t<avx10_2>;
 template struct jit_uni_eltwise_bwd_t<avx512_core_amx>;
 
 } // namespace x64

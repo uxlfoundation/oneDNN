@@ -74,7 +74,7 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
 
     Txo_int = Txo.isInteger() ? Tx.asSignedInt() : Tx;
     Txs_int = Tx;
-    if (Tx == Type::bf16)
+    if (Tx == Type::bf16 || Tx.isF8())
         Txs_int = Type::f32;
     Txg_int = Txg;
 
@@ -369,7 +369,7 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
 
         bool qbroadcastX = xqGroupX > 1 || common;
         int strideq = qbroadcastX ? 0 : 1;
-        if (bfSpecialPath)
+        if (bfSpecialPath && !qbroadcastX)
             strideq = 1;
 
         // Unpack iteration # and block offsets into MNK indices
@@ -403,7 +403,7 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
             if (xqGroupX > 1) ne = std::min(ne, xqGroupX - x0 % xqGroupX);
 
             // Broadcast pairs of scales, in case of stride-2 bfloat16 data.
-            if (bfSpecialPath) {
+            if (bfSpecialPath && !qbroadcastX) {
                 int npair = (qdata.getOffset() / 2) % npairs;
                 if (x0 == 0 && npair == 0)
                     for (int p = 0; p < npairs; p++)

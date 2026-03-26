@@ -325,6 +325,13 @@ private:
         gelu_erf_one_over_sqrt_two, // 1.f / sqrtf(2.f)
         gelu_erf_one_over_sqrt_pi, // 1.f / sqrtf(pi) = 0.564190f
         gelu_erf_pol, // see correspondent table for float values
+        gelu_erf_lut_max,
+        gelu_erf_lut_third,
+        gelu_erf_lut_shift,
+        gelu_erf_lut_max_index,
+        gelu_erf_lut, // ERF LUT: [erf(r), scale(r)], 513 pairs
+        gelu_erf_lut_erf, // ERF LUT: erf(r), 513 entries
+        gelu_erf_lut_scale, // ERF LUT: scale(r), 513 entries
         log_minus_inf, // -inf
         log_qnan, // qnan
         log_mantissa_mask, // gets mantissa bits

@@ -651,7 +651,13 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
         /* Prepare k mask: NaN in bounds, -inf out of bounds */
         kmask_tile_type_float k_mask;
-        if (remainder_k) {
+        bool needs_k_mask = remainder_k;
+#if WITH_CAUSAL_MASK
+        /* for q==1 with GQA batching, all queries are at sequence position 0,
+           use uniform k_mask instead of varying per-column */
+        if (q == 1) needs_k_mask = true;
+#endif
+        if (needs_k_mask) {
 #pragma unroll
             for (int ii = 0; ii < ugemm_kq_sg_tile_m / SUBGROUP_SIZE; ii++) {
                 k_mask.x[0][ii] = (k0 + sg_i0_kq + ii * SUBGROUP_SIZE
@@ -710,20 +716,23 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #endif
 
         /* Apply k mask */
-        if (remainder_k) { tile_hbroadcast_min(&S_tile, k_mask); }
+        if (needs_k_mask) { tile_hbroadcast_min(&S_tile, k_mask); }
 
 #if WITH_CAUSAL_MASK
+        /* For q==1 cases, the whole GQA batch is at position 0 (handled above w/uniform masking)
+           Only apply per-column causal masking for non-batched q-varying cases */
+        if (q != 1) {
 #define less_than(offset_k, offset_q) (offset_q < offset_k)
 
-        int col_offset = wg_j0 + sg_j0_kq;
-        if (q == 1) col_offset = 1;
-        if (attn_mask_type == ATTN_MASK_BOTTOM_RIGHT) col_offset += k - q;
+            int col_offset = wg_j0 + sg_j0_kq;
+            if (attn_mask_type == ATTN_MASK_BOTTOM_RIGHT) col_offset += k - q;
 
-        /* Apply causal mask */
-        tile_predicated_assignment_t(S_tile, k0 + sg_i0_kq, col_offset,
-                less_than, -INFINITY, SUBGROUP_SIZE, ugemm_kq_c_type_block0,
-                ugemm_kq_c_type_block1, ugemm_kq_c_type_nblock0,
-                ugemm_kq_c_type_nblock1);
+            /* Apply causal mask */
+            tile_predicated_assignment_t(S_tile, k0 + sg_i0_kq, col_offset,
+                    less_than, -INFINITY, SUBGROUP_SIZE, ugemm_kq_c_type_block0,
+                    ugemm_kq_c_type_block1, ugemm_kq_c_type_nblock0,
+                    ugemm_kq_c_type_nblock1);
+        }
 #endif
 
         /* Before softmax, we will need to scale columns by maximum values to avoid overflow. */
@@ -800,14 +809,19 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         tile_fill(S_sum_tile1, 0.0f);
         tile_vreduce_add(S_tile, &S_sum_tile1);
 
+#if USE_SYSTOLIC_UKERNEL
+        /* Convert to half or bf16, VNNI format */
+        s_tile_type_packed S_tile_packed;
+        tile_copy_to_vec2(S_tile, S_tile_packed, VEC_TYPE2);
+
+        /* Store to SLM, in packed format */
+        tile_store_t_sys_src2(S_tile_packed, (local uint *)S_slm,
+                ugemm_vs_sg_tile_n, ugemm_kq_wg_tile_m / 2, sg_i0_kq / 2,
+                sg_j0_kq);
+#else
         /* Reblock and store to SLM */
         s_tile_type_reblock S_tile_reblock;
         tile_copy_reblock(S_tile, &S_tile_reblock);
-
-#if USE_SYSTOLIC_UKERNEL
-        tile_store_t_sys_src2(S_tile_reblock, (local FMA_TYPE *)S_slm,
-                ugemm_vs_sg_tile_n, ugemm_kq_wg_tile_m, sg_i0_kq, sg_j0_kq);
-#else
         tile_store_block_packed(S_tile_reblock, S_slm, ugemm_vs_sg_tile_n,
                 ugemm_kq_wg_tile_m, sg_j0_kq, sg_i0_kq);
 #endif
@@ -1007,8 +1021,8 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         const uint preprocess_batch = b1 * (DST_D1 * q) + b0 * q;
 
         global float *ws_logsumexp = ws + preprocess_batch;
-        tile_store(S_max_tile_old, ws_logsumexp, q, 1, q, sg_j0_kq + wg_j0,
-                sg_i0_kq);
+        tile_store(S_max_tile_old, ws_logsumexp, q_group_size, 1, q_group_size,
+                sg_j0_kq + wg_j0, sg_i0_kq);
         // sg_i0 specified to avoid OOB subgroups from aliasing
 #endif
 

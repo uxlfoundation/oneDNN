@@ -835,7 +835,7 @@ status_t fuse_subtract_exp_to_softmax(std::shared_ptr<subgraph_t> &sg) {
                         == alg;
     };
 
-    std::vector<std::tuple<op_t *, op_t *, int64_t>> fusion_groups;
+    std::vector<std::vector<op_t *>> fusion_groups;
     std::set<op_t *> visited;
 
     for (const auto &cur_op : sg->get_ops()) {
@@ -856,7 +856,7 @@ status_t fuse_subtract_exp_to_softmax(std::shared_ptr<subgraph_t> &sg) {
                 || visited.count(&exp_op) != 0 || exp_op.num_outputs() != 1)
             continue;
 
-        fusion_groups.emplace_back(cur_op.get(), &exp_op);
+        fusion_groups.emplace_back(std::vector<op_t *>{cur_op.get(), &exp_op});
         visited.insert(cur_op.get());
         visited.insert(&exp_op);
     }
@@ -865,8 +865,8 @@ status_t fuse_subtract_exp_to_softmax(std::shared_ptr<subgraph_t> &sg) {
 
     subgraph_rewriter_t rewriter(sg);
     for (auto &fusion_group : fusion_groups) {
-        op_t *sub_op = std::get<0>(fusion_group);
-        op_t *exp_op = std::get<1>(fusion_group);
+        op_t *sub_op = fusion_group[0];
+        op_t *exp_op = fusion_group[1];
         int64_t axis = -1;
 
         auto src = sub_op->get_input_value(0);

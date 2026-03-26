@@ -681,7 +681,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #define less_than(offset_k, offset_q) (offset_q < offset_k)
 
         int col_offset = q0 + sg_j0_kq;
-        if (q == 1) col_offset = 1;
+        if (q == 1) col_offset = 0;
         if (attn_mask_type == ATTN_MASK_BOTTOM_RIGHT) col_offset += k - q;
 
         /* Apply causal mask */

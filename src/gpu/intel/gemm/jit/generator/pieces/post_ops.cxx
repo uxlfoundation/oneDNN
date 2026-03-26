@@ -377,6 +377,9 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
         ? strategy.unroll[globalCM ? LoopN : LoopM] : 1;
 
     if (binaryPostPrefetchEnabled() && !kloopPrefetchActive && CO_strategy.newDP && (ignoreRem || (!remR && !remC))) {
+        VDEBUGINFO(4, primitive, postops,
+            "MY: postops binary prefetch begin: origAccessType=%d overrideAccessType=%d scatteredAccess=%d prefetchRowCount=%d matrix=%d cor=%d coc=%d",
+            int(origAccessType), int(CO_strategy.accessType), int(scatteredAccess), prefetchRowCount, int(matrix), int(cor), int(coc));
         auto CO_prefetch_strategy = CO_strategy;
         CO_prefetch_strategy.accessType = origAccessType;  // restore original Block2DTranspose/Block2D
         CO_prefetch_strategy.prefetch = true;

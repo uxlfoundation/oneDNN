@@ -80,6 +80,10 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
     arg_list.set(argn++, n);
     arg_list.set(argn++, k);
 
+    std::cout << offset_a << ' ' << offset_b << ' ' << offset_c << std::endl;
+    std::cout << lda << ' ' << ldb << ' ' << ldc << std::endl;
+    std::cout << m << ' ' << n << ' ' << k << std::endl;
+
     set_scalar_arg_cvt(arg_list, argn++, alpha, scalar_type_);
     set_scalar_arg_cvt(arg_list, argn++, beta, scalar_type_);
 

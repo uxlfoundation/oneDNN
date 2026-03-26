@@ -1462,12 +1462,14 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
                 int cor_full = strategy.unroll[LoopM];
                 int coc_full = strategy.unroll[LoopN];
                 CO_strategy.accessType = AccessType::Block2DTranspose;
-                CO_strategy.address2D = true;
-                // Block2D requires >=4-byte alignment; binary atype.alignment = T.size() (e.g. 2 for f16).
-                // Override for prefetch only — GPU allocations are always >= 64-byte aligned in practice.
+                // Do NOT set address2D=true: incAddr(vector) stubs on address2D=true.
+                // Use address2D=false with alignment >= block2DBaseAlignment so doBaseAdjust=false.
+                CO_strategy.address2D = false;
+                // Block2D alignment fix: bump to max(minAlignment, baseAlignment).
                 auto CO_b2dt = CO;
-                CO_b2dt.alignment = (uint8_t)std::max((int)CO.alignment,
-                    block2DMinAlignment(hw, CO, CO_strategy));
+                CO_b2dt.alignment = (uint8_t)std::max({(int)CO.alignment,
+                    block2DMinAlignment(hw, CO, CO_strategy),
+                    block2DBaseAlignment(hw, getStepping())});
                 VDEBUGINFO(4, primitive, postops,
                     "MY: kloop binary prefetch FULL TILE Block2DT cor=%d coc=%d align=%d",
                     cor_full, coc_full, CO_b2dt.alignment);

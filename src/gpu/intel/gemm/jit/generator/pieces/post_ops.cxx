@@ -383,14 +383,21 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
             int coc_full = strategy.unroll[LoopN];
             auto CO_pf = CO_strategy;
             CO_pf.accessType = AccessType::Block2DTranspose;
-            CO_pf.address2D = true;
+            // Do NOT set address2D=true: the vector overload of incAddr stubs on address2D=true,
+            // and Address2DParams (surface w/h) would be needed for setupAddr with address2D=true.
+            // Instead use address2D=false with alignment bumped to block2DBaseAlignment so that
+            // doBaseAdjust (atype.alignment & (baseAlign-1)) is zero — avoiding the
+            // 'doBaseAdjust && !address2D' stub() in address_setup.cxx.
+            CO_pf.address2D = false;
             CO_pf.prefetch = true;
             if (hasPrefetchCaching) CO_pf.cachingR = prefetchCaching;
-            // Block2D requires >=4-byte alignment; binary atype.alignment = T.size() (e.g. 2 for f16).
-            // Override for prefetch only — GPU allocations are always >= 64-byte aligned in practice.
+            // Block2D requires alignment >= block2DMinAlignment AND base >= block2DBaseAlignment.
+            // GPU buffers are always >= 64-byte aligned; set the declared alignment to the larger
+            // value so both checks pass without needing runtime address adjustment.
             auto CO_b2dt = CO;
-            CO_b2dt.alignment = (uint8_t)std::max((int)CO.alignment,
-                block2DMinAlignment(hw, CO, CO_pf));
+            CO_b2dt.alignment = (uint8_t)std::max({(int)CO.alignment,
+                block2DMinAlignment(hw, CO, CO_pf),
+                block2DBaseAlignment(hw, getStepping())});
             VDEBUGINFO(4, primitive, postops,
                 "MY: postops binary FULL TILE Block2DT prefetch: cor=%d coc=%d align=%d", cor_full, coc_full, CO_b2dt.alignment);
             RegisterLayout full_layout(hw, Tco, cor_full, coc_full, CO_b2dt, CO_pf, false, false, false);

@@ -112,6 +112,14 @@
 #define DNNL_AARCH64_ACL_ONLY(...)
 #endif
 
+// Using AOCL-DLP kernels is optional for x64 builds
+// and can be enabled with the DNNL_X64_USE_AOCL_DLP CMake option
+#if defined(DNNL_X64) && defined(DNNL_X64_USE_AOCL_DLP)
+#define DNNL_X64_AOCL_DLP_ONLY(...) __VA_ARGS__
+#else
+#define DNNL_X64_AOCL_DLP_ONLY(...)
+#endif
+
 // Primitive ISA section for configuring knobs.
 // Note: MSVC preprocessor by some reason "eats" symbols it's not supposed to
 // if __VA_ARGS__ is passed as empty. Then things happen like this for non-x64:

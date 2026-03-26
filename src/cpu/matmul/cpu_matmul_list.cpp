@@ -31,6 +31,11 @@
 #if DNNL_X64
 #include "cpu/x64/matmul/brgemm_matmul.hpp"
 #include "cpu/x64/matmul/jit_uni_sparse_matmul.hpp"
+#ifdef DNNL_X64_USE_AOCL_DLP
+#include "cpu/x64/matmul/aocl_dlp_lowp_matmul.hpp"
+#include "cpu/x64/matmul/aocl_dlp_lowp_matmul_sq.hpp"
+#include "cpu/x64/matmul/aocl_dlp_matmul.hpp"
+#endif
 using namespace dnnl::impl::cpu::x64::matmul;
 using namespace dnnl::impl::cpu::x64;
 #elif DNNL_AARCH64
@@ -72,6 +77,9 @@ constexpr impl_list_item_t impl_list[] = REG_MATMUL_P({
         CPU_INSTANCE_AARCH64(jit_int8_matmul_t<sve_128>)
         CPU_INSTANCE_AARCH64(brgemm_matmul_t<sve_256>)
         CPU_INSTANCE_AARCH64(brgemm_matmul_t<sve_128>)
+        CPU_INSTANCE_X64_AOCL_DLP(aocl_dlp_lowp_matmul_sq_t)
+        CPU_INSTANCE_X64_AOCL_DLP(aocl_dlp_lowp_matmul_t)
+        CPU_INSTANCE_X64_AOCL_DLP(aocl_dlp_matmul_t)
         CPU_INSTANCE_AMX(brgemm_matmul_t<avx10_2_512_amx_2>)
         CPU_INSTANCE_AMX(brgemm_matmul_t<avx512_core_amx_fp16>)
         CPU_INSTANCE_AMX(brgemm_matmul_t<avx512_core_amx>)

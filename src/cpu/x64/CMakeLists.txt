@@ -96,6 +96,14 @@ if(ONEDNN_ENABLE_GEMM_KERNELS_ISA MATCHES "^(NONE)$")
     endforeach()
 endif()
 
+if(NOT DNNL_X64_USE_AOCL_DLP)
+    file(GLOB_RECURSE AOCL_DLP_FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/aocl_dlp_*.[ch]
+        ${CMAKE_CURRENT_SOURCE_DIR}/aocl_dlp_*.[ch]pp
+        )
+    list(REMOVE_ITEM SOURCES ${AOCL_DLP_FILES})
+endif()
+
 set(OBJ_LIB ${LIB_PACKAGE_NAME}_cpu_x64)
 add_library(${OBJ_LIB} OBJECT ${SOURCES})
 set_property(GLOBAL APPEND PROPERTY DNNL_LIB_DEPS

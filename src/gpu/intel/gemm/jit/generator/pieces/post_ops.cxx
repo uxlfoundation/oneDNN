@@ -329,10 +329,6 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
         op = BinaryOp::Mul;
     }
 
-    // Save original accessType before matrix-case override, so prefetch can use original
-    // (e.g. Block2DTranspose) rather than the reduced Block/Scattered assigned below.
-    auto origAccessType = CO_strategy.accessType;
-
     bool matrix = row && column;
     if (matrix) {
         // Matrix case implemented as loop over rows/columns, depending on C's layout.
@@ -368,55 +364,63 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
     // Uses the same per-row layout (cor x coc after adjustment) iterated row-by-row.
     // Only effective for Block/Block2D access — Scattered generates too many in-flight sends
     // (all sharing SBID $0), overflowing the LSC request queue across concurrent WGs.
+    // Full-tile mode: use a single Block2DTranspose prefetch covering the entire unrollM×unrollN tile.
+    // This generates 2 sends with distinct SBIDs (via 2D address headers), unlike the Block/Scattered
+    // path which generates SIMD16 scattered sends all sharing SBID $0 — overflowing the LSC queue.
+    // Only safe when the per-column load uses Block (auto-promoted to d32t) access type.
     bool fullTile = getBinaryPostPrefetchFullTile();
-    // Use origAccessType (before matrix override) for scattered check and prefetch layout:
-    // ensures Block2DTranspose/Block2D is preserved for prefetch, not reduced to Block/Scattered.
-    bool scatteredAccess = (origAccessType == AccessType::Scattered ||
-                            origAccessType == AccessType::ChannelScattered);
-    int prefetchRowCount = (fullTile && matrix && !scatteredAccess)
-        ? strategy.unroll[globalCM ? LoopN : LoopM] : 1;
+    bool block2DSafe = (CO_strategy.accessType == AccessType::Block ||
+                        isBlock2D(CO_strategy.accessType));
 
     if (binaryPostPrefetchEnabled() && !kloopPrefetchActive && CO_strategy.newDP && (ignoreRem || (!remR && !remC))) {
-        VDEBUGINFO(4, primitive, postops,
-            "MY: postops binary prefetch begin: origAccessType=%d overrideAccessType=%d scatteredAccess=%d prefetchRowCount=%d matrix=%d cor=%d coc=%d",
-            int(origAccessType), int(CO_strategy.accessType), int(scatteredAccess), prefetchRowCount, int(matrix), int(cor), int(coc));
-        auto CO_prefetch_strategy = CO_strategy;
-        CO_prefetch_strategy.accessType = origAccessType;  // restore original Block2DTranspose/Block2D
-        CO_prefetch_strategy.prefetch = true;
-
-        // Override caching policy for prefetch via BINARY_POST_PREFETCH_CACHING.
-        // Values: l1c_l3c | l1uc_l3c | l1uc_l3uc | l1c_l3uc | auto (unset = default nGen).
-        {
-            CacheSettingsLSC prefetchCaching {};
-            if (getBinaryPostPrefetchCaching(prefetchCaching))
-                CO_prefetch_strategy.cachingR = prefetchCaching;
-        }
-
-        RegisterLayout CO_prefetch_layout(hw, Tco, cor, coc, CO, CO_prefetch_strategy, false, false, false);
-        std::vector<GRFRange> CO_prefetch_addrs;
-        allocAddrRegs(CO_prefetch_addrs, CO_prefetch_layout, state);
-        setupAddr(CO_prefetch_addrs, base, CO_prefetch_layout, ld, strategy, state);
-
-        // Apply lookahead offset to advance to the target tile.
         int lookahead = getBinaryPostPrefetchLookahead();
-        for (int la = 0; la < lookahead; la++) {
-            if (coColMajor == globalCM)
-                incAddr(CO_prefetch_addrs, ld, int(row), int(column), CO_prefetch_layout, strategy, state);
-            else
-                incAddr(CO_prefetch_addrs, Tco.size(), int(row), int(column), CO_prefetch_layout, strategy, state);
-        }
+        CacheSettingsLSC prefetchCaching {};
+        bool hasPrefetchCaching = getBinaryPostPrefetchCaching(prefetchCaching);
 
-        // Full-tile: loop over prefetchRowCount rows (addr is local temp, no restore needed).
-        for (int y = 0; y < prefetchRowCount; y++) {
-            prefetchMatrix(CO_prefetch_layout, CO_prefetch_addrs, strategy, state);
-            if (y + 1 < prefetchRowCount) {
+        if (fullTile && matrix && block2DSafe) {
+            // Full-tile: Block2DTranspose covers entire unrollM×unrollN in 2 sends (distinct SBIDs).
+            int cor_full = strategy.unroll[LoopM];
+            int coc_full = strategy.unroll[LoopN];
+            auto CO_pf = CO_strategy;
+            CO_pf.accessType = AccessType::Block2DTranspose;
+            CO_pf.address2D = true;
+            CO_pf.prefetch = true;
+            if (hasPrefetchCaching) CO_pf.cachingR = prefetchCaching;
+            VDEBUGINFO(4, primitive, postops,
+                "MY: postops binary FULL TILE Block2DT prefetch: cor=%d coc=%d", cor_full, coc_full);
+            RegisterLayout full_layout(hw, Tco, cor_full, coc_full, CO, CO_pf, false, false, false);
+            std::vector<GRFRange> full_addrs;
+            allocAddrRegs(full_addrs, full_layout, state);
+            setupAddr(full_addrs, base, full_layout, ld, strategy, state);
+            for (int la = 0; la < lookahead; la++) {
+                if (coColMajor == globalCM)
+                    incAddr(full_addrs, ld, int(row), int(column), full_layout, strategy, state);
+                else
+                    incAddr(full_addrs, Tco.size(), int(row), int(column), full_layout, strategy, state);
+            }
+            prefetchMatrix(full_layout, full_addrs, strategy, state);
+            safeReleaseRanges(full_addrs, state);
+        } else {
+            // Single-row prefetch (rowCount=1).
+            auto CO_prefetch_strategy = CO_strategy;
+            CO_prefetch_strategy.prefetch = true;
+            if (hasPrefetchCaching) CO_prefetch_strategy.cachingR = prefetchCaching;
+            VDEBUGINFO(4, primitive, postops,
+                "MY: postops binary single-row prefetch: overrideAccessType=%d fullTile=%d block2DSafe=%d",
+                int(CO_strategy.accessType), int(fullTile), int(block2DSafe));
+            RegisterLayout CO_prefetch_layout(hw, Tco, cor, coc, CO, CO_prefetch_strategy, false, false, false);
+            std::vector<GRFRange> CO_prefetch_addrs;
+            allocAddrRegs(CO_prefetch_addrs, CO_prefetch_layout, state);
+            setupAddr(CO_prefetch_addrs, base, CO_prefetch_layout, ld, strategy, state);
+            for (int la = 0; la < lookahead; la++) {
                 if (coColMajor == globalCM)
                     incAddr(CO_prefetch_addrs, ld, int(row), int(column), CO_prefetch_layout, strategy, state);
                 else
                     incAddr(CO_prefetch_addrs, Tco.size(), int(row), int(column), CO_prefetch_layout, strategy, state);
             }
+            prefetchMatrix(CO_prefetch_layout, CO_prefetch_addrs, strategy, state);
+            safeReleaseRanges(CO_prefetch_addrs, state);
         }
-        safeReleaseRanges(CO_prefetch_addrs, state);
     } else if (binaryPostPrefetchEnabled()) {
         VDEBUGINFO(4, primitive, postops,
                 "MY: postops binary prefetch skip newDP=%d remR=%d remC=%d padded=%d kloop=%d remHM=%d remHN=%d ignore_rem=%d",

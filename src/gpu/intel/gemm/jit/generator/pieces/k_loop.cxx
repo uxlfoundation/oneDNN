@@ -1412,10 +1412,6 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
             bool row = postOps.binaryRow[i];
             bool column = postOps.binaryCol[i];
 
-            // Save original accessType before matrix-case override, so prefetch layout
-            // uses original Block2DTranspose/Block2D rather than reduced Block/Scattered.
-            auto origAccessType = CO_strategy.accessType;
-
             bool matrix = row && column;
             if (matrix) {
                 row &= globalCM;
@@ -1434,15 +1430,12 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
             bool remC = column && !CO_strategy.padded && strategy.remHandling[LoopN] != RemainderHandling::Ignore;
             bool remBlocked = remR || remC;
 
-            // Full-tile mode: prefetch unrollY rows by pre-allocating separate address sets.
-            // For matrix post-op (row && column), unrollY = unroll[LoopM] (row-major C) or [LoopN].
-            // Only effective for Block/Block2D — Scattered generates too many in-flight sends
-            // (all sharing SBID $0), overflowing the LSC request queue across concurrent WGs.
-            // Use origAccessType (before matrix override) to correctly identify Block2DTranspose etc.
-            bool scatteredAccess = (origAccessType == AccessType::Scattered ||
-                                    origAccessType == AccessType::ChannelScattered);
-            auto LoopY = globalCM ? LoopN : LoopM;
-            int rowCount = (fullTile && matrix && !scatteredAccess) ? strategy.unroll[LoopY] : 1;
+            // Full-tile mode: use one Block2DTranspose prefetch covering unrollM×unrollN.
+            // Generates 2 sends with distinct SBIDs (via 2D address headers) — safe.
+            // Block/Scattered paths generate SIMD16 sends all sharing SBID $0 → LSC overflow.
+            bool block2DSafe = (CO_strategy.accessType == AccessType::Block ||
+                                isBlock2D(CO_strategy.accessType));
+            int rowCount = 1;  // Always 1 address set; full-tile uses one B2DT layout
 
                 VDEBUGINFO(4, primitive, postops,
                     "MY: kloop binary prefetch candidate i=%d row=%d col=%d rowAdj=%d colAdj=%d padded=%d newDP=%d remHM=%d remHN=%d rowCount=%d",
@@ -1459,37 +1452,31 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
                 continue;
             }
 
-            CO_strategy.accessType = origAccessType;  // restore original Block2DTranspose/Block2D
             CO_strategy.prefetch = true;
             if (hasPrefetchCaching)
                 CO_strategy.cachingR = prefetchCaching;
 
             auto &layout = binaryKLoopPrefetchLayouts[i];
-            layout = RegisterLayout(hw, problem.Tbinary[i], cor, coc, CO, CO_strategy, false, false, false);
+            if (fullTile && matrix && block2DSafe) {
+                // Full-tile Block2DTranspose: one layout for entire unrollM×unrollN, 2 sends.
+                int cor_full = strategy.unroll[LoopM];
+                int coc_full = strategy.unroll[LoopN];
+                CO_strategy.accessType = AccessType::Block2DTranspose;
+                CO_strategy.address2D = true;
+                VDEBUGINFO(4, primitive, postops,
+                    "MY: kloop binary prefetch FULL TILE Block2DT cor=%d coc=%d",
+                    cor_full, coc_full);
+                layout = RegisterLayout(hw, problem.Tbinary[i], cor_full, coc_full, CO, CO_strategy, false, false, false);
+            } else {
+                layout = RegisterLayout(hw, problem.Tbinary[i], cor, coc, CO, CO_strategy, false, false, false);
+            }
 
-            // Allocate address sets for all rows: row 0 via setupAddr, rows 1..rowCount-1
-            // by emitting mov+incAddr GPU instructions in the arm-phase setup block.
-            binaryKLoopPrefetchAddrs[i].resize(rowCount);
-            binaryKLoopPrefetchRowCounts[i] = rowCount;
+            binaryKLoopPrefetchAddrs[i].resize(1);
+            binaryKLoopPrefetchRowCounts[i] = 1;
 
             allocAddrRegs(binaryKLoopPrefetchAddrs[i][0], layout, state);
             setupAddr(binaryKLoopPrefetchAddrs[i][0], state.effBinary[i], layout,
                       state.inputs.binaryLDs[i], strategy, state);
-
-            bool coColMajorLocal = isColMajor(CO.layout);
-            for (int y = 1; y < rowCount; y++) {
-                auto &prevRow = binaryKLoopPrefetchAddrs[i][y - 1];
-                auto &curRow  = binaryKLoopPrefetchAddrs[i][y];
-                allocAddrRegs(curRow, layout, state);
-                // Copy previous-row address GRFs, then advance by one row stride.
-                for (size_t b = 0; b < prevRow.size(); b++)
-                    for (int g = 0; g < prevRow[b].getLen(); g++)
-                        mov(8, curRow[b][g], prevRow[b][g]);
-                if (coColMajorLocal == globalCM)
-                    incAddr(curRow, state.inputs.binaryLDs[i], int(row), int(column), layout, strategy, state);
-                else
-                    incAddr(curRow, problem.Tbinary[i].size(), int(row), int(column), layout, strategy, state);
-            }
 
             binaryKLoopPrefetchGuardRemM[i] = ignoreRem && remR;
             binaryKLoopPrefetchGuardRemN[i] = ignoreRem && remC;

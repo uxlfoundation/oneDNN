@@ -340,14 +340,14 @@ status_t gen_desc_t::finalize(const char *tags) {
     // TODO: Refactor M/N groups/thread setting to preserve MN group count.
     constexpr int perMNGroupSize = 1 << 24;
     if (problem_.aqGroupM == m_
-            && ((!problem_.forceGroupSumsA && !problem_.preferBDPAS(hw_))
+            && ((!problem_.forceGroupSumsA && !problem_.forceGroupSumsB && !problem_.preferBDPAS(hw_))
                     || m_ > 1)) {
         problem_.aqGroupM = std::max(problem_.aqGroupM, perMNGroupSize);
         problem_.aqGroupM
                 = utils::rnd_up(problem_.aqGroupM, strategy_.unroll[LoopM]);
     }
     if (problem_.bqGroupN == n_
-            && ((!problem_.forceGroupSumsB && !problem_.preferBDPAS(hw_))
+            && ((!problem_.forceGroupSumsA && !problem_.forceGroupSumsB && !problem_.preferBDPAS(hw_))
                     || n_ > 1)) {
         problem_.bqGroupN = std::max(problem_.bqGroupN, perMNGroupSize);
         problem_.bqGroupN

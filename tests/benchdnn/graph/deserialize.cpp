@@ -806,17 +806,37 @@ bool deserialized_graph_t::detect_sdpa_bwd_impl() const {
             continue;
         }
 
-        // find SoftMaxBackward and MatMul for dV
+        // find softmax bwd decomposed chain and MatMul for dV
+        // The decomposed softmax bwd is: Multiply(O,dO)->ReduceSum->Subtract->Multiply(P,dp_corr)
+        // Exp's children: one branch is the final Multiply (P*dp_corr), the other leads to dV MatMul
         auto cur_op_refs = get_child_ops(cur_op_ref);
         if (cur_op_refs.size() != 2) continue;
+
+        // Identify which child is the final Multiply of the decomposed softmax bwd
+        // by verifying the full chain: its input comes from Subtract <- ReduceSum <- Multiply
+        const auto verify_softmax_bwd_chain
+                = [&](const deserialized_op_t &mul_op) -> bool {
+            if (mul_op.kind_ != "Multiply") return false;
+            for (const auto &mul_in : mul_op.in_lts_) {
+                const auto &sub_op = get_op_by_out_lt(mul_in.id_);
+                if (sub_op.kind_ != "Subtract") continue;
+                const auto &rs_op = get_op_by_out_lt(sub_op.in_lts_[1].id_);
+                if (rs_op.kind_ != "ReduceSum") continue;
+                const auto &odo_op = get_op_by_out_lt(rs_op.in_lts_[0].id_);
+                if (odo_op.kind_ == "Multiply") return true;
+            }
+            return false;
+        };
+
         size_t softmax_bwd_idx;
-        if (cur_op_refs[0].kind_ == "SoftMaxBackward") {
+        if (verify_softmax_bwd_chain(cur_op_refs[0])) {
             softmax_bwd_idx = 0;
-        } else if (cur_op_refs[1].kind_ == "SoftMaxBackward") {
+        } else if (verify_softmax_bwd_chain(cur_op_refs[1])) {
             softmax_bwd_idx = 1;
         } else {
             BENCHDNN_PRINT(8, "%s\n",
-                    "[DETECT_SDPA_BWD]: failed due to no SoftMaxBackward");
+                    "[DETECT_SDPA_BWD]: failed due to no decomposed softmax "
+                    "bwd chain (Multiply->ReduceSum->Subtract->Multiply)");
             continue;
         }
         // find MatMul for dV
@@ -848,8 +868,8 @@ bool deserialized_graph_t::detect_sdpa_bwd_impl() const {
         // if we find a path that contains:
         //                      ->MatMul->[dV]
         // MatMul->Subtract->Exp
-        //                      ->SoftMaxBackward->MatMul->[dQ / dK]
-        //                                       ->End (optional)
+        //                      ->Multiply->MatMul->[dQ / dK]
+        // Mul->ReduceSum->Sub            ->End (optional)
         // It will be considered as a SDPA bwd implementation.
         return true;
     }

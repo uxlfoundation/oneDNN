@@ -430,3 +430,13 @@ option(DNNL_AARCH64_USE_ACL "Enables use of AArch64 optimised functions
     This is only supported on AArch64 builds and assumes there is a
     functioning Compute Library build available at the location specified by the
     environment variable ACL_ROOT_DIR." OFF)
+
+# ==============================================
+# x64 optimizations with AOCL-DLP
+# ==============================================
+
+option(DNNL_X64_USE_AOCL_DLP "Enables use of AOCL-DLP (Deep Learning Primitives)
+    optimized GEMM functions from AMD.
+    This is only supported on x64 builds and assumes there is a
+    functioning AOCL-DLP build available at the location specified by the
+    environment variable AOCL_DLP_ROOT_DIR." OFF)

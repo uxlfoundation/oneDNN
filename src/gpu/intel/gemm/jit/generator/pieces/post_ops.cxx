@@ -386,9 +386,14 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
             CO_pf.address2D = true;
             CO_pf.prefetch = true;
             if (hasPrefetchCaching) CO_pf.cachingR = prefetchCaching;
+            // Block2D requires >=4-byte alignment; binary atype.alignment = T.size() (e.g. 2 for f16).
+            // Override for prefetch only — GPU allocations are always >= 64-byte aligned in practice.
+            auto CO_b2dt = CO;
+            CO_b2dt.alignment = (uint8_t)std::max((int)CO.alignment,
+                block2DMinAlignment(hw, CO, CO_pf));
             VDEBUGINFO(4, primitive, postops,
-                "MY: postops binary FULL TILE Block2DT prefetch: cor=%d coc=%d", cor_full, coc_full);
-            RegisterLayout full_layout(hw, Tco, cor_full, coc_full, CO, CO_pf, false, false, false);
+                "MY: postops binary FULL TILE Block2DT prefetch: cor=%d coc=%d align=%d", cor_full, coc_full, CO_b2dt.alignment);
+            RegisterLayout full_layout(hw, Tco, cor_full, coc_full, CO_b2dt, CO_pf, false, false, false);
             std::vector<GRFRange> full_addrs;
             allocAddrRegs(full_addrs, full_layout, state);
             setupAddr(full_addrs, base, full_layout, ld, strategy, state);

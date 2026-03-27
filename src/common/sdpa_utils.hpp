@@ -213,12 +213,15 @@ static inline status_t sdpa_attr_check(const memory_desc_t *q_desc,
     }
 
     if (attr) {
-        smask_t attr_mask = smask_t::dropout;
+        const bool is_bwd
+                = memory_desc_wrapper(dst_desc).format_kind()
+                == format_kind::undef;
+        smask_t attr_mask = is_bwd ? smask_t::none : smask_t::dropout;
         VCHECK_SDPA_UNIMPL(
                 attr->has_default_values(attr_mask), VERBOSE_UNSUPPORTED_ATTR);
 
         // Note: if dropout is set, check the dropout desc for supported formats and dimensions.
-        if (!attr->dropout_.has_default_values()) {
+        if (!attr->dropout_.has_default_values() && !is_bwd) {
             CHECK(sdpa_dropout_desc_check(dst_desc, attr));
         }
     }

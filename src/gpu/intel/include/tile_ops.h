@@ -696,7 +696,7 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
     __attribute__((overloadable)) void tile_store_sys_src1(tile_type t, \
             local element_type *ptr, int tileR, int tileC, int wg_tile_m, \
             int wg_tile_n, int offset_r, int offset_c) { \
-        const int crosspack = 2; \
+        const int crosspack = 4 / sizeof(element_type); \
         const int tile_panel_size = tileR * tileC; \
         const int num_row_panels = wg_tile_m / tileR; \
         const int num_col_panels = wg_tile_n / tileC; \
@@ -719,12 +719,12 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
                 const int in_panel_col = in_c \
                         & (tileC \
                                 - 1); /* Column within panel (in_c % tile_n) */ \
-                const int col_group_offset = (in_panel_col >> 1) \
+                const int col_group_offset = (in_panel_col / crosspack) \
                         * (crosspack * tileR); /* Column pair group */ \
                 const int sg_lane_offset = in_panel_row \
                         * crosspack; /* Subgroup lane position */ \
                 const int crosspack_offset = (in_panel_col \
-                        & 1); /* Position within column pair */ \
+                        & (crosspack - 1)); /* Position within column pair */ \
                 const int out_idx = panel_base + col_group_offset \
                         + sg_lane_offset + crosspack_offset; \
                 ptr[out_idx] = tile_access(t, i0, j, sg, br, bc, nbr); \
@@ -734,7 +734,7 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
     __attribute__((overloadable)) void tile_load_sys_src1(tile_type *t, \
             local element_type *ptr, int tileR, int tileC, int wg_tile_m, \
             int wg_tile_n, int offset_r, int offset_c) { \
-        const int crosspack = 2; \
+        const int crosspack = 4 / sizeof(element_type); \
         const int tile_panel_size = tileR * tileC; \
         const int num_row_panels = wg_tile_m / tileR; \
         const int num_col_panels = wg_tile_n / tileC; \
@@ -757,12 +757,12 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
                 const int in_panel_col = in_c \
                         & (tileC \
                                 - 1); /* Column within panel (in_c % tile_n) */ \
-                const int col_group_offset = (in_panel_col >> 1) \
+                const int col_group_offset = (in_panel_col / crosspack) \
                         * (crosspack * tileR); /* Column pair group */ \
                 const int sg_lane_offset = in_panel_row \
                         * crosspack; /* Subgroup lane position */ \
                 const int crosspack_offset = (in_panel_col \
-                        & 1); /* Position within column pair */ \
+                        & (crosspack - 1)); /* Position within column pair */ \
                 const int out_idx = panel_base + col_group_offset \
                         + sg_lane_offset + crosspack_offset; \
                 tile_access(*t, i0, j, sg, br, bc, nbr) = ptr[out_idx]; \
@@ -784,7 +784,7 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
     __attribute__((overloadable)) void tile_store_t_sys_src11(tile_type t, \
             local element_type *ptr, int tileR, int tileC, int wg_tile_m, \
             int wg_tile_n, int offset_r, int offset_c) { \
-        const int crosspack = 2; \
+        const int crosspack = 4 / sizeof(element_type); \
         const int tile_panel_size = tileR * tileC; \
         const int num_row_panels \
                 = wg_tile_m / tileR; /* is correct when _t? */ \
@@ -805,12 +805,12 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
                 const int in_panel_col = in_r \
                         & (tileC \
                                 - 1); /* Column within panel (in_r % tileC) */ \
-                const int col_group_offset = (in_panel_col >> 1) \
+                const int col_group_offset = (in_panel_col / crosspack) \
                         * (crosspack * tileR); /* Column pair group */ \
                 const int sg_lane_offset = in_panel_row \
                         * crosspack; /* Subgroup lane position */ \
                 const int crosspack_offset = (in_panel_col \
-                        & 1); /* Position within column pair */ \
+                        & (crosspack - 1)); /* Position within column pair */ \
                 const int out_idx = panel_base + col_group_offset \
                         + sg_lane_offset + crosspack_offset; \
                 ptr[out_idx] = tile_access(t, i0, j, sg, br, bc, nbr); \

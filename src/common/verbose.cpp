@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2018 Intel Corporation
-* Copyright 2023 Arm Ltd. and affiliates
+* Copyright 2023, 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -149,14 +149,14 @@ void print_header() noexcept {
         verbose_printf("info,experimental SYCL kernel compiler is enabled\n");
 #endif
         verbose_printf(
-                "primitive,info,template:%soperation,engine,primitive,"
+                "primitive,info,%sengine,primitive,"
                 "implementation,prop_kind,memory_descriptors,attributes,"
                 "auxiliary,problem_desc,exec_time\n",
                 get_verbose_timestamp() ? "timestamp," : "");
 
 #ifdef ONEDNN_BUILD_GRAPH
         verbose_printf(
-                "graph,info,template:%soperation,engine,partition_id,"
+                "graph,info,%sengine,partition_id,"
                 "partition_kind,op_names,data_formats,logical_tensors,fpmath_"
                 "mode,implementation,backend,exec_time\n",
                 get_verbose_timestamp() ? "timestamp," : "");

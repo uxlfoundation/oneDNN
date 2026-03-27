@@ -32,7 +32,7 @@ using namespace dnnl::graph::tests::unit::utils;
 TEST(test_partition, CreateSimple) {
     const graph::fpmath_t fpm {fpmath_mode::strict, false};
     dnnl::impl::graph::dnnl_impl::dnnl_partition_impl_t p(
-            engine_kind::cpu, fpm, partition_kind_t::undef);
+            engine_kind::cpu, fpm, partition_kind_t::undef, false);
     ASSERT_EQ(p.get_ops().size(), 0U);
     ASSERT_EQ(p.get_fpmath_mode().mode_, fpmath_mode::strict);
     ASSERT_EQ(p.get_kind(), partition_kind_t::undef);
@@ -44,7 +44,7 @@ TEST(test_partition, AddOps) {
     const graph::fpmath_t fpm {fpmath_mode::strict, false};
     for (const auto &engine_kind : engine_kinds) {
         dnnl::impl::graph::dnnl_impl::dnnl_partition_impl_t p(
-                engine_kind, fpm, partition_kind_t::undef);
+                engine_kind, fpm, partition_kind_t::undef, false);
         size_t id = 100;
         std::shared_ptr<op_t> n(new op_t(id, op_kind::Wildcard, "Wildcard"));
         p.add_op(n);
@@ -64,7 +64,7 @@ TEST(test_partition, AddOps) {
 TEST(test_partition, GetOps) {
     const graph::fpmath_t fpm {fpmath_mode::strict, false};
     dnnl::impl::graph::dnnl_impl::dnnl_partition_impl_t p(
-            engine_kind::cpu, fpm, partition_kind_t::undef);
+            engine_kind::cpu, fpm, partition_kind_t::undef, false);
     size_t id = 100;
     std::shared_ptr<op_t> n(new op_t(id, op_kind::Wildcard, "Wildcard"));
     p.add_op(n);
@@ -79,7 +79,7 @@ TEST(test_partition, Init) {
     const graph::fpmath_t fpm {fpmath_mode::strict, false};
     for (const auto &engine_kind : engine_kinds) {
         dnnl::impl::graph::dnnl_impl::dnnl_partition_impl_t p(
-                engine_kind, fpm, partition_kind_t::undef);
+                engine_kind, fpm, partition_kind_t::undef, false);
         std::shared_ptr<op_t> n(new op_t(0, op_kind::Convolution, "Conv"));
         n->set_attr<int64_t>(op_attr::groups, 0);
         p.add_op(n);
@@ -93,8 +93,8 @@ TEST(test_partition, Clone) {
             = {engine_kind::cpu, engine_kind::gpu};
     const graph::fpmath_t fpm {fpmath_mode::strict, false};
     for (const auto &engine_kind : engine_kinds) {
-        dnnl::impl::graph::dnnl_impl::dnnl_partition_impl_t p(
-                engine_kind, fpm, partition_kind_t::convolution_post_ops);
+        dnnl::impl::graph::dnnl_impl::dnnl_partition_impl_t p(engine_kind, fpm,
+                partition_kind_t::convolution_post_ops, false);
         auto n = std::make_shared<op_t>(op_kind::Convolution);
         n->set_attr<int64_t>(op_attr::groups, 1);
 
@@ -128,7 +128,8 @@ TEST(test_partition_op, AssignedPartition) {
     const graph::fpmath_t fpm {fpmath_mode::strict, false};
     auto part = std::make_shared<
             dnnl::impl::graph::dnnl_impl::dnnl_partition_impl_t>(
-            engine_kind::cpu, fpm, partition_kind_t::convolution_post_ops);
+            engine_kind::cpu, fpm, partition_kind_t::convolution_post_ops,
+            false);
     conv.set_partition(part.get());
     ASSERT_EQ(conv.get_partition(), part.get());
 }
@@ -139,7 +140,7 @@ TEST(test_partition, SetFpmathMode) {
                  fpmath_mode::any}) {
         const graph::fpmath_t fpm {m, false};
         dnnl::impl::graph::dnnl_impl::dnnl_partition_impl_t p(
-                eng->kind(), fpm, partition_kind_t::undef);
+                eng->kind(), fpm, partition_kind_t::undef, false);
         ASSERT_EQ(p.get_fpmath_mode().mode_, m);
     }
 }
@@ -162,7 +163,7 @@ TEST(test_partition, InferShape) {
         const graph::fpmath_t fpm {fpmath_mode::strict, false};
         auto par = std::make_shared<
                 dnnl::impl::graph::dnnl_impl::dnnl_partition_impl_t>(
-                engine_kind, fpm, graph::partition_kind_t::undef);
+                engine_kind, fpm, graph::partition_kind_t::undef, false);
         ASSERT_EQ(par->infer_shape(inputs, outputs), graph::status::success);
     }
 }

@@ -45,8 +45,8 @@ TEST(test_op_executable, DummyExecutableCreatorDeathTest) {
     const graph::fpmath_t fpm;
     bool use_block_layout = false;
     auto op = std::make_shared<graph::op_t>(0, graph::op_kind::Wildcard, "op");
-    EXPECT_DEBUG_DEATH(dnnl_impl::dummy_executable_creator(
-                               op, p_engine, pd_cache, fpm, use_block_layout),
+    EXPECT_DEBUG_DEATH(dnnl_impl::dummy_executable_creator(op, p_engine,
+                               pd_cache, fpm, use_block_layout, false),
             "dummy executable creator should never be called");
 }
 

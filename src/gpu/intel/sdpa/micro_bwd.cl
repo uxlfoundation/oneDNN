@@ -99,6 +99,10 @@ DECLARE_2D_TILE(s_tile_type_packed_t, uint, SUBGROUP_SIZE,
         ugemm_kq_c_type_block1, ugemm_kq_c_type_block0 / 2,
         ugemm_kq_c_type_nblock1, ugemm_kq_c_type_nblock0)
 
+DECLARE_2D_TILE(p_tile_type_packed, uint, SUBGROUP_SIZE,
+        ugemm_vtdA_c_type_block0, ugemm_vtdA_c_type_block1 / 2,
+        ugemm_vtdA_c_type_nblock0, ugemm_vtdA_c_type_nblock1)
+
 DECLARE_2D_TILE(s_tile_type_reblock, FMA_TYPE, SUBGROUP_SIZE,
         ugemm_kq_sg_tile_m, 1, 1, ugemm_kq_sg_tile_n)
 DECLARE_2D_TILE_BLOCK_OPS(s_tile_type_reblock, FMA_TYPE, SUBGROUP_SIZE,
@@ -719,14 +723,15 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #endif
 
             // Store softmax for ugemm_vs B-operand
+#if USE_SYSTOLIC_UKERNEL
+            s_tile_type_packed S_tile_packed;
+            tile_copy_to_vec2(S_tile, S_tile_packed, VEC_TYPE2);
+            tile_store_t_sys_src2(S_tile_packed, (local uint *)S_slm,
+                    ugemm_vs_sg_tile_n, ugemm_kq_wg_tile_n / 2, sg_j0_kq / 2,
+                    sg_i0_kq);
+#else
             s_tile_type_reblock S_tile_reblock;
             tile_copy_reblock(S_tile, &S_tile_reblock);
-
-#if USE_SYSTOLIC_UKERNEL
-            tile_store_t_sys_src22(S_tile_reblock, (local FMA_TYPE *)S_slm,
-                    ugemm_vs_sg_tile_n, ugemm_kq_wg_tile_m, ugemm_kq_wg_tile_n,
-                    sg_i0_kq, sg_j0_kq);
-#else
             tile_store_packed_src1(S_tile_reblock, S_slm, ugemm_vs_sg_tile_n,
                     ugemm_kq_wg_tile_n, sg_i0_kq, sg_j0_kq);
 #endif
@@ -810,9 +815,11 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             // softmax no longer needed, use slm to cache dS
             tile_store_sys_src22(P_tile_reblock, dSt_slm, ugemm_ktq_sg_tile_n,
                     ugemm_kq_wg_tile_m, ugemm_kq_wg_tile_n, sg_i0_kq, sg_j0_kq);
-            tile_store_sys_src1(P_tile_reblock, S_slm, SUBGROUP_SIZE,
-                    ugemm_kq_wg_tile_n, ugemm_kq_wg_tile_m, ugemm_kq_wg_tile_n,
-                    sg_i0_kq, sg_j0_kq);
+            p_tile_type_packed dP_tile_packed;
+            tile_copy_to_vec2(dP_tile, dP_tile_packed, VEC_TYPE2);
+            tile_store_sys_src1(dP_tile_packed, (local uint *)S_slm,
+                    SUBGROUP_SIZE, ugemm_kq_wg_tile_n / 2, ugemm_kq_wg_tile_m,
+                    ugemm_kq_wg_tile_n / 2, sg_i0_kq, sg_j0_kq / 2);
 #else
             // Store dS to S_slm for ugemm_qdSt
             tile_store_packed_src1(P_tile_reblock, S_slm, ugemm_qdSt_sg_tile_m,

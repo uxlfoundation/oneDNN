@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/include/conversion.h"
+#include "gpu/intel/include/philox.h"
 #include "gpu/intel/include/tile_ops.h"
 #include "gpu/intel/include/types_interop.h"
 #include "gpu/intel/sdpa/utils.h"
@@ -391,7 +392,18 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         MSK_OFFSETS
 #endif
         ,
-        const int remainder_k) {
+        const int remainder_k
+#if WITH_DROPOUT
+        ,
+        __global uchar *dropout_mask_buf,
+#if DROPOUT_HOST_SCALARS
+        long dropout_seed, long dropout_offset, float dropout_p
+#else
+        __global long *dropout_seed_buf, __global long *dropout_offset_buf,
+        __global float *dropout_p_buf
+#endif
+#endif
+) {
 
     uint sg_ij = sub_group_broadcast(get_local_id(1), 0);
     uint b1 = get_group_id(2);
@@ -799,6 +811,48 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         s_sum_tile_type S_sum_tile1;
         tile_fill(S_sum_tile1, 0.0f);
         tile_vreduce_add(S_tile, &S_sum_tile1);
+
+#if WITH_DROPOUT
+#if !DROPOUT_HOST_SCALARS
+        long dropout_seed = dropout_seed_buf[0];
+        long dropout_offset = DROPOUT_OFFSET ? dropout_offset_buf[0] : 0;
+        float dropout_p = dropout_p_buf[0];
+#endif
+        uint dropout_threshold = get_dropout_threshold(dropout_p);
+        float dropout_inv_q
+                = (dropout_p != 1.f) ? 1.f / (1.f - dropout_p) : 0.f;
+
+/* Global flat offset into dropout tensor: base + q_col * k + k_row */
+#define get_global_offset(base, k) \
+    ((base) + (ulong)(_td_global_c) * (ulong)(k) + (ulong)(_td_global_r))
+
+#define get_philox_4x32(seed, offset) \
+    (DROPOUT_OFFSET ? philox_4x32_s64( \
+                              _td_global_off, (ulong)(seed), (ulong)(offset)) \
+                    : philox_4x32((uint)(_td_global_off), (uint)(seed)))
+
+        /* Apply inverted dropout to attention weights (S_tile) */
+        {
+            const int tile_offset_r = k0 + sg_i0_kq;
+            const int tile_offset_c = wg_j0 + sg_j0_kq;
+            const ulong batch_head_base
+                    = ((ulong)b1 * get_num_groups(1) + b0) * (ulong)q * k;
+            tile_dropout_assignment_t(S_tile, tile_offset_r, tile_offset_c,
+                    k0end, q, get_global_offset(batch_head_base, k),
+                    get_philox_4x32(dropout_seed, dropout_offset),
+                    dropout_threshold, dropout_inv_q,
+                    {
+#if DROPOUT_OUTPUT_MASK
+                        dropout_mask_buf[_td_global_off] = _td_drop;
+#endif
+                    },
+                    SUBGROUP_SIZE, ugemm_kq_c_type_block0,
+                    ugemm_kq_c_type_block1, ugemm_kq_c_type_nblock0,
+                    ugemm_kq_c_type_nblock1);
+        }
+#undef get_global_offset
+#undef get_philox_4x32
+#endif
 
         /* Reblock and store to SLM */
         s_tile_type_reblock S_tile_reblock;

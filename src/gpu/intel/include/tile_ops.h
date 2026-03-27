@@ -428,6 +428,38 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
         } \
     } while (0)
 
+/*
+ * Tile dropout helper modeled after tile_predicated_assignment.
+ *
+ * For each logical tile element it computes (offset_r, offset_c), applies
+ * bounds checks, evaluates philox_4x32, and writes either 0 or scaled value.
+ */
+#define tile_dropout_assignment_t(t, tile_offset_r, tile_offset_c, max_r, \
+        max_c, global_offset_expr, philox_4x32_expr, drop_threshold, inv_q, \
+        output_mask_expr, sg, br, bc, nbr, nbc) \
+    do { \
+        for (int _td_row = 0; _td_row < (bc * nbc); _td_row++) { \
+            for (int _td_col0 = 0; _td_col0 < (br * nbr); _td_col0 += sg) { \
+                int _td_col = _td_col0 + get_sub_group_local_id(); \
+                int _td_global_r = (tile_offset_r) + _td_row; \
+                int _td_global_c = (tile_offset_c) + _td_col; \
+                if (_td_global_r < (max_r) && _td_global_c < (max_c)) { \
+                    ulong _td_global_off = (global_offset_expr); \
+                    uint _td_philox_4x32 = (philox_4x32_expr); \
+                    uchar _td_drop = (_td_philox_4x32 > (drop_threshold)); \
+                    float _td_val = tile_access( \
+                            t, _td_col0, _td_row, sg, br, bc, nbr); \
+                    _td_val = _td_drop ? (_td_val * (inv_q)) : 0.f; \
+                    tile_access(t, _td_col0, _td_row, sg, br, bc, nbr) \
+                            = _td_val; \
+                    output_mask_expr; \
+                } else { \
+                    tile_access(t, _td_col0, _td_row, sg, br, bc, nbr) = 0.f; \
+                } \
+            } \
+        } \
+    } while (0)
+
 #define DECLARE_2D_TILE_OPS(tile_type, element_type, sg, br, bc, nbr, nbc) \
     __attribute__((overloadable)) void tile_load_full(tile_type *t, \
             const global element_type *ptr, int ld, int offset_r, \

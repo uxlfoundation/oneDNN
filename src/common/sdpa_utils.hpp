@@ -136,10 +136,28 @@ static inline status_t sdpa_desc_check(const memory_desc_t *q_desc,
     return status::success;
 }
 
+static inline status_t sdpa_dropout_desc_check(
+        const memory_desc_t *dst_desc, const primitive_attr_t *attr) {
+
+    assert(memory_desc_wrapper(dst_desc).format_kind() == format_kind::blocked);
+
+    using namespace format_tag;
+    // Note: for `offset = 0` keep the legacy logic without the `offset`.
+    VCHECK_SDPA_UNIMPL(
+            memory_desc_matches_one_of_tag(*dst_desc, ncdhw, nchw, ncw, nc)
+                    && IMPLICATION(attr->dropout_.has_output_mask(),
+                            memory_desc_wrapper(dst_desc).similar_to(
+                                    attr->dropout_.dropout_desc_, true, false)),
+            VERBOSE_UNSUPPORTED_DROPOUT);
+
+    return status::success;
+}
+
 static inline status_t sdpa_attr_check(const memory_desc_t *q_desc,
         const memory_desc_t *k_desc, const memory_desc_t *v_desc,
-        const engine_t *engine, const primitive_attr_t *attr,
-        const primitive_attr_t *kq_attr, const primitive_attr_t *vs_attr) {
+        const memory_desc_t *dst_desc, const engine_t *engine,
+        const primitive_attr_t *attr, const primitive_attr_t *kq_attr,
+        const primitive_attr_t *vs_attr) {
     using smask_t = primitive_attr_t::skip_mask_t;
 
     if (utils::everyone_is(nullptr, attr, kq_attr, vs_attr))
@@ -195,9 +213,14 @@ static inline status_t sdpa_attr_check(const memory_desc_t *q_desc,
     }
 
     if (attr) {
-        smask_t attr_mask = smask_t::none;
+        smask_t attr_mask = smask_t::dropout;
         VCHECK_SDPA_UNIMPL(
                 attr->has_default_values(attr_mask), VERBOSE_UNSUPPORTED_ATTR);
+
+        // Note: if dropout is set, check the dropout desc for supported formats and dimensions.
+        if (!attr->dropout_.has_default_values()) {
+            CHECK(sdpa_dropout_desc_check(dst_desc, attr));
+        }
     }
 
     return status::success;
@@ -217,6 +240,7 @@ static inline status_t sdpa_attr_check(
     }
     return status::success;
 }
+
 static inline sdpa_desc_t create_sdpa_desc(const memory_desc_t *q_md,
         const memory_desc_t *k_md, const memory_desc_t *v_md,
         const memory_desc_t *dst_md, const memory_desc_t *attn_mask_md,
@@ -299,7 +323,8 @@ static inline status_t create_sdpa_pd(
         prop_kind_t prop, const primitive_attr_t *attr,
         const primitive_attr_t *kq_attr = nullptr,
         const primitive_attr_t *vs_attr = nullptr) {
-    CHECK(sdpa_attr_check(q_md, k_md, v_md, engine, attr, kq_attr, vs_attr));
+    CHECK(sdpa_attr_check(
+            q_md, k_md, v_md, dst_md, engine, attr, kq_attr, vs_attr));
     CHECK(sdpa_desc_check(q_md, k_md, v_md, dst_md, attn_mask_md, engine, attr,
             kq_attr, vs_attr));
 
@@ -330,7 +355,9 @@ static inline status_t create_sdpa_pd(
         const primitive_attr_t *attr, const primitive_desc_t *hint_fwd_pd,
         const primitive_attr_t *kq_attr = nullptr,
         const primitive_attr_t *vs_attr = nullptr) {
-    CHECK(sdpa_attr_check(q_md, k_md, v_md, engine, attr, kq_attr, vs_attr));
+    memory_desc_t empty_desc = types::zero_md();
+    CHECK(sdpa_attr_check(
+            q_md, k_md, v_md, &empty_desc, engine, attr, kq_attr, vs_attr));
     CHECK(sdpa_desc_check(q_md, k_md, v_md, dst_md, attn_mask_md, engine, attr,
             kq_attr, vs_attr));
 

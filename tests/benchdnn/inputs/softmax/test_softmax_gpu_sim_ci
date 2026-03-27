@@ -1,0 +1,11 @@
+--reset
+
+--inplace=true,false
+
+--alg=SOFTMAX,LOGSOFTMAX
+--axis=0,1
+
+--dir=FWD_D,BWD_D
+--sdt=f32,bf16,f16
+--ddt=f32,bf16,f16
+--batch=shapes_ci

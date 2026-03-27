@@ -1,0 +1,12 @@
+--reset --mb=1 --dt=f16,f32,bf16,f8_e5m2,f8_e4m3 --dir=fwd_d,bwd_d,bwd_w --batch=shapes_basic
+--reset --mb=1 --dt=f8_e5m2:f8_e5m2:bf16,f8_e4m3:f8_e4m3:bf16 --dir=fwd_d --batch=shapes_basic
+--reset --mb=1 --dt=f16:f8_e5m2:f8_e5m2,f32:f8_e4m3:f8_e4m3 --dir=bwd_d --batch=shapes_basic
+--reset --mb=1 --dt=f8_e5m2:f16:f8_e5m2,f8_e4m3:f32:f8_e4m3 --dir=bwd_w --batch=shapes_basic
+--reset --mb=1 --dt=f16,f32,bf16 --dir=fwd_d --attr-post-ops=tanh,logistic,swish,mish --batch=shapes_basic
+--reset --dt=bf16 --dir=bwd_w --attr-acc-mode=relaxed mb47ic32ih3oc176oh1kh5ph2 mb27ic496iw5oc2ow4kw1sw2pw2
+--reset --mb=1 --dt=f8_e5m2,f8_e4m3 --dir=fwd_d
+--attr-scales=wei:per_oc:bf16+dst:per_oc:bf16,\
+                      wei:common:2:bf16+src:common:2:bf16+dst:common:2:bf16,\
+                      wei:per_oc:f32+dst:per_oc:f32,\
+                      wei:common:2:f32+src:common:2:f32+dst:common:2:f32
+--batch=shapes_basic_gpu

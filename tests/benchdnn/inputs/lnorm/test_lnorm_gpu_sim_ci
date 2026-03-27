@@ -1,0 +1,7 @@
+--reset
+
+--dt=f32,bf16,f64
+--dir=FWD_D,BWD_D
+--inplace=true,false
+--flags=
+--batch=shapes_sim_ci

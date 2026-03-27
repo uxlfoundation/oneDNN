@@ -28,6 +28,7 @@
 #include "cpu/aarch64/cpu_isa_traits.hpp"
 
 #include "cpu/jit_utils/jit_utils.hpp"
+#include "xbyak_aarch64_reg_manager.hpp"
 
 #if defined(_WIN32) && !defined(__GNUC__)
 #define STRUCT_ALIGN(al, ...) __declspec(align(al)) __VA_ARGS__
@@ -64,12 +65,14 @@
             mn(op, (mask), ptr(addr_off(addr, off, X_DEFAULT_ADDR, X_TMP_0))); \
     } while (0)
 
-static const size_t CSIZE = sizeof(uint32_t);
+static const size_t CSIZE_generator = sizeof(uint32_t);
 
 namespace dnnl {
 namespace impl {
 namespace cpu {
 namespace aarch64 {
+
+using Xbyak_aarch64::RegPoolManager;
 
 // TODO: move this to jit_generator class?
 namespace {
@@ -827,7 +830,7 @@ private:
         if (!is_initialized()) return nullptr;
         const uint8_t *code
                 = reinterpret_cast<const uint8_t *>(CodeGenerator::getCode());
-        register_jit_code(code, getSize() * CSIZE);
+        register_jit_code(code, getSize() * CSIZE_generator);
         return code;
     }
 
@@ -844,6 +847,7 @@ private:
 protected:
     virtual void generate() = 0;
     const uint8_t *jit_ker_ = nullptr;
+    RegPoolManager rm;
 };
 
 } // namespace aarch64

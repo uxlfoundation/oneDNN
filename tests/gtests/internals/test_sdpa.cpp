@@ -1862,7 +1862,7 @@ INSTANTIATE_TEST_SUITE_P(DataTypes_f16_s8, sdpa_test_datatypes,
                 ::testing::Values(tensor_type_t("K", mdt::f16), tensor_type_t("K", mdt::s8, mdt::f16, mdt::undef), tensor_type_t("K", mdt::s8, mdt::f16, mdt::s8) /*, tensor_type_t("K", mdt::s8, mdt::undef, mdt::s8)*/), // kdt
                 ::testing::Values(tensor_type_t("V", mdt::f16), tensor_type_t("V", mdt::s8, mdt::f16, mdt::undef), tensor_type_t("V", mdt::s8, mdt::f16, mdt::s8) /*, tensor_type_t("V", mdt::s8, mdt::undef, mdt::s8) */), // vdt
                 ::testing::Values(quantize_type::per_token), // qtype
-                ::testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
+                ::testing::Values(dnnl::memory::format_tag::abcd, dnnl::memory::format_tag::abdc), // key_format_tag
                 ::testing::Values(mask_config_t {mask_type::oneD, mdt::f16}, mask_config_t {mask_type::twoD, mdt::f32}), // mask_type
                 ::testing::Values(default_scale_type), // scale_type
                 ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
@@ -1894,7 +1894,7 @@ INSTANTIATE_TEST_SUITE_P(DataTypes_bf16_s8, sdpa_test_datatypes,
                 ::testing::Values(tensor_type_t("K", mdt::bf16) /*, tensor_type_t("K", mdt::s8, mdt::f16, mdt::s8), tensor_type_t("K", mdt::s8, mdt::f16, mdt::undef), tensor_type_t("K", mdt::s8, mdt::undef, mdt::s8)*/), // kdt
                 ::testing::Values(tensor_type_t("V", mdt::bf16) /*, tensor_type_t("V", mdt::s8, mdt::f16, mdt::s8), tensor_type_t("V", mdt::s8, mdt::f16, mdt::undef), tensor_type_t("V", mdt::s8, mdt::undef, mdt::s8)*/), // vdt
                 ::testing::Values(quantize_type::per_token), // qtype
-                ::testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
+                ::testing::Values(dnnl::memory::format_tag::abcd, dnnl::memory::format_tag::abdc), // key_format_tag
                 ::testing::Values(mask_config_t {mask_type::oneD, mdt::bf16}, mask_config_t {mask_type::twoD, mdt::bf16}), // mask_type
                 ::testing::Values(default_scale_type), // scale_type
                 ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
@@ -1926,7 +1926,7 @@ INSTANTIATE_TEST_SUITE_P(DataTypes_f32, sdpa_test_datatypes,
                 ::testing::Values(tensor_type_t("K", mdt::f32), tensor_type_t("K", mdt::s8, mdt::f32)), // kdt
                 ::testing::Values(tensor_type_t("V", mdt::f32), tensor_type_t("V", mdt::s8, mdt::f32)), // vdt
                 ::testing::Values(quantize_type::per_token), // qtype
-                ::testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
+                ::testing::Values(dnnl::memory::format_tag::abcd, dnnl::memory::format_tag::abdc), // key_format_tag
                 ::testing::Values(mask_config_t {mask_type::twoD, mdt::f32}), // mask_type
                 ::testing::Values(default_scale_type), // scale_type
                 ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode

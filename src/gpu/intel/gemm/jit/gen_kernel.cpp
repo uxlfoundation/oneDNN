@@ -401,6 +401,20 @@ status_t gen_desc_t::transfer_post_ops(
 
             bool trans = is_multi_row && !src_rmd.inner_dim.is_innermost();
 
+            // Reject row-only or col-only binary post-ops where the
+            // physically innermost dimension is not the varying one
+            // (e.g. batch dim is innermost). Block access requires
+            // contiguous elements along the varying dimension.
+            {
+                int rmd_ndims = src_rmd.ndims();
+                bool row_only = is_multi_row && !is_multi_col;
+                bool col_only = is_multi_col && !is_multi_row;
+                if (row_only && !src_rmd.inner_dim.is_innermost())
+                    return status::unimplemented;
+                if (col_only && !src_rmd.is_inner_dim(rmd_ndims - 2, rmd_ndims))
+                    return status::unimplemented;
+            }
+
             if (swap_ab) {
                 trans = !trans;
                 std::swap(is_multi_row, is_multi_col);

@@ -56,12 +56,14 @@ status_t init_kernel_datatype(
 
     brg->is_int8 = utils::one_of(dt_a, data_type::u8, data_type::s8)
             && utils::one_of(dt_b, data_type::u8, data_type::s8);
-    brg->is_bf16 = (dt_a == data_type::bf16) && (dt_b == data_type::bf16);
+    brg->is_bf16 = (dt_a == data_type::bf16)
+            && one_of(dt_b, data_type::bf16, data_type::f4_e2m1);
     brg->is_f32 = (dt_a == data_type::f32)
-            && utils::one_of(
-                    dt_b, data_type::f32, data_type::bf16, data_type::f16);
+            && utils::one_of(dt_b, data_type::f32, data_type::bf16,
+                    data_type::f16, data_type::f4_e2m1);
     brg->is_f16 = (dt_a == data_type::f16)
-            && utils::one_of(dt_b, data_type::f32, data_type::f16);
+            && utils::one_of(
+                    dt_b, data_type::f32, data_type::f16, data_type::f4_e2m1);
     brg->is_fp8 = one_of(dt_a, data_type::f8_e5m2, data_type::f8_e4m3)
             && one_of(dt_b, data_type::f8_e5m2, data_type::f8_e4m3);
     if (utils::everyone_is(false, brg->is_int8, brg->is_bf16, brg->is_f32,
@@ -260,8 +262,14 @@ int calculate_max_bcast_block(brgemm_desc_t *brg, const int adj_ld_block2) {
 
     const int microkernel_regs = zp_a_comp_pads_regs + compensation_regs;
 
-    const auto microkernel_max_reg_count
+    auto microkernel_max_reg_count
             = max_isa_regs - microkernel_regs - load_regs - max_bcst_regs;
+
+    // Reserve additional registers for 4-bit data type processing
+    if (one_of(brg->dt_b, data_type::f4_e2m1) && brg->isa_impl == avx2)
+        microkernel_max_reg_count -= 2;
+    if (one_of(brg->dt_b, data_type::f4_e2m1) && brg->isa_impl != avx2)
+        microkernel_max_reg_count -= 1;
 
     auto microkernel_max_bcast_block
             = microkernel_max_reg_count / (adj_ld_block2 + brg->n_bcast_1_load);
@@ -811,11 +819,17 @@ status_t brgemm_blocking_vmm(brgemm_desc_t *brg) {
     brg->bdb = brg->bcast_dim / brg->bd_block;
     brg->bdb_tail = brg->bcast_dim % brg->bd_block;
 
-    const int rd_unroll = 4;
     const data_type_t rd_block_dt = get_mac_emu_data_type(
             brg->dt_a, brg->isa_impl, brg->isa_impl != avx2_vnni_2);
     if (rd_block_dt == dnnl_data_type_undef) return status::unimplemented;
     const int vnni_granularity = data_type_vnni_granularity(rd_block_dt);
+    int rd_unroll = one_of(brg->dt_b, data_type::f4_e2m1) ? 32 : 4;
+    if (brg->with_grouped_wei_decomp) {
+        rd_unroll = nstl::min(rd_unroll,
+                brg->wei_decomp_scales_group_size / vnni_granularity);
+        rd_unroll = nstl::min(rd_unroll,
+                brg->wei_decomp_scales_group_size / vnni_granularity);
+    }
     brg->rd_block = rd_unroll * vnni_granularity;
     brg->rdb = brg->reduce_dim / brg->rd_block;
     brg->rdb_tail = brg->reduce_dim % brg->rd_block;

@@ -281,7 +281,10 @@ status_t check_datatype_cfg(const brgemm_matmul_conf_utils_t &bm_conf_utils) {
                       bm_conf_utils.is_tf32(),
                       bm_conf_utils.is_bf16_with_int_wei(),
                       bm_conf_utils.is_f16_with_int_wei(),
-                      bm_conf_utils.is_f32_with_int_wei())
+                      bm_conf_utils.is_f32_with_int_wei(),
+                      bm_conf_utils.is_f32_f4e2m1(),
+                      bm_conf_utils.is_f16_f4e2m1(),
+                      bm_conf_utils.is_bf16_f4e2m1())
             && IMPLICATION(bm_conf_utils.is_bf16_with_int_wei()
                             || bm_conf_utils.is_f16_with_int_wei(),
                     bm_conf_utils.with_weights_decompression());
@@ -314,7 +317,8 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
     , tf32_dt(f32_dt
               && one_of(attr.fpmath_.mode_, fpmath_mode::tf32, fpmath_mode::any)
               && isa == avx10_2_512_amx_2)
-    , weights_decompression_support(one_of(bgmmc.wei_dt, u8, s8, u4, s4)
+    , weights_decompression_support(
+              one_of(bgmmc.wei_dt, u8, s8, u4, s4, f4_e2m1)
               && one_of(attr.fpmath_.mode_, fpmath_mode::bf16, fpmath_mode::f16,
                       fpmath_mode::strict, fpmath_mode::any)
               && IMPLICATION(attr.fpmath_.mode_ == fpmath_mode::f16,
@@ -338,6 +342,9 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
               && one_of(bgmmc.dst_dt, f16, f32))
     , f32_with_int_wei_dt(weights_decompression_support
               && everyone_is(f32, bgmmc.src_dt, bgmmc.dst_dt))
+    , f32_f4e2m1_dt(bgmmc.src_dt == f32 && bgmmc.wei_dt == dnnl_f4_e2m1)
+    , f16_f4e2m1_dt(bgmmc.src_dt == f16 && bgmmc.wei_dt == dnnl_f4_e2m1)
+    , bf16_f4e2m1_dt(bgmmc.src_dt == bf16 && bgmmc.wei_dt == dnnl_f4_e2m1)
     , A_any_layout(A_any_layout)
     , B_any_layout(B_any_layout)
     , C_any_layout(C_any_layout)

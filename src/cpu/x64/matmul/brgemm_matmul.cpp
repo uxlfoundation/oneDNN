@@ -176,6 +176,12 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
             = utils::one_of(wei_dt, data_type::f4_e2m1, data_type::f4_e3m0);
     const bool is_f32_with_int_wei
             = src_dt == f32 && one_of(wei_dt, s8, u8, s4, u4) && dst_dt == f32;
+    const bool is_f32_f4e2m1
+            = src_dt == f32 && wei_dt == f4_e2m1 && dst_dt == f32;
+    const bool is_f16_f4e2m1
+            = src_dt == f16 && wei_dt == f4_e2m1 && one_of(dst_dt, f16, f32);
+    const bool is_bf16_f4e2m1
+            = src_dt == bf16 && wei_dt == f4_e2m1 && one_of(dst_dt, bf16, f32);
 
     auto check_bias = [&]() -> bool {
         const auto bia_dt = weights_md(1)->data_type;
@@ -219,9 +225,11 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
             // This case requires scratchpad
             if (is_runtime_value(N())) ok = false;
         }
-        // Impl suppports f32 scales only for non-weight decompression
-        if (!(is_bf16_with_int_wei || is_f16_with_int_wei
-                    || is_f32_with_int_wei)) {
+        // Only f32 scales are supported when weight decompression is not used.
+        const bool supports_non_f32_scales = is_bf16_with_int_wei
+                || is_f16_with_int_wei || is_f32_with_int_wei || is_f32_f4e2m1
+                || is_f16_f4e2m1 || is_bf16_f4e2m1;
+        if (!supports_non_f32_scales) {
             ok = ok && one_of(asc.get_data_type(DNNL_ARG_SRC), undef, f32);
             ok = ok && one_of(asc.get_data_type(DNNL_ARG_WEIGHTS), undef, f32);
             ok = ok && one_of(asc.get_data_type(DNNL_ARG_DST), undef, f32);
@@ -287,6 +295,9 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
             || (!src_d.is_sparse_desc() && !bias_d.is_sparse_desc()
                     && !dst_d.is_sparse_desc()
                     && weights_d.is_sparse_packed_desc());
+
+     const bool brgemm_with_wei_decomp = (one_of(src_dt, f32, bf16, f16) && one_of(wei_dt,f4_e2m1));
+
     // Disabling verbose dispatch messages for unsupported isa for better
     // readability.
     if (!mayiuse(isa)) return status::unimplemented;
@@ -396,7 +407,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
             CHECK(brgemm_desc_init(&brg, kernel_isa, bgmmc_.brg_type,
                     bgmmc_.src_dt, bgmmc_.wei_dt, false, false,
                     brgemm_row_major, alpha, vbeta, LDA, bgmmc_.LDB, bgmmc_.LDC,
-                    vM, vN, vK, nullptr, bgmmc_.is_tf32));
+                    vM, vN, vK, nullptr, bgmmc_.is_tf32,brgemm_with_wei_decomp,&weights_md_, attr()));
         }
 
         auto LDD = bgmmc_.LDD;
@@ -683,7 +694,7 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
                         const bool skip_copy_a = mc_prev == mc && kc_prev == kc
                                 && (b_prev == b
                                         || bgmmc.bcast_A_desc
-                                                   .bcast_across_all_batch_dims);
+                                                .bcast_across_all_batch_dims);
                         bool prefetch = determine_prefetch(
                                 mb, m_end, nb, n_end, bgmmc, brgmm_ctx);
                         for (int kb = kb_start; kb < kb_end; kb++) {

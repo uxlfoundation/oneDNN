@@ -276,6 +276,14 @@ private:
             used_vregs = 5;
         else if (brg.is_f16_b_non_amx_vnni())
             used_vregs = 2;
+
+        if (one_of(brg.dt_b, data_type::f4_e2m1) && brg.isa_impl == avx2) {
+            used_vregs += 2;
+        }
+
+        if (one_of(brg.dt_b, data_type::f4_e2m1) && brg.isa_impl != avx2) {
+            used_vregs += 1;
+        }
         return isa_num_vregs(brg.isa_impl) - used_vregs;
     }
 
@@ -398,6 +406,11 @@ private:
     void fp8_to_f16_upconvert_to_vnni(dim_t num_rows, dim_t tile_num_col_bytes,
             reg64_t reg_base, dim_t offset, reg64_t reg_data_stride,
             data_type_t dt, bool is_rd_tail);
+    void f4_e2m1_decompress_vnni(
+            const Zmm &zmm_out1, const Zmm &zmm_out2, const Zmm &zmm_in);
+    void f4_e2m1_to_fp_upconvert_to_vnni(dim_t num_rows, dim_t num_col_bytes,
+            reg64_t reg_base, dim_t offset, reg64_t reg_stride,
+            bool is_rd_tail);
     void reduce_gemv_accumulators(dim_t bd_block, dim_t ld_block2);
     void store_accumulators(dim_t bd_block2, bool is_bdb_tail, dim_t ld_block,
             bool is_ld_tail, bool skip_accumulation);
@@ -491,8 +504,10 @@ dim_t jit_brgemm_kernel_t<Wmm>::A_offset(
 template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::B_offset(
         dim_t ld, dim_t rd, bool is_amx) const noexcept {
+    int typesize_scale = one_of(brg.dt_b, data_type::f4_e2m1) ? 2 : 1;
     if (is_amx) {
-        return brg.typesize_B * (brg.rd_step * ld * brg.ld_block);
+        return brg.typesize_B * (brg.rd_step * ld * brg.ld_block)
+                / typesize_scale;
     } else {
         const dim_t rdb0 = rd / brg.ld_step;
         // Note: Offsets for elements within vnni_granularity are expected to be
@@ -523,14 +538,18 @@ dim_t jit_brgemm_kernel_t<Wmm>::rdb_A_offset() const noexcept {
 
 template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::rdb_B_offset() const noexcept {
-    return brg.typesize_B * brg.rd_block * brg.LDB;
+    int typesize_scale = one_of(brg.dt_b, data_type::f4_e2m1) ? 2 : 1;
+    return brg.typesize_B * brg.rd_block * brg.LDB / typesize_scale;
 }
 
 template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::ldb_B_offset(
         dim_t ld_block2, bool is_tail) const noexcept {
-    return (is_tail) ? brg.typesize_B * brg.ldb_tail * brg.ld_step
-                     : brg.typesize_B * ld_block2 * brg.ld_block * brg.ld_step;
+    int typesize_scale = one_of(brg.dt_b, data_type::f4_e2m1) ? 2 : 1;
+    return (is_tail)
+            ? brg.typesize_B * brg.ldb_tail * brg.ld_step / typesize_scale
+            : brg.typesize_B * ld_block2 * brg.ld_block * brg.ld_step
+                    / typesize_scale;
 }
 
 template <typename Wmm>
@@ -1081,6 +1100,144 @@ void jit_brgemm_kernel_t<Wmm>::fp8_to_f16_upconvert_to_vnni(dim_t num_rows,
         vpxord(zmm_2, zmm_2, zmm_2);
         for (dim_t r = r_end; r < num_rows; ++r)
             vmovups(ptr[reg_buf_aux + r * zmm_width_in_bytes_], zmm_2);
+    }
+}
+
+template <typename Wmm>
+void jit_brgemm_kernel_t<Wmm>::f4_e2m1_decompress_vnni(
+        const Zmm &zmm_out1, const Zmm &zmm_out2, const Zmm &zmm_in) {
+    
+    auto vmm_lookup = Vmm(isa_num_vregs(brg.isa_impl) - 1);
+    auto vmm_mask_signed_bit = Vmm(isa_num_vregs(brg.isa_impl) - 2);
+    
+    auto zmm_even = zmm_out1;
+    auto zmm_odd = zmm_out2;
+    
+    uni_vmovups(zmm_even, zmm_in);
+    uni_vpslld(zmm_even, zmm_even, 28);
+    uni_vpsrld(zmm_even, zmm_even, 28);
+    
+    uni_vmovups(zmm_odd, zmm_in);
+    uni_vpsrld(zmm_odd, zmm_odd, 4);
+    uni_vpslld(zmm_odd, zmm_odd, 28);
+    uni_vpsrld(zmm_odd, zmm_odd, 28);
+    
+    if (brg.isa_impl == avx2) {
+        auto mask_even = bcst();
+        auto mask_odd = bcst();
+        
+        uni_vpand(mask_even, zmm_even, vmm_mask_signed_bit);
+        uni_vpand(mask_odd, zmm_odd, vmm_mask_signed_bit);
+        
+        vpermd(zmm_even, zmm_even, vmm_lookup);
+        vpermd(zmm_odd, zmm_odd, vmm_lookup);
+        
+        uni_vorps(zmm_even, zmm_even, mask_even);
+        uni_vorps(zmm_odd, zmm_odd, mask_odd);
+    } else {
+        vpermd(zmm_even, zmm_even, vmm_lookup);
+        vpermd(zmm_odd, zmm_odd, vmm_lookup);
+    }
+    
+    if (brg.with_wei_decomp_scales) {
+        auto vmm_scales = bcst();
+        uni_vmulps(zmm_even, zmm_even, vmm_scales);
+        uni_vmulps(zmm_odd, zmm_odd, vmm_scales);
+    }
+}
+
+template <typename Wmm>
+void jit_brgemm_kernel_t<Wmm>::f4_e2m1_to_fp_upconvert_to_vnni(
+        dim_t num_rows, dim_t tile_num_col_bytes, reg64_t reg_base, dim_t offset,
+        reg64_t reg_data_stride, bool is_rd_tail) {
+    
+    dim_t rd_block = is_rd_tail ? brg.rdb_tail : brg.rd_block;
+    
+    const dim_t max_num_cols = rd_block;
+    const dim_t col_tail = max_num_cols % 32;
+    
+    auto zmm_src = vmm_tmp(0);
+    auto zmm_even = vmm_tmp(1);
+    auto zmm_odd = vmm_tmp(2);
+    auto zmm_scales = vmm_tmp(3);
+    auto zmm_zero = vmm_tmp(4);
+    
+    auto zmm_src_masked = col_tail ? zmm_src | fp8_col_mask | T_z : zmm_src;
+    
+    assert(max_num_cols > 0);
+    
+    if (col_tail) {
+        const auto tail_mask = (static_cast<size_t>(1) << col_tail) - 1;
+        mov(reg_tmp_gpr, tail_mask);
+        kmovq(fp8_col_mask, reg_tmp_gpr);
+    }
+    
+    auto vmm_lookup = Vmm(isa_num_vregs(brg.isa_impl) - 1);
+    auto vmm_mask_signed_bit = Vmm(isa_num_vregs(brg.isa_impl) - 2);
+    
+    const auto reg_data_aux = reg_tmp_gpr;
+    lea(reg_data_aux, ptr[reg_base + offset]);
+    
+    if (brg.with_wei_decomp_scales && brg.wei_decomp_scales_stride == 0) {
+            auto xmm_scale = Xmm(zmm_scales.getIdx());
+            movzx(reg_tmp_gpr.cvt32(), ptr[reg_aux_wei_scales]);
+            uni_vmovq(xmm_scale, reg_tmp_gpr);
+            uni_vpslld(xmm_scale, xmm_scale, 23);
+            uni_vbroadcastss(zmm_scales, xmm_scale);
+    }
+    
+    vpxord(zmm_zero, zmm_zero, zmm_zero);
+    
+    for (dim_t r = 0; r < num_rows; ++r) {
+        uni_vpmovzxbd(zmm_src_masked, ptr[reg_data_aux]);
+        
+        uni_vmovups(zmm_even, zmm_src);
+        uni_vpslld(zmm_even, zmm_even, 28);
+        uni_vpsrld(zmm_even, zmm_even, 28);
+        
+        uni_vmovups(zmm_odd, zmm_src);
+        uni_vpsrld(zmm_odd, zmm_odd, 4);
+        uni_vpslld(zmm_odd, zmm_odd, 28);
+        uni_vpsrld(zmm_odd, zmm_odd, 28);
+        
+        if (brg.isa_impl == avx2) {
+            auto mask_even = vmm_tmp(5);
+            auto mask_odd = vmm_tmp(6);
+            
+            uni_vpand(mask_even, zmm_even, vmm_mask_signed_bit);
+            uni_vpand(mask_odd, zmm_odd, vmm_mask_signed_bit);
+            
+            vpermd(zmm_even, zmm_even, vmm_lookup);
+            vpermd(zmm_odd, zmm_odd, vmm_lookup);
+            
+            uni_vorps(zmm_even, zmm_even, mask_even);
+            uni_vorps(zmm_odd, zmm_odd, mask_odd);
+        } else {
+            vpermd(zmm_even, zmm_even, vmm_lookup);
+            vpermd(zmm_odd, zmm_odd, vmm_lookup);
+        }
+        
+        if (brg.with_wei_decomp_scales) {
+            if (brg.wei_decomp_scales_stride != 0) {
+                const dim_t scale_offset = r * brg.wei_decomp_scales_stride;
+                uni_vpmovzxbd(zmm_scales, ptr[reg_aux_wei_scales + scale_offset]);
+                uni_vpslld(zmm_scales, zmm_scales, 23);
+            }
+            
+            uni_vmulps(zmm_even, zmm_even, zmm_scales);
+            uni_vmulps(zmm_odd, zmm_odd, zmm_scales);
+        }
+        
+        vmovups(ptr[reg_buf_aux + r * zmm_width_in_bytes_], zmm_even);
+        
+        add(reg_data_aux, reg_data_stride);
+    }
+    
+    const dim_t vnni_granularity = 2;
+    const dim_t r_end = utils::div_up(rd_block, vnni_granularity);
+    if (r_end < num_rows) {
+        for (dim_t r = r_end; r < num_rows; ++r)
+            vmovups(ptr[reg_buf_aux + r * zmm_width_in_bytes_], zmm_zero);
     }
 }
 
@@ -2034,7 +2191,8 @@ void jit_brgemm_kernel_t<Wmm>::set_A_B_matrices() {
 template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::maybe_pre_process_data(
         data_type_t dt, const Vmm &vmm_out1, const Vmm &vmm_out2) {
-    assert(brg.is_fp8_via_convert_non_amx());
+    assert(brg.is_fp8_via_convert_non_amx()
+            || (dt == data_type::f4_e2m1 && brg.with_wei_decomp));
     const Zmm zmm_out1 = Zmm(vmm_out1.getIdx());
     const Zmm zmm_out2 = Zmm(vmm_out2.getIdx());
 
@@ -2042,6 +2200,8 @@ void jit_brgemm_kernel_t<Wmm>::maybe_pre_process_data(
         f8_e5m2_cvt_->vcvt_f8_to_f16_vnni(zmm_out1, zmm_out2, zmm_out1);
     else if (dt == data_type::f8_e4m3)
         f8_e4m3_cvt_->vcvt_f8_to_f16_vnni(zmm_out1, zmm_out2, zmm_out1);
+    else if (dt == data_type::f4_e2m1)
+        f4_e2m1_decompress_vnni(zmm_out1, zmm_out2, zmm_out1);
     else
         assert(!"unsupported data type.");
 }
@@ -2057,12 +2217,23 @@ void jit_brgemm_kernel_t<Wmm>::maybe_pre_process_data(matrix_kind_t matrix_kind,
 
     switch (matrix_kind) {
         case matrix_A:
-            fp8_to_f16_upconvert(num_rows, num_col_bytes, reg_base, offset,
-                    reg_stride, brg.dt_a, is_rd_tail);
+            if (brg.is_fp8_via_convert()) {
+                fp8_to_f16_upconvert(num_rows, num_col_bytes, reg_base, offset,
+                        reg_stride, brg.dt_a, is_rd_tail);
+            } else {
+                assert(!"Unsupported matrix_A preprocessing");
+            }
             break;
         case matrix_B:
-            fp8_to_f16_upconvert_to_vnni(num_rows, num_col_bytes, reg_base,
-                    offset, reg_stride, brg.dt_b, is_rd_tail);
+            if (brg.is_fp8_via_convert()) {
+                fp8_to_f16_upconvert_to_vnni(num_rows, num_col_bytes, reg_base,
+                        offset, reg_stride, brg.dt_b, is_rd_tail);
+            } else if (brg.dt_b == data_type::f4_e2m1 && brg.with_wei_decomp) {
+                f4_e2m1_to_fp_upconvert_to_vnni(num_rows, num_col_bytes,
+                        reg_base, offset, reg_stride, is_rd_tail);
+            } else {
+                assert(!"Unsupported matrix_B preprocessing");
+            }
             break;
         default: assert(!"Wrong Matrix");
     }
@@ -2088,12 +2259,22 @@ void jit_brgemm_kernel_t<Wmm>::maybe_tileloadd_nt(matrix_kind_t matrix_kind,
     bool try_load_nt = brg.innermost_loop
             == (is_A ? brgemm_bd_loop_innermost : brgemm_ld_loop_innermost);
 
-    if (brg.is_fp8_via_convert()) {
+    if (brg.is_fp8_via_convert()
+            || (brg.dt_b == data_type::f4_e2m1 && !is_A
+                    && brg.with_wei_decomp)) {
         const dim_t typesize_A
                 = brg.is_input_convert() ? sizeof(int16_t) : brg.typesize_A;
-        const dim_t typesize_B
-                = brg.is_input_convert() ? sizeof(int16_t) : brg.typesize_B;
-        dim_t rd_step = 4 / typesize_A;
+        const dim_t typesize_B = brg.is_input_convert() ? sizeof(int16_t)
+                : brg.dt_b == data_type::f4_e2m1
+                ? (brg.dt_a == data_type::f32 ? sizeof(float)
+                                  : brg.dt_a == data_type::bf16
+                                  ? sizeof(uint16_t)
+                                  : brg.dt_a == data_type::f16
+                                  ? sizeof(uint16_t)
+                                  : sizeof(float))
+                : brg.typesize_B;
+
+        dim_t rd_step = brg.dt_b == data_type::f4_e2m1 ? 1 : 4 / typesize_A;
         dim_t rd_block
                 = (!brg.rdb && brg.rdb_tail) ? brg.rdb_tail : brg.rd_block;
         if (brg.is_input_convert()) {
@@ -2108,6 +2289,9 @@ void jit_brgemm_kernel_t<Wmm>::maybe_tileloadd_nt(matrix_kind_t matrix_kind,
         dim_t B_col = (is_tail ? brg.ldb_tail : brg.ld_block) * typesize_B
                 * rd_step;
         dim_t B_row = brg.typesize_C != 0 ? A_col / brg.typesize_C : 0;
+
+        if (brg.dt_b == data_type::f4_e2m1 && !is_A) { B_row = rd_block; }
+
         reg64_savable_guard_t reg_fp8_buf_guard({&reg64_fp8_aux, &reg_buf_aux});
 
         reg_buf.restoreTo(reg_buf_aux);
@@ -2228,6 +2412,16 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel_amx(dim_t bd_block2,
             tdpbsud(x1, x2, x3);
         } else if (brg.dt_a == s8 && brg.dt_b == s8) {
             tdpbssd(x1, x2, x3);
+        } else if (brg.dt_a == f32 && brg.dt_b == f4_e2m1) {
+            tmmultf32ps(x1, x2, x3);
+        } else if (brg.dt_a == bf16 && brg.dt_b == f4_e2m1) {
+            tdpbf16ps(x1, x2, x3);
+        } else if (brg.dt_a == f16 && brg.dt_b == f4_e2m1) {
+            tdpfp16ps(x1, x2, x3);
+        } else if (brg.dt_a == f8_e5m2 && brg.dt_b == f4_e2m1) {
+            tdpbf8ps(x1, x2, x3);
+        } else if (brg.dt_a == f8_e4m3 && brg.dt_b == f4_e2m1) {
+            tdphf8ps(x1, x2, x3);
         } else {
             assert(!"unsupported combination");
         }
@@ -2431,6 +2625,49 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
         reg_bdb_loop.restore();
     }
 
+    auto init_f4_e2m1_lookup = [this]() {
+        static const float lookup[16]
+                = {0.0f, 0.5f, 1.0f, 1.5f, 2.0f, 3.0f, 4.0f, 6.0f, -0.0f, -0.5f,
+                        -1.0f, -1.5f, -2.0f, -3.0f, -4.0f, -6.0f};
+
+        auto reg_ptr = reg_tmp_microkernel;
+        auto vmm_lookup = Vmm(isa_num_vregs(brg.isa_impl) - 1);
+
+        mov(reg_ptr, (size_t)lookup);
+        uni_vmovups(vmm_lookup, ptr[reg_ptr]);
+
+        if (brg.isa_impl == avx2) {
+            static const uint32_t mask_signed_bit[8] = {
+                    0x80000000,
+                    0x80000000,
+                    0x80000000,
+                    0x80000000,
+                    0x80000000,
+                    0x80000000,
+                    0x80000000,
+                    0x80000000,
+            };
+            auto vmm_mask = Vmm(isa_num_vregs(brg.isa_impl) - 2);
+            mov(reg_ptr, (size_t)mask_signed_bit);
+            uni_vmovups(vmm_mask, ptr[reg_ptr]);
+        }
+    };
+
+    auto load_e8m0_scales = [this](Vmm vmm_scales, Xbyak::Address addr) {
+        auto reg_ptr = reg_tmp_microkernel;
+        if (brg.wei_decomp_scales_stride == 0) {
+            auto xmm_scales = Xmm(vmm_scales.getIdx());
+            auto reg_ptr_32 = Reg32(reg_ptr.getIdx());
+            movzx(reg_ptr_32, addr);
+            uni_vmovq(xmm_scales, reg_ptr);
+            uni_vpslld(xmm_scales, xmm_scales, 23);
+            uni_vbroadcastss(vmm_scales, xmm_scales);
+        } else {
+            uni_vpmovzxbd(vmm_scales, addr);
+            uni_vpslld(vmm_scales, vmm_scales, 23);
+        }
+    };
+
     auto broadcast_A
             = [this, rd_tail_size, is_rd_tail, rd_loop, rows_for_rd_tail, bd_e](
                       Vmm vmm_bcast, dim_t bd, dim_t rd) {
@@ -2479,7 +2716,8 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
             uni_vpaddb(vmm_bcast, vmm_bcast, vmm_inp_shift());
     };
 
-    auto load_B = [this, is_ld_tail](dim_t vmm_load_idx, dim_t rd, dim_t ld) {
+    auto load_B = [this, is_ld_tail, load_e8m0_scales](
+                          dim_t vmm_load_idx, dim_t rd, dim_t ld) {
         const bool mem_advice_B
                 = utils::one_of(brg.brgattr.mem_advice,
                           brgemm_hint_mem_advice_B, brgemm_hint_mem_advice_A_B)
@@ -2490,10 +2728,48 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
         const Vmm vmm_load
                 = vmm_mask(load(vmm_load_idx), is_ld_tail, false, ld_tail_mask);
         const auto addr = ptr[reg_aux_B + B_offset(ld, rd)];
+
+        if (brg.dt_b == data_type::f4_e2m1 && brg.with_wei_decomp) {
+            auto vmm_lookup = Vmm(isa_num_vregs(brg.isa_impl) - 1);
+            auto vmm_mask_signed_bit = Vmm(isa_num_vregs(brg.isa_impl) - 2);
+
+            if (brg.isa_impl == avx2) {
+                uni_vpmovsxbd(vmm_load, addr);
+                if (rd % 2 == 0) {
+                    vpsrad(vmm_load, vmm_load, 4);
+                } else {
+                    uni_vpslld(vmm_load, vmm_load, 28);
+                    vpsrad(vmm_load, vmm_load, 28);
+                }
+                auto mask = bcst();
+                uni_vpand(mask, vmm_load, vmm_mask_signed_bit);
+                vpermd(vmm_load, vmm_load, vmm_lookup);
+                uni_vorps(vmm_load, vmm_load, mask);
+            } else {
+                uni_vpmovzxbd(vmm_load, addr);
+                if (rd % 2 == 0) {
+                    uni_vpsrld(vmm_load, vmm_load, 4);
+                } else {
+                    uni_vpslld(vmm_load, vmm_load, 28);
+                    uni_vpsrld(vmm_load, vmm_load, 28);
+                }
+                vpermd(vmm_load, vmm_load, vmm_lookup);
+            }
+
+            if (brg.wei_decomp_scales_stride == 0) {
+                load_e8m0_scales(bcst(), ptr[reg_aux_wei_scales]);
+                uni_vmulps(vmm_load, vmm_load, bcst());
+            } else {
+                load_e8m0_scales(bcst(),
+                        ptr[reg_aux_wei_scales
+                                + ld * brg.ld_block * sizeof(uint8_t)]);
+                uni_vmulps(vmm_load, vmm_load, bcst());
+            }
+        }
         // Note: Assuming the tails are properly padded/blocked for
         // avx2_vnni_2 with xf16 data type, as the B matrix is generally
         // at least double-blocked.
-        if (mem_advice_B) {
+        else if (mem_advice_B) {
             vmovrsd(vmm_load, addr);
         } else if (brg.dt_b == data_type::f16) {
             if (brg.isa_impl == avx10_2_512) {
@@ -2550,6 +2826,10 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
     if (brg.req_cal_comp_pads || comp_vpad)
         compute_int8_compensation(
                 rd_loop, bd_b, bd_e, bd_block, ld_block2, is_ld_tail, vpad);
+
+    if (brg.dt_b == data_type::f4_e2m1 && brg.with_wei_decomp) {
+        init_f4_e2m1_lookup();
+    }
 
     // Sometimes the offset used for prefetching is too big and needs to be
     // handled with an additional temporary register.

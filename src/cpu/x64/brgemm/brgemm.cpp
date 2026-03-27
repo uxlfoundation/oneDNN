@@ -226,7 +226,8 @@ status_t brgemm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
         impl::data_type_t dt_b, bool transA, bool transB,
         brgemm_layout_t layout, float alpha, float beta, dim_t LDA, dim_t LDB,
         dim_t LDC, dim_t M, dim_t N, dim_t K, const brgemm_strides_t *strides,
-        bool is_tf32) {
+        bool is_tf32, bool is_weights_decompression,
+        const memory_desc_t *wei_md, const primitive_attr_t *attr) {
     /*
     m - number of rows of the matrix op(A) and number of rows of the matrix C
     n - number of columns of the matrix op(B) and number of columns of the matrix C
@@ -246,6 +247,8 @@ status_t brgemm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
     if (transA || transB) return status::unimplemented;
     if (type == brgemm_batch_kind_t::brgemm_batch_kind_undef)
         return status::invalid_arguments;
+
+    brg->with_wei_decomp = is_weights_decompression;
 
     CHECK(brgemm_utils::init_brgemm_conf(brg, isa, type, dt_a, dt_b, layout,
             alpha, beta, LDA, LDB, LDC, M, N, K, strides, false /* is_bf32 */,
@@ -275,6 +278,25 @@ status_t brgemm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
     if (!IMPLICATION(
                 brg->dt_b == u8, is_superset(brg->isa_impl, avx512_core_amx)))
         return status::unimplemented;
+
+    const memory_desc_wrapper wei_d(wei_md);
+    if (brg->with_wei_decomp) {
+        brg->with_grouped_wei_decomp = false;
+
+        auto wei_scales = attr->scales_.get(DNNL_ARG_WEIGHTS);
+        brg->with_wei_decomp_scales = !wei_scales.has_default_values();
+        brg->wei_decomp_scales_group_size = wei_d.dims()[1];
+        if (brg->with_wei_decomp_scales) {
+            brg->wei_decomp_scales_dt = wei_scales.get_data_type();
+            if (!one_of(brg->wei_decomp_scales_dt, e8m0))
+                return status::unimplemented;
+
+        auto ld_group = wei_scales.get_group(0);
+        brg->wei_decomp_scales_stride = ld_group > 1 ? ld_group : 0;
+        brg->wei_decomp_scales_group_size = wei_d.dims()[1] / wei_scales.get_group(1);
+        brg->with_grouped_wei_decomp |= wei_scales.get_group(1) != 1;
+        }
+    }
 
     return status::success;
 }

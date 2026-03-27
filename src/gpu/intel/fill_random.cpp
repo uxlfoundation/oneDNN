@@ -49,8 +49,22 @@ static status_t get_cached_kernel(
     return status::success;
 }
 
+static uint32_t nan_safe_mask(data_type_t dt) {
+    switch (dt) {
+        case data_type::f32: return 0xFF7FFFFFu;
+        case data_type::f16: return 0xFBFFFBFFu;
+        case data_type::bf16: return 0xFF7FFF7Fu;
+        case data_type::f8_e5m2: return 0xFBFBFBFBu;
+        case data_type::f8_e4m3: return 0xF7F7F7F7u;
+        case data_type::e8m0: return 0xFEFEFEFEu;
+        case data_type::f64: return 0xFFEFFFFFu;
+        default: return 0xFFFFFFFFu;
+    }
+}
+
 status_t fill_random(impl::stream_t *stream, size_t size,
-        impl::memory_t *memory, int buffer_index, uint32_t seed) {
+        impl::memory_t *memory, int buffer_index, uint32_t seed,
+        data_type_t dt) {
     if (size == 0) return status::success;
 
     auto *intel_stream = utils::downcast<intel::stream_t *>(stream);
@@ -58,16 +72,14 @@ status_t fill_random(impl::stream_t *stream, size_t size,
     compute::kernel_t kernel;
     CHECK(get_cached_kernel(intel_engine, kernel));
 
-    // Each subgroup (16 work-items) processes 256 bytes (16 * 4 * sizeof(uint)).
-    static constexpr size_t subgroup_size = 16;
-    static constexpr size_t bytes_per_subgroup
-            = subgroup_size * 4 * sizeof(uint32_t);
-    size_t num_subgroups = utils::div_up(size, bytes_per_subgroup);
-    compute::nd_range_t nd_range({num_subgroups * subgroup_size, 1, 1});
+    // Each work-item writes 16 bytes (4 × uint32) via vstore4.
+    static constexpr size_t bytes_per_item = 16;
+    compute::nd_range_t nd_range({utils::div_up(size, bytes_per_item), 1, 1});
     compute::kernel_arg_list_t arg_list;
     arg_list.set(0, *memory->memory_storage(buffer_index));
     arg_list.set(1, seed);
     arg_list.set(2, static_cast<uint64_t>(size));
+    arg_list.set(3, nan_safe_mask(dt));
 
     CHECK(kernel.parallel_for(*stream, nd_range, arg_list,
             intel_stream->ctx().get_deps(), intel_stream->ctx().get_deps()));
@@ -81,7 +93,7 @@ status_t fill_random(impl::stream_t *stream, size_t size,
 
 extern "C" dnnl::impl::status_t DNNL_API dnnl_impl_gpu_fill_random(
         dnnl::impl::stream_t *stream, size_t size, dnnl::impl::memory_t *memory,
-        int buffer_index, uint32_t seed) {
-    return dnnl::impl::gpu::intel::fill_random(
-            stream, size, memory, buffer_index, seed);
+        int buffer_index, uint32_t seed, dnnl_data_type_t dt) {
+    return dnnl::impl::gpu::intel::fill_random(stream, size, memory,
+            buffer_index, seed, static_cast<dnnl::impl::data_type_t>(dt));
 }

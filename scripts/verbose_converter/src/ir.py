@@ -113,8 +113,27 @@ class MemoryDescriptor(Mapping):
     tag: str
     flags: Flags
     strides: str = ""  # Pre-v3.1 does not have strides
+    # Grouped encoding descriptor: "var_dim_idx:group_count" (e.g., "0:4").
+    # None for non-grouped (blocked, csr, etc.).
+    grouped: Optional[str] = None
 
     padding = alias("properties")
+
+    @property
+    def is_grouped(self) -> bool:
+        return self.grouped is not None
+
+    @property
+    def variable_dim_idx(self) -> Optional[int]:
+        if self.grouped is None:
+            return None
+        return int(self.grouped.split(":")[0])
+
+    @property
+    def group_count(self) -> Optional[int]:
+        if self.grouped is None:
+            return None
+        return int(self.grouped.split(":")[1])
 
     def __len__(self):
         return 1 + super().__len__()
@@ -125,6 +144,19 @@ class MemoryDescriptor(Mapping):
 
     def _format(self, tag: str, convert) -> str:
         header = f"{self.arg}:{self.data_type}"
+        if self.is_grouped:
+            return ":".join(
+                [
+                    header,
+                    self.properties,
+                    self.format_kind,
+                    "grouped",
+                    str(self.variable_dim_idx),
+                    str(self.group_count),
+                    "",
+                    convert(self.flags),
+                ]
+            )
         return ":".join(
             [
                 header,
@@ -140,6 +172,8 @@ class MemoryDescriptor(Mapping):
         return self._format(self.tag, str)
 
     def __hash_str__(self):
+        if self.is_grouped:
+            return self._format("", hash_str)
         tag = self.tag
         if "a" not in self.properties:
             return self._format(tag, hash_str)

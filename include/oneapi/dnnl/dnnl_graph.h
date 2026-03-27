@@ -623,6 +623,24 @@ dnnl_status_t DNNL_API dnnl_graph_graph_set_fpmath_mode(
 dnnl_status_t DNNL_API dnnl_graph_graph_get_fpmath_mode(
         dnnl_graph_graph_t graph, dnnl_fpmath_mode_t *mode, int *apply_to_int);
 
+/// Gets the deterministic mode for a graph.
+///
+/// @param graph The target graph.
+/// @param deterministic The deterministic mode.
+/// @returns #dnnl_success on success or a status describing the error
+///     otherwise.
+dnnl_status_t DNNL_API dnnl_graph_graph_get_deterministic(
+        dnnl_graph_graph_t graph, int *deterministic);
+
+/// Sets the deterministic mode for a graph.
+///
+/// @param graph The target graph.
+/// @param deterministic The deterministic mode.
+/// @returns #dnnl_success on success or a status describing the error
+///     otherwise.
+dnnl_status_t DNNL_API dnnl_graph_graph_set_deterministic(
+        dnnl_graph_graph_t graph, int deterministic);
+
 /// Adds an operation into a graph. The API will return failure if the operator
 /// has already been added to the graph or the operation cannot pass the schema
 /// check in the library (eg. input and output numbers and data types, the

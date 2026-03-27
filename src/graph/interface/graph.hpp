@@ -80,6 +80,8 @@ private:
 
     bool finalized_ {false};
 
+    bool deterministic_ {false};
+
     /*! \brief num of ops that have not been partitioned */
     size_t num_unpartitioned_ops_ {0};
 
@@ -152,6 +154,13 @@ public:
         fpmath_.apply_to_int_ = apply_to_int;
         return graph::status::success;
     }
+
+    graph::status_t set_deterministic(bool deterministic) {
+        deterministic_ = deterministic;
+        return graph::status::success;
+    }
+
+    bool get_deterministic() const { return deterministic_; }
 
     op_t *create_op(graph::op_kind_t kind, std::string name = "") {
         ops_.push_back(std::make_shared<op_t>(kind, std::move(name)));

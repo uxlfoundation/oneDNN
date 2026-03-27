@@ -1463,6 +1463,23 @@ public:
         apply_to_int = static_cast<bool>(c_apply_to_int);
     }
 
+    /// Returns the deterministic mode value
+    bool get_deterministic() const {
+        int result;
+        error::wrap_c_api(dnnl_graph_graph_get_deterministic(get(), &result),
+                "could not get deterministic graph attribute");
+        return static_cast<bool>(result);
+    }
+
+    /// Sets deterministic mode value
+    ///
+    /// @param value Specified deterministic mode.
+    void set_deterministic(bool value) {
+        error::wrap_c_api(dnnl_graph_graph_set_deterministic(
+                                  get(), static_cast<int>(value)),
+                "could not set deterministic graph attribute");
+    }
+
     /// Adds an op into the graph to construct a computational DAG. The API will
     /// return failure if the operator has already been added to the graph or
     /// the operation cannot pass the schema check in the library (eg. input and

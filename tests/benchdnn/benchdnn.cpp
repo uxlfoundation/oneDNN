@@ -44,6 +44,7 @@
 #include "reorder/reorder.hpp"
 #include "resampling/resampling.hpp"
 #include "rnn/rnn.hpp"
+#include "sdpa/sdpa.hpp"
 #include "self/self.hpp"
 #include "shuffle/shuffle.hpp"
 #include "softmax/softmax.hpp"
@@ -141,6 +142,8 @@ int main(int argc, char **argv) {
         resampling::bench(--argc, ++argv);
     } else if (!strcmp("--reduction", argv[0])) {
         reduction::bench(--argc, ++argv);
+    } else if (!strcmp("--sdpa", argv[0])) {
+        sdpa::bench(--argc, ++argv);
     } else if (!strcmp("--zeropad", argv[0])) {
         zeropad::bench(--argc, ++argv);
     } else if (!strcmp("--brgemm", argv[0])) {

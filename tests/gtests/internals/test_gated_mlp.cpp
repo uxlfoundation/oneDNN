@@ -31,8 +31,11 @@
 
 #include "common/gated_mlp_iface.hpp"
 
-// set to 1 to dump cpu memory buffers
-#define ENABLE_PRINT_MEM 0
+// uncomment to dump cpu memory buffers
+//#define ENABLE_PRINT_MEM
+
+// uncomment to disable everything except Up
+//#define ENABLE_UP_ONLY
 
 namespace dnnl {
 namespace impl {
@@ -249,7 +252,7 @@ gmlp_tensors_t get_descriptors(engine &eng, mlp_dims_t p) {
     auto FC_up_md = memory::desc(FC_up_sz, fc_up_dt, tag::ab);
     auto FC_down_md = memory::desc(FC_down_sz, dst_dt, tag::ab);
 
-    auto FC_retn_md_t = memory::desc(FC_down_sz, dst_dt, tag::ba);
+    auto FC_retn_md_t = memory::desc(FC_down_sz, dst_dt, tag::ab);
 
     // clang-format off
     auto x_md = memory::desc(O_proj_sz, src_dt, tag::ab);
@@ -264,11 +267,11 @@ gmlp_tensors_t get_descriptors(engine &eng, mlp_dims_t p) {
 
     auto w_gate_scales_md = memory::desc(quant_gateup_sz, wgu_s_dt, tag::ab);
     auto w_up_scales_md   = memory::desc(quant_gateup_sz, wgu_s_dt, tag::ab);
-    auto w_down_scales_md = memory::desc(quant_down_sz, wd_s_dt, tag::ab);
+    auto w_down_scales_md = memory::desc(quant_down_sz,    wd_s_dt, tag::ab);
 
     auto w_gate_zp_md = memory::desc(quant_gateup_sz, wgu_zp_dt, tag::ab);
     auto w_up_zp_md   = memory::desc(quant_gateup_sz, wgu_zp_dt, tag::ab);
-    auto w_down_zp_md = memory::desc(quant_down_sz, wd_zp_dt, tag::ab);
+    auto w_down_zp_md = memory::desc(quant_down_sz,    wd_zp_dt, tag::ab);
 
     auto output_md     = memory::desc(FC_down_sz, dst_dt, tag::ab);
     auto output_qnt_md = memory::desc(FC_down_sz, dst_dt, tag::ab);
@@ -379,6 +382,7 @@ gmlp_tensors_t get_descriptors(engine &eng, mlp_dims_t p) {
                 printf("signed gateup quant init\n");
         }
         fill_random_quantized(w_gate_zp_data, w_gate_zp_md, wgu_zp_unsigned);
+
         fill_random_quantized(w_up_zp_data, w_up_zp_md, wgu_zp_unsigned);
 
         w_gate_data = dequantize(w_gate_quantized_data, w_gate_md,
@@ -492,7 +496,7 @@ void bench_gated_mlp_primitives(std::vector<float> &res, double &avg_time,
     auto bmm2_prim = matmul(bmm2_pd);
 
     const auto loop = [&](bool print = false) {
-#if ENABLE_PRINT_MEM != 0
+#ifdef ENABLE_PRINT_MEM
 #define PRINT_MEM(mem) \
     if (print) { print_mem(mem, #mem " "); }
 #else
@@ -501,8 +505,7 @@ void bench_gated_mlp_primitives(std::vector<float> &res, double &avg_time,
         bmm0_prim.execute(strm,
                 {{DNNL_ARG_SRC, m_O_proj}, {DNNL_ARG_WEIGHTS, m_W_up},
                         {DNNL_ARG_DST, m_FC_up}});
-
-        // each primitive will use all threads
+#ifndef ENABLE_UP_ONLY
         bmm1_prim.execute(strm,
                 {{DNNL_ARG_SRC, m_O_proj}, {DNNL_ARG_WEIGHTS, m_W_gate},
                         {DNNL_ARG_DST, m_FC_gate},
@@ -512,14 +515,18 @@ void bench_gated_mlp_primitives(std::vector<float> &res, double &avg_time,
         bmm2_prim.execute(strm,
                 {{DNNL_ARG_SRC, m_FC_gate}, {DNNL_ARG_WEIGHTS, m_W_down},
                         {DNNL_ARG_DST, m_FC_down}});
-
+#endif
         PRINT_MEM(m_O_proj)
         PRINT_MEM(m_W_up)
+#ifndef ENABLE_UP_ONLY
         PRINT_MEM(m_W_gate)
         PRINT_MEM(m_W_down)
+#endif
         PRINT_MEM(m_FC_up)
+#ifndef ENABLE_UP_ONLY
         PRINT_MEM(m_FC_gate)
         PRINT_MEM(m_FC_down)
+#endif
 #undef PRINT_MEM
     };
 
@@ -571,8 +578,13 @@ void bench_gated_mlp_primitives(std::vector<float> &res, double &avg_time,
         print_mem(m_FC_down, "-prim");
     }
 
+#ifndef ENABLE_UP_ONLY
     res.resize(product(m_FC_down.get_desc().get_dims()));
     move_data(res, m_FC_down, false);
+#else
+    res.resize(product(m_FC_up.get_desc().get_dims()));
+    move_data(res, m_FC_up, false);
+#endif
 }
 
 void bench_gated_mlp_internal(std::vector<float> &res, double &avg_time,
@@ -619,17 +631,14 @@ void bench_gated_mlp_internal(std::vector<float> &res, double &avg_time,
     auto m_W_down_scales_md = t.m_w_down_scales.get_desc();
     auto m_W_down_zp_md = t.m_w_down_zp.get_desc();
 
+#ifdef ENABLE_UP_ONLY
+    const memory::dims FC_retn_sz_t = {p.mb, p.oc};
+#else
     const memory::dims FC_retn_sz_t = {p.mb, p.ic};
+#endif
     auto FC_retn_md_t
             = memory::desc(FC_retn_sz_t, FC_down_md.get_data_type(), tag::ab);
     auto m_FC_gate_t = memory(FC_retn_md_t, eng);
-
-    if (verbose) {
-        printf("memquant\n");
-        print_mem(t.m_w_gate_quantized, "-gen_desc_wgate_quant");
-        print_mem(t.m_w_gate_scales, "-gen_desc_wgate_scale");
-        print_mem(m_W_gate_zp, "-gen_desc_wgate_zp");
-    }
 
     primitive_attr attr;
     int mask = 0;
@@ -678,7 +687,7 @@ void bench_gated_mlp_internal(std::vector<float> &res, double &avg_time,
     auto prim_fused_internal = gmlp_t(gmlp_pd);
 
     const auto loop = [&](bool print = false) {
-#if ENABLE_PRINT_MEM != 0
+#ifdef ENABLE_PRINT_MEM
 #define PRINT_MEM(mem) \
     if (print) { print_mem(mem, #mem " "); }
 #else
@@ -691,10 +700,12 @@ void bench_gated_mlp_internal(std::vector<float> &res, double &avg_time,
                             {DNNL_ARG_WEIGHTS_UP, m_W_up},
                             {DNNL_ARG_WEIGHTS_DOWN, m_W_down},
                             {DNNL_ARG_DST, m_FC_gate_t}});
+#ifndef ENABLE_UP_ONLY
             PRINT_MEM(m_O_proj)
             PRINT_MEM(m_W_up)
             PRINT_MEM(m_W_gate)
             PRINT_MEM(m_W_down)
+#endif
             PRINT_MEM(m_FC_gate_t)
         } else {
             prim_fused_internal.execute(strm,
@@ -715,6 +726,7 @@ void bench_gated_mlp_internal(std::vector<float> &res, double &avg_time,
                                     m_W_down_scales},
                             {DNNL_ARG_WEIGHTS_DOWN | DNNL_ARG_ATTR_ZERO_POINTS,
                                     m_W_down_zp}});
+#ifndef ENABLE_UP_ONLY
             PRINT_MEM(m_O_proj)
             PRINT_MEM(m_W_up_quant)
             PRINT_MEM(m_W_gate_quant)
@@ -725,6 +737,11 @@ void bench_gated_mlp_internal(std::vector<float> &res, double &avg_time,
             PRINT_MEM(m_W_gate_zp)
             PRINT_MEM(m_W_down_scales)
             PRINT_MEM(m_W_down_zp)
+#else
+            PRINT_MEM(m_W_up_quant)
+            PRINT_MEM(m_W_up_scales)
+            PRINT_MEM(m_W_up_zp)
+#endif
             PRINT_MEM(m_FC_gate_t)
         }
 #undef PRINT_MEM

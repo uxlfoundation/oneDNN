@@ -26,6 +26,8 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "common/broadcast_strategy.hpp"
+
 #include "graph/interface/shape_infer.hpp"
 #include "graph/interface/value.hpp"
 #include "graph/utils/debug.hpp"
@@ -263,8 +265,10 @@ bool binary_doable(
     return true;
 }
 
-// TODO: ekind can be removed once CPU optimized 5d tensor MatMul with
-// broadcasted post op
+// TODO: ekind is kept because CPU and GPU backends may support different
+// broadcasting patterns for binary post-ops and should be checked
+// independently. Ideally, an interface to query supported broadcasting
+// strategies from optimized implementations should be introduced.
 static bool post_binary_fusible_impl(const op_t *base_op,
         const std::vector<dim_t> &fused_shape,
         const std::vector<dim_t> &other_shape, engine_kind_t ekind) {
@@ -280,13 +284,43 @@ static bool post_binary_fusible_impl(const op_t *base_op,
         return true;
 
     int32_t output_ndims = static_cast<int32_t>(fused_shape.size());
-    // 5d tensor MatMul with broadcasted post was not optimized on CPU
-    if (ekind == dnnl_cpu && base_op->get_kind() == op_kind::_matmul
-            && output_ndims == 5)
-        return false;
-    // any broadcasted for 4d or 5d tensor MatMul
     if (base_op->get_kind() == op_kind::_matmul
             && (output_ndims == 4 || output_ndims == 5)) {
+        // For CPU, verify that the binary post-op broadcast pattern maps
+        // to a concrete strategy recognized by the common broadcasting
+        // infrastructure. Patterns classified as shared_axes or
+        // unsupported do not have optimized code-paths in the JIT binary
+        // injector and would cause a fallback to the reference
+        // implementation.
+        if (ekind == dnnl_cpu) {
+            // Build lightweight plain memory descriptors so that
+            // get_rhs_arg_broadcasting_strategy can classify the
+            // broadcast pattern.
+            memory_desc_t rhs_md {}, dst_md {};
+            rhs_md.ndims = dst_md.ndims = output_ndims;
+            rhs_md.format_kind = dst_md.format_kind
+                    = impl::format_kind::blocked;
+            rhs_md.format_desc.blocking.strides[output_ndims - 1] = 1;
+            dst_md.format_desc.blocking.strides[output_ndims - 1] = 1;
+            for (int i = 0; i < output_ndims; i++) {
+                rhs_md.dims[i] = other_shape[i];
+                dst_md.dims[i] = fused_shape[i];
+            }
+            for (int i = output_ndims - 2; i >= 0; i--) {
+                rhs_md.format_desc.blocking.strides[i]
+                        = rhs_md.format_desc.blocking.strides[i + 1]
+                        * other_shape[i + 1];
+                dst_md.format_desc.blocking.strides[i]
+                        = dst_md.format_desc.blocking.strides[i + 1]
+                        * fused_shape[i + 1];
+            }
+            const auto bcast = get_rhs_arg_broadcasting_strategy(
+                    rhs_md, memory_desc_wrapper(dst_md));
+            return bcast != broadcasting_strategy_t::unsupported
+                    && bcast != broadcasting_strategy_t::shared_axes;
+        }
+        // For GPU and other backends, allow any broadcast where each
+        // dimension is either 1 or matches the destination.
         for (int32_t i = output_ndims - 1; i >= 0; i--) {
             if (other_shape[i] == 1) continue;
             if (fused_shape[i] != other_shape[i]) { return false; }

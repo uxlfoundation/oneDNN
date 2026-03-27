@@ -1148,7 +1148,7 @@ inline bool memory_desc_strides_check(
 
         // FIXME: make an exception for dims[d] == 1 with the
         // assumption that no code applies that stride when the only
-        // index accessed for that dimenstion is 0. This is because PT
+        // index accessed for that dimension is 0. This is because PT
         // can use "dummy" padding in those situations
         if ((strides[d] == 0) || (md.padded_dims[d] == 1))
             continue;

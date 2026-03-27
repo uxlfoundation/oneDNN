@@ -1,0 +1,286 @@
+{
+  "version": "3.11.0",
+  "engine_kind": "gpu",
+  "fpmath_mode": "strict",
+  "fpmath_mode_apply_to_int": "false",
+  "input_ports": [
+    0,
+    1,
+    2,
+    5
+  ],
+  "output_ports": [
+    7,
+    6
+  ],
+  "graph": [
+    {
+      "id": 0,
+      "name": "matmul_qk",
+      "kind": "MatMul",
+      "attrs": {
+        "transpose_a": {
+          "type": "bool",
+          "value": 0
+        },
+        "accumulation_mode": {
+          "type": "string",
+          "value": "strict"
+        },
+        "transpose_b": {
+          "type": "bool",
+          "value": 1
+        }
+      },
+      "inputs": [
+        {
+          "id": 0,
+          "dtype": "bf16",
+          "shape": [
+            128,
+            1,
+            3136,
+            64
+          ],
+          "stride": [
+            200704,
+            64,
+            64,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 1,
+          "dtype": "bf16",
+          "shape": [
+            128,
+            1,
+            49,
+            64
+          ],
+          "stride": [
+            6272,
+            64,
+            128,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 8,
+          "dtype": "f32",
+          "shape": [
+            128,
+            1,
+            3136,
+            49
+          ],
+          "stride": [
+            -9223372036854775808
+          ],
+          "layout_type": "undef",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "name": "scale_mul",
+      "kind": "Multiply",
+      "attrs": {
+        "auto_broadcast": {
+          "type": "string",
+          "value": "numpy"
+        }
+      },
+      "inputs": [
+        {
+          "id": 8,
+          "dtype": "f32",
+          "shape": [
+            128,
+            1,
+            3136,
+            49
+          ],
+          "stride": [
+            -9223372036854775808
+          ],
+          "layout_type": "undef",
+          "property_type": "undef"
+        },
+        {
+          "id": 2,
+          "dtype": "f32",
+          "shape": [],
+          "stride": [],
+          "layout_type": "strided",
+          "property_type": "host_scalar"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 9,
+          "dtype": "f32",
+          "shape": [
+            128,
+            1,
+            3136,
+            49
+          ],
+          "stride": [
+            -9223372036854775808
+          ],
+          "layout_type": "undef",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "softmax",
+      "kind": "SoftMax",
+      "attrs": {
+        "mode": {
+          "type": "string",
+          "value": "inf_as_zero"
+        },
+        "axis": {
+          "type": "s64",
+          "value": -1
+        }
+      },
+      "inputs": [
+        {
+          "id": 9,
+          "dtype": "f32",
+          "shape": [
+            128,
+            1,
+            3136,
+            49
+          ],
+          "stride": [
+            -9223372036854775808
+          ],
+          "layout_type": "undef",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 10,
+          "dtype": "bf16",
+          "shape": [
+            128,
+            1,
+            3136,
+            49
+          ],
+          "stride": [
+            -9223372036854775808
+          ],
+          "layout_type": "undef",
+          "property_type": "undef"
+        },
+        {
+          "id": 7,
+          "dtype": "f32",
+          "shape": [
+            128,
+            1,
+            3136,
+            1
+          ],
+          "stride": [
+            3136,
+            3136,
+            1,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "matmul_v",
+      "kind": "MatMul",
+      "attrs": {
+        "transpose_a": {
+          "type": "bool",
+          "value": 0
+        },
+        "transpose_b": {
+          "type": "bool",
+          "value": 0
+        },
+        "accumulation_mode": {
+          "type": "string",
+          "value": "strict"
+        }
+      },
+      "inputs": [
+        {
+          "id": 10,
+          "dtype": "bf16",
+          "shape": [
+            128,
+            1,
+            3136,
+            49
+          ],
+          "stride": [
+            -9223372036854775808
+          ],
+          "layout_type": "undef",
+          "property_type": "undef"
+        },
+        {
+          "id": 5,
+          "dtype": "bf16",
+          "shape": [
+            128,
+            1,
+            49,
+            64
+          ],
+          "stride": [
+            6272,
+            64,
+            128,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 6,
+          "dtype": "bf16",
+          "shape": [
+            128,
+            1,
+            3136,
+            64
+          ],
+          "stride": [
+            200704,
+            64,
+            64,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    }
+  ]
+}

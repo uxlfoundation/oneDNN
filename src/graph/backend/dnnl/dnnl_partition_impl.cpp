@@ -100,8 +100,8 @@ FCreateKernel dnnl_partition_impl_t::get_kernel_creator() const {
 }
 
 std::shared_ptr<partition_impl_t> dnnl_partition_impl_t::clone() const {
-    auto ret = std::make_shared<dnnl_partition_impl_t>(
-            get_engine_kind(), get_fpmath_mode(), get_kind());
+    auto ret = std::make_shared<dnnl_partition_impl_t>(get_engine_kind(),
+            get_fpmath_mode(), get_kind(), get_deterministic());
     ret->ops_ = graph_t::deep_copy(ops_);
     ret->inputs_ = inputs_;
     ret->outputs_ = outputs_;

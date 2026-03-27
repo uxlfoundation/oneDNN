@@ -50,8 +50,8 @@ status_t compile_ops(std::shared_ptr<subgraph_t> &sg) {
                 "no executable creator in schema of op %s",
                 op->get_name().c_str());
         auto cur_op = op->shared_from_this();
-        std::shared_ptr<op_executable_t> exec
-                = creator(cur_op, p_engine, pd_cache, fpm, use_block_layout);
+        std::shared_ptr<op_executable_t> exec = creator(cur_op, p_engine,
+                pd_cache, fpm, use_block_layout, sg->get_deterministic());
         VCHECK_COMPILE_OPS(exec != nullptr, status::invalid_graph_op,
                 "unimplemented op, can't compile op %s",
                 op->get_name().c_str());

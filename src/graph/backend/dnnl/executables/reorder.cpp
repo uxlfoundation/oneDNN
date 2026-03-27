@@ -104,7 +104,8 @@ cl_event reorder_executable_t::execute_ocl(const stream &stream,
 
 reorder_executable_t::desc_t reorder_executable_t::create_desc(
         std::shared_ptr<op_t> &op, const dnnl::engine &p_engine,
-        pd_cache_t &pd_cache, const fpmath_t &fpmath, bool use_block_layout) {
+        pd_cache_t &pd_cache, const fpmath_t &fpmath, bool use_block_layout,
+        bool deterministic) {
     if (pd_cache.find(op.get()) != pd_cache.end()) {
         auto pd = graph::utils::any_cast<dnnl::reorder::primitive_desc>(
                 pd_cache.at(op.get()));
@@ -117,6 +118,8 @@ reorder_executable_t::desc_t reorder_executable_t::create_desc(
                 = op->get_attr<fusion_info_t>(op_attr::fusion_info);
         prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
+
+    if (deterministic) { prm_attr.set_deterministic(true); }
 
     // generate mask
     const auto set_reorder_mask = [&op, &prm_attr](int mask) {

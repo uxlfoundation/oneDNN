@@ -27,7 +27,7 @@ namespace dnnl_impl {
 
 genindex_executable_t::genindex_executable_t(std::shared_ptr<op_t> &op,
         const dnnl::engine &p_engine, pd_cache_t &pd_cache,
-        const fpmath_t &fpmath, bool use_block_layout)
+        const fpmath_t &fpmath, bool use_block_layout, bool deterministic)
     : axis_(op->get_attr<int64_t>(op_attr::axis)) {
     using ltw = logical_tensor_wrapper_t;
     const auto &input_lt = op->get_input_logical_tensor(0);

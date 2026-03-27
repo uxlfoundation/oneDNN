@@ -25,7 +25,7 @@ namespace dnnl_impl {
 
 gated_mlp_executable_t::gated_mlp_executable_t(std::shared_ptr<op_t> &op,
         const dnnl::engine &p_engine, pd_cache_t &pd_cache,
-        const fpmath_t &fpmath, bool use_block_layout) {
+        const fpmath_t &fpmath, bool use_block_layout, bool deterministic) {
     auto src_md = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
     auto wei0_md = make_dnnl_memory_desc(op->get_input_logical_tensor(1));
     auto wei1_md = make_dnnl_memory_desc(op->get_input_logical_tensor(2));

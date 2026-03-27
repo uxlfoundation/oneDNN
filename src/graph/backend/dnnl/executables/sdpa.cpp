@@ -23,7 +23,7 @@ namespace dnnl_impl {
 
 sdpa_executable_t::sdpa_executable_t(std::shared_ptr<op_t> &op,
         const dnnl::engine &p_engine, pd_cache_t &pd_cache,
-        const fpmath_t &fpmath, bool use_block_layout)
+        const fpmath_t &fpmath, bool use_block_layout, bool deterministic)
     : with_scale_(op->get_attr<bool>(op_attr::with_scale))
     , mask_type_(static_cast<attn_mask_type_t>(
               op->get_attr<int64_t>(op_attr::mask_type))) {
@@ -46,6 +46,7 @@ sdpa_executable_t::sdpa_executable_t(std::shared_ptr<op_t> &op,
     dnnl::primitive_attr attr, qk_attr, vs_attr;
     attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
     attr.set_fpmath_mode(static_cast<dnnl::fpmath_mode>(fpmath.mode_));
+    if (deterministic) { attr.set_deterministic(true); }
 
     is_invert_scale_ = op->has_attr(op_attr::is_invert_scale)
             ? op->get_attr<bool>(op_attr::is_invert_scale)

@@ -29,7 +29,7 @@ struct gated_mlp_executable_t : public op_executable_t {
 
     gated_mlp_executable_t(std::shared_ptr<op_t> &op,
             const dnnl::engine &p_engine, pd_cache_t &pd_cache,
-            const fpmath_t &fpmath, bool use_block_layout);
+            const fpmath_t &fpmath, bool use_block_layout, bool deterministic);
 
     ~gated_mlp_executable_t() override;
 

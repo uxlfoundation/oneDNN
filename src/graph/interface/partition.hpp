@@ -91,6 +91,8 @@ public:
         return pimpl_->get_fpmath_mode();
     }
 
+    bool get_deterministic() const { return pimpl_->get_deterministic(); }
+
     graph::partition_kind_t get_kind() const { return pimpl_->get_kind(); }
 
     const std::vector<std::shared_ptr<graph::op_t>> &get_ops() const {

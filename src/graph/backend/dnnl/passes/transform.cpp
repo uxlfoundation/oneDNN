@@ -2847,8 +2847,9 @@ status_t fuse_adjacent_reorders(std::shared_ptr<subgraph_t> &sg) {
             if (pd_cache.find(fused_op.get()) != pd_cache.end()) {
                 pd_cache.erase(fused_op.get());
             }
-            const auto &pd = reorder_executable_t::create_desc(
-                    fused_op, *p_engine, pd_cache, fpm, use_block_layout);
+            const auto &pd = reorder_executable_t::create_desc(fused_op,
+                    *p_engine, pd_cache, fpm, use_block_layout,
+                    sg->get_deterministic());
             const memory::desc scratchpad_desc = pd.scratchpad_desc();
             CHECK(fill_layout_info(scratchpad_val, scratchpad_desc));
 

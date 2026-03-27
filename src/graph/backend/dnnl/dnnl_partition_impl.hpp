@@ -90,8 +90,9 @@ class dnnl_partition_impl_t : public partition_impl_t {
 
 public:
     dnnl_partition_impl_t(engine_kind_t engine_kind,
-            const fpmath_t &fpmath_mode, partition_kind_t pkind)
-        : partition_impl_t(engine_kind, fpmath_mode, pkind) {}
+            const fpmath_t &fpmath_mode, partition_kind_t pkind,
+            bool deterministic)
+        : partition_impl_t(engine_kind, fpmath_mode, pkind, deterministic) {}
 
     ~dnnl_partition_impl_t() override = default;
 

@@ -90,7 +90,8 @@ cl_event resampling_executable_t::execute_ocl(const stream &stream,
 
 resampling_executable_t::desc_t resampling_executable_t::create_desc(
         std::shared_ptr<op_t> &op, const dnnl::engine &p_engine,
-        pd_cache_t &pd_cache, const fpmath_t &fpmath, bool use_block_layout) {
+        pd_cache_t &pd_cache, const fpmath_t &fpmath, bool use_block_layout,
+        bool deterministic) {
     // first look up the cache
     if (pd_cache.find(op.get()) != pd_cache.end()) {
         auto pd = graph::utils::any_cast<
@@ -132,7 +133,8 @@ resampling_executable_t::desc_t resampling_executable_t::create_desc(
 
 resampling_bwd_executable_t::desc_t resampling_bwd_executable_t::create_desc(
         std::shared_ptr<op_t> &op, const dnnl::engine &p_engine,
-        pd_cache_t &pd_cache, const fpmath_t &fpmath, bool use_block_layout) {
+        pd_cache_t &pd_cache, const fpmath_t &fpmath, bool use_block_layout,
+        bool deterministic) {
     if (pd_cache.find(op.get()) != pd_cache.end()) {
         auto pd = graph::utils::any_cast<
                 dnnl::resampling_backward::primitive_desc>(
@@ -147,6 +149,7 @@ resampling_bwd_executable_t::desc_t resampling_bwd_executable_t::create_desc(
         prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+    if (deterministic) { prm_attr.set_deterministic(true); }
 
     auto mode = op->get_attr<std::string>(op_attr::mode);
     auto algo = algorithm::undef;

@@ -30,8 +30,8 @@ struct sdpa_executable_t : public op_executable_t {
     DECLARE_ARG_INDICES_GETTER;
 
     sdpa_executable_t(std::shared_ptr<op_t> &op, const dnnl::engine &p_engine,
-            pd_cache_t &pd_cache, const fpmath_t &fpmath,
-            bool use_block_layout);
+            pd_cache_t &pd_cache, const fpmath_t &fpmath, bool use_block_layout,
+            bool deterministic);
 
     bool is_initialized() const { return is_initialized_; }
 

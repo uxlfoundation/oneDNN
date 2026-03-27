@@ -30,9 +30,9 @@ struct conv_fwd_executable_t : public op_executable_t {
 
     conv_fwd_executable_t(std::shared_ptr<op_t> &op,
             const dnnl::engine &p_engine, pd_cache_t &pd_cache,
-            const fpmath_t &fpmath, bool use_block_layout) {
-        auto desc
-                = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
+            const fpmath_t &fpmath, bool use_block_layout, bool deterministic) {
+        auto desc = create_desc(op, p_engine, pd_cache, fpmath,
+                use_block_layout, deterministic);
         prim_ = dnnl::convolution_forward(desc);
         if (op->has_attr(op_attr::with_sum))
             with_sum_ = op->get_attr<bool>(op_attr::with_sum);
@@ -65,9 +65,9 @@ struct conv_bwd_data_executable_t : public op_executable_t {
 
     conv_bwd_data_executable_t(std::shared_ptr<op_t> &op,
             const dnnl::engine &p_engine, pd_cache_t &pd_cache,
-            const fpmath_t &fpmath, bool use_block_layout) {
-        auto desc
-                = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
+            const fpmath_t &fpmath, bool use_block_layout, bool deterministic) {
+        auto desc = create_desc(op, p_engine, pd_cache, fpmath,
+                use_block_layout, deterministic);
         prim_ = dnnl::convolution_backward_data(desc);
     }
 
@@ -106,9 +106,9 @@ struct conv_bwd_weights_executable_t : public op_executable_t {
 
     conv_bwd_weights_executable_t(std::shared_ptr<op_t> &op,
             const dnnl::engine &p_engine, pd_cache_t &pd_cache,
-            const fpmath_t &fpmath, bool use_block_layout) {
-        auto desc
-                = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
+            const fpmath_t &fpmath, bool use_block_layout, bool deterministic) {
+        auto desc = create_desc(op, p_engine, pd_cache, fpmath,
+                use_block_layout, deterministic);
         prim_ = dnnl::convolution_backward_weights(desc);
     }
 

@@ -68,10 +68,11 @@ class backend_t;
 class partition_impl_t : public std::enable_shared_from_this<partition_impl_t> {
 public:
     explicit partition_impl_t(engine_kind_t engine_kind, fpmath_t fpmath_mode,
-            partition_kind_t pkind)
+            partition_kind_t pkind, bool deterministic)
         : engine_kind_(engine_kind)
         , fpmath_mode_(fpmath_mode)
         , pkind_(pkind)
+        , deterministic_(deterministic)
         , can_use_blocked_layout_(false) {}
 
     explicit partition_impl_t(
@@ -79,6 +80,7 @@ public:
         : engine_kind_(engine_kind)
         , fpmath_mode_(fpmath_mode)
         , pkind_(partition_kind_t::undef)
+        , deterministic_(false)
         , can_use_blocked_layout_(false) {
         fpmath_mode_.mode_ = graph::fpmath_mode::strict;
     }
@@ -90,6 +92,9 @@ public:
 
     /// The getter for fpmath_mode_
     const fpmath_t &get_fpmath_mode() const { return fpmath_mode_; }
+
+    /// The getter for deterministic mode
+    bool get_deterministic() const { return deterministic_; }
 
     /// The getter for partition kind
     partition_kind_t get_kind() const { return pkind_; }
@@ -202,6 +207,9 @@ protected:
 
     // Partition kind
     partition_kind_t pkind_;
+
+    // deterministic mode
+    bool deterministic_;
 
     //////////////////////////////////////////////////////
     /// Q: What do the ops_/inputs_/outputs_ represent for?

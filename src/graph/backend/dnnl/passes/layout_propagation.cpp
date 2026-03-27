@@ -77,7 +77,8 @@ void force_partition_output_plain_layout(std::shared_ptr<subgraph_t> &sg) {
                     const auto strides = expect_mem_desc.get_strides();
                     out_vals[i]->set_strides(strides);
                     insert_reorder_after(out_op_ptr, i, ori_mem_desc, p_engine,
-                            pd_cache, fpm, use_block_layout, rewriter);
+                            pd_cache, fpm, use_block_layout,
+                            sg->get_deterministic(), rewriter);
                 }
             }
         }
@@ -130,7 +131,7 @@ status_t layout_propagation(std::shared_ptr<subgraph_t> &sg) {
 
             auto cur_op = op->shared_from_this();
             status_t status = propagator(cur_op, p_engine, pd_cache, fpm,
-                    use_block_layout, rewriter);
+                    use_block_layout, sg->get_deterministic(), rewriter);
 
             visited.insert(op);
             return status;

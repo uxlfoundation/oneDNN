@@ -58,7 +58,7 @@ struct key_t {
             const std::vector<std::shared_ptr<op_t>> &ops,
             const std::vector<const logical_tensor_t *> &ins,
             const std::vector<const logical_tensor_t *> &outs,
-            const impl::graph::fpmath_t &fpmath);
+            const impl::graph::fpmath_t &fpmath, bool deterministic);
     key_t(const partition_t *partition, const impl::engine_t *engine,
             const std::vector<const logical_tensor_t *> &ins,
             const std::vector<const logical_tensor_t *> &outs);
@@ -76,6 +76,7 @@ struct key_t {
     int nthread_;
     const impl::engine_t *engine_;
     const impl::graph::fpmath_t fpmath_;
+    const bool deterministic_;
 
 private:
     // Thread ID is not used as part of the key, it's only used to get
@@ -167,6 +168,10 @@ struct hash<dnnl::impl::graph::partition_hashing::key_t> {
                 seed, static_cast<size_t>(key.fpmath_.mode_));
         seed = dnnl::impl::hash_combine(
                 seed, static_cast<size_t>(key.fpmath_.apply_to_int_));
+
+        // Combine hash for deterministic mode
+        seed = dnnl::impl::hash_combine(
+                seed, static_cast<size_t>(key.deterministic_));
 
         return seed;
     }

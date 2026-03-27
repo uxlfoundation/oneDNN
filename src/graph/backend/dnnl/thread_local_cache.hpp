@@ -185,8 +185,8 @@ private:
                 static auto global_cache = std::shared_ptr<global_cache_type_t>(
                         new global_cache_type_t {},
                         [](global_cache_type_t *ptr) {
-                            return ptr->release();
-                        });
+                    return ptr->release();
+                });
                 return global_cache.get();
             } catch (...) { return nullptr; }
         }

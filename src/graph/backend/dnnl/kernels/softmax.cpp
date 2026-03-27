@@ -49,6 +49,7 @@ status_t softmax_fwd_t::compile_impl(const dnnl_partition_impl_t *part,
     pass_pipeline_t pipeline(vis);
 
     BACKEND_DNNL_ADD_PASS(pipeline, lower_down);
+    BACKEND_DNNL_ADD_PASS(pipeline, decompose_softmax_with_stats);
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_post_typecast_to_predecessor);
     BACKEND_DNNL_ADD_PASS(pipeline, remove_quant_data_with_no_effect);
     BACKEND_DNNL_ADD_PASS(pipeline, replace_quant_data_with_binary_post_op);

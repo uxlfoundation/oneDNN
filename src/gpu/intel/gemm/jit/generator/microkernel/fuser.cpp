@@ -18,6 +18,7 @@
 #include <cstring>
 #include <fstream>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 #include "generator/microkernel/elf.hpp"
@@ -50,9 +51,8 @@ void fuse(std::vector<uint8_t> &binary,
                 "IGC did not generate a valid zebin program binary");
 
     bool foundZeInfo = false;
-    SectionHeader *text = nullptr;
     const char *snames = nullptr;
-    int textSectionID = -1, relSectionID = -1;
+    std::vector<std::pair<SectionHeader *, int>> textSections;
 
     auto *sheaders = reinterpret_cast<SectionHeader *>(
             base + fheaderPtr->sectionTableOff);
@@ -70,104 +70,111 @@ void fuse(std::vector<uint8_t> &binary,
                         continue;
                     if (sname.substr(0, 6) != ".text.") continue;
                 }
-                if (text)
-                    throw std::runtime_error("Multiple kernels in program");
-                text = sheaders + s;
-                textSectionID = s;
+                textSections.emplace_back(sheaders + s, s);
                 break;
             }
             default: break;
         }
     }
 
-    if (!foundZeInfo || !text || text->offset + text->size > bytes)
+    if (!foundZeInfo || textSections.empty())
         throw std::runtime_error(
                 "IGC did not generate a valid zebin program binary");
 
-    std::string rname = ".rel";
-    rname += (snames + text->name);
-    for (int s = 0; s < fheaderPtr->sectionCount; s++) {
-        if (sheaders[s].type != SectionHeader::Type::Relocation) continue;
-        if (rname != (snames + sheaders[s].name)) continue;
-        if (relSectionID >= 0)
-            throw std::runtime_error("Multiple relocation sections for kernel");
-        relSectionID = s;
-    }
+    for (auto &entry : textSections) {
+        auto *text = entry.first;
+        int textSectionID = entry.second;
+        if (text->offset + text->size > bytes) continue;
 
-    auto *insn = reinterpret_cast<const uint32_t *>(base + text->offset);
-    auto *iend = reinterpret_cast<const uint32_t *>(
-            base + text->offset + text->size);
+        auto *insn = reinterpret_cast<const uint32_t *>(base + text->offset);
+        auto *iend = reinterpret_cast<const uint32_t *>(
+                base + text->offset + text->size);
 
-    const uint8_t *spliceStart = nullptr;
-    const uint8_t *spliceEnd = nullptr;
+        const uint8_t *spliceStart = nullptr;
+        const uint8_t *spliceEnd = nullptr;
 
-    for (; insn < iend; insn += 4) {
-        if (insn[0] & (1u << 29))
-            insn -= 2;
-        else if (insn[3] == (sigilStart ^ id))
-            spliceStart = reinterpret_cast<const uint8_t *>(insn);
-        else if (insn[3] == (sigilEnd ^ id)) {
-            spliceEnd = reinterpret_cast<const uint8_t *>(insn);
-            break;
+        for (; insn < iend; insn += 4) {
+            if (insn[0] & (1u << 29))
+                insn -= 2;
+            else if (insn[3] == (sigilStart ^ id))
+                spliceStart = reinterpret_cast<const uint8_t *>(insn);
+            else if (insn[3] == (sigilEnd ^ id)) {
+                spliceEnd = reinterpret_cast<const uint8_t *>(insn);
+                break;
+            }
         }
-    }
 
-    if (!spliceStart || !spliceEnd) return;
+        if (!spliceStart || !spliceEnd) continue;
 
-    auto removeBytes = spliceEnd - spliceStart + 16;
-
-    size_t before = spliceStart - base;
-    auto after = bytes - before - removeBytes;
-    ptrdiff_t sizeAdjust = microkernel.size() - removeBytes;
-
-    auto kbefore = before - text->offset;
-    auto kafter = text->size - kbefore - removeBytes;
-
-    std::vector<uint8_t> newBinary(bytes + sizeAdjust);
-    auto newBase = newBinary.data();
-
-    memmove(newBase, base, before);
-    memmove(newBase + before, microkernel.data(), microkernel.size());
-    memmove(newBase + before + microkernel.size(), spliceStart + removeBytes,
-            after);
-
-    fixupJumpTargets(newBase + text->offset, kbefore, +sizeAdjust);
-    fixupJumpTargets(
-            newBase + before + microkernel.size(), kafter, -sizeAdjust);
-
-    fheaderPtr = reinterpret_cast<FileHeader *>(newBase);
-
-    if (fheaderPtr->sectionTableOff > before)
-        fheaderPtr->sectionTableOff += sizeAdjust;
-
-    sheaders = reinterpret_cast<SectionHeader *>(
-            newBase + fheaderPtr->sectionTableOff);
-    sheaders[textSectionID].size += sizeAdjust;
-    for (int s = 0; s < fheaderPtr->sectionCount; s++)
-        if (sheaders[s].offset > before) sheaders[s].offset += sizeAdjust;
-
-    if (relSectionID >= 0) {
-        auto relSection = sheaders + relSectionID;
-        auto rel = reinterpret_cast<Relocation *>(newBase + relSection->offset);
-        auto relEnd = reinterpret_cast<Relocation *>(
-                newBase + relSection->offset + relSection->size);
-        for (; rel < relEnd; rel++) {
-            if (rel->offset >= kbefore) rel->offset += sizeAdjust;
+        int relSectionID = -1;
+        std::string rname = ".rel";
+        rname += (snames + text->name);
+        for (int s = 0; s < fheaderPtr->sectionCount; s++) {
+            if (sheaders[s].type != SectionHeader::Type::Relocation) continue;
+            if (rname != (snames + sheaders[s].name)) continue;
+            if (relSectionID >= 0)
+                throw std::runtime_error(
+                        "Multiple relocation sections for kernel");
+            relSectionID = s;
         }
-    }
+
+        auto removeBytes = spliceEnd - spliceStart + 16;
+
+        size_t before = spliceStart - base;
+        auto after = bytes - before - removeBytes;
+        ptrdiff_t sizeAdjust = microkernel.size() - removeBytes;
+
+        auto kbefore = before - text->offset;
+        auto kafter = text->size - kbefore - removeBytes;
+
+        std::vector<uint8_t> newBinary(bytes + sizeAdjust);
+        auto newBase = newBinary.data();
+
+        memmove(newBase, base, before);
+        memmove(newBase + before, microkernel.data(), microkernel.size());
+        memmove(newBase + before + microkernel.size(),
+                spliceStart + removeBytes, after);
+
+        fixupJumpTargets(newBase + text->offset, kbefore, +sizeAdjust);
+        fixupJumpTargets(
+                newBase + before + microkernel.size(), kafter, -sizeAdjust);
+
+        fheaderPtr = reinterpret_cast<FileHeader *>(newBase);
+
+        if (fheaderPtr->sectionTableOff > before)
+            fheaderPtr->sectionTableOff += sizeAdjust;
+
+        sheaders = reinterpret_cast<SectionHeader *>(
+                newBase + fheaderPtr->sectionTableOff);
+        sheaders[textSectionID].size += sizeAdjust;
+        for (int s = 0; s < fheaderPtr->sectionCount; s++)
+            if (sheaders[s].offset > before) sheaders[s].offset += sizeAdjust;
+
+        if (relSectionID >= 0) {
+            auto relSection = sheaders + relSectionID;
+            auto rel = reinterpret_cast<Relocation *>(
+                    newBase + relSection->offset);
+            auto relEnd = reinterpret_cast<Relocation *>(
+                    newBase + relSection->offset + relSection->size);
+            for (; rel < relEnd; rel++) {
+                if (rel->offset >= kbefore) rel->offset += sizeAdjust;
+            }
+        }
 
 #ifdef SPLICE_DEBUG
-    std::ofstream dump0("original.bin");
-    dump0.write((const char *)binary.data(), binary.size());
+        std::ofstream dump0("original." + std::to_string(id) + ".bin");
+        dump0.write((const char *)binary.data(), binary.size());
 
-    std::ofstream dump("patched.bin");
-    dump.write((const char *)newBinary.data(), newBinary.size());
+        std::ofstream dump("patched." + std::to_string(id) + ".bin");
+        dump.write((const char *)newBinary.data(), newBinary.size());
 #endif
 
-    std::swap(binary, newBinary);
+        std::swap(binary, newBinary);
 
-    // Tail-recurse to handle any further instances of this microkernel
-    fuse(binary, microkernel, id);
+        // Tail-recurse to handle any further instances of this microkernel
+        fuse(binary, microkernel, id);
+        return;
+    }
 }
 
 void fuse(std::vector<uint8_t> &binary, const char *source) {

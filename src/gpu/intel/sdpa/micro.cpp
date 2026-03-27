@@ -62,7 +62,8 @@ bool with_quantize_common(const quant_entry_t &entry) {
 
 } /* anonymous namespace */
 
-status_t update_config_from_devenv_values(config_t *config, bool quantized) {
+status_t update_config_from_devenv_values(
+        fwd_config_t *config, bool quantized) {
     std::string q_config_str
             = gpu_utils::dev_getenv("QUANTIZED_SDPA_CONFIG", std::string(""));
     std::string config_str
@@ -100,7 +101,48 @@ status_t update_config_from_devenv_values(config_t *config, bool quantized) {
     return status::success;
 }
 
-status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
+status_t update_config_from_devenv_values(bwd_config_t *config) {
+    std::string bwd_config_str
+            = gpu_utils::dev_getenv("BWD_SDPA_CONFIG", std::string(""));
+    if (!bwd_config_str.empty()) {
+        std::array<int, 12> config_values;
+        int i;
+        int num_values = 0;
+
+        stringstream_t ss(bwd_config_str);
+        while (ss >> i) {
+            config_values[num_values++] = i;
+            if (ss.peek() == ',') ss.ignore();
+        }
+        VCHECK_SDPA_COND(num_values == 12,
+                "BWD_SDPA_CONFIG(%s) is invalid. Must be 12 integers "
+                "separate by a comma: "
+                "<unroll_m_BcBr>,<unroll_n_BcBr>,"
+                "<unroll_m_DBc>,<unroll_n_DBc>,"
+                "<unroll_m_DBr>,<unroll_n_DBr>,"
+                "<wg_m_BcBr>,<wg_n_BcBr>,"
+                "<wg_m_DBc>,<wg_n_DBc>,"
+                "<wg_m_DBr>,<wg_n_DBr>",
+                bwd_config_str.c_str());
+        if (num_values == 12) {
+            config->unroll_m_BcBr = config_values[0];
+            config->unroll_n_BcBr = config_values[1];
+            config->unroll_m_DBc = config_values[2];
+            config->unroll_n_DBc = config_values[3];
+            config->unroll_m_DBr = config_values[4];
+            config->unroll_n_DBr = config_values[5];
+            config->wg_m_BcBr = config_values[6];
+            config->wg_n_BcBr = config_values[7];
+            config->wg_m_DBc = config_values[8];
+            config->wg_n_DBc = config_values[9];
+            config->wg_m_DBr = config_values[10];
+            config->wg_n_DBr = config_values[11];
+        }
+    }
+    return status::success;
+}
+
+status_t micro_fwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     using namespace jit;
     using gemm::jit::convert_dnnl_to_kernel_type;
 
@@ -114,16 +156,16 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             "Microkernels not supported by the OpenCL driver.");
 
     /* Retrieve pre-tuned kernel configuration */
-    config_t *config = nullptr;
+    fwd_config_t *config = nullptr;
     const dim_t thin_q_threshold = 16;
     auto queries = d->queries();
-    if (queries == 1) { queries = (d->q_desc.dims[1] / d->kv_head_number); }
+    if (queries == 1) { queries = (d->q_desc.dims[1] / d->num_kv_heads()); }
 
     bool thin_q = (queries <= thin_q_threshold);
     bool quantized = with_key_scales() || with_key_zp() || with_value_scales()
             || with_value_zp();
     bool is_integrated = intel_engine->device_info()->is_integrated();
-    bool is_f32 = (qry_md()->data_type == data_type::f32);
+    bool is_f32 = (desc()->qry_md()->data_type == data_type::f32);
     use_systolic_ukernel_
             = intel_engine->mayiuse(compute::device_ext_t::
                               intel_subgroup_matrix_multiply_accumulate)
@@ -177,11 +219,12 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
 
     // serializable minimal set of configuration params for ukernels
     // will be used to generate shim ukernels in reusable kernel_ctx
-    micro_ukernel_params_t ukernel_params;
+    micro_fwd_ukernel_params_t ukernel_params;
     ukernel_params.unroll_m_kq = config->unroll_m_kq;
     ukernel_params.unroll_n_kq = config->unroll_n_kq;
     ukernel_params.unroll_m_vs = config->unroll_m_vs;
     ukernel_params.unroll_n_vs = config->unroll_n_vs;
+
     ukernel_params.wg_m_kq = config->wg_m_kq;
     ukernel_params.wg_n_kq = config->wg_n_kq;
     ukernel_params.wg_m_vs = config->wg_m_vs;
@@ -193,7 +236,8 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     hw_info.gmdid = dev_info->ip_version();
     hw_info.systolicAvailable = use_systolic_ukernel_;
 
-    if (hw_info.gmdid == 0) return status::unimplemented;
+    VDISPATCH_SDPA(
+            hw_info.gmdid != 0, "gmdid is 0, microkernels not supported.");
 
     ukernel_params.hwinfo = {hw_info};
 
@@ -209,27 +253,28 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
 
     /* Set up GEMMProblem structure for first GEMM: K^T * Q */
     GEMMProblem problem;
-    problem.Ta_ext = convert_dnnl_to_kernel_type(key_md()->data_type);
-    problem.Tb_ext = convert_dnnl_to_kernel_type(qry_md()->data_type);
-    if (qry_md()->data_type == data_type::f16) {
+    problem.Ta_ext = convert_dnnl_to_kernel_type(desc()->key_md()->data_type);
+    problem.Tb_ext = convert_dnnl_to_kernel_type(desc()->qry_md()->data_type);
+    if (desc()->qry_md()->data_type == data_type::f16) {
         problem.Ta = problem.Tb = Type::f16;
-    } else if (qry_md()->data_type == data_type::bf16) {
+    } else if (desc()->qry_md()->data_type == data_type::bf16) {
         problem.Ta = problem.Tb = Type::bf16;
-    } else if (qry_md()->data_type == data_type::f32) {
+    } else if (desc()->qry_md()->data_type == data_type::f32) {
         problem.Ta = problem.Tb = Type::f32;
     } else {
-        VCHECK_SDPA_COND(utils::one_of(qry_md()->data_type, data_type::f16,
-                                 data_type::bf16),
+        VCHECK_SDPA_COND(utils::one_of(desc()->qry_md()->data_type,
+                                 data_type::f16, data_type::bf16),
                 "Q tensor's data type must be bf16 or f16");
     }
     problem.Tc = problem.Tc_ext = Type::f32;
     problem.Ts = problem.Tc;
 
     auto problem_kq = problem;
+
     problem_kq.Tc = problem_kq.Ts
             = (kq_acc_dt() == data_type::f16) ? Type::f16 : Type::f32;
 
-    problem_kq.A.layout = convert_dnnl_to_kernel_layout(key_md());
+    problem_kq.A.layout = convert_dnnl_to_kernel_layout(desc()->key_md());
 
     if (with_key_scales() && !kq_common_scales) {
         auto scale_dt = key_scales_dt();
@@ -258,10 +303,10 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
 
     problem_kq.B.layout = MatrixLayout::Pr;
     problem_kq.C.layout = MatrixLayout::T;
-    const memory_desc_wrapper key_mdw(key_md());
+    const memory_desc_wrapper key_mdw(desc()->key_md());
     auto ldk = static_cast<int>(
-            gemm_desc_t::get_ld(*key_md()) * key_mdw.data_type_size());
-    problem_kq.A.setAlignment(micro::alignmentForLD(ldk));
+            gemm_desc_t::get_ld(*desc()->key_md()) * key_mdw.data_type_size());
+    problem_kq.A.setAlignment(micro::alignmentForLD(int(ldk)));
     problem_kq.B.setAlignment(64); // Q is packed in VNNI format in SLM
     if (use_systolic_ukernel()) {
         problem_kq.B.crosspack = 2;
@@ -282,7 +327,7 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
 
     /* Set up problem size information */
     SizeParams heuristic_sizes;
-    // quanatizing sizes to large intervals allows kernel
+    // quantizing sizes to large intervals allows kernel
     // selection search while avoiding recompilation for every new size
     heuristic_sizes.m = nearest_conf_seq_interval(arch_, d->head_size(),
             d->keys(), thin_q, quantized, is_integrated, use_fma_config, is_f32,
@@ -293,7 +338,7 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             : utils::rnd_up_pow2(queries);
     heuristic_sizes.k
             = d->head_size(); // baked into kernel regardless, no quantization
-    heuristic_sizes.batch = utils::rnd_up_pow2(d->batch_size());
+    heuristic_sizes.batch = utils::rnd_up_pow2(d->batch() * d->num_q_heads());
 
     ukernel_params.sizes_kq = {heuristic_sizes};
 
@@ -305,8 +350,9 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     bool vs_common_scales = with_quantize_common(d->vs_scales);
     bool vs_common_zp = with_quantize_common(d->vs_zero_points);
 
-    problem_vs.Ta_ext = convert_dnnl_to_kernel_type(val_md()->data_type);
-    problem_vs.A.layout = convert_dnnl_to_kernel_layout(val_md());
+    problem_vs.Ta_ext
+            = convert_dnnl_to_kernel_type(desc()->val_md()->data_type);
+    problem_vs.A.layout = convert_dnnl_to_kernel_layout(desc()->val_md());
     if (with_value_scales() && !vs_common_scales) {
         auto scale_dt = value_scales_dt();
         problem_vs.Ta_scale = convert_dnnl_to_kernel_type(scale_dt);
@@ -334,10 +380,10 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
 
     problem_vs.B.layout = MatrixLayout::Pr;
     problem_vs.C.layout = MatrixLayout::N;
-    const memory_desc_wrapper val_mdw(val_md());
+    const memory_desc_wrapper val_mdw(desc()->val_md());
     auto ldv = static_cast<int>(
-            gemm_desc_t::get_ld(*val_md()) * val_mdw.data_type_size());
-    problem_vs.A.setAlignment(micro::alignmentForLD(ldv));
+            gemm_desc_t::get_ld(*desc()->val_md()) * val_mdw.data_type_size());
+    problem_vs.A.setAlignment(micro::alignmentForLD(int(ldv)));
     problem_vs.B.setAlignment(64); // S is packed in SLM
     if (use_systolic_ukernel()) { problem_vs.B.crosspack = 16; }
 
@@ -367,98 +413,415 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     return status::success;
 }
 
-status_t micro_t::init(impl::engine_t *engine) {
+status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
+    using namespace jit;
+    using gemm::jit::convert_dnnl_to_kernel_type;
+
+    assert(engine->kind() == engine_kind::gpu);
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    auto *dev_info = intel_engine->device_info();
+    arch_ = dev_info->gpu_arch();
+    auto *d = desc();
+
+    VCHECK_SDPA_COND(compute::mayiuse_microkernels(intel_engine),
+            "Microkernels not supported by the OpenCL driver.");
+
+    /* Retrieve pre-tuned kernel configuration */
+    bwd_config_t *config = nullptr;
+    const dim_t thin_q_threshold = 16;
+    auto queries = d->queries();
+    // TODO: q=1 batch group optimizations
+    // if (queries == 1) { queries = (d->q_desc.dims[1] / d->num_kv_heads()); }
+
+    bool thin_q = (queries <= thin_q_threshold);
+    bool quantized = false;
+    bool is_integrated = intel_engine->device_info()->is_integrated();
+    bool is_f32 = (desc()->qry_md()->data_type == data_type::f32);
+    use_systolic_ukernel_
+            = intel_engine->mayiuse(compute::device_ext_t::
+                              intel_subgroup_matrix_multiply_accumulate)
+            && !is_f32; // f32 -> non-systolic kernel only
+
+    bool use_fma_config = !use_systolic_ukernel_;
+    config = choose_bwd_config(arch_, d->head_size(), d->keys(), thin_q,
+            quantized, is_integrated, use_fma_config, is_f32);
+
+    VCHECK_SDPA_COND(config != nullptr,
+            "No suitable kernel configuration found for the given problem "
+            "size and attributes.");
+
+    CHECK(update_config_from_devenv_values(config));
+
+    VDEBUGINFO(4, primitive, sdpa,
+            "D=%d,K=%d,%s%s%s"
+            "BcBr_tile(%d, %d): unroll_m=%d unroll_n=%d wg_m=%d wg_n=%d,"
+            "DBc_tile(%d, %d): unroll_m=%d unroll_n=%d wg_m=%d wg_n=%d"
+            "DBr_tile(%d, %d): unroll_m=%d unroll_n=%d wg_m=%d wg_n=%d",
+            static_cast<int>(d->head_size()), static_cast<int>(d->keys()),
+            thin_q ? "thin_q," : "", quantized ? "quant," : "",
+            is_integrated ? "integrated" : "",
+            config->unroll_m_BcBr * config->wg_m_BcBr,
+            config->unroll_n_BcBr * config->wg_n_BcBr, config->unroll_m_BcBr,
+            config->unroll_n_BcBr, config->wg_m_BcBr, config->wg_n_BcBr,
+            config->unroll_m_DBc * config->wg_m_DBc,
+            config->unroll_n_DBc * config->wg_n_DBc, config->unroll_m_DBc,
+            config->unroll_n_DBc, config->wg_m_DBc, config->wg_n_DBc,
+            config->unroll_m_DBr * config->wg_m_DBr,
+            config->unroll_n_DBr * config->wg_n_DBr, config->unroll_m_DBr,
+            config->unroll_n_DBr, config->wg_m_DBr, config->wg_n_DBr);
+
+    // Bc(Br) == (D)Bc
+    VCHECK_SDPA_COND(
+            ((config->unroll_m_BcBr * config->wg_m_BcBr
+                     == config->unroll_n_DBc * config->wg_n_DBc)
+                    && ((config->wg_m_DBc * config->wg_n_DBc)
+                            <= (config->wg_m_BcBr * config->wg_n_BcBr))),
+            "[CONFIG] The config BcBr work_group tile M(%d) axis must equal "
+            "DBc work_group tile N(%d) axis and number of total subgroups "
+            "should be less than BcBr subgroups (%d ?<= %d)",
+            config->unroll_m_BcBr * config->wg_m_BcBr,
+            config->unroll_n_DBc * config->wg_n_DBc,
+            config->wg_m_DBc * config->wg_n_DBc,
+            config->wg_m_BcBr * config->wg_n_BcBr);
+
+    // D(Bc) >= head size
+    VCHECK_SDPA_COND(config->unroll_m_DBc * config->wg_m_DBc >= d->head_size(),
+            "The DBc matmul config work_group tile N(%d*%d=%d) axis must be "
+            "greater than or equal to head size(%ld)",
+            config->unroll_m_DBc, config->wg_m_DBc,
+            config->unroll_m_DBc * config->wg_m_DBc,
+            static_cast<long int>(d->head_size()));
+
+    // (Bc)Br == (D)Br, ngroups <= BcBr ngroups
+    VCHECK_SDPA_COND(((config->unroll_n_BcBr * config->wg_n_BcBr
+                              == config->unroll_n_DBr * config->wg_n_DBr)
+                             && (config->wg_m_DBr * config->wg_n_DBr
+                                     <= config->wg_m_BcBr * config->wg_n_BcBr)),
+            "[CONFIG] The config BcBr work_group tile N(%d) axis must equal "
+            "DBr work_group tile N(%d) axis and number of total subgroups "
+            "should be less than BcBr subgroups (%d ?<= %d)",
+            config->unroll_n_BcBr * config->wg_n_BcBr,
+            config->unroll_n_DBr * config->wg_n_DBr,
+            config->wg_m_DBr * config->wg_n_DBr,
+            config->wg_m_BcBr * config->wg_n_BcBr);
+
+    // D(Br) >= head size
+    VCHECK_SDPA_COND(config->unroll_m_DBr * config->wg_m_DBr >= d->head_size(),
+            "The DBr matmul config work_group tile M(%d*%d=%d) axis must be "
+            "greater than or equal to head size(%ld)",
+            config->unroll_m_DBr, config->wg_m_DBr,
+            config->unroll_m_DBr * config->wg_m_DBr,
+            static_cast<long int>(d->head_size()));
+
+    // serializable minimal set of configuration params for ukernels
+    // will be used to generate shim ukernels in reusable kernel_ctx
+    micro_bwd_ukernel_params_t ukernel_params;
+
+    ukernel_params.unroll_m_BcBr = config->unroll_m_BcBr;
+    ukernel_params.unroll_n_BcBr = config->unroll_n_BcBr;
+
+    ukernel_params.unroll_m_DBc = config->unroll_m_DBc;
+    ukernel_params.unroll_n_DBc = config->unroll_n_DBc;
+
+    ukernel_params.unroll_m_DBr = config->unroll_m_DBr;
+    ukernel_params.unroll_n_DBr = config->unroll_n_DBr;
+
+    ukernel_params.wg_m_BcBr = config->wg_m_BcBr;
+    ukernel_params.wg_n_BcBr = config->wg_n_BcBr;
+
+    ukernel_params.wg_m_DBc = config->wg_m_DBc;
+    ukernel_params.wg_n_DBc = config->wg_n_DBc;
+
+    ukernel_params.wg_m_DBr = config->wg_m_DBr;
+    ukernel_params.wg_n_DBr = config->wg_n_DBr;
+
+    /* Get device information */
+    micro::HWInformation hw_info;
+    hw_info.euCount = dev_info->eu_count();
+    hw_info.gmdid = dev_info->ip_version();
+    hw_info.systolicAvailable = use_systolic_ukernel_;
+
+    VDISPATCH_SDPA(
+            hw_info.gmdid != 0, "gmdid is 0, microkernels not supported.");
+
+    ukernel_params.hwinfo = {hw_info};
+
+    sg_size_ = dev_info->min_subgroup_size();
+
+    auto convert_dnnl_to_kernel_layout = [](const memory_desc_t *md) {
+        return (gemm_desc_t::get_trans(*md) == dnnl_trans) ? MatrixLayout::T
+                                                           : MatrixLayout::N;
+    };
+    auto transpose_layout = [](const gemmstone::MatrixLayout l) {
+        switch (l) {
+            case MatrixLayout::N: return MatrixLayout::T;
+            case MatrixLayout::T: return MatrixLayout::N;
+            case MatrixLayout::Pr: return MatrixLayout::Pc;
+            case MatrixLayout::Pc: return MatrixLayout::Pr;
+            default: return l;
+        }
+    };
+
+    /* Set up GEMMProblem structure for first GEMM: K^T * Q */
+    GEMMProblem problem;
+    problem.Ta_ext = convert_dnnl_to_kernel_type(desc()->key_md()->data_type);
+    problem.Tb_ext = convert_dnnl_to_kernel_type(desc()->qry_md()->data_type);
+    if (desc()->qry_md()->data_type == data_type::f16) {
+        problem.Ta = problem.Tb = Type::f16;
+    } else if (desc()->qry_md()->data_type == data_type::bf16) {
+        problem.Ta = problem.Tb = Type::bf16;
+    } else if (desc()->qry_md()->data_type == data_type::f32) {
+        problem.Ta = problem.Tb = Type::f32;
+    } else {
+        VCHECK_SDPA_COND(
+                utils::one_of(desc()->qry_md()->data_type, data_type::f16,
+                        data_type::bf16, data_type::f32),
+                "Q tensor's data type must be bf16, f16, or f32");
+    }
+    problem.Tc = problem.Tc_ext = Type::f32;
+    problem.Ts = problem.Tc;
+
+    const int wg_tile_m_BcBr = config->wg_m_BcBr * config->unroll_m_BcBr;
+    const int wg_tile_n_BcBr = config->wg_n_BcBr * config->unroll_n_BcBr;
+
+    auto problem_kq = problem;
+
+    problem_kq.A.layout = MatrixLayout::Pc;
+    problem_kq.B.layout = MatrixLayout::N;
+    problem_kq.C.layout = MatrixLayout::N;
+    const memory_desc_wrapper key_mdw(desc()->key_md());
+    const memory_desc_wrapper qry_mdw(desc()->qry_md());
+    auto ldk = static_cast<int>(
+            gemm_desc_t::get_ld(*desc()->key_md()) * key_mdw.data_type_size());
+    auto ldq = static_cast<int>(
+            gemm_desc_t::get_ld(*desc()->qry_md()) * qry_mdw.data_type_size());
+    problem_kq.A.setAlignment(64); // Q is packed in VNNI format in SLM
+    if (use_systolic_ukernel()) {
+        problem_kq.A.crosspack = 2;
+        problem_kq.A.tileR = into<uint16_t>(sg_size_);
+        problem_kq.A.tileC = into<uint16_t>(d_max());
+    }
+    problem_kq.B.setAlignment(micro::alignmentForLD(int(ldq)));
+
+    ukernel_params.problem_kq = {problem_kq};
+
+    /* Set up microkernel options */
+    micro::GEMMOptions opts_kq;
+    opts_kq.localA = true;
+    opts_kq.slmPtr = true;
+    opts_kq.scaleA = false;
+    opts_kq.offsetA = false;
+
+    ukernel_params.opts_kq = {opts_kq};
+
+    /* Set up problem size information */
+    SizeParams heuristic_sizes;
+    heuristic_sizes.m = wg_tile_m_BcBr;
+    heuristic_sizes.n = wg_tile_n_BcBr;
+    heuristic_sizes.k = d->head_size();
+    heuristic_sizes.batch = 1;
+
+    ukernel_params.sizes_kq = {heuristic_sizes};
+
+    /* Set up GEMMProblem structure for second GEMM: V * S  */
+    auto problem_vs = std::move(problem);
+    problem_vs.Tc = problem_vs.Ts
+            = (vs_acc_dt() == data_type::f16) ? Type::f16 : Type::f32;
+
+    problem_vs.Ta_ext
+            = convert_dnnl_to_kernel_type(desc()->val_md()->data_type);
+    problem_vs.A.layout = convert_dnnl_to_kernel_layout(diff_dst_md());
+    problem_vs.B.layout = MatrixLayout::Pr;
+    problem_vs.C.layout = MatrixLayout::N;
+    const memory_desc_wrapper diff_dst_mdw(diff_dst_md());
+    auto lda = static_cast<int>(gemm_desc_t::get_ld(*diff_dst_md())
+            * diff_dst_mdw.data_type_size());
+    problem_vs.A.setAlignment(micro::alignmentForLD(int(lda)));
+    problem_vs.B.setAlignment(64); // S is packed in SLM
+    if (use_systolic_ukernel()) { problem_vs.B.crosspack = 16; }
+
+    ukernel_params.problem_vs = {problem_vs};
+
+    // directly tied to config, will recompile w/head size and config updates
+    // no need for interval quantization
+    heuristic_sizes.m = d->head_size();
+    heuristic_sizes.n = wg_tile_m_BcBr;
+    heuristic_sizes.k = wg_tile_n_BcBr;
+
+    ukernel_params.sizes_vs = {heuristic_sizes};
+
+    /* Set up microkernel options */
+    micro::GEMMOptions opts_vs;
+    opts_vs.localA = false;
+    opts_vs.localB = true;
+    opts_vs.slmPtr = true;
+
+    ukernel_params.opts_vs = {opts_vs};
+
+    //////// Vt * dA
+    auto problem_vtdA = problem;
+    problem_vtdA.Ta_ext
+            = convert_dnnl_to_kernel_type(desc()->val_md()->data_type);
+
+    problem_vtdA.A.layout
+            = transpose_layout(convert_dnnl_to_kernel_layout(desc()->val_md()));
+    problem_vtdA.B.layout = convert_dnnl_to_kernel_layout(diff_dst_md());
+    problem_vtdA.C.layout = MatrixLayout::N;
+    const memory_desc_wrapper val_mdw(desc()->val_md());
+    auto ldv
+            = gemm_desc_t::get_ld(*desc()->val_md()) * val_mdw.data_type_size();
+    problem_vtdA.A.setAlignment(micro::alignmentForLD(int(ldv)));
+    problem_vtdA.B.setAlignment(micro::alignmentForLD(int(lda)));
+
+    ukernel_params.problem_vtdA = {problem_vtdA};
+
+    heuristic_sizes.m = wg_tile_m_BcBr;
+    heuristic_sizes.n = wg_tile_n_BcBr;
+    heuristic_sizes.k = d->head_size();
+
+    ukernel_params.sizes_vtdA = {heuristic_sizes};
+
+    /* Set up microkernel options */
+    micro::GEMMOptions opts_vtdA;
+    opts_vtdA.localA = false;
+    opts_vtdA.localB = false;
+    opts_vtdA.slmPtr = true;
+    ukernel_params.opts_vtdA = {opts_vtdA};
+
+    //////// Q * dS^t
+    auto problem_qdSt = problem;
+    problem_qdSt.Ta_ext
+            = convert_dnnl_to_kernel_type(desc()->qry_md()->data_type);
+    problem_qdSt.A.layout = MatrixLayout::Pc;
+    problem_qdSt.B.layout
+            = transpose_layout(convert_dnnl_to_kernel_layout(desc()->qry_md()));
+    problem_qdSt.C.layout = MatrixLayout::N;
+
+    problem_qdSt.A.setAlignment(64);
+    problem_qdSt.B.setAlignment(micro::alignmentForLD(int(ldq)));
+    if (use_systolic_ukernel()) {
+        problem_qdSt.A.crosspack = 2;
+        problem_qdSt.A.tileR = into<uint16_t>(
+                sg_size_); // tile will be transposed (dS^t -> n x m)
+        problem_qdSt.A.tileC = into<uint16_t>(wg_tile_n_BcBr);
+    }
+
+    ukernel_params.problem_qdSt = {problem_qdSt};
+
+    heuristic_sizes.m = wg_tile_m_BcBr;
+    heuristic_sizes.n = d->values();
+    heuristic_sizes.k = wg_tile_n_BcBr;
+
+    ukernel_params.sizes_qdSt = {heuristic_sizes};
+
+    /* Set up microkernel options */
+    micro::GEMMOptions opts_qdSt;
+    opts_qdSt.localA = true;
+    opts_qdSt.localB = false;
+    opts_qdSt.slmPtr = true;
+    ukernel_params.opts_qdSt = {opts_qdSt};
+
+    // dS * K
+    auto problem_ktq = problem;
+    problem_ktq.Ta_ext
+            = convert_dnnl_to_kernel_type(desc()->key_md()->data_type);
+
+    problem_ktq.A.layout
+            = transpose_layout(convert_dnnl_to_kernel_layout(desc()->key_md()));
+    problem_ktq.B.layout = MatrixLayout::Pr;
+    problem_ktq.C.layout = MatrixLayout::N;
+
+    problem_ktq.A.setAlignment(micro::alignmentForLD(int(ldk)));
+    problem_ktq.B.setAlignment(64); // S is packed in SLM
+    if (use_systolic_ukernel()) { problem_ktq.B.crosspack = 16; }
+
+    ukernel_params.problem_ktq = {problem_ktq};
+
+    heuristic_sizes.m = d->head_size();
+    heuristic_sizes.n = wg_tile_n_BcBr;
+    heuristic_sizes.k = wg_tile_m_BcBr;
+
+    ukernel_params.sizes_ktq = {heuristic_sizes};
+
+    /* Set up microkernel options */
+    micro::GEMMOptions opts_ktq;
+    opts_ktq.localA = false;
+    opts_ktq.localB = true;
+    opts_ktq.slmPtr = true;
+    ukernel_params.opts_ktq = {opts_ktq};
+
+    conf.ukernel_config = ukernel_params;
+
+    return status::success;
+}
+
+status_t micro_fwd_t::init(impl::engine_t *engine) {
     CHECK(create_kernel(
             engine, kernel_, pd()->conf.get_kernel_names()[0], pd()->conf));
+
     if (!kernel_) return status::runtime_error;
     return status::success;
 }
 
-status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
-    using namespace micro;
+status_t micro_bwd_t::init(impl::engine_t *engine) {
+    std::vector<const char *> kernel_names = pd()->conf.get_kernel_names();
 
-    auto *pd = this;
+    std::vector<compute::kernel_t> kernels;
+    CHECK(create_kernels(engine, kernels, kernel_names, pd()->conf));
+
+    preprocess_ = kernels[0];
+    kernel_ = kernels[1];
+    postprocess_ = kernels[2];
+
+    if (!preprocess_) return status::runtime_error;
+    if (!kernel_) return status::runtime_error;
+    if (!postprocess_) return status::runtime_error;
+    return status::success;
+}
+
+template <typename conf_t, typename pd_type>
+static void init_conf_common(conf_t &conf, pd_type *pd) {
+    using pd_t = sdpa_pd_t;
     auto *d = pd->desc();
 
     data_type_t data_t = pd->dst_md()->data_type;
     conf.data_t = data_t;
     conf.ndims = pd_t::ndims;
 
-    const memory_desc_wrapper qry_mdw(pd->qry_md());
-    const memory_desc_wrapper key_mdw(pd->key_md());
-    const memory_desc_wrapper val_mdw(pd->val_md());
+    const memory_desc_wrapper qry_mdw(pd->desc()->qry_md());
+    const memory_desc_wrapper key_mdw(pd->desc()->key_md());
+    const memory_desc_wrapper val_mdw(pd->desc()->val_md());
     const memory_desc_wrapper dst_mdw(pd->dst_md());
-    const memory_desc_wrapper msk_mdw(pd->attn_mask_md());
+    const memory_desc_wrapper msk_mdw(pd->desc()->attn_mask_md());
 
     conf.key_data_t = key_mdw.data_type();
     conf.qry_data_t = qry_mdw.data_type();
     conf.val_data_t = val_mdw.data_type();
     conf.dst_data_t = dst_mdw.data_type();
 
-    conf.require_stateless_addressing = has_large_buffers();
-
     conf.msk_data_t = data_type::undef;
     if (pd->with_attn_mask()) { conf.msk_data_t = msk_mdw.data_type(); }
 
-    conf.key_scales_data_t = pd->key_scales_dt();
-    conf.value_scales_data_t = pd->value_scales_dt();
-
-    conf.key_zp_data_t = pd->key_zp_dt();
-    conf.value_zp_data_t = pd->value_zp_dt();
-
     auto Q_num_heads_dim = qry_mdw.dims()[1];
-    conf.kv_group_size = static_cast<int>(Q_num_heads_dim / d->kv_head_number);
+    conf.kv_group_size = static_cast<int>(Q_num_heads_dim / d->num_kv_heads());
 
-    auto ldq = gemm_desc_t::get_ld(*pd->qry_md()) * qry_mdw.data_type_size();
-    auto ldk = gemm_desc_t::get_ld(*pd->key_md()) * key_mdw.data_type_size();
-    auto ldv = gemm_desc_t::get_ld(*pd->val_md()) * val_mdw.data_type_size();
+    auto ldq = gemm_desc_t::get_ld(*pd->desc()->qry_md())
+            * qry_mdw.data_type_size();
+    auto ldk = gemm_desc_t::get_ld(*pd->desc()->key_md())
+            * key_mdw.data_type_size();
+    auto ldv = gemm_desc_t::get_ld(*pd->desc()->val_md())
+            * val_mdw.data_type_size();
     auto lda = gemm_desc_t::get_ld(*pd->dst_md()) * dst_mdw.data_type_size();
 
-    conf.q_align = alignmentForLD(int(ldq));
-    conf.k_align = alignmentForLD(int(ldk));
-    conf.v_align = alignmentForLD(int(ldv));
-    conf.a_align = alignmentForLD(int(lda));
+    conf.q_align = micro::alignmentForLD(int(ldq));
+    conf.k_align = micro::alignmentForLD(int(ldk));
+    conf.v_align = micro::alignmentForLD(int(ldv));
+    conf.a_align = micro::alignmentForLD(int(lda));
 
-    conf.transpose_k = gemm_desc_t::get_trans(*pd->key_md()) == dnnl_trans;
+    conf.transpose_k
+            = gemm_desc_t::get_trans(*pd->desc()->key_md()) == dnnl_trans;
 
-    int kq_scale_mask = (static_cast<int>(pd->with_key_scales()) << 1)
-            | static_cast<int>(with_quantize_common(d->kq_scales));
-    conf.kq_scale_mask = kq_scale_mask;
-
-    int vs_scale_mask = (static_cast<int>(pd->with_value_scales()) << 1)
-            | static_cast<int>(with_quantize_common(d->vs_scales));
-    conf.vs_scale_mask = vs_scale_mask;
-
-    int kq_zp_mask = (static_cast<int>(pd->with_key_zp()) << 1)
-            | static_cast<int>(with_quantize_common(d->kq_zero_points));
-    conf.kq_zp_mask = kq_zp_mask;
-
-    int vs_zp_mask = (static_cast<int>(pd->with_value_zp()) << 1)
-            | static_cast<int>(with_quantize_common(d->vs_zero_points));
-    conf.vs_zp_mask = vs_zp_mask;
-
-    using namespace data_type;
-    auto elems_per_byte = [](data_type_t dt) {
-        switch (dt) {
-            case u4:
-            case s4: return 2;
-            default: return 1;
-        }
-    };
-
-    conf.key_elements_per_byte = elems_per_byte(key_mdw.data_type());
-    conf.key_zp_elements_per_byte = elems_per_byte(pd->key_zp_dt());
-    conf.val_elements_per_byte = elems_per_byte(val_mdw.data_type());
-    conf.val_zp_elements_per_byte = elems_per_byte(pd->value_zp_dt());
-
-    conf.key_group_size = 1;
-    conf.val_group_size = 1;
-    if (pd->with_key_scales() || pd->with_key_zp())
-        conf.key_group_size = pd->key_group_size();
-    if (pd->with_value_scales() || pd->with_value_zp())
-        conf.val_group_size = pd->value_group_size();
-
-    conf.scale_data_t = pd->scale_md()->data_type;
+    conf.scale_data_t = pd->desc()->scale_md()->data_type;
 
     conf.attn_mask_undef = attn_mask_type::undef;
     conf.attn_mask_buffer = attn_mask_type::buffer;
@@ -475,8 +838,73 @@ status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
     conf.subgroup_size = pd->sg_size();
     conf.d_max = pd->d_max();
 
+    bool d_full = (d->head_size() == pd->d_max());
+    conf.d_full = d_full;
+    conf.arch_gte_hpc = (pd->arch() >= compute::gpu_arch_t::xe_hpc);
+
+    conf.use_systolic_ukernel = pd->use_systolic_ukernel();
+}
+
+status_t micro_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
+    using namespace micro;
+    init_conf_common(conf, this);
+
+    conf.require_stateless_addressing = has_large_buffers();
+
+    const memory_desc_wrapper qry_mdw(desc()->qry_md());
+    const memory_desc_wrapper key_mdw(desc()->key_md());
+    const memory_desc_wrapper val_mdw(desc()->val_md());
+    const memory_desc_wrapper dst_mdw(dst_md());
+
+    conf.key_scales_data_t = key_scales_dt();
+    conf.value_scales_data_t = value_scales_dt();
+
+    conf.key_zp_data_t = key_zp_dt();
+    conf.value_zp_data_t = value_zp_dt();
+
+    auto ldq
+            = gemm_desc_t::get_ld(*desc()->qry_md()) * qry_mdw.data_type_size();
+    auto lda = gemm_desc_t::get_ld(*dst_md()) * dst_mdw.data_type_size();
+
+    int kq_scale_mask = (static_cast<int>(with_key_scales()) << 1)
+            | static_cast<int>(with_quantize_common(desc()->kq_scales));
+    conf.kq_scale_mask = kq_scale_mask;
+
+    int vs_scale_mask = (static_cast<int>(with_value_scales()) << 1)
+            | static_cast<int>(with_quantize_common(desc()->vs_scales));
+    conf.vs_scale_mask = vs_scale_mask;
+
+    int kq_zp_mask = (static_cast<int>(with_key_zp()) << 1)
+            | static_cast<int>(with_quantize_common(desc()->kq_zero_points));
+    conf.kq_zp_mask = kq_zp_mask;
+
+    int vs_zp_mask = (static_cast<int>(with_value_zp()) << 1)
+            | static_cast<int>(with_quantize_common(desc()->vs_zero_points));
+    conf.vs_zp_mask = vs_zp_mask;
+
+    using namespace data_type;
+    auto elems_per_byte = [](data_type_t dt) {
+        switch (dt) {
+            case u4:
+            case s4: return 2;
+            default: return 1;
+        }
+    };
+
+    conf.key_elements_per_byte = elems_per_byte(key_mdw.data_type());
+    conf.key_zp_elements_per_byte = elems_per_byte(key_zp_dt());
+    conf.val_elements_per_byte = elems_per_byte(val_mdw.data_type());
+    conf.val_zp_elements_per_byte = elems_per_byte(value_zp_dt());
+
+    conf.key_group_size = 1;
+    conf.val_group_size = 1;
+    if (with_key_scales() || with_key_zp())
+        conf.key_group_size = key_group_size();
+    if (with_value_scales() || with_value_zp())
+        conf.val_group_size = value_group_size();
+
     /* Set up microkernel strategy */
-    const config_t config = {conf.ukernel_config.unroll_m_kq,
+    const fwd_config_t config = {conf.ukernel_config.unroll_m_kq,
             conf.ukernel_config.unroll_n_kq, conf.ukernel_config.unroll_m_vs,
             conf.ukernel_config.unroll_n_vs, conf.ukernel_config.wg_m_kq,
             conf.ukernel_config.wg_n_kq, conf.ukernel_config.wg_m_vs,
@@ -488,52 +916,129 @@ status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
     int tile_k = kq_wg_tile_m;
     int tile_v = vs_wg_tile_m;
 
-    bool d_full = (d->head_size() == pd->d_max());
-    bool v_full = (d->head_size() == tile_v);
+    bool d_full = conf.d_full;
+    bool v_full = (desc()->head_size() == tile_v);
 
-    auto Q = d->queries();
+    auto Q = desc()->queries();
     const dim_t Q_per_kv_group = (Q == 1 ? Q * conf.kv_group_size : Q);
     bool q_full = ((Q_per_kv_group % kq_wg_tile_n) != 0);
     conf.remainder_q = d_full && q_full;
 
-    conf.d_full = d_full;
-    conf.arch_gte_hpc = (pd->arch() >= compute::gpu_arch_t::xe_hpc);
-
     conf.block_q = conf.block_a = conf.block_2d_a = false;
     if (d_full) {
         conf.block_q = (ldq % 4 == 0);
-        conf.block_a = (lda % 16 == 0 && v_full);
-    } else if (pd->arch() >= compute::gpu_arch_t::xe_hpc
-            && (config.unroll_m_vs * dst_mdw.data_type_size()) <= 64) {
-        auto vbytes = d->values() * val_mdw.data_type_size();
+        conf.block_a = (lda % 4 == 0 && v_full);
+    } else if (arch() >= compute::gpu_arch_t::xe_hpc
+            && config.unroll_m_vs < 64) {
+        auto vbytes = desc()->values() * val_mdw.data_type_size();
         if (lda % 16 == 0 && vbytes % 4 == 0) conf.block_2d_a = true;
     }
 
-    if (pd->arch() >= compute::gpu_arch_t::xe_hpc) {
+    if (arch() >= compute::gpu_arch_t::xe_hpc) {
         conf.prefetch_mask = true;
         conf.prefetch_k0 = true;
         conf.prefetch_k = true;
         conf.prefetch_v = true;
-        bool no_rem = d_full && v_full && (d->keys() % tile_k == 0);
+        conf.prefetch_d_max = nstl::min(d_max(), 64);
+        bool no_rem = d_full && v_full && (desc()->keys() % tile_k == 0);
         conf.prefetch_remainder = !no_rem;
-        conf.prefetch_d_max = nstl::min(pd->d_max(), 64);
     } else {
         conf.prefetch_mask = conf.prefetch_k0 = conf.prefetch_k
                 = conf.prefetch_v = conf.prefetch_remainder = false;
         conf.prefetch_d_max = 0;
     }
 
-    const bool arch_gte_xe2 = pd->arch() >= compute::gpu_arch_t::xe2;
-    conf.q_arrive_await_barrier = (Q > 1) && !arch_gte_xe2;
+    conf.q_arrive_await_barrier = (Q > 1);
     conf.softmax_inf_as_zero
-            = (d->softmax_alg == alg_kind::softmax_accurate_inf_as_zero);
-    conf.use_systolic_ukernel = pd->use_systolic_ukernel();
+            = (desc()->softmax_alg == alg_kind::softmax_accurate_inf_as_zero);
     conf.kq_f16_accumulate = (kq_acc_dt() == data_type::f16);
     conf.vs_f16_accumulate = (vs_acc_dt() == data_type::f16);
+
+    bool is_training = desc()->prop_kind == prop_kind::forward_training;
+    conf.is_training = is_training;
+    if (is_training) { init_default_ws(); }
+
     return status::success;
 }
 
-status_t micro_params_t::get_kernel_ctx(
+status_t micro_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
+    init_conf_common(conf, this);
+
+    conf.require_stateless_addressing = has_large_buffers();
+    conf.with_dS = with_dS();
+
+    const memory_desc_wrapper key_mdw(desc()->key_md());
+    const memory_desc_wrapper val_mdw(desc()->val_md());
+
+    auto ldk
+            = gemm_desc_t::get_ld(*desc()->key_md()) * key_mdw.data_type_size();
+    auto ldv
+            = gemm_desc_t::get_ld(*desc()->val_md()) * val_mdw.data_type_size();
+
+    /* Set up microkernel strategy */
+    const bwd_config_t config = {conf.ukernel_config.unroll_m_BcBr,
+            conf.ukernel_config.unroll_n_BcBr, conf.ukernel_config.unroll_m_DBc,
+            conf.ukernel_config.unroll_n_DBc, conf.ukernel_config.unroll_m_DBr,
+            conf.ukernel_config.unroll_n_DBr, conf.ukernel_config.wg_m_BcBr,
+            conf.ukernel_config.wg_n_BcBr, conf.ukernel_config.wg_m_DBc,
+            conf.ukernel_config.wg_n_DBc, conf.ukernel_config.wg_m_DBr,
+            conf.ukernel_config.wg_n_DBr};
+
+    const int kq_wg_tile_m = config.wg_m_BcBr * config.unroll_m_BcBr;
+    const int tile_k = kq_wg_tile_m;
+
+    const int tile_dv = config.wg_n_DBc * config.unroll_n_DBc;
+
+    bool d_full = conf.d_full;
+    bool dv_full = (desc()->head_size() == tile_dv);
+
+    conf.block_k = conf.block_dK = conf.block_dV = false;
+    if (d_full) {
+        bool can_block_load_k
+                = (ldk % 4 == 0) && (desc()->keys() % tile_k == 0);
+        conf.block_k = can_block_load_k;
+        conf.block_dK = can_block_load_k && !conf.transpose_k;
+        conf.block_dV = (ldv % 4 == 0) && (dv_full);
+    }
+
+    return status::success;
+}
+
+status_t micro_bwd_t::pd_t::init_scratchpad(impl::engine_t *engine) {
+    auto scratchpad = scratchpad_registry().registrar();
+    auto gpu_align
+            = utils::downcast<gpu::engine_t *>(engine)->get_buffer_alignment();
+    size_t wspace_size = memory_desc_wrapper(desc()->diff_qry_md()).nelems();
+    // f32 can directly atomic add to output
+    // others need intermediate scratchpad before conversion
+    if (conf.data_t != data_type::f32) {
+        scratchpad.book(memory_tracking::names::key_sdpa_dQ_reduction,
+                wspace_size, sizeof(float), gpu_align);
+    }
+
+    // for GQA cases multiple Q heads atomic add into shared dK/dV
+    const bool needs_intermediate_dKV
+            = (conf.kv_group_size > 1 && conf.data_t != data_type::f32);
+    if (needs_intermediate_dKV) {
+        size_t dK_size = memory_desc_wrapper(desc()->diff_key_md()).nelems();
+        scratchpad.book(memory_tracking::names::key_sdpa_dK_reduction, dK_size,
+                sizeof(float), gpu_align);
+
+        size_t dV_size = memory_desc_wrapper(desc()->diff_val_md()).nelems();
+        scratchpad.book(memory_tracking::names::key_sdpa_dV_reduction, dV_size,
+                sizeof(float), gpu_align);
+    }
+
+    // space for D_i preprocess result
+    size_t Di_size
+            = desc()->batch() * desc()->num_q_heads() * desc()->queries();
+    scratchpad.book(memory_tracking::names::key_sdpa_Di, Di_size, sizeof(float),
+            gpu_align);
+
+    return status::success;
+}
+
+status_t micro_fwd_params_t::get_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     using namespace micro;
     kernel_ctx.require_stateless_addressing(require_stateless_addressing);
@@ -545,7 +1050,6 @@ status_t micro_params_t::get_kernel_ctx(
     def_data_type(kernel_ctx, qry_data_t, "QRY");
     def_data_type(kernel_ctx, val_data_t, "VAL");
     def_data_type(kernel_ctx, dst_data_t, "DST");
-    def_data_type(kernel_ctx, scale_data_t, "SCALE", !with_host_scale);
 
     if (with_attn_mask) { def_data_type(kernel_ctx, msk_data_t, "MSK"); }
 
@@ -577,6 +1081,7 @@ status_t micro_params_t::get_kernel_ctx(
     kernel_ctx.define_int("KEY_GROUP_SIZE", key_group_size);
     kernel_ctx.define_int("VAL_GROUP_SIZE", val_group_size);
 
+    def_data_type(kernel_ctx, scale_data_t, "SCALE", !with_host_scale);
     kernel_ctx.define_int("INVERT_SCALE", invert_scale);
     kernel_ctx.define_int("WITH_ATTN_SCALE", with_attn_scale);
     kernel_ctx.define_int("WITH_HOST_SCALE", with_host_scale);
@@ -609,6 +1114,7 @@ status_t micro_params_t::get_kernel_ctx(
     kernel_ctx.define_int("USE_SYSTOLIC_UKERNEL", use_systolic_ukernel);
     kernel_ctx.define_int("KQ_F16_ACC", kq_f16_accumulate);
     kernel_ctx.define_int("VS_F16_ACC", vs_f16_accumulate);
+    kernel_ctx.define_int("IS_TRAINING", is_training);
 
     micro::HWInformation hw_info;
     gemmstone::GEMMProblem problem_kq, problem_vs;
@@ -621,7 +1127,7 @@ status_t micro_params_t::get_kernel_ctx(
     micro::Package gemm_kq, gemm_vs;
 
     /* Set up microkernel strategy */
-    const config_t config
+    const fwd_config_t config
             = {ukernel_config.unroll_m_kq, ukernel_config.unroll_n_kq,
                     ukernel_config.unroll_m_vs, ukernel_config.unroll_n_vs,
                     ukernel_config.wg_m_kq, ukernel_config.wg_n_kq,
@@ -639,6 +1145,7 @@ status_t micro_params_t::get_kernel_ctx(
     reqs_vs.push_back(StrategyRequirement::WGM == config.wg_m_vs);
     reqs_vs.push_back(StrategyRequirement::WGN == config.wg_n_vs);
 
+    /* Ask microkernel provider for microkernel */
     auto kq_strat_override = [&](gemmstone::GEMMStrategy &strat) {
         std::string newStrat;
         newStrat = gpu_utils::dev_getenv("SDPA_KQ_USTRATEGY", newStrat);
@@ -657,7 +1164,6 @@ status_t micro_params_t::get_kernel_ctx(
             adjustStrategy(hw, problem_kq, strat);
         }
     };
-    /* Ask microkernel provider for microkernel */
     try {
         gemm_kq = micro::selectGEMM(opts_kq, hw_info, sizes_kq, problem_kq,
                 reqs_kq, kq_strat_override);
@@ -704,6 +1210,7 @@ status_t micro_params_t::get_kernel_ctx(
                 "gemm_vs microkernel generation failure with message: %s",
                 ex.what());
     }
+
     VDEBUGINFO(4, primitive, sdpa, "kq_gemm: %s, vs_gemm: %s,",
             problem_kq.toString().c_str(), problem_vs.toString().c_str());
 
@@ -728,13 +1235,222 @@ status_t micro_params_t::get_kernel_ctx(
     return status::success;
 }
 
-status_t micro_t::execute(const exec_ctx_t &ctx) const {
+status_t micro_bwd_params_t::get_kernel_ctx(
+        compute::kernel_ctx_t &kernel_ctx) const {
+    using namespace micro;
+    kernel_ctx.require_stateless_addressing(require_stateless_addressing);
+
+    kernel_ctx.define_int("NDIMS", ndims);
+    kernel_ctx.set_data_type(data_t);
+
+    def_data_type(kernel_ctx, key_data_t, "KEY");
+    def_data_type(kernel_ctx, qry_data_t, "QRY");
+    def_data_type(kernel_ctx, val_data_t, "VAL");
+    def_data_type(kernel_ctx, dst_data_t, "DST");
+
+    if (with_attn_mask) { def_data_type(kernel_ctx, msk_data_t, "MSK"); }
+
+    kernel_ctx.define_int("KV_GROUP_SIZE", kv_group_size);
+
+    kernel_ctx.define_int("Q_ALIGN", q_align);
+    kernel_ctx.define_int("K_ALIGN", k_align);
+    kernel_ctx.define_int("V_ALIGN", v_align);
+    kernel_ctx.define_int("A_ALIGN", a_align);
+
+    kernel_ctx.define_int("TRANSPOSE_K", transpose_k);
+
+    def_data_type(kernel_ctx, scale_data_t, "SCALE", !with_host_scale);
+    kernel_ctx.define_int("INVERT_SCALE", invert_scale);
+    kernel_ctx.define_int("WITH_ATTN_SCALE", with_attn_scale);
+    kernel_ctx.define_int("WITH_HOST_SCALE", with_host_scale);
+    kernel_ctx.define_int("ATTN_MASK_UNDEF", attn_mask_undef);
+    kernel_ctx.define_int("ATTN_MASK_BUFFER", attn_mask_buffer);
+    kernel_ctx.define_int("ATTN_MASK_TOP_LEFT", attn_mask_top_left);
+    kernel_ctx.define_int("ATTN_MASK_BOTTOM_RIGHT", attn_mask_bottom_right);
+
+    kernel_ctx.define_int("WITH_ATTN_MASK", with_attn_mask);
+    kernel_ctx.define_int("BROADCAST_MASK_Q", broadcast_mask_q);
+    kernel_ctx.define_int("WITH_CAUSAL_MASK", with_causal_mask);
+    kernel_ctx.define_int("WITH_DS", with_dS);
+
+    kernel_ctx.define_int("SUBGROUP_SIZE", subgroup_size);
+    kernel_ctx.define_int("D_MAX", d_max);
+
+    kernel_ctx.define_int("BLOCK_K", block_k);
+    kernel_ctx.define_int("BLOCK_DK", block_dK);
+    kernel_ctx.define_int("BLOCK_DV", block_dV);
+
+    kernel_ctx.define_int("USE_SYSTOLIC_UKERNEL", use_systolic_ukernel);
+
+    micro::HWInformation hw_info;
+    gemmstone::GEMMProblem problem_kq, problem_vs;
+    micro::GEMMOptions opts_kq, opts_vs;
+    gemmstone::SizeParams sizes_kq, sizes_vs;
+
+    gemmstone::GEMMProblem problem_vtdA, problem_ktq, problem_qdSt;
+    micro::GEMMOptions opts_vtdA, opts_ktq, opts_qdSt;
+    gemmstone::SizeParams sizes_vtdA, sizes_ktq, sizes_qdSt;
+
+    deserialize_config_to_gemmstone(hw_info, problem_kq, problem_vs,
+            problem_vtdA, problem_ktq, problem_qdSt, opts_kq, opts_vs,
+            opts_vtdA, opts_ktq, opts_qdSt, sizes_kq, sizes_vs, sizes_vtdA,
+            sizes_ktq, sizes_qdSt, ukernel_config);
+
+    micro::Package gemm_kq, gemm_vs, gemm_vtdA, gemm_ktq, gemm_qdSt;
+
+    /* Set up microkernel strategy */
+    const bwd_config_t config
+            = {ukernel_config.unroll_m_BcBr, ukernel_config.unroll_n_BcBr,
+                    ukernel_config.unroll_m_DBc, ukernel_config.unroll_n_DBc,
+                    ukernel_config.unroll_m_DBr, ukernel_config.unroll_n_DBr,
+                    ukernel_config.wg_m_BcBr, ukernel_config.wg_n_BcBr,
+                    ukernel_config.wg_m_DBc, ukernel_config.wg_n_DBc,
+                    ukernel_config.wg_m_DBr, ukernel_config.wg_n_DBr};
+
+    std::vector<StrategyRequirement> reqs_kq;
+    reqs_kq.push_back(StrategyRequirement::UnrollM == config.unroll_m_BcBr);
+    reqs_kq.push_back(StrategyRequirement::UnrollN == config.unroll_n_BcBr);
+    reqs_kq.push_back(StrategyRequirement::WGM == config.wg_m_BcBr);
+    reqs_kq.push_back(StrategyRequirement::WGN == config.wg_n_BcBr);
+
+    std::vector<StrategyRequirement> reqs_vs;
+    reqs_vs.push_back(StrategyRequirement::UnrollM == config.unroll_m_DBc);
+    reqs_vs.push_back(StrategyRequirement::UnrollN == config.unroll_n_DBc);
+    reqs_vs.push_back(StrategyRequirement::WGM == config.wg_m_DBc);
+    reqs_vs.push_back(StrategyRequirement::WGN == config.wg_n_DBc);
+
+    std::vector<StrategyRequirement> reqs_vtdA;
+    reqs_vtdA.push_back(StrategyRequirement::UnrollM == config.unroll_m_BcBr);
+    reqs_vtdA.push_back(StrategyRequirement::UnrollN == config.unroll_n_BcBr);
+    reqs_vtdA.push_back(StrategyRequirement::WGM == config.wg_m_BcBr);
+    reqs_vtdA.push_back(StrategyRequirement::WGN == config.wg_n_BcBr);
+
+    std::vector<StrategyRequirement> reqs_ktq;
+    reqs_ktq.push_back(StrategyRequirement::UnrollM == config.unroll_m_DBr);
+    reqs_ktq.push_back(StrategyRequirement::UnrollN == config.unroll_n_DBr);
+    reqs_ktq.push_back(StrategyRequirement::WGM == config.wg_m_DBr);
+    reqs_ktq.push_back(StrategyRequirement::WGN == config.wg_n_DBr);
+
+    std::vector<StrategyRequirement> reqs_qdSt;
+    reqs_qdSt.push_back(StrategyRequirement::UnrollM == config.unroll_n_DBc);
+    reqs_qdSt.push_back(StrategyRequirement::UnrollN == config.unroll_m_DBc);
+    reqs_qdSt.push_back(StrategyRequirement::WGM == config.wg_n_DBc);
+    reqs_qdSt.push_back(StrategyRequirement::WGN == config.wg_m_DBc);
+
+    /* Ask microkernel provider for microkernel */
+    try {
+        gemm_kq = micro::selectGEMM(
+                opts_kq, hw_info, sizes_kq, problem_kq, reqs_kq);
+    } catch (const std::runtime_error &ex) {
+        VCHECK_SDPA_COND(false,
+                "gemm_kq microkernel generation failure with message: %s",
+                ex.what());
+    }
+
+    try {
+        if (use_systolic_ukernel) {
+            auto adjust_vs = [](GEMMStrategy &strategy) {
+                /* Enable dpasw */
+                strategy.dpasw |= strategy.fused;
+            };
+            gemm_vs = micro::selectGEMM(
+                    opts_vs, hw_info, sizes_vs, problem_vs, reqs_vs, adjust_vs);
+        } else {
+            gemm_vs = micro::selectGEMM(
+                    opts_vs, hw_info, sizes_vs, problem_vs, reqs_vs);
+        }
+    } catch (const std::runtime_error &ex) {
+        VCHECK_SDPA_COND(false,
+                "gemm_vs microkernel generation failure with message: %s",
+                ex.what());
+    }
+
+    VDEBUGINFO(4, primitive, sdpa,
+            "kq_gemm: %s, vs_gemm: %s, vtdA_gemm: %s, ktq_gemm: %s, qdSt: %s\n",
+            problem_kq.toString().c_str(), problem_vs.toString().c_str(),
+            problem_vtdA.toString().c_str(), problem_ktq.toString().c_str(),
+            problem_qdSt.toString().c_str());
+
+    /* Generate microkernel shims */
+    micro::ShimOptions shimOptions;
+    shimOptions.subgroupSize = subgroup_size;
+    shimOptions.useTileOps = true;
+    shimOptions.decorator = "kq";
+
+    std::string gemm_kq_header
+            = micro::generateShim(gemm_kq, HostLanguage::OpenCL_C, shimOptions);
+    kernel_ctx.add_custom_header("gemm_kq.h", std::move(gemm_kq_header));
+
+    shimOptions.microkernelID++;
+    shimOptions.decorator = "vs";
+
+    std::string gemm_vs_header
+            = micro::generateShim(gemm_vs, HostLanguage::OpenCL_C, shimOptions);
+    kernel_ctx.add_custom_header("gemm_vs.h", std::move(gemm_vs_header));
+
+    try {
+        gemm_vtdA = micro::selectGEMM(
+                opts_vtdA, hw_info, sizes_vtdA, problem_vtdA, reqs_vtdA);
+    } catch (const std::runtime_error &ex) {
+        VCHECK_SDPA_COND(false,
+                "gemm_vtdA microkernel generation failure with message: %s",
+                ex.what());
+    }
+
+    shimOptions.microkernelID++;
+    shimOptions.decorator = "vtdA";
+
+    std::string gemm_vtdA_header = micro::generateShim(
+            gemm_vtdA, HostLanguage::OpenCL_C, shimOptions);
+    kernel_ctx.add_custom_header("gemm_vtdA.h", std::move(gemm_vtdA_header));
+
+    try {
+        gemm_ktq = micro::selectGEMM(
+                opts_ktq, hw_info, sizes_ktq, problem_ktq, reqs_ktq);
+    } catch (const std::runtime_error &ex) {
+        VCHECK_SDPA_COND(false,
+                "gemm_ktq microkernel generation failure with message: %s",
+                ex.what());
+    }
+
+    shimOptions.microkernelID++;
+    shimOptions.decorator = "ktq";
+
+    std::string gemm_ktq_header = micro::generateShim(
+            gemm_ktq, HostLanguage::OpenCL_C, shimOptions);
+    kernel_ctx.add_custom_header("gemm_ktq.h", std::move(gemm_ktq_header));
+
+    try {
+        gemm_qdSt = micro::selectGEMM(
+                opts_qdSt, hw_info, sizes_qdSt, problem_qdSt, reqs_qdSt);
+    } catch (const std::runtime_error &ex) {
+        VCHECK_SDPA_COND(false,
+                "gemm_qdSt microkernel generation failure with message: %s",
+                ex.what());
+    }
+
+    shimOptions.microkernelID++;
+    shimOptions.decorator = "qdSt";
+
+    std::string gemm_qdSt_header = micro::generateShim(
+            gemm_qdSt, HostLanguage::OpenCL_C, shimOptions);
+    kernel_ctx.add_custom_header("gemm_qdSt.h", std::move(gemm_qdSt_header));
+
+    if (gemm_kq.grfMin > 128 || gemm_vs.grfMin > 128 || gemm_vtdA.grfMin > 128
+            || gemm_ktq.grfMin > 128 || gemm_qdSt.grfMin > 128)
+        kernel_ctx.add_option("-cl-intel-256-GRF-per-thread");
+
+    return status::success;
+}
+
+status_t micro_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     const auto &conf = pd()->conf;
 
     const auto &qry = CTX_IN_STORAGE(DNNL_ARG_QUERIES);
     const auto &key = CTX_IN_STORAGE(DNNL_ARG_KEYS);
     const auto &val = CTX_IN_STORAGE(DNNL_ARG_VALUES);
     auto &dst = CTX_OUT_STORAGE(DNNL_ARG_DST);
+    auto &ws = CTX_OUT_STORAGE(DNNL_ARG_WORKSPACE);
     const auto &scale = CTX_IN_STORAGE(DNNL_ARG_SCALE);
     const auto &attn_mask = CTX_IN_STORAGE(DNNL_ARG_ATTN_MASK);
 
@@ -753,7 +1469,7 @@ status_t micro_t::execute(const exec_ctx_t &ctx) const {
     const dim_t D = pd()->desc()->head_size();
     const dim_t Q_per_kv_group = (Q == 1 ? Q * kv_group_size : Q);
 
-    const config_t config = {conf.ukernel_config.unroll_m_kq,
+    const fwd_config_t config = {conf.ukernel_config.unroll_m_kq,
             conf.ukernel_config.unroll_n_kq, conf.ukernel_config.unroll_m_vs,
             conf.ukernel_config.unroll_n_vs, conf.ukernel_config.wg_m_kq,
             conf.ukernel_config.wg_n_kq, conf.ukernel_config.wg_m_vs,
@@ -763,11 +1479,11 @@ status_t micro_t::execute(const exec_ctx_t &ctx) const {
     auto wg_tile_q = kq_wg_tile_n;
     auto sg_per_wg = config.wg_m_kq * config.wg_n_kq;
 
-    const memory_desc_wrapper qry_mdw(pd()->qry_md());
-    const memory_desc_wrapper key_mdw(pd()->key_md());
-    const memory_desc_wrapper val_mdw(pd()->val_md());
+    const memory_desc_wrapper qry_mdw(pd()->desc()->qry_md());
+    const memory_desc_wrapper key_mdw(pd()->desc()->key_md());
+    const memory_desc_wrapper val_mdw(pd()->desc()->val_md());
     const memory_desc_wrapper dst_mdw(pd()->dst_md());
-    const memory_desc_wrapper msk_mdw(pd()->attn_mask_md());
+    const memory_desc_wrapper msk_mdw(pd()->desc()->attn_mask_md());
     using offset_t = decltype(offsets_t().src_off);
 
     offset_t key_off, qry_off, val_off, dst_off, msk_off;
@@ -781,20 +1497,45 @@ status_t micro_t::execute(const exec_ctx_t &ctx) const {
     //TODO: change arg_list type based on large_idx
     //bool use_int32_offset = conf.use_int32_offset;
 
-    auto append_offs
+    // pass only the individual stride/dim values
+    // actually consumed by the kernel to minimize register pressure
+    auto append_key_offs
             = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
-        compute::int64x4_t dims4
-                = {offs[3][0], offs[3][1], offs[3][2], offs[3][3]};
-        compute::int64x4_t strides4
-                = {offs[1][0], offs[1][1], offs[1][2], offs[1][3]};
-        arg_list.append(dims4);
-        arg_list.append(strides4);
+        arg_list.append((int64_t)offs[1][0]); // KEY_S0
+        arg_list.append((int64_t)offs[1][1]); // KEY_S1
+        arg_list.append((int64_t)offs[1][2]); // KEY_S2
+        arg_list.append((int64_t)offs[1][3]); // KEY_S3
+        arg_list.append((int64_t)offs[3][3]); // KEY_D3
+    };
+    auto append_qry_offs
+            = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
+        arg_list.append((int64_t)offs[1][0]); // QRY_S0
+        arg_list.append((int64_t)offs[1][1]); // QRY_S1
+        arg_list.append((int64_t)offs[1][2]); // QRY_S2
+    };
+    auto append_val_offs
+            = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
+        arg_list.append((int64_t)offs[1][0]); // VAL_S0
+        arg_list.append((int64_t)offs[1][1]); // VAL_S1
+        arg_list.append((int64_t)offs[1][2]); // VAL_S2
+    };
+    auto append_dst_offs
+            = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
+        arg_list.append((int64_t)offs[1][0]); // DST_S0
+        arg_list.append((int64_t)offs[1][1]); // DST_S1
+        arg_list.append((int64_t)offs[1][2]); // DST_S2
+        arg_list.append((int64_t)offs[3][1]); // DST_D1
+    };
+    auto append_msk_offs
+            = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
+        arg_list.append((int64_t)offs[1][0]); // MSK_S0
+        arg_list.append((int64_t)offs[1][1]); // MSK_S1
+        arg_list.append((int64_t)offs[1][2]); // MSK_S2
+        arg_list.append((int64_t)offs[3][0]); // MSK_D0
+        arg_list.append((int64_t)offs[3][1]); // MSK_D1
     };
 
-    int mask_type = static_cast<int>(pd()->desc()->mask_type);
-    compute::kernel_arg_list_t arg_list;
-
-    const memory_desc_wrapper scale_mdw(pd()->scale_md());
+    const memory_desc_wrapper scale_mdw(pd()->desc()->scale_md());
     float scalar_scale = 1.f;
     float inv_scalar_scale = 1.f;
     if (pd()->with_host_scale()) {
@@ -805,13 +1546,16 @@ status_t micro_t::execute(const exec_ctx_t &ctx) const {
         assert(status == status::success);
         if (status != status::success) return status;
         scalar_scale = dnnl::impl::cpu::io::load_float_value(
-                pd()->scale_md()->data_type, &scalar_scale, 0);
+                pd()->desc()->scale_md()->data_type, &scalar_scale, 0);
         inv_scalar_scale = 1. / scalar_scale;
     }
 
+    int mask_type = static_cast<int>(pd()->desc()->mask_type);
+    compute::kernel_arg_list_t arg_list;
     arg_list.append(key);
     arg_list.append(qry);
     arg_list.append(val);
+    arg_list.append(ws);
     arg_list.append(dst);
     if (pd()->with_host_scale()) {
         arg_list.append(scalar_scale);
@@ -829,12 +1573,12 @@ status_t micro_t::execute(const exec_ctx_t &ctx) const {
     arg_list.append(mask_type);
     if (pd()->with_attn_mask()) arg_list.append(attn_mask);
 
-    append_offs(arg_list, key_off);
-    append_offs(arg_list, qry_off);
-    append_offs(arg_list, val_off);
-    append_offs(arg_list, dst_off);
+    append_key_offs(arg_list, key_off);
+    append_qry_offs(arg_list, qry_off);
+    append_val_offs(arg_list, val_off);
+    append_dst_offs(arg_list, dst_off);
 
-    if (pd()->with_attn_mask()) { append_offs(arg_list, msk_off); }
+    if (pd()->with_attn_mask()) { append_msk_offs(arg_list, msk_off); }
     const int remainder_k = (K % kq_wg_tile_m) != 0;
 
     arg_list.append(remainder_k);
@@ -852,10 +1596,310 @@ status_t micro_t::execute(const exec_ctx_t &ctx) const {
         gws[0] *= utils::div_up(Q, wg_tile_q);
         gws[1] *= pd()->dst_md()->dims[1];
     }
-    gws[2] *= pd()->dst_md()->dims[0];
+    gws[2] *= pd()->desc()->batch();
 
     auto nd_range = compute::nd_range_t(gws, lws);
     return parallel_for(ctx, nd_range, kernel_, arg_list);
+}
+
+status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
+    const auto &qry = CTX_IN_STORAGE(DNNL_ARG_QUERIES);
+    const auto &key = CTX_IN_STORAGE(DNNL_ARG_KEYS);
+    const auto &val = CTX_IN_STORAGE(DNNL_ARG_VALUES);
+    const auto &ws = CTX_IN_STORAGE(DNNL_ARG_WORKSPACE);
+    const auto &dst = CTX_IN_STORAGE(DNNL_ARG_DST);
+    const auto &diff_dst = CTX_IN_STORAGE(DNNL_ARG_DIFF_DST);
+    auto &diff_q = CTX_OUT_STORAGE(DNNL_ARG_DIFF_QUERIES);
+    auto &diff_k = CTX_OUT_STORAGE(DNNL_ARG_DIFF_KEYS);
+    auto &diff_v = CTX_OUT_STORAGE(DNNL_ARG_DIFF_VALUES);
+    const auto &scale = CTX_IN_STORAGE(DNNL_ARG_SCALE);
+    const auto &attn_mask = CTX_IN_STORAGE(DNNL_ARG_ATTN_MASK);
+    auto Di_scratch = ctx.get_scratchpad_grantor().get_memory_storage(
+            memory_tracking::names::key_sdpa_Di);
+    auto diff_q_scratch = ctx.get_scratchpad_grantor().get_memory_storage(
+            memory_tracking::names::key_sdpa_dQ_reduction);
+    auto diff_k_scratch = ctx.get_scratchpad_grantor().get_memory_storage(
+            memory_tracking::names::key_sdpa_dK_reduction);
+    auto diff_v_scratch = ctx.get_scratchpad_grantor().get_memory_storage(
+            memory_tracking::names::key_sdpa_dV_reduction);
+
+    const bool with_dS = pd()->with_dS();
+
+    const int kv_group_size = pd()->conf.kv_group_size;
+    const dim_t Q = pd()->desc()->queries();
+    const dim_t K = pd()->desc()->keys();
+    const dim_t D = pd()->desc()->head_size();
+
+    const data_type_t data_t = pd()->dst_md()->data_type;
+    const bool needs_intermediate_dQ = (data_t != data_type::f32);
+    const bool needs_intermediate_dKV
+            = (kv_group_size > 1 && data_t != data_type::f32);
+    const bool needs_zero_dKV = (kv_group_size > 1);
+
+    const auto &conf = pd()->conf;
+
+    const bwd_config_t config = {conf.ukernel_config.unroll_m_BcBr,
+            conf.ukernel_config.unroll_n_BcBr, conf.ukernel_config.unroll_m_DBc,
+            conf.ukernel_config.unroll_n_DBc, conf.ukernel_config.unroll_m_DBr,
+            conf.ukernel_config.unroll_n_DBr, conf.ukernel_config.wg_m_BcBr,
+            conf.ukernel_config.wg_n_BcBr, conf.ukernel_config.wg_m_DBc,
+            conf.ukernel_config.wg_n_DBc, conf.ukernel_config.wg_m_DBr,
+            conf.ukernel_config.wg_n_DBr};
+
+    auto wg_tile_k = config.unroll_m_BcBr * config.wg_m_BcBr;
+    auto wg_tile_q = config.unroll_n_BcBr * config.wg_n_BcBr;
+
+    auto sg_per_wg_BcBr = config.wg_m_BcBr * config.wg_n_BcBr;
+    auto sg_per_wg_DBc = config.wg_m_DBc * config.wg_n_DBc;
+    auto sg_per_wg_DBr = config.wg_m_DBr * config.wg_n_DBr;
+
+    auto sg_per_wg
+            = std::max(std::max(sg_per_wg_BcBr, sg_per_wg_DBc), sg_per_wg_DBr);
+
+    const memory_desc_wrapper qry_mdw(pd()->desc()->qry_md());
+    const memory_desc_wrapper key_mdw(pd()->desc()->key_md());
+    const memory_desc_wrapper val_mdw(pd()->desc()->val_md());
+    const memory_desc_wrapper dst_mdw(pd()->dst_md());
+    const memory_desc_wrapper msk_mdw(pd()->desc()->attn_mask_md());
+    const memory_desc_wrapper diff_dst_mdw(pd()->diff_dst_md());
+    const memory_desc_wrapper diff_qry_mdw(pd()->desc()->diff_qry_md());
+    const memory_desc_wrapper diff_key_mdw(pd()->desc()->diff_key_md());
+    const memory_desc_wrapper diff_val_mdw(pd()->desc()->diff_val_md());
+    using offset_t = decltype(offsets_t().src_off);
+
+    offset_t qry_off, key_off, val_off, dst_off, msk_off;
+
+    set_offsets(qry_mdw, qry_off);
+    set_offsets(key_mdw, key_off);
+    set_offsets(val_mdw, val_off);
+    set_offsets(dst_mdw, dst_off);
+    set_offsets(msk_mdw, msk_off);
+
+    // pass only the individual stride/dim values
+    // actually consumed by the kernel to minimize register pressure
+    auto append_key_offs
+            = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
+        arg_list.append((int64_t)offs[1][0]); // KEY_S0
+        arg_list.append((int64_t)offs[1][1]); // KEY_S1
+        arg_list.append((int64_t)offs[1][2]); // KEY_S2
+        arg_list.append((int64_t)offs[1][3]); // KEY_S3
+        arg_list.append((int64_t)offs[3][3]); // KEY_D3
+    };
+    auto append_qry_offs
+            = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
+        arg_list.append((int64_t)offs[1][0]); // QRY_S0
+        arg_list.append((int64_t)offs[1][1]); // QRY_S1
+        arg_list.append((int64_t)offs[1][2]); // QRY_S2
+    };
+    auto append_val_offs
+            = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
+        arg_list.append((int64_t)offs[1][0]); // VAL_S0
+        arg_list.append((int64_t)offs[1][1]); // VAL_S1
+        arg_list.append((int64_t)offs[1][2]); // VAL_S2
+    };
+    auto append_dst_offs
+            = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
+        arg_list.append((int64_t)offs[1][0]); // DST_S0
+        arg_list.append((int64_t)offs[1][1]); // DST_S1
+        arg_list.append((int64_t)offs[1][2]); // DST_S2
+        arg_list.append((int64_t)offs[3][1]); // DST_D1
+    };
+    auto append_msk_offs
+            = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
+        arg_list.append((int64_t)offs[1][0]); // MSK_S0
+        arg_list.append((int64_t)offs[1][1]); // MSK_S1
+        arg_list.append((int64_t)offs[1][2]); // MSK_S2
+        arg_list.append((int64_t)offs[3][0]); // MSK_D0
+        arg_list.append((int64_t)offs[3][1]); // MSK_D1
+    };
+
+    int mask_type = static_cast<int>(pd()->desc()->mask_type);
+
+    const memory_desc_wrapper scale_mdw(pd()->desc()->scale_md());
+    float scalar_scale = 1.f;
+    float inv_scalar_scale = 1.f;
+    if (pd()->with_host_scale()) {
+        auto scalar_storage = utils::downcast<
+                const dnnl::impl::host_scalar_memory_storage_t *>(&scale);
+        auto status = scalar_storage->get_scalar_value(
+                &scalar_scale, scale_mdw.data_type_size());
+        assert(status == status::success);
+        if (status != status::success) return status;
+        scalar_scale = dnnl::impl::cpu::io::load_float_value(
+                pd()->desc()->scale_md()->data_type, &scalar_scale, 0);
+        inv_scalar_scale = 1. / scalar_scale;
+    }
+
+    /// preprocess kernel
+    // will zero dQ, calculate Di
+    compute::range_t lws = {(size_t)pd()->sg_size(), (size_t)sg_per_wg, 1};
+    compute::range_t gws_preprocess = lws;
+
+    gws_preprocess[0] *= utils::div_up(Q, wg_tile_q);
+    gws_preprocess[1] *= pd()->dst_md()->dims[1];
+    gws_preprocess[2] *= pd()->desc()->batch();
+
+    auto nd_range_preprocess = compute::nd_range_t(gws_preprocess, lws);
+
+    compute::kernel_arg_list_t preprocess_arg_list;
+    preprocess_arg_list.append(*Di_scratch);
+    preprocess_arg_list.append(dst);
+    preprocess_arg_list.append(diff_dst);
+    preprocess_arg_list.append((int)D);
+    preprocess_arg_list.append((int)K);
+    preprocess_arg_list.append((int)Q);
+
+    append_qry_offs(preprocess_arg_list, qry_off);
+    append_dst_offs(preprocess_arg_list, dst_off);
+
+    CHECK(parallel_for(
+            ctx, nd_range_preprocess, preprocess_, preprocess_arg_list));
+
+    auto *d = pd()->desc();
+    // zero f32 intermediates before atomic adds in the main kernel
+    // dQ always needs atomics, dK/dV only for GQA cases
+    {
+        auto compute_stream = utils::downcast<intel::stream_t *>(ctx.stream());
+        auto &fill_deps = compute_stream->ctx().get_deps();
+
+        const dim_t batch = pd()->dst_md()->dims[0];
+        const dim_t num_kv_heads = d->num_kv_heads();
+        const dim_t num_q_heads = d->num_q_heads();
+
+        auto zero_fill
+                = [&](const memory_storage_t &buf, size_t bytes) -> status_t {
+            return compute_stream->fill(buf, 0, bytes, fill_deps, fill_deps);
+        };
+
+        // always zero dQ
+        auto &dQ_buf = needs_intermediate_dQ ? *diff_q_scratch : diff_q;
+        const size_t dQ_bytes = needs_intermediate_dQ
+                ? size_t(batch * num_q_heads * Q * D) * sizeof(float)
+                : diff_qry_mdw.size();
+        CHECK(zero_fill(dQ_buf, dQ_bytes));
+
+        // zero dK/dV for GQA cases
+        if (needs_zero_dKV) {
+            auto &dK_buf = needs_intermediate_dKV ? *diff_k_scratch : diff_k;
+            auto &dV_buf = needs_intermediate_dKV ? *diff_v_scratch : diff_v;
+            const size_t scratch_kv_bytes
+                    = size_t(batch * num_kv_heads * K * D) * sizeof(float);
+            const size_t dK_bytes = needs_intermediate_dKV
+                    ? scratch_kv_bytes
+                    : diff_key_mdw.size();
+            const size_t dV_bytes = needs_intermediate_dKV
+                    ? scratch_kv_bytes
+                    : diff_val_mdw.size();
+            CHECK(zero_fill(dK_buf, dK_bytes));
+            CHECK(zero_fill(dV_buf, dV_bytes));
+        }
+    }
+
+    /// backwards pass kernel, calculates dK, dV, dQ(float)
+    compute::kernel_arg_list_t arg_list;
+    arg_list.append(key);
+    arg_list.append(qry);
+    arg_list.append(val);
+    arg_list.append(ws);
+    arg_list.append(*Di_scratch);
+    arg_list.append(dst);
+    arg_list.append(diff_dst);
+    if (with_dS) arg_list.append(CTX_OUT_STORAGE(DNNL_ARG_DS));
+    arg_list.append(needs_intermediate_dKV ? *diff_k_scratch : diff_k);
+    arg_list.append(needs_intermediate_dQ ? *diff_q_scratch : diff_q);
+    arg_list.append(needs_intermediate_dKV ? *diff_v_scratch : diff_v);
+    if (pd()->with_host_scale()) {
+        arg_list.append(scalar_scale);
+        arg_list.append(inv_scalar_scale);
+    } else {
+        arg_list.append(scale);
+    }
+    arg_list.append((int)D);
+    arg_list.append((int)K);
+    arg_list.append((int)Q);
+    arg_list.append(mask_type);
+    if (pd()->with_attn_mask()) arg_list.append(attn_mask);
+
+    append_key_offs(arg_list, key_off);
+    append_qry_offs(arg_list, qry_off);
+    append_val_offs(arg_list, val_off);
+    append_dst_offs(arg_list, dst_off);
+
+    if (pd()->with_attn_mask()) { append_msk_offs(arg_list, msk_off); }
+    const int remainder_k = (K % wg_tile_k) != 0;
+
+    const bool d_full = (d->head_size() == pd()->d_max());
+    const int remainder_q = d_full && ((Q % wg_tile_q) != 0);
+
+    arg_list.append(remainder_k);
+    arg_list.append(remainder_q);
+
+    compute::range_t gws = lws;
+
+    gws[0] *= utils::div_up(K, wg_tile_k);
+    gws[1] *= pd()->dst_md()->dims[1];
+    gws[2] *= pd()->desc()->batch();
+    auto nd_range = compute::nd_range_t(gws, lws);
+
+    CHECK(parallel_for(ctx, nd_range, kernel_, arg_list));
+
+    /// postprocessing kernels
+    // will cast dQ/dK/dV to lower precision outputs if needed
+    if (needs_intermediate_dQ) {
+        static constexpr size_t lws_pp = 256;
+        compute::range_t lws_p = {(size_t)lws_pp, 1, 1};
+        compute::range_t gws_p = lws_p;
+        gws_p[0] *= utils::div_up(Q * D, lws_pp);
+        gws_p[1] *= pd()->dst_md()->dims[1]; // Q heads
+        gws_p[2] *= pd()->desc()->batch();
+
+        compute::kernel_arg_list_t pp;
+        pp.append(diff_q);
+        pp.append(*diff_q_scratch);
+        pp.append((int)(Q * D));
+        append_qry_offs(pp, qry_off);
+        CHECK(parallel_for(
+                ctx, compute::nd_range_t(gws_p, lws_p), postprocess_, pp));
+    }
+
+    if (needs_intermediate_dKV) {
+        const dim_t num_kv_heads = d->num_kv_heads();
+        static constexpr size_t lws_pp = 256;
+        compute::range_t lws_p = {(size_t)lws_pp, 1, 1};
+
+        // dK
+        {
+            compute::range_t gws_p = lws_p;
+            gws_p[0] *= utils::div_up(K * D, lws_pp);
+            gws_p[1] *= num_kv_heads; // KV heads
+            gws_p[2] *= pd()->desc()->batch();
+
+            compute::kernel_arg_list_t pp;
+            pp.append(diff_k);
+            pp.append(*diff_k_scratch);
+            pp.append((int)(K * D));
+            append_qry_offs(pp, key_off);
+            CHECK(parallel_for(
+                    ctx, compute::nd_range_t(gws_p, lws_p), postprocess_, pp));
+        }
+        // dV
+        {
+            compute::range_t gws_p = lws_p;
+            gws_p[0] *= utils::div_up(K * D, lws_pp);
+            gws_p[1] *= num_kv_heads;
+            gws_p[2] *= pd()->desc()->batch();
+
+            compute::kernel_arg_list_t pp;
+            pp.append(diff_v);
+            pp.append(*diff_v_scratch);
+            pp.append((int)(K * D));
+            append_qry_offs(pp, val_off);
+            CHECK(parallel_for(
+                    ctx, compute::nd_range_t(gws_p, lws_p), postprocess_, pp));
+        }
+    }
+
+    return status::success;
 }
 
 } // namespace sdpa

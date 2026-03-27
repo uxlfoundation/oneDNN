@@ -1022,6 +1022,7 @@ inline bool operator==(const zero_pad_desc_t &lhs, const zero_pad_desc_t &rhs) {
 
 inline bool operator==(const sdpa_desc_t &lhs, const sdpa_desc_t &rhs) {
     bool ret = COMPARE_DESC_MEMBERS(primitive_kind)
+            && COMPARE_DESC_MEMBERS(prop_kind)
             && COMPARE_DESC_MEMBERS(q_desc)
             && COMPARE_DESC_MEMBERS(k_desc)
             && COMPARE_DESC_MEMBERS(v_desc)
@@ -1029,7 +1030,12 @@ inline bool operator==(const sdpa_desc_t &lhs, const sdpa_desc_t &rhs) {
             && COMPARE_DESC_MEMBERS(kq_zero_points)
             && COMPARE_DESC_MEMBERS(vs_scales)
             && COMPARE_DESC_MEMBERS(vs_zero_points)
+            && COMPARE_DESC_MEMBERS(dS_desc)
             && COMPARE_DESC_MEMBERS(dst_desc)
+            && COMPARE_DESC_MEMBERS(diff_dst_desc)
+            && COMPARE_DESC_MEMBERS(diff_q_desc)
+            && COMPARE_DESC_MEMBERS(diff_k_desc)
+            && COMPARE_DESC_MEMBERS(diff_v_desc)
             && COMPARE_DESC_MEMBERS(attn_mask_desc)
             && COMPARE_DESC_MEMBERS(scale_desc)
             && COMPARE_DESC_MEMBERS(kq_acc_dt)

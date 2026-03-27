@@ -2388,6 +2388,21 @@ status_t infer_dnnl_sdpa_output_shape(op_t *n,
     }
 
     set_shape_and_strides(*outputs[0], inferred_output_shape);
+
+    if (outputs.size() > 2) {
+        auto out1 = logical_tensor_wrapper_t(outputs[2]);
+        dims inferred_stats_shape
+                = {query_dims[0], query_dims[1], query_dims[2], 1};
+
+        if (out1.ndims() != -1) {
+            VCHECK_INVALID_SHAPE(validate(inferred_stats_shape, out1.vdims()),
+                    "%s, given stats shape is not compatible with inferred",
+                    op_t::kind2str(n->get_kind()).c_str());
+        }
+
+        set_shape_and_strides(*outputs[2], inferred_stats_shape);
+    }
+
     return status::success;
 }
 
@@ -2446,6 +2461,97 @@ status_t infer_gated_mlp_output_shape(op_t *n,
                 op_t::kind2str(n->get_kind()).c_str());
     }
     set_shape_and_strides(*outputs[0], inferred);
+
+    return status::success;
+}
+
+status_t infer_dnnl_softmax_output_shape(op_t *n,
+        std::vector<logical_tensor_t *> &inputs,
+        std::vector<logical_tensor_t *> &outputs) {
+    auto out0 = logical_tensor_wrapper_t(outputs[0]);
+    auto in0 = logical_tensor_wrapper_t(inputs[0]);
+
+    // check if partial set shape aligns with inferred shape
+    if (out0.ndims() != -1) {
+        VCHECK_INVALID_SHAPE(validate(in0.vdims(), out0.vdims()),
+                "%s, input and output shapes are not compatible",
+                op_t::kind2str(n->get_kind()).c_str());
+    }
+
+    // We should compute output dense strides instead of directly copying input
+    // strides to it
+    set_shape_and_strides(*outputs[0], in0.vdims());
+    if (outputs.size() == 2) return status::success;
+
+    // infer stats output shape
+    auto out1 = logical_tensor_wrapper_t(outputs[2]);
+    dims out1_dims = in0.vdims();
+    int64_t axis = n->get_attr<int64_t>(op_attr::axis);
+    if (axis < 0) { axis += in0.ndims(); }
+    out1_dims[axis] = 1;
+
+    if (out1.ndims() != -1) {
+        VCHECK_INVALID_SHAPE(validate(out1_dims, out1.vdims()),
+                "%s, given stats shape is not compatible with inferred",
+                op_t::kind2str(n->get_kind()).c_str());
+    }
+
+    set_shape_and_strides(*outputs[2], out1_dims);
+
+    return status::success;
+}
+
+status_t infer_dnnl_sdpa_bwd_output_shape(op_t *n,
+        std::vector<logical_tensor_t *> &inputs,
+        std::vector<logical_tensor_t *> &outputs) {
+    // [batch_size, num_heads_q, seq_len_q, head_size_qk]
+    auto query = ltw(inputs[0]);
+    // [batch_size, num_heads_q, head_size_qk, seq_len_kv,]
+    auto key = ltw(inputs[1]);
+    // [batch_size, num_heads_v, seq_len_kv, head_size_v]
+    auto value = ltw(inputs[2]);
+
+    auto dquery = ltw(outputs[0]);
+    auto dkey = ltw(outputs[1]);
+    auto dvalue = ltw(outputs[2]);
+
+    if (dquery.ndims() != -1) {
+        VCHECK_INVALID_SHAPE(validate(dquery.vdims(), query.vdims()),
+                "%s, inferred out shape and output shape are not compatible",
+                op_t::kind2str(n->get_kind()).c_str());
+    }
+    set_shape_and_strides(*outputs[0], query.vdims());
+
+    if (dkey.ndims() != -1) {
+        VCHECK_INVALID_SHAPE(validate(dkey.vdims(), key.vdims()),
+                "%s, inferred out shape and output shape are not compatible",
+                op_t::kind2str(n->get_kind()).c_str());
+    }
+    set_shape_and_strides(*outputs[1], key.vdims());
+
+    if (dvalue.ndims() != -1) {
+        VCHECK_INVALID_SHAPE(validate(dvalue.vdims(), value.vdims()),
+                "%s, inferred out shape and output shape are not compatible",
+                op_t::kind2str(n->get_kind()).c_str());
+    }
+    set_shape_and_strides(*outputs[2], value.vdims());
+
+    if (outputs.size() > 4) {
+        // dmask exists
+        auto dmask = ltw(outputs[4]);
+        dims inferred_dmask_shape = query.vdims();
+        size_t ndims = query.ndims();
+        // [batch_size, num_heads_q, seq_len_q, seq_len_kv]
+        inferred_dmask_shape[ndims - 1] = value.vdims()[ndims - 1];
+
+        if (dmask.ndims() != -1) {
+            VCHECK_INVALID_SHAPE(validate(inferred_dmask_shape, dmask.vdims()),
+                    "%s, given dmask shape is not compatible with inferred",
+                    op_t::kind2str(n->get_kind()).c_str());
+        }
+
+        set_shape_and_strides(*outputs[4], inferred_dmask_shape);
+    }
 
     return status::success;
 }

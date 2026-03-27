@@ -300,7 +300,7 @@ private:
 			int physicalThreadCount = 0;
 			getCpuid(0x1, data);
 			int logicalProcessorCount = extractBit(data[1], 16, 23);
-			int htt = extractBit(data[3], 28, 28); // Hyper-threading technology.
+			int htt = extractBit(data[3], 28, 28);
 			getCpuid(0x80000000, data);
 			uint32_t highestExtendedLeaf = data[0];
 			if (highestExtendedLeaf >= 0x80000008) {
@@ -330,7 +330,7 @@ private:
 			int physicalThreadCount = 0;
 			getCpuid(0x1, data);
 			int logicalProcessorCount = extractBit(data[1], 16, 23);
-			int htt = extractBit(data[3], 28, 28); // Hyper-threading technology.
+			int htt = extractBit(data[3], 28, 28);
 			getCpuid(0, data);
 			if (data[0] >= 0x4) {
 				getCpuid(0x4, data);

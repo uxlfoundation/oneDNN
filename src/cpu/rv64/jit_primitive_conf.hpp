@@ -41,6 +41,7 @@ struct jit_1x1_conv_conf_t {
 
     dim_t load_dim, bcast_dim, reduce_dim;
 
+    int simd_w;
     int ur, ur_tail;
     int load_loop_blk;
     int reduce_loop_unroll;

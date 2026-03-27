@@ -103,6 +103,11 @@ public:
         return get_info_impl(stamp2entry, data_kind, data);
     }
 
+    status_t get_aggregate_exec_timing(
+            uint64_t stamp, double &duration_ms) const override {
+        return status::unimplemented;
+    }
+
 private:
     stream_profiler_t() = delete;
     DNNL_DISALLOW_COPY_AND_ASSIGN(stream_profiler_t);

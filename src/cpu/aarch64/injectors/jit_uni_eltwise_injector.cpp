@@ -60,7 +60,7 @@ bool is_supported(cpu_isa_t isa, alg_kind_t alg) {
                     eltwise_soft_relu, eltwise_logistic, eltwise_mish,
                     eltwise_exp, eltwise_gelu_tanh, eltwise_hardsigmoid,
                     eltwise_hardswish, eltwise_swish, eltwise_clip,
-                    eltwise_clip_v2, eltwise_round,
+                    eltwise_clip_v2, eltwise_gelu_erf, eltwise_round,
                     eltwise_clip_v2_use_dst_for_bwd);
         } else {
             return is_alg_supported(alg);
@@ -536,7 +536,7 @@ template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_t<isa>::tanh_polynomial_approx_compute_vector_fwd(
         const TRegS &vmm_src) {
 
-    if (vlen != 512) return;
+    if (vlen != 64) return;
 
     using namespace Xbyak_aarch64::util;
 
@@ -606,7 +606,7 @@ template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_t<isa>::tanh_compute_vector_fwd(
         const TRegS &vmm_src) {
 
-    if (vlen == 512) {
+    if (vlen == 64) {
         tanh_polynomial_approx_compute_vector_fwd(vmm_src);
         return;
     }
@@ -1041,7 +1041,7 @@ void jit_uni_eltwise_injector_t<isa>::log_compute_vector_fwd(
 template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_t<
         isa>::gelu_erf_minimax_approx_compute_vector_fwd(const TRegS &vmm_src) {
-    if (vlen != 512) { // TODO: change this condition based on cpu id.
+    if (vlen != 64) { // TODO: change this condition based on cpu id.
         return;
     }
 
@@ -1111,64 +1111,74 @@ template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_t<isa>::gelu_erf_compute_vector_fwd(
         const TRegS &vmm_src) {
 
-    if (vlen == 512) { // TODO: consider performance improvement for lower ISA
+    if (vlen == 64) {
         gelu_erf_minimax_approx_compute_vector_fwd(vmm_src);
         return;
     }
-    // Here we approximate erf(x) using the expression by
-    // Abramowitz and Stegun from ``Handbook of Mathematical
-    // Functions''
-    // NOTE: The performance of this kernel can be further improved
-    // with a minimax polynomialial expansion, thereby avoiding division
-    // and exp. However, so far, this has costed larger accuracy
-    // differences with respect to glibc erf based GELU, in particular
-    // ~1.0e-5 -- 1.0e-3 absolute error at s = -5.
-
-    constexpr unsigned sign_mask = 0x80000000;
-
-    // use vmm_aux3 to store original src.
-    h->mov(ZRegD(IDX(vmm_aux3)), ZRegD(IDX(vmm_src)));
 
     // x = s / sqrt(2)
-    h->fmul(vmm_src, vmm_src, table_val(gelu_erf_one_over_sqrt_two, z_tmp));
+    h->fmul(vmm_aux5, vmm_src, table_val(gelu_erf_one_over_sqrt_two, z_tmp));
 
     // abs(x)
-    h->fabs(vmm_aux1, p_all / T_m, vmm_src);
+    h->fabs(vmm_aux1, p_all / T_m, vmm_aux5);
 
-    // t = 1 / (p*x + 1)
-    table_val(gelu_erf_approx_const, vmm_aux2);
-    h->fdup(vmm_aux4, 1.0f);
-    h->fmad(vmm_aux2, p_all / T_m, vmm_aux1, vmm_aux4);
-    h->fdiv(vmm_aux4, p_all, vmm_aux2);
+    // LUT-based ERF based on the verfq_f32 implementation from Arm Compute Library (ACL)
+    // Maximum error: 1.93 ULP
+    //
+    // erf(x) for x in [0, 3.9375] is approxiated as follows:
+    //
+    //   erf(x) = erf(r) + scale(r) * d * (1 - r * d - 1/3 * d^2)
+    //
+    // where:
+    //   r = floor(x * 128) / 128
+    //   d = x - r
+    //
+    // erf(r) and scale(r) are stored in a 513-entry lookup table.
+    // The LUT covers the range from 0 to 4 with the step of 1/128.
+    //
+    // Special cases:
+    //   erf(x) =  1 for x >  3.9375
+    //   erf(x) = -1 for x < -3.9375
 
-    // -exp(-x*x)
-    h->fmul(vmm_src, vmm_src, vmm_src);
-    h->eor(vmm_src, sign_mask);
-    exp_compute_vector_fwd(vmm_src);
-    h->eor(vmm_src, sign_mask);
+    // Track saturation mask from |x| and clamp x used for LUT indexing.
+    table_val(gelu_erf_lut_max, vmm_aux0);
+    h->facgt(p_tmp0.s, p_all / T_z, vmm_aux5, vmm_aux0);
+    h->fmin(vmm_aux1, p_all / T_m, vmm_aux0);
 
-    // get sign
-    h->mov(ZRegD(IDX(vmm_aux0)), ZRegD(IDX(vmm_aux3)));
-    h->and_(vmm_aux0, sign_mask);
+    // Find LUT indices by rounding to the step of 1/128.
+    // `gelu_erf_lut_shift` pushes out the 16 LSBs. Only 7 fraction bits remain.
+    h->fadd(vmm_aux2, vmm_aux1, table_val(gelu_erf_lut_shift, z_tmp));
+    h->fsub(vmm_aux3, vmm_aux2, z_tmp); // r
+    h->sub(vmm_aux4, vmm_aux2, z_tmp); // raw index
+    h->umin(vmm_aux4, p_all / T_m,
+            table_val(gelu_erf_lut_max_index, z_tmp)); // index
 
-    // -exp(-x*x)*t
-    h->fmul(vmm_src, vmm_src, vmm_aux4);
+    // Lookup erf(r) and scale(r) from separate LUTs.
+    h->add_imm(h->X_TMP_1, x_table, table_off(gelu_erf_lut_erf), h->X_TMP_0);
+    h->ld1w(vmm_aux0, p_all / T_z, ptr(h->X_TMP_1, vmm_aux4, UXTW, 2)); // erf_r
+    h->add_imm(h->X_TMP_0, x_table, table_off(gelu_erf_lut_scale), h->X_TMP_1);
+    h->ld1w(vmm_aux2, p_all / T_z,
+            ptr(h->X_TMP_0, vmm_aux4, UXTW, 2)); // scale_r
 
-    // compute polynomialial r
-    table_val(gelu_erf_pol, vmm_aux1, 4);
-    h->fmad(vmm_aux1, p_all / T_m, vmm_aux4, table_val(gelu_erf_pol, z_tmp, 3));
-    h->fmad(vmm_aux1, p_all / T_m, vmm_aux4, table_val(gelu_erf_pol, z_tmp, 2));
-    h->fmad(vmm_aux1, p_all / T_m, vmm_aux4, table_val(gelu_erf_pol, z_tmp, 1));
-    h->fmad(vmm_aux1, p_all / T_m, vmm_aux4, table_val(gelu_erf_pol, z_tmp, 0));
+    // erf(x) ~= erf(r) + scale(r) * d * (1 - r * d - 1/3 * d^2).
+    h->fsub(vmm_aux5, vmm_aux1, vmm_aux3); // d
+    h->fmul(vmm_aux4, vmm_aux5, vmm_aux5); // d^2
+    h->fmla(vmm_aux3, p_all / T_m, table_val(gelu_erf_lut_third, z_tmp),
+            vmm_aux5); // t0 = r + 1/3 * d.
+    h->fmls(vmm_aux5, p_all / T_m, vmm_aux4, vmm_aux3); // t1 = d - d^2 * t0
+    h->fmla(vmm_aux0, p_all / T_m, vmm_aux2, vmm_aux5); // erf(|x|)
 
-    // erf = sign * (1 - r * t * exp(-x*x))
-    h->fmad(vmm_src, p_all / T_m, vmm_aux1, table_val(one, z_tmp));
-    h->eor(ZRegD(IDX(vmm_src)), ZRegD(IDX(vmm_src)), ZRegD(IDX(vmm_aux0)));
+    // Clamp erf(|x|) for |x| > 3.9375 to 1.
+    h->fmov(vmm_aux0, p_tmp0 / T_m, 1.);
 
-    // S = 0.5 * s
-    h->fmul(vmm_aux3, p_all / T_m, 0.5f);
-    // GELU = 0.5 * s * (1 + erf) = S + S * erf
-    h->fmad(vmm_src, p_all / T_m, vmm_aux3, vmm_aux3);
+    // Restore sign using original s.
+    h->mov(ZRegD(IDX(vmm_aux4)), ZRegD(IDX(vmm_src)));
+    h->and_(vmm_aux4, 0x80000000);
+    h->orr(ZRegD(IDX(vmm_aux0)), ZRegD(IDX(vmm_aux0)), ZRegD(IDX(vmm_aux4)));
+
+    // GELU = 0.5 * s * (1 + erf)
+    h->fmul(vmm_src, p_all / T_m, 0.5f);
+    h->fmad(vmm_src, p_all / T_m, vmm_aux0, vmm_src);
 }
 
 template <cpu_isa_t isa>
@@ -1575,7 +1585,7 @@ size_t jit_uni_eltwise_injector_t<isa>::aux_vecs_count() {
             case eltwise_clip:
             case eltwise_clip_v2_use_dst_for_bwd:
             case eltwise_clip_v2: return 2;
-            case eltwise_gelu_erf: return 6;
+            case eltwise_gelu_erf: return 7;
             case eltwise_round: return 0;
             case eltwise_hardswish: return 4; /* = hardsigmoid + 1 */
             case eltwise_hardsigmoid: return 3;
@@ -2136,6 +2146,12 @@ void jit_uni_eltwise_injector_t<isa>::register_table_entries() {
             {gelu_erf_one_over_sqrt_two, {0x3f3504f3, true}},
             {gelu_erf_one_over_sqrt_pi, {0x3f106eba, true}},
     };
+    static const table_t gelu_erf_lut_consts {
+            {gelu_erf_lut_max, {0x407c0000, true}}, // 3.9375f
+            {gelu_erf_lut_third, {0x3eaaaaab, true}}, // 1/3
+            {gelu_erf_lut_shift, {0x47800000, true}}, // 65536.f
+            {gelu_erf_lut_max_index, {0x00000200, true}}, // 512
+    };
 
     // gelu_erf(x) polynomial approximation
     static const table_t gelu_erf_polynomial {
@@ -2443,6 +2459,25 @@ void jit_uni_eltwise_injector_t<isa>::register_table_entries() {
     if (need.gelu_erf()) push_entries_of(gelu_erf_polynomial);
     if (need.gelu_erf()) push_entries_of(gelu_erf_minimax_consts);
     if (need.gelu_erf()) push_entries_of(gelu_erf_minimax_polynomial);
+    if (need.gelu_erf()) {
+        push_entries_of(gelu_erf_lut_consts);
+        const int erf_lut_size = 513;
+        const float erf_lut_step = 1.f / 128.f;
+        const float two_over_sqrt_pi = 1.12837922573089599609375f;
+        for (int i = 0; i < erf_lut_size; i++) {
+            const float r = i * erf_lut_step;
+            const float erf_val = std::erf(r);
+            const float scale_val = two_over_sqrt_pi * std::exp(-r * r);
+            if (isa == asimd) {
+                push_arg_entry_of(gelu_erf_lut, float2int(erf_val), false);
+                push_arg_entry_of(gelu_erf_lut, float2int(scale_val), false);
+            } else {
+                push_arg_entry_of(gelu_erf_lut_erf, float2int(erf_val), false);
+                push_arg_entry_of(
+                        gelu_erf_lut_scale, float2int(scale_val), false);
+            }
+        }
+    }
     // Now that we registered the entries, we set the offsets.  No
     // entries should be registered after this point.  This allows to
     // expect the same order when injecting the table entries in
@@ -2977,6 +3012,88 @@ void jit_uni_eltwise_injector_t<asimd>::swish_compute_vector_fwd(
 }
 
 template <>
+void jit_uni_eltwise_injector_t<asimd>::gelu_erf_compute_vector_fwd(
+        const TRegS &vmm_src) {
+    // x = s / sqrt(2)
+    h->fmul(vmm_aux1, vmm_src, table_val(gelu_erf_one_over_sqrt_two, z_tmp));
+
+    // abs(x)
+    h->fabs(vmm_aux1, vmm_aux1);
+
+    // LUT-based ERF based on the verfq_f32 implementation from Arm Compute Library (ACL)
+    // Maximum error: 1.93 ULP
+    //
+    // erf(x) for x in [0, 3.9375] is approxiated as follows:
+    //
+    //   erf(x) = erf(r) + scale(r) * d * (1 - r * d - 1/3 * d^2)
+    //
+    // where:
+    //   r = floor(x * 128) / 128
+    //   d = x - r
+    //
+    // erf(r) and scale(r) are stored in a 513-entry lookup table.
+    // The LUT covers the range from 0 to 4 with the step of 1/128.
+    //
+    // Special cases:
+    //   erf(x) =  1 for x >  3.9375
+    //   erf(x) = -1 for x < -3.9375
+
+    // Find LUT indices by rounding to the step of 1/128.
+    // `gelu_erf_lut_shift` pushes out the 16 LSBs. Only 7 fraction bits remain.
+    h->fadd(vmm_aux2, vmm_aux1, table_val(gelu_erf_lut_shift, z_tmp)); // z
+    h->fsub(vmm_aux3, vmm_aux2, z_tmp); // r
+    h->sub(vmm_aux5, vmm_aux2, z_tmp); // raw index
+    h->umin(vmm_aux5, vmm_aux5,
+            table_val(gelu_erf_lut_max_index, z_tmp)); // index
+
+    // LUT address = table_base + index * sizeof(float) * 2 (erf and scale)
+    const XReg x_lut_base = h->X_TMP_0;
+    const XReg x_idx = h->X_TMP_1;
+    h->add_imm(x_lut_base, x_table, table_off(gelu_erf_lut), h->X_TMP_1);
+    auto load_lut_entry = [&](const int lane, const DReg &dst) {
+        h->umov(WReg(IDX(x_idx)), vmm_aux5[lane]);
+        h->ldr(dst, ptr(x_lut_base, x_idx, LSL, 3));
+    };
+
+    // Lookup erf(r) and scale(r) pairs
+    load_lut_entry(0, DReg(IDX(vmm_aux0))); // idx0
+    load_lut_entry(1, DReg(IDX(vmm_aux4))); // idx1
+    load_lut_entry(2, DReg(IDX(vmm_aux2))); // idx2
+    load_lut_entry(3, DReg(IDX(vmm_aux5))); // idx3
+
+    // Build entry_01=[idx0, idx1] and entry_23=[idx2, idx3].
+    h->ins(VReg2D(IDX(vmm_aux0))[1], VReg2D(IDX(vmm_aux4))[0]);
+    h->ins(VReg2D(IDX(vmm_aux2))[1], VReg2D(IDX(vmm_aux5))[0]);
+
+    // {erf0, s0, erf1, s1}, {erf2, s2, erf3, s3} -> {erf0, erf1, erf2, erf3}, {s0, s1, s2, s3}
+    h->uzp2(vmm_aux5, vmm_aux0, vmm_aux2); // scale_r
+    h->uzp1(vmm_aux0, vmm_aux0, vmm_aux2); // erf_r
+
+    // erf(x) ~= erf(r) + scale(r) * d * (1 - r * d - 1/3 * d^2).
+    h->fsub(vmm_aux4, vmm_aux1, vmm_aux3); // d
+    h->fmul(vmm_aux2, vmm_aux4, vmm_aux4); // d^2
+    h->fmla(vmm_aux3, table_val(gelu_erf_lut_third, z_tmp),
+            vmm_aux4); // t0 = r + 1/3 * d.
+    h->fmls(vmm_aux4, vmm_aux2, vmm_aux3); // t1 = d - d^2 * t0
+    h->fmla(vmm_aux0, vmm_aux5, vmm_aux4); // erf(|x|)
+
+    // Clamp erf(|x|) for |x| > 3.9375 to 1.
+    h->fcmgt(vmm_aux4, vmm_aux1, table_val(gelu_erf_lut_max, z_tmp));
+    h->bit(VReg16B(IDX(vmm_aux0)), VReg16B(IDX(table_val(one, z_tmp))),
+            VReg16B(IDX(vmm_aux4)));
+
+    // Restore sign using original s
+    h->and_(VReg16B(IDX(vmm_aux4)), VReg16B(IDX(vmm_src)),
+            VReg16B(IDX(table_val(sign_mask, z_tmp))));
+    h->eor(VReg16B(IDX(vmm_aux0)), VReg16B(IDX(vmm_aux0)),
+            VReg16B(IDX(vmm_aux4)));
+
+    // GELU = 0.5 * s * (1 + erf)
+    h->fmul(vmm_src, vmm_src, table_val(half, z_tmp));
+    h->fmla(vmm_src, vmm_aux0, vmm_src);
+}
+
+template <>
 void jit_uni_eltwise_injector_t<asimd>::round_compute_vector_fwd(
         const TRegS &vmm_src) {
     h->frintn(vmm_src, vmm_src);
@@ -3008,7 +3125,6 @@ void jit_uni_eltwise_injector_t<sve>::load_vector(
     template <> \
     void jit_uni_eltwise_injector_t<asimd>::func_name(const TRegS &) {}
 DEFINE_ASIMD_EMPTY_FUNC(log_compute_vector_fwd);
-DEFINE_ASIMD_EMPTY_FUNC(gelu_erf_compute_vector_fwd);
 DEFINE_ASIMD_EMPTY_FUNC(tanh_polynomial_approx_compute_vector_fwd);
 DEFINE_ASIMD_EMPTY_FUNC(gelu_erf_minimax_approx_compute_vector_fwd);
 

@@ -795,7 +795,7 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dnn_mem_t::init_grouped_md(
         dnnl_data_type_t offsets_dt) {
     dnnl_memory_desc_t md {};
     DNN_SAFE_V(dnnl_memory_desc_create_with_grouped_encoding(&md, ndims, dims,
-            data_type, variable_dim_idx, group_count, offsets_dt));
+            data_type, variable_dim_idx, group_count, offsets_dt, 0));
     return md;
 }
 #endif

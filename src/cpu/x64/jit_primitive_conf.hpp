@@ -548,6 +548,7 @@ struct jit_pool_conf_t {
     data_type_t dst_dt;
 
     int dt_size;
+    int dst_dt_size;
     bool is_bf16;
     bool is_f16;
     bool is_fp8;

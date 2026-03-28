@@ -203,14 +203,13 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                         mayiuse(avx512_core_fp16) || mayiuse(avx2_vnni_2))
                 && IMPLICATION(utils::one_of(f8_e5m2, p.itype, p.otype)
                                 || utils::one_of(f8_e4m3, p.itype, p.otype),
-                        (mayiuse(avx512_core_fp16) || mayiuse(avx10_2_512)))
+                        (mayiuse(avx512_core_fp16) || mayiuse(avx10_2)))
                 && prb_has_small_strides(p) && !prb_has_huge_prime_number(p);
         return ok;
     }
 
     static bool is_f8_supported(cpu_isa_t isa) {
-        return is_superset(isa, avx512_core_fp16)
-                || is_superset(isa, avx10_2_512);
+        return is_superset(isa, avx512_core_fp16) || is_superset(isa, avx10_2);
     }
 
     Address i_addr(int i_off) {

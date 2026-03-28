@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
+* Copyright 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -21,6 +22,7 @@
 
 void base_perf_report_t::report(res_t *res, const char *prb_str) const {
     dump_perf_footer();
+    dump_perf_csv_header();
 
     dnnl::impl::stringstream_t ss;
 
@@ -155,4 +157,54 @@ void base_perf_report_t::handle_option(std::ostream &s, const char *&option,
     BENCHDNN_PRINT(0, "Error: perf report option \"%s\" is not supported\n",
             opt_name.c_str());
     SAFE_V(FAIL);
+}
+
+void base_perf_report_t::dump_perf_csv_header() const {
+    if (strstr(pt_, "%DESC%") == nullptr) return;
+
+    static bool header_printed = false;
+    if (header_printed) return;
+
+    const char *pt = pt_;
+    char c;
+    dnnl::impl::stringstream_t ss;
+    while ((c = *pt++) != '\0') {
+        if (c != '%') {
+            ss << c;
+            continue;
+        }
+        handle_csv_header_option(ss, pt);
+    }
+
+    BENCHDNN_PRINT(0, "%s\n", ss.str().c_str());
+    header_printed = true;
+}
+
+void base_perf_report_t::handle_csv_header_option(
+        std::ostream &s, const char *&option) const {
+    char c = *option;
+    if (c == '-' || c == '0' || c == '+') {
+        switch (c) {
+            case '-': s << "min_"; break;
+            case '0': s << "avg_"; break;
+            case '+': s << "max_"; break;
+            default: break;
+        }
+        ++option;
+    }
+
+    const char *option_end = strchr(option, '%');
+    if (!option_end) {
+        option += strlen(option);
+        return;
+    }
+
+    const std::string opt_name(option, option_end);
+    if (opt_name == "DESC") {
+        dump_desc_csv_header(s);
+    } else {
+        s << opt_name;
+    }
+
+    option = option_end + 1;
 }

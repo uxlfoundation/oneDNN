@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2019 Intel Corporation
+* Copyright 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -205,6 +206,10 @@ struct perf_report_t : public base_perf_report_t {
           << p_->pd << ',' << p_->ph << ',' << p_->pw << ','
 
           << p_->dd << ',' << p_->dh << ',' << p_->dw;
+    }
+
+    void dump_desc_csv_header(std::ostream &s) const override {
+        s << "mb,ic,id,ih,iw,od,oh,ow,kd,kh,kw,sd,sh,sw,pd,ph,pw,dd,dh,dw";
     }
 
     const int64_t *user_mb() const override { return &p_->user_mb; }

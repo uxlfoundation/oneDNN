@@ -28,7 +28,6 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
-namespace tr {
 using namespace Xbyak_aarch64;
 using namespace dnnl::impl::types;
 
@@ -555,8 +554,6 @@ void jit_single_blk_kernel_t::gen_ker64x64_in_32x32(int i_off, int o_off,
                 output_stride, sub_lane, u_tail);
     }
 }
-
-} // namespace tr
 
 } // namespace aarch64
 } // namespace cpu

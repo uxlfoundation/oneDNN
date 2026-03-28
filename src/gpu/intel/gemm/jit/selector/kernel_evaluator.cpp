@@ -20,6 +20,8 @@
 #include "gemmstone/problem.hpp"
 #include "internal/utils.hpp"
 
+#include "gpu/intel/utils.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -229,6 +231,7 @@ Type extPrecision(const kcatalog::string &precision, bool isC)
 
 double evaluateECore(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, EvaluateAuxOutput &aux, bool noKR = false)
 {
+    using dnnl::impl::gpu::intel::gpu_utils::dev_getenv;
 #define PARAM(p) e.model.params[kcatalog::ParamE_##p]
 
     auto threads = dp.threadCount;
@@ -352,13 +355,31 @@ double evaluateECore(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, 
 
     double time = ctime + std::max(mtime, etime);
 
+    if (aux.kParallelVariable || aux.kParallel) {
+        auto T = dev_getenv("T", 40000);
+        double time_ns = time / 1.6 / dp.threadCount;
+        double mnThreads = dp.threadCount / dp.wgCountK;
+        bool enoughMN = (dev_getenv("F", 32) * mnThreads >= dp.hwThreadCapacity);
+        if (dev_getenv("TRACE", false))
+            printf("T check: time_ns=%.0f T=%d mnThreads=%.0f threadCount=%.0f wgCountK=%ld capacity=%d enoughMN=%d -> %s\n",
+                time_ns, T, mnThreads, dp.threadCount, (long)dp.wgCountK, dp.hwThreadCapacity, (int)enoughMN,
+                (time_ns < T && enoughMN) ? "skip(inf)" : "keep");
+        if (time_ns < T && enoughMN)
+            return std::numeric_limits<double>::infinity();
+    }
+
     return time;
 #undef PARAM
 }
 
 double evaluateE(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, EvaluateAuxOutput &aux)
 {
+    using dnnl::impl::gpu::intel::gpu_utils::dev_getenv;
+    static const bool kpAllowed = dev_getenv("KP", true);
+
     if (e.driverInfo.kParallel()) {
+        /* kParallel kernels require global k-slicing to function. Reject if disabled. */
+        if (!kpAllowed) return std::numeric_limits<double>::infinity();
         // Consider choosing k0 to get as close as possible to 1 or 2 full waves.
         int padWGs = e.driverInfo.kPadding() ? 1 : 0;
         int wgCountK1 = std::max(1, int(dp.hwThreadCapacity / dp.threadCount) - padWGs);
@@ -423,6 +444,9 @@ double evaluateE(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, Eval
             }
         }
 
+        /* kParallelVariable / kParallel fallback: skip if disabled. */
+        if (!kpAllowed) return score;
+
         if (dp.batch)
             return score;
 
@@ -436,6 +460,28 @@ double evaluateE(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, Eval
             EvaluateAuxOutput auxKV;
             auxKV.kParallelVariable = true;
             double scoreKV = evaluateECore(e, dp, auxKV);
+#if 0
+            if (scoreKV < score) {
+                auto approxK0 = dp.threadCount * dp.sizes.k / dp.hwThreadCapacity;
+                if (dev_getenv("TRY_KB", true) && approxK0 <= 32 && !dp.deterministic) {
+                    auxKV.kParallel = true;     /* Switch to fixed global k-slicing if k0 is too small */
+                    auxKV.kParallelVariable = false;
+                    int padWGs = e.driverInfo.kPadding() ? 1 : 0;
+                    int wgCountK = std::max(1, int(dp.hwThreadCapacity / dp.threadCount) - padWGs);
+                    auxKV.k0 = alignUp(divUp(dp.sizes.k, wgCountK * auxKV.wgK), e.driverInfo.unroll[LoopK]);
+
+                    /* Re-evaluate with fixed kParallel settings */
+                    auto dpKP = dp;
+                    dpKP.wgCountK = wgCountK;
+                    dpKP.threadCount *= wgCountK;
+                    scoreKV = evaluateECore(e, dpKP, auxKV);
+                }
+                if (scoreKV < score) {
+                    score = scoreKV;
+                    aux = auxKV;
+                }
+            }
+#else
             if (scoreKV < score) {
                 score = scoreKV;
                 aux = auxKV;
@@ -449,6 +495,7 @@ double evaluateE(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, Eval
                     aux.k0 = alignUp(divUp(dp.sizes.k, wgCountK * aux.wgK), e.driverInfo.unroll[LoopK]);
                 }
             }
+#endif
         }
 
         return score;

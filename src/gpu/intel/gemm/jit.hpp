@@ -26,6 +26,7 @@
 #include "common/utils.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/compute/kernel.hpp"
+#include "gpu/intel/compute/kernel_ctx.hpp"
 #include "gpu/intel/compute/zero_pool.hpp"
 #include "gpu/intel/gemm/jit/gen_kernel.hpp"
 #include "gpu/intel/gemm/jit/pd.hpp"
@@ -578,6 +579,13 @@ struct gen_t : public primitive_t {
             CHECK(lookup_zero_pool(
                     intel_engine, nullptr, zero_pool_chunk_size_, &zero_pool_));
 
+            compute::kernel_ctx_t kernel_ctx;
+            if (gpu_utils::dev_getenv("LARGE", false)) {
+                kernel_ctx.add_option("-cl-intel-256-GRF-per-thread");
+            }
+            CHECK(create_kernel(
+                    engine, &zero_fill_kernel_, "gemm_zero_fill", kernel_ctx));
+
             nocopy_kernel_.save_output_events();
         }
 
@@ -614,6 +622,7 @@ private:
     }
 
     compute::kernel_t nocopy_kernel_;
+    compute::kernel_t zero_fill_kernel_;
     compute::scalar_type_t scalar_type_;
     zero_pool_t *zero_pool_ = nullptr;
     size_t zero_pool_bytes_ = 0;

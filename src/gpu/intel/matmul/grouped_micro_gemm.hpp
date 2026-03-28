@@ -74,6 +74,7 @@ struct grouped_micro_gemm_t : public primitive_t {
         int sg_size_ = 0;
         int strategyGRFs_ = 0;
         dim_t ngroups_ = 0;
+        dim_t max_variable_dim_ = 0;
         std::array<int, 2> src_group_sizes_ = {0, 0};
         std::array<int, 3> wei_group_sizes_ = {0, 0, 0};
         quantization_t src_quant_;

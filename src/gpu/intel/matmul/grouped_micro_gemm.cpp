@@ -272,6 +272,7 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
             (int)src_grouped.group_count, (int)dst_grouped.group_count);
 
     ngroups_ = src_grouped.group_count;
+    max_variable_dim_ = src_grouped.max_variable_dim;
     is_gemv_ = M() < ngroups_;
 
     // only supported dt for now
@@ -534,9 +535,13 @@ status_t grouped_micro_gemm_t::execute(const exec_ctx_t &ctx) const {
     lws[2] *= sg_per_wg_k;
 
     compute::range_t gws = lws;
+    // Use max_variable_dim as upper bound for max size per group
+    // along M dimension if it is provided via API
+    dim_t m_dispatch
+            = pd()->max_variable_dim_ > 0 ? pd()->max_variable_dim_ : m_all;
     // Swap wg_tile_[mn]_ for col-major vs row-major representations
     gws[0] *= utils::div_up(n, wg_tile_m);
-    gws[1] *= utils::div_up(m_all, wg_tile_n);
+    gws[1] *= utils::div_up(m_dispatch, wg_tile_n);
     gws[2] *= num_groups;
 
     return parallel_for(ctx, compute::nd_range_t(gws, lws), kernel_, arg_list);

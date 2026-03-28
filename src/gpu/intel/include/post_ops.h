@@ -29,7 +29,8 @@
 #include "gpu/intel/include/eltwise.h"
 #include "gpu/intel/include/io.h"
 
-float fwd_binary(unsigned algorithm, POST_OP_DATA_T x, POST_OP_DATA_T y) {
+POST_OP_DATA_T fwd_binary(
+        unsigned algorithm, POST_OP_DATA_T x, POST_OP_DATA_T y) {
     switch (algorithm) {
         // binary
         case binary_add: return x + y; break;
@@ -47,7 +48,7 @@ float fwd_binary(unsigned algorithm, POST_OP_DATA_T x, POST_OP_DATA_T y) {
         case eltwise_relu: // binary && relu = prelu
             return fwd_eltwise_common(eltwise_relu, x, y, 0.0f, 1.0f);
             break;
-        default: return 0.f;
+        default: return POST_OP_LITERAL(0.);
     }
 }
 

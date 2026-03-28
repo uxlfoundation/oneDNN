@@ -90,6 +90,12 @@ status_t grouped_matmul_desc_init(matmul_desc_t *matmul_desc,
             VERBOSE_INCONSISTENT_DIM, "dst_variable_dim_idx", 0,
             "src_variable_dim_idx", 0);
 
+    VCHECK_MATMUL_UNIMPL(
+            src_grouped.max_variable_dim == dst_grouped.max_variable_dim,
+            VERBOSE_INCONSISTENT_DIM, "src_max_variable_dim",
+            (int)src_grouped.max_variable_dim, "dst_max_variable_dim",
+            (int)dst_grouped.max_variable_dim);
+
     VCHECK_MATMUL_UNIMPL(wei_d.dims()[0] == group_count,
             VERBOSE_INCONSISTENT_DIM, "weights_dim[0]", (int)wei_d.dims()[0],
             "src_group_count", (int)group_count);

@@ -18,34 +18,17 @@
 
 #include <cassert>
 
-#include <math.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
-
-#include <algorithm>
-#include <iostream>
-#include <iterator>
-#include <ranges>
-#include <vector>
-
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
-#include "common/math_utils.hpp"
 #include "common/memory_tracking.hpp"
-#include "common/nstl.hpp"
-#include "common/tag_traits.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
-#include "cpu/aarch64/jit_generator.hpp"
 #include "cpu/cpu_primitive.hpp"
 #include "cpu/matmul/matmul_utils.hpp"
 #include "cpu/scale_utils.hpp"
 
-#include "cpu/platform.hpp"
-#include "cpu/primitive_attr_postops.hpp"
-
+#include "cpu/aarch64/injectors/jit_uni_eltwise_injector.hpp"
+#include "cpu/aarch64/jit_generator.hpp"
 #include "cpu/aarch64/matmul/jit_int8_kernel_types.hpp"
 #include "cpu/aarch64/matmul/jit_int8_matmul.hpp"
 #include "cpu/aarch64/matmul/jit_int8_matmul_utils.hpp"
@@ -381,17 +364,15 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
         mov(reg_aux_b, reg_b);
         if (k_full_blks > 0) {
             mov(reg_rd_loop, k_full_blks);
-            Label l0;
-            L(l0);
-            microkernel(brg_.rd_block, bdb, ldb, tail);
-            add_imm(reg_aux_a, reg_aux_a,
-                    brg_.m_blk * brg_.k_blk * brg_.rd_block, X_TMP_0);
-            add_imm(reg_aux_b, reg_aux_b,
-                    brg_.k_blk * brg_.n_blk * brg_.ld_block * brg_.rd_block,
-                    X_TMP_0);
-            sub(reg_rd_loop, reg_rd_loop, 1);
-            cmp(reg_rd_loop, 0);
-            b(GT, l0);
+
+            asm_do_while(reg_rd_loop, [&]() {
+                microkernel(brg_.rd_block, bdb, ldb, tail);
+                add_imm(reg_aux_a, reg_aux_a,
+                        brg_.m_blk * brg_.k_blk * brg_.rd_block, X_TMP_0);
+                add_imm(reg_aux_b, reg_aux_b,
+                        brg_.k_blk * brg_.n_blk * brg_.ld_block * brg_.rd_block,
+                        X_TMP_0);
+            });
         }
         if (k_tail_blk > 0) {
             microkernel(k_tail_blk, bdb, ldb, tail);
@@ -423,17 +404,15 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
         mov(reg_aux_b, reg_b);
         if (k_full_blks > 0) {
             mov(reg_rd_loop, k_full_blks);
-            Label l0;
-            L(l0);
-            zp_comp(brg_.rd_block, bdb, ldb, is_a, is_b);
-            add_imm(reg_aux_a, reg_aux_a,
-                    brg_.m_blk * brg_.k_blk * brg_.rd_block, X_TMP_0);
-            add_imm(reg_aux_b, reg_aux_b,
-                    brg_.k_blk * brg_.n_blk * brg_.ld_block * brg_.rd_block,
-                    X_TMP_0);
-            sub(reg_rd_loop, reg_rd_loop, 1);
-            cmp(reg_rd_loop, 0);
-            b(GT, l0);
+
+            asm_do_while(reg_rd_loop, [&]() {
+                zp_comp(brg_.rd_block, bdb, ldb, is_a, is_b);
+                add_imm(reg_aux_a, reg_aux_a,
+                        brg_.m_blk * brg_.k_blk * brg_.rd_block, X_TMP_0);
+                add_imm(reg_aux_b, reg_aux_b,
+                        brg_.k_blk * brg_.n_blk * brg_.ld_block * brg_.rd_block,
+                        X_TMP_0);
+            });
         }
         if (k_tail_blk > 0) {
             zp_comp(k_tail_blk, bdb, ldb, is_a, is_b);
@@ -521,7 +500,6 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
     }
 
     void han_blk() {
-        Label ld_loop, bd_loop;
         LDR_IMM(reg_tmp, reg_param, GET_OFF(nb));
         LDR_IMM(reg_na, reg_param, GET_OFF(na));
         ldr(WReg(reg_ld_loop.getIdx()), ptr(reg_tmp));
@@ -529,78 +507,66 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
         mov(reg_aux_c1, reg_c);
         mov(reg_aux_c, reg_aux_c1);
         mov(reg_zp_aux_b, reg_zp_b);
-        L(ld_loop);
-        ldr(WReg(reg_bd_loop.getIdx()), ptr(reg_na));
-        L(bd_loop);
-        loop_k(bdb, ldb, 0);
-        add_imm(reg_aux_a1, reg_aux_a1,
-                div_up(brg_.K, brg_.k_blk) * brg_.k_blk * brg_.bd_block,
-                X_TMP_0);
-        add_imm(reg_aux_c, reg_aux_c, brg_.N * brg_.bd_block * brg_.dst_dt_sz,
-                X_TMP_0);
-        add_imm(reg_zp_aux_b, reg_zp_aux_b, brg_.m_blk * brg_.dst_dt_sz,
-                X_TMP_0);
-        sub(reg_bd_loop, reg_bd_loop, 1);
-        cmp(reg_bd_loop, 0);
-        b(GT, bd_loop);
-        mov(reg_aux_a1, reg_a);
-        mov(reg_zp_aux_b, reg_zp_b);
-        add_imm(reg_b, reg_b,
-                (brg_.n_blk * brg_.ld_block) * div_up(brg_.K, brg_.k_blk)
-                        * brg_.k_blk,
-                X_TMP_0);
-        add_imm(reg_aux_c1, reg_aux_c1,
-                brg_.dst_dt_sz * (brg_.n_blk * brg_.ld_block), X_TMP_0);
-        add_imm(reg_zp_a, reg_zp_a, brg_.n_blk * brg_.ld_block * brg_.dst_dt_sz,
-                X_TMP_0);
-        if (brg_.is_oc_scales)
-            add_imm(reg_scales, reg_scales,
-                    brg_.dst_dt_sz * (brg_.n_blk * brg_.ld_block), X_TMP_0);
-        add_imm(reg_bias, reg_bias,
-                brg_.dst_dt_sz * (brg_.n_blk * brg_.ld_block), X_TMP_0);
-        mov(reg_aux_c, reg_aux_c1);
-        sub(reg_ld_loop, reg_ld_loop, 1);
-        cmp(reg_ld_loop, 0);
-        b(GT, ld_loop);
-    }
 
-    void han_blk_zp() {
-        Label ld_loop, bd_loop, skip_ld_loop, skip_bd_loop;
-        LDR_IMM(reg_tmp, reg_param, GET_OFF(nb));
-        LDR_IMM(reg_na, reg_param, GET_OFF(na));
-        ldr(WReg(reg_ld_loop.getIdx()), ptr(reg_tmp));
-        ldr(WReg(reg_bd_loop.getIdx()), ptr(reg_na));
-        mov(reg_aux_a1, reg_a);
-        // mov(reg_b,reg_b);
-        if (brg_.zp_type_b != jit_int8_broadcast_t::none) {
-            cmp(reg_bd_loop, 0);
-            b(EQ, skip_bd_loop);
-            L(bd_loop);
-            loop_k_zp(bdb, ldb, 0, 1);
-            add_imm(reg_aux_a1, reg_aux_a1,
-                    div_up(brg_.K, brg_.k_blk) * brg_.k_blk * brg_.bd_block,
-                    X_TMP_0);
-            add_imm(reg_zp_b, reg_zp_b, brg_.m_blk * brg_.dst_dt_sz, X_TMP_0);
-            sub(reg_bd_loop, reg_bd_loop, 1);
-            cmp(reg_bd_loop, 0);
-            b(GT, bd_loop);
-            L(skip_bd_loop);
-        }
-        if (brg_.zp_type_a != jit_int8_broadcast_t::none) {
-            cmp(reg_ld_loop, 0);
-            b(EQ, skip_ld_loop);
-            L(ld_loop);
-            loop_k_zp(bdb, ldb, 1, 0);
-            add_imm(reg_zp_a, reg_zp_a,
-                    brg_.n_blk * brg_.ld_block * brg_.dst_dt_sz, X_TMP_0);
+        asm_do_while(reg_ld_loop, [&]() {
+            ldr(WReg(reg_bd_loop.getIdx()), ptr(reg_na));
+            asm_do_while(reg_bd_loop, [&]() {
+                loop_k(bdb, ldb, 0);
+                add_imm(reg_aux_a1, reg_aux_a1,
+                        div_up(brg_.K, brg_.k_blk) * brg_.k_blk * brg_.bd_block,
+                        X_TMP_0);
+                add_imm(reg_aux_c, reg_aux_c,
+                        brg_.N * brg_.bd_block * brg_.dst_dt_sz, X_TMP_0);
+                add_imm(reg_zp_aux_b, reg_zp_aux_b, brg_.m_blk * brg_.dst_dt_sz,
+                        X_TMP_0);
+            });
+
+            mov(reg_aux_a1, reg_a);
+            mov(reg_zp_aux_b, reg_zp_b);
             add_imm(reg_b, reg_b,
                     (brg_.n_blk * brg_.ld_block) * div_up(brg_.K, brg_.k_blk)
                             * brg_.k_blk,
                     X_TMP_0);
-            sub(reg_ld_loop, reg_ld_loop, 1);
-            cmp(reg_ld_loop, 0);
-            b(GT, ld_loop);
-            L(skip_ld_loop);
+            add_imm(reg_aux_c1, reg_aux_c1,
+                    brg_.dst_dt_sz * (brg_.n_blk * brg_.ld_block), X_TMP_0);
+            add_imm(reg_zp_a, reg_zp_a,
+                    brg_.n_blk * brg_.ld_block * brg_.dst_dt_sz, X_TMP_0);
+            if (brg_.is_oc_scales)
+                add_imm(reg_scales, reg_scales,
+                        brg_.dst_dt_sz * (brg_.n_blk * brg_.ld_block), X_TMP_0);
+            add_imm(reg_bias, reg_bias,
+                    brg_.dst_dt_sz * (brg_.n_blk * brg_.ld_block), X_TMP_0);
+            mov(reg_aux_c, reg_aux_c1);
+        });
+    }
+
+    void han_blk_zp() {
+        LDR_IMM(reg_tmp, reg_param, GET_OFF(nb));
+        LDR_IMM(reg_na, reg_param, GET_OFF(na));
+        mov(reg_aux_a1, reg_a);
+        ldr(WReg(reg_bd_loop.getIdx()), ptr(reg_na));
+        ldr(WReg(reg_ld_loop.getIdx()), ptr(reg_tmp));
+
+        if (brg_.zp_type_b != jit_int8_broadcast_t::none) {
+            asm_for(reg_bd_loop, reg_bd_loop, [&]() {
+                loop_k_zp(bdb, ldb, 0, 1);
+                add_imm(reg_aux_a1, reg_aux_a1,
+                        div_up(brg_.K, brg_.k_blk) * brg_.k_blk * brg_.bd_block,
+                        X_TMP_0);
+                add_imm(reg_zp_b, reg_zp_b, brg_.m_blk * brg_.dst_dt_sz,
+                        X_TMP_0);
+            });
+        }
+        if (brg_.zp_type_a != jit_int8_broadcast_t::none) {
+            asm_for(reg_ld_loop, reg_ld_loop, [&]() {
+                loop_k_zp(bdb, ldb, 1, 0);
+                add_imm(reg_zp_a, reg_zp_a,
+                        brg_.n_blk * brg_.ld_block * brg_.dst_dt_sz, X_TMP_0);
+                add_imm(reg_b, reg_b,
+                        (brg_.n_blk * brg_.ld_block)
+                                * div_up(brg_.K, brg_.k_blk) * brg_.k_blk,
+                        X_TMP_0);
+            });
         }
     }
 

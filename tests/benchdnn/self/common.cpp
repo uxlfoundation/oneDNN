@@ -498,7 +498,7 @@ static int check_str2post_ops() {
         return OK;
     };
 
-    using namespace parser::parser_utils;
+    using namespace parser::parser_functions;
 
     ops = parse_attr_post_ops_func("");
     SELF_CHECK_EQ(ops.is_def(), true);

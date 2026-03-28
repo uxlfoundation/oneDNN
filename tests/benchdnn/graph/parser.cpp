@@ -95,7 +95,7 @@ void parse_key_value(std::vector<std::map<size_t, std::string>> &res_v,
 std::string get_substr(const std::string &s, size_t &start_pos, char delim) {
     auto end_pos = s.find_first_of(delim, start_pos);
     auto sub = s.substr(start_pos, end_pos - start_pos);
-    start_pos = end_pos + (end_pos != eol);
+    start_pos = end_pos + (end_pos != std::string::npos);
     return sub;
 }
 
@@ -241,7 +241,7 @@ bool parse_graph_fpmath_mode(
                             mode.c_str());
                     SAFE_V(FAIL);
                 }
-                apply_to_int = str2bool(bool_subs.c_str());
+                apply_to_int = parser_functions::parse_bool(bool_subs);
             }
             fpmath_mode_vec.emplace_back(
                     mode_subs, apply_to_int, /* override_json_value = */ true);

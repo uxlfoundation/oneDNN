@@ -36,7 +36,6 @@
 namespace parser {
 
 extern bool last_parsed_is_problem;
-extern const size_t eol;
 extern dnnl::impl::stringstream_t help_ss;
 
 namespace parser_utils {
@@ -53,8 +52,6 @@ float stof_safe(const std::string &s);
 // Checks if a `string` consists of only digits. Useful for mask_input parsing.
 bool has_only_digits(const std::string &s);
 
-attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s);
-
 // `option_str` is a string in a format `--option-name=`.
 inline bool option_matched(const std::string &option_str, const char *str) {
     // [str, str + option_str.size()) must be a valid range.
@@ -63,6 +60,14 @@ inline bool option_matched(const std::string &option_str, const char *str) {
 }
 
 } // namespace parser_utils
+
+namespace parser_functions {
+
+attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s);
+
+bool parse_bool(const std::string &s);
+
+} // namespace parser_functions
 
 // `parse_vector_str` is a heart parser routine which splits input string `str`
 // into "chunks" separated by `delimiter` and redirect a chunk into
@@ -108,7 +113,7 @@ static bool parse_vector_str(T &vec, const T &def, F process_func,
         vec.push_back(
                 process_func(str.substr(pos_st, pos_en - pos_st).c_str()));
         //NOLINTEND(readability-redundant-string-cstr)
-        if (pos_en == eol) break;
+        if (pos_en == std::string::npos) break;
         idx++;
     }
     return true;

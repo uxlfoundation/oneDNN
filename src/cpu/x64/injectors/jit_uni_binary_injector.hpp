@@ -399,12 +399,20 @@ private:
             const std::map<int, size_t> &vmm_idx_to_out_elem_off_val,
             int vmm_idx, const Xbyak::Reg64 &addr_reg,
             const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes,
-            bool is_first) const;
+            bool is_first, const memory_desc_wrapper &rhs_d) const;
     void calculate_mb_sp_ncsp_base(
             const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const;
     void calculate_mb_sp_ncsp_partial(const dim_t *strides,
             const std::size_t offset, const Xbyak::Reg64 &tmp_reg,
             std::size_t elem_size_bytes) const;
+    void calculate_mb_sp_ncsp_base_rhs_strided(const memory_desc_wrapper &dst_d,
+            const memory_desc_wrapper &rhs_d, const dim_t *dst_strides,
+            const Xbyak::Reg64 &addr_reg, const Xbyak::Reg64 &tmp_reg,
+            std::size_t elem_size_bytes) const;
+    void calculate_mb_sp_ncsp_partial_rhs_strided(
+            const memory_desc_wrapper &dst_d, const memory_desc_wrapper &rhs_d,
+            std::size_t dst_offset_bytes, const Xbyak::Reg64 &addr_reg,
+            const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const;
     void calculate_mb_sp_blocked_base(
             const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const;
     void calculate_mb_sp_blocked_partial(const dim_t *strides,

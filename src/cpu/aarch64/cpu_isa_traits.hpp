@@ -63,6 +63,7 @@ enum cpu_isa_bit_t : unsigned {
     sve_128_bit = 1u << 2,
     sve_256_bit = 1u << 3,
     sve_512_bit = 1u << 4,
+    sme_bit = 1u << 8,
 };
 
 enum cpu_isa_t : unsigned {
@@ -72,6 +73,7 @@ enum cpu_isa_t : unsigned {
     sve_128 = sve_128_bit | sve,
     sve_256 = sve_256_bit | sve_128,
     sve_512 = sve_512_bit | sve_256,
+    sme = sme_bit,
     isa_all = ~0u,
 };
 
@@ -201,6 +203,7 @@ inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {
         case sve_512:
             return cpu().has(XBYAK_AARCH64_HWCAP_SVE)
                     && cpu().getSveLen() >= SVE_512;
+        case sme: return cpu().has(XBYAK_AARCH64_HWCAP_SME);
         case isa_undef: return true;
         case isa_all: return false;
     }
@@ -212,11 +215,23 @@ inline uint64_t get_sve_length() {
     return cpu().getSveLen();
 }
 
+// SME length in bytes
+inline uint64_t get_sme_length() {
+    return cpu().getSmeLen();
+}
+
 // SVE length in element type
 inline uint64_t get_sve_length(data_type_t data_type) {
     const size_t dt_size = types::data_type_size(data_type);
     assert(dt_size > 0);
     return get_sve_length() / dt_size;
+}
+
+// SME length in element type
+inline uint64_t get_sme_length(data_type_t data_type) {
+    const size_t dt_size = types::data_type_size(data_type);
+    assert(dt_size > 0);
+    return get_sme_length() / dt_size;
 }
 
 inline int isa_max_vlen(cpu_isa_t isa) {
@@ -228,6 +243,8 @@ inline int isa_max_vlen(cpu_isa_t isa) {
         return cpu_isa_traits<sve_128>::vlen;
     else if (isa == sve)
         return get_sve_length();
+    else if (isa == sme)
+        return get_sme_length();
     else if (isa == asimd)
         return cpu_isa_traits<asimd>::vlen;
     else
@@ -275,7 +292,8 @@ inline int isa_num_vregs(cpu_isa_t isa) {
     ((isa) == sve_128 ? prefix STRINGIFY(sve_128) : \
     ((isa) == sve_256 ? prefix STRINGIFY(sve_256) : \
     ((isa) == sve_512 ? prefix STRINGIFY(sve_512) : \
-    prefix suffix_if_any))))))
+    ((isa) == sme ? prefix STRINGIFY(sme) : \
+    prefix suffix_if_any)))))))
 /* clang-format on */
 
 inline size_t data_type_vnni_granularity(data_type_t data_type) {
@@ -310,6 +328,7 @@ inline size_t simd_elems(data_type_t dt, cpu_isa_t cpu_isa) {
         case sve_128:
         case asimd: return data_type_vnni_simd_elems<sve_128>(dt);
         case sve: return get_sve_length(dt);
+        case sme: return get_sme_length(dt);
         default: {
             // If this ISA does implement SIMD, then you need to add support for
             // it in this function. If not, then you need to check earlier in

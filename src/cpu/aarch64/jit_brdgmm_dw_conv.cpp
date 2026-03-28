@@ -156,7 +156,7 @@ status_t brdgmm_dw_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
                            || (is_3d && cd.dilates[2] != 0)),
             VERBOSE_UNSUPPORTED_FEATURE, "dilations are not supported");
 
-    jcp = zero<decltype(jcp)>();
+    jcp = utils::zero<decltype(jcp)>();
     jcp.ngroups = weights_d.dims()[0];
     jcp.mb = src_d.dims()[0];
     jcp.oc = dst_d.dims()[1] / jcp.ngroups;

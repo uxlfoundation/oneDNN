@@ -44,6 +44,7 @@ public:
     setHwCap();
     setCacheHierarchy();
     setImplementer();
+    setSmeLen();
   }
 
 private:
@@ -105,6 +106,26 @@ private:
       type_ |= (Type)XBYAK_AARCH64_HWCAP_ADVSIMD;
     if (IsProcessorFeaturePresent(PF_ARM_V81_ATOMIC_INSTRUCTIONS_AVAILABLE))
       type_ |= (Type)XBYAK_AARCH64_HWCAP_ATOMIC;
+    if (IsProcessorFeaturePresent(PF_ARM_V8_CRC32_INSTRUCTIONS_AVAILABLE))
+      type_ |= (Type)XBYAK_AARCH64_HWCAP_CRC;
+    if (IsProcessorFeaturePresent(PF_ARM_V83_JSCVT_INSTRUCTIONS_AVAILABLE))
+      type_ |= (Type)XBYAK_AARCH64_HWCAP_JSCVT;
+#ifdef PF_ARM_SME_INSTRUCTIONS_AVAILABLE
+    if (IsProcessorFeaturePresent(PF_ARM_SME_INSTRUCTIONS_AVAILABLE))
+      type_ |= (Type)XBYAK_AARCH64_HWCAP_SME;
+#endif
+#ifdef PF_ARM_SME_I16I64_INSTRUCTIONS_AVAILABLE
+    if (IsProcessorFeaturePresent(PF_ARM_SME_I16I64_INSTRUCTIONS_AVAILABLE))
+      type_ |= (Type)XBYAK_AARCH64_HWCAP_SME_I16I64;
+#endif
+#ifdef PF_ARM_SME_F16F16_INSTRUCTIONS_AVAILABLE
+    if (IsProcessorFeaturePresent(PF_ARM_SME_F16F16_INSTRUCTIONS_AVAILABLE))
+      type_ |= (Type)XBYAK_AARCH64_HWCAP_SME_F16F16;
+#endif
+#ifdef PF_ARM_SME_F64F64_INSTRUCTIONS_AVAILABLE
+    if (IsProcessorFeaturePresent(PF_ARM_SME_F64F64_INSTRUCTIONS_AVAILABLE))
+      type_ |= (Type)XBYAK_AARCH64_HWCAP_SME_F64F64;
+#endif
   }
 };
 

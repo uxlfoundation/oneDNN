@@ -716,10 +716,16 @@ format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
     return format_tag::undef;
 }
 
-brgemm_broadcast_t get_zp_type(const primitive_attr_t &attr, int arg) {
-    return attr.zero_points_.has_default_values(arg)
-            ? brgemm_broadcast_t::none
-            : brgemm_broadcast_t::per_tensor;
+brgemm_broadcast_t get_zp_type(
+        const primitive_attr_t &attr, int arg, int ndims = 0) {
+    if (attr.zero_points_.has_default_values(arg))
+        return brgemm_broadcast_t::none;
+    if (arg == DNNL_ARG_DST && ndims > 0) {
+        const int mask = attr.zero_points_.get_mask(arg);
+        const int per_oc_mask = 1 << (ndims - 1);
+        if (mask == per_oc_mask) return brgemm_broadcast_t::per_n;
+    }
+    return brgemm_broadcast_t::per_tensor;
 }
 
 struct matmul_avx512_blocking_params_t {
@@ -1519,7 +1525,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     bgmmc.src_zp_type = get_zp_type(attr, DNNL_ARG_SRC);
     bgmmc.wei_zp_type = get_zp_type(attr, DNNL_ARG_WEIGHTS);
-    bgmmc.dst_zp_type = get_zp_type(attr, DNNL_ARG_DST);
+    bgmmc.dst_zp_type = get_zp_type(attr, DNNL_ARG_DST, bgmmc.ndims);
 
     VCONDCHECK_BG(
             IMPLICATION(!(bm_conf_utils.is_int8()

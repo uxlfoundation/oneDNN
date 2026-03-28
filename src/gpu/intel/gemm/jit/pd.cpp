@@ -347,6 +347,9 @@ bool pd_t::zp_ok() {
             const auto a_q2d_group_n = a_zps.get_group(1);
             // Non-trivial N group unsupported.
             if (a_q2d_group_n != 1) return false;
+            // Grouped ZPs with single-column output not supported in
+            // kernel generator.
+            if (desc()->n() == 1) return false;
             // Zero points with non-trivial groups only supported with
             // precomputed reductions or when target tensor is being dequantized.
             if (attr()->precomputed_reductions_.has_default_values(DNNL_ARG_B)
@@ -356,8 +359,9 @@ bool pd_t::zp_ok() {
             if (!utils::one_of(cmask_a_, 0, mask_per_oc, mask_per_ic))
                 return false;
             // Weights zp can only be performantly enabled during upconversion
-            // for cases that perform decompression.
-            if (b_int4 && !wei_decomp_ && !a_int4 && a_scales_2d())
+            // for cases that perform decompression. Common (scalar) zero
+            // points are trivial and always supported.
+            if (cmask_a_ != 0 && !wei_decomp_ && !a_int4 && a_scales_2d())
                 return false;
         }
     }

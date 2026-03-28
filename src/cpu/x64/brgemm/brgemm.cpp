@@ -79,6 +79,14 @@ void brgemm_desc_t::cleanup_dst_md() {
     dst_md_ = nullptr;
 }
 
+void brgemm_kernel_execute_params(
+        const brgemm_kernel_t *brg, brgemm_kernel_params_t &params) {
+    assert(brg);
+    assert(&params);
+
+    (*brg)(&params);
+}
+
 void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, int bs,
         const brgemm_batch_element_t *batch, void *ptr_C, void *scratch,
         const brgemm_dynamic_values_t *dynamic_values) {
@@ -467,7 +475,12 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
             = !brg->skip_scales && !src_scales.has_default_values();
     brg->with_wei_scales
             = !brg->skip_scales && !wei_scales.has_default_values();
-    if (brg->with_wei_scales) {
+    // In order to parse the mask correctly the `ndims` value is required,
+    // if mask is set by the primitive using this kernel, no need to
+    // override it. Other cases will be parsed as 2D (`ndims` = 2).
+    bool wei_scales_are_set = brg->is_single_wei_scale || brg->is_oc_wei_scales
+            || brg->is_ic_wei_scales;
+    if (brg->with_wei_scales && !wei_scales_are_set) {
         // Note. the current version supports only two different wei scales
         // types:
         //     1) common (mask = 0)
@@ -479,7 +492,12 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
         // So if wei_scales.get_mask() > 0 (not common) it's assumed here that
         // scale type is per_n_dim_scale and driver which calls brgemm kernel
         // checked that mask has correct value for this case
-        brg->is_oc_scale = wei_scales.get_mask() > 0;
+
+        const auto &wei_scales_mask = wei_scales.get_mask();
+        brg->is_single_wei_scale = wei_scales_mask == 0;
+        brg->is_oc_wei_scales = wei_scales_mask > 0;
+        brg->is_ic_wei_scales = false;
+        brg->wei_scale_k_group_size = wei_scales.get_group(0);
         brg->dt_wei_scales = wei_scales.get_data_type();
     }
 
@@ -807,7 +825,9 @@ int brgemm_cmp(const brgemm_desc_t &lhs, const brgemm_desc_t &rhs) {
     CMP_BRGEMM_FIELD(zp_type_c);
 
     CMP_BRGEMM_FIELD(skip_scales);
-    CMP_BRGEMM_FIELD(is_oc_scale);
+    CMP_BRGEMM_FIELD(is_single_wei_scale);
+    CMP_BRGEMM_FIELD(is_oc_wei_scales);
+    CMP_BRGEMM_FIELD(is_ic_wei_scales);
     CMP_BRGEMM_FIELD(with_src_scales);
     CMP_BRGEMM_FIELD(with_wei_scales);
     CMP_BRGEMM_FIELD(with_dst_scales);

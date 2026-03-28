@@ -398,7 +398,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_apply_post_ops(
 
     if (brg.with_wei_scales) {
         reg_aux_wei_scales.restore();
-        const bool is_single_scale = !brg.is_oc_scale;
+        const bool is_single_scale = brg.is_single_wei_scale;
         if (!is_single_scale) {
             assert(brg.dt_wei_scales == data_type::f32);
             lea(reg_aux_wei_scales,

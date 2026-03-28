@@ -822,9 +822,10 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::apply_post_ops(
         for_(int m = 0; m < m_block; m++)
         for (int n = 0; n < n_block; n++) {
             const auto addr = ptr[aux_reg_wei_scales
-                    + brg_.is_oc_scale * sizeof(float) * (n * brg_.ld_block)];
+                    + brg_.is_oc_wei_scales * sizeof(float)
+                            * (n * brg_.ld_block)];
             const bool is_tail = tail > 0;
-            const bool is_single_scale = !brg_.is_oc_scale;
+            const bool is_single_scale = brg_.is_single_wei_scale;
 
             const auto vmm = vector(m, n);
             const auto vmm_wei_scales = vmm_tmp(0);
@@ -1060,7 +1061,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::loop_by_N(
             }
             if (brg_.with_wei_scales)
                 add(aux_reg_wei_scales,
-                        brg_.is_oc_scale * sizeof(float) * oc_l_offset);
+                        brg_.is_oc_wei_scales * sizeof(float) * oc_l_offset);
         }
     }
     if (nb2_tail > 0) {
@@ -1088,7 +1089,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::loop_by_N(
             }
             if (brg_.with_wei_scales)
                 add(aux_reg_wei_scales,
-                        brg_.is_oc_scale * sizeof(float) * oc_l_offset);
+                        brg_.is_oc_wei_scales * sizeof(float) * oc_l_offset);
         }
     }
     if (nb_tail > 0) {
@@ -1114,7 +1115,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::loop_by_N(
             }
             if (brg_.with_wei_scales)
                 add(aux_reg_wei_scales,
-                        brg_.is_oc_scale * bia_typesize_ * (nb_tail));
+                        brg_.is_oc_wei_scales * bia_typesize_ * (nb_tail));
         }
         add(aux_reg_out, out_typesize_ * (nb_tail));
     }

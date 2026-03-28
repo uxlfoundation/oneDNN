@@ -399,7 +399,8 @@ private:
         return brg.typesize_bias * (n * n_block1() + v * simd_w_);
     }
     int wei_scales_offset(int n, int v) {
-        return sizeof(float) * brg.is_oc_scale * (n * n_block1() + v * simd_w_);
+        return sizeof(float) * brg.is_oc_wei_scales
+                * (n * n_block1() + v * simd_w_);
     }
     size_t comp_offset(int n) { return sizeof(int32_t) * n * n_block1(); }
 

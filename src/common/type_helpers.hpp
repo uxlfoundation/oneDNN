@@ -444,7 +444,9 @@ inline bool sparse_desc_is_equal(
     if (lhs.encoding == sparse_encoding::grouped) {
         ok = ok && lhs.grouped_desc.group_count == rhs.grouped_desc.group_count
                 && lhs.grouped_desc.variable_dim_idx
-                        == rhs.grouped_desc.variable_dim_idx;
+                        == rhs.grouped_desc.variable_dim_idx
+                && lhs.grouped_desc.max_variable_dim
+                        == rhs.grouped_desc.max_variable_dim;
         if (!ok) return false;
     }
 #endif

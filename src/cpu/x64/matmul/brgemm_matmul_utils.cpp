@@ -1860,10 +1860,16 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     // Sets things related to chunks and others
     init_aux_values(bgmmc, src_d, weights_d, dst_d);
 
+    const bool need_store_prfw = bgmmc.N <= 14528
+            && ((bgmmc.M <= 768 && bgmmc.K <= 128)
+                    || bgmmc.K * bgmmc.M <= 49152);
     if (!bgmmc.is_gemv && bm_conf_utils.is_f32() && bgmmc.nthr == 1
-            && is_superset(bgmmc.isa, avx512_core)) {
-        bgmmc.need_loop_store_prefetch = bgmmc.K < 16 && bgmmc.M <= 768
-                && bgmmc.N <= 14528 && bgmmc.N >= 4064;
+            && is_superset(bgmmc.isa, avx512_core) && need_store_prfw) {
+        const bool need_loop_store_prfw
+                = bgmmc.K < 16 && bgmmc.M <= 768 && bgmmc.N >= 4064;
+        bgmmc.hint_prefetchw = need_loop_store_prfw
+                ? brgemm_kernel_prefetchw_t::brgemm_prfw_loop_store
+                : brgemm_kernel_prefetchw_t::brgemm_prfw_store;
     }
 
     bgmmc.use_buffer_reduce

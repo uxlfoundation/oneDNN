@@ -215,7 +215,8 @@ struct dnn_mem_t {
     static benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> init_grouped_md(
             int ndims, const dnnl_dims_t dims, dnnl_data_type_t data_type,
             int variable_dim_idx, dnnl_dim_t group_count,
-            dnnl_data_type_t offsets_dt = dnnl_s32);
+            dnnl_data_type_t offsets_dt = dnnl_s32,
+            dnnl_dim_t max_variable_dim = 0);
 #endif
 
     /* fields */

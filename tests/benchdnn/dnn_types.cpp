@@ -1108,6 +1108,9 @@ std::ostream &operator<<(
                     s << dims[i];
                     if (i != dims.size() - 1) s << ",";
                 }
+                dnnl_dim_t max_var_dim
+                        = sparse_options.get_max_variable_dim(arg);
+                if (max_var_dim > 0) s << ":" << max_var_dim;
                 s << " ";
                 break;
             }

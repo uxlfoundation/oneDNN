@@ -58,6 +58,8 @@ static benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_grouped_md(
     if (prb->sparse_options.get_variable_dim_idx(arg) != 0) return md;
 
     const int64_t group_count = prb->sparse_options.get_group_count();
+    const dnnl_dim_t max_variable_dim
+            = prb->sparse_options.get_max_variable_dim(arg);
 
     // [total_M, K] for SRC
     // [total_M, N] for DST
@@ -67,8 +69,9 @@ static benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_grouped_md(
     dims_2d[1] = (arg == DNNL_ARG_SRC) ? prb->k : prb->n;
 
     // Create memory descriptor with grouped encoding with multiple handles
-    return dnn_mem_t::init_grouped_md(
-            2, dims_2d, dt, /* variable_dim_idx = */ 0, group_count, dnnl_s32);
+    return dnn_mem_t::init_grouped_md(2, dims_2d, dt,
+            /* variable_dim_idx = */ 0, group_count, dnnl_s32,
+            max_variable_dim);
 }
 #endif
 

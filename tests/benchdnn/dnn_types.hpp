@@ -616,10 +616,12 @@ struct sparse_options_t {
         dnnl_dim_t group_count = 0; // total number of grouped blocks
         std::vector<dnnl_dim_t>
                 group_sizes; // sizes for each group along the variable dimension
+        dnnl_dim_t max_variable_dim
+                = 0; // upper bound on per-group size (0 = unknown)
 
         bool is_def() const {
             return variable_dim_idx == -1 && group_count == 0
-                    && group_sizes.empty();
+                    && group_sizes.empty() && max_variable_dim == 0;
         }
     };
 #endif
@@ -634,12 +636,13 @@ struct sparse_options_t {
     }
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
     void set_grouped(int arg, int var_dim_idx, dnnl_dim_t count,
-            const std::vector<dnnl_dim_t> &sizes) {
+            const std::vector<dnnl_dim_t> &sizes, dnnl_dim_t max_var_dim = 0) {
         add(arg, dnnl_grouped, 0.0f);
         grouped_data_t gd;
         gd.variable_dim_idx = var_dim_idx;
         gd.group_count = count;
         gd.group_sizes = sizes;
+        gd.max_variable_dim = max_var_dim;
         grouped_data_[arg] = gd;
     }
 
@@ -657,6 +660,10 @@ struct sparse_options_t {
         static const std::vector<dnnl_dim_t> empty;
         const auto it = grouped_data_.find(arg);
         return it == grouped_data_.end() ? empty : it->second.group_sizes;
+    }
+    dnnl_dim_t get_max_variable_dim(int arg = DNNL_ARG_SRC) const {
+        const auto it = grouped_data_.find(arg);
+        return it == grouped_data_.end() ? 0 : it->second.max_variable_dim;
     }
 #endif
 

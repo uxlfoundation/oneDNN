@@ -144,7 +144,7 @@ void align_src_dst_offset(GeneratorT *host, ngen_register_scope_t &scope,
         auto src_stride_bytes = src.hs() * src_type_size;
         auto dst_stride_bytes = dst.hs() * dst_type_size;
         needs_stride_alignment = (src_stride_bytes != dst_stride_bytes);
-        src_stride = dst_stride_bytes / src_type_size;
+        src_stride = std::max(1, dst_stride_bytes / src_type_size);
         if (align_bf) {
             needs_stride_alignment = true;
             src_stride = dst.hs();

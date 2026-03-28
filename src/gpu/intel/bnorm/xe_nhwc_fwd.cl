@@ -37,16 +37,16 @@ __kernel void xe_calc_mean_var_nhwc(__global DATA_T *src,
         volatile __global atomic_float *mean,
         volatile __global atomic_float *variance) {
 
-    const int mb = GWS_GET_STAT_MB();
-    const int c = GWS_GET_STAT_IC();
-    const int sp_block_idx = GWS_GET_STAT_SP();
+    const off_t mb = GWS_GET_STAT_MB();
+    const off_t c = GWS_GET_STAT_IC();
+    const off_t sp_block_idx = GWS_GET_STAT_SP();
 
-    const int ic_block_offset = (c / SG_SIZE) * IC_BLOCK;
-    const int group_c_offset
+    const off_t ic_block_offset = (c / SG_SIZE) * IC_BLOCK;
+    const off_t group_c_offset
             = REDUCE_STAT_NBLOCKS * ic_block_offset + sp_block_idx * SG_SIZE;
-    const int ver_offs = REDUCE_STAT_NBLOCKS * IC;
+    const off_t ver_offs = REDUCE_STAT_NBLOCKS * IC;
 
-    const int src_off = ic_block_offset + sp_block_idx * STAT_SP_BLOCK * IC;
+    const off_t src_off = ic_block_offset + sp_block_idx * STAT_SP_BLOCK * IC;
 
     src += src_off;
 
@@ -96,7 +96,7 @@ __kernel void xe_calc_mean_var_nhwc(__global DATA_T *src,
             sum_sq, local_sum, local_sum_sq);
 #else
     for (int sg = 0; sg < IC_BLOCK_SGROUPS; ++sg) {
-        const int reduce_off
+        const off_t reduce_off
                 = group_c_offset + sg * SG_SIZE * REDUCE_STAT_NBLOCKS;
         STORE_FLOAT_1x16(&reduce_temp[reduce_off], sum[sg].s0);
         STORE_FLOAT_1x16(&reduce_temp[ver_offs + reduce_off], sum_sq[sg].s0);
@@ -110,14 +110,14 @@ NAMED_KERNEL_ATTR(CALC)
 __kernel void xe_calc_mean_nhwc(__global DATA_T *src,
         __global float *reduce_temp, volatile __global atomic_float *mean) {
 
-    const int mb = GWS_GET_STAT_MB();
-    const int c = GWS_GET_STAT_IC();
-    const int sp_block_idx = GWS_GET_STAT_SP();
-    const int ic_block_offset = (c / SG_SIZE) * IC_BLOCK;
-    const int group_c_offset
+    const off_t mb = GWS_GET_STAT_MB();
+    const off_t c = GWS_GET_STAT_IC();
+    const off_t sp_block_idx = GWS_GET_STAT_SP();
+    const off_t ic_block_offset = (c / SG_SIZE) * IC_BLOCK;
+    const off_t group_c_offset
             = REDUCE_STAT_NBLOCKS * ic_block_offset + sp_block_idx * SG_SIZE;
 
-    const int src_off = ic_block_offset + sp_block_idx * STAT_SP_BLOCK * IC;
+    const off_t src_off = ic_block_offset + sp_block_idx * STAT_SP_BLOCK * IC;
     src += src_off;
 
     float v_mean[IC_BLOCK_SGROUPS] = {0.0f};
@@ -157,7 +157,7 @@ __kernel void xe_calc_mean_nhwc(__global DATA_T *src,
     xe_calc_fused_reduction(mean, ic_block_offset, v_mean, local_sum);
 #else
     for (int sg = 0; sg < IC_BLOCK_SGROUPS; ++sg) {
-        const int reduce_off
+        const off_t reduce_off
                 = group_c_offset + sg * SG_SIZE * REDUCE_STAT_NBLOCKS;
         STORE_FLOAT_1x16(&reduce_temp[reduce_off], v_mean[sg]);
     }
@@ -168,16 +168,16 @@ NAMED_KERNEL_ATTR(CALC)
 __kernel void xe_calc_variance_nhwc(__global DATA_T *src, __global float *mean,
         __global float *reduce_temp, volatile __global atomic_float *variance) {
 
-    const int mb = GWS_GET_STAT_MB();
-    const int c = GWS_GET_STAT_IC();
-    const int sp_block_idx = GWS_GET_STAT_SP();
-    const int ic_block_offset = (c / SG_SIZE) * IC_BLOCK;
-    const int group_c_offset
+    const off_t mb = GWS_GET_STAT_MB();
+    const off_t c = GWS_GET_STAT_IC();
+    const off_t sp_block_idx = GWS_GET_STAT_SP();
+    const off_t ic_block_offset = (c / SG_SIZE) * IC_BLOCK;
+    const off_t group_c_offset
             = REDUCE_STAT_NBLOCKS * ic_block_offset + sp_block_idx * SG_SIZE;
 
     reduce_temp += REDUCE_STAT_NBLOCKS * PADDED_IC;
     mean += ic_block_offset;
-    const int src_off = ic_block_offset + sp_block_idx * STAT_SP_BLOCK * IC;
+    const off_t src_off = ic_block_offset + sp_block_idx * STAT_SP_BLOCK * IC;
     src += src_off;
 
     float v_mean[IC_BLOCK_SGROUPS];
@@ -227,7 +227,7 @@ __kernel void xe_calc_variance_nhwc(__global DATA_T *src, __global float *mean,
     xe_calc_fused_reduction(variance, ic_block_offset, v_var, local_sum);
 #else
     for (int sg = 0; sg < IC_BLOCK_SGROUPS; ++sg) {
-        const int reduce_off
+        const off_t reduce_off
                 = group_c_offset + sg * SG_SIZE * REDUCE_STAT_NBLOCKS;
         STORE_FLOAT_1x16(&reduce_temp[reduce_off], v_var[sg]);
     }
@@ -242,16 +242,16 @@ __kernel void xe_bnorm_fwd_nhwc(__global DATA_T *src, __global float *mean,
         __global float *scaleshift, __global float *shift, __global char *ws,
         float eps, __global DATA_T *src_add, float relu_alpha) {
 
-    const int n = GWS_GET_MB();
-    const int c = GWS_GET_IC();
-    const int sp = GWS_GET_SP() * UPDATE_SP_BLOCK;
+    const off_t n = GWS_GET_MB();
+    const off_t c = GWS_GET_IC();
+    const off_t sp = GWS_GET_SP() * UPDATE_SP_BLOCK;
 
-    const int ic_block_offset = (c / SG_SIZE) * IC_BLOCK;
+    const off_t ic_block_offset = (c / SG_SIZE) * IC_BLOCK;
     mean += ic_block_offset;
     variance += ic_block_offset;
     shift += ic_block_offset;
     scaleshift += ic_block_offset;
-    const uint d_off = sp * IC + ic_block_offset;
+    const off_t d_off = sp * IC + ic_block_offset;
 
     src += d_off;
 #if FUSE_BN_ADD_RELU

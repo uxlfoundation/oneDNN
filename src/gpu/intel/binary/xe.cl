@@ -25,7 +25,7 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
         __global DST_DATA_T *dst POST_OP_ARGS, __global float *src0_scale,
         __global float *src1_scale) {
 
-    int dims0[6] = {0};
+    off_t dims0[6] = {0};
     int local_id = get_sub_group_local_id();
 
     unsigned mid_dim = GWS_GET_MIXED_DIM();
@@ -45,20 +45,21 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
     if (dims0[0] > (DST_D0 - 1)) { return; }
 #endif
 
-    int src0_off = SRC0_OFF(
+    off_t src0_off = SRC0_OFF(
             dims0[0], dims0[1], dims0[2], dims0[3], dims0[4], dims0[5]);
     src0 += src0_off;
 
-    int src1_off = SRC1_OFF(dims0[0] * (!BCAST_DIM0), dims0[1] * (!BCAST_DIM1),
-            dims0[2] * (!BCAST_DIM2), dims0[3] * (!BCAST_DIM3),
-            dims0[4] * (!BCAST_DIM4), dims0[5] * (!BCAST_DIM5));
+    off_t src1_off
+            = SRC1_OFF(dims0[0] * (!BCAST_DIM0), dims0[1] * (!BCAST_DIM1),
+                    dims0[2] * (!BCAST_DIM2), dims0[3] * (!BCAST_DIM3),
+                    dims0[4] * (!BCAST_DIM4), dims0[5] * (!BCAST_DIM5));
     src1 += src1_off;
 
-    int dst_off = DST_OFF(
+    off_t dst_off = DST_OFF(
             dims0[0], dims0[1], dims0[2], dims0[3], dims0[4], dims0[5]);
     dst += dst_off;
 #if IS_TERNARY
-    int src2_off = DST_OFF(
+    off_t src2_off = DST_OFF(
             dims0[0], dims0[1], dims0[2], dims0[3], dims0[4], dims0[5]);
     src2 += src2_off;
 #endif
@@ -107,7 +108,7 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
 
 #if HAS_TAIL
     unsigned gws_dim = get_global_id(0);
-    int po_dims0[6] = {0};
+    off_t po_dims0[6] = {0};
     po_dims0[5] = gws_dim % DST_D5;
     gws_dim /= DST_D5;
     po_dims0[4] = gws_dim % DST_D4;
@@ -121,7 +122,7 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
     if (gws_dim >= DST_D0) { return; }
     po_dims0[0] = gws_dim;
 #else
-    int po_dims0[6]
+    off_t po_dims0[6]
             = {dims0[0], dims0[1], dims0[2], dims0[3], dims0[4], dims0[5]};
     po_dims0[NDIMS - 1] += local_id;
 #endif
@@ -154,12 +155,12 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
 
     int sglid = get_sub_group_local_id();
 
-    const int d0 = GWS_GET_D0();
-    const int d1 = GWS_GET_D1();
-    const int d2 = GWS_GET_D2();
-    const int d3 = GWS_GET_D3();
-    const int d4 = GWS_GET_D3();
-    const int d5 = GWS_GET_D3();
+    const off_t d0 = GWS_GET_D0();
+    const off_t d1 = GWS_GET_D1();
+    const off_t d2 = GWS_GET_D2();
+    const off_t d3 = GWS_GET_D3();
+    const off_t d4 = GWS_GET_D3();
+    const off_t d5 = GWS_GET_D3();
 
     const int d0_block = GWS_GET_D0_BLOCK();
     const int d1_block = GWS_GET_D1_BLOCK();
@@ -180,10 +181,10 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
                 continue;
             if (SRC0_D1 % d1_inner_block != 0 && d1 + d1_inner >= SRC0_D1)
                 continue;
-            int src0_off;
-            int src1_off;
+            off_t src0_off;
+            off_t src1_off;
 #if IS_TERNARY
-            int src2_off;
+            off_t src2_off;
 #endif
             if (SRC0_S3_0 == 1) {
                 // abcd layout.
@@ -260,7 +261,7 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
         DST_DATA8_T res_tmp;
         for (int i = 0; i < 8; i++)
             res_tmp[i] = res_all[sglid][d + i];
-        int dst_off = DST_OFF(d0, d1, d2, d3 + d, 0, 0);
+        off_t dst_off = DST_OFF(d0, d1, d2, d3 + d, 0, 0);
 
         DST_BLOCK_WRITE8(&dst[dst_off], res_tmp);
     }
@@ -274,7 +275,7 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
         __global DST_DATA_T *dst POST_OP_ARGS, __global float *src0_scale,
         __global float *src1_scale) {
     // since gws = no. of total elems in A, id will be the logical offset
-    int dims0[6] = {0};
+    off_t dims0[6] = {0};
     dims0[0] = GWS_GET_D0();
     dims0[1] = GWS_GET_D1();
     dims0[2] = GWS_GET_D2();
@@ -282,15 +283,15 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
     dims0[4] = GWS_GET_D4();
     dims0[5] = GWS_GET_D5();
 
-    int src0_off = SRC0_OFF(
+    off_t src0_off = SRC0_OFF(
             dims0[0], dims0[1], dims0[2], dims0[3], dims0[4], dims0[5]);
-    int dst_off = DST_OFF(
+    off_t dst_off = DST_OFF(
             dims0[0], dims0[1], dims0[2], dims0[3], dims0[4], dims0[5]);
-    int src1_off = SRC1_OFF(
+    off_t src1_off = SRC1_OFF(
             dims0[0], dims0[1], dims0[2], dims0[3], dims0[4], dims0[5]);
 
 #if IS_TERNARY
-    int src2_off = SRC2_OFF(
+    off_t src2_off = SRC2_OFF(
             dims0[0], dims0[1], dims0[2], dims0[3], dims0[4], dims0[5]);
 #endif
     int sub_grp_id = get_sub_group_local_id();
@@ -367,7 +368,7 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
         __global float *src1_scale) {
 
     // since gws = no. of total elems in A, id will be the logical offset
-    int dims0[6] = {0};
+    off_t dims0[6] = {0};
     dims0[0] = GWS_GET_D0();
     dims0[1] = GWS_GET_D1();
     dims0[2] = GWS_GET_D2();
@@ -376,16 +377,17 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
     dims0[5] = GWS_GET_D5();
 
 #if IS_SRC1_BROADCAST
-    int src0_off = SRC0_OFF(
+    off_t src0_off = SRC0_OFF(
             dims0[0], dims0[1], dims0[2], dims0[3], dims0[4], dims0[5]);
     src0 += src0_off;
-    int dst_off = DST_OFF(
+    off_t dst_off = DST_OFF(
             dims0[0], dims0[1], dims0[2], dims0[3], dims0[4], dims0[5]);
     dst += dst_off;
 
-    int src1_off = SRC1_OFF(dims0[0] * (!BCAST_DIM0), dims0[1] * (!BCAST_DIM1),
-            dims0[2] * (!BCAST_DIM2), dims0[3] * (!BCAST_DIM3),
-            dims0[4] * (!BCAST_DIM4), dims0[5] * (!BCAST_DIM5));
+    off_t src1_off
+            = SRC1_OFF(dims0[0] * (!BCAST_DIM0), dims0[1] * (!BCAST_DIM1),
+                    dims0[2] * (!BCAST_DIM2), dims0[3] * (!BCAST_DIM3),
+                    dims0[4] * (!BCAST_DIM4), dims0[5] * (!BCAST_DIM5));
     src1 += src1_off;
 #if NVECT == 1
     float d = 0;
@@ -471,7 +473,7 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
     int channel_block = get_sub_group_id();
     const int sub_group_size = 16;
     const int CHANNELS = SRC1_PD1;
-    int src0_off, src1_off;
+    off_t src0_off, src1_off;
 
 #if IS_SRC0_BLOCKED
     src0_off = SRC0_OFF(
@@ -497,7 +499,7 @@ __kernel void xe_binary(__global SRC0_DATA_T *src0, __global SRC1_DATA_T *src1,
     src0 += src0_off;
 #endif
 
-    int dst_off = DST_OFF(
+    off_t dst_off = DST_OFF(
             dims0[0], dims0[1], dims0[2], dims0[3], dims0[4], dims0[5]);
     dst += dst_off;
 

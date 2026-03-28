@@ -22,17 +22,17 @@
 KERNEL_ATTR
 __kernel void ref_resampling_fwd(
         __global const DATA_T *src, __global DST_DATA_T *dst POST_OP_ARGS) {
-    const uint mb = GWS_GET_MB();
-    const uint c = GWS_GET_C();
-    const uint od = GWS_GET_OD();
-    const uint oh = GWS_GET_OH();
-    const uint ow = GWS_GET_OW();
+    const off_t mb = GWS_GET_MB();
+    const off_t c = GWS_GET_C();
+    const off_t od = GWS_GET_OD();
+    const off_t oh = GWS_GET_OH();
+    const off_t ow = GWS_GET_OW();
     const float id = (od + .5f) * ID / OD;
     const float ih = (oh + .5f) * IH / OH;
     const float iw = (ow + .5f) * IW / OW;
 
     float result;
-    const uint dst_index = DST_OFF(mb, c, od, oh, ow);
+    const off_t dst_index = DST_OFF(mb, c, od, oh, ow);
 
     if (mb >= DST_D0 || c >= DST_D1) {
         dst[dst_index] = TO_DST(0.0f);
@@ -40,7 +40,7 @@ __kernel void ref_resampling_fwd(
     }
 
 #if RESAMPLING_ALG_NEAREST
-    const uint src_index = SRC_OFF(mb, c, (uint)id, (uint)ih, (uint)iw);
+    const off_t src_index = SRC_OFF(mb, c, (uint)id, (uint)ih, (uint)iw);
     result = CONVERT_FLOAT_T(src[src_index]);
 #else
     const int id0 = max((int)floor(id - .5f), 0);
@@ -114,12 +114,12 @@ __kernel void ref_resampling_bwd(
 #define LE(x, fo, fi, lim) min(CEIL(L(x + 1, fo, fi)), (int)lim)
 #define RE(x, fo, fi, lim) \
     min((L(x, fo, fi) < 0 ? 0 : (int)(L(x, fo, fi)) + 1), (int)lim)
-    const uint mb = GWS_GET_MB();
-    const uint c = GWS_GET_C();
-    const uint id = GWS_GET_ID();
-    const uint ih = GWS_GET_IH();
-    const uint iw = GWS_GET_IW();
-    const uint src_index = SRC_OFF(mb, c, id, ih, iw);
+    const off_t mb = GWS_GET_MB();
+    const off_t c = GWS_GET_C();
+    const off_t id = GWS_GET_ID();
+    const off_t ih = GWS_GET_IH();
+    const off_t iw = GWS_GET_IW();
+    const off_t src_index = SRC_OFF(mb, c, id, ih, iw);
 
     if (mb >= DST_D0 || c >= DST_D1) {
         diff_src[src_index] = TO_DST(0.f);
@@ -136,7 +136,7 @@ __kernel void ref_resampling_bwd(
     for (int i = od_start; i < od_end; i++) {
         for (int j = oh_start; j < oh_end; j++) {
             for (int k = ow_start; k < ow_end; k++) {
-                const int dst_index = DST_OFF(mb, c, i, j, k);
+                const off_t dst_index = DST_OFF(mb, c, i, j, k);
                 src_val += DST_TO_REF(diff_dst[dst_index]);
             }
         }
@@ -167,8 +167,8 @@ __kernel void ref_resampling_bwd(
                 for (int i = od_start[c1]; i < od_end[c1]; i++) {
                     for (int j = oh_start[c2]; j < oh_end[c2]; j++) {
                         for (int k = ow_start[c3]; k < ow_end[c3]; k++) {
-                            float dst_val = DST_TO_REF(
-                                    diff_dst[DST_OFF(mb, c, i, j, k)]);
+                            const off_t dst_index = DST_OFF(mb, c, i, j, k);
+                            float dst_val = DST_TO_REF(diff_dst[dst_index]);
                             float d = L(i, ID, OD);
                             float h = L(j, IH, OH);
                             float w = L(k, IW, OW);

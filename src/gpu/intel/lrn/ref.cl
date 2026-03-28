@@ -25,14 +25,14 @@ __kernel void ref_lrn_fwd(__global const DATA_T *src,
         __global DEF_ACC_DATA_T *ws,
 #endif
         __global DATA_T *dst) {
-    const uint mb = GWS_GET_MB();
-    const uint ic = GWS_GET_IC();
-    const uint id = GWS_GET_ID();
-    const uint ih = GWS_GET_IH();
-    const uint iw = GWS_GET_IW();
+    const off_t mb = GWS_GET_MB();
+    const off_t ic = GWS_GET_IC();
+    const off_t id = GWS_GET_ID();
+    const off_t ih = GWS_GET_IH();
+    const off_t iw = GWS_GET_IW();
 
-    const uint src_index = SRC_OFF(mb, ic, id, ih, iw);
-    const uint dst_index = DST_OFF(mb, ic, id, ih, iw);
+    const off_t src_index = SRC_OFF(mb, ic, id, ih, iw);
+    const off_t dst_index = DST_OFF(mb, ic, id, ih, iw);
 
     DEF_ACC_DATA_T sum = 0.0f;
 
@@ -88,14 +88,14 @@ KERNEL_ATTR
 __kernel void ref_lrn_bwd(__global const DATA_T *src,
         __global const DATA_T *diff_dst, __global DEF_ACC_DATA_T *ws,
         __global DATA_T *diff_src) {
-    const uint mb = GWS_GET_MB();
-    const uint ic = GWS_GET_IC();
-    const uint id = GWS_GET_ID();
-    const uint ih = GWS_GET_IH();
-    const uint iw = GWS_GET_IW();
+    const off_t mb = GWS_GET_MB();
+    const off_t ic = GWS_GET_IC();
+    const off_t id = GWS_GET_ID();
+    const off_t ih = GWS_GET_IH();
+    const off_t iw = GWS_GET_IW();
 
-    const uint src_index = SRC_OFF(mb, ic, id, ih, iw);
-    const uint dst_index = DST_OFF(mb, ic, id, ih, iw);
+    const off_t src_index = SRC_OFF(mb, ic, id, ih, iw);
+    const off_t dst_index = DST_OFF(mb, ic, id, ih, iw);
     const DEF_ACC_DATA_T num_elements_div = NUM_ELEMENTS_DIV;
     DEF_ACC_DATA_T B = 0;
 
@@ -127,7 +127,7 @@ __kernel void ref_lrn_bwd(__global const DATA_T *src,
     for (int k = d_start; k < d_end; ++k) {
         for (int j = h_start; j < h_end; ++j) {
             for (int i = w_start; i < w_end; ++i) {
-                int data_off = SRC_OFF(mb, ic, k, j, i);
+                off_t data_off = SRC_OFF(mb, ic, k, j, i);
                 DEF_ACC_DATA_T val = load(val, src + data_off);
                 DEF_ACC_DATA_T omega = ws[data_off];
                 DEF_ACC_DATA_T tmp = (DEF_ACC_DATA_T)1.0f

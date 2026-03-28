@@ -80,9 +80,16 @@
 --flags=,GCH,CH
 --tag=ba,AB16b16a
 64x64
+1x33554432
 --reset
 --dir=BWD_DW
 --flags=CH
 --tag=ab
 257x32
 
+#large tensor test-case
+--reset
+--dir=FWD_D,BWD_DW
+--flags=,GCH,CH
+--tag=ba,AB16b16a
+1x33554432

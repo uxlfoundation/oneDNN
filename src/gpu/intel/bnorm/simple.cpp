@@ -204,6 +204,7 @@ status_t simple_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
 
 status_t simple_fwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
+    kernel_ctx.register_buffer_size(*src_md());
     CHECK(init_kernel_ctx_common(kernel_ctx, conf, dispatch_calc_stat,
             dispatch_reduce_stat, dispatch, off));
     kernel_ctx.define_int("IS_FWD", 1);
@@ -344,6 +345,7 @@ status_t simple_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
 
 status_t simple_bwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
+    kernel_ctx.register_buffer_size(*diff_src_md());
     CHECK(init_kernel_ctx_common(kernel_ctx, conf, dispatch_calc_stat,
             dispatch_reduce_stat, dispatch, off));
     kernel_ctx.define_int("IC_BLOCK", 16);

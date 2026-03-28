@@ -206,6 +206,8 @@ status_t vectorized_bwd_t::pd_t::init_kernel_ctx(
     kernel_ctx.set_data_type(diff_dst_md()->data_type);
     kernel_ctx.define_int("IS_BWD", 1);
     kernel_ctx.require_stateless_addressing(has_large_buffers());
+    kernel_ctx.register_buffer_size(*diff_dst_md());
+    kernel_ctx.register_buffer_size(*diff_src_md());
 
     status_t status = init_kernel_ctx_common(kernel_ctx, conf, desc());
 

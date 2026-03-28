@@ -110,3 +110,7 @@
 --reset
 --dt=bf16 --tag=nhwc --flags=CH mb4ic160ih160
 
+# Large-axis index stress (off_t overflow coverage)
+--reset
+--batch=shapes_regressions
+

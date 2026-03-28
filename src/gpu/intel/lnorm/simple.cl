@@ -23,7 +23,7 @@ __kernel void simple_lnorm_fwd(__global DATA_T *src, __global float *mean,
         __global WEI_DATA_T *scale, __global WEI_DATA_T *shift, float eps,
         __global float *src_scale, __global float *dst_scale) {
 
-    int x[6] = {0};
+    off_t x[6] = {0};
     x[0] = GWS_GET_X0();
     x[1] = GWS_GET_X1();
     x[2] = GWS_GET_X2();
@@ -33,13 +33,13 @@ __kernel void simple_lnorm_fwd(__global DATA_T *src, __global float *mean,
         int local_id = get_sub_group_local_id();
         for (int c = 0; c < C; c += SUB_GROUP_SIZE) {
             x[NDIMS - 1] = c + local_id;
-            int dst_off = DST_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
+            off_t dst_off = DST_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
             dst[dst_off] = TO_DST(CONVERT_DATA_T(0.f));
         }
         return;
     }
 
-    int s_off = STAT_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
+    off_t s_off = STAT_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
 
     float v_mean = (CALCULATE_STATS || SKIP_MEAN) ? 0 : mean[s_off];
     float v_variance = CALCULATE_STATS ? 0 : variance[s_off];
@@ -48,7 +48,7 @@ __kernel void simple_lnorm_fwd(__global DATA_T *src, __global float *mean,
         VECT_FLOAT_T v_acc = 0;
         for (int c = 0; c < C; c += SUB_GROUP_SIZE * VECT_DT_N) {
             x[NDIMS - 1] = c;
-            int src_off = SRC_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
+            off_t src_off = SRC_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
             v_acc += CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(VECT_BLOCK_READ(
                     (const __global BLOCK_DATA_T *)&src[src_off])));
         }
@@ -70,7 +70,7 @@ __kernel void simple_lnorm_fwd(__global DATA_T *src, __global float *mean,
 
         for (int c = 0; c < C; c += SUB_GROUP_SIZE * VECT_DT_N) {
             x[NDIMS - 1] = c;
-            int src_off = SRC_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
+            off_t src_off = SRC_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
 
             m = CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(VECT_BLOCK_READ(
                     (const __global BLOCK_DATA_T *)&src[src_off])));
@@ -98,8 +98,8 @@ __kernel void simple_lnorm_fwd(__global DATA_T *src, __global float *mean,
         float sv = shift ? CONVERT_WEI_FLOAT_T(shift[c + local_id]) : 0.0f;
 
         x[NDIMS - 1] = c + local_id;
-        int src_off = SRC_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
-        int dst_off = DST_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
+        off_t src_off = SRC_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
+        off_t dst_off = DST_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
 
         float d = (sm * (SRC_TO_REF(src[src_off]) - v_mean) + sv);
 #if WITH_SRC_SCALES
@@ -127,13 +127,13 @@ __kernel void simple_lnorm_bwd_scaleshift(__global SRC_DATA_T *src,
         __global DATA_T *diff_dst, __global float *diff_scale,
         __global float *diff_shift, float eps) {
 
-    const int c = GWS_GET_C();
+    const off_t c = GWS_GET_C();
     const int n_chunk_idx = GWS_GET_N();
-    const int n_start = n_chunk_idx * N_CHUNK_SIZE;
-    const int n_end = n_start + N_CHUNK_SIZE;
+    const off_t n_start = n_chunk_idx * N_CHUNK_SIZE;
+    const off_t n_end = n_start + N_CHUNK_SIZE;
 
     // diff_scale and diff_shift use the same tensor in scratchpad
-    const int shift_off = N_CHUNKS * C;
+    const off_t shift_off = N_CHUNKS * C;
     diff_shift += shift_off;
 
     vector_float diff_gamma_vect = 0;
@@ -144,11 +144,11 @@ __kernel void simple_lnorm_bwd_scaleshift(__global SRC_DATA_T *src,
         const vector_float variance_vect = vector_load(variance[n_off]);
         const vector_float inv_sqrt_variance = rsqrt(variance_vect + eps);
 #if NDIMS == 2
-        const int src_off = SRC_OFF(n_off, c, 0, 0, 0, 0);
-        const int dst_off = DST_OFF(n_off, c, 0, 0, 0, 0);
+        const off_t src_off = SRC_OFF(n_off, c, 0, 0, 0, 0);
+        const off_t dst_off = DST_OFF(n_off, c, 0, 0, 0, 0);
 #else
-        const int src_off = SRC_OFF(0, n_off, c, 0, 0, 0);
-        const int dst_off = DST_OFF(0, n_off, c, 0, 0, 0);
+        const off_t src_off = SRC_OFF(0, n_off, c, 0, 0, 0);
+        const off_t dst_off = DST_OFF(0, n_off, c, 0, 0, 0);
 #endif
         const vector_float src_vect = convert_vector_src_to_float(
                 as_vector_src_data_t(sub_group_read(
@@ -173,7 +173,7 @@ __kernel void simple_lnorm_bwd_scaleshift(__global SRC_DATA_T *src,
     }
 #endif
 
-    const int result_offset = n_chunk_idx * C + c;
+    const off_t result_offset = n_chunk_idx * C + c;
     if (USE_SCALE)
         intel_sub_group_block_write((__global uint *)&diff_scale[result_offset],
                 as_uint(diff_gamma));
@@ -186,7 +186,7 @@ NAMED_KERNEL_ATTR(SCALESHIFT_FINALIZE)
 __kernel void simple_lnorm_bwd_scaleshift_final(__global float *tmp_reduce_mem,
         __global WEI_DATA_T *diff_scale, __global WEI_DATA_T *diff_shift) {
     const int c = GWS_GET_C_finalize();
-    const int diff_shift_off = N_CHUNKS * C;
+    const off_t diff_shift_off = N_CHUNKS * C;
     __global float *tmp_diff_scale = tmp_reduce_mem;
     // diff_scale and diff_shift use the same tensor in scratchpad
     __global float *tmp_diff_shift = tmp_reduce_mem + diff_shift_off;
@@ -195,7 +195,7 @@ __kernel void simple_lnorm_bwd_scaleshift_final(__global float *tmp_reduce_mem,
     float diff_beta = 0;
 
     for (int n_chunk_idx = 0; n_chunk_idx < N_CHUNKS; n_chunk_idx++) {
-        const int result_off = n_chunk_idx * C + c;
+        const off_t result_off = n_chunk_idx * C + c;
         diff_gamma += tmp_diff_scale[result_off];
         diff_beta += tmp_diff_shift[result_off];
     }
@@ -209,13 +209,13 @@ KERNEL_ATTR
 __kernel void simple_lnorm_bwd(__global DATA_T *src, __global float *mean,
         __global float *variance, __global DATA_T *diff_dst,
         __global WEI_DATA_T *scale, __global DATA_T *diff_src, float eps) {
-    int x[6] = {0};
+    off_t x[6] = {0};
     x[0] = GWS_GET_X0();
     x[1] = GWS_GET_X1();
     x[2] = GWS_GET_X2();
     x[3] = GWS_GET_X3();
 
-    const int s_off = STAT_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
+    const off_t s_off = STAT_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
     const float mean_val = SKIP_MEAN ? 0 : mean[s_off];
     const float inv_sqrt_variance = rsqrt(variance[s_off] + eps);
 
@@ -227,8 +227,8 @@ __kernel void simple_lnorm_bwd(__global DATA_T *src, __global float *mean,
             VECT_FLOAT_T gamma = 1.0f;
             if (scale) { gamma = LOAD_VECT_WEI(&scale[c]); }
             x[NDIMS - 1] = c;
-            const int src_off = SRC_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
-            const int dst_off = DST_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
+            const off_t src_off = SRC_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
+            const off_t dst_off = DST_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
 
             const VECT_FLOAT_T src_vect
                     = CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(VECT_BLOCK_READ(
@@ -258,8 +258,8 @@ __kernel void simple_lnorm_bwd(__global DATA_T *src, __global float *mean,
         VECT_FLOAT_T gamma = 1.0f;
         if (scale) { gamma = LOAD_VECT_WEI(&scale[c]); }
         x[NDIMS - 1] = c;
-        const int src_off = SRC_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
-        const int dst_off = DST_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
+        const off_t src_off = SRC_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
+        const off_t dst_off = DST_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
 
         const VECT_FLOAT_T src_vect = CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(
                 VECT_BLOCK_READ((const __global BLOCK_DATA_T *)&src[src_off])));

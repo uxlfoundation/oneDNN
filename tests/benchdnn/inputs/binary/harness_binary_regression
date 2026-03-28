@@ -7,3 +7,6 @@
 
 # Mixed src1/post-op src broadcast
 --reset --attr-post-ops=add:f32:2 1x17:1x1
+
+# Large-axis index stress
+--reset --allow-enum-tags-only=0 --alg=ADD --stag=abcd:abcd --dtag=abcd --sdt=f16:f16 --ddt=f16 1x1x512x65536:1x1x512x65536

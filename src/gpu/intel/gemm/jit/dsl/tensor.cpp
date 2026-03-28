@@ -18,19 +18,12 @@
 #include "dsl/ir/ir.hpp"
 #include "dsl/ir/pass/simplify.hpp"
 
+#include <algorithm>
+
 GEMMSTONE_NAMESPACE_START
 namespace dsl {
 
 namespace layout {
-
-std::vector<block_t> remove_size_1_blocks(const std::vector<block_t> &blocks) {
-    std::vector<block_t> res;
-    for (auto &b : blocks) {
-        if (b.size == 1) continue;
-        res.push_back(b);
-    }
-    return res;
-}
 
 std::vector<block_t> merge_blocks(const std::vector<block_t> &blocks) {
     if (blocks.empty()) return {};
@@ -49,10 +42,43 @@ std::vector<block_t> merge_blocks(const std::vector<block_t> &blocks) {
     return res;
 }
 
+// Removes size-1 blocks and pre-merges stride-contiguous blocks sharing the
+// same index, regardless of their position in the input.
+std::vector<block_t> prepare_blocks(const std::vector<block_t> &blocks) {
+    std::vector<block_t> sorted;
+    sorted.reserve(blocks.size());
+    for (auto &b : blocks) {
+        if (b.size == 1) continue;
+        sorted.push_back(b);
+    }
+    if (sorted.size() <= 1) return sorted;
+
+    std::sort(sorted.begin(), sorted.end(),
+            [](const block_t &a, const block_t &b) {
+        if (a.idx != b.idx) return a.idx < b.idx;
+        if (a.stride.is_fixed() != b.stride.is_fixed())
+            return a.stride.is_fixed();
+        if (!a.stride.is_fixed()) return false;
+        return (int64_t)a.stride < (int64_t)b.stride;
+    });
+
+    std::vector<block_t> res;
+    for (const auto &b : sorted) {
+        if (!res.empty() && res.back().idx == b.idx
+                && res.back().stride.is_fixed() && b.stride.is_fixed()
+                && res.back().stride * res.back().size == b.stride) {
+            res.back().size *= b.size;
+        } else {
+            res.push_back(b);
+        }
+    }
+    return res;
+}
+
 std::vector<block_t> normalize_blocks(const std::vector<block_t> &_blocks) {
     if (_blocks.empty()) return {};
 
-    auto blocks = remove_size_1_blocks(_blocks);
+    auto blocks = prepare_blocks(_blocks);
 
     // Normalize blocks order: select min-stride block and put all preceding
     // same-index blocks before it.
@@ -98,7 +124,7 @@ std::vector<block_t> normalize_blocks(const std::vector<block_t> &_blocks) {
         }
     }
 
-    return merge_blocks(ordered);
+    return ordered;
 }
 
 tile_iterator_t &tile_iterator_t::operator++() {

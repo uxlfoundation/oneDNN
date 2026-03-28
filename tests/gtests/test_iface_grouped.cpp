@@ -133,6 +133,54 @@ TEST(iface_grouped_test_t, TestGroupedMDComparison) {
     ASSERT_NO_THROW(md1 = memory::desc::grouped({4, K}, dt::f32, 0, ngroups));
     ASSERT_NO_THROW(md2 = memory::desc::grouped({4, K}, dt::f32, 0, 3));
     ASSERT_NE(md1, md2);
+
+    // different max_variable_dim
+    ASSERT_NO_THROW(md1
+            = memory::desc::grouped({4, K}, dt::f32, 0, ngroups, dt::s32, 2));
+    ASSERT_NO_THROW(md2
+            = memory::desc::grouped({4, K}, dt::f32, 0, ngroups, dt::s32, 3));
+    ASSERT_NE(md1, md2);
+
+    // same max_variable_dim
+    ASSERT_NO_THROW(md1
+            = memory::desc::grouped({4, K}, dt::f32, 0, ngroups, dt::s32, 2));
+    ASSERT_NO_THROW(md2
+            = memory::desc::grouped({4, K}, dt::f32, 0, ngroups, dt::s32, 2));
+    ASSERT_EQ(md1, md2);
+
+    // max_variable_dim=0 (default) vs explicit 0
+    ASSERT_NO_THROW(md1 = memory::desc::grouped({4, K}, dt::f32, 0, ngroups));
+    ASSERT_NO_THROW(md2
+            = memory::desc::grouped({4, K}, dt::f32, 0, ngroups, dt::s32, 0));
+    ASSERT_EQ(md1, md2);
+}
+
+TEST(iface_grouped_test_t, TestGroupedMDMaxVariableDim) {
+    const int ngroups = 3;
+    const int K = 256;
+    const int total_tokens = 9;
+
+    // Valid: max_variable_dim within total
+    ASSERT_NO_THROW(memory::desc::grouped(
+            {total_tokens, K}, dt::f32, 0, ngroups, dt::s32, 5));
+
+    // Valid: max_variable_dim = 0 (unknown, default)
+    ASSERT_NO_THROW(memory::desc::grouped(
+            {total_tokens, K}, dt::f32, 0, ngroups, dt::s32, 0));
+
+    // Valid: max_variable_dim = total_tokens (trivial bound)
+    ASSERT_NO_THROW(memory::desc::grouped(
+            {total_tokens, K}, dt::f32, 0, ngroups, dt::s32, total_tokens));
+
+    // Invalid: max_variable_dim > dims[0]
+    EXPECT_THROW(memory::desc::grouped({total_tokens, K}, dt::f32, 0, ngroups,
+                         dt::s32, total_tokens + 1),
+            dnnl::error);
+
+    // Invalid: max_variable_dim < 0
+    EXPECT_THROW(memory::desc::grouped(
+                         {total_tokens, K}, dt::f32, 0, ngroups, dt::s32, -1),
+            dnnl::error);
 }
 
 TEST(iface_grouped_test_t, TestGroupedMDSize) {
@@ -277,7 +325,7 @@ TEST(c_api_grouped_md, TestGroupedMDQueries) {
     dnnl_dims_t dims = {total_tokens, K};
 
     DNNL_CHECK(dnnl_memory_desc_create_with_grouped_encoding(
-            &md, 2, dims, dnnl_f32, 0, ngroups, dnnl_s32));
+            &md, 2, dims, dnnl_f32, 0, ngroups, dnnl_s32, 0));
     ASSERT_NE(md, nullptr);
 
     // Query all properties
@@ -319,33 +367,33 @@ TEST(c_api_grouped_md, TestGroupedMDInvalidArgs) {
     // 3D is not supported
     dnnl_dims_t dims_3d = {4, K, 10};
     ASSERT_EQ(dnnl_memory_desc_create_with_grouped_encoding(
-                      &md, 3, dims_3d, dnnl_f32, 0, 2, dnnl_s32),
+                      &md, 3, dims_3d, dnnl_f32, 0, 2, dnnl_s32, 0),
             dnnl_unimplemented);
     EXPECT_EQ(md, nullptr);
 
     // variable_dim_idx out of range
     ASSERT_EQ(dnnl_memory_desc_create_with_grouped_encoding(
-                      &md, 2, dims, dnnl_f32, -1, 2, dnnl_s32),
+                      &md, 2, dims, dnnl_f32, -1, 2, dnnl_s32, 0),
             dnnl_invalid_arguments);
     EXPECT_EQ(md, nullptr);
     ASSERT_EQ(dnnl_memory_desc_create_with_grouped_encoding(
-                      &md, 2, dims, dnnl_f32, 2, 2, dnnl_s32),
+                      &md, 2, dims, dnnl_f32, 2, 2, dnnl_s32, 0),
             dnnl_invalid_arguments);
     EXPECT_EQ(md, nullptr);
 
     // invalid group count
     ASSERT_EQ(dnnl_memory_desc_create_with_grouped_encoding(
-                      &md, 2, dims, dnnl_f32, 0, 0, dnnl_s32),
+                      &md, 2, dims, dnnl_f32, 0, 0, dnnl_s32, 0),
             dnnl_invalid_arguments);
     EXPECT_EQ(md, nullptr);
     ASSERT_EQ(dnnl_memory_desc_create_with_grouped_encoding(
-                      &md, 2, dims, dnnl_f32, 0, -1, dnnl_s32),
+                      &md, 2, dims, dnnl_f32, 0, -1, dnnl_s32, 0),
             dnnl_invalid_arguments);
     EXPECT_EQ(md, nullptr);
 
     // null pointer md
     dnnl_status_t status = dnnl_memory_desc_create_with_grouped_encoding(
-            nullptr, 2, dims, dnnl_f32, 0, 2, dnnl_s32);
+            nullptr, 2, dims, dnnl_f32, 0, 2, dnnl_s32, 0);
     ASSERT_EQ(status, dnnl_invalid_arguments);
 }
 

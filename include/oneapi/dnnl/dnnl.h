@@ -1174,12 +1174,15 @@ dnnl_status_t DNNL_API dnnl_memory_desc_create_with_packed_encoding(
 /// @param variable_dim_idx Index of the dimension with variable size per sub-tensor.
 /// @param group_count Number of sub-tensors included.
 /// @param offsets_dt Data type of the offsets array.
+/// @param max_variable_dim Optional upper bound on per-group size, that could
+///     be helpful for optimization. Input 0 means no upper bound.
 /// @returns #dnnl_success on success and a status describing the error
 ///     otherwise.
 dnnl_status_t DNNL_API dnnl_memory_desc_create_with_grouped_encoding(
         dnnl_memory_desc_t *memory_desc, int ndims, const dnnl_dims_t dims,
         dnnl_data_type_t data_type, int variable_dim_idx,
-        dnnl_dim_t group_count, dnnl_data_type_t offsets_dt);
+        dnnl_dim_t group_count, dnnl_data_type_t offsets_dt,
+        dnnl_dim_t max_variable_dim);
 #endif
 
 /// Creates a memory descriptor for a scalar value that resides on the host.

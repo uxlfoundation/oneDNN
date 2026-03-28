@@ -226,7 +226,8 @@ status_t memory_desc_init_by_packed_encoding(memory_desc_t &memory_desc,
 // - Other dimensions must be uniform across all groups
 status_t memory_desc_init_with_grouped_encoding(memory_desc_t &memory_desc,
         int ndims, const dims_t dims, data_type_t data_type,
-        int variable_dim_idx, dim_t group_count, data_type_t offsets_dt) {
+        int variable_dim_idx, dim_t group_count, data_type_t offsets_dt,
+        dim_t max_variable_dim) {
     if (ndims == 0) {
         memory_desc = types::zero_md();
         return success;
@@ -260,6 +261,12 @@ status_t memory_desc_init_with_grouped_encoding(memory_desc_t &memory_desc,
                 dims[d] > 0, invalid_arguments, VERBOSE_BAD_DIM, "dims", d);
     }
 
+    VCHECK_MEMORY(max_variable_dim >= 0, invalid_arguments, VERBOSE_BAD_PARAM,
+            "max_variable_dim");
+    VCHECK_MEMORY(
+            max_variable_dim == 0 || max_variable_dim <= dims[variable_dim_idx],
+            invalid_arguments, VERBOSE_BAD_PARAM, "max_variable_dim");
+
     dim_t K = dims[1]; // Uniform dimension
 
     auto md = memory_desc_t();
@@ -278,6 +285,7 @@ status_t memory_desc_init_with_grouped_encoding(memory_desc_t &memory_desc,
     md.format_desc.sparse_desc.metadata_types[0] = offsets_dt;
     md.format_desc.sparse_desc.grouped_desc.group_count = group_count;
     md.format_desc.sparse_desc.grouped_desc.variable_dim_idx = variable_dim_idx;
+    md.format_desc.sparse_desc.grouped_desc.max_variable_dim = max_variable_dim;
 
     memory_desc = md;
 
@@ -746,13 +754,13 @@ status_t dnnl_memory_desc_create_with_packed_encoding(
 status_t dnnl_memory_desc_create_with_grouped_encoding(
         memory_desc_t **memory_desc, int ndims, const dims_t dims,
         data_type_t data_type, int variable_dim_idx, dim_t group_count,
-        data_type_t offsets_dt) {
+        data_type_t offsets_dt, dim_t max_variable_dim) {
     if (any_null(memory_desc)) return invalid_arguments;
 
     auto md = utils::make_unique<memory_desc_t>();
     if (!md) return out_of_memory;
     CHECK(memory_desc_init_with_grouped_encoding(*md, ndims, dims, data_type,
-            variable_dim_idx, group_count, offsets_dt));
+            variable_dim_idx, group_count, offsets_dt, max_variable_dim));
     (*memory_desc) = md.release();
     return success;
 }

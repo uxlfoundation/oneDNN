@@ -235,6 +235,9 @@ struct sparse_desc_t {
         dnnl_dim_t group_count;
         // Index of the dimension with variable size per group
         int variable_dim_idx;
+        // Upper bound on per-group size along variable_dim_idx.
+        // 0 means unknown and we should solely rely on dims[variable_dim_idx])
+        dnnl_dim_t max_variable_dim;
     } grouped_desc;
 #endif
 };

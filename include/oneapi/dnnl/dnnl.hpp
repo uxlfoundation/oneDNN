@@ -3043,12 +3043,14 @@ struct memory : public handle<dnnl_memory_t> {
         /// @param variable_dim_idx Index of dimension that varies between groups.
         /// @param group_count Number of groups (e.g., number of experts in MoE).
         /// @param offsets_dt Data type of offsets buffer. Default: s32.
+        /// @param max_variable_dim Optional upper bound on per-group size, that
+        ///     could be helpful for optimization. Default: 0.
         /// @param allow_empty Allow construction to fail without exception.
         ///     Returns zero descriptor on failure. Default: false.
         /// @returns Memory descriptor for grouped encoding.
         static desc grouped(const dims &adims, data_type adata_type,
                 int variable_dim_idx, dim group_count,
-                data_type offsets_dt = data_type::s32,
+                data_type offsets_dt = data_type::s32, dim max_variable_dim = 0,
                 bool allow_empty = false) {
 
             validate_dims(adims);
@@ -3057,7 +3059,8 @@ struct memory : public handle<dnnl_memory_t> {
                     = dnnl_memory_desc_create_with_grouped_encoding(&md,
                             (int)adims.size(), adims.data(),
                             convert_to_c(adata_type), variable_dim_idx,
-                            group_count, convert_to_c(offsets_dt));
+                            group_count, convert_to_c(offsets_dt),
+                            max_variable_dim);
             if (!allow_empty)
                 error::wrap_c_api(
                         status, "could not create a grouped memory descriptor");

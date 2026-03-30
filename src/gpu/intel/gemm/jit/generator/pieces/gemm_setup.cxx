@@ -1696,7 +1696,18 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
         } else {
             // Repack partial tiles, interleaved with computation.
             Cr_unrollX = panel;
-            period = outerProductCount(hw, problem, strategy);
+            if (state.removeIntermediateF32 && (problem.aScale2D() || problem.bScale2D())) {
+                // Match repack period to quantization group granularity.
+                // Scale is applied once per K-group instead of once per DPAS chain.
+                if (problem.aScale2D() && problem.bScale2D())
+                    period = gcd(problem.aqGroupK, problem.bqGroupK);
+                else if (problem.aScale2D())
+                    period = problem.aqGroupK;
+                else
+                    period = problem.bqGroupK;
+            } else {
+                period = outerProductCount(hw, problem, strategy);
+            }
         }
 
         if (strategy.kInterleave)
@@ -3105,6 +3116,8 @@ void Generator<hw>::gemmInitState(GEMMProblem &problem, GEMMStrategy &strategy, 
 
     auto *no_plain_dpas_env = std::getenv("NO_PLAIN_DPAS");
     state.noPlaindDPAS = (no_plain_dpas_env != nullptr && no_plain_dpas_env[0] == '1');
+    auto *remove_f32_env = std::getenv("REMOVE_INTERMEDIATE_F32");
+    state.removeIntermediateF32 = (remove_f32_env != nullptr && remove_f32_env[0] == '1');
 
     {
         initState(problem, strategy, state);

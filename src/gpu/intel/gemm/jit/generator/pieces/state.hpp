@@ -341,6 +341,7 @@ struct GEMMState : public CommonState {
     bool systolicSumA = false, systolicSumB = false;
     bool useBDPAS = false;
     bool noPlaindDPAS = false;                              // Debug: skip plain A*B DPAS (env NO_PLAIN_DPAS=1)
+    bool removeIntermediateF32 = false;                     // Exp: match cRepackPeriod to quant group K (env REMOVE_INTERMEDIATE_F32=1)
     bool upConvertATo8Bit = false;
     bool upConvertBTo8Bit = false;
     bool lateKLoopCheck = false;

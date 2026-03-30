@@ -91,19 +91,42 @@ dnn_graph_mem_t::dnn_graph_mem_t(const dnn_mem_t &mem,
             mem_ = dnn_mem_t(md.get(), g_eng.get(), /* prefill = */ true);
 
         } else {
-            // Use information from the reference memory descriptor to create
-            // memories. As we need to reorder output from both paths to abx
-            // for comparison, the memory tag of graph path output should align
-            // the reference path.
+            // Use information from the graph logical tensor to create output
+            // memories. The memory strides must match the compiled partition's
+            // output strides so that the comparison reads data correctly.
+            // When the graph LT has valid (explicit) strides and the graph
+            // dims match the reference dims (i.e. no NXC->NCX reordering
+            // occurred), use the graph strides; otherwise fall back to the
+            // reference memory descriptor's tag
+            bool has_valid_graph_strides
+                    = graph_strides_.size() == graph_dims_.size()
+                    && std::all_of(graph_strides_.begin(), graph_strides_.end(),
+                            [](int64_t s) { return s > 0; });
 
-            // Get memory tag of primitive memory
-            int ndims = mem.ndims();
-            dims_t strides(mem.strides(), mem.strides() + ndims);
-            dims_t shape(mem.dims(), mem.dims() + ndims);
-            std::string mtag = strides2memory_tag(shape, strides, false);
+            bool dims_match = has_valid_graph_strides
+                    && (graph_dims_.size() == static_cast<size_t>(mem.ndims()));
+            if (dims_match) {
+                for (int i = 0; i < mem.ndims(); i++) {
+                    if (graph_dims_[i] != mem.dims()[i]) {
+                        dims_match = false;
+                        break;
+                    }
+                }
+            }
 
-            mem_ = dnn_mem_t(
-                    mem.md_, graph_dt, mtag, g_eng.get(), /* prefill = */ true);
+            if (has_valid_graph_strides && dims_match) {
+                dnnl::memory::desc md(graph_dims_, data_type, graph_strides_);
+                mem_ = dnn_mem_t(md.get(), g_eng.get(), /* prefill = */ true);
+            } else {
+                // Get memory tag of primitive memory
+                int ndims = mem.ndims();
+                dims_t strides(mem.strides(), mem.strides() + ndims);
+                dims_t shape(mem.dims(), mem.dims() + ndims);
+                std::string mtag = strides2memory_tag(shape, strides, false);
+
+                mem_ = dnn_mem_t(mem.md_, graph_dt, mtag, g_eng.get(),
+                        /* prefill = */ true);
+            }
         }
     }
 }
@@ -147,8 +170,7 @@ dnnl::graph::tensor dnn_graph_mem_t::make_graph_tensor(
         const deserialized_lt_t &lt) const {
     void *data_handle;
     dnnl_memory_get_data_handle(mem_.m_, &data_handle);
-    dnnl::graph::logical_tensor graph_lt(lt.id_, lt.get_data_type(), lt.shape_,
-            str2layout(lt.layout_type_), lt.get_property_type());
+    dnnl::graph::logical_tensor graph_lt = lt.create();
     const auto &g_eng = get_graph_engine().operator const dnnl::engine &();
 
     if (lt.is_host_scalar()) {

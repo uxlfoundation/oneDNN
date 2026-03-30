@@ -160,9 +160,7 @@ enum cpu_isa_t : unsigned {
     = avx10_2 | amx_tile | amx_int8 | amx_bf16 | amx_fp16 | amx_2_bit,
     avx10_2_512_amx_2 = avx10_2_amx_2,
     // NOTES: 1. isa_all by default has no isa specific hints
-    isa_all = ~0u & ~cpu_isa_hints_utils::hints_mask
-            & (~avx10_version_bits | (1 << avx10_version_bit_start))
-            & ~amx_2_bit,
+    isa_all = ~0u & ~cpu_isa_hints_utils::hints_mask,
 };
 
 std::string isa2str(cpu_isa_t isa);

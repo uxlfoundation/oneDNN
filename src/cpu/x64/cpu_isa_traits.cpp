@@ -132,9 +132,8 @@ struct isa_info_t {
     const char *get_name() const {
         switch (isa) {
             case avx10_2_amx_2:
-                return "Intel AVX10.2 with float16, Intel DL Boost and "
-                       "Intel AMX with bfloat16, float16, float8 and "
-                       "8-bit integer support";
+                return "Intel AVX10.2 and Intel AMX with float8, float16, "
+                       "bfloat16 and 8-bit integer support";
             case avx10_2: return "Intel AVX10.2";
             case avx512_core_amx_fp16:
                 return "Intel AVX-512 with float16, Intel DL Boost and "

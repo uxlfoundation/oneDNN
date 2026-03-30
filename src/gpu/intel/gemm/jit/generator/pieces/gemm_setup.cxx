@@ -1683,6 +1683,11 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
         int Cr_unrollM = unrollM, Cr_unrollN = unrollN;
         auto &Cr_unrollX = globalCM ? Cr_unrollM : Cr_unrollN;
 
+        VDEBUGINFO(1, primitive, gemm,
+            "REMOVE_F32_DIAG: cRepackBranch: Tc_bits=%d Tc_compute_bits=%d globalCM=%d Cr_unrollX=%d panel=%d aScale2D=%d bScale2D=%d removeF32=%d",
+            Tc.bits(), Tc_compute.bits(), (int)globalCM, Cr_unrollX, panel,
+            (int)problem.aScale2D(), (int)problem.bScale2D(), (int)state.removeIntermediateF32);
+
         if (Cr_unrollX <= panel) {
             // Repack full tiles.
             if (problem.aScale2D() && problem.bScale2D())

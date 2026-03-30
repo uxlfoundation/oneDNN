@@ -4509,6 +4509,7 @@ struct jit_brgemm_matmul_copy_b_transposed_t
         , is_bf32_(conf->is_bf32)
         , is_bf16_with_int_wei_(conf->is_bf16_with_int_wei)
         , is_bf16_with_f4_wei_(conf->is_bf16_with_f4_wei)
+        , is_f16_with_f4_wei_(conf->is_f16_with_f4_wei)
         , is_src_int4_(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
         , is_src_f4_(one_of(
                   conf->orig_wei_dt, data_type::f4_e2m1, data_type::f4_e3m0))
@@ -4516,6 +4517,8 @@ struct jit_brgemm_matmul_copy_b_transposed_t
         , req_cvtps2xf16_(conf->is_bf32 || conf->is_bf16_with_int_wei
                   || conf->is_bf16_with_f4_wei
                   || (conf->is_f16_with_int_wei
+                          && conf->wei_dt == data_type::f16)
+                  || (conf->is_f16_with_f4_wei
                           && conf->wei_dt == data_type::f16))
         , req_zp_comp_(conf_->has_zero_point_a)
         , req_s8s8_comp_(conf_->s8s8_compensation_required)
@@ -4574,6 +4577,7 @@ private:
     const bool is_bf32_;
     const bool is_bf16_with_int_wei_;
     const bool is_bf16_with_f4_wei_;
+    const bool is_f16_with_f4_wei_;
     const bool is_src_int4_;
     const bool is_src_f4_;
     const bool is_src_4bit_;
@@ -4899,7 +4903,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
         if (is_bf32_)
             vmovups(src_reg_masked, addr);
         else if (is_bf16_with_int_wei_ || is_bf16_with_f4_wei_
-                || conf_->is_f16_with_int_wei) {
+                || is_f16_with_f4_wei_ || conf_->is_f16_with_int_wei) {
             const auto xmm_preload = Xmm(src_reg.getIdx());
             MAYBE_UNUSED(xmm_preload);
             const bool preloaded_int4 = preload_int4(
@@ -6034,6 +6038,7 @@ status_t create_brgemm_matmul_copy_b(
         }
     } else {
         if ((conf->is_bf16_with_int_wei || conf->is_bf16_with_f4_wei
+                    || conf->is_f16_with_f4_wei
                     || (conf->is_f16_with_int_wei
                             && conf->isa != avx512_core_fp16))
                 && conf->blocked_B) {

@@ -1143,7 +1143,8 @@ void matmul_amx_blocking_params_micro_t::find_best_blocking(
                     || bm_conf_utils.is_bf32()
                     || bm_conf_utils.is_bf16_with_int_wei()
                     || bm_conf_utils.is_bf16_with_f4_wei()
-                    || bm_conf_utils.is_f16_with_int_wei());
+                    || bm_conf_utils.is_f16_with_int_wei()
+                    || bm_conf_utils.is_f16_with_f4_wei());
     const bool is_amx_int8 = bgmmc.is_amx && bm_conf_utils.is_int8();
 
     const bool runtime_dims

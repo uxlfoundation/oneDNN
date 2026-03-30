@@ -433,3 +433,7 @@ mb64_ic3oc192_ih224oh14kh16sh16dh0ph0_iw224ow14kw16sw16dw0pw0n"rpad0_int8_accura
 --reset
 --dt=bf16:bf16:f32 --dir=FWD_I
 mb64_ic3oc192_ih224oh14kh16sh16dh0ph0_iw224ow14kw16sw16dw0pw0n"rpad0_bf16_accuracy"
+
+# Case with vpad != 0 in brgconv:sve_128 which triggered tmp register reuse issue
+--reset
+--dt=f32 --dir=FWD_B --impl=brgconv mb1ic342iw7oc10000ow7kw7pw3

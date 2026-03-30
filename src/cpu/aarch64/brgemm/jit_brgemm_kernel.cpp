@@ -1642,7 +1642,7 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
         // We need to bump the ptr forward if we will not be starting at 0 (vpad)
         if (bd_b != 0) {
             reg_A_ptr = strided_addr(reg_A_ptr, reg_A_ptr, reg_stride_bytes_A,
-                    A_stride_bytes, bd_b, X_TMP_4);
+                    A_stride_bytes, bd_b, X_TMP_3);
         }
         auto x_addr = reg_aux_B;
         unsigned long b_base_offset = 0;

@@ -154,6 +154,9 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
             = src_dt == f32 && wei_dt == bf16 && one_of(dst_dt, bf16, f32);
     const bool is_bf16_with_int_wei = src_dt == bf16
             && one_of(wei_dt, s8, u8, s4, u4) && one_of(dst_dt, bf16, f32);
+    const bool is_bf16_with_f4_wei = src_dt == bf16
+            && one_of(wei_dt, data_type::f4_e2m1, data_type::f4_e3m0)
+            && one_of(dst_dt, bf16, f32);
     const bool is_f16_with_int_wei = src_dt == f16
             && one_of(wei_dt, s8, u8, s4, u4) && one_of(dst_dt, f16, f32);
     const bool is_f4 = src_dt == f32
@@ -209,8 +212,8 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
             if (is_runtime_value(N())) ok = false;
         }
         // Impl suppports f32 scales only for non-weight decompression
-        if (!(is_bf16_with_int_wei || is_f16_with_int_wei || is_f32_with_int_wei
-                    || is_mxfp4_weights)) {
+        if (!(is_bf16_with_int_wei || is_bf16_with_f4_wei || is_f16_with_int_wei
+                    || is_f32_with_int_wei || is_mxfp4_weights)) {
             ok = ok && one_of(asc.get_data_type(DNNL_ARG_SRC), undef, f32);
             ok = ok && one_of(asc.get_data_type(DNNL_ARG_WEIGHTS), undef, f32);
             ok = ok && one_of(asc.get_data_type(DNNL_ARG_DST), undef, f32);
@@ -266,7 +269,8 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
     };
     const bool problem_dt_correct = one_of(true, is_f4, is_mxfp4_weights,
             is_int8, is_f8, is_bf16, is_f32, is_f16, is_f32_f16, is_f32_bf16,
-            is_bf16_with_int_wei, is_f16_with_int_wei, is_f32_with_int_wei);
+            is_bf16_with_int_wei, is_bf16_with_f4_wei, is_f16_with_int_wei,
+            is_f32_with_int_wei);
 
     auto src_d = memory_desc_wrapper(src_md_);
     auto weights_d = memory_desc_wrapper(weights_md_);
@@ -306,8 +310,9 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
             VERBOSE_UNSUPPORTED_POSTOP);
 
     VDISPATCH_MATMUL(check_attr_scales(), VERBOSE_UNSUPPORTED_SCALES_CFG);
-    VDISPATCH_MATMUL(check_attr_zero_points(is_bf16_with_int_wei
-                             || is_f16_with_int_wei || is_f32_with_int_wei),
+    VDISPATCH_MATMUL(
+            check_attr_zero_points(is_bf16_with_int_wei || is_bf16_with_f4_wei
+                    || is_f16_with_int_wei || is_f32_with_int_wei),
             VERBOSE_UNSUPPORTED_ZP_CFG);
     VDISPATCH_MATMUL(check_bias(), VERBOSE_UNSUPPORTED_BIAS_CFG);
     VDISPATCH_MATMUL(check_reduce(), VERBOSE_UNSUPPORTED_FEATURE,
@@ -340,6 +345,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
             ? (is_f16 || is_f32_f16 || is_f16_with_int_wei
                               ? avx512_core_fp16
                               : (is_bf16 || is_f32_bf16 || is_bf16_with_int_wei
+                                                        || is_bf16_with_f4_wei
                                                 ? avx512_core_bf16
                                                 : (is_int8 ? avx512_core_vnni
                                                            : avx512_core)))
@@ -1817,17 +1823,21 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         return batch_ptr + A_strides_[1] * m + A_strides_[0] * k;
     }
 
-    dim_t get_data_B_kn_off(dim_t k, dim_t n) const {
+    int wei_packed_elems_per_byte() const {
+        return utils::one_of(bgmmc_.orig_wei_dt, data_type::s4, data_type::u4,
+                       data_type::f4_e2m1, data_type::f4_e3m0)
+                ? 2
+                : 1;
+    }
+
+    dim_t get_data_B_kn_off(int k, int n) const {
         const int wei_k_blk
                 = bgmmc_.is_bf32 ? get_wei_k_blk(f32) : bgmmc_.wei_k_blk;
         const int k_idx = bgmmc_.blocked_B ? k / wei_k_blk : k;
         const int n_idx = bgmmc_.blocked_B ? n / bgmmc_.wei_n_blk : n;
-        // For int4 and f4 types, 2 elements are packed into 1 byte
-        const int packed_elems_per_byte
-                = (bgmmc_.is_int4_weights || bgmmc_.is_f4_via_convert) ? 2 : 1;
         return (B_strides_[1] * k_idx + B_strides_[0] * n_idx
                        + get_data_B_off_within_block(k, n))
-                / packed_elems_per_byte;
+                / wei_packed_elems_per_byte();
     }
 
     const char *get_data_B_kn_ptr(
@@ -1862,9 +1872,8 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         } else {
             b_off = wei_d_.off_l(b * bgmmc_.K * bgmmc_.N) * bgmmc_.b_dt_sz;
         }
-        // Both int4 and f4 types pack 2 elements per byte
-        if (bgmmc_.is_int4_weights || bgmmc_.is_f4_via_convert)
-            b_off = b_off / 2;
+        if (wei_packed_elems_per_byte() > 1)
+            b_off /= wei_packed_elems_per_byte();
         return b_off;
     }
 
@@ -2059,10 +2068,7 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         dim_t x1 = n % bgmmc_.wei_n_blk;
         dim_t offset = (x0 / vnni_factor) * vnni_factor * bgmmc_.wei_n_blk
                 + x1 * vnni_factor + x0 % vnni_factor;
-        // For int4 and f4 types, 2 elements are packed into 1 byte
-        const int packed_elems_per_byte
-                = (bgmmc_.is_int4_weights || bgmmc_.is_f4_via_convert) ? 2 : 1;
-        return bgmmc_.b_dt_sz * offset / packed_elems_per_byte;
+        return bgmmc_.b_dt_sz * offset / wei_packed_elems_per_byte();
     }
 
     dim_t get_data_C_off(int b, dim_t m, dim_t n) const {

@@ -3660,15 +3660,19 @@ struct jit_brgemm_matmul_copy_b_bf16_t
         , src_stride(conf->copy_B_wei_stride)
         , tr_src_stride(conf_->LDB * k_blk_step * tr_typesize)
         , is_src_int4(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
+        , is_src_f4(one_of(
+                  conf->orig_wei_dt, data_type::f4_e2m1, data_type::f4_e3m0))
+        , is_src_4bit(is_src_int4 || is_src_f4)
         , is_dynamic_stride(is_runtime_value(src_stride))
         , is_dynamic_N(conf->is_runtime_N)
         , do_N_loop(conf->LDB < conf->N_blk)
-        , req_cvtps2bf16(conf->is_bf32 || conf->is_bf16_with_int_wei)
+        , req_cvtps2bf16(conf->is_bf32 || conf->is_bf16_with_int_wei
+                  || conf->is_bf16_with_f4_wei)
         , req_zp_b_shift(conf->has_zero_point_b && conf->with_wei_decompression)
         , req_apply_wei_scales(conf->apply_scales_in_buffer_b)
         , is_wei_grouped_over_k(
                   conf_->is_wei_zp_per_k || conf_->is_wei_scale_per_k)
-        , elems_per_byte(is_src_int4 ? 2 : 1) {}
+        , elems_per_byte(is_src_4bit ? 2 : 1) {}
 
     void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
     status_t create_kernel() override {
@@ -3687,6 +3691,8 @@ private:
     const int typesize, tr_typesize, wei_scales_typesize;
     const dim_t src_stride, tr_src_stride;
     const bool is_src_int4;
+    const bool is_src_f4;
+    const bool is_src_4bit;
     const bool is_dynamic_stride;
     const bool is_dynamic_N;
     const bool do_N_loop;
@@ -3731,6 +3737,7 @@ private:
     Vmm vmm_zp_b_shift = Vmm(2);
     Vmm vmm_permd = Vmm(3);
     Vmm vmm_wei_scales = Vmm(4);
+    Vmm vmm_f4_lut = Vmm(5);
 
     void kmovx(Opmask k, unsigned w) {
         if (!isa_has_masks(conf_->isa)) return;
@@ -3761,17 +3768,18 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::copy_2x32(
     if (columns_tail > 0 && columns_tail < n_blk_step) {
         const auto tail_mask = (1 << columns_tail) - 1;
         kmovx(kTail, tail_mask);
-        if (is_src_int4) {
+        if (is_src_4bit) {
             const auto tail_mask_4bit = (1 << (columns_tail / 2)) - 1;
             kmovx(kTail_4bit, tail_mask_4bit);
         }
     }
 
     static constexpr int blk_sz = k_blk_step;
-    const int reserved_regs = req_apply_wei_scales ? 5
-            : is_src_int4                          ? 4
-            : req_zp_b_shift                       ? 3
-                                                   : 2;
+    const int reserved_regs = is_src_f4 ? (req_apply_wei_scales ? 6 : 5)
+            : req_apply_wei_scales      ? 5
+            : is_src_int4               ? 4
+            : req_zp_b_shift            ? 3
+                                        : 2;
     const int max_isa_regs = isa_num_vregs(conf_->isa);
     const int max_regs_available = max_isa_regs - reserved_regs;
     const int max_unroll = max_regs_available / blk_sz;
@@ -3841,10 +3849,11 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::copy_2x32(
                         columns_tail * tr_typesize / elems_per_byte);
             else
                 uni_vmovups(src_load, load_addr);
-            load_value(src_reg, src_reg, vmm_permd, conf_->orig_wei_dt, false);
+            load_value(src_reg, src_reg, vmm_permd, conf_->orig_wei_dt, false,
+                    vmm_f4_lut);
         } else {
-            load_value(
-                    src_reg, load_addr, vmm_permd, conf_->orig_wei_dt, is_tail);
+            load_value(src_reg, load_addr, vmm_permd, conf_->orig_wei_dt,
+                    is_tail, vmm_f4_lut);
         }
         load_zero_point(n);
         load_scales(n);
@@ -3975,11 +3984,19 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::init_masks() {
             kmovq(k5555, reg_tmp);
         }
 
-        if (is_src_int4) {
+        if (is_src_4bit) {
             alignas(64) static constexpr const uint32_t int4_permute[16]
                     = {0, 8, 1, 9, 2, 10, 3, 11, 4, 12, 5, 13, 6, 14, 7, 15};
             mov(reg_tmp, reinterpret_cast<size_t>(int4_permute));
             vmovdqa32(vmm_permd, ptr[reg_tmp]);
+        }
+
+        if (is_src_f4) {
+            alignas(64) static constexpr const float f4_e2m1_table[16]
+                    = {0.0f, .5f, 1.0f, 1.5f, 2.0f, 3.0f, 4.0f, 6.0f, -0.0f,
+                            -.5f, -1.0f, -1.5f, -2.0f, -3.0f, -4.0f, -6.0f};
+            mov(reg_tmp, reinterpret_cast<size_t>(f4_e2m1_table));
+            vmovdqa32(vmm_f4_lut, ptr[reg_tmp]);
         }
     }
 }
@@ -4205,11 +4222,12 @@ struct jit_brgemm_matmul_copy_b_f32_t
         , is_src_f4_(one_of(
                   conf->orig_wei_dt, data_type::f4_e2m1, data_type::f4_e3m0))
         , is_src_int4_(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
+        , is_src_4bit_(is_src_int4_ || is_src_f4_)
         , req_zp_b_shift_(
                   conf->has_zero_point_b && conf->with_wei_decompression)
         , req_apply_wei_scales_(conf->apply_scales_in_buffer_b)
         , typesize_in_(types::data_type_size(dt_in_))
-        , src_elems_per_byte_(is_src_int4_ || is_src_f4_ ? 2 : 1)
+        , src_elems_per_byte_(is_src_4bit_ ? 2 : 1)
         , src_stride_(conf_->copy_B_wei_stride)
         , tr_src_stride_(conf_->LDB * typesize_out_) {}
 
@@ -4227,7 +4245,8 @@ private:
     static constexpr bool is_ymm_ = std::is_same<Vmm, Xbyak::Ymm>::value;
     const data_type_t dt_in_;
     const int simd_w_;
-    const bool is_src_f4_, is_src_int4_, req_zp_b_shift_, req_apply_wei_scales_;
+    const bool is_src_f4_, is_src_int4_, is_src_4bit_;
+    const bool req_zp_b_shift_, req_apply_wei_scales_;
     const size_t typesize_in_, src_elems_per_byte_;
     const size_t typesize_out_ = sizeof(float);
     dim_t src_stride_, tr_src_stride_;
@@ -4340,7 +4359,7 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::copy_16_x_n_block(
         if (isa_has_masks(conf_->isa)) {
             const auto tail_mask = (1 << columns_tail) - 1;
             kmovw(kTail, tail_mask);
-            if (is_src_int4_ || is_src_f4_) {
+            if (is_src_4bit_) {
                 const auto bytes_needed
                         = (columns_tail + src_elems_per_byte_ - 1)
                         / src_elems_per_byte_;
@@ -4412,7 +4431,7 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::generate() {
     mov(reg_zp_ptr, ptr[param1 + GET_OFF(zp_b_value_ptr)]);
     kmovw(kFFFF, 0xffff); // 1111111111111111
 
-    if (is_src_int4_ || is_src_f4_) {
+    if (is_src_4bit_) {
         kmovw(kAAAA, 0xaaaa);
         kmovw(k5555, 0x5555);
         if (is_superset(conf_->isa, avx512_core)) {
@@ -4489,8 +4508,13 @@ struct jit_brgemm_matmul_copy_b_transposed_t
                   conf_->has_zero_point_a || conf_->s8s8_compensation_required)
         , is_bf32_(conf->is_bf32)
         , is_bf16_with_int_wei_(conf->is_bf16_with_int_wei)
+        , is_bf16_with_f4_wei_(conf->is_bf16_with_f4_wei)
         , is_src_int4_(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
+        , is_src_f4_(one_of(
+                  conf->orig_wei_dt, data_type::f4_e2m1, data_type::f4_e3m0))
+        , is_src_4bit_(is_src_int4_ || is_src_f4_)
         , req_cvtps2xf16_(conf->is_bf32 || conf->is_bf16_with_int_wei
+                  || conf->is_bf16_with_f4_wei
                   || (conf->is_f16_with_int_wei
                           && conf->wei_dt == data_type::f16))
         , req_zp_comp_(conf_->has_zero_point_a)
@@ -4518,7 +4542,7 @@ struct jit_brgemm_matmul_copy_b_transposed_t
                                                                       : 0)))
         , src_stride_(conf_->copy_B_wei_stride)
         , tr_src_stride_(conf_->LDB * vnni_granularity_ * tr_typesize_)
-        , src_elems_per_byte_(is_src_int4_ ? 2 : 1)
+        , src_elems_per_byte_(is_src_4bit_ ? 2 : 1)
         , is_dynamic_N_(conf->is_runtime_N) {}
 
     void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
@@ -4549,7 +4573,10 @@ private:
     const bool do_compute_compensation_;
     const bool is_bf32_;
     const bool is_bf16_with_int_wei_;
+    const bool is_bf16_with_f4_wei_;
     const bool is_src_int4_;
+    const bool is_src_f4_;
+    const bool is_src_4bit_;
     const bool req_cvtps2xf16_;
     const bool req_zp_comp_;
     const bool req_s8s8_comp_;
@@ -4871,7 +4898,8 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
         const auto addr = EVEX_compress_addr(reg_src, src_offset);
         if (is_bf32_)
             vmovups(src_reg_masked, addr);
-        else if (is_bf16_with_int_wei_ || conf_->is_f16_with_int_wei) {
+        else if (is_bf16_with_int_wei_ || is_bf16_with_f4_wei_
+                || conf_->is_f16_with_int_wei) {
             const auto xmm_preload = Xmm(src_reg.getIdx());
             MAYBE_UNUSED(xmm_preload);
             const bool preloaded_int4 = preload_int4(
@@ -4900,7 +4928,8 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
             const auto next_addr = EVEX_compress_addr(reg_src, next_src_offset);
             if (is_bf32_)
                 vmovups(src_next_masked, next_addr);
-            else if (is_bf16_with_int_wei_ || conf_->is_f16_with_int_wei) {
+            else if (is_bf16_with_int_wei_ || is_bf16_with_f4_wei_
+                    || conf_->is_f16_with_int_wei) {
                 const auto xmm_preload = Xmm(src_reg_next.getIdx());
                 MAYBE_UNUSED(xmm_preload);
                 const bool preloaded_int4 = preload_int4(
@@ -5570,17 +5599,22 @@ struct jit_brgemm_matmul_copy_b_cvt_bf16_t
         , tr_typesize_(conf->tr_b_dt_sz)
         , wei_scales_typesize_(conf_->wei_scales_dt_sz)
         , is_src_int4_(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
-        , src_elems_per_byte_(is_src_int4_ ? 2 : 1)
+        , is_src_f4_(one_of(
+                  conf->orig_wei_dt, data_type::f4_e2m1, data_type::f4_e3m0))
+        , is_src_4bit_(is_src_int4_ || is_src_f4_)
+        , src_elems_per_byte_(is_src_4bit_ ? 2 : 1)
         , src_stride_(
                   (conf->LDB * k_blk_step * typesize_) / src_elems_per_byte_)
         , tr_src_stride_(conf_->LDB * k_blk_step * tr_typesize_)
         , req_zp_b_shift_(
                   conf_->has_zero_point_b && conf_->with_wei_decompression)
         , req_apply_wei_scales_(conf_->apply_scales_in_buffer_b)
-        , reserved_regs_(req_apply_wei_scales_ ? 6
-                          : req_zp_b_shift_    ? 4
-                          : is_src_int4_       ? 1
-                                               : 0)
+        , reserved_regs_(is_src_f4_ && req_apply_wei_scales_ ? 7
+                          : req_apply_wei_scales_            ? 6
+                          : is_src_f4_                       ? 1
+                          : req_zp_b_shift_                  ? 4
+                          : is_src_int4_                     ? 1
+                                                             : 0)
         , is_wei_grouped_over_k_(
                   conf_->is_wei_zp_per_k || conf_->is_wei_scale_per_k) {}
 
@@ -5600,6 +5634,8 @@ private:
     enum { k_blk_step = 2, n_blk_step = 16 };
     const int typesize_, tr_typesize_, wei_scales_typesize_;
     const bool is_src_int4_;
+    const bool is_src_f4_;
+    const bool is_src_4bit_;
     const dim_t src_elems_per_byte_, src_stride_, tr_src_stride_;
     const bool req_zp_b_shift_;
     const bool req_apply_wei_scales_;
@@ -5627,6 +5663,7 @@ private:
     Vmm vmm_tmp = Vmm(3);
     Vmm vmm_wei_scales0 = Vmm(4);
     Vmm vmm_wei_scales1 = Vmm(5);
+    Vmm vmm_f4_lut = Vmm(6);
 
     Vmm get_vmm(const int blk, const int idx) {
         const int max_isa_regs = isa_num_vregs(conf_->isa);
@@ -5700,6 +5737,14 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::init_masks() {
         kmovq(kAAAA, reg_tmp);
         mov(reg_tmp, 0x5555555555555555);
         kmovq(k5555, reg_tmp);
+
+        if (is_src_f4_) {
+            alignas(64) static constexpr const float f4_e2m1_table[16]
+                    = {0.0f, .5f, 1.0f, 1.5f, 2.0f, 3.0f, 4.0f, 6.0f, -0.0f,
+                            -.5f, -1.0f, -1.5f, -2.0f, -3.0f, -4.0f, -6.0f};
+            mov(reg_tmp, reinterpret_cast<size_t>(f4_e2m1_table));
+            vmovdqa32(vmm_f4_lut, ptr[reg_tmp]);
+        }
     }
 }
 
@@ -5792,8 +5837,10 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::copy_block(
         const bool is_n_tail = ncolumns - n < n_blk_step;
         const bool is_k_tail = nrows - k < k_blk_step;
 
-        load_value(src_vmm0, load_addr0, vmm_permd, conf_->orig_wei_dt);
-        load_value(src_vmm1, load_addr1, vmm_permd, conf_->orig_wei_dt);
+        load_value(src_vmm0, load_addr0, vmm_permd, conf_->orig_wei_dt, false,
+                vmm_f4_lut);
+        load_value(src_vmm1, load_addr1, vmm_permd, conf_->orig_wei_dt, false,
+                vmm_f4_lut);
         get_wei_scales(n, is_n_tail, is_k_tail);
         get_zero_points(n, is_n_tail, is_k_tail);
         decompress_and_downcvt_2reg(src_vmm0, src_vmm1, vmm_zp_b_val0,
@@ -5986,7 +6033,7 @@ status_t create_brgemm_matmul_copy_b(
                     new jit_brgemm_matmul_copy_b_transposed_t<Ymm>(conf)));
         }
     } else {
-        if ((conf->is_bf16_with_int_wei
+        if ((conf->is_bf16_with_int_wei || conf->is_bf16_with_f4_wei
                     || (conf->is_f16_with_int_wei
                             && conf->isa != avx512_core_fp16))
                 && conf->blocked_B) {

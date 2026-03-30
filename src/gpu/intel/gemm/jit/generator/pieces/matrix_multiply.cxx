@@ -456,6 +456,12 @@ void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, boo
             if (startRepackC && hhbase == 0)
                 srcC0 = null.retype(C0.getType());
 
+            // Debug: skip plain A*B DPAS, keep sum (ZP offset) DPAS intact.
+            // Register layout is preserved; Cr/C registers may hold garbage
+            // values, which is acceptable for timing measurements.
+            if (state.noPlaindDPAS && ybase < ny)
+                return;
+
             if (state.useBDPAS) {
                 bdpas(mod, sdepth, rc, C0, srcC0, V0, N0, AS0, BS0);
             } else

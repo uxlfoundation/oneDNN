@@ -25,6 +25,8 @@
 #include "state_utils.hpp"
 #include "token_alloc_utils.hpp"
 
+#include <cstdlib>
+
 GEMMSTONE_NAMESPACE_START
 
 using namespace ngen;
@@ -3100,6 +3102,9 @@ void Generator<hw>::gemmInitState(GEMMProblem &problem, GEMMStrategy &strategy, 
     auto Ta_ext = problem.Ta_ext, Tb_ext = problem.Tb_ext;
 
     state.useTempC = strategy.needsTempC(problem);
+
+    auto *no_plain_dpas_env = std::getenv("NO_PLAIN_DPAS");
+    state.noPlaindDPAS = (no_plain_dpas_env != nullptr && no_plain_dpas_env[0] == '1');
 
     {
         initState(problem, strategy, state);

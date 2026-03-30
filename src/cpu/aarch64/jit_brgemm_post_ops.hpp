@@ -141,6 +141,7 @@ private:
     const XReg reg_out = x14;
     const XReg aux_reg_in = x13;
     const XReg aux_reg_out = x12;
+    const XReg reg_mb_loop = x16;
 
     const XReg reg_bias = x11;
     const XReg aux_reg_bias = x10;
@@ -773,23 +774,16 @@ private:
 
         // Unrolling over mb can result in very large post-op assembly being
         // generated (see Issue #4089), so branch and loop instead.
-        if (mb > 0) {
-            Label mb_loop;
-            mov_imm(x16, mb);
-
-            L(mb_loop);
-
+        asm_for(reg_mb_loop, mb, [&]() {
             loop_by_N(m_block, nb2, nb2_tail, nb_tail);
 
             if (brg.alpha != 0)
                 add_imm(reg_in, reg_in, inp_typesize_ * (m_block * brg.LDC),
                         X_TMP_0);
+
             add_imm(reg_out, reg_out, out_typesize_ * (m_block * LDD_),
                     X_TMP_0);
-
-            subs(x16, x16, 1);
-            bgt(mb_loop);
-        }
+        });
 
         if (mb_tail > 0) loop_by_N(mb_tail, nb2, nb2_tail, nb_tail);
 

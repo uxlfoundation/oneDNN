@@ -23,6 +23,7 @@
 #include "cpu/matmul/matmul_utils.hpp"
 
 #include <aocl_dlp.h>
+#include <vector>
 
 namespace dnnl {
 namespace impl {
@@ -62,8 +63,15 @@ status_t aocl_dlp_lowp_matmul_t::pd_t::init(engine_t *engine) {
     VDISPATCH_MATMUL(attr()->post_ops_.check_sum_consistency(dst_type,
                              /* is_int8 */ true),
             VERBOSE_UNSUPPORTED_POSTOP);
-    VDISPATCH_MATMUL(src_md()->ndims == 2, VERBOSE_BAD_NDIMS, "src",
-            src_md()->ndims);
+    // No batch broadcasting support: all batch dims must match across
+    // src, weights, and dst.
+    if (batched()) {
+        for (int d = 0; d < ndims() - 2; ++d) {
+            VDISPATCH_MATMUL(src_md()->dims[d] == dst_md()->dims[d]
+                            && weights_md()->dims[d] == dst_md()->dims[d],
+                    "batch broadcasting unsupported");
+        }
+    }
     VDISPATCH_MATMUL(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
 
     return status::success;
@@ -77,13 +85,17 @@ status_t aocl_dlp_lowp_matmul_t::execute(const exec_ctx_t &ctx) const {
     const auto src_type = src_d.data_type();
     const auto dst_type = dst_d.data_type();
 
-    const dim_t M = src_d.dims()[0];
-    const dim_t K = src_d.dims()[1];
-    const dim_t N = wei_d.dims()[1];
+    using namespace dnnl::impl::cpu::matmul;
+    matmul_helper_t helper(src_d, wei_d, dst_d);
 
-    const dim_t lda = src_d.blocking_desc().strides[0];
-    const dim_t ldb = wei_d.blocking_desc().strides[0];
-    const dim_t ldc = dst_d.blocking_desc().strides[0];
+    const dim_t M = helper.M();
+    const dim_t K = helper.K();
+    const dim_t N = helper.N();
+    const dim_t batch = helper.batch();
+
+    const dim_t lda = helper.lda();
+    const dim_t ldb = helper.ldb();
+    const dim_t ldc = helper.ldc();
 
     const char order = 'R';
     const char transa = 'N';
@@ -148,86 +160,282 @@ status_t aocl_dlp_lowp_matmul_t::execute(const exec_ctx_t &ctx) const {
 
     auto wei = CTX_IN_MEM(const int8_t *, DNNL_ARG_WEIGHTS);
 
-    // Dispatch based on src_type and dst_type combination.
+    // Non-batched path (2D).
+    if (batch == 1) {
+        if (src_type == u8) {
+            auto src = CTX_IN_MEM(const uint8_t *, DNNL_ARG_SRC);
+            if (dst_type == s32) {
+                auto dst = CTX_OUT_MEM(int32_t *, DNNL_ARG_DST);
+                aocl_gemm_u8s8s32os32(order, transa, transb,
+                        static_cast<md_t>(M), static_cast<md_t>(N),
+                        static_cast<md_t>(K), alpha, src,
+                        static_cast<md_t>(lda), mem_fmt_a, wei,
+                        static_cast<md_t>(ldb), mem_fmt_b, beta, dst,
+                        static_cast<md_t>(ldc), &metadata);
+            } else if (dst_type == s8) {
+                auto dst = CTX_OUT_MEM(int8_t *, DNNL_ARG_DST);
+                aocl_gemm_u8s8s32os8(order, transa, transb,
+                        static_cast<md_t>(M), static_cast<md_t>(N),
+                        static_cast<md_t>(K), alpha, src,
+                        static_cast<md_t>(lda), mem_fmt_a, wei,
+                        static_cast<md_t>(ldb), mem_fmt_b, beta, dst,
+                        static_cast<md_t>(ldc), &metadata);
+            } else if (dst_type == u8) {
+                auto dst = CTX_OUT_MEM(uint8_t *, DNNL_ARG_DST);
+                aocl_gemm_u8s8s32ou8(order, transa, transb,
+                        static_cast<md_t>(M), static_cast<md_t>(N),
+                        static_cast<md_t>(K), alpha, src,
+                        static_cast<md_t>(lda), mem_fmt_a, wei,
+                        static_cast<md_t>(ldb), mem_fmt_b, beta, dst,
+                        static_cast<md_t>(ldc), &metadata);
+            } else if (dst_type == f32) {
+                auto dst = CTX_OUT_MEM(float *, DNNL_ARG_DST);
+                aocl_gemm_u8s8s32of32(order, transa, transb,
+                        static_cast<md_t>(M), static_cast<md_t>(N),
+                        static_cast<md_t>(K), alpha, src,
+                        static_cast<md_t>(lda), mem_fmt_a, wei,
+                        static_cast<md_t>(ldb), mem_fmt_b, beta, dst,
+                        static_cast<md_t>(ldc), &metadata);
+            } else if (dst_type == bf16) {
+                auto dst = CTX_OUT_MEM(bfloat16_t *, DNNL_ARG_DST);
+                aocl_gemm_u8s8s32obf16(order, transa, transb,
+                        static_cast<md_t>(M), static_cast<md_t>(N),
+                        static_cast<md_t>(K), alpha, src,
+                        static_cast<md_t>(lda), mem_fmt_a, wei,
+                        static_cast<md_t>(ldb), mem_fmt_b, beta,
+                        reinterpret_cast<bfloat16 *>(dst),
+                        static_cast<md_t>(ldc), &metadata);
+            } else {
+                return status::unimplemented;
+            }
+        } else if (src_type == s8) {
+            auto src = CTX_IN_MEM(const int8_t *, DNNL_ARG_SRC);
+            if (dst_type == s32) {
+                auto dst = CTX_OUT_MEM(int32_t *, DNNL_ARG_DST);
+                aocl_gemm_s8s8s32os32(order, transa, transb,
+                        static_cast<md_t>(M), static_cast<md_t>(N),
+                        static_cast<md_t>(K), alpha, src,
+                        static_cast<md_t>(lda), mem_fmt_a, wei,
+                        static_cast<md_t>(ldb), mem_fmt_b, beta, dst,
+                        static_cast<md_t>(ldc), &metadata);
+            } else if (dst_type == s8) {
+                auto dst = CTX_OUT_MEM(int8_t *, DNNL_ARG_DST);
+                aocl_gemm_s8s8s32os8(order, transa, transb,
+                        static_cast<md_t>(M), static_cast<md_t>(N),
+                        static_cast<md_t>(K), alpha, src,
+                        static_cast<md_t>(lda), mem_fmt_a, wei,
+                        static_cast<md_t>(ldb), mem_fmt_b, beta, dst,
+                        static_cast<md_t>(ldc), &metadata);
+            } else if (dst_type == u8) {
+                auto dst = CTX_OUT_MEM(uint8_t *, DNNL_ARG_DST);
+                aocl_gemm_s8s8s32ou8(order, transa, transb,
+                        static_cast<md_t>(M), static_cast<md_t>(N),
+                        static_cast<md_t>(K), alpha, src,
+                        static_cast<md_t>(lda), mem_fmt_a, wei,
+                        static_cast<md_t>(ldb), mem_fmt_b, beta, dst,
+                        static_cast<md_t>(ldc), &metadata);
+            } else if (dst_type == f32) {
+                auto dst = CTX_OUT_MEM(float *, DNNL_ARG_DST);
+                aocl_gemm_s8s8s32of32(order, transa, transb,
+                        static_cast<md_t>(M), static_cast<md_t>(N),
+                        static_cast<md_t>(K), alpha, src,
+                        static_cast<md_t>(lda), mem_fmt_a, wei,
+                        static_cast<md_t>(ldb), mem_fmt_b, beta, dst,
+                        static_cast<md_t>(ldc), &metadata);
+            } else if (dst_type == bf16) {
+                auto dst = CTX_OUT_MEM(bfloat16_t *, DNNL_ARG_DST);
+                aocl_gemm_s8s8s32obf16(order, transa, transb,
+                        static_cast<md_t>(M), static_cast<md_t>(N),
+                        static_cast<md_t>(K), alpha, src,
+                        static_cast<md_t>(lda), mem_fmt_a, wei,
+                        static_cast<md_t>(ldb), mem_fmt_b, beta,
+                        reinterpret_cast<bfloat16 *>(dst),
+                        static_cast<md_t>(ldc), &metadata);
+            } else {
+                return status::unimplemented;
+            }
+        } else {
+            return status::unimplemented;
+        }
+        return status::success;
+    }
+
+    // Batched path: use aocl_batch_gemm_* APIs.
+    const int ndims = src_d.ndims();
+    const int batch_dim = ndims - 3;
+    const dim_t src_batch_stride = src_d.blocking_desc().strides[batch_dim];
+    const dim_t wei_batch_stride = wei_d.blocking_desc().strides[batch_dim];
+    const dim_t dst_batch_stride = dst_d.blocking_desc().strides[batch_dim];
+
+    std::vector<md_t> m_arr(batch, static_cast<md_t>(M));
+    std::vector<md_t> n_arr(batch, static_cast<md_t>(N));
+    std::vector<md_t> k_arr(batch, static_cast<md_t>(K));
+    std::vector<md_t> lda_arr(batch, static_cast<md_t>(lda));
+    std::vector<md_t> ldb_arr(batch, static_cast<md_t>(ldb));
+    std::vector<md_t> ldc_arr(batch, static_cast<md_t>(ldc));
+    std::vector<int32_t> alpha_arr(batch, alpha);
+    std::vector<int32_t> beta_arr(batch, beta);
+    std::vector<char> order_arr(batch, order);
+    std::vector<char> transa_arr(batch, transa);
+    std::vector<char> transb_arr(batch, transb);
+    std::vector<char> mem_fmt_a_arr(batch, mem_fmt_a);
+    std::vector<char> mem_fmt_b_arr(batch, mem_fmt_b);
+    std::vector<dlp_metadata_t *> meta_arr(batch, &metadata);
+
+    const md_t group_count = 1;
+    const md_t group_size = static_cast<md_t>(batch);
+
+    std::vector<const int8_t *> b_ptrs(batch);
+    for (dim_t b = 0; b < batch; ++b)
+        b_ptrs[b] = wei + b * wei_batch_stride;
+
     if (src_type == u8) {
         auto src = CTX_IN_MEM(const uint8_t *, DNNL_ARG_SRC);
+        std::vector<const uint8_t *> a_ptrs(batch);
+        for (dim_t b = 0; b < batch; ++b)
+            a_ptrs[b] = src + b * src_batch_stride;
+
         if (dst_type == s32) {
             auto dst = CTX_OUT_MEM(int32_t *, DNNL_ARG_DST);
-            aocl_gemm_u8s8s32os32(order, transa, transb,
-                    static_cast<md_t>(M), static_cast<md_t>(N),
-                    static_cast<md_t>(K), alpha, src, static_cast<md_t>(lda),
-                    mem_fmt_a, wei, static_cast<md_t>(ldb), mem_fmt_b, beta,
-                    dst, static_cast<md_t>(ldc), &metadata);
+            std::vector<int32_t *> c_ptrs(batch);
+            for (dim_t b = 0; b < batch; ++b)
+                c_ptrs[b] = dst + b * dst_batch_stride;
+            aocl_batch_gemm_u8s8s32os32(order_arr.data(),
+                    transa_arr.data(), transb_arr.data(), m_arr.data(),
+                    n_arr.data(), k_arr.data(), alpha_arr.data(),
+                    a_ptrs.data(), lda_arr.data(), b_ptrs.data(),
+                    ldb_arr.data(), beta_arr.data(), c_ptrs.data(),
+                    ldc_arr.data(), group_count, &group_size,
+                    mem_fmt_a_arr.data(), mem_fmt_b_arr.data(),
+                    meta_arr.data());
         } else if (dst_type == s8) {
             auto dst = CTX_OUT_MEM(int8_t *, DNNL_ARG_DST);
-            aocl_gemm_u8s8s32os8(order, transa, transb,
-                    static_cast<md_t>(M), static_cast<md_t>(N),
-                    static_cast<md_t>(K), alpha, src, static_cast<md_t>(lda),
-                    mem_fmt_a, wei, static_cast<md_t>(ldb), mem_fmt_b, beta,
-                    dst, static_cast<md_t>(ldc), &metadata);
+            std::vector<int8_t *> c_ptrs(batch);
+            for (dim_t b = 0; b < batch; ++b)
+                c_ptrs[b] = dst + b * dst_batch_stride;
+            aocl_batch_gemm_u8s8s32os8(order_arr.data(),
+                    transa_arr.data(), transb_arr.data(), m_arr.data(),
+                    n_arr.data(), k_arr.data(), alpha_arr.data(),
+                    a_ptrs.data(), lda_arr.data(), b_ptrs.data(),
+                    ldb_arr.data(), beta_arr.data(), c_ptrs.data(),
+                    ldc_arr.data(), group_count, &group_size,
+                    mem_fmt_a_arr.data(), mem_fmt_b_arr.data(),
+                    meta_arr.data());
         } else if (dst_type == u8) {
             auto dst = CTX_OUT_MEM(uint8_t *, DNNL_ARG_DST);
-            aocl_gemm_u8s8s32ou8(order, transa, transb,
-                    static_cast<md_t>(M), static_cast<md_t>(N),
-                    static_cast<md_t>(K), alpha, src, static_cast<md_t>(lda),
-                    mem_fmt_a, wei, static_cast<md_t>(ldb), mem_fmt_b, beta,
-                    dst, static_cast<md_t>(ldc), &metadata);
+            std::vector<uint8_t *> c_ptrs(batch);
+            for (dim_t b = 0; b < batch; ++b)
+                c_ptrs[b] = dst + b * dst_batch_stride;
+            aocl_batch_gemm_u8s8s32ou8(order_arr.data(),
+                    transa_arr.data(), transb_arr.data(), m_arr.data(),
+                    n_arr.data(), k_arr.data(), alpha_arr.data(),
+                    a_ptrs.data(), lda_arr.data(), b_ptrs.data(),
+                    ldb_arr.data(), beta_arr.data(), c_ptrs.data(),
+                    ldc_arr.data(), group_count, &group_size,
+                    mem_fmt_a_arr.data(), mem_fmt_b_arr.data(),
+                    meta_arr.data());
         } else if (dst_type == f32) {
             auto dst = CTX_OUT_MEM(float *, DNNL_ARG_DST);
-            aocl_gemm_u8s8s32of32(order, transa, transb,
-                    static_cast<md_t>(M), static_cast<md_t>(N),
-                    static_cast<md_t>(K), alpha, src, static_cast<md_t>(lda),
-                    mem_fmt_a, wei, static_cast<md_t>(ldb), mem_fmt_b, beta,
-                    dst, static_cast<md_t>(ldc), &metadata);
+            std::vector<float *> c_ptrs(batch);
+            for (dim_t b = 0; b < batch; ++b)
+                c_ptrs[b] = dst + b * dst_batch_stride;
+            aocl_batch_gemm_u8s8s32of32(order_arr.data(),
+                    transa_arr.data(), transb_arr.data(), m_arr.data(),
+                    n_arr.data(), k_arr.data(), alpha_arr.data(),
+                    a_ptrs.data(), lda_arr.data(), b_ptrs.data(),
+                    ldb_arr.data(), beta_arr.data(), c_ptrs.data(),
+                    ldc_arr.data(), group_count, &group_size,
+                    mem_fmt_a_arr.data(), mem_fmt_b_arr.data(),
+                    meta_arr.data());
         } else if (dst_type == bf16) {
             auto dst = CTX_OUT_MEM(bfloat16_t *, DNNL_ARG_DST);
-            aocl_gemm_u8s8s32obf16(order, transa, transb,
-                    static_cast<md_t>(M), static_cast<md_t>(N),
-                    static_cast<md_t>(K), alpha, src, static_cast<md_t>(lda),
-                    mem_fmt_a, wei, static_cast<md_t>(ldb), mem_fmt_b, beta,
-                    reinterpret_cast<bfloat16 *>(dst),
-                    static_cast<md_t>(ldc), &metadata);
+            std::vector<bfloat16 *> c_ptrs(batch);
+            for (dim_t b = 0; b < batch; ++b)
+                c_ptrs[b] = reinterpret_cast<bfloat16 *>(
+                        dst + b * dst_batch_stride);
+            aocl_batch_gemm_u8s8s32obf16(order_arr.data(),
+                    transa_arr.data(), transb_arr.data(), m_arr.data(),
+                    n_arr.data(), k_arr.data(), alpha_arr.data(),
+                    a_ptrs.data(), lda_arr.data(), b_ptrs.data(),
+                    ldb_arr.data(), beta_arr.data(), c_ptrs.data(),
+                    ldc_arr.data(), group_count, &group_size,
+                    mem_fmt_a_arr.data(), mem_fmt_b_arr.data(),
+                    meta_arr.data());
         } else {
             return status::unimplemented;
         }
     } else if (src_type == s8) {
         auto src = CTX_IN_MEM(const int8_t *, DNNL_ARG_SRC);
+        std::vector<const int8_t *> a_ptrs(batch);
+        for (dim_t b = 0; b < batch; ++b)
+            a_ptrs[b] = src + b * src_batch_stride;
+
         if (dst_type == s32) {
             auto dst = CTX_OUT_MEM(int32_t *, DNNL_ARG_DST);
-            aocl_gemm_s8s8s32os32(order, transa, transb,
-                    static_cast<md_t>(M), static_cast<md_t>(N),
-                    static_cast<md_t>(K), alpha, src, static_cast<md_t>(lda),
-                    mem_fmt_a, wei, static_cast<md_t>(ldb), mem_fmt_b, beta,
-                    dst, static_cast<md_t>(ldc), &metadata);
+            std::vector<int32_t *> c_ptrs(batch);
+            for (dim_t b = 0; b < batch; ++b)
+                c_ptrs[b] = dst + b * dst_batch_stride;
+            aocl_batch_gemm_s8s8s32os32(order_arr.data(),
+                    transa_arr.data(), transb_arr.data(), m_arr.data(),
+                    n_arr.data(), k_arr.data(), alpha_arr.data(),
+                    a_ptrs.data(), lda_arr.data(), b_ptrs.data(),
+                    ldb_arr.data(), beta_arr.data(), c_ptrs.data(),
+                    ldc_arr.data(), group_count, &group_size,
+                    mem_fmt_a_arr.data(), mem_fmt_b_arr.data(),
+                    meta_arr.data());
         } else if (dst_type == s8) {
             auto dst = CTX_OUT_MEM(int8_t *, DNNL_ARG_DST);
-            aocl_gemm_s8s8s32os8(order, transa, transb,
-                    static_cast<md_t>(M), static_cast<md_t>(N),
-                    static_cast<md_t>(K), alpha, src, static_cast<md_t>(lda),
-                    mem_fmt_a, wei, static_cast<md_t>(ldb), mem_fmt_b, beta,
-                    dst, static_cast<md_t>(ldc), &metadata);
+            std::vector<int8_t *> c_ptrs(batch);
+            for (dim_t b = 0; b < batch; ++b)
+                c_ptrs[b] = dst + b * dst_batch_stride;
+            aocl_batch_gemm_s8s8s32os8(order_arr.data(),
+                    transa_arr.data(), transb_arr.data(), m_arr.data(),
+                    n_arr.data(), k_arr.data(), alpha_arr.data(),
+                    a_ptrs.data(), lda_arr.data(), b_ptrs.data(),
+                    ldb_arr.data(), beta_arr.data(), c_ptrs.data(),
+                    ldc_arr.data(), group_count, &group_size,
+                    mem_fmt_a_arr.data(), mem_fmt_b_arr.data(),
+                    meta_arr.data());
         } else if (dst_type == u8) {
             auto dst = CTX_OUT_MEM(uint8_t *, DNNL_ARG_DST);
-            aocl_gemm_s8s8s32ou8(order, transa, transb,
-                    static_cast<md_t>(M), static_cast<md_t>(N),
-                    static_cast<md_t>(K), alpha, src, static_cast<md_t>(lda),
-                    mem_fmt_a, wei, static_cast<md_t>(ldb), mem_fmt_b, beta,
-                    dst, static_cast<md_t>(ldc), &metadata);
+            std::vector<uint8_t *> c_ptrs(batch);
+            for (dim_t b = 0; b < batch; ++b)
+                c_ptrs[b] = dst + b * dst_batch_stride;
+            aocl_batch_gemm_s8s8s32ou8(order_arr.data(),
+                    transa_arr.data(), transb_arr.data(), m_arr.data(),
+                    n_arr.data(), k_arr.data(), alpha_arr.data(),
+                    a_ptrs.data(), lda_arr.data(), b_ptrs.data(),
+                    ldb_arr.data(), beta_arr.data(), c_ptrs.data(),
+                    ldc_arr.data(), group_count, &group_size,
+                    mem_fmt_a_arr.data(), mem_fmt_b_arr.data(),
+                    meta_arr.data());
         } else if (dst_type == f32) {
             auto dst = CTX_OUT_MEM(float *, DNNL_ARG_DST);
-            aocl_gemm_s8s8s32of32(order, transa, transb,
-                    static_cast<md_t>(M), static_cast<md_t>(N),
-                    static_cast<md_t>(K), alpha, src, static_cast<md_t>(lda),
-                    mem_fmt_a, wei, static_cast<md_t>(ldb), mem_fmt_b, beta,
-                    dst, static_cast<md_t>(ldc), &metadata);
+            std::vector<float *> c_ptrs(batch);
+            for (dim_t b = 0; b < batch; ++b)
+                c_ptrs[b] = dst + b * dst_batch_stride;
+            aocl_batch_gemm_s8s8s32of32(order_arr.data(),
+                    transa_arr.data(), transb_arr.data(), m_arr.data(),
+                    n_arr.data(), k_arr.data(), alpha_arr.data(),
+                    a_ptrs.data(), lda_arr.data(), b_ptrs.data(),
+                    ldb_arr.data(), beta_arr.data(), c_ptrs.data(),
+                    ldc_arr.data(), group_count, &group_size,
+                    mem_fmt_a_arr.data(), mem_fmt_b_arr.data(),
+                    meta_arr.data());
         } else if (dst_type == bf16) {
             auto dst = CTX_OUT_MEM(bfloat16_t *, DNNL_ARG_DST);
-            aocl_gemm_s8s8s32obf16(order, transa, transb,
-                    static_cast<md_t>(M), static_cast<md_t>(N),
-                    static_cast<md_t>(K), alpha, src, static_cast<md_t>(lda),
-                    mem_fmt_a, wei, static_cast<md_t>(ldb), mem_fmt_b, beta,
-                    reinterpret_cast<bfloat16 *>(dst),
-                    static_cast<md_t>(ldc), &metadata);
+            std::vector<bfloat16 *> c_ptrs(batch);
+            for (dim_t b = 0; b < batch; ++b)
+                c_ptrs[b] = reinterpret_cast<bfloat16 *>(
+                        dst + b * dst_batch_stride);
+            aocl_batch_gemm_s8s8s32obf16(order_arr.data(),
+                    transa_arr.data(), transb_arr.data(), m_arr.data(),
+                    n_arr.data(), k_arr.data(), alpha_arr.data(),
+                    a_ptrs.data(), lda_arr.data(), b_ptrs.data(),
+                    ldb_arr.data(), beta_arr.data(), c_ptrs.data(),
+                    ldc_arr.data(), group_count, &group_size,
+                    mem_fmt_a_arr.data(), mem_fmt_b_arr.data(),
+                    meta_arr.data());
         } else {
             return status::unimplemented;
         }

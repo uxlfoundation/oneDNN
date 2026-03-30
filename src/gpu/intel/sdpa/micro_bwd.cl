@@ -336,10 +336,19 @@ inline void tile_store_k_slm(
 #define DST_DATA_T_DKDV DST_DATA_T
 #endif
 
+// round f32 intermediate values to DST_DATA_T precision before GQA atomic
+// accumulation. Although less accurate, it matches the unfused path
+// where each query group matmul output passes through DST_DATA_T
+// storage before the reduction
+inline float round_to_dst(float v) {
+    return CONVERT_FLOAT_T(CONVERT_DATA_T(v));
+}
+
 inline void tile_store_dV(dv_tile_type *dV_tile_slm, global DST_DATA_T_DKDV *dV,
         int m, int n, int ld, int offset_r, int offset_c, int rem) {
 
 #if IS_GQA
+    tile_elementwise_s(*dV_tile_slm, round_to_dst);
     tile_atomic_add(*dV_tile_slm, dV, m, n, ld, offset_r, offset_c);
 #else // MHA update
 
@@ -360,6 +369,7 @@ inline void tile_store_dK_t(dv_tile_type *dK_tile, global DST_DATA_T_DKDV *dK,
         int m, int n, int ld, int offset_r, int offset_c, int rem) {
 
 #if IS_GQA
+    tile_elementwise_s(*dK_tile, round_to_dst);
     tile_atomic_add(*dK_tile, dK, m, n, ld, offset_r, offset_c);
 #else // MHA update
     dv_tile_type_dst dK_tile_dst;
@@ -379,6 +389,7 @@ inline void tile_store_dK(a_tile_type *dK_tile, global DST_DATA_T_DKDV *dK,
         int m, int n, int ld, int offset_r, int offset_c) {
 
 #if IS_GQA
+    tile_elementwise_s(*dK_tile, round_to_dst);
     tile_atomic_add(*dK_tile, dK, m, n, ld, offset_r, offset_c);
 #else // MHA update
 

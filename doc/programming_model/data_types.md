@@ -165,7 +165,7 @@ can be found in @ref dev_guide_attributes_rounding_mode.
 ## Hardware Limitations
 
 While all the platforms oneDNN supports have hardware acceleration for
-fp32 arithmetics, that is not the case for other data types. Support
+fp32 arithmetic, that is not the case for other data types. Support
 for low precision data types may not be available for older
 platforms. The next sections explain limitations that exist for low
 precision data types for Intel 64/AMD64 based processors and Intel Graphpics.

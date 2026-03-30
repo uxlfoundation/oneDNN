@@ -138,7 +138,7 @@ oneDNN uses gtests for lightweight functional testing and benchdnn for
 performance and functional testing.
 
 Verify the modified code is covered by existing tests. If not, update the
-coverage to validate the change and sumbit it as a part of the PR.
+coverage to validate the change and submit it as a part of the PR.
 
 Use the following command to run tests selected by a build configuration:
 ``` sh

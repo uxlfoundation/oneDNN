@@ -1510,7 +1510,8 @@ walk_order_t maybe_fixup_large_weights(
     auto grid_tile = get_grid_tile(cfg);
     // Apply the heuristic - move `oh` to be fast-changing in the grid.
     walk_order_t fixed;
-    fixed.add(pvars::oh, grid_tile.get(pvars::oh), 0);
+    if (grid_tile.has(pvars::oh))
+        fixed.add(pvars::oh, grid_tile.get(pvars::oh), 0);
     for (auto &b : walk_order.blocks()) {
         if (b.dim == pvars::oh) continue;
         fixed.add(b.dim, b.size, b.grid_id);

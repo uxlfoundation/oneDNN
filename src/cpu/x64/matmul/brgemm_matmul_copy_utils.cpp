@@ -2358,29 +2358,25 @@ struct jit_brgemm_matmul_copy_b_common_t : public jit_brgemm_matmul_copy_b_t,
         : jit_brgemm_matmul_copy_b_t(conf), jit_generator_t(jit_name()) {}
 
 protected:
-    /**
-    * @brief Conditionally applies a mask to a vector register for tail or specialized processing
-    *
-    * @tparam Vmm Vector register type (Zmm, Ymm, etc.)
-    * @param vmm The vector register to potentially mask
-    * @param is_tail Flag indicating if this is tail processing that requires masking
-    * @param is_int4 Flag indicating if this is INT4 data requiring specialized masking
-    * @return The potentially masked vector register (original if no masking needed)
-    */
     template <typename Vmm>
-    Vmm maybe_mask(Vmm vmm, bool is_tail, bool is_int4 = false) {
+    Vmm maybe_mask(Vmm vmm, bool is_tail) {
+        return maybe_mask_impl(vmm, is_tail, kTail);
+    }
+
+    template <typename Vmm>
+    Vmm maybe_mask_4bit(Vmm vmm, bool is_tail) {
         // Transposed kernel uses the same kTail mask for both cases
-        const auto tail_mask
-                = is_int4 && !conf_->transposed_B ? kTail_int4 : kTail;
+        const auto tail_mask = !conf_->transposed_B ? kTail_4bit : kTail;
+        return maybe_mask_impl(vmm, is_tail, tail_mask);
+    }
+
+    template <typename Vmm>
+    Vmm maybe_mask_impl(Vmm vmm, bool is_tail, Xbyak::Opmask tail_mask) {
         const auto unmask_tail
                 = one_of(conf_->wei_dt, data_type::bf16, data_type::f16)
                 && !conf_->transposed_B;
         if (isa_has_masks(conf_->isa))
-            return is_tail ? vmm | tail_mask | T_z
-                    // bf16 and f16 requires masking for tail
-                    // to avoid AVX512F issues with zeroing upper bits
-                    // of ZMM registers when using vpmovzxwd/vpmovzxbd
-                    // instructions
+            return is_tail        ? vmm | tail_mask | T_z
                     : unmask_tail ? vmm | kFFFF | T_z
                                   : vmm;
         else
@@ -2533,26 +2529,22 @@ protected:
             // bytes of vmm, then permute them into correct order
             // Finally, we process the extend bytes for s4/u4 accordingly
             case data_type::s4:
-                uni_vpmovsxbd(
-                        maybe_mask(vmm_lower, is_tail, /* is_int4 = */ true),
-                        op);
+                uni_vpmovsxbd(maybe_mask_4bit(vmm_lower, is_tail), op);
                 prepare_loaded_int4(reg, vmm_permd, /* is_signed = */ true);
                 break;
             case data_type::u4:
-                uni_vpmovzxbd(
-                        maybe_mask(vmm_lower, is_tail, /* is_int4 = */ true),
-                        op);
+                uni_vpmovzxbd(maybe_mask_4bit(vmm_lower, is_tail), op);
                 prepare_loaded_int4(reg, vmm_permd, /* is_signed = */ false);
                 break;
             case data_type::f4_e2m1:
             case data_type::f4_e3m0:
-                uni_vpmovzxbd(maybe_mask(vmm_lower, is_tail), op);
-                copy_half_reg(vmm_in, vmm_lower);
-                vpermd(vmm_in, vmm_permd, vmm_in);
-                uni_vpslld(vmm_in | k5555, vmm_in, 28);
-                vpsrld(vmm_in | k5555, vmm_in, 28);
-                vpsrld(vmm_in | kAAAA, vmm_in, 4);
-                vpermps(vmm_in, vmm_in, vmm_f4_lut);
+                uni_vpmovzxbd(maybe_mask_4bit(vmm_lower, is_tail), op);
+                copy_half_reg(reg, vmm_lower);
+                vpermd(reg, vmm_permd, reg);
+                uni_vpslld(reg | k5555, reg, 28);
+                vpsrld(reg | k5555, reg, 28);
+                vpsrld(reg | kAAAA, reg, 4);
+                vpermps(reg, reg, vmm_f4_lut);
                 break;
             default: assert(!"unsupported data type");
         }
@@ -2629,6 +2621,10 @@ protected:
                 uni_vpslld(scale_vmm, scale_vmm, 16);
                 break;
             case data_type::f16: vcvtph2psx(scale_vmm, addr); break;
+            case data_type::e8m0:
+                vpbroadcastb(scale_vmm, addr);
+                uni_vpslld(scale_vmm, scale_vmm, 23);
+                break;
             default: assert(!"unsupported wei_scales data type");
         }
     }
@@ -2650,6 +2646,10 @@ protected:
                 uni_vpslld(vmm, vmm, 16);
                 break;
             case data_type::f16: vcvtph2ps(masked_vmm, op); break;
+            case data_type::e8m0:
+                uni_vpmovzxbd(masked_vmm, op);
+                uni_vpslld(vmm, vmm, 23);
+                break;
             default: assert(!"unsupported wei_scales data type");
         }
     }
@@ -2698,7 +2698,9 @@ protected:
             case data_type::bf16:
             case data_type::f16:
             case data_type::f32:
-                // bf16 and f16 already converted into f32 while loading
+            case data_type::f4_e2m1:
+            case data_type::f4_e3m0:
+                // bf16, f16, and f4 already converted into f32 while loading
                 break;
             default: assert(!"Unsupported source data type for decompression");
         }
@@ -2814,7 +2816,7 @@ protected:
     opmask_t kF0F0 = k6;
     opmask_t kFFFF = k6;
     opmask_t kTail = k7;
-    opmask_t kTail_int4 = k5; // TODO: refactor: use kTail for both cases
+    opmask_t kTail_4bit = k5;
 };
 
 template <typename Vmm>
@@ -3760,8 +3762,8 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::copy_2x32(
         const auto tail_mask = (1 << columns_tail) - 1;
         kmovx(kTail, tail_mask);
         if (is_src_int4) {
-            const auto int4_tail_mask = (1 << (columns_tail / 2)) - 1;
-            kmovx(kTail_int4, int4_tail_mask);
+            const auto tail_mask_4bit = (1 << (columns_tail / 2)) - 1;
+            kmovx(kTail_4bit, tail_mask_4bit);
         }
     }
 
@@ -4339,9 +4341,11 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::copy_16_x_n_block(
             const auto tail_mask = (1 << columns_tail) - 1;
             kmovw(kTail, tail_mask);
             if (is_src_int4_ || is_src_f4_) {
-                const auto tail_mask_4bit
-                        = (1 << (columns_tail / src_elems_per_byte_)) - 1;
-                kmovw(kTail_int4, tail_mask_4bit);
+                const auto bytes_needed
+                        = (columns_tail + src_elems_per_byte_ - 1)
+                        / src_elems_per_byte_;
+                const auto tail_mask_4bit = (1 << bytes_needed) - 1;
+                kmovw(kTail_4bit, tail_mask_4bit);
             }
         }
     }

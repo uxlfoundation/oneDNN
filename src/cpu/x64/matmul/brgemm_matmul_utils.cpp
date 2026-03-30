@@ -327,9 +327,10 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
               && one_of(bgmmc.dst_dt, bf16, f32))
     , f16_dt(utils::everyone_is(f16, bgmmc.src_dt, bgmmc.wei_dt)
               && one_of(bgmmc.dst_dt, f16, f32))
-    , f4_via_convert_dt(utils::one_of(bgmmc.wei_dt, data_type::f4_e2m1,
-                                data_type::f4_e3m0)
-              && isa == avx10_1_512)
+    , f4_via_convert_dt(bgmmc.src_dt == f32
+              && utils::one_of(
+                      bgmmc.wei_dt, data_type::f4_e2m1, data_type::f4_e3m0)
+              && one_of(bgmmc.dst_dt, f32) && is_superset(isa, avx512_core))
     , f8_dt(one_of(bgmmc.src_dt, f8_e5m2, f8_e4m3)
               && one_of(bgmmc.wei_dt, f8_e5m2, f8_e4m3)
               && one_of(bgmmc.dst_dt, f16, f32, bf16, f8_e5m2, f8_e4m3))
@@ -343,7 +344,9 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
     , tf32_dt(f32_dt
               && one_of(attr.fpmath_.mode_, fpmath_mode::tf32, fpmath_mode::any)
               && isa == avx10_2_amx_2)
-    , weights_decompression_support(one_of(bgmmc.wei_dt, u8, s8, u4, s4)
+    , weights_decompression_support(
+              one_of(bgmmc.wei_dt, u8, s8, u4, s4, data_type::f4_e2m1,
+                      data_type::f4_e3m0)
               && one_of(attr.fpmath_.mode_, fpmath_mode::bf16, fpmath_mode::f16,
                       fpmath_mode::strict, fpmath_mode::any)
               && IMPLICATION(attr.fpmath_.mode_ == fpmath_mode::f16,
@@ -352,7 +355,9 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
                       bgmmc.src_dt == bf16)
               && IMPLICATION(attr.fpmath_.mode_ == fpmath_mode::strict,
                       bgmmc.src_dt == f32)
-              && attr.fpmath_.apply_to_int_)
+              && (attr.fpmath_.apply_to_int_
+                      || one_of(bgmmc.wei_dt, data_type::f4_e2m1,
+                              data_type::f4_e3m0)))
     , bf16_with_int_wei_dt(weights_decompression_support && bgmmc.src_dt == bf16
               && one_of(bgmmc.dst_dt, bf16, f32))
     // Keep this var separate from f16_dt to not slip f16:f16 on avx512_core and
@@ -1830,6 +1835,12 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.is_runtime_M = is_runtime_value(bgmmc.M);
     bgmmc.is_runtime_N = is_runtime_value(bgmmc.N);
     bgmmc.is_runtime_K = is_runtime_value(bgmmc.K);
+
+    // FP4 types store 2 elements per byte, so K must be even
+    const bool is_f4_weights
+            = one_of(bgmmc.orig_wei_dt, data_type::f4_e2m1, data_type::f4_e3m0);
+    VCONDCHECK_BG(!is_f4_weights || bgmmc.is_runtime_K || bgmmc.K % 2 == 0,
+            VERBOSE_BAD_PARAM, "K");
 
     bgmmc.is_gemv = is_gemv_applicable(
             bgmmc, bm_conf_utils, src_md, weights_md, dst_md, attr);

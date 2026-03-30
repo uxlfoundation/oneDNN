@@ -574,7 +574,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         });
 
 #define wei_blk_off(md, g, o, i, d, h, w) \
-    (is_0d                  ? (md).blk_off<!w_groups>(g, o, i) \
+    (is_0d ? (md).blk_off<!w_groups>(g, o, i) \
                     : is_1d ? (md).blk_off<!w_groups>(g, o, i, w) \
                     : is_3d ? (md).blk_off<!w_groups>(g, o, i, d, h, w) \
                             : (md).blk_off<!w_groups>(g, o, i, h, w))
@@ -731,7 +731,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         }
 
 #define wei_blk_off(md, g, o, i, d, h, w) \
-    (is_1d                  ? (md).blk_off<!w_groups>(g, o, i, w) \
+    (is_1d ? (md).blk_off<!w_groups>(g, o, i, w) \
                     : is_3d ? (md).blk_off<!w_groups>(g, o, i, d, h, w) \
                             : (md).blk_off<!w_groups>(g, o, i, h, w))
 
@@ -926,7 +926,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         }
 
 #define wei_blk_off(md, g, o, i, d, h, w) \
-    (is_1d                  ? (md).blk_off<!w_groups>(g, o, i, w) \
+    (is_1d ? (md).blk_off<!w_groups>(g, o, i, w) \
                     : is_3d ? (md).blk_off<!w_groups>(g, o, i, d, h, w) \
                             : (md).blk_off<!w_groups>(g, o, i, h, w))
 
@@ -1687,7 +1687,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         };
 
 #define data_blk_off(md, n, c, d, h, w) \
-    (is_1d                  ? (md).blk_off(n, c, w) \
+    (is_1d ? (md).blk_off(n, c, w) \
                     : is_3d ? (md).blk_off(n, c, d, h, w) \
                             : (md).blk_off(n, c, h, w))
 
@@ -1831,7 +1831,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         };
 
 #define off(md, h0, h1, m0, m1, m2) \
-    (ndims >= 6                  ? (md).blk_off(h0, h1, m0, m1, m2) \
+    (ndims >= 6 ? (md).blk_off(h0, h1, m0, m1, m2) \
                     : ndims >= 5 ? (md).blk_off(h0, h1, m1, m2) \
                     : ndims >= 4 ? (md).blk_off(h0, h1, m2) \
                                  : /* ndims >= 3 ? */ (md).blk_off(h0, h1))
@@ -2180,9 +2180,8 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 simple_attr_check(attr, false, true), VERBOSE_UNSUPPORTED_ATTR);
         VDISPATCH_REORDER_IC(
                 input_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
-        VDISPATCH_REORDER_IC(
-                IMPLICATION(!output_d.is_dense(), output_d.is_plain()),
-                VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
+        // Note: non-dense output (e.g. blocked with padding) is supported
+        // through the scratchpad-based need_transform path in execute().
 
         return status::success;
     }

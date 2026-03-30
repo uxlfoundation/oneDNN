@@ -237,7 +237,9 @@ struct matmul_pd_t : public primitive_desc_t {
                 ok = ok && wei_k_group_ok && wei_n_group_ok;
 
                 // Mask over K dim is allowed for fp types or weights decompression only.
-                if (types::is_integral_dt(weights_md(0)->data_type)) {
+                const bool is_wei_fp
+                        = !types::is_integral_dt(weights_md(0)->data_type);
+                if (!is_wei_fp) {
                     const bool is_decompression
                             = utils::one_of(weights_md(0)->data_type,
                                       data_type::s8, data_type::u8,

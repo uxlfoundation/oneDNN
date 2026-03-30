@@ -1705,6 +1705,9 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
                     period = problem.aqGroupK;
                 else
                     period = problem.bqGroupK;
+                VDEBUGINFO(1, primitive, gemm,
+                    "REMOVE_INTERMEDIATE_F32: cRepackPeriod=%d (bqGroupK=%d, aqGroupK=%d)",
+                    period, problem.bqGroupK, problem.aqGroupK);
             } else {
                 period = outerProductCount(hw, problem, strategy);
             }

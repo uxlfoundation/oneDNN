@@ -343,12 +343,13 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
 
 #define tile_elementwise_s(t, f) \
     do { \
-        _Pragma("unroll") for (int i = 0; i < sizeof(t.x) / sizeof(t.x[0]); \
-                               i++) { \
+        _Pragma("unroll") for (int i = 0; \
+                               i < sizeof((t).x) / sizeof((t).x[0]); i++) { \
             _Pragma("unroll") for (int s = 0; \
-                                   s < sizeof(t.x[0]) / sizeof(t.x[0][0]); \
-                                   s++) t.x[i][s] \
-                    = f(t.x[i][s]); \
+                                   s < sizeof((t).x[0]) / sizeof((t).x[0][0]); \
+                                   s++)(t) \
+                    .x[i][s] \
+                    = f((t).x[i][s]); \
         } \
     } while (0)
 

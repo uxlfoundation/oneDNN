@@ -260,7 +260,15 @@ void fp8_conversion_e4m3_t::vcvt_f8_to_f16(
             true, op_in.isXMM(), op_in.isYMM(), op_in.isZMM(), op_in.isMEM()));
 
     if (is_fp8_native()) {
-        host_->vcvthf82ph(xmm_out, op_in);
+        if (!op_in.isMEM()) {
+            // src register must be at least half the size of dst register (xbyak checkCvt1)
+            if (xmm_out.isZMM())
+                host_->vcvthf82ph(xmm_out, Xbyak::Ymm(op_in.getIdx()));
+            else
+                host_->vcvthf82ph(xmm_out, Xbyak::Xmm(op_in.getIdx()));
+        } else {
+            host_->vcvthf82ph(xmm_out, op_in);
+        }
         return;
     }
 
@@ -355,11 +363,7 @@ void fp8_conversion_e4m3_t::vcvt_f8_to_f32(
     const Xbyak::Zmm zmm_out(xmm_out.getIdx());
 
     // f16 <- f8_e4m3
-    if (is_fp8_native())
-        host_->vcvthf82ph(ymm_mask(xmm_out), op_in);
-    else
-        vcvt_f8_to_f16(ymm_mask(xmm_out), op_in);
-
+    vcvt_f8_to_f16(ymm_mask(xmm_out), op_in);
     // f32 <- f16
     host_->vcvtph2psx(zmm_out, ymm_out);
 }

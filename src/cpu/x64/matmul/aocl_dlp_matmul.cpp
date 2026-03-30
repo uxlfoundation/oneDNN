@@ -24,6 +24,7 @@
 #include "common/utils.hpp"
 
 #include "cpu/matmul/matmul_utils.hpp"
+#include "cpu/x64/cpu_isa_traits.hpp"
 
 #include <aocl_dlp.h>
 #include <vector>
@@ -50,7 +51,8 @@ status_t aocl_dlp_matmul_t::pd_t::init(engine_t *engine) {
     const bool is_bf16bf16 = utils::everyone_is(bf16, src_type, wei_type)
             && dst_type == bf16;
     const bool is_f16 = utils::everyone_is(f16, src_type, wei_type, dst_type)
-            && platform::has_data_type_support(f16);
+            && platform::has_data_type_support(f16)
+            && mayiuse(avx512_core_fp16);
 
     VDISPATCH_MATMUL(is_dense_format_kind(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
     VDISPATCH_MATMUL(utils::one_of(true, is_f32, is_bf16f32, is_bf16bf16,

@@ -75,8 +75,8 @@ struct jit_brgemm_kernel_t : public jit_base_brgemm_kernel_t {
             }
         }
 
-        if (brg.is_fp8 || has_f8_e5m2_binary_postops
-                || has_f8_e4m3_binary_postops) {
+        if (brg.is_fp8 || brg.is_bf16_fp8 || brg.is_f16_fp8
+                || has_f8_e5m2_binary_postops || has_f8_e4m3_binary_postops) {
             if (one_of(data_type::f8_e5m2, brg.dt_a, brg.dt_b, brg.dt_c,
                         brg.dt_d)
                     || has_f8_e5m2_binary_postops)
@@ -394,10 +394,10 @@ private:
 
     void fp8_to_xf16_upconvert(dim_t num_rows, dim_t tile_num_col_bytes,
             reg64_t reg_base, dim_t offset, reg64_t reg_data_stride,
-            data_type_t dt, bool is_rd_tail);
+            data_type_t dt, bool is_rd_tail, data_type_t dst_dt);
     void fp8_to_xf16_upconvert_to_vnni(dim_t num_rows, dim_t tile_num_col_bytes,
             reg64_t reg_base, dim_t offset, reg64_t reg_data_stride,
-            data_type_t dt, bool is_rd_tail);
+            data_type_t dt, bool is_rd_tail, data_type_t dst_dt);
     void reduce_gemv_accumulators(dim_t bd_block, dim_t ld_block2);
     void store_accumulators(dim_t bd_block2, bool is_bdb_tail, dim_t ld_block,
             bool is_ld_tail, bool skip_accumulation);
@@ -1012,7 +1012,8 @@ void jit_brgemm_kernel_t<Wmm>::zero_accumulators(dim_t bd_block2,
 template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::fp8_to_xf16_upconvert(dim_t num_rows,
         dim_t tile_num_col_bytes, reg64_t reg_base, dim_t offset,
-        reg64_t reg_data_stride, data_type_t dt, bool is_rd_tail) {
+        reg64_t reg_data_stride, data_type_t dt, bool is_rd_tail,
+        data_type_t dst_dt) {
 
     dim_t rd_block = is_rd_tail ? brg.rdb_tail : brg.rd_block;
 
@@ -1035,16 +1036,20 @@ void jit_brgemm_kernel_t<Wmm>::fp8_to_xf16_upconvert(dim_t num_rows,
 
     for (dim_t r = 0; r < num_rows; ++r) {
         if (dt == data_type::f8_e5m2) {
-            if (brg.is_fp8_via_convert_to_bf16()) {
+            if (dst_dt == data_type::bf16) {
                 f8_e5m2_cvt_->vcvt_f8_to_bf16(zmm_1_masked, ptr[reg_data_aux]);
-            } else {
+            } else if (dst_dt == data_type::f16) {
                 f8_e5m2_cvt_->vcvt_f8_to_f16(zmm_1_masked, ptr[reg_data_aux]);
+            } else {
+                assert(!"unsupported data type");
             }
         } else if (dt == data_type::f8_e4m3) {
-            if (brg.is_fp8_via_convert_to_bf16()) {
+            if (dst_dt == data_type::bf16) {
                 f8_e4m3_cvt_->vcvt_f8_to_bf16(zmm_1_masked, ptr[reg_data_aux]);
-            } else {
+            } else if (dst_dt == data_type::f16) {
                 f8_e4m3_cvt_->vcvt_f8_to_f16(zmm_1_masked, ptr[reg_data_aux]);
+            } else {
+                assert(!"unsupported data type");
             }
         } else
             assert(!"unsupported data type");
@@ -1059,7 +1064,8 @@ void jit_brgemm_kernel_t<Wmm>::fp8_to_xf16_upconvert(dim_t num_rows,
 template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::fp8_to_xf16_upconvert_to_vnni(dim_t num_rows,
         dim_t tile_num_col_bytes, reg64_t reg_base, dim_t offset,
-        reg64_t reg_data_stride, data_type_t dt, bool is_rd_tail) {
+        reg64_t reg_data_stride, data_type_t dt, bool is_rd_tail,
+        data_type_t dst_dt) {
     const dim_t num_cols_ele = tile_num_col_bytes / 2; // 32 for full tile
     const dim_t num_N = num_cols_ele / 2; // 16 for full tile
     const auto zmm_2 = vmm_tmp(2);
@@ -1076,20 +1082,24 @@ void jit_brgemm_kernel_t<Wmm>::fp8_to_xf16_upconvert_to_vnni(dim_t num_rows,
     assert(r_end <= num_rows && "bad tile parameters");
 
     if (dt == data_type::f8_e5m2) {
-        if (brg.is_fp8_via_convert_to_bf16()) {
+        if (dst_dt == data_type::bf16) {
             f8_e5m2_cvt_->vcvt_f8_to_bf16_vnni_block(
                     r_end, reg_data_aux, reg_data_stride, reg_buf_aux);
-        } else {
+        } else if (dst_dt == data_type::f16) {
             f8_e5m2_cvt_->vcvt_f8_to_f16_vnni_block(
                     r_end, reg_data_aux, reg_data_stride, reg_buf_aux);
+        } else {
+            assert(!"unsupported data type");
         }
     } else if (dt == data_type::f8_e4m3) {
-        if (brg.is_fp8_via_convert_to_bf16()) {
+        if (dst_dt == data_type::bf16) {
             f8_e4m3_cvt_->vcvt_f8_to_bf16_vnni_block(
                     r_end, reg_data_aux, reg_data_stride, reg_buf_aux);
-        } else {
+        } else if (dst_dt == data_type::f16) {
             f8_e4m3_cvt_->vcvt_f8_to_f16_vnni_block(
                     r_end, reg_data_aux, reg_data_stride, reg_buf_aux);
+        } else {
+            assert(!"unsupported data type");
         }
     } else
         assert(!"unsupported data type");
@@ -2046,14 +2056,22 @@ void jit_brgemm_kernel_t<Wmm>::maybe_pre_process_data(matrix_kind_t matrix_kind,
     add(reg_buf_aux, transform_offset);
 
     switch (matrix_kind) {
-        case matrix_A:
+        case matrix_A: {
+            assert(brg.is_fp8);
+            // The same type as for weights
+            const auto A_dst_dt = brg.is_fp8_weights_converted_to_f16()
+                    ? data_type::f16
+                    : data_type::bf16;
             fp8_to_xf16_upconvert(num_rows, num_col_bytes, reg_base, offset,
-                    reg_stride, brg.dt_a, is_rd_tail);
-            break;
-        case matrix_B:
+                    reg_stride, brg.dt_a, is_rd_tail, A_dst_dt);
+        } break;
+        case matrix_B: {
+            const auto B_dst_dt = brg.is_fp8_weights_converted_to_f16()
+                    ? data_type::f16
+                    : data_type::bf16;
             fp8_to_xf16_upconvert_to_vnni(num_rows, num_col_bytes, reg_base,
-                    offset, reg_stride, brg.dt_b, is_rd_tail);
-            break;
+                    offset, reg_stride, brg.dt_b, is_rd_tail, B_dst_dt);
+        } break;
         default: assert(!"Wrong Matrix");
     }
 
@@ -2196,9 +2214,11 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel_amx(dim_t bd_block2,
         using namespace data_type;
         if (brg.is_tf32) {
             tmmultf32ps(x1, x2, x3);
-        } else if (brg.is_fp8 && brg.is_fp8_via_convert_to_bf16()) {
+        } else if ((brg.is_fp8 || brg.is_bf16_fp8)
+                && brg.is_fp8_weights_converted_to_bf16()) {
             tdpbf16ps(x1, x2, x3);
-        } else if (brg.is_fp8 && brg.is_fp8_via_convert_to_f16()) {
+        } else if ((brg.is_fp8 || brg.is_f16_fp8)
+                && brg.is_fp8_weights_converted_to_f16()) {
             tdpfp16ps(x1, x2, x3);
         } else if (brg.dt_a == f8_e5m2 && brg.dt_b == f8_e5m2) {
             tdpbf8ps(x1, x2, x3);

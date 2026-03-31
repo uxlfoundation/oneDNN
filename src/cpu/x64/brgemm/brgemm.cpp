@@ -593,6 +593,10 @@ status_t brgemm_desc_set_attr(
             && !utils::one_of(true, is_superset(brg->isa_impl, avx512_core_amx),
                     is_superset(brg->isa_impl, avx10_2_512)))
         return status::unimplemented;
+    if (brg->is_bf16_fp8 && !is_superset(brg->isa_impl, avx512_core_amx))
+        return status::unimplemented;
+    if (brg->is_f16_fp8 && !is_superset(brg->isa_impl, avx512_core_amx_fp16))
+        return status::unimplemented;
 
     return status::success;
 }

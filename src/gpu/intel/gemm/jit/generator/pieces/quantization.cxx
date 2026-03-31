@@ -339,18 +339,6 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
 
     bool common = (qlayout.rows() * qlayout.cols()) == 1;
 
-    bool bfSpecialPath = (T == Type::bf16) && (Tq == Type::f32) && (xqGroupMN > 1) && layout.hasFullCrosspack(2);
-    GRFMultirange qPairs;
-    int npairs = 0;
-
-    if (bfSpecialPath) {
-        for (npairs = 8; npairs > 0; npairs >>= 1) {
-            qPairs = tryChunkAlloc(npairs, 1, Bundle(), BundleGroup::AllBundles(), state);
-            if (!qPairs.empty()) break;
-        }
-        if (qPairs.empty()) throw out_of_registers_exception();
-    }
-
     for (auto &block: layout) {
         auto crosspack = block.crosspack;
         bool colMajor = block.colMajor;
@@ -361,7 +349,7 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
         int xqGroupY = colMajor == doA ? xqGroupK : xqGroupMN;
 
         // If crosspack spans multiple groups, use a stride to restrict to one group
-        bool qbroadcastY = (xqGroupY % crosspack == 0) || common || bfSpecialPath;
+        bool qbroadcastY = (xqGroupY % crosspack == 0) || common;
         int strided = 1;
         if (!qbroadcastY) {
             strided = crosspack;
@@ -369,8 +357,6 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
 
         bool qbroadcastX = xqGroupX > 1 || common;
         int strideq = qbroadcastX ? 0 : 1;
-        if (bfSpecialPath)
-            strideq = 1;
 
         // Unpack iteration # and block offsets into MNK indices
         auto h_block = align_down(h, kab_load) + (doA ? block.offsetC : block.offsetR);
@@ -402,15 +388,6 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
             // If a group lies along the X-direction, limit ne to the end of the current group
             if (xqGroupX > 1) ne = std::min(ne, xqGroupX - x0 % xqGroupX);
 
-            // Broadcast pairs of scales, in case of stride-2 bfloat16 data.
-            if (bfSpecialPath) {
-                int npair = (qdata.getOffset() / 2) % npairs;
-                if (x0 == 0 && npair == 0)
-                    for (int p = 0; p < npairs; p++)
-                        mov(elementsPerGRF(hw, Tq), qPairs[p].ud(), qdata.ud(2*p)(0,2,1));
-                qdata = qPairs[npair].sub(0, Tq.ngen());
-            }
-
             int maxSIMD = (op == BinaryOp::Sub && T.isInt8()) ? 64 : 32;
             if (Tq == Type::f32) maxSIMD = elementsPerGRF(hw, Tq);
             int simd = std::min({ne * crosspack / strided, 2 * elementsPerGRF(hw, T) / strided, maxSIMD});
@@ -437,8 +414,6 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
         }
         }
     }
-
-    safeReleaseRanges(qPairs, state);
 }
 
 // Shift s4 data by 8 to transfrom it into u4 data.

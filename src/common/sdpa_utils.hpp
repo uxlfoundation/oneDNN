@@ -226,14 +226,12 @@ static inline status_t sdpa_attr_check(const memory_desc_t *q_desc,
     }
 
     if (attr) {
-        const bool is_bwd = memory_desc_wrapper(dst_desc).format_kind()
-                == format_kind::undef;
-        smask_t attr_mask = is_bwd ? smask_t::none : smask_t::dropout;
+        smask_t attr_mask = smask_t::dropout;
         VCHECK_SDPA_UNIMPL(
                 attr->has_default_values(attr_mask), VERBOSE_UNSUPPORTED_ATTR);
 
         // Note: if dropout is set, check the dropout desc for supported formats and dimensions.
-        if (!attr->dropout_.has_default_values() && !is_bwd) {
+        if (!attr->dropout_.has_default_values()) {
             CHECK(sdpa_dropout_desc_check(dst_desc, k_desc, attr));
         }
     }
@@ -241,17 +239,23 @@ static inline status_t sdpa_attr_check(const memory_desc_t *q_desc,
     return status::success;
 }
 
-static inline status_t sdpa_attr_check(
-        const engine_t *engine, const primitive_attr_t *attr) {
+static inline status_t sdpa_attr_check(const engine_t *engine,
+        const primitive_attr_t *attr, const memory_desc_t *dst_desc,
+        const memory_desc_t *k_desc) {
     using smask_t = primitive_attr_t::skip_mask_t;
 
     if (attr == nullptr) return status::success;
     if (attr && attr->has_default_values()) { return status::success; }
 
     if (attr) {
-        smask_t attr_mask = smask_t::none;
+        smask_t attr_mask = smask_t::dropout;
         VCHECK_SDPA_UNIMPL(
                 attr->has_default_values(attr_mask), VERBOSE_UNSUPPORTED_ATTR);
+
+        // If dropout is enabled, validate descriptor compatibility.
+        if (!attr->dropout_.has_default_values()) {
+            CHECK(sdpa_dropout_desc_check(dst_desc, k_desc, attr));
+        }
     }
     return status::success;
 }
@@ -370,9 +374,8 @@ static inline status_t create_sdpa_pd(
         const primitive_attr_t *attr, const primitive_desc_t *hint_fwd_pd,
         const primitive_attr_t *kq_attr = nullptr,
         const primitive_attr_t *vs_attr = nullptr) {
-    memory_desc_t empty_desc = types::zero_md();
     CHECK(sdpa_attr_check(
-            q_md, k_md, v_md, &empty_desc, engine, attr, kq_attr, vs_attr));
+            q_md, k_md, v_md, dst_md, engine, attr, kq_attr, vs_attr));
     CHECK(sdpa_desc_check(q_md, k_md, v_md, dst_md, attn_mask_md, engine, attr,
             kq_attr, vs_attr));
 

@@ -62,7 +62,7 @@ dnnl_status_t DNNL_API sdpa_primitive_desc_create(
     CHECK(sdpa_desc_check(query_desc, key_desc, value_desc, dst_desc, mask_desc,
             diff_query_desc, diff_key_desc, diff_value_desc, diff_dst_desc,
             engine, attr));
-    CHECK(sdpa_attr_check(engine, attr));
+    CHECK(sdpa_attr_check(engine, attr, dst_desc, key_desc));
 
     dnnl::impl::sdpa_desc_t sdpa_desc = dnnl::impl::create_sdpa_desc(query_desc,
             key_desc, value_desc, dst_desc, mask_desc, scale_desc,

@@ -69,6 +69,14 @@ public:
 
     status_t barrier();
 
+    bool supports_verbose_profiling(engine_kind_t eng) const override {
+        // verbose profiling support is only for in-order OpenCL queues
+        if (eng != engine_kind::gpu) return false;
+        if (!is_profiling_enabled()) return false;
+        if (flags() & stream_flags::out_of_order) return false;
+        return true;
+    }
+
     const xpu::ocl::context_t &ocl_ctx() const;
     xpu::ocl::context_t &ocl_ctx();
     xpu::context_t &ctx();

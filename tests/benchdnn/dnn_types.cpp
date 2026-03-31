@@ -963,7 +963,8 @@ std::ostream &operator<<(std::ostream &s, const attr_t::post_ops_t &post_ops) {
                 }
             }
             if (e.binary.tag != tag::any) s << src_delim << e.binary.tag;
-            if (!e.binary.strides.empty()) s << src_delim << e.binary.strides;
+            if (!e.binary.strides.empty())
+                s << src_delim << dims2str(e.binary.strides);
 
             if (e.is_binary_kind_with_ternary_op()) {
                 bool delim_added = false;

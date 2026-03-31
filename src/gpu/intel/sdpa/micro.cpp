@@ -1301,6 +1301,9 @@ status_t micro_bwd_params_t::get_kernel_ctx(
     kernel_ctx.define_int("BLOCK_DV", block_dV);
 
     kernel_ctx.define_int("USE_SYSTOLIC_UKERNEL", use_systolic_ukernel);
+    kernel_ctx.define_int("WITH_DROPOUT", dropout);
+    kernel_ctx.define_int("DROPOUT_HOST_SCALARS", dropout_host_scalars);
+    kernel_ctx.define_int("DROPOUT_OUTPUT_MASK", dropout_output_mask);
 
     micro::HWInformation hw_info;
     gemmstone::GEMMProblem problem_kq, problem_vs;
@@ -1510,6 +1513,49 @@ static void append_msk_offs(
     arg_list.append(static_cast<T>(offs[3][1])); // MSK_D1
 }
 
+template <typename conf_t>
+static status_t append_dropout_args(const exec_ctx_t &ctx,
+        compute::kernel_arg_list_t &arg_list, const conf_t &conf) {
+    if (!conf.dropout) return status::success;
+
+    const auto &dropout_p = CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_PROBABILITY);
+    const auto &dropout_seed = CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_SEED);
+    const auto &dropout_offset = CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_OFFSET);
+    arg_list.append(CTX_OUT_STORAGE(DNNL_ARG_ATTR_DROPOUT_MASK));
+    arg_list.append(static_cast<int>(conf.dropout_offset));
+    if (conf.dropout_host_scalars) {
+        int64_t scalar_seed = 0;
+        int64_t scalar_offset = 0;
+        float scalar_prob = 0.f;
+        const host_scalar_memory_storage_t *seed_storage
+                = utils::downcast<const host_scalar_memory_storage_t *>(
+                        &dropout_seed);
+        CHECK(seed_storage->get_scalar_value(
+                &scalar_seed, sizeof(scalar_seed)));
+        if (conf.dropout_offset) {
+            const host_scalar_memory_storage_t *offset_storage
+                    = utils::downcast<const host_scalar_memory_storage_t *>(
+                            &dropout_offset);
+            CHECK(offset_storage->get_scalar_value(
+                    &scalar_offset, sizeof(scalar_offset)));
+        }
+        const host_scalar_memory_storage_t *prob_storage
+                = utils::downcast<const host_scalar_memory_storage_t *>(
+                        &dropout_p);
+        CHECK(prob_storage->get_scalar_value(
+                &scalar_prob, sizeof(scalar_prob)));
+        arg_list.append(scalar_seed);
+        arg_list.append(scalar_offset);
+        arg_list.append(scalar_prob);
+    } else {
+        arg_list.append(dropout_seed);
+        arg_list.append(dropout_offset);
+        arg_list.append(dropout_p);
+    }
+
+    return status::success;
+}
+
 status_t micro_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     const auto &conf = pd()->conf;
 
@@ -1607,44 +1653,7 @@ status_t micro_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 
     arg_list.append(remainder_k);
 
-    if (pd()->conf.dropout) {
-        const auto &dropout_p
-                = CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_PROBABILITY);
-        const auto &dropout_seed = CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_SEED);
-        const auto &dropout_offset
-                = CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_OFFSET);
-        arg_list.append(CTX_OUT_STORAGE(DNNL_ARG_ATTR_DROPOUT_MASK));
-        arg_list.append(static_cast<int>(pd()->conf.dropout_offset));
-        if (pd()->conf.dropout_host_scalars) {
-            int64_t scalar_seed = 0;
-            int64_t scalar_offset = 0;
-            float scalar_prob = 0.f;
-            const host_scalar_memory_storage_t *seed_storage
-                    = utils::downcast<const host_scalar_memory_storage_t *>(
-                            &dropout_seed);
-            CHECK(seed_storage->get_scalar_value(
-                    &scalar_seed, sizeof(scalar_seed)));
-            if (pd()->conf.dropout_offset) {
-                const host_scalar_memory_storage_t *offset_storage
-                        = utils::downcast<const host_scalar_memory_storage_t *>(
-                                &dropout_offset);
-                CHECK(offset_storage->get_scalar_value(
-                        &scalar_offset, sizeof(scalar_offset)));
-            }
-            const host_scalar_memory_storage_t *prob_storage
-                    = utils::downcast<const host_scalar_memory_storage_t *>(
-                            &dropout_p);
-            CHECK(prob_storage->get_scalar_value(
-                    &scalar_prob, sizeof(scalar_prob)));
-            arg_list.append(scalar_seed);
-            arg_list.append(scalar_offset);
-            arg_list.append(scalar_prob);
-        } else {
-            arg_list.append(dropout_seed);
-            arg_list.append(dropout_offset);
-            arg_list.append(dropout_p);
-        }
-    }
+    CHECK(append_dropout_args(ctx, arg_list, pd()->conf));
     compute::range_t lws = {(size_t)pd()->sg_size(), (size_t)sg_per_wg, 1};
     compute::range_t gws = lws;
 
@@ -1894,6 +1903,7 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     } else {
         arg_list.append(scale);
     }
+    CHECK(append_dropout_args(ctx, arg_list, pd()->conf));
     arg_list.append((int)D);
     arg_list.append((int)K);
     arg_list.append((int)Q);

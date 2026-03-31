@@ -74,6 +74,12 @@ typedef enum {
 } brgemm_kernel_prefetching_t;
 
 typedef enum {
+    brgemm_prfw_default = 0,
+    brgemm_prfw_store,
+    brgemm_prfw_loop_store,
+} brgemm_kernel_prefetchw_t;
+
+typedef enum {
     brgemm_innermost_undef = 0,
     brgemm_bd_loop_innermost,
     brgemm_ld_loop_innermost,
@@ -170,6 +176,8 @@ struct DNNL_API brgemm_attr_t {
     brgemm_kernel_loop_order_t hint_loop_order;
     brgemm_kernel_prefetching_t hint_prefetching
             = brgemm_kernel_prefetching_t::brgemm_prf_default;
+    brgemm_kernel_prefetchw_t hint_prefetchw
+            = brgemm_kernel_prefetchw_t::brgemm_prfw_default;
     brgemm_prf_t hint_prfA, hint_prfB, hint_prfC;
 
     // This parameter determines how we will read the tail by K dimension from

@@ -313,36 +313,6 @@ struct micro_fwd_t : public primitive_t {
                         vgs, static_cast<long int>(desc()->val_md()->dims[3]));
             }
 
-            if (!attr()->dropout_.has_default_values()) {
-                assert(memory_desc_wrapper(dst_md(0)).format_kind()
-                        == format_kind::blocked);
-
-                using namespace format_tag;
-                VCHECK_SDPA_COND(memory_desc_matches_one_of_tag(
-                                         *dst_md(0), ncdhw, nchw, ncw, nc),
-                        VERBOSE_UNSUPPORTED_DROPOUT);
-
-                if (attr_.dropout_.has_output_mask()) {
-                    const auto &mask_desc = attr_.dropout_.dropout_desc_;
-                    const int ndims = dst_md(0)->ndims;
-                    // Mask dims must match the score shape:
-                    // batch/head/seq_q dims from dst, seq_kv from key.
-                    VCHECK_SDPA_COND(mask_desc.ndims == ndims,
-                            VERBOSE_UNSUPPORTED_DROPOUT);
-                    for (int i = 0; i < ndims - 1; ++i) {
-                        VCHECK_SDPA_COND(
-                                mask_desc.dims[i] == dst_md(0)->dims[i],
-                                VERBOSE_UNSUPPORTED_DROPOUT);
-                    }
-                    VCHECK_SDPA_COND(mask_desc.dims[ndims - 1]
-                                    == desc()->key_md()->dims[ndims - 1],
-                            VERBOSE_UNSUPPORTED_DROPOUT);
-                    VCHECK_SDPA_COND(memory_desc_matches_one_of_tag(
-                                             mask_desc, ncdhw, nchw, ncw, nc),
-                            VERBOSE_UNSUPPORTED_DROPOUT);
-                }
-            }
-
             CHECK(init_conf_microkernels(engine));
             CHECK(init_conf(engine));
             VCHECK_SDPA_COND(IMPLICATION((arch() == compute::gpu_arch_t::xe_hpc)

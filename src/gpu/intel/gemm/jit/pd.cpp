@@ -438,6 +438,15 @@ bool pd_t::scales_ok() {
                             || x_scales.get_group(1) != 32
                             || arch_ < compute::gpu_arch_t::xe_hpc))
                 return false;
+
+            // Inner layout must be plain MxN for Dynamic Dst Quant
+            if (s == DNNL_ARG_C && with_mx_scale()) {
+                auto md = &desc()->c_desc;
+                auto strides = md->format_desc.blocking.strides;
+                if (strides[md->ndims - 1] != 1
+                        || strides[md->ndims - 2] != md->dims[md->ndims - 1])
+                    return false;
+            }
         }
     }
 

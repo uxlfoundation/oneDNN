@@ -667,8 +667,7 @@ status_t insert_reshape_for_sdpa(std::shared_ptr<subgraph_t> &sg) {
         if (cur_op->get_attr<bool>(op_attr::is_training)) {
             auto stats_dims = ltw(cur_op->get_output_logical_tensor(2)).vdims();
             const dims &expected_stats_dims = stats_dims;
-            op_ptr reshape_stats
-                    = std::make_shared<op_t>(op_kind::_reshape);
+            op_ptr reshape_stats = std::make_shared<op_t>(op_kind::_reshape);
             reshape_stats->set_attr<bool>(op_attr::special_zero, false);
             reshape_stats->set_attr<std::vector<int64_t>>(
                     op_attr::shape, expected_stats_dims);
@@ -754,8 +753,7 @@ status_t insert_reshape_for_sdpa_bwd(std::shared_ptr<subgraph_t> &sg) {
         auto diff_query_dims
                 = ltw(cur_op->get_output_logical_tensor(0)).vdims();
         const dims &expected_diff_query_dims = diff_query_dims;
-        op_ptr reshape_diff_query
-                = std::make_shared<op_t>(op_kind::_reshape);
+        op_ptr reshape_diff_query = std::make_shared<op_t>(op_kind::_reshape);
         reshape_diff_query->set_attr<bool>(op_attr::special_zero, false);
         reshape_diff_query->set_attr<std::vector<int64_t>>(
                 op_attr::shape, expected_diff_query_dims);
@@ -774,8 +772,7 @@ status_t insert_reshape_for_sdpa_bwd(std::shared_ptr<subgraph_t> &sg) {
         auto diff_value_dims
                 = ltw(cur_op->get_output_logical_tensor(2)).vdims();
         const dims &expected_diff_value_dims = diff_value_dims;
-        op_ptr reshape_diff_value
-                = std::make_shared<op_t>(op_kind::_reshape);
+        op_ptr reshape_diff_value = std::make_shared<op_t>(op_kind::_reshape);
         reshape_diff_value->set_attr<bool>(op_attr::special_zero, false);
         reshape_diff_value->set_attr<std::vector<int64_t>>(
                 op_attr::shape, expected_diff_value_dims);

@@ -3280,8 +3280,7 @@ status_t decompose_softmax_with_stats(std::shared_ptr<subgraph_t> &sg) {
         auto reduce_dst_op_out_val = f32_dst;
         if (need_reduction) {
             // create reduce_src op
-            auto reduce_src_op
-                    = std::make_shared<op_t>(op_kind::_reduction);
+            auto reduce_src_op = std::make_shared<op_t>(op_kind::_reduction);
             reduce_src_op->set_attr<std::vector<int64_t>>(
                     op_attr::axes, {cur_op->get_attr<int64_t>(op_attr::axis)});
             reduce_src_op->set_attr<bool>(op_attr::keep_dims, true);
@@ -3299,8 +3298,7 @@ status_t decompose_softmax_with_stats(std::shared_ptr<subgraph_t> &sg) {
             insert_empty_scratchpad(reduce_src_op);
 
             // create reduce_dst op
-            auto reduce_dst_op
-                    = std::make_shared<op_t>(op_kind::_reduction);
+            auto reduce_dst_op = std::make_shared<op_t>(op_kind::_reduction);
             reduce_dst_op->set_attr<std::vector<int64_t>>(
                     op_attr::axes, {cur_op->get_attr<int64_t>(op_attr::axis)});
             reduce_dst_op->set_attr<bool>(op_attr::keep_dims, true);
@@ -5062,8 +5060,7 @@ status_t fuse_sdpa_bwd(std::shared_ptr<subgraph_t> &sg) {
                 permute_p = sole_consumer(permute_p);
             }
         }
-        if (!permute_p || permute_p->get_kind() != op_kind::_permute)
-            continue;
+        if (!permute_p || permute_p->get_kind() != op_kind::_permute) continue;
 
         matmul_dv = sole_consumer(permute_p);
 
@@ -5160,8 +5157,7 @@ status_t fuse_sdpa_bwd(std::shared_ptr<subgraph_t> &sg) {
 
         if (permute_ds && !matmul_dk) {
             auto next = sole_consumer(permute_ds);
-            if (next && next->get_kind() == op_kind::_matmul)
-                matmul_dk = next;
+            if (next && next->get_kind() == op_kind::_matmul) matmul_dk = next;
         }
 
         if (!matmul_dq || !matmul_dk) continue;

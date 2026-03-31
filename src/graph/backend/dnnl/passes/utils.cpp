@@ -421,8 +421,8 @@ bool post_binary_fusible(
     // Disable matmul + binary_sub fusion
     if (base_op->get_kind() == op_kind::_matmul
             && static_cast<dnnl::algorithm>(
-                      bin_op->get_attr<int64_t>(op_attr::alg_kind))
-                   == dnnl::algorithm::binary_sub) {
+                       bin_op->get_attr<int64_t>(op_attr::alg_kind))
+                    == dnnl::algorithm::binary_sub) {
         return false;
     }
 

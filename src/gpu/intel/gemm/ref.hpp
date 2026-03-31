@@ -134,6 +134,12 @@ struct ref_t : public primitive_t {
                     VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "desc()->a_desc",
                     "desc()->b_desc", static_cast<int>(desc()->a_desc.dims[0]),
                     static_cast<int>(desc()->b_desc.dims[0]));
+            // Bug in runtime dims support; defer to ref_matmul
+            VDISPATCH_GEMM(
+                    !utils::one_of(DNNL_RUNTIME_DIM_VAL, desc()->m(),
+                            desc()->n(), desc()->k(), desc()->lda(),
+                            desc()->ldb(), desc()->ldc(), desc()->batch()),
+                    VERBOSE_RUNTIMEDIM_UNSUPPORTED);
             VDISPATCH_GEMM(IMPLICATION(acc_dt != s32 && !wei_decompress,
                                    attr()->zero_points_.has_default_values()),
                     VERBOSE_UNSUPPORTED_ZP_CFG);

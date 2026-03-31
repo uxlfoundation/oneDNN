@@ -102,16 +102,7 @@ __kernel void dynamic_scale_dst(__global float *restrict src,
             c_stride_n / groupSize, c_stride_d0, c_stride_d1, c_stride_d2,
             c_stride_d3);
 #else
-#if NDIMS == 5
-    scale_off = DST_SCALE_OFF(
-            d2 % DST_D0, d1 % DST_D1, d0 % DST_D2, m, n, groupSize, 1);
-#elif NDIMS == 4
-    scale_off = DST_SCALE_OFF(d1 % DST_D0, d0 % DST_D1, 0, m, n, groupSize, 1);
-#elif NDIMS == 3
-    scale_off = DST_SCALE_OFF(d0 % DST_D0, m, 0, 0, n, groupSize, 1);
-#else
-    scale_off = DST_SCALE_OFF(m, n, 0, 0, 0, groupSize, 1);
-#endif
+    scale_off = DST_SCALE_OFF(n, m, d0, d1, d2, groupSize);
 #endif
     dst_scales[scale_off] = REF_TO_DST_SCALES(scale_val);
 }

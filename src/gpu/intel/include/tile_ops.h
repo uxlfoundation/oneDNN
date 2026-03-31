@@ -458,6 +458,23 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
         } \
     } while (0)
 
+#define tile_predicated_select(t, sg_offset_r, sg_offset_c, predicate, \
+        true_value, false_value, sg, br, bc, nbr, nbc) \
+    do { \
+        for (int j = 0; j < (bc * nbc); j++) { \
+            for (int i0 = 0; i0 < (br * nbr); i0 += sg) { \
+                int i = i0 + get_sub_group_local_id(); \
+                int offset_r = sg_offset_r + i; \
+                int offset_c = sg_offset_c + j; \
+                if (predicate(offset_r, offset_c)) { \
+                    tile_access(t, i0, j, sg, br, bc, nbr) \
+                            = predicate(offset_r, offset_c) ? true_value \
+                                                            : false_value; \
+                } \
+            } \
+        } \
+    } while (0)
+
 #define DECLARE_2D_TILE_OPS(tile_type, element_type, sg, br, bc, nbr, nbc) \
     __attribute__((overloadable)) void tile_load_full(tile_type *t, \
             const global element_type *ptr, int ld, int offset_r, \

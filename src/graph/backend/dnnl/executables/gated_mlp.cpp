@@ -26,29 +26,54 @@ namespace dnnl_impl {
 gated_mlp_executable_t::gated_mlp_executable_t(std::shared_ptr<op_t> &op,
         const dnnl::engine &p_engine, pd_cache_t &pd_cache,
         const fpmath_t &fpmath, bool use_block_layout) {
+    auto desc = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
+
+    if (desc) {
+        // create primitive
+        dnnl_primitive_t prim = nullptr;
+        auto ret = dnnl_primitive_create(&prim, desc.get());
+        if (prim && ret == dnnl_success) { prim_.reset(prim); }
+    }
+}
+
+gated_mlp_executable_t::desc_t gated_mlp_executable_t::create_desc(
+        std::shared_ptr<op_t> &op, const dnnl::engine &p_engine,
+        pd_cache_t &pd_cache, const fpmath_t &fpmath, bool use_block_layout) {
+    UNUSED(use_block_layout);
+
+    // first look up the cache
+    if (pd_cache.find(op.get()) != pd_cache.end()) {
+        auto pd = graph::utils::any_cast<dnnl::primitive_desc_base>(
+                pd_cache.at(op.get()));
+        return {pd, true};
+    }
+
     auto src_md = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
     auto wei0_md = make_dnnl_memory_desc(op->get_input_logical_tensor(1));
     auto wei1_md = make_dnnl_memory_desc(op->get_input_logical_tensor(2));
     auto wei2_md = make_dnnl_memory_desc(op->get_input_logical_tensor(3));
     auto dst_md = make_dnnl_memory_desc(op->get_output_logical_tensor(0));
 
-    dnnl_primitive_attr_t attr = nullptr;
+    dnnl::primitive_attr attr;
+    attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+    attr.set_fpmath_mode(
+            static_cast<dnnl::fpmath_mode>(fpmath.mode_), fpmath.apply_to_int_);
     auto act_algo = op->has_attr(op_attr::alg_kind)
             ? static_cast<dnnl::algorithm>(
                       op->get_attr<int64_t>(op_attr::alg_kind))
             : dnnl::algorithm::undef;
+
     dnnl_primitive_desc_t pd = nullptr;
-    // create primitive desc.
     auto ret = dnnl_gated_mlp_primitive_desc_create(&pd, p_engine.get(),
             src_md.get(), wei0_md.get(), wei1_md.get(), wei2_md.get(),
-            dst_md.get(), static_cast<dnnl_alg_kind_t>(act_algo), attr);
-    if (pd && ret == dnnl_success) {
-        pd_.reset(pd);
-        // create primitive
-        dnnl_primitive_t prim = nullptr;
-        ret = dnnl_primitive_create(&prim, pd_.get());
-        if (prim && ret == dnnl_success) { prim_.reset(prim); }
-    }
+            dst_md.get(), static_cast<dnnl_alg_kind_t>(act_algo), attr.get());
+
+    if (!pd || ret != dnnl_success) return {dnnl::primitive_desc_base(), false};
+
+    dnnl::primitive_desc_base apd(pd);
+    pd_cache.insert({op.get(), apd});
+
+    return {apd, false};
 }
 
 void gated_mlp_executable_t::execute(const stream &stream,

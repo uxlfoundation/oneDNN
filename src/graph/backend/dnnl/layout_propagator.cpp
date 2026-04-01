@@ -2009,30 +2009,18 @@ status_t layout_propagator_for_gated_mlp(std::shared_ptr<op_t> &op,
         const dnnl::engine &p_engine, pd_cache_t &pd_cache,
         const fpmath_t &fpmath, bool use_block_layout,
         subgraph_rewriter_t &rewriter) {
-    UNUSED(p_engine);
-    UNUSED(pd_cache);
-    UNUSED(fpmath);
-    UNUSED(use_block_layout);
     UNUSED(rewriter);
+    const auto pd = gated_mlp_executable_t::create_desc(
+            op, p_engine, pd_cache, fpmath, use_block_layout);
+
+    if (!pd) return status::unimplemented;
 
     value_ptr dst_val = op->get_output_value(0);
-    const logical_tensor_t &dst_lt = dst_val->get_logical_tensor();
+    status_t status = fill_layout_info(dst_val, pd.dst_desc());
+    if (status != status::success) { return status; }
 
-    dnnl::memory::desc expected_md;
-    if (ltw(dst_lt).is_any()) {
-        const auto tag = get_ncx_format(ltw(dst_lt).ndims());
-        expected_md = {ltw(dst_lt).vdims(),
-                static_cast<dnnl::memory::data_type>(ltw(dst_lt).data_type()),
-                tag};
-    } else {
-        expected_md = make_dnnl_memory_desc(dst_lt);
-    }
-    status_t status = fill_layout_info(dst_val, expected_md);
-
-    // fill scratchpads dimensions and data type to scratchpad value_t
-    value_ptr scratchpad_val = op->get_output_value(1);
-    const memory::desc scratchpad_desc;
-    status = fill_layout_info(scratchpad_val, scratchpad_desc);
+    value_ptr spad_val = op->get_output_value(1);
+    status = fill_layout_info(spad_val, pd.scratchpad_desc());
     return status;
 }
 

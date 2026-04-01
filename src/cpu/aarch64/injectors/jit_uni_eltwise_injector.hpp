@@ -327,7 +327,7 @@ private:
         gelu_erf_pol, // see correspondent table for float values
         gelu_erf_lut_max,
         gelu_erf_lut_third,
-        gelu_erf_lut_shift,
+        gelu_erf_lut_bias,
         gelu_erf_lut_max_index,
         gelu_erf_lut, // ERF LUT: [erf(r), scale(r)], 513 pairs
         gelu_erf_lut_erf, // ERF LUT: erf(r), 513 entries

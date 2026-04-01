@@ -52,22 +52,10 @@ bool is_alg_supported(alg_kind_t alg) {
 }
 
 bool is_supported(cpu_isa_t isa, alg_kind_t alg) {
-    if (is_isa_supported(isa)) {
-        if (isa == asimd) {
-            using namespace alg_kind;
-            return utils::one_of(alg, eltwise_relu, eltwise_tanh, eltwise_elu,
-                    eltwise_square, eltwise_abs, eltwise_sqrt, eltwise_linear,
-                    eltwise_soft_relu, eltwise_logistic, eltwise_mish,
-                    eltwise_exp, eltwise_gelu_tanh, eltwise_hardsigmoid,
-                    eltwise_hardswish, eltwise_swish, eltwise_clip,
-                    eltwise_clip_v2, eltwise_gelu_erf, eltwise_round,
-                    eltwise_clip_v2_use_dst_for_bwd);
-        } else {
-            return is_alg_supported(alg);
-        }
-    } else {
-        return false;
-    }
+    using namespace alg_kind;
+    // ASIMD does not currently support eltwise_log.
+    if (isa == asimd && alg == eltwise_log) return false;
+    return is_isa_supported(isa) && is_alg_supported(alg);
 }
 
 } // namespace eltwise_injector
@@ -1130,7 +1118,7 @@ void jit_uni_eltwise_injector_t<isa>::gelu_erf_compute_vector_fwd(
     //   erf(x) = erf(r) + scale(r) * d * (1 - r * d - 1/3 * d^2)
     //
     // where:
-    //   r = floor(x * 128) / 128
+    //   r = round(x * 128) / 128
     //   d = x - r
     //
     // erf(r) and scale(r) are stored in a 513-entry lookup table.
@@ -1145,9 +1133,12 @@ void jit_uni_eltwise_injector_t<isa>::gelu_erf_compute_vector_fwd(
     h->facgt(p_tmp0.s, p_all / T_z, vmm_aux5, vmm_aux0);
     h->fmin(vmm_aux1, p_all / T_m, vmm_aux0);
 
-    // Find LUT indices by rounding to the step of 1/128.
-    // `gelu_erf_lut_shift` pushes out the 16 LSBs. Only 7 fraction bits remain.
-    h->fadd(vmm_aux2, vmm_aux1, table_val(gelu_erf_lut_shift, z_tmp));
+    // Find LUT indices by quantizing the LUT input to the 1/128 grid.
+    // Adding 2^16 moves the sum into the [2^16, 2^17) f32 range, where the ULP is
+    // 2^(16 - 23) = 1/128, so the add rounds to the nearest 1/128 step.
+    // The floating-point subtraction recovers the quantized value, and the integer
+    // subtraction of the same bit pattern yields the corresponding LUT index.
+    h->fadd(vmm_aux2, vmm_aux1, table_val(gelu_erf_lut_bias, z_tmp));
     h->fsub(vmm_aux3, vmm_aux2, z_tmp); // r
     h->sub(vmm_aux4, vmm_aux2, z_tmp); // raw index
     h->umin(vmm_aux4, p_all / T_m,
@@ -2149,7 +2140,7 @@ void jit_uni_eltwise_injector_t<isa>::register_table_entries() {
     static const table_t gelu_erf_lut_consts {
             {gelu_erf_lut_max, {0x407c0000, true}}, // 3.9375f
             {gelu_erf_lut_third, {0x3eaaaaab, true}}, // 1/3
-            {gelu_erf_lut_shift, {0x47800000, true}}, // 65536.f
+            {gelu_erf_lut_bias, {0x47800000, true}}, // 65536.f
             {gelu_erf_lut_max_index, {0x00000200, true}}, // 512
     };
 
@@ -3028,7 +3019,7 @@ void jit_uni_eltwise_injector_t<asimd>::gelu_erf_compute_vector_fwd(
     //   erf(x) = erf(r) + scale(r) * d * (1 - r * d - 1/3 * d^2)
     //
     // where:
-    //   r = floor(x * 128) / 128
+    //   r = round(x * 128) / 128
     //   d = x - r
     //
     // erf(r) and scale(r) are stored in a 513-entry lookup table.
@@ -3038,9 +3029,12 @@ void jit_uni_eltwise_injector_t<asimd>::gelu_erf_compute_vector_fwd(
     //   erf(x) =  1 for x >  3.9375
     //   erf(x) = -1 for x < -3.9375
 
-    // Find LUT indices by rounding to the step of 1/128.
-    // `gelu_erf_lut_shift` pushes out the 16 LSBs. Only 7 fraction bits remain.
-    h->fadd(vmm_aux2, vmm_aux1, table_val(gelu_erf_lut_shift, z_tmp)); // z
+    // Find LUT indices by quantizing the LUT input to the 1/128 grid.
+    // Adding 2^16 moves the sum into the [2^16, 2^17) f32 range, where the ULP is
+    // 2^(16 - 23) = 1/128, so the add rounds to the nearest 1/128 step.
+    // The floating-point subtraction recovers the quantized value, and the integer
+    // subtraction of the same bit pattern yields the corresponding LUT index.
+    h->fadd(vmm_aux2, vmm_aux1, table_val(gelu_erf_lut_bias, z_tmp));
     h->fsub(vmm_aux3, vmm_aux2, z_tmp); // r
     h->sub(vmm_aux5, vmm_aux2, z_tmp); // raw index
     h->umin(vmm_aux5, vmm_aux5,

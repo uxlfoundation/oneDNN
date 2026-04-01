@@ -15,6 +15,8 @@
 *******************************************************************************/
 
 #include <cctype>
+#include <new>
+#include <vector>
 
 #include "oneapi/dnnl/dnnl.h"
 
@@ -27,6 +29,66 @@
 using namespace dnnl::impl;
 using namespace dnnl::impl::status;
 using namespace dnnl::impl::utils;
+
+namespace {
+
+// Per-thread freelist must outlive static destructors (e.g. graph backend) that
+// still call dnnl_memory_desc_destroy during exit. A thread_local std::vector
+// runs ~vector under __call_tls_dtors before those dtors, so push_back would
+// memcpy from freed storage (ASan heap-use-after-free). Keep the vector on the
+// heap and only store a raw pointer in TLS so TLS teardown does not destroy it.
+//
+// Dynamic initializer runs once per thread (compiler TLS init guard).
+thread_local std::vector<memory_desc_t *> *const g_md_freelist_heap
+        = new std::vector<memory_desc_t *>();
+
+// Max pooled memory descriptors per thread. Override with
+// ONEDNN_MEMORY_DESC_FREELIST_CAPACITY or DNNL_MEMORY_DESC_FREELIST_CAPACITY
+// (see getenv_int_user). 0 disables pooling (always delete on destroy).
+const size_t md_freelist_capacity_limit = []() {
+    const int v = getenv_int_user("MEMORY_DESC_FREELIST_CAPACITY", 256);
+    return v < 0 ? size_t {256} : static_cast<size_t>(v);
+}();
+
+memory_desc_t *acquire_memory_desc() {
+    // One thread_local read (+ once-per-thread init guard); then plain pointer ops.
+    auto *const heap = g_md_freelist_heap;
+    if (!heap->empty()) {
+        memory_desc_t *p = heap->back();
+        heap->pop_back();
+        // Storage was returned to the pool after an explicit destructor call;
+        // default-construct so format_desc union and extra state match a fresh md.
+        return new (p) memory_desc_t();
+    }
+    // dnnl_memory_desc inherits c_compatible: no nothrow new; use aligned malloc
+    // + placement new (see nstl.hpp).
+    void *raw = memory_desc_t::operator new(sizeof(memory_desc_t));
+    if (!raw) return nullptr;
+    return new (raw) memory_desc_t();
+}
+
+void release_memory_desc(memory_desc_t *p) {
+    if (p == nullptr) return;
+    // End object lifetime before pooling raw storage; reuse must placement-new.
+    p->~memory_desc_t();
+    auto *const heap
+            = g_md_freelist_heap; // one TLS read; see acquire_memory_desc
+    if (heap->size() < md_freelist_capacity_limit) {
+        heap->push_back(p);
+    } else {
+        // not delete p to not call destructor second time
+        memory_desc_t::operator delete(p);
+    }
+}
+
+struct memory_desc_pool_deleter_t {
+    void operator()(memory_desc_t *p) const { release_memory_desc(p); }
+};
+
+using pooled_md_ptr
+        = std::unique_ptr<memory_desc_t, memory_desc_pool_deleter_t>;
+
+} // namespace
 
 namespace dnnl {
 namespace impl {
@@ -684,7 +746,7 @@ status_t dnnl_memory_desc_create_with_tag(memory_desc_t **memory_desc,
         int ndims, const dims_t dims, data_type_t data_type, format_tag_t tag) {
     if (any_null(memory_desc)) return invalid_arguments;
 
-    auto md = utils::make_unique<memory_desc_t>();
+    pooled_md_ptr md(acquire_memory_desc());
     if (!md) return out_of_memory;
     CHECK(memory_desc_init_by_tag(*md, ndims, dims, data_type, tag));
     (*memory_desc) = md.release();
@@ -696,7 +758,7 @@ status_t dnnl_memory_desc_create_with_strides(memory_desc_t **memory_desc,
         const dims_t strides) {
     if (any_null(memory_desc)) return invalid_arguments;
 
-    auto md = utils::make_unique<memory_desc_t>();
+    pooled_md_ptr md(acquire_memory_desc());
     if (!md) return out_of_memory;
     CHECK(memory_desc_init_by_strides(*md, ndims, dims, data_type, strides));
     (*memory_desc) = md.release();
@@ -708,7 +770,7 @@ status_t dnnl_memory_desc_create_with_csr_encoding(memory_desc_t **memory_desc,
         data_type_t indices_dt, data_type_t pointers_dt) {
     if (any_null(memory_desc)) return invalid_arguments;
 
-    auto md = utils::make_unique<memory_desc_t>();
+    pooled_md_ptr md(acquire_memory_desc());
     if (!md) return out_of_memory;
     CHECK(memory_desc_init_by_csr_encoding(
             *md, ndims, dims, data_type, nnz, indices_dt, pointers_dt));
@@ -721,7 +783,7 @@ status_t dnnl_memory_desc_create_with_coo_encoding(memory_desc_t **memory_desc,
         data_type_t indices_dt) {
     if (any_null(memory_desc)) return invalid_arguments;
 
-    auto md = utils::make_unique<memory_desc_t>();
+    pooled_md_ptr md(acquire_memory_desc());
     if (!md) return out_of_memory;
     CHECK(memory_desc_init_by_coo_encoding(
             *md, ndims, dims, data_type, nnz, indices_dt));
@@ -734,7 +796,7 @@ status_t dnnl_memory_desc_create_with_packed_encoding(
         data_type_t data_type, dim_t nnz) {
     if (any_null(memory_desc)) return invalid_arguments;
 
-    auto md = utils::make_unique<memory_desc_t>();
+    pooled_md_ptr md(acquire_memory_desc());
     if (!md) return out_of_memory;
     CHECK(memory_desc_init_by_packed_encoding(
             *md, ndims, dims, data_type, nnz));
@@ -749,7 +811,7 @@ status_t dnnl_memory_desc_create_with_grouped_encoding(
         data_type_t offsets_dt) {
     if (any_null(memory_desc)) return invalid_arguments;
 
-    auto md = utils::make_unique<memory_desc_t>();
+    pooled_md_ptr md(acquire_memory_desc());
     if (!md) return out_of_memory;
     CHECK(memory_desc_init_with_grouped_encoding(*md, ndims, dims, data_type,
             variable_dim_idx, group_count, offsets_dt));
@@ -762,7 +824,7 @@ status_t dnnl_memory_desc_create_host_scalar(
         memory_desc_t **memory_desc, data_type_t data_type) {
     if (any_null(memory_desc)) return invalid_arguments;
 
-    auto md = utils::make_unique<memory_desc_t>();
+    pooled_md_ptr md(acquire_memory_desc());
     if (!md) return out_of_memory;
     CHECK(memory_desc_init_host_scalar(*md, data_type));
     (*memory_desc) = md.release();
@@ -774,7 +836,7 @@ status_t dnnl_memory_desc_create_submemory(memory_desc_t **memory_desc,
         const dims_t offsets) {
     if (any_null(memory_desc, parent_memory_desc)) return invalid_arguments;
 
-    auto md = utils::make_unique<memory_desc_t>();
+    pooled_md_ptr md(acquire_memory_desc());
     if (!md) return out_of_memory;
     CHECK(memory_desc_init_submemory(*md, *parent_memory_desc, dims, offsets));
     (*memory_desc) = md.release();
@@ -785,7 +847,7 @@ status_t dnnl_memory_desc_reshape(memory_desc_t **out_memory_desc,
         const memory_desc_t *in_memory_desc, int ndims, const dims_t dims) {
     if (any_null(out_memory_desc, in_memory_desc)) return invalid_arguments;
 
-    auto md = utils::make_unique<memory_desc_t>();
+    pooled_md_ptr md(acquire_memory_desc());
     if (!md) return out_of_memory;
     CHECK(memory_desc_reshape(*md, *in_memory_desc, ndims, dims));
     (*out_memory_desc) = md.release();
@@ -796,7 +858,7 @@ status_t dnnl_memory_desc_permute_axes(memory_desc_t **out_memory_desc,
         const memory_desc_t *in_memory_desc, const int *perm) {
     if (any_null(out_memory_desc, in_memory_desc)) return invalid_arguments;
 
-    auto md = utils::make_unique<memory_desc_t>();
+    pooled_md_ptr md(acquire_memory_desc());
     if (!md) return out_of_memory;
     CHECK(memory_desc_permute_axes(*md, *in_memory_desc, perm));
     (*out_memory_desc) = md.release();
@@ -921,13 +983,16 @@ status_t dnnl_memory_desc_query_v2(
 }
 
 status_t dnnl_memory_desc_destroy(memory_desc_t *memory_desc) {
-    delete memory_desc;
+    release_memory_desc(memory_desc);
     return success;
 }
 
 status_t dnnl_memory_desc_clone(memory_desc_t **memory_desc,
         const memory_desc_t *existing_memory_desc) {
-    (*memory_desc) = new memory_desc_t(*existing_memory_desc);
+    memory_desc_t *p = acquire_memory_desc();
+    if (!p) return out_of_memory;
+    *p = *existing_memory_desc;
+    *memory_desc = p;
     return success;
 }
 
@@ -947,8 +1012,10 @@ status_t dnnl_memory_desc_create_with_blob(
         memory_desc_t **md, const uint8_t *blob) {
     if (one_of(nullptr, md, blob)) return invalid_arguments;
 
-    *md = new memory_desc_t();
-    memcpy(*md, blob, sizeof(memory_desc_t));
+    memory_desc_t *p = acquire_memory_desc();
+    if (!p) return out_of_memory;
+    memcpy(p, blob, sizeof(memory_desc_t));
+    *md = p;
     return success;
 }
 
@@ -958,7 +1025,7 @@ extern "C" status_t DNNL_API dnnl_memory_desc_create_with_string_tag(
         data_type_t data_type, const char *tag) {
     if (any_null(memory_desc)) return invalid_arguments;
 
-    auto md = utils::make_unique<memory_desc_t>();
+    pooled_md_ptr md(acquire_memory_desc());
     if (!md) return out_of_memory;
     CHECK(memory_desc_init_by_string_tag(*md, ndims, dims, data_type, tag));
     (*memory_desc) = md.release();

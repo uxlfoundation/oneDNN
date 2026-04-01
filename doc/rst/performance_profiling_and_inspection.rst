@@ -12,5 +12,5 @@ Performance Profiling and Inspection
    page_performance_profiling_cpp
    dev_guide_cpu_dispatcher_control
    dev_guide_cpu_isa_hints
+   dev_guide_memory_desc_freelist
    dev_guide_verbose_table
-   

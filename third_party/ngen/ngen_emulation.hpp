@@ -648,7 +648,7 @@ struct EmulationImplementation {
                 g.mov(mod, dstHi, 0, loc);
         } else if (dstQ && s0W && s1D) {
             stub();
-        } else if (dstQ && s0D && s1W && !s1Immed && !emulate64 && !strategy.emulateDWxDW) {
+        } else if (dstQ && s0D && s1W && !s1Immed && !emulate64 && !emulateDWxDW && g.getHardware() < HW::Xe3) {
             auto acc = g.acc0.d();
             g.mov(mod, acc, src1, loc);
             g.mul(mod, dst, acc, src0, loc);

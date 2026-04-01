@@ -117,3 +117,34 @@
 --attr-dropout=0.5:12345678
 --stag=ab --dtag=ab
 --batch=shapes_2d_ci
+
+#Regression
+--reset
+--impl=ref
+--dt=f8_e4m3:f8_e4m3:f8_e4m3
+--stag=abc --wtag=cab --dtag=abc
+--attr-scales=src:per_tensor:e8m0:1x32+dst:mx:e8m0:1x32+wei:per_tensor:e8m0:32x1
+1x1x1024:1x1024x1024
+
+--reset
+--impl=ref
+--dt=s8:u8:f16 --stag=abx --wtag=xab --dtag=abx
+--attr-scales=src:per_tensor:f16:1x128+wei:per_oc:f16
+--attr-zero-points=wei:per_oc:u8
+--attr-precomputed-reductions=src:per_tensor:s32:1x128
+--attr-post-ops=swish:1+mul:f16:6:abx
+7x3x2x42x256:7x3x2x256x84
+
+--reset
+--impl=ref
+--dt=s8:s4:f16
+--attr-scales=src:per_ocic:f16:1x256+wei:per_tensor:f16:128x1
+--attr-zero-points=src:per_ocic:u4:1x256+wei:per_tensor:s4:128x1
+5x2x3x6x256:5x2x3x256x100
+
+--reset
+--impl=ref
+--dt=f8_e4m3:f8_e4m3:f32 --stag=abc --wtag=abc --dtag=abc
+--runtime_dims_masks=1:1
+--bia-dt=f32 --bia_mask=4
+1x30x30:1x30x20

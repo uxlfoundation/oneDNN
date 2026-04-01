@@ -1,0 +1,53 @@
+--reset
+# No mask
+--dt=f16,bf16
+--batch=shapes_basic
+
+# Buffer mask (bf16 excluded: GPU kernel limitation)
+--reset
+--mask=buffer
+--dt=f16
+--batch=shapes_basic
+
+# Broadcast buffer masks (1D and 2D, matching gtest oneD/twoD)
+--reset
+--mask=buffer_1d
+--dt=f16
+--batch=shapes_basic
+
+--reset
+--mask=buffer_2d
+--dt=f16
+--batch=shapes_basic
+
+# Causal mask
+--reset
+--mask=causal_top_left
+--dt=f16
+--batch=shapes_basic
+
+# Scale
+--reset
+--scale=mul
+--dt=f16
+--batch=shapes_basic
+
+# Transformer-derived shapes (cf. tests/gtests/internals/test_sdpa.cpp)
+--reset
+--dt=f16,bf16
+--batch=shapes_transformer_gpu
+
+# Forward training (needed for backward; verifies DST with training prop)
+--reset
+--dir=FWD_D
+--dt=f16,bf16
+--batch=shapes_transformer_gpu
+
+# Backward
+# --reset
+# --dir=BWD_D
+# --dt=f16,bf16
+# --batch=shapes_bwd
+# --mask=causal_top_left
+# --dt=f16
+# --batch=shapes_bwd

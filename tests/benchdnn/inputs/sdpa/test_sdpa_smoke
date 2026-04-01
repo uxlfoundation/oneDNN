@@ -1,0 +1,22 @@
+--reset
+# No mask
+--dt=f16
+--batch=shapes_basic
+
+# Buffer mask
+--reset
+--mask=buffer
+--dt=f16
+--batch=shapes_basic
+
+# Causal mask
+--reset
+--mask=causal_top_left
+--dt=f16
+--batch=shapes_basic
+
+# Scale
+--reset
+--scale=mul
+--dt=f16
+--batch=shapes_basic

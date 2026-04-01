@@ -1,0 +1,31 @@
+# Transformer-derived SDPA shapes for manual / extended testing.
+# Shapes mirror configurations from tests/gtests/internals/test_sdpa.cpp.
+# Includes decode shapes (seq_q=1) that the GPU kernel may not yet support.
+# Format: Q_dims:K_dims:V_dims  (batch x heads x seq x head_dim)
+
+# Encoder-style: 12 heads, head_size=64, seq=384
+1x12x384x64:1x12x64x384:1x12x384x64
+
+# Encoder-style: 16 heads, head_size=64, seq=384
+1x16x384x64:1x16x64x384:1x16x384x64
+
+# LLaMA-2-7B prompt: 32 heads, head_size=128, seq=512
+1x32x512x128:1x32x128x512:1x32x512x128
+
+# LLaMA-2-7B decode: seq_q=1, seq_kv=513
+1x32x1x128:1x32x128x513:1x32x513x128
+
+# GQA — LLaMA-3-8B prompt: q_heads=32, kv_heads=8, seq=384
+1x32x384x128:1x8x128x384:1x8x384x128
+
+# GQA — LLaMA-3-8B decode: seq_q=1, seq_kv=385
+1x32x1x128:1x8x128x385:1x8x385x128
+
+# GQA — Qwen2-7B: q_heads=28, kv_heads=4, seq=384
+1x28x384x128:1x4x128x384:1x4x384x128
+
+# Non-standard head_size (Phi3): 32 heads, head_size=96, seq=384
+1x32x384x96:1x32x96x384:1x32x384x96
+
+# Batch > 1
+2x8x384x64:2x8x64x384:2x8x384x64

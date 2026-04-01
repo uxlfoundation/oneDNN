@@ -1,0 +1,13 @@
+# Backward SDPA shapes — respects GPU kernel constraints:
+#   xe2:   rejects seq <= 128 && head_size >= 64
+#   xe_hpc: rejects qry < 256 && head_size > 32
+
+# head_size=32 (works on xe2 and xe_hpc with any seq)
+1x1x64x32:1x1x32x64:1x1x64x32
+1x2x32x32:1x2x32x32:1x2x32x32
+
+# head_size=64, seq=256 (needs seq > 128 on xe2, qry >= 256 on xe_hpc)
+1x4x256x64:1x4x64x256:1x4x256x64
+
+# head_size=128, seq=256
+1x2x256x128:1x2x128x256:1x2x256x128

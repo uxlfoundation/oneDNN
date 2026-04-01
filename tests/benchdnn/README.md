@@ -32,6 +32,7 @@ where `DRIVER` is one of:
 * [reorder](doc/driver_reorder.md)
 * [resampling](doc/driver_resampling.md)
 * [rnn](doc/driver_rnn.md)
+* [sdpa](doc/driver_sdpa.md)
 * [shuffle](doc/driver_shuffle.md)
 * [softmax](doc/driver_softmax.md)
 * [sum](doc/driver_sum.md)

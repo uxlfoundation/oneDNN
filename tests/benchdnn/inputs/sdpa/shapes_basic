@@ -1,0 +1,8 @@
+# Basic SDPA shapes for smoke and CI testing.
+# SDPA requires 4D tensors: batch x heads x seq x head_dim.
+# Format: Q_dims:K_dims:V_dims
+
+1x1x4x8:1x1x8x4:1x1x4x8
+1x2x8x16:1x2x16x8:1x2x8x16
+2x4x16x32:2x4x32x16:2x4x16x32
+1x8x32x64:1x8x64x32:1x8x32x64

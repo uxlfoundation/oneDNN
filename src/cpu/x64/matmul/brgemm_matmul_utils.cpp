@@ -729,7 +729,7 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_tags(memory_desc_t &A_md,
                     || this->is_f32_bf16() || this->is_bf16_with_int_wei()
                     || this->is_bf16_with_f4_wei()
                     || this->is_f16_with_int_wei() || this->is_f16_with_f4_wei()
-                    || this->is_tf32() || this->is_f32_with_int_wei());
+                    || this->is_tf32() || this->is_f32_with_int_wei();
             bgmmc.src_tag = is_adbc_allowed
                     ? memory_desc_matches_one_of_tag(A_md,
                               plain_tensor_layout_tag,

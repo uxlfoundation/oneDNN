@@ -227,9 +227,6 @@ status_t gen_desc_t::finalize(const char *tags) {
         // Use XeHPC banking if reusing XeHPC strategies (legacy mode)
         if (!efficient_64b_) strategy_.raHW = ngen::HW::XeHPC;
 
-        // Workaround for SLM support.
-        if (strategy_.slmA || strategy_.slmB) return status::unimplemented;
-
         // Disable named barriers to avoid simulator errors, allow fallback to pvc strategies.
         strategy_.namedBarriers[0] = 0;
         strategy_.namedBarriers[1] = 0;

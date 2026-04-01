@@ -33,24 +33,18 @@ namespace gpu {
 namespace intel {
 
 template <typename T>
-struct trivial_key_validator_t {
+struct key_validator_t {
 
     template <typename V>
-    struct is_trivially_validatable_t {
-        using yes_t = uint8_t;
-        using no_t = uint16_t;
+    using is_trivial_t = std::is_base_of<trivially_serializable_base_t, V>;
 
-        template <typename U>
-        static yes_t test(bool value = V::is_trivially_validatable);
-        template <typename U>
-        static no_t test(...);
-
-        static const bool value = sizeof(test<V>(false)) == sizeof(yes_t);
-    };
+    static_assert(!is_trivial_t<std::vector<int>>::value,
+            "is_trivial_t has unexpected behavior");
+    static_assert(is_trivial_t<trivially_serializable_t<int>>::value,
+            "is_trivial_t has unexpected behavior");
 
     template <typename U,
-            utils::enable_if_t<is_trivially_validatable_t<U>::value, bool>
-            = true>
+            utils::enable_if_t<is_trivial_t<U>::value, bool> = true>
     static bool is_valid(const U &t) {
         static_assert(std::is_same<T, U>::value,
                 "key validation is not intended for comparing different types");
@@ -58,8 +52,7 @@ struct trivial_key_validator_t {
     }
 
     template <typename U,
-            utils::enable_if_t<!is_trivially_validatable_t<U>::value, bool>
-            = true>
+            utils::enable_if_t<!is_trivial_t<U>::value, bool> = true>
     static bool is_valid(const U &t) {
         // Runtime validation only occurs in C++20 as default comparisons
         // significantly improves the reliability of this check.
@@ -111,7 +104,7 @@ struct trivial_key_t : public T {
 
     bool is_valid() const {
         const T *base = this;
-        return trivial_key_validator_t<T>::is_valid(*base);
+        return key_validator_t<T>::is_valid(*base);
     }
 
 private:

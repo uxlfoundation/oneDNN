@@ -494,7 +494,7 @@ public:
 } // namespace conv
 #if __cplusplus >= 202002L
 template <>
-struct trivial_key_validator_t<conv::jit::v2::kernel_desc_t> {
+struct key_validator_t<conv::jit::v2::kernel_desc_t> {
     static bool is_valid(const conv::jit::v2::kernel_desc_t &t) {
         auto tmp = conv::jit::v2::kernel_desc_t::deserialize(t.serialize());
         return (t.prop == tmp.prop) && (t.is_dw == tmp.is_dw)

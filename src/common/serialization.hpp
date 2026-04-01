@@ -273,10 +273,10 @@ private:
     const serialization_stream_t &sstream_;
 };
 
-template <typename T>
-struct trivially_serializable_t {
-    static constexpr bool is_trivially_validatable = true;
+struct trivially_serializable_base_t {};
 
+template <typename T>
+struct trivially_serializable_t : public trivially_serializable_base_t {
     serialization_stream_t serialize() const {
         DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(T);
         return serialization_stream_t(*static_cast<const T *>(this));

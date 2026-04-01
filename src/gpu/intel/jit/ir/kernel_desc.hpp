@@ -56,6 +56,9 @@ public:
             primitive_t *primitive, impl::engine_t *engine) const
             = 0;
     virtual serialization_stream_t serialize() const = 0;
+#if __cplusplus >= 202002L
+    bool operator==(const kernel_desc_base_t &) const = default;
+#endif
 };
 
 class kernel_params_base_t {

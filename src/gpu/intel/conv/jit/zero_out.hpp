@@ -51,7 +51,9 @@ public:
             const intel::engine_t &engine, compute::kernel_t &kernel) const;
     serialization_stream_t serialize() const override;
     static zero_out_kernel_desc_t deserialize(const serialization_stream_t &s);
-
+#if __cplusplus >= 202002L
+    bool operator==(const zero_out_kernel_desc_t &) const = default;
+#endif
     static compute::nd_range_t nd_range(int simd, size_t size);
 
 private:

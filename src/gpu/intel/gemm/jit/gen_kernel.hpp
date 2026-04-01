@@ -194,24 +194,22 @@ protected:
 } // namespace gemm
 
 template <>
-struct trivial_key_validator_t<gemm::jit::gen_desc_t> {
+struct key_validator_t<gemm::jit::gen_desc_t> {
     static bool is_valid(const gemm::jit::gen_desc_t &) { return true; }
 };
 
 template <>
-struct trivial_key_validator_t<gemm::jit::gen_nocopy_desc_t> {
+struct key_validator_t<gemm::jit::gen_nocopy_desc_t> {
     static bool is_valid(const gemm::jit::gen_nocopy_desc_t &derived) {
-        return trivial_key_validator_t<gemm::jit::gen_desc_t>::is_valid(
-                derived);
+        return key_validator_t<gemm::jit::gen_desc_t>::is_valid(derived);
     }
 };
 
 template <>
-struct trivial_key_validator_t<gemm::jit::gen_xe_systolic_kernel_desc_t> {
+struct key_validator_t<gemm::jit::gen_xe_systolic_kernel_desc_t> {
     static bool is_valid(
             const gemm::jit::gen_xe_systolic_kernel_desc_t &derived) {
-        return trivial_key_validator_t<gemm::jit::gen_desc_t>::is_valid(
-                derived);
+        return key_validator_t<gemm::jit::gen_desc_t>::is_valid(derived);
     }
 };
 

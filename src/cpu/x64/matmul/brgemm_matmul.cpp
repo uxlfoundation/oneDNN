@@ -688,7 +688,7 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
                         const bool skip_copy_a = mc_prev == mc && kc_prev == kc
                                 && (b_prev == b
                                         || bgmmc.bcast_A_desc
-                                                .bcast_across_all_batch_dims);
+                                                   .bcast_across_all_batch_dims);
                         bool prefetch = determine_prefetch(
                                 mb, m_end, nb, n_end, bgmmc, brgmm_ctx);
                         for (int kb = kb_start; kb < kb_end; kb++) {

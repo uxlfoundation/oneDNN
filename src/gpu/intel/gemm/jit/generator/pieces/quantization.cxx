@@ -338,8 +338,11 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
     int xqGroupMN = doA ? problem.aqGroupM : problem.bqGroupN;
 
     bool common = (qlayout.rows() * qlayout.cols()) == 1;
+    bool colMajor = layout.colMajor();
+    int xqGroupX = colMajor == doA ? xqGroupMN : xqGroupK;
+    int xqGroupY = colMajor == doA ? xqGroupK : xqGroupMN;
 
-    bool bfSpecialPath = (T == Type::bf16) && (Tq == Type::f32) && (xqGroupMN > 1) && layout.hasFullCrosspack(2);
+    bool bfSpecialPath = (T == Type::bf16) && (Tq == Type::f32) && (xqGroupMN > 1) && layout.hasFullCrosspack(2) && (xqGroupY == 1);
     GRFMultirange qPairs;
     int npairs = 0;
 
@@ -353,12 +356,8 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
 
     for (auto &block: layout) {
         auto crosspack = block.crosspack;
-        bool colMajor = block.colMajor;
         int nx = colMajor ? block.nr : block.nc;
         int ny = colMajor ? block.nc : block.nr;
-
-        int xqGroupX = colMajor == doA ? xqGroupMN : xqGroupK;
-        int xqGroupY = colMajor == doA ? xqGroupK : xqGroupMN;
 
         // If crosspack spans multiple groups, use a stride to restrict to one group
         bool qbroadcastY = (xqGroupY % crosspack == 0) || common || bfSpecialPath;

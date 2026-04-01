@@ -635,33 +635,36 @@ status_t pd_t::init_GEMMProblem(
         problem.bOffset = ABOffset::Calc;
     problem.aoPtrDims = a_quant.zp_host_scalar ? -1 : a_quant.zp_ndims;
     problem.boPtrDims = b_quant.zp_host_scalar ? -1 : b_quant.zp_ndims;
-    problem.AO.layout = MatrixLayout::N;
-    problem.BO.layout
-            = (problem.bOffset2D()) ? MatrixLayout::N : MatrixLayout::T;
+    problem.asPtrDims = a_quant.scale_ndims;
+    problem.bsPtrDims = b_quant.scale_ndims;
+
+    problem.AO.layout = problem.BO.layout = MatrixLayout::N;
     problem.AO.crosspack = problem.BO.crosspack = 1;
     problem.AO.packSize = problem.BO.packSize = 0;
     problem.A_scale = problem.Ag = problem.AO;
     problem.B_scale = problem.Bg = problem.BO;
+
+    // 1D tensors can be treated as either transposition - choose the one that
+    // allows block loads (i.e. A -> N and B -> T)
+    if (!problem.bOffset2D()) problem.BO.layout = MatrixLayout::T;
+    if (!problem.bScale2D()) problem.B_scale.layout = MatrixLayout::T;
+    if (b_quant.gs_ndims < 2) problem.Bg.layout = MatrixLayout::T;
+
     if (a_quant.zp_type != data_type::undef)
         problem.AO.setAlignment(int(types::data_type_size(a_quant.zp_type)));
     if (b_quant.zp_type != data_type::undef)
         problem.BO.setAlignment(int(types::data_type_size(b_quant.zp_type)));
-
-    problem.asPtrDims = a_quant.scale_ndims;
-    problem.bsPtrDims = b_quant.scale_ndims;
     problem.aqGroupK = a_quant.group_k;
     problem.bqGroupK = b_quant.group_k;
     problem.aqGroupM = a_quant.group_m;
     problem.bqGroupN = b_quant.group_n;
     if (a_quant.scales_type != data_type::undef) {
         problem.Ta_scale = convert_dnnl_to_kernel_type(a_quant.scales_type);
-        problem.A_scale.layout = swap_ab() ? MatrixLayout::T : MatrixLayout::N;
         problem.A_scale.setAlignment(
                 int(types::data_type_size(a_quant.scales_type)));
     }
     if (b_quant.scales_type != data_type::undef) {
         problem.Tb_scale = convert_dnnl_to_kernel_type(b_quant.scales_type);
-        problem.B_scale.layout = swap_ab() ? MatrixLayout::T : MatrixLayout::N;
         problem.B_scale.setAlignment(
                 int(types::data_type_size(b_quant.scales_type)));
     }
@@ -724,7 +727,6 @@ status_t pd_t::init_GEMMProblem(
                 ? data_type::s32
                 : a_quant.gs_type;
         problem.Tag = convert_dnnl_to_kernel_type(gs_dt);
-        problem.Ag.layout = MatrixLayout::N;
         problem.Ag.setAlignment(problem.Tag.paddedSize());
         if (problem.bqGroupK == 0) problem.bqGroupK = problem.aqGroupK;
         if (problem.aqGroupK == 0) problem.aqGroupK = problem.bqGroupK;
@@ -734,7 +736,6 @@ status_t pd_t::init_GEMMProblem(
                 ? data_type::s32
                 : b_quant.gs_type;
         problem.Tbg = convert_dnnl_to_kernel_type(gs_dt);
-        problem.Bg.layout = MatrixLayout::N;
         problem.Bg.setAlignment(problem.Tbg.paddedSize());
         if (problem.aqGroupK == 0) problem.aqGroupK = problem.bqGroupK;
         if (problem.bqGroupK == 0) problem.bqGroupK = problem.aqGroupK;
@@ -744,6 +745,17 @@ status_t pd_t::init_GEMMProblem(
     if (problem.nativeBDPAS(hw)) {
         if ((!(problem.Ta.isF4() || problem.Tb.isF4()) || k % 64 == 0))
             problem.bdpasEnabled = true;
+    }
+
+    if (swap_ab_) {
+        // problem.A and problem.B are already swapped + transposed
+        // TODO: use problem.transpose() instead
+        problem.AO.transpose();
+        problem.BO.transpose();
+        problem.A_scale.transpose();
+        problem.B_scale.transpose();
+        problem.Ag.transpose();
+        problem.Bg.transpose();
     }
 
     return status::success;

@@ -80,7 +80,7 @@ jit_io_helper_t<Vmm>::jit_io_helper_t(jit_generator_t *host,
     static constexpr bool is_zmm
             = std::is_same<Vmm, Xbyak_aarch64::ZReg>::value;
     MAYBE_UNUSED(is_zmm);
-    assert(IMPLICATION(!is_superset(isa_, sve_128), !is_zmm)
+    assert(IMPLICATION(!is_superset(isa_, sve), !is_zmm)
             && "This architecture does not support z registers.");
 }
 
@@ -136,7 +136,7 @@ template <typename Vmm>
 void jit_io_helper_t<Vmm>::init_full_mask() {
     assert(gather_conf_.has_value() && "Config for loading with the use of gather instruction is not set.");
 
-    if (isa_ == sve_256) {
+    if (simd_bytes(isa_) == 32) {
         const Vmm vmm_mask = Vmm(gather_conf_->full_vmm_mask_idx_);
         host_->eor(Xbyak_aarch64::ZReg(vmm_mask.getIdx()).d,
                 Xbyak_aarch64::ZReg(vmm_mask.getIdx()).d,

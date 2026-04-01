@@ -416,6 +416,20 @@ public:
         fadd(dst, src, src2);
     }
 
+    // Float addition across all vector elements
+    void uni_fadd_reduce(
+            const Xbyak_aarch64::SReg &dst, const Xbyak_aarch64::ZRegS &src) {
+        faddv(dst, P_ALL_ONE / Xbyak_aarch64::T_z, src);
+    }
+
+    void uni_fadd_reduce(
+            const Xbyak_aarch64::SReg &dst, const Xbyak_aarch64::VReg4S &src) {
+        const auto &vreg_dst = Xbyak_aarch64::VReg(dst.getIdx());
+
+        faddp(vreg_dst.s, src, src);
+        faddp(vreg_dst.s2, vreg_dst.s2, vreg_dst.s2);
+    }
+
     void uni_fcvtzs(
             const Xbyak_aarch64::VReg4S &d, const Xbyak_aarch64::VReg4S &s) {
         fcvtzs(d, s);
@@ -471,6 +485,18 @@ public:
             const Xbyak_aarch64::VReg4S &src2) {
         fmul(dst, dst, src);
         fadd(dst, dst, src2);
+    }
+
+    void float_point_fused_multiply_add(const Xbyak_aarch64::ZReg &dst_vmm,
+            const Xbyak_aarch64::ZReg &src1_vmm,
+            const Xbyak_aarch64::ZReg &src2_vmm) {
+        fmla(dst_vmm.s, P_ALL_ONE / Xbyak_aarch64::T_m, src1_vmm.s, src2_vmm.s);
+    }
+
+    void float_point_fused_multiply_add(const Xbyak_aarch64::VReg &dst_vmm,
+            const Xbyak_aarch64::VReg &src1_vmm,
+            const Xbyak_aarch64::VReg &src2_vmm) {
+        fmla(dst_vmm.s, src1_vmm.s, src2_vmm.s);
     }
 
     template <typename T>
@@ -529,18 +555,6 @@ public:
     template <typename T>
     void uni_fmul(const T &dst, const T &src, const T &src2) {
         fmul(dst, src, src2);
-    }
-
-    void float_point_fused_multiply_add(const Xbyak_aarch64::ZReg &dst_vmm,
-            const Xbyak_aarch64::ZReg &src1_vmm,
-            const Xbyak_aarch64::ZReg &src2_vmm) {
-        fmla(dst_vmm.s, P_ALL_ONE / Xbyak_aarch64::T_m, src1_vmm.s, src2_vmm.s);
-    }
-
-    void float_point_fused_multiply_add(const Xbyak_aarch64::VReg &dst_vmm,
-            const Xbyak_aarch64::VReg &src1_vmm,
-            const Xbyak_aarch64::VReg &src2_vmm) {
-        fmla(dst_vmm.s, src1_vmm.s, src2_vmm.s);
     }
 
     void contiguous_load_unsigned_words(const Xbyak_aarch64::ZReg &src_vmm,

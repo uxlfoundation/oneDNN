@@ -380,7 +380,7 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
     append_post_ops_to_arg_list(
             ctx, arg_list, arg_idx, pd()->attr()->post_ops_, *pd()->dst_md());
 
-    compute::range_t gws = {1, (size_t)N, (size_t)(D0 * D1 * D2 * D3)};
+    compute::range_t gws = {(size_t)M, (size_t)N, (size_t)(D0 * D1 * D2 * D3)};
     auto nd_range = compute::nd_range_t(gws);
 
     CHECK(parallel_for(ctx, nd_range, kernels_[0], arg_list));

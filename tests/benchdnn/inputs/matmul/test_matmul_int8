@@ -31,11 +31,14 @@
 --dt=s8:s8:s8,s8:s8:s32,u8:s8:f32
 --attr-zero-points=src:common:1+wei:common:-1+dst:common:2, \
                    src:common:-1+wei:common:1, \
-                   src:per_dim_1+wei:common:1+dst:common:2
+                   src:per_dim_1+wei:common:1+dst:common:2, \
+                   src:common:1+dst:per_oc, \
+                   src:common:1+wei:common:-1+dst:per_oc
 --batch=shapes_2d
 
 --attr-zero-points=src:common:1+wei:common:-1+dst:common:2, \
-                   src:common:-1+wei:common:1
+                   src:common:-1+wei:common:1, \
+                   src:common:1+wei:common:-1+dst:per_oc
 --batch=shapes_3d
 --attr-zero-points=
 

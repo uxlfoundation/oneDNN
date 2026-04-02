@@ -172,6 +172,10 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
             std::stringstream ss(newStrat);
             ss >> strat.unroll[0];
             ss >> strat.unroll[1];
+            float a, b;
+            ss >> a;
+            ss >> b;
+            Scalar alpha(a), beta(b);
             std::string strategyString;
             std::getline(ss >> std::ws, strategyString);
             parseStrategy(strategyString.c_str(), hw, problem, strat);

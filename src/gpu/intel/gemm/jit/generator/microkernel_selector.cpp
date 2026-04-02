@@ -459,23 +459,6 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
         s.kb_load = 32;
     }
 
-    if (hw > HW::XeHPG) {
-        if(block2DA) {
-            problem.A.alignment = std::min(problem.A.alignment,
-                                           static_cast<uint8_t>(block2DMinAlignment(hw, problem.A, strategy.A)));
-        } else {
-            problem.A.alignment = std::min<uint8_t>(16, problem.A.alignment);
-        }
-        if(block2DB) {
-            problem.B.alignment = std::min(problem.B.alignment,
-                                           static_cast<uint8_t>(block2DMinAlignment(hw, problem.B, strategy.B)));
-        } else {
-            problem.B.alignment = std::min<uint8_t>(16, problem.B.alignment);
-        }
-    } else {
-        problem.A.setAlignment(problem.Ta.paddedSize());
-        problem.B.setAlignment(problem.Tb.paddedSize());
-    }
     s.C.accessType = AccessType::Block;
 
     s.A.base = localA ? AddressBase::createSLM() : AddressBase::createA64(true);
@@ -517,6 +500,19 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
         case StrategyRequirement::WGN:         s.wg[LoopN] = req.value; break;
         case StrategyRequirement::WGK:         s.wg[LoopK] = req.value; break;
         default: break;
+    }
+
+    if(block2DA) {
+        problem.A.alignment = std::min(problem.A.alignment,
+                                        static_cast<uint8_t>(block2DMinAlignment(hw, problem.A, strategy.A)));
+    } else {
+        problem.A.setAlignment(std::min<uint8_t>(problem.A.alignment, s.unroll[LoopM] * problem.Ta));
+    }
+    if(block2DB) {
+        problem.B.alignment = std::min(problem.B.alignment,
+                                        static_cast<uint8_t>(block2DMinAlignment(hw, problem.B, strategy.B)));
+    } else {
+        problem.B.alignment = std::min<uint8_t>(16, problem.B.alignment);
     }
 
     if (s.wgTile(LoopM) * s.wgTile(LoopN) == 0)

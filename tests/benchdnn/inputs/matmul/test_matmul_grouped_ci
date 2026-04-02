@@ -172,3 +172,16 @@
 --attr-scales=src:3:f8_e4m3:1x16+wei:7:f8_e4m3:16x1
 --attr-post-ops=mul:f32:0
 32x128:4x128x64
+
+# DNNL_ARG_HINT_MAX_GROUP_SIZE usage
+--reset
+--dt=f32:f32:f32,bf16:bf16:bf16
+--wtag=abc
+--grouped=0:4:8,8,8,8:8
+32x64:4x64x32
+
+--reset
+--dt=f16:f16:f16
+--wtag=abc
+--grouped=0:4:10,20,30,40:40
+100x64:4x64x32

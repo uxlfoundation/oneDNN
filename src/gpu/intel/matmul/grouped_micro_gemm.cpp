@@ -184,14 +184,23 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
         gemm_ = selectGEMM(opts, hw_info, sizes, problem, {}, strat_override);
     } catch (const std::runtime_error &) {
         std::vector<StrategyRequirement> reqs;
-        int m_unroll = problem.Ta.isInt4()
-                        && dev_info->gpu_arch() > compute::gpu_arch_t::xe_hpc
-                ? sg_size_ / problem.Ta
-                : sg_size_;
-        int max_n_unroll = problem.Ta.isInt4()
-                        && dev_info->gpu_arch() > compute::gpu_arch_t::xe_hpc
-                ? sg_size_ * problem.Ta
-                : 32;
+        int m_unroll = sg_size_;
+        int max_n_unroll = 0;
+
+        switch (dev_info->gpu_arch()) {
+            case compute::gpu_arch_t::xe_lp:
+            case compute::gpu_arch_t::xe_hp:
+            case compute::gpu_arch_t::xe_hpg:
+                max_n_unroll = (problem.Ta_ext.bits() < 8)
+                        ? sg_size_ * problem.Ta_ext
+                        : 16;
+                break;
+            case compute::gpu_arch_t::xe_hpc: max_n_unroll = 32; break;
+            default:
+                m_unroll = sg_size_ / problem.Ta_ext;
+                max_n_unroll
+                        = problem.Ta.isInt4() ? sg_size_ * problem.Ta_ext : 32;
+        }
 
         reqs.push_back(StrategyRequirement::UnrollM == m_unroll);
         reqs.push_back(StrategyRequirement::UnrollN

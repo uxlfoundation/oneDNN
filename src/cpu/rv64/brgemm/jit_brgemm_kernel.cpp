@@ -50,6 +50,12 @@ void jit_brgemm_kernel_t::generate() {
     const dim_t N_stride_B = 4 * LDB_bytes; // B advance per 4-col group
     const dim_t N_stride_C = 4 * LDC_bytes; // C advance per 4-col group
 
+    // If all B column offsets (0, LDB, 2*LDB, 3*LDB in bytes) fit in the
+    // 12-bit signed immediate of flw, use a single B pointer with immediate
+    // offsets instead of 4 separate column pointers.  This saves 3 addi per
+    // K step and 3 add at N-loop setup.
+    const bool use_single_b = (3 * LDB_bytes <= 2047);
+
     const Reg reg_param = a0;
     const Reg reg_tmp0 = a0; // reused after param loads
 
@@ -109,6 +115,13 @@ void jit_brgemm_kernel_t::generate() {
     li(reg_ldb, LDB_bytes);
     li(reg_ldc, LDC_bytes);
 
+    if (use_single_b) {
+        // Pre-compute N-stride into callee-saved registers (s2, s3).
+        // These replace reg_B2/reg_B3 which are unused in single-B mode.
+        li(s2, N_stride_B);
+        li(s3, N_stride_C);
+    }
+
     // ---- Compute K_main = (K / 4) * 4 for 4× unrolled loop ----
     srli(reg_K_main, reg_K_val, 2);
     slli(reg_K_main, reg_K_main, 2);
@@ -127,11 +140,13 @@ void jit_brgemm_kernel_t::generate() {
 
     mv(reg_A, reg_A_base);
 
-    // ---- Setup 4 B column pointers for current N group ----
+    // ---- Setup B pointer(s) for current N group ----
     mv(reg_B0, reg_B_base);
-    add(reg_B1, reg_B_base, reg_ldb);
-    add(reg_B2, reg_B1, reg_ldb); // B_base + 2*LDB
-    add(reg_B3, reg_B2, reg_ldb); // B_base + 3*LDB
+    if (!use_single_b) {
+        add(reg_B1, reg_B_base, reg_ldb);
+        add(reg_B2, reg_B1, reg_ldb); // B_base + 2*LDB
+        add(reg_B3, reg_B2, reg_ldb); // B_base + 3*LDB
+    }
 
     vmv_v_i(v_c0, 0);
     vmv_v_i(v_c1, 0);
@@ -142,20 +157,28 @@ void jit_brgemm_kernel_t::generate() {
     mv(reg_k, x0);
     Label lbl_k_main_end, lbl_k_tail, lbl_k_tail_end;
 
-    // Helper: load 4 B scalars (all independent, no address chains).
+    // Helper: load 4 B scalars.
     auto emit_b_load = [&]() {
         flw(freg_b0, reg_B0, 0);
-        flw(freg_b1, reg_B1, 0);
-        flw(freg_b2, reg_B2, 0);
-        flw(freg_b3, reg_B3, 0);
+        if (use_single_b) {
+            flw(freg_b1, reg_B0, LDB_bytes);
+            flw(freg_b2, reg_B0, 2 * LDB_bytes);
+            flw(freg_b3, reg_B0, 3 * LDB_bytes);
+        } else {
+            flw(freg_b1, reg_B1, 0);
+            flw(freg_b2, reg_B2, 0);
+            flw(freg_b3, reg_B3, 0);
+        }
     };
 
-    // Helper: advance all 4 B pointers to the next k row.
+    // Helper: advance B pointer(s) to the next k row.
     auto emit_b_advance = [&]() {
         addi(reg_B0, reg_B0, 4);
-        addi(reg_B1, reg_B1, 4);
-        addi(reg_B2, reg_B2, 4);
-        addi(reg_B3, reg_B3, 4);
+        if (!use_single_b) {
+            addi(reg_B1, reg_B1, 4);
+            addi(reg_B2, reg_B2, 4);
+            addi(reg_B3, reg_B3, 4);
+        }
     };
 
     // Pipelined K step: prefetch next A into v_next while computing
@@ -191,6 +214,7 @@ void jit_brgemm_kernel_t::generate() {
     vle32_v(v_a0, reg_A);
     add(reg_A, reg_A, reg_lda);
 
+    align(16);
     {
         Label lbl_pipe, lbl_pipe_end;
         L(lbl_pipe);
@@ -274,11 +298,15 @@ void jit_brgemm_kernel_t::generate() {
     }
 
     // ---- Advance B_base and C for next 4-column group ----
-    li(reg_tmp1, N_stride_B);
-    add(reg_B_base, reg_B_base, reg_tmp1);
-
-    li(reg_tmp1, N_stride_C);
-    add(reg_C, reg_C, reg_tmp1);
+    if (use_single_b) {
+        add(reg_B_base, reg_B_base, s2); // N_stride_B (precomputed)
+        add(reg_C, reg_C, s3); // N_stride_C (precomputed)
+    } else {
+        li(reg_tmp1, N_stride_B);
+        add(reg_B_base, reg_B_base, reg_tmp1);
+        li(reg_tmp1, N_stride_C);
+        add(reg_C, reg_C, reg_tmp1);
+    }
 
     addi(reg_n, reg_n, 4);
     j_(lbl_n_loop);

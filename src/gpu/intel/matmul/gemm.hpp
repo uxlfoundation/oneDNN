@@ -18,13 +18,12 @@
 #define GPU_INTEL_MATMUL_GEMM_HPP
 
 #include "common/c_types_map.hpp"
-#include "common/gemm_utils.hpp"
 #include "common/matmul_pd.hpp"
 #include "common/memory_desc.hpp"
-#include "common/memory_desc_wrapper.hpp"
 #include "common/primitive.hpp"
 #include "common/primitive_attr_quant.hpp"
 #include "common/primitive_desc_iterator.hpp"
+#include "gpu/intel/gemm/utils.hpp"
 #include "gpu/intel/matmul/config.hpp"
 #include "gpu/intel/primitive.hpp"
 #include "gpu/intel/utils.hpp"

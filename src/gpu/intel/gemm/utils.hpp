@@ -14,10 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef COMMON_GEMM_UTILS_HPP
-#define COMMON_GEMM_UTILS_HPP
-
-#include "oneapi/dnnl/dnnl.h"
+#ifndef GPU_INTEL_GEMM_UTILS_HPP
+#define GPU_INTEL_GEMM_UTILS_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/nstl.hpp"
@@ -169,4 +167,4 @@ static inline bool is_md_gemm_compatible_plain_format(
 } // namespace impl
 } // namespace dnnl
 
-#endif
+#endif // GPU_INTEL_GEMM_UTILS_HPP

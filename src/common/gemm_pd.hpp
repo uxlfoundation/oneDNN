@@ -20,7 +20,6 @@
 #include "oneapi/dnnl/dnnl.h"
 
 #include "common/c_types_map.hpp"
-#include "common/gemm_utils.hpp"
 #include "common/primitive_desc.hpp"
 #include "common/utils.hpp"
 

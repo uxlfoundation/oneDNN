@@ -29,9 +29,9 @@
 #include "gpu/intel/rnn/grid.hpp"
 
 #include "common/c_types_map.hpp"
-#include "common/gemm_utils.hpp"
 #include "common/type_helpers.hpp"
 #include "gpu/intel/gemm/primitive.hpp"
+#include "gpu/intel/gemm/utils.hpp"
 #include "gpu/intel/primitive_attr.hpp"
 #include "gpu/intel/rnn/config.hpp"
 

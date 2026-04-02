@@ -22,7 +22,6 @@
 #include <memory>
 
 #include "common/c_types_map.hpp"
-#include "common/gemm_utils.hpp"
 #include "common/utils.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/compute/kernel.hpp"
@@ -30,6 +29,7 @@
 #include "gpu/intel/gemm/jit/gen_kernel.hpp"
 #include "gpu/intel/gemm/jit/pd.hpp"
 #include "gpu/intel/gemm/primitive.hpp"
+#include "gpu/intel/gemm/utils.hpp"
 
 namespace dnnl {
 namespace impl {

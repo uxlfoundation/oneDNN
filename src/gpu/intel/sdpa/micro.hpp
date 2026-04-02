@@ -21,13 +21,12 @@
 
 #include "common/c_types_map.hpp"
 #include "common/gemm_types.hpp"
-#include "common/gemm_utils.hpp"
 #include "common/math_utils.hpp"
 #include "common/primitive.hpp"
 #include "common/sdpa_pd.hpp"
 #include "common/utils.hpp"
+#include "gpu/intel/gemm/utils.hpp"
 #include "gpu/intel/primitive.hpp"
-#include "gpu/intel/sdpa/config.hpp"
 #include "gpu/intel/sdpa/configs.hpp"
 
 namespace dnnl {

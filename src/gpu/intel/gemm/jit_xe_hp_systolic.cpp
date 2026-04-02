@@ -21,6 +21,7 @@
 #include "common/verbose_msg.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/gemm/jit/walk_orders.hpp"
+#include "gpu/intel/gemm/utils.hpp"
 #include "gpu/intel/gemm/xe_systolic_copy_kernel.hpp"
 
 namespace dnnl {

@@ -19,6 +19,7 @@
 #include "common/primitive_attr_quant.hpp"
 #include "gpu/intel/gemm/exec_types.hpp"
 #include "gpu/intel/gemm/jit/gen_kernel.hpp"
+#include "gpu/intel/gemm/utils.hpp"
 #include "gpu/intel/jit/eltwise_injector.hpp"
 #include "gpu/intel/jit/utils/type_bridge.hpp"
 #include "gpu/intel/utils.hpp"

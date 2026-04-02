@@ -459,17 +459,22 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
         s.kb_load = 32;
     }
 
-    if(block2DA) {
-        problem.A.alignment = std::min(problem.A.alignment,
-                                       static_cast<uint8_t>(block2DMinAlignment(hw, problem.A, strategy.A)));
+    if (hw > HW::XeHPG) {
+        if(block2DA) {
+            problem.A.alignment = std::min(problem.A.alignment,
+                                           static_cast<uint8_t>(block2DMinAlignment(hw, problem.A, strategy.A)));
+        } else {
+            problem.A.alignment = std::min<uint8_t>(16, problem.A.alignment);
+        }
+        if(block2DB) {
+            problem.B.alignment = std::min(problem.B.alignment,
+                                           static_cast<uint8_t>(block2DMinAlignment(hw, problem.B, strategy.B)));
+        } else {
+            problem.B.alignment = std::min<uint8_t>(16, problem.B.alignment);
+        }
     } else {
-        problem.A.alignment = std::min<uint8_t>(16, problem.A.alignment);
-    }
-    if(block2DB) {
-        problem.B.alignment = std::min(problem.B.alignment,
-                                       static_cast<uint8_t>(block2DMinAlignment(hw, problem.B, strategy.B)));
-    } else {
-        problem.B.alignment = std::min<uint8_t>(16, problem.B.alignment);
+        problem.A.setAlignment(problem.Ta.paddedSize());
+        problem.B.setAlignment(problem.Tb.paddedSize());
     }
     s.C.accessType = AccessType::Block;
 

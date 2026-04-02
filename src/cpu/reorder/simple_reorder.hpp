@@ -2436,6 +2436,8 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 spec::direct_copy_except_dim_0>::type> {
     static status_t is_applicable(const memory_desc_wrapper &input_d,
             const memory_desc_wrapper &output_d, const primitive_attr_t *attr) {
+        VDISPATCH_REORDER_IC(input_d.is_blocking_desc() && output_d.is_blocking_desc(),
+                VERBOSE_UNSUPPORTED_FORMAT_KIND);
         VDISPATCH_REORDER_IC(!input_d.has_runtime_dims_or_strides(),
                 VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 

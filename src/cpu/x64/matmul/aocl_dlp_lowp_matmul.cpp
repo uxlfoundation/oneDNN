@@ -21,6 +21,7 @@
 #include "common/type_helpers.hpp"
 
 #include "cpu/matmul/matmul_utils.hpp"
+#include "cpu/x64/matmul/aocl_dlp_pack_utils.hpp"
 
 #include <aocl_dlp.h>
 #include <vector>
@@ -72,7 +73,22 @@ status_t aocl_dlp_lowp_matmul_t::pd_t::init(engine_t *engine) {
                     "batch broadcasting unsupported");
         }
     }
+    // Check if weights format is 'any' before resolving defaults.
+    const bool wei_format_any
+            = weights_md_.format_kind == format_kind::any;
     VDISPATCH_MATMUL(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
+
+    // When weights format was 'any', use AOCL-DLP packed format for
+    // matrix B for better performance.
+    if (wei_format_any) {
+        const dim_t K = src_md()->dims[ndims() - 1];
+        const dim_t N = weights_md_.dims[ndims() - 1];
+        dim_t wei_batch = 1;
+        for (int d = 0; d < ndims() - 2; ++d)
+            wei_batch *= weights_md_.dims[d];
+        CHECK(aocl_dlp_pack_utils::init_packed_b_md(
+                weights_md_, src_type, K, N, wei_batch));
+    }
 
     return status::success;
 }
@@ -85,23 +101,27 @@ status_t aocl_dlp_lowp_matmul_t::execute(const exec_ctx_t &ctx) const {
     const auto src_type = src_d.data_type();
     const auto dst_type = dst_d.data_type();
 
-    using namespace dnnl::impl::cpu::matmul;
-    matmul_helper_t helper(src_d, wei_d, dst_d);
+    const bool wei_packed = wei_d.is_aocl_dlp_packed_desc();
+    const int ndims = src_d.ndims();
 
-    const dim_t M = helper.M();
-    const dim_t K = helper.K();
-    const dim_t N = helper.N();
-    const dim_t batch = helper.batch();
+    const dim_t M = src_d.dims()[ndims - 2];
+    const dim_t K = src_d.dims()[ndims - 1];
+    const dim_t N = wei_packed ? pd()->weights_md()->dims[ndims - 1]
+                               : wei_d.dims()[ndims - 1];
 
-    const dim_t lda = helper.lda();
-    const dim_t ldb = helper.ldb();
-    const dim_t ldc = helper.ldc();
+    dim_t batch = 1;
+    for (int d = 0; d < ndims - 2; ++d)
+        batch *= dst_d.dims()[d];
+
+    const dim_t lda = src_d.blocking_desc().strides[ndims - 2];
+    const dim_t ldb = wei_packed ? N : wei_d.blocking_desc().strides[ndims - 2];
+    const dim_t ldc = dst_d.blocking_desc().strides[ndims - 2];
 
     const char order = 'R';
     const char transa = 'N';
     const char transb = 'N';
     const char mem_fmt_a = 'N';
-    const char mem_fmt_b = 'N';
+    const char mem_fmt_b = wei_packed ? 'R' : 'N';
     const int32_t alpha = 1;
     const int32_t beta = 0;
 
@@ -261,10 +281,14 @@ status_t aocl_dlp_lowp_matmul_t::execute(const exec_ctx_t &ctx) const {
     }
 
     // Batched path: use aocl_batch_gemm_* APIs.
-    const int ndims = src_d.ndims();
+    // For packed format, batch stride is per_slice_size in bytes.
+    // For plain format, batch stride is in elements from blocking_desc.
     const int batch_dim = ndims - 3;
     const dim_t src_batch_stride = src_d.blocking_desc().strides[batch_dim];
-    const dim_t wei_batch_stride = wei_d.blocking_desc().strides[batch_dim];
+    const size_t wei_batch_stride_bytes = wei_packed
+            ? wei_d.aocl_dlp_packed_desc().per_slice_size
+            : static_cast<size_t>(wei_d.blocking_desc().strides[batch_dim])
+                    * types::data_type_size(wei_d.data_type());
     const dim_t dst_batch_stride = dst_d.blocking_desc().strides[batch_dim];
 
     std::vector<md_t> m_arr(batch, static_cast<md_t>(M));
@@ -286,8 +310,12 @@ status_t aocl_dlp_lowp_matmul_t::execute(const exec_ctx_t &ctx) const {
     const md_t group_size = static_cast<md_t>(batch);
 
     std::vector<const int8_t *> b_ptrs(batch);
-    for (dim_t b = 0; b < batch; ++b)
-        b_ptrs[b] = wei + b * wei_batch_stride;
+    {
+        auto wei_base = CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS);
+        for (dim_t b = 0; b < batch; ++b)
+            b_ptrs[b] = reinterpret_cast<const int8_t *>(
+                    wei_base + b * wei_batch_stride_bytes);
+    }
 
     if (src_type == u8) {
         auto src = CTX_IN_MEM(const uint8_t *, DNNL_ARG_SRC);

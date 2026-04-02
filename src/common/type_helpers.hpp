@@ -667,6 +667,9 @@ inline bool operator==(const memory_desc_t &lhs, const memory_desc_t &rhs) {
     else if (lhs.format_kind == format_kind::sparse)
         return types::sparse_desc_is_equal(
                 lhs.format_desc.sparse_desc, rhs.format_desc.sparse_desc);
+    else if (lhs.format_kind == format_kind::aocl_dlp_packed)
+        return lhs.format_desc.aocl_dlp_packed_desc.size
+                == rhs.format_desc.aocl_dlp_packed_desc.size;
     return true;
 }
 

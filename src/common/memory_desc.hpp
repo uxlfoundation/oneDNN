@@ -166,6 +166,17 @@ struct cublaslt_blocked_desc_t {
     size_t size;
 };
 
+// Description of packed weights for AOCL-DLP GEMM.
+struct aocl_dlp_packed_desc_t {
+    // Total size of the packed buffer in bytes.
+    size_t size;
+    // Size of one packed K×N slice in bytes (for computing batch offsets).
+    size_t per_slice_size;
+    // Source data type of the matmul (needed for correct reorder API
+    // selection, e.g. u8s8 vs s8s8 use different packed layouts).
+    dnnl_data_type_t gemm_src_dt;
+};
+
 struct sparse_desc_t {
     static constexpr int max_metadata_types = 2;
     // Each encoding defines the number of handles it requires and their
@@ -354,6 +365,8 @@ struct dnnl_memory_desc : public dnnl::impl::c_compatible {
         dnnl::impl::cublaslt_blocked_desc_t cublaslt_blocked_desc;
         // Description of the sparse encodings.
         dnnl::impl::sparse_desc_t sparse_desc;
+        // Packed weights for AOCL-DLP GEMM.
+        dnnl::impl::aocl_dlp_packed_desc_t aocl_dlp_packed_desc;
         // ... other descriptions possible
     } format_desc;
 

@@ -71,6 +71,9 @@ struct memory_desc_wrapper : public c_compatible {
     bool is_cublaslt_blocked_desc() const {
         return format_kind() == format_kind::cublaslt_blocked;
     }
+    bool is_aocl_dlp_packed_desc() const {
+        return format_kind() == format_kind::aocl_dlp_packed;
+    }
     bool is_sparse_desc() const { return format_kind() == format_kind::sparse; }
     bool is_grouped_desc() const {
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
@@ -159,6 +162,11 @@ struct memory_desc_wrapper : public c_compatible {
     const cublaslt_blocked_desc_t &cublaslt_blocked_desc() const {
         assert(is_cublaslt_blocked_desc());
         return md_->format_desc.cublaslt_blocked_desc;
+    }
+
+    const aocl_dlp_packed_desc_t &aocl_dlp_packed_desc() const {
+        assert(is_aocl_dlp_packed_desc());
+        return md_->format_desc.aocl_dlp_packed_desc;
     }
 
     const sparse_desc_t &sparse_desc() const {
@@ -306,7 +314,8 @@ struct memory_desc_wrapper : public c_compatible {
 
         if (utils::one_of(format_kind(), format_kind::blocked,
                     format_kind::wino, format_kind::rnn_packed,
-                    format_kind::cublaslt_blocked)
+                    format_kind::cublaslt_blocked,
+                    format_kind::aocl_dlp_packed)
                 && index != 0) {
             return 0;
         }
@@ -421,6 +430,8 @@ struct memory_desc_wrapper : public c_compatible {
                 assert(!"unknown sparse encoding");
                 return 0;
             }
+        } else if (is_aocl_dlp_packed_desc()) {
+            return aocl_dlp_packed_desc().size;
         } else if (is_host_scalar_desc()) {
             return data_type_size();
         } else {

@@ -22,6 +22,7 @@
 
 #include "cpu/cpu_primitive.hpp"
 #include "cpu/matmul/matmul_utils.hpp"
+#include "cpu/x64/matmul/aocl_dlp_pack_utils.hpp"
 
 #include <aocl_dlp.h>
 
@@ -68,7 +69,19 @@ status_t aocl_dlp_lowp_matmul_sq_t::pd_t::init(engine_t *engine) {
             VERBOSE_UNSUPPORTED_POSTOP);
     VDISPATCH_MATMUL(src_md()->ndims == 2, VERBOSE_BAD_NDIMS, "src",
             src_md()->ndims);
+    // Check if weights format is 'any' before resolving defaults.
+    const bool wei_format_any
+            = weights_md_.format_kind == format_kind::any;
     VDISPATCH_MATMUL(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
+
+    // When weights format was 'any', use AOCL-DLP packed format for
+    // matrix B for better performance (sym_quant variant).
+    if (wei_format_any) {
+        const dim_t K = src_md()->dims[1];
+        const dim_t N = weights_md_.dims[1];
+        CHECK(aocl_dlp_pack_utils::init_packed_b_md(
+                weights_md_, src_type, K, N, /* sym_quant = */ true));
+    }
 
     return status::success;
 }
@@ -80,19 +93,22 @@ status_t aocl_dlp_lowp_matmul_sq_t::execute(const exec_ctx_t &ctx) const {
 
     const auto dst_type = dst_d.data_type();
 
+    const bool wei_packed = wei_d.is_aocl_dlp_packed_desc();
+
     const dim_t M = src_d.dims()[0];
     const dim_t K = src_d.dims()[1];
-    const dim_t N = wei_d.dims()[1];
+    const dim_t N = wei_packed ? pd()->weights_md()->dims[1]
+                               : wei_d.dims()[1];
 
     const dim_t lda = src_d.blocking_desc().strides[0];
-    const dim_t ldb = wei_d.blocking_desc().strides[0];
+    const dim_t ldb = wei_packed ? N : wei_d.blocking_desc().strides[0];
     const dim_t ldc = dst_d.blocking_desc().strides[0];
 
     const char order = 'R';
     const char transa = 'N';
     const char transb = 'N';
     const char mem_fmt_a = 'N';
-    const char mem_fmt_b = 'N';
+    const char mem_fmt_b = wei_packed ? 'R' : 'N';
     const int32_t alpha = 1;
     const int32_t beta = 0;
 

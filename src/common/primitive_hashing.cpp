@@ -186,6 +186,14 @@ size_t get_md_hash(const memory_desc_t &md) {
             // User cannot initialize `packed_desc` therefore `packed_desc`
             // is always zero initialized.
             break;
+        case format_kind::aocl_dlp_packed:
+            seed = hash_combine(
+                    seed, md.format_desc.aocl_dlp_packed_desc.size);
+            seed = hash_combine(seed,
+                    md.format_desc.aocl_dlp_packed_desc.per_slice_size);
+            seed = hash_combine(
+                    seed, md.format_desc.aocl_dlp_packed_desc.gemm_src_dt);
+            break;
         default: assert(!"unknown format_kind");
     }
 

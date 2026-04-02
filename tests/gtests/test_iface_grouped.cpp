@@ -19,6 +19,7 @@
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
 
 #include "dnnl_test_common.hpp"
+#include "dnnl_test_macros.hpp"
 #include "gtest/gtest.h"
 
 #include "oneapi/dnnl/dnnl.hpp"
@@ -156,9 +157,9 @@ TEST(iface_grouped_test_t, TestGroupedMDSize) {
 HANDLE_EXCEPTIONS_FOR_TEST(iface_grouped_test_t, TestGroupedMemoryCreation) {
     engine eng = get_test_engine();
 
-    const bool is_unimplemented = (eng.get_kind() == engine::kind::gpu
-            || DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL);
-    if (is_unimplemented) return;
+    SKIP_IF(eng.get_kind() == engine::kind::gpu
+                    || DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL,
+            "Test requires host-allocated memory.");
 
     const int ngroups = 3;
     const int K = 256;
@@ -197,9 +198,9 @@ HANDLE_EXCEPTIONS_FOR_TEST(
         iface_grouped_test_t, TestGroupedMemorySetGetDataHandles) {
     engine eng = get_test_engine();
 
-    const bool is_unimplemented = (eng.get_kind() == engine::kind::gpu
-            || DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL);
-    if (is_unimplemented) return;
+    SKIP_IF(eng.get_kind() == engine::kind::gpu
+                    || DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL,
+            "Test requires host-allocated memory.");
 
     const int ngroups = 3;
     const int K = 256;
@@ -228,9 +229,9 @@ HANDLE_EXCEPTIONS_FOR_TEST(
 TEST(iface_grouped_test_t, TestGroupedMemoryMapUnmap) {
     engine eng = get_test_engine();
 
-    const bool is_unimplemented = (eng.get_kind() == engine::kind::gpu
-            || DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL);
-    if (is_unimplemented) return;
+    SKIP_IF(eng.get_kind() == engine::kind::gpu
+                    || DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL,
+            "Test requires host-allocated memory.");
 
     const int ngroups = 2;
     const int K = 4;
@@ -412,6 +413,78 @@ TEST(iface_grouped_test_t, TestGroupedMatmulPatterns) {
     EXPECT_THROW(matmul::primitive_desc(
                          eng, grouped_src, grouped_wei, regular_3d_dst),
             dnnl::error);
+}
+
+HANDLE_EXCEPTIONS_FOR_TEST(iface_grouped_test_t, TestMaxGroupMHint) {
+    engine eng = get_test_engine();
+    SKIP_IF(eng.get_kind() == engine::kind::gpu
+                    || DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL,
+            "Test requires host-allocated memory.");
+
+    auto hint_md = memory::desc::host_scalar(dt::s32);
+    memory hint_mem(hint_md, int32_t(3));
+
+    // Grouped matmul: hint is accepted
+    {
+        const int ngroups = 2;
+        const int M = 6, K = 4, N = 4;
+
+        auto src_md = memory::desc::grouped({M, K}, dt::f32, 0, ngroups);
+        auto wei_md = memory::desc(
+                {ngroups, K, N}, dt::f32, memory::format_tag::abc);
+        auto dst_md = memory::desc::grouped({M, N}, dt::f32, 0, ngroups);
+
+        matmul::primitive_desc pd(eng, src_md, wei_md, dst_md);
+        matmul prim(pd);
+        stream strm(eng);
+
+        std::vector<float> src_data(M * K, 1.f);
+        std::vector<float> wei_data(ngroups * K * N, 1.f);
+        std::vector<float> dst_data(M * N, 0.f);
+        std::vector<int32_t> offsets = {3, 6};
+
+        memory src_mem(src_md, eng, {src_data.data(), offsets.data()});
+        memory wei_mem(wei_md, eng, wei_data.data());
+        memory dst_mem(dst_md, eng, {dst_data.data(), offsets.data()});
+
+        EXPECT_NO_THROW(prim.execute(strm,
+                {{DNNL_ARG_SRC, src_mem}, {DNNL_ARG_WEIGHTS, wei_mem},
+                        {DNNL_ARG_DST, dst_mem},
+                        {DNNL_ARG_HINT_MAX_GROUP_SIZE, hint_mem}}));
+        strm.wait();
+    }
+
+    // Non-grouped matmul
+    {
+        const int M = 4, K = 8, N = 6;
+        auto src_md = memory::desc({M, K}, dt::f32, memory::format_tag::ab);
+        auto wei_md = memory::desc({K, N}, dt::f32, memory::format_tag::ab);
+        auto dst_md = memory::desc({M, N}, dt::f32, memory::format_tag::ab);
+
+        matmul::primitive_desc pd(eng, src_md, wei_md, dst_md);
+        matmul prim(pd);
+        stream strm(eng);
+
+        std::vector<float> src_data(M * K, 1.f);
+        std::vector<float> wei_data(K * N, 1.f);
+        std::vector<float> dst_data(M * N, 0.f);
+        memory src_mem(src_md, eng, src_data.data());
+        memory wei_mem(wei_md, eng, wei_data.data());
+        memory dst_mem(dst_md, eng, dst_data.data());
+
+        // Hint is unused and ignored
+        EXPECT_NO_THROW(prim.execute(strm,
+                {{DNNL_ARG_SRC, src_mem}, {DNNL_ARG_WEIGHTS, wei_mem},
+                        {DNNL_ARG_DST, dst_mem},
+                        {DNNL_ARG_HINT_MAX_GROUP_SIZE, hint_mem}}));
+        strm.wait();
+
+        // Hint is passed as input instead of wei, so should be rejected
+        EXPECT_THROW(prim.execute(strm,
+                             {{DNNL_ARG_SRC, src_mem}, {DNNL_ARG_DST, dst_mem},
+                                     {DNNL_ARG_HINT_MAX_GROUP_SIZE, hint_mem}}),
+                dnnl::error);
+    }
 }
 
 } // namespace dnnl

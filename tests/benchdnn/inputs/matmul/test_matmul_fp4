@@ -3,7 +3,7 @@
 
 # Common params for all cases
 --stag=any,abx --wtag=any,abx --dtag=abx,any
---bia-dt=undef,f32 --bia_mask=2
+--bia-dt=undef,f32
 --skip-impl=ref
 --attr-post-ops=
 
@@ -14,27 +14,59 @@
 
 
 ## MXFP4
+
+# 2D shapes
+--bia_mask=2
 --dt=f4_e2m1:f4_e2m1:f32,f4_e2m1:f4_e2m1:bf16
 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1
---batch=shapes_mx
+--batch=shapes_mx_2d
 
 --dt=f4_e2m1
 --skip-impl=ref
 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1+dst:mx:e8m0:1x32
---batch=shapes_mx
+--batch=shapes_mx_2d
+
+# 3D shapes
+--bia_mask=4
+--dt=f4_e2m1:f4_e2m1:f32,f4_e2m1:f4_e2m1:bf16
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1
+--batch=shapes_mx_3d
+
+--dt=f4_e2m1
+--skip-impl=ref
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1+dst:mx:e8m0:1x32
+--batch=shapes_mx_3d
+
+# 4D shapes
+--bia_mask=8
+--dt=f4_e2m1:f4_e2m1:f32,f4_e2m1:f4_e2m1:bf16
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1
+--batch=shapes_mx_4d
+
+--dt=f4_e2m1
+--skip-impl=ref
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1+dst:mx:e8m0:1x32
+--batch=shapes_mx_4d
 
 ## MXFP4 weights
---dt=f32:f4_e2m1:f32
---attr-scales=wei:per_ocic:e8m0:32x1
---batch=shapes_mx
 
---dt=bf16:f4_e2m1:bf16,bf16:f4_e2m1:f32
+# 2D shapes
+--bia_mask=2
+--dt=f32:f4_e2m1:f32,bf16:f4_e2m1:bf16,bf16:f4_e2m1:f32,f16:f4_e2m1:f16,f16:f4_e2m1:f32
 --attr-scales=wei:per_ocic:e8m0:32x1
---batch=shapes_mx
+--batch=shapes_mx_2d
 
---dt=bf16:f4_e2m1:f16,f16:f4_e2m1:f32
+# 3D shapes
+--bia_mask=4
+--dt=f32:f4_e2m1:f32,bf16:f4_e2m1:bf16,bf16:f4_e2m1:f32,f16:f4_e2m1:f16,f16:f4_e2m1:f32
 --attr-scales=wei:per_ocic:e8m0:32x1
---batch=shapes_mx
+--batch=shapes_mx_3d
+
+# 4D shapes
+--bia_mask=8
+--dt=f32:f4_e2m1:f32,bf16:f4_e2m1:bf16,bf16:f4_e2m1:f32,f16:f4_e2m1:f16,f16:f4_e2m1:f32
+--attr-scales=wei:per_ocic:e8m0:32x1
+--batch=shapes_mx_4d
 
 ## NVFP4
 --dt=f4_e2m1:f4_e2m1:f32,f4_e2m1:f4_e2m1:bf16

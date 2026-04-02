@@ -1219,6 +1219,15 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                     }
                 }
             } break;
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+            case DNNL_ARG_HINT_MAX_GROUP_SIZE:
+                // The hint is for the library to optimize execution,
+                // it doesn't affect reference.
+                mem.set_elem(0,
+                        static_cast<float>(
+                                prb->sparse_options.get_max_variable_dim()));
+                break;
+#endif
             case DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS:
                 // Fill it separately down below.
                 // TODO: introduce an order of processing arguments to avoid

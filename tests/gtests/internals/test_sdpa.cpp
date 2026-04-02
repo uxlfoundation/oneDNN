@@ -247,7 +247,8 @@ static const dropout_config_t no_dropout {};
 
 using sdpa_dims_t_tuple = std::tuple<int, num_heads_t, seq_len_size_t,
         head_group_size_t, tensor_type_t, tensor_type_t, tensor_type_t,
-        quantize_type, tag_t, mask_config_t, scale_type, accumulation_t>;
+        quantize_type, tag_t, mask_config_t, scale_type, accumulation_t,
+        dropout_config_t>;
 
 struct sdpa_dims_t {
     memory::dim mb;
@@ -309,7 +310,8 @@ struct sdpa_dims_t {
         , key_format_tag(std::get<8>(dims))
         , mask(std::get<9>(dims))
         , stype(std::get<10>(dims))
-        , acc_modes(std::get<11>(dims)) {}
+        , acc_modes(std::get<11>(dims))
+        , dropout(std::get<12>(dims)) {}
 };
 
 struct sdpa_tensors_t {
@@ -1504,6 +1506,7 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
         dnnl::memory &diff_output, bool invert_scale,
         std::vector<dnnl_memory_t> &doubled_memory, dnnl::memory &diff_query,
         dnnl::memory &diff_key, dnnl::memory &diff_value,
+        dnnl::memory *dropout_mask_fwd_out = nullptr,
         bool with_timing = false) {
 
     using namespace dnnl;
@@ -1592,11 +1595,26 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
     // softmax forward
     primitive_attr softmax_attr;
     softmax_attr.set_scratchpad_mode(scratchpad_mode::library);
+    if (p.dropout.enabled()) {
+        memory::desc mask_desc = {};
+        if (p.dropout.has_output_mask()) {
+            mask_desc = memory::desc(
+                    score_sz, mdt::u8, memory::format_tag::abcde);
+        }
+        softmax_attr.set_dropout(mask_desc, p.dropout.seed_dt,
+                p.dropout.offset != 0, p.dropout.use_host_scalars);
+    }
     auto softmax_fwd_pd = softmax_forward::primitive_desc(eng,
             prop_kind::forward_training,
             (algorithm)dnnl::impl::alg_kind::softmax_accurate_inf_as_zero,
             score.get_desc(), score.get_desc(), 4, softmax_attr);
     auto softmax_prim = softmax_forward(softmax_fwd_pd);
+    memory softmax_dropout_mask;
+    if (p.dropout.enabled() && p.dropout.has_output_mask()) {
+        auto dropout_mask_md = softmax_fwd_pd.query_md(
+                dnnl::query::exec_arg_md, DNNL_ARG_ATTR_DROPOUT_MASK);
+        softmax_dropout_mask = memory(dropout_mask_md, eng);
+    }
 
     // attention_output = attention_probs x value
     primitive_attr bmm2_attr;
@@ -1635,11 +1653,19 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
         bmm1_prim.execute(strm, bmm1_args);
 
         // softmax
-        softmax_prim.execute(strm,
-                {
-                        {DNNL_ARG_SRC, score},
-                        {DNNL_ARG_DST, score2},
-                });
+        std::unordered_map<int, memory> softmax_args
+                = {{DNNL_ARG_SRC, score}, {DNNL_ARG_DST, score2}};
+        if (p.dropout.enabled()) {
+            softmax_args[DNNL_ARG_ATTR_DROPOUT_PROBABILITY] = t.m_dropout_prob;
+            softmax_args[DNNL_ARG_ATTR_DROPOUT_SEED] = t.m_dropout_seed;
+            if (p.dropout.has_output_mask()) {
+                softmax_args[DNNL_ARG_ATTR_DROPOUT_MASK] = softmax_dropout_mask;
+            }
+            if (p.dropout.offset != 0) {
+                softmax_args[DNNL_ARG_ATTR_DROPOUT_OFFSET] = t.m_dropout_offset;
+            }
+        }
+        softmax_prim.execute(strm, softmax_args);
 
         // SV
         bmm2_prim.execute(strm, bmm2_args);
@@ -1649,6 +1675,11 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
     // Execute primitives of sdpa.
     fwd_loop();
     strm.wait();
+    if (dropout_mask_fwd_out != nullptr && p.dropout.enabled()
+            && p.dropout.has_output_mask()) {
+        *dropout_mask_fwd_out = softmax_dropout_mask;
+    }
+
 #if DEBUG_PRINT_MEM
     print_mem(grouped_query, "FWD grouped_query");
     print_mem(key_dequantized, "FWD keq_deq");
@@ -1690,12 +1721,15 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
     memory::desc v_t_md
             = memory::desc({v_sz[0], v_sz[1], v_sz[2], v_sz[4], v_sz[3]},
                     /*dO.get_dt*/ p.dt.dt, memory::format_tag::abced);
+    primitive_attr mm_bwd_dS2_attr;
+    mm_bwd_dS2_attr.set_scratchpad_mode(scratchpad_mode::library);
     matmul::primitive_desc mm_bwd_dS2_pd(
-            eng, grouped_output_md, v_t_md, diff_score2_md);
+            eng, grouped_output_md, v_t_md, diff_score2_md, mm_bwd_dS2_attr);
     matmul mm_bwd_dS2(mm_bwd_dS2_pd);
-    mm_bwd_dS2.execute(strm,
-            {{DNNL_ARG_SRC, dO_mem}, {DNNL_ARG_WEIGHTS, value_dequantized},
-                    {DNNL_ARG_DST, diff_score2_mem}});
+    std::unordered_map<int, memory> mm_bwd_dS2_args
+            = {{DNNL_ARG_SRC, dO_mem}, {DNNL_ARG_WEIGHTS, value_dequantized},
+                    {DNNL_ARG_DST, diff_score2_mem}};
+    mm_bwd_dS2.execute(strm, mm_bwd_dS2_args);
     strm.wait();
 
 #if DEBUG_PRINT_MEM
@@ -1838,9 +1872,8 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
 
     const auto bwd_loop = [&]() {
         strm.wait();
-        mm_bwd_dS2.execute(strm,
-                {{DNNL_ARG_SRC, dO_mem}, {DNNL_ARG_WEIGHTS, value_dequantized},
-                        {DNNL_ARG_DST, diff_score2_mem}});
+        mm_bwd_dS2.execute(strm, mm_bwd_dS2_args);
+        strm.wait();
         mm_bwd_dV.execute(strm,
                 {{DNNL_ARG_SRC, score2_downcast}, {DNNL_ARG_WEIGHTS, dO_mem},
                         {DNNL_ARG_DST, dV_full_mem}});
@@ -2314,6 +2347,9 @@ public:
         using namespace dnnl::impl;
 
         auto mask = t.m_mask.get_desc();
+        memory ref_dropout_mask_fwd;
+        memory test_dropout_mask_fwd;
+        memory test_dropout_mask_bwd;
 
         memory::desc *mask_ptr = nullptr;
 
@@ -2379,6 +2415,21 @@ public:
             sdpa_fwd_args[DNNL_ARG_SCALE] = t.m_scale;
         }
         if (mask_ptr) { sdpa_fwd_args[DNNL_ARG_ATTN_MASK] = t.m_mask; }
+        if (p.dropout.enabled()) {
+            sdpa_fwd_args[DNNL_ARG_ATTR_DROPOUT_PROBABILITY] = t.m_dropout_prob;
+            sdpa_fwd_args[DNNL_ARG_ATTR_DROPOUT_SEED] = t.m_dropout_seed;
+            if (p.dropout.offset != 0) {
+                sdpa_fwd_args[DNNL_ARG_ATTR_DROPOUT_OFFSET]
+                        = t.m_dropout_offset;
+            }
+            if (p.dropout.has_output_mask()) {
+                auto dropout_mask_md = sdpa_fwd_pd.query_md(
+                        dnnl::query::exec_arg_md, DNNL_ARG_ATTR_DROPOUT_MASK);
+                test_dropout_mask_fwd = memory(dropout_mask_md, eng);
+                sdpa_fwd_args[DNNL_ARG_ATTR_DROPOUT_MASK]
+                        = test_dropout_mask_fwd;
+            }
+        }
 
         strm.wait();
         sdpa_fwd.execute(strm, sdpa_fwd_args);
@@ -2407,6 +2458,21 @@ public:
             sdpa_bwd_args[DNNL_ARG_SCALE] = t.m_scale;
         }
         if (mask_ptr) { sdpa_bwd_args[DNNL_ARG_ATTN_MASK] = t.m_mask; }
+        if (p.dropout.enabled()) {
+            sdpa_bwd_args[DNNL_ARG_ATTR_DROPOUT_PROBABILITY] = t.m_dropout_prob;
+            sdpa_bwd_args[DNNL_ARG_ATTR_DROPOUT_SEED] = t.m_dropout_seed;
+            if (p.dropout.offset != 0) {
+                sdpa_bwd_args[DNNL_ARG_ATTR_DROPOUT_OFFSET]
+                        = t.m_dropout_offset;
+            }
+            if (p.dropout.has_output_mask()) {
+                auto dropout_mask_md = sdpa_bwd_pd.query_md(
+                        dnnl::query::exec_arg_md, DNNL_ARG_ATTR_DROPOUT_MASK);
+                test_dropout_mask_bwd = memory(dropout_mask_md, eng);
+                sdpa_bwd_args[DNNL_ARG_ATTR_DROPOUT_MASK]
+                        = test_dropout_mask_bwd;
+            }
+        }
 
         sdpa_bwd.execute(strm, sdpa_bwd_args);
         strm.wait();
@@ -2422,7 +2488,9 @@ public:
         prim_sdpa_quant_bwd(p, t, eng, strm, t.m_query, t.m_key_quantized,
                 scale_dt, t.m_scale, t.m_mask, t.m_value_quantized, t.m_output,
                 t.m_diff_output, invert_scale, doubled_memory, t.m_diff_query,
-                t.m_diff_key, t.m_diff_value);
+                t.m_diff_key, t.m_diff_value,
+                p.dropout.has_output_mask() ? &ref_dropout_mask_fwd : nullptr,
+                /*with_timing=*/false);
 
         float max_diff_threshold = 0.3f;
         // backward thresholds are higher than forward due to chained matmuls
@@ -2477,6 +2545,18 @@ public:
             check_memory<float_t>(strm, t.m_diff_value,
                     t.m_diff_value_quantized, max_diff_threshold,
                     gqa_fthreshold);
+        }
+
+        if (p.dropout.enabled() && p.dropout.has_output_mask()) {
+            const memory::dims score_sz_4d
+                    = {p.mb, p.heads.q, p.seq_len.q, p.seq_len.kv};
+            auto ref_mask_fwd_4d = reshape(strm, ref_dropout_mask_fwd,
+                    memory::desc(
+                            score_sz_4d, mdt::u8, memory::format_tag::abcd));
+            check_dropout_mask_memory<unsigned char>(
+                    strm, ref_mask_fwd_4d, test_dropout_mask_fwd);
+            check_dropout_mask_memory<unsigned char>(
+                    strm, ref_mask_fwd_4d, test_dropout_mask_bwd);
         }
 
 #if DEBUG_PRINT_MEM
@@ -2834,7 +2914,8 @@ public:
                     t.m_key_quantized, scale_dt, t.m_scale, t.m_mask,
                     t.m_value_quantized, t.m_output, t.m_diff_output,
                     invert_scale, doubled_memory, t.m_diff_query, t.m_diff_key,
-                    t.m_diff_value, /*with_timing=*/true);
+                    t.m_diff_value, nullptr,
+                    /*with_timing=*/true);
 
             float speedup = ref_time.count() > 0
                     ? (float)ref_time.count() / (float)qtime.count()
@@ -2877,7 +2958,8 @@ INSTANTIATE_TEST_SUITE_P(ScaleTypes_f16, sdpa_test_datatypes,
                 ::testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 ::testing::Values(mask_config_t {mask_type::no_mask}), // mask_type
                 ::testing::Values(scale_type::device_side,scale_type::host_side), // scale_type
-                ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
+                ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}), // accumulation_mode
+                ::testing::Values(no_dropout) // dropout
                 ),
         &print_to_string2);
 INSTANTIATE_TEST_SUITE_P(ScaleTypes_bf16, sdpa_test_datatypes,
@@ -2892,7 +2974,8 @@ INSTANTIATE_TEST_SUITE_P(ScaleTypes_bf16, sdpa_test_datatypes,
                 ::testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 ::testing::Values(mask_config_t {mask_type::no_mask}), // mask_type
                 ::testing::Values(scale_type::device_side,scale_type::host_side), // scale_type
-                ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
+                ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}), // accumulation_mode
+                ::testing::Values(no_dropout) // dropout
                 ),
         &print_to_string2);
 INSTANTIATE_TEST_SUITE_P(ScaleTypes_f32, sdpa_test_datatypes,
@@ -2907,7 +2990,8 @@ INSTANTIATE_TEST_SUITE_P(ScaleTypes_f32, sdpa_test_datatypes,
                 ::testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 ::testing::Values(mask_config_t {mask_type::no_mask}), // mask_type
                 ::testing::Values(scale_type::device_side,scale_type::host_side), // scale_type
-                ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
+                ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}), // accumulation_mode
+                ::testing::Values(no_dropout) // dropout
                 ),
         &print_to_string2);
 
@@ -2923,7 +3007,8 @@ INSTANTIATE_TEST_SUITE_P(DataTypes_f16_s8, sdpa_test_datatypes,
                 ::testing::Values(dnnl::memory::format_tag::abcd, dnnl::memory::format_tag::abdc), // key_format_tag
                 ::testing::Values(mask_config_t {mask_type::oneD, mdt::f16}, mask_config_t {mask_type::twoD, mdt::f32}), // mask_type
                 ::testing::Values(default_scale_type), // scale_type
-                ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
+                ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}), // accumulation_mode
+                ::testing::Values(no_dropout) // dropout
                 ),
         &print_to_string2);
 
@@ -2939,7 +3024,8 @@ INSTANTIATE_TEST_SUITE_P(DataTypes_f16_s4, sdpa_test_datatypes,
                 ::testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 ::testing::Values(mask_config_t {mask_type::oneD, mdt::f16}, mask_config_t {mask_type::twoD, mdt::f32}), // mask_type
                 ::testing::Values(default_scale_type), // scale_type
-                ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
+                ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}), // accumulation_mode
+                ::testing::Values(no_dropout) // dropout
                 ),
         &print_to_string2);
 
@@ -2955,7 +3041,8 @@ INSTANTIATE_TEST_SUITE_P(DataTypes_bf16_s8, sdpa_test_datatypes,
                 ::testing::Values(dnnl::memory::format_tag::abcd, dnnl::memory::format_tag::abdc), // key_format_tag
                 ::testing::Values(mask_config_t {mask_type::oneD, mdt::bf16}, mask_config_t {mask_type::twoD, mdt::bf16}), // mask_type
                 ::testing::Values(default_scale_type), // scale_type
-                ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
+                ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}), // accumulation_mode
+                ::testing::Values(no_dropout) // dropout
                 ),
         &print_to_string2);
 
@@ -2971,7 +3058,8 @@ INSTANTIATE_TEST_SUITE_P(DataTypes_bf16_s4, sdpa_test_datatypes,
                 ::testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 ::testing::Values(mask_config_t {mask_type::oneD, mdt::bf16}, mask_config_t {mask_type::twoD, mdt::bf16}), // mask_type
                 ::testing::Values(default_scale_type), // scale_type
-                ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
+                ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}), // accumulation_mode
+                ::testing::Values(no_dropout) // dropout
                 ),
         &print_to_string2);
 
@@ -2987,7 +3075,8 @@ INSTANTIATE_TEST_SUITE_P(DataTypes_f32, sdpa_test_datatypes,
                 ::testing::Values(dnnl::memory::format_tag::abcd, dnnl::memory::format_tag::abdc), // key_format_tag
                 ::testing::Values(mask_config_t {mask_type::twoD, mdt::f32}), // mask_type
                 ::testing::Values(default_scale_type), // scale_type
-                ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
+                ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}), // accumulation_mode
+                ::testing::Values(no_dropout) // dropout
                 ),
         &print_to_string2);
 
@@ -3003,7 +3092,8 @@ INSTANTIATE_TEST_SUITE_P(AllMaskTypes, sdpa_test_datatypes,
                 ::testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 ::testing::Values(mask_config_t {mask_type::no_mask}, mask_config_t {mask_type::causal_tl}, mask_config_t {mask_type::causal_br}, mask_config_t {mask_type::oneD, mdt::f16}, mask_config_t {mask_type::twoD, mdt::f16}), // mask_type
                 ::testing::Values(default_scale_type), // scale_type
-                ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
+                ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}), // accumulation_mode
+                ::testing::Values(no_dropout) // dropout
                 ),
         &print_to_string2);
 
@@ -3019,7 +3109,8 @@ INSTANTIATE_TEST_SUITE_P(GQA, sdpa_test_datatypes,
                 ::testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 ::testing::Values(mask_config_t {mask_type::no_mask}), // mask_type
                 ::testing::Values(default_scale_type), // scale_type
-                ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
+                ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}), // accumulation_mode
+                ::testing::Values(no_dropout) // dropout
                 ),
         &print_to_string2);
 
@@ -3035,7 +3126,8 @@ INSTANTIATE_TEST_SUITE_P(f16_accumulation, sdpa_test_datatypes,
                 ::testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 ::testing::Values(mask_config_t {mask_type::no_mask}, mask_config_t {mask_type::twoD}, mask_config_t {mask_type::causal_tl}), // mask_type
                 ::testing::Values(default_scale_type), // scale_type
-                ::testing::Values(accumulation_t {accumulation_mode::f16, accumulation_mode::f16}, accumulation_t {accumulation_mode::f32, accumulation_mode::f16}, accumulation_t {accumulation_mode::f16, accumulation_mode::f32}) // accumulation_mode
+                ::testing::Values(accumulation_t {accumulation_mode::f16, accumulation_mode::f16}, accumulation_t {accumulation_mode::f32, accumulation_mode::f16}, accumulation_t {accumulation_mode::f16, accumulation_mode::f32}), // accumulation_mode
+                ::testing::Values(no_dropout) // dropout
                 ),
         &print_to_string2);
 
@@ -3174,7 +3266,7 @@ GPU_TEST_P(sdpa_bwd_test, perf_bwd) {
 // Case 1: 0.5:12345678           -> no tag field => benchdnn default tag=any => has_output_mask
 // Case 2: 0.75:12345678:undef    -> tag=undef => no mask buffer written
 // Case 3: 0.25:843921:any:1238976:true -> output mask + non-zero offset + host scalars
-#define SDPA_DIMS_DROPOUT_BASE \
+#define SDPA_DIMS_DROPOUT_SHARED_BASE \
     1, 1, 1, 32, 32, 32, 32, 32, mdt::f16, mdt::f16, mdt::undef, mdt::undef, \
             mdt::f16, mdt::undef, mdt::undef, mdt::f16, \
             quantize_type::no_quantization, no_key_transposed, \
@@ -3200,16 +3292,16 @@ GPU_TEST_P(sdpa_bwd_test, perf_bwd) {
             accumulation_mode::f32
 INSTANTIATE_TEST_SUITE_P(dropout_forward_minimal, sdpa_test,
         testing::Values(
-                // 0.5:12345678:abcd — concrete tag => has_output_mask
-                sdpa_dims_t {SDPA_DIMS_DROPOUT_BASE,
+                // 0.5:12345678:abcd — concrete tag => blocked format => has_output_mask
+                sdpa_dims_t {SDPA_DIMS_DROPOUT_SHARED_BASE,
                         dropout_config_t {0.5f, 12345678, mdt::s64, 0, false,
                                 memory::format_tag::abcd}},
                 // 0.75:12345678:undef — explicit undef => no mask output
-                sdpa_dims_t {SDPA_DIMS_DROPOUT_BASE,
+                sdpa_dims_t {SDPA_DIMS_DROPOUT_SHARED_BASE,
                         dropout_config_t {0.75f, 12345678, mdt::s64, 0, false,
                                 memory::format_tag::undef}},
                 // 0.25:843921:abcd:1238976:true — output mask, offset, host scalars, concrete tag
-                sdpa_dims_t {SDPA_DIMS_DROPOUT_BASE,
+                sdpa_dims_t {SDPA_DIMS_DROPOUT_SHARED_BASE,
                         dropout_config_t {0.25f, 843921, mdt::s64, 1238976,
                                 true, memory::format_tag::abcd}},
                 // SDPA_DIMS with key transposed
@@ -3243,10 +3335,48 @@ INSTANTIATE_TEST_SUITE_P(dropout_forward_minimal, sdpa_test,
                         dropout_config_t {0.3f, 99999, mdt::s64, 1238796, true,
                                 memory::format_tag::abcd}}),
         &print_to_string);
-#undef SDPA_DIMS_DROPOUT_BASE
-#undef SDPA_DIMS_DROPOUT_BASE_TRANSPOSED
 #undef SDPA_DIMS_DROPOUT_MULTI
 #undef SDPA_DIMS_DROPOUT_LARGE
+#define SDPA_DIMS_BWD_DROPOUT_GQA \
+    1, 4, 2, 64, 64, 64, 64, 64, mdt::f16, mdt::f16, mdt::undef, mdt::undef, \
+            mdt::f16, mdt::undef, mdt::undef, mdt::f16, \
+            quantize_type::no_quantization, no_key_transposed, \
+            mask_type::no_mask, default_scale_type, accumulation_mode::f32, \
+            accumulation_mode::f32
+INSTANTIATE_TEST_SUITE_P(dropout_backward_minimal, sdpa_bwd_test,
+        testing::Values(sdpa_dims_t {SDPA_DIMS_DROPOUT_SHARED_BASE,
+                                dropout_config_t {0.5f, 12345678, mdt::s64, 0,
+                                        false, memory::format_tag::abcd}},
+                sdpa_dims_t {SDPA_DIMS_DROPOUT_SHARED_BASE,
+                        dropout_config_t {0.75f, 12345678, mdt::s64, 0, false,
+                                memory::format_tag::undef}},
+                sdpa_dims_t {SDPA_DIMS_DROPOUT_SHARED_BASE,
+                        dropout_config_t {0.25f, 843921, mdt::s64, 1238976,
+                                true, memory::format_tag::abcd}},
+                // Base casae with key transposed
+                sdpa_dims_t {SDPA_DIMS_DROPOUT_BASE_TRANSPOSED,
+                        dropout_config_t {0.5f, 12345678, mdt::s64, 0, false,
+                                memory::format_tag::abcd}},
+                sdpa_dims_t {SDPA_DIMS_DROPOUT_BASE_TRANSPOSED,
+                        dropout_config_t {0.75f, 12345678, mdt::s64, 0, false,
+                                memory::format_tag::undef}},
+                sdpa_dims_t {SDPA_DIMS_DROPOUT_BASE_TRANSPOSED,
+                        dropout_config_t {0.25f, 843921, mdt::s64, 1238976,
+                                true, memory::format_tag::abcd}},
+                // GQA: concrete tag
+                sdpa_dims_t {SDPA_DIMS_BWD_DROPOUT_GQA,
+                        dropout_config_t {0.5f, 4242, mdt::s64, 0, false,
+                                memory::format_tag::abcd}},
+                sdpa_dims_t {SDPA_DIMS_BWD_DROPOUT_GQA,
+                        dropout_config_t {0.75f, 4343, mdt::s64, 0, false,
+                                memory::format_tag::undef}},
+                sdpa_dims_t {SDPA_DIMS_BWD_DROPOUT_GQA,
+                        dropout_config_t {0.25f, 4444, mdt::s64, 123456, true,
+                                memory::format_tag::abcd}}),
+        &print_to_string);
+#undef SDPA_DIMS_DROPOUT_SHARED_BASE_TRANSPOSED
+#undef SDPA_DIMS_DROPOUT_SHARED_BASE
+#undef SDPA_DIMS_BWD_DROPOUT_GQA
 
 // clang-format off
 
@@ -3272,7 +3402,8 @@ INSTANTIATE_TEST_SUITE_P(bwd_f16, sdpa_bwd_test_datatypes,
                 testing::Values(default_scale_type), // scale_type
                 testing::Values(
                         accumulation_t {accumulation_mode::f32,
-                                accumulation_mode::f32}) // accumulation_mode
+                        accumulation_mode::f32}), // accumulation_mode
+                testing::Values(no_dropout) // dropout
                 ),
         &print_to_string2);
 
@@ -3295,7 +3426,8 @@ INSTANTIATE_TEST_SUITE_P(bwd_bf16, sdpa_bwd_test_datatypes,
                 testing::Values(default_scale_type), // scale_type
                 testing::Values(
                         accumulation_t {accumulation_mode::f32,
-                                accumulation_mode::f32}) // accumulation_mode
+                        accumulation_mode::f32}), // accumulation_mode
+                testing::Values(no_dropout) // dropout
                 ),
         &print_to_string2);
 
@@ -3319,7 +3451,8 @@ INSTANTIATE_TEST_SUITE_P(bwd_gqa, sdpa_bwd_test_datatypes,
                 testing::Values(default_scale_type), // scale_type
                 testing::Values(
                         accumulation_t {accumulation_mode::f32,
-                                accumulation_mode::f32}) // accumulation_mode
+                        accumulation_mode::f32}), // accumulation_mode
+                testing::Values(no_dropout) // dropout
                 ),
         &print_to_string2);
 
@@ -3340,7 +3473,8 @@ INSTANTIATE_TEST_SUITE_P(bwd_nonuniform_seq, sdpa_bwd_test_datatypes,
                 testing::Values(default_scale_type), // scale_type
                 testing::Values(
                         accumulation_t {accumulation_mode::f32,
-                                accumulation_mode::f32}) // accumulation_mode
+                        accumulation_mode::f32}), // accumulation_mode
+                testing::Values(no_dropout) // dropout
                 ),
         &print_to_string2);
 
@@ -3365,7 +3499,8 @@ INSTANTIATE_TEST_SUITE_P(bwd_f32, sdpa_bwd_test_datatypes,
                 testing::Values(default_scale_type), // scale_type
                 testing::Values(
                         accumulation_t {accumulation_mode::f32,
-                                accumulation_mode::f32}) // accumulation_mode
+                        accumulation_mode::f32}), // accumulation_mode
+                testing::Values(no_dropout) // dropout
                 ),
         &print_to_string2);
 
@@ -3385,7 +3520,8 @@ INSTANTIATE_TEST_SUITE_P(bwd_large_batch, sdpa_bwd_test_datatypes,
                 testing::Values(default_scale_type), // scale_type
                 testing::Values(
                         accumulation_t {accumulation_mode::f32,
-                                accumulation_mode::f32}) // accumulation_mode
+                        accumulation_mode::f32}), // accumulation_mode
+                testing::Values(no_dropout) // dropout
                 ),
         &print_to_string2);
 

@@ -775,13 +775,16 @@ bool parse_encoding(std::vector<sparse_options_t> &sparse_options,
 bool parse_grouped(std::vector<sparse_options_t> &sparse_options,
         const char *str, const std::string &option_name /* = "grouped"*/) {
     static const std::string help
-            = "DIM_IDX:NUM_GROUPS:size0,size1,...,sizeN\n   "
+            = "DIM_IDX:NUM_GROUPS:size0,size1,...,sizeN[:max_size]\n   "
               "Specifies grouped encoding for MoE workloads.\n"
               "    DIM_IDX is the dimension index (0=M, 1=K, 2=N)\n"
               "    NUM_GROUPS is the number of expert groups\n"
               "    size0,size1,...,sizeN are the sizes for each in the group "
               "(comma-separated)\n"
-              "    Example: --grouped=0:8:32,64,32,96,48,80,56,72\n";
+              "    max_size (optional) is the max_variable_dim hint for "
+              "    the optimal dispatch\n"
+              "    Example: --grouped=0:8:32,64,32,96,48,80,56,72\n"
+              "    Example: --grouped=0:8:32,64,32,96,48,80,56,72:96\n";
 
     parser_utils::add_option_to_help(option_name, help);
     const std::string pattern = parser_utils::get_pattern(option_name);
@@ -797,7 +800,7 @@ bool parse_grouped(std::vector<sparse_options_t> &sparse_options,
 
     sparse_options_t v;
 
-    // Parse format: DIM_IDX:NUM_GROUPS:size0,size1,...
+    // Parse format: DIM_IDX:NUM_GROUPS:size0,size1,...[:max_size]
     size_t start_pos = 0;
 
     // Parse dimension index
@@ -830,12 +833,21 @@ bool parse_grouped(std::vector<sparse_options_t> &sparse_options,
 
     dnnl_dim_t group_count = parser_utils::stoll_safe(group_count_str);
 
+    // Get sizes string: "size0,size1,...,sizeN" or
+    // "size0,size1,...,sizeN:max_size" (optional max_variable_dim at end)
+    const std::string sizes_str = get_substr(s, start_pos, ':');
+
     // Get the sizes (comma-separated)
     std::vector<dnnl_dim_t> sizes;
-    size_t size_pos = start_pos;
+    size_t size_pos = 0;
     while (size_pos != std::string::npos) {
-        sizes.push_back(parser_utils::stoll_safe(get_substr(s, size_pos, ',')));
+        sizes.push_back(
+                parser_utils::stoll_safe(get_substr(sizes_str, size_pos, ',')));
     }
+
+    dnnl_dim_t max_variable_dim = 0;
+    if (start_pos != std::string::npos)
+        max_variable_dim = parser_utils::stoll_safe(s.substr(start_pos));
 
     // Validate number of sizes
     if (sizes.size() != (size_t)group_count) {
@@ -852,14 +864,20 @@ bool parse_grouped(std::vector<sparse_options_t> &sparse_options,
     // - dim 1 (K): affects src and weights
     // - dim 2 (N): affects weights and dst
     if (variable_dim_idx == 0) {
-        v.set_grouped(DNNL_ARG_SRC, variable_dim_idx, group_count, sizes);
-        v.set_grouped(DNNL_ARG_DST, variable_dim_idx, group_count, sizes);
+        v.set_grouped(DNNL_ARG_SRC, variable_dim_idx, group_count, sizes,
+                max_variable_dim);
+        v.set_grouped(DNNL_ARG_DST, variable_dim_idx, group_count, sizes,
+                max_variable_dim);
     } else if (variable_dim_idx == 1) {
-        v.set_grouped(DNNL_ARG_SRC, variable_dim_idx, group_count, sizes);
-        v.set_grouped(DNNL_ARG_WEIGHTS, variable_dim_idx, group_count, sizes);
+        v.set_grouped(DNNL_ARG_SRC, variable_dim_idx, group_count, sizes,
+                max_variable_dim);
+        v.set_grouped(DNNL_ARG_WEIGHTS, variable_dim_idx, group_count, sizes,
+                max_variable_dim);
     } else if (variable_dim_idx == 2) {
-        v.set_grouped(DNNL_ARG_WEIGHTS, variable_dim_idx, group_count, sizes);
-        v.set_grouped(DNNL_ARG_DST, variable_dim_idx, group_count, sizes);
+        v.set_grouped(DNNL_ARG_WEIGHTS, variable_dim_idx, group_count, sizes,
+                max_variable_dim);
+        v.set_grouped(DNNL_ARG_DST, variable_dim_idx, group_count, sizes,
+                max_variable_dim);
     }
 
     sparse_options.assign({v});

@@ -936,6 +936,16 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
     mem_map.emplace(DNNL_ARG_SCRATCHPAD,
             dnn_mem_t(scratch_md, test_engine, /* prefill = */ true));
 
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    // Grouped max variable dim hint
+    // Optional host scalar, created when src is a grouped descriptor
+    if (query_md_sparse_encoding(query_md(const_pd, DNNL_ARG_SRC))
+            == dnnl_grouped) {
+        auto hint_md = dnn_mem_t::init_host_scalar_md(dnnl_s32);
+        mem_map.emplace(DNNL_ARG_HINT_MAX_GROUP_SIZE, dnn_mem_t(hint_md));
+    }
+#endif
+
     // Binary post-op.
     // TODO: currently run-time dimensions are not supported in binary post-op.
     for (int idx = 0; idx < dnnl_post_ops_len(const_po); ++idx) {

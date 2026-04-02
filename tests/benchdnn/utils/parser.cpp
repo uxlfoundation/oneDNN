@@ -1274,17 +1274,40 @@ bool parse_main_help(
     std::string pattern = utils::get_pattern(option_name, false);
     if (!utils::option_matched(pattern, str)) return false;
 
+    static constexpr const char supported_drivers[]
+            = "    * binary\n"
+              "    * bnorm\n"
+              "    * concat\n"
+              "    * conv\n"
+              "    * deconv\n"
+              "    * eltwise\n"
+              "    * gated_mlp\n"
+              "    * ip\n"
+              "    * lnorm\n"
+              "    * lrn\n"
+              "    * matmul\n"
+              "    * pool\n"
+              "    * prelu\n"
+              "    * reduction\n"
+              "    * reorder\n"
+              "    * resampling\n"
+              "    * rnn\n"
+              "    * sdpa\n"
+              "    * shuffle\n"
+              "    * softmax\n"
+              "    * sum\n"
+              "    * zeropad\n\n";
+
     static const std::string main_help
-            = "Usage:\n    benchdnn --<driver> [global_options] "
-              "[driver_options] problem_description\n\nList of supported "
-              "<drivers> (lower case accepted only):\n    * binary\n    * "
-              "bnorm\n    * concat\n    * conv\n    * deconv\n    * eltwise\n  "
-              "  * ip\n    * lnorm\n    * lrn\n    * matmul\n    * pool\n    * "
-              "prelu\n    * reduction\n    * reorder\n    * resampling\n    * "
-              "rnn\n    * sdpa\n    * shuffle\n    * softmax\n    * sum\n    * "
-              "zeropad\n\nFor global and specific driver options, use:\n    "
-              "benchdnn --<driver> --help\n\nMore details at "
-            + benchdnn_url + "\n";
+        = "Usage:\n"
+          "    benchdnn --<driver> [global_options] [driver_options] "
+          "problem_description\n\n"
+          "List of supported <drivers> (lower case accepted only):\n"
+        + std::string(supported_drivers)
+        + "For global and specific driver options, use:\n"
+          "    benchdnn --<driver> --help\n\n"
+          "More details at "
+        + benchdnn_url + "\n";
 
     BENCHDNN_PRINT(0, "%s\n", main_help.c_str());
     exit(0);

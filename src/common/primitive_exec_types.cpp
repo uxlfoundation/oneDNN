@@ -117,7 +117,13 @@ status_t cvt_primitive_args(const primitive_desc_t *pd, int nargs,
                         || (arg == DNNL_ARG_ATTR_DROPOUT_PROBABILITY)
                         || (arg == DNNL_ARG_ATTR_DROPOUT_OFFSET)
                         || (arg == DNNL_ARG_ATTR_DROPOUT_SEED)
-                        || (arg == DNNL_ARG_ATTR_ROUNDING_SEED);
+                        || (arg == DNNL_ARG_ATTR_ROUNDING_SEED)
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+                        // Hint arg: gated in matmul_pd_t::arg_usage()
+                        // via is_grouped_desc()
+                        || (arg == DNNL_ARG_HINT_MAX_GROUP_SIZE)
+#endif
+                        ;
                 break;
             case primitive_desc_t::arg_usage_t::output:
                 args[arg] = {mem, false};

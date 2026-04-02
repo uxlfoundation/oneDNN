@@ -72,6 +72,13 @@ struct matmul_pd_t : public primitive_desc_t {
             return with_reduce() ? arg_usage_t::output : arg_usage_t::unused;
         if (arg == DNNL_ARG_DST) return arg_usage_t::output;
 
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+        if (arg == DNNL_ARG_HINT_MAX_GROUP_SIZE)
+            return memory_desc_wrapper(src_md()).is_grouped_desc()
+                    ? arg_usage_t::input
+                    : arg_usage_t::unused;
+#endif
+
         return primitive_desc_t::arg_usage(arg);
     }
 

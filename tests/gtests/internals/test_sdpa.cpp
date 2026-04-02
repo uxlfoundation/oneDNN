@@ -2105,6 +2105,7 @@ public:
 
     void compare_bwd() {
         using namespace dnnl::impl;
+
         auto mask = t.m_mask.get_desc();
 
         memory::desc *mask_ptr = nullptr;

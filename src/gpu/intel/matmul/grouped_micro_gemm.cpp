@@ -540,10 +540,16 @@ status_t grouped_micro_gemm_t::execute(const exec_ctx_t &ctx) const {
     lws[1] *= sg_per_wg_n;
     lws[2] *= sg_per_wg_k;
 
+    dim_t m_dispatch = m_all;
+    const int32_t *max_var_dim
+            = CTX_IN_MEM(const int32_t *, DNNL_ARG_HINT_MAX_GROUP_SIZE);
+    if (max_var_dim && *max_var_dim > 0 && *max_var_dim <= m_all)
+        m_dispatch = *max_var_dim;
+
     compute::range_t gws = lws;
     // Swap wg_tile_[mn]_ for col-major vs row-major representations
     gws[0] *= utils::div_up(n, wg_tile_m);
-    gws[1] *= utils::div_up(m_all, wg_tile_n);
+    gws[1] *= utils::div_up(m_dispatch, wg_tile_n);
     gws[2] *= num_groups;
 
     return parallel_for(ctx, compute::nd_range_t(gws, lws), kernel_, arg_list);

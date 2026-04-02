@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/include/conversion.h"
+#include "gpu/intel/include/philox.h"
 #include "gpu/intel/include/tile_ops.h"
 #include "gpu/intel/include/types_interop.h"
 #include "gpu/intel/sdpa/utils.h"
@@ -38,6 +39,56 @@
 /* Instantiate tile types and operations */
 typedef ugemm_kq_c_type s_tile_type;
 typedef ugemm_vs_c_type a_tile_type;
+
+#if WITH_DROPOUT
+
+inline void apply_dropout_s_tile(
+        s_tile_type *tile, int tile_offset_r, int tile_offset_c, int max_r,
+        int max_c, ulong batch_head_base, int k_stride, int use_dropout_offset,
+        long seed, long offset, uint threshold, float inv_q
+#if DROPOUT_OUTPUT_MASK
+        ,
+        global uchar *mask_buf
+#endif
+) {
+#define dropout_predicate(offset_r, offset_c) \
+    ({ \
+        ulong _goff = batch_head_base + (ulong)offset_c * (ulong)k_stride \
+                + (ulong)offset_r; \
+        uint _philox = use_dropout_offset \
+                ? philox_4x32_s64(_goff, (ulong)seed, (ulong)offset) \
+                : philox_4x32((uint)_goff, (uint)seed); \
+        (offset_r < max_r && offset_c < max_c) && (_philox > threshold); \
+    })
+
+    /* Build float scale tile: inv_q if keep, 0.f if drop -- same type as s_tile */
+    s_tile_type scale_tile;
+    tile_predicated_select_t(scale_tile, tile_offset_r, tile_offset_c,
+            dropout_predicate, inv_q, 0.f, SUBGROUP_SIZE,
+            ugemm_kq_c_type_block0, ugemm_kq_c_type_block1,
+            ugemm_kq_c_type_nblock0, ugemm_kq_c_type_nblock1);
+
+    /* Multiply S_tile element-wise by scale tile (both float, no conversion) */
+    s_tile_type tmp = *tile;
+#define dropout_mul(x, y) ((x) * (y))
+    tile_binary(tmp, scale_tile, dropout_mul);
+#undef dropout_mul
+    *tile = tmp;
+
+#if DROPOUT_OUTPUT_MASK
+    /* Derive uchar mask from scale_tile: nonzero -> 1 (keep), zero -> 0 (drop) */
+#define dropout_scale_to_mask(x) ((uchar)((x) != 0.f))
+    tile_store_global_bounds_cvt(scale_tile, mask_buf + batch_head_base,
+            (ulong)k_stride, tile_offset_r, tile_offset_c, max_r, max_c,
+            dropout_scale_to_mask, SUBGROUP_SIZE, ugemm_kq_c_type_block0,
+            ugemm_kq_c_type_block1, ugemm_kq_c_type_nblock0,
+            ugemm_kq_c_type_nblock1);
+#undef dropout_scale_to_mask
+#endif
+
+#undef dropout_predicate
+}
+#endif
 
 // Tile debugging example for s_tile
 //
@@ -391,7 +442,18 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         MSK_OFFSETS
 #endif
         ,
-        const int remainder_k) {
+        const int remainder_k
+#if WITH_DROPOUT
+        ,
+        global uchar *dropout_mask_buf, int dropout_use_offset,
+#if DROPOUT_HOST_SCALARS
+        long dropout_seed, long dropout_offset, float dropout_p
+#else
+        global long *dropout_seed_buf, global long *dropout_offset_buf,
+        global float *dropout_p_buf
+#endif
+#endif
+) {
 
     uint sg_ij = sub_group_broadcast(get_local_id(1), 0);
     uint b1 = get_group_id(2);
@@ -628,6 +690,18 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     uint sg_i0_kq = sg_i_kq * ugemm_kq_sg_tile_m;
     uint sg_j0_kq = sg_j_kq * ugemm_kq_sg_tile_n;
 
+#if WITH_DROPOUT
+    /* Hoist loop-invariant dropout scalars and batch offset once. */
+#if !DROPOUT_HOST_SCALARS
+    long dropout_seed = dropout_seed_buf[0];
+    long dropout_offset = dropout_use_offset ? dropout_offset_buf[0] : 0;
+    float dropout_p = dropout_p_buf[0];
+#endif
+    uint dropout_threshold = get_dropout_threshold(dropout_p);
+    float dropout_inv_q = (dropout_p != 1.f) ? 1.f / (1.f - dropout_p) : 0.f;
+    const ulong dropout_batch_head_base = DST_BATCH(b1, b0);
+#endif
+
     /* Main loop over k blocks */
     for (int k0 = 0; k0 < k0end; k0 += ugemm_kq_wg_tile_m) {
         bool first = (k0 == 0);
@@ -808,6 +882,17 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         s_sum_tile_type S_sum_tile1;
         tile_fill(S_sum_tile1, 0.0f);
         tile_vreduce_add(S_tile, &S_sum_tile1);
+
+#if WITH_DROPOUT
+        apply_dropout_s_tile(&S_tile, k0 + sg_i0_kq, wg_j0 + sg_j0_kq, k0end, q,
+                dropout_batch_head_base, k, dropout_use_offset, dropout_seed,
+                dropout_offset, dropout_threshold, dropout_inv_q
+#if DROPOUT_OUTPUT_MASK
+                ,
+                dropout_mask_buf
+#endif
+        );
+#endif
 
 #if USE_SYSTOLIC_UKERNEL
         /* Convert to half or bf16, VNNI format */

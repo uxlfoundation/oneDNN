@@ -1551,7 +1551,9 @@ size_t jit_uni_eltwise_injector_t<isa>::aux_vecs_count() {
     if (is_fwd_) {
         switch (alg_) {
             case eltwise_relu_use_dst_for_bwd:
-            case eltwise_relu: return (alpha_ == 0.f) ? 2 : 3;
+            case eltwise_relu:
+                return (isa == asimd) ? ((alpha_ > 1.f) ? 3 : 2)
+                                      : ((alpha_ == 0.f) ? 0 : 2);
             case eltwise_elu_use_dst_for_bwd:
             case eltwise_elu: return (isa == asimd) ? 7 : 5; /* = exp + 2 */
             case eltwise_tanh_use_dst_for_bwd:
@@ -2662,10 +2664,20 @@ void jit_uni_eltwise_injector_t<asimd>::relu_zero_ns_compute_vector_fwd(
 template <>
 void jit_uni_eltwise_injector_t<asimd>::relu_compute_vector_fwd(
         const TRegS &vmm_src) {
-    // vmm_tmp = alpha * vmm_tmp
-    h->fmul(vmm_aux0, vmm_src, z_tmp);
-    // vmm_src = max(vmm_src, vmm_tmp)
-    h->fmaxnm(vmm_src, vmm_src, vmm_aux0);
+    // Compute x > 0 ? x : alpha * x.
+    // For alpha <= 1, this is equivalent to max(x, alpha * x).
+    if (alpha_ <= 1.f) {
+        h->fmul(vmm_aux0, vmm_src, z_tmp);
+        h->fmaxnm(vmm_src, vmm_src, vmm_aux0);
+    } else {
+        // For alpha > 1, keep positive lanes unchanged and scale only
+        // x <= 0 lanes.
+        h->mov(VReg16B(vmm_aux1.getIdx()), VReg16B(vmm_src.getIdx()));
+        h->fcmgt(vmm_aux0, vmm_aux1, 0.);
+        h->fmul(vmm_src, vmm_src, z_tmp);
+        h->bit(VReg16B(vmm_src.getIdx()), VReg16B(vmm_aux1.getIdx()),
+                VReg16B(vmm_aux0.getIdx()));
+    }
 }
 
 template <>

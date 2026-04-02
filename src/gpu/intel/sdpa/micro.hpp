@@ -93,7 +93,8 @@ struct micro_fwd_params_t : trivially_serializable_t<micro_fwd_params_t> {
     bool kq_f16_accumulate, vs_f16_accumulate;
     bool require_stateless_addressing;
     bool is_training;
-    uint8_t padding3[5] = {0};
+    bool dropout, dropout_output_mask, dropout_offset, dropout_host_scalars;
+    uint8_t padding3[1] = {0};
 
     micro_fwd_ukernel_params_t ukernel_config;
 };
@@ -143,7 +144,8 @@ struct micro_bwd_params_t : trivially_serializable_t<micro_bwd_params_t> {
     bool use_systolic_ukernel;
     bool with_dS;
     bool require_stateless_addressing;
-    uint8_t padding2[7] = {0};
+    bool dropout, dropout_output_mask, dropout_offset, dropout_host_scalars;
+    uint8_t padding2[3] = {0};
 
     micro_bwd_ukernel_params_t ukernel_config;
 };
@@ -158,6 +160,7 @@ struct micro_fwd_t : public primitive_t {
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
+            using smask_t = primitive_attr_t::skip_mask_t;
 
             VCHECK_SDPA_COND(is_fwd(), VERBOSE_BAD_PROPKIND);
             VCHECK_SDPA_COND(utils::everyone_is(4, desc()->qry_md()->ndims,
@@ -173,7 +176,8 @@ struct micro_fwd_t : public primitive_t {
                                      key_mdw.is_plain(), val_mdw.is_plain(),
                                      dst_mdw.is_plain()),
                     VERBOSE_UNSUPPORTED_TAG);
-
+            VCHECK_SDPA_COND(attr()->has_default_values(smask_t::dropout),
+                    VERBOSE_UNSUPPORTED_ATTR);
             if (with_attn_mask()) {
                 VCHECK_SDPA_COND(desc()->attn_mask_md()->ndims == 4,
                         VERBOSE_UNSUPPORTED_TAG);
@@ -307,6 +311,36 @@ struct micro_fwd_t : public primitive_t {
                         "the value group size(%d) must be a power of 2 or "
                         "equal to the number of values(%ld).",
                         vgs, static_cast<long int>(desc()->val_md()->dims[3]));
+            }
+
+            if (!attr()->dropout_.has_default_values()) {
+                assert(memory_desc_wrapper(dst_md(0)).format_kind()
+                        == format_kind::blocked);
+
+                using namespace format_tag;
+                VCHECK_SDPA_COND(memory_desc_matches_one_of_tag(
+                                         *dst_md(0), ncdhw, nchw, ncw, nc),
+                        VERBOSE_UNSUPPORTED_DROPOUT);
+
+                if (attr_.dropout_.has_output_mask()) {
+                    const auto &mask_desc = attr_.dropout_.dropout_desc_;
+                    const int ndims = dst_md(0)->ndims;
+                    // Mask dims must match the score shape:
+                    // batch/head/seq_q dims from dst, seq_kv from key.
+                    VCHECK_SDPA_COND(mask_desc.ndims == ndims,
+                            VERBOSE_UNSUPPORTED_DROPOUT);
+                    for (int i = 0; i < ndims - 1; ++i) {
+                        VCHECK_SDPA_COND(
+                                mask_desc.dims[i] == dst_md(0)->dims[i],
+                                VERBOSE_UNSUPPORTED_DROPOUT);
+                    }
+                    VCHECK_SDPA_COND(mask_desc.dims[ndims - 1]
+                                    == desc()->key_md()->dims[ndims - 1],
+                            VERBOSE_UNSUPPORTED_DROPOUT);
+                    VCHECK_SDPA_COND(memory_desc_matches_one_of_tag(
+                                             mask_desc, ncdhw, nchw, ncw, nc),
+                            VERBOSE_UNSUPPORTED_DROPOUT);
+                }
             }
 
             CHECK(init_conf_microkernels(engine));

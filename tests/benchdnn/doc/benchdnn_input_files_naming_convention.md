@@ -49,10 +49,14 @@ file to avoid option collision.
   DNNL_TEST_SET=CI should be specified. If no additional `_ci` files are
   present, an input file will be shared between CPU and GPU backend.
     * **test_\<driver\>_gpu_ci**: These files are used in CI testing for GPU
-      when differentiation on input files are needed. `_ci` file in this case
-      will not be used for GPU backend.
+      when differentiation on input files is needed. Non-suffixed `_ci` file in
+      this case will not be used for GPU backend.
 
 * **test_\<driver\>_smoke**: These files are used in public validation. Smoke is
   the thinnest testing cycle validating base functionality. To deploy benchdnn
   testing targets with smoke inputs, DNNL_TEST_SET=SMOKE should be specified.
-  Input files are shared between CPU and GPU backend.
+  If no additional `_smoke` files are present, an input file will be shared
+  between CPU and GPU backend.
+    * **test_\<driver\>_gpu_smoke**: These files are used in smoke testing for
+      GPU when differentiation on input files is needed. Non-suffixed `_smoke`
+      file in this case will not be used for GPU backend.

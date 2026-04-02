@@ -266,7 +266,8 @@ DECLARE_2D_TILE_SLM_ADD_T(a_tile_type, float, SUBGROUP_SIZE,
 #define binary_add(x, y) ((x) + (y))
 
 inline void tile_load_k(k_tile_type *K_tile, const global KEY_DATA_T *K,
-        int seq_len, int ldk, int seq_off, int sg_ij, int load_rem) {
+        int seq_len, int head_size, int ldk, int seq_off, int sg_ij,
+        int load_rem) {
 
 #if TRANSPOSE_K
     // Bc / n_sg -- each sg loads k_tile_t_sg_n k-columns
@@ -275,7 +276,7 @@ inline void tile_load_k(k_tile_type *K_tile, const global KEY_DATA_T *K,
 #if BLOCK_K
     tile_load_block(K_tile, K, ldk, 0, seq_off + k0_copy);
 #else
-    tile_load(K_tile, K, D_MAX, seq_len, ldk, 0, seq_off + k0_copy);
+    tile_load(K_tile, K, head_size, seq_len, ldk, 0, seq_off + k0_copy);
 #endif
 
 #else
@@ -285,7 +286,7 @@ inline void tile_load_k(k_tile_type *K_tile, const global KEY_DATA_T *K,
     // can ignore load_rem due to d_full requirement
     tile_load_block(K_tile, K, ldk, seq_off, k0_copy);
 #else
-    tile_load(K_tile, K, seq_len, D_MAX, ldk, seq_off, k0_copy);
+    tile_load(K_tile, K, seq_len, head_size, ldk, seq_off, k0_copy);
 #endif
 
 #endif
@@ -577,7 +578,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         k_tile_type K_tile;
         tile_fill(K_tile, TO_DATA_T(0.f));
 
-        tile_load_k(&K_tile, K, k, ldk, wg_i0, sg_ij, remainder_k);
+        tile_load_k(&K_tile, K, k, d, ldk, wg_i0, sg_ij, remainder_k);
 
         /* Store K tile to SLM */
         tile_store_k_slm(&K_tile, K_slm, sg_ij);

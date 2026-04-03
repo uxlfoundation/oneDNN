@@ -183,18 +183,12 @@ struct rvv_wino_convolution_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_FEATURE,
                     "input spatial dimensions must be <= 112 for winograd");
 
-            // Check channels: IC >= 128 && OC >= 128
-            // Small channels (e.g. IC=OC=64) cause regression vs gemm:rvv
-            // due to Winograd transform overhead and small GEMM dimensions.
-            // Layers with IC or OC < 128 (e.g. VGG conv3_1 IC=128/OC=96)
-            // regress vs brgemm:rvv, so threshold stays at 128.
-            VDISPATCH_CONV(src_d.dims()[1] >= 128 && dst_d.dims()[1] >= 128,
+            // Check channels: IC >= 96 && OC >= 96
+            VDISPATCH_CONV(src_d.dims()[1] >= 96 && dst_d.dims()[1] >= 96,
                     VERBOSE_UNSUPPORTED_FEATURE,
-                    "ic and oc must be >= 128 for winograd");
+                    "ic and oc must be >= 96 for winograd");
 
             // Winograd dispatch is restricted to single-core execution.
-            // Sequential batch processing keeps working set in L2 cache and
-            // gives 1.1-1.4x speedup over brgemm:rvv on single-core.
             // On multi-core, brgemm's spatial parallelism is superior.
             VDISPATCH_CONV(dnnl_get_max_threads() <= 1,
                     VERBOSE_UNSUPPORTED_FEATURE,

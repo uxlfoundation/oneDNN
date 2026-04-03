@@ -351,8 +351,7 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
               && one_of(attr.fpmath_.mode_, fpmath_mode::tf32, fpmath_mode::any)
               && isa == avx10_2_amx_2)
     , weights_decompression_support(
-              one_of(bgmmc.wei_dt, u8, s8, u4, s4, data_type::f4_e2m1,
-                      data_type::f4_e3m0)
+              one_of(bgmmc.wei_dt, u8, s8, u4, s4, data_type::f4_e2m1)
               && one_of(attr.fpmath_.mode_, fpmath_mode::bf16, fpmath_mode::f16,
                       fpmath_mode::strict, fpmath_mode::any)
               && IMPLICATION(attr.fpmath_.mode_ == fpmath_mode::f16,
@@ -365,14 +364,13 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
                               && bgmmc.wei_dt != data_type::f4_e2m1,
                       bgmmc.src_dt == f32)
               && (attr.fpmath_.apply_to_int_
-                      || one_of(bgmmc.wei_dt, data_type::f4_e2m1,
-                              data_type::f4_e3m0)))
+                      || bgmmc.wei_dt == data_type::f4_e2m1))
     , bf16_with_int_wei_dt(weights_decompression_support && bgmmc.src_dt == bf16
               && one_of(bgmmc.dst_dt, bf16, f32)
               && one_of(bgmmc.wei_dt, u8, s8, u4, s4))
     , bf16_with_f4_wei_dt(weights_decompression_support && bgmmc.src_dt == bf16
               && one_of(bgmmc.dst_dt, bf16, f32)
-              && one_of(bgmmc.wei_dt, data_type::f4_e2m1, data_type::f4_e3m0))
+              && bgmmc.wei_dt == data_type::f4_e2m1)
     // Keep this var separate from f16_dt to not slip f16:f16 on avx512_core and
     // avx2 as there's no kernel for such combination.
     , f32_f16_dt(bgmmc.src_dt == f32 && bgmmc.wei_dt == f16
@@ -386,17 +384,16 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
               && one_of(bgmmc.wei_dt, u8, s8, u4, s4))
     , f16_with_f4_wei_dt(weights_decompression_support && bgmmc.src_dt == f16
               && one_of(bgmmc.dst_dt, f16, f32)
-              && one_of(bgmmc.wei_dt, data_type::f4_e2m1, data_type::f4_e3m0))
+              && bgmmc.wei_dt == data_type::f4_e2m1)
     , f32_with_int_wei_dt(weights_decompression_support
               && everyone_is(f32, bgmmc.src_dt, bgmmc.dst_dt)
               && one_of(bgmmc.wei_dt, u8, s8, u4, s4))
     , f32_with_f4_wei_dt(weights_decompression_support
               && everyone_is(f32, bgmmc.src_dt, bgmmc.dst_dt)
-              && one_of(bgmmc.wei_dt, data_type::f4_e2m1, data_type::f4_e3m0))
+              && bgmmc.wei_dt == data_type::f4_e2m1)
     , f4_via_convert_dt(bgmmc.src_dt == f32
-              && utils::one_of(
-                      bgmmc.wei_dt, data_type::f4_e2m1, data_type::f4_e3m0)
-              && one_of(bgmmc.dst_dt, f32) && is_superset(isa, avx512_core)
+              && bgmmc.wei_dt == data_type::f4_e2m1 && one_of(bgmmc.dst_dt, f32)
+              && is_superset(isa, avx512_core)
               && !weights_decompression_support)
     , A_any_layout(A_any_layout)
     , B_any_layout(B_any_layout)
@@ -1880,8 +1877,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.is_runtime_K = is_runtime_value(bgmmc.K);
 
     // FP4 types store 2 elements per byte, so K must be even
-    const bool is_f4_weights
-            = one_of(bgmmc.orig_wei_dt, data_type::f4_e2m1, data_type::f4_e3m0);
+    const bool is_f4_weights = bgmmc.orig_wei_dt == data_type::f4_e2m1;
     VCONDCHECK_BG(!is_f4_weights || bgmmc.is_runtime_K || bgmmc.K % 2 == 0,
             VERBOSE_BAD_PARAM, "K");
 
@@ -2321,17 +2317,16 @@ status_t init_conf(brgemm_matmul_conf_t &conf, dim_t batch, dim_t M, dim_t K,
     const bool is_bf16_with_int_wei = out_type == data_type::bf16
             && utils::one_of(in_type, data_type::s8, data_type::u8,
                     data_type::s4, data_type::u4);
-    const bool is_bf16_with_f4_wei = out_type == data_type::bf16
-            && utils::one_of(in_type, data_type::f4_e2m1, data_type::f4_e3m0);
+    const bool is_bf16_with_f4_wei
+            = out_type == data_type::bf16 && in_type == data_type::f4_e2m1;
     const bool is_f16_with_int_wei = out_type == data_type::f16
             && utils::one_of(in_type, data_type::s8, data_type::u8,
                     data_type::s4, data_type::u4);
-    const bool is_f16_with_f4_wei = out_type == data_type::f16
-            && utils::one_of(in_type, data_type::f4_e2m1, data_type::f4_e3m0);
+    const bool is_f16_with_f4_wei
+            = out_type == data_type::f16 && in_type == data_type::f4_e2m1;
     const bool with_wei_decompression = in_type != out_type
             && utils::one_of(in_type, data_type::s8, data_type::u8,
-                    data_type::s4, data_type::u4, data_type::f4_e2m1,
-                    data_type::f4_e3m0);
+                    data_type::s4, data_type::u4, data_type::f4_e2m1);
 
     const bool is_copyB = N > 0;
     conf.isa = get_max_cpu_isa(); // Just use the best ISA possible.

@@ -241,15 +241,13 @@ status_t init_conf(matmul::brgemm_matmul_conf_t &conf,
         const bool is_bf16_with_int_wei = type_o == data_type::bf16
                 && utils::one_of(type_i, data_type::s8, data_type::u8,
                         data_type::s4, data_type::u4);
-        const bool is_bf16_with_f4_wei = type_o == data_type::bf16
-                && utils::one_of(
-                        type_i, data_type::f4_e2m1, data_type::f4_e3m0);
+        const bool is_bf16_with_f4_wei
+                = type_o == data_type::bf16 && type_i == data_type::f4_e2m1;
         const bool is_f16_with_int_wei = type_o == data_type::f16
                 && utils::one_of(type_i, data_type::s8, data_type::u8,
                         data_type::s4, data_type::u4);
-        const bool is_f16_with_f4_wei = type_o == data_type::f16
-                && utils::one_of(
-                        type_i, data_type::f4_e2m1, data_type::f4_e3m0);
+        const bool is_f16_with_f4_wei
+                = type_o == data_type::f16 && type_i == data_type::f4_e2m1;
 
         otag = get_blocked_otag(dst_md);
         // TODO: enable for itag = {ba, acb}
@@ -322,13 +320,13 @@ status_t brgemm_matmul_copy_reorder_t::pd_t::init(
     const bool is_s8s8 = type_i == data_type::s8 && type_o == data_type::s8;
     const bool is_bf16_with_int_wei
             = type_o == data_type::bf16 && is_int_weights;
-    const bool is_bf16_with_f4_wei = type_o == data_type::bf16
-            && utils::one_of(type_i, data_type::f4_e2m1, data_type::f4_e3m0);
+    const bool is_bf16_with_f4_wei
+            = type_o == data_type::bf16 && type_i == data_type::f4_e2m1;
     const bool is_f16_with_int_wei = type_o == data_type::f16
             && utils::one_of(type_i, data_type::s8, data_type::u8,
                     data_type::s4, data_type::u4);
-    const bool is_f16_with_f4_wei = type_o == data_type::f16
-            && utils::one_of(type_i, data_type::f4_e2m1, data_type::f4_e3m0);
+    const bool is_f16_with_f4_wei
+            = type_o == data_type::f16 && type_i == data_type::f4_e2m1;
     const bool isa_ok = IMPLICATION(is_bf16_with_int_wei || is_bf16_with_f4_wei,
                                 mayiuse(avx512_core_bf16))
             && IMPLICATION(is_f16_with_int_wei || is_f16_with_f4_wei,

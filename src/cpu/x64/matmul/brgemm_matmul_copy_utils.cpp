@@ -2537,7 +2537,6 @@ protected:
                 prepare_loaded_int4(reg, vmm_permd, /* is_signed = */ false);
                 break;
             case data_type::f4_e2m1:
-            case data_type::f4_e3m0:
                 uni_vpmovzxbd(maybe_mask_4bit(vmm_lower, is_tail), op);
                 copy_half_reg(reg, vmm_lower);
                 vpermd(reg, vmm_permd, reg);
@@ -2623,6 +2622,7 @@ protected:
             case data_type::f16: vcvtph2psx(scale_vmm, addr); break;
             case data_type::e8m0:
                 vpbroadcastb(scale_vmm, addr);
+                uni_vpmovzxbd(scale_vmm, Xbyak::Xmm(scale_vmm.getIdx()));
                 uni_vpslld(scale_vmm, scale_vmm, 23);
                 break;
             default: assert(!"unsupported wei_scales data type");
@@ -2699,7 +2699,6 @@ protected:
             case data_type::f16:
             case data_type::f32:
             case data_type::f4_e2m1:
-            case data_type::f4_e3m0:
                 // bf16, f16, and f4 already converted into f32 while loading
                 break;
             default: assert(!"Unsupported source data type for decompression");
@@ -3660,8 +3659,7 @@ struct jit_brgemm_matmul_copy_b_bf16_t
         , src_stride(conf->copy_B_wei_stride)
         , tr_src_stride(conf_->LDB * k_blk_step * tr_typesize)
         , is_src_int4(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
-        , is_src_f4(one_of(
-                  conf->orig_wei_dt, data_type::f4_e2m1, data_type::f4_e3m0))
+        , is_src_f4(conf->orig_wei_dt == data_type::f4_e2m1)
         , is_src_4bit(is_src_int4 || is_src_f4)
         , is_dynamic_stride(is_runtime_value(src_stride))
         , is_dynamic_N(conf->is_runtime_N)
@@ -4219,8 +4217,7 @@ struct jit_brgemm_matmul_copy_b_f32_t
         : jit_brgemm_matmul_copy_b_common_t(conf)
         , dt_in_(conf->orig_wei_dt)
         , simd_w_(vreg_traits_t<Vmm>::vlen / sizeof(float))
-        , is_src_f4_(one_of(
-                  conf->orig_wei_dt, data_type::f4_e2m1, data_type::f4_e3m0))
+        , is_src_f4_(conf->orig_wei_dt == data_type::f4_e2m1)
         , is_src_int4_(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
         , is_src_4bit_(is_src_int4_ || is_src_f4_)
         , req_zp_b_shift_(
@@ -4451,19 +4448,7 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::generate() {
         alignas(64) static constexpr const float f4_e2m1_table[16]
                 = {0.0f, .5f, 1.0f, 1.5f, 2.0f, 3.0f, 4.0f, 6.0f, -0.0f, -.5f,
                         -1.0f, -1.5f, -2.0f, -3.0f, -4.0f, -6.0f};
-        alignas(64) static constexpr const float f4_e3m0_table[16]
-                = {0.0f, .25f, .5f, 1.0f, 2.0f, 4.0f, 8.0f, 16.0f, -0.0f, -.25f,
-                        -.5f, -1.0f, -2.0f, -4.0f, -8.0f, -16.0f};
-        switch (dt_in_) {
-            case data_type::f4_e2m1:
-                mov(reg_tmp, reinterpret_cast<size_t>(f4_e2m1_table));
-                break;
-            case data_type::f4_e3m0:
-                mov(reg_tmp, reinterpret_cast<size_t>(f4_e3m0_table));
-                break;
-
-            default: break;
-        }
+        mov(reg_tmp, reinterpret_cast<size_t>(f4_e2m1_table));
         vmovdqa32(vmm_f4_lut, ptr[reg_tmp]);
     }
 
@@ -4511,8 +4496,7 @@ struct jit_brgemm_matmul_copy_b_transposed_t
         , is_bf16_with_f4_wei_(conf->is_bf16_with_f4_wei)
         , is_f16_with_f4_wei_(conf->is_f16_with_f4_wei)
         , is_src_int4_(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
-        , is_src_f4_(one_of(
-                  conf->orig_wei_dt, data_type::f4_e2m1, data_type::f4_e3m0))
+        , is_src_f4_(conf->orig_wei_dt == data_type::f4_e2m1)
         , is_src_4bit_(is_src_int4_ || is_src_f4_)
         , req_cvtps2xf16_(conf->is_bf32 || conf->is_bf16_with_int_wei
                   || conf->is_bf16_with_f4_wei
@@ -4933,7 +4917,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
             if (is_bf32_)
                 vmovups(src_next_masked, next_addr);
             else if (is_bf16_with_int_wei_ || is_bf16_with_f4_wei_
-                    || conf_->is_f16_with_int_wei) {
+                    || is_f16_with_f4_wei_ || conf_->is_f16_with_int_wei) {
                 const auto xmm_preload = Xmm(src_reg_next.getIdx());
                 MAYBE_UNUSED(xmm_preload);
                 const bool preloaded_int4 = preload_int4(
@@ -5603,8 +5587,7 @@ struct jit_brgemm_matmul_copy_b_cvt_bf16_t
         , tr_typesize_(conf->tr_b_dt_sz)
         , wei_scales_typesize_(conf_->wei_scales_dt_sz)
         , is_src_int4_(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
-        , is_src_f4_(one_of(
-                  conf->orig_wei_dt, data_type::f4_e2m1, data_type::f4_e3m0))
+        , is_src_f4_(conf->orig_wei_dt == data_type::f4_e2m1)
         , is_src_4bit_(is_src_int4_ || is_src_f4_)
         , src_elems_per_byte_(is_src_4bit_ ? 2 : 1)
         , src_stride_(

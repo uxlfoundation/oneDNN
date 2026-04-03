@@ -155,18 +155,15 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
     const bool is_bf16_with_int_wei = src_dt == bf16
             && one_of(wei_dt, s8, u8, s4, u4) && one_of(dst_dt, bf16, f32);
     const bool is_bf16_with_f4_wei = src_dt == bf16
-            && one_of(wei_dt, data_type::f4_e2m1, data_type::f4_e3m0)
-            && one_of(dst_dt, bf16, f32);
+            && wei_dt == data_type::f4_e2m1 && one_of(dst_dt, bf16, f32);
     const bool is_f16_with_int_wei = src_dt == f16
             && one_of(wei_dt, s8, u8, s4, u4) && one_of(dst_dt, f16, f32);
     const bool is_f16_with_f4_wei = src_dt == f16
-            && one_of(wei_dt, data_type::f4_e2m1, data_type::f4_e3m0)
-            && one_of(dst_dt, f16, f32);
+            && wei_dt == data_type::f4_e2m1 && one_of(dst_dt, f16, f32);
     const bool is_f32_with_int_wei
             = src_dt == f32 && one_of(wei_dt, s8, u8, s4, u4) && dst_dt == f32;
-    const bool is_f32_with_f4_wei = src_dt == f32
-            && one_of(wei_dt, data_type::f4_e2m1, data_type::f4_e3m0)
-            && dst_dt == f32;
+    const bool is_f32_with_f4_wei
+            = src_dt == f32 && wei_dt == data_type::f4_e2m1 && dst_dt == f32;
 
     auto check_bias = [&]() -> bool {
         const auto bia_dt = weights_md(1)->data_type;
@@ -212,7 +209,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
             // This case requires scratchpad
             if (is_runtime_value(N())) ok = false;
         }
-        // Impl suppports f32 scales only for non-weight decompression
+        // Impl supports f32 scales only for non-weight decompression
         if (!(is_bf16_with_int_wei || is_bf16_with_f4_wei || is_f16_with_int_wei
                     || is_f16_with_f4_wei || is_f32_with_int_wei
                     || is_f32_with_f4_wei)) {
@@ -1828,16 +1825,16 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
 
     int wei_packed_elems_per_byte() const {
         return utils::one_of(bgmmc_.orig_wei_dt, data_type::s4, data_type::u4,
-                       data_type::f4_e2m1, data_type::f4_e3m0)
+                       data_type::f4_e2m1)
                 ? 2
                 : 1;
     }
 
-    dim_t get_data_B_kn_off(int k, int n) const {
-        const int wei_k_blk
+    dim_t get_data_B_kn_off(dim_t k, dim_t n) const {
+        const dim_t wei_k_blk
                 = bgmmc_.is_bf32 ? get_wei_k_blk(f32) : bgmmc_.wei_k_blk;
-        const int k_idx = bgmmc_.blocked_B ? k / wei_k_blk : k;
-        const int n_idx = bgmmc_.blocked_B ? n / bgmmc_.wei_n_blk : n;
+        const dim_t k_idx = bgmmc_.blocked_B ? k / wei_k_blk : k;
+        const dim_t n_idx = bgmmc_.blocked_B ? n / bgmmc_.wei_n_blk : n;
         return (B_strides_[1] * k_idx + B_strides_[0] * n_idx
                        + get_data_B_off_within_block(k, n))
                 / wei_packed_elems_per_byte();
@@ -1875,8 +1872,8 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         } else {
             b_off = wei_d_.off_l(b * bgmmc_.K * bgmmc_.N) * bgmmc_.b_dt_sz;
         }
-        if (wei_packed_elems_per_byte() > 1)
-            b_off /= wei_packed_elems_per_byte();
+        const auto elems_per_byte = wei_packed_elems_per_byte();
+        if (elems_per_byte > 1) b_off /= elems_per_byte;
         return b_off;
     }
 

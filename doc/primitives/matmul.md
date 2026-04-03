@@ -412,6 +412,31 @@ auto bias_md = memory::desc({num_groups, N},
 // Layout: standard ab layout
 ~~~
 
+### Execution Hints
+
+An optional execution-time hint `DNNL_ARG_HINT_MAX_GROUP_SIZE` can be provided to
+communicate the maximum size of the group across the variable dimension for the
+current execution call. Implementations may choose to use this input to tune
+dispatch, and therefore using this hint may provide performance benefits.
+
+If chosen, the hint is passed as a host scalar `s32` memory at execution time:
+~~~cpp
+int32_t max_size = 950; // upper bound on variable dimension across all groups for this call
+auto hint_md = memory::desc::host_scalar(memory::data_type::s32);
+auto hint_mem = memory(hint_md, engine, &max_size);
+
+matmul_prim.execute(stream, {
+    {DNNL_ARG_SRC, src_mem},
+    {DNNL_ARG_WEIGHTS, weights_mem},
+    {DNNL_ARG_DST, dst_mem},
+    {DNNL_ARG_HINT_MAX_GROUP_SIZE, hint_mem}  // optional
+});
+~~~
+
+@warning Providing a value smaller than the actual maximum variable dimension across
+groups for the current call will produce incorrect results. It is the caller's
+responsibility to ensure the hint is a valid upper bound.
+
 ### Implementation Notes
 
 The following are supported:

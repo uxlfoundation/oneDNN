@@ -58,7 +58,7 @@ size_t gemmPerKSLMSize(HW hw, const GEMMProblem &problem, const GEMMStrategy &st
         int mnThreads = strategy.wg[LoopM] * strategy.wg[LoopN];
         if (mnThreads <= 0) stub();
         int concurrentK = std::max(1, threadsPerEU(hw, strategy) * eusPerSubslice(hw) / mnThreads);
-        slmSize = rounddown_pow2(maxSLMPerWG(hw, strategy.GRFs) / concurrentK);
+        slmSize = rounddown_pow2(maxSLMPerWG(problem.product, strategy.GRFs) / concurrentK);
         if (!problem.sumA && !problem.sumB) {
             auto singleTile = strategy.wg[LoopM] * strategy.wg[LoopN]
                             * align_up(strategy.unroll[LoopM] * strategy.unroll[LoopN] * problem.Tc, GRF::bytes(hw));

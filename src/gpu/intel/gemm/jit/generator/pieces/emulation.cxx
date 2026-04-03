@@ -117,7 +117,7 @@ template <HW hw>
 template <typename DT>
 void Generator<hw>::emul(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, const ngen::RegData &src1, const CommonStrategy &strategy,  CommonState &state,  ngen::SourceLocation loc)
 {
-    bool is_xe3p = one_of(hw, {ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11, ngen::HW::XE3P_UNKNOWN});
+    bool is_xe3p = (hw == ngen::HW::Xe3p);
     bool dstBf = dst.getType() == DataType::bf;
     bool src1F = src1.getType() == DataType::f;
     // Xe3p has specific restrictions for mixed bf16/f32 mul.

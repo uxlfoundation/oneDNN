@@ -73,22 +73,11 @@ if(DPCPP_HOST_COMPILER_KIND STREQUAL "DEFAULT")
     endif()
 
     foreach(isa ${DNNL_GPU_ISA_LIST})
-        if(${isa} STREQUAL "XE3P")
-            foreach(subvariant 35_10 35_11 UNKNOWN)
-                set(GENERATOR_LIB generatorXE3P_${subvariant})
-                add_library(${GENERATOR_LIB} OBJECT ${GENERATOR_SOURCES})
-                target_compile_definitions(${GENERATOR_LIB} PRIVATE DNNL_GPU_ISA_XE3P)
-                target_compile_definitions(${GENERATOR_LIB} PRIVATE DNNL_GPU_ISA_XE3P_${subvariant})
-                set_property(GLOBAL APPEND PROPERTY DNNL_LIB_DEPS
-                                $<TARGET_OBJECTS:${GENERATOR_LIB}>)
-            endforeach()
-        else()
             set(GENERATOR_LIB generator${isa})
             add_library(${GENERATOR_LIB} OBJECT ${GENERATOR_SOURCES})
             target_compile_definitions(${GENERATOR_LIB} PRIVATE DNNL_GPU_ISA_${isa})
             set_property(GLOBAL APPEND PROPERTY DNNL_LIB_DEPS
                             $<TARGET_OBJECTS:${GENERATOR_LIB}>)
-        endif()
     endforeach()
 endif()
 

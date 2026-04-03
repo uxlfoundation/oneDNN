@@ -840,8 +840,8 @@ private:
                 << "Plan:\n"
                 << plan.str() << "\ncheck_plan: out of registers";
         int slm_bound = compute::device_info_t::max_slm_size_per_tg(
-                convert_ngen_arch_to_dnnl(hw_),
-                into<int>(desc_.thread_group_tile.elems()), desc_.regs > 128);
+                into<int>(desc_.thread_group_tile.elems()), desc_.regs > 128,
+                to_gpu_product(hw_.product()));
         int slm_bytes = plan.slm_usage_bytes();
         gpu_check(slm_bytes <= slm_bound)
                 << "Plan:\n"

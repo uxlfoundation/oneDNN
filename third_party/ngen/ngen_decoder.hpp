@@ -80,7 +80,7 @@ bool Decoder::getOperandRegion(autoswsb::DependencyRegion &region, int opNum) co
 {
     checkCompaction();
     region.hw = hw;
-    if (hw >= HW::XE3P_35_10)
+    if (hw >= HW::Xe3p)
         return get<InstructionXe3p>().getOperandRegion(region, opNum);
     if (hw >= HW::XeHPC)
         return get<InstructionXeHPC>().getOperandRegion(region, opNum);

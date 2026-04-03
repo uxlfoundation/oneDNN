@@ -365,7 +365,7 @@ bool OpenCLCodeGenerator<hw>::detectEfficient64Bit(cl_context context, cl_device
     const char *dummyCL = "kernel void _ngen_eff64b_detect(){}";
 
     if (inHW == HW::Unknown) inHW = hw;
-    if (inHW < HW::XE3P_35_10) return false;
+    if (inHW < HW::Xe3p) return false;
 
     auto binary = detail::getOpenCLCProgramBinary(context, device, dummyCL, "");
     return npack::isBinaryEfficient64Bit(binary, inHW);

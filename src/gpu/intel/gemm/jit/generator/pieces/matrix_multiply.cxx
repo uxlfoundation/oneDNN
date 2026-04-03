@@ -59,7 +59,7 @@ void Generator<hw>::outerProductFMA(int h, int ha, int hb, int opCount, bool rem
     bool atomicFMA = strategy.atomicFMA;
     bool noAccSBSet = strategy.extendedAtomicFMA && (hw >= HW::XeHPC);
 
-    int minOPCount = minOuterProductCount(hw, problem, strategy);
+    int minOPCount = minOuterProductCount(problem, strategy);
     int kChain = opCount / minOPCount;
     int aCP, bCP;
     std::tie(aCP, bCP) = targetKernelCrosspack(hw, problem, strategy);
@@ -380,7 +380,7 @@ void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, boo
     if (state.upConvertATo8Bit) Ta = Ta == Type::s4 ? Type::s8 : Type::u8;
     if (state.upConvertBTo8Bit) Tb = Tb == Type::s4 ? Type::s8 : Type::u8;
     bool globalCM = state.C_layout.colMajor();
-    auto params = systolicParams(hw, problem);
+    auto params = systolicParams(problem);
     auto ksys = params.ksys;
     auto osys = params.osys;
     auto sdepth = params.sdepth;
@@ -635,7 +635,7 @@ void Generator<hw>::outerProductRepackC(int x0, int xr0, int nx, int h, bool rem
     bool doBO2DLate = problem.needsAGroupSums();
     if (doAO2DLate || doBO2DLate) {
         auto period = gcd(problem.aqGroupK, problem.bqGroupK);
-        bool offsetTime = rem ? ((h % period) < minOuterProductCount(hw, problem, strategy))
+        bool offsetTime = rem ? ((h % period) < minOuterProductCount(problem, strategy))
                               : (period - (h % period) <= state.cRepackPeriod);
         if (offsetTime) {
             if (doAO2DLate) applyLateABOffset(true,  h, problem, strategy, state, x0, xr0, nx);

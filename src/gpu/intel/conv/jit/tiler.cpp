@@ -765,8 +765,8 @@ private:
         auto &options = cfg_.options();
         dim_t tg_size = ctx.b_tg * ctx.m_tg * ctx.n_tg * ctx.k_tg;
         int max_slm_size = compute::device_info_t::max_slm_size_per_tg(
-                convert_ngen_arch_to_dnnl(cfg_.hw()), into<int>(tg_size),
-                options.regs() > 128);
+                into<int>(tg_size), options.regs() > 128,
+                to_gpu_product(cfg_.hw().product()));
         if (slm_size > max_slm_size) return false;
 
         return true;

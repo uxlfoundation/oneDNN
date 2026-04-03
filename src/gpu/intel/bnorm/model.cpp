@@ -95,7 +95,8 @@ void init_hw_params(hw_params_t &hw_params, impl::engine_t *engine) {
             = intel_engine->device_info()->max_wg_size(large_grf_mode);
     hw_params.eus_per_ss = intel_engine->device_info()->max_eus_per_wg();
     hw_params.max_ss = div_up(hw_params.eu_count, hw_params.eus_per_ss);
-    hw_params.max_slm_size = compute::device_info_t::max_slm_size(gpu_arch);
+    hw_params.max_slm_size = compute::device_info_t::max_slm_size(
+            intel_engine->device_info()->gpu_product());
     hw_params.engine = engine;
 
     // Experimentally selected, based on microbenchmarks results

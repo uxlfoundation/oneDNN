@@ -32,13 +32,7 @@ REG_XE2_ISA(template class Generator<HW::Xe2>);
 #elif defined(DNNL_GPU_ISA_XE3)
 REG_XE3_ISA(template class Generator<HW::Xe3>);
 #elif defined(DNNL_GPU_ISA_XE3P)
-#if defined(DNNL_GPU_ISA_XE3P_35_10)
-REG_XE3P_ISA(template class Generator<HW::XE3P_35_10>);
-#elif defined(DNNL_GPU_ISA_XE3P_35_11)
-REG_XE3P_ISA(template class Generator<HW::XE3P_35_11>);
-#else
-REG_XE3P_ISA(template class Generator<HW::XE3P_UNKNOWN>);
-#endif
+REG_XE3P_ISA(template class Generator<HW::Xe3p>);
 #else
 // Default to instantiating all classes
 REG_XELP_ISA(template class Generator<HW::Gen12LP>);
@@ -47,7 +41,5 @@ REG_XEHPG_ISA(template class Generator<HW::XeHPG>);
 REG_XEHPC_ISA(template class Generator<HW::XeHPC>);
 REG_XE2_ISA(template class Generator<HW::Xe2>);
 REG_XE3_ISA(template class Generator<HW::Xe3>);
-REG_XE3P_ISA(template class Generator<HW::XE3P_35_10>);
-REG_XE3P_ISA(template class Generator<HW::XE3P_35_11>);
-REG_XE3P_ISA(template class Generator<HW::XE3P_UNKNOWN>);
+REG_XE3P_ISA(template class Generator<HW::Xe3p>);
 #endif

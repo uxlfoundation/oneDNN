@@ -30,10 +30,13 @@
 
 #include "oneapi/dnnl/dnnl_config.h"
 
+// NOLINTBEGIN(readability-identifier-naming)
 namespace ngen {
 enum class Core;
 using HW = Core;
+struct Product;
 } // namespace ngen
+// NOLINTEND(readability-identifier-naming)
 
 namespace dnnl {
 namespace impl {
@@ -49,9 +52,7 @@ enum class gpu_arch_t {
     xe_hpc,
     xe2,
     xe3,
-    xe3p_35_10,
-    xe3p_35_11,
-    xe3p_35_unknown,
+    xe3p,
 };
 
 // Memory for storing ngen::Product to avoid directly including nGEN because of
@@ -69,9 +70,7 @@ static inline const char *to_string(gpu_arch_t arch) {
     CASE(xe_hpc);
     CASE(xe2);
     CASE(xe3);
-    CASE(xe3p_35_10);
-    CASE(xe3p_35_11);
-    CASE(xe3p_35_unknown);
+    CASE(xe3p);
     return "unknown";
 #undef CASE
 }
@@ -85,9 +84,7 @@ static inline gpu_arch_t str2gpu_arch(const char *str) {
     CASE(xe_hpc);
     CASE(xe2);
     CASE(xe3);
-    CASE(xe3p_35_10);
-    CASE(xe3p_35_11);
-    CASE(xe3p_35_unknown);
+    CASE(xe3p);
     return gpu_arch_t::unknown;
 #undef CASE
 }
@@ -193,6 +190,7 @@ public:
     }
     gpu_arch_t gpu_arch() const { return gpu_arch_; }
     const gpu_product_t &gpu_product() const { return gpu_product_; }
+    static const ngen::Product &ngen_product(gpu_product_t &product);
     ngen::HW ngen_hw() const;
     int stepping_id() const;
     uint64_t native_extensions() const { return native_extensions_; }
@@ -216,10 +214,10 @@ public:
         return hw_threads_[large_grf_mode ? 1 : 0];
     }
     static int threads_per_eu(gpu_arch_t gpu_arch, bool large_grf_mode = false);
-    static int max_slm_size(gpu_arch_t gpu_arch);
-    static int max_slm_size_per_tg(gpu_arch_t gpu_arch);
+    static int max_slm_size(gpu_product_t product);
+    static int max_slm_size_per_tg(gpu_product_t product);
     static int max_slm_size_per_tg(
-            gpu_arch_t gpu_arch, int tg_size, bool large_grf_mode = false);
+            int tg_size, bool large_grf_mode, gpu_product_t product);
     size_t memory_size() const { return memory_size_; }
     size_t l3_cache_size() const { return l3_cache_size_; }
     size_t icache_size() const;

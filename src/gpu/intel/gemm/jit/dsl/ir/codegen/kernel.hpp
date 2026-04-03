@@ -900,10 +900,7 @@ public:
 
         // qot = (x * m) >> p
         bool use_mach = true;
-        if (one_of(hw_info(),
-                    {ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11,
-                            ngen::HW::XE3P_UNKNOWN}))
-            use_mach = false;
+        if (hw_info() == ngen::HW::Xe3p) use_mach = false;
         if (use_mach) {
             auto acc = acc0.retype(div_type);
             mul(1, acc[0], _x, m & 0xFFFF);

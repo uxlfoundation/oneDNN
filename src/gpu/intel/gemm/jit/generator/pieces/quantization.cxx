@@ -82,7 +82,7 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
     if (Txo_int.isInt8()) Txo_int = Type::s16, cpoDiv = 2;
     // Use lateScale for cases of applying scale to inputs that will be natively dpas'd
     // but do not support add/mul.
-    if (xs2D && ((Txs.paddedSize() > Tx.paddedSize() && Tx.isInteger()) || problem.forceLateQuant(hw, minOuterProductCount(hw, problem, strategy)) || state.useBDPAS)) {
+    if (xs2D && ((Txs.paddedSize() > Tx.paddedSize() && Tx.isInteger()) || problem.forceLateQuant(minOuterProductCount(problem, strategy)) || state.useBDPAS)) {
         lateScale = true;
         Txs_int = problem.Tc;
     }
@@ -239,7 +239,7 @@ void Generator<hw>::gemmRepack2DQuantizationData(Type Ts, Type Td, const Registe
     int r = layoutDst.rows();
     int c = layoutDst.cols();
     // FP4 bdpas with group > 32 requires duplicating scales into upper half of registers.
-    if(state.useBDPAS && r * c < minOuterProductCount(hw, problem, strategy)){
+    if(state.useBDPAS && r * c < minOuterProductCount(problem, strategy)){
         int halfRegElems = elementsPerGRF(hw, Td) / 2;
         if(r * c > halfRegElems) stub();
         RegisterLayout offsetLayout(layoutDst);

@@ -47,9 +47,7 @@ inline ngen::CacheSettingsLSC get_cache_settings(
                         ret = ngen::CacheSettingsLSC::L1C_L3C;
                     }
                     break;
-                case ngen::HW::XE3P_35_10:
-                case ngen::HW::XE3P_35_11:
-                case ngen::HW::XE3P_UNKNOWN:
+                case ngen::HW::Xe3p:
                     if (is_store) {
                         ret = ngen::CacheSettingsLSC::L1UC_L2UC_L3WB;
                     } else if (is_load || is_prefetch) {
@@ -227,7 +225,7 @@ private:
         } else if (send_.is_a64()) {
             *lsc_spec |= get_cache_settings(send_, host->hw_info());
             if (send_.is_load() || send_.is_prefetch()) {
-                if (host->hw_info() >= ngen::HW::XE3P_35_10)
+                if (host->hw_info() >= ngen::HW::Xe3p)
                     *lsc_spec |= ngen::DataSpecLSC::createOverfetch();
                 host->load.ugm(mod, data, *lsc_spec, host->A64, header);
             } else if (send_.is_store()) {

@@ -387,7 +387,7 @@ inline GeneralizedPipe getPipe(HW hw, const Instruction &insn, bool checkOOO = t
     unsigned lmask = (hw >= HW::XeHPC) ? 0b1011 : 0b0011;
     if ((dt & lmask) == lmask)
         mask = PipeMaskL;
-    else if ((hw >= HW::XE3P_35_10) && (op == Opcode::mov_gen12 || op == Opcode::srnd) && (dt != insn.src0Typecode()))
+    else if ((hw >= HW::Xe3p) && (op == Opcode::mov_gen12 || op == Opcode::srnd) && (dt != insn.src0Typecode()))
         mask = PipeMaskI;
     else if (dt & 8)
         mask = PipeMaskF;
@@ -1298,7 +1298,7 @@ inline Directive getDirective(const Instruction &insn)
 template <typename Instruction>
 inline bool canDefaultPipe(HW hw, const Instruction &insn)
 {
-    if (hw >= HW::XE3P_35_10 && insn.opcode() == Opcode::mov_gen12)
+    if (hw >= HW::Xe3p && insn.opcode() == Opcode::mov_gen12)
         return false;
     if (hw >= HW::XeHP && insn.opcode() == Opcode::mov_gen12 && (insn.dstTypecode() ^ insn.src0Typecode()) & 0x8)
         return false;

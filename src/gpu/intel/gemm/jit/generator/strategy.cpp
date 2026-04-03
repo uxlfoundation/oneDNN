@@ -43,7 +43,7 @@ void CommonStrategy::preflight(HW hw, const CommonProblem &problem)
     bool emulateNeedsAcc = emulate.emulate64 || emulate.emulateDWxDW || emulate.emulate64_mul;
     if (moveR0 == MoveR0::Acc && emulateNeedsAcc)
         moveR0 = MoveR0::None;
-    if (hw >= HW::XE3P_35_10) moveR0 = MoveR0::None;
+    if (hw >= HW::Xe3p) moveR0 = MoveR0::None;
 
     spf &= !fused;
 }
@@ -238,8 +238,7 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     if (AccumulatorRegister::count(hw, GRFs, problem.Tc.real().ngen()) == 0)
         kChain = 1;
     // Using acc and mad not working on xe3p
-    bool is_xe3p = one_of(hw, {ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11, ngen::HW::XE3P_UNKNOWN});
-    if (!systolic && !dotVL && is_xe3p)
+    if (!systolic && !dotVL && hw == HW::Xe3p)
         kChain = 1;
     cAccumulators &= (kChain == 1);
 
@@ -257,8 +256,8 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     checkAdd32 &= (A.base.isStateless() || B.base.isStateless() || problem.quantized2DA() || problem.quantized2DB());
     checkAdd32 &= !(A.address2D && B.address2D && (!prefetchA || A_prefetch.address2D) && (!prefetchB || B_prefetch.address2D));
 
-    int opCount = outerProductCount(hw, problem, *this);
-    int minOPCount = minOuterProductCount(hw, problem, *this);
+    int opCount = outerProductCount(problem, *this);
+    int minOPCount = minOuterProductCount(problem, *this);
     int ukAlign = opCount;
 
     if (kParallelLocal)
@@ -291,7 +290,7 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
 
     // Systolic handling.
     if (systolic) {
-        auto params = systolicParams(hw, problem);
+        auto params = systolicParams(problem);
 
         ukAlign = lcm(ukAlign, params.ksys);
         auto tileX = params.osys;
@@ -331,7 +330,7 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     }
 
     if (dpasw) {
-        auto params = systolicParams(hw, problem);
+        auto params = systolicParams(problem);
         if (globalCM) {
             if (!fusedM()) stub();
             B.dpasw = true;
@@ -494,7 +493,7 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
 bool GEMMStrategy::minimize(HW hw, const GEMMProblem &problem)
 {
     bool better = false;
-    auto minOPCount = minOuterProductCount(hw, problem, *this);
+    auto minOPCount = minOuterProductCount(problem, *this);
     auto ka_load_best_min = std::max<int>({1, 4 / problem.Ta, minOPCount});
     auto kb_load_best_min = std::max<int>({1, 4 / problem.Tb, minOPCount});
 
@@ -630,7 +629,7 @@ void downgradeBPFAccess(const GEMMProblem &problem, GEMMStrategy &strategy)
 
 void GEMMStrategy::trimKChain(HW hw, int k, const GEMMProblem &problem)
 {
-    int minOPCount = minOuterProductCount(hw, problem, *this);
+    int minOPCount = minOuterProductCount(problem, *this);
     kChain = gcd(kChain, k / minOPCount);
 }
 

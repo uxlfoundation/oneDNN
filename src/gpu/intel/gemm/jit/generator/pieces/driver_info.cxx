@@ -29,7 +29,7 @@ CommonDriverInfo Generator<hw>::driverInfo(GEMMProblem problem, const GEMMStrate
 {
     CommonDriverInfo info;
 
-    problem.autoTypeConversions(hw, strategy.systolic);
+    problem.autoTypeConversions(strategy.systolic);
 
     info.subgroupSize = strategy.subgroupSize;
     info.fusedLoop = strategy.fused ? strategy.fusedLoop : LoopNone;

@@ -257,9 +257,7 @@ enum class Core {
     Gen12p8 = XeHPC,    /* Deprecated -- will be removed in the future */
     Xe2,
     Xe3,
-    XE3P_35_10,
-    XE3P_35_11,
-    XE3P_UNKNOWN,
+    Xe3p,
 };
 
 typedef Core HW;
@@ -287,9 +285,8 @@ enum class ProductFamily : int {
     LNL,
     GenericXe3,
     GenericXe3p,
-    XE3P_35_10,
-    XE3P_35_11,
-    XE3P_UNKNOWN,
+    NVLP,
+    CRI,
 };
 
 enum class PlatformType {Unknown, Integrated, Discrete};
@@ -316,7 +313,7 @@ static inline constexpr14 PlatformType getPlatformType(ProductFamily family) {
         case ProductFamily::MTL:
         case ProductFamily::ARL:
         case ProductFamily::LNL:
-        case ProductFamily::XE3P_35_10:
+        case ProductFamily::NVLP:
             return PlatformType::Integrated;
         // Could be integrated or discrete
         case ProductFamily::GenericXeLP:
@@ -324,7 +321,6 @@ static inline constexpr14 PlatformType getPlatformType(ProductFamily family) {
         case ProductFamily::GenericXe2:
         case ProductFamily::GenericXe3:
         case ProductFamily::GenericXe3p:
-        case ProductFamily::XE3P_UNKNOWN:
             return PlatformType::Unknown;
         // Guaranteed discrete
         case ProductFamily::GenericXeHP:
@@ -333,7 +329,7 @@ static inline constexpr14 PlatformType getPlatformType(ProductFamily family) {
         case ProductFamily::PVC:
         case ProductFamily::PVCVG:
         case ProductFamily::BMG:
-        case ProductFamily::XE3P_35_11:
+        case ProductFamily::CRI:
             return PlatformType::Discrete;
         case ProductFamily::Unknown:
             return PlatformType::Unknown;
@@ -353,19 +349,14 @@ static inline constexpr14 ProductFamily genericProductFamily(HW hw)
         case HW::XeHPC: return ProductFamily::GenericXeHPC;
         case HW::Xe2:   return ProductFamily::GenericXe2;
         case HW::Xe3:   return ProductFamily::GenericXe3;
-        case HW::XE3P_35_10:
-        case HW::XE3P_35_11:
-        case HW::XE3P_UNKNOWN: return ProductFamily::GenericXe3p;
+        case HW::Xe3p:  return ProductFamily::GenericXe3p;
         default:        return ProductFamily::Unknown;
     }
 }
 
 static inline constexpr14 Core getCore(ProductFamily family)
 {
-    if (family >= ProductFamily::XE3P_UNKNOWN)  return Core::XE3P_UNKNOWN;
-    if (family >= ProductFamily::XE3P_35_11)  return Core::XE3P_35_11;
-    if (family >= ProductFamily::XE3P_35_10)  return Core::XE3P_35_10;
-    if (family >= ProductFamily::GenericXe3p) return Core::XE3P_35_10;
+    if (family >= ProductFamily::GenericXe3p) return Core::Xe3p;
     if (family >= ProductFamily::GenericXe3)   return Core::Xe3;
     if (family >= ProductFamily::GenericXe2)   return Core::Xe2;
     if (family >= ProductFamily::GenericXeHPC) return Core::XeHPC;
@@ -527,7 +518,7 @@ enum class MathFunction : uint8_t {
 
 static inline int mathArgCount(HW hw, MathFunction func)
 {
-    if (hw >= HW::XE3P_35_10) {
+    if (hw >= HW::Xe3p) {
         static const char argCounts[16] = {0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 2, 2, 2, 2, 1};
         return argCounts[static_cast<uint8_t>(func) & 0xF];
     }
@@ -1300,7 +1291,7 @@ public:
     static constexpr int maxRegs()                         { return 512; }
     static constexpr int maxRegs(HW hw) {
         return (hw < HW::XeHP) ? 128
-            : (hw == HW::XE3P_35_11) ? 512
+            : (hw >= HW::Xe3p) ? 512
             : 256;
     }
 };
@@ -2013,7 +2004,7 @@ static inline bool trackedByToken(HW hw, Opcode op, unsigned dstTypecode)
         case Opcode::dpasw:
             return true;
         case Opcode::bdpas:
-            return (hw >= HW::XE3P_35_10);
+            return (hw >= HW::Xe3p);
         default:
             if (isSend(op)) return true;
             if (hw == HW::XeHPG && dstTypecode == 0b1011 /* :df */) return true;

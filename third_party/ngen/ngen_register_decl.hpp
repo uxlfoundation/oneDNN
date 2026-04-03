@@ -803,9 +803,7 @@ template class NGEN_NAMESPACE::BinaryCodeGenerator<NGEN_NAMESPACE::HW::XeHPG>;
 template class NGEN_NAMESPACE::BinaryCodeGenerator<NGEN_NAMESPACE::HW::XeHPC>;
 template class NGEN_NAMESPACE::BinaryCodeGenerator<NGEN_NAMESPACE::HW::Xe2>;
 template class NGEN_NAMESPACE::BinaryCodeGenerator<NGEN_NAMESPACE::HW::Xe3>;
-template class NGEN_NAMESPACE::BinaryCodeGenerator<NGEN_NAMESPACE::HW::XE3P_35_10>;
-template class NGEN_NAMESPACE::BinaryCodeGenerator<NGEN_NAMESPACE::HW::XE3P_35_11>;
-template class NGEN_NAMESPACE::BinaryCodeGenerator<NGEN_NAMESPACE::HW::XE3P_UNKNOWN>;
+template class NGEN_NAMESPACE::BinaryCodeGenerator<NGEN_NAMESPACE::HW::Xe3p>;
 
 
 #endif /* (defined(NGEN_CPP11) || defined(NGEN_CPP14)) && !defined(NGEN_GLOBAL_REGS) */

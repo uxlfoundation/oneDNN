@@ -39,26 +39,26 @@ struct SystolicParams {
     int osys;           // Output vector length
 };
 
-static inline SystolicParams systolicParams(ngen::HW hw, GEMMProblem problem)
+static inline SystolicParams systolicParams(GEMMProblem problem)
 {
-    problem.autoTypeConversions(hw, true);
+    problem.autoTypeConversions(true);
 
     SystolicParams params;
     params.opsPerChan = std::max(1, std::min(4 / problem.Ta.real(), 4 / problem.Tb.real()));
     params.sdepth = 8;
     params.ksys = params.sdepth * params.opsPerChan;
-    params.osys = ngen::GRF::bytes(hw) / std::max(problem.Tc_compute().real().size(), 4);
+    params.osys = ngen::GRF::bytes(ngen::getCore(problem.product.family)) / std::max(problem.Tc_compute().real().size(), 4);
     params.rcountMax = 8;
-    params.rcountMin = problem.preferBDPAS(hw) ? 8 : 0;
+    params.rcountMin = problem.preferBDPAS() ? 8 : 0;
 
     return params;
 }
 
 // Return # of outer products performed at once.
-static inline int minOuterProductCount(ngen::HW hw, const GEMMProblem &problem, const GEMMStrategy &strategy)
+static inline int minOuterProductCount(const GEMMProblem &problem, const GEMMStrategy &strategy)
 {
     if (strategy.systolic) {
-        auto params = systolicParams(hw, problem);
+        auto params = systolicParams(problem);
         return params.ksys;
     }
     int kfma = std::max(strategy.dotVL, 1);
@@ -68,15 +68,15 @@ static inline int minOuterProductCount(ngen::HW hw, const GEMMProblem &problem, 
 }
 
 // Return # of outer products performed at once.
-static inline int outerProductCount(ngen::HW hw, const GEMMProblem &problem, const GEMMStrategy &strategy)
+static inline int outerProductCount(const GEMMProblem &problem, const GEMMStrategy &strategy)
 {
-    return minOuterProductCount(hw, problem, strategy) * strategy.kChain;
+    return minOuterProductCount(problem, strategy) * strategy.kChain;
 }
 
 // Get the A and B crosspacks needed by the kernel. 0 indicates any crosspack is OK.
 static inline std::tuple<int,int> targetKernelCrosspack(ngen::HW hw, const GEMMProblem &problem, const GEMMStrategy &strategy)
 {
-    int opBatch = minOuterProductCount(hw, problem, strategy);
+    int opBatch = minOuterProductCount(problem, strategy);
     bool aColMajor = isRegisterColMajor(problem.Ta, problem.A, strategy.A);
     bool bColMajor = isRegisterColMajor(problem.Tb, problem.B, strategy.B);
     bool cColMajor = isRegisterColMajor(problem.Tc, problem.C, strategy.C);
@@ -99,9 +99,9 @@ static inline std::tuple<int,int> targetKernelCrosspack(ngen::HW hw, const GEMMP
 }
 
 // Get the A and B crosspacks to use for SLM data.
-static inline std::tuple<int,int> targetSLMCrosspack(ngen::HW hw, const GEMMProblem &problem, const GEMMStrategy &strategy)
+static inline std::tuple<int,int> targetSLMCrosspack(const GEMMProblem &problem, const GEMMStrategy &strategy)
 {
-    int opBatch = minOuterProductCount(hw, problem, strategy);
+    int opBatch = minOuterProductCount(problem, strategy);
 
     if (strategy.systolic) {
         bool cColMajor = isRegisterColMajor(problem.Tc, problem.C, strategy.C);
@@ -119,7 +119,7 @@ static inline std::tuple<int,int> targetSLMCrosspack(ngen::HW hw, const GEMMProb
 static inline std::tuple<int,int,int,int> targetKernelTiling(ngen::HW hw, const GEMMProblem &problem, const GEMMStrategy &strategy)
 {
     if (strategy.systolic) {
-        auto params = systolicParams(hw, problem);
+        auto params = systolicParams(problem);
         bool cColMajor = isRegisterColMajor(problem.Tc, problem.C, strategy.C);
         auto tileO_V = params.osys;
         auto tileI_N = params.ksys;

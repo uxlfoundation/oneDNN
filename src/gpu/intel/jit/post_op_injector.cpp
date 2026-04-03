@@ -69,9 +69,7 @@ REG_XEHPG_ISA(template struct post_op_injector_t<code_gen<gpu_xe_hpg>>);
 REG_XEHPC_ISA(template struct post_op_injector_t<code_gen<gpu_xe_hpc>>);
 REG_XE2_ISA(template struct post_op_injector_t<code_gen<gpu_xe2>>);
 REG_XE3_ISA(template struct post_op_injector_t<code_gen<gpu_xe3>>);
-REG_XE3P_ISA(template struct post_op_injector_t<code_gen<gpu_xe3p_35_10>>);
-REG_XE3P_ISA(template struct post_op_injector_t<code_gen<gpu_xe3p_35_11>>);
-REG_XE3P_ISA(template struct post_op_injector_t<code_gen<gpu_xe3p_35_unknown>>);
+REG_XE3P_ISA(template struct post_op_injector_t<code_gen<gpu_xe3p>>);
 
 #ifdef NGEN_ASM
 template struct post_op_injector_t<ngen::AsmCodeGenerator>;

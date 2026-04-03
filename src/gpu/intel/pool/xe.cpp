@@ -81,7 +81,7 @@ static status_t init_conf_common(
         auto is_xe3p = utils::downcast<intel::engine_t *>(engine)
                                ->device_info()
                                ->gpu_arch()
-                >= compute::gpu_arch_t::xe3p_35_10;
+                >= compute::gpu_arch_t::xe3p;
         VDISPATCH_POOLING_IC(!(is_xe3p && src_mdw.data_type() == data_type::u8),
                 "%s," VERBOSE_IMPL_HEURISTIC_FAIL, pd->info(engine),
                 "workaround xe3p compiler bug: u8 with mb_c_block");

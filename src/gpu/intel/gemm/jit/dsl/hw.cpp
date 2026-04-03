@@ -63,9 +63,7 @@ int hw_t::eus_per_core() const {
         case ngen::HW::XeHPC:
         case ngen::HW::Xe2:
         case ngen::HW::Xe3:
-        case ngen::HW::XE3P_35_10:
-        case ngen::HW::XE3P_35_11:
-        case ngen::HW::XE3P_UNKNOWN: return 8;
+        case ngen::HW::Xe3p: return 8;
         default: gpu_error_not_expected(); return 8;
     }
 }
@@ -78,9 +76,7 @@ int hw_t::threads_per_eu(int regs) const {
         case ngen::HW::XeHPC:
         case ngen::HW::Xe2:
         case ngen::HW::Xe3:
-        case ngen::HW::XE3P_35_10:
-        case ngen::HW::XE3P_35_11:
-        case ngen::HW::XE3P_UNKNOWN: return is_large_grf ? 4 : 8;
+        case ngen::HW::Xe3p: return is_large_grf ? 4 : 8;
         default: gpu_error_not_expected(); return 8;
     }
 }
@@ -93,9 +89,7 @@ int hw_t::cache_line_size() const {
         case ngen::HW::XeHPC:
         case ngen::HW::Xe2:
         case ngen::HW::Xe3:
-        case ngen::HW::XE3P_35_10:
-        case ngen::HW::XE3P_35_11:
-        case ngen::HW::XE3P_UNKNOWN: return 64;
+        case ngen::HW::Xe3p: return 64;
         default: gpu_error_not_expected();
     }
     return 0;

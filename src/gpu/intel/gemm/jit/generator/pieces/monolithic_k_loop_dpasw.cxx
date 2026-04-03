@@ -66,7 +66,7 @@ template <HW hw>
 bool Generator<hw>::sysgemmAccumulateC(GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     using namespace sysgemm;
-    auto params = systolicParams(hw, problem);
+    auto params = systolicParams(problem);
     auto unrollM = strategy.unroll[LoopM];
     auto unrollN = strategy.unroll[LoopN];
     auto wgM = strategy.wg[LoopM];
@@ -1410,7 +1410,7 @@ template <HW hw>
 bool Generator<hw>::sysgemm2AccumulateC(GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     using namespace sysgemm2;
-    auto params = systolicParams(hw, problem);
+    auto params = systolicParams(problem);
     auto unrollM = strategy.unroll[LoopM];
     auto unrollN = strategy.unroll[LoopN];
     auto localIDM = state.lidM;

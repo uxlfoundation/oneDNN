@@ -56,7 +56,7 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
     setDefaultAutoSWSB();
 
     // Set up.
-    problem.autoTypeConversions(hw, strategy.systolic);
+    problem.autoTypeConversions(strategy.systolic);
     gemmInitState(problem, strategy, state);
 
     // Transfer surface indices to strategy AddressBases.

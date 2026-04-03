@@ -101,7 +101,7 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
     if (dt_int_ok) attr_skip_mask |= smask_t::zero_points;
 
     bool arch_ok = utils::one_of(arch, arch_t::xe_hp, arch_t::xe_hpg,
-            arch_t::xe_hpc, arch_t::xe2, arch_t::xe3);
+            arch_t::xe_hpc, arch_t::xe2, arch_t::xe3, arch_t::xe3p);
 
     VDISPATCH_GEMM(limits_ok, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
     VDISPATCH_GEMM((dt_float_ok || dt_int_ok), VERBOSE_UNSUPPORTED_DT_CFG);
@@ -580,8 +580,9 @@ status_t xe_hp_systolic_t::init_compute(impl::engine_t *engine) {
     kd_t kd_full;
 
     bool is_integrated = intel_engine->device_info()->is_integrated();
+    auto product = intel_engine->device_info()->gpu_product();
 
-    auto status = kd_full.select_kernel(arch_, stepping, eu_count_,
+    auto status = kd_full.select_kernel(product, stepping, eu_count_,
             is_integrated, pd()->with_batch(), pd()->packed_c(), trans_co,
             pd()->with_a_zero_points(), pd()->with_b_zero_points(),
             pd()->with_c_zero_points(), pd()->with_bias(), pd()->alpha(),
@@ -619,7 +620,7 @@ status_t xe_hp_systolic_t::init_compute(impl::engine_t *engine) {
 
                 kd_t kd;
 
-                auto status = kd.select_kernel(arch_, stepping, eu_count_,
+                auto status = kd.select_kernel(product, stepping, eu_count_,
                         is_integrated, pd()->with_batch(), pd()->packed_c(),
                         trans_co, pd()->with_a_zero_points(),
                         pd()->with_b_zero_points(), this_c_offset,

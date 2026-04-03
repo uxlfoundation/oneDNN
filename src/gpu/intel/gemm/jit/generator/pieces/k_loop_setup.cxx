@@ -41,7 +41,7 @@ bool Generator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMStrategy &s
     auto Ta_ext = problem.Ta_ext, Tb_ext = problem.Tb_ext;
     auto Ta_load = state.Ta_load, Tb_load = state.Tb_load;
 
-    auto minOPCount = minOuterProductCount(hw, problem, strategy);
+    auto minOPCount = minOuterProductCount(problem, strategy);
     auto unrollM = strategy.unroll[LoopM];
     auto unrollN = strategy.unroll[LoopN];
 

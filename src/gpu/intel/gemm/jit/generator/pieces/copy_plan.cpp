@@ -733,8 +733,7 @@ void CopyPlan::split2DRegions()
                 continue;
             if (i.flag) stub("Unsupported predication");
             int w = i.src0.width, vs = i.src0.vs, hs = i.src0.stride;
-            bool is_xe3p = one_of(hw, {ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11, ngen::HW::XE3P_UNKNOWN});
-            bool splitH = (w * w >= i.simd || (is_xe3p && i.dst.stride * w >= 8));
+            bool splitH = (w * w >= i.simd || (hw == ngen::HW::Xe3p && i.dst.stride * w >= 8));
             int nsplit = splitH ? (i.simd / w) : w;
             i.simd /= nsplit;
             i.src0.stride = splitH ? hs : vs;
@@ -792,8 +791,7 @@ void CopyPlan::planTypeConversions()
         if (st == dt)
             i.moveToIntegerPipe();
 
-        bool is_xe3p = one_of(hw, {ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11, ngen::HW::XE3P_UNKNOWN});
-        if (is_xe3p && is4(st) && one_of(getBits(dt), {8, 16}))
+        if (hw == ngen::HW::Xe3p && is4(st) && one_of(getBits(dt), {8, 16}))
             if (planShflUpconvertXe3p(i))
                 continue;
 
@@ -1249,8 +1247,7 @@ void CopyPlan::planInt8ToBF(CopyInstruction &i)
         copyThrough(i, DataType::f);
         return;
     }
-    bool is_xe3p = one_of(hw, {ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11, ngen::HW::XE3P_UNKNOWN});
-    if (is_xe3p){
+    if (hw == ngen::HW::Xe3p){
             copyThrough(i, DataType::f);
             return;
     }
@@ -1428,7 +1425,7 @@ void CopyPlan::planInt4Upconversion(CopyInstruction &i)
     if (i.src0.neg || i.hasCMod()) stub("Unsupported modifier");
     i.sat = false;
 
-    if (hw >= HW::XE3P_35_10 && one_of(getBits(i.dst.type), {8, 16}))
+    if (hw >= HW::Xe3p && one_of(getBits(i.dst.type), {8, 16}))
         if (planShflUpconvertXe3p(i))
             return;
 
@@ -1512,9 +1509,8 @@ void CopyPlan::planInt4Upconversion(CopyInstruction &i)
             }
         } else {
             // High nybble
-            bool is_xe3p = one_of(hw, {ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11, ngen::HW::XE3P_UNKNOWN});
             auto tmp = newTemp(i.dst.type, i.simd, i.dst.stride, 1, 0);
-            if(is_xe3p && (i.src0.offset * getBytes(i.src0.type) != i.dst.offset * getBytes(i.dst.type))){
+            if(hw == ngen::HW::Xe3p && (i.src0.offset * getBytes(i.src0.type) != i.dst.offset * getBytes(i.dst.type))){
                 auto ie = splitMultiple<2>(i);
 
                 // High nybble
@@ -2242,7 +2238,7 @@ void CopyPlan::planEmulatedHFToF4(CopyInstruction &i)
         return;
     }
 
-    if (hw >= HW::XE3P_35_10) {
+    if (hw >= HW::Xe3p) {
         auto t0 = newTemp(DataType::hf, i.simd/2, 1);
         auto t1 = newTemp(DataType::hf, i.simd/2, 1);
         auto ie = splitMultiple<5>(i);
@@ -2509,8 +2505,7 @@ void CopyPlan::legalizeSIMD(bool initial)
         // Fracture instruction into legal SIMD lengths.
         int simd0 = std::min<int>(rounddown_pow2(i.simd), simdMax);
 
-        bool is_xe3p = one_of(hw, {ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11, ngen::HW::XE3P_UNKNOWN});
-        if (is_xe3p && simd0 == 2) simd0 = 1;
+        if (hw == ngen::HW::Xe3p && simd0 == 2) simd0 = 1;
 
         if (!initial && forceSIMD1(i))
             simd0 = 1;
@@ -2743,7 +2738,7 @@ void CopyPlan::legalizeRegions()
             if (isFP(dt))
                 canSwizzle = false;
         }
-        if (hw >= HW::XE3P_35_10) {
+        if (hw >= HW::Xe3p) {
             auto isFlat = [&] (const CopyOperand &op) {
                 if (!op) return true;
                 if (isBroadcast(op)) return true;
@@ -2947,7 +2942,6 @@ void CopyPlan::legalizeNegation()
 // Pass to legalize immediate types.
 void CopyPlan::legalizeImmediateTypes()
 {
-    bool is_xe3p = one_of(hw, {ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11, ngen::HW::XE3P_UNKNOWN});
     for (auto &i: insns) {
         for (auto *op: {&i.src0, &i.src1, &i.src2}) {
             if (op->kind != CopyOperand::Immediate)
@@ -2956,7 +2950,7 @@ void CopyPlan::legalizeImmediateTypes()
                 op->type = DataType::uw;
             else if (one_of(op->type, {DataType::b, DataType::s4}))
                 op->type = DataType::w;
-	    else if (is_xe3p && i.op != Opcode::mov && op->type == DataType::f && i.dst.type == DataType::bf)
+	    else if (hw == ngen::HW::Xe3p && i.op != Opcode::mov && op->type == DataType::f && i.dst.type == DataType::bf)
 	      legalizeBfImmediate(i);
         }
     }
@@ -3016,11 +3010,10 @@ void CopyPlan::optimizeZip(bool zip2DSrc0)
 
             if (i1.op != i2.op || i1.phase != i2.phase || i1.dst.grf != i2.dst.grf || i1.flag) break;
             if (i1.simd != i2.simd) continue;
-            bool xe3pPlus = (hw >= ngen::HW::XE3P_35_10);
 
             auto zippable = [&](const CopyOperand &o1, const CopyOperand &o2, bool zip2D = false, bool zipImm = false) {
                 if (o1.kind != o2.kind) return false;
-                if (o1.kind == CopyOperand::Immediate) return (o1.value == o2.value || (zipImm && !xe3pPlus));
+                if (o1.kind == CopyOperand::Immediate) return (o1.value == o2.value || (zipImm && !(hw >= ngen::HW::Xe3p)));
                 if (o1.kind != CopyOperand::GRF) return true;
                 if (o1.type != o2.type || o1.stride != o2.stride || o1.grf != o2.grf) return false;
                 if (o1.temp != o2.temp) return false;

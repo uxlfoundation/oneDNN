@@ -195,7 +195,7 @@ struct gen_t : public primitive_t {
             // Check GPU architecture.
             bool arch_ok = utils::one_of(arch_, arch_t::xe_lp, arch_t::xe_hp,
                     arch_t::xe_hpg, arch_t::xe_hpc, arch_t::xe2, arch_t::xe3);
-            arch_ok |= (arch_ >= arch_t::xe3p_35_10);
+            arch_ok |= (arch_ >= arch_t::xe3p);
 
             VDISPATCH_GEMM(arch_ok, VERBOSE_UNSUPPORTED_ARCH, "gpu");
             VDISPATCH_GEMM(IMPLICATION(with_binary, arch_ >= arch_t::xe_hp),
@@ -261,7 +261,7 @@ struct gen_t : public primitive_t {
                                    !with_eltwise && !with_binary),
                     VERBOSE_UNSUPPORTED_POSTOP);
 
-            if (arch_ >= arch_t::xe3p_35_10)
+            if (arch_ >= arch_t::xe3p)
                 kernel_desc_.set_efficient_64b(dev_info_->is_efficient_64bit());
 
             bool print_verbose = get_verbose(verbose_t::debuginfo) >= 5;

@@ -50,6 +50,9 @@ REG_XE2_ISA(extern template void convert_ir_to_ngen<gen_t<ngen::HW::Xe2>>(
 REG_XE3_ISA(extern template void convert_ir_to_ngen<gen_t<ngen::HW::Xe3>>(
         const stmt_t &body, gen_t<ngen::HW::Xe3> &host,
         const walk_order_t *kernel_grid_walk_order));
+REG_XE3P_ISA(extern template void convert_ir_to_ngen<gen_t<ngen::HW::Xe3p>>(
+        const stmt_t &body, gen_t<ngen::HW::Xe3p> &host,
+        const walk_order_t *kernel_grid_walk_order));
 
 } // namespace ir
 } // namespace dsl
@@ -103,8 +106,8 @@ void ir_kernel_t::generate_from_ir(
 
     if (local_range_) {
         size_t max_slm_size = compute::device_info_t::max_slm_size_per_tg(
-                convert_ngen_arch_to_dnnl(options_.hw()), thread_group_size(),
-                options_.regs() > 128);
+                thread_group_size(), options_.regs() > 128,
+                to_gpu_product(options_.hw().product()));
         if (interface.getSLMSize() > max_slm_size) {
             gpu_trace() << "SLM size limit exceeded: " << interface.getSLMSize()
                         << " > " << max_slm_size;

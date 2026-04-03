@@ -522,7 +522,7 @@ status_t pd_t::init_GEMMProblem(
     using namespace gemmstone;
     problem = {};
 
-    auto hw = convert_dnnl_arch_to_ngen(engine->device_info()->gpu_arch());
+    problem.product = get_ngen_product(*engine->device_info());
     bool has_systolic
             = engine->mayiuse(compute::device_ext_t::
                               intel_subgroup_matrix_multiply_accumulate)
@@ -730,7 +730,7 @@ status_t pd_t::init_GEMMProblem(
     problem.postOps.cStochasticRound = dst_sround;
 
     if (problem.needsAGroupSums() || problem.needsBGroupSums())
-        problem.autoTypeConversions(hw, has_systolic);
+        problem.autoTypeConversions(has_systolic);
 
     if (problem.needsAGroupSums()) {
         data_type_t gs_dt = a_quant.gs_type == data_type::undef
@@ -752,7 +752,7 @@ status_t pd_t::init_GEMMProblem(
     }
     // Disable bdpas with unsupported k dim.
     // TODO: Enable 2D block, masking scale loads.
-    if (problem.nativeBDPAS(hw)) {
+    if (problem.nativeBDPAS()) {
         if (((!problem.Ta.isF4() || !problem.Tb.isF4()) || k % 64 == 0))
             problem.bdpasEnabled = true;
     }

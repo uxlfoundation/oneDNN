@@ -35,9 +35,7 @@ template <> struct EncodingTag12Dispatch<HW::Xe2>   { using tag = EncodingTagXeH
 template <> struct EncodingTag12Dispatch<HW::Xe3>   { using tag = EncodingTagXeHPC; };
 struct EncodingTagXe3p : public EncodingTagXeHPC {};
 
-template <> struct EncodingTag12Dispatch<HW::XE3P_35_10>  { using tag = EncodingTagXe3p; };
-template <> struct EncodingTag12Dispatch<HW::XE3P_35_11>  { using tag = EncodingTagXe3p; };
-template <> struct EncodingTag12Dispatch<HW::XE3P_UNKNOWN>  { using tag = EncodingTagXe3p; };
+template <> struct EncodingTag12Dispatch<HW::Xe3p>  { using tag = EncodingTagXe3p; };
 
 class SWSBInfo12
 {

@@ -825,9 +825,7 @@ private:
 
 bool is_src1_ok(ngen::HW hw, const ngen_operand_t &dst,
         const ngen_operand_t &src0, const ngen_operand_t &src1) {
-    if (one_of(hw,
-                {ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11,
-                        ngen::HW::XE3P_UNKNOWN})) {
+    if (hw == ngen::HW::Xe3p) {
         if (!src1.is_reg_data()) return true;
         auto src1_rd = src1.reg_data();
         if (src1_rd.isScalar()) return true;
@@ -871,8 +869,7 @@ public:
                             bind.reg_data(), 0);
                 } else {
                     const auto grf_size = ngen::GRF::bytes(hw());
-                    if (hw() >= ngen::HW::XE3P_35_10
-                            && bind.is_reg_buf_data()) {
+                    if (hw() >= ngen::HW::Xe3p && bind.is_reg_buf_data()) {
                         auto mod = dst_operand.mod();
                         auto dst = dst_operand.reg_data();
                         auto src = bind.reg_data();
@@ -1612,10 +1609,7 @@ private:
         auto t = tmp.format(0, obj.elems(), 1, w_type);
         reg_buf_data_t t_strided;
         bool align_with_dst = false;
-        if (one_of(hw(),
-                    {ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11,
-                            ngen::HW::XE3P_UNKNOWN}))
-            align_with_dst = true;
+        if (hw() == ngen::HW::Xe3p) align_with_dst = true;
         if (align_with_dst) {
             int w_stride = dst_stride * (ngen::getBytes(dst.type()) / w_size);
             int tmp_strided_regs
@@ -1714,10 +1708,7 @@ ngen::NEOInterfaceHandler generate_ngen_interface(
     if (setup_flags.has_dpas || options.require_dpas()) interface.requireDPAS();
     if (setup_flags.has_send_atomics) interface.requireGlobalAtomics();
 
-    if (one_of(options.hw(),
-                {ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11,
-                        ngen::HW::XE3P_UNKNOWN})
-            && !options.hw().efficient_64_bit())
+    if (options.hw() == ngen::HW::Xe3p && !options.hw().efficient_64_bit())
         interface.setEfficient64Bit(false);
 
     for (size_t i = 0; i < kernel_iface.nargs(); i++) {
@@ -1795,9 +1786,7 @@ ngen::NEOInterfaceHandler generate_ngen_interface(
         GEMMSTONE_XEHPC_ISA(GPU_HW_CASE_(XeHPC)); \
         GEMMSTONE_XE2_ISA(GPU_HW_CASE_(Xe2)); \
         GEMMSTONE_XE3_ISA(GPU_HW_CASE_(Xe3)); \
-        GEMMSTONE_XE3P_ISA(GPU_HW_CASE_(XE3P_35_10)); \
-        GEMMSTONE_XE3P_ISA(GPU_HW_CASE_(XE3P_35_11)); \
-        GEMMSTONE_XE3P_ISA(GPU_HW_CASE_(XE3P_UNKNOWN)); \
+        GEMMSTONE_XE3P_ISA(GPU_HW_CASE_(Xe3p)); \
         default: dsl_assert(false) << "Unexpected GPU architecture"; \
     }
 
@@ -1871,18 +1860,9 @@ GEMMSTONE_XE3_ISA(
                 const stmt_t &body, sycl_gen_t<ngen::HW::Xe3> &host,
                 const walk_order_t *kernel_grid_walk_order));
 GEMMSTONE_XE3P_ISA(
-        template void ir::convert_ir_to_ngen<sycl_gen_t<ngen::HW::XE3P_35_10>>(
-                const stmt_t &body, sycl_gen_t<ngen::HW::XE3P_35_10> &host,
+        template void ir::convert_ir_to_ngen<sycl_gen_t<ngen::HW::Xe3p>>(
+                const stmt_t &body, sycl_gen_t<ngen::HW::Xe3p> &host,
                 const walk_order_t *kernel_grid_walk_order));
-GEMMSTONE_XE3P_ISA(
-        template void ir::convert_ir_to_ngen<sycl_gen_t<ngen::HW::XE3P_35_11>>(
-                const stmt_t &body, sycl_gen_t<ngen::HW::XE3P_35_11> &host,
-                const walk_order_t *kernel_grid_walk_order));
-GEMMSTONE_XE3P_ISA(template void
-                ir::convert_ir_to_ngen<sycl_gen_t<ngen::HW::XE3P_UNKNOWN>>(
-                        const stmt_t &body,
-                        sycl_gen_t<ngen::HW::XE3P_UNKNOWN> &host,
-                        const walk_order_t *kernel_grid_walk_order));
 
 ::sycl::kernel make_kernel(
         const kernel_t &ir_kernel, ::sycl::context ctx, ::sycl::device dev) {
@@ -1935,16 +1915,8 @@ GEMMSTONE_XE3_ISA(
                 const stmt_t &body, ocl_gen_t<ngen::HW::Xe3> &host,
                 const walk_order_t *kernel_grid_walk_order));
 GEMMSTONE_XE3P_ISA(
-        template void ir::convert_ir_to_ngen<ocl_gen_t<ngen::HW::XE3P_35_10>>(
-                const stmt_t &body, ocl_gen_t<ngen::HW::XE3P_35_10> &host,
-                const walk_order_t *kernel_grid_walk_order));
-GEMMSTONE_XE3P_ISA(
-        template void ir::convert_ir_to_ngen<ocl_gen_t<ngen::HW::XE3P_35_11>>(
-                const stmt_t &body, ocl_gen_t<ngen::HW::XE3P_35_11> &host,
-                const walk_order_t *kernel_grid_walk_order));
-GEMMSTONE_XE3P_ISA(
-        template void ir::convert_ir_to_ngen<ocl_gen_t<ngen::HW::XE3P_UNKNOWN>>(
-                const stmt_t &body, ocl_gen_t<ngen::HW::XE3P_UNKNOWN> &host,
+        template void ir::convert_ir_to_ngen<ocl_gen_t<ngen::HW::Xe3p>>(
+                const stmt_t &body, ocl_gen_t<ngen::HW::Xe3p> &host,
                 const walk_order_t *kernel_grid_walk_order));
 
 cl_kernel make_kernel(

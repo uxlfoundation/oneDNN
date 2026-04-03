@@ -239,7 +239,7 @@ template <HW hw>
 bool LevelZeroCodeGenerator<hw>::detectEfficient64Bit(ze_context_handle_t context, ze_device_handle_t device, HW inHW)
 {
     if (inHW == HW::Unknown) inHW = hw;
-    if (inHW < HW::XE3P_35_10) return false;
+    if (inHW < HW::Xe3p) return false;
 
     auto binary = detail::getDummyModuleBinary(context, device);
     return npack::isBinaryEfficient64Bit(binary, inHW);

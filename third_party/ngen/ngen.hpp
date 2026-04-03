@@ -62,9 +62,7 @@ template <HW hw> struct Instruction12Dispatch       { using type = Instruction12
 template <> struct Instruction12Dispatch<HW::XeHPC> { using type = InstructionXeHPC; };
 template <> struct Instruction12Dispatch<HW::Xe2>   { using type = InstructionXeHPC; };
 template <> struct Instruction12Dispatch<HW::Xe3>   { using type = InstructionXeHPC; };
-template <> struct Instruction12Dispatch<HW::XE3P_35_10>  { using type = InstructionXe3p;  };
-template <> struct Instruction12Dispatch<HW::XE3P_35_11>  { using type = InstructionXe3p;  };
-template <> struct Instruction12Dispatch<HW::XE3P_UNKNOWN>  { using type = InstructionXe3p;  };
+template <> struct Instruction12Dispatch<HW::Xe3p>  { using type = InstructionXe3p;  };
 
 // MSVC v140 workaround for enum comparison in template arguments.
 static constexpr bool hwLT(HW hw1, HW hw2) { return hw1 < hw2; }
@@ -207,7 +205,7 @@ protected:
 
 private:
     InstructionModifier defaultModifier;
-    bool useEfficient64Bit = (hw >= HW::XE3P_35_10);
+    bool useEfficient64Bit = (hw >= HW::Xe3p);
 
     LabelManager labelManager;
     InstructionStream rootStream;
@@ -763,35 +761,35 @@ public:
     template <typename DT = void>
     void mac(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
 #ifdef NGEN_SAFE
-        if (hardware >= HW::XE3P_35_10) unsupported();
+        if (hardware >= HW::Xe3p) unsupported();
 #endif
         opX(Opcode::mac, getDataType<DT>(), mod, dst, src0, src1, loc);
     }
     template <typename DT = void>
     void mac(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
 #ifdef NGEN_SAFE
-        if (hardware >= HW::XE3P_35_10) unsupported();
+        if (hardware >= HW::Xe3p) unsupported();
 #endif
         opX(Opcode::mac, getDataType<DT>(), mod, dst, src0, src1, loc);
     }
     template <typename DT = void>
     void mach(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
 #ifdef NGEN_SAFE
-        if (hardware >= HW::XE3P_35_10) unsupported();
+        if (hardware >= HW::Xe3p) unsupported();
 #endif
         opX(Opcode::mach, getDataType<DT>(), (hw >= HW::XeHPC) ? mod : (mod | AccWrEn), dst, src0, src1, loc);
     }
     template <typename DT = void>
     void mach(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
 #ifdef NGEN_SAFE
-        if (hardware >= HW::XE3P_35_10) unsupported();
+        if (hardware >= HW::Xe3p) unsupported();
 #endif
         opX(Opcode::mach, getDataType<DT>(), (hw >= HW::XeHPC) ? mod : (mod | AccWrEn), dst, src0, src1, loc);
     }
     template <typename DT = void>
     void macl(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
 #ifdef NGEN_SAFE
-        if (hardware >= HW::XE3P_35_10) unsupported();
+        if (hardware >= HW::Xe3p) unsupported();
         if (hw < HW::Gen10) unsupported();
 #endif
         opX((hw >= HW::XeHPC) ? Opcode::macl : Opcode::mach, getDataType<DT>(), mod, dst, src0, src1, loc);
@@ -799,7 +797,7 @@ public:
     template <typename DT = void>
     void macl(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
 #ifdef NGEN_SAFE
-        if (hardware >= HW::XE3P_35_10) unsupported();
+        if (hardware >= HW::Xe3p) unsupported();
         if (hw < HW::Gen10) unsupported();
 #endif
         opX((hw >= HW::XeHPC) ? Opcode::macl : Opcode::mach, getDataType<DT>(), mod, dst, src0, src1, loc);
@@ -2137,7 +2135,7 @@ BinaryCodeGenerator<hw>::opX(Opcode op, DataType defaultType, const InstructionM
 
     i.binary.cmod = static_cast<int>(mod.getCMod());
 
-    if (hw >= HW::XE3P_35_10) {
+    if (hw >= HW::Xe3p) {
         if (op == Opcode::math)
             i.binaryXe3pImm.src0Reg8 = 0;
         i.binaryXe3p.dstReg8 = getHighBit(dst);
@@ -2221,7 +2219,7 @@ BinaryCodeGenerator<hw>::opX(Opcode op, DataType defaultType, const InstructionM
         i.imm64.high = val >> 32;
     }
 
-    if (hw >= HW::XE3P_35_10)
+    if (hw >= HW::Xe3p)
         i.unaryXe3pImm.dstReg8 = getHighBit(dst);
 
     db(i, loc);
@@ -2304,7 +2302,7 @@ BinaryCodeGenerator<hw>::opX(Opcode op, DataType defaultType, const InstructionM
 
     i.binary.cmod = static_cast<int>(mod.getCMod());
 
-    if (hw >= HW::XE3P_35_10) {
+    if (hw >= HW::Xe3p) {
         i.binaryXe3pImm.src0Reg8 = 0;
         i.binaryXe3p.dstReg8 = getHighBit(dst);
         i.binaryXe3p.src0Reg8 = getHighBit(src0);
@@ -2388,7 +2386,7 @@ BinaryCodeGenerator<hw>::opX(Opcode op, DataType defaultType, const InstructionM
     i.binary.src1Imm = true;
     i.imm32.value = uint32_t(static_cast<uint64_t>(src1));
 
-    if (hw >= HW::XE3P_35_10) {
+    if (hw >= HW::Xe3p) {
         i.binaryXe3pImm.dstReg8 = getHighBit(dst);
         i.binaryXe3pImm.src0Reg8 = getHighBit(src0);
     }
@@ -2609,7 +2607,7 @@ template <HW hw>
 void BinaryCodeGenerator<hw>::opBdpas(Opcode op, DataType defaultType, const InstructionModifier &mod, int sdepth, int rcount,
                                       RegData dst, RegData src0, RegData src1, RegData src2, RegData src3, RegData src4, SourceLocation loc)
 {
-    if (hw < HW::XE3P_35_10) unsupported();
+    if (hw < HW::Xe3p) unsupported();
     if (sdepth != 8 || rcount != 8) unsupported();
 
     Instruction12 i{};
@@ -2963,7 +2961,7 @@ BinaryCodeGenerator<hw>::opBranch(Opcode op, const InstructionModifier &mod, con
     i.branches.jip = jip;
     i.branches.uip = uip;
 
-    if (hw >= HW::XE3P_35_10)
+    if (hw >= HW::Xe3p)
         i.branchXe3p.dstReg8 = getHighBit(dst);
 
     db(i, loc);
@@ -3011,7 +3009,7 @@ BinaryCodeGenerator<hw>::opBranch(Opcode op, const InstructionModifier &mod, con
     i.binary.src0Imm = true;
     i.branches.jip = jip;
 
-    if (hw >= HW::XE3P_35_10)
+    if (hw >= HW::Xe3p)
         i.branchXe3p.dstReg8 = getHighBit(dst);
 
     db(i, loc);
@@ -3061,7 +3059,7 @@ BinaryCodeGenerator<hw>::opBranch(Opcode op, const InstructionModifier &mod, con
         i.binary.src0 &= 0xFFFF;
 
 
-    if (hw >= HW::XE3P_35_10) {
+    if (hw >= HW::Xe3p) {
         i.branchXe3p.dstReg8 = getHighBit(dst);
         i.branchXe3p.src0Reg8 = getHighBit(src0);
     }

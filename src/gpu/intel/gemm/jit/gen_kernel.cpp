@@ -222,8 +222,7 @@ status_t gen_desc_t::finalize(const char *tags) {
             problem_.B.setAlignment(nstl::max<int>(problem_.B.alignment, 16));
     }
 
-    if (utils::one_of(hw_, ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11,
-                ngen::HW::XE3P_UNKNOWN)) {
+    if (hw_ == ngen::HW::Xe3p) {
         // Use XeHPC banking if reusing XeHPC strategies (legacy mode)
         if (!efficient_64b_) strategy_.raHW = ngen::HW::XeHPC;
 
@@ -304,7 +303,7 @@ status_t gen_desc_t::finalize(const char *tags) {
     strategy_.relaxedAccumulation |= relaxed_acc_;
     strategy_.systolicAvailable &= !disable_systolic_;
     if (problem_.needsAGroupSums() || problem_.needsBGroupSums())
-        problem_.autoTypeConversions(hw_, strategy_.systolicAvailable);
+        problem_.autoTypeConversions(strategy_.systolicAvailable);
     adjustStrategy(hw_, problem_, strategy_, tags);
     try {
         strategy_.preflight(hw_, problem_);
@@ -318,36 +317,34 @@ status_t gen_desc_t::finalize(const char *tags) {
         if (problem_.bqGroupK % strategy_.bqGroupKGranularity())
             return status::unimplemented;
     if (problem_.aScale2D()
-            && problem_.aqGroupK
-                            % minOuterProductCount(hw_, problem_, strategy_)
+            && problem_.aqGroupK % minOuterProductCount(problem_, strategy_)
                     != 0) {
         if (!problem_.Ta.isF4() || !problem_.Tb.isF4())
             return status::unimplemented;
     }
     if (problem_.bScale2D()
-            && problem_.bqGroupK
-                            % minOuterProductCount(hw_, problem_, strategy_)
+            && problem_.bqGroupK % minOuterProductCount(problem_, strategy_)
                     != 0) {
         if (!problem_.Ta.isF4() || !problem_.Tb.isF4())
             return status::unimplemented;
     }
 
     // TODO: Fix kChain handling with BDPAS.
-    if (problem_.preferBDPAS(hw_)) { strategy_.kChain = 1; }
+    if (problem_.preferBDPAS()) { strategy_.kChain = 1; }
 
     // If the M/N group size is equal to M or N, align up to a multiple of unroll size
     // XXX: Increase group size to a large value before aligning to increase reusability
     // TODO: Refactor M/N groups/thread setting to preserve MN group count.
     constexpr int perMNGroupSize = 1 << 24;
     if (problem_.aqGroupM == m_
-            && ((!problem_.forceGroupSumsA && !problem_.preferBDPAS(hw_))
+            && ((!problem_.forceGroupSumsA && !problem_.preferBDPAS())
                     || m_ > 1)) {
         problem_.aqGroupM = std::max(problem_.aqGroupM, perMNGroupSize);
         problem_.aqGroupM
                 = utils::rnd_up(problem_.aqGroupM, strategy_.unroll[LoopM]);
     }
     if (problem_.bqGroupN == n_
-            && ((!problem_.forceGroupSumsB && !problem_.preferBDPAS(hw_))
+            && ((!problem_.forceGroupSumsB && !problem_.preferBDPAS())
                     || n_ > 1)) {
         problem_.bqGroupN = std::max(problem_.bqGroupN, perMNGroupSize);
         problem_.bqGroupN
@@ -378,9 +375,7 @@ void gen_desc_t::update_driver_info() {
         REG_XEHPC_ISA(ARCH_DISPATCH(XeHPC))
         REG_XE2_ISA(ARCH_DISPATCH(Xe2))
         REG_XE3_ISA(ARCH_DISPATCH(Xe3))
-        REG_XE3P_ISA(ARCH_DISPATCH(XE3P_35_10))
-        REG_XE3P_ISA(ARCH_DISPATCH(XE3P_35_11))
-        REG_XE3P_ISA(ARCH_DISPATCH(XE3P_UNKNOWN))
+        REG_XE3P_ISA(ARCH_DISPATCH(Xe3p))
         default:
             assert(!"Unsupported architecture");
             driver_info_ = entry_->driverInfo;
@@ -411,9 +406,7 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     std::vector<MatchParams> match_params;
     MatchParams base(hw_, has_systolic, is_integrated, problem);
     /* Reuse PVC strategies for legacy mode on Xe3p */
-    if (utils::one_of(hw_, ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11,
-                ngen::HW::XE3P_UNKNOWN)
-            && !efficient_64b_)
+    if (hw_ == ngen::HW::Xe3p && !efficient_64b_)
         base.selector.hw = kcatalog::HWTagXeHPC;
 
     // By default gemmstone assumes that the accumulation type must be at least
@@ -606,26 +599,29 @@ status_t gen_nocopy_desc_t::finalize() {
     return gen_desc_t::finalize(tags_.c_str());
 }
 
-status_t gen_xe_systolic_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
-        int stepping, int eu_count, bool is_integrated, int batch_dims,
-        bool packed_c, bool trans_co, bool a_offset, bool b_offset,
-        bool c_offset, bool bias, float alpha, float beta, data_type_t a_type,
-        data_type_t b_type, data_type_t c_type, data_type_t ao_type,
-        data_type_t bo_type, data_type_t co_type, data_type_t acc_type, dim_t m,
-        dim_t n, dim_t k, dim_t batch, int unroll_m, int unroll_n, bool alt,
-        gpu_post_ops_t &&post_ops) {
+status_t gen_xe_systolic_kernel_desc_t::select_kernel(
+        compute::gpu_product_t product, int stepping, int eu_count,
+        bool is_integrated, int batch_dims, bool packed_c, bool trans_co,
+        bool a_offset, bool b_offset, bool c_offset, bool bias, float alpha,
+        float beta, data_type_t a_type, data_type_t b_type, data_type_t c_type,
+        data_type_t ao_type, data_type_t bo_type, data_type_t co_type,
+        data_type_t acc_type, dim_t m, dim_t n, dim_t k, dim_t batch,
+        int unroll_m, int unroll_n, bool alt, gpu_post_ops_t &&post_ops) {
     using namespace ngen;
     using namespace kcatalog;
 
-    arch_ = arch;
-    hw_ = convert_dnnl_arch_to_ngen(arch);
+    auto ngen_product = compute::device_info_t::ngen_product(product);
+    hw_ = getCore(ngen_product.family);
+    arch_ = convert_ngen_arch_to_dnnl(hw_);
     stepping_ = stepping;
+    problem_.product = ngen_product;
     m_ = m;
     n_ = n;
     k_ = k;
     eu_count_ = eu_count;
 
-    if (!utils::one_of(hw_, HW::XeHP, HW::XeHPG, HW::XeHPC, HW::Xe2, HW::Xe3))
+    if (!utils::one_of(hw_, HW::XeHP, HW::XeHPG, HW::XeHPC, HW::Xe2, HW::Xe3,
+                HW::Xe3p))
         return status::unimplemented;
 
     bool xehpc = (hw_ >= HW::XeHPC);
@@ -754,9 +750,7 @@ void gen_xe_systolic_kernel_desc_t::choose_unrolls(compute::gpu_arch_t arch,
         case compute::gpu_arch_t::xe_hpc:
         case compute::gpu_arch_t::xe2:
         case compute::gpu_arch_t::xe3:
-        case compute::gpu_arch_t::xe3p_35_10:
-        case compute::gpu_arch_t::xe3p_35_11:
-        case compute::gpu_arch_t::xe3p_35_unknown:
+        case compute::gpu_arch_t::xe3p:
             if (utils::one_of(a_type, f16, bf16)) {
                 if (unroll_m != 0)
                     unroll_n = (unroll_m > 16) ? 32 : 16;
@@ -1021,9 +1015,7 @@ status_t gen_kernel_t::get_kernel(
             REG_XEHPC_ISA(ARCH_DISPATCH(XeHPC))
             REG_XE2_ISA(ARCH_DISPATCH(Xe2))
             REG_XE3_ISA(ARCH_DISPATCH(Xe3))
-            REG_XE3P_ISA(ARCH_DISPATCH(XE3P_35_10))
-            REG_XE3P_ISA(ARCH_DISPATCH(XE3P_35_11))
-            REG_XE3P_ISA(ARCH_DISPATCH(XE3P_UNKNOWN))
+            REG_XE3P_ISA(ARCH_DISPATCH(Xe3p))
             default: assert(!"Unsupported architecture"); break;
         }
     } catch (const ngen::out_of_registers_exception &err) {

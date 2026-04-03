@@ -1093,7 +1093,8 @@ status_t init_vec_size(config_t &cfg) {
 
 int default_regs(const config_t &cfg) {
     if (!cfg.hw().large_grf_support()) return 128;
-    if (cfg.hw() == ngen::HW::XE3P_35_11 && cfg.is_dpas_or_dpasw_fma())
+    if (cfg.hw().family() == ngen::ProductFamily::CRI
+            && cfg.is_dpas_or_dpasw_fma())
         return 512;
     if (cfg.is_dpas_or_dpasw_fma()) return 256;
     return 128;

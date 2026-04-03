@@ -202,7 +202,7 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
     auto stepping = hwInfo.gmdid & 0xFF;
 
     bool isIntegrated = getPlatformType(product.family) == PlatformType::Integrated;
-
+    problem.product = product;
     /* Strip internal upconversions */
     auto problemMatch = problem;
     if (problemMatch.Ta_ext.bits() < problemMatch.Ta.bits()) problemMatch.Ta = problemMatch.Ta_ext;
@@ -380,9 +380,7 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
                 REG_XEHPC_ISA(ARCH_DISPATCH(XeHPC))
                 REG_XE2_ISA(ARCH_DISPATCH(Xe2))
                 REG_XE3_ISA(ARCH_DISPATCH(Xe3))
-                REG_XE3P_ISA(ARCH_DISPATCH(XE3P_35_10))
-                REG_XE3P_ISA(ARCH_DISPATCH(XE3P_35_11))
-                REG_XE3P_ISA(ARCH_DISPATCH(XE3P_UNKNOWN))
+                REG_XE3P_ISA(ARCH_DISPATCH(Xe3p))
                 default: throw std::runtime_error("Unsupported architecture");
             }
             #undef ARCH_DISPATCH

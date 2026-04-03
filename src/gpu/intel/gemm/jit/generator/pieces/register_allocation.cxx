@@ -205,7 +205,7 @@ void Generator<hw>::gemmAllocRegs(GEMMProblem &problem, GEMMStrategy &strategy, 
 
     C_chunk = alignup_pow2(C_chunk, Bundle(0, 0).group_size(raHW) * 2);
     if (strategy.systolic) {
-        auto params = systolicParams(hw, problem);
+        auto params = systolicParams(problem);
         C_chunk = std::max(C_chunk, (params.osys * params.rcountMax * Tc.real()) / GRF::bytes(hw));
         Vr_chunk = std::max(Vr_chunk, (params.osys * params.ksys * Tv.real()) / GRF::bytes(hw));
         Nr_chunk = std::max(Nr_chunk, (params.rcountMax * params.ksys * Tn.real()) / GRF::bytes(hw));
@@ -439,7 +439,7 @@ void Generator<hw>::gemmAllocRegs(GEMMProblem &problem, GEMMStrategy &strategy, 
             if (repackC)
                 mnStride = globalCM ? state.Cr_layout.rows() : state.Cr_layout.cols();
 
-            int minOPCount = minOuterProductCount(hw, problem, strategy);
+            int minOPCount = minOuterProductCount(problem, strategy);
             int lastMN0 = -1;
             int sliceRegs = 0;
             BundleGroup V_bundles(raHW);

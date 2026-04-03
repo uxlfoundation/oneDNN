@@ -1355,8 +1355,9 @@ struct fma_context_t {
         bool is_dpas = is_dp_fma(fma);
         bool is_a = (abc == abc_kind_t::a);
         auto type = (is_a ? a_type : b_type);
-        bool cvt_f16 = ((hw < ngen::HW::XE3P_35_10 && layout.type().is_fp8())
-                || (hw < ngen::HW::XE3P_35_11 && layout.type().is_fp4()));
+        bool cvt_f16 = ((hw < ngen::HW::Xe3p && layout.type().is_fp8())
+                || (hw.family() < ngen::ProductFamily::CRI
+                        && layout.type().is_fp4()));
         int type_size = (cvt_f16 ? 2 : type.size());
         if (is_dpas) {
             int sdepth = 8;
@@ -2046,8 +2047,8 @@ private:
                 plan_.fma.fma_kind, fma_kind_t::dpas, fma_kind_t::dpasw);
         auto k_blk_dpas_aligned
                 = plan_.fma.m_blk == 1 || plan_.fma.k_blk == k_tile;
-        if (cfg_.hw() >= ngen::HW::XE3P_35_10 && is_dpas
-                && plan_.fma.m_blk % 2 != 0 && !k_blk_dpas_aligned)
+        if (cfg_.hw() >= ngen::HW::Xe3p && is_dpas && plan_.fma.m_blk % 2 != 0
+                && !k_blk_dpas_aligned)
             return plan_status_t::invalid_fma_layout;
         set_plan();
         return plan_status_t::success;
@@ -2276,7 +2277,7 @@ private:
         if (!use_prefetch(abc)) return plan_status_t::success;
         auto &tg = cfg_.thread_group_grid();
         auto thr_view = tg_view.split(tg, &grid);
-        if (cfg_.hw() == ngen::HW::XE3P_35_11) {
+        if (cfg_.hw().family() == ngen::ProductFamily::CRI) {
             maybe_extend_prefetch_thread_view_to_256_bytes(thr_view);
         }
         auto params = get_send_params(cfg_.options(), send_op_t::prefetch,

@@ -30,7 +30,7 @@ void Generator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, 
 
     interface = interface_;
 
-    problem.autoTypeConversions(hw, strategy.systolic);
+    problem.autoTypeConversions(strategy.systolic);
     gemmInitState(problem, strategy, state);
     for (int q = 0; q < 2; q++)
         state.ra.safeRelease(state.emulate.temp[q]);
@@ -202,7 +202,7 @@ microkernel::Package Generator<hw>::gemmMicrokernelPackage(const GEMMProblem &pr
     Package package;
 
     auto problem = problem_;
-    problem.autoTypeConversions(hw, strategy.systolic);
+    problem.autoTypeConversions(strategy.systolic);
 
     gemmMicrokernel(problem, strategy, interface_);
 

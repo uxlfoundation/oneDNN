@@ -19,7 +19,7 @@
 
 static inline int r0DWords(ngen::HW hw)
 {
-    if (hw >= ngen::HW::XE3P_35_10) return 16;
+    if (hw >= ngen::HW::Xe3p) return 16;
     return 8;
 }
 

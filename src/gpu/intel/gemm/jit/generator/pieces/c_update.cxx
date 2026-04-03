@@ -1686,7 +1686,7 @@ void Generator<hw>::doAlternateCRemainder(COperation op, const GEMMProblem &prob
     bool nonuniformSubs = false;
 
     if (!uniform) {
-        int maxGRFs = (hw == HW::XE3P_35_11 ? 512 : 256);
+        int maxGRFs = GRF::maxRegs(hw);
         std::vector<uint8_t> baseIndices(maxGRFs, 0);
         std::vector<uint16_t> offIndices(maxGRFs, 0);
 

@@ -120,7 +120,7 @@ CacheSettingsLSC getCaching(char l1, char l2, char l3) {
 
 CacheSettingsLSC getCachingEntry(std::stringstream &s, HW hw)
 {
-    if (hw >= HW::XE3P_35_10) {
+    if (hw >= HW::Xe3p) {
         char l1, l2, l3;
         s >> l1 >> l2 >> l3;
         return getCaching(l1, l2, l3);
@@ -142,7 +142,7 @@ void getCaching(std::stringstream &s, HW hw, MatrixAddressingStrategy &astrategy
         cachingW = CacheSettingsLSC::L1WB_L3WB;
         if (hw >= HW::XeHPC)
             cachingW = CacheSettingsLSC::L1UC_L3WB;
-        if (hw >= HW::XE3P_35_10)
+        if (hw >= HW::Xe3p)
             cachingR = CacheSettingsLSC::L1C_L2C_L3C;
     }
 
@@ -265,7 +265,7 @@ void parseStrategy(const std::string &str, HW hw, const GEMMProblem &problem, GE
     strategy.A.cachingW = CacheSettingsLSC::Default;
     strategy.B.cachingW = CacheSettingsLSC::Default;
     strategy.CO.cachingR = CacheSettingsLSC::L1C_L3C;
-    if (hw >= HW::XE3P_35_10) strategy.CO.cachingR = CacheSettingsLSC::L1C_L2C_L3C;
+    if (hw >= HW::Xe3p) strategy.CO.cachingR = CacheSettingsLSC::L1C_L2C_L3C;
     strategy.A_prefetch.prefetch = true;
     strategy.B_prefetch.prefetch = true;
     strategy.C_prefetch.prefetch = true;
@@ -286,7 +286,7 @@ void parseStrategy(const std::string &str, HW hw, const GEMMProblem &problem, GE
     strategy.AB_prefetchL3.base = getAddressBase(strategy.l3PrefetchA ? asA : asB);
     if (strategy.AB_prefetchL3.cachingR == CacheSettingsLSC::Default) {
         strategy.AB_prefetchL3.cachingR = CacheSettingsLSC::L1UC_L3C;
-        if (hw >= HW::XE3P_35_10)
+        if (hw >= HW::Xe3p)
             strategy.AB_prefetchL3.cachingR = CacheSettingsLSC::L1UC_L2C_L3C;
     }
 
@@ -1083,7 +1083,7 @@ void unparseCaching(HW hw, std::ostream &s, const MatrixAddressingStrategy &astr
 
     s << '{';
 
-    if (hw >= HW::XE3P_35_10) {
+    if (hw >= HW::Xe3p) {
         switch (cachingR) {
             case CacheSettingsLSC::Default:             s << "ddd"; break;
             case CacheSettingsLSC::L1UC_L2UC_L3UC:      s << "uuu"; break;

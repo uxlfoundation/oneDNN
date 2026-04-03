@@ -55,8 +55,8 @@ static void adjust_lws_calc_kernel(int ic_block, nhwc_params_t &conf,
     auto max_lws = intel_engine->device_info()->max_wg_size(large_grf_mode);
     auto eus_per_ss = intel_engine->device_info()->max_eus_per_wg();
     const int max_ss = div_up(eu_count, eus_per_ss);
-    auto gpu_arch = intel_engine->device_info()->gpu_arch();
-    const int max_slm_size = compute::device_info_t::max_slm_size(gpu_arch);
+    const int max_slm_size = compute::device_info_t::max_slm_size(
+            intel_engine->device_info()->gpu_product());
 
     auto generated_nd = dispatch.nd_range();
     const compute::range_t &base_gws = generated_nd.global_range();

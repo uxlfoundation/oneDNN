@@ -654,8 +654,10 @@ status_t pd_t::init_GEMMProblem(
         problem.AO.setAlignment(int(types::data_type_size(a_quant.zp_type)));
     if (b_quant.zp_type != data_type::undef)
         problem.BO.setAlignment(int(types::data_type_size(b_quant.zp_type)));
-    problem.aqGroupK = a_quant.group_k;
-    problem.bqGroupK = b_quant.group_k;
+
+    // Normalize group sizes that span the full K dimension to 0 (ungrouped).
+    problem.aqGroupK = (a_quant.group_k > 0 && a_quant.group_k >= k) ? 0 : a_quant.group_k;
+    problem.bqGroupK = (b_quant.group_k > 0 && b_quant.group_k >= k) ? 0 : b_quant.group_k;
     problem.aqGroupM = a_quant.group_m;
     problem.bqGroupN = b_quant.group_n;
     if (a_quant.scales_type != data_type::undef) {

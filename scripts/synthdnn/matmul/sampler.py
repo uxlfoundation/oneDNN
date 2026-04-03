@@ -28,26 +28,17 @@ class Dequantization:
         out_scale = ""
         prefix_zp = "--attr-zero-points="
         prefix_scale = "--attr-scales="
-        if src_type in ["u4", "s4", "u8", "s8"]:
-            zp = random.choice(Dequantization.supported_zp())
-            if zp is not None:
-                out_zp += f"{prefix_zp}src:{zp}"
-                prefix_zp = "+"
+        for buf, buf_type in zip(["src", "wei"], [src_type, wei_type]):
+            if buf_type in ["u4", "s4", "u8", "s8"]:
+                zp = random.choice(Dequantization.supported_zp())
+                if zp is not None:
+                    out_zp += f"{prefix_zp}{buf}:{zp}"
+                    prefix_zp = "+"
 
-            scale = random.choice(Dequantization.supported_scale(False, dims.k))
-            if scale is not None:
-                out_scale += f"{prefix_scale}src:{scale}"
-                prefix_scale = "+"
-        if wei_type in ["u4", "s4", "u8", "s8"]:
-            zp = random.choice(Dequantization.supported_zp())
-            if zp is not None:
-                out_zp += f"{prefix_zp}wei:{zp}"
-                prefix_zp = "+"
-
-            scale = random.choice(Dequantization.supported_scale(True, dims.k))
-            if scale is not None:
-                out_scale += f"{prefix_scale}wei:{scale}"
-                prefix_scale = "+"
+                scale = random.choice(Dequantization.supported_scale(buf == "wei", dims.k))
+                if scale is not None:
+                    out_scale += f"{prefix_scale}{buf}:{scale}"
+                    prefix_scale = "+"
         if out_zp == "":
             return out_scale
         if out_scale == "":

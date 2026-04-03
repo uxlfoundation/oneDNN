@@ -44,8 +44,7 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
     assert(engine->kind() == engine_kind::gpu);
     auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
     auto *dev_info = intel_engine->device_info();
-    bool use_systolic_ukernel = intel_engine->mayiuse(
-            compute::device_ext_t::intel_subgroup_matrix_multiply_accumulate);
+    bool use_systolic_ukernel = dev_info->mayiuse_systolic();
 
     /* Get device information */
     HWInformation hw_info;
@@ -190,11 +189,22 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
         std::vector<StrategyRequirement> reqs;
         int m_unroll = sg_size_;
         int max_n_unroll = 0;
+        int max_wg_n = 4;
 
         switch (dev_info->gpu_arch()) {
             case compute::gpu_arch_t::xe_lp:
             case compute::gpu_arch_t::xe_hp:
+                max_n_unroll = (problem.aqGroupK > 64
+                                       && problem.A.layout == MatrixLayout::T)
+                                || (problem.Ta_ext.isF8() && opts.scaleA
+                                        && opts.scaleB)
+                                || (problem.Ta_scale == Type::f8_e8m0
+                                        || problem.Tb_scale == Type::f8_e8m0)
+                        ? 8
+                        : 16;
+                break;
             case compute::gpu_arch_t::xe_hpg:
+                if (!dev_info->mayiuse_systolic()) max_wg_n = 2;
                 max_n_unroll = (problem.Ta_ext.bits() < 8)
                         ? sg_size_ * problem.Ta_ext
                         : 16;
@@ -212,7 +222,7 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
         reqs.push_back(StrategyRequirement::WGM == 2);
         reqs.push_back(StrategyRequirement::WGN
                 == utils::rnd_up_pow2(std::max<dim_t>(
-                        1, std::min<dim_t>(M() / reqs[1].value, 4))));
+                        1, std::min<dim_t>(M() / reqs[1].value, max_wg_n))));
         try {
             gemm_ = selectGEMM(
                     opts, hw_info, sizes, problem, reqs, strat_override);

@@ -402,7 +402,6 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
                                            GEMMProblem &problem, HWInformation hwInfo, SizeParams sizes,
                                            const std::vector<StrategyRequirement> &reqs)
 {
-    if (hw < HW::XeHPG) return false;
     if (problem.C.layout == MatrixLayout::T) return false;
 
     int min2DAlignmentA = block2DMinAlignment(hw, problem.A, strategy.A, /* asIfBlock2D */ true);
@@ -411,11 +410,17 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
     bool systolic = hwInfo.systolicAvailable;
     bool block2DA = (hw >= HW::XeHPC) && systolic && (problem.A.alignment % min2DAlignmentA) == 0;
     bool block2DB = (hw >= HW::XeHPC) && systolic && (problem.B.alignment % min2DAlignmentB) == 0;
+    bool useNewDP = (hw >= HW::XeHP);
 
     auto &s = strategy;
     s.ka_load = s.kb_load = 16;
-    if (!systolic)
+    if (!systolic) {
         s.ka_load = s.kb_load = 4;
+        if (problem.Ta_ext.isInt4() || problem.Tb_ext.isInt4()){
+            s.ka_load *= 2;
+            s.kb_load *= 2;
+        }
+    }
 
     if (problem.A.layout == MatrixLayout::Pc) {
         s.A.accessType = AccessType::Block;
@@ -425,7 +430,7 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
         s.A.accessType = AccessType::Block;
         if (systolic)
             s.ka_load = (problem.A.layout == MatrixLayout::T) ? 64 / problem.Ta_ext : 16;
-        s.slmA = true;
+        s.slmA = (hw >= HW::XeHP);
     } else if (problem.A.layout == MatrixLayout::T) {
         s.A.accessType = AccessType::Block2DTranspose;
         s.ka_load = 64.f / ceil(( 1.f * problem.Ta) +
@@ -451,7 +456,7 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
             s.doubleMasking = true;
             s.kb_load = (problem.B.layout == MatrixLayout::N) ? 32 : 16;
         }
-        s.slmB = true;
+        s.slmB = (hw >= HW::XeHP);
     } else if (problem.B.layout == MatrixLayout::T)
         s.B.accessType = AccessType::Block2DTranspose;
     else if (problem.B.layout == MatrixLayout::N) {
@@ -463,16 +468,15 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
 
     s.A.base = localA ? AddressBase::createSLM() : AddressBase::createA64(true);
     s.B.base = localB ? AddressBase::createSLM() : AddressBase::createA64(true);
-    s.A.newDP = true;
-    s.B.newDP = true;
+    s.A.newDP = s.B.newDP = useNewDP;
     s.A.cachingR = s.B.cachingR = CacheSettingsLSC::L1C_L3C;
 
     s.A_prefetch = s.A;
     s.B_prefetch = s.B;
     s.A_prefetch.prefetch = s.B_prefetch.prefetch = true;
 
-    s.AO.newDP = s.A_scale.newDP = true;
-    s.BO.newDP = s.B_scale.newDP = true;
+    s.AO.newDP = s.A_scale.newDP = useNewDP;
+    s.BO.newDP = s.B_scale.newDP = useNewDP;
 
     if (!localA && block2DA) {
         if (!isPacked(problem.A.layout))

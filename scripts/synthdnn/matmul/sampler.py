@@ -18,7 +18,7 @@ import itertools
 import math
 import random
 
-from ..matmul.primitive import Dims, Kind, Primitive
+from matmul.primitive import Dims, Kind, Primitive
 
 
 class Dequantization:

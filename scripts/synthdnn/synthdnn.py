@@ -20,8 +20,10 @@ import os
 import sys
 from typing import NoReturn
 
-from .matmul import primitive as matmul
-from .matmul import sampler as matmul_sampler
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from matmul import primitive as matmul
+from matmul import sampler as matmul_sampler
 
 
 def log(output):
@@ -190,7 +192,6 @@ def setup_matmul_subparser(subparsers):
         default=None,
         help="implementation to skip in benchdnn execution",
     )
-
 
 
 def matmul_main(args):

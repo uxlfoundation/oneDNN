@@ -64,6 +64,12 @@ struct c_compatible { // NOLINT(readability-identifier-naming)
         UNUSED(sz);
         return p;
     }
+    // MSVC C4291: placement new requires a matching placement delete (no-op here;
+    // storage is caller-owned). Invoked only if the constructor throws.
+    static void operator delete(void *p, void *place) noexcept {
+        UNUSED(p);
+        UNUSED(place);
+    }
     static void *operator new[](size_t sz) {
         return MALLOC(sz, default_alignment);
     }

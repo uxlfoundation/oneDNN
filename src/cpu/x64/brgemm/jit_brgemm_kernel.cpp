@@ -2548,7 +2548,17 @@ void jit_brgemm_kernel_t<Wmm>::maybe_pre_process_data(
         f8_e5m2_cvt_->vcvt_f8_to_f16_vnni(zmm_out1, zmm_out2, zmm_out1);
     else if (dt == data_type::f8_e4m3)
         f8_e4m3_cvt_->vcvt_f8_to_f16_vnni(zmm_out1, zmm_out2, zmm_out1);
-    else
+    else if (brg.is_f16_fp8) {
+        uni_vmovups(zmm_out2, zmm_out1);
+
+        mov(reg64_fp8_aux, f16_perm_even_table_);
+        vmovups(vmm_fp8_emu_aux3(), ptr[reg64_fp8_aux]);
+        vpermw(zmm_out1, vmm_fp8_emu_aux3(), zmm_out1);
+
+        mov(reg64_fp8_aux, f16_perm_odd_table_);
+        vmovups(vmm_fp8_emu_aux3(), ptr[reg64_fp8_aux]);
+        vpermw(zmm_out2, vmm_fp8_emu_aux3(), zmm_out2);
+    } else
         assert(!"unsupported data type.");
 }
 
@@ -2602,7 +2612,7 @@ void jit_brgemm_kernel_t<Wmm>::maybe_tileloadd_nt(matrix_kind_t matrix_kind,
     bool try_load_nt = brg.innermost_loop
             == (is_A ? brgemm_bd_loop_innermost : brgemm_ld_loop_innermost);
 
-    if (brg.is_fp8_via_convert()) {
+    if (brg.is_fp8_via_convert() && (!is_A || brg.is_fp8)) {
         const dim_t typesize_A
                 = brg.is_input_convert() ? sizeof(int16_t) : brg.typesize_A;
         const dim_t typesize_B
@@ -2781,7 +2791,7 @@ template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::dot_product(Vmm v1, Vmm v2, Vmm v3) {
     if (brg.is_f16 && brg.isa_impl == avx10_2)
         vdpphps(v1, v2, v3);
-    else if (brg.is_fp8 && brg.is_fp8_via_convert_non_amx())
+    else if ((brg.is_fp8 || brg.is_f16_fp8) && brg.is_fp8_via_convert_non_amx())
         vdpphps(v1, v2, v3);
     else if (brg.is_f32 || brg.is_f16
             || (brg.is_bf16 && brg.isa_impl == avx2_vnni_2))
@@ -3019,7 +3029,8 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
 
     dim_t rd_loop = 0, rd_tail_size = 0;
     if (is_rd_tail) {
-        if (brg.is_bf16 || brg.is_f16 || brg.is_int8 || brg.is_fp8) {
+        if (brg.is_bf16 || brg.is_f16 || brg.is_int8 || brg.is_fp8
+                || brg.is_f16_fp8) {
             rd_tail_size = brg.rdb_tail % brg.rd_step;
             rd_loop = (rd_tail_size != 0)
                     ? ((brg.rdb_tail / brg.rd_step) + 1) * brg.rd_step
@@ -3044,7 +3055,8 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
         const bool maybe_load_bytes
                 = (rows_for_rd_tail > 0 || brg.brgattr.wary_A_k_tail_read)
                 && is_rd_tail && rd_tail_size != 0
-                && (brg.is_bf16 || brg.is_f16 || brg.is_int8 || brg.is_fp8);
+                && (brg.is_bf16 || brg.is_f16 || brg.is_int8 || brg.is_fp8
+                        || brg.is_f16_fp8);
         const bool have_to_load_bytes
                 = maybe_load_bytes && (rd == rd_loop - brg.rd_step);
         const auto rows_by_load_bytes
@@ -3056,7 +3068,10 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
             Xmm xmm_tmp = Xmm(vmm_bcast.getIdx());
             load_bytes(
                     xmm_tmp, reg_aux_A, offset, rd_tail_size * brg.typesize_A);
-            uni_vpbroadcastd(vmm_bcast, xmm_tmp);
+            if (brg.is_f16_fp8)
+                vpbroadcastq(vmm_bcast, xmm_tmp);
+            else
+                uni_vpbroadcastd(vmm_bcast, xmm_tmp);
         } else {
             if (dt == data_type::f32) {
                 uni_vbroadcastss(vmm_bcast, ptr[reg_aux_A + offset]);
@@ -3069,7 +3084,9 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                                data_type::f8_e5m2, data_type::f8_e4m3)) {
                 uni_vpbroadcastd(vmm_bcast, ptr[reg_aux_A + offset]);
             } else if (dt == data_type::f16) {
-                if (brg.isa_impl == avx10_2) {
+                if (brg.is_f16_fp8)
+                    vpbroadcastq(vmm_bcast, ptr[reg_aux_A + offset]);
+                else if (brg.isa_impl == avx10_2) {
                     uni_vpbroadcastd(vmm_bcast, ptr[reg_aux_A + offset]);
                 } else if (brg.isa_impl == avx2_vnni_2) {
                     vbcstnesh2ps(vmm_bcast, ptr[reg_aux_A + offset]);
@@ -3820,6 +3837,21 @@ void jit_brgemm_kernel_t<Wmm>::generate() {
                 dw(uint16_t(2 * i + 1));
             else
                 dw(uint16_t(0));
+    } else if (brg.is_f16_fp8) {
+        // arrange elements of matrix A in vnni format;
+        // broadcasted values in lower and uppper parts are the same
+        align(64);
+        L(f16_perm_even_table_);
+        for_(int n = 0; n < 2; ++n)
+        for (dim_t i = 0; i < 16; ++i) {
+            dw(uint16_t(4 * (i / 2) + (i % 2)));
+        }
+        align(64);
+        L(f16_perm_odd_table_);
+        for_(int n = 0; n < 2; ++n)
+        for (dim_t i = 0; i < 16; ++i) {
+            dw(uint16_t(4 * (i / 2) + (i % 2) + 2));
+        }
     }
 }
 

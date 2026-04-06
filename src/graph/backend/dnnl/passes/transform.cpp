@@ -4593,7 +4593,8 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
         if (cur_op->get_kind() != op_kind::_matmul) continue;
         op_ptr walker = cur_op;
         bool valid_pattern = true;
-        bool has_scale = false, has_mask = false, has_softmax = false;
+        bool has_scale = false, has_mask = false, has_softmax = false,
+             has_dropout = false;
         bool finished = false;
         while (walker && !finished) {
             pattern_ops.push_back(walker);
@@ -4629,6 +4630,11 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
                 case op_kind::_softmax: {
                     if (has_softmax) valid_pattern = false;
                     has_softmax = true;
+                    break;
+                }
+                case op_kind::_dropout: {
+                    if (has_dropout) valid_pattern = false;
+                    has_dropout = true;
                     break;
                 }
                 default: valid_pattern = false;
@@ -4711,6 +4717,17 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
                 stats_output->set_producer(*sdpa_op);
                 sdpa_op->connect_output(2, stats_output);
             }
+        } else if (op->get_kind() == op_kind::_dropout) {
+            sdpa_op->set_attr<bool>(op_attr::with_dropout, true);
+            auto seed_val = op->get_input_value(1); // seed
+            seed_val->remove_consumer(*op, 1);
+            sdpa_op->connect_input(input_idx++, seed_val);
+            auto offset_val = op->get_input_value(2); // offset
+            offset_val->remove_consumer(*op, 2);
+            sdpa_op->connect_input(input_idx++, offset_val);
+            auto prob_val = op->get_input_value(3); // probability
+            prob_val->remove_consumer(*op, 3);
+            sdpa_op->connect_input(input_idx++, prob_val);
         }
     }
 

@@ -338,7 +338,7 @@ const op_attr_t change_layout = 0x10002;
 const op_attr_t is_constant = 0x10003;
 const op_attr_t is_convtranspose = 0x10004;
 const op_attr_t is_training = 0x10005;
-const op_attr_t fwd_alg_kind = 0x10006;
+const op_attr_t with_dropout = 0x10006;
 const op_attr_t fuse_relu = 0x10007;
 const op_attr_t with_bias = 0x10008;
 const op_attr_t with_runtime_scales = 0x10009;
@@ -361,6 +361,7 @@ const op_attr_t group_mask = 0x10103;
 const op_attr_t data_type = 0x10104;
 const op_attr_t axis_row = 0x10105;
 const op_attr_t axis_col = 0x10106;
+const op_attr_t fwd_alg_kind = 0x10107;
 
 // string
 const op_attr_t backend = 0x10200;

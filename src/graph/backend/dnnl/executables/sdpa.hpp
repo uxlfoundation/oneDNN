@@ -72,6 +72,7 @@ private:
     attn_mask_type_t mask_type_;
     bool is_invert_scale_;
     bool is_initialized_;
+    bool with_dropout_;
 };
 
 struct sdpa_bwd_executable_t : public op_executable_t {

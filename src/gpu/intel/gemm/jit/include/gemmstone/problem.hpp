@@ -290,6 +290,10 @@ struct GEMMProblem : public CommonProblem {
         if (bScale2D()) useBDPAS &= (Tb_scale == Type::f8_e8m0) && (bqGroupK % 32 == 0);
         return useBDPAS;
     }
+    bool validLateScaleGroups() const {
+        return ((aScale2D() && (aqGroupK <=1 || aqGroupK % 32 == 0))
+            || (bScale2D() && (bqGroupK <=1 || bqGroupK % 32 == 0)));
+    }
 
     bool needsAGroupSums() const { return (bOffset == ABOffset::Calc && quantized2DB() && !earlyDequantizableOffset(Tb_ext, Tbo, Tb)); }
     bool needsBGroupSums() const { return (aOffset == ABOffset::Calc && quantized2DA() && !earlyDequantizableOffset(Ta_ext, Tao, Ta)); }
@@ -372,7 +376,7 @@ void GEMMProblem::autoTypeConversions(ngen::HW hw, bool systolicAvailable)
     }
     if (hw < HW::XE3P_35_11 || !systolicAvailable || forceUpconvertQuant(hw))
     {
-        if ( hw == HW::XE3P_35_10){
+        if (hw == HW::XE3P_35_10 && (!forceUpconvertQuant(hw) || validLateScaleGroups())){
             if (Ta.isF4()) Ta = Type::bf8;
             if (Tb.isF4()) Tb = Type::bf8;
         } else {

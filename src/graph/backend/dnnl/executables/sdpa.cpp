@@ -29,7 +29,8 @@ sdpa_executable_t::sdpa_executable_t(std::shared_ptr<op_t> &op,
     : with_scale_(op->get_attr<bool>(op_attr::with_scale))
     , is_training_(op->get_attr<bool>(op_attr::is_training))
     , mask_type_(static_cast<attn_mask_type_t>(
-              op->get_attr<int64_t>(op_attr::mask_type))) {
+              op->get_attr<int64_t>(op_attr::mask_type)))
+    , with_dropout_(op->get_attr<bool>(op_attr::with_dropout)) {
 
     auto md_q = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
     auto md_k = make_dnnl_memory_desc(op->get_input_logical_tensor(1));
@@ -166,6 +167,15 @@ arg_indices_t sdpa_executable_t::get_arg_indices(const op_t *op) {
     if (op->get_attr<int64_t>(op_attr::mask_type)
             == static_cast<int64_t>(attn_mask_type::buffer)) {
         args.insert({DNNL_ARG_ATTN_MASK, {indices_t::type_t::input, idx++}});
+    }
+
+    if (op->get_attr<bool>(op_attr::with_dropout)) {
+        args.insert({DNNL_ARG_ATTR_DROPOUT_SEED,
+                {indices_t::type_t::input, idx++}});
+        args.insert({DNNL_ARG_ATTR_DROPOUT_OFFSET,
+                {indices_t::type_t::input, idx++}});
+        args.insert({DNNL_ARG_ATTR_DROPOUT_PROBABILITY,
+                {indices_t::type_t::input, idx++}});
     }
 
     const auto &sdpa_fusion_info = op->has_attr(op_attr::fusion_info)

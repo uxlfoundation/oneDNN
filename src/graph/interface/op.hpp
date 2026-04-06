@@ -396,6 +396,7 @@ public:
             CASE(qk_acc_mode);
             CASE(vs_acc_mode);
             CASE(is_rms);
+            CASE(with_dropout);
             default: return "undefined_attr";
         }
 #undef CASE

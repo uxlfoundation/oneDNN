@@ -48,3 +48,4 @@ g16mb1ic16id120ih200iw340oc16od60oh100ow170kd3kh3kw3sd2sh2sw2pd0ph0pw0
 --reset --dir=FWD_I --dt=s8 --stag=abcd --wtag=acdb --dtag=abcd --attr-zero-points=src:common:1 mb3ic3ih16oc3oh16kh1ph0
 --reset --stag=abcd --dtag=abcd mb1ic1ih22oc1oh11kh8sh2ph3
 --reset --dir=BWD_W --dt=f64:f64:f64 --bia-dt=f64 --stag=abcd --wtag=abcde --dtag=abcd --attr-fpmath=tf32 g3ic6ih7iw8oc12oh3ow4kh3kw3ph0pw0dh1dw1
+--reset --dir=FWD_D --stag=abx --dtag=abx g64mb16ic64iw1oc64ow3kw2pw2dw1

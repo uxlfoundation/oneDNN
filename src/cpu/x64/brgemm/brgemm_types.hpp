@@ -492,8 +492,10 @@ struct brgemm_desc_t {
     }
 
     bool is_fp8_weights_converted_to_bf16() const {
-        return (isa_impl == avx10_1_512_amx && (is_fp8 || is_bf16_fp8))
-                || (isa_impl == avx10_1_512_amx_fp16 && is_bf16_fp8);
+        return (utils::one_of(isa_impl, avx10_1_512_amx)
+                       && (is_fp8 || is_bf16_fp8))
+                || (utils::one_of(isa_impl, avx10_1_512_amx_fp16, avx10_2)
+                        && is_bf16_fp8);
     }
 
     bool is_fp8_weights_converted_to_f16() const {

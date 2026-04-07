@@ -3290,6 +3290,12 @@ GPU_TEST_P(sdpa_bwd_test, perf_bwd) {
             quantize_type::no_quantization, no_key_transposed, \
             mask_type::no_mask, default_scale_type, accumulation_mode::f32, \
             accumulation_mode::f32
+#define SDPA_DIMS_DROPOUT_SHARED_GQA \
+    2, 4, 2, 128, 128, 64, 64, 64, mdt::f16, mdt::f16, mdt::undef, mdt::undef, \
+            mdt::f16, mdt::undef, mdt::undef, mdt::f16, \
+            quantize_type::no_quantization, no_key_transposed, \
+            mask_type::no_mask, default_scale_type, accumulation_mode::f32, \
+            accumulation_mode::f32
 INSTANTIATE_TEST_SUITE_P(dropout_forward_minimal, sdpa_test,
         testing::Values(
                 // 0.5:12345678:abcd — concrete tag => blocked format => has_output_mask
@@ -3333,16 +3339,20 @@ INSTANTIATE_TEST_SUITE_P(dropout_forward_minimal, sdpa_test,
                                 memory::format_tag::undef}},
                 sdpa_dims_t {SDPA_DIMS_DROPOUT_LARGE,
                         dropout_config_t {0.3f, 99999, mdt::s64, 1238796, true,
+                                memory::format_tag::abcd}},
+                sdpa_dims_t {SDPA_DIMS_DROPOUT_SHARED_GQA,
+                        dropout_config_t {0.5f, 4242, mdt::s64, 0, false,
+                                memory::format_tag::abcd}},
+                sdpa_dims_t {SDPA_DIMS_DROPOUT_SHARED_GQA,
+                        dropout_config_t {0.75f, 4343, mdt::s64, 0, false,
+                                memory::format_tag::undef}},
+                sdpa_dims_t {SDPA_DIMS_DROPOUT_SHARED_GQA,
+                        dropout_config_t {0.25f, 4444, mdt::s64, 123456, true,
                                 memory::format_tag::abcd}}),
         &print_to_string);
 #undef SDPA_DIMS_DROPOUT_MULTI
 #undef SDPA_DIMS_DROPOUT_LARGE
-#define SDPA_DIMS_BWD_DROPOUT_GQA \
-    1, 4, 2, 64, 64, 64, 64, 64, mdt::f16, mdt::f16, mdt::undef, mdt::undef, \
-            mdt::f16, mdt::undef, mdt::undef, mdt::f16, \
-            quantize_type::no_quantization, no_key_transposed, \
-            mask_type::no_mask, default_scale_type, accumulation_mode::f32, \
-            accumulation_mode::f32
+
 INSTANTIATE_TEST_SUITE_P(dropout_backward_minimal, sdpa_bwd_test,
         testing::Values(sdpa_dims_t {SDPA_DIMS_DROPOUT_SHARED_BASE,
                                 dropout_config_t {0.5f, 12345678, mdt::s64, 0,
@@ -3364,19 +3374,19 @@ INSTANTIATE_TEST_SUITE_P(dropout_backward_minimal, sdpa_bwd_test,
                         dropout_config_t {0.25f, 843921, mdt::s64, 1238976,
                                 true, memory::format_tag::abcd}},
                 // GQA: concrete tag
-                sdpa_dims_t {SDPA_DIMS_BWD_DROPOUT_GQA,
+                sdpa_dims_t {SDPA_DIMS_DROPOUT_SHARED_GQA,
                         dropout_config_t {0.5f, 4242, mdt::s64, 0, false,
                                 memory::format_tag::abcd}},
-                sdpa_dims_t {SDPA_DIMS_BWD_DROPOUT_GQA,
+                sdpa_dims_t {SDPA_DIMS_DROPOUT_SHARED_GQA,
                         dropout_config_t {0.75f, 4343, mdt::s64, 0, false,
                                 memory::format_tag::undef}},
-                sdpa_dims_t {SDPA_DIMS_BWD_DROPOUT_GQA,
+                sdpa_dims_t {SDPA_DIMS_DROPOUT_SHARED_GQA,
                         dropout_config_t {0.25f, 4444, mdt::s64, 123456, true,
                                 memory::format_tag::abcd}}),
         &print_to_string);
 #undef SDPA_DIMS_DROPOUT_SHARED_BASE_TRANSPOSED
 #undef SDPA_DIMS_DROPOUT_SHARED_BASE
-#undef SDPA_DIMS_BWD_DROPOUT_GQA
+#undef SDPA_DIMS_DROPOUT_SHARED_GQA
 
 // clang-format off
 

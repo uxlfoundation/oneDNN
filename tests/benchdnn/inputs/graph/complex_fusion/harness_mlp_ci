@@ -1,9 +1,14 @@
 --reset --case=complex_fusion/mlp/gated-mlp-f16-f32.json
+--reset --op-attrs=8:mode:gelu_tanh,8:mode:gelu_erf --case=complex_fusion/mlp/gated-mlp-gelu-f16-f32.json
+
 --reset --dt=0:bf16+1:bf16+4:bf16+14:bf16+15:bf16+16:bf16 --case=complex_fusion/mlp/gated-mlp-f16-f32.json
+--reset --dt=0:bf16+1:bf16+4:bf16+12:bf16+13:bf16+14:bf16 --op-attrs=8:mode:gelu_tanh,8:mode:gelu_erf --case=complex_fusion/mlp/gated-mlp-gelu-f16-f32.json
+
 
 # WA1: use smaller problem to pass correctness check for f32 on pvc.
 # WA2: use subtract binary to avoid precision issue for f32 on xe-lpg.
 --reset --in-shapes=0:1x128+1:128x256+4:128x256+13:256x128 --op-kind=12:Subtract --case=complex_fusion/mlp/gated-mlp-f32.json
+--reset --op-attrs=8:mode:gelu_tanh,8:mode:gelu_erf --case=complex_fusion/mlp/gated-mlp-gelu-f32.json
 
 # f16-int4 case
 --reset --case=complex_fusion/mlp/gated-mlp-int4.json

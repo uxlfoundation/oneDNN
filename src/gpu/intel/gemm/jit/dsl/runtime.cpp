@@ -255,7 +255,8 @@ dsl::hw_t get_hardware(ze_device_handle_t device, ze_context_handle_t context) {
                 context, device, hw))
         attr |= dsl::hw::attr_t::efficient_64bit;
 
-    return dsl::hw_t(product, eu_count, max_wg_size, l3_cache_size, attr);
+    return dsl::hw_t(product, static_cast<int>(eu_count),
+            static_cast<int>(max_wg_size), l3_cache_size, attr);
 }
 
 LevelZeroKernelAndModule make_kernel(const GEMMKernelDesc &desc,

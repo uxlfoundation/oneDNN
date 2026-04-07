@@ -274,6 +274,25 @@ void fp8_conversion_e5m2_t::vcvt_f8_to_f16_vnni(const Xbyak::Zmm &zmm_out1,
             zmm_out1, zmm_out2, op_in, zmm_permute_idx);
 }
 
+void fp8_conversion_e5m2_t::vcvt_f8_to_bf16_vnni(const Xbyak::Zmm &zmm_out1,
+        const Xbyak::Zmm &zmm_out2, const Xbyak::Operand &op_in) {
+    const Xbyak::Ymm ymm_out1(zmm_out1.getIdx());
+    const Xbyak::Ymm ymm_out2(zmm_out2.getIdx());
+
+    const Xbyak::Zmm zmm_permute(xmm_aux3_.getIdx());
+
+    host_->vmovups(zmm_permute,
+            host_->ptr[host_->rip + label_vnni_permute_index_table_ + 64]);
+    // first take the two low bytes from each quad and then the two upper bytes
+    host_->vpermb(zmm_out1, zmm_permute, op_in);
+    // ymm_aux1 contains fp8 values from low bytes
+    // move fp8 values from upper bytes to ymm_aux2
+    host_->vextractf64x4(ymm_out2, zmm_out1, 1);
+
+    vcvt_f8_to_bf16(zmm_out1, ymm_out1);
+    vcvt_f8_to_bf16(zmm_out2, ymm_out2);
+}
+
 void fp8_conversion_e5m2_t::vcvt_f8_to_f16_vnni_block(int num_rows,
         const Xbyak::Reg64 &reg_data_in, const Xbyak::Reg64 &reg_stride_in,
         const Xbyak::Reg64 &reg_data_out) {
@@ -407,8 +426,9 @@ void fp8_conversion_e4m3_t::vcvt_f8_to_bf16(
     vcvt_f8_to_xf16(xmm_out, op_in, data_type::bf16);
 }
 
-void fp8_conversion_e4m3_t::vcvt_f8_to_f16_vnni(const Xbyak::Zmm &zmm_out1,
-        const Xbyak::Zmm &zmm_out2, const Xbyak::Operand &op_in) {
+void fp8_conversion_e4m3_t::vcvt_f8_to_xf16_vnni(const Xbyak::Zmm &zmm_out1,
+        const Xbyak::Zmm &zmm_out2, const Xbyak::Operand &op_in,
+        data_type_t dt) {
     const Xbyak::Ymm ymm_out1(zmm_out1.getIdx());
     const Xbyak::Ymm ymm_out2(zmm_out2.getIdx());
 
@@ -422,8 +442,18 @@ void fp8_conversion_e4m3_t::vcvt_f8_to_f16_vnni(const Xbyak::Zmm &zmm_out1,
     // move fp8 values from upper bytes to ymm_aux2
     host_->vextractf64x4(ymm_out2, zmm_out1, 1);
 
-    vcvt_f8_to_f16(zmm_out1, ymm_out1);
-    vcvt_f8_to_f16(zmm_out2, ymm_out2);
+    vcvt_f8_to_xf16(zmm_out1, ymm_out1, dt);
+    vcvt_f8_to_xf16(zmm_out2, ymm_out2, dt);
+}
+
+void fp8_conversion_e4m3_t::vcvt_f8_to_f16_vnni(const Xbyak::Zmm &zmm_out1,
+        const Xbyak::Zmm &zmm_out2, const Xbyak::Operand &op_in) {
+    vcvt_f8_to_xf16_vnni(zmm_out1, zmm_out2, op_in, data_type::f16);
+}
+
+void fp8_conversion_e4m3_t::vcvt_f8_to_bf16_vnni(const Xbyak::Zmm &zmm_out1,
+        const Xbyak::Zmm &zmm_out2, const Xbyak::Operand &op_in) {
+    vcvt_f8_to_xf16_vnni(zmm_out1, zmm_out2, op_in, data_type::bf16);
 }
 
 void fp8_conversion_e4m3_t::vcvt_f8_to_xf16_vnni_block(int num_rows,

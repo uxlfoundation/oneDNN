@@ -1099,14 +1099,14 @@ std::ostream &operator<<(
         for (const int arg : args) {
             if (sparse_options.get_encoding(arg) == dnnl_grouped) {
                 has_grouped = true;
-                // Output new format: --grouped=0:8:32,64,...
+                // Output format: --grouped=0:8:32+64+...
                 int var_idx = sparse_options.get_variable_dim_idx(arg);
                 s << "--grouped=" << var_idx << ":"
                   << sparse_options.get_group_count() << ":";
                 const auto &dims = sparse_options.get_group_sizes(arg);
                 for (size_t i = 0; i < dims.size(); i++) {
                     s << dims[i];
-                    if (i != dims.size() - 1) s << ",";
+                    if (i != dims.size() - 1) s << "+";
                 }
                 const auto max_var_dim = sparse_options.get_max_variable_dim();
                 if (max_var_dim > 0) s << ":" << max_var_dim;

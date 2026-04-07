@@ -137,7 +137,10 @@ impl::status_t sdp_decomp_config_t::construct_params(
             ltw(inputs[graph_inport[mm1_src]]).data_type());
     memory::data_type dt_wei_user = static_cast<memory::data_type>(
             ltw(inputs[graph_inport[mm1_wei]]).data_type());
-    memory::data_type dt_wei = quantized ? memory::data_type::s8 : dt_src_user;
+    memory::data_type dt_wei
+            = quantized && (dt_wei_user == memory::data_type::u8)
+            ? memory::data_type::s8
+            : dt_src_user;
     memory::data_type dt_inter = quantized
             ? dt
             : static_cast<memory::data_type>(

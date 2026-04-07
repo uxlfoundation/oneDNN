@@ -710,7 +710,8 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_tags(memory_desc_t &A_md,
         } else {
             const bool is_int8_avx512_core
                     = this->is_int8() && is_superset(bgmmc.isa, avx512_core);
-            const bool is_adbc_allowed = this->is_f8() || is_int8_avx512_core
+            const bool is_adbc_allowed = this->is_f8() || this->is_bf16_fp8()
+                    || this->is_f16_fp8() || is_int8_avx512_core
                     || this->is_bf16() || this->is_f32() || this->is_bf32()
                     || this->is_f16() || this->is_f32_f16()
                     || this->is_f32_bf16() || this->is_bf16_with_int_wei()

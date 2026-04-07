@@ -2285,9 +2285,9 @@ bool jit_brgemm_amx_uker_base_t::maybe_pre_process_data(brgemm_iteration_t &bi,
         else {
             assert(brg.is_fp8);
             // The same type as for weights
-            const auto A_dst_dt = brg.is_fp8_weights_converted_to_f16()
-                    ? data_type::f16
-                    : data_type::bf16;
+            const auto A_dst_dt = brg.is_fp8_weights_converted_to_bf16()
+                    ? data_type::bf16
+                    : data_type::f16;
             fp8_to_xf16_upconvert(bi, num_rows, num_col_bytes, reg_base, offset,
                     reg_stride, reg_buf, dt, A_dst_dt);
         }
@@ -2296,9 +2296,9 @@ bool jit_brgemm_amx_uker_base_t::maybe_pre_process_data(brgemm_iteration_t &bi,
             bf32_downconvert_to_vnni(bi, num_rows, num_col_bytes, reg_base,
                     offset, reg_stride, reg_buf);
         else {
-            const auto B_dst_dt = brg.is_fp8_weights_converted_to_f16()
-                    ? data_type::f16
-                    : data_type::bf16;
+            const auto B_dst_dt = brg.is_fp8_weights_converted_to_bf16()
+                    ? data_type::bf16
+                    : data_type::f16;
             fp8_to_xf16_upconvert_to_vnni(bi, num_rows, num_col_bytes, reg_base,
                     offset, reg_stride, reg_buf, dt, B_dst_dt);
         }

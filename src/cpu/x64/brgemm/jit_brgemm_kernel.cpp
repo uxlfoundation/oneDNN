@@ -2740,11 +2740,9 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel_amx(dim_t bd_block2,
         using namespace data_type;
         if (brg.is_tf32) {
             tmmultf32ps(x1, x2, x3);
-        } else if ((brg.is_fp8 || brg.is_bf16_fp8)
-                && brg.is_fp8_weights_converted_to_bf16()) {
+        } else if (brg.is_fp8_weights_converted_to_bf16()) {
             tdpbf16ps(x1, x2, x3);
-        } else if ((brg.is_fp8 || brg.is_f16_fp8)
-                && brg.is_fp8_weights_converted_to_f16()) {
+        } else if (brg.is_fp8_weights_converted_to_f16()) {
             tdpfp16ps(x1, x2, x3);
         } else if (brg.dt_a == f8_e5m2 && brg.dt_b == f8_e5m2) {
             tdpbf8ps(x1, x2, x3);
@@ -2801,12 +2799,10 @@ template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::dot_product(Vmm v1, Vmm v2, Vmm v3) {
     if (brg.is_f16 && brg.isa_impl == avx10_2)
         vdpphps(v1, v2, v3);
-    else if ((brg.is_fp8 || brg.is_bf16_fp8)
-            && brg.is_fp8_weights_converted_to_bf16()) {
+    else if (brg.is_fp8_weights_converted_to_bf16()) {
         assert(brg.is_fp8_via_convert_non_amx());
         vdpbf16ps(v1, v2, v3);
-    } else if ((brg.is_fp8 || brg.is_f16_fp8)
-            && brg.is_fp8_weights_converted_to_f16()) {
+    } else if (brg.is_fp8_weights_converted_to_f16()) {
         assert(brg.is_fp8_via_convert_non_amx());
         vdpphps(v1, v2, v3);
     } else if (brg.is_f32 || brg.is_f16

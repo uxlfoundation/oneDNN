@@ -1997,11 +1997,9 @@ void jit_brgemm_amx_uker_base_t::tdpbxxd(brgemm_iteration_t &bi, int bdb_idx,
         tdpbf16ps(x1, x2, x3);
     } else if (brg.dt_a == f16 && brg.dt_b == f16) {
         tdpfp16ps(x1, x2, x3);
-    } else if ((brg.is_fp8 || brg.is_bf16_fp8)
-            && brg.is_fp8_weights_converted_to_bf16()) {
+    } else if (brg.is_fp8_weights_converted_to_bf16()) {
         tdpbf16ps(x1, x2, x3);
-    } else if ((brg.is_fp8 || brg.is_f16_fp8)
-            && brg.is_fp8_weights_converted_to_f16()) {
+    } else if (brg.is_fp8_weights_converted_to_f16()) {
         tdpfp16ps(x1, x2, x3);
     } else if (brg.dt_a == f8_e5m2 && brg.dt_b == f8_e5m2) {
         tdpbf8ps(x1, x2, x3);

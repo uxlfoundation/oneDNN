@@ -147,7 +147,7 @@ GEMMOptions GEMMOptions::transpose() const {
     return ret;
 }
 
-std::string strategyToString(HW hw, GEMMProblem problem, GEMMStrategy strategy) {
+std::string strategyToString(HW hw, const GEMMProblem &problem, const GEMMStrategy &strategy) {
     std::stringstream ss;
     ss << problem.toString() << " "
        << std::to_string(strategy.unroll[LoopM])

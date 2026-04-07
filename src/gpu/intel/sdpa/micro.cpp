@@ -625,7 +625,7 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     ukernel_params.sizes_kq = {heuristic_sizes};
 
     /* Set up GEMMProblem structure for second GEMM: V * S  */
-    auto problem_vs = std::move(problem);
+    auto problem_vs = problem;
     problem_vs.Tc = problem_vs.Ts
             = (vs_acc_dt() == data_type::f16) ? Type::f16 : Type::f32;
 
@@ -723,7 +723,7 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     ukernel_params.opts_qdSt = {opts_qdSt};
 
     // dS * K
-    auto problem_ktq = problem;
+    auto problem_ktq = std::move(problem);
     problem_ktq.Ta_ext
             = convert_dnnl_to_kernel_type(desc()->key_md()->data_type);
 
@@ -1180,7 +1180,7 @@ status_t micro_fwd_params_t::get_kernel_ctx(
             ss >> strat.unroll[1];
             std::string strategyString;
             std::getline(ss >> std::ws, strategyString);
-            parseStrategy(strategyString.c_str(), hw, problem_kq, strat);
+            parseStrategy(strategyString, hw, problem_kq, strat);
             adjustStrategy(hw, problem_kq, strat);
         }
     };
@@ -1208,7 +1208,7 @@ status_t micro_fwd_params_t::get_kernel_ctx(
             ss >> strat.unroll[1];
             std::string strategyString;
             std::getline(ss >> std::ws, strategyString);
-            parseStrategy(strategyString.c_str(), hw, problem_vs, strat);
+            parseStrategy(strategyString, hw, problem_vs, strat);
             adjustStrategy(hw, problem_vs, strat);
         }
     };

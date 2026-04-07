@@ -1677,7 +1677,7 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
     strm.wait();
     if (dropout_mask_fwd_out != nullptr && p.dropout.enabled()
             && p.dropout.has_output_mask()) {
-        *dropout_mask_fwd_out = softmax_dropout_mask;
+        *dropout_mask_fwd_out = std::move(softmax_dropout_mask);
     }
 
 #if DEBUG_PRINT_MEM

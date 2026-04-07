@@ -166,7 +166,7 @@ status_t gen_desc_t::finalize(const char *tags) {
         problem_.beta = stringToScalar(val);
 
         ovr_strategy = ss.str().substr(ss.tellg()); // remaining string
-        parseStrategy(ovr_strategy.c_str(), hw_, problem_, strategy_);
+        parseStrategy(ovr_strategy, hw_, problem_, strategy_);
 
         // TODO: override derived values in aux_params_ in a way that's
         // consistent with the kernel evaluator (typically requires extra

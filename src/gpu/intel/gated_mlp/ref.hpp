@@ -161,7 +161,7 @@ struct ref_t : public primitive_t {
 
     status_t execute(const exec_ctx_t &ctx) const override {
         auto prep_weights_and_run
-                = [&](exec_args_t &args, int idx,
+                = [&](exec_args_t &&args, int idx,
                           const std::shared_ptr<impl::primitive_t> &prim) {
             args[DNNL_ARG_WEIGHTS] = ctx.args().at(idx);
             if (!pd()->attr()->scales_.has_default_values(idx))
@@ -201,7 +201,8 @@ struct ref_t : public primitive_t {
             exec_args_t args;
             args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_SRC);
             args[DNNL_ARG_DST] = memory_arg_t {inter_src_mem.get(), false};
-            CHECK(prep_weights_and_run(args, DNNL_ARG_WEIGHTS_UP, gemm_up_));
+            CHECK(prep_weights_and_run(
+                    std::move(args), DNNL_ARG_WEIGHTS_UP, gemm_up_));
         } while (false);
         do {
             exec_args_t args;
@@ -211,14 +212,14 @@ struct ref_t : public primitive_t {
             args[DNNL_ARG_ATTR_MULTIPLE_POST_OP(1) | DNNL_ARG_SRC_1]
                     = memory_arg_t {inter_src_mem.get(), true};
             CHECK(prep_weights_and_run(
-                    args, DNNL_ARG_WEIGHTS_GATE, gemm_gate_));
+                    std::move(args), DNNL_ARG_WEIGHTS_GATE, gemm_gate_));
         } while (false);
         do {
             exec_args_t args;
             args[DNNL_ARG_SRC] = memory_arg_t {inter_wei_mem.get(), true};
             args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DST);
             CHECK(prep_weights_and_run(
-                    args, DNNL_ARG_WEIGHTS_DOWN, gemm_down_));
+                    std::move(args), DNNL_ARG_WEIGHTS_DOWN, gemm_down_));
         } while (false);
 
         return status::success;

@@ -231,7 +231,7 @@ std::string generateShim(const Package &package, HostLanguage language,
     auto nargs = int(pargs.size());
 
     /* Match up protocol settings with microkernel settings */
-    auto psettings = package.protocol.settings();
+    const auto &psettings = package.protocol.settings();
     auto settings = matchProtocol(psettings, package.settings);
 
     /* Collect actual argument types */

@@ -170,7 +170,7 @@ static void getTiling(std::stringstream &s, MatrixAddressingStrategy &astrategy)
     }
 }
 
-void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrategy &strategy)
+void parseStrategy(const std::string &str, HW hw, const GEMMProblem &problem, GEMMStrategy &strategy)
 {
     std::stringstream s(str);
     s.imbue(std::locale::classic());

@@ -177,7 +177,7 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
             Scalar alpha(a), beta(b);
             std::string strategyString;
             std::getline(ss >> std::ws, strategyString);
-            parseStrategy(strategyString.c_str(), hw, problem, strat);
+            parseStrategy(strategyString, hw, problem, strat);
             adjustStrategy(hw, problem, strat);
         }
         strategyGRFs_ = strat.GRFs;

@@ -1,5 +1,5 @@
 # ******************************************************************************
-# Copyright 2020-2025 Arm Limited and affiliates.
+# Copyright 2020-2026 Arm Limited and affiliates.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,7 +33,7 @@ find_package(ACL REQUIRED)
 
 # Required. The minimum compatible major-version as per Semantic Versioning.
 set(ACL_MIN_MAJOR_VERSION "52")
-set(ACL_MIN_MINOR_VERSION "4")
+set(ACL_MIN_MINOR_VERSION "7")
 set(ACL_MIN_VERSION "${ACL_MIN_MAJOR_VERSION}.${ACL_MIN_MINOR_VERSION}")
 
 # Optional. Maximum known compatible version if any.

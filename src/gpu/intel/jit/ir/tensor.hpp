@@ -1075,11 +1075,19 @@ private:
         }
     }
 
+    bool all_vdims_are_1(const pvar_t &tidx) const {
+        auto &tinfo = tdims_[tidx];
+        for (dim_idx_t i = 0; i < tinfo.nvargs(); i++) {
+            if (vdims_[tinfo.vidx(i)] != 1) return false;
+        }
+        return true;
+    }
+
     std::vector<layout_block_t> move_size_1_blocks_outer() const {
         std::vector<layout_block_t> new_blocks;
         std::vector<layout_block_t> size_1_blocks;
         for (auto &b : tlayout_.blocks()) {
-            if (b.size == 1 && vdims_.get(b.idx) == 1) {
+            if (b.size == 1 && all_vdims_are_1(b.idx)) {
                 size_1_blocks.emplace_back(b);
             } else {
                 new_blocks.emplace_back(b);

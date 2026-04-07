@@ -38,17 +38,21 @@ where *matmul-knobs* are:
             format tag must be specified.
  - `--encoding=STRING` - sparse encodings and sparsity. No encodings are set by
             default. Refer to [encodings](knobs_encoding.md) for details.
- - `--grouped=DIM_IDX:NUM_GROUPS:size0,size1,...,sizeN` -- specifies grouped
-            encoding for a given dimension to execute grouped GEMM.
+ - `--grouped=DIM_IDX:NUM_GROUPS:size0+size1+...+sizeN[:max_size]` -- specifies
+            grouped encoding for a given dimension to execute grouped GEMM.
             `DIM_IDX` is the dimension index (`0` is `M`, `1` is `K`, `2` is `N`),
             `NUM_GROUPS` is the number of tensors in a group or number of experts,
-            and `size0,size1,...,sizeN` are comma-separated sizes or
-            resolved variable dimensions.
+            `size0+size1+...+sizeN` are `+`-separated sizes or resolved variable
+            dimensions, and optional `max_size` is the max variable dim hint for
+            optimal dispatch.
             When grouped encoding is specified, weights must be provided as 3D
             `[G,K,N]` where `G` matches `NUM_GROUPS`.
-            Example: `--grouped=0:4:32,0,32,96 160x512:4x512x256`
+            Multiple configs can be comma-separated to iterate over them.
+            Example: `--grouped=0:4:32+0+32+96 160x512:4x512x256`
             means `M` dimension is variable, `4` experts are used, `32, 0, ...`
             are sizes of each group with total `32+0+32+96 = 160`.
+            Example: `--grouped=0:4:8+8+8+8:8` specifies max group size of `8`.
+            Example: `--grouped=0:4:8+8+8+8,0:3:2+6+8` iterates over two configs.
  - `--match=REGEX` -- skip problems not matching the regular expression in
             `REGEX`. By default no pattern is applied (run everything).
             Note: Windows may interpret only string arguments surrounded by

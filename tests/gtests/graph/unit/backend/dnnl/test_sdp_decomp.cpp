@@ -76,7 +76,7 @@ TEST(test_sdp_decomp_execute, F32SdpDecomp_CPU) {
             else
                 ASSERT_EQ(g.get_ops().size(), 6U);
 
-            graph::pass::pass_base_ptr apass = get_pass("float_sdp_fusion_cpu");
+            graph::pass::pass_base_ptr apass = get_pass("float_sdp_fusion");
             apass->run(g);
             ASSERT_EQ(g.get_num_partitions(), 1U);
             auto part = g.get_partitions()[0];
@@ -180,7 +180,7 @@ TEST(test_sdp_decomp_execute, Bf16SdpDecomp_CPU) {
             else
                 ASSERT_EQ(g.get_ops().size(), 6U);
 
-            graph::pass::pass_base_ptr apass = get_pass("float_sdp_fusion_cpu");
+            graph::pass::pass_base_ptr apass = get_pass("float_sdp_fusion");
             apass->run(g);
             ASSERT_EQ(g.get_num_partitions(), 1U);
             auto part = g.get_partitions()[0];
@@ -574,7 +574,7 @@ TEST(test_sdp_decomp_execute, F32SdpCorr_CPU) {
                     attention_mask_vec[j]);
             g.finalize();
 
-            graph::pass::pass_base_ptr apass = get_pass("float_sdp_fusion_cpu");
+            graph::pass::pass_base_ptr apass = get_pass("float_sdp_fusion");
             apass->run(g);
             ASSERT_EQ(g.get_num_partitions(), 1U);
             auto part = g.get_partitions()[0];
@@ -694,7 +694,7 @@ TEST(test_sdp_decomp_execute, F32DistilBertSdpCorr_CPU) {
                 batch_size, seq_len, num_head, head_dim, transpose_b[i]);
         g.finalize();
 
-        graph::pass::pass_base_ptr apass = get_pass("float_sdp_fusion_cpu");
+        graph::pass::pass_base_ptr apass = get_pass("float_sdp_fusion");
         apass->run(g);
         ASSERT_EQ(g.get_num_partitions(), 1U);
         auto part = g.get_partitions()[0];
@@ -817,7 +817,7 @@ TEST(test_sdp_decomp_execute, Bf16SdpCorr_CPU) {
                     attention_mask_vec[j]);
             g.finalize();
 
-            graph::pass::pass_base_ptr apass = get_pass("float_sdp_fusion_cpu");
+            graph::pass::pass_base_ptr apass = get_pass("float_sdp_fusion");
             apass->run(g);
             ASSERT_EQ(g.get_num_partitions(), 1U);
             auto part = g.get_partitions()[0];
@@ -942,7 +942,7 @@ TEST(test_sdp_decomp_execute, Bf16DistilBertSdpCorr_CPU) {
                 batch_size, seq_len, num_head, head_dim, transpose_b[i]);
         g.finalize();
 
-        graph::pass::pass_base_ptr apass = get_pass("float_sdp_fusion_cpu");
+        graph::pass::pass_base_ptr apass = get_pass("float_sdp_fusion");
         apass->run(g);
         ASSERT_EQ(g.get_num_partitions(), 1U);
         auto part = g.get_partitions()[0];

@@ -666,9 +666,7 @@ TEST(test_large_partition_execute, F32Mha) {
 
     ASSERT_EQ(g.get_ops().size(), 7U);
 
-    graph::pass::pass_base_ptr apass = get_pass(
-            eng->kind() == graph::engine_kind::cpu ? "float_sdp_fusion_cpu"
-                                                   : "float_sdp_fusion_gpu");
+    graph::pass::pass_base_ptr apass = get_pass("float_sdp_fusion");
     apass->run(g);
     ASSERT_EQ(g.get_num_partitions(), 1U);
     auto part = g.get_partitions()[0];
@@ -726,9 +724,7 @@ TEST(test_large_partition_execute, F32DistilBertMha) {
 
     ASSERT_EQ(g.get_ops().size(), 7U);
 
-    graph::pass::pass_base_ptr apass = get_pass(
-            eng->kind() == graph::engine_kind::cpu ? "float_sdp_fusion_cpu"
-                                                   : "float_sdp_fusion_gpu");
+    graph::pass::pass_base_ptr apass = get_pass("float_sdp_fusion");
     apass->run(g);
     ASSERT_EQ(g.get_num_partitions(), 1U);
     auto part = g.get_partitions()[0];
@@ -1001,9 +997,7 @@ TEST(test_large_partition_execute, Bf16Mha_CPU) {
 
     ASSERT_EQ(g.get_ops().size(), 7U);
 
-    graph::pass::pass_base_ptr apass = get_pass(
-            eng->kind() == graph::engine_kind::cpu ? "float_sdp_fusion_cpu"
-                                                   : "float_sdp_fusion_gpu");
+    graph::pass::pass_base_ptr apass = get_pass("float_sdp_fusion");
     apass->run(g);
     ASSERT_EQ(g.get_num_partitions(), 1U);
     auto part = g.get_partitions()[0];
@@ -1148,9 +1142,7 @@ TEST(test_large_partition_execute, Bf16DistilBertMha) {
 
     ASSERT_EQ(g.get_ops().size(), 7U);
 
-    graph::pass::pass_base_ptr apass = get_pass(
-            eng->kind() == graph::engine_kind::cpu ? "float_sdp_fusion_cpu"
-                                                   : "float_sdp_fusion_gpu");
+    graph::pass::pass_base_ptr apass = get_pass("float_sdp_fusion");
     apass->run(g);
     ASSERT_EQ(g.get_num_partitions(), 1U);
     auto part = g.get_partitions()[0];

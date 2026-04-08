@@ -115,10 +115,9 @@ graph::utils::pm::repetition_t *optional_scale_and_masks(
 
 DNNL_BACKEND_REGISTER_PATTERN_DEF_BEGIN(sdp)
 
-DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_sdp_fusion_cpu)
+DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_sdp_fusion)
         .set_priority(21.0f)
         .set_kind(partition_kind_t::sdp)
-        .set_engine_kind(engine_kind::cpu)
         .set_attr<FCreatePattern>("FCreatePattern",
                 [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
                     auto matmul_qk = pgraph->append_op(graph::op_kind::MatMul);
@@ -151,28 +150,6 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_sdp_gemma_fusion_cpu)
                             {in_edge(0, opt_select, 0)});
                     auto matmul_v = pgraph->append_op(
                             graph::op_kind::MatMul, {in_edge(0, softmax, 0)});
-                    // Optional transpose + reshape/reorder
-                    optional_transpose_reshape(pgraph, matmul_v, 0);
-                })
-        .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
-            return std::make_shared<sdp_base_t<>>();
-        });
-
-// for implicit causal mask, gpu only supports f16/bf16 dtype
-DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_sdp_fusion_gpu)
-        .set_priority(21.0f)
-        .set_kind(partition_kind_t::sdp)
-        .set_engine_kind(engine_kind::gpu)
-        .set_attr<FCreatePattern>("FCreatePattern",
-                [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
-                    auto matmul_qk = pgraph->append_op(graph::op_kind::MatMul);
-                    auto optional_scale_and_mask
-                            = optional_scale_and_masks(pgraph, matmul_qk);
-                    auto softmax = pgraph->append_op(graph::op_kind::SoftMax,
-                            {in_edge(0, optional_scale_and_mask, 0)});
-                    auto dropout = optional_dropout(pgraph, softmax);
-                    auto matmul_v = pgraph->append_op(
-                            graph::op_kind::MatMul, {in_edge(0, dropout, 0)});
                     // Optional transpose + reshape/reorder
                     optional_transpose_reshape(pgraph, matmul_v, 0);
                 })

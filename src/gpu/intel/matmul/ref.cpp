@@ -125,6 +125,8 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
             = b_d.ndims() > 2 ? wei_scale_strides[b_d.ndims() - 3] : 0;
     const dim_t wei_scale_stride_b1
             = b_d.ndims() > 3 ? wei_scale_strides[b_d.ndims() - 4] : 0;
+    const dim_t wei_scale_stride_b2
+            = b_d.ndims() > 4 ? wei_scale_strides[b_d.ndims() - 5] : 0;
 
     const int src_scale_mask = attr_scales.get_mask(DNNL_ARG_SRC);
     const bool src_scale_per_k = src_scale_mask & pd()->src_qmask_K();
@@ -160,6 +162,8 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
             = a_d.ndims() > 2 ? src_scale_strides[a_d.ndims() - 3] : 0;
     const dim_t src_scale_stride_b1
             = a_d.ndims() > 3 ? src_scale_strides[a_d.ndims() - 4] : 0;
+    const dim_t src_scale_stride_b2
+            = a_d.ndims() > 4 ? src_scale_strides[a_d.ndims() - 5] : 0;
 
     const auto &attr_zps = pd()->attr()->zero_points_;
     int wei_zp_mask = attr_zps.get_mask(DNNL_ARG_WEIGHTS);
@@ -190,6 +194,8 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
             = b_d.ndims() > 2 ? wei_zp_strides[b_d.ndims() - 3] : 0;
     const dim_t wei_zp_stride_b1
             = b_d.ndims() > 3 ? wei_zp_strides[b_d.ndims() - 4] : 0;
+    const dim_t wei_zp_stride_b2
+            = b_d.ndims() > 4 ? wei_zp_strides[b_d.ndims() - 5] : 0;
 
     int src_zp_mask = attr_zps.get_mask(DNNL_ARG_SRC);
     const auto src_zp_group_k = attr_zps.get_group(DNNL_ARG_SRC, 1);
@@ -213,6 +219,12 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
     }
     const dim_t src_zp_stride_k = src_zp_strides[a_d.ndims() - 1];
     const dim_t src_zp_stride_m = src_zp_strides[a_d.ndims() - 2];
+    const dim_t src_zp_stride_b0
+            = a_d.ndims() > 2 ? src_zp_strides[a_d.ndims() - 3] : 0;
+    const dim_t src_zp_stride_b1
+            = a_d.ndims() > 3 ? src_zp_strides[a_d.ndims() - 4] : 0;
+    const dim_t src_zp_stride_b2
+            = a_d.ndims() > 4 ? src_zp_strides[a_d.ndims() - 5] : 0;
 
     const auto &attr_pr = pd()->attr()->precomputed_reductions_;
     const int src_pr_mask = attr_pr.get_mask(DNNL_ARG_SRC);
@@ -240,6 +252,8 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
             = a_d.ndims() > 2 ? src_pr_strides[a_d.ndims() - 3] : 0;
     const dim_t src_pr_stride_b1
             = a_d.ndims() > 3 ? src_pr_strides[a_d.ndims() - 4] : 0;
+    const dim_t src_pr_stride_b2
+            = a_d.ndims() > 4 ? src_pr_strides[a_d.ndims() - 5] : 0;
 
     // For compute kernel, the minimal group is picked.
     const auto scale_ngroups_k
@@ -267,12 +281,16 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
     arg_list.set(arg_idx++, a0);
     arg_list.set(arg_idx++, src_zp_stride_k);
     arg_list.set(arg_idx++, src_zp_stride_m);
+    arg_list.set(arg_idx++, src_zp_stride_b0);
+    arg_list.set(arg_idx++, src_zp_stride_b1);
+    arg_list.set(arg_idx++, src_zp_stride_b2);
     arg_list.set(arg_idx++, src_zp_group_k);
     arg_list.set(arg_idx++, b0);
     arg_list.set(arg_idx++, wei_zp_stride_n);
     arg_list.set(arg_idx++, wei_zp_stride_k);
     arg_list.set(arg_idx++, wei_zp_stride_b0);
     arg_list.set(arg_idx++, wei_zp_stride_b1);
+    arg_list.set(arg_idx++, wei_zp_stride_b2);
     arg_list.set(arg_idx++, wei_zp_group_n);
     arg_list.set(arg_idx++, wei_zp_group_k);
     arg_list.set(arg_idx++, c0);
@@ -281,6 +299,7 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
     arg_list.set(arg_idx++, src_scale_stride_m);
     arg_list.set(arg_idx++, src_scale_stride_b0);
     arg_list.set(arg_idx++, src_scale_stride_b1);
+    arg_list.set(arg_idx++, src_scale_stride_b2);
     arg_list.set(arg_idx++, src_scale_group_m);
     arg_list.set(arg_idx++, src_scale_group_k);
     arg_list.set(arg_idx++, wei_scales);
@@ -288,6 +307,7 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
     arg_list.set(arg_idx++, wei_scale_stride_k);
     arg_list.set(arg_idx++, wei_scale_stride_b0);
     arg_list.set(arg_idx++, wei_scale_stride_b1);
+    arg_list.set(arg_idx++, wei_scale_stride_b2);
     arg_list.set(arg_idx++, wei_scale_group_n);
     arg_list.set(arg_idx++, wei_scale_group_k);
     arg_list.set(arg_idx++, dst_scales);
@@ -296,6 +316,7 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
     arg_list.set(arg_idx++, src_pr_stride_m);
     arg_list.set(arg_idx++, src_pr_stride_b0);
     arg_list.set(arg_idx++, src_pr_stride_b1);
+    arg_list.set(arg_idx++, src_pr_stride_b2);
     arg_list.set(arg_idx++, src_pr_group_k);
     arg_list.set(arg_idx++, group_K);
     arg_list.set(arg_idx++, K);

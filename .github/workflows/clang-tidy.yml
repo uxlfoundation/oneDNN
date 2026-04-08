@@ -1,6 +1,6 @@
 # *******************************************************************************
 # Copyright 2025 Intel Corporation
-# Copyright 2025 Arm Limited and affiliates.
+# Copyright 2025-2026 Arm Limited and affiliates.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -117,6 +117,9 @@ jobs:
           echo "arm_compute_version=${ACL_VERSION}" > ./build/arm_compute_version.embed
           touch ./build/libarm_compute.so
           touch ./build/libarm_compute_graph.so
+          # Delete this since clang-tidy seems to get confused and read this
+          # external config
+          rm .clang-tidy
 
       - if: ${{ matrix.config.arch == 'x64' }}
         name: Configure oneDNN - x64

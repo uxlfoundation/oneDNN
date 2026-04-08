@@ -186,8 +186,8 @@ void align_src_dst_offset(GeneratorT *host, ngen_register_scope_t &scope,
         // the null register. In the case of the null register, we align to the
         // GRF boundary.
         reg_buf_data_t dummy(reg_buf_t(rd.hw(), ngen::GRFRange(0, 1)));
-        // This call returns early if everything is already aligned nicely
-        align_src_dst_offset(host, scope, mod, dummy, rd, align_stride);
+        // This call returns early if everything is already aligned nicely.
+        align_src_dst_offset(host, scope, mod, dummy, rd, false);
     } else {
         align_src_dst_offset(
                 host, scope, mod, dst.reg_buf_data(), rd, align_stride);

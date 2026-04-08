@@ -208,6 +208,7 @@ protected:
 private:
     InstructionModifier defaultModifier;
     bool useEfficient64Bit = (hw >= HW::XE3P_35_10);
+    bool inSyncInsert_ = false;
 
     LabelManager labelManager;
     InstructionStream rootStream;
@@ -220,7 +221,16 @@ private:
     }
 
     void db(const Instruction8 &i)   { streamStack.back()->db(i); }
-    void db(const Instruction12 &i)  { streamStack.back()->db(i); }
+    void db(const Instruction12 &i)  { //streamStack.back()->db(i); }
+        streamStack.back()->db(i);
+        if (!inSyncInsert_ && i.opcode() != Opcode::sync) {
+            inSyncInsert_ = true;
+            opSync(Opcode::sync, SyncFunction::nop, InstructionModifier(), SourceLocation{});
+            opSync(Opcode::sync, SyncFunction::allrd, InstructionModifier(), SourceLocation{});
+            opSync(Opcode::sync, SyncFunction::allwr, InstructionModifier(), SourceLocation{});
+            inSyncInsert_ = false;
+        }
+    }
     void addFixup(LabelFixup fixup)  { streamStack.back()->addFixup(fixup); }
 
     template <bool forceWE = false, typename D, typename S0, HW hw_ = hw>

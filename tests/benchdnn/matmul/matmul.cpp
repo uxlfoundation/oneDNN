@@ -525,6 +525,7 @@ static int fill_grouped_data(data_kind_t kind, const prb_t *prb,
 
     // Fill offsets buffer
     SAFE(fill_grouped_offsets(mem_dt, prb->sparse_options), WARN);
+    SAFE(fill_grouped_offsets(mem_fp, prb->sparse_options), WARN);
 
     if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) return OK;
 
@@ -841,7 +842,18 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                 ref_mem_map.emplace(exec_arg,
                         dnn_mem_t(mem.md_, dnnl_f32, strides, ref_engine,
                                 /* prefill = */ false));
-            } else if (exec_arg != DNNL_ARG_SCRATCHPAD) {
+            }
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+            else if (is_grouped
+                    && (exec_arg == DNNL_ARG_SRC || exec_arg == DNNL_ARG_DST)) {
+                data_kind_t kind = exec_arg == DNNL_ARG_SRC ? SRC : DST;
+                auto grouped_fp_md = create_grouped_md(prb, kind, dnnl_f32);
+                ref_mem_map.emplace(exec_arg,
+                        dnn_mem_t(grouped_fp_md, ref_engine,
+                                /* prefill = */ false));
+            }
+#endif
+            else if (exec_arg != DNNL_ARG_SCRATCHPAD) {
                 // Scratchpad memory relates to a primitive. If reference needs
                 // it, use switch below to define a memory desc for it.
                 ref_mem_map.emplace(exec_arg,
@@ -875,6 +887,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                     // Only offsets need to be filled
                     // as values are computed by the library
                     SAFE(fill_grouped_offsets(mem, prb->sparse_options), WARN);
+                    SAFE(fill_grouped_offsets(ref_mem, prb->sparse_options),
+                            WARN);
                 }
                 const auto &po = prb->attr.post_ops;
                 const int sum_idx = po.find(attr_t::post_ops_t::SUM);

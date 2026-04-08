@@ -1,5 +1,5 @@
 {
-  "version": "3.11.0",
+  "version": "3.13.0",
   "engine_kind": "cpu",
   "fpmath_mode": "strict",
   "fpmath_mode_apply_to_int": "false",
@@ -39,7 +39,7 @@
       "inputs": [
         {
           "id": 200,
-          "dtype": "bf16",
+          "dtype": "f32",
           "shape": [
             2,
             2,
@@ -59,7 +59,7 @@
         },
         {
           "id": 201,
-          "dtype": "bf16",
+          "dtype": "f32",
           "shape": [
             2,
             2,
@@ -134,7 +134,7 @@
         },
         {
           "id": 202,
-          "dtype": "bf16",
+          "dtype": "f32",
           "shape": [
             1
           ],
@@ -201,7 +201,7 @@
         },
         {
           "id": 203,
-          "dtype": "bf16",
+          "dtype": "f32",
           "shape": [
             2,
             2,
@@ -397,10 +397,23 @@
       ]
     },
     {
-      "id": 12,
-      "name": "typecast",
-      "kind": "TypeCast",
-      "attrs": {},
+      "id": 13,
+      "name": "bmm2",
+      "kind": "MatMul",
+      "attrs": {
+        "transpose_b": {
+          "type": "bool",
+          "value": 0
+        },
+        "transpose_a": {
+          "type": "bool",
+          "value": 0
+        },
+        "accumulation_mode": {
+          "type": "string",
+          "value": "strict"
+        }
+      },
       "inputs": [
         {
           "id": 10,
@@ -421,73 +434,10 @@
           ],
           "layout_type": "strided",
           "property_type": "undef"
-        }
-      ],
-      "outputs": [
-        {
-          "id": 11,
-          "dtype": "bf16",
-          "shape": [
-            2,
-            2,
-            8,
-            128,
-            128
-          ],
-          "stride": [
-            262144,
-            131072,
-            16384,
-            128,
-            1
-          ],
-          "layout_type": "strided",
-          "property_type": "undef"
-        }
-      ]
-    },
-    {
-      "id": 13,
-      "name": "bmm2",
-      "kind": "MatMul",
-      "attrs": {
-        "transpose_b": {
-          "type": "bool",
-          "value": 0
-        },
-        "transpose_a": {
-          "type": "bool",
-          "value": 0
-        },
-        "accumulation_mode": {
-          "type": "string",
-          "value": "strict"
-        }
-      },
-      "inputs": [
-        {
-          "id": 11,
-          "dtype": "bf16",
-          "shape": [
-            2,
-            2,
-            8,
-            128,
-            128
-          ],
-          "stride": [
-            262144,
-            131072,
-            16384,
-            128,
-            1
-          ],
-          "layout_type": "strided",
-          "property_type": "undef"
         },
         {
           "id": 204,
-          "dtype": "bf16",
+          "dtype": "f32",
           "shape": [
             2,
             2,
@@ -509,7 +459,7 @@
       "outputs": [
         {
           "id": 12,
-          "dtype": "bf16",
+          "dtype": "f32",
           "shape": [
             2,
             2,

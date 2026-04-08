@@ -410,14 +410,32 @@ inline graph::utils::pm::repetition_t *optional_scale(
 
 inline graph::utils::pm::repetition_t *optional_dropout(
         const std::shared_ptr<graph::utils::pm::pb_graph_t> &pgraph,
-        graph::utils::pm::pb_node_t *input) {
+        graph::utils::pm::pb_node_t *input,
+        graph::data_type_t dtype = graph::data_type::undef) {
     auto dropout_graph = std::make_shared<graph::utils::pm::pb_graph_t>();
     auto dropout = dropout_graph->append_op(graph::op_kind::Dropout);
+    if (dtype != data_type::undef) {
+        dropout->append_decision_function([dtype](op_t *op) {
+            const logical_tensor_t &iport = op->get_input_logical_tensor(0);
+            return iport.data_type == dtype;
+        });
+    }
     dropout_graph->create_input_port(0, dropout, 0);
     dropout_graph->create_output_port(0, dropout, 0);
     auto optional_dropout
             = pgraph->append_optional(dropout_graph, {in_edge(0, input, 0)});
     return optional_dropout;
+}
+
+inline graph::utils::pm::repetition_t *optional_typecast(
+        const std::shared_ptr<graph::utils::pm::pb_graph_t> &pgraph,
+        graph::utils::pm::pb_node_t *input) {
+    auto tc_graph = std::make_shared<graph::utils::pm::pb_graph_t>();
+    auto tc = tc_graph->append_op(graph::op_kind::TypeCast);
+    tc_graph->create_input_port(0, tc, 0);
+    tc_graph->create_output_port(0, tc, 0);
+    auto opt_tc = pgraph->append_optional(tc_graph, {in_edge(0, input, 0)});
+    return opt_tc;
 }
 
 inline graph::utils::pm::repetition_t *optional_explicit_mask(

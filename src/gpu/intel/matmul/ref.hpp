@@ -75,8 +75,12 @@ struct ref_t : public primitive_t {
             VDISPATCH_MATMUL(
                     precomputed_reductions_ok(), VERBOSE_UNSUPPORTED_PR_CFG);
             VDISPATCH_MATMUL(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_MATMUL(IMPLICATION(has_blocks(), dst_md()->ndims < 6),
+            VDISPATCH_MATMUL(
+                    IMPLICATION(has_blocks() || !attr()->has_default_values(),
+                            dst_md()->ndims < 6),
                     VERBOSE_BAD_NDIMS, "dst", dst_md()->ndims);
+            VDISPATCH_MATMUL(dst_md()->ndims <= 6, VERBOSE_BAD_NDIMS, "dst",
+                    dst_md()->ndims);
 
             const bool is_f64
                     = utils::everyone_is(f64, src_dt_, wei_dt_, dst_dt_);

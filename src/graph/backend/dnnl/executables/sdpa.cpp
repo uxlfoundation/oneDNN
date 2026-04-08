@@ -50,6 +50,11 @@ sdpa_executable_t::sdpa_executable_t(std::shared_ptr<op_t> &op,
     dnnl::primitive_attr attr, qk_attr, vs_attr;
     attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
     attr.set_fpmath_mode(static_cast<dnnl::fpmath_mode>(fpmath.mode_));
+    if (with_dropout_) {
+        dnnl::memory::desc dropout_mask_desc;
+        attr.set_dropout(dropout_mask_desc, dnnl::memory::data_type::s64,
+                /*use_offset*/ true, /*use_host_scalars*/ true);
+    }
 
     is_invert_scale_ = op->has_attr(op_attr::is_invert_scale)
             ? op->get_attr<bool>(op_attr::is_invert_scale)

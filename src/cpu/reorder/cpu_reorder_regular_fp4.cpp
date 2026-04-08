@@ -26,6 +26,9 @@ const impl_list_map_t &regular_fp4_impl_list_map() {
     static const impl_list_map_t the_map = REG_REORDER_P({
         {{f32, f4_e2m1, 0}, {
             REG_SR(f32, any, f4_e2m1, any, fmt_order::any, spec::reference)
+
+            CPU_REORDER_INSTANCE_GROUPED(simple_grouped_reorder_t<f32, impl::format_tag_t, any, f4_e2m1, impl::format_tag_t, any>)
+
             nullptr,
         }},
         {{f4_e2m1, data_type::undef, 0}, {

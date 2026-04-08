@@ -51,6 +51,8 @@ const impl_list_map_t &regular_f32_bf16_impl_list_map() {
 
             REG_SR(f32, any, bf16, any, fmt_order::any, spec::reference)
 
+            CPU_REORDER_INSTANCE_GROUPED(simple_grouped_reorder_t<f32, impl::format_tag_t, any, bf16, impl::format_tag_t, any>)
+
             nullptr,
         }},
     });

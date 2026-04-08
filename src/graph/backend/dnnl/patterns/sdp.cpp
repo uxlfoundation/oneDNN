@@ -125,9 +125,12 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_sdp_fusion)
                             = optional_scale_and_masks(pgraph, matmul_qk);
                     auto softmax = pgraph->append_op(graph::op_kind::SoftMax,
                             {in_edge(0, optional_scale_and_mask, 0)});
-                    auto dropout = optional_dropout(pgraph, softmax);
+                    auto dropout = optional_dropout(
+                            pgraph, softmax, graph::data_type::f32);
+                    // for xf16, there might be a typecast from f32 to xf16.
+                    auto tc = optional_typecast(pgraph, dropout);
                     auto matmul_v = pgraph->append_op(
-                            graph::op_kind::MatMul, {in_edge(0, dropout, 0)});
+                            graph::op_kind::MatMul, {in_edge(0, tc, 0)});
                     // Optional transpose + reshape/reorder
                     optional_transpose_reshape(pgraph, matmul_v, 0);
                 })

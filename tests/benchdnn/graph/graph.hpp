@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2022 Intel Corporation
+* Copyright 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -55,7 +56,7 @@ struct settings_t : public base_settings_t {
     std::vector<std::map<size_t, std::string>> op_kind_map {
             {{SIZE_MAX, "default"}}};
 
-    const char *perf_template_csv = "perf,%engine%,%DESC%,%-time%,%0time%";
+    const char *perf_template_csv = "perf,%engine%,%desc%,%-time%,%0time%";
     static constexpr const char *perf_template_def
             = "perf,%engine%,%prb%,%-time%,%0time%";
 

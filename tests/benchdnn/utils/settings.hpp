@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2022 Intel Corporation
+* Copyright 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -110,7 +111,7 @@ struct base_settings_t {
         static const std::string csv_pre
                 = std::string("perf,%engine%,%impl%,%name%,");
         static const std::string csv_post = std::string(
-                ",%attr%,%DESC%,%Gops%,%+ctime%,%-time%,%-Gflops%,%0time%,%"
+                ",%attr%,%desc%,%Gops%,%+ctime%,%-time%,%-Gflops%,%0time%,%"
                 "0Gflops%");
         static const std::string csv = csv_pre + driver_args + csv_post;
         return csv.c_str();

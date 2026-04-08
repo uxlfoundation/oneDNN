@@ -136,7 +136,7 @@ CSV-style:
                --batch=inputs/ip/test_ip_all
 ```
 ```
-Output template: perf,%engine%,%name%,%dir%,%cfg%,%attr%,%DESC%,%Gops%,%Gfreq%,%-time%,%-Gflops%,%0time%,%0Gflops%
+Output template: perf,%engine%,%name%,%dir%,%cfg%,%attr%,%desc%,%Gops%,%Gfreq%,%-time%,%-Gflops%,%0time%,%0Gflops%
 perf,cpu,"resnet:ip1",FWD_B,f32,,112,1000,2048,1,1,0.458752,0,0.520264,881.768,0.564043,813.328
 ```
 

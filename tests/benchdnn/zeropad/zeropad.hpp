@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2020 Intel Corporation
+* Copyright 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -87,9 +88,6 @@ struct perf_report_t : public base_perf_report_t {
     void dump_desc(std::ostream &s) const override {
         s << static_cast<const prb_dims_t &>(*p_);
     }
-
-    void dump_desc_csv(std::ostream &s) const override { dump_desc(s); }
-
     const std::string *name() const override { return &p_->name; }
     const dnnl_data_type_t *dt() const override { return &p_->dt; }
     const std::string *tag() const override { return &tag_; }

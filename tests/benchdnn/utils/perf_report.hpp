@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2019 Intel Corporation
+* Copyright 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -64,7 +65,6 @@ struct base_perf_report_t {
     virtual void dump_alg(std::ostream &) const { SAFE_V(FAIL); }
     virtual void dump_cfg(std::ostream &) const { SAFE_V(FAIL); }
     virtual void dump_desc(std::ostream &) const { SAFE_V(FAIL); }
-    virtual void dump_desc_csv(std::ostream &) const { SAFE_V(FAIL); }
     virtual void dump_flags(std::ostream &) const { SAFE_V(FAIL); }
     virtual void dump_rnn_activation(std::ostream &) const { SAFE_V(FAIL); }
     virtual void dump_rnn_direction(std::ostream &) const { SAFE_V(FAIL); }

@@ -54,7 +54,6 @@ Other problem specific options supported:
 | %attr%       | All                                                                   | Primitive attributes
 | %axis%       | Concat, Shuffle, Softmax                                              | Primitive axis
 | %desc%       | All                                                                   | String style problem descriptor
-| %DESC%       | All                                                                   | CSV-style problem descriptor values only
 | %dir%        | All, except Concat, RNN, Reorder, Sum                                 | Primitive prop kind
 | %direction%  | RNN                                                                   | RNN direction execution
 | %driver%     | All                                                                   | Name of the current driver (e.g. conv, reorder)

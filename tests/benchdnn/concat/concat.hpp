@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2019 Intel Corporation
+* Copyright 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -132,9 +133,6 @@ struct perf_report_t : public base_perf_report_t {
     void dump_desc(std::ostream &s) const override {
         s << static_cast<const prb_vdims_t &>(*p_);
     }
-
-    void dump_desc_csv(std::ostream &s) const override { dump_desc(s); }
-
     const attr_t *attr() const override { return &p_->attr; }
     const thr_ctx_t *ctx_init() const override { return &p_->ctx_init; }
     const thr_ctx_t *ctx_exe() const override { return &p_->ctx_exe; }

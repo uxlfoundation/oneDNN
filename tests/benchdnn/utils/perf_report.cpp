@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
+* Copyright 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -105,7 +106,6 @@ void base_perf_report_t::handle_option(std::ostream &s, const char *&option,
     HANDLE("alg", dump_alg(s));
     HANDLE("cfg", dump_cfg(s));
     HANDLE("desc", dump_desc(s));
-    HANDLE("DESC", dump_desc_csv(s));
     HANDLE("engine", dump_engine(s));
     HANDLE("flags", dump_flags(s));
     HANDLE("activation", dump_rnn_activation(s));

@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2018 Intel Corporation
+* Copyright 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -571,11 +572,6 @@ struct perf_report_t : public base_perf_report_t {
 
     void dump_desc(std::ostream &s) const override {
         s << static_cast<const desc_t &>(*p_);
-    }
-
-    void dump_desc_csv(std::ostream &s) const override {
-        s << p_->n_layer << "," << p_->n_iter << "," << p_->mb << "," << p_->sic
-          << "," << p_->slc << "," << p_->dhc << "," << p_->dic;
     }
 
     void dump_rnn_activation(std::ostream &s) const override {

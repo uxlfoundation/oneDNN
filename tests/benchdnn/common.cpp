@@ -187,10 +187,6 @@ void parse_result(res_t &res, const char *pstr) {
 
 /* misc */
 
-bool str2bool(const char *str) {
-    return !strcasecmp("true", str) || !strcasecmp("1", str);
-}
-
 const char *bool2str(bool value) {
     return value ? "true" : "false";
 }

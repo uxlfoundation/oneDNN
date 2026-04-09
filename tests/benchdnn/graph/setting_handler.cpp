@@ -17,6 +17,8 @@
 #include "graph/setting_handler.hpp"
 #include "graph/utils.hpp"
 
+#include "utils/parser.hpp"
+
 namespace graph {
 
 #define DNN_GRAPH_CHECK_SETTINGS(ret, res) \
@@ -84,8 +86,13 @@ bool get_graph_attr(const deserialized_op_t &base_op_ref,
 
     if (accept_fpmath_op.find(op_kind) != accept_fpmath_op.end()) {
         const auto &fpmath_mode = base_op_ref.fpmath_mode_;
-        arg_fpmath_mode.set(str2fpmath_mode(fpmath_mode.c_str()),
-                str2bool(base_op_ref.fpmath_mode_apply_to_int_.c_str()));
+        bool fpmath_mode_apply_to_int
+                = !base_op_ref.fpmath_mode_apply_to_int_.empty()
+                ? parser::parsers::str2bool(
+                          base_op_ref.fpmath_mode_apply_to_int_)
+                : false;
+        arg_fpmath_mode.set(
+                str2fpmath_mode(fpmath_mode.c_str()), fpmath_mode_apply_to_int);
     }
 
     return true;

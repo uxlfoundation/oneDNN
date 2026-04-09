@@ -25,6 +25,7 @@
 #include "dnnl_common.hpp"
 #include "graph.hpp"
 #include "ref_partition.hpp"
+#include "utils/parser.hpp"
 #include "utils/stream_kind.hpp"
 
 namespace {
@@ -342,6 +343,16 @@ int make_output_tensors(std::vector<dnnl::graph::tensor> &output_ts,
 namespace graph {
 
 using namespace dnnl::graph;
+
+prb_t::prb_t(const deserialized_graph_t &dg, const size_t &expected_n_partition)
+    : dg(dg), expected_n_partition(expected_n_partition) {
+
+    const auto &fpmath = dg.get_fpmath_mode();
+    fpmath_mode.mode_ = fpmath.first;
+    if (!fpmath.second.empty()) {
+        fpmath_mode.apply_to_int_ = parser::parsers::str2bool(fpmath.second);
+    }
+}
 
 std::string case_to_str(const std::string &json_file,
         const std::map<size_t, std::string> &in_shapes,

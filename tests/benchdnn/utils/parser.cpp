@@ -453,7 +453,7 @@ attr_t::deterministic_t str2attr_deterministic(const std::string &s) {
     attr_t::deterministic_t v;
     if (s.empty()) return v;
 
-    v.enabled = str2bool(s.c_str());
+    v.enabled = parsers::str2bool(s);
     return v;
 }
 
@@ -467,7 +467,7 @@ attr_t::fpmath_mode_t str2attr_fpmath_mode(const std::string &s) {
     if (start_pos == std::string::npos) return v;
 
     subs = get_substr(s, start_pos, '\0');
-    v.apply_to_int = str2bool(subs.c_str());
+    v.apply_to_int = parsers::str2bool(subs);
 
     return v;
 }
@@ -531,7 +531,7 @@ attr_t::dropout_t str2attr_dropout(const std::string &s) {
     if (start_pos == std::string::npos) return v;
 
     subs = get_substr(s, start_pos, '\0');
-    v.use_host_scalars = str2bool(subs.c_str());
+    v.use_host_scalars = parsers::str2bool(subs);
 
     return v;
 }
@@ -666,6 +666,21 @@ cold_cache_input_t str2cold_cache_input(const std::string &s) {
     }
 
     return c;
+}
+
+bool str2bool(const std::string &s) {
+    if (s == "1" || s == "true" || s == "TRUE") {
+        return true;
+    } else if (s == "0" || s == "false" || s == "FALSE") {
+        return false;
+    } else {
+        BENCHDNN_PRINT(0,
+                "Error: parsed value \'%s\' is expected to be a boolean value "
+                "or 0/1 integer value\n",
+                s.c_str());
+        SAFE_V(FAIL);
+    }
+    return false;
 }
 
 } // namespace parsers
@@ -1119,7 +1134,7 @@ bool parse_inplace(std::vector<bool> &inplace,
               "same memory data handle for source and destination when set to "
               "`true`.\n";
     return parse_vector_option(
-            inplace, def_inplace, str2bool, str, option_name, help);
+            inplace, def_inplace, parsers::str2bool, str, option_name, help);
 }
 
 bool parse_skip_nonlinear(std::vector<bool> &skip,
@@ -1129,7 +1144,7 @@ bool parse_skip_nonlinear(std::vector<bool> &skip,
             = "BOOL    (Default: `false`)\n    Instructs the driver to treat "
               "transcendental activations as linear when set to `true`.\n";
     return parse_vector_option(
-            skip, def_skip, str2bool, str, option_name, help);
+            skip, def_skip, parsers::str2bool, str, option_name, help);
 }
 
 bool parse_strides(std::vector<vdims_t> &strides,
@@ -1157,7 +1172,8 @@ bool parse_trivial_strides(std::vector<bool> &ts,
     static const std::string help
             = "BOOL    (Default: `false`)\n    Instructs the driver to use "
               "dense (trivial) strides when set to `true`.\n";
-    return parse_vector_option(ts, def_ts, str2bool, str, option_name, help);
+    return parse_vector_option(
+            ts, def_ts, parsers::str2bool, str, option_name, help);
 }
 
 bool parse_scale_policy(std::vector<policy_t> &policy,
@@ -1291,8 +1307,8 @@ static bool parse_allow_enum_tags_only(const char *str,
               "`dnnl_format_tag_t` enumeration only.\n    When set to `true`, "
               "the only allowed format tags are the ones from "
               "`dnnl_format_tag_t` enumeration.\n";
-    return parse_single_value_option(
-            allow_enum_tags_only, true, str2bool, str, option_name, help);
+    return parse_single_value_option(allow_enum_tags_only, true,
+            parsers::str2bool, str, option_name, help);
 }
 
 static bool parse_attr_same_pd_check(const char *str,
@@ -1303,8 +1319,8 @@ static bool parse_attr_same_pd_check(const char *str,
               "one without them.\n    When set to `true`, check would return "
               "an error if attributes caused fallback to a different "
               "implementation.\n";
-    return parse_single_value_option(
-            attr_same_pd_check, false, str2bool, str, option_name, help);
+    return parse_single_value_option(attr_same_pd_check, false,
+            parsers::str2bool, str, option_name, help);
 }
 
 static bool parse_canonical(
@@ -1315,7 +1331,7 @@ static bool parse_canonical(
               "the driver prints all options and their values, including "
               "default ones.\n";
     return parse_single_value_option(
-            canonical, false, str2bool, str, option_name, help);
+            canonical, false, parsers::str2bool, str, option_name, help);
 }
 
 static bool parse_check_ref_impl(
@@ -1326,7 +1342,7 @@ static bool parse_check_ref_impl(
               "When set to `true`, the check would return an error if the "
               "implementation name contains such pattern.\n";
     return parse_single_value_option(
-            check_ref_impl, false, str2bool, str, option_name, help);
+            check_ref_impl, false, parsers::str2bool, str, option_name, help);
 }
 
 static bool parse_cold_cache(
@@ -1409,8 +1425,8 @@ static bool parse_fast_ref(
               "faster reference path when doing correctness testing for "
               "`--engine=gpu`.\n    When set to `true`, the library best fit "
               "CPU implementation is used to compute the reference path.\n";
-    bool parsed = parse_single_value_option(
-            fast_ref, default_fast_ref, str2bool, str, option_name, help);
+    bool parsed = parse_single_value_option(fast_ref, default_fast_ref,
+            parsers::str2bool, str, option_name, help);
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_NONE
     if (parsed && fast_ref) {
         fast_ref = false;
@@ -1574,7 +1590,7 @@ static bool parse_mem_check(
               "a device RAM capability check if a problem fits a device, when "
               "set to `true`.\n";
     return parse_single_value_option(
-            mem_check, true, str2bool, str, option_name, help);
+            mem_check, true, parsers::str2bool, str, option_name, help);
 }
 
 static bool parse_memory_kind(

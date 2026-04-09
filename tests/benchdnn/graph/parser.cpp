@@ -241,7 +241,7 @@ bool parse_graph_fpmath_mode(
                             mode.c_str());
                     SAFE_V(FAIL);
                 }
-                apply_to_int = str2bool(bool_subs.c_str());
+                apply_to_int = parsers::str2bool(bool_subs);
             }
             fpmath_mode_vec.emplace_back(
                     mode_subs, apply_to_int, /* override_json_value = */ true);

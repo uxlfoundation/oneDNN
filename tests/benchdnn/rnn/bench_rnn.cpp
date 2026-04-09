@@ -166,9 +166,10 @@ int bench(int argc, char **argv) {
                 || parse_vector_option(s.flags, def.flags, str2flags, argv[0],
                         "flags", help_flags)
                 || parse_vector_option(s.with_peephole, def.with_peephole,
-                        str2bool, argv[0], "with-peephole", help_with_peephole)
+                        parsers::str2bool, argv[0], "with-peephole",
+                        help_with_peephole)
                 || parse_vector_option(s.with_projection, def.with_projection,
-                        str2bool, argv[0], "with-projection",
+                        parsers::str2bool, argv[0], "with-projection",
                         help_with_projection)
                 || parse_driver_shared_settings(s, def, argv[0]);
         if (!parsed_options) {

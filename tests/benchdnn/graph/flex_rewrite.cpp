@@ -1301,7 +1301,7 @@ int flex_rewrite_t::op_attrs_rewrite(deserialized_graph_t &dgraph) {
                 temp_op.attrs_[attr_name].str_value_ = new_val;
             } else if (attr_type == "bool") {
                 temp_op.attrs_[attr_name].bool_value_
-                        = str2bool(new_val.c_str());
+                        = parser::parsers::str2bool(new_val);
             } else if (attr_type == "s64") {
                 temp_op.attrs_[attr_name].s64_value_ = stoll(new_val);
             } else if (attr_type == "s64[]") {

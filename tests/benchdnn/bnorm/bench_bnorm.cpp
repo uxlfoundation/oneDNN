@@ -134,8 +134,8 @@ int bench(int argc, char **argv) {
                 || parse_inplace(s.inplace, def.inplace, argv[0])
                 || parse_mb(s.mb, def.mb, argv[0])
                 || parse_single_value_option(s.debug_check_ws,
-                        def.debug_check_ws, str2bool, argv[0], "debug-check-ws",
-                        help_debug_check_ws)
+                        def.debug_check_ws, parsers::str2bool, argv[0],
+                        "debug-check-ws", help_debug_check_ws)
                 || parse_driver_shared_settings(s, def, argv[0]);
         if (!parsed_options) {
             catch_unknown_options(argv[0]);

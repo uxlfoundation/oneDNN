@@ -78,6 +78,12 @@ const char *get_type_string(logical_tensor::data_type dt) {
     return type_string;
 }
 
+fpmath_mode get_fpmath_mode(logical_tensor::data_type dt) {
+    if (dt == logical_tensor::data_type::f16) return fpmath_mode::f16;
+    if (dt == logical_tensor::data_type::bf16) return fpmath_mode::bf16;
+    return fpmath_mode::strict;
+}
+
 void print_test_case(logical_tensor::data_type dt, const mlp_dims_t &p) {
     std::cout << '[' << std::setw(4) << get_type_string(dt);
     std::cout << " mb = " << p.mb << ", ic = " << p.ic << ", oc = " << p.oc
@@ -209,7 +215,7 @@ void bench_gated_mlp(engine::kind ekind, logical_tensor::data_type dt,
 
     // Construct a gated mlp graph with engine kind and operations.
     dnnl::graph::graph mlp(ekind);
-    mlp.set_fpmath_mode(fpmath_mode::strict, true);
+    mlp.set_fpmath_mode(get_fpmath_mode(dt), true);
     mlp.add_op(deq_gate);
     mlp.add_op(deq_up);
     mlp.add_op(fc_gate);

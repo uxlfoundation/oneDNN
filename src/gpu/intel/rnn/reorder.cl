@@ -94,8 +94,8 @@ __kernel void wei_reorder(__global DT_IN *input, __global DT_IN *scales,
 
     int reduction = 0;
     for (int d2 = 0; d2 < SRC_D2; ++d2) {
-        const int in_off = IN_OFF(d0, d1, d2, d3, d4, 0);
-        const int out_off = OUT_OFF(d0, d1, d2, d3, d4, 0);
+        const off_t in_off = IN_OFF(d0, d1, d2, d3, d4, 0);
+        const off_t out_off = OUT_OFF(d0, d1, d2, d3, d4, 0);
 
         REORDER(output[out_off], input[in_off], s);
 

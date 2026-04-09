@@ -124,10 +124,10 @@ __kernel void simple_rnn_copy_init_iter(__global WS_STATE_DATA_T *dst_base,
 #if IS_FWD
     __global INPUT_DATA_T *src = (__global INPUT_DATA_T *)(src_base);
     __global WS_STATE_DATA_T *dst = dst_base;
-    int ws_state_offset = off_ws_state(
+    off_t ws_state_offset = off_ws_state(
             n_layer, n_dir, n_iter, batch, states_ws_ld, lay, dir, -1, b, s);
     if (s < sic) {
-        int src_i_offset = src_i_off(src_iter_strides, lay, dir, b, s);
+        off_t src_i_offset = src_i_off(src_iter_strides, lay, dir, b, s);
         dst[ws_state_offset] = src_base
                 ? (quantize ? TO_WS_STATE(src[src_i_offset] * scale + shift)
                             : src[src_i_offset])
@@ -137,7 +137,7 @@ __kernel void simple_rnn_copy_init_iter(__global WS_STATE_DATA_T *dst_base,
     __global SRC_C_DATA_T *src_c = (__global SRC_C_DATA_T *)(src_c_base);
     __global AUX_DATA_T *dst_c = dst_c_base;
     if (s < dhc) {
-        int ws_c_state_offset = off_ws_c_state(n_layer, n_dir, n_iter, batch,
+        off_t ws_c_state_offset = off_ws_c_state(n_layer, n_dir, n_iter, batch,
                 states_ws_ld, lay, dir, -1, b, s);
         dst_c[ws_c_state_offset] = src_c_base
                 ? TO_AUX(src_c[src_i_c_off(src_iter_c_strides, lay, dir, b, s)])
@@ -351,7 +351,7 @@ __kernel void rnn_bias_prepare(__global float *ws_bias, __global float *scales,
     __global float *wei_layer_comp
             = (__global float *)(((unsigned long)temp + (sizeof(float) - 1))
                     & -sizeof(float));
-    const int off = comp_off(n_dir, dhc, layer_, dir_, nbias_, dhc_);
+    const off_t off = comp_off(n_dir, dhc, layer_, dir_, nbias_, dhc_);
     const float comp = wei_layer_comp[off] + wei_iter_comp[off];
     ws_bias[off_ws_bias(n_layer, n_dir, dhc, layer_, dir_, nbias_, dhc_)]
             = bias[bias_off(bias_strides, layer_, dir_, nbias_, dhc_)]
@@ -814,10 +814,12 @@ __kernel void simple_rnn_elemwise_bwd() {}
 #if CELL_COMP_ENABLED
 
 void gemm_sum_inner(float(C)[M_THR_BLOCK][N_THR_BLOCK],
-        const __global WS_STATE_DATA_T *restrict A, const int a_stride,
-        const __global WEI_LAYER_DATA_T *restrict B, const int b_stride,
-        const int m_thr_stride, const int n_thr_stride, int m_l_end,
-        int k_l_end, int n_l_end, bool mn_valid) {
+        const __global WS_STATE_DATA_T *restrict A,
+        const cell_offset_t a_stride,
+        const __global WEI_LAYER_DATA_T *restrict B,
+        const cell_offset_t b_stride, const int m_thr_stride,
+        const int n_thr_stride, int m_l_end, int k_l_end, int n_l_end,
+        bool mn_valid) {
 
     // Load A - Invariant across the subgroup, can do cooperative load
     float A_l[M_THR_BLOCK] = {};
@@ -851,11 +853,12 @@ void gemm_sum_inner(float(C)[M_THR_BLOCK][N_THR_BLOCK],
 
 // Perform C += A * B where all matrices are in row major layout
 void gemm_sum(float(C)[N_OUTER_BLOCK][M_THR_BLOCK][N_THR_BLOCK],
-        const __global WS_STATE_DATA_T *restrict A, const int a_stride,
-        const __global WEI_LAYER_DATA_T *restrict B, const int b_stride,
-        gemm_dims_t size, int m_sg, int m_thr_stride, int n_sg,
-        int n_thr_stride, bool enable_m_tail, bool enable_k_tail,
-        bool enable_n_tail) {
+        const __global WS_STATE_DATA_T *restrict A,
+        const cell_offset_t a_stride,
+        const __global WEI_LAYER_DATA_T *restrict B,
+        const cell_offset_t b_stride, gemm_dims_t size, int m_sg,
+        int m_thr_stride, int n_sg, int n_thr_stride, bool enable_m_tail,
+        bool enable_k_tail, bool enable_n_tail) {
 
     // Optimization opportunity: Loads across the m and n dimension can overflow
     // so long as they do not cross the end of the buffer.
@@ -864,16 +867,18 @@ void gemm_sum(float(C)[N_OUTER_BLOCK][M_THR_BLOCK][N_THR_BLOCK],
             && (!enable_n_tail
                     || n_sg + n_thr_stride * N_THR_BLOCK <= size.n_inner);
     if (valid_mn) {
-        int k_outer = 0;
+        cell_dim_t k_outer = 0;
         while (valid_mn && k_outer < size.k - gemm_k_block + 1) {
             int k_l_end = gemm_k_block;
             const int m_l_end = m_thr_stride * M_THR_BLOCK;
             const int n_l_end = n_thr_stride * N_THR_BLOCK;
 
-            const int a_off_base = m_sg * a_stride + k_outer;
+            const cell_offset_t a_off_base
+                    = (cell_offset_t)m_sg * a_stride + k_outer;
             for (int n_outer = 0; n_outer < N_OUTER_BLOCK; n_outer++) {
-                const int b_off_base
-                        = n_outer * size.n_inner + k_outer * b_stride + n_sg;
+                const cell_offset_t b_off_base
+                        = (cell_offset_t)n_outer * size.n_inner
+                        + (cell_offset_t)k_outer * b_stride + n_sg;
                 gemm_sum_inner(C[n_outer], A + a_off_base, a_stride,
                         B + b_off_base, b_stride, m_thr_stride, n_thr_stride,
                         m_l_end, k_l_end, n_l_end, true);
@@ -885,10 +890,12 @@ void gemm_sum(float(C)[N_OUTER_BLOCK][M_THR_BLOCK][N_THR_BLOCK],
             const int m_l_end = size.m - m_sg;
             const int n_l_end = size.n_inner - n_sg;
 
-            const int a_off_base = m_sg * a_stride + k_outer;
+            const cell_offset_t a_off_base
+                    = (cell_offset_t)m_sg * a_stride + k_outer;
             for (int n_outer = 0; n_outer < N_OUTER_BLOCK; n_outer++) {
-                const int b_off_base
-                        = n_outer * size.n_inner + k_outer * b_stride + n_sg;
+                const cell_offset_t b_off_base
+                        = (cell_offset_t)n_outer * size.n_inner
+                        + (cell_offset_t)k_outer * b_stride + n_sg;
                 gemm_sum_inner(C[n_outer], A + a_off_base, a_stride,
                         B + b_off_base, b_stride, m_thr_stride, n_thr_stride,
                         m_l_end, k_l_end, n_l_end, true);
@@ -896,16 +903,18 @@ void gemm_sum(float(C)[N_OUTER_BLOCK][M_THR_BLOCK][N_THR_BLOCK],
             k_outer += gemm_k_block;
         }
     } else {
-        int k_outer = 0;
+        cell_dim_t k_outer = 0;
         while (k_outer < size.k) {
             int k_l_end = enable_k_tail ? size.k - k_outer : gemm_k_block;
             const int m_l_end = size.m - m_sg;
             const int n_l_end = size.n_inner - n_sg;
 
-            const int a_off_base = m_sg * a_stride + k_outer;
+            const cell_offset_t a_off_base
+                    = (cell_offset_t)m_sg * a_stride + k_outer;
             for (int n_outer = 0; n_outer < N_OUTER_BLOCK; n_outer++) {
-                const int b_off_base
-                        = n_outer * size.n_inner + k_outer * b_stride + n_sg;
+                const cell_offset_t b_off_base
+                        = (cell_offset_t)n_outer * size.n_inner
+                        + (cell_offset_t)k_outer * b_stride + n_sg;
                 gemm_sum_inner(C[n_outer], A + a_off_base, a_stride,
                         B + b_off_base, b_stride, m_thr_stride, n_thr_stride,
                         m_l_end, k_l_end, n_l_end, false);

@@ -543,7 +543,7 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
             grf_limit = 256;
         }
     }
-    if (s.wgTile(LoopM) * s.wgTile(LoopN) > grf_limit)
+    if (std::max(s.ka_load * problem.Ta_ext, s.wgTile(LoopM)) * s.wgTile(LoopN) >= grf_limit)
         s.GRFs = 256;
     if (localA && !localB)
         s.loadBFirst = true;

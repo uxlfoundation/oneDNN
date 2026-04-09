@@ -162,7 +162,7 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
         using namespace gemmstone;
         newStrat = gpu_utils::dev_getenv("GRPGEMM_USTRATEGY", newStrat);
         if (!newStrat.empty()) {
-            // Example: 16 16 aT32 aM32 aB wg 2x4 sys
+            // Example: 16 16 1 0 aT32 aM32 aB wg 2x4 sys
             printf("GRPGEMM_USTRATEGY: %s\n", newStrat.c_str());
             auto product = ngen::npack::decodeHWIPVersion(hw_info.gmdid);
             auto hw = getCore(product.family);
@@ -187,9 +187,14 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
         gemm_ = selectGEMM(opts, hw_info, sizes, problem, {}, strat_override);
     } catch (const std::runtime_error &) {
         std::vector<StrategyRequirement> reqs;
-        int m_unroll = sg_size_;
-        int max_n_unroll = 0;
-        int max_wg_n = 4;
+
+        // TODO: These values should be based on the eu_count
+        dim_t m_unroll = sg_size_;
+        float avg_m = float(M()) / ngroups_;
+        dim_t n_unroll = utils::rnd_up_pow2(dim_t(avg_m));
+        dim_t max_n_unroll = 0;
+        dim_t max_wg_n = 4;
+        dim_t min_wg_n = 1;
 
         switch (dev_info->gpu_arch()) {
             case compute::gpu_arch_t::xe_lp:
@@ -208,6 +213,7 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
                 max_n_unroll = (problem.Ta_ext.bits() < 8)
                         ? sg_size_ * problem.Ta_ext
                         : 16;
+                if (problem.Ta_ext.bits() <= 8) min_wg_n = 2;
                 break;
             case compute::gpu_arch_t::xe_hpc: max_n_unroll = 32; break;
             default:
@@ -218,11 +224,11 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
 
         reqs.push_back(StrategyRequirement::UnrollM == m_unroll);
         reqs.push_back(StrategyRequirement::UnrollN
-                == utils::rnd_up_pow2(std::min<dim_t>(M(), max_n_unroll)));
+                == std::min(n_unroll, max_n_unroll));
         reqs.push_back(StrategyRequirement::WGM == 2);
         reqs.push_back(StrategyRequirement::WGN
-                == utils::rnd_up_pow2(std::max<dim_t>(
-                        1, std::min<dim_t>(M() / reqs[1].value, max_wg_n))));
+                == utils::rnd_up_pow2(std::max<dim_t>(min_wg_n,
+                        std::min<dim_t>(avg_m / reqs[1].value, max_wg_n))));
         try {
             gemm_ = selectGEMM(
                     opts, hw_info, sizes, problem, reqs, strat_override);

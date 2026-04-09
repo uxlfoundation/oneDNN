@@ -124,10 +124,10 @@ __kernel void simple_rnn_copy_init_iter(__global WS_STATE_DATA_T *dst_base,
 #if IS_FWD
     __global INPUT_DATA_T *src = (__global INPUT_DATA_T *)(src_base);
     __global WS_STATE_DATA_T *dst = dst_base;
-    int ws_state_offset = off_ws_state(
+        off_t ws_state_offset = off_ws_state(
             n_layer, n_dir, n_iter, batch, states_ws_ld, lay, dir, -1, b, s);
     if (s < sic) {
-        int src_i_offset = src_i_off(src_iter_strides, lay, dir, b, s);
+                off_t src_i_offset = src_i_off(src_iter_strides, lay, dir, b, s);
         dst[ws_state_offset] = src_base
                 ? (quantize ? TO_WS_STATE(src[src_i_offset] * scale + shift)
                             : src[src_i_offset])
@@ -137,7 +137,8 @@ __kernel void simple_rnn_copy_init_iter(__global WS_STATE_DATA_T *dst_base,
     __global SRC_C_DATA_T *src_c = (__global SRC_C_DATA_T *)(src_c_base);
     __global AUX_DATA_T *dst_c = dst_c_base;
     if (s < dhc) {
-        int ws_c_state_offset = off_ws_c_state(n_layer, n_dir, n_iter, batch,
+        off_t ws_c_state_offset = off_ws_c_state(n_layer, n_dir, n_iter,
+                batch,
                 states_ws_ld, lay, dir, -1, b, s);
         dst_c[ws_c_state_offset] = src_c_base
                 ? TO_AUX(src_c[src_i_c_off(src_iter_c_strides, lay, dir, b, s)])
@@ -351,7 +352,7 @@ __kernel void rnn_bias_prepare(__global float *ws_bias, __global float *scales,
     __global float *wei_layer_comp
             = (__global float *)(((unsigned long)temp + (sizeof(float) - 1))
                     & -sizeof(float));
-    const int off = comp_off(n_dir, dhc, layer_, dir_, nbias_, dhc_);
+        const off_t off = comp_off(n_dir, dhc, layer_, dir_, nbias_, dhc_);
     const float comp = wei_layer_comp[off] + wei_iter_comp[off];
     ws_bias[off_ws_bias(n_layer, n_dir, dhc, layer_, dir_, nbias_, dhc_)]
             = bias[bias_off(bias_strides, layer_, dir_, nbias_, dhc_)]

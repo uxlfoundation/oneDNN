@@ -181,6 +181,7 @@ struct ocl_conf_t {
     bool copy_diff_dst_layer = false;
     bool copy_diff_src_layer;
     bool deterministic = false;
+    bool use_int32_offset = true;
     bool require_stateless_addressing = true;
     uint8_t pad2[7] = {};
     struct comp_conf_t {

@@ -70,6 +70,9 @@ status_t weights_reorder_t::pd_t::init_kernel_ctx(
     const memory_desc_wrapper src_mdw(src_md());
     const memory_desc_wrapper dst_mdw(dst_md());
 
+    kernel_ctx.register_buffer_size(src_mdw);
+    kernel_ctx.register_buffer_size(dst_mdw);
+
     auto input_type = src_mdw.data_type();
     auto output_type = dst_mdw.data_type();
 

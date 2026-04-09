@@ -80,6 +80,16 @@
 
 --alg=VANILLA_RNN --activation=RELU --batch=shapes_large
 
+# Large-offset regression for cell GEMM indexing
+--reset
+--cfg=f32
+--alg=VANILLA_RNN
+--activation=RELU
+--direction=left2right
+--prop=FWD_I
+--trivial-strides=true,false
+l1t1mb1sic4096slc4096dhc4096dic4096
+
 # Test CI in Nightly
 --reset
 --batch=test_augru_ci

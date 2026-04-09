@@ -17,7 +17,7 @@
 __kernel void simple_sum(
         __global float *input, __global float *output, float scale, int a) {
 
-    const int c = get_global_id(0);
+    const off_t c = get_global_id(0);
     if (a == 0)
         output[c] = (scale * input[c]);
     else

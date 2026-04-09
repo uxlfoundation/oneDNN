@@ -29,7 +29,7 @@ status_t xe_t::execute(const exec_ctx_t &ctx) const {
     auto &output = CTX_OUT_STORAGE(DNNL_ARG_DST);
     const int num_arrs = pd()->n_inputs();
     const memory_desc_wrapper o_d(pd()->dst_md());
-    const size_t nelems = o_d.nelems(true);
+    const dim_t nelems = o_d.nelems(true);
     compute::kernel_arg_list_t arg_list;
 
     for (int a = 0; a < max_num_arrs; ++a) {
@@ -41,8 +41,9 @@ status_t xe_t::execute(const exec_ctx_t &ctx) const {
     }
     arg_list.set(16, output);
     arg_list.set(17, CTX_GPU_RES_STORAGE(SCALES_));
+    arg_list.set(18, nelems);
 
-    const size_t total_width = utils::div_up(nelems, vector_size);
+    const size_t total_width = utils::div_up(into<size_t>(nelems), vector_size);
     const size_t lws = 256;
 
     compute::nd_range_t nd_range({utils::rnd_up(total_width, lws)}, {lws});

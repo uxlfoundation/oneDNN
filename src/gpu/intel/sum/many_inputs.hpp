@@ -64,8 +64,6 @@ struct many_inputs_t : public primitive_t {
         kernel_ctx.set_data_type(data_s.data_type());
         kernel_ctx.require_stateless_addressing(pd()->has_large_buffers());
 
-        kernel_ctx.define_int("N_ELEMS", data_d.nelems(true));
-
         const int num_arrs = pd()->n_inputs() - 1;
         int N_INPUTS = (num_arrs) % max_num_arrs;
         if (N_INPUTS == 0) { N_INPUTS = max_num_arrs; };

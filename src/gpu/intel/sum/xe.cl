@@ -71,17 +71,17 @@
 
 #include "gpu/intel/include/types.h"
 
-float8 get_values(__global SRC_DATA_T *src, ptrdiff_t offset) {
+float8 get_values(__global SRC_DATA_T *src, ptrdiff_t offset, dim_t nelems) {
     float8 val;
     const uint max_sub_group_size = get_max_sub_group_size();
     __global BLOCK_DATA_T *read_pos = (__global BLOCK_DATA_T *)src + offset;
 
-    if (offset + VECT_DT_N * max_sub_group_size < N_ELEMS) {
+    if (offset + VECT_DT_N * max_sub_group_size < nelems) {
         val = CONVERT_FLOAT8_T(AS_DATA8_T(BLOCK_READ8(read_pos)));
     } else {
-        const uint sub_group_local_id = get_sub_group_local_id();
-        uint pos = offset + sub_group_local_id;
-        for (uint i = 0; pos < N_ELEMS && i < VECT_DT_N; i++) {
+        const ptrdiff_t sub_group_local_id = get_sub_group_local_id();
+        ptrdiff_t pos = offset + sub_group_local_id;
+        for (uint i = 0; pos < nelems && i < VECT_DT_N; i++) {
             val[i] = CONVERT_FLOAT_T(src[pos]);
             pos += max_sub_group_size;
         }
@@ -97,7 +97,7 @@ __kernel void xe_sum(__global SRC_DATA_T *input0, __global SRC_DATA_T *input1,
         __global SRC_DATA_T *input10, __global SRC_DATA_T *input11,
         __global SRC_DATA_T *input12, __global SRC_DATA_T *input13,
         __global SRC_DATA_T *input14, __global SRC_DATA_T *input15,
-        __global DST_DATA_T *output, __global float *scales) {
+        __global DST_DATA_T *output, __global float *scales, dim_t nelems) {
 
     const uint group_id = get_group_id(0);
     const uint group_size = get_local_size(0);
@@ -113,28 +113,34 @@ __kernel void xe_sum(__global SRC_DATA_T *input0, __global SRC_DATA_T *input1,
 
     int id = 0;
     float8 sum = 0;
-    if (id < N_INPUTS) sum += get_values(input0, offset) * scales[id++];
-    if (id < N_INPUTS) sum += get_values(input1, offset) * scales[id++];
-    if (id < N_INPUTS) sum += get_values(input2, offset) * scales[id++];
-    if (id < N_INPUTS) sum += get_values(input3, offset) * scales[id++];
-    if (id < N_INPUTS) sum += get_values(input4, offset) * scales[id++];
-    if (id < N_INPUTS) sum += get_values(input5, offset) * scales[id++];
-    if (id < N_INPUTS) sum += get_values(input6, offset) * scales[id++];
-    if (id < N_INPUTS) sum += get_values(input7, offset) * scales[id++];
-    if (id < N_INPUTS) sum += get_values(input8, offset) * scales[id++];
-    if (id < N_INPUTS) sum += get_values(input9, offset) * scales[id++];
-    if (id < N_INPUTS) sum += get_values(input10, offset) * scales[id++];
-    if (id < N_INPUTS) sum += get_values(input11, offset) * scales[id++];
-    if (id < N_INPUTS) sum += get_values(input12, offset) * scales[id++];
-    if (id < N_INPUTS) sum += get_values(input13, offset) * scales[id++];
-    if (id < N_INPUTS) sum += get_values(input14, offset) * scales[id++];
-    if (id < N_INPUTS) sum += get_values(input15, offset) * scales[id++];
+    if (id < N_INPUTS) sum += get_values(input0, offset, nelems) * scales[id++];
+    if (id < N_INPUTS) sum += get_values(input1, offset, nelems) * scales[id++];
+    if (id < N_INPUTS) sum += get_values(input2, offset, nelems) * scales[id++];
+    if (id < N_INPUTS) sum += get_values(input3, offset, nelems) * scales[id++];
+    if (id < N_INPUTS) sum += get_values(input4, offset, nelems) * scales[id++];
+    if (id < N_INPUTS) sum += get_values(input5, offset, nelems) * scales[id++];
+    if (id < N_INPUTS) sum += get_values(input6, offset, nelems) * scales[id++];
+    if (id < N_INPUTS) sum += get_values(input7, offset, nelems) * scales[id++];
+    if (id < N_INPUTS) sum += get_values(input8, offset, nelems) * scales[id++];
+    if (id < N_INPUTS) sum += get_values(input9, offset, nelems) * scales[id++];
+    if (id < N_INPUTS)
+        sum += get_values(input10, offset, nelems) * scales[id++];
+    if (id < N_INPUTS)
+        sum += get_values(input11, offset, nelems) * scales[id++];
+    if (id < N_INPUTS)
+        sum += get_values(input12, offset, nelems) * scales[id++];
+    if (id < N_INPUTS)
+        sum += get_values(input13, offset, nelems) * scales[id++];
+    if (id < N_INPUTS)
+        sum += get_values(input14, offset, nelems) * scales[id++];
+    if (id < N_INPUTS)
+        sum += get_values(input15, offset, nelems) * scales[id++];
 
-    if (offset + VECT_DT_N * max_sub_group_size < N_ELEMS) {
+    if (offset + VECT_DT_N * max_sub_group_size < nelems) {
         DST_BLOCK_WRITE8(write_pos, TO_DST8(sum));
     } else {
-        uint pos = offset + sub_group_local_id;
-        for (uint i = 0; pos < N_ELEMS && i < VECT_DT_N; i++) {
+        ptrdiff_t pos = offset + sub_group_local_id;
+        for (uint i = 0; pos < nelems && i < VECT_DT_N; i++) {
             output[pos] = TO_DST(sum[i]);
             pos += max_sub_group_size;
         }

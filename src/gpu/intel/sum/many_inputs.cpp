@@ -14,6 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <limits>
+
 #include "gpu/intel/sum/many_inputs.hpp"
 
 namespace dnnl {
@@ -27,7 +29,7 @@ status_t many_inputs_t::execute(const exec_ctx_t &ctx) const {
     const int num_arrs = pd()->n_inputs()
             - 1; // input0 is copied over to output. Accumulate the rest.
     const memory_desc_wrapper o_d(pd()->dst_md());
-    const size_t nelems = o_d.nelems(true);
+    const dim_t nelems = o_d.nelems(true);
     compute::kernel_arg_list_t arg_list;
 
     int num_batches = utils::div_up(num_arrs, max_num_arrs);
@@ -57,9 +59,22 @@ status_t many_inputs_t::execute(const exec_ctx_t &ctx) const {
         arg_list.set(many_inputs_t::max_num_arrs, output);
         arg_list.set(
                 many_inputs_t::max_num_arrs + 1, CTX_GPU_RES_STORAGE(SCALES_));
+        arg_list.set(many_inputs_t::max_num_arrs + 2, nelems);
 
-        const size_t total_width = nelems * kernel_num_arrs;
+        const size_t nelems_sz = into<size_t>(nelems);
+        const size_t kernel_num_arrs_sz = into<size_t>(kernel_num_arrs);
+        if (kernel_num_arrs_sz != 0
+                && nelems_sz > (std::numeric_limits<size_t>::max()
+                           / kernel_num_arrs_sz)) {
+            return status::invalid_arguments;
+        }
+        const size_t total_width = nelems_sz * kernel_num_arrs_sz;
         const size_t lws = utils::rnd_dn(256, kernel_num_arrs);
+        const size_t max_gws0 = std::numeric_limits<uint32_t>::max();
+        if (total_width > max_gws0
+                || utils::rnd_up(total_width, lws) > max_gws0) {
+            return status::invalid_arguments;
+        }
 
         compute::nd_range_t nd_range({utils::rnd_up(total_width, lws)}, {lws});
         if (batch_iter == num_batches - 1) {

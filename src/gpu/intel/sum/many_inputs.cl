@@ -21,21 +21,21 @@
 #define INIT_MAX_N_INPUTS(i) \
     if (i < MAX_N_INPUTS) inputs[i] = input##i;
 
-float get_value(__global SRC_DATA_T *src, ptrdiff_t offset) {
-    if (offset >= N_ELEMS) return 0;
+float get_value(__global SRC_DATA_T *src, ptrdiff_t offset, dim_t nelems) {
+    if (offset >= nelems) return 0;
     return CONVERT_FLOAT_T(src[offset]);
 }
 #define many_inputs_sum_impl(inputs, output, scales, num_inputs, local_val) \
-    const uint group_id = get_group_id(0); \
-    const uint group_size = get_local_size(0); \
-    const uint gid = get_global_id(0); \
+    const dim_t group_id = get_group_id(0); \
+    const dim_t group_size = get_local_size(0); \
+    const dim_t gid = get_global_id(0); \
     ptrdiff_t offset = gid / num_inputs; \
     const int tensor_idx = gid % num_inputs; \
     const int local_id = get_local_id(0); \
-    local_val[local_id] \
-            = get_value(inputs[tensor_idx], offset) * scales[tensor_idx]; \
+    local_val[local_id] = get_value(inputs[tensor_idx], offset, nelems) \
+            * scales[tensor_idx]; \
     barrier(CLK_LOCAL_MEM_FENCE); \
-    if (tensor_idx == 0 && offset < N_ELEMS) { \
+    if (tensor_idx == 0 && offset < nelems) { \
         float final_val = 0; \
         for (int i = 0; i < num_inputs; i++) { \
             final_val += local_val[local_id + i]; \
@@ -52,7 +52,7 @@ __kernel void many_inputs_sum(__global SRC_DATA_T *input0,
         __global SRC_DATA_T *input11, __global SRC_DATA_T *input12,
         __global SRC_DATA_T *input13, __global SRC_DATA_T *input14,
         __global SRC_DATA_T *input15, __global DST_DATA_T *output,
-        __global float *scales) {
+        __global float *scales, dim_t nelems) {
 
     __local float local_val[256];
     __global SRC_DATA_T *inputs[16];
@@ -85,7 +85,7 @@ __kernel void many_inputs_sum_batched(__global SRC_DATA_T *input0,
         __global SRC_DATA_T *input11, __global SRC_DATA_T *input12,
         __global SRC_DATA_T *input13, __global SRC_DATA_T *input14,
         __global SRC_DATA_T *input15, __global DST_DATA_T *output,
-        __global float *scales) {
+        __global float *scales, dim_t nelems) {
 
     __local float local_val[256];
     __global SRC_DATA_T *inputs[16];

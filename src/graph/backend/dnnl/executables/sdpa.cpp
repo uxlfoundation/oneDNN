@@ -295,11 +295,10 @@ sdpa_bwd_executable_t::sdpa_bwd_executable_t(std::shared_ptr<op_t> &op,
 
     dnnl_primitive_desc_t pd = nullptr;
     ret = sdpa_primitive_desc_create(&pd, p_engine.get(), md_q.get(),
-            md_k.get(), md_v.get(), md_dst.get(), md_diff_q.get(),
-            md_diff_k.get(), md_diff_v.get(), md_diff_dst.get(), md_dS.get(),
-            md_attn_mask.get(), md_scale.get(), is_invert_scale_,
-            kv_head_number, mask_type_,
-            static_cast<dnnl_alg_kind_t>(softmax_alg), attr.get(),
+            md_k.get(), md_v.get(), md_dst.get(), md_attn_mask.get(),
+            md_scale.get(), md_diff_q.get(), md_diff_k.get(), md_diff_v.get(),
+            md_diff_dst.get(), md_dS.get(), is_invert_scale_, kv_head_number,
+            mask_type_, static_cast<dnnl_alg_kind_t>(softmax_alg), attr.get(),
             hint_pd_.get());
 
     if (pd && ret == dnnl_success) {

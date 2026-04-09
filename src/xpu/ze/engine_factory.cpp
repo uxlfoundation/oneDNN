@@ -52,7 +52,6 @@ status_t engine_factory_t::engine_create(
         impl::engine_t **engine, size_t index) const {
     ze_driver_handle_t driver = nullptr;
     ze_device_handle_t device = nullptr;
-    ze_context_handle_t context = nullptr;
 
     uint32_t driver_count = 0;
     CHECK(ze::zeDriverGet(&driver_count, nullptr));
@@ -73,14 +72,7 @@ status_t engine_factory_t::engine_create(
     CHECK(ze::zeDeviceGet(driver, &device_count, devices.data()));
     device = devices[index];
 
-    ze_context_desc_t context_desc = {};
-    context_desc.stype = ZE_STRUCTURE_TYPE_CONTEXT_DESC;
-    context_desc.pNext = nullptr;
-    context_desc.flags = 0;
-
-    CHECK(ze::zeContextCreate(driver, &context_desc, &context));
-
-    return engine_create(engine, driver, device, context, index);
+    return engine_create(engine, driver, device, nullptr, index);
 }
 
 status_t engine_factory_t::engine_create(impl::engine_t **engine,

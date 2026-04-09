@@ -75,9 +75,20 @@ static status_t init_conf_common(
     conf.use_only_c_block = false;
     dim_t c_padded = utils::rnd_up(conf.c_padded, conf.sub_group_size);
 
+    auto is_xe3p = utils::downcast<intel::engine_t *>(engine)
+                           ->device_info()
+                           ->gpu_arch()
+            >= compute::gpu_arch_t::xe3p_35_10;
+
     if (c_block_size >= 16 && n_block_size >= 16) {
         c_padded = utils::rnd_up(conf.c_padded, c_block_size);
         conf.use_mb_c_block = true;
+        // Workaround: OCL compiler on XE3P miscompiles the slow-path read in
+        // read_vect_c_block when USE_MB_C_BLOCK and IC has a tail (ic % 16 != 0).
+        // Fall back to ocl:ref for correctness. Bug filed with compiler team.
+        VDISPATCH_POOLING_IC(!(is_xe3p && conf.c % conf.sub_group_size != 0),
+                "%s," VERBOSE_IMPL_HEURISTIC_FAIL, pd->info(engine),
+                "workaround xe3p compiler bug: ic tail with mb_c_block");
         conf.vect_dt_n = 8;
         conf.nvect = 2;
         if (!pd->attr()->post_ops_.has_default_values()) { conf.nvect = 1; }

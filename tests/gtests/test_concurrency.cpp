@@ -287,6 +287,12 @@ protected:
         if (get_test_engine_kind() == engine::kind::gpu)
             set_primitive_cache_capacity(0);
 #endif
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+        // Note: necessary abstractions to support concurrent kernel generation
+        // are not introduced for Level Zero backend.
+        SKIP_IF(true,
+                "Concurrent execution is not supported by Level Zero backend.");
+#endif
         // This test doesn't work properly under SDE.
         const int len = 1024;
         char value_str[len];

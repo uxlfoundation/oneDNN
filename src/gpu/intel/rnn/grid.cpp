@@ -159,6 +159,17 @@ static status_t init_ocl_conf(ocl_conf_t &ocl_conf, const pd_t *pd,
     const memory_desc_wrapper &dst_iter_c_d = pd->dst_md(2);
 
     ocl_conf.require_stateless_addressing = pd->has_large_buffers();
+    ocl_conf.use_int32_offset = true;
+    auto update_use_int32_offset = [&](const memory_desc_t *md) {
+        if (!md || md->format_kind == format_kind::undef) return;
+        if (memory_desc_wrapper(md).nelems(true) > INT32_MAX)
+            ocl_conf.use_int32_offset = false;
+    };
+    for (int i = 0; i < pd->n_inputs(); ++i)
+        update_use_int32_offset(pd->invariant_src_md(i));
+    update_use_int32_offset(pd->invariant_wei_md());
+    for (int i = 0; i < pd->n_outputs(); ++i)
+        update_use_int32_offset(pd->invariant_dst_md(i));
     ocl_conf.src_dt = conf.src_data_type;
     ocl_conf.src_c_dt = src_iter_c_d.data_type();
     ocl_conf.wei_dt = weights_layer_d.data_type();
@@ -338,6 +349,7 @@ status_t ocl_conf_t::init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const {
     ocl_attr.deterministic_ = deterministic;
     kernel_ctx = compute::kernel_ctx_t(&ocl_attr);
 
+    kernel_ctx.use_int32_offset(use_int32_offset);
     kernel_ctx.require_stateless_addressing(require_stateless_addressing);
 
     kernel_ctx.add_option("-cl-std=CL2.0");

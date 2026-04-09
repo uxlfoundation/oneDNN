@@ -112,5 +112,5 @@
 
 # Large-axis index stress (off_t overflow coverage)
 --reset
---batch=shapes_regressions
+mb1ic512ih65536
 

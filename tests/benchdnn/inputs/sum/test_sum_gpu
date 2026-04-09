@@ -53,6 +53,24 @@
 --dtag=AB48a16b
 512x1024
 
+# Large-axis stress tests for offset widening
+--reset
+--impl=ocl:xe
+--ddt=f32
+--sdt=f32:f32
+--stag=abx:abx
+--inplace=false
+# Large single-axis tensors (test nelems > 2^31)
+1x2097152x1 1x1x2097152 2097152x1x1
+
+--reset
+--ddt=bf16
+--sdt=bf16:bf16
+--stag=abx:abx
+--inplace=false
+# Large axis with bf16
+1x1048576x2 1x2x1048576
+
 # Test CI in Nightly
 --reset
 --batch=test_sum_ci

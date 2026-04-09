@@ -62,6 +62,19 @@
 --attr-post-ops=sum:0.5+add:f32+add:u8:per_dim_01+linear:0.5:1.5:2.0+mul:f32:per_dim_0+add:s8:per_oc+add:f32:per_dim_01+relu:0.5
 g1ic16iw5oc16ow5kw1pw0
 
+# Large-axis stress tests for offset widening
+--reset
+--impl=conv:any
+--dt=f32,bf16
+--mb=1
+--dir=FWD_D,BWD_W
+--alg=DIRECT
+--bia-dt=f32
+
+# Large spatial dimensions (stress output buffer offsets)
+g1mb1ic64ih1024iw1024oc64oh1024ow1024kh1kw1sh1sw1ph0pw0
+g1mb1ic128ih512iw2048oc128oh512ow2048kh1kw1sh1sw1ph0pw0
+
 # Test CI in Nightly
 --reset
 --batch=test_deconv_ci

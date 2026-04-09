@@ -11,6 +11,3 @@ mb88ic900ih16 # 56-core system w/ 1.5MB LLC slices
 # Spatial threading bugs for bfloat16
 mb12ic4ih8
 mb1ic24ih14iw14
-
-# Large-axis index stress
-mb1ic512ih65536

@@ -24,6 +24,19 @@
 --axis=0,1
 48x48
 
+# Large-axis stress tests for offset widening
+--reset
+--impl=ocl:ref
+--group=4
+--dir=FWD_D,BWD_D
+--dt=f32,bf16
+--tag=abx
+--axis=1 1x2097152x1 1x1048576x2
+--axis=3 1x1x1x2097152 1x1x1x1048576
+
+--tag=aBx16b
+--axis=1 1x256x16384 1x512x8192
+
 # Test CI in Nightly
 --reset
 --batch=test_shuffle_ci

@@ -95,8 +95,8 @@ status_t gemm_convolution_fwd_t::execute_forward_thr_nspc(const exec_ctx_t &ctx,
                     && jcp.ic_block == jcp.ic));
     assert(IMPLICATION(jcp.ow_block != jcp.ow, jcp.oh_block == 1));
 
-    const dim_t nb_oh = div_up(jcp.oh, jcp.oh_block);
-    const dim_t nb_ow = div_up(jcp.ow, jcp.ow_block);
+    const dim_t nb_oh = div_up(jcp.oh, nstl::max<dim_t>(jcp.oh_block, 1));
+    const dim_t nb_ow = div_up(jcp.ow, nstl::max<dim_t>(jcp.ow_block, 1));
     // threads share work across mini-batch, groups, and blocked width/height
     const dim_t work_amount = jcp.mb * jcp.ngroups * nb_oh * nb_ow;
     balance211(work_amount, nthr, ithr, start, end);

@@ -841,6 +841,7 @@ dim_t brg_blocking_t::grid_coverage(
 * Returns:
 * The total area covered by the rectangles formed by the blocks.
 */
+    if (xb <= 0 || yb <= 0 || nx <= 0) return 0;
     const auto nb_x = div_up(x, xb);
     const auto nb_y = div_up(y, yb);
     // Compute how many full y blocks and x blocks are covered
@@ -1177,11 +1178,14 @@ void brg_blocking_t::iterate_ker_block(brg_blocking_t &best_brgb, int kd_block_,
         }
 
         // limit oh_block to have good threading
-        const auto thr_oc_block = div_up(
-                nthr, mb * div_up((oc > 32 ? ngroups : 1) * oc, oc_block));
+        const auto thr_oc_block = nstl::max<dim_t>(1,
+                div_up(nthr,
+                        mb
+                                * div_up((oc > 32 ? ngroups : 1) * oc,
+                                        nstl::max<dim_t>(oc_block, 1))));
         const auto thr_od_block = div_up(od, thr_oc_block);
-        const auto thr_oh_block
-                = div_up(oh, thr_oc_block * div_up(od, thr_od_block));
+        const auto thr_oh_block = div_up(oh,
+                nstl::max<dim_t>(1, thr_oc_block * div_up(od, thr_od_block)));
         od_block = nstl::min(od_block, thr_od_block);
         oh_block = nstl::min(oh_block, thr_oh_block);
     } else {
@@ -1567,9 +1571,19 @@ void brg_blocking_t::calc_blocks_1x1() {
         const auto max_os_block_thr
                 = (src_dsz * ic >= 1024 && src_dsz * ic < 4096)
                 ? nstl::max(nstl::min(16, os),
-                          div_up(os, div_up(nthr, mb * div_up(oc, oc_block))))
-                : nstl::max(div_up(2048, oc_block),
-                          static_cast<int>(div_up(mb * ngroups * os, nthr)));
+                          div_up(os,
+                                  nstl::max<dim_t>(1,
+                                          div_up(nthr,
+                                                  nstl::max<dim_t>(1,
+                                                          mb
+                                                                  * div_up(oc,
+                                                                          nstl::max<
+                                                                                  dim_t>(
+                                                                                  oc_block,
+                                                                                  1)))))))
+                : nstl::max(div_up(2048, nstl::max<dim_t>(oc_block, 1)),
+                          static_cast<int>(div_up(mb * ngroups * os,
+                                  nstl::max<dim_t>(nthr, 1))));
         const auto max_os_block_L2 = max_sp_block_L2;
 
         auto max_os_block_aliasing = 1000000 / nthr;
@@ -2798,9 +2812,9 @@ status_t init_scratchpad(memory_tracking::registrar_t &scratchpad,
 
 void balance_bwd_w(jit_brgemm_conv_conf_t &jcp) {
 
-    const auto os_chunks = jcp.nthr_mb_work;
-    const auto oc_chunks = div_up(jcp.nb_oc, jcp.nb_oc_blocking);
-    const auto ic_chunks = div_up(jcp.nb_ic, jcp.nb_ic_blocking);
+    const auto os_chunks = nstl::max<dim_t>(jcp.nthr_mb_work, 1);
+    const auto oc_chunks = div_up(jcp.nb_oc, nstl::max(jcp.nb_oc_blocking, 1));
+    const auto ic_chunks = div_up(jcp.nb_ic, nstl::max(jcp.nb_ic_blocking, 1));
 
     auto calc_mem_cost = [&jcp, os_chunks, oc_chunks, ic_chunks](int nthr_mb,
                                  int nthr_g, int nthr_oc_b, int nthr_ic_b) {
@@ -2830,7 +2844,8 @@ void balance_bwd_w(jit_brgemm_conv_conf_t &jcp) {
         dim_t wei_size = (dim_t)jcp.oc * jcp.ic * wei_ks * wei_type_size;
 
         float wei_compensation_scale = 0.5f * (dst_size + src_size) / wei_size;
-        float oi_channels_ratio = (float)(oc_chunks) / ic_chunks;
+        float oi_channels_ratio
+                = ic_chunks > 0 ? (float)(oc_chunks) / ic_chunks : 1.0f;
 
         auto get_src_coef = [=]() {
             float src_coef = nstl::max(1.0f / oi_channels_ratio, 1.0f);
@@ -2857,8 +2872,10 @@ void balance_bwd_w(jit_brgemm_conv_conf_t &jcp) {
 
         const auto thr_g = div_up(jcp.ngroups, nthr_g);
         const auto thr_ic_b = div_up(ic_chunks, nthr_ic_b);
-        const auto thr_src_sp = thr_mb * src_chunk / jcp.stride_d / jcp.stride_h
-                / jcp.stride_w;
+        const auto thr_src_sp = thr_mb * src_chunk
+                / nstl::max<dim_t>(jcp.stride_d, 1)
+                / nstl::max<dim_t>(jcp.stride_h, 1)
+                / nstl::max<dim_t>(jcp.stride_w, 1);
         const auto thr_dst_sp = thr_mb * dst_chunk;
         const auto thr_ic_amount = thr_ic_b * nb_ic_job;
 

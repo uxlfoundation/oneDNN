@@ -494,6 +494,7 @@ struct brg_blocking_t : public jit_brgemm_conv_conf_t {
 
     static int get_inp_block_size(
             int out_size, int stride, int ext_k, int padding) {
+        if (stride <= 0) return out_size;
         const auto res = div_up(out_size + padding % stride, stride)
                 + (ext_k - 1 - padding % stride) / stride;
         return res;
@@ -728,25 +729,40 @@ bool brg_blocking_t::fast_check_ic_block() const {
 
 float brg_blocking_t::est_eff() {
     if (is_1x1) return est_eff_1x1();
-    const auto icblock = ic_block / acc_simd_w;
+    const auto safe_acc_simd_w = nstl::max(acc_simd_w, 1);
+    const auto icblock = ic_block / safe_acc_simd_w;
 
-    const auto brgemm_microkernel_eff
-            = (static_cast<float>(icblock) * ur) / ((ur + icblock) * max_regs);
+    const auto ur_icblock_regs = (ur + icblock) * max_regs;
+    const auto brgemm_microkernel_eff = ur_icblock_regs > 0
+            ? (static_cast<float>(icblock) * ur) / ur_icblock_regs
+            : 0.f;
 
-    const auto ur_eff = static_cast<float>(sp_block) / rnd_up(sp_block, ur);
+    const auto rnd_sp_ur = rnd_up(sp_block, nstl::max(ur, 1));
+    const auto ur_eff
+            = rnd_sp_ur > 0 ? static_cast<float>(sp_block) / rnd_sp_ur : 0.f;
     const auto brgemm_eff = squeeze_val(ur
-                    * (2.f - nstl::min(1.9f, static_cast<float>(ur) / sp_block))
+                    * (2.f
+                            - nstl::min(1.9f,
+                                    sp_block > 0
+                                            ? static_cast<float>(ur) / sp_block
+                                            : 0.f))
                     / 64,
             0.5f);
 
     const auto sp_amount = nb_id * nb_ih * nb_sp;
     const auto work_amount = mb * ngroups * nb_ic * sp_amount;
-    const auto sp_eff = (static_cast<float>(sp) / rnd_up(sp, sp_block));
+    const auto rnd_sp_spb = rnd_up(sp, nstl::max(sp_block, 1));
+    const auto sp_eff
+            = rnd_sp_spb > 0 ? (static_cast<float>(sp) / rnd_sp_spb) : 0.f;
 
-    const auto thr_eff = static_cast<float>(work_amount)
-            / utils::rnd_up(work_amount, nthr);
+    const auto rnd_wa_nthr = utils::rnd_up(work_amount, nstl::max(nthr, 1));
+    const auto thr_eff = rnd_wa_nthr > 0
+            ? static_cast<float>(work_amount) / rnd_wa_nthr
+            : 0.f;
 
-    const auto ic_block_eff = static_cast<float>(ic) / rnd_up(ic, ic_block);
+    const auto rnd_ic_icb = rnd_up(ic, nstl::max(ic_block, 1));
+    const auto ic_block_eff
+            = rnd_ic_icb > 0 ? static_cast<float>(ic) / rnd_ic_icb : 0.f;
 
     const auto job = div_up(work_amount, nthr);
 
@@ -794,8 +810,9 @@ float brg_blocking_t::est_eff() {
             if (thr_jobs[ithr] > max_job) max_job = thr_jobs[ithr];
             sum_job += thr_jobs[ithr];
         }
-        job_eff = max_job == 0 ? 1
-                               : static_cast<float>(sum_job) / (max_job * nthr);
+        job_eff = (max_job == 0 || nthr == 0)
+                ? 1
+                : static_cast<float>(sum_job) / (max_job * nthr);
 
     } else {
         job_eff = thr_eff;
@@ -979,11 +996,12 @@ void brg_blocking_t::iterate_ker_block(brg_blocking_t &best_brgb, int kd_block_,
     const auto L2_available = nstl::min(static_cast<size_t>(div_up(L2, 2)),
             other_size > L2 ? 0 : L2 - other_size);
     if (odp * ohp * w_block_size > L2_available) {
+        const auto ohp_w_block = ohp * w_block_size;
         id_block = utils::saturate(
-                1, id, int(L2_available / (ohp * w_block_size)));
+                1, id, int(ohp_w_block > 0 ? L2_available / ohp_w_block : 1));
         if (id_block == 1)
-            ih_block = utils::saturate(
-                    1, ih, int(L2_available / (w_block_size)));
+            ih_block = utils::saturate(1, ih,
+                    int(w_block_size > 0 ? L2_available / w_block_size : 1));
         else
             ih_block = ih;
     } else {
@@ -998,11 +1016,12 @@ void brg_blocking_t::iterate_ker_block(brg_blocking_t &best_brgb, int kd_block_,
         const auto src_w_block_size
                 = src_dsz * oc * owp + dst_dsz * iw * ic_block;
         if (src_w_block_size < L1) {
+            const auto ohp_src_w = ohp * src_w_block_size;
             cur_id_block = utils::saturate(
-                    1, id, int(L1 / (ohp * src_w_block_size)));
+                    1, id, int(ohp_src_w > 0 ? L1 / ohp_src_w : 1));
             if (cur_id_block == 1)
-                cur_ih_block
-                        = utils::saturate(1, ih, int(L1 / (src_w_block_size)));
+                cur_ih_block = utils::saturate(1, ih,
+                        int(src_w_block_size > 0 ? L1 / src_w_block_size : 1));
         }
         for (; cur_id_block > 1; cur_id_block--) {
             const auto sp_size = cur_id_block * cur_ih_block * owp;
@@ -1036,32 +1055,35 @@ void brg_blocking_t::iterate_ker_block(brg_blocking_t &best_brgb, int kd_block_,
             = div_up(ih, thr_ic_block * div_up(id, thr_id_block));
     id_block = nstl::min(id_block, thr_id_block);
     ih_block = nstl::min(ih_block, thr_ih_block);
-    while ((id_block % stride_d != 0
-                   || (id % stride_d == 0
-                           && id % id_block
-                                   != 0) // TODO: remove this once perf is validated for all shapes
-                   )
+    while (stride_d > 0
+            && (id_block % stride_d != 0
+                    || (id % stride_d == 0
+                            && id % id_block
+                                    != 0) // TODO: remove this once perf is validated for all shapes
+                    )
             && id_block < id)
         id_block++;
-    while ((ih_block % stride_h != 0
-                   || (ih % stride_h == 0
-                           && ih % ih_block
-                                   != 0) // TODO: remove this once perf is validated for all shapes
-                   )
+    while (stride_h > 0
+            && (ih_block % stride_h != 0
+                    || (ih % stride_h == 0
+                            && ih % ih_block
+                                    != 0) // TODO: remove this once perf is validated for all shapes
+                    )
             && ih_block < ih)
         ih_block++;
 
     // --- Select iw_block ----
     const auto max_iw_block_L2 = iw;
     auto start_iw_block = nstl::min(max_iw_block_thr, max_iw_block_L2);
-    sp = has_uneven_iw ? rnd_up(iw, stride_w) : iw;
-    const auto start_sp_block
-            = has_uneven_iw ? rnd_up(start_iw_block, stride_w) : start_iw_block;
+    sp = has_uneven_iw ? rnd_up(iw, nstl::max(stride_w, 1)) : iw;
+    const auto start_sp_block = has_uneven_iw
+            ? rnd_up(start_iw_block, nstl::max(stride_w, 1))
+            : start_iw_block;
     auto prev_spb = 0;
     for (auto ns = 1; ns <= sp; ns++) {
         const auto spb = div_up(sp, ns);
         if (spb == prev_spb || spb > start_sp_block) continue;
-        if (spb % stride_w != 0) continue;
+        if (stride_w > 0 && spb % stride_w != 0) continue;
         if (!has_uneven_iw && iw % spb != 0) continue;
 
         prev_spb = spb;
@@ -1090,7 +1112,7 @@ void brg_blocking_t::iterate_ker_block(brg_blocking_t &best_brgb, int kd_block_,
 }
 
 status_t brg_blocking_t::calc_blocks() {
-    sp = has_uneven_iw ? rnd_up(iw, stride_w) : iw;
+    sp = has_uneven_iw ? rnd_up(iw, nstl::max(stride_w, 1)) : iw;
 
     nb_oc_blocking = 1;
     // --- Select kernel blocking ---
@@ -1156,16 +1178,20 @@ bool brg_blocking_t::fast_check_ic_block_1x1() const {
 }
 
 float brg_blocking_t::est_eff_1x1() {
-    const auto icblock = ic_block / acc_simd_w;
+    const auto safe_acc_simd_w = nstl::max(acc_simd_w, 1);
+    const auto icblock = ic_block / safe_acc_simd_w;
 
     auto calc_ave_blk = [&](int dim, int block, bool use_ave) -> float {
+        if (block <= 0) return 0.f;
         const int nb = dim / block;
         constexpr int max_nb = 2; // only consider 2x2 tile blocking
         const int block2 = nstl::min(max_nb, nb);
+        if (block2 <= 0) return 0.f;
         const int nb2 = nb / block2;
         const int nb2_tail = nb % block2;
         if (!use_ave) return block2;
-        return (float(nb2) * block2 + nb2_tail) / div_up(nb, block2);
+        const auto div_nb = div_up(nb, block2);
+        return div_nb > 0 ? (float(nb2) * block2 + nb2_tail) / div_nb : 0.f;
     };
     const bool use_ocb_ave = true;
     const auto icb_ave = calc_ave_blk(ic_block, acc_simd_w, use_ocb_ave);
@@ -1180,28 +1206,49 @@ float brg_blocking_t::est_eff_1x1() {
     const bool maskrcnn_cond = (ic == 1024 && oc == 2048)
             || (ic == 1024 && oc == 512) || (ic == 256 && oc == 1024)
             || (ic == 512 && oc == 1024) || (ic == 512 && oc == 2048);
-    const auto amx_fac = maskrcnn_cond
-            ? (div_up(M + M_tail, 16) / (M_n_sp_blks + M_tail_n_sp_blks))
-            : (static_cast<float>(div_up(M + M_tail, 16))
-                      / (M_n_sp_blks + M_tail_n_sp_blks));
+    const auto mn_sp_blks_sum = M_n_sp_blks + M_tail_n_sp_blks;
+    const auto amx_fac = mn_sp_blks_sum > 0
+            ? (maskrcnn_cond ? (div_up(M + M_tail, 16) / mn_sp_blks_sum)
+                             : (static_cast<float>(div_up(M + M_tail, 16))
+                                       / mn_sp_blks_sum))
+            : 0.f;
 
+    const auto icb_spb_sum = icb_ave + spb_ave;
+    const auto ur_icblock_regs = (ur + icblock) * max_regs;
     const auto brgemm_microkernel_eff = is_amx(isa)
-            ? amx_fac * (static_cast<float>(icb_ave) * spb_ave)
-                    / (icb_ave + spb_ave)
-            : (static_cast<float>(icblock) * ur) / ((ur + icblock) * max_regs);
-    const auto ur_eff = static_cast<float>(sp_block) / rnd_up(sp_block, ur);
+            ? amx_fac
+                    * (icb_spb_sum > 0.f
+                                    ? (static_cast<float>(icb_ave) * spb_ave)
+                                            / icb_spb_sum
+                                    : 0.f)
+            : (ur_icblock_regs > 0 ? (static_cast<float>(icblock) * ur)
+                                      / ur_icblock_regs
+                                   : 0.f);
+    const auto rnd_sp_ur = rnd_up(sp_block, nstl::max(ur, 1));
+    const auto ur_eff
+            = rnd_sp_ur > 0 ? static_cast<float>(sp_block) / rnd_sp_ur : 0.f;
     const auto brgemm_eff = squeeze_val(ur
-                    * (2.f - nstl::min(1.9f, static_cast<float>(ur) / sp_block))
+                    * (2.f
+                            - nstl::min(1.9f,
+                                    sp_block > 0
+                                            ? static_cast<float>(ur) / sp_block
+                                            : 0.f))
                     / 64,
             0.5f);
 
     const auto sp_amount = nb_id * nb_ih * nb_sp;
     const auto work_amount = mb * ngroups * nb_ic * sp_amount;
 
-    const auto sp_eff = static_cast<float>(sp) / rnd_up(sp, sp_block);
-    const auto thr_eff = static_cast<float>(work_amount)
-            / utils::rnd_up(work_amount, nthr);
-    const auto ic_block_eff = static_cast<float>(ic) / rnd_up(ic, ic_block);
+    const auto rnd_sp_spb = rnd_up(sp, nstl::max(sp_block, 1));
+    const auto sp_eff
+            = rnd_sp_spb > 0 ? static_cast<float>(sp) / rnd_sp_spb : 0.f;
+    const auto rnd_wa_nthr = utils::rnd_up(work_amount, nstl::max(nthr, 1));
+    const auto thr_eff = rnd_wa_nthr > 0
+            ? static_cast<float>(work_amount) / rnd_wa_nthr
+            : 0.f;
+    const auto rnd_ic_icb = rnd_up(ic, nstl::max(ic_block, 1));
+    const auto ic_block_eff
+            = rnd_ic_icb > 0 ? static_cast<float>(ic) / rnd_ic_icb : 0.f;
 
     const auto job = div_up(work_amount, nthr);
 
@@ -1270,8 +1317,9 @@ float brg_blocking_t::est_eff_1x1() {
             sum_job += thr_jobs[ithr];
         }
 
-        job_eff = max_job == 0 ? 1
-                               : static_cast<float>(sum_job) / (max_job * nthr);
+        job_eff = (max_job == 0 || nthr == 0)
+                ? 1
+                : static_cast<float>(sum_job) / (max_job * nthr);
     } else {
         job_eff = thr_eff;
     }
@@ -1291,8 +1339,9 @@ float brg_blocking_t::est_eff_1x1() {
     const auto nb_ur = div_up(sp_block, ur);
     const auto nb_sp_no_tail = sp / sp_block;
     const auto sp_block_tail = sp % sp_block;
-    const auto nb_ur_average
-            = (nb_sp_no_tail * nb_ur + div_up(sp_block_tail, ur)) / nb_sp;
+    const auto nb_ur_average = nb_sp > 0
+            ? (nb_sp_no_tail * nb_ur + div_up(sp_block_tail, ur)) / nb_sp
+            : nb_ur;
     loop[l].src.set(ur * rnd_simd(oc_blocking_size), 1);
     loop[l].dst.set(ur * ic_block, 1);
     loop[l].wei.set(ic_blocking_size, is_amx(isa) ? nb_ur_average : nb_ur);
@@ -1501,8 +1550,8 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     jcp.acc_dsz = types::data_type_size(jcp.acc_dt);
     jcp.bia_dsz = jcp.with_bias ? types::data_type_size(jcp.bia_dt) : 0;
 
-    jcp.simd_w = isa_max_vlen(isa) / jcp.src_dsz;
-    jcp.acc_simd_w = isa_max_vlen(isa) / jcp.acc_dsz;
+    jcp.simd_w = jcp.src_dsz > 0 ? isa_max_vlen(isa) / jcp.src_dsz : 1;
+    jcp.acc_simd_w = jcp.acc_dsz > 0 ? isa_max_vlen(isa) / jcp.acc_dsz : 1;
     jcp.is_bf32 = everyone_is(f32, jcp.src_dt, jcp.wei_dt)
             && one_of(attr.fpmath_.mode_, fpmath_mode::bf16, fpmath_mode::any)
             && isa == avx512_core_amx;

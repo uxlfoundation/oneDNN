@@ -1211,6 +1211,7 @@ status_t jit_avx512_core_bf16_1x1_conv_kernel_t::init_conf(
     jcp.prop_kind = cd.prop_kind;
 
     jcp.ngroups = with_groups ? weights_d.dims()[0] : 1;
+    if (jcp.ngroups <= 0) return status::invalid_arguments;
     jcp.mb = src_d.dims()[0];
 
     jcp.oc = dst_d.dims()[1] / jcp.ngroups;
@@ -1813,8 +1814,8 @@ status_t jit_avx512_core_bf16_1x1_conv_kernel_t::init_scratchpad(
 
     // TODO: Check - do we need this buffer for ALL cases?
     if (jcp.prop_kind != backward_weights) {
-        const size_t grp_count = utils::div_up(
-                jcp.nthr, utils::div_up(jcp.nthr, jcp.load_grp_count));
+        const size_t grp_count = utils::div_up(jcp.nthr,
+                utils::div_up(jcp.nthr, nstl::max(jcp.load_grp_count, 1)));
         const bool is_out_layout_nxc
                 = (utils::one_of(jcp.prop_kind, prop_kind::forward_training,
                            prop_kind::forward_inference)

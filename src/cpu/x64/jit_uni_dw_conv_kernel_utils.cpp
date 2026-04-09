@@ -779,7 +779,8 @@ void jit_uni_dw_conv_bwd_weights_kernel_t<isa, kernel_dt>::partition_nthr_nxc(
 
                 // calculate thread use efficiency
                 int total_nthr = cur_nthr_g * cur_nthr_mb * cur_nthr_oh;
-                float thr_eff = ((float)total_nthr) / nthreads;
+                float thr_eff
+                        = nthreads > 0 ? ((float)total_nthr) / nthreads : 0.f;
                 assert(total_nthr <= nthreads);
 
                 // efficiency can only worsen, skip
@@ -788,16 +789,20 @@ void jit_uni_dw_conv_bwd_weights_kernel_t<isa, kernel_dt>::partition_nthr_nxc(
                 }
 
                 // calculate imbalance
-                float imbalance_g = ((float)std::abs(approx_g_block * cur_nthr_g
-                                            - ch_outer_blocks))
-                        / ch_outer_blocks;
-                float imbalance_mb
-                        = ((float)std::abs(
+                float imbalance_g = ch_outer_blocks > 0
+                        ? ((float)std::abs(approx_g_block * cur_nthr_g
+                                  - ch_outer_blocks))
+                                / ch_outer_blocks
+                        : 0.f;
+                float imbalance_mb = jcp.mb > 0
+                        ? ((float)std::abs(
                                   approx_mb_block * cur_nthr_mb - jcp.mb))
-                        / jcp.mb;
-                float imbalance_oh
-                        = ((float)std::abs(oh_block * cur_nthr_oh - jcp.oh))
-                        / jcp.oh;
+                                / jcp.mb
+                        : 0.f;
+                float imbalance_oh = jcp.oh > 0
+                        ? ((float)std::abs(oh_block * cur_nthr_oh - jcp.oh))
+                                / jcp.oh
+                        : 0.f;
                 float total_imbalance = imbalance_g * (jcp.mb * jcp.oh)
                         + imbalance_mb * (ch_outer_blocks * jcp.oh)
                         + imbalance_oh * (ch_outer_blocks * jcp.mb);

@@ -577,6 +577,7 @@ status_t jit_avx512_common_1x1_conv_kernel_t::init_conf(
     jcp.prop_kind = cd.prop_kind;
 
     jcp.ngroups = with_groups ? weights_d.dims()[0] : 1;
+    if (jcp.ngroups <= 0) return status::invalid_arguments;
     jcp.mb = src_d.dims()[0];
 
     jcp.oc_without_padding = dst_d.dims()[1] / jcp.ngroups;

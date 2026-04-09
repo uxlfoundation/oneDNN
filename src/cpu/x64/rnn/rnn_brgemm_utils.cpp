@@ -260,6 +260,8 @@ dim_t brgemm_calc_m_block_lstm(dim_t nthr, dim_t M, dim_t N_blocks, bool is_f32,
 dim_t adjust_m_block_lstm(dim_t nthr, dim_t M, dim_t N_blocks, bool is_int8_amx,
         bool is_xf16_amx) {
 
+    if (N_blocks <= 0 || M <= 0) return M > 0 ? M : 1;
+
     const bool is_amx = is_int8_amx || is_xf16_amx;
 
     const dim_t max_m_blocks = (is_amx ? 1 : 4) * utils::div_up(nthr, N_blocks);
@@ -398,11 +400,12 @@ status_t rnn_brgemm_t<prop_kind::forward>::configure_brgemm(
 
     rnn.nthr = dnnl_get_max_threads();
     rnn.n_block = brgemm_calc_n_block(rnn, cell_kind);
+    if (rnn.n_block <= 0) return status::unimplemented;
     rnn.N_blocks = utils::div_up(rnn.N, rnn.n_block);
     rnn.n_tail = rnn.N % rnn.n_block;
 
-    const float work_by_N
-            = static_cast<float>(rnn.N_blocks) / static_cast<float>(rnn.nthr);
+    const float work_by_N = static_cast<float>(rnn.N_blocks)
+            / static_cast<float>(nstl::max(rnn.nthr, 1));
 
     const dim_t l2_cache_size = platform::get_per_core_cache_size(2);
     const dim_t As = src_layer_type_size * rnn.M * (nstl::max(rnn.K1, rnn.K2));
@@ -414,6 +417,7 @@ status_t rnn_brgemm_t<prop_kind::forward>::configure_brgemm(
     std::tie(rnn.k1_block, rnn.k2_block) = brgemm_calc_k_block(rnn, rnn.K1,
             rnn.K2, rnn.M, rnn.n_block, cell_kind, src_layer_type_size, As, Bs,
             Cs, l2_cache_size, rnn.brgemm_isa);
+    if (rnn.k1_block <= 0 || rnn.k2_block <= 0) return status::unimplemented;
     rnn.KB1_blocks = rnn.K1 / rnn.k1_block;
     rnn.k1_tail = rnn.K1 % rnn.k1_block;
     rnn.KB2_blocks = rnn.K2 / rnn.k2_block;
@@ -421,6 +425,7 @@ status_t rnn_brgemm_t<prop_kind::forward>::configure_brgemm(
     rnn.m_block = brgemm_calc_m_block(cell_kind, prop_kind::forward, rnn.nthr,
             rnn.M, rnn.N_blocks, rnn.is_cell_dt_f32(), rnn.is_cell_int8_amx(),
             rnn.is_cell_xf16_amx(), work_by_N, As, Bs, Cs, l2_cache_size);
+    if (rnn.m_block <= 0) return status::unimplemented;
 
     rnn.M_blocks = rnn.M / rnn.m_block;
 

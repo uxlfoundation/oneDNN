@@ -720,6 +720,7 @@ status_t jit_uni_x8s8s32x_1x1_conv_kernel_t<isa>::init_conf(
     const int ndims = src_d.ndims();
     jcp.nthr = nthreads;
     jcp.ngroups = with_groups ? weights_d.dims()[0] : 1;
+    if (jcp.ngroups <= 0) return status::invalid_arguments;
     jcp.mb = src_d.dims()[0];
     jcp.oc = dst_d.dims()[1] / jcp.ngroups;
     jcp.oc_without_padding = jcp.oc;

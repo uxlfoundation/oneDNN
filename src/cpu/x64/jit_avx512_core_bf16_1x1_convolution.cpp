@@ -45,6 +45,10 @@ namespace {
 template <typename T, typename U>
 void balance2D(U nthr, U ithr, T ny, T &ny_start, T &ny_end, T nx, T &nx_start,
         T &nx_end, T nx_divider) {
+    if (nx_divider <= 0 || nthr <= 0) {
+        ny_start = ny_end = nx_start = nx_end = 0;
+        return;
+    }
     const T grp_size = utils::div_up(nthr, nx_divider);
     const T grp_count = utils::div_up(nthr, grp_size);
 
@@ -55,8 +59,10 @@ void balance2D(U nthr, U ithr, T ny, T &ny_start, T &ny_end, T nx, T &nx_start,
     if (first_grps > 0 && grp >= first_grps) {
         ithr -= first_grps * grp_size;
         grp_nthr--;
-        grp = ithr / grp_nthr + first_grps;
-        grp_ithr = ithr % grp_nthr;
+        if (grp_nthr > 0) {
+            grp = ithr / grp_nthr + first_grps;
+            grp_ithr = ithr % grp_nthr;
+        }
     }
     balance211(nx, grp_count, grp, nx_start, nx_end);
     balance211(ny, grp_nthr, grp_ithr, ny_start, ny_end);
@@ -760,10 +766,14 @@ void jit_avx512_core_bf16_1x1_convolution_bwd_weights_t<diff_weights_type>::
     auto ker = [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         assert(nthr == jcp.nthr);
 
-        const int ithr_ic_b = ithr % jcp.nthr_ic_b;
-        const int ithr_oc_b = ithr / jcp.nthr_ic_b % jcp.nthr_oc_b;
-        const int ithr_g = ithr / jcp.nthr_ic_b / jcp.nthr_oc_b % jcp.nthr_g;
-        const int ithr_mb = ithr / jcp.nthr_ic_b / jcp.nthr_oc_b / jcp.nthr_g;
+        const int safe_nthr_ic_b = nstl::max(jcp.nthr_ic_b, 1);
+        const int safe_nthr_oc_b = nstl::max(jcp.nthr_oc_b, 1);
+        const int safe_nthr_g = nstl::max(jcp.nthr_g, 1);
+        const int ithr_ic_b = ithr % safe_nthr_ic_b;
+        const int ithr_oc_b = ithr / safe_nthr_ic_b % safe_nthr_oc_b;
+        const int ithr_g = ithr / safe_nthr_ic_b / safe_nthr_oc_b % safe_nthr_g;
+        const int ithr_mb
+                = ithr / safe_nthr_ic_b / safe_nthr_oc_b / safe_nthr_g;
 
         /* reduction dimension */
         int mb_sp_b_start {0}, mb_sp_b_end {0};
@@ -977,10 +987,14 @@ void jit_avx512_core_bf16_1x1_convolution_bwd_weights_t<diff_weights_type>::
             = [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         assert(nthr == jcp.nthr);
 
-        const int ithr_ic_b = ithr % jcp.nthr_ic_b;
-        const int ithr_oc_b = ithr / jcp.nthr_ic_b % jcp.nthr_oc_b;
-        const int ithr_g = ithr / jcp.nthr_ic_b / jcp.nthr_oc_b % jcp.nthr_g;
-        const int ithr_mb = ithr / jcp.nthr_ic_b / jcp.nthr_oc_b / jcp.nthr_g;
+        const int safe_nthr_ic_b = nstl::max(jcp.nthr_ic_b, 1);
+        const int safe_nthr_oc_b = nstl::max(jcp.nthr_oc_b, 1);
+        const int safe_nthr_g = nstl::max(jcp.nthr_g, 1);
+        const int ithr_ic_b = ithr % safe_nthr_ic_b;
+        const int ithr_oc_b = ithr / safe_nthr_ic_b % safe_nthr_oc_b;
+        const int ithr_g = ithr / safe_nthr_ic_b / safe_nthr_oc_b % safe_nthr_g;
+        const int ithr_mb
+                = ithr / safe_nthr_ic_b / safe_nthr_oc_b / safe_nthr_g;
 
         /* independent dimensions */
         int g_start {0}, oc_b_start {0}, ic_b_start {0};

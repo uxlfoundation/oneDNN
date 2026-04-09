@@ -2061,8 +2061,11 @@ void jit_avx512_core_amx_fwd_kernel_t::compute_ow_loop() {
     } else {
         assert(jcp.oh_per_tile == 1);
         Label label_done;
-        int ow_blocks_per_call = utils::div_up(jcp.ow_block, jcp.tile_width);
-        int last_owb_tile_blocks = jcp.ow_blocks % ow_blocks_per_call;
+        int ow_blocks_per_call
+                = utils::div_up(jcp.ow_block, nstl::max(jcp.tile_width, 1));
+        int last_owb_tile_blocks = ow_blocks_per_call > 0
+                ? jcp.ow_blocks % ow_blocks_per_call
+                : 0;
         if (last_owb_tile_blocks == 0 && jcp.tile_tail > 0)
             last_owb_tile_blocks = ow_blocks_per_call;
         if (last_owb_tile_blocks > 0) {
@@ -3631,8 +3634,11 @@ void jit_avx512_core_amx_bwd_data_kernel_t::compute_iw_loop() {
         compute_iw_loop_body(true, jcp.iw_blocks);
     } else {
         Label label_done;
-        int iw_blocks_per_call = div_up(jcp.iw_block, jcp.tile_width);
-        int last_iwb_tile_blocks = jcp.iw_blocks % iw_blocks_per_call;
+        int iw_blocks_per_call
+                = div_up(jcp.iw_block, nstl::max(jcp.tile_width, 1));
+        int last_iwb_tile_blocks = iw_blocks_per_call > 0
+                ? jcp.iw_blocks % iw_blocks_per_call
+                : 0;
         if (last_iwb_tile_blocks == 0 && jcp.tile_tail > 0)
             last_iwb_tile_blocks = iw_blocks_per_call;
         if (last_iwb_tile_blocks > 0) {

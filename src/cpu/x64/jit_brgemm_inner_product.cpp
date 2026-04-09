@@ -359,7 +359,7 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
             = [=](const int ithr, const int nthr, int &nthr_ic, int &nthr_oc_mb,
                       int &ithr_ic, int &ithr_oc_mb) {
         nthr_ic = jbgp.nthr_ic_b <= nthr ? jbgp.nthr_ic_b : 1;
-        nthr_oc_mb = nthr / nthr_ic;
+        nthr_oc_mb = nstl::max(nthr / nthr_ic, 1);
         ithr_ic = ithr / nthr_oc_mb;
         ithr_oc_mb = ithr % nthr_oc_mb;
         if (ithr_oc_mb >= work_amount || ithr_ic >= ic_chunks
@@ -948,7 +948,7 @@ void brgemm_inner_product_bwd_data_t<isa>::execute_backward_data(
 
     parallel(num_threads, [=](const int ithr, const int nthr) {
         const int nthr_oc = jbgp.nthr_oc_b <= nthr ? jbgp.nthr_oc_b : 1;
-        const int nthr_ic_mb = nthr / nthr_oc;
+        const int nthr_ic_mb = nstl::max(nthr / nthr_oc, 1);
         const int ithr_ic_mb = ithr % nthr_ic_mb;
         const int ithr_oc = ithr / nthr_ic_mb;
         if (ithr_ic_mb >= work_amount || ithr_oc >= oc_chunks

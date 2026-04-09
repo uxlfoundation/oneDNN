@@ -791,20 +791,24 @@ struct matmul_avx512_blocking_params_t {
     }
 
     float get_imbalance() const {
-        const size_t cur_nthr = nthr / nthr_k;
+        const size_t cur_nthr = nthr / nstl::max(nthr_k, 1);
 
         size_t parallel_work = get_parallel_work();
         const float parallel_work_disb
                 = calculate_spatial_disbalance(parallel_work, cur_nthr);
 
-        const auto m_work = (m_blk * div_up(mp.M, m_blk)) % mp.M;
-        const float m_blk_disbalance = static_cast<float>(m_work) / mp.M;
+        const auto m_work = (m_blk * div_up(mp.M, nstl::max<dim_t>(m_blk, 1)))
+                % nstl::max<dim_t>(mp.M, 1);
+        const float m_blk_disbalance
+                = mp.M > 0 ? static_cast<float>(m_work) / mp.M : 0.f;
 
-        const auto num_n_blk = div_up(mp.N, n_blk);
-        const auto par_n_chunks = div_up(num_n_blk, n_chunks);
-        const float n_chunk_disbalance
-                = (static_cast<float>(par_n_chunks) * n_chunks - num_n_blk)
-                / num_n_blk;
+        const auto num_n_blk = div_up(mp.N, nstl::max<dim_t>(n_blk, 1));
+        const auto par_n_chunks
+                = div_up(num_n_blk, nstl::max<dim_t>(n_chunks, 1));
+        const float n_chunk_disbalance = num_n_blk > 0
+                ? (static_cast<float>(par_n_chunks) * n_chunks - num_n_blk)
+                        / num_n_blk
+                : 0.f;
 
         const float disbalance_nthr_k
                 = calculate_spatial_disbalance(mp.K, nthr_k * k_blk);
@@ -2050,10 +2054,10 @@ status_t init_conf(brgemm_matmul_conf_t &conf, dim_t batch, dim_t M, dim_t K,
 void init_aux_values(brgemm_matmul_conf_t &bgmmc,
         const memory_desc_wrapper &src_d, const memory_desc_wrapper &wei_d,
         const memory_desc_wrapper &dst_d) {
-    bgmmc.M_chunk_elems = bgmmc.M_blk * bgmmc.M_chunk_size;
-    bgmmc.N_chunk_elems = bgmmc.N_blk * bgmmc.N_chunk_size;
-    bgmmc.K_chunk_elems
-            = bgmmc.K_blk * bgmmc.K_chunk_size * bgmmc.brgemm_batch_size;
+    bgmmc.M_chunk_elems = nstl::max<dim_t>(bgmmc.M_blk * bgmmc.M_chunk_size, 1);
+    bgmmc.N_chunk_elems = nstl::max<dim_t>(bgmmc.N_blk * bgmmc.N_chunk_size, 1);
+    bgmmc.K_chunk_elems = nstl::max<dim_t>(
+            bgmmc.K_blk * bgmmc.K_chunk_size * bgmmc.brgemm_batch_size, 1);
     bgmmc.M_chunks = bgmmc.is_runtime_M ? runtime_value_for(bgmmc.M_chunks)
                                         : div_up(bgmmc.M, bgmmc.M_chunk_elems);
     bgmmc.N_chunks = bgmmc.is_runtime_N ? runtime_value_for(bgmmc.N_chunks)

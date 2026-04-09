@@ -32,6 +32,11 @@ using namespace dnnl::impl::utils;
 
 void cache_balance(size_t working_set_size, dim_t C_blks, dim_t N, int nthr,
         dim_t &C_blks_per_iter, int64_t &iters) {
+    if (working_set_size == 0 || C_blks <= 0) {
+        C_blks_per_iter = 1;
+        iters = nstl::max<int64_t>(C_blks, 1);
+        return;
+    }
     int l3_size = platform::get_per_core_cache_size(3) * nthr / 2;
     C_blks_per_iter = saturate<dim_t>(1, C_blks, l3_size / working_set_size);
 
@@ -42,15 +47,18 @@ void cache_balance(size_t working_set_size, dim_t C_blks, dim_t N, int nthr,
     // place
     int C_nthr = nthr;
     if (C_blks_per_iter < nthr) {
-        const int N_nthr = (int)nstl::min<dim_t>(N, nthr);
+        const int N_nthr = (int)nstl::max<dim_t>(1, nstl::min<dim_t>(N, nthr));
         C_nthr = (int)nstl::min<dim_t>(C_blks, nthr / N_nthr);
     }
+
+    if (C_nthr <= 0) C_nthr = 1;
 
     if (C_blks_per_iter > C_nthr)
         C_blks_per_iter = rnd_dn(C_blks_per_iter, C_nthr);
     else
         C_blks_per_iter = div_up(C_nthr, div_up(C_nthr, C_blks_per_iter));
 
+    if (C_blks_per_iter <= 0) C_blks_per_iter = 1;
     iters = div_up(C_blks, C_blks_per_iter);
 }
 

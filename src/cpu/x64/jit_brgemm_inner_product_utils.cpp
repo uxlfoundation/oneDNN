@@ -318,6 +318,7 @@ int jit_brgemm_ip_conf_t::get_nb_oc_blocking(bool is_adjustment) const {
 
 // Check if work amount is balanced between threads.
 static bool is_balanced(int work, int min_work, int nthrs, int goal_nthrs = 0) {
+    if (nthrs <= 0) return true;
     if (goal_nthrs <= 0) goal_nthrs = nthrs;
     int eff_nthrs = work % nthrs;
     if (!eff_nthrs) return true;
@@ -975,16 +976,17 @@ void jit_brgemm_ip_bwd_w_conf_t::thread_balance(int &nb_os_blocking_,
         int ic_chunks = div_up(j.nb_ic, nb_ic_blocking);
         int sp_ic_chunks = j.ks() * ic_chunks;
 
-        float wei_compensation_scale = 0.5f * (dst_size + src_size) / wei_size;
+        float wei_compensation_scale
+                = wei_size > 0 ? 0.5f * (dst_size + src_size) / wei_size : 1.0f;
 
         float oi_channels_ratio = 0;
         if (is_xf16) {
             oi_channels_ratio = ((j.oc > (dim_t)3 * j.ic && os_chunks > 1)
                                         || (os_chunks == 1 && j.ic > j.oc))
-                    ? src_size / dst_size
-                    : dst_size / src_size;
+                    ? (dst_size > 0 ? src_size / dst_size : 1.0f)
+                    : (src_size > 0 ? dst_size / src_size : 1.0f);
         } else {
-            oi_channels_ratio = src_size / dst_size;
+            oi_channels_ratio = dst_size > 0 ? src_size / dst_size : 1.0f;
         }
 
         auto get_src_coef = [&]() {

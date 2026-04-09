@@ -424,8 +424,8 @@ status_t gemm_bf16_convolution_fwd_t<dst_data_type>::execute_forward_thr_nspc(
             jcp.oh_block == jcp.oh && jcp.ow_block == jcp.ow
                     && jcp.ic_block == jcp.ic));
 
-    const dim_t nb_oh = div_up(jcp.oh, jcp.oh_block);
-    const dim_t nb_ow = div_up(jcp.ow, jcp.ow_block);
+    const dim_t nb_oh = div_up(jcp.oh, nstl::max<dim_t>(jcp.oh_block, 1));
+    const dim_t nb_ow = div_up(jcp.ow, nstl::max<dim_t>(jcp.ow_block, 1));
     const dim_t work_amount = jcp.ngroups * jcp.mb * nb_oh * nb_ow;
     balance211(work_amount, nthr, ithr, start, end);
     nd_iterator_init(start, n, jcp.mb, g, jcp.ngroups, ohb, nb_oh, owb, nb_ow);

@@ -1000,6 +1000,7 @@ status_t init_conf(conv_gemm_conf_t &jcp,
     jcp.prop_kind = cd.prop_kind;
 
     jcp.ngroups = with_groups ? weights_d.dims()[0] : 1;
+    if (jcp.ngroups <= 0) return status::invalid_arguments;
     jcp.mb = src_d.dims()[0];
 
     jcp.oc = dst_d.dims()[1] / jcp.ngroups;
@@ -1346,18 +1347,21 @@ status_t init_conf(conv_gemm_conf_t &jcp,
                 bool is_depthwise
                         = jcp.ic == 1 && jcp.oc == 1 && jcp.ngroups != 1;
                 const dim_t outer_work = jcp.ngroups * jcp.mb;
-                const float outer_thr_eff
-                        = (float)outer_work / rnd_up(outer_work, max_threads);
+                const float outer_thr_eff = (float)outer_work
+                        / nstl::max<dim_t>(rnd_up(outer_work, max_threads), 1);
                 const size_t inner_work
                         = div_up(jcp.is, simd_w) * div_up(jcp.ic, simd_w);
-                const float inner_thr_eff
-                        = (float)inner_work / rnd_up(inner_work, max_threads);
+                const float inner_thr_eff = (float)inner_work
+                        / nstl::max<size_t>(rnd_up(inner_work, max_threads), 1);
                 jcp.outer_threading
                         = (is_depthwise
                                   || (jcp.is / max_threads < 64 && jcp.mb != 1))
-                        && (outer_thr_eff / inner_thr_eff >= 1.f
-                                || (jcp.os * jcp.ic * jcp.oc) / max_threads
-                                        < gemm_thrld);
+                        && (inner_thr_eff > 0.f
+                                        ? outer_thr_eff / inner_thr_eff >= 1.f
+                                        : true
+                                                || (jcp.os * jcp.ic * jcp.oc)
+                                                                / max_threads
+                                                        < gemm_thrld);
             }
             jcp.nthr = jcp.outer_threading ? max_threads : 1;
             scratchpad.book<int8_t>(

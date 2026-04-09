@@ -509,13 +509,16 @@ void cpu_reducer_2d_t<data_type>::reduce_nolock(int ithr, data_t *dst,
 
     const int id_in_grp = balancer().id_in_group(ithr);
     const int njobs_in_grp = balancer().ithr_njobs(ithr);
-    const int njobs_x = utils::div_up(conf_.dst_x_, conf_.job_size_x_);
+    const int njobs_x
+            = utils::div_up(conf_.dst_x_, nstl::max(conf_.job_size_x_, 1));
     const int global_job_start = balancer().ithr_job_off(ithr);
 
     const data_t *space_base = get_local_ptr(ithr - id_in_grp, scratchpad);
 
     const int pr_grps = nstl::min(njobs_in_grp, balancer().nthr_per_group_);
+    if (pr_grps <= 0) return;
     const int pr_nthr_per_grp = balancer().nthr_per_group_ / pr_grps;
+    if (pr_nthr_per_grp <= 0) return;
 
     if (id_in_grp >= pr_grps * pr_nthr_per_grp) return; /* idle */
 
@@ -534,6 +537,8 @@ void cpu_reducer_2d_t<data_type>::reduce_nolock(int ithr, data_t *dst,
         const int ny = nstl::min(conf_.dst_y_ - start_y, conf_.job_size_y_);
         const int nx = nstl::min(conf_.dst_x_ - start_x, conf_.job_size_x_);
         int x_blocking = choose_x_blocking(nx, ny, pr_nthr_per_grp);
+        if (x_blocking <= 0) x_blocking = 1;
+        if (nx <= 0) continue;
 
         int nxy_start {0}, nxy_end {0};
         balance211(ny * nx / x_blocking, pr_nthr_per_grp, pr_my_id, nxy_start,

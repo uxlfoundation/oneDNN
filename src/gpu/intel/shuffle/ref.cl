@@ -27,7 +27,7 @@
 #define DST_OFF(x0, x1, x2, x3, x4, x5) \
     OFF_MD(DST, (x0), (x1), (x2), (x3), (x4), (x5))
 
-int rev_transposed(int a) {
+off_t rev_transposed(off_t a) {
     return ((a % TRANSPOSE_COL) * TRANSPOSE_ROW + a / TRANSPOSE_COL);
 }
 
@@ -36,7 +36,7 @@ __kernel void ref_shuffle(__global DATA_T *src, __global DATA_T *dst) {
     src += SRC_OFFSET0;
     dst += DST_OFFSET0;
 
-    int d[6];
+    off_t d[6];
     d[0] = GWS_GET_D0();
     d[1] = GWS_GET_D1();
     d[2] = GWS_GET_D2();
@@ -44,10 +44,10 @@ __kernel void ref_shuffle(__global DATA_T *src, __global DATA_T *dst) {
     d[4] = GWS_GET_D4();
     d[5] = GWS_GET_D5();
 
-    const ulong src_off = SRC_OFF(d[0], d[1], d[2], d[3], d[4], d[5]);
+    const off_t src_off = SRC_OFF(d[0], d[1], d[2], d[3], d[4], d[5]);
 
     d[AXIS] = rev_transposed(d[AXIS]);
-    const ulong dst_off = DST_OFF(d[0], d[1], d[2], d[3], d[4], d[5]);
+    const off_t dst_off = DST_OFF(d[0], d[1], d[2], d[3], d[4], d[5]);
 
     dst[dst_off] = src[src_off];
 }

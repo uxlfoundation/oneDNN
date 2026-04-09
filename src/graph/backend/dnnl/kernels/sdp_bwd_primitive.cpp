@@ -53,12 +53,6 @@ status_t sdp_bwd_primitive_kernel_t::initial_check(
     const bool is_f32 = inputs[0].data_type == data_type::f32;
     VCHECK_SDP_BWD_PRIMITIVE(!is_f32, status::unimplemented,
             "SDPA bwd primitive doesn't support f32 because of performance");
-    for (auto &cur_op : sg->get_ops()) {
-        const auto opk = cur_op->get_kind();
-        VCHECK_SDP_BWD_PRIMITIVE(opk != graph::op_kind::Dropout,
-                status::unimplemented,
-                "SDPA bwd primitive doesn't support Dropout");
-    }
     return status::success;
 }
 

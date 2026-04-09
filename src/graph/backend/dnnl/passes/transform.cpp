@@ -5057,6 +5057,8 @@ status_t fuse_sdpa_bwd(std::shared_ptr<subgraph_t> &sg) {
                 softmax_bwd = c;
             else if (c->get_kind() == op_kind::_reorder)
                 tc_fwd = c;
+            else if (c->get_kind() == op_kind::_dropout)
+                dropout_fwd = c;
         }
 
         // Resolve matmul_dv through optional dropout / typecast + permute chain
@@ -5111,6 +5113,10 @@ status_t fuse_sdpa_bwd(std::shared_ptr<subgraph_t> &sg) {
         op_ptr dropout_bwd = nullptr, matmul_vt_do = nullptr;
         if (dP_prod->get_kind() == op_kind::_matmul) {
             matmul_vt_do = dP_prod;
+        } else if (dP_prod->get_kind() == op_kind::_dropout) {
+            dropout_bwd = dP_prod;
+            value_ptr dropout_in_val = dP_prod->get_input_value(0);
+            matmul_vt_do = dropout_in_val->get_producer().shared_from_this();
         } else {
             continue;
         }
@@ -5283,6 +5289,20 @@ status_t fuse_sdpa_bwd(std::shared_ptr<subgraph_t> &sg) {
             auto mv = mask_op->get_input_value(1);
             mv->remove_consumer(*mask_op, 1);
             bwd_op->connect_input(in_idx++, mv);
+        }
+
+        // 8: dropout inputs
+        if (dropout_fwd) {
+            bwd_op->set_attr<bool>(op_attr::with_dropout, true);
+            auto seed_val = dropout_fwd->get_input_value(1); // seed
+            seed_val->remove_consumer(*dropout_fwd, 1);
+            bwd_op->connect_input(in_idx++, seed_val);
+            auto offset_val = dropout_fwd->get_input_value(2); // offset
+            offset_val->remove_consumer(*dropout_fwd, 2);
+            bwd_op->connect_input(in_idx++, offset_val);
+            auto prob_val = dropout_fwd->get_input_value(3); // probability
+            prob_val->remove_consumer(*dropout_fwd, 3);
+            bwd_op->connect_input(in_idx++, prob_val);
         }
 
         // Connect outputs

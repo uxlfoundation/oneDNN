@@ -221,7 +221,8 @@ sdpa_bwd_executable_t::sdpa_bwd_executable_t(std::shared_ptr<op_t> &op,
     , is_invert_scale_(op->has_attr(op_attr::is_invert_scale)
                       ? op->get_attr<bool>(op_attr::is_invert_scale)
                       : false)
-    , with_explicit_mask_(mask_type_ == attn_mask_type::buffer) {
+    , with_explicit_mask_(mask_type_ == attn_mask_type::buffer)
+    , with_dropout_(op->get_attr<bool>(op_attr::with_dropout)) {
     // Op inputs: Q(0) K(1) V(2) dst/O(3) stats(4) diff_dst/dO(5) [scale(6)] [mask(7)]
     // Op outputs: diff_q(0) diff_k(1) diff_v(2) scratchpad(3) [diff_mask/dS(4)]
     auto md_q = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
@@ -267,6 +268,12 @@ sdpa_bwd_executable_t::sdpa_bwd_executable_t(std::shared_ptr<op_t> &op,
             op->get_attr<std::string>(op_attr::vs_acc_mode)));
     attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
     attr.set_fpmath_mode(static_cast<dnnl::fpmath_mode>(fpmath.mode_));
+
+    if (with_dropout_) {
+        dnnl::memory::desc dropout_mask_desc;
+        attr.set_dropout(dropout_mask_desc, dnnl::memory::data_type::s64,
+                /*use_offset*/ true, /*use_host_scalars*/ true);
+    }
 
     dim_t kv_head_number = op->get_input_logical_tensor(1).dims[1];
     const alg_kind_t softmax_alg = alg_kind::softmax_accurate_inf_as_zero;
@@ -374,6 +381,15 @@ arg_indices_t sdpa_bwd_executable_t::get_arg_indices(const op_t *op) {
     if (op->get_attr<int64_t>(op_attr::mask_type)
             == static_cast<int64_t>(attn_mask_type::buffer)) {
         args.insert({DNNL_ARG_ATTN_MASK, {indices_t::type_t::input, idx++}});
+    }
+
+    if (op->get_attr<bool>(op_attr::with_dropout)) {
+        args.insert({DNNL_ARG_ATTR_DROPOUT_SEED,
+                {indices_t::type_t::input, idx++}});
+        args.insert({DNNL_ARG_ATTR_DROPOUT_OFFSET,
+                {indices_t::type_t::input, idx++}});
+        args.insert({DNNL_ARG_ATTR_DROPOUT_PROBABILITY,
+                {indices_t::type_t::input, idx++}});
     }
     // outputs: diff_q, diff_k, diff_v, scratchpad, [dS]
     args.insert({DNNL_ARG_DIFF_QUERIES, {indices_t::type_t::output, 0}});

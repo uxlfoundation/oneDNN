@@ -1,7 +1,7 @@
 {
   "version": "3.12.0",
   "engine_kind": "gpu",
-  "fpmath_mode": "strict",
+  "fpmath_mode": "f16",
   "fpmath_mode_apply_to_int": "true",
   "input_ports": [
     0,

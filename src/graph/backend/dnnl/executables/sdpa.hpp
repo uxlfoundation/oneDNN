@@ -108,6 +108,7 @@ private:
     bool is_invert_scale_;
     bool with_explicit_mask_;
     bool is_initialized_;
+    bool with_dropout_;
 };
 
 } // namespace dnnl_impl

@@ -1551,35 +1551,34 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
                 auto vmm_perm = vmm_ubound();
                 vpermb(vmm, vmm_perm, vmm);
                 vmovdqu8(addr, r_xmm);
-                continue;
-            }
-
-            switch (brg.dt_d) {
-                case data_type::f32:
-                case data_type::s32: uni_vmovups(addr, r_vmm); break;
-                case data_type::bf16: // TODO - clean
-                    if (brg.is_bf16_emu) {
-                        bf16_emu_->vcvtneps2bf16(vmm_lower, vmm);
-                    } else {
-                        vcvtneps2bf16(vmm_lower, vmm);
-                    }
-                    vmovdqu16(addr, r_ymm);
-                    break;
-                case data_type::f16:
-                    vcvtps2ph(vmm_lower, vmm, _op_mxcsr);
-                    vmovdqu16(addr, r_ymm);
-                    break;
-                case data_type::f8_e5m2:
-                    f8_e5m2_cvt_->vcvt_f32_to_f8(xmm, vmm);
-                    vmovdqu8(addr, r_xmm);
-                    break;
-                case data_type::f8_e4m3:
-                    f8_e4m3_cvt_->vcvt_f32_to_f8(xmm, vmm);
-                    vmovdqu8(addr, r_xmm);
-                    break;
-                case data_type::s8: vpmovsdb(addr, r_vmm); break;
-                case data_type::u8: vpmovusdb(addr, r_vmm); break;
-                default: assert(!"unknown dst_dt");
+            } else {
+                switch (brg.dt_d) {
+                    case data_type::f32:
+                    case data_type::s32: uni_vmovups(addr, r_vmm); break;
+                    case data_type::bf16: // TODO - clean
+                        if (brg.is_bf16_emu) {
+                            bf16_emu_->vcvtneps2bf16(vmm_lower, vmm);
+                        } else {
+                            vcvtneps2bf16(vmm_lower, vmm);
+                        }
+                        vmovdqu16(addr, r_ymm);
+                        break;
+                    case data_type::f16:
+                        vcvtps2ph(vmm_lower, vmm, _op_mxcsr);
+                        vmovdqu16(addr, r_ymm);
+                        break;
+                    case data_type::f8_e5m2:
+                        f8_e5m2_cvt_->vcvt_f32_to_f8(xmm, vmm);
+                        vmovdqu8(addr, r_xmm);
+                        break;
+                    case data_type::f8_e4m3:
+                        f8_e4m3_cvt_->vcvt_f32_to_f8(xmm, vmm);
+                        vmovdqu8(addr, r_xmm);
+                        break;
+                    case data_type::s8: vpmovsdb(addr, r_vmm); break;
+                    case data_type::u8: vpmovusdb(addr, r_vmm); break;
+                    default: assert(!"unknown dst_dt");
+                }
             }
         } else {
             const dim_t ld_block = is_tail ? brg.ldb_tail : brg.ld_block;

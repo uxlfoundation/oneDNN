@@ -143,6 +143,8 @@ int measure_perf(timer::timer_t &t,
         res_t *res);
 
 dnnl::graph::op::kind opstr2kind(const std::string &kind);
+bool is_unary(const std::string &kind);
+bool is_unary(dnnl::graph::op::kind akind);
 dnnl::graph::op::attr attrstr2kind(const std::string &attr_name);
 const std::string &attrstr2type(const std::string &attr_name);
 

@@ -364,6 +364,39 @@ dnnl::graph::op::kind opstr2kind(const std::string &kind) {
     return dnnl::graph::op::kind::LastSymbol;
 }
 
+// The list of operations considered Unary from documentation point of view.
+//
+// Note: this list is disconnected from the rest of driver internals.
+// TODO: come up with a single struct and provide different converters and
+// getters.
+bool is_unary(const std::string &kind) {
+    return is_unary(opstr2kind(kind));
+}
+bool is_unary(dnnl::graph::op::kind akind) {
+    using namespace dnnl::graph;
+    static const std::vector<op::kind> unary_ops {
+            op::kind::Abs,
+            op::kind::Clamp,
+            op::kind::Elu,
+            op::kind::Exp,
+            op::kind::GELU,
+            op::kind::HardSigmoid,
+            op::kind::HardSwish,
+            op::kind::LeakyReLU,
+            op::kind::Log,
+            op::kind::Mish,
+            op::kind::ReLU,
+            op::kind::Round,
+            op::kind::Sigmoid,
+            op::kind::SoftPlus,
+            op::kind::Sqrt,
+            op::kind::Square,
+            op::kind::Tanh,
+    };
+    return std::any_of(unary_ops.begin(), unary_ops.end(),
+            [akind](dnnl::graph::op::kind _kind) { return _kind == akind; });
+}
+
 dnnl::graph::op::attr attrstr2kind(const std::string &attr_name) {
     const std::unordered_map<std::string, dnnl::graph::op::attr> attr_map = {
             // float32 attributes. The value of these attributes can be any single

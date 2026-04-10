@@ -44,12 +44,12 @@ details about the programming model.
     `Exp <dev_guide_op_exp.html>`_, `GELU <dev_guide_op_gelu.html>`_,
     `HardSigmoid <dev_guide_op_hardsigmoid.html>`_, `HardSwish <dev_guide_op_hardswish.html>`_,
     `LeakyReLU <dev_guide_op_leakyrelu.html>`_, `Log <dev_guide_op_log.html>`_,
-    `Mish <dev_guide_op_mish.html>`_, `Sigmoid <dev_guide_op_sigmoid.html>`_,
-    `SoftPlus <dev_guide_op_softplus.html>`_, `ReLU <dev_guide_op_relu.html>`_,
-    `Round <dev_guide_op_round.html>`_, `Sqrt <dev_guide_op_sqrt.html>`_,
+    `Mish <dev_guide_op_mish.html>`_, `ReLU <dev_guide_op_relu.html>`_,
+    `Round <dev_guide_op_round.html>`_, `Sigmoid <dev_guide_op_sigmoid.html>`_,
+    `SoftPlus <dev_guide_op_softplus.html>`_, `Sqrt <dev_guide_op_sqrt.html>`_,
     `Square <dev_guide_op_square.html>`_, `Tanh <dev_guide_op_tanh.html>`_.
 
-.. list-table:: 
+.. list-table::
    :widths: 30 70
    :header-rows: 1
 

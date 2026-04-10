@@ -32,11 +32,11 @@ void custom_unsetenv(const char *name) {
 
 namespace dnnl {
 
-void fill_primitive_cache(int n) {
+void fill_primitive_cache(
+        int n, const engine &eng = engine(get_test_engine_kind(), 0)) {
     using tag = memory::format_tag;
     using dt = memory::data_type;
 
-    engine eng(get_test_engine_kind(), 0);
     for (int i = 0; i < n; i++) {
         // fill primitive cache with n primitives
         auto md = memory::desc({i, 1, 1, 1}, dt::f32, tag::nchw);
@@ -104,8 +104,19 @@ TEST(primitive_cache_test, TestSizeGreaterCapacity) {
 TEST(primitive_cache_test, TestCacheHit) {
     set_primitive_cache_capacity(0);
     set_primitive_cache_capacity(2);
-    fill_primitive_cache(1);
-    fill_primitive_cache(1);
+
+    // This is designed to verify that different engines objects would trigger
+    // cache misses due to different engine_id values.
+    //
+    // It's important to keep engines in the outer scope as underlying interop
+    // objects, if re-created, might return the same address if the engine
+    // object creation is moved inside the `fill_primitive_cache` function.
+    // This behavior is observed for ZE backend, though not observed for OCL and
+    // SYCL backends.
+    engine eng0(get_test_engine_kind(), 0);
+    engine eng1(get_test_engine_kind(), 0);
+    fill_primitive_cache(1, eng0);
+    fill_primitive_cache(1, eng1);
 
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_SYCL
     if (get_test_engine_kind() == engine::kind::cpu) {

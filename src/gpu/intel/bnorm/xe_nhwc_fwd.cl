@@ -54,8 +54,8 @@ __kernel void xe_calc_mean_var_nhwc(__global DATA_T *src,
     SUM_DATA_T sum_sq[IC_BLOCK_SGROUPS] = {0.0f};
 
 #if HAS_STAT_SP_BLOCK_TAIL
-    for (int sp = 0; sp < min(STAT_SP_BLOCK, SP - sp_block_idx * STAT_SP_BLOCK);
-            ++sp) {
+    int sp_remaining = (int)(SP - sp_block_idx * STAT_SP_BLOCK);
+    for (int sp = 0; sp < min(STAT_SP_BLOCK, sp_remaining); ++sp) {
 #else
     for (int sp = 0; sp < STAT_SP_BLOCK; ++sp) {
 #endif
@@ -123,8 +123,8 @@ __kernel void xe_calc_mean_nhwc(__global DATA_T *src,
     float v_mean[IC_BLOCK_SGROUPS] = {0.0f};
 
 #if HAS_STAT_SP_BLOCK_TAIL
-    for (int sp = 0; sp < min(STAT_SP_BLOCK, SP - sp_block_idx * STAT_SP_BLOCK);
-            ++sp) {
+    int sp_remaining = (int)(SP - sp_block_idx * STAT_SP_BLOCK);
+    for (int sp = 0; sp < min(STAT_SP_BLOCK, sp_remaining); ++sp) {
 #else
     for (int sp = 0; sp < STAT_SP_BLOCK; ++sp) {
 #endif
@@ -190,8 +190,8 @@ __kernel void xe_calc_variance_nhwc(__global DATA_T *src, __global float *mean,
     float v0[IC_BLOCK_SGROUPS] = {0.0f};
 
 #if HAS_STAT_SP_BLOCK_TAIL
-    for (int sp = 0; sp < min(STAT_SP_BLOCK, SP - sp_block_idx * STAT_SP_BLOCK);
-            ++sp) {
+    int sp_remaining = (int)(SP - sp_block_idx * STAT_SP_BLOCK);
+    for (int sp = 0; sp < min((off_t)STAT_SP_BLOCK, sp_remaining); ++sp) {
 #else
     for (int sp = 0; sp < STAT_SP_BLOCK; ++sp) {
 #endif

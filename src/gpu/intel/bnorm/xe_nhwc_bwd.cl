@@ -65,8 +65,8 @@ __kernel void xe_calculate_stats_nhwc(__global DATA_T *src,
         if (sp_block_idx * STAT_SP_BLOCK + sp >= SP) break;
 #else // issue
 #if HAS_STAT_SP_BLOCK_TAIL
-    for (int sp = 0; sp < min(STAT_SP_BLOCK, SP - sp_block_idx * STAT_SP_BLOCK);
-            ++sp) {
+    int sp_remaining = (int)(SP - sp_block_idx * STAT_SP_BLOCK);
+    for (int sp = 0; sp < min(STAT_SP_BLOCK, sp_remaining); ++sp) {
 #else
     for (int sp = 0; sp < STAT_SP_BLOCK; ++sp) {
 #endif

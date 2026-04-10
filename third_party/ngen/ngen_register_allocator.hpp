@@ -101,6 +101,13 @@ struct BundleGroup {
             regMasks[rchunk] |= rhs.regMask(hw, int(rchunk));
         return *this;
     }
+    
+    friend BundleGroup operator&(BundleGroup lhs, Bundle rhs) { lhs &= rhs; return lhs; }
+    BundleGroup &operator&=(Bundle rhs) {
+        for (size_t rchunk = 0; rchunk < regMasks.size(); rchunk++)
+            regMasks[rchunk] &= rhs.regMask(hw, int(rchunk));
+        return *this;
+    }
 
     BundleGroup operator~() {
         auto result = *this;
@@ -132,6 +139,8 @@ public:
     // Allocation functions: sub-GRFs, full GRFs, and GRF ranges.
     inline GRFRange allocRange(int nregs, Bundle baseBundle = Bundle(),
                                BundleGroup bundleMask = BundleGroup::AllBundles());
+    inline GRFRange allocRange(int nregs, BundleGroup baseBundle,
+                               BundleGroup bundleMask = BundleGroup::AllBundles());
     GRF alloc(Bundle bundle = Bundle()) { return allocRange(1, bundle)[0]; }
 
     inline Subregister allocSub(DataType type, Bundle bundle = Bundle());
@@ -145,6 +154,8 @@ public:
 
     // Attempted allocation. Return value is invalid if allocation failed.
     inline GRFRange tryAllocRange(int nregs, Bundle baseBundle = Bundle(),
+                                  BundleGroup bundleMask = BundleGroup::AllBundles());
+    inline GRFRange tryAllocRange(int nregs, BundleGroup baseBundle,
                                   BundleGroup bundleMask = BundleGroup::AllBundles());
     inline GRF tryAlloc(Bundle bundle = Bundle());
 
@@ -509,6 +520,11 @@ bool RegisterAllocator::isFree(Subregister subreg) const
 
 GRFRange RegisterAllocator::allocRange(int nregs, Bundle baseBundle, BundleGroup bundleMask)
 {
+    return allocRange(nregs, BundleGroup(hw) | baseBundle, bundleMask);
+}
+
+GRFRange RegisterAllocator::allocRange(int nregs, BundleGroup baseBundle, BundleGroup bundleMask)
+{
     auto result = tryAllocRange(nregs, baseBundle, bundleMask);
     if (result.isInvalid())
         throw out_of_registers_exception();
@@ -533,16 +549,30 @@ FlagRegister RegisterAllocator::allocFlag(bool sub)
 
 GRFRange RegisterAllocator::tryAllocRange(int nregs, Bundle baseBundle, BundleGroup bundleMask)
 {
+    return tryAllocRange(nregs, BundleGroup(hw) | baseBundle, bundleMask);
+}
+
+// Allocate a contiguous range of GRFs. baseBundle restricts the choice of first GRF, while bundleMask
+// restricts the choice of all GRFs in the range (i.e. no GRF allocated can be outside of bundleMask).
+GRFRange RegisterAllocator::tryAllocRange(int nregs, BundleGroup baseBundle, BundleGroup bundleMask)
+{
     if (nregs == 0) return GRFRange(0, 0);
 
     uint64_t freeGRF64[sizeof(freeGRF) / sizeof(uint64_t)];
     std::memcpy(freeGRF64, freeGRF, sizeof(freeGRF));
-    bool ok = false;
 
-    for (int rchunk = 0; rchunk < (GRF::maxRegs() >> 6); rchunk++) {
-        uint64_t baseMask = baseBundle.regMask(hw, rchunk);
+    auto checkFree = [](uint64_t freeMask, int firstBit, int lastBit) -> bool {
+        // (1 << (lastBit-1)) << 1 avoids undefined behavior when lastBit == 64
+        uint64_t regMask = ((uint64_t(1) << (lastBit - 1)) << 1) - (uint64_t(1) << firstBit);
+        return !(regMask & ~freeMask);
+    };
 
-        uint64_t free = freeGRF64[rchunk] & bundleMask.regMask(rchunk);
+    int chunkCount = GRF::maxRegs() >> 6;
+    for (int rchunk = 0; rchunk < chunkCount; rchunk++) {
+        uint64_t baseMask = baseBundle.regMask(rchunk);
+        uint64_t regMask = bundleMask.regMask(rchunk);
+
+        uint64_t free = freeGRF64[rchunk] & regMask;
         uint64_t freeBase = free & baseMask;
 
         while (freeBase) {
@@ -551,22 +581,15 @@ GRFRange RegisterAllocator::tryAllocRange(int nregs, Bundle baseBundle, BundleGr
             int rbase = firstBit + (rchunk << 6);
 
             // Check if required # of registers are available.
-            int lastBit = firstBit + nregs;
-            if (lastBit <= 64) {
-                // Range to check doesn't cross 64-GRF boundary. Fast check using bitmasks.
-                uint64_t mask = ((uint64_t(1) << (lastBit - 1)) << 1) - (uint64_t(1) << firstBit);
-                ok = !(mask & ~free);
-            } else {
-                // Range to check crosses 64-GRF boundary. Check first part using bitmasks,
-                // Check the rest using a loop (ho hum).
-                uint64_t mask = ~uint64_t(0) << firstBit;
-                ok = !(mask & ~free) && (rbase + nregs <= (int)(sizeof(freeSub) / sizeof(freeSub[0])));
-                if (ok) for (int rr = 64 - firstBit; rr < nregs; rr++) {
-                    if (freeSub[rbase + rr] != fullSubMask) {
-                        ok = false;
-                        break;
-                    }
-                }
+            bool ok = true;
+            int regsLeft = nregs;
+            int startBit = firstBit;
+            for (int rc = rchunk; ok && regsLeft > 0; rc++) {
+                if (rc >= chunkCount) { ok = false; break; }
+                int endBit = std::min(startBit + regsLeft, 64);
+                ok = checkFree(freeGRF64[rc] & bundleMask.regMask(rc), startBit, endBit);
+                regsLeft -= (endBit - startBit);
+                startBit = 0;
             }
 
             if (ok) {

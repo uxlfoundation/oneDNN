@@ -48,7 +48,7 @@ void load_bias(
 #else
     bias_in_tile_type bias_in_tile;
     tile_load(&bias_in_tile, ptr, n, 1, 0, sg_i0, 0);
-    tile_convert(bias_in_tile, (*tile), CONVERT_FLOAT_T);
+    tile_convert(bias_in_tile, (*tile), BIA_TO_REF);
 #endif
 }
 #endif

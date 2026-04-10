@@ -694,7 +694,9 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
     if (!IMPLICATION((brg->rdb_tail
                              % ((brg->is_bf16_tmm || brg->is_f16_tmm) ? 2 : 4))
                         != 0,
-                brg->is_tf32 || brg->is_input_convert()
+                brg->is_tf32
+                        || (brg->is_input_convert() && !brg->is_bf16_fp8
+                                && !brg->is_f16_fp8)
                         || brg->amx_wary_k_tail() || brg->fused_copy_a)) {
         return status::unimplemented;
     }

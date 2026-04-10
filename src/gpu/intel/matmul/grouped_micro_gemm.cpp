@@ -353,7 +353,7 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
     if (src_quant_.with_scale()) {
         VDISPATCH_MATMUL(utils::one_of(src_quant_.scale_dt(), f32, f16, bf16,
                                  f8_e5m2, f8_e4m3, e8m0, f4_e2m1, f4_e3m0),
-                VERBOSE_UNSUPPORTED_SCALES_CFG ": %s(%s)", "src scales",
+                VERBOSE_UNSUPPORTED_SCALES_CFG ": src scales dt(%s)",
                 dnnl_dt2str(src_quant_.scale_dt()));
     }
 
@@ -362,9 +362,10 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
         // Only per-row or per-column zero points supported for src
         VDISPATCH_MATMUL(utils::one_of(src_zp_mask, src_qmask_M(),
                                  src_qmask_M() | src_qmask_K(), 0),
-                VERBOSE_UNSUPPORTED_ZP_CFG ": %s", "src zero points");
+                VERBOSE_UNSUPPORTED_ZP_CFG ": src zero points mask(%d)",
+                src_zp_mask);
         VDISPATCH_MATMUL(utils::one_of(src_quant_.zp_dt(), u8, s8),
-                VERBOSE_UNSUPPORTED_ZP_CFG ": %s(%s)", "src zero points",
+                VERBOSE_UNSUPPORTED_ZP_CFG ": src zero points dt(%s)",
                 dnnl_dt2str(src_quant_.zp_dt()));
     }
 
@@ -383,7 +384,7 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
                 utils::one_of(wei_mask, 7, 5), VERBOSE_UNSUPPORTED_SCALES_CFG);
         VDISPATCH_MATMUL(utils::one_of(wei_quant_.scale_dt(), f32, f16, bf16,
                                  f8_e5m2, f8_e4m3, e8m0, f4_e2m1, f4_e3m0),
-                VERBOSE_UNSUPPORTED_SCALES_CFG ": %s(%s)", "wei scales",
+                VERBOSE_UNSUPPORTED_SCALES_CFG ": wei scales dt(%s)",
                 dnnl_dt2str(wei_quant_.scale_dt()));
     }
 
@@ -391,9 +392,10 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
         const int wei_zp_mask = wei_quant_.zp_mask();
         // Only per-column zero points supported for weights
         VDISPATCH_MATMUL(utils::one_of(wei_zp_mask, 7, 5),
-                VERBOSE_UNSUPPORTED_ZP_CFG ": %s", "wei zero points");
+                VERBOSE_UNSUPPORTED_ZP_CFG ": wei zero points mask(%d)",
+                wei_zp_mask);
         VDISPATCH_MATMUL(utils::one_of(wei_quant_.zp_dt(), u8, s8, u4, s4),
-                VERBOSE_UNSUPPORTED_ZP_CFG ": %s(%s)", "wei zero points",
+                VERBOSE_UNSUPPORTED_ZP_CFG ": wei zero points dt(%s)",
                 dnnl_dt2str(wei_quant_.zp_dt()));
     }
 

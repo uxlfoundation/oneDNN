@@ -64,7 +64,7 @@ __kernel void simple_binary(__global SRC0_DATA_T *src0,
         __global float *src1_scale) {
 
     // since gws = no. of total elems in A, id will be the logical offset
-    int dims0[6] = {0};
+    off_t dims0[6] = {0};
     dims0[0] = GWS_GET_D0();
     dims0[1] = GWS_GET_D1();
     dims0[2] = GWS_GET_D2();
@@ -72,9 +72,9 @@ __kernel void simple_binary(__global SRC0_DATA_T *src0,
     dims0[4] = GWS_GET_D4();
     dims0[5] = GWS_GET_D5();
     int d1_block = GWS_GET_D1_BLOCK();
-    int dims0_po[6]
+    off_t dims0_po[6]
             = {dims0[0], dims0[1], dims0[2], dims0[3], dims0[4], dims0[5]};
-    int d1_init = GWS_GET_D1();
+    off_t d1_init = GWS_GET_D1();
 
     off_t dst_off = DST_OFF(
             dims0[0], dims0[1], dims0[2], dims0[3], dims0[4], dims0[5]);

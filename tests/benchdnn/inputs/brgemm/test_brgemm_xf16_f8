@@ -1,0 +1,12 @@
+--reset
+
+--batch=harness_brgemm_xf16_f8
+
+# ukernel wtag support
+--reset
+--wtag=ba
+--dt=f16:f8_e4m3:f16,\
+     bf16:f8_e4m3:bf16,\
+     f16:f8_e5m2:f16,\
+     bf16:f8_e5m2:bf16
+--batch=option_set_int8

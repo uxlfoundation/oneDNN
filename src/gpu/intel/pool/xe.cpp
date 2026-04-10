@@ -77,14 +77,14 @@ static status_t init_conf_common(
 
     if (c_block_size >= 16 && n_block_size >= 16) {
         // Workaround: OCL compiler on XE3P incorrectly compiles
-        // read_vect_c_block when USE_MB_C_BLOCK and IC has a tail.
+        // read_vect_c_block when USE_MB_C_BLOCK and u8 data type.
         auto is_xe3p = utils::downcast<intel::engine_t *>(engine)
                                ->device_info()
                                ->gpu_arch()
                 >= compute::gpu_arch_t::xe3p_35_10;
-        VDISPATCH_POOLING_IC(!(is_xe3p && conf.c % conf.sub_group_size != 0),
+        VDISPATCH_POOLING_IC(!(is_xe3p && src_mdw.data_type() == data_type::u8),
                 "%s," VERBOSE_IMPL_HEURISTIC_FAIL, pd->info(engine),
-                "workaround xe3p compiler bug: ic tail with mb_c_block");
+                "workaround xe3p compiler bug: u8 with mb_c_block");
 
         c_padded = utils::rnd_up(conf.c_padded, c_block_size);
         conf.use_mb_c_block = true;

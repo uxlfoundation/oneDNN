@@ -138,13 +138,15 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
                 = static_cast<int>(utils::rnd_up_pow2(src_group_sizes_[1]));
     }
 
-    // internal conversions do not work well when both A and B are integers
-    if (problem.Ta.isInteger() && problem.Tb.isInteger()) {
+    // When both A and B are integers and group sums are needed, we
+    // can avoid using group sums by converting one of the inputs to
+    // f16/bf16.
+    if (problem.Ta.isInteger() && problem.Tb.isInteger()
+            && (problem.needsAGroupSums() || problem.needsBGroupSums())) {
         Type ctype = Type::f16;
         if (utils::one_of(Type::bf16, problem.Ta_scale, problem.Tb_scale,
                     convert_dnnl_to_kernel_type(dst_mdw.data_type())))
             ctype = Type::bf16;
-
         if (problem.Ta_ext.bits() < problem.Tb_ext.bits()) {
             problem.Ta = ctype;
         } else {

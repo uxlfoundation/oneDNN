@@ -144,147 +144,139 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
         const dim_t wei_stride_n
                 = wei_d.blocking_desc().strides[wei_d.ndims() - 1];
 
-        for (dim_t m = 0; m < M; ++m) {
-            for (dim_t n = 0; n < N; ++n) {
-                float result = 0.0f;
+        for_(dim_t m = 0; m < M; ++m)
+        for (dim_t n = 0; n < N; ++n) {
+            float result = 0.0f;
 
-                // int wei path (either int src + int wei or fp src + int wei WOQ)
-                // int src follows ref_matmul_int8_t
-                // fp  src (WOQ) follows dequantize then multiply
-                if (use_int_arithmetic || use_woq) {
-                    for (dim_t i_group = 0; i_group < n_k_groups; i_group++) {
-                        float wei_scale = 1.0f;
-                        int wei_zp_val = 0;
+            // int wei path (either int src + int wei or fp src + int wei WOQ)
+            // int src follows ref_matmul_int8_t
+            // fp  src (WOQ) follows dequantize then multiply
+            if (use_int_arithmetic || use_woq) {
+                for (dim_t i_group = 0; i_group < n_k_groups; i_group++) {
+                    float wei_scale = 1.0f;
+                    int wei_zp_val = 0;
 
-                        if (with_wei_scales) {
-                            const dim_t wei_k_group = i_group
-                                    * wei_scale_ngroups_k / n_k_groups;
-                            const dim_t idx = group_id * wei_scale_ngroups_k * N
-                                    + wei_k_group * N + n;
-                            wei_scale = io::load_float_value(
-                                    wei_scale_dt, wei_scales, idx);
-                        }
-                        if (with_wei_zps) {
-                            const dim_t wei_k_group
-                                    = i_group * wei_zp_ngroups_k / n_k_groups;
-                            const dim_t idx = group_id * wei_zp_ngroups_k * N
-                                    + wei_k_group * N + n;
-                            wei_zp_val = io::load_int_value(
-                                    wei_zp_dt, wei_zps, idx);
-                        }
-
-                        float acc = 0.0f;
-                        if (use_int_arithmetic) {
-                            int acc_int = 0;
-                            for (dim_t k = 0; k < k_group_size; ++k) {
-                                const dim_t k_abs = k + i_group * k_group_size;
-                                const dim_t src_idx
-                                        = src_base_idx + m * K + k_abs;
-                                const dim_t wei_idx = wei_group_base
-                                        + k_abs * wei_stride_k
-                                        + n * wei_stride_n;
-                                const int s = io::load_int_value(
-                                        src_dt, src_data, src_idx);
-                                const int w = io::load_int_value(
-                                        wei_dt, wei_data, wei_idx);
-                                acc_int += s * (w - wei_zp_val);
-                            }
-                            acc = static_cast<float>(acc_int);
-                        } else {
-                            for (dim_t k = 0; k < k_group_size; ++k) {
-                                const dim_t k_abs = k + i_group * k_group_size;
-                                const dim_t src_idx
-                                        = src_base_idx + m * K + k_abs;
-                                const dim_t wei_idx = wei_group_base
-                                        + k_abs * wei_stride_k
-                                        + n * wei_stride_n;
-                                const float s = io::load_float_value(
-                                        src_dt, src_data, src_idx);
-                                const int w_int = io::load_int_value(
-                                        wei_dt, wei_data, wei_idx);
-                                acc += s
-                                        * static_cast<float>(
-                                                w_int - wei_zp_val);
-                            }
-                        }
-
-                        if (with_src_scales) {
-                            const dim_t src_k_group = i_group
-                                    * src_scale_ngroups_k / n_k_groups;
-                            const dim_t idx = (src_offset_start + m)
-                                            * src_scale_ngroups_k
-                                    + src_k_group;
-                            const float src_scale = io::load_float_value(
-                                    src_scale_dt, src_scales, idx);
-                            acc *= src_scale;
-                        }
-
-                        result += acc * wei_scale;
+                    if (with_wei_scales) {
+                        const dim_t wei_k_group
+                                = i_group * wei_scale_ngroups_k / n_k_groups;
+                        const dim_t idx = group_id * wei_scale_ngroups_k * N
+                                + wei_k_group * N + n;
+                        wei_scale = io::load_float_value(
+                                wei_scale_dt, wei_scales, idx);
                     }
-                } else {
-                    // fp arithmetic
-                    for (dim_t i_group = 0; i_group < n_k_groups; i_group++) {
-                        float acc = 0.0f;
+                    if (with_wei_zps) {
+                        const dim_t wei_k_group
+                                = i_group * wei_zp_ngroups_k / n_k_groups;
+                        const dim_t idx = group_id * wei_zp_ngroups_k * N
+                                + wei_k_group * N + n;
+                        wei_zp_val
+                                = io::load_int_value(wei_zp_dt, wei_zps, idx);
+                    }
 
+                    float acc = 0.0f;
+                    if (use_int_arithmetic) {
+                        int acc_int = 0;
                         for (dim_t k = 0; k < k_group_size; ++k) {
                             const dim_t k_abs = k + i_group * k_group_size;
                             const dim_t src_idx = src_base_idx + m * K + k_abs;
                             const dim_t wei_idx = wei_group_base
                                     + k_abs * wei_stride_k + n * wei_stride_n;
-
+                            const int s = io::load_int_value(
+                                    src_dt, src_data, src_idx);
+                            const int w = io::load_int_value(
+                                    wei_dt, wei_data, wei_idx);
+                            acc_int += s * (w - wei_zp_val);
+                        }
+                        acc = static_cast<float>(acc_int);
+                    } else {
+                        for (dim_t k = 0; k < k_group_size; ++k) {
+                            const dim_t k_abs = k + i_group * k_group_size;
+                            const dim_t src_idx = src_base_idx + m * K + k_abs;
+                            const dim_t wei_idx = wei_group_base
+                                    + k_abs * wei_stride_k + n * wei_stride_n;
                             const float s = io::load_float_value(
                                     src_dt, src_data, src_idx);
-                            const float w = io::load_float_value(
+                            const int w_int = io::load_int_value(
                                     wei_dt, wei_data, wei_idx);
-                            acc += s * w;
+                            acc += s * static_cast<float>(w_int - wei_zp_val);
                         }
-
-                        if (with_src_scales) {
-                            const dim_t src_k_group = i_group
-                                    * src_scale_ngroups_k / n_k_groups;
-                            const dim_t idx = (src_offset_start + m)
-                                            * src_scale_ngroups_k
-                                    + src_k_group;
-                            const float src_scale = io::load_float_value(
-                                    src_scale_dt, src_scales, idx);
-                            acc *= src_scale;
-                        }
-
-                        if (with_wei_scales) {
-                            const dim_t wei_k_group = i_group
-                                    * wei_scale_ngroups_k / n_k_groups;
-                            const dim_t idx = group_id * wei_scale_ngroups_k * N
-                                    + wei_k_group * N + n;
-                            const float wei_scale = io::load_float_value(
-                                    wei_scale_dt, wei_scales, idx);
-                            acc *= wei_scale;
-                        }
-
-                        result += acc;
                     }
+
+                    if (with_src_scales) {
+                        const dim_t src_k_group
+                                = i_group * src_scale_ngroups_k / n_k_groups;
+                        const dim_t idx
+                                = (src_offset_start + m) * src_scale_ngroups_k
+                                + src_k_group;
+                        const float src_scale = io::load_float_value(
+                                src_scale_dt, src_scales, idx);
+                        acc *= src_scale;
+                    }
+
+                    result += acc * wei_scale;
                 }
+            } else {
+                // fp arithmetic
+                for (dim_t i_group = 0; i_group < n_k_groups; i_group++) {
+                    float acc = 0.0f;
 
-                // Add bias
-                if (with_bias) {
-                    const dim_t bias_idx = group_id * N + n;
-                    result += io::load_float_value(bia_dt, bias_data, bias_idx);
+                    for (dim_t k = 0; k < k_group_size; ++k) {
+                        const dim_t k_abs = k + i_group * k_group_size;
+                        const dim_t src_idx = src_base_idx + m * K + k_abs;
+                        const dim_t wei_idx = wei_group_base
+                                + k_abs * wei_stride_k + n * wei_stride_n;
+
+                        const float s = io::load_float_value(
+                                src_dt, src_data, src_idx);
+                        const float w = io::load_float_value(
+                                wei_dt, wei_data, wei_idx);
+                        acc += s * w;
+                    }
+
+                    if (with_src_scales) {
+                        const dim_t src_k_group
+                                = i_group * src_scale_ngroups_k / n_k_groups;
+                        const dim_t idx
+                                = (src_offset_start + m) * src_scale_ngroups_k
+                                + src_k_group;
+                        const float src_scale = io::load_float_value(
+                                src_scale_dt, src_scales, idx);
+                        acc *= src_scale;
+                    }
+
+                    if (with_wei_scales) {
+                        const dim_t wei_k_group
+                                = i_group * wei_scale_ngroups_k / n_k_groups;
+                        const dim_t idx = group_id * wei_scale_ngroups_k * N
+                                + wei_k_group * N + n;
+                        const float wei_scale = io::load_float_value(
+                                wei_scale_dt, wei_scales, idx);
+                        acc *= wei_scale;
+                    }
+
+                    result += acc;
                 }
-
-                const dim_t dst_idx = dst_base_idx + m * N + n;
-
-                // Apply post-ops (binary mul for NVFP4 global scale)
-                if (with_post_ops) {
-                    ref_post_ops_t::args_t args;
-                    args.dst_val
-                            = io::load_float_value(dst_dt, dst_data, dst_idx);
-                    args.ctx = &ctx;
-                    args.l_offset = dst_idx;
-                    args.dst_md = pd()->dst_md();
-                    ref_post_ops->execute(result, args);
-                }
-
-                io::store_float_value(dst_dt, result, dst_data, dst_idx);
             }
+
+            // Add bias
+            if (with_bias) {
+                const dim_t bias_idx = group_id * N + n;
+                result += io::load_float_value(bia_dt, bias_data, bias_idx);
+            }
+
+            const dim_t dst_idx = dst_base_idx + m * N + n;
+
+            // Apply post-ops (binary mul for NVFP4 global scale)
+            if (with_post_ops) {
+                ref_post_ops_t::args_t args;
+                args.dst_val = io::load_float_value(dst_dt, dst_data, dst_idx);
+                args.ctx = &ctx;
+                args.l_offset = dst_idx;
+                args.dst_md = pd()->dst_md();
+                ref_post_ops->execute(result, args);
+            }
+
+            io::store_float_value(dst_dt, result, dst_data, dst_idx);
         }
     });
 

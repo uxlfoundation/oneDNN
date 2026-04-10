@@ -75,13 +75,7 @@ private:
     void handle_option(std::ostream &s, const char *&option, res_t *res,
             const char *prb_str) const;
 
-    void dump_perf_footer() const {
-        static bool footer_printed = false;
-        if (!footer_printed) {
-            BENCHDNN_PRINT(0, "Output template: %s\n", pt_);
-            footer_printed = true;
-        }
-    }
+    void dump_perf_header() const;
 
     static timer::timer_t::mode_t modifier2mode(char c) {
         if (c == '-') return timer::timer_t::min;

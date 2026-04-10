@@ -359,13 +359,22 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
 
     if (src_quant_.with_zp()) {
         const int src_zp_mask = src_quant_.zp_mask();
-        const int src_qmask = src_qmask_M() | src_qmask_K();
         // Only per-row or per-column zero points supported for src
-        VDISPATCH_MATMUL(utils::one_of(src_zp_mask, src_qmask, 0),
+        VDISPATCH_MATMUL(utils::one_of(src_zp_mask, src_qmask_M(),
+                                 src_qmask_M() | src_qmask_K(), 0),
                 VERBOSE_UNSUPPORTED_ZP_CFG ": %s", "src zero points");
-        VDISPATCH_MATMUL(utils::one_of(src_quant_.zp_dt(), u8, s8, u4, s4),
+        VDISPATCH_MATMUL(utils::one_of(src_quant_.zp_dt(), u8, s8),
                 VERBOSE_UNSUPPORTED_ZP_CFG ": %s(%s)", "src zero points",
                 dnnl_dt2str(src_quant_.zp_dt()));
+    }
+
+    if (src_quant_.with_scale() && src_quant_.with_zp()) {
+        const int src_scale_mask = src_quant_.scale_mask();
+        const int src_zp_mask = src_quant_.zp_mask();
+        VDISPATCH_MATMUL(src_scale_mask == src_zp_mask,
+                VERBOSE_UNSUPPORTED_SCALES_CFG
+                ": src scale(%d) and zp(%d) mask must match",
+                src_scale_mask, src_zp_mask);
     }
 
     if (wei_quant_.with_scale()) {
@@ -386,6 +395,15 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
         VDISPATCH_MATMUL(utils::one_of(wei_quant_.zp_dt(), u8, s8, u4, s4),
                 VERBOSE_UNSUPPORTED_ZP_CFG ": %s(%s)", "wei zero points",
                 dnnl_dt2str(wei_quant_.zp_dt()));
+    }
+
+    if (wei_quant_.with_scale() && wei_quant_.with_zp()) {
+        const int wei_scale_mask = wei_quant_.scale_mask();
+        const int wei_zp_mask = wei_quant_.zp_mask();
+        VDISPATCH_MATMUL(wei_scale_mask == wei_zp_mask,
+                VERBOSE_UNSUPPORTED_SCALES_CFG
+                ": wei scale(%d) and zp(%d) mask must match",
+                wei_scale_mask, wei_zp_mask);
     }
 
     VDISPATCH_MATMUL(attr_scales.has_default_values(DNNL_ARG_DST),

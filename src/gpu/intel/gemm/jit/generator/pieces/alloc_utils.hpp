@@ -82,26 +82,26 @@ static inline void reclaimRanges(const std::vector<GRFMultirange> &ranges, Commo
 
 
 // Allocate nreg registers in chunks of a fixed size `chunk`.
-GRFMultirange chunkAlloc(int nreg, int chunk, ngen::Bundle hint, ngen::BundleGroup mask, CommonState &state);
+GRFMultirange chunkAlloc(int nreg, int chunk, ngen::BundleGroup hint, ngen::BundleGroup mask, CommonState &state);
 
-static inline GRFMultirange chunkAlloc(int nreg, int chunk, ngen::Bundle hint, CommonState &state) {
+static inline GRFMultirange chunkAlloc(int nreg, int chunk, ngen::BundleGroup hint, CommonState &state) {
     return chunkAlloc(nreg, chunk, hint, ngen::BundleGroup::AllBundles(), state);
 }
 
 static inline GRFMultirange chunkAlloc(int nreg, int chunk, CommonState &state) {
-    return chunkAlloc(nreg, chunk, ngen::Bundle(), state);
+    return chunkAlloc(nreg, chunk, ngen::BundleGroup::AllBundles(), state);
 }
 
 // Like chunkAlloc, but returns an empty GRFMultirange on failure instead of throwing.
-GRFMultirange tryChunkAlloc(int nreg, int chunk, ngen::Bundle hint, ngen::BundleGroup mask, CommonState &state);
+GRFMultirange tryChunkAlloc(int nreg, int chunk, ngen::BundleGroup hint, ngen::BundleGroup mask, CommonState &state);
 
 // Attempt to allocate data registers for a layout, using one contiguous allocation per block.
 // Returns an empty GRFMultirange on failure.
-GRFMultirange trySplitAlloc(ngen::HW hw, Type T, const RegisterLayout &layout, std::array<ngen::Bundle, 2> hints,
+GRFMultirange trySplitAlloc(ngen::HW hw, Type T, const RegisterLayout &layout, std::array<ngen::BundleGroup, 2> hints,
                             ngen::BundleGroup mask, CommonState &state, int copies = 1);
 
 // Split allocate if possible, otherwise chunk allocate.
-GRFMultirange splitOrChunkAlloc(ngen::HW hw, Type T, const RegisterLayout &layout, int chunk, std::array<ngen::Bundle, 2> hints,
+GRFMultirange splitOrChunkAlloc(ngen::HW hw, Type T, const RegisterLayout &layout, int chunk, std::array<ngen::BundleGroup, 2> hints,
                                 ngen::BundleGroup mask, CommonState &state, bool forceChunk = false);
 
 GEMMSTONE_NAMESPACE_END

@@ -330,11 +330,11 @@ void Generator<hw>::gemmAllocRegs(GEMMProblem &problem, GEMMStrategy &strategy, 
             // Test allocation. Put A earlier if it has more registers.
             int A_regTotal = A_regCount * A_copies + Ar_regCount;
             int B_regTotal = B_regCount * B_copies + Br_regCount;
-            auto hintA = getHint(HintType::A0, strategy);
-            auto hintB = getHint(HintType::B0, strategy);
-            auto hintC = getHint(HintType::C, strategy);
-            auto testA = state.ra.alloc_range(8, hintA);
-            auto testB = state.ra.alloc_range(8, hintB);
+            auto hintA = BundleGroup(raHW) | getHint(HintType::A0, strategy);
+            auto hintB = BundleGroup(raHW) | getHint(HintType::B0, strategy);
+            auto hintC = BundleGroup(raHW) | getHint(HintType::C, strategy);
+            auto testA = state.ra.allocRange(8, hintA);
+            auto testB = state.ra.allocRange(8, hintB);
             if ((testA.getBase() < testB.getBase()) == (A_regTotal < B_regTotal))
                 std::swap(hintA, hintB);
             state.ra.safeRelease(testA);
@@ -348,7 +348,7 @@ void Generator<hw>::gemmAllocRegs(GEMMProblem &problem, GEMMStrategy &strategy, 
                 state.B_regs[copy] = chunkAlloc(B_regCount, chunk, hintB, state);
             if (Br_regCount > 0)
                 state.Br_regs = chunkAlloc(Br_regCount, chunk, hintB, state);
-            C_regs = state.ra.alloc_range(C_regCount - state.C_accCount, hintC);
+            C_regs = state.ra.allocRange(C_regCount - state.C_accCount, hintC);
             break;
         }
         case GEMMStrategy::NSeparate: {
@@ -372,11 +372,11 @@ void Generator<hw>::gemmAllocRegs(GEMMProblem &problem, GEMMStrategy &strategy, 
                                       div_up(N_nregs, bregs));
             BundleGroup N_bundles(raHW), VC_bundles(raHW);
 
-            auto hintV0 = getHint(HintType::A0, strategy);
-            auto hintV1 = getHint(HintType::A1, strategy);
-            auto hintN = getHint(HintType::A0Broadcast, strategy);
-            auto hintC0 = getHint(HintType::C, strategy);
-            auto hintC1 = getHint(HintType::C1, strategy);
+            auto hintV0 = BundleGroup(raHW) | getHint(HintType::A0, strategy);
+            auto hintV1 = BundleGroup(raHW) | getHint(HintType::A1, strategy);
+            auto hintN = BundleGroup(raHW) | getHint(HintType::A0Broadcast, strategy);
+            auto hintC0 = BundleGroup(raHW) | getHint(HintType::C, strategy);
+            auto hintC1 = BundleGroup(raHW) | getHint(HintType::C1, strategy);
 
             // Give bundles starting at the end to broadcast matrix.
             for (int bundle = Bundle::bundle_count(raHW) - 1; bundle >= 0; bundle--) {
@@ -401,10 +401,18 @@ void Generator<hw>::gemmAllocRegs(GEMMProblem &problem, GEMMStrategy &strategy, 
             else for (int copy = 0; copy < N_copies; copy++)
                 N_regs[copy] = splitOrChunkAlloc(raHW, Tn_load, N_layout, N_chunk, {hintN, hintN}, N_bundles, state, forceVNChunk);
 
-            if (repackV) for (int copy = 0; copy < V_copies; copy++)
-                V_regs[copy] = splitOrChunkAlloc(raHW, Tv_load, V_layout, V_chunk, {Bundle(), Bundle()}, BundleGroup::AllBundles(), state);
-            if (repackN) for (int copy = 0; copy < N_copies; copy++)
-                N_regs[copy] = splitOrChunkAlloc(raHW, Tn_load, N_layout, N_chunk, {Bundle(), Bundle()}, BundleGroup::AllBundles(), state);
+            if (repackV)
+              for (int copy = 0; copy < V_copies; copy++)
+                V_regs[copy] = splitOrChunkAlloc(
+                    raHW, Tv_load, V_layout, V_chunk,
+                    {BundleGroup::AllBundles(), BundleGroup::AllBundles()},
+                    BundleGroup::AllBundles(), state);
+            if (repackN)
+              for (int copy = 0; copy < N_copies; copy++)
+                N_regs[copy] = splitOrChunkAlloc(
+                    raHW, Tn_load, N_layout, N_chunk,
+                    {BundleGroup::AllBundles(), BundleGroup::AllBundles()},
+                    BundleGroup::AllBundles(), state);
             break;
         }
         case GEMMStrategy::VAvoid: {
@@ -439,11 +447,11 @@ void Generator<hw>::gemmAllocRegs(GEMMProblem &problem, GEMMStrategy &strategy, 
             vector<GRFMultirange> C_extra(state.C_buffers - 1);
             auto allocSlice = [&]() {
                 if (sliceRegs <= 0) return;
-                auto C_bundles = ~V_bundles;
+                auto C_bundles = ~V_bundles & hintC;
 
-                C_regs.append(chunkAlloc(sliceRegs, C_chunk, hintC, C_bundles, state));
+                C_regs.append(chunkAlloc(sliceRegs, C_chunk, C_bundles, BundleGroup::AllBundles(), state));
                 for (int copy = 1; copy < state.C_buffers; copy++)
-                    C_extra[copy - 1].append(chunkAlloc(sliceRegs, C_chunk, hintC, C_bundles, state));
+                   C_extra[copy - 1].append(chunkAlloc(sliceRegs, C_chunk, C_bundles, BundleGroup::AllBundles(), state));
 
                 sliceRegs = 0;
             };
@@ -488,7 +496,7 @@ void Generator<hw>::gemmAllocRegs(GEMMProblem &problem, GEMMStrategy &strategy, 
         state.Cr_regs = C_regs;
         C_regCountPerBuffer = state.C_layout.regs();
         C_regCount = state.C_buffers * C_regCountPerBuffer;
-        C_regs = chunkAlloc(C_regCount, C_chunk, Bundle(), BundleGroup::AllBundles(), state);
+        C_regs = chunkAlloc(C_regCount, C_chunk, state);
     }
 
     // Assign C_regs, adding in GRFs (in place of accumulators) to use later.

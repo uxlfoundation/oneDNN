@@ -348,7 +348,7 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
 
     if (bfSpecialPath) {
         for (npairs = 8; npairs > 0; npairs >>= 1) {
-            qPairs = tryChunkAlloc(npairs, 1, Bundle(), BundleGroup::AllBundles(), state);
+            qPairs = tryChunkAlloc(npairs, 1, BundleGroup::AllBundles(), BundleGroup::AllBundles(), state);
             if (!qPairs.empty()) break;
         }
         if (qPairs.empty()) throw out_of_registers_exception();

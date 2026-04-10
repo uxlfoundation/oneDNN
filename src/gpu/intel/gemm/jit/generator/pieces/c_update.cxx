@@ -2562,7 +2562,7 @@ void Generator<hw>::gemmDotReduce(const GEMMProblem &problem, const GEMMStrategy
     GRFMultirange temps;
 
     if (needSwizzle)
-        temps = tryChunkAlloc(nx * ny, 1, Bundle(), BundleGroup::AllBundles(), state);
+        temps = tryChunkAlloc(nx * ny, 1, BundleGroup::AllBundles(), BundleGroup::AllBundles(), state);
 
     for (int cvl = vl; cvl > 1; ) {
         int simd = (cvl > ne) ? ne : (cvl >> 1);

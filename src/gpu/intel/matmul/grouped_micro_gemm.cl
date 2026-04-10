@@ -195,7 +195,7 @@ grouped_micro_gemm(const global SRC_DATA_T *src, long ldsrc,
     src_attr_scales += src_offset.x * ldsrcq;
 #endif
 #if WITH_SRC_ZP
-    src_attr_zp += src_offset.x / SRC_ZP_ELEMS_PER_BYTE;
+    src_attr_zp += src_offset.x * ldsrcq / SRC_ZP_ELEMS_PER_BYTE;
 #endif
 #if WITH_WEI_SCALES
     wei_attr_scales += batch * n * (k / WEI_GROUP_SIZE);

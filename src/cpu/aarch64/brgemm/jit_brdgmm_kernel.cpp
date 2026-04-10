@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2024-2026 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -295,11 +295,11 @@ void jit_brdgmm_kernel_base_t::apply_post_ops(
         const bool p_sum_scale_reg_set = *p_sum_scale != 1.f;
         const bool p_sum_zp_reg_set = *p_sum_zp != 0;
 
-        const injector_utils::conditional_register_preserve_guard_t<sve_512>
+        const injector_utils::conditional_register_preserve_guard_t<sve>
                 register_guard_sum_scale(
                         (with_binary_non_scalar_bcast_) && p_sum_scale_reg_set,
                         this, {reg_ptr_sum_scale});
-        const injector_utils::conditional_register_preserve_guard_t<sve_512>
+        const injector_utils::conditional_register_preserve_guard_t<sve>
                 register_guard_sum_zp(p_sum_zp_reg_set, this, {reg_ptr_sum_zp});
 
         auto vmm_sum_zp = vmm_tmp(0);

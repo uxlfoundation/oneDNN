@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2021-2024 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -35,9 +35,9 @@ namespace cpu {
 namespace aarch64 {
 
 /* Get vector offsets, ofs / VL(eg VL: 512bits = 64Bytes ) */
-#define VL64_OFS(ofs) ((ofs) >> cpu_isa_traits<isa_>::vlen_shift)
+#define VL64_OFS(ofs) ((ofs) >> cpu_isa_traits<isa>::vlen_shift)
 
-template <cpu_isa_t isa_ = isa_undef>
+template <cpu_isa_t isa = isa_undef>
 struct jit_sve_1x1_conv_kernel_t : public jit_generator_t {
     jit_sve_1x1_conv_kernel_t(const jit_1x1_conv_conf_t &ajcp,
             const primitive_attr_t &attr, const memory_desc_t &dst_md);
@@ -93,11 +93,11 @@ private:
 
     reg64_t reg_load_dim_tail_mask = aux_reg_load_data;
 
-    std::unique_ptr<injector::jit_uni_postops_injector_t<isa_>>
+    std::unique_ptr<injector::jit_uni_postops_injector_t<to_vla_sve(isa)>>
             postops_injector_;
 
     constexpr static int isa_simd_width_
-            = cpu_isa_traits<isa_>::vlen / sizeof(float);
+            = cpu_isa_traits<isa>::vlen / sizeof(float);
 
     ZReg vreg_bcast = ZReg(31);
     PReg k_load_dim_mask = p2;

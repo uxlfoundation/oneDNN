@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2022-2023 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -117,7 +117,8 @@ struct jit_uni_binary_kernel_t : public binary_kernel_t {
 
     static constexpr cpu_isa_t inject_isa = isa;
     io::jit_io_multi_dt_helper_t<Vmm> io_;
-    std::unique_ptr<injector::jit_uni_postops_injector_t<inject_isa>>
+    std::unique_ptr<
+            injector::jit_uni_postops_injector_t<to_vla_sve(inject_isa)>>
             postops_injector_;
     const PReg elt_inj_opmask_ = p1;
     const PReg elt_inj_p_tmp0_ = p2;

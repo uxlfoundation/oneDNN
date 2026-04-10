@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2021-2024 FUJITSU LIMITED
-* Copyright 2024-2025 Arm Ltd. and affiliates
+* Copyright 2024-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -47,8 +47,8 @@ using namespace dnnl::impl::format_tag;
 using namespace dnnl::impl::prop_kind;
 using namespace dnnl::impl::utils;
 
-template <cpu_isa_t isa_>
-jit_sve_1x1_conv_kernel_t<isa_>::jit_sve_1x1_conv_kernel_t(
+template <cpu_isa_t isa>
+jit_sve_1x1_conv_kernel_t<isa>::jit_sve_1x1_conv_kernel_t(
         const jit_1x1_conv_conf_t &ajcp, const primitive_attr_t &attr,
         const memory_desc_t &dst_md)
     : jcp(ajcp), attr_(attr) {
@@ -69,13 +69,13 @@ jit_sve_1x1_conv_kernel_t<isa_>::jit_sve_1x1_conv_kernel_t(
                 this->param1, rhs_arg_static_params};
 
         postops_injector_ = utils::make_unique<
-                injector::jit_uni_postops_injector_t<isa_>>(
+                injector::jit_uni_postops_injector_t<to_vla_sve(isa)>>(
                 this, jcp.post_ops, static_params);
     }
 }
 
-template <cpu_isa_t isa_>
-void jit_sve_1x1_conv_kernel_t<isa_>::bcast_loop(int load_loop_blk) {
+template <cpu_isa_t isa>
+void jit_sve_1x1_conv_kernel_t<isa>::bcast_loop(int load_loop_blk) {
 
     mov(aux1_reg_bcast_data, reg_bcast_data);
     mov(aux_reg_bcast_data, reg_bcast_data);
@@ -156,8 +156,8 @@ static void iterate(const int load_loop_blk, const int ur, const F &fun) {
     iterate(load_loop_blk, ur, false, fun);
 }
 
-template <cpu_isa_t isa_>
-void jit_sve_1x1_conv_kernel_t<isa_>::apply_postops(
+template <cpu_isa_t isa>
+void jit_sve_1x1_conv_kernel_t<isa>::apply_postops(
         const bool is_out_layout_nxc, const int load_loop_blk, const int ur) {
     injector_utils::vmm_index_set_t vmm_idxs;
     if (jcp.with_binary) {
@@ -187,8 +187,8 @@ void jit_sve_1x1_conv_kernel_t<isa_>::apply_postops(
     }
 }
 
-template <cpu_isa_t isa_>
-void jit_sve_1x1_conv_kernel_t<isa_>::reduce_loop(
+template <cpu_isa_t isa>
+void jit_sve_1x1_conv_kernel_t<isa>::reduce_loop(
         int load_loop_blk, int ur, int substep, bool wraparound) {
 
     const bool out_layout_nxc = is_out_layout_nxc(jcp);
@@ -365,7 +365,7 @@ void jit_sve_1x1_conv_kernel_t<isa_>::reduce_loop(
         };
 
         Label unaligned_store, end_store;
-        tst(aux_reg_output_data, cpu_isa_traits<isa_>::vlen - 1);
+        tst(aux_reg_output_data, cpu_isa_traits<isa>::vlen - 1);
         b(NE, unaligned_store);
         store_output(true);
         b(end_store);
@@ -463,8 +463,8 @@ void jit_sve_1x1_conv_kernel_t<isa_>::reduce_loop(
     store();
 }
 
-template <cpu_isa_t isa_>
-void jit_sve_1x1_conv_kernel_t<isa_>::generate() {
+template <cpu_isa_t isa>
+void jit_sve_1x1_conv_kernel_t<isa>::generate() {
     preamble();
 
     sub_imm(X_SP, X_SP, stack_space_needed, X_TMP_0);
@@ -565,7 +565,7 @@ void jit_sve_1x1_conv_kernel_t<isa_>::generate() {
         }
     };
 
-    const int simd_w = cpu_isa_traits<isa_>::vlen / sizeof(float);
+    const int simd_w = cpu_isa_traits<isa>::vlen / sizeof(float);
 
     Label load_loop_blk[7];
 
@@ -626,15 +626,15 @@ void jit_sve_1x1_conv_kernel_t<isa_>::generate() {
     if (jcp.with_eltwise) postops_injector_->prepare_table();
 }
 
-template <cpu_isa_t isa_>
-status_t jit_sve_1x1_conv_kernel_t<isa_>::init_conf(jit_1x1_conv_conf_t &jcp,
+template <cpu_isa_t isa>
+status_t jit_sve_1x1_conv_kernel_t<isa>::init_conf(jit_1x1_conv_conf_t &jcp,
         const convolution_desc_t &cd, const memory_desc_wrapper &src_d,
         const memory_desc_wrapper &weights_d, const memory_desc_wrapper &dst_d,
         const primitive_attr_t &attr, int nthreads, bool reduce_src) {
 
     /* arch check */
-    if (!mayiuse(isa_)) { return status::unimplemented; }
-    jcp.isa = isa_;
+    if (!mayiuse(isa)) { return status::unimplemented; }
+    jcp.isa = isa;
 
     if (!everyone_is(data_type::f32, src_d.data_type(), weights_d.data_type(),
                 dst_d.data_type())) {
@@ -644,7 +644,7 @@ status_t jit_sve_1x1_conv_kernel_t<isa_>::init_conf(jit_1x1_conv_conf_t &jcp,
     jcp.nthr = nthreads;
 
     const bool with_groups = weights_d.ndims() == src_d.ndims() + 1;
-    const int simd_w = cpu_isa_traits<isa_>::vlen / sizeof(float);
+    const int simd_w = cpu_isa_traits<isa>::vlen / sizeof(float);
     const int ndims = src_d.ndims();
     /* Forward_[training, inference], backward_[data, weight] */
     jcp.prop_kind = cd.prop_kind;
@@ -724,7 +724,7 @@ status_t jit_sve_1x1_conv_kernel_t<isa_>::init_conf(jit_1x1_conv_conf_t &jcp,
     bool is_data_layout_nxc;
     format_tag_t required_dat_tag;
 
-    switch (isa_) {
+    switch (isa) {
         case sve_512: {
             const auto dat_tag_nCx16c
                     = pick(ndims - 3, nCw16c, nChw16c, nCdhw16c);
@@ -789,7 +789,7 @@ status_t jit_sve_1x1_conv_kernel_t<isa_>::init_conf(jit_1x1_conv_conf_t &jcp,
     /* Channel blocking size is simd_w */
     jcp.ic_block = jcp.oc_block = simd_w;
 
-    switch (isa_) {
+    switch (isa) {
         case sve_512: {
             jcp.ver = ver_sve_512;
             break;
@@ -811,7 +811,7 @@ status_t jit_sve_1x1_conv_kernel_t<isa_>::init_conf(jit_1x1_conv_conf_t &jcp,
 
         /* Set weight data layout tag */
         format_tag_t wei_tag;
-        switch (isa_) {
+        switch (isa) {
             case sve_512: {
                 wei_tag = with_groups
                         ? pick(2 * ndims - 6 + is_bwd_d, gOIw16i16o, gIOw16o16i,
@@ -1327,8 +1327,8 @@ status_t jit_sve_1x1_conv_kernel_t<isa_>::init_conf(jit_1x1_conv_conf_t &jcp,
     jcp.nb_reduce = div_up(jcp.reduce_dim, jcp.reduce_block);
     return status::success;
 }
-template <cpu_isa_t isa_>
-void jit_sve_1x1_conv_kernel_t<isa_>::init_scratchpad(
+template <cpu_isa_t isa>
+void jit_sve_1x1_conv_kernel_t<isa>::init_scratchpad(
         memory_tracking::registrar_t &scratchpad,
         const jit_1x1_conv_conf_t &jcp) {
 
@@ -1356,8 +1356,8 @@ void jit_sve_1x1_conv_kernel_t<isa_>::init_scratchpad(
 }
 
 /* BWD W*/
-template <cpu_isa_t isa_>
-void jit_sve_1x1_conv_kernel_t<isa_>::balance(jit_1x1_conv_conf_t &jcp) {
+template <cpu_isa_t isa>
+void jit_sve_1x1_conv_kernel_t<isa>::balance(jit_1x1_conv_conf_t &jcp) {
     int nthreads = jcp.nthr;
     // initialize jcp reduction threading properties
     jcp.nthr = jcp.nthr_mb = jcp.nthr_g = jcp.nthr_oc_b = jcp.nthr_ic_b = 1;

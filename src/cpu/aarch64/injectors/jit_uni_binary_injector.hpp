@@ -95,7 +95,7 @@ bool all_binary_postop_rhs_per_oc_broadcast(const post_ops_t &post_ops,
  * @param dst_orig_offset - offset 0 to destination tensor
  * @param dst_d - descriptor of destination tensor (result after applying all post-ops
  * operations).
- * @param tail_opmask - register with loaded by user mask, used in sve512 for load with
+ * @param tail_opmask - register with loaded by user mask, used in sve for load with
  * tail handling.
  * @param tail_size - size of processed tail in elements.
  * @param use_exact_tail_scalar_bcast - in case of scalar broadcast user can disable
@@ -381,7 +381,7 @@ bool is_supported(cpu_isa_t isa, const dnnl::impl::memory_desc_t &src1_desc,
 
 /*
  * Main mechanism responsible for injecting binary postops supporting various
- * isa: sve_512
+ * isa: sve
  * types: f32, s32, u8, s8.
  */
 template <cpu_isa_t isa>

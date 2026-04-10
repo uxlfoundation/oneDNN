@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2020 Intel Corporation
 * Copyright 2022-2023 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -257,9 +257,7 @@ bool post_ops_ok(const post_ops_ok_args_t &post_ops_ok_args) {
     return true;
 }
 
-template class jit_uni_postops_injector_t<sve_512>;
-template class jit_uni_postops_injector_t<sve_256>;
-template class jit_uni_postops_injector_t<sve_128>;
+template class jit_uni_postops_injector_t<sve>;
 
 } // namespace injector
 } // namespace aarch64

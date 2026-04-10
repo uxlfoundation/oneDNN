@@ -2,7 +2,7 @@
 * Copyright 2017 Intel Corporation
 * Copyright 2018 YANDEX LLC
 * Copyright 2020-2024 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -66,9 +66,9 @@ jit_uni_pool_kernel_t<isa>::jit_uni_pool_kernel_t(
         const binary_injector::static_params_t bsp {
                 reg_param, get_supported_bcast_strategies(), rhs_sp};
 
-        postops_injector_
-                = utils::make_unique<injector::jit_uni_postops_injector_t<isa>>(
-                        this, jpp.post_ops, bsp);
+        postops_injector_ = utils::make_unique<
+                injector::jit_uni_postops_injector_t<to_vla_sve(isa)>>(
+                this, jpp.post_ops, bsp);
     }
 }
 

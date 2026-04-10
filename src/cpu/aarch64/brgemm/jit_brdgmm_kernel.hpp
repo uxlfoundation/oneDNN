@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -44,7 +44,7 @@ struct jit_brdgmm_kernel_base_t : public jit_generator_t {
     }
 
 private:
-    using po_injector_t = injector::jit_uni_postops_injector_t<sve_512>;
+    using po_injector_t = injector::jit_uni_postops_injector_t<sve>;
     std::unique_ptr<po_injector_t> postops_injector_;
 
     Xbyak_aarch64::Label permute_index_table;

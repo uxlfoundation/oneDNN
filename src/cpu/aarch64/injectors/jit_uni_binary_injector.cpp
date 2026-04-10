@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2020 Intel Corporation
 * Copyright 2022-2024 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -495,18 +495,26 @@ void jit_uni_binary_injector_t<isa>::compute_vector_range(
             || rhs_arg_data_type != data_type::f32 || should_preserve_vmm_tail;
     const auto tail_load_mode = rhs_arg_params.tail_load_mode;
 
+    const std::initializer_list<Xbyak_aarch64::XReg> gpr_maybe_preserve_list {
+            rhs_arg_static_params_.rhs_addr_reg,
+            rhs_arg_static_params_.rhs_helper_reg};
+
+    const std::initializer_list<Xbyak_aarch64::VReg> vmm_maybe_preserve_list {
+            Xbyak_aarch64::VReg(vmm_hint)};
+
     // Phase 2 Protect temporary registers content.
-    const injector_utils::register_preserve_guard_t<isa> register_guard {host_,
-            (rhs_arg_static_params_.preserve_gpr_helpers
-                            ? std::initializer_list<Xbyak_aarch64::XReg>(
-                                      {rhs_arg_static_params_.rhs_addr_reg,
-                                              rhs_arg_static_params_
-                                                      .rhs_helper_reg})
-                            : std::initializer_list<Xbyak_aarch64::XReg>()),
-            (rhs_arg_static_params_.preserve_vmm_helper && dt_helper_vmm_needed
-                            ? std::initializer_list<Xbyak_aarch64::VReg>(
-                                      {Xbyak_aarch64::VReg(vmm_hint)})
-                            : std::initializer_list<Xbyak_aarch64::VReg>())};
+    const injector_utils::register_preserve_guard_t<to_vla_sve(isa)>
+            register_guard {host_,
+                    (rhs_arg_static_params_.preserve_gpr_helpers
+                                    ? gpr_maybe_preserve_list
+                                    : std::initializer_list<
+                                              Xbyak_aarch64::XReg>()),
+
+                    (rhs_arg_static_params_.preserve_vmm_helper
+                                            && dt_helper_vmm_needed
+                                    ? vmm_maybe_preserve_list
+                                    : std::initializer_list<
+                                              Xbyak_aarch64::VReg>())};
 
     bool vmm0_was_preserved = false;
     static const Vmm zero_vmm(0);
@@ -862,8 +870,7 @@ void jit_uni_binary_injector_t<isa>::calculate_oc_blocked(
     // c = ((offset % strides[0]) / strides[1]) * strides[ndims - 1] + offset % blk_size
     // output = X_TMP_0
     const auto dst_d = rhs_arg_static_params_.dst_d;
-    const int simd_w = cpu_isa_traits<isa>::vlen
-            / types::data_type_size(dst_d.data_type());
+    const int simd_w = simd_elems(dst_d.data_type(), isa);
     const int blk_size = dst_d.blocking_desc().inner_blks[0];
     const auto X_TMP_0 = host_->X_TMP_0;
     const auto X_TMP_1 = host_->X_TMP_1;
@@ -1013,8 +1020,7 @@ void jit_uni_binary_injector_t<isa>::calculate_mb_sp_blocked(
     // mb_sp_off = offset - (c * stride_c) - (n * (C - 1)DHW) - c % blk_size
     // output = X_TMP_0
     const auto dst_d = rhs_arg_static_params_.dst_d;
-    const int simd_w = cpu_isa_traits<isa>::vlen
-            / types::data_type_size(dst_d.data_type());
+    const int simd_w = simd_elems(dst_d.data_type(), isa);
     const int blk_size = dst_d.blocking_desc().inner_blks[0];
 
     const auto X_TMP_0 = host_->X_TMP_0;
@@ -1395,7 +1401,7 @@ void jit_uni_binary_injector_t<isa>::inject_binary(
         Xbyak_aarch64::PReg mask = host_->P_ALL_ONE;
         if (with_tail_fusable_to_binary_op) {
             assert(rhs_arg_static_params_.is_opmask_set()
-                    && "Opmask is not set for tail loading sve512");
+                    && "Opmask is not set for tail loading on SVE");
             const auto &tail_opmask = rhs_arg_static_params_.tail_opmask;
             mask = tail_opmask;
             host_->mov(dst.s, mask / Xbyak_aarch64::T_z, dst.s);
@@ -1494,7 +1500,7 @@ void jit_uni_binary_injector_t<isa>::execute_broadcast_tail_with_opmask(
         const rhs_address_t &rhs_addr) const {
 
     assert(rhs_arg_static_params_.is_opmask_set()
-            && "Opmask is not set for tail loading sve_512");
+            && "Opmask is not set for tail loading on SVE");
 
     const auto &tail_opmask = rhs_arg_static_params_.tail_opmask;
     Xbyak_aarch64::PReg mask = tail_opmask;
@@ -1565,7 +1571,7 @@ void jit_uni_binary_injector_t<isa>::load_rhs_tail_dynamically_with_opmask(
         const data_type_t &data_type, const Vmm &tmp_vmm,
         const rhs_address_t &rhs_addr) const {
     assert(rhs_arg_static_params_.is_opmask_set()
-            && "Opmask is not set for tail loading sve_512");
+            && "Opmask is not set for tail loading on SVE");
 
     const auto &tail_opmask = rhs_arg_static_params_.tail_opmask;
     Xbyak_aarch64::PReg mask = tail_opmask;
@@ -1607,7 +1613,7 @@ static void load_bytes(jit_generator_t *host, const Xbyak_aarch64::ZReg &vmm,
     assert(load_size >= 0 && load_size <= 32);
 
     // Ensure that vector register is compatible with the ISA in hand
-    assert(mayiuse(sve_128));
+    assert(mayiuse(sve));
 
     if (load_size == 0) {
         return;
@@ -1902,9 +1908,7 @@ void jit_uni_binary_injector_t<isa>::compute_vector(size_t idx,
     compute_vector_range({idx}, rhs_arg_idx, post_op, rhs_arg_params);
 }
 
-template class jit_uni_binary_injector_t<sve_512>;
-template class jit_uni_binary_injector_t<sve_256>;
-template class jit_uni_binary_injector_t<sve_128>;
+template class jit_uni_binary_injector_t<sve>;
 
 } // namespace binary_injector
 } // namespace aarch64

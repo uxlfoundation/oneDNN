@@ -20,6 +20,7 @@
 #define CPU_AARCH64_JIT_GENERATOR_HPP
 
 #include <limits.h>
+#include <vector>
 
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
@@ -816,13 +817,10 @@ public:
     void runtime_tail_process(const Xbyak_aarch64::XReg &reg_tail,
             const Xbyak_aarch64::XReg &reg_tmp,
             const std::function<void(int)> &tail_process) {
-        constexpr int simd_w_ymm = 8;
-        constexpr int f32_bits = sizeof(float) * 8;
-        const auto simd_w = cpu_isa_traits<isa>::vlen * 8 / f32_bits;
-        assert(simd_w != cpu_isa_traits<isa>::vlen * 8 / f32_bits);
+        const size_t simd_w = simd_elems(data_type_t::dnnl_f32, isa);
 
         Xbyak_aarch64::Label label_tbl, label_tbl_end;
-        Xbyak_aarch64::Label l_case[simd_w_ymm];
+        std::vector<Xbyak_aarch64::Label> l_case(simd_w);
 
         adr(reg_tmp, label_tbl);
         mov_imm(X_TMP_0, sizeof(void *));

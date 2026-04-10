@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2020 Intel Corporation
 * Copyright 2021-2024 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -18,10 +18,9 @@
 #ifndef CPU_AARCH64_INJECTORS_INJECTOR_UTILS_HPP
 #define CPU_AARCH64_INJECTORS_INJECTOR_UTILS_HPP
 
-#include <array>
 #include <cstddef>
 #include <set>
-#include <stack>
+#include <vector>
 
 #include "cpu/aarch64/jit_generator.hpp"
 
@@ -33,24 +32,6 @@ namespace injector_utils {
 
 using vmm_index_set_t = typename std::set<size_t>;
 using vmm_index_set_iterator_t = typename std::set<size_t>::iterator;
-template <cpu_isa_t isa>
-struct vmm_size_t;
-
-template <>
-struct vmm_size_t<sve_512> {
-    static constexpr std::size_t bytes = 64u;
-};
-
-template <>
-struct vmm_size_t<sve_256> {
-    static constexpr std::size_t bytes = 32u;
-};
-
-/*
-template <>
-struct vmm_size_t<sve_128> {
-    static constexpr std::size_t bytes = 16u;
-    };*/
 
 enum class layout_t { ncsp, c_blocked, nspc, cspn, unsupported };
 
@@ -88,15 +69,14 @@ public:
 
 private:
     jit_generator_t *host_;
-    std::stack<Xbyak_aarch64::XReg> reg64_stack_;
-    std::stack<Xbyak_aarch64::VReg> vmm_stack_;
-    const uint64_t cpu_sveLen_ = get_sve_length();
+    std::vector<Xbyak_aarch64::XReg> gpr_regs_;
+    std::vector<Xbyak_aarch64::VReg> vec_regs_;
     size_t vmm_to_preserve_size_bytes_;
 };
 
 template <cpu_isa_t isa>
 class conditional_register_preserve_guard_t
-    : public register_preserve_guard_t<isa> {
+    : public register_preserve_guard_t<to_vla_sve(isa)> {
 public:
     conditional_register_preserve_guard_t(bool condition_to_be_met,
             jit_generator_t *host,

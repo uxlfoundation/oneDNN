@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2022 Intel Corporation
 * Copyright 2022-2023 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -135,7 +135,7 @@ void jit_uni_binary_kernel_t<isa>::init_post_ops_injector() {
             get_supported_postops_bcast_strategies(), rhs_arg_bsp);
 
     postops_injector_ = utils::make_unique<
-            injector::jit_uni_postops_injector_t<inject_isa>>(
+            injector::jit_uni_postops_injector_t<to_vla_sve(inject_isa)>>(
             this, po, bsp, esp);
 }
 
@@ -165,8 +165,8 @@ void jit_uni_binary_kernel_t<isa>::apply_postops(int unroll, bool tail) {
         binary_injector::rhs_arg_dynamic_params_t rhs_arg_params;
         const XReg &reg_offt_dst = conf_.is_i8 ? reg_offt_dst_ : reg_offt_src0_;
 
-        const injector_utils::register_preserve_guard_t<isa> register_guard {
-                this, {reg_tmp1_}};
+        const injector_utils::register_preserve_guard_t<to_vla_sve(isa)>
+                register_guard {this, {reg_tmp1_}};
 
         mov(reg_tmp1_, reg_dst_);
         add(reg_tmp1_, reg_tmp1_, reg_offt_dst);

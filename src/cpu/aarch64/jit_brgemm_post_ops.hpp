@@ -88,7 +88,7 @@ struct jit_brgemm_kernel_post_ops_t : public jit_generator_t {
                     save_state, reserved_eltwise_gpr, reserved_eltwise_maskr};
 
             postops_injector_ = utils::make_unique<
-                    injector::jit_uni_postops_injector_t<isa>>(
+                    injector::jit_uni_postops_injector_t<to_vla_sve(isa)>>(
                     this, attr.post_ops_, bsp, esp);
         }
 
@@ -121,7 +121,7 @@ private:
     data_type_t inp_dt_;
     data_type_t out_dt_;
     data_type_t bia_dt_;
-    std::unique_ptr<injector::jit_uni_postops_injector_t<isa>>
+    std::unique_ptr<injector::jit_uni_postops_injector_t<to_vla_sve(isa)>>
             postops_injector_;
 
     const bool with_binary_non_scalar_bcast_;

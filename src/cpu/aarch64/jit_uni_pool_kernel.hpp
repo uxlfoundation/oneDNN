@@ -2,7 +2,7 @@
 * Copyright 2017 Intel Corporation
 * Copyright 2018 YANDEX LLC
 * Copyright 2020-2024 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -165,7 +165,7 @@ private:
     static bool post_ops_ok(jit_pool_conf_t &jpp, const primitive_attr_t &attr,
             const memory_desc_wrapper &dst_d);
 
-    std::unique_ptr<injector::jit_uni_postops_injector_t<isa>>
+    std::unique_ptr<injector::jit_uni_postops_injector_t<to_vla_sve(isa)>>
             postops_injector_;
 };
 

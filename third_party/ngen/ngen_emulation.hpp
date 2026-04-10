@@ -40,6 +40,8 @@ struct EmulationStrategy {
     bool emulate64_logic = false;
     // Don't emulate QW shl/shr (XeHPC)
     bool noemulate64_shift = false;
+    // mach/macl instructions not available (XE3P+); use mullh-based sequences instead
+    bool no_mach_macl = false;
 
     EmulationStrategy() = default;
     EmulationStrategy(HW hw_, int stepping = 0) {
@@ -53,8 +55,10 @@ struct EmulationStrategy {
             else
                 emulate64_mul = emulate64_logic = true;
         }
-        if (hw_ >= HW::XE3P_35_10)
+        if (hw_ >= HW::XE3P_35_10) {
             emulateDWxDW = emulate64_mul = false;
+            no_mach_macl = true;
+        }
         emulate64_mul |= emulate64;
     }
 };
@@ -587,25 +591,39 @@ struct EmulationImplementation {
             splitToDW(src0, s0Lo, s0Hi);
             dstLo.setType(dstDWType);
             dstHi.setType(dstDWType);
-            auto accLo
-                = g.acc0.retype(dstDWType)[dstLo.getOffset()](dstLo.getHS());
-            auto accHi
-                = g.acc0.retype(dstDWType)[dstHi.getOffset()](dstHi.getHS());
 
-            if(s1W) {
-                g.mul(mod, accLo, s0Lo, src1, loc);
-                g.mach(mod, dstLo, s0Lo, 0, loc);
-                g.mad(mod, dstHi, dstLo, s0Hi, src1, loc);
-                g.mov(mod, dstLo, accLo, loc);
-            } else if(s1D) {
-                auto s1Lo = lowWord(src1);
-                g.mul(mod, accLo, s0Lo, s1Lo, loc);
-                g.mach(mod, dstLo, s0Lo, src1, loc);
-                g.mul(mod, accHi, s0Hi, s1Lo, loc);
-                g.macl(mod, dstHi, s0Hi, src1, loc);
-                g.add(mod, dstHi, dstHi, dstLo, loc);
-                g.mov(mod, dstLo, accLo, loc);
-            } else stub();
+            if (strategy.no_mach_macl) {
+                // XE3P+: mach/macl removed; use mullh (DW x DW -> QW full product)
+                // dst = s0Lo x src1  (full 64-bit via mullh)
+                // dstHi += lo32(s0Hi x src1)
+                // Save s0Hi before mullh may clobber dst (handles dst==src0 aliasing).
+                const auto &temp = state.temp;
+                auto tmp = temp[0].retype(dstDWType)[s0Hi.getOffset()](s0Hi.getHS());
+                if (s1W || s1D) {
+                    g.mov(mod, tmp, s0Hi, loc);
+                    g.mullh(mod, dst, s0Lo, src1, loc);
+                    g.mul(mod, tmp, tmp, src1, loc);
+                    g.add(mod, dstHi, dstHi, tmp, loc);
+                } else stub();
+            } else {
+                auto accLo = g.acc0.retype(dstDWType)[dstLo.getOffset()](dstLo.getHS());
+                auto accHi = g.acc0.retype(dstDWType)[dstHi.getOffset()](dstHi.getHS());
+
+                if(s1W) {
+                    g.mul(mod, accLo, s0Lo, src1, loc);
+                    g.mach(mod, dstLo, s0Lo, 0, loc);
+                    g.mad(mod, dstHi, dstLo, s0Hi, src1, loc);
+                    g.mov(mod, dstLo, accLo, loc);
+                } else if(s1D) {
+                    auto s1Lo = lowWord(src1);
+                    g.mul(mod, accLo, s0Lo, s1Lo, loc);
+                    g.mach(mod, dstLo, s0Lo, src1, loc);
+                    g.mul(mod, accHi, s0Hi, s1Lo, loc);
+                    g.macl(mod, dstHi, s0Hi, src1, loc);
+                    g.add(mod, dstHi, dstHi, dstLo, loc);
+                    g.mov(mod, dstLo, accLo, loc);
+                } else stub();
+            }
         } else if (s1Q) {
             if(!s1Immed) {
                 return emulInternal(g, mod, dst, src1, src0, strategy, state, loc);
@@ -621,18 +639,30 @@ struct EmulationImplementation {
             s1Lo = expandDW(s1Lo);
             dstLo.setType(src0.getType());
             dstHi.setType(src0.getType());
-            auto s1W0 = lowWord(s1Lo);
-            auto s1W2 = lowWord(s1Hi);
-            auto accLo
-                    = g.acc0.retype(s0Type)[dstLo.getOffset()](dstLo.getHS());
-            auto accHi
-                    = g.acc0.retype(s0Type)[dstHi.getOffset()](dstHi.getHS());
-            g.mul(mod, accHi, src0, s1W2, loc);
-            g.macl(mod, dstHi, src0, s1Hi, loc);
-            g.mul(mod, accLo, src0, s1W0, loc);
-            g.mach(mod, dstLo, src0, s1Lo, loc);
-            g.add(mod, dstHi, dstHi, dstLo, loc);
-            g.mov(mod, dstLo, accLo, loc);
+
+            if (strategy.no_mach_macl) {
+                // XE3P+: use mullh (DW x DW -> QW) + mul + add
+                // dst = src0 x s1Lo  (full 64-bit via mullh)
+                // dstHi += lo32(src0 x s1Hi)
+                // Save src0 before mullh may clobber dst (handles src0==dstLo aliasing).
+                const auto &temp = state.temp;
+                auto tmp = temp[0].retype(s0Type)[dstLo.getOffset()](dstLo.getHS());
+                g.mov(mod, tmp, src0, loc);
+                g.mullh(mod, dst, src0, s1Lo, loc);
+                g.mul(mod, tmp, tmp, s1Hi, loc);
+                g.add(mod, dstHi, dstHi, tmp, loc);
+            } else {
+                auto s1W0 = lowWord(s1Lo);
+                auto s1W2 = lowWord(s1Hi);
+                auto accLo = g.acc0.retype(s0Type)[dstLo.getOffset()](dstLo.getHS());
+                auto accHi = g.acc0.retype(s0Type)[dstHi.getOffset()](dstHi.getHS());
+                g.mul(mod, accHi, src0, s1W2, loc);
+                g.macl(mod, dstHi, src0, s1Hi, loc);
+                g.mul(mod, accLo, src0, s1W0, loc);
+                g.mach(mod, dstLo, src0, s1Lo, loc);
+                g.add(mod, dstHi, dstHi, dstLo, loc);
+                g.mov(mod, dstLo, accLo, loc);
+            }
         } else if (dstQ && s0W && s1W) {
             RegData dstLo, dstHi;
             splitToDW(dst, dstLo, dstHi);

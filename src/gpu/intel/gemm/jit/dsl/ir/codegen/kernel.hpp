@@ -258,7 +258,7 @@ public:
             }
         }
 
-        if (emu_strategy_.emulate64) {
+        if (emu_strategy_.emulate64 || emu_strategy_.no_mach_macl) {
             emu_state_.temp[0] = ra_.alloc();
             emu_state_.temp[1] = ra_.alloc();
         }

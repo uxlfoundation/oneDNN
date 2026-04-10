@@ -214,7 +214,10 @@ int compare_t::compare_norm(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
 
     const bool dump = need_dump || !ok;
     if (dump) {
-        dump_p2p_errors();
+        if (!need_dump) {
+            // Forced dump was printed in p2p.
+            dump_p2p_errors();
+        }
         dump_norm_values(diff_norm, get_kind_str());
     }
 
@@ -556,7 +559,7 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
         // If norm fallback is allowed, these dumps will be printed there.
         // This is done to avoid an output disturbance if p2p check fails but
         // norm passes.
-        if (!allow_norm_check_) dump_p2p_errors();
+        if (need_dump || !allow_norm_check_) dump_p2p_errors();
     }
 
     // Set state to FAILED in case of any errors.
@@ -611,8 +614,8 @@ int compare_t::compare(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
     BENCHDNN_PRINT(6, "[COMPARE]%s: zero_trust%%=%.2f%% extra=%s\n",
             get_kind_str().c_str(), zero_trust_percent_, add_args.c_str());
     auto st = compare_p2p(exp_mem, got_mem, attr, res);
-    if (st != OK) {
-        bool call_norm_check = allow_norm_check_;
+    if (st != OK && allow_norm_check_) {
+        bool call_norm_check = true;
         // Note: the following code specifies additional driver's individual
         // desires when to enable norm check. This one purely depends on the
         // result of p2p comparison. So far graph is the only driver needing
@@ -632,12 +635,16 @@ int compare_t::compare(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
                     norm_check_allowed ? "allowed" : "prohibited", res->errors,
                     res->total, allowed_error_points, res->total);
 
-            call_norm_check = call_norm_check && norm_check_allowed;
+            call_norm_check = norm_check_allowed;
         }
 
         if (call_norm_check) {
             res->reset_stats(EXECUTED);
             st = compare_norm(exp_mem, got_mem, attr, res);
+        } else {
+            // Can be triggered by graph only if output wasn't requested.
+            const bool need_dump = verbose >= 99;
+            if (!need_dump) dump_p2p_errors();
         }
     }
     return st;

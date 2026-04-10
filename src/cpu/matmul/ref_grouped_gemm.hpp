@@ -142,12 +142,33 @@ struct ref_grouped_t : public primitive_t {
             VDISPATCH_MATMUL(attr_scales.has_default_values(DNNL_ARG_DST),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
 
-            // Zero-points are supported for wei: for WOQ (fp src) and for int arithmetic (int src)
+            // Zero-points are supported for src and wei: for WOQ (fp src) and
+            // for int arithmetic (int src)
             const auto &attr_zps = attr()->zero_points_;
-            VDISPATCH_MATMUL(attr_zps.has_default_values(DNNL_ARG_SRC),
-                    VERBOSE_UNSUPPORTED_ZP_CFG);
             VDISPATCH_MATMUL(attr_zps.has_default_values(DNNL_ARG_DST),
                     VERBOSE_UNSUPPORTED_ZP_CFG);
+
+            // Allow row-wise or blocked (K grouping) zps for src
+            if (!attr_zps.has_default_values(DNNL_ARG_SRC)) {
+                VDISPATCH_MATMUL(is_int_src, VERBOSE_UNSUPPORTED_ZP_CFG);
+                VDISPATCH_MATMUL(
+                        utils::one_of(attr_zps.get_data_type(DNNL_ARG_SRC), u8,
+                                s8, s32),
+                        VERBOSE_UNSUPPORTED_ZP_CFG);
+                const int zp_mask = attr_zps.get_mask(DNNL_ARG_SRC);
+                const int rowwise_mask = src_qmask_M();
+                const int blocked_mask = src_qmask_M() | src_qmask_K();
+                VDISPATCH_MATMUL(
+                        zp_mask == rowwise_mask || zp_mask == blocked_mask,
+                        VERBOSE_UNSUPPORTED_ZP_CFG);
+                if (!attr_zps.get(DNNL_ARG_SRC).has_default_groups()) {
+                    const auto gM = attr_zps.get_group(DNNL_ARG_SRC, -2);
+                    VDISPATCH_MATMUL(gM == 1, VERBOSE_UNSUPPORTED_ZP_CFG);
+                    const auto gK = attr_zps.get_group(DNNL_ARG_SRC, -1);
+                    VDISPATCH_MATMUL(gK > 1, VERBOSE_UNSUPPORTED_ZP_CFG);
+                    VDISPATCH_MATMUL(K() % gK == 0, VERBOSE_UNSUPPORTED_ZP_CFG);
+                }
+            }
 
             // Allow column-wise or blocked (K grouping) zps for weights
             if (!attr_zps.has_default_values(DNNL_ARG_WEIGHTS)) {

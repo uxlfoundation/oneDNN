@@ -169,7 +169,7 @@ struct CommonStrategy {
     int activeThreads = 0;                      // # of active threads (0 = dynamic).
 
     ngen::EmulationStrategy emulate;
-                                    ZPAD(B, 2)
+                                    ZPAD(B, 1)
 
     CommonStrategy() = default;
     CommonStrategy(ngen::HW hw, int stepping = 0);

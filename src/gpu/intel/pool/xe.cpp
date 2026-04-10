@@ -83,12 +83,12 @@ static status_t init_conf_common(
     if (c_block_size >= 16 && n_block_size >= 16) {
         c_padded = utils::rnd_up(conf.c_padded, c_block_size);
         conf.use_mb_c_block = true;
-        // Workaround: OCL compiler on XE3P miscompiles the slow-path read in
-        // read_vect_c_block when USE_MB_C_BLOCK and IC has a tail (ic % 16 != 0).
-        // Fall back to ocl:ref for correctness. Bug filed with compiler team.
-        VDISPATCH_POOLING_IC(!(is_xe3p && conf.c % conf.sub_group_size != 0),
+        // Workaround: OCL compiler on XE3P miscompiles USE_MB_C_BLOCK path for
+        // u8 src. Fall back to ocl:ref for correctness. Bug filed with compiler team.
+        VDISPATCH_POOLING_IC(
+                !(is_xe3p && src_mdw.data_type() == data_type::u8),
                 "%s," VERBOSE_IMPL_HEURISTIC_FAIL, pd->info(engine),
-                "workaround xe3p compiler bug: ic tail with mb_c_block");
+                "workaround xe3p compiler bug: u8 with mb_c_block");
         conf.vect_dt_n = 8;
         conf.nvect = 2;
         if (!pd->attr()->post_ops_.has_default_values()) { conf.nvect = 1; }

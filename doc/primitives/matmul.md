@@ -452,7 +452,10 @@ The following are supported:
     are supported.
   - Scale data type includes: `f32`, `bf16`, `f16`, `e8m0` for MXFP8 and MXFP4,
     `f8_e4m3` for NVFP4 block scales.
-- Zero points attribute for weights tensors with the same masks as scales.
+- Zero points attribute for source and weights tensors:
+  - The masks must match the scales mask
+  - Source zero points data types include `u8`, `s8`
+  - Weights zero points data types include `u8`, `s8`, `u4`, `s4‘
 - Post-ops: binary post-ops are supported (e.g., binary `mul` with a scalar
   `f32` tensor can be used to apply a global scale factor, as needed for NVFP4
   two-level scaling).

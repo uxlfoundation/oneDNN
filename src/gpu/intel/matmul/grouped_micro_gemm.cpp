@@ -115,7 +115,10 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
         problem.B_scale.setAlignment(
                 static_cast<int>(types::data_type_size(src_scale_dt)));
         problem.B_scale.layout = MatrixLayout::N;
-        problem.bsPtrDims = 2;
+        problem.bsPtrDims
+                = (src_quant_.scale_mask() == (src_qmask_M() | src_qmask_K()))
+                ? 2
+                : 1;
     }
     if (opts.offsetB) {
         data_type_t src_zp_dt = src_quant_.zp_dt();
@@ -123,7 +126,9 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
         problem.BO.setAlignment(
                 static_cast<int>(types::data_type_size(src_zp_dt)));
         problem.BO.layout = MatrixLayout::N;
-        problem.boPtrDims = 2;
+        problem.boPtrDims
+                = (src_quant_.zp_mask() == (src_qmask_M() | src_qmask_K())) ? 2
+                                                                            : 1;
         problem.bOffset = ABOffset::Calc;
     }
 

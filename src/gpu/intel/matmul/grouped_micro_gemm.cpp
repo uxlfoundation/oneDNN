@@ -149,7 +149,10 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
     // can avoid using group sums by converting one of the inputs to
     // f16/bf16.
     if (problem.Ta.isInteger() && problem.Tb.isInteger()
-            && (problem.needsAGroupSums() || problem.needsBGroupSums())) {
+            && ((problem.needsAGroupSums() || problem.needsBGroupSums())
+                    || ((opts.scaleA || opts.scaleB)
+                            && dev_info->gpu_arch()
+                                    < compute::gpu_arch_t::xe_hpc))) {
         Type ctype = Type::f16;
         if (utils::one_of(Type::bf16, problem.Ta_scale, problem.Tb_scale,
                     convert_dnnl_to_kernel_type(dst_mdw.data_type())))

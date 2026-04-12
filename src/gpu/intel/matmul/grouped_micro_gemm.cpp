@@ -172,6 +172,7 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
     auto strat_override = [&](gemmstone::GEMMStrategy &strat) {
         std::string newStrat;
         using namespace gemmstone;
+        strat.dpasw |= strat.fused;
         newStrat = gpu_utils::dev_getenv("GRPGEMM_USTRATEGY", newStrat);
         if (!newStrat.empty()) {
             // Example: 16 16 1 0 aT32 aM32 aB wg 2x4 sys

@@ -114,22 +114,24 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
         problem.Tb_scale = convert_dnnl_to_kernel_type(src_scale_dt);
         problem.B_scale.setAlignment(
                 static_cast<int>(types::data_type_size(src_scale_dt)));
-        problem.B_scale.layout = MatrixLayout::N;
         problem.bsPtrDims
                 = (src_quant_.scale_mask() == (src_qmask_M() | src_qmask_K()))
                 ? 2
                 : 1;
+        problem.B_scale.layout
+                = problem.bsPtrDims > 1 ? MatrixLayout::N : MatrixLayout::T;
     }
     if (opts.offsetB) {
         data_type_t src_zp_dt = src_quant_.zp_dt();
         problem.Tbo = convert_dnnl_to_kernel_type(src_zp_dt);
         problem.BO.setAlignment(
                 static_cast<int>(types::data_type_size(src_zp_dt)));
-        problem.BO.layout = MatrixLayout::N;
         problem.boPtrDims
                 = (src_quant_.zp_mask() == (src_qmask_M() | src_qmask_K())) ? 2
                                                                             : 1;
         problem.bOffset = ABOffset::Calc;
+        problem.BO.layout
+                = problem.boPtrDims > 1 ? MatrixLayout::N : MatrixLayout::T;
     }
 
     if (opts.scaleA || opts.offsetA) {

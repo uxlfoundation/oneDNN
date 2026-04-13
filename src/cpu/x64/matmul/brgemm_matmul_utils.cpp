@@ -1876,10 +1876,10 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.is_runtime_N = is_runtime_value(bgmmc.N);
     bgmmc.is_runtime_K = is_runtime_value(bgmmc.K);
 
-    // FP4 types store 2 elements per byte, so K must be even
+    // FP4 types store 2 elements per byte, so N must be even
     const bool is_f4_weights = bgmmc.orig_wei_dt == data_type::f4_e2m1;
-    VCONDCHECK_BG(!is_f4_weights || bgmmc.is_runtime_K || bgmmc.K % 2 == 0,
-            VERBOSE_BAD_PARAM, "K");
+    VCONDCHECK_BG(!is_f4_weights || bgmmc.is_runtime_N || bgmmc.N % 2 == 0,
+            VERBOSE_BAD_PARAM, "N");
 
     bgmmc.is_gemv = is_gemv_applicable(
             bgmmc, bm_conf_utils, src_md, weights_md, dst_md, attr);

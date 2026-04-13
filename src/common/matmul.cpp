@@ -714,14 +714,14 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
         }
     }
 
-    // FP4 types store 2 elements per byte, so K must be even
+    // FP4 types store 2 elements per byte, so N must be even
     const bool is_f4_weights = one_of(
             weights_desc->data_type, data_type::f4_e2m1, data_type::f4_e3m0);
     if (is_f4_weights) {
-        const int k_idx_wei = weights_desc->ndims - 2;
-        const dim_t K = weights_desc->dims[k_idx_wei];
-        VCHECK_MATMUL(!is_runtime_value(K) && K % 2 == 0, VERBOSE_BAD_DIM,
-                "weights", k_idx_wei);
+        const int n_idx_wei = weights_desc->ndims - 1;
+        const dim_t N = weights_desc->dims[n_idx_wei];
+        VCHECK_MATMUL(!is_runtime_value(N) && N % 2 == 0, VERBOSE_BAD_DIM,
+                "weights", n_idx_wei);
     }
 
     op_d.accum_data_type = types::default_accum_data_type(src_desc->data_type,

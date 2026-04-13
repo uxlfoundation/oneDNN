@@ -229,6 +229,12 @@ have specialized optimizations in the library:
    * Intel Arc B-Series Graphics (formerly Battlemage)
  * Xe3-LPG
    * Intel Graphics for Intel Core Ultra Series 3 processors (formerly Panther Lake)
+   * Intel Graphics for future Intel Core Series 3 processors (code name Wildcat Lake)
+   * Intel Graphics for future Intel Core Ultra processors (code name Nova Lake S)
+ * Xe3p-LPG
+   * Intel Graphics for future Intel Core Ultra processors (code name Nova Lake P)
+ * Xe3p-XPC
+   * future discrete GPUs based on Xe3p-XPC architecture (code name Crescent Island)
 
 The following table indicates the data types support for each uArch supported by oneDNN.
 
@@ -241,6 +247,8 @@ The following table indicates the data types support for each uArch supported by
 | Xe2-LPG  | `+`     | `+`     | `+`     | `+`     | `+`     | `.`     | `.`     | `.`     |
 | Xe2-HPG  | `+`     | `+`     | `+`     | `+`     | `+`     | `.`     | `.`     | `.`     |
 | Xe3-LPG  | `+`     | `+`     | `+`     | `+`     | `+`     | `.`     | `.`     | `.`     |
+| Xe3p-LPG | `+`     | `+`     | `+`     | `+`     | `+`     | `+`     | `.`     | `.`     |
+| Xe3p-XPC | `+`     | `+`     | `+`     | `+`     | `+`     | `+`     | `+`     | `.`     |
 
 Legend:
 * `+` indicates oneDNN uses hardware-native compute support for this data type.

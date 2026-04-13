@@ -117,11 +117,14 @@ The library is optimized for the following GPUs:
   * Intel Data Center GPU Max Series (formerly Ponte Vecchio)
   * Intel Arc B-Series Graphics and Intel Arc Pro B-Series Graphics
    (formerly Battlemage)
+  * future discrete GPUs based on Xe3p-XPC architecture (code name Crescent Island)
 * Intel Graphics integrated with:
   * 11th-14th Generation Intel Core Processors
   * Intel Graphics for Intel Core Ultra Series 1 processors (formerly Meteor Lake)
   * Intel Graphics for Intel Core Ultra Series 2 processors (formerly Arrow Lake and Lunar Lake)
   * Intel Graphics for Intel Core Ultra Series 3 processors (formerly Panther Lake)
+  * Intel Graphics for future Intel Core Series 3 processors (formerly Wildcat Lake)
+  * Intel Graphics for future Intel Core Ultra processors (code name Nova Lake)
 
 [CPU dispatcher control]: https://uxlfoundation.github.io/oneDNN/dev_guide_cpu_dispatcher_control.html
 [Linking Guide]: https://uxlfoundation.github.io/oneDNN/dev_guide_link.html

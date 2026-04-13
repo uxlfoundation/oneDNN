@@ -1375,7 +1375,8 @@ void jit_uni_binary_injector_t<isa>::inject_binary(
     const auto &rhs_arg_data_type = post_op.binary.src1_desc.data_type;
     const bool scalar_f32
             = rhs_addr.isBroadcast() && rhs_arg_data_type == data_type::f32;
-    const bool with_tail_not_fusable_to_binary_op = with_tail && !scalar_f32;
+    const bool with_tail_not_fusable_to_binary_op
+            = with_tail && (isa == asimd || !scalar_f32);
     const bool process_rhs_arg_using_tmp_vmm
             = rhs_arg_data_type != data_type::f32
             || with_tail_not_fusable_to_binary_op
@@ -1404,7 +1405,10 @@ void jit_uni_binary_injector_t<isa>::inject_binary(
                     && "Opmask is not set for tail loading on SVE");
             const auto &tail_opmask = rhs_arg_static_params_.tail_opmask;
             mask = tail_opmask;
-            host_->mov(dst.s, mask / Xbyak_aarch64::T_z, dst.s);
+            // zero inactive lanes
+            host_->mov(Xbyak_aarch64::ZRegS(dst.getIdx()),
+                    mask / Xbyak_aarch64::T_z,
+                    Xbyak_aarch64::ZRegS(dst.getIdx()));
         }
 
         execute_binary(alg, dst, mask, lhs, rhs_addr);
@@ -1448,7 +1452,7 @@ rhs_address_t jit_uni_binary_injector_t<isa>::remove_bcast_bit(
 
 template <cpu_isa_t isa>
 void jit_uni_binary_injector_t<isa>::cvt_to_f32(const Vmm &tmp_vmm) const {
-    host_->scvtf(tmp_vmm.s, host_->P_ALL_ONE / Xbyak_aarch64::T_m, tmp_vmm.s);
+    host_->uni_scvtf(tmp_vmm.s, tmp_vmm.s);
 }
 
 template <cpu_isa_t isa>
@@ -1474,6 +1478,27 @@ void jit_uni_binary_injector_t<isa>::execute_broadcast_no_tail(
             break;
         default: assert(!"unsupported data type");
     }
+}
+
+template <>
+void jit_uni_binary_injector_t<asimd>::execute_broadcast_s8u8_no_tail(
+        const data_type_t &data_type, const Xbyak_aarch64::VReg &tmp_vmm,
+        const rhs_address_t &rhs_addr) const {
+    assert(utils::one_of(data_type, data_type::s8, data_type::u8)
+            && "unsupported data type");
+
+    const Xbyak_aarch64::XReg x_addr = host_->addr_off(rhs_addr.base_,
+            rhs_addr.offt_, host_->X_DEFAULT_ADDR, host_->X_TMP_0);
+
+    if (data_type == data_type::s8) {
+        // load byte from memory into wtmp and sign-extend
+        host_->ldrsb(host_->W_TMP_0, Xbyak_aarch64::ptr(x_addr));
+    } else if (data_type == data_type::u8) {
+        // unsigned load
+        host_->ldrb(host_->W_TMP_0, Xbyak_aarch64::ptr(x_addr));
+    }
+    // broadcast into 4x32-bit
+    host_->dup(tmp_vmm.s4, host_->W_TMP_0);
 }
 
 template <cpu_isa_t isa>
@@ -1529,6 +1554,41 @@ void jit_uni_binary_injector_t<isa>::execute_broadcast_tail_with_opmask(
     }
 }
 
+template <>
+void jit_uni_binary_injector_t<asimd>::execute_broadcast_tail_with_opmask(
+        const data_type_t &data_type, const Xbyak_aarch64::VReg &tmp_vmm,
+        const rhs_address_t &rhs_addr) const {
+
+    const Xbyak_aarch64::XReg x_addr = host_->addr_off(
+            rhs_addr.base_, rhs_addr.offt_, host_->X_TMP_1, host_->X_TMP_0);
+
+    host_->uni_clear(tmp_vmm);
+    switch (data_type) {
+        case data_type::f32:
+        case data_type::s32:
+            host_->ld1(Xbyak_aarch64::VReg4S(tmp_vmm.getIdx())[0],
+                    Xbyak_aarch64::ptr(x_addr));
+            for (size_t i = 1; i < rhs_arg_static_params_.tail_size; ++i) {
+                host_->ins(Xbyak_aarch64::VReg4S(tmp_vmm.getIdx())[i],
+                        Xbyak_aarch64::VReg4S(tmp_vmm.getIdx())[0]);
+            }
+            break;
+        case data_type::s8:
+        case data_type::u8:;
+            if (data_type == data_type::s8) {
+                host_->ldrsb(host_->W_TMP_0, Xbyak_aarch64::ptr(x_addr));
+            } else {
+                host_->ldrb(host_->W_TMP_0, Xbyak_aarch64::ptr(x_addr));
+            }
+            for (size_t i = 0; i < rhs_arg_static_params_.tail_size; ++i) {
+                host_->ins(Xbyak_aarch64::VReg4S(tmp_vmm.getIdx())[i],
+                        host_->W_TMP_0);
+            }
+            break;
+        default: assert(!"unsupported data type");
+    }
+}
+
 template <cpu_isa_t isa>
 void jit_uni_binary_injector_t<isa>::load_rhs_no_tail(
         const data_type_t &data_type, const Vmm &tmp_vmm,
@@ -1548,6 +1608,30 @@ void jit_uni_binary_injector_t<isa>::load_rhs_no_tail(
     }
 }
 
+template <>
+void jit_uni_binary_injector_t<asimd>::load_rhs_i8_no_tail(
+        const data_type_t &data_type, const Xbyak_aarch64::VReg &tmp_vmm,
+        const rhs_address_t &rhs_addr) const {
+    assert(utils::one_of(data_type, data_type::s8, data_type::u8)
+            && "unsupported data type");
+
+    const Xbyak_aarch64::XReg x_addr = host_->addr_off(rhs_addr.base_,
+            rhs_addr.offt_, host_->X_DEFAULT_ADDR, host_->X_TMP_0);
+
+    host_->ld1(Xbyak_aarch64::VReg4S(tmp_vmm.getIdx())[0],
+            Xbyak_aarch64::ptr(x_addr));
+    if (data_type == data_type::u8) {
+        host_->uxtl(tmp_vmm.h8,
+                tmp_vmm.b8); // zero-extend low 8 bytes to 8 uint16 lanes
+        host_->uxtl(tmp_vmm.s4, tmp_vmm.h4); // low four u16 -> u32
+    } else if (data_type == data_type::s8) {
+        host_->sxtl(tmp_vmm.h8,
+                tmp_vmm.b8); // zero-extend low 8 bytes to 8 int16 lanes
+        host_->sxtl(tmp_vmm.s4, tmp_vmm.h4); // low four s16 -> s32
+    } else
+        assert(!"unsupported data type");
+}
+
 template <cpu_isa_t isa>
 void jit_uni_binary_injector_t<isa>::load_rhs_i8_no_tail(
         const data_type_t &data_type, const Vmm &tmp_vmm,
@@ -1564,6 +1648,45 @@ void jit_uni_binary_injector_t<isa>::load_rhs_i8_no_tail(
                 Xbyak_aarch64::ptr(host_->X_DEFAULT_ADDR));
     } else
         assert(!"unsupported data type");
+}
+
+template <>
+void jit_uni_binary_injector_t<asimd>::load_rhs_tail_dynamically_with_opmask(
+        const data_type_t &data_type, const Xbyak_aarch64::VReg &tmp_vmm,
+        const rhs_address_t &rhs_addr) const {
+
+    const Xbyak_aarch64::XReg x_addr = host_->addr_off(
+            rhs_addr.base_, rhs_addr.offt_, host_->X_TMP_1, host_->X_TMP_0);
+
+    host_->uni_clear(tmp_vmm);
+    switch (data_type) {
+        case data_type::f32:
+        case data_type::s32:
+            for (size_t i = 0; i < rhs_arg_static_params_.tail_size; ++i) {
+                const Xbyak_aarch64::XReg lane_addr
+                        = host_->addr_off(x_addr, i * sizeof(float),
+                                host_->X_DEFAULT_ADDR, host_->X_TMP_0);
+                host_->ld1(Xbyak_aarch64::VReg4S(tmp_vmm.getIdx())[i],
+                        Xbyak_aarch64::ptr(lane_addr));
+            }
+            break;
+        case data_type::s8:
+        case data_type::u8:
+            for (size_t i = 0; i < rhs_arg_static_params_.tail_size; ++i) {
+                const Xbyak_aarch64::XReg lane_addr
+                        = host_->addr_off(x_addr, i * sizeof(int8_t),
+                                host_->X_DEFAULT_ADDR, host_->X_TMP_0);
+                if (data_type == data_type::s8) {
+                    host_->ldrsb(host_->W_TMP_0, Xbyak_aarch64::ptr(lane_addr));
+                } else {
+                    host_->ldrb(host_->W_TMP_0, Xbyak_aarch64::ptr(lane_addr));
+                }
+                host_->ins(Xbyak_aarch64::VReg4S(tmp_vmm.getIdx())[i],
+                        host_->W_TMP_0);
+            }
+            break;
+        default: assert(!"unsupported data type");
+    }
 }
 
 template <cpu_isa_t isa>
@@ -1797,6 +1920,42 @@ void get_v_rhs_value(
     }
 }
 
+template <>
+void jit_uni_binary_injector_t<asimd>::execute_cmp_binary(
+        const Xbyak_aarch64::VReg &dst, const Xbyak_aarch64::PReg &mask,
+        const Xbyak_aarch64::VReg &lhs, const Xbyak_aarch64::VReg &rhs,
+        const unsigned int cmp_predicate) const {
+    UNUSED(mask);
+
+    switch (cmp_predicate) {
+        case jit_generator_t::_cmp_nlt_us:
+            host_->fcmge(dst.s, lhs.s, rhs.s);
+            break;
+        case jit_generator_t::_cmp_nle_us:
+            host_->fcmgt(dst.s, lhs.s, rhs.s);
+            break;
+        case jit_generator_t::_cmp_le_os:
+            host_->fcmge(dst.s, rhs.s, lhs.s);
+            break;
+        case jit_generator_t::_cmp_lt_os:
+            host_->fcmgt(dst.s, rhs.s, lhs.s);
+            break;
+        case jit_generator_t::_cmp_eq_oq:
+            host_->fcmeq(dst.s, lhs.s, rhs.s);
+            break;
+        case jit_generator_t::_cmp_neq_uq:
+            host_->fcmeq(dst.s, lhs.s, rhs.s);
+            host_->not_(dst.b, dst.b);
+            break;
+        default: assert(!"unsupported compare mode"); break;
+    }
+
+    // ASIMD compare instructions produce all-ones/all-zeros integer masks.
+    // Convert them to the expected 1.0f / 0.0f compare result in place.
+    host_->ushr(dst.s, dst.s, 31);
+    host_->scvtf(dst.s, dst.s);
+}
+
 template <cpu_isa_t isa>
 void jit_uni_binary_injector_t<isa>::execute_cmp_binary(const Vmm &dst,
         const Xbyak_aarch64::PReg &mask, const Vmm &lhs, const Vmm &rhs,
@@ -1814,6 +1973,100 @@ void jit_uni_binary_injector_t<isa>::execute_cmp_binary(const Vmm &dst,
     pop_opmask(host_, cmp_mask);
 }
 
+template <>
+template <typename T>
+void jit_uni_binary_injector_t<asimd>::execute_binary(alg_kind_t binary_alg,
+        const Xbyak_aarch64::VReg &dst, const Xbyak_aarch64::PReg &mask,
+        const Xbyak_aarch64::VReg &lhs, const T &rhs) const {
+    const int SIMD_SZ = simd_bytes(asimd);
+    const bool isAddr = std::is_same<T, rhs_address_t>::value;
+    Xbyak_aarch64::VReg v_rhs(0);
+
+    if (isAddr) {
+        const rhs_address_t &addr = (rhs_address_t &)rhs;
+        for (size_t i = 0; i < 32; i++) {
+            // Look for a temporary vector register whose index isn’t the same as lhs.
+            if (lhs.getIdx() != i) {
+                // Pick the SIMD vector register with index i to be the scratch register.
+                v_rhs = Xbyak_aarch64::VReg(i);
+                // Allocate space on stack
+                host_->sub(host_->X_SP, host_->X_SP, SIMD_SZ);
+                // Store the scratch register into the stack so it's safe to clobber it.
+                host_->str(Xbyak_aarch64::QReg(i),
+                        Xbyak_aarch64::ptr(host_->X_SP));
+                // Compute the effective address we want to load from.
+                Xbyak_aarch64::XReg x_addr = host_->addr_off(addr.base_,
+                        addr.offt_, host_->X_DEFAULT_ADDR, host_->X_TMP_0);
+                // Load into the scratch vector, with or without broadcast.
+                if (addr.isBroadcast_)
+                    host_->ld1r(v_rhs.s, Xbyak_aarch64::ptr(x_addr));
+                else
+                    host_->ld1(v_rhs.s, Xbyak_aarch64::ptr(x_addr));
+                // The temporary register was found, therefore there is no need to keep searching.
+                break;
+            }
+        }
+    } else {
+        const Xbyak_aarch64::VReg tmp = (Xbyak_aarch64::VReg &)rhs;
+        v_rhs = tmp;
+    }
+
+    switch (binary_alg) {
+        case alg_kind::binary_add:
+            host_->uni_fadd(dst.s, lhs.s, v_rhs.s);
+            break;
+        case alg_kind::binary_mul:
+            host_->uni_fmul(dst.s, lhs.s, v_rhs.s);
+            break;
+        case alg_kind::binary_max:
+            host_->uni_fmax(dst.s, lhs.s, v_rhs.s);
+            break;
+        case alg_kind::binary_min:
+            host_->uni_fmin(dst.s, lhs.s, v_rhs.s);
+            break;
+        case alg_kind::binary_div:
+            host_->uni_fdiv(dst.s, lhs.s, v_rhs.s,
+                    Xbyak_aarch64::VReg(jit_generator_t::DUMMY_IDX).s, mask);
+            break;
+        case alg_kind::binary_sub:
+            host_->uni_fsub(dst.s, lhs.s, v_rhs.s);
+            break;
+        case alg_kind::binary_ge:
+            execute_cmp_binary(
+                    dst, mask, lhs, v_rhs, jit_generator_t::_cmp_nlt_us);
+            break;
+        case alg_kind::binary_gt:
+            execute_cmp_binary(
+                    dst, mask, lhs, v_rhs, jit_generator_t::_cmp_nle_us);
+            break;
+        case alg_kind::binary_le:
+            execute_cmp_binary(
+                    dst, mask, lhs, v_rhs, jit_generator_t::_cmp_le_os);
+            break;
+        case alg_kind::binary_lt:
+            execute_cmp_binary(
+                    dst, mask, lhs, v_rhs, jit_generator_t::_cmp_lt_os);
+            break;
+        case alg_kind::binary_eq:
+            execute_cmp_binary(
+                    dst, mask, lhs, v_rhs, jit_generator_t::_cmp_eq_oq);
+            break;
+        case alg_kind::binary_ne:
+            execute_cmp_binary(
+                    dst, mask, lhs, v_rhs, jit_generator_t::_cmp_neq_uq);
+            break;
+        default: assert(!"unsupported algorithm");
+    }
+
+    if (isAddr) {
+        // Restore the scratch register's initial content from the stack.
+        host_->ldr(Xbyak_aarch64::QReg(v_rhs.getIdx()),
+                Xbyak_aarch64::ptr(host_->X_SP));
+        // Free allocated stack space.
+        host_->add(host_->X_SP, host_->X_SP, SIMD_SZ);
+    }
+}
+
 template <cpu_isa_t isa>
 template <typename T>
 void jit_uni_binary_injector_t<isa>::execute_binary(alg_kind_t binary_alg,
@@ -1825,20 +2078,23 @@ void jit_uni_binary_injector_t<isa>::execute_binary(alg_kind_t binary_alg,
     if (isAddr) {
         const rhs_address_t &addr = (rhs_address_t &)rhs;
         for (size_t i = 0; i < 32; i++) {
+            // Look for a temporary vector register whose index isn’t the same as lhs.
             if (lhs.getIdx() != i) {
+                // Pick the SVE vector register with index i to be the scratch register.
                 z_rhs = Vmm(i);
-                host_->str(z_rhs,
-                        Xbyak_aarch64::ptr(
-                                host_->X_SP, -1, Xbyak_aarch64::MUL_VL));
-
+                // Allocate 1 VL space on stack
+                host_->addvl(host_->X_SP, host_->X_SP, -1);
+                // Store the scratch register into the stack so it's safe to clobber it.
+                host_->str(z_rhs, Xbyak_aarch64::ptr(host_->X_SP));
+                // Compute the effective address we want to load from.
                 Xbyak_aarch64::XReg x_addr = host_->addr_off(addr.base_,
                         addr.offt_, host_->X_DEFAULT_ADDR, host_->X_TMP_0);
-
+                // Load into the scratch vector, with or without broadcast.
                 if (addr.isBroadcast_)
                     host_->ld1rw(z_rhs.s, mask, Xbyak_aarch64::ptr(x_addr));
                 else
                     host_->ld1w(z_rhs.s, mask, Xbyak_aarch64::ptr(x_addr));
-
+                // The temporary register was found, therefore there is no need to keep searching.
                 break;
             }
         }
@@ -1862,8 +2118,7 @@ void jit_uni_binary_injector_t<isa>::execute_binary(alg_kind_t binary_alg,
             break;
         case alg_kind::binary_div:
             host_->uni_fdiv(dst.s, lhs.s, z_rhs.s,
-                    Vmm(dnnl::impl::cpu::aarch64::jit_generator_t::DUMMY_IDX).s,
-                    mask);
+                    Vmm(jit_generator_t::DUMMY_IDX).s, mask);
             break;
         case alg_kind::binary_sub:
             host_->uni_fsub(dst.s, lhs.s, z_rhs.s);
@@ -1896,8 +2151,10 @@ void jit_uni_binary_injector_t<isa>::execute_binary(alg_kind_t binary_alg,
     }
 
     if (isAddr) {
-        host_->ldr(z_rhs,
-                Xbyak_aarch64::ptr(host_->X_SP, -1, Xbyak_aarch64::MUL_VL));
+        // Restore the scratch register's initial content from the stack.
+        host_->ldr(z_rhs, Xbyak_aarch64::ptr(host_->X_SP));
+        // Free allocated stack space.
+        host_->addvl(host_->X_SP, host_->X_SP, 1);
     }
 }
 
@@ -1909,6 +2166,7 @@ void jit_uni_binary_injector_t<isa>::compute_vector(size_t idx,
 }
 
 template class jit_uni_binary_injector_t<sve>;
+template class jit_uni_binary_injector_t<asimd>;
 
 } // namespace binary_injector
 } // namespace aarch64

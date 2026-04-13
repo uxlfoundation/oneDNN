@@ -157,8 +157,10 @@ conditional_register_preserve_guard_t<
                                 vmm_to_preserve}
                       : register_preserve_guard_t<isa> {nullptr, {}, {}}} {};
 
+template class register_preserve_guard_t<asimd>;
 template class register_preserve_guard_t<sve>;
 template class conditional_register_preserve_guard_t<sve>;
+template class conditional_register_preserve_guard_t<asimd>;
 
 } // namespace injector_utils
 } // namespace aarch64

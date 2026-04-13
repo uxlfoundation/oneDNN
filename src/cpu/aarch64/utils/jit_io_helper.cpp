@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2022 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -87,6 +87,18 @@ jit_io_helper_t<Vmm>::jit_io_helper_t(jit_generator_t *host,
 template <typename Vmm>
 jit_io_helper_t<Vmm>::~jit_io_helper_t() = default;
 
+// That is ok for ASIMD paths because we handle tail manually with tail_conf_->tail_size_.
+template <>
+void jit_io_helper_t<Xbyak_aarch64::VReg>::prepare_opmask(
+        const std::size_t how_many_bits_to_set,
+        const Xbyak_aarch64::XReg &reg_tmp0,
+        const Xbyak_aarch64::XReg &reg_tmp1, const Xbyak_aarch64::PReg &mask) {
+    UNUSED(how_many_bits_to_set);
+    UNUSED(reg_tmp0);
+    UNUSED(reg_tmp1);
+    UNUSED(mask);
+}
+
 template <typename Vmm>
 void jit_io_helper_t<Vmm>::prepare_opmask(
         const std::size_t how_many_bits_to_set,
@@ -104,7 +116,7 @@ void jit_io_helper_t<Vmm>::prepare_tail_mask() {
 
     if (!tail_conf_->tail_size_) return;
 
-    assert(is_superset(isa_, sve_128));
+    assert(is_superset(isa_, asimd));
 
     prepare_opmask(tail_conf_->tail_size_, tail_conf_->reg_tmp_,
             tail_conf_->reg_tmp1_, tail_conf_->tail_opmask_);
@@ -114,7 +126,7 @@ template <typename Vmm>
 void jit_io_helper_t<Vmm>::prepare_full_mask() {
     assert(gather_conf_.has_value() && "Config for loading with the use of gather instruction is not set.");
 
-    assert(is_superset(isa_, sve_128));
+    assert(is_superset(isa_, asimd));
 
     prepare_opmask(gather_conf_->simd_w_, gather_conf_->reg_tmp_,
             gather_conf_->reg_tmp1_, gather_conf_->full_opmask_);
@@ -143,6 +155,60 @@ void jit_io_helper_t<Vmm>::init_saturate_f32() const {
                 Vmm(saturation_conf_->vreg_zero_saturation_idx_),
                 Vmm(saturation_conf_->vreg_saturation_ubound_idx_),
                 saturation_conf_->reg_tmp_, data_type::f32, data_type_);
+}
+
+template <>
+void jit_io_helper_t<Xbyak_aarch64::VReg>::gather(
+        const Xbyak_aarch64::XReg &src_reg,
+        const Xbyak_aarch64::VReg &indices_vmm,
+        const Xbyak_aarch64::VReg &dst_vmm, const bool tail) {
+    assert(gather_conf_.has_value() && "Config for loading with the use of gather instruction is not set.");
+    assert(IMPLICATION(tail, tail_conf_.has_value())
+            && "Config for tail processing is not set.");
+
+    const unsigned number_of_values_to_load = tail ? tail_conf_->tail_size_ : 4;
+
+    host_->uni_clear(dst_vmm);
+
+    switch (data_type_) {
+        case data_type::f32:
+        case data_type::s32:
+            for (unsigned i = 0; i < number_of_values_to_load; i++) {
+                // Calculate address of the i-th element to load: src_reg + indices_vmm[i]
+                host_->mov(host_->W_TMP_0,
+                        Xbyak_aarch64::VReg4S(indices_vmm.getIdx())[i]);
+                host_->add(host_->X_DEFAULT_ADDR, src_reg, host_->X_TMP_0);
+                // Load the i-th element to the i-th lane of dst_vmm
+                host_->ld1(Xbyak_aarch64::VReg4S(dst_vmm.getIdx())[i],
+                        Xbyak_aarch64::ptr(host_->X_DEFAULT_ADDR));
+            }
+            break;
+        case data_type::s8:
+        case data_type::u8:
+            for (unsigned i = 0; i < number_of_values_to_load; i++) {
+                host_->mov(host_->W_TMP_0,
+                        Xbyak_aarch64::VReg4S(indices_vmm.getIdx())[i]);
+                host_->add(host_->X_DEFAULT_ADDR, src_reg, host_->X_TMP_0);
+                host_->ld1(Xbyak_aarch64::VReg16B(dst_vmm.getIdx())[i],
+                        Xbyak_aarch64::ptr(host_->X_DEFAULT_ADDR));
+            }
+            if (data_type_ == data_type::s8) {
+                // sign-extend 8x8-bit -> 8x16-bit
+                host_->sxtl(dst_vmm.h8, dst_vmm.b8);
+                // sign-extend low 4x16-bit -> 4x32-bit
+                host_->sxtl(dst_vmm.s4, dst_vmm.h4);
+            } else {
+                // unsign-extend 8x8-bit -> 8x16-bit
+                host_->uxtl(dst_vmm.h8, dst_vmm.b8);
+                // unsign-extend low 4x16-bit -> 4x32-bit
+                host_->uxtl(dst_vmm.s4, dst_vmm.h4);
+            }
+            break;
+        default: assert(!"Unsupported data type.");
+    }
+
+    if (utils::one_of(data_type_, data_type::s8, data_type::u8))
+        convert_to_f32(dst_vmm, dst_vmm, data_type::s32);
 }
 
 template <typename Vmm>
@@ -198,7 +264,9 @@ void jit_io_helper_t<Vmm>::load(const Xbyak_aarch64::XReg &src_addr,
             load_s32(src_addr, offt, dst_raw_vmm, tail, mask);
             break;
         case data_type::s8:
-        case data_type::u8: load_i8(src_addr, offt, dst_raw_vmm, mask); break;
+        case data_type::u8:
+            load_i8(src_addr, offt, dst_raw_vmm, tail, mask);
+            break;
         default: assert(!"Unsupported data type.");
     }
 }
@@ -497,12 +565,38 @@ void jit_io_helper_t<Xbyak_aarch64::VReg>::load_f32(
         const Xbyak_aarch64::XReg &src_addr, const int offt,
         const Xbyak_aarch64::VReg &dst_vmm, const bool tail,
         const Xbyak_aarch64::PReg &mask) {
-    UNUSED(src_addr);
-    UNUSED(offt);
-    UNUSED(dst_vmm);
-    UNUSED(tail);
 
-    assert(!"under construction");
+    if (tail && tail_conf_->tail_size_ > 0) {
+        // tail_size_ = nelems % simd_w_, so it cannot be greater than (simd_w_ - 1), which is 4 for VReg.
+        // Refer to binary_kernel_t::get_tail_size().
+        const int SZ = sizeof(int32_t);
+        switch (tail_conf_->tail_size_) {
+            case 1:
+                host_->ld1(dst_vmm.s[0], Xbyak_aarch64::ptr(src_addr));
+                break;
+            case 2:
+                host_->ld1(dst_vmm.d[0], Xbyak_aarch64::ptr(src_addr));
+                break;
+            case 3:
+                host_->ld1(dst_vmm.d[0], Xbyak_aarch64::ptr(src_addr));
+                host_->add(src_addr, src_addr, SZ * 2);
+                host_->ld1(dst_vmm.s[2], Xbyak_aarch64::ptr(src_addr));
+                host_->sub(src_addr, src_addr, SZ * 2);
+                break;
+            default: assert(!"unreachable");
+        }
+    } else {
+        host_->ld1(dst_vmm.s, Xbyak_aarch64::ptr(src_addr));
+    }
+}
+
+template <>
+void jit_io_helper_t<Xbyak_aarch64::VReg>::load_s32(
+        const Xbyak_aarch64::XReg &src_addr, const int offt,
+        const Xbyak_aarch64::VReg &dst_vmm, const bool tail,
+        const Xbyak_aarch64::PReg &mask) {
+    load_f32(src_addr, offt, dst_vmm, tail, mask);
+    host_->scvtf(dst_vmm.s, dst_vmm.s);
 }
 
 template <typename Vmm>
@@ -514,9 +608,39 @@ void jit_io_helper_t<Vmm>::load_s32(const Xbyak_aarch64::XReg &src_addr,
     host_->scvtf(dst_vmm.s, host_->P_TMP / Xbyak_aarch64::T_m, dst_vmm.s);
 }
 
+template <>
+void jit_io_helper_t<Xbyak_aarch64::VReg>::load_i8(
+        const Xbyak_aarch64::XReg &src_addr, const int offt,
+        const Xbyak_aarch64::VReg &dst_vmm, const bool tail,
+        const Xbyak_aarch64::PReg &mask) {
+    UNUSED(offt);
+    UNUSED(mask);
+
+    const unsigned number_of_values_to_load = tail ? tail_conf_->tail_size_ : 4;
+    const auto &reg_tmp = tail_conf_->reg_tmp_;
+
+    host_->movi(dst_vmm.s4, 0);
+
+    for (size_t i = 0; i < number_of_values_to_load; ++i) {
+        const Xbyak_aarch64::XReg addr
+                = host_->addr_off(src_addr, i, reg_tmp, host_->X_TMP_0);
+        if (data_type_ == data_type::s8) {
+            host_->ldrsb(host_->W_TMP_0, Xbyak_aarch64::ptr(addr));
+        } else {
+            host_->ldrb(host_->W_TMP_0, Xbyak_aarch64::ptr(addr));
+        }
+        host_->ins(Xbyak_aarch64::VReg4S(dst_vmm.getIdx())[i], host_->W_TMP_0);
+    }
+
+    convert_to_f32(dst_vmm, dst_vmm, data_type::s32);
+}
+
 template <typename Vmm>
 void jit_io_helper_t<Vmm>::load_i8(const Xbyak_aarch64::XReg &src_addr,
-        const int offt, const Vmm &dst_vmm, const Xbyak_aarch64::PReg &mask) {
+        const int offt, const Vmm &dst_vmm, const bool tail,
+        const Xbyak_aarch64::PReg &mask) {
+    UNUSED(offt);
+    UNUSED(tail);
 
     if (data_type_ == data_type::s8)
         host_->ld1sb(dst_vmm.s, mask / Xbyak_aarch64::T_z,
@@ -550,10 +674,23 @@ void jit_io_helper_t<Vmm>::store(const Vmm &src_raw_vmm,
             break;
         case data_type::s8:
         case data_type::u8:
-            store_i8(src_raw_vmm, dst_raw_addr, offt, mask);
+            store_i8(src_raw_vmm, dst_raw_addr, offt, tail, mask);
             break;
         default: assert(!"Unsupported data type.");
     }
+}
+
+template <>
+void jit_io_helper_t<Xbyak_aarch64::VReg>::saturate(
+        const Xbyak_aarch64::VReg &vmm) {
+    assert(saturation_conf_.has_value() && "Config for saturation is not set.");
+
+    host_->saturate_f32(vmm,
+            Xbyak_aarch64::VReg(saturation_conf_->vreg_zero_saturation_idx_),
+            Xbyak_aarch64::VReg(saturation_conf_->vreg_saturation_ubound_idx_),
+            data_type_, host_->P_ALL_ONE);
+    host_->frintn(vmm.s, vmm.s); // Round to nearest even
+    host_->fcvtzs(vmm.s, vmm.s); // Floating-point convert to signed integer
 }
 
 template <typename Vmm>
@@ -575,8 +712,25 @@ void jit_io_helper_t<Vmm>::store_f32(const Vmm &src_vmm,
     if (io_conf_.nt_stores_enabled_) {
         host_->stnt1d(Xbyak_aarch64::ZRegD(src_vmm.getIdx()), mask,
                 Xbyak_aarch64::ptr(dst_addr));
-    } else if (!is_superset(isa_, sve_128) && tail) {
-        // ASIMD 128-bit
+    } else {
+        host_->st1w(Xbyak_aarch64::ZRegS(src_vmm.getIdx()), mask,
+                Xbyak_aarch64::ptr(dst_addr));
+    }
+}
+
+template <>
+void jit_io_helper_t<Xbyak_aarch64::VReg>::store_f32(
+        const Xbyak_aarch64::VReg &src_vmm, const Xbyak_aarch64::XReg &dst_addr,
+        const int offt, const bool tail, const Xbyak_aarch64::PReg &mask) {
+    UNUSED(offt);
+    UNUSED(mask);
+    if (io_conf_.nt_stores_enabled_) {
+        host_->stnt1d(Xbyak_aarch64::ZRegD(src_vmm.getIdx()), mask,
+                Xbyak_aarch64::ptr(dst_addr));
+    } else if (isa_ == asimd && tail && tail_conf_->tail_size_ > 0) {
+        // tail_size_ = nelems % simd_w_, so it cannot be greater than (simd_w_ - 1), which is 4 for VReg.
+        // Refer to binary_kernel_t::get_tail_size().
+        const int SZ = sizeof(float);
         switch (tail_conf_->tail_size_) {
             case 1:
                 host_->str(Xbyak_aarch64::SReg(src_vmm.getIdx()),
@@ -589,22 +743,129 @@ void jit_io_helper_t<Vmm>::store_f32(const Vmm &src_vmm,
             case 3:
                 host_->str(Xbyak_aarch64::DReg(src_vmm.getIdx()),
                         Xbyak_aarch64::ptr(dst_addr));
-                host_->add(dst_addr, dst_addr, 8);
+                host_->add(dst_addr, dst_addr, SZ * 2);
                 host_->st1(Xbyak_aarch64::VReg4S(src_vmm.getIdx())[2],
                         Xbyak_aarch64::ptr(dst_addr));
-                host_->sub(dst_addr, dst_addr, 8);
+                host_->sub(dst_addr, dst_addr, SZ * 2);
                 break;
             default: assert(!"unreachable");
         }
     } else {
-        host_->st1w(Xbyak_aarch64::ZRegS(src_vmm.getIdx()), mask,
-                Xbyak_aarch64::ptr(dst_addr));
+        host_->st1(src_vmm.s, Xbyak_aarch64::ptr(dst_addr));
     }
+}
+
+template <>
+int jit_io_helper_t<Xbyak_aarch64::VReg>::allocate_temp_register(
+        const Xbyak_aarch64::VReg &reg) {
+    const int SIMD_SZ = 16; // SIMD register length in bytes
+
+    for (size_t i = 0; i < 32; i++) {
+        // Look for a temporary vector register whose index isn’t the same as lhs.
+        if (reg.getIdx() != i) {
+            // Allocate space on stack
+            host_->sub(host_->X_SP, host_->X_SP, SIMD_SZ);
+            // Store the scratch register into the stack so it's safe to clobber it.
+            host_->str(Xbyak_aarch64::QReg(i), Xbyak_aarch64::ptr(host_->X_SP));
+            // The temporary register was found, therefore there is no need to keep searching.
+            return i;
+        }
+    }
+    assert("cannot find temporary register to allocate");
+    return -1;
+}
+
+template <>
+void jit_io_helper_t<Xbyak_aarch64::VReg>::deallocate_temp_register(
+        const int idx) {
+    const int SIMD_SZ = 16; // SIMD register length in bytes
+
+    // Restore the scratch register's initial content from the stack.
+    host_->ldr(Xbyak_aarch64::QReg(idx), Xbyak_aarch64::ptr(host_->X_SP));
+    // Free allocated stack space
+    host_->add(host_->X_SP, host_->X_SP, SIMD_SZ);
+}
+
+template <>
+void jit_io_helper_t<Xbyak_aarch64::VReg>::umin(
+        Xbyak_aarch64::VReg &dst, const int32_t imm) {
+    Xbyak_aarch64::VReg v_tmp(allocate_temp_register(dst));
+    host_->mov_imm(host_->W_TMP_0, imm);
+    host_->dup(v_tmp.s, host_->W_TMP_0);
+    host_->umin(dst.s4, dst.s4, v_tmp.s4);
+    deallocate_temp_register(v_tmp.getIdx());
+}
+
+template <>
+void jit_io_helper_t<Xbyak_aarch64::VReg>::smin(
+        Xbyak_aarch64::VReg &dst, const int32_t imm) {
+    Xbyak_aarch64::VReg v_tmp(allocate_temp_register(dst));
+    host_->mov_imm(host_->W_TMP_0, imm);
+    host_->dup(v_tmp.s, host_->W_TMP_0);
+    host_->smin(dst.s4, dst.s4, v_tmp.s4);
+    deallocate_temp_register(v_tmp.getIdx());
+}
+
+template <>
+void jit_io_helper_t<Xbyak_aarch64::VReg>::smax(
+        Xbyak_aarch64::VReg &dst, const int32_t imm) {
+    Xbyak_aarch64::VReg v_tmp(allocate_temp_register(dst));
+    host_->mov_imm(host_->W_TMP_0, imm);
+    host_->dup(v_tmp.s, host_->W_TMP_0);
+    host_->smax(dst.s4, dst.s4, v_tmp.s4);
+    deallocate_temp_register(v_tmp.getIdx());
+}
+
+template <>
+void jit_io_helper_t<Xbyak_aarch64::VReg>::store_i8_sdb(
+        Xbyak_aarch64::XReg addr, const Xbyak_aarch64::VReg &src_vmm,
+        const bool tail, const Xbyak_aarch64::PReg &mask) {
+    UNUSED(mask);
+
+    Xbyak_aarch64::VReg v_tmp(allocate_temp_register(src_vmm));
+    host_->mov(v_tmp.b16, Xbyak_aarch64::VReg(src_vmm.getIdx()).b16);
+    smin(v_tmp, 127);
+    smax(v_tmp, -128);
+
+    const int SZ = sizeof(int);
+    if (tail && tail_conf_->tail_size_ > 0 && tail_conf_->tail_size_ < 4) {
+        // tail_size_ = nelems % simd_w_, so it cannot be greater than (simd_w_ - 1), which is 4 for VReg.
+        // Refer to binary_kernel_t::get_tail_size().
+        switch (tail_conf_->tail_size_) {
+            case 1: host_->st1(v_tmp.b16[0], Xbyak_aarch64::ptr(addr)); break;
+            case 2:
+                host_->st1(v_tmp.b16[0], Xbyak_aarch64::ptr(addr));
+                host_->add(addr, addr, 1);
+                host_->st1(v_tmp.b16[SZ], Xbyak_aarch64::ptr(addr));
+                host_->sub(addr, addr, 1);
+                break;
+            case 3:
+                host_->st1(v_tmp.b16[0], Xbyak_aarch64::ptr(addr));
+                host_->add(addr, addr, 1);
+                host_->st1(v_tmp.b16[SZ], Xbyak_aarch64::ptr(addr));
+                host_->add(addr, addr, 1);
+                host_->st1(v_tmp.b16[SZ * 2], Xbyak_aarch64::ptr(addr));
+                host_->sub(addr, addr, 2);
+                break;
+            default: assert(!"unreachable");
+        }
+    } else {
+        host_->st1(v_tmp.b16[0], Xbyak_aarch64::ptr(addr));
+        host_->add(addr, addr, 1);
+        host_->st1(v_tmp.b16[SZ], Xbyak_aarch64::ptr(addr));
+        host_->add(addr, addr, 1);
+        host_->st1(v_tmp.b16[SZ * 2], Xbyak_aarch64::ptr(addr));
+        host_->add(addr, addr, 1);
+        host_->st1(v_tmp.b16[SZ * 3], Xbyak_aarch64::ptr(addr));
+        host_->sub(addr, addr, 3);
+    }
+    deallocate_temp_register(v_tmp.getIdx());
 }
 
 template <typename Vmm>
 void jit_io_helper_t<Vmm>::store_i8_sdb(Xbyak_aarch64::XReg addr,
-        const Vmm &src_vmm, const Xbyak_aarch64::PReg &mask) {
+        const Vmm &src_vmm, const bool tail, const Xbyak_aarch64::PReg &mask) {
+    UNUSED(tail);
     host_->str(host_->z31,
             Xbyak_aarch64::ptr(
                     host_->X_TRANSLATOR_STACK, -1, Xbyak_aarch64::MUL_VL));
@@ -617,9 +878,58 @@ void jit_io_helper_t<Vmm>::store_i8_sdb(Xbyak_aarch64::XReg addr,
             Xbyak_aarch64::ptr(
                     host_->X_TRANSLATOR_STACK, -1, Xbyak_aarch64::MUL_VL));
 }
+
+template <>
+void jit_io_helper_t<Xbyak_aarch64::VReg>::store_i8_udb(
+        Xbyak_aarch64::XReg addr, const Xbyak_aarch64::VReg &src_vmm,
+        const bool tail, const Xbyak_aarch64::PReg &mask) {
+    UNUSED(mask);
+
+    const uint32_t idx = allocate_temp_register(src_vmm);
+    Xbyak_aarch64::VReg v_tmp(idx);
+    host_->mov(v_tmp.b16, Xbyak_aarch64::VReg16B(src_vmm.getIdx()));
+    umin(v_tmp, 255);
+
+    const int SZ = sizeof(int);
+    if (tail && tail_conf_->tail_size_ > 0 && tail_conf_->tail_size_ < 4) {
+        // tail_size_ = nelems % simd_w_, so it cannot be greater than (simd_w_ - 1), which is 4 for VReg.
+        // Refer to binary_kernel_t::get_tail_size().
+        switch (tail_conf_->tail_size_) {
+            case 1: host_->st1(v_tmp.b16[0], Xbyak_aarch64::ptr(addr)); break;
+            case 2:
+                host_->st1(v_tmp.b16[0], Xbyak_aarch64::ptr(addr));
+                host_->add(addr, addr, 1);
+                host_->st1(v_tmp.b16[SZ], Xbyak_aarch64::ptr(addr));
+                host_->sub(addr, addr, 1);
+                break;
+            case 3:
+                host_->st1(v_tmp.b16[0], Xbyak_aarch64::ptr(addr));
+                host_->add(addr, addr, 1);
+                host_->st1(v_tmp.b16[SZ], Xbyak_aarch64::ptr(addr));
+                host_->add(addr, addr, 1);
+                host_->st1(v_tmp.b16[SZ * 2], Xbyak_aarch64::ptr(addr));
+                host_->sub(addr, addr, 2);
+                break;
+            default: assert(!"unreachable");
+        }
+    } else {
+        host_->st1(v_tmp.b16[0], Xbyak_aarch64::ptr(addr));
+        host_->add(addr, addr, 1);
+        host_->st1(v_tmp.b16[SZ], Xbyak_aarch64::ptr(addr));
+        host_->add(addr, addr, 1);
+        host_->st1(v_tmp.b16[SZ * 2], Xbyak_aarch64::ptr(addr));
+        host_->add(addr, addr, 1);
+        host_->st1(v_tmp.b16[SZ * 3], Xbyak_aarch64::ptr(addr));
+        host_->sub(addr, addr, 3);
+    }
+
+    deallocate_temp_register(idx);
+}
+
 template <typename Vmm>
 void jit_io_helper_t<Vmm>::store_i8_udb(Xbyak_aarch64::XReg addr,
-        const Vmm &src_vmm, const Xbyak_aarch64::PReg &mask) {
+        const Vmm &src_vmm, const bool tail, const Xbyak_aarch64::PReg &mask) {
+    UNUSED(tail);
     host_->str(host_->z31,
             Xbyak_aarch64::ptr(
                     host_->X_TRANSLATOR_STACK, -1, Xbyak_aarch64::MUL_VL));
@@ -631,17 +941,19 @@ void jit_io_helper_t<Vmm>::store_i8_udb(Xbyak_aarch64::XReg addr,
             Xbyak_aarch64::ptr(
                     host_->X_TRANSLATOR_STACK, -1, Xbyak_aarch64::MUL_VL));
 }
+
 template <typename Vmm>
 void jit_io_helper_t<Vmm>::store_i8(const Vmm &src_vmm,
-        const Xbyak_aarch64::XReg &dst_addr, const int offt,
+        const Xbyak_aarch64::XReg &dst_addr, const int offt, const bool tail,
         const Xbyak_aarch64::PReg &mask) {
+    UNUSED(offt);
     using namespace std::placeholders;
     static constexpr bool is_zmm
             = std::is_same<Vmm, Xbyak_aarch64::ZReg>::value;
 
     auto store_i8_fn = data_type_ == data_type::s8
-            ? std::bind(&jit_io_helper_t::store_i8_sdb, this, _1, _2, _3)
-            : std::bind(&jit_io_helper_t::store_i8_udb, this, _1, _2, _3);
+            ? std::bind(&jit_io_helper_t::store_i8_sdb, this, _1, _2, _3, _4)
+            : std::bind(&jit_io_helper_t::store_i8_udb, this, _1, _2, _3, _4);
 
     if (io_conf_.nt_stores_enabled_ && is_zmm) {
         host_->not_(
@@ -649,12 +961,23 @@ void jit_io_helper_t<Vmm>::store_i8(const Vmm &src_vmm,
         host_->stnt1d(Xbyak_aarch64::ZRegD(src_vmm.getIdx()), mask,
                 Xbyak_aarch64::ptr(dst_addr));
     } else {
-        store_i8_fn(dst_addr, src_vmm, mask);
+        store_i8_fn(dst_addr, src_vmm, tail, mask);
     }
 }
 
+void uni_expand_s8_to_s32(jit_generator_t *host_,
+        const Xbyak_aarch64::VReg &dst, const Xbyak_aarch64::VReg &src) {
+    host_->zip1(dst.b, src.b, src.b);
+    host_->zip1(dst.h, dst.h, dst.h);
+    // sign-extend 8x8-bit -> 8x16-bit
+    host_->sxtl(dst.h8, dst.b8);
+    // sign-extend low 4x16-bit -> 4x32-bit
+    host_->sxtl(dst.s4, dst.h4);
+}
+
 template <typename Vmm>
-void uni_vpmovsxbd(jit_generator_t *host_, const Vmm &dst, const Vmm &src) {
+void uni_expand_s8_to_s32(
+        jit_generator_t *host_, const Vmm &dst, const Vmm &src) {
     Xbyak_aarch64::ZReg z_dst(dst.getIdx());
     Xbyak_aarch64::ZReg z_src(src.getIdx());
     host_->zip1(z_dst.b, z_src.b, z_src.b);
@@ -662,8 +985,19 @@ void uni_vpmovsxbd(jit_generator_t *host_, const Vmm &dst, const Vmm &src) {
     host_->sxtb(z_dst.s, host_->P_ALL_ONE / Xbyak_aarch64::T_m, z_dst.s);
 }
 
+void uni_expand_u8_to_s32(jit_generator_t *host_,
+        const Xbyak_aarch64::VReg &dst, const Xbyak_aarch64::VReg &src) {
+    host_->zip1(dst.b, src.b, src.b);
+    host_->zip1(dst.h, dst.h, dst.h);
+    // zero-extend 8x8-bit -> 8x16-bit
+    host_->uxtl(dst.h8, dst.b8);
+    // zero-extend low 4x16-bit -> 4x32-bit
+    host_->uxtl(dst.s4, dst.h4);
+}
+
 template <typename Vmm>
-void uni_vpmovzxbd(jit_generator_t *host_, const Vmm &dst, const Vmm &src) {
+void uni_expand_u8_to_s32(
+        jit_generator_t *host_, const Vmm &dst, const Vmm &src) {
     Xbyak_aarch64::ZReg z_dst(dst.getIdx());
     Xbyak_aarch64::ZReg z_src(src.getIdx());
     host_->zip1(z_dst.b, z_src.b, z_src.b);
@@ -683,12 +1017,12 @@ void jit_io_helper_t<Vmm>::convert_to_f32(const Vmm &dst_vmm,
             break;
         }
         case data_type::s8: {
-            uni_vpmovsxbd(host_, dst_vmm, src_vmm);
+            uni_expand_s8_to_s32(host_, dst_vmm, src_vmm);
             host_->uni_scvtf(dst_vmm.s, dst_vmm.s);
             break;
         }
         case data_type::u8: {
-            uni_vpmovzxbd(host_, dst_vmm, src_vmm);
+            uni_expand_u8_to_s32(host_, dst_vmm, src_vmm);
             host_->uni_scvtf(dst_vmm.s, dst_vmm.s);
             break;
         }
@@ -696,15 +1030,26 @@ void jit_io_helper_t<Vmm>::convert_to_f32(const Vmm &dst_vmm,
     }
 }
 
+void uni_broadcast(jit_generator_t *host_, const Xbyak_aarch64::VReg &dst,
+        const Xbyak_aarch64::XReg &src) {
+    host_->ld1r(dst.s4, Xbyak_aarch64::ptr(src));
+}
+
+void uni_broadcast(jit_generator_t *host_, const Xbyak_aarch64::VReg &dst,
+        const Xbyak_aarch64::VReg &src) {
+    host_->dup(dst.s4, src.s4[0]);
+}
+
 template <typename Vmm>
-void uni_vbroadcastss(jit_generator_t *host_, const Vmm &dst,
+void uni_broadcast(jit_generator_t *host_, const Vmm &dst,
         const Xbyak_aarch64::XReg &src) {
     uint8_t dstIdx = dst.getIdx();
     host_->ld1rw(Xbyak_aarch64::ZRegS(dstIdx),
             host_->P_ALL_ONE / Xbyak_aarch64::T_z, Xbyak_aarch64::ptr(src));
 }
+
 template <typename Vmm>
-void uni_vbroadcastss(jit_generator_t *host_, const Vmm &dst,
+void uni_broadcast(jit_generator_t *host_, const Vmm &dst,
         const Xbyak_aarch64::VReg &src) {
     uint8_t dstIdx = dst.getIdx();
     uint8_t srcIdx = src.getIdx();
@@ -715,7 +1060,7 @@ template <typename Vmm>
 void jit_io_helper_t<Vmm>::broadcast(const Xbyak_aarch64::XReg &src_addr,
         const int offt, const Vmm &dst_vmm) {
     switch (data_type_) {
-        case data_type::f32: uni_vbroadcastss(host_, dst_vmm, src_addr); break;
+        case data_type::f32: uni_broadcast(host_, dst_vmm, src_addr); break;
         case data_type::s32: {
             if (is_superset(isa_, sve_512)) {
                 if (host_->cpu_sveLen == sve_128) {
@@ -735,7 +1080,7 @@ void jit_io_helper_t<Vmm>::broadcast(const Xbyak_aarch64::XReg &src_addr,
                                 host_->P_NOT_256 / Xbyak_aarch64::T_m, 0);
                 }
             } else {
-                uni_vbroadcastss(host_, dst_vmm, src_addr);
+                uni_broadcast(host_, dst_vmm, src_addr);
                 convert_to_f32(dst_vmm, dst_vmm, data_type_);
             }
             break;
@@ -744,10 +1089,9 @@ void jit_io_helper_t<Vmm>::broadcast(const Xbyak_aarch64::XReg &src_addr,
         case data_type::u8: {
             const Xbyak_aarch64::VReg dst_xmm {dst_vmm.getIdx()};
             host_->ldrb(host_->W_TMP_0, Xbyak_aarch64::ptr(src_addr));
-            host_->mov(dst_xmm.b16, dst_xmm.b16);
             host_->ins(dst_xmm.b16[0], host_->W_TMP_0);
             convert_to_f32(dst_vmm, dst_vmm, data_type_);
-            uni_vbroadcastss(host_, dst_vmm, dst_xmm);
+            uni_broadcast(host_, dst_vmm, dst_xmm);
 
             break;
         }
@@ -825,6 +1169,8 @@ jit_io_multi_dt_helper_t<Vmm>::~jit_io_multi_dt_helper_t() = default;
 
 template class jit_io_helper_t<Xbyak_aarch64::ZReg>;
 template class jit_io_multi_dt_helper_t<Xbyak_aarch64::ZReg>;
+template class jit_io_helper_t<Xbyak_aarch64::VReg>;
+template class jit_io_multi_dt_helper_t<Xbyak_aarch64::VReg>;
 
 } // namespace io
 } // namespace aarch64

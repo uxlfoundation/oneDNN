@@ -242,7 +242,7 @@ bool post_ops_ok(const post_ops_ok_args_t &post_ops_ok_args) {
                     }
                     break;
                 case binary:
-                    if (entry.is_binary()) { return false; }
+                    if (entry.is_binary()) { return isa == asimd; }
                     break;
                 default: assert(false && "Unhandled post_op type");
             }
@@ -258,6 +258,7 @@ bool post_ops_ok(const post_ops_ok_args_t &post_ops_ok_args) {
 }
 
 template class jit_uni_postops_injector_t<sve>;
+template class jit_uni_postops_injector_t<asimd>;
 
 } // namespace injector
 } // namespace aarch64

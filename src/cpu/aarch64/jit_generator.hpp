@@ -482,6 +482,16 @@ public:
         fmax(dst, P_ALL_ONE / Xbyak_aarch64::T_m, src2);
     }
 
+    void uni_fmax(const Xbyak_aarch64::VReg4S &dst,
+            const Xbyak_aarch64::VReg4S &src,
+            const Xbyak_aarch64::VReg4S &src2) {
+        uint32_t dstIdx = dst.getIdx();
+        uint32_t srcIdx = src.getIdx();
+        if (dstIdx != srcIdx)
+            mov(Xbyak_aarch64::VReg16B(dstIdx), Xbyak_aarch64::VReg16B(srcIdx));
+        fmax(dst, src, src2);
+    }
+
     template <typename T>
     void uni_fmaxnm(const T &dst, const T &src, const T &src2) {
         uint32_t dstIdx = dst.getIdx();
@@ -506,9 +516,42 @@ public:
         fmin(dst, P_ALL_ONE / Xbyak_aarch64::T_m, src2);
     }
 
+    void uni_fmin(const Xbyak_aarch64::VReg4S &dst,
+            const Xbyak_aarch64::VReg4S &src,
+            const Xbyak_aarch64::VReg4S &src2) {
+        uint32_t dstIdx = dst.getIdx();
+        uint32_t srcIdx = src.getIdx();
+        if (dstIdx != srcIdx)
+            mov(Xbyak_aarch64::VReg16B(dstIdx), Xbyak_aarch64::VReg16B(srcIdx));
+        fmin(dst, src, src2);
+    }
+
     template <typename T>
     void uni_fmul(const T &dst, const T &src, const T &src2) {
         fmul(dst, src, src2);
+    }
+
+    void float_point_fused_multiply_add(const Xbyak_aarch64::ZReg &dst_vmm,
+            const Xbyak_aarch64::ZReg &src1_vmm,
+            const Xbyak_aarch64::ZReg &src2_vmm) {
+        fmla(dst_vmm.s, P_ALL_ONE / Xbyak_aarch64::T_m, src1_vmm.s, src2_vmm.s);
+    }
+
+    void float_point_fused_multiply_add(const Xbyak_aarch64::VReg &dst_vmm,
+            const Xbyak_aarch64::VReg &src1_vmm,
+            const Xbyak_aarch64::VReg &src2_vmm) {
+        fmla(dst_vmm.s, src1_vmm.s, src2_vmm.s);
+    }
+
+    void contiguous_load_unsigned_words(const Xbyak_aarch64::ZReg &src_vmm,
+            const Xbyak_aarch64::XReg &addr) {
+        ld1w(src_vmm.s, P_ALL_ONE / Xbyak_aarch64::T_z,
+                Xbyak_aarch64::ptr(addr));
+    }
+
+    void contiguous_load_unsigned_words(const Xbyak_aarch64::VReg &src_vmm,
+            const Xbyak_aarch64::XReg &addr) {
+        ld1(src_vmm.s, Xbyak_aarch64::ptr(addr));
     }
 
     void uni_frinti(

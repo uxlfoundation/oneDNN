@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2019 Intel Corporation
 * Copyright 2022-2023 FUJITSU LIMITED
-* Copyright 2022, 2025 Arm Ltd. and affiliates
+* Copyright 2022, 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -81,21 +81,13 @@ static bool data_type_supported(const data_type_t dtype) {
     return utils::one_of(dtype, f32, s8, u8);
 }
 
-static cpu_isa_t get_supported_isa() {
-    if (mayiuse(sve_512)) return sve_512;
-    if (mayiuse(sve_256)) return sve_256;
-    if (mayiuse(sve_128)) return sve_128;
-
-    return isa_undef;
-}
-
 static bool data_format_supported(
         const memory_desc_wrapper &mdw, const cpu_isa_t isa) {
     if (mdw.is_plain()) return true;
     const auto blk_size = mdw.blocking_desc().inner_blks[0];
     return (is_superset(isa, sve_512) && utils::one_of(blk_size, 16, 8, 4))
             || (is_superset(isa, sve_256) && utils::one_of(blk_size, 8, 4))
-            || (is_superset(isa, sve_128) && blk_size == 4);
+            || (is_superset(isa, asimd) && blk_size == 4);
 }
 
 status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
@@ -113,7 +105,7 @@ status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
     const int elt_idx = po.find(primitive_kind::eltwise);
     conf_.is_i8 = utils::one_of(conf_.dst_type, s8, u8);
 
-    conf_.isa = get_supported_isa();
+    conf_.isa = get_max_cpu_isa();
 
     // This primitive currently (as of oneDNN v3.9) supports all binary
     // algorithms except binary_select. However we check the supported
@@ -468,7 +460,7 @@ bool jit_uni_binary_t::post_ops_ok(const primitive_attr_t *attr,
 
     const auto is_binary = [&](int idx) { return p.entry_[idx].is_binary(); };
 
-    if (!mayiuse(sve_128)) return false;
+    if (!mayiuse(asimd)) return false;
 
     for (int i = 0; i < p.len(); i++) {
         if (p.contain(primitive_kind::sum, i)) {
@@ -549,6 +541,10 @@ binary_kernel_t *create_binary_kernel(
     } else if (is_superset(conf.isa, sve_128)
             && (blk_size == 4 || is_plain_layout)) {
         using kernel_t = jit_uni_binary_kernel_t<sve_128>;
+        return new kernel_t(pd, conf, tail_kernel && !conf.is_i8);
+    } else if (is_superset(conf.isa, asimd)
+            && (blk_size == 4 || is_plain_layout)) {
+        using kernel_t = jit_uni_binary_kernel_t<asimd>;
         return new kernel_t(pd, conf, tail_kernel && !conf.is_i8);
     } else {
         assert(!"unreachable");

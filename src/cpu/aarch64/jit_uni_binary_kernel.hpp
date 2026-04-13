@@ -131,7 +131,6 @@ struct jit_uni_binary_kernel_t : public binary_kernel_t {
     XReg src0_ptr(size_t offt = 0);
     XReg src1_ptr(size_t offt = 0);
     XReg dst_ptr(size_t offt = 0);
-    unsigned int cmp_predicate(alg_kind_t alg);
     void perform_op(
             const Vmm &v0, const Vmm &v1, const Vmm &s_src0, const Vmm &s_src1);
     void prepare_isa_kernel();
@@ -144,8 +143,9 @@ struct jit_uni_binary_kernel_t : public binary_kernel_t {
     void forward_over_outer_dims();
     void generate() override;
 
-    void compute_cmp_mask(const Xbyak_aarch64::PReg &cmp_dst,
-            const Vmm &cmp_src, const Vmm &cmp_src2, const unsigned int uimm);
+    template <typename T>
+    void compute_cmp_alg(const T &cmp_dst, const Vmm &cmp_src,
+            const Vmm &cmp_src2, alg_kind_t alg);
 
     void push(const XReg &reg);
     void pop(const XReg &reg);

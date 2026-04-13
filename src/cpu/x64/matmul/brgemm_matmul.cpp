@@ -262,13 +262,15 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
 
     auto check_attr_zero_points = [&](bool allow_multiple_wei_zp) -> bool {
         const auto &zp = attr()->zero_points_;
-        static const std::vector<int> supported_args {
-                DNNL_ARG_SRC, DNNL_ARG_DST};
-        for (int arg : supported_args) {
-            if (!zp.has_default_values(arg)) {
-                const int mask = zp.get_mask(arg);
-                if (mask > 0) return false;
-            }
+        // Check SRC zero points
+        if (!zp.has_default_values(DNNL_ARG_SRC)) {
+            const int mask = zp.get_mask(DNNL_ARG_SRC);
+            if (mask > 0 && !with_int8_dynamic_quantization) return false;
+        }
+        // Check DST zero points
+        if (!zp.has_default_values(DNNL_ARG_DST)) {
+            const int mask = zp.get_mask(DNNL_ARG_DST);
+            if (mask > 0) return false;
         }
         if (!zp.has_default_values(DNNL_ARG_WEIGHTS)) {
             const auto mask = zp.get_mask(DNNL_ARG_WEIGHTS);
@@ -413,6 +415,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         }
 
         auto LDD = bgmmc_.LDD;
+        if (bgmmc_.is_src_zp_per_k) brg.skip_zp_a_compensation = true;
         if ((bgmmc_.with_wei_decompression
                     || bgmmc_.with_int8_dynamic_quantization)
                 && bgmmc_.has_zero_point_b)
@@ -1299,6 +1302,7 @@ void brgemm_matmul_t<isa>::copy_a_chunk_in_buffer(
     const dim_t m = brgmm_ctx.get_M_idx(m_blk_idx, true);
 
     ctx.current_M_blk = brgmm_ctx.get_M_kernel_size(m_blk_idx);
+    ctx.current_M_start = m;
     ctx.zp_b_compensation_buffer_ptr
             = (void *)brgmm_ctx.get_zp_b_compensation_buffer_ptr(
                     ithr, m_blk_idx);
@@ -1328,6 +1332,7 @@ void brgemm_matmul_t<isa>::copy_a_chunk_in_buffer(
                 ithr, m_blk_idx, k_blk_idx, gb);
         ctx.current_K_blk = nstl::min(bgmmc.K_blk, bgmmc.K);
         ctx.current_K_start = k;
+        ctx.zp_a_value_ptr = brgmm_ctx.get_src_zp_ptr(m, k);
 
         (*copy_A_kernel_)(&ctx);
     }
@@ -1339,6 +1344,7 @@ void brgemm_matmul_t<isa>::copy_a_chunk_in_buffer(
                 ithr, m_blk_idx, k_blk_idx, gemm_batch_iters);
         ctx.current_K_blk = K_tail;
         ctx.current_K_start = k;
+        ctx.zp_a_value_ptr = brgmm_ctx.get_src_zp_ptr(m, k);
 
         (*copy_A_kernel_)(&ctx);
     }
@@ -2240,6 +2246,22 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
     int32_t get_neg_zp_a() const {
         if (!bgmmc_.has_zero_point_a) return 0;
         return -cpu::io::load_int_value(bgmmc_.src_zp_dt, src_zp_ptr_, 0);
+    }
+
+    // Returns a pointer to the src zero points for the given (m, k) position.
+    const void *get_src_zp_ptr(dim_t m = 0, dim_t k = 0) const {
+        if (!bgmmc_.is_src_zp_per_k) return src_zp_ptr_;
+        const auto &k_group_sz = bgmmc_.src_zp_k_gsize;
+        const auto num_k_groups = utils::div_up(bgmmc_.K, k_group_sz);
+        const auto dt_sz = types::data_type_size(bgmmc_.src_zp_dt);
+        const auto is_int4
+                = one_of(bgmmc_.src_zp_dt, data_type::s4, data_type::u4);
+
+        if (is_int4) { return src_zp_ptr_; }
+
+        const auto m_stride = num_k_groups * dt_sz;
+        auto offset = m * m_stride;
+        return ((const char *)src_zp_ptr_ + offset);
     }
 
     // Used to compute compensation. Can't initialize the value at construction

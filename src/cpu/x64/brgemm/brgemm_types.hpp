@@ -296,6 +296,7 @@ struct brgemm_desc_t {
     impl::data_type_t sum_dt = data_type::undef;
     bool with_eltwise = false;
     bool with_binary = false;
+    bool skip_zp_a_compensation = false;
     bool skip_zp_b_compensation = false;
     bool n_bcast_1_load = false;
 

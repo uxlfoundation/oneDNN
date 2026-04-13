@@ -54,6 +54,7 @@ struct jit_brgemm_matmul_copy_a_impl_t : public jit_brgemm_matmul_copy_a_t,
         , do_compute_compensation_(conf_->has_zero_point_b
                   && !conf_->with_wei_decompression
                   && !conf_->with_int8_dynamic_quantization)
+        , do_apply_src_zp_(conf_->is_src_zp_per_k)
         , avx512_core_dot_product_(
                   do_compute_compensation_ && !isa_has_int8_vnni(conf->isa))
         // See the note in `create_brgemm_matmul_copy_b` why `orig_src_dt` used.
@@ -86,6 +87,7 @@ private:
     const dim_t src_stride_;
     const dim_t tr_src_stride_;
     const bool do_compute_compensation_;
+    const bool do_apply_src_zp_;
     const bool avx512_core_dot_product_;
     const bool use_fp16_instructions_;
 
@@ -113,12 +115,21 @@ private:
     reg64_t reg_zp_ab_comp_ptr = imm_addr64;
     reg64_t reg_zp_b_neg_val_ptr = reg_K_blk;
 
+    // Stack offsets for src zp per_ocic
+    constexpr static int reg_src_zp_ptr_offs_ = 0;
+    constexpr static int reg_src_zp_cur_k_offs_ = 8;
+    constexpr static int reg_src_save_offs_ = 16;
+    // For int4 src ZP: absolute M row index to compute flat element index.
+    constexpr static int reg_src_zp_m_row_offs_ = 24;
+    constexpr static int src_zp_stack_space_ = 32;
+
     // Required in every dot product for INT8 non-VNNI computation.
     Vmm vmm_ones_words = Vmm(28);
     Vmm vmm_dot_product_temp = Vmm(29);
 
     Vmm vmm_comp_mul = Vmm(is_ymm_ ? 14 : 30); // 1s
     Vmm vmm_comp_add = Vmm(is_ymm_ ? 15 : 31); // 128
+    Vmm vmm_src_zp = Vmm(is_ymm_ ? 14 : 30);
 
     // Allows to shift A data by 128 for s8s8 problem for AVX512 in copy
     // routine, not in compute kernel. It's disabled for now, as it
@@ -151,6 +162,94 @@ private:
                     vmm_dot_product_temp, vmm_dot_product_temp, vmm_ones_words);
             vpaddd(v1, v1, vmm_dot_product_temp);
         }
+    }
+
+    /**
+     * @brief Applies src zero point shift for per-K (per_ocic) granularity.
+     *
+     * Loads a scalar src zero point for the current (m, k_group), upconverts
+     * it to s8/u8 if int4, broadcasts it, and subtracts from the source data.
+     *
+     * @param vmm_data Source data vector to apply zp to
+     * @param k_idx The k index within the K-block (in k_step_ units)
+     */
+    inline void maybe_apply_src_zp(Vmm vmm_data, int k_idx) {
+        if (!do_apply_src_zp_) return;
+
+        const auto &gsize = conf_->src_zp_k_gsize;
+        const auto is_int4_zp
+                = one_of(conf_->src_zp_dt, data_type::s4, data_type::u4);
+        const auto dt_sz = types::data_type_size(conf_->src_zp_dt);
+
+        // Save reg_src (rax) since we use it for division
+        mov(ptr[rsp + reg_src_save_offs_], reg_src);
+
+        // Compute absolute K position = current_K_start + k_idx * k_step_
+        mov(rax, ptr[rsp + reg_src_zp_cur_k_offs_]);
+        add(rax, k_idx * k_step_);
+
+        // Compute K-group index: k_group_idx = abs_k / gsize
+        xor_(rdx, rdx);
+        mov(regq_tmp, gsize);
+        div(regq_tmp);
+        // rax = k_group_idx
+
+        if (is_int4_zp) {
+            // Compute absolute flat element index from base pointer:
+            //   abs_elem = m_row * num_k_groups + k_group_idx
+            //   byte_offs = abs_elem / 2, nibble = abs_elem % 2
+            const auto num_k_groups = utils::div_up(conf_->K, gsize);
+            mov(regq_tmp, rax); // save k_group_idx
+
+            // abs_elem = m_row * num_k_groups + k_group_idx
+            mov(rax, ptr[rsp + reg_src_zp_m_row_offs_]);
+            imul(rax, rax, num_k_groups);
+            add(rax, regq_tmp); // rax = abs_elem
+
+            mov(regq_tmp, rax); // save abs_elem for nibble selection
+            shr(rax, 1); // byte_offset = abs_elem / 2
+
+            // Load the byte containing two packed int4 zero points
+            mov(rdx, ptr[rsp + reg_src_zp_ptr_offs_]);
+            movzx(edx, byte[rdx + rax]);
+
+            // Extract the correct nibble (low = even index, high = odd index)
+            test(regq_tmp, 1);
+            Label even_nibble, upconvert;
+            jz(even_nibble, T_NEAR);
+            // Odd index: high nibble -> shift right by 4
+            shr(edx, 4);
+            jmp(upconvert, T_NEAR);
+            L(even_nibble);
+            // Even index: low nibble -> mask off high nibble
+            and_(edx, 0x0F);
+            L(upconvert);
+
+            // Upconvert int4 to int8: sign-extend s4 by filling upper nibble
+            // with 0xF0 if sign bit (bit 3) is set. This matches the
+            // signed_mask_int4 pattern used in cvt_int4_to_int8.
+            if (conf_->src_zp_dt == data_type::s4) {
+                test(edx, 0x08);
+                Label positive;
+                jz(positive, T_NEAR);
+                or_(edx, 0xF0); // sign extend: fill upper nibble
+                L(positive);
+            }
+        } else {
+            // 8-bit zp: simple byte load from per-row pointer
+            mov(rdx, ptr[rsp + reg_src_zp_ptr_offs_]);
+            if (conf_->src_zp_dt == data_type::s8)
+                movsx(edx, byte[rdx + rax * dt_sz]);
+            else
+                movzx(edx, byte[rdx + rax * dt_sz]);
+        }
+
+        // Broadcast the (upconverted) zp byte value and subtract from data
+        uni_vpbroadcastb(vmm_src_zp, Reg8(rdx.getIdx()));
+        uni_vpsubb(vmm_data, vmm_data, vmm_src_zp);
+
+        // Restore reg_src
+        mov(reg_src, ptr[rsp + reg_src_save_offs_]);
     }
 
     void generate() override;
@@ -295,6 +394,7 @@ void jit_brgemm_matmul_copy_a_impl_t<Vmm>::copy_K_loop(
             const size_t offset
                     = static_cast<size_t>(k_idx) * k_step_ * typesize_;
             load_vmm(k, offset);
+            maybe_apply_src_zp(get_vmm_copy(k), k_idx);
             maybe_compute_compensation(k_idx, get_vmm_copy(k));
         }
         if (allow_input_shift_for_s8s8 && conf_->s8s8_compensation_required) {
@@ -336,6 +436,7 @@ void jit_brgemm_matmul_copy_a_impl_t<Vmm>::copy_K_loop(
 
     if (k_tail > 0) {
         load_tail(k_tail, num_k_iters * k_step_);
+        maybe_apply_src_zp(get_vmm_copy(0), num_k_iters);
         maybe_compute_compensation(0, get_vmm_copy(0));
 
         if (allow_input_shift_for_s8s8 && conf_->s8s8_compensation_required)
@@ -445,6 +546,21 @@ void jit_brgemm_matmul_copy_a_impl_t<Vmm>::copy_M_loop(
             add(reg_zp_comp_buf_ptr, sizeof(int32_t) * 16);
         if (is_last_K_iter) add(reg_zp_comp_res_ptr, sizeof(int32_t));
     }
+    if (do_apply_src_zp_) {
+        const auto is_int4_zp
+                = one_of(conf_->src_zp_dt, data_type::s4, data_type::u4);
+        if (is_int4_zp) {
+            inc(qword[rsp + reg_src_zp_m_row_offs_]);
+        } else {
+            // Advance src zp pointer to next M row.
+            // Layout is [M, num_k_groups], stride = num_k_groups * dt_sz.
+            const auto &gsize = conf_->src_zp_k_gsize;
+            const auto num_k_groups = utils::div_up(conf_->K, gsize);
+            const auto dt_sz = types::data_type_size(conf_->src_zp_dt);
+            const auto m_stride = num_k_groups * dt_sz;
+            add(qword[rsp + reg_src_zp_ptr_offs_], m_stride);
+        }
+    }
 
     dec(reg_M_blk);
     jnz(loop_M, T_NEAR);
@@ -453,6 +569,8 @@ void jit_brgemm_matmul_copy_a_impl_t<Vmm>::copy_M_loop(
 template <typename Vmm>
 void jit_brgemm_matmul_copy_a_impl_t<Vmm>::generate() {
     preamble();
+
+    if (do_apply_src_zp_) sub(rsp, src_zp_stack_space_);
 
     if (avx512_core_dot_product_) {
         mov(regq_tmp.cvt16(), 1);
@@ -463,6 +581,18 @@ void jit_brgemm_matmul_copy_a_impl_t<Vmm>::generate() {
     mov(reg_tr_src, ptr[param1 + GET_OFF(tr_src)]);
     mov(reg_K_blk, ptr[param1 + GET_OFF(current_K_blk)]);
     mov(reg_M_blk, ptr[param1 + GET_OFF(current_M_blk)]);
+
+    if (do_apply_src_zp_) {
+        mov(regq_tmp, ptr[param1 + GET_OFF(zp_a_value_ptr)]);
+        mov(ptr[rsp + reg_src_zp_ptr_offs_], regq_tmp);
+        mov(regq_tmp, ptr[param1 + GET_OFF(current_K_start)]);
+        mov(ptr[rsp + reg_src_zp_cur_k_offs_], regq_tmp);
+        // For int4 src ZP: initialize absolute M row counter from
+        // current_M_start. This is used in maybe_apply_src_zp to compute
+        // the flat element index for correct nibble addressing.
+        mov(regq_tmp, ptr[param1 + GET_OFF(current_M_start)]);
+        mov(ptr[rsp + reg_src_zp_m_row_offs_], regq_tmp);
+    }
 
     if (allow_input_shift_for_s8s8 && conf_->s8s8_compensation_required) {
         mov(imm_addr64, 128);
@@ -521,6 +651,8 @@ void jit_brgemm_matmul_copy_a_impl_t<Vmm>::generate() {
     }
     copy_body(false, false);
     L(done);
+
+    if (do_apply_src_zp_) add(rsp, src_zp_stack_space_);
 
     postamble();
 }

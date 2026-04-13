@@ -19,9 +19,9 @@
 
 #include "common/c_types_map.hpp"
 #include "common/gated_mlp_pd.hpp"
-#include "common/gemm_utils.hpp"
 #include "common/primitive.hpp"
 #include "common/utils.hpp"
+#include "gpu/intel/gemm/utils.hpp"
 
 #include "gemmstone/microkernel/package.hpp"
 #include "gpu/intel/compute/kernel.hpp"

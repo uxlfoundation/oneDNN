@@ -14,14 +14,11 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include <algorithm>
 #include <cstring>
 #include <riscv_vector.h>
 
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
-#include "common/nstl.hpp"
-#include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 #include "cpu/platform.hpp"
 #include "cpu/rv64/rvv_winograd_convolution.hpp"
@@ -42,17 +39,9 @@ namespace {
 constexpr float BT[4][4] = {{1.0f, 0.0f, -1.0f, 0.0f}, {0.0f, 1.0f, 1.0f, 0.0f},
         {0.0f, -1.0f, 1.0f, 0.0f}, {0.0f, -1.0f, 0.0f, 1.0f}};
 
-// B matrix (transpose of B^T)
-constexpr float B[4][4] = {{1.0f, 0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, -1.0f, -1.0f},
-        {-1.0f, 1.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
-
 // Output transform matrix A^T (2x4)
 constexpr float AT[2][4]
         = {{1.0f, 1.0f, 1.0f, 0.0f}, {0.0f, 1.0f, -1.0f, 1.0f}};
-
-// A matrix (transpose of A^T, which is 4x2)
-constexpr float A[4][2]
-        = {{1.0f, 0.0f}, {1.0f, 1.0f}, {1.0f, -1.0f}, {0.0f, 1.0f}};
 
 // Filter transform matrix G (4x3)
 constexpr float G[4][3] = {{1.0f, 0.0f, 0.0f}, {0.5f, 0.5f, 0.5f},
@@ -102,11 +91,6 @@ void compute_filter_transform_3x3_to_4x4_gemm_layout(const float *filter,
 }
 
 } // namespace
-
-// Helper: round up to multiple of n (for alignment)
-static inline dim_t round_up(dim_t x, dim_t n) {
-    return ((x + n - 1) / n) * n;
-}
 
 status_t rvv_winograd_init_conf(rvv_winograd_conf_t &conf,
         memory_tracking::registrar_t &scratchpad, const convolution_desc_t &cd,
@@ -158,8 +142,8 @@ status_t rvv_winograd_init_conf(rvv_winograd_conf_t &conf,
     // 64-byte aligned leading dimensions (for efficient vectorization)
     // Weight matrix: B[N][K] where N=OC, K=IC (row-major for GEMM)
     // For weight transform, we need separate rounded dimensions
-    conf.wspec.weight_oc_rounded = round_up(conf.wspec.N, CACHE_LINE_FLOATS);
-    conf.wspec.weight_ic_rounded = round_up(conf.wspec.K, CACHE_LINE_FLOATS);
+    conf.wspec.weight_oc_rounded = rnd_up(conf.wspec.N, CACHE_LINE_FLOATS);
+    conf.wspec.weight_ic_rounded = rnd_up(conf.wspec.K, CACHE_LINE_FLOATS);
 
     // weight_ld_row is the leading dimension for column-major OC x IC matrix
     // A[oc_idx + ic_idx * lda], so lda = oc_rounded
@@ -170,7 +154,7 @@ status_t rvv_winograd_init_conf(rvv_winograd_conf_t &conf,
     // Input matrix: A[K][M] column-major where K=IC, M=tiles
     // Input buffer per thread: [16][tile_chunk × IC_rounded] per element
     conf.wspec.input_ld_row
-            = round_up(conf.wspec.K, CACHE_LINE_FLOATS); // LDB = IC_rounded
+            = rnd_up(conf.wspec.K, CACHE_LINE_FLOATS); // LDB = IC_rounded
     conf.wspec.input_ld_batch
             = conf.wspec.input_ld_row * conf.wspec.M; // per-elem stride
 

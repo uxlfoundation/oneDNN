@@ -233,6 +233,7 @@ struct brgemm_matmul_conf_t {
     bool is_wei_scale_common = false;
     dim_t wei_scales_k_gsize = 0;
     data_type_t wei_scales_dt = data_type::undef;
+    dim_t wei_scales_batch_stride = 0;
 
     // Zero points
     bool has_zero_point_a;

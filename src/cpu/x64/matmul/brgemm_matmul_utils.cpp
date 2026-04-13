@@ -726,6 +726,16 @@ brgemm_broadcast_t get_zp_type(const primitive_attr_t &attr, int arg) {
             : brgemm_broadcast_t::per_tensor;
 }
 
+// Returns the minimum IC group size across all per-K scales (wei and src).
+// Returns 0 if no IC-grouped scales are configured.
+dim_t get_min_ic_group_size(const brgemm_matmul_conf_t &bgmmc) {
+    dim_t sz = 0;
+    if (bgmmc.is_wei_scale_per_k && bgmmc.wei_scales_k_gsize > 0)
+        sz = sz == 0 ? bgmmc.wei_scales_k_gsize
+                     : nstl::min(sz, bgmmc.wei_scales_k_gsize);
+    return sz;
+}
+
 struct matmul_avx512_blocking_params_t {
     struct matmul_params_t {
         matmul_params_t(dim_t m, dim_t n, dim_t k, dim_t od)
@@ -1254,6 +1264,17 @@ status_t compute_blocking_heuristic(brgemm_matmul_conf_t &bgmmc,
         bgmmc.brgemm_batch_size
                 = nstl::max(bgmmc.K / bgmmc.K_blk, static_cast<dim_t>(1));
 
+        // Force K_blk alignment to scales group size for AMX IC scales.
+        // Use the MINIMUM group size so that no brgemm call straddles
+        // more than one group for any of the scales.
+        if (bgmmc.with_int8_dynamic_quantization) {
+            const auto ic_group_sz = get_min_ic_group_size(bgmmc);
+            if (ic_group_sz > 0) {
+                bgmmc.K_blk = ic_group_sz;
+                bgmmc.brgemm_batch_size = 1;
+            }
+        }
+
         matmul_amx_blocking_params_micro_t best_blocking(bgmmc);
 
         matmul_amx_blocking_params_micro_t::find_best_blocking(
@@ -1333,6 +1354,19 @@ status_t compute_blocking_heuristic(brgemm_matmul_conf_t &bgmmc,
         VCONDCHECK_BG(best_imbalance != 1.f, VERBOSE_BLOCKING_FAIL, "")
 
         best_blocking.update_configuration(bgmmc);
+    }
+
+    // For non-AMX paths with IC scales, also align K_blk to the minimum
+    // group size so each brgemm call covers exactly one K-group.
+    // The AMX paths handle this in their own blocking sections above.
+    if (!bgmmc.is_amx && bgmmc.with_int8_dynamic_quantization) {
+        const auto ic_group_sz = get_min_ic_group_size(bgmmc);
+        if (ic_group_sz > 0 && bgmmc.K_blk > ic_group_sz) {
+            bgmmc.K_blk = ic_group_sz;
+            bgmmc.brgemm_batch_size = 1;
+            bgmmc.K_chunk_size = 1;
+            bgmmc.use_buffer_c = bgmmc.use_buffer_c || bgmmc.K > bgmmc.K_blk;
+        }
     }
 
     return status::success;
@@ -1450,7 +1484,11 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         bgmmc.tr_b_dt_sz = types::data_type_size(s8);
     }
 
-    bgmmc.acc_dt = bm_conf_utils.is_int8() ? s32 : f32;
+    // Dynamic quantization always accumulates in f32 to perform accuracy.
+    bgmmc.acc_dt
+            = (bm_conf_utils.is_int8() && !bgmmc.with_int8_dynamic_quantization)
+            ? s32
+            : f32;
 
     bgmmc.c_dt_sz = types::data_type_size(bgmmc.dst_dt);
     bgmmc.acc_dt_sz = types::data_type_size(bgmmc.acc_dt);
@@ -1468,20 +1506,25 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         bgmmc.is_wei_scale_per_k = wei_scale_mask & 1 << (bgmmc.ndims - 2);
         bgmmc.is_wei_scale_per_n = wei_scale_mask & 1 << (bgmmc.ndims - 1);
         bgmmc.apply_scales_in_buffer_b = bgmmc.is_wei_scale_per_k
-                && bgmmc.with_wei_decompression && bgmmc.N * bgmmc.K != 1;
+                && bgmmc.with_wei_decompression && bgmmc.N * bgmmc.K != 1
+                && !bgmmc.with_int8_dynamic_quantization;
         bgmmc.wei_scales_dt = wei_scales.get_data_type();
         bgmmc.wei_scales_dt_sz = types::data_type_size(bgmmc.wei_scales_dt);
         bgmmc.wei_scales_k_gsize = wei_scales.get_group(0);
 
         // only common and per-oc-channel scales are supported
-        // only per-ic-channel scales is supprted with weight decompression
+        // per-ic-channel scales is supported with weight decompression
+        // or dynamic quantization (int8 src with int4 weights)
         VCONDCHECK_BG(bgmmc.is_wei_scale_common || bgmmc.is_wei_scale_per_n
                         || IMPLICATION(bgmmc.is_wei_scale_per_k,
-                                bgmmc.with_wei_decompression),
+                                bgmmc.with_wei_decompression
+                                        || bgmmc.with_int8_dynamic_quantization),
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
 
-        // Check if isa has support for f16/bf16 weights scales
-        VCONDCHECK_BG(IMPLICATION(bgmmc.wei_scales_dt == f16, isa_has_f16(isa))
+        // Check if isa has support for f16/bf16 weights scales.
+        VCONDCHECK_BG(IMPLICATION(bgmmc.wei_scales_dt == f16,
+                              bgmmc.with_int8_dynamic_quantization
+                                      || isa_has_f16(isa))
                         && IMPLICATION(
                                 bgmmc.wei_scales_dt == bf16, isa_has_bf16(isa)),
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
@@ -1548,6 +1591,30 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.is_runtime_M = is_runtime_value(bgmmc.M);
     bgmmc.is_runtime_N = is_runtime_value(bgmmc.N);
     bgmmc.is_runtime_K = is_runtime_value(bgmmc.K);
+
+    // Downgrade to per_oc to avoid the expensive IC-scales JIT path which
+    // is not needed for this case.
+    if (bgmmc.is_wei_scale_per_k && !bgmmc.is_runtime_K
+            && bgmmc.wei_scales_k_gsize >= bgmmc.K) {
+        bgmmc.is_wei_scale_per_k = false;
+    }
+
+    if (bgmmc.with_wei_scales && bgmmc.batch > 1) {
+        const int kn_mask = (1 << (bgmmc.ndims - 1)) | (1 << (bgmmc.ndims - 2));
+        const bool has_batch_bits = (wei_scales.get_mask() & ~kn_mask) != 0;
+        if (has_batch_bits) {
+            const dim_t num_k_groups = bgmmc.is_wei_scale_per_k
+                    ? utils::div_up(bgmmc.K, bgmmc.wei_scales_k_gsize)
+                    : 1;
+            bgmmc.wei_scales_batch_stride = num_k_groups * bgmmc.N;
+        }
+    }
+    // Due to hardware restrictions of AMX the effective group size should
+    // be divisible by tile-size 64
+    // Otherwise fallback to AVX512 kernels.
+    VCONDCHECK_BG(IMPLICATION(bgmmc.is_wei_scale_per_k && bgmmc.is_amx,
+                          bgmmc.wei_scales_k_gsize % 64 == 0),
+            VERBOSE_UNSUPPORTED_SCALES_CFG);
 
     bgmmc.is_gemv = is_gemv_applicable(
             bgmmc, bm_conf_utils, src_md, weights_md, attr);
@@ -1648,10 +1715,12 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         bgmmc.tr_b_dt_sz = types::data_type_size(f32);
     }
 
-    // int4 weights decompression only supports plain and transpose layouts
+    // int4 weights decompression/dynamic quantization only supports plain
+    // and transpose layouts.
     // TODO: enable int4 reorder and extend support to blocked weights
     // layout when needed
-    if (bgmmc.with_wei_decompression && bgmmc.is_int4_weights)
+    if ((bgmmc.with_wei_decompression || bgmmc.with_int8_dynamic_quantization)
+            && bgmmc.is_int4_weights)
         VCONDCHECK_BG(bm_conf_utils.check_is_plain(bgmmc.wei_tag)
                         || bm_conf_utils.check_is_transposed(bgmmc.wei_tag),
                 VERBOSE_UNSUPPORTED_TAG);
@@ -1938,7 +2007,8 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
             || bm_conf_utils.is_f32_f16() || bm_conf_utils.is_f32_bf16()
             || bm_conf_utils.is_bf16_with_int_wei()
             || bm_conf_utils.is_f16_with_int_wei()
-            || bm_conf_utils.is_f32_with_int_wei()) {
+            || bm_conf_utils.is_f32_with_int_wei()
+            || bm_conf_utils.with_int8_dynamic_quantization()) {
         // empirical observation for performance breakpoint between amx and vnni
         // bf16/f16
         const dim_t buffer_a_chunk_sz_limit = 126;

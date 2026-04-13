@@ -51,8 +51,9 @@ struct jit_brgemm_matmul_copy_a_impl_t : public jit_brgemm_matmul_copy_a_t,
                                          ? static_cast<dim_t>(conf_->wei_k_blk)
                                          : conf_->LDA)
                   * tr_typesize_)
-        , do_compute_compensation_(
-                  conf_->has_zero_point_b && !conf_->with_wei_decompression)
+        , do_compute_compensation_(conf_->has_zero_point_b
+                  && !conf_->with_wei_decompression
+                  && !conf_->with_int8_dynamic_quantization)
         , avx512_core_dot_product_(
                   do_compute_compensation_ && !isa_has_int8_vnni(conf->isa))
         // See the note in `create_brgemm_matmul_copy_b` why `orig_src_dt` used.
@@ -151,6 +152,7 @@ private:
             vpaddd(v1, v1, vmm_dot_product_temp);
         }
     }
+
     void generate() override;
 };
 
@@ -2435,7 +2437,6 @@ protected:
             // TODO: Unify register usage over kernels
             const auto mask_vmm = Vmm(conf_->transposed_B ? 13 : 0);
             const auto tmp_vmm = vmm_permd;
-            // const auto tmp_vmm2 = Vmm(conf_->transposed_B ? 13: 4);
             // f32 and transposed used the same register for regq_tmp
             const auto reg_tmp = r15;
             alignas(64) static constexpr const uint32_t odd_indices[8] = {

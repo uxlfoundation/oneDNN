@@ -2180,8 +2180,6 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 simple_attr_check(attr, false, true), VERBOSE_UNSUPPORTED_ATTR);
         VDISPATCH_REORDER_IC(
                 input_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
-        // Note: non-dense output (e.g. blocked with padding) is supported
-        // through the scratchpad-based need_transform path in execute().
 
         return status::success;
     }

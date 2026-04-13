@@ -186,8 +186,8 @@ table indicates data types support for every supported ISA:
 | Intel AVX-512 with Intel DL Boost (int8)             |         | `+`     | `.`(2)  |         | `+`     |         |         |         |         |
 | Intel AVX-512 with Intel DL Boost (int8, bf16)       |         | `+`     | `+`     |         | `+`     |         |         |         |         |
 | Intel AVX2 with Intel DL Boost (int8) and NE_CONVERT |         | `+`     | `.`     | `.`     | `+`     |         |         |         |         |
-| Intel AVX10.1/512 with Intel AMX (int8, bf16)        |         | `+`     | `+`     | `.`(3)  | `+`     |         |         |         | `.`     |
-| Intel AVX10.1/512 with Intel AMX (int8, bf16, f16)   |         | `+`     | `+`     | `+`     | `+`     | `.`     | `.`     |         | `.`     |
+| Intel AVX10.1 with Intel AMX (int8, bf16)            |         | `+`     | `+`     | `.`(3)  | `+`     |         |         |         | `.`     |
+| Intel AVX10.1 with Intel AMX (int8, bf16, f16)       |         | `+`     | `+`     | `+`     | `+`     | `.`     | `.`     |         | `.`     |
 | Intel AVX10.2                                        |         | `+`     | `+`     | `+`     | `+`     | `.`     |         |         | `.`     |
 | Intel AVX10.2 with Intel AMX (int8, bf16, fp16, fp8) |         | `+`     | `+`     | `+`     | `+`     | `+`     | `+`     |         | `.`     |
 

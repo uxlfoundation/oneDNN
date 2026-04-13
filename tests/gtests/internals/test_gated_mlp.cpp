@@ -177,7 +177,7 @@ std::string PrintToString(const ::testing::TestParamInfo<mlp_dims_t> &info) {
     return ss.str();
 }
 
-gmlp_tensors_t get_descriptors(engine &eng, mlp_dims_t p) {
+gmlp_tensors_t get_descriptors(engine &eng, stream &strm, mlp_dims_t p) {
     gmlp_tensors_t out;
 
     // Prepare input and output shapes to construct the swiglu graph.
@@ -408,27 +408,35 @@ gmlp_tensors_t get_descriptors(engine &eng, mlp_dims_t p) {
     }
 
     // Write data to tensor object's handle.
-    move_data(x_data, out.m_x);
-    move_data(w_gate_data, out.m_w_gate);
-    move_data(w_up_data, out.m_w_up);
-    move_data(w_down_data, out.m_w_down);
+    write_to_dnnl_memory(x_data.data(), out.m_x, eng, strm);
+    write_to_dnnl_memory(w_gate_data.data(), out.m_w_gate, eng, strm);
+    write_to_dnnl_memory(w_up_data.data(), out.m_w_up, eng, strm);
+    write_to_dnnl_memory(w_down_data.data(), out.m_w_down, eng, strm);
 
     if (p.qtype == quantize_type::no_quantization) {
-        move_data(w_gate_data, out.m_w_gate_quantized);
-        move_data(w_up_data, out.m_w_up_quantized);
-        move_data(w_down_data, out.m_w_down_quantized);
+        write_to_dnnl_memory(
+                w_gate_data.data(), out.m_w_gate_quantized, eng, strm);
+        write_to_dnnl_memory(w_up_data.data(), out.m_w_up_quantized, eng, strm);
+        write_to_dnnl_memory(
+                w_down_data.data(), out.m_w_down_quantized, eng, strm);
     } else {
-        move_data(w_gate_quantized_data, out.m_w_gate_quantized);
-        move_data(w_up_quantized_data, out.m_w_up_quantized);
-        move_data(w_down_quantized_data, out.m_w_down_quantized);
+        write_to_dnnl_memory(w_gate_quantized_data.data(),
+                out.m_w_gate_quantized, eng, strm);
+        write_to_dnnl_memory(
+                w_up_quantized_data.data(), out.m_w_up_quantized, eng, strm);
+        write_to_dnnl_memory(w_down_quantized_data.data(),
+                out.m_w_down_quantized, eng, strm);
 
-        move_data(w_gate_zp_data, out.m_w_gate_zp);
-        move_data(w_up_zp_data, out.m_w_up_zp);
-        move_data(w_down_zp_data, out.m_w_down_zp);
+        write_to_dnnl_memory(w_gate_zp_data.data(), out.m_w_gate_zp, eng, strm);
+        write_to_dnnl_memory(w_up_zp_data.data(), out.m_w_up_zp, eng, strm);
+        write_to_dnnl_memory(w_down_zp_data.data(), out.m_w_down_zp, eng, strm);
 
-        move_data(w_gate_scales_data, out.m_w_gate_scales);
-        move_data(w_up_scales_data, out.m_w_up_scales);
-        move_data(w_down_scales_data, out.m_w_down_scales);
+        write_to_dnnl_memory(
+                w_gate_scales_data.data(), out.m_w_gate_scales, eng, strm);
+        write_to_dnnl_memory(
+                w_up_scales_data.data(), out.m_w_up_scales, eng, strm);
+        write_to_dnnl_memory(
+                w_down_scales_data.data(), out.m_w_down_scales, eng, strm);
     }
     if (verbose)
         printf("memory data types?? %d %d %d\n",
@@ -588,10 +596,10 @@ void bench_gated_mlp_primitives(std::vector<float> &res, double &avg_time,
 
 #ifndef ENABLE_UP_ONLY
     res.resize(product(m_FC_down.get_desc().get_dims()));
-    move_data(res, m_FC_down, false);
+    move_data(eng, strm, res, m_FC_down, false);
 #else
     res.resize(product(m_FC_up.get_desc().get_dims()));
-    move_data(res, m_FC_up, false);
+    move_data(eng, strm, res, m_FC_up, false);
 #endif
 }
 
@@ -795,7 +803,7 @@ void bench_gated_mlp_internal(std::vector<float> &res, double &avg_time,
     }
 
     res.resize(product(m_FC_gate_t.get_desc().get_dims()));
-    move_data(res, m_FC_gate_t, false);
+    move_data(eng, strm, res, m_FC_gate_t, false);
 }
 
 enum class api_kind { primitive, graph, internal_hack };
@@ -840,7 +848,7 @@ public:
         p = GetParam();
         eng = engine(engine::kind::gpu, 0);
         strm = stream(eng);
-        t = get_descriptors(eng, p);
+        t = get_descriptors(eng, strm, p);
     }
 
 protected:

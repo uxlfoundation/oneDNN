@@ -73,7 +73,8 @@ void transpose_strides(
         const dnnl::engine &eng, dnnl::memory &out, dnnl::memory &in);
 
 template <typename T>
-void move_data(std::vector<T> &v, dnnl::memory &mem, bool to_mem = true) {
+void move_data(dnnl::engine &eng, dnnl::stream &strm, std::vector<T> &v,
+        dnnl::memory &mem, bool to_mem = true) {
     dnnl::memory::data_type vdt = dnnl::memory::data_type::undef;
     if (std::is_same<T, bfloat16_t>::value) vdt = dnnl::memory::data_type::bf16;
     if (std::is_same<T, float16_t>::value) vdt = dnnl::memory::data_type::f16;
@@ -81,12 +82,24 @@ void move_data(std::vector<T> &v, dnnl::memory &mem, bool to_mem = true) {
     if (std::is_same<T, int>::value) vdt = dnnl::memory::data_type::s32;
     if (std::is_same<T, int8_t>::value) vdt = dnnl::memory::data_type::s8;
     if (std::is_same<T, uint8_t>::value) vdt = dnnl::memory::data_type::u8;
-    dnnl::memory::desc vmd(
-            mem.get_desc().get_dims(), vdt, mem.get_desc().get_strides());
-    dnnl::memory vmem(vmd, dnnl::engine(dnnl::engine::kind::cpu, 0), v.data());
-    auto strm = dnnl::stream(mem.get_engine());
-    dnnl::reorder((to_mem) ? vmem : mem, (to_mem) ? mem : vmem)
-            .execute(strm, (to_mem) ? vmem : mem, (to_mem) ? mem : vmem);
+    if (to_mem) {
+        dnnl::memory::desc vmd(
+                mem.get_desc().get_dims(), vdt, mem.get_desc().get_strides());
+        dnnl::memory vmem(
+                vmd, dnnl::engine(dnnl::engine::kind::cpu, 0), v.data());
+        auto strm = dnnl::stream(mem.get_engine());
+        dnnl::reorder((to_mem) ? vmem : mem, (to_mem) ? mem : vmem)
+                .execute(strm, (to_mem) ? vmem : mem, (to_mem) ? mem : vmem);
+    } else {
+        strm.wait();
+        T *ptr = static_cast<T *>(mem.map_data());
+        if (!ptr) throw std::runtime_error("get_data_handle returned nullptr.");
+        for (size_t i = 0; i < v.size(); ++i) {
+            v[i] = ptr[i];
+        }
+        mem.unmap_data(ptr);
+        strm.wait();
+    }
 }
 
 /// TODO: substitute this with move_data, replace vector<unsigned> with vector<int>

@@ -768,6 +768,9 @@ dim_t get_min_ic_group_size(const brgemm_matmul_conf_t &bgmmc) {
     if (bgmmc.is_wei_scale_per_k && bgmmc.wei_scales_k_gsize > 0)
         sz = sz == 0 ? bgmmc.wei_scales_k_gsize
                      : nstl::min(sz, bgmmc.wei_scales_k_gsize);
+    if (bgmmc.is_src_scale_per_k && bgmmc.src_scales_k_gsize > 0)
+        sz = sz == 0 ? bgmmc.src_scales_k_gsize
+                     : nstl::min(sz, bgmmc.src_scales_k_gsize);
     return sz;
 }
 
@@ -1535,6 +1538,23 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     const auto &wei_scales = attr.scales_.get(DNNL_ARG_WEIGHTS);
     bgmmc.with_src_scales = !src_scales.has_default_values();
     bgmmc.with_wei_scales = !wei_scales.has_default_values();
+    if (bgmmc.with_src_scales) {
+        const auto &src_scale_mask = src_scales.get_mask();
+        // src per_ocic grouped scales: mask has K bit set and groups are used
+        bgmmc.is_src_scale_per_k
+                = (src_scale_mask & (1 << (bgmmc.ndims - 1))) != 0
+                && !src_scales.has_default_groups();
+        if (bgmmc.is_src_scale_per_k) {
+            bgmmc.src_scales_k_gsize = src_scales.get_group(1);
+            bgmmc.src_scales_dt = src_scales.get_data_type();
+            bgmmc.src_scales_dt_sz = types::data_type_size(bgmmc.src_scales_dt);
+        }
+        // Src per_ocic (IC-grouped) scales are only supported for
+        // dynamic quantization (int8 src with int4 weights)
+        VCONDCHECK_BG(IMPLICATION(bgmmc.is_src_scale_per_k,
+                              bgmmc.with_int8_dynamic_quantization),
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
+    }
     if (bgmmc.with_wei_scales) {
         const auto &wei_scale_mask = wei_scales.get_mask();
         bgmmc.is_wei_scale_common = wei_scale_mask == 0;
@@ -1668,6 +1688,9 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     // Otherwise fallback to AVX512 kernels.
     VCONDCHECK_BG(IMPLICATION(bgmmc.is_wei_scale_per_k && bgmmc.is_amx,
                           bgmmc.wei_scales_k_gsize % 64 == 0),
+            VERBOSE_UNSUPPORTED_SCALES_CFG);
+    VCONDCHECK_BG(IMPLICATION(bgmmc.is_src_scale_per_k && bgmmc.is_amx,
+                          bgmmc.src_scales_k_gsize % 64 == 0),
             VERBOSE_UNSUPPORTED_SCALES_CFG);
 
     bgmmc.is_gemv = is_gemv_applicable(

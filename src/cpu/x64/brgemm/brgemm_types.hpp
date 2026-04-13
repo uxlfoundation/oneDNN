@@ -310,7 +310,12 @@ struct brgemm_desc_t {
     int is_ic_wei_scales = 0;
     int wei_scale_k_group_size = 0;
     bool with_src_scales = false;
-    bool has_ic_scales() const { return is_ic_wei_scales; }
+    int is_ic_src_scales = 0;
+    int src_scale_k_group_size = 0;
+    // Row stride (in bytes) for src scales array: num_k_groups * dt_sz
+    dim_t src_scale_m_stride = 0;
+    data_type_t dt_src_scales = data_type::undef;
+    bool has_ic_scales() const { return is_ic_wei_scales || is_ic_src_scales; }
     bool with_wei_scales = false;
     // `dst_scales` passed as a bare pointer making kernel change multiplication
     // to division was proved to be significantly slower, both for pure divps

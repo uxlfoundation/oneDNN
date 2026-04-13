@@ -1390,7 +1390,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
 
     // When IC src scales are active, they are applied in the microkernel.
     // Only apply broadcast src_scales here when NOT per-k.
-    if (brg.with_src_scales) {
+    if (brg.with_src_scales && !brg.is_ic_src_scales) {
         reg_src_scales.restoreTo(reg_aux_src_scales);
         auto vmm_src_scales = vmm_tmp(0);
         if (!has_ptr_b_support)
@@ -1838,6 +1838,15 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
                     load_scales_to_vmm(brg.dt_wei_scales, vmm_wei_scales, addr,
                             is_tail, is_single_scale);
                     uni_vmulps(vmm_acc, vmm_acc, vmm_wei_scales);
+                }
+                if (brg.is_ic_src_scales) {
+                    reg_src_scales.restoreTo(reg_aux_src_scales);
+                    const Vmm vmm_src_sc = vmm_tmp(0);
+                    // Src IC scale is a single scalar for this K-block
+                    load_scales_to_vmm(brg.dt_src_scales, vmm_src_sc,
+                            ptr[reg_aux_src_scales], false /*is_ld_tail*/,
+                            true /*is_single_scale*/);
+                    uni_vmulps(vmm_acc, vmm_acc, vmm_src_sc);
                 }
             }
         };
@@ -2428,6 +2437,17 @@ bool jit_brgemm_kernel_t<Wmm>::maybe_dot_product_with_ic_scales(dim_t rd,
                 = ptr[reg_aux_wei_scales + wei_scales_offset(ld, is_ld_tail)];
         load_scales_to_vmm(brg.dt_wei_scales, vmm_scales, addr, is_ld_tail,
                 brg.is_single_wei_scale);
+        uni_vmulps(tmp_acc, tmp_acc, vmm_scales);
+    }
+
+    // 3. Apply src IC scales: broadcast scalar from scales[bd][k_group].
+    if (brg.is_ic_src_scales) {
+        reg_src_scales.restoreTo(reg_aux_src_scales);
+        if (bd > 0) add(reg_aux_src_scales, bd * brg.src_scale_m_stride);
+
+        load_scales_to_vmm(brg.dt_src_scales, vmm_scales,
+                ptr[reg_aux_src_scales], false /*is_ld_tail*/,
+                true /*is_single_scale*/);
         uni_vmulps(tmp_acc, tmp_acc, vmm_scales);
     }
 
@@ -3089,6 +3109,14 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
             add(reg_D, bdb_D_offset(bd_block2));
         }
         add(reg_a_offset, bdb_A_offset(bd_block2));
+
+        if (brg.is_ic_src_scales) {
+            const auto adj_bd_block = is_bdb_tail ? brg.bdb_tail : brg.bd_block;
+            reg_src_scales.restore();
+            add(reg_src_scales,
+                    adj_bd_block * bd_block2 * brg.src_scale_m_stride);
+            reg_src_scales.save();
+        }
 
         if (brg.is_gemv && brg.treat_y_as_row) {
             if (brg.with_bias) {

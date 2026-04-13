@@ -426,6 +426,15 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
             brg.wei_scale_k_group_size = bgmmc_.wei_scales_k_gsize;
             brg.dt_wei_scales = bgmmc_.wei_scales_dt;
         }
+        // Fill up src scales info for IC-grouped application
+        if (bgmmc_.with_src_scales && bgmmc_.is_src_scale_per_k) {
+            brg.is_ic_src_scales = true;
+            brg.src_scale_k_group_size = bgmmc_.src_scales_k_gsize;
+            brg.dt_src_scales = bgmmc_.src_scales_dt;
+            const auto num_k_groups
+                    = utils::div_up(bgmmc_.K, bgmmc_.src_scales_k_gsize);
+            brg.src_scale_m_stride = num_k_groups * bgmmc_.src_scales_dt_sz;
+        }
         CHECK(brgemm_desc_set_postops(
                 &brg, attr(), &dst_md_, LDD, bgmmc_.bia_dt));
 
@@ -848,7 +857,10 @@ void brgemm_matmul_t<isa>::compute_kernel(
         params.zp_a_val = 1;
         params.do_post_ops = true;
         params.do_apply_comp = true;
-        params.ptr_src_scales = brgmm_ctx.get_src_scales_ptr();
+        // Could be set separately in `maybe_set_ic_scales`.
+        // In that case do not overwrite it.
+        if (!params.ptr_src_scales)
+            params.ptr_src_scales = brgmm_ctx.get_src_scales_ptr();
         // Could be set separately in `maybe_set_ic_scales`.
         // In that case do not overdrite it.
         if (!params.ptr_wei_scales)
@@ -861,6 +873,7 @@ void brgemm_matmul_t<isa>::compute_kernel(
     // Setting IC scales related params for brgemm kernel
     auto maybe_set_ic_scales = [&](brgemm_kernel_params_t &params) {
         const auto k = k_blk_idx * bgmmc.K_blk * bgmmc.brgemm_batch_size;
+        const auto m = brgmm_ctx.get_M_idx(m_blk_idx, true);
         if (bgmmc.is_wei_scale_per_k && !bgmmc.apply_scales_in_buffer_b) {
             const auto k_idx_in_group = bgmmc.wei_scales_k_gsize > 0
                     ? k % bgmmc.wei_scales_k_gsize
@@ -868,6 +881,15 @@ void brgemm_matmul_t<isa>::compute_kernel(
             // Set pointer and k offset within group
             params.ptr_wei_scales = brgmm_ctx.get_wei_scales_ptr(n, k, b_idx);
             params.k_start = k_idx_in_group;
+        }
+        if (bgmmc.is_src_scale_per_k) {
+            params.ptr_src_scales = brgmm_ctx.get_src_scales_ptr(m, k);
+            if (!bgmmc.is_wei_scale_per_k) {
+                const auto k_idx_in_group = bgmmc.src_scales_k_gsize > 0
+                        ? k % bgmmc.src_scales_k_gsize
+                        : 0;
+                params.k_start = k_idx_in_group;
+            }
         }
     };
 
@@ -2175,7 +2197,15 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                 + n_blk_local * bgmmc_.s8s8_comp_n_str;
     }
 
-    const void *get_src_scales_ptr() const { return src_scales_; }
+    const void *get_src_scales_ptr(dim_t m = 0, dim_t k = 0) const {
+        if (!bgmmc_.is_src_scale_per_k) return src_scales_;
+
+        const auto &k_group_sz = bgmmc_.src_scales_k_gsize;
+        const auto k_idx = k / k_group_sz;
+        const auto num_k_groups = utils::div_up(bgmmc_.K, k_group_sz);
+        auto offset = (m * num_k_groups + k_idx) * bgmmc_.src_scales_dt_sz;
+        return ((const char *)src_scales_ + offset);
+    }
 
     // Returns a pointer to the weights scales for the correspondent block based
     // on @p n and @p k.

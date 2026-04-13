@@ -278,27 +278,17 @@ void ref_partition_t::exec_ops(res_t *res) {
                 && (!has_child_op(op, &child_op)
                         || child_op->kind_ == "ReduceSum");
 
-        // For gated-MLP, it is complicated - the Swish op is decomposed into
-        // Sigmoid and Multiply which has inputs from MatMul0 and Sigmoid. Its
-        // output is passed to another Multiply which is the target for the
-        // reorder, both input and output (since its input is down-converted
-        // by MatMul0, and its output would be a down-converted output of
-        // MatMul1). The variable below carefully checks which Multiply it is
-        // there - Swish's one or not.
-        const bool is_child_multiply
+        // gMLP can have two Multiply ops - one as a part of SwigLU, the other
+        // is a Gate-Up connection, which is a target of reorder through a
+        // potential TypeCast after it.
+        const bool is_multiply_in_gmlp_pattern
                 = ref_prim->get_kind() == dnnl::graph::op::kind::Multiply
-                && has_parent_op(op, /* check_all_in_lts */ true);
-        bool is_multiply_in_gated_mlp_pattern = false;
-        if (is_child_multiply && op.in_lts_.size() == 2) {
-            const auto &parent0 = get_parent_op(op.in_lts_[0].id_)->kind_;
-            const auto &parent1 = get_parent_op(op.in_lts_[1].id_)->kind_;
-            is_multiply_in_gated_mlp_pattern
-                    = (parent0 == "MatMul" && parent1 == "Multiply")
-                    || (parent0 == "Multiply" && parent1 == "MatMul");
-        }
+                && dg_->get_recognized_pattern()
+                        == graph_recognized_pattern_t::gmlp
+                && has_child_op(op, &child_op) && child_op->kind_ == "MatMul";
 
         if (is_softmax_in_sdpa_pattern || is_matmul_in_sdpa_bwd_pattern
-                || is_multiply_in_gated_mlp_pattern) {
+                || is_multiply_in_gmlp_pattern) {
             for (size_t i = 0; i < op.in_lts_.size(); i++) {
                 const auto dt = ref_prim->get_lt_dt(op.in_lts_[i].id_);
                 // There's no need to reorder data for f32 tensors.
@@ -306,7 +296,7 @@ void ref_partition_t::exec_ops(res_t *res) {
 
                 // MLP pattern requires reorder only for an input coming from
                 // MatMul0 directly, not from Swish.
-                if (is_multiply_in_gated_mlp_pattern) {
+                if (is_multiply_in_gmlp_pattern) {
                     const auto parent_op = get_parent_op(op.in_lts_[i].id_);
                     if (!parent_op) continue;
                     if (parent_op->kind_ != "MatMul") continue;
@@ -330,7 +320,7 @@ void ref_partition_t::exec_ops(res_t *res) {
         // A data type to where transform the data will also be provided by the
         // same function since there are corner cases.
         if (is_softmax_in_sdpa_pattern || is_matmul_in_sdpa_bwd_pattern
-                || is_multiply_in_gated_mlp_pattern) {
+                || is_multiply_in_gmlp_pattern) {
             for (size_t i = 0; i < op.out_lts_.size(); i++) {
                 dnnl_data_type_t dt = dnnl_data_type_undef;
                 if (!need_unfusable_output_crop(op, i, dt)) continue;

@@ -81,6 +81,7 @@ enum class graph_recognized_pattern_t {
     ordinary,
     sdpa_fwd,
     sdpa_bwd,
+    gmlp,
 };
 
 extern bdnn_state_t convert_state(const dnnl_status_t &s);

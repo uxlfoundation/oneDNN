@@ -33,7 +33,8 @@
 // potential floating-point issues. E.g., `sub` algorithm will inverse the range
 // borders to act like `add`, which allows to keep output data positive.
 //
-// Note: keep members public for better flexibility on modifying configs.
+// Note: members are exposed as public for higher flexibility on modifying
+// configs.
 //
 struct fill_cfg_t {
     fill_cfg_t()
@@ -41,12 +42,16 @@ struct fill_cfg_t {
         , range_min_val_(-16.f)
         , range_max_val_(16.f)
         , predefined_set_({})
+        , density_(1.f)
         , only_integer_(false) {}
 
     fill_cfg_t(dnnl_data_type_t dt, float range_min_val, float range_max_val,
             bool only_integer, attr_t::post_ops_t::kind_t alg,
             const std::string &name);
+
     fill_cfg_t(const std::vector<float> &user_set, const std::string &name);
+    fill_cfg_t(const std::vector<float> &user_set, float density,
+            const std::string &name);
 
     std::string print_verbose() const;
 
@@ -62,6 +67,11 @@ struct fill_cfg_t {
     //
     // Helpful to generate pow2 filling, by passing {2.f, 4.f, ...};
     std::vector<float> predefined_set_;
+    // Specify density as a value from [0.f; 1.f] range, where 0.f means
+    // completely sparse (all zeros), and 1.f means completely dense.
+    //
+    // Works in pair with `predefined_set_`.
+    float density_;
     // A flag to generate only integer values.
     bool only_integer_;
     // Config name for verbosity.

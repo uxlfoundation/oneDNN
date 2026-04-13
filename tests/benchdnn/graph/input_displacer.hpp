@@ -50,9 +50,10 @@ public:
 
     deserialized_op_t main_op_;
     size_t main_op_offset_;
-    //the tensor as a displace starting point
+    // The tensor as a displace starting point
     deserialized_lt_t tensor_;
     filling_type_t filling_type_;
+    // Mandatory config for a `filling_type_t::fixed_setting`.
     fill_cfg_t fill_cfg_;
 };
 

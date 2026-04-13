@@ -207,6 +207,8 @@ private:
     bool detect_sdpa_fwd_impl() const;
     // check whether the graph is a sdpa backpropagation implementation.
     bool detect_sdpa_bwd_impl() const;
+    // check whether the graph is gated mlp implementation.
+    bool detect_gmlp_impl() const;
 };
 std::ostream &operator<<(std::ostream &s, const deserialized_graph_t &dg);
 

@@ -454,6 +454,44 @@ partition_data_displacer_t::partition_data_displacer_t(
                             aop, 1, *aop_in_lt, filling_type_t::softmax_stats});
             break;
         }
+
+        // Fill proper data for gated MLP shared activations.
+        while (aop.kind_ == "MatMul") {
+            if (dg.get_recognized_pattern() != graph_recognized_pattern_t::gmlp)
+                break;
+
+            // Bold assumption that first in_lts is shared.
+            // TODO: query the index from dg, maybe?
+            auto *aop_in_lt = &aop.in_lts_[0];
+
+            // Don't update Down MatMul.
+            auto *parent_op = &dg_->get_op_by_out_lt(aop_in_lt->id_);
+            if (!parent_op->empty()) break;
+
+            // Don't submit another displacer for same input.
+            if (displace_args_.find(aop_in_lt->id_) != displace_args_.end())
+                break;
+
+            // Fill activations very-very sparsely with small pow-2 values:
+            // (2^-12 ... 2^-14). The rationale is keep MatMul output values
+            // small in absolute value to avoid Multiply output values severely
+            // increase since it can be a square value of a MatMul output. This
+            // might happen because weights will be filled identically as they
+            // have identical shape, activations are shared between Gate and Up,
+            // unary activation (GeLU, etc.) may keep positive value as is.
+            static const std::vector<float> user_set {
+                    1.f / 4096.f, 1.f / 8192.f, 1.f / 16384.f};
+            // Use roughly 3 non-zero elements per K dim.
+            const auto &shape = aop_in_lt->shape_;
+            const auto K = shape[shape.size() - 1];
+            const float density = 3.f / K;
+            displace_args_.emplace(aop_in_lt->id_,
+                    displace_args_t {aop, 0, *aop_in_lt,
+                            filling_type_t::fixed_setting,
+                            {user_set, density,
+                                    "GMLP MatMul Activation displacer"}});
+            break;
+        }
     }
 }
 
@@ -798,8 +836,14 @@ int partition_data_displacer_t::gen_fixed_set_filling(dnn_mem_t &mem,
         int_seed.discard(1);
 
         std::uniform_int_distribution<> gen(0, n_vals - 1);
+        std::bernoulli_distribution b_dist(fill_cfg.density_);
 
         for (int64_t idx = idx_start; idx < idx_end; ++idx) {
+            bool is_one = fill_cfg.density_ == 1.f ? true : b_dist(int_seed);
+            if (!is_one) {
+                m.set_elem(idx, 0.f);
+                continue;
+            }
             const float val = vals[gen(int_seed)];
             m.set_elem(idx, val);
         }

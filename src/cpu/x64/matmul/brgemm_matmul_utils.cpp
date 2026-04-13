@@ -478,8 +478,14 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(memory_desc_t &B_md,
             const int default_n_block = init_n_tag
                     ? get_default_n_block(format_tag::undef)
                     : bgmmc.N_blk;
-            bgmmc.wei_tag = blocked_B_layouts_allowed && !bgmmc.is_runtime_N
-                            && !bgmmc.is_int4_weights
+            // Prevent blocked B layout when int8 dynamic quantization uses
+            // weight zero points: blocked_B sets use_buffer_b=false, so
+            // copy_b (which applies the ZP subtraction) never runs.
+            const bool can_use_blocked_B = blocked_B_layouts_allowed
+                    && !bgmmc.is_runtime_N && !bgmmc.is_int4_weights
+                    && !(with_int8_dynamic_quantization()
+                            && bgmmc.wei_zp_type != brgemm_broadcast_t::none);
+            bgmmc.wei_tag = can_use_blocked_B
                     ? this->pick_blocked_B_layout(default_n_block)
                     : bgmmc.is_int4_weights && bgmmc.N % 2 != 0
                     ? transposed_tensor_layout_tag
@@ -720,10 +726,39 @@ format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
     return format_tag::undef;
 }
 
-brgemm_broadcast_t get_zp_type(const primitive_attr_t &attr, int arg) {
-    return attr.zero_points_.has_default_values(arg)
-            ? brgemm_broadcast_t::none
-            : brgemm_broadcast_t::per_tensor;
+brgemm_broadcast_t get_zp_type(
+        const primitive_attr_t &attr, int arg, int ndims) {
+    if (attr.zero_points_.has_default_values(arg)) {
+        return brgemm_broadcast_t::none;
+    }
+
+    const auto &zp = attr.zero_points_.get(arg);
+    const int mask = zp.get_mask();
+
+    // Non-grouped zero points (per_oc, per_tensor, etc.) are all treated
+    // as per_tensor from the brgemm compensation perspective.  The finer
+    // per_n / per_k distinction is only meaningful for grouped (per_ocic)
+    // zero points used in the dynamic quantization path.
+    if (zp.has_default_groups()) { return brgemm_broadcast_t::per_tensor; }
+
+    const int k_bit_wei = 1 << (ndims - 2); // K-dim bit for weights
+    const int n_bit_wei = 1 << (ndims - 1); // N-dim bit for weights
+    const int k_bit_src = 1 << (ndims - 1); // K-dim bit for src
+
+    // Grouped zero points: classify by mask.
+    if (mask == 0) {
+        return brgemm_broadcast_t::per_tensor;
+    } else if ((mask & n_bit_wei) != 0
+            && utils::one_of(arg, DNNL_ARG_WEIGHTS, DNNL_ARG_DST)) {
+        return brgemm_broadcast_t::per_n;
+    } else if ((mask & k_bit_wei) != 0
+            && utils::one_of(arg, DNNL_ARG_WEIGHTS)) {
+        return brgemm_broadcast_t::per_k;
+    } else if ((mask & k_bit_src) != 0 && utils::one_of(arg, DNNL_ARG_SRC)) {
+        return brgemm_broadcast_t::per_k;
+    } else {
+        return brgemm_broadcast_t::none;
+    }
 }
 
 // Returns the minimum IC group size across all per-K scales (wei and src).
@@ -1560,6 +1595,11 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                 IMPLICATION(bgmmc.is_wei_zp_per_k && bgmmc.is_wei_scale_per_k,
                         bgmmc.wei_zp_k_gsize == bgmmc.wei_scales_k_gsize),
                 VERBOSE_UNSUPPORTED_ZP_CFG);
+
+        VCONDCHECK_BG(
+                IMPLICATION(bgmmc.with_int8_dynamic_quantization,
+                        !one_of(bgmmc.wei_zp_dt, data_type::s4, data_type::u4)),
+                VERBOSE_UNSUPPORTED_ZP_CFG);
     }
 
     const auto &p = attr.post_ops_;
@@ -1570,13 +1610,15 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     const int prelu_ind = p.find(primitive_kind::prelu);
     bgmmc.with_binary = !everyone_is(-1, binary_ind, prelu_ind);
 
-    bgmmc.src_zp_type = get_zp_type(attr, DNNL_ARG_SRC);
-    bgmmc.wei_zp_type = get_zp_type(attr, DNNL_ARG_WEIGHTS);
-    bgmmc.dst_zp_type = get_zp_type(attr, DNNL_ARG_DST);
+    bgmmc.src_zp_type = get_zp_type(attr, DNNL_ARG_SRC, bgmmc.ndims);
+    bgmmc.wei_zp_type = get_zp_type(attr, DNNL_ARG_WEIGHTS, bgmmc.ndims);
+    bgmmc.dst_zp_type = get_zp_type(attr, DNNL_ARG_DST, bgmmc.ndims);
 
     VCONDCHECK_BG(
-            IMPLICATION(!(bm_conf_utils.is_int8()
-                                || bm_conf_utils.with_weights_decompression()),
+            IMPLICATION(
+                    !(bm_conf_utils.is_int8()
+                            || bm_conf_utils.with_weights_decompression()
+                            || bm_conf_utils.with_int8_dynamic_quantization()),
                     everyone_is(brgemm_broadcast_t::none, bgmmc.src_zp_type,
                             bgmmc.wei_zp_type, bgmmc.dst_zp_type)),
             VERBOSE_UNSUPPORTED_ZP_CFG);
@@ -1607,6 +1649,18 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                     ? utils::div_up(bgmmc.K, bgmmc.wei_scales_k_gsize)
                     : 1;
             bgmmc.wei_scales_batch_stride = num_k_groups * bgmmc.N;
+        }
+    }
+    // Same for weight zero points: per_tensor grouped ZP on 4D tensors
+    // has batch bits in the mask. Compute the stride between ZP planes.
+    if (has_wei_zp && bgmmc.batch > 1) {
+        const int kn_mask = (1 << (bgmmc.ndims - 1)) | (1 << (bgmmc.ndims - 2));
+        const bool has_batch_bits = (wei_zp.get_mask() & ~kn_mask) != 0;
+        if (has_batch_bits) {
+            const dim_t num_k_groups = bgmmc.is_wei_zp_per_k
+                    ? utils::div_up(bgmmc.K, bgmmc.wei_zp_k_gsize)
+                    : 1;
+            bgmmc.wei_zp_batch_stride = num_k_groups * bgmmc.N;
         }
     }
     // Due to hardware restrictions of AMX the effective group size should
@@ -1823,7 +1877,9 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                                 || bm_conf_utils.is_f16_with_int_wei())
                             && isa == avx512_core_fp16)
                     || (bgmmc.wei_zp_type != brgemm_broadcast_t::none
-                            && !bm_conf_utils.with_weights_decompression())
+                            && !(bm_conf_utils.with_weights_decompression()
+                                    || bm_conf_utils
+                                               .with_int8_dynamic_quantization()))
                     || bgmmc.transposed_A);
 
     bgmmc.use_buffer_a = is_copy_a_required;
@@ -2328,7 +2384,8 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
                     && !bgmmc.apply_scales_in_buffer_b,
             bgmmc.with_eltwise, bgmmc.with_binary, bgmmc.acc_dt != bgmmc.dst_dt,
             bgmmc.s8s8_compensation_required, bgmmc.has_zero_point_a,
-            bgmmc.has_zero_point_b && !bgmmc.with_wei_decompression,
+            bgmmc.has_zero_point_b && !bgmmc.with_wei_decompression
+                    && !bgmmc.with_int8_dynamic_quantization,
             bgmmc.has_zero_point_c, bgmmc.with_dst_scales);
 
     bgmmc.zp_a_comp_shift_n = bgmmc.wei_n_blk;

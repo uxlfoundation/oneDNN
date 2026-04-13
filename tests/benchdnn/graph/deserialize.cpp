@@ -404,6 +404,11 @@ logical_tensor::dims deserialized_op_t::get_NCX_shape(
     return src_dims;
 }
 
+const deserialized_op_t &deserialized_op_t::dummy() {
+    static const deserialized_op_t op {};
+    return op;
+}
+
 void deserialized_graph_t::load(const std::string &pass_config_json) {
     std::ifstream fs(pass_config_json.c_str());
     utils::json::json_reader_t read(&fs);
@@ -661,8 +666,7 @@ const deserialized_op_t &deserialized_graph_t::get_op(size_t id) const {
         if (op.id_ == id) return op;
     }
     assert(!"Given id was not found in the deserialized graph.");
-    static deserialized_op_t dummy;
-    return dummy;
+    return deserialized_op_t::dummy();
 }
 
 const deserialized_op_t &deserialized_graph_t::get_op_by_out_lt(
@@ -672,8 +676,7 @@ const deserialized_op_t &deserialized_graph_t::get_op_by_out_lt(
         if (out_lt.id_ == out_lt_id) return op;
     }
 
-    static deserialized_op_t dummy;
-    return dummy;
+    return deserialized_op_t::dummy();
 }
 
 const deserialized_op_t &deserialized_graph_t::get_op_by_in_lt(
@@ -683,8 +686,7 @@ const deserialized_op_t &deserialized_graph_t::get_op_by_in_lt(
         if (in_lt.id_ == in_lt_id) return op;
     }
 
-    static deserialized_op_t dummy;
-    return dummy;
+    return deserialized_op_t::dummy();
 }
 
 void deserialized_graph_t::detect_recognized_patterns() {
@@ -887,8 +889,8 @@ const std::vector<deserialized_op_t> &deserialized_graph_t::get_child_ops(
     }
 
     const auto out_id = op.out_lts_[0].id_;
-    static deserialized_op_t dummy;
-    static std::vector<deserialized_op_t> dummy_vec {dummy};
+    static std::vector<deserialized_op_t> dummy_vec {
+            deserialized_op_t::dummy()};
 
     if (in_lt_2_ops_.find(out_id) == in_lt_2_ops_.end()) return dummy_vec;
     return in_lt_2_ops_.at(out_id);
@@ -908,8 +910,8 @@ const deserialized_op_t &deserialized_graph_t::find_next_until(
         cur_op_ptr = &child_ops[0];
     }
 
-    static deserialized_op_t dummy;
-    return (cur_op_ptr->kind_ == target_kind) ? *cur_op_ptr : dummy;
+    return (cur_op_ptr->kind_ == target_kind) ? *cur_op_ptr
+                                              : deserialized_op_t::dummy();
 }
 
 bool deserialized_graph_t::check_tensor_with_mb(size_t tensor_id,

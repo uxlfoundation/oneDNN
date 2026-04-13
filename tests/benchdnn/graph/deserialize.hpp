@@ -105,6 +105,8 @@ struct deserialized_op_t {
 
     // Returns `true` if `deserialized_op_t` wasn't created.
     bool empty() const { return kind_.empty(); }
+
+    static const deserialized_op_t &dummy();
 };
 std::ostream &operator<<(std::ostream &s, const deserialized_op_t &dop);
 

@@ -147,10 +147,10 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
     } else if (problem->cOffsetHostScalar()) {
         arg_list.set(argn++, co_host_scalar);
     }
-    if (nocopy_info()->needsTempC()) arg_list.set(argn++, *c_temp);
     if (problem->postOps.cStochasticRound) {
         arg_list.set(argn++, *sround_seed);
     }
+    if (nocopy_info()->needsTempC()) arg_list.set(argn++, *c_temp);
     arg_list.set(argn++, flags);
     if (k_parallel_fixed) arg_list.set(argn++, k0);
 

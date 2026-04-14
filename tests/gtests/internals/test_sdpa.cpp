@@ -1506,7 +1506,6 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
         dnnl::memory &diff_output, bool invert_scale,
         std::vector<dnnl_memory_t> &doubled_memory, dnnl::memory &diff_query,
         dnnl::memory &diff_key, dnnl::memory &diff_value,
-        dnnl::memory *dropout_mask_fwd_out = nullptr,
         bool with_timing = false) {
 
     using namespace dnnl;
@@ -1597,10 +1596,6 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
     softmax_attr.set_scratchpad_mode(scratchpad_mode::library);
     if (p.dropout.enabled()) {
         memory::desc mask_desc = {};
-        if (p.dropout.has_output_mask()) {
-            mask_desc = memory::desc(
-                    score_sz, mdt::u8, memory::format_tag::abcde);
-        }
         softmax_attr.set_dropout(mask_desc, p.dropout.seed_dt,
                 p.dropout.offset != 0, p.dropout.use_host_scalars);
     }
@@ -1609,12 +1604,6 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
             (algorithm)dnnl::impl::alg_kind::softmax_accurate_inf_as_zero,
             score.get_desc(), score.get_desc(), 4, softmax_attr);
     auto softmax_prim = softmax_forward(softmax_fwd_pd);
-    memory softmax_dropout_mask;
-    if (p.dropout.enabled() && p.dropout.has_output_mask()) {
-        auto dropout_mask_md = softmax_fwd_pd.query_md(
-                dnnl::query::exec_arg_md, DNNL_ARG_ATTR_DROPOUT_MASK);
-        softmax_dropout_mask = memory(dropout_mask_md, eng);
-    }
 
     // attention_output = attention_probs x value
     primitive_attr bmm2_attr;
@@ -1658,9 +1647,6 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
         if (p.dropout.enabled()) {
             softmax_args[DNNL_ARG_ATTR_DROPOUT_PROBABILITY] = t.m_dropout_prob;
             softmax_args[DNNL_ARG_ATTR_DROPOUT_SEED] = t.m_dropout_seed;
-            if (p.dropout.has_output_mask()) {
-                softmax_args[DNNL_ARG_ATTR_DROPOUT_MASK] = softmax_dropout_mask;
-            }
             if (p.dropout.offset != 0) {
                 softmax_args[DNNL_ARG_ATTR_DROPOUT_OFFSET] = t.m_dropout_offset;
             }
@@ -1675,10 +1661,6 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
     // Execute primitives of sdpa.
     fwd_loop();
     strm.wait();
-    if (dropout_mask_fwd_out != nullptr && p.dropout.enabled()
-            && p.dropout.has_output_mask()) {
-        *dropout_mask_fwd_out = std::move(softmax_dropout_mask);
-    }
 
 #if DEBUG_PRINT_MEM
     print_mem(grouped_query, "FWD grouped_query");
@@ -2347,9 +2329,6 @@ public:
         using namespace dnnl::impl;
 
         auto mask = t.m_mask.get_desc();
-        memory ref_dropout_mask_fwd;
-        memory test_dropout_mask_fwd;
-        memory test_dropout_mask_bwd;
 
         memory::desc *mask_ptr = nullptr;
 
@@ -2422,13 +2401,6 @@ public:
                 sdpa_fwd_args[DNNL_ARG_ATTR_DROPOUT_OFFSET]
                         = t.m_dropout_offset;
             }
-            if (p.dropout.has_output_mask()) {
-                auto dropout_mask_md = sdpa_fwd_pd.query_md(
-                        dnnl::query::exec_arg_md, DNNL_ARG_ATTR_DROPOUT_MASK);
-                test_dropout_mask_fwd = memory(dropout_mask_md, eng);
-                sdpa_fwd_args[DNNL_ARG_ATTR_DROPOUT_MASK]
-                        = test_dropout_mask_fwd;
-            }
         }
 
         strm.wait();
@@ -2465,13 +2437,6 @@ public:
                 sdpa_bwd_args[DNNL_ARG_ATTR_DROPOUT_OFFSET]
                         = t.m_dropout_offset;
             }
-            if (p.dropout.has_output_mask()) {
-                auto dropout_mask_md = sdpa_bwd_pd.query_md(
-                        dnnl::query::exec_arg_md, DNNL_ARG_ATTR_DROPOUT_MASK);
-                test_dropout_mask_bwd = memory(dropout_mask_md, eng);
-                sdpa_bwd_args[DNNL_ARG_ATTR_DROPOUT_MASK]
-                        = test_dropout_mask_bwd;
-            }
         }
 
         sdpa_bwd.execute(strm, sdpa_bwd_args);
@@ -2489,7 +2454,6 @@ public:
                 scale_dt, t.m_scale, t.m_mask, t.m_value_quantized, t.m_output,
                 t.m_diff_output, invert_scale, doubled_memory, t.m_diff_query,
                 t.m_diff_key, t.m_diff_value,
-                p.dropout.has_output_mask() ? &ref_dropout_mask_fwd : nullptr,
                 /*with_timing=*/false);
 
         float max_diff_threshold = 0.3f;
@@ -2545,18 +2509,6 @@ public:
             check_memory<float_t>(strm, t.m_diff_value,
                     t.m_diff_value_quantized, max_diff_threshold,
                     gqa_fthreshold);
-        }
-
-        if (p.dropout.enabled() && p.dropout.has_output_mask()) {
-            const memory::dims score_sz_4d
-                    = {p.mb, p.heads.q, p.seq_len.q, p.seq_len.kv};
-            auto ref_mask_fwd_4d = reshape(strm, ref_dropout_mask_fwd,
-                    memory::desc(
-                            score_sz_4d, mdt::u8, memory::format_tag::abcd));
-            check_dropout_mask_memory<unsigned char>(
-                    strm, ref_mask_fwd_4d, test_dropout_mask_fwd);
-            check_dropout_mask_memory<unsigned char>(
-                    strm, ref_mask_fwd_4d, test_dropout_mask_bwd);
         }
 
 #if DEBUG_PRINT_MEM
@@ -2914,7 +2866,7 @@ public:
                     t.m_key_quantized, scale_dt, t.m_scale, t.m_mask,
                     t.m_value_quantized, t.m_output, t.m_diff_output,
                     invert_scale, doubled_memory, t.m_diff_query, t.m_diff_key,
-                    t.m_diff_value, nullptr,
+                    t.m_diff_value,
                     /*with_timing=*/true);
 
             float speedup = ref_time.count() > 0
@@ -3250,6 +3202,10 @@ GPU_TEST_P(sdpa_bwd_test_datatypes, compare_bwd) {
     compare_bwd();
 }
 
+GPU_TEST_P(sdpa_bwd_test, compare_bwd) {
+    compare_bwd();
+}
+
 GPU_TEST_P(sdpa_test, perf) {
     perf();
 }
@@ -3356,33 +3312,33 @@ INSTANTIATE_TEST_SUITE_P(dropout_forward_minimal, sdpa_test,
 INSTANTIATE_TEST_SUITE_P(dropout_backward_minimal, sdpa_bwd_test,
         testing::Values(sdpa_dims_t {SDPA_DIMS_DROPOUT_SHARED_BASE,
                                 dropout_config_t {0.5f, 12345678, mdt::s64, 0,
-                                        false, memory::format_tag::abcd}},
+                                        false, memory::format_tag::undef}},
                 sdpa_dims_t {SDPA_DIMS_DROPOUT_SHARED_BASE,
                         dropout_config_t {0.75f, 12345678, mdt::s64, 0, false,
                                 memory::format_tag::undef}},
                 sdpa_dims_t {SDPA_DIMS_DROPOUT_SHARED_BASE,
                         dropout_config_t {0.25f, 843921, mdt::s64, 1238976,
-                                true, memory::format_tag::abcd}},
+                                true, memory::format_tag::undef}},
                 // Base casae with key transposed
                 sdpa_dims_t {SDPA_DIMS_DROPOUT_BASE_TRANSPOSED,
                         dropout_config_t {0.5f, 12345678, mdt::s64, 0, false,
-                                memory::format_tag::abcd}},
+                                memory::format_tag::undef}},
                 sdpa_dims_t {SDPA_DIMS_DROPOUT_BASE_TRANSPOSED,
                         dropout_config_t {0.75f, 12345678, mdt::s64, 0, false,
                                 memory::format_tag::undef}},
                 sdpa_dims_t {SDPA_DIMS_DROPOUT_BASE_TRANSPOSED,
                         dropout_config_t {0.25f, 843921, mdt::s64, 1238976,
-                                true, memory::format_tag::abcd}},
+                                true, memory::format_tag::undef}},
                 // GQA: concrete tag
                 sdpa_dims_t {SDPA_DIMS_DROPOUT_SHARED_GQA,
                         dropout_config_t {0.5f, 4242, mdt::s64, 0, false,
-                                memory::format_tag::abcd}},
+                                memory::format_tag::undef}},
                 sdpa_dims_t {SDPA_DIMS_DROPOUT_SHARED_GQA,
                         dropout_config_t {0.75f, 4343, mdt::s64, 0, false,
                                 memory::format_tag::undef}},
                 sdpa_dims_t {SDPA_DIMS_DROPOUT_SHARED_GQA,
                         dropout_config_t {0.25f, 4444, mdt::s64, 123456, true,
-                                memory::format_tag::abcd}}),
+                                memory::format_tag::undef}}),
         &print_to_string);
 #undef SDPA_DIMS_DROPOUT_SHARED_BASE_TRANSPOSED
 #undef SDPA_DIMS_DROPOUT_SHARED_BASE

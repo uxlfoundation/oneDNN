@@ -19,13 +19,11 @@
 #ifndef CPU_AARCH64_JIT_UNI_SOFTMAX_HPP
 #define CPU_AARCH64_JIT_UNI_SOFTMAX_HPP
 
-#include <assert.h>
 #include <memory>
 
 #include "common/c_types_map.hpp"
 #include "common/memory_tracking.hpp"
 #include "common/primitive.hpp"
-#include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 
 #include "cpu/aarch64/cpu_isa_traits.hpp"
@@ -61,7 +59,7 @@ struct jit_uni_softmax_fwd_t : public primitive_t {
 
                 // It is fine to use float here as the kernel uses halfs of
                 // vector registers.
-                const auto blk_size = cpu_isa_traits<isa>::vlen / sizeof(float);
+                const int blk_size = simd_elems(data_type_t::dnnl_f32, isa);
                 // 31 is a general limit, 4 is for unroll_regs_ = 16;
                 const size_t max_stride = (1LL << (31 - 4)) - 1;
                 const int last_blk = bd.inner_nblks - 1;
@@ -146,7 +144,7 @@ struct jit_uni_softmax_bwd_t : public primitive_t {
 
                 // It is fine to use float here as the kernel uses halfs of
                 // vector registers.
-                const auto blk_size = cpu_isa_traits<isa>::vlen / sizeof(float);
+                const int blk_size = simd_elems(data_type_t::dnnl_f32, isa);
                 if (dst_d.is_plain())
                     return bd.strides[axis()] == 1;
                 else {
@@ -169,8 +167,6 @@ struct jit_uni_softmax_bwd_t : public primitive_t {
                                            diff_dst_md()->data_type,
                                            diff_src_md()->data_type),
                             mayiuse_bf16())
-                    && (mayiuse(sve_512) || mayiuse(sve_256)
-                            || mayiuse(sve_128))
                     && attr()->has_default_values()
                     && set_default_formats() == status::success;
 

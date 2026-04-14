@@ -16,23 +16,21 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include <assert.h>
+#include <cassert>
 #include <memory>
 
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
-#include "common/math_utils.hpp"
 #include "common/memory_tracking.hpp"
 #include "common/nstl.hpp"
-#include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 
+#include "cpu/aarch64/injectors/jit_uni_eltwise_injector.hpp"
+#include "cpu/aarch64/jit_generator.hpp"
+#include "cpu/aarch64/jit_uni_softmax.hpp"
 #include "cpu/cpu_primitive.hpp"
 
-#include "cpu/aarch64/jit_generator.hpp"
-
-#include "cpu/aarch64/injectors/jit_uni_eltwise_injector.hpp"
-#include "cpu/aarch64/jit_uni_softmax.hpp"
+#include "xbyak_aarch64/xbyak_aarch64/xbyak_aarch64_util.h"
 
 namespace dnnl {
 namespace impl {
@@ -167,7 +165,7 @@ size_t jit_softmax_base_t::compute_axis_stride(
 
 void jit_softmax_base_t::load_common_params() {
     mov(W_TMP_0, float2int(-FLT_MAX));
-    if (vlen_ > cpu_isa_traits<sve_128>::vlen) {
+    if (vlen_ > util::SVE_128) {
         fmov(ZReg(vone_idx).s, 1.0);
         dup(ZReg(vneg_flt_max_idx).s, W_TMP_0);
     } else {
@@ -930,21 +928,9 @@ template <cpu_isa_t isa>
 struct jit_softmax_t;
 
 template <>
-struct jit_softmax_t<sve_512> : public jit_softmax_sve_t {
+struct jit_softmax_t<sve> : public jit_softmax_sve_t {
     jit_softmax_t(const softmax_pd_t *pd)
-        : jit_softmax_sve_t(pd, cpu_isa_traits<sve_512>::vlen) {}
-};
-
-template <>
-struct jit_softmax_t<sve_256> : public jit_softmax_sve_t {
-    jit_softmax_t(const softmax_pd_t *pd)
-        : jit_softmax_sve_t(pd, cpu_isa_traits<sve_256>::vlen) {}
-};
-
-template <>
-struct jit_softmax_t<sve_128> : public jit_softmax_sve_t {
-    jit_softmax_t(const softmax_pd_t *pd)
-        : jit_softmax_sve_t(pd, cpu_isa_traits<sve_128>::vlen) {}
+        : jit_softmax_sve_t(pd, simd_bytes(sve)) {}
 };
 
 template <>
@@ -1093,13 +1079,10 @@ private:
 } // namespace softmax_impl
 
 /* struct instantiation */
-template struct jit_uni_softmax_fwd_t<sve_512>;
-template struct jit_uni_softmax_bwd_t<sve_512>;
-template struct jit_uni_softmax_fwd_t<sve_256>;
-template struct jit_uni_softmax_bwd_t<sve_256>;
-template struct jit_uni_softmax_fwd_t<sve_128>;
-template struct jit_uni_softmax_bwd_t<sve_128>;
+template struct jit_uni_softmax_fwd_t<sve>;
 template struct jit_uni_softmax_fwd_t<asimd>;
+
+template struct jit_uni_softmax_bwd_t<sve>;
 
 } // namespace aarch64
 } // namespace cpu

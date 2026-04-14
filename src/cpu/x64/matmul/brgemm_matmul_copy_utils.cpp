@@ -553,7 +553,10 @@ struct jit_brgemm_matmul_copy_a_transposed_impl_t
         // See the note in `create_brgemm_matmul_copy_b` why `orig_src_dt` used.
         , use_fp16_instructions_(conf_->isa == avx512_core_fp16
                   && conf_->orig_src_dt == data_type::f16
-                  && conf_->src_dt == data_type::f32) {}
+                  && conf_->src_dt == data_type::f32)
+        , vnni_granularity_for_store_(data_type_vnni_granularity(
+                  conf_->is_bf16_fp8 || conf_->is_f16_fp8 ? conf_->wei_dt
+                                                          : conf_->src_dt)) {}
 
     void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
     status_t create_kernel() override {
@@ -578,6 +581,7 @@ private:
     const bool is_bf32;
     const bool is_dynamic_src_ld;
     const bool use_fp16_instructions_;
+    const int vnni_granularity_for_store_;
 
     opmask_t kFFFF = k1;
     opmask_t k3333 = k1;
@@ -824,7 +828,7 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Zmm>::transpose_bf16(
                 = idx_within_blk + 1 - 2 * (idx_within_blk % 2);
         return blk_sz * mapped_blk_idx + mapped_idx_within_blk;
     };
-    const int rows_to_store = rnd_up(nrows, 2);
+    const int rows_to_store = rnd_up(nrows, vnni_granularity_for_store_);
     const int store_mask
             = rows_to_store < rows_step ? (1 << rows_to_store) - 1 : 0xffff;
     kmovx(kTail, store_mask);

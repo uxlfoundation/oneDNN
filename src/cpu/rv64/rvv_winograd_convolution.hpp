@@ -21,6 +21,7 @@
 
 #include "common/broadcast_strategy.hpp"
 #include "common/c_types_map.hpp"
+#include "common/dnnl_thread.hpp"
 #include "common/memory_tracking.hpp"
 #include "common/primitive.hpp"
 #include "common/resource.hpp"
@@ -32,6 +33,7 @@
 
 #include "cpu/rv64/brgemm/brgemm.hpp"
 #include "cpu/rv64/cpu_isa_traits.hpp"
+#include "cpu/rv64/jit_generator.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -101,13 +103,11 @@ status_t rvv_winograd_init_conf(rvv_winograd_conf_t &conf,
 struct rvv_wino_resource_t : public resource_t {
     rvv_wino_resource_t() = default;
 
-    status_t configure(size_t weight_buf_size) {
-        weight_buf_.reset(new float[weight_buf_size]);
-        if (!weight_buf_) return status::out_of_memory;
-        return status::success;
-    }
+    status_t configure(size_t weight_buf_size, const rvv_winograd_conf_t &conf);
 
     float *get_weight_buffer() const { return weight_buf_.get(); }
+    jit_generator_t *get_input_xform() const { return input_xform_.get(); }
+    jit_generator_t *get_output_xform() const { return output_xform_.get(); }
     bool weights_valid() const { return weights_valid_; }
     void set_weights_valid() const { weights_valid_ = true; }
 
@@ -115,6 +115,8 @@ struct rvv_wino_resource_t : public resource_t {
 
 private:
     std::unique_ptr<float[]> weight_buf_;
+    std::unique_ptr<jit_generator_t> input_xform_;
+    std::unique_ptr<jit_generator_t> output_xform_;
     mutable bool weights_valid_ = false;
 };
 
@@ -253,7 +255,7 @@ struct rvv_wino_convolution_fwd_t : public primitive_t {
         if (mapper.has_resource(this)) return status::success;
         auto r = utils::make_unique<rvv_wino_resource_t>();
         if (!r) return status::out_of_memory;
-        CHECK(r->configure(pd()->conf_.wspec.weight_matrix_size));
+        CHECK(r->configure(pd()->conf_.wspec.weight_matrix_size, pd()->conf_));
         mapper.add(this, std::move(r));
         return status::success;
     }

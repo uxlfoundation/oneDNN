@@ -606,7 +606,8 @@ status_t pd_t::init_GEMMProblem(
     align_b = nstl::max(align_b, (int)types::data_type_size(b_type));
     auto b_size = (trans_b ? k : n) * ldb * types::data_type_size(b_type);
 
-    bool int_acc = utils::one_of(a_type, data_type::s8, data_type::u8);
+    bool int_acc = utils::one_of(a_type, data_type::s8, data_type::u8)
+            || (types::is_integral_dt(a_type) && types::is_integral_dt(b_type));
     int_acc &= !(a_grouped() || b_grouped());
     auto c_type = desc()->c_type();
     auto align_c

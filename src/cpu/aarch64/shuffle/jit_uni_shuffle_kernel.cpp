@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2022-2024 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -18,11 +18,12 @@
 
 #include <cassert>
 
-#include "common/bfloat16.hpp"
 #include "common/c_types_map.hpp"
 
 #include "cpu/aarch64/jit_generator.hpp"
 #include "cpu/aarch64/shuffle/jit_uni_shuffle_kernel.hpp"
+
+#include "xbyak_aarch64/xbyak_aarch64/xbyak_aarch64_util.h"
 
 namespace dnnl {
 namespace impl {
@@ -53,16 +54,16 @@ void jit_uni_shuffle_kernel_t<isa>::prepare_mask() {
         /* Because "ST1H { <Zt>.S }, <Pg>, [<Xn|SP>, <Zm>.S, UXTW #1]" is used
 	 to gather data for bf16, simd_tail must be evaluated
 	 with sizeof(unsigned). */
-        assert(conf_.simd_tail < isa_sveLen / sizeof(uint32_t));
+        assert(conf_.simd_tail < sve_length_ / sizeof(uint32_t));
         index(vmm_tmp_.s, 0, 1);
         cmplt(k_tail_mask_.s, P_ALL_ONE / T_z, vmm_tmp_.s, conf_.simd_tail);
     }
 
-    if (isa_sveLen == util::SVE_512)
+    if (sve_length_ == util::SVE_512)
         ptrue(k_full_mask_.s, VL16);
-    else if (isa_sveLen == util::SVE_256)
+    else if (sve_length_ == util::SVE_256)
         ptrue(k_full_mask_.s, VL8);
-    else if (isa_sveLen == util::SVE_128)
+    else if (sve_length_ == util::SVE_128)
         ptrue(k_full_mask_.s, VL4);
 }
 
@@ -125,8 +126,8 @@ void jit_uni_shuffle_kernel_t<isa>::store_data(const int data_idx,
             st1h(TRegS(data_idx), mask, ptr(X_DEFAULT_ADDR));
     }
 
-    append_zero_padding(
-            reg_dst_, isa_sveLen > 128 ? extend_for_padding : false);
+    append_zero_padding(reg_dst_,
+            sve_length_ >= util::SVE_256 ? extend_for_padding : false);
 }
 
 template <>
@@ -162,7 +163,7 @@ void jit_uni_shuffle_kernel_t<isa>::shuffle_blocked_format() {
         const int simd_to_process
                 = is_blk_tail ? simd_in_tail_blk : simd_in_blk;
         for (int i = 0; i < simd_to_process; ++i) {
-            if (is_superset(isa, sve_128))
+            if (is_superset(isa, sve))
                 ld1w(ZRegS(vmm_tmp[i].getIdx()), P_ALL_ONE,
                         ptr(addr_off(reg_indices_,
                                 i * conf_.simd_w * conf_.el_size_of_indices,
@@ -310,7 +311,7 @@ void jit_uni_shuffle_kernel_t<isa>::append_zero_padding(
         for (; off + simd_w_byte < padding_to_add; off += simd_w_byte) {
             add_imm(X_DEFAULT_ADDR, reg_dst_addr, off_start + off, X_TMP_0);
 
-            if (is_superset(isa, sve_128))
+            if (is_superset(isa, sve))
                 st1w(ZRegS(vmm_zero_.getIdx()), P_ALL_ONE, ptr(X_DEFAULT_ADDR));
             else
                 uni_str(vmm_zero_, X_DEFAULT_ADDR);
@@ -337,9 +338,9 @@ void jit_uni_shuffle_kernel_t<isa>::generate() {
     preamble();
 
     /* Overwrite P_ALL_ONE, if required sve size < 512. */
-    if (isa_sveLen == util::SVE_128)
+    if (sve_length_ == util::SVE_128)
         ptrue(P_ALL_ONE.b, VL16);
-    else if (isa_sveLen == util::SVE_256)
+    else if (sve_length_ == util::SVE_256)
         ptrue(P_ALL_ONE.b, VL32);
 
     uni_clear(vmm_zero_);
@@ -360,9 +361,7 @@ void jit_uni_shuffle_kernel_t<isa>::generate() {
     postamble();
 }
 
-template struct jit_uni_shuffle_kernel_t<sve_512>;
-template struct jit_uni_shuffle_kernel_t<sve_256>;
-template struct jit_uni_shuffle_kernel_t<sve_128>;
+template struct jit_uni_shuffle_kernel_t<sve>;
 template struct jit_uni_shuffle_kernel_t<asimd>;
 
 #undef GET_OFF

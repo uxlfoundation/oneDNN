@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2022 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -19,11 +19,7 @@
 #ifndef CPU_AARCH64_SHUFFLE_JIT_UNI_SHUFFLE_KERNEL_HPP
 #define CPU_AARCH64_SHUFFLE_JIT_UNI_SHUFFLE_KERNEL_HPP
 
-#include "common/c_types_map.hpp"
-#include "common/type_helpers.hpp"
 #include "common/utils.hpp"
-
-#include "cpu/cpu_shuffle_pd.hpp"
 
 #include "cpu/aarch64/cpu_isa_traits.hpp"
 #include "cpu/aarch64/jit_generator.hpp"
@@ -57,7 +53,7 @@ struct jit_uni_shuffle_kernel_t : public jit_generator_t {
     void prepare_mask();
 
     /*
-     * Emulates the behavior of vgatherdps for architectures
+     * Emulates the behavior of gather-load for architectures
      * that do not support this instruction.
      */
     void emu_gather_data(const XReg &reg_src_addr, const int indices_idx,
@@ -98,12 +94,11 @@ struct jit_uni_shuffle_kernel_t : public jit_generator_t {
     const XReg &reg_tmp4_ = x11;
     const XReg &reg_tmp5_ = x12;
     const XReg &reg_tmp6_ = x13;
-    const XReg &reg_padded_block = x14; //WReg(x14.getIdx());
+    const XReg &reg_padded_block = x14;
 
     const jit_shuffle_conf_t conf_;
     const size_t padding_size_;
-    const uint64_t isa_sveLen
-            = is_superset(isa, sve_128) ? cpu_isa_traits<isa>::vlen : 0;
+    const uint64_t sve_length_ = is_superset(isa, sve) ? simd_bytes(isa) : 0;
 };
 
 } // namespace aarch64

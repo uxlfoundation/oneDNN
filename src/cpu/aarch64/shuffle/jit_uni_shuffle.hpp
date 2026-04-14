@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2020 Intel Corporation
 * Copyright 2022 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@
 #include "cpu/cpu_shuffle_pd.hpp"
 
 #include "cpu/aarch64/cpu_isa_traits.hpp"
-#include "cpu/aarch64/shuffle/jit_uni_shuffle_kernel.hpp"
+#include "cpu/aarch64/jit_primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {

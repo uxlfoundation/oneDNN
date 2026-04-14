@@ -54,6 +54,7 @@ struct gen_t : public primitive_t {
 
             assert(engine->kind() == engine_kind::gpu);
             auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+            const auto d = desc();
 
             // Basic implementation attr support:
             auto attr_skip_mask = smask_t::post_ops | smask_t::fpmath_mode
@@ -64,14 +65,16 @@ struct gen_t : public primitive_t {
                     | smask_t::zero_points_groups;
             VDISPATCH_GEMM(attr()->has_default_values(attr_skip_mask),
                     VERBOSE_UNSUPPORTED_ATTR);
+            VDISPATCH_GEMM(
+                    !utils::one_of(DNNL_RUNTIME_DIM_VAL, d->m(), d->n(), d->k(),
+                            d->lda(), d->ldb(), d->ldc(), d->batch()),
+                    VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
             auto &attr_zps = attr()->zero_points_;
 
             dev_info_ = intel_engine->device_info();
             arch_ = dev_info_->gpu_arch();
             int stepping = dev_info_->stepping_id();
-
-            const auto d = desc();
 
             CHECK(set_default_formats(false));
             CHECK(jit::pd_t::init(engine, arch_));
@@ -152,10 +155,6 @@ struct gen_t : public primitive_t {
             VDISPATCH_GEMM(!has_blocks(), VERBOSE_BLOCKING_FAIL, "");
             VDISPATCH_GEMM(
                     batch_dims() <= 4, VERBOSE_BAD_DIM, "batch", batch_dims());
-            VDISPATCH_GEMM(
-                    !utils::one_of(DNNL_RUNTIME_DIM_VAL, d->m(), d->n(), d->k(),
-                            d->lda(), d->ldb(), d->ldc(), d->batch()),
-                    VERBOSE_RUNTIMEDIM_UNSUPPORTED);
             VDISPATCH_GEMM(intel_engine->mayiuse_ngen_kernels(),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "ngen_kernels");
 

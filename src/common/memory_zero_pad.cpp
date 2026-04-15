@@ -207,14 +207,14 @@ status_t typed_zero_pad(const memory_t *memory, const exec_ctx_t &ctx) {
     auto *data = static_cast<typename prec_traits_t<dt>::type *>(mapped_ptr);
     auto blk = mdw.blocking_desc();
 
-    auto get_blksize = [&](int ind) {
-        int blksize = 1;
+    auto get_blksize = [&](dim_t ind) {
+        dim_t blksize = 1;
         for (int i = 0; i < blk.inner_nblks; i++) {
             if (blk.inner_idxs[i] == ind) blksize *= blk.inner_blks[i];
         }
         return blksize;
     };
-    const int blksize = get_blksize(blk.inner_idxs[0]);
+    const dim_t blksize = get_blksize(blk.inner_idxs[0]);
 
 #define CASE(blksize_, blk_kind) \
     do { \

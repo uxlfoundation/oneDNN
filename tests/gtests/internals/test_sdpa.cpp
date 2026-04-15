@@ -1593,17 +1593,27 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
 
     // softmax forward
     primitive_attr softmax_attr;
-    softmax_attr.set_scratchpad_mode(scratchpad_mode::library);
-    if (p.dropout.enabled()) {
-        memory::desc mask_desc = {};
-        softmax_attr.set_dropout(mask_desc, p.dropout.seed_dt,
-                p.dropout.offset != 0, p.dropout.use_host_scalars);
-    }
     auto softmax_fwd_pd = softmax_forward::primitive_desc(eng,
             prop_kind::forward_training,
             (algorithm)dnnl::impl::alg_kind::softmax_accurate_inf_as_zero,
             score.get_desc(), score.get_desc(), 4, softmax_attr);
     auto softmax_prim = softmax_forward(softmax_fwd_pd);
+
+    // Apply dropout as a separate eltwise (identity) primitive so that
+    // score2 retains the un-dropped softmax output P for the backward pass.
+    auto score2_dropped = p.dropout.enabled() ? memory(score_md, eng) : score2;
+    eltwise_forward dropout_eltwise;
+    if (p.dropout.enabled()) {
+        primitive_attr dropout_attr;
+        dropout_attr.set_scratchpad_mode(scratchpad_mode::library);
+        memory::desc mask_desc = {};
+        dropout_attr.set_dropout(mask_desc, p.dropout.seed_dt,
+                p.dropout.offset != 0, p.dropout.use_host_scalars);
+        auto dropout_pd = eltwise_forward::primitive_desc(eng,
+                prop_kind::forward_inference, algorithm::eltwise_linear,
+                score_md, score_md, 1.0f, 0.0f, dropout_attr);
+        dropout_eltwise = eltwise_forward(dropout_pd);
+    }
 
     // attention_output = attention_probs x value
     primitive_attr bmm2_attr;
@@ -1633,27 +1643,31 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
         }
     }
 
-    std::unordered_map<int, memory> bmm2_args
-            = {{DNNL_ARG_SRC, score2}, {DNNL_ARG_WEIGHTS, value_dequantized},
-                    {DNNL_ARG_DST, grouped_output}};
+    std::unordered_map<int, memory> bmm2_args = {{DNNL_ARG_SRC, score2_dropped},
+            {DNNL_ARG_WEIGHTS, value_dequantized},
+            {DNNL_ARG_DST, grouped_output}};
 
     const auto fwd_loop = [&]() {
         // QK
         bmm1_prim.execute(strm, bmm1_args);
 
-        // softmax
-        std::unordered_map<int, memory> softmax_args
-                = {{DNNL_ARG_SRC, score}, {DNNL_ARG_DST, score2}};
-        if (p.dropout.enabled()) {
-            softmax_args[DNNL_ARG_ATTR_DROPOUT_PROBABILITY] = t.m_dropout_prob;
-            softmax_args[DNNL_ARG_ATTR_DROPOUT_SEED] = t.m_dropout_seed;
-            if (p.dropout.offset != 0) {
-                softmax_args[DNNL_ARG_ATTR_DROPOUT_OFFSET] = t.m_dropout_offset;
-            }
-        }
-        softmax_prim.execute(strm, softmax_args);
+        // softmax (no dropout — keeps un-dropped P in score2)
+        softmax_prim.execute(
+                strm, {{DNNL_ARG_SRC, score}, {DNNL_ARG_DST, score2}});
 
-        // SV
+        // apply dropout separately: score2 -> score2_dropped
+        if (p.dropout.enabled()) {
+            std::unordered_map<int, memory> dropout_args
+                    = {{DNNL_ARG_SRC, score2}, {DNNL_ARG_DST, score2_dropped}};
+            dropout_args[DNNL_ARG_ATTR_DROPOUT_PROBABILITY] = t.m_dropout_prob;
+            dropout_args[DNNL_ARG_ATTR_DROPOUT_SEED] = t.m_dropout_seed;
+            if (p.dropout.offset != 0) {
+                dropout_args[DNNL_ARG_ATTR_DROPOUT_OFFSET] = t.m_dropout_offset;
+            }
+            dropout_eltwise.execute(strm, dropout_args);
+        }
+
+        // SV (uses dropped P)
         bmm2_prim.execute(strm, bmm2_args);
     };
 
@@ -1725,8 +1739,9 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
             {score_sz[0], score_sz[1], score_sz[2], score_sz[4], score_sz[3]},
             p.dt.dt, memory::format_tag::abced);
 
+    // dV uses P_dropped (score2_dropped) to match the kernel
     memory score2_downcast;
-    auto score32 = as(strm, score2, p.dt.dt);
+    auto score32 = as(strm, score2_dropped, p.dt.dt);
     score2_downcast = reshape(strm, score32, s2_t_md);
 
     const bool is_gqa = (head_q_group_size != head_kv_group_size);
@@ -1764,7 +1779,21 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
             score_sz, mdt::f32, memory::format_tag::abcde);
     memory diff_score_f32_mem(diff_score_f32_md, eng);
 
-    // backwards pass gradient of softmax
+    // Apply dropout Jacobian to dP_raw: dP = dP_raw * Z / q
+    if (p.dropout.enabled()) {
+        std::unordered_map<int, memory> dropout_bwd_args
+                = {{DNNL_ARG_SRC, diff_score2_mem},
+                        {DNNL_ARG_DST, diff_score2_mem}};
+        dropout_bwd_args[DNNL_ARG_ATTR_DROPOUT_PROBABILITY] = t.m_dropout_prob;
+        dropout_bwd_args[DNNL_ARG_ATTR_DROPOUT_SEED] = t.m_dropout_seed;
+        if (p.dropout.offset != 0) {
+            dropout_bwd_args[DNNL_ARG_ATTR_DROPOUT_OFFSET] = t.m_dropout_offset;
+        }
+        dropout_eltwise.execute(strm, dropout_bwd_args);
+        strm.wait();
+    }
+
+    // backwards pass gradient of softmax (uses un-dropped P as DST)
     softmax_backward::primitive_desc softmax_bwd_pd(eng,
             algorithm::softmax_accurate, diff_score_f32_md, diff_score2_md,
             score_md, 4, softmax_fwd_pd);
@@ -1862,6 +1891,21 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
         if (is_gqa)
             dV_reduce.execute(strm,
                     {{DNNL_ARG_SRC, dV_full_mem}, {DNNL_ARG_DST, dV_mem}});
+
+        // Apply dropout Jacobian to dP_raw in bwd_loop
+        if (p.dropout.enabled()) {
+            std::unordered_map<int, memory> dropout_bwd_args
+                    = {{DNNL_ARG_SRC, diff_score2_mem},
+                            {DNNL_ARG_DST, diff_score2_mem}};
+            dropout_bwd_args[DNNL_ARG_ATTR_DROPOUT_PROBABILITY]
+                    = t.m_dropout_prob;
+            dropout_bwd_args[DNNL_ARG_ATTR_DROPOUT_SEED] = t.m_dropout_seed;
+            if (p.dropout.offset != 0) {
+                dropout_bwd_args[DNNL_ARG_ATTR_DROPOUT_OFFSET]
+                        = t.m_dropout_offset;
+            }
+            dropout_eltwise.execute(strm, dropout_bwd_args);
+        }
 
         softmax_bwd.execute(strm,
                 {{DNNL_ARG_DST, score2}, {DNNL_ARG_DIFF_DST, diff_score2_mem},

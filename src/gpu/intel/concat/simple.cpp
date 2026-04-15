@@ -75,8 +75,9 @@ static status_t normalize(simple_params_t &conf,
     const auto &info = infos[0];
 
     memory_desc_t dst_md, src_md;
-    int offset = 0, padded_offset = 0, nonempty_inputs = 0;
+    dim_t offset = 0, padded_offset = 0;
     dim_t final_padding = 0;
+    int nonempty_inputs = 0;
     for (int i = 0; i < pd->n_inputs(); ++i) {
         if (pd->src_md(i)->padded_dims[axis] == 0) continue;
         max_nelems = std::max(max_nelems,
@@ -185,8 +186,9 @@ static status_t try_normalize_internal_padding(simple_params_t &conf,
     conf.bytes_per_workitem = 0;
 
     memory_desc_t dst_md, src_md;
-    int offset = 0, padded_offset = 0, nonempty_inputs = 0;
+    dim_t offset = 0, padded_offset = 0;
     dim_t final_padding = 0;
+    int nonempty_inputs = 0;
     for (int i = 0; i < pd->n_inputs(); ++i) {
         if (pd->src_md(i)->padded_dims[concat_dim] == 0) continue;
         max_nelems = std::max(max_nelems,

@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2017 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@
 #include "common/type_helpers.hpp"
 
 #include "cpu/aarch64/jit_uni_pooling.hpp"
-#include "cpu/aarch64/reorder/jit_uni_reorder.hpp"
+#include "cpu/aarch64/reorder/jit_uni_reorder_kernel.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -1255,6 +1255,8 @@ template struct jit_uni_pooling_fwd_t<sve_512, data_type::f32>;
 template struct jit_uni_pooling_bwd_t<sve_512, data_type::f32>;
 template struct jit_uni_pooling_fwd_t<sve_256, data_type::f32>;
 template struct jit_uni_pooling_bwd_t<sve_256, data_type::f32>;
+template struct jit_uni_pooling_fwd_t<sve_128, data_type::f32>;
+template struct jit_uni_pooling_bwd_t<sve_128, data_type::f32>;
 
 } // namespace aarch64
 } // namespace cpu

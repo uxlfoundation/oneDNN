@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2017 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@
 #ifndef CPU_AARCH64_JIT_UNI_POOLING_HPP
 #define CPU_AARCH64_JIT_UNI_POOLING_HPP
 
-#include <assert.h>
+#include <cassert>
 #include <memory>
 
 #include "common/c_types_map.hpp"
@@ -51,7 +51,8 @@ struct jit_uni_pooling_fwd_t : public primitive_t {
         status_t init(engine_t *engine) {
             using namespace utils;
 
-            const bool ok = is_fwd() && !has_zero_dim_memory()
+            const bool ok = mayiuse(isa) && is_superset(isa, sve) && is_fwd()
+                    && !has_zero_dim_memory()
                     && everyone_is(
                             d_type, src_md()->data_type, dst_md()->data_type)
                     && attr()->has_default_values(
@@ -121,8 +122,9 @@ struct jit_uni_pooling_bwd_t : public primitive_t {
         status_t init(engine_t *engine) {
             using namespace utils;
 
-            const bool ok = true && set_default_params() == status::success
-                    && !is_fwd() && !has_zero_dim_memory()
+            const bool ok = mayiuse(isa) && is_superset(isa, sve)
+                    && set_default_params() == status::success && !is_fwd()
+                    && !has_zero_dim_memory()
                     && everyone_is(d_type, diff_src_md()->data_type,
                             diff_dst_md()->data_type)
                     && attr()->has_default_values() && !is_dilated();

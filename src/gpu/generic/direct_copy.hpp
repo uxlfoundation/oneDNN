@@ -85,7 +85,7 @@ struct direct_copy_t : public primitive_t {
 
     private:
         DECLARE_GPU_REORDER_CREATE();
-        using block_t = std::pair<int, dim_t>;
+        using block_t = std::pair<dim_t, dim_t>;
 
         status_t normalize(
                 const memory_desc_wrapper &mdw, std::vector<block_t> &blocks) {
@@ -97,7 +97,7 @@ struct direct_copy_t : public primitive_t {
             dim_t stride = 1;
             std::vector<dim_t> dim_blocking(mdw.ndims(), 1);
             for (int i = blocking.inner_nblks - 1; i >= 0; --i) {
-                int dim_idx = blocking.inner_idxs[i];
+                auto dim_idx = blocking.inner_idxs[i];
                 dim_t block = blocking.inner_blks[i];
                 if (block == 1) continue;
                 if (blocks.empty() || blocks.back().first != dim_idx)
@@ -109,7 +109,7 @@ struct direct_copy_t : public primitive_t {
             }
 
             size_t offset = blocks.size();
-            for (int i = 0; i < mdw.ndims(); ++i) {
+            for (dim_t i = 0; i < mdw.ndims(); ++i) {
                 dim_t block = mdw.padded_dims()[i] / dim_blocking[i];
                 if (block == 1) continue;
                 blocks.emplace_back(i, block);
@@ -130,7 +130,7 @@ struct direct_copy_t : public primitive_t {
             }
 
             for (; offset < blocks.size(); ++offset) {
-                int dim_idx = blocks[offset].first;
+                dim_t dim_idx = blocks[offset].first;
                 dim_t block = blocks[offset].second;
 
                 if (blocking.strides[dim_idx] != stride)

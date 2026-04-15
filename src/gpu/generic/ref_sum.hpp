@@ -119,9 +119,9 @@ struct ref_sum_t : public gpu::primitive_t {
         static std::mutex mutex;
         std::lock_guard<std::mutex> lock(mutex);
 
-        const dim_t count = pd()->n_inputs();
+        const int count = pd()->n_inputs();
         const float *s_data = pd()->scales();
-        for (dim_t i = 0; i < count; i++) {
+        for (int i = 0; i < count; i++) {
             // copy scales on gpu
             const size_t size = sizeof(float);
             std::unique_ptr<memory_storage_t> scales;

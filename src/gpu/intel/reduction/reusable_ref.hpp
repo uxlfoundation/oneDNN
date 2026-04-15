@@ -99,7 +99,7 @@ struct reusable_ref_t : public primitive_t {
         status_t init_conf(impl::engine_t *engine);
         void init_scratchpad();
 
-        int div = 0;
+        dim_t div = 0;
         std::vector<ref_conf_t> phases;
     };
 

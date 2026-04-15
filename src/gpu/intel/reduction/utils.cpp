@@ -117,7 +117,7 @@ status_t generate_phases(const memory_desc_t *src, const memory_desc_t *dst,
     block_layout_t exp_dst_blocks;
     int dst_zpad_mask
             = ~utils::get_dims_mask(dst->dims, dst->padded_dims, dst->ndims);
-    int stride = 1;
+    dim_t stride = 1;
     for (const auto &block : src_blocks) {
         if (!is_masked(reduced_dim_mask, block.dim_idx)) {
             // Non-reduced dims get transferred directly to dst (no reorders)

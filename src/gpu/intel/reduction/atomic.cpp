@@ -42,15 +42,13 @@ class atomic_lws_strategy_t : public compute::lws_strategy_t {
 public:
     bool is_included(const compute::mapped_block_t &blocks) const override {
         for (const block_t &block : inc_blocks) {
-            if (blocks.get_dim_idx() == into<size_t>(block.dim_idx)) {
-                return true;
-            }
+            if (blocks.get_dim_idx() == block.dim_idx) { return true; }
         }
         return false;
     }
 
     void include(dim_idx_t dim, size_t size) {
-        inc_blocks.emplace_back(into<dim_t>(dim), into<dim_t>(size), 1);
+        inc_blocks.emplace_back(dim, size, 1);
     }
 
 private:

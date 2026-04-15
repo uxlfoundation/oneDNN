@@ -138,6 +138,10 @@ struct base_cfg_t {
         data_kind_t data_kind;
         // Number of accumulators in the chain. Longer chains to be more sparse.
         int64_t n_acc;
+        // Specifies if dynamic dst scaling present for the problem. If yes,
+        // it increases the density for better output values. Logic for
+        // increasing must be updated in `get_density` function.
+        bool has_dynamic_dst_scaling = false;
     };
 
     // Base config has to know a map of ranges to have its interfaces working.

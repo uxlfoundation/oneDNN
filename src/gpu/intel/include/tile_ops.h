@@ -467,11 +467,9 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
                 int i = i0 + get_sub_group_local_id(); \
                 int offset_r = sg_offset_r + i; \
                 int offset_c = sg_offset_c + j; \
-                if (predicate(offset_r, offset_c)) { \
-                    tile_access(t, i0, j, sg, br, bc, nbr) \
-                            = predicate(offset_r, offset_c) ? true_value \
-                                                            : false_value; \
-                } \
+                tile_access(t, i0, j, sg, br, bc, nbr) \
+                        = predicate(offset_r, offset_c) ? true_value \
+                                                        : false_value; \
             } \
         } \
     } while (0)

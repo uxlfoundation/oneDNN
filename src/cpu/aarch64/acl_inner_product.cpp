@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2022,2024-2025 Arm Ltd. and affiliates
+* Copyright 2021-2022,2024-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -100,11 +100,13 @@ status_t acl_inner_product_fwd_t::pd_t::init(engine_t *engine) {
     const bool is_fp32_ok = expect_data_types(f32, f32, f32, f32, undef)
             && attr()->has_default_values(
                     smask_t::post_ops | smask_t::fpmath_mode, f32);
+    const bool is_bf16_ok = expect_data_types(bf16, bf16, bf16, bf16, undef)
+            && attr()->has_default_values(smask_t::post_ops, bf16);
     const bool is_weights_md_format_ok
             = utils::one_of(weights_format_kind_received, format_kind::any,
                     format_kind::blocked);
     const bool ok = is_fwd() && !has_zero_dim_memory()
-            && utils::one_of(true, is_fp16_ok, is_fp32_ok)
+            && utils::one_of(true, is_fp16_ok, is_fp32_ok, is_bf16_ok)
             && is_weights_md_format_ok
             && set_default_params(true) == status::success;
 

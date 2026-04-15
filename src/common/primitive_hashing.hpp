@@ -93,8 +93,8 @@ size_t get_desc_hash(const sum_desc_t &desc);
 size_t get_desc_hash(const zero_pad_desc_t &desc);
 
 template <typename T>
-size_t get_array_hash(size_t seed, const T *v, int size) {
-    for (int i = 0; i < size; i++) {
+size_t get_array_hash(size_t seed, const T *v, dim_t size) {
+    for (dim_t i = 0; i < size; i++) {
         seed = hash_combine(seed, v[i]);
     }
     return seed;
@@ -102,8 +102,8 @@ size_t get_array_hash(size_t seed, const T *v, int size) {
 
 template <>
 inline size_t get_array_hash<memory_desc_t>(
-        size_t seed, const memory_desc_t *v, int size) {
-    for (int i = 0; i < size; i++) {
+        size_t seed, const memory_desc_t *v, dim_t size) {
+    for (dim_t i = 0; i < size; i++) {
         seed = hash_combine(seed, get_md_hash(v[i]));
     }
     return seed;
@@ -118,8 +118,8 @@ inline size_t get_array_hash(
 
 template <>
 inline size_t get_array_hash<data_type_t>(
-        size_t seed, const data_type_t *v, int size) {
-    for (int i = 0; i < size; i++) {
+        size_t seed, const data_type_t *v, dim_t size) {
+    for (dim_t i = 0; i < size; i++) {
         seed = hash_combine(seed, static_cast<size_t>(v[i]));
     }
     return seed;

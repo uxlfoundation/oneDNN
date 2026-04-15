@@ -439,6 +439,8 @@ static void fill_dense_fp_values(data_kind_t kind, const prb_t *prb,
     cfg_t::density_args_t density_args;
     density_args.data_kind = kind;
     density_args.n_acc = prb->k;
+    density_args.has_dynamic_dst_scaling
+            = prb->attr.scales.get(DNNL_ARG_DST).is_dynamic();
     const auto density = cfg.get_density(density_args);
 
     const auto &e_zp_src = prb->attr.zero_points.get(DNNL_ARG_SRC);

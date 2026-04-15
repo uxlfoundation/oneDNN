@@ -534,16 +534,6 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_product_t product, int stepping,
         return nullptr;
     });
 
-    // If both A/B are integers, we can use integer dpas/accumulation
-    // but only if there are no grouped scales (in these cases,
-    // we apply scales before dpas, and we must use fp dpas)
-    bool allow = gpu_utils::dev_getenv("ALLOW_IACC", true);
-    bool is_int = problem.Ta_ext.isInteger() && problem.Tb_ext.isInteger();
-    if (problem.asPtrDims < 1 && problem.bsPtrDims < 1 && is_int && allow) {
-        match_params.push_back(base);
-        match_params.back().selector.precisions[2] = "I";
-    }
-
     eval_params_.sizes = base.sizes;
     eval_params_.alpha = alpha;
     eval_params_.beta = beta;

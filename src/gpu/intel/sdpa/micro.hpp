@@ -391,6 +391,7 @@ struct micro_bwd_t : public primitive_t {
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
+            using smask_t = primitive_attr_t::skip_mask_t;
 
             VCHECK_SDPA_COND(!is_fwd(), VERBOSE_BAD_PROPKIND);
 
@@ -474,6 +475,9 @@ struct micro_bwd_t : public primitive_t {
                     dnnl_dt2str(desc()->diff_key_md()->data_type),
                     dnnl_dt2str(desc()->diff_val_md()->data_type),
                     dnnl_dt2str(diff_dst_md()->data_type));
+
+            VCHECK_SDPA_COND(attr()->has_default_values(smask_t::dropout),
+                    VERBOSE_UNSUPPORTED_ATTR);
 
             CHECK(init_default_ws());
             VCHECK_SDPA_COND(compare_ws(hint_fwd_pd_), VERBOSE_WS_MISMATCH);

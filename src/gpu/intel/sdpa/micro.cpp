@@ -1303,7 +1303,6 @@ status_t micro_bwd_params_t::get_kernel_ctx(
     kernel_ctx.define_int("USE_SYSTOLIC_UKERNEL", use_systolic_ukernel);
     kernel_ctx.define_int("WITH_DROPOUT", dropout);
     kernel_ctx.define_int("DROPOUT_HOST_SCALARS", dropout_host_scalars);
-    kernel_ctx.define_int("DROPOUT_OUTPUT_MASK", dropout_output_mask);
 
     micro::HWInformation hw_info;
     gemmstone::GEMMProblem problem_kq, problem_vs;
@@ -1515,13 +1514,15 @@ static void append_msk_offs(
 
 template <typename conf_t>
 static status_t append_dropout_args(const exec_ctx_t &ctx,
-        compute::kernel_arg_list_t &arg_list, const conf_t &conf) {
+        compute::kernel_arg_list_t &arg_list, const conf_t &conf, bool is_fwd) {
     if (!conf.dropout) return status::success;
 
     const auto &dropout_p = CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_PROBABILITY);
     const auto &dropout_seed = CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_SEED);
     const auto &dropout_offset = CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_OFFSET);
-    arg_list.append(CTX_OUT_STORAGE(DNNL_ARG_ATTR_DROPOUT_MASK));
+    if (is_fwd) {
+        arg_list.append(CTX_OUT_STORAGE(DNNL_ARG_ATTR_DROPOUT_MASK));
+    }
     arg_list.append(static_cast<int>(conf.dropout_offset));
     if (conf.dropout_host_scalars) {
         int64_t scalar_seed = 0;
@@ -1653,7 +1654,7 @@ status_t micro_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 
     arg_list.append(remainder_k);
 
-    CHECK(append_dropout_args(ctx, arg_list, pd()->conf));
+    CHECK(append_dropout_args(ctx, arg_list, pd()->conf, /*is_fwd*/ true));
     compute::range_t lws = {(size_t)pd()->sg_size(), (size_t)sg_per_wg, 1};
     compute::range_t gws = lws;
 
@@ -1903,7 +1904,7 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     } else {
         arg_list.append(scale);
     }
-    CHECK(append_dropout_args(ctx, arg_list, pd()->conf));
+    CHECK(append_dropout_args(ctx, arg_list, pd()->conf, /* is_fwd*/ false));
     arg_list.append((int)D);
     arg_list.append((int)K);
     arg_list.append((int)Q);

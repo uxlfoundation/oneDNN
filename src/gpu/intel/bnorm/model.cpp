@@ -537,8 +537,8 @@ float get_thr_utilization_factor(float ss_util, float thr_util,
         } else { // HBM
             if (gpu_arch == compute::gpu_arch_t::xe_hpg) {
                 const float x_br
-                        = pow(2, (log2(rnd_up_pow2((int)round(ss_util))) - 4));
-                const float y_br = ss_util > 4 ? 0.9 : 0.5;
+                        = (float)rnd_up_pow2((int)round(ss_util)) / 16.f;
+                const float y_br = ss_util > 4.f ? 0.9f : 0.5f;
                 return 1.f
                         / solve_2pieces_linear_function(
                                 thr_util, 0.f, x_br, 32, 0.f, y_br, 1.f);
@@ -546,7 +546,7 @@ float get_thr_utilization_factor(float ss_util, float thr_util,
             } else if (gpu_arch >= compute::gpu_arch_t::xe_hpc) {
                 float ss_util_adj = std::min(ss_util, 1.0f);
                 float thr_util_adj = std::min(thr_util, 1.0f);
-                const float y_br = ss_util_adj < 0.25 ? 0.9 : 0.7;
+                const float y_br = ss_util_adj < 0.25f ? 0.9f : 0.7f;
                 return 1.f
                         / solve_2pieces_linear_function(
                                 thr_util_adj, 0.f, 0.125f, 1.f, 0.f, y_br, 1.f);
@@ -850,7 +850,7 @@ status_t get_params_by_model(nhwc_params_t &conf, const pd_t *pd,
     if (!conf.name##_param().is_overridden()) conf.set_##name(val);
 
     // save best params to conf
-    conf.expected_time_ms = best_expected_time * 1e-6;
+    conf.expected_time_ms = best_expected_time * 1e-6f;
     // Some parameters can be set by tuning procedure or taken from table.
     // Other parametes to be set by model.
     SAVE_PARAM(use_fused_atomics_reduction,

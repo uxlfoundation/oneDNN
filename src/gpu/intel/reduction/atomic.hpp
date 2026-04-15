@@ -109,7 +109,7 @@ struct atomic_t : public primitive_t {
         status_t init_finalization_pd(impl::engine_t *engine);
         void init_scratchpad();
 
-        int div = 0;
+        dim_t div = 0;
         float eps = 1, power = 1;
         std::vector<atomic_conf_t> phases;
         bool needs_finalization = false;

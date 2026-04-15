@@ -31,7 +31,8 @@ using pd_t = gpu_reduction_pd_t;
 struct conf_t {
     // Used by reference implementation
     alg_kind_t alg;
-    int ndims, div;
+    int ndims;
+    dim_t div;
     float eps, power;
     dim_t src_dims[MAX_NDIMS], reduce_dims[MAX_NDIMS], dst_dims[MAX_NDIMS];
     bool is_reduction_dim[MAX_NDIMS];

@@ -43,6 +43,12 @@ float cfg_t::get_density(const cfg_t::density_args_t &density_args) const {
     // bound.
     float safe_density = (float)safe_n_acc / density_args.n_acc;
     if (is_int8()) safe_density *= 3.f;
+    // When dynamic scaling is used, it gets divided by a big number, which,
+    // to produce meaningful output values, should be of comparable order. Thus,
+    // dynamic_fp intermediate values are divided by `57344.f`, and mx values
+    // are divided by `.f`. For this case, fill densier than the output data
+    // type allows.
+    if (density_args.has_dynamic_dst_scaling) safe_density = 0.5f;
     density = MIN2(density, safe_density);
 
     BENCHDNN_PRINT(6, "%s safe_n_acc=%d density=%f\n", "[FILL_CFG]",
@@ -57,7 +63,7 @@ cfg_t::cfg_entry_t::cfg_map_t cfg_t::get_cfg_map(data_kind_t kind) const {
             {{dnnl_f32}, {-64, 64}},
             {{dnnl_bf16}, {-4, 4}},
             {{dnnl_f16}, {-4, 4}},
-            {{dnnl_f4_e2m1}, {0, 1}},
+            {{dnnl_f4_e2m1}, {-4, 4}},
             {{dnnl_f8_e5m2}, {-4, 4}},
             {{dnnl_f8_e4m3}, {-4, 4}},
             {{dnnl_s8}, {-4, 4}},
@@ -69,7 +75,7 @@ cfg_t::cfg_entry_t::cfg_map_t cfg_t::get_cfg_map(data_kind_t kind) const {
             {{dnnl_f32}, {-128, 128}},
             {{dnnl_bf16}, {-2, 2}}, // Must be same as f16 for graph's SDPA.
             {{dnnl_f16}, {-2, 2}},
-            {{dnnl_f4_e2m1}, {-1, 1}},
+            {{dnnl_f4_e2m1}, {-4, 4}},
             {{dnnl_f8_e5m2}, {-2, 2}},
             {{dnnl_f8_e4m3}, {-2, 2}},
             {{dnnl_s8}, {-4, 4}},

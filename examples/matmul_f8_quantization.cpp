@@ -79,7 +79,7 @@ float decode_f8_e4m3(uint8_t f8_val) {
         result = (float)mant / 8.0f * powf(2.0f, -6);
     } else {
         // Normal: (1 + mant/2^(3)) * 2^(exp-7)
-        result = (1.0f + (float)mant / 8.0f) * powf(2.0f, (int)exp - 7);
+        result = (1.0f + (float)mant / 8.0f) * powf(2.0f, (float)exp - 7.f);
     }
 
     return sign ? -result : result;
@@ -113,7 +113,7 @@ float decode_f8_e5m2(uint8_t f8_val) {
         result = (float)mant / 4.0f * powf(2.0f, -14);
     } else {
         // Normal: (1 + mant/2^(2)) * 2^(exp-15)
-        result = (1.0f + (float)mant / 4.0f) * powf(2.0f, (int)exp - 15);
+        result = (1.0f + (float)mant / 4.0f) * powf(2.0f, (float)exp - 15.f);
     }
 
     return sign ? -result : result;

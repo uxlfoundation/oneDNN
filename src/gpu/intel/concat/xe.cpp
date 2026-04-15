@@ -43,9 +43,10 @@ std::pair<int, int> xe_t::pd_t::calculate_iter_dim_idx_chunk(
     }
     const int iter_dim_idx = max_dim_idx;
     const dim_t all_elems = utils::array_product(dst_dims, conf.ndims);
-    const dim_t max_iter_dim_chunk = 1024;
+    const int max_iter_dim_chunk = 1024;
     const int min_threads = num_threads * 4;
-    dim_t iter_dim_chunk = std::min(dst_dims[iter_dim_idx], max_iter_dim_chunk);
+    int iter_dim_chunk = static_cast<int>(
+            std::min<dim_t>(dst_dims[iter_dim_idx], max_iter_dim_chunk));
     const auto get_num_threads = [&]() {
         return utils::div_up(all_elems, iter_dim_chunk * conf.sub_group_size);
     };
@@ -123,7 +124,7 @@ status_t xe_t::pd_t::init_conf(impl::engine_t *engine) {
     conf.concat_axis = pd->concat_dim();
 
     dim_t max_elems = dst_mdw.nelems();
-    int concat_axis_end = 0;
+    dim_t concat_axis_end = 0;
     conf.scales_mask = 0;
     for (int i = 0; i < conf.n; ++i) {
         const memory_desc_wrapper src_mdw(pd->src_md(i));

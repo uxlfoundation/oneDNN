@@ -428,7 +428,7 @@ void compress(memory_desc_t &a, memory_desc_t &b, int &a_mask, int &b_mask) {
 #undef NO_IDX
 
 void fix_steps(dimensions_t &blk, const dimensions_t &pkt) {
-    int steps[MAX_NDIMS] = {1, 1, 1, 1, 1, 1};
+    dim_t steps[MAX_NDIMS] = {1, 1, 1, 1, 1, 1};
     for (size_t i = 0; i < pkt.size(); i++) {
         steps[pkt[i].idx] *= pkt[i].size;
     }
@@ -564,8 +564,8 @@ dimensions_t fix_order_to(dimensions_t input, dimensions_t ref) {
     return ret;
 }
 
-int check_size(const dimensions_t &block) {
-    int length = 1;
+dim_t check_size(const dimensions_t &block) {
+    dim_t length = 1;
     for (size_t i = 0; i < block.size(); i++) {
         length *= block[i].size;
     }

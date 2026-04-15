@@ -304,7 +304,7 @@ public:
         return is_u4() || is_u8() || is_u16() || is_u32() || is_u64();
     }
 
-    bool is_scalar() const { return elems() == 1; }
+    bool is_scalar() const { return *this == base(); }
 
     bool is_mutable() const { return any(attr() & attr_t::mut); }
 

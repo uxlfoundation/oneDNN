@@ -500,9 +500,9 @@ status_t def_post_ops_cfg(compute::kernel_ctx_t &kernel_ctx,
     };
     auto define_int = [&](const std::string &name, int value,
                               std::initializer_list<int> inlines = {}) {
-        for (float v : inlines) {
+        for (int v : inlines) {
             if (v == value) {
-                kernel_ctx.define_float(name.c_str(), value);
+                kernel_ctx.define_int(name.c_str(), value);
                 return;
             }
         }

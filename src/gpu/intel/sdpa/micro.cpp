@@ -1616,7 +1616,7 @@ status_t micro_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
         if (status != status::success) return status;
         scalar_scale = dnnl::impl::cpu::io::load_float_value(
                 pd()->desc()->scale_md()->data_type, &scalar_scale, 0);
-        inv_scalar_scale = 1. / scalar_scale;
+        inv_scalar_scale = 1.f / scalar_scale;
     }
 
     int mask_type = static_cast<int>(pd()->desc()->mask_type);
@@ -1813,7 +1813,7 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
         if (status != status::success) return status;
         scalar_scale = dnnl::impl::cpu::io::load_float_value(
                 pd()->desc()->scale_md()->data_type, &scalar_scale, 0);
-        inv_scalar_scale = 1. / scalar_scale;
+        inv_scalar_scale = 1.f / scalar_scale;
     }
 
     /// preprocess kernel

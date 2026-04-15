@@ -68,7 +68,7 @@ struct gemm_t : public primitive_t {
                     is_dense_format_kind(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
             auto maybe_reshape = [&]() -> status_t {
-                int batch_b_dims = 1;
+                dim_t batch_b_dims = 1;
                 for (int i = 0; i < b_md->ndims - 2; i++) {
                     batch_b_dims *= b_md->dims[i];
                 }
@@ -193,8 +193,8 @@ struct gemm_t : public primitive_t {
                         auto mask = po.prelu.mask;
                         int new_mask = 0;
                         int batch_idx = reshape_size - 1;
-                        int batch_dim = 1;
-                        int mask_dim = 1;
+                        dim_t batch_dim = 1;
+                        dim_t mask_dim = 1;
                         //get mask for batch dim
                         for (int i = 0; i < c_md->ndims - batch_idx; i++) {
                             if (mask >> i & 1) {

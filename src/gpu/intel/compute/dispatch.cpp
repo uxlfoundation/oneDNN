@@ -118,7 +118,7 @@ dispatch_t::dispatch_t(const engine_t *engine, const memory_desc_t *md)
             sorted_strides[i] = {i, strides[i]};
             for (int j = 0; j < blocking.inner_nblks; j++) {
                 if (blocking.inner_idxs[j] == i) {
-                    int str = 1;
+                    dim_t str = 1;
                     for (int k = blocking.inner_nblks - 1; k > j; k--)
                         str *= blocking.inner_blks[k];
                     sorted_strides[i] = {i, str};

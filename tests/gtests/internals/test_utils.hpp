@@ -92,10 +92,34 @@ void move_data(dnnl::engine &eng, dnnl::stream &strm, std::vector<T> &v,
                 .execute(strm, (to_mem) ? vmem : mem, (to_mem) ? mem : vmem);
     } else {
         strm.wait();
-        T *ptr = static_cast<T *>(mem.map_data());
+        void *ptr = static_cast<void *>(mem.map_data());
         if (!ptr) throw std::runtime_error("get_data_handle returned nullptr.");
         for (size_t i = 0; i < v.size(); ++i) {
-            v[i] = ptr[i];
+            switch (mem.get_desc().get_data_type()) {
+                case dnnl::memory::data_type::bf16:
+                    v[i] = static_cast<T>(
+                            reinterpret_cast<bfloat16_t *>(ptr)[i]);
+                    break;
+                case dnnl::memory::data_type::f16:
+                    v[i] = static_cast<T>(
+                            reinterpret_cast<float16_t *>(ptr)[i]);
+                    break;
+                case dnnl::memory::data_type::f32:
+                    v[i] = static_cast<T>(reinterpret_cast<float *>(ptr)[i]);
+                    break;
+                case dnnl::memory::data_type::s32:
+                    v[i] = static_cast<T>(reinterpret_cast<int *>(ptr)[i]);
+                    break;
+                case dnnl::memory::data_type::s8:
+                    v[i] = static_cast<T>(reinterpret_cast<int8_t *>(ptr)[i]);
+                    break;
+                case dnnl::memory::data_type::u8:
+                    v[i] = static_cast<T>(reinterpret_cast<uint8_t *>(ptr)[i]);
+                    break;
+                default:
+                    throw std::runtime_error(
+                            "Unsupported data type in move_data");
+            }
         }
         mem.unmap_data(ptr);
         strm.wait();

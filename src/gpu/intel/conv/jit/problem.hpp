@@ -192,7 +192,7 @@ public:
     data_type_t wei_data_type = data_type::undef;
     data_type_t dst_data_type = data_type::undef;
     data_type_t bia_data_type = data_type::undef;
-    fpmath_mode_t fpmath_mode = fpmath_mode::strict;
+    accumulation_mode_t accumulation_mode = accumulation_mode::strict;
 
     bool is_fwd = false;
     bool is_bwd_d = false;

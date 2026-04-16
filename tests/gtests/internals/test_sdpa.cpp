@@ -2939,6 +2939,7 @@ using sdpa_test = sdpa_test_t<sdpa_dims_t>;
 using sdpa_test_datatypes = sdpa_test_t<sdpa_dims_t_tuple>;
 using sdpa_bwd_test = sdpa_test_t<sdpa_dims_t>;
 using sdpa_bwd_test_datatypes = sdpa_test_t<sdpa_dims_t_tuple>;
+using sdpa_bwd_tail_regression_test = sdpa_test_t<sdpa_dims_t>;
 
 // clang-format off
 
@@ -3250,6 +3251,14 @@ GPU_TEST_P(sdpa_bwd_test, compare_bwd) {
     compare_bwd();
 }
 
+GPU_TEST_P(sdpa_bwd_tail_regression_test, compare_bwd_repeat) {
+    // Repeat to make sporadic tail-path mismatches reproducible.
+    constexpr int kIters = 20;
+    for (int i = 0; i < kIters; ++i) {
+        compare_bwd();
+    }
+}
+
 GPU_TEST_P(sdpa_test, perf) {
     perf();
 }
@@ -3384,6 +3393,13 @@ INSTANTIATE_TEST_SUITE_P(dropout_backward_minimal, sdpa_bwd_test,
                         dropout_config_t {0.25f, 4444, mdt::s64, 123456, true,
                                 memory::format_tag::undef}}),
         &print_to_string);
+
+        INSTANTIATE_TEST_SUITE_P(dropout_backward_tail_mask_regression,
+            sdpa_bwd_tail_regression_test,
+            testing::Values(sdpa_dims_t {SDPA_DIMS_DROPOUT_SHARED_BASE,
+                dropout_config_t {0.75f, 12345678, mdt::s64, 0, false,
+                    memory::format_tag::undef}}),
+            &print_to_string);
 #undef SDPA_DIMS_DROPOUT_SHARED_BASE_TRANSPOSED
 #undef SDPA_DIMS_DROPOUT_SHARED_BASE
 #undef SDPA_DIMS_DROPOUT_SHARED_GQA

@@ -505,8 +505,10 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(memory_desc_t &B_md,
                     = memory_desc_matches_tag(B_md, plain_tensor_layout_tag)
                     && memory_desc_matches_tag(
                             B_md, transposed_tensor_layout_tag);
+            const bool treat_as_plain = plain_transposed_matched && bgmmc.N == 1
+                    && !bgmmc.is_int4_weights;
             if (bgmmc.wei_tag == format_tag::undef
-                    || plain_transposed_matched) {
+                    || (plain_transposed_matchedi && !treat_as_plain)) {
                 if (gemm_based::check_gemm_input_format(B_md)) {
                     // Note: Here we batch layout may not be accurately represented
                     // by the wei_tag string, due to all the permutations of the

@@ -5615,12 +5615,14 @@ struct jit_brgemm_matmul_copy_b_cvt_bf16_t
         , req_zp_b_shift_(
                   conf_->has_zero_point_b && conf_->with_wei_decompression)
         , req_apply_wei_scales_(conf_->apply_scales_in_buffer_b)
-        , reserved_regs_(is_src_f4_ && req_apply_wei_scales_ ? 7
-                          : req_apply_wei_scales_            ? 6
-                          : is_src_f4_                       ? 1
-                          : req_zp_b_shift_                  ? 4
-                          : is_src_int4_                     ? 1
-                                                             : 0)
+        , reserved_regs_([&]() {
+            int n = 0;
+            if (is_src_4bit_) n = nstl::max(n, 1); // vmm_permd(0)
+            if (req_zp_b_shift_) n = nstl::max(n, 4); // + zp/tmp(1..3)
+            if (req_apply_wei_scales_) n = nstl::max(n, 6); // + scales(4..5)
+            if (is_src_f4_) n = nstl::max(n, 7); // + f4_lookup_table(6)
+            return n;
+        }())
         , is_wei_grouped_over_k_(
                   conf_->is_wei_zp_per_k || conf_->is_wei_scale_per_k) {}
 

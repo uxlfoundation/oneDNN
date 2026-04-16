@@ -350,27 +350,30 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
     , tf32_dt(f32_dt
               && one_of(attr.fpmath_.mode_, fpmath_mode::tf32, fpmath_mode::any)
               && isa == avx10_2_amx_2)
+    , bf16_with_f4_wei_dt(bgmmc.src_dt == bf16
+              && one_of(bgmmc.dst_dt, bf16, f32)
+              && bgmmc.wei_dt == data_type::f4_e2m1)
+    , f16_with_f4_wei_dt(bgmmc.src_dt == f16
+              && one_of(bgmmc.dst_dt, f16, f32)
+              && bgmmc.wei_dt == data_type::f4_e2m1)
+    , f32_with_f4_wei_dt(everyone_is(f32, bgmmc.src_dt, bgmmc.dst_dt)
+              && bgmmc.wei_dt == data_type::f4_e2m1)
     , weights_decompression_support(
-              one_of(bgmmc.wei_dt, u8, s8, u4, s4, data_type::f4_e2m1)
-              && one_of(attr.fpmath_.mode_, fpmath_mode::bf16, fpmath_mode::f16,
-                      fpmath_mode::strict, fpmath_mode::any)
-              && IMPLICATION(attr.fpmath_.mode_ == fpmath_mode::f16,
-                      bgmmc.src_dt == f16)
-              && IMPLICATION(attr.fpmath_.mode_ == fpmath_mode::bf16,
-                      bgmmc.src_dt == bf16)
-              // f4_e2m1 can be losslessly upconverted to bf16,
-              // so strict mode should not restrict src to f32.
-              && IMPLICATION(attr.fpmath_.mode_ == fpmath_mode::strict
-                              && bgmmc.wei_dt != data_type::f4_e2m1,
-                      bgmmc.src_dt == f32)
-              && (attr.fpmath_.apply_to_int_
-                      || bgmmc.wei_dt == data_type::f4_e2m1))
+              bf16_with_f4_wei_dt || f16_with_f4_wei_dt || f32_with_f4_wei_dt
+              || (one_of(bgmmc.wei_dt, u8, s8, u4, s4)
+                      && one_of(attr.fpmath_.mode_, fpmath_mode::bf16,
+                              fpmath_mode::f16, fpmath_mode::strict,
+                              fpmath_mode::any)
+                      && IMPLICATION(attr.fpmath_.mode_ == fpmath_mode::f16,
+                              bgmmc.src_dt == f16)
+                      && IMPLICATION(attr.fpmath_.mode_ == fpmath_mode::bf16,
+                              bgmmc.src_dt == bf16)
+                      && IMPLICATION(attr.fpmath_.mode_ == fpmath_mode::strict,
+                              bgmmc.src_dt == f32)
+                      && attr.fpmath_.apply_to_int_))
     , bf16_with_int_wei_dt(weights_decompression_support && bgmmc.src_dt == bf16
               && one_of(bgmmc.dst_dt, bf16, f32)
               && one_of(bgmmc.wei_dt, u8, s8, u4, s4))
-    , bf16_with_f4_wei_dt(weights_decompression_support && bgmmc.src_dt == bf16
-              && one_of(bgmmc.dst_dt, bf16, f32)
-              && bgmmc.wei_dt == data_type::f4_e2m1)
     // Keep this var separate from f16_dt to not slip f16:f16 on avx512_core and
     // avx2 as there's no kernel for such combination.
     , f32_f16_dt(bgmmc.src_dt == f32 && bgmmc.wei_dt == f16
@@ -382,15 +385,9 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
     , f16_with_int_wei_dt(weights_decompression_support && bgmmc.src_dt == f16
               && one_of(bgmmc.dst_dt, f16, f32)
               && one_of(bgmmc.wei_dt, u8, s8, u4, s4))
-    , f16_with_f4_wei_dt(weights_decompression_support && bgmmc.src_dt == f16
-              && one_of(bgmmc.dst_dt, f16, f32)
-              && bgmmc.wei_dt == data_type::f4_e2m1)
     , f32_with_int_wei_dt(weights_decompression_support
               && everyone_is(f32, bgmmc.src_dt, bgmmc.dst_dt)
               && one_of(bgmmc.wei_dt, u8, s8, u4, s4))
-    , f32_with_f4_wei_dt(weights_decompression_support
-              && everyone_is(f32, bgmmc.src_dt, bgmmc.dst_dt)
-              && bgmmc.wei_dt == data_type::f4_e2m1)
     , f4_via_convert_dt(bgmmc.src_dt == f32
               && bgmmc.wei_dt == data_type::f4_e2m1 && one_of(bgmmc.dst_dt, f32)
               && is_superset(isa, avx512_core)

@@ -2321,6 +2321,8 @@ status_t init_conf(brgemm_matmul_conf_t &conf, dim_t batch, dim_t M, dim_t K,
                     data_type::s4, data_type::u4);
     const bool is_f16_with_f4_wei
             = out_type == data_type::f16 && in_type == data_type::f4_e2m1;
+    const bool is_f32_with_f4_wei
+            = out_type == data_type::f32 && in_type == data_type::f4_e2m1;
     const bool with_wei_decompression = in_type != out_type
             && utils::one_of(in_type, data_type::s8, data_type::u8,
                     data_type::s4, data_type::u4, data_type::f4_e2m1);
@@ -2367,6 +2369,7 @@ status_t init_conf(brgemm_matmul_conf_t &conf, dim_t batch, dim_t M, dim_t K,
         conf.is_bf16_with_f4_wei = is_bf16_with_f4_wei;
         conf.is_f16_with_int_wei = is_f16_with_int_wei;
         conf.is_f16_with_f4_wei = is_f16_with_f4_wei;
+        conf.is_f32_with_f4_wei = is_f32_with_f4_wei;
         conf.with_wei_decompression = with_wei_decompression;
         conf.wei_tag = in_tag;
         conf.wei_n_blk = conf.N_blk = conf.LDB = n_blk;

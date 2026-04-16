@@ -2472,13 +2472,13 @@ protected:
     * @param vmm_permd Vector register containing permutation indices for INT4 processing
     * @param dt Data type being loaded
     * @param is_tail Flag indicating if tail processing is needed
-    * @param vmm_f4_lut Vector register containing lookup table for FP4 conversion
+    * @param vmm_f4_lookup_table Vector register containing lookup table for FP4 conversion
     * (default is Vmm(4) for kernel jit_brgemm_matmul_copy_b_f32_t)
     */
     template <typename Vmm>
     void load_value(const Vmm &reg, const Xbyak::Operand &op,
             const Vmm &vmm_permd, data_type_t dt, bool is_tail = false,
-            const Vmm &vmm_f4_lut = Vmm(4)) {
+            const Vmm &vmm_f4_lookup_table = Vmm(4)) {
         using Vmm_lower_t = typename vreg_traits_t<Vmm>::Vmm_lower_t;
         const auto vmm_in = maybe_mask(reg, is_tail);
         const auto vmm_lower = Vmm_lower_t(vmm_in.getIdx());
@@ -2530,7 +2530,7 @@ protected:
                 uni_vpslld(reg | k5555, reg, 28);
                 vpsrld(reg | k5555, reg, 28);
                 vpsrld(reg | kAAAA, reg, 4);
-                vpermps(reg, reg, vmm_f4_lut);
+                vpermps(reg, reg, vmm_f4_lookup_table);
                 break;
             default: assert(!"unsupported data type");
         }
@@ -3736,7 +3736,7 @@ private:
     Vmm vmm_zp_b_shift = Vmm(2);
     Vmm vmm_permd = Vmm(3);
     Vmm vmm_wei_scales = Vmm(4);
-    Vmm vmm_f4_lut = Vmm(5);
+    Vmm vmm_f4_lookup_table = Vmm(5);
 
     void kmovx(Opmask k, unsigned w) {
         if (!isa_has_masks(conf_->isa)) return;
@@ -3849,10 +3849,10 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::copy_2x32(
             else
                 uni_vmovups(src_load, load_addr);
             load_value(src_reg, src_reg, vmm_permd, conf_->orig_wei_dt, false,
-                    vmm_f4_lut);
+                    vmm_f4_lookup_table);
         } else {
             load_value(src_reg, load_addr, vmm_permd, conf_->orig_wei_dt,
-                    is_tail, vmm_f4_lut);
+                    is_tail, vmm_f4_lookup_table);
         }
         load_zero_point(n);
         load_scales(n);
@@ -3995,7 +3995,7 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::init_masks() {
                     = {0.0f, .5f, 1.0f, 1.5f, 2.0f, 3.0f, 4.0f, 6.0f, -0.0f,
                             -.5f, -1.0f, -1.5f, -2.0f, -3.0f, -4.0f, -6.0f};
             mov(reg_tmp, reinterpret_cast<size_t>(f4_e2m1_table));
-            vmovdqa32(vmm_f4_lut, ptr[reg_tmp]);
+            vmovdqa32(vmm_f4_lookup_table, ptr[reg_tmp]);
         }
     }
 }
@@ -4264,7 +4264,7 @@ private:
     Vmm vmm_wei_scales = Vmm(1);
     Vmm vmm_permd = Vmm(2);
     Vmm vmm_zp_b_shift = Vmm(3);
-    Vmm vmm_f4_lut = Vmm(4);
+    Vmm vmm_f4_lookup_table = Vmm(4);
     Ymm ymm_tail_mask = ymm1;
 
     inline void kmovw(Opmask k, unsigned w) {
@@ -4450,7 +4450,7 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::generate() {
                 = {0.0f, .5f, 1.0f, 1.5f, 2.0f, 3.0f, 4.0f, 6.0f, -0.0f, -.5f,
                         -1.0f, -1.5f, -2.0f, -3.0f, -4.0f, -6.0f};
         mov(reg_tmp, reinterpret_cast<size_t>(f4_e2m1_table));
-        vmovdqa32(vmm_f4_lut, ptr[reg_tmp]);
+        vmovdqa32(vmm_f4_lookup_table, ptr[reg_tmp]);
     }
 
     load_common_zp_value(vmm_zp_b_shift, reg_zp_ptr);
@@ -4619,7 +4619,7 @@ private:
     // Collide with `vmm_zp_a_neg_val` as they shouldn't intersect in
     // functionality.
     Vmm vmm_wei_scales = Vmm(max_vmm_regs_ - 3);
-    Vmm vmm_f4_lut = Vmm(max_vmm_regs_ - 4);
+    Vmm vmm_f4_lookup_table = Vmm(max_vmm_regs_ - 4);
 
     void kmovw(Opmask k, unsigned w) {
         mov(regw_tmp, w);
@@ -4906,7 +4906,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
                     : static_cast<const Xbyak::Operand &>(addr);
             if (is_src_4bit_) init_tail_mask(columns_tail, true);
             load_value(src_reg, src_op, vmm_permd, conf_->orig_wei_dt, is_tail,
-                    vmm_f4_lut);
+                    vmm_f4_lookup_table);
             if (is_src_4bit_) init_tail_mask(columns_tail, false);
             load_zero_point(i, is_tail);
             load_scales(i, is_tail);
@@ -4937,7 +4937,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
                         : static_cast<const Xbyak::Operand &>(next_addr);
                 if (is_src_4bit_) init_tail_mask(columns_tail, true);
                 load_value(src_reg_next, src_op, vmm_permd, conf_->orig_wei_dt,
-                        is_tail, vmm_f4_lut);
+                        is_tail, vmm_f4_lookup_table);
                 if (is_src_4bit_) init_tail_mask(columns_tail, false);
                 load_zero_point(i, is_tail);
                 load_scales(i, is_tail);
@@ -4985,7 +4985,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
                     : static_cast<const Xbyak::Operand &>(addr);
             if (is_src_4bit_) init_tail_mask(columns_tail, true);
             load_value(src_reg, src_op, vmm_permd, conf_->orig_wei_dt, is_tail,
-                    vmm_f4_lut);
+                    vmm_f4_lookup_table);
             if (is_src_4bit_) init_tail_mask(columns_tail, false);
             load_zero_point(i, is_tail);
             load_scales(i, is_tail);
@@ -5190,10 +5190,10 @@ void jit_brgemm_matmul_copy_b_transposed_t<Ymm>::copy_row_x_col(
                 load_bytes(vmm_src, addr,
                         columns_tail * typesize_ / src_elems_per_byte_);
                 load_value(vmm_src, vmm_src, vmm_permd, conf_->orig_wei_dt,
-                        false, vmm_f4_lut);
+                        false, vmm_f4_lookup_table);
             } else {
                 load_value(vmm_src, src_op, vmm_permd, conf_->orig_wei_dt,
-                        is_tail, vmm_f4_lut);
+                        is_tail, vmm_f4_lookup_table);
             }
 
             load_zero_point(i, is_tail);
@@ -5491,7 +5491,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::generate() {
                 = {0.0f, .5f, 1.0f, 1.5f, 2.0f, 3.0f, 4.0f, 6.0f, -0.0f, -.5f,
                         -1.0f, -1.5f, -2.0f, -3.0f, -4.0f, -6.0f};
         mov(regq_tmp, reinterpret_cast<size_t>(f4_e2m1_table));
-        vmovdqa32(vmm_f4_lut, ptr[regq_tmp]);
+        vmovdqa32(vmm_f4_lookup_table, ptr[regq_tmp]);
     }
 
     load_common_zp_value(vmm_zp_b_val, reg_zp_ptr);
@@ -5669,7 +5669,7 @@ private:
     Vmm vmm_tmp = Vmm(3);
     Vmm vmm_wei_scales0 = Vmm(4);
     Vmm vmm_wei_scales1 = Vmm(5);
-    Vmm vmm_f4_lut = Vmm(6);
+    Vmm vmm_f4_lookup_table = Vmm(6);
 
     Vmm get_vmm(const int blk, const int idx) {
         const int max_isa_regs = isa_num_vregs(conf_->isa);
@@ -5749,7 +5749,7 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::init_masks() {
                     = {0.0f, .5f, 1.0f, 1.5f, 2.0f, 3.0f, 4.0f, 6.0f, -0.0f,
                             -.5f, -1.0f, -1.5f, -2.0f, -3.0f, -4.0f, -6.0f};
             mov(reg_tmp, reinterpret_cast<size_t>(f4_e2m1_table));
-            vmovdqa32(vmm_f4_lut, ptr[reg_tmp]);
+            vmovdqa32(vmm_f4_lookup_table, ptr[reg_tmp]);
         }
     }
 }
@@ -5844,9 +5844,9 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::copy_block(
         const bool is_k_tail = nrows - k < k_blk_step;
 
         load_value(src_vmm0, load_addr0, vmm_permd, conf_->orig_wei_dt, false,
-                vmm_f4_lut);
+                vmm_f4_lookup_table);
         load_value(src_vmm1, load_addr1, vmm_permd, conf_->orig_wei_dt, false,
-                vmm_f4_lut);
+                vmm_f4_lookup_table);
         get_wei_scales(n, is_n_tail, is_k_tail);
         get_zero_points(n, is_n_tail, is_k_tail);
         decompress_and_downcvt_2reg(src_vmm0, src_vmm1, vmm_zp_b_val0,

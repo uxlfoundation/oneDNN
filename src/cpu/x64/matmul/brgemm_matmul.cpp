@@ -199,9 +199,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
     auto check_attr_scales = [&]() -> bool {
         const std::vector<int> supported_args
                 = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST};
-        const std::vector<int> supported_qmodes = {
-                quantization_mode::static_sazp, quantization_mode::dynamic_mx};
-        bool ok = attr_scales_ok(supported_args, supported_qmodes);
+        bool ok = attr_scales_ok(supported_args);
         const auto &asc = attr()->scales_;
         if (!asc.has_default_values(DNNL_ARG_SRC)
                 && !asc.has_default_values(DNNL_ARG_WEIGHTS)

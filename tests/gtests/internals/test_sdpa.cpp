@@ -3290,6 +3290,12 @@ GPU_TEST_P(sdpa_bwd_test, perf_bwd) {
             quantize_type::no_quantization, no_key_transposed, \
             mask_type::no_mask, default_scale_type, accumulation_mode::f32, \
             accumulation_mode::f32
+#define SDPA_DIMS_DROPOUT_TAIL_K_BASE \
+    1, 1, 1, 33, 32, 32, 32, 32, mdt::f16, mdt::f16, mdt::undef, mdt::undef, \
+            mdt::f16, mdt::undef, mdt::undef, mdt::f16, \
+            quantize_type::no_quantization, no_key_transposed, \
+            mask_type::no_mask, default_scale_type, accumulation_mode::f32, \
+            accumulation_mode::f32
 #define SDPA_DIMS_DROPOUT_BASE_TRANSPOSED \
     1, 1, 1, 32, 32, 32, 32, 32, mdt::f16, mdt::f16, mdt::undef, mdt::undef, \
             mdt::f16, mdt::undef, mdt::undef, mdt::f16, \
@@ -3405,12 +3411,13 @@ INSTANTIATE_TEST_SUITE_P(dropout_backward_minimal, sdpa_bwd_test,
 
         INSTANTIATE_TEST_SUITE_P(dropout_backward_tail_mask_regression,
             sdpa_bwd_tail_regression_test,
-            testing::Values(sdpa_dims_t {SDPA_DIMS_DROPOUT_SHARED_BASE,
+            testing::Values(sdpa_dims_t {SDPA_DIMS_DROPOUT_TAIL_K_BASE,
                 dropout_config_t {0.75f, 12345678, mdt::s64, 0, false,
                     memory::format_tag::undef}}),
             &print_to_string);
 #undef SDPA_DIMS_DROPOUT_SHARED_BASE_TRANSPOSED
 #undef SDPA_DIMS_DROPOUT_SHARED_BASE
+#undef SDPA_DIMS_DROPOUT_TAIL_K_BASE
 #undef SDPA_DIMS_DROPOUT_SHARED_GQA
 
 // clang-format off

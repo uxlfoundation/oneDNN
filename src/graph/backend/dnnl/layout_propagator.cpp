@@ -1134,8 +1134,11 @@ static status_t layout_propagator_for_reshape_like_ops(op_ptr &op,
             out_md = reshapable_md.reshape(target_dims);
         }
 
-        std::cout << "reshaped output: "
-                  << md2fmt_str("out", out_md.get(), impl::format_kind::undef)
+        std::cout << "reshaped output: dims: "
+                  << md2dim_str(out_md.get(), dims_type_t::dims)
+                  << ", strides: "
+                  << md2dim_str(out_md.get(), dims_type_t::strides)
+                  << md2fmt_str("  out", out_md.get(), impl::format_kind::undef)
                   << std::endl;
 
         status = fill_layout_info(dst, out_md);

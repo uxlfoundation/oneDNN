@@ -123,11 +123,15 @@ void sdpa_executable_t::execute(const stream &stream,
         c_args.push_back({a.first, a.second.get()});
 
     // print the md string of arguments in args
-    std::cout << "Executing sdpa primitive with arguments:" << std::endl;
+    std::cout << "Executing sdpa_executable_t with arguments:" << std::endl;
     for (const auto &a : args) {
         std::string md_str = md2fmt_str(
                 "", a.second.get_desc().get(), impl::format_kind::undef);
-        std::cout << "arg: " << a.first << ", md: " << md_str << std::endl;
+        std::cout << "arg: " << a.first << ", md: " << md_str << ", "
+                  << md2dim_str(a.second.get_desc().get(), dims_type_t::dims)
+                  << ", "
+                  << md2dim_str(a.second.get_desc().get(), dims_type_t::strides)
+                  << std::endl;
     }
 
     sycl::event return_event;

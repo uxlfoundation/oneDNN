@@ -48,6 +48,18 @@ void memory_reparser_t::execute(const stream &stream,
     auto to = args.find(DNNL_ARG_TO);
     if (from == args.end() || to == args.end()) return {};
 
+    // print the md string of arguments in args
+    std::cout << "Executing memory_reparser_t with arguments:" << std::endl;
+    for (const auto &a : args) {
+        std::string md_str = md2fmt_str(
+                "", a.second.get_desc().get(), impl::format_kind::undef);
+        std::cout << "arg: " << a.first << ", md: " << md_str << ", "
+                  << md2dim_str(a.second.get_desc().get(), dims_type_t::dims)
+                  << ", "
+                  << md2dim_str(a.second.get_desc().get(), dims_type_t::strides)
+                  << std::endl;
+    }
+
     if (from->second.get_data_handle() == to->second.get_data_handle())
         return dummy_impl_t::execute_sycl(stream, args, deps);
     else {

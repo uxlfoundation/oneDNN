@@ -222,6 +222,7 @@ const std::vector<const kcatalog::Entry *> select(const kcatalog::Catalog &catal
         return entries;
 
     auto result = getEntries(catalog, npatterns, patterns, eparams, aux, observer);
+    entries.insert(entries.end(), result.begin(), result.end());
 
     // Architecture fallback loop.
     bool first = true;
@@ -237,8 +238,8 @@ const std::vector<const kcatalog::Entry *> select(const kcatalog::Catalog &catal
         // Type fallback loop.
         while (true) {
             if (!first) {
-                auto entries =  getEntries(catalog, npatterns, modPatterns.data(), eparams, aux, observer);
-                result.insert(result.end(), entries.begin(), entries.end());
+                auto res =  getEntries(catalog, npatterns, modPatterns.data(), eparams, aux, observer);
+                entries.insert(entries.end(), res.begin(), res.end());
             }
             first = false;
 
@@ -294,10 +295,7 @@ const std::vector<const kcatalog::Entry *> select(const kcatalog::Catalog &catal
         }
     } while (hw);
 
-    if (entries.size() > 0)
-	    evaluate(*entries[0], eparams, aux);
-
-    return result;
+    return entries;
 }
 
 template <bool upper>

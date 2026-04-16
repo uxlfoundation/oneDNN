@@ -488,9 +488,12 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
     /* Leading dimension for matrices */
     uint ldk = TRANSPOSE_K ? KEY_S3 : KEY_S2;
-    uint ldq = QRY_S2;
     uint ldv = VAL_S2;
-    uint lda = DST_S2;
+    // For single-token cases we allow the query and dst to be transposed.
+    // This workaround is needed because the gemm_desc::get_trans treats both
+    // cases equally. For Q>1 checks prevent transposed query and dst
+    uint ldq = (QRY_S2 == 1) ? QRY_S1 : QRY_S2;
+    uint lda = (DST_S2 == 1) ? DST_S1 : DST_S2;
 
 #if KEY_SCALES || KEY_ZERO_POINTS
     uint ldkq = KEY_D3;

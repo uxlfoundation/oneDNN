@@ -175,7 +175,7 @@ struct micro_fwd_t : public primitive_t {
                     utils::everyone_is(4, qry_mdw.ndims(), key_mdw.ndims(),
                             val_mdw.ndims(), dst_mdw.ndims()),
                     VERBOSE_SHAPE_RESTRICTION
-                    ": qry(%d) key(%d) val(%d) and dst(%d) must equal 4.",
+                    ": qry(%d) key(%d) val(%d) and dst(%d) must be 4d",
                     qry_mdw.ndims(), key_mdw.ndims(), val_mdw.ndims(),
                     dst_mdw.ndims());
 
@@ -187,7 +187,8 @@ struct micro_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DROPOUT);
             if (with_attn_mask()) {
                 VDISPATCH_SDPA(desc()->attn_mask_md()->ndims == 4,
-                        VERBOSE_UNSUPPORTED_TAG);
+                        VERBOSE_SHAPE_RESTRICTION ": attn_mask(%d) must be 4d",
+                        desc()->attn_mask_md()->ndims);
                 VDISPATCH_SDPA(
                         utils::one_of(
                                 desc()->attn_mask_md()->dims[mask_q_index],
@@ -404,15 +405,23 @@ struct micro_bwd_t : public primitive_t {
             VDISPATCH_SDPA(utils::everyone_is(4, desc()->qry_md()->ndims,
                                    desc()->key_md()->ndims,
                                    desc()->val_md()->ndims, dst_md()->ndims),
-                    VERBOSE_UNSUPPORTED_TAG);
+                    VERBOSE_SHAPE_RESTRICTION
+                    ": qry(%d) key(%d) val(%d) dst(%d) must be 4d",
+                    desc()->qry_md()->ndims, desc()->key_md()->ndims,
+                    desc()->val_md()->ndims, dst_md()->ndims);
             VDISPATCH_SDPA(
                     utils::everyone_is(4, desc()->diff_qry_md()->ndims,
                             desc()->diff_key_md()->ndims,
                             desc()->diff_val_md()->ndims, diff_dst_md()->ndims),
-                    VERBOSE_UNSUPPORTED_TAG);
+                    VERBOSE_SHAPE_RESTRICTION
+                    ": diff_qry(%d) diff_key(%d) diff_val(%d) diff_dst(%d) "
+                    "must be 4d",
+                    desc()->diff_qry_md()->ndims, desc()->diff_key_md()->ndims,
+                    desc()->diff_val_md()->ndims, diff_dst_md()->ndims);
             if (with_attn_mask()) {
                 VDISPATCH_SDPA(desc()->attn_mask_md()->ndims == 4,
-                        VERBOSE_UNSUPPORTED_TAG);
+                        VERBOSE_SHAPE_RESTRICTION ": attn_mask(%d) must be 4d",
+                        desc()->attn_mask_md()->ndims);
                 VDISPATCH_SDPA(
                         utils::one_of(
                                 desc()->attn_mask_md()->dims[mask_q_index],

@@ -47,10 +47,14 @@ struct ref_fwd_t : public primitive_t {
             VDISPATCH_SDPA(utils::everyone_is(4, desc()->qry_md()->ndims,
                                    desc()->key_md()->ndims,
                                    desc()->val_md()->ndims, dst_md()->ndims),
-                    VERBOSE_UNSUPPORTED_TAG);
+                    VERBOSE_SHAPE_RESTRICTION
+                    ": qry(%d) key(%d) val(%d) dst(%d) must be 4d",
+                    desc()->qry_md()->ndims, desc()->key_md()->ndims,
+                    desc()->val_md()->ndims, dst_md()->ndims);
             if (with_attn_mask()) {
                 VDISPATCH_SDPA(desc()->attn_mask_md()->ndims == 4,
-                        VERBOSE_UNSUPPORTED_TAG);
+                        VERBOSE_SHAPE_RESTRICTION ": attn_mask(%d) must be 4d",
+                        desc()->attn_mask_md()->ndims);
             }
             VDISPATCH_SDPA(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
 

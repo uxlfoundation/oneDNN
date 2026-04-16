@@ -1822,10 +1822,7 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
     }
 
     int wei_packed_elems_per_byte() const {
-        return utils::one_of(bgmmc_.orig_wei_dt, data_type::s4, data_type::u4,
-                       data_type::f4_e2m1)
-                ? 2
-                : 1;
+        return utils::one_of(bgmmc_.orig_wei_dt, s4, u4, f4_e2m1) ? 2 : 1;
     }
 
     dim_t get_data_B_kn_off(dim_t k, dim_t n) const {

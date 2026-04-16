@@ -1741,18 +1741,26 @@ status_t layout_propagator_for_sdpa(std::shared_ptr<op_t> &op,
     size_t output_idx = 0;
     value_ptr dst_val = op->get_output_value(output_idx++);
     const logical_tensor_t &out_lt = dst_val->get_logical_tensor();
-
+    std::cout << "====== layout_propagator_for_sdpa ======" << std::endl;
     dnnl::memory::desc expected_md;
     if (ltw(out_lt).is_any()) {
+        std::cout << "====== layout_propagator_for_sdpa: output is any ======"
+                  << std::endl;
         // For GQA, we need to check the layout of the dnnl_reshape output
         // following dnnl_sdpa, which is given by the user.
         if (!dst_val->get_consumers().empty()) {
+            std::cout << "====== layout_propagator_for_sdpa: output has "
+                         "consumers ======"
+                      << std::endl;
             const auto &consumer_op = dst_val->get_consumers()[0].get_op();
             const logical_tensor_t &consumer_out
                     = consumer_op.get_output_logical_tensor(0);
             if (consumer_op.get_kind() == op_kind::_reshape
                     && ltw(consumer_out).ndims() == 5
                     && ltw(consumer_out).is_strided()) {
+                std::cout << "====== layout_propagator_for_sdpa: output has "
+                             "consumers and is reshape ======"
+                          << std::endl;
                 const auto &ori_strides = ltw(consumer_out).vstrides();
                 std::vector<dim_t> strides = {ori_strides[0], ori_strides[2],
                         ori_strides[3], ori_strides[4]};
@@ -1761,6 +1769,9 @@ status_t layout_propagator_for_sdpa(std::shared_ptr<op_t> &op,
                                 ltw(out_lt).data_type()),
                         strides};
             } else {
+                std::cout << "====== layout_propagator_for_sdpa: output has "
+                             "consumers but not reshape ======"
+                          << std::endl;
                 // Set default output layout format for sdpa as acbd if user
                 // doesn't specify the layout since no reorder will be required.
                 expected_md = {ltw(out_lt).vdims(),
@@ -1769,14 +1780,26 @@ status_t layout_propagator_for_sdpa(std::shared_ptr<op_t> &op,
                         dnnl::memory::format_tag::acbd};
             }
         } else {
+            std::cout << "====== layout_propagator_for_sdpa: output has no "
+                         "consumers ======"
+                      << std::endl;
             expected_md = {ltw(out_lt).vdims(),
                     static_cast<dnnl::memory::data_type>(
                             ltw(out_lt).data_type()),
                     dnnl::memory::format_tag::acbd};
         }
     } else {
+        std::cout
+                << "====== layout_propagator_for_sdpa: output is not any ======"
+                << std::endl;
         expected_md = make_dnnl_memory_desc(out_lt);
     }
+    std::cout << "====== layout_propagator_for_sdpa: expected_md set ======"
+              << std::endl;
+    std::cout << "expected_md: "
+              << md2fmt_str("expected", expected_md.get(),
+                         impl::format_kind::undef)
+              << std::endl;
     status_t status = fill_layout_info(dst_val, expected_md);
 
     // fill scratchpads dimensions and data type to scratchpad value_t
@@ -1785,6 +1808,8 @@ status_t layout_propagator_for_sdpa(std::shared_ptr<op_t> &op,
     status = fill_layout_info(scratchpad_val, scratchpad_desc);
 
     if (op->get_attr<bool>(op_attr::is_training)) {
+        std::cout << "====== layout_propagator_for_sdpa: is training ======"
+                  << std::endl;
         value_ptr stats_val = op->get_output_value(output_idx);
         const logical_tensor_t &stats_lt = stats_val->get_logical_tensor();
         dnnl::memory::desc stats_md;
@@ -1797,6 +1822,9 @@ status_t layout_propagator_for_sdpa(std::shared_ptr<op_t> &op,
             if (consumer_op.get_kind() == op_kind::_reshape
                     && ltw(consumer_out).ndims() == 5
                     && ltw(consumer_out).is_strided()) {
+                std::cout << "====== layout_propagator_for_sdpa: output has "
+                             "consumers and is reshape ======"
+                          << std::endl;
                 const auto &ori_strides = ltw(consumer_out).vstrides();
                 std::vector<dim_t> strides = {ori_strides[0], ori_strides[2],
                         ori_strides[3], ori_strides[4]};
@@ -1807,18 +1835,27 @@ status_t layout_propagator_for_sdpa(std::shared_ptr<op_t> &op,
             } else {
                 // Set default output layout format for sdpa as acbd if user
                 // doesn't specify the layout since no reorder will be required.
+                std::cout << "====== layout_propagator_for_sdpa: output has "
+                             "consumers but not reshape ======"
+                          << std::endl;
                 stats_md = {ltw(stats_lt).vdims(),
                         static_cast<dnnl::memory::data_type>(
                                 ltw(out_lt).data_type()),
                         dnnl::memory::format_tag::acbd};
             }
         } else {
+            std::cout << "====== layout_propagator_for_sdpa: output has no "
+                         "consumers ======"
+                      << std::endl;
             expected_md = {ltw(out_lt).vdims(),
                     static_cast<dnnl::memory::data_type>(
                             ltw(out_lt).data_type()),
                     dnnl::memory::format_tag::acbd};
         }
-
+        std::cout << "stats_md: "
+                  << md2fmt_str(
+                             "stats", stats_md.get(), impl::format_kind::undef)
+                  << std::endl;
         status = fill_layout_info(stats_val, stats_md);
     }
     return status;

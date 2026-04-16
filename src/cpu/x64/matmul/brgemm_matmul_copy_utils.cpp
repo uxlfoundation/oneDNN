@@ -3659,9 +3659,8 @@ struct jit_brgemm_matmul_copy_b_bf16_t
         , wei_scales_typesize(conf->wei_scales_dt_sz)
         , src_stride(conf->copy_B_wei_stride)
         , tr_src_stride(conf_->LDB * k_blk_step * tr_typesize)
-        , is_src_int4(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
-        , is_src_f4(conf->orig_wei_dt == data_type::f4_e2m1)
-        , is_src_4bit(is_src_int4 || is_src_f4)
+        , is_src_4bit(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4,
+                  data_type::f4_e2m1))
         , is_dynamic_stride(is_runtime_value(src_stride))
         , is_dynamic_N(conf->is_runtime_N)
         , do_N_loop(conf->LDB < conf->N_blk)
@@ -3689,8 +3688,6 @@ private:
     enum { k_blk_step = 2, n_blk_step = 16 };
     const int typesize, tr_typesize, wei_scales_typesize;
     const dim_t src_stride, tr_src_stride;
-    const bool is_src_int4;
-    const bool is_src_f4;
     const bool is_src_4bit;
     const bool is_dynamic_stride;
     const bool is_dynamic_N;
@@ -3774,11 +3771,14 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::copy_2x32(
     }
 
     static constexpr int blk_sz = k_blk_step;
-    const int reserved_regs = is_src_f4 ? (req_apply_wei_scales ? 6 : 5)
-            : req_apply_wei_scales      ? 5
-            : is_src_int4               ? 4
-            : req_zp_b_shift            ? 3
-                                        : 2;
+    const bool is_src_f4_ = conf_->orig_wei_dt == data_type::f4_e2m1;
+    const bool is_src_int4_
+            = one_of(conf_->orig_wei_dt, data_type::s4, data_type::u4);
+    const int reserved_regs = is_src_f4_ ? (req_apply_wei_scales ? 6 : 5)
+            : req_apply_wei_scales       ? 5
+            : is_src_int4_               ? 4
+            : req_zp_b_shift             ? 3
+                                         : 2;
     const int max_isa_regs = isa_num_vregs(conf_->isa);
     const int max_regs_available = max_isa_regs - reserved_regs;
     const int max_unroll = max_regs_available / blk_sz;
@@ -3990,7 +3990,7 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::init_masks() {
             vmovdqa32(vmm_permd, ptr[reg_tmp]);
         }
 
-        if (is_src_f4) {
+        if (conf_->orig_wei_dt == data_type::f4_e2m1) {
             alignas(64) static constexpr const float f4_e2m1_table[16]
                     = {0.0f, .5f, 1.0f, 1.5f, 2.0f, 3.0f, 4.0f, 6.0f, -0.0f,
                             -.5f, -1.0f, -1.5f, -2.0f, -3.0f, -4.0f, -6.0f};

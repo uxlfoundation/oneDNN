@@ -1744,11 +1744,6 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         bgmmc.wei_dt = bf16;
         bgmmc.tr_a_dt_sz = types::data_type_size(bf16);
         bgmmc.tr_b_dt_sz = types::data_type_size(bf16);
-    } else if (bgmmc.is_f16_with_f4_wei && bgmmc.is_amx) {
-        bgmmc.src_dt = f16;
-        bgmmc.wei_dt = f16;
-        bgmmc.tr_a_dt_sz = types::data_type_size(f16);
-        bgmmc.tr_b_dt_sz = types::data_type_size(f16);
     } else if ((bm_conf_utils.is_f16() || bgmmc.is_f16_with_int_wei
                        || bgmmc.is_f16_with_f4_wei)
             && bgmmc.isa == avx512_core_fp16) {
@@ -1774,7 +1769,9 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         // Note 3: Since `use_buffer_b()` depends on `bgmmc.wei_tag`, which is
         // set later in the code due to its dependencies, the update of data
         // types to f32 happens below in ANCHOR: `CONVERT_F32_XF16_DATA_TYPES`.
-    } else if (bgmmc.is_f16_with_int_wei && bgmmc.isa != avx512_core_fp16) {
+    } else if ((bgmmc.is_f16_with_int_wei
+                       || (bgmmc.is_f16_with_f4_wei && bgmmc.is_amx))
+            && bgmmc.isa != avx512_core_fp16) {
         bgmmc.src_dt = f16;
         bgmmc.wei_dt = f16;
         bgmmc.tr_a_dt_sz = types::data_type_size(f16);

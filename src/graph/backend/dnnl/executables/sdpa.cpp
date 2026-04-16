@@ -18,6 +18,8 @@
 
 #include "common/sdpa_test_iface.hpp"
 
+#include "common/verbose.hpp"
+
 namespace dnnl {
 namespace impl {
 namespace graph {
@@ -119,6 +121,14 @@ void sdpa_executable_t::execute(const stream &stream,
     c_args.reserve(args.size());
     for (const auto &a : args)
         c_args.push_back({a.first, a.second.get()});
+
+    // print the md string of arguments in args
+    std::cout << "Executing sdpa primitive with arguments:" << std::endl;
+    for (const auto &a : args) {
+        std::string md_str = md2fmt_str(
+                "", a.second.get_desc().get(), impl::format_kind::undef);
+        std::cout << "arg: " << a.first << ", md: " << md_str << std::endl;
+    }
 
     sycl::event return_event;
     auto ret = dnnl_sycl_interop_primitive_execute(prim_.get(), stream.get(),

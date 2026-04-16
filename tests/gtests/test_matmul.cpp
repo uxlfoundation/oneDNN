@@ -487,26 +487,6 @@ static auto cases_ef = []() {
                      {{1, 10, 20}, data_type::f32, tag::abc}, data_type::undef},
                     {}, true, dnnl_invalid_arguments});
 
-    // FP4 types store 2 elements per byte, N must be even
-    cases.push_back({{{{10, 128}, data_type::f32, tag::ab},
-                             {{128, 21}, data_type::f4_e2m1, tag::ab},
-                             {{10, 21}, data_type::f32, tag::ab}},
-            {}, true, dnnl_invalid_arguments});
-    cases.push_back({{{{10, 128}, data_type::f32, tag::ab},
-                             {{128, 21}, data_type::f4_e3m0, tag::ab},
-                             {{10, 21}, data_type::f32, tag::ab}},
-            {}, true, dnnl_invalid_arguments});
-
-    // FP4 with odd N in batched dimensions
-    cases.push_back({{{{2, 10, 128}, data_type::f32, tag::abc},
-                             {{2, 128, 21}, data_type::f4_e2m1, tag::abc},
-                             {{2, 10, 21}, data_type::f32, tag::abc}},
-            {}, true, dnnl_invalid_arguments});
-    cases.push_back({{{{2, 3, 10, 128}, data_type::f32, tag::abcd},
-                             {{2, 3, 128, 21}, data_type::f4_e2m1, tag::abcd},
-                             {{2, 3, 10, 21}, data_type::f32, tag::abcd}},
-            {}, true, dnnl_invalid_arguments});
-
     return ::testing::ValuesIn(cases);
 };
 INSTANTIATE_TEST_SUITE_P(EF, iface, cases_ef());

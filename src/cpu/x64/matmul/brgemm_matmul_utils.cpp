@@ -625,9 +625,13 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(memory_desc_t &B_md,
             const int default_n_block = init_n_tag
                     ? get_default_n_block(format_tag::undef)
                     : bgmmc.N_blk;
+            const bool is_4bit_weights
+                    = bgmmc.is_int4_weights || bgmmc.is_f4_weights;
             bgmmc.wei_tag = blocked_B_layouts_allowed && !bgmmc.is_runtime_N
-                            && !bgmmc.is_int4_weights
+                            && !is_4bit_weights
                     ? this->pick_blocked_B_layout(default_n_block)
+                    : is_4bit_weights && bgmmc.N % 2 != 0
+                    ? transposed_tensor_layout_tag
                     : plain_tensor_layout_tag;
 
             // For N == 1 force transposed layout because copy-B kernel is
@@ -659,8 +663,10 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(memory_desc_t &B_md,
             assert(bgmmc.wei_tag != format_tag::undef
                 && "if bgmmc.is_gemv is true the format tag must be defined");
         } else {
+            const bool is_4bit_weights
+                    = bgmmc.is_int4_weights || bgmmc.is_f4_weights;
             bgmmc.wei_tag = blocked_B_layouts_allowed && !bgmmc.is_runtime_N
-                            && !bgmmc.is_int4_weights
+                            && !is_4bit_weights
                     ? memory_desc_matches_one_of_tag(B_md,
                               plain_tensor_layout_tag,
                               transposed_tensor_layout_tag,
@@ -1726,6 +1732,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.is_f32_bf16 = bm_conf_utils.is_f32_bf16();
     bgmmc.with_wei_decompression = bm_conf_utils.with_weights_decompression();
     bgmmc.is_int4_weights = one_of(bgmmc.wei_dt, data_type::s4, data_type::u4);
+    bgmmc.is_f4_weights = bgmmc.wei_dt == data_type::f4_e2m1;
     bgmmc.is_f4_via_convert = bm_conf_utils.is_f4_via_convert();
 
     if (bgmmc.is_f4_via_convert) {
@@ -1876,11 +1883,6 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.is_runtime_N = is_runtime_value(bgmmc.N);
     bgmmc.is_runtime_K = is_runtime_value(bgmmc.K);
 
-    // FP4 types store 2 elements per byte, so N must be even
-    const bool is_f4_weights = bgmmc.orig_wei_dt == data_type::f4_e2m1;
-    VCONDCHECK_BG(!is_f4_weights || bgmmc.is_runtime_N || bgmmc.N % 2 == 0,
-            VERBOSE_BAD_PARAM, "N");
-
     bgmmc.is_gemv = is_gemv_applicable(
             bgmmc, bm_conf_utils, src_md, weights_md, dst_md, attr);
 
@@ -1975,10 +1977,11 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         bgmmc.tr_b_dt_sz = types::data_type_size(f32);
     }
 
-    // int4 weights decompression only supports plain and transpose layouts
-    // TODO: enable int4 reorder and extend support to blocked weights
+    // 4-bit weights decompression only supports plain and transpose layouts
+    // TODO: enable 4-bit reorder and extend support to blocked weights
     // layout when needed
-    if (bgmmc.with_wei_decompression && bgmmc.is_int4_weights)
+    if (bgmmc.with_wei_decompression
+            && (bgmmc.is_int4_weights || bgmmc.is_f4_weights))
         VCONDCHECK_BG(bm_conf_utils.check_is_plain(bgmmc.wei_tag)
                         || bm_conf_utils.check_is_transposed(bgmmc.wei_tag),
                 VERBOSE_UNSUPPORTED_TAG);
@@ -2236,7 +2239,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     // When is_wei_batch_layout_trivial is true, we only support that
     // batch offset can be divided by 2
-    if (bgmmc.is_int4_weights) {
+    if (bgmmc.is_int4_weights || bgmmc.is_f4_weights) {
         VCONDCHECK_BG(IMPLICATION(bgmmc.is_wei_batch_layout_trivial
                                       && bgmmc.batch > 1,
                               bgmmc.B_strides[2] % 2 == 0),

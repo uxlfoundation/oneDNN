@@ -244,6 +244,7 @@ struct brgemm_matmul_conf_t {
     bool is_f32_f16 = false;
     bool is_f32_bf16 = false;
     bool is_int4_weights = false;
+    bool is_f4_weights = false;
     bool is_f4_via_convert = false;
     bool is_tf32 = false;
     bool req_wei_vnni_downconvert = false;

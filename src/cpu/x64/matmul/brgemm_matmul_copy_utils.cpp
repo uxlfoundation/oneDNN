@@ -4524,6 +4524,7 @@ struct jit_brgemm_matmul_copy_b_transposed_t
                   - (avx512_core_dot_product_
                                   ? 8
                                   : (do_compute_compensation_         ? 6
+                                                    : is_src_f4_      ? 4
                                                     : is_src_int4_    ? 2
                                                     : req_zp_b_shift_ ? 1
                                                                       : 0)))
@@ -4617,6 +4618,7 @@ private:
     // Collide with `vmm_zp_a_neg_val` as they shouldn't intersect in
     // functionality.
     Vmm vmm_wei_scales = Vmm(max_vmm_regs_ - 3);
+    Vmm vmm_f4_lut = Vmm(max_vmm_regs_ - 4);
 
     void kmovw(Opmask k, unsigned w) {
         mov(regw_tmp, w);
@@ -4640,8 +4642,8 @@ private:
         return Vmm(n_blk_step_ + i);
     }
 
-    void init_tail_mask(const int columns_tail, const bool use_int4_mask);
-    bool preload_int4(const Xmm &xmm_in, const int i, const int columns_tail,
+    void init_tail_mask(const int columns_tail, const bool use_4bit_mask);
+    bool preload_4bit(const Xmm &xmm_in, const int i, const int columns_tail,
             const bool is_tail, const dim_t offset);
     void copy_row_x_col(int nrows, int ncolumns);
     void compute_K_loop(bool is_N_tail, int curr_K_tail, bool is_first_K_iter,
@@ -4734,6 +4736,12 @@ private:
                 uni_vpslld(vmm_wei_scales, vmm_wei_scales, 16);
                 break;
             case data_type::f16: vcvtph2psx(vmm_wei_scales, addr); break;
+            case data_type::e8m0:
+                vpbroadcastb(masked_vmm, addr);
+                uni_vpmovzxbd(
+                        vmm_wei_scales, Xbyak::Xmm(vmm_wei_scales.getIdx()));
+                uni_vpslld(vmm_wei_scales, vmm_wei_scales, 23);
+                break;
             default: assert(!"unsupported wei_scales data type");
         }
     }
@@ -4758,15 +4766,15 @@ private:
 
 template <typename Vmm>
 void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::init_tail_mask(
-        const int columns_tail, const bool use_int4_mask) {
-    assert(IMPLICATION(use_int4_mask, is_src_int4_));
+        const int columns_tail, const bool use_4bit_mask) {
+    assert(IMPLICATION(use_4bit_mask, is_src_4bit_));
     assert(isa_has_masks(conf_->isa));
     if (columns_tail > 0) {
         const int dt_step = req_cvtps2xf16_ || use_fp16_instructions_
                         || use_bf16_instructions_
                 ? 1
                 : typesize_;
-        const auto tail_mask = use_int4_mask
+        const auto tail_mask = use_4bit_mask
                 ? size_t(((size_t)1 << div_up(dt_step * columns_tail, 2)) - 1)
                 : size_t(((size_t)1 << dt_step * columns_tail) - 1);
         if (req_cvtps2xf16_)
@@ -4777,34 +4785,34 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::init_tail_mask(
 }
 
 /**
- * @brief Handles special case when loading INT4 data with unaligned src_stride
- * 
- * When processing INT4 data and (i * src_stride_) % 2 != 0, we need to perform additional operations
+ * @brief Handles special case when loading 4-bit data with unaligned src_stride
+ *
+ * When processing 4-bit data and (i * src_stride_) % 2 != 0, we need to perform additional operations
  * to handle the unaligned half-byte boundaries:
- * 
+ *
  * - For small loads (< 8 bytes or tail cases): We perform a simple right shift by 4 bits
  *   to eliminate the unnecessary half-byte at the front
- * 
+ *
  * - For large loads (8 bytes): We need two registers to correctly reconstruct the data:
  *   1. Shift the first register right by 4 bits to remove leading half-byte
  *   2. Shift the second register left by 4 bits to preserve trailing half-byte
  *   3. Combine both registers with logical OR to get the correctly aligned result
- * 
+ *
  * @param xmm_in The target XMM register to store the aligned data
  * @param i Current row index
  * @param columns_tail Number of remaining columns in the tail case
  * @param is_tail Flag indicating if processing a tail section
  * @param offset Memory offset for loading from source
- * @return True if INT4 preloading was performed, false otherwise
+ * @return True if 4-bit preloading was performed, false otherwise
  */
 template <typename Vmm>
-bool jit_brgemm_matmul_copy_b_transposed_t<Vmm>::preload_int4(const Xmm &xmm_in,
+bool jit_brgemm_matmul_copy_b_transposed_t<Vmm>::preload_4bit(const Xmm &xmm_in,
         const int i, const int columns_tail, const bool is_tail,
         const dim_t offset) {
     const auto addr = maybe_EVEX_compress_addr(reg_src, offset);
-    const bool need_preload_int4 = is_src_int4_ && (i * src_stride_) % 2 != 0;
+    const bool need_preload_4bit = is_src_4bit_ && (i * src_stride_) % 2 != 0;
     const auto max_shift_sz = 8;
-    if (need_preload_int4) {
+    if (need_preload_4bit) {
         const auto load_sz = is_tail ? div_up(columns_tail, 2)
                 : req_cvtps2xf16_    ? req_cvt_bf16_k_blk_step_ / 2
                                      : k_blk_step_ / 2;
@@ -4890,14 +4898,15 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
                 || is_f16_with_f4_wei_ || conf_->is_f16_with_int_wei) {
             const auto xmm_preload = Xmm(src_reg.getIdx());
             MAYBE_UNUSED(xmm_preload);
-            const bool preloaded_int4 = preload_int4(
+            const bool preloaded_4bit = preload_4bit(
                     xmm_preload, i, columns_tail, is_tail, src_offset);
-            const auto &src_op = preloaded_int4
+            const auto &src_op = preloaded_4bit
                     ? static_cast<const Xbyak::Operand &>(xmm_preload)
                     : static_cast<const Xbyak::Operand &>(addr);
-            if (is_src_int4_) init_tail_mask(columns_tail, true);
-            load_value(src_reg, src_op, vmm_permd, conf_->orig_wei_dt, is_tail);
-            if (is_src_int4_) init_tail_mask(columns_tail, false);
+            if (is_src_4bit_) init_tail_mask(columns_tail, true);
+            load_value(src_reg, src_op, vmm_permd, conf_->orig_wei_dt, is_tail,
+                    vmm_f4_lut);
+            if (is_src_4bit_) init_tail_mask(columns_tail, false);
             load_zero_point(i, is_tail);
             load_scales(i, is_tail);
             decompress_reg(src_reg_masked, vmm_zp_b_val, vmm_wei_scales,
@@ -4920,15 +4929,15 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
                     || is_f16_with_f4_wei_ || conf_->is_f16_with_int_wei) {
                 const auto xmm_preload = Xmm(src_reg_next.getIdx());
                 MAYBE_UNUSED(xmm_preload);
-                const bool preloaded_int4 = preload_int4(
+                const bool preloaded_4bit = preload_4bit(
                         xmm_preload, i, columns_tail, is_tail, src_offset);
-                const auto &src_op = preloaded_int4
+                const auto &src_op = preloaded_4bit
                         ? static_cast<const Xbyak::Operand &>(xmm_preload)
                         : static_cast<const Xbyak::Operand &>(next_addr);
-                if (is_src_int4_) init_tail_mask(columns_tail, true);
+                if (is_src_4bit_) init_tail_mask(columns_tail, true);
                 load_value(src_reg_next, src_op, vmm_permd, conf_->orig_wei_dt,
-                        is_tail);
-                if (is_src_int4_) init_tail_mask(columns_tail, false);
+                        is_tail, vmm_f4_lut);
+                if (is_src_4bit_) init_tail_mask(columns_tail, false);
                 load_zero_point(i, is_tail);
                 load_scales(i, is_tail);
                 decompress_reg(src_next_masked, vmm_zp_b_val, vmm_wei_scales,
@@ -4963,18 +4972,20 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
         const auto src_offset = (i * src_stride_) / src_elems_per_byte_;
         const auto addr = EVEX_compress_addr(reg_src, src_offset);
         auto src_masked_reg = maybe_mask(src_reg, is_tail);
-        if ((conf_->is_f16_with_int_wei || conf_->is_f32_with_int_wei)
+        if ((conf_->is_f16_with_int_wei || conf_->is_f32_with_int_wei
+                    || conf_->is_f32_with_f4_wei)
                 && conf_->wei_dt == data_type::f32) {
             const auto xmm_preload = Xmm(src_reg.getIdx());
             MAYBE_UNUSED(xmm_preload);
-            const bool preloaded_int4 = preload_int4(
+            const bool preloaded_4bit = preload_4bit(
                     xmm_preload, i, columns_tail, is_tail, src_offset);
-            const auto &src_op = preloaded_int4
+            const auto &src_op = preloaded_4bit
                     ? static_cast<const Xbyak::Operand &>(xmm_preload)
                     : static_cast<const Xbyak::Operand &>(addr);
-            if (is_src_int4_) init_tail_mask(columns_tail, true);
-            load_value(src_reg, src_op, vmm_permd, conf_->orig_wei_dt, is_tail);
-            if (is_src_int4_) init_tail_mask(columns_tail, false);
+            if (is_src_4bit_) init_tail_mask(columns_tail, true);
+            load_value(src_reg, src_op, vmm_permd, conf_->orig_wei_dt, is_tail,
+                    vmm_f4_lut);
+            if (is_src_4bit_) init_tail_mask(columns_tail, false);
             load_zero_point(i, is_tail);
             load_scales(i, is_tail);
             decompress_reg(src_masked_reg, vmm_zp_b_val, vmm_wei_scales,
@@ -5168,20 +5179,20 @@ void jit_brgemm_matmul_copy_b_transposed_t<Ymm>::copy_row_x_col(
             const auto addr = maybe_EVEX_compress_addr(reg_src, src_offset);
             const auto xmm_preload = Xmm(vmm_src.getIdx());
             MAYBE_UNUSED(xmm_preload);
-            const bool preloaded_int4 = preload_int4(
+            const bool preloaded_4bit = preload_4bit(
                     xmm_preload, i, columns_tail, is_tail, src_offset);
-            const auto &src_op = preloaded_int4
+            const auto &src_op = preloaded_4bit
                     ? static_cast<const Xbyak::Operand &>(xmm_preload)
                     : static_cast<const Xbyak::Operand &>(addr);
 
-            if (is_tail && !preloaded_int4) {
+            if (is_tail && !preloaded_4bit) {
                 load_bytes(vmm_src, addr,
                         columns_tail * typesize_ / src_elems_per_byte_);
-                load_value(
-                        vmm_src, vmm_src, vmm_permd, conf_->orig_wei_dt, false);
+                load_value(vmm_src, vmm_src, vmm_permd, conf_->orig_wei_dt,
+                        false, vmm_f4_lut);
             } else {
                 load_value(vmm_src, src_op, vmm_permd, conf_->orig_wei_dt,
-                        is_tail);
+                        is_tail, vmm_f4_lut);
             }
 
             load_zero_point(i, is_tail);
@@ -5461,7 +5472,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::generate() {
         kmovw(k0F0F, 0x0f0f);
         kmovw(kF0F0, 0xf0f0);
     }
-    if (is_src_int4_) {
+    if (is_src_4bit_) {
         if (is_superset(conf_->isa, avx512_core)) {
             alignas(64) static constexpr const uint32_t int4_permute[16]
                     = {0, 8, 1, 9, 2, 10, 3, 11, 4, 12, 5, 13, 6, 14, 7, 15};
@@ -5473,6 +5484,13 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::generate() {
             mov(regq_tmp, reinterpret_cast<size_t>(int4_permute_avx2));
             vmovdqa(vmm_permd, ptr[regq_tmp]);
         }
+    }
+    if (is_src_f4_ && is_superset(conf_->isa, avx512_core)) {
+        alignas(64) static constexpr const float f4_e2m1_table[16]
+                = {0.0f, .5f, 1.0f, 1.5f, 2.0f, 3.0f, 4.0f, 6.0f, -0.0f, -.5f,
+                        -1.0f, -1.5f, -2.0f, -3.0f, -4.0f, -6.0f};
+        mov(regq_tmp, reinterpret_cast<size_t>(f4_e2m1_table));
+        vmovdqa32(vmm_f4_lut, ptr[regq_tmp]);
     }
 
     load_common_zp_value(vmm_zp_b_val, reg_zp_ptr);

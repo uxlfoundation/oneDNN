@@ -175,13 +175,12 @@ status_t micro_fwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     bool use_fma_config = !use_systolic_ukernel_;
     bool is_f16_accumulate_gemm = (kq_acc_dt() == data_type::f16)
             || (vs_acc_dt() == data_type::f16);
-    VCHECK_SDPA_COND(
-            IMPLICATION(is_f16_accumulate_gemm, !use_systolic_ukernel_),
+    VDISPATCH_SDPA(IMPLICATION(is_f16_accumulate_gemm, !use_systolic_ukernel_),
             "f16 accumulate only available with FMA matmul."); //TODO: update once matmul primitive supports systolic f16 accumulate for testing
     config = choose_config(arch_, d->head_size(), d->keys(), thin_q, quantized,
             is_integrated, use_fma_config, is_f32, is_f16_accumulate_gemm);
 
-    VCHECK_SDPA_COND(config != nullptr,
+    VDISPATCH_SDPA(config != nullptr,
             "No suitable kernel configuration found for the given problem "
             "size and attributes.");
 
@@ -201,7 +200,7 @@ status_t micro_fwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             config->unroll_n_vs * config->wg_n_vs, config->unroll_m_vs,
             config->unroll_n_vs, config->wg_m_vs, config->wg_n_vs);
 
-    VCHECK_SDPA_COND(config->unroll_n_kq * config->wg_n_kq
+    VDISPATCH_SDPA(config->unroll_n_kq * config->wg_n_kq
                             == config->unroll_n_vs * config->wg_n_vs
                     && config->unroll_n_kq % config->unroll_n_vs == 0,
             "[CONFIG] The config KQ work_group tile N(%d) axis must equal "
@@ -211,7 +210,7 @@ status_t micro_fwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             config->unroll_n_vs * config->wg_n_vs, config->unroll_n_kq,
             config->unroll_n_vs);
 
-    VCHECK_SDPA_COND(config->unroll_m_vs * config->wg_m_vs >= d->head_size(),
+    VDISPATCH_SDPA(config->unroll_m_vs * config->wg_m_vs >= d->head_size(),
             "The vs matmul config work_group tile M(%d*%d=%d) axis must be "
             "greater than or equal to head size(%ld)",
             config->unroll_m_vs, config->wg_m_vs,
@@ -424,7 +423,7 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     arch_ = dev_info->gpu_arch();
     auto *d = desc();
 
-    VCHECK_SDPA_COND(compute::mayiuse_microkernels(intel_engine),
+    VDISPATCH_SDPA(compute::mayiuse_microkernels(intel_engine),
             "Microkernels not supported by the OpenCL driver.");
 
     /* Retrieve pre-tuned kernel configuration */
@@ -447,7 +446,7 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     config = choose_bwd_config(arch_, d->head_size(), d->queries(), d->keys(),
             thin_q, quantized, is_integrated, use_fma_config, is_f32);
 
-    VCHECK_SDPA_COND(config != nullptr,
+    VDISPATCH_SDPA(config != nullptr,
             "No suitable kernel configuration found for the given problem "
             "size and attributes.");
 
@@ -472,11 +471,10 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             config->unroll_n_DBr, config->wg_m_DBr, config->wg_n_DBr);
 
     // Bc(Br) == (D)Bc
-    VCHECK_SDPA_COND(
-            ((config->unroll_m_BcBr * config->wg_m_BcBr
-                     == config->unroll_n_DBc * config->wg_n_DBc)
-                    && ((config->wg_m_DBc * config->wg_n_DBc)
-                            <= (config->wg_m_BcBr * config->wg_n_BcBr))),
+    VDISPATCH_SDPA(((config->unroll_m_BcBr * config->wg_m_BcBr
+                            == config->unroll_n_DBc * config->wg_n_DBc)
+                           && ((config->wg_m_DBc * config->wg_n_DBc)
+                                   <= (config->wg_m_BcBr * config->wg_n_BcBr))),
             "[CONFIG] The config BcBr work_group tile M(%d) axis must equal "
             "DBc work_group tile N(%d) axis and number of total subgroups "
             "should be less than BcBr subgroups (%d ?<= %d)",
@@ -486,7 +484,7 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             config->wg_m_BcBr * config->wg_n_BcBr);
 
     // D(Bc) >= head size
-    VCHECK_SDPA_COND(config->unroll_m_DBc * config->wg_m_DBc >= d->head_size(),
+    VDISPATCH_SDPA(config->unroll_m_DBc * config->wg_m_DBc >= d->head_size(),
             "The DBc matmul config work_group tile N(%d*%d=%d) axis must be "
             "greater than or equal to head size(%ld)",
             config->unroll_m_DBc, config->wg_m_DBc,
@@ -494,10 +492,10 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             static_cast<long int>(d->head_size()));
 
     // (Bc)Br == (D)Br, ngroups <= BcBr ngroups
-    VCHECK_SDPA_COND(((config->unroll_n_BcBr * config->wg_n_BcBr
-                              == config->unroll_n_DBr * config->wg_n_DBr)
-                             && (config->wg_m_DBr * config->wg_n_DBr
-                                     <= config->wg_m_BcBr * config->wg_n_BcBr)),
+    VDISPATCH_SDPA(((config->unroll_n_BcBr * config->wg_n_BcBr
+                            == config->unroll_n_DBr * config->wg_n_DBr)
+                           && (config->wg_m_DBr * config->wg_n_DBr
+                                   <= config->wg_m_BcBr * config->wg_n_BcBr)),
             "[CONFIG] The config BcBr work_group tile N(%d) axis must equal "
             "DBr work_group tile N(%d) axis and number of total subgroups "
             "should be less than BcBr subgroups (%d ?<= %d)",
@@ -507,7 +505,7 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             config->wg_m_BcBr * config->wg_n_BcBr);
 
     // D(Br) >= head size
-    VCHECK_SDPA_COND(config->unroll_m_DBr * config->wg_m_DBr >= d->head_size(),
+    VDISPATCH_SDPA(config->unroll_m_DBr * config->wg_m_DBr >= d->head_size(),
             "The DBr matmul config work_group tile M(%d*%d=%d) axis must be "
             "greater than or equal to head size(%ld)",
             config->unroll_m_DBr, config->wg_m_DBr,
@@ -574,9 +572,8 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     } else if (desc()->qry_md()->data_type == data_type::f32) {
         problem.Ta = problem.Tb = Type::f32;
     } else {
-        VCHECK_SDPA_COND(
-                utils::one_of(desc()->qry_md()->data_type, data_type::f16,
-                        data_type::bf16, data_type::f32),
+        VDISPATCH_SDPA(utils::one_of(desc()->qry_md()->data_type,
+                               data_type::f16, data_type::bf16, data_type::f32),
                 "Q tensor's data type must be bf16, f16, or f32");
     }
     problem.Tc = problem.Tc_ext = Type::f32;

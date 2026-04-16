@@ -35,6 +35,11 @@ namespace gpu {
 namespace intel {
 namespace sdpa {
 
+#define VDISPATCH_SDPA(cond, msg, ...) \
+    VCONDCHECK(primitive, create, dispatch, sdpa, (cond), \
+            status::unimplemented, "%s," msg, this->info(engine), \
+            ##__VA_ARGS__)
+
 struct micro_fwd_params_t : trivially_serializable_t<micro_fwd_params_t> {
 
     const std::vector<const char *> &get_kernel_names() const {
@@ -161,43 +166,46 @@ struct micro_fwd_t : public primitive_t {
             using namespace data_type;
             using smask_t = primitive_attr_t::skip_mask_t;
 
-            VCHECK_SDPA_COND(is_fwd(), VERBOSE_BAD_PROPKIND);
-            VCHECK_SDPA_COND(utils::everyone_is(4, desc()->qry_md()->ndims,
-                                     desc()->key_md()->ndims,
-                                     desc()->val_md()->ndims, dst_md()->ndims),
-                    VERBOSE_UNSUPPORTED_TAG);
-
+            VDISPATCH_SDPA(is_fwd(), VERBOSE_BAD_PROPKIND);
             memory_desc_wrapper qry_mdw(desc()->qry_md());
             memory_desc_wrapper key_mdw(desc()->key_md());
             memory_desc_wrapper val_mdw(desc()->val_md());
             memory_desc_wrapper dst_mdw(dst_md());
-            VCHECK_SDPA_COND(utils::everyone_is(true, qry_mdw.is_plain(),
-                                     key_mdw.is_plain(), val_mdw.is_plain(),
-                                     dst_mdw.is_plain()),
+            VDISPATCH_SDPA(
+                    utils::everyone_is(4, qry_mdw.ndims(), key_mdw.ndims(),
+                            val_mdw.ndims(), dst_mdw.ndims()),
+                    VERBOSE_SHAPE_RESTRICTION
+                    ": qry(%d) key(%d) val(%d) and dst(%d) must equal 4.",
+                    qry_mdw.ndims(), key_mdw.ndims(), val_mdw.ndims(),
+                    dst_mdw.ndims());
+
+            VDISPATCH_SDPA(utils::everyone_is(true, qry_mdw.is_plain(),
+                                   key_mdw.is_plain(), val_mdw.is_plain(),
+                                   dst_mdw.is_plain()),
                     VERBOSE_UNSUPPORTED_TAG);
-            VCHECK_SDPA_COND(attr()->has_default_values(smask_t::dropout),
-                    VERBOSE_UNSUPPORTED_ATTR);
+            VDISPATCH_SDPA(attr()->has_default_values(smask_t::dropout),
+                    VERBOSE_UNSUPPORTED_DROPOUT);
             if (with_attn_mask()) {
-                VCHECK_SDPA_COND(desc()->attn_mask_md()->ndims == 4,
+                VDISPATCH_SDPA(desc()->attn_mask_md()->ndims == 4,
                         VERBOSE_UNSUPPORTED_TAG);
-                VCHECK_SDPA_COND(
+                VDISPATCH_SDPA(
                         utils::one_of(
                                 desc()->attn_mask_md()->dims[mask_q_index],
                                 desc()->queries(), 1),
                         VERBOSE_INVALID_BROADCAST, "attn_mask", mask_q_index);
-                VCHECK_SDPA_COND(desc()->attn_mask_md()->dims[mask_k_index]
+                VDISPATCH_SDPA(desc()->attn_mask_md()->dims[mask_k_index]
                                 == desc()->keys(),
                         VERBOSE_INVALID_BROADCAST, "attn_mask", mask_k_index);
                 if (desc()->qry_md()->data_type == data_type::f32) {
-                    VCHECK_SDPA_COND(desc()->attn_mask_md()->data_type
+                    VDISPATCH_SDPA(desc()->attn_mask_md()->data_type
                                     == desc()->qry_md()->data_type,
                             "Mask data type(%s) should match Qry/Dst data "
                             "type(%s).",
                             dnnl_dt2str(desc()->attn_mask_md()->data_type),
                             dnnl_dt2str(desc()->qry_md()->data_type));
                 } else {
-                    VCHECK_SDPA_COND((desc()->attn_mask_md()->data_type
-                                             == desc()->qry_md()->data_type)
+                    VDISPATCH_SDPA((desc()->attn_mask_md()->data_type
+                                           == desc()->qry_md()->data_type)
                                     || (desc()->attn_mask_md()->data_type
                                             == data_type::f32),
                             "Mask data type(%s) should be xf16 or f32 when "
@@ -206,7 +214,7 @@ struct micro_fwd_t : public primitive_t {
                             dnnl_dt2str(desc()->qry_md()->data_type));
                 }
             }
-            VCHECK_SDPA_COND(
+            VDISPATCH_SDPA(
                     (utils::everyone_is(data_type::f16,
                              desc()->qry_md()->data_type, dst_md()->data_type)
                             || utils::everyone_is(data_type::bf16,
@@ -216,30 +224,30 @@ struct micro_fwd_t : public primitive_t {
                                     desc()->qry_md()->data_type,
                                     dst_md()->data_type)),
                     VERBOSE_UNSUPPORTED_DT);
-            VCHECK_SDPA_COND(utils::one_of(desc()->key_md()->data_type, f32,
-                                     bf16, f16, u8, s8, u4, s4),
+            VDISPATCH_SDPA(utils::one_of(desc()->key_md()->data_type, f32, bf16,
+                                   f16, u8, s8, u4, s4),
                     VERBOSE_UNSUPPORTED_DT);
-            VCHECK_SDPA_COND(utils::one_of(desc()->val_md()->data_type, f32,
-                                     bf16, f16, u8, s8, u4, s4),
+            VDISPATCH_SDPA(utils::one_of(desc()->val_md()->data_type, f32, bf16,
+                                   f16, u8, s8, u4, s4),
                     VERBOSE_UNSUPPORTED_DT);
-            VCHECK_SDPA_COND(set_default_formats() == status::success,
+            VDISPATCH_SDPA(set_default_formats() == status::success,
                     VERBOSE_UNSUPPORTED_TAG);
-            VCHECK_SDPA_COND(desc()->values() == desc()->head_size(),
+            VDISPATCH_SDPA(desc()->values() == desc()->head_size(),
                     "values does not match head size");
 
             if (utils::one_of(desc()->key_md()->data_type, u4, s4)) {
-                VCHECK_SDPA_COND(desc()->keys() % 2 == 0,
+                VDISPATCH_SDPA(desc()->keys() % 2 == 0,
                         "The number of keys must be an even size with the data "
                         "type is u4 or s4.");
             }
 
             if (utils::one_of(desc()->val_md()->data_type, u4, s4)) {
-                VCHECK_SDPA_COND(desc()->values() % 2 == 0,
+                VDISPATCH_SDPA(desc()->values() % 2 == 0,
                         "The number of values must be an even size with the "
                         "data type is u4 or s4.");
             }
 
-            VCHECK_SDPA_COND(
+            VDISPATCH_SDPA(
                     desc()->qry_md()->dims[1] >= desc()->key_md()->dims[1]
                             && desc()->qry_md()->dims[1]
                                     >= desc()->val_md()->dims[1],
@@ -250,26 +258,26 @@ struct micro_fwd_t : public primitive_t {
                     static_cast<long int>(desc()->key_md()->dims[1]),
                     static_cast<long int>(desc()->val_md()->dims[1]));
 
-            VCHECK_SDPA_COND(utils::one_of(kq_acc_dt(), f16, f32),
+            VDISPATCH_SDPA(utils::one_of(kq_acc_dt(), f16, f32),
                     "KQ accumulation data type should be f16 or f32");
-            VCHECK_SDPA_COND(utils::one_of(vs_acc_dt(), f16, f32),
+            VDISPATCH_SDPA(utils::one_of(vs_acc_dt(), f16, f32),
                     "VS accumulation data type should be f16 or f32");
 
             int kq_scales_mask = desc()->kq_scales.get_mask();
             int kq_zp_mask = desc()->kq_zero_points.get_mask();
             if (!desc()->kq_scales.has_default_values()
                     && !desc()->kq_zero_points.has_default_values())
-                VCHECK_SDPA_COND(kq_scales_mask == kq_zp_mask,
+                VDISPATCH_SDPA(kq_scales_mask == kq_zp_mask,
                         "kq scales mask(%d) must equal kq zero point(%d) "
                         "mask",
                         kq_scales_mask, kq_zp_mask);
             if (!desc()->kq_scales.has_default_values())
-                VCHECK_SDPA_COND(utils::one_of(kq_scales_mask, 0, 1, 3, 11, 15),
+                VDISPATCH_SDPA(utils::one_of(kq_scales_mask, 0, 1, 3, 11, 15),
                         "unsupported mask for kq matmul(%d). must be 0, 1, 3, "
                         "11, or 15",
                         kq_scales_mask);
             if (!desc()->kq_zero_points.has_default_values())
-                VCHECK_SDPA_COND(utils::one_of(kq_zp_mask, 0, 1, 3, 11, 15),
+                VDISPATCH_SDPA(utils::one_of(kq_zp_mask, 0, 1, 3, 11, 15),
                         "unsupported mask for kq matmul(%d). must be 0, 1, 3, "
                         "11, or 15",
                         kq_zp_mask);
@@ -278,24 +286,24 @@ struct micro_fwd_t : public primitive_t {
             int vs_zp_mask = desc()->vs_zero_points.get_mask();
             if (!desc()->vs_scales.has_default_values()
                     && !desc()->vs_zero_points.has_default_values())
-                VCHECK_SDPA_COND(vs_scales_mask == vs_zp_mask,
+                VDISPATCH_SDPA(vs_scales_mask == vs_zp_mask,
                         "vs scales mask(%d) must equal vs zero point(%d) "
                         "mask",
                         vs_scales_mask, vs_zp_mask);
             if (!desc()->vs_scales.has_default_values())
-                VCHECK_SDPA_COND(utils::one_of(vs_scales_mask, 0, 1, 3, 7, 15),
+                VDISPATCH_SDPA(utils::one_of(vs_scales_mask, 0, 1, 3, 7, 15),
                         "unsupported mask for vs matmul(%d). must be 0, 1, 3, "
                         "7, or 15",
                         vs_scales_mask);
             if (!desc()->vs_zero_points.has_default_values())
-                VCHECK_SDPA_COND(utils::one_of(vs_zp_mask, 0, 1, 3, 7, 15),
+                VDISPATCH_SDPA(utils::one_of(vs_zp_mask, 0, 1, 3, 7, 15),
                         "unsupported mask for vs matmul(%d). must be 0, 1, 3, "
                         "7, or 15",
                         vs_zp_mask);
 
             /// NOTE: Limitation of microkernels
             if (utils::one_of(desc()->vs_zero_points.get_data_type(), s4, u4)) {
-                VCHECK_SDPA_COND(value_group_size() == 16,
+                VDISPATCH_SDPA(value_group_size() == 16,
                         "if vs zero points data type is s4 or u4 then the "
                         "group size(%d) must be 16.",
                         value_group_size());
@@ -304,7 +312,7 @@ struct micro_fwd_t : public primitive_t {
             if (!desc()->vs_scales.has_default_values()
                     || !desc()->vs_zero_points.has_default_values()) {
                 int vgs = value_group_size();
-                VCHECK_SDPA_COND(utils::one_of(vs_scales_mask, 0, 1, 3)
+                VDISPATCH_SDPA(utils::one_of(vs_scales_mask, 0, 1, 3)
                                 || (math::is_pow2<int>(vgs)
                                         || vgs == desc()->val_md()->dims[3]),
                         "the value group size(%d) must be a power of 2 or "
@@ -314,10 +322,10 @@ struct micro_fwd_t : public primitive_t {
 
             CHECK(init_conf_microkernels(engine));
             CHECK(init_conf(engine));
-            VCHECK_SDPA_COND(IMPLICATION((arch() == compute::gpu_arch_t::xe_hpc)
-                                             && (desc()->qry_md()->data_type
-                                                     == data_type::f32),
-                                     with_causal_mask()),
+            VDISPATCH_SDPA(IMPLICATION((arch() == compute::gpu_arch_t::xe_hpc)
+                                           && (desc()->qry_md()->data_type
+                                                   == data_type::f32),
+                                   with_causal_mask()),
                     "fused f32 SDPA only optimized for causal mask"); //TODO: update when performance improved
 
             return status::success;
@@ -391,33 +399,33 @@ struct micro_bwd_t : public primitive_t {
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
 
-            VCHECK_SDPA_COND(!is_fwd(), VERBOSE_BAD_PROPKIND);
+            VDISPATCH_SDPA(!is_fwd(), VERBOSE_BAD_PROPKIND);
 
-            VCHECK_SDPA_COND(utils::everyone_is(4, desc()->qry_md()->ndims,
-                                     desc()->key_md()->ndims,
-                                     desc()->val_md()->ndims, dst_md()->ndims),
+            VDISPATCH_SDPA(utils::everyone_is(4, desc()->qry_md()->ndims,
+                                   desc()->key_md()->ndims,
+                                   desc()->val_md()->ndims, dst_md()->ndims),
                     VERBOSE_UNSUPPORTED_TAG);
-            VCHECK_SDPA_COND(
+            VDISPATCH_SDPA(
                     utils::everyone_is(4, desc()->diff_qry_md()->ndims,
                             desc()->diff_key_md()->ndims,
                             desc()->diff_val_md()->ndims, diff_dst_md()->ndims),
                     VERBOSE_UNSUPPORTED_TAG);
             if (with_attn_mask()) {
-                VCHECK_SDPA_COND(desc()->attn_mask_md()->ndims == 4,
+                VDISPATCH_SDPA(desc()->attn_mask_md()->ndims == 4,
                         VERBOSE_UNSUPPORTED_TAG);
-                VCHECK_SDPA_COND(
+                VDISPATCH_SDPA(
                         utils::one_of(
                                 desc()->attn_mask_md()->dims[mask_q_index],
                                 desc()->queries(), 1),
                         VERBOSE_INVALID_BROADCAST, "attn_mask", mask_q_index);
-                VCHECK_SDPA_COND(desc()->attn_mask_md()->dims[mask_k_index]
+                VDISPATCH_SDPA(desc()->attn_mask_md()->dims[mask_k_index]
                                 == desc()->keys(),
                         VERBOSE_INVALID_BROADCAST, "attn_mask", mask_k_index);
-                VCHECK_SDPA_COND(desc()->attn_mask_md()->data_type
+                VDISPATCH_SDPA(desc()->attn_mask_md()->data_type
                                 == desc()->qry_md()->data_type,
                         "Mask data type should match Qry/Dst data type.");
             }
-            VCHECK_SDPA_COND(
+            VDISPATCH_SDPA(
                     (utils::everyone_is(data_type::f16,
                              desc()->qry_md()->data_type, dst_md()->data_type)
                             || utils::everyone_is(data_type::bf16,
@@ -427,18 +435,18 @@ struct micro_bwd_t : public primitive_t {
                                     desc()->qry_md()->data_type,
                                     dst_md()->data_type)),
                     VERBOSE_UNSUPPORTED_DT);
-            VCHECK_SDPA_COND(
+            VDISPATCH_SDPA(
                     utils::one_of(desc()->key_md()->data_type, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT);
-            VCHECK_SDPA_COND(
+            VDISPATCH_SDPA(
                     utils::one_of(desc()->val_md()->data_type, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT);
-            VCHECK_SDPA_COND(set_default_formats() == status::success,
+            VDISPATCH_SDPA(set_default_formats() == status::success,
                     VERBOSE_UNSUPPORTED_TAG);
-            VCHECK_SDPA_COND(desc()->values() == desc()->head_size(),
+            VDISPATCH_SDPA(desc()->values() == desc()->head_size(),
                     "values does not match head size");
 
-            VCHECK_SDPA_COND(
+            VDISPATCH_SDPA(
                     desc()->qry_md()->dims[1] >= desc()->key_md()->dims[1]
                             && desc()->qry_md()->dims[1]
                                     >= desc()->val_md()->dims[1],
@@ -453,19 +461,18 @@ struct micro_bwd_t : public primitive_t {
                 memory_desc_wrapper diff_key_mdw(desc()->diff_key_md());
                 memory_desc_wrapper diff_val_mdw(desc()->diff_val_md());
                 memory_desc_wrapper diff_dst_mdw(diff_dst_md());
-                VCHECK_SDPA_COND(
-                        utils::everyone_is(true, diff_qry_mdw.is_plain(),
-                                diff_key_mdw.is_plain(),
-                                diff_val_mdw.is_plain(),
-                                diff_dst_mdw.is_plain()),
+                VDISPATCH_SDPA(utils::everyone_is(true, diff_qry_mdw.is_plain(),
+                                       diff_key_mdw.is_plain(),
+                                       diff_val_mdw.is_plain(),
+                                       diff_dst_mdw.is_plain()),
                         VERBOSE_UNSUPPORTED_TAG);
             }
 
-            VCHECK_SDPA_COND(utils::everyone_is(desc()->qry_md()->data_type,
-                                     desc()->diff_qry_md()->data_type,
-                                     desc()->diff_key_md()->data_type,
-                                     desc()->diff_val_md()->data_type,
-                                     diff_dst_md()->data_type),
+            VDISPATCH_SDPA(utils::everyone_is(desc()->qry_md()->data_type,
+                                   desc()->diff_qry_md()->data_type,
+                                   desc()->diff_key_md()->data_type,
+                                   desc()->diff_val_md()->data_type,
+                                   diff_dst_md()->data_type),
                     "diff tensor data types must match qry data type(%s) "
                     " ?= dQ(%s), dK(%s), dV(%s), dO(%s)",
                     dnnl_dt2str(desc()->qry_md()->data_type),
@@ -475,9 +482,9 @@ struct micro_bwd_t : public primitive_t {
                     dnnl_dt2str(diff_dst_md()->data_type));
 
             CHECK(init_default_ws());
-            VCHECK_SDPA_COND(compare_ws(hint_fwd_pd_), VERBOSE_WS_MISMATCH);
+            VDISPATCH_SDPA(compare_ws(hint_fwd_pd_), VERBOSE_WS_MISMATCH);
 
-            VCHECK_SDPA_COND(arch() != compute::gpu_arch_t::xe_hpg,
+            VDISPATCH_SDPA(arch() != compute::gpu_arch_t::xe_hpg,
                     "fused SDPA BWD not supported for xe_hpg");
             CHECK(init_conf_microkernels(engine));
             CHECK(init_conf(engine));

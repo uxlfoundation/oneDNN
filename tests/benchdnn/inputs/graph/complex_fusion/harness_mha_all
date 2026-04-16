@@ -84,6 +84,10 @@
                     1:1x16x1x512+2:1x16x2049x512+3:1x16x2049x512+5:1x1x1x2049
 --case=complex_fusion/mha/sdpa-plain-simplified-f16-f32.json
 
+# Q=1 with transposed qry
+ --reset --in-shapes=1:1x16x1x512*abdc+2:1x16x2049x512+3:1x16x2049x512+5:1x1x1x2049
+--case=complex_fusion/mha/sdpa-plain-simplified-f16-f32.json
+
 # q_seq_len != kv_seq_len
 --reset --in-shapes=1:1x16x128x64+24:1x16x128x64 --case=complex_fusion/mha/sdpa-plain-bottom-right-implicit-causal-mask-f16-f32.json
 

@@ -2180,6 +2180,9 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 simple_attr_check(attr, false, true), VERBOSE_UNSUPPORTED_ATTR);
         VDISPATCH_REORDER_IC(
                 input_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
+        VDISPATCH_REORDER_IC(
+                IMPLICATION(!output_d.is_dense(), output_d.is_plain()),
+                VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
 
         return status::success;
     }

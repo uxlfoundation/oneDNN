@@ -1097,6 +1097,12 @@ static status_t layout_propagator_for_reshape_like_ops(op_ptr &op,
     auto in_lt = src->get_logical_tensor();
     auto out_lt = dst->get_logical_tensor();
 
+    std::cout << "====== reshape_like layout propagator for op: "
+              << op->get_name() << " ======" << std::endl;
+
+    std::cout << "reshape_like input: " << ltw(in_lt).str() << std::endl;
+    std::cout << "reshape_like output: " << ltw(out_lt).str() << std::endl;
+
     VCHECK_LAYOUT_PROPAGATOR(!ltw(in_lt).is_any(), status::invalid_arguments,
             "input layout must be specified for reshape_like");
 
@@ -1107,6 +1113,9 @@ static status_t layout_propagator_for_reshape_like_ops(op_ptr &op,
     }
 
     if (ltw(out_lt).is_any()) {
+        std::cout << "reshape_like output layout is any, try to reshape input "
+                     "layout: "
+                  << ltw(in_lt).str() << std::endl;
         dnnl::memory::desc in_md = make_dnnl_memory_desc(in_lt);
         dnnl::memory::desc out_md
                 = in_md.reshape(target_dims, /* allow empty */ true);
@@ -1115,6 +1124,9 @@ static status_t layout_propagator_for_reshape_like_ops(op_ptr &op,
         // reorder the in_md first and then reshape the reordered reshape-able
         // md.
         if (!out_md) {
+            std::cout << "input layout is not reshape-able, try to reorder "
+                         "input layout: "
+                      << ltw(in_lt).str() << std::endl;
             dnnl::memory::desc reshapable_md(in_md.get_dims(),
                     in_md.get_data_type(), get_ncx_format(in_md.get_ndims()));
             insert_reorder_before(op, 0, reshapable_md, p_engine, pd_cache,
@@ -1122,14 +1134,25 @@ static status_t layout_propagator_for_reshape_like_ops(op_ptr &op,
             out_md = reshapable_md.reshape(target_dims);
         }
 
+        std::cout << "reshaped output: "
+                  << md2fmt_str("out", out_md.get(), impl::format_kind::undef)
+                  << std::endl;
+
         status = fill_layout_info(dst, out_md);
     } else if (ltw(out_lt).is_strided()) {
+        std::cout << "reshape_like output layout is strided, try to reshape "
+                     "input layout: "
+                  << ltw(in_lt).str() << std::endl;
         dnnl::memory::desc in_md = make_dnnl_memory_desc(in_lt);
         dnnl::memory::desc out_md = make_dnnl_memory_desc(out_lt);
         // check if the out_md is reshape-able
         dnnl::memory::desc expected_in_md
                 = out_md.reshape(in_md.get_dims(), /* allow empty */ true);
         if (expected_in_md) {
+            std::cout << "expected input layout: "
+                      << md2fmt_str("expected_in", expected_in_md.get(),
+                                 impl::format_kind::undef)
+                      << std::endl;
             // If the out_md is reshape-able, the expected_in_md must be
             // reshape-able too. Then we just need to check if the real in_md
             // has same layout as the expected_in_md, and insert only one
@@ -1141,6 +1164,9 @@ static status_t layout_propagator_for_reshape_like_ops(op_ptr &op,
             // finally, we have a chain of: in_md -> (optional reorder) ->
             // expected_in_md -> reshape -> out_md
         } else {
+            std::cout << "expected input layout is not reshape-able, try to "
+                         "reshape input layout: "
+                      << ltw(in_lt).str() << std::endl;
             // Check if the in_md is reshape-able.
             dnnl::memory::desc reshaped_in_md
                     = in_md.reshape(target_dims, /* allow empty */ true);

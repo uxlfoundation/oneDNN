@@ -353,13 +353,12 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
     , bf16_with_f4_wei_dt(bgmmc.src_dt == bf16
               && one_of(bgmmc.dst_dt, bf16, f32)
               && bgmmc.wei_dt == data_type::f4_e2m1)
-    , f16_with_f4_wei_dt(bgmmc.src_dt == f16
-              && one_of(bgmmc.dst_dt, f16, f32)
+    , f16_with_f4_wei_dt(bgmmc.src_dt == f16 && one_of(bgmmc.dst_dt, f16, f32)
               && bgmmc.wei_dt == data_type::f4_e2m1)
     , f32_with_f4_wei_dt(everyone_is(f32, bgmmc.src_dt, bgmmc.dst_dt)
               && bgmmc.wei_dt == data_type::f4_e2m1)
-    , weights_decompression_support(
-              bf16_with_f4_wei_dt || f16_with_f4_wei_dt || f32_with_f4_wei_dt
+    , weights_decompression_support(bf16_with_f4_wei_dt || f16_with_f4_wei_dt
+              || f32_with_f4_wei_dt
               || (one_of(bgmmc.wei_dt, u8, s8, u4, s4)
                       && one_of(attr.fpmath_.mode_, fpmath_mode::bf16,
                               fpmath_mode::f16, fpmath_mode::strict,

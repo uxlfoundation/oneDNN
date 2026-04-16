@@ -2370,19 +2370,6 @@ protected:
         return maybe_mask_impl(vmm, is_tail, tail_mask);
     }
 
-    template <typename Vmm>
-    Vmm maybe_mask_impl(Vmm vmm, bool is_tail, Xbyak::Opmask tail_mask) {
-        const auto unmask_tail
-                = one_of(conf_->wei_dt, data_type::bf16, data_type::f16)
-                && !conf_->transposed_B;
-        if (isa_has_masks(conf_->isa))
-            return is_tail        ? vmm | tail_mask | T_z
-                    : unmask_tail ? vmm | kFFFF | T_z
-                                  : vmm;
-        else
-            return vmm;
-    }
-
     /**
     * @brief Inserts a YMM register into the upper half of a ZMM register
     * @param zmm Destination ZMM register where data will be inserted
@@ -2816,6 +2803,20 @@ protected:
     opmask_t kFFFF = k6;
     opmask_t kTail = k7;
     opmask_t kTail_4bit = k5;
+
+private:
+    template <typename T>
+    T maybe_mask_impl(T vmm, bool is_tail, Xbyak::Opmask tail_mask) {
+        const auto unmask_tail
+                = one_of(conf_->wei_dt, data_type::bf16, data_type::f16)
+                && !conf_->transposed_B;
+        if (isa_has_masks(conf_->isa))
+            return is_tail        ? vmm | tail_mask | T_z
+                    : unmask_tail ? vmm | kFFFF | T_z
+                                  : vmm;
+        else
+            return vmm;
+    }
 };
 
 template <typename Vmm>

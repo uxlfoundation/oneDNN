@@ -389,11 +389,34 @@ void ref_primitive_t::check_correctness(
         // Note: the following threshold is obtained from actual runs on
         // different hardware.
         cmp.set_threshold_norm(2.5e-3f);
+
+        const bool debug_graph_compare
+            = ::benchdnn_getenv_int("BENCHDNN_GRAPH_COMPARE_DEBUG", 0)
+            > 0;
+        if (debug_graph_compare) {
+            BENCHDNN_PRINT(0,
+                "[GRAPH_COMPARE_CTX] op_id:%zu op_kind:%s arg:%d kind:%s "
+                "out_dt:%s allow_norm:%d trh_norm:%g has_eltwise:%d has_nans:%d\n",
+                op_.id_, op_.kind_.c_str(), arg,
+                data_kind2str(dnnl_arg_2_data_kind_map.at(arg)),
+                dt2str(mem_dt.dt()), 1, 2.5e-3f, has_eltwise ? 1 : 0,
+                has_nans ? 1 : 0);
+        }
+
         dnn_mem_t mem_fp_abx(mem_fp, dnnl_f32, tag::abx, ::get_cpu_engine());
         // Clear previous output stats.
         auto cur_res_state = res->state;
         res->reset_stats(cur_res_state);
         cmp.compare(mem_fp_abx, mem_dt, attr, res);
+
+        if (debug_graph_compare && res->state == FAILED) {
+            BENCHDNN_PRINT(0,
+                "[GRAPH_COMPARE_CTX] FAILED op_id:%zu op_kind:%s arg:%d "
+                "kind:%s out_dt:%s\n",
+                op_.id_, op_.kind_.c_str(), arg,
+                data_kind2str(dnnl_arg_2_data_kind_map.at(arg)),
+                dt2str(mem_dt.dt()));
+        }
     }
 }
 

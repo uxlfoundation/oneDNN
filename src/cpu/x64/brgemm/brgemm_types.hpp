@@ -394,7 +394,7 @@ struct brgemm_desc_t {
 
     bool is_fp8_weights_converted_to_f16() const {
         return (is_fp8 || is_f16_fp8)
-                && utils::one_of(isa_impl, avx10_1_512_amx_fp16, avx10_2);
+                && utils::one_of(isa_impl, avx10_1_512_amx_fp16, avx10_2_512);
     }
 
     bool is_input_convert() const { return is_bf32 || is_fp8_via_convert(); }

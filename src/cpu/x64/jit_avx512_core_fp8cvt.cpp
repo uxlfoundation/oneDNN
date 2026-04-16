@@ -504,7 +504,7 @@ void fp8_conversion_e4m3_t::vcvt_f8_to_f32(
     const Xbyak::Zmm zmm_out(xmm_out.getIdx());
 
     // f16 <- f8_e4m3
-    if (is_fp8_native())
+    if (is_f8_f16_conv_native())
         host_->vcvthf82ph(ymm_mask(xmm_out), op_in);
     else
         vcvt_f8_to_f16(ymm_mask(xmm_out), op_in);

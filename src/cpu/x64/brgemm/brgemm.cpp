@@ -595,10 +595,10 @@ status_t brgemm_desc_set_attr(
         return status::unimplemented;
     if (brg->is_bf16_fp8
             && !one_of(brg->isa_impl, avx512_core_amx, avx512_core_amx_fp16,
-                    avx10_2))
+                    avx10_2_512))
         return status::unimplemented;
     if (brg->is_f16_fp8
-            && !one_of(brg->isa_impl, avx512_core_amx_fp16, avx10_2))
+            && !one_of(brg->isa_impl, avx512_core_amx_fp16, avx10_2_512))
         return status::unimplemented;
 
     return status::success;

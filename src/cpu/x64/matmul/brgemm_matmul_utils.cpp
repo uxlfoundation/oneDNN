@@ -250,13 +250,12 @@ status_t check_isa_with_datatype(
                     is_superset(isa, avx512_core_amx)
                             || is_superset(isa, avx10_2_512))
             && IMPLICATION(bm_conf_utils.is_bf16_fp8(),
-                    one_of(isa, avx512_core_amx, avx512_core_amx_fp16, avx10_2))
+                    one_of(isa, avx512_core_amx, avx512_core_amx_fp16,
+                            avx10_2_512))
             && IMPLICATION(bm_conf_utils.is_f16_fp8(),
-                    one_of(isa, avx512_core_amx_fp16, avx10_2))
+                    one_of(isa, avx512_core_amx_fp16, avx10_2_512))
             && IMPLICATION(bm_conf_utils.is_bf8() && !bm_conf_utils.is_f8(),
-                    is_superset(isa, avx512_core_amx_fp16))
-            && IMPLICATION(bm_conf_utils.is_f4_via_convert(),
-                    one_of(isa, avx10_2_512));
+                    is_superset(isa, avx512_core_amx_fp16));
     return ok ? status::success : status::unimplemented;
 }
 
@@ -555,8 +554,6 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_tags(memory_desc_t &A_md,
             assert(bgmmc.src_tag != format_tag::undef
                     && "if bgmmc.is_gemv is true the format tag must be defined");
         } else {
-            const bool xf16_avx2_vnni_2 = (this->is_bf16() || this->is_f16())
-                    && bgmmc.isa == avx2_vnni_2;
             const bool is_int8_avx512_core
                     = this->is_int8() && is_superset(bgmmc.isa, avx512_core);
             const bool is_adbc_allowed = this->is_f8() || this->is_bf16_fp8()
@@ -664,8 +661,7 @@ format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
     const auto wei_k_blk = data_type_vnni_simd_elems(bgmmc.wei_dt, bgmmc.isa);
     if (bgmmc.ndims > 3) return format_tag::undef;
 
-    if (is_int8() || is_f8() || is_bf16_fp8() || is_f16_fp8()) {
-        switch (n_blk) {
+    if (is_int8() || is_f8() || is_bf16_fp8() || is_f16_fp8()) switch (n_blk) {
             case 64: return bgmmc.ndims == 3 ? aCB16b64c4b : BA16a64b4a;
             case 48: return bgmmc.ndims == 3 ? aCB16b48c4b : BA16a48b4a;
             case 32: return bgmmc.ndims == 3 ? aCB16b32c4b : BA16a32b4a;
@@ -705,7 +701,7 @@ format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
             default: return format_tag::undef;
         }
     return format_tag::undef;
-    }
+}
 
 brgemm_broadcast_t get_zp_type(const primitive_attr_t &attr, int arg) {
     return attr.zero_points_.has_default_values(arg)

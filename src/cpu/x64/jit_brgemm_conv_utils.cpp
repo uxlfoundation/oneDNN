@@ -1679,9 +1679,10 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     const memory_desc_wrapper dst_d(&dst_md);
     const memory_desc_wrapper bias_d(&bias_md);
 
-    // Big int (> INT_MAX) values are unsupported and jcp fields may overflow
+    // Per-tensor spatial product, weights nelems, and per-dim
+    // strides/paddings/dilations must fit in int.
     // TODO: change data type of jcp fields to size_t
-    VDISPATCH_CONV_IC(!has_large_size(cd, src_d, weights_d, dst_d),
+    VDISPATCH_CONV_IC(!has_large_size_relaxed(cd, src_d, weights_d, dst_d),
             VERBOSE_BAD_PARAM, "large size is not supported");
 
     const bool with_groups = weights_d.ndims() == src_d.ndims() + 1;
@@ -2658,7 +2659,7 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     const size_t rtus_buffer_size = jcp.is_reduced_rtus
             ? jcp.rtus_padded_ic_size * jcp.os_block
-            : jcp.LDA * jcp.os;
+            : static_cast<size_t>(jcp.LDA) * jcp.os;
     jcp.inp_buffer_size
             = jcp.is_rtus ? rnd_up(rtus_buffer_size, align_size) : 0;
 

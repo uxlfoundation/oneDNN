@@ -305,6 +305,36 @@ inline bool has_large_size(const convolution_desc_t &cd,
     return false;
 }
 
+// Relaxed version of has_large_size(). The only difference from
+// has_large_size() is that this variant checks the per-tensor spatial product
+// instead of the count of all consecutive elements excluding the minibatch
+// (i.e. spatial * channels). Weights nelems and per-dim strides/paddings/dilations
+// are checked the same way. Use this when element offsets into memory are computed
+// as dim_t and only per-dim / spatial values need to fit in int.
+inline bool has_large_size_relaxed(const convolution_desc_t &cd,
+        const memory_desc_wrapper &src_d, const memory_desc_wrapper &weights_d,
+        const memory_desc_wrapper &dst_d) {
+    auto is_large = [](const dim_t val) { return val > INT_MAX; };
+
+    const int ndims = src_d.ndims();
+    dim_t src_spatial = 1, dst_spatial = 1;
+    for (int d = 2; d < ndims; d++) {
+        src_spatial *= src_d.dims()[d];
+        dst_spatial *= dst_d.dims()[d];
+    }
+    if (is_large(src_spatial) || is_large(dst_spatial)) return true;
+
+    if (is_large(weights_d.nelems())) return true;
+
+    for (int d = 3; d <= ndims; d++) {
+        if (utils::one_of(true, is_large(cd.strides[ndims - d]),
+                    is_large(cd.padding[0][ndims - d]),
+                    is_large(cd.dilates[ndims - d])))
+            return true;
+    }
+    return false;
+}
+
 struct jit_conv_args_t {
     const void *src = nullptr; /* hack, non-const for backward_data */
     const void *dst = nullptr; /* hack, non-const for forward */

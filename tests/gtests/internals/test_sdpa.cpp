@@ -25,6 +25,7 @@
 #include "oneapi/dnnl/dnnl_sycl.hpp"
 #endif
 
+#include <cstdlib>
 #include <memory>
 #include <random>
 
@@ -3253,7 +3254,15 @@ GPU_TEST_P(sdpa_bwd_test, compare_bwd) {
 
 GPU_TEST_P(sdpa_bwd_tail_regression_test, compare_bwd_repeat) {
     // Repeat to make sporadic tail-path mismatches reproducible.
-    constexpr int kIters = 20;
+    // Override with SDPA_BWD_REPEAT_ITERS, e.g. 200/1000 for stress runs.
+    int kIters = 20;
+    if (const char *iters_env = std::getenv("SDPA_BWD_REPEAT_ITERS")) {
+        char *end = nullptr;
+        const long parsed = std::strtol(iters_env, &end, 10);
+        if (end != iters_env && *end == '\0' && parsed > 0) {
+            kIters = static_cast<int>(parsed);
+        }
+    }
     for (int i = 0; i < kIters; ++i) {
         compare_bwd();
     }

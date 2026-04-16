@@ -509,25 +509,14 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(memory_desc_t &B_md,
                     : memory_desc_matches_one_of_tag(B_md,
                               plain_tensor_layout_tag,
                               transposed_tensor_layout_tag, acbd, adbc);
-            const bool plain_transposed_matched
-                    = memory_desc_matches_tag(B_md, plain_tensor_layout_tag)
-                    && memory_desc_matches_tag(
-                            B_md, transposed_tensor_layout_tag);
-            if (bgmmc.wei_tag == format_tag::undef
-                    || plain_transposed_matched) {
+            // Plain copy-B kernel does not handle odd sizes for subbyte types correctly.
+            // Using transposed version for these cases.
+            if (bgmmc.is_int4_weights && bgmmc.N % 2 != 0) {
+                bgmmc.wei_tag = transposed_tensor_layout_tag;
+            }
+            if (bgmmc.wei_tag == format_tag::undef) {
                 if (gemm_based::check_gemm_input_format(B_md)) {
-                    // Note: Here we batch layout may not be accurately represented
-                    // by the wei_tag string, due to all the permutations of the
-                    // batch. Only the gemm dimensions "n, k" are accurately
-                    // represented in the string representing transposed or not
-                    // TODO: update helper.transB() to handle the case that
-                    // wei tag can be represented in both plain and transposed
                     bgmmc.wei_tag = helper.transB() == 'N'
-                                    || (plain_transposed_matched
-                                            && B_d.blocking_desc()
-                                                            .strides[bgmmc.ndims
-                                                                    - 1]
-                                                    == 1)
                             ? plain_tensor_layout_tag
                             : transposed_tensor_layout_tag;
                 }

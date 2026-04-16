@@ -644,8 +644,10 @@ status_t dnnl_primitive_attr_set_scales_v3(primitive_attr_t *attr, int arg,
                         quantization_mode::dynamic_mx,
                         quantization_mode::dynamic_fp),
             VERBOSE_BAD_PARAM, "qmode");
-    VCHECK_ATTR(
-            utils::one_of(data_type, f32, bf16, f16, e8m0, f8_e5m2, f8_e4m3),
+    VCHECK_ATTR(utils::one_of(data_type, f32, bf16, f16, e8m0, f8_e4m3),
+            VERBOSE_INVALID_DATATYPE, "scales");
+    // A single low-precision scale is not expected as they work per group.
+    VCHECK_ATTR(IMPLICATION(utils::one_of(data_type, e8m0, f8_e4m3), mask > 0),
             VERBOSE_INVALID_DATATYPE, "scales");
     VCHECK_ATTR(
             IMPLICATION(group_ndims, validate_dims(group_ndims, group_dims)),

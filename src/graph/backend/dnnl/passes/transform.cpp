@@ -4660,6 +4660,7 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
     sdpa_op->set_attr<bool>(op_attr::with_scale, false);
     sdpa_op->set_attr<int64_t>(
             op_attr::mask_type, static_cast<int64_t>(attn_mask_type::undef));
+    sdpa_op->set_attr<bool>(op_attr::with_dropout, false);
 
     // alias
     const auto &qk = candidates[0];
@@ -5218,6 +5219,8 @@ status_t fuse_sdpa_bwd(std::shared_ptr<subgraph_t> &sg) {
         op_ptr bwd_op = std::make_shared<op_t>(op_kind::_sdpa_bwd);
 
         // Attributes
+        bwd_op->set_attr<bool>(op_attr::with_dropout, false);
+
         const bool with_scale = (scale_post != nullptr);
         bwd_op->set_attr<bool>(op_attr::with_scale, with_scale);
         if (with_scale) {

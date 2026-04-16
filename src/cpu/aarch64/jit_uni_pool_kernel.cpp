@@ -893,7 +893,7 @@ void jit_uni_pool_kernel_t<isa>::generate() {
 
     this->preamble();
 
-    size_t simd_w_ = cpu_isa_traits<isa>::vlen / sizeof(float);
+    size_t simd_w_ = simd_elems(data_type_t::dnnl_f32, isa);
 
     if (simd_w_ != cpu_sveLen / sizeof(float))
         set_preg(P_ALL_ONE.s, simd_w_, X_TMP_0, X_TMP_1);
@@ -1059,9 +1059,7 @@ void jit_uni_pool_kernel_t<isa>::generate() {
         postops_injector_->prepare_table();
 }
 
-template struct jit_uni_pool_kernel_t<sve_512>;
-template struct jit_uni_pool_kernel_t<sve_256>;
-template struct jit_uni_pool_kernel_t<sve_128>;
+template struct jit_uni_pool_kernel_t<sve>;
 
 } // namespace aarch64
 } // namespace cpu

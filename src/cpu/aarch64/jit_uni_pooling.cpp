@@ -1251,12 +1251,9 @@ void jit_uni_pooling_bwd_t<isa, d_type>::execute_backward_3d(
     }
 }
 
-template struct jit_uni_pooling_fwd_t<sve_512, data_type::f32>;
-template struct jit_uni_pooling_bwd_t<sve_512, data_type::f32>;
-template struct jit_uni_pooling_fwd_t<sve_256, data_type::f32>;
-template struct jit_uni_pooling_bwd_t<sve_256, data_type::f32>;
-template struct jit_uni_pooling_fwd_t<sve_128, data_type::f32>;
-template struct jit_uni_pooling_bwd_t<sve_128, data_type::f32>;
+template struct jit_uni_pooling_fwd_t<sve, data_type::f32>;
+
+template struct jit_uni_pooling_bwd_t<sve, data_type::f32>;
 
 } // namespace aarch64
 } // namespace cpu

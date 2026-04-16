@@ -165,7 +165,7 @@ private:
     static bool post_ops_ok(jit_pool_conf_t &jpp, const primitive_attr_t &attr,
             const memory_desc_wrapper &dst_d);
 
-    std::unique_ptr<injector::jit_uni_postops_injector_t<to_vla_sve(isa)>>
+    std::unique_ptr<injector::jit_uni_postops_injector_t<isa>>
             postops_injector_;
 };
 

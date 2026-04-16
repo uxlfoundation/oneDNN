@@ -14,6 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "common/type_helpers.hpp"
 #include "common/verbose.hpp"
 
 #include "cpu/x64/ukernel/transform.hpp"
@@ -88,7 +89,6 @@ status_t transform_t::execute(const void *src, void *dst) const {
     const dim_t k_blks = utils::div_up(kernel_conf.K, kernel_conf.K_blk);
     const auto blk_size = kernel_conf.K_blk * kernel_conf.N_blk;
 
-    const auto i_dt_sz = kernel_conf.b_dt_sz;
     const auto o_dt_sz = kernel_conf.a_dt_sz;
 
     for (dim_t n_blk_idx = 0; n_blk_idx < n_blks; n_blk_idx++) {
@@ -101,8 +101,8 @@ status_t transform_t::execute(const void *src, void *dst) const {
         int k_blk_idx = 0;
         for (; k_blk_idx < kernel_conf.K / kernel_conf.K_blk; k_blk_idx++) {
             const auto k = k_blk_idx * kernel_conf.K_blk;
-            const auto src_offset
-                    = i_dt_sz * (k * strides_[0] + n * strides_[1]);
+            const auto src_offset = types::elements_to_bytes(
+                    in_dt_, k * strides_[0] + n * strides_[1]);
             const auto dst_offset
                     = o_dt_sz * (k_blk_idx * blk_size + n_blk_idx * k_blks);
             ker_exec_ctx.src = &src_ptr[src_offset];
@@ -113,8 +113,8 @@ status_t transform_t::execute(const void *src, void *dst) const {
         }
         if (kernel_conf.K_tail > 0) {
             const auto k = k_blk_idx * kernel_conf.K_blk;
-            const auto src_offset
-                    = i_dt_sz * (k * strides_[0] + n * strides_[1]);
+            const auto src_offset = types::elements_to_bytes(
+                    in_dt_, k * strides_[0] + n * strides_[1]);
             const auto dst_offset
                     = o_dt_sz * (k_blk_idx * blk_size + n_blk_idx * k_blks);
             ker_exec_ctx.src = &src_ptr[src_offset];

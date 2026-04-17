@@ -1294,7 +1294,7 @@ void CopyPlan::legalizeBfImmediate(CopyInstruction &i1){
 
     i1.op = Opcode::mov;
     i1.dst = temp;
-    i1.src0 =   Immediate::uw(i1.src1.value >> 16);
+    i1.src0 = Immediate::uw((uint16_t)(i1.src1.value >> 16));
     i1.src0.type = DataType::uw;
 
     auto &i2 = split(i1);

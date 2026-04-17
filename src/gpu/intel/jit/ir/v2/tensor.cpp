@@ -394,9 +394,10 @@ static void advance(std::vector<int> &idxs, const std::vector<block_t> &blocks,
     gpu_assert(idxs.size() == blocks.size());
     gpu_assert(idxs.size() == block_incs.size());
     for (size_t i = 0; i < idxs.size(); i++) {
+        auto block_inc = into<int>(block_incs[i]);
         int size = blocks[i].int_size();
-        if (idxs[i] + block_incs[i] < size) {
-            idxs[i] += block_incs[i];
+        if (idxs[i] + block_inc < size) {
+            idxs[i] += block_inc;
             break;
         }
         idxs[i] = 0;
@@ -904,14 +905,14 @@ void for_each(const tile_t &base_tile, const tile_t &_tile,
 
     icoord_t idx;
     tile_t bound;
-    int ntiles = 1;
+    dim_t ntiles = 1;
     for (auto &d : base_tile) {
         if (!tile.has(d)) tile[d] = 1;
         idx[d] = 0;
         bound[d] = utils::div_up(base_tile[d], tile[d]);
         ntiles *= bound[d];
     }
-    for (int i = 0; i < ntiles; i++) {
+    for (dim_t i = 0; i < ntiles; i++) {
         func(idx);
         advance(idx, idx_order, bound, tile);
     }
@@ -1282,7 +1283,7 @@ expr_t grid_splitter_t::index_t::pop(int &n) {
         return ret;
     }
     gpu_assert(n % size == 0);
-    n /= size;
+    n = static_cast<int>(n / size);
     size = 1;
     auto ret = expr;
     expr = expr_t(0);

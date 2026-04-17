@@ -431,8 +431,8 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
         s.slmA = (hw >= HW::XeHP);
     } else if (problem.A.layout == MatrixLayout::T) {
         s.A.accessType = AccessType::Block2DTranspose;
-        s.ka_load = 64.f / ceil(( 1.f * problem.Ta) +
-                                (problem.aOffset2D() ? (1.f * problem.Tao) : 0));
+        s.ka_load = (int)(64.f / ceil(( 1.f * problem.Ta) +
+                                (problem.aOffset2D() ? (1.f * problem.Tao) : 0)));
         s.ka_load = utils::roundup_pow2(s.ka_load);
     } else if (problem.A.layout == MatrixLayout::N) {
         if(problem.Ta.isInt4()) {

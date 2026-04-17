@@ -593,10 +593,18 @@ struct EmulationImplementation {
                 = g.acc0.retype(dstDWType)[dstHi.getOffset()](dstHi.getHS());
 
             if(s1W) {
-                g.mul(mod, accLo, s0Lo, src1, loc);
-                g.mach(mod, dstLo, s0Lo, 0, loc);
-                g.mad(mod, dstHi, dstLo, s0Hi, src1, loc);
-                g.mov(mod, dstLo, accLo, loc);
+                if (emulateDWxDW) {
+                    g.mul(mod, accLo, s0Lo, src1, loc);
+                    g.mach(mod, dstLo, s0Lo, 0, loc);
+                    g.mad(mod, dstHi, dstLo, s0Hi, src1, loc);
+                    g.mov(mod, dstLo, accLo, loc);
+                } else {
+                    dstHi.setType(isSigned(dst.getType()) ? DataType::d : DataType::ud);
+                    g.mul(mod, accLo, s0Hi, src1, loc);
+                    g.mov(mod, dstHi, src1, loc);
+                    g.mul(mod, dst, s0Lo, dstHi, loc);
+                    g.add(mod, dstHi, dstHi, accLo, loc);
+                }
             } else if(s1D) {
                 auto s1Lo = lowWord(src1);
                 g.mul(mod, accLo, s0Lo, s1Lo, loc);

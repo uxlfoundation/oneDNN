@@ -180,8 +180,8 @@ public:
         return true;
     }
 
-    int substitute(const pvar_map_t<dim_t> &values) {
-        int factor = 1;
+    dim_t substitute(const pvar_map_t<dim_t> &values) {
+        dim_t factor = 1;
         for (auto &v : values) {
             for (int i = 0; i < size(); i++) {
                 if (pvars_[i] == v) {
@@ -479,7 +479,7 @@ public:
         }
         rhs_.substitute(values);
         if (rhs_.size() != 1) return;
-        int factor = lhs_.substitute(values);
+        auto factor = lhs_.substitute(values);
         if (factor != 1) {
             gpu_assert(rhs().value() % factor == 0);
             rhs_ = req_rhs_t(rhs().value() / factor);

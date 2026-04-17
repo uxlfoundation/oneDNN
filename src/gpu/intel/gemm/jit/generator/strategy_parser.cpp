@@ -725,21 +725,21 @@ const char *parseLayout(const char *s, MatrixAddressing &atype)
     }
 
     if (isdigit(*s))
-        atype.crosspack = strtol(s, (char **) &s, 10);
+        atype.crosspack = (uint8_t)strtol(s, (char **) &s, 10);
     if (*s == '#') {
         s++;
-        atype.tileR = strtol(s, (char **) &s, 10);
+        atype.tileR = (uint16_t)strtol(s, (char **) &s, 10);
         if (*s != ',') throw std::runtime_error("Bad tiling syntax; expected #<rows>,<columns>.");
         s++;
-        atype.tileC = strtol(s, (char **) &s, 10);
+        atype.tileC = (uint16_t)strtol(s, (char **) &s, 10);
     }
     if (*s == '%') {
         s++;
-        atype.packSize = strtol(s, (char **) &s, 10);
+        atype.packSize = (uint32_t)strtol(s, (char **) &s, 10);
     }
     if (*s == '@') {
         s++;
-        atype.alignment = strtol(s, (char **) &s, 10);
+        atype.alignment = (uint8_t)strtol(s, (char **) &s, 10);
     }
 
     return s;

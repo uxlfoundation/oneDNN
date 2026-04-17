@@ -395,9 +395,9 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     arch_ = arch;
     hw_ = convert_dnnl_arch_to_ngen(arch);
     stepping_ = stepping;
-    m_ = m;
-    n_ = n;
-    k_ = k;
+    m_ = into<int>(m);
+    n_ = into<int>(n);
+    k_ = into<int>(k);
     eu_count_ = eu_count;
     disable_systolic_ = !has_systolic;
     relaxed_acc_ = mode & mode_relaxed_acc;
@@ -615,9 +615,9 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
     arch_ = convert_ngen_arch_to_dnnl(hw_);
     stepping_ = stepping;
     problem_.product = ngen_product;
-    m_ = m;
-    n_ = n;
-    k_ = k;
+    m_ = into<int>(m);
+    n_ = into<int>(n);
+    k_ = into<int>(k);
     eu_count_ = eu_count;
 
     if (!utils::one_of(hw_, HW::XeHP, HW::XeHPG, HW::XeHPC, HW::Xe2, HW::Xe3,
@@ -667,8 +667,8 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
         problem_.bOffset = ABOffset::Load;
         problem_.boPtrDims = 0;
     }
-    if (alpha == 1.0f) problem_.alpha = alpha;
-    if (beta == 0.0f || beta == 1.0f) problem_.beta = beta;
+    if (alpha == 1.0f) problem_.alpha = (int)alpha;
+    if (beta == 0.0f || beta == 1.0f) problem_.beta = (int)beta;
 
     auto status = transfer_post_ops(problem_, std::move(post_ops));
     if (status != status::success) return status;

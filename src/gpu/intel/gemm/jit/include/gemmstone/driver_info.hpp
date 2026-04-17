@@ -138,7 +138,8 @@ struct CommonDriverInfo {
     }
 
     int cInterleaveChunk() const {
-        int chunk = (flags & FlagMaskCInterleave) >> FlagShiftCInterleave;
+        // Only the lowest 7 bits are set after the shift, so this cast is safe.
+        int chunk = static_cast<int>((flags & FlagMaskCInterleave) >> FlagShiftCInterleave);
         return chunk ? chunk : 1;
     }
 

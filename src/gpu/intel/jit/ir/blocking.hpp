@@ -109,7 +109,7 @@ public:
     }
 
     // Returns the ratio of all operations (with padding) to "useful" operations
-    double get_efficiency(const tile_t &shape) const {
+    float get_efficiency(const tile_t &shape) const {
         double ret = 1;
         for (auto &d : shape) {
             dim_t loop = loop_.get(d, 1);
@@ -119,7 +119,7 @@ public:
             dim_t size_padded = utils::rnd_up(size, loop * tg * iter);
             if (size_padded != size) ret *= double(size) / size_padded;
         }
-        return ret;
+        return (float)ret;
     }
 
     // Arbitrary lexicographic ordering to enable deterministic operation.

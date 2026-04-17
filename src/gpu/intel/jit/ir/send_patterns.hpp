@@ -168,7 +168,7 @@ struct send_hint_t {
         int s = 1;
         for (auto &kv : hint_) {
             if (dim == send_dim_idx::block || dim & w_dims_.at(kv.first))
-                s *= kv.second;
+                s *= static_cast<int>(kv.second);
         }
         return s;
     }

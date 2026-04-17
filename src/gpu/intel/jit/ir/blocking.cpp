@@ -79,7 +79,7 @@ std::vector<dim_t> tile_info_t::loop_blocks(dim_t size, int iter_blk) const {
 
 std::vector<dim_t> tile_info_t::get_factors(dim_t n) {
     std::vector<dim_t> ret;
-    dim_t n_sqrt = std::sqrt(n);
+    auto n_sqrt = (dim_t)std::sqrt(n);
     for (dim_t i = 1; i <= n_sqrt; i++) {
         if (n % i == 0) ret.push_back(i);
     }

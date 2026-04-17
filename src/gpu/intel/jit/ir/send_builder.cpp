@@ -39,7 +39,8 @@ public:
     memory_walker_t(const constraint_set_t &cset, const view_t &view)
         : view_(view)
         , mask_tensor_(view.create_mask_tensor(cset).reinterpret(view.type()))
-        , full_size_(utils::div_up(view.velems() * view.type().bitsize(), 8)) {
+        , full_size_(into<int>(
+                  utils::div_up(view.velems() * view.type().bitsize(), 8))) {
         init_dense_blocks(cset);
         reset();
     }
@@ -99,12 +100,12 @@ public:
         gpu_assert(block_idx >= 0 && block_idx < int(block_offs_.size()));
         base = block_offs_[block_idx];
         auto prev_base = block_offs_[block_idx == 0 ? 0 : block_idx - 1];
-        auto get_const_summand = [&](const expr_t &expr) -> int64_t {
+        auto get_const_summand = [&](const expr_t &expr) -> int {
             if (!expr.type().is_int()) return 0;
             auto binary_op = expr.as_ptr<binary_op_t>();
             if (binary_op && binary_op->op_kind == op_kind_t::_add
                     && is_const(binary_op->b))
-                return to_cpp<int64_t>(binary_op->b);
+                return to_cpp<int>(binary_op->b);
             return 0;
         };
 
@@ -159,7 +160,8 @@ private:
             tile[b.idx] *= b.size;
             stride = b.size * b.stride;
         }
-        dense_block_size_ = tile.elems() * type().size() / type().packing();
+        dense_block_size_
+                = into<int>(tile.elems() * type().size() / type().packing());
         // Split the memory view into dense blocks and precompute block offsets
         // and alignments.
         view_.for_each_tile(tile, [&](const icoord_t &start) {
@@ -167,7 +169,7 @@ private:
             off = simplify(off, cset);
 
             const int base_alignment = 128;
-            int64_t f = get_max_const_factor(off, cset);
+            int f = into<int>(get_max_const_factor(off, cset));
             int alignment = f ? ir_utils::max_pow2_divisor(f) : base_alignment;
 
             block_offs_.push_back(std::move(off));
@@ -261,7 +263,7 @@ private:
 
     int max_offset_bytes() const { return (int)size_bytes(layout_, grf_size_); }
 
-    int remaining_elems() const { return layout_.elems() - elems_; }
+    int remaining_elems() const { return into<int>(layout_.elems() - elems_); }
 
     int advance(std::vector<int> &idxs, int off_bytes) const {
         for (size_t i = 0; i < idxs.size(); i++) {
@@ -446,11 +448,11 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
     bool use_virtual_surface = is_w_blocked || is_h_blocked;
     if (use_virtual_surface) {
         if (h_tstride != 1) return false;
-        surface_width = b0.size;
-        surface_height = b1.size;
+        surface_width = into<int>(b0.size);
+        surface_height = into<int>(b1.size);
     } else {
-        surface_width = tlayout.elems(w_dim_idx);
-        surface_height = tlayout.elems(h_dim_idx);
+        surface_width = into<int>(tlayout.elems(w_dim_idx));
+        surface_height = into<int>(tlayout.elems(h_dim_idx));
         if (surface_height % h_tstride != 0) return false;
         surface_height = surface_height / h_tstride;
     }
@@ -963,8 +965,8 @@ send_2d_hint_t get_send_2d_hint(const dsl::kernel::options_t &options,
     auto &b1 = blocks[1];
 
     if (b0.size >= 128) return hint;
-    return get_send_2d_hint(
-            send_op, view.type(), false, false, b0.size, b1.size);
+    return get_send_2d_hint(send_op, view.type(), false, false,
+            into<int>(b0.size), into<int>(b1.size));
 }
 
 send_2d_hint_t get_send_2d_hint(const dsl::kernel::options_t &options,
@@ -1000,12 +1002,12 @@ send_2d_hint_t get_send_2d_hint(const dsl::kernel::options_t &options,
         if (b0_blk != any_block && b0.size % b0_blk != 0) return hint;
         if (b1_blk != any_block && b1.size % b1_blk != 0) return hint;
         bool vnni = is_dpas_src1 && !transpose;
-        hint = get_send_2d_hint(send_op, view.type(), vnni, transpose, b0.size,
-                b1.size, b0_blk, b1_blk);
+        hint = get_send_2d_hint(send_op, view.type(), vnni, transpose,
+                into<int>(b0.size), into<int>(b1.size), b0_blk, b1_blk);
     } else {
         if (b0.size >= 128) return hint;
-        hint = get_send_2d_hint(
-                send_op, view.type(), false, false, b0.size, b1.size);
+        hint = get_send_2d_hint(send_op, view.type(), false, false,
+                into<int>(b0.size), into<int>(b1.size));
     }
 
     // XXX: Special VNNI permute hint to use with Xa16b:bf16 layout which can't

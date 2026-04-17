@@ -480,7 +480,7 @@ public:
     }
 
     object_t _mutate(const int_imm_t &obj) override {
-        return make_bcast(float_imm_t::make(obj.value));
+        return make_bcast(float_imm_t::make((double)obj.value));
     }
 
     object_t _mutate(const var_t &obj) override {

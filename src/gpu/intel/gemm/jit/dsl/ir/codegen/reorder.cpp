@@ -213,12 +213,12 @@ copy_operand_t::copy_operand_t(const reg_buf_data_t &rbd) : CopyOperand(rbd) {
 }
 
 copy_operand_t &copy_operand_t::advance(
-        ngen::HW hw, int64_t elems, uint8_t stride) {
+        ngen::HW hw, int elems, uint8_t stride) {
     const auto nblocks = into<int>(block_bases.size());
     const auto grf_bits = ngen::GRF::bytes(hw) << 3;
     const auto type_bit_size = ngen::getBits(type);
     const auto bit_off = (offset + elems * stride) * type_bit_size;
-    const auto grf_shift = bit_off / grf_bits;
+    const auto grf_shift = (int16_t)(bit_off / grf_bits);
     if (temp || block_bases.empty())
         grf += grf_shift;
     else {

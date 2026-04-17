@@ -38,8 +38,9 @@ struct copy_operand_t : gemmstone::CopyOperand {
     copy_operand_t(const CopyOperand &op) : CopyOperand(op) {}
     copy_operand_t(const reg_buf_data_t &rbd);
 
-    copy_operand_t &advance(ngen::HW hw, int64_t elems, uint8_t stride = 1);
+    copy_operand_t &advance(ngen::HW hw, int elems, uint8_t stride = 1);
 
+    // TODO: int16_t is sufficient for this data
     std::vector<int> block_bases;
     int block_size = 0;
     int block_off = 0;

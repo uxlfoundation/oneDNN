@@ -62,6 +62,47 @@ typedef ugemm_ktq_c_type ktq_tile_type; // D*Br tile
 #define DEBUG_BWD_SOFTMAX_CACHE_GLOBAL 0
 #endif
 
+/*
+ * Stage-by-stage sanitize probe for f32 intermediates.
+ * Set DEBUG_BWD_STAGE_SANITIZE to one stage id below to sanitize only that
+ * point and observe whether failures change/disappear.
+ *  0: disabled
+ *  1: dV_tile1 right after ugemm_vs
+ *  2: dK_tile1 right after ugemm_qdSt
+ *  3: dQ_tile right before atomic add
+ *  4: dV_tile_slm right before global dV store
+ *  5: dK_tile_t right before global dK store (TRANSPOSE_K)
+ *  6: dK_tile_slm right before global dK store (!TRANSPOSE_K)
+ *  7: scalar round_to_dst before GQA atomic accumulation
+ */
+#ifndef DEBUG_BWD_STAGE_SANITIZE
+#define DEBUG_BWD_STAGE_SANITIZE 0
+#endif
+
+#ifndef DEBUG_BWD_STAGE_ABS_MAX
+#define DEBUG_BWD_STAGE_ABS_MAX 65504.0f
+#endif
+
+#define DEBUG_BWD_STAGE_DV_TILE1 1
+#define DEBUG_BWD_STAGE_DK_TILE1 2
+#define DEBUG_BWD_STAGE_DQ_TILE 3
+#define DEBUG_BWD_STAGE_DV_STORE 4
+#define DEBUG_BWD_STAGE_DK_STORE_T 5
+#define DEBUG_BWD_STAGE_DK_STORE 6
+#define DEBUG_BWD_STAGE_ROUND_DST 7
+
+inline float debug_bwd_sanitize_f32(float x) {
+        if (!isfinite(x)) return 0.f;
+        if (fabs(x) > DEBUG_BWD_STAGE_ABS_MAX) return 0.f;
+        return x;
+}
+
+#define DEBUG_BWD_APPLY_STAGE_F32(tile, stage_id) \
+        do { \
+                if (DEBUG_BWD_STAGE_SANITIZE == (stage_id)) \
+                        tile_elementwise_s((tile), debug_bwd_sanitize_f32); \
+        } while (0)
+
 #if DEBUG_BWD_SOFTMAX_CACHE_GLOBAL && !WITH_DS
 #error "DEBUG_BWD_SOFTMAX_CACHE_GLOBAL requires WITH_DS=1"
 #endif
@@ -416,6 +457,9 @@ inline void tile_store_k_slm(
 // where each query group matmul output passes through DST_DATA_T
 // storage before the reduction
 inline float round_to_dst(float v) {
+#if DEBUG_BWD_STAGE_SANITIZE == DEBUG_BWD_STAGE_ROUND_DST
+        v = debug_bwd_sanitize_f32(v);
+#endif
     return CONVERT_FLOAT_T(CONVERT_DATA_T(v));
 }
 
@@ -881,6 +925,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             dV_tile1 = ugemm_vs(dA + q0 * ldda, ldda, (local FMA_TYPE *)S_slm,
                     ugemm_kq_wg_tile_n, d, k_chunk, q_nchunk, 0, 0, 0, sg_i_vs,
                     sg_j_vs, (local char *)ugemm_slm);
+            DEBUG_BWD_APPLY_STAGE_F32(dV_tile1, DEBUG_BWD_STAGE_DV_TILE1);
 #else
             dv_tile_type dV_tile1;
 #endif
@@ -986,6 +1031,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             dK_tile1 = ugemm_qdSt(S_slm, ugemm_kq_wg_tile_n, Q + q0 * ldq, ldq,
                     k_chunk, d, q_nchunk, 0, 0, 0, sg_i_qdSt, sg_j_qdSt,
                     (local char *)ugemm_slm); // dS^t * Q -> Bc x d
+            DEBUG_BWD_APPLY_STAGE_F32(dK_tile1, DEBUG_BWD_STAGE_DK_TILE1);
 #else
             a_tile_type dK_tile1;
 #endif
@@ -1032,6 +1078,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #else
             ktq_tile_type dQ_tile;
 #endif
+            DEBUG_BWD_APPLY_STAGE_F32(dQ_tile, DEBUG_BWD_STAGE_DQ_TILE);
             uint sg_i0_dq = sg_i_ktq * ugemm_ktq_sg_tile_m;
             uint sg_j0_dq = sg_j_ktq * ugemm_ktq_sg_tile_n + q0;
 
@@ -1052,6 +1099,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     if (sg_ij < sg_per_wg_BcD) {
         tile_load(&dV_tile_slm, dV_slm, D_MAX, ugemm_kq_wg_tile_m, D_MAX,
                 sg_i0_vs, sg_j0_vs);
+        DEBUG_BWD_APPLY_STAGE_F32(dV_tile_slm, DEBUG_BWD_STAGE_DV_STORE);
         tile_store_dV(&dV_tile_slm, dV, d, k, lddv, sg_i0_vs, wg_i0 + sg_j0_vs,
                 remainder_k);
     }
@@ -1065,6 +1113,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     if (sg_ij < sg_per_wg_BcD) {
         tile_load(&dK_tile_t, dK_slm, D_MAX, ugemm_kq_wg_tile_m, D_MAX,
                 sg_i0_vs, sg_j0_vs);
+        DEBUG_BWD_APPLY_STAGE_F32(dK_tile_t, DEBUG_BWD_STAGE_DK_STORE_T);
         tile_store_dK_t(&dK_tile_t, dK, d, k, lddk, sg_i0_vs, wg_i0 + sg_j0_vs,
                 remainder_k);
     }
@@ -1078,6 +1127,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     if (sg_ij < sg_per_wg_BcD) {
         tile_load(&dK_tile_slm, dK_slm, ugemm_kq_wg_tile_m, D_MAX,
                 ugemm_kq_wg_tile_m, sg_i0_dk, sg_j0_dk);
+        DEBUG_BWD_APPLY_STAGE_F32(dK_tile_slm, DEBUG_BWD_STAGE_DK_STORE);
         tile_store_dK(&dK_tile_slm, dK + wg_i0, wg_k_chunk, d, lddk, sg_i0_dk,
                 sg_j0_dk);
     }

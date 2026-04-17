@@ -249,6 +249,7 @@ void normalize_shape(dim_t &id, dim_t &od, dim_t &kd, dim_t &sd, dim_t &dd,
         dim_t &ph, dim_t &iw, dim_t &ow, dim_t &kw, dim_t &sw, dim_t &dw,
         dim_t &pw, bool can_flatten_spatial, std::array<int, 3> &dhw_map);
 bool is_small_ic(const problem_t &prb);
+bool force_mad(const problem_t &prb);
 
 class arg_helper_t {
 public:

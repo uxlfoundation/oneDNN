@@ -315,6 +315,17 @@ status_t problem_t::init_abc_data_types(const dsl::hw_t &hw) {
     return status::success;
 }
 
+bool force_mad(const problem_t &prb) {
+    if (prb.is_dw) return true;
+    if (prb.is_bwd_w) return false;
+    dim_t kw_xc = prb.kw * (prb.is_fwd ? prb.ic : prb.oc);
+    bool small_ic_oc = (prb.oc <= 3 && prb.ic <= 3 && kw_xc <= 10)
+            || (prb.oc <= 2 && prb.ic <= 2);
+    bool small_mb_ic_oc = prb.mb < 8 && small_ic_oc;
+    bool grouped_small_ic_oc = prb.g > 1 && small_ic_oc;
+    return small_mb_ic_oc || grouped_small_ic_oc;
+}
+
 status_t problem_t::init_acc_data_type() {
     auto a = a_data_type;
     auto b = b_data_type;

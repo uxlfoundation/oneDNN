@@ -600,10 +600,9 @@ struct EmulationImplementation {
                     g.mov(mod, dstLo, accLo, loc);
                 } else {
                     dstHi.setType(isSigned(dst.getType()) ? DataType::d : DataType::ud);
-                    g.mul(mod, accLo, s0Hi, src1, loc);
-                    g.mov(mod, dstHi, src1, loc);
-                    g.mul(mod, dst, s0Lo, dstHi, loc);
-                    g.add(mod, dstHi, dstHi, accLo, loc);
+                    g.mul(mod, accHi, s0Hi, src1, loc);
+                    g.mul(mod, dst, s0Lo, src1, loc);
+                    g.add(mod, dstHi, dstHi, accHi, loc);
                 }
             } else if(s1D) {
                 auto s1Lo = lowWord(src1);

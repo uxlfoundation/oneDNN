@@ -52,7 +52,7 @@ public:
 
     walk_order_t() = default;
 
-    void add(const dsl::idx_t &dim, int64_t block_size, int grid_id) {
+    void add(const dsl::idx_t &dim, int block_size, int grid_id) {
         if (!blocks_.empty()) {
             auto &last = blocks_.back();
             if (last.dim == dim && last.grid_id == grid_id) {
@@ -136,11 +136,11 @@ public:
         for (auto &d : grid_tile) {
             int inner_block = 1;
             for (auto &b : blocks_) {
-                if (b.dim == d) inner_block *= b.size;
+                if (b.dim == d) inner_block *= into<int>(b.size);
             }
-            int64_t outer = div_up(grid_tile[d], inner_block);
+            auto outer = into<int>(div_up(grid_tile[d], inner_block));
             int id = (inner_block != 1 ? grid_id(d) : 0);
-            dim_infos_.emplace_back(d, grid_tile[d]);
+            dim_infos_.emplace_back(d, into<int>(grid_tile[d]));
             if (outer != 1) add(d, outer, id);
         }
         for (auto &info : dim_infos_) {

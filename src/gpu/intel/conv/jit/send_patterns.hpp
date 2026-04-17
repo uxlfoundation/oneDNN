@@ -91,7 +91,7 @@ struct stride_layout_t : public intel::jit::stride_layout_t<pvar_t> {
             if (is_complex) access_stride = 1;
 
             auto outer = size;
-            auto stride = 1;
+            dim_t stride = 1;
             for (int j = 0; j < blk.inner_nblks; j++) {
                 const dim_t blk_size = blk.inner_blks[j];
                 if (blk.inner_idxs[j] == desc_dim) {

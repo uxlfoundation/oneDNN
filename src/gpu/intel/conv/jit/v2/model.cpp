@@ -41,7 +41,8 @@ struct hw_config_t {
                                                                        : 128) {}
 
     int max_tgs_per_gpu(dim_t tg_size) const {
-        int tgs_per_ss = hw.eus_per_core() * hw.threads_per_eu(regs) / tg_size;
+        int tgs_per_ss = static_cast<int>(
+                hw.eus_per_core() * hw.threads_per_eu(regs) / tg_size);
         return hw.eu_count() / hw.eus_per_core() * tgs_per_ss;
     }
 };
@@ -137,7 +138,7 @@ dim_t layout_size(const layout_tag_t &tag, const problem_t &prb) {
     return elems * tag.type().size();
 }
 
-float time_nsec(const bench_time_t &time) {
+int64_t time_nsec(const bench_time_t &time) {
     if (time.nkernels() == 0) return 0;
     if (time.nkernels() == 1) return time.total;
     gpu_assert(utils::one_of(time.nkernels(), 2, 3))
@@ -159,12 +160,12 @@ public:
 
     vec1d to_x() const override {
         std::vector<float> ret;
-        ret.push_back(kl_);
+        ret.push_back((float)kl_);
         ret.push_back(waves_);
         return ret;
     }
 
-    float to_y() const override { return nsec_; }
+    float to_y() const override { return (float)nsec_; }
 
 private:
     uint64_t nsec_ = 0;
@@ -183,7 +184,7 @@ public:
     }
 
     vec1d to_x() const override { return vec1d({(float)iters_}); }
-    float to_y() const override { return nsec_; }
+    float to_y() const override { return (float)nsec_; }
 
 private:
     uint64_t nsec_ = 0;

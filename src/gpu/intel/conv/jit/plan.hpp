@@ -48,7 +48,7 @@ struct reorder_plan_t : public base_plan_t {
     void set_split(int factor = 1);
     stmt_t create_stmt(const expr_t &src_buf, const expr_t &dst_buf) const;
     dim_t src_buf_size() const;
-    dim_t estimate_regs() const;
+    int estimate_regs() const;
 
     std::string str(const std::string &tag = "reorder") const {
         ostringstream_t oss;

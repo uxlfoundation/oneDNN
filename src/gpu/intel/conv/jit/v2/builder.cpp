@@ -533,7 +533,7 @@ private:
         }
         if (zero_point != 0) {
             auto func = eltwise_t::make(
-                    alg_kind::eltwise_linear, 1, 1.0f, -zero_point);
+                    alg_kind::eltwise_linear, 1.f, 1.f, -(float)zero_point);
             emit(func.call({expr_t(rhs.elems()), rhs_buf}));
         }
         if (scale != 1) {

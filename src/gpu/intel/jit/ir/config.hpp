@@ -326,7 +326,8 @@ public:
         int eus_per_subslice = compute::device_info_t::max_eus_per_wg(arch);
         int subslice_count = options.hw().eu_count() / eus_per_subslice;
 
-        int tgs_per_subslice = eus_per_subslice * threads_per_eu / tg_elems;
+        auto tgs_per_subslice = static_cast<int>(
+                eus_per_subslice * threads_per_eu / tg_elems);
         gpu_assert(tgs_per_subslice > 0);
         return subslice_count * tgs_per_subslice;
     }
@@ -391,7 +392,7 @@ public:
     dim_t iter_dim(const pvar_t &d) const { return iter_dims().get(d); }
 
     dim_t iter_dim(std::initializer_list<pvar_t> dims) const {
-        int ret = 1;
+        dim_t ret = 1;
         for (auto &dim : dims)
             ret *= iter_dim(dim);
         return ret;

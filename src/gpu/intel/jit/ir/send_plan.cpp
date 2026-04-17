@@ -445,9 +445,11 @@ public:
         return 0;
     }
 
-    template <typename T>
-    T offset(const std::vector<T> &voff, const T &base = T()) const {
-        T ret = base;
+    template <typename T,
+            typename R = typename std::conditional<std::is_integral<T>::value,
+                    int64_t, T>::type>
+    R offset(const std::vector<T> &voff, const T &base = T()) const {
+        R ret = base;
         for (int i = 0; i < 2; i++) {
             if (vidxs_[i] == dim_idx::invalid) continue;
             ret += voff[vidxs_[i]] * vstrides_[i];
@@ -2207,7 +2209,7 @@ private:
     }
 
     struct send_info_t {
-        send_info_t(int mem_off, int reg_off, int size)
+        send_info_t(int64_t mem_off, int reg_off, int size)
             : mem_off(mem_off), reg_off(reg_off), size(size) {}
 
         bool can_fuse(const send_info_t &prev) const {
@@ -2216,7 +2218,7 @@ private:
             return true;
         }
 
-        int mem_off;
+        int64_t mem_off;
         int reg_off;
         int size;
     };

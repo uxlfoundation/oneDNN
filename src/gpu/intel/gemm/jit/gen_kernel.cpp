@@ -534,6 +534,22 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_product_t product, int stepping,
         return nullptr;
     });
 
+    // Allow cases with integer acc to reuse strategies with equal size float acc.
+    // Prioritize float acc strategies as theyre better optimized.
+    if (problem.Tc == Type::s32) {
+        size_t npatterns = match_params.size();
+        std::vector<MatchParams> float_strats;
+        for (size_t i = 0; i < npatterns; ++i) {
+            auto start = match_params[i];
+            if (!std::string("I").compare(start.selector.precisions[2])) {
+                float_strats.push_back(start);
+                float_strats.back().selector.precisions[2] = "S";
+            }
+        }
+        match_params.insert(
+                match_params.begin(), float_strats.begin(), float_strats.end());
+    }
+
     eval_params_.sizes = base.sizes;
     eval_params_.alpha = alpha;
     eval_params_.beta = beta;
@@ -567,7 +583,8 @@ status_t gen_nocopy_desc_t::finalize() {
     };
     update_type(problem_.Ta, Ta_new);
     update_type(problem_.Tb, Tb_new);
-    update_type(problem_.Tc, Tc_new);
+    if (!(problem_.Tc == Type::s32 && Tc_new == Type::f32))
+        update_type(problem_.Tc, Tc_new);
 
     // If the kernel uses tf32 types, interpret the buffer as tf32 without
     // converting from fp32. This eliminates a rounding step, but improves performance

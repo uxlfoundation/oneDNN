@@ -115,10 +115,10 @@ struct x2_tile_info_t {
                 if (!d.is_iter_ok(ij)) continue;
                 auto factors = tile_info_t::get_factors(ij);
                 if (!tile_info_t::block_ok(size0 * size1, ij, eff)) continue;
-                for (dim_t i : factors) {
-                    dim_t j = ij / i;
+                for (auto i : factors) {
+                    int j = ij / static_cast<int>(i);
                     if (d0.is_iter_ok(i) && d1.is_iter_ok(j)) {
-                        ret.emplace_back(i, j);
+                        ret.emplace_back(static_cast<int>(i), j);
                     }
                 }
             }
@@ -174,7 +174,7 @@ int get_layout_unit(const config_t &cfg, const layout_t &layout,
 
     int ret = 1;
     for (dim_t b : blocks)
-        ret *= b;
+        ret *= into<int>(b);
     return ret;
 }
 
@@ -466,24 +466,24 @@ bool is_inner_non_blocked(const config_t &cfg, const pvar_t &dim) {
     return false;
 }
 
-dim_t grf_usage_bytes(fma_kind_t fma, dim_t b_iter, dim_t m_iter, dim_t n_iter,
+int grf_usage_bytes(fma_kind_t fma, dim_t b_iter, dim_t m_iter, dim_t n_iter,
         dim_t k_iter, int a_type_size, int b_type_size, int c_type_size) {
-    dim_t a_elems = b_iter * m_iter * k_iter;
-    dim_t b_elems = b_iter * k_iter * n_iter;
-    dim_t c_elems = m_iter * n_iter;
-    dim_t a_size = a_elems * a_type_size;
-    int a_reorder_size = 0;
-    dim_t b_size = b_elems * b_type_size;
-    int b_reorder_size = 0;
-    dim_t c_size = c_elems * c_type_size;
-    int dword_size = 4;
+    static constexpr int dword_size = 4;
+    auto a_elems = into<int>(b_iter * m_iter * k_iter);
+    auto b_elems = into<int>(b_iter * k_iter * n_iter);
+    auto c_elems = into<int>(m_iter * n_iter);
+    auto a_size = a_elems * a_type_size;
+    auto a_reorder_size = 0;
+    auto b_size = b_elems * b_type_size;
+    auto b_reorder_size = 0;
+    auto c_size = c_elems * c_type_size;
     if (fma == fma_kind_t::mad) {
         // mad/x8 case always requires x8 -> dword-strided s16 reorder.
         if (a_type_size == 1) a_reorder_size += a_elems * dword_size;
         if (b_type_size == 1) b_reorder_size += b_elems * dword_size;
     }
 
-    int abc_size = 0;
+    auto abc_size = 0;
     abc_size += a_size + a_reorder_size;
     abc_size += b_size + b_reorder_size;
     abc_size += c_size;
@@ -503,10 +503,10 @@ int slm_usage_bytes(const config_t &cfg, dim_t b_tg, dim_t m_tg, dim_t n_tg,
                 cfg.zp_cfg().do_src_compensation, slm_a, slm_b, do_unroll);
         max_slm_bufs = std::max(max_slm_bufs, bufs);
     }
-    dim_t a_slm_elems = n_tg * b_iter * m_iter * k_iter;
-    dim_t b_slm_elems = m_tg * b_iter * n_iter * k_iter;
-    dim_t a_slm_size = a_slm_elems * prb.a_data_type_size;
-    dim_t b_slm_size = b_slm_elems * prb.b_data_type_size;
+    auto a_slm_elems = into<int>(n_tg * b_iter * m_iter * k_iter);
+    auto b_slm_elems = into<int>(m_tg * b_iter * n_iter * k_iter);
+    auto a_slm_size = a_slm_elems * prb.a_data_type_size;
+    auto b_slm_size = b_slm_elems * prb.b_data_type_size;
     int ab_slm_size = 0;
     if (slm_a) ab_slm_size += a_slm_size;
     if (slm_b) ab_slm_size += b_slm_size;
@@ -746,8 +746,8 @@ private:
         if (!is_enabled(check_kind_t::check_grf_usage)) return true;
 
         auto &prb = cfg_.prb();
-        dim_t abc_size = grf_usage_bytes(cfg_.fma_kind(), ctx.b_iter,
-                ctx.m_iter, ctx.n_iter, ctx.k_iter, prb.a_data_type_size,
+        int abc_size = grf_usage_bytes(cfg_.fma_kind(), ctx.b_iter, ctx.m_iter,
+                ctx.n_iter, ctx.k_iter, prb.a_data_type_size,
                 prb.b_data_type_size, prb.acc_data_type_size);
         auto &options = cfg_.options();
         int usage_limit
@@ -821,7 +821,7 @@ private:
                     return true;
                 }
                 if (block % b == 0) {
-                    block /= b;
+                    block /= into<int>(b);
                     b = 1;
                     return true;
                 }
@@ -847,10 +847,11 @@ private:
         for (auto &d : dims) {
             std::vector<std::pair<level_t, int>> blocks;
             if (blk.iter().has(d))
-                blocks.emplace_back(level_t::iter, blk.iter_dim(d));
-            if (blk.thread_group().has(d))
                 blocks.emplace_back(
-                        level_t::thread_group, blk.thread_group_dim(d));
+                        level_t::iter, static_cast<int>(blk.iter_dim(d)));
+            if (blk.thread_group().has(d))
+                blocks.emplace_back(level_t::thread_group,
+                        static_cast<int>(blk.thread_group_dim(d)));
             if (!layout_dim_ok(prop, tensor_kind, layout, d, std::move(blocks)))
                 return false;
         }
@@ -1015,7 +1016,7 @@ conv_blocking_scheme_t bwd_w_T_io_I_ikow("l:[mb,oh,ow],T:[oc,ic],i:[ic,kw,oc,ow]
 } // namespace conv_schemes
 // clang-format on
 
-double get_iter_dim_score(
+dim_t get_iter_dim_score(
         const pvar_t &dim, const config_t &cfg, dim_t dim_size) {
     auto &prb = cfg.prb();
     if (utils::one_of(dim, pvars::ow, pvars::iw)) {
@@ -1031,13 +1032,15 @@ double get_iter_dim_score(
 
 pvar_t select_non_blocked_iter_dim(
         const config_t &cfg, const std::vector<pvar_t> &dims) {
+    gpu_assert(!dims.empty());
     const auto shape = cfg.shape(/*pad=*/false);
-    std::vector<double> scores;
+    std::vector<dim_t> scores;
     scores.reserve(dims.size());
     for (auto &d : dims)
         scores.push_back(get_iter_dim_score(d, cfg, shape[d]));
-    auto max_it = std::max_element(scores.begin(), scores.end());
-    return dims[max_it - scores.begin()];
+    const auto start = scores.begin(), end = scores.end();
+    auto max_it = std::max_element(start, end);
+    return dims[max_it - start];
 }
 
 bool is_nchw(const config_t &cfg) {

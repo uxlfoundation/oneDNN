@@ -275,8 +275,8 @@ status_t pd_t::init_attrs() {
     // for one matrix, they must have the same group size
     const auto &set_a_groups
             = [](quant_params &quant, const quant_entry_t &entry) -> status_t {
-        int k_grp = entry.get_group(0);
-        int m_grp = entry.get_group(1);
+        auto k_grp = into<int>(entry.get_group(0));
+        auto m_grp = into<int>(entry.get_group(1));
         if (quant.group_k > 0 && quant.group_k != k_grp)
             return status::unimplemented;
         quant.group_k = k_grp;
@@ -296,8 +296,8 @@ status_t pd_t::init_attrs() {
     b_quant.zp_host_scalar = b_zp_host_scalar();
     const auto &set_b_groups
             = [](quant_params &quant, const quant_entry_t &entry) -> status_t {
-        int n_grp = entry.get_group(0);
-        int k_grp = entry.get_group(1);
+        int n_grp = into<int>(entry.get_group(0));
+        int k_grp = into<int>(entry.get_group(1));
         if (quant.group_n > 0 && quant.group_n != n_grp)
             return status::unimplemented;
         quant.group_n = n_grp;
@@ -313,8 +313,8 @@ status_t pd_t::init_attrs() {
     c_quant.scales_type = c_scales.get_data_type();
     c_quant.zp_type = c_zps.get_data_type();
     if (!c_scales.has_default_groups()) {
-        c_quant.group_m = c_scales.get_group(1);
-        c_quant.group_n = c_scales.get_group(0);
+        c_quant.group_m = into<int>(c_scales.get_group(1));
+        c_quant.group_n = into<int>(c_scales.get_group(0));
         with_mx_scale_ = c_scales.is_mx();
     }
     c_quant.zp_host_scalar = c_zp_host_scalar();
@@ -686,8 +686,8 @@ status_t pd_t::init_GEMMProblem(
 
     if (problem.Ta.isInteger()) problem.Ts = Type::f32;
 
-    if (alpha() == 1.0f) problem.alpha = alpha();
-    if (beta() == 0.0f || beta() == 1.0f) problem.beta = beta();
+    if (alpha() == 1.0f) problem.alpha = (int)alpha();
+    if (beta() == 0.0f || beta() == 1.0f) problem.beta = (int)beta();
 
     gpu_post_ops_t gpu_post_ops;
     CHECK(gpu_post_ops_t::make(

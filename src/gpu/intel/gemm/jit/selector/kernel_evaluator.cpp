@@ -516,7 +516,7 @@ DerivedEvaluateParams getDerivedParams(const kcatalog::Entry &e, const EvaluateP
         auto ldc = static_cast<int>(Tc * (isColMajor(cLayout) ? p.sizes.m : p.sizes.n) * e.driverInfo.cInterleaveChunk());
         auto &wgCountX = isColMajor(cLayout) ? dp.wgCountM : dp.wgCountN;
         auto &wgCountY = isColMajor(cLayout) ? dp.wgCountN : dp.wgCountM;
-        wgCountY = align_up(wgCountY, e.driverInfo.cInterleaveChunk());
+        wgCountY = round_up(wgCountY, e.driverInfo.cInterleaveChunk());
         if (e.driverInfo.cInterleaveChunk() > 1 && (ldc * Tc % 64 > 0)) {
             auto wgTileX = e.driverInfo.wgTile(isColMajor(cLayout) ? LoopM : LoopN);
             auto maxShift = 64 / Tc - 1;

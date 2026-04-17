@@ -599,12 +599,15 @@ struct EmulationImplementation {
                     g.mad(mod, dstHi, dstLo, s0Hi, src1, loc);
                     g.mov(mod, dstLo, accLo, loc);
                 } else {
-                    auto acc = g.acc0.retype(dst.getType())[dst.getOffset()](dst.getHS());
+                    // XE3P+: native 64-bit mul with GRF dst (no mach/macl).
+                    // Must handle src0==dst overlap: s0Lo=dstLo, s0Hi=dstHi.
+                    // Order: consume s0Hi first (into acc), use dstHi as scratch
+                    // for extended src1, then native mul reads s0Lo (=dstLo, still intact).
                     dstHi.setType(isSigned(dst.getType()) ? DataType::d : DataType::ud);
-                    g.mov(mod, dst, 0);
-                    g.mul(mod, acc, s0Lo, src1, loc);
-                    g.mul(mod, dstHi, s0Hi, src1, loc);
-                    g.add(mod, dst, dst, acc);
+                    g.mul(mod, accLo, s0Hi, src1, loc);
+                    g.mov(mod, dstHi, src1, loc);
+                    g.mul(mod, dst, s0Lo, dstHi, loc);
+                    g.add(mod, dstHi, dstHi, accLo, loc);
                 }
             } else if(s1D) {
                 auto s1Lo = lowWord(src1);

@@ -217,7 +217,8 @@ static void fixupJumpTargets(uint8_t *start, size_t len, ptrdiff_t adjust) {
 
         auto jumpFixup = [=](int32_t &ip) {
             auto target = ((insn - istart) << 2) + ip;
-            if (target < 0 || target >= ptrdiff_t(len)) ip += adjust;
+            if (target < 0 || target >= ptrdiff_t(len))
+                ip += static_cast<int32_t>(adjust);
         };
 
         if (hasUIP) jumpFixup(insn[2]);

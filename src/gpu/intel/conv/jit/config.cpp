@@ -1476,10 +1476,10 @@ walk_order_t maybe_fixup_group_with_small_channels(
         return walk_order;
 
     walk_order_t fixed;
-    fixed.add(pvars::g, grid_tile.at(pvars::g), 0);
+    fixed.add(pvars::g, into<int>(grid_tile.at(pvars::g)), 0);
     for (auto &b : walk_order.blocks()) {
         if (b.dim == pvars::g) continue;
-        fixed.add(b.dim, b.size, b.grid_id);
+        fixed.add(b.dim, into<int>(b.size), b.grid_id);
     }
     fixed.finalize(grid_tile);
     return fixed;
@@ -1512,10 +1512,10 @@ walk_order_t maybe_fixup_large_weights(
     // Apply the heuristic - move `oh` to be fast-changing in the grid.
     walk_order_t fixed;
     if (grid_tile.has(pvars::oh))
-        fixed.add(pvars::oh, grid_tile.get(pvars::oh), 0);
+        fixed.add(pvars::oh, into<int>(grid_tile.get(pvars::oh)), 0);
     for (auto &b : walk_order.blocks()) {
         if (b.dim == pvars::oh) continue;
-        fixed.add(b.dim, b.size, b.grid_id);
+        fixed.add(b.dim, into<int>(b.size), b.grid_id);
     }
     fixed.finalize(grid_tile);
     return fixed;
@@ -1545,7 +1545,7 @@ walk_order_t get_default_walk_order(
     walk_order_t walk_order;
     for (int i = 0; i < 3; i++) {
         for (auto &d : grid_dims[i]) {
-            if (grid_tile.has(d)) walk_order.add(d, grid_tile[d], i);
+            if (grid_tile.has(d)) walk_order.add(d, into<int>(grid_tile[d]), i);
         }
     }
     walk_order.finalize(grid_tile);
@@ -1601,9 +1601,9 @@ public:
         for (auto &d : inner) {
             auto bmnk = to_gemm(d, prb_);
             if (bmnk == pvars::m) {
-                m_size *= inner[d];
+                m_size *= into<int>(inner[d]);
             } else if (bmnk == pvars::n) {
-                n_size *= inner[d];
+                n_size *= into<int>(inner[d]);
             }
         }
         auto mn_kind = (m_size < n_size ? 'm' : 'n');
@@ -1626,7 +1626,7 @@ private:
 
 walk_order_t compute_walk_order(const config_t &cfg) {
     auto &prb = cfg.prb();
-    int tg_size = 1;
+    dim_t tg_size = 1;
     tile_t inner;
     for (auto &d : index_dims(cfg.prb().prop_kind())) {
         dim_t iter = cfg.iter_dim(d);
@@ -1710,7 +1710,7 @@ walk_order_t compute_walk_order(const config_t &cfg) {
             switch (step) {
                 case 0:
                     if (grid_inner.has(b.dim)) {
-                        walk_order.add(b.dim, grid_inner[b.dim], 0);
+                        walk_order.add(b.dim, into<int>(grid_inner[b.dim]), 0);
                     }
                     break;
                 case 1:
@@ -1721,7 +1721,7 @@ walk_order_t compute_walk_order(const config_t &cfg) {
                     auto bmnk = to_gemm(b.dim, prb);
                     bool is_bk = utils::one_of(bmnk, pvars::b, pvars::k);
                     if ((step == 2) != is_bk) continue;
-                    walk_order.add(b.dim, rem, 0);
+                    walk_order.add(b.dim, into<int>(rem), 0);
                     break;
             }
         }

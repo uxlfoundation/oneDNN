@@ -204,7 +204,7 @@ struct hw_config_t {
 
     float max_gops_per_sec() const {
         float max_ops_per_sec = freq * eus * ops_per_clock;
-        return max_ops_per_sec / 1e9;
+        return max_ops_per_sec / 1e9f;
     }
 };
 
@@ -261,8 +261,8 @@ struct bmnk_conv_sample_t {
     }
 
     float wave_util() const {
-        int64_t waves = utils::div_up(threads(), (int64_t)hw_cfg.max_threads());
-        return threads() / (waves * hw_cfg.max_threads());
+        int64_t waves = utils::div_up(threads(), hw_cfg.max_threads());
+        return (float)(threads() / (waves * hw_cfg.max_threads()));
     }
 
     float tg_util() const {
@@ -297,7 +297,7 @@ struct bmnk_conv_sample_t {
         return k_rounded > k_tg ? 1.0f : 0.0f;
     }
 
-    float eff() const { return ops() / 1e9 / sec / hw_cfg.max_gops_per_sec(); }
+    float eff() const { return ops() / 1e9f / sec / hw_cfg.max_gops_per_sec(); }
 
     static std::vector<const char *> feature_names() {
         std::vector<const char *> ret;
@@ -333,20 +333,20 @@ struct bmnk_conv_sample_t {
         dim_t bg = b / (bl * bt * bi);
         dim_t mg = m / (ml * mt * mi);
         dim_t ng = n / (nl * nt * ni);
-        ret.push_back(bg * mg * ng);
-        ret.push_back(k / (kl * kt * ki));
-        ret.push_back(mt);
-        ret.push_back(nt);
-        ret.push_back(kt);
-        ret.push_back(bi);
-        ret.push_back(mi);
-        ret.push_back(ni);
-        ret.push_back(ki);
-        ret.push_back(kl);
+        ret.push_back((float)bg * mg * ng);
+        ret.push_back((float)(k / (kl * kt * ki)));
+        ret.push_back((float)mt);
+        ret.push_back((float)nt);
+        ret.push_back((float)kt);
+        ret.push_back((float)bi);
+        ret.push_back((float)mi);
+        ret.push_back((float)ni);
+        ret.push_back((float)ki);
+        ret.push_back((float)kl);
         ret.push_back(is_dpas());
         ret.push_back(is_dpasw_hint());
-        ret.push_back((int)src_type);
-        ret.push_back((int)dst_type);
+        ret.push_back((float)((int)src_type));
+        ret.push_back((float)((int)dst_type));
         return ret;
     }
 
@@ -432,7 +432,7 @@ struct conv_sample_t {
         dim_t b, m, n, k;
         to_gemm_tile(shape, b, m, n, k);
         float ops = 2.0f * b * m * n * k;
-        return ops / 1e9 / sec / hw_cfg.max_gops_per_sec();
+        return ops / 1e9f / sec / hw_cfg.max_gops_per_sec();
     }
 
     bmnk_conv_sample_t to_bmnk_conv_sample() const {
@@ -845,7 +845,7 @@ private:
             int f = ij / nsplits;
             int v = ij % nsplits;
             if (!splits[f][v]) continue;
-            float err = get_err(X_local, y_local, w_local, f, v);
+            float err = get_err(X_local, y_local, w_local, f, (float)v);
 #ifdef DNNL_GPU_MODEL_USE_OMP
 #pragma omp critical
 #endif

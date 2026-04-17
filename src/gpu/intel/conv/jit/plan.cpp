@@ -726,13 +726,11 @@ dim_t reorder_plan_t::src_buf_size() const {
     return src_size;
 }
 
-dim_t reorder_plan_t::estimate_regs() const {
+int reorder_plan_t::estimate_regs() const {
     if (!*this) return 0;
 
     dim_t dst_size = utils::div_up(size_bytes(dst), split_factor);
-    dim_t ret = 0;
-    ret += utils::rnd_up(dst_size, grf_size());
-    return utils::div_up(ret, grf_size());
+    return into<int>(utils::div_up(dst_size, grf_size()));
 }
 
 reduce_plan_t create_reduce_plan(const dsl::hw_t &hw, const layout_t &src,
@@ -780,9 +778,8 @@ stmt_t reduce_plan_t::create_stmt(
 int reduce_plan_t::estimate_regs() const {
     if (!*this) return 0;
 
-    int ret = 0;
-    ret += dst_buf_size();
-    return utils::div_up(ret, grf_size());
+    auto ret = dst_buf_size();
+    return into<int>(utils::div_up(ret, grf_size()));
 }
 
 std::string slm_plan_t::str() const {
@@ -1133,10 +1130,14 @@ grf_usage_t plan_t::grf_usage() const {
     gpu_assert(reserved_regs != -1);
     bool with_headers = !reuse_headers;
 
+    auto nregs = [&](dim_t size) {
+        return into<int>(utils::div_up(size, grf_size()));
+    };
+
     int out_buf_regs = 0;
-    out_buf_regs += utils::div_up(size_bytes(fma.c_layout), grf_size());
-    out_buf_regs += utils::div_up(slm.x_reduce.dst_buf_size(), grf_size());
-    out_buf_regs += utils::div_up(x2r.x_reduce.dst_buf_size(), grf_size());
+    out_buf_regs += nregs(size_bytes(fma.c_layout));
+    out_buf_regs += nregs(slm.x_reduce.dst_buf_size());
+    out_buf_regs += nregs(x2r.x_reduce.dst_buf_size());
 
     int gmem_load_buf_regs = 0;
     gmem_load_buf_regs += slm.a_g2s_load.estimate_regs(
@@ -2265,7 +2266,7 @@ private:
         if (is_block_strided && size_ge_256b && prefetch_lt_256b
                 && is_inner_loop) {
             gpu_assert(thr_view.vdims()[b0.idx] == b0.size);
-            int factor = 256 / b0_size;
+            auto factor = static_cast<int>(256 / b0_size);
             thr_view.set_vdim(inner_var, b0.size * factor,
                     thr_view.vstart()[b0.idx],
                     /*overwrite=*/true);
@@ -2387,7 +2388,7 @@ private:
         size_t ndims = l.ndims();
         auto blocks = l.blocks();
         l = l.with_block({ndims, k_tg});
-        int outer = 1;
+        dim_t outer = 1;
         auto rem_dims = l.tile();
         for (int i = (int)blocks.size() - 1; i >= 0; i--) {
             auto &b = blocks[i];

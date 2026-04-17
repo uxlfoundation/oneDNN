@@ -75,9 +75,9 @@ ngen::Immediate cast(Type T, U val)
 {
     using ngen::half;
     switch (T) {
-        case Type::f16:  return half(val);
-        case Type::f32:  return float(val);
-        case Type::f64:  return double(val);
+        case Type::f16:  return     half((float)val);
+        case Type::f32:  return    float(val);
+        case Type::f64:  return   double(val);
         case Type::u8:   return  uint8_t(val);
         case Type::s8:   return   int8_t(val);
         case Type::u16:  return uint16_t(val);

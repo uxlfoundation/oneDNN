@@ -72,10 +72,10 @@ inline void linear_order_args(compute::kernel_arg_list_t &arg_list, int &argn,
         uint32_t vd = 0, uvd = 0;
         double ratio = double(groups_n) / double(groups_m);
         if (ratio >= 1) {
-            vd = std::ceil(groups_n / std::round(2 * ratio));
+            vd = (uint32_t)std::ceil(groups_n / std::round(2 * ratio));
             uvd = groups_m * vd;
         } else {
-            vd = std::ceil(groups_m / std::round(2 / ratio));
+            vd = (uint32_t)std::ceil(groups_m / std::round(2 / ratio));
             uvd = groups_n * vd;
             vd |= 0xFFFF0000u;
         }

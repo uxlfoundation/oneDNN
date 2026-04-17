@@ -153,18 +153,18 @@ struct kloop_iterator_t {
     virtual const global_tensor_t &B_load() const = 0;
     virtual const global_tensor_t &C_store() const = 0;
 
-    virtual void A_prefetch_inc(int k_block) = 0;
-    virtual void A_load_inc(int k_block) = 0;
+    virtual void A_prefetch_inc(int64_t k_block) = 0;
+    virtual void A_load_inc(int64_t k_block) = 0;
 
-    virtual void B_prefetch_inc(int k_block) = 0;
-    virtual void B_load_inc(int k_block) = 0;
+    virtual void B_prefetch_inc(int64_t k_block) = 0;
+    virtual void B_load_inc(int64_t k_block) = 0;
 
-    virtual void kloop_inc(int k_block) = 0;
+    virtual void kloop_inc(int64_t k_block) = 0;
 
     virtual expr_t update_C() const = 0;
 
     // Returns whether the given increment is in bounds
-    virtual expr_t is_inbounds(int increment) const = 0;
+    virtual expr_t is_inbounds(int64_t increment) const = 0;
 };
 
 transform_t get_transform(const MatrixAddressingStrategy &matrix_strategy,
@@ -336,27 +336,27 @@ struct basic_iterator_t : kloop_iterator_t {
     const global_tensor_t &B_load() const override { return B_load_; }
     const global_tensor_t &C_store() const override { return C_store_; }
 
-    void A_prefetch_inc(int k_block) override {
+    void A_prefetch_inc(int64_t k_block) override {
         A_prefetch_off += k_block;
         A_prefetch_.coord[k_var] = k_idx_ + A_prefetch_off;
     }
 
-    void A_load_inc(int k_block) override {
+    void A_load_inc(int64_t k_block) override {
         A_load_off += k_block;
         A_load_.coord[k_var] = k_idx_ + A_load_off;
     }
 
-    void B_prefetch_inc(int k_block) override {
+    void B_prefetch_inc(int64_t k_block) override {
         B_prefetch_off += k_block;
         B_prefetch_.coord[k_var] = k_idx_ + B_prefetch_off;
     }
 
-    void B_load_inc(int k_block) override {
+    void B_load_inc(int64_t k_block) override {
         B_load_off += k_block;
         B_load_.coord[k_var] = k_idx_ + B_load_off;
     }
 
-    void kloop_inc(int k_block) override {
+    void kloop_inc(int64_t k_block) override {
         // Prefetch/load computation is relative to k_idx
         A_prefetch_inc(-k_block);
         B_prefetch_inc(-k_block);
@@ -368,7 +368,7 @@ struct basic_iterator_t : kloop_iterator_t {
 
     expr_t update_C() const override { return false; }
 
-    expr_t is_inbounds(int increment) const override {
+    expr_t is_inbounds(int64_t increment) const override {
         return (m_idx_ < m_) & (n_idx_ < n_) & (k_idx_ < k_ - increment);
     }
 
@@ -380,10 +380,10 @@ private:
     expr_t k_idx_;
     expr_t k_;
 
-    int A_prefetch_off = 0;
-    int A_load_off = 0;
-    int B_prefetch_off = 0;
-    int B_load_off = 0;
+    int64_t A_prefetch_off = 0;
+    int64_t A_load_off = 0;
+    int64_t B_prefetch_off = 0;
+    int64_t B_load_off = 0;
 
     global_tensor_t A_prefetch_;
     global_tensor_t A_load_;
@@ -602,9 +602,9 @@ struct generator_dsl_t {
     }
 
     struct k_loop_config_t {
-        int k_blk;
-        int A_prefetch_warmup; // Offset to A prefetch
-        int B_prefetch_warmup; // Offset to B prefetch
+        int64_t k_blk;
+        int64_t A_prefetch_warmup; // Offset to A prefetch
+        int64_t B_prefetch_warmup; // Offset to B prefetch
         basic_iterator_t kloop_it;
         tensor_config_t A_load;
         tensor_config_t B_load;
@@ -612,13 +612,13 @@ struct generator_dsl_t {
         transform_t B_prefetch_transform;
         tensor_t C;
 
-        int A_load_warmup() const {
+        int64_t A_load_warmup() const {
             return A_load.layout.elems(k_var) - A_load.tile[k_var];
         }
-        int B_load_warmup() const {
+        int64_t B_load_warmup() const {
             return B_load.layout.elems(k_var) - B_load.tile[k_var];
         }
-        int k_warmup() const {
+        int64_t k_warmup() const {
             return std::max({A_load_warmup(), B_load_warmup(),
                     A_prefetch_warmup, B_prefetch_warmup});
         }
@@ -632,18 +632,19 @@ struct generator_dsl_t {
         tensor_t A = def("A_blk", cfg.A_load.layout);
         tensor_t B = def("B_blk", cfg.B_load.layout);
 
-        int mma_k_blk
+        auto mma_k_blk
                 = std::min(cfg.A_load.tile[k_var], cfg.B_load.tile[k_var]);
 
-        auto pipeline_idx = [&](int loop_idx, int warmup_size, int period) {
+        auto pipeline_idx
+                = [&](int64_t loop_idx, int64_t warmup_size, int64_t period) {
             return (loop_idx + warmup_size) % period;
         };
 
-        int A_prefetch_blk
+        auto A_prefetch_blk
                 = cfg.A_prefetch_warmup ? kloop_it.A_prefetch().tile[k_var] : 0;
-        auto A_prefetch = [&](int k_unroll_idx) {
+        auto A_prefetch = [&](int64_t k_unroll_idx) {
             if (cfg.A_prefetch_warmup == 0) return;
-            int idx = pipeline_idx(
+            auto idx = pipeline_idx(
                     k_unroll_idx, cfg.A_prefetch_warmup, A_prefetch_blk);
             if (idx % A_prefetch_blk != 0) return;
             prefetch(kloop_it.A_prefetch(), {{k_var, 0}},
@@ -651,9 +652,9 @@ struct generator_dsl_t {
             kloop_it.A_prefetch_inc(A_prefetch_blk);
         };
 
-        int A_load_blk = cfg.A_load.tile[k_var];
-        auto A_load = [&](int k_unroll_idx) {
-            int idx = pipeline_idx(k_unroll_idx, cfg.A_load_warmup(),
+        auto A_load_blk = cfg.A_load.tile[k_var];
+        auto A_load = [&](int64_t k_unroll_idx) {
+            auto idx = pipeline_idx(k_unroll_idx, cfg.A_load_warmup(),
                     cfg.A_load.layout.elems(k_var));
             if (idx % A_load_blk != 0) return;
             load(A.sub(cfg.A_load.tile, {{k_var, idx}}), kloop_it.A_load(),
@@ -661,11 +662,11 @@ struct generator_dsl_t {
             kloop_it.A_load_inc(A_load_blk);
         };
 
-        int B_prefetch_blk
+        auto B_prefetch_blk
                 = cfg.B_prefetch_warmup ? kloop_it.B_prefetch().tile[k_var] : 0;
-        auto B_prefetch = [&](int k_unroll_idx) {
+        auto B_prefetch = [&](int64_t k_unroll_idx) {
             if (cfg.B_prefetch_warmup == 0) return;
-            int idx = pipeline_idx(
+            auto idx = pipeline_idx(
                     k_unroll_idx, cfg.B_prefetch_warmup, B_prefetch_blk);
             if (idx % B_prefetch_blk != 0) return;
             prefetch(kloop_it.B_prefetch(), {{k_var, 0}},
@@ -673,9 +674,9 @@ struct generator_dsl_t {
             kloop_it.B_prefetch_inc(B_prefetch_blk);
         };
 
-        int B_load_blk = cfg.B_load.tile[k_var];
-        auto B_load = [&](int k_unroll_idx) {
-            int idx = pipeline_idx(k_unroll_idx, cfg.B_load_warmup(),
+        auto B_load_blk = cfg.B_load.tile[k_var];
+        auto B_load = [&](int64_t k_unroll_idx) {
+            auto idx = pipeline_idx(k_unroll_idx, cfg.B_load_warmup(),
                     cfg.B_load.layout.elems(k_var));
             if (idx % B_load_blk != 0) return;
             load(B.sub(cfg.B_load.tile, {{k_var, idx}}), kloop_it.B_load(),
@@ -683,8 +684,8 @@ struct generator_dsl_t {
             kloop_it.B_load_inc(B_load_blk);
         };
 
-        int k_unroll_blk = [&]() {
-            int ret = k_blk;
+        auto k_unroll_blk = [&]() {
+            auto ret = k_blk;
             for (auto v :
                     {A_prefetch_blk, A_load_blk, B_prefetch_blk, B_load_blk}) {
                 ret = gcd(ret, v);
@@ -692,8 +693,9 @@ struct generator_dsl_t {
             return ret;
         }();
 
-        auto k_body = [&](int k_offset, bool do_A_prefetch, bool do_B_prefetch,
-                              bool do_A_load, bool do_B_load, bool do_mma) {
+        auto k_body
+                = [&](int64_t k_offset, bool do_A_prefetch, bool do_B_prefetch,
+                          bool do_A_load, bool do_B_load, bool do_mma) {
             if (do_A_prefetch) { A_prefetch(k_offset); }
 
             if (do_B_prefetch) { B_prefetch(k_offset); }
@@ -714,7 +716,7 @@ struct generator_dsl_t {
         // Pipeline controls
         auto warmup = cfg.k_warmup();
 
-        for (int k_unroll_idx = -warmup; k_unroll_idx < 0;
+        for (auto k_unroll_idx = -warmup; k_unroll_idx < 0;
                 k_unroll_idx += k_unroll_blk) {
             bool A_prefetch = k_unroll_idx + cfg.A_prefetch_warmup >= 0;
             bool B_prefetch = k_unroll_idx + cfg.B_prefetch_warmup >= 0;
@@ -726,7 +728,7 @@ struct generator_dsl_t {
         }
 
         _while(kloop_it.is_inbounds(warmup), [&]() {
-            for (int k_unroll_idx = 0; k_unroll_idx < k_blk;
+            for (int64_t k_unroll_idx = 0; k_unroll_idx < k_blk;
                     k_unroll_idx += k_unroll_blk) {
                 k_body(k_unroll_idx, cfg.A_prefetch_warmup,
                         cfg.B_prefetch_warmup, true, true, true);
@@ -735,7 +737,7 @@ struct generator_dsl_t {
         });
 
         auto tail_end = round_up(warmup, k_blk);
-        for (int k_unroll_idx = 0; k_unroll_idx < tail_end;
+        for (int64_t k_unroll_idx = 0; k_unroll_idx < tail_end;
                 k_unroll_idx += k_unroll_blk) {
             bool A_prefetch = k_unroll_idx + cfg.A_prefetch_warmup < tail_end;
             bool B_prefetch = k_unroll_idx + cfg.B_prefetch_warmup < tail_end;

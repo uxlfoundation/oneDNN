@@ -775,14 +775,14 @@ void binary(op_kind_t op, const tensor_t &dst, const tensor_t &src0,
         return ret;
     }();
 
-    auto subtile_elems = matching_subtile.elems();
+    auto subtile_elems = into<int>(matching_subtile.elems());
 
     for (auto &coord : dst.layout.iter(matching_subtile)) {
         auto dst_buf = dst.subbuf(coord);
         auto src0_buf = src0.subbuf(coord);
         auto src1_buf = src1.subbuf(coord);
 
-        int64_t simd = default_ctx().simd();
+        int simd = default_ctx().simd();
         for (int idx = 0; idx < subtile_elems; idx += simd) {
             int elems = into<int>(std::min(subtile_elems - idx, simd));
             auto s0 = load_t::make(src0.layout.type().with_elems(elems),

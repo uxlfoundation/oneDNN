@@ -2594,8 +2594,8 @@ public:
             case DataType::w:  val =  int16_t(payload); break;
             case DataType::ud: val = uint32_t(payload); break;
             case DataType::d:  val =  int32_t(payload); break;
-            case DataType::uq: val = uint64_t(payload); break;
-            case DataType::q:  val =  int64_t(payload); break;
+            case DataType::uq: val = (double)uint64_t(payload); break;
+            case DataType::q:  val = (double) int64_t(payload); break;
             case DataType::f:  val = utils::bitcast<uint32_t,float>(uint32_t(payload)); break;
             case DataType::df: val = utils::bitcast<uint64_t,double>(payload); break;
 #ifdef NGEN_HALF_TYPE
@@ -2621,10 +2621,10 @@ public:
             case DataType::f:  return Immediate::f(float(val));
             case DataType::df: return Immediate::df(val);
 #ifdef NGEN_HALF_TYPE
-            case DataType::hf: return Immediate::hf(utils::bitcast<half,uint16_t>(half(val)));
+            case DataType::hf: return Immediate::hf(utils::bitcast<half,uint16_t>(half((float)val)));
 #endif
 #ifdef NGEN_BFLOAT16_TYPE
-            case DataType::bf: return Immediate::bf(utils::bitcast<bfloat16,uint16_t>(bfloat16(val)));
+            case DataType::bf: return Immediate::bf(utils::bitcast<bfloat16,uint16_t>(bfloat16((float)val)));
 #endif
             default:
 #ifdef NGEN_SAFE

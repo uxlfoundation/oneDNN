@@ -437,7 +437,7 @@ inline T max_pow2_divisor(T n) {
 template <typename T, typename U>
 inline T safe_divide(T a, U b) {
     gpu_assert(b != 0 && a % b == 0) << "Can't divide: " << a << " / " << b;
-    return a / b;
+    return (T)(a / b);
 }
 
 template <typename T, typename U>

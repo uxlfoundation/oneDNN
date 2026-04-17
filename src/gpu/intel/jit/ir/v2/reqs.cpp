@@ -861,7 +861,7 @@ bool prb_reqs_t::can_prove(const req_impl_t &to_prove) const {
         if (r.impl().can_prove(to_prove)) return true;
     }
     if (to_prove.kind() == req_kind_t::mod_eq_0 && to_prove.rhs().is_value()) {
-        int mod = 1;
+        dim_t mod = 1;
         for (int i = 0; i < to_prove.lhs().size(); i++) {
             auto &lhs_pvar = to_prove.lhs()[i];
             mod *= max_factor(lhs_pvar);

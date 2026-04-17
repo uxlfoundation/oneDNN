@@ -45,6 +45,27 @@ typedef ugemm_vtdA_c_type p_tile_type; // Br*Bc tile (.T)
 typedef ugemm_vs_c_type dv_tile_type; // D*Bc tile
 typedef ugemm_ktq_c_type ktq_tile_type; // D*Br tile
 
+/* Debug isolation knobs for SDPA backward.
+ * Keep default-off to avoid affecting production behavior/perf.
+ *
+ * DEBUG_BWD_SEPARATE_DST_SLM:
+ *   Use a dedicated SLM region for dS^t instead of aliasing S2_f32_slm.
+ *
+ * DEBUG_BWD_SOFTMAX_CACHE_GLOBAL:
+ *   Cache un-dropped softmax to global dS (if WITH_DS) instead of SLM.
+ */
+#ifndef DEBUG_BWD_SEPARATE_DST_SLM
+#define DEBUG_BWD_SEPARATE_DST_SLM 0
+#endif
+
+#ifndef DEBUG_BWD_SOFTMAX_CACHE_GLOBAL
+#define DEBUG_BWD_SOFTMAX_CACHE_GLOBAL 0
+#endif
+
+#if DEBUG_BWD_SOFTMAX_CACHE_GLOBAL && !WITH_DS
+#error "DEBUG_BWD_SOFTMAX_CACHE_GLOBAL requires WITH_DS=1"
+#endif
+
 #if WITH_DROPOUT
 #define dropout_mul(x, y) ((x) * (y))
 #define dropout_predicate(offset_r, offset_c) \
@@ -585,6 +606,13 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #define S2_f32_slm_size 0
 #endif
 
+#if USE_SYSTOLIC_UKERNEL && DEBUG_BWD_SEPARATE_DST_SLM
+#define dSt_f32_slm_size \
+        (ugemm_kq_wg_tile_m * ugemm_kq_wg_tile_n * sizeof(float))
+#else
+#define dSt_f32_slm_size 0
+#endif
+
 #define dK_slm_size (ugemm_kq_wg_tile_m * D_MAX * sizeof(float))
 #define dV_slm_size (ugemm_kq_wg_tile_m * D_MAX * sizeof(float))
 
@@ -594,8 +622,8 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                 ugemm_qdSt_slm_size), \
             ugemm_ktq_slm_size)
 
-    local char slm[K_slm_size + S_slm_size + S2_f32_slm_size + ugemm_slm_size
-            + dK_slm_size + dV_slm_size];
+    local char slm[K_slm_size + S_slm_size + S2_f32_slm_size + dSt_f32_slm_size
+            + ugemm_slm_size + dK_slm_size + dV_slm_size];
 
     local KEY_DATA_T *K_slm = (local KEY_DATA_T *)&slm[0];
 
@@ -607,15 +635,22 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     local float *S2_f32_slm = (local float *)&slm[K_slm_size + S_slm_size];
 #endif
 
+#if USE_SYSTOLIC_UKERNEL && DEBUG_BWD_SEPARATE_DST_SLM
+        // Dedicated dS^t cache for debug isolation from softmax cache.
+        local float *dSt_f32_slm
+                        = (local float *)&slm[K_slm_size + S_slm_size + S2_f32_slm_size];
+#endif
+
     // ugemm scratch space
-    local uint *ugemm_slm
-            = (local uint *)&slm[K_slm_size + S_slm_size + S2_f32_slm_size];
+    local uint *ugemm_slm = (local uint *)&slm[K_slm_size + S_slm_size
+            + S2_f32_slm_size + dSt_f32_slm_size];
 
     // used for accumulation of dV, dK across q-loop
     local float *dK_slm = (local float *)&slm[K_slm_size + S_slm_size
-            + S2_f32_slm_size + ugemm_slm_size];
+            + S2_f32_slm_size + dSt_f32_slm_size + ugemm_slm_size];
     local float *dV_slm = (local float *)&slm[K_slm_size + S_slm_size
-            + S2_f32_slm_size + ugemm_slm_size + dK_slm_size];
+            + S2_f32_slm_size + dSt_f32_slm_size + ugemm_slm_size
+            + dK_slm_size];
 
     const size_t k_offset = KEY_BATCH(b1, b0_kv);
     const size_t v_offset = VAL_BATCH(b1, b0_kv);
@@ -806,7 +841,11 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
         barrier(CLK_LOCAL_MEM_FENCE);
         {
-#if USE_SYSTOLIC_UKERNEL || WITH_DROPOUT
+#if DEBUG_BWD_SOFTMAX_CACHE_GLOBAL
+            // Debug mode: keep un-dropped softmax in global memory (dS).
+            tile_store(S_tile, dS, k_chunk, q_nchunk, k, k0 + sg_i0_kq,
+                    q0 + sg_j0_kq);
+#elif USE_SYSTOLIC_UKERNEL || WITH_DROPOUT
             // store softmax in f32 for S2 reload (systolic only)
             tile_store(S_tile, S2_f32_slm, ugemm_kq_wg_tile_m,
                     ugemm_kq_wg_tile_n, ugemm_kq_wg_tile_m, sg_i0_kq, sg_j0_kq);
@@ -878,7 +917,10 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         // reload softmax since ugemm_vtdA() clobbers registers
         {
             p_tile_type S2_tile;
-#if USE_SYSTOLIC_UKERNEL || WITH_DROPOUT
+#if DEBUG_BWD_SOFTMAX_CACHE_GLOBAL
+            tile_load(&S2_tile, dS, k_chunk, q_nchunk, k, k0 + sg_i0_kq,
+                    q0 + sg_j0_kq);
+#elif USE_SYSTOLIC_UKERNEL || WITH_DROPOUT
             /* S2_f32_slm holds un-dropped P (stored before dropout). */
             tile_load(&S2_tile, S2_f32_slm, ugemm_kq_wg_tile_m,
                     ugemm_kq_wg_tile_n, ugemm_kq_wg_tile_m, sg_i0_kq, sg_j0_kq);
@@ -906,7 +948,11 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         }
 
 #if USE_SYSTOLIC_UKERNEL
+#if DEBUG_BWD_SEPARATE_DST_SLM
+        local FMA_TYPE *dSt_slm = (local FMA_TYPE *)dSt_f32_slm;
+#else
         local FMA_TYPE *dSt_slm = (local FMA_TYPE *)S2_f32_slm;
+#endif
 #endif
         {
             p_tile_type_reblock P_tile_reblock;

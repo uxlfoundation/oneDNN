@@ -40,6 +40,41 @@
 typedef ugemm_kq_c_type s_tile_type;
 typedef ugemm_vs_c_type a_tile_type;
 
+/*
+ * Stage-by-stage sanitize probe for forward f32 intermediates.
+ * Set DEBUG_FWD_STAGE_SANITIZE to one stage id below to sanitize only that
+ * point and observe whether mistrust/failure changes.
+ *  0: disabled
+ *  1: S tile right after exp
+ *  2: S tile before storing for V*S GEMM
+ *  3: A tile from ugemm_vs (A_tile1)
+ *  4: Final A tile before output conversion/store
+ */
+#ifndef DEBUG_FWD_STAGE_SANITIZE
+#define DEBUG_FWD_STAGE_SANITIZE 0
+#endif
+
+#ifndef DEBUG_FWD_STAGE_ABS_MAX
+#define DEBUG_FWD_STAGE_ABS_MAX 65504.0f
+#endif
+
+#define DEBUG_FWD_STAGE_S_TILE_EXP 1
+#define DEBUG_FWD_STAGE_S_TILE_STORE 2
+#define DEBUG_FWD_STAGE_A_TILE1 3
+#define DEBUG_FWD_STAGE_A_TILE_OUT 4
+
+inline float debug_fwd_sanitize_f32(float x) {
+        if (!isfinite(x)) return 0.f;
+        if (fabs(x) > DEBUG_FWD_STAGE_ABS_MAX) return 0.f;
+        return x;
+}
+
+#define DEBUG_FWD_APPLY_STAGE_F32(tile, stage_id) \
+        do { \
+                if (DEBUG_FWD_STAGE_SANITIZE == (stage_id)) \
+                        tile_elementwise_s((tile), debug_fwd_sanitize_f32); \
+        } while (0)
+
 #if WITH_DROPOUT
 
 inline void apply_dropout_s_tile(
@@ -879,6 +914,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #define scaled_exp(x) native_vexp2(x *scale * 1.442695f)
         tile_elementwise(S_tile, scaled_exp);
 #undef scaled_exp
+        DEBUG_FWD_APPLY_STAGE_F32(S_tile, DEBUG_FWD_STAGE_S_TILE_EXP);
 
         /* Accumulate sums. S tile is transposed for easy summation. */
         s_sum_tile_type S_sum_tile1;
@@ -895,6 +931,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #endif
         );
 #endif
+        DEBUG_FWD_APPLY_STAGE_F32(S_tile, DEBUG_FWD_STAGE_S_TILE_STORE);
 
 #if USE_SYSTOLIC_UKERNEL
         /* Convert to half or bf16, VNNI format */
@@ -1066,6 +1103,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         a_tile_type_float A_tile1;
         tile_copy_reblock(A_tile1_f16, &A_tile1);
 #endif
+        DEBUG_FWD_APPLY_STAGE_F32(A_tile1, DEBUG_FWD_STAGE_A_TILE1);
 
         V += ldv * ugemm_kq_wg_tile_m / VAL_ELEMENTS_PER_BYTE;
 #if VAL_SCALES == QUANTIZE_2D
@@ -1136,6 +1174,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         tile_elementwise(A_scale_tile, native_vrecip);
 #endif
         tile_hbroadcast_mul(&A_tile, A_scale_tile);
+        DEBUG_FWD_APPLY_STAGE_F32(A_tile, DEBUG_FWD_STAGE_A_TILE_OUT);
     }
 
     a_tile_type_dst A_tile_dst;

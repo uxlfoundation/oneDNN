@@ -334,7 +334,8 @@ public:
                 }
                 if ((is_xe2_or_xe3 || (lg[1] < optimal_oc))
                         && (lg[1] == utils::rnd_up_pow2(lg[1]))) {
-                    const int oc_simds_per_line = simds_per_line / lg[1];
+                    const int oc_simds_per_line
+                            = static_cast<int>(simds_per_line / lg[1]);
                     lg[0] = (mb <= oc_simds_per_line)
                             ? mb
                             : utils::max_div(mb, oc_simds_per_line);
@@ -352,12 +353,12 @@ public:
                     if (total_simds <= thr_count) return dim_t(1);
                     const dim_t orig = num;
                     num = 0;
-                    for (dim_t div = sqrtf(orig); div >= 1; div--)
+                    for (auto div = (dim_t)std::sqrt(orig); div >= 1; div--)
                         if (orig % div == 0) {
                             if (total_simds >= thr_count * (orig / div))
-                                num = std::max<dim_t>(num, orig / div);
+                                num = std::max(num, orig / div);
                             if (total_simds >= thr_count * div)
-                                num = std::max<dim_t>(num, div);
+                                num = std::max(num, div);
                         }
                     return (num == 0) ? orig : num;
                 };
@@ -376,8 +377,9 @@ public:
                     lg[0] = find_div(lg[0], total_simds, safe_thr_count);
                 }
             }
-            const int loop_space = simds_per_line / (lg[0] * lg[1])
-                    * (src_type_size + acc_type_size) / src_type_size;
+            const int loop_space
+                    = static_cast<int>(simds_per_line / (lg[0] * lg[1])
+                            * (src_type_size + acc_type_size) / src_type_size);
             lg[7] = prb.kw;
             lg[6] = std::max(
                     utils::max_div(prb.kh, loop_space / lg[7]), dim_t(1));
@@ -399,9 +401,9 @@ public:
                     return utils::rnd_up(ow, tgw)
                             * utils::rnd_up(oh, max_tg / tgw);
                 };
-                dim_t ok_tgw = sqrt(max_tg);
+                auto ok_tgw = (dim_t)std::sqrt(max_tg);
                 gpu_assert(ok_tgw == utils::rnd_up_pow2(ok_tgw));
-                for (dim_t tgw = sqrt(max_tg); tgw > 0; tgw >>= 1) {
+                for (dim_t tgw = ok_tgw; tgw > 0; tgw >>= 1) {
                     if (loss(tgw) < loss(ok_tgw)) ok_tgw = tgw;
                     if (loss(max_tg / tgw) <= loss(ok_tgw))
                         ok_tgw = max_tg / tgw;

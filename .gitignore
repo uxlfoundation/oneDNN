@@ -1,6 +1,6 @@
 #===============================================================================
 # Copyright 2019-2021 Intel Corporation
-# Copyright 2024-2025 Arm Limited and affiliates.
+# Copyright 2024-2026 Arm Limited and affiliates.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,3 +31,5 @@ compile_commands.json
 **/.DS_Store
 __pycache__
 .cache
+.gdb_history
+.gdbinit

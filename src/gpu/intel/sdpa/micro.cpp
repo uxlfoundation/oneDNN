@@ -1095,7 +1095,7 @@ status_t micro_fwd_params_t::get_kernel_ctx(
     kernel_ctx.define_int("KEY_GROUP_SIZE", key_group_size);
     kernel_ctx.define_int("VAL_GROUP_SIZE", val_group_size);
 
-    def_data_type(kernel_ctx, scale_data_t, "SCALE", !with_host_scale);
+    def_data_type(kernel_ctx, scale_data_t, "SCALE");
     kernel_ctx.define_int("INVERT_SCALE", invert_scale);
     kernel_ctx.define_int("WITH_ATTN_SCALE", with_attn_scale);
     kernel_ctx.define_int("WITH_HOST_SCALE", with_host_scale);
@@ -1276,7 +1276,7 @@ status_t micro_bwd_params_t::get_kernel_ctx(
 
     kernel_ctx.define_int("TRANSPOSE_K", transpose_k);
 
-    def_data_type(kernel_ctx, scale_data_t, "SCALE", !with_host_scale);
+    def_data_type(kernel_ctx, scale_data_t, "SCALE");
     kernel_ctx.define_int("INVERT_SCALE", invert_scale);
     kernel_ctx.define_int("WITH_ATTN_SCALE", with_attn_scale);
     kernel_ctx.define_int("WITH_HOST_SCALE", with_host_scale);

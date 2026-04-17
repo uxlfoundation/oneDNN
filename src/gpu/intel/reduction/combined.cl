@@ -311,7 +311,7 @@ combined_reduce(
             }
 #endif
             if (is_dst_zero_padded(dst_off)) res = 0.0f;
-            write_dst(dst + dst_off, IS_FINAL ? TO_DST(res) : res);
+            write_dst(dst + dst_off, TO_DST(res));
             DUMP("Wrote dst[%ld] = %f\n", dst_off, res);
             write_padded_zeros(dst + dst_off);
             DUMP("dst[%ld] <- %f\n", dst_off, TO_DST(res));

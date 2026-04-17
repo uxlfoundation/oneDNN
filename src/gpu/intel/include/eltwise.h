@@ -62,7 +62,8 @@ POST_OP_DATA_T linear_bwd(POST_OP_DATA_T dd, float alpha) {
 
 POST_OP_DATA_T soft_relu_fwd(POST_OP_DATA_T s, float alpha) {
     s = alpha * s;
-    POST_OP_DATA_T v = (s < log((POST_OP_DATA_T)DATA_MAX) ? log1p(exp(s)) : s);
+    POST_OP_DATA_T v
+            = (s < log(CONVERT_POST_OP_DATA_T(DATA_MAX)) ? log1p(exp(s)) : s);
     return v / alpha;
 }
 POST_OP_DATA_T soft_relu_bwd(POST_OP_DATA_T dd, POST_OP_DATA_T s, float alpha) {

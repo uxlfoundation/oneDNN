@@ -26,12 +26,14 @@
 #define TO_OUTPUT(x) convert_char_sat_rte(x)
 #elif OUTPUT_DT_S32
 #define TO_OUTPUT(x) convert_int_sat_rte(x)
+#elif OUTPUT_DT_BF16
+#define TO_OUTPUT(x) into_bf16(x)
 #else
 #define TO_OUTPUT(x) (x)
 #endif
 
 #if INPUT_DT_BF16
-#define TO_REF(x) cvt_bf16_to_f32(x)
+#define TO_REF(x) into_float(x)
 #else
 #define TO_REF(x) convert_float(x)
 #endif

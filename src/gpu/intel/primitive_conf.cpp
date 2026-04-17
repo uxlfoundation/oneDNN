@@ -263,22 +263,22 @@ void def_block_offsets(const block_layout_t &layout,
     }
 }
 
-const char *get_type_name(data_type_t dt, bool with_punning) {
+const char *get_type_name(data_type_t dt) {
     switch (dt) {
         case data_type::undef: return "undef_data";
-        case data_type::bf16: return with_punning ? "ushort" : "bf16";
+        case data_type::bf16: return "bf16";
         case data_type::f16: return "half";
         case data_type::f32: return "float";
         case data_type::f64: return "double";
         case data_type::s8: return "char";
         case data_type::u8: return "uchar";
-        case data_type::f8_e4m3: return with_punning ? "uchar" : "f8_e4m3";
-        case data_type::f8_e5m2: return with_punning ? "uchar" : "f8_e5m2";
-        case data_type::f4_e2m1: return with_punning ? "uchar" : "f4_e2m1";
-        case data_type::f4_e3m0: return with_punning ? "uchar" : "f4_e3m0";
-        case data_type::e8m0: return with_punning ? "uchar" : "e8m0";
-        case data_type::s4: return with_punning ? "uchar" : "s4";
-        case data_type::u4: return with_punning ? "uchar" : "u4";
+        case data_type::f8_e4m3: return "f8_e4m3";
+        case data_type::f8_e5m2: return "f8_e5m2";
+        case data_type::f4_e2m1: return "f4_e2m1";
+        case data_type::f4_e3m0: return "f4_e3m0";
+        case data_type::e8m0: return "e8m0";
+        case data_type::s4: return "s4";
+        case data_type::u4: return "u4";
         case data_type::s32: return "int";
         case data_type::s64: return "long";
         default:
@@ -288,9 +288,9 @@ const char *get_type_name(data_type_t dt, bool with_punning) {
     }
 }
 
-void def_data_type(compute::kernel_ctx_t &kernel_ctx, data_type_t dt,
-        const char *str, bool with_punning) {
-    const char *name = get_type_name(dt, with_punning);
+void def_data_type(
+        compute::kernel_ctx_t &kernel_ctx, data_type_t dt, const char *str) {
+    const char *name = get_type_name(dt);
 
     switch (dt) {
         case data_type::undef:
@@ -364,14 +364,13 @@ void def_data_type(compute::kernel_ctx_t &kernel_ctx, data_type_t dt,
     }
 }
 void def_data_type(compute::kernel_ctx_t &kernel_ctx, data_type_t dt,
-        const std::string &str, bool with_punning) {
-    return def_data_type(kernel_ctx, dt, str.c_str(), with_punning);
+        const std::string &str) {
+    return def_data_type(kernel_ctx, dt, str.c_str());
 }
 
 void def_memory_desc_info(compute::kernel_ctx_t &kernel_ctx,
-        const memory_desc_info_t &md_info, const char *prefix,
-        bool with_punning) {
-    def_data_type(kernel_ctx, md_info.data_type, prefix, with_punning);
+        const memory_desc_info_t &md_info, const char *prefix) {
+    def_data_type(kernel_ctx, md_info.data_type, prefix);
     kernel_ctx.register_buffer_size(md_info);
 
     kernel_ctx.define_int(utils::format("%s_OFFSET0", prefix), md_info.offset0);
@@ -541,8 +540,7 @@ status_t def_post_ops_cfg(compute::kernel_ctx_t &kernel_ctx,
             set_post_op_uses(src_rmd.dt);
 
             po_kernel_args += std::string(", const __global ")
-                    + get_type_name(src_rmd.dt, false) + " *po" + idx
-                    + "_binary_arg";
+                    + get_type_name(src_rmd.dt) + " *po" + idx + "_binary_arg";
             for (int i = 0; i < dst_md.ndims; i++) {
                 if (!src_rmd.is_broadcast(i, dst_md.ndims)
                         && !src_rmd.is_inner_dim(i, dst_md.ndims))
@@ -668,7 +666,7 @@ bool post_ops_preserves_zeroes(
 
 status_t def_attr_info_impl(compute::kernel_ctx_t &kernel_ctx,
         const attr_info_t &attr_info, const post_ops_t &post_ops,
-        const memory_desc_t &dst_md, bool with_punning) {
+        const memory_desc_t &dst_md) {
     gpu_assert(attr_info.initialized);
 
     kernel_ctx.define_int("WITH_POST_OP", post_ops.len() > 0);
@@ -689,12 +687,9 @@ status_t def_attr_info_impl(compute::kernel_ctx_t &kernel_ctx,
     kernel_ctx.define_int("WITH_DST_SCALES", attr_info.with_dst_scales);
     kernel_ctx.define_int("WEI_SCALES_MASK", attr_info.wei_scales_mask);
     kernel_ctx.define_int("DST_SCALES_MASK", attr_info.dst_scales_mask);
-    def_data_type(kernel_ctx, attr_info.src_scales_data_type, "SRC_SCALES",
-            with_punning);
-    def_data_type(kernel_ctx, attr_info.wei_scales_data_type, "WEI_SCALES",
-            with_punning);
-    def_data_type(kernel_ctx, attr_info.dst_scales_data_type, "DST_SCALES",
-            with_punning);
+    def_data_type(kernel_ctx, attr_info.src_scales_data_type, "SRC_SCALES");
+    def_data_type(kernel_ctx, attr_info.wei_scales_data_type, "WEI_SCALES");
+    def_data_type(kernel_ctx, attr_info.dst_scales_data_type, "DST_SCALES");
 
     kernel_ctx.define_int("WITH_SRC_ZPOINTS", attr_info.with_src_zpoints);
     kernel_ctx.define_int("WITH_WEI_ZPOINTS", attr_info.with_wei_zpoints);
@@ -722,9 +717,8 @@ status_t def_attr_info_impl(compute::kernel_ctx_t &kernel_ctx,
 
 status_t def_attr_info(compute::kernel_ctx_t &kernel_ctx,
         const attr_info_t &attr_info, const post_ops_t &post_ops,
-        const memory_desc_t &dst_md, bool with_punning) {
-    return def_attr_info_impl(
-            kernel_ctx, attr_info, post_ops, dst_md, with_punning);
+        const memory_desc_t &dst_md) {
+    return def_attr_info_impl(kernel_ctx, attr_info, post_ops, dst_md);
 }
 
 void def_dispatch(compute::kernel_ctx_t &kernel_ctx,

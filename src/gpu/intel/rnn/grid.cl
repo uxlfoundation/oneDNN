@@ -129,7 +129,8 @@ __kernel void simple_rnn_copy_init_iter(__global WS_STATE_DATA_T *dst_base,
     if (s < sic) {
         off_t src_i_offset = src_i_off(src_iter_strides, lay, dir, b, s);
         dst[ws_state_offset] = src_base
-                ? (quantize ? TO_WS_STATE(src[src_i_offset] * scale + shift)
+                ? (quantize ? TO_WS_STATE(
+                                      TO_REF(src[src_i_offset]) * scale + shift)
                             : src[src_i_offset])
                 : TO_WS_STATE(0.0f);
     }
@@ -193,8 +194,8 @@ simple_rnn_copy_res_layer(
     if (lr) {
         bool dequantize_at_copy = dequantize && DIRECTION_KIND != SUM;
         dst[dst_l_off(strides, it, b, dir * dhc + s)] = dequantize_at_copy
-                ? TO_DST(((float)src[off_ws_state(n_layer, n_dir, n_iter, batch,
-                                  states_ws_ld, n_layer - 1, dir, it, b, s)]
+                ? TO_DST((TO_REF(src[off_ws_state(n_layer, n_dir, n_iter, batch,
+                                  states_ws_ld, n_layer - 1, dir, it, b, s)])
                                  - shift)
                           / scale)
                 : src[off_ws_state(n_layer, n_dir, n_iter, batch, states_ws_ld,
@@ -204,10 +205,10 @@ simple_rnn_copy_res_layer(
     if (rl) {
 #if DIRECTION_KIND == SUM
         if (dequantize) {
-            float val = (float)src[off_ws_state(n_layer, n_dir, n_iter, batch,
+            float val = TO_REF(src[off_ws_state(n_layer, n_dir, n_iter, batch,
                                 states_ws_ld, n_layer - 1, dir, n_iter - it - 1,
-                                b, s)]
-                    + dst[dst_l_off(strides, it, b, s)];
+                                b, s)])
+                    + DST_TO_REF(dst[dst_l_off(strides, it, b, s)]);
             val = min(max(val, 0.f), 255.f);
             dst[dst_l_off(strides, it, b, s)]
                     = TO_DST((val - 2 * shift) / scale);
@@ -228,9 +229,9 @@ simple_rnn_copy_res_layer(
         }
 #else
         dst[dst_l_off(strides, it, b, dir * dhc + s)] = dequantize
-                ? TO_DST(((float)src[off_ws_state(n_layer, n_dir, n_iter, batch,
+                ? TO_DST((TO_REF(src[off_ws_state(n_layer, n_dir, n_iter, batch,
                                   states_ws_ld, n_layer - 1, dir,
-                                  n_iter - it - 1, b, s)]
+                                  n_iter - it - 1, b, s)])
                                  - shift)
                           / scale)
                 : src[off_ws_state(n_layer, n_dir, n_iter, batch, states_ws_ld,
@@ -287,13 +288,13 @@ __kernel void simple_rnn_copy_res_iter(
 
     if (dst_base && s < dhc) {
         dst[dst_i_off(strides, lay, dir, b, s)] = dequantize
-                ? TO_OUTPUT(((float)src[off_ws_state(n_layer, n_dir, n_iter,
+                ? TO_OUTPUT((TO_REF(src[off_ws_state(n_layer, n_dir, n_iter,
                                      batch, states_ws_ld, lay, dir, n_iter - 1,
-                                     b, s)]
+                                     b, s)])
                                     - shift)
                           / scale)
-                : TO_OUTPUT(src[off_ws_state(n_layer, n_dir, n_iter, batch,
-                          states_ws_ld, lay, dir, n_iter - 1, b, s)]);
+                : TO_OUTPUT(TO_REF(src[off_ws_state(n_layer, n_dir, n_iter,
+                          batch, states_ws_ld, lay, dir, n_iter - 1, b, s)]));
     }
 #if WITH_DST_ITER_C
     __global AUX_DATA_T *src_c = src_c_base;
@@ -730,7 +731,7 @@ simple_rnn_elemwise_bwd(int dir, int lay, int iter,
                 convert_float(bias[off_ker_bias(dhc, 0, j)]), alpha, tm_scales);
 #endif
 #if IS_TESTMODE
-        float tmp = = dH * activation_bwd(g, tm_scales[0], 0.0f);
+        float tmp = dH * activation_bwd(g, tm_scales[0], 0.0f);
         scratch_diff_gates[cell_scratch_mem(
                 scratch_diff_gates_ld, dhc, i, 0, j)]
                 = TO_SRC(tmp);

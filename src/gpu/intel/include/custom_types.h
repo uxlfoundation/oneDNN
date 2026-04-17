@@ -29,10 +29,10 @@ typedef long off_t;
 #endif
 
 typedef struct {
-    short data;
+    ushort data;
 } bf16;
 
-bf16 as_bf16(short data) {
+bf16 as_bf16(ushort data) {
     bf16 res;
     res.data = data;
     return res;
@@ -41,10 +41,10 @@ bf16 as_bf16(short data) {
 /*****************************/
 
 typedef struct {
-    char data;
+    uchar data;
 } f8_e5m2;
 
-f8_e5m2 as_f8_e5m2(char data) {
+f8_e5m2 as_f8_e5m2(uchar data) {
     f8_e5m2 res;
     res.data = data;
     return res;
@@ -53,10 +53,10 @@ f8_e5m2 as_f8_e5m2(char data) {
 /*****************************/
 
 typedef struct {
-    char data;
+    uchar data;
 } f8_e4m3;
 
-f8_e4m3 as_f8_e4m3(char data) {
+f8_e4m3 as_f8_e4m3(uchar data) {
     f8_e4m3 res;
     res.data = data;
     return res;
@@ -77,7 +77,7 @@ e8m0 as_e8m0(unsigned char data) {
 /*****************************/
 
 typedef struct {
-    char data;
+    uchar data;
 } f4_e2m1;
 
 f4_e2m1 as_f4_e2m1(unsigned char data) {
@@ -89,11 +89,35 @@ f4_e2m1 as_f4_e2m1(unsigned char data) {
 /*****************************/
 
 typedef struct {
-    char data;
+    uchar data;
 } f4_e3m0;
 
 f4_e3m0 as_f4_e3m0(unsigned char data) {
     f4_e3m0 res;
+    res.data = data;
+    return res;
+}
+
+/*****************************/
+
+typedef struct {
+    char data;
+} s4;
+
+s4 as_s4(uchar data) {
+    s4 res;
+    res.data = (char)data;
+    return res;
+}
+
+/*****************************/
+
+typedef struct {
+    uchar data;
+} u4;
+
+u4 as_u4(uchar data) {
+    u4 res;
     res.data = data;
     return res;
 }

@@ -138,10 +138,10 @@ float8 __builtin_IB_bftof_8(short8 a) __attribute__((const));
 float16 __builtin_IB_bftof_16(short16 a) __attribute__((const));
 
 bf16 __attribute__((overloadable)) into_bf16(float x) {
-    return as_bf16(__builtin_IB_ftobf_1(x));
+    return as_bf16((ushort)__builtin_IB_ftobf_1(x));
 }
 float __attribute__((overloadable)) into_float(bf16 x) {
-    return __builtin_IB_bftof_1(x.data);
+    return __builtin_IB_bftof_1((short)x.data);
 }
 #else
 // Emulated conversions
@@ -202,7 +202,7 @@ f4_e2m1 __attribute__((overloadable)) into_f4_e2m1(float f) {
     return as_f4_e2m1(cvt_f32_to_f4_e2m1(f));
 }
 
-half __attribute__((overloadable)) into_float(f4_e2m1 b) {
+float __attribute__((overloadable)) into_float(f4_e2m1 b) {
     return cvt_f4_e2m1_to_f32(b.data);
 }
 
@@ -219,7 +219,7 @@ f4_e3m0 __attribute__((overloadable)) into_f4_e3m0(float f) {
     return as_f4_e3m0(cvt_f32_to_f4_e3m0(f));
 }
 
-half __attribute__((overloadable)) into_float(f4_e3m0 b) {
+float __attribute__((overloadable)) into_float(f4_e3m0 b) {
     return cvt_f4_e3m0_to_f32(b.data);
 }
 
@@ -231,9 +231,45 @@ IF_DOUBLE_SUPPORTED(def_two_step_conversion(f4_e3m0, double, float));
 IF_DOUBLE_SUPPORTED(def_two_step_conversion(double, f4_e3m0, float));
 #endif // MATH_UTILS_DECLARE_F4_E3M0
 
+s4 __attribute__((overloadable)) into_s4(s4 val) { return val; }
+
+s4 __attribute__((overloadable)) into_s4(float f) {
+    s4 res;
+    res.data = cvt_f32_to_s4(f);
+    return res;
+}
+
+float __attribute__((overloadable)) into_float(s4 b) {
+    return cvt_s4_to_f32(b.data);
+}
+
+u4 __attribute__((overloadable)) into_u4(u4 val) { return val; }
+
+u4 __attribute__((overloadable)) into_u4(float f) {
+    u4 res;
+    res.data = cvt_f32_to_u4(f);
+    return res;
+}
+
+float __attribute__((overloadable)) into_float(u4 b) {
+    return convert_float(b.data & 0x0f);
+}
+
+#ifdef cl_khr_fp16
+half __attribute__((overloadable)) into_half(s4 b) {
+    return (half)into_float(b);
+}
+half __attribute__((overloadable)) into_half(u4 b) {
+    return (half)into_float(b);
+}
+#endif
+
 #ifdef MATH_UTILS_DECLARE_E8M0
 float __attribute__((overloadable)) into_float(e8m0 b) {
     return cvt_e8m0_to_f32(b.data);
+}
+e8m0 __attribute__((overloadable)) into_e8m0(float f) {
+    return as_e8m0(cvt_f32_to_e8m0(f));
 }
 #endif
 

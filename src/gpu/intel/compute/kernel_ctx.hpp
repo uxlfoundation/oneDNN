@@ -122,7 +122,7 @@ public:
         return has_macro(name.c_str());
     }
 
-    void set_data_type(data_type_t dt, bool with_punning = true) {
+    void set_data_type(data_type_t dt) {
         switch (dt) {
             case data_type::bf16: define_int("DT_BF16", 1); break;
             case data_type::f16: define_int("DT_F16", 1); break;
@@ -135,9 +135,10 @@ public:
             case data_type::f4_e2m1: define_int("DT_F4_E2M1", 1); break;
             case data_type::f4_e3m0: define_int("DT_F4_E3M0", 1); break;
             case data_type::s32: define_int("DT_S32", 1); break;
+            case data_type::s4: define_int("DT_S4", 1); break;
+            case data_type::u4: define_int("DT_U4", 1); break;
             default: assert(!"unknown data type"); break;
         }
-        define_int("WITH_PUNNING", with_punning);
     }
 
     std::string data_type() const {

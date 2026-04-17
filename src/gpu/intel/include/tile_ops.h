@@ -394,14 +394,16 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
     } while (0)
 
 #define tile_copy_to_vec2(t, t_new, type) \
+    tile_copy_to_vec2_cvt(t, t_new, type, CONVERT_DATA_T)
+
+#define tile_copy_to_vec2_cvt(t, t_new, type, cvt) \
     do { \
         _Pragma("unroll") for (int i = 0; i < sizeof(t.x) / sizeof(t.x[0]); \
                                i++) { \
             _Pragma("unroll") for (int s = 0; \
                                    s < sizeof(t.x[0]) / sizeof(t.x[0][0]) / 2; \
                                    s++) { \
-                type v = {CONVERT_DATA_T(t.x[i][2 * s]), \
-                        CONVERT_DATA_T(t.x[i][2 * s + 1])}; \
+                type v = {cvt(t.x[i][2 * s]), cvt(t.x[i][2 * s + 1])}; \
                 t_new.x[i][s] = as_uint(v); \
             } \
         } \

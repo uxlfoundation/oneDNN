@@ -122,7 +122,7 @@ __kernel void ref_resampling_bwd(
     const off_t src_index = SRC_OFF(mb, c, id, ih, iw);
 
     if (mb >= DST_D0 || c >= DST_D1) {
-        diff_src[src_index] = TO_DST(0.f);
+        diff_src[src_index] = TO_DATA_T(0.f);
         return;
     }
 #if RESAMPLING_ALG_NEAREST

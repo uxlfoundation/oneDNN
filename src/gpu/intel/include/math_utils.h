@@ -404,12 +404,11 @@ ushort2  __attribute__((overloadable)) cvt_f32_to_bf16(float2  a) { return as_us
 ushort4  __attribute__((overloadable)) cvt_f32_to_bf16(float4  a) { return as_ushort4 (__builtin_IB_ftobf_4 (a)); }
 ushort8  __attribute__((overloadable)) cvt_f32_to_bf16(float8  a) { return as_ushort8 (__builtin_IB_ftobf_8 (a)); }
 ushort16 __attribute__((overloadable)) cvt_f32_to_bf16(float16 a) { return as_ushort16(__builtin_IB_ftobf_16(a)); }
-
-float   __attribute__((overloadable)) cvt_bf16_to_f32(ushort   a) { return __builtin_IB_bftof_1 (as_short  (a)); }
-float2  __attribute__((overloadable)) cvt_bf16_to_f32(ushort2  a) { return __builtin_IB_bftof_2 (as_short2 (a)); }
-float4  __attribute__((overloadable)) cvt_bf16_to_f32(ushort4  a) { return __builtin_IB_bftof_4 (as_short4 (a)); }
-float8  __attribute__((overloadable)) cvt_bf16_to_f32(ushort8  a) { return __builtin_IB_bftof_8 (as_short8 (a)); }
-float16 __attribute__((overloadable)) cvt_bf16_to_f32(ushort16 a) { return __builtin_IB_bftof_16(as_short16(a)); }
+float    __attribute__((overloadable)) cvt_bf16_to_f32(ushort   a) { return __builtin_IB_bftof_1 (as_short  (a)); }
+float2   __attribute__((overloadable)) cvt_bf16_to_f32(ushort2  a) { return __builtin_IB_bftof_2 (as_short2 (a)); }
+float4   __attribute__((overloadable)) cvt_bf16_to_f32(ushort4  a) { return __builtin_IB_bftof_4 (as_short4 (a)); }
+float8   __attribute__((overloadable)) cvt_bf16_to_f32(ushort8  a) { return __builtin_IB_bftof_8 (as_short8 (a)); }
+float16  __attribute__((overloadable)) cvt_bf16_to_f32(ushort16 a) { return __builtin_IB_bftof_16(as_short16(a)); }
 
 #ifdef cl_khr_fp64
 double   __attribute__((overloadable)) cvt_bf16_to_f64(ushort   a) { return convert_double(__builtin_IB_bftof_1 (as_short  (a))); }
@@ -687,8 +686,6 @@ inline float atomic_add_global(
 #endif
 #endif
 
-#if MATH_UTILS_DECLARE_S4 || MATH_UTILS_DECLARE_U4
-
 uchar __attribute__((overloadable)) cvt_f32_to_u4(float a) {
     uchar i = convert_uchar_sat_rte(a);
     return (i & 0xf0) ? 0x0f : i & 0x0f;
@@ -710,7 +707,16 @@ float __attribute__((overloadable)) cvt_s4_to_s32(char a) {
     return convert_int_sat_rte(val);
 }
 
-#endif
+float __attribute__((overloadable)) cvt_s4_to_f32(s4 a) {
+    return cvt_s4_to_f32(a.data);
+}
+float __attribute__((overloadable)) cvt_s4_to_s32(s4 a) {
+    return cvt_s4_to_s32(a.data);
+}
+
+int __attribute__((overloadable)) cvt_u4_to_s32(u4 a) {
+    return (int)(a.data & 0x0f);
+}
 
 #if MATH_UTILS_DECLARE_F4_E2M1
 
@@ -804,8 +810,6 @@ float __attribute__((overloadable)) cvt_f4_e3m0_to_f32(uchar a) {
 
 #endif
 
-#if MATH_UTILS_DECLARE_S4 || MATH_UTILS_DECLARE_U4 \
-        || MATH_UTILS_DECLARE_F4_E2M1 || MATH_UTILS_DECLARE_F4_E3M0
 #define GET_HALF_BYTE(x, y) get_half_byte(x, y)
 
 uchar __attribute__((overloadable)) get_half_byte(
@@ -838,5 +842,34 @@ void __attribute__((overloadable)) set_double_half_byte(
     x[y / 2] = z;
 }
 
+s4 __attribute__((overloadable)) get_half_byte(const __global s4 *x, off_t y) {
+    return as_s4(get_half_byte((__global const uchar *)x, y));
+}
+void __attribute__((overloadable)) set_double_half_byte(
+        __global s4 *x, off_t y, uchar z) {
+    set_double_half_byte((__global uchar *)x, y, z);
+}
+
+u4 __attribute__((overloadable)) get_half_byte(const __global u4 *x, off_t y) {
+    return as_u4(get_half_byte((__global const uchar *)x, y));
+}
+void __attribute__((overloadable)) set_double_half_byte(
+        __global u4 *x, off_t y, uchar z) {
+    set_double_half_byte((__global uchar *)x, y, z);
+}
+
+#if MATH_UTILS_DECLARE_F4_E2M1
+f4_e2m1 __attribute__((overloadable)) get_half_byte(
+        const __global f4_e2m1 *x, off_t y) {
+    return as_f4_e2m1(get_half_byte((__global const uchar *)x, y));
+}
 #endif
+
+#if MATH_UTILS_DECLARE_F4_E3M0
+f4_e3m0 __attribute__((overloadable)) get_half_byte(
+        const __global f4_e3m0 *x, off_t y) {
+    return as_f4_e3m0(get_half_byte((__global const uchar *)x, y));
+}
+#endif
+
 #endif

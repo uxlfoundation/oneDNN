@@ -34,7 +34,7 @@ __kernel void simple_lnorm_fwd(__global DATA_T *src, __global float *mean,
         for (int c = 0; c < C; c += SUB_GROUP_SIZE) {
             x[NDIMS - 1] = c + local_id;
             off_t dst_off = DST_OFF(x[0], x[1], x[2], x[3], x[4], x[5]);
-            dst[dst_off] = TO_DST(CONVERT_DATA_T(0.f));
+            dst[dst_off] = TO_DST(0.f);
         }
         return;
     }

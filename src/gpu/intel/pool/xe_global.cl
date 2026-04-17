@@ -84,9 +84,13 @@ __kernel void xe_global_pooling_fwd(
 
 #if IS_BWD
 
-#if DT_BF16 || DT_F16
+#if DT_F16
 #define DST_BLOCK_WRITE(dst, val) \
     BLOCK_WRITE((__global ushort *)(dst), as_ushort(val))
+#endif // DT_F16
+#if DT_BF16
+#define DST_BLOCK_WRITE(dst, val) \
+    BLOCK_WRITE((__global ushort *)(dst), val.data)
 #endif // DT_BF16
 #if DT_F32
 #define DST_BLOCK_WRITE(dst, val) \

@@ -36,9 +36,19 @@ DECLARE_2D_TILE_VREDUCE(ugemm_grouped_c_type, SUBGROUP_SIZE,
         ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1,
         bias_tile_type, SUBGROUP_SIZE, bias_br, bias_bc, bias_nbr, bias_nbc)
 
+/* When BIA_DATA_T is a struct it cannot be used as an ext_vector_type
+ * element. Use the underlying scalar type for tile storage. */
+#ifdef BIA_DT_BF16
+#define BIA_TILE_DATA_T ushort
+#define BIA_TILE_TO_REF(v) into_float(as_bf16(v))
+#else
+#define BIA_TILE_DATA_T BIA_DATA_T
+#define BIA_TILE_TO_REF BIA_TO_REF
+#endif
+
 #ifndef BIA_DT_F32
-DECLARE_2D_TILE(bias_in_tile_type, BIA_DATA_T, SUBGROUP_SIZE, bias_br, bias_bc,
-        bias_nbr, bias_nbc)
+DECLARE_2D_TILE(bias_in_tile_type, BIA_TILE_DATA_T, SUBGROUP_SIZE, bias_br,
+        bias_bc, bias_nbr, bias_nbc)
 #endif
 
 void load_bias(
@@ -47,8 +57,9 @@ void load_bias(
     tile_load(tile, ptr, n, 1, 0, sg_i0, 0);
 #else
     bias_in_tile_type bias_in_tile;
-    tile_load(&bias_in_tile, ptr, n, 1, 0, sg_i0, 0);
-    tile_convert(bias_in_tile, (*tile), BIA_TO_REF);
+    tile_load(&bias_in_tile, (const global BIA_TILE_DATA_T *)ptr, n, 1, 0,
+            sg_i0, 0);
+    tile_convert(bias_in_tile, (*tile), BIA_TILE_TO_REF);
 #endif
 }
 #endif
@@ -117,20 +128,85 @@ void find_sparse_batch(off_t *batch, int2 *src_range,
 #define slm_sparse_total_size 0
 #endif
 
+/* When DST_DATA_T is a struct it cannot be used as an ext_vector_type
+ * element. Use the underlying scalar type for tile storage. */
+#ifdef DST_DT_BF16
+#define DST_TILE_DATA_T ushort
+#define CONVERT_TILE_DATA_T(v) (into_bf16(convert_float(v)).data)
+#else
+#define DST_TILE_DATA_T DST_DATA_T
+#define CONVERT_TILE_DATA_T CONVERT_DATA_T
+#endif
+
 #ifndef DST_DT_F32
-DECLARE_2D_TILE(c_tile_type_dst, DST_DATA_T, SUBGROUP_SIZE,
+DECLARE_2D_TILE(c_tile_type_dst, DST_TILE_DATA_T, SUBGROUP_SIZE,
         ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
         ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1)
 #endif
 
+/* FMA_TYPE: scalar type used by ugemm microkernels for bf16 matrix operands.
+ * bf16 is a struct in OpenCL C; the microkernel uses its punned ushort representation. */
+#if defined(WEI_DT_BF16) || defined(SRC_DT_BF16)
+#define FMA_TYPE ushort
+#endif
+
+/* Cast macros for ugemm_grouped pointer arguments: cast when the data type
+ * is a struct, since the ugemm microkernels use punned scalar types. */
+/* 4-bit and 8-bit struct types (BF8=f8_e5m2, HF8=f8_e4m3) are packed in uchar.
+ * bf16 uses its ushort representation (FMA_TYPE). */
+#if defined(WEI_DT_S4) || defined(WEI_DT_U4) || defined(WEI_DT_F4_E2M1) \
+        || defined(WEI_DT_F4_E3M0) || defined(WEI_DT_BF8) \
+        || defined(WEI_DT_HF8) || defined(WEI_DT_E8M0)
+#define AS_WEI_TILE_PTR(p) ((const global uchar *)(p))
+#elif defined(WEI_DT_BF16)
+#define AS_WEI_TILE_PTR(p) ((const global FMA_TYPE *)(p))
+#else
+#define AS_WEI_TILE_PTR(p) (p)
+#endif
+
+#if defined(SRC_DT_S4) || defined(SRC_DT_U4) || defined(SRC_DT_F4_E2M1) \
+        || defined(SRC_DT_F4_E3M0) || defined(SRC_DT_BF8) \
+        || defined(SRC_DT_HF8) || defined(SRC_DT_E8M0)
+#define AS_SRC_TILE_PTR(p) ((const global uchar *)(p))
+#elif defined(SRC_DT_BF16)
+#define AS_SRC_TILE_PTR(p) ((const global FMA_TYPE *)(p))
+#else
+#define AS_SRC_TILE_PTR(p) (p)
+#endif
+
+#if defined(WEI_SCALES_DT_BF16)
+#define AS_WEI_SCALES_PTR(p) ((const global ushort *)(p))
+#elif defined(WEI_SCALES_DT_E8M0) || defined(WEI_SCALES_DT_HF8)
+#define AS_WEI_SCALES_PTR(p) ((const global uchar *)(p))
+#else
+#define AS_WEI_SCALES_PTR(p) (p)
+#endif
+
+#if defined(SRC_SCALES_DT_BF16)
+#define AS_SRC_SCALES_PTR(p) ((const global ushort *)(p))
+#elif defined(SRC_SCALES_DT_E8M0) || defined(SRC_SCALES_DT_HF8)
+#define AS_SRC_SCALES_PTR(p) ((const global uchar *)(p))
+#else
+#define AS_SRC_SCALES_PTR(p) (p)
+#endif
+
+/* Subbyte zero-point types are packed in uchar. */
+#if defined(WEI_ZP_DT_U4) || defined(WEI_ZP_DT_S4)
+#define AS_WEI_ZP_PTR(p) ((const global uchar *)(p))
+#else
+#define AS_WEI_ZP_PTR(p) (p)
+#endif
+
 /* Optional quantization parameters */
 #define SRC_SCALE_ARGS \
-    OPTIONAL(AND(WITH_SRC_SCALES, SRC_SCALES_GROUPED), src_attr_scales)
+    OPTIONAL(AND(WITH_SRC_SCALES, SRC_SCALES_GROUPED), \
+            AS_SRC_SCALES_PTR(src_attr_scales))
 #define SRC_ZP_ARGS OPTIONAL(WITH_SRC_ZP, src_attr_zp)
 #define SRC_LD_ARGS OPTIONAL(OR(WITH_SRC_ZP, SRC_SCALES_GROUPED), ldsrcq)
 #define WEI_SCALE_ARGS \
-    OPTIONAL(AND(WITH_WEI_SCALES, WEI_SCALES_GROUPED), wei_attr_scales)
-#define WEI_ZP_ARGS OPTIONAL(WITH_WEI_ZP, wei_attr_zp)
+    OPTIONAL(AND(WITH_WEI_SCALES, WEI_SCALES_GROUPED), \
+            AS_WEI_SCALES_PTR(wei_attr_scales))
+#define WEI_ZP_ARGS OPTIONAL(WITH_WEI_ZP, AS_WEI_ZP_PTR(wei_attr_zp))
 #define WEI_LD_ARGS OPTIONAL(OR(WITH_WEI_ZP, WEI_SCALES_GROUPED), ldweiq)
 #define K_PARALLEL_LOCAL_ARGS OPTIONAL(K_PARALLEL_LOCAL, sg_k)
 
@@ -141,8 +217,9 @@ void store_results(ugemm_grouped_c_type *tile, global DST_DATA_T *ptr, int n,
     //tile_store_t_block2d(c_tile, dst, n, m, lddst, sg_j0, sg_i0);
 #else
     c_tile_type_dst tile_dst;
-    tile_convert((*tile), tile_dst, CONVERT_DATA_T);
-    tile_store(tile_dst, ptr, n, m, lddst, sg_i0, sg_j0);
+    tile_convert((*tile), tile_dst, CONVERT_TILE_DATA_T);
+    tile_store(
+            tile_dst, (global DST_TILE_DATA_T *)ptr, n, m, lddst, sg_i0, sg_j0);
     //tile_store_block2d(c_tile_dst, dst, n, m, lddst, sg_j0, sg_i0);
 #endif
 }
@@ -289,8 +366,9 @@ grouped_micro_gemm(const global SRC_DATA_T *src, long ldsrc,
     wei_attr_zp += batch * n * (k / WEI_GROUP_SIZE) / WEI_ZP_ELEMS_PER_BYTE;
 #endif
 
-    ugemm_grouped_c_type c_tile = ugemm_grouped(wei, ldwei, src, ldsrc, n, m, k,
-            wg_i0, wg_j0, 0, sg_i, sg_j K_PARALLEL_LOCAL_ARGS,
+    ugemm_grouped_c_type c_tile = ugemm_grouped(AS_WEI_TILE_PTR(wei), ldwei,
+            AS_SRC_TILE_PTR(src), ldsrc, n, m, k, wg_i0, wg_j0, 0, sg_i,
+            sg_j K_PARALLEL_LOCAL_ARGS,
             slm WEI_SCALE_ARGS WEI_ZP_ARGS WEI_LD_ARGS SRC_SCALE_ARGS
                     SRC_ZP_ARGS SRC_LD_ARGS);
 

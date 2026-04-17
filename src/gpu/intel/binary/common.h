@@ -30,13 +30,13 @@
 #define SRC2_OFF(x0, x1, x2, x3, x4, x5) OFF_MD(SRC2, x0, x1, x2, x3, x4, x5)
 
 #if SRC1_DT_BF16
-#define SRC1_TO_FLOAT cvt_bf16_to_f32
+#define SRC1_TO_FLOAT into_float
 #else
 #define SRC1_TO_FLOAT CONVERT_FLOAT_T
 #endif
 
 #if SRC0_DT_BF16
-#define SRC0_TO_FLOAT cvt_bf16_to_f32
+#define SRC0_TO_FLOAT into_float
 #else
 #define SRC0_TO_FLOAT CONVERT_FLOAT_T
 #endif
@@ -206,7 +206,8 @@
 
 #if SRC0_DT_BF16
 #define SRC0_BLOCK_READ(src) \
-    as_ushort(intel_sub_group_block_read_us((const __global ushort *)(src)))
+    as_bf16((short)intel_sub_group_block_read_us( \
+            (const __global ushort *)(src)))
 #define SRC0_BLOCK_READ2(src) \
     as_ushort2(intel_sub_group_block_read_us2((const __global ushort *)(src)))
 #define SRC0_BLOCK_READ4(src) \
@@ -217,7 +218,8 @@
 
 #if SRC1_DT_BF16
 #define SRC1_BLOCK_READ(src) \
-    as_ushort(intel_sub_group_block_read_us((const __global ushort *)(src)))
+    as_bf16((short)intel_sub_group_block_read_us( \
+            (const __global ushort *)(src)))
 #define SRC1_BLOCK_READ2(src) \
     as_ushort2(intel_sub_group_block_read_us2((const __global ushort *)(src)))
 #define SRC1_BLOCK_READ4(src) \
@@ -342,7 +344,8 @@
 
 #if DST_DT_BF16
 #define DST_BLOCK_READ(src) \
-    as_ushort(intel_sub_group_block_read_us((const __global ushort *)(src)))
+    as_bf16((short)intel_sub_group_block_read_us( \
+            (const __global ushort *)(src)))
 #define DST_BLOCK_READ2(src) \
     as_ushort2(intel_sub_group_block_read_us2((const __global ushort *)(src)))
 #define DST_BLOCK_READ4(src) \
@@ -350,14 +353,14 @@
 #define DST_BLOCK_READ8(src) \
     as_ushort8(intel_sub_group_block_read_us8((const __global ushort *)(src)))
 #define DST_BLOCK_WRITE(dst, val) \
-    intel_sub_group_block_write_us((__global ushort *)(dst), as_ushort(val))
+    intel_sub_group_block_write_us((__global ushort *)(dst), (ushort)(val).data)
 #define DST_BLOCK_WRITE2(dst, val) \
     intel_sub_group_block_write_us2((__global ushort *)(dst), as_ushort2(val))
 #define DST_BLOCK_WRITE4(dst, val) \
     intel_sub_group_block_write_us4((__global ushort *)(dst), as_ushort4(val))
 #define DST_BLOCK_WRITE8(dst, val) \
     intel_sub_group_block_write_us8((__global ushort *)(dst), as_ushort8(val))
-#endif // SRC_DT_F16
+#endif // DST_DT_BF16
 
 #if NVECT == 1 || IS_PLAIN_LAYOUT
 #define ELEM_DATA_T float

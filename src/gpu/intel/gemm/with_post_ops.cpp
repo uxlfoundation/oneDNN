@@ -213,17 +213,17 @@ status_t with_post_ops_t::pd_t::init_kernel_ctx(
         return info;
     }();
 
-    def_memory_desc_info(kernel_ctx, src_info, "SRC", false);
-    def_memory_desc_info(kernel_ctx, bias_info, "BIAS", false);
+    def_memory_desc_info(kernel_ctx, src_info, "SRC");
+    def_memory_desc_info(kernel_ctx, bias_info, "BIAS");
     if (dynamic_scales_) {
         dnnl_memory_desc d_md(*dst_md(0));
         d_md.data_type = acc_type_;
         memory_desc_wrapper d_mdw(d_md);
         def_memory_desc_info(
-                kernel_ctx, memory_desc_info_t::create(d_mdw), "DST", false);
+                kernel_ctx, memory_desc_info_t::create(d_mdw), "DST");
     } else {
-        def_memory_desc_info(kernel_ctx, memory_desc_info_t::create(dst_md(0)),
-                "DST", false);
+        def_memory_desc_info(
+                kernel_ctx, memory_desc_info_t::create(dst_md(0)), "DST");
     }
 
     int ndims = src_info.ndims;
@@ -250,7 +250,7 @@ status_t with_post_ops_t::pd_t::init_kernel_ctx(
 
     kernel_ctx.define_int("NDIMS", ndims);
     CHECK(def_attr_info(
-            kernel_ctx, attr_info_, attr()->post_ops_, *pd_->dst_md(), false));
+            kernel_ctx, attr_info_, attr()->post_ops_, *pd_->dst_md()));
     kernel_ctx.define_int("A_SCALES", with_src_scales);
     kernel_ctx.define_int("B_SCALES", with_wei_scales);
     kernel_ctx.define_int("C_SCALES", with_dst_scales);

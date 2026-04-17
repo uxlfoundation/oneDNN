@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/include/dispatch.h"
+#include "gpu/intel/include/io.h"
 #include "gpu/intel/include/types.h"
 #include "gpu/intel/include/types_interop.h"
 #include "gpu/intel/reduction/common.h"
@@ -46,10 +47,6 @@ DEF_atomic_accumulate(float);
 #else
 #define MAYBE_ATOMIC(x) x
 #endif
-
-// Define how to read data
-#define BLOCK_READ_DATA_T(data_ptr) \
-    AS_VECT_DATA_T(VECT_BLOCK_READ((const __global BLOCK_DATA_T *)data_ptr))
 
 #if VECT_DT_N == 1
 #define GET_ELEM(x, idx) x
@@ -115,19 +112,21 @@ __kernel void atomic_reduce(__global SRC_DATA_T *src,
     if (beg < tail_count) {
         unroll_for_by(FULL_UNROLL_FACTOR)(off_t i = 0; i < iters; i++) {
             const off_t src_off = (beg + i * REDUCTION_WI_COUNT) * inner_size;
-            const VECT_DATA_T src_val = BLOCK_READ_DATA_T(&src[src_off]);
+            DEF_ACC_DATA_T src_val[VECT_DT_N];
+            block_load(src_val, &src[src_off], VECT_DT_N);
             unroll_for(uint i = 0; i < VECT_DT_N; i++) {
-                GET_ELEM(acc, i) = reduce(REDUCTION_ALG, GET_ELEM(acc, i),
-                        TO_DEF_ACC_DATA_T(GET_ELEM(src_val, i)), power);
+                GET_ELEM(acc, i) = reduce(
+                        REDUCTION_ALG, GET_ELEM(acc, i), src_val[i], power);
             }
         }
     } else {
         unroll_for_by(TAIL_UNROLL_FACTOR)(off_t i = 0; i < iters; i++) {
             const off_t src_off = (beg + i * REDUCTION_WI_COUNT) * inner_size;
-            const VECT_DATA_T src_val = BLOCK_READ_DATA_T(&src[src_off]);
+            DEF_ACC_DATA_T src_val[VECT_DT_N];
+            block_load(src_val, &src[src_off], VECT_DT_N);
             unroll_for(uint i = 0; i < VECT_DT_N; i++) {
-                GET_ELEM(acc, i) = reduce(REDUCTION_ALG, GET_ELEM(acc, i),
-                        TO_DEF_ACC_DATA_T(GET_ELEM(src_val, i)), power);
+                GET_ELEM(acc, i) = reduce(
+                        REDUCTION_ALG, GET_ELEM(acc, i), src_val[i], power);
             }
         }
     }
@@ -165,7 +164,7 @@ __kernel void atomic_reduce(__global SRC_DATA_T *src,
                 div, power, eps);
         DST_DATA_T vect_dst_data = TO_DST(f);
 #else
-        VECT_DST_DATA_T vect_dst_data;
+        DST_DATA_T vect_dst_data[VECT_DT_N];
         unroll_for(uint i = 0; i < VECT_DT_N; i++) {
             float f = finalize(REDUCTION_ALG,
                     convert_float(GET_ELEM(local_acc, i)), div, power, eps);

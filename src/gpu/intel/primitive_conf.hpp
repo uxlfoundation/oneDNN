@@ -193,14 +193,13 @@ void def_offsets(const dim_t offs[4][MAX_NDIMS],
 void def_block_offsets(const block_layout_t &layout,
         compute::kernel_ctx_t &kernel_ctx, const char *str);
 
+void def_data_type(
+        compute::kernel_ctx_t &kernel_ctx, data_type_t dt, const char *str);
 void def_data_type(compute::kernel_ctx_t &kernel_ctx, data_type_t dt,
-        const char *str, bool with_punning = true);
-void def_data_type(compute::kernel_ctx_t &kernel_ctx, data_type_t dt,
-        const std::string &str, bool with_punning = true);
+        const std::string &str);
 
 void def_memory_desc_info(compute::kernel_ctx_t &kernel_ctx,
-        const memory_desc_info_t &md_info, const char *prefix,
-        bool with_punning = true);
+        const memory_desc_info_t &md_info, const char *prefix);
 
 bool post_ops_with_binary_ok(const primitive_attr_t *attr,
         const memory_desc_t &dst_md, const int max_ndims_supported = 2);
@@ -224,11 +223,11 @@ bool post_ops_preserves_zeroes(
 
 status_t def_attr_info_impl(compute::kernel_ctx_t &kernel_ctx,
         const attr_info_t &attr_info, const post_ops_t &post_ops,
-        const memory_desc_t &dst_md, bool with_punning = true);
+        const memory_desc_t &dst_md);
 
 status_t def_attr_info(compute::kernel_ctx_t &kernel_ctx,
         const attr_info_t &attr_info, const post_ops_t &post_ops,
-        const memory_desc_t &dst_md, bool with_punning = true);
+        const memory_desc_t &dst_md);
 
 void def_dispatch(
         compute::kernel_ctx_t &kernel_ctx, const compute::dispatch_t &dispatch);

@@ -40,10 +40,10 @@ inline float fp_recipe(float group_max) {
 #endif
 
 __kernel void dynamic_scale_dst(__global float *restrict src,
-        __global uchar *restrict dst, __global uchar *restrict dst_scales,
-        long groupSize, long D0, long D1, long D2, long c_stride_d3,
-        long c_stride_d2, long c_stride_d1, long c_stride_d0, long c_stride_m,
-        long c_stride_n) {
+        __global DST_DATA_T *restrict dst,
+        __global DST_SCALES_DATA_T *restrict dst_scales, long groupSize,
+        long D0, long D1, long D2, long c_stride_d3, long c_stride_d2,
+        long c_stride_d1, long c_stride_d0, long c_stride_m, long c_stride_n) {
     long m = get_global_id(0);
     long n = get_global_id(1);
     long mb = get_global_id(2);

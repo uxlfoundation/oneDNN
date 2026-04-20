@@ -35,6 +35,7 @@ reorder,test_reorder_ci
 rnn,test_lstm_ci
 rnn,test_gru_ci
 rnn,test_rnn_ci
+sdpa,test_sdpa_smoke
 shuffle,test_shuffle_ci
 softmax,test_softmax_ci
 sum,test_sum_ci

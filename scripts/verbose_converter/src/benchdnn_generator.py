@@ -885,6 +885,64 @@ class ZeroPadConverter(Converter):
         return f"--tag={maybe_make_any_tag(self.entry.mds[0])}"
 
 
+class SDPAConverter(Converter):
+    driver: str = "sdpa"
+
+    @property
+    def aux(self):
+        parts = []
+        # Mask type
+        msk = self.entry.aux.get("msk")
+        if msk is not None:
+            parts.append(f"--mask={msk}")
+
+        # If a mask md is present but no auxiliary mask info, default to
+        # --mask=buffer.
+        for md in self.entry.mds:
+            if md.arg == "msk":
+                if msk is None:
+                    parts.append("--mask=buffer")
+                break
+
+        # Scale type: scl:mul is the default (library mode), only emit
+        # --scale= for non-default values like "div".
+        scl = self.entry.aux.get("scl")
+        if scl is not None:
+            scale_mode = scl.split(":")[0]  # "mul" or "div"
+            if scale_mode != "mul":
+                parts.append(f"--scale={scale_mode}")
+
+        return " ".join(parts)
+
+    @property
+    def dts(self):
+        dt_map = {}
+        mdt = None
+        for md in self.entry.mds:
+            if md.arg in ("query", "key", "val", "dst"):
+                dt_map[md.arg] = md.data_type
+            elif md.arg == "msk":
+                mdt = md.data_type
+        q_dt = dt_map.get("query", "f32")
+        k_dt = dt_map.get("key", q_dt)
+        v_dt = dt_map.get("val", q_dt)
+        d_dt = dt_map.get("dst", q_dt)
+        if q_dt == k_dt == v_dt == d_dt:
+            dt = f"--dt={q_dt}"
+        else:
+            dt = f"--dt={q_dt}:{k_dt}:{v_dt}:{d_dt}"
+        return f"{dt} --mdt={mdt}" if mdt else dt
+
+    @property
+    def tags(self):
+        parts = []
+        for md in self.entry.mds:
+            if md.arg in ("query", "key", "val", "dst"):
+                tag = maybe_make_any_tag(md)
+                parts.append(f"--{md.arg[0]}tag={tag}")
+        return " ".join(parts)
+
+
 def get_converter(primitive: str) -> ConverterMeta:
     converters: Dict[str, ConverterMeta] = {
         "batch_normalization": BatchNormalizationConverter,
@@ -905,6 +963,7 @@ def get_converter(primitive: str) -> ConverterMeta:
         "reorder": ReorderConverter,
         "resampling": ResamplingConverter,
         "rnn": RNNConverter,
+        "sdpa": SDPAConverter,
         "shuffle": ShuffleConverter,
         "softmax": SoftmaxConverter,
         "sum": SumConverter,

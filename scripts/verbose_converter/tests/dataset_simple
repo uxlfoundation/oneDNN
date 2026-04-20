@@ -32,6 +32,7 @@ prelu,shapes_ci
 reduction,shapes_ci
 resampling,shapes_ci
 rnn,shapes_small
+sdpa,test_sdpa_smoke
 shuffle,option_set_min
 softmax,shapes_ci
 sum,test_sum_ci

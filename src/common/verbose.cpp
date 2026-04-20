@@ -1673,13 +1673,13 @@ std::string init_info_sdpa(const engine_t *e, const pd_t *pd) {
     ss << ",alg:" << desc->softmax_alg;
     if (pd->with_attn_mask()) {
         auto *md = desc->attn_mask_md();
-        ss << delimiter << "msk:" << (md->dims[2] == 1 ? 1 : 2) << 'd';
+        ss << delimiter << "msk:buffer_" << (md->dims[2] == 1 ? 1 : 2) << 'd';
     } else if (pd->with_causal_mask()) {
         ss << delimiter;
         if (desc->mask_type == attn_mask_type::top_left)
-            ss << "msk:causal:top_left";
+            ss << "msk:causal_top_left";
         else
-            ss << "msk:causal:bottom_right";
+            ss << "msk:causal_bottom_right";
     }
     if (pd->with_attn_scale()) {
         ss << delimiter << "scl:";

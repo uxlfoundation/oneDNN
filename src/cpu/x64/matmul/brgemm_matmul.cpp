@@ -307,10 +307,8 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
             VERBOSE_UNSUPPORTED_POSTOP);
 
     VDISPATCH_MATMUL(check_attr_scales(), VERBOSE_UNSUPPORTED_SCALES_CFG);
-    VDISPATCH_MATMUL(
-            check_attr_zero_points(is_bf16_with_int_wei || is_bf16_with_f4_wei
-                    || is_f16_with_int_wei || is_f16_with_f4_wei
-                    || is_f32_with_int_wei || is_f32_with_f4_wei),
+    VDISPATCH_MATMUL(check_attr_zero_points(is_bf16_with_int_wei
+                             || is_f16_with_int_wei || is_f32_with_int_wei),
             VERBOSE_UNSUPPORTED_ZP_CFG);
     VDISPATCH_MATMUL(check_bias(), VERBOSE_UNSUPPORTED_BIAS_CFG);
     VDISPATCH_MATMUL(check_reduce(), VERBOSE_UNSUPPORTED_FEATURE,

@@ -4815,7 +4815,7 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
 // simplifies the pass logic below.
 status_t fuse_gated_mlp(std::shared_ptr<subgraph_t> &sg) {
     std::vector<op_ptr> candidates;
-    const auto ops = sg->get_ops();
+    const auto &ops = sg->get_ops();
     size_t matmul_count = 0;
     dnnl::algorithm act_algo = dnnl::algorithm::undef;
     op_ptr gate = nullptr, up = nullptr, down = nullptr;

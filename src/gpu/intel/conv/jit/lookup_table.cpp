@@ -16,8 +16,10 @@
 
 #include "gpu/intel/conv/jit/lookup_table.hpp"
 
+#include <algorithm>
 #include <fstream>
 #include <mutex>
+#include <vector>
 
 #include "common/utils.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
@@ -99,13 +101,20 @@ blocking_params_t lookup_table_t::find(const key_t &key) const {
 }
 
 void lookup_table_t::stringify(std::ostream &out) const {
-    bool is_first = true;
+    std::vector<std::string> lines;
     for (auto &kv : data_) {
         for (auto &e : kv.second) {
-            if (!is_first) out << "\n";
-            e.stringify(out);
-            is_first = false;
+            ostringstream_t oss;
+            e.stringify(oss);
+            lines.push_back(oss.str());
         }
+    }
+    std::sort(lines.begin(), lines.end());
+    bool is_first = true;
+    for (auto &line : lines) {
+        if (!is_first) out << "\n";
+        out << line;
+        is_first = false;
     }
 }
 

@@ -5615,16 +5615,29 @@ struct jit_brgemm_matmul_copy_b_cvt_bf16_t
         , req_zp_b_shift_(
                   conf_->has_zero_point_b && conf_->with_wei_decompression)
         , req_apply_wei_scales_(conf_->apply_scales_in_buffer_b)
-        , reserved_regs_([&]() {
-            int n = 0;
-            if (is_src_4bit_) n = nstl::max(n, 1); // vmm_permd(0)
-            if (req_zp_b_shift_) n = nstl::max(n, 4); // + zp/tmp(1..3)
-            if (req_apply_wei_scales_) n = nstl::max(n, 6); // + scales(4..5)
-            if (is_src_f4_) n = nstl::max(n, 7); // + f4_lookup_table(6)
-            return n;
-        }())
         , is_wei_grouped_over_k_(
-                  conf_->is_wei_zp_per_k || conf_->is_wei_scale_per_k) {}
+                  conf_->is_wei_zp_per_k || conf_->is_wei_scale_per_k)
+        , vmm_indices_([&]() {
+            vmm_idx_t idx;
+            int n = 0;
+            if (is_src_4bit_ || req_zp_b_shift_ || req_apply_wei_scales_)
+                idx.permd = n++;
+            if (req_zp_b_shift_) {
+                idx.zp_b_val0 = n++;
+                idx.zp_b_val1 = n++;
+            }
+            if (req_zp_b_shift_ || req_apply_wei_scales_
+                    || is_wei_grouped_over_k_)
+                idx.tmp = n++;
+            if (req_apply_wei_scales_) {
+                idx.wei_scales0 = n++;
+                idx.wei_scales1 = n++;
+            }
+            if (is_src_f4_) idx.f4_lookup_table = n++;
+            idx.count = n;
+            return idx;
+        }())
+        , reserved_regs_(vmm_indices_.count) {}
 
     void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
     status_t create_kernel() override {
@@ -5647,8 +5660,21 @@ private:
     const dim_t src_elems_per_byte_, src_stride_, tr_src_stride_;
     const bool req_zp_b_shift_;
     const bool req_apply_wei_scales_;
-    const int reserved_regs_;
     const bool is_wei_grouped_over_k_;
+
+    struct vmm_idx_t {
+        int permd = -1;
+        int zp_b_val0 = -1;
+        int zp_b_val1 = -1;
+        int tmp = -1;
+        int wei_scales0 = -1;
+        int wei_scales1 = -1;
+        int f4_lookup_table = -1;
+        int count = 0;
+    };
+
+    const vmm_idx_t vmm_indices_;
+    const int reserved_regs_;
 
     reg64_t reg_src = rax;
     reg64_t reg_tr_src = rbx;
@@ -5665,13 +5691,13 @@ private:
     reg64_t reg_wei_zp = r14;
     reg64_t reg_k_start = r15;
 
-    Vmm vmm_permd = Vmm(0);
-    Vmm vmm_zp_b_val0 = Vmm(1);
-    Vmm vmm_zp_b_val1 = Vmm(2);
-    Vmm vmm_tmp = Vmm(3);
-    Vmm vmm_wei_scales0 = Vmm(4);
-    Vmm vmm_wei_scales1 = Vmm(5);
-    Vmm vmm_f4_lookup_table = Vmm(6);
+    Vmm vmm_permd = Vmm(vmm_indices_.permd);
+    Vmm vmm_zp_b_val0 = Vmm(vmm_indices_.zp_b_val0);
+    Vmm vmm_zp_b_val1 = Vmm(vmm_indices_.zp_b_val1);
+    Vmm vmm_tmp = Vmm(vmm_indices_.tmp);
+    Vmm vmm_wei_scales0 = Vmm(vmm_indices_.wei_scales0);
+    Vmm vmm_wei_scales1 = Vmm(vmm_indices_.wei_scales1);
+    Vmm vmm_f4_lookup_table = Vmm(vmm_indices_.f4_lookup_table);
 
     Vmm get_vmm(const int blk, const int idx) {
         const int max_isa_regs = isa_num_vregs(conf_->isa);

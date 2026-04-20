@@ -59,6 +59,8 @@ struct eltwise_executable_t : public op_executable_t {
     }
 #endif
 
+    bool is_initialized() const override { return bool(prim_); }
+
 private:
     dnnl::eltwise_forward prim_;
 };
@@ -98,6 +100,8 @@ struct eltwise_bwd_executable_t : public op_executable_t {
         return e;
     }
 #endif
+
+    bool is_initialized() const override { return bool(prim_); }
 
 private:
     dnnl::eltwise_backward prim_;
@@ -142,6 +146,8 @@ struct binary_executable_t : public op_executable_t {
             const std::vector<cl_event> &deps) const override;
 #endif
 
+    bool is_initialized() const override { return bool(prim_); }
+
 private:
     dnnl::binary prim_;
     bool with_sum_ {false};
@@ -185,6 +191,8 @@ struct prelu_executable_t : public op_executable_t {
     }
 #endif
 
+    bool is_initialized() const override { return bool(prim_); }
+
 private:
     dnnl::prelu_forward prim_;
 };
@@ -224,6 +232,8 @@ struct prelu_bwd_executable_t : public op_executable_t {
         return e;
     }
 #endif
+
+    bool is_initialized() const override { return bool(prim_); }
 
 private:
     dnnl::prelu_backward prim_;

@@ -61,6 +61,8 @@ struct layernorm_executable_t : public op_executable_t {
     }
 #endif
 
+    bool is_initialized() const override { return bool(prim_); }
+
 private:
     dnnl::layer_normalization_forward prim_;
 };
@@ -101,6 +103,8 @@ struct layernorm_bwd_executable_t : public op_executable_t {
         return e;
     }
 #endif
+
+    bool is_initialized() const override { return bool(prim_); }
 
 private:
     dnnl::layer_normalization_backward prim_;

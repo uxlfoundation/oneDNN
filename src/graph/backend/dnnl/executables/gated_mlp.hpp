@@ -48,6 +48,8 @@ struct gated_mlp_executable_t : public op_executable_t {
             const std::vector<cl_event> &deps) const override;
 #endif
 
+    bool is_initialized() const override { return pd_ && prim_; }
+
 private:
     dnnl_primitive_desc_t pd_ = nullptr;
     dnnl_primitive_t prim_ = nullptr;

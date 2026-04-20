@@ -61,6 +61,8 @@ struct groupnorm_executable_t : public op_executable_t {
     }
 #endif
 
+    bool is_initialized() const override { return bool(prim_); }
+
 private:
     dnnl::group_normalization_forward prim_;
 };

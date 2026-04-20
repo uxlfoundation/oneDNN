@@ -60,6 +60,8 @@ struct softmax_executable_t : public op_executable_t {
     }
 #endif
 
+    bool is_initialized() const override { return bool(prim_); }
+
 private:
     dnnl::softmax_forward prim_;
 };
@@ -99,6 +101,8 @@ struct softmax_bwd_executable_t : public op_executable_t {
         return e;
     }
 #endif
+
+    bool is_initialized() const override { return bool(prim_); }
 
 private:
     dnnl::softmax_backward prim_;

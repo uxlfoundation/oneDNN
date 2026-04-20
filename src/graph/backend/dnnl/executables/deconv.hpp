@@ -53,6 +53,8 @@ struct deconv_fwd_executable_t : public op_executable_t {
             const std::vector<cl_event> &deps) const override;
 #endif
 
+    bool is_initialized() const override { return bool(prim_); }
+
 private:
     dnnl::deconvolution_forward prim_;
     bool with_sum_ {false};
@@ -95,6 +97,8 @@ struct deconv_bwd_data_executable_t : public op_executable_t {
     }
 #endif
 
+    bool is_initialized() const override { return bool(prim_); }
+
 private:
     dnnl::deconvolution_backward_data prim_;
 };
@@ -135,6 +139,8 @@ struct deconv_bwd_weights_executable_t : public op_executable_t {
         return e;
     }
 #endif
+
+    bool is_initialized() const override { return bool(prim_); }
 
 private:
     dnnl::deconvolution_backward_weights prim_;

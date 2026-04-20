@@ -28,7 +28,10 @@ namespace dnnl_impl {
 genindex_executable_t::genindex_executable_t(std::shared_ptr<op_t> &op,
         const dnnl::engine &p_engine, pd_cache_t &pd_cache,
         const fpmath_t &fpmath, bool use_block_layout)
-    : axis_(op->get_attr<int64_t>(op_attr::axis)) {
+    : axis_(op->get_attr<int64_t>(op_attr::axis))
+    , nelems_(0)
+    , ndims_(0)
+    , ekind_(p_engine.get_kind()) {
     using ltw = logical_tensor_wrapper_t;
     const auto &input_lt = op->get_input_logical_tensor(0);
     nelems_ = ltw(input_lt).nelems();
@@ -39,11 +42,11 @@ genindex_executable_t::genindex_executable_t(std::shared_ptr<op_t> &op,
         output_strides_[i] = output_lt.layout.strides[i];
     }
     info_ = std::string(dnnl_engine_kind2str(
-                    static_cast<dnnl_engine_kind_t>(p_engine.get_kind())))
+                    static_cast<dnnl_engine_kind_t>(ekind_)))
             + "," + op->str();
 #if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
         && DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-    if (p_engine.get_kind() == engine::kind::gpu) {
+    if (ekind_ == engine::kind::gpu) {
         compute::kernel_ctx_t kernel_ctx;
         kernel_ctx.define_int("NDIMS", ndims_);
         for (int d = 0; d < MAX_NDIMS; ++d) {

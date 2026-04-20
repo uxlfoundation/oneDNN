@@ -60,6 +60,8 @@ struct sum_executable_t : public op_executable_t {
     }
 #endif
 
+    bool is_initialized() const override { return bool(prim_); }
+
 private:
     dnnl::sum prim_;
 };

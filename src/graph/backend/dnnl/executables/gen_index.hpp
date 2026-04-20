@@ -59,9 +59,19 @@ struct genindex_executable_t : public op_executable_t {
             const std::vector<cl_event> &deps) const;
 #endif
 
+    bool is_initialized() const override {
+#if (DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE) \
+        && (DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL)
+        return ekind_ == dnnl::engine::kind::gpu ? bool(kernel_) : true;
+#else
+        return true;
+#endif
+    }
+
 private:
     int axis_, nelems_, ndims_;
     dims_t output_dims_, output_strides_;
+    dnnl::engine::kind ekind_;
     std::string info_;
 
 #if (DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE) \

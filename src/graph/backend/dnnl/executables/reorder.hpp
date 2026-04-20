@@ -53,6 +53,8 @@ struct reorder_executable_t : public op_executable_t {
             const std::vector<cl_event> &deps) const override;
 #endif
 
+    bool is_initialized() const override { return bool(prim_); }
+
 private:
     dnnl::reorder prim_;
     bool with_sum_ {false};

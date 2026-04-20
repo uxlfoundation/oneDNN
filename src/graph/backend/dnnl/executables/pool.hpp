@@ -59,6 +59,8 @@ struct pool_executable_t : public op_executable_t {
     }
 #endif
 
+    bool is_initialized() const override { return bool(prim_); }
+
 private:
     dnnl::pooling_forward prim_;
 };
@@ -98,6 +100,8 @@ struct pool_bwd_executable_t : public op_executable_t {
         return e;
     }
 #endif
+
+    bool is_initialized() const override { return bool(prim_); }
 
 private:
     dnnl::pooling_backward prim_;

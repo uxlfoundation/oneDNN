@@ -80,6 +80,15 @@ struct bn_folding_t : public op_executable_t {
             const std::vector<cl_event> &deps) const override;
 #endif
 
+    bool is_initialized() const override {
+        return add_prim_ && mul_prim_ && sub_prim_
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+                && sqrt_prim_
+#endif
+                ;
+    }
+
 private:
     desc_t desc_;
     dnnl::binary add_prim_;
@@ -125,6 +134,8 @@ struct batchnorm_executable_t : public op_executable_t {
             const std::vector<cl_event> &deps) const override;
 #endif
 
+    bool is_initialized() const override { return bool(prim_); }
+
 private:
     dnnl::batch_normalization_forward prim_;
     bool is_training_ {false};
@@ -167,6 +178,8 @@ struct batchnorm_bwd_executable_t : public op_executable_t {
         return e;
     }
 #endif
+
+    bool is_initialized() const override { return bool(prim_); }
 
 private:
     dnnl::batch_normalization_backward prim_;

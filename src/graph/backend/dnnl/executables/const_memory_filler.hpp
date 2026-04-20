@@ -105,6 +105,8 @@ struct const_memory_filler_t : public op_executable_t {
     }
 #endif
 
+    bool is_initialized() const override { return true; }
+
 private:
     std::vector<target_dt> get_attr_data(
             const std::vector<attr_dt> &orig_data, std::true_type) {

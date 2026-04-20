@@ -116,6 +116,7 @@ struct op_executable_t {
     virtual void execute(const stream &stream,
             const std::unordered_map<int, memory> &args) const
             = 0;
+    virtual bool is_initialized() const = 0;
 #ifdef DNNL_WITH_SYCL
     virtual ::sycl::event execute_sycl(const stream &stream,
             const std::unordered_map<int, memory> &args,
@@ -238,6 +239,8 @@ struct dummy_impl_t : public op_executable_t {
         return e;
     }
 #endif
+
+    bool is_initialized() const override { return true; }
 };
 
 } // namespace dnnl_impl

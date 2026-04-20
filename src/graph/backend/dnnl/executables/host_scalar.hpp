@@ -51,6 +51,8 @@ struct host_scalar_executable_t : public op_executable_t {
             const std::unordered_map<int, memory> &args,
             const std::vector<cl_event> &deps) const override;
 #endif
+
+    bool is_initialized() const override { return true; }
 };
 
 } // namespace dnnl_impl

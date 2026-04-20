@@ -37,22 +37,18 @@ gated_mlp_executable_t::gated_mlp_executable_t(std::shared_ptr<op_t> &op,
             ? static_cast<dnnl::algorithm>(
                       op->get_attr<int64_t>(op_attr::alg_kind))
             : dnnl::algorithm::undef;
-    auto ret = dnnl_gated_mlp_primitive_desc_create(&pd_, p_engine.get(),
+    dnnl_primitive_desc_t pd = nullptr;
+    // create primitive desc.
+    auto ret = dnnl_gated_mlp_primitive_desc_create(&pd, p_engine.get(),
             src_md.get(), wei0_md.get(), wei1_md.get(), wei2_md.get(),
             dst_md.get(), static_cast<dnnl_alg_kind_t>(act_algo), attr);
-
-    dnnl::error::wrap_c_api(ret,
-            "could not create a primitive descriptor for a gated mlp "
-            "primitive");
-
-    ret = dnnl_primitive_create(&prim_, pd_);
-    dnnl::error::wrap_c_api(
-            ret, "could not create a primitive for a gated mlp primitive");
-}
-
-gated_mlp_executable_t::~gated_mlp_executable_t() {
-    if (prim_) dnnl_primitive_destroy(prim_);
-    if (pd_) dnnl_primitive_desc_destroy(pd_);
+    if (pd && ret == dnnl_success) {
+        pd_.reset(pd);
+        // create primitive
+        dnnl_primitive_t prim = nullptr;
+        ret = dnnl_primitive_create(&prim, pd_.get());
+        if (prim && ret == dnnl_success) { prim_.reset(prim); }
+    }
 }
 
 void gated_mlp_executable_t::execute(const stream &stream,
@@ -72,7 +68,7 @@ void gated_mlp_executable_t::execute(const stream &stream,
         c_args.push_back({a.first, a.second.get()});
 
     sycl::event return_event;
-    auto ret = dnnl_sycl_interop_primitive_execute(prim_, stream.get(),
+    auto ret = dnnl_sycl_interop_primitive_execute(prim_.get(), stream.get(),
             c_args.size(), c_args.data(), &deps, &return_event);
     dnnl::error::wrap_c_api(
             ret, "could not execute gated mlp primitive with sycl runtime");
@@ -93,7 +89,7 @@ cl_event gated_mlp_executable_t::execute_ocl(const stream &stream,
     const cl_event *c_deps = deps.empty() ? nullptr : deps.data();
 
     cl_event return_event = nullptr;
-    auto ret = dnnl_ocl_interop_primitive_execute(prim_, stream.get(),
+    auto ret = dnnl_ocl_interop_primitive_execute(prim_.get(), stream.get(),
             static_cast<int>(c_args.size()), c_args.data(), c_deps,
             static_cast<int>(deps.size()), &return_event);
     dnnl::error::wrap_c_api(

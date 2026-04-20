@@ -18,6 +18,7 @@
 #define GRAPH_BACKEND_DNNL_EXECUTABLES_GATED_MLP_HPP
 
 #include "graph/backend/dnnl/executables/base.hpp"
+#include "graph/backend/dnnl/executables/deleter_util.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -30,8 +31,6 @@ struct gated_mlp_executable_t : public op_executable_t {
     gated_mlp_executable_t(std::shared_ptr<op_t> &op,
             const dnnl::engine &p_engine, pd_cache_t &pd_cache,
             const fpmath_t &fpmath, bool use_block_layout);
-
-    ~gated_mlp_executable_t() override;
 
     void execute(const stream &stream,
             const std::unordered_map<int, memory> &args) const override;
@@ -51,8 +50,8 @@ struct gated_mlp_executable_t : public op_executable_t {
     bool is_initialized() const override { return pd_ && prim_; }
 
 private:
-    dnnl_primitive_desc_t pd_ = nullptr;
-    dnnl_primitive_t prim_ = nullptr;
+    std::unique_ptr<dnnl_primitive_desc, pd_deleter_t> pd_;
+    std::unique_ptr<dnnl_primitive, prim_deleter_t> prim_;
 };
 
 } // namespace dnnl_impl

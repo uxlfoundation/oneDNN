@@ -120,8 +120,8 @@ private:
     bool enabled_ = false;
     std::function<std::string(const value_t *)> mem_info_func_;
 #ifndef DNNL_DISABLE_GRAPH_DUMP
-    size_t partition_id_;
-    size_t index_;
+    size_t partition_id_ = 0;
+    size_t index_ = 0;
 #endif
 };
 

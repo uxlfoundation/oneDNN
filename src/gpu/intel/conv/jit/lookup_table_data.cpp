@@ -24,6 +24,13 @@ namespace jit {
 // clang-format off
 const char** get_lookup_table_entries() {
     static const char *entries[] = {
+        "xe2:bmg dpas fwd x8:x8:any mb1 ic128ih52iw80oc128oh52ow80kh3kw3ph1pw1 simd=16 l=ic4kh3kw3 T=ow8 i=ic32oc64ow10",
+        "xe2:bmg dpas fwd x8:x8:any mb1 ic128ih52iw80oc256oh26ow40kh1kw1sh2sw2ph0pw0 simd=16 l=ic4 T=x i=ic32oc64ow8 bufs=0",
+        "xe2:bmg dpas fwd x8:x8:any mb1 ic128ih52iw80oc256oh26ow40kh3kw3sh2sw2ph1pw1 simd=16 l=ic4kh3kw3 T=oc2ow4 i=ic32oc32ow10",
+        "xe2:bmg dpas fwd x8:x8:any mb1 ic256ih26iw40oc256oh26ow40kh3kw3ph1pw1 simd=16 l=ic8kh3kw3 T=ow4 i=ic32oc32ow10",
+        "xe2:bmg dpas fwd x8:x8:any mb1 ic3ih416iw640oc64oh208ow320kh7kw7sh2sw2ph3pw3 simd=16 l=kh7 T=ow2 i=ic4kw8oc64ow32 bufs=0",
+        "xe2:bmg dpas fwd x8:x8:any mb1 ic64ih104iw160oc128oh52ow80kh3kw3sh2sw2ph1pw1 simd=16 l=ic2kh3kw3 T=ow2 i=ic32oc64ow16",
+        "xe2:bmg dpas fwd x8:x8:any mb1 ic64ih104iw160oc64oh104ow160kh3kw3ph1pw1 simd=16 l=ic2kh3kw3 T=ow4 i=ic32oc64ow20",
         "xehpc dpas bwd_d any:tf32:tf32 mb32 ic1id25oc32od25kd5pd2 simd=16 l=kd5kh5kw5oc2 T=iw8 i=ic16mb32oc16 bufs=2",
         "xehpc dpas bwd_d any:x16:x16 mb16 ic1024ih38oc16oh38kh3ph1 simd=16 l=kh3kw3 T=ic2iw2 i=ic64mb16oc16 bufs=3",
         "xehpc dpas bwd_d any:x16:x16 mb16 ic1024ih38oc324oh38kh3ph1 simd=16 l=kh3kw3oc11 T=ic4iw8 i=ic64mb16oc32 bufs=3",

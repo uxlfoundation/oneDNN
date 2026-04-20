@@ -599,6 +599,7 @@ struct EmulationImplementation {
                     g.mad(mod, dstHi, dstLo, s0Hi, src1, loc);
                     g.mov(mod, dstLo, accLo, loc);
                 } else {
+#if 0 // old solution
                     // XE3P+: native 64-bit mul with GRF dst (no mach/macl).
                     // Must handle src0==dst overlap: s0Lo=dstLo, s0Hi=dstHi.
                     // Order: consume s0Hi first (into acc), use dstHi as scratch
@@ -608,6 +609,12 @@ struct EmulationImplementation {
                     g.mov(mod, dstHi, src1, loc);
                     g.mul(mod, dst, s0Lo, dstHi, loc);
                     g.add(mod, dstHi, dstHi, accLo, loc);
+#else // better
+                    dstHi.setType(isSigned(dst.getType()) ? DataType::d : DataType::ud);
+                    g.mul(mod, accHi, s0Hi, src1, loc);
+                    g.mul(mod, dst, s0Lo, src1, loc);
+                    g.add(mod, dstHi, dstHi, accHi, loc);
+#endif
                 }
             } else if(s1D) {
                 auto s1Lo = lowWord(src1);

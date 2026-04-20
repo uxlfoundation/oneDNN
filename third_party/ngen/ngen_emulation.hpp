@@ -642,12 +642,19 @@ struct EmulationImplementation {
                     = g.acc0.retype(s0Type)[dstLo.getOffset()](dstLo.getHS());
             auto accHi
                     = g.acc0.retype(s0Type)[dstHi.getOffset()](dstHi.getHS());
-            g.mul(mod, accHi, src0, s1W2, loc);
-            g.macl(mod, dstHi, src0, s1Hi, loc);
-            g.mul(mod, accLo, src0, s1W0, loc);
-            g.mach(mod, dstLo, src0, s1Lo, loc);
-            g.add(mod, dstHi, dstHi, dstLo, loc);
-            g.mov(mod, dstLo, accLo, loc);
+            if (emulateDWxDW) {
+                g.mul(mod, accHi, src0, s1W2, loc);
+                g.macl(mod, dstHi, src0, s1Hi, loc);
+                g.mul(mod, accLo, src0, s1W0, loc);
+                g.mach(mod, dstLo, src0, s1Lo, loc);
+                g.add(mod, dstHi, dstHi, dstLo, loc);
+                g.mov(mod, dstLo, accLo, loc);
+            } else {
+                dstHi.setType(isSigned(dst.getType()) ? DataType::d : DataType::ud);
+                g.mul(mod, accHi, src0, s1Hi, loc);
+                g.mul(mod, dst, src0, s1Lo, loc);
+                g.add(mod, dstHi, dstHi, accHi, loc);
+            }
         } else if (dstQ && s0W && s1W) {
             RegData dstLo, dstHi;
             splitToDW(dst, dstLo, dstHi);

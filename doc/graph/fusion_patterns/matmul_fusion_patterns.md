@@ -43,6 +43,7 @@ nodes are optional.
 
    ![f2f_conversion_subgraph](images/f2f_conversion.png)
 
+
 ## Data Types
 
 oneDNN supports the following combinations of data types for src, weights, bias

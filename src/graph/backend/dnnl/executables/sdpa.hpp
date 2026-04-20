@@ -49,7 +49,7 @@ struct sdpa_executable_t : public op_executable_t {
             const std::vector<cl_event> &deps) const override;
 #endif
 
-    bool is_initialized() const override { return is_initialized_; }
+    bool is_initialized() const override { return pd_ && prim_; }
 
 private:
     std::unique_ptr<dnnl_primitive_desc, pd_deleter_t> pd_;
@@ -60,7 +60,6 @@ private:
     bool with_explicit_mask_;
     attn_mask_type_t mask_type_;
     bool is_invert_scale_;
-    bool is_initialized_;
     bool with_dropout_;
 };
 
@@ -86,7 +85,7 @@ struct sdpa_bwd_executable_t : public op_executable_t {
             const std::vector<cl_event> &deps) const override;
 #endif
 
-    bool is_initialized() const override { return is_initialized_; }
+    bool is_initialized() const override { return hint_pd_ && pd_ && prim_; }
 
 private:
     std::unique_ptr<dnnl_primitive_desc, pd_deleter_t> hint_pd_;
@@ -96,7 +95,6 @@ private:
     attn_mask_type_t mask_type_;
     bool is_invert_scale_;
     bool with_explicit_mask_;
-    bool is_initialized_;
     bool with_dropout_;
 };
 

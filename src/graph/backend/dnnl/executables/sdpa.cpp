@@ -96,18 +96,12 @@ sdpa_executable_t::sdpa_executable_t(std::shared_ptr<op_t> &op,
     if (pd && ret == dnnl_success) {
         pd_.reset(pd);
     } else {
-        is_initialized_ = false;
         return;
     }
 
     dnnl_primitive_t prim = nullptr;
     ret = dnnl_primitive_create(&prim, pd_.get());
-    if (prim && ret == dnnl_success) {
-        prim_.reset(prim);
-        is_initialized_ = true;
-    } else {
-        is_initialized_ = false;
-    }
+    if (prim && ret == dnnl_success) { prim_.reset(prim); }
 }
 
 void sdpa_executable_t::execute(const stream &stream,
@@ -289,7 +283,6 @@ sdpa_bwd_executable_t::sdpa_bwd_executable_t(std::shared_ptr<op_t> &op,
     if (hint_pd && ret == dnnl_success) {
         hint_pd_.reset(hint_pd);
     } else {
-        is_initialized_ = false;
         return;
     }
 
@@ -304,18 +297,12 @@ sdpa_bwd_executable_t::sdpa_bwd_executable_t(std::shared_ptr<op_t> &op,
     if (pd && ret == dnnl_success) {
         pd_.reset(pd);
     } else {
-        is_initialized_ = false;
         return;
     }
 
     dnnl_primitive_t prim = nullptr;
     ret = dnnl_primitive_create(&prim, pd_.get());
-    if (prim && ret == dnnl_success) {
-        prim_.reset(prim);
-        is_initialized_ = true;
-    } else {
-        is_initialized_ = false;
-    }
+    if (prim && ret == dnnl_success) { prim_.reset(prim); }
 }
 
 void sdpa_bwd_executable_t::execute(const stream &stream,

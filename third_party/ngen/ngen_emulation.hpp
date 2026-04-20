@@ -614,12 +614,10 @@ struct EmulationImplementation {
                     g.add(mod, dstHi, dstHi, dstLo, loc);
                     g.mov(mod, dstLo, accLo, loc);
                 }else{
-                    auto acc= g.acc0.retype(dst.getType())[dst.getOffset()](dst.getHS());
-                    dstHi.setType(isSigned(dst.getType())? DataType::d : DataType::ud);
-                    g.mov(mod, dst, 0);
-                    g.mul(mod, acc, s0Lo, src1, loc);
-                    g.mul(mod, dstHi, s0Hi, src1, loc);
-                    g.add(mod, dst, dst, acc);
+                    dstHi.setType(isSigned(dst.getType()) ? DataType::d : DataType::ud);
+                    g.mul(mod, accHi, s0Hi, src1, loc);
+                    g.mul(mod, dst, s0Lo, src1, loc);
+                    g.add(mod, dstHi, dstHi, accHi, loc);
                 }
 
             } else stub();

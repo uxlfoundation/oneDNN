@@ -739,6 +739,7 @@ static auto product_family_names = nstl::to_array({
         make_enum_name(ngen::ProductFamily::GenericXeHPC, "xehpc"),
         make_enum_name(ngen::ProductFamily::PVC, "pvc"),
         make_enum_name(ngen::ProductFamily::GenericXe2, "xe2"),
+        make_enum_name(ngen::ProductFamily::BMG, "bmg"),
         make_enum_name(ngen::ProductFamily::GenericXe3, "xe3"),
         make_enum_name(ngen::ProductFamily::XE3P_35_10, "xe3p_35_10"),
         make_enum_name(ngen::ProductFamily::XE3P_35_11, "xe3p_35_11"),

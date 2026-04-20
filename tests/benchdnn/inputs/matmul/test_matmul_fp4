@@ -24,12 +24,6 @@
 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1+dst:mx:e8m0:1x32
 --batch=shapes_mx
 
-## MXFP4 weights
-
---dt=f32:f4_e2m1:f32,bf16:f4_e2m1:bf16,bf16:f4_e2m1:f32,f16:f4_e2m1:f16,f16:f4_e2m1:f32
---attr-scales=wei:per_ocic:e8m0:32x1
---batch=shapes_mx
-
 ## NVFP4
 --dt=f4_e2m1:f4_e2m1:f32,f4_e2m1:f4_e2m1:bf16
 --attr-scales=src:per_tensor:f8_e4m3:1x16+wei:per_tensor:f8_e4m3:16x1

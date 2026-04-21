@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023, 2025 Arm Ltd. and affiliates
+* Copyright 2023, 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,101 +14,18 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "common/memory_desc_wrapper.hpp"
+
 #include "cpu/aarch64/acl_layer_normalization.hpp"
+#include "cpu/aarch64/acl_utils.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace cpu {
 namespace aarch64 {
-
-acl_layer_normalization_fwd_t::acl_layer_normalization_fwd_t(const pd_t *apd)
-    : primitive_t(apd)
-    , acl_obj_(std::make_unique<
-              arm_compute::experimental::op::CpuMeanStdDevNormalization>()) {}
-
-status_t acl_layer_normalization_fwd_t::pd_t::init(engine_t *engine) {
-
-    // dir and flags
-    ACL_CHECK_SUPPORT(!is_fwd(), "ACL lnorm supports forward propagation only");
-    ACL_CHECK_SUPPORT(is_training(), "ACL supports inference only for lnorm");
-    ACL_CHECK_SUPPORT(
-            use_global_stats(), "ACL does not support global stats with lnorm");
-    ACL_CHECK_SUPPORT(use_scale() || use_shift(),
-            "ACL does not support lnorm scale and shift");
-
-    // attr-scales
-    ACL_CHECK_SUPPORT(!attr()->has_default_values(),
-            "ACL does not support scales attribute");
-
-    // tag and stat_tag
-    ACL_CHECK_SUPPORT(src_md()->ndims < 2 || src_md()->ndims > 5,
-            "src tensor must have between 2 and 5 (inclusive) "
-            "dimensions");
-
-    // skip_mean is set for root-mean-square normalization mode.
-    ACL_CHECK_SUPPORT(skip_mean(), "rms normalization is not supported");
-
-    // msdNorm only supports lnorm for src in a channels last format.
-    // So if channels aren't last (ie. if they aren't dense),
-    // then reorder into a channels last format
-    std::string ref_implementation_guess = "simple:any";
-    if (src_md()->format_desc.blocking.strides[ndims() - 1] != 1) {
-        CHECK(memory_desc_init_by_tag(
-                src_md_, get_channels_last_format(src_md_.ndims)));
-        ref_implementation_guess = "ref:any";
-    }
-    if (dst_md_ != src_md_)
-        // Make sure dst and src share a format
-        CHECK(memory_desc_init_by_md_and_dt(
-                dst_md_, src_md_, src_md()->data_type));
-    if (!set_default_stat_md_format(src_md_)) return status::unimplemented;
-
-    const memory_desc_wrapper src_d(src_md_);
-    const memory_desc_wrapper dst_d(dst_md_);
-
-    ACL_CHECK_SUPPORT(src_d.has_zero_dim() || dst_d.has_zero_dim(),
-            "data tensor(s) must not have a zero dimension");
-
-    // data type
-    ACL_CHECK_SUPPORT(
-            src_d.data_type() != data_type::f32, "ACL Lnorm only supports F32");
-    ACL_CHECK_SUPPORT(dst_d.data_type() != src_d.data_type(),
-            "src and dst must share data types");
-
-    // Problem shape
-    int C = norm_axis(); // Channel dim size
-    int X = src_d.nelems() / C; // Non-channel dims size
-
-    ACL_CHECK_SUPPORT(!use_acl_heuristic(X, C, dnnl_get_max_threads(),
-                              is_training(), ref_implementation_guess),
-            "ACL is unoptimal in this case");
-
-    anp_data_info = arm_compute::TensorInfo(
-            arm_compute::TensorShape(C, X), 1, arm_compute::DataType::F32);
-
-    ACL_CHECK_VALID(
-            arm_compute::experimental::op::CpuMeanStdDevNormalization::validate(
-                    &anp_data_info, &anp_data_info,
-                    desc()->layer_norm_epsilon));
-
-    return status::success;
-}
-
-format_tag_t acl_layer_normalization_fwd_t::pd_t::get_channels_last_format(
-        size_t ndim) const {
-    assert(ndim > 1 && ndim < 6);
-    switch (ndim) {
-        case 2: return format_tag::nc;
-        case 3: return format_tag::tnc;
-        case 4: return format_tag::ldnc;
-        case 5: return format_tag::abcde;
-        default: return format_tag::undef;
-    }
-}
-
-bool acl_layer_normalization_fwd_t::pd_t::use_acl_heuristic(int X, int C,
-        int threads, bool ref_has_stats,
-        const std::string &ref_implementation_guess) const {
+namespace {
+bool use_acl_heuristic(int X, int C, int threads, bool ref_has_stats,
+        const std::string &ref_implementation_guess) {
     // Above a certain C, ACL is always faster, and below a certain C,
     // ACL is always slower. for C in between these two, whether ACL is
     // faster can be approximated with the workload (X*C) per thread.
@@ -164,17 +81,89 @@ bool acl_layer_normalization_fwd_t::pd_t::use_acl_heuristic(int X, int C,
     return C > acl_competitive_C
             && (C > acl_better_C || X * C > acl_better_XC_per_thread * threads);
 }
+} // namespace
 
-const acl_layer_normalization_fwd_t::pd_t *
-acl_layer_normalization_fwd_t::pd() const {
-    return (const pd_t *)primitive_t::pd().get();
+acl_layer_normalization_fwd_t::acl_layer_normalization_fwd_t(const pd_t *apd)
+    : primitive_t(apd)
+    , acl_obj_(std::make_unique<
+              arm_compute::experimental::op::CpuMeanStdDevNormalization>()) {}
+
+status_t acl_layer_normalization_fwd_t::pd_t::init(engine_t *engine) {
+
+    // dir and flags
+    ACL_CHECK_SUPPORT(!is_fwd(), "ACL lnorm supports forward propagation only");
+    ACL_CHECK_SUPPORT(is_training(), "ACL supports inference only for lnorm");
+    ACL_CHECK_SUPPORT(
+            use_global_stats(), "ACL does not support global stats with lnorm");
+    ACL_CHECK_SUPPORT(use_scale() || use_shift(),
+            "ACL does not support lnorm scale and shift");
+
+    // attr-scales
+    ACL_CHECK_SUPPORT(!attr()->has_default_values(),
+            "ACL does not support scales attribute");
+
+    // tag and stat_tag
+    ACL_CHECK_SUPPORT(src_md()->ndims < 2 || src_md()->ndims > 5,
+            "src tensor must have between 2 and 5 (inclusive) "
+            "dimensions");
+
+    // skip_mean is set for root-mean-square normalization mode.
+    ACL_CHECK_SUPPORT(skip_mean(), "rms normalization is not supported");
+
+    if (!set_default_stat_md_format(src_md_)) return status::unimplemented;
+
+    const memory_desc_wrapper src_d(src_md_);
+    const memory_desc_wrapper dst_d(dst_md_);
+
+    ACL_CHECK_SUPPORT(src_d.has_zero_dim() || dst_d.has_zero_dim(),
+            "data tensor(s) must not have a zero dimension");
+
+    if (dst_md_.format_kind == format_kind::any) {
+        memory_desc_init_by_md_and_dt(dst_md_, src_md_, dst_md_.data_type);
+    }
+
+    ACL_CHECK_SUPPORT(dst_md_ != src_md_,
+            "src and dst must have the same memory description");
+
+    // msdNorm only supports lnorm for src in a channels last format.
+    // So if channels aren't last (ie. if they aren't dense),
+    // then reorder into a channels last format
+    std::string ref_implementation_guess = "simple:any";
+    ACL_CHECK_SUPPORT(src_md_.format_kind == format_kind::blocked
+                    && src_md()->format_desc.blocking.strides[ndims() - 1] != 1,
+            "unsupported src format description");
+
+    ACL_CHECK_SUPPORT(
+            !utils::one_of(src_md_.data_type, data_type::f16, data_type::f32),
+            "ACL only supports f16, and f32");
+
+    // Problem shape
+    int C = norm_axis(); // Channel dim size
+    int X = src_d.nelems() / C; // Non-channel dims size
+
+    ACL_CHECK_SUPPORT(!use_acl_heuristic(X, C, dnnl_get_max_threads(),
+                              is_training(), ref_implementation_guess),
+            "ACL is unoptimal in this case");
+
+    acl_lnorm_conf.src_info = {arm_compute::TensorShape(C, X), 1,
+            acl_utils::get_acl_data_t(src_md_.data_type)};
+
+    acl_lnorm_conf.dst_info = {arm_compute::TensorShape(C, X), 1,
+            acl_utils::get_acl_data_t(dst_md_.data_type)};
+
+    ACL_CHECK_VALID(
+            arm_compute::experimental::op::CpuMeanStdDevNormalization::validate(
+                    &acl_lnorm_conf.src_info, &acl_lnorm_conf.dst_info,
+                    desc()->layer_norm_epsilon));
+
+    return status::success;
 }
 
 status_t acl_layer_normalization_fwd_t::init(engine_t *engine) {
-    auto *anp_data_info
-            = const_cast<arm_compute::TensorInfo *>(&pd()->anp_data_info);
-    acl_obj_->configure(
-            anp_data_info, anp_data_info, pd()->desc()->layer_norm_epsilon);
+    auto *acl_lnorm_conf
+            = const_cast<acl_layer_norm_conf_t *>(&pd()->acl_lnorm_conf);
+    acl_obj_->configure(&acl_lnorm_conf->src_info, &acl_lnorm_conf->dst_info,
+            pd()->desc()->layer_norm_epsilon);
     return status::success;
 }
 
@@ -187,9 +176,9 @@ status_t acl_layer_normalization_fwd_t::execute_forward(
     arm_compute::Tensor src_tensor;
     arm_compute::Tensor dst_tensor;
 
-    src_tensor.allocator()->init(pd()->anp_data_info);
+    src_tensor.allocator()->init(pd()->acl_lnorm_conf.src_info);
     src_tensor.allocator()->import_memory(const_cast<float *>(src));
-    dst_tensor.allocator()->init(pd()->anp_data_info);
+    dst_tensor.allocator()->init(pd()->acl_lnorm_conf.dst_info);
     dst_tensor.allocator()->import_memory(dst);
 
     arm_compute::ITensorPack act_pack;

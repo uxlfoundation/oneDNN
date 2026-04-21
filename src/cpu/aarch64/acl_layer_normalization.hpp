@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2025 Arm Ltd. and affiliates
+* Copyright 2023-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -17,15 +17,23 @@
 #ifndef CPU_AARCH64_ACL_LAYER_NORMALIZATION_HPP
 #define CPU_AARCH64_ACL_LAYER_NORMALIZATION_HPP
 
-#include "arm_compute/runtime/experimental/operators/CpuMeanStdDevNormalization.h"
+#include "common/primitive.hpp"
 
-#include "cpu/aarch64/acl_utils.hpp"
 #include "cpu/cpu_layer_normalization_pd.hpp"
+
+#include "arm_compute/core/TensorInfo.h"
+#include "arm_compute/runtime/experimental/operators/CpuMeanStdDevNormalization.h"
 
 namespace dnnl {
 namespace impl {
 namespace cpu {
 namespace aarch64 {
+
+struct acl_layer_norm_conf_t {
+    arm_compute::TensorInfo src_info;
+    arm_compute::TensorInfo dst_info;
+};
+
 struct acl_layer_normalization_fwd_t : public primitive_t {
     struct pd_t : public cpu_layer_normalization_fwd_pd_t {
         using cpu_layer_normalization_fwd_pd_t::
@@ -35,10 +43,8 @@ struct acl_layer_normalization_fwd_t : public primitive_t {
 
         status_t init(engine_t *engine);
         format_tag_t get_channels_last_format(size_t ndim) const;
-        bool use_acl_heuristic(int X, int C, int threads, bool ref_has_stats,
-                const std::string &ref_implementation_guess) const;
 
-        arm_compute::TensorInfo anp_data_info;
+        acl_layer_norm_conf_t acl_lnorm_conf;
     }; // pd_t
 
     acl_layer_normalization_fwd_t(const pd_t *apd);
@@ -50,7 +56,9 @@ struct acl_layer_normalization_fwd_t : public primitive_t {
 
 private:
     status_t execute_forward(const exec_ctx_t &ctx) const;
-    const pd_t *pd() const;
+
+    const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
+
     std::unique_ptr<arm_compute::experimental::op::CpuMeanStdDevNormalization>
             acl_obj_;
 };

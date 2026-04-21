@@ -33,9 +33,9 @@
 namespace conv_dw_fusion {
 
 int fill_scales(int exec_arg, const attr_t &attr, int arg, dnn_mem_t &mem_dt,
-        dnn_mem_t &mem_fp) {
+        dnn_mem_t &mem_fp, res_t *res) {
     if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
-    return fill_scales(attr, arg, mem_dt, mem_fp);
+    return fill_scales(attr, arg, mem_dt, mem_fp, res);
 }
 
 std::unique_ptr<prb_t> get_first_conv_prb(const prb_t *prb) {
@@ -223,7 +223,7 @@ int init_ref_memory_args(dnn_mem_map_t &mem_map0, dnn_mem_map_t &mem_map1,
                 } else if (is_pre_dw_scales_arg && !is_post_dw_scales_arg) {
                     int local_exec_arg = exec_arg ^ DNNL_ARG_ATTR_SCALES;
                     SAFE(fill_scales(exec_arg, prb0->attr, local_exec_arg, mem,
-                                 ref_mem),
+                                 ref_mem, res),
                             WARN);
                     SAFE(mem_map0.at(exec_arg).reorder(mem), WARN);
                 }
@@ -273,7 +273,8 @@ int init_ref_memory_args(dnn_mem_map_t &mem_map0, dnn_mem_map_t &mem_map1,
         mem_map[dw_wei_scale_arg] = dnn_mem_t(
                 wei_scale_md, get_test_engine(), /* prefill = */ true);
         SAFE(fill_scales(dw_wei_scale_arg, prb1->attr, DNNL_ARG_WEIGHTS,
-                     mem_map.at(dw_wei_scale_arg), mem_map1.at(wei_scale_arg)),
+                     mem_map.at(dw_wei_scale_arg), mem_map1.at(wei_scale_arg),
+                     res),
                 WARN);
     }
     if (!prb1->attr.scales.get(DNNL_ARG_DST).is_def()) {
@@ -284,7 +285,8 @@ int init_ref_memory_args(dnn_mem_map_t &mem_map0, dnn_mem_map_t &mem_map1,
         mem_map[dw_dst_scale_arg] = dnn_mem_t(
                 dst_scale_md, get_test_engine(), /* prefill = */ true);
         SAFE(fill_scales(dw_dst_scale_arg, prb1->attr, DNNL_ARG_DST,
-                     mem_map.at(dw_dst_scale_arg), mem_map1.at(dst_scale_arg)),
+                     mem_map.at(dw_dst_scale_arg), mem_map1.at(dst_scale_arg),
+                     res),
                 WARN);
     }
 

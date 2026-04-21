@@ -1980,7 +1980,8 @@ int init_ref_memory_args_default_case(int exec_arg, dnn_mem_t &mem,
         }
     } else if (is_scales_arg) {
         int local_exec_arg = exec_arg ^ DNNL_ARG_ATTR_SCALES;
-        TIME_FILL(SAFE(fill_scales(attr, local_exec_arg, mem, ref_mem), WARN));
+        TIME_FILL(SAFE(
+                fill_scales(attr, local_exec_arg, mem, ref_mem, res), WARN));
     } else if (is_zero_point_arg) {
         int local_exec_arg = exec_arg ^ DNNL_ARG_ATTR_ZERO_POINTS;
         TIME_FILL(SAFE(

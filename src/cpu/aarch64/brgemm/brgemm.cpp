@@ -237,7 +237,7 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
                 || (!one_of(dt_bias, data_type::undef, data_type::s8,
                         data_type::u8, data_type::f32, data_type::s32))
                 || (!one_of(dt_d, data_type::s8, data_type::u8, data_type::s32,
-                        data_type::f32)))
+                        data_type::f32, data_type::bf16)))
             return status::unimplemented;
     }
     if ((brg->dt_a == data_type::bf16 && brg->dt_b == data_type::bf16)

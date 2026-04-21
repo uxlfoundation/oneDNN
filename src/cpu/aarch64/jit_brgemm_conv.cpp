@@ -493,7 +493,7 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     if (with_sum) {
         const auto &sum_po = p.entry_[sum_idx];
         if (!one_of(sum_po.sum.dt, data_type::undef, data_type::f32,
-                    data_type::s32, data_type::u8, data_type::s8))
+                    data_type::s32, data_type::u8, data_type::s8, data_type::bf16))
             return status::unimplemented;
     }
 

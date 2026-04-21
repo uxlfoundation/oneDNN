@@ -62,7 +62,7 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
             && expect_data_types(src_type, wei_type, data_type::undef, dst_type,
                     data_type::undef)
             && IMPLICATION(is_int8,
-                    one_of(dst_type, u8, f32)
+                    one_of(dst_type, u8, bf16, f32)
                             && one_of(bias_md_.data_type, data_type::undef, f32,
                                     s32, s8, u8))
             && IMPLICATION(!is_int8,
@@ -111,7 +111,7 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     if (with_sum) {
         const auto &sum_po = p.entry_[sum_idx];
         if (!one_of(sum_po.sum.dt, data_type::undef, data_type::f32,
-                    data_type::s32, data_type::u8, data_type::s8))
+                    data_type::s32, data_type::u8, data_type::s8, data_type::bf16))
             return status::unimplemented;
     }
     sum_scale = with_sum ? p.entry_[sum_idx].sum.scale : 0.0;

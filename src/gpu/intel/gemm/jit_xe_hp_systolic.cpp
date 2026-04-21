@@ -50,7 +50,7 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
     dev_info_ = intel_engine->device_info();
     auto arch = dev_info_->gpu_arch();
 
-    VDISPATCH_GEMM_SC(init_attrs(), VERBOSE_UNSUPPORTED_TAG);
+    CHECK(init_attrs(engine));
     const auto &d = desc();
 
     bool dt_float_ok = (d->a_type() == d->b_type()
@@ -128,15 +128,15 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
                     <= (size_t)std::numeric_limits<int32_t>::max(),
             VERBOSE_SHAPE_RESTRICTION);
 
-    VDISPATCH_GEMM(scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+    CHECK(scales_ok(engine));
 
     if (!attr()->zero_points_.has_default_values()) {
         VDISPATCH_GEMM(!attr()->zero_points_.has_host_scalars(),
                 VERBOSE_UNSUPPORTED_ZP_CFG);
-        VDISPATCH_GEMM(zp_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
+        CHECK(zp_ok(engine));
     }
 
-    VDISPATCH_GEMM_SC(init_post_ops(), VERBOSE_UNSUPPORTED_POSTOP);
+    CHECK(init_post_ops(engine));
 
     if (dt_int_ok) {
         VDISPATCH_GEMM(IMPLICATION(a_zp_, !packed_b())

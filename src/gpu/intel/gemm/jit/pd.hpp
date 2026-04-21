@@ -68,11 +68,11 @@ struct pd_t : public gemm::pd_t {
         transa_ = desc()->transa() == dnnl_trans;
         transb_ = desc()->transb() == dnnl_trans;
 
-        VDISPATCH_GEMM_SC(init_attrs(), VERBOSE_UNSUPPORTED_TAG);
-        VDISPATCH_GEMM(scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
-        VDISPATCH_GEMM(zp_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
-        VDISPATCH_GEMM(gs_ok(), VERBOSE_UNSUPPORTED_PR_CFG);
-        VDISPATCH_GEMM_SC(init_post_ops(), VERBOSE_UNSUPPORTED_POSTOP);
+        CHECK(init_attrs(engine));
+        CHECK(scales_ok(engine));
+        CHECK(zp_ok(engine));
+        CHECK(gs_ok(engine));
+        CHECK(init_post_ops(engine));
         return status::success;
     }
 
@@ -96,11 +96,11 @@ struct pd_t : public gemm::pd_t {
                 binary_div, binary_min, binary_max);
     }
 
-    status_t init_post_ops();
-    status_t init_attrs();
-    bool scales_ok();
-    bool zp_ok();
-    bool gs_ok();
+    status_t init_post_ops(impl::engine_t *engine);
+    status_t init_attrs(impl::engine_t *engine);
+    status_t scales_ok(impl::engine_t *engine);
+    status_t zp_ok(impl::engine_t *engine);
+    status_t gs_ok(impl::engine_t *engine);
 
     dim_t ld_binary(int idx) const;
     dim_t stride_binary(int idx, int stride = 0) const;

@@ -422,7 +422,9 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
             force_f32_dt ? dnnl_f32 : prb->dt[0], prb->tag[0]);
 
     benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> stat_d {};
-    if (prb->stat_tag != tag::undef) {
+    // Stats descriptor is not required on inference as stats won't be returned
+    // as separate memory objects to the user from the library anyway.
+    if (prb->stat_tag != tag::undef && !(prb->dir & FLAG_INF)) {
         stat_d = dnn_mem_t::init_md(
                 prb->ndims - 1, prb->dims.data(), dnnl_f32, prb->stat_tag);
     }
@@ -445,6 +447,47 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
                         init_pd_args.src_md ? init_pd_args.src_md : src_d,
                         dst_d, stat_d, prb->ss_dt, prb->eps, flags,
                         dnnl_attr)));
+
+        auto check_md_similarity
+                = [&](const std::string &arg, const std::string &md_tag,
+                          dnnl_memory_desc_t md_in,
+                          const_dnnl_memory_desc_t md_query) -> dnnl_status_t {
+            if (!md_in) return dnnl_success;
+
+            if (query_md_data_type(md_in) != query_md_data_type(md_query)) {
+                BENCHDNN_PRINT(0,
+                        "Error: requested %s memory descriptor data type "
+                        "\'%s\' doesn't coincide with queried \'%s\'\n",
+                        arg.c_str(), dt2str(query_md_data_type(md_in)),
+                        dt2str(query_md_data_type(md_query)));
+                return dnnl_runtime_error;
+            }
+
+            int ndims = query_md_ndims(md_in);
+            // TODO: a general solution must canonicalize descriptors and only
+            // then verify strides, otherwise, ambiguity pops up and multiple
+            // tags/strides initialization are equal though might be different.
+            if (md_tag != tag::any
+                    && !has_unit_dims(ndims, query_md_dims(md_in))
+                    && !strides_equal(ndims, query_md_strides(md_in),
+                            query_md_strides(md_query))) {
+                BENCHDNN_PRINT(0,
+                        "Error: requested %s memory descriptor tag/strides "
+                        "doesn't coincide with queried.\n",
+                        arg.c_str());
+                return dnnl_runtime_error;
+            }
+            return dnnl_success;
+        };
+        DNN_SAFE_STATUS(check_md_similarity("src", prb->tag[0], src_d,
+                query_md(init_pd_args.pd, dnnl_query_src_md, 0)));
+        DNN_SAFE_STATUS(check_md_similarity("dst", prb->tag[1], dst_d,
+                query_md(init_pd_args.pd, dnnl_query_dst_md, 0)));
+        DNN_SAFE_STATUS(check_md_similarity("stat", prb->stat_tag, stat_d,
+                query_md(init_pd_args.pd,
+                        (flags & dnnl_use_global_stats) ? dnnl_query_src_md
+                                                        : dnnl_query_dst_md,
+                        1)));
     } else {
         auto diff_src_d = dnn_mem_t::init_md(prb->ndims, prb->dims.data(),
                 force_f32_dt ? dnnl_f32 : prb->dt[0], prb->tag[0]);

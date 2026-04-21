@@ -1477,6 +1477,20 @@ bool has_sparse_md(const dnn_mem_map_t &dnn_mem_map) {
     return false;
 }
 
+bool has_unit_dims(int ndims, const dnnl_dims_t &dims) {
+    for (int i = 0; i < ndims; i++) {
+        if (dims[i] == 1) return true;
+    }
+    return false;
+}
+
+bool strides_equal(int ndims, const dnnl_dims_t &lhs, const dnnl_dims_t &rhs) {
+    for (int i = 0; i < ndims; i++) {
+        if (lhs[i] != rhs[i]) return false;
+    }
+    return true;
+}
+
 dnnl_memory_desc_t clone_md(const_dnnl_memory_desc_t md) {
     dnnl_memory_desc_t cloned_md;
     auto status = dnnl_memory_desc_clone(&cloned_md, md);

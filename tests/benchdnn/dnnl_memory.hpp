@@ -266,6 +266,8 @@ private:
 using dnn_mem_map_t = std::unordered_map<int, dnn_mem_t>;
 
 bool has_sparse_md(const dnn_mem_map_t &dnn_mem_map);
+bool has_unit_dims(int ndims, const dnnl_dims_t &dims);
+bool strides_equal(int ndims, const dnnl_dims_t &lhs, const dnnl_dims_t &rhs);
 
 dnnl_memory_desc_t clone_md(const_dnnl_memory_desc_t md);
 

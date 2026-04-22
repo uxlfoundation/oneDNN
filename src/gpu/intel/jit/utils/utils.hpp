@@ -434,10 +434,21 @@ inline T max_pow2_divisor(T n) {
     return n & ~(n - 1);
 }
 
-template <typename T, typename U>
-inline T safe_divide(T a, U b) {
+// Integral division:
+//  - Denominator cannot be zero
+//  - Denominator divides numerator
+//  - No unexpected sign loss (i.e., if U is signed, T must be signed as well)
+template <typename T, typename U,
+        typename R = typename std::enable_if<std::is_integral<T>::value
+                        && std::is_integral<U>::value
+                        && (std::is_signed<decltype(std::declval<T>()
+                                        / std::declval<U>())>::value
+                                == (std::is_signed<T>::value
+                                        || std::is_signed<U>::value)),
+                T>::type>
+inline R safe_divide(T a, U b) {
     gpu_assert(b != 0 && a % b == 0) << "Can't divide: " << a << " / " << b;
-    return (T)(a / b);
+    return (R)(a / b);
 }
 
 template <typename T, typename U>

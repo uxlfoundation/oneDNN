@@ -53,6 +53,15 @@ void load_bias(
 }
 #endif
 
+#if WITH_SPARSE_GROUPS
+#define offsets_tile_br SUBGROUP_SIZE
+#define offsets_tile_bc 1
+#define offsets_tile_nbr 1
+#define offsets_tile_nbc 1
+DECLARE_2D_TILE(offsets_tile_type, int, SUBGROUP_SIZE, offsets_tile_br,
+        offsets_tile_bc, offsets_tile_nbr, offsets_tile_nbc)
+#endif
+
 #ifndef DST_DT_F32
 DECLARE_2D_TILE(c_tile_type_dst, DST_DATA_T, SUBGROUP_SIZE,
         ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
@@ -158,44 +167,93 @@ grouped_micro_gemm(const global SRC_DATA_T *src, long ldsrc,
         const global SRC_ZP_DATA_T *src_attr_zp, const long ldsrcq,
         const global WEI_SCALES_DATA_T *wei_attr_scales,
         const global WEI_ZP_DATA_T *wei_attr_zp, const long ldweiq,
-        const long n, const long k, const global BIA_DATA_T *bias) {
+        const long n, const long k, const global BIA_DATA_T *bias,
+        const long num_groups) {
 #if WITH_SLM
     local char slm[ugemm_grouped_slm_size];
 #else
+#if WITH_SPARSE_GROUPS
+    local char slm[sizeof(off_t) * 2]; // used for src_offsets tile
+#else
     local char *slm = NULL;
 #endif
+#endif
 
-    unsigned long batch = sub_group_broadcast(get_group_id(2), 0);
-    int2 src_offset
+    off_t sg_i = sub_group_broadcast(get_local_id(0) / SUBGROUP_SIZE, 0);
+    off_t sg_j = sub_group_broadcast(get_local_id(1), 0);
+#if K_PARALLEL_LOCAL
+    off_t sg_k = sub_group_broadcast(get_local_id(2), 0);
+#endif
+
+    off_t wg_i0 = get_group_id(0) * ugemm_grouped_wg_tile_m;
+    off_t wg_j0;
+    off_t batch;
+    off_t m;
+    off_t src_offset;
+
+#if WITH_SPARSE_GROUPS
+    local off_t *slm_src_offset = (local off_t *)slm;
+    off_t flat_token = get_group_id(2);
+    {
+        offsets_tile_type offsets_tile;
+        off_t sg_ij0 = sg_k * get_local_size(0) * get_local_size(1)
+                + sg_j * get_local_size(0) + sg_i * SUBGROUP_SIZE;
+
+        tile_load(&offsets_tile, src_offsets, num_groups, 1, 0, sg_ij0, 0);
+        batch = work_group_reduce_min(offsets_tile.x[0][0] > flat_token
+                        ? get_local_linear_id()
+                        : INT_MAX);
+
+        if (batch == 0) {
+            if (get_local_linear_id() == 0) {
+                slm_src_offset[0] = 0;
+                slm_src_offset[1] = offsets_tile.x[0][0];
+            }
+        } else {
+            if (batch - 1 == get_local_linear_id()) {
+                slm_src_offset[0] = offsets_tile.x[0][0];
+            }
+            if (batch == get_local_linear_id()) {
+                slm_src_offset[1] = offsets_tile.x[0][0];
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+
+    int2 src_range = (int2)(slm_src_offset[0], slm_src_offset[1]);
+    m = (src_range.y - src_range.x);
+    src_offset = src_range.x;
+    wg_j0 = flat_token - src_range.x;
+
+    // early exit work-groups that fall within the same expert group.
+    if (m > 1 && (wg_j0 % ugemm_grouped_wg_tile_n) != 0) { return; }
+#else
+    batch = sub_group_broadcast(get_group_id(2), 0);
+    int2 src_range
             = *(global int2 *)(src_offsets + (batch > 0 ? batch - 1 : batch));
 
-    int sg_i = sub_group_broadcast(get_local_id(0) / SUBGROUP_SIZE, 0);
-    int sg_j = sub_group_broadcast(get_local_id(1), 0);
-#if K_PARALLEL_LOCAL
-    int sg_k = sub_group_broadcast(get_local_id(2), 0);
-#endif
+    wg_j0 = get_group_id(1) * ugemm_grouped_wg_tile_n;
 
-    unsigned long wg_i0 = get_group_id(0) * ugemm_grouped_wg_tile_m;
-    unsigned long wg_j0 = get_group_id(1) * ugemm_grouped_wg_tile_n;
-    unsigned long sg_i0 = wg_i0 + sg_i * ugemm_grouped_sg_tile_m;
-    unsigned long sg_j0 = wg_j0 + sg_j * ugemm_grouped_sg_tile_n;
-
-    int m = batch > 0 ? (src_offset.y - src_offset.x) : src_offset.x;
+    m = batch > 0 ? (src_range.y - src_range.x) : src_range.x;
     if (wg_j0 >= m) return; /* early exit if outside batch */
 
-    src_offset.x = batch > 0 ? src_offset.x : 0;
+    src_offset = batch > 0 ? src_range.x : 0;
+#endif
 
-    src += src_offset.x * ldsrc / SRC_ELEMS_PER_BYTE;
+    off_t sg_i0 = wg_i0 + sg_i * ugemm_grouped_sg_tile_m;
+    off_t sg_j0 = wg_j0 + sg_j * ugemm_grouped_sg_tile_n;
+
+    src += src_offset * ldsrc / SRC_ELEMS_PER_BYTE;
     wei += batch * wei_strides[0] / WEI_ELEMS_PER_BYTE;
-    dst += src_offset.x * lddst;
+    dst += src_offset * lddst;
 
-    int ldwei = wei_strides[2] == 1 ? wei_strides[1] : wei_strides[2];
+    off_t ldwei = wei_strides[2] == 1 ? wei_strides[1] : wei_strides[2];
 
 #if WITH_SRC_SCALES
-    src_attr_scales += src_offset.x * ldsrcq;
+    src_attr_scales += src_offset * ldsrcq;
 #endif
 #if WITH_SRC_ZP
-    src_attr_zp += src_offset.x * ldsrcq / SRC_ZP_ELEMS_PER_BYTE;
+    src_attr_zp += src_offset * ldsrcq / SRC_ZP_ELEMS_PER_BYTE;
 #endif
 #if WITH_WEI_SCALES
     wei_attr_scales += batch * n * (k / WEI_GROUP_SIZE);
@@ -208,6 +266,7 @@ grouped_micro_gemm(const global SRC_DATA_T *src, long ldsrc,
             wg_i0, wg_j0, 0, sg_i, sg_j K_PARALLEL_LOCAL_ARGS,
             slm WEI_SCALE_ARGS WEI_ZP_ARGS WEI_LD_ARGS SRC_SCALE_ARGS
                     SRC_ZP_ARGS SRC_LD_ARGS);
+
 #if K_PARALLEL_LOCAL
     if (sg_k > 0) return;
 #endif

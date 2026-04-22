@@ -456,7 +456,9 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
     def_data_type(kernel_ctx_, bia_dt, "BIA");
     kernel_ctx_.define_int("WITH_BIAS", with_bias());
     kernel_ctx_.define_int("K_PARALLEL_LOCAL", is_gemv_);
+    kernel_ctx_.define_int("WITH_SPARSE_GROUPS", is_gemv_);
     kernel_ctx_.define_int("WITH_SLM", gemm_.getSetting("slm_size") > 0);
+    kernel_ctx_.add_option("-cl-std=CL3.0");
 
     return status::success;
 }
@@ -484,8 +486,6 @@ status_t grouped_micro_gemm_t::execute(const exec_ctx_t &ctx) const {
     const memory_desc_t *src_md = ctx.input(DNNL_ARG_SRC)->md();
     const memory_desc_t *wei_md = pd()->weights_md();
     const memory_desc_t *dst_md = ctx.output(DNNL_ARG_DST)->md();
-
-    const size_t num_groups = pd()->ngroups_;
 
     const bool with_src_scales = pd()->src_quant_.with_scale();
     const bool with_src_zero_points = pd()->src_quant_.with_zp();
@@ -541,6 +541,7 @@ status_t grouped_micro_gemm_t::execute(const exec_ctx_t &ctx) const {
     arg_list.append(k);
 
     arg_list.append(bias_data);
+    arg_list.append(num_groups);
 
     size_t sg_per_wg_m = pd()->gemm_.getSetting("sg_per_wg_m");
     size_t sg_per_wg_n = pd()->gemm_.getSetting("sg_per_wg_n");
@@ -566,7 +567,7 @@ status_t grouped_micro_gemm_t::execute(const exec_ctx_t &ctx) const {
     // Swap wg_tile_[mn]_ for col-major vs row-major representations
     gws[0] *= utils::div_up(n, wg_tile_m);
     gws[1] *= utils::div_up(m_dispatch, wg_tile_n);
-    gws[2] *= num_groups;
+    gws[2] *= pd()->is_gemv_ ? m_all : pd()->ngroups_;
 
     return parallel_for(ctx, compute::nd_range_t(gws, lws), kernel_, arg_list);
 }

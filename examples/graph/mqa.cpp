@@ -18,7 +18,6 @@
 #include <chrono>
 #include <iomanip>
 #include <iostream>
-#include <memory>
 #include <random>
 #include <string>
 #include <vector>
@@ -192,7 +191,8 @@ void bench_mqa(engine::kind ekind, logical_tensor::data_type dt,
     // Allocate user data.
     std::vector<float> query_data(product(q_sz));
     std::vector<float> key_data(product(kv_sz));
-    std::vector<float> scale_data(product(scale_sz), std::sqrt(p.head_size));
+    std::vector<float> scale_data(
+            product(scale_sz), (float)std::sqrt(p.head_size));
     std::vector<float> mask_data(product(mask_sz));
     std::vector<float> value_data(product(kv_sz));
     std::vector<float> output_data(product(q_sz));

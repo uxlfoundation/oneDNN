@@ -108,21 +108,20 @@ void brgemm_example() {
     // Initialize A.
     std::generate(A_user_data.begin(), A_user_data.end(), []() {
         static int i = 0;
-        return i++ % 4;
+        return (float)(i++ % 4);
     });
     // Initialize B.
     std::generate(B_user_data.begin(), B_user_data.end(), []() {
         static int i = 6;
         static int sign_gen = 0;
         int sign = (sign_gen++ % 2) ? -1 : 1;
-        float val = sign * (i++ % 5);
-        return val;
+        return (float)(sign * (i++ % 5));
     });
     // Initialize binary_add.
     std::generate(
             binary_add_user_data.begin(), binary_add_user_data.end(), []() {
         static int i = 3;
-        return i++ % 6;
+        return (float)(i++ % 6);
     });
     // Initialize B scales.
     std::generate(B_scales_user_data.begin(), B_scales_user_data.end(), []() {

@@ -18,7 +18,6 @@
 #include <chrono>
 #include <iomanip>
 #include <iostream>
-#include <memory>
 #include <random>
 #include <string>
 #include <vector>
@@ -222,7 +221,8 @@ void bench_sdpa(engine::kind ekind, logical_tensor::data_type dt,
 
     // Allocate user data for stacked qkv, scale, and mask.
     std::vector<float> qkv_data(product(stacked_qkv_sz));
-    std::vector<float> scale_data(product(scale_sz), std::sqrt(p.head_size));
+    std::vector<float> scale_data(
+            product(scale_sz), (float)std::sqrt(p.head_size));
     std::vector<float> mask_data(product(mask_sz));
 
     // Generate host data for the example.

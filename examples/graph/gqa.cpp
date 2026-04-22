@@ -211,7 +211,7 @@ void bench_gqa(engine::kind ekind, logical_tensor::data_type dt,
     auto ts_value = tensor(value, eng);
     auto ts_output = tensor(output, eng);
 
-    float scale_data = std::sqrt(p.head_size);
+    float scale_data = (float)std::sqrt(p.head_size);
     auto ts_scale = tensor::make_scalar_tensor(scale, &scale_data);
 
     // Write data to tensor object's handle.

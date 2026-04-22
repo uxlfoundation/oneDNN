@@ -244,10 +244,10 @@ void bench_sdpa(engine::kind ekind, logical_tensor::data_type dt,
     auto ts_output = tensor(output, eng);
 
     // Create host scalar tensors
-    int32_t q_len = p.query_num;
-    int32_t kv_len = p.seq_len;
-    float scale_val = std::sqrt(p.head_size);
-    float neg_inf_val = -1 * std::numeric_limits<float>::infinity();
+    int32_t q_len = static_cast<int32_t>(p.query_num);
+    int32_t kv_len = static_cast<int32_t>(p.seq_len);
+    float scale_val = (float)std::sqrt(p.head_size);
+    float neg_inf_val = -std::numeric_limits<float>::infinity();
     auto ts_mask_add = tensor::make_scalar_tensor(seq_len_kv, &kv_len);
     auto ts_mask_sub = tensor::make_scalar_tensor(seq_len_q, &q_len);
     auto ts_scale = tensor::make_scalar_tensor(scale, &scale_val);

@@ -187,7 +187,7 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
             float a, b;
             ss >> a;
             ss >> b;
-            Scalar alpha(a), beta(b);
+            Scalar alpha((int)a), beta((int)b);
             std::string strategyString;
             std::getline(ss >> std::ws, strategyString);
             parseStrategy(strategyString, hw, problem, strat);
@@ -240,8 +240,8 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
                 == std::min(n_unroll, max_n_unroll));
         reqs.push_back(StrategyRequirement::WGM == 2);
         reqs.push_back(StrategyRequirement::WGN
-                == utils::rnd_up_pow2(std::max<dim_t>(min_wg_n,
-                        std::min<dim_t>(avg_m / reqs[1].value, max_wg_n))));
+                == utils::rnd_up_pow2(std::max(min_wg_n,
+                        std::min((dim_t)(avg_m / reqs[1].value), max_wg_n))));
         try {
             gemm_ = selectGEMM(
                     opts, hw_info, sizes, problem, reqs, strat_override);

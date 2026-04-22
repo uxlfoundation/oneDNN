@@ -338,8 +338,8 @@ void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
     group_offsets[0] = 0;
     int64_t max_M_g = 0;
     for (int64_t g = 0; g < group_count; g++) {
-        group_offsets[g + 1] = static_cast<int64_t>(
-                src_m.get_elem(g, sparse_options_t::grouped_offsets_idx));
+        group_offsets[g + 1] = static_cast<int64_t>(src_m.get_elem(
+                g, sparse_options_t::grouped_data_t::grouped_offsets_idx));
         max_M_g = MAX2(max_M_g, group_offsets[g + 1] - group_offsets[g]);
     }
 

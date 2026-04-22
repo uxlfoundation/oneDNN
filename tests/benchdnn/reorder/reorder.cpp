@@ -122,7 +122,7 @@ int compare_compensation(const prb_t *prb, dnn_mem_map_t &mem_map,
                 mem_ref.dt(), trim_tag_by_mask(prb->dtag, comp_mask));
         // Predefined handle_info won't use prefilling no matter what.
         dnn_mem_t comp_m(comp_md, mem_ref.engine(), /* prefill = */ false,
-                {false, comp_handle});
+                dnn_mem_t::handle_info_t {false, {comp_handle}});
 
         compare::compare_t cmp;
         cmp.set_zero_trust_percent(100.f); // No sense in zero trust test.

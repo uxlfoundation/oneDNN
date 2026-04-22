@@ -32,12 +32,14 @@
 struct dnn_mem_t {
     struct handle_info_t {
         bool is_host_ptr;
-        void *ptr;
+        std::vector<void *> ptrs;
 
-        bool is_allocate() const { return ptr == DNNL_MEMORY_ALLOCATE; }
+        bool is_allocate() const {
+            return !ptrs.empty() && ptrs[0] == DNNL_MEMORY_ALLOCATE;
+        }
 
         static handle_info_t allocate() {
-            return {false, DNNL_MEMORY_ALLOCATE};
+            return {false, {DNNL_MEMORY_ALLOCATE}};
         }
     };
 
@@ -178,7 +180,7 @@ struct dnn_mem_t {
 #endif
 
     static dnn_mem_t create_from_host_ptr(const dnnl_memory_desc_t &md,
-            const engine_t &engine, void *host_ptr);
+            const engine_t &engine, const dnn_mem_t &mem);
 
     // Increases memory size to catch potential buffer overreads and
     // overwrites. The padded area is filled with a canary value.

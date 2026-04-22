@@ -63,7 +63,8 @@ status_t fill_random(impl::stream_t *stream, size_t size,
     static constexpr size_t bytes_per_subgroup
             = subgroup_size * 4 * sizeof(uint32_t);
     size_t num_subgroups = utils::div_up(size, bytes_per_subgroup);
-    compute::nd_range_t nd_range({num_subgroups * subgroup_size, 1, 1});
+    compute::nd_range_t nd_range(
+            compute::range_t(num_subgroups * subgroup_size, 1, 1));
     compute::kernel_arg_list_t arg_list;
     arg_list.set(0, *memory->memory_storage(buffer_index));
     arg_list.set(1, seed);

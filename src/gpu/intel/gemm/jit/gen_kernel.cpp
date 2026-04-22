@@ -869,9 +869,9 @@ void gen_kernel_t::init_interface() {
     }
     if (problem.batch == BatchMode::Strided) {
         for (int i = 0; i < problem.batchDims; i++) {
-            interface_.newArgument("stride_A" + std::to_string(i), DataType::d);
-            interface_.newArgument("stride_B" + std::to_string(i), DataType::d);
-            interface_.newArgument("stride_C" + std::to_string(i), DataType::d);
+            interface_.newArgument("stride_A" + std::to_string(i), DataType::q);
+            interface_.newArgument("stride_B" + std::to_string(i), DataType::q);
+            interface_.newArgument("stride_C" + std::to_string(i), DataType::q);
             if (problem.hasAScalePtr()) {
                 interface_.newArgument(
                         "scale_stride_A" + std::to_string(i), DataType::d);
@@ -882,7 +882,7 @@ void gen_kernel_t::init_interface() {
             }
             if (problem.hasCMXScale()) {
                 interface_.newArgument(
-                        "scale_stride_C" + std::to_string(i), DataType::d);
+                        "scale_stride_C" + std::to_string(i), DataType::q);
             }
             if (problem.hasAOffsetPtr()) {
                 interface_.newArgument(
@@ -907,7 +907,7 @@ void gen_kernel_t::init_interface() {
                 for (int b = 0; b < problem.batchDims; b++) {
                     interface_.newArgument("stride" + std::to_string(b)
                                     + "binary" + std::to_string(i),
-                            DataType::d);
+                            DataType::q);
                 }
             }
         }

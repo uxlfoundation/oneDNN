@@ -173,10 +173,10 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
 
     if (pd()->batch_dims() >= 1) {
         for (int i = pd()->batch_dims() - 1; i >= 0; i--) {
-            auto stride_a = int32_t(pd()->stride(DNNL_ARG_A, i));
-            auto stride_b = int32_t(pd()->stride(DNNL_ARG_B, i));
+            auto stride_a = int64_t(pd()->stride(DNNL_ARG_A, i));
+            auto stride_b = int64_t(pd()->stride(DNNL_ARG_B, i));
             if (swap_ab) std::swap(stride_a, stride_b);
-            auto stride_c = int32_t(pd()->desc()->stride_c(i));
+            auto stride_c = int64_t(pd()->desc()->stride_c(i));
             if (jit::enable_generator_dsl()) {
                 auto hw = ngen::getCore(
                         ((ngen::Product *)&utils::downcast<intel::engine_t *>(
@@ -235,7 +235,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         for (int i = 0; i < po_count; i++) {
             if (problem->postOps.binaryBatch[i]) {
                 for (int b = pd()->batch_dims() - 1; b >= 0; b--) {
-                    arg_list.set(argn++, int32_t(pd()->stride_binary(i, b)));
+                    arg_list.set(argn++, int64_t(pd()->stride_binary(i, b)));
                 }
             }
         }

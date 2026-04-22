@@ -36,8 +36,8 @@ struct jit_int8_matmul_kernel_t;
 struct jit_int8_matmul_utils_kernel_t;
 template <cpu_isa_t isa>
 struct jit_int8_matmul_t : public primitive_t {
-    struct pd_t : public dnnl::impl::cpu::matmul::cpu_matmul_pd_t {
-        using ::dnnl::impl::cpu::matmul::cpu_matmul_pd_t::cpu_matmul_pd_t;
+    struct pd_t : public cpu::matmul::cpu_matmul_pd_t {
+        using cpu::matmul::cpu_matmul_pd_t::cpu_matmul_pd_t;
 
         DECLARE_COMMON_PD_T("jit:int8", jit_int8_matmul_t);
 

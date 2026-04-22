@@ -23,6 +23,8 @@
 #include "common/memory_tracking.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
+#include "common/verbose_msg.hpp"
+
 #include "cpu/cpu_primitive.hpp"
 #include "cpu/matmul/matmul_utils.hpp"
 #include "cpu/scale_utils.hpp"
@@ -284,8 +286,8 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
 
             // For SVE128 and no N-tail, use NEON loads (v/z regs overlap) to
             // reduce predicated SVE load overhead in the hot loop.
-            if (cpu_isa_traits<isa>::vlen == 16 && !brg_.is_n_tail) {
-                const int bytes_per_vec = cpu_isa_traits<isa>::vlen;
+            if (simd_bytes(isa) == 16 && !brg_.is_n_tail) {
+                constexpr int bytes_per_vec = 16;
                 for (ld = 0; ld + 1 < ldb; ld += 2) {
                     QReg q0(loadb(ld).getIdx());
                     QReg q1(loadb(ld + 1).getIdx());
@@ -305,7 +307,7 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
             for (bd = 0; bd < bdb;) {
                 const int a_inc = brg_.m_blk * 2;
                 const int32_t a_off_bytes = a_off + ao;
-                if (cpu_isa_traits<isa>::vlen == 16 && bd + 1 < bdb) {
+                if (simd_bytes(isa) == 16 && bd + 1 < bdb) {
                     // Load two consecutive A blocks (each 16 bytes for SVE128)
                     // and compute two rows to amortize load overhead.
                     if ((a_off_bytes & 0xf) == 0 && a_off_bytes >= -1024
@@ -332,7 +334,7 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
                     }
                     bd += 2;
                 } else {
-                    if (cpu_isa_traits<isa>::vlen == 16) {
+                    if (simd_bytes(isa) == 16) {
                         ldr(QReg(0), ptr(reg_aux_a, a_off_bytes));
                     } else {
                         add_imm(X_DEFAULT_ADDR, reg_aux_a, a_off_bytes,
@@ -394,7 +396,7 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
 
         eor(zp_b_sum0.d, zp_b_sum0.d, zp_b_sum0.d);
         eor(zp_b_sum1.d, zp_b_sum1.d, zp_b_sum1.d);
-        if (cpu_isa_traits<isa>::vlen == 16) {
+        if (simd_bytes(isa) == 16) {
             eor(zp_b_sum2.d, zp_b_sum2.d, zp_b_sum2.d);
             eor(zp_b_sum3.d, zp_b_sum3.d, zp_b_sum3.d);
         }
@@ -425,7 +427,7 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
         if (k_residual_blk > 0) { zp_comp(1, bdb, ldb, is_a, is_b); }
 
         if (brg_.zp_type_b != jit_int8_broadcast_t::none && is_b == 1) {
-            if (cpu_isa_traits<isa>::vlen == 16) {
+            if (simd_bytes(isa) == 16) {
                 uzp1(zp_b_sum0.d, zp_b_sum0.d, zp_b_sum1.d);
                 uzp1(zp_b_sum2.d, zp_b_sum2.d, zp_b_sum3.d);
                 scvtf(zp_b_sum0.s, P_ALL_ONE, zp_b_sum0.s);
@@ -439,7 +441,7 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
                 dup(z0.s, W_TMP_0);
                 scvtf(z0.s, P_ALL_ONE, z0.s);
                 fmul(zp_b_sum0.s, P_ALL_ONE, z0.s);
-                if (cpu_isa_traits<isa>::vlen == 16) {
+                if (simd_bytes(isa) == 16) {
                     fmul(zp_b_sum2.s, P_ALL_ONE, z0.s);
                 }
             } else {
@@ -452,13 +454,13 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
                     scvtf(z1.s, P_ALL_ONE, z1.s);
                     fmul(z0.s, z1.s, z0.s);
                     fsub(zp_b_sum0.s, zp_b_sum0.s, z0.s);
-                    if (cpu_isa_traits<isa>::vlen == 16) {
+                    if (simd_bytes(isa) == 16) {
                         fsub(zp_b_sum2.s, zp_b_sum2.s, z0.s);
                     }
                 }
             }
             st1w(zp_b_sum0.s, P_ALL_ONE, ptr(reg_zp_b));
-            if (cpu_isa_traits<isa>::vlen == 16) {
+            if (simd_bytes(isa) == 16) {
                 st1w(zp_b_sum2.s, P_ALL_ONE, ptr(reg_zp_b, 1, MUL_VL));
             }
         }
@@ -581,7 +583,7 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
         if (brg_.zp_type_b != jit_int8_broadcast_t::none && is_b == 1) {
             mov(reg_tmp, reg_aux_a);
             for (rd = 0; rd < rdb; rd++) {
-                if (cpu_isa_traits<isa>::vlen == 16) {
+                if (simd_bytes(isa) == 16) {
                     ld1b(z1.b, P_ALL_ONE / T_z, ptr(reg_tmp));
                     if (brg_.is_s8) {
                         smmla(zp_b_sum0.s, z0.b, z1.b);
@@ -643,7 +645,7 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
     }
 
     void config() {
-        const int vlen_bytes = cpu_isa_traits<isa>::vlen;
+        const int vlen_bytes = simd_bytes(isa);
         const int sv_len = vlen_bytes / brg_.dst_dt_sz;
         int m, pred_st = 0, pred_ld = 0, pred_b = sv_len;
         const int n_full = brg_.n_blk * brg_.ld_block;
@@ -873,7 +875,7 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
     VDISPATCH_MATMUL(problem_dt_correct, VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_MATMUL(no_post_ops || with_eltwise(), VERBOSE_UNSUPPORTED_ATTR);
     VDISPATCH_MATMUL(formats_ok(), VERBOSE_UNSUPPORTED_TAG);
-    VDISPATCH_MATMUL(get_sve_length() == cpu_isa_traits<isa>::vlen,
+    VDISPATCH_MATMUL(mayiuse(sve) && utils::one_of(simd_bytes(isa), 16UL, 32UL),
             VERBOSE_UNSUPPORTED_ISA);
 
     auto is_src_any = src_d.format_kind() == format_kind::any;
@@ -885,7 +887,7 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
     brg_.N = helper.N();
     brg_.B = batch();
 
-    brg_.n_blk = cpu_isa_traits<isa>::vlen / brg_.k_blk;
+    brg_.n_blk = simd_bytes(isa) / brg_.k_blk;
 
     int num_threads = dnnl_get_current_num_threads();
 
@@ -903,7 +905,7 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
     // so N tiles can get too tiny and we spend time in OpenMP overhead.
     // try a coarser N tile (4x/2x/1x) and pick the first that keeps
     // total work more than num_threads.
-    if (cpu_isa_traits<isa>::vlen == 16 && brg_.ld_block == 6) {
+    if (simd_bytes(isa) == 16 && brg_.ld_block == 6) {
         // pick the largest N size that still gives enough work.
         int best_n_block_sz = micro_n;
         const int num_m_tiles = div_up(brg_.M, m_block_sz);
@@ -1720,8 +1722,7 @@ status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
     return status::success;
 }
 
-template struct jit_int8_matmul_t<sve_256>;
-template struct jit_int8_matmul_t<sve_128>;
+template struct jit_int8_matmul_t<sve>;
 
 } // namespace matmul
 } // namespace aarch64

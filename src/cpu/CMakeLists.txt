@@ -84,6 +84,14 @@ if(DNNL_WERROR)
     endif()
 endif()
 
+if (MSVC)
+    if(${CMAKE_CXX_COMPILER_ID} STREQUAL MSVC)
+        # int64_t -> int (tent)
+        append(CMAKE_C_FLAGS "/wd4244")
+        append(CMAKE_CXX_FLAGS "/wd4244")
+    endif()
+endif()
+
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Intel")
     # to make computations more stable and to align the jitted code
     # with the reference one use precise division and square root

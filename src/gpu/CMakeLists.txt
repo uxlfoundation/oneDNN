@@ -48,6 +48,15 @@ if(DNNL_GPU_VENDOR STREQUAL "AMD")
     add_subdirectory(amd)
 endif()
 
+if (NOT DNNL_GPU_VENDOR STREQUAL "INTEL")
+    if (MSVC)
+        if(${CMAKE_CXX_COMPILER_ID} STREQUAL MSVC)
+            # int64_t -> int (tent)
+            append(CMAKE_CCXX_NOWARN_FLAGS "/wd4244")
+        endif()
+    endif()
+endif()
+
 # check if warn_unused_result can be used in an alias
 set(COMPILER_ALLOWS_ALIAS_ATTRIBUTES_SOURCE
 "

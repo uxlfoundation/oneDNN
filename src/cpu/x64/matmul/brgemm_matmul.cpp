@@ -81,11 +81,38 @@ int get_brg_kernel_index(const brgemm_matmul_conf_t &bgmmc, bool is_bs_tail,
     if (bgmmc.gemv_swap_a_b) std::swap(vM, vN);
 
     auto vK = (is_K_tail) ? bgmmc.K_tail : bgmmc.K_blk;
-    if (vM == 0 || vN == 0 || vK == 0 || bs == 0 || bgmmc.LDA < vK
-            || (bgmmc.LDB < vN && !bgmmc.is_amx)
-            || ((bgmmc.LDC < vN && !bgmmc.is_amx)
-                    && !is_runtime_value(bgmmc.LDC)))
-        return -1;
+
+    if (vM == 0 || vN == 0 || vK == 0 || bs == 0) return -1;
+
+    if (bgmmc.is_gemv) {
+        assert(bgmmc.gemv_strategy != gemv_strategy_t::none);
+
+        const bool is_transA_strategy = utils::one_of(bgmmc.gemv_strategy,
+                gemv_strategy_t::n1_A_trans, gemv_strategy_t::m1_B_plain);
+
+        // vM/vN are already normalized above for GEMV swap strategies.
+        // In the normalized GEMV view:
+        //   - vM is the current GEMV output block size
+        //   - vK is the current reduction block size
+        //
+        // For GEMV, bgmmc.LDA stores the inferred LDA for BRGEMV.
+        // Validate LDA:
+        //   - non-transA strategies need LDA to cover vK
+        //   - transA strategies need LDA to cover vM
+        const dim_t gemv_lda_req = is_transA_strategy ? vM : vK;
+        if (bgmmc.LDA < gemv_lda_req) return -1;
+
+        // In BRGEMV, LDC is used as INCY. For transA strategies INCY must
+        // be 1. Cases with INCY > 1 are rejected earlier by
+        // `is_gemv_applicable()`. Keep a defensive check here as well.
+        if (is_transA_strategy && !is_runtime_value(bgmmc.LDC) && bgmmc.LDC > 1)
+            return -1;
+    } else {
+        if (bgmmc.LDA < vK || (bgmmc.LDB < vN && !bgmmc.is_amx)
+                || ((bgmmc.LDC < vN && !bgmmc.is_amx)
+                        && !is_runtime_value(bgmmc.LDC)))
+            return -1;
+    }
 
     if (is_prefetching && !bgmmc.need_prefetch_a && !bgmmc.need_prefetch_b) {
         return -1;
@@ -381,18 +408,25 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         if (idx < 0) continue;
 
         brgemm_desc_t &brg = brg_descs_[idx];
-        auto LDA = i_K && bgmmc_.use_buffer_a_tail_only
-                ? (dim_t)bgmmc_.wei_k_blk
-                : bgmmc_.LDA;
         const auto kernel_isa = i_M == max_m_ker_idx - 1 ? backup_isa : isa;
 
         if (bgmmc_.is_gemv) {
-            const dim_t gemv_m = bgmmc_.gemv_swap_a_b ? vN : vM;
-            const bool treat_y_as_row = bgmmc_.gemv_swap_a_b;
-            CHECK(brgemv_desc_init(&brg, kernel_isa, bgmmc_.brg_type,
-                    bgmmc_.src_dt, bgmmc_.wei_dt, false, alpha, vbeta, LDA,
-                    bgmmc_.LDC, gemv_m, vK, treat_y_as_row));
+            const bool swap_a_b = bgmmc_.gemv_swap_a_b;
+            const dim_t gemv_m = swap_a_b ? vN : vM;
+            const bool treat_y_as_row = swap_a_b;
+            const bool transA = utils::one_of(bgmmc_.gemv_strategy,
+                    gemv_strategy_t::n1_A_trans, gemv_strategy_t::m1_B_plain);
+            const auto dt_a = swap_a_b ? bgmmc_.wei_dt : bgmmc_.src_dt;
+            const auto dt_x = swap_a_b ? bgmmc_.src_dt : bgmmc_.wei_dt;
+
+            CHECK(brgemv_desc_init(&brg, kernel_isa, bgmmc_.brg_type, dt_a,
+                    dt_x, transA, alpha, vbeta, bgmmc_.LDA, bgmmc_.LDC, gemv_m,
+                    vK, treat_y_as_row));
         } else {
+            const dim_t LDA = i_K && bgmmc_.use_buffer_a_tail_only
+                    ? bgmmc_.wei_k_blk
+                    : bgmmc_.LDA;
+
             CHECK(brgemm_desc_init(&brg, kernel_isa, bgmmc_.brg_type,
                     bgmmc_.src_dt, bgmmc_.wei_dt, false, false,
                     brgemm_row_major, alpha, vbeta, LDA, bgmmc_.LDB, bgmmc_.LDC,

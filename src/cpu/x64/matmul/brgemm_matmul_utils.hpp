@@ -33,6 +33,37 @@ namespace matmul {
 
 constexpr int max_batch_ndims = DNNL_MAX_NDIMS - 2;
 
+/**
+ * GEMV strategy used by matmul when M or N dimension is 1.
+ *
+ * GEMV is selected when either:
+ *   - N == 1 (matrix-vector multiply, A * x)
+ *   - M == 1 (vector-matrix multiply, x * B)
+ *
+ * Each strategy encodes:
+ *   - which dimension is 1 (M or N)
+ *   - whether the matrix operand is in plain or transposed layout
+ *
+ * This information is sufficient to derive the required BRGEMV
+ * configuration (e.g. swapping inputs, setting transA and choosing
+ * how to interpret the output).
+ *
+ * Naming convention:
+ *
+ *   n1_* : N == 1 case
+ *   m1_* : M == 1 case
+ *
+ *   *_plain : matrix is used in plain layout
+ *   *_trans : matrix is used in transposed layout
+ */
+enum class gemv_strategy_t {
+    none,
+    n1_A_plain,
+    n1_A_trans,
+    m1_B_plain,
+    m1_B_trans
+};
+
 struct brgemm_matmul_bcast_desc_t {
 
     brgemm_matmul_bcast_desc_t()
@@ -258,10 +289,7 @@ struct brgemm_matmul_conf_t {
     dim_t zp_b_comp_elems_per_thr;
 
     bool is_gemv = false;
-    // Currently, it's only used to enable the N=1 code path for M=1, when B
-    // is transposed.
-    // TODO: Generalize when a new code path to support M=1, when B is plain
-    // is added.
+    gemv_strategy_t gemv_strategy {};
     bool gemv_swap_a_b = false;
 
     inline bool lda_big_pow2() const {
@@ -425,6 +453,9 @@ struct brgemm_matmul_conf_utils_t {
 
     format_tag_t get_gemv_A_tag(const memory_desc_t &A_md) const;
     format_tag_t get_gemv_B_tag(const memory_desc_t &B_md) const;
+
+    gemv_strategy_t get_gemv_strategy(
+            format_tag_t A_tag, format_tag_t B_tag) const;
 
 private:
     brgemm_matmul_conf_t &bgmmc;

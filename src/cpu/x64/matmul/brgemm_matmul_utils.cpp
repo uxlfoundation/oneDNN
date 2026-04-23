@@ -372,79 +372,104 @@ int brgemm_matmul_conf_utils_t::get_default_n_block(
 }
 
 /**
- * This function selects a compatible format for A if its format is "any".
- * Otherwise, it checks if the provided format is compatible.
- * It returns a valid format tag on success, or format_tag::undef otherwise.
- */
-format_tag_t brgemm_matmul_conf_utils_t::get_gemv_A_tag(
-        const memory_desc_t &A_md) const {
-    assert(utils::one_of(1, bgmmc.N, bgmmc.M));
-    const bool is_m1 = bgmmc.M == 1;
+* Select GEMV strategy based on problem shape and tensor layouts.
+*
+* Returns a GEMV strategy when either M == 1 or N == 1 and the
+* corresponding matrix layout is supported. Otherwise returns `none`.
+*
+* See gemv_strategy_t for detailed description of each strategy.
+*/
+gemv_strategy_t brgemm_matmul_conf_utils_t::get_gemv_strategy(
+        format_tag_t A_tag, format_tag_t B_tag) const {
+    if (bgmmc.M == 1 && B_tag == plain_tensor_layout_tag)
+        return gemv_strategy_t::m1_B_plain;
+    if (bgmmc.M == 1 && B_tag == transposed_tensor_layout_tag)
+        return gemv_strategy_t::m1_B_trans;
+    if (bgmmc.N == 1 && A_tag == plain_tensor_layout_tag)
+        return gemv_strategy_t::n1_A_plain;
+    if (bgmmc.N == 1 && A_tag == transposed_tensor_layout_tag)
+        return gemv_strategy_t::n1_A_trans;
 
-    if (A_any_layout) return plain_tensor_layout_tag;
-
-    return is_m1
-            ? memory_desc_matches_one_of_tag(A_md, plain_tensor_layout_tag,
-                      transposed_tensor_layout_tag)
-            : memory_desc_matches_one_of_tag(A_md, plain_tensor_layout_tag);
+    return gemv_strategy_t::none;
 }
 
 /**
- * This function selects a compatible format for B if its format is "any".
+ * Select a compatible format for A in GEMV cases.
+ *
+ * If A has format is "any", the function selects plain layout.
  * Otherwise, it checks if the provided format is compatible.
+ *
+ * Returns a valid format tag on success, or format_tag::undef otherwise.
+ */
+format_tag_t brgemm_matmul_conf_utils_t::get_gemv_A_tag(
+        const memory_desc_t &A_md) const {
+    assert(utils::one_of(1, bgmmc.M, bgmmc.N));
+    if (bgmmc.M != 1 && bgmmc.N != 1) return format_tag::undef;
+
+    // Prefer plain layout when A format is "any". For N=1, this selects
+    // the default non-transA strategy. For M=1, A is the vector operand so
+    // its layout does not define the GEMV strategy.
+    if (A_any_layout) return plain_tensor_layout_tag;
+
+    // Explicit A format can be either plain or transposed.
+    return memory_desc_matches_one_of_tag(
+            A_md, plain_tensor_layout_tag, transposed_tensor_layout_tag);
+}
+
+/**
+ * Select a compatible format for B in GEMV cases.
+ *
+ * If B has format is "any", the function selects a default layout.
+ * Otherwise, it checks if the provided format is compatible.
+ *
  * It returns a valid format tag on success, or format_tag::undef otherwise.
  */
 format_tag_t brgemm_matmul_conf_utils_t::get_gemv_B_tag(
         const memory_desc_t &B_md) const {
-    assert(utils::one_of(1, bgmmc.N, bgmmc.M));
-    const bool is_n1 = bgmmc.N == 1;
+    assert(utils::one_of(1, bgmmc.M, bgmmc.N));
+    if (!utils::one_of(1, bgmmc.M, bgmmc.N)) return format_tag::undef;
+    const bool is_m1 = bgmmc.M == 1;
 
     if (B_any_layout) {
-        // XXX: Since the M=1 case is currently supported through the code path
-        // for the N=1 case, the B tensor should be transposed. For the N=1
-        // case, the plain and transposed layouts are identical, so we return
-        // plain for consistency.
-        return is_n1 ? plain_tensor_layout_tag : transposed_tensor_layout_tag;
+        // Default layout selection:
+        //   - N == 1: use plain layout
+        //   - M == 1: use transposed layout
+        //
+        // Note: for N == 1, plain and transposed B are equivalent since B is
+        // a vector so plain is used for consistency.
+        //
+        // For M == 1, keep the established default strategy by selecting
+        // transposed layout. Although plain layout is now also supported,
+        // changing the default strategy could affect performance.
+        return is_m1 ? transposed_tensor_layout_tag : plain_tensor_layout_tag;
     } else {
-        if (B_md.format_kind != format_kind::blocked) return format_tag::undef;
-
-        // - In the N=1 case, the elements of B, which is a vector in the case of
-        // GEMV, must be contiguous in memory.
-        // - In the M=1 case, B must be transposed.
-        const bool wei_format_compatible
-                = B_md.format_desc.blocking.strides[bgmmc.ndims - 2] == 1;
-        if (!wei_format_compatible) return format_tag::undef;
-
-        // TODO: The current matmul design requires inferring the wei_tag, so we
-        // still need to do that even though the provided format is compatible.
-        // For now:
-        // - allow both plain and transposed formats for the N=1 case
-        // - allow only the transposed format for the M=1 case
-        // Consider removing the need to infer wei_tag in the future.
-        return is_n1
-                ? memory_desc_matches_one_of_tag(B_md, plain_tensor_layout_tag,
-                          transposed_tensor_layout_tag)
-                : memory_desc_matches_one_of_tag(
-                          B_md, transposed_tensor_layout_tag);
+        // Explicit B format can be either plain or transposed.
+        return memory_desc_matches_one_of_tag(
+                B_md, plain_tensor_layout_tag, transposed_tensor_layout_tag);
     }
 }
 
 /**
- * This function checks if a dedicated code path for GEMV is applicable.
+ * Check if a dedicated code path for GEMV is applicable.
+ *
  * All relevant checks must be performed here to determine whether we
  * should fall back to the GEMM code path before initializing format tags
  * and other relevant parameters.
+ *
+ * GEMV is applicable only when:
+ *   - M == 1 or N == 1
+ *   - reduction is not used
+ *   - data type is f32
+ *   - fpmath mode is strict
+ *   - A and B formats can be resolved to supported GEMV layouts
+ *   - output layout satisfies GEMV requirements
  */
 bool is_gemv_applicable(const brgemm_matmul_conf_t &bgmmc,
         const brgemm_matmul_conf_utils_t &bm_conf_utils,
         const memory_desc_t &A_md, const memory_desc_t &B_md,
-        const primitive_attr_t &attr) {
+        const memory_desc_t &C_md, const primitive_attr_t &attr) {
 
-    // Two cases currently supported:
-    // - N=1, when A is plain
-    // - M=1, when B is transposed
-    // The same code path is used for both cases.
-    if (bgmmc.N != 1 && bgmmc.M != 1) return false;
+    if (bgmmc.M != 1 && bgmmc.N != 1) return false;
 
     // Reduction is not supported for GEMV code path.
     if (bgmmc.with_reduce) return false;
@@ -454,9 +479,29 @@ bool is_gemv_applicable(const brgemm_matmul_conf_t &bgmmc,
                 attr.fpmath_.mode_ == fpmath_mode::strict))
         return false;
 
-    if (utils::one_of(format_tag::undef, bm_conf_utils.get_gemv_A_tag(A_md),
-                bm_conf_utils.get_gemv_B_tag(B_md)))
-        return false;
+    const format_tag_t gemv_A_tag = bm_conf_utils.get_gemv_A_tag(A_md);
+    const format_tag_t gemv_B_tag = bm_conf_utils.get_gemv_B_tag(B_md);
+
+    if (utils::one_of(format_tag::undef, gemv_A_tag, gemv_B_tag)) return false;
+
+    const auto gemv_strategy
+            = bm_conf_utils.get_gemv_strategy(gemv_A_tag, gemv_B_tag);
+
+    const bool is_transA_strategy = utils::one_of(gemv_strategy,
+            gemv_strategy_t::n1_A_trans, gemv_strategy_t::m1_B_plain);
+    const bool is_swap_strategy = utils::one_of(gemv_strategy,
+            gemv_strategy_t::m1_B_plain, gemv_strategy_t::m1_B_trans);
+
+    // transA GEMV requires contiguous output (INCY == 1) for tensors with
+    // batch dimensions. Some batched layouts, e.g. `bac`, place the batch
+    // dimension between consecutive GEMV output elements and make INCY > 1.
+    const dim_t ndims = bgmmc.ndims;
+    if (is_transA_strategy && ndims > 2) {
+        const dim_t gemv_incy = is_swap_strategy
+                ? 1
+                : C_md.format_desc.blocking.strides[ndims - 2];
+        if (gemv_incy != 1) return false;
+    }
 
     return true;
 }
@@ -861,10 +906,47 @@ struct matmul_avx512_blocking_params_t {
         bgmmc.nthr_k = nthr_k;
 
         bgmmc.use_buffer_c = is_buffer_c_required(bgmmc);
-        bgmmc.LDA = bgmmc.adjust_a_strides || bgmmc.use_buffer_a
-                        || bgmmc.treat_A_as_plain
-                ? get_actual_lda(bgmmc.use_buffer_a, bgmmc.tr_a_dt_sz)
-                : bgmmc.A_strides[1] / bgmmc.a_dt_sz;
+
+        if (!bgmmc.is_gemv) {
+            bgmmc.LDA = bgmmc.adjust_a_strides || bgmmc.use_buffer_a
+                            || bgmmc.treat_A_as_plain
+                    ? get_actual_lda(bgmmc.use_buffer_a, bgmmc.tr_a_dt_sz)
+                    : bgmmc.A_strides[1] / bgmmc.a_dt_sz;
+        } else {
+            // Infer LDA for the GEMV matrix operand.
+            //
+            // GEMV doesn't reorder input so LDA is taken from original strides.
+            // A_strides/B_strides are in reverse logical order:
+            //   strides[0] -> last logical dim
+            //   strides[1] -> second-to-last logical dim
+            //
+            // Rule:
+            //   plain layout -> use strides[1] (row-major, non-unit row stride)
+            //   transposed   -> use strides[0] (col-major view, non-unit column stride)
+            //
+            //   - n1_A_plain:  row-major A        -> LDA = A_strides[1]
+            //   - n1_A_trans:  col-major view A   -> LDA = A_strides[0]
+            //   - m1_B_plain:  col-major view B   -> LDA = B_strides[1]
+            //   - m1_B_trans:  row-major B        -> LDA = B_strides[0]
+            //
+            // Strides are in bytes.
+            assert(bgmmc.gemv_strategy != gemv_strategy_t::none);
+            switch (bgmmc.gemv_strategy) {
+                case gemv_strategy_t::m1_B_plain:
+                    bgmmc.LDA = bgmmc.B_strides[1] / bgmmc.b_dt_sz;
+                    break;
+                case gemv_strategy_t::m1_B_trans:
+                    bgmmc.LDA = bgmmc.B_strides[0] / bgmmc.b_dt_sz;
+                    break;
+                case gemv_strategy_t::n1_A_plain:
+                    bgmmc.LDA = bgmmc.A_strides[1] / bgmmc.a_dt_sz;
+                    break;
+                case gemv_strategy_t::n1_A_trans:
+                    bgmmc.LDA = bgmmc.A_strides[0] / bgmmc.a_dt_sz;
+                    break;
+                default: assert(!"unknown gemv strategy");
+            }
+        }
     }
 };
 
@@ -1170,7 +1252,6 @@ float compute_blocking_heuristic_avx2_f32(brgemm_matmul_conf_t &bgmmc,
         std::swap(best_blocking.m_blk, best_blocking.n_blk);
         std::swap(best_blocking.m_tail, best_blocking.n_tail);
     }
-
     return best_imbalance;
 }
 
@@ -1539,14 +1620,17 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.is_runtime_K = is_runtime_value(bgmmc.K);
 
     bgmmc.is_gemv = is_gemv_applicable(
-            bgmmc, bm_conf_utils, src_md, weights_md, attr);
+            bgmmc, bm_conf_utils, src_md, weights_md, dst_md, attr);
     VCONDCHECK_BG(IMPLICATION(bgmmc.is_gemv, isa == avx2),
             "Fall back to the AVX2 implementation for the GEMV code path");
-    // The M=1 case is currently supported through the code path for the
-    // N=1 case, which requires the B tensor to be transposed. If it is
-    // transposed (`bgmmc.is_gemv` is `true`), then `bgmmc.gemv_swap_a_b`
-    // is set to `true`.
-    bgmmc.gemv_swap_a_b = bgmmc.is_gemv && bgmmc.M == 1 && bgmmc.N > 1;
+
+    if (bgmmc.is_gemv) {
+        bgmmc.gemv_strategy = bm_conf_utils.get_gemv_strategy(
+                bm_conf_utils.get_gemv_A_tag(src_md),
+                bm_conf_utils.get_gemv_B_tag(weights_md));
+        bgmmc.gemv_swap_a_b = utils::one_of(bgmmc.gemv_strategy,
+                gemv_strategy_t::m1_B_plain, gemv_strategy_t::m1_B_trans);
+    }
 
     if (!bgmmc.is_gemv && bm_conf_utils.is_f32() && bgmmc.isa == avx2
             && (bgmmc.N == 1 || bgmmc.M == 1)) {

@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2020 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -288,6 +288,7 @@ private:
 
     reg64_t reg_src_prf_org = x19;
     reg64_t reg_src_org = x20;
+    reg64_t aux_reg_ker_d_org = x18;
     reg64_t reg_oi_org = x25;
     reg64_t reg_dst_org = x22;
     reg64_t reg_ker_org = x26;

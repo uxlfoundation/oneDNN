@@ -283,7 +283,7 @@ private:
     }
 
     Vmm bcst(dim_t bd = 0) {
-        if (brg.n_bcast_1_load || brg.is_gemv) {
+        if (brg.n_bcast_1_load) {
             dim_t idx = max_effective_vregs - 1 - (brg.ld_block2 * brg.bd_block)
                     - bd;
             assert(idx > 0);
@@ -293,7 +293,7 @@ private:
     }
 
     Vmm load(dim_t ld = 0) {
-        if (brg.n_bcast_1_load || brg.is_gemv) {
+        if (brg.n_bcast_1_load) {
             return Vmm(0);
         } else {
             dim_t idx = max_effective_vregs - 1 - (brg.ld_block2 * brg.bd_block)
@@ -301,6 +301,18 @@ private:
             assert(idx > 0);
             return Vmm(idx);
         }
+    }
+
+    Vmm gemv_load_a() const noexcept {
+        assert(brg.is_gemv);
+        const dim_t idx = max_effective_vregs - 1 - brg.bd_block - 0;
+        return Vmm(idx);
+    }
+
+    Vmm gemv_load_b() const noexcept {
+        assert(brg.is_gemv);
+        const dim_t idx = max_effective_vregs - 1 - brg.bd_block - 1;
+        return Vmm(idx);
     }
 
     Vmm vmm_tmp(dim_t i) {
@@ -2385,11 +2397,11 @@ void jit_brgemm_kernel_t<Wmm>::gemv_microkernel(
 
     const dim_t bd_block = (is_bdb_tail) ? brg.bdb_tail : brg.bd_block;
 
-    load_B(load());
+    load_B(gemv_load_b());
     for (dim_t bd = 0; bd < bd_block; bd++) {
-        load_A(bcst(), bd);
+        load_A(gemv_load_a(), bd);
         auto acc = accm(1, bd, 0);
-        uni_vfmadd231ps(acc, bcst(), load());
+        uni_vfmadd231ps(acc, gemv_load_a(), gemv_load_b());
     }
 }
 

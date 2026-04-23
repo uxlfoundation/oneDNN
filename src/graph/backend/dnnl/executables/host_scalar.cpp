@@ -54,22 +54,20 @@ void host_scalar_executable_t::execute(const stream &stream,
     const memory &src_mem = it_src->second;
     const memory &dst_mem = it_dst->second;
 
-    // Use queue.memcpy() to copy the host scalar value to device memory. We
-    // have to wait here as the val is on stack and will become invalid if
-    // queue.memcpy() is asynchronous. A better solution may be supporting
-    // host scalar memory to device memory reorder primitive.
     auto sycl_queue = dnnl::sycl_interop::get_queue(stream);
-    const size_t size = src_mem.get_desc().get_size();
     const auto dt = src_mem.get_desc().get_data_type();
-    assert(size == types::data_type_size(static_cast<impl::data_type_t>(dt)));
+    assert(src_mem.get_desc().get_size()
+            == types::data_type_size(static_cast<impl::data_type_t>(dt)));
+    sycl::event e;
     DNNL_HOST_SCALAR_TYPE_SWITCH(dt, DType, {
         const DType val = src_mem.get_host_scalar_value<DType>();
-        sycl_queue
-                .memcpy(dst_mem.get_data_handle(),
-                        static_cast<const void *>(&val), size)
-                .wait();
+        DType *dst_ptr = static_cast<DType *>(dst_mem.get_data_handle());
+        e = sycl_queue.submit([&](::sycl::handler &cgh) {
+            cgh.depends_on(deps);
+            cgh.single_task([=]() { dst_ptr[0] = val; });
+        });
     });
-    return {};
+    return e;
 }
 #endif
 

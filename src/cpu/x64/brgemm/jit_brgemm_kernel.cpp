@@ -419,6 +419,8 @@ private:
     void apply_alpha_beta(dim_t bd_block, dim_t ld_block, bool is_ld_tail);
     void apply_post_ops(dim_t bd_block, dim_t ld_block2,
             dim_t ldb_and_bdb_offset, bool is_ld_tail);
+    void apply_wei_scales(dim_t bd_block, dim_t ld_block2, bool dq2ps_required,
+            bool dq2ps_cvt_done, bool is_ld_tail);
     void restore_A_B_matrices();
     void set_A_B_matrices();
 
@@ -1093,6 +1095,84 @@ void jit_brgemm_kernel_t<Wmm>::fp8_to_f16_upconvert_to_vnni(dim_t num_rows,
 }
 
 template <typename Wmm>
+void jit_brgemm_kernel_t<Wmm>::apply_wei_scales(dim_t bd_block, dim_t ld_block2,
+        bool dq2ps_required, bool dq2ps_cvt_done, bool is_ld_tail) {
+
+    auto k_mask = (!is_ld_tail) ? ld_full_mask : ld_tail_mask;
+
+    reg_aux_wei_scales.restore();
+
+    for (dim_t ld = 0; ld < ld_block2; ld++) {
+        const auto addr = ptr[reg_aux_wei_scales + wei_scales_offset(ld)];
+        const bool is_tail = is_ld_tail && ld + 1 == ld_block2;
+        const bool is_single_scale = !brg.is_oc_scale;
+
+        const Vmm vmm_wei_scales = vmm_tmp(0);
+        const Vmm vmm_wei_scales_masked
+                = vmm_mask(vmm_wei_scales, is_tail, false, k_mask);
+        if (is_single_scale) {
+            switch (brg.dt_wei_scales) {
+                case data_type::f32: vbroadcastss(vmm_wei_scales, addr); break;
+                case data_type::bf16:
+                    vpbroadcastw(vmm_wei_scales, addr);
+                    uni_vpslld(vmm_wei_scales, vmm_wei_scales, 16);
+                    break;
+                case data_type::f16:
+                    vpbroadcastw(vmm_wei_scales, addr);
+                    vcvtph2ps(Xmm(vmm_wei_scales.getIdx()),
+                            Xmm(vmm_wei_scales.getIdx()));
+                    vbroadcastss(vmm_wei_scales, Xmm(vmm_wei_scales.getIdx()));
+                    break;
+                default: assert(!"unsupported wei_scales data type");
+            }
+        } else {
+            if (IMPLICATION(is_tail, isa_has_masks(brg.isa_impl))) {
+                switch (brg.dt_wei_scales) {
+                    case data_type::f32:
+                        if (brg.is_gemv) {
+                            if (!brg.treat_y_as_row)
+                                uni_vmovss(vmm_wei_scales_masked, addr);
+                        } else {
+                            uni_vmovups(vmm_wei_scales_masked, addr);
+                        }
+                        break;
+                    case data_type::bf16:
+                        uni_vpmovzxwd(vmm_wei_scales_masked, addr);
+                        uni_vpslld(vmm_wei_scales, vmm_wei_scales, 16);
+                        break;
+                    case data_type::f16:
+                        vcvtph2ps(vmm_wei_scales_masked, addr);
+                        break;
+                    default: assert(!"unsupported wei_scales data type");
+                }
+            } else {
+                assert(brg.dt_wei_scales == data_type::f32);
+                vmaskmovps(vmm_wei_scales, vmm_tail_mask(), addr);
+            }
+        }
+
+        for (dim_t bd = 0; bd < bd_block; bd++) {
+            auto vmm = accm(ld_block2, bd, ld);
+            if (dq2ps_required && !dq2ps_cvt_done) uni_vcvtdq2ps(vmm, vmm);
+
+            if (brg.is_gemv) {
+                if (!brg.treat_y_as_row) {
+                    uni_vmulss(Xmm(vmm.getIdx()), Xmm(vmm.getIdx()),
+                            vmm_wei_scales);
+                } else {
+                    auto addr = ptr[reg_aux_wei_scales + wei_scales_offset(bd)];
+                    uni_vmovss(Xmm(vmm_wei_scales_masked.getIdx()), addr);
+                    uni_vmulss(Xmm(vmm.getIdx()), Xmm(vmm.getIdx()),
+                            vmm_wei_scales);
+                }
+            } else {
+                uni_vmulps(vmm, vmm, vmm_wei_scales);
+            }
+        }
+    }
+}
+
+template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::apply_alpha_beta(
         dim_t bd_block, dim_t ld_block2, bool is_ld_tail) {
     const bool apply_alpha = brg.alpha != 1.f;
@@ -1331,79 +1411,8 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
     }
 
     if (brg.with_wei_scales) {
-        reg_aux_wei_scales.restore();
-        for (dim_t ld = 0; ld < ld_block2; ld++) {
-            const auto addr = ptr[reg_aux_wei_scales + wei_scales_offset(ld)];
-            const bool is_tail = is_ld_tail && ld + 1 == ld_block2;
-            const bool is_single_scale = !brg.is_oc_scale;
-
-            const Vmm vmm_wei_scales = vmm_tmp(0);
-            const Vmm vmm_wei_scales_masked
-                    = vmm_mask(vmm_wei_scales, is_tail, false, k_mask);
-            if (is_single_scale) {
-                switch (brg.dt_wei_scales) {
-                    case data_type::f32:
-                        vbroadcastss(vmm_wei_scales, addr);
-                        break;
-                    case data_type::bf16:
-                        vpbroadcastw(vmm_wei_scales, addr);
-                        uni_vpslld(vmm_wei_scales, vmm_wei_scales, 16);
-                        break;
-                    case data_type::f16:
-                        vpbroadcastw(vmm_wei_scales, addr);
-                        vcvtph2ps(Xmm(vmm_wei_scales.getIdx()),
-                                Xmm(vmm_wei_scales.getIdx()));
-                        vbroadcastss(
-                                vmm_wei_scales, Xmm(vmm_wei_scales.getIdx()));
-                        break;
-                    default: assert(!"unsupported wei_scales data type");
-                }
-            } else {
-                if (IMPLICATION(is_tail, isa_has_masks(brg.isa_impl))) {
-                    switch (brg.dt_wei_scales) {
-                        case data_type::f32:
-                            if (brg.is_gemv) {
-                                if (!brg.treat_y_as_row)
-                                    uni_vmovss(vmm_wei_scales_masked, addr);
-                            } else {
-                                uni_vmovups(vmm_wei_scales_masked, addr);
-                            }
-                            break;
-                        case data_type::bf16:
-                            uni_vpmovzxwd(vmm_wei_scales_masked, addr);
-                            uni_vpslld(vmm_wei_scales, vmm_wei_scales, 16);
-                            break;
-                        case data_type::f16:
-                            vcvtph2ps(vmm_wei_scales_masked, addr);
-                            break;
-                        default: assert(!"unsupported wei_scales data type");
-                    }
-                } else {
-                    assert(brg.dt_wei_scales == data_type::f32);
-                    vmaskmovps(vmm_wei_scales, vmm_tail_mask(), addr);
-                }
-            }
-
-            for (dim_t bd = 0; bd < bd_block; bd++) {
-                auto vmm = accm(ld_block2, bd, ld);
-                if (dq2ps_required && !dq2ps_cvt_done) uni_vcvtdq2ps(vmm, vmm);
-
-                if (brg.is_gemv) {
-                    if (!brg.treat_y_as_row) {
-                        uni_vmulss(Xmm(vmm.getIdx()), Xmm(vmm.getIdx()),
-                                vmm_wei_scales);
-                    } else {
-                        auto addr = ptr[reg_aux_wei_scales
-                                + wei_scales_offset(bd)];
-                        uni_vmovss(Xmm(vmm_wei_scales_masked.getIdx()), addr);
-                        uni_vmulss(Xmm(vmm.getIdx()), Xmm(vmm.getIdx()),
-                                vmm_wei_scales);
-                    }
-                } else {
-                    uni_vmulps(vmm, vmm, vmm_wei_scales);
-                }
-            }
-        }
+        apply_wei_scales(bd_block, ld_block2, dq2ps_required, dq2ps_cvt_done,
+                is_ld_tail);
         dq2ps_cvt_done = true;
     }
 

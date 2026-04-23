@@ -369,13 +369,18 @@ struct brgemm_desc_t {
     bool is_runtime_ldc = false;
     bool is_runtime_ldd = false;
 
+    bool transA = false;
+
     // GEMV-specific parameters.
     //
     // GEMV kernel path is enabled.
     bool is_gemv = false;
     // Controls whether y is treated as a row in GEMV-specific code paths.
     bool treat_y_as_row = false;
-    // Tail along the reduction dimension.
+    // GEMV transA register-blocking unroll factor.
+    int gemv_transa_bd_unroll = 0;
+    // non-transA: tail along the reduction dimension.
+    // transA:     number of valid elements in the final vector accumulator.
     int gemv_tail = 0;
 
     static constexpr int MAX_VPAD = 100;
@@ -386,6 +391,76 @@ struct brgemm_desc_t {
     void set_dst_md(const memory_desc_t *pdst_md);
     const primitive_attr_t *attr() const { return attr_; }
     const memory_desc_t *dst_md() const { return dst_md_; }
+
+    // GEMV logical bd block used by GEMV-specific kernel code.
+    //
+    // non-transA:
+    //   - same as `bd_block`
+    //
+    // transA:
+    //  - number of full vector accumulators updated per reduction step
+    //  - equal to `gemv_transa_bd_unroll`
+    dim_t gemv_bd_block() const {
+        assert(is_gemv);
+        if (!is_gemv) return 0;
+        return transA ? gemv_transa_bd_unroll : bd_block;
+    }
+
+    // GEMV bdb tail used by GEMV-specific kernel code.
+    //
+    // non-transA:
+    //   - same as `bdb_tail`
+    //
+    // transA:
+    //   - number of full vector accumulators in the tail block
+    //   - the remaining first-level register tail is stored separately in
+    //     `gemv_tail`
+    dim_t gemv_bdb_tail() const {
+        assert(is_gemv);
+        if (!is_gemv) return 0;
+        const int gemv_transa_simd_w
+                = transA ? bd_block / gemv_transa_bd_unroll : 1;
+        assert(IMPLICATION(transA, gemv_transa_simd_w != 1));
+        return transA ? bdb_tail / gemv_transa_simd_w : bdb_tail;
+    }
+
+    // GEMV accumulator layout.
+    //
+    // non-transA:
+    //   - each accumulator register holds a single output element
+    //
+    // transA:
+    //   - each accumulator register holds a SIMD-width vector of output
+    //     elements
+    bool gemv_acc_is_vector() const {
+        assert(is_gemv);
+        return transA;
+    }
+
+    // Number of accumulator indices (`bd`) processed in the current GEMV block.
+    //
+    // non-transA:
+    //   - same as the number of output elements in the current block
+    //   - regular block: defined by `gemv_bd_block()`
+    //   - tail block:    defined by `gemv_bdb_tail()`
+    //
+    // transA:
+    //   - number of vector accumulators in the current block
+    //   - regular block: number of full vector accumulators,
+    //                    defined by `gemv_bd_block()`
+    //   - tail block:    number of full vector accumulators in the tail block,
+    //                    defined by `gemv_bdb_tail()`
+    //   - if `gemv_tail > 0`, one additional accumulator is included for the
+    //     final partial vector
+    dim_t gemv_num_acc_blocks(bool is_bdb_tail) const {
+        assert(is_gemv);
+        if (!gemv_acc_is_vector())
+            return is_bdb_tail ? gemv_bdb_tail() : gemv_bd_block();
+
+        const bool has_tail_acc = is_bdb_tail && gemv_tail > 0;
+        const dim_t full_accs = is_bdb_tail ? gemv_bdb_tail() : gemv_bd_block();
+        return full_accs + has_tail_acc;
+    }
 
     // return 'true' when FP8 MAC is not natively supported by the CPU ISA
     bool is_fp8_via_convert() const {

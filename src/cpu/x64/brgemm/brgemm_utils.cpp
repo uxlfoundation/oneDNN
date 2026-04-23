@@ -694,26 +694,29 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
 
 /**
  * GEMV Register Blocking Strategy (Row-Major A)
- * ---------------------------------------------
+ * ============================================
  *
  * Assumptions:
  * - Target ISA: AVX2 (for now)
- * - Only N=1 is supported (no blocking along load dimension)
+ * - Only N = 1 is supported (no blocking along load dimension)
  * - A is in row-major layout
- * - Microkernel loads along the reduction dimension
+ *
+ * ------------------------------------------------------------
+ * not transposed (non-transA)
+ * ------------------------------------------------------------
  *
  * Blocking scheme:
  * bd_block = 8:
- *   - Uses 8 scalar accumulator registers: acc0 to acc7
+ *   - Uses 8 independent accumulators: acc0 to acc7
  *
- * rd_block = vlen:
+ * rd_block = simd_w:
  *   - 1 vector register for x
  *   - 1 vector register (a0_reg), reused to load one A micro-row at a time
  *
  * Register usage:
  *   [x_reg]   = vector register holding x[j .. j + rd_block - 1]
  *   [a0_reg]  = vector register reused for each A micro-row
- *   [acc0..7] = scalar accumulators for bd_block rows
+ *   [acc0..7] = accumulators for bd_block rows
  *
  * Microkernel loop:
  *
@@ -722,11 +725,89 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
  *   for bd in 0 .. bd_block - 1:
  *     Load a0_reg = A[bd][0 .. rd_block - 1]   // Load A micro-row
  *     acc[bd] += dot(a0_reg, x_reg)            // Accumulate partial results
+ *
+ * ---------------------------------------------------
+ * transposed (transA)
+ * ---------------------------------------------------
+ *
+ * In the transposed GEMV case one broadcasted scalar from B is reused across
+ * several independent accumulators to increase ILP.
+ *
+ * 1. First-level register blocking
+ *    - one accumulator is one vector register
+ *    - for AVX f32, simd_w = 8 (hardcoded for now)
+ *
+ * 2. Second-level register blocking
+ *    - `gemv_transa_bd_unroll` is the number of such accumulators
+ *      updated per reduction step
+ *    - `gemv_bd_block()` returns this logical GEMV block size
+ *
+ * To preserve the existing brgemm harness and outer bdb counting logic
+ * `bd_block` is encoded as:
+ *
+ *     bd_block = simd_w * gemv_transa_bd_unroll
+ *
+ * This encoding is used only for GEMV + transA.
+ *
+ * Tail handling in GEMV + transA follows the same two-level structure:
+ *
+ * 1. Second-level tail
+ *    - number of full accumulators in the tail block
+ *    - returned by `gemv_bdb_tail()`
+ *
+ * 2. First-level tail
+ *    - remaining valid elements in the final accumulator
+ *    - stored in `gemv_tail`
+ *
+ * So for GEMV + transA:
+ *
+ *     bdb_tail = gemv_bdb_tail() * simd_w + gemv_tail
+ *
+ * Microkernel structure:
+ *
+ * for rd:
+ *     broadcast b
+ *     for bd in 0 .. gemv_bd_block() - 1:
+ *         load one vector a
+ *         acc[bd] += a * b
+ *
+ * Tail block:
+ *   - process `gemv_bdb_tail()` full accumulators
+ *   - if `gemv_tail > 0` process one final masked vector
+ *
  */
 status_t brgemm_blocking_vmm_gemv(brgemm_desc_t *brg) {
+    const int simd_w = 8;
+
     assert(utils::one_of(brg->isa_impl, avx2, avx2_vnni, avx2_vnni_2));
     assert(brg->load_dim == 1);
 
+    // Blocking parameters for the non-transposed case.
+    if (!brg->transA) {
+        brg->ld_block = 1;
+        brg->ldb = brg->load_dim / brg->ld_block;
+        brg->ldb_tail = brg->load_dim % brg->ld_block;
+        assert(brg->ldb_tail == 0);
+
+        brg->ld_block2 = 1;
+        brg->ldb2 = brg->ldb / brg->ld_block2;
+        brg->ldb2_tail = brg->ldb % brg->ld_block2;
+        assert(brg->ldb2_tail == 0);
+
+        brg->bd_block = 8;
+        brg->bdb = brg->bcast_dim / brg->bd_block;
+        brg->bdb_tail = brg->bcast_dim % brg->bd_block;
+
+        brg->rd_block = simd_w;
+        brg->rdb = brg->reduce_dim / brg->rd_block;
+        brg->rdb_tail = brg->reduce_dim % brg->rd_block;
+
+        brg->gemv_tail = brg->rdb_tail;
+
+        return status::success;
+    }
+
+    // Blocking parameters for the transposed case.
     brg->ld_block = 1;
     brg->ldb = brg->load_dim / brg->ld_block;
     brg->ldb_tail = brg->load_dim % brg->ld_block;
@@ -737,17 +818,16 @@ status_t brgemm_blocking_vmm_gemv(brgemm_desc_t *brg) {
     brg->ldb2_tail = brg->ldb % brg->ld_block2;
     assert(brg->ldb2_tail == 0);
 
-    brg->bd_block = 8;
+    brg->gemv_transa_bd_unroll = 8;
+    brg->bd_block = simd_w * brg->gemv_transa_bd_unroll;
     brg->bdb = brg->bcast_dim / brg->bd_block;
     brg->bdb_tail = brg->bcast_dim % brg->bd_block;
 
-    const int simd_w = 8;
-
-    brg->rd_block = simd_w;
+    brg->rd_block = 1;
     brg->rdb = brg->reduce_dim / brg->rd_block;
     brg->rdb_tail = brg->reduce_dim % brg->rd_block;
 
-    brg->gemv_tail = brg->rdb_tail;
+    brg->gemv_tail = brg->bdb_tail % simd_w;
 
     return status::success;
 }

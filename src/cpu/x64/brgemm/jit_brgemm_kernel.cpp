@@ -108,9 +108,9 @@ struct jit_brgemm_kernel_t : public jit_base_brgemm_kernel_t {
             // one element can be safely loaded. Therefore, we need to
             // provide information about what the tail size would have
             // been in a non-GEMV case.
-            const dim_t tail_size = brg.is_gemv
-                    ? brg.load_dim % vreg_traits_t<Vmm>::vlen
-                    : brg.ldb_tail;
+            const dim_t tail_size = !brg.is_gemv
+                    ? brg.ldb_tail
+                    : (brg.gemv_acc_is_vector() ? brg.gemv_tail : 1);
 
             const binary_injector::rhs_arg_static_params_t rhs_sp {
                     static_cast<size_t>(vmm_tmp(0).getIdx()), this->r14,
@@ -305,21 +305,21 @@ private:
 
     Vmm gemv_load_a() const noexcept {
         assert(brg.is_gemv);
-        const dim_t idx = max_effective_vregs - 1 - brg.bd_block - 0;
+        const dim_t idx = max_effective_vregs - 1 - brg.gemv_bd_block() - 0;
         return Vmm(idx);
     }
 
     Vmm gemv_load_b() const noexcept {
         assert(brg.is_gemv);
-        const dim_t idx = max_effective_vregs - 1 - brg.bd_block - 1;
+        const dim_t idx = max_effective_vregs - 1 - brg.gemv_bd_block() - 1;
         return Vmm(idx);
     }
 
     Vmm vmm_tmp(dim_t i) const noexcept {
+        const dim_t bd_block = brg.is_gemv ? brg.gemv_bd_block() : brg.bd_block;
+        MAYBE_UNUSED(bd_block);
         assert(IMPLICATION(!brg.is_tmm,
-                i >= 0
-                        && i < max_effective_vregs
-                                        - brg.bd_block * brg.ld_block2));
+                i >= 0 && i < max_effective_vregs - bd_block * brg.ld_block2));
         return Vmm(i);
     }
 
@@ -412,15 +412,19 @@ private:
     void store_accumulators(dim_t bd_block2, bool is_bdb_tail, dim_t ld_block,
             bool is_ld_tail, bool skip_accumulation);
     void store_accumulators_without_post_ops(
-            dim_t bd_block, dim_t ld_block, bool is_ld_tail);
+            dim_t bd_block, dim_t ld_block, bool is_ld_tail, bool is_bdb_tail);
     void store_accumulators_apply_post_ops(dim_t bd_block, dim_t ld_block,
-            dim_t ldb_and_bdb_offset, bool is_ld_tail);
+            dim_t ldb_and_bdb_offset, bool is_ld_tail, bool is_bdb_tail);
     void apply_compensation(dim_t bd_block, dim_t ld_block, bool is_ld_tail);
-    void apply_alpha_beta(dim_t bd_block, dim_t ld_block, bool is_ld_tail);
+    void apply_alpha_beta(
+            dim_t bd_block, dim_t ld_block, bool is_ld_tail, bool is_bdb_tail);
     void apply_post_ops(dim_t bd_block, dim_t ld_block2,
-            dim_t ldb_and_bdb_offset, bool is_ld_tail);
+            dim_t ldb_and_bdb_offset, bool is_ld_tail, bool is_bdb_tail);
     void apply_wei_scales(dim_t bd_block, dim_t ld_block2, bool dq2ps_required,
             bool dq2ps_cvt_done, bool is_ld_tail);
+    void gemv_apply_bias(dim_t bd_block, bool is_bdb_tail);
+    void gemv_apply_wei_scales(dim_t bd_block, bool is_bdb_tail);
+
     void restore_A_B_matrices();
     void set_A_B_matrices();
 
@@ -455,6 +459,10 @@ private:
     void bdb_loop();
 
     void generate() override;
+
+    bool gemv_is_tail_acc(
+            dim_t bd, dim_t bd_end, bool is_bdb_tail) const noexcept;
+    dim_t gemv_elems_per_vector_acc() const noexcept;
 
     dim_t A_offset(dim_t bd, dim_t rd, bool is_amx = false) const noexcept;
     dim_t B_offset(dim_t ld, dim_t rd, bool is_amx = false) const noexcept;
@@ -493,9 +501,49 @@ private:
     palette_config_t palette_;
 };
 
+/**
+ * Checks whether the current accumulator is the final partial vector
+ * accumulator in a GEMV tail block.
+ *
+ * Applies to vector-accumulator GEMV path.
+ *
+ * @param bd           Index of the current accumulator.
+ * @param bd_end       Number of accumulator indices in the current block.
+ *                     Includes the final tail accumulator when gemv_tail > 0.
+ * @param is_bdb_tail  Indicates that the current block is a tail block.
+ */
+template <typename Wmm>
+bool jit_brgemm_kernel_t<Wmm>::gemv_is_tail_acc(
+        dim_t bd, dim_t bd_end, bool is_bdb_tail) const noexcept {
+    assert(brg.is_gemv);
+    if (!brg.gemv_acc_is_vector()) return false;
+    return (bd + 1) == bd_end && is_bdb_tail && brg.gemv_tail > 0;
+}
+
+/**
+ * Returns the number of output elements stored in a single GEMV
+ * vector accumulator.
+ *
+ * In transA GEMV, `bd_block` encodes both:
+ *   - the SIMD width (number of elements per accumulator)
+ *   - the number of accumulators (gemv_bd_block)
+ *
+ * This helper extracts the SIMD width by dividing the total bd_block
+ * by the number of accumulator indices.
+ */
+template <typename Wmm>
+dim_t jit_brgemm_kernel_t<Wmm>::gemv_elems_per_vector_acc() const noexcept {
+    assert(brg.is_gemv && brg.gemv_acc_is_vector());
+    if (!brg.is_gemv || !brg.gemv_acc_is_vector()) return 1;
+    return brg.bd_block / brg.gemv_bd_block();
+}
+
 template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::A_offset(
         dim_t bd, dim_t rd, bool is_amx) const noexcept {
+    if (brg.is_gemv && brg.gemv_acc_is_vector())
+        return brg.typesize_A * bd * gemv_elems_per_vector_acc();
+
     return (is_amx) ? brg.typesize_A * (bd * brg.bd_block * brg.LDA)
                     : brg.typesize_A * (bd * brg.LDA + rd);
 }
@@ -518,23 +566,33 @@ dim_t jit_brgemm_kernel_t<Wmm>::B_offset(
 
 template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::C_offset(dim_t bd, dim_t ld) const noexcept {
+    if (brg.is_gemv && brg.gemv_acc_is_vector())
+        return brg.typesize_C * bd * gemv_elems_per_vector_acc() * brg.LDC;
+
     const auto bd_shift = brg.is_runtime_ldc ? 0 : bd * brg.LDC;
     return brg.typesize_C * (bd_shift + ld * brg.ld_block);
 }
 
 template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::D_offset(dim_t bd, dim_t ld) const noexcept {
+    if (brg.is_gemv && brg.gemv_acc_is_vector())
+        return brg.typesize_D * bd * gemv_elems_per_vector_acc() * brg.LDD;
+
     const auto bd_shift = brg.is_runtime_ldd ? 0 : bd * brg.LDD;
     return brg.typesize_D * (bd_shift + ld * brg.ld_block);
 }
 
 template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::rdb_A_offset() const noexcept {
+    if (brg.is_gemv && brg.gemv_acc_is_vector())
+        return brg.rd_block * brg.LDA * brg.typesize_A;
     return brg.typesize_A * brg.rd_block;
 }
 
 template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::rdb_B_offset() const noexcept {
+    if (brg.is_gemv && brg.gemv_acc_is_vector())
+        return brg.rd_block * brg.typesize_B;
     return brg.typesize_B * brg.rd_block * brg.LDB;
 }
 
@@ -567,17 +625,23 @@ dim_t jit_brgemm_kernel_t<Wmm>::ldb_po_offset(
 
 template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::bdb_A_offset(dim_t bd_block2) const noexcept {
+    if (brg.is_gemv && brg.gemv_acc_is_vector())
+        return brg.typesize_A * bd_block2 * brg.bd_block;
     return brg.typesize_A * bd_block2 * brg.bd_block * brg.LDA;
 }
 
 template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::bdb_C_offset(dim_t bd_block2) const noexcept {
+    if (brg.is_gemv && brg.gemv_acc_is_vector())
+        return brg.typesize_C * bd_block2 * brg.bd_block * brg.LDC;
     return bd_block2 * brg.bd_block
             * (brg.is_runtime_ldc ? 1 : brg.typesize_C * brg.LDC);
 }
 
 template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::bdb_D_offset(dim_t bd_block2) const noexcept {
+    if (brg.is_gemv && brg.gemv_acc_is_vector())
+        return brg.typesize_D * bd_block2 * brg.bd_block * brg.LDD;
     return bd_block2 * brg.bd_block
             * (brg.is_runtime_ldd ? 1 : brg.typesize_D * brg.LDD);
 }
@@ -589,9 +653,12 @@ dim_t jit_brgemm_kernel_t<Wmm>::bdb_po_offset(dim_t bd_block2) const noexcept {
 
 template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::bias_offset(
-        dim_t ld, bool is_tail) const noexcept {
+        dim_t bias_dim, bool is_tail) const noexcept {
+    if (brg.is_gemv && brg.gemv_acc_is_vector())
+        return bias_dim * gemv_elems_per_vector_acc() * brg.typesize_bias;
+
     return (is_tail) ? brg.typesize_bias * brg.ldb_tail
-                     : brg.typesize_bias * ld * brg.ld_block;
+                     : brg.typesize_bias * bias_dim * brg.ld_block;
 }
 
 template <typename Wmm>
@@ -622,6 +689,10 @@ dim_t jit_brgemm_kernel_t<Wmm>::bd_compensation_offset(
 template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::wei_scales_offset(
         dim_t ld, bool is_tail) const noexcept {
+    if (brg.is_gemv && brg.gemv_acc_is_vector())
+        return ld * (brg.bd_block / brg.gemv_bd_block())
+                * types::data_type_size(brg.dt_wei_scales);
+
     const dim_t ld_offset = is_tail ? brg.ldb_tail : ld * brg.ld_block;
     return ld_offset * brg.is_oc_scale
             * types::data_type_size(brg.dt_wei_scales);
@@ -1007,6 +1078,11 @@ void jit_brgemm_kernel_t<Wmm>::zero_accumulators(dim_t bd_block2,
             dim_t idx = (is_ld_tail) ? brg.ld_block2 : ldb;
             tilezero(Tmm(brg.get_C_tensor(bdb, idx, is_bdb_tail, is_ld_tail)));
         }
+    } else if (brg.is_gemv) {
+        for (dim_t bd = 0; bd < brg.gemv_bd_block(); bd++) {
+            auto vmm = accm(1, bd, 0);
+            uni_vpxor(vmm, vmm, vmm);
+        }
     } else {
         dim_t bd_block = (is_bdb_tail) ? brg.bdb_tail : brg.bd_block;
         for_(dim_t bd = 0; bd < bd_block; bd++)
@@ -1094,6 +1170,206 @@ void jit_brgemm_kernel_t<Wmm>::fp8_to_f16_upconvert_to_vnni(dim_t num_rows,
     }
 }
 
+/**
+ * Apply bias for GEMV paths.
+ *
+ * Bias handling in GEMV depends on two orthogonal properties:
+ *
+ *   1. Accumulator shape
+ *      - Scalar accumulator:
+ *          each accumulator register holds a single output element
+ *      - Vector accumulator:
+ *          each accumulator register holds a SIMD-width vector of output
+ *          elements
+ *
+ *   2. Output layout (treat_y_as_row)
+ *      - false: bias is a single scalar (broadcast across all outputs)
+ *      - true : bias is laid out along the output dimension
+ *
+ * In the current implementation:
+ *   - gemv_acc_is_vector() == true  <=>  transA GEMV path
+ *   - gemv_acc_is_vector() == false <=>  non-transA GEMV path
+ *
+ * These properties define 4 bias application scenarios:
+ *
+ * 1) Scalar accumulator, scalar bias
+ *    (treat_y_as_row = false, gemv_acc_is_vector() = false)
+ *    ------------------------------------------------------
+ *    - Each accumulator holds 1 output element
+ *    - Bias is a single scalar
+ *    - Behavior:
+ *        Load one scalar bias value and apply it to every accumulator.
+ *
+ * 2) Scalar accumulator, vector bias
+ *    (treat_y_as_row = true, gemv_acc_is_vector() = false)
+ *    ------------------------------------------------------
+ *    - Each accumulator holds 1 output element
+ *    - Bias is indexed per output element
+ *    - Behavior:
+ *        Each accumulator corresponds to a different output index.
+ *        Load one scalar bias value for the current accumulator from
+ *            bias_offset(bd) and apply it to that accumulator.
+ *
+ * 3) Vector accumulator, scalar bias
+ *    (treat_y_as_row = false, gemv_acc_is_vector() = true)
+ *    ------------------------------------------------------
+ *    - Each accumulator holds simd_w output elements
+ *    - Bias is a single scalar
+ *    - Behavior:
+ *        Load one scalar bias value, broadcast it to a SIMD vector
+ *        and apply it to the entire accumulator register.
+ *
+ * 4) Vector accumulator, vector bias
+ *    (treat_y_as_row = true, gemv_acc_is_vector() = true)
+ *    ------------------------------------------------------
+ *    - Each accumulator holds simd_w output elements
+ *    - Bias is contiguous along the output dimension
+ *    - Behavior:
+ *        Each accumulator corresponds to a SIMD-width chunk of outputs.
+ *        Load a vector of bias values for the current accumulator from
+ *            bias_offset(bd) and apply it to that accumulator.
+ *
+ *        For the final accumulator (tail case), perform a masked load
+ *        using gemv_tail to avoid reading past valid elements.
+ *
+ * @param bd_block
+ *   Number of accumulator indices (`bd`) to process in the current block.
+ *
+ *   - For scalar accumulators, each `bd` corresponds to one output element.
+ *   - For vector accumulators, each `bd` corresponds to one SIMD-width chunk
+ *     of output elements.
+ *   - For vector accumulators, `bd_block` includes the final accumulator
+ *     used for the masked load when gemv_tail > 0.
+ *
+ * @param is_bdb_tail
+ *   Indicates that the current block is the tail block along the GEMV
+ *   broadcast dimension.
+ *
+ * Notes:
+ * - 'bd' indexes accumulator registers. For vector accumulators, it also
+ *   corresponds to second-level register blocking.
+ * - Tail handling applies only to vector accumulators and only for the final
+ *   accumulator when gemv_tail > 0.
+ *
+ * This helper assumes that accumulator layout, offsets and tail handling
+ * are consistent with the GEMV blocking model used in the kernel.
+ */
+template <typename Wmm>
+void jit_brgemm_kernel_t<Wmm>::gemv_apply_bias(
+        dim_t bd_block, bool is_bdb_tail) {
+
+    reg_aux_bias.restore();
+
+    const bool is_bias_scalar = !brg.treat_y_as_row;
+    auto bias = vmm_tmp(0);
+
+    if (is_bias_scalar) vbroadcastss(bias, ptr[reg_aux_bias + bias_offset(0)]);
+
+    for (dim_t bd = 0; bd < bd_block; bd++) {
+        auto acc = accm(1, bd, 0);
+
+        if (is_bias_scalar) {
+            uni_vaddps(acc, acc, bias);
+            continue;
+        }
+
+        const auto addr = ptr[reg_aux_bias + bias_offset(bd)];
+
+        if (brg.gemv_acc_is_vector()) {
+            if (gemv_is_tail_acc(bd, bd_block, is_bdb_tail))
+                vmaskmovps(bias, vmm_tail_mask(), addr);
+            else
+                uni_vmovups(bias, addr);
+
+            uni_vaddps(acc, acc, bias);
+        } else {
+            uni_vmovss(Xmm(bias.getIdx()), addr);
+            uni_vaddss(Xmm(acc.getIdx()), Xmm(acc.getIdx()), bias);
+        }
+    }
+}
+
+/**
+ * Apply weight scales for GEMV accumulators.
+ *
+ * This helper follows the same GEMV accumulator model as gemv_apply_bias():
+ * scales are applied to either scalar or vector accumulators depending on
+ * gemv_acc_is_vector(), and tail handling for vector accumulators is handled
+ * via gemv_is_tail_acc(...).
+ *
+ * Unlike bias, weight scales have two scale modes:
+ *   - common: one scalar scale for the whole operation
+ *   - per-N (`is_oc_scale`): one scale value per element along N
+ *
+ * In GEMV, per-N scales collapse to a single scalar only when `y` is treated
+ * as a column vector.
+ *
+ * When treat_y_as_row == true, `y` is treated as a row vector instead.
+ * In that case, per-N scales remain a vector.
+ *
+ * Behavior:
+ *   - common scale case:
+ *       one scalar scale is loaded once and reused for all accumulators
+ *
+ *   - per-N scale case:
+ *       scales are loaded for each accumulator from `wei_scales_offset(bd)`
+ *       as either:
+ *         - a scalar, for scalar accumulators
+ *         - a vector, for vector accumulators
+ *
+ * For vector accumulators, the final tail accumulator uses a masked load when
+ * gemv_tail > 0.
+ *
+ * @param bd_block
+ *   Number of accumulator indices (`bd`) to process in the current block.
+ *     - For scalar accumulators, each `bd` corresponds to one output element.
+ *     - For vector accumulators, each `bd` corresponds to one SIMD-width chunk
+ *       of output elements.
+ *     - For vector accumulators, `bd_block` includes the final accumulator
+ *       used for the masked load when gemv_tail > 0.
+ *
+ * @param is_bdb_tail
+ *   Indicates that the current block is the tail block along the GEMV
+ *   broadcast dimension.
+ */
+template <typename Wmm>
+void jit_brgemm_kernel_t<Wmm>::gemv_apply_wei_scales(
+        dim_t bd_block, bool is_bdb_tail) {
+
+    reg_aux_wei_scales.restore();
+
+    // Per-N scales collapse to a single scalar unless `y` is treated as a row.
+    const bool is_single_scale = !brg.is_oc_scale || !brg.treat_y_as_row;
+    const Vmm vmm_wei_scales = vmm_tmp(0);
+
+    if (is_single_scale) {
+        const auto addr = ptr[reg_aux_wei_scales + wei_scales_offset(0)];
+        vbroadcastss(vmm_wei_scales, addr);
+    }
+
+    for (dim_t bd = 0; bd < bd_block; bd++) {
+        auto acc = accm(1, bd, 0);
+
+        if (is_single_scale) {
+            uni_vmulps(acc, acc, vmm_wei_scales);
+            continue;
+        }
+        const auto addr = ptr[reg_aux_wei_scales + wei_scales_offset(bd)];
+
+        if (brg.gemv_acc_is_vector()) {
+            if (gemv_is_tail_acc(bd, bd_block, is_bdb_tail))
+                vmaskmovps(vmm_wei_scales, vmm_tail_mask(), addr);
+            else
+                uni_vmovups(vmm_wei_scales, addr);
+
+            uni_vmulps(acc, acc, vmm_wei_scales);
+        } else {
+            uni_vmovss(vmm_wei_scales, addr);
+            uni_vmulss(Xmm(acc.getIdx()), Xmm(acc.getIdx()), vmm_wei_scales);
+        }
+    }
+}
+
 template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::apply_wei_scales(dim_t bd_block, dim_t ld_block2,
         bool dq2ps_required, bool dq2ps_cvt_done, bool is_ld_tail) {
@@ -1129,12 +1405,7 @@ void jit_brgemm_kernel_t<Wmm>::apply_wei_scales(dim_t bd_block, dim_t ld_block2,
             if (IMPLICATION(is_tail, isa_has_masks(brg.isa_impl))) {
                 switch (brg.dt_wei_scales) {
                     case data_type::f32:
-                        if (brg.is_gemv) {
-                            if (!brg.treat_y_as_row)
-                                uni_vmovss(vmm_wei_scales_masked, addr);
-                        } else {
-                            uni_vmovups(vmm_wei_scales_masked, addr);
-                        }
+                        uni_vmovups(vmm_wei_scales_masked, addr);
                         break;
                     case data_type::bf16:
                         uni_vpmovzxwd(vmm_wei_scales_masked, addr);
@@ -1154,27 +1425,14 @@ void jit_brgemm_kernel_t<Wmm>::apply_wei_scales(dim_t bd_block, dim_t ld_block2,
         for (dim_t bd = 0; bd < bd_block; bd++) {
             auto vmm = accm(ld_block2, bd, ld);
             if (dq2ps_required && !dq2ps_cvt_done) uni_vcvtdq2ps(vmm, vmm);
-
-            if (brg.is_gemv) {
-                if (!brg.treat_y_as_row) {
-                    uni_vmulss(Xmm(vmm.getIdx()), Xmm(vmm.getIdx()),
-                            vmm_wei_scales);
-                } else {
-                    auto addr = ptr[reg_aux_wei_scales + wei_scales_offset(bd)];
-                    uni_vmovss(Xmm(vmm_wei_scales_masked.getIdx()), addr);
-                    uni_vmulss(Xmm(vmm.getIdx()), Xmm(vmm.getIdx()),
-                            vmm_wei_scales);
-                }
-            } else {
-                uni_vmulps(vmm, vmm, vmm_wei_scales);
-            }
+            uni_vmulps(vmm, vmm, vmm_wei_scales);
         }
     }
 }
 
 template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::apply_alpha_beta(
-        dim_t bd_block, dim_t ld_block2, bool is_ld_tail) {
+        dim_t bd_block, dim_t ld_block2, bool is_ld_tail, bool is_bdb_tail) {
     const bool apply_alpha = brg.alpha != 1.f;
     const bool dq2ps_required = brg.is_int8 && (apply_alpha || brg.beta != 1.f);
 
@@ -1184,6 +1442,7 @@ void jit_brgemm_kernel_t<Wmm>::apply_alpha_beta(
         uni_vmovq(Xmm(vmm_alpha.getIdx()), reg_tmp_gpr);
         uni_vbroadcastss(vmm_alpha, Xmm(vmm_alpha.getIdx()));
     }
+
     for_(dim_t bd = 0; bd < bd_block; bd++)
     for (dim_t ld = 0; ld < ld_block2; ld++) {
         auto vmm = accm(ld_block2, bd, ld);
@@ -1212,23 +1471,35 @@ void jit_brgemm_kernel_t<Wmm>::apply_alpha_beta(
         auto vmm = accm(ld_block2, bd, ld);
         auto ptr_C = ptr[reg_aux_C + C_offset(bd, ld)];
         if (use_vadd_for_beta) {
-            if (brg.is_gemv)
-                uni_vaddss(Xmm(vmm.getIdx()), Xmm(vmm.getIdx()), ptr_C);
-            else if (IMPLICATION(
-                             is_tail, is_superset(brg.isa_impl, avx512_core))) {
-                auto vmm_masked = vmm_mask(vmm, is_tail, false, k_mask);
-                if (brg.is_int8)
-                    uni_vpaddd(vmm_masked, vmm, ptr_C);
-                else
-                    uni_vaddps(vmm_masked, vmm, ptr_C);
+            if (brg.is_gemv) {
+                if (brg.gemv_acc_is_vector()) {
+                    if (!gemv_is_tail_acc(bd, bd_block, is_bdb_tail)) {
+                        uni_vaddps(vmm, vmm, ptr_C);
+                    } else {
+                        vmaskmovps(vmm_prev_dst, vmm_tail_mask(), ptr_C);
+                        uni_vaddps(vmm, vmm, vmm_prev_dst);
+                    }
+                } else {
+                    uni_vaddss(Xmm(vmm.getIdx()), Xmm(vmm.getIdx()), ptr_C);
+                }
             } else {
-                vmaskmovps(vmm_prev_dst, vmm_tail_mask(), ptr_C);
-                if (brg.is_int8)
-                    uni_vpaddd(vmm, vmm, vmm_prev_dst);
-                else
-                    uni_vaddps(vmm, vmm, vmm_prev_dst);
+                if (IMPLICATION(
+                            is_tail, is_superset(brg.isa_impl, avx512_core))) {
+                    auto vmm_masked = vmm_mask(vmm, is_tail, false, k_mask);
+                    if (brg.is_int8)
+                        uni_vpaddd(vmm_masked, vmm, ptr_C);
+                    else
+                        uni_vaddps(vmm_masked, vmm, ptr_C);
+                } else {
+                    vmaskmovps(vmm_prev_dst, vmm_tail_mask(), ptr_C);
+                    if (brg.is_int8)
+                        uni_vpaddd(vmm, vmm, vmm_prev_dst);
+                    else
+                        uni_vaddps(vmm, vmm, vmm_prev_dst);
+                }
             }
         } else {
+            assert(!brg.is_gemv && "int8 data type is not supported for gemv");
             const dim_t ld_size = is_tail ? brg.ldb_tail : brg.ld_block;
             cvt2ps(brg.dt_c, vmm_prev_dst, ptr_C, is_tail, false, k_mask,
                     ld_size);
@@ -1246,7 +1517,7 @@ void jit_brgemm_kernel_t<Wmm>::apply_alpha_beta(
 
 template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::apply_post_ops(dim_t bd_block, dim_t ld_block2,
-        dim_t ldb_and_bdb_offset, bool is_ld_tail) {
+        dim_t ldb_and_bdb_offset, bool is_ld_tail, bool is_bdb_tail) {
     binary_injector::rhs_arg_dynamic_params_t rhs_arg_params;
     reg64_savable_guard_t registers_guard({{{&param1_backup}, true},
             {{&reg_aux_D_backup}, brg.is_runtime_ldd && bd_block > 1}});
@@ -1273,9 +1544,10 @@ void jit_brgemm_kernel_t<Wmm>::apply_post_ops(dim_t bd_block, dim_t ld_block2,
                 // `binary_injector::rhs_arg_static_params_t`), we need to
                 // provide accumulator registers as if this were a non-GEMV
                 // case and a tail existed.
-                const bool has_tail = brg.is_gemv
-                        ? (brg.load_dim % vreg_traits_t<Vmm>::vlen)
-                        : is_ld_tail;
+                const bool has_tail = !brg.is_gemv
+                        ? is_ld_tail
+                        : gemv_is_tail_acc(bd, bd_end, is_bdb_tail)
+                                || !brg.gemv_acc_is_vector();
                 if (has_tail) rhs_arg_params.vmm_tail_idx_.emplace(vmm_idx);
             }
         };
@@ -1298,6 +1570,7 @@ void jit_brgemm_kernel_t<Wmm>::apply_post_ops(dim_t bd_block, dim_t ld_block2,
                 const auto &vmm_sum_zp = vmm_tmp(1);
 
                 if (p_sum_zp_reg_set) {
+                    assert(!brg.is_gemv && "feature is not supported for gemv");
                     mov(reg_ptr_sum_zp, reinterpret_cast<size_t>(p_sum_zp));
                     if (is_superset(brg.isa_impl, avx512_core)) {
                         vcvtdq2ps(vmm_sum_zp, ptr_b[reg_ptr_sum_zp]);
@@ -1322,11 +1595,27 @@ void jit_brgemm_kernel_t<Wmm>::apply_post_ops(dim_t bd_block, dim_t ld_block2,
                     const auto vmm = accm(ld_block2, bd, ld);
                     const auto addr = ptr[reg_aux_D + D_offset(bd, ld)];
                     const auto vmm_prev_dst = vmm_tmp(0);
-                    const bool is_tail = is_ld_tail && ld + 1 == ld_block2;
-                    const auto k_mask = is_tail ? ld_tail_mask : ld_full_mask;
-                    const dim_t ld_size = is_tail ? brg.ldb_tail : brg.ld_block;
-                    cvt2ps(brg.sum_dt, vmm_prev_dst, addr, is_tail, false,
-                            k_mask, ld_size);
+                    if (!brg.is_gemv) {
+                        const bool is_tail = is_ld_tail && ld + 1 == ld_block2;
+                        const auto k_mask
+                                = is_tail ? ld_tail_mask : ld_full_mask;
+                        const dim_t ld_size
+                                = is_tail ? brg.ldb_tail : brg.ld_block;
+                        cvt2ps(brg.sum_dt, vmm_prev_dst, addr, is_tail, false,
+                                k_mask, ld_size);
+                    } else {
+                        const bool is_tail = brg.gemv_acc_is_vector()
+                                && gemv_is_tail_acc(bd, bd_end, is_bdb_tail);
+
+                        const auto ignored_k_mask = ld_full_mask; // not used
+
+                        const dim_t elements_to_load = is_tail
+                                ? brg.gemv_tail
+                                : brg.bd_block / brg.gemv_bd_block();
+                        cvt2ps(brg.sum_dt, vmm_prev_dst, addr, is_tail, false,
+                                ignored_k_mask, elements_to_load);
+                    }
+
                     if (p_sum_zp_reg_set)
                         uni_vsubps(vmm_prev_dst, vmm_prev_dst, vmm_sum_zp);
                     if (p_sum_scale_reg_set) {
@@ -1372,9 +1661,9 @@ void jit_brgemm_kernel_t<Wmm>::reduce_gemv_accumulators(dim_t bd_block) {
 
 template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
-        dim_t ld_block2, dim_t ldb_and_bdb_offset, bool is_ld_tail) {
+        dim_t ld_block2, dim_t ldb_and_bdb_offset, bool is_ld_tail,
+        bool is_bdb_tail) {
     auto k_mask = (!is_ld_tail) ? ld_full_mask : ld_tail_mask;
-
     // if (brg.is_int8 && alpha_or_beta_applicable && !beta_uses_vadd) ->
     // accumulated values are already converted to ps in apply_alpha_beta()
     const bool alpha_or_beta_applicable = brg.alpha != 1.0f || brg.beta != 0.f;
@@ -1411,9 +1700,13 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
     }
 
     if (brg.with_wei_scales) {
-        apply_wei_scales(bd_block, ld_block2, dq2ps_required, dq2ps_cvt_done,
-                is_ld_tail);
-        dq2ps_cvt_done = true;
+        if (!brg.is_gemv) {
+            apply_wei_scales(bd_block, ld_block2, dq2ps_required,
+                    dq2ps_cvt_done, is_ld_tail);
+            dq2ps_cvt_done = true;
+        } else {
+            gemv_apply_wei_scales(bd_block, is_bdb_tail);
+        }
     }
 
     if (brg.with_weights_scale_adjust) {
@@ -1434,35 +1727,33 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
         dq2ps_cvt_done = true;
     }
 
-    if (brg.with_bias) reg_aux_bias.restore();
-
     if (brg.is_fp8_via_convert()) reg64_fp8_aux.save();
-    for (dim_t ld = 0; ld < ld_block2; ld++) {
-        auto vmm_bias = vmm_tmp(0);
-        if (brg.with_bias) {
-            auto ptr_bias = ptr[reg_aux_bias + bias_offset(ld)];
-            const bool is_tail = is_ld_tail && ld + 1 == ld_block2;
-            cvt2ps(brg.dt_bias, vmm_bias, ptr_bias, is_tail, false, k_mask,
-                    is_tail ? brg.ldb_tail : brg.ld_block);
-        }
-        for (dim_t bd = 0; bd < bd_block; bd++) {
-            auto vmm = accm(ld_block2, bd, ld);
-            if (dq2ps_required && !dq2ps_cvt_done) uni_vcvtdq2ps(vmm, vmm);
+
+    if (!brg.is_gemv) {
+        reg_aux_bias.restore();
+
+        for (dim_t ld = 0; ld < ld_block2; ld++) {
+            auto vmm_bias = vmm_tmp(0);
             if (brg.with_bias) {
-                if (!brg.treat_y_as_row) {
-                    uni_vaddps(vmm, vmm, vmm_bias);
-                } else {
-                    auto ptr_bias = ptr[reg_aux_bias + bias_offset(bd)];
-                    uni_vmovss(Xmm(vmm_bias.getIdx()), ptr_bias);
-                    uni_vaddss(Xmm(vmm.getIdx()), Xmm(vmm.getIdx()), vmm_bias);
-                }
+                auto ptr_bias = ptr[reg_aux_bias + bias_offset(ld)];
+                const bool is_tail = is_ld_tail && ld + 1 == ld_block2;
+                cvt2ps(brg.dt_bias, vmm_bias, ptr_bias, is_tail, false, k_mask,
+                        is_tail ? brg.ldb_tail : brg.ld_block);
+            }
+            for (dim_t bd = 0; bd < bd_block; bd++) {
+                auto vmm = accm(ld_block2, bd, ld);
+                if (dq2ps_required && !dq2ps_cvt_done) uni_vcvtdq2ps(vmm, vmm);
+                if (brg.with_bias) uni_vaddps(vmm, vmm, vmm_bias);
             }
         }
-    }
+    } else if (brg.with_bias)
+        gemv_apply_bias(bd_block, is_bdb_tail);
+
     if (brg.is_fp8_via_convert()) reg64_fp8_aux.restore();
 
     if (postops_injector_)
-        apply_post_ops(bd_block, ld_block2, ldb_and_bdb_offset, is_ld_tail);
+        apply_post_ops(bd_block, ld_block2, ldb_and_bdb_offset, is_ld_tail,
+                is_bdb_tail);
 
     if (brg.with_dst_scales) {
         reg_dst_scales.restore();
@@ -1595,12 +1886,23 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
                 }
             }
         } else {
-            const dim_t ld_block = is_tail ? brg.ldb_tail : brg.ld_block;
-            if (is_tail && types::data_type_size(brg.dt_b) == sizeof(float))
-                vmaskmovps(addr, vmm_tail_mask(), vmm);
-            else
-                store_data(
-                        brg.dt_d, vmm, reg_aux_D, D_offset(bd, ld), ld_block);
+            if (brg.is_gemv) {
+                if (brg.gemv_acc_is_vector()) {
+                    if (gemv_is_tail_acc(bd, bd_block, is_bdb_tail))
+                        vmaskmovps(addr, vmm_tail_mask(), vmm);
+                    else
+                        uni_vmovups(addr, vmm);
+                } else {
+                    uni_vmovss(addr, vmm);
+                }
+            } else {
+                const dim_t ld_block = is_tail ? brg.ldb_tail : brg.ld_block;
+                if (is_tail && types::data_type_size(brg.dt_b) == sizeof(float))
+                    vmaskmovps(addr, vmm_tail_mask(), vmm);
+                else
+                    store_data(brg.dt_d, vmm, reg_aux_D, D_offset(bd, ld),
+                            ld_block);
+            }
         }
         if (brg.is_runtime_ldd && bd_block > 1 && ld == ld_block2 - 1)
             reg_D_shift_bytes.addTo(reg_aux_D);
@@ -1694,8 +1996,7 @@ void jit_brgemm_kernel_t<Wmm>::apply_compensation(
 
 template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::store_accumulators_without_post_ops(
-        dim_t bd_block, dim_t ld_block2, bool is_ld_tail) {
-
+        dim_t bd_block, dim_t ld_block2, bool is_ld_tail, bool is_bdb_tail) {
     // if (brg.is_int8 && alpha_or_beta_applicable && !beta_uses_vadd) ->
     // accumulated values are converted to ps in apply_alpha_beta()
     const bool alpha_or_beta_applicable = brg.alpha != 1.0f || brg.beta != 0.f;
@@ -1729,14 +2030,20 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_without_post_ops(
         prefetchw(ptr[reg_aux_C]);
 
     if (brg.is_gemv) {
-        for_(dim_t bd = 0; bd < bd_block; bd++)
-        for (dim_t ld = 0; ld < ld_block2; ld++) {
-            const auto addr_c = ptr[reg_aux_C + C_offset(bd, ld)];
+        for (dim_t bd = 0; bd < bd_block; bd++) {
+            const auto addr_c = ptr[reg_aux_C + C_offset(bd, 0)];
             if (brg.brgattr.hint_prefetchw == brgemm_prfw_loop_store
                     && !is_superset(brg.isa_impl, avx10_2))
                 prefetchw(addr_c);
-            auto vmm = accm(ld_block2, bd, ld);
-            uni_vmovss(addr_c, Xmm(vmm.getIdx()));
+            auto vmm = accm(1, bd, 0);
+            if (brg.gemv_acc_is_vector()) {
+                if (gemv_is_tail_acc(bd, bd_block, is_bdb_tail))
+                    vmaskmovps(addr_c, vmm_tail_mask(), vmm);
+                else
+                    uni_vmovups(addr_c, vmm);
+            } else {
+                uni_vmovss(addr_c, Xmm(vmm.getIdx()));
+            }
         }
     } else {
         for_(dim_t bd = 0; bd < bd_block; bd++)
@@ -1771,7 +2078,10 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
     const bool need_generate_zp_a_compensation
             = brg.is_int8 && (brg.req_s8s8_compensation || has_zero_points);
 
-    maybe_set_avx_mask(is_ld_tail);
+    if (!brg.is_gemv)
+        maybe_set_avx_mask(is_ld_tail);
+    else if (brg.gemv_acc_is_vector())
+        maybe_set_avx_mask(is_bdb_tail);
 
     if (brg.is_tmm) {
         if (need_to_apply_alpha_beta || are_post_ops_applicable
@@ -1841,20 +2151,22 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
                             apply_compensation(adj_bd_block, 1, is_ld_tail);
 
                         if (need_to_apply_alpha_beta)
-                            apply_alpha_beta(adj_bd_block, 1, is_ld_tail);
+                            apply_alpha_beta(
+                                    adj_bd_block, 1, is_ld_tail, is_bdb_tail);
 
                         if (apply_post_ops) {
                             const size_t ldb_and_bdb_offset
                                     = ldb_po_offset(ldb) + bdb_po_offset(bdb);
                             store_accumulators_apply_post_ops(adj_bd_block, 1,
-                                    ldb_and_bdb_offset, is_ld_tail);
+                                    ldb_and_bdb_offset, is_ld_tail,
+                                    is_bdb_tail);
                             if (ldb < ld_block2 - 1) {
                                 advance_ldb_post_op_regs();
                                 add(reg_aux_D, ldb_D_offset(1));
                             }
                         } else {
                             store_accumulators_without_post_ops(
-                                    adj_bd_block, 1, is_ld_tail);
+                                    adj_bd_block, 1, is_ld_tail, is_bdb_tail);
                         }
 
                         if (ldb < ld_block2 - 1)
@@ -1944,8 +2256,15 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
         store_accumulators_amx(false);
         L_aligned(label_done);
     } else {
-        dim_t bd_block = (is_bdb_tail) ? brg.bdb_tail : brg.bd_block;
-        if (brg.is_gemv) reduce_gemv_accumulators(bd_block);
+        dim_t bd_block = 0;
+        if (brg.is_gemv)
+            bd_block = brg.gemv_num_acc_blocks(is_bdb_tail);
+        else
+            bd_block = is_bdb_tail ? brg.bdb_tail : brg.bd_block;
+        assert(bd_block > 0);
+
+        if (brg.is_gemv && !brg.gemv_acc_is_vector())
+            reduce_gemv_accumulators(bd_block);
 
         if (need_generate_zp_a_compensation) {
             Label label_store_without_comp;
@@ -1958,7 +2277,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
         }
 
         if (need_to_apply_alpha_beta)
-            apply_alpha_beta(bd_block, ld_block2, is_ld_tail);
+            apply_alpha_beta(bd_block, ld_block2, is_ld_tail, is_bdb_tail);
 
         Label label_done;
         if (are_post_ops_applicable) {
@@ -1967,12 +2286,13 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
             cmp(reg_do_post_ops, 0);
             jz(label_skip_post_ops, T_NEAR);
             store_accumulators_apply_post_ops(
-                    bd_block, ld_block2, 0, is_ld_tail);
+                    bd_block, ld_block2, 0, is_ld_tail, is_bdb_tail);
             jmp(label_done, T_NEAR);
 
             L_aligned(label_skip_post_ops);
         }
-        store_accumulators_without_post_ops(bd_block, ld_block2, is_ld_tail);
+        store_accumulators_without_post_ops(
+                bd_block, ld_block2, is_ld_tail, is_bdb_tail);
         L_aligned(label_done);
     }
 }
@@ -2386,31 +2706,47 @@ template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::gemv_microkernel(
         bool is_bdb_tail, dim_t ld_block2, bool is_rd_tail) {
 
-    maybe_set_avx_mask(is_rd_tail);
+    assert(brg.is_gemv);
+    assert(brg.ld_block == 1);
+    assert(ld_block2 == 1);
 
-    auto load_vec = [this, is_rd_tail](Vmm vec, const Xbyak::Address &addr) {
-        assert(brg.dt_a == data_type::f32);
+    const dim_t bd_block = brg.gemv_num_acc_blocks(is_bdb_tail);
+
+    if (!brg.transA) {
+        maybe_set_avx_mask(is_rd_tail);
 
         if (is_rd_tail)
-            vmaskmovps(vec, vmm_tail_mask(), addr);
+            vmaskmovps(gemv_load_b(), vmm_tail_mask(), ptr[reg_aux_B]);
         else
-            uni_vmovups(vec, addr);
-    };
+            uni_vmovups(gemv_load_b(), ptr[reg_aux_B]);
 
-    auto load_A = [this, load_vec](Vmm vmm_a, dim_t bd) {
-        load_vec(vmm_a, ptr[reg_aux_A + A_offset(bd, 0)]);
-    };
+        for (dim_t bd = 0; bd < bd_block; bd++) {
+            auto a_addr = ptr[reg_aux_A + A_offset(bd, 0)];
 
-    auto load_B
-            = [this, load_vec](Vmm vmm_b) { load_vec(vmm_b, ptr[reg_aux_B]); };
+            if (is_rd_tail)
+                vmaskmovps(gemv_load_a(), vmm_tail_mask(), a_addr);
+            else
+                uni_vmovups(gemv_load_a(), a_addr);
 
-    const dim_t bd_block = (is_bdb_tail) ? brg.bdb_tail : brg.bd_block;
+            uni_vfmadd231ps(accm(1, bd, 0), gemv_load_a(), gemv_load_b());
+        }
+    } else {
+        vbroadcastss(gemv_load_b(), ptr[reg_aux_B]);
 
-    load_B(gemv_load_b());
-    for (dim_t bd = 0; bd < bd_block; bd++) {
-        load_A(gemv_load_a(), bd);
-        auto acc = accm(1, bd, 0);
-        uni_vfmadd231ps(acc, gemv_load_a(), gemv_load_b());
+        for (dim_t bd = 0; bd < bd_block; bd++) {
+            const bool is_tail_acc
+                    = gemv_is_tail_acc(bd, bd_block, is_bdb_tail);
+            const auto a_addr = ptr[reg_aux_A + A_offset(bd, 0)];
+
+            if (is_tail_acc) {
+                maybe_set_avx_mask(true);
+                vmaskmovps(gemv_load_a(), vmm_tail_mask(), a_addr);
+            } else {
+                uni_vmovups(gemv_load_a(), a_addr);
+            }
+
+            uni_vfmadd231ps(accm(1, bd, 0), gemv_load_a(), gemv_load_b());
+        }
     }
 }
 
@@ -2905,13 +3241,13 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
         if (brg.is_gemv && brg.treat_y_as_row) {
             if (brg.with_bias) {
                 reg_bias.restore();
-                add(reg_bias, bias_offset(brg.bd_block));
+                add(reg_bias, bias_offset(brg.gemv_bd_block()));
                 reg_bias.save();
             }
 
             if (brg.with_wei_scales) {
                 reg_wei_scales.restore();
-                add(reg_wei_scales, wei_scales_offset(brg.bd_block));
+                add(reg_wei_scales, wei_scales_offset(brg.gemv_bd_block()));
                 reg_wei_scales.save();
             }
         }

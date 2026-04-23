@@ -54,6 +54,10 @@ struct dnnl_stream : public dnnl::impl::c_compatible {
     virtual dnnl::impl::status_t reset_profiling() {
         if (!is_profiling_enabled())
             return dnnl::impl::status::invalid_arguments;
+        if (is_verbose_profiler_enabled())
+            VWARN(common, stream,
+                    "resetting profiler during DNNL_VERBOSE=profile_exec can "
+                    "can cause incorrect timing logs.");
         return dnnl::impl::status::unimplemented;
     }
 
@@ -73,6 +77,21 @@ struct dnnl_stream : public dnnl::impl::c_compatible {
 
     bool is_profiling_enabled() const { return impl_->is_profiling_enabled(); }
 
+    dnnl::impl::status_t init_verbose_profiler(bool enable_profiler) {
+        use_verbose_profiler_ = enable_profiler
+                && impl_->supports_verbose_profiling(engine_->kind());
+        return dnnl::impl::status::success;
+    }
+
+    bool is_verbose_profiler_enabled() const { return use_verbose_profiler_; }
+
+    virtual dnnl::impl::status_t run_verbose_profiler(
+            std::string &pd_info, double start_ms) const {
+        if (!is_verbose_profiler_enabled())
+            return dnnl::impl::status::invalid_arguments;
+        return dnnl::impl::status::unimplemented;
+    }
+
     virtual dnnl::impl::status_t zero_pad(const dnnl::impl::memory_t *memory,
             const dnnl::impl::exec_ctx_t &ctx);
 
@@ -91,6 +110,7 @@ struct dnnl_stream : public dnnl::impl::c_compatible {
 protected:
     dnnl::impl::engine_t *engine_;
     std::unique_ptr<dnnl::impl::stream_impl_t> impl_;
+    bool use_verbose_profiler_;
 };
 
 #endif

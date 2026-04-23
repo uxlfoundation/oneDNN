@@ -42,6 +42,10 @@ public:
         return (flags() & dnnl::impl::stream_flags::profiling);
     }
 
+    virtual bool supports_verbose_profiling(engine_kind_t) const {
+        return false;
+    }
+
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
     status_t get_threadpool(
             threadpool_interop::threadpool_iface **threadpool) const {

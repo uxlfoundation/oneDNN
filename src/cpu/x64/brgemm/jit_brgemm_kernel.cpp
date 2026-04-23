@@ -278,11 +278,11 @@ private:
         return isa_num_vregs(brg.isa_impl) - used_vregs;
     }
 
-    Vmm accm(dim_t ld_block, dim_t bd, dim_t ld) {
+    Vmm accm(dim_t ld_block, dim_t bd, dim_t ld) const noexcept {
         return Vmm(max_effective_vregs - 1 - (bd * ld_block + ld));
     }
 
-    Vmm bcst(dim_t bd = 0) {
+    Vmm bcst(dim_t bd = 0) const noexcept {
         if (brg.n_bcast_1_load) {
             dim_t idx = max_effective_vregs - 1 - (brg.ld_block2 * brg.bd_block)
                     - bd;
@@ -292,7 +292,7 @@ private:
             return Vmm(0);
     }
 
-    Vmm load(dim_t ld = 0) {
+    Vmm load(dim_t ld = 0) const noexcept {
         if (brg.n_bcast_1_load) {
             return Vmm(0);
         } else {
@@ -315,7 +315,7 @@ private:
         return Vmm(idx);
     }
 
-    Vmm vmm_tmp(dim_t i) {
+    Vmm vmm_tmp(dim_t i) const noexcept {
         assert(IMPLICATION(!brg.is_tmm,
                 i >= 0
                         && i < max_effective_vregs
@@ -323,10 +323,10 @@ private:
         return Vmm(i);
     }
 
-    Vmm vmm_tail_mask() { return vmm_tmp(1); }
-    Vmm vmm_beta() { return vmm_tmp(1); }
-    Vmm vmm_lbound() { return vmm_tmp(1); }
-    Vmm vmm_ubound() { return vmm_tmp(0); }
+    Vmm vmm_tail_mask() const noexcept { return vmm_tmp(1); }
+    Vmm vmm_beta() const noexcept { return vmm_tmp(1); }
+    Vmm vmm_lbound() const noexcept { return vmm_tmp(1); }
+    Vmm vmm_ubound() const noexcept { return vmm_tmp(0); }
 
     Vmm vmm_one_bytes() const noexcept { return Vmm(3); }
     Vmm vmm_zp_a_shift() const noexcept { return Vmm(2); }

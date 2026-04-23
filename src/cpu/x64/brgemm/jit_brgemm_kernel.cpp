@@ -398,7 +398,7 @@ private:
     void fp8_to_f16_upconvert_to_vnni(dim_t num_rows, dim_t tile_num_col_bytes,
             reg64_t reg_base, dim_t offset, reg64_t reg_data_stride,
             data_type_t dt, bool is_rd_tail);
-    void reduce_gemv_accumulators(dim_t bd_block, dim_t ld_block2);
+    void reduce_gemv_accumulators(dim_t bd_block);
     void store_accumulators(dim_t bd_block2, bool is_bdb_tail, dim_t ld_block,
             bool is_ld_tail, bool skip_accumulation);
     void store_accumulators_without_post_ops(
@@ -1273,15 +1273,12 @@ void jit_brgemm_kernel_t<Wmm>::apply_post_ops(dim_t bd_block, dim_t ld_block2,
 }
 
 template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::reduce_gemv_accumulators(
-        dim_t bd_block, dim_t ld_block2) {
+void jit_brgemm_kernel_t<Wmm>::reduce_gemv_accumulators(dim_t bd_block) {
     // At this point the broadcast registers are not used.
     auto workspace = bcst();
     for (dim_t bd = 0; bd < bd_block; bd++) {
-        for (dim_t ld = 0; ld < ld_block2; ld++) {
-            auto acc = accm(ld_block2, bd, ld);
-            regops::horizontal_add_ps(this, acc, workspace);
-        }
+        auto acc = accm(1, bd, 0);
+        regops::horizontal_add_ps(this, acc, workspace);
     }
 }
 
@@ -1931,7 +1928,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
         L_aligned(label_done);
     } else {
         dim_t bd_block = (is_bdb_tail) ? brg.bdb_tail : brg.bd_block;
-        if (brg.is_gemv) reduce_gemv_accumulators(bd_block, ld_block2);
+        if (brg.is_gemv) reduce_gemv_accumulators(bd_block);
 
         if (need_generate_zp_a_compensation) {
             Label label_store_without_comp;

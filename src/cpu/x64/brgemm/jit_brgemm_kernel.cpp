@@ -2367,12 +2367,8 @@ void jit_brgemm_kernel_t<Wmm>::gemv_microkernel(
 
     maybe_set_avx_mask(is_rd_tail);
 
-    auto load_vec = [this, is_rd_tail](
-                            Vmm vec, dim_t row, dim_t col, matrix_kind_t mk) {
+    auto load_vec = [this, is_rd_tail](Vmm vec, const Xbyak::Address &addr) {
         assert(brg.dt_a == data_type::f32);
-        auto addr = mk == matrix_kind_t::matrix_A
-                ? ptr[reg_aux_A + A_offset(row, col)]
-                : ptr[reg_aux_B + B_offset(row, col)];
 
         if (is_rd_tail)
             vmaskmovps(vec, vmm_tail_mask(), addr);
@@ -2380,23 +2376,20 @@ void jit_brgemm_kernel_t<Wmm>::gemv_microkernel(
             uni_vmovups(vec, addr);
     };
 
-    auto load_A = [load_vec](Vmm vmm_a, dim_t bd, dim_t rd) {
-        load_vec(vmm_a, bd, rd, matrix_kind_t::matrix_A);
+    auto load_A = [this, load_vec](Vmm vmm_a, dim_t bd) {
+        load_vec(vmm_a, ptr[reg_aux_A + A_offset(bd, 0)]);
     };
 
-    auto load_B = [load_vec](Vmm vmm_b, dim_t rd, dim_t ld) {
-        load_vec(vmm_b, rd, ld, matrix_kind_t::matrix_B);
-    };
+    auto load_B
+            = [this, load_vec](Vmm vmm_b) { load_vec(vmm_b, ptr[reg_aux_B]); };
 
     const dim_t bd_block = (is_bdb_tail) ? brg.bdb_tail : brg.bd_block;
-    const dim_t rd = 0;
-    for (dim_t ld = 0; ld < ld_block2; ld++) {
-        load_B(load(), rd, ld);
-        for (dim_t bd = 0; bd < bd_block; bd++) {
-            load_A(bcst(), bd, rd);
-            auto acc = accm(ld_block2, bd, ld);
-            uni_vfmadd231ps(acc, bcst(), load());
-        }
+
+    load_B(load());
+    for (dim_t bd = 0; bd < bd_block; bd++) {
+        load_A(bcst(), bd);
+        auto acc = accm(1, bd, 0);
+        uni_vfmadd231ps(acc, bcst(), load());
     }
 }
 

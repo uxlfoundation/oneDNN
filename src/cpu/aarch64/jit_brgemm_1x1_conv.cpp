@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2024-2025 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -111,7 +111,8 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     if (with_sum) {
         const auto &sum_po = p.entry_[sum_idx];
         if (!one_of(sum_po.sum.dt, data_type::undef, data_type::f32,
-                    data_type::s32, data_type::u8, data_type::s8, data_type::bf16))
+                    data_type::s32, data_type::u8, data_type::s8,
+                    data_type::bf16))
             return status::unimplemented;
     }
     sum_scale = with_sum ? p.entry_[sum_idx].sum.scale : 0.0;

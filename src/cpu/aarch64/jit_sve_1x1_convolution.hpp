@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2021-2024 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -495,7 +495,14 @@ struct jit_sve_1x1_convolution_bwd_data_t : public primitive_t {
                             gIOdhw8o8i);
                     break;
                 }
-                default: break;
+                case sve_128: {
+                    dat_tag = dat_tag_nxc;
+                    wei_tag = utils::pick(2 * ndims() - 6 + with_groups(),
+                            IOw4o4i, gIOw4o4i, IOhw4o4i, gIOhw4o4i, IOdhw4o4i,
+                            gIOdhw4o4i);
+                    break;
+                }
+                default: return false;
             }
             return set_default_formats_common(dat_tag, wei_tag, dat_tag);
         }
@@ -643,7 +650,29 @@ struct jit_sve_1x1_convolution_bwd_weights_t : public primitive_t {
                             gOIdhw8i8o);
                     break;
                 }
-                default: break;
+                case sve_128: {
+                    const auto dat_tag_nCx4c
+                            = utils::pick(ndims() - 3, nCw4c, nChw4c, nCdhw4c);
+                    const auto curr_src_tag = src_d.matches_one_of_tag(
+                            dat_tag_nxc, dat_tag_nCx4c);
+                    const auto curr_dst_tag = diff_dst_d.matches_one_of_tag(
+                            dat_tag_nxc, dat_tag_nCx4c);
+                    const auto is_data_layout_nxc
+                            = IMPLICATION(curr_src_tag != dat_tag_nxc,
+                                      src_d.format_kind() == format_kind::any)
+                            && IMPLICATION(curr_dst_tag != dat_tag_nxc,
+                                    diff_dst_d.format_kind()
+                                            == format_kind::any)
+                            && utils::one_of(
+                                    dat_tag_nxc, curr_src_tag, curr_dst_tag);
+
+                    dat_tag = is_data_layout_nxc ? dat_tag_nxc : dat_tag_nCx4c;
+                    wei_tag = utils::pick(2 * ndims() - 6 + with_groups(),
+                            OIw4i4o, gOIw4i4o, OIhw4i4o, gOIhw4i4o, OIdhw4i4o,
+                            gOIdhw4i4o);
+                    break;
+                }
+                default: return false;
             }
             return set_default_formats_common(dat_tag, wei_tag, dat_tag);
         }

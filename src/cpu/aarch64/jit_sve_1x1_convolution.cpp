@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2021-2024 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -595,6 +595,8 @@ void jit_sve_1x1_convolution_bwd_data_t<diff_dst_type, wei_type, diff_src_type,
 }
 
 template struct jit_sve_1x1_convolution_bwd_data_t<data_type::f32,
+        data_type::f32, data_type::f32, sve_128>;
+template struct jit_sve_1x1_convolution_bwd_data_t<data_type::f32,
         data_type::f32, data_type::f32, sve_256>;
 template struct jit_sve_1x1_convolution_bwd_data_t<data_type::f32,
         data_type::f32, data_type::f32, sve_512>;
@@ -1049,6 +1051,10 @@ void jit_sve_1x1_convolution_bwd_weights_t<diff_dst_type, wei_type,
     }
 }
 
+// SVE128 BWD_W is currently not selected due to observed 1x1
+// low-spatial regressions at 64/96 threads.
+template struct jit_sve_1x1_convolution_bwd_weights_t<data_type::f32,
+        data_type::f32, data_type::f32, sve_128>;
 template struct jit_sve_1x1_convolution_bwd_weights_t<data_type::f32,
         data_type::f32, data_type::f32, sve_256>;
 template struct jit_sve_1x1_convolution_bwd_weights_t<data_type::f32,

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Arm Ltd. and affiliates
+* Copyright 2022-2024, 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@
 #define CPU_AARCH64_ACL_DECONVOLUTION_HPP
 
 #include "cpu/aarch64/acl_post_ops.hpp"
+#include "cpu/aarch64/cpu_isa_traits.hpp"
 #include "cpu/cpu_deconvolution_pd.hpp"
 
 namespace dnnl {
@@ -148,6 +149,23 @@ struct acl_deconvolution_fwd_t : public primitive_t {
             if (utils::one_of(true, is_3d, is_1d, with_groups)) {
                 return status::unimplemented;
             }
+
+            // Width-only deconvolution shapes (unit height) are consistently
+            // faster through the conv-backed JIT implementation than ACL.
+            // The heuristic is conservative because some sw == 2 cases
+            // are still slightly faster with ACL at 1 thread.
+            const bool is_sve_128 = mayiuse(sve_128)
+                    && get_sve_length() == cpu_isa_traits<sve_128>::vlen;
+            const bool is_f32 = utils::everyone_is(
+                    f32, src_data_t, wei_data_t, dst_data_t);
+            const bool all_formats_any
+                    = utils::everyone_is(format_kind::any, src_md_.format_kind,
+                            weights_md_.format_kind, dst_md_.format_kind);
+            const bool prefer_conv_sve_128 = is_sve_128 && is_f32
+                    && all_formats_any && ndims == 4 && ih == 1 && oh == 1
+                    && kh == 1 && sw > 1 && kw >= 4
+                    && (sw >= 4 || ow >= 131072);
+            if (prefer_conv_sve_128) { return status::unimplemented; }
 
             acl_pd_conf.with_bias
                     = desc_.bias_desc.format_kind != format_kind::undef;

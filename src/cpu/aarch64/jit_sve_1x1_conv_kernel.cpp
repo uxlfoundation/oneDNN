@@ -746,12 +746,25 @@ status_t jit_sve_1x1_conv_kernel_t<isa>::init_conf(jit_1x1_conv_conf_t &jcp,
             break;
         }
         case sve_128: {
-            const auto dat_tag_nCx4c = pick(ndims - 3, nCw4c, nChw4c, nCdhw4c);
-            jcp.src_tag = src_d.matches_one_of_tag(dat_tag_nxc, dat_tag_nCx4c);
-            jcp.dst_tag = dst_d.matches_one_of_tag(dat_tag_nxc, dat_tag_nCx4c);
-            is_data_layout_nxc
-                    = utils::everyone_is(dat_tag_nxc, jcp.src_tag, jcp.dst_tag);
-            required_dat_tag = is_data_layout_nxc ? dat_tag_nxc : dat_tag_nCx4c;
+            if (jcp.prop_kind == prop_kind::backward_data) {
+                // SVE128 BWD_D uses plain activations only.
+                jcp.src_tag = src_d.matches_one_of_tag(dat_tag_nxc);
+                jcp.dst_tag = dst_d.matches_one_of_tag(dat_tag_nxc);
+                is_data_layout_nxc = utils::everyone_is(
+                        dat_tag_nxc, jcp.src_tag, jcp.dst_tag);
+                required_dat_tag = dat_tag_nxc;
+            } else {
+                const auto dat_tag_nCx4c
+                        = pick(ndims - 3, nCw4c, nChw4c, nCdhw4c);
+                jcp.src_tag
+                        = src_d.matches_one_of_tag(dat_tag_nxc, dat_tag_nCx4c);
+                jcp.dst_tag
+                        = dst_d.matches_one_of_tag(dat_tag_nxc, dat_tag_nCx4c);
+                is_data_layout_nxc = utils::everyone_is(
+                        dat_tag_nxc, jcp.src_tag, jcp.dst_tag);
+                required_dat_tag
+                        = is_data_layout_nxc ? dat_tag_nxc : dat_tag_nCx4c;
+            }
             break;
         }
         default: return status::unimplemented;

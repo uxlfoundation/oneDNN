@@ -162,7 +162,6 @@ private:
     std::unique_ptr<fp8_conversion_e4m3_t> f8_e4m3_cvt_;
 
     Xbyak::Label avx_tail_mask_;
-    Xbyak::Label avx_rd_tail_mask_;
     Xbyak::Label sum_zp_scale_data_;
     Xbyak::Label f16_perm_even_table_;
     Xbyak::Label f16_perm_odd_table_;
@@ -374,7 +373,6 @@ private:
     U vmm_mask(const U umm_in, bool mask_flag, bool store,
             Xbyak::Opmask ktail_mask) const;
     void maybe_set_avx_mask(bool is_ld_tail);
-    void maybe_set_avx_rd_tail_mask(bool is_rd_tail);
 
     void cvt2ps(data_type_t type_in, const Vmm vmm_in, const Xbyak::Operand &op,
             bool mask_flag, bool store, Xbyak::Opmask ktail_mask,
@@ -665,15 +663,13 @@ U jit_brgemm_kernel_t<Wmm>::vmm_mask(const U vmm_in, bool mask_flag, bool store,
 }
 
 template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::maybe_set_avx_mask(bool is_ld_tail) {
-    if (IMPLICATION(is_ld_tail, isa_has_masks(brg.isa_impl))) return;
+void jit_brgemm_kernel_t<Wmm>::maybe_set_avx_mask(bool is_tail) {
+    if (IMPLICATION(is_tail, isa_has_masks(brg.isa_impl))) return;
+    // Note: `is_tail` may be true even when `gemv_tail == 0`.
+    // In this case, the block is a tail block, but there is no partial
+    // accumulator (only full accumulators are present).
+    if (brg.is_gemv && brg.gemv_tail == 0) return;
     vmovups(vmm_tail_mask(), ptr[rip + avx_tail_mask_]);
-}
-
-template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::maybe_set_avx_rd_tail_mask(bool is_rd_tail) {
-    if (IMPLICATION(is_rd_tail, isa_has_masks(brg.isa_impl))) return;
-    vmovups(vmm_tail_mask(), ptr[rip + avx_rd_tail_mask_]);
 }
 
 template <typename Wmm>
@@ -2369,7 +2365,7 @@ template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::gemv_microkernel(
         bool is_bdb_tail, dim_t ld_block2, bool is_rd_tail) {
 
-    maybe_set_avx_rd_tail_mask(is_rd_tail);
+    maybe_set_avx_mask(is_rd_tail);
 
     auto load_vec = [this, is_rd_tail](
                             Vmm vec, dim_t row, dim_t col, matrix_kind_t mk) {
@@ -3159,22 +3155,17 @@ void jit_brgemm_kernel_t<Wmm>::generate() {
     postamble();
 
     align(32);
+
     const dim_t simd = vreg_traits_t<Vmm>::vlen / sizeof(float);
-    if (brg.is_gemv && !isa_has_masks(brg.isa_impl) && brg.rdb_tail > 0) {
-        L(avx_rd_tail_mask_);
-        for (dim_t i = 0; i < brg.rdb_tail; ++i)
+    if (!isa_has_masks(brg.isa_impl) && (brg.ldb_tail || brg.gemv_tail)) {
+        const dim_t tail_size = brg.is_gemv ? brg.gemv_tail : brg.ldb_tail;
+        L(avx_tail_mask_);
+        for (dim_t i = 0; i < tail_size; ++i)
             dd(0xffffffff);
-        for (dim_t i = brg.rdb_tail; i < simd; ++i)
+        for (dim_t i = tail_size; i < simd; ++i)
             dd(0);
     }
 
-    if (!isa_has_masks(brg.isa_impl) && brg.ldb_tail > 0) {
-        L(avx_tail_mask_);
-        for (dim_t i = 0; i < brg.ldb_tail; ++i)
-            dd(0xffffffff);
-        for (dim_t i = brg.ldb_tail; i < simd; ++i)
-            dd(0);
-    }
     if (!is_superset(brg.isa_impl, avx512_core) && brg.with_sum
             && brg.sum_scale != 1.f) {
         L(sum_zp_scale_data_);

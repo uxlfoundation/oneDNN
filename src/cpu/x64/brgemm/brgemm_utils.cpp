@@ -747,6 +747,8 @@ status_t brgemm_blocking_vmm_gemv(brgemm_desc_t *brg) {
     brg->rdb = brg->reduce_dim / brg->rd_block;
     brg->rdb_tail = brg->reduce_dim % brg->rd_block;
 
+    brg->gemv_tail = brg->rdb_tail;
+
     return status::success;
 }
 

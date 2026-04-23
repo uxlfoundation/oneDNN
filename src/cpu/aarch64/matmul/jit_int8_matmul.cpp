@@ -839,30 +839,17 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
         auto dst_scl_msk = scales.get(DNNL_ARG_DST).get_mask();
         auto wei_scl_msk = wei_scales.get_mask();
         auto src_scl_msk = src_scales.get_mask();
+        const bool is_src_per_m = src_scl_msk == src_qmask_M();
 
-        bool ok = attr_scales_ok(supported_args);
-        if (!ok && src_scl_msk == src_qmask_M()) {
-            ok = scales.has_default_values(supported_args);
-            for (int arg : supported_args) {
-                if (scales.has_default_values(arg)) continue;
-                ok = ok
-                        && scales.get(arg).get_quantization_mode()
-                                == quantization_mode::static_sazp;
-            }
-
-            const auto &wei_g0 = wei_scales.get_group(0);
-            const auto &wei_g1 = wei_scales.get_group(1);
-            ok = ok && src_scales.has_default_groups()
-                    && IMPLICATION(wei_g0 > 1, K() % wei_g0 == 0)
-                    && IMPLICATION(wei_g1 > 1, N() % wei_g1 == 0)
-                    && IMPLICATION(!wei_scales.has_default_groups(),
-                            utils::one_of(1, wei_g0, wei_g1));
-        }
+        bool ok = attr_scales_ok(supported_args,
+                {quantization_mode::static_sazp},
+                {{DNNL_ARG_SRC, {src_qmask_M()}}});
+        ok = ok && IMPLICATION(is_src_per_m, src_scales.has_default_groups());
 
         if (is_src_scl && !scales.has_default_data_type(DNNL_ARG_SRC))
             return false;
 
-        if ((src_scl_msk > 0 && src_scl_msk != src_qmask_M())
+        if ((src_scl_msk > 0 && !is_src_per_m)
                 || (wei_scl_msk > 0 && wei_scl_msk != 1 << (dims - 1))
                 || dst_scl_msk > 0)
             return false;

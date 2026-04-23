@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2019 Intel Corporation
+* Copyright 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -18,6 +19,7 @@
 #define COMMON_MATMUL_PD_HPP
 
 #include <assert.h>
+#include <map>
 
 #include "oneapi/dnnl/dnnl.h"
 
@@ -199,9 +201,19 @@ struct matmul_pd_t : public primitive_desc_t {
     virtual bool attr_scales_ok(const std::vector<int> &supported_args
             = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST},
             const std::vector<int> &supported_qmodes
-            = {quantization_mode::static_sazp}) const {
+            = {quantization_mode::static_sazp},
+            const std::map<int, std::vector<int>> &extra_masks = {}) const {
         const auto &scales = attr()->scales_;
         if (scales.has_default_values()) return true;
+
+        const auto extra_mask_ok = [&](int arg, int mask) {
+            const auto it = extra_masks.find(arg);
+            if (it != extra_masks.end()) {
+                for (const auto &extra_mask : it->second)
+                    if (mask == extra_mask) return true;
+            }
+            return false;
+        };
 
         bool ok = scales.has_default_values(supported_args);
         for (int arg : supported_args) {
@@ -238,10 +250,13 @@ struct matmul_pd_t : public primitive_desc_t {
                                     (mask & wei_qmask_K()), is_decompression);
                 }
             } else if (arg == DNNL_ARG_SRC) {
+                // Masks supported across all implementations. Implementation
+                // specific masks can be passed through `extra_masks`.
                 ok = ok
-                        && utils::one_of(mask, 0, src_qmask_K(),
-                                src_qmask_M() + src_qmask_K(),
-                                full_tensor_mask());
+                        && (utils::one_of(mask, 0, src_qmask_K(),
+                                    src_qmask_M() + src_qmask_K(),
+                                    full_tensor_mask())
+                                || extra_mask_ok(arg, mask));
                 ok = ok
                         && IMPLICATION((mask & src_qmask_K()),
                                 !scales.get(arg).has_default_groups());
@@ -249,11 +264,17 @@ struct matmul_pd_t : public primitive_desc_t {
                         && IMPLICATION(!scales.get(arg).has_default_groups(),
                                 scales.get_group(arg, 0)
                                         && K() % scales.get_group(arg, 1) == 0);
-            } else if (arg == DNNL_ARG_DST) {
                 ok = ok
-                        && utils::one_of(mask, 0, dst_qmask_N(),
-                                dst_qmask_M() + dst_qmask_N(),
-                                full_tensor_mask());
+                        && IMPLICATION(mask == src_qmask_M(),
+                                scales.get(arg).has_default_groups());
+            } else if (arg == DNNL_ARG_DST) {
+                // Masks supported across all implementations. Implementation
+                // specific masks can be passed through `extra_masks`.
+                ok = ok
+                        && (utils::one_of(mask, 0, dst_qmask_N(),
+                                    dst_qmask_M() + dst_qmask_N(),
+                                    full_tensor_mask())
+                                || extra_mask_ok(arg, mask));
                 ok = ok
                         && IMPLICATION(!scales.get(arg).has_default_groups(),
                                 (M() % scales.get_group(arg, -2)) == 0

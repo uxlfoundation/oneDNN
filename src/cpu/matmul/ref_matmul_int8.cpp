@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
+* Copyright 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -131,6 +132,7 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
     const bool with_src_scales = !attr_scales.has_default_values(DNNL_ARG_SRC);
     const int src_scale_mask = attr_scales.get_mask(DNNL_ARG_SRC);
     const auto src_scale_dt = attr_scales.get_data_type(DNNL_ARG_SRC);
+    const auto src_scale_group_m = attr_scales.get_group(DNNL_ARG_SRC, 0);
     const auto src_scale_group_k = attr_scales.get_group(DNNL_ARG_SRC, 1);
     const auto src_scale_ngroups_k
             = src_scale_group_k > 1 ? K / src_scale_group_k : 1;
@@ -239,7 +241,7 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
             float acc_f = static_cast<float>(acc);
             if (with_src_scales) {
                 const dim_t src_scale_offset = matmul_helper_t::get_quant_off(
-                        src_dims_idx, ndims, src_scale_mask, 1,
+                        src_dims_idx, ndims, src_scale_mask, src_scale_group_m,
                         src_scale_group_k, src_scale_md);
                 const float src_scale = io::load_float_value(
                         src_scale_dt, src_scales, src_scale_offset);

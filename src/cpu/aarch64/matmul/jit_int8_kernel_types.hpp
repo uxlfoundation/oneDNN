@@ -90,7 +90,7 @@ struct call_params_t {
     const uint8_t *src, *wei;
     uint8_t *dst;
     const float *bias, *scales, *dst_scales;
-    const float *src_scales; // optional per-row src scales for src:per_dim_0
+    const float *src_scales; // optional per-row src logical-M scales
     const float *wei_scales; // optional kernel-ready weight scales
     dim_t M, K, N;
     char *buf_B_ptr_;

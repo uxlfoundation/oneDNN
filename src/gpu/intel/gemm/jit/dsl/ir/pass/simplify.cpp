@@ -1513,7 +1513,8 @@ public:
         auto _b = nary_op_back_transform(b);
 
         // 0 <= a < b => (a / b) == 0
-        bool abs_a_lt_b = cset.can_prove(_a >= 0) && cset.can_prove(_a < _b);
+        bool abs_a_lt_b = cset.can_prove(_a >= 0, /*try_simplify=*/false)
+                && cset.can_prove(_a < _b, /*try_simplify=*/false);
 
         // 0 <= a < b => (a % b) == a
         if (abs_a_lt_b) {

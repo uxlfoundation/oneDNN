@@ -2050,18 +2050,15 @@ void jit_brgemm_kernel_t<Wmm>::maybe_pre_process_data(
             f8_e4m3_cvt_->vcvt_f8_to_f16_vnni(zmm_out1, zmm_out2, zmm_out1);
     } else if (brg.is_f16_fp8 || brg.is_bf16_fp8) {
         assert(utils::one_of(dt, data_type::f16, data_type::bf16));
-        uni_vmovups(zmm_out2, zmm_out1);
 
         const Xbyak::Zmm zmm_permute(vmm_fp8_emu_aux3().getIdx());
         assert(!utils::one_of(zmm_permute, zmm_out1, zmm_out2));
 
-        mov(reg64_fp8_aux, f16_perm_even_table_);
-        vmovups(zmm_permute, ptr[reg64_fp8_aux]);
-        vpermw(zmm_out1, zmm_permute, zmm_out1);
+        vmovups(zmm_permute, ptr[rip + f16_perm_odd_table_]);
+        vpermw(zmm_out2, zmm_permute, zmm_out1);
 
-        mov(reg64_fp8_aux, f16_perm_odd_table_);
-        vmovups(zmm_permute, ptr[reg64_fp8_aux]);
-        vpermw(zmm_out2, zmm_permute, zmm_out2);
+        vmovups(zmm_permute, ptr[rip + f16_perm_even_table_]);
+        vpermw(zmm_out1, zmm_permute, zmm_out1);
     } else
         assert(!"unsupported data type.");
 }

@@ -1646,11 +1646,17 @@ walk_order_t compute_walk_order(const config_t &cfg) {
     // XXX: Workaround for XeHPG related issues, supposedly coming from
     // math.inv usage to emulate integer division when using blocked walk
     // order.
+    VDEBUGINFO(4, primitive, conv, "MY: before check : %d %d",
+            cfg.hw() == ngen::HW::XeHPG,
+            utils::one_of(cfg.hw().family(), ngen::ProductFamily::GenericXeHPG,
+                    ngen::ProductFamily::DG2, ngen::ProductFamily::ARL));
     if (cfg.hw() == ngen::HW::XeHPG
             && utils::one_of(cfg.hw().family(),
-                    ngen::ProductFamily::GenericXeHPG,
-                    ngen::ProductFamily::DG2))
+                    ngen::ProductFamily::GenericXeHPG, ngen::ProductFamily::DG2,
+                    ngen::ProductFamily::ARL)) {
+        VDEBUGINFO(4, primitive, conv, "MY: return default_walk_order");
         return default_walk_order;
+    }
 
     // If threadgroup memory footprint exceeds L3 then L3 blocking is not
     // applied.

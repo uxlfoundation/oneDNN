@@ -14,6 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "gpu/intel/include/custom_types.h"
+
 __kernel void simple_sum(
         __global float *input, __global float *output, float scale, int a) {
 

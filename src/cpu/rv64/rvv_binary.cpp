@@ -16,7 +16,6 @@
 
 #include <assert.h>
 #include <memory>
-#include <riscv_vector.h>
 
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
@@ -24,6 +23,7 @@
 #include "common/type_helpers.hpp"
 
 #include "cpu/primitive_attr_postops.hpp"
+#include "cpu/rv64/jit_rvv_binary_kernel.hpp"
 #include "cpu/rv64/rvv_binary_kernels.hpp"
 
 #include "cpu/rv64/rvv_binary.hpp"
@@ -39,7 +39,14 @@ static inline void compute_binary_rvv(const alg_kind_t alg, const void *x,
         const data_type_t dt) {
     switch (dt) {
         case data_type::f32:
-            rvv_binary_apply_f32(alg, x, y, dst, c, len, dt);
+            if (jit_rvv_binary_f32_supported(alg)) {
+                jit_rvv_binary_apply_f32(alg,
+                        reinterpret_cast<const float *>(x),
+                        reinterpret_cast<const float *>(y),
+                        reinterpret_cast<float *>(dst), len);
+            } else {
+                rvv_binary_apply_f32(alg, x, y, dst, c, len, dt);
+            }
             break;
         case data_type::s32:
             rvv_binary_apply_s32(alg, x, y, dst, c, len, dt);

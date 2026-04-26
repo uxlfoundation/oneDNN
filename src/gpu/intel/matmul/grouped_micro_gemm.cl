@@ -56,7 +56,8 @@ void load_bias(
 #if WITH_SPARSE_GROUPS
 #define offsets_tile_br SUBGROUP_SIZE
 #define offsets_tile_bc 1
-#define offsets_tile_nbr 1
+#define offsets_tile_nbr \
+    MAX(1, NUM_GROUPS / ugemm_grouped_sg_tile_m / ugemm_grouped_wg_tile_n)
 #define offsets_tile_nbc 1
 DECLARE_2D_TILE(offsets_tile_type, int, SUBGROUP_SIZE, offsets_tile_br,
         offsets_tile_bc, offsets_tile_nbr, offsets_tile_nbc)
@@ -193,31 +194,53 @@ grouped_micro_gemm(const global SRC_DATA_T *src, long ldsrc,
 
 #if WITH_SPARSE_GROUPS
     local off_t *slm_src_offset = (local off_t *)slm;
+    local off_t *slm_batch = (local off_t *)(slm + sizeof(off_t) * 2);
+    if (get_local_linear_id() == 0) *slm_batch = INT_MAX;
+    intel_work_group_barrier_arrive(CLK_LOCAL_MEM_FENCE);
     off_t flat_token = get_group_id(2);
     {
         offsets_tile_type offsets_tile;
-        off_t sg_ij0 = sg_k * get_local_size(0) * get_local_size(1)
-                + sg_j * get_local_size(0) + sg_i * SUBGROUP_SIZE;
+        off_t sg_ij0 = sub_group_broadcast(get_local_linear_id(), 0);
 
-        tile_load(&offsets_tile, src_offsets, num_groups, 1, 0, sg_ij0, 0);
-        batch = work_group_reduce_min(offsets_tile.x[0][0] > flat_token
-                        ? get_local_linear_id()
-                        : INT_MAX);
+        int sg_offset = offsets_tile_nbr;
+        tile_load(&offsets_tile, src_offsets, num_groups, 1, 0,
+                sg_ij0 * sg_offset, 0);
 
+        batch = INT_MAX;
+        off_t batch_idx = INT_MAX;
+        int offsets_tile_idx = 0;
+        for (; offsets_tile_idx
+                        < sizeof(offsets_tile.x) / sizeof(offsets_tile.x[0])
+                && sub_group_all(batch == INT_MAX);
+                offsets_tile_idx++) {
+            batch_idx = (off_t)(sg_offset * sg_ij0
+                    + offsets_tile_idx * SUBGROUP_SIZE
+                    + get_sub_group_local_id());
+            if (offsets_tile.x[offsets_tile_idx][0] > flat_token) {
+                batch = batch_idx;
+            }
+        }
+
+        batch = sub_group_reduce_min(batch);
+        intel_work_group_barrier_wait(CLK_LOCAL_MEM_FENCE);
+        if (get_sub_group_local_id() == 0 && batch_idx != INT_MAX)
+            atom_min(slm_batch, batch);
+        work_group_barrier(CLK_LOCAL_MEM_FENCE);
+        batch = *slm_batch;
         if (batch == 0) {
             if (get_local_linear_id() == 0) {
                 slm_src_offset[0] = 0;
-                slm_src_offset[1] = offsets_tile.x[0][0];
+                slm_src_offset[1] = offsets_tile.x[offsets_tile_idx - 1][0];
             }
         } else {
-            if (batch - 1 == get_local_linear_id()) {
-                slm_src_offset[0] = offsets_tile.x[0][0];
+            if (batch_idx == batch - 1) {
+                slm_src_offset[0] = offsets_tile.x[offsets_tile_idx - 1][0];
             }
-            if (batch == get_local_linear_id()) {
-                slm_src_offset[1] = offsets_tile.x[0][0];
+            if (batch_idx == batch) {
+                slm_src_offset[1] = offsets_tile.x[offsets_tile_idx - 1][0];
             }
         }
-        barrier(CLK_LOCAL_MEM_FENCE);
+        work_group_barrier(CLK_LOCAL_MEM_FENCE);
     }
 
     int2 src_range = (int2)(slm_src_offset[0], slm_src_offset[1]);

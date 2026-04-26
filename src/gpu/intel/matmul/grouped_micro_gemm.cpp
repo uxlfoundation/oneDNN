@@ -458,6 +458,7 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
     kernel_ctx_.define_int("K_PARALLEL_LOCAL", is_gemv_);
     kernel_ctx_.define_int("WITH_SPARSE_GROUPS", is_gemv_);
     kernel_ctx_.define_int("WITH_SLM", gemm_.getSetting("slm_size") > 0);
+    kernel_ctx_.define_int("NUM_GROUPS", ngroups_);
     kernel_ctx_.add_option("-cl-std=CL3.0");
 
     return status::success;

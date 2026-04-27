@@ -411,6 +411,15 @@ attr.set_scales_mask(DNNL_ARG_WEIGHTS, (1 << 0) | (1 << 2));
 // Layout: standard ab layout
 ~~~
 
+K-grouped weight scales (e.g., MXFP8 with block size 32):
+~~~cpp
+attr.set_scales(DNNL_ARG_WEIGHTS, (1 << 0) | (1 << 1) | (1 << 2),
+    {32, 1}, memory::data_type::e8m0);
+// Groups are 2D {gK, gN} and are applied to two last dimensions of the tensor
+// Scale tensor: [num_groups, K/32, N] - dense 3D tensor
+// Layout: standard abc layout
+~~~
+
 Bias per expert:
 ~~~cpp
 // Bias: [num_groups, N] - dense 2D tensor

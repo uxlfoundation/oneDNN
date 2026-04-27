@@ -161,10 +161,12 @@
 	#undef XBYAK_USE_MEMFD
 #endif
 
-#if defined(_WIN64) || defined(__MINGW64__) || (defined(__CYGWIN__) && defined(__x86_64__))
-	#define XBYAK64_WIN
-#elif defined(__x86_64__)
-	#define XBYAK64_GCC
+#if !defined(XBYAK64_WIN) && !defined(XBYAK64_GCC)
+	#if defined(_WIN64) || defined(__MINGW64__) || (defined(__CYGWIN__) && defined(__x86_64__))
+		#define XBYAK64_WIN
+	#elif defined(__x86_64__)
+		#define XBYAK64_GCC
+	#endif
 #endif
 #if !defined(XBYAK64) && !defined(XBYAK32)
 	#if defined(XBYAK64_GCC) || defined(XBYAK64_WIN)
@@ -219,7 +221,7 @@ namespace Xbyak {
 
 enum {
 	DEFAULT_MAX_CODE_SIZE = 4096,
-	VERSION = 0x7354 /* 0xABCD = A.BC(.D) */
+	VERSION = 0x7370 /* 0xABCD = A.BC(.D) */
 };
 
 #ifndef MIE_INTEGER_TYPE_DEFINED
@@ -1412,7 +1414,7 @@ public:
 		DWORD oldProtect;
 		return VirtualProtect(const_cast<void*>(addr), size, mode, &oldProtect) != 0;
 #elif defined(__GNUC__)
-		size_t pageSize = sysconf(_SC_PAGESIZE);
+		size_t pageSize = inner::getPageSize();
 		size_t iaddr = reinterpret_cast<size_t>(addr);
 		size_t roundAddr = iaddr & ~(pageSize - static_cast<size_t>(1));
 		return mprotect(reinterpret_cast<void*>(roundAddr), size + (iaddr - roundAddr), mode) == 0;

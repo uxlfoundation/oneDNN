@@ -70,6 +70,7 @@
 --dtag=acbde,bacde,cabde,abced,abdce
 --wtag=abcde,acbde
 3x5x7x11x13:1x1x1x13x13
+3x5x7x11x11:1x1x1x11x13
 
 # batch size smaller than num_threads
 --reset

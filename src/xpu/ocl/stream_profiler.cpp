@@ -75,6 +75,50 @@ status_t stream_profiler_t::get_info(profiling_data_kind_t data_kind,
     return xpu::stream_profiler_t::get_info_impl(stamp2entry, data_kind, data);
 }
 
+status_t stream_profiler_t::get_aggregate_exec_timing(
+        double &duration_ms, std::vector<cl_event> &evt_snap) const {
+    duration_ms = 0.0;
+    if (evt_snap.empty()) return status::success;
+    cl_ulong agg_start = 0;
+    cl_ulong agg_end = 0;
+
+    // computation of execution timings is self-contained because of the event
+    // snapshot and immune to concurrent updates to profiler event list
+    for (auto ev : evt_snap) {
+        cl_ulong evbeg, evend;
+        OCL_CHECK(xpu::ocl::clGetEventProfilingInfo(ev,
+                CL_PROFILING_COMMAND_START, sizeof(evbeg), &evbeg, nullptr));
+        OCL_CHECK(xpu::ocl::clGetEventProfilingInfo(
+                ev, CL_PROFILING_COMMAND_END, sizeof(evend), &evend, nullptr));
+        agg_start = agg_start == 0 ? evbeg : std::min(agg_start, evbeg);
+        agg_end = std::max(agg_end, evend);
+    }
+    duration_ms = static_cast<double>(agg_end - agg_start) * 1e-6;
+
+    return status::success;
+}
+
+status_t stream_profiler_t::extract_primitive_events(
+        std::vector<cl_event> &evt_snap) {
+    evt_snap.clear();
+
+    // During the course of primitive execution, the current stamp marks the
+    // events enqueued for the current primitive.
+    for (auto it = events_.rbegin(); it != events_.rend(); ++it) {
+        if (it->stamp < stamp_) break;
+        if (it->stamp == stamp_) {
+            const auto &ocl_event = xpu::ocl::event_t::from(*it->event);
+            if (ocl_event.size() > 0) {
+                evt_snap.push_back(ocl_event[0].get());
+            }
+        }
+    }
+
+    std::reverse(evt_snap.begin(), evt_snap.end());
+
+    return status::success;
+}
+
 } // namespace ocl
 } // namespace xpu
 } // namespace impl

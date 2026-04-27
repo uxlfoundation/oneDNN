@@ -2554,17 +2554,6 @@ void jit_brgemm_kernel_t<Wmm>::maybe_pre_process_data(
             f8_e4m3_cvt_->vcvt_f8_to_bf16_vnni(zmm_out1, zmm_out2, zmm_out1);
         else
             f8_e4m3_cvt_->vcvt_f8_to_f16_vnni(zmm_out1, zmm_out2, zmm_out1);
-    } else if (brg.is_f16_fp8 || brg.is_bf16_fp8) {
-        assert(utils::one_of(dt, data_type::f16, data_type::bf16));
-
-        const Xbyak::Zmm zmm_permute(vmm_fp8_emu_aux3().getIdx());
-        assert(!utils::one_of(zmm_permute, zmm_out1, zmm_out2));
-
-        vmovups(zmm_permute, ptr[rip + f16_perm_odd_table_]);
-        vpermw(zmm_out2, zmm_permute, zmm_out1);
-
-        vmovups(zmm_permute, ptr[rip + f16_perm_even_table_]);
-        vpermw(zmm_out1, zmm_permute, zmm_out1);
     } else
         assert(!"unsupported data type.");
 }
@@ -3078,17 +3067,23 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
             Xmm xmm_tmp = Xmm(vmm_bcast.getIdx());
             load_bytes(
                     xmm_tmp, reg_aux_A, offset, rd_tail_size * brg.typesize_A);
-            if (brg.is_f16_fp8 || brg.is_bf16_fp8)
-                vpbroadcastq(vmm_bcast, xmm_tmp);
-            else
+            if (brg.is_f16_fp8 || brg.is_bf16_fp8) {
+                const Vmm vmm_ext = vmm_fp8_bcst();
+                const Xmm xmm_ext = Xmm(vmm_ext.getIdx());
+                vpsrldq(xmm_ext, xmm_tmp, 4);
+                uni_vpbroadcastd(vmm_ext, xmm_ext);
+                uni_vpbroadcastd(vmm_bcast, xmm_tmp);
+            } else
                 uni_vpbroadcastd(vmm_bcast, xmm_tmp);
         } else {
             if (dt == data_type::f32) {
                 uni_vbroadcastss(vmm_bcast, ptr[reg_aux_A + offset]);
             } else if (dt == data_type::bf16) {
-                if (brg.is_bf16_fp8)
-                    vpbroadcastq(vmm_bcast, ptr[reg_aux_A + offset]);
-                else if (brg.isa_impl == avx2_vnni_2)
+                if (brg.is_bf16_fp8) {
+                    uni_vpbroadcastd(vmm_bcast, ptr[reg_aux_A + offset]);
+                    uni_vpbroadcastd(
+                            vmm_fp8_bcst(), ptr[reg_aux_A + offset + 4]);
+                } else if (brg.isa_impl == avx2_vnni_2)
                     vbcstnebf162ps(vmm_bcast, ptr[reg_aux_A + offset]);
                 else
                     uni_vpbroadcastd(vmm_bcast, ptr[reg_aux_A + offset]);
@@ -3096,9 +3091,11 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                                data_type::f8_e5m2, data_type::f8_e4m3)) {
                 uni_vpbroadcastd(vmm_bcast, ptr[reg_aux_A + offset]);
             } else if (dt == data_type::f16) {
-                if (brg.is_f16_fp8)
-                    vpbroadcastq(vmm_bcast, ptr[reg_aux_A + offset]);
-                else if (brg.isa_impl == avx10_2) {
+                if (brg.is_f16_fp8) {
+                    uni_vpbroadcastd(vmm_bcast, ptr[reg_aux_A + offset]);
+                    uni_vpbroadcastd(
+                            vmm_fp8_bcst(), ptr[reg_aux_A + offset + 4]);
+                } else if (brg.isa_impl == avx10_2) {
                     uni_vpbroadcastd(vmm_bcast, ptr[reg_aux_A + offset]);
                 } else if (brg.isa_impl == avx2_vnni_2) {
                     vbcstnesh2ps(vmm_bcast, ptr[reg_aux_A + offset]);
@@ -3211,8 +3208,9 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                     else {
                         if (brg.is_fp8_via_convert_non_amx()) {
                             broadcast_A(bcst(bd), bd, rd);
-                            maybe_pre_process_data(
-                                    brg.dt_a, bcst(bd), vmm_fp8_bcst());
+                            if (!brg.is_f16_fp8 && !brg.is_bf16_fp8)
+                                maybe_pre_process_data(
+                                        brg.dt_a, bcst(bd), vmm_fp8_bcst());
                             dot_product(vmm, load(), bcst(bd));
                             dot_product(vmm, vmm_fp8_load(), vmm_fp8_bcst());
                         } else
@@ -3229,7 +3227,8 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
 
             for (dim_t bd = bd_b; bd < bd_e; bd++) {
                 if (!is_emdbd) broadcast_A(bcst(), bd, rd);
-                if (brg.is_fp8_via_convert_non_amx())
+                if (brg.is_fp8_via_convert_non_amx() && !brg.is_f16_fp8
+                        && !brg.is_bf16_fp8)
                     maybe_pre_process_data(brg.dt_a, bcst(), vmm_fp8_bcst());
                 if (prefetch_count_B < ld_block2) {
                     const dim_t prefetch_offset
@@ -3849,21 +3848,6 @@ void jit_brgemm_kernel_t<Wmm>::generate() {
                 dw(uint16_t(2 * i + 1));
             else
                 dw(uint16_t(0));
-    } else if (brg.is_f16_fp8 || brg.is_bf16_fp8) {
-        // arrange elements of matrix A in vnni format;
-        // broadcasted values in lower and uppper parts are the same
-        align(64);
-        L(f16_perm_even_table_);
-        for_(int n = 0; n < 2; ++n)
-        for (dim_t i = 0; i < 16; ++i) {
-            dw(uint16_t(4 * (i / 2) + (i % 2)));
-        }
-        align(64);
-        L(f16_perm_odd_table_);
-        for_(int n = 0; n < 2; ++n)
-        for (dim_t i = 0; i < 16; ++i) {
-            dw(uint16_t(4 * (i / 2) + (i % 2) + 2));
-        }
     }
 }
 

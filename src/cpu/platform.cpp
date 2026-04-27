@@ -152,6 +152,7 @@ bool has_training_support(data_type_t data_type) {
     // TODO: maybe return false for int8, but some primitives like prelu
     // have training support
     switch (data_type) {
+        case data_type::f32: return true;
         case data_type::bf16:
 #if DNNL_X64
             return x64::mayiuse(x64::avx512_core);
@@ -174,7 +175,14 @@ bool has_training_support(data_type_t data_type) {
 #else
             return false;
 #endif
-        default: return true;
+        case data_type::f8_e5m2:
+        case data_type::f8_e4m3:
+#if DNNL_X64
+            return x64::mayiuse(x64::avx512_core_fp16);
+#else
+            return false;
+#endif
+        default: return false;
     }
 }
 

@@ -123,7 +123,7 @@ The library is optimized for the following GPUs:
   * Intel Graphics for Intel Core Ultra Series 1 processors (formerly Meteor Lake)
   * Intel Graphics for Intel Core Ultra Series 2 processors (formerly Arrow Lake and Lunar Lake)
   * Intel Graphics for Intel Core Ultra Series 3 processors (formerly Panther Lake)
-  * Intel Graphics for future Intel Core Series 3 processors (formerly Wildcat Lake)
+  * Intel Graphics for Intel Core Series 3 processors (formerly Wildcat Lake)
   * Intel Graphics for future Intel Core Ultra processors (code name Nova Lake)
 
 [CPU dispatcher control]: https://uxlfoundation.github.io/oneDNN/dev_guide_cpu_dispatcher_control.html

@@ -474,10 +474,8 @@ bool is_gemv_applicable(const brgemm_matmul_conf_t &bgmmc,
     // Reduction is not supported for GEMV code path.
     if (bgmmc.with_reduce) return false;
 
-    // BRGEMV currently supports only f32 and strict fpmath mode.
-    if (utils::one_of(false, bm_conf_utils.is_f32(),
-                attr.fpmath_.mode_ == fpmath_mode::strict))
-        return false;
+    // BRGEMV currently supports only f32.
+    if (!bm_conf_utils.is_f32()) return false;
 
     const format_tag_t gemv_A_tag = bm_conf_utils.get_gemv_A_tag(A_md);
     const format_tag_t gemv_B_tag = bm_conf_utils.get_gemv_B_tag(B_md);

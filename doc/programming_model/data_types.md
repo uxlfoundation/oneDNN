@@ -229,7 +229,7 @@ have specialized optimizations in the library:
    * Intel Arc B-Series Graphics (formerly Battlemage)
  * Xe3-LPG
    * Intel Graphics for Intel Core Ultra Series 3 processors (formerly Panther Lake)
-   * Intel Graphics for future Intel Core Series 3 processors (code name Wildcat Lake)
+   * Intel Graphics for Intel Core Series 3 processors (code name Wildcat Lake)
    * Intel Graphics for future Intel Core Ultra processors (code name Nova Lake S)
  * Xe3p-LPG
    * Intel Graphics for future Intel Core Ultra processors (code name Nova Lake P)

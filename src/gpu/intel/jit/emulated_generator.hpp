@@ -22,6 +22,7 @@
 
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/jit/generator.hpp"
+#include "gpu/intel/jit/utils/type_bridge.hpp"
 #include "ngen_core.hpp"
 #include "ngen_emulation.hpp"
 #include "ngen_register_allocator.hpp"
@@ -42,7 +43,7 @@ protected:
 public:
     emulated_generator_t(const compute::device_info_t &device_info,
             const debug_config_t &debug_config)
-        : generator_t<hw>(debug_config)
+        : generator_t<hw>(get_ngen_product(device_info), debug_config)
         , ra_(hw)
         , emu_strategy(hw, device_info.stepping_id()) {}
 

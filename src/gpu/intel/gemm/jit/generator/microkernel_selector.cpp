@@ -367,7 +367,7 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
             /* Generate microkernel */
             #define ARCH_DISPATCH(arch)                                                         \
                 case HW::arch: {                                                                \
-                    Generator<HW::arch> generator;                                              \
+                    Generator<HW::arch> generator(product);                                     \
                     generator.setStepping(stepping);                                            \
                     return generator.gemmMicrokernelPackage(problem, strategy, interface,       \
                                                             makeProtocol(options), hwInfo.gmdid,\

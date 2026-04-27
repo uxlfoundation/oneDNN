@@ -62,8 +62,9 @@ class binary_format_kernel_t : public generator_t<hw> {
     FORWARD(hw);
 
 public:
-    binary_format_kernel_t(const engine_t *engine)
-        : generator_t<hw>(debug_config_t {GENERATOR_NAME, GENERATOR_LINE}) {
+    binary_format_kernel_t(const engine_t *engine, const ngen::Product &product)
+        : generator_t<hw>(
+                  product, debug_config_t {GENERATOR_NAME, GENERATOR_LINE}) {
 
         auto low_half = [](uint64_t q) -> uint32_t { return q & 0xFFFFFFFF; };
         auto high_half = [](uint64_t q) -> uint32_t { return q >> 32; };
@@ -173,10 +174,10 @@ public:
         *skip_check = false;
 
         if (hw != HW::Unknown) {
-            binary_format_kernel_t<hw> binary_format_kernel(engine);
-
+            auto product = engine->device_info()->gpu_product();
+            binary_format_kernel_t<hw> binary_format_kernel(
+                    engine, compute::device_info_t::ngen_product(product));
             auto status = engine->create_kernel(&kernel, &binary_format_kernel);
-
             if (status != status::success) return nullptr;
             *skip_check = binary_format_kernel.binaryIsZebin();
         } else {

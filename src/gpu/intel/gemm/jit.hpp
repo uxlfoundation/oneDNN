@@ -269,7 +269,8 @@ struct gen_t : public primitive_t {
             auto lda = ld(DNNL_ARG_A);
             auto ldb = ld(DNNL_ARG_B);
             if (swap_ab_) std::swap(lda, ldb);
-            auto entries = kernel_desc_.select_kernel(arch_, stepping,
+            auto product = intel_engine->device_info()->gpu_product();
+            auto entries = kernel_desc_.select_kernel(product, stepping,
                     dev_info_->eu_count(), has_systolic, is_integrated, mode,
                     problem, alpha(), beta(), m, n, d->k(), lda, ldb, d->ldc(),
                     d->batch());

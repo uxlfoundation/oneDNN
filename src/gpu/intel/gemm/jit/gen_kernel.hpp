@@ -103,6 +103,7 @@ struct gen_desc_t {
 protected:
     compute::gpu_arch_t arch_;
     ngen::HW hw_ = ngen::HW::Unknown;
+    ngen::Product product_ = {};
     int stepping_ = 0;
     gemmstone::GEMMProblem problem_ = {};
     gemmstone::GEMMStrategy strategy_;
@@ -139,7 +140,7 @@ struct gen_nocopy_desc_t : public gen_desc_t {
     }
 
     std::vector<const gemmstone::kcatalog::Entry *> select_kernel(
-            compute::gpu_arch_t arch, int stepping, int eu_count,
+            compute::gpu_product_t product, int stepping, int eu_count,
             bool has_systolic, bool is_integrated, compute_mode mode,
             const gemmstone::GEMMProblem &problem, float alpha, float beta,
             dim_t m, dim_t n, dim_t k, dim_t lda, dim_t ldb, dim_t ldc,

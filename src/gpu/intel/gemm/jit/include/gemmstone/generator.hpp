@@ -65,7 +65,7 @@ template <ngen::HW hw> class Generator : public GENERATOR_BASE(hw) {
 public:
     using super = GENERATOR_SUPER(hw);
 
-    Generator() : GENERATOR_BASE(hw)(GENERATOR_DEBUGINFO) {}
+    Generator(ngen::Product product) : GENERATOR_BASE(hw)(product, GENERATOR_DEBUGINFO) {}
 
     FORWARD(hw)
 

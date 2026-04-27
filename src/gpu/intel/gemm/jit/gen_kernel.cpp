@@ -385,16 +385,18 @@ void gen_desc_t::update_driver_info() {
 }
 
 std::vector<const gemmstone::kcatalog::Entry *>
-gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
+gen_nocopy_desc_t::select_kernel(compute::gpu_product_t product, int stepping,
         int eu_count, bool has_systolic, bool is_integrated, compute_mode mode,
         const gemmstone::GEMMProblem &problem, float alpha, float beta, dim_t m,
         dim_t n, dim_t k, dim_t lda, dim_t ldb, dim_t ldc, dim_t batch) {
     using namespace ngen;
     using namespace kcatalog;
 
-    arch_ = arch;
-    hw_ = convert_dnnl_arch_to_ngen(arch);
+    product_ = compute::device_info_t::ngen_product(product);
+    hw_ = getCore(product_.family);
+    arch_ = convert_ngen_arch_to_dnnl(hw_);
     stepping_ = stepping;
+    problem_.product = product_;
     m_ = into<int>(m);
     n_ = into<int>(n);
     k_ = into<int>(k);
@@ -425,7 +427,8 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     bool can_2d_c = (ldc * problem.Tc_ext <= 16777216);
 
     // Xe2 requires stronger alignment for block 2D.
-    if (arch == compute::gpu_arch_t::xe2 || arch == compute::gpu_arch_t::xe3) {
+    if (arch_ == compute::gpu_arch_t::xe2
+            || arch_ == compute::gpu_arch_t::xe3) {
         can_2d_a &= (problem.A.alignment % 16 == 0);
         can_2d_b &= (problem.B.alignment % 16 == 0);
         can_2d_c &= (problem.C.alignment % 16 == 0);
@@ -610,11 +613,11 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
     using namespace ngen;
     using namespace kcatalog;
 
-    auto ngen_product = compute::device_info_t::ngen_product(product);
-    hw_ = getCore(ngen_product.family);
+    product_ = compute::device_info_t::ngen_product(product);
+    hw_ = getCore(product_.family);
     arch_ = convert_ngen_arch_to_dnnl(hw_);
     stepping_ = stepping;
-    problem_.product = ngen_product;
+    problem_.product = product_;
     m_ = into<int>(m);
     n_ = into<int>(n);
     k_ = into<int>(k);
@@ -1000,7 +1003,7 @@ status_t gen_kernel_t::get_kernel(
 
 #define ARCH_DISPATCH(arch) \
     case ngen::HW::arch: { \
-        gemm_kernel_generator_t<ngen::HW::arch> generator; \
+        gemm_kernel_generator_t<ngen::HW::arch> generator(desc()->product_); \
         generator.setStepping(desc()->stepping_); \
         generator.gemm(*desc()->problem(), *desc()->strategy(), interface_); \
         return generator.get_kernel(kernel, engine); \

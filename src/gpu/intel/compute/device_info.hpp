@@ -190,7 +190,7 @@ public:
     }
     gpu_arch_t gpu_arch() const { return gpu_arch_; }
     const gpu_product_t &gpu_product() const { return gpu_product_; }
-    static const ngen::Product &ngen_product(gpu_product_t &product);
+    static const ngen::Product &ngen_product(const gpu_product_t &product);
     ngen::HW ngen_hw() const;
     int stepping_id() const;
     uint64_t native_extensions() const { return native_extensions_; }

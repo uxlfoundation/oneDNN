@@ -88,7 +88,7 @@ status_t device_info_t::init(
     return status::success;
 }
 
-const ngen::Product &device_info_t::ngen_product(gpu_product_t &product) {
+const ngen::Product &device_info_t::ngen_product(const gpu_product_t &product) {
     static_assert(sizeof(ngen::Product) == sizeof(compute::gpu_product_t),
             "Can't cast gpu_product_t to ngen::Product");
     return reinterpret_cast<const ngen::Product &>(product);

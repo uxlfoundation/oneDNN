@@ -20,7 +20,7 @@
 #define DT_UNDEF 1
 #include "gpu/intel/include/types.h"
 
-uint4 philox_4x32_s64_vec4(ulong idx, ulong seed, ulong offset) {
+uint4 philox_4x32_vec4_w_offset(ulong idx, ulong seed, ulong offset) {
 #define PHILOX_4UINT_ROUND(mul, ctr, key) \
     as_uint4(convert_ulong2(ctr.s02) * mul).s3210 \
             ^ (uint4)(ctr.s1 ^ key.s0, 0, ctr.s3 ^ key.s1, 0)
@@ -39,7 +39,6 @@ uint4 philox_4x32_s64_vec4(ulong idx, ulong seed, ulong offset) {
                     * (uint16)(0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7);
     const uint4 key1 = as_uint4((ulong2)seeds)
             + as_uint4((ulong2)(PHILOX_W4x32)) * (uint4)(8, 8, 9, 9);
-
     ctr = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctr, key0.s01);
     ctr = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctr, key0.s23);
     ctr = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctr, key0.s45);
@@ -53,17 +52,21 @@ uint4 philox_4x32_s64_vec4(ulong idx, ulong seed, ulong offset) {
     return ctr;
 }
 
-uint philox_4x32_s64(ulong idx, ulong seed, ulong offset) {
-    return philox_4x32_s64_vec4(idx, seed, offset)[idx & 3L];
+uint philox_4x32_w_offset(long idx, long seed, long offset) {
+    return philox_4x32_vec4_w_offset(
+            (ulong)idx, (ulong)seed, (ulong)offset)[idx & 3L];
 }
 
-uint philox_4x32(uint idx, uint seed) {
+uint philox_4x32(long idx, long seed) {
     // Note: this is for compatibility with impls that don't support s64 rand
-    ulong x = idx & ~3L;
+    // Truncate to uint first to handle negative longs correctly
+    uint idx_u = (uint)idx;
+    uint seed_u = (uint)seed;
+    ulong x = idx_u & ~3UL;
     ulong idx_64 = ((x + 3) << 32) + (x + 2);
     ulong offset_64 = ((x + 1) << 32) + x;
-    ulong seed_64 = ((ulong)(seed) << 32) + seed;
-    return philox_4x32_s64(idx_64, seed_64, offset_64);
+    ulong seed_64 = ((ulong)seed_u << 32) + seed_u;
+    return philox_4x32_w_offset(idx_64, seed_64, offset_64);
 }
 
 uint4 philox_4x32_vec4(uint idx, uint seed) {
@@ -71,15 +74,15 @@ uint4 philox_4x32_vec4(uint idx, uint seed) {
     ulong idx_64 = ((x + 3) << 32) + (x + 2);
     ulong offset_64 = ((x + 1) << 32) + x;
     ulong seed_64 = ((ulong)(seed) << 32) + seed;
-    return philox_4x32_s64_vec4(idx_64, seed_64, offset_64);
+    return philox_4x32_vec4_w_offset(idx_64, seed_64, offset_64);
 }
 
-ushort philox_8x16(long idx, uint seed) {
-    return as_ushort2(philox_4x32(idx >> 1, seed))[idx & 1];
+ushort philox_8x16(long idx, long seed) {
+    return as_ushort2(philox_4x32((idx >> 1), seed))[idx & 1];
 }
 
-uchar philox_16x8(long idx, uint seed) {
-    return as_uchar4(philox_4x32(idx >> 2, seed))[idx & 3];
+uchar philox_16x8(long idx, long seed) {
+    return as_uchar4(philox_4x32((idx >> 2), seed))[idx & 3];
 }
 
 #if WITH_SROUND
@@ -91,8 +94,8 @@ uchar philox_16x8(long idx, uint seed) {
 float stochastic_round_fwd(float s, long idx, uint seed) {
     if (isnan(s) || isinf(s)) return s;
     uint truncation_mask = 0xffffffff << (24 - DST_DT_DIGITS);
-    uint bias_val = sizeof(DST_DATA_T) == 2 ? philox_16x8(idx, seed)
-                                            : philox_8x16(idx, seed);
+    uint bias_val = sizeof(DST_DATA_T) == 2 ? philox_16x8(idx, (long)seed)
+                                            : philox_8x16(idx, (long)seed);
     uint rnd_bias = (uint)(bias_val & ~truncation_mask);
     float r = as_float((as_uint(s) + rnd_bias) & truncation_mask);
     r = fmin(fmax((float)DST_DATA_FLOW, r), (float)DST_DATA_FMAX);

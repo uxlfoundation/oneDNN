@@ -99,10 +99,9 @@ __kernel void ref_eltwise_fwd(__global SRC_DATA_T *src,
     uint dropout_threshold = get_dropout_threshold(dropout_p);
     float dropout_inv_q = (dropout_p != 1.f) ? 1.f / (1.f - dropout_p) : 0.f;
 #if USE_OFFSET
-    uint res = philox_4x32_s64(
-            (ulong)data_off, (ulong)dropout_seed, (ulong)dropout_offset);
+    uint res = philox_4x32_w_offset(data_off, dropout_seed, dropout_offset);
 #else
-    uint res = philox_4x32(data_off, (uint)dropout_seed);
+    uint res = philox_4x32(data_off, dropout_seed);
 #endif
     uchar dropout = res > dropout_threshold;
     tmp_s = (dropout) ? tmp_s * dropout_inv_q : 0;

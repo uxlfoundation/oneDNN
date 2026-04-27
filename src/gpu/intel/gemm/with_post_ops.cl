@@ -123,10 +123,9 @@ __kernel void gemm_post_ops(__global SRC_DATA_T *src,
     uint dropout_threshold = get_dropout_threshold(dropout_p);
     float dropout_inv_q = (dropout_p != 1.f) ? 1.f / (1.f - dropout_p) : 0.f;
 #if DROPOUT_USE_OFFSET
-    uint res = philox_4x32_s64(
-            data_idx, (ulong)dropout_seed, (ulong)dropout_offset);
+    uint res = philox_4x32_w_offset(data_idx, dropout_seed, dropout_offset);
 #else
-    uint res = philox_4x32((uint)data_idx, (uint)dropout_seed);
+    uint res = philox_4x32(data_idx, dropout_seed);
 #endif
     uchar dropout = res > dropout_threshold;
     accumulator = (dropout) ? accumulator * dropout_inv_q : 0;

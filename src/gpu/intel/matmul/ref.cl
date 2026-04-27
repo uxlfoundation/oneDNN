@@ -289,10 +289,9 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
 
 #if WITH_DROPOUT
 #if WITH_SEED_S64 && USE_OFFSET
-    uint res = philox_4x32_s64(
-            dst_off, (ulong)dropout_seed, (ulong)dropout_offset);
+    uint res = philox_4x32_w_offset(dst_off, dropout_seed, dropout_offset);
 #else
-    uint res = philox_4x32((uint)dst_off, (uint)dropout_seed);
+    uint res = philox_4x32(dst_off, dropout_seed);
 #endif
     uchar dropout = res > dropout_threshold;
     po_acc = (dropout) ? po_acc * dropout_inv_q : 0;

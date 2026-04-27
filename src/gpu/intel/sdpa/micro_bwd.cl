@@ -52,8 +52,8 @@ typedef ugemm_ktq_c_type ktq_tile_type; // D*Br tile
         ulong _goff = batch_head_base + (ulong)offset_c * (ulong)k_stride \
                 + (ulong)offset_r; \
         uint _philox = use_dropout_offset \
-                ? philox_4x32_s64(_goff, (ulong)seed, (ulong)offset) \
-                : philox_4x32((uint)_goff, (uint)seed); \
+                ? philox_4x32_w_offset(_goff, seed, offset) \
+                : philox_4x32(_goff, seed); \
         (offset_r < max_r && offset_c < max_c) && (_philox > threshold); \
     })
 

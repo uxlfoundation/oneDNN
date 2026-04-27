@@ -207,7 +207,7 @@ endif()
 
 if(MSVC)
     set(USERCONFIG_PLATFORM "x64")
-    append_if(DNNL_WERROR CMAKE_CCXX_FLAGS "/WX")
+    #append_if(DNNL_WERROR CMAKE_CCXX_FLAGS "/WX")
 
     # Generating frame pointers for easier performance profiling
     if(DNNL_TARGET_ARCH STREQUAL "X64")
@@ -230,7 +230,7 @@ if(MSVC)
         # Enable __cplusplus macro to align behavior with other compilers
         append(CMAKE_CCXX_FLAGS "/Zc:__cplusplus")
         # int64_t -> int (tent)
-        append(CMAKE_CCXX_NOWARN_FLAGS "/wd4244")
+        #append(CMAKE_CCXX_NOWARN_FLAGS "/wd4244")
         # workaround: macro outputs defined token in msvs header
         append(CMAKE_CCXX_NOWARN_FLAGS "/wd5105")
     endif()

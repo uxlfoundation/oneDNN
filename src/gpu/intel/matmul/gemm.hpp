@@ -44,6 +44,8 @@ struct gemm_t : public primitive_t {
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
 
+            VDISPATCH_MATMUL(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+
             primitive_attr_t gemm_attr;
             gemm_attr.fpmath_ = attr()->fpmath_;
             gemm_attr.acc_mode_ = attr()->acc_mode_;

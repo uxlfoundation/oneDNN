@@ -18,7 +18,106 @@ import itertools
 import math
 import random
 
-from ..matmul.primitive import Dims, Kind, Primitive
+from matmul.primitive import Dims, Kind, Primitive
+
+
+class Dequantization:
+    @staticmethod
+    def next(ndims, src_type, wei_type, dims):
+        out_zp = ""
+        out_scale = ""
+        prefix_zp = "--attr-zero-points="
+        prefix_scale = "--attr-scales="
+        for buf, buf_type in zip(["src", "wei"], [src_type, wei_type]):
+            if buf_type in ["u4", "s4", "u8", "s8"]:
+                zp = random.choice(Dequantization.supported_zp())
+                if zp is not None:
+                    out_zp += f"{prefix_zp}{buf}:{zp}"
+                    prefix_zp = "+"
+
+                scale = random.choice(Dequantization.supported_scale(buf == "wei", dims.k))
+                if scale is not None:
+                    out_scale += f"{prefix_scale}{buf}:{scale}"
+                    prefix_scale = "+"
+        if out_zp == "":
+            return out_scale
+        if out_scale == "":
+            return out_zp
+        return f"{out_scale} {out_zp}"
+
+    @staticmethod
+    def supported_scale_policy(is_wei):
+        if is_wei:
+            return [
+                "common",
+                "per_oc",
+                "per_ocic",
+                "per_tensor",
+            ]
+        return ["common",
+                "per_ocic",
+                "per_tensor",
+            ]
+
+    @staticmethod
+    def supported_scale_type():
+        return ["f32", "f16", "bf16"]
+
+    @staticmethod
+    def supported_groups(k_dim):
+        valid_groups = []
+        if(k_dim % 16 == 0):
+            valid_groups.append(k_dim);
+        group = 16
+        while group <= k_dim and k_dim % group == 0:
+            valid_groups.append(group)
+            group *= 2
+        return valid_groups
+
+    @staticmethod
+    def supported_scale(is_wei, k_dim):
+        out = [None]
+        for t in Dequantization.supported_scale_type():
+            for p in Dequantization.supported_scale_policy(is_wei):
+                if p == "common":
+                    out.append(f"{p}:0.25:{t}")
+                elif (p == "per_ocic" or p == "per_tensor") :
+                    options = []
+                    if p == "per_tensor" and is_wei: options.append(None)
+                    options += Dequantization.supported_groups(k_dim)
+                    if len(options) == 0:
+                        continue;
+                    k_group = random.choice(options)
+                    if k_group is None:
+                        out.append(f"{p}:{t}")
+                    elif is_wei:
+                        out.append(f"{p}:{t}:{k_group}x1")
+                    else:
+                        out.append(f"{p}:{t}:1x{k_group}")
+                else:
+                    out.append(f"{p}:{t}")
+        return out
+
+    @staticmethod
+    def supported_zp_policy():
+        return ["common"]
+
+    @staticmethod
+    def supported_zp_type(policy):
+        if policy == "common":
+            return ["s32", "s8", "u8"]
+        return ["s32", "s8", "u8", "s4", "u4"]
+
+    @staticmethod
+    def supported_zp():
+        out = [None]
+        for p in Dequantization.supported_zp_policy():
+            for t in Dequantization.supported_zp_type(p):
+                if p == "common":
+                    out.append(f"{p}:1:{t}")
+                else:
+                    out.append(f"{p}:{t}")
+        return out
 
 
 class Region:
@@ -102,7 +201,7 @@ class Sampler:
                 self.s = next(self.dim_sampler)
                 self.rem_samples = self.rem_samples - 1
 
-            return Primitive(self.k, self.s)
+            return Primitive(self.k, self.s, "")
 
     class ZipIter:
         def __init__(self, samples, kinds, dim_sampler):
@@ -117,8 +216,11 @@ class Sampler:
             self.rem_samples = self.rem_samples - 1
             k = next(self.kinds_iter)
             s = next(self.dim_sampler)
+            q = Dequantization.next(
+                self.dim_sampler.region.ndims - 1, k.type.A, k.type.B, s
+            )
 
-            return Primitive(k, s)
+            return Primitive(k, s, q)
 
     class DimSampler:
         def __init__(self, region):

@@ -1189,7 +1189,7 @@ status_t compute_blocking_heuristic(brgemm_matmul_conf_t &bgmmc,
                               && (bm_conf_utils.is_f16()
                                       || bm_conf_utils.is_f16_with_int_wei())))
             && (bgmmc.isa != avx2_vnni_2) // no perf study yet.
-            && bgmmc.lda_big_pow2() && bgmmc.M >= 1024;
+            && bgmmc.lda_big_pow2() && bgmmc.M >= 1024 && !bgmmc.is_gemv;
 
     // Avoid copying A for small N gives better performance.
     // TODO: Expand for other precisions and cases.

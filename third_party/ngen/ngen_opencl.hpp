@@ -107,7 +107,7 @@ class OpenCLCodeGenerator : public ELFCodeGenerator<hw>
 {
 public:
     explicit OpenCLCodeGenerator(Product product_, DebugConfig debugConfig = {})  : ELFCodeGenerator<hw>(product_, debugConfig) {}
-    explicit OpenCLCodeGenerator(int stepping_ = 0, DebugConfig debugConfig = {}) : ELFCodeGenerator<hw>(stepping_, debugConfig) {}
+    DEPRECATED explicit OpenCLCodeGenerator(int stepping_ = 0, DebugConfig debugConfig = {}) : ELFCodeGenerator<hw>(stepping_, debugConfig) {}
     explicit OpenCLCodeGenerator(DebugConfig debugConfig) : ELFCodeGenerator<hw>(debugConfig) {}
     OpenCLCodeGenerator(OpenCLCodeGenerator &&) = default;
 

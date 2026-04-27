@@ -199,20 +199,30 @@ inline HW decodeGfxCoreFamily(GfxCoreFamily family)
     }
 }
 
-inline GfxCoreFamily encodeGfxCoreFamily(HW hw)
+inline GfxCoreFamily encodeGfxCoreFamily(const ngen::Product &product)
 {
-    switch (hw) {
-        case HW::Gen9:         return GfxCoreFamily::Gen9;
-        case HW::Gen10:        return GfxCoreFamily::Gen10;
-        case HW::Gen11:        return GfxCoreFamily::Gen11LP;
-        case HW::Gen12LP:      return GfxCoreFamily::Gen12LP;
-        case HW::XeHP:         return GfxCoreFamily::XeHP;
-        case HW::XeHPG:        return GfxCoreFamily::XeHPG;
-        case HW::XeHPC:        return GfxCoreFamily::XeHPC;
-        case HW::Xe2:          return GfxCoreFamily::Xe2;
-        case HW::Xe3:          return GfxCoreFamily::Xe3;
-        case HW::Xe3p:         return GfxCoreFamily::Xe3p;
-        default:               return GfxCoreFamily::Unknown;
+    switch (product.family) {
+        case NGEN_NAMESPACE::ProductFamily::Unknown:        return GfxCoreFamily::Unknown;
+        case NGEN_NAMESPACE::ProductFamily::GenericGen9:    return GfxCoreFamily::Gen9;
+        case NGEN_NAMESPACE::ProductFamily::GenericGen10:   return GfxCoreFamily::Gen10;
+        case NGEN_NAMESPACE::ProductFamily::GenericGen11:   return GfxCoreFamily::Gen11LP;
+        case NGEN_NAMESPACE::ProductFamily::GenericGen12LP: return GfxCoreFamily::Gen12LP;
+        case NGEN_NAMESPACE::ProductFamily::GenericXeHP:    return GfxCoreFamily::XeHP;
+        case NGEN_NAMESPACE::ProductFamily::GenericXeHPG:
+        case NGEN_NAMESPACE::ProductFamily::DG2:
+        case NGEN_NAMESPACE::ProductFamily::MTL:
+        case NGEN_NAMESPACE::ProductFamily::ARL:            return GfxCoreFamily::XeHPG;
+        case NGEN_NAMESPACE::ProductFamily::GenericXeHPC:
+        case NGEN_NAMESPACE::ProductFamily::PVC:
+        case NGEN_NAMESPACE::ProductFamily::PVCVG:          return GfxCoreFamily::XeHPC;
+        case NGEN_NAMESPACE::ProductFamily::GenericXe2:
+        case NGEN_NAMESPACE::ProductFamily::BMG:
+        case NGEN_NAMESPACE::ProductFamily::LNL:            return GfxCoreFamily::Xe2;
+        case NGEN_NAMESPACE::ProductFamily::GenericXe3:     return GfxCoreFamily::Xe3;
+        case NGEN_NAMESPACE::ProductFamily::GenericXe3p:
+        case NGEN_NAMESPACE::ProductFamily::NVLP:
+        case NGEN_NAMESPACE::ProductFamily::CRI:            return GfxCoreFamily::Xe3p;
+        default:                                            return GfxCoreFamily::Unknown;
     }
 }
 

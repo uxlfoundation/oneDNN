@@ -98,7 +98,7 @@ public:
         this->interface_.setInlineGRFCount(0);
     }
 
-    explicit LevelZeroCodeGenerator(int stepping_ = 0, DebugConfig debugConfig = {}) : LevelZeroCodeGenerator({genericProductFamily(hw), stepping_, PlatformType::Unknown}, debugConfig) {}
+    DEPRECATED explicit LevelZeroCodeGenerator(int stepping_ = 0, DebugConfig debugConfig = {}) : LevelZeroCodeGenerator({genericProductFamily(hw), stepping_, PlatformType::Unknown}, debugConfig) {}
 
     explicit LevelZeroCodeGenerator(DebugConfig debugConfig) : LevelZeroCodeGenerator({genericProductFamily(hw), 0}, debugConfig) {}
     LevelZeroCodeGenerator(LevelZeroCodeGenerator&&) = default;

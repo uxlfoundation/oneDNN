@@ -34,7 +34,7 @@ public:
     static inline Product getBinaryHWInfo(const std::vector<uint8_t> &binary);
 
     explicit ELFCodeGenerator(Product product_, DebugConfig debugConfig = {})  : BinaryCodeGenerator<hw>(product_, debugConfig) {}
-    explicit ELFCodeGenerator(int stepping_ = 0, DebugConfig debugConfig = {}) : BinaryCodeGenerator<hw>(stepping_, debugConfig) {}
+    DEPRECATED explicit ELFCodeGenerator(int stepping_ = 0, DebugConfig debugConfig = {}) : BinaryCodeGenerator<hw>(stepping_, debugConfig) {}
     explicit ELFCodeGenerator(DebugConfig debugConfig) : ELFCodeGenerator(0, debugConfig) {}
     ELFCodeGenerator(ELFCodeGenerator &&) = default;
 
@@ -345,7 +345,7 @@ private:
             return (sz + 0xF) & ~0xF;
         }
 
-        ZebinELF(size_t szKernelName, size_t szMetadata, size_t szKernel, InterfaceHandler &interface_,
+        ZebinELF(size_t szKernelName, size_t szMetadata, size_t szKernel, InterfaceHandler &interface_, const Product &product,
                  size_t szDebugLine, size_t szDebugLineStr, uint32_t file1, uint32_t subProgramLine) {
             fileHeader.size = sizeof(fileHeader);
             fileHeader.sectionHeaderSize = sizeof(SectionHeader);
@@ -418,7 +418,7 @@ private:
             symTable[3].value = 0;
             symTable[3].size = 0;
 
-            noteGfxCore.payload = static_cast<uint32_t>(npack::encodeGfxCoreFamily(hw));
+            noteGfxCore.payload = static_cast<uint32_t>(npack::encodeGfxCoreFamily(product));
 
             sectionHeaders[6].name = offsetof(StringTable, snDebugInfo) + 5;
             sectionHeaders[6].type = SectionHeader::Type::Program;
@@ -637,7 +637,7 @@ std::vector<uint8_t> ELFCodeGenerator<hw>::getBinary(const std::vector<uint8_t> 
 
     binary.resize(paddedSzELF + paddedSzMetadata + paddedSzKernel + paddedSzDebugLine + paddedSzDebugLineStr + paddedSzRelDebugLine + paddedSzRelDebugInfo);
 
-    (void) new(binary.data()) ZebinELF(paddedSzKernelName, metadata.size(), kernel.size(), interface_,
+    (void) new(binary.data()) ZebinELF(paddedSzKernelName, metadata.size(), kernel.size(), interface_, super::getProduct(),
                                        debugLine.size(), debugLineStr.size(), file1, super::debugLine.programLine);
     utils::copy_into(binary, ZebinELF::kernelNameOffset(), interface_.getExternalName());
     size_t offset = paddedSzELF;

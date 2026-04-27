@@ -89,6 +89,12 @@ public:
 #include "ngen_registers.hpp"
 #endif
 
+#if __cplusplus >= 201402L
+#define DEPRECATED [[deprecated]]
+#else
+#define DEPRECATED
+#endif
+
 template <HW hw>
 class BinaryCodeGenerator
 {
@@ -337,7 +343,7 @@ public:
         pushStream(rootStream);
     }
 
-    explicit BinaryCodeGenerator(int stepping_ = 0, DebugConfig debugConfig = {}) : BinaryCodeGenerator({genericProductFamily(hw), stepping_, PlatformType::Unknown}, debugConfig) {}
+    DEPRECATED explicit BinaryCodeGenerator(int stepping_ = 0, DebugConfig debugConfig = {}) : BinaryCodeGenerator({genericProductFamily(hw), stepping_, PlatformType::Unknown}, debugConfig) {}
 
     BinaryCodeGenerator(BinaryCodeGenerator &&) = default;
 

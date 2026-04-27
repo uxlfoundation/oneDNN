@@ -356,7 +356,7 @@ static inline constexpr14 ProductFamily genericProductFamily(HW hw)
 
 static inline constexpr14 Core getCore(ProductFamily family)
 {
-    if (family >= ProductFamily::GenericXe3p) return Core::Xe3p;
+    if (family >= ProductFamily::GenericXe3p)  return Core::Xe3p;
     if (family >= ProductFamily::GenericXe3)   return Core::Xe3;
     if (family >= ProductFamily::GenericXe2)   return Core::Xe2;
     if (family >= ProductFamily::GenericXeHPC) return Core::XeHPC;

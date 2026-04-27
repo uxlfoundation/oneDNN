@@ -85,7 +85,7 @@ argument index as specified by the following table.
 | \diffsrc                    | DNNL_ARG_DIFF_SRC                                                         | Output |
 | \diffdst                    | DNNL_ARG_DIFF_DST                                                         | Input  |
 | \f$\text{binary post-op}\f$ | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_1 | Input  |
-|                             | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_2 | Input  |
+| \                           | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_2 | Input  |
 | [scratchpad]                | DNNL_ARG_SCRATCHPAD                                                       | Output |
 
 [scratchpad]: @ref dev_guide_attributes_scratchpad

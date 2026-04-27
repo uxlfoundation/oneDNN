@@ -20,11 +20,11 @@ accepts setting flags. These flags can be combined together to make the library
 dumping different files. For example, the below setting will generate files
 containing library graph and subgraphs in each partition.
 
-| Variable                  | Flags            | Description                               |
+| Environment Variable      | Value            | Description                               |
 | :---                      | :---             |:---                                       |
-| ONEDNN_GRAPH_DUMP         | (default)        | No graph or subgraph dumped               |
-|                           | graph            | Library graph                             |
-|                           | subgraph         | Library subgraph contained in a partition |
+| ONEDNN_GRAPH_DUMP         |                  | **No information dumped** (default)       |
+| \                         | graph            | Library graph                             |
+| \                         | subgraph         | Library subgraph contained in a partition |
 
 ~~~bash
 ONEDNN_GRAPH_DUMP=graph,subgraph ./application

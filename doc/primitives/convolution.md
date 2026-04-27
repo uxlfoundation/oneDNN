@@ -153,7 +153,7 @@ argument index as specified by the following table.
 | \diffdst                    | DNNL_ARG_DIFF_DST                                                          | Input  |
 | \f$depthwise\f$             | DNNL_ARG_ATTR_POST_OP_DW                                                   | Input  |
 | \f$\text{binary post-op}\f$ | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_1  | Input  |
-|                             | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_2  | Input  |
+| \                           | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_2  | Input  |
 | \f$\text{prelu post-op}\f$  | DNNL_ARG_ATTR_MULTIPLE_POST_OP(prelu_post_op_position) \| DNNL_ARG_WEIGHTS | Input  |
 | [scratchpad]                | DNNL_ARG_SCRATCHPAD                                                        | Output |
 

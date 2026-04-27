@@ -107,6 +107,37 @@ struct check_mem_size_args_t {
     size_t zmalloc_expected_size = 0;
 };
 
+// Describes various reasons for statuses different from PASSED.
+// The name follows the pattern: "driver_status_description".
+// "driver" can be dropped from name if the message can be applied to multiple
+// drivers.
+enum class reason_t {
+    // The default value.
+    none,
+    // The graph case couldn't be properly updated with user settings.
+    graph_untested_rewriter_error,
+    // The problem composition is ill-formed and reported with INVALID status.
+    // Most common reasons:
+    // * Incompatible inplace setting with tensor data types, sum post-op,
+    //   or driver specific reasons.
+    // * Odd innermost dimension value for subbyte data types.
+    // * Driver specific incompatible settings.
+    invalid,
+    // The library dispatched in ref implementation when it's not anticipated.
+    failed_ref_not_expected,
+    // The problem requires more RAM than the system provides.
+    skip_not_enough_ram,
+    // The library fetched the implementation that was requested to be skipped.
+    skip_impl_hit,
+    // The problem has an ordinal number that was requested to be skipped.
+    skip_start,
+    // A generic case of unimplemented functionality.
+    // TODO: shouldn't exist, must be replaced with a detailed unimpl case.
+    skip_not_supported,
+    // Data type is not supported on the system.
+    skip_data_type,
+};
+
 struct res_t {
     // The state of the `res` object. Changes as the flow continues. The typical
     // progression starts with UNTESTED and follows steps:
@@ -115,7 +146,7 @@ struct res_t {
     // Result: -> PASSED/FAILED/MISTRUSTED.
     res_state_t state = UNTESTED;
     // A short description of the reason of the obtained status.
-    std::string reason;
+    reason_t reason;
     // The number of failed points if case FAILED.
     size_t errors = 0;
     // The total number of points tested.
@@ -137,7 +168,7 @@ struct res_t {
     // and a given `new_state`.
     void reset_stats(res_state_t new_state) {
         state = new_state;
-        reason.clear();
+        reason = reason_t::none;
         errors = 0;
         total = 0;
     }

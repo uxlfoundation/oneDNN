@@ -472,7 +472,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
     if (is_gpu() && prb->attr.post_ops.len() != 0) {
         // GPU does not support post-ops
         res->state = SKIPPED;
-        res->reason = skip_reason::case_not_supported;
+        res->reason = reason_t::skip_not_supported;
         return;
     }
 
@@ -481,7 +481,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
         // non-intel GPU does not support rms normalization
         // todo: remove the check once supported
         res->state = SKIPPED;
-        res->reason = skip_reason::case_not_supported;
+        res->reason = reason_t::skip_not_supported;
         return;
     }
 }

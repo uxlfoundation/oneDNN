@@ -54,7 +54,7 @@ struct deserialized_lt_t;
 
 struct bdnn_state_t {
     res_state_t state;
-    std::string reason;
+    reason_t reason;
 };
 
 enum class dnnl_driver_t {
@@ -108,7 +108,7 @@ enum { CRIT = 0x001, WARN = 0x002, NEED_CLEANUP = 0x004 };
                                            == res_state_t::INVALID_ARGUMENTS)) \
                         && is_nvidia_gpu()) { \
                     (ss)->state = SKIPPED; \
-                    (ss)->reason = skip_reason::case_not_supported; \
+                    (ss)->reason = reason_t::skip_not_supported; \
                     BENCHDNN_PRINT(2, \
                             "SKIP: Function '%s' at (%s:%d) returned '%s'\n", \
                             __FUNCTION__, __FILE__, __LINE__, e.what()); \

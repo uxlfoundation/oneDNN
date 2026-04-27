@@ -32,7 +32,7 @@ void check_memory_fit(
                 "size %g GB doesn't fit allocation limit of %g GB. \n",
                 (is_cpu() ? "CPU" : "GPU"), GB(mem_req), GB(mem_limit));
         res->state = SKIPPED;
-        res->reason = skip_reason::not_enough_ram;
+        res->reason = reason_t::skip_not_enough_ram;
     }
 }
 
@@ -413,7 +413,7 @@ int ref_partition_t::check_partition_correctness(
         if (res->state == FAILED) {
             if (is_nvidia_gpu()) {
                 res->state = SKIPPED;
-                res->reason = skip_reason::case_not_supported;
+                res->reason = reason_t::skip_not_supported;
                 return OK;
             }
             return FAIL;

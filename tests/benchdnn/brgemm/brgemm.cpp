@@ -496,7 +496,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
     if (!IMPLICATION(is_xf16(prb->bia_dt) || is_xf16(prb->dst_dt()),
                 is_xf16(prb->wei_dt()))) {
         res->state = SKIPPED;
-        res->reason = skip_reason::case_not_supported;
+        res->reason = reason_t::skip_not_supported;
         return;
     }
     skip_unimplemented_data_type(
@@ -512,7 +512,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
     BENCHDNN_PRINT(
             2, "%s\n", "The kernel return unimplemented by some reason.");
     res->state = SKIPPED;
-    res->reason = skip_reason::case_not_supported;
+    res->reason = reason_t::skip_not_supported;
 }
 
 void skip_invalid_prb(const prb_t *prb, res_t *res) {
@@ -529,7 +529,7 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
         BENCHDNN_PRINT(2, "%s\n",
                 "Reorder with compensation is not supported for a given LDB");
         res->state = SKIPPED;
-        res->reason = skip_reason::case_not_supported;
+        res->reason = reason_t::skip_not_supported;
         return;
     }
 
@@ -542,7 +542,7 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
                 "Reorder with compensation is not supported for u8 destination "
                 "data type");
         res->state = SKIPPED;
-        res->reason = skip_reason::case_not_supported;
+        res->reason = reason_t::skip_not_supported;
         return;
     }
 
@@ -550,7 +550,7 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
         BENCHDNN_PRINT(
                 2, "%s\n", "`wtag` option is supported for ukernel API only.");
         res->state = SKIPPED;
-        res->reason = skip_reason::case_not_supported;
+        res->reason = reason_t::skip_not_supported;
         return;
     }
 
@@ -559,7 +559,7 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
                 "`strides` option for weights is supported for ukernel API "
                 "only.");
         res->state = SKIPPED;
-        res->reason = skip_reason::case_not_supported;
+        res->reason = reason_t::skip_not_supported;
         return;
     }
 #else
@@ -571,7 +571,7 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
                     "Non-default scales/zero-points/fpmath attributes are not "
                     "supported");
             res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
+            res->reason = reason_t::skip_not_supported;
             return;
         }
 
@@ -582,7 +582,7 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
             if (has_sum) {
                 BENCHDNN_PRINT(2, "%s\n", "Sum post-op is not supported");
                 res->state = SKIPPED;
-                res->reason = skip_reason::case_not_supported;
+                res->reason = reason_t::skip_not_supported;
                 return;
             }
         }
@@ -596,14 +596,14 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
                 "supported. Actual value is \'%zu\'.\n",
                 (size_t)prb->get_ldb());
         res->state = SKIPPED;
-        res->reason = skip_reason::case_not_supported;
+        res->reason = reason_t::skip_not_supported;
         return;
     }
 
     if (prb->bia_dt != dnnl_data_type_undef) {
         BENCHDNN_PRINT(2, "%s\n", "Bias is not supported");
         res->state = SKIPPED;
-        res->reason = skip_reason::case_not_supported;
+        res->reason = reason_t::skip_not_supported;
         return;
     }
 
@@ -613,14 +613,14 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
         // provided.
         BENCHDNN_PRINT(2, "%s\n", "s8s8 support is temporary disabled");
         res->state = SKIPPED;
-        res->reason = skip_reason::case_not_supported;
+        res->reason = reason_t::skip_not_supported;
         return;
     }
 
     if (prb->alpha != 1.f) {
         BENCHDNN_PRINT(2, "%s\n", "Alpha is purposely not supported");
         res->state = SKIPPED;
-        res->reason = skip_reason::case_not_supported;
+        res->reason = reason_t::skip_not_supported;
         return;
     }
 #endif

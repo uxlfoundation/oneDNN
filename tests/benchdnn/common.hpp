@@ -151,15 +151,6 @@ extern stat_t benchdnn_stat;
 
 const char *state2str(res_state_t state);
 
-namespace skip_reason {
-extern std::string case_not_supported;
-extern std::string data_type_not_supported;
-extern std::string invalid_case;
-extern std::string not_enough_ram;
-extern std::string skip_impl_hit;
-extern std::string skip_start;
-} // namespace skip_reason
-
 dir_t str2dir(const char *str);
 void parse_result(res_t &res, const char *pstr);
 

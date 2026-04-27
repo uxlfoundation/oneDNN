@@ -221,7 +221,7 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
 
     if (is_invalid) {
         res->state = SKIPPED;
-        res->reason = skip_reason::invalid_case;
+        res->reason = reason_t::invalid;
         return;
     }
 }

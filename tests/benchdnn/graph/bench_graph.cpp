@@ -50,7 +50,7 @@ void check_correctness(const settings_t &s) {
         // instead, as all the states should the updated in the ctor.
         if (fw.rewrite(dg) != OK) {
             res.state = UNTESTED;
-            res.reason = "Rewriting unsupported";
+            res.reason = reason_t::graph_untested_rewriter_error;
             parse_result(res, pstr);
             continue;
         }

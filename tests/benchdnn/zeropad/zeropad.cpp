@@ -118,7 +118,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
 
     if (is_nvidia_gpu() || is_amd_gpu()) {
         res->state = SKIPPED;
-        res->reason = skip_reason::case_not_supported;
+        res->reason = reason_t::skip_not_supported;
     }
 }
 

@@ -153,7 +153,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
                 && dts[2] == dnnl_u8);
         if (is_bf16u8 && have_post_ops) {
             res->state = SKIPPED;
-            res->reason = skip_reason::data_type_not_supported;
+            res->reason = reason_t::skip_data_type;
             return;
         }
     }
@@ -172,7 +172,7 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
     // memory footprint and doing sum post-op or in-place will cause a crash.
     if (bcast_src0 && (prb->inplace || is_sum)) {
         res->state = SKIPPED;
-        res->reason = skip_reason::invalid_case;
+        res->reason = reason_t::invalid;
         return;
     }
 
@@ -180,7 +180,7 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
     if (prb->inplace) {
         if (is_sum) {
             res->state = SKIPPED;
-            res->reason = skip_reason::invalid_case;
+            res->reason = reason_t::invalid;
             return;
         }
 

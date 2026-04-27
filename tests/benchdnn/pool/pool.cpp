@@ -153,7 +153,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
 
     if (is_cpu() && prb->src_dt() != prb->dst_dt()) {
         res->state = SKIPPED;
-        res->reason = skip_reason::case_not_supported;
+        res->reason = reason_t::skip_not_supported;
         return;
     }
 }
@@ -163,7 +163,7 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
     // applied to padded area only.
     if (prb->alg == avg_np && prb->has_ker_in_pad()) {
         res->state = SKIPPED;
-        res->reason = skip_reason::invalid_case;
+        res->reason = reason_t::invalid;
         return;
     }
 }

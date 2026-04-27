@@ -237,7 +237,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
 
     if (prb->attr.post_ops.find(attr_t::post_ops_t::kind_t::SUM) != -1) {
         res->state = SKIPPED;
-        res->reason = skip_reason::case_not_supported;
+        res->reason = reason_t::skip_not_supported;
         return;
     }
     // Softmax with stats is not supported in the primitive implementation

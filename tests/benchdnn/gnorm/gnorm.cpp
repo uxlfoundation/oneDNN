@@ -518,7 +518,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
                 "result.\n",
                 __FILE__, __LINE__);
         res->state = SKIPPED;
-        res->reason = skip_reason::case_not_supported;
+        res->reason = reason_t::skip_not_supported;
         return;
     }
 }

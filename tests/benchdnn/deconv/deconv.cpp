@@ -363,7 +363,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
         const bool fwd_ok = !(is_x8s8bf16_cfg || is_f32xf16_cfg);
         if (!fwd_ok) {
             res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
+            res->reason = reason_t::skip_not_supported;
             return;
         }
     }

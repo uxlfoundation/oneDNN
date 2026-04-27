@@ -295,7 +295,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
     if (is_gpu() && (prb->dt == dnnl_f8_e5m2 || prb->dt == dnnl_f8_e4m3)
             && prb->dir == BWD_D) {
         res->state = SKIPPED;
-        res->reason = skip_reason::data_type_not_supported;
+        res->reason = reason_t::skip_data_type;
         return;
     }
 }
@@ -315,7 +315,7 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
     };
     if (is_invalid) {
         res->state = SKIPPED;
-        res->reason = skip_reason::invalid_case;
+        res->reason = reason_t::invalid;
         return;
     }
 
@@ -324,7 +324,7 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
     is_invalid = (prb->dir & FLAG_BWD) && !prb->use_dst() && prb->inplace;
     if (is_invalid) {
         res->state = SKIPPED;
-        res->reason = skip_reason::invalid_case;
+        res->reason = reason_t::invalid;
         return;
     }
 

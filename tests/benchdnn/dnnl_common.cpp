@@ -918,7 +918,7 @@ void skip_unimplemented_data_type(
         }
         if (need_skip) {
             res->state = SKIPPED;
-            res->reason = skip_reason::data_type_not_supported;
+            res->reason = reason_t::skip_data_type;
             return;
         }
     }
@@ -943,7 +943,7 @@ void skip_unimplemented_sum_po(const attr_t &attr, res_t *res,
                 // Sum with zero-point is only supported for int8
                 if (!is_integral_dt(src_dt)) {
                     res->state = SKIPPED;
-                    res->reason = skip_reason::case_not_supported;
+                    res->reason = reason_t::skip_not_supported;
                     return;
                 } else {
                     // Only quantized sum operand can have zero point
@@ -952,7 +952,7 @@ void skip_unimplemented_sum_po(const attr_t &attr, res_t *res,
                                                                : e.sum.dt;
                     if (!is_integral_dt(e_sum_dt)) {
                         res->state = SKIPPED;
-                        res->reason = skip_reason::case_not_supported;
+                        res->reason = reason_t::skip_not_supported;
                         return;
                     }
                 }
@@ -961,13 +961,13 @@ void skip_unimplemented_sum_po(const attr_t &attr, res_t *res,
             // Sum with zero-point is not supported on GPU
             if (is_gpu() && e.sum.zero_point != 0) {
                 res->state = SKIPPED;
-                res->reason = skip_reason::case_not_supported;
+                res->reason = reason_t::skip_not_supported;
                 break;
             }
             // Each sum must have same data on CPU
             if (is_cpu() && e.sum.dt != sum_dt) {
                 res->state = SKIPPED;
-                res->reason = skip_reason::case_not_supported;
+                res->reason = reason_t::skip_not_supported;
                 break;
             }
             // Sum must have data type with the same size like dst on both
@@ -975,7 +975,7 @@ void skip_unimplemented_sum_po(const attr_t &attr, res_t *res,
                     && dnnl_data_type_size(dst_dt)
                             != dnnl_data_type_size(e.sum.dt)) {
                 res->state = SKIPPED;
-                res->reason = skip_reason::case_not_supported;
+                res->reason = reason_t::skip_not_supported;
                 return;
             }
         }
@@ -990,7 +990,7 @@ void skip_unimplemented_binary_po(const attr_t &attr, res_t *res) {
         const int select_idx = po.find(attr_t::post_ops_t::kind_t::SELECT);
         if (select_idx != -1) {
             res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
+            res->reason = reason_t::skip_not_supported;
             return;
         }
     }
@@ -1011,7 +1011,7 @@ void skip_unimplemented_prelu_po(
         case dnnl_matmul: return; break;
         default:
             res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
+            res->reason = reason_t::skip_not_supported;
             break;
     }
 }
@@ -1020,7 +1020,7 @@ void skip_unimplemented_arg_scale(const attr_t &attr, res_t *res) {
     for (const auto &arg_s : attr.scales.scales) {
         if (!arg_s.second.has_single_element()) {
             res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
+            res->reason = reason_t::skip_not_supported;
             return;
         }
     }
@@ -1038,14 +1038,14 @@ void skip_invalid_inplace(res_t *res, dnnl_data_type_t sdt,
     // input and output.
     if (sdt != ddt) {
         res->state = SKIPPED;
-        res->reason = skip_reason::invalid_case;
+        res->reason = reason_t::invalid;
         return;
     }
 
     if (dtag == tag::any) return;
     if (stag != dtag) {
         res->state = SKIPPED;
-        res->reason = skip_reason::invalid_case;
+        res->reason = reason_t::invalid;
         return;
     }
 }
@@ -1073,7 +1073,7 @@ int check_ref_impl_hit(res_t *res) {
     const auto &impl_name = res->impl_name;
     if (impl_name.find("ref") != std::string::npos) {
         res->state = FAILED;
-        res->reason = "Ref Impl Not Expected";
+        res->reason = reason_t::failed_ref_not_expected;
         return FAIL;
     }
     return OK;
@@ -1338,7 +1338,7 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
                     "[CHECK_MEM][%s]: Not enough device RAM for a problem.\n",
                     dir_c_str());
             res->state = SKIPPED;
-            res->reason = skip_reason::not_enough_ram;
+            res->reason = reason_t::skip_not_enough_ram;
         }
 
         const bool all_allocation_fit_limit
@@ -1356,7 +1356,7 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
         });
         if (!all_allocation_fit_limit) {
             res->state = SKIPPED;
-            res->reason = skip_reason::not_enough_ram;
+            res->reason = reason_t::skip_not_enough_ram;
         }
 
         BENCHDNN_PRINT((!fits_device_ram ? 1 : 6),
@@ -1435,7 +1435,7 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
                 "[CHECK_MEM][%s]: Not enough CPU RAM for a problem%s.\n",
                 dir_c_str(), prim_ref_msg.c_str());
         res->state = SKIPPED;
-        res->reason = skip_reason::not_enough_ram;
+        res->reason = reason_t::skip_not_enough_ram;
     }
 
     if (!fits_cpu_ram) {

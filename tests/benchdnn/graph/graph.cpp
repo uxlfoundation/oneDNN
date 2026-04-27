@@ -441,7 +441,7 @@ int skip_unimplemented_ops(const dnnl::graph::partition &partition,
             BENCHDNN_PRINT(
                     2, "[INFO]: Unimplemented op: %s.\n", dg_op_kind.c_str());
             res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
+            res->reason = reason_t::skip_not_supported;
             return OK;
         }
 
@@ -455,7 +455,7 @@ int skip_unimplemented_ops(const dnnl::graph::partition &partition,
                 BENCHDNN_PRINT(2, "[INFO]: Unimplemented op on GPU: %s.\n",
                         dg_op_kind.c_str());
                 res->state = SKIPPED;
-                res->reason = skip_reason::case_not_supported;
+                res->reason = reason_t::skip_not_supported;
                 return OK;
             }
         }
@@ -480,7 +480,7 @@ int skip_unimplemented_accumulation_mode(
                         "[INFO]: Unimplemented accumulation mode: %s.\n",
                         acc_mode.c_str());
                 res->state = SKIPPED;
-                res->reason = skip_reason::case_not_supported;
+                res->reason = reason_t::skip_not_supported;
                 return OK;
             }
         }
@@ -596,7 +596,7 @@ int skip_unimplemented_memory_kind(res_t *res) {
         BENCHDNN_PRINT(2, "%s\n",
                 "[INFO]: only USM memory is supported by graph driver");
         res->state = SKIPPED;
-        res->reason = skip_reason::case_not_supported;
+        res->reason = reason_t::skip_not_supported;
     }
 
     return OK;

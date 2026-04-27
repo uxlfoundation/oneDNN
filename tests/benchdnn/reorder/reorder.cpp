@@ -224,7 +224,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
                 "[SKIP][%s:%d]: Mixed (xf8,xf16)<-->s32 support is limited.\n",
                 __FILE__, __LINE__);
         res->state = SKIPPED;
-        res->reason = skip_reason::case_not_supported;
+        res->reason = reason_t::skip_not_supported;
         return;
     }
 
@@ -251,7 +251,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
                     "scale mask.\n",
                     __FILE__, __LINE__);
             res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
+            res->reason = reason_t::skip_not_supported;
             return;
         }
 
@@ -263,7 +263,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
                         "dst data type.\n",
                         __FILE__, __LINE__);
                 res->state = SKIPPED;
-                res->reason = skip_reason::case_not_supported;
+                res->reason = reason_t::skip_not_supported;
                 return;
             }
 
@@ -275,7 +275,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
                         "attribute only.\n",
                         __FILE__, __LINE__);
                 res->state = SKIPPED;
-                res->reason = skip_reason::case_not_supported;
+                res->reason = reason_t::skip_not_supported;
                 return;
             }
 
@@ -286,7 +286,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
                         "runtime dimensions.\n",
                         __FILE__, __LINE__);
                 res->state = SKIPPED;
-                res->reason = skip_reason::case_not_supported;
+                res->reason = reason_t::skip_not_supported;
                 return;
             }
 
@@ -306,7 +306,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
                         "with scaling mask.\n",
                         __FILE__, __LINE__);
                 res->state = SKIPPED;
-                res->reason = skip_reason::case_not_supported;
+                res->reason = reason_t::skip_not_supported;
                 return;
             }
 
@@ -318,7 +318,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
                     "cases uniformly.\n",
                     __FILE__, __LINE__);
             res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
+            res->reason = reason_t::skip_not_supported;
             return;
 #endif
         }
@@ -338,7 +338,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
                     "runtime dimensions.\n",
                     __FILE__, __LINE__);
             res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
+            res->reason = reason_t::skip_not_supported;
             return;
         }
 
@@ -355,7 +355,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
                         "specified but with different masks isn't supported.\n",
                         __FILE__, __LINE__);
                 res->state = SKIPPED;
-                res->reason = skip_reason::case_not_supported;
+                res->reason = reason_t::skip_not_supported;
                 return;
             }
         }
@@ -365,7 +365,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
             BENCHDNN_PRINT(2, "[SKIP][%s:%d]: Int4 support is limited.\n",
                     __FILE__, __LINE__);
             res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
+            res->reason = reason_t::skip_not_supported;
             return;
         }
 
@@ -377,7 +377,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
             BENCHDNN_PRINT(2, "[SKIP][%s:%d]: f16 support is limited.\n",
                     __FILE__, __LINE__);
             res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
+            res->reason = reason_t::skip_not_supported;
             return;
         }
 
@@ -392,7 +392,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
             BENCHDNN_PRINT(2, "[SKIP][%s:%d]: f8 support is limited.\n",
                     __FILE__, __LINE__);
             res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
+            res->reason = reason_t::skip_not_supported;
             return;
         }
     }
@@ -403,7 +403,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
                     "[SKIP][%s:%d]: GPU doesn't support runtime dimensions.\n",
                     __FILE__, __LINE__);
             res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
+            res->reason = reason_t::skip_not_supported;
             return;
         }
 
@@ -416,7 +416,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
                     "compensation.\n",
                     __FILE__, __LINE__);
             res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
+            res->reason = reason_t::skip_not_supported;
             return;
         }
         auto is_blocked_format = [](const std::string &format_tag) {
@@ -441,7 +441,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
                     || is_4bit_format || scales_has_groups
                     || zero_point_has_groups) {
                 res->state = SKIPPED;
-                res->reason = skip_reason::case_not_supported;
+                res->reason = reason_t::skip_not_supported;
             }
         }
     }
@@ -457,7 +457,7 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
                 "one runtime is enabled.\n",
                 __FILE__, __LINE__);
         res->state = SKIPPED;
-        res->reason = skip_reason::invalid_case;
+        res->reason = reason_t::invalid;
         return;
     }
 #endif
@@ -469,7 +469,7 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
                 "post-op.\n",
                 __FILE__, __LINE__);
         res->state = SKIPPED;
-        res->reason = skip_reason::invalid_case;
+        res->reason = reason_t::invalid;
         return;
     }
 
@@ -483,7 +483,7 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
                 "zero-points\n",
                 __FILE__, __LINE__);
         res->state = SKIPPED;
-        res->reason = skip_reason::invalid_case;
+        res->reason = reason_t::invalid;
         return;
     }
 }

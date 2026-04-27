@@ -263,7 +263,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
                             && is_dt_f16_or_f32(prb->get_dt(WEI))
                             && is_dt_f16_or_f32(prb->get_dt(DST)))) {
             res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
+            res->reason = reason_t::skip_not_supported;
         }
     }
 }

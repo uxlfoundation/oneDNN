@@ -334,7 +334,7 @@ int check_dnnl_status(dnnl_status_t status, const prb_t *prb, res_t *res) {
             // not supported.
             if (is_nvidia_gpu() || is_amd_gpu()) {
                 res->state = SKIPPED;
-                res->reason = skip_reason::case_not_supported;
+                res->reason = reason_t::skip_not_supported;
                 return OK;
             }
 
@@ -383,7 +383,7 @@ int fetch_impl(benchdnn_dnnl_wrapper_t<dnnl_primitive_desc_t> &pdw,
         // Iterator is not supported, further logic is not applicable.
         if (!init_pd_args.is_iterator_supported) {
             if (res) res->state = SKIPPED;
-            if (res) res->reason = skip_reason::skip_impl_hit;
+            if (res) res->reason = reason_t::skip_impl_hit;
             return OK;
         }
 
@@ -392,7 +392,7 @@ int fetch_impl(benchdnn_dnnl_wrapper_t<dnnl_primitive_desc_t> &pdw,
             BENCHDNN_PRINT(2, "%s\n",
                     "[IMPL_FILTER] All implementations were skipped!");
             if (res) res->state = SKIPPED;
-            if (res) res->reason = skip_reason::skip_impl_hit;
+            if (res) res->reason = reason_t::skip_impl_hit;
             pdw.reset(nullptr);
             return OK;
         } else if (status == dnnl_success) {
@@ -461,7 +461,7 @@ int create_primitive(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &primw,
                     smart_bytes(res->mem_size_args.scratchpad_size).c_str(),
                     smart_bytes(gpu_max_alloc_capacity).c_str());
             res->state = SKIPPED;
-            res->reason = skip_reason::not_enough_ram;
+            res->reason = reason_t::skip_not_enough_ram;
             return OK;
         }
     }

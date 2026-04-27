@@ -415,7 +415,7 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
         if (is_f32f32x8 || is_bf16bf16x8 || is_x8x8f16 || !is_valid_f16
                 || is_wei_zp || is_non_s32_src_zp || is_non_unit_dst_scale) {
             res->state = SKIPPED;
-            res->reason = skip_reason::case_not_supported;
+            res->reason = reason_t::skip_not_supported;
             return;
         }
     }
@@ -425,14 +425,14 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
     // problems into not supported.
     if (prb->alg == WINO) {
         res->state = SKIPPED;
-        res->reason = skip_reason::case_not_supported;
+        res->reason = reason_t::skip_not_supported;
         return;
     }
 
     // GPU does not support depthwise fusion
     if (is_gpu() && prb->attr.post_ops.convolution_index() != -1) {
         res->state = SKIPPED;
-        res->reason = skip_reason::case_not_supported;
+        res->reason = reason_t::skip_not_supported;
         return;
     }
 }

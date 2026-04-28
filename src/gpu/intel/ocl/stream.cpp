@@ -173,6 +173,8 @@ status_t stream_t::run_verbose_profiler(
     // result in access failures when printing engine-specific info.
     verbose_printf(verbose_t::exec_profile, "\r");
 
+    ocl_profiler->start_async_callback_tracking();
+
     cl_int err = xpu::ocl::clSetEventCallback(
             out_evt, CL_COMPLETE, [](cl_event ev, cl_int, void *user) {
         std::unique_ptr<payload_t> hold(static_cast<payload_t *>(user));
@@ -186,9 +188,12 @@ status_t stream_t::run_verbose_profiler(
         }
         VPROF(hold->start, primitive, exec, VERBOSE_profile,
                 hold->info_str.c_str(), duration_ms);
+
+        if (hold->prof) { hold->prof->end_async_callback_tracking(); }
     }, payload.get());
 
     if (err != CL_SUCCESS) {
+        ocl_profiler->end_async_callback_tracking();
         VWARN(primitive, exec,
                 "%s, profiler error: failed to set event callback",
                 pd_info.c_str());

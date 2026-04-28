@@ -22,6 +22,7 @@
 #include <map>
 #include <mutex>
 #include <vector>
+#include <condition_variable>
 
 #include "common/c_types_map.hpp"
 
@@ -91,6 +92,21 @@ struct stream_profiler_t {
         return status::success;
     }
 
+    void start_async_callback_tracking() {
+        std::lock_guard<std::recursive_mutex> lk(m_);
+        ++pending_callbacks_;
+    }
+
+    void end_async_callback_tracking() {
+        std::lock_guard<std::recursive_mutex> lk(m_);
+        if (--pending_callbacks_ == 0) { callback_cv_.notify_all(); }
+    }
+
+    virtual void wait_for_async_profiling_completion() {
+        std::unique_lock<std::recursive_mutex> lk(m_);
+        callback_cv_.wait(lk, [this] { return pending_callbacks_ == 0; });
+    }
+
 protected:
     status_t get_info_impl(const std::map<uint64_t, entry_t> &stamp2entry,
             profiling_data_kind_t data_kind, uint64_t *data) const {
@@ -118,6 +134,9 @@ protected:
     uint64_t stamp_;
     const stream_t *stream_;
     void (*callback_)(uint64_t, uint64_t) = nullptr;
+
+    std::condition_variable_any callback_cv_;
+    size_t pending_callbacks_ = 0;
 };
 
 } // namespace xpu

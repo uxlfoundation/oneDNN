@@ -92,7 +92,13 @@ struct stream_t : public intel::stream_t {
 
     status_t barrier() override;
 
-    ~stream_t() override = default;
+    ~stream_t() override {
+        if (!is_verbose_profiler_enabled()) return;
+        if (!profiler_) return;
+        // In the asynchronous profiling mode, this retains the profiler
+        // and event lifetimes till all the profiling info is logged.
+        profiler_->wait_for_async_profiling_completion();
+    }
 
     const xpu::ocl::context_t &ocl_ctx() const { return impl()->ocl_ctx(); }
     xpu::ocl::context_t &ocl_ctx() { return impl()->ocl_ctx(); }

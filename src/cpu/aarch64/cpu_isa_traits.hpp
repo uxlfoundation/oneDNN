@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2018 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
-* Copyright 2023, 2025, 2026 Arm Ltd. and affiliates
+* Copyright 2023, 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -263,6 +263,11 @@ inline bool isa_has_s8s8(cpu_isa_t isa) {
 inline bool mayiuse_bf16() {
     using namespace Xbyak_aarch64::util;
     return cpu().isBf16Supported();
+}
+
+inline bool mayiuse_f16() {
+    using namespace Xbyak_aarch64::util;
+    return cpu().isF16Supported();
 }
 
 inline int isa_num_vregs(cpu_isa_t isa) {

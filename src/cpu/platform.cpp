@@ -132,8 +132,8 @@ bool has_data_type_support(data_type_t data_type) {
 #if DNNL_X64
             return x64::mayiuse(x64::avx512_core_fp16)
                     || x64::mayiuse(x64::avx2_vnni_2);
-#elif defined(DNNL_AARCH64_USE_ACL)
-            return arm_compute::CPUInfo::get().has_fp16();
+#elif DNNL_AARCH64
+            return aarch64::mayiuse_f16();
 #elif DNNL_RV64
             return rv64::mayiuse(rv64::zvfh);
 #else

@@ -542,7 +542,6 @@ status_t grouped_micro_gemm_t::execute(const exec_ctx_t &ctx) const {
     arg_list.append(k);
 
     arg_list.append(bias_data);
-    arg_list.append(num_groups);
 
     size_t sg_per_wg_m = pd()->gemm_.getSetting("sg_per_wg_m");
     size_t sg_per_wg_n = pd()->gemm_.getSetting("sg_per_wg_n");

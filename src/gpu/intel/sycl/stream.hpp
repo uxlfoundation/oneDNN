@@ -76,6 +76,9 @@ struct stream_t : public gpu::intel::stream_t {
         return profiler_->get_info(data_kind, num_entries, data);
     }
 
+    status_t run_verbose_profiler(
+            std::string &pd_info, double start_ms) const override;
+
     ::sycl::queue &queue() const { return *impl()->queue(); }
 
     status_t enqueue_primitive(const primitive_iface_t *prim_iface,
@@ -96,6 +99,14 @@ struct stream_t : public gpu::intel::stream_t {
     }
 
     status_t barrier() override { return impl()->barrier(); }
+
+    ~stream_t() override {
+        if (!is_verbose_profiler_enabled()) return;
+        if (!profiler_) return;
+        // In the asynchronous profiling mode, this retains the profiler
+        // and event lifetimes till all the profiling info is logged.
+        profiler_->wait_for_async_profiling_completion();
+    }
 
     const xpu::sycl::context_t &sycl_ctx() const { return impl()->sycl_ctx(); }
     xpu::sycl::context_t &sycl_ctx() { return impl()->sycl_ctx(); }

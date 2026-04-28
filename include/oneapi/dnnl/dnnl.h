@@ -473,11 +473,12 @@ dnnl_status_t DNNL_API dnnl_primitive_attr_set_scales_mask(
 ///     The set i-th bit indicates that a dedicated scaling factor is used for
 ///     each index along that dimension. Set the mask to 0 to use a common
 ///     scaling factor for the whole output tensor.
-/// @param group_ndims Number of group dimensions.
-/// @param group_dims Scaling factors correspondence groups that define the
-///     correspondence between the tensor dimensions and the scales array.
-///     The group dimensions should only be provided for each logical dimension
-///     that has correspondence mask @p mask set.
+/// @param group_ndims Number of group dimensions. Must be 0 or 2.
+/// @param group_dims Block sizes for the last two tensor dimensions:
+///     `{G0, G1}` where `G0` subdivides the second-to-last tensor dimension
+///     and `G1` subdivides the last. The corresponding mask bits must
+///     be set. Use `1` for no sub-blocking.
+///     NULL when @p group_ndims is 0.
 /// @param data_type Scaling factors data_type.
 /// @returns #dnnl_success on success and a status describing the error
 ///     otherwise.
@@ -504,13 +505,14 @@ dnnl_status_t DNNL_API dnnl_primitive_attr_set_scales(
 ///     The set i-th bit indicates that a dedicated scaling factor is used for
 ///     each index along that dimension. Set the mask to 0 to use a common
 ///     scaling factor for the whole output tensor.
-/// @param ndims Number of group dimensions.
-/// @param group_dims Scaling factors correspondence groups that define the
-///     correspondence between the tensor dimensions and the scales array.
-///     The group dimensions should only be provided for each logical dimension
-///     that has correspondence mask @p mask set.
+/// @param ndims Number of group dimensions. Must be 0 or 2.
+/// @param group_dims Block sizes for the last two tensor dimensions:
+///     `{G0, G1}` where `G0` subdivides the second-to-last tensor dimension
+///     and `G1` subdivides the last. The corresponding mask bits must
+///     be set. Use `1` for no sub-blocking.
+///     NULL when @p ndims is 0.
 /// @param data_type Scaling factors data_type.
-/// @param is_on_host Indicates whether the zero point is a host-side scalar.
+/// @param is_on_host Indicates whether the scaling factor is a host-side scalar.
 /// @returns #dnnl_success on success and a status describing the error
 ///     otherwise.
 dnnl_status_t DNNL_API dnnl_primitive_attr_set_scales_v2(
@@ -531,11 +533,12 @@ dnnl_status_t DNNL_API dnnl_primitive_attr_set_scales_v2(
 ///     The set i-th bit indicates that a dedicated scaling factor is used for
 ///     each index along that dimension. Set the mask to 0 to use a common
 ///     scaling factor for the whole tensor.
-/// @param ndims Number of group dimensions.
-/// @param group_dims Scaling factors correspondence groups that define the
-///     correspondence between the tensor dimensions and the scales array.
-///     The group dimensions should only be provided for each logical dimension
-///     that has correspondence mask @p mask set.
+/// @param ndims Number of group dimensions. Must be 0 or 2.
+/// @param group_dims Block sizes for the last two tensor dimensions:
+///     `{G0, G1}` where `G0` subdivides the second-to-last tensor dimension
+///     and `G1` subdivides the last. The corresponding mask bits must
+///     be set. Use `1` for no sub-blocking.
+///     NULL when @p ndims is 0.
 /// @param data_type Scaling factors data_type.
 /// @param is_on_host Indicates whether the scale is a host-side scalar.
 /// @param qmode Quantization mode, can be #dnnl_quantization_mode_static_sazp
@@ -579,11 +582,12 @@ dnnl_status_t DNNL_API dnnl_primitive_attr_set_zero_points_mask(
 ///     zero points array. The set i-th bit indicates that a dedicated
 ///     zero point is used for each index along that dimension. Set the
 ///     mask to 0 to use a common zero point for the whole output tensor.
-/// @param group_ndims Number of group dimensions.
-/// @param group_dims Zero point factors correspondence groups that define the
-///     correspondence between the tensor dimensions and the zero points array.
-///     The group dimensions should be only provided for each logical dimension
-///     that has the bit set correspondence mask @p mask set.
+/// @param group_ndims Number of group dimensions. Must be 0 or 2.
+/// @param group_dims Block sizes for the last two tensor dimensions:
+///     `{G0, G1}` where `G0` subdivides the second-to-last tensor dimension
+///     and `G1` subdivides the last. The corresponding mask bits must
+///     be set. Use `1` for no sub-blocking.
+///     NULL when @p group_ndims is 0.
 /// @param data_type Zero points factors data_type.
 /// @returns #dnnl_success on success and a status describing the error
 ///     otherwise.
@@ -606,12 +610,12 @@ dnnl_status_t DNNL_API dnnl_primitive_attr_set_zero_points(
 ///     correspondence between the tensor dimensions and the precomputed
 ///     reductions array. The set i-th bit indicates that a dedicated
 ///     precomputed reductions is used for each index along that dimension.
-/// @param group_ndims Number of group dimensions.
-/// @param group_dims Precomputed reduction factors correspondence groups that
-///     define the correspondence between the tensor dimensions and the
-///     precomputed reductions array.
-///     The group dimensions should be only provided for each logical dimension
-///     that has the bit set correspondence mask @p mask set.
+/// @param group_ndims Number of group dimensions. Must be 0 or 2.
+/// @param group_dims Block sizes for the last two tensor dimensions:
+///     `{G0, G1}` where `G0` subdivides the second-to-last tensor dimension
+///     and `G1` subdivides the last. The corresponding mask bits must
+///     be set. Use `1` for no sub-blocking.
+///     NULL when @p group_ndims is 0.
 /// @param data_type Precomputed reduction factors data_type.
 /// @returns #dnnl_success on success and a status describing the error
 ///     otherwise.
@@ -637,11 +641,12 @@ dnnl_status_t DNNL_API dnnl_primitive_attr_set_precomputed_reductions(
 ///     zero_points array. The set i-th bit indicates that a dedicated
 ///     zero point is used for each index along that dimension. Set the
 ///     mask to 0 to use a common zero point for the whole output tensor.
-/// @param ndims Number of group dimensions.
-/// @param group_dims Zero point factors correspondence groups that define the
-///     correspondence between the tensor dimensions and the zero_points array.
-///     The group dimensions should be only provided for each logical dimension
-///     that has the bit set correspondence mask @p mask set.
+/// @param ndims Number of group dimensions. Must be 0 or 2.
+/// @param group_dims Block sizes for the last two tensor dimensions:
+///     `{G0, G1}` where `G0` subdivides the second-to-last tensor dimension
+///     and `G1` subdivides the last. The corresponding mask bits must
+///     be set. Use `1` for no sub-blocking.
+///     NULL when @p ndims is 0.
 /// @param data_type Zero points factors data_type.
 /// @param is_on_host Indicates whether the zero point is a host-side scalar.
 /// @returns #dnnl_success on success and a status describing the error

@@ -4354,12 +4354,12 @@ struct primitive_attr : public handle<dnnl_primitive_attr_t> {
     /// @param mask Scaling factors correspondence mask that defines the
     ///     correspondence between the tensor dimensions and the @p scales array.
     ///     The set i-th bit indicates that a dedicated scaling factor is used for
-    ///     each index along that dimension. Set the mask to 0 to use a common
+    ///     each index along that dimension. Set the mask to `0` to use a common
     ///     scaling factor for the whole tensor.
-    /// @param groups Scaling factors correspondence groups that define the
-    ///     correspondence between the tensor dimensions and the scales array.
-    ///     The group dimensions should only be provided for each logical dimension
-    ///     that has correspondence mask @p mask set.
+    /// @param groups Block sizes for the last two tensor dimensions: `{G0, G1}`
+    ///     where `G0` subdivides the second-to-last tensor dimension
+    ///     and `G1` subdivides the last. The corresponding mask bits must be set.
+    ///     Use `1` for no sub-blocking. `{}` indicates no grouping.
     /// @param data_type Scaling factors data_type.
     /// @param is_on_host Indicates whether the scaling factor is a host-side scalar.
     /// @param qmode Quantization mode, can be #quantization_mode::static_sazp
@@ -4433,12 +4433,10 @@ struct primitive_attr : public handle<dnnl_primitive_attr_t> {
     ///     vector. The set i-th bit indicates that a dedicated zero point is
     ///     used for each index along that dimension. Set the mask to 0 to use
     ///     a common zero point for the whole output tensor.
-    /// @param groups Zero point factors correspondence groups that define the
-    ///     correspondence between the tensor dimensions and the zero points
-    ///     array.
-    ///     The set i-th dimension indicates a number of groups of zero point
-    ///     factors used for that logical dimension in a memory indicated by
-    ///     @p arg.
+    /// @param groups Block sizes for the last two tensor dimensions: `{G0, G1}`
+    ///     where `G0` subdivides the second-to-last tensor dimension
+    ///     and `G1` subdivides the last. The corresponding mask bits must be set.
+    ///     Use `1` for no sub-blocking. `{}` indicates no grouping.
     /// @param data_type Zero point factors data_type.
     /// @param is_on_host Indicates whether the zero point is a host-side scalar.
     void set_zero_points(int arg, int mask, const memory::dims &groups,
@@ -4483,12 +4481,10 @@ struct primitive_attr : public handle<dnnl_primitive_attr_t> {
     ///     reductions vector. The set i-th bit indicates that a dedicated
     ///     precomputed reduction point is used for each index along that
     ///     dimension.
-    /// @param groups Precomputed reduction factors correspondence groups that
-    ///     define the correspondence between the tensor dimensions and the
-    ///     precomputed reductions array.
-    ///     The set i-th dimension indicates a number of groups of precomputed
-    ///     reduction factors used for that logical dimension in a memory
-    ///     indicated by @p arg.
+    /// @param groups Block sizes for the last two tensor dimensions: `{G0, G1}`
+    ///     where `G0` subdivides the second-to-last tensor dimension
+    ///     and `G1` subdivides the last. The corresponding mask bits must be set.
+    ///     Use `1` for no sub-blocking. `{}` indicates no grouping.
     /// @param data_type Precomputed reduction factors data_type.
     void set_precomputed_reductions(int arg, int mask,
             const memory::dims &groups,

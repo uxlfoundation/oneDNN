@@ -185,14 +185,19 @@ TEST_F(attr_test_t, TestZeroPointsWithGroups) {
         // single zero_point for supported arg with data type specified
         attr.set_zero_points(arg, 0, {}, data_type::s8);
         // multiple zero_points for supported arg with data type specified
-        attr.set_zero_points(arg, 1 << 0, {4}, data_type::s8);
+        attr.set_zero_points(arg, 1 << 0, {4, 1}, data_type::s8);
         // single host zero_point for supported arg with data type specified
         attr.set_zero_points(arg, 0, {}, data_type::s8, true);
+        // single-element groups should be rejected
+        EXPECT_ANY_THROW(attr.set_zero_points(arg, 1 << 0, {4}, data_type::s8));
+        // three-element groups should be rejected
+        EXPECT_ANY_THROW(
+                attr.set_zero_points(arg, 1 << 0, {1, 4, 1}, data_type::s8));
     }
 
     for (auto arg : unsupported_args) {
-        // multiple zero_points for unsupported arg with data type specified
-        EXPECT_ANY_THROW(attr.set_zero_points(arg, 1 << 0, {4}));
+        // multiple zero_points for unsupported arg with groups specified
+        EXPECT_ANY_THROW(attr.set_zero_points(arg, 1 << 0, {4, 1}));
         // single zero_point for unsupported arg with data type specified
         EXPECT_ANY_THROW(attr.set_zero_points(arg, 0, {}, data_type::s8));
         // single host zero_point for unsupported arg with data type specified
@@ -202,7 +207,7 @@ TEST_F(attr_test_t, TestZeroPointsWithGroups) {
     // multiple zero_points that are not supported for host zero_point
     int any_support_arg = DNNL_ARG_SRC;
     EXPECT_ANY_THROW(attr.set_zero_points(
-            any_support_arg, 1 << 0, {4}, data_type::s8, true));
+            any_support_arg, 1 << 0, {4, 1}, data_type::s8, true));
 }
 
 TEST_F(attr_test_t, TestZeroPointsDataTypes) {
@@ -268,16 +273,21 @@ TEST_F(attr_test_t, TestPrecomputedReductionsWithGroups) {
         // single precomputed_reductions (not supported, but valid).
         attr.set_precomputed_reductions(arg, 0, {});
         // multiple precomputed_reductions for supported arg.
-        attr.set_precomputed_reductions(arg, 1 << 0, {4});
+        attr.set_precomputed_reductions(arg, 1 << 0, {4, 1});
         // multiple precomputed_reductions for supported arg with data type
         // specified. Anything but s32 is unsupported so far.
         EXPECT_ANY_THROW(attr.set_precomputed_reductions(
-                arg, 1 << 0, {4}, data_type::s8));
+                arg, 1 << 0, {4, 1}, data_type::s8));
+        // single-element groups should be rejected
+        EXPECT_ANY_THROW(attr.set_precomputed_reductions(arg, 1 << 0, {4}));
+        // three-element groups should be rejected
+        EXPECT_ANY_THROW(
+                attr.set_precomputed_reductions(arg, 1 << 0, {1, 4, 1}));
     }
 
     for (auto arg : unsupported_args) {
-        // multiple zero_points for supported arg with data type specified
-        EXPECT_ANY_THROW(attr.set_precomputed_reductions(arg, 1 << 0, {4}));
+        // precomputed_reductions for unsupported arg
+        EXPECT_ANY_THROW(attr.set_precomputed_reductions(arg, 1 << 0, {4, 1}));
     }
 }
 
@@ -306,10 +316,12 @@ HANDLE_EXCEPTIONS_FOR_TEST_F(attr_test_t, TestScalesWithGroups) {
     for (auto arg : supported_args) {
         // single non-default scales for supported arg
         attr.set_scales(arg, 0, {});
-        // multiple scales with a single group dim
-        attr.set_scales(arg, 1 << 0, {4});
-        // multiple scales with multiple group dims
+        // multiple scales with group dims
         attr.set_scales(arg, 1 << 0, {4, 1});
+        // single-element groups should be rejected
+        EXPECT_ANY_THROW(attr.set_scales(arg, 1 << 0, {4}));
+        // three-element groups should be rejected
+        EXPECT_ANY_THROW(attr.set_scales(arg, 1 << 0, {1, 4, 1}));
         // scales with groups and a data type
         attr.set_scales(arg, 1 << 0, {4, 1}, data_type::f32);
         // single host scale for supported arg with data type specified

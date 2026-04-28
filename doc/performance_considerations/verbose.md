@@ -119,6 +119,59 @@ Please see the profiling example [here](@ref performance_profiling_cpp), as it
 uses ONEDNN_VERBOSE output to tune oneDNN code to align with
 [best practices](@ref dev_guide_inference).
 
+#### Asynchronous Verbose Mode for GPU engines
+
+When oneDNN verbose mode is enabled for primitive execution profiling, the 
+execution time for synchronous runtimes is calculated based on the wall time 
+measured before and after primitive execution. 
+For GPU runtimes, which are generally asynchronous, using synchronizing 
+methodology can lead to additional overhead due to host-to-device stream 
+synchronization on entry and on exit in the `dnnl::primitive::execute()` call.
+
+To ensure accurate tracking of timing information for GPU runtimes, the verbose 
+mode uses a non-blocking approach which prints device-measured 
+times for primitive execution instead of relying on the wall time 
+measurements. Asynchronous profiling is currently supported only for OpenCL 
+and SYCL runtimes on Intel GPUs and can be optionally disabled by using 
+`ONEDNN_VERBOSE_USE_SYNC=1` environment variable:
+
+##### Example Output (with the asynchronous mode enabled):
+~~~sh
+# DNNL_VERBOSE_USE_SYNC is 0 by default
+DNNL_VERBOSE=profile_exec ./examples/primitives-matmul-cpp gpu
+~~~
+
+~~~sh
+onednn_verbose,v1,info,oneDNN v3.13.0 (commit 0fadac14800ba792a9d991b93b4917509eada63b)
+onednn_verbose,v1,info,cpu,runtime:OpenMP,nthr:224
+onednn_verbose,v1,info,cpu,isa:Intel AVX10.1 and Intel AMX with bfloat16 and 8-bit integer support
+onednn_verbose,v1,info,gpu,runtime:OpenCL
+onednn_verbose,v1,info,gpu,engine,opencl device count:2 
+onednn_verbose,v1,info,gpu,engine,0,name:Intel(R) Data Center GPU Max 1100,driver_version:25.18.33578,binary_kernels:enabled
+onednn_verbose,v1,info,gpu,engine,1,name:Intel(R) Data Center GPU Max 1100,driver_version:25.18.33578,binary_kernels:enabled
+onednn_verbose,v1,primitive,info,template:operation,engine,primitive,implementation,prop_kind,memory_descriptors,attributes,auxiliary,problem_desc,exec_time
+onednn_verbose,v1,primitive,exec,gpu:0,matmul,jit:gemm:any,undef,src:f32::blocked:abc::f0 wei:f32::blocked:abc::f0 bia:f32::blocked:abc::f0_mask4 dst:f32::blocked:abc::f0,attr-post-ops:eltwise_relu,,3x128x256:3x256x512,0.01904
+Example passed on GPU.
+~~~
+
+##### Example Output (with the asynchronous mode disabled):
+~~~sh
+DNNL_VERBOSE=profile_exec DNNL_VERBOSE_USE_SYNC=1 ./examples/primitives-matmul-cpp gpu
+~~~
+
+~~~sh
+onednn_verbose,v1,info,oneDNN v3.13.0 (commit 0fadac14800ba792a9d991b93b4917509eada63b)
+onednn_verbose,v1,info,cpu,runtime:OpenMP,nthr:224
+onednn_verbose,v1,info,cpu,isa:Intel AVX10.1 and Intel AMX with bfloat16 and 8-bit integer support
+onednn_verbose,v1,info,gpu,runtime:OpenCL
+onednn_verbose,v1,info,gpu,engine,opencl device count:2 
+onednn_verbose,v1,info,gpu,engine,0,name:Intel(R) Data Center GPU Max 1100,driver_version:25.18.33578,binary_kernels:enabled
+onednn_verbose,v1,info,gpu,engine,1,name:Intel(R) Data Center GPU Max 1100,driver_version:25.18.33578,binary_kernels:enabled
+onednn_verbose,v1,primitive,info,template:operation,engine,primitive,implementation,prop_kind,memory_descriptors,attributes,auxiliary,problem_desc,exec_time
+onednn_verbose,v1,primitive,exec,gpu:0,matmul,jit:gemm:any,undef,src:f32::blocked:abc::f0 wei:f32::blocked:abc::f0 bia:f32::blocked:abc::f0_mask4 dst:f32::blocked:abc::f0,attr-post-ops:eltwise_relu,,3x128x256:3x256x512,0.473145
+Example passed on GPU.
+~~~
+
 ### Understanding why a given implementation is dispatched
 
 When performance is lower than expected, it is usually likely due to
@@ -231,12 +284,6 @@ where:
    memory is dense, the field will be empty.
 5. `extra_flags` is unspecified information that is intended for development
    purposes.
-
-@note
-When oneDNN verbose mode is enabled with GPU engines, oneDNN adds extra stream
-synchronization on entry and on exit in the dnnl::primitive::execute() call.
-The execution time is calculated based on wall time measured before and after
-primitive execution.
 
 @note
 When oneDNN verbose mode is enabled for builds with

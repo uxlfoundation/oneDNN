@@ -254,11 +254,12 @@ for more information.
 mode. When `MODE` is set to `none` (the default), cold cache is disabled.
 When `MODE` is set to `wei`, cold cache is enabled for weights argument
 only. This mode targets forward and backward by data propagation kinds. When
-`MODE` is set to `all`, cold cache is enabled for each execution argument.
-This targets any propagation kind but mostly bandwidth-limited functionality
-to emulate first access to data or branching cases. When `MODE` is set to
-`custom`, cold cache is enabled for specified arguments, but it requires source
-code adjustments. Refer to [cold cache](knob_cold_cache.md) for more information.
+`MODE` is set to `all`, cold cache is enabled for each execution argument except
+a scratchpad. This targets any propagation kind but mostly bandwidth-limited
+functionality to emulate first access to data or branching cases. When `MODE` is
+set to `custom`, cold cache is enabled for specified arguments, but it requires
+source code adjustments. Refer to [cold cache](knob_cold_cache.md) for more
+information.
 
 ### --fix-times-per-prb
 `--fix-times-per-prb=N` specifies the `N` number of rounds per problem to run,

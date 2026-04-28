@@ -28,11 +28,12 @@ arguments, which is controlled by the user.
 `MODE` can be the one of these options: `none` (the default), `wei`, `all`, or
 `custom` (lowercase).
 
-`wei` mode has benchdnn prepare a pile of weights tensors and, for each new
+`wei` mode makes benchdnn prepare a stack of weights tensors and, for each new
 run, use a new set until the stack is over. Then, it starts from the top of
-the pile again. It ensures that pile size is sufficient to evict previously used
-sets of weights from caches. This mode emulates a regular situation in
-topologies for primitives such as (de-)convolutions, inner product, and matmul.
+the stack again. It ensures that the stack size is sufficient to evict
+previously used sets of weights from caches. This mode emulates a regular
+situation in topologies for primitives such as (de-)convolutions, inner product,
+and matmul.
 
 It is common in modern frameworks that a primitive output activations reuse
 the same memory pages and cache lines as the input activations of the previously
@@ -41,14 +42,14 @@ accesses while weights are taken from RAM. Note that if a primitive requests
 this mode but does not have a notion of weights, a warning is printed to stdout
 and cold cache is not enabled.
 
-`all` mode estimates sizes for the whole problem and makes equal piles of
+`all` mode estimates sizes for the whole problem and makes equal stacks of
 memory objects for each execution argument so that the problem executes a
 unique set every time. It targets situations when first load happens, such as
 reorders. It also targets branching when just two buffers is not enough, and a
 copy of the previous layer comes from RAM. Note that the `user` mode scratchpad
-counts towards the estimated size since this is a separate memory object. In
-`library` mode, it doesn't count because the memory buffer is not under user's
-control.
+doesn't count towards the estimated size since it is designed to be reused
+across different primitives. In the `library` mode, it doesn't count because the
+memory buffer is not under the user's control.
 
 `custom` mode is a compromise between flexibility and command-line usability.
 In terms of functionality, it provides the user with an ability to specify the
@@ -59,7 +60,7 @@ are empty). If not, an error is returned to the user with the file name and
 line where modifications are expected. Once updated, `custom` mode starts
 working with the specified arguments.
 
-Since cold cache targets measurements to show real RAM bandwidth, our
+Since cold cache targets measurements to show close-to-real RAM bandwidth, our
 recommendation is to utilize a custom performance template that contains
 bandwidth metrics: `--perf-template=%-Gbw%,%0Gbw%`. This example provides both
 best and average bandwidth to inspect since the execution cannot control or

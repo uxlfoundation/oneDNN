@@ -180,7 +180,7 @@ Key parameters of the scaling API methods are summarized below:
 |:----------|:--------|:------------|
 | `arg` | `DNNL_ARG_SRC`, `DNNL_ARG_WEIGHTS`, `DNNL_ARG_DST`, `DNNL_ARG_BIAS` | Tensor to scale |
 | `mask` | `0`, `1<<dim`, `(1<<d1)+(1<<d2)` | Scaling granularity: global, per-dimension, multi-dimensional |
-| `groups` | `{}`, `{G}`, `{G1,G2,...}` | Block quantization: none, single-size, multi-dimensional blocks |
+| `groups` | `{}`, `{G0, G1}` | Block quantization: none, or two group sizes for the last two tensor dimensions |
 | `data_type` | `f32`, `bf16`, `f16`, `f8_e5m2`, `f8_e4m3`, `e8m0` | Scaling factor data type |
 | `is_on_host` | `true`/`false` | Host vs device memory location of scaling factor |
 | `qmode` | `static_sazp`, `dynamic_mx`, `dynamic_fp` | Quantization mode: static with scales and zero-points, dynamic (MXFP8 compatible), dynamic (NVFP4 compatible) |
@@ -360,7 +360,7 @@ Key parameters of the zero-point API methods are summarized below:
 |:----------|:--------|:------------|
 | `arg` | `DNNL_ARG_SRC`, `DNNL_ARG_WEIGHTS`, `DNNL_ARG_DST` | Tensor to apply zero-point |
 | `mask` | `0`, `1<<dim`, `(1<<d1)+(1<<d2)` | Zero-point granularity: global, per-dimension, multi-dimensional |
-| `groups` | `{}`, `{G}`, `{G1,G2,...}` | Block quantization: none, single-size, multi-dimensional blocks |
+| `groups` | `{}`, `{G0, G1}` | Block quantization: none, or two group sizes for the last two tensor dimensions |
 | `data_type` | `s32`, `s8`, `u8`, `s4`, `u4` | Zero-point data type |
 | `is_on_host` | `true`/`false` | Host vs device memory location of zero-point |
 
@@ -461,7 +461,7 @@ Key parameters of the precomputed reductions API method are summarized below:
 |:----------|:--------|:------------|
 | `arg` | `DNNL_ARG_SRC` | Tensor to apply precomputed reductions |
 | `mask` | `0`, `1<<dim`, `(1<<d1)+(1<<d2)` | Reduction granularity: global, per-dimension, multi-dimensional |
-| `groups` | `{}`, `{G}`, `{G1,G2,...}` | Block quantization: none, single-size, multi-dimensional blocks |
+| `groups` | `{}`, `{G0, G1}` | Block quantization: none, or two group sizes for the last two tensor dimensions |
 | `data_type` | `s32` | Reduction data type |
 
 @note

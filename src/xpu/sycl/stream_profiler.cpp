@@ -70,6 +70,50 @@ status_t stream_profiler_t::get_info(profiling_data_kind_t data_kind,
     return xpu::stream_profiler_t::get_info_impl(stamp2entry, data_kind, data);
 }
 
+status_t stream_profiler_t::get_aggregate_exec_timing(
+        double &duration_ms, std::vector<::sycl::event> &evt_snap) const {
+    using namespace ::sycl::info;
+    duration_ms = 0.0;
+    if (evt_snap.empty()) return status::success;
+    uint64_t agg_start = 0;
+    uint64_t agg_end = 0;
+
+    for (const auto &ev : evt_snap) {
+        auto evbeg = ev.get_profiling_info<event_profiling::command_start>();
+        auto evend = ev.get_profiling_info<event_profiling::command_end>();
+
+        agg_start = agg_start == 0 ? evbeg : std::min(agg_start, evbeg);
+        agg_end = std::max(agg_end, evend);
+    }
+
+    duration_ms = static_cast<double>(agg_end - agg_start) * 1e-6;
+
+    return status::success;
+}
+
+status_t stream_profiler_t::extract_primitive_events(
+        std::vector<::sycl::event> &evt_snap) {
+    evt_snap.clear();
+
+    // During the course of primitive execution, the current stamp marks the
+    // events enqueued for the current primitive.
+    for (auto it = events_.rbegin(); it != events_.rend(); ++it) {
+        if (it->stamp < stamp_) break;
+        if (it->stamp == stamp_) {
+            const auto *sycl_event
+                    = utils::downcast<const xpu::sycl::event_t *>(
+                            it->event.get());
+            if (sycl_event && sycl_event->size() > 0) {
+                evt_snap.push_back((*sycl_event)[0]);
+            }
+        }
+    }
+
+    std::reverse(evt_snap.begin(), evt_snap.end());
+
+    return status::success;
+}
+
 } // namespace sycl
 } // namespace xpu
 } // namespace impl

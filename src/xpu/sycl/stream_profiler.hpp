@@ -20,6 +20,7 @@
 #include "common/c_types_map.hpp"
 
 #include "xpu/stream_profiler.hpp"
+#include "xpu/sycl/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -32,6 +33,11 @@ struct stream_profiler_t : public xpu::stream_profiler_t {
 
     status_t get_info(profiling_data_kind_t data_kind, int *num_entries,
             uint64_t *data) const override;
+
+    status_t get_aggregate_exec_timing(
+            double &duration_ms, std::vector<::sycl::event> &evt_snap) const;
+
+    status_t extract_primitive_events(std::vector<::sycl::event> &evt_snap);
 };
 
 } // namespace sycl

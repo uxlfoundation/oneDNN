@@ -99,7 +99,7 @@ std::vector<int64_t> get_permutation(int ndims, const std::string &from_format,
 
 std::vector<int64_t> get_last_two_dims_permutation(int ndims);
 
-memory::desc transpose(const memory::desc &adesc, dim dim0, dim dim1);
+memory::desc transpose(const memory::desc &adesc, int dim0, int dim1);
 
 memory::desc to_grouped(const memory::desc &adesc, dim groups);
 
@@ -110,8 +110,6 @@ memory::desc to_format_any(const memory::desc &adesc);
 dims get_ncx_strides(const dims &shape);
 
 dims get_nxc_strides(const dims &shape);
-
-dims get_dense_strides(const dims &shape);
 
 memory::desc to_nxc_format(const memory::desc &adesc);
 

@@ -69,7 +69,9 @@ struct genindex_executable_t : public op_executable_t {
     }
 
 private:
-    int axis_, nelems_, ndims_;
+    dim_t axis_;
+    dim_t nelems_;
+    int32_t ndims_;
     dims_t output_dims_, output_strides_;
     dnnl::engine::kind ekind_;
     std::string info_;

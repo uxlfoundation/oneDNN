@@ -116,14 +116,6 @@ inline std::string thread_id_to_str(std::thread::id id) {
     return ss.str();
 }
 
-inline int div_and_ceil(float x, float y) {
-    return static_cast<int>(std::ceil(x / y));
-}
-
-inline int div_and_floor(float x, float y) {
-    return static_cast<int>(std::floor(x / y));
-}
-
 template <typename T, typename... Args>
 inline std::string set2str(const std::set<T, Args...> &obj) {
     ostringstream_t oss;

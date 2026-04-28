@@ -114,7 +114,11 @@ private:
     }
     std::vector<target_dt> get_attr_data(
             const std::vector<attr_dt> &orig_data, std::false_type) {
-        return std::vector<target_dt>(orig_data.begin(), orig_data.end());
+        std::vector<target_dt> result;
+        result.reserve(orig_data.size());
+        for (const auto &v : orig_data)
+            result.push_back(static_cast<target_dt>(v));
+        return result;
     }
 
     const engine::kind dflt_eng_kind = engine::kind::cpu;

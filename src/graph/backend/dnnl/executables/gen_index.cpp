@@ -80,7 +80,7 @@ void genindex_executable_t::execute_impl(const stream &stream,
                 input_dims, i, output_dims_, ndims_);
         auto offset
                 = utils::offset_compute(output_strides_, input_dims, ndims_);
-        output_ptr[offset] = input_dims[axis_];
+        output_ptr[offset] = static_cast<int32_t>(input_dims[axis_]);
     });
     stream.get()->after_exec_hook();
 }
@@ -129,7 +129,7 @@ void genindex_executable_t::execute(const stream &stream,
     compute::kernel_arg_list_t arg_list;
     const auto &dst = *(args.at(DNNL_ARG_DST).get()->memory_storage());
     arg_list.set(0, dst);
-    arg_list.set(1, axis_);
+    arg_list.set(1, static_cast<int>(axis_));
     auto *sycl_stream
             = dnnl::impl::utils::downcast<sycl::stream_t *>(compute_stream);
     sycl_stream->before_exec_hook();
@@ -183,7 +183,7 @@ cl_event genindex_executable_t::execute_ocl_impl(const stream &stream,
     compute::kernel_arg_list_t arg_list;
     const auto &dst = *(args.at(DNNL_ARG_DST).get()->memory_storage());
     arg_list.set(0, dst);
-    arg_list.set(1, axis_);
+    arg_list.set(1, static_cast<int>(axis_));
     auto *ocl_stream = dnnl::impl::utils::downcast<gpu::intel::ocl::stream_t *>(
             compute_stream);
 

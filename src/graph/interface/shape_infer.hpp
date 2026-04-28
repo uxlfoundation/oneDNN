@@ -51,7 +51,7 @@ bool validate(const dims &inferred, const dims &expected);
 
 /// get the dense strides of a given shape
 /// eg. (3, 4, 5) -> (20, 5, 1)
-inline dims get_dense_strides(const dims &shape);
+dims get_dense_strides(const dims &shape);
 
 /// shapes of the logical tensors in the vector are known
 inline bool every_shape_is_known(const std::vector<logical_tensor_t *> &lts);

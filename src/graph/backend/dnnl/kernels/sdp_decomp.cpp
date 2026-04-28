@@ -180,7 +180,7 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
     sdp_args_set_t *res = res_cache.get_or_add(
             reinterpret_cast<size_t>(this), resource_ctor_);
 
-    int MBO = sdp_cfg_.batch_size, MBI = sdp_cfg_.num_head_q;
+    dim_t MBO = sdp_cfg_.batch_size, MBI = sdp_cfg_.num_head_q;
 
     char *src1_user_pointer = static_cast<char *>(
             inputs[sdp_cfg_.graph_inport[sdp_decomp_config_t::mm1_src]]

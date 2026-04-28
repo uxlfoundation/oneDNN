@@ -123,7 +123,7 @@ impl::status_t sdp_decomp_config_t::construct_params(
 
     // Record the ops inside of SDP pattern for later usage
     CHECK(record_sdp_ops(sg, quantized));
-    const int last_dim = ndims - 1, second_last_dim = ndims - 2;
+    const dim_t last_dim = ndims - 1, second_last_dim = ndims - 2;
 
     // Update SDPA input params. Sequence length for query and key/value are
     // NOT always same.
@@ -200,9 +200,9 @@ impl::status_t sdp_decomp_config_t::construct_params(
     sub_mm1_dst_md = memory::desc(sub_mm1_dst_dims, dt_inter, format_tag::ab);
     dnnl::post_ops dnnl_pops;
     auto mm1_ori_dnnl_pops = sub_matmul1_attr.get_post_ops();
-    auto make_sub_md
-            = [&](const dnnl::impl::memory_desc_t &ori_desc,
-                      int second_last_dim, int last_dim) -> dnnl::memory::desc {
+    auto make_sub_md = [&](const dnnl::impl::memory_desc_t &ori_desc,
+                               dim_t second_last_dim,
+                               dim_t last_dim) -> dnnl::memory::desc {
         auto post_shape = ori_desc.dims;
         auto post_stride = ori_desc.format_desc.blocking.strides;
         auto post_dt = static_cast<dnnl::memory::data_type>(ori_desc.data_type);

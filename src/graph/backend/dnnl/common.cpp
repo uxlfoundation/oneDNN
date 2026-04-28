@@ -334,8 +334,11 @@ std::vector<int64_t> get_permutation(int ndims, const std::string &from_format,
     return axes;
 }
 
-memory::desc transpose(const memory::desc &adesc, dim dim0, dim dim1) {
-    std::vector<int> axes(static_cast<std::size_t>(adesc.get_ndims()));
+memory::desc transpose(const memory::desc &adesc, int dim0, int dim1) {
+    size_t ndims = static_cast<std::size_t>(adesc.get_ndims());
+    assert(dim0 >= 0 && dim0 < static_cast<int>(ndims) && dim1 >= 0
+            && dim1 < static_cast<int>(ndims));
+    std::vector<int> axes(ndims);
     std::iota(axes.begin(), axes.end(), 0);
     axes[static_cast<std::size_t>(dim0)] = dim1;
     axes[static_cast<std::size_t>(dim1)] = dim0;
@@ -369,8 +372,8 @@ dims get_ncx_strides(const dims &shape) {
     }
     dims strides(_shape.size());
     for (auto it = _shape.begin(); it < _shape.end(); ++it) {
-        const auto val = std::accumulate(
-                std::next(it), _shape.end(), 1, std::multiplies<dim_t>());
+        const auto val = std::accumulate(std::next(it), _shape.end(), (dim_t)1,
+                std::multiplies<dim_t>());
         const auto dist = std::distance(_shape.begin(), it);
         strides[static_cast<size_t>(dist)] = val;
     }
@@ -463,22 +466,6 @@ bool is_4c_blocked(const memory::desc &adesc) {
 bool is_plain(const memory::desc &adesc) {
     if (adesc.get_format_kind() != format_kind::blocked) return false;
     return adesc.get_inner_nblks() == 0;
-}
-
-// get the dense strides of a given shape
-// eg. (3, 4, 5) -> (20, 5, 1)
-dims get_dense_strides(const dims &shape) {
-    dims strides(shape.size());
-    for (auto it = shape.begin(); it < shape.end(); ++it) {
-        const auto val = std::accumulate(
-                std::next(it), shape.end(), 1, [](dim_t x, dim_t y) {
-            // replace 0 in shape to 1 when computing the strides
-            return std::max<dim_t>(x, 1) * std::max<dim_t>(y, 1);
-        });
-        const auto dist = std::distance(shape.begin(), it);
-        strides[static_cast<size_t>(dist)] = val;
-    }
-    return strides;
 }
 
 memory::desc to_ncx_format(const memory::desc &adesc) {

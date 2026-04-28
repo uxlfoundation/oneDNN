@@ -31,7 +31,7 @@ namespace graph {
 bool check_pads(const op_t *n) {
     auto hasNegative = [](const dims &pads) {
         return std::any_of(pads.begin(), pads.end(),
-                [](int element) { return element < 0; });
+                [](dim_t element) { return element < 0; });
     };
     const dims pads_begin = n->get_attr<dims>(op_attr::pads_begin);
     VCHECK_SHAPE_INFER(!hasNegative(pads_begin),

@@ -175,10 +175,10 @@ status_t mqa_decomp_kernel_t<quantized, dt>::execute_impl(
     mqa_args_set_t *res = res_cache.get_or_add(
             reinterpret_cast<size_t>(this), resource_ctor_);
 
-    int MBO = mqa_cfg_.batch_size, MBI = mqa_cfg_.num_head,
-        M1 = mqa_cfg_.seq_len, K1 = mqa_cfg_.size_per_head,
-        N1 = mqa_cfg_.seq_len, M2 = mqa_cfg_.size_per_head,
-        K2 = mqa_cfg_.seq_len, N2 = mqa_cfg_.seq_len;
+    dim_t MBO = mqa_cfg_.batch_size, MBI = mqa_cfg_.num_head,
+          M1 = mqa_cfg_.seq_len, K1 = mqa_cfg_.size_per_head,
+          N1 = mqa_cfg_.seq_len, M2 = mqa_cfg_.size_per_head,
+          K2 = mqa_cfg_.seq_len, N2 = mqa_cfg_.seq_len;
 
     char *src1_user_pointer = static_cast<char *>(
             inputs[mqa_cfg_.graph_inport[0]].get_data_handle());

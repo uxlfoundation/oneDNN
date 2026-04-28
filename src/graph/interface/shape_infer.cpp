@@ -150,11 +150,14 @@ bool validate(const dims &inferred, const dims &expected) {
 
 /// get the dense strides of a given shape
 /// eg. (3, 4, 5) -> (20, 5, 1)
-inline dims get_dense_strides(const dims &shape) {
+dims get_dense_strides(const dims &shape) {
     dims strides(shape.size());
     for (auto it = shape.begin(); it < shape.end(); ++it) {
         const auto val = std::accumulate(
-                std::next(it), shape.end(), 1, std::multiplies<dim_t>());
+                std::next(it), shape.end(), (dim_t)1, [](dim_t x, dim_t y) {
+            // replace 0 in shape to 1 when computing the strides
+            return std::max<dim_t>(x, 1) * std::max<dim_t>(y, 1);
+        });
         const auto dist = std::distance(shape.begin(), it);
         strides[static_cast<size_t>(dist)] = val;
     }
@@ -805,9 +808,9 @@ status_t infer_pool_output_shape(op_t *n,
         dim_t dilated = dilations[i] * (kernel[i] - 1) + 1;
         dim_t out_value;
         if (rounding_type == "ceil") {
-            out_value = utils::div_and_ceil(padded - dilated, strides[i]) + 1;
+            out_value = utils::div_up(padded - dilated, strides[i]) + 1;
         } else {
-            out_value = utils::div_and_floor(padded - dilated, strides[i]) + 1;
+            out_value = (padded - dilated) / strides[i] + 1;
         }
         output_sp.push_back(out_value);
     }
@@ -1572,12 +1575,12 @@ status_t infer_static_reshape_output_shape(op_t *n,
         }
     }
 
-    int in_size = 1;
-    int out_size = 1;
-    for (size_t i = 0; i < static_cast<size_t>(in0.ndims()); i++) {
+    dim_t in_size = 1;
+    dim_t out_size = 1;
+    for (size_t i = 0; i < in_dims.size(); i++) {
         if (in_dims[i] >= 0) in_size *= in_dims[i];
     }
-    for (size_t i = 0; i < static_cast<size_t>(out_dims.size()); i++) {
+    for (size_t i = 0; i < out_dims.size(); i++) {
         if (out_dims[i] >= 0) out_size *= out_dims[i];
     }
     // handle -1 in output shape: the value is inferred from the size of the
@@ -1585,7 +1588,7 @@ status_t infer_static_reshape_output_shape(op_t *n,
     if (find_uncertain_dim) {
         VCHECK_INVALID_SHAPE((out_size != 0),
                 "%s, output size is not allowed to be 0 for uncertain dims, "
-                "output size: %d  ",
+                "output size: %" PRId64 " ",
                 op_t::kind2str(n->get_kind()).c_str(), out_size);
         out_dims[uncertain_axis] = in_size / out_size;
     }
@@ -1593,14 +1596,17 @@ status_t infer_static_reshape_output_shape(op_t *n,
     // size of input should be same as output
     if (find_uncertain_dim == false) {
         VCHECK_INVALID_SHAPE((out_size == in_size),
-                "%s, size of input should be same as output. input size: %d, "
-                "output size: %d  ",
+                "%s, size of input should be same as output. input size: "
+                "%" PRId64
+                ", "
+                "output size: %" PRId64 " ",
                 op_t::kind2str(n->get_kind()).c_str(), in_size, out_size);
     } else {
         VCHECK_INVALID_SHAPE((out_size * out_dims[uncertain_axis] == in_size),
                 "%s, the product of output size and output dim at uncertain "
-                "axis should be equal to the input size. input size: %d, "
-                "output size: %d, output dim at uncertain axis: %d  ",
+                "axis should be equal to the input size. input size: %" PRId64
+                ", "
+                "output size: %" PRId64 ", output dim at uncertain axis: %d  ",
                 op_t::kind2str(n->get_kind()).c_str(), in_size, out_size,
                 static_cast<int>(out_dims[uncertain_axis]));
     }
@@ -1725,7 +1731,10 @@ status_t infer_interpolate_output_shape(op_t *n,
 
         // spatial_ndim
         for (size_t i = 0; i < static_cast<size_t>(spatial_ndim); i++) {
-            in_dims[i + spatial_dim_start_axis] *= scales[i];
+            const float d
+                    = static_cast<float>(in_dims[i + spatial_dim_start_axis]);
+            in_dims[i + spatial_dim_start_axis]
+                    = static_cast<dim_t>(d * scales[i]);
         }
     }
     if (!sizes.empty()) {

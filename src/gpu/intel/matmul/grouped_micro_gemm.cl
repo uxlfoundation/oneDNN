@@ -57,10 +57,64 @@ void load_bias(
 #define offsets_tile_br SUBGROUP_SIZE
 #define offsets_tile_bc 1
 #define offsets_tile_nbr \
-    MAX(1, NUM_GROUPS / ugemm_grouped_sg_tile_m / ugemm_grouped_wg_tile_n)
+    MAX(1, \
+            NUM_GROUPS / (ugemm_grouped_sg_per_wg_m * SUBGROUP_SIZE) \
+                    / ugemm_grouped_sg_per_wg_n)
 #define offsets_tile_nbc 1
 DECLARE_2D_TILE(offsets_tile_type, int, SUBGROUP_SIZE, offsets_tile_br,
         offsets_tile_bc, offsets_tile_nbr, offsets_tile_nbc)
+
+#define slm_src_offsets_size sizeof(off_t) * 2
+#define slm_batch_size sizeof(off_t)
+#define slm_sg_last_size \
+    sizeof(int) * ugemm_grouped_sg_per_wg_m *ugemm_grouped_sg_per_wg_n
+#define slm_sparse_total_size \
+    slm_src_offsets_size + slm_batch_size + slm_sg_last_size
+
+void find_sparse_batch(off_t *batch, int2 *src_range,
+        const global int *src_offsets, off_t flat_token, local char *slm) {
+    local off_t *slm_src_offset = (local off_t *)slm;
+    local off_t *slm_batch = slm_src_offset + 2;
+    local int *slm_sg_last = (local int *)(slm_batch + 1);
+
+    offsets_tile_type offsets_tile;
+    off_t sg_ij0 = sub_group_broadcast(get_local_linear_id(), 0);
+    int sg_idx = get_sub_group_id();
+    off_t sg_batch0 = sg_ij0 * offsets_tile_nbr;
+
+    tile_load(&offsets_tile, src_offsets, NUM_GROUPS, 1, 0, sg_batch0, 0);
+
+    // Share each subgroup's last tile value for cross-subgroup carry
+    if (get_sub_group_local_id() == SUBGROUP_SIZE - 1)
+        slm_sg_last[sg_idx] = offsets_tile.x[offsets_tile_nbr - 1][0];
+    work_group_barrier(CLK_LOCAL_MEM_FENCE);
+
+    int sg_carry = (sg_idx > 0) ? slm_sg_last[sg_idx - 1] : 0;
+
+    // Find the tile containing the current batch, use shuffle_up to
+    // query the next src_offset.
+    int carry_b = sg_carry;
+#pragma unroll
+    for (int b = 0, idx = sg_batch0 + get_sub_group_local_id();
+            b < offsets_tile_nbr; b++, idx += SUBGROUP_SIZE) {
+        off_t curr = offsets_tile.x[b][0];
+        off_t prev = intel_sub_group_shuffle_up(carry_b, curr, 1);
+
+        // Only one work-item should satisfy this condition
+        if (curr > flat_token && prev <= flat_token && idx < NUM_GROUPS) {
+            slm_src_offset[0] = prev;
+            slm_src_offset[1] = curr;
+            *slm_batch = idx;
+        }
+        carry_b = sub_group_broadcast(curr, SUBGROUP_SIZE - 1);
+    }
+    work_group_barrier(CLK_LOCAL_MEM_FENCE);
+
+    *batch = *slm_batch;
+    *src_range = (int2)(slm_src_offset[0], slm_src_offset[1]);
+}
+#else
+#define slm_sparse_total_size 0
 #endif
 
 #ifndef DST_DT_F32
@@ -168,13 +222,12 @@ grouped_micro_gemm(const global SRC_DATA_T *src, long ldsrc,
         const global SRC_ZP_DATA_T *src_attr_zp, const long ldsrcq,
         const global WEI_SCALES_DATA_T *wei_attr_scales,
         const global WEI_ZP_DATA_T *wei_attr_zp, const long ldweiq,
-        const long n, const long k, const global BIA_DATA_T *bias,
-        const long num_groups) {
+        const long n, const long k, const global BIA_DATA_T *bias) {
 #if WITH_SLM
-    local char slm[ugemm_grouped_slm_size];
+    local char slm[MAX(ugemm_grouped_slm_size, slm_sparse_total_size)];
 #else
 #if WITH_SPARSE_GROUPS
-    local char slm[sizeof(off_t) * 2]; // used for src_offsets tile
+    local char slm[slm_sparse_total_size];
 #else
     local char *slm = NULL;
 #endif
@@ -193,74 +246,25 @@ grouped_micro_gemm(const global SRC_DATA_T *src, long ldsrc,
     off_t src_offset;
 
 #if WITH_SPARSE_GROUPS
-    local off_t *slm_src_offset = (local off_t *)slm;
-    local off_t *slm_batch = (local off_t *)(slm + sizeof(off_t) * 2);
-    if (get_local_linear_id() == 0) *slm_batch = INT_MAX;
-    intel_work_group_barrier_arrive(CLK_LOCAL_MEM_FENCE);
     off_t flat_token = get_group_id(2);
-    {
-        offsets_tile_type offsets_tile;
-        off_t sg_ij0 = sub_group_broadcast(get_local_linear_id(), 0);
-
-        int sg_offset = offsets_tile_nbr;
-        tile_load(&offsets_tile, src_offsets, num_groups, 1, 0,
-                sg_ij0 * sg_offset, 0);
-
-        batch = INT_MAX;
-        off_t batch_idx = INT_MAX;
-        int offsets_tile_idx = 0;
-        for (; offsets_tile_idx
-                        < sizeof(offsets_tile.x) / sizeof(offsets_tile.x[0])
-                && sub_group_all(batch == INT_MAX);
-                offsets_tile_idx++) {
-            batch_idx = (off_t)(sg_offset * sg_ij0
-                    + offsets_tile_idx * SUBGROUP_SIZE
-                    + get_sub_group_local_id());
-            if (offsets_tile.x[offsets_tile_idx][0] > flat_token) {
-                batch = batch_idx;
-            }
-        }
-
-        batch = sub_group_reduce_min(batch);
-        intel_work_group_barrier_wait(CLK_LOCAL_MEM_FENCE);
-        if (get_sub_group_local_id() == 0 && batch_idx != INT_MAX)
-            atom_min(slm_batch, batch);
-        work_group_barrier(CLK_LOCAL_MEM_FENCE);
-        batch = *slm_batch;
-        if (batch == 0) {
-            if (get_local_linear_id() == 0) {
-                slm_src_offset[0] = 0;
-                slm_src_offset[1] = offsets_tile.x[offsets_tile_idx - 1][0];
-            }
-        } else {
-            if (batch_idx == batch - 1) {
-                slm_src_offset[0] = offsets_tile.x[offsets_tile_idx - 1][0];
-            }
-            if (batch_idx == batch) {
-                slm_src_offset[1] = offsets_tile.x[offsets_tile_idx - 1][0];
-            }
-        }
-        work_group_barrier(CLK_LOCAL_MEM_FENCE);
-    }
-
-    int2 src_range = (int2)(slm_src_offset[0], slm_src_offset[1]);
+    int2 src_range;
+    find_sparse_batch(&batch, &src_range, src_offsets, flat_token, slm);
     m = (src_range.y - src_range.x);
     src_offset = src_range.x;
     wg_j0 = flat_token - src_range.x;
 
-    // early exit work-groups that fall within the same expert group.
+    // Early exit for wg that can be processed by the previous ugemm tile
     if (m > 1 && (wg_j0 % ugemm_grouped_wg_tile_n) != 0) { return; }
 #else
     batch = sub_group_broadcast(get_group_id(2), 0);
     int2 src_range
             = *(global int2 *)(src_offsets + (batch > 0 ? batch - 1 : batch));
 
+    m = batch > 0 ? (src_range.y - src_range.x) : src_range.x;
+    src_offset = batch > 0 ? src_range.x : 0;
     wg_j0 = get_group_id(1) * ugemm_grouped_wg_tile_n;
 
-    m = batch > 0 ? (src_range.y - src_range.x) : src_range.x;
     if (wg_j0 >= m) return; /* early exit if outside batch */
-
-    src_offset = batch > 0 ? src_range.x : 0;
 #endif
 
     off_t sg_i0 = wg_i0 + sg_i * ugemm_grouped_sg_tile_m;

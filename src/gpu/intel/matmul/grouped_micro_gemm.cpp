@@ -191,7 +191,7 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
         // TODO: These values should be based on the eu_count
         dim_t m_unroll = sg_size_;
         float avg_m = float(M()) / ngroups_;
-        dim_t n_unroll = utils::rnd_up_pow2(dim_t(avg_m));
+        dim_t n_unroll = std::max<dim_t>(2, utils::rnd_up_pow2(dim_t(avg_m)));
         dim_t max_n_unroll = 0;
         dim_t max_wg_n = 4;
         dim_t min_wg_n = 1;

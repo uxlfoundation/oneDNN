@@ -247,7 +247,9 @@ private:
                 << "Error: macro " << variable
                 << " is already set to a different value.\n  Old value: "
                 << var_map[variable] << "\n  New value: " << value;
-        var_map.insert({variable, value});
+        // Last-writer-wins on collision so release builds match the dev-build
+        // assert message (which describes OLD vs NEW as if NEW were applied).
+        var_map[variable] = value;
     }
 
     std::map<std::string, int64_t> int_var_map_;

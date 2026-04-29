@@ -42,6 +42,10 @@ struct ref_fwd_t : public primitive_t {
             VDISPATCH_PRELU(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_PRELU(src_md()->data_type == dst_md()->data_type,
                     VERBOSE_INCONSISTENT_DT, "src", "dst");
+            VDISPATCH_PRELU(!utils::one_of(weights_md(0)->data_type,
+                                    data_type::s4, data_type::u4,
+                                    data_type::f4_e2m1, data_type::f4_e3m0),
+                    VERBOSE_UNSUPPORTED_DT, "weights");
             VDISPATCH_PRELU(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_PRELU(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
@@ -97,6 +101,14 @@ struct ref_bwd_t : public primitive_t {
             VDISPATCH_PRELU(
                     diff_dst_md()->data_type == diff_src_md()->data_type,
                     VERBOSE_INCONSISTENT_DT, "src", "dst");
+            VDISPATCH_PRELU(!utils::one_of(weights_md(0)->data_type,
+                                    data_type::s4, data_type::u4,
+                                    data_type::f4_e2m1, data_type::f4_e3m0),
+                    VERBOSE_UNSUPPORTED_DT, "weights");
+            VDISPATCH_PRELU(!utils::one_of(diff_weights_md(0)->data_type,
+                                    data_type::s4, data_type::u4,
+                                    data_type::f4_e2m1, data_type::f4_e3m0),
+                    VERBOSE_UNSUPPORTED_DT, "diff_weights");
             VDISPATCH_PRELU(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_PRELU(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);

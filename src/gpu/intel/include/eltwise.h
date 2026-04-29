@@ -20,10 +20,6 @@
 #include "gpu/intel/include/dnnl_interop.h"
 #include "gpu/intel/include/types.h"
 
-#if DT_F16 == 1
-#pragma OPENCL EXTENSION cl_khr_fp16 : enable
-#endif
-
 #ifndef DATA_MAX
 #if DT_F16 == 1
 #define DATA_MAX HALF_MAX

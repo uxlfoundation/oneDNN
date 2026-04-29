@@ -91,9 +91,6 @@ static status_t init_conf_common(
 static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
         const conf_t &conf, const post_ops_t &post_ops,
         const memory_desc_t *dst_md) {
-    // XXX: workaround for IGC bug incorrectly zero-extending int32 offsets.
-    kernel_ctx.use_int32_offset(false);
-
     kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
     kernel_ctx.define_int("NDIMS", conf.ndims);
     kernel_ctx.define_int("G", conf.ngroups);
@@ -141,19 +138,25 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
 
     def_dispatch(kernel_ctx, conf.dispatch);
 
+    // Elevate to f64 whenever any operand is f64 so POST_OP_DATA_T = double.
+    const bool has_f64 = utils::one_of(data_type::f64, conf.src_data_type,
+            conf.weights_data_type, conf.dst_data_type);
     switch (conf.prop_kind) {
         case prop_kind::forward_training:
         case prop_kind::forward_inference:
             kernel_ctx.set_data_type(
-                    conf.dst_data_type, /*with_punning=*/false);
+                    has_f64 ? data_type::f64 : conf.dst_data_type,
+                    /*with_punning=*/false);
             break;
         case prop_kind::backward_data:
             kernel_ctx.set_data_type(
-                    conf.src_data_type, /*with_punning=*/false);
+                    has_f64 ? data_type::f64 : conf.src_data_type,
+                    /*with_punning=*/false);
             break;
         case prop_kind::backward_weights:
             kernel_ctx.set_data_type(
-                    conf.weights_data_type, /*with_punning=*/false);
+                    has_f64 ? data_type::f64 : conf.weights_data_type,
+                    /*with_punning=*/false);
             break;
         default: break;
     }

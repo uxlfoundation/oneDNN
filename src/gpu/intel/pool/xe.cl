@@ -466,11 +466,10 @@ inline FLT_ACC_DATA_T read_c_block(const __global DATA_T *ptr, off_t c) {
 #if C_W_PADDING % SUB_GROUP_SIZE != 0
     int local_id = get_sub_group_local_id();
     off_t tail = C_WO_PADDING - c;
-    FLT_ACC_DATA_T result;
-    return (local_id < tail) ? load(result, ptr, local_id) : (FLT_ACC_DATA_T)0;
+    return (local_id < tail) ? load((FLT_ACC_DATA_T)0, ptr, local_id)
+                             : (FLT_ACC_DATA_T)0;
 #else
-    FLT_ACC_DATA_T result = block_load(result, ptr);
-    return result;
+    return block_load((FLT_ACC_DATA_T)0, ptr);
 #endif
 }
 

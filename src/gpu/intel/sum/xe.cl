@@ -15,8 +15,14 @@
 *******************************************************************************/
 #include "gpu/intel/include/io.h"
 
-float8 get_values(__global SRC_DATA_T *src, ptrdiff_t offset, dim_t nelems) {
-    float8 val = 0;
+#if DT_F64
+typedef double8 acc8_t;
+#else
+typedef float8 acc8_t;
+#endif
+
+acc8_t get_values(__global SRC_DATA_T *src, ptrdiff_t offset, dim_t nelems) {
+    acc8_t val = 0;
     const uint max_sub_group_size = get_max_sub_group_size();
     if (offset + VECT_DT_N * max_sub_group_size < nelems) {
         val = block_load(val, src + offset);
@@ -52,7 +58,7 @@ __kernel void xe_sum(__global SRC_DATA_T *input0, __global SRC_DATA_T *input1,
             * VECT_DT_N;
 
     int id = 0;
-    float8 sum = 0;
+    acc8_t sum = 0;
     if (id < N_INPUTS) sum += get_values(input0, offset, nelems) * scales[id++];
     if (id < N_INPUTS) sum += get_values(input1, offset, nelems) * scales[id++];
     if (id < N_INPUTS) sum += get_values(input2, offset, nelems) * scales[id++];

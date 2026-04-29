@@ -149,13 +149,13 @@ simple_softmax_fwd_generic(__global SRC_DATA_T *src, __global DATA_T *dst,
         if (NEEDS_PADDING(dim[0], dim[1], dim[2], dim[3], dim[4], i)) {
             tmp = (POST_OP_DATA_T)(acc_zero);
         } else {
-            float unscaled;
+            POST_OP_DATA_T unscaled;
 #if LOGSOFTMAX
             unscaled = d[i - begin] - max_ - denom_;
 #else
             unscaled = d[i - begin] * denom_;
 #endif
-            tmp = (POST_OP_DATA_T)(scale * unscaled);
+            tmp = scale * unscaled;
         }
         // post op service
         POST_OP_DATA_T sum_src;

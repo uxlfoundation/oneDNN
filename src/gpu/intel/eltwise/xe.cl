@@ -28,6 +28,8 @@ __attribute__((intel_reqd_sub_group_size(SIMD))) __kernel void xe_eltwise_fwd(
 
     const dim_t gid = get_global_id(0);
 
+    // grsize is a multiple of SIMD; offset is sub-group aligned, satisfying
+    // the alignment requirement of block_load/block_write below.
     dim_t offset
             = (grid * grsize + sgid * get_max_sub_group_size()) * VECT_DT_N;
 
@@ -85,6 +87,8 @@ __attribute__((intel_reqd_sub_group_size(SIMD))) __kernel void xe_eltwise_bwd(
     const dim_t sgid = get_sub_group_id();
     const dim_t lid = get_sub_group_local_id();
 
+    // grsize is a multiple of SIMD; offset is sub-group aligned, satisfying
+    // the alignment requirement of block_load/block_write below.
     dim_t offset = (grid * grsize + sgid * SIMD) * VECT_DT_N;
     //TODO: It should be implemented two distinct offsets
     //The one for src and the second for diff_src

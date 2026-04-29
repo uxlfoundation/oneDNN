@@ -55,8 +55,7 @@ __kernel void ref_pooling_fwd(__global DATA_T *src, __global int *ws,
     ACC_DATA_T d = 0;
 #endif
 #if ALG_MAX
-    DST_DATA_T dst_dummy;
-    ACC_DATA_T d = CONCAT2(into_, ACC_DATA_T)(min_val(dst_dummy));
+    ACC_DATA_T d = CONCAT2(into_, ACC_DATA_T)(min_val((DST_DATA_T)0));
 #endif // ALG_MAX
 
     for (off_t kd = 0; kd < KD; ++kd) {

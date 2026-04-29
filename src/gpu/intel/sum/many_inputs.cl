@@ -16,14 +16,20 @@
 
 #include "gpu/intel/include/io.h"
 
+#if DT_F64
+typedef double acc_t;
+#else
+typedef float acc_t;
+#endif
+
 #define INIT_N_INPUTS(i) \
     if (i < N_INPUTS) inputs[i] = input##i;
 #define INIT_MAX_N_INPUTS(i) \
     if (i < MAX_N_INPUTS) inputs[i] = input##i;
 
-float get_value(__global SRC_DATA_T *src, ptrdiff_t offset, dim_t nelems) {
+acc_t get_value(__global SRC_DATA_T *src, ptrdiff_t offset, dim_t nelems) {
     if (offset >= nelems) return 0;
-    return load((float)0, src, offset);
+    return load((acc_t)0, src, offset);
 }
 #define many_inputs_sum_impl(inputs, output, scales, num_inputs, local_val) \
     const dim_t group_id = get_group_id(0); \
@@ -36,11 +42,11 @@ float get_value(__global SRC_DATA_T *src, ptrdiff_t offset, dim_t nelems) {
             * scales[tensor_idx]; \
     barrier(CLK_LOCAL_MEM_FENCE); \
     if (tensor_idx == 0 && offset < nelems) { \
-        float final_val = 0; \
+        acc_t final_val = 0; \
         for (int i = 0; i < num_inputs; i++) { \
             final_val += local_val[local_id + i]; \
         } \
-        write(output + offset, final_val + load((float)0, output, offset)); \
+        write(output + offset, final_val + load((acc_t)0, output, offset)); \
     }
 
 __kernel void many_inputs_sum(__global SRC_DATA_T *input0,
@@ -54,7 +60,7 @@ __kernel void many_inputs_sum(__global SRC_DATA_T *input0,
         __global SRC_DATA_T *input15, __global DST_DATA_T *output,
         __global float *scales, dim_t nelems) {
 
-    __local float local_val[256];
+    __local acc_t local_val[256];
     __global SRC_DATA_T *inputs[16];
 
     INIT_N_INPUTS(0);
@@ -87,7 +93,7 @@ __kernel void many_inputs_sum_batched(__global SRC_DATA_T *input0,
         __global SRC_DATA_T *input15, __global DST_DATA_T *output,
         __global float *scales, dim_t nelems) {
 
-    __local float local_val[256];
+    __local acc_t local_val[256];
     __global SRC_DATA_T *inputs[16];
 
     INIT_MAX_N_INPUTS(0);

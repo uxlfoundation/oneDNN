@@ -30,8 +30,11 @@
 #define BLOCK_WRITE_FUNC_2 intel_sub_group_block_write_us
 #define BLOCK_WRITE_FUNC_4 intel_sub_group_block_write
 #define BLOCK_WRITE_FUNC_8 intel_sub_group_block_write_ul
-// _0 variants: sub-byte types must not reach block_load/block_write.
-// Expanding these produces an undefined identifier, causing a compile error.
+// _0 variants: sub-byte types (s4/u4/f4_e2m1/f4_e3m0) must not reach
+// block_load/block_write. Sub-byte writes are only available via DEF_write_only
+// (scalar write(...) overloads using GET_HALF_BYTE/SET_HALF_BYTE). Expanding
+// these produces an undefined identifier, causing a compile error rather than
+// silently writing 8/16 bits.
 #define BLOCK_READ_FUNC_0 \
     BLOCK_READ_WRITE_FUNC_0_is_not_supported_for_sub_byte_types
 #define BLOCK_WRITE_FUNC_0 \
@@ -197,6 +200,18 @@ DECLARE_AS_STRUCT_VEC(bf16, 8, short8);
     }
 
 //******* Scalar load/write implementation macros *********//
+//
+// load/block_load come in two flavors:
+//
+//   1. Pointer-output:  load(&dst, ptr)   block_load(&dst, ptr)
+//      dst is an out parameter; the caller's lvalue need not be initialized.
+//
+//   2. Value-return:    T x = load(x, ptr)    T x = block_load(x, ptr)
+//      The first argument is a typed dummy used purely for overload
+//      dispatch (the function ignores its value). The canonical idiom is to
+//      pass a typed zero — e.g. block_load((float)0, ptr) — NOT to declare
+//      an uninitialized lvalue and pass it. Reading an uninit lvalue is UB
+//      even when the callee discards it; writing the zero is free.
 
 #define DEF_load_impl(dst_dt, src_dt) \
     /* load(&dst, ptr) */ \

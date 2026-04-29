@@ -74,14 +74,6 @@
 
 #define for_ for
 
-#if MATH_UTILS_DECLARE_FP16
-#pragma OPENCL EXTENSION cl_khr_fp16 : enable
-#endif
-
-#if MATH_UTILS_DECLARE_FP64
-#pragma OPENCL EXTENSION cl_khr_fp64 : enable
-#endif
-
 #if DT_F32 == 1
 #define DATA_T float
 #define DEF_ACC_DATA_T float

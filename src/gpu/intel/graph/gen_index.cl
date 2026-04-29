@@ -16,8 +16,8 @@
 
 __kernel void gen_index(__global int *dst, int axis) {
     long id = get_global_id(0);
-    long result, offset = 0;
-    long idx;
+    int result, offset = 0;
+    int idx;
 
     idx = id % D0;
     id = id / D0;

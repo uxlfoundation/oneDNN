@@ -21,10 +21,10 @@
 static inline void typed_simple_zero_pad(__global void *a, ulong type_size,
         ulong step_nelems, ulong nelems_block, ulong step_block, ulong nsteps,
         ulong step_size, zero_pad_mask_t step_bitmask, ulong mode) {
-    const int i0 = get_global_id(0);
-    const int istep = get_global_id(1) * step_block;
-    const int iblock = get_global_id(2);
-    int offset = iblock * step_size + (step_size - nsteps * step_nelems)
+    const ulong i0 = get_global_id(0);
+    const ulong istep = get_global_id(1) * step_block;
+    const ulong iblock = get_global_id(2);
+    ulong offset = iblock * step_size + (step_size - nsteps * step_nelems)
             + istep * step_nelems;
 
     const int step = ZERO_PAD_MASK_DT_BITS;
@@ -46,7 +46,7 @@ static inline void typed_simple_zero_pad(__global void *a, ulong type_size,
 
         for (int k = 0; k < step_block; k++) {
             __attribute__((opencl_unroll_hint)) // attr:no-format
-            for (int i = i0; i < step_nelems; i += nelems_block) {
+            for (ulong i = i0; i < step_nelems; i += nelems_block) {
                 if (step_bitmask.mask[i / step] & (1 << (i % step))) {
                     switch (type_size) {
                         case 8: a8[offset + i] = 0; break;
@@ -137,16 +137,16 @@ simple_zero_pad_subg_16(__global char *a, const uint type_size,
         const ulong d1_stride, const ulong d2_stride, const ulong d3_stride,
         const unsigned d0_size, const unsigned d1_size, const unsigned d2_size,
         const unsigned d3_size, const uint b_multiplier) {
-    const unsigned a_block_id = get_global_id(0) / 16;
-    const unsigned b_block_id = get_global_id(1);
-    unsigned mixed_dims = get_global_id(2);
+    const ulong a_block_id = get_global_id(0) / 16;
+    const ulong b_block_id = get_global_id(1);
+    ulong mixed_dims = get_global_id(2);
 
-    const unsigned d3_dim = mixed_dims % d3_size;
+    const ulong d3_dim = mixed_dims % d3_size;
     mixed_dims /= d3_size;
-    const unsigned d2_dim = mixed_dims % d2_size;
+    const ulong d2_dim = mixed_dims % d2_size;
     mixed_dims /= d2_size;
-    const unsigned d1_dim = mixed_dims % d1_size;
-    const unsigned d0_dim = mixed_dims / d1_size;
+    const ulong d1_dim = mixed_dims % d1_size;
+    const ulong d0_dim = mixed_dims / d1_size;
 
     __global char *p = a + base_offset;
     p += a_block_id * b_block_size;

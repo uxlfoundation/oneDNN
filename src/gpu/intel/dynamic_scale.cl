@@ -46,7 +46,7 @@ __kernel void dynamic_scale_dst(__global float *restrict src,
         long c_stride_n) {
     long m = get_global_id(0);
     long n = get_global_id(1);
-    int mb = get_global_id(2);
+    long mb = get_global_id(2);
     // decompose mb into batch dimensions (d0..d3)
     long d3 = mb / D0 / D1 / D2;
     long d2 = (mb / D0 / D1) % D2;

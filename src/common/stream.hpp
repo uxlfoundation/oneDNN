@@ -28,7 +28,7 @@
 
 struct dnnl_stream : public dnnl::impl::c_compatible {
     dnnl_stream(dnnl::impl::engine_t *engine, dnnl::impl::stream_impl_t *impl)
-        : engine_(engine), impl_(impl) {}
+        : engine_(engine), impl_(impl), use_verbose_profiler_(false) {}
     virtual ~dnnl_stream() = default;
 
     /** returns stream's engine */
@@ -57,7 +57,7 @@ struct dnnl_stream : public dnnl::impl::c_compatible {
         if (is_verbose_profiler_enabled())
             VWARN(common, stream,
                     "resetting profiler during DNNL_VERBOSE=profile_exec can "
-                    "can cause incorrect timing logs.");
+                    "cause incorrect timing logs.");
         return dnnl::impl::status::unimplemented;
     }
 

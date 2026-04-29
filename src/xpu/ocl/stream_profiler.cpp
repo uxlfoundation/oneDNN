@@ -79,7 +79,7 @@ status_t stream_profiler_t::get_aggregate_exec_timing(
         double &duration_ms, std::vector<cl_event> &evt_snap) const {
     duration_ms = 0.0;
     if (evt_snap.empty()) return status::success;
-    cl_ulong agg_start = 0;
+    cl_ulong agg_start = UINT64_MAX;
     cl_ulong agg_end = 0;
 
     // computation of execution timings is self-contained because of the event
@@ -90,7 +90,7 @@ status_t stream_profiler_t::get_aggregate_exec_timing(
                 CL_PROFILING_COMMAND_START, sizeof(evbeg), &evbeg, nullptr));
         OCL_CHECK(xpu::ocl::clGetEventProfilingInfo(
                 ev, CL_PROFILING_COMMAND_END, sizeof(evend), &evend, nullptr));
-        agg_start = agg_start == 0 ? evbeg : std::min(agg_start, evbeg);
+        agg_start = std::min(agg_start, evbeg);
         agg_end = std::max(agg_end, evend);
     }
     duration_ms = static_cast<double>(agg_end - agg_start) * 1e-6;
@@ -101,6 +101,7 @@ status_t stream_profiler_t::get_aggregate_exec_timing(
 status_t stream_profiler_t::extract_primitive_events(
         std::vector<cl_event> &evt_snap) {
     evt_snap.clear();
+    std::lock_guard<std::recursive_mutex> lock(m_);
 
     // During the course of primitive execution, the current stamp marks the
     // events enqueued for the current primitive.

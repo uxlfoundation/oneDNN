@@ -75,14 +75,14 @@ status_t stream_profiler_t::get_aggregate_exec_timing(
     using namespace ::sycl::info;
     duration_ms = 0.0;
     if (evt_snap.empty()) return status::success;
-    uint64_t agg_start = 0;
+    uint64_t agg_start = UINT64_MAX;
     uint64_t agg_end = 0;
 
     for (const auto &ev : evt_snap) {
         auto evbeg = ev.get_profiling_info<event_profiling::command_start>();
         auto evend = ev.get_profiling_info<event_profiling::command_end>();
 
-        agg_start = agg_start == 0 ? evbeg : std::min(agg_start, evbeg);
+        agg_start = std::min(agg_start, evbeg);
         agg_end = std::max(agg_end, evend);
     }
 
@@ -94,6 +94,8 @@ status_t stream_profiler_t::get_aggregate_exec_timing(
 status_t stream_profiler_t::extract_primitive_events(
         std::vector<::sycl::event> &evt_snap) {
     evt_snap.clear();
+
+    std::lock_guard<std::recursive_mutex> lock(m_);
 
     // During the course of primitive execution, the current stamp marks the
     // events enqueued for the current primitive.

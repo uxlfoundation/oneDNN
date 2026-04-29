@@ -383,6 +383,13 @@ Setting attributes for grouped GEMM follows the regular matmul attribute API.
 Below are some examples of common use cases for MoE workloads.
 For more details on how to set attributes, refer to the @ref dev_guide_attributes page.
 
+#### Scales and Zero Points
+
+Scales and zero points for grouped GEMM follow the same API as regular matmul.
+Tensors must use dense memory descriptors.
+The data in the scales/zero points tensor must follow the same flat concatenated
+order as the grouped source/weights.
+
 Per-token source scales:
 ~~~cpp
 attr.set_scales_mask(DNNL_ARG_SRC, (1 << 0));  // Varies along M dimension
@@ -410,6 +417,42 @@ Bias per expert:
 auto bias_md = memory::desc({num_groups, N},
     memory::data_type::f32, memory::format_tag::ab);
 // Layout: standard ab layout
+~~~
+
+#### Post-ops Support
+
+Post-ops for grouped GEMM follow the same API as regular matmul.
+Eltwise and binary multiplication post-ops are supported.
+
+Binary post-op tensors accept both dense and grouped memory descriptors.
+Note that when a grouped descriptor is provided, we use the binary tensor's
+own per-group offsets for addressing, but they must describe the same grouped
+partition as the grouped destination tensor.
+
+SiLU and element-wise matrix multiplication as post-op:
+~~~cpp
+// [total_tokens, N] tensor, that could be either grouped or dense with
+// memory::format_tag::ab
+auto binary_md = /*...*/;
+
+post_ops po;
+po.append_eltwise(algorithm::eltwise_swish, 1.0f, 0.f);  // SiLU first
+po.append_binary(algorithm::binary_mul, binary_md);      // then mul
+attr.set_post_ops(po);
+~~~
+
+Note that dense tensor must follow the same flat concatenated order as the grouped dst.
+
+Binary multiply with per-row broadcast:
+~~~cpp
+// [total_tokens, 1] tensor, that is one scalar per row
+// in the same flat concatenated order as the grouped destination
+auto routing_md = memory::desc({total_tokens, 1},
+    memory::data_type::f32, memory::format_tag::ab);
+
+post_ops po;
+po.append_binary(algorithm::binary_mul, routing_md);
+attr.set_post_ops(po);
 ~~~
 
 ### Execution Hints
@@ -455,10 +498,15 @@ The following are supported:
 - Zero points attribute for source and weights tensors:
   - The masks must match the scales mask
   - Source zero points data types include `u8`, `s8`
-  - Weights zero points data types include `u8`, `s8`, `u4`, `s4‘
-- Post-ops: binary post-ops are supported (e.g., binary `mul` with a scalar
-  `f32` tensor can be used to apply a global scale factor, as needed for NVFP4
-  two-level scaling).
+  - Weights zero points data types include `u8`, `s8`, `u4`, `s4`
+- Post-ops: eltwise and binary multiplication post-ops are supported. Binary post-op
+  tensors accept both dense and grouped memory descriptors.
+  Common patterns include `eltwise_swish` for SiLU activation,
+  `binary_mul` with a `[total_tokens, N]` grouped or dense tensor,
+  `binary_mul` with a `[total_tokens, 1]` dense tensor,
+  and `[1, 1]` that could be used to apply a global scale for NVFP4.
+  For grouped binary tensors, the per-group offsets must match the grouped dst
+  partition.
 - Bias supports per-expert shape.
 - Supported on CPU and GPU engines.
 

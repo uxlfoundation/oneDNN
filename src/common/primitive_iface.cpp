@@ -151,10 +151,12 @@ status_t primitive_execute(
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
         dnnl::threadpool_interop::threadpool_iface *tp;
         auto st = stream->get_threadpool(&tp);
-        block_on_wait = st == status::success && tp
-                && !(tp->get_flags()
+        const bool is_async_cpu = st == status::success && tp
+                && (tp->get_flags()
                         & dnnl::threadpool_interop::threadpool_iface::
-                                ASYNCHRONOUS);
+                                ASYNCHRONOUS)
+                && stream->engine()->kind() == engine_kind::cpu;
+        block_on_wait = !async_cpu;
 #endif
         if (block_on_wait) stream->wait();
         double start_ms = get_msec();

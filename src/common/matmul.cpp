@@ -640,6 +640,9 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
 
         int n_unit_strides = 0;
         for (int d = 0; d < ndims; d++) {
+            // This check restricts N=1 cases for subbyte types:
+            // `--wtag=abc 6x975x2080:6x2080x1` will return invalid_args.
+            // TODO: remove the check and verify the library.
             if (wei_strides[d] == 1) {
                 n_unit_strides++;
                 VCHECK_MATMUL(

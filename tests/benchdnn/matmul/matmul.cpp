@@ -659,16 +659,6 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
     skip_unimplemented_binary_po(prb->attr, res);
     skip_unimplemented_prelu_po(prb->attr, res, dnnl_matmul);
 
-    if ((is_nvidia_gpu() || is_amd_gpu()) && !prb->sparse_options.is_def()) {
-        BENCHDNN_PRINT(2,
-                "[SKIP][%s:%d]: oneDNN doesn't support sparse matmul for "
-                "NVIDIA and AMD GPUs.\n",
-                __FILE__, __LINE__);
-        res->state = SKIPPED;
-        res->reason = reason_t::skip_not_supported;
-        return;
-    }
-
     const auto wei_encoding
             = prb->sparse_options.get_encoding(DNNL_ARG_WEIGHTS);
     bool is_wei_dense = (wei_encoding == dnnl_sparse_encoding_undef);
@@ -865,136 +855,24 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
             res->reason = reason_t::skip_not_supported;
             return;
         }
-        if (is_nvidia_gpu() || is_amd_gpu()) {
-            if (prb->attr.scales.has_host_scalars()) {
-                BENCHDNN_PRINT(2,
-                        "[SKIP][%s:%d]: Scales as host-side scalars are not "
-                        "supported on NVIDIA and AMD GPUs.\n",
-                        __FILE__, __LINE__);
-                res->state = SKIPPED;
-                res->reason = reason_t::skip_not_supported;
-                return;
-            }
-            if (prb->attr.zero_points.has_host_scalars()) {
-                BENCHDNN_PRINT(2,
-                        "[SKIP][%s:%d]: Zero-points as host-side scalars are "
-                        "not "
-                        "supported on NVIDIA and AMD GPUs.\n",
-                        __FILE__, __LINE__);
-                res->state = SKIPPED;
-                res->reason = reason_t::skip_not_supported;
-                return;
-            }
-        }
     }
 }
 
 void skip_invalid_prb(const prb_t *prb, res_t *res) {
-    if (!prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).is_def()
-            && (prb->wei_dt() != dnnl_s8 && prb->wei_dt() != dnnl_u8
-                    && prb->wei_dt() != dnnl_s4 && prb->wei_dt() != dnnl_u4)) {
-        BENCHDNN_PRINT(2,
-                "[INVALID][%s:%d]: Zero-points applied to a non-integral data "
-                "type.\n",
-                __FILE__, __LINE__);
-        res->state = SKIPPED;
-        res->reason = reason_t::invalid;
-        return;
-    }
-
-    if (!prb->attr.scales.get(DNNL_ARG_WEIGHTS).is_def()) {
-        const auto &groups = prb->attr.scales.get(DNNL_ARG_WEIGHTS).groups;
-        if (!groups.empty()) {
-            if (prb->k % groups[0]) {
-                BENCHDNN_PRINT(2,
-                        "[INVALID][%s:%d]: Weight-only quantization scales "
-                        "require IC ('%d') to be divisible by groups ('%d')\n",
-                        __FILE__, __LINE__, (int)prb->k, (int)groups[0]);
-                res->state = SKIPPED;
-                res->reason = reason_t::invalid;
-                return;
-            } else if (groups.size() > 2) {
-                BENCHDNN_PRINT(2,
-                        "[INVALID][%s:%d]: Weight-only quantization scales "
-                        "groups "
-                        "support only two dimensions\n",
-                        __FILE__, __LINE__);
-                res->state = SKIPPED;
-                res->reason = reason_t::invalid;
-                return;
-            }
-        }
-    }
-
-    if (!prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).is_def()) {
-        const auto &groups = prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).groups;
-        if (!groups.empty()) {
-            if (groups[0] > 0 && (prb->k % groups[0])) {
-                BENCHDNN_PRINT(2,
-                        "[INVALID][%s:%d]: Weight-only quantization "
-                        "zero-points "
-                        "require IC ('%d') to be divisible by groups ('%d')\n",
-                        __FILE__, __LINE__, (int)prb->k, (int)groups[0]);
-                res->state = SKIPPED;
-                res->reason = reason_t::invalid;
-                return;
-            } else if (groups.size() > 2) {
-                BENCHDNN_PRINT(2,
-                        "[INVALID][%s:%d]: Weight-only quantization "
-                        "zero-points "
-                        "groups support only two dimensions\n",
-                        __FILE__, __LINE__);
-                res->state = SKIPPED;
-                res->reason = reason_t::invalid;
-                return;
-            }
-        }
-    }
-
-    // Check int4 weights byte alignment if format is specified.
-    if ((prb->wei_dt() == dnnl_s4 || prb->wei_dt() == dnnl_u4)
-            && (!prb->strides[WEI].empty()
-                    || (prb->wtag != tag::any && prb->wtag != tag::undef))) {
-        const auto &weights_rt_dims = get_runtime_dims(
-                prb->weights_dims(), prb->weights_runtime_dim_mask());
-        const auto wei_md = dnn_mem_t::init_md((int)weights_rt_dims.size(),
-                weights_rt_dims.data(), prb->wei_dt(), prb->wtag,
-                prb->strides[STRIDES_WEI]);
-
-        const auto wei_strides = query_md_strides(wei_md);
-        int n_unit_strides = 0;
-        for (int d = 0; d < query_md_ndims(wei_md); d++) {
-            if (wei_strides[d] == 1) {
-                n_unit_strides++;
-                if (n_unit_strides > 1) {
-                    BENCHDNN_PRINT(2,
-                            "[INVALID][%s:%d]: Int4 Weight-only quantization "
-                            "requires byte alignment for the tensor.\n",
-                            __FILE__, __LINE__);
-                    res->state = SKIPPED;
-                    res->reason = reason_t::invalid;
-                    return;
-                }
-            }
-            if (wei_strides[d] > 1 && (wei_strides[d] % 2)) {
-                BENCHDNN_PRINT(2,
-                        "[INVALID][%s:%d]: Int4 Weight-only quantization "
-                        "requires "
-                        "byte alignment for the tensor.\n",
-                        __FILE__, __LINE__);
-                res->state = SKIPPED;
-                res->reason = reason_t::invalid;
-                return;
-            }
-        }
-    }
-
     auto src_rt_mask = prb->src_runtime_dim_mask();
     auto wei_rt_mask = prb->weights_runtime_dim_mask();
     auto dst_rt_mask = prb->dst_runtime_dim_mask();
 
     // Memory layouts must be defined when some dimensions are unknown at pd
     // creation time.
+    //
+    // Note: this check must be removed from here, and the check should be
+    // delegated to the library API checks, but since it doesn't articulate
+    // what's the exact problem, keep it here until it does.
+    //
+    // Note: runtime_dims get initialized when prb is created which is past
+    // input verification point, that's why this and the check below live here,
+    // but not there.
     if ((src_rt_mask.any() && prb->stag == "any")
             || (wei_rt_mask.any() && prb->wtag == "any")
             || (dst_rt_mask.any() && prb->dtag == "any")) {

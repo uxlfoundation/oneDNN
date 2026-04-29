@@ -36,20 +36,22 @@
 --runtime_dims_masks=1:0,3:3
 --batch=shapes_2d_ci
 
-# Decompression
+# Weights-Only-Quantization
 --reset
---impl=ref # Intentionally test reference impl coverage
+--impl=ref # Test ref impl for supported coverage
 --wtag=any,abc,acb
---dt=s8:u4:f32,f16:s4:f16,s8:s8:f16,f16:s4:f32
+--dt=f16:s4:f16,f16:s4:f32
 --attr-scales=wei:per_ocic:f16:192x1
 --attr-zero-points=wei:per_ocic:s4:192x1
 --attr-fpmath=f16:true
 12x4x576:12x576x192
 12x6x192:12x192x100
 
+# Grouped Quantization
+--reset
+--impl=ref # Test ref impl for supported coverage
 --wtag=any,abcd,abdc
---dt=s8:s4:f16
---attr-fpmath=f16:true
+--dt=s8:s4:f16,s8:u4:f32,s8:s8:f16
 --attr-scales=src:per_ocic:f16:1x256+wei:per_tensor:f16:128x1
 --attr-zero-points=wei:per_tensor:s4:128x1,src:per_ocic:u4:1x256+wei:per_tensor:s4:128x1
 2x3x4x256:2x3x256x64

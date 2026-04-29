@@ -341,6 +341,11 @@ int check_dnnl_status(dnnl_status_t status, const prb_t *prb, res_t *res) {
             }
 
             // Check driver specific cases of unimplemented functionality.
+            // It means that the case is valid from API perspective but not
+            // supported by any implementation for a specific backend.
+            //
+            // Note: since it's done post pd creation, code in these
+            // driver-defined functions can end up being dead.
             skip_unimplemented_prb(prb, res);
             if (res->state == SKIPPED || res->state == DEFERRED) return OK;
 
@@ -506,6 +511,15 @@ int init_prim(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &user_prim,
         bool is_service_prim = false) {
     benchdnn_dnnl_wrapper_t<dnnl_primitive_t> primw;
 
+    // Verify that the problem is formed correctly. `invalid` means that there
+    // might be incompatible settings that the library can verify only in
+    // runtime, and it usually doesn't do that leading to unexpected results
+    // which is hard to debug, e.g., inplace mode with different-sized data
+    // types - it will lead to a crash or incorrect result.
+    //
+    // This function MUST NOT take care of cases that return `invalid_arguments`
+    // status. The library must return this status for all incorrect API calls
+    // and such cases must be updated on the user side.
     skip_invalid_prb(prb, res);
     if (res->state == SKIPPED) return OK;
 #ifndef DNNL_DISABLE_PRIMITIVE_CACHE

@@ -851,10 +851,8 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
             return;
         }
 
-        if ((dnnl::impl::utils::one_of(
-                     dnnl_f4_e3m0, prb->src_dt(), prb->wei_dt(), prb->dst_dt())
-                    || dnnl::impl::utils::one_of(dnnl_f4_e2m1, prb->src_dt(),
-                            prb->wei_dt(), prb->dst_dt()))
+        if (dnnl::impl::utils::one_of(
+                    dnnl_f4_e2m1, prb->src_dt(), prb->wei_dt(), prb->dst_dt())
                 && (!po.is_def() || !prb->attr.scales.is_def())) {
             BENCHDNN_PRINT(2,
                     "[SKIP][%s:%d]: GPU supports fp4 through ref only on "

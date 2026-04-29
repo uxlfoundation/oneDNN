@@ -105,8 +105,7 @@ TEST(memory_desc_properties_test, TestMemoryDescSizeSubByte) {
     const size_t nelems = static_cast<size_t>(M * K);
     const size_t ref_size = (nelems + 1) / 2;
 
-    const std::vector<dt> sub_byte_types
-            = {dt::s4, dt::u4, dt::f4_e2m1, dt::f4_e3m0};
+    const std::vector<dt> sub_byte_types = {dt::s4, dt::u4, dt::f4_e2m1};
 
     for (auto data_type : sub_byte_types) {
         auto md = memory::desc({M, K}, data_type, fmt::ab);

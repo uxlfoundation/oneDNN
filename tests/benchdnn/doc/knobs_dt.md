@@ -16,6 +16,5 @@ The following data types are supported:
 | f8_e4m3   | 1-byte float (1 sign bit, 4 exp bits, 3 mantissa bits)
 | e8m0      | 1-byte float (8 exp bits), supported for scales only
 | f4_e2m1   | half-byte float (1 sign bit, 2 exp bits, 1 mantissa bits)
-| f4_e3m0   | half-byte float (1 sign bit, 3 exp bits, 0 mantissa bits)
 | f64       | double precision float
 

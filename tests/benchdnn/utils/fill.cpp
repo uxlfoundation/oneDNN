@@ -111,7 +111,6 @@ const fill_cfg_t &get_perf_fill_cfg(dnnl_data_type_t dt) {
 
     switch (dt) {
         CASE(dnnl_f4_e2m1, -2.f, 2.f);
-        CASE(dnnl_f4_e3m0, -2.f, 2.f);
         CASE(dnnl_e8m0, -2.f, 2.f);
         CASE(dnnl_f8_e5m2, -2.f, 2.f);
         CASE(dnnl_f8_e4m3, -2.f, 2.f);

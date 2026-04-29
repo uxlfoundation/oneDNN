@@ -345,6 +345,11 @@ def generate(ifile, banners):
             v_value.attrib["name"] for v_value in v_enum.findall("EnumValue")
         ]
 
+        # Drop the deprecated data type here to affect all functions.
+        for v in values:
+            if v == "dnnl_f4_e3m0":
+                values.remove(v)
+
         h_body += func_to_str_decl(enum, is_header=True) + ";\n"
         s_body += func_to_str(enum, values) + "\n"
 

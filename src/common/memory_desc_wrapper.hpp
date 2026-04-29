@@ -201,6 +201,9 @@ struct memory_desc_wrapper : public c_compatible {
 
     /** returns true if memory descriptor contains zero as one of its dim */
     bool has_zero_dim() const {
+        // to be consistent for when memory descriptor is zero with ndims = 0
+        if (is_zero()) return true;
+
         for (int d = 0; d < ndims(); ++d)
             if (dims()[d] == 0) return true;
         return false;

@@ -118,7 +118,8 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
                     data_type::s4, data_type::u4)
             && pd()->attr()->fpmath_.apply_to_int_;
 
-    const bool with_post_ops = !pd()->attr()->post_ops_.has_default_values();
+    const auto &po = pd()->attr()->post_ops_;
+    const bool with_post_ops = !po.has_default_values();
 
     // Parallelize over groups (experts in MoE)
     // Expectation is to see 128-256+ groups, with varying M per group
@@ -286,14 +287,58 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
 
             const dim_t dst_idx = dst_base_idx + m * N + n;
 
-            // Apply post-ops (binary mul for NVFP4 global scale)
+            // Post-Ops support: binary mul with grouped or dense
+            // (incl. NVFP4 recipe with global scale) tensor, eltwise
+            //
+            // Note: ref_post_ops_t won't allow using grouped tensor (with their
+            // own per-group offsets) in binary po
             if (with_post_ops) {
-                ref_post_ops_t::args_t args;
-                args.dst_val = io::load_float_value(dst_dt, dst_data, dst_idx);
-                args.ctx = &ctx;
-                args.l_offset = dst_idx;
-                args.dst_md = pd()->dst_md();
-                ref_post_ops->execute(result, args);
+                int eltwise_idx = 0, binary_idx = 0;
+                for (int po_idx = 0; po_idx < po.len(); ++po_idx) {
+                    const auto &entry = po.entry_[po_idx];
+                    if (entry.is_eltwise()) {
+                        result = eltwise_po_[eltwise_idx++].compute_scalar(
+                                result);
+                    } else if (entry.is_binary()) {
+                        const int po_arg
+                                = DNNL_ARG_ATTR_MULTIPLE_POST_OP(po_idx)
+                                | DNNL_ARG_SRC_1;
+                        const auto bin_data = CTX_IN_MEM(const void *, po_arg);
+                        const memory_desc_wrapper bin_d(entry.binary.src1_desc);
+
+                        // For grouped binary tensors, use their own offsets
+                        // For dense tensor, use dst offsets
+                        dim_t row_base = dst_offset_start;
+                        if (bin_d.is_grouped_desc()) {
+                            const auto bin_offsets
+                                    = CTX_IN_MEM(const int32_t *, po_arg, 1);
+                            const dim_t bin_offset_start = group_id > 0
+                                    ? bin_offsets[group_id - 1]
+                                    : 0;
+                            const dim_t bin_offset_end = bin_offsets[group_id];
+                            const dim_t bin_total_m = bin_d.dims()[0];
+
+                            if (bin_offset_start < 0
+                                    || bin_offset_end > bin_total_m
+                                    || bin_offset_end < bin_offset_start
+                                    || bin_offset_start != dst_offset_start
+                                    || bin_offset_end != dst_offset_end) {
+                                st = status::invalid_arguments;
+                                return;
+                            }
+                            row_base = bin_offset_start;
+                        }
+                        const dim_t bin_M = bin_d.dims()[0];
+                        const dim_t bin_N = bin_d.dims()[1];
+                        const dim_t eff_m = bin_M > 1 ? (row_base + m) : 0;
+                        const dim_t eff_n = bin_N > 1 ? n : 0;
+                        const float val
+                                = io::load_float_value(bin_d.data_type(),
+                                        bin_data, eff_m * bin_N + eff_n);
+                        result = binary_po_[binary_idx++].compute_scalar(
+                                result, val, false);
+                    }
+                }
             }
 
             io::store_float_value(dst_dt, result, dst_data, dst_idx);

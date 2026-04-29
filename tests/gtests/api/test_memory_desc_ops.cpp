@@ -124,6 +124,57 @@ TEST(memory_desc_properties_test, TestMemoryDescSizeSubByte) {
 #endif
 }
 
+TEST(memory_desc_properties_test, TestOOBTensorDimensions) {
+    using dt = memory::data_type;
+
+    const dnnl::impl::dim_t out_of_bounds_dim = dnnl::impl::dim_t {1} << 62;
+
+    // Overflow checks for memory descriptor creation with out-of-bound
+    // tensor dimensions
+
+    // Memory descriptor initialization with strides
+    catch_expected_failures([&]() {
+        auto md = memory::desc(
+                {2, out_of_bounds_dim}, dt::f32, {out_of_bounds_dim, 1});
+    }, true, dnnl_invalid_arguments);
+
+    // Memory descriptor initialization init by tag
+    catch_expected_failures([&]() {
+        auto md = memory::desc({out_of_bounds_dim, 4}, dt::f32, fmt::ab);
+    }, true, dnnl_invalid_arguments);
+
+    // Overflow checks for blocking descriptor
+    catch_expected_failures([&]() {
+        auto md = memory::desc(
+                {2, out_of_bounds_dim, 8, 8}, dt::f32, fmt::nChw8c);
+    }, true, dnnl_invalid_arguments);
+
+    // Negative dimensions
+    catch_expected_failures([&]() {
+        auto md = memory::desc({-1, 4}, dt::f32, fmt::ab);
+    }, true, dnnl_invalid_arguments);
+
+    // Dimension product overflow - multiple large dimensions
+    catch_expected_failures([&]() {
+        const dnnl::impl::dim_t large_dim = dnnl::impl::dim_t {1} << 31;
+        auto md = memory::desc(
+                {large_dim, large_dim, large_dim}, dt::f32, fmt::abc);
+    }, true, dnnl_invalid_arguments);
+
+    // Stride overflow - strides that would cause address overflow
+    catch_expected_failures([&]() {
+        auto md = memory::desc({2, 4}, dt::f32, {out_of_bounds_dim, 1});
+    }, true, dnnl_invalid_arguments);
+
+    // Blocked format with overflow in block dimensions
+    catch_expected_failures([&]() {
+        // Large outer dimension with blocking that causes overflow
+        const dnnl::impl::dim_t large_outer
+                = (dnnl::impl::dim_t {1} << 60) / 16;
+        auto md = memory::desc({2, large_outer, 8, 8}, dt::f32, fmt::nChw16c);
+    }, true, dnnl_invalid_arguments);
+}
+
 } // namespace properties
 
 namespace reshape {

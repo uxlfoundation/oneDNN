@@ -1361,7 +1361,7 @@ inline bool memory_desc_sanity_check(int ndims, const dims_t dims,
     // computation does not trigger a overflow during memory creation.
     dim_t prod = 1;
     for (int d = 0; d < ndims; ++d) {
-        if (dims[d] != DNNL_RUNTIME_DIM_VAL) {
+        if (!is_runtime_value(dims[d])) {
             if (dims[d] < 0) return false;
             if (dims[d] > 0) {
                 if (prod > std::numeric_limits<dim_t>::max() / dims[d])

@@ -98,26 +98,20 @@ status_t rvv_winograd_init_conf(rvv_winograd_conf_t &conf,
         const memory_desc_t &dst_md, const memory_desc_t &bias_md,
         const primitive_attr_t &attr);
 
-// Resource for persistent weight transform buffer.
-// Weights are transformed on first execute() and cached for reuse.
+// Resource for JIT kernel persistence across execute() calls.
 struct rvv_wino_resource_t : public resource_t {
     rvv_wino_resource_t() = default;
 
-    status_t configure(size_t weight_buf_size, const rvv_winograd_conf_t &conf);
+    status_t configure(const rvv_winograd_conf_t &conf);
 
-    float *get_weight_buffer() const { return weight_buf_.get(); }
     jit_generator_t *get_input_xform() const { return input_xform_.get(); }
     jit_generator_t *get_output_xform() const { return output_xform_.get(); }
-    bool weights_valid() const { return weights_valid_; }
-    void set_weights_valid() const { weights_valid_ = true; }
 
     DNNL_DISALLOW_COPY_AND_ASSIGN(rvv_wino_resource_t);
 
 private:
-    std::unique_ptr<float[]> weight_buf_;
     std::unique_ptr<jit_generator_t> input_xform_;
     std::unique_ptr<jit_generator_t> output_xform_;
-    mutable bool weights_valid_ = false;
 };
 
 struct rvv_wino_convolution_fwd_t : public primitive_t {
@@ -255,7 +249,7 @@ struct rvv_wino_convolution_fwd_t : public primitive_t {
         if (mapper.has_resource(this)) return status::success;
         auto r = utils::make_unique<rvv_wino_resource_t>();
         if (!r) return status::out_of_memory;
-        CHECK(r->configure(pd()->conf_.wspec.weight_matrix_size, pd()->conf_));
+        CHECK(r->configure(pd()->conf_));
         mapper.add(this, std::move(r));
         return status::success;
     }

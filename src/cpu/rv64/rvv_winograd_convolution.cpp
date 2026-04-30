@@ -537,11 +537,7 @@ struct jit_wino_output_transform_t : public jit_generator_t {
 
 } // namespace
 
-status_t rvv_wino_resource_t::configure(
-        size_t weight_buf_size, const rvv_winograd_conf_t &conf) {
-    weight_buf_.reset(new float[weight_buf_size]);
-    if (!weight_buf_) return status::out_of_memory;
-
+status_t rvv_wino_resource_t::configure(const rvv_winograd_conf_t &conf) {
     auto *input = new jit_wino_input_transform_t(conf);
     input->create_kernel();
     input_xform_.reset(input);
@@ -629,10 +625,10 @@ status_t rvv_winograd_init_conf(rvv_winograd_conf_t &conf,
     conf.wspec.V_buffer_size = conf.wspec.n_gemms * conf.wspec.input_ld_batch;
     conf.wspec.M_buffer_size = conf.wspec.n_gemms * conf.wspec.output_ld_batch;
 
-    // Scratchpad: V and M buffers for single-thread execution
-    // Weight buffer is in persistent resource_t (not scratchpad)
+    // Scratchpad: U (transformed weights), V (transformed input), M (GEMM output)
     using namespace memory_tracking::names;
 
+    scratchpad.book<float>(key_wino_U, conf.wspec.weight_matrix_size);
     scratchpad.book<float>(key_wino_V, conf.wspec.V_buffer_size);
     scratchpad.book<float>(key_wino_M, conf.wspec.M_buffer_size);
 
@@ -651,24 +647,20 @@ status_t rvv_wino_convolution_fwd_t::execute_forward(
     const auto scratchpad = ctx.get_scratchpad_grantor();
     const auto *brg_kernel = pd()->brg_kernel_.get();
 
-    // Get persistent weight buffer from resource (cached across execute calls)
-    auto *wino_resource
-            = ctx.get_resource_mapper()->get<rvv_wino_resource_t>(this);
-    float *transformed_weights = wino_resource->get_weight_buffer();
-
-    // Transform weights on first execute, cache for subsequent calls
-    if (!wino_resource->weights_valid()) {
-        compute_filter_transform_3x3_to_4x4_gemm_layout(weights,
-                transformed_weights, conf.wspec.N, conf.wspec.K,
-                conf.wspec.weight_ic_rounded, conf.wspec.weight_oc_rounded);
-        wino_resource->set_weights_valid();
-    }
-
     using namespace memory_tracking::names;
+
+    // Transform weights into scratchpad buffer every execute (like x64 brgemm)
+    float *transformed_weights = scratchpad.template get<float>(key_wino_U);
+    compute_filter_transform_3x3_to_4x4_gemm_layout(weights,
+            transformed_weights, conf.wspec.N, conf.wspec.K,
+            conf.wspec.weight_ic_rounded, conf.wspec.weight_oc_rounded);
+
     float *V = scratchpad.template get<float>(key_wino_V);
     float *M = scratchpad.template get<float>(key_wino_M);
 
-    // JIT kernels created in create_resource(), retrieved from resource
+    // JIT kernels persisted in resource across execute() calls
+    auto *wino_resource
+            = ctx.get_resource_mapper()->get<rvv_wino_resource_t>(this);
     auto *input_xform = wino_resource->get_input_xform();
     auto *output_xform = wino_resource->get_output_xform();
 

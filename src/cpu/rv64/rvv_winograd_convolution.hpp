@@ -24,7 +24,6 @@
 #include "common/dnnl_thread.hpp"
 #include "common/memory_tracking.hpp"
 #include "common/primitive.hpp"
-#include "common/resource.hpp"
 #include "common/utils.hpp"
 
 #include "cpu/binary_injector_utils.hpp"
@@ -98,20 +97,44 @@ status_t rvv_winograd_init_conf(rvv_winograd_conf_t &conf,
         const memory_desc_t &dst_md, const memory_desc_t &bias_md,
         const primitive_attr_t &attr);
 
-// Resource for JIT kernel persistence across execute() calls.
-struct rvv_wino_resource_t : public resource_t {
-    rvv_wino_resource_t() = default;
+// JIT transform kernels for Winograd convolution
+struct jit_wino_input_transform_t : public jit_generator_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_wino_input_transform_t)
 
-    status_t configure(const rvv_winograd_conf_t &conf);
+    struct call_params_t {
+        const float *src_batch;
+        float *V;
+        dim_t ic_spatial_stride;
+        dim_t nb_oh;
+        dim_t nb_ow;
+    };
 
-    jit_generator_t *get_input_xform() const { return input_xform_.get(); }
-    jit_generator_t *get_output_xform() const { return output_xform_.get(); }
+    dim_t ic_, ih_, iw_, pad_t_, pad_l_;
+    dim_t input_ld_row_, V_elem_stride_;
 
-    DNNL_DISALLOW_COPY_AND_ASSIGN(rvv_wino_resource_t);
+    jit_wino_input_transform_t(const rvv_winograd_conf_t &conf);
 
-private:
-    std::unique_ptr<jit_generator_t> input_xform_;
-    std::unique_ptr<jit_generator_t> output_xform_;
+    void generate() override;
+};
+
+struct jit_wino_output_transform_t : public jit_generator_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_wino_output_transform_t)
+
+    struct call_params_t {
+        const float *M;
+        const float *bias;
+        float *dst_batch;
+        dim_t nb_oh;
+        dim_t nb_ow;
+    };
+
+    dim_t oc_, oh_, ow_, N_;
+    dim_t M_elem_stride_, oc_spatial_stride_;
+    bool with_bias_;
+
+    jit_wino_output_transform_t(const rvv_winograd_conf_t &conf);
+
+    void generate() override;
 };
 
 struct rvv_wino_convolution_fwd_t : public primitive_t {
@@ -244,15 +267,7 @@ struct rvv_wino_convolution_fwd_t : public primitive_t {
 
     using data_t = typename prec_traits_t<data_type::f32>::type;
 
-    status_t create_resource(
-            engine_t *engine, resource_mapper_t &mapper) const override {
-        if (mapper.has_resource(this)) return status::success;
-        auto r = utils::make_unique<rvv_wino_resource_t>();
-        if (!r) return status::out_of_memory;
-        CHECK(r->configure(pd()->conf_));
-        mapper.add(this, std::move(r));
-        return status::success;
-    }
+    status_t init(engine_t *engine) override;
 
     status_t execute(const exec_ctx_t &ctx) const override {
         return execute_forward(ctx);
@@ -262,6 +277,9 @@ private:
     status_t execute_forward(const exec_ctx_t &ctx) const;
 
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
+
+    std::unique_ptr<jit_generator_t> input_xform_;
+    std::unique_ptr<jit_generator_t> output_xform_;
 };
 
 } // namespace rv64

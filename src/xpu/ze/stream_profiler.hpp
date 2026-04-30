@@ -41,7 +41,9 @@ public:
 
         uint64_t get_cycles() const { return context_; }
 
-        uint64_t get_nsec() const { return get_cycles() * freq_; }
+        uint64_t get_nsec() const {
+            return static_cast<uint64_t>(freq_ * get_cycles());
+        }
 
     private:
         uint64_t get_timestamp(

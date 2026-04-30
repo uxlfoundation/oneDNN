@@ -18,6 +18,7 @@
 #define GPU_INTEL_JIT_BINARY_FORMAT_HPP
 
 #include "common/engine.hpp"
+#include "gpu/intel/compute/device_info.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -26,6 +27,8 @@ namespace intel {
 namespace jit {
 
 status_t gpu_supports_binary_format(bool *ok, impl::engine_t *engine);
+status_t init_mayiuse_ngen_kernels(impl::engine_t *engine,
+        compute::gpu_arch_t arch, bool &mayiuse_ngen_kernels);
 
 } // namespace jit
 } // namespace intel

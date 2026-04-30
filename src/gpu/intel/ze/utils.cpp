@@ -194,9 +194,8 @@ status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
     is_efficient_64bit
             = LevelZeroCodeGenerator<HW::Unknown>::detectEfficient64Bit(
                     context, device, getCore(product.family));
-    auto status
-            = jit::gpu_supports_binary_format(&mayiuse_ngen_kernels, engine);
-    if (status != status::success) mayiuse_ngen_kernels = false;
+    CHECK(jit::init_mayiuse_ngen_kernels(
+            engine, gpu_arch, mayiuse_ngen_kernels));
 
     ip_version = 0;
     CHECK(get_device_ip(device, ip_version));

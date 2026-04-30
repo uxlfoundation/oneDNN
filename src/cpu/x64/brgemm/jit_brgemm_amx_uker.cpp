@@ -2242,7 +2242,8 @@ bool jit_brgemm_amx_uker_base_t::maybe_pre_process_data(brgemm_iteration_t &bi,
         // For fp8 via conversion we use temporal buffer heavily for conversion.
         // Therefore saved data may be overwritten
         // TODO: remove this restriction
-        if (brg.is_fp8_via_convert()) return false;
+        if (brg.is_fp8_via_convert() && !(brg.is_bf16_fp8 || brg.is_f16_fp8))
+            return false;
         // save if there is a reuse
         if (mk == matrix_A) {
             return tloop.ldis.size() > 1;

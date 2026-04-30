@@ -53,17 +53,17 @@ else()
 endif()
 message(STATUS "Enabled primitive CPU ISA: ${DNNL_ENABLE_PRIMITIVE_CPU_ISA}")
 
-if (DNNL_ENABLE_PRIMITIVE_GPU_ISA STREQUAL "ALL")
-    set(BUILD_PRIMITIVE_GPU_ISA_ALL TRUE)
-else()
-    foreach(isa ${DNNL_ENABLE_PRIMITIVE_GPU_ISA})
-        string(TOUPPER ${isa} uisa)
-        if(NOT "${uisa}" MATCHES "^(XELP|XEHP|XEHPG|XEHPC|XE2|XE3|XE3P)$")
-            message(FATAL_ERROR "Unsupported primitive GPU ISA: ${uisa}")
-        endif()
+# "ALL" excludes ISAs with preview support, opt in via "ALL;<ISA>".
+foreach(isa ${DNNL_ENABLE_PRIMITIVE_GPU_ISA})
+    string(TOUPPER ${isa} uisa)
+    if("${uisa}" STREQUAL "ALL")
+        set(BUILD_PRIMITIVE_GPU_ISA_ALL TRUE)
+    elseif("${uisa}" MATCHES "^(XELP|XEHP|XEHPG|XEHPC|XE2|XE3|XE3P)$")
         set(BUILD_${uisa} TRUE)
-    endforeach()
-endif()
+    else()
+        message(FATAL_ERROR "Unsupported primitive GPU ISA: ${uisa}")
+    endif()
+endforeach()
 message(STATUS "Enabled primitive GPU ISA: ${DNNL_ENABLE_PRIMITIVE_GPU_ISA}")
 
 if (ONEDNN_ENABLE_GEMM_KERNELS_ISA STREQUAL "ALL")
@@ -86,6 +86,7 @@ message(STATUS "Enabled GeMM kernels ISA: ${ONEDNN_ENABLE_GEMM_KERNELS_ISA}")
 # such cases.
 if (NOT DNNL_ENABLE_PRIMITIVE STREQUAL "ALL" OR
         NOT DNNL_ENABLE_PRIMITIVE_CPU_ISA STREQUAL "ALL" OR
-        NOT DNNL_ENABLE_PRIMITIVE_GPU_ISA STREQUAL "ALL")
+        NOT BUILD_PRIMITIVE_GPU_ISA_ALL OR
+        NOT BUILD_XE3P)
     append(CMAKE_CCXX_FLAGS "-Wno-error=unused-function -Wno-unused-function")
 endif()

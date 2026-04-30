@@ -14,6 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "oneapi/dnnl/dnnl_config.h"
+
 #include "gpu/intel/ocl/hw_info.hpp"
 #include "gpu/intel/ocl/utils.hpp"
 
@@ -56,6 +58,53 @@ xpu::runtime_version_t get_driver_version(cl_device_id device) {
     return runtime_version;
 }
 
+status_t init_mayiuse_ngen_kernels(
+        impl::engine_t *engine, ngen::HW hw, bool &mayiuse_ngen_kernels) {
+    mayiuse_ngen_kernels = false;
+
+    // Bail out if the detected architecture is disabled at build time.
+    bool arch_enabled = false;
+    switch (hw) {
+        case ngen::HW::XeLP:
+            arch_enabled = BUILD_PRIMITIVE_GPU_ISA_ALL || BUILD_XELP;
+            break;
+        case ngen::HW::XeHP:
+            arch_enabled = BUILD_PRIMITIVE_GPU_ISA_ALL || BUILD_XEHP;
+            break;
+        case ngen::HW::XeHPG:
+            arch_enabled = BUILD_PRIMITIVE_GPU_ISA_ALL || BUILD_XEHPG;
+            break;
+        case ngen::HW::XeHPC:
+            arch_enabled = BUILD_PRIMITIVE_GPU_ISA_ALL || BUILD_XEHPC;
+            break;
+        case ngen::HW::Xe2:
+            arch_enabled = BUILD_PRIMITIVE_GPU_ISA_ALL || BUILD_XE2;
+            break;
+        case ngen::HW::Xe3:
+            arch_enabled = BUILD_PRIMITIVE_GPU_ISA_ALL || BUILD_XE3;
+            break;
+        case ngen::HW::XE3P_35_10:
+        case ngen::HW::XE3P_35_11:
+        case ngen::HW::XE3P_UNKNOWN: arch_enabled = BUILD_XE3P; break;
+        default: break;
+    }
+    if (!arch_enabled) return status::success;
+
+    if (hw <= ngen::HW::Xe3) {
+        auto status = jit::gpu_supports_binary_format(
+                &mayiuse_ngen_kernels, engine);
+        if (status != status::success) {
+            VWARN(common, runtime,
+                    "ngen fallback (gpu does not support binary format "
+                    "kernels)");
+            mayiuse_ngen_kernels = false;
+        }
+    } else {
+        mayiuse_ngen_kernels = true;
+    }
+    return status::success;
+}
+
 status_t init_gpu_hw_info(impl::engine_t *engine, cl_device_id device,
         cl_context ctx, uint32_t &ip_version, compute::gpu_arch_t &gpu_arch,
         compute::gpu_product_t &product_, uint64_t &native_extensions,
@@ -76,17 +125,7 @@ status_t init_gpu_hw_info(impl::engine_t *engine, cl_device_id device,
     CHECK(get_ocl_device_enabled_native_float_atomics(
             device, native_extensions, is_xelpg));
 
-    if (hw <= ngen::HW::Xe3) {
-        auto status = jit::gpu_supports_binary_format(
-                &mayiuse_ngen_kernels, engine);
-        if (status != status::success) {
-            VWARN(common, runtime,
-                    "ngen fallback (gpu does not support binary format "
-                    "kernels)");
-            mayiuse_ngen_kernels = false;
-        }
-    } else if (hw != ngen::HW::Unknown)
-        mayiuse_ngen_kernels = true;
+    CHECK(init_mayiuse_ngen_kernels(engine, hw, mayiuse_ngen_kernels));
 
     is_efficient_64bit = OpenCLCodeGenerator<HW::Unknown>::detectEfficient64Bit(
             ctx, device, hw);

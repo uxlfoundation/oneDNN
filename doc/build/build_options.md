@@ -120,9 +120,11 @@ Example that enables SSE41 and AVX2 sets:
 
 #### ONEDNN_ENABLE_PRIMITIVE_GPU_ISA
 This option supports several values: `ALL` (the default) which enables all
-ISA implementations or any set of `XELP`, `XEHP`, `XEHPG`, `XEHPC`, `XE2`,
-and `XE3`. Selected ISA will enable correspondent parts in just-in-time
-kernel generation based implementations. OpenCL based kernels and
+ISA implementations with full library support, or any set of `XELP`, `XEHP`,
+`XEHPG`, `XEHPC`, `XE2`, `XE3`, and `XE3P`. ISAs with preview support are
+excluded from `ALL` and may be opted in by combining `ALL` with explicit ISAs
+(e.g. `ALL;<ISA>`). Selected ISA will enable correspondent parts in
+just-in-time kernel generation based implementations. OpenCL based kernels and
 implementations will always be available. Example that enables XeLP and XeHP
 set:
 ```

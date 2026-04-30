@@ -149,8 +149,10 @@ set(DNNL_ENABLE_PRIMITIVE_GPU_ISA "ALL" CACHE STRING
     "Specifies a set of implementations using specific GPU ISA to be available
     at build time. Regardless of value chosen, reference OpenCL-based
     implementations will always be available. Valid values:
-    - ALL (the default). Includes all ISA to be enabled.
-    - <ISA_NAME>;<ISA_NAME>;... Includes only selected ISA to be enabled.
+    - ALL (the default). Enables all ISA with full library support;
+      ISAs with preview support are excluded.
+    - <ISA_NAME>;<ISA_NAME>;... Enables the listed ISA. ALL may be combined
+      with explicit ISAs (e.g. ALL;<ISA>) to opt into preview ISAs.
       Possible values are: XELP, XEHP, XEHPG, XEHPC, XE2, XE3, XE3P.")
 
 set(ONEDNN_ENABLE_GEMM_KERNELS_ISA "ALL" CACHE STRING

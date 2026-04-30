@@ -246,7 +246,8 @@
 #define REG_XE3_ISA(...)
 #endif
 
-#if BUILD_PRIMITIVE_GPU_ISA_ALL || BUILD_XE3P
+// XE3P is excluded from BUILD_PRIMITIVE_GPU_ISA_ALL, opt in explicitly.
+#if BUILD_XE3P
 #define REG_XE3P_ISA(...) __VA_ARGS__
 #else
 #define REG_XE3P_ISA(...)

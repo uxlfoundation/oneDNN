@@ -487,6 +487,136 @@ HANDLE_EXCEPTIONS_FOR_TEST(iface_grouped_test_t, TestMaxGroupMHint) {
     }
 }
 
+HANDLE_EXCEPTIONS_FOR_TEST(iface_grouped_test_t, TestBinaryPostOpPDCreation) {
+    engine eng = get_test_engine();
+
+    SKIP_IF(eng.get_kind() == engine::kind::gpu
+                    || DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL,
+            "Test requires host-allocated memory.");
+
+    const int ngroups = 2;
+    auto src_md = memory::desc::grouped({6, 4}, dt::f32, 0, ngroups);
+    auto wei_md
+            = memory::desc({ngroups, 4, 4}, dt::f32, memory::format_tag::abc);
+    auto dst_md = memory::desc::grouped({6, 4}, dt::f32, 0, ngroups);
+    auto bin_md = memory::desc::grouped({6, 4}, dt::f32, 0, ngroups);
+
+    post_ops po;
+    po.append_binary(algorithm::binary_mul, bin_md);
+    primitive_attr attr;
+    attr.set_post_ops(po);
+
+    ASSERT_NO_THROW(matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr));
+
+    // Mismatched: 3 groups vs 2
+    auto mismatched_bin_md = memory::desc::grouped({6, 4}, dt::f32, 0, 3);
+
+    post_ops mismatched_po;
+    mismatched_po.append_binary(algorithm::binary_mul, mismatched_bin_md);
+    primitive_attr mismatched_attr;
+    mismatched_attr.set_post_ops(mismatched_po);
+
+    EXPECT_THROW(matmul::primitive_desc(
+                         eng, src_md, wei_md, dst_md, mismatched_attr),
+            dnnl::error);
+}
+
+TEST(iface_grouped_test_t, TestUnsupportedPostOps) {
+    engine eng = get_test_engine();
+
+    SKIP_IF(eng.get_kind() == engine::kind::gpu
+                    || DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL,
+            "Test requires host-allocated memory.");
+
+    const int ngroups = 2;
+    auto src_md = memory::desc::grouped({6, 4}, dt::f32, 0, ngroups);
+    auto wei_md
+            = memory::desc({ngroups, 4, 4}, dt::f32, memory::format_tag::abc);
+    auto dst_md = memory::desc::grouped({6, 4}, dt::f32, 0, ngroups);
+    auto bin_md = memory::desc({6, 4}, dt::f32, memory::format_tag::ab);
+
+    // eltwise_swish + binary_mul is accepted
+    {
+        post_ops po;
+        po.append_eltwise(algorithm::eltwise_swish, 1.f, 0.f);
+        po.append_binary(algorithm::binary_mul, bin_md);
+        primitive_attr attr;
+        attr.set_post_ops(po);
+        EXPECT_NO_THROW(
+                matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr));
+    }
+
+    // binary_add is not supported for grouped matmul
+    {
+        post_ops po;
+        po.append_binary(algorithm::binary_add, bin_md);
+        primitive_attr attr;
+        attr.set_post_ops(po);
+        EXPECT_THROW(matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr),
+                dnnl::error);
+    }
+
+    // sum is not supported
+    {
+        post_ops po;
+        po.append_sum(1.0f);
+        primitive_attr attr;
+        attr.set_post_ops(po);
+        EXPECT_THROW(matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr),
+                dnnl::error);
+    }
+}
+
+HANDLE_EXCEPTIONS_FOR_TEST(
+        iface_grouped_test_t, TestBinaryPostOpRejectsMismatchedOffsets) {
+    engine eng = get_test_engine();
+
+    SKIP_IF(eng.get_kind() == engine::kind::gpu
+                    || DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL,
+            "Test requires host-allocated memory.");
+
+    const int ngroups = 2;
+    const int total_m = 6;
+    const int K = 4;
+    const int N = 4;
+
+    auto src_md = memory::desc::grouped({total_m, K}, dt::f32, 0, ngroups);
+    auto wei_md
+            = memory::desc({ngroups, K, N}, dt::f32, memory::format_tag::abc);
+    auto dst_md = memory::desc::grouped({total_m, N}, dt::f32, 0, ngroups);
+    auto bin_md = memory::desc::grouped({total_m, N}, dt::f32, 0, ngroups);
+
+    post_ops po;
+    po.append_binary(algorithm::binary_mul, bin_md);
+    primitive_attr attr;
+    attr.set_post_ops(po);
+
+    matmul::primitive_desc pd(eng, src_md, wei_md, dst_md, attr);
+    matmul prim(pd);
+    stream strm(eng);
+
+    std::vector<float> src_data(total_m * K, 1.f);
+    std::vector<float> wei_data(ngroups * K * N, 1.f);
+    std::vector<float> dst_data(total_m * N, 0.f);
+    std::vector<float> bin_data(total_m * N, 1.f);
+    std::vector<int32_t> src_offsets = {3, 6};
+    std::vector<int32_t> dst_offsets = {3, 6};
+    std::vector<int32_t> bin_offsets = {2, 6};
+
+    memory src_mem(src_md, eng, {src_data.data(), src_offsets.data()});
+    memory wei_mem(wei_md, eng, wei_data.data());
+    memory dst_mem(dst_md, eng, {dst_data.data(), dst_offsets.data()});
+    memory bin_mem(bin_md, eng, {bin_data.data(), bin_offsets.data()});
+
+    EXPECT_THROW(
+            prim.execute(strm,
+                    {{DNNL_ARG_SRC, src_mem}, {DNNL_ARG_WEIGHTS, wei_mem},
+                            {DNNL_ARG_DST, dst_mem},
+                            {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1,
+                                    bin_mem}}),
+            dnnl::error);
+}
+
 } // namespace dnnl
 
 #endif // DNNL_EXPERIMENTAL_GROUPED_MEMORY

@@ -148,6 +148,8 @@ enum class reason_t {
     // Execution mode is not intended to work under specific conditions, e.g.,
     // backward propagation.
     skip_execution_mode,
+    // Sum post-op configuration is not supported.
+    skip_postop_sum,
 };
 
 struct res_t {

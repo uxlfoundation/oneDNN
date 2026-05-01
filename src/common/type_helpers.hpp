@@ -1168,6 +1168,15 @@ inline status_t memory_desc_strides_check(
 
         // update min_stride for next iteration
         const auto padded_dim = md.padded_dims[d];
+
+        const dim_t blocks_ratio = padded_dim / blocks[d];
+        VCHECK_MEMORY(IMPLICATION(strides[d] > 0 && block_size > 0
+                                      && blocks_ratio > 0,
+                              strides[d] <= std::numeric_limits<dim_t>::max()
+                                              / (block_size * blocks_ratio)),
+                status::invalid_arguments, VERBOSE_INTEGRAL_OVERFLOW_DIM,
+                "strides", d);
+
         min_stride = block_size * strides[d] * (padded_dim / blocks[d]);
         if (max_stride <= strides[d]) {
             max_stride = strides[d];

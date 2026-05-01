@@ -889,47 +889,85 @@ void skip_unimplemented_sum_po(const attr_t &attr, res_t *res,
 
     for (int idx = 0; idx < po.len(); ++idx) {
         const auto &e = po.entry[idx];
-        if (e.is_sum_kind()) {
-            // API requirements
-            if (e.sum.zero_point != 0) {
-                // Sum with zero-point is only supported for int8
-                if (!is_integral_dt(src_dt)) {
-                    res->state = SKIPPED;
-                    res->reason = reason_t::skip_not_supported;
-                    return;
-                } else {
-                    // Only quantized sum operand can have zero point
-                    const dnnl_data_type_t e_sum_dt
-                            = e.sum.dt == dnnl_data_type_undef ? dst_dt
-                                                               : e.sum.dt;
-                    if (!is_integral_dt(e_sum_dt)) {
-                        res->state = SKIPPED;
-                        res->reason = reason_t::skip_not_supported;
-                        return;
-                    }
-                }
-            }
+        if (!e.is_sum_kind()) continue;
 
-            // Sum with zero-point is not supported on GPU
-            if (is_gpu() && e.sum.zero_point != 0) {
+        if (e.sum.zero_point != 0) {
+            // Sum with zero-point is only supported for quantized primitive
+            // inputs, check only src to avoid hitting WoQ cases.
+            if (!is_integral_dt(src_dt)) {
+                BENCHDNN_PRINTF(2, "%s%s",
+                        "[SKIP]: Sum post-op with zero-point expects quantized "
+                        "inputs. Source data type specified: ",
+                        dt2str(src_dt));
                 res->state = SKIPPED;
-                res->reason = reason_t::skip_not_supported;
-                break;
-            }
-            // Each sum must have same data on CPU
-            if (is_cpu() && e.sum.dt != sum_dt) {
-                res->state = SKIPPED;
-                res->reason = reason_t::skip_not_supported;
-                break;
-            }
-            // Sum must have data type with the same size like dst on both
-            if (dst_dt != dnnl_data_type_undef && sum_dt != dnnl_data_type_undef
-                    && dnnl_data_type_size(dst_dt)
-                            != dnnl_data_type_size(e.sum.dt)) {
-                res->state = SKIPPED;
-                res->reason = reason_t::skip_not_supported;
+                res->reason = reason_t::skip_postop_sum;
                 return;
             }
+
+            // Only quantized sum operand can have zero point
+            const dnnl_data_type_t e_sum_dt
+                    = e.sum.dt == dnnl_data_type_undef ? dst_dt : e.sum.dt;
+            if (!is_integral_dt(e_sum_dt)) {
+                BENCHDNN_PRINTF(2, "%s%s",
+                        "[SKIP]: Sum post-op with zero-point expects integral "
+                        "dst_dt or sum_dt. Data type specified: ",
+                        dt2str(e_sum_dt));
+                res->state = SKIPPED;
+                res->reason = reason_t::skip_postop_sum;
+                return;
+            }
+
+            if (is_gpu()) {
+                BENCHDNN_PRINTF(2, "%s",
+                        "[SKIP]: GPU doesn't support sum post-op with "
+                        "zero-point");
+                res->state = SKIPPED;
+                res->reason = reason_t::skip_postop_sum;
+                return;
+            }
+        }
+
+        if (is_gpu() && e.sum.dt != dnnl_data_type_undef) {
+            BENCHDNN_PRINTF(2, "%s",
+                    "[SKIP]: GPU doesn't support non-default sum_dt argument");
+            res->state = SKIPPED;
+            res->reason = reason_t::skip_not_supported;
+            return;
+        }
+
+        if (!IMPLICATION(sum_dt == dnnl_data_type_undef,
+                    e.sum.dt == dnnl_data_type_undef || e.sum.dt == dst_dt)
+                && is_cpu()) {
+            BENCHDNN_PRINTF(2, "%s",
+                    "[SKIP]: CPU doesn't support sum post-op with different "
+                    "data types");
+            res->state = SKIPPED;
+            res->reason = reason_t::skip_postop_sum;
+            return;
+        }
+
+        if (!IMPLICATION(sum_dt != dnnl_data_type_undef,
+                    e.sum.dt == dnnl_data_type_undef ? sum_dt == dst_dt
+                                                     : sum_dt == e.sum.dt)
+                && is_cpu()) {
+            BENCHDNN_PRINTF(2, "%s",
+                    "[SKIP]: CPU doesn't support sum post-op with different "
+                    "data types");
+            res->state = SKIPPED;
+            res->reason = reason_t::skip_postop_sum;
+            return;
+        }
+
+        if (!IMPLICATION(dst_dt != dnnl_data_type_undef
+                            && e.sum.dt != dnnl_data_type_undef,
+                    dnnl_data_type_size(dst_dt)
+                            == dnnl_data_type_size(e.sum.dt))) {
+            BENCHDNN_PRINTF(2, "%s",
+                    "[SKIP]: Sum post-op doesn't support data types with "
+                    "different type sizes");
+            res->state = SKIPPED;
+            res->reason = reason_t::skip_postop_sum;
+            return;
         }
     }
 }

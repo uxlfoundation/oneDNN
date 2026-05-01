@@ -757,7 +757,14 @@ void jit_avx512_core_amx_copy_to_pbuffer_t::copy_row_reduced_lowering() {
     // number of zero-padded columns before src buffer to copy
     mov(reg_rov, ptr[param1 + GET_OFF(back_overflow)]);
 
-    vpxord(zmm_zero, zmm_zero, zmm_zero);
+    if (jcp.signed_input) {
+        // Apply -128 shift to zero padded area when using VPDPBUSD instruction
+        // to work with s8 inputs.
+        assert(jcp.src_dt == data_type::s8);
+        mov(reg_tmp, -128);
+        vpbroadcastb(zmm_zero, reg_tmp.cvt8());
+    } else
+        vpxord(zmm_zero, zmm_zero, zmm_zero);
 
     { // Handle Left Overflow
         Label label_lov, label_lov_skip;

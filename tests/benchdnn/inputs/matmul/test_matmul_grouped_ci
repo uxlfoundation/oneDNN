@@ -25,6 +25,8 @@
 # - MXFP4: f4_e2m1 dtypes, e8m0 block scales, block size 32
 # - NVFP4: f4_e2m1 dtypes, f8_e4m3 block scales (block size 16) + global f32 scale via
 #           binary mul post-op (--attr-post-ops=mul:f32:0)
+# - Post-ops: eltwise_swish, binary_mul (per-row, dense, grouped encoding),
+#             chained eltwise_swish+binary_mul(grouped), post-ops with bias/scales
 
 --reset
 
@@ -198,3 +200,41 @@
 --wtag=abc
 --grouped=0:4:10+20+30+40:40
 100x64:4x64x32
+
+# Post-ops:
+# eltwise_swish
+# binary_mul with per-row mask (e.g., routing weight for Down)
+# binary_mul with grouped tensor (e.g., Gate * Up, grouped encoding)
+--reset
+--dt=f16:f16:f16
+--wtag=abc
+--grouped=0:4:8+8+8+8
+--attr-post-ops=eltwise_swish:1.0,mul:f32:1:ab,mul:f32:3:grouped
+32x64:4x64x32
+
+# Post-ops: eltwise_swish + binary_mul (grouped)
+--reset
+--dt=f16:f16:f16
+--wtag=abc,acb
+--grouped=0:4:8+8+8+8,0:4:8+0+16+8
+--attr-post-ops=eltwise_swish:1.0+mul:f32:3:grouped
+32x64:4x64x32
+
+# Post-ops + bias: binary_mul per-row and grouped with bias
+--reset
+--dt=f32:f32:f32
+--wtag=abc
+--grouped=0:4:8+8+8+8
+--bia-dt=f32 --bia_mask=2
+--attr-post-ops=mul:f32:1:ab,mul:f32:3:grouped
+32x64:4x64x32
+
+# Post-ops + quantization: binary_mul per-row and grouped with WOQ scales
+--reset
+--dt=f16:s4:f16
+--wtag=abc
+--grouped=0:4:8+8+8+8
+--attr-fpmath=f16:true
+--attr-scales=wei:7:f16:32x1
+--attr-post-ops=mul:f32:1:ab,mul:f32:3:grouped
+32x128:4x128x64

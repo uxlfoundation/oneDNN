@@ -237,8 +237,7 @@ status_t post_ops_t::validate_binary(alg_kind_t alg,
     bool is_ternary_op = (alg == binary_select);
 
     VCHECK_ATTR(alg_ok, VERBOSE_BAD_ALGORITHM);
-    VCHECK_ATTR(memory_desc_sanity_check(*user_src1_desc),
-            VERBOSE_MEM_DESC_CHECK_FAIL);
+    CHECK(memory_desc_sanity_check(*user_src1_desc));
 
     // Additional check to restrict run-time dimension usage until supported.
     for (int d = 0; d < user_src1_desc->ndims; ++d) {
@@ -248,8 +247,7 @@ status_t post_ops_t::validate_binary(alg_kind_t alg,
 
     // Additional checks if the algorithm involves ternary inputs
     if (is_ternary_op) {
-        VCHECK_ATTR(memory_desc_sanity_check(*user_src2_desc),
-                VERBOSE_MEM_DESC_CHECK_FAIL);
+        CHECK(memory_desc_sanity_check(*user_src2_desc));
         for (int d = 0; d < user_src2_desc->ndims; ++d) {
             VCHECK_ATTR(!is_runtime_value(user_src2_desc->dims[d]),
                     VERBOSE_RUNTIMEDIM_UNSUPPORTED);

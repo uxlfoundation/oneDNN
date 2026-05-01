@@ -75,6 +75,8 @@
 #define VERBOSE_BAD_NDIMS "%s has a bad number of dimensions %d"
 #define VERBOSE_BAD_DIM "bad dimension %s:%d"
 #define VERBOSE_OUT_OF_RANGE_DIMS "out-of-range dimensions for %s"
+#define VERBOSE_INTEGRAL_OVERFLOW_DIM \
+    "dimension %s:%d triggers integral overflow"
 
 #define VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME "unsupported threadpool runtime"
 #define VERBOSE_UNSUPPORTED_ISA "unsupported isa"

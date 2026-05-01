@@ -1149,6 +1149,11 @@ std::ostream &operator<<(std::ostream &s, memory_kind_ext_t memory_kind) {
 }
 
 std::ostream &dump_global_params(std::ostream &s) {
+    if (canonical || engine_tgt_kind != dnnl_cpu) {
+        s << "--engine=" << engine_tgt_kind;
+        if (engine_index != 0) s << ":" << engine_index;
+        s << " ";
+    }
     // Need to dump mode and modifiers in front of the driver name to make all
     // updated default values take effect before parsing a state of a problem.
     if (canonical || bench_mode != default_bench_mode)
@@ -1168,11 +1173,6 @@ std::ostream &dump_global_params(std::ostream &s) {
 
     s << "--" << driver_name << " ";
     if (canonical) s << "--canonical=" << bool2str(canonical) << " ";
-    if (canonical || engine_tgt_kind != dnnl_cpu) {
-        s << "--engine=" << engine_tgt_kind;
-        if (engine_index != 0) s << ":" << engine_index;
-        s << " ";
-    }
     if (canonical || fast_ref != default_fast_ref)
         s << "--fast-ref=" << bool2str(fast_ref) << " ";
     if (!skip_impl.empty()) s << "--skip-impl=" << skip_impl << " ";

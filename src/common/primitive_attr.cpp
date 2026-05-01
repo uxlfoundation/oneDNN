@@ -346,21 +346,40 @@ status_t post_ops_t::set_default_formats(const memory_desc_t *dst_md) {
 
 bool post_ops_t::check_sum_consistent_dt(const data_type_t dst_dt,
         const bool diverse_sum_dt_is_supported) const {
-    int sum_ind = find(dnnl::impl::primitive_kind::sum);
+    int sum_ind = find(primitive_kind::sum);
     if (sum_ind == -1) return true;
+
     const auto sum_dt = entry_[sum_ind].sum.dt;
+    const auto dst_dt_size = types::data_type_size(dst_dt);
 
     // sum dt and dst dt must have the same size
-    const bool compatible_dt_size = IMPLICATION(
-            !utils::one_of(dnnl_data_type_undef, sum_dt, dst_dt),
-            types::data_type_size(dst_dt) == types::data_type_size(sum_dt));
+    const bool compatible_dt_size
+            = IMPLICATION(!utils::one_of(data_type::undef, sum_dt, dst_dt),
+                    dst_dt_size == types::data_type_size(sum_dt));
     if (!compatible_dt_size) return false;
     if (diverse_sum_dt_is_supported) return true;
 
-    bool ok = true;
-    while ((sum_ind = find(dnnl::impl::primitive_kind::sum, sum_ind + 1)) != -1)
-        ok = ok && entry_[sum_ind].sum.dt == sum_dt;
-    return ok;
+    // If there are two or more sums, there's a requirement for them to have
+    // identical data types. This breaks down into several cases depending on
+    // sum data types if they were specified. This is a rough summary:
+    // | dst_dt | sum_dt | cur_sum_dt | outcome
+    // |  s32   |  f32   |    f32     | Good
+    // |  s32   |  f32   |   undef    | Bad
+    // |  f32   |  f32   |   undef    | Good
+    // |  s32   | undef  |    f32     | Bad
+    // |  s32   | undef  |    s32     | Good
+    // |  s32   | undef  |   undef    | Good
+    while ((sum_ind = find(primitive_kind::sum, sum_ind + 1)) != -1) {
+        auto cur_sum_dt = entry_[sum_ind].sum.dt;
+        if (!IMPLICATION(sum_dt == data_type::undef,
+                    utils::one_of(cur_sum_dt, data_type::undef, dst_dt)))
+            return false;
+        if (!IMPLICATION(sum_dt != data_type::undef,
+                    cur_sum_dt == data_type::undef ? sum_dt == dst_dt
+                                                   : sum_dt == cur_sum_dt))
+            return false;
+    }
+    return true;
 }
 
 bool post_ops_t::check_sum_consistent_quantization(

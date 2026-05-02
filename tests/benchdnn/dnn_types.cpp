@@ -965,6 +965,7 @@ std::ostream &operator<<(std::ostream &s, const attr_t::post_ops_t &post_ops) {
             if (e.binary.tag != tag::any) s << src_delim << e.binary.tag;
             if (!e.binary.strides.empty())
                 s << src_delim << dims2str(e.binary.strides);
+            if (e.binary.grouped) s << src_delim << "grouped";
 
             if (e.is_binary_kind_with_ternary_op()) {
                 bool delim_added = false;
@@ -1330,11 +1331,23 @@ post_ops_rhs_tensor_entry_t get_po_rhs_tensor_entry(
 } // namespace
 
 int attr_args_t::prepare_post_ops_mds(const attr_t &attr, int ndims,
-        const dnnl_dims_t prb_dims, dnnl_primitive_kind_t prim_kind) {
+        const dnnl_dims_t prb_dims, dnnl_primitive_kind_t prim_kind,
+        const sparse_options_t *sparse_options) {
     const auto &po = attr.post_ops;
     dnnl_dims_t dims;
     for (int d = 0; d < ndims; ++d)
         dims[d] = prb_dims[d];
+
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    int grouped_var_dim_idx = -1;
+    dnnl_dim_t grouped_count = 0;
+    if (sparse_options) {
+        grouped_var_dim_idx
+                = sparse_options->get_variable_dim_idx(DNNL_ARG_SRC);
+        grouped_count = sparse_options->get_group_count();
+    }
+#endif
+
     // iterate over all post ops and prepare md for each binary
     for (int idx = 0; idx < po.len(); ++idx) {
         const auto &e = po.entry[idx];
@@ -1351,6 +1364,13 @@ int attr_args_t::prepare_post_ops_mds(const attr_t &attr, int ndims,
             auto rhs_tensor_desc = dnn_mem_t::init_md(ndims, rhs_tensor_dims,
                     po_rhs_tensor_entry.dt, po_rhs_tensor_entry.tag,
                     po_rhs_tensor_entry.strides);
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+            if (e.binary.grouped) {
+                rhs_tensor_desc = dnn_mem_t::init_grouped_md(ndims,
+                        rhs_tensor_dims, po_rhs_tensor_entry.dt,
+                        grouped_var_dim_idx, grouped_count);
+            }
+#endif
             mds.emplace((DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx)
                                 | po_rhs_tensor_entry.arg_attr_mask),
                     std::move(rhs_tensor_desc));

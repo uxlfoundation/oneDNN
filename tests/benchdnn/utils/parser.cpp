@@ -390,14 +390,22 @@ attr_t::post_ops_t str2attr_post_ops(const std::string &s) {
                 if (src_subpos == std::string::npos) return;
 
                 // parse tag input - processed for both src1/2 tensors.
+                //
+                // WARNING: "grouped" in the tag position means post-op tensor
+                // follows dst layout (e.g., offsets, layout, strides),
+                // in this case tag is left as default (any)
                 const auto tag_str = get_substr(s, src_subpos, delim);
-                if (check_tag(tag_str) != OK) {
-                    BENCHDNN_PRINT(0, "%s \'%s\' %s\n",
-                            "Error: binary post-op tag", tag_str.c_str(),
-                            "is not recognized.");
-                    SAFE_V(FAIL);
+                if (tag_str == "grouped") {
+                    e.binary.grouped = true;
+                } else {
+                    if (check_tag(tag_str) != OK) {
+                        BENCHDNN_PRINT(0, "%s \'%s\' %s\n",
+                                "Error: binary post-op tag", tag_str.c_str(),
+                                "is not recognized.");
+                        SAFE_V(FAIL);
+                    }
+                    e.binary.tag = tag_str;
                 }
-                e.binary.tag = tag_str;
 
                 if (src_subpos == std::string::npos) return;
 

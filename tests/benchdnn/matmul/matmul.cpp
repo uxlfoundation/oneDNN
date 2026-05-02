@@ -205,7 +205,8 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
     }
 
     attr_args_t attr_args;
-    attr_args.prepare_post_ops_mds(prb->attr, prb->ndims, prb->dst_dims.data());
+    attr_args.prepare_post_ops_mds(prb->attr, prb->ndims, prb->dst_dims.data(),
+            dnnl_undefined_primitive, &prb->sparse_options);
 
     const auto overload_quant_mask = [&](policy_t policy, int arg) {
         // Overload PER_OC/PER_OCIC mask definition for batched cases.
@@ -497,10 +498,12 @@ static void fill_dense_fp_values(data_kind_t kind, const prb_t *prb,
 }
 
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+
 // Fill offsets buffer for grouped memory with cumulative sums
-static int fill_grouped_offsets(dnn_mem_t &mem, const prb_t *prb) {
-    const int64_t group_count = prb->sparse_options.get_group_count();
-    const auto &group_sizes = prb->sparse_options.get_group_sizes();
+static int fill_grouped_offsets(
+        dnn_mem_t &mem, const sparse_options_t &sparse_options) {
+    const int64_t group_count = sparse_options.get_group_count();
+    const auto &group_sizes = sparse_options.get_group_sizes();
 
     int64_t cumulative = 0;
     for (int64_t g = 0; g < group_count; g++) {
@@ -537,7 +540,7 @@ static int fill_grouped_data(data_kind_t kind, const prb_t *prb,
     }
 
     // Fill offsets buffer
-    SAFE(fill_grouped_offsets(mem_dt, prb), WARN);
+    SAFE(fill_grouped_offsets(mem_dt, prb->sparse_options), WARN);
 
     if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) return OK;
 
@@ -1202,7 +1205,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                 if (is_grouped) {
                     // Only offsets need to be filled
                     // as values are computed by the library
-                    SAFE(fill_grouped_offsets(mem, prb), WARN);
+                    SAFE(fill_grouped_offsets(mem, prb->sparse_options), WARN);
                 }
 #endif
                 const auto &po = prb->attr.post_ops;
@@ -1231,11 +1234,30 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                 // TODO: introduce an order of processing arguments to avoid
                 // post filling manipulations.
                 break;
-            default:
+            default: {
                 SAFE(init_ref_memory_args_default_case(
                              exec_arg, mem, ref_mem, prb->attr, res),
                         WARN);
-                break;
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+                // Fill offsets for grouped binary post-op tensors
+                // Note that values are already filled by the default case above
+                if (is_grouped) {
+                    const auto &po = prb->attr.post_ops;
+                    // DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) = BASE * (idx + 1)
+                    const int po_idx
+                            = exec_arg / DNNL_ARG_ATTR_MULTIPLE_POST_OP_BASE
+                            - 1;
+                    const bool is_grouped_bin_po = po_idx >= 0
+                            && po_idx < po.len()
+                            && po.entry[po_idx].is_binary_kind()
+                            && po.entry[po_idx].binary.grouped;
+                    if (is_grouped_bin_po) {
+                        SAFE(fill_grouped_offsets(mem, prb->sparse_options),
+                                WARN);
+                    }
+                }
+#endif
+            } break;
         }
 
         update_ref_mem_map_from_prim(prim_ref, mem, ref_mem_map, exec_arg,

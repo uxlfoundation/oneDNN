@@ -418,6 +418,7 @@ struct attr_t {
                 mask_input_t mask_input = mask_input_t::none;
                 std::string tag = tag::any;
                 dims_t strides;
+                bool grouped = false;
 
                 // For the src2 tensor when the algorithm takes ternary inputs
                 dnnl_data_type_t src2_dt = dnnl_data_type_undef;
@@ -755,7 +756,8 @@ struct attr_args_t {
 
     int prepare_post_ops_mds(const attr_t &attr, int ndims,
             const dnnl_dims_t prb_dims,
-            dnnl_primitive_kind_t prim_kind = dnnl_undefined_primitive);
+            dnnl_primitive_kind_t prim_kind = dnnl_undefined_primitive,
+            const sparse_options_t *sparse_options = nullptr);
 
     void prepare_dw_post_op(const attr_t &attr, dnnl_data_type_t wei_dt,
             dnnl_data_type_t bia_dt);

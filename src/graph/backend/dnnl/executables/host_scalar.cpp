@@ -40,6 +40,9 @@ void host_scalar_executable_t::execute(const stream &stream,
 }
 
 #ifdef DNNL_WITH_SYCL
+template <typename>
+class host_scalar_copy_kernel;
+
 ::sycl::event host_scalar_executable_t::execute_sycl(const stream &stream,
         const std::unordered_map<int, memory> &args,
         const std::vector<::sycl::event> &deps) const {
@@ -64,7 +67,8 @@ void host_scalar_executable_t::execute(const stream &stream,
         DType *dst_ptr = static_cast<DType *>(dst_mem.get_data_handle());
         e = sycl_queue.submit([&](::sycl::handler &cgh) {
             cgh.depends_on(deps);
-            cgh.single_task([=]() { dst_ptr[0] = val; });
+            cgh.single_task<host_scalar_copy_kernel<DType>>(
+                    [=]() { dst_ptr[0] = val; });
         });
     });
     return e;

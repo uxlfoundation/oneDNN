@@ -1259,19 +1259,6 @@ std::string plan_t::str() const {
     return jit::add_indent("conv_plan", oss.str());
 }
 
-dsl::type_t get_accumulation_type(
-        const config_t &cfg, const dsl::type_t &a, const dsl::type_t &b) {
-    if (a.is_int()) return dsl::type_t::s32();
-    if (a.is_f64()) return dsl::type_t::f64();
-    if (cfg.fma_kind() == fma_kind_t::mad && a.is_f16() && b.is_f16()
-            && !cfg.prb().is_bwd_w) {
-        // FIXME: f16 must use f32 accumulator according to documentation.
-        // Temporarily keeping f16 to avoid regressions.
-        return dsl::type_t::f16();
-    }
-    return dsl::type_t::f32();
-}
-
 layout_t make_with_block(const layout_t &base, const layout_t &inner) {
     gpu_assert(base.type() == inner.type());
     auto cur_tile = base.tile();
@@ -1307,7 +1294,7 @@ struct fma_context_t {
         , fma(cfg.fma_kind())
         , a_type(to_ir(cfg.prb().a_data_type))
         , b_type(to_ir(cfg.prb().b_data_type))
-        , acc_type(get_accumulation_type(cfg, a_type, b_type))
+        , acc_type(to_ir(cfg.prb().acc_data_type))
         , is_src1_broadcast(!cfg.prb().is_dw)
         , ab_swap_transpose_(cfg.prb().ab_swap_transpose) {}
 
@@ -1721,7 +1708,7 @@ layout_t to_reduce_layout(
         bb.idx = map[b.idx];
         reduce_blocks.push_back(bb);
     }
-    auto type = get_accumulation_type(cfg, layout.type(), layout.type());
+    auto type = to_ir(cfg.prb().acc_data_type);
     return layout_t(type, reduce_blocks, 0, reduce_ndims).make_dense();
 }
 
@@ -2516,9 +2503,7 @@ private:
         int m_blk = 1;
         int n_blk = 1;
         int k_blk = 1;
-        auto &a_type = a_layout.type();
-        auto &b_type = b_layout.type();
-        auto c_type = get_accumulation_type(cfg_, a_type, b_type);
+        auto c_type = to_ir(cfg_.prb().acc_data_type);
         layout_t c_blk_layout(c_type, std::vector<dim_t>(3, 1));
         switch (fma_kind) {
             case fma_kind_t::dp4a:

@@ -200,6 +200,17 @@ status_t problem_t::init(
     CHECK(init_abc_data_types(hw));
     CHECK(init_acc_data_type());
 
+    auto fma = get_supported_fma_kind(hw, to_ir(a_data_type),
+            to_ir(b_data_type), to_ir(acc_data_type));
+    if (force_mad(*this)) fma = fma_kind_t::mad;
+    // FIXME: f16 must use f32 accumulator according to documentation.
+    // Temporarily keeping f16 to avoid regressions.
+    if (fma == fma_kind_t::mad && a_data_type == data_type::f16
+            && b_data_type == data_type::f16 && !is_bwd_w) {
+        acc_data_type = data_type::f16;
+        acc_data_type_size = (int)types::data_type_size(acc_data_type);
+    }
+
     return status::success;
 }
 
@@ -1029,28 +1040,25 @@ bool post_ops_ok(const problem_t &prb, const dsl::hw_t &hw) {
     return true;
 }
 
-bool should_use_mad(const problem_t &prb) {
-    if (prb.is_dw) return true;
-    if (prb.is_bwd_w) return false;
-    dim_t kw_xc = prb.kw * (prb.is_fwd ? prb.ic : prb.oc);
-    bool small_ic_oc = (prb.oc <= 3 && prb.ic <= 3 && kw_xc <= 10)
-            || (prb.oc <= 2 && prb.ic <= 2);
-    bool small_mb_ic_oc = prb.mb < 8 && small_ic_oc;
-    bool grouped_small_ic_oc = prb.g > 1 && small_ic_oc;
-    return small_mb_ic_oc || grouped_small_ic_oc;
-}
-
 status_t init_fma_kind(
         config_t &cfg, convolution_pd_t *pd, impl::engine_t *engine) {
-    if (cfg.fma_kind_param().is_overridden()) return status::success;
     const auto &prb = cfg.prb();
-    auto fma_kind = get_supported_fma_kind(cfg.hw(), to_ir(prb.a_data_type),
-            to_ir(prb.b_data_type), to_ir(prb.acc_data_type));
-    // Force mad for some cases
-    if (should_use_mad(prb)) fma_kind = fma_kind_t::mad;
+    fma_kind_t fma_kind;
+    if (cfg.fma_kind_param().is_overridden()) {
+        // prb.acc_data_type was derived assuming force_mad(prb); the env
+        // override must agree, otherwise acc_data_type is stale.
+        gpu_assert((cfg.fma_kind() == fma_kind_t::mad) == force_mad(prb))
+                << "fma env override (" << to_string(cfg.fma_kind())
+                << ") disagrees with force_mad(prb).";
+        fma_kind = cfg.fma_kind();
+    } else {
+        fma_kind = get_supported_fma_kind(cfg.hw(), to_ir(prb.a_data_type),
+                to_ir(prb.b_data_type), to_ir(prb.acc_data_type));
+        if (force_mad(prb)) fma_kind = fma_kind_t::mad;
+        cfg.set_fma_kind(fma_kind);
+    }
     VDISPATCH_CHECK(pd, engine, fma_kind != fma_kind_t::undef,
             VERBOSE_UNSUPPORTED_DT_CFG);
-    cfg.set_fma_kind(fma_kind);
     cfg.set_require_dpas(
             utils::one_of(fma_kind, fma_kind_t::dpas, fma_kind_t::dpasw));
     return status::success;

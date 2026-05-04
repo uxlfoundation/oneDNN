@@ -128,20 +128,18 @@ endif()
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsycl")
 
 if(DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER)
-    include(CheckCXXSourceRuns)
+    include(CheckCXXSourceCompiles)
     set(CHECK_SYCL_KERNEL_COMPILER_SOURCE
     "
         #include <sycl/sycl.hpp>
         namespace syclex = sycl::ext::oneapi::experimental;
         int main() {
-            for (auto platform : sycl::platform::get_platforms())
-                for (auto d : platform.get_devices())
-                    if (!d.ext_oneapi_can_build(syclex::source_language::opencl))
-                        return 1;
+            sycl::device d;
+            (void)d.ext_oneapi_can_build(syclex::source_language::opencl);
             return 0;
         }
     ")
-    CHECK_CXX_SOURCE_RUNS(
+    CHECK_CXX_SOURCE_COMPILES(
         "${CHECK_SYCL_KERNEL_COMPILER_SOURCE}"
         SYCL_KERNEL_COMPILER_DETECTED)
     if(NOT SYCL_KERNEL_COMPILER_DETECTED)

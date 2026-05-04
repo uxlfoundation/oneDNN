@@ -556,22 +556,23 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_tags(memory_desc_t &A_md,
         } else {
             const bool is_int8_avx512_core
                     = this->is_int8() && is_superset(bgmmc.isa, avx512_core);
-            const bool is_adbc_allowed = this->is_f8() || this->is_bf16_fp8()
-                    || this->is_f16_fp8() || is_int8_avx512_core
+            const bool is_adbc_allowed = this->is_f8() || is_int8_avx512_core
                     || this->is_bf16() || this->is_f32() || this->is_bf32()
                     || this->is_f16() || this->is_f32_f16()
                     || this->is_f32_bf16() || this->is_bf16_with_int_wei()
                     || this->is_f16_with_int_wei() || this->is_tf32()
-                    || this->is_f32_with_int_wei();
-            bgmmc.src_tag = is_adbc_allowed ? memory_desc_matches_one_of_tag(
-                                    A_md, plain_tensor_layout_tag,
-                                    transposed_tensor_layout_tag, acbd, adbc)
+                    || this->is_f32_with_int_wei() || this->is_bf16_fp8()
+                    || this->is_f16_fp8();
+            bgmmc.src_tag = is_adbc_allowed
+                    ? memory_desc_matches_one_of_tag(A_md,
+                              plain_tensor_layout_tag,
+                              transposed_tensor_layout_tag, acbd, adbc)
                     : is_int8_avx512_core
                     ? memory_desc_matches_one_of_tag(A_md,
-                            plain_tensor_layout_tag,
-                            transposed_tensor_layout_tag, acbd)
+                              plain_tensor_layout_tag,
+                              transposed_tensor_layout_tag, acbd)
                     : memory_desc_matches_one_of_tag(
-                            A_md, plain_tensor_layout_tag, acbd);
+                              A_md, plain_tensor_layout_tag, acbd);
             if (bgmmc.src_tag == format_tag::undef
                     || (memory_desc_matches_tag(
                                 A_md, transposed_tensor_layout_tag)
@@ -1352,8 +1353,8 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.is_f32_with_int_wei = bm_conf_utils.is_f32_with_int_wei();
     bgmmc.is_f32_f16 = bm_conf_utils.is_f32_f16();
     bgmmc.is_f32_bf16 = bm_conf_utils.is_f32_bf16();
-    bgmmc.is_bf16_fp8 = bm_conf_utils.is_bf16_fp8();
-    bgmmc.is_f16_fp8 = bm_conf_utils.is_f16_fp8();
+    bgmmc.is_xf16_fp8
+            = bm_conf_utils.is_bf16_fp8() || bm_conf_utils.is_f16_fp8();
     bgmmc.with_wei_decompression = bm_conf_utils.with_weights_decompression();
     bgmmc.is_int4_weights = one_of(bgmmc.wei_dt, data_type::s4, data_type::u4);
 

@@ -45,8 +45,7 @@ struct jit_brgemm_matmul_copy_a_impl_t : public jit_brgemm_matmul_copy_a_t,
         , typesize_(conf_->a_dt_sz)
         , tr_typesize_(conf_->tr_a_dt_sz)
         , vnni_granularity_(data_type_vnni_granularity(
-                  conf_->is_bf16_fp8 || conf_->is_f16_fp8 ? conf_->wei_dt
-                                                          : conf_->src_dt))
+                  conf_->is_xf16_fp8 ? conf_->wei_dt : conf_->src_dt))
         , k_step_(vlen_ / nstl::max(typesize_, tr_typesize_))
         , src_stride_(conf_->copy_A_src_stride)
         , tr_src_stride_((conf_->use_buffer_a_tail_only
@@ -559,8 +558,7 @@ struct jit_brgemm_matmul_copy_a_transposed_impl_t
                   && conf_->orig_src_dt == data_type::f16
                   && conf_->src_dt == data_type::f32)
         , vnni_granularity_for_store_(data_type_vnni_granularity(
-                  conf_->is_bf16_fp8 || conf_->is_f16_fp8 ? conf_->wei_dt
-                                                          : conf_->src_dt)) {}
+                  conf_->is_xf16_fp8 ? conf_->wei_dt : conf_->src_dt)) {}
 
     void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
     status_t create_kernel() override {

@@ -221,8 +221,7 @@ struct brgemm_matmul_conf_t {
     bool is_f32_with_int_wei = false;
     bool is_f32_f16 = false;
     bool is_f32_bf16 = false;
-    bool is_bf16_fp8 = false;
-    bool is_f16_fp8 = false;
+    bool is_xf16_fp8 = false;
     bool is_int4_weights = false;
     bool is_tf32 = false;
     bool req_wei_vnni_downconvert = false;

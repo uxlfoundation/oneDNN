@@ -1002,8 +1002,10 @@ status_t init_brgemm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
             = brg->is_bf16 && is_superset(brg->isa_impl, avx512_core_amx);
     brg->is_f16_tmm
             = brg->is_f16 && is_superset(brg->isa_impl, avx512_core_amx_fp16);
-    brg->is_fp8_tmm = one_of(true, brg->is_fp8, brg->is_xf16_fp8)
-            && is_superset(brg->isa_impl, avx512_core_amx);
+    brg->is_fp8_tmm = (one_of(true, brg->is_fp8, brg->is_bf16_fp8())
+                              && is_superset(brg->isa_impl, avx512_core_amx))
+            || (brg->is_f16_fp8()
+                    && is_superset(brg->isa_impl, avx512_core_amx_fp16));
 
     brg->has_int8_vnni = isa_has_int8_vnni(brg->isa_impl);
 

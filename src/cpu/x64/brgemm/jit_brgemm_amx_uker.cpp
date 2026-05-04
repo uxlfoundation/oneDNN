@@ -61,8 +61,8 @@ struct jit_brgemm_amx_uker_base_t : public jit_base_brgemm_kernel_t {
             }
         }
 
-        if (brg.is_fp8 || brg.is_bf16_fp8 || brg.is_f16_fp8
-                || has_f8_e5m2_binary_postops || has_f8_e4m3_binary_postops) {
+        if (brg.is_fp8 || brg.is_xf16_fp8 || has_f8_e5m2_binary_postops
+                || has_f8_e4m3_binary_postops) {
             if (one_of(data_type::f8_e5m2, brg.dt_a, brg.dt_b, brg.dt_d)
                     || has_f8_e5m2_binary_postops)
                 f8_e5m2_cvt_ = utils::make_unique<fp8_conversion_e5m2_t>(this,
@@ -2235,15 +2235,14 @@ bool jit_brgemm_amx_uker_base_t::maybe_pre_process_data(brgemm_iteration_t &bi,
         matrix_kind_t mk) {
 
     const bool is_A = mk == matrix_A;
-    if (is_A && (brg.is_bf16_fp8 || brg.is_f16_fp8)) return false;
+    if (is_A && brg.is_xf16_fp8) return false;
 
     const auto &tloop = imap_[bi.apply_postops];
     auto should_save_transform = [&](matrix_kind_t mk) {
         // For fp8 via conversion we use temporal buffer heavily for conversion.
         // Therefore saved data may be overwritten
         // TODO: remove this restriction
-        if (brg.is_fp8_via_convert() && !(brg.is_bf16_fp8 || brg.is_f16_fp8))
-            return false;
+        if (brg.is_fp8_via_convert() && !brg.is_xf16_fp8) return false;
         // save if there is a reuse
         if (mk == matrix_A) {
             return tloop.ldis.size() > 1;

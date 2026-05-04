@@ -35,6 +35,8 @@ namespace intel {
 namespace sycl {
 
 namespace {
+
+#ifndef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
 status_t create_ocl_engine(
         std::unique_ptr<gpu::intel::ocl::engine_t, engine_deleter_t>
                 *ocl_engine,
@@ -77,6 +79,7 @@ status_t create_ocl_engine(
             utils::downcast<gpu::intel::ocl::engine_t *>(ocl_engine_ptr));
     return status::success;
 }
+#endif
 
 status_t get_ze_kernel_binary(
         const ::sycl::kernel &kernel, xpu::binary_t &binary) {

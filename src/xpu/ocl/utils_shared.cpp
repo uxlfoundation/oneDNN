@@ -276,7 +276,6 @@ status_t get_extensions(cl_device_id dev, std::string &ext) {
     return status::success;
 }
 
-#ifndef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
 status_t get_device_uuid(xpu::device_uuid_t &uuid, cl_device_id ocl_dev) {
     // This function is used only with SYCL that works with OpenCL 3.0
     // that supports `cl_khr_device_uuid` extension.
@@ -299,7 +298,6 @@ status_t get_device_uuid(xpu::device_uuid_t &uuid, cl_device_id ocl_dev) {
 #endif
     return status::runtime_error;
 }
-#endif // DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
 
 } // namespace ocl
 } // namespace xpu

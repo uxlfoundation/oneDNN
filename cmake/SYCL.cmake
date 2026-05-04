@@ -136,7 +136,7 @@ if(DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER)
         int main() {
             for (auto platform : sycl::platform::get_platforms())
                 for (auto d : platform.get_devices())
-                    if (!d.ext_oneapi_can_compile(syclex::source_language::opencl))
+                    if (!d.ext_oneapi_can_build(syclex::source_language::opencl))
                         return 1;
             return 0;
         }

@@ -105,8 +105,7 @@ status_t engine_t::create_kernels(
     auto device
             = utils::downcast<const impl::xpu::sycl::engine_impl_t *>(impl())
                       ->device();
-    VERROR_ENGINE(
-            device.ext_oneapi_can_compile(syclex::source_language::opencl),
+    VERROR_ENGINE(device.ext_oneapi_can_build(syclex::source_language::opencl),
             status::runtime_error,
             "SYCL implementation does not support OpenCL kernel compiler "
             "extension - make sure that SYCL and OCLOC are correctly "

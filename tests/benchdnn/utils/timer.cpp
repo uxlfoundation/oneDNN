@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 
 #include "common.hpp"
 #include "utils/timer.hpp"
@@ -51,6 +52,7 @@ void timer_t::reset() {
     for (int i = 0; i < n_modes; ++i)
         ms_[i] = 0;
     ms_start_ = 0;
+    ms_vec_.clear();
 
     start();
 }
@@ -77,6 +79,8 @@ void timer_t::stop(int add_times, int64_t add_ticks, double add_ms) {
     d_ticks /= add_times;
     d_ms /= add_times;
 
+    ms_vec_.insert(ms_vec_.end(), add_times, d_ms);
+
     ms_[mode_t::min] = times_ ? std::min(ms_[mode_t::min], d_ms) : d_ms;
     ms_[mode_t::max] = times_ ? std::max(ms_[mode_t::max], d_ms) : d_ms;
 
@@ -90,6 +94,111 @@ void timer_t::stop(int add_times, int64_t add_ticks, double add_ms) {
 
 void timer_t::stamp(int add_times) {
     stop(add_times, ticks_now() - ticks_start_, ms_now() - ms_start_);
+}
+
+void timer_t::filter_collection() {
+    if (times_ <= 1) return;
+
+    assert(ms_vec_.size() == times_);
+
+    // First, drop the first half of all measurements. The motivation is second
+    // half operates with stabilized frequency.
+    size_t midpoint = ms_vec_.size() / 2;
+    auto it_mid = ms_vec_.begin() + midpoint;
+    ms_vec_.erase(ms_vec_.begin(), it_mid);
+    if (ms_vec_.size() <= 1) return;
+
+    // Then filter out "single-point" outliers that could appear even in a
+    // second half of the run by pushing the bottom line of the peak time based
+    // on bandwidth measurements in cold-cache mode.
+    std::sort(ms_vec_.begin(), ms_vec_.end());
+
+    // Remove up to 10% of fastest times.
+    constexpr double outlier_percent = 0.10;
+
+    // The idea is to measure the magnitude between values and if up to several
+    // values are of bigger magnitude, drop them from the collection.
+    //
+    // The number of magnitudes is `outlier_percent` of the population round
+    // down but, at least, one.
+    //
+    // For example, 25 samples will check two delta values between [0th, 1st]
+    // and [1st, 2nd]. In case both delta will be outliers, e.g., 1.0, 1.1,
+    // 1.21, [1.22...], both first values will be dropped.
+    const size_t deltas_size = std::max(size_t(1),
+            static_cast<size_t>(std::floor(outlier_percent * ms_vec_.size())));
+
+    std::string msg;
+
+    // The major magnitude is when `x_i = x_{i+1} * 1.04`.
+    constexpr double magnitude_threshold = 1.04;
+    size_t cut_point = SIZE_MAX;
+    // For large collections demand that the minimal time has at least 1% of
+    // representatives.
+    size_t n_same_samples = 1;
+    const size_t min_n_samples = std::max(
+            size_t(1), static_cast<size_t>(std::floor(ms_vec_.size() * 0.01)));
+    for (size_t i = 0; i < deltas_size; i++) {
+        // It may happen there are more major magnitude jumps within
+        // `outlier_percent` number of elements, drop as much values as allowed.
+        if (ms_vec_[i + 1] >= ms_vec_[i] * magnitude_threshold) {
+            cut_point = i;
+            if (verbose >= 4) {
+                msg += std::to_string(i) + ":" + std::to_string(ms_vec_[i + 1])
+                        + "/" + std::to_string(ms_vec_[i]) + "="
+                        + std::to_string(ms_vec_[i + 1] / ms_vec_[i]) + "; ";
+            }
+        }
+
+        // Get to another metric - number of samples. If minimum is one,
+        // nothing to do.
+        if (min_n_samples == 1) continue;
+
+        if (ms_vec_[i + 1] == ms_vec_[i]) {
+            n_same_samples++;
+            continue;
+        }
+
+        // If we just cut off by major value diff, it means there's no point
+        // of cutting it by the number of samples. Restart the counter.
+        if (cut_point == i) {
+            n_same_samples = 1;
+            continue;
+        }
+
+        // Values are not same, and diff val criterion didn't apply.
+        // If number of samples is less then desired, drop them and restart the
+        // counter.
+        if (n_same_samples < min_n_samples) {
+            cut_point = i;
+            if (verbose >= 4) {
+                msg += std::to_string(i) + ":" + std::to_string(ms_vec_[i])
+                        + "(" + std::to_string(n_same_samples) + "); ";
+            }
+            n_same_samples = 1;
+        }
+    }
+
+    if (cut_point < deltas_size) {
+        ms_vec_.erase(ms_vec_.begin(), ms_vec_.begin() + cut_point + 1);
+    }
+
+    // After all undesired values discarded, re-compute stats.
+    ms_[mode_t::sum] = 0;
+    ms_[mode_t::min] = *ms_vec_.begin();
+    ms_[mode_t::max] = *ms_vec_.rbegin();
+    for (size_t i = 0; i < ms_vec_.size(); i++) {
+        ms_[mode_t::sum] += ms_vec_[i];
+    }
+    ms_[mode_t::avg] = ms_[mode_t::sum];
+    times_ = ms_vec_.size();
+    // Frequency is not supported for filtering, explicitly zeroing it to avoid
+    // potential misuse.
+    for (int i = 0; i < n_modes; i++)
+        ticks_[i] = 0;
+
+    BENCHDNN_PRINT(4, "[TIMER]: MinSamples: %zu; Outliers: %zu; %s\n",
+            min_n_samples, deltas_size, msg.c_str());
 }
 
 timer_t &timer_t::operator=(const timer_t &rhs) {

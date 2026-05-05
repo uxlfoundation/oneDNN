@@ -87,6 +87,7 @@ void memory();
 void graph();
 void norm();
 void compare();
+void timer();
 
 int bench(int argc, char **argv);
 

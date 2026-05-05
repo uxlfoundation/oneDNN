@@ -103,6 +103,7 @@ struct engine_t {
     engine_t(const engine_t &other);
     ~engine_t();
     operator dnnl_engine_t() const { return engine_; }
+    dnnl_engine_kind_t get_kind() const;
 
 private:
     engine_t &operator=(engine_t &other) = delete;
@@ -126,6 +127,7 @@ private:
 // Engine used to run oneDNN primitives for testing.
 inline const engine_t &get_test_engine() {
     static const engine_t instance(engine_tgt_kind);
+    assert(instance.get_kind() == engine_tgt_kind);
     return instance;
 }
 

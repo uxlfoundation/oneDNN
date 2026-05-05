@@ -1854,6 +1854,10 @@ engine_t::~engine_t() {
     if (is_owner_) DNN_SAFE_V(dnnl_engine_destroy(engine_));
 }
 
+dnnl_engine_kind_t engine_t::get_kind() const {
+    return query_engine_kind(engine_);
+}
+
 stream_t::stream_t(dnnl_engine_t engine, void *interop_obj) : is_owner_(true) {
 #if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
     if (is_cpu(engine)) {

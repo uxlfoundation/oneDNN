@@ -2237,12 +2237,15 @@ bool jit_brgemm_amx_uker_base_t::maybe_pre_process_data(brgemm_iteration_t &bi,
     const bool is_A = mk == matrix_A;
     if (is_A && brg.is_xf16_fp8) return false;
 
+    const bool never_save_transform = brg.is_fp8
+            || (brg.dt_a == data_type::f16 && brg.dt_b == data_type::f8_e5m2);
+
     const auto &tloop = imap_[bi.apply_postops];
     auto should_save_transform = [&](matrix_kind_t mk) {
         // For fp8 via conversion we use temporal buffer heavily for conversion.
         // Therefore saved data may be overwritten
         // TODO: remove this restriction
-        if (brg.is_fp8_via_convert() && !brg.is_xf16_fp8) return false;
+        if (never_save_transform) return false;
         // save if there is a reuse
         if (mk == matrix_A) {
             return tloop.ldis.size() > 1;
@@ -2260,11 +2263,15 @@ bool jit_brgemm_amx_uker_base_t::maybe_pre_process_data(brgemm_iteration_t &bi,
     const auto max_bdb2 = tloop.bdis[0].block2();
     const auto max_rdb = tloop.rdis.size();
     const auto matrix_a_offset = transform_offset;
-    const auto matrix_b_offset = transform_offset
-            + brgemm_desc_t::tilesize
-                    * (nstl::max<int>(should_save_transform(mk),
-                            should_save_transform(matrix_A) * brg.brgattr.max_bs
-                                    * max_bdb2 * max_rdb));
+    // a and b can share the same buffer in case of never_save_transform;
+    // a is not converted in case of is_xf16_fp8, so no need for buffer for a.
+    const auto scratch_a_tiles = never_save_transform || brg.is_xf16_fp8
+            ? 0
+            : nstl::max<int>(should_save_transform(mk),
+                      should_save_transform(matrix_A) * brg.brgattr.max_bs
+                              * max_bdb2 * max_rdb);
+    const auto matrix_b_offset
+            = transform_offset + brgemm_desc_t::tilesize * scratch_a_tiles;
     const auto matrix_offset = is_A ? matrix_a_offset : matrix_b_offset;
     const std::string key
             = std::to_string(bi.bsi->pos) + "_" + std::to_string(offset);

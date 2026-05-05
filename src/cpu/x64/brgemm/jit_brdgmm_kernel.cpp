@@ -680,13 +680,13 @@ void jit_brdgmm_kernel_base_t<Wmm>::maybe_transpose_interleaved_vnni_to_plain(
 
 template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::load_src_zp() {
-    reg_src_zero_point.restore();
-    lea(reg_src_zero_point,
+    reg_src_zero_point.restoreTo(reg_aux_src_zp);
+    lea(reg_aux_src_zp,
             is_src_zp_bcast_
-                    ? ptr_b[reg_src_zero_point]
-                    : ptr[reg_src_zero_point + reg_aux_N * sizeof(int32_t)]);
+                    ? ptr_b[reg_aux_src_zp]
+                    : ptr[reg_aux_src_zp + reg_aux_N * sizeof(int32_t)]);
     if (!is_superset(brg.isa_impl, avx512_core) && is_src_zp_bcast_)
-        uni_vpbroadcastd(vmm_bcast(), ptr[reg_src_zero_point]);
+        uni_vpbroadcastd(vmm_bcast(), ptr[reg_aux_src_zp]);
 }
 
 template <typename Wmm>
@@ -696,14 +696,15 @@ void jit_brdgmm_kernel_base_t<Wmm>::compute_int8_compensation(
     const int v_substep = vnni_substep();
 
     if (brg.req_s8s8_compensation) {
-        reg_s8s8_comp.restore();
-        lea(reg_s8s8_comp, ptr[reg_s8s8_comp + reg_aux_N * sizeof(int32_t)]);
+        reg_s8s8_comp.restoreTo(reg_aux_s8s8_comp);
+        lea(reg_aux_s8s8_comp,
+                ptr[reg_aux_s8s8_comp + reg_aux_N * sizeof(int32_t)]);
     }
     if (compute_src_zp_) {
         load_src_zp();
-        reg_zp_compensation.restore();
-        lea(reg_zp_compensation,
-                ptr[reg_zp_compensation + reg_aux_N * sizeof(int32_t)]);
+        reg_zp_compensation.restoreTo(reg_aux_zp_comp);
+        lea(reg_aux_zp_comp,
+                ptr[reg_aux_zp_comp + reg_aux_N * sizeof(int32_t)]);
     }
 
     for_(int v_i = 0; v_i < v_substep; ++v_i)
@@ -713,8 +714,8 @@ void jit_brdgmm_kernel_base_t<Wmm>::compute_int8_compensation(
         const size_t offset = comp_offset(n);
         if (brg.req_s8s8_compensation) {
             const Vmm vmm_comp = vmm_s8s8_comp();
-            uni_vmovups(
-                    vmm_comp, maybe_EVEX_compress_addr(reg_s8s8_comp, offset));
+            uni_vmovups(vmm_comp,
+                    maybe_EVEX_compress_addr(reg_aux_s8s8_comp, offset));
         }
         if (compute_src_zp_) {
             // zero_point: conv(src_x8, wei_s8) - src_shift_s32 * compensation_s32
@@ -725,27 +726,26 @@ void jit_brdgmm_kernel_base_t<Wmm>::compute_int8_compensation(
                     : vmm_zp_comp();
             if (IMPLICATION(is_tail, isa_has_masks(brg.isa_impl))) {
                 vmovups(vmm_zp,
-                        maybe_EVEX_compress_addr(reg_zp_compensation, offset));
+                        maybe_EVEX_compress_addr(reg_aux_zp_comp, offset));
                 if (is_src_zp_bcast_) {
                     if (is_superset(brg.isa_impl, avx512_core))
                         vpmulld(vmm_zp, vmm_zp,
                                 maybe_EVEX_compress_addr(
-                                        reg_src_zero_point, 0, true));
+                                        reg_aux_src_zp, 0, true));
                     else
                         vpmulld(vmm_zp, vmm_zp, vmm_bcast());
                 } else
                     vpmulld(vmm_zp, vmm_zp,
-                            maybe_EVEX_compress_addr(
-                                    reg_src_zero_point, offset));
+                            maybe_EVEX_compress_addr(reg_aux_src_zp, offset));
             } else {
                 const int tail_size = tail_length();
                 const Vmm ymm_tmp
                         = vmm_bcast(); // used for bcast or tail processing in avx2
-                load_data(data_type::s32, vmm_zp,
-                        ptr[reg_zp_compensation + offset], tail_size);
+                load_data(data_type::s32, vmm_zp, ptr[reg_aux_zp_comp + offset],
+                        tail_size);
                 if (!is_src_zp_bcast_)
                     load_data(data_type::s32, ymm_tmp,
-                            ptr[reg_src_zero_point + offset], tail_size);
+                            ptr[reg_aux_src_zp + offset], tail_size);
                 vpmulld(vmm_zp, vmm_zp, ymm_tmp);
             }
         }
@@ -909,12 +909,12 @@ void jit_brdgmm_kernel_base_t<Wmm>::comp_dot_product(
                     if (is_superset(brg.isa_impl, avx512_core))
                         vpmulld(vmm_zp, vmmb,
                                 maybe_EVEX_compress_addr(
-                                        reg_src_zero_point, 0, true));
+                                        reg_aux_src_zp, 0, true));
                     else
                         vpmulld(vmm_zp, vmmb, vmm_bcast());
                 } else {
-                    const Xbyak::Address src_zp_addr = maybe_EVEX_compress_addr(
-                            reg_src_zero_point, offset);
+                    const Xbyak::Address src_zp_addr
+                            = maybe_EVEX_compress_addr(reg_aux_src_zp, offset);
                     if (is_fast_vnni_int8()) {
                         vmovups(vmm_zp, src_zp_addr);
                         vpermd(vmm_zp, vmm_permute(), vmm_zp);
@@ -927,7 +927,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::comp_dot_product(
                         = vmm_bcast(); // used for bcast or tail processing in avx2
                 if (!is_src_zp_bcast_)
                     load_data(data_type::s32, ymm_tmp,
-                            ptr[reg_src_zero_point + offset], tail_length());
+                            ptr[reg_aux_src_zp + offset], tail_length());
                 vpmulld(vmm_zp, vmmb, ymm_tmp);
             }
             vpaddd(vmm_acc, vmm_acc, vmm_zp_comp());

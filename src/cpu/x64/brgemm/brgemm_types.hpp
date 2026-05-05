@@ -457,9 +457,20 @@ struct brgemm_desc_t {
 
     int get_convert_wsp_buffer_size() const noexcept {
         if (!is_input_convert()) return 0;
-        const int n_bdb = bd_block2;
+        if (is_fp8 || (dt_a == data_type::f16 && dt_b == data_type::f8_e5m2)) {
+            // One shared tile for A and B
+            return tilesize;
+        }
+
         const int n_rdb = rdb + (rdb_tail != 0);
         const int n_ldb = ldb + (ldb_tail != 0);
+
+        if (is_xf16_fp8) {
+            const int cvt_B_tiles = brgattr.max_bs * n_rdb * n_ldb;
+            return cvt_B_tiles * tilesize;
+        }
+
+        const int n_bdb = bd_block2;
         const int downcvt_tiles = brgattr.max_bs * n_rdb * (n_bdb + n_ldb);
         return downcvt_tiles * tilesize;
     }

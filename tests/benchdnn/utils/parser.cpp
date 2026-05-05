@@ -1653,11 +1653,7 @@ static bool parse_mode(
                 case 'c':
                 case 'C': mode = bench_mode_t::corr; break;
                 case 'p':
-                case 'P':
-                    mode = bench_mode_t::perf;
-                    if (is_gpu())
-                        bench_mode_modifier |= mode_modifier_t::no_ref_memory;
-                    break;
+                case 'P': mode = bench_mode_t::perf; break;
                 case 'f':
                 case 'F':
                     mode = bench_mode_t::perf_fast;

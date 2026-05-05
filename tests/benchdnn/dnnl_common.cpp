@@ -1791,6 +1791,12 @@ engine_t::engine_t(dnnl_engine_kind_t engine_kind) : is_owner_(true) {
             status = dnnl_invalid_arguments;
         }
     }
+    // Temporary workaround.
+    // TODO: make mode-modifier=M by default for perf on GPU.
+    // TODO-TODO: make mode-modifier=M by default (including CPU).
+    if (has_bench_mode_bit(mode_bit_t::perf) && engine_kind == dnnl_gpu) {
+        bench_mode_modifier |= mode_modifier_t::no_ref_memory;
+    }
     DNN_SAFE_V(status);
 }
 

@@ -239,6 +239,10 @@ private:
     const injector_utils::reg64_savable_t reg_s8s8_comp {
             regscratchpad_, r14, r29};
 
+    const reg64_t reg_aux_src_zp = rax;
+    const reg64_t reg_aux_zp_comp = r12;
+    const reg64_t reg_aux_s8s8_comp = r14;
+
     Xbyak::Opmask k_mask = Xbyak::Opmask(2);
     Xbyak::Opmask k_tail_mask = Xbyak::Opmask(3);
     Xbyak::Opmask kblend_mask = Xbyak::Opmask(4);

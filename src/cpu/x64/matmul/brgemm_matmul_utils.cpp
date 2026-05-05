@@ -1939,11 +1939,40 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         bgmmc.LDD = dst_d.ndims() == 2 && bgmmc.M == 1
                 ? bgmmc.N
                 : dst_d.blocking_desc().strides[bgmmc.ndims - 2];
-        bgmmc.LDC = bgmmc.use_buffer_c && bgmmc.nthr_k <= 1
-                ? (bgmmc.is_amx ? nstl::min((dim_t)32, bgmmc.N_blk)
-                                : bgmmc.N_blk)
-                        * (bgmmc.is_runtime_N ? bgmmc.N_chunk_size : 1)
-                : bgmmc.LDD;
+        // AMX C buffer in packed per-(m_blk, n_blk) layout with
+        // LDC = N_blk (get_buf_C_ptr stride = LDC * M_blk * acc_dt_sz).
+        // Parallel K-reduction (nthr_k > 1) shares the same packed slab,
+        // indexed via get_buf_C_par_reduction_ptr(); it additionally
+        // requires post-ops to be applicable (so all K-threads write into
+        // the slab and the post-ops kernel performs the slab->D copy)
+        // and statically-known M/N (per-thread slab sized at init time).
+        const bool early_post_ops_applicable = utils::one_of(true,
+                bgmmc.with_sum, bgmmc.with_bias,
+                (bgmmc.with_src_scales || bgmmc.with_wei_scales)
+                        && !bgmmc.apply_scales_in_buffer_b,
+                bgmmc.with_eltwise, bgmmc.with_binary,
+                bgmmc.acc_dt != bgmmc.dst_dt, bgmmc.s8s8_compensation_required,
+                bgmmc.src_zp_type != brgemm_broadcast_t::none,
+                bgmmc.wei_zp_type != brgemm_broadcast_t::none
+                        && !bgmmc.with_wei_decompression,
+                bgmmc.dst_zp_type != brgemm_broadcast_t::none,
+                bgmmc.with_dst_scales);
+        const bool compact_par_reduction_eligible = bgmmc.use_buffer_c
+                && bgmmc.is_amx && bgmmc.nthr_k > 1 && !bgmmc.is_runtime_M
+                && !bgmmc.is_runtime_N && early_post_ops_applicable;
+        bgmmc.use_compact_buf_c = bgmmc.use_buffer_c && bgmmc.is_amx
+                && (bgmmc.nthr_k <= 1 || compact_par_reduction_eligible);
+
+        if (bgmmc.use_compact_buf_c) {
+            bgmmc.LDC = bgmmc.N_blk
+                    * (bgmmc.is_runtime_N ? bgmmc.N_chunk_size : 1);
+        } else if (bgmmc.use_buffer_c && bgmmc.nthr_k <= 1) {
+            bgmmc.LDC = (bgmmc.is_amx ? nstl::min((dim_t)32, bgmmc.N_blk)
+                                      : bgmmc.N_blk)
+                    * (bgmmc.is_runtime_N ? bgmmc.N_chunk_size : 1);
+        } else {
+            bgmmc.LDC = bgmmc.LDD;
+        }
     }
 
     bgmmc.is_src_batch_layout_trivial
@@ -2175,7 +2204,13 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
     bgmmc.brgemm_batch_tail_size
             = last_chunck_batch_size % bgmmc.brgemm_batch_size;
 
-    if (!bgmmc.is_runtime_N && bgmmc.is_amx && bgmmc.nthr_k == 1) {
+    if (bgmmc.use_compact_buf_c) {
+        // Packed per-(m_blk, n_blk) slot. The slot width is based on N_blk
+        // and rounded using LDC; in runtime-N configurations LDC may exceed
+        // N_blk.
+        bgmmc.buffer_c_chunk_sz = rnd_up(bgmmc.N_blk, bgmmc.LDC) * bgmmc.M_blk
+                * bgmmc.acc_dt_sz;
+    } else if (!bgmmc.is_runtime_N && bgmmc.is_amx && bgmmc.nthr_k == 1) {
         bgmmc.buffer_c_chunk_sz = rnd_up(bgmmc.N_blk, bgmmc.LDC) * bgmmc.M_blk
                 * bgmmc.acc_dt_sz;
     } else {
@@ -2187,12 +2222,39 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
                 * (bgmmc.nthr_k > 1 ? c_buf_rows : c_buf_rows_blk);
     }
 
+    auto get_max_work_per_thread = [&]() {
+        const int nthr_bmn = nstl::max(1, bgmmc.nthr / bgmmc.nthr_k);
+        const dim_t total_work
+                = (dim_t)bgmmc.batch * bgmmc.M_chunks * bgmmc.N_chunks;
+        return nstl::max(1, (int)div_up(total_work, nthr_bmn));
+    };
+
     if (!bgmmc.use_buffer_c) {
         // No need for C buffer
         bgmmc.buffer_c_per_thread_sz = 0;
+    } else if (bgmmc.use_compact_buf_c && bgmmc.nthr_k > 1) {
+        // c size == max number of (m_blk, n_blk) slots seen by one bmn-thread
+        // across its work-items, per K-slab.
+        // Layout (one bmn-thread, one K-slab):
+        //   [wi_idx][m_blk_local][n_blk_local] each of buffer_c_chunk_sz.
+        const int max_work_per_thread = get_max_work_per_thread();
+        bgmmc.buffer_c_per_thread_sz = (dim_t)max_work_per_thread
+                * bgmmc.M_chunk_size * bgmmc.N_chunk_size
+                * bgmmc.buffer_c_chunk_sz;
+
     } else if (bgmmc.nthr_k > 1) {
         // c size == M * N (for reduction)
         bgmmc.buffer_c_per_thread_sz = bgmmc.buffer_c_chunk_sz;
+
+    } else if (bgmmc.use_compact_buf_c
+            && (bgmmc.K_chunk_elems < bgmmc.K || bgmmc.K_chunk_size > 1)) {
+        // With kb-outermost loop order, a thread visits all of its work items
+        // for one K block before returning to the same work item for the next
+        // K block. Keep each work item's compact C slots separate.
+        const int max_work_per_thread = get_max_work_per_thread();
+        bgmmc.buffer_c_per_thread_sz = (dim_t)max_work_per_thread
+                * bgmmc.M_chunk_size * bgmmc.N_chunk_size
+                * bgmmc.buffer_c_chunk_sz;
 
     } else if (!bgmmc.is_runtime_N && !bgmmc.is_runtime_M
             && bgmmc.K_chunk_elems >= bgmmc.K) {

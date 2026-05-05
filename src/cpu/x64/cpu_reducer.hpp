@@ -330,6 +330,22 @@ private:
     DNNL_DISALLOW_COPY_AND_ASSIGN(cpu_reducer_2d_t);
 };
 
+/** batched 2d accumulator: y[row][:] += x0[row][:] + ... + x_{n-1}[row][:] */
+template <impl::data_type_t data_type>
+struct cpu_accumulator_2d_batched_t {
+    using data_t = typename prec_traits_t<data_type>::type;
+
+    cpu_accumulator_2d_batched_t(int n_src, size_t src_ld, size_t row_step);
+    ~cpu_accumulator_2d_batched_t();
+    void accumulate(data_t *dst, const data_t *src, size_t ny, size_t nx);
+
+    status_t create_kernel();
+
+    reducer_2d_driver_t<data_type> *drv_;
+
+    DNNL_DISALLOW_COPY_AND_ASSIGN(cpu_accumulator_2d_batched_t);
+};
+
 /** simple 1d accumulator: y[:] += x[:] */
 template <impl::data_type_t data_type>
 struct cpu_accumulator_1d_t {

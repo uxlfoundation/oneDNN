@@ -43,6 +43,7 @@ using namespace dnnl::impl::utils;
 using namespace nstl;
 
 using namespace data_type;
+
 namespace {
 
 int get_brg_batchsize(
@@ -508,6 +509,29 @@ status_t brgemm_matmul_t<isa>::init(engine_t *engine) {
         CHECK(acc_ker_s32_->create_kernel());
     }
 
+    if (bgmmc.nthr_k > 1 && bgmmc.use_compact_buf_c) {
+        // Compact reduction buffer: per-(mb,nb) K-thread slabs sit at a
+        // uniform stride; reduce all (n_src) sources in a single JIT call.
+        const int num_reduction_buffers
+                = nstl::min(bgmmc.nthr_k, bgmmc.K_chunks);
+        const int n_src = num_reduction_buffers - 1;
+        if (n_src > 1) {
+            const size_t src_ld
+                    = bgmmc.buffer_c_per_thread_sz / bgmmc.acc_dt_sz;
+            if (bgmmc.acc_dt == f32) {
+                CHECK(safe_ptr_assign(acc_ker_batched_f32_,
+                        new cpu_accumulator_2d_batched_t<data_type::f32>(
+                                n_src, src_ld, bgmmc.LDC)));
+                CHECK(acc_ker_batched_f32_->create_kernel());
+            } else if (bgmmc.acc_dt == s32) {
+                CHECK(safe_ptr_assign(acc_ker_batched_s32_,
+                        new cpu_accumulator_2d_batched_t<data_type::s32>(
+                                n_src, src_ld, bgmmc.LDC)));
+                CHECK(acc_ker_batched_s32_->create_kernel());
+            }
+        }
+    }
+
     if (bgmmc.packed_sparse_weights) {
         CHECK(safe_ptr_assign(sparse_decompress_kernel_,
                 new jit_avx512_sparse_decompress_kernel_t(bgmmc)));
@@ -579,6 +603,8 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
         int start {0}, end {0};
         balance211(brgmm_ctx.get_parallel_work_amount_gemm(),
                 brgmm_ctx.get_num_threads_for_bmn(), ithr_bmn, start, end);
+        // Save first work-item index for compact-buffer addressing.
+        const int bmn_thread_start = start;
         int kc_start {0}, kc_end {bgmmc.K_chunks};
         if (brgmm_ctx.parallel_reduction_is_used())
             balance211((int)bgmmc.K_chunks, brgmm_ctx.get_num_threads_for_k(),
@@ -690,7 +716,8 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
                             compute_kernel(brgmm_ctx, a_batch_ptr, b_batch_ptr,
                                     ithr, b, mb, nb, kb,
                                     kc == kc_start && kb == kb_start,
-                                    prev_ker_idx, prefetch);
+                                    prev_ker_idx, prefetch,
+                                    start - bmn_thread_start, ithr_bmn);
                         }
                     }
                     kc_prev = kc;
@@ -716,7 +743,7 @@ void brgemm_matmul_t<isa>::compute_kernel(
         const brg_matmul_exec_ctx_t &brgmm_ctx, const char *A_data_batch_ptr,
         const char *B_data_batch_ptr, int ithr, int b_idx, int m_blk_idx,
         int n_blk_idx, int k_blk_idx, bool do_init, int &prev_ker_idx,
-        bool prefetch) const {
+        bool prefetch, int wi_idx, int ithr_bmn) const {
     const auto &bgmmc = pd()->get_brgemm_matmul_conf();
     const auto addr_batch = brgmm_ctx.get_batch_elem_ptr(ithr);
 
@@ -744,9 +771,9 @@ void brgemm_matmul_t<isa>::compute_kernel(
     const auto ptr_bias = brgmm_ctx.get_bias_ptr(n);
     auto ptr_D = brgmm_ctx.get_data_C_ptr(
             b_idx, brgmm_ctx.get_M_idx(m_blk_idx, true), n);
-    auto ptr_C = (bgmmc.use_buffer_c)
-            ? brgmm_ctx.get_buf_C_ptr(ithr, m_blk_idx, n_blk_idx)
-            : ptr_D;
+    auto ptr_C = (bgmmc.use_buffer_c) ? brgmm_ctx.get_buf_C_ptr(ithr, m_blk_idx,
+                                                n_blk_idx, wi_idx, ithr_bmn)
+                                      : ptr_D;
 
     const auto zp_comp_a
             = brgmm_ctx.get_zp_a_compensation_ptr(ithr, b_idx, n_blk_idx);
@@ -1068,20 +1095,26 @@ void brgemm_matmul_t<isa>::maybe_reduce_partial_results_and_apply_postops(
         const int N_chunks = brgmm_ctx.get_N_chunks();
         const int N_chunk_tail = brgmm_ctx.get_N_chunk_tail();
 
+        int bmn_start {0}, bmn_end {0};
         int start {0}, end {0};
         balance211(brgmm_ctx.get_parallel_work_amount_gemm(),
-                brgmm_ctx.get_num_threads_for_bmn(), ithr_bmn, start, end);
+                brgmm_ctx.get_num_threads_for_bmn(), ithr_bmn, bmn_start,
+                bmn_end);
+        balance211(bmn_end - bmn_start, nthr_k, ithr_k, start, end);
+        int local_work_idx = start;
+        const int local_work_end = end;
+        int work_idx = bmn_start + local_work_idx;
         int b {0}, mc {0}, nc {0}, b_per_t {0}, mc_per_t {0}, nc_per_t {0},
                 bt {0}, mt {0}, nt {0};
         int m_chunks_per_thread = div_up(M_chunks, bgmmc.nthr_m);
         int n_chunks_per_thread = div_up(N_chunks, bgmmc.nthr_n);
         int batch_per_thread = div_up(bgmmc.batch, bgmmc.nthr_b);
         if (brgmm_ctx.is_chunks_horizontal_process_order())
-            nd_iterator_init(start, bt, bgmmc.nthr_b, mt, bgmmc.nthr_m, nt,
+            nd_iterator_init(work_idx, bt, bgmmc.nthr_b, mt, bgmmc.nthr_m, nt,
                     bgmmc.nthr_n, b_per_t, batch_per_thread, mc_per_t,
                     m_chunks_per_thread, nc_per_t, n_chunks_per_thread);
         else
-            nd_iterator_init(start, bt, bgmmc.nthr_b, nt, bgmmc.nthr_n, mt,
+            nd_iterator_init(work_idx, bt, bgmmc.nthr_b, nt, bgmmc.nthr_n, mt,
                     bgmmc.nthr_m, b_per_t, batch_per_thread, nc_per_t,
                     n_chunks_per_thread, mc_per_t, m_chunks_per_thread);
         mc = mt * m_chunks_per_thread + mc_per_t;
@@ -1089,7 +1122,8 @@ void brgemm_matmul_t<isa>::maybe_reduce_partial_results_and_apply_postops(
         b = bt * batch_per_thread + b_per_t;
 
         auto advance_func = [&]() {
-            ++start;
+            ++local_work_idx;
+            ++work_idx;
             if (brgmm_ctx.is_chunks_horizontal_process_order())
                 nd_iterator_step(bt, bgmmc.nthr_b, mt, bgmmc.nthr_m, nt,
                         bgmmc.nthr_n, b_per_t, batch_per_thread, mc_per_t,
@@ -1105,11 +1139,12 @@ void brgemm_matmul_t<isa>::maybe_reduce_partial_results_and_apply_postops(
 
         assert(bgmmc.batch == 1);
 
-        while (start < end) {
+        while (local_work_idx < local_work_end) {
             if (mc >= M_chunks || nc >= N_chunks || b >= bgmmc.batch) {
                 advance_func();
                 continue;
             }
+            const int blk_idx = local_work_idx;
             auto mb_start_total = mc * M_chunk_size;
             const bool m_chunk_tail = mc == M_chunks - 1 && M_chunk_tail > 0;
             auto mb_end_total = mb_start_total
@@ -1119,93 +1154,98 @@ void brgemm_matmul_t<isa>::maybe_reduce_partial_results_and_apply_postops(
             auto nb_end_total = nb_start_total
                     + (n_chunk_tail ? N_chunk_tail : bgmmc.N_chunk_size);
 
-            int total_m_work = mb_end_total - mb_start_total;
-            int total_n_work = nb_end_total - nb_start_total;
-            int mn_start, mn_end;
-            balance211(total_m_work * total_n_work, bgmmc.nthr_k, ithr_k,
-                    mn_start, mn_end);
+            for (int mb = mb_start_total; mb < mb_end_total; mb++) {
+                for (int nb = nb_start_total; nb < nb_end_total; nb++) {
+                    const int curr_M_blk = brgmm_ctx.get_M_kernel_size(mb);
+                    const int m_ker_idx = brgmm_ctx.get_M_kernel_idx(mb);
+                    const int curr_N_blk = brgmm_ctx.get_N_kernel_size(nb);
+                    char *buf_reduced_base
+                            = brgmm_ctx.get_buf_C_par_reduction_ptr(
+                                    0, mb, nb, blk_idx, ithr_bmn);
 
-            int mb_in_chunk, nb_in_chunk;
-            nd_iterator_init(mn_start, mb_in_chunk, total_m_work, nb_in_chunk,
-                    total_n_work);
-            while (mn_start < mn_end) {
-                int mb = mc * M_chunk_size + mb_in_chunk;
-                int nb = nc * bgmmc.N_chunk_size + nb_in_chunk;
-                const int curr_M_blk = brgmm_ctx.get_M_kernel_size(mb);
-                const int m_ker_idx = brgmm_ctx.get_M_kernel_idx(mb);
-                const int curr_N_blk = brgmm_ctx.get_N_kernel_size(nb);
-                char *buf_reduced_base
-                        = brgmm_ctx.get_buf_C_par_reduction_ptr(0, mb, nb);
+                    const size_t m_offset
+                            = brgmm_ctx.get_LDC() * bgmmc.acc_dt_sz;
+                    const bool use_batched = (num_reduction_buffers - 1) > 1
+                            && bgmmc.use_compact_buf_c
+                            && (acc_ker_batched_f32_ || acc_ker_batched_s32_);
+                    if (use_batched) {
+                        // Reduce all (n_src) source slabs in one JIT call;
+                        // sources start at ithr_k = 1, stride buffer_c_per_thread_sz.
+                        const char *buf_src_base
+                                = brgmm_ctx.get_buf_C_par_reduction_ptr(
+                                        1, mb, nb, blk_idx, ithr_bmn);
+                        accumulate_batched(buf_reduced_base, buf_src_base,
+                                curr_M_blk, curr_N_blk);
+                    } else {
+                        for (int r = 1; r < num_reduction_buffers; r++) {
+                            const char *buf_to_reduce_base
+                                    = brgmm_ctx.get_buf_C_par_reduction_ptr(
+                                            r, mb, nb, blk_idx, ithr_bmn);
+                            for (int m = 0; m < curr_M_blk; m++) {
+                                accumulate(buf_reduced_base + m * m_offset,
+                                        buf_to_reduce_base + m * m_offset,
+                                        curr_N_blk);
+                            }
+                        }
+                    }
+                    if (bgmmc.post_ops_applicable) {
+                        const int n_ker_idx = brgmm_ctx.get_N_kernel_idx(nb);
 
-                const size_t m_offset = brgmm_ctx.get_LDC() * bgmmc.acc_dt_sz;
-                for (int r = 1; r < num_reduction_buffers; r++) {
-                    const char *buf_to_reduce_base
-                            = brgmm_ctx.get_buf_C_par_reduction_ptr(r, mb, nb);
-                    for (int m = 0; m < curr_M_blk; m++) {
-                        accumulate(buf_reduced_base + m * m_offset,
-                                buf_to_reduce_base + m * m_offset, curr_N_blk);
+                        const int brg_ker_idx = pd()->get_brg_kernel_idx(false,
+                                false, m_ker_idx, n_ker_idx, false, false);
+                        if (brg_ker_idx == -1) {
+                            assert(!"Requested brgemm kernel was not created.");
+                            return;
+                        }
+
+                        const auto brg_kernel = brg_kernels_[brg_ker_idx].get();
+                        const dim_t m = brgmm_ctx.get_M_idx(mb);
+                        const dim_t n = nb * bgmmc.N_blk;
+                        const auto ptr_bias = brgmm_ctx.get_bias_ptr(n);
+                        auto ptr_D = brgmm_ctx.get_data_C_ptr(b, m, n);
+                        auto ptr_C = brgmm_ctx.get_buf_C_par_reduction_ptr(
+                                0, mb, nb, blk_idx, ithr_bmn);
+
+                        // TODO: support reduction for zp/s8s8 compensations
+                        // computed in copy routines
+                        const auto zp_comp_a
+                                = brgmm_ctx.get_zp_a_compensation_ptr(
+                                        ithr, b, nb);
+                        const auto zp_comp_b
+                                = brgmm_ctx.get_zp_b_compensation_result_ptr(
+                                        ithr, mb);
+                        const auto &post_ops_binary_rhs_arg_vec
+                                = brgmm_ctx.get_post_ops_binary_rhs_arg_vec();
+
+                        const size_t dst_row_logical_off
+                                = brgmm_ctx.get_M_idx(mb, true);
+                        const size_t batch_first_dim_idx = bgmmc.batch_ndims > 1
+                                ? b / bgmmc.batch_without_first_dim
+                                : 0;
+                        const size_t first_mb_matrix_addr_off
+                                = batch_first_dim_idx * (M * bgmmc.N)
+                                + (m * bgmmc.N + n);
+                        // apply post-ops and convert to dst data type only
+                        constexpr bool skip_accumulation = true;
+                        const char *dst_anchor_point
+                                = brgmm_ctx.get_data_C_ptr(0, 0, 0);
+                        const brgemm_post_ops_data_t post_ops_data {
+                                static_cast<const void *>(ptr_bias),
+                                post_ops_binary_rhs_arg_vec.data(),
+                                static_cast<size_t>(n), dst_row_logical_off,
+                                dst_anchor_point, first_mb_matrix_addr_off,
+                                static_cast<const void *>(zp_comp_a),
+                                static_cast<const void *>(zp_comp_b),
+                                brgmm_ctx.get_zp_c_ptr(), skip_accumulation, 1,
+                                false, false, brgmm_ctx.get_src_scales_ptr(),
+                                brgmm_ctx.get_wei_scales_ptr(n),
+                                brgmm_ctx.get_dst_scales_inv_ptr(ithr)};
+
+                        brgemm_kernel_execute_postops(brg_kernel, 0, nullptr,
+                                (void *)ptr_C, (void *)ptr_D, post_ops_data,
+                                nullptr, &leading_dimensions);
                     }
                 }
-                if (bgmmc.post_ops_applicable) {
-                    const int n_ker_idx = brgmm_ctx.get_N_kernel_idx(nb);
-
-                    const int brg_ker_idx = pd()->get_brg_kernel_idx(
-                            false, false, m_ker_idx, n_ker_idx, false, false);
-                    if (brg_ker_idx == -1) {
-                        assert(!"Requested brgemm kernel was not created.");
-                        return;
-                    }
-
-                    const auto brg_kernel = brg_kernels_[brg_ker_idx].get();
-                    const dim_t m = brgmm_ctx.get_M_idx(mb);
-                    const dim_t n = nb * bgmmc.N_blk;
-                    const auto ptr_bias = brgmm_ctx.get_bias_ptr(n);
-                    auto ptr_D = brgmm_ctx.get_data_C_ptr(b, m, n);
-                    auto ptr_C
-                            = brgmm_ctx.get_buf_C_par_reduction_ptr(0, mb, nb);
-
-                    // TODO: support reduction for zp/s8s8 compensations
-                    // computed in copy routines
-                    const auto zp_comp_a
-                            = brgmm_ctx.get_zp_a_compensation_ptr(ithr, b, nb);
-                    const auto zp_comp_b
-                            = brgmm_ctx.get_zp_b_compensation_result_ptr(
-                                    ithr, mb);
-                    const auto &post_ops_binary_rhs_arg_vec
-                            = brgmm_ctx.get_post_ops_binary_rhs_arg_vec();
-
-                    const size_t dst_row_logical_off
-                            = brgmm_ctx.get_M_idx(mb, true);
-                    const size_t batch_first_dim_idx = bgmmc.batch_ndims > 1
-                            ? b / bgmmc.batch_without_first_dim
-                            : 0;
-                    const size_t first_mb_matrix_addr_off
-                            = batch_first_dim_idx * (M * bgmmc.N)
-                            + (m * bgmmc.N + n);
-                    // apply post-ops and convert to dst data type only
-                    constexpr bool skip_accumulation = true;
-                    const char *dst_anchor_point
-                            = brgmm_ctx.get_data_C_ptr(0, 0, 0);
-                    const brgemm_post_ops_data_t post_ops_data {
-                            static_cast<const void *>(ptr_bias),
-                            post_ops_binary_rhs_arg_vec.data(),
-                            static_cast<size_t>(n), dst_row_logical_off,
-                            dst_anchor_point, first_mb_matrix_addr_off,
-                            static_cast<const void *>(zp_comp_a),
-                            static_cast<const void *>(zp_comp_b),
-                            brgmm_ctx.get_zp_c_ptr(), skip_accumulation, 1,
-                            false, false, brgmm_ctx.get_src_scales_ptr(),
-                            brgmm_ctx.get_wei_scales_ptr(n),
-                            brgmm_ctx.get_dst_scales_inv_ptr(ithr)};
-
-                    brgemm_kernel_execute_postops(brg_kernel, 0, nullptr,
-                            (void *)ptr_C, (void *)ptr_D, post_ops_data,
-                            nullptr, &leading_dimensions);
-                }
-
-                nd_iterator_step(
-                        mb_in_chunk, total_m_work, nb_in_chunk, total_n_work);
-                mn_start++;
             }
 
             advance_func();
@@ -1402,6 +1442,19 @@ void brgemm_matmul_t<isa>::accumulate(
     else if (pd()->get_brgemm_matmul_conf().acc_dt == s32)
         acc_ker_s32_->accumulate(
                 (int32_t *)result_ptr, (const int32_t *)reduce_ptr, size);
+    else
+        assert(!"unsupported accumulation data type");
+}
+
+template <cpu_isa_t isa>
+void brgemm_matmul_t<isa>::accumulate_batched(
+        char *result_ptr, const char *reduce_ptr, size_t ny, size_t nx) const {
+    if (pd()->get_brgemm_matmul_conf().acc_dt == f32)
+        acc_ker_batched_f32_->accumulate(
+                (float *)result_ptr, (const float *)reduce_ptr, ny, nx);
+    else if (pd()->get_brgemm_matmul_conf().acc_dt == s32)
+        acc_ker_batched_s32_->accumulate(
+                (int32_t *)result_ptr, (const int32_t *)reduce_ptr, ny, nx);
     else
         assert(!"unsupported accumulation data type");
 }
@@ -1977,15 +2030,25 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         return buf_B_ptr_ + offset;
     }
 
-    char *get_buf_C_ptr(int ithr, int m_blk_idx, int n_blk_idx) const {
+    char *get_buf_C_ptr(int ithr, int m_blk_idx, int n_blk_idx, int wi_idx = 0,
+            int ithr_bmn = 0) const {
         if (!bgmmc_.use_buffer_c) return nullptr;
 
         if (bgmmc_.nthr_k > 1) {
             const int ithr_k = get_thread_idx_for_k(ithr);
-            return get_buf_C_par_reduction_ptr(ithr_k, m_blk_idx, n_blk_idx);
+            return get_buf_C_par_reduction_ptr(
+                    ithr_k, m_blk_idx, n_blk_idx, wi_idx, ithr_bmn);
         }
         char *buf_C_ptr_local
                 = buf_C_ptr_ + ithr * bgmmc_.buffer_c_per_thread_sz;
+
+        if (bgmmc_.use_compact_buf_c
+                && (bgmmc_.K_chunk_elems < bgmmc_.K
+                        || bgmmc_.K_chunk_size > 1)) {
+            const dim_t wi_offset = (dim_t)wi_idx * bgmmc_.M_chunk_size
+                    * bgmmc_.N_chunk_size * bgmmc_.buffer_c_chunk_sz;
+            buf_C_ptr_local += wi_offset;
+        }
 
         int n_blk_local = 0;
         int m_blk_local = 0;
@@ -2026,9 +2089,27 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         return buf_C_ptr_local + m_shift + n_shift;
     }
 
-    char *get_buf_C_par_reduction_ptr(
-            int ithr_k, int m_blk_idx, int n_blk_idx) const {
+    char *get_buf_C_par_reduction_ptr(int ithr_k, int m_blk_idx, int n_blk_idx,
+            int wi_idx = 0, int ithr_bmn = 0) const {
         if (bgmmc_.nthr_k <= 1) return nullptr;
+
+        if (bgmmc_.use_compact_buf_c) {
+            // Compact reduction buffer layout (per-bmn-thread, per-K-slab):
+            //   [wi_idx][m_blk_local][n_blk_local] each of buffer_c_chunk_sz.
+            // Compact + nthr_k>1 is gated on post_ops_applicable, so all
+            // K-threads (including ithr_k == 0) write into a slab; the
+            // post-ops kernel performs the slab->D copy during reduction.
+            assert(bgmmc_.post_ops_applicable);
+            const int m_blk_local = m_blk_idx % bgmmc_.M_chunk_size;
+            const int n_blk_local = n_blk_idx % bgmmc_.N_chunk_size;
+            const dim_t slot_in_thread
+                    = (dim_t)wi_idx * bgmmc_.M_chunk_size * bgmmc_.N_chunk_size
+                    + (dim_t)m_blk_local * bgmmc_.N_chunk_size + n_blk_local;
+            return buf_C_ptr_
+                    + ((dim_t)ithr_bmn * bgmmc_.nthr_k + ithr_k)
+                    * bgmmc_.buffer_c_per_thread_sz
+                    + slot_in_thread * bgmmc_.buffer_c_chunk_sz;
+        }
 
         const dim_t m = m_blk_idx * bgmmc_.M_blk;
         const dim_t n = n_blk_idx * bgmmc_.N_blk;

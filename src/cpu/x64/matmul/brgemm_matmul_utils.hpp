@@ -151,6 +151,7 @@ struct brgemm_matmul_conf_t {
     bool use_buffer_a_tail_only;
     bool use_buffer_b;
     bool use_buffer_c;
+    bool use_compact_buf_c;
     bool use_buffer_reduce;
 
     brgemm_matmul_bcast_desc_t bcast_A_desc;

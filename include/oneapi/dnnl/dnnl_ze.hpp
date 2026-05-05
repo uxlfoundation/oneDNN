@@ -14,6 +14,9 @@
 * limitations under the License.
 *******************************************************************************/
 
+/// @file
+/// Level Zero interop API
+
 #ifndef ONEAPI_DNNL_DNNL_ZE_HPP
 #define ONEAPI_DNNL_DNNL_ZE_HPP
 
@@ -36,6 +39,8 @@ namespace dnnl {
 
 /// @addtogroup dnnl_api_ze_interop Level Zero interoperability API
 /// API extensions to interact with the underlying Level Zero run-time.
+///
+/// @sa @ref dev_guide_level_zero_interoperability in developer guide
 /// @{
 
 /// Level Zero interoperability namespace

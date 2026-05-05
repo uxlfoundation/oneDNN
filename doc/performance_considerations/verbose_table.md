@@ -83,17 +83,19 @@ The following catalogue lists verbose messages, explanations, and additional inf
 
 ## Engine Creation
 
-| VERBOSE MESSAGE                                      | SUBSTRING | ENGINE      | EXPLANATION                                                                                                                                             |
-|:-----------------------------------------------------|:----------|:------------|:--------------------------------------------------------------------------------------------------------------------------------------------------------|
-|`bad engine kind`                                     |           | all	     | Invalid value for `dnnl::engine::kind` encountered during engine creation.                                                                              |
-|`invalid <d> device in environment: index <i>`        |`d` - `dnnl::engine::kind`, `i` - device index           | all	     | Device of type `dnnl::engine::kind` and index `i` is invalid for the current environment.                   |
-|`no <d> <k> device is available`           	           |`d` - `dnnl::engine::kind`, `k` - `dnnl::impl::runtime_kind`          | all	     | No device of type `dnnl::engine::kind` was found during engine creation.                    |
-|`<n> <d> devices are available but device index <i> was queried`   |`d` - `dnnl::engine::kind`,  `n` - number of `d` devices, `i` - queried device index         | all	     | Queried index is out-of-range for device of type `dnnl::engine::kind`.  |
-|`device not found in the given context`	           |           | all	     | Device mismatch with runtime context during engine creation.                                                                                |
-|`unsupported <d> platform (expected <d0> got <d1>)`   |`d` - `dnnl::engine::kind`, `d0` - queried platform, `d1` - available platform           | `sycl`, `opencl`	     | Unsupported device platform encountered during engine creation. |
-|`failed to create <d> engine with index <i>`	       |`d` - `dnnl::engine::kind`, `i` - device index              |all	     | Engine creation was unsuccessful for the specified device index and kind.                               |
-|`unsupported <d> backend`	                           |`d` - `dnnl::engine::kind`         | `sycl`	        | Unknown/unsupported backend encountered by the SYCL engine.                                           |
-|`profiling capabilities are not supported`	           |           | all	     | Experimental profiling ([ONEDNN_EXPERIMENTAL_PROFILING](https://uxlfoundation.github.io/oneDNN/dev_guide_experimental.html?highlight=profiling#onednn-experimental-profiling)) is not enabled for the application. |
+| VERBOSE MESSAGE                                                 | SUBSTRING                                                                          | ENGINE                 | EXPLANATION                                                                                |
+|:----------------------------------------------------------------|:-----------------------------------------------------------------------------------|:-----------------------|:-------------------------------------------------------------------------------------------|
+|`bad engine kind`                                                |                                                                                    | all                    | Invalid value for `dnnl::engine::kind` encountered during engine creation.                 |
+|`invalid <d> device in environment: index <i>`                   |`d` - `dnnl::engine::kind`, `i` - device index                                      | all                    | Device of type `dnnl::engine::kind` and index `i` is invalid for the current environment.  |
+|`no <d> <k> device is available`                                 |`d` - `dnnl::engine::kind`, `k` - `dnnl::impl::runtime_kind`                        | all                    | No device of type `dnnl::engine::kind` was found during engine creation.                   |
+|`<n> <d> devices are available but device index <i> was queried` |`d` - `dnnl::engine::kind`, `n` - number of `d` devices, `i` - queried device index | all                    | Queried index is out-of-range for device of type `dnnl::engine::kind`.                     |
+|`device not found in the given context`                          |                                                                                    | all                    | Device mismatch with runtime context during engine creation.                               |
+|`unsupported <d> platform (expected <d0> got <d1>)`              |`d` - `dnnl::engine::kind`, `d0` - queried platform, `d1` - available platform      | `sycl`, `opencl`, `ze` | Unsupported device platform encountered during engine creation.                            |
+|`failed to create <d> engine with index <i>`                     |`d` - `dnnl::engine::kind`, `i` - device index                                      | all                    | Engine creation was unsuccessful for the specified device index and kind.                  |
+|`unsupported <d> backend`                                        |`d` - `dnnl::engine::kind`                                                          | `sycl`                 | Unknown/unsupported backend encountered by the SYCL engine.                                |
+|`profiling capabilities are not supported`                       |                                                                                    | all                    | Experimental profiling [ONEDNN_EXPERIMENTAL_PROFILING] is not enabled for the application. |
+
+[ONEDNN_EXPERIMENTAL_PROFILING]: https://uxlfoundation.github.io/oneDNN/dev_guide_experimental.html?highlight=profiling#onednn-experimental-profiling
 
 
 ## Memory Creation and Related Operations

@@ -27,12 +27,13 @@ table:
 The table below summarizes how to construct oneDNN objects based on OpenCL
 objects and how to query underlying OpenCL objects for existing oneDNN objects.
 
-| oneDNN object         | API to construct oneDNN object                                                                          | API to access OpenCL object(s)                                                                    |
-|:----------------------|:--------------------------------------------------------------------------------------------------------|:--------------------------------------------------------------------------------------------------|
-| Engine                | dnnl::ocl_interop::make_engine(cl_device_id, cl_context)                                                | dnnl::ocl_interop::get_device(const engine &) <br> dnnl::ocl_interop::get_context(const engine &) |
-| Stream                | dnnl::ocl_interop::make_stream(const engine &, cl_command_queue)                                        | dnnl::ocl_interop::get_command_queue(const stream &)                                              |
-| Memory (Buffer-based) | dnnl::memory(const memory::desc &, const engine &, cl_mem)                                              | dnnl::ocl_interop::get_mem_object(const memory &)                                                 |
-| Memory (USM-based)    | dnnl::ocl_interop::make_memory(const memory::desc &, const engine &, ocl_interop::memory_kind, void \*) | dnnl::memory::get_data_handle()                                                                   |
+| oneDNN object         | API to construct oneDNN object                                                                          | API to access OpenCL object(s)                       |
+|:----------------------|:--------------------------------------------------------------------------------------------------------|:-----------------------------------------------------|
+| Engine                | dnnl::ocl_interop::make_engine(cl_device_id, cl_context)                                                | dnnl::ocl_interop::get_device(const engine &)        |
+| \                     | \                                                                                                       | dnnl::ocl_interop::get_context(const engine &)       |
+| Stream                | dnnl::ocl_interop::make_stream(const engine &, cl_command_queue)                                        | dnnl::ocl_interop::get_command_queue(const stream &) |
+| Memory (Buffer-based) | dnnl::memory(const memory::desc &, const engine &, cl_mem)                                              | dnnl::ocl_interop::get_mem_object(const memory &)    |
+| Memory (USM-based)    | dnnl::ocl_interop::make_memory(const memory::desc &, const engine &, ocl_interop::memory_kind, void \*) | dnnl::memory::get_data_handle()                      |
 
 ## OpenCL Buffers and USM Interfaces for Memory Objects
 
@@ -82,9 +83,9 @@ oneDNN provides two mechanisms to handle dependencies:
 
 2. In-order oneDNN stream
 
-    oneDNN enables the user to create in-order streams when submitted primitives
-    are executed in the order they were submitted. Using in-order streams
-    prevents possible read-before-write or concurrent read/write issues.
+    oneDNN enables the user to create in-order streams in which submitted
+    primitives are executed in the order they were submitted. Using in-order
+    streams prevents possible read-before-write or concurrent read/write issues.
 
 @note oneDNN follows retain/release OpenCL semantics when using OpenCL objects
 during construction. An OpenCL object is retained on construction and released
@@ -99,5 +100,5 @@ returned by dnnl::ocl_interop::execute().
 
 @note USM memory doesn't support retain/release OpenCL semantics. When
 constructing a oneDNN memory object using a user-provided USM pointer oneDNN
-doesn't own the provided memory. It's user's responsibility to manage its
+doesn't own the provided memory. It's the user's responsibility to manage its
 lifetime.

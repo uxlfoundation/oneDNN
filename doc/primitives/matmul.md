@@ -159,14 +159,9 @@ The following attributes and post-ops are supported:
 | Post-op   | [Binary](@ref dnnl::post_ops::append_binary)                   | Applies a @ref dnnl_api_binary operation to the result                        | General binary post-op restrictions |
 | Post-op   | [Prelu](@ref dnnl::post_ops::append_prelu)                     | Applies an @ref dnnl_api_prelu operation to the result                        |                                     |
 
-The following masks are supported by the primitive:
-- 0, which applies one scale / zero point value to an entire tensor
-- 1, which applies a scale / zero point values along `k`-dimension
-  for #DNNL_ARG_WEIGHTS. Values could be grouped along this dimension
-  via specifying scales / zero points shapes for the attribute
-  (see the code example @ref matmul_with_weight_only_quantization_cpp).
-- 2, which applies a scale / zero point values per column along the
-  `n`-dimension for #DNNL_ARG_WEIGHTS.
+The `mask` and `groups` parameters for scales and zero-points follow the
+conventions described in the
+[quantization guide](@ref dgaq_constructing_mask_and_groups).
 
 When scales and/or zero-points masks are specified, the user must
 provide the corresponding scales and/or zero-points as additional

@@ -145,6 +145,64 @@ parameter of the appropriate post-operation.
 oneDNN provides APIs to set scales, zero-points, and precomputed reductions
 for different quantization levels from global (per-tensor) to fine-grained block-wise.
 
+@anchor dgaq_constructing_mask_and_groups
+### Mask and Groups
+
+Scales and zero-points share the same `mask` and `groups` concepts.
+
+@note
+Below, "dimension" refers to the tensor's logical shape as specified in the
+memory descriptor, not the physical memory layout.
+
+#### Mask
+
+`mask` is a bitmask where bit `d` being set means the quantization parameter
+varies along dimension `d`, unset means one value is shared across that
+dimension.
+
+`mask =` \f$\sum_{d_i} 2^{d_i}\f$ for each varying dimension \f$d_i\f$.
+
+#### Groups
+
+Groups subdivide dimensions into blocks that share a single quantization
+parameter value. The parameter `{G0, G1}` applies to the last two tensor
+dimensions:
+- `G0` is a block size for dimension `ndims - 2`
+- `G1` is a block size for dimension `ndims - 1`
+
+A value of `1` means no sub-blocking, and a value of `G > 1` means every `G`
+consecutive elements share one value.
+
+- Groups require `mask > 0`.
+- The mask bits for the last two dimensions must be set when groups are used.
+- Each group size must evenly divide the corresponding dimension.
+
+#### Common Masks and Groups Examples
+
+2D matmul weights `[K=1024, N=512]`:
+
+| Quantization pattern | `mask` | `groups` | Quantization parameter shape |
+|:---------------------|:-------|:---------|:-----------------------------|
+| Per-tensor | 0 | {} | scalar (1 value) |
+| Per-N | 1 << 1 (or 2) | {} | [1, 512] |
+| Per-K | 1 << 0 (or 1) | {} | [1024, 1] |
+| K-grouped by 64 | (1<<0) + (1<<1) (or 3) | {64, 1} | [16, 512] |
+
+3D batched matmul weights `[B=8, K=1024, N=512]`:
+
+| Quantization pattern | `mask` | `groups` | Quantization parameter shape |
+|:---------------------|:-------|:---------|:-----------------------------|
+| Per-tensor | 0 | {} | scalar (1 value) |
+| Per-N (shared across B and K) | 1 << 2 (or 4) | {} | [1, 1, 512] |
+| Per-B and per-N (shared across K) | (1<<0) + (1<<2) (or 5) | {} | [8, 1, 512] |
+| Per-B, K-grouped by 64, per-N | (1<<0) + (1<<1) + (1<<2) (or 7) | {64, 1} | [8, 16, 512] |
+
+Note, then when groups are `{}`, no sub-blocking is applied and the parameter
+(e.g., scales) shape is determined by the mask alone.
+
+In the tables above, "shared across" means the same value is broadcast to
+all positions along that unmasked dimension.
+
 @anchor dgaq_scaling
 ### Argument Scaling
 
@@ -188,23 +246,7 @@ Key parameters of the scaling API methods are summarized below:
 (*) Support for quantization options varies based on individual primitive and
 target hardware. Refer to primitives documentation for the details.
 
-#### Supported Scaling Granularity Levels
-
-oneDNN supports the following scaling granularity levels to support different quantization
-schemes:
-
-- [Per-tensor scaling](#per-tensor-scaling) (`mask=0`) uses a single scaling factor for the entire
-  tensor, making it the simplest approach.
-- [Per-channel scaling](#per-channel-scaling) (`mask=1<<dim`) applies different scaling factors
-  along a specific dimension, for instance commonly used for CNN weights.
-- [Block scaling](#block-scaling) subdivides tensor dimensions into smaller
-  blocks with individual scaling factors, important for large transformer
-  models and advanced quantization techniques.
-- [Multi-dimensional scaling](#multi-dimensional-scaling) (`mask=(1<<dim1)+(1<<dim2)`) provides
-  independent scaling factors along multiple tensor dimensions, useful for complex
-  activations where both batch and channel dimensions need separate scaling.
-
-##### Per-tensor Scaling
+#### Per-tensor Scaling
 
 In the simplest case, when there is only one common scaling factor the attribute changes
 the op behavior from
@@ -239,7 +281,7 @@ host, use @ref host-side-scalars-and-zero-points "host-side scalar scaling"
 See examples:
 - [Convolution with Per-output-channel Quantization](#convolution-with-per-output-channel-quantization)
 
-##### Per-Channel Scaling
+#### Per-Channel Scaling
 
 Per-channel scaling applies different scaling factors along specific tensor
 dimensions. For instance, it is commonly used for CNN weights where each
@@ -259,11 +301,10 @@ See examples:
 - [Convolution with Per-output-channel Quantization](#convolution-with-per-output-channel-quantization)
 - @ref inference_int8_matmul_cpp
 
-##### Block Scaling
+#### Block Scaling
 
-Groups enable block-wise quantization by subdividing tensor dimensions into
-smaller blocks, each with its own scaling factor. This might help balance accuracy
-and efficiency by providing more granular quantization than per-tensor scaling.
+Groups enable block-wise quantization by subdividing dimensions into blocks,
+each with its own scaling factor.
 
 ~~~cpp
 // Weight shape: [K, N] = [1024, 512] with groups [32, 1]
@@ -273,7 +314,7 @@ attr.set_scales(DNNL_ARG_WEIGHTS, (1 << 0) + (1 << 1), groups,
                 dnnl::memory::data_type::f32);
 
 // Tensor: [K, N] = [1024, 512]
-// Scaling factors: 32 × 512 = 16,384 values (one per group)
+// Scaling factors: 32 * 512 = 16,384 values (one per group)
 // Usage: Each (group_k, n) combination gets its own scaling factor
 ~~~
 
@@ -282,31 +323,28 @@ See examples:
 - [Matmul with Precomputed Reductions and Advanced Quantization](#matmul-with-precomputed-reductions-and-advanced-quantization)
 - @ref matmul_with_weight_only_quantization_cpp
 
-###### Special Case: MX-compatible Block Scaling (or Dynamic Quantization)
+##### Special Case: MX-compatible Block Scaling (or Dynamic Quantization)
 
-MX-compatible block scaling uses `e8m0` data type for scaling factors
-and `dynamic_mx` quantization mode to align with the [OCP MX Formats Specification][mx-spec].
+MX-compatible block scaling uses `e8m0` scaling factors and `dynamic_mx`
+quantization mode per the [OCP MX Formats Specification][mx-spec].
 
 ~~~cpp
-// Set MX-compatible block scaling for weights
-attr.set_scales(DNNL_ARG_WEIGHTS, 1 << 0, {32}, dnnl::memory::data_type::e8m0,
+// Weights [K, N] = [1024, 512], K-grouped by 32
+attr.set_scales(DNNL_ARG_WEIGHTS, (1 << 0) | (1 << 1), {32, 1},
+                dnnl::memory::data_type::e8m0,
                 false /*on device*/, dnnl::quantization_mode::dynamic_mx);
-
-// Tensor: [K, N] = [1024, 512]
-// Scaling factors: 32 values (one per group of 32 in K dimension)
-// Usage: Each group of 32 in K dimension gets its own scaling factor
+// Scaling factors: (1024 / 32) * 512 = 16,384 values
 ~~~
 See example @ref mxfp_matmul_cpp.
 
-##### Multi-Dimensional Scaling
+#### Multi-Dimensional Scaling
 
-Multi-dimensional scaling applies scaling factors across multiple tensor dimensions
-simultaneously.
+Multi-dimensional scaling applies scaling factors across multiple dimensions
+simultaneously by setting multiple bits in `mask`.
 
-For scaling factors per dimensions \f$d_i\f$, set `mask = `\f$\sum_{d_i} 2^{d_i}\f$.
-
-Resulting scaling factor count without groups: \f$\prod_{d_i} D_{d_i}\f$, with groups:
-\f$\prod_{d_i} G_{d_i}\f$.
+Scaling factor count without groups: \f$\prod_{d_i} D_{d_i}\f$.
+With groups (the last two dimensions must be included in the mask):
+\f$\left(\prod_{d_i \notin \{ndims{-}2,\, ndims{-}1\}} D_{d_i}\right) \cdot \frac{D_{ndims-2}}{G_0} \cdot \frac{D_{ndims-1}}{G_1}\f$.
 
 ~~~cpp
 // Scaling factors vary along batch and channel dimensions
@@ -369,15 +407,14 @@ target hardware. Refer to primitives documentation for the details.
 
 #### Supported Zero-Point Granularity Levels
 
-Zero-point granularity mirrors the scaling factor granularity described above.
-The same mask and groups concepts apply:
+Zero-point granularity mirrors scaling factor granularity. The same mask and
+groups concepts apply (see @ref dgaq_constructing_mask_and_groups), for instance:
 
-- **Per-tensor zero-point** (`mask=0`): Single zero-point for entire tensor
-- **Per-channel zero-points** (`mask=1<<dim`): Different zero-points per
-  channel
-- **Block zero-points** (`mask` with `groups`): Block-wise zero-points
-- **Multi-dimensional zero-points** (`mask=(1<<dim1)+(1<<dim2)`):
-  Independent zero-points across multiple dimensions
+- **Per-tensor** (`mask=0`): single zero-point for the entire tensor
+- **Per-channel** (`mask=1<<dim`): one zero-point per channel
+- **Block** (`mask` with `groups`): block-wise zero-points
+- **Multi-dimensional** (`mask=(1<<dim1)+(1<<dim2)`): independent zero-points
+  across multiple dimensions
 
 ~~~cpp
 // Per-tensor zero-point
@@ -397,6 +434,24 @@ See examples:
 - [Matmul with Precomputed Reductions and Advanced Quantization](#matmul-with-precomputed-reductions-and-advanced-quantization)
 - @ref inference_int8_matmul_cpp
 - @ref matmul_with_weight_only_quantization_cpp
+
+#### Example: 3D Batched Matmul Weights
+
+For 3D weights `[B=4, K=1024, N=512]` with K-grouped (group size 32)
+quantization that varies per batch element:
+
+~~~cpp
+// dim 0 = B, dim 1 = K, dim 2 = N -- vary along all three
+int mask = (1 << 0) | (1 << 1) | (1 << 2); // = 7
+// groups: 32 along K (dim ndims-2), 1 along N (dim ndims-1)
+std::vector<dnnl::memory::dim_t> groups = {32, 1};
+
+// Resulting param shape: [4, 1024/32, 512] = [4, 32, 512]
+// Total values: 4 * 32 * 512 = 65,536
+
+attr.set_scales(DNNL_ARG_WEIGHTS, mask, groups, dnnl::memory::data_type::f16);
+attr.set_zero_points(DNNL_ARG_WEIGHTS, mask, groups, dnnl::memory::data_type::s8);
+~~~
 
 @anchor host-side-scalars-and-zero-points
 ### Special Case: Host-side Scalar Scaling Factor and Zero-point

@@ -133,6 +133,9 @@ dnn_graph_mem_t::dnn_graph_mem_t(const dnn_mem_t &mem,
 
 int dnn_graph_mem_t::fill_mem_with_data(
         const dnn_mem_t &mem, const dnnl::engine &eng) {
+    // If `mem` comes empty, don't update the underlying `mem_` then.
+    if (!mem) return OK;
+
     const auto &src_eng = mem.engine();
     const auto &dst_eng = eng.get();
 

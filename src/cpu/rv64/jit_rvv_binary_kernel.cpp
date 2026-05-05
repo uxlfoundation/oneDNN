@@ -53,14 +53,15 @@ bool jit_rvv_binary_f32_supported(alg_kind_t alg) {
         case alg_kind::binary_min:
         case alg_kind::binary_mul:
         case alg_kind::binary_ne:
+        case alg_kind::binary_select:
         case alg_kind::binary_sub: return true;
         default: return false;
     }
 }
 
 void jit_rvv_binary_apply_f32(alg_kind_t alg, const float *src0,
-        const float *src1, float *dst, dim_t len) {
-    const jit_rvv_binary_kernel_t::call_params_t p {src0, src1, dst, len};
+        const float *src1, const int8_t *src2, float *dst, dim_t len) {
+    const jit_rvv_binary_kernel_t::call_params_t p {src0, src1, src2, dst, len};
     switch (alg) {
         case alg_kind::binary_add:
             dispatch_jit_binary_f32<alg_kind::binary_add>(&p);
@@ -94,6 +95,9 @@ void jit_rvv_binary_apply_f32(alg_kind_t alg, const float *src0,
             break;
         case alg_kind::binary_ne:
             dispatch_jit_binary_f32<alg_kind::binary_ne>(&p);
+            break;
+        case alg_kind::binary_select:
+            dispatch_jit_binary_f32<alg_kind::binary_select>(&p);
             break;
         case alg_kind::binary_sub:
             dispatch_jit_binary_f32<alg_kind::binary_sub>(&p);
@@ -144,6 +148,9 @@ void jit_rvv_binary_kernel_t::compute_vector(const VReg &v_dst,
             vfmv_v_f(v_dst, f_zero);
             vfmerge_vfm(v_dst, v_dst, f_one);
             break;
+        case alg_kind::binary_select:
+            // Handled in generate() because it needs the src2 condition input.
+            break;
         default: assert(!"unsupported f32 binary JIT alg");
     }
 #else
@@ -156,8 +163,9 @@ void jit_rvv_binary_kernel_t::generate() {
     const Reg reg_param = a0;
     const Reg reg_src0 = a1;
     const Reg reg_src1 = a2;
-    const Reg reg_dst = a3;
-    const Reg reg_len = a4;
+    const Reg reg_src2 = a3;
+    const Reg reg_dst = a4;
+    const Reg reg_len = a5;
     const Reg reg_vl = t0;
     const Reg reg_bytes = t1;
     const Reg reg_tmp = t2;
@@ -169,13 +177,15 @@ void jit_rvv_binary_kernel_t::generate() {
     const VReg v_src0(1);
     const VReg v_src1(2);
     const VReg v_dst(3);
+    const VReg v_src2(4);
 
     // call_params_t layout:
-    //  0: src0, 8: src1, 16: dst, 24: len
+    //  0: src0, 8: src1, 16: src2, 24: dst, 32: len
     ld(reg_src0, reg_param, 0);
     ld(reg_src1, reg_param, 8);
-    ld(reg_dst, reg_param, 16);
-    ld(reg_len, reg_param, 24);
+    ld(reg_src2, reg_param, 16);
+    ld(reg_dst, reg_param, 24);
+    ld(reg_len, reg_param, 32);
 
     li(reg_tmp, 0);
     fmv_w_x(f_zero, reg_tmp);
@@ -188,11 +198,20 @@ void jit_rvv_binary_kernel_t::generate() {
     vsetvli(reg_vl, reg_len, SEW::e32, LMUL::m1);
     vle32_v(v_src0, reg_src0);
     vle32_v(v_src1, reg_src1);
-    compute_vector(v_dst, v_src0, v_src1, f_zero, f_one);
+    if (alg_ == alg_kind::binary_select) {
+        vsetvli(reg_vl, reg_vl, SEW::e8, LMUL::mf4);
+        vle8_v(v_src2, reg_src2);
+        vmsne_vi(v_mask, v_src2, 0);
+        vsetvli(reg_vl, reg_vl, SEW::e32, LMUL::m1);
+        vmerge_vvm(v_dst, v_src1, v_src0);
+    } else {
+        compute_vector(v_dst, v_src0, v_src1, f_zero, f_one);
+    }
     vse32_v(v_dst, reg_dst);
     slli(reg_bytes, reg_vl, 2);
     add(reg_src0, reg_src0, reg_bytes);
     add(reg_src1, reg_src1, reg_bytes);
+    if (alg_ == alg_kind::binary_select) add(reg_src2, reg_src2, reg_vl);
     add(reg_dst, reg_dst, reg_bytes);
     sub(reg_len, reg_len, reg_vl);
     j_(loop);

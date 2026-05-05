@@ -29,6 +29,7 @@ struct jit_rvv_binary_kernel_t : public jit_generator_t {
     struct call_params_t {
         const float *src0;
         const float *src1;
+        const int8_t *src2;
         float *dst;
         dim_t len;
     };
@@ -55,7 +56,7 @@ private:
 bool jit_rvv_binary_f32_supported(alg_kind_t alg);
 
 void jit_rvv_binary_apply_f32(alg_kind_t alg, const float *src0,
-        const float *src1, float *dst, dim_t len);
+        const float *src1, const int8_t *src2, float *dst, dim_t len);
 
 } // namespace rv64
 } // namespace cpu

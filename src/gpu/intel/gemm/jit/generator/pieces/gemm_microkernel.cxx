@@ -55,6 +55,8 @@ void Generator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, 
     // r0, r4 are reserved for system threads
     state.ra.claim((GRF::bytes(hw) >= 64) ? r0-r9 : r0-r15);
 
+    moveR0(strategy, state);
+
     state.fullK = state.inputs.k;
 
     bool registerC = strategy.registerOutput();

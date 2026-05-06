@@ -43,6 +43,8 @@ status_t gen_fwd_t::pd_t::init(impl::engine_t *engine) {
     auto acc_data_t = desc()->accum_data_type;
 
     // TODO: add training(?), add bwd
+    VDISPATCH_POOLING_IC(
+            intel_engine->mayiuse_ngen_kernels(), VERBOSE_BAD_ENGINE_KIND);
     VDISPATCH_POOLING_SC(set_default_params(), VERBOSE_UNSUPPORTED_TAG);
     VDISPATCH_POOLING(utils::one_of(desc()->prop_kind,
                               /*forward_training,*/ forward_inference),

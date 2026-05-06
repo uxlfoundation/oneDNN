@@ -55,6 +55,12 @@ struct host_scalar_executable_t : public op_executable_t {
     bool is_initialized() const override { return true; }
 };
 
+#ifdef DNNL_WITH_SYCL
+// define the kernel tag used in execute_sycl.
+template <typename DType>
+class host_scalar_copy_kernel_t {};
+#endif
+
 } // namespace dnnl_impl
 } // namespace graph
 } // namespace impl

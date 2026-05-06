@@ -197,11 +197,28 @@ consecutive elements share one value.
 | Per-B and per-N (shared across K) | (1<<0) + (1<<2) (or 5) | {} | [8, 1, 512] |
 | Per-B, K-grouped by 64, per-N | (1<<0) + (1<<1) + (1<<2) (or 7) | {64, 1} | [8, 16, 512] |
 
-Note, then when groups are `{}`, no sub-blocking is applied and the parameter
+Note that when groups are `{}`, no sub-blocking is applied and the parameter
 (e.g., scales) shape is determined by the mask alone.
 
 In the tables above, "shared across" means the same value is broadcast to
 all positions along that unmasked dimension.
+
+@anchor dgaq_execution
+### Providing Quantization Parameters at Execution
+
+When scales and/or zero-points are specified via primitive attributes, the user
+must provide the corresponding values as additional input memory objects during
+primitive execution. The argument index is formed by combining the attribute
+tag with the tensor argument:
+
+- Scales: `DNNL_ARG_ATTR_SCALES | DNNL_ARG_<tensor>` (e.g.,
+  `DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC`).
+- Zero-points: `DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_<tensor>` (e.g.,
+  `DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC`).
+
+The memory descriptor for each quantization parameter is determined by the
+mask and groups that were set in the primitive attributes (see
+@ref dgaq_constructing_mask_and_groups).
 
 @anchor dgaq_scaling
 ### Argument Scaling
@@ -309,7 +326,7 @@ each with its own scaling factor.
 ~~~cpp
 // Weight shape: [K, N] = [1024, 512] with groups [32, 1]
 // Creates 32 groups along K dimension, each with its own scaling factor per N value
-std::vector<dnnl::memory::dim_t> groups = {32, 1};
+std::vector<dnnl::memory::dim> groups = {32, 1};
 attr.set_scales(DNNL_ARG_WEIGHTS, (1 << 0) + (1 << 1), groups,
                 dnnl::memory::data_type::f32);
 
@@ -424,7 +441,7 @@ attr.set_zero_points(DNNL_ARG_SRC, 0, {}, dnnl::memory::data_type::s32);
 attr.set_zero_points(DNNL_ARG_WEIGHTS, 1 << 0, {}, dnnl::memory::data_type::s8);
 
 // Block zero-points
-std::vector<dnnl::memory::dim_t> groups = {64, 1};
+std::vector<dnnl::memory::dim> groups = {64, 1};
 attr.set_zero_points(DNNL_ARG_WEIGHTS, (1 << 0) + (1 << 1), groups,
                      dnnl::memory::data_type::s32);
 ~~~
@@ -444,7 +461,7 @@ quantization that varies per batch element:
 // dim 0 = B, dim 1 = K, dim 2 = N -- vary along all three
 int mask = (1 << 0) | (1 << 1) | (1 << 2); // = 7
 // groups: 32 along K (dim ndims-2), 1 along N (dim ndims-1)
-std::vector<dnnl::memory::dim_t> groups = {32, 1};
+std::vector<dnnl::memory::dim> groups = {32, 1};
 
 // Resulting param shape: [4, 1024/32, 512] = [4, 32, 512]
 // Total values: 4 * 32 * 512 = 65,536

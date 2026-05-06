@@ -251,13 +251,8 @@ The following masks are supported by the primitive:
 - 2, which applies a zero point value per each element in a `IC` or `OC`
   dimension for `DNNL_ARG_SRC` or `DNNL_ARG_DST` arguments respectively.
 
-When scales and/or zero-points masks are specified, the user must
-provide the corresponding scales and/or zero-points as additional
-input memory objects with argument `DNNL_ARG_ATTR_SCALES |
-DNNL_ARG_${MEMORY_INDEX}` or `DNNL_ARG_ATTR_ZERO_POINTS |
-DNNL_ARG_${MEMORY_INDEX}` during the execution stage.  For instance, a
-source tensor zero points memory argument would be passed with index
-(`DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC`).
+Scales and zero-points require additional memory arguments at execution time.
+See the [quantization guide](@ref dgaq_execution) for details.
 
 
 @note The library does not prevent using post-ops in training, but note that

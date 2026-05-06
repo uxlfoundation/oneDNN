@@ -163,19 +163,10 @@ The `mask` and `groups` parameters for scales and zero-points follow the
 conventions described in the
 [quantization guide](@ref dgaq_constructing_mask_and_groups).
 
-When scales and/or zero-points masks are specified, the user must
-provide the corresponding scales and/or zero-points as additional
-input memory objects with argument `DNNL_ARG_ATTR_SCALES |
-DNNL_ARG_${MEMORY_INDEX}` or `DNNL_ARG_ATTR_ZERO_POINTS |
-DNNL_ARG_${MEMORY_INDEX}` during the execution stage. For instance, a
-source tensor zero points memory argument would be passed with index
-(`DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC`).
-
-When Dropout is specified, at the execution stage the user must provide 2 input
-memory objects with #DNNL_ARG_ATTR_DROPOUT_PROBABILITY (1x1x...x1 f32 value
-from 0.f to 1.f) and #DNNL_ARG_ATTR_DROPOUT_SEED (1x1x...x1 s32 value from INT_MIN
-to INT_MAX), and 1 output memory object with #DNNL_ARG_ATTR_DROPOUT_MASK (u8
-memory buffer that shares its shape with the destination buffer).
+Scales, zero-points, and dropout require additional memory arguments at
+execution time. See the
+[quantization guide](@ref dgaq_execution) and the
+[dropout guide](@ref dev_guide_attributes_dropout) for details.
 
 @note Check the [list of examples and tutorials](#examples) below to see
 run-time attributes in use.

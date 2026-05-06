@@ -130,7 +130,7 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
     int mb = get_global_id(2);
 
 #if WITH_DST_ZPOINTS
-    int dst_zp = c0[0];
+    int dst_zp = c0[WITH_DST_ZPOINTS_PER_OC ? n : 0];
 #else
     int dst_zp = 0;
 #endif

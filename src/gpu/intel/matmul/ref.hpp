@@ -194,7 +194,7 @@ struct ref_t : public primitive_t {
             }
             if (!zp.has_default_values(DNNL_ARG_DST)) {
                 int mask_dst = zp.get_mask(DNNL_ARG_DST);
-                bool ok = mask_dst == 0;
+                bool ok = utils::one_of(mask_dst, 0, dst_qmask_N());
                 if (!ok) return false;
             }
             return true;

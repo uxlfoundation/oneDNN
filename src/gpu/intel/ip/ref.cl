@@ -41,8 +41,8 @@ __kernel void ref_inner_product_fwd(__global SRC_DATA_T *src,
                     const off_t wei_off = WEI_OFF(0, oc, ic, kd, kh, kw);
 #else
     for (off_t ic = 0; ic < IC_TOTAL; ++ic) {
-        const off_t src_off = mb * IC_TOTAL + ic;
-        const off_t wei_off = oc * IC_TOTAL + ic;
+        const off_t src_off = SRC_OFF(mb, ic, 0, 0, 0);
+        const off_t wei_off = WEI_OFF(0, oc, ic, 0, 0, 0);
 #endif
                     d += SRC_TO_REF(src[src_off]) * WEI_TO_REF(wei[wei_off]);
                 }

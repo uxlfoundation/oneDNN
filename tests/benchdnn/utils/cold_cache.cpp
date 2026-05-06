@@ -62,7 +62,7 @@ cold_cache_t::cold_cache_t(
 
     static size_t gpu_cache_capacity = 0;
     SAFE_V(get_gpu_cache_size(gpu_cache_capacity));
-    static const size_t gpu_cache_size_upper_bound = gpu_cache_capacity * 2;
+    static const size_t gpu_cache_size_upper_bound = gpu_cache_capacity * 4;
 
     const auto cache_capacity
             = is_gpu() ? gpu_cache_capacity : cpu_cache_capacity;

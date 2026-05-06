@@ -667,6 +667,37 @@ void finalize() {
 #endif
 }
 
+int update_timer_with_profiling_info(timer::timer_t &t, bool use_profiling,
+        const std::vector<stream_t> &v_stream, int execute_count) {
+    if (!use_profiling) {
+        t.stamp(execute_count * num_streams);
+        return OK;
+    }
+
+    std::vector<std::vector<uint64_t>> v_nsecs(num_streams);
+    std::vector<std::vector<uint64_t>> v_cycles(num_streams);
+    for (size_t j = 0; j < v_stream.size(); j++) {
+        SAFE(get_gpu_profiling_info(
+                     v_stream[j], v_nsecs[j], v_cycles[j], execute_count),
+                CRIT);
+        reset_gpu_profiling(v_stream[j]);
+
+        // Profiling should have information to report, otherwise, stop.
+        if (v_nsecs[j].empty()) {
+            BENCHDNN_PRINT(0, "%s\n",
+                    "WARNING: no counters were found during profiling.");
+            return FAIL;
+        }
+    }
+
+    for_(size_t j = 0; j < v_stream.size(); j++)
+    for (size_t i = 0; i < v_nsecs[j].size(); i++) {
+        t.stop(1, (int64_t)v_cycles[j][i], v_nsecs[j][i] / 1e6);
+    }
+
+    return OK;
+}
+
 inline int measure_perf_individual(timer::timer_t &t, dnnl_stream_t stream,
         perf_function_t &perf_func, std::vector<dnnl_exec_arg_t> &dnnl_args) {
     // Warm-up run.
@@ -689,91 +720,62 @@ inline int measure_perf_individual(timer::timer_t &t, dnnl_stream_t stream,
 inline int measure_perf_aggregate(timer::timer_t &t,
         const std::vector<stream_t> &v_stream, perf_function_t &perf_func,
         std::vector<std::vector<dnnl_exec_arg_t>> &dnnl_args) {
-    // There seems to be some limit to how many kernels can be queued in OCL
-    // builds and 4096 seems to be a nice number under that limit.
-    // Otherwise, hangs in perf validation are observed due to many kernels
-    // being queued at once.
-    static constexpr int max_batch_times = 4096;
-
     std::vector<cold_cache_t> cold_cache(num_streams);
 
     // Nvidia/AMD don't support profiling.
     const bool use_profiling = is_gpu() && !is_nvidia_gpu() && !is_amd_gpu();
 
+    // Warm-up run, this is not measured due to possibility the associated
+    // kernel has not been built and skews the results.
     for (size_t j = 0; j < v_stream.size(); j++) {
-        // Warm-up run, this is not measured due to possibility the associated
-        // kernel has not been built and skews the results.
         DNN_SAFE(perf_func(v_stream[j], dnnl_args[j]), WARN);
         DNN_SAFE(dnnl_stream_wait(v_stream[j]), CRIT);
         cold_cache[j] = cold_cache_t(dnnl_args[j], v_stream[j]);
         if (use_profiling) reset_gpu_profiling(v_stream[j]);
     }
 
-    bool is_first_loop = true;
-    int cur_batch_times
-            = fix_times_per_prb ? fix_times_per_prb : min_times_per_prb;
+    int num_submissions = 0;
+    if (fix_times_per_prb) {
+        // If user specified the number of runs, just use it.
+        num_submissions = fix_times_per_prb;
+    } else {
+        // Otherwise, use an estimate run, which is not a part of final time
+        // collection. It's used to calculate the number of submissions to run
+        // before synchronization. Done on a single stream.
+        t.reset();
+        DNN_SAFE(perf_func(v_stream[0], dnnl_args[0]), WARN);
+        DNN_SAFE(dnnl_stream_wait(v_stream[0]), CRIT);
+        SAFE(update_timer_with_profiling_info(t, use_profiling, v_stream, 1),
+                WARN);
 
-    t.reset();
-    while (true) {
-        // Keep separate var due to a `break` inside the loop.
-        int execute_count = 0;
-        // Keep inner loop over streams for better submission overlapping.
-        for_(int i = 0; i < cur_batch_times; i++)
-        for (size_t j = 0; j < v_stream.size(); j++) {
-            if (!cold_cache[j].update_dnnl_args(dnnl_args[j])) break;
-            DNN_SAFE(perf_func(v_stream[j], dnnl_args[j]), WARN);
-            execute_count++;
-        }
-
-        for (size_t j = 0; j < v_stream.size(); j++) {
-            DNN_SAFE(dnnl_stream_wait(v_stream[j]), CRIT);
-        }
-
-        if (use_profiling) {
-            std::vector<std::vector<uint64_t>> v_nsecs(num_streams);
-            std::vector<std::vector<uint64_t>> v_cycles(num_streams);
-            bool nsecs_is_empty = false;
-            for (size_t j = 0; j < v_stream.size(); j++) {
-                SAFE(get_gpu_profiling_info(v_stream[j], v_nsecs[j],
-                             v_cycles[j], execute_count),
-                        CRIT);
-                reset_gpu_profiling(v_stream[j]);
-
-                // Profiling should have information to report, otherwise, stop.
-                if (v_nsecs[j].empty()) {
-                    nsecs_is_empty = true;
-                    BENCHDNN_PRINT(0, "%s\n",
-                            "WARNING: no counters were found during "
-                            "profiling.");
-                    break;
-                }
-            }
-            if (nsecs_is_empty) break;
-
-            for_(size_t j = 0; j < v_stream.size(); j++)
-            for (size_t i = 0; i < v_nsecs[j].size(); i++) {
-                t.stop(1, (int64_t)v_cycles[j][i], v_nsecs[j][i] / 1e6);
-            }
-        } else {
-            t.stamp(cur_batch_times * num_streams);
-        }
-
-        // Assumption that for each stream cold_cache acts same.
-        if (should_stop(t) || cold_cache[0].should_stop()) break;
-
-        // Adjust cur_batch_times after the first batch run
-        if (is_first_loop) {
-            double ms_min = t.ms(timer::timer_t::min);
-            // Heuristic: try to use ~5 batch runs for the whole benchmark
-            int batch_times_heuristic = (ms_min == 0.0)
-                    ? INT_MAX
-                    : MAX2(1,
-                              (int)((max_ms_per_prb - t.total_ms()) / ms_min
-                                      / 5));
-            cur_batch_times = MIN2(max_batch_times, batch_times_heuristic);
-            is_first_loop = false;
-        }
+        double ms_min = t.total_ms();
+        if (ms_min == 0.0) SAFE_V(FAIL);
+        num_submissions
+                = MAX2(min_times_per_prb, (int)(max_ms_per_prb / ms_min));
     }
+
+    BENCHDNN_PRINT(
+            4, "%s%d%s\n", "[PERF]: submissions: ", num_submissions, ";");
+    // Measuring loop. A single synchronization point, called once, the number
+    // of submissions determined above based on n_times or plain time criterion.
+    t.reset();
+    // Keep a separate variable due to a `break` inside the loop.
+    int execute_count = 0;
+    // Keep inner loop over streams for better submission overlapping.
+    for_(int i = 0; i < num_submissions; i++)
+    for (size_t j = 0; j < v_stream.size(); j++) {
+        if (!cold_cache[j].update_dnnl_args(dnnl_args[j])) break;
+        DNN_SAFE(perf_func(v_stream[j], dnnl_args[j]), WARN);
+        execute_count++;
+    }
+
+    for (size_t j = 0; j < v_stream.size(); j++) {
+        DNN_SAFE(dnnl_stream_wait(v_stream[j]), CRIT);
+    }
+
+    SAFE(update_timer_with_profiling_info(
+                 t, use_profiling, v_stream, execute_count),
+            WARN);
 
     if (use_profiling) {
         for (size_t j = 0; j < v_stream.size(); j++) {

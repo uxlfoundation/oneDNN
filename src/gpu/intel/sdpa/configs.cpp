@@ -667,20 +667,34 @@ fwd_config_t *choose_config(compute::gpu_arch_t arch, dim_t head_size,
     // non-integrated configs perform better than integrated Xe2 configs.
     if (arch == compute::gpu_arch_t::xe3) { is_integrated = false; }
 
-    property query_properties = set_properties(is_thin_q, is_quantized,
-            is_integrated, is_fma, is_f32, is_f16_accumulate);
-    config_query_t query(arch_query, static_cast<int>(head_size),
-            static_cast<int>(seq), query_properties);
-    auto it = find(begin(sorted_configs), end(sorted_configs), query);
-    if (it != end(sorted_configs)) {
-        VDEBUGINFO(4, primitive, sdpa,
-                "config search: {query %s} -> {%s config:%s},",
-                to_string(query).c_str(), to_string(it->criteria).c_str(),
-                to_string(it->config).c_str());
-        return &it->config;
-    } else {
-        VDEBUGINFO(4, primitive, sdpa, "config search failed: {query %s},",
-                to_string(query).c_str());
+    bool fallback = true;
+    while (fallback) {
+        property query_properties = set_properties(is_thin_q, is_quantized,
+                is_integrated, is_fma, is_f32, is_f16_accumulate);
+        config_query_t query(arch_query, static_cast<int>(head_size),
+                static_cast<int>(seq), query_properties);
+        auto it = find(begin(sorted_configs), end(sorted_configs), query);
+        if (it != end(sorted_configs)) {
+            VDEBUGINFO(4, primitive, sdpa,
+                    "config search: {query %s} -> {%s config:%s},",
+                    to_string(query).c_str(), to_string(it->criteria).c_str(),
+                    to_string(it->config).c_str());
+            return &it->config;
+        } else {
+            VDEBUGINFO(4, primitive, sdpa, "config search failed: {query %s},",
+                    to_string(query).c_str());
+        }
+        switch (arch_query) {
+            case compute::gpu_arch_t::xe3p:
+                arch_query = compute::gpu_arch_t::xe3;
+                break;
+            case compute::gpu_arch_t::xe3:
+                arch_query = compute::gpu_arch_t::xe2;
+                break;
+            case compute::gpu_arch_t::xe2: fallback = false; break;
+            case compute::gpu_arch_t::xe_hpc: fallback = false; break;
+            default: fallback = false; break;
+        }
     }
     return nullptr;
 }

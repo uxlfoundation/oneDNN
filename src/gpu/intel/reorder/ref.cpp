@@ -131,11 +131,15 @@ void ref_t::pd_t::init_scratchpad() {
 status_t ref_t::execute(const exec_ctx_t &ctx) const {
     auto &src = CTX_IN_STORAGE(DNNL_ARG_FROM);
     auto &dst = CTX_OUT_STORAGE(DNNL_ARG_TO);
-    auto tmp = ctx.get_scratchpad_grantor().get_memory_storage(
-            memory_tracking::names::key_reorder_space);
 
     const auto &conf = pd()->conf;
     if (conf.nelems == 0) return status::success;
+
+    std::unique_ptr<memory_storage_t> tmp;
+    if (conf.subbyte_pack) {
+        tmp = ctx.get_scratchpad_grantor().get_memory_storage(
+                memory_tracking::names::key_reorder_space);
+    }
 
     compute::kernel_arg_list_t arg_list;
     arg_list.append(src);

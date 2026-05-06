@@ -667,6 +667,54 @@ void finalize() {
 #endif
 }
 
+int update_timer_with_profiling_info(timer::timer_t &t, bool use_profiling,
+        const std::vector<stream_t> &v_stream, int execute_count) {
+    if (!use_profiling) {
+        t.stamp(execute_count * num_streams);
+        return OK;
+    }
+
+    std::vector<std::vector<uint64_t>> v_nsecs(num_streams);
+    std::vector<std::vector<uint64_t>> v_cycles(num_streams);
+    for (size_t j = 0; j < v_stream.size(); j++) {
+        SAFE(get_gpu_profiling_info(
+                     v_stream[j], v_nsecs[j], v_cycles[j], execute_count),
+                CRIT);
+        reset_gpu_profiling(v_stream[j]);
+
+        // Profiling should have information to report, otherwise, stop.
+        if (v_nsecs[j].empty()) {
+            BENCHDNN_PRINT(0, "%s\n",
+                    "WARNING: no counters were found during profiling.");
+            return FAIL;
+        }
+    }
+
+    for_(size_t j = 0; j < v_stream.size(); j++)
+    for (size_t i = 0; i < v_nsecs[j].size(); i++) {
+        t.stop(1, (int64_t)v_cycles[j][i], v_nsecs[j][i] / 1e6);
+    }
+
+    return OK;
+}
+
+int get_num_submissions(const timer::timer_t &t) {
+    double ms_min = t.total_ms();
+
+    if (t.times() != 1 || ms_min == 0.0) SAFE_V(FAIL);
+
+    // Estimate the number of runs based on the budget and the measured time.
+    int n_estimated = MAX2(1, (int)(max_ms_per_prb / ms_min));
+
+    // There seems to be some limit to how many kernels can be queued in OCL
+    // builds and 4096 seems to be a nice number under that limit.
+    // Otherwise, hangs in perf validation are observed due to many kernels
+    // being queued at once.
+    static constexpr int max_batch_times = 4096;
+
+    return MIN2(max_batch_times, n_estimated);
+}
+
 inline int measure_perf_individual(timer::timer_t &t, dnnl_stream_t stream,
         perf_function_t &perf_func, std::vector<dnnl_exec_arg_t> &dnnl_args) {
     // Warm-up run.
@@ -689,12 +737,6 @@ inline int measure_perf_individual(timer::timer_t &t, dnnl_stream_t stream,
 inline int measure_perf_aggregate(timer::timer_t &t,
         const std::vector<stream_t> &v_stream, perf_function_t &perf_func,
         std::vector<std::vector<dnnl_exec_arg_t>> &dnnl_args) {
-    // There seems to be some limit to how many kernels can be queued in OCL
-    // builds and 4096 seems to be a nice number under that limit.
-    // Otherwise, hangs in perf validation are observed due to many kernels
-    // being queued at once.
-    static constexpr int max_batch_times = 4096;
-
     std::vector<cold_cache_t> cold_cache(num_streams);
 
     // Nvidia/AMD don't support profiling.
@@ -709,71 +751,32 @@ inline int measure_perf_aggregate(timer::timer_t &t,
         if (use_profiling) reset_gpu_profiling(v_stream[j]);
     }
 
-    bool is_first_loop = true;
-    int cur_batch_times
-            = fix_times_per_prb ? fix_times_per_prb : min_times_per_prb;
+    // Estimate run, not measured, too. Used to calculate the number of
+    // iterations to run with a single submission. Done on a single stream.
+    t.reset();
+    DNN_SAFE(perf_func(v_stream[0], dnnl_args[0]), WARN);
+    DNN_SAFE(dnnl_stream_wait(v_stream[0]), CRIT);
+    SAFE(update_timer_with_profiling_info(t, use_profiling, v_stream, 1), WARN);
+    int num_submissions = get_num_submissions(t);
 
     t.reset();
-    while (true) {
-        // Keep separate var due to a `break` inside the loop.
-        int execute_count = 0;
-        // Keep inner loop over streams for better submission overlapping.
-        for_(int i = 0; i < cur_batch_times; i++)
-        for (size_t j = 0; j < v_stream.size(); j++) {
-            if (!cold_cache[j].update_dnnl_args(dnnl_args[j])) break;
-            DNN_SAFE(perf_func(v_stream[j], dnnl_args[j]), WARN);
-            execute_count++;
-        }
-
-        for (size_t j = 0; j < v_stream.size(); j++) {
-            DNN_SAFE(dnnl_stream_wait(v_stream[j]), CRIT);
-        }
-
-        if (use_profiling) {
-            std::vector<std::vector<uint64_t>> v_nsecs(num_streams);
-            std::vector<std::vector<uint64_t>> v_cycles(num_streams);
-            bool nsecs_is_empty = false;
-            for (size_t j = 0; j < v_stream.size(); j++) {
-                SAFE(get_gpu_profiling_info(v_stream[j], v_nsecs[j],
-                             v_cycles[j], execute_count),
-                        CRIT);
-                reset_gpu_profiling(v_stream[j]);
-
-                // Profiling should have information to report, otherwise, stop.
-                if (v_nsecs[j].empty()) {
-                    nsecs_is_empty = true;
-                    BENCHDNN_PRINT(0, "%s\n",
-                            "WARNING: no counters were found during "
-                            "profiling.");
-                    break;
-                }
-            }
-            if (nsecs_is_empty) break;
-
-            for_(size_t j = 0; j < v_stream.size(); j++)
-            for (size_t i = 0; i < v_nsecs[j].size(); i++) {
-                t.stop(1, (int64_t)v_cycles[j][i], v_nsecs[j][i] / 1e6);
-            }
-        } else {
-            t.stamp(cur_batch_times * num_streams);
-        }
-
-        // Assumption that for each stream cold_cache acts same.
-        if (should_stop(t) || cold_cache[0].should_stop()) break;
-
-        // Adjust cur_batch_times after the first batch run
-        if (is_first_loop) {
-            double ms_min = t.ms(timer::timer_t::min);
-            // Heuristic: try to use ~5 batch runs for the whole benchmark
-            int batch_times_heuristic = (ms_min == 0.0)
-                    ? INT_MAX
-                    : MAX2(1,
-                              (int)((max_ms_per_prb - t.total_ms()) / ms_min
-                                      / 5));
-            cur_batch_times = MIN2(max_batch_times, batch_times_heuristic);
-            is_first_loop = false;
-        }
+    // Keep separate var due to a `break` inside the loop.
+    int execute_count = 0;
+    // Keep inner loop over streams for better submission overlapping.
+    for_(int i = 0; i < num_submissions; i++)
+    for (size_t j = 0; j < v_stream.size(); j++) {
+        if (!cold_cache[j].update_dnnl_args(dnnl_args[j])) break;
+        DNN_SAFE(perf_func(v_stream[j], dnnl_args[j]), WARN);
+        execute_count++;
     }
+
+    for (size_t j = 0; j < v_stream.size(); j++) {
+        DNN_SAFE(dnnl_stream_wait(v_stream[j]), CRIT);
+    }
+
+    SAFE(update_timer_with_profiling_info(
+                 t, use_profiling, v_stream, execute_count),
+            WARN);
 
     if (use_profiling) {
         for (size_t j = 0; j < v_stream.size(); j++) {

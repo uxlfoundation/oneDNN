@@ -42,7 +42,7 @@ namespace rv64 {
 // Winograd domain specification for GEMM-based Winograd convolution.
 // Single-core execution: processes batches sequentially with
 // local input/output buffers to keep working set in cache.
-struct WinogradDomainSpec {
+struct WinogradDomainSpec_t {
     // Matrix dimensions for brgemm: C[OC×tiles] = A[OC×IC] × B[IC×tiles]
     dim_t M; // Total tiles per batch = ceil(oh/2) * ceil(ow/2)
     dim_t K; // Input channels (IC)
@@ -88,7 +88,7 @@ struct rvv_winograd_conf_t {
     dim_t mb; // Batch size
 
     // Winograd domain specification for GEMM-based execution
-    WinogradDomainSpec wspec;
+    WinogradDomainSpec_t wspec;
 };
 
 status_t rvv_winograd_init_conf(rvv_winograd_conf_t &conf,
@@ -278,8 +278,8 @@ private:
 
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
-    std::unique_ptr<jit_generator_t> input_xform_;
-    std::unique_ptr<jit_generator_t> output_xform_;
+    std::unique_ptr<jit_wino_input_transform_t> input_xform_;
+    std::unique_ptr<jit_wino_output_transform_t> output_xform_;
 };
 
 } // namespace rv64

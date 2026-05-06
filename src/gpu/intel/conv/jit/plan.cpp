@@ -16,6 +16,8 @@
 
 #include "gpu/intel/conv/jit/plan.hpp"
 
+#include "common/verbose.hpp"
+#include "gpu/gpu_utils.hpp"
 #include "gpu/intel/conv/jit/config.hpp"
 #include "gpu/intel/jit/ir/gemm_schedule.hpp"
 #include "gpu/intel/jit/ir/legacy.hpp"
@@ -1599,6 +1601,11 @@ layout_t pad_slm_layout(
         const dsl::hw_t &hw, const layout_t &layout, const grid_info_t &grid) {
     // EUs are fused only in XeHP and XeHPG; otherwise no need to pad SLM.
     if (hw >= ngen::HW::XeHPC || hw <= ngen::HW::XeLP) return layout;
+    if (gpu::instr_enabled("INSTR_CONV_NO_PAD_SLM")) {
+        VDEBUGINFO(4, primitive, convolution,
+                "INSTR: SLM padding disabled by env var");
+        return layout;
+    }
     auto tg_dim0 = grid.dim(0);
     auto tg_dim1 = grid.dim(1);
     int type_size = layout.type().size();
@@ -2112,6 +2119,11 @@ private:
     }
 
     bool use_prefetch(abc_kind_t abc) const {
+        if (gpu::instr_enabled("INSTR_CONV_NO_PREFETCH")) {
+            VDEBUGINFO(4, primitive, convolution,
+                    "INSTR: prefetch disabled by env var");
+            return false;
+        }
         auto &prb = cfg_.prb();
         bool is_a = (abc == abc_kind_t::a);
         if (cfg_.prefetch().is_overridden()) {
@@ -2129,6 +2141,11 @@ private:
     }
 
     bool use_slm(abc_kind_t abc) const {
+        if (gpu::instr_enabled("INSTR_CONV_NO_SLM")) {
+            VDEBUGINFO(4, primitive, convolution,
+                    "INSTR: SLM buffering disabled by env var");
+            return false;
+        }
         auto &prb = cfg_.prb();
         bool is_a = (abc == abc_kind_t::a);
         if (cfg_.bufs_hint() == 0) return false;

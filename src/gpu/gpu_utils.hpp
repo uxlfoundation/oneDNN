@@ -18,6 +18,7 @@
 #define GPU_GPU_UTILS_HPP
 
 #include <cassert>
+#include <cstring>
 #include <map>
 #include <vector>
 
@@ -25,6 +26,7 @@
 
 #include "common/primitive_attr.hpp"
 #include "common/primitive_exec_types.hpp"
+#include "common/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -199,6 +201,17 @@ private:
     float scale_ = 0;
     int zp_ = 0;
 };
+
+// Instrumentation utility: check if INSTR_REF_<feature>=ON env var is set.
+// Returns true when the env var is set to "ON" (case-sensitive).
+// Default (absent or any other value) = false.
+inline bool instr_enabled(const char *env_name) {
+    char buf[8] = {};
+    if (dnnl::impl::getenv(env_name, buf, sizeof(buf)) > 0) {
+        return (std::strcmp(buf, "ON") == 0);
+    }
+    return false;
+}
 
 } // namespace gpu
 } // namespace impl

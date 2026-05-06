@@ -14,7 +14,9 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "common/verbose.hpp"
 #include "gpu/gpu_impl_list.hpp"
+#include "gpu/gpu_utils.hpp"
 
 #include "gpu/generic/cross_engine_reorder.hpp"
 #include "gpu/generic/direct_copy.hpp"
@@ -62,12 +64,23 @@ constexpr impl_list_item_t impl_list[] = REG_REORDER_P({
         GPU_REORDER_INSTANCE_GENERIC_SYCL(generic::sycl::ref_reorder_t::pd_t)
         nullptr,
 });
+
+constexpr impl_list_item_t ref_only_list[] = REG_REORDER_P({
+        GPU_REORDER_INSTANCE_INTEL(intel::reorder::ref_t::pd_t)
+        nullptr,
+});
 // clang-format on
 
 } // namespace
 
 const impl_list_item_t *get_reorder_impl_list(
         const memory_desc_t *, const memory_desc_t *) {
+    if (instr_enabled("INSTR_REF_REORDER")) {
+        VDEBUGINFO(4, primitive, reorder,
+                "INSTR: forcing reference implementation");
+        return ref_only_list;
+    }
+    VDEBUGINFO(4, primitive, reorder, "INSTR: using optimized implementation");
     return impl_list;
 }
 

@@ -14,7 +14,9 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "common/verbose.hpp"
 #include "gpu/gpu_impl_list.hpp"
+#include "gpu/gpu_utils.hpp"
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
 #include "gpu/intel/reduction/atomic.hpp"
@@ -60,12 +62,24 @@ constexpr impl_list_item_t impl_list[] = REG_REDUCTION_P({
         GPU_INSTANCE_GENERIC_SYCL(generic::sycl::simple_reduction_t)
         nullptr,
 });
+
+constexpr impl_list_item_t ref_only_list[] = REG_REDUCTION_P({
+        GPU_INSTANCE_INTEL(intel::reduction::ref_t)
+        nullptr,
+});
 // clang-format on
 
 } // namespace
 
 const impl_list_item_t *get_reduction_impl_list(const reduction_desc_t *desc) {
     UNUSED(desc);
+    if (instr_enabled("INSTR_REF_REDUCTION")) {
+        VDEBUGINFO(4, primitive, reduction,
+                "INSTR: forcing reference implementation");
+        return ref_only_list;
+    }
+    VDEBUGINFO(
+            4, primitive, reduction, "INSTR: using optimized implementation");
     return impl_list;
 }
 

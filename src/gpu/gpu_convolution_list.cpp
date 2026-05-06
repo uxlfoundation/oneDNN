@@ -14,7 +14,9 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "common/verbose.hpp"
 #include "gpu/gpu_impl_list.hpp"
+#include "gpu/gpu_utils.hpp"
 
 #include <mutex>
 
@@ -50,6 +52,15 @@ namespace {
 using namespace dnnl::impl::prop_kind;
 
 // clang-format off
+
+// Reference-only list for INSTR_REF_CONV=ON
+constexpr impl_list_item_t ref_conv_list[] = REG_CONV_P({
+        GPU_INSTANCE_INTEL(intel::conv::ref_fwd_t)
+        GPU_INSTANCE_INTEL(intel::conv::ref_bwd_data_t)
+        GPU_INSTANCE_INTEL(intel::conv::ref_bwd_weights_t)
+        nullptr,
+});
+
 const std::map<pk_impl_key_t, std::vector<impl_list_item_t>>
         impl_list_map REG_CONV_P({
     {{forward}, {
@@ -116,6 +127,15 @@ get_impl_list_map() {
 const impl_list_item_t *get_convolution_impl_list(
         const convolution_desc_t *desc) {
     static const impl_list_item_t empty_list[] = {nullptr};
+
+    if (instr_enabled("INSTR_REF_CONV")) {
+        VDEBUGINFO(4, primitive, convolution,
+                "INSTR: forcing reference implementation");
+        return ref_conv_list;
+    }
+
+    VDEBUGINFO(
+            4, primitive, convolution, "INSTR: using optimized implementation");
 
     const bool is_fwd = utils::one_of(
             desc->prop_kind, forward_training, forward_inference);

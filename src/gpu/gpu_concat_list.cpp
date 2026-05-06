@@ -14,7 +14,9 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "common/verbose.hpp"
 #include "gpu/gpu_impl_list.hpp"
+#include "gpu/gpu_utils.hpp"
 
 #include "gpu/generic/ref_concat.hpp"
 
@@ -38,11 +40,22 @@ constexpr impl_list_item_t impl_list[] = REG_CONCAT_P({
         GPU_CONCAT_INSTANCE_GENERIC(generic::ref_concat_t)
         nullptr,
 });
+
+constexpr impl_list_item_t ref_only_list[] = REG_CONCAT_P({
+        GPU_CONCAT_INSTANCE_GENERIC(generic::ref_concat_t)
+        nullptr,
+});
 // clang-format on
 
 } // namespace
 
 const impl_list_item_t *get_concat_impl_list() {
+    if (instr_enabled("INSTR_REF_CONCAT")) {
+        VDEBUGINFO(4, primitive, concat,
+                "INSTR: forcing reference implementation");
+        return ref_only_list;
+    }
+    VDEBUGINFO(4, primitive, concat, "INSTR: using optimized implementation");
     return impl_list;
 }
 

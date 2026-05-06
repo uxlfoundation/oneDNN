@@ -14,7 +14,9 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "common/verbose.hpp"
 #include "gpu/gpu_impl_list.hpp"
+#include "gpu/gpu_utils.hpp"
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
 #include "gpu/intel/matmul/gemm.hpp"
@@ -58,11 +60,22 @@ constexpr impl_list_item_t impl_list[] = REG_MATMUL_P({
         GPU_INSTANCE_GENERIC_SYCL(generic::sycl::ref_matmul_t)
         nullptr,
 });
+
+constexpr impl_list_item_t ref_only_list[] = REG_MATMUL_P({
+        GPU_INSTANCE_INTEL(intel::matmul::ref_t)
+        nullptr,
+});
 // clang-format on
 } // namespace
 
 const impl_list_item_t *get_matmul_impl_list(const matmul_desc_t *desc) {
     UNUSED(desc);
+    if (instr_enabled("INSTR_REF_MATMUL")) {
+        VDEBUGINFO(4, primitive, matmul,
+                "INSTR: forcing reference implementation");
+        return ref_only_list;
+    }
+    VDEBUGINFO(4, primitive, matmul, "INSTR: using optimized implementation");
     return impl_list;
 }
 

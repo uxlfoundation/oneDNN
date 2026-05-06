@@ -21,6 +21,8 @@
 #include <mutex>
 
 #include "common/utils.hpp"
+#include "common/verbose.hpp"
+#include "gpu/gpu_utils.hpp"
 #include "gpu/intel/conv/jit/config.hpp"
 #include "gpu/intel/conv/jit/normalization.hpp"
 #include "gpu/intel/conv/jit/plan.hpp"
@@ -1048,6 +1050,12 @@ status_t init_fma_kind(
             to_ir(prb.b_data_type), to_ir(prb.acc_data_type));
     // Force mad for some cases
     if (should_use_mad(prb)) fma_kind = fma_kind_t::mad;
+    if (utils::one_of(fma_kind, fma_kind_t::dpas, fma_kind_t::dpasw)
+            && gpu::instr_enabled("INSTR_CONV_NO_DPAS")) {
+        VDEBUGINFO(4, primitive, convolution,
+                "INSTR: DPAS disabled by env var, forcing MAD");
+        fma_kind = fma_kind_t::mad;
+    }
     VDISPATCH_CHECK(pd, engine, fma_kind != fma_kind_t::undef,
             VERBOSE_UNSUPPORTED_DT_CFG);
     cfg.set_fma_kind(fma_kind);
@@ -1207,6 +1215,11 @@ void init_pipeline(config_t &cfg) {
             = pipeline_unroll_hint(cfg.prb(), cfg.fma_kind(), cfg.options(),
                     cfg.bwd_d_optimize_kind(), cfg.allow_global_reduction());
     if (cfg.plan().reuse_headers) do_unroll = false;
+    if (do_unroll && gpu::instr_enabled("INSTR_CONV_NO_UNROLL")) {
+        VDEBUGINFO(4, primitive, convolution,
+                "INSTR: loop unrolling disabled by env var");
+        do_unroll = false;
+    }
     cfg.pipeline().set(do_unroll, cfg.plan().reuse_headers);
 }
 
@@ -1791,6 +1804,19 @@ void init_subtiles(config_t &cfg) {
     auto &p = cfg.plan();
     if (p.split_abc == abc_kind_t::a) a = p.split_factor;
     if (p.split_abc == abc_kind_t::b) b = p.split_factor;
+    if (gpu::instr_enabled("INSTR_CONV_NO_SUBTILES")) {
+        if (a > 1 || b > 1) {
+            VDEBUGINFO(4, primitive, convolution,
+                    "INSTR: subtiles disabled by env var (was a=%d b=%d)", a,
+                    b);
+            a = 1;
+            b = 1;
+        } else {
+            VDEBUGINFO(4, primitive, convolution,
+                    "INSTR: INSTR_CONV_NO_SUBTILES is ON but subtiles already"
+                    " a=1 b=1, no effect");
+        }
+    }
     cfg.subtiles().set(a, b);
 }
 

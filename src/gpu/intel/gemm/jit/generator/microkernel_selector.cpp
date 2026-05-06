@@ -503,13 +503,13 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
         default: break;
     }
 
-    if(block2DA) {
+    if(block2DA && !localA) {
         problem.A.alignment = std::min(problem.A.alignment,
                                         static_cast<uint8_t>(block2DMinAlignment(hw, problem.A, strategy.A)));
     } else {
         problem.A.setAlignment(std::min<uint8_t>(problem.A.alignment, s.unroll[LoopM] * problem.Ta));
     }
-    if(block2DB) {
+    if(block2DB && !localB) {
         problem.B.alignment = std::min(problem.B.alignment,
                                         static_cast<uint8_t>(block2DMinAlignment(hw, problem.B, strategy.B)));
     } else {

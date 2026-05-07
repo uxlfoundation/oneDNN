@@ -113,6 +113,12 @@ static inline int format_type_checker(const char *, ...) {
                     __LINE__); \
     } while (0)
 
+// Per-primitive VDISPATCH_<PRIM>{,_SC,_IC} wrappers (in <primitive>_pd.hpp) are
+// built on VCONDCHECK/VCHECK below. Suffixes:
+//   (none) - boolean check; returns unimplemented, prefixes msg with info(engine).
+//   _SC    - status check; propagates the returned status_t on failure.
+//   _IC    - init check; like the boolean variant but without the info(engine)
+//            prefix, for use outside a pd_t context (e.g. init_conf()).
 // Macro for boolean checks
 #define VCONDCHECK( \
         apitype, logtype, logsubtype, component, condition, status, msg, ...) \

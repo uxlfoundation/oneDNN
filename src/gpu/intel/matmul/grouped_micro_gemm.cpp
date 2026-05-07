@@ -25,6 +25,11 @@
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/gemm/jit/gen_kernel.hpp"
 
+#include <algorithm>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+
 #define VCHECK_MATMUL(cond, msg, ...) \
     VCONDCHECK(primitive, create, check, matmul, (cond), \
             status::unimplemented, msg, ##__VA_ARGS__);

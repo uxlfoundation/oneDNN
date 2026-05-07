@@ -22,15 +22,15 @@
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
 
 #include "common/c_types_map.hpp"
-#include "common/memory_desc_wrapper.hpp"
 #include "common/primitive.hpp"
-#include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 #include "gemmstone/microkernel/package.hpp"
-#include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/matmul/config.hpp"
 #include "gpu/intel/primitive.hpp"
 #include "gpu/intel/primitive_conf.hpp"
+
+#include <array>
+#include <vector>
 
 namespace dnnl {
 namespace impl {

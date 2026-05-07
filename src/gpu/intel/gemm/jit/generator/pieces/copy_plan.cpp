@@ -287,10 +287,10 @@ void CopyPlan::transform()
 
     legalizeShfl();
 
-
 #if GEMMSTONE_ENABLE_COPY_PLAN_DUMP
-    if (getVerbose(GEMMVerbose::DebugInfo) >= 170)
-        dump();
+    const auto verbose = getVerbose(GEMMVerbose::DebugInfo);
+    if (verbose >= 170)
+        dump(verbose >= 180);
 #endif
 }
 
@@ -3689,109 +3689,107 @@ int CopyPlan::cycleCount() const
     return count;
 }
 
-void CopyPlan::dump(int n) const
+void CopyPlan::dump(std::ostream &os, int n, bool sortInfo) const
 {
-    for (int i = 0; i < (int)insns.size(); ++i){
-	if(n < 0 || i < n)
-        insns[i].dump(*this);
+    for (int i = 0; i < std::min<int>(n, insns.size()); ++i) {
+        insns[i].dump(os, *this, sortInfo);
+        os << std::endl;
     }
 }
 
-void CopyInstruction::dump(const CopyPlan &plan) const
+void CopyInstruction::dump(std::ostream &os, const CopyPlan &plan, bool sortInfo) const
 {
     if (flag && cmod == ConditionModifier::none) {
-        std::cout << '(';
-        flag.dump();
-        std::cout << ")\t";
+        os << '(';
+        flag.dump(os);
+        os << ")\t";
     }
 
     if (op == Opcode::shfl)
-        std::cout << "shfl.idx4";
+        os << "shfl.idx4";
     else
-        std::cout << getMnemonic(op, HW::Gen9);
+        os << getMnemonic(op, HW::Gen9);
     switch (op) {
-        case Opcode::bfn:  std::cout << ".(" << BFN::nodes[ctrl].str() << ')';  break;
-        case Opcode::math: std::cout << '.' << static_cast<MathFunction>(ctrl); break;
+        case Opcode::bfn:  os << ".(" << BFN::nodes[ctrl].str() << ')';  break;
+        case Opcode::math: os << '.' << static_cast<MathFunction>(ctrl); break;
         default: break;
     }
 
-    std::cout << " (" << simd << ")\t";
-    if (sat) std::cout << "(sat) ";
+    os << " (" << simd << ")\t";
+    if (sat) os << "(sat) ";
     if (cmod != ConditionModifier::none) {
-        std::cout << '(' << cmod << ')';
-        flag.dump();
-        std::cout << ' ';
+        os << '(' << cmod << ')';
+        flag.dump(os);
+        os << ' ';
     }
-    dst.dump();
-    std::cout << '\t';
-    src0.dump();
+    dst.dump(os);
+    os << '\t';
+    src0.dump(os);
     if (src1) {
-        std::cout << '\t';
-        src1.dump();
+        os << '\t';
+        src1.dump(os);
         if (src2) {
-            std::cout << '\t';
-            src2.dump();
+            os << '\t';
+            src2.dump(os);
         }
     }
     if (atomic)
-        std::cout << "\t{Atomic}";
+        os << "\t{Atomic}";
 
-    if (getVerbose(GEMMVerbose::DebugInfo) >= 180)
-        std::cout << "\t\t(phase = " << phase << ", cnum = [" << cnumMin << ", " << cnumMax << "])";
-
-    std::cout << std::endl;
+    if (sortInfo)
+        os << "\t\t(phase = " << phase << ", cnum = [" << cnumMin << ", " << cnumMax << "])";
 }
 
-void CopyOperand::dump() const
+void CopyOperand::dump(std::ostream &os) const
 {
-    auto outType = [](DataType dt) {
-        if (dt == Type::ngen_nf4())       std::cout << "nf4";
-        else if (dt == Type::ngen_e8m0()) std::cout << "e8m0";
-        else if (dt == DataType::e2m1) std::cout << "e2m1";
-        else if (dt == DataType::e3m0) std::cout << "e3m0";
-        else if (dt == ngen_b16_l4x())    std::cout << "b16_l4x";
-        else if (dt == ngen_b16_h4x())    std::cout << "b16_h4x";
-        else if (dt == ngen_b16())        std::cout << "b16";
-        else                              std::cout << dt;
+    auto outType = [&](DataType dt) {
+        if (dt == Type::ngen_nf4())       os << "nf4";
+        else if (dt == Type::ngen_e8m0()) os << "e8m0";
+        else if (dt == DataType::e2m1)    os << "e2m1";
+        else if (dt == DataType::e3m0)    os << "e3m0";
+        else if (dt == ngen_b16_l4x())    os << "b16_l4x";
+        else if (dt == ngen_b16_h4x())    os << "b16_h4x";
+        else if (dt == ngen_b16())        os << "b16";
+        else                              os << dt;
     };
 
-    if (neg) std::cout << '-';
-    if (abs) std::cout << "(abs)";
+    if (neg) os << '-';
+    if (abs) os << "(abs)";
     switch (kind) {
-        case Null: std::cout << "null:" << type; break;
+        case Null: os << "null:" << type; break;
         case GRF:
             if (temp) {
-                std::cout << 't' << value;
-                if (grf) std::cout << '+' << grf;
+                os << 't' << value;
+                if (grf) os << '+' << grf;
             } else
-                std::cout << 'r' << grf;
-            std::cout << '.' << int(offset) << ':';
+                os << 'r' << grf;
+            os << '.' << int(offset) << ':';
             outType(type);
             if (range != DataType::invalid && range != type) {
-                std::cout << '[';
+                os << '[';
                 outType(range);
-                std::cout << ']';
+                os << ']';
             }
-            std::cout << '<';
+            os << '<';
             if (vs || width)
-                std::cout << int(vs) << ';' << int(width) << ',';
-            std::cout << int(stride) << '>';
+                os << int(vs) << ';' << int(width) << ',';
+            os << int(stride) << '>';
             break;
         case Flag:
             if (temp)
-                std::cout << 't' << value;
+                os << 't' << value;
             else
-                std::cout << 'f' << (grf >> 1) << '.' << (grf & 1);
+                os << 'f' << (grf >> 1) << '.' << (grf & 1);
             if (offset)
-                std::cout << '+' << int(offset);
+                os << '+' << int(offset);
             break;
         case Immediate:
             LabelManager man;
-            ngenImmediate().outputText(std::cout, PrintDetail::full, man);
+            ngenImmediate().outputText(os, PrintDetail::full, man);
             break;
     }
-    if (stride > 1 && overwriteStride) std::cout << "!!";
-    else if (overwrite)                std::cout << '!';
+    if (stride > 1 && overwriteStride) os << "!!";
+    else if (overwrite)                os << '!';
 }
 #endif /* GEMMSTONE_ENABLE_COPY_PLAN_DUMP */
 

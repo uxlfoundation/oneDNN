@@ -35,6 +35,10 @@ GEMMSTONE_NAMESPACE_START
 #endif
 #endif
 
+#if GEMMSTONE_ENABLE_COPY_PLAN_DUMP
+#include <iostream>
+#endif
+
 class CopyPlan;
 
 struct CopyOperand
@@ -78,7 +82,8 @@ struct CopyOperand
     friend CopyOperand abs(CopyOperand o) { o.abs = true; return o; }
 
 #if GEMMSTONE_ENABLE_COPY_PLAN_DUMP
-    void dump() const;
+    void dump(std::ostream &os) const;
+    void dump() const { dump(std::cout); }
 #endif
 };
 
@@ -110,7 +115,8 @@ struct CopyInstruction
     inline void execute(Generator &g);
 
 #if GEMMSTONE_ENABLE_COPY_PLAN_DUMP
-    void dump(const CopyPlan &plan) const;
+    void dump(std::ostream &os, const CopyPlan &plan, bool sortInfo = false) const;
+    void dump(const CopyPlan &plan, bool sortInfo = false) const { dump(std::cout, plan, sortInfo); }
 #endif
 };
 
@@ -192,7 +198,9 @@ public:
     int tempFlagBytes() const;
 
 #if GEMMSTONE_ENABLE_COPY_PLAN_DUMP
-    void dump(int n = -1) const;
+    void dump(std::ostream &os, int n, bool sortInfo) const;
+    void dump(int n, bool sortInfo = false) const { dump(std::cout, n, sortInfo); }
+    void dump(bool sortInfo = false) const { dump((int)insns.size(), sortInfo); }
     int cycleCount() const;
 #endif
 

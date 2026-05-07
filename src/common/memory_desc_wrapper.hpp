@@ -296,10 +296,21 @@ struct memory_desc_wrapper : public c_compatible {
         return buff_size;
     }
 
-    /** returns the size required to store described memory note: does not
-        include offset0 by default */
+    // Returns the physical size required to store a memory descriptor of a
+    // requested kind. The returned result assumes `offset0` is equal to zero.
+    // To append the actual `offset0` shift, use `include_offset0 = true`.
+    //
+    // To return the logical size of the buffer, use
+    // `return_logical_size = true`. Useful to calculate the amount of memory
+    // used by the kernel.
+    //
+    // Some primitives may append additional buffer size, which is usually
+    // called compensation, and is attributed as "additional size" in this
+    // function. To report the size without additional buffers, use
+    // `include_additional_size = false`.
     size_t size(int index = 0, bool include_additional_size = true,
-            bool include_offset0 = false) const {
+            bool include_offset0 = false,
+            bool return_logical_size = false) const {
         if (utils::one_of(format_kind(), format_kind::undef, format_kind::any)
                 || is_zero() || has_zero_dim())
             return 0;
@@ -320,21 +331,25 @@ struct memory_desc_wrapper : public c_compatible {
         } else if (is_cublaslt_blocked_desc()) {
             return cublaslt_blocked_desc().size;
         } else if (is_blocking_desc()) {
-            dims_t blocks = {0};
-            compute_blocks(blocks);
-
-            const auto &bd = blocking_desc();
-
             size_t max_size = 0;
-            for (int d = 0; d < ndims(); ++d) {
-                dim_t strided_pdim = padded_dims()[d] / blocks[d];
-                dim_t effective_stride = strided_pdim == 1 ? 1 : bd.strides[d];
-                max_size = nstl::max<size_t>(
-                        max_size, strided_pdim * effective_stride);
-            }
+            if (return_logical_size) {
+                max_size = std::max(max_size, static_cast<size_t>(nelems()));
+            } else {
+                dims_t blocks = {0};
+                compute_blocks(blocks);
+                const auto &bd = blocking_desc();
 
-            if (max_size == 1 && bd.inner_nblks != 0) {
-                max_size = static_cast<size_t>(blk_size());
+                for (int d = 0; d < ndims(); ++d) {
+                    dim_t strided_pdim = padded_dims()[d] / blocks[d];
+                    dim_t effective_stride
+                            = strided_pdim == 1 ? 1 : bd.strides[d];
+                    max_size = nstl::max<size_t>(
+                            max_size, strided_pdim * effective_stride);
+                }
+
+                if (max_size == 1 && bd.inner_nblks != 0) {
+                    max_size = static_cast<size_t>(blk_size());
+                }
             }
 
             // `div_up` guarantees a spot in memory for odd number of half-byte

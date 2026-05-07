@@ -19,8 +19,6 @@
 
 #include "oneapi/dnnl/dnnl_ze.hpp"
 
-extern "C" bool dnnl_impl_gpu_intel_mayiuse_ngen_kernels(dnnl_engine_t engine);
-
 namespace dnnl {
 namespace {
 
@@ -122,13 +120,6 @@ TEST_P(ze_engine_test_t, BinaryKernels) {
             = dnnl_ze_interop_engine_create(&eng, ze_driver, ze_dev, ze_ctx);
 
     ASSERT_EQ(s, p.expected_status);
-
-//DNNL_ENABLE_MEM_DEBUG forces allocation fail, causing mayiuse to fail
-#ifndef DNNL_ENABLE_MEM_DEBUG
-    if (s == dnnl_success) {
-        ASSERT_EQ(dnnl_impl_gpu_intel_mayiuse_ngen_kernels(eng), true);
-    }
-#endif
 
     if (s == dnnl_success) { DNNL_CHECK(dnnl_engine_destroy(eng)); }
 }

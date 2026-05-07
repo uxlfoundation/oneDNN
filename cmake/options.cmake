@@ -174,6 +174,11 @@ set(DNNL_AMD_SYCL_KERNELS_TARGET_ARCH "" CACHE STRING
     stops to require specifying the target architecture. After removing the option
     the generic SYCL kernels will always be enabled for AMD vendor.")
 
+option(ONEDNN_ENABLE_SYCL_DEVICE_LINK
+  "When the library type is STATIC and the runtime is SYCL, the generated static
+   library can be linked using a SYCL-agnostic host linker."
+  OFF)
+
 # =============
 # Optimizations
 # =============

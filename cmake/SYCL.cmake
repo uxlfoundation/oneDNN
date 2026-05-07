@@ -85,6 +85,79 @@ macro(suppress_warnings_for_nvidia_target)
     append(CMAKE_CXX_FLAGS "-Wno-unknown-cuda-version")
 endmacro()
 
+if (ONEDNN_ENABLE_SYCL_DEVICE_LINK AND DNNL_WITH_SYCL)
+  check_cxx_compiler_flag("-fsycl -fsycl-link" ONEDNN_HAVE_FSYCL_LINK)
+endif()
+
+# onednn_add_sycl_device_link_object(final_target lib_deps)
+#
+# Runs -fsycl-link over the compiled object files listed in lib_deps and
+# appends the resulting device-linked object to final_target's static archive.
+#
+# lib_deps must be a list of $<TARGET_OBJECTS:X> generator expressions
+# (e.g. the DNNL_LIB_DEPS global property).  These are passed directly to the
+# compiler so that CMake expands them to the real .o paths at generate time;
+# this avoids the empty-expansion problem that occurs when using an
+# intermediate OBJECT library whose sources are themselves TARGET_OBJECTS refs.
+function(onednn_add_sycl_device_link_object final_target lib_deps)
+  if (NOT ONEDNN_ENABLE_SYCL_DEVICE_LINK)
+    return()
+  endif()
+  if (NOT DNNL_WITH_SYCL)
+    return()
+  endif()
+  if (NOT DNNL_LIBRARY_TYPE STREQUAL "STATIC")
+    return()
+  endif()
+  if (NOT ONEDNN_HAVE_FSYCL_LINK)
+    message(WARNING "SYCL device link requested but compiler does not support -fsycl-link")
+    return()
+  endif()
+  if (NOT lib_deps)
+    message(FATAL_ERROR
+      "onednn_add_sycl_device_link_object: lib_deps is empty for ${final_target}; "
+      "-fsycl-link would receive no input files.")
+    return()
+  endif()
+
+  # Extract the OBJECT library target names so we can list them in DEPENDS.
+  # Using target names (rather than $<TARGET_OBJECTS:...> in DEPENDS) keeps
+  # compatibility with CMake < 3.20 while still guaranteeing build order.
+  set(_obj_targets)
+  foreach(_dep IN LISTS lib_deps)
+    if(_dep MATCHES "^\\$<TARGET_OBJECTS:(.+)>$")
+      list(APPEND _obj_targets "${CMAKE_MATCH_1}")
+    endif()
+  endforeach()
+
+  set(device_obj "${CMAKE_CURRENT_BINARY_DIR}/${final_target}_sycl_device.o")
+  set(_rspfile "${CMAKE_CURRENT_BINARY_DIR}/${final_target}_sycl_link.rsp")
+
+  # Write one .o path per line into a response file at CMake generate time.
+  # file(GENERATE) fully expands $<TARGET_OBJECTS:X> generator expressions,
+  # so the file will contain the real paths.  Using @rspfile avoids the
+  # "Argument list too long" error when there are hundreds of object files.
+  file(GENERATE
+    OUTPUT "${_rspfile}"
+    CONTENT "$<JOIN:${lib_deps},\n>"
+  )
+
+  add_custom_command(
+    OUTPUT "${device_obj}"
+    COMMAND "${CMAKE_CXX_COMPILER}"
+            -fsycl -fsycl-link
+            "@${_rspfile}"
+            -o "${device_obj}"
+    DEPENDS ${_obj_targets} "${_rspfile}"
+    VERBATIM
+    COMMENT "Generating SYCL device-linked object via -fsycl-link for ${final_target}"
+  )
+
+  add_custom_target(${final_target}_sycl_device_obj DEPENDS "${device_obj}")
+  add_dependencies(${final_target} ${final_target}_sycl_device_obj)
+  target_sources(${final_target} PRIVATE "${device_obj}")
+endfunction()
+
 if(DNNL_SYCL_CUDA)
     suppress_warnings_for_nvidia_target()
     find_package(cuBLAS REQUIRED)
@@ -126,6 +199,7 @@ if(NOT WIN32)
 endif()
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsycl")
+
 
 if(DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER)
     include(CheckCXXSourceRuns)

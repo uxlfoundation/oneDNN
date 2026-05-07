@@ -563,16 +563,15 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_tags(memory_desc_t &A_md,
                     || this->is_f16_with_int_wei() || this->is_tf32()
                     || this->is_f32_with_int_wei() || this->is_bf16_fp8()
                     || this->is_f16_fp8();
-            bgmmc.src_tag = is_adbc_allowed
-                    ? memory_desc_matches_one_of_tag(A_md,
-                              plain_tensor_layout_tag,
-                              transposed_tensor_layout_tag, acbd, adbc)
+            bgmmc.src_tag = is_adbc_allowed ? memory_desc_matches_one_of_tag(
+                                    A_md, plain_tensor_layout_tag,
+                                    transposed_tensor_layout_tag, acbd, adbc)
                     : is_int8_avx512_core
                     ? memory_desc_matches_one_of_tag(A_md,
-                              plain_tensor_layout_tag,
-                              transposed_tensor_layout_tag, acbd)
+                            plain_tensor_layout_tag,
+                            transposed_tensor_layout_tag, acbd)
                     : memory_desc_matches_one_of_tag(
-                              A_md, plain_tensor_layout_tag, acbd);
+                            A_md, plain_tensor_layout_tag, acbd);
             if (bgmmc.src_tag == format_tag::undef
                     || (memory_desc_matches_tag(
                                 A_md, transposed_tensor_layout_tag)

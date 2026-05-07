@@ -2253,8 +2253,8 @@ bool jit_brgemm_amx_uker_base_t::maybe_pre_process_data(brgemm_iteration_t &bi,
     const auto scratch_a_tiles = never_save_transform || brg.is_xf16_fp8
             ? 0
             : nstl::max<int>(should_save_transform(mk),
-                      should_save_transform(matrix_A) * brg.brgattr.max_bs
-                              * max_bdb2 * max_rdb);
+                    should_save_transform(matrix_A) * brg.brgattr.max_bs
+                            * max_bdb2 * max_rdb);
     const auto matrix_b_offset
             = transform_offset + brgemm_desc_t::tilesize * scratch_a_tiles;
     const auto matrix_offset = is_A ? matrix_a_offset : matrix_b_offset;

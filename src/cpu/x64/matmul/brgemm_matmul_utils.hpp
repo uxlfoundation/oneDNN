@@ -64,6 +64,17 @@ enum class gemv_strategy_t {
     m1_B_trans
 };
 
+// Nesting of the per-thread BMN chunk loop and the K-block loop in
+// brgemm_matmul_t::execute_body. The BMN sub-order (horizontal/vertical)
+// is a separate knob.
+//   bmn_k: per-thread BMN chunk loop outer, K-block loop inner (default).
+//   k_bmn: K-block loop hoisted above the per-thread BMN chunk loop
+//          (parallel K reduction: all threads advance the same kb).
+enum class matmul_loop_order_t {
+    bmn_k,
+    k_bmn,
+};
+
 struct brgemm_matmul_bcast_desc_t {
 
     brgemm_matmul_bcast_desc_t()
@@ -168,6 +179,8 @@ struct brgemm_matmul_conf_t {
 
     int nthr;
     int nthr_k = 1, nthr_m = 1, nthr_n = 1, nthr_b = 1;
+
+    matmul_loop_order_t loop_order = matmul_loop_order_t::bmn_k;
 
     bool is_thread_chunks_exec_order_horizontal;
     brgemm_kernel_hint_mem_advice_t mem_advice;

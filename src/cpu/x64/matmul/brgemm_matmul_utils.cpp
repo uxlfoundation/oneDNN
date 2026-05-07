@@ -2186,6 +2186,11 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
                                         : div_up(bgmmc.N, bgmmc.N_chunk_elems);
     bgmmc.K_chunks = bgmmc.is_runtime_K ? runtime_value_for(bgmmc.K_chunks)
                                         : div_up(bgmmc.K, bgmmc.K_chunk_elems);
+    // Hoist the K-block loop above the per-thread BMN loop when K is
+    // reduced across threads (same predicate as parallel_reduction_is_used).
+    bgmmc.loop_order = (bgmmc.nthr_k > 1 && bgmmc.K_chunks > 1)
+            ? matmul_loop_order_t::k_bmn
+            : matmul_loop_order_t::bmn_k;
     bgmmc.num_M_blocks = bgmmc.is_runtime_M
             ? runtime_value_for(bgmmc.num_M_blocks)
             : div_up(bgmmc.M, bgmmc.M_blk);

@@ -603,8 +603,6 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
         int start {0}, end {0};
         balance211(brgmm_ctx.get_parallel_work_amount_gemm(),
                 brgmm_ctx.get_num_threads_for_bmn(), ithr_bmn, start, end);
-        // Save first work-item index for compact-buffer addressing.
-        const int bmn_thread_start = start;
         int kc_start {0}, kc_end {bgmmc.K_chunks};
         if (brgmm_ctx.parallel_reduction_is_used())
             balance211((int)bgmmc.K_chunks, brgmm_ctx.get_num_threads_for_k(),
@@ -627,17 +625,29 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
         int m_chunks_per_thread = div_up(M_chunks, bgmmc.nthr_m);
         int n_chunks_per_thread = div_up(N_chunks, bgmmc.nthr_n);
         int batch_per_thread = div_up(bgmmc.batch, bgmmc.nthr_b);
-        if (brgmm_ctx.is_chunks_horizontal_process_order())
-            nd_iterator_init(start, bt, bgmmc.nthr_b, mt, bgmmc.nthr_m, nt,
-                    bgmmc.nthr_n, b_per_t, batch_per_thread, mc_per_t,
-                    m_chunks_per_thread, nc_per_t, n_chunks_per_thread);
-        else
-            nd_iterator_init(start, bt, bgmmc.nthr_b, nt, bgmmc.nthr_n, mt,
-                    bgmmc.nthr_m, b_per_t, batch_per_thread, nc_per_t,
-                    n_chunks_per_thread, mc_per_t, m_chunks_per_thread);
-        mc = mt * m_chunks_per_thread + mc_per_t;
-        nc = nt * n_chunks_per_thread + nc_per_t;
-        b = bt * batch_per_thread + b_per_t;
+
+        const int bmn_thread_start = start;
+
+        auto init_iterator = [&]() {
+            if (brgmm_ctx.is_chunks_horizontal_process_order())
+                nd_iterator_init(start, bt, bgmmc.nthr_b, mt, bgmmc.nthr_m, nt,
+                        bgmmc.nthr_n, b_per_t, batch_per_thread, mc_per_t,
+                        m_chunks_per_thread, nc_per_t, n_chunks_per_thread);
+            else
+                nd_iterator_init(start, bt, bgmmc.nthr_b, nt, bgmmc.nthr_n, mt,
+                        bgmmc.nthr_m, b_per_t, batch_per_thread, nc_per_t,
+                        n_chunks_per_thread, mc_per_t, m_chunks_per_thread);
+            mc = mt * m_chunks_per_thread + mc_per_t;
+            nc = nt * n_chunks_per_thread + nc_per_t;
+            b = bt * batch_per_thread + b_per_t;
+        };
+
+        auto reset_iterator = [&]() {
+            start = bmn_thread_start;
+            init_iterator();
+        };
+
+        init_iterator();
 
         auto advance_func = [&]() {
             ++start;
@@ -660,74 +670,170 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
         const char *a_batch_ptr = nullptr;
         const char *b_batch_ptr = nullptr;
 
-        while (start < end) {
-            if (mc >= M_chunks || nc >= N_chunks || b >= bgmmc.batch) {
-                advance_func();
-                continue;
-            }
-
-            auto m_start = mc * M_chunk_size;
-            const bool m_chunk_tail = mc == M_chunks - 1 && M_chunk_tail > 0;
-            auto m_end = m_start + (m_chunk_tail ? M_chunk_tail : M_chunk_size);
-            auto n_start = nc * bgmmc.N_chunk_size;
-            const bool n_chunk_tail = nc == N_chunks - 1 && N_chunk_tail > 0;
-            auto n_end = n_start
-                    + (n_chunk_tail ? N_chunk_tail : bgmmc.N_chunk_size);
-            int kc_prev = -1;
-            if (b != b_prev) {
-                a_batch_ptr = brgmm_ctx.get_data_A_batch_ptr(b);
-                b_batch_ptr = brgmm_ctx.get_data_B_batch_ptr(b);
-            }
+        if (bgmmc.loop_order == matmul_loop_order_t::k_bmn) {
+            int kb_prev = -1;
             for_(int kc = kc_start; kc < kc_end; kc++)
             {
                 const bool k_chunk_tail
                         = kc == K_chunks - 1 && K_chunk_tail > 0;
-                auto kb_start = kc * K_chunk_size;
-                auto kb_end = kb_start
+                auto kb_start_k = kc * K_chunk_size;
+                auto kb_end_k = kb_start_k
                         + (k_chunk_tail ? K_chunk_tail : K_chunk_size);
 
-                for (int nb = n_start; nb < n_end; nb++) {
-                    const bool bcast_across_all_batch_dims
-                            = bgmmc.bcast_B_desc.bcast_across_all_batch_dims;
-                    const bool skip_copy_b
-                            = (nb_prev == nb && kc_prev == kc
-                                      && (b_prev == b
-                                              || bcast_across_all_batch_dims))
-                            && !bgmmc.packed_sparse_weights;
+                for (int kb = kb_start_k; kb < kb_end_k; kb++) {
+                    reset_iterator();
+                    int wi_idx = 0;
+                    mc_prev = -1;
+                    nb_prev = -1;
+                    b_prev = -1;
+                    kb_prev = -1;
+                    a_batch_ptr = nullptr;
+                    b_batch_ptr = nullptr;
 
-                    for (int mb = m_start; mb < m_end; mb++) {
-                        const bool skip_copy_a = mc_prev == mc && kc_prev == kc
-                                && (b_prev == b
-                                        || bgmmc.bcast_A_desc
-                                                   .bcast_across_all_batch_dims);
-                        bool prefetch = determine_prefetch(
-                                mb, m_end, nb, n_end, bgmmc, brgmm_ctx);
-                        for (int kb = kb_start; kb < kb_end; kb++) {
+                    while (start < end) {
+                        if (mc >= M_chunks || nc >= N_chunks
+                                || b >= bgmmc.batch) {
+                            advance_func();
+                            continue;
+                        }
 
-                            if (bgmmc.use_buffer_b && mb == m_start
-                                    && !skip_copy_b)
+                        auto m_start = mc * M_chunk_size;
+                        const bool m_chunk_tail
+                                = mc == M_chunks - 1 && M_chunk_tail > 0;
+                        auto m_end = m_start
+                                + (m_chunk_tail ? M_chunk_tail : M_chunk_size);
+                        auto n_start = nc * bgmmc.N_chunk_size;
+                        const bool n_chunk_tail
+                                = nc == N_chunks - 1 && N_chunk_tail > 0;
+                        auto n_end = n_start
+                                + (n_chunk_tail ? N_chunk_tail
+                                                : bgmmc.N_chunk_size);
+                        if (b != b_prev) {
+                            a_batch_ptr = brgmm_ctx.get_data_A_batch_ptr(b);
+                            b_batch_ptr = brgmm_ctx.get_data_B_batch_ptr(b);
+                        }
+
+                        for (int nb = n_start; nb < n_end; nb++) {
+                            const bool bcast_across_all_batch_dims
+                                    = bgmmc.bcast_B_desc
+                                              .bcast_across_all_batch_dims;
+                            const bool skip_copy_b
+                                    = (nb_prev == nb && kb_prev == kb
+                                              && (b_prev == b
+                                                      || bcast_across_all_batch_dims))
+                                    && !bgmmc.packed_sparse_weights;
+
+                            if (bgmmc.use_buffer_b && !skip_copy_b)
                                 copy_b_chunk_in_buffer(brgmm_ctx, b_batch_ptr,
                                         ithr, b, nb, kb);
 
-                            if (use_buffer_a && nb == n_start && !skip_copy_a)
-                                copy_a_chunk_in_buffer(
-                                        brgmm_ctx, a_batch_ptr, ithr, mb, kb);
+                            for (int mb = m_start; mb < m_end; mb++) {
+                                const bool skip_copy_a = mc_prev == mc
+                                        && kb_prev == kb
+                                        && (b_prev == b
+                                                || bgmmc.bcast_A_desc
+                                                           .bcast_across_all_batch_dims);
+                                bool prefetch = determine_prefetch(
+                                        mb, m_end, nb, n_end, bgmmc, brgmm_ctx);
 
-                            compute_kernel(brgmm_ctx, a_batch_ptr, b_batch_ptr,
-                                    ithr, b, mb, nb, kb,
-                                    kc == kc_start && kb == kb_start,
-                                    prev_ker_idx, prefetch,
-                                    start - bmn_thread_start, ithr_bmn);
+                                if (use_buffer_a && nb == n_start
+                                        && !skip_copy_a)
+                                    copy_a_chunk_in_buffer(brgmm_ctx,
+                                            a_batch_ptr, ithr, mb, kb);
+
+                                compute_kernel(brgmm_ctx, a_batch_ptr,
+                                        b_batch_ptr, ithr, b, mb, nb, kb,
+                                        kc == kc_start && kb == kb_start_k,
+                                        prev_ker_idx, prefetch, wi_idx,
+                                        ithr_bmn);
+                            }
+                            nb_prev = nb;
+                            kb_prev = kb;
                         }
+                        mc_prev = mc;
+                        b_prev = b;
+                        wi_idx++;
+
+                        advance_func();
                     }
-                    kc_prev = kc;
-                    nb_prev = nb;
                 }
             }
-            mc_prev = mc;
-            b_prev = b;
+        } else {
+            while (start < end) {
+                if (mc >= M_chunks || nc >= N_chunks || b >= bgmmc.batch) {
+                    advance_func();
+                    continue;
+                }
 
-            advance_func();
+                auto m_start = mc * M_chunk_size;
+                const bool m_chunk_tail
+                        = mc == M_chunks - 1 && M_chunk_tail > 0;
+                auto m_end = m_start
+                        + (m_chunk_tail ? M_chunk_tail : M_chunk_size);
+                auto n_start = nc * bgmmc.N_chunk_size;
+                const bool n_chunk_tail
+                        = nc == N_chunks - 1 && N_chunk_tail > 0;
+                auto n_end = n_start
+                        + (n_chunk_tail ? N_chunk_tail : bgmmc.N_chunk_size);
+                int kc_prev = -1;
+                if (b != b_prev) {
+                    a_batch_ptr = brgmm_ctx.get_data_A_batch_ptr(b);
+                    b_batch_ptr = brgmm_ctx.get_data_B_batch_ptr(b);
+                }
+                for_(int kc = kc_start; kc < kc_end; kc++)
+                {
+                    const bool k_chunk_tail
+                            = kc == K_chunks - 1 && K_chunk_tail > 0;
+                    auto kb_start = kc * K_chunk_size;
+                    auto kb_end = kb_start
+                            + (k_chunk_tail ? K_chunk_tail : K_chunk_size);
+
+                    for (int nb = n_start; nb < n_end; nb++) {
+                        const bool bcast_across_all_batch_dims
+                                = bgmmc.bcast_B_desc
+                                          .bcast_across_all_batch_dims;
+                        const bool skip_copy_b
+                                = (nb_prev == nb && kc_prev == kc
+                                          && (b_prev == b
+                                                  || bcast_across_all_batch_dims))
+                                && !bgmmc.packed_sparse_weights;
+
+                        for (int mb = m_start; mb < m_end; mb++) {
+                            const bool skip_copy_a = mc_prev == mc
+                                    && kc_prev == kc
+                                    && (b_prev == b
+                                            || bgmmc.bcast_A_desc
+                                                       .bcast_across_all_batch_dims);
+                            bool prefetch = determine_prefetch(
+                                    mb, m_end, nb, n_end, bgmmc, brgmm_ctx);
+                            for (int kb = kb_start; kb < kb_end; kb++) {
+
+                                if (bgmmc.use_buffer_b && mb == m_start
+                                        && !skip_copy_b)
+                                    copy_b_chunk_in_buffer(brgmm_ctx,
+                                            b_batch_ptr, ithr, b, nb, kb);
+
+                                if (use_buffer_a && nb == n_start
+                                        && !skip_copy_a)
+                                    copy_a_chunk_in_buffer(brgmm_ctx,
+                                            a_batch_ptr, ithr, mb, kb);
+
+                                compute_kernel(brgmm_ctx, a_batch_ptr,
+                                        b_batch_ptr, ithr, b, mb, nb, kb,
+                                        kc == kc_start && kb == kb_start,
+                                        prev_ker_idx, prefetch,
+                                        start - bmn_thread_start, ithr_bmn);
+                            }
+                        }
+                        kc_prev = kc;
+                        nb_prev = nb;
+                    }
+                }
+                mc_prev = mc;
+                b_prev = b;
+
+                advance_func();
+            }
         }
         if (is_amx) { amx_tile_release(); }
     });

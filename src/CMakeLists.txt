@@ -191,8 +191,26 @@ endif()
 get_property(LIB_DEPS GLOBAL PROPERTY DNNL_LIB_DEPS)
 get_property(STATIC_LIB_DEPS GLOBAL PROPERTY DNNL_SUBDIR_EXTRA_STATIC_LIBS)
 get_property(SHARED_LIB_DEPS GLOBAL PROPERTY DNNL_SUBDIR_EXTRA_SHARED_LIBS)
-add_library(${LIB_PACKAGE_NAME} ${DNNL_LIBRARY_TYPE}
-    ${VERSION_RESOURCE_FILE} ${HEADERS_ROOT} ${HEADERS_SUBDIR} ${LIB_DEPS})
+
+if (DNNL_WITH_SYCL AND DNNL_LIBRARY_TYPE STREQUAL "STATIC" AND ONEDNN_ENABLE_SYCL_DEVICE_LINK)
+  # Build the static archive directly from the sub-library object files.
+  # Do NOT use an intermediate OBJECT library: CMake's Make generator does not
+  # transitively expand $<TARGET_OBJECTS:...> references inside an OBJECT
+  # library when that expression is used in add_custom_command or add_library,
+  # which would leave both the archive and the -fsycl-link step with no inputs.
+  add_library(${LIB_PACKAGE_NAME} STATIC
+      ${VERSION_RESOURCE_FILE} ${HEADERS_ROOT} ${HEADERS_SUBDIR} ${LIB_DEPS})
+
+  # CMake cannot infer the linker language from generator-expression sources
+  # alone, so set it explicitly to keep install/export working.
+  set_target_properties(${LIB_PACKAGE_NAME} PROPERTIES LINKER_LANGUAGE CXX)
+
+  # Append the device-linked object (produced by -fsycl-link) to the archive.
+  onednn_add_sycl_device_link_object(${LIB_PACKAGE_NAME} "${LIB_DEPS}")
+else()
+  add_library(${LIB_PACKAGE_NAME} ${DNNL_LIBRARY_TYPE}
+      ${VERSION_RESOURCE_FILE} ${HEADERS_ROOT} ${HEADERS_SUBDIR} ${LIB_DEPS})
+endif()
 
 target_link_libraries(${LIB_PACKAGE_NAME} PRIVATE ${STATIC_LIB_DEPS} ${SHARED_LIB_DEPS})
 

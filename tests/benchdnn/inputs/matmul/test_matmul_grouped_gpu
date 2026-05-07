@@ -1,0 +1,73 @@
+# Grouped GEMM — PyTorch API coverage (MFDNN-14187)
+#
+# grouped_mm:        bf16/f16, mat2 row-major (abc) and col-major (acb)
+# scaled_grouped_mm: mat2 col-major (acb), mat1 row-major (default stag)
+#
+# XFAIL: NvFP4 binary-mul post-op cases require Task 3 (NvFP4 post-op impl)
+
+--reset
+
+########################################
+# grouped_mm: BF16/FP16               #
+########################################
+
+# mat2 row-major
+--dt=f16:f16:f16,bf16:bf16:bf16
+--wtag=abc
+--batch=shapes_grouped_moe
+
+# mat2 col-major
+--reset
+--dt=f16:f16:f16,bf16:bf16:bf16
+--wtag=acb
+--batch=shapes_grouped_moe
+
+########################################
+# scaled_grouped_mm: FP8               #
+# scale_a: row-wise f32 (M,)           #
+# scale_b: col-wise f32 (E, N)         #
+########################################
+
+--reset
+--dt=f8_e5m2:f8_e5m2:bf16,f8_e4m3:f8_e4m3:bf16
+--wtag=acb
+--attr-scales=src:1:f32+wei:5:f32
+--batch=shapes_grouped_moe
+
+########################################
+# scaled_grouped_mm: MxFP8             #
+# scale_a: e8m0 block (M, K/32)        #
+# scale_b: e8m0 block (E, K/32, N)     #
+########################################
+
+--reset
+--dt=f8_e4m3:f8_e4m3:bf16
+--wtag=acb
+--attr-scales=src:3:e8m0:1x32+wei:7:e8m0:32x1
+--batch=shapes_grouped_moe
+
+########################################
+# scaled_grouped_mm: MxFP4             #
+# scale_a: e8m0 block (M, K/32)        #
+# scale_b: e8m0 block (E, K/32, N)     #
+########################################
+
+--reset
+--dt=f4_e2m1:f4_e2m1:bf16
+--wtag=acb
+--attr-scales=src:3:e8m0:1x32+wei:7:e8m0:32x1
+--batch=shapes_grouped_moe
+
+########################################
+# scaled_grouped_mm: NvFP4             #
+# scale_a: f8_e4m3 block (M, K/16)     #
+# scale_b: f8_e4m3 block (E, K/16, N)  #
+# + global f32 scale via binary mul    #
+########################################
+
+--reset
+--dt=f4_e2m1:f4_e2m1:bf16
+--wtag=acb
+--attr-scales=src:3:f8_e4m3:1x16+wei:7:f8_e4m3:16x1
+--attr-post-ops=mul:f32:0
+--batch=shapes_grouped_moe

@@ -789,6 +789,39 @@ inline int measure_perf_aggregate(timer::timer_t &t,
     return OK;
 }
 
+namespace {
+const char *perf_arg_name(int arg) {
+    switch (arg) {
+        case DNNL_ARG_SRC: return "SRC";
+        case DNNL_ARG_WEIGHTS: return "WEI";
+        case DNNL_ARG_DST: return "DST";
+        default: return nullptr;
+    }
+}
+
+void dump_perf_arg_mem(const args_t &args, int target_arg) {
+    for (int i = 0; i < args.size(); ++i) {
+        const int arg = args.arg(i);
+        if (arg != target_arg) continue;
+        const char *name = perf_arg_name(arg);
+        if (name == nullptr) continue;
+        const auto &m = args.dnn_mem(i);
+        // Memory may live on device (e.g. GPU perf mode with no_ref_memory).
+        // Map it temporarily to read element values on host.
+        const bool was_mapped = m.is_mapped();
+        if (!was_mapped) m.map();
+        const int64_t nelems = m.nelems();
+        BENCHDNN_PRINT(
+                0, "[mem][arg:%d:%s] nelems=%ld\n", arg, name, (long)nelems);
+        for (int64_t e = 0; e < nelems; ++e) {
+            BENCHDNN_PRINT(
+                    0, "[%s][%6ld] %12g\n", name, (long)e, m.get_elem(e));
+        }
+        if (!was_mapped) m.unmap();
+    }
+}
+} // namespace
+
 int measure_perf(const thr_ctx_t &ctx, res_t *res, perf_function_t &perf_func,
         args_t &args) {
     if (!has_bench_mode_bit(mode_bit_t::perf)) return OK;
@@ -815,6 +848,10 @@ int measure_perf(const thr_ctx_t &ctx, res_t *res, perf_function_t &perf_func,
         v_args[j] = args_t(mem_map[j]);
         execute_unmap_args(v_args[j], dnnl_args[j]);
     }
+    // Dump SRC/WEI contents that will be used for performance measurement
+    // before unmapping the host-visible buffers.
+    dump_perf_arg_mem(args, DNNL_ARG_SRC);
+    dump_perf_arg_mem(args, DNNL_ARG_WEIGHTS);
     execute_unmap_args(args, dnnl_args[0]);
 
     auto &t = res->timer_map.perf_timer();
@@ -836,6 +873,8 @@ int measure_perf(const thr_ctx_t &ctx, res_t *res, perf_function_t &perf_func,
     for (int j = 1; j < num_streams; j++) {
         execute_map_args(v_args[j]);
     }
+    // Dump DST contents produced by the last performance run.
+    dump_perf_arg_mem(args, DNNL_ARG_DST);
 
     return ret;
 }

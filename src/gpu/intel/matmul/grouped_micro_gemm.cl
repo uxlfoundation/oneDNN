@@ -222,7 +222,8 @@ grouped_micro_gemm(const global SRC_DATA_T *src, long ldsrc,
         const global SRC_ZP_DATA_T *src_attr_zp, const long ldsrcq,
         const global WEI_SCALES_DATA_T *wei_attr_scales,
         const global WEI_ZP_DATA_T *wei_attr_zp, const long ldweiq,
-        const long n, const long k, const global BIA_DATA_T *bias) {
+        const long n, const long k, const global BIA_DATA_T *bias,
+        const global float *nvfp4_global_scale) {
 #if WITH_SLM
     local char slm[MAX(ugemm_grouped_slm_size, slm_sparse_total_size)];
 #else
@@ -317,6 +318,15 @@ grouped_micro_gemm(const global SRC_DATA_T *src, long ldsrc,
     bias_tile_type bias_tile;
     load_bias(&bias_tile, bias, n, sg_i0);
     tile_vbroadcast_add(&c_tile, bias_tile);
+#endif
+
+#if WITH_NVFP4_GLOBAL_SCALE
+    {
+        float gs = *nvfp4_global_scale;
+#define binary_scale(v) ((v) * gs)
+        tile_elementwise(c_tile, binary_scale);
+#undef binary_scale
+    }
 #endif
 
     store_results(&c_tile, dst, n, m, lddst, sg_i0, sg_j0);

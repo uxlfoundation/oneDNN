@@ -425,9 +425,21 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
     VDISPATCH_MATMUL(attr_scales.has_default_values(DNNL_ARG_DST),
             VERBOSE_UNSUPPORTED_SCALES_CFG);
 
-    // No post-ops for now
-    VDISPATCH_MATMUL(
-            attr()->post_ops_.has_default_values(), VERBOSE_UNSUPPORTED_POSTOP);
+    {
+        // Only support a single binary post-op with a scalar operand for now, which
+        // is used to support nvfp4 global scale. Expand once we support more general
+        // post-ops.
+        const post_ops_t &po = attr()->post_ops_;
+        if (!po.has_default_values()) {
+            VDISPATCH_MATMUL(po.len() == 1 && po.entry_[0].is_binary()
+                            && po.entry_[0].binary.alg == alg_kind::binary_mul,
+                    VERBOSE_UNSUPPORTED_POSTOP);
+            auto po_mdw = memory_desc_wrapper(po.entry_[0].binary.src1_desc);
+            VDISPATCH_MATMUL(po_mdw.nelems() == 1 && po_mdw.data_type() == f32
+                            && !po_mdw.is_host_scalar_desc(),
+                    VERBOSE_UNSUPPORTED_POSTOP);
+        }
+    }
 
     if (src_quant_.with_scale()) {
         calc_group_sizes(
@@ -478,6 +490,8 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
             "SRC_ELEMS_PER_BYTE", types::bytes_to_elements(src_dt, 1));
     kernel_ctx_.define_int(
             "WEI_ELEMS_PER_BYTE", types::bytes_to_elements(wei_dt, 1));
+    kernel_ctx_.define_int(
+            "WITH_NVFP4_GLOBAL_SCALE", !attr()->post_ops_.has_default_values());
 
     if (src_quant_.with_zp()) {
         kernel_ctx_.define_int("SRC_ZP_ELEMS_PER_BYTE",
@@ -578,6 +592,10 @@ status_t grouped_micro_gemm_t::execute(const exec_ctx_t &ctx) const {
     arg_list.append(k);
 
     arg_list.append(bias_data);
+
+    const auto &nvfp4_global_scale = CTX_IN_STORAGE(
+            DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1);
+    arg_list.append(nvfp4_global_scale);
 
     size_t sg_per_wg_m = pd()->gemm_.getSetting("sg_per_wg_m");
     size_t sg_per_wg_n = pd()->gemm_.getSetting("sg_per_wg_n");

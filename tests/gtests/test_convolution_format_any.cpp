@@ -43,6 +43,10 @@ class convolution_any_fmt_test_t
     : public ::testing::TestWithParam<conv_any_fmt_test_params_t> {
 protected:
     void SetUp() override {
+        // Blocked-vs-plain format check is not reliable on GPU, optimized
+        // implementation can use plain format with "any".
+        SKIP_IF(get_test_engine_kind() == engine::kind::gpu,
+                "blocked format check is not reliable on GPU");
 #if DNNL_X64
         // Skip this test if the library cannot select blocked format a priori.
         // Currently blocking is supported only for sse41 and later CPUs.
@@ -131,8 +135,6 @@ using tf32 = conv_any_fmt_test_params_t;
 TEST_P(conv_any_fmt_test_float, TestsConvolutionAnyFmt) {}
 
 CPU_INSTANTIATE_TEST_SUITE_P(TestConvolutionAlexnetAnyFmtForward,
-        conv_any_fmt_test_float, ::testing::Values(ALEXNET_SUITE(BLK)));
-GPU_INSTANTIATE_TEST_SUITE_P(TestConvolutionAlexnetAnyFmtForward,
         conv_any_fmt_test_float, ::testing::Values(ALEXNET_SUITE(BLK)));
 #endif
 } // namespace dnnl

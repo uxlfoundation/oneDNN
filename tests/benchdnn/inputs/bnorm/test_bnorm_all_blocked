@@ -33,7 +33,7 @@
 --batch=set_nd
 
 --mb=1,64
---tag=aBx8b
+--tag=aBx8b,aBx4b
 --attr-post-ops=
 --flags=  --batch=shapes_googlenet_v2
 --flags=G --batch=shapes_densenet_121

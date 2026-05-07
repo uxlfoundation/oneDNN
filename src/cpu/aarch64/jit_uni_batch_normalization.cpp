@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2020 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include <assert.h>
+#include <cassert>
 #include <functional>
 
 #include "common/c_types_map.hpp"
@@ -26,6 +26,7 @@
 #include "common/nstl.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
+#include "common/verbose_msg.hpp"
 
 #include "cpu/cpu_batch_normalization_utils.hpp"
 #include "cpu/platform.hpp"
@@ -131,15 +132,14 @@ struct jit_bnorm_conf_t {
             iters_ = 1;
         }
 
-        is_spatial_thr_
-                = this->thread_partition(/* is_spatial_thr_ = */ true, nthr,
-                        /* dimensions */
-                        N, C_blks_per_iter_, SP,
-                        /* outputs */
-                        C_nthr_, N_nthr_, S_nthr_);
+        is_spatial_thr_ = thread_partition(/* is_spatial_thr_ = */ true, nthr,
+                /* dimensions */
+                N, C_blks_per_iter_, SP,
+                /* outputs */
+                C_nthr_, N_nthr_, S_nthr_);
 
         if (iters_ > 1)
-            this->thread_partition(is_spatial_thr_, nthr,
+            thread_partition(is_spatial_thr_, nthr,
                     /* dimensions */
                     N, C_blks_last_iter_, SP,
                     /* outputs */
@@ -158,9 +158,17 @@ struct jit_bnorm_conf_t {
             S_nthr = 1;
         } else {
             if (is_nspc_) {
+                const int min_c_blks_per_thr = nstl::max(1, 16 / simd_w_);
                 if (C_blks <= 8)
                     C_nthr = 1;
-                else if (nthr >= 8 && C_blks <= 32)
+                else if (simd_w_ < 16 && C_blks % min_c_blks_per_thr == 0) {
+                    // Keep each channel thread on a 16-channel boundary.
+                    const dim_t C_chunks = C_blks / min_c_blks_per_thr;
+                    C_nthr = (int)nstl::min<dim_t>(
+                            nstl::min<dim_t>(8, nthr), C_chunks);
+                    while (C_nthr > 1 && C_chunks % C_nthr != 0)
+                        --C_nthr;
+                } else if (nthr >= 8 && C_blks <= 32)
                     C_nthr = 8;
                 else {
                     C_nthr = (int)math::gcd((dim_t)nthr, C_blks);
@@ -236,7 +244,7 @@ struct jit_bnorm_t : public jit_generator_t {
     bool is_bf16_ = false;
     bool is_f16_ = false;
 
-    const int vlen = isa == asimd ? 32 : cpu_isa_traits<isa>::vlen;
+    const int vlen = simd_bytes(isa);
     int vlen_spat_data_; // set by ctor depending on data type (BF16 or FP32);
 
     XReg reg_param = abi_param1;
@@ -288,6 +296,9 @@ struct jit_bnorm_t : public jit_generator_t {
 
     size_t unroll_blocks;
     size_t unroll_regs;
+    // Index 0 is temporal value. is_fwd() ? vdiff_beta : vbeta
+    TReg vzero = TReg(0);
+    TReg vacc = TReg(1);
     TReg vdiff_beta = TReg(21);
     TReg vdiff_gamma = TReg(22);
     TReg vsqrtvar = TReg(23);
@@ -300,8 +311,6 @@ struct jit_bnorm_t : public jit_generator_t {
     TReg vtail_mask = TReg(30);
     TReg t_tmp0 = TReg(31);
     TReg t_tmp1 = TReg(20);
-    TReg vzero = TReg(
-            0); // Index 0 is temporal value. is_fwd() ? vdiff_beta : vbeta
 
     size_t spat_size;
     size_t chan_data_offt;
@@ -460,7 +469,7 @@ struct jit_bnorm_t : public jit_generator_t {
         XReg r = jbp_->is_nspc_ ? reg_soff_nspc : reg_soff;
         ZRegS zzero = ZRegS(vzero.getIdx());
 
-        assert(isa == sve_256 || isa == sve_512);
+        assert(is_superset(isa, sve));
 
         assert(bits < 64);
         lsr(r, r, bits);
@@ -483,7 +492,7 @@ struct jit_bnorm_t : public jit_generator_t {
         ZRegS dst = ZRegS(vmm_dst.getIdx());
         ZRegS z_tmp0 = ZRegS(t_tmp0.getIdx());
 
-        assert(isa == sve_256 || isa == sve_512);
+        assert(is_superset(isa, sve));
 
         add_imm(X_DEFAULT_ADDR, sp, (int)stack_off_relu_alpha, X_TMP_0);
         ld1rw(ZRegS(t_tmp0.getIdx()), P_ALL_ONE / T_z, ptr(X_DEFAULT_ADDR));
@@ -550,7 +559,7 @@ struct jit_bnorm_t : public jit_generator_t {
 
         if (is_c_padded()) {
             jump_check(l_no_mask);
-            assert(isa == sve_256 || isa == sve_512);
+            assert(is_superset(isa, sve));
             ld1w(ZRegS(IDX(t)), ktail_mask / T_z, ptr(x));
             b(l_ret);
         }
@@ -564,7 +573,7 @@ struct jit_bnorm_t : public jit_generator_t {
 
         if (is_c_padded()) {
             jump_check(l_no_mask);
-            assert(isa == sve_256 || isa == sve_512);
+            assert(is_superset(isa, sve));
             st1w(ZRegS(IDX(t)), ktail_mask / T_z, ptr(x));
             b(l_ret);
         }
@@ -587,21 +596,6 @@ struct jit_bnorm_t : public jit_generator_t {
 
     void uni_fmla(const ZRegS &dst, const ZRegS &src, const ZRegS &src2) {
         fmla(dst, P_ALL_ONE / T_m, src, src2);
-    }
-
-    void uni_fmad(const ZRegS &dst, const ZRegS &src, const ZRegS &src2) {
-        fmad(dst, P_ALL_ONE / T_m, src, src2);
-    }
-
-    void uni_fmad(const VReg4S &dst, const VReg4S &src, const VReg4S &src2) {
-        fmul(dst, dst, src);
-        fadd(dst, dst, src2);
-    }
-
-    void uni_ldr(const VReg &v, const XReg &x) { ldr(QReg(IDX(v)), ptr(x)); }
-
-    void uni_ldr(const ZReg &z, const XReg &x) {
-        ld1w(z.s, P_ALL_ONE / T_z, ptr(x));
     }
 
     void uni_str(const VReg &v, const XReg &base,
@@ -730,7 +724,7 @@ struct jit_bnorm_t : public jit_generator_t {
             spat_loop(spat_size, unroll_blocks, unroll_regs,
                     [=](size_t base_reg) {
                 TReg v = TReg(base_reg * 2);
-                if (base_reg) uni_eor(v, v, v);
+                if (base_reg) uni_clear(v);
             }, [=](size_t base_reg, size_t i) {
                 TRegS v0 = TRegS(base_reg * 2 + 0);
                 TReg v1 = TReg(base_reg * 2 + 1);
@@ -833,7 +827,7 @@ struct jit_bnorm_t : public jit_generator_t {
     void forward_channels_nspc_compute(const int num_ch_blks) {
         auto compute = [=](bool stream_store_allowed) {
             // Overwritten during mean and variance computation
-            uni_eor(vzero, vzero, vzero);
+            uni_clear(vzero);
 
             eor(reg_soff_nspc, reg_soff_nspc, reg_soff_nspc);
 
@@ -899,7 +893,7 @@ struct jit_bnorm_t : public jit_generator_t {
                         else
                             uni_fmaxnm(vdata, vdata, vzero.s);
                     } else if (with_relu) { // --flags=R
-                        assert(isa == sve_256 || isa == sve_512);
+                        assert(is_superset(isa, sve));
                         fwd_process_relu(
                                 ZRegS(vdata.getIdx()), idx * vlen_spat_data_);
                     }
@@ -980,7 +974,7 @@ struct jit_bnorm_t : public jit_generator_t {
             spat_loop(spat_size, unroll_blocks, unroll_regs,
                     [=](size_t base_reg) {
                 TReg v = TReg(3 * base_reg);
-                if (base_reg > 0) uni_eor(v, v, v);
+                if (base_reg > 0) uni_clear(v);
             }, [=](size_t base_reg, size_t i) {
                 TRegS v = TRegS(3 * base_reg);
                 TRegS vtmp0 = TRegS(3 * base_reg + 1);
@@ -1011,9 +1005,7 @@ struct jit_bnorm_t : public jit_generator_t {
         L(zero_rbuf);
         {
             uni_str(TReg(0), reg_rbuf1, reg_coff);
-            add_imm(reg_coff, reg_coff,
-                    (isa == sve_256 || isa == sve_512) ? vlen : vlen / 2,
-                    X_TMP_0);
+            add_imm(reg_coff, reg_coff, vlen, X_TMP_0);
             cmp(reg_coff, reg_coff_max);
             b(NE, zero_rbuf);
         }
@@ -1026,19 +1018,7 @@ struct jit_bnorm_t : public jit_generator_t {
         {
             eor(reg_coff, reg_coff, reg_coff);
 
-            if (isa == asimd) mov(reg_tmp_off, reg_soff);
-
             jbp_->is_nspc_ ? compute_mean_variance_nspc() : mean_channels();
-
-            if (isa == asimd) {
-                mov(reg_soff, reg_tmp_off);
-                add(reg_src, reg_src, vlen / 2);
-                mov(reg_coff, vlen / 2);
-
-                mean_channels();
-
-                sub(reg_src, reg_src, vlen / 2);
-            }
 
             // Process next image
             if (jbp_->is_nspc_) {
@@ -1074,30 +1054,27 @@ struct jit_bnorm_t : public jit_generator_t {
             {
                 mov(reg_roff, reg_coff);
                 uni_eor(TReg(0), TReg(0), TReg(0));
-                uni_eor(TReg(1), TReg(1), TReg(1));
+                uni_clear(vacc);
                 mov(reg_ctr, reg_nnthr);
                 Label mean_reduction_thrs;
                 L(mean_reduction_thrs);
                 {
                     add(X_TMP_0, reg_rbuf1, reg_roff);
                     uni_ldr(t_tmp0, X_TMP_0);
-                    fadd(TRegS(1), TRegS(1), t_tmp0.s);
+                    fadd(vacc.s, vacc.s, t_tmp0.s);
 
                     uni_str(TReg(0), X_TMP_0);
                     add(reg_roff, reg_roff, reg_coff_max);
                     subs_imm(reg_ctr, reg_ctr, 1, X_TMP_0);
                     b(NE, mean_reduction_thrs);
                 }
-                if (isa == sve_256 || isa == sve_512)
-                    fdiv(ZRegS(1), P_ALL_ONE / T_m, ZRegS(vchan_size.getIdx()));
-                else
-                    fdiv(VReg4S(1), VReg4S(1), VReg4S(vchan_size.getIdx()));
-                uni_store_maybe_tail(mean_ptr(), TReg(1));
 
-                if (isa == sve_256 || isa == sve_512)
-                    add_imm(reg_coff, reg_coff, vlen, X_TMP_0);
-                else
-                    add_imm(reg_coff, reg_coff, vlen / 2, X_TMP_0);
+                uni_fdiv(vacc.s, vacc.s, TRegS(vchan_size.getIdx()), t_tmp0.s,
+                        P_ALL_ONE);
+
+                uni_store_maybe_tail(mean_ptr(), vacc);
+
+                add_imm(reg_coff, reg_coff, vlen, X_TMP_0);
 
                 cmp(reg_coff, reg_coff_max);
                 b(LT, mean_reduction_channels);
@@ -1112,19 +1089,7 @@ struct jit_bnorm_t : public jit_generator_t {
         {
             eor(reg_coff, reg_coff, reg_coff);
 
-            if (isa == asimd) mov(reg_tmp_off, reg_soff);
-
             jbp_->is_nspc_ ? compute_mean_variance_nspc(false) : var_channels();
-
-            if (isa == asimd) {
-                mov(reg_soff, reg_tmp_off);
-                add(reg_src, reg_src, vlen / 2);
-                mov(reg_coff, vlen / 2);
-
-                var_channels();
-
-                sub(reg_src, reg_src, vlen / 2);
-            }
 
             // Process next image
             if (jbp_->is_nspc_) {
@@ -1159,26 +1124,25 @@ struct jit_bnorm_t : public jit_generator_t {
             L(var_reduction_channels);
             {
                 mov(reg_roff, reg_coff);
-                uni_eor(TReg(1), TReg(1), TReg(1));
+                uni_clear(vacc);
                 mov(reg_ctr, reg_nnthr);
                 Label var_reduction_thrs;
                 L(var_reduction_thrs);
                 { // TODO: unroll (?)
                     add(X_TMP_0, reg_rbuf1, reg_roff);
                     uni_ldr(t_tmp0, X_TMP_0);
-                    fadd(TRegS(1), TRegS(1), t_tmp0.s);
+                    fadd(vacc.s, vacc.s, t_tmp0.s);
                     add(reg_roff, reg_roff, reg_coff_max);
                     subs(reg_ctr, reg_ctr, 1);
                     b(NE, var_reduction_thrs);
                 }
-                if (isa == sve_256 || isa == sve_512)
-                    fdiv(ZRegS(1), P_ALL_ONE / T_m, ZRegS(vchan_size.getIdx()));
-                else { fdiv(VReg4S(1), VReg4S(1), VReg4S(IDX(vchan_size))); }
-                uni_store_maybe_tail(var_ptr(), TReg(1));
-                if (isa == sve_256 || isa == sve_512)
-                    add_imm(reg_coff, reg_coff, vlen, X_TMP_0);
-                else
-                    add_imm(reg_coff, reg_coff, vlen / 2, X_TMP_0);
+
+                uni_fdiv(vacc.s, vacc.s, TRegS(vchan_size.getIdx()), t_tmp0.s,
+                        P_ALL_ONE);
+
+                uni_store_maybe_tail(var_ptr(), vacc);
+
+                add_imm(reg_coff, reg_coff, vlen, X_TMP_0);
 
                 cmp(reg_coff, reg_coff_max);
                 b(NE, var_reduction_channels);
@@ -1234,7 +1198,7 @@ struct jit_bnorm_t : public jit_generator_t {
                     } else
                         uni_fmaxnm(v, v, vzero.s);
                 } else if (with_relu) { // --flags=R
-                    assert(isa == sve_256 || isa == sve_512);
+                    assert(is_superset(isa, sve));
                     fwd_process_relu(ZRegS(v.getIdx()), offt);
                 }
                 add(X_DEFAULT_ADDR, reg_dst, reg_soff);
@@ -1335,21 +1299,8 @@ struct jit_bnorm_t : public jit_generator_t {
         L(dst_spatial);
         {
             eor(reg_coff, reg_coff, reg_coff);
-            if (isa == asimd) mov(reg_tmp_off, reg_soff);
 
             jbp_->is_nspc_ ? forward_channels_nspc() : forward_channels();
-
-            if (isa == asimd) {
-                mov(reg_soff, reg_tmp_off);
-                add(reg_src, reg_src, vlen / 2);
-                add(reg_dst, reg_dst, vlen / 2);
-                mov(reg_coff, vlen / 2);
-
-                forward_channels();
-
-                sub(reg_src, reg_src, vlen / 2);
-                sub(reg_dst, reg_dst, vlen / 2);
-            }
 
             // Process next image
             if (jbp_->is_nspc_) {
@@ -1391,7 +1342,7 @@ struct jit_bnorm_t : public jit_generator_t {
                 if (base_reg > 0) {
                     for (int i = 0; i < 2; i++) {
                         TReg v(base_reg * 5 + i);
-                        uni_eor(v, v, v);
+                        uni_clear(v);
                     }
                 }
             }, [=](size_t base_reg, size_t i) {
@@ -1408,7 +1359,7 @@ struct jit_bnorm_t : public jit_generator_t {
                 if (offt) add_imm(X_TMP_0, X_TMP_0, offt, X_TMP_1);
                 uni_load_spat_data(t2, X_TMP_0);
                 if (with_relu) {
-                    assert(isa == sve_256 || isa == sve_512);
+                    assert(is_superset(isa, sve));
                     bwd_process_relu(ZRegS(t2.getIdx()), offt);
                 }
                 fsub(t3.s, vmean.s, t1.s);
@@ -1492,7 +1443,7 @@ struct jit_bnorm_t : public jit_generator_t {
                 uni_load_spat_data(vdiff_dst, X_TMP_3);
 
                 if (with_relu) {
-                    assert(isa == sve_256 || isa == sve_512);
+                    assert(is_superset(isa, sve));
                     bwd_process_relu(ZRegS(vdiff_dst.getIdx()), offt);
                 }
 
@@ -1605,7 +1556,7 @@ struct jit_bnorm_t : public jit_generator_t {
                     add_imm(X_DEFAULT_ADDR, X_DEFAULT_ADDR, offt, X_TMP_0);
                 uni_load_spat_data(TReg(v.getIdx()), X_DEFAULT_ADDR);
                 if (with_relu) {
-                    assert(isa == sve_256 || isa == sve_512);
+                    assert(is_superset(isa, sve));
                     bwd_process_relu(ZRegS(v.getIdx()), offt);
                 }
                 if (!pd_->use_global_stats()) {
@@ -1725,7 +1676,7 @@ struct jit_bnorm_t : public jit_generator_t {
                             TReg(vdiff_data.getIdx()), X_DEFAULT_ADDR);
 
                     if (with_relu) {
-                        assert(isa == sve_256 || isa == sve_512);
+                        assert(is_superset(isa, sve));
                         bwd_process_relu(ZRegS(vdiff_data.getIdx()), offt);
                     }
 
@@ -1842,10 +1793,7 @@ struct jit_bnorm_t : public jit_generator_t {
             uni_str(TReg(0), X_TMP_0);
             add(X_TMP_0, reg_rbuf2, reg_coff);
             uni_str(TReg(0), X_TMP_0);
-            if (isa == sve_256 || isa == sve_512)
-                add_imm(reg_coff, reg_coff, vlen, X_TMP_0);
-            else
-                add_imm(reg_coff, reg_coff, vlen / 2, X_TMP_0);
+            add_imm(reg_coff, reg_coff, vlen, X_TMP_0);
             cmp(reg_coff, reg_coff_max);
             b(NE, zero_rbuf);
         }
@@ -1853,7 +1801,7 @@ struct jit_bnorm_t : public jit_generator_t {
         LDR_ASSERT(reg_src, sp, (int)stack_off_src);
         LDR_ASSERT(reg_diff_dst, sp, (int)stack_off_diff_dst);
         if (with_relu) {
-            assert(isa == sve_256 || isa == sve_512);
+            assert(is_superset(isa, sve));
             LDR_ASSERT(reg_ws, sp, (int)stack_off_ws);
         }
 
@@ -1861,18 +1809,10 @@ struct jit_bnorm_t : public jit_generator_t {
         L(sh_spatial);
         {
             eor(reg_coff, reg_coff, reg_coff);
-            if (isa == asimd) mov(reg_tmp_off, reg_soff);
+
             jbp_->is_nspc_ ? backward_sh_channels_nspc()
                            : backward_sh_channels();
-            if (isa == asimd) {
-                mov(reg_soff, reg_tmp_off);
-                add(reg_diff_dst, reg_diff_dst, vlen / 2);
-                add(reg_src, reg_src, vlen / 2);
-                mov(reg_coff, vlen / 2);
-                backward_sh_channels();
-                sub(reg_diff_dst, reg_diff_dst, vlen / 2);
-                sub(reg_src, reg_src, vlen / 2);
-            }
+
             // Process next image
             if (jbp_->is_nspc_) {
                 // Can use static offset since we comeback after spatial loop
@@ -1936,9 +1876,7 @@ struct jit_bnorm_t : public jit_generator_t {
                 fmul(TRegS(0), TRegS(0), vsqrtvar.s);
                 uni_store_maybe_tail(diff_gamma_ptr(), TReg(0));
                 uni_store_maybe_tail(diff_beta_ptr(), TReg(1));
-                add_imm(reg_coff, reg_coff,
-                        isa == sve_256 || isa == sve_512 ? vlen : vlen / 2,
-                        X_TMP_0);
+                add_imm(reg_coff, reg_coff, vlen, X_TMP_0);
                 cmp(reg_coff, reg_coff_max);
                 b(NE, sh_reduction_channels);
             }
@@ -1948,7 +1886,7 @@ struct jit_bnorm_t : public jit_generator_t {
 
         LDR_ASSERT(reg_diff_src, sp, (int)stack_off_diff_src);
         if (with_relu) {
-            assert(isa == sve_256 || isa == sve_512);
+            assert(is_superset(isa, sve));
             LDR_ASSERT(reg_ws, sp, (int)stack_off_ws);
         }
 
@@ -1959,20 +1897,10 @@ struct jit_bnorm_t : public jit_generator_t {
             eor(reg_coff, reg_coff, reg_coff);
             // diff_shift is shared with soff_max.
             LDR_ASSERT(reg_diff_shift, sp, (int)stack_off_diff_shift);
-            if (isa == asimd) { mov(reg_tmp_off, reg_soff); }
+
             jbp_->is_nspc_ ? backward_diff_channels_nspc()
                            : backward_diff_channels();
-            if (isa == asimd) {
-                mov(reg_soff, reg_tmp_off);
-                add(reg_diff_dst, reg_diff_dst, vlen / 2);
-                add(reg_diff_src, reg_diff_src, vlen / 2);
-                add(reg_src, reg_src, vlen / 2);
-                mov(reg_coff, vlen / 2);
-                backward_diff_channels();
-                sub(reg_diff_dst, reg_diff_dst, vlen / 2);
-                sub(reg_diff_src, reg_diff_src, vlen / 2);
-                sub(reg_src, reg_src, vlen / 2);
-            }
+
             // Process next image
             if (jbp_->is_nspc_) {
                 // Can use static offset since we comeback after spatial loop
@@ -2011,25 +1939,20 @@ struct jit_bnorm_t : public jit_generator_t {
         , is_bf16_(pd_->src_md()->data_type == data_type::bf16)
         , is_f16_(pd_->src_md()->data_type == data_type::f16)
         , vlen_spat_data_(vlen / (1 + is_xf16())) // 32B of xF16 -> 64B of FP32
-        , unroll_blocks(
-                  (isa == sve_256 || isa == sve_512) && !jbp_->is_spatial_thr_
-                          ? 4
-                          : 1)
-        , unroll_regs(
-                  (isa == sve_256 || isa == sve_512) && !jbp_->is_spatial_thr_
-                          ? 4
-                          : 1) {
-        static_assert(isa == asimd || isa == sve_256 || isa == sve_512,
-                "unsupported isa");
+        , unroll_blocks(simd_bytes(isa) >= 32 && !jbp_->is_spatial_thr_ ? 4 : 1)
+        , unroll_regs(simd_bytes(isa) >= 32 && !jbp_->is_spatial_thr_ ? 4 : 1) {
+        static_assert(isa == asimd || isa == sve, "unsupported isa");
     }
 
     void generate() override {
         preamble();
 
-        size_t simd_w_ = cpu_isa_traits<isa>::vlen / sizeof(float);
-        if (isa == sve_256 || isa == sve_512) {
-            if (simd_w_ != cpu_sveLen / sizeof(float))
-                set_preg(P_ALL_ONE.s, simd_w_, X_TMP_0, X_TMP_1);
+        size_t simd_w = simd_elems(data_type::f32, isa);
+        if (is_superset(isa, sve)) {
+            if (simd_w != cpu_sveLen / sizeof(float)) {
+                set_preg(P_ALL_ONE.s, simd_w, X_TMP_0, X_TMP_1);
+            }
+
             prepare_tail_mask();
         }
 
@@ -2060,7 +1983,7 @@ namespace bnorm_impl {
 template <cpu_isa_t isa>
 struct driver_t : public c_compatible {
     driver_t(const batch_normalization_pd_t *pd, int nthr)
-        : pd_(pd), jbp_(pd_, nthr, simd_w), ker_(pd_, &jbp_) {}
+        : pd_(pd), jbp_(pd_, nthr, simd_w_), ker_(pd_, &jbp_) {}
 
     ~driver_t() = default;
 
@@ -2078,7 +2001,7 @@ struct driver_t : public c_compatible {
         scratchpad.book<acc_data_t>(key_bnorm_reduction, rbuf_sz);
 
         if (dnnl_thr_syncable()) {
-            auto n_barriers = C_PADDED / simd_w;
+            auto n_barriers = C_PADDED / simd_elems(data_type::f32, isa);
             scratchpad.book<barrier::ctx_64_t>(key_barrier, n_barriers);
         }
     }
@@ -2132,7 +2055,7 @@ struct driver_t : public c_compatible {
         int C_ithr {0}, N_ithr {0}, S_ithr {0};
         dim_t C_blk_s {0}, C_blk_e {0}, N_s {0}, N_e {0}, S_s {0}, S_e {0};
 
-        this->thread_balance(ithr, nthr, N, jbp_.C_blks_per_iter_, SP, C_ithr,
+        thread_balance(ithr, nthr, N, jbp_.C_blks_per_iter_, SP, C_ithr,
                 jbp_.C_nthr_, C_blk_s, C_blk_e, N_ithr, jbp_.N_nthr_, N_s, N_e,
                 S_ithr, jbp_.S_nthr_, S_s, S_e);
 
@@ -2149,7 +2072,7 @@ struct driver_t : public c_compatible {
         for (int64_t it = 0; it < jbp_.iters_; it++) {
             if (it == jbp_.iters_ - 1 && jbp_.iters_ > 1) {
                 C_blk_s = C_blk_e = N_s = N_e = 0;
-                this->thread_balance(ithr, nthr, N, jbp_.C_blks_last_iter_, SP,
+                thread_balance(ithr, nthr, N, jbp_.C_blks_last_iter_, SP,
                         C_ithr, jbp_.C_nthr_last_iter_, C_blk_s, C_blk_e,
                         N_ithr, jbp_.N_nthr_last_iter_, N_s, N_e, S_ithr,
                         jbp_.S_nthr_last_iter_, S_s, S_e);
@@ -2169,16 +2092,16 @@ struct driver_t : public c_compatible {
 
             if (C_blks_thr == 0 || N_thr == 0) continue;
 
-            size_t coff_base = global_C_blk_s * simd_w;
+            size_t coff_base = global_C_blk_s * simd_w_;
             size_t soff_base = jbp_.is_nspc_
                     ? coff_base + N_s * img_size
-                    : global_C_blk_s * p.spat_size * simd_w + N_s * img_size;
+                    : global_C_blk_s * p.spat_size * simd_w_ + N_s * img_size;
             size_t shift_off = use_tmp_diff_scale(pd_) ? pd_->C() : 0;
 
             p.spat_size_loc = S_e - S_s;
             p.S_s = S_s * vlen_spat_data;
             p.S_tail = (p.spat_size - S_e) * vlen_spat_data;
-            p.coff_max = C_blks_thr * simd_w;
+            p.coff_max = C_blks_thr * simd_w_;
             const auto tmp_mean = use_tmp_stats(pd_) ? sbuf : mean;
             if (tmp_mean != nullptr) p.mean = tmp_mean + coff_base;
             const auto tmp_var = use_tmp_stats(pd_) ? sbuf + C_PADDED : var;
@@ -2215,11 +2138,11 @@ struct driver_t : public c_compatible {
             p.rbuf1 = rbuf
                     + ((it * jbp_.C_blks_per_iter_) * SP_N_nthr
                               + C_blk_s * p.N_nthr + p.N_ithr * C_blks_thr)
-                            * simd_w;
+                            * simd_w_;
             // rbuf1 and rbuf2 have to be disjoint
             p.rbuf2 = p.rbuf1 + C_PADDED * nthr;
             p.is_cblk_tail
-                    = (it * jbp_.C_blks_per_iter_ + C_blk_e) * simd_w > C;
+                    = (it * jbp_.C_blks_per_iter_ + C_blk_e) * simd_w_ > C;
 
             size_t iter_barriers
                     = jbp_.do_blocking_ ? it * global_barriers_per_iter : 0;
@@ -2231,7 +2154,7 @@ struct driver_t : public c_compatible {
     void init_barriers(const memory_tracking::grantor_t &scratchpad) {
         auto barriers = scratchpad.get<barrier::ctx_64_t>(key_barrier);
         if (barriers) {
-            const int n_barriers = get_c_padded(pd_) / simd_w;
+            const int n_barriers = get_c_padded(pd_) / simd_w_;
             for (int i = 0; i < n_barriers; ++i)
                 barrier::ctx_init(&barriers[i]);
         }
@@ -2240,11 +2163,8 @@ struct driver_t : public c_compatible {
     status_t create_kernel() { return ker_.create_kernel(); }
 
 private:
-    enum {
-        simd_w = isa == asimd ? 8
-                              : cpu_isa_traits<isa>::vlen
-                        / sizeof(acc_data_t) // BF16 will expand to FP32
-    };
+    int simd_w_
+            = simd_bytes(isa) / sizeof(acc_data_t); // BF16 will expand to FP32
 
     static bool use_tmp_stats(const batch_normalization_pd_t *pd) {
         return !pd->stats_is_src()
@@ -2275,57 +2195,70 @@ using namespace utils;
 
 template <cpu_isa_t isa>
 status_t jit_uni_batch_normalization_fwd_t<isa>::pd_t::init(engine_t *engine) {
-    bool ok = is_fwd() && mayiuse(isa)
-            && !has_zero_dim_memory()
-            // Algorithm requires barriers for best performance.
-            // TBB utilizes jit_uni_tbb_batch_normalization implementation.
-            && dnnl_thr_syncable() && one_of(src_md()->data_type, f32)
-            && src_md()->data_type == dst_md()->data_type
-            && check_scale_shift_data_type()
-            && (attr()->has_default_values()
-                    || with_relu_post_op(is_training()))
-            && set_default_formats_common()
-            && memory_desc_wrapper(src_md()) == memory_desc_wrapper(dst_md())
-            && impl::is_dense_format_kind({src_md(), dst_md()});
-    if (!ok) return status::unimplemented;
+    VDISPATCH_BNORM(is_fwd(), VERBOSE_BAD_PROPKIND);
+    VDISPATCH_BNORM(mayiuse(isa), VERBOSE_UNSUPPORTED_ISA);
+    VDISPATCH_BNORM(!has_zero_dim_memory(), "zero dims are not supported");
+    VDISPATCH_BNORM(
+            dnnl_thr_syncable(), "implementation requires DNNL_THR_SYNC");
+    VDISPATCH_BNORM(src_md()->data_type == f32, VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_BNORM(src_md()->data_type == dst_md()->data_type,
+            VERBOSE_UNSUPPORTED_DT_CFG);
+    VDISPATCH_BNORM(
+            check_scale_shift_data_type(), VERBOSE_INCONSISTENT_ALPHA_BETA);
+    VDISPATCH_BNORM(
+            attr()->has_default_values() || with_relu_post_op(is_training()),
+            VERBOSE_UNSUPPORTED_ATTR);
+    VDISPATCH_BNORM(set_default_formats_common(),
+            "setting dst memory descriptor failed");
+    VDISPATCH_BNORM(
+            memory_desc_wrapper(src_md()) == memory_desc_wrapper(dst_md()),
+            VERBOSE_INCONSISTENT_MDS, "src", "dst");
+    VDISPATCH_BNORM(is_dense_format_kind({src_md(), dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     // BN+Add+Relu fusion is not currently implemented
-    if (fuse_norm_add_relu()) return status::unimplemented;
+    VDISPATCH_BNORM(!fuse_norm_add_relu(), VERBOSE_BAD_FLAGS);
 
     const memory_desc_wrapper src_d(src_md());
-    if (is_superset(isa, sve_512)) {
-        if (!src_d.matches_one_of_tag(
-                    nCw16c, nChw16c, nCdhw16c, nc, nwc, nhwc, ndhwc))
-            return status::unimplemented;
-    } else if (is_superset(isa, sve_256)) {
-        if (!src_d.matches_one_of_tag(
-                    nCw8c, nChw8c, nCdhw8c, nc, nwc, nhwc, ndhwc))
-            return status::unimplemented;
-    } else if (isa == asimd) {
-        if (!src_d.matches_one_of_tag(nCw8c, nChw8c, nCdhw8c))
-            return status::unimplemented;
-    } else {
-        return status::unimplemented;
+    format_tag_t src_tag = format_tag::undef;
+    switch (simd_bytes(isa)) {
+        case 64:
+            src_tag = src_d.matches_one_of_tag(
+                    nCw16c, nChw16c, nCdhw16c, nc, nwc, nhwc, ndhwc);
+            break;
+        case 32:
+            src_tag = src_d.matches_one_of_tag(
+                    nCw8c, nChw8c, nCdhw8c, nc, nwc, nhwc, ndhwc);
+            break;
+        case 16:
+            src_tag = src_d.matches_one_of_tag(
+                    nCw4c, nChw4c, nCdhw4c, nc, nwc, nhwc, ndhwc);
+            break;
+
+        default: return status::unimplemented;
     }
+
+    VDISPATCH_BNORM(src_tag != format_tag::undef, VERBOSE_UNSUPPORTED_TAG);
 
     if (is_fwd() ? with_relu_post_op(is_training()) || fuse_norm_relu()
                  : fuse_norm_relu())
-        if (isa != sve_512) return status::unimplemented; // TODO
+        if (!(is_superset(isa, sve) && simd_bytes(isa) == 64))
+            return status::unimplemented; // TODO
 
     if (is_training() && fuse_norm_relu()) {
-        if (isa != sve_256 && isa != sve_512) return status::unimplemented;
+        if (!is_superset(isa, sve)) return status::unimplemented;
         init_default_ws(1);
     }
 
-    if (memory_desc_wrapper(src_md()).padded_dims()[1] != C() && isa != sve_256
-            && isa != sve_512)
-        return status::unimplemented;
+    VDISPATCH_BNORM(
+            IMPLICATION(memory_desc_wrapper(src_md()).padded_dims()[1] != C(),
+                    is_superset(isa, sve)),
+            "padded dimensions are not supported on this isa");
 
     // Only IC % 16 == 0 is supported for now
-    if (src_d.matches_one_of_tag(nc, nwc, nhwc, ndhwc)
-            && src_d.padded_dims()[1] % 16 != 0) {
-        return status::unimplemented;
-    }
+    VDISPATCH_BNORM(IMPLICATION(src_d.matches_one_of_tag(nc, nwc, nhwc, ndhwc),
+                            src_d.padded_dims()[1] % 16 == 0),
+            VERBOSE_SHAPE_RESTRICTION);
 
     nthr_ = dnnl_get_max_threads();
     auto scratchpad = scratchpad_registry().registrar();
@@ -2385,58 +2318,72 @@ jit_uni_batch_normalization_fwd_t<isa>::~jit_uni_batch_normalization_fwd_t() {
 
 template <cpu_isa_t isa>
 status_t jit_uni_batch_normalization_bwd_t<isa>::pd_t::init(engine_t *engine) {
-    bool ok = !is_fwd() && mayiuse(isa)
-            && !has_zero_dim_memory()
-            // Algorithm requires barriers for best performance.
-            // TBB utilizes jit_uni_tbb_batch_normalization implementation.
-            && dnnl_thr_syncable() && one_of(src_md()->data_type, f32)
-            && src_md()->data_type == diff_src_md()->data_type
-            && diff_src_md()->data_type == diff_dst_md()->data_type
-            && check_scale_shift_data_type() && attr()->has_default_values()
-            && set_default_formats_common()
-            && memory_desc_wrapper(diff_src_md())
-                    == memory_desc_wrapper(diff_dst_md())
-            && impl::is_dense_format_kind(
-                    {src_md(), diff_src_md(), dst_md(), diff_dst_md()});
-    if (!ok) return status::unimplemented;
+    VDISPATCH_BNORM(!is_fwd(), VERBOSE_BAD_PROPKIND);
+    VDISPATCH_BNORM(mayiuse(isa), VERBOSE_UNSUPPORTED_ISA);
+    VDISPATCH_BNORM(!has_zero_dim_memory(), "zero dims are not supported");
+    VDISPATCH_BNORM(
+            dnnl_thr_syncable(), "implementation requires DNNL_THR_SYNC");
+    VDISPATCH_BNORM(src_md()->data_type == f32, VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_BNORM(utils::everyone_is(src_md()->data_type,
+                            diff_src_md()->data_type, diff_dst_md()->data_type),
+            VERBOSE_UNSUPPORTED_DT_CFG);
+    VDISPATCH_BNORM(
+            check_scale_shift_data_type(), VERBOSE_INCONSISTENT_ALPHA_BETA);
+    VDISPATCH_BNORM(attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
+    VDISPATCH_BNORM(set_default_formats_common(),
+            "setting dst memory descriptor failed");
+    VDISPATCH_BNORM(memory_desc_wrapper(diff_src_md())
+                    == memory_desc_wrapper(diff_dst_md()),
+            VERBOSE_INCONSISTENT_MDS, "diff_src", "diff_dst");
+    VDISPATCH_BNORM(is_dense_format_kind(
+                            {src_md(), dst_md(), diff_src_md(), diff_dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     // BN+Add+Relu fusion is not currently implemented
-    if (fuse_norm_add_relu()) return status::unimplemented;
+    VDISPATCH_BNORM(!fuse_norm_add_relu(), VERBOSE_BAD_FLAGS);
 
     const memory_desc_wrapper src_d(src_md());
     const memory_desc_wrapper diff_src_d(diff_src_md());
+    auto src_tag = format_tag::undef;
+    auto diff_src_tag = format_tag::undef;
+    switch (simd_bytes(isa)) {
+        case 64:
+            src_tag = src_d.matches_one_of_tag(
+                    nCw16c, nChw16c, nCdhw16c, nc, nwc, nhwc, ndhwc);
+            diff_src_tag = diff_src_d.matches_one_of_tag(
+                    nc, nwc, nCw16c, nhwc, nChw16c, ndhwc, nCdhw16c);
+            break;
+        case 32:
+            src_tag = src_d.matches_one_of_tag(
+                    nCw8c, nChw8c, nCdhw8c, nc, nwc, nhwc, ndhwc);
+            diff_src_tag = diff_src_d.matches_one_of_tag(
+                    nc, nwc, nCw8c, nhwc, nChw8c, ndhwc, nCdhw8c);
+            break;
+        case 16:
+            src_tag = src_d.matches_one_of_tag(nc, nwc, nhwc, ndhwc);
+            diff_src_tag = diff_src_d.matches_one_of_tag(nc, nwc, nhwc, ndhwc);
+            break;
 
-    format_tag_t src_tag, diff_src_tag;
-    if (isa == sve_512) {
-        src_tag = src_d.matches_one_of_tag(
-                nc, nwc, nCw16c, nhwc, nChw16c, ndhwc, nCdhw16c);
-        diff_src_tag = diff_src_d.matches_one_of_tag(
-                nc, nwc, nCw16c, nhwc, nChw16c, ndhwc, nCdhw16c);
-    } else if (isa == sve_256) {
-        src_tag = src_d.matches_one_of_tag(
-                nc, nwc, nCw8c, nhwc, nChw8c, ndhwc, nCdhw8c);
-        diff_src_tag = diff_src_d.matches_one_of_tag(
-                nc, nwc, nCw8c, nhwc, nChw8c, ndhwc, nCdhw8c);
-    } else {
-        src_tag = src_d.matches_one_of_tag(nCw8c, nChw8c, nCdhw8c);
-        diff_src_tag = diff_src_d.matches_one_of_tag(nCw8c, nChw8c, nCdhw8c);
+        default: return status::unimplemented;
     }
-    ok = (src_tag != format_tag::undef && diff_src_tag != format_tag::undef
-            && src_tag == diff_src_tag);
-    if (!ok) return status::unimplemented;
 
-    if (memory_desc_wrapper(src_md()).padded_dims()[1] != C() && isa != sve_256
-            && isa != sve_512)
-        return status::unimplemented;
+    VDISPATCH_BNORM(src_tag != format_tag::undef
+                    && diff_src_tag != format_tag::undef
+                    && src_tag == diff_src_tag,
+            VERBOSE_UNSUPPORTED_TAG);
+
+    VDISPATCH_BNORM(
+            IMPLICATION(memory_desc_wrapper(src_md()).padded_dims()[1] != C(),
+                    is_superset(isa, sve)),
+            "padded dimensions are not supported on this isa");
 
     // Only IC % 16 == 0 is supported for now
-    if (src_d.matches_one_of_tag(nc, nwc, nhwc, ndhwc)
-            && src_d.padded_dims()[1] % 16 != 0) {
-        return status::unimplemented;
-    }
+    VDISPATCH_BNORM(IMPLICATION(src_d.matches_one_of_tag(nc, nwc, nhwc, ndhwc),
+                            src_d.padded_dims()[1] % 16 == 0),
+            VERBOSE_SHAPE_RESTRICTION);
 
     if (fuse_norm_relu()) {
-        if (isa != sve_256 && isa != sve_512) return status::unimplemented;
+        if (!is_superset(isa, sve)) return status::unimplemented;
         init_default_ws(1);
         if (!compare_ws(hint_fwd_pd_)) return status::unimplemented;
     }
@@ -2496,11 +2443,10 @@ jit_uni_batch_normalization_bwd_t<isa>::~jit_uni_batch_normalization_bwd_t() {
 
 /* struct instantiation */
 template struct jit_uni_batch_normalization_fwd_t<asimd>;
+template struct jit_uni_batch_normalization_fwd_t<sve>;
+
 template struct jit_uni_batch_normalization_bwd_t<asimd>;
-template struct jit_uni_batch_normalization_fwd_t<sve_256>;
-template struct jit_uni_batch_normalization_bwd_t<sve_256>;
-template struct jit_uni_batch_normalization_fwd_t<sve_512>;
-template struct jit_uni_batch_normalization_bwd_t<sve_512>;
+template struct jit_uni_batch_normalization_bwd_t<sve>;
 
 } // namespace aarch64
 } // namespace cpu

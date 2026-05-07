@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2017 Intel Corporation
 * Copyright 2020-2022 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -19,16 +19,11 @@
 #ifndef CPU_AARCH64_JIT_UNI_BATCH_NORMALIZATION_HPP
 #define CPU_AARCH64_JIT_UNI_BATCH_NORMALIZATION_HPP
 
-#include <assert.h>
-
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
-#include "common/type_helpers.hpp"
-#include "common/utils.hpp"
-
-#include "cpu/cpu_batch_normalization_pd.hpp"
 
 #include "cpu/aarch64/cpu_isa_traits.hpp"
+#include "cpu/cpu_batch_normalization_pd.hpp"
 
 namespace dnnl {
 namespace impl {

@@ -1651,7 +1651,7 @@ void jit_sve_conv_bwd_data_kernel_f32_t<isa>::compute_loop_fma_core(
     };
 
     auto zreg_inp_s = [=](int i_ic, int nb_x_blocking) {
-        int idx = (i_ic + nb_x_blocking * jcp.ur_w);
+        int idx = (i_ic + (nb_x_blocking - 1) * jcp.ur_w + ur_w);
         assert(idx < 31);
         return ZRegS(idx);
     };
@@ -1790,7 +1790,8 @@ void jit_sve_conv_bwd_data_kernel_f32_t<isa>::compute_loop_fma_core(
             int jj_end = get_iw_end(ur_w, ki, r_overflow);
             const int num_bcast_regs
                     = stride_w == 1 ? (ur_w >= 16 ? 1 : jj_end) : stride_w;
-            int wei_reg_ofs = nb_ic_block * jcp.ur_w + num_bcast_regs;
+            int wei_reg_ofs
+                    = (nb_ic_block - 1) * jcp.ur_w + ur_w + num_bcast_regs;
             assert(wei_reg_ofs + num_wei_reg <= 32);
             for (int oc = 0; oc < oc_block; oc++) {
                 if (oc_tail && oc >= oc_tail) {

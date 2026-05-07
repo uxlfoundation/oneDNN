@@ -49,15 +49,18 @@ static status_t get_cached_kernel(
     return status::success;
 }
 
+// The mask clears the MSB of the exponent for FP types. This both rules out
+// NaN/Inf in the buffer (exp != all-ones) and bounds |val| < 2 (except e8m0)
+// so that reductions cannot overflow the accumulator.
 static uint32_t nan_safe_mask(data_type_t dt) {
     switch (dt) {
-        case data_type::f32: return 0xFF7FFFFFu;
-        case data_type::f16: return 0xFBFFFBFFu;
-        case data_type::bf16: return 0xFF7FFF7Fu;
-        case data_type::f8_e5m2: return 0xFBFBFBFBu;
-        case data_type::f8_e4m3: return 0xF7F7F7F7u;
-        case data_type::e8m0: return 0xFEFEFEFEu;
-        case data_type::f64: return 0xFFEFFFFFu;
+        case data_type::f32: return 0xBFFFFFFFu;
+        case data_type::f16: return 0xBFFFBFFFu;
+        case data_type::bf16: return 0xBFFFBFFFu;
+        case data_type::f8_e5m2: return 0xBFBFBFBFu;
+        case data_type::f8_e4m3: return 0xBFBFBFBFu;
+        case data_type::e8m0: return 0x7F7F7F7Fu;
+        case data_type::f64: return 0xBFFFFFFFu;
         default: return 0xFFFFFFFFu;
     }
 }

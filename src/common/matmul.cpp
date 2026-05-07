@@ -174,7 +174,38 @@ status_t grouped_matmul_attr_check(
             attr->has_default_values(allowed_mask, desc.dst_desc.data_type),
             VERBOSE_UNSUPPORTED_ATTR);
 
-    // Specific checks are happening in impls for now
+    // Post-ops: only eltwise and binary_mul are supported
+    const memory_desc_wrapper dst_d(&desc.dst_desc);
+    const auto &po = attr->post_ops_;
+    for (int i = 0; i < po.len(); ++i) {
+        const auto &e = po.entry_[i];
+        VCHECK_MATMUL_UNIMPL(
+                e.is_eltwise() || e.is_binary(), VERBOSE_UNSUPPORTED_POSTOP);
+
+        if (e.is_binary()) {
+            VCHECK_MATMUL_UNIMPL(e.binary.alg == alg_kind::binary_mul,
+                    VERBOSE_UNSUPPORTED_POSTOP);
+            const memory_desc_wrapper src1_d(e.binary.src1_desc);
+
+            if (src1_d.is_grouped_desc()) {
+                // Validate grouped binary post-op descriptor:
+                // group_count and variable_dim_idx must match dst
+                const auto &bin_g = src1_d.sparse_desc().grouped_desc;
+                const auto &dst_g = dst_d.sparse_desc().grouped_desc;
+                VCHECK_MATMUL_UNIMPL(bin_g.group_count == dst_g.group_count
+                                && bin_g.variable_dim_idx
+                                        == dst_g.variable_dim_idx,
+                        VERBOSE_INCONSISTENT_MDS, "binary post-op", "dst");
+            } else if (!src1_d.format_any()) {
+                // Dense binary post-op:
+                // only support N == 1 (scalar/per-row) or ab layout
+                const dim_t bin_N = src1_d.dims()[src1_d.ndims() - 1];
+                VCHECK_MATMUL_UNIMPL(
+                        bin_N == 1 || src1_d.matches_one_of_tag(format_tag::ab),
+                        VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "binary post-op");
+            }
+        }
+    }
 
     return status::success;
 }

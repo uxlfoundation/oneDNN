@@ -220,6 +220,29 @@ float round_to_nearest_representable(dnnl_data_type_t dt, float value) {
 
 #undef CASE_ALL
 
-bool is_subbyte_type(const dnnl_data_type_t &type) {
+bool is_subbyte_type(dnnl_data_type_t type) {
     return type == dnnl_f4_e2m1 || type == dnnl_u4 || type == dnnl_s4;
+}
+
+size_t bits_dt(dnnl_data_type_t dt) {
+    switch (dt) {
+        case dnnl_s64:
+        case dnnl_f64: return 64;
+        case dnnl_s32:
+        case dnnl_f32: return 32;
+        case dnnl_bf16:
+        case dnnl_f16: return 16;
+        case dnnl_e8m0:
+        case dnnl_f8_e5m2:
+        case dnnl_f8_e4m3:
+        case dnnl_s8:
+        case dnnl_u8: return 8;
+        case dnnl_f4_e2m1:
+        case dnnl_s4:
+        case dnnl_u4: return 4;
+        case dnnl_boolean: return 1;
+        default: assert(!"unsupported data type"); SAFE_V(FAIL);
+    }
+
+    return 0;
 }

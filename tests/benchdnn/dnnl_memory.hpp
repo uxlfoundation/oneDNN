@@ -269,6 +269,10 @@ bool has_sparse_md(const dnn_mem_map_t &dnn_mem_map);
 
 dnnl_memory_desc_t clone_md(const_dnnl_memory_desc_t md);
 
+// Returns the logical size of a memory descriptor, which is a product of nelems
+// by data_type_size.
+size_t get_logical_size(const_dnnl_memory_desc_t md);
+
 // Checks that zero padding is preserved.
 int check_zero_padding(const dnn_mem_t &mem, int arg, res_t *res = nullptr,
         int *error_count = nullptr);

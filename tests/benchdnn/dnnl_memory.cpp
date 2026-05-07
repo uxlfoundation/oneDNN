@@ -1470,3 +1470,19 @@ dnnl_memory_desc_t clone_md(const_dnnl_memory_desc_t md) {
     if (status != dnnl_success) return nullptr;
     return cloned_md;
 }
+
+size_t get_logical_size(const_dnnl_memory_desc_t md) {
+    const auto ndims = query_md_ndims(md);
+    if (ndims == 0) return 0;
+
+    const auto dims = query_md_dims(md);
+    int64_t nelems = 1;
+    for (int i = 0; i < ndims; ++i)
+        nelems *= dims[i];
+
+    const auto dt = query_md_data_type(md);
+    const size_t dt_size = dnnl_data_type_size(dt);
+    const size_t dt_bits = bits_dt(dt);
+    const size_t elems_in_byte = div_up(size_t(8), dt_bits);
+    return div_up(static_cast<size_t>(nelems) * dt_size, elems_in_byte);
+}

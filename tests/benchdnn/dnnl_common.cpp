@@ -1486,7 +1486,12 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
 
 void add_md_size(const_dnnl_memory_desc_t md,
         check_mem_size_args_t &check_mem_size_args) {
-    const auto mem_size = dnnl_memory_desc_get_size(md);
+    size_t mem_size = SIZE_MAX;
+    if (check_mem_size_args.use_logical_size) {
+        mem_size = get_logical_size(md);
+    } else {
+        mem_size = dnnl_memory_desc_get_size(md);
+    }
     // Runtime mem size is not defined.
     if (mem_size == 0 || mem_size == DNNL_RUNTIME_SIZE_VAL) return;
 
@@ -1671,15 +1676,18 @@ int collect_mem_size(check_mem_size_args_t &mem_size_args,
 }
 
 int get_memory_footprint(const_dnnl_primitive_desc_t const_pd, res_t *res) {
-    check_mem_size_args_t check_mem_in_size_args(
-            const_pd, /* want_input = */ true, DIR_UNDEF);
+    check_mem_size_args_t check_mem_in_size_args(const_pd,
+            /* want_input = */ true, DIR_UNDEF,
+            /* use_logical_size */ true);
     get_memory_bytes(check_mem_in_size_args); // Get input bytes.
-    check_mem_size_args_t check_mem_out_size_args(
-            const_pd, /* want_input = */ false, DIR_UNDEF);
+    check_mem_size_args_t check_mem_out_size_args(const_pd,
+            /* want_input = */ false, DIR_UNDEF,
+            /* use_logical_size */ true);
     get_memory_bytes(check_mem_out_size_args); // Get output bytes.
 
-    // Sum post-ops include dst bytes as an input. Not included in get_memory_bytes
-    // since it would cause `collect_mem_size` to double-count dst bytes.
+    // Sum post-ops include dst bytes as an input. Not included in
+    // `get_memory_bytes` since it would cause `collect_mem_size` to
+    // double-count dst bytes.
     auto const_attr_po = query_post_ops(const_pd);
     auto po_len = dnnl_post_ops_len(const_attr_po);
     for (int idx = 0; idx < po_len; ++idx) {

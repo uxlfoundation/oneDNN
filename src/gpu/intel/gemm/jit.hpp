@@ -54,7 +54,17 @@ struct gen_t : public primitive_t {
 
             assert(engine->kind() == engine_kind::gpu);
             auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+
+            CHECK(set_default_formats(false));
+
+            dev_info_ = intel_engine->device_info();
+            arch_ = dev_info_->gpu_arch();
+
+            CHECK(jit::pd_t::init(engine, arch_));
+
             const auto d = desc();
+            auto m = desc()->m();
+            auto n = desc()->n();
 
             // Basic implementation attr support:
             auto attr_skip_mask = smask_t::post_ops | smask_t::fpmath_mode
@@ -69,18 +79,6 @@ struct gen_t : public primitive_t {
                     !utils::one_of(DNNL_RUNTIME_DIM_VAL, d->m(), d->n(), d->k(),
                             d->lda(), d->ldb(), d->ldc(), d->batch()),
                     VERBOSE_RUNTIMEDIM_UNSUPPORTED);
-
-            auto &attr_zps = attr()->zero_points_;
-
-            dev_info_ = intel_engine->device_info();
-            arch_ = dev_info_->gpu_arch();
-            int stepping = dev_info_->stepping_id();
-
-            CHECK(set_default_formats(false));
-            CHECK(jit::pd_t::init(engine, arch_));
-
-            auto m = desc()->m();
-            auto n = desc()->n();
 
             // If m = 1, swap A/B to use more efficient n = 1 kernels if possible.
             bool check_lda = ((d->transa() == dnnl_notrans && d->lda() == 1)
@@ -171,7 +169,7 @@ struct gen_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_BIAS_CFG);
             VDISPATCH_GEMM(IMPLICATION(with_sum_ab(),
                                    !with_bias
-                                           && (attr_zps.has_default_values(
+                                           && (attr()->zero_points_.has_default_values(
                                                    DNNL_ARG_DST))),
                     VERBOSE_UNSUPPORTED_ATTR);
 
@@ -269,6 +267,7 @@ struct gen_t : public primitive_t {
             auto ldb = ld(DNNL_ARG_B);
             if (swap_ab_) std::swap(lda, ldb);
             auto product = intel_engine->device_info()->gpu_product();
+            int stepping = dev_info_->stepping_id();
             auto entries = kernel_desc_.select_kernel(product, stepping,
                     dev_info_->eu_count(), has_systolic, is_integrated, mode,
                     problem, alpha(), beta(), m, n, d->k(), lda, ldb, d->ldc(),

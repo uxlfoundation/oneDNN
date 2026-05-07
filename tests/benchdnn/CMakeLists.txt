@@ -207,6 +207,10 @@ foreach(driver ${all_drivers})
             register_all_tests(cpu "${driver}" "${test_files_ci}")
         endif()
     elseif(DNNL_TEST_SET_COVERAGE EQUAL DNNL_TEST_SET_NIGHTLY)
+        if(NOT DNNL_EXPERIMENTAL_GROUPED_MEMORY)
+            list(REMOVE_ITEM test_files_gpu "test_matmul_grouped_gpu")
+        endif()
+
         ## Filter out gpu, large cpu and invalid inputs from cpu
         ##
         ## Note: put longer/specialized names first to keep filtering working.

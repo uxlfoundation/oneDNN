@@ -1,9 +1,10 @@
-# Grouped GEMM — PyTorch API coverage (MFDNN-14187)
+# Grouped GEMM — Frameworks Model coverage
 #
 # grouped_mm:        bf16/f16, mat2 row-major (abc) and col-major (acb)
 # scaled_grouped_mm: mat2 col-major (acb), mat1 row-major (default stag)
-#
-# XFAIL: NvFP4 binary-mul post-op cases require Task 3 (NvFP4 post-op impl)
+
+
+--batch=test_matmul_grouped_ci
 
 --reset
 
@@ -14,12 +15,14 @@
 # mat2 row-major
 --dt=f16:f16:f16,bf16:bf16:bf16
 --wtag=abc
+--attr-fpmath=f16:true
 --batch=shapes_grouped_moe
 
 # mat2 col-major
 --reset
 --dt=f16:f16:f16,bf16:bf16:bf16
 --wtag=acb
+--attr-fpmath=f16:true
 --batch=shapes_grouped_moe
 
 ########################################
@@ -32,7 +35,9 @@
 --dt=f8_e5m2:f8_e5m2:bf16,f8_e4m3:f8_e4m3:bf16
 --wtag=acb
 --attr-scales=src:1:f32+wei:5:f32
+--attr-fpmath=f16:true
 --batch=shapes_grouped_moe
+--batch=shapes_grouped_moe_large
 
 ########################################
 # scaled_grouped_mm: MxFP8             #
@@ -44,7 +49,9 @@
 --dt=f8_e4m3:f8_e4m3:bf16
 --wtag=acb
 --attr-scales=src:3:e8m0:1x32+wei:7:e8m0:32x1
+--attr-fpmath=f16:true
 --batch=shapes_grouped_moe
+--batch=shapes_grouped_moe_large
 
 ########################################
 # scaled_grouped_mm: MxFP4             #
@@ -56,6 +63,7 @@
 --dt=f4_e2m1:f4_e2m1:bf16
 --wtag=acb
 --attr-scales=src:3:e8m0:1x32+wei:7:e8m0:32x1
+--attr-fpmath=f16:true
 --batch=shapes_grouped_moe
 
 ########################################
@@ -70,4 +78,22 @@
 --wtag=acb
 --attr-scales=src:3:f8_e4m3:1x16+wei:7:f8_e4m3:16x1
 --attr-post-ops=mul:f32:0
+--attr-fpmath=f16:true
+--batch=shapes_grouped_moe
+
+########################################
+# WoQ F16/U4/F16                       #
+# scale_b: f16 block (E, K/128, N)     #
+# zero-point_b: u4 block (E, K/128, N) #
+# + bias f16                           #
+########################################
+
+--reset
+--dt=f16:u4:f16
+--bia-dt=f16 --bia_mask=2
+--attr-scales=wei:7:f16:128x1
+--attr-zero-points=wei:7:u4:128x1
+--attr-fpmath=f16:true
+--wtag=acb
+--match=gs128
 --batch=shapes_grouped_moe

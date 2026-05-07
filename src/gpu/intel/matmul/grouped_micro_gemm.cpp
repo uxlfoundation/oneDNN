@@ -297,6 +297,9 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
     VDISPATCH_MATMUL(!wei_d.is_sparse_desc() && !wei_d.is_grouped_desc(),
             VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
+    VDISPATCH_MATMUL_SC(attr_.post_ops_.set_default_formats(dst_md(0)),
+            VERBOSE_UNSUPPORTED_POSTOP);
+
     // Extract grouped encoding
     const sparse_desc_t::grouped_desc_t &src_grouped
             = src_d.sparse_desc().grouped_desc;

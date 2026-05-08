@@ -371,6 +371,8 @@ class StridesMixin(TagTripletMixin):
         strides = []
 
         def add_strides_or_tag(arg, md):
+            if md.tag == "grouped":
+                return
             tag = maybe_make_any_tag(md)
             if arg == "wei" and str(md.flags.value) != "f0":
                 tag = "any"

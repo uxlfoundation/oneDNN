@@ -147,6 +147,13 @@ std::unique_ptr<memory_storage_t> buffer_memory_storage_t::get_sub_storage(
     assert(size != 0);
     assert(offset % ocl_engine_impl->get_buffer_alignment() == 0);
 
+#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
+    // CL_MEM_ALLOW_UNRESTRICTED_SIZE_INTEL is only accepted by clCreateBuffer,
+    // clCreateSubBuffer rejects it with CL_INVALID_VALUE.
+    mem_flags
+            &= ~static_cast<cl_mem_flags>(CL_MEM_ALLOW_UNRESTRICTED_SIZE_INTEL);
+#endif
+
     cl_buffer_region buffer_region = {base_offset_ + offset, size};
     xpu::ocl::wrapper_t<cl_mem> sub_buffer
             = xpu::ocl::clCreateSubBuffer(parent_mem_object(), mem_flags,

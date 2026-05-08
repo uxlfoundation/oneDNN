@@ -132,6 +132,11 @@ status_t device_info_t::init_attributes(impl::engine_t *engine) {
         }
     }
 
+    ze_device_module_properties_t device_module_props = {};
+    device_module_props.stype = ZE_STRUCTURE_TYPE_DEVICE_MODULE_PROPERTIES;
+    CHECK(xpu::ze::zeDeviceGetModuleProperties(device, &device_module_props));
+    max_kernel_param_size_ = device_module_props.maxArgumentsSize;
+
     ze_device_memory_access_properties_t device_memory_access_properties = {};
     device_memory_access_properties.stype
             = ZE_STRUCTURE_TYPE_DEVICE_MEMORY_ACCESS_PROPERTIES;

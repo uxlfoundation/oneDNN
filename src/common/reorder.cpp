@@ -72,23 +72,34 @@ status_t reorder_primitive_desc_create(std::shared_ptr<primitive_desc_t> &pd,
     auto s_ek = src_engine->kind();
     auto d_ek = dst_engine->kind();
 
+    auto s_mdw = memory_desc_wrapper(*src_md);
+    auto d_mdw = memory_desc_wrapper(*dst_md);
+
+    const bool src_is_host_scalar = s_mdw.is_host_scalar_desc();
+
     // There are no sparse reorders for GPU engine.
-    if (utils::one_of(engine_kind::gpu, s_ek, d_ek)
+    // Host scalar source is allowed through (not sparse).
+    if (utils::one_of(engine_kind::gpu, s_ek, d_ek) && !src_is_host_scalar
             && !impl::is_dense_format_kind({src_md, dst_md}))
         return status::unimplemented;
 
-    VCHECK_REORDER(!memory_desc_wrapper(src_md).format_any(),
-            VERBOSE_RUNTIMEDIM_UNSUPPORTED);
-    VCHECK_REORDER(!memory_desc_wrapper(dst_md).format_any(),
-            VERBOSE_UNSUPPORTED_TAG_S, "dst");
-    VCHECK_REORDER(IMPLICATION(s_ek != d_ek,
+    VCHECK_REORDER(!s_mdw.format_any(), VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+    VCHECK_REORDER(!d_mdw.format_any(), VERBOSE_UNSUPPORTED_TAG_S, "dst");
+    // Skip cross-engine kind check for host_scalar (no real source engine).
+    VCHECK_REORDER(IMPLICATION(!src_is_host_scalar && s_ek != d_ek,
                            utils::one_of(engine_kind::cpu, s_ek, d_ek)),
             VERBOSE_BAD_ENGINE_KIND);
 
-    auto s_mdw = memory_desc_wrapper(*src_md);
-    auto d_mdw = memory_desc_wrapper(*dst_md);
-    VCHECK_REORDER(s_mdw.consistent_with(d_mdw), VERBOSE_INCONSISTENT_MDS,
-            "src", "dst");
+    if (src_is_host_scalar) {
+        // Host scalar reorder: dst must have exactly 1 element and same dtype.
+        VCHECK_REORDER(
+                d_mdw.nelems() == 1, VERBOSE_INCONSISTENT_MDS, "src", "dst");
+        VCHECK_REORDER(s_mdw.data_type() == d_mdw.data_type(),
+                VERBOSE_INCONSISTENT_DT, "src", "dst");
+    } else {
+        VCHECK_REORDER(s_mdw.consistent_with(d_mdw), VERBOSE_INCONSISTENT_MDS,
+                "src", "dst");
+    }
 
     if (attr == nullptr) attr = &default_attr();
 
@@ -182,16 +193,26 @@ status_t dnnl_reorder_primitive_desc_create(
         primitive_desc_iface_t **reorder_pd_iface, const memory_desc_t *src_md,
         engine_t *src_engine, const memory_desc_t *dst_md, engine_t *dst_engine,
         const primitive_attr_t *attr) {
-    if (any_null(reorder_pd_iface, src_engine, src_md, dst_engine, dst_md))
+    if (any_null(reorder_pd_iface, src_md, dst_engine, dst_md))
         return invalid_arguments;
 
+    const bool src_is_host_scalar
+            = memory_desc_wrapper(*src_md).is_host_scalar_desc();
+
+    // src_engine may be null for host_scalar source.
+    if (!src_is_host_scalar && src_engine == nullptr) return invalid_arguments;
+
+    // For host_scalar source without an engine, use dst_engine.
+    engine_t *effective_src_engine = src_engine ? src_engine : dst_engine;
+
     std::shared_ptr<primitive_desc_t> pd;
-    auto e = get_reorder_engine(src_engine, dst_engine);
+    auto e = get_reorder_engine(effective_src_engine, dst_engine);
     CHECK(reorder_primitive_desc_create(
-            pd, e, src_md, src_engine, dst_md, dst_engine, attr));
+            pd, e, src_md, effective_src_engine, dst_md, dst_engine, attr));
 
     return safe_ptr_assign(*reorder_pd_iface,
-            new reorder_primitive_desc_iface_t(pd, e, src_engine, dst_engine));
+            new reorder_primitive_desc_iface_t(
+                    pd, e, effective_src_engine, dst_engine));
 }
 
 // vim: et ts=4 sw=4 cindent cino+=l0,\:4,N-s

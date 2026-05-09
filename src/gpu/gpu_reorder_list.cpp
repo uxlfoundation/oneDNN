@@ -22,6 +22,7 @@
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
 #include "gpu/intel/reorder/custom.hpp"
 #include "gpu/intel/reorder/generic.hpp"
+#include "gpu/intel/reorder/host_scalar.hpp"
 #include "gpu/intel/reorder/jit.hpp"
 #include "gpu/intel/reorder/ref.hpp"
 #include "gpu/intel/rnn/reorders.hpp"
@@ -49,6 +50,7 @@ using namespace dnnl::impl::data_type;
 
 // clang-format off
 constexpr impl_list_item_t impl_list[] = REG_REORDER_P({
+        GPU_REORDER_INSTANCE_INTEL(intel::reorder::host_scalar_t::pd_t)
         GPU_REORDER_INSTANCE_INTEL(intel::rnn::weights_reorder_t::pd_t)
         GPU_REORDER_INSTANCE_GENERIC(generic::direct_copy_t::pd_t)
         GPU_REORDER_INSTANCE_INTEL(intel::reorder::gen_t::pd_t)

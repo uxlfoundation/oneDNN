@@ -560,6 +560,7 @@ std::string md2fmt_str(
         case format_kind::opaque: ss << "::"; break;
         case format_kind::sparse: ss << ":" << mdw.encoding() << ":"; break;
         case format_kind::any: ss << ":any:"; break;
+        case format_kind::host_scalar: ss << "::"; break;
         default:
             assert(!"unsupported format_kind");
             ss << "::";

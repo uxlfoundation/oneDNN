@@ -1729,6 +1729,50 @@ int get_memory_footprint(const_dnnl_primitive_desc_t const_pd, res_t *res) {
         check_mem_in_size_args.total_size_device += fixed_src_size - src_size;
     }
 
+    const auto &adjust_src_bytes_for_stride
+            = [&check_mem_in_size_args](const_dnnl_memory_desc_t src_md,
+                      int spatial_dims, const dnnl_dims_t strides,
+                      const dnnl_dims_t kernels) {
+        double kernel_ratio = 1;
+        for (int d = 0; d < spatial_dims; d++) {
+            auto stride = strides[d];
+            auto kernel = kernels[d];
+            if (stride > kernel) {
+                kernel_ratio *= static_cast<double>(stride) / kernel;
+            }
+        }
+        const auto src_size = dnnl_memory_desc_get_size(src_md);
+        const auto fixed_src_size = static_cast<size_t>(
+                static_cast<double>(src_size) / kernel_ratio);
+        check_mem_in_size_args.total_size_device += fixed_src_size - src_size;
+    };
+
+    // When a dimensional stride is bigger than kernel window, it means there
+    // are less reads from source by stride/kernel times.
+    if (is_fwd_prop_kind(prop) && kind == dnnl_convolution) {
+        auto src_md = query_md(const_pd, DNNL_ARG_SRC);
+        auto wei_md = query_md(const_pd, DNNL_ARG_WEIGHTS);
+        auto src_ndims = query_md_ndims(src_md);
+        auto wei_ndims = query_md_ndims(wei_md);
+        auto with_groups = src_ndims < wei_ndims;
+        auto wei_dims = query_md_dims(wei_md);
+
+        auto strides = query_strides(const_pd);
+        adjust_src_bytes_for_stride(
+                src_md, src_ndims - 2, strides, &wei_dims[with_groups + 2]);
+    }
+
+    // When a dimensional stride is bigger than kernel window, it means there
+    // are less reads from source by stride/kernel times.
+    if (is_fwd_prop_kind(prop) && kind == dnnl_pooling) {
+        auto src_md = query_md(const_pd, DNNL_ARG_SRC);
+        auto ndims = query_md_ndims(src_md);
+
+        auto strides = query_strides(const_pd);
+        auto kernels = query_kernels(const_pd);
+        adjust_src_bytes_for_stride(src_md, ndims - 2, strides, kernels);
+    }
+
     res->ibytes = check_mem_in_size_args.total_size_device;
     res->obytes = check_mem_out_size_args.total_size_device;
 

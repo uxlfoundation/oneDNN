@@ -466,6 +466,14 @@ TEST(test_sdp_decomp_execute, MultithreaSdpDecomp_CPU) {
             {seq_len * head_dim, size_per_head * seq_len, size_per_head, 1}};
     std::vector<bool> transpose_b = {false, true};
 
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP
+    // 4 concurrent threads will be executed below. Limiting the number of OMP
+    // threads to avoid oversubscription.
+    const int nthr = dnnl_get_current_num_threads() / 4;
+    SKIP_IF(nthr == 0, "skip as not enough threads for test");
+    omp_set_num_threads(nthr);
+#endif
+
     for (size_t i = 0; i < KEY_STRIDES.size(); ++i) {
         graph::graph_t g(eng->kind());
         utils::construct_int8_bf16_MHA(

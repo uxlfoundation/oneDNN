@@ -59,7 +59,7 @@ template <bool isTransA, bool isTransB>
 void block_ker(const dim_t M, const dim_t N, const dim_t K, const float *A,
         const dim_t lda, const float *B, const dim_t ldb, float *C,
         const dim_t ldc, const float alpha, const float beta, float *ws,
-        bool do_copy, int ithr = -1) {
+        bool do_copy, int ithr, const float *bias) {
     MAYBE_UNUSED(ithr);
 
     const dim_t n_unroll = gemm_f32_traits::get_n_unroll_factor();
@@ -70,8 +70,9 @@ void block_ker(const dim_t M, const dim_t N, const dim_t K, const float *A,
     const dim_t n_tail = N - Nu;
     const dim_t m_tail = M - Mu;
 
-    auto invoke_kernel = [&](const float *a_orig, const float *b, float *c,
-                                 dim_t tile_m, dim_t tile_n, dim_t j_col) {
+    auto invoke_kernel
+            = [&](const float *a_orig, const float *b, float *c, dim_t tile_m,
+                      dim_t tile_n, dim_t j_col, const float *bias_tile) {
         const float *a_eff;
         dim_t lda_eff;
         bool trans_a_eff;
@@ -88,35 +89,40 @@ void block_ker(const dim_t M, const dim_t N, const dim_t K, const float *A,
         }
 
         jit_rvv_gemm_kernel(a_eff, b, c, lda_eff, ldb, ldc, K, alpha, beta,
-                tile_m, tile_n, trans_a_eff, isTransB);
+                tile_m, tile_n, trans_a_eff, isTransB, bias_tile);
     };
 
     for (dim_t i = 0; i < Mu; i += m_unroll) {
         const float *a = isTransA ? &A[i * lda] : &A[i];
+        const float *bias_tile = bias ? bias + i : nullptr;
         for (dim_t j = 0; j < Nu; j += n_unroll) {
             const float *b = isTransB ? &B[j] : &B[j * ldb];
-            invoke_kernel(a, b, &C[i + j * ldc], m_unroll, n_unroll, j);
+            invoke_kernel(
+                    a, b, &C[i + j * ldc], m_unroll, n_unroll, j, bias_tile);
         }
 
         if (n_tail > 0) {
             const float *b = isTransB ? &B[Nu] : &B[Nu * ldb];
-            invoke_kernel(a, b, &C[i + Nu * ldc], m_unroll, n_tail, Nu);
+            invoke_kernel(
+                    a, b, &C[i + Nu * ldc], m_unroll, n_tail, Nu, bias_tile);
         }
     }
 
     if (m_tail > 0) {
         const float *a_tail = isTransA ? &A[Mu * lda] : &A[Mu];
+        const float *bias_tile = bias ? bias + Mu : nullptr;
 
         for (dim_t j = 0; j < Nu; j += n_unroll) {
             const float *b = isTransB ? &B[j] : &B[j * ldb];
             jit_rvv_gemm_kernel(a_tail, b, &C[Mu + j * ldc], lda, ldb, ldc, K,
-                    alpha, beta, m_tail, n_unroll, isTransA, isTransB);
+                    alpha, beta, m_tail, n_unroll, isTransA, isTransB,
+                    bias_tile);
         }
 
         if (n_tail > 0) {
             const float *b = isTransB ? &B[Nu] : &B[Nu * ldb];
             jit_rvv_gemm_kernel(a_tail, b, &C[Mu + Nu * ldc], lda, ldb, ldc, K,
-                    alpha, beta, m_tail, n_tail, isTransA, isTransB);
+                    alpha, beta, m_tail, n_tail, isTransA, isTransB, bias_tile);
         }
     }
 }
@@ -125,7 +131,7 @@ template <bool isTransA, bool isTransB>
 void gemm_ithr(const dim_t M, const dim_t N, const dim_t K, const float alpha,
         const float *A, const dim_t lda, const float *B, const dim_t ldb,
         const float beta, float *C, const dim_t ldc, bool do_copy, float *ws,
-        int ithr = -1) {
+        int ithr, const float *bias) {
 
     constexpr dim_t BM = gemm_traits_t<float, isTransA, isTransB>::BM;
     constexpr dim_t BN = gemm_traits_t<float, isTransA, isTransB>::BN;
@@ -146,6 +152,11 @@ void gemm_ithr(const dim_t M, const dim_t N, const dim_t K, const float alpha,
             for (dim_t j = 0; j < MN; j++)
                 C[j] *= beta;
         }
+        if (bias) {
+            for (dim_t j = 0; j < M; j++)
+                for (dim_t i = 0; i < N; i++)
+                    C[i * ldc + j] += bias[j];
+        }
         return;
     }
 
@@ -160,11 +171,14 @@ void gemm_ithr(const dim_t M, const dim_t N, const dim_t K, const float alpha,
                 curC = C + Bm + Bn * ldc;
 
                 if (Bk == 0) {
+                    const float *bias_block = bias ? bias + Bm : nullptr;
                     block_ker<isTransA, isTransB>(mb, nb, kb, curA, lda, curB,
-                            ldb, curC, ldc, alpha, beta, ws, do_copy, ithr);
+                            ldb, curC, ldc, alpha, beta, ws, do_copy, ithr,
+                            bias_block);
                 } else {
                     block_ker<isTransA, isTransB>(mb, nb, kb, curA, lda, curB,
-                            ldb, curC, ldc, alpha, 1.0f, ws, do_copy, ithr);
+                            ldb, curC, ldc, alpha, 1.0f, ws, do_copy, ithr,
+                            nullptr);
                 }
             }
         }
@@ -269,21 +283,24 @@ status_t rvv_gemm_f32(const char *transa_, const char *transb_, const dim_t *M_,
             const float *myB = isTransB ? &(B[n_from + k_from * ldb])
                                         : &(B[k_from + n_from * ldb]);
 
+            const float *myBias
+                    = (ithr_k == 0 && bias) ? bias + m_from : nullptr;
+
             if (!isTransA) {
                 if (!isTransB) {
                     gemm_ithr<false, false>(myM, myN, myK, alpha, myA, lda, myB,
-                            ldb, myBeta, myC, ld, do_copy, ws, ithr);
+                            ldb, myBeta, myC, ld, do_copy, ws, ithr, myBias);
                 } else {
                     gemm_ithr<false, true>(myM, myN, myK, alpha, myA, lda, myB,
-                            ldb, myBeta, myC, ld, do_copy, ws, ithr);
+                            ldb, myBeta, myC, ld, do_copy, ws, ithr, myBias);
                 }
             } else {
                 if (!isTransB) {
                     gemm_ithr<true, false>(myM, myN, myK, alpha, myA, lda, myB,
-                            ldb, myBeta, myC, ld, do_copy, ws, ithr);
+                            ldb, myBeta, myC, ld, do_copy, ws, ithr, myBias);
                 } else {
                     gemm_ithr<true, true>(myM, myN, myK, alpha, myA, lda, myB,
-                            ldb, myBeta, myC, ld, do_copy, ws, ithr);
+                            ldb, myBeta, myC, ld, do_copy, ws, ithr, myBias);
                 }
             }
         }
@@ -319,10 +336,6 @@ status_t rvv_gemm_f32(const char *transa_, const char *transb_, const dim_t *M_,
                         &C[m_from + (n_from + offset) * ldc], ldc);
             }
         });
-    }
-
-    if (bias) {
-        parallel_nd(N, M, [&](dim_t i, dim_t j) { C[i * ldc + j] += bias[j]; });
     }
 
     free(ws_buffers);

@@ -26,11 +26,12 @@ namespace gemm_utils {
 using namespace Xbyak_riscv;
 
 jit_rvv_gemm_kernel_t::jit_rvv_gemm_kernel_t(
-        dim_t n_cols, bool isTransA, bool isTransB)
+        dim_t n_cols, bool isTransA, bool isTransB, bool has_bias)
     : jit_generator_t("rv64_gemm_kernel_f32_jit")
     , n_cols_(n_cols)
     , isTransA_(isTransA)
-    , isTransB_(isTransB) {
+    , isTransB_(isTransB)
+    , has_bias_(has_bias) {
     create_kernel();
 }
 
@@ -47,6 +48,7 @@ void jit_rvv_gemm_kernel_t::generate() {
     const Reg reg_ldc_bytes = t2;
     const Reg reg_K = t3;
     const Reg reg_alpha_bits = t4;
+    const Reg reg_bias_ptr = t4; // reuse after alpha bits moved to freg
     const Reg reg_beta_bits = t5;
 
     const Reg reg_k = a4; // current k counter
@@ -72,6 +74,7 @@ void jit_rvv_gemm_kernel_t::generate() {
     //   56 : dim_t m
     //   64 : float alpha
     //   68 : float beta
+    //   72 : const float *bias  (only used when has_bias_)
     ld(reg_A_ptr, reg_param, 0);
     ld(reg_B0_ptr, reg_param, 8);
     ld(reg_C_base, reg_param, 16);
@@ -85,6 +88,8 @@ void jit_rvv_gemm_kernel_t::generate() {
     fmv_w_x(freg_alpha, reg_alpha_bits);
     lw(reg_beta_bits, reg_param, 68);
     fmv_w_x(freg_beta, reg_beta_bits);
+
+    if (has_bias_) { ld(reg_bias_ptr, reg_param, 72); }
 
     slli(reg_lda_bytes, reg_lda_bytes, 2);
     slli(reg_ldb_bytes, reg_ldb_bytes, 2);
@@ -169,35 +174,82 @@ void jit_rvv_gemm_kernel_t::generate() {
 
     L(label_k_tail_end);
 
-    auto emit_c_update = [&](dim_t col_idx) {
-        Label label_beta_zero, label_done;
+    if (has_bias_) {
+        // C-update with fused bias: result = alpha*acc + beta*C + bias
+        auto emit_c_update = [&](dim_t col_idx) {
+            Label label_beta_zero, label_done;
+            Label label_skip_bias, label_c_store;
 
-        if (col_idx == 0) {
-            mv(reg_tmp3, reg_C_base);
-        } else {
-            li(reg_tmp0, col_idx);
-            mul(reg_tmp3, reg_ldc_bytes, reg_tmp0);
-            add(reg_tmp3, reg_C_base, reg_tmp3);
-        }
+            if (col_idx == 0) {
+                mv(reg_tmp3, reg_C_base);
+            } else {
+                li(reg_tmp0, col_idx);
+                mul(reg_tmp3, reg_ldc_bytes, reg_tmp0);
+                add(reg_tmp3, reg_C_base, reg_tmp3);
+            }
 
-        beq(reg_beta_bits, x0, label_beta_zero);
+            beq(reg_beta_bits, x0, label_beta_zero);
 
-        vle32_v(v_a, reg_tmp3);
-        vfmul_vf(v_a, v_a, freg_beta);
-        vfmul_vf(v_c[col_idx], v_c[col_idx], freg_alpha);
-        vfadd_vv(v_a, v_a, v_c[col_idx]);
-        vse32_v(v_a, reg_tmp3);
-        j_(label_done);
+            vle32_v(v_a, reg_tmp3);
+            vfmul_vf(v_a, v_a, freg_beta);
+            vfmul_vf(v_c[col_idx], v_c[col_idx], freg_alpha);
+            vfadd_vv(v_a, v_a, v_c[col_idx]);
 
-        L(label_beta_zero);
-        vfmul_vf(v_c[col_idx], v_c[col_idx], freg_alpha);
-        vse32_v(v_c[col_idx], reg_tmp3);
+            beq(reg_bias_ptr, x0, label_skip_bias);
+            vle32_v(v_c[col_idx], reg_bias_ptr);
+            vfadd_vv(v_a, v_a, v_c[col_idx]);
+            L(label_skip_bias);
 
-        L(label_done);
-    };
+            vse32_v(v_a, reg_tmp3);
+            j_(label_done);
 
-    for (dim_t c = 0; c < n_cols_; c++)
-        emit_c_update(c);
+            L(label_beta_zero);
+            vfmul_vf(v_c[col_idx], v_c[col_idx], freg_alpha);
+
+            beq(reg_bias_ptr, x0, label_c_store);
+            vle32_v(v_a, reg_bias_ptr);
+            vfadd_vv(v_c[col_idx], v_c[col_idx], v_a);
+
+            L(label_c_store);
+            vse32_v(v_c[col_idx], reg_tmp3);
+
+            L(label_done);
+        };
+
+        for (dim_t c = 0; c < n_cols_; c++)
+            emit_c_update(c);
+    } else {
+        // C-update without bias: result = alpha*acc + beta*C
+        auto emit_c_update = [&](dim_t col_idx) {
+            Label label_beta_zero, label_done;
+
+            if (col_idx == 0) {
+                mv(reg_tmp3, reg_C_base);
+            } else {
+                li(reg_tmp0, col_idx);
+                mul(reg_tmp3, reg_ldc_bytes, reg_tmp0);
+                add(reg_tmp3, reg_C_base, reg_tmp3);
+            }
+
+            beq(reg_beta_bits, x0, label_beta_zero);
+
+            vle32_v(v_a, reg_tmp3);
+            vfmul_vf(v_a, v_a, freg_beta);
+            vfmul_vf(v_c[col_idx], v_c[col_idx], freg_alpha);
+            vfadd_vv(v_a, v_a, v_c[col_idx]);
+            vse32_v(v_a, reg_tmp3);
+            j_(label_done);
+
+            L(label_beta_zero);
+            vfmul_vf(v_c[col_idx], v_c[col_idx], freg_alpha);
+            vse32_v(v_c[col_idx], reg_tmp3);
+
+            L(label_done);
+        };
+
+        for (dim_t c = 0; c < n_cols_; c++)
+            emit_c_update(c);
+    }
 
     ret();
 #else
@@ -210,17 +262,30 @@ namespace {
 template <bool isTransA, bool isTransB>
 void jit_rvv_gemm_kernel_dispatch(const float *A, const float *B, float *C,
         dim_t lda, dim_t ldb, dim_t ldc, dim_t K, float alpha, float beta,
-        dim_t m, dim_t n_cols) {
-    static jit_rvv_gemm_kernel_t k1(1, isTransA, isTransB);
-    static jit_rvv_gemm_kernel_t k2(2, isTransA, isTransB);
-    static jit_rvv_gemm_kernel_t k3(3, isTransA, isTransB);
-    static jit_rvv_gemm_kernel_t k4(4, isTransA, isTransB);
-    static jit_rvv_gemm_kernel_t k5(5, isTransA, isTransB);
-    static jit_rvv_gemm_kernel_t k6(6, isTransA, isTransB);
-    static jit_rvv_gemm_kernel_t k7(7, isTransA, isTransB);
+        dim_t m, dim_t n_cols, const float *bias) {
+    // Kernels without fused bias (same code size as upstream)
+    static jit_rvv_gemm_kernel_t nb1(1, isTransA, isTransB, false);
+    static jit_rvv_gemm_kernel_t nb2(2, isTransA, isTransB, false);
+    static jit_rvv_gemm_kernel_t nb3(3, isTransA, isTransB, false);
+    static jit_rvv_gemm_kernel_t nb4(4, isTransA, isTransB, false);
+    static jit_rvv_gemm_kernel_t nb5(5, isTransA, isTransB, false);
+    static jit_rvv_gemm_kernel_t nb6(6, isTransA, isTransB, false);
+    static jit_rvv_gemm_kernel_t nb7(7, isTransA, isTransB, false);
 
-    static jit_rvv_gemm_kernel_t *arr[]
-            = {nullptr, &k1, &k2, &k3, &k4, &k5, &k6, &k7};
+    static jit_rvv_gemm_kernel_t *arr_nb[]
+            = {nullptr, &nb1, &nb2, &nb3, &nb4, &nb5, &nb6, &nb7};
+
+    // Kernels with fused bias
+    static jit_rvv_gemm_kernel_t b1(1, isTransA, isTransB, true);
+    static jit_rvv_gemm_kernel_t b2(2, isTransA, isTransB, true);
+    static jit_rvv_gemm_kernel_t b3(3, isTransA, isTransB, true);
+    static jit_rvv_gemm_kernel_t b4(4, isTransA, isTransB, true);
+    static jit_rvv_gemm_kernel_t b5(5, isTransA, isTransB, true);
+    static jit_rvv_gemm_kernel_t b6(6, isTransA, isTransB, true);
+    static jit_rvv_gemm_kernel_t b7(7, isTransA, isTransB, true);
+
+    static jit_rvv_gemm_kernel_t *arr_b[]
+            = {nullptr, &b1, &b2, &b3, &b4, &b5, &b6, &b7};
 
     static bool verbose_printed = false;
     if (!verbose_printed) {
@@ -240,7 +305,9 @@ void jit_rvv_gemm_kernel_dispatch(const float *A, const float *B, float *C,
     p.m = m;
     p.alpha = alpha;
     p.beta = beta;
+    p.bias = bias;
 
+    jit_rvv_gemm_kernel_t **arr = bias ? arr_b : arr_nb;
     (*arr[n_cols])(&p);
 }
 
@@ -248,19 +315,19 @@ void jit_rvv_gemm_kernel_dispatch(const float *A, const float *B, float *C,
 
 void jit_rvv_gemm_kernel(const float *A, const float *B, float *C, dim_t lda,
         dim_t ldb, dim_t ldc, dim_t K, float alpha, float beta, dim_t m,
-        dim_t n_cols, bool isTransA, bool isTransB) {
+        dim_t n_cols, bool isTransA, bool isTransB, const float *bias) {
     if (!isTransA && !isTransB) {
         jit_rvv_gemm_kernel_dispatch<false, false>(
-                A, B, C, lda, ldb, ldc, K, alpha, beta, m, n_cols);
+                A, B, C, lda, ldb, ldc, K, alpha, beta, m, n_cols, bias);
     } else if (isTransA && !isTransB) {
         jit_rvv_gemm_kernel_dispatch<true, false>(
-                A, B, C, lda, ldb, ldc, K, alpha, beta, m, n_cols);
+                A, B, C, lda, ldb, ldc, K, alpha, beta, m, n_cols, bias);
     } else if (!isTransA && isTransB) {
         jit_rvv_gemm_kernel_dispatch<false, true>(
-                A, B, C, lda, ldb, ldc, K, alpha, beta, m, n_cols);
+                A, B, C, lda, ldb, ldc, K, alpha, beta, m, n_cols, bias);
     } else {
         jit_rvv_gemm_kernel_dispatch<true, true>(
-                A, B, C, lda, ldb, ldc, K, alpha, beta, m, n_cols);
+                A, B, C, lda, ldb, ldc, K, alpha, beta, m, n_cols, bias);
     }
 }
 

@@ -84,7 +84,7 @@ void partition_unit_diff(
 // n_cols must be 1..7, m can be any value (handled by vsetvl).
 void jit_rvv_gemm_kernel(const float *A, const float *B, float *C, dim_t lda,
         dim_t ldb, dim_t ldc, dim_t K, float alpha, float beta, dim_t m,
-        dim_t n_cols, bool isTransA, bool isTransB);
+        dim_t n_cols, bool isTransA, bool isTransB, const float *bias);
 
 } // namespace gemm_utils
 } // namespace rv64

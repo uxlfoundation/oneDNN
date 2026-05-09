@@ -5387,8 +5387,9 @@ struct reorder : public primitive {
             dnnl_primitive_desc_t result;
             auto src_md = src.get_desc();
             auto dst_md = dst.get_desc();
+            auto src_eng = src.get_engine();
             dnnl_status_t status = dnnl_reorder_primitive_desc_create(&result,
-                    src_md.get(), src.get_engine().get(), dst_md.get(),
+                    src_md.get(), src_eng.get(true), dst_md.get(),
                     dst.get_engine().get(), attr.get());
             if (!allow_empty)
                 error::wrap_c_api(status,

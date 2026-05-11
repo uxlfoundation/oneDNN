@@ -83,12 +83,38 @@ int execute_and_wait(const std::vector<dnnl::graph::compiled_partition> &cp_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &outputs_v,
         res_t *res) {
     cpp_stream_t stream {get_graph_engine()};
-    for (size_t i = 0; i < cp_v.size(); i++) {
-        perf_function_t perf_func = std::bind(&compiled_partition_executor,
-                cp_v[i], std::placeholders::_1, std::placeholders::_2,
-                std::placeholders::_3);
-        DNN_GRAPH_SAFE(perf_func(stream, inputs_v[i], outputs_v[i]), CRIT, res);
-        DNN_GRAPH_SAFE(stream.wait(), CRIT, res);
+
+    if (use_sycl_graph_exec()) {
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
+        ::sycl::queue queue = dnnl::sycl_interop::get_queue(stream);
+        SAFE(sycl_graph_ctx::validate_backend(queue, res), FAIL);
+
+        auto exec = sycl_graph_ctx::record_and_finalize(stream, queue, [&]() {
+            for (size_t i = 0; i < cp_v.size(); i++) {
+                compiled_partition_executor(
+                        const_cast<dnnl::graph::compiled_partition &>(cp_v[i]),
+                        static_cast<dnnl::stream &>(stream), inputs_v[i],
+                        outputs_v[i]);
+            }
+        }, res);
+        if (!exec) return FAIL;
+        SAFE(sycl_graph_ctx::replay(queue, *exec, res), FAIL);
+#else
+        BENCHDNN_PRINT(0, "%s\n",
+                "[ERROR] Graph execution mode is only available on SYCL "
+                "runtime with Level Zero backend.");
+        res->state = FAILED;
+        return FAIL;
+#endif
+    } else {
+        for (size_t i = 0; i < cp_v.size(); i++) {
+            perf_function_t perf_func = std::bind(&compiled_partition_executor,
+                    cp_v[i], std::placeholders::_1, std::placeholders::_2,
+                    std::placeholders::_3);
+            DNN_GRAPH_SAFE(
+                    perf_func(stream, inputs_v[i], outputs_v[i]), CRIT, res);
+            DNN_GRAPH_SAFE(stream.wait(), CRIT, res);
+        }
     }
     res->state = EXECUTED;
     return OK;
@@ -116,13 +142,36 @@ inline int measure_perf_aggregate(timer::timer_t &t,
             : dnnl::stream::flags::default_flags;
     cpp_stream_t stream {get_graph_engine(), flags};
 
-    // Warm-up run, this is not measured due to possibility the associated
-    // kernel has not been built and skews the results.
     auto sz = perf_func_v.size();
-    for (size_t i = 0; i < sz; i++) {
-        DNN_GRAPH_SAFE(
-                perf_func_v[i](stream, inputs_v[i], outputs_v[i]), WARN, res);
-        DNN_GRAPH_SAFE(stream.wait(), WARN, res);
+
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
+    const bool use_sycl_graph = use_sycl_graph_exec();
+    std::unique_ptr<sycl_graph_ctx::sycl_exec_graph_t> sycl_exec;
+    ::sycl::queue queue;
+
+    if (use_sycl_graph) {
+        queue = dnnl::sycl_interop::get_queue(stream);
+        SAFE(sycl_graph_ctx::validate_backend(queue, res), FAIL);
+
+        sycl_exec = sycl_graph_ctx::record_and_finalize(stream, queue, [&]() {
+            for (size_t i = 0; i < sz; i++) {
+                perf_func_v[i](stream, inputs_v[i], outputs_v[i]);
+            }
+        }, res);
+        if (!sycl_exec) return FAIL;
+
+        // Warm-up: replay the finalized graph once.
+        SAFE(sycl_graph_ctx::replay(queue, *sycl_exec, res), FAIL);
+    } else
+#endif
+    {
+        // Warm-up run, this is not measured due to possibility the associated
+        // kernel has not been built and skews the results.
+        for (size_t i = 0; i < sz; i++) {
+            DNN_GRAPH_SAFE(perf_func_v[i](stream, inputs_v[i], outputs_v[i]),
+                    WARN, res);
+            DNN_GRAPH_SAFE(stream.wait(), WARN, res);
+        }
     }
 
     int cur_batch_times
@@ -134,12 +183,25 @@ inline int measure_perf_aggregate(timer::timer_t &t,
     bool is_first_loop = true;
     size_t prim_num = 1;
     while (true) {
-        for_(int i = 0; i < cur_batch_times; i++)
-        for (size_t j = 0; j < sz; j++) {
-            DNN_GRAPH_SAFE(perf_func_v[j](stream, inputs_v[j], outputs_v[j]),
-                    WARN, res);
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
+        if (use_sycl_graph && sycl_exec) {
+            for (int i = 0; i < cur_batch_times; i++) {
+                SAFE(sycl_graph_ctx::replay(
+                             queue, *sycl_exec, res, /*wait=*/false),
+                        FAIL);
+            }
+            queue.wait();
+        } else
+#endif
+        {
+            for_(int i = 0; i < cur_batch_times; i++)
+            for (size_t j = 0; j < sz; j++) {
+                DNN_GRAPH_SAFE(
+                        perf_func_v[j](stream, inputs_v[j], outputs_v[j]), WARN,
+                        res);
+            }
+            DNN_GRAPH_SAFE(stream.wait(), WARN, res);
         }
-        DNN_GRAPH_SAFE(stream.wait(), WARN, res);
 
         if (use_profiling) {
             std::vector<uint64_t> nsecs;
@@ -202,12 +264,39 @@ inline int measure_perf_individual(timer::timer_t &t,
             : dnnl::stream::flags::default_flags;
     cpp_stream_t stream {get_graph_engine(), flags};
 
+    auto sz = perf_func_v.size();
+
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
+    const bool use_sycl_graph = use_sycl_graph_exec();
+    std::unique_ptr<sycl_graph_ctx::sycl_exec_graph_t> sycl_exec;
+    ::sycl::queue queue;
+
+    if (use_sycl_graph) {
+        queue = dnnl::sycl_interop::get_queue(stream);
+        SAFE(sycl_graph_ctx::validate_backend(queue, res), FAIL);
+
+        sycl_exec = sycl_graph_ctx::record_and_finalize(stream, queue, [&]() {
+            for (size_t i = 0; i < sz; i++) {
+                perf_func_v[i](stream, inputs_v[i], outputs_v[i]);
+            }
+        }, res);
+        if (!sycl_exec) return FAIL;
+    }
+#endif
+
     t.reset();
     while (true) {
-        auto sz = perf_func_v.size();
-        for (size_t i = 0; i < sz; i++) {
-            DNN_GRAPH_SAFE(perf_func_v[i](stream, inputs_v[i], outputs_v[i]),
-                    WARN, res);
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
+        if (use_sycl_graph && sycl_exec) {
+            SAFE(sycl_graph_ctx::replay(queue, *sycl_exec, res), FAIL);
+        } else
+#endif
+        {
+            for (size_t i = 0; i < sz; i++) {
+                DNN_GRAPH_SAFE(
+                        perf_func_v[i](stream, inputs_v[i], outputs_v[i]), WARN,
+                        res);
+            }
         }
         t.stamp();
         if (should_stop(t)) break;

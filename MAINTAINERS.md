@@ -179,6 +179,7 @@ Team: @uxlfoundation/onednn-cpu-rv64
 | ------------------ | --------------------- | ----------------- | ---------- |
 | Fei Zhang          | @zhangfeiv0           | ISCAS             | Code Owner |
 | Jian Zhang         | @zhangjian29          | ZTE Corporation   | Code Owner |
+| Xia Zhuozhao       | @xiazhuozhao          | ISCAS             | Code Owner |
 
 ### Loongarch64
 

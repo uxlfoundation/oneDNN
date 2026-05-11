@@ -751,15 +751,31 @@ int doit(const prb_t *prb, res_t *res) {
         graph_mem_mgr.start_graph_mem_check();
         BENCHDNN_PRINT(3, "[INFO]: Start execution of partition #%zd.\n", i);
 
-        stream_staller_t staller(strm);
-        // Need following clean-up steps as the memories have been mappped to
-        // device. Otherwise the deconstruction will fail.
-        DNN_GRAPH_SAFE(
-                c_partitions[i - idx_offset].execute(strm, input_ts, output_ts),
-                (WARN | NEED_CLEANUP), res);
-        staller.release();
+        // TODO: consolidate with primitives.
+        if (use_sycl_graph_exec()) {
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
+            ::sycl::queue queue = dnnl::sycl_interop::get_queue(strm);
+            SAFE(sycl_graph_ctx::validate_backend(queue, res), FAIL);
 
-        DNN_GRAPH_SAFE(strm.wait(), WARN, res);
+            std::function<void()> record_fn = std::bind(
+                    compiled_partition_executor, c_partitions[i - idx_offset],
+                    std::ref(strm), input_ts, output_ts);
+            auto exec = sycl_graph_ctx::record_and_finalize(
+                    strm, queue, record_fn, res);
+            if (!exec) return FAIL;
+            SAFE(sycl_graph_ctx::replay(queue, *exec, res), FAIL);
+#endif
+        } else {
+            stream_staller_t staller(strm);
+            // Need following clean-up steps as the memories have been mappped
+            // to device. Otherwise the deconstruction will fail.
+            DNN_GRAPH_SAFE(c_partitions[i - idx_offset].execute(
+                                   strm, input_ts, output_ts),
+                    (WARN | NEED_CLEANUP), res);
+            staller.release();
+
+            DNN_GRAPH_SAFE(strm.wait(), WARN, res);
+        }
         graph_mem_mgr.stop_graph_mem_check();
 
         // map memory from device back to host

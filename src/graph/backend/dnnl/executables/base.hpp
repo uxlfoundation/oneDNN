@@ -132,6 +132,17 @@ struct op_executable_t {
 #endif
 };
 
+#ifdef DNNL_WITH_SYCL
+// Check if the SYCL queue associated with the stream is in command graph
+// recording mode.
+inline bool is_sycl_graph_recording(const dnnl::stream &p_stream) {
+    auto *sycl_stream
+            = dnnl::impl::utils::downcast<gpu::intel::sycl::stream_t *>(
+                    const_cast<dnnl::stream &>(p_stream).get());
+    return sycl_stream && sycl_stream->recording();
+}
+#endif
+
 using executable_creator_func = std::function<std::shared_ptr<op_executable_t>(
         std::shared_ptr<op_t> &, const dnnl::engine &, pd_cache_t &,
         const fpmath_t &, bool)>;

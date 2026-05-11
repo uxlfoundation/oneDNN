@@ -198,6 +198,7 @@ status_t sdp_primitive_kernel_t<quantized>::sycl_execute_impl(
     ::sycl::event returned_event;
 
     dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
+    const bool recording = is_sycl_graph_recording(p_stream);
 
     thread_local_cache_t<execution_args_set_t> res_cache;
     execution_args_set_t *res = res_cache.get_or_add(
@@ -210,8 +211,8 @@ status_t sdp_primitive_kernel_t<quantized>::sycl_execute_impl(
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
         if (subgraph_->is_constant_[i]) continue;
-        returned_event = subgraph_->execs_[i]->execute_sycl(
-                p_stream, res->get_exec_args()[i], deps);
+        returned_event = execute_sycl_event_safe(*subgraph_->execs_[i],
+                p_stream, res->get_exec_args()[i], deps, recording);
         deps = {returned_event};
     }
 

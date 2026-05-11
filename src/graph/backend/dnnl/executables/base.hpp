@@ -132,6 +132,33 @@ struct op_executable_t {
 #endif
 };
 
+#ifdef DNNL_WITH_SYCL
+// Check if the SYCL queue associated with the stream is in command graph
+// recording mode. When recording, the in-order queue handles kernel ordering
+// automatically, so explicit SYCL event dependency chaining must be skipped.
+inline bool is_sycl_graph_recording(const dnnl::stream &p_stream) {
+    auto *sycl_stream
+            = dnnl::impl::utils::downcast<gpu::intel::sycl::stream_t *>(
+                    const_cast<dnnl::stream &>(p_stream).get());
+    return sycl_stream && sycl_stream->recording();
+}
+
+// Execute a sub-executable within a graph kernel's sycl_execute_impl loop,
+// handling SYCL command graph recording mode automatically. When recording,
+// empty deps are passed and returned events are ignored since the in-order
+// queue provides implicit ordering within the recorded command graph.
+inline ::sycl::event execute_sycl_event_safe(const op_executable_t &exec,
+        const dnnl::stream &p_stream,
+        const std::unordered_map<int, dnnl::memory> &args,
+        const std::vector<::sycl::event> &deps, bool is_recording) {
+    if (is_recording) {
+        exec.execute_sycl(p_stream, args, {});
+        return {};
+    }
+    return exec.execute_sycl(p_stream, args, deps);
+}
+#endif
+
 using executable_creator_func = std::function<std::shared_ptr<op_executable_t>(
         std::shared_ptr<op_t> &, const dnnl::engine &, pd_cache_t &,
         const fpmath_t &, bool)>;

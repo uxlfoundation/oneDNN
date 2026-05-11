@@ -413,7 +413,7 @@ status_t pick_tags(jit_brgemm_conv_conf_t &jcp, memory_desc_t &src_md,
     CHECK(init_tag(jcp.src_tag, src_md, src_d, src_tag, any_eligible));
     CHECK(init_tag(jcp.dst_tag, dst_md, dst_d, dst_tag, any_eligible));
     CHECK(init_tag(jcp.wei_tag, weights_md, weights_d, wei_tag, true));
-
+printf("vnni block: %d, wei tag: %d\n", jcp.vnni_block, jcp.wei_tag);
     return status::success;
 }
 
@@ -1790,7 +1790,7 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             : utils::one_of(true, jcp.is_f32_bf16, jcp.is_f32_f16) ? jcp.src_dt
                                                                    : jcp.wei_dt;
     const data_type_t vnni_block_dt
-            = get_mac_emu_data_type(vnni_dt, isa, isa == avx10_1_512);
+            = get_mac_emu_data_type(vnni_dt, isa, true);//isa == avx10_1_512);
     jcp.vnni_block = data_type_vnni_granularity(vnni_block_dt);
 
     if (one_of(jcp.prop_kind, prop_kind::forward_training,

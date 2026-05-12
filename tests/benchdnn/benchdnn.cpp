@@ -95,6 +95,28 @@ int main(int argc, char **argv) {
 
     init_fp_mode();
 
+    // Verify input from illegal chars that hide as spaces. Limit the check
+    // for a small number of arguments which usually means a CLI input, not a
+    // batch file.
+    if (argc < 100) {
+        auto old_argc = argc;
+        auto old_argv = argv;
+        for (; argc > 0; --argc, ++argv) {
+            std::string s(argv[0]);
+            for (auto &c : s) {
+                if (c >= 0) continue;
+                BENCHDNN_PRINT(0, "%s%s%s\n",
+                        "Error: something is wrong with the input line:\n\'",
+                        s.c_str(),
+                        "\'.\nThe program didn't break the arguments into "
+                        "separate strings.");
+                exit(2);
+            }
+        }
+        argc = old_argc;
+        argv = old_argv;
+    }
+
     for (; argc > 0; --argc, ++argv)
         if (!parse_bench_settings(argv[0])) break;
 

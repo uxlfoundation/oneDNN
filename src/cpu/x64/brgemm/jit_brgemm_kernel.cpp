@@ -2601,8 +2601,9 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
 
     for (dim_t rd = 0; rd < rd_loop; rd += brg.rd_step) {
         if (brg.n_bcast_1_load) {
-            for (dim_t bd = bd_b; bd < bd_e && !is_emdbd; bd++)
-                broadcast_A(bcst(bd), bd, rd);
+            if (!is_emdbd && !brg.is_fp8_via_convert_non_amx())
+                for (dim_t bd = bd_b; bd < bd_e; bd++)
+                    broadcast_A(bcst(bd), bd, rd);
             for (dim_t ld = 0; ld < ld_block2; ld++) {
                 load_B(0, rd, ld);
                 if (brg.is_fp8_via_convert_non_amx())

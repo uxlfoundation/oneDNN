@@ -327,14 +327,22 @@ status_t larger_partition_kernel_t::sycl_execute_impl(const stream_t *g_stream,
     auto deps = sycl_deps;
     ::sycl::event returned_event;
     dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
+    const bool recording = is_sycl_graph_recording(p_stream);
 
     thread_local_cache_t<execution_args_set_t> res_cache;
     execution_args_set_t *res = res_cache.get_or_add(
             reinterpret_cast<size_t>(this), resource_ctor_);
 
-    temporary_scratchpad_t scratchpad(
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
+    // When in SYCL command graph recording mode, the scratchpad memory must
+    // remain valid across recording and all subsequent replays. Use the
+    // recorded scratchpad cache keyed by (graph, kernel) to persist it.
+    const size_t sp_size = memory_planner_.total_internal_temporary_size();
+    temporary_scratchpad_t stack_scratchpad(
+            recording ? 0 : sp_size, p_engine_, *g_alloc_);
+    temporary_scratchpad_t &scratchpad = recording
+            ? recorded_scratchpad_cache_t::get_or_create(
+                      p_stream, this, sp_size, p_engine_, *g_alloc_)
+            : stack_scratchpad;
     assertm(scratchpad.size()
                     >= memory_planner_.total_internal_temporary_size(),
             "no enough scratchpad memory");

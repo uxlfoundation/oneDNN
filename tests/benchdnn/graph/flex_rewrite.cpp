@@ -1620,6 +1620,7 @@ int flex_rewrite_t::update_output_info(deserialized_op_t &aop,
         case dnnl::graph::op::kind::ConvTransposeBackwardWeights:
         case dnnl::graph::op::kind::Dequantize:
         case dnnl::graph::op::kind::Divide:
+        case dnnl::graph::op::kind::Dropout:
         case dnnl::graph::op::kind::DynamicDequantize:
         case dnnl::graph::op::kind::DynamicQuantize:
         case dnnl::graph::op::kind::Elu:

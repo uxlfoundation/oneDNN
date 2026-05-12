@@ -508,20 +508,40 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
                     pr_dt == data_type::s32, VERBOSE_UNSUPPORTED_PR_CFG);
 
             if (!pr.get(DNNL_ARG_SRC).has_default_groups()) {
+                const auto &sc = attr->scales_;
                 const dim_t src_pr_group_k = pr.get_group(DNNL_ARG_SRC, 1);
 
+                // Pre-computed reductions can only be used when the PR group
+                // size is the minimal amongst all group sizes along the K
+                // dimension from a mathematical point of view.
+                dim_t minimal_group = INT64_MAX;
                 dim_t wei_zp_group_k = 1;
                 if (!zp.get(DNNL_ARG_WEIGHTS).has_default_groups()) {
-                    const int mask_wei = zp.get_mask(DNNL_ARG_WEIGHTS);
-                    if (mask_wei & wei_qmask_K)
-                        wei_zp_group_k = zp.get_group(DNNL_ARG_WEIGHTS, 0);
+                    wei_zp_group_k = zp.get_group(DNNL_ARG_WEIGHTS, -2);
+                    minimal_group = std::min(minimal_group, wei_zp_group_k);
+                }
+                if (!zp.get(DNNL_ARG_SRC).has_default_groups()) {
+                    auto src_zp_group_k = zp.get_group(DNNL_ARG_SRC, -1);
+                    minimal_group = std::min(minimal_group, src_zp_group_k);
+                }
+                if (!sc.get(DNNL_ARG_WEIGHTS).has_default_groups()) {
+                    auto wei_sc_group_k = sc.get_group(DNNL_ARG_WEIGHTS, -2);
+                    minimal_group = std::min(minimal_group, wei_sc_group_k);
+                }
+                if (!sc.get(DNNL_ARG_SRC).has_default_groups()) {
+                    auto src_sc_group_k = sc.get_group(DNNL_ARG_SRC, -1);
+                    minimal_group = std::min(minimal_group, src_sc_group_k);
                 }
 
                 const bool groups_are_divisible = quant_groups_are_divisible(
                         src_pr_group_k, wei_zp_group_k);
-                VCHECK_MATMUL_UNIMPL(
-                        IMPLICATION(src_pr_group_k > 1,
-                                src_is_int8 && groups_are_divisible),
+                VCHECK_MATMUL(IMPLICATION(src_pr_group_k > 1, src_is_int8),
+                        VERBOSE_UNSUPPORTED_PR_CFG);
+                VCHECK_MATMUL(
+                        IMPLICATION(src_pr_group_k > 1, groups_are_divisible),
+                        VERBOSE_UNSUPPORTED_PR_CFG);
+                VCHECK_MATMUL(IMPLICATION(src_pr_group_k > 1,
+                                      src_pr_group_k <= minimal_group),
                         VERBOSE_UNSUPPORTED_PR_CFG);
             }
         }

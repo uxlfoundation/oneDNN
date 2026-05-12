@@ -272,6 +272,11 @@ struct memory_extra_desc_t {
     dim_t dst_size;
 };
 
+status_t memory_desc_sanity_check(int ndims, const dims_t dims,
+        data_type_t data_type, format_kind_t format_kind);
+
+status_t memory_desc_sanity_check(const memory_desc_t &md);
+
 status_t memory_desc_init_host_scalar(
         memory_desc_t &memory_desc, data_type_t data_type);
 

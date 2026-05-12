@@ -31,6 +31,54 @@ using namespace dnnl::impl::utils;
 namespace dnnl {
 namespace impl {
 
+inline status_t memory_desc_sanity_check(int ndims, const dims_t dims,
+        data_type_t data_type, format_kind_t format_kind) {
+    using namespace data_type;
+
+    if (ndims == 0) return status::success;
+
+    VCHECK_MEMORY(dims != nullptr, status::invalid_arguments, "%s (dims)",
+            VERBOSE_NULL_ARG);
+    VCHECK_MEMORY(0 < ndims && ndims <= DNNL_MAX_NDIMS,
+            status::invalid_arguments, VERBOSE_BAD_NDIMS, "tensor", ndims);
+    VCHECK_MEMORY(utils::one_of(data_type, f4_e2m1, e8m0, f8_e5m2, f8_e4m3, f16,
+                          bf16, f32, f64, s64, s32, s8, u8, s4, u4),
+            status::invalid_arguments, VERBOSE_UNSUPPORTED_DT);
+
+    // A bounds check on the dimensions ensures that the tensor size
+    // computation does not trigger a overflow during memory creation.
+    dim_t prod = 1;
+    for (int d = 0; d < ndims; ++d) {
+        if (!is_runtime_value(dims[d])) {
+            if (dims[d] < 0)
+                VCHECK_MEMORY(false, status::invalid_arguments, VERBOSE_BAD_DIM,
+                        "dims", d);
+            if (dims[d] > 0) {
+                if (prod > std::numeric_limits<dim_t>::max() / dims[d])
+                    VCHECK_MEMORY(false, status::invalid_arguments,
+                            VERBOSE_INTEGRAL_OVERFLOW_DIM, "dims", d);
+                prod *= dims[d];
+            }
+        }
+    }
+
+    bool has_runtime_dims = false;
+    for (int d = 0; d < ndims; ++d) {
+        if (is_runtime_value(dims[d])) has_runtime_dims = true;
+    }
+
+    VCHECK_MEMORY(
+            IMPLICATION(has_runtime_dims, format_kind != format_kind::any),
+            status::invalid_arguments, VERBOSE_UNSUPPORTED_FORMAT_KIND);
+
+    return status::success;
+}
+
+status_t memory_desc_sanity_check(const memory_desc_t &md) {
+    return memory_desc_sanity_check(
+            md.ndims, md.dims, md.data_type, md.format_kind);
+}
+
 status_t memory_desc_init_host_scalar(
         memory_desc_t &memory_desc, data_type_t data_type) {
     memory_desc.ndims = 1;

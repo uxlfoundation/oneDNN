@@ -34,9 +34,6 @@
 #include "utils.hpp"
 #include "verbose.hpp"
 
-#define VCHECK_MEMORY(cond, stat, msg, ...) \
-    VCONDCHECK(common, create, check, memory, (cond), stat, msg, ##__VA_ARGS__)
-
 namespace dnnl {
 namespace impl {
 
@@ -1163,17 +1160,19 @@ inline status_t memory_desc_strides_check(
         if ((strides[d] == 0) || (md.padded_dims[d] == 1))
             continue;
         else if (strides[d] < min_stride)
-            VCHECK_MEMORY(false, status::invalid_arguments,
-                    VERBOSE_INTEGRAL_OVERFLOW_DIM, "strides", d);
+            VCONDCHECK(common, create, check, memory, false,
+                    status::invalid_arguments, VERBOSE_INTEGRAL_OVERFLOW_DIM,
+                    "strides", d);
 
         // update min_stride for next iteration
         const auto padded_dim = md.padded_dims[d];
 
         const dim_t blocks_ratio = padded_dim / blocks[d];
-        VCHECK_MEMORY(IMPLICATION(strides[d] > 0 && block_size > 0
-                                      && blocks_ratio > 0,
-                              strides[d] <= std::numeric_limits<dim_t>::max()
-                                              / (block_size * blocks_ratio)),
+        VCONDCHECK(common, create, check, memory,
+                IMPLICATION(
+                        strides[d] > 0 && block_size > 0 && blocks_ratio > 0,
+                        strides[d] <= std::numeric_limits<dim_t>::max()
+                                        / (block_size * blocks_ratio)),
                 status::invalid_arguments, VERBOSE_INTEGRAL_OVERFLOW_DIM,
                 "strides", d);
 
@@ -1191,10 +1190,10 @@ inline status_t memory_desc_strides_check(
         size_t dim_val = static_cast<size_t>(
                 md.padded_dims[max_stride_d] / blocks[max_stride_d]);
         dim_val = dim_val == (size_t)max_stride ? 1 : dim_val;
-        VCHECK_MEMORY((dim_val <= SIZE_MAX / max_stride),
-                status::invalid_arguments, VERBOSE_INTEGRAL_OVERFLOW_DIM,
-                "padded_dims", max_stride_d);
-        VCHECK_MEMORY(
+        VCONDCHECK(common, create, check, memory,
+                (dim_val <= SIZE_MAX / max_stride), status::invalid_arguments,
+                VERBOSE_INTEGRAL_OVERFLOW_DIM, "padded_dims", max_stride_d);
+        VCONDCHECK(common, create, check, memory,
                 (dt_size && ((dim_val * max_stride) <= SIZE_MAX / dt_size)),
                 status::invalid_arguments, VERBOSE_INTEGRAL_OVERFLOW_DIM,
                 "padded_dims", max_stride_d);
@@ -1362,55 +1361,6 @@ format_tag_t memory_desc_matches_one_of_tag(
     }
     return format_tag::undef;
 }
-
-inline status_t memory_desc_sanity_check(int ndims, const dims_t dims,
-        data_type_t data_type, format_kind_t format_kind) {
-    using namespace data_type;
-
-    if (ndims == 0) return status::success;
-
-    VCHECK_MEMORY(dims != nullptr, status::invalid_arguments, "%s (dims)",
-            VERBOSE_NULL_ARG);
-    VCHECK_MEMORY(0 < ndims && ndims <= DNNL_MAX_NDIMS,
-            status::invalid_arguments, VERBOSE_BAD_NDIMS, "tensor", ndims);
-    VCHECK_MEMORY(utils::one_of(data_type, f4_e2m1, e8m0, f8_e5m2, f8_e4m3, f16,
-                          bf16, f32, f64, s64, s32, s8, u8, s4, u4),
-            status::invalid_arguments, VERBOSE_UNSUPPORTED_DT);
-
-    // A bounds check on the dimensions ensures that the tensor size
-    // computation does not trigger a overflow during memory creation.
-    dim_t prod = 1;
-    for (int d = 0; d < ndims; ++d) {
-        if (!is_runtime_value(dims[d])) {
-            if (dims[d] < 0)
-                VCHECK_MEMORY(false, status::invalid_arguments, VERBOSE_BAD_DIM,
-                        "dims", d);
-            if (dims[d] > 0) {
-                if (prod > std::numeric_limits<dim_t>::max() / dims[d])
-                    VCHECK_MEMORY(false, status::invalid_arguments,
-                            VERBOSE_INTEGRAL_OVERFLOW_DIM, "dims", d);
-                prod *= dims[d];
-            }
-        }
-    }
-
-    bool has_runtime_dims = false;
-    for (int d = 0; d < ndims; ++d) {
-        if (is_runtime_value(dims[d])) has_runtime_dims = true;
-    }
-
-    VCHECK_MEMORY(
-            IMPLICATION(has_runtime_dims, format_kind != format_kind::any),
-            status::invalid_arguments, VERBOSE_UNSUPPORTED_FORMAT_KIND);
-
-    return status::success;
-}
-
-inline status_t memory_desc_sanity_check(const memory_desc_t &md) {
-    return memory_desc_sanity_check(
-            md.ndims, md.dims, md.data_type, format_kind::undef);
-}
-
 template <typename... Args>
 inline bool any_memory_desc_host_scalar(const memory_desc_t *md, Args... mds) {
     if (md != nullptr && md->format_kind == format_kind::host_scalar)

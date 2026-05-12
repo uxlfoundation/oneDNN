@@ -392,7 +392,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         auto LDD = bgmmc_.LDD;
         if (bgmmc_.with_wei_decompression && bgmmc_.has_zero_point_b)
             brg.skip_zp_b_compensation = true;
-        if (bgmmc_.apply_scales_in_buffer_b) brg.skip_scales = true;
+        if (bgmmc_.apply_scales_in_buffer_b) brg.skip_wei_scales = true;
         CHECK(brgemm_desc_set_postops(
                 &brg, attr(), &dst_md_, LDD, bgmmc_.bia_dt));
 

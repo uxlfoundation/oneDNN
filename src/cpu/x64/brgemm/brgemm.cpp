@@ -468,10 +468,9 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
 
     const auto &src_scales = attr->scales_.get(DNNL_ARG_SRC);
     const auto &wei_scales = attr->scales_.get(DNNL_ARG_WEIGHTS);
-    brg->with_src_scales
-            = !brg->skip_scales && !src_scales.has_default_values();
+    brg->with_src_scales = !src_scales.has_default_values();
     brg->with_wei_scales
-            = !brg->skip_scales && !wei_scales.has_default_values();
+            = !brg->skip_wei_scales && !wei_scales.has_default_values();
     if (brg->with_wei_scales) {
         // Note. the current version supports only two different wei scales
         // types:
@@ -811,7 +810,7 @@ int brgemm_cmp(const brgemm_desc_t &lhs, const brgemm_desc_t &rhs) {
     CMP_BRGEMM_FIELD(zp_type_b);
     CMP_BRGEMM_FIELD(zp_type_c);
 
-    CMP_BRGEMM_FIELD(skip_scales);
+    CMP_BRGEMM_FIELD(skip_wei_scales);
     CMP_BRGEMM_FIELD(is_oc_scale);
     CMP_BRGEMM_FIELD(with_src_scales);
     CMP_BRGEMM_FIELD(with_wei_scales);

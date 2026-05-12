@@ -303,8 +303,9 @@ struct brgemm_desc_t {
     brgemm_broadcast_t zp_type_b = brgemm_broadcast_t::none;
     brgemm_broadcast_t zp_type_c = brgemm_broadcast_t::none;
 
-    // `skip_scales` is controlled by the implementation and not by kernel API.
-    bool skip_scales = false;
+    // `skip_wei_scales` is controlled by the implementation and not by kernel
+    // API.
+    bool skip_wei_scales = false;
     int is_oc_scale = 0;
     bool with_src_scales = false;
     bool with_wei_scales = false;

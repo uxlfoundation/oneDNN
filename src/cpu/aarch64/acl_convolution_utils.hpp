@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Arm Ltd. and affiliates
+* Copyright 2020-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -59,6 +59,9 @@ struct acl_conv_conf_t {
     arm_compute::WeightsInfo weights_info;
     // Note: this will default to not enabled, and will do nothing
     arm_compute::ActivationLayerInfo act_info;
+    // We may sometimes accumulate in a lower precision if the
+    // accumulation_mode, data_type, and kernel availability allow it
+    bool use_fp32_acc = true;
 };
 
 namespace acl_convolution_utils {

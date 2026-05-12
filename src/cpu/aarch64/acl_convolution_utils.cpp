@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Arm Ltd. and affiliates
+* Copyright 2020-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -277,6 +277,17 @@ status_t acl_init_conf(acl_conv_conf_t &acp, memory_desc_t &src_md,
         if (weights_md.dims[I_dim] % block_by != 0)
             return status::unimplemented;
     }
+
+    // Accumulation is always in f32 unless we are explicitly allowed to
+    // accumulate in f16 for an f16:f16:f16 convolution
+    const bool is_f16_conv = everyone_is(
+            f16, src_d.data_type(), wei_d.data_type(), dst_d.data_type());
+
+    const bool is_lower_acc_allowed
+            = one_of(attr.acc_mode_, accumulation_mode::f16,
+                    accumulation_mode::any, accumulation_mode::relaxed);
+
+    acp.use_fp32_acc = !(is_f16_conv && is_lower_acc_allowed);
 
     CHECK(acl_utils::reorder_to_weight_format(acp.wei_tensor_info, weights_md,
             expected_weight_format, I_dim, O_dim, {W_dim, H_dim}, {}));

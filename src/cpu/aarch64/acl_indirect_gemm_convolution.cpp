@@ -43,7 +43,8 @@ status_t acl_indirect_gemm_convolution_fwd_t::init(engine_t *engine) {
             acp_.with_bias ? &acp_.bia_tensor_info : nullptr,
             &acp_.dst_tensor_info,
             arm_compute::Conv2dInfo(acp_.padstride_info, acp_.dilation_info,
-                    acp_.act_info, acp_.fast_math, 1, acp_.weights_info));
+                    acp_.act_info, acp_.fast_math, 1, acp_.weights_info,
+                    acp_.use_fp32_acc));
     acl_obj_->aux_mem_req = acl_obj_->conv.workspace();
     return status::success;
 }
@@ -73,19 +74,13 @@ status_t acl_indirect_gemm_convolution_fwd_t::pd_t::init_conf() {
     int ic = src_md_.dims[1];
     if (acp_.fast_math && ic % block_by == 0) return status::unimplemented;
 
-    // clang-format off
     // NOTE: indirect convolution method supports only nhwc layout.
-    ACL_CHECK_VALID(Op::validate(
-        &acp_.src_tensor_info,
-        &acp_.wei_tensor_info,
-        acp_.with_bias ? &acp_.bia_tensor_info : nullptr,
-        &acp_.dst_tensor_info,
-        arm_compute::Conv2dInfo(acp_.padstride_info,
-                                acp_.dilation_info,
-                                acp_.act_info,
-                                acp_.fast_math,
-                                1, acp_.weights_info)));
-    // clang-format on
+    ACL_CHECK_VALID(Op::validate(&acp_.src_tensor_info, &acp_.wei_tensor_info,
+            acp_.with_bias ? &acp_.bia_tensor_info : nullptr,
+            &acp_.dst_tensor_info,
+            arm_compute::Conv2dInfo(acp_.padstride_info, acp_.dilation_info,
+                    acp_.act_info, acp_.fast_math, 1, acp_.weights_info,
+                    acp_.use_fp32_acc)));
 
     return status::success;
 }
@@ -115,7 +110,8 @@ status_t acl_indirect_gemm_convolution_fwd_t::pd_t::init(engine_t *engine) {
             acp_.with_bias ? &acp_.bia_tensor_info : nullptr,
             &acp_.dst_tensor_info,
             arm_compute::Conv2dInfo(acp_.padstride_info, acp_.dilation_info,
-                    acp_.act_info, acp_.fast_math, 1, acp_.weights_info));
+                    acp_.act_info, acp_.fast_math, 1, acp_.weights_info,
+                    acp_.use_fp32_acc));
 
     auto scratchpad = scratchpad_registry().registrar();
     return init_scratchpad(conv, scratchpad, indirect_conv_keys, engine,

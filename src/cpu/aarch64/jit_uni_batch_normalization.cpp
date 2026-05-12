@@ -151,33 +151,46 @@ struct jit_bnorm_conf_t {
     bool thread_partition(bool spatial_thr_allowed, int nthr, dim_t N,
             dim_t C_blks, dim_t SP, int &C_nthr, int &N_nthr,
             int &S_nthr) const {
-        if (((nthr <= C_blks) && IMPLICATION(is_nspc_, N == 1))
-                || !dnnl_thr_syncable()) {
+        // For SVE128 NSPC with MB=1 and SP >= 225, force spatial threading
+        // instead of channel threading (currently yields better performance
+        // on certain bnorm shapes)
+        const bool force_sve128_spatial
+                = is_nspc_ && simd_w_ < 8 && N == 1 && SP >= 225;
+
+        if ((((nthr <= C_blks) && IMPLICATION(is_nspc_, N == 1)
+                     && !force_sve128_spatial)
+                    || !dnnl_thr_syncable())) {
             C_nthr = nthr;
             N_nthr = 1;
             S_nthr = 1;
         } else {
             if (is_nspc_) {
                 const int min_c_blks_per_thr = nstl::max(1, 16 / simd_w_);
-                if (C_blks <= 8)
+                if (C_blks <= 8) {
                     C_nthr = 1;
-                else if (simd_w_ < 16 && C_blks % min_c_blks_per_thr == 0) {
+                } else if (simd_w_ < 16 && C_blks % min_c_blks_per_thr == 0) {
                     // Keep each channel thread on a 16-channel boundary.
                     const dim_t C_chunks = C_blks / min_c_blks_per_thr;
                     C_nthr = (int)nstl::min<dim_t>(
                             nstl::min<dim_t>(8, nthr), C_chunks);
                     while (C_nthr > 1 && C_chunks % C_nthr != 0)
                         --C_nthr;
-                } else if (nthr >= 8 && C_blks <= 32)
+                } else if (nthr >= 8 && C_blks <= 32) {
                     C_nthr = 8;
-                else {
+                } else if (simd_w_ < 8) {
+                    // For SVE128 FP32 (simd_w_=4), keep channel threading disabled.
+                    // The plain-layout path still assumes 16-channel grouping:
+                    // plain layouts require padded C % 16 == 0, and channel partitioning
+                    // still assigns work on 16-channel boundaries rather than 4-channel SVE128 lanes.
+                    // This has caused some performance regressions (in cases like mb1ic160ih29iw29)
+                    C_nthr = 1;
+                } else {
                     C_nthr = (int)math::gcd((dim_t)nthr, C_blks);
                     // Unroll by channels in JIT kernel
                     if ((C_nthr == C_blks) || (C_nthr == nthr)) C_nthr = 1;
                 }
+                if (force_sve128_spatial) C_nthr = 1;
                 N_nthr = (int)nstl::min<dim_t>(N, nthr / C_nthr);
-                // heuristic for training on sve512_core_amx
-                // TODO: test heuristic when global stats flag is set
                 S_nthr = (int)nstl::min<dim_t>(SP, nthr / (C_nthr * N_nthr));
             } else {
                 if (do_blocking_) {
@@ -540,7 +553,11 @@ struct jit_bnorm_t : public jit_generator_t {
 
     void uni_store_spat_data(
             const XReg &x, const ZReg &z, bool is_nt_store = false) {
-        stnt1w(z.s, P_ALL_ONE / T_z, ptr(x));
+        if (is_nt_store) {
+            stnt1w(z.s, P_ALL_ONE / T_z, ptr(x));
+        } else {
+            st1w(z.s, P_ALL_ONE / T_z, ptr(x));
+        }
     }
 
     void jump_check(const Label &l_no_mask) {
@@ -1947,14 +1964,7 @@ struct jit_bnorm_t : public jit_generator_t {
     void generate() override {
         preamble();
 
-        size_t simd_w = simd_elems(data_type::f32, isa);
-        if (is_superset(isa, sve)) {
-            if (simd_w != cpu_sveLen / sizeof(float)) {
-                set_preg(P_ALL_ONE.s, simd_w, X_TMP_0, X_TMP_1);
-            }
-
-            prepare_tail_mask();
-        }
+        if (is_superset(isa, sve)) { prepare_tail_mask(); }
 
         compute_static_strides();
 

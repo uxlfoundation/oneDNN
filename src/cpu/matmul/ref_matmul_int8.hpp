@@ -76,7 +76,7 @@ struct ref_matmul_int8_t : public primitive_t {
             VDISPATCH_MATMUL(ref_post_ops_t::post_ops_ok(attr()->post_ops_),
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_MATMUL(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
-            VDISPATCH_MATMUL(attr_zero_points_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
+            CHECK(attr_zero_points_ok(engine));
             VDISPATCH_MATMUL(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_MATMUL(
                     attr_.set_default_formats(dst_md(0)) == status::success,
@@ -86,46 +86,45 @@ struct ref_matmul_int8_t : public primitive_t {
         }
 
     private:
-        bool attr_zero_points_ok() const {
+        status_t attr_zero_points_ok(engine_t *engine) const {
             const auto &zp = attr()->zero_points_;
             if (!zp.has_default_values(DNNL_ARG_SRC)) {
                 int mask_src = zp.get_mask(DNNL_ARG_SRC);
-                bool ok = utils::one_of(mask_src, 0, src_qmask_K(),
-                        src_qmask_M() + src_qmask_K());
-                if (!ok) return false;
+                VDISPATCH_MATMUL(utils::one_of(mask_src, 0, src_qmask_K(),
+                                         src_qmask_M() + src_qmask_K()),
+                        VERBOSE_UNSUPPORTED_ZP_CFG);
 
                 if (!zp.get(DNNL_ARG_SRC).has_default_groups()) {
                     const auto gM = zp.get_group(DNNL_ARG_SRC, 0);
-                    ok = gM == 1;
-                    if (!ok) return false;
+                    VDISPATCH_MATMUL(gM == 1, VERBOSE_UNSUPPORTED_ZP_CFG);
 
                     const auto gK = zp.get_group(DNNL_ARG_SRC, 1);
-                    ok = IMPLICATION(gK > 1, K() % gK == 0);
-                    if (!ok) return false;
+                    VDISPATCH_MATMUL(IMPLICATION(gK > 1, K() % gK == 0),
+                            VERBOSE_UNSUPPORTED_ZP_CFG);
                 }
             }
             /* weights decompression requires zero points support */
             if (!zp.has_default_values(DNNL_ARG_WEIGHTS)) {
                 if (!zp.get(DNNL_ARG_WEIGHTS).has_default_groups()) {
                     const auto gK = zp.get_group(DNNL_ARG_WEIGHTS, 0);
-                    bool ok = IMPLICATION(gK > 1, K() % gK == 0);
-                    if (!ok) return false;
+                    VDISPATCH_MATMUL(IMPLICATION(gK > 1, K() % gK == 0),
+                            VERBOSE_UNSUPPORTED_ZP_CFG);
 
                     const auto gN = zp.get_group(DNNL_ARG_WEIGHTS, 1);
-                    ok = IMPLICATION(gN > 1, N() % gN == 0);
-                    if (!ok) return false;
+                    VDISPATCH_MATMUL(IMPLICATION(gN > 1, N() % gN == 0),
+                            VERBOSE_UNSUPPORTED_ZP_CFG);
 
                     // Only one non-unit group is supported.
-                    ok = utils::one_of(1, gK, gN);
-                    if (!ok) return false;
+                    VDISPATCH_MATMUL(utils::one_of(1, gK, gN),
+                            VERBOSE_UNSUPPORTED_ZP_CFG);
                 }
             }
             if (!zp.has_default_values(DNNL_ARG_DST)) {
                 int mask_dst = zp.get_mask(DNNL_ARG_DST);
-                bool ok = utils::one_of(mask_dst, 0, wei_qmask_N());
-                if (!ok) return false;
+                VDISPATCH_MATMUL(utils::one_of(mask_dst, 0, wei_qmask_N()),
+                        VERBOSE_UNSUPPORTED_ZP_CFG);
             }
-            return true;
+            return status::success;
         }
     };
 

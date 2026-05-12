@@ -96,7 +96,15 @@ struct ref_matmul_int8_t : public primitive_t {
             if (!zp.has_default_values(DNNL_ARG_SRC)) {
                 int mask_src = zp.get_mask(DNNL_ARG_SRC);
                 VDISPATCH_MATMUL(utils::one_of(mask_src, 0, src_qmask_K(),
-                                         src_qmask_M() + src_qmask_K()),
+                                         src_qmask_M() + src_qmask_K(),
+                                         full_tensor_mask()),
+                        VERBOSE_UNSUPPORTED_ZP_CFG);
+                VDISPATCH_MATMUL(IMPLICATION(mask_src == full_tensor_mask(),
+                                         ndims() <= 3),
+                        VERBOSE_UNSUPPORTED_ZP_CFG);
+                VDISPATCH_MATMUL(IMPLICATION(mask_src == full_tensor_mask()
+                                                 && ndims() == 3,
+                                         src_md()->dims[0] == 1),
                         VERBOSE_UNSUPPORTED_ZP_CFG);
 
                 if (!zp.get(DNNL_ARG_SRC).has_default_groups()) {

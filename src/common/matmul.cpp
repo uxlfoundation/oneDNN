@@ -428,8 +428,19 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
         if (!zp.has_default_values(DNNL_ARG_SRC)) {
             const int mask_src = zp.get_mask(DNNL_ARG_SRC);
 
-            VCHECK_MATMUL_UNIMPL(utils::one_of(mask_src, 0, src_qmask_K,
-                                         src_qmask_M + src_qmask_K),
+            VCHECK_MATMUL_UNIMPL(
+                    utils::one_of(mask_src, 0, src_qmask_K,
+                            src_qmask_M + src_qmask_K, full_tensor_mask),
+                    VERBOSE_UNSUPPORTED_ZP_CFG);
+
+            // Only a unit batch dim is supported for `full_tensor_mask`, e.g.,
+            // 1xMxK:BxKxN
+            VCHECK_MATMUL_UNIMPL(
+                    IMPLICATION(mask_src == full_tensor_mask, ndims_src <= 3),
+                    VERBOSE_UNSUPPORTED_ZP_CFG);
+            VCHECK_MATMUL_UNIMPL(
+                    IMPLICATION(mask_src == full_tensor_mask && ndims_src == 3,
+                            desc.src_desc.dims[0] == 1),
                     VERBOSE_UNSUPPORTED_ZP_CFG);
 
             if (!zp.get(DNNL_ARG_SRC).has_default_groups()) {

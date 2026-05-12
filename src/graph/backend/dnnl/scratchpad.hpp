@@ -17,7 +17,9 @@
 #define GRAPH_BACKEND_DNNL_SCRATCHPAD_HPP
 
 #include <functional>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <unordered_map>
 
 #include "graph/interface/allocator.hpp"
@@ -27,6 +29,7 @@
 #include "oneapi/dnnl/dnnl.hpp"
 
 #ifdef DNNL_WITH_SYCL
+#include "gpu/intel/sycl/stream.hpp"
 #include "oneapi/dnnl/dnnl_sycl.hpp"
 #endif
 
@@ -228,6 +231,71 @@ inline registrar_t registry_t::registrar() {
 inline grantor_t registry_t::grantor(char *base_ptr) const {
     return grantor_t(*this, base_ptr);
 }
+
+#ifdef DNNL_WITH_SYCL
+// Cache for scratchpad memory that must persist across SYCL command graph
+// recording and all subsequent replays. During recording, recorded kernels
+// reference device memory addresses; if the scratchpad is freed before replay,
+// the GPU accesses invalid memory.
+//
+// The cache is keyed by (graph_weak_ptr, kernel_ptr) so that:
+// - Different kernels in the same graph have separate scratchpads
+// - The same kernel recorded into different graphs has separate scratchpads
+//
+// Like gpu::intel::compute::zero_pool_t, entries are intentionally never
+// cleaned up because the executable graph's lifetime is unknown and may
+// outlive the modifiable graph (which the weak_ptr tracks).
+class recorded_scratchpad_cache_t {
+public:
+    // Get or create a persistent scratchpad for the given kernel during
+    // recording. The returned scratchpad remains valid for all replays of the
+    // recorded graph.
+    static temporary_scratchpad_t &get_or_create(const dnnl::stream &p_stream,
+            const void *kernel_ptr, size_t size, const dnnl::engine &eng,
+            const allocator_t &alloc) {
+        auto *sycl_stream
+                = dnnl::impl::utils::downcast<gpu::intel::sycl::stream_t *>(
+                        const_cast<dnnl::stream &>(p_stream).get());
+        auto graph_key = sycl_stream->get_current_graph_weak();
+
+        std::lock_guard<std::mutex> lock(mutex());
+
+        auto &graph_map = cache()[graph_key];
+        auto it = graph_map.find(kernel_ptr);
+        if (it == graph_map.end()) {
+            auto sp = std::unique_ptr<temporary_scratchpad_t>(
+                    new temporary_scratchpad_t(size, eng, alloc));
+            auto *ptr = sp.get();
+            graph_map.emplace(kernel_ptr, std::move(sp));
+            return *ptr;
+        }
+        return *it->second;
+    }
+
+private:
+    struct weak_graph_owner_less_t {
+        bool operator()(const gpu::intel::sycl::stream_t::weak_graph_t &lhs,
+                const gpu::intel::sycl::stream_t::weak_graph_t &rhs)
+                const noexcept {
+            return lhs.owner_before(rhs);
+        }
+    };
+
+    using kernel_map_t = std::unordered_map<const void *,
+            std::unique_ptr<temporary_scratchpad_t>>;
+    using cache_t = std::map<gpu::intel::sycl::stream_t::weak_graph_t,
+            kernel_map_t, weak_graph_owner_less_t>;
+
+    static cache_t &cache() {
+        static cache_t instance;
+        return instance;
+    }
+    static std::mutex &mutex() {
+        static std::mutex instance;
+        return instance;
+    }
+};
+#endif
 
 } // namespace dnnl_impl
 } // namespace graph

@@ -2577,7 +2577,7 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
 
     if (brg.is_fp8_via_convert()) reg64_fp8_aux.save();
 
-    for (dim_t rd = 0; rd < rd_loop; rd += brg.rd_step) {
+    for (dim_t rd = 0; rd < rd_loop; rd += brg.rd_step * 2) {
         if (brg.n_bcast_1_load) {
             for (dim_t bd = bd_b; bd < bd_e && !is_emdbd; bd++)
                 broadcast_A(bcst(bd), bd, rd);
@@ -2645,6 +2645,7 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                             dot_product(vmm, load(ld), bcst());
                             dot_product(vmm, vmm_fp8_load(), vmm_fp8_bcst());
                         } else*/
+                            dot_product(vmm, load(ld), bcst());
                             dot_product(vmm, load(ld), bcst());
                     }
                 }

@@ -674,7 +674,8 @@ format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
 
     if (bgmmc.ndims > 3) return format_tag::undef;
 
-    if (is_int8() || is_f8()) {
+    const bool prefer_vnni_block = is_f8() && bgmmc.isa == avx10_2;
+    if (is_int8() || (is_f8() && !prefer_vnni_block)) {
         switch (n_blk) {
             case 64: return bgmmc.ndims == 3 ? aCB16b64c4b : BA16a64b4a;
             case 48: return bgmmc.ndims == 3 ? aCB16b48c4b : BA16a48b4a;
@@ -690,7 +691,7 @@ format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
             || is_f32_bf16() || is_f16_with_int_wei() || is_f32_with_int_wei();
 
     if ((prefer_amx_or_avx2_vnni_2 && is_amx_or_avx2_vnni_2) || is_bf16()
-            || is_bf16_with_int_wei()) {
+            || is_bf16_with_int_wei() || (is_f8() && prefer_vnni_block)) {
         switch (n_blk) {
             case 64: return bgmmc.ndims == 3 ? aCB16b64c2b : BA16a64b2a;
             case 48: return bgmmc.ndims == 3 ? aCB16b48c2b : BA16a48b2a;

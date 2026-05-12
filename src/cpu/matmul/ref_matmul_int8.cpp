@@ -222,6 +222,17 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
                 const auto wei_zp = io::load_int_value(
                         wei_zp_dt, wei_zero_points, wei_zp_offset);
                 acc -= src_pr * wei_zp;
+
+                // If both zero-points are defined, need to append cross-zp
+                // compensation times the reduction chain.
+                if (with_src_zero_points) {
+                    const dim_t src_zp_offset = matmul_helper_t::get_quant_off(
+                            src_dims_idx, ndims, src_zp_mask, 1, src_zp_group_k,
+                            src_zp_md);
+                    const auto src_zp = io::load_int_value(
+                            src_zp_dt, src_zero_points, src_zp_offset);
+                    acc += group_k * wei_zp * src_zp;
+                }
             }
 
             // Apply scaling after computing a group.

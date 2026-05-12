@@ -217,6 +217,8 @@ struct brgemm_matmul_conf_t {
     dim_t s8s8_comp_ithr_str;
     dim_t s8s8_comp_b_str;
     dim_t s8s8_comp_n_str;
+    // Per-K-group stride in the comp scratchpad (per-K-grouped quant).
+    dim_t s8s8_comp_k_str = 0;
     bool post_ops_applicable;
     bool transposed_A;
     bool transposed_B;
@@ -264,6 +266,7 @@ struct brgemm_matmul_conf_t {
     bool is_wei_scale_common = false;
     dim_t wei_scales_k_gsize = 0;
     data_type_t wei_scales_dt = data_type::undef;
+    dim_t wei_scales_batch_stride = 0;
 
     // Zero points
     bool has_zero_point_a;
@@ -331,7 +334,8 @@ struct brgemm_matmul_conf_utils_t {
         if (bgmmc.is_f32_with_int_wei) return true;
         if (bgmmc.with_int8_grouped_quantization
                 && (bgmmc.is_int4_weights
-                        || bgmmc.wei_zp_type != brgemm_broadcast_t::none))
+                        || bgmmc.wei_zp_type != brgemm_broadcast_t::none
+                        || bgmmc.s8s8_compensation_required))
             return true;
         if (bgmmc.apply_scales_in_buffer_b) return true;
         if (bgmmc.is_gemv) return false;

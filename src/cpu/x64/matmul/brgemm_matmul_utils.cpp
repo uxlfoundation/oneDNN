@@ -1353,6 +1353,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.dst_dt = dst_d.data_type();
     bgmmc.wei_dt = weights_d.data_type();
     bgmmc.orig_wei_dt = weights_d.data_type();
+    bgmmc.emu_wei_dt = get_mac_emu_data_type(bgmmc.wei_dt, isa, isa == avx10_2);
 
     bgmmc.with_reduce = mmd.reduce_desc.format_kind != format_kind::undef;
     bgmmc.reduce_dt
@@ -1613,7 +1614,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     VCONDCHECK_BG(bgmmc.required_k_granularity > 0, VERBOSE_BLOCKING_FAIL, "");
 
-    bgmmc.wei_k_blk = get_wei_k_blk(bgmmc.wei_dt);
+    bgmmc.wei_k_blk = get_wei_k_blk(bgmmc.emu_wei_dt);
 
     VCHECK_BG(bm_conf_utils.set_or_check_B_tag(weights_md, helper),
             VERBOSE_UNSUPPORTED_TAG);
@@ -1805,7 +1806,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
             // ZMM registers are used without masking;
             // Two YMMs are used in the AVX2 case with the same granularity.
             size_t n_elements_in_wei_zmm = platform::get_cache_line_size()
-                    / (data_type_vnni_granularity(bgmmc.wei_dt)
+                    / (data_type_vnni_granularity(bgmmc.emu_wei_dt)
                             * bgmmc.tr_b_dt_sz);
             bgmmc.wei_n_blk = rnd_up(bgmmc.N_blk, n_elements_in_wei_zmm);
         } else {
@@ -1979,11 +1980,12 @@ status_t init_conf(brgemm_matmul_conf_t &conf, dim_t batch, dim_t M, dim_t K,
     conf.orig_src_dt = conf.orig_wei_dt = in_type;
     // Note: will need to change `tr_a_dt_sz` for copyA in cases where src_dt != dst_dt
     conf.a_dt_sz = conf.tr_a_dt_sz = types::data_type_size(conf.src_dt);
+    conf.emu_wei_dt = get_mac_emu_data_type(conf.wei_dt, conf.isa, conf.isa == avx10_2);
     conf.N = N;
     conf.M = M;
     conf.K = K;
     const dim_t copyA_K_blk = isa_num_vregs(conf.isa) / 2;
-    const dim_t copyB_K_blk = 16 * vnni_granularity;
+    const dim_t copyB_K_blk = 16 * data_type_vnni_granularity(conf.emu_wei_dt);//vnni_granularity;
     conf.K_blk = is_copyB ? copyB_K_blk : copyA_K_blk;
     conf.K_tail = conf.K % conf.K_blk;
     if (!is_copyB) {

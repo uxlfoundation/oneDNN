@@ -442,3 +442,8 @@ mb64_ic3oc192_ih224oh14kh16sh16dh0ph0_iw224ow14kw16sw16dw0pw0n"rpad0_bf16_accura
 --reset
 --dt=s8:s8:s32 --dir=FWD_I
 mb1_ic1oc1_ih32oh16kh2sh2dh0ph0_iw64ow64kw4sw1dw0pw1
+
+# BRDGMM-based case with source zero points
+--reset
+--dt=u8:s8:u8 --attr-zero-points=src:per_oc
+g960mb32ic960ih7oc960oh7kh5ph2

@@ -400,7 +400,7 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
     if (!attr->zero_points_.has_default_values()) {
         const auto &zp = attr->zero_points_;
 
-        dim_t src_zero_point_group_k = 1;
+        dim_t src_zp_group_k = 1;
         if (!zp.has_default_values(DNNL_ARG_SRC)) {
             const int mask_src = zp.get_mask(DNNL_ARG_SRC);
 
@@ -410,19 +410,19 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
 
             if (!zp.get(DNNL_ARG_SRC).has_default_groups()) {
                 if (mask_src & src_qmask_K)
-                    src_zero_point_group_k = zp.get_group(DNNL_ARG_SRC, 1);
+                    src_zp_group_k = zp.get_group(DNNL_ARG_SRC, 1);
             }
 
             // Due to hardware specifics, groups, when more than 1, should be
             // multiple of 32.
-            VCHECK_MATMUL_UNIMPL(IMPLICATION(src_zero_point_group_k > 1
-                                                 && src_zero_point_group_k < K,
-                                         src_zero_point_group_k % 32 == 0),
+            VCHECK_MATMUL_UNIMPL(
+                    IMPLICATION(src_zp_group_k > 1 && src_zp_group_k < K,
+                            src_zp_group_k % 32 == 0),
                     VERBOSE_UNSUPPORTED_ZP_CFG);
         }
 
-        dim_t wei_zero_point_group_k = 1;
-        dim_t wei_zero_point_group_n = 1;
+        dim_t wei_zp_group_k = 1;
+        dim_t wei_zp_group_n = 1;
         if (!zp.has_default_values(DNNL_ARG_WEIGHTS)) {
             const int mask_wei = zp.get_mask(DNNL_ARG_WEIGHTS);
 
@@ -430,38 +430,36 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
 
             if (!zp.get(DNNL_ARG_WEIGHTS).has_default_groups()) {
                 if (mask_wei & wei_qmask_K)
-                    wei_zero_point_group_k = zp.get_group(DNNL_ARG_WEIGHTS, 0);
+                    wei_zp_group_k = zp.get_group(DNNL_ARG_WEIGHTS, 0);
                 if (mask_wei & wei_qmask_N)
-                    wei_zero_point_group_n = zp.get_group(DNNL_ARG_WEIGHTS, 1);
+                    wei_zp_group_n = zp.get_group(DNNL_ARG_WEIGHTS, 1);
             }
 
             // Groups per N are solely for weights decompression as it's
             // impossible to get performant kernel for a single `k` element in
             // chain for regular quantized case.
-            VCHECK_MATMUL_UNIMPL(IMPLICATION(wei_zero_point_group_n > 1,
+            VCHECK_MATMUL_UNIMPL(IMPLICATION(wei_zp_group_n > 1,
                                          attr->fpmath_.apply_to_int_),
                     VERBOSE_UNSUPPORTED_ZP_CFG);
 
             // Due to hardware specifics, groups, when more than 1, should be
             // multiple of 16.
-            VCHECK_MATMUL_UNIMPL(IMPLICATION(wei_zero_point_group_k > 1
-                                                 && wei_zero_point_group_k < K,
-                                         wei_zero_point_group_k % 16 == 0),
+            VCHECK_MATMUL_UNIMPL(
+                    IMPLICATION(wei_zp_group_k > 1 && wei_zp_group_k < K,
+                            wei_zp_group_k % 16 == 0),
                     VERBOSE_UNSUPPORTED_ZP_CFG);
-            VCHECK_MATMUL_UNIMPL(IMPLICATION(wei_zero_point_group_n > 1
-                                                 && wei_zero_point_group_n < N,
-                                         wei_zero_point_group_n % 16 == 0),
+            VCHECK_MATMUL_UNIMPL(
+                    IMPLICATION(wei_zp_group_n > 1 && wei_zp_group_n < N,
+                            wei_zp_group_n % 16 == 0),
                     VERBOSE_UNSUPPORTED_ZP_CFG);
 
             if (utils::one_of(zp.get_data_type(DNNL_ARG_WEIGHTS), data_type::s4,
                         data_type::u4)) {
-                dim_t k = desc.weights_desc.dims[ndims_wei - 2];
-                dim_t n = desc.weights_desc.dims[ndims_wei - 1];
                 VCHECK_MATMUL_UNIMPL(
-                        IMPLICATION(mask_wei & wei_qmask_K, k % 2 == 0),
+                        IMPLICATION(mask_wei & wei_qmask_K, K % 2 == 0),
                         VERBOSE_UNSUPPORTED_ZP_CFG);
                 VCHECK_MATMUL_UNIMPL(
-                        IMPLICATION(mask_wei & wei_qmask_N, n % 2 == 0),
+                        IMPLICATION(mask_wei & wei_qmask_N, N % 2 == 0),
                         VERBOSE_UNSUPPORTED_ZP_CFG);
             }
         }
@@ -477,9 +475,9 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
         // Check dependency between zero_points.
         // Source zero_points groups are supported for int8 source and must
         // divide or be divided by weights groups when both are greater than 1.
-        const bool groups_are_divisible = quant_groups_are_divisible(
-                src_zero_point_group_k, wei_zero_point_group_k);
-        VCHECK_MATMUL_UNIMPL(IMPLICATION(src_zero_point_group_k > 1,
+        const bool groups_are_divisible
+                = quant_groups_are_divisible(src_zp_group_k, wei_zp_group_k);
+        VCHECK_MATMUL_UNIMPL(IMPLICATION(src_zp_group_k > 1,
                                      src_is_int8 && groups_are_divisible),
                 VERBOSE_UNSUPPORTED_ZP_CFG);
     }
@@ -512,16 +510,15 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
             if (!pr.get(DNNL_ARG_SRC).has_default_groups()) {
                 const dim_t src_pr_group_k = pr.get_group(DNNL_ARG_SRC, 1);
 
-                dim_t wei_zero_point_group_k = 1;
+                dim_t wei_zp_group_k = 1;
                 if (!zp.get(DNNL_ARG_WEIGHTS).has_default_groups()) {
                     const int mask_wei = zp.get_mask(DNNL_ARG_WEIGHTS);
                     if (mask_wei & wei_qmask_K)
-                        wei_zero_point_group_k
-                                = zp.get_group(DNNL_ARG_WEIGHTS, 0);
+                        wei_zp_group_k = zp.get_group(DNNL_ARG_WEIGHTS, 0);
                 }
 
                 const bool groups_are_divisible = quant_groups_are_divisible(
-                        src_pr_group_k, wei_zero_point_group_k);
+                        src_pr_group_k, wei_zp_group_k);
                 VCHECK_MATMUL_UNIMPL(
                         IMPLICATION(src_pr_group_k > 1,
                                 src_is_int8 && groups_are_divisible),

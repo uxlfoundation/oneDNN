@@ -29,6 +29,19 @@ cfg_t::cfg_t(const prb_t *prb, const std::vector<data_kind_t> &kinds)
     }
 
     adjust_ranges();
+
+    // For unsigned weights with a wei zero point, ensure wei >= max(zp) so
+    // that byte-wise (wei - zp) in the copy_b kernel does not underflow the
+    // unsigned byte domain. Filler for non-single-element ZPs uses [.., 2].
+    const auto &wei_zp = prb->attr.zero_points.get(DNNL_ARG_WEIGHTS);
+    const bool wei_is_unsigned
+            = prb->get_dt(WEI) == dnnl_u8 || prb->get_dt(WEI) == dnnl_u4;
+    if (!wei_zp.is_def() && wei_is_unsigned && cfg_entry_.count(WEI)) {
+        const int zp_max = wei_zp.has_single_element() ? wei_zp.value : 2;
+        if (zp_max > 0 && get_range_min(WEI) < zp_max)
+            set_range_min(WEI, zp_max);
+    }
+
     print_fill_cfg_verbose();
 }
 

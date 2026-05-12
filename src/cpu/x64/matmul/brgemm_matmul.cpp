@@ -259,8 +259,11 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
             if (allow_multiple_wei_zp) {
                 const auto kn_mask = wei_qmask_N() + wei_qmask_K();
                 const bool zp_over_batch = (mask & kn_mask) != mask;
-                const bool mask_ok = (mask & ~kn_mask) == 0;
-                return !(zp_over_batch && batch() > 1) && mask_ok;
+                const bool is_grouped
+                        = !zp.get(DNNL_ARG_WEIGHTS).has_default_groups();
+                const bool mask_ok = is_grouped || (mask & ~kn_mask) == 0;
+                return !(zp_over_batch && batch() > 1 && !is_grouped)
+                        && mask_ok;
             } else {
                 return mask == 0;
             }
@@ -310,8 +313,9 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
             VERBOSE_UNSUPPORTED_POSTOP);
 
     VDISPATCH_MATMUL(check_attr_scales(), VERBOSE_UNSUPPORTED_SCALES_CFG);
-    VDISPATCH_MATMUL(check_attr_zero_points(is_bf16_with_int_wei
-                             || is_f16_with_int_wei || is_f32_with_int_wei),
+    VDISPATCH_MATMUL(
+            check_attr_zero_points(is_bf16_with_int_wei || is_f16_with_int_wei
+                    || is_f32_with_int_wei || with_int8_grouped_quantization),
             VERBOSE_UNSUPPORTED_ZP_CFG);
     VDISPATCH_MATMUL(check_bias(), VERBOSE_UNSUPPORTED_BIAS_CFG);
     VDISPATCH_MATMUL(check_reduce(), VERBOSE_UNSUPPORTED_FEATURE,
@@ -399,7 +403,9 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         }
 
         auto LDD = bgmmc_.LDD;
-        if (bgmmc_.with_wei_decompression && bgmmc_.has_zero_point_b)
+        if ((bgmmc_.with_wei_decompression
+                    || bgmmc_.with_int8_grouped_quantization)
+                && bgmmc_.has_zero_point_b)
             brg.skip_zp_b_compensation = true;
         brg.skip_scales = bgmmc_.apply_scales_in_buffer_b;
         // Fill up the scales info in case it's computing in brgemm
@@ -1284,9 +1290,12 @@ void brgemm_matmul_t<isa>::copy_a_chunk_in_buffer(
     // Note: instead of passing an address to a stack variable, a kernel may be
     // changed to take just zp_b value and perform negation itself, but updating
     // kernels is not straightforward for all platforms.
-    int32_t neg_zp_b
-            = !bgmmc.with_wei_decompression ? brgmm_ctx.get_neg_zp_b() : 0;
-    int32_t neg_zp_ab_comp = !bgmmc.with_wei_decompression
+    int32_t neg_zp_b = !(bgmmc.with_wei_decompression
+                               || bgmmc.with_int8_grouped_quantization)
+            ? brgmm_ctx.get_neg_zp_b()
+            : 0;
+    int32_t neg_zp_ab_comp = !(bgmmc.with_wei_decompression
+                                     || bgmmc.with_int8_grouped_quantization)
             ? bgmmc.K * brgmm_ctx.get_neg_zp_a()
             : 0;
     ctx.zp_b_neg_val_ptr = &neg_zp_b;
@@ -1378,7 +1387,7 @@ void brgemm_matmul_t<isa>::copy_b_chunk_in_buffer(
         ctx.current_K_pad = brgmm_ctx.get_current_K_pad(k_iters);
         ctx.src_scales_ptr = brgmm_ctx.get_src_scales_ptr();
         ctx.wei_scales_ptr = brgmm_ctx.get_wei_scales_ptr(n, k, b_idx);
-        ctx.zp_b_value_ptr = brgmm_ctx.get_wei_zp_ptr(n, k);
+        ctx.zp_b_value_ptr = brgmm_ctx.get_wei_zp_ptr(n, k, b_idx);
         if (bgmmc.blocked_B && !bgmmc.is_f16_with_int_wei
                 && isa == avx512_core_fp16) {
             cvt_float16_to_float((float *)ctx.tr_src, (float16_t *)ctx.src,
@@ -1389,7 +1398,9 @@ void brgemm_matmul_t<isa>::copy_b_chunk_in_buffer(
     };
 
     // grouped zero points &-or scales
-    if (bgmmc.is_wei_zp_per_k || bgmmc.is_wei_scale_per_k) {
+    const bool is_grouped = (bgmmc.is_wei_zp_per_k || bgmmc.is_wei_scale_per_k)
+            && !bgmmc.with_int8_grouped_quantization;
+    if (is_grouped) {
         const auto &k_group = bgmmc.is_wei_zp_per_k ? bgmmc.wei_zp_k_gsize
                                                     : bgmmc.wei_scales_k_gsize;
         const auto brgemm_k_blk = nstl::min(bgmmc.K, bgmmc.K_blk);
@@ -1779,8 +1790,9 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
 
         num_threads_used_ = nthr_k_ * nthr_bmn_;
 
-        const bool need_to_calculate_compensation_for_a
-                = bgmmc.has_zero_point_b && !bgmmc.with_wei_decompression;
+        const bool need_to_calculate_compensation_for_a = bgmmc.has_zero_point_b
+                && !bgmmc.with_wei_decompression
+                && !bgmmc.with_int8_grouped_quantization;
         const bool need_to_calculate_compensation_for_b = !IMPLICATION(
                 (bgmmc.has_zero_point_a || bgmmc.s8s8_compensation_required),
                 bgmmc.blocked_B);
@@ -2213,7 +2225,7 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         return -cpu::io::load_int_value(bgmmc_.wei_zp_dt, wei_zp_ptr_, 0);
     }
 
-    const void *get_wei_zp_ptr(dim_t n, dim_t k = 0) const {
+    const void *get_wei_zp_ptr(dim_t n, dim_t k = 0, int b_idx = 0) const {
         if (!bgmmc_.has_zero_point_b) return nullptr;
         if (bgmmc_.is_wei_zp_common)
             return wei_zp_ptr_; // single zero point value
@@ -2224,6 +2236,11 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
             const auto &k_group_sz = bgmmc_.wei_zp_k_gsize;
             const auto k_idx = k / k_group_sz;
             offset += k_idx * bgmmc_.N;
+        }
+
+        if (bgmmc_.wei_zp_batch_stride > 0) {
+            const int b = get_bb_idx(b_idx, bgmmc_.bcast_B_desc);
+            offset += b * bgmmc_.wei_zp_batch_stride;
         }
 
         const auto dt_sz = types::data_type_size(bgmmc_.wei_zp_dt);

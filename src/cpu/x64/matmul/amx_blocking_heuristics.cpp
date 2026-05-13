@@ -70,6 +70,10 @@ void matmul_amx_blocking_params_t::update_configuration(
             ic_group_sz = ic_group_sz == 0
                     ? bgmmc.wei_scales_k_gsize
                     : nstl::min(ic_group_sz, bgmmc.wei_scales_k_gsize);
+        if (bgmmc.is_src_scale_per_k && bgmmc.src_scales_k_gsize > 0)
+            ic_group_sz = ic_group_sz == 0
+                    ? bgmmc.src_scales_k_gsize
+                    : nstl::min(ic_group_sz, bgmmc.src_scales_k_gsize);
         if (ic_group_sz > 0) {
             bgmmc.K_blk = ic_group_sz;
             bgmmc.brgemm_batch_size = 1;

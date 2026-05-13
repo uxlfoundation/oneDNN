@@ -420,6 +420,8 @@ private:
             dim_t bd_block, dim_t ld_block, bool is_ld_tail, bool is_bdb_tail);
     void apply_wei_scales(dim_t bd_block, dim_t ld_block2, bool is_ld_tail,
             bool dq2ps_required, bool &dq2ps_cvt_done);
+    void apply_src_scales_per_k(dim_t bd_block, dim_t ld_block2,
+            bool dq2ps_required, bool &dq2ps_cvt_done);
     void apply_scales(dim_t bd_block, dim_t ld_block2, bool is_ld_tail);
     void apply_post_ops(dim_t bd_block, dim_t ld_block2,
             dim_t ldb_and_bdb_offset, bool is_ld_tail, bool is_bdb_tail);
@@ -1701,6 +1703,25 @@ void jit_brgemm_kernel_t<Wmm>::apply_wei_scales(dim_t bd_block, dim_t ld_block2,
     dq2ps_cvt_done = true;
 }
 
+template <typename Wmm>
+void jit_brgemm_kernel_t<Wmm>::apply_src_scales_per_k(dim_t bd_block,
+        dim_t ld_block2, bool dq2ps_required, bool &dq2ps_cvt_done) {
+    reg_src_scales.restoreTo(reg_aux_src_scales);
+    const auto vmm_src_sc = vmm_tmp(0);
+    for (dim_t bd = 0; bd < bd_block; bd++) {
+        const auto src_sc_addr
+                = ptr[reg_aux_src_scales + bd * brg.src_scale_m_stride];
+        load_scales_to_vmm(brg.dt_src_scales, vmm_src_sc, src_sc_addr,
+                /*is_ld_tail=*/false, /*is_single_scale=*/true);
+        for (dim_t ld = 0; ld < ld_block2; ld++) {
+            auto vmm = accm(ld_block2, bd, ld);
+            if (dq2ps_required && !dq2ps_cvt_done) uni_vcvtdq2ps(vmm, vmm);
+            uni_vmulps(vmm, vmm, vmm_src_sc);
+        }
+    }
+    dq2ps_cvt_done = true;
+}
+
 // Sibling stage to post-ops; called every brgemm K-call when per-K scales
 // are active. Driver shifts scale pointers per call. Leaves accumulator as
 // f32 so apply_alpha_beta uses vaddps against f32 buffer C.
@@ -1714,6 +1735,16 @@ void jit_brgemm_kernel_t<Wmm>::apply_scales(
     if (brg.is_per_k_wei_scales)
         apply_wei_scales(bd_block, ld_block2, is_ld_tail, dq2ps_required,
                 dq2ps_cvt_done);
+    if (brg.is_per_k_src_scales)
+        apply_src_scales_per_k(
+                bd_block, ld_block2, dq2ps_required, dq2ps_cvt_done);
+    if (dq2ps_required && !dq2ps_cvt_done) {
+        for_(dim_t ld = 0; ld < ld_block2; ld++)
+        for (dim_t bd = 0; bd < bd_block; bd++) {
+            auto vmm = accm(ld_block2, bd, ld);
+            uni_vcvtdq2ps(vmm, vmm);
+        }
+    }
 }
 
 template <typename Wmm>
@@ -1738,7 +1769,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
     // Pre-set when apply_scales() already did the int->f32 conversion.
     bool dq2ps_cvt_done = brg.has_per_k_scales();
 
-    if (brg.with_src_scales) {
+    if (brg.with_src_scales && !brg.is_per_k_src_scales) {
         reg_src_scales.restoreTo(reg_aux_src_scales);
         auto vmm_src_scales = vmm_tmp(0);
         if (!has_ptr_b_support)
@@ -3298,6 +3329,15 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
             add(reg_D, bdb_D_offset(bd_block2));
         }
         add(reg_a_offset, bdb_A_offset(bd_block2));
+
+        if (brg.is_per_k_src_scales) {
+            const auto adj_bd_block = is_bdb_tail ? brg.bdb_tail : brg.bd_block;
+            const auto src_scales_stack_ptr
+                    = reg_src_scales.getStoragePtr().getRegExp();
+            const auto src_scales_offset
+                    = adj_bd_block * bd_block2 * brg.src_scale_m_stride;
+            add(dword[src_scales_stack_ptr], src_scales_offset);
+        }
 
         if (brg.is_gemv && brg.treat_y_as_row) {
             if (brg.with_bias) {

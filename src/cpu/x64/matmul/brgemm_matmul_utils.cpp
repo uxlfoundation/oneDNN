@@ -1933,12 +1933,6 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                         || bm_conf_utils.check_is_transposed(bgmmc.wei_tag),
                 VERBOSE_UNSUPPORTED_TAG);
 
-    // Transposed weights (ba/acb/abdc) are not supported for dynamic
-    // quantization
-    if (bgmmc.with_int8_grouped_quantization
-            && bm_conf_utils.check_is_transposed(bgmmc.wei_tag))
-        VCONDCHECK_BG(false, VERBOSE_UNSUPPORTED_TAG);
-
     const bool transposed_A = bm_conf_utils.check_is_transposed(bgmmc.src_tag);
     // When M == 1, MatMul always treats A as non-transposed, even if the A
     // memory descriptor was created using the "ba" tag. Additionally, we need

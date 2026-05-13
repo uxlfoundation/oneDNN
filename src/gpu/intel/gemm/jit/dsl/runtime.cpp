@@ -172,13 +172,16 @@ dsl::hw_t get_hardware(ze_device_handle_t device, ze_context_handle_t context) {
     ze_result_t status;
     size_t eu_count = 0;
     {
+        auto euCountExt = ze_eu_count_ext_t();
+        euCountExt.stype = ZE_STRUCTURE_TYPE_EU_COUNT_EXT;
+
         auto deviceProps = ze_device_properties_t();
         deviceProps.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES;
+        deviceProps.pNext = &euCountExt;
 
         status = ngen::dynamic::zeDeviceGetProperties(device, &deviceProps);
         if (status != ZE_RESULT_SUCCESS) return {};
-        eu_count = deviceProps.numEUsPerSubslice
-                * deviceProps.numSubslicesPerSlice * deviceProps.numSlices;
+        eu_count = euCountExt.numTotalEUs;
     }
 
     size_t max_wg_size;

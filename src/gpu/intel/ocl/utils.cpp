@@ -30,18 +30,6 @@
 #define CL_KERNEL_BINARY_PROGRAM_INTEL 0x407D
 #endif
 
-#ifndef CL_DEVICE_NUM_SLICES_INTEL
-#define CL_DEVICE_NUM_SLICES_INTEL 0x4252
-#endif
-
-#ifndef CL_DEVICE_NUM_SUB_SLICES_PER_SLICE_INTEL
-#define CL_DEVICE_NUM_SUB_SLICES_PER_SLICE_INTEL 0x4253
-#endif
-
-#ifndef CL_DEVICE_NUM_EUS_PER_SUB_SLICE_INTEL
-#define CL_DEVICE_NUM_EUS_PER_SUB_SLICE_INTEL 0x4254
-#endif
-
 #ifndef CL_DEVICE_FEATURE_CAPABILITIES_INTEL
 #define CL_DEVICE_FEATURE_CAPABILITIES_INTEL 0x4256
 #endif
@@ -311,47 +299,11 @@ status_t get_ocl_device_enabled_native_float_atomics(
     return status::success;
 }
 
-status_t get_ocl_device_eu_count(cl_device_id device,
-        gpu::intel::compute::gpu_arch_t arch, int32_t *eu_count) {
-    // Start with standard OpenCL query.
+status_t get_ocl_device_eu_count(cl_device_id device, int32_t *eu_count) {
     cl_uint max_compute_units = 0;
     OCL_CHECK(xpu::ocl::clGetDeviceInfo(device, CL_DEVICE_MAX_COMPUTE_UNITS,
             sizeof(max_compute_units), &max_compute_units, nullptr));
-
-    // Try to use Intel-specific slice/sub-slice queries to correct EU count
-    //   for certain buggy drivers.
-    bool ok = true;
-
-#ifdef _WIN32
-    // But don't try this on Windows Xe2 to avoid undercounting EUs.
-    ok &= (arch != gpu::intel::compute::gpu_arch_t::xe2);
-#endif
-
-    auto do_query = [&](cl_uint query) -> cl_uint {
-        cl_uint val = 0;
-        ok = ok
-                && (xpu::ocl::clGetDeviceInfo(
-                            device, query, sizeof(val), &val, nullptr)
-                        == CL_SUCCESS);
-        return val;
-    };
-
-    cl_uint num_slices = do_query(CL_DEVICE_NUM_SLICES_INTEL);
-    cl_uint num_sub_slices_per_slice
-            = do_query(CL_DEVICE_NUM_SUB_SLICES_PER_SLICE_INTEL);
-    cl_uint num_eus_per_sub_slice
-            = do_query(CL_DEVICE_NUM_EUS_PER_SUB_SLICE_INTEL);
-
-    if (ok) {
-        /* Some drivers report incorrect values on Xe2 */
-        if (arch == gpu::intel::compute::gpu_arch_t::xe2)
-            num_eus_per_sub_slice = 8;
-        max_compute_units = std::min(max_compute_units,
-                num_slices * num_sub_slices_per_slice * num_eus_per_sub_slice);
-    }
-
     *eu_count = (int32_t)max_compute_units;
-
     return status::success;
 }
 

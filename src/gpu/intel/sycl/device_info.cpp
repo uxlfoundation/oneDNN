@@ -19,7 +19,6 @@
 #include "gpu/intel/sycl/engine.hpp"
 
 #include "gpu/intel/ocl/hw_info.hpp"
-#include "gpu/intel/ocl/utils.hpp"
 
 #include "gpu/intel/ze/utils.hpp"
 
@@ -119,22 +118,7 @@ status_t device_info_t::init_attributes(impl::engine_t *engine) {
     auto &device
             = utils::downcast<const xpu::sycl::engine_impl_t *>(engine->impl())
                       ->device();
-    if (device.is_gpu() && xpu::sycl::is_intel_device(device)) {
-        xpu::sycl::backend_t be = xpu::sycl::get_backend(device);
-        if (be == xpu::sycl::backend_t::opencl) {
-            // XXX: OpenCL backend get_info() queries below are not yet
-            // supported so query OpenCL directly.
-            cl_device_id ocl_dev
-                    = xpu::sycl::compat::get_native<cl_device_id>(device);
-            CHECK(gpu::intel::ocl::get_ocl_device_eu_count(
-                    ocl_dev, gpu_arch_, &eu_count_));
-        } else {
-            eu_count_ = device.get_info<
-                    ::sycl::info::device::max_compute_units>();
-        }
-    } else {
-        eu_count_ = device.get_info<::sycl::info::device::max_compute_units>();
-    }
+    eu_count_ = device.get_info<::sycl::info::device::max_compute_units>();
     max_wg_size_ = device.get_info<::sycl::info::device::max_work_group_size>();
     memory_size_ = device.get_info<::sycl::info::device::global_mem_size>();
     l3_cache_size_

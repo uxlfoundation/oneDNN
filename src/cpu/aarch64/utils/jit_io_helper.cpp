@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2022 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -73,14 +73,14 @@ jit_io_helper_t<Vmm>::jit_io_helper_t(jit_generator_t *host,
     , saturation_conf_(saturation_conf)
     , gather_conf_(gather_conf) {
 
-    assert(utils::one_of(data_type_, data_type::f32, data_type::s8,
-                   data_type::u8, data_type::s32)
-            && "Supported data types f32, s8, u8, s32");
+    assert(utils::one_of(data_type_, data_type::f16, data_type::bf16,
+                   data_type::f32, data_type::s8, data_type::u8, data_type::s32)
+            && "Supported data types f16, bf16, f32, s8, u8, s32");
 
     static constexpr bool is_zmm
             = std::is_same<Vmm, Xbyak_aarch64::ZReg>::value;
     MAYBE_UNUSED(is_zmm);
-    assert(IMPLICATION(!is_superset(isa_, sve_128), !is_zmm)
+    assert(IMPLICATION(!is_superset(isa_, sve), !is_zmm)
             && "This architecture does not support z registers.");
 }
 
@@ -104,7 +104,7 @@ void jit_io_helper_t<Vmm>::prepare_tail_mask() {
 
     if (!tail_conf_->tail_size_) return;
 
-    assert(is_superset(isa_, sve_128));
+    assert(is_superset(isa_, sve));
 
     prepare_opmask(tail_conf_->tail_size_, tail_conf_->reg_tmp_,
             tail_conf_->reg_tmp1_, tail_conf_->tail_opmask_);
@@ -114,7 +114,7 @@ template <typename Vmm>
 void jit_io_helper_t<Vmm>::prepare_full_mask() {
     assert(gather_conf_.has_value() && "Config for loading with the use of gather instruction is not set.");
 
-    assert(is_superset(isa_, sve_128));
+    assert(mayiuse(sve));
 
     prepare_opmask(gather_conf_->simd_w_, gather_conf_->reg_tmp_,
             gather_conf_->reg_tmp1_, gather_conf_->full_opmask_);
@@ -124,7 +124,7 @@ template <typename Vmm>
 void jit_io_helper_t<Vmm>::init_full_mask() {
     assert(gather_conf_.has_value() && "Config for loading with the use of gather instruction is not set.");
 
-    if (isa_ == sve_256) {
+    if (simd_bytes(isa_) == 32) {
         const Vmm vmm_mask = Vmm(gather_conf_->full_vmm_mask_idx_);
         host_->eor(Xbyak_aarch64::ZReg(vmm_mask.getIdx()).d,
                 Xbyak_aarch64::ZReg(vmm_mask.getIdx()).d,
@@ -157,28 +157,37 @@ void jit_io_helper_t<Vmm>::gather(const Xbyak_aarch64::XReg &src_reg,
 
     switch (data_type_) {
         case data_type::f32:
+            host_->ld1w({dst_vmm.s}, mask / Xbyak_aarch64::T_z,
+                    Xbyak_aarch64::ptr(
+                            src_reg, indices_vmm.s, Xbyak_aarch64::SXTW));
+            break;
         case data_type::s32:
             host_->ld1w({dst_vmm.s}, mask / Xbyak_aarch64::T_z,
                     Xbyak_aarch64::ptr(
                             src_reg, indices_vmm.s, Xbyak_aarch64::SXTW));
-            if (data_type_ == data_type::s32)
-                convert_to_f32(dst_vmm, dst_vmm, data_type_);
+            convert_to_f32(dst_vmm, dst_vmm, data_type::s32);
+            break;
+        case data_type::bf16:
+        case data_type::f16:
+            host_->ld1h(dst_vmm.s, mask / Xbyak_aarch64::T_z,
+                    Xbyak_aarch64::ptr(
+                            src_reg, indices_vmm.s, Xbyak_aarch64::SXTW));
+            convert_to_f32(dst_vmm, dst_vmm, data_type_);
             break;
         case data_type::s8:
             host_->ld1sb({dst_vmm.s}, mask / Xbyak_aarch64::T_z,
                     Xbyak_aarch64::ptr(
                             src_reg, indices_vmm.s, Xbyak_aarch64::SXTW));
+            convert_to_f32(dst_vmm, dst_vmm, data_type::s32);
             break;
         case data_type::u8:
             host_->ld1b({dst_vmm.s}, mask / Xbyak_aarch64::T_z,
                     Xbyak_aarch64::ptr(
                             src_reg, indices_vmm.s, Xbyak_aarch64::SXTW));
+            convert_to_f32(dst_vmm, dst_vmm, data_type::s32);
             break;
         default: assert(!"Unsupported data type.");
     }
-
-    if (data_type_ != data_type::f32)
-        convert_to_f32(dst_vmm, dst_vmm, data_type::s32);
 }
 
 template <typename Vmm>
@@ -197,6 +206,10 @@ void jit_io_helper_t<Vmm>::load(const Xbyak_aarch64::XReg &src_addr,
         case data_type::s32:
             load_s32(src_addr, offt, dst_raw_vmm, tail, mask);
             break;
+        case data_type::bf16:
+            load_bf16(src_addr, offt, dst_raw_vmm, mask);
+            break;
+        case data_type::f16: load_f16(src_addr, offt, dst_raw_vmm, mask); break;
         case data_type::s8:
         case data_type::u8: load_i8(src_addr, offt, dst_raw_vmm, mask); break;
         default: assert(!"Unsupported data type.");
@@ -515,6 +528,26 @@ void jit_io_helper_t<Vmm>::load_s32(const Xbyak_aarch64::XReg &src_addr,
 }
 
 template <typename Vmm>
+void jit_io_helper_t<Vmm>::load_bf16(const Xbyak_aarch64::XReg &src_addr,
+        const int offt, const Vmm &dst_vmm, const Xbyak_aarch64::PReg &mask) {
+    UNUSED(offt);
+
+    host_->ld1h(
+            dst_vmm.s, mask / Xbyak_aarch64::T_z, Xbyak_aarch64::ptr(src_addr));
+    convert_to_f32(dst_vmm, dst_vmm, data_type::bf16);
+}
+
+template <typename Vmm>
+void jit_io_helper_t<Vmm>::load_f16(const Xbyak_aarch64::XReg &src_addr,
+        const int offt, const Vmm &dst_vmm, const Xbyak_aarch64::PReg &mask) {
+    UNUSED(offt);
+
+    host_->ld1h(
+            dst_vmm.s, mask / Xbyak_aarch64::T_z, Xbyak_aarch64::ptr(src_addr));
+    convert_to_f32(dst_vmm, dst_vmm, data_type::f16);
+}
+
+template <typename Vmm>
 void jit_io_helper_t<Vmm>::load_i8(const Xbyak_aarch64::XReg &src_addr,
         const int offt, const Vmm &dst_vmm, const Xbyak_aarch64::PReg &mask) {
 
@@ -548,6 +581,12 @@ void jit_io_helper_t<Vmm>::store(const Vmm &src_raw_vmm,
         case data_type::s32:
             store_f32(src_raw_vmm, dst_raw_addr, offt, tail, mask);
             break;
+        case data_type::bf16:
+            store_bf16(src_raw_vmm, dst_raw_addr, offt, mask);
+            break;
+        case data_type::f16:
+            store_f16(src_raw_vmm, dst_raw_addr, offt, mask);
+            break;
         case data_type::s8:
         case data_type::u8:
             store_i8(src_raw_vmm, dst_raw_addr, offt, mask);
@@ -575,7 +614,7 @@ void jit_io_helper_t<Vmm>::store_f32(const Vmm &src_vmm,
     if (io_conf_.nt_stores_enabled_) {
         host_->stnt1d(Xbyak_aarch64::ZRegD(src_vmm.getIdx()), mask,
                 Xbyak_aarch64::ptr(dst_addr));
-    } else if (!is_superset(isa_, sve_128) && tail) {
+    } else if (!is_superset(isa_, sve) && tail) {
         // ASIMD 128-bit
         switch (tail_conf_->tail_size_) {
             case 1:
@@ -600,6 +639,51 @@ void jit_io_helper_t<Vmm>::store_f32(const Vmm &src_vmm,
         host_->st1w(Xbyak_aarch64::ZRegS(src_vmm.getIdx()), mask,
                 Xbyak_aarch64::ptr(dst_addr));
     }
+}
+
+template <typename Vmm>
+void jit_io_helper_t<Vmm>::store_bf16(const Vmm &src_vmm,
+        const Xbyak_aarch64::XReg &dst_addr, const int offt,
+        const Xbyak_aarch64::PReg &mask) {
+    UNUSED(offt);
+
+    if (mayiuse_bf16()) {
+        host_->bfcvt(Xbyak_aarch64::ZRegH(src_vmm.getIdx()),
+                mask / Xbyak_aarch64::T_m,
+                Xbyak_aarch64::ZRegS(src_vmm.getIdx()));
+        host_->st1h(Xbyak_aarch64::ZRegS(src_vmm.getIdx()), mask,
+                Xbyak_aarch64::ptr(dst_addr));
+        return;
+    }
+
+    host_->str(host_->z31,
+            Xbyak_aarch64::ptr(
+                    host_->X_TRANSLATOR_STACK, -1, Xbyak_aarch64::MUL_VL));
+    const Xbyak_aarch64::ZReg z_tmp(host_->z31.getIdx());
+    host_->mov(
+            z_tmp.s, host_->P_ALL_ONE, Xbyak_aarch64::ZRegS(src_vmm.getIdx()));
+    host_->lsr(z_tmp.s, z_tmp.s, 16);
+    host_->and_(z_tmp.s, 1);
+    host_->add(z_tmp.s, 255);
+    host_->add(z_tmp.s, 127, Xbyak_aarch64::ShMod::LSL, 8);
+    host_->add(z_tmp.s, z_tmp.s, Xbyak_aarch64::ZRegS(src_vmm.getIdx()));
+    host_->lsr(z_tmp.s, z_tmp.s, 16);
+    host_->st1h(z_tmp.s, mask, Xbyak_aarch64::ptr(dst_addr));
+    host_->ldr(host_->z31,
+            Xbyak_aarch64::ptr(
+                    host_->X_TRANSLATOR_STACK, -1, Xbyak_aarch64::MUL_VL));
+}
+
+template <typename Vmm>
+void jit_io_helper_t<Vmm>::store_f16(const Vmm &src_vmm,
+        const Xbyak_aarch64::XReg &dst_addr, const int offt,
+        const Xbyak_aarch64::PReg &mask) {
+    UNUSED(offt);
+
+    host_->fcvt(Xbyak_aarch64::ZRegH(src_vmm.getIdx()),
+            mask / Xbyak_aarch64::T_m, Xbyak_aarch64::ZRegS(src_vmm.getIdx()));
+    host_->st1h(Xbyak_aarch64::ZRegS(src_vmm.getIdx()), mask,
+            Xbyak_aarch64::ptr(dst_addr));
 }
 
 template <typename Vmm>
@@ -682,6 +766,17 @@ void jit_io_helper_t<Vmm>::convert_to_f32(const Vmm &dst_vmm,
             host_->uni_scvtf(dst_vmm.s, dst_vmm.s);
             break;
         }
+        case data_type::bf16: {
+            if (dst_vmm.getIdx() != src_vmm.getIdx())
+                host_->mov(dst_vmm.s, host_->P_ALL_ONE / Xbyak_aarch64::T_m,
+                        src_vmm.s);
+            host_->lsl(dst_vmm.s, dst_vmm.s, 16);
+            break;
+        }
+        case data_type::f16:
+            host_->fcvt(dst_vmm.s, host_->P_ALL_ONE / Xbyak_aarch64::T_m,
+                    Xbyak_aarch64::ZRegH(src_vmm.getIdx()));
+            break;
         case data_type::s8: {
             uni_vpmovsxbd(host_, dst_vmm, src_vmm);
             host_->uni_scvtf(dst_vmm.s, dst_vmm.s);
@@ -716,6 +811,16 @@ void jit_io_helper_t<Vmm>::broadcast(const Xbyak_aarch64::XReg &src_addr,
         const int offt, const Vmm &dst_vmm) {
     switch (data_type_) {
         case data_type::f32: uni_vbroadcastss(host_, dst_vmm, src_addr); break;
+        case data_type::bf16:
+            host_->ld1rh(dst_vmm.s, host_->P_ALL_ONE / Xbyak_aarch64::T_z,
+                    Xbyak_aarch64::ptr(src_addr));
+            convert_to_f32(dst_vmm, dst_vmm, data_type::bf16);
+            break;
+        case data_type::f16:
+            host_->ld1rh(dst_vmm.s, host_->P_ALL_ONE / Xbyak_aarch64::T_z,
+                    Xbyak_aarch64::ptr(src_addr));
+            convert_to_f32(dst_vmm, dst_vmm, data_type::f16);
+            break;
         case data_type::s32: {
             if (is_superset(isa_, sve_512)) {
                 if (host_->cpu_sveLen == sve_128) {

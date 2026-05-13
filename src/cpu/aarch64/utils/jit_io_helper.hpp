@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2022 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -153,11 +153,19 @@ private:
     void load_s32(const Xbyak_aarch64::XReg &src_addr, const int offt,
             const Vmm &dst_vmm, const bool tail,
             const Xbyak_aarch64::PReg &mask);
+    void load_bf16(const Xbyak_aarch64::XReg &src_addr, const int offt,
+            const Vmm &dst_vmm, const Xbyak_aarch64::PReg &mask);
+    void load_f16(const Xbyak_aarch64::XReg &src_addr, const int offt,
+            const Vmm &dst_vmm, const Xbyak_aarch64::PReg &mask);
     void load_i8(const Xbyak_aarch64::XReg &src_addr, const int offt,
             const Vmm &dst_vmm, const Xbyak_aarch64::PReg &mask);
     void saturate(const Vmm &vmm);
     void store_f32(const Vmm &src_vmm, const Xbyak_aarch64::XReg &dst_addr,
             const int offt, const bool tail, const Xbyak_aarch64::PReg &mask);
+    void store_bf16(const Vmm &src_vmm, const Xbyak_aarch64::XReg &dst_addr,
+            const int offt, const Xbyak_aarch64::PReg &mask);
+    void store_f16(const Vmm &src_vmm, const Xbyak_aarch64::XReg &dst_addr,
+            const int offt, const Xbyak_aarch64::PReg &mask);
     void store_i8(const Vmm &src_vmm, const Xbyak_aarch64::XReg &dst_addr,
             const int offt, const Xbyak_aarch64::PReg &mask);
     void convert_to_f32(const Vmm &dst_vmm, const Vmm &src_vmm,

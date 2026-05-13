@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2019 Intel Corporation
 * Copyright 2022-2023 FUJITSU LIMITED
-* Copyright 2022, 2025 Arm Ltd. and affiliates
+* Copyright 2022, 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -78,7 +78,7 @@ static dim_t get_outer_dims_product(
 using namespace data_type;
 
 static bool data_type_supported(const data_type_t dtype) {
-    return utils::one_of(dtype, f32, s8, u8);
+    return utils::one_of(dtype, f32, f16, bf16, s8, u8);
 }
 
 static cpu_isa_t get_supported_isa() {
@@ -563,7 +563,7 @@ status_t jit_uni_binary_t::init(engine_t *engine) {
     CHECK(safe_ptr_assign(
             kernel_, create_binary_kernel(pd(), false /*tail_kernel*/)));
 
-    if (utils::one_of(pd()->dst_md(0)->data_type, f32)) {
+    if (utils::one_of(pd()->dst_md(0)->data_type, f32, f16, bf16)) {
         const memory_desc_wrapper src0_d(pd_->src_md(0));
         const auto &simd_w = kernel_->simd_w();
         const auto oc = src0_d.ndims() >= 2 ? src0_d.dims()[1] : 1;

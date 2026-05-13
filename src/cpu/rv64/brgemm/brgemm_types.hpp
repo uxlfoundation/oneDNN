@@ -101,6 +101,8 @@ struct brgemm_kernel_params_t {
     dim_t M; // offset 32: actual rows in this tile
     dim_t K; // offset 40: reduction dimension (runtime, for K-blocking)
     float beta; // offset 48: 0.0f or 1.0f
+    const void
+            *ptr_bias; // offset 56: bias vector (length M), nullptr if unused
 };
 
 // Abstract JIT kernel base.

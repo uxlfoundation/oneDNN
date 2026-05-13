@@ -167,15 +167,7 @@ status_t rvv_brgemm_inner_product_fwd_t::execute(const exec_ctx_t &ctx) const {
             if (n_work <= 0) return;
 
             brgemm_kernel_execute(brg_kernel, wei, src + n_start * K,
-                    dst + n_start * OC, n_work, 0.0f);
-
-            if (bia) {
-                for (dim_t n = 0; n < n_work; n++) {
-                    float *d = dst + (n_start + n) * OC;
-                    for (dim_t oc = 0; oc < OC; oc++)
-                        d[oc] += bia[oc];
-                }
-            }
+                    dst + n_start * OC, n_work, 0.0f, bia);
         });
     } else {
         // MB < nthr: not enough rows for 1D parallelism.
@@ -204,15 +196,8 @@ status_t rvv_brgemm_inner_product_fwd_t::execute(const exec_ctx_t &ctx) const {
                     p.M = m_size;
                     p.K = K_inner;
                     p.beta = beta_kb;
+                    p.ptr_bias = (kb == 0 && bia) ? bia + m_offset : nullptr;
                     (*brg_kernel)(&p);
-                }
-
-                if (bia) {
-                    for (dim_t n = 0; n < MB; n++) {
-                        float *d = dst + n * OC + m_offset;
-                        for (int oc = 0; oc < m_size; oc++)
-                            d[oc] += bia[m_offset + oc];
-                    }
                 }
             }
         });

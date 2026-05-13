@@ -36,7 +36,8 @@ status_t brgemm_kernel_create(
 void brgemm_kernel_destroy(brgemm_kernel_t *brg_kernel);
 
 void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, const void *ptr_A,
-        const void *ptr_B, void *ptr_C, dim_t N, float beta);
+        const void *ptr_B, void *ptr_C, dim_t N, float beta,
+        const void *ptr_bias = nullptr);
 
 } // namespace rv64
 } // namespace cpu

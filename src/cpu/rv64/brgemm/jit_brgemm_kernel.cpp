@@ -79,6 +79,7 @@ void jit_brgemm_kernel_t::generate() {
     const Reg reg_B_base = s1; // B group base pointer
     const Reg reg_B2 = s2; // B column-2 running pointer
     const Reg reg_B3 = s3; // B column-3 running pointer
+    const Reg reg_bias = s4; // bias vector pointer (callee-saved)
 
     const FReg freg_b0 = fa0;
     const FReg freg_b1 = fa1;
@@ -95,11 +96,12 @@ void jit_brgemm_kernel_t::generate() {
     const VReg v_a1(20); // A double-buffer 1
     const VReg v_tmp(24); // scratch for C load/update
 
-    addi(sp, sp, -32);
+    addi(sp, sp, -48);
     sd(reg_A_base, sp, 0);
     sd(reg_B_base, sp, 8);
     sd(reg_B2, sp, 16);
     sd(reg_B3, sp, 24);
+    sd(reg_bias, sp, 32);
 
     ld(reg_A_base, reg_param, 0); // A base
     ld(reg_B_base, reg_param, 8); // B base
@@ -108,6 +110,7 @@ void jit_brgemm_kernel_t::generate() {
     ld(reg_tmp1, reg_param, 32); // M (for vsetvli)
     ld(reg_K_val, reg_param, 40); // K (runtime)
     lw(reg_beta, reg_param, 48); // beta bits
+    ld(reg_bias, reg_param, 56); // bias pointer
 
     vsetvli(x0, reg_tmp1, SEW::e32, LMUL::m4);
 
@@ -256,6 +259,18 @@ void jit_brgemm_kernel_t::generate() {
 
     L(lbl_k_tail_end);
 
+    // ---- Add bias to all accumulators (before C-store) ----
+    {
+        Label lbl_no_bias;
+        beq(reg_bias, x0, lbl_no_bias);
+        vle32_v(v_tmp, reg_bias);
+        vfadd_vv(v_c0, v_c0, v_tmp);
+        vfadd_vv(v_c1, v_c1, v_tmp);
+        vfadd_vv(v_c2, v_c2, v_tmp);
+        vfadd_vv(v_c3, v_c3, v_tmp);
+        L(lbl_no_bias);
+    }
+
     // ---- Store accumulators to C (single beta branch for all cols) ----
     {
         mv(reg_tmp0, reg_C);
@@ -341,6 +356,15 @@ void jit_brgemm_kernel_t::generate() {
 
     L(lbl_kt2_end);
 
+    // Add bias to accumulator (before single-column C-store).
+    {
+        Label lbl_no_bias2;
+        beq(reg_bias, x0, lbl_no_bias2);
+        vle32_v(v_tmp, reg_bias);
+        vfadd_vv(v_c0, v_c0, v_tmp);
+        L(lbl_no_bias2);
+    }
+
     // Store single column.
     {
         Label lbl_bz2, lbl_done2;
@@ -367,7 +391,8 @@ void jit_brgemm_kernel_t::generate() {
     ld(reg_B_base, sp, 8);
     ld(reg_B2, sp, 16);
     ld(reg_B3, sp, 24);
-    addi(sp, sp, 32);
+    ld(reg_bias, sp, 32);
+    addi(sp, sp, 48);
     ret();
 #else
     // RVV JIT is disabled at build time.

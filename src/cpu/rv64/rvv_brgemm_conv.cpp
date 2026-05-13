@@ -196,19 +196,13 @@ status_t rvv_brgemm_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
                             float *C = dst_row + ow_s * OC_all;
 
                             const float beta_val = first_kpos ? 0.0f : 1.0f;
-                            brgemm_kernel_execute(
-                                    brg_kernel, A, B, C, valid_ow, beta_val);
+                            const float *bias_ptr = first_kpos && jcp.with_bias
+                                    ? bia + g * OC
+                                    : nullptr;
+                            brgemm_kernel_execute(brg_kernel, A, B, C, valid_ow,
+                                    beta_val, bias_ptr);
                             first_kpos = false;
                         }
-                    }
-                }
-
-                if (jcp.with_bias) {
-                    const float *bia_g = bia + g * OC;
-                    for (int ow = 0; ow < OW; ow++) {
-                        float *d = dst_row + ow * OC_all;
-                        for (int oc = 0; oc < OC; oc++)
-                            d[oc] += bia_g[oc];
                     }
                 }
 

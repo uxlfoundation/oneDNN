@@ -104,7 +104,8 @@ void brgemm_kernel_destroy(brgemm_kernel_t *brg_kernel) {
 }
 
 void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, const void *ptr_A,
-        const void *ptr_B, void *ptr_C, dim_t N, float beta) {
+        const void *ptr_B, void *ptr_C, dim_t N, float beta,
+        const void *ptr_bias) {
 
     const auto &brg = brg_kernel->get_brg();
     const int ts = brg.typesize_C; // sizeof(float) = 4
@@ -115,6 +116,7 @@ void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, const void *ptr_A,
     const auto *A_base = reinterpret_cast<const char *>(ptr_A);
     const auto *B_base = reinterpret_cast<const char *>(ptr_B);
     auto *C_base = reinterpret_cast<char *>(ptr_C);
+    const auto *bias_base = reinterpret_cast<const char *>(ptr_bias);
 
     // K-blocking: split the reduction dimension into chunks of BK to keep
     // the A working-set (bd_block × BK × 4 bytes) inside the L1D cache.
@@ -126,6 +128,7 @@ void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, const void *ptr_A,
 
         const char *A_kb = A_base + kb * LDA_bytes;
         const char *B_kb = B_base + kb * ts;
+        const char *bias_kb = (kb == 0) ? bias_base : nullptr;
 
         brgemm_kernel_params_t p;
         p.ptr_B = B_kb;
@@ -137,6 +140,8 @@ void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, const void *ptr_A,
         for (int m = 0; m < brg.bdb; m++) {
             p.ptr_A = A_kb + static_cast<dim_t>(m) * bd * ts;
             p.ptr_C = C_base + static_cast<dim_t>(m) * bd * ts;
+            p.ptr_bias = bias_kb ? bias_kb + static_cast<dim_t>(m) * bd * ts
+                                 : nullptr;
             p.M = bd;
             (*brg_kernel)(&p);
         }
@@ -145,6 +150,9 @@ void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, const void *ptr_A,
         if (brg.bdb_tail > 0) {
             p.ptr_A = A_kb + static_cast<dim_t>(brg.bdb) * bd * ts;
             p.ptr_C = C_base + static_cast<dim_t>(brg.bdb) * bd * ts;
+            p.ptr_bias = bias_kb
+                    ? bias_kb + static_cast<dim_t>(brg.bdb) * bd * ts
+                    : nullptr;
             p.M = brg.bdb_tail;
             (*brg_kernel)(&p);
         }

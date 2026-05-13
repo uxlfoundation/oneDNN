@@ -284,6 +284,10 @@ struct brgemm_matmul_conf_t {
 
     data_type_t src_zp_dt = data_type::undef;
 
+    // Src zero points (grouped along K)
+    bool is_src_zp_per_k = false;
+    dim_t src_zp_k_gsize = 0;
+
     dim_t wei_zp_k_gsize = 0;
     bool is_wei_zp_per_k = false;
     bool is_wei_zp_per_n = false;

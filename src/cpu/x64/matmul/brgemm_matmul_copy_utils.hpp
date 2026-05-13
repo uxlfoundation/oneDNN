@@ -61,10 +61,12 @@ struct jit_brgemm_matmul_copy_a_t {
         const void *zp_a_compensation_result_ptr = nullptr;
         const void *zp_b_neg_val_ptr = nullptr;
         const void *zp_ab_comp_ptr = nullptr;
+        const void *zp_a_value_ptr = nullptr;
 
         dim_t current_K_start = 0;
         dim_t current_K_blk = 0;
         dim_t current_M_blk = 0;
+        dim_t current_M_start = 0;
         dim_t dynamic_src_ld = 0;
     };
 

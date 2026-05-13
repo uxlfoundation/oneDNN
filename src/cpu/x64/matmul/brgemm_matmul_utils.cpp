@@ -1716,7 +1716,16 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     const auto &src_zp = attr.zero_points_.get(DNNL_ARG_SRC);
     const auto has_src_zp = !src_zp.has_default_values();
-    if (has_src_zp) { bgmmc.src_zp_dt = src_zp.get_data_type(); }
+    if (has_src_zp) {
+        bgmmc.src_zp_dt = src_zp.get_data_type();
+        const auto src_zp_mask = src_zp.get_mask();
+        // src per K grouped zero points: mask has K bit set and groups
+        bgmmc.is_src_zp_per_k = (src_zp_mask & (1 << (bgmmc.ndims - 1))) != 0
+                && !src_zp.has_default_groups();
+        if (bgmmc.is_src_zp_per_k) {
+            bgmmc.src_zp_k_gsize = src_zp.get_group(1);
+        }
+    }
 
     const auto &wei_zp = attr.zero_points_.get(DNNL_ARG_WEIGHTS);
     const auto has_wei_zp = !wei_zp.has_default_values();
@@ -1758,8 +1767,16 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.with_binary = !everyone_is(-1, binary_ind, prelu_ind);
 
     bgmmc.src_zp_type = get_zp_type(attr, DNNL_ARG_SRC, bgmmc.ndims);
+    // For src per K zp, the shift is applied directly in copy_a kernel
+    if (bgmmc.is_src_zp_per_k) bgmmc.src_zp_type = brgemm_broadcast_t::none;
     bgmmc.wei_zp_type = get_zp_type(attr, DNNL_ARG_WEIGHTS, bgmmc.ndims);
     bgmmc.dst_zp_type = get_zp_type(attr, DNNL_ARG_DST, bgmmc.ndims);
+
+    // int8 only supports per K (grouped) src zero points handled
+    // via copy_a kernel.
+    VCONDCHECK_BG(IMPLICATION(bm_conf_utils.with_int8_grouped_quantization(),
+                          bgmmc.src_zp_type == brgemm_broadcast_t::none),
+            VERBOSE_UNSUPPORTED_ZP_CFG);
 
     VCONDCHECK_BG(
             IMPLICATION(
@@ -1817,9 +1834,18 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                                   && bgmmc.with_int8_grouped_quantization,
                           bgmmc.wei_scales_k_gsize % 64 == 0),
             VERBOSE_UNSUPPORTED_SCALES_CFG);
-    VCONDCHECK_BG(IMPLICATION(bgmmc.is_src_scale_per_k && bgmmc.is_amx,
+    VCONDCHECK_BG(IMPLICATION(bgmmc.is_src_scale_per_k && bgmmc.is_amx
+                                  && bgmmc.with_int8_grouped_quantization,
                           bgmmc.src_scales_k_gsize % 64 == 0),
             VERBOSE_UNSUPPORTED_SCALES_CFG);
+    // When src_zp group size covers the entire K dimension, downgrade.
+    // Exception: int8 grouped quantization always applies src ZP in copy_a,
+    // so keep is_src_zp_per_k to ensure the copy_a shift path is used.
+    if (bgmmc.is_src_zp_per_k && !bgmmc.is_runtime_K
+            && bgmmc.src_zp_k_gsize >= bgmmc.K
+            && !bgmmc.with_int8_grouped_quantization) {
+        bgmmc.is_src_zp_per_k = false;
+    }
 
     bgmmc.is_gemv = is_gemv_applicable(
             bgmmc, bm_conf_utils, src_md, weights_md, dst_md, attr);
@@ -2008,7 +2034,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                             && !(bm_conf_utils.with_weights_decompression()
                                     || bm_conf_utils
                                                .with_int8_grouped_quantization()))
-                    || bgmmc.transposed_A);
+                    || bgmmc.is_src_zp_per_k || bgmmc.transposed_A);
 
     bgmmc.use_buffer_a = is_copy_a_required;
 

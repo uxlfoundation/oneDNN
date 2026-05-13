@@ -2172,9 +2172,12 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
         bgmmc.buffer_c_chunk_sz = rnd_up(bgmmc.N_blk, bgmmc.LDC) * bgmmc.M_blk
                 * bgmmc.acc_dt_sz;
     } else {
+        const dim_t c_buf_rows = bgmmc.gemv_swap_a_b ? bgmmc.N : bgmmc.M;
+        const dim_t c_buf_rows_blk
+                = bgmmc.gemv_swap_a_b ? bgmmc.N_blk : bgmmc.M_blk;
         bgmmc.buffer_c_chunk_sz = bgmmc.acc_dt_sz
                 * (bgmmc.is_runtime_N ? bgmmc.N_blk : bgmmc.LDC)
-                * (bgmmc.nthr_k > 1 ? bgmmc.M : bgmmc.M_blk);
+                * (bgmmc.nthr_k > 1 ? c_buf_rows : c_buf_rows_blk);
     }
 
     if (!bgmmc.use_buffer_c) {

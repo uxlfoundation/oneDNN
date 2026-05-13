@@ -2461,7 +2461,11 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
             Xmm xmm_tmp = Xmm(vmm_bcast.getIdx());
             load_bytes(
                     xmm_tmp, reg_aux_A, offset, rd_tail_size * brg.typesize_A);
-            uni_vpbroadcastd(vmm_bcast, xmm_tmp);
+            if (brg.is_fp8_via_convert_non_amx()) {
+                vpbroadcastw(vmm_bcast, xmm_tmp);
+                f8_e4m3_cvt_->vcvt_f8_to_f16(vmm_bcast, vmm_bcast);
+            } else
+                uni_vpbroadcastd(vmm_bcast, xmm_tmp);
         } else {
             if (dt == data_type::f32) {
                 uni_vbroadcastss(vmm_bcast, ptr[reg_aux_A + offset]);
@@ -2470,9 +2474,14 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                     vbcstnebf162ps(vmm_bcast, ptr[reg_aux_A + offset]);
                 else
                     uni_vpbroadcastd(vmm_bcast, ptr[reg_aux_A + offset]);
-            } else if (one_of(dt, data_type::s8, data_type::u8,
-                               data_type::f8_e5m2, data_type::f8_e4m3)) {
+            } else if (one_of(dt, data_type::s8, data_type::u8)) {
                 uni_vpbroadcastd(vmm_bcast, ptr[reg_aux_A + offset]);
+            } else if (one_of(dt, data_type::f8_e5m2, data_type::f8_e4m3)) {
+                if (brg.isa_impl == avx10_2) {
+                    vpbroadcastw(vmm_bcast, ptr[reg_aux_A + offset]);
+                    f8_e4m3_cvt_->vcvt_f8_to_f16(vmm_bcast, vmm_bcast);
+                } else
+                    uni_vpbroadcastd(vmm_bcast, ptr[reg_aux_A + offset]);
             } else if (dt == data_type::f16) {
                 if (brg.isa_impl == avx10_2) {
                     uni_vpbroadcastd(vmm_bcast, ptr[reg_aux_A + offset]);
@@ -2543,6 +2552,8 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
             } else {
                 uni_vmovups(vmm_load, addr);
             }
+        } else if (brg.dt_b == data_type::f8_e4m3 && brg.isa_impl == avx10_2) {
+            vcvthf82ph(load(vmm_load_idx), addr);//vmm_load, addr);
         } else if (is_ld_tail) {
             if (is_superset(brg.isa_impl, avx512_core)) {
                 uni_vmovups(vmm_load, addr);
@@ -2577,23 +2588,13 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                 broadcast_A(bcst(bd), bd, rd);
             for (dim_t ld = 0; ld < ld_block2; ld++) {
                 load_B(0, rd, ld);
-                if (brg.is_fp8_via_convert_non_amx())
-                    maybe_pre_process_data(brg.dt_b, load(), vmm_fp8_load());
                 for (dim_t bd = bd_b; bd < bd_e; bd++) {
                     auto vmm = accm(ld_block2, bd, ld);
                     if (is_emdbd)
                         uni_vfmadd231ps(vmm, load(),
                                 ptr_b[reg_aux_A + A_offset(bd, rd)]);
-                    else {
-                        if (brg.is_fp8_via_convert_non_amx()) {
-                            broadcast_A(bcst(bd), bd, rd);
-                            maybe_pre_process_data(
-                                    brg.dt_a, bcst(bd), vmm_fp8_bcst());
-                            dot_product(vmm, load(), bcst(bd));
-                            dot_product(vmm, vmm_fp8_load(), vmm_fp8_bcst());
-                        } else
-                            dot_product(vmm, load(), bcst(bd));
-                    }
+                    else
+                        dot_product(vmm, load(), bcst(bd));
                 }
             }
 
@@ -2605,8 +2606,6 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
 
             for (dim_t bd = bd_b; bd < bd_e; bd++) {
                 if (!is_emdbd) broadcast_A(bcst(), bd, rd);
-                if (brg.is_fp8_via_convert_non_amx())
-                    maybe_pre_process_data(brg.dt_a, bcst(), vmm_fp8_bcst());
                 if (prefetch_count_B < ld_block2) {
                     const dim_t prefetch_offset
                             = B_offset(prefetch_count_B++, rd)
@@ -2631,16 +2630,8 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                     if (is_emdbd)
                         uni_vfmadd231ps(vmm, load(ld),
                                 ptr_b[reg_aux_A + A_offset(bd, rd)]);
-                    else {
-                        if (brg.is_fp8_via_convert_non_amx()) {
-                            load_B(ld, rd, ld);
-                            maybe_pre_process_data(
-                                    brg.dt_b, load(ld), vmm_fp8_load());
-                            dot_product(vmm, load(ld), bcst());
-                            dot_product(vmm, vmm_fp8_load(), vmm_fp8_bcst());
-                        } else
-                            dot_product(vmm, load(ld), bcst());
-                    }
+                    else
+                        dot_product(vmm, load(ld), bcst());
                 }
             }
         }

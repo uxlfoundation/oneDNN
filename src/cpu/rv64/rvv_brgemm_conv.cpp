@@ -162,12 +162,17 @@ status_t rvv_brgemm_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
                         + oh * dst_h_str + g * OC;
 
                 if (!jcp.with_sum) {
-                    for (int ow = 0; ow < OW; ow++)
-                        for (int oc = 0; oc < OC; oc++)
-                            dst_row[ow * OC_all + oc] = 0.0f;
+                    if (jcp.with_bias) {
+                        const float *bia_g = bia + g * OC;
+                        for (int ow = 0; ow < OW; ow++)
+                            for (int oc = 0; oc < OC; oc++)
+                                dst_row[ow * OC_all + oc] = bia_g[oc];
+                    } else {
+                        for (int ow = 0; ow < OW; ow++)
+                            for (int oc = 0; oc < OC; oc++)
+                                dst_row[ow * OC_all + oc] = 0.0f;
+                    }
                 }
-
-                bool first_kpos = !jcp.with_sum;
 
                 for (int kd = 0; kd < KD; kd++) {
                     const int id = od * SD + kd * DD - FP;
@@ -195,14 +200,18 @@ status_t rvv_brgemm_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
                                     + iw_start * src_w_str + g * IC;
                             float *C = dst_row + ow_s * OC_all;
 
-                            const float beta_val = first_kpos ? 0.0f : 1.0f;
-                            const float *bias_ptr = first_kpos && jcp.with_bias
-                                    ? bia + g * OC
-                                    : nullptr;
-                            brgemm_kernel_execute(brg_kernel, A, B, C, valid_ow,
-                                    beta_val, bias_ptr);
-                            first_kpos = false;
+                            brgemm_kernel_execute(
+                                    brg_kernel, A, B, C, valid_ow, 1.0f);
                         }
+                    }
+                }
+
+                if (jcp.with_sum && jcp.with_bias) {
+                    const float *bia_g = bia + g * OC;
+                    for (int ow = 0; ow < OW; ow++) {
+                        float *d = dst_row + ow * OC_all;
+                        for (int oc = 0; oc < OC; oc++)
+                            d[oc] += bia_g[oc];
                     }
                 }
 

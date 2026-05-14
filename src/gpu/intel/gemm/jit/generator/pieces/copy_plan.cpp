@@ -782,6 +782,8 @@ void CopyPlan::planTypeConversions()
 
     for (auto &i: insns) {
         if (i.op != Opcode::mov) continue;
+        if (i.dst == i.src0) i.invalidate();
+        if (i.isInvalid()) continue;
 
         auto &st = i.src0.type, &dt = i.dst.type;
         auto &srange = i.src0.range;

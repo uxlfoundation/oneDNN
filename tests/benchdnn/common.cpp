@@ -32,6 +32,7 @@
 
 #include "utils/fill.hpp"
 #include "utils/parallel.hpp"
+#include "utils/parser.hpp"
 
 /* result structure */
 const char *state2str(res_state_t state) {
@@ -619,8 +620,7 @@ std::string benchdnn_getenv_string(const char *name) {
     const int len = 128;
     char value_str[len];
     if (getenv(name, value_str, len) > 0) { value = value_str; }
-    std::transform(value.begin(), value.end(), value.begin(), ::tolower);
-    return value;
+    return parser::utils::lowercase(value);
 }
 
 std::string smart_bytes(double bytes) {

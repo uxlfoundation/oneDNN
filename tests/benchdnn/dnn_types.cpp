@@ -173,9 +173,8 @@ const char *attr_t::policy2str(policy_t policy) {
 }
 
 dnnl_rounding_mode_t str2rounding_mode(const std::string &str) {
-    std::string s(str);
     // s.compare is lexicographical, case matters
-    std::transform(s.begin(), s.end(), s.begin(), ::tolower);
+    auto s = parser::utils::lowercase(str);
 #define CASE(_rm) \
     if (s.compare(STRINGIFY(_rm)) == 0) return dnnl_rounding_mode_##_rm
     CASE(environment);
@@ -693,9 +692,8 @@ static po_table_entry_t kind_table[] = {
         {pk_t::KIND_TOTAL, {"kind_undef"}, dnnl_alg_kind_undef}};
 
 pk_t attr_t::post_ops_t::str2kind(const std::string &str) {
-    std::string s(str);
     // string::operator== is lexicographical, case matters
-    std::transform(s.begin(), s.end(), s.begin(), ::tolower);
+    auto s = parser::utils::lowercase(str);
     for (const auto &e : kind_table) {
         for (const auto &name : e.kind_names) {
             if (s == name) return e.kind;

@@ -30,8 +30,7 @@ flag_t str2flag(const char *str) {
 
     size_t start_pos = 0;
     // format of single entry is `flag_bit:mask`
-    auto sub = parser::get_substr(s, start_pos, ':');
-    std::transform(sub.begin(), sub.end(), sub.begin(), ::tolower);
+    auto sub = parser::utils::lowercase(parser::get_substr(s, start_pos, ':'));
 
     flag_bit_t flag = FLAG_NONE;
     if (sub.compare("s8s8_comp") == 0)

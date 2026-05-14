@@ -83,6 +83,12 @@ bool has_only_digits(const std::string &s) {
     });
 }
 
+std::string lowercase(const std::string &s) {
+    std::string s_low(s);
+    std::transform(s.begin(), s.end(), s_low.begin(), ::tolower);
+    return s_low;
+}
+
 // Covers all integer parsing routines: `atoi`, `atol, `atoll`, `stoi`, `stol`.
 int64_t stoll_safe(const std::string &s) {
     int64_t value = 0;

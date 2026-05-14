@@ -71,6 +71,16 @@ struct grouped_micro_gemm_t : public primitive_t {
         status_t init_microkernels(impl::engine_t *engine);
 
         bool is_gemv_ = false;
+        bool with_post_op_ = false;
+        enum po_kind_t {
+            none,
+            eltwise,
+            binary_grouped_scale,
+            binary_dense_scale,
+            binary_nvfp4_scale
+        };
+        po_kind_t po_chain_[3]
+                = {po_kind_t::none, po_kind_t::none, po_kind_t::none};
         int sg_size_ = 0;
         int strategyGRFs_ = 0;
         dim_t ngroups_ = 0;

@@ -682,10 +682,11 @@ cold_cache_input_t str2cold_cache_input(const std::string &s) {
     return c;
 }
 
-bool str2bool(const std::string &s) {
-    if (s == "1" || s == "true" || s == "TRUE") {
+bool str2bool(const std::string &str) {
+    auto s = utils::lowercase(str);
+    if (s == "1" || s == "true") {
         return true;
-    } else if (s == "0" || s == "false" || s == "FALSE") {
+    } else if (s == "0" || s == "false") {
         return false;
     } else {
         BENCHDNN_PRINT(0,

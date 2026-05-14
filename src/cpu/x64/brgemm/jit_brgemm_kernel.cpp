@@ -267,6 +267,7 @@ private:
     Xbyak::Opmask fp8_col_mask = Xbyak::Opmask(4);
     Xbyak::Opmask kmask_fp8_aux = Xbyak::Opmask(5);
     Xbyak::Opmask rd_tail_mask = Xbyak::Opmask(6);
+    Xbyak::Opmask fp8_tail_mask = Xbyak::Opmask(7);
 
     static int get_max_effective_vregs(const brgemm_desc_t &brg) {
         auto used_vregs = 0;
@@ -2506,8 +2507,9 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                         brg.dt_b == data_type::f16, brg.isa_impl == avx10_2)
                 && IMPLICATION(brg.dt_b == data_type::bf16,
                         brg.isa_impl != avx2_vnni_2);
+        const auto tail_mask = brg.is_fp8_via_convert_non_amx() ? fp8_tail_mask : ld_tail_mask;
         const Vmm vmm_load
-                = vmm_mask(load(vmm_load_idx), is_ld_tail, false, ld_tail_mask);
+                = vmm_mask(load(vmm_load_idx), is_ld_tail, false, tail_mask);
         const auto addr = ptr[reg_aux_B + B_offset(ld, rd)];
         // Note: Assuming the tails are properly padded/blocked for
         // avx2_vnni_2 with xf16 data type, as the B matrix is generally
@@ -2553,7 +2555,7 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                 uni_vmovups(vmm_load, addr);
             }
         } else if (brg.dt_b == data_type::f8_e4m3 && brg.isa_impl == avx10_2) {
-            vcvthf82ph(load(vmm_load_idx), addr);//vmm_load, addr);
+                vcvthf82ph(vmm_load, addr);
         } else if (is_ld_tail) {
             if (is_superset(brg.isa_impl, avx512_core)) {
                 uni_vmovups(vmm_load, addr);
@@ -3118,6 +3120,10 @@ void jit_brgemm_kernel_t<Wmm>::generate() {
         kmovq(ld_full_mask, reg_mask);
         mov(reg_mask, tail_mask);
         kmovq(ld_tail_mask, reg_mask);
+
+        const auto f8_tail = size_t((1 << (brg.ldb_tail * 2)) - 1);
+        mov(reg_mask.cvt32(), f8_tail);
+        kmovd(fp8_tail_mask, reg_mask.cvt32());
     }
 
     if (brg.is_int8 && !brg.has_int8_vnni) {

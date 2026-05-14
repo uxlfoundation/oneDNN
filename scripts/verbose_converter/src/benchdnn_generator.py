@@ -246,7 +246,7 @@ class Converter(metaclass=ConverterMeta):
         else:
             result += ":0"
         if dropout.use_host_scalars:
-            result += f":{dropout.use_host_scalars}"
+            result += f":{dropout.use_host_scalars:d}"
         return f"--attr-dropout={result}"
 
     deterministic = attribute_flag("deterministic")

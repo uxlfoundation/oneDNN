@@ -21,11 +21,10 @@
 
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
 
-#include "common/c_types_map.hpp"
-#include "common/primitive.hpp"
 #include "common/utils.hpp"
 #include "gemmstone/microkernel/package.hpp"
 #include "gpu/intel/matmul/config.hpp"
+#include "gpu/intel/matmul/grouped_post_ops_gen.hpp"
 #include "gpu/intel/primitive.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
@@ -69,8 +68,11 @@ struct grouped_micro_gemm_t : public primitive_t {
 
         status_t init(impl::engine_t *engine);
         status_t init_microkernels(impl::engine_t *engine);
-
         bool is_gemv_ = false;
+        bool with_post_op_ = false;
+        po_kind_t po_chain_[3]
+                = {po_kind_t::none, po_kind_t::none, po_kind_t::none};
+        data_type_t binary_scale_dts_[2] = {data_type::undef, data_type::undef};
         int sg_size_ = 0;
         int strategyGRFs_ = 0;
         dim_t ngroups_ = 0;

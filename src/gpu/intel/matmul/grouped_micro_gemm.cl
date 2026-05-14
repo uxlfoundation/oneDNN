@@ -64,6 +64,33 @@ void load_bias(
 }
 #endif
 
+#if WITH_POST_OP
+#define WITH_BINARY \
+    (WITH_BINARY_GROUPED_SCALE || WITH_BINARY_DENSE_SCALE \
+            || WITH_BINARY_NVFP4_SCALE)
+#if WITH_BINARY_GROUPED_SCALE
+// Binary tile matches c_tile dimensions for element-wise multiply [total_tokens, N]
+DECLARE_2D_TILE(binary_group_tile_type, float, SUBGROUP_SIZE,
+        ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
+        ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1)
+#endif
+
+#if WITH_BINARY_DENSE_SCALE
+#define binary_dense_scale_br MAX(SUBGROUP_SIZE, ugemm_grouped_sg_tile_n)
+#define binary_dense_scale_bc 1
+#define binary_dense_scale_nbr 1
+#define binary_dense_scale_nbc 1
+DECLARE_2D_TILE(binary_dense_tile_type, float, SUBGROUP_SIZE,
+        binary_dense_scale_br, binary_dense_scale_bc, binary_dense_scale_nbr,
+        binary_dense_scale_nbc)
+DECLARE_2D_TILE_HREDUCE(ugemm_grouped_c_type, SUBGROUP_SIZE,
+        ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
+        ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1,
+        binary_dense_tile_type, SUBGROUP_SIZE, binary_dense_scale_br,
+        binary_dense_scale_bc, binary_dense_scale_nbr, binary_dense_scale_nbc)
+#endif
+#endif
+
 #if WITH_SPARSE_GROUPS
 #define offsets_tile_br SUBGROUP_SIZE
 #define offsets_tile_bc 1
@@ -300,7 +327,11 @@ grouped_micro_gemm(const global SRC_DATA_T *src, long ldsrc,
         const global WEI_SCALES_DATA_T *wei_attr_scales,
         const global WEI_ZP_DATA_T *wei_attr_zp, const long ldweiq,
         const long n, const long k, const global BIA_DATA_T *bias,
-        const global float *nvfp4_global_scale) {
+        float po_alpha, float po_scale,
+        const global float *binary_grouped_scale,
+        const global float *binary_dense_scale,
+        const global float *binary_nvfp4_scale,
+        const global int *binary_grouped_offset) {
 #if WITH_SLM
     local char slm[MAX(ugemm_grouped_slm_size, slm_sparse_total_size)];
 #else
@@ -398,13 +429,35 @@ grouped_micro_gemm(const global SRC_DATA_T *src, long ldsrc,
     tile_vbroadcast_add(&c_tile, bias_tile);
 #endif
 
-#if WITH_NVFP4_GLOBAL_SCALE
-    {
-        float gs = *nvfp4_global_scale;
-#define binary_scale(v) ((v) * gs)
-        tile_elementwise(c_tile, binary_scale);
-#undef binary_scale
-    }
+#if WITH_ELTWISE
+#define eltwise_apply(v) ((po_scale) * ((v) / (1.0f + exp(-(po_alpha) * (v)))))
+    tile_elementwise(c_tile, eltwise_apply);
+#undef eltwise_apply
+#endif
+
+#if WITH_BINARY_GROUPED_SCALE
+    const global float *group_scale_ptr
+            = binary_grouped_scale + src_offset * lddst;
+    binary_group_tile_type binary_group_tile;
+    tile_load(&binary_group_tile, group_scale_ptr, n, m, lddst, sg_i0, sg_j0);
+#define binary_mul(a, b) ((a) * (b))
+    tile_binary(c_tile, binary_group_tile, binary_mul);
+#undef binary_mul
+#endif
+
+#if WITH_BINARY_DENSE_SCALE
+    // [total_tokens, 1] dense tensor - horizontal broadcast
+    const global float *dense_scale_ptr = binary_dense_scale + src_offset;
+    binary_dense_tile_type dense_scale_tile;
+    tile_load(&dense_scale_tile, dense_scale_ptr, m, 1, 0, sg_j0, 0);
+    tile_hbroadcast_mul(&c_tile, dense_scale_tile);
+#endif
+
+#if WITH_BINARY_NVFP4_SCALE
+    float gs = *binary_nvfp4_scale;
+#define binary_mul(v) ((v) * gs)
+    tile_elementwise(c_tile, binary_mul);
+#undef binary_mul
 #endif
 
     store_results(&c_tile, dst, n, m, lddst, sg_i0, sg_j0);

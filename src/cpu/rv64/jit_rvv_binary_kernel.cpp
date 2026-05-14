@@ -174,10 +174,9 @@ void jit_rvv_binary_kernel_t::generate() {
     const FReg f_one = fa1;
 
     const VReg v_mask(0);
-    const VReg v_src0(1);
-    const VReg v_src1(2);
-    const VReg v_dst(3);
-    const VReg v_src2(4);
+    const VReg v_src0(4);
+    const VReg v_src1(8);
+    const VReg v_dst(12);
 
     // call_params_t layout:
     //  0: src0, 8: src1, 16: src2, 24: dst, 32: len
@@ -187,6 +186,40 @@ void jit_rvv_binary_kernel_t::generate() {
     ld(reg_dst, reg_param, 24);
     ld(reg_len, reg_param, 32);
 
+    if (alg_ == alg_kind::binary_select) {
+        const VReg v_src0_m1(1);
+        const VReg v_src1_m1(2);
+        const VReg v_dst_m1(3);
+        const VReg v_src2_mf4(4);
+
+        Label select_loop, select_done;
+        L(select_loop);
+        beqz(reg_len, select_done);
+
+        vsetvli(reg_vl, reg_len, SEW::e32, LMUL::m1);
+        vle32_v(v_src0_m1, reg_src0);
+        vle32_v(v_src1_m1, reg_src1);
+
+        vsetvli(reg_vl, reg_vl, SEW::e8, LMUL::mf4);
+        vle8_v(v_src2_mf4, reg_src2);
+        vmsne_vi(v_mask, v_src2_mf4, 0);
+
+        vsetvli(reg_vl, reg_vl, SEW::e32, LMUL::m1);
+        vmerge_vvm(v_dst_m1, v_src1_m1, v_src0_m1);
+        vse32_v(v_dst_m1, reg_dst);
+
+        slli(reg_bytes, reg_vl, 2);
+        add(reg_src0, reg_src0, reg_bytes);
+        add(reg_src1, reg_src1, reg_bytes);
+        add(reg_src2, reg_src2, reg_vl);
+        add(reg_dst, reg_dst, reg_bytes);
+        sub(reg_len, reg_len, reg_vl);
+        j_(select_loop);
+
+        L(select_done);
+        ret();
+    }
+
     li(reg_tmp, 0);
     fmv_w_x(f_zero, reg_tmp);
     li(reg_tmp, 0x3f800000);
@@ -195,23 +228,14 @@ void jit_rvv_binary_kernel_t::generate() {
     Label loop, done;
     L(loop);
     beqz(reg_len, done);
-    vsetvli(reg_vl, reg_len, SEW::e32, LMUL::m1);
+    vsetvli(reg_vl, reg_len, SEW::e32, LMUL::m4);
     vle32_v(v_src0, reg_src0);
     vle32_v(v_src1, reg_src1);
-    if (alg_ == alg_kind::binary_select) {
-        vsetvli(reg_vl, reg_vl, SEW::e8, LMUL::mf4);
-        vle8_v(v_src2, reg_src2);
-        vmsne_vi(v_mask, v_src2, 0);
-        vsetvli(reg_vl, reg_vl, SEW::e32, LMUL::m1);
-        vmerge_vvm(v_dst, v_src1, v_src0);
-    } else {
-        compute_vector(v_dst, v_src0, v_src1, f_zero, f_one);
-    }
+    compute_vector(v_dst, v_src0, v_src1, f_zero, f_one);
     vse32_v(v_dst, reg_dst);
     slli(reg_bytes, reg_vl, 2);
     add(reg_src0, reg_src0, reg_bytes);
     add(reg_src1, reg_src1, reg_bytes);
-    if (alg_ == alg_kind::binary_select) add(reg_src2, reg_src2, reg_vl);
     add(reg_dst, reg_dst, reg_bytes);
     sub(reg_len, reg_len, reg_vl);
     j_(loop);

@@ -346,8 +346,30 @@ private:
                                            * src_d_.data_type_size()),
                             0, vec_tmp_data_, true);
 
-            if (!skip_mean_)
-                fsub(vec_tmp_data_.s, tail_opmask_ / T_z, vec_mean_.s);
+            if (!skip_mean_) {
+                if (isa == asimd) {
+                    const auto &vreg_data = VReg16B(vec_tmp_data_.getIdx());
+                    const auto &vreg_mean = VReg16B(vec_mean_.getIdx());
+
+                    // asimd does not have predicated subtraction resulting in
+                    // unwanted values in the dst. E.g, if we have a tail size
+                    // of two we get:
+                    // [s1, s2, 0, 0] - [m, m, m, m] = [s1 - m, s2 - m, -m, -m]
+                    //
+                    // To deal with the extra -m elements in the tail mask we
+                    // use ext to replace the zeros with +m: [s1, s2, +m, +m] -
+                    // [m, m, m, m] = [s1 - m, s2 - m, 0, 0]
+                    //
+                    // In SVE this can be achieved directly with predicated
+                    // subtraction.
+                    ext(vreg_data, vreg_mean, vreg_data,
+                            axis_simd_tail_ * sizeof(float));
+                    fsub(vec_tmp_data_.s, vec_tmp_data_.s, vec_mean_.s);
+                } else {
+                    fsub(ZRegS(vec_tmp_data_.getIdx()), tail_opmask_ / T_z,
+                            ZRegS(vec_mean_.getIdx()));
+                }
+            }
 
             float_point_fused_multiply_add(
                     vec_tmp_acc_, vec_tmp_data_, vec_tmp_data_);
@@ -640,6 +662,7 @@ status_t jit_uni_layer_normalization_fwd_t<isa>::execute_forward(
     return status::success;
 }
 
+template class jit_uni_layer_normalization_fwd_t<asimd>;
 template class jit_uni_layer_normalization_fwd_t<sve>;
 
 } // namespace aarch64

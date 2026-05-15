@@ -566,6 +566,9 @@ void jit_io_helper_t<Xbyak_aarch64::VReg>::load_f32(
         const Xbyak_aarch64::VReg &dst_vmm, const bool tail,
         const Xbyak_aarch64::PReg &mask) {
 
+    // Inactive elements should be zeroed to match SVE behaviour
+    host_->uni_clear(dst_vmm);
+
     if (tail && tail_conf_->tail_size_ > 0) {
         // tail_size_ = nelems % simd_w_, so it cannot be greater than (simd_w_ - 1), which is 4 for VReg.
         // Refer to binary_kernel_t::get_tail_size().

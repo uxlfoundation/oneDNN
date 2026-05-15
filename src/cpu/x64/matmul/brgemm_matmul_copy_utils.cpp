@@ -6119,6 +6119,7 @@ private:
             } else {
                 const auto src_addr
                         = maybe_EVEX_compress_addr(reg_src, src_off);
+                vmovdqu8(zmm(7), src_addr);
                 const bool need_tail_mask
                         = rows_left > 0 && rows_left < fp8_vnni_k_pack;
                 if (need_tail_mask) {
@@ -6126,14 +6127,12 @@ private:
                             ? fp8_tail_mask_keep1
                             : rows_left == 2 ? fp8_tail_mask_keep2
                                              : fp8_tail_mask_keep3;
-                    vmovdqu8(zmm(7), src_addr);
                     mov(reg_tmp, reinterpret_cast<size_t>(tail_mask));
                     vpandq(zmm(7), zmm(7), ptr[reg_tmp]);
                 }
 
-                const auto &src_op = need_tail_mask
-                        ? static_cast<const Xbyak::Operand &>(zmm(7))
-                        : static_cast<const Xbyak::Operand &>(src_addr);
+                const auto &src_op
+                        = static_cast<const Xbyak::Operand &>(zmm(7));
                 if (conf_->wei_dt == data_type::bf16) {
                     if (conf_->orig_wei_dt == data_type::f8_e5m2) {
                         this->f8_e5m2_cvt_->vcvt_f8_to_bf16_vnni(

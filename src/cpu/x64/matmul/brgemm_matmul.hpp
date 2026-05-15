@@ -122,6 +122,7 @@ private:
     std::unique_ptr<cpu_accumulator_1d_t<data_type::s32>> acc_ker_s32_;
     std::unique_ptr<jit_avx512_sparse_decompress_kernel_t>
             sparse_decompress_kernel_;
+    std::unique_ptr<jit_brgemm_matmul_copy_c_t> copy_C_kernel_;
 
     using reducer_t = x64::jit_brgemm_kernel_diff_bias_t<
             typename cpu_isa_traits_t<isa>::Vmm>;

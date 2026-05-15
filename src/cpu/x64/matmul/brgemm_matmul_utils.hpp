@@ -229,6 +229,13 @@ struct brgemm_matmul_conf_t {
     // were changed.
     bool adjust_a_strides = false;
 
+    // acdb/adbc dst: brgemm writes to scratch buffer, copy-out after.
+    bool dst_is_acdb = false;
+    dim_t acdb_buf_per_batch_sz = 0;
+    int acdb_inner_batch = 0;
+
+    bool dst_is_adbc = false;
+
     int wsp_tile_per_thr_bytes;
     int brgemm_batch_element_per_thr_sz;
     bool is_amx;

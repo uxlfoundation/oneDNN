@@ -78,12 +78,34 @@ struct jit_brgemm_matmul_copy_a_t {
     const brgemm_matmul_conf_t *conf_;
 };
 
+struct jit_brgemm_matmul_copy_c_t {
+    struct ctx_t {
+        const void *src = nullptr; // buf_row base (batch 0, row m)
+        void *dst = nullptr; // dst_row base
+        dim_t current_M_blk = 0;
+        dim_t current_N_blk = 0;
+    };
+
+    virtual void operator()(ctx_t *ctx) = 0;
+    virtual status_t create_kernel() = 0;
+
+    jit_brgemm_matmul_copy_c_t(const brgemm_matmul_conf_t *conf)
+        : conf_(conf) {}
+    virtual ~jit_brgemm_matmul_copy_c_t() = default;
+
+    const brgemm_matmul_conf_t *conf_;
+};
+
 status_t create_brgemm_matmul_copy_b(
         std::unique_ptr<jit_brgemm_matmul_copy_b_t> &copy_ker,
         const brgemm_matmul_conf_t *conf);
 
 status_t create_brgemm_matmul_copy_a(
         std::unique_ptr<jit_brgemm_matmul_copy_a_t> &copy_ker,
+        const brgemm_matmul_conf_t *conf);
+
+status_t create_brgemm_matmul_copy_c(
+        std::unique_ptr<jit_brgemm_matmul_copy_c_t> &copy_ker,
         const brgemm_matmul_conf_t *conf);
 
 } // namespace matmul

@@ -514,6 +514,9 @@ status_t brgemm_matmul_t<isa>::init(engine_t *engine) {
         CHECK(sparse_decompress_kernel_->create_kernel());
     }
 
+    if (bgmmc.dst_is_acdb || bgmmc.dst_is_adbc)
+        CHECK(create_brgemm_matmul_copy_c(copy_C_kernel_, &bgmmc));
+
     return status::success;
 }
 
@@ -601,7 +604,12 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
         int m_chunks_per_thread = div_up(M_chunks, bgmmc.nthr_m);
         int n_chunks_per_thread = div_up(N_chunks, bgmmc.nthr_n);
         int batch_per_thread = div_up(bgmmc.batch, bgmmc.nthr_b);
-        if (brgmm_ctx.is_chunks_horizontal_process_order())
+
+        if (bgmmc.dst_is_acdb)
+            nd_iterator_init(start, bt, bgmmc.nthr_b, mt, bgmmc.nthr_m, nt,
+                    bgmmc.nthr_n, mc_per_t, m_chunks_per_thread, nc_per_t,
+                    n_chunks_per_thread, b_per_t, batch_per_thread);
+        else if (brgmm_ctx.is_chunks_horizontal_process_order())
             nd_iterator_init(start, bt, bgmmc.nthr_b, mt, bgmmc.nthr_m, nt,
                     bgmmc.nthr_n, b_per_t, batch_per_thread, mc_per_t,
                     m_chunks_per_thread, nc_per_t, n_chunks_per_thread);
@@ -615,7 +623,12 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
 
         auto advance_func = [&]() {
             ++start;
-            if (brgmm_ctx.is_chunks_horizontal_process_order())
+            if (bgmmc.dst_is_acdb)
+                nd_iterator_step(bt, bgmmc.nthr_b, mt, bgmmc.nthr_m, nt,
+                        bgmmc.nthr_n, mc_per_t, m_chunks_per_thread,
+                        nc_per_t, n_chunks_per_thread, b_per_t,
+                        batch_per_thread);
+            else if (brgmm_ctx.is_chunks_horizontal_process_order())
                 nd_iterator_step(bt, bgmmc.nthr_b, mt, bgmmc.nthr_m, nt,
                         bgmmc.nthr_n, b_per_t, batch_per_thread, mc_per_t,
                         m_chunks_per_thread, nc_per_t, n_chunks_per_thread);
@@ -708,6 +721,40 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
     maybe_reduce_and_convert_partial_results_A(brgmm_ctx_ptr);
     maybe_reduce_partial_results_and_apply_postops(brgmm_ctx_ptr);
 
+    // Phase 2: copy scratch buffer to acdb dst.
+    if (pd()->get_brgemm_matmul_conf().dst_is_acdb) {
+        const auto &bgmmc = pd()->get_brgemm_matmul_conf();
+        const auto &brgmm_ctx = *brgmm_ctx_ptr;
+        const int M = bgmmc.M;
+        const int N = bgmmc.N;
+        const int inner_batch = bgmmc.acdb_inner_batch;
+        const int outer_batch = bgmmc.batch / inner_batch;
+        const dim_t buf_row_stride = N * bgmmc.c_dt_sz;
+        const dim_t dst_m_stride = bgmmc.C_strides[1];
+        const dim_t dst_n_stride = bgmmc.C_strides[0];
+        const int dt_sz = bgmmc.c_dt_sz;
+
+        const int N_tile = 64;
+        const int n_tiles = utils::div_up(N, N_tile);
+
+        parallel_nd(outer_batch, n_tiles, M, [&](int ob, int nt, int m) {
+            const int n_start = nt * N_tile;
+            const int n_len = nstl::min(N_tile, N - n_start);
+            const int b_start = ob * inner_batch;
+            const char *buf_base
+                    = brgmm_ctx.get_buf_D_acdb_ptr(b_start);
+            char *dst_base = brgmm_ctx.get_data_C_ptr(b_start, 0, 0);
+            jit_brgemm_matmul_copy_c_t::ctx_t copy_c_ctx;
+            copy_c_ctx.src = buf_base + m * buf_row_stride
+                    + n_start * dt_sz;
+            copy_c_ctx.dst = dst_base + m * dst_m_stride
+                    + n_start * dst_n_stride;
+            copy_c_ctx.current_M_blk = 1;
+            copy_c_ctx.current_N_blk = n_len;
+            (*copy_C_kernel_)(&copy_c_ctx);
+        });
+    }
+
     return status::success;
 }
 
@@ -742,12 +789,6 @@ void brgemm_matmul_t<isa>::compute_kernel(
     const int brg_ker_idx = pd()->get_brg_kernel_idx(
             is_bs_tail, do_init, m_ker_idx, n_ker_idx, false, prefetch);
     const auto ptr_bias = brgmm_ctx.get_bias_ptr(n);
-    auto ptr_D = brgmm_ctx.get_data_C_ptr(
-            b_idx, brgmm_ctx.get_M_idx(m_blk_idx, true), n);
-    auto ptr_C = (bgmmc.use_buffer_c)
-            ? brgmm_ctx.get_buf_C_ptr(ithr, m_blk_idx, n_blk_idx)
-            : ptr_D;
-
     const auto zp_comp_a
             = brgmm_ctx.get_zp_a_compensation_ptr(ithr, b_idx, n_blk_idx);
     const auto zp_comp_b
@@ -756,6 +797,17 @@ void brgemm_matmul_t<isa>::compute_kernel(
             = brgmm_ctx.get_post_ops_binary_rhs_arg_vec();
     const bool post_ops_applicable = bgmmc.post_ops_applicable
             && (brgmm_ctx.get_num_threads_for_k() <= 1 || bgmmc.K_chunks == 1);
+
+    // For acdb dst: ptr_D points into shared buf_D at the correct (m,n) offset.
+    auto ptr_D = bgmmc.dst_is_acdb
+            ? (brgmm_ctx.get_buf_D_acdb_ptr(b_idx)
+                    + (brgmm_ctx.get_M_idx(m_blk_idx, true) * bgmmc.N + n)
+                            * bgmmc.c_dt_sz)
+            : brgmm_ctx.get_data_C_ptr(
+                      b_idx, brgmm_ctx.get_M_idx(m_blk_idx, true), n);
+    auto ptr_C = (bgmmc.use_buffer_c)
+            ? brgmm_ctx.get_buf_C_ptr(ithr, m_blk_idx, n_blk_idx)
+            : ptr_D;
 
     brgemm_dynamic_values_t leading_dimensions(
             bgmmc.LDA, bgmmc.LDB, brgmm_ctx.get_LDC(), brgmm_ctx.get_LDD());
@@ -873,6 +925,38 @@ void brgemm_matmul_t<isa>::compute_kernel(
 
     brgmm_ctx.maybe_restore_dst_values_from_buffer(
             ithr, b_idx, m_blk_idx, n_blk_idx);
+
+    // For acdb dst: copy from buf_C to shared buf_D.
+    // The actual transpose to dst happens in Phase 2 after the parallel section.
+    if (bgmmc.dst_is_acdb && is_last_K_blk
+            && !post_ops_applicable && bgmmc.use_buffer_c) {
+        const int curr_M_blk = brgmm_ctx.get_M_kernel_size(m_blk_idx);
+        const int curr_N_blk = brgmm_ctx.get_N_kernel_size(n_blk_idx);
+        char *dst_buf = const_cast<char *>(ptr_D);
+        const char *src_buf = static_cast<const char *>(ptr_C);
+        for (int m = 0; m < curr_M_blk; m++) {
+            std::memcpy(dst_buf + m * bgmmc.N * bgmmc.c_dt_sz,
+                    src_buf + m * brgmm_ctx.get_LDC() * bgmmc.acc_dt_sz,
+                    curr_N_blk * bgmmc.c_dt_sz);
+        }
+    }
+
+    // For adbc dst: transpose from buf_C [M_blk, N_blk] to dst where M is
+    // contiguous. Uses JIT 16×16 in-register transpose for efficiency.
+    if (bgmmc.dst_is_adbc && is_last_K_blk
+            && !post_ops_applicable && bgmmc.use_buffer_c) {
+        const int curr_M_blk = brgmm_ctx.get_M_kernel_size(m_blk_idx);
+        const int curr_N_blk = brgmm_ctx.get_N_kernel_size(n_blk_idx);
+        char *dst_ptr = brgmm_ctx.get_data_C_ptr(
+                b_idx, brgmm_ctx.get_M_idx(m_blk_idx, true), n);
+
+        jit_brgemm_matmul_copy_c_t::ctx_t copy_c_ctx;
+        copy_c_ctx.src = ptr_C;
+        copy_c_ctx.dst = dst_ptr;
+        copy_c_ctx.current_M_blk = curr_M_blk;
+        copy_c_ctx.current_N_blk = curr_N_blk;
+        (*copy_C_kernel_)(&copy_c_ctx);
+    }
 }
 
 template <cpu_isa_t isa>
@@ -1467,7 +1551,8 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                 ? scratchpad.template get<char>(key_brgemm_primitive_buffer)
                 : nullptr;
 
-        buf_D_ptr_ = (bgmmc.is_runtime_M || bgmmc.is_runtime_N)
+        buf_D_ptr_ = (bgmmc.is_runtime_M || bgmmc.is_runtime_N
+                             || bgmmc.dst_is_acdb)
                 ? scratchpad.template get<char>(key_brgemm_primitive_buffer_d)
                 : nullptr;
 
@@ -2055,7 +2140,6 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
 
     dim_t get_data_C_off(int b, dim_t m, dim_t n) const {
         using namespace format_tag;
-        assert(bgmmc_.dst_tag != adbc);
         dim_t off = 0;
         if (bgmmc_.dst_tag == acbd
                 || (one_of(bgmmc_.dst_tag, abcd, abdc)
@@ -2463,6 +2547,10 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
     dim_t copy_B_wei_stride() const { return copy_B_wei_stride_; }
 
     bool packed_sparse_weights() const { return bgmmc_.packed_sparse_weights; }
+
+    char *get_buf_D_acdb_ptr(int b_idx) const {
+        return buf_D_ptr_ + bgmmc_.acdb_buf_per_batch_sz * b_idx;
+    }
 
     int get_current_K_pad(int current_K_iters) const {
         if (bgmmc_.is_wei_zp_per_k || bgmmc_.is_wei_scale_per_k) return 0;

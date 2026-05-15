@@ -195,7 +195,7 @@ status_t layer_norm_fwd_t::sycl_execute_impl(const stream_t *g_stream,
         ::sycl::event *sycl_event) {
 
     auto deps = sycl_deps;
-    ::sycl::event returned_event;
+    std::optional<::sycl::event> returned_event;
     dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
 
     // each thread's own local resource
@@ -244,7 +244,10 @@ status_t layer_norm_fwd_t::sycl_execute_impl(const stream_t *g_stream,
                 if (!subgraph_->is_constant_[i]) continue;
                 returned_event = subgraph_->execs_[i]->execute_sycl(
                         p_stream, res->get_exec_args()[i], deps);
-                deps = {returned_event};
+                if (returned_event)
+                    deps = {*returned_event};
+                else
+                    deps.clear();
             }
 
             c_promise.set_value(c_buffer);
@@ -255,11 +258,15 @@ status_t layer_norm_fwd_t::sycl_execute_impl(const stream_t *g_stream,
         if (subgraph_->is_constant_[i]) continue;
         returned_event = subgraph_->execs_[i]->execute_sycl(
                 p_stream, res->get_exec_args()[i], deps);
-        deps = {returned_event};
+        if (returned_event)
+            deps = {*returned_event};
+        else
+            deps.clear();
     }
 
-    scratchpad.set_deps(returned_event);
-    if (sycl_event) *sycl_event = returned_event;
+    scratchpad.set_deps(returned_event ? *returned_event : ::sycl::event {});
+    if (sycl_event)
+        *sycl_event = returned_event ? *returned_event : ::sycl::event {};
 
     return status::success;
 }
@@ -439,7 +446,7 @@ status_t layer_norm_bwd_t::sycl_execute_impl(const stream_t *g_stream,
         ::sycl::event *sycl_event) {
 
     auto deps = sycl_deps;
-    ::sycl::event returned_event;
+    std::optional<::sycl::event> returned_event;
     dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
 
     thread_local_cache_t<execution_args_set_t> res_cache;
@@ -457,11 +464,15 @@ status_t layer_norm_bwd_t::sycl_execute_impl(const stream_t *g_stream,
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
         returned_event = subgraph_->execs_[i]->execute_sycl(
                 p_stream, res->get_exec_args()[i], deps);
-        deps = {returned_event};
+        if (returned_event)
+            deps = {*returned_event};
+        else
+            deps.clear();
     }
 
-    scratchpad.set_deps(returned_event);
-    if (sycl_event) *sycl_event = returned_event;
+    scratchpad.set_deps(returned_event ? *returned_event : ::sycl::event {});
+    if (sycl_event)
+        *sycl_event = returned_event ? *returned_event : ::sycl::event {};
 
     return status::success;
 }

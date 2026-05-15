@@ -40,8 +40,8 @@ void host_scalar_executable_t::execute(const stream &stream,
 }
 
 #ifdef DNNL_WITH_SYCL
-::sycl::event host_scalar_executable_t::execute_sycl(const stream &stream,
-        const std::unordered_map<int, memory> &args,
+std::optional<::sycl::event> host_scalar_executable_t::execute_sycl(
+        const stream &stream, const std::unordered_map<int, memory> &args,
         const std::vector<::sycl::event> &deps) const {
     auto it_src = args.find(DNNL_ARG_FROM);
     auto it_dst = args.find(DNNL_ARG_TO);

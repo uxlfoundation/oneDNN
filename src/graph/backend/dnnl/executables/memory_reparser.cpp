@@ -41,8 +41,8 @@ void memory_reparser_t::execute(const stream &stream,
 }
 
 #ifdef DNNL_WITH_SYCL
-::sycl::event memory_reparser_t::execute_sycl(const stream &stream,
-        const std::unordered_map<int, memory> &args,
+std::optional<::sycl::event> memory_reparser_t::execute_sycl(
+        const stream &stream, const std::unordered_map<int, memory> &args,
         const std::vector<::sycl::event> &deps) const {
     auto from = args.find(DNNL_ARG_FROM);
     auto to = args.find(DNNL_ARG_TO);

@@ -1517,7 +1517,9 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                 pd->attr()->post_ops_, ctx);
         base_brg_ker_idx_
                 = pd->get_brg_kernel_idx(false, true, 0, 0, false, false);
-        vnni_factor = data_type_vnni_granularity(bgmmc.wei_dt);
+        vnni_factor = data_type_vnni_granularity(
+                (bgmmc.is_xf16_fp8 && bgmmc.use_buffer_b) ? bgmmc.orig_wei_dt
+                                                          : bgmmc.wei_dt);
 
         reorder_zp_a_comp_ptr_ = nullptr;
         if (bgmmc_.has_zero_point_a && bgmmc_.blocked_B) {

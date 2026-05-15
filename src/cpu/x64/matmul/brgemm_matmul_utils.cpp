@@ -1697,6 +1697,13 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
             || bgmmc.wei_tag == adbc;
     bgmmc.use_buffer_b = bm_conf_utils.use_buffer_b();
 
+    if (bgmmc.is_xf16_fp8 && bgmmc.use_buffer_b && bgmmc.blocked_B) {
+        bgmmc.wei_dt = bgmmc.src_dt;
+        bgmmc.tr_b_dt_sz = types::data_type_size(bgmmc.wei_dt);
+        bgmmc.required_k_granularity = data_type_vnni_granularity(bgmmc.wei_dt);
+        bgmmc.wei_k_blk = get_wei_k_blk(bgmmc.wei_dt);
+    }
+
     if ((bm_conf_utils.is_f32_f16() || bm_conf_utils.is_f32_bf16())
             && is_superset(bgmmc.isa, avx2) && bm_conf_utils.use_buffer_b()) {
         // ANCHOR: `CONVERT_F32_XF16_DATA_TYPES`

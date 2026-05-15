@@ -1517,7 +1517,9 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                 pd->attr()->post_ops_, ctx);
         base_brg_ker_idx_
                 = pd->get_brg_kernel_idx(false, true, 0, 0, false, false);
-        vnni_factor = data_type_vnni_granularity(bgmmc.wei_dt);
+        vnni_factor = data_type_vnni_granularity(
+                (bgmmc.is_xf16_fp8 && bgmmc.use_buffer_b) ? bgmmc.orig_wei_dt
+                                                          : bgmmc.wei_dt);
 
         reorder_zp_a_comp_ptr_ = nullptr;
         if (bgmmc_.has_zero_point_a && bgmmc_.blocked_B) {
@@ -1822,8 +1824,13 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
     }
 
     dim_t get_data_B_kn_off(dim_t k, dim_t n) const {
-        const int wei_k_blk
-                = bgmmc_.is_bf32 ? get_wei_k_blk(f32) : bgmmc_.wei_k_blk;
+        // In xf16-fp8 mode, source weights keep original fp8 blocking while
+        // compute-side blocking (bgmmc_.wei_k_blk) is adjusted for xf16.
+        const bool use_orig_wei_layout
+                = bgmmc_.is_xf16_fp8 && bgmmc_.use_buffer_b;
+        const int wei_k_blk = use_orig_wei_layout
+                ? get_wei_k_blk(bgmmc_.orig_wei_dt)
+                : (bgmmc_.is_bf32 ? get_wei_k_blk(f32) : bgmmc_.wei_k_blk);
         const int k_idx = bgmmc_.blocked_B ? k / wei_k_blk : k;
         const int n_idx = bgmmc_.blocked_B ? n / bgmmc_.wei_n_blk : n;
         const int int4_fac = bgmmc_.is_int4_weights ? 2 : 1;
@@ -2055,7 +2062,12 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
 
         if (!bgmmc_.blocked_B) return 0;
 
-        dim_t x0 = k % bgmmc_.wei_k_blk;
+        const bool use_orig_wei_layout
+                = bgmmc_.is_xf16_fp8 && bgmmc_.use_buffer_b;
+        const int wei_k_blk = use_orig_wei_layout
+                ? get_wei_k_blk(bgmmc_.orig_wei_dt)
+                : bgmmc_.wei_k_blk;
+        dim_t x0 = k % wei_k_blk;
         dim_t x1 = n % bgmmc_.wei_n_blk;
         dim_t offset = (x0 / vnni_factor) * vnni_factor * bgmmc_.wei_n_blk
                 + x1 * vnni_factor + x0 % vnni_factor;

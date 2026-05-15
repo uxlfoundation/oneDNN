@@ -1001,8 +1001,9 @@ void skip_unimplemented_prelu_po(
         case dnnl_inner_product:
         case dnnl_matmul: return; break;
         default:
+            BENCHDNN_PRINTF(2, "%s", "[SKIP]: Prelu post-op is not supported");
             res->state = SKIPPED;
-            res->reason = reason_t::skip_not_supported;
+            res->reason = reason_t::skip_postop_prelu;
             break;
     }
 }

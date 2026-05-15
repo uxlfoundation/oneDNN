@@ -81,10 +81,9 @@ struct reorder_kernel_t {
                 flattened_index < conf_.num_elements;
                 flattened_index += item.get_global_range(0)) {
 
-            to_tensor.get_logical_index(
-                    flattened_index, dst_padded_index, true);
+            to_tensor.get_logical_index(flattened_index, dst_padded_index);
 
-            float from_value = from_tensor.load_md(dst_padded_index, true);
+            float from_value = from_tensor.load_md(dst_padded_index);
             // apply src scale and zero points;
             // dequantized_x = scale * (quantized_x - zero_point);
             if (conf_.apply_src_zp) {
@@ -104,7 +103,7 @@ struct reorder_kernel_t {
                 from_value = from_value * src_scale;
             }
 
-            auto dst_idx = conf_.dst_md.off_v(dst_padded_index, true);
+            auto dst_idx = conf_.dst_md.off_v(dst_padded_index);
             from_value = conf_.post_ops.apply(from_value, dst_, dst_idx);
             // during quanization, apply scale first
             // quantized value = dequan_value / scale + zero_point;
@@ -124,7 +123,7 @@ struct reorder_kernel_t {
                 }
                 from_value = from_value + dst_zp;
             }
-            to_tensor.store_md(from_value, dst_padded_index, true);
+            to_tensor.store_md(from_value, dst_padded_index);
         }
     }
 

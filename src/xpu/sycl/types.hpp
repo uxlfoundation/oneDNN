@@ -118,9 +118,14 @@ using in_memory_arg_t = memory_arg_t<::sycl::access::mode::read>;
 using out_memory_arg_t = memory_arg_t<::sycl::access::mode::write>;
 using inout_memory_arg_t = memory_arg_t<::sycl::access::mode::read_write>;
 
-// TODO: this class mimics memory_desc_t and makes sure it can be passed
-// to SYCL kernels as a kernel argument. SYCL puts restrictions on kernel
-// arguments, e.g. those cannot contain unions.
+// This class keeps only essentials from original memory_desc_t as this class
+// is used inside conf classes which are passed to kernels as arguments
+// directly. There's a hard limit on arguments size and the less is used, the
+// more can be put into those conf classes.
+//
+// Note: if, for whatever reason, blocking descriptor will be needed, a new
+// abstraction should be introduced and used with those memory descriptors that
+// would utilize it.
 struct md_t {
     // There is a limitation on total size of kernel arguments hence using
     // reduced number of supported dimensions and int32_t for dimensions.
@@ -130,17 +135,10 @@ struct md_t {
     using dims32_t = dim32_t[max_dims];
 
     data_type_t data_type() const { return data_type_; }
-
     dim32_t ndims() const { return ndims_; }
-    dim32_t offset0() const { return offset0_; }
-    dim32_t inner_nblks() const { return inner_nblks_; }
 
     const dims32_t &dims() const { return dims_; }
-    const dims32_t &padded_dims() const { return padded_dims_; }
-    const dims32_t &padded_offsets() const { return padded_offsets_; }
     const dims32_t &strides() const { return strides_; }
-    const dims32_t &inner_blks() const { return inner_blks_; }
-    const dims32_t &inner_idxs() const { return inner_idxs_; }
 
     md_t() = default;
     md_t(const memory_desc_t *md) {
@@ -157,16 +155,9 @@ struct md_t {
     (lhs) = static_cast<dim32_t>(rhs)
 
         CHECK_AND_ASSIGN(ndims_, mdw.ndims());
-        CHECK_AND_ASSIGN(offset0_, mdw.offset0());
-        CHECK_AND_ASSIGN(inner_nblks_, blk.inner_nblks);
-
         for (int d = 0; d < mdw.ndims(); d++) {
             CHECK_AND_ASSIGN(dims_[d], mdw.dims()[d]);
-            CHECK_AND_ASSIGN(padded_dims_[d], mdw.padded_dims()[d]);
-            CHECK_AND_ASSIGN(padded_offsets_[d], mdw.padded_offsets()[d]);
             CHECK_AND_ASSIGN(strides_[d], blk.strides[d]);
-            CHECK_AND_ASSIGN(inner_blks_[d], blk.inner_blks[d]);
-            CHECK_AND_ASSIGN(inner_idxs_[d], blk.inner_idxs[d]);
         }
 #undef CHECK_AND_ASSIGN
     }
@@ -174,55 +165,29 @@ struct md_t {
     template <typename... Args>
     dim_t off(Args... args) const {
         dims_t pos = {args...};
-        return off_v(pos, false);
+        return off_v(pos);
     }
 
-    dim_t off_v(const dims_t pos, bool is_pos_padded = false) const {
-        dims_t pos_copy = {0};
-        for (int d = 0; d < ndims(); ++d)
-            pos_copy[d] = pos[d] + (is_pos_padded ? 0 : padded_offsets()[d]);
-        dim_t phys_offset = offset0();
-
-        if (inner_nblks() > 0) {
-            dim_t blk_stride = 1;
-            for (int iblk = inner_nblks() - 1; iblk >= 0; --iblk) {
-                const int d = inner_idxs()[iblk];
-
-                dim_t p;
-                if (pos_copy[d] <= INT32_MAX) {
-                    p = (int32_t)pos_copy[d] % (int32_t)inner_blks()[iblk];
-                    pos_copy[d] = (int32_t)pos_copy[d]
-                            / (int32_t)inner_blks()[iblk];
-                } else {
-                    p = pos_copy[d] % inner_blks()[iblk];
-                    pos_copy[d] /= inner_blks()[iblk];
-                }
-
-                phys_offset += p * blk_stride;
-
-                blk_stride *= inner_blks()[iblk];
-            }
-        }
-
+    dim_t off_v(const dims_t pos) const {
+        dim_t phys_offset = 0;
         for (int d = 0; d < ndims(); ++d) {
-            const dim_t p = pos_copy[d];
+            const dim_t p = pos[d];
             phys_offset += p * strides()[d];
         }
         return phys_offset;
     }
 
-    dim_t off_v_masked(
-            const dims_t pos, int mask, bool is_pos_padded = false) const {
+    dim_t off_v_masked(const dims_t pos, int mask) const {
         dims_t pos_masked;
         utils::copy_dims_with_mask(pos_masked, pos, ndims(), mask);
-        return off_v(pos_masked, is_pos_padded);
+        return off_v(pos_masked);
     }
 
-    dim_t off_l(dim_t l_offset, bool is_pos_padded = false) const {
+    dim_t off_l(dim_t l_offset) const {
         dims_t pos;
         for (int rd = 0; rd < ndims(); ++rd) {
             const int d = ndims() - 1 - rd;
-            const dim_t cur_dim = is_pos_padded ? padded_dims()[d] : dims()[d];
+            const dim_t cur_dim = dims()[d];
             if (l_offset <= INT32_MAX && cur_dim <= INT32_MAX) {
                 pos[d] = (int32_t)l_offset % (int32_t)cur_dim;
                 l_offset = (int32_t)l_offset / (int32_t)cur_dim;
@@ -231,23 +196,14 @@ struct md_t {
                 l_offset /= cur_dim;
             }
         }
-        return off_v(pos, is_pos_padded);
+        return off_v(pos);
     }
 
 private:
     data_type_t data_type_;
-
     dim32_t ndims_;
-
     dims32_t dims_;
-    dims32_t padded_dims_;
-    dims32_t padded_offsets_;
-    dim32_t offset0_;
-
     dims32_t strides_;
-    dim32_t inner_nblks_;
-    dims32_t inner_blks_;
-    dims32_t inner_idxs_;
 };
 
 struct bfloat16_t {

@@ -81,12 +81,7 @@ struct binary_kernel_vec_t {
             }
         }
 
-        const bool is_blocked_fmt = conf_.src0_md.inner_nblks() > 0
-                || conf_.src1_md.inner_nblks() > 0
-                || conf_.dst_md.inner_nblks() > 0;
-
-        if (!any_broadcast && !is_blocked_fmt
-                && conf_.post_ops.get_post_op() == 0
+        if (!any_broadcast && conf_.post_ops.get_post_op() == 0
                 && conf_.wk_size % vec_len == 0 && is_same_tag) {
             for (int vec_idx = item.get_global_id(0);
                     vec_idx < conf_.wk_size / vec_len;

@@ -88,7 +88,8 @@ if(DNNL_SYCL_CUDA)
         ${CMAKE_CURRENT_SOURCE_DIR}/primitives/shuffle.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/primitives/group_normalization.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/primitives/vanilla_rnn.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/primitives/lbr_gru.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/primitives/lbr_gru.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/sycl_graph_sdpa.cpp)
 endif()
 
 # Remove examples for Graph API if graph component is not enabled
@@ -123,7 +124,8 @@ if(DNNL_SYCL_GENERIC)
         ${CMAKE_CURRENT_SOURCE_DIR}/primitives/group_normalization.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/primitives/lbr_gru.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/primitives/lstm.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/primitives/vanilla_rnn.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/primitives/vanilla_rnn.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/sycl_graph_sdpa.cpp)
 endif()
 
 if(DNNL_SYCL_HIP)

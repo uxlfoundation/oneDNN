@@ -866,6 +866,11 @@ bool check_md_consistency_with_tag(
     return dnnl_memory_desc_equal(md_new_tag, md);
 }
 
+// Note: CPU support can be simplified if prop_kind is passed, however, this
+// prop kind must come from prb directly, not queried, as if not implemented,
+// pd will come empty and there's nothing to query. prop_kind is not available
+// in prb as of now and it will require dir_t -> prop_kind_t replacement
+// refactor across the stack.
 void skip_unimplemented_data_type(
         const std::vector<dnnl_data_type_t> &v_dt, dir_t dir, res_t *res) {
     const bool has_f64_support = is_f64_supported();
@@ -913,6 +918,8 @@ void skip_unimplemented_data_type(
             default: break;
         }
         if (need_skip) {
+            BENCHDNN_PRINTF(2, "%s%s%s", "[SKIP]: Data type \'", dt2str(i_dt),
+                    "\' is not supported on this platform.");
             res->state = SKIPPED;
             res->reason = reason_t::skip_data_type;
             return;

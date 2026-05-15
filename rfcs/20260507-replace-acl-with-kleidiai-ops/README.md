@@ -16,7 +16,7 @@ Replacing ACL with KleidiAI has performance benefits too, particularly for small
 
 The main open question in this RFC is how KleidiAI should be integrated into oneDNN: vendored in-tree, fetched by CMake, or built separately (discussed in detail later). We also welcome feedback or concerns on the rest of this idea too.
 
-[^1]: Specifically [the experimental/ops directory, currently on a branch](https://gitlab.arm.com/kleidi/kleidiai/-/tree/feature/add-kleidiai-ops), but will be released as part of KleidiAI. The experimental directory is because the API may change, but the kernels themselves are the same as the ones currently used in oneDNN+ACL so have been well tested.
+[^1]: Specifically [the experimental/ops directory, currently on a feature branch](https://gitlab.arm.com/kleidi/kleidiai/-/tree/feature/add-kleidiai-ops), but will be released as part of KleidiAI. The experimental directory is because the API may change, but the kernels themselves are the same as the ones currently used in oneDNN+ACL so have been well tested.
 
 
 ## Problem
@@ -38,13 +38,14 @@ This has been demonstrated in a [proof of concept (PoC, currently alpha quality)
 - `acl_matmul_t` -> `arm_compute::...::CpuGemmAssemblyDispatch` -> `arm_gemm::IGemmCommon`
 - `acl_lowp_matmul_t`/`acl_lowp_matmul_sq_t` -> `arm_compute::...::CpuGEMMLowp` -> `arm_compute::...::CpuGemmAssemblyDispatch` -> `arm_gemm::IGemmCommon`
 - `acl_inner_product_t` -> `arm_compute::...::CpuFullyConnectedLayer` -> `arm_compute::...::CpuGemmAssemblyDispatch` -> `arm_gemm::IGemmCommon`
-- + conv implementations
+- & conv implementations
 
 We will now have:
 
 - `kai_matmul_t` -> `kai::ops::IGemmCommon`
 - `matmul_inner_product_t` -> `kai_matmul_t` -> `kai::ops::IGemmCommon`
-- + conv implementations
+- & conv implementations
+
 In the process we have also removed the need for the custom scheduler wrapper.
 
 The most important logic is in `kai_matmul_t::execute` (`src/cpu/aarch64/matmul/kai_matmul.cpp`). We can see that in this PoC we avoid storing primitive state by creating a lightweight `kai::ops::IGemmCommon` for every execution. This object exposes single-threaded, non-allocating methods to transform inputs and then perform the matrix multiplication. This allows us to easily use the native oneDNN machinery for thread and memory management.
@@ -66,10 +67,10 @@ Matmul makes up a large proportion of model runtime, but we also need to replace
 | Primitive  | Data Type    | Adv SIMD impl | SVE impl |
 | ---------- | ------------ | ---------- | -------- |
 | matmul/ip  | f32/bf16/f16 | KAI ✅     | KAI ✅   |
-| matmul/ip  | u8/s8        | KAI ✅     | jit ✅^1 |
-| conv       | f32          | KAI ✅ ^2a  | jit ✅ ^2b   |
-| conv       | f16          | KAI ✅ ^2a  | KAI/JIT ✅ ^2b  |
-| conv       | bf16         | KAI ✅ ^2a  | KAI/JIT ✅ ^2b |
+| matmul/ip  | u8/s8        | KAI ✅     | JIT ✅^1 |
+| conv       | f32          | KAI ✅ ^2  | JIT ✅ ^2   |
+| conv       | f16          | KAI ✅ ^2  | KAI ✅ ^2  |
+| conv       | bf16         | KAI ✅ ^2  | KAI ✅ ^2 |
 | conv       | u8/s8        | N/A ^3     | JIT ✅   |
 | eltwise    | all          | JIT ✅^4   | JIT ✅   |
 | softmax    | all          | JIT ✅^4   | JIT ✅   |
@@ -90,10 +91,8 @@ Legend:
 - JIT: JIT in time assembled implementations using Xbyak_aarch64, e.g. `jit_int8_matmul`
 
 Notes:
-1. We have two good options: JIT and KleidiAI. We plan to use the existing `jit_int8_matmul_t` for SVE and use KleidiAI to support any gaps (currently ASIMD). The rationale is that quantized integer operators come in so many variants that the flexibility that JIT provides is a clear advantage in this case. However, we can reassess this decision later on.
-2. We can use KleidiAI with wrappers inspired by ACL, or we can use JIT.
-  2 a. For ASIMD f32 and bf16/f16 and ASIMD we have a choice between writing an ASIMD JIT `brgconv` or using KleidiAI as an indirect convolution (which would essentially mirror what ACL currently does). This investigation is ongoing, but we have two good options. For bf16, there is a JIT implementation, but it uses `jit_brgemm_kernel_t`, which (currently) uses BFDOT. ACL uses BFMMLA in some cases, so it has ~2x the throughput on Arm® Neoverse® cores. 
-  2 b. JIT is already used for all SVE 256, but ACL is still better than JIT for some SVE 128. To reduce risk of regressions, we will replace ACL convolutions mostly like-for-like with KAI. We would like to tidy this up in the future and rationalize our convolution methods.
+1. We have two good options: JIT and KleidiAI. We plan to use the existing `jit_int8_matmul_t` for SVE and use KleidiAI to support any gaps (currently Adv SIMD). The rationale is that quantized integer operators come in so many variants that the flexibility that JIT provides is a clear advantage in this case. However, we can reassess this decision later on.
+2. We can use KleidiAI with wrappers inspired by ACL, or we can use JIT. JIT is already used for all SVE 256, but ACL is still used over JIT for all Adv SIMD, some SVE 128 F32 and all BF16 (because ACL uses BFMMLA). To reduce risk of regressions, we will replace ACL convolutions mostly like-for-like with KAI. We would like to tidy this up in the future and rationalize our convolution to fewer methods.
 3. Not currently implemented, so no regression
 4. Only `log` is missing.
 5. Should be relatively straightforward.
@@ -118,7 +117,15 @@ Roughly ordered, but mostly concurrent, the steps will be:
 
 The biggest open question is: how exactly do we integrate the library into oneDNN?
 
-**note**: the PoC branch currently uses a submodule, this is temporary and we will replace it with whatever approach is chosen.
+Some general notes:
+- The [PoC branch](https://github.com/uxlfoundation/oneDNN/tree/jondea/replace-acl-with-kleidiai) currently uses a submodule, this is temporary and we will replace it with whatever approach is chosen below.
+- We are proposing to only use [the experimental/ops directory, currently on a feature branch](https://gitlab.arm.com/kleidi/kleidiai/-/tree/feature/add-kleidiai-ops).
+- The `ops` library is a separate CMake project and compiles to a library called `kleidiai_ops`. It is not header only.
+- This is distinct from the `ukernel` KleidiAI library.
+- Currently PT only uses the `ukernel` part of the library and oneDNN will only use the `ops` part.
+- The experimental directory is because the API may change, but the kernels themselves are the same as the ones currently used in oneDNN+ACL so have been well tested.
+  - Initially, while the `ops` library is experimental, we won't make any guarantees about API stability or interoperability between versions. Once it is stable we plan to version it using the root KleidiAI semantic version number.
+- All the KleidiAI source we will use is licensed under the same license as oneDNN, Apache-2.0 (some of the testing infrastructure is under BSD-3 but this is not necessary for the oneDNN integration).
 
 ### Solution 1: add KleidiAI to third party
 
@@ -129,11 +136,12 @@ This is in line with existing third party libraries (e.g. `Xbyak_aarch64`).
 #### Pros
 - Simple and reliable
 - Fully accelerated AArch64 build without the need for extra build flags. The extra build step and flags cause considerable downstream pain (e.g. when building in PyTorch).
+- Possible to add an optional CMake flag `KAI_OPS_INSTALL_PATH` to override the version for development
 
 #### Cons 
 - Increased repo size for all platforms, ~18% increase
   - oneDNN is 1,080,353 lines and 84MB of source code
-  - After stripping out what we don't need, kleidiai/experimental/ops is 331,597 lines (mostly inline assembly) and 15MB of source code
+  - After stripping out what we don't need, `kleidiai/experimental/ops` is 331,597 lines (mostly inline assembly) and 15MB of source code
 - Updates to KleidiAI may be large diffs of inline assembly (although they would be limited to `third_party/kleidiai`)
 
 ### Solution 2: cmake FetchContent
@@ -166,10 +174,11 @@ FetchContent was introduced in CMake 3.11 and the current minimum version in one
 #### Pros
 - Updating KleidiAI is just changing a single hash
 - Fully accelerated AArch64 build without the need for extra build flags. The extra build step and flags cause considerable downstream pain (e.g. when building in PyTorch).
+- Possible to add an optional CMake flag `KAI_OPS_INSTALL_PATH` to override the version for development
 
 #### Cons
 - FetchContent not currently used in oneDNN
-- FetchContent requires internet connection during configure stage (we could mitigate this by allowing an override for build systems that prohibit this) 
+- FetchContent requires internet connection during configure stage (we could mitigate this by the `KAI_OPS_INSTALL_PATH` override for build systems that prohibit this)
 
 ### Solution 3: build separately (not recommended)
 
@@ -198,7 +207,9 @@ cmake --build build -j$(nproc)
 
 ### Overheads
 
-The overheads are not large, but they are measurable by considering at a small problem. For a single thread we see (~0.001ms = 1us) and for more threads, it becomes larger (~0.007ms = 7us)
+We have asserted throughout that the extra layers of ACL add performance overheads, but how big are they?
+Overall they are not large, but they are measurable by considering a small problem.
+For a single threaded matmul we see a runtime overhead of ~0.001ms (=1µs) and for more threads, it becomes larger ~0.007ms (=7µs).
 ```
         128x128:128x128
         mean runtime / ms

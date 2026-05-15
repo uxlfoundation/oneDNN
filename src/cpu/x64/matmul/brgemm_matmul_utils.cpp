@@ -396,7 +396,7 @@ gemv_strategy_t brgemm_matmul_conf_utils_t::get_gemv_strategy(
 /**
  * Select a compatible format for A in GEMV cases.
  *
- * If A has format is "any", the function selects plain layout.
+ * If A has format "any", the function selects plain layout.
  * Otherwise, it checks if the provided format is compatible.
  *
  * Returns a valid format tag on success, or format_tag::undef otherwise.
@@ -407,13 +407,32 @@ format_tag_t brgemm_matmul_conf_utils_t::get_gemv_A_tag(
     if (bgmmc.M != 1 && bgmmc.N != 1) return format_tag::undef;
 
     // Prefer plain layout when A format is "any". For N=1, this selects
-    // the default non-transA strategy. For M=1, A is the vector operand so
-    // its layout does not define the GEMV strategy.
+    // the default non-transA strategy. For M=1, A is the vector operand
+    // so plain and transposed describe the same memory. Plain is the
+    // canonical choice.
     if (A_any_layout) return plain_tensor_layout_tag;
 
     // Explicit A format can be either plain or transposed.
-    return memory_desc_matches_one_of_tag(
-            A_md, plain_tensor_layout_tag, transposed_tensor_layout_tag);
+    if (!memory_desc_matches_one_of_tag(
+                A_md, plain_tensor_layout_tag, transposed_tensor_layout_tag))
+        return format_tag::undef;
+
+    // For M == 1, A is the vector operand and its tag does not drive
+    // kernel dispatch or LDA (B's tag does). Return the same canonical
+    // default as the any-layout branch to keep behavior consistent.
+    if (bgmmc.M == 1) return plain_tensor_layout_tag;
+
+    // The strides are not guaranteed to be defined for unit dimensions so
+    // we have to normalize the stride for K to use it safely.
+    const dim_t k_stride = bgmmc.K > 1
+            ? A_md.format_desc.blocking.strides[A_md.ndims - 1]
+            : 1;
+
+    // Since matmul heavily relies on tag we have to identify whether the
+    // format is transposed or plain even if the tensor can be interpreted
+    // as either.
+    return k_stride == 1 ? plain_tensor_layout_tag
+                         : transposed_tensor_layout_tag;
 }
 
 /**
@@ -444,8 +463,24 @@ format_tag_t brgemm_matmul_conf_utils_t::get_gemv_B_tag(
         return is_m1 ? transposed_tensor_layout_tag : plain_tensor_layout_tag;
     } else {
         // Explicit B format can be either plain or transposed.
-        return memory_desc_matches_one_of_tag(
-                B_md, plain_tensor_layout_tag, transposed_tensor_layout_tag);
+        if (!memory_desc_matches_one_of_tag(B_md, plain_tensor_layout_tag,
+                    transposed_tensor_layout_tag))
+            return format_tag::undef;
+
+        // For N == 1, B is the vector operand and its tag does not drive
+        // kernel dispatch or LDA (A's tag does). Return the same canonical
+        // default as the any-layout branch to keep behavior consistent.
+        if (bgmmc.N == 1) return plain_tensor_layout_tag;
+
+        // M == 1, N > 1: when K > 1 the N stride distinguishes plain from
+        // transposed and we honor the user-provided tag (which controls
+        // LDA on the swap path). When K == 1 the layout is ambiguous
+        // (ab and ba alias as a contiguous N-element vector). Fall back
+        // to transposed to match the any-layout default for this case.
+        const dim_t n_stride
+                = B_md.format_desc.blocking.strides[B_md.ndims - 1];
+        return n_stride == 1 && bgmmc.K > 1 ? plain_tensor_layout_tag
+                                            : transposed_tensor_layout_tag;
     }
 }
 

@@ -1394,6 +1394,9 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         bgmmc.wei_dt = f16;
         bgmmc.tr_a_dt_sz = types::data_type_size(f16);
         bgmmc.tr_b_dt_sz = types::data_type_size(f16);
+    } else if (bgmmc.is_xf16_fp8) {
+        bgmmc.wei_dt = bgmmc.src_dt;
+        bgmmc.tr_b_dt_sz = types::data_type_size(bgmmc.wei_dt);
     }
 
     bgmmc.acc_dt = bm_conf_utils.is_int8() ? s32 : f32;

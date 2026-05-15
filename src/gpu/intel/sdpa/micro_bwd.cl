@@ -436,34 +436,75 @@ inline void tile_store_k_slm(
 
 #if KV_GROUP_SIZE > 1
 #define IS_GQA 1
+#if defined(DST_DT_F16)
+#define REDUCE_DST_F16 1
+#else
+#define REDUCE_DST_F16 0
+#endif
 #if DST_DATA_T != float
 #define NEEDS_INTERMEDIATE_DKV 1
+#else
+#define NEEDS_INTERMEDIATE_DKV 0
 #endif
 #endif
+
 #if QRY_DATA_T != float
 #define NEEDS_INTERMEDIATE_DQ 1
 #endif
 
-#if IS_GQA
+#if IS_GQA && !REDUCE_DST_F16
 #define DST_DATA_T_DKDV float
 #else
 #define DST_DATA_T_DKDV DST_DATA_T
 #endif
 
-// round f32 intermediate values to DST_DATA_T precision before GQA atomic
-// accumulation. Although less accurate, it matches the unfused path
-// where each query group matmul output passes through DST_DATA_T
-// storage before the reduction
+#if REDUCE_DST_F16
+DECLARE_2D_TILE(dv_reduce_f16_tile, DST_DATA_T_DKDV, SUBGROUP_SIZE,
+        ugemm_vs_c_type_block0, ugemm_vs_c_type_block1, ugemm_vs_c_type_nblock0,
+        ugemm_vs_c_type_nblock1)
+DECLARE_2D_TILE(a_reduce_f16_tile, DST_DATA_T_DKDV, SUBGROUP_SIZE,
+        ugemm_qdSt_c_type_block0, ugemm_qdSt_c_type_block1,
+        ugemm_qdSt_c_type_nblock0, ugemm_qdSt_c_type_nblock1)
+DECLARE_2D_TILE_SLM_ADD(dv_reduce_f16_tile, DST_DATA_T_DKDV, SUBGROUP_SIZE,
+        ugemm_vs_c_type_block0, ugemm_vs_c_type_block1, ugemm_vs_c_type_nblock0,
+        ugemm_vs_c_type_nblock1)
+#if (ugemm_qdSt_c_type_block0 != ugemm_vs_c_type_block0) \
+        || (ugemm_qdSt_c_type_block1 != ugemm_vs_c_type_block1) \
+        || (ugemm_qdSt_c_type_nblock0 != ugemm_vs_c_type_nblock0) \
+        || (ugemm_qdSt_c_type_nblock1 != ugemm_vs_c_type_nblock1)
+DECLARE_2D_TILE_SLM_ADD(a_reduce_f16_tile, DST_DATA_T_DKDV, SUBGROUP_SIZE,
+        ugemm_qdSt_c_type_block0, ugemm_qdSt_c_type_block1,
+        ugemm_qdSt_c_type_nblock0, ugemm_qdSt_c_type_nblock1)
+#endif
+DECLARE_2D_TILE_SLM_ADD_T(a_reduce_f16_tile, DST_DATA_T_DKDV, SUBGROUP_SIZE,
+        ugemm_qdSt_c_type_block0, ugemm_qdSt_c_type_block1,
+        ugemm_qdSt_c_type_nblock0, ugemm_qdSt_c_type_nblock1)
+
+#define SLM_DKDV_DATA_T DST_DATA_T_DKDV
+typedef dv_tile_type_dst dv_store_tile_type;
+typedef a_tile_type_dst dk_store_tile_type;
+#else
+#define SLM_DKDV_DATA_T float
+typedef dv_tile_type dv_store_tile_type;
+typedef a_tile_type dk_store_tile_type;
+
+// Fallback GQA path when dK/dV intermediates stay in float tiles.
 inline float round_to_dst(float v) {
     return CONVERT_FLOAT_T(CONVERT_DATA_T(v));
 }
+#endif
 
-inline void tile_store_dV(dv_tile_type *dV_tile_slm, global DST_DATA_T_DKDV *dV,
-        int m, int n, int ld, int offset_r, int offset_c, int rem) {
+inline void tile_store_dV(dv_store_tile_type *dV_tile_slm,
+        global DST_DATA_T_DKDV *dV, int m, int n, int ld, int offset_r,
+        int offset_c, int rem) {
 
 #if IS_GQA
+#if REDUCE_DST_F16
+    tile_atomic_add(*dV_tile_slm, dV, m, n, ld, offset_r, offset_c);
+#else
     tile_elementwise_s(*dV_tile_slm, round_to_dst);
     tile_atomic_add(*dV_tile_slm, dV, m, n, ld, offset_r, offset_c);
+#endif
 #else // MHA update
 
     dv_tile_type_dst dV_tile_dst; // convert to half
@@ -475,18 +516,22 @@ inline void tile_store_dV(dv_tile_type *dV_tile_slm, global DST_DATA_T_DKDV *dV,
     tile_store(dV_tile_dst, (global DST_TILE_DATA_T *)dV, m, n, ld, offset_r,
             offset_c);
 #endif
-
 #endif
 }
 
 #if TRANSPOSE_K
 // uses transposed dv_tile_type (D*Bc) for dK update
-inline void tile_store_dK_t(dv_tile_type *dK_tile, global DST_DATA_T_DKDV *dK,
-        int m, int n, int ld, int offset_r, int offset_c, int rem) {
+inline void tile_store_dK_t(dv_store_tile_type *dK_tile,
+        global DST_DATA_T_DKDV *dK, int m, int n, int ld, int offset_r,
+        int offset_c, int rem) {
 
 #if IS_GQA
+#if REDUCE_DST_F16
+    tile_atomic_add(*dK_tile, dK, m, n, ld, offset_r, offset_c);
+#else
     tile_elementwise_s(*dK_tile, round_to_dst);
     tile_atomic_add(*dK_tile, dK, m, n, ld, offset_r, offset_c);
+#endif
 #else // MHA update
     dv_tile_type_dst dK_tile_dst;
     tile_copy_reblock(*dK_tile, &dK_tile_dst);
@@ -503,12 +548,17 @@ inline void tile_store_dK_t(dv_tile_type *dK_tile, global DST_DATA_T_DKDV *dK,
 #else
 
 // uses qdSt tile (Bc*D) for dK update
-inline void tile_store_dK(a_tile_type *dK_tile, global DST_DATA_T_DKDV *dK,
-        int m, int n, int ld, int offset_r, int offset_c) {
+inline void tile_store_dK(dk_store_tile_type *dK_tile,
+        global DST_DATA_T_DKDV *dK, int m, int n, int ld, int offset_r,
+        int offset_c) {
 
 #if IS_GQA
+#if REDUCE_DST_F16
+    tile_atomic_add(*dK_tile, dK, m, n, ld, offset_r, offset_c);
+#else
     tile_elementwise_s(*dK_tile, round_to_dst);
     tile_atomic_add(*dK_tile, dK, m, n, ld, offset_r, offset_c);
+#endif
 #else // MHA update
 
     a_tile_type_dst dK_tile_dst;
@@ -651,8 +701,8 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #define S2_f32_slm_size 0
 #endif
 
-#define dK_slm_size (ugemm_kq_wg_tile_m * D_MAX * sizeof(float))
-#define dV_slm_size (ugemm_kq_wg_tile_m * D_MAX * sizeof(float))
+#define dK_slm_size (ugemm_kq_wg_tile_m * D_MAX * sizeof(SLM_DKDV_DATA_T))
+#define dV_slm_size (ugemm_kq_wg_tile_m * D_MAX * sizeof(SLM_DKDV_DATA_T))
 
 #define ugemm_slm_size \
     MAX(MAX(MAX(MAX(ugemm_kq_slm_size, ugemm_vs_slm_size), \
@@ -678,10 +728,10 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             = (local uint *)&slm[K_slm_size + S_slm_size + S2_f32_slm_size];
 
     // used for accumulation of dV, dK across q-loop
-    local float *dK_slm = (local float *)&slm[K_slm_size + S_slm_size
-            + S2_f32_slm_size + ugemm_slm_size];
-    local float *dV_slm = (local float *)&slm[K_slm_size + S_slm_size
-            + S2_f32_slm_size + ugemm_slm_size + dK_slm_size];
+    local SLM_DKDV_DATA_T *dK_slm = (local SLM_DKDV_DATA_T *)&slm[K_slm_size
+            + S_slm_size + S2_f32_slm_size + ugemm_slm_size];
+    local SLM_DKDV_DATA_T *dV_slm = (local SLM_DKDV_DATA_T *)&slm[K_slm_size
+            + S_slm_size + S2_f32_slm_size + ugemm_slm_size + dK_slm_size];
 
     const size_t k_offset = KEY_BATCH(b1, b0_kv);
     const size_t v_offset = VAL_BATCH(b1, b0_kv);
@@ -768,8 +818,8 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #pragma unroll
     for (int i = get_local_id(0); i < ugemm_kq_wg_tile_m * D_MAX;
             i += get_local_size(0)) {
-        dK_slm[i] = 0.f;
-        dV_slm[i] = 0.f;
+        dK_slm[i] = (SLM_DKDV_DATA_T)0;
+        dV_slm[i] = (SLM_DKDV_DATA_T)0;
     }
 
     uint sg_i0_kq = sg_i_kq * ugemm_kq_sg_tile_m;
@@ -831,7 +881,6 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
         /* Apply q mask */
         if (remainder_q) {
-            qmask_tile_type_float q_mask;
 #define gte_q(offset_k, offset_q) (offset_q >= q)
             tile_predicated_assignment(S_tile, k0 + sg_i0_kq, q0 + sg_j0_kq,
                     gte_q, -INFINITY, SUBGROUP_SIZE, ugemm_kq_c_type_block0,
@@ -921,7 +970,14 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
             // accumulate dv tile to slm
             if (sg_ij < sg_per_wg_BcD) {
-                tile_slm_add(dV_tile1, dV_slm, D_MAX, sg_i0_vs, sg_j0_vs);
+#if REDUCE_DST_F16
+                dv_reduce_f16_tile dV_tile1_store;
+                tile_copy(dV_tile1, dV_tile1_store);
+#else
+                dv_store_tile_type dV_tile1_store;
+                dV_tile1_store = dV_tile1;
+#endif
+                tile_slm_add(dV_tile1_store, dV_slm, D_MAX, sg_i0_vs, sg_j0_vs);
             }
         }
 
@@ -967,7 +1023,6 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         }
 
         if (remainder_k) {
-            kmask_tile_type_float k_mask;
 #define gte_k(offset_k, offset_q) (offset_k >= k)
             tile_predicated_assignment(S_tile, k0 + sg_i0_kq, q0 + sg_j0_kq,
                     gte_k, 0, SUBGROUP_SIZE, ugemm_kq_c_type_block0,
@@ -1021,11 +1076,19 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
             // dk slm tile
             if (sg_ij < sg_per_wg_BcD) {
-#if TRANSPOSE_K
-                tile_slm_add_t(dK_tile1, dK_slm, D_MAX, sg_i0_dk, sg_j0_dk);
+#if REDUCE_DST_F16
+                a_reduce_f16_tile dK_tile1_store;
+                tile_copy(dK_tile1, dK_tile1_store);
 #else
-                tile_slm_add(dK_tile1, dK_slm, ugemm_kq_wg_tile_m, sg_i0_dk,
-                        sg_j0_dk);
+                dk_store_tile_type dK_tile1_store;
+                dK_tile1_store = dK_tile1;
+#endif
+#if TRANSPOSE_K
+                tile_slm_add_t(
+                        dK_tile1_store, dK_slm, D_MAX, sg_i0_dk, sg_j0_dk);
+#else
+                tile_slm_add(dK_tile1_store, dK_slm, ugemm_kq_wg_tile_m,
+                        sg_i0_dk, sg_j0_dk);
 #endif
             }
         }
@@ -1074,7 +1137,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     // ensure all loops done writing to SLM
     barrier(CLK_LOCAL_MEM_FENCE);
 
-    dv_tile_type dV_tile_slm;
+    dv_store_tile_type dV_tile_slm;
 
     if (sg_ij < sg_per_wg_BcD) {
         tile_load(&dV_tile_slm, dV_slm, D_MAX, ugemm_kq_wg_tile_m, D_MAX,
@@ -1087,7 +1150,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     //////// update dK
 #if TRANSPOSE_K
     // transposed dK_slm (D*Bc) matches dV tile layout
-    dv_tile_type dK_tile_t;
+    dv_store_tile_type dK_tile_t;
 
     if (sg_ij < sg_per_wg_BcD) {
         tile_load(&dK_tile_t, dK_slm, D_MAX, ugemm_kq_wg_tile_m, D_MAX,
@@ -1100,7 +1163,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     uint sg_i0_dk = sg_i_qdSt * ugemm_qdSt_sg_tile_m;
     uint sg_j0_dk = sg_j_qdSt * ugemm_qdSt_sg_tile_n;
 
-    a_tile_type dK_tile_slm;
+    dk_store_tile_type dK_tile_slm;
     int wg_k_chunk = min(k - k0, ugemm_kq_wg_tile_m);
     if (sg_ij < sg_per_wg_BcD) {
         tile_load(&dK_tile_slm, dK_slm, ugemm_kq_wg_tile_m, D_MAX,

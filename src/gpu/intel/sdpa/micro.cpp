@@ -1018,24 +1018,26 @@ status_t micro_bwd_t::pd_t::init_scratchpad(impl::engine_t *engine) {
     auto gpu_align
             = utils::downcast<gpu::engine_t *>(engine)->get_buffer_alignment();
     size_t wspace_size = memory_desc_wrapper(desc()->diff_qry_md()).nelems();
-    // f32 can directly atomic add to output
-    // others need intermediate scratchpad before conversion
+    // f32 can directly atomic add to output.
+    // Keep the DKV scratch space in the same dtype as dst.
+    const data_type_t dkv_scratch_data_t
+            = conf.data_t == data_type::f16 ? data_type::f16 : data_type::f32;
+
     if (conf.data_t != data_type::f32) {
         scratchpad.book(memory_tracking::names::key_sdpa_dQ_reduction,
                 wspace_size, sizeof(float), gpu_align);
     }
 
-    // for GQA cases multiple Q heads atomic add into shared dK/dV
     const bool needs_intermediate_dKV
             = (conf.kv_group_size > 1 && conf.data_t != data_type::f32);
     if (needs_intermediate_dKV) {
         size_t dK_size = memory_desc_wrapper(desc()->diff_key_md()).nelems();
         scratchpad.book(memory_tracking::names::key_sdpa_dK_reduction, dK_size,
-                sizeof(float), gpu_align);
+                types::data_type_size(dkv_scratch_data_t), gpu_align);
 
         size_t dV_size = memory_desc_wrapper(desc()->diff_val_md()).nelems();
         scratchpad.book(memory_tracking::names::key_sdpa_dV_reduction, dV_size,
-                sizeof(float), gpu_align);
+                types::data_type_size(dkv_scratch_data_t), gpu_align);
     }
 
     // space for D_i preprocess result
@@ -1703,6 +1705,8 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
 
     const data_type_t data_t = pd()->dst_md()->data_type;
     const bool needs_intermediate_dQ = (data_t != data_type::f32);
+    const data_type_t dkv_scratch_data_t
+            = (data_t == data_type::f16) ? data_type::f16 : data_type::f32;
     const bool needs_intermediate_dKV
             = (kv_group_size > 1 && data_t != data_type::f32);
     const bool needs_zero_dKV = (kv_group_size > 1);
@@ -1869,8 +1873,8 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
         if (needs_zero_dKV) {
             auto &dK_buf = needs_intermediate_dKV ? *diff_k_scratch : diff_k;
             auto &dV_buf = needs_intermediate_dKV ? *diff_v_scratch : diff_v;
-            const size_t scratch_kv_bytes
-                    = size_t(batch * num_kv_heads * K * D) * sizeof(float);
+            const size_t scratch_kv_bytes = size_t(batch * num_kv_heads * K * D)
+                    * types::data_type_size(dkv_scratch_data_t);
             const size_t dK_bytes = needs_intermediate_dKV
                     ? scratch_kv_bytes
                     : diff_key_mdw.size();

@@ -688,38 +688,48 @@ int doit(const prb_t *prb, res_t *res) {
 
         ref_partition_t ref_partition(dg, partitions[i], inputs, outputs);
 
-        // Construct memory for both perf & corr modes
-        SAFE(ref_partition.init_ref(graph_in_ports, res), WARN);
-        if (res->state == SKIPPED) return OK;
+        // Reference execution must use direct execution mode. Use RAII guard to
+        // ensure the original execution mode is restored.
+        // TODO: introduce exec_args_t for `execute_and_wait` to explicitly
+        // specify `execution_mode` value instead of updating the global value.
+        {
+            execution_mode_guard_t exec_mode_guard(execution_mode_t::direct);
 
-        if (has_bench_mode_bit(mode_bit_t::corr)) {
-            // correctness mode, run ref partition
-            if (res->state == UNTESTED || res->state == EXECUTED
-                    || res->state == DEFERRED) {
-                ref_partition.exec_ops(res);
-                if (res->state == FAILED) return FAIL;
-                if (res->state == SKIPPED || res->state == UNIMPLEMENTED)
-                    return OK;
-            } else {
-                // once a partition failed on init_ref, terminate whole graph execution
-                return FAIL;
+            // Construct memory for both perf & corr modes
+            SAFE(ref_partition.init_ref(graph_in_ports, res), WARN);
+            if (res->state == SKIPPED) return OK;
+
+            if (has_bench_mode_bit(mode_bit_t::corr)) {
+                // correctness mode, run ref partition
+                if (res->state == UNTESTED || res->state == EXECUTED
+                        || res->state == DEFERRED) {
+                    ref_partition.exec_ops(res);
+                    if (res->state == FAILED) return FAIL;
+                    if (res->state == SKIPPED || res->state == UNIMPLEMENTED)
+                        return OK;
+                } else {
+                    // once a partition failed on init_ref, terminate whole graph execution
+                    return FAIL;
+                }
             }
+
+            // To ensure data consistency between graph and reference paths,
+            // memory initialization and data displacement for reference
+            // primitives (performed in ref_partition.init_ref and
+            // ref_partition.exec_ops) must be completed before initializing
+            // graph memory.
+            SAFE(ref_partition.init_graph_mem(partition_mem_map_v[i], res),
+                    WARN);
+            if (res->state == SKIPPED) return OK;
+
+            // unmap memory from host to device
+            SAFE(map_unmap_partition_mem(
+                         partition_mem_map_v[i], inputs, UNMAP, res),
+                    WARN);
+            SAFE(map_unmap_partition_mem(
+                         partition_mem_map_v[i], outputs, UNMAP, res),
+                    WARN);
         }
-
-        // To ensure data consistency between graph and reference paths,
-        // memory initialization and data displacement for reference primitives
-        // (performed in ref_partition.init_ref and ref_partition.exec_ops)
-        // must be completed before initializing graph memory.
-        SAFE(ref_partition.init_graph_mem(partition_mem_map_v[i], res), WARN);
-        if (res->state == SKIPPED) return OK;
-
-        // unmap memory from host to device
-        SAFE(map_unmap_partition_mem(
-                     partition_mem_map_v[i], inputs, UNMAP, res),
-                WARN);
-        SAFE(map_unmap_partition_mem(
-                     partition_mem_map_v[i], outputs, UNMAP, res),
-                WARN);
 
         const op_ref_list_t &op_list = ref_partition.get_partition_ops();
         const auto &inplace_ports

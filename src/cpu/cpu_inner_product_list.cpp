@@ -69,7 +69,6 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_AARCH64_ACL(acl_inner_product_fwd_t)
             CPU_INSTANCE_RV64GCV(rvv_brgemm_inner_product_fwd_t)
             CPU_INSTANCE_RV64GCV(rvv_gemm_inner_product_fwd_t)
-            CPU_INSTANCE_RV64GCV(rvv_inner_product_fwd_t)
             CPU_INSTANCE(gemm_inner_product_fwd_t<f32>)
             CPU_INSTANCE(ref_inner_product_fwd_t)
             nullptr,

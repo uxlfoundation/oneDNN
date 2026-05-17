@@ -42,7 +42,7 @@ struct xe_hp_systolic_t : public gemm::primitive_t {
 
         bool use_nocopy();
         bool use_nocopy_xehpg(data_type_t dt, unsigned ld_align);
-        status_t set_default_formats(data_type_t dt);
+        status_t init_default_formats(data_type_t dt);
 
         size_t dyn_offset_a = 0;
         size_t dyn_offset_b = 0;
@@ -106,26 +106,26 @@ struct xe_hp_systolic_t : public gemm::primitive_t {
         }
 
         dim_t lda_packed(int64_t k) const {
-            return packed_a() ? desc()->b_desc.format_desc.blocking
-                                        .strides[with_batch() ? 2 : 1]
+            return packed_a() ? desc()->a_md().format_desc.blocking
+                                        .strides[with_batch() ? 1 : 0]
                             / unroll_m()
                               : get_ld_packed(k);
         }
         dim_t ldb_packed(int64_t k) const {
-            return packed_b() ? desc()->a_desc.format_desc.blocking
-                                        .strides[with_batch() ? 1 : 0]
+            return packed_b() ? desc()->b_md().format_desc.blocking
+                                        .strides[with_batch() ? 2 : 1]
                             / unroll_n()
                               : get_ld_packed(k);
         }
         dim_t ldc_packed() const {
-            return packed_c() ? desc()->c_desc.format_desc.blocking
-                                        .strides[with_batch() ? 1 : 0]
+            return packed_c() ? desc()->c_md().format_desc.blocking
+                                        .strides[with_batch() ? 2 : 1]
                             / unroll_n()
                               : 0;
         }
 
         int batch_dims() const {
-            return nstl::max(desc()->c_desc.ndims - 2, 0);
+            return nstl::max(desc()->c_md().ndims - 2, 0);
         }
 
         bool with_batch() const { return desc()->is_batched(); }
@@ -158,6 +158,10 @@ struct xe_hp_systolic_t : public gemm::primitive_t {
         const compute::device_info_t *dev_info_ = nullptr;
 
     private:
+        // Body is authored in matmul-natural orientation; the public
+        // wrapper un-swaps before calling and re-swaps after.
+        status_t init_default_formats_impl(data_type_t dt);
+
         bool any_prepacked_ = false;
         bool packed_a_ = false, packed_b_ = false, packed_c_ = false;
         bool a_zp_ = false, b_zp_ = false, c_zp_ = false;

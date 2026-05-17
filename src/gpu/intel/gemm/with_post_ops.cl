@@ -88,11 +88,13 @@ __kernel void gemm_post_ops(__global SRC_DATA_T *src,
     if (d0 < DST_D0 && d1 < DST_D1 && d2 < DST_D2 && d3 < DST_D3 && d4 < DST_D4
             && d5 < DST_D5) {
         const float a_scale = A_SCALES ? a_scales[0] : 1;
-        const uint b_scale_dim = (NDIMS == 2) ? d1
-                : (NDIMS == 3)                ? d2
-                : (NDIMS == 4)                ? d3
-                : (NDIMS == 5)                ? d4
-                                              : d5;
+        // B_SCALE_AXIS: axis along which the per_oc wei scale varies.
+        const uint b_scale_dim = (B_SCALE_AXIS == 0) ? d0
+                : (B_SCALE_AXIS == 1)               ? d1
+                : (B_SCALE_AXIS == 2)               ? d2
+                : (B_SCALE_AXIS == 3)               ? d3
+                : (B_SCALE_AXIS == 4)               ? d4
+                                                    : d5;
         float b_scale = 1;
         if (B_SCALES) load(&b_scale, b_scales + scale_stride * b_scale_dim);
         if (A_SCALES || B_SCALES) acc *= a_scale * b_scale;

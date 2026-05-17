@@ -33,10 +33,8 @@ namespace jit {
 
 using namespace intel::jit;
 
-namespace {
-
 // Obtain dimension count for gemmstone (common scales give count 0).
-int quant_entry_ndims(
+int pd_t::quant_entry_ndims(
         const quant_entry_t &entry, const memory_desc_t &qmd, int k_idx) {
     if (entry.has_default_values()) return -1;
     if (qmd.ndims < 2) return 0;
@@ -65,7 +63,6 @@ int quant_entry_ndims(
 
     return count;
 }
-} // anonymous namespace
 
 status_t pd_t::init_post_ops(impl::engine_t *engine) {
     using namespace primitive_kind;
@@ -85,11 +82,21 @@ status_t pd_t::init_post_ops(impl::engine_t *engine) {
         const auto &e = post_ops_.entry_[i];
         switch (e.kind) {
             case binary:
-                ok &= supported_binary_op(e.binary.alg)
-                        && is_md_gemm_compatible_plain_format(
-                                &e.binary.src1_desc);
-                binary_srcs_.push_back(
-                        binary_src_t {binary_src_t::binary, int(i)});
+                if (e.binary.alg == binary_prelu) {
+                    // Canonicalized prelu: user buffer still keyed under
+                    // DNNL_ARG_WEIGHTS, so route via prelu.
+                    binary_srcs_.push_back(
+                            binary_src_t {binary_src_t::prelu, int(i)});
+                    prelu_wei_md = e.binary.src1_desc;
+                    prelu_count++;
+                    ok &= prelu_count <= 1;
+                } else {
+                    ok &= supported_binary_op(e.binary.alg)
+                            && is_md_gemm_compatible_plain_format(
+                                    &e.binary.src1_desc);
+                    binary_srcs_.push_back(
+                            binary_src_t {binary_src_t::binary, int(i)});
+                }
                 non_scale_po_ = true;
                 break;
             case sum:
@@ -105,14 +112,10 @@ status_t pd_t::init_post_ops(impl::engine_t *engine) {
                 non_scale_po_ = true;
                 break;
             case prelu:
-                binary_srcs_.push_back(
-                        binary_src_t {binary_src_t::prelu, int(i)});
-                ok &= get_prelu_md(e.prelu.mask, dst_md()->dims, prelu_wei_md,
-                              dst_md()->ndims)
-                        == status::success;
-                prelu_count++;
-                ok &= prelu_count <= 1;
-                non_scale_po_ = true;
+                // Expected to be canonicalized to binary upstream.
+                VDISPATCH_GEMM(false,
+                        "%s: prelu post-op not canonicalized",
+                        VERBOSE_UNSUPPORTED_POSTOP);
                 break;
             default: VDISPATCH_GEMM(false, VERBOSE_UNSUPPORTED_POSTOP);
         }
@@ -123,16 +126,16 @@ status_t pd_t::init_post_ops(impl::engine_t *engine) {
     // If scales are present, convert them and any bias to binary post-ops.
     //   Exception: 2D scales.
     // Also convert bias to binary post-op if dst zp are present.
-    const auto &a_scales = attr()->scales_.get(DNNL_ARG_A);
-    const auto &b_scales = attr()->scales_.get(DNNL_ARG_B);
-    const auto &c_scales = attr()->scales_.get(DNNL_ARG_C);
+    const auto &a_scales = attr()->scales_.get(gemm_arg::A);
+    const auto &b_scales = attr()->scales_.get(gemm_arg::B);
+    const auto &c_scales = attr()->scales_.get(gemm_arg::C);
 
     bias_via_binary_ = (desc()->bias_type() != data_type::undef)
-            && (d->bias_desc.ndims >= 1 || !a_scales.has_default_values()
+            && (d->bias_md().ndims >= 1 || !a_scales.has_default_values()
                     || !b_scales.has_default_values()
-                    || !attr()->zero_points_.has_default_values(DNNL_ARG_C));
+                    || !attr()->zero_points_.has_default_values(gemm_arg::C));
     if (bias_via_binary_) {
-        VDISPATCH_GEMM_SC(post_ops_.prepend_binary(binary_add, &d->bias_desc),
+        VDISPATCH_GEMM_SC(post_ops_.prepend_binary(binary_add, &d->bias_md()),
                 "%s: bias via binary post-op", VERBOSE_UNSUPPORTED_POSTOP);
         binary_srcs_.insert(
                 binary_srcs_.begin(), binary_src_t {binary_src_t::bias, 0});
@@ -142,16 +145,16 @@ status_t pd_t::init_post_ops(impl::engine_t *engine) {
     auto maybe_convert_scales_to_postop
             = [this, engine](const memory_desc_t &scale_md, int arg,
                       int scale_ndims, bool mx, bool &converted) -> status_t {
-        auto ndims = desc()->c_desc.ndims;
-        // Scales on A/B can be converted to postops if
-        // the scales md has K=1 and M/N is not bcast.
+        auto ndims = desc()->c_md().ndims;
+        // Scales on A/B can be converted to postops if the scales md has
+        // K=1 and M/N is not bcast.
         converted = false;
         if (scale_ndims > 1) return status::success;
-        int inner_dim = (arg == DNNL_ARG_A ? ndims - 2 : ndims - 1);
-        bool convert = (scale_md.dims[inner_dim] <= 1) || (arg == DNNL_ARG_C);
+        int inner_dim = (arg == gemm_arg::A ? ndims - 1 : ndims - 2);
+        bool convert = (scale_md.dims[inner_dim] <= 1) || (arg == gemm_arg::C);
         convert &= !mx;
         if (convert) {
-            if (arg == DNNL_ARG_C) {
+            if (arg == gemm_arg::C) {
                 VDISPATCH_GEMM_SC(
                         post_ops_.append_binary(binary_div, &scale_md),
                         "%s: %s scales via binary post-op",
@@ -174,24 +177,24 @@ status_t pd_t::init_post_ops(impl::engine_t *engine) {
     if (!a_scales.has_default_values() && !a_scales.is_host_scalar()) {
         // Host scalar scale will be converted to Alpha
         bool converted;
-        CHECK(maybe_convert_scales_to_postop(a_scale_md_, DNNL_ARG_A,
-                a_quant.scale_ndims, a_scales.is_mx(), converted));
-        if (converted) a_quant.scale_ndims = -1;
+        CHECK(maybe_convert_scales_to_postop(a_scale_md_, gemm_arg::A,
+                a_scale_ndims(), a_scales.is_mx(), converted));
+        if (converted) a_scale_ndims_override_ = -1;
     }
 
     if (!b_scales.has_default_values() && !b_scales.is_host_scalar()) {
         bool converted;
-        CHECK(maybe_convert_scales_to_postop(b_scale_md_, DNNL_ARG_B,
-                b_quant.scale_ndims, b_scales.is_mx(), converted));
-        if (converted) b_quant.scale_ndims = -1;
+        CHECK(maybe_convert_scales_to_postop(b_scale_md_, gemm_arg::B,
+                b_scale_ndims(), b_scales.is_mx(), converted));
+        if (converted) b_scale_ndims_override_ = -1;
     }
 
     bool try_c_scale = !c_scales.is_host_scalar()
             || (c_scales.is_host_scalar() && num_orig_postops > 0);
     if (!c_scales.has_default_values() && try_c_scale) {
         bool converted;
-        CHECK(maybe_convert_scales_to_postop(c_scale_md_, DNNL_ARG_C,
-                c_quant.scale_ndims, c_scales.is_mx(), converted));
+        CHECK(maybe_convert_scales_to_postop(c_scale_md_, gemm_arg::C,
+                c_scale_ndims(), c_scales.is_mx(), converted));
         // Conversion of dst scales to post ops is currently supported for all
         // cases supported in the library.
         gpu_assert(converted || c_scales.is_mx())
@@ -216,14 +219,28 @@ bool pd_t::dy_quant_enabled() {
 bool pd_t::wei_decomp() {
     const auto d = desc();
     using namespace data_type;
-    return (utils::one_of(d->c_type(), f32, f16, bf16, f8_e5m2, f8_e4m3)
-                   && utils::one_of(d->a_type(), u8, s8, s4, u4, f8_e4m3,
-                           f8_e5m2, f4_e2m1, f4_e3m0)
-                   && utils::one_of(
-                           d->b_type(), f16, f32, bf16, f8_e5m2, f8_e4m3))
-            && types::data_type_bits(d->a_type())
-            < types::data_type_bits(d->b_type())
-            && attr()->mayiconvert(d->a_type(), f32);
+    auto c_ok = utils::one_of(d->c_type(), f32, f16, bf16, f8_e5m2, f8_e4m3);
+    if (!c_ok) return false;
+    auto int_low = [](data_type_t t) {
+        return utils::one_of(t, u8, s8, s4, u4, f8_e4m3, f8_e5m2, f4_e2m1,
+                f4_e3m0);
+    };
+    auto float_hi = [](data_type_t t) {
+        return utils::one_of(t, f16, f32, bf16, f8_e5m2, f8_e4m3);
+    };
+    // Symmetric across swap_ab: int weights paired with float src in
+    // either slot.
+    auto int_t = int_low(d->a_type()) ? d->a_type()
+            : int_low(d->b_type())    ? d->b_type()
+                                      : data_type::undef;
+    auto float_t = float_hi(d->a_type()) ? d->a_type()
+            : float_hi(d->b_type())      ? d->b_type()
+                                         : data_type::undef;
+    if (int_t == data_type::undef || float_t == data_type::undef
+            || int_t == float_t)
+        return false;
+    return types::data_type_bits(int_t) < types::data_type_bits(float_t)
+            && attr()->mayiconvert(int_t, f32);
 }
 
 bool pd_t::quant_enabled() {
@@ -234,108 +251,67 @@ status_t pd_t::init_attrs(impl::engine_t *engine) {
     wei_decomp_ = wei_decomp();
     dy_quant_enabled_ = dy_quant_enabled();
     quant_enabled_ = quant_enabled();
-    const auto &d = desc();
 
     const auto &attr_zps = attr()->zero_points_;
-    const auto a_zps = attr_zps.get(DNNL_ARG_A);
-    const auto b_zps = attr_zps.get(DNNL_ARG_B);
-    const auto c_zps = attr_zps.get(DNNL_ARG_C);
+    const auto a_zps = attr_zps.get(gemm_arg::A);
+    const auto b_zps = attr_zps.get(gemm_arg::B);
+    const auto c_zps = attr_zps.get(gemm_arg::C);
 
     const auto &attr_gs = attr()->precomputed_reductions_;
-    const auto a_gs = attr_gs.get(DNNL_ARG_A);
-    const auto b_gs = attr_gs.get(DNNL_ARG_B);
+    const auto a_gs = attr_gs.get(gemm_arg::A);
+    const auto b_gs = attr_gs.get(gemm_arg::B);
 
     const auto &scales = attr()->scales_;
-    const auto a_scales = scales.get(DNNL_ARG_A);
-    const auto b_scales = scales.get(DNNL_ARG_B);
-    const auto c_scales = scales.get(DNNL_ARG_C);
+    const auto a_scales = scales.get(gemm_arg::A);
+    const auto b_scales = scales.get(gemm_arg::B);
+    const auto c_scales = scales.get(gemm_arg::C);
 
     cmask_a_ = a_zps.get_mask();
     cmask_b_ = b_zps.get_mask();
     cmask_c_ = c_zps.get_mask();
 
-    // Swap descriptors to follow column major format
-    VDISPATCH_GEMM_SC(a_zps.get_md(a_zp_md_, d->b_desc),
-            VERBOSE_DESC_CREATION_FAIL, "A zero points");
-    VDISPATCH_GEMM_SC(b_zps.get_md(b_zp_md_, d->a_desc),
-            VERBOSE_DESC_CREATION_FAIL, "B zero points");
-    VDISPATCH_GEMM_SC(c_zps.get_md(c_zp_md_, d->c_desc),
-            VERBOSE_DESC_CREATION_FAIL, "C zero points");
-    VDISPATCH_GEMM_SC(a_gs.get_md(a_gs_md_, d->b_desc),
-            VERBOSE_DESC_CREATION_FAIL, "A group sums");
-    VDISPATCH_GEMM_SC(b_gs.get_md(b_gs_md_, d->a_desc),
-            VERBOSE_DESC_CREATION_FAIL, "B group sums");
-    VDISPATCH_GEMM_SC(a_scales.get_md(a_scale_md_, desc_.b_desc),
-            VERBOSE_DESC_CREATION_FAIL, "A scales");
-    VDISPATCH_GEMM_SC(b_scales.get_md(b_scale_md_, desc_.a_desc),
-            VERBOSE_DESC_CREATION_FAIL, "B scales");
-    VDISPATCH_GEMM_SC(c_scales.get_md(c_scale_md_, desc_.c_desc),
-            VERBOSE_DESC_CREATION_FAIL, "C scales");
-
-    auto ndims = d->c_desc.ndims;
-    a_quant.zp_ndims = quant_entry_ndims(a_zps, a_zp_md_, ndims - 2);
-    b_quant.zp_ndims = quant_entry_ndims(b_zps, b_zp_md_, ndims - 1);
-    c_quant.zp_ndims = quant_entry_ndims(c_zps, c_zp_md_, -1);
-    a_quant.gs_ndims = quant_entry_ndims(a_gs, a_gs_md_, ndims - 2);
-    b_quant.gs_ndims = quant_entry_ndims(b_gs, b_gs_md_, ndims - 1);
-    a_quant.scale_ndims = quant_entry_ndims(a_scales, a_scale_md_, ndims - 2);
-    b_quant.scale_ndims = quant_entry_ndims(b_scales, b_scale_md_, ndims - 1);
-    c_quant.scale_ndims = quant_entry_ndims(c_scales, c_scale_md_, -1);
-
-    a_quant.scales_type = a_scales.get_data_type();
-    a_quant.zp_type = a_zps.get_data_type();
-    a_quant.gs_type = a_gs.get_data_type();
-    a_quant.force_gs = !a_gs.has_default_values();
-    a_quant.zp_host_scalar = a_zp_host_scalar();
-    // XXX, gemmstone support: if multiple grouped quantization attributes exist
-    // for one matrix, they must have the same group size (default/unset is 0)
-    const auto &set_if_consistent
-            = [this, engine](int &quant_dim, int new_dim, int arg) -> status_t {
-        VDISPATCH_GEMM(utils::one_of(quant_dim, 0, new_dim),
+    // XXX, gemmstone support: if multiple grouped quantization attributes
+    // exist for one matrix, they must have the same group size (default
+    // unset == 0).
+    const auto set_if_consistent
+            = [this, engine](int &dst, int new_dim, int arg) -> status_t {
+        VDISPATCH_GEMM(utils::one_of(dst, 0, new_dim),
                 "%s: %s quantization attrs with different group sizes",
                 VERBOSE_UNSUPPORTED_ATTR, arg2str(arg).c_str());
-        quant_dim = new_dim;
+        dst = new_dim;
         return status::success;
     };
-    const auto &set_a_groups = [&set_if_consistent](quant_params &quant,
-                                       const quant_entry_t &entry) -> status_t {
+    // a_md has K at ndims-1, kernel-M at ndims-2.
+    const auto add_a = [&](const quant_entry_t &entry) -> status_t {
         if (entry.has_default_groups()) return status::success;
         CHECK(set_if_consistent(
-                quant.group_k, into<int>(entry.get_group(0)), DNNL_ARG_A));
+                a_group_m_, into<int>(entry.get_group(0)), gemm_arg::A));
         CHECK(set_if_consistent(
-                quant.group_m, into<int>(entry.get_group(1)), DNNL_ARG_A));
+                a_group_k_, into<int>(entry.get_group(1)), gemm_arg::A));
         return status::success;
     };
-    CHECK(set_a_groups(a_quant, a_zps));
-    CHECK(set_a_groups(a_quant, a_gs));
-    CHECK(set_a_groups(a_quant, a_scales));
+    CHECK(add_a(a_zps));
+    CHECK(add_a(a_gs));
+    CHECK(add_a(a_scales));
 
-    b_quant.scales_type = b_scales.get_data_type();
-    b_quant.zp_type = b_zps.get_data_type();
-    b_quant.gs_type = b_gs.get_data_type();
-    b_quant.force_gs = !b_gs.has_default_values();
-    b_quant.zp_host_scalar = b_zp_host_scalar();
-    const auto &set_b_groups = [&set_if_consistent](quant_params &quant,
-                                       const quant_entry_t &entry) -> status_t {
+    // b_md has K at ndims-2, kernel-N at ndims-1.
+    const auto add_b = [&](const quant_entry_t &entry) -> status_t {
         if (entry.has_default_groups()) return status::success;
         CHECK(set_if_consistent(
-                quant.group_n, into<int>(entry.get_group(0)), DNNL_ARG_B));
+                b_group_k_, into<int>(entry.get_group(0)), gemm_arg::B));
         CHECK(set_if_consistent(
-                quant.group_k, into<int>(entry.get_group(1)), DNNL_ARG_B));
+                b_group_n_, into<int>(entry.get_group(1)), gemm_arg::B));
         return status::success;
     };
-    CHECK(set_b_groups(b_quant, b_zps));
-    CHECK(set_b_groups(b_quant, b_gs));
-    CHECK(set_b_groups(b_quant, b_scales));
+    CHECK(add_b(b_zps));
+    CHECK(add_b(b_gs));
+    CHECK(add_b(b_scales));
 
-    c_quant.scales_type = c_scales.get_data_type();
-    c_quant.zp_type = c_zps.get_data_type();
     if (!c_scales.has_default_groups()) {
-        c_quant.group_m = into<int>(c_scales.get_group(1));
-        c_quant.group_n = into<int>(c_scales.get_group(0));
+        c_group_m_ = into<int>(c_scales.get_group(0));
+        c_group_n_ = into<int>(c_scales.get_group(1));
         with_mx_scale_ = c_scales.is_mx();
     }
-    c_quant.zp_host_scalar = c_zp_host_scalar();
 
     return status::success;
 }
@@ -344,11 +320,11 @@ status_t pd_t::zp_ok(impl::engine_t *engine) {
     using namespace data_type;
     auto &attr_zps = attr()->zero_points_;
     if (attr_zps.has_default_values()) return status::success;
-    auto &a_zps = attr_zps.get(DNNL_ARG_A);
-    auto &b_zps = attr_zps.get(DNNL_ARG_B);
-    auto &c_zps = attr_zps.get(DNNL_ARG_C);
+    auto &a_zps = attr_zps.get(gemm_arg::A);
+    auto &b_zps = attr_zps.get(gemm_arg::B);
+    auto &c_zps = attr_zps.get(gemm_arg::C);
 
-    int ndims = desc()->a_desc.ndims;
+    int ndims = desc()->a_md().ndims;
     const bool a_int4 = utils::one_of(desc()->a_type(), s4, u4);
     const bool b_int4 = utils::one_of(desc()->b_type(), s4, u4);
     const bool weights_upconversion
@@ -367,7 +343,7 @@ status_t pd_t::zp_ok(impl::engine_t *engine) {
             // Zero points with non-trivial groups only supported with
             // precomputed reductions or when target tensor is being dequantized.
             bool has_prB = !attr()->precomputed_reductions_.has_default_values(
-                    DNNL_ARG_B);
+                    gemm_arg::B);
             // TODO: Re-examine this condition
             bool is_dequantized = !dy_quant_enabled_ || !b_int4 || a_int4;
             VDISPATCH_GEMM(IMPLICATION(a_zp_2d(), is_dequantized || has_prB),
@@ -415,7 +391,7 @@ status_t pd_t::zp_ok(impl::engine_t *engine) {
         }
     }
 
-    if (!attr_zps.has_default_values(DNNL_ARG_C)) {
+    if (!attr_zps.has_default_values(gemm_arg::C)) {
         VDISPATCH_GEMM(
                 IMPLICATION(!c_zps.is_host_scalar(),
                         utils::one_of(cmask_c_, 0, mask_scalar, mask_per_oc)),
@@ -429,17 +405,17 @@ status_t pd_t::gs_ok(impl::engine_t *engine) {
     auto &attr_gs = attr()->precomputed_reductions_;
     if (attr_gs.has_default_values()) return status::success;
 
-    VDISPATCH_GEMM(attr_gs.has_default_values(DNNL_ARG_DST),
+    VDISPATCH_GEMM(attr_gs.has_default_values(gemm_arg::C),
             VERBOSE_UNSUPPORTED_PR_CFG);
 
-    bool with_a_group_sums_ = !attr_gs.has_default_values(DNNL_ARG_A);
-    bool with_b_group_sums_ = !attr_gs.has_default_values(DNNL_ARG_B);
+    bool with_a_group_sums_ = !attr_gs.has_default_values(gemm_arg::A);
+    bool with_b_group_sums_ = !attr_gs.has_default_values(gemm_arg::B);
 
     VDISPATCH_GEMM(IMPLICATION(with_a_group_sums_,
-                           attr_gs.get_data_type(DNNL_ARG_A) == data_type::s32),
+                           attr_gs.get_data_type(gemm_arg::A) == data_type::s32),
             VERBOSE_UNSUPPORTED_DT_CFG);
     VDISPATCH_GEMM(IMPLICATION(with_b_group_sums_,
-                           attr_gs.get_data_type(DNNL_ARG_B) == data_type::s32),
+                           attr_gs.get_data_type(gemm_arg::B) == data_type::s32),
             VERBOSE_UNSUPPORTED_DT_CFG);
 
     return status::success;
@@ -448,10 +424,10 @@ status_t pd_t::gs_ok(impl::engine_t *engine) {
 status_t pd_t::scales_ok(impl::engine_t *engine) {
     const auto &scales = attr()->scales_;
     if (scales.has_default_values()) return status::success;
-    int ndims = desc()->a_desc.ndims;
+    int ndims = desc()->a_md().ndims;
     using namespace data_type;
 
-    for (auto s : {DNNL_ARG_A, DNNL_ARG_B}) {
+    for (auto s : {gemm_arg::A, gemm_arg::B}) {
         if (scales.has_default_values(s) || scales.get(s).is_host_scalar())
             continue;
         const auto &x_scales = scales.get(s);
@@ -465,7 +441,7 @@ status_t pd_t::scales_ok(impl::engine_t *engine) {
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
     }
 
-    const auto &dst_scales = scales.get(DNNL_ARG_C);
+    const auto &dst_scales = scales.get(gemm_arg::C);
     if (!dst_scales.has_default_values() && !dst_scales.is_host_scalar()) {
         auto mask = dst_scales.get_mask();
         bool supportedMask
@@ -485,7 +461,7 @@ status_t pd_t::scales_ok(impl::engine_t *engine) {
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
 
         // M+N dimensions must have trivial strides for Dynamic Dst Quant
-        auto md = &desc()->c_desc;
+        auto md = &desc()->c_md();
         auto strides = md->format_desc.blocking.strides;
         VDISPATCH_GEMM(strides[md->ndims - 1] == 1,
                 "%s: unsupported mx_scale strides",
@@ -504,8 +480,8 @@ bool pd_t::valid_2d_mask(int mask, int ndims, bool per_tensor_ok) {
                     (1 << (ndims - 1)) + (1 << (ndims - 2)));
 }
 
-status_t transfer_post_ops(
-        gemmstone::GEMMProblem &problem, gpu_post_ops_t &&post_ops_) {
+status_t transfer_post_ops(gemmstone::GEMMProblem &problem,
+        gpu_post_ops_t &&post_ops_) {
     using namespace gemmstone;
     problem.postOps = std::move(post_ops_);
     const auto &post_ops = problem.postOps;
@@ -534,13 +510,15 @@ status_t transfer_post_ops(
             auto &src_rmd = entry.as_binary().src1_desc;
 
             auto T = convert_dnnl_to_kernel_type(src_rmd.dt);
-            bool is_multi_row = (src_rmd.broadcast_mask & 1) == 0;
-            bool is_multi_col = (src_rmd.broadcast_mask & 2) == 0;
+            constexpr int row_bit = 2;
+            constexpr int col_bit = 1;
+            bool is_multi_row = (src_rmd.broadcast_mask & row_bit) == 0;
+            bool is_multi_col = (src_rmd.broadcast_mask & col_bit) == 0;
 
             bool is_compatible = src_rmd.inner_layout.empty();
             if (!is_compatible) return status::unimplemented;
 
-            bool trans = is_multi_row && !src_rmd.inner_dim.is_innermost();
+            bool trans = src_rmd.inner_dim.is_innermost();
 
             problem.Tbinary.push_back(T);
             problem.postOps.binaryRow[i] = is_multi_row;
@@ -574,31 +552,21 @@ status_t pd_t::init_GEMMProblem(
             || engine->mayiuse(compute::device_ext_t::
                             intel_subgroup_split_matrix_multiply_accumulate);
 
-    auto a_type = get_type(DNNL_ARG_A);
-    auto b_type = get_type(DNNL_ARG_B);
+    auto a_type = get_type(gemm_arg::A);
+    auto b_type = get_type(gemm_arg::B);
 
     auto m = desc()->m();
     auto n = desc()->n();
     auto k = desc()->k();
 
-    auto align_a = align(DNNL_ARG_A);
-    auto align_b = align(DNNL_ARG_B);
+    auto align_a = align(gemm_arg::A);
+    auto align_b = align(gemm_arg::B);
 
-    auto lda = ld(DNNL_ARG_A);
-    auto ldb = ld(DNNL_ARG_B);
+    auto lda = ld(gemm_arg::A);
+    auto ldb = ld(gemm_arg::B);
 
     auto trans_a = this->trans_a();
     auto trans_b = this->trans_b();
-
-    if (swap_ab_) {
-        std::swap(a_type, b_type);
-        std::swap(m, n);
-        std::swap(align_a, align_b);
-        std::swap(lda, ldb);
-        std::swap(trans_a, trans_b);
-        trans_a = !trans_a;
-        trans_b = !trans_b;
-    }
 
     align_a = nstl::max(align_a, (int)types::data_type_size(a_type));
     auto a_size = (trans_a ? m : k) * lda * types::data_type_size(a_type);
@@ -611,12 +579,12 @@ status_t pd_t::init_GEMMProblem(
     int_acc &= !(a_grouped() || b_grouped());
     auto c_type = desc()->c_type();
     auto align_c
-            = nstl::max(align(DNNL_ARG_C), (int)types::data_type_size(c_type));
+            = nstl::max(align(gemm_arg::C), (int)types::data_type_size(c_type));
     auto ldc = desc()->ldc();
     auto c_size = n * ldc * types::data_type_size(c_type);
 
     auto co_type = with_bias() ? desc()->bias_type()
-            : with_sum_ab()    ? desc()->sum_ab_type
+            : with_sum_ab()    ? desc()->sum_ab_type()
             : int_acc          ? data_type::s32
                                : desc()->c_type();
 
@@ -642,28 +610,18 @@ status_t pd_t::init_GEMMProblem(
     }
     if (wei_decomp_) { acc_type = data_type::f32; }
 
-    auto trans_co = trans_bias();
-    if (swap_ab_) trans_co = !trans_co;
+    auto trans_co = !trans_bias();
     auto dst_sround = with_sround_;
     bool c_offset = with_c_zero_points();
     bool bias = with_bias();
-
-    jit::quant_params a_quant = this->a_quant;
-    jit::quant_params b_quant = this->b_quant;
-
-    if (swap_ab()) {
-        std::swap(a_quant, b_quant);
-        std::swap(a_quant.group_m, a_quant.group_n);
-        std::swap(b_quant.group_m, b_quant.group_n);
-    }
 
     problem.Ta = problem.Ta_ext = convert_dnnl_to_kernel_type(a_type);
     problem.Tb = problem.Tb_ext = convert_dnnl_to_kernel_type(b_type);
     problem.Tc = convert_dnnl_to_kernel_type(acc_type);
     problem.Tc_ext = convert_dnnl_to_kernel_type(c_type);
     problem.Ts = problem.Tc;
-    problem.Tao = convert_dnnl_to_kernel_type(a_quant.zp_type);
-    problem.Tbo = convert_dnnl_to_kernel_type(b_quant.zp_type);
+    problem.Tao = convert_dnnl_to_kernel_type(a_zp_dt());
+    problem.Tbo = convert_dnnl_to_kernel_type(b_zp_dt());
     problem.Tco = convert_dnnl_to_kernel_type(co_type);
     problem.A.layout = trans_a ? MatrixLayout::T : MatrixLayout::N;
     problem.B.layout = trans_b ? MatrixLayout::T : MatrixLayout::N;
@@ -685,14 +643,14 @@ status_t pd_t::init_GEMMProblem(
         problem.batch = BatchMode::Strided;
         problem.batchDims = batch_dims();
     }
-    if (a_quant.zp_ndims >= 0 || a_quant.zp_host_scalar)
+    if (a_zp_ndims() >= 0 || a_zp_host_scalar())
         problem.aOffset = ABOffset::Calc;
-    if (b_quant.zp_ndims >= 0 || b_quant.zp_host_scalar)
+    if (b_zp_ndims() >= 0 || b_zp_host_scalar())
         problem.bOffset = ABOffset::Calc;
-    problem.aoPtrDims = a_quant.zp_host_scalar ? -1 : a_quant.zp_ndims;
-    problem.boPtrDims = b_quant.zp_host_scalar ? -1 : b_quant.zp_ndims;
-    problem.asPtrDims = a_quant.scale_ndims;
-    problem.bsPtrDims = b_quant.scale_ndims;
+    problem.aoPtrDims = a_zp_host_scalar() ? -1 : a_zp_ndims();
+    problem.boPtrDims = b_zp_host_scalar() ? -1 : b_zp_ndims();
+    problem.asPtrDims = a_scale_ndims();
+    problem.bsPtrDims = b_scale_ndims();
 
     problem.AO.layout = problem.BO.layout = MatrixLayout::N;
     problem.AO.crosspack = problem.BO.crosspack = 1;
@@ -700,44 +658,57 @@ status_t pd_t::init_GEMMProblem(
     problem.A_scale = problem.Ag = problem.AO;
     problem.B_scale = problem.Bg = problem.BO;
 
+    // Only the late-scale (integer-DPAS) path needs scale md layout
+    // aligned with A/B; 4-bit and wei_decomp leave layout to the kernel.
+    const bool any_4bit = utils::one_of(a_type, data_type::s4,
+                                  data_type::u4, data_type::f4_e2m1,
+                                  data_type::f4_e3m0)
+            || utils::one_of(b_type, data_type::s4, data_type::u4,
+                    data_type::f4_e2m1, data_type::f4_e3m0);
+    const bool late_scale_path = !wei_decomp_ && !any_4bit;
+    if (problem.aScale2D() && trans_a && late_scale_path)
+        problem.A_scale.layout = MatrixLayout::T;
+    if (problem.bScale2D() && trans_b && late_scale_path)
+        problem.B_scale.layout = MatrixLayout::T;
+
     // 1D tensors can be treated as either transposition - choose the one that
     // allows block loads (i.e. A -> N and B -> T)
     if (!problem.bOffset2D()) problem.BO.layout = MatrixLayout::T;
     if (!problem.bScale2D()) problem.B_scale.layout = MatrixLayout::T;
-    if (b_quant.gs_ndims < 2) problem.Bg.layout = MatrixLayout::T;
+    if (b_gs_ndims() < 2) problem.Bg.layout = MatrixLayout::T;
 
-    if (a_quant.zp_type != data_type::undef)
-        problem.AO.setAlignment(int(types::data_type_size(a_quant.zp_type)));
-    if (b_quant.zp_type != data_type::undef)
-        problem.BO.setAlignment(int(types::data_type_size(b_quant.zp_type)));
-    problem.aqGroupK = a_quant.group_k;
-    problem.bqGroupK = b_quant.group_k;
-    problem.aqGroupM = a_quant.group_m;
-    problem.bqGroupN = b_quant.group_n;
-    if (a_quant.scales_type != data_type::undef) {
-        problem.Ta_scale = convert_dnnl_to_kernel_type(a_quant.scales_type);
+    if (a_zp_dt() != data_type::undef)
+        problem.AO.setAlignment(int(types::data_type_size(a_zp_dt())));
+    if (b_zp_dt() != data_type::undef)
+        problem.BO.setAlignment(int(types::data_type_size(b_zp_dt())));
+    problem.aqGroupK = a_group_k_;
+    problem.bqGroupK = b_group_k_;
+    problem.aqGroupM = a_group_m_;
+    problem.bqGroupN = b_group_n_;
+    if (a_scale_dt() != data_type::undef) {
+        problem.Ta_scale = convert_dnnl_to_kernel_type(a_scale_dt());
         problem.A_scale.setAlignment(
-                int(types::data_type_size(a_quant.scales_type)));
+                int(types::data_type_size(a_scale_dt())));
     }
-    if (b_quant.scales_type != data_type::undef) {
-        problem.Tb_scale = convert_dnnl_to_kernel_type(b_quant.scales_type);
+    if (b_scale_dt() != data_type::undef) {
+        problem.Tb_scale = convert_dnnl_to_kernel_type(b_scale_dt());
         problem.B_scale.setAlignment(
-                int(types::data_type_size(b_quant.scales_type)));
+                int(types::data_type_size(b_scale_dt())));
     }
 
-    if (c_quant.scales_type != data_type::undef) {
-        problem.csPtrDims = c_quant.scale_ndims;
+    if (c_scale_dt() != data_type::undef) {
+        problem.csPtrDims = c_scale_ndims();
         problem.cMXScale = with_mx_scale_;
-        problem.Tc_scale = convert_dnnl_to_kernel_type(c_quant.scales_type);
-        problem.cqGroupM = c_quant.group_m;
-        problem.cqGroupN = c_quant.group_n;
+        problem.Tc_scale = convert_dnnl_to_kernel_type(c_scale_dt());
+        problem.cqGroupM = c_group_m_;
+        problem.cqGroupN = c_group_n_;
     }
 
     if (problem.Ta_ext.isInt4() && problem.Tb_ext.isInt8()
-            && a_quant.zp_ndims >= 0)
+            && a_zp_ndims() >= 0)
         problem.Ta = Type::s8;
     if (problem.Tb_ext.isInt4() && problem.Ta_ext.isInt8()
-            && b_quant.zp_ndims >= 0)
+            && b_zp_ndims() >= 0)
         problem.Tb = Type::s8;
 
     if (problem.Ta.isInteger()) problem.Ts = Type::f32;
@@ -750,11 +721,6 @@ status_t pd_t::init_GEMMProblem(
             gpu_post_ops, post_ops_, dst_md(), get_post_op_specializations()));
 
     CHECK(transfer_post_ops(problem, std::move(gpu_post_ops)));
-    if (swap_ab()) {
-        problem.postOps.transpose();
-        for (auto &b : problem.binary)
-            b.transpose();
-    }
 
     auto reduce_ab = sum_ab();
     if (c_offset || bias || reduce_ab != sum_ab::sum_none) {
@@ -764,14 +730,13 @@ status_t pd_t::init_GEMMProblem(
         problem.CO.crosspack = 1;
         problem.CO.alignment = problem.C.alignment;
         problem.CO.layout = trans_co ? MatrixLayout::T : MatrixLayout::N;
-        problem.coPtrDims = c_quant.zp_host_scalar ? -1 : c_quant.zp_ndims;
+        problem.coPtrDims = c_zp_host_scalar() ? -1 : c_zp_ndims();
     }
 
-    problem.sumA = (reduce_ab == sum_ab::sum_b_col);
-    problem.sumB = (reduce_ab == sum_ab::sum_a_row);
-    if (swap_ab_) std::swap(problem.sumA, problem.sumB);
-    problem.forceGroupSumsA = a_quant.force_gs;
-    problem.forceGroupSumsB = b_quant.force_gs;
+    problem.sumA = (reduce_ab == sum_ab::sum_a_row);
+    problem.sumB = (reduce_ab == sum_ab::sum_b_col);
+    problem.forceGroupSumsA = a_force_gs();
+    problem.forceGroupSumsB = b_force_gs();
 
     problem.postOps.cStochasticRound = dst_sround;
 
@@ -779,18 +744,18 @@ status_t pd_t::init_GEMMProblem(
         problem.autoTypeConversions(has_systolic);
 
     if (problem.needsAGroupSums()) {
-        data_type_t gs_dt = a_quant.gs_type == data_type::undef
+        data_type_t gs_dt = a_gs_dt() == data_type::undef
                 ? data_type::s32
-                : a_quant.gs_type;
+                : a_gs_dt();
         problem.Tag = convert_dnnl_to_kernel_type(gs_dt);
         problem.Ag.setAlignment(problem.Tag.paddedSize());
         if (problem.bqGroupK == 0) problem.bqGroupK = problem.aqGroupK;
         if (problem.aqGroupK == 0) problem.aqGroupK = problem.bqGroupK;
     }
     if (problem.needsBGroupSums()) {
-        data_type_t gs_dt = b_quant.gs_type == data_type::undef
+        data_type_t gs_dt = b_gs_dt() == data_type::undef
                 ? data_type::s32
-                : b_quant.gs_type;
+                : b_gs_dt();
         problem.Tbg = convert_dnnl_to_kernel_type(gs_dt);
         problem.Bg.setAlignment(problem.Tbg.paddedSize());
         if (problem.aqGroupK == 0) problem.aqGroupK = problem.bqGroupK;
@@ -801,17 +766,6 @@ status_t pd_t::init_GEMMProblem(
     if (problem.nativeBDPAS()) {
         if (((!problem.Ta.isF4() || !problem.Tb.isF4()) || k % 64 == 0))
             problem.bdpasEnabled = true;
-    }
-
-    if (swap_ab_) {
-        // problem.A and problem.B are already swapped + transposed
-        // TODO: use problem.transpose() instead
-        problem.AO.transpose();
-        problem.BO.transpose();
-        problem.A_scale.transpose();
-        problem.B_scale.transpose();
-        problem.Ag.transpose();
-        problem.Bg.transpose();
     }
 
     return status::success;
@@ -850,9 +804,9 @@ dim_t pd_t::stride_binary(int idx, int stride) const {
 }
 
 dim_t pd_t::scale_stride(int idx, int arg) const {
-    gpu_assert(utils::one_of(arg, DNNL_ARG_A, DNNL_ARG_B));
+    gpu_assert(utils::one_of(arg, gemm_arg::A, gemm_arg::B));
     const memory_desc_t *md_ptr
-            = (arg == DNNL_ARG_A) ? &a_scale_md_ : &b_scale_md_;
+            = (arg == gemm_arg::A) ? &a_scale_md_ : &b_scale_md_;
     gpu_assert(memory_desc_wrapper(md_ptr).is_plain())
             << "Expected plain scale_md_";
     if (md_ptr->dims[idx] == 1) return 0;
@@ -860,8 +814,8 @@ dim_t pd_t::scale_stride(int idx, int arg) const {
 }
 
 dim_t pd_t::zp_stride(int idx, int arg) const {
-    gpu_assert(utils::one_of(arg, DNNL_ARG_A, DNNL_ARG_B));
-    const memory_desc_t *md_ptr = (arg == DNNL_ARG_A) ? &a_zp_md_ : &b_zp_md_;
+    gpu_assert(utils::one_of(arg, gemm_arg::A, gemm_arg::B));
+    const memory_desc_t *md_ptr = (arg == gemm_arg::A) ? &a_zp_md_ : &b_zp_md_;
     gpu_assert(memory_desc_wrapper(md_ptr).is_plain())
             << "Expected plain zp_md_";
     if (md_ptr->dims[idx] == 1) return 0;
@@ -869,8 +823,8 @@ dim_t pd_t::zp_stride(int idx, int arg) const {
 }
 
 dim_t pd_t::gs_stride(int idx, int arg) const {
-    gpu_assert(utils::one_of(arg, DNNL_ARG_A, DNNL_ARG_B));
-    const memory_desc_t *md_ptr = (arg == DNNL_ARG_A) ? &a_gs_md_ : &b_gs_md_;
+    gpu_assert(utils::one_of(arg, gemm_arg::A, gemm_arg::B));
+    const memory_desc_t *md_ptr = (arg == gemm_arg::A) ? &a_gs_md_ : &b_gs_md_;
     gpu_assert(memory_desc_wrapper(md_ptr).is_plain())
             << "Expected plain gs_md_";
     if (md_ptr->dims[idx] == 1) return 0;

@@ -1086,87 +1086,72 @@ status_t simple_common_t<aprop>::init_res_storage(
 
 template <prop_kind_t aprop>
 gemm_sig((simple_common_t<aprop>::gemm_primitive)) {
-    // We flip A and B here since the GEMM API is row major but the
-    // RNN code describes GEMM in column major fashion
+    std::shared_ptr<impl::primitive_t> gemm;
+    int scratch_key = 0;
+    switch (gemm_kind) {
+        case gemm_iter_fwd:
+            gemm = gemm_iter_fwd_;
+            scratch_key = utils::scratch_t::key_gemm_iter_fwd;
+            break;
+        case gemm_iter_fwd_2:
+            gemm = gemm_iter_fwd_2_;
+            scratch_key = utils::scratch_t::key_gemm_iter_fwd_2;
+            break;
+        case gemm_layer_fwd:
+            gemm = gemm_layer_fwd_;
+            scratch_key = utils::scratch_t::key_gemm_layer_fwd;
+            break;
+        case gemm_layer_fwd_src:
+            gemm = gemm_layer_fwd_src_;
+            scratch_key = utils::scratch_t::key_gemm_layer_fwd_src;
+            break;
+        case gemm_iter_bwd:
+            gemm = gemm_iter_bwd_;
+            scratch_key = utils::scratch_t::key_gemm_iter_bwd;
+            break;
+        case gemm_iter_bwd_2:
+            gemm = gemm_iter_bwd_2_;
+            scratch_key = utils::scratch_t::key_gemm_iter_bwd_2;
+            break;
+        case gemm_layer_bwd:
+            gemm = gemm_layer_bwd_;
+            scratch_key = utils::scratch_t::key_gemm_layer_bwd;
+            break;
+        case gemm_layer_bwd_src:
+            gemm = gemm_layer_bwd_src_;
+            scratch_key = utils::scratch_t::key_gemm_layer_bwd;
+            break;
+        case gemm_diff_wei_iter:
+            gemm = gemm_diff_wei_iter_;
+            scratch_key = utils::scratch_t::key_gemm_diff_wei_iter;
+            break;
+        case gemm_diff_wei_layer:
+            gemm = gemm_diff_wei_layer_;
+            scratch_key = utils::scratch_t::key_gemm_diff_wei_layer;
+            break;
+        case gemm_diff_wei_layer_src:
+            gemm = gemm_diff_wei_layer_src_;
+            scratch_key = utils::scratch_t::key_gemm_diff_wei_layer_src;
+            break;
+        case gemm_diff_wei_iter_2:
+            gemm = gemm_diff_wei_iter_2_;
+            scratch_key = utils::scratch_t::key_gemm_diff_wei_iter_2;
+            break;
+        default: assert(!"unknown gemm_kind"); return status::runtime_error;
+    }
+
+    // RNN passes args column-major; rebind to matmul-natural (a=src, b=wei).
     gemm::exec_args_t gemm_args;
     gemm_args.a = b.get();
     gemm_args.b = a.get();
     gemm_args.c = c.get();
 
     auto gemm_ctx = gemm::exec_ctx_t(ctx, gemm_args);
+    auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
+            scratch_key, gemm->pd()->scratchpad_registry());
+    gemm_ctx.set_scratchpad_grantor(nested_grantor);
 
-    const auto init_gemm_nested_scratchpad
-            = [&](const std::shared_ptr<impl::primitive_t> &gemm, int key) {
-        auto *nested_grantor
-                = create_nested_grantor(ctx.get_scratchpad_grantor(), key,
-                        gemm->pd()->scratchpad_registry());
-        gemm_ctx.set_scratchpad_grantor(nested_grantor);
-    };
-
-    switch (gemm_kind) {
-        case gemm_iter_fwd:
-            init_gemm_nested_scratchpad(
-                    gemm_iter_fwd_, utils::scratch_t::key_gemm_iter_fwd);
-            CHECK(gemm::gemm(gemm_iter_fwd_)->execute(gemm_ctx));
-            break;
-        case gemm_iter_fwd_2:
-            init_gemm_nested_scratchpad(
-                    gemm_iter_fwd_2_, utils::scratch_t::key_gemm_iter_fwd_2);
-            CHECK(gemm::gemm(gemm_iter_fwd_2_)->execute(gemm_ctx));
-            break;
-        case gemm_layer_fwd:
-            init_gemm_nested_scratchpad(
-                    gemm_layer_fwd_, utils::scratch_t::key_gemm_layer_fwd);
-            CHECK(gemm::gemm(gemm_layer_fwd_)->execute(gemm_ctx));
-            break;
-        case gemm_layer_fwd_src:
-            init_gemm_nested_scratchpad(gemm_layer_fwd_src_,
-                    utils::scratch_t::key_gemm_layer_fwd_src);
-            CHECK(gemm::gemm(gemm_layer_fwd_src_)->execute(gemm_ctx));
-            break;
-        case gemm_iter_bwd:
-            init_gemm_nested_scratchpad(
-                    gemm_iter_bwd_, utils::scratch_t::key_gemm_iter_bwd);
-            CHECK(gemm::gemm(gemm_iter_bwd_)->execute(gemm_ctx));
-            break;
-        case gemm_iter_bwd_2:
-            init_gemm_nested_scratchpad(
-                    gemm_iter_bwd_2_, utils::scratch_t::key_gemm_iter_bwd_2);
-            CHECK(gemm::gemm(gemm_iter_bwd_2_)->execute(gemm_ctx));
-            break;
-        case gemm_layer_bwd:
-            init_gemm_nested_scratchpad(
-                    gemm_layer_bwd_, utils::scratch_t::key_gemm_layer_bwd);
-            CHECK(gemm::gemm(gemm_layer_bwd_)->execute(gemm_ctx));
-            break;
-        case gemm_layer_bwd_src:
-            init_gemm_nested_scratchpad(
-                    gemm_layer_bwd_src_, utils::scratch_t::key_gemm_layer_bwd);
-            CHECK(gemm::gemm(gemm_layer_bwd_src_)->execute(gemm_ctx));
-            break;
-        case gemm_diff_wei_iter:
-            init_gemm_nested_scratchpad(gemm_diff_wei_iter_,
-                    utils::scratch_t::key_gemm_diff_wei_iter);
-            CHECK(gemm::gemm(gemm_diff_wei_iter_)->execute(gemm_ctx));
-            break;
-        case gemm_diff_wei_layer:
-            init_gemm_nested_scratchpad(gemm_diff_wei_layer_,
-                    utils::scratch_t::key_gemm_diff_wei_layer);
-            CHECK(gemm::gemm(gemm_diff_wei_layer_)->execute(gemm_ctx));
-            break;
-        case gemm_diff_wei_layer_src:
-            init_gemm_nested_scratchpad(gemm_diff_wei_layer_src_,
-                    utils::scratch_t::key_gemm_diff_wei_layer_src);
-            CHECK(gemm::gemm(gemm_diff_wei_layer_src_)->execute(gemm_ctx));
-            break;
-        case gemm_diff_wei_iter_2:
-            init_gemm_nested_scratchpad(gemm_diff_wei_iter_2_,
-                    utils::scratch_t::key_gemm_diff_wei_iter_2);
-            CHECK(gemm::gemm(gemm_diff_wei_iter_2_)->execute(gemm_ctx));
-            break;
-        default: assert(!"unknown gemm_kind"); return status::runtime_error;
-    }
-    return status::success;
+    return gemm::gemm(gemm)->execute(gemm_ctx);
 }
 
 //*************** Grid computations strategy: linear ***************//

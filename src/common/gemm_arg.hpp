@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019 Intel Corporation
+* Copyright 2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,31 +14,23 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_GPU_GEMM_PD_HPP
-#define GPU_GPU_GEMM_PD_HPP
+#ifndef COMMON_GEMM_ARG_HPP
+#define COMMON_GEMM_ARG_HPP
 
-#include <assert.h>
-
-#include "common/c_types_map.hpp"
-#include "common/gemm_pd.hpp"
-#include "common/type_helpers.hpp"
-#include "common/utils.hpp"
+// Internal arg keys for the gemm primitive's A/B/C slots. Must not
+// escape past the matmul/IP/conv -> gemm boundary.
 
 namespace dnnl {
 namespace impl {
-namespace gpu {
+namespace gemm_arg {
 
-struct gpu_gemm_pd_t : public gemm_pd_t {
-    using gemm_pd_t::gemm_pd_t;
+constexpr int A = 96;
+constexpr int B = 97;
+constexpr int C = 98;
 
-    bool has_blocks() const {
-        return desc()->a_md().format_desc.blocking.inner_nblks
-                || desc()->b_md().format_desc.blocking.inner_nblks
-                || desc()->c_md().format_desc.blocking.inner_nblks;
-    }
-};
+inline bool is_valid(int arg) { return arg == A || arg == B || arg == C; }
 
-} // namespace gpu
+} // namespace gemm_arg
 } // namespace impl
 } // namespace dnnl
 

@@ -27,25 +27,21 @@ namespace ip {
 status_t gemm_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     using namespace memory_tracking::names;
 
+    // Args in matmul-natural form; inner gemm reroutes.
     gemm::exec_args_t args;
     args.a = &CTX_IN_STORAGE(DNNL_ARG_SRC);
     args.b = &CTX_IN_STORAGE(DNNL_ARG_WEIGHTS);
     args.c = &CTX_OUT_STORAGE(DNNL_ARG_DST);
     args.bias = &CTX_IN_STORAGE(DNNL_ARG_BIAS);
-    memory_storage_t *a0
+
+    args.a_zero_point
             = &CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
-
-    memory_storage_t *b0
+    args.b_zero_point
             = &CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
-
-    memory_storage_t *c0
+    args.c_zero_point
             = &CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
-
-    args.a_zero_point = b0;
-    args.b_zero_point = a0;
-    args.c_zero_point = c0;
-    args.a_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
-    args.b_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    args.a_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    args.b_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
     args.c_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
     args.exec_args = ctx.args();
 
@@ -86,14 +82,14 @@ status_t gemm_bwd_weights_t::execute_backward_weights(
         const exec_ctx_t &ctx) const {
     using namespace memory_tracking::names;
 
+    const int user_a_arg
+            = pd()->wei_tr() ? DNNL_ARG_SRC : DNNL_ARG_DIFF_DST;
+    const int user_b_arg
+            = pd()->wei_tr() ? DNNL_ARG_DIFF_DST : DNNL_ARG_SRC;
+
     gemm::exec_args_t gemm_args;
-    if (pd()->wei_tr()) {
-        gemm_args.a = &CTX_IN_STORAGE(DNNL_ARG_SRC);
-        gemm_args.b = &CTX_IN_STORAGE(DNNL_ARG_DIFF_DST);
-    } else {
-        gemm_args.a = &CTX_IN_STORAGE(DNNL_ARG_DIFF_DST);
-        gemm_args.b = &CTX_IN_STORAGE(DNNL_ARG_SRC);
-    }
+    gemm_args.a = &CTX_IN_STORAGE(user_a_arg);
+    gemm_args.b = &CTX_IN_STORAGE(user_b_arg);
     gemm_args.c = &CTX_OUT_STORAGE(DNNL_ARG_DIFF_WEIGHTS);
     if (!pd()->reduction_pd_)
         gemm_args.sum_ab = &CTX_OUT_STORAGE(DNNL_ARG_DIFF_BIAS);

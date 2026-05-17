@@ -17,13 +17,14 @@
 #ifndef GPU_INTEL_GEMM_EXEC_TYPES_HPP
 #define GPU_INTEL_GEMM_EXEC_TYPES_HPP
 
+#include <utility>
+
+#include "common/gemm_arg.hpp"
 #include "common/memory_storage.hpp"
+#include "common/primitive_attr.hpp"
+#include "common/primitive_attr_quant.hpp"
 #include "common/primitive_exec_types.hpp"
 #include "gpu/intel/gemm/config.hpp"
-
-#define DNNL_ARG_A DNNL_ARG_WEIGHTS
-#define DNNL_ARG_B DNNL_ARG_SRC
-#define DNNL_ARG_C DNNL_ARG_DST
 
 namespace dnnl {
 namespace impl {
@@ -31,9 +32,23 @@ namespace gpu {
 namespace intel {
 namespace gemm {
 
-#define GEMM_CTX_ARG_STORAGE(argument) \
-    (ctx.args().argument ? *(ctx.args().argument) \
-                         : dnnl::impl::memory_storage_t::empty_storage())
+// Rekey user matmul-named attr keys (SRC/WEIGHTS/DST) to gemm A/B/C.
+// Called on a pd-local attr copy at the wrapper -> gemm boundary.
+inline void rekey_attr_for_gemm(primitive_attr_t &a) {
+    auto rekey = [](quant_entries_t &q) {
+        q.swap_entries(DNNL_ARG_SRC, gemm_arg::A);
+        q.swap_entries(DNNL_ARG_WEIGHTS, gemm_arg::B);
+        q.swap_entries(DNNL_ARG_DST, gemm_arg::C);
+    };
+    rekey(a.scales_);
+    rekey(a.zero_points_);
+    rekey(a.precomputed_reductions_);
+}
+
+// Resolve a slot pointer into a reference (empty_storage if unbound).
+#define GEMM_ARG_STORAGE(argument) \
+    (args.argument ? *(args.argument) \
+                   : dnnl::impl::memory_storage_t::empty_storage())
 
 struct exec_args_t {
     const memory_storage_t *a = nullptr;
@@ -55,6 +70,15 @@ struct exec_args_t {
     const memory_storage_t *dropout_offset = nullptr;
     const memory_storage_t *dropout_prob = nullptr;
     impl::exec_args_t exec_args;
+
+    // Swaps all A<->B pointer pairs when swap_ab is set. Self-inverse.
+    void route_by_swap_ab(bool swap_ab) {
+        if (!swap_ab) return;
+        std::swap(a, b);
+        std::swap(a_zero_point, b_zero_point);
+        std::swap(a_scales, b_scales);
+        std::swap(a_group_sums, b_group_sums);
+    }
 };
 
 struct exec_ctx_t : impl::exec_ctx_t {

@@ -29,6 +29,7 @@
 // sdpa_desc_t is a part of.
 
 #include "common/c_types_map.hpp"
+#include "common/gemm_arg.hpp"
 #include "common/memory_desc.hpp"
 #include "common/serialization.hpp"
 #include "common/tag_traits.hpp"
@@ -87,6 +88,14 @@ struct quant_entry_t : public c_compatible {
     }
 
     int get_mask() const { return mask_; }
+    void set_mask(int mask) { mask_ = mask; }
+    // No-op for default groups or out-of-range indices.
+    void swap_group_dims(int i, int j) {
+        if (has_default_groups()) return;
+        if (i >= group_ndims_ || j >= group_ndims_) return;
+        if (i < 0 || j < 0) return;
+        std::swap(group_dims_[i], group_dims_[j]);
+    }
     data_type_t get_data_type() const { return data_type_; }
     dim_t get_group(int d) const {
         // If groups were not requested, return `1` for convenience.
@@ -249,6 +258,31 @@ struct quant_entries_t : public c_compatible {
     }
 
     int get_mask(int arg) const { return get(arg).get_mask(); }
+    void set_mask(int arg, int mask) {
+        auto it = entries_.find(arg);
+        if (it == entries_.end()) return;
+        it->second.set_mask(mask);
+    }
+    void swap_group_dims(int arg, int i, int j) {
+        auto it = entries_.find(arg);
+        if (it == entries_.end()) return;
+        it->second.swap_group_dims(i, j);
+    }
+    void swap_entries(int arg1, int arg2) {
+        const bool has_1 = entries_.find(arg1) != entries_.end();
+        const bool has_2 = entries_.find(arg2) != entries_.end();
+        if (!has_1 && !has_2) return;
+        quant_entry_t e1 = get(arg1);
+        quant_entry_t e2 = get(arg2);
+        if (has_2)
+            entries_[arg1].set(e2);
+        else
+            entries_.erase(arg1);
+        if (has_1)
+            entries_[arg2].set(e1);
+        else
+            entries_.erase(arg2);
+    }
     data_type_t get_data_type(int arg) const {
         return get(arg).get_data_type();
     }
@@ -350,6 +384,8 @@ private:
         for (const auto &sa : {DNNL_ARG_WEIGHTS_1, DNNL_ARG_WEIGHTS_2}) {
             if (arg == sa) return true;
         }
+        // gemm internal primitive arg space.
+        if (gemm_arg::is_valid(arg)) return true;
         return false;
     }
 };
@@ -384,9 +420,6 @@ private:
 
     bool check_arg(int arg) const override {
         // regular
-        // gemm internal primitive would use DNNL_ARG_A, DNNL_ARG_B, DNNL_ARG_C,
-        // which match to DNNL_ARG_WEIGHTS, DNNL_ARG_SRC, DNNL_ARG_DST. They
-        // are defined in gpu internals, thus, not spelled here.
         for (const auto &sa : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) {
             if (arg == sa) return true;
         }
@@ -396,6 +429,8 @@ private:
         for (const auto &sa : {DNNL_ARG_WEIGHTS_1, DNNL_ARG_WEIGHTS_2}) {
             if (arg == sa) return true;
         }
+        // gemm internal primitive arg space.
+        if (gemm_arg::is_valid(arg)) return true;
         return false;
     }
 };
@@ -431,6 +466,8 @@ private:
     bool check_arg(int arg) const override {
         // So far, only SRC is supported for dynamic quantization cases.
         if (arg == DNNL_ARG_SRC) return true;
+        // gemm internal primitive arg space.
+        if (gemm_arg::is_valid(arg)) return true;
         return false;
     }
 };

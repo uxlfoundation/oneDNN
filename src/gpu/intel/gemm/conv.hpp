@@ -144,23 +144,26 @@ struct conv_t : public primitive_t {
             VDISPATCH_GEMM(strstr(conv_pd->name(), "jit:ir") != nullptr,
                     VERBOSE_NULL_ARG);
 
-            desc_.a_desc = *conv_pd->src_md();
-            if (use_spatial_m) transpose(desc_.a_desc, 0, 2);
-            desc_.a_desc.ndims = 2;
+            memory_desc_t matmul_a = *conv_pd->src_md();
+            if (use_spatial_m) transpose(matmul_a, 0, 2);
+            matmul_a.ndims = 2;
 
-            desc_.b_desc = *conv_pd->weights_md();
-            desc_.b_desc.ndims = 2;
-            transpose(desc_.b_desc, 0, 1);
+            memory_desc_t matmul_b = *conv_pd->weights_md();
+            matmul_b.ndims = 2;
+            transpose(matmul_b, 0, 1);
 
-            desc_.c_desc = *conv_pd->dst_md();
-            if (use_spatial_m) transpose(desc_.c_desc, 0, 2);
-            desc_.c_desc.ndims = 2;
+            memory_desc_t matmul_c = *conv_pd->dst_md();
+            if (use_spatial_m) transpose(matmul_c, 0, 2);
+            matmul_c.ndims = 2;
 
+            memory_desc_t matmul_bias = glob_zero_md;
             if (with_bias) {
-                desc_.bias_desc = bias_desc;
-                transpose(desc_.bias_desc, 0, 1);
-                desc_.bias_desc.ndims = 2;
+                matmul_bias = bias_desc;
+                transpose(matmul_bias, 0, 1);
+                matmul_bias.ndims = 2;
             }
+
+            desc_.set_inputs(matmul_a, matmul_b, matmul_c, matmul_bias);
 
             init_scratchpad();
 

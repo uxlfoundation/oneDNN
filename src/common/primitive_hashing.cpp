@@ -432,14 +432,15 @@ size_t get_desc_hash(const gemm_desc_t &desc) {
     size_t seed = 0;
     // Kinds
     seed = hash_combine(seed, static_cast<size_t>(desc.primitive_kind));
-    seed = hash_combine(seed, get_md_hash(desc.a_desc));
-    seed = hash_combine(seed, get_md_hash(desc.b_desc));
-    seed = hash_combine(seed, get_md_hash(desc.c_desc));
-    seed = hash_combine(seed, get_md_hash(desc.bias_desc));
+    seed = hash_combine(seed, get_md_hash(desc.a_md()));
+    seed = hash_combine(seed, get_md_hash(desc.b_md()));
+    seed = hash_combine(seed, get_md_hash(desc.c_md()));
+    seed = hash_combine(seed, get_md_hash(desc.bias_md()));
     // Accumulator type
     seed = hash_combine(seed, static_cast<size_t>(desc.acc_type));
-    seed = hash_combine(seed, static_cast<size_t>(desc.sum_ab));
-    seed = hash_combine(seed, static_cast<size_t>(desc.sum_ab_type));
+    seed = hash_combine(seed, static_cast<size_t>(desc.sum_ab()));
+    seed = hash_combine(seed, static_cast<size_t>(desc.sum_ab_type()));
+    seed = hash_combine(seed, static_cast<size_t>(desc.swap_ab()));
     // Combined hash for gemm desc
     return seed;
 }

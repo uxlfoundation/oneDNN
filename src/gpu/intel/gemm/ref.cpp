@@ -24,10 +24,13 @@ namespace intel {
 namespace gemm {
 
 status_t ref_t::execute(const exec_ctx_t &ctx) const {
-    const auto &a = GEMM_CTX_ARG_STORAGE(b);
-    const auto &b = GEMM_CTX_ARG_STORAGE(a);
-    const auto &bias = GEMM_CTX_ARG_STORAGE(bias);
-    auto &c = GEMM_CTX_ARG_STORAGE(c);
+    // Route matmul-natural args to gemm-keyed kernel slots.
+    auto args = ctx.args();
+    args.route_by_swap_ab(pd()->desc()->swap_ab());
+    const auto &a = GEMM_ARG_STORAGE(a);
+    const auto &b = GEMM_ARG_STORAGE(b);
+    const auto &bias = GEMM_ARG_STORAGE(bias);
+    auto &c = GEMM_ARG_STORAGE(c);
 
     auto pd_desc = pd()->desc();
     bool runtime_dims = utils::one_of(DNNL_RUNTIME_DIM_VAL, pd_desc->batch(),
@@ -43,13 +46,13 @@ status_t ref_t::execute(const exec_ctx_t &ctx) const {
             ? bias.offset() / types::data_type_size(exec_d->bias_type())
             : 0;
 
-    const auto &a0 = GEMM_CTX_ARG_STORAGE(a_zero_point);
-    const auto &b0 = GEMM_CTX_ARG_STORAGE(b_zero_point);
-    const auto &c0 = GEMM_CTX_ARG_STORAGE(c_zero_point);
+    const auto &a0 = GEMM_ARG_STORAGE(a_zero_point);
+    const auto &b0 = GEMM_ARG_STORAGE(b_zero_point);
+    const auto &c0 = GEMM_ARG_STORAGE(c_zero_point);
 
     int c0_mask = 0;
-    if (!pd()->attr()->zero_points_.has_default_values(DNNL_ARG_C)) {
-        c0_mask = pd()->attr()->zero_points_.get_mask(DNNL_ARG_C);
+    if (!pd()->attr()->zero_points_.has_default_values(gemm_arg::C)) {
+        c0_mask = pd()->attr()->zero_points_.get_mask(gemm_arg::C);
     }
 
     const dim_t MB = exec_d->batch();

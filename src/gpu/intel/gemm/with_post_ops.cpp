@@ -16,6 +16,7 @@
 
 #include "gpu/intel/gemm/with_post_ops.hpp"
 #include "gpu/intel/gemm/host_scalars.hpp"
+#include "gpu/intel/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -38,29 +39,28 @@ status_t with_post_ops_t::pd_t::init(impl::engine_t *engine) {
                               && utils::one_of(d->b_type(), f16, f32, bf16))
             && attr()->mayiconvert(d->a_type(), f32);
     VDISPATCH_GEMM(
-            d->c_desc.ndims <= 6, VERBOSE_UNSUPPORTED_MD_FLAG, "c_desc.ndims");
+            d->c_md().ndims <= 6, VERBOSE_UNSUPPORTED_MD_FLAG, "c_desc.ndims");
     VDISPATCH_GEMM(!utils::one_of(DNNL_RUNTIME_DIM_VAL, d->m(), d->n(), d->k()),
             VERBOSE_RUNTIMEDIM_UNSUPPORTED);
     VDISPATCH_GEMM(attr()->has_default_values(attr_skip_mask),
             VERBOSE_UNSUPPORTED_ATTR);
     VDISPATCH_GEMM(!utils::one_of(d->c_type(), u4, s4), VERBOSE_UNSUPPORTED_DT);
 
-    // gemm_post_ops kernel supports only dst zero-point,
-    // host scalar is also supported for dst zp
+    // gemm_post_ops kernel supports only dst zero-point (incl. host scalar).
     const auto &zps = attr()->zero_points_;
-    VDISPATCH_GEMM(!(zps.get(DNNL_ARG_SRC).is_host_scalar()
-                           || zps.get(DNNL_ARG_WEIGHTS).is_host_scalar()),
+    VDISPATCH_GEMM(!(zps.get(gemm_arg::A).is_host_scalar()
+                           || zps.get(gemm_arg::B).is_host_scalar()),
             VERBOSE_UNSUPPORTED_ZP_CFG);
 
     const primitive_attr_t *attributes_with_po = attr();
-    for (int arg : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) {
+    for (int arg : {gemm_arg::A, gemm_arg::B, gemm_arg::C}) {
         if (attr()->scales_.has_default_values(arg)) continue;
 
         const auto &mask = attr()->scales_.get_mask(arg);
-        if (arg == DNNL_ARG_WEIGHTS && !wei_decomp) {
+        if (arg == gemm_arg::B && !wei_decomp) {
             VDISPATCH_GEMM((mask == 0 || mask == (1 << (dst_md()->ndims - 1))),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
-        } else if (arg == DNNL_ARG_DST
+        } else if (arg == gemm_arg::C
                 && attr()->scales_.get(arg).is_dynamic()) {
             VDISPATCH_GEMM(utils::one_of(d->a_type(), f4_e2m1, f8_e5m2, f8_e4m3)
                             && utils::one_of(
@@ -70,13 +70,17 @@ status_t with_post_ops_t::pd_t::init(impl::engine_t *engine) {
             VDISPATCH_GEMM((mask == 0), VERBOSE_UNSUPPORTED_SCALES_CFG);
     }
     attr_info_ = attr_info_t::create(attributes_with_po);
+    // Kernel scale args use user-keyed semantics; only matmul/IP wrappers
+    // populate args.exec_args (see assert in execute()).
+    requires_user_scales_ = attr_info_.with_src_scales
+            || attr_info_.with_wei_scales || attr_info_.with_dst_scales;
 
     const auto &po = attributes_with_po->post_ops_;
     for (auto i = 0; i < po.len(); ++i)
         VDISPATCH_GEMM(!po.entry_[i].is_binary_with_ternary_op(),
                 VERBOSE_UNSUPPORTED_POSTOP);
 
-    VDISPATCH_GEMM(d->sum_ab == sum_ab::sum_none, VERBOSE_UNSUPPORTED_FEATURE,
+    VDISPATCH_GEMM(d->sum_ab() == sum_ab::sum_none, VERBOSE_UNSUPPORTED_FEATURE,
             "bias reduction");
 
     subbyte_pack_ = utils::one_of(d->c_type(), f4_e2m1, f4_e3m0);
@@ -91,7 +95,7 @@ status_t with_post_ops_t::pd_t::init(impl::engine_t *engine) {
                 sizeof(char), OCL_BUFFER_ALIGNMENT);
     }
 
-    dynamic_scales_ = attr()->scales_.get(DNNL_ARG_DST).is_dynamic();
+    dynamic_scales_ = attr()->scales_.get(gemm_arg::C).is_dynamic();
     if (dynamic_scales_) {
         using namespace dnnl::impl::memory_tracking::names;
         const memory_desc_wrapper dst_mdw(dst_md(0));
@@ -119,15 +123,15 @@ status_t with_post_ops_t::pd_t::init(impl::engine_t *engine) {
     VDISPATCH_GEMM(!(pd_ && strstr(pd_->name(), skip_impl) == nullptr),
             VERBOSE_SKIP_PRIMITIVE_IMPL);
     auto desc = *this->desc();
-    dst_type_ = desc.c_desc.data_type;
-    desc.c_desc.data_type = engine->mayiuse_f16_accumulator_with_f16()
-                    && utils::one_of(data_type::f16, desc.a_desc.data_type,
-                            desc.b_desc.data_type)
+    dst_type_ = desc.c_md().data_type;
+    desc.c_md().data_type = engine->mayiuse_f16_accumulator_with_f16()
+                    && utils::one_of(data_type::f16, desc.a_md().data_type,
+                            desc.b_md().data_type)
             ? data_type::f32
             : desc.acc_type;
-    acc_type_ = desc.c_desc.data_type;
-    use_reorder = dst_md(0)->data_type != desc.c_desc.data_type;
-    desc.bias_desc = glob_zero_md;
+    acc_type_ = desc.c_md().data_type;
+    use_reorder = dst_md(0)->data_type != desc.c_md().data_type;
+    desc.bias_md() = glob_zero_md;
     // Setup empty attributes but keep zero points for gemm.
     primitive_attr_t attributes_without_po = *attr();
     CHECK(attributes_without_po.set_post_ops(post_ops_t()));
@@ -135,15 +139,15 @@ status_t with_post_ops_t::pd_t::init(impl::engine_t *engine) {
     attributes_without_po.zero_points_ = zero_points_t();
     attributes_without_po.dropout_ = dropout_t();
     const auto &zp = attributes_with_po->zero_points_;
-    int src_mask = zp.get_mask(DNNL_ARG_SRC);
-    int wei_mask = zp.get_mask(DNNL_ARG_WEIGHTS);
-    if (!zp.has_default_values(DNNL_ARG_SRC)) {
-        CHECK(attributes_without_po.zero_points_.set(DNNL_ARG_SRC, src_mask));
+    int src_mask = zp.get_mask(gemm_arg::A);
+    int wei_mask = zp.get_mask(gemm_arg::B);
+    if (!zp.has_default_values(gemm_arg::A)) {
+        CHECK(attributes_without_po.zero_points_.set(gemm_arg::A, src_mask));
     }
-    if (!zp.has_default_values(DNNL_ARG_WEIGHTS)) {
-        const auto dt = attr()->zero_points_.get_data_type(DNNL_ARG_WEIGHTS);
+    if (!zp.has_default_values(gemm_arg::B)) {
+        const auto dt = attr()->zero_points_.get_data_type(gemm_arg::B);
         CHECK(attributes_without_po.zero_points_.set(
-                DNNL_ARG_WEIGHTS, wei_mask, dt, 0, {}));
+                gemm_arg::B, wei_mask, dt, 0, {}));
     }
 
     primitive_desc_iterator_t it_without_po(engine,
@@ -154,12 +158,16 @@ status_t with_post_ops_t::pd_t::init(impl::engine_t *engine) {
     VDISPATCH_GEMM(!(!pd_ || strstr(pd_->name(), skip_impl) != nullptr),
             VERBOSE_PRIMITIVE_CREATION_FAIL, pd_ ? pd_->name() : "");
 
-    //set tags for end user
-    desc_.a_desc = *pd_->arg_md(DNNL_ARG_SRC_0);
-    desc_.b_desc = *pd_->arg_md(DNNL_ARG_SRC_1);
-    desc_.c_desc = *pd_->arg_md(DNNL_ARG_DST);
-    desc_.c_desc.data_type = dst_type_;
-    desc_.acc_type = desc.c_desc.data_type;
+    // Sync orientation with the inner gemm so the dst_md views match.
+    const auto *inner = op_desc_t::to_desc<gemm_desc_t>(pd_->op_desc());
+    canonicalize_post_ops();
+    if (inner->swap_ab() != desc_.swap_ab()) apply_swap_ab();
+    gpu_assert(inner->swap_ab() == desc_.swap_ab());
+    // Set tags for end user.
+    memory_desc_t c = inner->c_md();
+    c.data_type = dst_type_;
+    desc_.set_inputs(inner->a_md(), inner->b_md(), c, desc_.bias_md());
+    desc_.acc_type = desc.c_md().data_type;
     CHECK(attr_.set_default_formats(dst_md(0)));
     VDISPATCH_GEMM(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
 
@@ -230,11 +238,10 @@ status_t with_post_ops_t::pd_t::init_kernel_ctx(
     kernel_ctx.set_data_type(dynamic_scales_ ? acc_type_ : c_type);
     kernel_ctx.require_stateless_addressing(has_large_buffers());
 
-    const auto &attr_scales = attr()->scales_;
-    const bool with_src_scales = !attr_scales.has_default_values(DNNL_ARG_SRC);
-    const bool with_wei_scales
-            = !attr_scales.has_default_values(DNNL_ARG_WEIGHTS);
-    const bool with_dst_scales = !attr_scales.has_default_values(DNNL_ARG_DST);
+    // Use attr_info_ (user-keyed); kernel scale slots assume user keying.
+    const bool with_src_scales = attr_info_.with_src_scales;
+    const bool with_wei_scales = attr_info_.with_wei_scales;
+    const bool with_dst_scales = attr_info_.with_dst_scales;
     auto is_int_type = [](data_type_t t) {
         return utils::one_of(t, data_type::s8, data_type::u8, data_type::s32);
     };
@@ -254,8 +261,10 @@ status_t with_post_ops_t::pd_t::init_kernel_ctx(
     kernel_ctx.define_int("A_SCALES", with_src_scales);
     kernel_ctx.define_int("B_SCALES", with_wei_scales);
     kernel_ctx.define_int("C_SCALES", with_dst_scales);
-    kernel_ctx.define_int("DST_ZERO_POINT",
-            !attr()->zero_points_.has_default_values(DNNL_ARG_DST));
+    // per_oc wei scale axis flips when swap_ab swaps c_md axes.
+    kernel_ctx.define_int(
+            "B_SCALE_AXIS", desc_.swap_ab() ? ndims - 2 : ndims - 1);
+    kernel_ctx.define_int("DST_ZERO_POINT", attr_info_.with_dst_zpoints);
     kernel_ctx.define_int("WITH_DROPOUT", with_dropout);
     kernel_ctx.define_int("DROPOUT_USE_HOST_SCALARS", dropout_use_host_scalars);
     kernel_ctx.define_int("DROPOUT_USE_OFFSET", dropout_use_offset);
@@ -276,8 +285,12 @@ void with_post_ops_t::pd_t::init_scratchpad() {
 }
 
 status_t with_post_ops_t::execute(const exec_ctx_t &ctx) const {
+    // Scales come from user-keyed args.exec_args, populated by matmul/IP
+    // wrappers; not supported through the gemm primitive bridge.
+    const auto &args = ctx.args();
+    gpu_assert(!pd()->requires_user_scales_ || !args.exec_args.empty());
     std::unique_ptr<memory_t, memory_deleter_t> c_mem_before_po_worker;
-    exec_args_t nested_args(ctx.args());
+    exec_args_t nested_args(args);
 
     if (pd()->use_scratchpad()) {
         auto scratchpad = ctx.get_scratchpad_grantor().get_memory_storage(
@@ -311,28 +324,35 @@ status_t with_post_ops_t::execute(const exec_ctx_t &ctx) const {
     compute::kernel_arg_list_t arg_list;
     arg_list.set(0,
             pd()->use_scratchpad() ? *c_mem_before_po_worker->memory_storage()
-                                   : GEMM_CTX_ARG_STORAGE(c));
-    arg_list.set(1, GEMM_CTX_ARG_STORAGE(bias));
+                                   : GEMM_ARG_STORAGE(c));
+    arg_list.set(1, GEMM_ARG_STORAGE(bias));
     arg_list.set(2,
             dyn_scales             ? *tmp_ds
                     : subbyte_pack ? *tmp
-                                   : GEMM_CTX_ARG_STORAGE(c));
-    const auto &args = ctx.args();
+                                   : GEMM_ARG_STORAGE(c));
     int idx = append_post_ops_to_arg_list(args.exec_args, arg_list, 3,
             pd()->attr()->post_ops_, *pd()->dst_md());
-    //a/b tensors are swapped for gemm
-    arg_list.set(idx++, GEMM_CTX_ARG_STORAGE(b_scales));
-    arg_list.set(idx++, GEMM_CTX_ARG_STORAGE(a_scales));
-    arg_list.set(idx++, GEMM_CTX_ARG_STORAGE(c_scales));
-    arg_list.set(idx++,
-            pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS) > 0 ? 1 : 0);
-    arg_list.set(idx, GEMM_CTX_ARG_STORAGE(c_zero_point));
+    // Scale slots are user-keyed; read straight from args.exec_args.
+    const auto user_scale = [&args](int user_arg) -> const memory_storage_t & {
+        auto it = args.exec_args.find(DNNL_ARG_ATTR_SCALES | user_arg);
+        if (it != args.exec_args.end() && it->second.mem()) {
+            const auto *s = it->second.mem()->memory_storage();
+            if (s) return *s;
+        }
+        return memory_storage_t::empty_storage();
+    };
+    arg_list.set(idx++, user_scale(DNNL_ARG_SRC));
+    arg_list.set(idx++, user_scale(DNNL_ARG_WEIGHTS));
+    arg_list.set(idx++, GEMM_ARG_STORAGE(c_scales));
+    // Use user-keyed wei mask captured at pd init; attr_ may be swapped.
+    arg_list.set(idx++, pd()->attr_info_.wei_scales_mask > 0 ? 1 : 0);
+    arg_list.set(idx, GEMM_ARG_STORAGE(c_zero_point));
     if (pd()->with_dropout) {
-        const auto mem_dropout_seed = &GEMM_CTX_ARG_STORAGE(dropout_seed);
-        const auto mem_dropout_offset = &GEMM_CTX_ARG_STORAGE(dropout_offset);
-        const auto mem_dropout_prob = &GEMM_CTX_ARG_STORAGE(dropout_prob);
+        const auto mem_dropout_seed = &GEMM_ARG_STORAGE(dropout_seed);
+        const auto mem_dropout_offset = &GEMM_ARG_STORAGE(dropout_offset);
+        const auto mem_dropout_prob = &GEMM_ARG_STORAGE(dropout_prob);
         idx++;
-        arg_list.set(idx++, GEMM_CTX_ARG_STORAGE(dropout_mask));
+        arg_list.set(idx++, GEMM_ARG_STORAGE(dropout_mask));
         if (pd()->dropout_use_host_scalars) {
             int64_t scalar_dropout_seed = 0;
             int64_t scalar_dropout_offset = 0;
@@ -359,7 +379,7 @@ status_t with_post_ops_t::execute(const exec_ctx_t &ctx) const {
 
     if (dyn_scales) {
         const auto group_size
-                = pd()->attr()->scales_.get_group(DNNL_ARG_DST, -1);
+                = pd()->attr()->scales_.get_group(gemm_arg::C, -1);
         const auto c_d = nested_ctx.memory_mdw(DNNL_ARG_DST, pd()->dst_md());
         const int last = c_d.ndims() - 1;
         const dim_t D3 = c_d.ndims() > 5 ? c_d.dims()[last - 5] : 1;
@@ -376,8 +396,8 @@ status_t with_post_ops_t::execute(const exec_ctx_t &ctx) const {
         compute::kernel_arg_list_t arg_list;
         int arg_idx = 0;
         arg_list.set(arg_idx++, *tmp_ds);
-        arg_list.set(arg_idx++, subbyte_pack ? *tmp : GEMM_CTX_ARG_STORAGE(c));
-        arg_list.set(arg_idx++, GEMM_CTX_ARG_STORAGE(c_scales));
+        arg_list.set(arg_idx++, subbyte_pack ? *tmp : GEMM_ARG_STORAGE(c));
+        arg_list.set(arg_idx++, GEMM_ARG_STORAGE(c_scales));
         arg_list.set(arg_idx++, group_size);
         arg_list.set(arg_idx++, D0);
         arg_list.set(arg_idx++, D1);
@@ -398,7 +418,7 @@ status_t with_post_ops_t::execute(const exec_ctx_t &ctx) const {
     const dim_t nelems = dst_mdw.nelems();
     compute::kernel_arg_list_t repack_arg_list;
     repack_arg_list.set(0, *tmp);
-    repack_arg_list.set(1, GEMM_CTX_ARG_STORAGE(c));
+    repack_arg_list.set(1, GEMM_ARG_STORAGE(c));
     repack_arg_list.set(2, into<dim_t>(nelems));
     repack_arg_list.set(3, 4);
     compute::range_t repack_gws((nelems * 4 + 7) / 8);

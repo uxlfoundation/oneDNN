@@ -50,6 +50,9 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
     dev_info_ = intel_engine->device_info();
     auto arch = dev_info_->gpu_arch();
 
+    // Kernel is column-major; swap A/B to match.
+    apply_swap_ab();
+
     CHECK(init_attrs(engine));
     const auto &d = desc();
 
@@ -62,9 +65,9 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
             && utils::one_of(d->c_type(), s32, f32, s8, u8, f16));
 
     if (dt_int_ok) {
-        a_zp_ = !attr()->zero_points_.has_default_values(DNNL_ARG_A);
-        b_zp_ = !attr()->zero_points_.has_default_values(DNNL_ARG_B);
-        c_zp_ = !attr()->zero_points_.has_default_values(DNNL_ARG_C);
+        a_zp_ = !attr()->zero_points_.has_default_values(gemm_arg::A);
+        b_zp_ = !attr()->zero_points_.has_default_values(gemm_arg::B);
+        c_zp_ = !attr()->zero_points_.has_default_values(gemm_arg::C);
     }
 
     // LIMITATIONS:
@@ -75,17 +78,17 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
 
     VDISPATCH_GEMM(limits_ok, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
-    // Must check runtime dimensions before calling `set_default_formats` to
+    // Must check runtime dimensions before calling `init_default_formats` to
     // avoid undefined behavior.
     VDISPATCH_GEMM_SC(
-            set_default_formats(d->a_type()), VERBOSE_UNSUPPORTED_TAG);
+            init_default_formats(d->a_type()), VERBOSE_UNSUPPORTED_TAG);
 
     VDISPATCH_GEMM_SC(
             attr_.set_default_formats(dst_md(0)), VERBOSE_UNSUPPORTED_TAG);
 
     VDISPATCH_GEMM(!use_nocopy(), VERBOSE_SKIP_PRIMITIVE_IMPL);
 
-    // `set_default_formats` determines a/b/c packing, so it must be called
+    // `init_default_formats` determines a/b/c packing, so it must be called
     // prior to this.
     if (!packed_a())
         limits_ok = limits_ok && (d->lda() != DNNL_RUNTIME_DIM_VAL)
@@ -112,7 +115,7 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
             VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "systolic array");
     VDISPATCH_GEMM(attr()->has_default_values(attr_skip_mask),
             VERBOSE_UNSUPPORTED_ATTR);
-    VDISPATCH_GEMM(desc()->sum_ab == sum_ab::sum_none,
+    VDISPATCH_GEMM(desc()->sum_ab() == sum_ab::sum_none,
             VERBOSE_UNSUPPORTED_FEATURE, "bias reduction");
     VDISPATCH_GEMM(IMPLICATION(with_bias(),
                            utils::one_of(d->bias_type(), d->a_type(), f32)
@@ -145,16 +148,16 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
 
         const auto &zp = attr()->zero_points_;
 
-        if (!zp.has_default_values(DNNL_ARG_SRC)) {
+        if (!zp.has_default_values(gemm_arg::A)) {
             VDISPATCH_GEMM(
-                    zp.get_mask(DNNL_ARG_SRC) == 0, VERBOSE_UNSUPPORTED_ZP_CFG);
+                    zp.get_mask(gemm_arg::A) == 0, VERBOSE_UNSUPPORTED_ZP_CFG);
         }
-        if (!zp.has_default_values(DNNL_ARG_WEIGHTS)) {
-            VDISPATCH_GEMM(zp.get_mask(DNNL_ARG_WEIGHTS) == 0,
+        if (!zp.has_default_values(gemm_arg::B)) {
+            VDISPATCH_GEMM(zp.get_mask(gemm_arg::B) == 0,
                     VERBOSE_UNSUPPORTED_ZP_CFG);
         }
-        if (!zp.has_default_values(DNNL_ARG_DST)) {
-            VDISPATCH_GEMM(utils::one_of(zp.get_mask(DNNL_ARG_DST), 0, (1 << 0),
+        if (!zp.has_default_values(gemm_arg::C)) {
+            VDISPATCH_GEMM(utils::one_of(zp.get_mask(gemm_arg::C), 0, (1 << 0),
                                    (1 << 1)),
                     VERBOSE_UNSUPPORTED_ZP_CFG);
         }
@@ -303,7 +306,19 @@ bool xe_hp_systolic_t::pd_t::use_nocopy_xehpg(
     return false;
 }
 
-status_t xe_hp_systolic_t::pd_t::set_default_formats(data_type_t dt) {
+status_t xe_hp_systolic_t::pd_t::init_default_formats(data_type_t dt) {
+    // Impl body uses matmul-natural orientation; un-swap around it so
+    // the rest of the pd keeps the kernel view.
+    apply_swap_ab();
+    auto rc = init_default_formats_impl(dt);
+    apply_swap_ab();
+    if (rc != status::success) return rc;
+
+    return gemm::pd_t::set_default_formats() ? status::success
+                                             : status::unimplemented;
+}
+
+status_t xe_hp_systolic_t::pd_t::init_default_formats_impl(data_type_t dt) {
     using namespace format_tag;
     using new_kd_t = jit::gen_xe_systolic_kernel_desc_t;
 
@@ -311,9 +326,10 @@ status_t xe_hp_systolic_t::pd_t::set_default_formats(data_type_t dt) {
     const auto &d = desc();
     auto arch = dev_info_->gpu_arch();
 
-    auto &a_desc = desc_.b_desc;
-    auto &b_desc = desc_.a_desc;
-    auto &c_desc = desc_.c_desc;
+    // Rename memory descriptors following column major format.
+    auto &a_desc = desc_.b_md();
+    auto &b_desc = desc_.a_md();
+    auto &c_desc = desc_.c_md();
 
     memory_desc_wrapper a_mdw(&a_desc);
     memory_desc_wrapper b_mdw(&b_desc);
@@ -453,8 +469,7 @@ status_t xe_hp_systolic_t::pd_t::set_default_formats(data_type_t dt) {
     if ((!packed_a_ && unroll_m_ == 16) || (!packed_b_ && unroll_n_ == 16))
         return status::unimplemented;
 
-    return gemm::pd_t::set_default_formats() ? status::success
-                                             : status::unimplemented;
+    return status::success;
 }
 
 void xe_hp_systolic_t::pd_t::init_scratchpad() {
@@ -500,7 +515,7 @@ status_t xe_hp_systolic_t::init(impl::engine_t *engine) {
     int cmask = -1;
 
     if (pd()->with_c_zero_points())
-        cmask = pd()->attr()->zero_points_.get_mask(DNNL_ARG_DST);
+        cmask = pd()->attr()->zero_points_.get_mask(gemm_arg::C);
     else if (pd()->with_bias())
         cmask = pd()->bias_cmask();
 
@@ -634,7 +649,7 @@ status_t xe_hp_systolic_t::init_compute(impl::engine_t *engine) {
                 // Protection against C zero-point host scalar implementation in gen gemm
                 auto *kd_problem
                         = const_cast<gemmstone::GEMMProblem *>(kd.problem());
-                kd_problem->coPtrDims = pd()->c_quant.zp_ndims;
+                kd_problem->coPtrDims = pd()->c_zp_ndims();
 
                 if (!got_info) {
                     compute_info_ = *kd.driver_info();
@@ -893,7 +908,7 @@ status_t xe_hp_systolic_t::launch_compute(const exec_ctx_t &ctx, int32_t m,
             }
         }
         for (int i = 1; i < pd()->batch_dims(); i++) {
-            auto batchSize = uint32_t(pd()->desc()->c_desc.dims[i]);
+            auto batchSize = uint32_t(pd()->desc()->c_md().dims[i]);
             uint32_t recipBatchSize = jit::uint32_reciprocal(batchSize);
             arg_list.set(argn++, batchSize);
             arg_list.set(argn++, recipBatchSize);
@@ -956,11 +971,13 @@ status_t xe_hp_systolic_t::execute(const exec_ctx_t &ctx) const {
     auto alpha = pd()->alpha();
     auto beta = pd()->beta();
 
-    auto &a = GEMM_CTX_ARG_STORAGE(b);
-    auto &b = GEMM_CTX_ARG_STORAGE(a);
-    auto &c = GEMM_CTX_ARG_STORAGE(c);
-    auto &c_zp = GEMM_CTX_ARG_STORAGE(c_zero_point);
-    auto &bias = GEMM_CTX_ARG_STORAGE(bias);
+    auto args = ctx.args();
+    args.route_by_swap_ab(pd()->desc()->swap_ab());
+    auto &a = GEMM_ARG_STORAGE(a);
+    auto &b = GEMM_ARG_STORAGE(b);
+    auto &c = GEMM_ARG_STORAGE(c);
+    auto &c_zp = GEMM_ARG_STORAGE(c_zero_point);
+    auto &bias = GEMM_ARG_STORAGE(bias);
     auto *co = &c_zp;
     const memory_storage_t *ao = nullptr, *bo = nullptr;
 
@@ -1004,20 +1021,15 @@ status_t xe_hp_systolic_t::execute(const exec_ctx_t &ctx) const {
                 break;
             case pd_t::binary_src_t::bias: po_srcs[i] = &bias; break;
             case pd_t::binary_src_t::scales:
-                switch (src.index) {
-                    case DNNL_ARG_WEIGHTS:
-                        po_srcs[i] = &GEMM_CTX_ARG_STORAGE(a_scales);
-                        break;
-                    case DNNL_ARG_SRC:
-                        po_srcs[i] = &GEMM_CTX_ARG_STORAGE(b_scales);
-                        break;
-                    case DNNL_ARG_DST:
-                        po_srcs[i] = &GEMM_CTX_ARG_STORAGE(c_scales);
-                        break;
-                    default:
-                        po_srcs[i] = nullptr;
-                        assert(!"invalid scale type");
-                        break;
+                if (src.index == gemm_arg::A)
+                    po_srcs[i] = &GEMM_ARG_STORAGE(a_scales);
+                else if (src.index == gemm_arg::B)
+                    po_srcs[i] = &GEMM_ARG_STORAGE(b_scales);
+                else if (src.index == gemm_arg::C)
+                    po_srcs[i] = &GEMM_ARG_STORAGE(c_scales);
+                else {
+                    po_srcs[i] = nullptr;
+                    assert(!"invalid scale type");
                 }
                 break;
             default: po_srcs[i] = nullptr; break;
@@ -1038,8 +1050,8 @@ status_t xe_hp_systolic_t::execute(const exec_ctx_t &ctx) const {
             po_offsets0[i] = po_srcs[i]->offset() / problem_.Tbinary[i];
 
     if (pd()->with_ab_zero_points()) {
-        ao = &GEMM_CTX_ARG_STORAGE(a_zero_point);
-        bo = &GEMM_CTX_ARG_STORAGE(b_zero_point);
+        ao = &GEMM_ARG_STORAGE(a_zero_point);
+        bo = &GEMM_ARG_STORAGE(b_zero_point);
     }
 
     if (pd()->with_bias()) {

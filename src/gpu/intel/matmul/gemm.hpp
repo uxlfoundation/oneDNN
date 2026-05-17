@@ -22,6 +22,7 @@
 #include "common/memory_desc.hpp"
 #include "common/primitive.hpp"
 #include "common/primitive_attr_quant.hpp"
+#include "common/gemm_types.hpp"
 #include "common/primitive_desc_iterator.hpp"
 #include "gpu/intel/gemm/utils.hpp"
 #include "gpu/intel/matmul/config.hpp"
@@ -393,11 +394,16 @@ struct gemm_t : public primitive_t {
                 return status::success;
             };
 
-            CHECK(update_md(src_md_, *gemm_pd_->arg_md(DNNL_ARG_SRC_0)));
-            CHECK(update_md(weights_md_, *gemm_pd_->arg_md(DNNL_ARG_SRC_1)));
-            CHECK(update_md(dst_md_, *gemm_pd_->arg_md(DNNL_ARG_DST)));
+            // The inner gemm pd's storage is in kernel-view. Use the
+            // user-view accessors to recover the matmul-A/B/C/bias mds in
+            // the orientation the user originally supplied.
+            const auto *inner = op_desc_t::to_desc<gemm_desc_t>(
+                    gemm_pd_->op_desc());
+            CHECK(update_md(src_md_, inner->a_md_user_view()));
+            CHECK(update_md(weights_md_, inner->b_md_user_view()));
+            CHECK(update_md(dst_md_, inner->c_md_user_view()));
             if (with_bias())
-                CHECK(update_md(bias_md_, *gemm_pd_->arg_md(DNNL_ARG_BIAS)));
+                CHECK(update_md(bias_md_, inner->bias_md_user_view()));
             return status::success;
         }
 

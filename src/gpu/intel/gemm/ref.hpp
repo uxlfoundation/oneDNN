@@ -100,7 +100,12 @@ struct ref_t : public primitive_t {
             using namespace data_type;
             using smask_t = primitive_attr_t::skip_mask_t;
 
+            // Resolve format_any before apply_swap_ab so any-tags don't
+            // get re-derived from swapped dims.
             VDISPATCH_GEMM(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
+
+            // Ref OCL kernel expects kernel-A = matmul-B.
+            apply_swap_ab();
 
             const auto a_dt = desc()->a_type();
             const auto b_dt = desc()->b_type();
@@ -111,15 +116,15 @@ struct ref_t : public primitive_t {
                     && utils::one_of(c_dt, f32, f16, bf16)
                     && utils::one_of(a_dt, u8, s8);
 
-            const auto ndims = desc()->c_desc.ndims;
-            const auto a_strides = desc()->a_desc.format_desc.blocking.strides;
-            const auto b_strides = desc()->b_desc.format_desc.blocking.strides;
-            const auto c_strides = desc()->c_desc.format_desc.blocking.strides;
+            const auto ndims = desc()->c_md().ndims;
+            const auto a_strides = desc()->a_md().format_desc.blocking.strides;
+            const auto b_strides = desc()->b_md().format_desc.blocking.strides;
+            const auto c_strides = desc()->c_md().format_desc.blocking.strides;
 
             VDISPATCH_GEMM(!has_blocks(), VERBOSE_UNSUPPORTED_FEATURE,
                     "blocked format");
-            VDISPATCH_GEMM(desc()->c_desc.ndims <= 3, VERBOSE_BAD_NDIMS,
-                    "desc()->c_desc.ndims", desc()->c_desc.ndims);
+            VDISPATCH_GEMM(desc()->c_md().ndims <= 3, VERBOSE_BAD_NDIMS,
+                    "desc()->c_md().ndims", desc()->c_md().ndims);
             VDISPATCH_GEMM(
                     (a_strides[ndims - 1] == 1 || a_strides[ndims - 2] == 1),
                     VERBOSE_UNSUPPORTED_MEM_STRIDE);
@@ -130,10 +135,10 @@ struct ref_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_MEM_STRIDE);
             VDISPATCH_GEMM(
                     IMPLICATION(desc()->is_batched(),
-                            desc()->a_desc.dims[0] == desc()->b_desc.dims[0]),
-                    VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "desc()->a_desc",
-                    "desc()->b_desc", static_cast<int>(desc()->a_desc.dims[0]),
-                    static_cast<int>(desc()->b_desc.dims[0]));
+                            desc()->a_md().dims[0] == desc()->b_md().dims[0]),
+                    VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "desc()->a_md()",
+                    "desc()->b_md()", static_cast<int>(desc()->a_md().dims[0]),
+                    static_cast<int>(desc()->b_md().dims[0]));
             // Bug in runtime dims support; defer to ref_matmul
             VDISPATCH_GEMM(
                     !utils::one_of(DNNL_RUNTIME_DIM_VAL, desc()->m(),
@@ -149,7 +154,7 @@ struct ref_t : public primitive_t {
             VDISPATCH_GEMM(attr_oscale_ok(), VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_GEMM(attr_zp_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
             VDISPATCH_GEMM(attr_post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
-            VDISPATCH_GEMM(desc()->sum_ab == sum_ab::sum_none,
+            VDISPATCH_GEMM(desc()->sum_ab() == sum_ab::sum_none,
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_GEMM(
                     ((utils::everyone_is(f32, a_dt, b_dt, c_dt)
@@ -214,13 +219,13 @@ struct ref_t : public primitive_t {
 
         bool attr_oscale_ok() const {
             const auto &scales = attr()->scales_;
-            const bool src_scale_ok = scales.has_default_values(DNNL_ARG_SRC)
-                    || scales.get_mask(DNNL_ARG_SRC) == 0;
+            const bool src_scale_ok = scales.has_default_values(gemm_arg::A)
+                    || scales.get_mask(gemm_arg::A) == 0;
             const bool wei_scale_ok
-                    = scales.has_default_values(DNNL_ARG_WEIGHTS)
-                    || scales.get_mask(DNNL_ARG_WEIGHTS) == 0;
-            const bool dst_scale_ok = scales.has_default_values(DNNL_ARG_DST)
-                    || scales.get_mask(DNNL_ARG_DST) == 0;
+                    = scales.has_default_values(gemm_arg::B)
+                    || scales.get_mask(gemm_arg::B) == 0;
+            const bool dst_scale_ok = scales.has_default_values(gemm_arg::C)
+                    || scales.get_mask(gemm_arg::C) == 0;
             return src_scale_ok && wei_scale_ok && dst_scale_ok;
         }
 
@@ -232,7 +237,7 @@ struct ref_t : public primitive_t {
             if (!ok) return false;
 
             static const std::vector<int> supported_args {
-                    DNNL_ARG_A, DNNL_ARG_B, DNNL_ARG_C};
+                    gemm_arg::A, gemm_arg::B, gemm_arg::C};
             for (int arg : supported_args) {
                 if (!zp.has_default_values(arg)) {
                     const int mask = zp.get_mask(arg);

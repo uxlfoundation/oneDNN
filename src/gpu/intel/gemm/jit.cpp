@@ -92,7 +92,6 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
 
     bool with_a_zp = pd()->with_a_zero_points();
     bool with_b_zp = pd()->with_b_zero_points();
-    if (swap_ab) std::swap(with_a_zp, with_b_zp);
     bool a_zp_ptr = with_a_zp && !problem->aOffsetHostScalar();
     bool b_zp_ptr = with_b_zp && !problem->bOffsetHostScalar();
 
@@ -173,9 +172,8 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
 
     if (pd()->batch_dims() >= 1) {
         for (int i = pd()->batch_dims() - 1; i >= 0; i--) {
-            auto stride_a = int64_t(pd()->stride(DNNL_ARG_A, i));
-            auto stride_b = int64_t(pd()->stride(DNNL_ARG_B, i));
-            if (swap_ab) std::swap(stride_a, stride_b);
+            auto stride_a = int64_t(pd()->stride(gemm_arg::A, i));
+            auto stride_b = int64_t(pd()->stride(gemm_arg::B, i));
             auto stride_c = int64_t(pd()->desc()->stride_c(i));
             if (jit::enable_generator_dsl()) {
                 auto hw = ngen::getCore(
@@ -190,9 +188,8 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
                 // relaxed by rounding down the surface pointer and adjusting
                 // the width accordingly.
                 auto base_alignment = intel::jit::block_2d_base_alignment(hw);
-                auto a_type = pd()->get_type(DNNL_ARG_A);
-                auto b_type = pd()->get_type(DNNL_ARG_B);
-                if (swap_ab) std::swap(a_type, b_type);
+                auto a_type = pd()->get_type(gemm_arg::A);
+                auto b_type = pd()->get_type(gemm_arg::B);
                 auto a_size = types::data_type_size(a_type);
                 if (stride_a * a_size % base_alignment) {
                     gpu_warning() << "Unimplemented load transform";
@@ -207,29 +204,26 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
             arg_list.set(argn++, stride_a);
             arg_list.set(argn++, stride_b);
             arg_list.set(argn++, stride_c);
-            int eff_a_arg = DNNL_ARG_A;
-            int eff_b_arg = DNNL_ARG_B;
-            if (swap_ab) std::swap(eff_a_arg, eff_b_arg);
             if (problem->hasAScalePtr()) {
-                arg_list.set(argn++, pd()->scale_stride(i, eff_a_arg));
+                arg_list.set(argn++, pd()->scale_stride(i, gemm_arg::A));
             }
             if (problem->hasBScalePtr()) {
-                arg_list.set(argn++, pd()->scale_stride(i, eff_b_arg));
+                arg_list.set(argn++, pd()->scale_stride(i, gemm_arg::B));
             }
             if (problem->hasCMXScale()) {
                 arg_list.set(argn++, stride_c / problem->cqGroupM);
             }
             if (problem->hasAOffsetPtr()) {
-                arg_list.set(argn++, pd()->zp_stride(i, eff_a_arg));
+                arg_list.set(argn++, pd()->zp_stride(i, gemm_arg::A));
             }
             if (problem->hasBOffsetPtr()) {
-                arg_list.set(argn++, pd()->zp_stride(i, eff_b_arg));
+                arg_list.set(argn++, pd()->zp_stride(i, gemm_arg::B));
             }
             if (problem->needsAGroupSums()) {
-                arg_list.set(argn++, pd()->gs_stride(i, eff_a_arg));
+                arg_list.set(argn++, pd()->gs_stride(i, gemm_arg::A));
             }
             if (problem->needsBGroupSums()) {
-                arg_list.set(argn++, pd()->gs_stride(i, eff_b_arg));
+                arg_list.set(argn++, pd()->gs_stride(i, gemm_arg::B));
             }
         }
         for (int i = 0; i < po_count; i++) {
@@ -240,7 +234,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
             }
         }
         for (int i = 1; i < pd()->batch_dims(); i++) {
-            auto batchSize = uint32_t(pd()->desc()->c_desc.dims[i]);
+            auto batchSize = uint32_t(pd()->desc()->c_md().dims[i]);
             arg_list.set(argn++, batchSize);
             if (jit::enable_generator_dsl()) {
                 uint64_t magic = dnnl::impl::gpu::intel::jit::ir_utils::
@@ -318,9 +312,9 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         arg_list.set(argn++, slm, nullptr);
     }
 
-    if (pd()->a_quant.zp_ndims > 0 || problem->aScale2D())
+    if (pd()->a_zp_ndims() > 0 || problem->aScale2D())
         arg_list.set(argn++, offset_aq);
-    if (pd()->b_quant.zp_ndims > 0 || problem->bScale2D())
+    if (pd()->b_zp_ndims() > 0 || problem->bScale2D())
         arg_list.set(argn++, offset_bq);
 
     lws[0] *= nocopy_info()->subgroupSize;
@@ -358,10 +352,10 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     const auto d = pd()->desc();
     const auto &problem = *pd()->kernel_desc()->problem();
 
-    const bool swap_ab = pd()->swap_ab();
+    const bool swap_ab = pd()->desc()->swap_ab();
 
-    auto a_type = pd()->get_type(DNNL_ARG_A);
-    auto b_type = pd()->get_type(DNNL_ARG_B);
+    auto a_type = pd()->get_type(gemm_arg::A);
+    auto b_type = pd()->get_type(gemm_arg::B);
     auto c_type = d->c_type();
 
     auto m = into<int32_t>(pd()->desc()->m());
@@ -371,19 +365,10 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     bool trans_a = pd()->trans_a();
     bool trans_b = pd()->trans_b();
 
-    auto lda = into<int32_t>(pd()->ld(DNNL_ARG_A));
-    auto ldb = into<int32_t>(pd()->ld(DNNL_ARG_B));
+    auto lda = into<int32_t>(pd()->ld(gemm_arg::A));
+    auto ldb = into<int32_t>(pd()->ld(gemm_arg::B));
     auto ldc = into<int32_t>(d->ldc());
     auto ldco = into<int32_t>(pd()->with_bias() ? d->ld_bias() : 0);
-
-    if (swap_ab) {
-        std::swap(a_type, b_type);
-        std::swap(m, n);
-        std::swap(lda, ldb);
-        std::swap(trans_a, trans_b);
-        trans_a = !trans_a;
-        trans_b = !trans_b;
-    }
 
     auto alpha = pd()->alpha();
     auto beta = pd()->beta();
@@ -393,13 +378,15 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
             = (nocopy_info()->kParallel() || nocopy_info()->kParallelLocal())
             && !nocopy_info()->kParallelVariable();
 
-    auto &a = swap_ab ? GEMM_CTX_ARG_STORAGE(a) : GEMM_CTX_ARG_STORAGE(b);
-    auto &b = swap_ab ? GEMM_CTX_ARG_STORAGE(b) : GEMM_CTX_ARG_STORAGE(a);
-    auto &c = GEMM_CTX_ARG_STORAGE(c);
-    auto &c_zp = GEMM_CTX_ARG_STORAGE(c_zero_point);
-    auto &bias = GEMM_CTX_ARG_STORAGE(bias);
-    auto &sum_ab = GEMM_CTX_ARG_STORAGE(sum_ab);
-    auto *sround_seed = &GEMM_CTX_ARG_STORAGE(sround_seed);
+    auto args = ctx.args();
+    args.route_by_swap_ab(pd()->desc()->swap_ab());
+    auto &a = GEMM_ARG_STORAGE(a);
+    auto &b = GEMM_ARG_STORAGE(b);
+    auto &c = GEMM_ARG_STORAGE(c);
+    auto &c_zp = GEMM_ARG_STORAGE(c_zero_point);
+    auto &bias = GEMM_ARG_STORAGE(bias);
+    auto &sum_ab = GEMM_ARG_STORAGE(sum_ab);
+    auto *sround_seed = &GEMM_ARG_STORAGE(sround_seed);
     auto *co = &c_zp;
     const memory_storage_t *ao = nullptr, *bo = nullptr;
     const memory_storage_t *a_scales = nullptr, *b_scales = nullptr;
@@ -443,20 +430,15 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
                 break;
             case pd_t::binary_src_t::bias: po_srcs[i] = &bias; break;
             case pd_t::binary_src_t::scales:
-                switch (src.index) {
-                    case DNNL_ARG_WEIGHTS:
-                        po_srcs[i] = &GEMM_CTX_ARG_STORAGE(a_scales);
-                        break;
-                    case DNNL_ARG_SRC:
-                        po_srcs[i] = &GEMM_CTX_ARG_STORAGE(b_scales);
-                        break;
-                    case DNNL_ARG_DST:
-                        po_srcs[i] = &GEMM_CTX_ARG_STORAGE(c_scales);
-                        break;
-                    default:
-                        po_srcs[i] = nullptr;
-                        assert(!"invalid scale type");
-                        break;
+                if (src.index == gemm_arg::A)
+                    po_srcs[i] = &GEMM_ARG_STORAGE(a_scales);
+                else if (src.index == gemm_arg::B)
+                    po_srcs[i] = &GEMM_ARG_STORAGE(b_scales);
+                else if (src.index == gemm_arg::C)
+                    po_srcs[i] = &GEMM_ARG_STORAGE(c_scales);
+                else {
+                    po_srcs[i] = nullptr;
+                    assert(!"invalid scale type");
                 }
                 break;
             default: po_srcs[i] = nullptr; break;
@@ -480,7 +462,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     if (pd()->with_c_zero_points()) {
         off_co0 = types::bytes_to_elements(c_type, co->offset())
                 + pd()->dyn_offset_co;
-        cmask = pd()->attr()->zero_points_.get_mask(DNNL_ARG_DST);
+        cmask = pd()->attr()->zero_points_.get_mask(gemm_arg::C);
         int co_host_scalar_val = 0;
         if (co->is_host_scalar()) {
             CHECK(maybe_get_host_scalar_value(*co, co_host_scalar_val));
@@ -495,17 +477,12 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         off_co0 = types::bytes_to_elements(c_type, sum_ab.offset());
         co = &sum_ab;
         cmask = pd()->sum_ab_cmask();
-        // TODO: Check if this swapping is still needed and correct with logic below
-        if (swap_ab) {
-            uint8_t swap_table[4] = {0, 2, 1, 3};
-            cmask = (cmask & ~3) | swap_table[cmask & 3];
-        }
     }
 
     // Get host scalar zero-poins values
     if (pd()->with_a_zero_points() || pd()->with_b_zero_points()) {
-        ao = &GEMM_CTX_ARG_STORAGE(a_zero_point);
-        bo = &GEMM_CTX_ARG_STORAGE(b_zero_point);
+        ao = &GEMM_ARG_STORAGE(a_zero_point);
+        bo = &GEMM_ARG_STORAGE(b_zero_point);
         int a_host_scalar_val = 0;
         int b_host_scalar_val = 0;
         if (ao->is_host_scalar())
@@ -518,12 +495,12 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
 
     // Convert host scalar scales to Alpha
     if (pd()->attr()->scales_.has_host_scalars()) {
-        const auto &a_scales = pd()->attr()->scales_.get(DNNL_ARG_A);
-        const auto &b_scales = pd()->attr()->scales_.get(DNNL_ARG_B);
-        const auto &c_scales = pd()->attr()->scales_.get(DNNL_ARG_C);
-        const auto &a_scales_storage = GEMM_CTX_ARG_STORAGE(a_scales);
-        const auto &b_scales_storage = GEMM_CTX_ARG_STORAGE(b_scales);
-        const auto &c_scales_storage = GEMM_CTX_ARG_STORAGE(c_scales);
+        const auto &a_scales = pd()->attr()->scales_.get(gemm_arg::A);
+        const auto &b_scales = pd()->attr()->scales_.get(gemm_arg::B);
+        const auto &c_scales = pd()->attr()->scales_.get(gemm_arg::C);
+        const auto &a_scales_storage = GEMM_ARG_STORAGE(a_scales);
+        const auto &b_scales_storage = GEMM_ARG_STORAGE(b_scales);
+        const auto &c_scales_storage = GEMM_ARG_STORAGE(c_scales);
         alpha = 1.0f;
         float scale_val = 0;
         if (a_scales.is_host_scalar()) {
@@ -542,26 +519,12 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         }
     }
 
-    if (pd()->a_scales_2d()) { a_scales = &GEMM_CTX_ARG_STORAGE(a_scales); }
-    if (pd()->b_scales_2d()) { b_scales = &GEMM_CTX_ARG_STORAGE(b_scales); }
-    if (pd()->with_mx_scale()) { c_scales = &GEMM_CTX_ARG_STORAGE(c_scales); }
+    if (pd()->a_scales_2d()) { a_scales = &GEMM_ARG_STORAGE(a_scales); }
+    if (pd()->b_scales_2d()) { b_scales = &GEMM_ARG_STORAGE(b_scales); }
+    if (pd()->with_mx_scale()) { c_scales = &GEMM_ARG_STORAGE(c_scales); }
 
-    if (swap_ab) {
-        if (problem.needsAGroupSums()) ag = &GEMM_CTX_ARG_STORAGE(b_group_sums);
-        if (problem.needsBGroupSums()) bg = &GEMM_CTX_ARG_STORAGE(a_group_sums);
-    } else {
-        if (problem.needsAGroupSums()) ag = &GEMM_CTX_ARG_STORAGE(a_group_sums);
-        if (problem.needsBGroupSums()) bg = &GEMM_CTX_ARG_STORAGE(b_group_sums);
-    }
-
-    if (swap_ab) {
-        std::swap(ao, bo);
-        std::swap(ao_host_scalar, bo_host_scalar);
-        std::swap(a_scales, b_scales);
-
-        uint8_t swap_table[4] = {0, 2, 1, 3};
-        cmask = (cmask & ~3) | swap_table[cmask & 3];
-    }
+    if (problem.needsAGroupSums()) ag = &GEMM_ARG_STORAGE(a_group_sums);
+    if (problem.needsBGroupSums()) bg = &GEMM_ARG_STORAGE(b_group_sums);
 
     status_t status;
 
@@ -628,8 +591,8 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
 
                 auto off_aq = off_aq0;
                 auto off_bq = off_bq0;
-                if (pd()->a_quant.zp_ndims >= 1 || a_scales) off_aq += Bm;
-                if (pd()->b_quant.zp_ndims >= 1 || b_scales) off_bq += Bn;
+                if (pd()->a_zp_ndims() >= 1 || a_scales) off_aq += Bm;
+                if (pd()->b_zp_ndims() >= 1 || b_scales) off_bq += Bn;
 
                 auto off_co = off_co0;
                 switch (cmask & 3) {

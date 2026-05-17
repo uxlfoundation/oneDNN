@@ -55,16 +55,33 @@ struct gen_t : public primitive_t {
             assert(engine->kind() == engine_kind::gpu);
             auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
-            CHECK(set_default_formats(false));
+            // Resolve format_any before apply_swap_ab(): layout
+            // heuristics are dim-driven and must see user dims.
+            CHECK(init_default_formats(false));
 
             dev_info_ = intel_engine->device_info();
             arch_ = dev_info_->gpu_arch();
 
-            CHECK(jit::pd_t::init(engine, arch_));
-
             const auto d = desc();
-            auto m = desc()->m();
-            auto n = desc()->n();
+
+            // If n = 1, keep A/B as-is to use more efficient n = 1
+            // kernels if possible; otherwise swap to column-major.
+            const auto &c_user = desc()->c_md();
+            const bool user_c_trans
+                    = gemm_desc_t::get_trans(c_user) == dnnl_trans;
+            const auto user_ldc = gemm_desc_t::get_ld(c_user);
+            const bool check_ldb = ((d->transb() == dnnl_trans && d->ldb() == 1)
+                    || (d->transb() == dnnl_notrans));
+            bool want_un_swap = (d->n() == 1 && user_ldc == 1 && check_ldb)
+                    || user_c_trans;
+
+            // Cannot route weights-only compression through the un-swapped
+            // path: the catalog only has skinny-N strategies for quant-in-A.
+            want_un_swap &= !wei_decomp();
+
+            if (!want_un_swap) apply_swap_ab();
+
+            CHECK(jit::pd_t::init(engine, arch_));
 
             // Basic implementation attr support:
             auto attr_skip_mask = smask_t::post_ops | smask_t::fpmath_mode
@@ -80,23 +97,13 @@ struct gen_t : public primitive_t {
                             d->lda(), d->ldb(), d->ldc(), d->batch()),
                     VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
-            // If m = 1, swap A/B to use more efficient n = 1 kernels if possible.
-            bool check_lda = ((d->transa() == dnnl_notrans && d->lda() == 1)
-                    || (d->transa() == dnnl_trans));
-            swap_ab_ = (d->m() == 1 && d->ldc() == 1 && check_lda)
-                    || d->transc() == dnnl_trans;
+            auto m = desc()->m();
+            auto n = desc()->n();
 
-            // We cannot swap A/B if we don't have kernels to support the
-            // swapped data type/alignment requirements. Currently mostly affects
-            // weights-only compression cases, since A/B have different data types
-            swap_ab_ &= !wei_decomp_;
-
-            if (swap_ab_) {
-                // Do not use transposed B when it is unnecessary
-                if (!transa_ && m == 1) {
-                    transa_ = true;
-                    lda_ = d->k();
-                }
+            // n = 1: B is a k-vector, picking a faster dispatch path.
+            if (transb_ && n == 1) {
+                transb_ = false;
+                ldb_ = d->k();
             }
 
             // Pad leading dimensions in case of a single row/column.
@@ -107,8 +114,6 @@ struct gen_t : public primitive_t {
             if ((n == 1 && !trans_b()) || (d->k() == 1 && trans_b())) {
                 ldb_ = utils::rnd_up(ldb_, 16);
             }
-
-            if (swap_ab_) std::swap(m, n);
 
             // Check parameters.
             if (utils::one_of(d->c_type(), s32, f16, bf16, f32, u8, s8)
@@ -122,7 +127,7 @@ struct gen_t : public primitive_t {
                                        arch_ >= arch_t::xe_hp),
                         VERBOSE_ISA_DT_MISMATCH);
             } else if (utils::one_of(d->a_type(), f16, bf16)) {
-                VDISPATCH_GEMM(d->b_type() == d->a_type(),
+                VDISPATCH_GEMM(d->b_type() == d->a_type() || wei_decomp_,
                         VERBOSE_INCONSISTENT_DT, "a", "b");
                 VDISPATCH_GEMM(utils::one_of(d->c_type(), d->a_type(), f32,
                                        f8_e5m2, f8_e4m3),
@@ -161,7 +166,7 @@ struct gen_t : public primitive_t {
             bool with_bias = d->bias_type() != data_type::undef;
             VDISPATCH_GEMM(utils::one_of(d->bias_type(), data_type::undef, f64,
                                    f32, bf16, f16, f8_e5m2, f8_e4m3)
-                            && (d->bias_desc.ndims <= 6) && d->bias_mask() < 8,
+                            && (d->bias_md().ndims <= 6) && d->bias_mask() < 8,
                     VERBOSE_UNSUPPORTED_BIAS_CFG);
             VDISPATCH_GEMM(
                     IMPLICATION(with_bias,
@@ -170,16 +175,16 @@ struct gen_t : public primitive_t {
             VDISPATCH_GEMM(IMPLICATION(with_sum_ab(),
                                    !with_bias
                                            && (attr()->zero_points_.has_default_values(
-                                                   DNNL_ARG_DST))),
+                                                   gemm_arg::C))),
                     VERBOSE_UNSUPPORTED_ATTR);
 
             VDISPATCH_GEMM(attr()->post_ops_.check_sum_consistency(d->c_type(),
                                    utils::one_of(d->a_type(), s8, u8)),
                     VERBOSE_UNSUPPORTED_POSTOP);
             auto c_kernel_type
-                    = jit::convert_dnnl_to_kernel_type(desc_.c_desc.data_type);
-            for (int i = 0; i < desc_.c_desc.ndims; i++) {
-                auto c_stride = desc_.c_desc.format_desc.blocking.strides[i];
+                    = jit::convert_dnnl_to_kernel_type(desc_.c_md().data_type);
+            for (int i = 0; i < desc_.c_md().ndims; i++) {
+                auto c_stride = desc_.c_md().format_desc.blocking.strides[i];
                 VDISPATCH_GEMM(IMPLICATION(c_kernel_type.is4(),
                                        c_stride == 1 || c_stride % 2 == 0),
                         VERBOSE_SHAPE_RESTRICTION);
@@ -200,9 +205,9 @@ struct gen_t : public primitive_t {
 
             // Grouped scales break pre-XeHPG kernels due to increased register pressure
             bool A_grouped
-                    = 1 < a_quant.group_k && a_quant.group_k < desc()->k();
+                    = 1 < a_group_k_ && a_group_k_ < desc()->k();
             bool B_grouped
-                    = 1 < b_quant.group_k && b_quant.group_k < desc()->k();
+                    = 1 < b_group_k_ && b_group_k_ < desc()->k();
             VDISPATCH_GEMM(IMPLICATION(arch_ == compute::gpu_arch_t::xe_lp,
                                    !(A_grouped || B_grouped)),
                     VERBOSE_UNSUPPORTED_FEATURE, "grouped scales");
@@ -247,7 +252,7 @@ struct gen_t : public primitive_t {
                             <= std::numeric_limits<int32_t>::max(),
                     VERBOSE_SHAPE_RESTRICTION);
             VDISPATCH_GEMM(
-                    std::max({ld(DNNL_ARG_A), ld(DNNL_ARG_B), ld(DNNL_ARG_C)})
+                    std::max({ld(gemm_arg::A), ld(gemm_arg::B), ld(gemm_arg::C)})
                             <= std::numeric_limits<uint32_t>::max(),
                     VERBOSE_SHAPE_RESTRICTION);
 
@@ -263,9 +268,8 @@ struct gen_t : public primitive_t {
 
             bool print_verbose = get_verbose(verbose_t::debuginfo) >= 5;
             bool kernel_success = false;
-            auto lda = ld(DNNL_ARG_A);
-            auto ldb = ld(DNNL_ARG_B);
-            if (swap_ab_) std::swap(lda, ldb);
+            auto lda = ld(gemm_arg::A);
+            auto ldb = ld(gemm_arg::B);
             auto product = intel_engine->device_info()->gpu_product();
             int stepping = dev_info_->stepping_id();
             auto entries = kernel_desc_.select_kernel(product, stepping,
@@ -376,7 +380,7 @@ struct gen_t : public primitive_t {
             return status::success;
         }
 
-        status_t set_default_formats(bool no_transpose_c) {
+        status_t init_default_formats(bool no_transpose_c) {
             using namespace data_type;
             using namespace format_tag;
             using arch_t = compute::gpu_arch_t;
@@ -394,10 +398,9 @@ struct gen_t : public primitive_t {
             bool is_bf16 = utils::everyone_is(bf16, a_t, b_t, c_t);
             bool is_xe_hp_plus = arch_ >= arch_t::xe_hp;
 
-            // Rename memory descriptors following column major format.
-            auto &a_desc = desc_.b_desc;
-            auto &b_desc = desc_.a_desc;
-            auto &c_desc = desc_.c_desc;
+            auto &a_desc = desc_.a_md();
+            auto &b_desc = desc_.b_md();
+            auto &c_desc = desc_.c_md();
 
             memory_desc_wrapper a_mdw(&a_desc);
             memory_desc_wrapper b_mdw(&b_desc);

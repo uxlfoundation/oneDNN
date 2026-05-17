@@ -32,30 +32,21 @@ status_t gemm_t::execute(const exec_ctx_t &ctx) const {
     const auto dst_d = ctx.memory_mdw(DNNL_ARG_DST);
     const auto bia_d = ctx.memory_mdw(DNNL_ARG_BIAS);
 
-    memory_storage_t *a0
-            = &CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
-
-    memory_storage_t *b0
-            = &CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
-
-    memory_storage_t *c0
-            = &CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
-
+    // Args in matmul-natural form (A=SRC, B=WEIGHTS); inner gemm reroutes.
     gemm::exec_args_t args;
     args.a = &CTX_IN_STORAGE(DNNL_ARG_SRC);
     args.b = &CTX_IN_STORAGE(DNNL_ARG_WEIGHTS);
     args.c = &CTX_OUT_STORAGE(DNNL_ARG_DST);
     args.bias = &CTX_IN_STORAGE(DNNL_ARG_BIAS);
 
-    // Note: we have to swap `a` and `b` zero-point arguments because,
-    // - gemm primitive is created with row major desc,
-    // - parameters to gemm are passed as row major
-    // - but gemm implementation assumes column major
-    args.a_zero_point = b0;
-    args.b_zero_point = a0;
-    args.c_zero_point = c0;
-    args.a_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
-    args.b_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    args.a_zero_point
+            = &CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    args.b_zero_point
+            = &CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
+    args.c_zero_point
+            = &CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
+    args.a_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    args.b_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
     bool dyn_scales
             = gemm_->pd()->attr()->scales_.get(DNNL_ARG_DST).is_dynamic();
     args.c_scales = dyn_scales
@@ -63,9 +54,9 @@ status_t gemm_t::execute(const exec_ctx_t &ctx) const {
             : &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
 
     args.a_group_sums = &CTX_IN_STORAGE(
-            DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS | DNNL_ARG_WEIGHTS);
-    args.b_group_sums = &CTX_IN_STORAGE(
             DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS | DNNL_ARG_SRC);
+    args.b_group_sums = &CTX_IN_STORAGE(
+            DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS | DNNL_ARG_WEIGHTS);
     args.dropout_offset = &CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_OFFSET);
     args.dropout_seed = &CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_SEED);
     args.dropout_prob = &CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_PROBABILITY);

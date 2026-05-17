@@ -54,6 +54,8 @@ struct with_post_ops_t : public primitive_t {
         attr_info_t attr_info_;
         bool subbyte_pack_ = false;
         bool dynamic_scales_ = false;
+        // Set when the kernel needs scale args from args.exec_args.
+        bool requires_user_scales_ = false;
         bool with_dropout = false;
         bool dropout_use_host_scalars = false;
         bool dropout_use_offset = false;
@@ -86,7 +88,7 @@ struct with_post_ops_t : public primitive_t {
             def_memory_desc_info(
                     alt_ctx, memory_desc_info_t::create(dst_d), "DST");
             def_data_type(alt_ctx,
-                    pd()->attr()->scales_.get_data_type(DNNL_ARG_DST),
+                    pd()->attr()->scales_.get_data_type(gemm_arg::C),
                     "DST_SCALES");
             const int ndims = dst_d.ndims();
             bool runtime_dims

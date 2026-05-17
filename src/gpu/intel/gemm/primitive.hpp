@@ -18,6 +18,7 @@
 #define GPU_INTEL_GEMM_PRIMITIVE_HPP
 
 #include "common/c_types_map.hpp"
+#include "common/gemm_pd.hpp"
 #include "common/primitive.hpp"
 #include "gpu/intel/gemm/exec_types.hpp"
 #include "gpu/intel/primitive.hpp"
@@ -32,23 +33,21 @@ struct primitive_t : public intel::primitive_t {
     using intel::primitive_t::primitive_t;
     virtual status_t execute(const exec_ctx_t &ctx) const = 0;
     status_t execute(const impl::exec_ctx_t &ctx) const override {
+        // dnnl_gemm passes BLAS-A as WEIGHTS and BLAS-B as SRC; the
+        // gemm impl reroutes via swap_ab as needed.
         exec_args_t args;
-        // TODO: we have to swap a and b because
-        // - gemm primitive is created with row major desc,
-        // - parameters to gemm are passed as row major
-        // - but gemm implementation assumes column major
-        args.a = &CTX_IN_STORAGE(DNNL_ARG_A);
-        args.b = &CTX_IN_STORAGE(DNNL_ARG_B);
-        args.c = &CTX_OUT_STORAGE(DNNL_ARG_C);
+        args.a = &CTX_IN_STORAGE(DNNL_ARG_WEIGHTS);
+        args.b = &CTX_IN_STORAGE(DNNL_ARG_SRC);
+        args.c = &CTX_OUT_STORAGE(DNNL_ARG_DST);
         args.a_zero_point
-                = &CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_A);
+                = &CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
         args.b_zero_point
-                = &CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_B);
+                = &CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
         args.c_zero_point
-                = &CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_C);
-        args.a_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_A);
-        args.b_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_B);
-        args.c_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_C);
+                = &CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
+        args.a_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
+        args.b_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+        args.c_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
         return execute({ctx, args});
     }
 };

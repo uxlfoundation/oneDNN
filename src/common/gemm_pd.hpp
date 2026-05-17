@@ -20,6 +20,11 @@
 #include "oneapi/dnnl/dnnl.h"
 
 #include "common/c_types_map.hpp"
+#include "common/gemm_arg.hpp"
+#include "common/gemm_types.hpp"
+#include "common/memory_desc.hpp"
+#include "common/primitive_attr.hpp"
+#include "common/primitive_attr_quant.hpp"
 #include "common/primitive_desc.hpp"
 #include "common/utils.hpp"
 
@@ -71,31 +76,106 @@ struct gemm_pd_t : public primitive_desc_t {
         }
     }
 
+    // Returns kernel-view A/B. For user-named mds use desc()'s
+    // *_md_user_view() accessors.
     const memory_desc_t *src_md(
             int index = 0, bool user_input = false) const override {
         switch (index) {
-            case 0: return &desc_.a_desc;
-            case 1: return &desc_.b_desc;
-            case 2: return &desc_.bias_desc;
+            case 0: return &desc_.a_md();
+            case 1: return &desc_.b_md();
+            case 2: return &desc_.bias_md();
             default: return &glob_zero_md;
         }
     }
     const memory_desc_t *dst_md(
             int index = 0, bool user_input = false) const override {
-        return index == 0 ? &desc_.c_desc : &glob_zero_md;
+        return index == 0 ? &desc_.c_md() : &glob_zero_md;
     }
-    bool with_bias() const { return desc_.bias_desc.ndims != 0; }
+    bool with_bias() const { return desc_.bias_md().ndims != 0; }
 
     int n_inputs() const override { return 2; }
     int n_outputs() const override { return 1; }
-    int ndims() const { return desc_.c_desc.ndims; }
+    int ndims() const { return desc_.c_md().ndims; }
 
     int full_tensor_mask() const { return (1 << ndims()) - 1; }
 
+    const memory_desc_t &a_scale_md() const { return a_scale_md_; }
+    const memory_desc_t &b_scale_md() const { return b_scale_md_; }
+    const memory_desc_t &c_scale_md() const { return c_scale_md_; }
+    const memory_desc_t &a_zp_md() const { return a_zp_md_; }
+    const memory_desc_t &b_zp_md() const { return b_zp_md_; }
+    const memory_desc_t &c_zp_md() const { return c_zp_md_; }
+    const memory_desc_t &a_gs_md() const { return a_gs_md_; }
+    const memory_desc_t &b_gs_md() const { return b_gs_md_; }
+
+    // Promote prelu post-ops to binary entries (axb over dst dims),
+    // tagged with alg=eltwise_relu so downstream routing recognizes
+    // them as prelu. Idempotent.
+    void canonicalize_post_ops() {
+        const int nd = desc_.c_md().ndims;
+        for (int i = 0; i < attr_.post_ops_.len(); ++i) {
+            auto &e = attr_.post_ops_.entry_[i];
+            if (!e.is_prelu()) continue;
+            const int mask = e.prelu.mask;
+            dims_t weight_dims {};
+            for (int d = 0; d < nd; ++d)
+                weight_dims[d] = ((mask >> d) & 0x1) ? desc_.c_md().dims[d] : 1;
+            format_tag_t tag = format_tag::undef;
+            switch (nd) {
+                case 1: tag = format_tag::a; break;
+                case 2: tag = format_tag::ab; break;
+                case 3: tag = format_tag::acb; break;
+                case 4: tag = format_tag::acdb; break;
+                case 5: tag = format_tag::acdeb; break;
+                default: break;
+            }
+            memory_desc_t src1 {};
+            if (memory_desc_init_by_tag(
+                        src1, nd, weight_dims, data_type::f32, tag)
+                    != status::success)
+                continue;
+            e.kind = primitive_kind::binary;
+            e.binary.alg = alg_kind::eltwise_relu;
+            e.binary.src1_desc = src1;
+            e.binary.user_src1_desc = src1;
+            e.binary.src2_desc = memory_desc_t {};
+            e.binary.user_src2_desc = memory_desc_t {};
+        }
+    }
+
+    void apply_swap_ab() {
+        // Canonicalize prelu first so its src1_desc participates in the
+        // per-entry axes swap below.
+        canonicalize_post_ops();
+
+        const int nd = desc_.c_md().ndims;
+
+        desc_.apply_swap_ab();
+
+        attr_.scales_.swap_entries(gemm_arg::A, gemm_arg::B);
+        attr_.zero_points_.swap_entries(gemm_arg::A, gemm_arg::B);
+        attr_.precomputed_reductions_.swap_entries(gemm_arg::A, gemm_arg::B);
+
+        for (int arg : {gemm_arg::A, gemm_arg::B, gemm_arg::C}) {
+            swap_entry_mn_axes(attr_.scales_, arg, nd);
+            swap_entry_mn_axes(attr_.zero_points_, arg, nd);
+            swap_entry_mn_axes(attr_.precomputed_reductions_, arg, nd);
+        }
+
+        for (int i = 0; i < attr_.post_ops_.len(); ++i) {
+            auto &e = attr_.post_ops_.entry_[i];
+            if (e.is_binary())
+                gemm_desc_t::transpose_mn_axes(e.binary.src1_desc);
+        }
+
+        init_quant_mds();
+    }
+
 protected:
-    // Note: we do not copy memory desc locally to avoid
-    // overheads. This means we lose the users memory descs when we
-    // resolve the 'any' tags.
+    // Note: we do not copy memory desc locally to avoid overheads. This
+    // means we lose the users memory descs when we resolve the 'any'
+    // tags. Subclasses must route orientation flips through
+    // apply_swap_ab() so cached quant mds get reseeded.
     gemm_desc_t desc_;
 
     gemm_pd_t(const op_desc_t *adesc, const primitive_attr_t *attr,
@@ -118,16 +198,52 @@ protected:
     bool set_default_formats() {
         bool ok = true;
 
-        for (auto md : {&desc_.a_desc, &desc_.b_desc, &desc_.bias_desc,
-                     &desc_.c_desc}) {
+        for (auto md : {&desc_.a_md(), &desc_.b_md(), &desc_.bias_md(),
+                     &desc_.c_md()}) {
             ok = ok && set_default_format(md);
         }
 
-        auto status = attr_.post_ops_.set_default_formats(&desc_.c_desc);
+        auto status = attr_.post_ops_.set_default_formats(&desc_.c_md());
         ok = ok && (status == status::success);
 
+        if (ok) init_quant_mds();
         return ok;
     }
+
+    void init_quant_mds() {
+        const auto &scales = attr_.scales_;
+        const auto &zps = attr_.zero_points_;
+        const auto &gs = attr_.precomputed_reductions_;
+        (void)scales.get(gemm_arg::A).get_md(a_scale_md_, desc_.a_md());
+        (void)scales.get(gemm_arg::B).get_md(b_scale_md_, desc_.b_md());
+        (void)scales.get(gemm_arg::C).get_md(c_scale_md_, desc_.c_md());
+        (void)zps.get(gemm_arg::A).get_md(a_zp_md_, desc_.a_md());
+        (void)zps.get(gemm_arg::B).get_md(b_zp_md_, desc_.b_md());
+        (void)zps.get(gemm_arg::C).get_md(c_zp_md_, desc_.c_md());
+        (void)gs.get(gemm_arg::A).get_md(a_gs_md_, desc_.a_md());
+        (void)gs.get(gemm_arg::B).get_md(b_gs_md_, desc_.b_md());
+    }
+
+    static int swap_mask_bits(int mask, int i, int j) {
+        if (i < 0 || j < 0 || i == j) return mask;
+        const int lo = (mask >> i) & 1;
+        const int hi = (mask >> j) & 1;
+        if (lo != hi) {
+            mask ^= (1 << i);
+            mask ^= (1 << j);
+        }
+        return mask;
+    }
+
+    static void swap_entry_mn_axes(quant_entries_t &q, int arg, int ndims) {
+        if (q.has_default_values(arg)) return;
+        q.set_mask(arg, swap_mask_bits(q.get_mask(arg), ndims - 2, ndims - 1));
+        q.swap_group_dims(arg, 0, 1);
+    }
+
+    memory_desc_t a_scale_md_ {}, b_scale_md_ {}, c_scale_md_ {};
+    memory_desc_t a_zp_md_ {}, b_zp_md_ {}, c_zp_md_ {};
+    memory_desc_t a_gs_md_ {}, b_gs_md_ {};
 };
 // NOLINTEND(google-default-arguments)
 

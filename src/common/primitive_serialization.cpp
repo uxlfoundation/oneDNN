@@ -329,14 +329,15 @@ void serialize(serialization_stream_t &sstream, const eltwise_desc_t &desc) {
 void serialize(serialization_stream_t &sstream, const gemm_desc_t &desc) {
     // Kind
     sstream.append(desc.primitive_kind);
-    serialize(sstream, desc.a_desc);
-    serialize(sstream, desc.b_desc);
-    serialize(sstream, desc.c_desc);
-    serialize(sstream, desc.bias_desc);
+    serialize(sstream, desc.a_md());
+    serialize(sstream, desc.b_md());
+    serialize(sstream, desc.c_md());
+    serialize(sstream, desc.bias_md());
     // Accumulator type
     sstream.append(desc.acc_type);
-    sstream.append(desc.sum_ab);
-    sstream.append(desc.sum_ab_type);
+    sstream.append(desc.sum_ab());
+    sstream.append(desc.sum_ab_type());
+    sstream.append(desc.swap_ab());
 }
 
 void serialize(serialization_stream_t &sstream,

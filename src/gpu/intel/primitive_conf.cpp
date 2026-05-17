@@ -14,6 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "common/gemm_arg.hpp"
 #include "gpu/gpu_eltwise_pd.hpp"
 #include "gpu/intel/block_structure.hpp"
 #include "gpu/intel/post_ops.hpp"
@@ -107,7 +108,13 @@ attr_info_t attr_info_t::create(const primitive_attr_t *attr) {
     attr_info.with_sum
             = (attr_info.sum_idx != -1) && (attr_info.sum_scale != 0.0f);
 
-    const auto &src_scales = attr->scales_.get(DNNL_ARG_SRC);
+    // Gemm pds key attr by gemm_arg::A/B/C; others by SRC/WEIGHTS/DST.
+    const auto &scales = attr->scales_;
+    auto pick_scale = [&](int gemm_key, int user_key) -> const quant_entry_t & {
+        const auto &g = scales.get(gemm_key);
+        return g.has_default_values() ? scales.get(user_key) : g;
+    };
+    const auto &src_scales = pick_scale(gemm_arg::A, DNNL_ARG_SRC);
     attr_info.with_src_scales = !src_scales.has_default_values();
     attr_info.with_src0_scale = !src_scales.has_default_values();
     attr_info.src_scales_data_type = src_scales.get_data_type();
@@ -116,43 +123,48 @@ attr_info_t attr_info_t::create(const primitive_attr_t *attr) {
     attr_info.with_src1_scale = !src1_scales.has_default_values();
     if (attr_info.with_src1_scale) { gpu_assert(src1_scales.get_mask() == 0); }
 
-    const auto &wei_scales = attr->scales_.get(DNNL_ARG_WEIGHTS);
+    const auto &wei_scales = pick_scale(gemm_arg::B, DNNL_ARG_WEIGHTS);
     attr_info.with_wei_scales = !wei_scales.has_default_values();
     // TODO: remove the default `0` value.
     attr_info.wei_scales_mask
             = attr_info.with_wei_scales ? wei_scales.get_mask() : 0;
     attr_info.wei_scales_data_type = wei_scales.get_data_type();
 
-    const auto &dst_scales = attr->scales_.get(DNNL_ARG_DST);
+    const auto &dst_scales = pick_scale(gemm_arg::C, DNNL_ARG_DST);
     attr_info.with_dst_scales = !dst_scales.has_default_values();
     attr_info.dst_scales_mask = dst_scales.get_mask();
     attr_info.dst_scales_data_type = dst_scales.get_data_type();
 
     // zero points
     const auto &zp = attr->zero_points_;
-    attr_info.with_src_zpoints = !zp.has_default_values(DNNL_ARG_SRC);
-    attr_info.with_wei_zpoints = !zp.has_default_values(DNNL_ARG_WEIGHTS);
-    attr_info.with_dst_zpoints = !zp.has_default_values(DNNL_ARG_DST);
-    attr_info.src_zpoints_data_type = zp.get_data_type(DNNL_ARG_SRC);
-    attr_info.wei_zpoints_data_type = zp.get_data_type(DNNL_ARG_WEIGHTS);
-    attr_info.dst_zpoints_data_type = zp.get_data_type(DNNL_ARG_DST);
+    auto pick_zp = [&](int gemm_key, int user_key) -> const quant_entry_t & {
+        const auto &g = zp.get(gemm_key);
+        return g.has_default_values() ? zp.get(user_key) : g;
+    };
+    const auto &src_zp = pick_zp(gemm_arg::A, DNNL_ARG_SRC);
+    const auto &wei_zp = pick_zp(gemm_arg::B, DNNL_ARG_WEIGHTS);
+    const auto &dst_zp = pick_zp(gemm_arg::C, DNNL_ARG_DST);
+    attr_info.with_src_zpoints = !src_zp.has_default_values();
+    attr_info.with_wei_zpoints = !wei_zp.has_default_values();
+    attr_info.with_dst_zpoints = !dst_zp.has_default_values();
+    attr_info.src_zpoints_data_type = src_zp.get_data_type();
+    attr_info.wei_zpoints_data_type = wei_zp.get_data_type();
+    attr_info.dst_zpoints_data_type = dst_zp.get_data_type();
 
     // host-side scalars for scales or zero-points
     attr_info.with_host_src_scale = src_scales.is_host_scalar();
     attr_info.with_host_wei_scale = wei_scales.is_host_scalar();
     attr_info.with_host_dst_scale = dst_scales.is_host_scalar();
     attr_info.with_dyn_dst_scale = dst_scales.is_dynamic();
-    attr_info.with_host_src_zp = zp.get(DNNL_ARG_SRC).is_host_scalar();
-    attr_info.with_host_wei_zp = zp.get(DNNL_ARG_WEIGHTS).is_host_scalar();
-    attr_info.with_host_dst_zp = zp.get(DNNL_ARG_DST).is_host_scalar();
+    attr_info.with_host_src_zp = src_zp.is_host_scalar();
+    attr_info.with_host_wei_zp = wei_zp.is_host_scalar();
+    attr_info.with_host_dst_zp = dst_zp.is_host_scalar();
 
-    attr_info.with_per_ic_src_zpoints = attr_info.with_src_zpoints
-            && !zp.has_default_values(DNNL_ARG_SRC)
-            && zp.get_mask(DNNL_ARG_SRC) > 0;
+    attr_info.with_per_ic_src_zpoints
+            = attr_info.with_src_zpoints && src_zp.get_mask() > 0;
 
-    attr_info.with_per_oc_dst_zpoints = attr_info.with_dst_zpoints
-            && !zp.has_default_values(DNNL_ARG_DST)
-            && zp.get_mask(DNNL_ARG_DST) > 0;
+    attr_info.with_per_oc_dst_zpoints
+            = attr_info.with_dst_zpoints && dst_zp.get_mask() > 0;
 
     // Rounding mode.
     attr_info.with_dst_sround = attr->rounding_mode_.get(DNNL_ARG_DST)
@@ -587,8 +599,13 @@ int append_post_ops_to_arg_list_base(const exec_args_t &args,
         const post_ops_t &post_ops, memory_desc_wrapper dst_mdw) {
     auto set_arg_entry = [&](const post_ops_t::entry_t &e, int po_idx) {
         if (e.is_binary() || e.is_prelu()) {
+            // prelu (incl. binary_prelu after apply_swap_ab promotion)
+            // keys its slope buffer under DNNL_ARG_WEIGHTS.
+            const bool prelu_keyed = e.is_prelu()
+                    || (e.is_binary()
+                            && e.binary.alg == alg_kind::binary_prelu);
             auto arg = args.at(DNNL_ARG_ATTR_MULTIPLE_POST_OP(po_idx)
-                    | (e.is_binary() ? DNNL_ARG_SRC_1 : DNNL_ARG_WEIGHTS));
+                    | (prelu_keyed ? DNNL_ARG_WEIGHTS : DNNL_ARG_SRC_1));
             gpu_assert(arg.is_const());
 
             auto &binary_arg = arg.mem()

@@ -21,6 +21,7 @@
 #include "common/nstl.hpp"
 #include "common/primitive_desc_iterator.hpp"
 #include "common/utils.hpp"
+#include "gpu/intel/gemm/exec_types.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -107,13 +108,9 @@ static inline status_t create_gemm_desc(gemm_desc_t *_gemm_desc,
         data_type_t sum_ab_dt = data_type::undef) {
     auto gemm_desc = gemm_desc_t();
     gemm_desc.primitive_kind = primitive_kind::gemm;
-    gemm_desc.a_desc = *a_md;
-    gemm_desc.b_desc = *b_md;
-    gemm_desc.c_desc = *c_md;
-    gemm_desc.bias_desc = *bias_md;
+    gemm_desc.set_inputs(*a_md, *b_md, *c_md, *bias_md);
     gemm_desc.acc_type = acc_dt;
-    gemm_desc.sum_ab = sum_ab;
-    gemm_desc.sum_ab_type = sum_ab_dt;
+    gemm_desc.set_sum_ab(sum_ab, sum_ab_dt);
     // Downgrade accumulation type for f16 if allowed.
     if (engine->mayiuse_f16_accumulator_with_f16()
             && utils::everyone_is(
@@ -136,6 +133,11 @@ static inline status_t create_gemm_pd(
             engine, sum_ab, sum_ab_dt));
 
     primitive_attr_t gemm_attr = *attr;
+    // Rekey the user matmul-named entries (SRC/WEIGHTS/DST) onto the
+    // gemm-internal A/B/C namespace. The inner gemm pd sees attr keyed
+    // by kernel-A/B/C, paired by construction with desc.a_md()/b_md()/
+    // c_md() in the matmul-natural orientation.
+    gpu::intel::gemm::rekey_attr_for_gemm(gemm_attr);
 
     primitive_desc_iterator_t it(
             engine, (op_desc_t *)&gemm_desc, &gemm_attr, nullptr);

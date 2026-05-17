@@ -103,7 +103,7 @@ struct ref_t : public primitive_t {
             VDISPATCH_GEMM(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
 
             // Ref OCL kernel expects kernel-A = matmul-B.
-            apply_swap_ab();
+            CHECK(apply_swap_ab());
 
             const auto a_dt = desc()->a_type();
             const auto b_dt = desc()->b_type();

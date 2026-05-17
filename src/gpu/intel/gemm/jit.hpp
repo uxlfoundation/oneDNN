@@ -76,7 +76,7 @@ struct gen_t : public primitive_t {
             // Weights-only compression: catalog only has skinny-N for quant-in-A.
             want_un_swap &= !wei_decomp();
 
-            if (!want_un_swap) apply_swap_ab();
+            if (!want_un_swap) CHECK(apply_swap_ab());
 
             CHECK(jit::pd_t::init(engine, arch_));
 

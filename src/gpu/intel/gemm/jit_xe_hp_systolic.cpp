@@ -53,7 +53,7 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
     // Kernel is column-major; swap A/B to match.
     // Ordering is safe: on format_any descs apply_swap_ab is dims-only;
     // strides are resolved later by init_default_formats / set_default_formats.
-    apply_swap_ab();
+    CHECK(apply_swap_ab());
 
     CHECK(init_attrs(engine));
     const auto &d = desc();
@@ -310,9 +310,9 @@ bool xe_hp_systolic_t::pd_t::use_nocopy_xehpg(
 }
 
 status_t xe_hp_systolic_t::pd_t::init_default_formats(data_type_t dt) {
-    apply_swap_ab();
+    CHECK(apply_swap_ab());
     auto rc = init_default_formats_impl(dt);
-    apply_swap_ab();
+    CHECK(apply_swap_ab());
     if (rc != status::success) return rc;
 
     return gemm::pd_t::set_default_formats() ? status::success

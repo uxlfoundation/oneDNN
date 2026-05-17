@@ -107,7 +107,7 @@ struct gemm_pd_t : public primitive_desc_t {
     const memory_desc_t &b_gs_md() const { return b_gs_md_; }
 
     // Promote prelu to binary; tagged alg=eltwise_relu. Idempotent.
-    void canonicalize_post_ops() {
+    status_t canonicalize_post_ops() {
         const int nd = desc_.c_md().ndims;
         for (int i = 0; i < attr_.post_ops_.len(); ++i) {
             auto &e = attr_.post_ops_.entry_[i];
@@ -117,10 +117,8 @@ struct gemm_pd_t : public primitive_desc_t {
             for (int d = 0; d < nd; ++d)
                 weight_dims[d] = ((mask >> d) & 0x1) ? desc_.c_md().dims[d] : 1;
             memory_desc_t src1 {};
-            if (memory_desc_init_by_strides(
-                        src1, nd, weight_dims, data_type::f32, nullptr)
-                    != status::success)
-                continue;
+            CHECK(memory_desc_init_by_strides(
+                    src1, nd, weight_dims, data_type::f32, nullptr));
             // Row-major -> axb (axis 1 innermost): rescale s[2..nd-1] by
             // dims[1] and set s[1]=1. Generalizes a/ab/acb/acdb/acdeb to any
             // nd up to DNNL_MAX_NDIMS.
@@ -134,10 +132,11 @@ struct gemm_pd_t : public primitive_desc_t {
             e.binary.src2_desc = memory_desc_t {};
             e.binary.user_src2_desc = memory_desc_t {};
         }
+        return status::success;
     }
 
-    void apply_swap_ab() {
-        canonicalize_post_ops();
+    status_t apply_swap_ab() {
+        CHECK(canonicalize_post_ops());
 
         const int nd = desc_.c_md().ndims;
 
@@ -166,6 +165,7 @@ struct gemm_pd_t : public primitive_desc_t {
         }
 
         init_quant_mds();
+        return status::success;
     }
 
 protected:

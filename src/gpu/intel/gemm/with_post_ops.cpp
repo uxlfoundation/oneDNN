@@ -157,10 +157,10 @@ status_t with_post_ops_t::pd_t::init(impl::engine_t *engine) {
             VERBOSE_PRIMITIVE_CREATION_FAIL, pd_ ? pd_->name() : "");
 
     const auto *inner = op_desc_t::to_desc<gemm_desc_t>(pd_->op_desc());
-    canonicalize_post_ops();
+    CHECK(canonicalize_post_ops());
     // Ordering is safe: on format_any descs apply_swap_ab is dims-only;
     // strides are resolved later by set_default_formats / set_inputs below.
-    if (inner->swap_ab() != desc_.swap_ab()) apply_swap_ab();
+    if (inner->swap_ab() != desc_.swap_ab()) CHECK(apply_swap_ab());
     gpu_assert(inner->swap_ab() == desc_.swap_ab());
     memory_desc_t c = inner->c_md();
     c.data_type = dst_type_;

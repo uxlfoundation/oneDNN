@@ -47,7 +47,7 @@ status_t gemm_t::execute(const exec_ctx_t &ctx) const {
     args.a_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
     args.b_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
     bool dyn_scales
-            = gemm_->pd()->attr()->scales_.get(DNNL_ARG_DST).is_dynamic();
+            = gemm_->pd()->attr()->scales_.get(gemm_arg::C).is_dynamic();
     args.c_scales = dyn_scales
             ? &CTX_OUT_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST)
             : &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);

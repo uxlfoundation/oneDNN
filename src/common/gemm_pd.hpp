@@ -125,6 +125,11 @@ struct gemm_pd_t : public primitive_desc_t {
                 case 5: tag = format_tag::acdeb; break;
                 default: break;
             }
+            // For nd outside {1..5} (e.g. nd==0 or nd>5 reachable via matmul
+            // with DNNL_MAX_NDIMS), tag remains undef and
+            // memory_desc_init_by_tag would silently return zero_md. Skip the
+            // entry instead of corrupting it.
+            if (tag == format_tag::undef) continue;
             memory_desc_t src1 {};
             if (memory_desc_init_by_tag(
                         src1, nd, weight_dims, data_type::f32, tag)
@@ -158,8 +163,14 @@ struct gemm_pd_t : public primitive_desc_t {
 
         for (int i = 0; i < attr_.post_ops_.len(); ++i) {
             auto &e = attr_.post_ops_.entry_[i];
-            if (e.is_binary())
+            if (e.is_binary()) {
                 gemm_desc_t::transpose_mn_axes(e.binary.src1_desc);
+                gemm_desc_t::transpose_mn_axes(e.binary.user_src1_desc);
+                if (e.is_binary_with_ternary_op()) {
+                    gemm_desc_t::transpose_mn_axes(e.binary.src2_desc);
+                    gemm_desc_t::transpose_mn_axes(e.binary.user_src2_desc);
+                }
+            }
         }
 
         init_quant_mds();

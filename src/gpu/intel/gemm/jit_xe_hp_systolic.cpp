@@ -120,7 +120,8 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
     VDISPATCH_GEMM(desc()->sum_ab() == sum_ab::sum_none,
             VERBOSE_UNSUPPORTED_FEATURE, "bias reduction");
     VDISPATCH_GEMM(IMPLICATION(with_bias(),
-                           utils::one_of(d->bias_type(), d->a_type(), f32)
+                           utils::one_of(d->bias_type(), d->a_type(),
+                                   d->b_type(), f32)
                                    && d->bias_mask() < 8),
             VERBOSE_UNSUPPORTED_BIAS_CFG);
 

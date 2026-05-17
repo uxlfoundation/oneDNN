@@ -147,7 +147,8 @@ struct pd_t : public gemm::pd_t {
                 = scales.get(gemm_arg::A).is_host_scalar()
                 || scales.get(gemm_arg::B).is_host_scalar()
                 || (scales.get(gemm_arg::C).is_host_scalar()
-                        && attr()->post_ops_.len() == 0);
+                        && attr()->post_ops_.len() == 0
+                        && !bias_via_binary_);
         // Bogus non-one value for host scalar.
         // Actual value will be passed on execution step
         if (host_scales_by_alpha) return 9.99f;

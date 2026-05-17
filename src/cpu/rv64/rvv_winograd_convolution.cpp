@@ -533,6 +533,7 @@ status_t rvv_winograd_init_conf(rvv_winograd_conf_t &conf,
 
     const dim_t mb = src_d.dims()[0];
     conf.mb = mb;
+    conf.nthr = nstl::min(static_cast<int>(mb), dnnl_get_max_threads());
 
     conf.ih = src_d.dims()[2];
     conf.iw = src_d.dims()[3];
@@ -600,8 +601,8 @@ status_t rvv_winograd_init_conf(rvv_winograd_conf_t &conf,
     using namespace memory_tracking::names;
 
     scratchpad.book<float>(key_wino_U, conf.wspec.weight_matrix_size);
-    scratchpad.book<float>(key_wino_V, conf.wspec.V_buffer_size);
-    scratchpad.book<float>(key_wino_M, conf.wspec.M_buffer_size);
+    scratchpad.book<float>(key_wino_V, conf.nthr * conf.wspec.V_buffer_size);
+    scratchpad.book<float>(key_wino_M, conf.nthr * conf.wspec.M_buffer_size);
 
     return status::success;
 }
@@ -626,14 +627,13 @@ status_t rvv_wino_convolution_fwd_t::execute_forward(
             transformed_weights, conf.wspec.N, conf.wspec.K,
             conf.wspec.weight_ic_rounded, conf.wspec.weight_oc_rounded);
 
-    float *V = scratchpad.template get<float>(key_wino_V);
-    float *M = scratchpad.template get<float>(key_wino_M);
+    float *V_base = scratchpad.template get<float>(key_wino_V);
+    float *M_base = scratchpad.template get<float>(key_wino_M);
 
     auto *input_xform = input_xform_.get();
     auto *output_xform = output_xform_.get();
 
-    // Sequential batch processing: input transform -> GEMM -> output transform
-    // per batch, keeping working set in L2 cache.
+    // Batch-parallel processing: each worker owns one V/M scratchpad slice.
     const dim_t nb_oh = (conf.oh + 1) / 2;
     const dim_t nb_ow = (conf.ow + 1) / 2;
     const dim_t total_tiles = nb_oh * nb_ow;
@@ -642,43 +642,51 @@ status_t rvv_wino_convolution_fwd_t::execute_forward(
     const dim_t ic_spatial_stride = conf.ih * conf.iw;
     const dim_t oc_spatial_stride = conf.oh * conf.ow;
 
-    for (dim_t mb_idx = 0; mb_idx < conf.mb; mb_idx++) {
-        const float *src_batch = src + mb_idx * conf.ic * ic_spatial_stride;
+    parallel(conf.nthr, [&](const int ithr, const int nthr) {
+        dim_t mb_start = 0, mb_end = 0;
+        balance211(conf.mb, nthr, ithr, mb_start, mb_end);
 
-        // Step 1: Input transform via JIT kernel (tile loop is inside JIT)
-        {
-            jit_wino_input_transform_t::call_params_t params;
-            params.src_batch = src_batch;
-            params.V = V;
-            params.ic_spatial_stride = ic_spatial_stride;
-            params.nb_oh = nb_oh;
-            params.nb_ow = nb_ow;
-            (*input_xform)(&params);
+        float *V = V_base + ithr * conf.wspec.V_buffer_size;
+        float *M = M_base + ithr * conf.wspec.M_buffer_size;
+
+        for (dim_t mb_idx = mb_start; mb_idx < mb_end; mb_idx++) {
+            const float *src_batch = src + mb_idx * conf.ic * ic_spatial_stride;
+
+            // Step 1: Input transform via JIT kernel (tile loop is inside JIT)
+            {
+                jit_wino_input_transform_t::call_params_t params;
+                params.src_batch = src_batch;
+                params.V = V;
+                params.ic_spatial_stride = ic_spatial_stride;
+                params.nb_oh = nb_oh;
+                params.nb_ow = nb_ow;
+                (*input_xform)(&params);
+            }
+
+            // Step 2: GEMM using brgemm kernel (16 elements)
+            for (int elem = 0; elem < 16; elem++) {
+                const float *A_weights = transformed_weights
+                        + elem * conf.wspec.weight_ld_matrix;
+                const float *B_input = V + elem * V_elem_stride;
+                float *C_output = M + elem * M_elem_stride;
+
+                brgemm_kernel_execute(brg_kernel, A_weights, B_input, C_output,
+                        total_tiles, 0.0f);
+            }
+
+            // Step 3: Output transform via JIT kernel (tile loop is inside JIT)
+            {
+                data_t *dst_batch = dst + mb_idx * conf.oc * oc_spatial_stride;
+                jit_wino_output_transform_t::call_params_t params;
+                params.M = M;
+                params.bias = bias;
+                params.dst_batch = dst_batch;
+                params.nb_oh = nb_oh;
+                params.nb_ow = nb_ow;
+                (*output_xform)(&params);
+            }
         }
-
-        // Step 2: GEMM using brgemm kernel (16 elements)
-        for (int elem = 0; elem < 16; elem++) {
-            const float *A_weights
-                    = transformed_weights + elem * conf.wspec.weight_ld_matrix;
-            const float *B_input = V + elem * V_elem_stride;
-            float *C_output = M + elem * M_elem_stride;
-
-            brgemm_kernel_execute(brg_kernel, A_weights, B_input, C_output,
-                    total_tiles, 0.0f);
-        }
-
-        // Step 3: Output transform via JIT kernel (tile loop is inside JIT)
-        {
-            data_t *dst_batch = dst + mb_idx * conf.oc * oc_spatial_stride;
-            jit_wino_output_transform_t::call_params_t params;
-            params.M = M;
-            params.bias = bias;
-            params.dst_batch = dst_batch;
-            params.nb_oh = nb_oh;
-            params.nb_ow = nb_ow;
-            (*output_xform)(&params);
-        }
-    }
+    });
 
     return status::success;
 }

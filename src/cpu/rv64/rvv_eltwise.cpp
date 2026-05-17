@@ -22,6 +22,7 @@
 #include "common/math_utils.hpp"
 #include "common/type_helpers.hpp"
 
+#include "cpu/rv64/jit_rvv_eltwise_kernel.hpp"
 #include "cpu/rv64/rvv_eltwise.hpp"
 #include "cpu/rv64/rvv_eltwise_kernels.hpp"
 
@@ -38,7 +39,8 @@ void compute_eltwise_rvv_fwd(const alg_kind_t alg, const void *src, void *dst,
         const data_type_t dt) {
     switch (dt) {
         case data_type::f32:
-            rvv_eltwise_apply_fwd_f32(alg, src, dst, len, alpha, beta, dt);
+            jit_rvv_eltwise_apply_f32(alg, static_cast<const float *>(src),
+                    static_cast<float *>(dst), len, alpha, beta);
             break;
         case data_type::s32:
             rvv_eltwise_apply_fwd_s32(alg, src, dst, len, alpha, beta, dt);

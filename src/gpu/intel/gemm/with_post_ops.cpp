@@ -70,8 +70,6 @@ status_t with_post_ops_t::pd_t::init(impl::engine_t *engine) {
             VDISPATCH_GEMM((mask == 0), VERBOSE_UNSUPPORTED_SCALES_CFG);
     }
     attr_info_ = attr_info_t::create(attributes_with_po);
-    // Kernel scale args use user-keyed semantics; only matmul/IP wrappers
-    // populate args.exec_args (see assert in execute()).
     requires_user_scales_ = attr_info_.with_src_scales
             || attr_info_.with_wei_scales || attr_info_.with_dst_scales;
 
@@ -158,12 +156,12 @@ status_t with_post_ops_t::pd_t::init(impl::engine_t *engine) {
     VDISPATCH_GEMM(!(!pd_ || strstr(pd_->name(), skip_impl) != nullptr),
             VERBOSE_PRIMITIVE_CREATION_FAIL, pd_ ? pd_->name() : "");
 
-    // Sync orientation with the inner gemm so the dst_md views match.
     const auto *inner = op_desc_t::to_desc<gemm_desc_t>(pd_->op_desc());
     canonicalize_post_ops();
+    // Ordering is safe: on format_any descs apply_swap_ab is dims-only;
+    // strides are resolved later by set_default_formats / set_inputs below.
     if (inner->swap_ab() != desc_.swap_ab()) apply_swap_ab();
     gpu_assert(inner->swap_ab() == desc_.swap_ab());
-    // Set tags for end user.
     memory_desc_t c = inner->c_md();
     c.data_type = dst_type_;
     desc_.set_inputs(inner->a_md(), inner->b_md(), c, desc_.bias_md());
@@ -238,7 +236,6 @@ status_t with_post_ops_t::pd_t::init_kernel_ctx(
     kernel_ctx.set_data_type(dynamic_scales_ ? acc_type_ : c_type);
     kernel_ctx.require_stateless_addressing(has_large_buffers());
 
-    // Use attr_info_ (user-keyed); kernel scale slots assume user keying.
     const bool with_src_scales = attr_info_.with_src_scales;
     const bool with_wei_scales = attr_info_.with_wei_scales;
     const bool with_dst_scales = attr_info_.with_dst_scales;
@@ -261,7 +258,7 @@ status_t with_post_ops_t::pd_t::init_kernel_ctx(
     kernel_ctx.define_int("A_SCALES", with_src_scales);
     kernel_ctx.define_int("B_SCALES", with_wei_scales);
     kernel_ctx.define_int("C_SCALES", with_dst_scales);
-    // per_oc wei scale axis flips when swap_ab swaps c_md axes.
+    // per_oc wei scale axis flips under swap_ab.
     kernel_ctx.define_int(
             "B_SCALE_AXIS", desc_.swap_ab() ? ndims - 2 : ndims - 1);
     kernel_ctx.define_int("DST_ZERO_POINT", attr_info_.with_dst_zpoints);
@@ -285,8 +282,6 @@ void with_post_ops_t::pd_t::init_scratchpad() {
 }
 
 status_t with_post_ops_t::execute(const exec_ctx_t &ctx) const {
-    // Scales come from user-keyed args.exec_args, populated by matmul/IP
-    // wrappers; not supported through the gemm primitive bridge.
     const auto &args = ctx.args();
     gpu_assert(!pd()->requires_user_scales_ || !args.exec_args.empty());
     std::unique_ptr<memory_t, memory_deleter_t> c_mem_before_po_worker;
@@ -332,7 +327,6 @@ status_t with_post_ops_t::execute(const exec_ctx_t &ctx) const {
                                    : GEMM_ARG_STORAGE(c));
     int idx = append_post_ops_to_arg_list(args.exec_args, arg_list, 3,
             pd()->attr()->post_ops_, *pd()->dst_md());
-    // Scale slots are user-keyed; read straight from args.exec_args.
     const auto user_scale = [&args](int user_arg) -> const memory_storage_t & {
         auto it = args.exec_args.find(DNNL_ARG_ATTR_SCALES | user_arg);
         if (it != args.exec_args.end() && it->second.mem()) {
@@ -341,10 +335,18 @@ status_t with_post_ops_t::execute(const exec_ctx_t &ctx) const {
         }
         return memory_storage_t::empty_storage();
     };
+    // CONTRACT (enforced at pd init, see validator ~L56-71 — user-keyed):
+    //   - user SRC mask == 0 (kernel reads a_scales[0] only).
+    //   - user WEIGHTS mask is 0 or per-OC (1 << (dst_ndims - 1)).
+    //   - wei_scales_mask captured pre-swap; consumed below as a boolean.
+    // The a_scales / b_scales slots are USER-keyed; the gemm-internal
+    // attr_.scales_ entries are post-swap by execute time and must NOT
+    // be read here. Any relaxation of the user-keyed contract requires
+    // re-wiring the slots below.
     arg_list.set(idx++, user_scale(DNNL_ARG_SRC));
     arg_list.set(idx++, user_scale(DNNL_ARG_WEIGHTS));
     arg_list.set(idx++, GEMM_ARG_STORAGE(c_scales));
-    // Use user-keyed wei mask captured at pd init; attr_ may be swapped.
+    // User-keyed wei mask captured at pd init.
     arg_list.set(idx++, pd()->attr_info_.wei_scales_mask > 0 ? 1 : 0);
     arg_list.set(idx, GEMM_ARG_STORAGE(c_zero_point));
     if (pd()->with_dropout) {

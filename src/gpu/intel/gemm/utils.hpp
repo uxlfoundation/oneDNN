@@ -133,10 +133,6 @@ static inline status_t create_gemm_pd(
             engine, sum_ab, sum_ab_dt));
 
     primitive_attr_t gemm_attr = *attr;
-    // Rekey the user matmul-named entries (SRC/WEIGHTS/DST) onto the
-    // gemm-internal A/B/C namespace. The inner gemm pd sees attr keyed
-    // by kernel-A/B/C, paired by construction with desc.a_md()/b_md()/
-    // c_md() in the matmul-natural orientation.
     gpu::intel::gemm::rekey_attr_for_gemm(gemm_attr);
 
     primitive_desc_iterator_t it(

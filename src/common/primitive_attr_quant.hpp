@@ -89,7 +89,6 @@ struct quant_entry_t : public c_compatible {
 
     int get_mask() const { return mask_; }
     void set_mask(int mask) { mask_ = mask; }
-    // No-op for default groups or out-of-range indices.
     void swap_group_dims(int i, int j) {
         if (has_default_groups()) return;
         if (i >= group_ndims_ || j >= group_ndims_) return;
@@ -260,11 +259,13 @@ struct quant_entries_t : public c_compatible {
     int get_mask(int arg) const { return get(arg).get_mask(); }
     void set_mask(int arg, int mask) {
         auto it = entries_.find(arg);
+        assert(it != entries_.end());
         if (it == entries_.end()) return;
         it->second.set_mask(mask);
     }
     void swap_group_dims(int arg, int i, int j) {
         auto it = entries_.find(arg);
+        assert(it != entries_.end());
         if (it == entries_.end()) return;
         it->second.swap_group_dims(i, j);
     }
@@ -384,7 +385,6 @@ private:
         for (const auto &sa : {DNNL_ARG_WEIGHTS_1, DNNL_ARG_WEIGHTS_2}) {
             if (arg == sa) return true;
         }
-        // gemm internal primitive arg space.
         if (gemm_arg::is_valid(arg)) return true;
         return false;
     }
@@ -429,7 +429,6 @@ private:
         for (const auto &sa : {DNNL_ARG_WEIGHTS_1, DNNL_ARG_WEIGHTS_2}) {
             if (arg == sa) return true;
         }
-        // gemm internal primitive arg space.
         if (gemm_arg::is_valid(arg)) return true;
         return false;
     }
@@ -466,7 +465,6 @@ private:
     bool check_arg(int arg) const override {
         // So far, only SRC is supported for dynamic quantization cases.
         if (arg == DNNL_ARG_SRC) return true;
-        // gemm internal primitive arg space.
         if (gemm_arg::is_valid(arg)) return true;
         return false;
     }

@@ -112,8 +112,7 @@ struct pd_t : public gemm::pd_t {
     bool dy_quant_enabled_ = false;
     bool quant_enabled_ = false;
 
-    // Aggregated from up to 3 attr entries per slot (zp / gs / scales).
-    // INT_MIN means unset on the scale ndims override.
+    // INT_MIN = override unset.
     int a_scale_ndims_override_ = INT_MIN;
     int b_scale_ndims_override_ = INT_MIN;
     int a_group_k_ = 0, a_group_m_ = 0;
@@ -135,8 +134,7 @@ struct pd_t : public gemm::pd_t {
 
     const int idx_a = DNNL_ARG_WEIGHTS;
     memory_desc_t prelu_wei_md;
-    // Kernel-tuned (may differ from desc()->lda()/ldb()/transb()):
-    // lda_/ldb_ may be padded; transb_ may be forced false for n=1.
+    // Kernel-tuned; may differ from desc()->lda()/ldb()/transb().
     dim_t lda_ = 0, ldb_ = 0;
     bool transb_ = false;
     bool with_sround_ = false;
@@ -219,7 +217,6 @@ struct pd_t : public gemm::pd_t {
     bool trans_b() const { return transb_; }
     bool trans_bias() const { return desc()->trans_bias() == dnnl_trans; }
 
-    // A/B return kernel-tuned values; C reads raw from desc.
     dim_t ld(int arg) const {
         if (arg == gemm_arg::A) return lda_;
         if (arg == gemm_arg::B) return ldb_;

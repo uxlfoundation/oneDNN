@@ -75,8 +75,6 @@ struct gemm_desc_t : public op_desc_t {
     const memory_desc_t &b_md() const { return b_desc_; }
     const memory_desc_t &c_md() const { return c_desc_; }
     const memory_desc_t &bias_md() const { return bias_desc_; }
-    // Non-const overloads are for init-time format resolution only.
-    // Orientation flips must go through gemm_pd_t::apply_swap_ab().
     memory_desc_t &a_md() { return a_desc_; }
     memory_desc_t &b_md() { return b_desc_; }
     memory_desc_t &c_md() { return c_desc_; }
@@ -86,8 +84,6 @@ struct gemm_desc_t : public op_desc_t {
     dnnl_data_type_t sum_ab_type() const { return sum_ab_type_; }
     bool swap_ab() const { return swap_ab_; }
 
-    // User-view accessors: return the slot mds as originally supplied,
-    // regardless of apply_swap_ab() state.
     memory_desc_t a_md_user_view() const {
         memory_desc_t res = swap_ab_ ? b_desc_ : a_desc_;
         if (swap_ab_) transpose_mn_axes(res);
@@ -114,8 +110,8 @@ struct gemm_desc_t : public op_desc_t {
     static transpose_t get_trans(const memory_desc_t &md) {
         if (!md.ndims) return transpose::notrans; // arbitrary
 
+        // Leading dimension must be byte-aligned
         using namespace data_type;
-        // Leading dimension must be byte-aligned for 4-bit types.
         bool is_4bit = utils::one_of(md.data_type, f4_e2m1, f4_e3m0, s4, u4);
         dim_t inner_m = md.dims[md.ndims - 2];
         dim_t inner_n = md.dims[md.ndims - 1];
@@ -179,8 +175,6 @@ struct gemm_desc_t : public op_desc_t {
         auto strides = md.format_desc.blocking.strides;
         assert(md.dims[md.ndims - 1] == 1 || strides[md.ndims - 1] == 1
                 || md.dims[md.ndims - 2] == 1 || strides[md.ndims - 2] == 1);
-        // Degenerate M=1 case: handle directly so get_trans() can stay
-        // pure (its result is consumed raw by non-inverted callers).
         if (md.dims[md.ndims - 2] == 1 && md.dims[md.ndims - 1] > 1)
             return strides[md.ndims - 1];
         switch (get_trans(md)) {
@@ -218,8 +212,6 @@ struct gemm_desc_t : public op_desc_t {
         return mask;
     }
 
-    // Relabels the last two axes (m<->n) without reordering memory:
-    // dims/strides swap, inner block sizes are preserved.
     static void transpose_mn_axes(memory_desc_t &md) {
         if (md.ndims < 2) return;
         const int i = md.ndims - 2, j = md.ndims - 1;
@@ -239,12 +231,13 @@ struct gemm_desc_t : public op_desc_t {
     }
 
 private:
-    // Only gemm_pd_t may flip orientation: its wrapper also reseeds
-    // pd-cached quant mds.
     friend struct gemm_pd_t;
 
-    // format_any mds must be resolved BEFORE this call: layout
-    // heuristics read trans flags off the user dims.
+    // Swaps A/B descs and transposes the trailing two axes on A/B/C/bias.
+    // Safe to call before format resolution: on format_any descs only dims
+    // are swapped (strides are skipped); blocked descs get full transposition.
+    // Callers that later invoke set_default_formats / set_inputs re-derive
+    // the strides from the resolved formats.
     void apply_swap_ab() {
         std::swap(a_desc_, b_desc_);
         transpose_mn_axes(a_desc_);

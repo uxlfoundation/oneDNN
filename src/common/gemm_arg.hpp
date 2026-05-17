@@ -17,9 +17,6 @@
 #ifndef COMMON_GEMM_ARG_HPP
 #define COMMON_GEMM_ARG_HPP
 
-// Internal arg keys for the gemm primitive's A/B/C slots. Must not
-// escape past the matmul/IP/conv -> gemm boundary.
-
 namespace dnnl {
 namespace impl {
 namespace gemm_arg {

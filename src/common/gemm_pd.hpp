@@ -76,8 +76,6 @@ struct gemm_pd_t : public primitive_desc_t {
         }
     }
 
-    // Returns kernel-view A/B. For user-named mds use desc()'s
-    // *_md_user_view() accessors.
     const memory_desc_t *src_md(
             int index = 0, bool user_input = false) const override {
         switch (index) {
@@ -108,9 +106,7 @@ struct gemm_pd_t : public primitive_desc_t {
     const memory_desc_t &a_gs_md() const { return a_gs_md_; }
     const memory_desc_t &b_gs_md() const { return b_gs_md_; }
 
-    // Promote prelu post-ops to binary entries (axb over dst dims),
-    // tagged with alg=eltwise_relu so downstream routing recognizes
-    // them as prelu. Idempotent.
+    // Promote prelu to binary; tagged alg=eltwise_relu. Idempotent.
     void canonicalize_post_ops() {
         const int nd = desc_.c_md().ndims;
         for (int i = 0; i < attr_.post_ops_.len(); ++i) {
@@ -144,8 +140,6 @@ struct gemm_pd_t : public primitive_desc_t {
     }
 
     void apply_swap_ab() {
-        // Canonicalize prelu first so its src1_desc participates in the
-        // per-entry axes swap below.
         canonicalize_post_ops();
 
         const int nd = desc_.c_md().ndims;
@@ -172,10 +166,8 @@ struct gemm_pd_t : public primitive_desc_t {
     }
 
 protected:
-    // Note: we do not copy memory desc locally to avoid overheads. This
-    // means we lose the users memory descs when we resolve the 'any'
-    // tags. Subclasses must route orientation flips through
-    // apply_swap_ab() so cached quant mds get reseeded.
+    // Note: desc is not copied locally to avoid overheads; user mds are
+    // lost when 'any' tags are resolved.
     gemm_desc_t desc_;
 
     gemm_pd_t(const op_desc_t *adesc, const primitive_attr_t *attr,

@@ -54,7 +54,6 @@ struct with_post_ops_t : public primitive_t {
         attr_info_t attr_info_;
         bool subbyte_pack_ = false;
         bool dynamic_scales_ = false;
-        // Set when the kernel needs scale args from args.exec_args.
         bool requires_user_scales_ = false;
         bool with_dropout = false;
         bool dropout_use_host_scalars = false;

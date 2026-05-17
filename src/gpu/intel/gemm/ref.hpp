@@ -100,8 +100,6 @@ struct ref_t : public primitive_t {
             using namespace data_type;
             using smask_t = primitive_attr_t::skip_mask_t;
 
-            // Resolve format_any before apply_swap_ab so any-tags don't
-            // get re-derived from swapped dims.
             VDISPATCH_GEMM(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
 
             // Ref OCL kernel expects kernel-A = matmul-B.

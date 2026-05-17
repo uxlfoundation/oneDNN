@@ -511,8 +511,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
             CHECK(maybe_get_host_scalar_value(b_scales_storage, scale_val));
             alpha *= scale_val;
         }
-        // Limited support of host scalar dst scales: fold into alpha
-        // only when there are no post-ops or internal bias-add.
+        // Fold host-scalar dst scale into alpha only when no post-ops/bias-add.
         if (c_scales.is_host_scalar() && pd()->attr()->post_ops_.len() == 0
                 && !pd()->bias_via_binary()) {
             CHECK(maybe_get_host_scalar_value(c_scales_storage, scale_val));

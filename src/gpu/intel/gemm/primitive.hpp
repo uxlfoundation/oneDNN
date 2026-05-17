@@ -33,8 +33,7 @@ struct primitive_t : public intel::primitive_t {
     using intel::primitive_t::primitive_t;
     virtual status_t execute(const exec_ctx_t &ctx) const = 0;
     status_t execute(const impl::exec_ctx_t &ctx) const override {
-        // dnnl_gemm passes BLAS-A as WEIGHTS and BLAS-B as SRC; the
-        // gemm impl reroutes via swap_ab as needed.
+        // dnnl_gemm passes BLAS-A as WEIGHTS and BLAS-B as SRC.
         exec_args_t args;
         args.a = &CTX_IN_STORAGE(DNNL_ARG_WEIGHTS);
         args.b = &CTX_IN_STORAGE(DNNL_ARG_SRC);

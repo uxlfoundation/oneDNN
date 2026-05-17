@@ -394,9 +394,6 @@ struct gemm_t : public primitive_t {
                 return status::success;
             };
 
-            // The inner gemm pd's storage is in kernel-view. Use the
-            // user-view accessors to recover the matmul-A/B/C/bias mds in
-            // the orientation the user originally supplied.
             const auto *inner = op_desc_t::to_desc<gemm_desc_t>(
                     gemm_pd_->op_desc());
             CHECK(update_md(src_md_, inner->a_md_user_view()));

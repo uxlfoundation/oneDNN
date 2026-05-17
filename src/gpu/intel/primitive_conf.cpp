@@ -599,8 +599,7 @@ int append_post_ops_to_arg_list_base(const exec_args_t &args,
         const post_ops_t &post_ops, memory_desc_wrapper dst_mdw) {
     auto set_arg_entry = [&](const post_ops_t::entry_t &e, int po_idx) {
         if (e.is_binary() || e.is_prelu()) {
-            // prelu (incl. binary_prelu after apply_swap_ab promotion)
-            // keys its slope buffer under DNNL_ARG_WEIGHTS.
+            // prelu slope buffer is keyed under DNNL_ARG_WEIGHTS.
             const bool prelu_keyed = e.is_prelu()
                     || (e.is_binary()
                             && e.binary.alg == alg_kind::binary_prelu);

@@ -83,8 +83,6 @@ status_t pd_t::init_post_ops(impl::engine_t *engine) {
         switch (e.kind) {
             case binary:
                 if (e.binary.alg == binary_prelu) {
-                    // Canonicalized prelu: user buffer still keyed under
-                    // DNNL_ARG_WEIGHTS, so route via prelu.
                     binary_srcs_.push_back(
                             binary_src_t {binary_src_t::prelu, int(i)});
                     prelu_wei_md = e.binary.src1_desc;
@@ -112,7 +110,6 @@ status_t pd_t::init_post_ops(impl::engine_t *engine) {
                 non_scale_po_ = true;
                 break;
             case prelu:
-                // Expected to be canonicalized to binary upstream.
                 VDISPATCH_GEMM(false,
                         "%s: prelu post-op not canonicalized",
                         VERBOSE_UNSUPPORTED_POSTOP);
@@ -146,8 +143,6 @@ status_t pd_t::init_post_ops(impl::engine_t *engine) {
             = [this, engine](const memory_desc_t &scale_md, int arg,
                       int scale_ndims, bool mx, bool &converted) -> status_t {
         auto ndims = desc()->c_md().ndims;
-        // Scales on A/B can be converted to postops if the scales md has
-        // K=1 and M/N is not bcast.
         converted = false;
         if (scale_ndims > 1) return status::success;
         int inner_dim = (arg == gemm_arg::A ? ndims - 1 : ndims - 2);
@@ -189,9 +184,6 @@ status_t pd_t::init_post_ops(impl::engine_t *engine) {
         if (converted) b_scale_ndims_override_ = -1;
     }
 
-    // Host-scalar c_scale folds into alpha at exec; when there are
-    // additive post-ops (incl. bias_via_binary_), convert to a
-    // binary_div post-op so dst_scale also scales bias.
     bool try_c_scale = !c_scales.is_host_scalar() || num_orig_postops > 0
             || bias_via_binary_;
     if (!c_scales.has_default_values() && try_c_scale) {
@@ -231,8 +223,6 @@ bool pd_t::wei_decomp() {
     auto float_hi = [](data_type_t t) {
         return utils::one_of(t, f16, f32, bf16, f8_e5m2, f8_e4m3);
     };
-    // Symmetric across swap_ab: int weights paired with float src in
-    // either slot.
     auto int_t = int_low(d->a_type()) ? d->a_type()
             : int_low(d->b_type())    ? d->b_type()
                                       : data_type::undef;
@@ -273,9 +263,7 @@ status_t pd_t::init_attrs(impl::engine_t *engine) {
     cmask_b_ = b_zps.get_mask();
     cmask_c_ = c_zps.get_mask();
 
-    // XXX, gemmstone support: if multiple grouped quantization attributes
-    // exist for one matrix, they must have the same group size (default
-    // unset == 0).
+    // XXX gemmstone: grouped quant entries on one matrix must share group size (0 == unset).
     const auto set_if_consistent
             = [this, engine](int &dst, int new_dim, int arg) -> status_t {
         VDISPATCH_GEMM(utils::one_of(dst, 0, new_dim),
@@ -661,8 +649,6 @@ status_t pd_t::init_GEMMProblem(
     problem.A_scale = problem.Ag = problem.AO;
     problem.B_scale = problem.Bg = problem.BO;
 
-    // Only the late-scale (integer-DPAS) path needs scale md layout
-    // aligned with A/B; 4-bit and wei_decomp leave layout to the kernel.
     const bool any_4bit = utils::one_of(a_type, data_type::s4,
                                   data_type::u4, data_type::f4_e2m1,
                                   data_type::f4_e3m0)

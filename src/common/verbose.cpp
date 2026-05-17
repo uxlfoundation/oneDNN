@@ -671,8 +671,7 @@ std::string get_arg(int arg) {
         case DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_WEIGHTS:
             s = "attr_post_op_dw_wei";
             break;
-        // gemm-internal arg constants used after the
-        // matmul/ip/conv->gemm boundary rekey.
+        // gemm internal
         case gemm_arg::A: s = "gemm_a"; break;
         case gemm_arg::B: s = "gemm_b"; break;
         case gemm_arg::C: s = "gemm_c"; break;

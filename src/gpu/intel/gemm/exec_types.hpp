@@ -32,8 +32,6 @@ namespace gpu {
 namespace intel {
 namespace gemm {
 
-// Rekey user matmul-named attr keys (SRC/WEIGHTS/DST) to gemm A/B/C.
-// Called on a pd-local attr copy at the wrapper -> gemm boundary.
 inline void rekey_attr_for_gemm(primitive_attr_t &a) {
     auto rekey = [](quant_entries_t &q) {
         q.swap_entries(DNNL_ARG_SRC, gemm_arg::A);
@@ -45,7 +43,6 @@ inline void rekey_attr_for_gemm(primitive_attr_t &a) {
     rekey(a.precomputed_reductions_);
 }
 
-// Resolve a slot pointer into a reference (empty_storage if unbound).
 #define GEMM_ARG_STORAGE(argument) \
     (args.argument ? *(args.argument) \
                    : dnnl::impl::memory_storage_t::empty_storage())
@@ -71,7 +68,7 @@ struct exec_args_t {
     const memory_storage_t *dropout_prob = nullptr;
     impl::exec_args_t exec_args;
 
-    // Swaps all A<->B pointer pairs when swap_ab is set. Self-inverse.
+    // Self-inverse: swaps all A<->B pointer pairs.
     void route_by_swap_ab(bool swap_ab) {
         if (!swap_ab) return;
         std::swap(a, b);

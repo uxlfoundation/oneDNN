@@ -55,8 +55,7 @@ struct gen_t : public primitive_t {
             assert(engine->kind() == engine_kind::gpu);
             auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
-            // Resolve format_any before apply_swap_ab(): layout
-            // heuristics are dim-driven and must see user dims.
+            // Resolve format_any before apply_swap_ab().
             CHECK(init_default_formats(false));
 
             dev_info_ = intel_engine->device_info();
@@ -64,8 +63,7 @@ struct gen_t : public primitive_t {
 
             const auto d = desc();
 
-            // If n = 1, keep A/B as-is to use more efficient n = 1
-            // kernels if possible; otherwise swap to column-major.
+            // For n = 1, keep A/B to use skinny-N kernels; otherwise swap to column-major.
             const auto &c_user = desc()->c_md();
             const bool user_c_trans
                     = gemm_desc_t::get_trans(c_user) == dnnl_trans;
@@ -75,8 +73,7 @@ struct gen_t : public primitive_t {
             bool want_un_swap = (d->n() == 1 && user_ldc == 1 && check_ldb)
                     || user_c_trans;
 
-            // Cannot route weights-only compression through the un-swapped
-            // path: the catalog only has skinny-N strategies for quant-in-A.
+            // Weights-only compression: catalog only has skinny-N for quant-in-A.
             want_un_swap &= !wei_decomp();
 
             if (!want_un_swap) apply_swap_ab();
@@ -100,7 +97,6 @@ struct gen_t : public primitive_t {
             auto m = desc()->m();
             auto n = desc()->n();
 
-            // n = 1: B is a k-vector, picking a faster dispatch path.
             if (transb_ && n == 1) {
                 transb_ = false;
                 ldb_ = d->k();

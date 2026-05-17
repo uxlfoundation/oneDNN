@@ -27,7 +27,6 @@ namespace ip {
 status_t gemm_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     using namespace memory_tracking::names;
 
-    // Args in matmul-natural form; inner gemm reroutes.
     gemm::exec_args_t args;
     args.a = &CTX_IN_STORAGE(DNNL_ARG_SRC);
     args.b = &CTX_IN_STORAGE(DNNL_ARG_WEIGHTS);

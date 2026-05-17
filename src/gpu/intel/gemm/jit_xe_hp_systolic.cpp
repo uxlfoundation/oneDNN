@@ -51,6 +51,8 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
     auto arch = dev_info_->gpu_arch();
 
     // Kernel is column-major; swap A/B to match.
+    // Ordering is safe: on format_any descs apply_swap_ab is dims-only;
+    // strides are resolved later by init_default_formats / set_default_formats.
     apply_swap_ab();
 
     CHECK(init_attrs(engine));
@@ -307,8 +309,6 @@ bool xe_hp_systolic_t::pd_t::use_nocopy_xehpg(
 }
 
 status_t xe_hp_systolic_t::pd_t::init_default_formats(data_type_t dt) {
-    // Impl body uses matmul-natural orientation; un-swap around it so
-    // the rest of the pd keeps the kernel view.
     apply_swap_ab();
     auto rc = init_default_formats_impl(dt);
     apply_swap_ab();

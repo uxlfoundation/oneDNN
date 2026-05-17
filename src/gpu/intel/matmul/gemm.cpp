@@ -32,7 +32,6 @@ status_t gemm_t::execute(const exec_ctx_t &ctx) const {
     const auto dst_d = ctx.memory_mdw(DNNL_ARG_DST);
     const auto bia_d = ctx.memory_mdw(DNNL_ARG_BIAS);
 
-    // Args in matmul-natural form (A=SRC, B=WEIGHTS); inner gemm reroutes.
     gemm::exec_args_t args;
     args.a = &CTX_IN_STORAGE(DNNL_ARG_SRC);
     args.b = &CTX_IN_STORAGE(DNNL_ARG_WEIGHTS);

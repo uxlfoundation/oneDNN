@@ -158,8 +158,6 @@ struct xe_hp_systolic_t : public gemm::primitive_t {
         const compute::device_info_t *dev_info_ = nullptr;
 
     private:
-        // Body is authored in matmul-natural orientation; the public
-        // wrapper un-swaps before calling and re-swaps after.
         status_t init_default_formats_impl(data_type_t dt);
 
         bool any_prepacked_ = false;

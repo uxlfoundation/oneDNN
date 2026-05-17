@@ -24,7 +24,6 @@ namespace intel {
 namespace gemm {
 
 status_t ref_t::execute(const exec_ctx_t &ctx) const {
-    // Route matmul-natural args to gemm-keyed kernel slots.
     auto args = ctx.args();
     args.route_by_swap_ab(pd()->desc()->swap_ab());
     const auto &a = GEMM_ARG_STORAGE(a);

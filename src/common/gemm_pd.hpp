@@ -116,25 +116,17 @@ struct gemm_pd_t : public primitive_desc_t {
             dims_t weight_dims {};
             for (int d = 0; d < nd; ++d)
                 weight_dims[d] = ((mask >> d) & 0x1) ? desc_.c_md().dims[d] : 1;
-            format_tag_t tag = format_tag::undef;
-            switch (nd) {
-                case 1: tag = format_tag::a; break;
-                case 2: tag = format_tag::ab; break;
-                case 3: tag = format_tag::acb; break;
-                case 4: tag = format_tag::acdb; break;
-                case 5: tag = format_tag::acdeb; break;
-                default: break;
-            }
-            // For nd outside {1..5} (e.g. nd==0 or nd>5 reachable via matmul
-            // with DNNL_MAX_NDIMS), tag remains undef and
-            // memory_desc_init_by_tag would silently return zero_md. Skip the
-            // entry instead of corrupting it.
-            if (tag == format_tag::undef) continue;
             memory_desc_t src1 {};
-            if (memory_desc_init_by_tag(
-                        src1, nd, weight_dims, data_type::f32, tag)
+            if (memory_desc_init_by_strides(
+                        src1, nd, weight_dims, data_type::f32, nullptr)
                     != status::success)
                 continue;
+            // Row-major -> axb (axis 1 innermost): rescale s[2..nd-1] by
+            // dims[1] and set s[1]=1. Generalizes a/ab/acb/acdb/acdeb to any
+            // nd up to DNNL_MAX_NDIMS.
+            auto &s = src1.format_desc.blocking.strides;
+            for (int d = 2; d < nd; ++d) s[d] *= weight_dims[1];
+            if (nd >= 2) s[1] = 1;
             e.kind = primitive_kind::binary;
             e.binary.alg = alg_kind::eltwise_relu;
             e.binary.src1_desc = src1;

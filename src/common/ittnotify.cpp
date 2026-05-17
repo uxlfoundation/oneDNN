@@ -91,6 +91,11 @@ void primitive_task_start(primitive_kind_t kind, const char *log_kind) {
             CASE(batch_normalization),
             CASE(inner_product),
             CASE(rnn),
+            // Positional slot 12 corresponds to dnnl_gemm in the public
+            // primitive_kind enum (dnnl_types.h:2079). primitive_kind::gemm
+            // survives in the ABI even after the internal gemm_desc/gemm_pd
+            // removal; keep the slot so the trailing entries (binary,
+            // matmul, ...) align with their enum values.
             CASE(gemm),
             CASE(binary),
             CASE(matmul),

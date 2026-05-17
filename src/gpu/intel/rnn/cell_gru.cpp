@@ -59,11 +59,11 @@ cell_execution_sig((simple_common_t<aprop>::cell_execution_gru)) {
     if (aprop == prop_kind::forward) {
         // 1. gemm Wx[0-2],x
         if (!conf.merge_gemm_layer)
-            CHECK(gemm_primitive(engine, ctx, wei_layer, cell_layer,
+            CHECK(gemm_primitive(engine, ctx, cell_layer, wei_layer,
                     scratch_gates, gemm_cell_layer_fwd));
 
         // 2. gemm Wh[0-1],h
-        CHECK(gemm_primitive(engine, ctx, wei_iter, cell_iter, scratch_gates,
+        CHECK(gemm_primitive(engine, ctx, cell_iter, wei_iter, scratch_gates,
                 gemm_iter_fwd));
 
         // 3. activation zt and rt + elemwise multiplication rt,ht-1
@@ -72,9 +72,9 @@ cell_execution_sig((simple_common_t<aprop>::cell_execution_gru)) {
                 {}, 0, {}, tm_scales, diff_bias, PART_ONE));
 
         // 4. gemm Wh[2],h~t
-        CHECK(gemm_primitive(engine, ctx, {wei_iter, cell_wei_iter_offset2},
-                cell_iter2, {scratch_gates, cell_scratch_offset2},
-                gemm_iter_fwd_2));
+        CHECK(gemm_primitive(engine, ctx, cell_iter2,
+                {wei_iter, cell_wei_iter_offset2},
+                {scratch_gates, cell_scratch_offset2}, gemm_iter_fwd_2));
 
         // 5. activation h~t + calculate ht
         CHECK((this->*elemwise_gru)(ctx, dir, lay, iter, conf.dhc, conf.mb, 1,
@@ -111,8 +111,9 @@ cell_execution_sig((simple_common_t<aprop>::cell_execution_gru)) {
 
         // 2. calculate intermediate d(hG1)
         // d(hG1) = dG2 * W2h^t
-        CHECK(gemm_primitive(engine, ctx, {wei_iter, cell_wei_iter_offset2},
-                {diff_gates, cell_scratch_diff_off2}, scratch_diff_ht,
+        CHECK(gemm_primitive(engine, ctx,
+                {diff_gates, cell_scratch_diff_off2},
+                {wei_iter, cell_wei_iter_offset2}, scratch_diff_ht,
                 gemm_iter_bwd_2));
 
         // 3. calculate dG1^ and part of dht-1
@@ -128,21 +129,22 @@ cell_execution_sig((simple_common_t<aprop>::cell_execution_gru)) {
                 = 2 * offsets.diff_weights_iter[3] * sizeof(float);
         // 4. calculate diff weights
         // dWh1 += dG1 * h, dWh2 += dG2 * h, dWh3 += dG3 * (G1(*)h)
-        CHECK(gemm_primitive(engine, ctx, diff_gates, cell_iter, diff_wei_iter,
+        CHECK(gemm_primitive(engine, ctx, cell_iter, diff_gates, diff_wei_iter,
                 gemm_diff_wei_iter));
 
-        CHECK(gemm_primitive(engine, ctx, {diff_gates, cell_scratch_diff_off2},
-                scratch_cell, {diff_wei_iter, cell_diff_wei_iter_off2},
+        CHECK(gemm_primitive(engine, ctx, scratch_cell,
+                {diff_gates, cell_scratch_diff_off2},
+                {diff_wei_iter, cell_diff_wei_iter_off2},
                 gemm_diff_wei_iter_2));
 
         // 5. calculate diff states
         // dht-1 += dG1 * W1h + dG0 * W0h
         CHECK(gemm_primitive(
-                engine, ctx, wei_iter, diff_gates, diff_states, gemm_iter_bwd));
+                engine, ctx, diff_gates, wei_iter, diff_states, gemm_iter_bwd));
 
         if (!conf.merge_gemm_layer) {
             // dWx += [dG0 dG1 dG2] * [x]
-            CHECK(gemm_primitive(engine, ctx, diff_gates, cell_layer,
+            CHECK(gemm_primitive(engine, ctx, cell_layer, diff_gates,
                     user_data.diff_wei_layer(lay, dir),
                     gemm_diff_wei_cell_layer));
 
@@ -150,7 +152,7 @@ cell_execution_sig((simple_common_t<aprop>::cell_execution_gru)) {
                     ? gemm_layer_bwd_src
                     : gemm_layer_bwd;
             // dx = dG2 * W2x + dG1 * W1x + dG0 * W0x
-            CHECK(gemm_primitive(engine, ctx, wei_layer, diff_gates,
+            CHECK(gemm_primitive(engine, ctx, diff_gates, wei_layer,
                     diff_states1, gemm_layer_cell_bwd));
         }
     }

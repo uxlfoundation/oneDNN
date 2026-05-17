@@ -34,7 +34,6 @@ void serialize(serialization_stream_t &sstream,
 void serialize(serialization_stream_t &sstream, const binary_desc_t &desc);
 void serialize(serialization_stream_t &sstream, const convolution_desc_t &desc);
 void serialize(serialization_stream_t &sstream, const eltwise_desc_t &desc);
-void serialize(serialization_stream_t &sstream, const gemm_desc_t &desc);
 void serialize(serialization_stream_t &sstream,
         const group_normalization_desc_t &desc);
 void serialize(

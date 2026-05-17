@@ -17,9 +17,14 @@
 #include "gpu/gpu_impl_list.hpp"
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-#include "gpu/intel/matmul/gemm.hpp"
+#ifdef DNNL_DEV_MODE
+#include "gpu/intel/gemm/conv.hpp"
+#endif
+#include "gpu/intel/gemm/jit.hpp"
+#include "gpu/intel/gemm/jit_xe_hp_systolic.hpp"
 #include "gpu/intel/matmul/grouped_micro_gemm.hpp"
 #include "gpu/intel/matmul/ref.hpp"
+#include "gpu/intel/matmul/with_post_ops.hpp"
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
 #include "gpu/intel/matmul/ref_grouped_gemm.hpp"
 #endif
@@ -47,7 +52,15 @@ namespace {
 
 // clang-format off
 constexpr impl_list_item_t impl_list[] = REG_MATMUL_P({
-        GPU_INSTANCE_INTEL(intel::matmul::gemm_t)
+        // Order: devmode experimental conv_t first (gated by enable_conv_gemm
+        // env), then xe_hp_systolic (xe_hp+ only), then gen_t (general jit
+        // GEMM), then with_post_ops_t (matmul-native dispatcher that wraps an
+        // inner jit_gemm_pd_t impl). The JIT GEMM impls dispatch on
+        // matmul_desc_t directly via jit_gemm_pd_t.
+        GPU_INSTANCE_INTEL_DEVMODE(intel::gemm::conv_t)
+        GPU_INSTANCE_INTEL(intel::gemm::xe_hp_systolic_t)
+        GPU_INSTANCE_INTEL(intel::gemm::gen_t)
+        GPU_INSTANCE_INTEL(intel::matmul::with_post_ops_t)
         GPU_INSTANCE_INTEL(intel::matmul::ref_sparse_t)
         GPU_INSTANCE_GROUPED(intel::matmul::grouped_micro_gemm_t)
         GPU_INSTANCE_GROUPED(intel::matmul::ref_grouped_t)

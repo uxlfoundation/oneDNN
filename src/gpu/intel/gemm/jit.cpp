@@ -35,6 +35,8 @@ namespace gpu {
 namespace intel {
 namespace gemm {
 
+namespace {
+
 bool check_memory_storage(const memory_storage_t *storage, const char *name) {
     if (storage && *storage) return true;
     VERROR(primitive, gpu, "%s,%s: %s", "jit::gemm", "argument is not set",
@@ -42,7 +44,9 @@ bool check_memory_storage(const memory_storage_t *storage, const char *name) {
     return false;
 }
 
-status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
+} // namespace
+
+status_t gen_t::launch_nocopy(const impl::exec_ctx_t &ctx,
         intel::stream_t *compute_stream, zero_pool_t *zero_pool,
         const memory_storage_t &a, const memory_storage_t &b,
         const memory_storage_t &c, const memory_storage_t *ao,
@@ -58,7 +62,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         int32_t lda, int32_t ldb, int32_t ldc, int32_t m, int32_t n, int32_t k,
         int32_t k0, float alpha, float beta, int32_t cmask, bool last_k_block,
         bool swap_ab, bool disable_hilbert) const {
-    if (pd()->desc()->batch() == 0) return status::success;
+    if (pd()->batch() == 0) return status::success;
 
     uint32_t flags = 0;
     bool k_parallel_fixed
@@ -90,11 +94,15 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
     set_scalar_arg_cvt(arg_list, argn++, alpha, scalar_type_);
     set_scalar_arg_cvt(arg_list, argn++, beta, scalar_type_);
 
-    bool with_a_zp = pd()->with_a_zero_points();
-    bool with_b_zp = pd()->with_b_zero_points();
-    if (swap_ab) std::swap(with_a_zp, with_b_zp);
-    bool a_zp_ptr = with_a_zp && !problem->aOffsetHostScalar();
-    bool b_zp_ptr = with_b_zp && !problem->bOffsetHostScalar();
+    // Kernel slot presence (a/b zp pointer, a/b scale 2D) is keyed by post-
+    // swap problem state, not by matmul-side pd helpers. Under swap_ab the
+    // kernel-A zp slot corresponds to matmul-WEIGHTS' zp, which is unreachable
+    // via pd()->with_a_zero_points() (that reads matmul-SRC). ao/bo are
+    // already swap-aware via exec_args_from_matmul + route_by_swap_ab.
+    bool a_zp_ptr = problem->aOffset == gemmstone::ABOffset::Calc
+            && !problem->aOffsetHostScalar();
+    bool b_zp_ptr = problem->bOffset == gemmstone::ABOffset::Calc
+            && !problem->bOffsetHostScalar();
 
     if (a_zp_ptr) arg_list.set(argn++, *ao);
     if (b_zp_ptr) arg_list.set(argn++, *bo);
@@ -119,7 +127,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
                                                  : problem->AO.layout;
         auto ldaq = into<int32_t>(isColMajor(layout)
                         ? utils::div_up(m, problem->aqGroupM)
-                        : utils::div_up(pd()->desc()->k(), problem->aqGroupK));
+                        : utils::div_up(pd()->gemm_k(), problem->aqGroupK));
         arg_list.set(argn++, ldaq);
     }
     if (problem->bOffset2D() || problem->bScale2D()
@@ -129,21 +137,19 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
                                                  : problem->BO.layout;
         auto ldbq = into<int32_t>(!isColMajor(layout)
                         ? utils::div_up(n, problem->bqGroupN)
-                        : utils::div_up(pd()->desc()->k(), problem->bqGroupK));
+                        : utils::div_up(pd()->gemm_k(), problem->bqGroupK));
         arg_list.set(argn++, ldbq);
     }
     if (pd()->with_mx_scale()) {
-        auto ldcq = pd()->desc()->m() / problem->cqGroupM;
+        auto ldcq = pd()->gemm_m() / problem->cqGroupM;
         arg_list.set(argn++, ldcq);
     }
     if (problem->usesCOPtr()) {
         if (co.is_null()) return status::runtime_error;
         arg_list.set(argn++, co);
         arg_list.set(argn++, offset_co);
-        if (pd()->with_bias()) {
-            auto ldco = into<int32_t>(pd()->desc()->ld_bias());
-            arg_list.set(argn++, ldco);
-        }
+        // No ldco arg: bias never flows via CO (it is a binary post-op), and
+        // c-zp / sum_ab carry no leading-dim.
     } else if (problem->cOffsetHostScalar()) {
         arg_list.set(argn++, co_host_scalar);
     }
@@ -173,10 +179,9 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
 
     if (pd()->batch_dims() >= 1) {
         for (int i = pd()->batch_dims() - 1; i >= 0; i--) {
-            auto stride_a = int64_t(pd()->stride(DNNL_ARG_A, i));
-            auto stride_b = int64_t(pd()->stride(DNNL_ARG_B, i));
-            if (swap_ab) std::swap(stride_a, stride_b);
-            auto stride_c = int64_t(pd()->desc()->stride_c(i));
+            auto stride_a = int64_t(pd()->gemm_stride(pd_t::kA, i));
+            auto stride_b = int64_t(pd()->gemm_stride(pd_t::kB, i));
+            auto stride_c = int64_t(pd()->stride_c(i));
             if (jit::enable_generator_dsl()) {
                 auto hw = ngen::getCore(
                         ((ngen::Product *)&utils::downcast<intel::engine_t *>(
@@ -185,14 +190,10 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
                                         ->gpu_product())
                                 ->family);
 
-                // 2d Surface pointer needs to be 64 byte aligned. When negative
-                // bounds checking is unnecessary, this restriction can be
-                // relaxed by rounding down the surface pointer and adjusting
-                // the width accordingly.
+                // 2D Surface pointer needs to be 64-byte aligned.
                 auto base_alignment = intel::jit::block_2d_base_alignment(hw);
-                auto a_type = pd()->get_type(DNNL_ARG_A);
-                auto b_type = pd()->get_type(DNNL_ARG_B);
-                if (swap_ab) std::swap(a_type, b_type);
+                auto a_type = pd()->gemm_a_type();
+                auto b_type = pd()->gemm_b_type();
                 auto a_size = types::data_type_size(a_type);
                 if (stride_a * a_size % base_alignment) {
                     gpu_warning() << "Unimplemented load transform";
@@ -207,29 +208,32 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
             arg_list.set(argn++, stride_a);
             arg_list.set(argn++, stride_b);
             arg_list.set(argn++, stride_c);
-            int eff_a_arg = DNNL_ARG_A;
-            int eff_b_arg = DNNL_ARG_B;
-            if (swap_ab) std::swap(eff_a_arg, eff_b_arg);
+            // problem->has{A,B}{Scale,Offset}Ptr() and needs{A,B}GroupSums()
+            // are kernel-keyed (post-swap). pd accessors (scale_stride /
+            // zp_stride / gs_stride) read matmul-keyed mds. Under swap_ab,
+            // kernel-A = matmul-WEIGHTS (kB) and kernel-B = matmul-SRC (kA).
+            const int ka_matmul = pd()->swap_ab() ? pd_t::kB : pd_t::kA;
+            const int kb_matmul = pd()->swap_ab() ? pd_t::kA : pd_t::kB;
             if (problem->hasAScalePtr()) {
-                arg_list.set(argn++, pd()->scale_stride(i, eff_a_arg));
+                arg_list.set(argn++, pd()->scale_stride(i, ka_matmul));
             }
             if (problem->hasBScalePtr()) {
-                arg_list.set(argn++, pd()->scale_stride(i, eff_b_arg));
+                arg_list.set(argn++, pd()->scale_stride(i, kb_matmul));
             }
             if (problem->hasCMXScale()) {
                 arg_list.set(argn++, stride_c / problem->cqGroupM);
             }
             if (problem->hasAOffsetPtr()) {
-                arg_list.set(argn++, pd()->zp_stride(i, eff_a_arg));
+                arg_list.set(argn++, pd()->zp_stride(i, ka_matmul));
             }
             if (problem->hasBOffsetPtr()) {
-                arg_list.set(argn++, pd()->zp_stride(i, eff_b_arg));
+                arg_list.set(argn++, pd()->zp_stride(i, kb_matmul));
             }
             if (problem->needsAGroupSums()) {
-                arg_list.set(argn++, pd()->gs_stride(i, eff_a_arg));
+                arg_list.set(argn++, pd()->gs_stride(i, ka_matmul));
             }
             if (problem->needsBGroupSums()) {
-                arg_list.set(argn++, pd()->gs_stride(i, eff_b_arg));
+                arg_list.set(argn++, pd()->gs_stride(i, kb_matmul));
             }
         }
         for (int i = 0; i < po_count; i++) {
@@ -240,7 +244,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
             }
         }
         for (int i = 1; i < pd()->batch_dims(); i++) {
-            auto batchSize = uint32_t(pd()->desc()->c_desc.dims[i]);
+            auto batchSize = uint32_t(pd()->dst_md(0)->dims[i]);
             arg_list.set(argn++, batchSize);
             if (jit::enable_generator_dsl()) {
                 uint64_t magic = dnnl::impl::gpu::intel::jit::ir_utils::
@@ -265,7 +269,8 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
     compute::range_t lws = {size_t(nocopy_info()->wg[gemmstone::LoopM]),
             size_t(nocopy_info()->wg[gemmstone::LoopN]), size_t(lws_k)};
 
-    // C Interleave: pad up gws[N] to a multiple of the chunk size and add to gws[M] if misaligned ldc
+    // C Interleave: pad up gws[N] to a multiple of the chunk size and add to
+    // gws[M] if misaligned ldc.
     auto info = nocopy_info();
     gws[1] = utils::rnd_up(gws[1], info->cInterleaveChunk() * lws[1]);
     if (info->cInterleaveChunk() > 1
@@ -297,7 +302,6 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         if (nocopy_info()->fixedWG() || (gws[d] > lws[d]))
             gws[d] = utils::rnd_up(gws[d], lws[d]);
         else {
-            // Workaround to avoid local ID reordering until reqd_walk_group_order implemented in UMD.
             if (pd()->arch_ >= compute::gpu_arch_t::xe_hp && d < last_non_1)
                 gws[d] = utils::rnd_up_pow2(gws[d]);
             lws[d] = gws[d];
@@ -307,7 +311,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
     lws[1] *= nocopy_info()->wgExpand;
     gws[1] *= nocopy_info()->wgExpand;
 
-    gws[2] *= pd()->desc()->batch();
+    gws[2] *= pd()->batch();
 
     jit::linear_order_args(arg_list, argn, lws, gws, m, n, k, disable_hilbert,
             *nocopy_info(), pd()->kernel_desc()->aux_params(), pd()->dev_info_);
@@ -318,9 +322,13 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         arg_list.set(argn++, slm, nullptr);
     }
 
-    if (pd()->a_quant.zp_ndims > 0 || problem->aScale2D())
+    // Kernel-keyed (post-swap) state. pd()->a_zp_ndims()/b_zp_ndims() read
+    // matmul-SRC/WEIGHTS — under swap_ab they would not line up with the
+    // kernel signature emitted in gen_kernel.cpp's nocopy descriptor, which
+    // uses problem->aoPtrDims / problem->aScale2D() (also post-swap).
+    if (problem->aoPtrDims >= 1 || problem->aScale2D())
         arg_list.set(argn++, offset_aq);
-    if (pd()->b_quant.zp_ndims > 0 || problem->bScale2D())
+    if (problem->boPtrDims >= 1 || problem->bScale2D())
         arg_list.set(argn++, offset_bq);
 
     lws[0] *= nocopy_info()->subgroupSize;
@@ -335,7 +343,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
     return status;
 }
 
-status_t gen_t::execute(const exec_ctx_t &ctx) const {
+status_t gen_t::execute(const impl::exec_ctx_t &ctx) const {
     auto *compute_stream = utils::downcast<intel::stream_t *>(ctx.stream());
 
     auto zero_pool = zero_pool_;
@@ -355,35 +363,25 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     }
 #endif
 
-    const auto d = pd()->desc();
     const auto &problem = *pd()->kernel_desc()->problem();
-
     const bool swap_ab = pd()->swap_ab();
 
-    auto a_type = pd()->get_type(DNNL_ARG_A);
-    auto b_type = pd()->get_type(DNNL_ARG_B);
-    auto c_type = d->c_type();
+    auto a_type = pd()->gemm_a_type();
+    auto b_type = pd()->gemm_b_type();
+    auto c_type = pd()->c_type();
 
-    auto m = into<int32_t>(pd()->desc()->m());
-    auto n = into<int32_t>(pd()->desc()->n());
-    auto k = into<int32_t>(d->k());
+    auto m = into<int32_t>(pd()->gemm_m());
+    auto n = into<int32_t>(pd()->gemm_n());
+    auto k = into<int32_t>(pd()->gemm_k());
 
-    bool trans_a = pd()->trans_a();
-    bool trans_b = pd()->trans_b();
+    bool trans_a = pd()->gemm_trans_a();
+    bool trans_b = pd()->gemm_trans_b();
 
-    auto lda = into<int32_t>(pd()->ld(DNNL_ARG_A));
-    auto ldb = into<int32_t>(pd()->ld(DNNL_ARG_B));
-    auto ldc = into<int32_t>(d->ldc());
-    auto ldco = into<int32_t>(pd()->with_bias() ? d->ld_bias() : 0);
-
-    if (swap_ab) {
-        std::swap(a_type, b_type);
-        std::swap(m, n);
-        std::swap(lda, ldb);
-        std::swap(trans_a, trans_b);
-        trans_a = !trans_a;
-        trans_b = !trans_b;
-    }
+    auto lda = into<int32_t>(pd()->gemm_ld(pd_t::kA));
+    auto ldb = into<int32_t>(pd()->gemm_ld(pd_t::kB));
+    auto ldc = into<int32_t>(pd()->gemm_ldc());
+    // Bias does not flow via CO; ldco is unused by the launch path.
+    int32_t ldco = 0;
 
     auto alpha = pd()->alpha();
     auto beta = pd()->beta();
@@ -393,13 +391,14 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
             = (nocopy_info()->kParallel() || nocopy_info()->kParallelLocal())
             && !nocopy_info()->kParallelVariable();
 
-    auto &a = swap_ab ? GEMM_CTX_ARG_STORAGE(a) : GEMM_CTX_ARG_STORAGE(b);
-    auto &b = swap_ab ? GEMM_CTX_ARG_STORAGE(b) : GEMM_CTX_ARG_STORAGE(a);
-    auto &c = GEMM_CTX_ARG_STORAGE(c);
-    auto &c_zp = GEMM_CTX_ARG_STORAGE(c_zero_point);
-    auto &bias = GEMM_CTX_ARG_STORAGE(bias);
-    auto &sum_ab = GEMM_CTX_ARG_STORAGE(sum_ab);
-    auto *sround_seed = &GEMM_CTX_ARG_STORAGE(sround_seed);
+    auto args = exec_args_from_matmul(ctx, swap_ab);
+    auto &a = GEMM_ARG_STORAGE(a);
+    auto &b = GEMM_ARG_STORAGE(b);
+    auto &c = GEMM_ARG_STORAGE(c);
+    auto &c_zp = GEMM_ARG_STORAGE(c_zero_point);
+    auto &bias = GEMM_ARG_STORAGE(bias);
+    auto &sum_ab = GEMM_ARG_STORAGE(sum_ab);
+    auto *sround_seed = &GEMM_ARG_STORAGE(sround_seed);
     auto *co = &c_zp;
     const memory_storage_t *ao = nullptr, *bo = nullptr;
     const memory_storage_t *a_scales = nullptr, *b_scales = nullptr;
@@ -426,7 +425,6 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
             case pd_t::binary_src_t::binary:
                 po_srcs[i]
                         = ctx.args()
-                                  .exec_args
                                   .at(DNNL_ARG_ATTR_MULTIPLE_POST_OP(src.index)
                                           | DNNL_ARG_SRC_1)
                                   .mem()
@@ -435,7 +433,6 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
             case pd_t::binary_src_t::prelu:
                 po_srcs[i]
                         = ctx.args()
-                                  .exec_args
                                   .at(DNNL_ARG_ATTR_MULTIPLE_POST_OP(src.index)
                                           | DNNL_ARG_WEIGHTS)
                                   .mem()
@@ -443,21 +440,13 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
                 break;
             case pd_t::binary_src_t::bias: po_srcs[i] = &bias; break;
             case pd_t::binary_src_t::scales:
-                switch (src.index) {
-                    case DNNL_ARG_WEIGHTS:
-                        po_srcs[i] = &GEMM_CTX_ARG_STORAGE(a_scales);
-                        break;
-                    case DNNL_ARG_SRC:
-                        po_srcs[i] = &GEMM_CTX_ARG_STORAGE(b_scales);
-                        break;
-                    case DNNL_ARG_DST:
-                        po_srcs[i] = &GEMM_CTX_ARG_STORAGE(c_scales);
-                        break;
-                    default:
-                        po_srcs[i] = nullptr;
-                        assert(!"invalid scale type");
-                        break;
-                }
+                // src.index is the matmul attr key (DNNL_ARG_SRC/WEIGHTS/DST).
+                // The binary's layout was built in matmul convention and then
+                // problem.transpose() rotated it under swap_ab; the buffer
+                // pointer always comes from the matmul-side scales slot, no
+                // route_by_swap_ab indirection.
+                po_srcs[i] = &CTX_IN_STORAGE(
+                        DNNL_ARG_ATTR_SCALES | src.index);
                 break;
             default: po_srcs[i] = nullptr; break;
         }
@@ -480,32 +469,22 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     if (pd()->with_c_zero_points()) {
         off_co0 = types::bytes_to_elements(c_type, co->offset())
                 + pd()->dyn_offset_co;
-        cmask = pd()->attr()->zero_points_.get_mask(DNNL_ARG_DST);
+        cmask = pd()->attr()->zero_points_.get_mask(pd_t::kC);
         int co_host_scalar_val = 0;
         if (co->is_host_scalar()) {
             CHECK(maybe_get_host_scalar_value(*co, co_host_scalar_val));
         }
-        // DST zero point is added to result (not subtracted like SRC/WEI)
         co_host_scalar = static_cast<int16_t>(co_host_scalar_val);
-    } else if (pd()->with_bias()) {
-        off_co0 = types::bytes_to_elements(c_type, bias.offset());
-        co = &bias;
-        cmask = pd()->bias_cmask();
     } else if (pd()->with_sum_ab()) {
         off_co0 = types::bytes_to_elements(c_type, sum_ab.offset());
         co = &sum_ab;
-        cmask = pd()->sum_ab_cmask();
-        // TODO: Check if this swapping is still needed and correct with logic below
-        if (swap_ab) {
-            uint8_t swap_table[4] = {0, 2, 1, 3};
-            cmask = (cmask & ~3) | swap_table[cmask & 3];
-        }
+        cmask = pd()->gemm_sum_ab_cmask();
     }
 
-    // Get host scalar zero-poins values
+    // Host-scalar zero-point values.
     if (pd()->with_a_zero_points() || pd()->with_b_zero_points()) {
-        ao = &GEMM_CTX_ARG_STORAGE(a_zero_point);
-        bo = &GEMM_CTX_ARG_STORAGE(b_zero_point);
+        ao = &GEMM_ARG_STORAGE(a_zero_point);
+        bo = &GEMM_ARG_STORAGE(b_zero_point);
         int a_host_scalar_val = 0;
         int b_host_scalar_val = 0;
         if (ao->is_host_scalar())
@@ -516,52 +495,53 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         bo_host_scalar = static_cast<int16_t>(-1 * b_host_scalar_val);
     }
 
-    // Convert host scalar scales to Alpha
+    // Host-scalar scales fold into alpha. Pair the test with the STORAGE
+    // (post-route_by_swap_ab, kernel-keyed) rather than the entry: under
+    // swap_ab, attr_ entries are matmul-keyed (kA = matmul SRC) but
+    // GEMM_ARG_STORAGE(a_scales) is the kernel-A storage (= matmul
+    // WEIGHTS). Pairing the matmul-SRC entry's is_host_scalar() check
+    // with the kernel-A storage caused maybe_get_host_scalar_value to
+    // downcast a non-host-scalar storage on asymmetric host-scalar
+    // configs. Checking storage.is_host_scalar() keeps the check and
+    // the read on the same side. C is unswapped so the pairing was
+    // always correct there, but route via the same pattern for
+    // consistency.
     if (pd()->attr()->scales_.has_host_scalars()) {
-        const auto &a_scales = pd()->attr()->scales_.get(DNNL_ARG_A);
-        const auto &b_scales = pd()->attr()->scales_.get(DNNL_ARG_B);
-        const auto &c_scales = pd()->attr()->scales_.get(DNNL_ARG_C);
-        const auto &a_scales_storage = GEMM_CTX_ARG_STORAGE(a_scales);
-        const auto &b_scales_storage = GEMM_CTX_ARG_STORAGE(b_scales);
-        const auto &c_scales_storage = GEMM_CTX_ARG_STORAGE(c_scales);
+        const auto &a_scales_storage = GEMM_ARG_STORAGE(a_scales);
+        const auto &b_scales_storage = GEMM_ARG_STORAGE(b_scales);
+        const auto &c_scales_storage = GEMM_ARG_STORAGE(c_scales);
         alpha = 1.0f;
         float scale_val = 0;
-        if (a_scales.is_host_scalar()) {
+        if (a_scales_storage.is_host_scalar()) {
             CHECK(maybe_get_host_scalar_value(a_scales_storage, scale_val));
             alpha *= scale_val;
         }
-        if (b_scales.is_host_scalar()) {
+        if (b_scales_storage.is_host_scalar()) {
             CHECK(maybe_get_host_scalar_value(b_scales_storage, scale_val));
             alpha *= scale_val;
         }
-        // Limited support of host scalar dst scales
-        if (c_scales.is_host_scalar() && pd()->attr()->post_ops_.len() == 0) {
+        // Fold host-scalar dst scale into alpha only when no post-ops/bias-add.
+        if (c_scales_storage.is_host_scalar()
+                && pd()->attr()->post_ops_.len() == 0
+                && !pd()->with_bias()) {
             CHECK(maybe_get_host_scalar_value(c_scales_storage, scale_val));
             gpu_assert(scale_val != 0);
             alpha /= scale_val;
         }
     }
 
-    if (pd()->a_scales_2d()) { a_scales = &GEMM_CTX_ARG_STORAGE(a_scales); }
-    if (pd()->b_scales_2d()) { b_scales = &GEMM_CTX_ARG_STORAGE(b_scales); }
-    if (pd()->with_mx_scale()) { c_scales = &GEMM_CTX_ARG_STORAGE(c_scales); }
+    // Use kernel-keyed (post-swap) problem state to match the slot-presence
+    // checks in launch_nocopy. pd()->a_scales_2d()/b_scales_2d() are matmul-
+    // keyed; under swap_ab they don't line up with problem->aScale2D() — left
+    // them gated by pd helpers and we'd dereference a null storage at
+    // arg_list.set(*a_scales). Same hazard as the a_zp_ptr / b_zp_ptr fix
+    // a few lines down (CLAUDE.md "Fix #4").
+    if (problem.aScale2D()) { a_scales = &GEMM_ARG_STORAGE(a_scales); }
+    if (problem.bScale2D()) { b_scales = &GEMM_ARG_STORAGE(b_scales); }
+    if (pd()->with_mx_scale()) { c_scales = &GEMM_ARG_STORAGE(c_scales); }
 
-    if (swap_ab) {
-        if (problem.needsAGroupSums()) ag = &GEMM_CTX_ARG_STORAGE(b_group_sums);
-        if (problem.needsBGroupSums()) bg = &GEMM_CTX_ARG_STORAGE(a_group_sums);
-    } else {
-        if (problem.needsAGroupSums()) ag = &GEMM_CTX_ARG_STORAGE(a_group_sums);
-        if (problem.needsBGroupSums()) bg = &GEMM_CTX_ARG_STORAGE(b_group_sums);
-    }
-
-    if (swap_ab) {
-        std::swap(ao, bo);
-        std::swap(ao_host_scalar, bo_host_scalar);
-        std::swap(a_scales, b_scales);
-
-        uint8_t swap_table[4] = {0, 2, 1, 3};
-        cmask = (cmask & ~3) | swap_table[cmask & 3];
-    }
+    if (problem.needsAGroupSums()) ag = &GEMM_ARG_STORAGE(a_group_sums);
+    if (problem.needsBGroupSums()) bg = &GEMM_ARG_STORAGE(b_group_sums);
 
     status_t status;
 
@@ -575,7 +555,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         block_n = nocopy_info()->blockingAlt[1];
     }
 
-    if (!utils::one_of(pd()->desc()->c_type(), data_type::f32, data_type::f16))
+    if (!utils::one_of(c_type, data_type::f32, data_type::f16))
         block_k = k;
     if (pd()->post_ops()->len() > 0
             && pd()->post_ops()->entry_[0].kind != primitive_kind::sum)
@@ -628,8 +608,11 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
 
                 auto off_aq = off_aq0;
                 auto off_bq = off_bq0;
-                if (pd()->a_quant.zp_ndims >= 1 || a_scales) off_aq += Bm;
-                if (pd()->b_quant.zp_ndims >= 1 || b_scales) off_bq += Bn;
+                // Kernel-keyed: pd()->{a,b}_zp_ndims() read matmul-SRC/
+                // WEIGHTS; under swap_ab the kernel-A/B zp lives in the
+                // swapped slot. Use problem.{a,b}oPtrDims (post-swap).
+                if (problem.aoPtrDims >= 1 || a_scales) off_aq += Bm;
+                if (problem.boPtrDims >= 1 || b_scales) off_bq += Bn;
 
                 auto off_co = off_co0;
                 switch (cmask & 3) {

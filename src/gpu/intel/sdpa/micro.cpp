@@ -28,6 +28,7 @@
 #include "gpu/intel/compute/ukernels.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/gemm/jit/gen_kernel.hpp"
+#include "gpu/intel/gemm/utils.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 #include "gpu/intel/utils.hpp"
 
@@ -244,7 +245,7 @@ status_t micro_fwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     sg_size_ = dev_info->min_subgroup_size();
 
     auto convert_dnnl_to_kernel_layout = [](const memory_desc_t *md) {
-        return (gemm_desc_t::get_trans(*md) == dnnl_trans) ? MatrixLayout::T
+        return (gemm::get_md_trans(*md) == dnnl_trans) ? MatrixLayout::T
                                                            : MatrixLayout::N;
     };
 
@@ -305,7 +306,7 @@ status_t micro_fwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     problem_kq.C.layout = MatrixLayout::T;
     const memory_desc_wrapper key_mdw(desc()->key_md());
     auto ldk = static_cast<int>(
-            gemm_desc_t::get_ld(*desc()->key_md()) * key_mdw.data_type_size());
+            gemm::get_md_ld(*desc()->key_md()) * key_mdw.data_type_size());
     problem_kq.A.setAlignment(micro::alignmentForLD(int(ldk)));
     problem_kq.B.setAlignment(64); // Q is packed in VNNI format in SLM
     if (use_systolic_ukernel()) {
@@ -382,7 +383,7 @@ status_t micro_fwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     problem_vs.C.layout = MatrixLayout::N;
     const memory_desc_wrapper val_mdw(desc()->val_md());
     auto ldv = static_cast<int>(
-            gemm_desc_t::get_ld(*desc()->val_md()) * val_mdw.data_type_size());
+            gemm::get_md_ld(*desc()->val_md()) * val_mdw.data_type_size());
     problem_vs.A.setAlignment(micro::alignmentForLD(int(ldv)));
     problem_vs.B.setAlignment(64); // S is packed in SLM
     if (use_systolic_ukernel()) { problem_vs.B.crosspack = 16; }
@@ -548,7 +549,7 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     sg_size_ = dev_info->min_subgroup_size();
 
     auto convert_dnnl_to_kernel_layout = [](const memory_desc_t *md) {
-        return (gemm_desc_t::get_trans(*md) == dnnl_trans) ? MatrixLayout::T
+        return (gemm::get_md_trans(*md) == dnnl_trans) ? MatrixLayout::T
                                                            : MatrixLayout::N;
     };
     auto transpose_layout = [](const gemmstone::MatrixLayout l) {
@@ -590,9 +591,9 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     const memory_desc_wrapper key_mdw(desc()->key_md());
     const memory_desc_wrapper qry_mdw(desc()->qry_md());
     auto ldk = static_cast<int>(
-            gemm_desc_t::get_ld(*desc()->key_md()) * key_mdw.data_type_size());
+            gemm::get_md_ld(*desc()->key_md()) * key_mdw.data_type_size());
     auto ldq = static_cast<int>(
-            gemm_desc_t::get_ld(*desc()->qry_md()) * qry_mdw.data_type_size());
+            gemm::get_md_ld(*desc()->qry_md()) * qry_mdw.data_type_size());
     problem_kq.A.setAlignment(64); // Q is packed in VNNI format in SLM
     if (use_systolic_ukernel()) {
         problem_kq.A.crosspack = 2;
@@ -632,7 +633,7 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     problem_vs.B.layout = MatrixLayout::Pr;
     problem_vs.C.layout = MatrixLayout::N;
     const memory_desc_wrapper diff_dst_mdw(diff_dst_md());
-    auto lda = static_cast<int>(gemm_desc_t::get_ld(*diff_dst_md())
+    auto lda = static_cast<int>(gemm::get_md_ld(*diff_dst_md())
             * diff_dst_mdw.data_type_size());
     problem_vs.A.setAlignment(micro::alignmentForLD(int(lda)));
     problem_vs.B.setAlignment(64); // S is packed in SLM
@@ -667,7 +668,7 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     problem_vtdA.C.layout = MatrixLayout::N;
     const memory_desc_wrapper val_mdw(desc()->val_md());
     auto ldv
-            = gemm_desc_t::get_ld(*desc()->val_md()) * val_mdw.data_type_size();
+            = gemm::get_md_ld(*desc()->val_md()) * val_mdw.data_type_size();
     problem_vtdA.A.setAlignment(micro::alignmentForLD(int(ldv)));
     problem_vtdA.B.setAlignment(micro::alignmentForLD(int(lda)));
 
@@ -803,13 +804,13 @@ static void init_conf_common(conf_t &conf, pd_type *pd) {
     auto Q_num_heads_dim = qry_mdw.dims()[1];
     conf.kv_group_size = static_cast<int>(Q_num_heads_dim / d->num_kv_heads());
 
-    auto ldq = gemm_desc_t::get_ld(*pd->desc()->qry_md())
+    auto ldq = gemm::get_md_ld(*pd->desc()->qry_md())
             * qry_mdw.data_type_size();
-    auto ldk = gemm_desc_t::get_ld(*pd->desc()->key_md())
+    auto ldk = gemm::get_md_ld(*pd->desc()->key_md())
             * key_mdw.data_type_size();
-    auto ldv = gemm_desc_t::get_ld(*pd->desc()->val_md())
+    auto ldv = gemm::get_md_ld(*pd->desc()->val_md())
             * val_mdw.data_type_size();
-    auto lda = gemm_desc_t::get_ld(*pd->dst_md()) * dst_mdw.data_type_size();
+    auto lda = gemm::get_md_ld(*pd->dst_md()) * dst_mdw.data_type_size();
 
     conf.q_align = micro::alignmentForLD(int(ldq));
     conf.k_align = micro::alignmentForLD(int(ldk));
@@ -817,7 +818,7 @@ static void init_conf_common(conf_t &conf, pd_type *pd) {
     conf.a_align = micro::alignmentForLD(int(lda));
 
     conf.transpose_k
-            = gemm_desc_t::get_trans(*pd->desc()->key_md()) == dnnl_trans;
+            = gemm::get_md_trans(*pd->desc()->key_md()) == dnnl_trans;
 
     conf.scale_data_t = pd->desc()->scale_md()->data_type;
 
@@ -864,8 +865,8 @@ status_t micro_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     conf.value_zp_data_t = value_zp_dt();
 
     auto ldq
-            = gemm_desc_t::get_ld(*desc()->qry_md()) * qry_mdw.data_type_size();
-    auto lda = gemm_desc_t::get_ld(*dst_md()) * dst_mdw.data_type_size();
+            = gemm::get_md_ld(*desc()->qry_md()) * qry_mdw.data_type_size();
+    auto lda = gemm::get_md_ld(*dst_md()) * dst_mdw.data_type_size();
 
     int kq_scale_mask = (static_cast<int>(with_key_scales()) << 1)
             | static_cast<int>(with_quantize_common(desc()->kq_scales));
@@ -972,9 +973,9 @@ status_t micro_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
     const memory_desc_wrapper val_mdw(desc()->val_md());
 
     auto ldk
-            = gemm_desc_t::get_ld(*desc()->key_md()) * key_mdw.data_type_size();
+            = gemm::get_md_ld(*desc()->key_md()) * key_mdw.data_type_size();
     auto ldv
-            = gemm_desc_t::get_ld(*desc()->val_md()) * val_mdw.data_type_size();
+            = gemm::get_md_ld(*desc()->val_md()) * val_mdw.data_type_size();
 
     /* Set up microkernel strategy */
     const bwd_config_t config = {conf.ukernel_config.unroll_m_BcBr,

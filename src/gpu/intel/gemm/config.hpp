@@ -18,7 +18,6 @@
 #define GPU_INTEL_GEMM_CONFIG_HPP
 
 #include "common/primitive_exec_types.hpp"
-#include "gpu/gpu_gemm_pd.hpp"
 #include "gpu/intel/compute/kernel_arg_list.hpp"
 
 namespace dnnl {
@@ -26,9 +25,6 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace gemm {
-
-using pd_t = gpu_gemm_pd_t;
-using desc_t = gemm_desc_t;
 
 int append_post_ops_to_arg_list(const impl::exec_args_t &args,
         compute::kernel_arg_list_t &arg_list, int post_op_idx,

@@ -35,7 +35,6 @@ status_t serialize_desc(
         CASE(convolution)
         CASE(deconvolution)
         CASE(eltwise)
-        CASE(gemm)
         CASE(group_normalization)
         CASE(inner_product)
         CASE(layer_normalization)
@@ -326,19 +325,6 @@ void serialize(serialization_stream_t &sstream, const eltwise_desc_t &desc) {
     sstream.append(desc.beta);
 }
 
-void serialize(serialization_stream_t &sstream, const gemm_desc_t &desc) {
-    // Kind
-    sstream.append(desc.primitive_kind);
-    serialize(sstream, desc.a_desc);
-    serialize(sstream, desc.b_desc);
-    serialize(sstream, desc.c_desc);
-    serialize(sstream, desc.bias_desc);
-    // Accumulator type
-    sstream.append(desc.acc_type);
-    sstream.append(desc.sum_ab);
-    sstream.append(desc.sum_ab_type);
-}
-
 void serialize(serialization_stream_t &sstream,
         const group_normalization_desc_t &desc) {
     // Kinds
@@ -424,6 +410,8 @@ void serialize(serialization_stream_t &sstream, const matmul_desc_t &desc) {
     serialize(sstream, desc.weights_desc);
     serialize(sstream, desc.bias_desc);
     serialize(sstream, desc.dst_desc);
+    serialize(sstream, desc.reduce_desc);
+    sstream.append(desc.reduce_kind);
     // Accumulator type
     sstream.append(desc.accum_data_type);
 }

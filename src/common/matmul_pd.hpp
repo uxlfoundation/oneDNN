@@ -23,6 +23,7 @@
 
 #include "c_types_map.hpp"
 #include "primitive_desc.hpp"
+#include "primitive_desc_iterator.hpp"
 #include "utils.hpp"
 
 #define VDISPATCH_MATMUL(cond, msg, ...) \
@@ -48,6 +49,39 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
 status_t matmul_desc_init(matmul_desc_t *matmul_desc,
         const memory_desc_t *src_desc, const memory_desc_t *weights_desc,
         const memory_desc_t *bias_desc, const memory_desc_t *dst_desc);
+
+// Build a matmul_desc_t and run the matmul iterator. Attr is consumed as-is
+// (matmul-keyed DNNL_ARG_SRC/WEIGHTS/DST). reduce_kind + reduce_md cover the
+// old gemm sum_ab path (matmul_reduce_kind::src ↔ sum_a_row,
+// matmul_reduce_kind::weights ↔ sum_b_col).
+static inline status_t create_matmul_pd(
+        std::shared_ptr<primitive_desc_t> &matmul_pd, engine_t *engine,
+        const memory_desc_t *src_md, const memory_desc_t *weights_md,
+        const memory_desc_t *dst_md, const memory_desc_t *bias_md,
+        data_type_t acc_dt, const primitive_attr_t *attr, bool skip_ref = false,
+        matmul_reduce_kind_t reduce_kind = matmul_reduce_kind::undef,
+        const memory_desc_t *reduce_md = nullptr) {
+    matmul_desc_t md;
+    md.primitive_kind = primitive_kind::matmul;
+    md.src_desc = *src_md;
+    md.weights_desc = *weights_md;
+    md.bias_desc = bias_md ? *bias_md : glob_zero_md;
+    md.dst_desc = *dst_md;
+    md.reduce_desc = reduce_md ? *reduce_md : glob_zero_md;
+    md.reduce_kind = reduce_kind;
+    md.accum_data_type = acc_dt;
+
+    primitive_attr_t mm_attr = *attr;
+    primitive_desc_iterator_t it(
+            engine, (op_desc_t *)&md, &mm_attr, nullptr);
+
+    matmul_pd = *(++it);
+    if (!matmul_pd) return status::unimplemented;
+    if (skip_ref && strstr(matmul_pd->name(), "ref") != nullptr)
+        return status::unimplemented;
+
+    return status::success;
+}
 
 // NOLINTBEGIN(google-default-arguments)
 struct matmul_pd_t : public primitive_desc_t {

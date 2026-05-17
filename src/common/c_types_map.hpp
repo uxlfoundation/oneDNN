@@ -2120,10 +2120,16 @@ const query_t preferred_gpu_threads_per_eu = (query_t)(internal_only_start + 1);
 
 // There are no external values to map to because this is an internal feature
 // for now.
+//
+// `src`     — reduce dst along K, output shape [..., M, 1]
+//             (per-row sum; used by IP BWD_W with non-transposed weights).
+// `weights` — reduce dst along K, output shape [..., 1, N]
+//             (per-column sum; used by IP BWD_W with transposed weights).
 using matmul_reduce_kind_t = int;
 namespace matmul_reduce_kind {
 const matmul_reduce_kind_t undef = 0;
 const matmul_reduce_kind_t src = 1;
+const matmul_reduce_kind_t weights = 2;
 } // namespace matmul_reduce_kind
 
 using rnn_direction_t = dnnl_rnn_direction_t;
@@ -2166,7 +2172,6 @@ struct deconvolution_pd_t;
 struct eltwise_bwd_pd_t;
 struct eltwise_fwd_pd_t;
 struct eltwise_pd_t;
-struct gemm_pd_t;
 struct group_normalization_bwd_pd_t;
 struct group_normalization_fwd_pd_t;
 struct group_normalization_pd_t;

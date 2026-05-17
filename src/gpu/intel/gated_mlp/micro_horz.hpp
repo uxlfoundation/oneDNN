@@ -93,7 +93,7 @@ struct micro_horz_t : public primitive_t {
             if (mdw.format_any()) return status::unimplemented;
             if (!is_md_gemm_compatible_plain_format(md))
                 return status::unimplemented;
-            if (gemm_desc_t::get_trans(*md) != t) return status::unimplemented;
+            if (gemm::get_md_trans(*md) != t) return status::unimplemented;
             return status::success;
         }
 

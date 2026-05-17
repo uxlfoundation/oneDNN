@@ -14,25 +14,31 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_GEMM_WITH_POST_OPS_HPP
-#define GPU_INTEL_GEMM_WITH_POST_OPS_HPP
+#ifndef GPU_INTEL_MATMUL_WITH_POST_OPS_HPP
+#define GPU_INTEL_MATMUL_WITH_POST_OPS_HPP
 
-#include "gpu/intel/gemm/config.hpp"
-#include "gpu/intel/gemm/primitive.hpp"
+#include "gpu/gpu_matmul_pd.hpp"
+#include "gpu/intel/primitive.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
-namespace gemm {
+namespace matmul {
 
-struct with_post_ops_t : public primitive_t {
-    using primitive_t::primitive_t;
-    struct pd_t : public gemm::pd_t {
-        using gemm::pd_t::pd_t;
+struct with_post_ops_t : public intel::primitive_t {
+    using intel::primitive_t::primitive_t;
+    struct pd_t : public gpu::gpu_matmul_pd_t {
+        using gpu::gpu_matmul_pd_t::gpu_matmul_pd_t;
 
         DECLARE_COMMON_PD_T("ocl:with_po:any", with_post_ops_t);
+
+        // Matmul-native attr keys. attr_ is never re-keyed, so these resolve
+        // user-bound storage at exec time.
+        static constexpr int kA = DNNL_ARG_SRC;
+        static constexpr int kB = DNNL_ARG_WEIGHTS;
+        static constexpr int kC = DNNL_ARG_DST;
 
         status_t init(impl::engine_t *engine);
 
@@ -43,8 +49,39 @@ struct with_post_ops_t : public primitive_t {
             return use_scratchpad_with_post_op_worker;
         }
         status_t query(query_t what, int idx, void *result) const override {
-            if (!pd_) return gemm::pd_t::query(what, idx, result);
-            return pd_->query(what, idx, result);
+            // The user-facing pd is THIS (outer). The inner pd's attr has
+            // post_ops/scales/zp/dropout stripped (attributes_without_po) and
+            // its dst dt was forced to the intermediate accum type (f32) for
+            // the gemm scratchpad. Any md query routed to the inner returns
+            // the f32-intermediate view rather than the user's narrower dst
+            // (s8/bf16/f16/...) — the framework then binds the user buffer
+            // against a mismatched md and reads 4x the bytes. Same hazard
+            // for src/weights/diff_*: those must reflect the user-facing
+            // matmul md, not the inner's (potentially re-laid-out) view.
+            //
+            // Default: route ALL queries to THIS (outer). The outer's
+            // src_md_/weights_md_/dst_md_ are the user-facing mds; the
+            // outer's scratchpad_md/scratchpad_registry already books the
+            // inner's registry under key_nested_multiple (see
+            // init_scratchpad), so scratchpad_md from outer is correct and
+            // sized to cover the inner. The outer's n_inputs/n_outputs/
+            // impl_info_str ("ocl:with_po:any") are also the user-facing
+            // values.
+            //
+            // Inner-only escape hatch — load-bearing:
+            //   - preferred_gpu_threads_per_eu: the inner gemm kernel owns
+            //     the GRF-derived recommendation. The outer falls through
+            //     to primitive_desc_t::query which has no case for this
+            //     query and returns unimplemented. ip/matmul.hpp (BWD_W)
+            //     and rnn/grid.cpp call matmul_pd_->query(
+            //     preferred_gpu_threads_per_eu, ...) after create_matmul_pd,
+            //     and the iterator can land on with_post_ops_t::pd_t.
+            //     Without the hatch, those callers silently lose the GRF
+            //     hint and pick a sub-optimal threads-per-EU.
+            if ((int)what == (int)query::preferred_gpu_threads_per_eu) {
+                if (pd_) return pd_->query(what, idx, result);
+            }
+            return gpu::gpu_matmul_pd_t::query(what, idx, result);
         }
 
         std::shared_ptr<primitive_desc_t> pd_;
@@ -54,6 +91,7 @@ struct with_post_ops_t : public primitive_t {
         attr_info_t attr_info_;
         bool subbyte_pack_ = false;
         bool dynamic_scales_ = false;
+        bool requires_user_scales_ = false;
         bool with_dropout = false;
         bool dropout_use_host_scalars = false;
         bool dropout_use_offset = false;
@@ -86,7 +124,7 @@ struct with_post_ops_t : public primitive_t {
             def_memory_desc_info(
                     alt_ctx, memory_desc_info_t::create(dst_d), "DST");
             def_data_type(alt_ctx,
-                    pd()->attr()->scales_.get_data_type(DNNL_ARG_DST),
+                    pd()->attr()->scales_.get_data_type(pd_t::kC),
                     "DST_SCALES");
             const int ndims = dst_d.ndims();
             bool runtime_dims
@@ -106,15 +144,17 @@ struct with_post_ops_t : public primitive_t {
         return status::success;
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override;
+    status_t execute(const impl::exec_ctx_t &ctx) const override;
 
 private:
-    const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
+    const pd_t *pd() const {
+        return (const pd_t *)intel::primitive_t::pd().get();
+    }
     std::shared_ptr<impl::primitive_t> prim_;
     std::array<compute::kernel_t, 3> kernels_ = {};
 };
 
-} // namespace gemm
+} // namespace matmul
 } // namespace intel
 } // namespace gpu
 } // namespace impl

@@ -24,6 +24,8 @@
 #include "gpu/intel/compute/ukernels.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/gemm/jit/gen_kernel.hpp"
+#include "gpu/intel/gemm/utils.hpp"
+#include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -205,7 +207,7 @@ status_t micro_horz_t::pd_t::init_microkernels(
     const memory_desc_wrapper W_gate_mdw(arg_md(DNNL_ARG_WEIGHTS_GATE));
     const memory_desc_wrapper W_up_mdw(arg_md(DNNL_ARG_WEIGHTS_UP));
     auto alignment = [](const memory_desc_wrapper &mdw) {
-        return int(gemm_desc_t::get_ld(*mdw.md_) * mdw.data_type_size());
+        return int(gemm::get_md_ld(*mdw.md_) * mdw.data_type_size());
     };
     problem_wgu.A.setAlignment(gemmstone::microkernel::alignmentForLD(
             std::min(alignment(W_gate_mdw), alignment(W_up_mdw))));
@@ -325,10 +327,10 @@ status_t micro_horz_t::init(impl::engine_t *engine) {
     def_data_type(kernel_ctx, wts_up_zp_dt(pd()), "WTS_UP_ATTR_ZP");
     def_data_type(kernel_ctx, wts_down_zp_dt(pd()), "WTS_DOWN_ATTR_ZP");
 
-    auto ldi = gemm_desc_t::get_ld(*inter_mdw.md_) * inter_mdw.data_type_size();
-    auto lds = gemm_desc_t::get_ld(*src_mdw.md_) * src_mdw.data_type_size();
-    auto lda = gemm_desc_t::get_ld(*dst_mdw.md_) * dst_mdw.data_type_size();
-    auto ldwgu = gemm_desc_t::get_ld(*W_gate_mdw.md_)
+    auto ldi = gemm::get_md_ld(*inter_mdw.md_) * inter_mdw.data_type_size();
+    auto lds = gemm::get_md_ld(*src_mdw.md_) * src_mdw.data_type_size();
+    auto lda = gemm::get_md_ld(*dst_mdw.md_) * dst_mdw.data_type_size();
+    auto ldwgu = gemm::get_md_ld(*W_gate_mdw.md_)
             * W_gate_mdw.data_type_size();
 
     kernel_ctx.define_int(

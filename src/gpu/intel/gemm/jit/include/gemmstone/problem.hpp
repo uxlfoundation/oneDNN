@@ -314,6 +314,7 @@ struct GEMMProblem : public CommonProblem {
     bool isLegalBAlignment(int align, int unrollN) const { return (B.layout != MatrixLayout::T) || ((unrollN * Tb) % align == 0); }
 
     inline void autoTypeConversions(bool systolicAvailable);
+    // Full math transpose of the gemm problem (C^T = B^T A^T).
     void transpose();
 
     std::string toString() const;

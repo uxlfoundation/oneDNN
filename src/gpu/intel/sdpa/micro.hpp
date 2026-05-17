@@ -369,7 +369,7 @@ struct micro_fwd_t : public primitive_t {
             VCHECK_SDPA_UNIMPL(is_md_gemm_compatible_plain_format(&md),
                     VERBOSE_UNSUPPORTED_TAG);
             VCHECK_SDPA_UNIMPL(
-                    IMPLICATION(gemm_desc_t::get_trans(md) == dnnl_trans,
+                    IMPLICATION(gemm::get_md_trans(md) == dnnl_trans,
                             allow_transpose),
                     VERBOSE_UNSUPPORTED_TAG);
             return status::success;
@@ -544,7 +544,7 @@ struct micro_bwd_t : public primitive_t {
             VCHECK_SDPA_UNIMPL(is_md_gemm_compatible_plain_format(&md),
                     VERBOSE_UNSUPPORTED_TAG);
             VCHECK_SDPA_UNIMPL(
-                    IMPLICATION(gemm_desc_t::get_trans(md) == dnnl_trans,
+                    IMPLICATION(gemm::get_md_trans(md) == dnnl_trans,
                             allow_transpose),
                     VERBOSE_UNSUPPORTED_TAG);
             return status::success;

@@ -23,7 +23,7 @@ GEMMSTONE_NAMESPACE_START
 using namespace ngen;
 
 
-// Transpose a GEMM problem.
+// Transpose a GEMM problem (full math transpose: C^T = B^T A^T).
 void GEMMProblem::transpose()
 {
     std::swap(A, B);
@@ -34,11 +34,14 @@ void GEMMProblem::transpose()
     std::swap(Ta_ext, Tb_ext);
     std::swap(Tao, Tbo);
     std::swap(Ta_scale, Tb_scale);
+    std::swap(Tag, Tbg);
     std::swap(aOffset, bOffset);
     std::swap(aoPtrDims, boPtrDims);
     std::swap(asPtrDims, bsPtrDims);
     std::swap(aqGroupM, bqGroupN);
     std::swap(aqGroupK, bqGroupK);
+    std::swap(cqGroupM, cqGroupN);
+    std::swap(forceGroupSumsA, forceGroupSumsB);
     std::swap(sumA, sumB);
     postOps.transpose();
     for (auto &bsrc: binary)

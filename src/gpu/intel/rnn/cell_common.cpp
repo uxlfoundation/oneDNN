@@ -62,12 +62,12 @@ cell_execution_sig((simple_common_t<aprop>::cell_execution)) {
             auto gemm_cell_layer_fwd = !conf.copy_src_layer && lay == 0
                     ? gemm_layer_fwd_src
                     : gemm_layer_fwd;
-            CHECK(gemm_primitive(engine, ctx, wei_layer, cell_layer,
+            CHECK(gemm_primitive(engine, ctx, cell_layer, wei_layer,
                     scratch_gates, gemm_cell_layer_fwd));
         }
 
         if (!conf.cell_fusion.gemm_iter)
-            CHECK(gemm_primitive(engine, ctx, wei_iter, cell_iter,
+            CHECK(gemm_primitive(engine, ctx, cell_iter, wei_iter,
                     scratch_gates, gemm_iter_fwd));
     }
 
@@ -114,27 +114,27 @@ cell_execution_sig((simple_common_t<aprop>::cell_execution)) {
                 diff_states_layer_ld, scales, tm_scales, diff_bias));
 
         CHECK(gemm_primitive(
-                engine, ctx, wei_iter, diff_gates, diff_states, gemm_iter_bwd));
+                engine, ctx, diff_gates, wei_iter, diff_states, gemm_iter_bwd));
 
         if (!conf.merge_gemm_layer) {
 
             auto gemm_layer_cell_bwd = !conf.copy_diff_src_layer && lay == 0
                     ? gemm_layer_bwd_src
                     : gemm_layer_bwd;
-            CHECK(gemm_primitive(engine, ctx, wei_layer, diff_gates,
+            CHECK(gemm_primitive(engine, ctx, diff_gates, wei_layer,
                     diff_states1, gemm_layer_cell_bwd));
 
             auto gemm_diff_wei_cell_layer = !conf.copy_src_layer && lay == 0
                     ? gemm_diff_wei_layer_src
                     : gemm_diff_wei_layer;
 
-            CHECK(gemm_primitive(engine, ctx, diff_gates, cell_layer,
+            CHECK(gemm_primitive(engine, ctx, cell_layer, diff_gates,
                     user_data.diff_wei_layer(lay, dir),
                     gemm_diff_wei_cell_layer));
         }
 
         if (!conf.merge_gemm_iter) {
-            CHECK(gemm_primitive(engine, ctx, diff_gates, cell_iter,
+            CHECK(gemm_primitive(engine, ctx, cell_iter, diff_gates,
                     user_data.diff_wei_iter(lay, dir), gemm_diff_wei_iter));
         }
     }

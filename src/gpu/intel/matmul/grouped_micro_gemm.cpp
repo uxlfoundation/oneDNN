@@ -24,6 +24,7 @@
 #include "gpu/intel/compute/ukernels.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/gemm/jit/gen_kernel.hpp"
+#include "gpu/intel/gemm/utils.hpp"
 
 #include <algorithm>
 #include <sstream>
@@ -64,7 +65,7 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
     memory_desc_wrapper dst_mdw(dst_md());
 
     auto convert_dnnl_to_kernel_layout = [](const memory_desc_t *md) {
-        return (gemm_desc_t::get_trans(*md) == dnnl_trans) ? MatrixLayout::T
+        return (gemm::get_md_trans(*md) == dnnl_trans) ? MatrixLayout::T
                                                            : MatrixLayout::N;
     };
 
@@ -77,7 +78,7 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
     problem.Tb = problem.Tb_ext;
 
     problem.A.setAlignment(
-            alignmentForLD(static_cast<int>(gemm_desc_t::get_ld(*wei_mdw.md_))
+            alignmentForLD(static_cast<int>(gemm::get_md_ld(*wei_mdw.md_))
                     * problem.Ta_ext));
     problem.B.setAlignment(
             alignmentForLD(static_cast<int>(K()) * problem.Tb_ext));

@@ -788,18 +788,6 @@ inline bool operator==(const eltwise_desc_t &lhs, const eltwise_desc_t &rhs) {
     return ret;
 }
 
-inline bool operator==(const gemm_desc_t &lhs, const gemm_desc_t &rhs) {
-    bool ret = COMPARE_DESC_MEMBERS(primitive_kind)
-            && COMPARE_DESC_MEMBERS(a_desc)
-            && COMPARE_DESC_MEMBERS(b_desc)
-            && COMPARE_DESC_MEMBERS(c_desc)
-            && COMPARE_DESC_MEMBERS(bias_desc)
-            && COMPARE_DESC_MEMBERS(acc_type)
-            && COMPARE_DESC_MEMBERS(sum_ab)
-            && COMPARE_DESC_MEMBERS(sum_ab_type);
-    return ret;
-}
-
 inline bool operator==(
         const group_normalization_desc_t &lhs, const group_normalization_desc_t &rhs) {
     bool ret = COMPARE_DESC_MEMBERS(primitive_kind)

@@ -22,8 +22,9 @@
 #include "common/utils.hpp"
 #include "gemmstone/driver_info.hpp"
 #include "gemmstone/problem.hpp"
-#include "gpu/intel/gemm/jit/pd.hpp"
-#include "gpu/intel/gemm/primitive.hpp"
+#include "gpu/intel/gemm/exec_types.hpp"
+#include "gpu/intel/gemm/jit/jit_gemm_pd.hpp"
+#include "gpu/intel/primitive.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -31,9 +32,10 @@ namespace gpu {
 namespace intel {
 namespace gemm {
 
-struct xe_hp_systolic_t : public gemm::primitive_t {
-    struct pd_t : public jit::pd_t {
-        using jit::pd_t::pd_t;
+struct xe_hp_systolic_t : public intel::primitive_t {
+    using intel::primitive_t::primitive_t;
+    struct pd_t : public jit::jit_gemm_pd_t {
+        using jit::jit_gemm_pd_t::jit_gemm_pd_t;
 
         DECLARE_COMMON_PD_T("jit:xe_hp:gemm:any", xe_hp_systolic_t);
 
@@ -42,7 +44,7 @@ struct xe_hp_systolic_t : public gemm::primitive_t {
 
         bool use_nocopy();
         bool use_nocopy_xehpg(data_type_t dt, unsigned ld_align);
-        status_t set_default_formats(data_type_t dt);
+        status_t init_default_formats(data_type_t dt);
 
         size_t dyn_offset_a = 0;
         size_t dyn_offset_b = 0;
@@ -50,32 +52,18 @@ struct xe_hp_systolic_t : public gemm::primitive_t {
 
         data_type_t impl_co_type() const {
             using namespace data_type;
-            return with_bias() ? desc()->bias_type()
-                               : (utils::one_of(desc()->a_type(), s8, u8)
-                                                 ? s32
-                                                 : desc()->c_type());
+            // CO carries c-zero-points only; bias flows via binary post-op.
+            return utils::one_of(gemm_a_type(), s8, u8) ? s32 : c_type();
         }
 
         data_type_t impl_acc_type() const {
             using namespace data_type;
-            return utils::one_of(desc()->c_type(), s8, u8, f16, bf16, f32)
-                    ? (utils::one_of(desc()->a_type(), s8, u8) ? s32 : f32)
+            return utils::one_of(c_type(), s8, u8, f16, bf16, f32)
+                    ? (utils::one_of(gemm_a_type(), s8, u8) ? s32 : f32)
                     : s32;
         }
 
         float alpha() const { return 1.0f; }
-        float beta() const { return beta_; }
-
-        bool with_bias() const {
-            return (desc()->bias_type() != data_type::undef)
-                    && !bias_via_binary_;
-        }
-
-        int bias_cmask() const {
-            unsigned char to_cmask[8] = {0, 4, 2, 6, 1, 5, 3, 7};
-            assert(unsigned(desc()->bias_mask()) < 8);
-            return with_bias() ? to_cmask[desc()->bias_mask() & 7] : -1;
-        }
 
         bool packed_a() const { return packed_a_; }
         bool packed_b() const { return packed_b_; }
@@ -92,7 +80,7 @@ struct xe_hp_systolic_t : public gemm::primitive_t {
         }
 
         int64_t get_ld_packed(int64_t k, bool get_max = false) const {
-            auto a_sz = types::data_type_size(desc()->a_type());
+            auto a_sz = types::data_type_size(gemm_a_type());
 
             int unroll_k = int(32 / a_sz);
             auto ld = utils::rnd_up(k, unroll_k);
@@ -105,37 +93,48 @@ struct xe_hp_systolic_t : public gemm::primitive_t {
             return get_ld_packed(k, true);
         }
 
+        // Packed leading dims read the kernel-A/B/C md (xe_hp_systolic always
+        // swaps, so kernel-A == matmul WEIGHTS, kernel-B == matmul SRC,
+        // kernel-C == matmul DST). The packed "leading dim" is the cross-
+        // panel stride along kernel-M (for A/C) or kernel-N (for B). Mapping
+        // back to matmul axes:
+        //  - kernel-M = matmul-N → for WEIGHTS (K,N) that's the inner (N)
+        //    dim → strides[ndims-1] → strides[with_batch ? 2 : 1].
+        //  - kernel-N = matmul-M → for SRC (M,K) and DST (M,N) that's the
+        //    M dim → strides[ndims-2] → strides[with_batch ? 1 : 0].
+        // The original migration code used base's index formula verbatim
+        // but base's a_desc/b_desc were the BLAS-swapped views (a_desc = SRC,
+        // b_desc = WEIGHTS) with reversed dim ordering — so indices that fit
+        // base do NOT fit the matmul-keyed mds. Got ldc=32 instead of 544 on
+        // s8:s8:f16+ab-tag dst:AB32a32b, scrambling the kernel's row stride
+        // through the C panel and producing ~99% errors.
         dim_t lda_packed(int64_t k) const {
-            return packed_a() ? desc()->b_desc.format_desc.blocking
+            return packed_a() ? weights_md_.format_desc.blocking
                                         .strides[with_batch() ? 2 : 1]
                             / unroll_m()
                               : get_ld_packed(k);
         }
         dim_t ldb_packed(int64_t k) const {
-            return packed_b() ? desc()->a_desc.format_desc.blocking
+            return packed_b() ? src_md_.format_desc.blocking
                                         .strides[with_batch() ? 1 : 0]
                             / unroll_n()
                               : get_ld_packed(k);
         }
         dim_t ldc_packed() const {
-            return packed_c() ? desc()->c_desc.format_desc.blocking
+            return packed_c() ? dst_md_.format_desc.blocking
                                         .strides[with_batch() ? 1 : 0]
                             / unroll_n()
                               : 0;
         }
 
-        int batch_dims() const {
-            return nstl::max(desc()->c_desc.ndims - 2, 0);
-        }
-
-        bool with_batch() const { return desc()->is_batched(); }
+        bool with_batch() const { return is_batched(); }
         bool with_a_zero_points() const { return a_zp_; }
         bool with_b_zero_points() const { return b_zp_; }
         bool with_ab_zero_points() const { return a_zp_ || b_zp_; }
         bool with_c_zero_points() const { return c_zp_; }
 
         bool allow_k_blocking() const {
-            return (desc()->acc_type == desc()->c_type())
+            return (acc_type() == c_type())
                     && IMPLICATION(post_ops()->len() > 0,
                             post_ops()->entry_[0].kind == primitive_kind::sum);
         }
@@ -150,7 +149,7 @@ struct xe_hp_systolic_t : public gemm::primitive_t {
                     *(int *)result = 4;
                     break;
                 }
-                default: return gemm::pd_t::query(what, idx, result);
+                default: return jit::jit_gemm_pd_t::query(what, idx, result);
             }
             return status::success;
         }
@@ -158,6 +157,8 @@ struct xe_hp_systolic_t : public gemm::primitive_t {
         const compute::device_info_t *dev_info_ = nullptr;
 
     private:
+        status_t init_default_formats_impl(data_type_t dt);
+
         bool any_prepacked_ = false;
         bool packed_a_ = false, packed_b_ = false, packed_c_ = false;
         bool a_zp_ = false, b_zp_ = false, c_zp_ = false;
@@ -169,9 +170,9 @@ struct xe_hp_systolic_t : public gemm::primitive_t {
     status_t init(impl::engine_t *engine) override;
 
 public:
-    xe_hp_systolic_t(const pd_t *apd) : primitive_t(apd) {}
+    xe_hp_systolic_t(const pd_t *apd) : intel::primitive_t(apd) {}
 
-    status_t execute(const exec_ctx_t &ctx) const override;
+    status_t execute(const impl::exec_ctx_t &ctx) const override;
 
 private:
     status_t init_compute(impl::engine_t *engine);
@@ -179,14 +180,14 @@ private:
     bool enable_mn_blocking() const;
     std::tuple<int64_t, int64_t, int64_t> get_blocking() const;
 
-    status_t launch_clear_sum(const exec_ctx_t &ctx, int64_t r, int64_t c,
+    status_t launch_clear_sum(const impl::exec_ctx_t &ctx, int64_t r, int64_t c,
             const memory_storage_t &dst, int32_t offset_dst, int32_t ld_dst,
             bool copyb) const;
-    status_t launch_copy(const exec_ctx_t &ctx, int64_t r, int64_t c,
+    status_t launch_copy(const impl::exec_ctx_t &ctx, int64_t r, int64_t c,
             const memory_storage_t &src, int64_t offset_src, int64_t ld_src,
             const memory_storage_t &dst, int32_t offset_dst, int32_t ld_dst,
             bool copyb) const;
-    status_t launch_compute(const exec_ctx_t &ctx, int32_t m, int32_t n,
+    status_t launch_compute(const impl::exec_ctx_t &ctx, int32_t m, int32_t n,
             int32_t k, const memory_storage_t &ap, int64_t offset_a,
             int32_t lda, const memory_storage_t &bp, int64_t offset_b,
             int32_t ldb, const memory_storage_t &c, int64_t offset_c,

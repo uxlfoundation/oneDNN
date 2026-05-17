@@ -42,7 +42,6 @@
 #include "deconvolution_pd.hpp"
 #include "eltwise_pd.hpp"
 #include "gated_mlp_pd.hpp"
-#include "gemm_pd.hpp"
 #include "group_normalization_pd.hpp"
 #include "inner_product_pd.hpp"
 #include "layer_normalization_pd.hpp"
@@ -1079,45 +1078,6 @@ std::string init_info_gated_mlp(const engine_t *e, const pd_t *pd) {
 }
 
 template <typename pd_t>
-std::string init_info_gemm(const engine_t *e, const pd_t *pd) {
-    stringstream_t ss;
-    ss << e << "," << pd->kind() << "," << pd->name() << "," << prop_kind::undef
-       << ",";
-
-    auto src_a_md = pd->invariant_src_md(0);
-    auto src_b_md = pd->invariant_src_md(1);
-    auto bia_md = pd->invariant_bia_md();
-    auto dst_md = pd->invariant_dst_md();
-
-    auto get_bia_mask = [&bia_md]() {
-        auto bia_ndims = bia_md->ndims;
-        auto bia_dims = bia_md->dims;
-        int mask = 0;
-        for (int d = bia_ndims - 1; d >= 0; --d) {
-            mask += bia_dims[d] != 1 ? 1 << d : 0;
-        }
-        return mask;
-    };
-
-    ss << md2fmt_str("src_a", src_a_md, pd->invariant_src_user_format_kind(0))
-       << " ";
-    ss << md2fmt_str("src_b", src_b_md, pd->invariant_src_user_format_kind(1))
-       << " ";
-    if (pd->with_bias()) {
-        ss << md2fmt_str("bia", bia_md, pd->invariant_bia_user_format_kind());
-        ss << "_mask" << get_bia_mask();
-        ss << " ";
-    }
-    ss << md2fmt_str("dst", dst_md, pd->invariant_dst_user_format_kind());
-
-    ss << "," << pd->attr() << ",,";
-
-    ss << md2dim_str(src_a_md) << ":" << md2dim_str(src_b_md);
-
-    return ss.str();
-}
-
-template <typename pd_t>
 std::string init_info_group_normalization(const engine_t *e, const pd_t *pd) {
     stringstream_t ss;
     ss << e << "," << pd->kind() << "," << pd->name() << ","
@@ -1833,7 +1793,6 @@ void pd_info_t::init(engine_t *engine, const primitive_desc_t *pd) {
             CASE(deconvolution);
             CASE(eltwise);
             CASE(gated_mlp);
-            CASE(gemm);
             CASE(group_normalization);
             CASE(inner_product);
             CASE(layer_normalization);

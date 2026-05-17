@@ -14,12 +14,13 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_IP_GEMM_HPP
-#define GPU_INTEL_IP_GEMM_HPP
+#ifndef GPU_INTEL_IP_MATMUL_HPP
+#define GPU_INTEL_IP_MATMUL_HPP
 
 #include <assert.h>
 
 #include "common/c_types_map.hpp"
+#include "common/matmul_pd.hpp"
 #include "common/memory_desc.hpp"
 #include "common/primitive.hpp"
 #include "common/primitive_desc_iterator.hpp"
@@ -36,13 +37,13 @@ namespace gpu {
 namespace intel {
 namespace ip {
 
-struct gemm_fwd_t : public primitive_t {
+struct matmul_fwd_t : public primitive_t {
     using primitive_t::primitive_t;
     struct pd_t : public fwd_pd_t {
         using fwd_pd_t::fwd_pd_t;
 
         DECLARE_COMMON_PD_T(
-                (gemm_pd_ ? gemm_pd_->name() : "ocl:gemm"), gemm_fwd_t);
+                (matmul_pd_ ? matmul_pd_->name() : "ocl:matmul"), matmul_fwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
@@ -108,10 +109,10 @@ struct gemm_fwd_t : public primitive_t {
                 }
             }
             VDISPATCH_INNER_PRODUCT_SC(
-                    create_gemm_pd(gemm_pd_, engine, &a_md, &b_md, &c_md,
-                            &bias_md, desc()->accum_data_type, &gemm_attr,
-                            true),
-                    VERBOSE_PRIMITIVE_CREATION_FAIL, "gemm");
+                    create_matmul_pd(matmul_pd_, engine, &a_md, &b_md, &c_md,
+                            with_bias() ? &bias_md : nullptr,
+                            desc()->accum_data_type, &gemm_attr),
+                    VERBOSE_PRIMITIVE_CREATION_FAIL, "matmul");
 
             init_scratchpad();
 
@@ -119,18 +120,18 @@ struct gemm_fwd_t : public primitive_t {
         }
 
         attr_info_t attr_info_ = {};
-        std::shared_ptr<primitive_desc_t> gemm_pd_;
+        std::shared_ptr<primitive_desc_t> matmul_pd_;
 
     private:
         void init_scratchpad() {
             auto scratchpad = scratchpad_registry().registrar();
             scratchpad.book(memory_tracking::names::key_nested,
-                    gemm_pd_->scratchpad_registry());
+                    matmul_pd_->scratchpad_registry());
         }
     };
 
     status_t init(impl::engine_t *engine) override {
-        return create_nested_primitive(gemm_, pd()->gemm_pd_, engine);
+        return create_nested_primitive(matmul_, pd()->matmul_pd_, engine);
     }
 
     status_t execute(const exec_ctx_t &ctx) const override {
@@ -141,16 +142,16 @@ private:
     status_t execute_forward(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
-    std::shared_ptr<impl::primitive_t> gemm_;
+    std::shared_ptr<impl::primitive_t> matmul_;
 };
 
-struct gemm_bwd_data_t : public primitive_t {
+struct matmul_bwd_data_t : public primitive_t {
     using primitive_t::primitive_t;
     struct pd_t : public bwd_data_pd_t {
         using bwd_data_pd_t::bwd_data_pd_t;
 
         DECLARE_COMMON_PD_T(
-                (gemm_pd_ ? gemm_pd_->name() : "ocl:gemm"), gemm_bwd_data_t);
+                (matmul_pd_ ? matmul_pd_->name() : "ocl:matmul"), matmul_bwd_data_t);
 
         bool has_type(data_type_t v) const {
             return utils::one_of(v, weights_md()->data_type,
@@ -195,27 +196,26 @@ struct gemm_bwd_data_t : public primitive_t {
                     init_2d_desc(&c_md, diff_src_md()), "init_2d_desc()");
 
             VDISPATCH_INNER_PRODUCT_SC(
-                    create_gemm_pd(gemm_pd_, engine, &a_md, &b_md, &c_md,
-                            &glob_zero_md, desc()->accum_data_type, attr(),
-                            true),
-                    VERBOSE_PRIMITIVE_CREATION_FAIL, "gemm");
+                    create_matmul_pd(matmul_pd_, engine, &a_md, &b_md, &c_md,
+                            nullptr, desc()->accum_data_type, attr()),
+                    VERBOSE_PRIMITIVE_CREATION_FAIL, "matmul");
             init_scratchpad();
 
             return status::success;
         }
 
-        std::shared_ptr<primitive_desc_t> gemm_pd_;
+        std::shared_ptr<primitive_desc_t> matmul_pd_;
 
     private:
         void init_scratchpad() {
             auto scratchpad = scratchpad_registry().registrar();
             scratchpad.book(memory_tracking::names::key_nested,
-                    gemm_pd_->scratchpad_registry());
+                    matmul_pd_->scratchpad_registry());
         }
     };
 
     status_t init(impl::engine_t *engine) override {
-        return create_nested_primitive(gemm_, pd()->gemm_pd_, engine);
+        return create_nested_primitive(matmul_, pd()->matmul_pd_, engine);
     }
 
     status_t execute(const exec_ctx_t &ctx) const override {
@@ -226,16 +226,16 @@ private:
     status_t execute_backward_data(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
-    std::shared_ptr<impl::primitive_t> gemm_;
+    std::shared_ptr<impl::primitive_t> matmul_;
 };
 
-struct gemm_bwd_weights_t : public primitive_t {
+struct matmul_bwd_weights_t : public primitive_t {
     using primitive_t::primitive_t;
     struct pd_t : public bwd_weights_pd_t {
         using bwd_weights_pd_t::bwd_weights_pd_t;
 
         DECLARE_COMMON_PD_T(
-                gemm_pd_ ? gemm_pd_->name() : "ocl:gemm", gemm_bwd_weights_t);
+                matmul_pd_ ? matmul_pd_->name() : "ocl:matmul", matmul_bwd_weights_t);
 
         bool has_type(data_type_t v) const {
             return utils::one_of(v, diff_weights_md()->data_type,
@@ -292,22 +292,46 @@ struct gemm_bwd_weights_t : public primitive_t {
                 VDISPATCH_INNER_PRODUCT_SC(
                         init_2d_desc(&c_md, diff_weights_md()), "init_2d_desc");
             }
-            bool gemm_ok = false;
-            auto reduce_bias = sum_ab::sum_none;
-            if (with_bias())
-                reduce_bias = wei_tr() ? sum_ab::sum_b_col : sum_ab::sum_a_row;
-            gemm_ok = status::success
-                    == create_gemm_pd(gemm_pd_, engine, &a_md, &b_md, &c_md,
-                            &glob_zero_md, desc()->accum_data_type, attr(),
-                            true, reduce_bias,
-                            desc()->diff_bias_desc.data_type);
+            // Try the fused diff-bias reduction first (jit_gemm_pd's sum_ab
+            // path, wired via matmul_reduce_kind). c_md is the 2D diff_weights
+            // view; the reduce_md is its 1D-broadcast slice along the OC axis.
+            // Mapping: non-wei_tr has M=OC -> sum_a_row -> reduce_kind::src;
+            //          wei_tr has    N=OC -> sum_b_col -> reduce_kind::weights.
+            // If fusion is rejected (e.g. impl unsupported), fall back to the
+            // plain matmul + separate reduction kernel below.
+            bool fused_reduce = false;
+            memory_desc_t reduce_md;
+            matmul_reduce_kind_t reduce_kind = matmul_reduce_kind::undef;
+            if (with_bias()) {
+                dnnl::impl::dims_t reduce_dims;
+                if (wei_tr()) {
+                    reduce_dims[0] = 1;
+                    reduce_dims[1] = OC();
+                    reduce_kind = matmul_reduce_kind::weights;
+                } else {
+                    reduce_dims[0] = OC();
+                    reduce_dims[1] = 1;
+                    reduce_kind = matmul_reduce_kind::src;
+                }
+                if (memory_desc_init_by_tag(reduce_md, 2, reduce_dims,
+                            diff_bias_md_.data_type, format_tag::ab)
+                        == status::success) {
+                    fused_reduce = (status::success
+                            == create_matmul_pd(matmul_pd_, engine, &a_md,
+                                    &b_md, &c_md, nullptr,
+                                    desc()->accum_data_type, attr(), false,
+                                    reduce_kind, &reduce_md));
+                }
+            }
 
-            //fused bias reduction not supported, apply in separate kernel
-            if (with_bias() && !gemm_ok) {
-                gemm_ok = status::success
-                        == create_gemm_pd(gemm_pd_, engine, &a_md, &b_md, &c_md,
-                                &glob_zero_md, desc()->accum_data_type, attr());
-                if (!gemm_ok) return status::unimplemented;
+            bool matmul_ok = fused_reduce;
+            if (!matmul_ok)
+                matmul_ok = (status::success
+                        == create_matmul_pd(matmul_pd_, engine, &a_md, &b_md,
+                                &c_md, nullptr, desc()->accum_data_type,
+                                attr()));
+
+            if (with_bias() && matmul_ok && !fused_reduce) {
                 memory_desc_t reduction_dst_md, reduction_bias_md;
                 //Set ndims to 3 in order to explicitly specify blocked format
                 //so that it will go to optimized reduction implementation.
@@ -343,7 +367,7 @@ struct gemm_bwd_weights_t : public primitive_t {
                 primitive_attr_t reduction_attr = *attr();
                 int threads_per_eu;
                 auto status
-                        = gemm_pd_->query(query::preferred_gpu_threads_per_eu,
+                        = matmul_pd_->query(query::preferred_gpu_threads_per_eu,
                                 0, &threads_per_eu);
                 if (status == status::success) {
                     VDISPATCH_INNER_PRODUCT_SC(
@@ -357,7 +381,7 @@ struct gemm_bwd_weights_t : public primitive_t {
                 reduction_pd_ = *(++it);
                 if (!reduction_pd_) return status::unimplemented;
             }
-            if (!gemm_ok) return status::unimplemented;
+            if (!matmul_ok) return status::unimplemented;
             init_scratchpad();
             return status::success;
         }
@@ -367,14 +391,14 @@ struct gemm_bwd_weights_t : public primitive_t {
             return wmd.format_desc.blocking.strides[0] == 1;
         }
 
-        std::shared_ptr<primitive_desc_t> gemm_pd_;
+        std::shared_ptr<primitive_desc_t> matmul_pd_;
         std::shared_ptr<primitive_desc_t> reduction_pd_;
 
     private:
         void init_scratchpad() {
             auto scratchpad = scratchpad_registry().registrar();
             scratchpad.book(memory_tracking::names::key_nested_multiple,
-                    gemm_pd_->scratchpad_registry());
+                    matmul_pd_->scratchpad_registry());
             if (with_bias() && reduction_pd_)
                 scratchpad.book(memory_tracking::names::key_nested_multiple + 1,
                         reduction_pd_->scratchpad_registry());
@@ -382,7 +406,7 @@ struct gemm_bwd_weights_t : public primitive_t {
     };
 
     status_t init(impl::engine_t *engine) override {
-        CHECK(create_nested_primitive(gemm_, pd()->gemm_pd_, engine));
+        CHECK(create_nested_primitive(matmul_, pd()->matmul_pd_, engine));
         if (pd()->with_bias() && pd()->reduction_pd_)
             CHECK(create_nested_primitive(
                     reduction_, pd()->reduction_pd_, engine));
@@ -396,7 +420,7 @@ struct gemm_bwd_weights_t : public primitive_t {
 private:
     status_t execute_backward_weights(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    std::shared_ptr<impl::primitive_t> gemm_;
+    std::shared_ptr<impl::primitive_t> matmul_;
     std::shared_ptr<impl::primitive_t> reduction_;
 };
 

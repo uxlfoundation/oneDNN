@@ -84,7 +84,6 @@ bool key_t::operator==(const key_t &rhs) const {
             CASE(deconvolution)
             CASE(eltwise)
             CASE(gated_mlp)
-            CASE(gemm)
             CASE(group_normalization)
             CASE(inner_product)
             CASE(layer_normalization)
@@ -425,22 +424,6 @@ size_t get_desc_hash(const eltwise_desc_t &desc) {
     seed = hash_combine(seed, desc.alpha);
     seed = hash_combine(seed, desc.beta);
     // Combined hash for eltwise desc
-    return seed;
-}
-
-size_t get_desc_hash(const gemm_desc_t &desc) {
-    size_t seed = 0;
-    // Kinds
-    seed = hash_combine(seed, static_cast<size_t>(desc.primitive_kind));
-    seed = hash_combine(seed, get_md_hash(desc.a_desc));
-    seed = hash_combine(seed, get_md_hash(desc.b_desc));
-    seed = hash_combine(seed, get_md_hash(desc.c_desc));
-    seed = hash_combine(seed, get_md_hash(desc.bias_desc));
-    // Accumulator type
-    seed = hash_combine(seed, static_cast<size_t>(desc.acc_type));
-    seed = hash_combine(seed, static_cast<size_t>(desc.sum_ab));
-    seed = hash_combine(seed, static_cast<size_t>(desc.sum_ab_type));
-    // Combined hash for gemm desc
     return seed;
 }
 

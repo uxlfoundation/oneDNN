@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/gemm/jit/gen_kernel.hpp"
+#include "gpu/intel/gemm/jit/jit_gemm_pd.hpp"
 
 #include "common/c_types_map.hpp"
 #include "common/impl_registration.hpp"
@@ -30,7 +31,6 @@
 #include "gemmstone/strategy_parser.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/gemm/jit/gen_kernel_db.hpp"
-#include "gpu/intel/gemm/jit/pd.hpp"
 #include "gpu/intel/jit/ir/hw.hpp"
 #include "gpu/intel/jit/utils/type_bridge.hpp"
 #include "gpu/intel/utils.hpp"
@@ -682,6 +682,18 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
 
     auto status = transfer_post_ops(problem_, std::move(post_ops));
     if (status != status::success) return status;
+
+    // transfer_post_ops writes binaryRow/Col/Trans + per-binary[].layout in
+    // matmul-keyed convention (see CLAUDE.md gotcha #21). In gen_t the
+    // matmul→kernel flip happens via the single problem.transpose() inside
+    // init_GEMMProblem. xe_hp_systolic's kernel_desc::select_kernel does
+    // NOT call init_GEMMProblem — it builds problem_ kernel-side (A.layout
+    // = PackedColumns, etc.) and feeds it directly to the catalog and the
+    // codegen. So we need the matmul→kernel conversion here too. Since
+    // xe_hp_systolic always swaps, the conversion is unconditional.
+    problem_.postOps.transpose();
+    for (auto &b : problem_.binary)
+        b.transpose();
 
     if (c_offset) problem_.cOffset = COffset::Post;
 

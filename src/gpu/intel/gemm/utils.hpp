@@ -18,9 +18,11 @@
 #define GPU_INTEL_GEMM_UTILS_HPP
 
 #include "common/c_types_map.hpp"
+#include "common/memory_desc.hpp"
 #include "common/nstl.hpp"
-#include "common/primitive_desc_iterator.hpp"
+#include "common/opdesc.hpp"
 #include "common/utils.hpp"
+#include "gpu/intel/gemm/exec_types.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -99,54 +101,55 @@ static inline status_t create_2d_desc(memory_desc_t *md_2d, int d0, int d1,
     }
 }
 
-static inline status_t create_gemm_desc(gemm_desc_t *_gemm_desc,
-        const memory_desc_t *a_md, const memory_desc_t *b_md,
-        const memory_desc_t *c_md, const memory_desc_t *bias_md,
-        data_type_t acc_dt, engine_t *engine,
-        sum_ab_t sum_ab = sum_ab::sum_none,
-        data_type_t sum_ab_dt = data_type::undef) {
-    auto gemm_desc = gemm_desc_t();
-    gemm_desc.primitive_kind = primitive_kind::gemm;
-    gemm_desc.a_desc = *a_md;
-    gemm_desc.b_desc = *b_md;
-    gemm_desc.c_desc = *c_md;
-    gemm_desc.bias_desc = *bias_md;
-    gemm_desc.acc_type = acc_dt;
-    gemm_desc.sum_ab = sum_ab;
-    gemm_desc.sum_ab_type = sum_ab_dt;
-    // Downgrade accumulation type for f16 if allowed.
-    if (engine->mayiuse_f16_accumulator_with_f16()
-            && utils::everyone_is(
-                    data_type::f16, a_md->data_type, b_md->data_type)) {
-        gemm_desc.acc_type = data_type::f16;
+namespace gpu {
+namespace intel {
+namespace gemm {
+
+// Memory-desc introspection helpers used by SDPA / grouped_micro_gemm /
+// gated_mlp to compute kernel-A/B leading dims and transposition flags.
+// Bit-identical to the former gemm_desc_t::get_trans / get_ld static methods,
+// preserved so callers keep their original layout decisions.
+//
+// KNOWN PRE-EXISTING BUG (intentionally preserved for bit-compat with base):
+// the `last_dim != 1` short-circuit silently mis-classifies degenerate
+// single-column/row matrices (e.g. [m, 1] strides [1, m] returns notrans
+// even though the n-axis carries the larger stride). See CLAUDE.md gotcha
+// #10 — the internal copy in jit_gemm_pd_t::get_trans was fixed there by
+// dropping the `last_dim != 1` gate. Do NOT copy this helper assuming it's
+// canonical; if you need correct behavior on degenerate shapes, use the
+// internal jit_gemm_pd_t::get_trans / get_ld directly.
+static inline transpose_t get_md_trans(const memory_desc_t &md) {
+    if (!md.ndims) return transpose::notrans;
+
+    using namespace data_type;
+    const bool is_4bit = utils::one_of(md.data_type, f4_e2m1, f4_e3m0, s4, u4);
+    dim_t last_dim = md.dims[md.ndims - 1];
+    auto strides = md.format_desc.blocking.strides;
+    dim_t notranspose_ld
+            = md.dims[md.ndims - 2] > 1 ? strides[md.ndims - 2] : last_dim;
+    if (is_4bit && notranspose_ld % 2 != 0) return transpose::trans;
+
+    return last_dim != 1 && strides[md.ndims - 1] != 1 ? transpose::trans
+                                                       : transpose::notrans;
+}
+
+static inline dim_t get_md_ld(const memory_desc_t &md) {
+    auto strides = md.format_desc.blocking.strides;
+    assert(md.dims[md.ndims - 1] == 1 || strides[md.ndims - 1] == 1
+            || md.dims[md.ndims - 2] == 1 || strides[md.ndims - 2] == 1);
+    switch (get_md_trans(md)) {
+        case transpose::trans:
+            return md.dims[md.ndims - 1] > 1 ? strides[md.ndims - 1]
+                                             : md.dims[md.ndims - 2];
+        default:
+            return md.dims[md.ndims - 2] > 1 ? strides[md.ndims - 2]
+                                             : md.dims[md.ndims - 1];
     }
-    *_gemm_desc = gemm_desc;
-    return status::success;
 }
 
-static inline status_t create_gemm_pd(
-        std::shared_ptr<primitive_desc_t> &gemm_pd_, engine_t *engine,
-        const memory_desc_t *a_md, const memory_desc_t *b_md,
-        const memory_desc_t *c_md, const memory_desc_t *bias_md,
-        data_type_t acc_dt, const primitive_attr_t *attr, bool skip_ref = false,
-        sum_ab_t sum_ab = sum_ab::sum_none,
-        data_type_t sum_ab_dt = data_type::undef) {
-    gemm_desc_t gemm_desc;
-    CHECK(create_gemm_desc(&gemm_desc, a_md, b_md, c_md, bias_md, acc_dt,
-            engine, sum_ab, sum_ab_dt));
-
-    primitive_attr_t gemm_attr = *attr;
-
-    primitive_desc_iterator_t it(
-            engine, (op_desc_t *)&gemm_desc, &gemm_attr, nullptr);
-
-    gemm_pd_ = *(++it);
-    if (!gemm_pd_) return status::unimplemented;
-    if (skip_ref && strstr(gemm_pd_->name(), "ref") != nullptr)
-        return status::unimplemented;
-
-    return status::success;
-}
+} // namespace gemm
+} // namespace intel
+} // namespace gpu
 
 static inline bool is_md_gemm_compatible_plain_format(
         const memory_desc_t *md, bool is_dst = false) {

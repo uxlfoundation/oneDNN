@@ -21,7 +21,8 @@
 
 #include "common/convolution_pd.hpp"
 #include "gpu/intel/gemm/config.hpp"
-#include "gpu/intel/gemm/primitive.hpp"
+#include "gpu/intel/gemm/jit/jit_gemm_pd.hpp"
+#include "gpu/intel/primitive.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -29,34 +30,34 @@ namespace gpu {
 namespace intel {
 namespace gemm {
 
-struct conv_t : public primitive_t {
-    using primitive_t::primitive_t;
-    struct pd_t : public gemm::pd_t {
-        using gemm::pd_t::pd_t;
+struct conv_t : public intel::primitive_t {
+    using intel::primitive_t::primitive_t;
+    struct pd_t : public jit::jit_gemm_pd_t {
+        using jit::jit_gemm_pd_t::jit_gemm_pd_t;
 
         DECLARE_COMMON_PD_T("conv:ir", conv_t);
 
         status_t init(impl::engine_t *engine) {
             // This is currently only used for experimentation purposes
             bool enabled = gpu_utils::dev_getenv("enable_conv_gemm", false);
-            VDISPATCH_GEMM(
+            VDISPATCH_JIT_GEMM(
                     enabled, VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "gemm::conv");
 
-            VDISPATCH_GEMM(attr()->has_default_values(
-                                   primitive_attr_t::skip_mask_t::gpu_attr),
+            VDISPATCH_JIT_GEMM(attr()->has_default_values(
+                                       primitive_attr_t::skip_mask_t::gpu_attr),
                     VERBOSE_UNSUPPORTED_ATTR);
 
             auto conv_desc = convolution_desc_t();
 
             auto src_desc = *src_md(0);
-            auto weights_desc = *src_md(1);
-            auto bias_desc = *src_md(2);
+            auto weights_desc = *weights_md(0);
+            auto bias_desc = *weights_md(1);
             auto dst_desc = *dst_md();
 
             auto with_bias = bias_desc.format_kind != format_kind::undef;
 
             auto add_width = [&](memory_desc_t &desc) {
-                VDISPATCH_GEMM(
+                VDISPATCH_JIT_GEMM(
                         desc.ndims == 2, VERBOSE_BAD_NDIMS, "desc", desc.ndims);
 
                 // Add width dimension with size 1
@@ -71,7 +72,7 @@ struct conv_t : public primitive_t {
                     blk.strides[width_idx] = blk.strides[0];
                     return status::success;
                 } else {
-                    VDISPATCH_GEMM(desc.format_kind == format_kind::any,
+                    VDISPATCH_JIT_GEMM(desc.format_kind == format_kind::any,
                             VERBOSE_UNSUPPORTED_FORMAT_KIND);
                 }
                 return status::success;
@@ -113,9 +114,9 @@ struct conv_t : public primitive_t {
                 // GEMM Bias has dimensions mxn with broadcasting semantics, but
                 // Conv bias only has 1 dimension along oc. This could likely be
                 // replaced with a binary add post-op for full support.
-                VDISPATCH_GEMM(bias_desc.ndims == 2, VERBOSE_BAD_NDIMS, "bias",
-                        bias_desc.ndims);
-                VDISPATCH_GEMM(
+                VDISPATCH_JIT_GEMM(bias_desc.ndims == 2, VERBOSE_BAD_NDIMS,
+                        "bias", bias_desc.ndims);
+                VDISPATCH_JIT_GEMM(
                         bias_desc.dims[0] == 1, VERBOSE_BAD_DIM, "bias", 0);
 
                 if (bias_desc.format_kind == format_kind::any) {
@@ -139,28 +140,39 @@ struct conv_t : public primitive_t {
                     engine, (op_desc_t *)&conv_desc, attr(), nullptr);
 
             conv_pd = *(++it);
-            VDISPATCH_GEMM(conv_pd, VERBOSE_PRIMITIVE_CREATION_FAIL, "conv");
+            VDISPATCH_JIT_GEMM(conv_pd, VERBOSE_PRIMITIVE_CREATION_FAIL, "conv");
 
-            VDISPATCH_GEMM(strstr(conv_pd->name(), "jit:ir") != nullptr,
+            VDISPATCH_JIT_GEMM(strstr(conv_pd->name(), "jit:ir") != nullptr,
                     VERBOSE_NULL_ARG);
 
-            desc_.a_desc = *conv_pd->src_md();
-            if (use_spatial_m) transpose(desc_.a_desc, 0, 2);
-            desc_.a_desc.ndims = 2;
+            memory_desc_t matmul_a = *conv_pd->src_md();
+            if (use_spatial_m) transpose(matmul_a, 0, 2);
+            matmul_a.ndims = 2;
 
-            desc_.b_desc = *conv_pd->weights_md();
-            desc_.b_desc.ndims = 2;
-            transpose(desc_.b_desc, 0, 1);
+            memory_desc_t matmul_b = *conv_pd->weights_md();
+            matmul_b.ndims = 2;
+            transpose(matmul_b, 0, 1);
 
-            desc_.c_desc = *conv_pd->dst_md();
-            if (use_spatial_m) transpose(desc_.c_desc, 0, 2);
-            desc_.c_desc.ndims = 2;
+            memory_desc_t matmul_c = *conv_pd->dst_md();
+            if (use_spatial_m) transpose(matmul_c, 0, 2);
+            matmul_c.ndims = 2;
 
+            memory_desc_t matmul_bias = glob_zero_md;
             if (with_bias) {
-                desc_.bias_desc = bias_desc;
-                transpose(desc_.bias_desc, 0, 1);
-                desc_.bias_desc.ndims = 2;
+                matmul_bias = bias_desc;
+                transpose(matmul_bias, 0, 1);
+                matmul_bias.ndims = 2;
             }
+
+            // Update both matmul_desc_t (visible via desc()) and the pd mds.
+            desc_.src_desc = matmul_a;
+            desc_.weights_desc = matmul_b;
+            desc_.dst_desc = matmul_c;
+            desc_.bias_desc = matmul_bias;
+            src_md_ = matmul_a;
+            weights_md_ = matmul_b;
+            dst_md_ = matmul_c;
+            bias_md_ = matmul_bias;
 
             init_scratchpad();
 
@@ -180,28 +192,33 @@ struct conv_t : public primitive_t {
         return create_nested_primitive(conv_, pd()->conv_pd, engine);
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
+    status_t execute(const impl::exec_ctx_t &ctx) const override {
         impl::exec_args_t args;
+        auto *src_mem = ctx.input(DNNL_ARG_SRC);
+        auto *wei_mem = ctx.input(DNNL_ARG_WEIGHTS);
+        auto *dst_mem = ctx.output(DNNL_ARG_DST);
+        auto *bias_mem = ctx.input(DNNL_ARG_BIAS);
+
         std::unique_ptr<memory_t, memory_deleter_t> a;
         CHECK(safe_ptr_assign(a,
                 new memory_t(ctx.stream()->engine(), pd()->conv_pd->src_md(0),
-                        ctx.args().a->clone())));
+                        src_mem->memory_storage()->clone())));
         std::unique_ptr<memory_t, memory_deleter_t> b;
         CHECK(safe_ptr_assign(b,
                 new memory_t(ctx.stream()->engine(), pd()->conv_pd->src_md(1),
-                        ctx.args().b->clone())));
+                        wei_mem->memory_storage()->clone())));
         std::unique_ptr<memory_t, memory_deleter_t> c;
         CHECK(safe_ptr_assign(c,
                 new memory_t(ctx.stream()->engine(), pd()->conv_pd->dst_md(),
-                        ctx.args().c->clone())));
+                        dst_mem->memory_storage()->clone())));
 
         std::unique_ptr<memory_t, memory_deleter_t> bias = [&] {
-            if (ctx.args().bias
+            if (bias_mem
                     && pd()->conv_pd->src_md(2)->format_kind
                             != format_kind::undef) {
                 return std::unique_ptr<memory_t, memory_deleter_t>(new memory_t(
                         ctx.stream()->engine(), pd()->conv_pd->src_md(2),
-                        ctx.args().bias->clone()));
+                        bias_mem->memory_storage()->clone()));
             } else {
                 return std::unique_ptr<memory_t, memory_deleter_t>();
             }

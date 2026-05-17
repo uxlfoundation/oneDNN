@@ -17,10 +17,12 @@
 #ifndef COMMON_GEMM_TYPES_HPP
 #define COMMON_GEMM_TYPES_HPP
 
-#include <assert.h>
 #include "common/c_types_map.hpp"
-#include "common/memory_desc.hpp"
-#include "common/opdesc.hpp"
+
+// gemm_desc_t / gemm_pd_t are gone — every internal caller routes through
+// matmul_desc_t / matmul_pd_t now. This header survives only as the home for
+// the BLAS-style enums (transpose_t, offsetc_t, sum_ab_t) that JIT GEMM
+// kernels and CPU BLAS gemm kernels still consume.
 
 namespace dnnl {
 namespace impl {
@@ -46,126 +48,6 @@ const sum_ab_t sum_a_row = dnnl_sum_a_row;
 const sum_ab_t sum_b_col = dnnl_sum_b_col;
 const sum_ab_t sum_none = dnnl_sum_none;
 } // namespace sum_ab
-
-// A descriptor for a matrix multiplication (gemm) operation. To make the
-// interface consistent, the descriptor represent the GEMM operation in row
-// major.
-struct gemm_desc_t : public op_desc_t {
-    gemm_desc_t() : op_desc_t(primitive_kind::gemm) {}
-
-    std::unique_ptr<op_desc_t> clone() const override {
-        return utils::make_unique<gemm_desc_t>(*this);
-    }
-
-    memory_desc_t a_desc;
-    memory_desc_t b_desc;
-    memory_desc_t c_desc;
-    memory_desc_t bias_desc;
-    // Type for accumulating A*B.
-    dnnl_data_type_t acc_type {};
-    // Sum across k dimension in either A or B tensor
-    // and output to sum_ab tensor.
-    sum_ab_t sum_ab {};
-    dnnl_data_type_t sum_ab_type {};
-
-    // These accessors are to be used by the GEMM implementation. Because the
-    // GEMM implementation currently assumes column major. These accessors
-    // return data in column major fashion.
-
-    inline bool is_batched() const { return c_desc.ndims >= 3; }
-
-    // Simplified accessors that comply to GEMM API
-    static transpose_t get_trans(const memory_desc_t &md) {
-        if (!md.ndims) return transpose::notrans; // arbitrary
-
-        // Leading dimension must be byte-aligned
-        using namespace data_type;
-        bool is_4bit = utils::one_of(md.data_type, f4_e2m1, f4_e3m0, s4, u4);
-        dim_t last_dim = md.dims[md.ndims - 1];
-        auto strides = md.format_desc.blocking.strides;
-        dim_t notranspose_ld
-                = md.dims[md.ndims - 2] > 1 ? strides[md.ndims - 2] : last_dim;
-        if (is_4bit && notranspose_ld % 2 != 0) return transpose::trans;
-
-        return last_dim != 1 && strides[md.ndims - 1] != 1 ? transpose::trans
-                                                           : transpose::notrans;
-    }
-    transpose_t transa() const { return get_trans(b_desc); }
-    transpose_t transb() const { return get_trans(a_desc); }
-    transpose_t transc() const { return get_trans(c_desc); }
-    transpose_t trans_bias() const { return get_trans(bias_desc); }
-
-    dnnl_dim_t batch() const {
-        // if ndims < 3, it should return 1
-        int64_t batch = 1;
-        for (int i = 0; i < c_desc.ndims - 2; ++i) {
-            if (is_runtime_value(c_desc.dims[i]))
-                return runtime_value_for<dnnl_dim_t>();
-            batch *= c_desc.dims[i];
-        }
-        return batch;
-    }
-
-    // Number of rows of C.
-    dnnl_dim_t m() const { return c_desc.dims[c_desc.ndims - 1]; }
-    // Number of columns of C.
-    dnnl_dim_t n() const { return c_desc.dims[c_desc.ndims - 2]; }
-    // Size of inner dimension shared between A and B.
-    dnnl_dim_t k() const { return a_desc.dims[a_desc.ndims - 1]; }
-
-    static dnnl_dim_t get_stride(const memory_desc_t &md, int dim = 0) {
-        return (dim >= md.ndims - 2 || md.dims[dim] == 1)
-                ? 0
-                : md.format_desc.blocking.strides[dim];
-    }
-
-    /** Stride between 2 matrices A in a batch. */
-    dnnl_dim_t stride_a(int dim = 0) const { return get_stride(b_desc, dim); }
-    /** Stride between 2 matrices B in a batch. */
-    dnnl_dim_t stride_b(int dim = 0) const { return get_stride(a_desc, dim); }
-    /** Stride between 2 matrices C in a batch. */
-    dnnl_dim_t stride_c(int dim = 0) const { return get_stride(c_desc, dim); }
-
-    // This assumes that one of the dimensions has strides 1
-    static dnnl_dim_t get_ld(const memory_desc_t &md) {
-        auto strides = md.format_desc.blocking.strides;
-        assert(md.dims[md.ndims - 1] == 1 || strides[md.ndims - 1] == 1
-                || md.dims[md.ndims - 2] == 1 || strides[md.ndims - 2] == 1);
-        switch (get_trans(md)) {
-            case transpose::trans:
-                return md.dims[md.ndims - 1] > 1 ? strides[md.ndims - 1]
-                                                 : md.dims[md.ndims - 2];
-            default:
-                return md.dims[md.ndims - 2] > 1 ? strides[md.ndims - 2]
-                                                 : md.dims[md.ndims - 1];
-        }
-    }
-    // Leading dimension of A.
-    dnnl_dim_t lda() const { return get_ld(b_desc); }
-    // Leading dimension of B.
-    dnnl_dim_t ldb() const { return get_ld(a_desc); }
-    // Leading dimension of C.
-    dnnl_dim_t ldc() const { return get_ld(c_desc); }
-    /** Leading dimension of bias. */
-    dnnl_dim_t ld_bias() const { return get_ld(bias_desc); }
-
-    // Type of matrix A.
-    dnnl_data_type_t a_type() const { return b_desc.data_type; }
-    // Type of matrix B.
-    dnnl_data_type_t b_type() const { return a_desc.data_type; }
-    // Type of matrix C.
-    dnnl_data_type_t c_type() const { return c_desc.data_type; }
-    // Type of bias.
-    dnnl_data_type_t bias_type() const { return bias_desc.data_type; }
-    // Type of bias.
-    int bias_mask() const {
-        assert(bias_desc.ndims <= 6);
-        int mask = 0;
-        for (int i = 0; i < bias_desc.ndims; i++)
-            mask |= (bias_desc.dims[i] > 1) ? 1 << i : 0;
-        return mask;
-    }
-};
 
 } // namespace impl
 } // namespace dnnl

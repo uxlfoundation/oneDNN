@@ -26,7 +26,6 @@
 #include "gemmstone/type.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/compute/kernel_arg_list.hpp"
-#include "gpu/intel/gemm/jit/pd.hpp"
 #include "gpu/intel/jit/generator_base.hpp"
 #include "gpu/intel/kernel_cache.hpp"
 

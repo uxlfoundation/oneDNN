@@ -42,59 +42,91 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
     assert(engine->kind() == engine_kind::gpu);
     auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
-    VDISPATCH_GEMM(intel_engine->mayiuse_ngen_kernels(),
+    // Collapse broadcast-batch dims to 2D / 3D BEFORE resolving format_any.
+    // commit_reshape at end of init flips reshape_applied_ so external
+    // queries see the original N-D shape.
+    CHECK(maybe_reshape_2d());
+
+    VDISPATCH_JIT_GEMM(intel_engine->mayiuse_ngen_kernels(),
             VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "ngen kernels");
-    VDISPATCH_GEMM(intel_engine->mayiuse_large_grf_mode(),
+    VDISPATCH_JIT_GEMM(intel_engine->mayiuse_large_grf_mode(),
             VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "large grf mode");
 
     dev_info_ = intel_engine->device_info();
     auto arch = dev_info_->gpu_arch();
 
-    CHECK(init_attrs(engine));
-    const auto &d = desc();
+    // Pre-swap dtype probes read the matmul md types directly (SRC=A, WEI=B,
+    // DST=C). xe_hp_systolic always swaps below, but these dispatch checks
+    // exist purely on matmul-keyed types and don't depend on swap.
+    const auto matmul_a_type = src_md_.data_type;
+    const auto matmul_b_type = weights_md_.data_type;
+    const auto matmul_c_type = dst_md_.data_type;
 
-    bool dt_float_ok = (d->a_type() == d->b_type()
-            && utils::one_of(d->a_type(), bf16, f16)
-            && utils::one_of(d->c_type(), f32, d->a_type()));
+    bool dt_float_ok = (matmul_a_type == matmul_b_type
+            && utils::one_of(matmul_a_type, bf16, f16)
+            && utils::one_of(matmul_c_type, f32, matmul_a_type));
 
-    bool dt_int_ok = (utils::one_of(d->a_type(), u8, s8)
-            && utils::one_of(d->b_type(), u8, s8)
-            && utils::one_of(d->c_type(), s32, f32, s8, u8, f16));
-
-    if (dt_int_ok) {
-        a_zp_ = !attr()->zero_points_.has_default_values(DNNL_ARG_A);
-        b_zp_ = !attr()->zero_points_.has_default_values(DNNL_ARG_B);
-        c_zp_ = !attr()->zero_points_.has_default_values(DNNL_ARG_C);
-    }
+    bool dt_int_ok = (utils::one_of(matmul_a_type, u8, s8)
+            && utils::one_of(matmul_b_type, u8, s8)
+            && utils::one_of(matmul_c_type, s32, f32, s8, u8, f16));
 
     // LIMITATIONS:
     // - batch is not supported for unpacked inputs.
     // - runtime dims are not supported
     bool limits_ok
-            = !utils::one_of(DNNL_RUNTIME_DIM_VAL, d->m(), d->n(), d->k());
+            = !utils::one_of(DNNL_RUNTIME_DIM_VAL, M(), N(), K());
 
-    VDISPATCH_GEMM(limits_ok, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+    VDISPATCH_JIT_GEMM(limits_ok, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
-    // Must check runtime dimensions before calling `set_default_formats` to
+    // Resolve format_any before apply_swap_ab so the swap sees resolved strides.
+    // Must check runtime dimensions before calling `init_default_formats` to
     // avoid undefined behavior.
-    VDISPATCH_GEMM_SC(
-            set_default_formats(d->a_type()), VERBOSE_UNSUPPORTED_TAG);
+    VDISPATCH_JIT_GEMM_SC(
+            init_default_formats(matmul_a_type), VERBOSE_UNSUPPORTED_TAG);
 
-    VDISPATCH_GEMM_SC(
-            attr_.set_default_formats(dst_md(0)), VERBOSE_UNSUPPORTED_TAG);
+    // Kernel is column-major; always swap A/B.
+    CHECK(apply_swap_ab());
 
-    VDISPATCH_GEMM(!use_nocopy(), VERBOSE_SKIP_PRIMITIVE_IMPL);
+    // Populate gemm_lda_/gemm_ldb_ for unpacked sides. xe_hp_systolic's kernel takes
+    // `lda` = get_ld(matmul-WEIGHTS) and `ldb` = get_ld(matmul-SRC) — this
+    // is base's gemm_desc_t convention (gemm_desc.b_desc = matmul-WEIGHTS
+    // because base's matmul→gemm wrapper sets gemm_desc.a_desc = matmul
+    // SRC, b_desc = matmul WEIGHTS; gemm_desc_t::gemm_lda() = get_ld(b_desc) =
+    // get_ld(matmul-WEIGHTS)). Packed sides use lda_packed/ldb_packed and
+    // these fields stay 0 (execute()'s `packed_a ? 0 : pd()->gemm_lda()`).
+    if (!packed_a_) gemm_lda_ = jit::jit_gemm_pd_t::get_ld(weights_md_);
+    if (!packed_b_) gemm_ldb_ = jit::jit_gemm_pd_t::get_ld(src_md_);
 
-    // `set_default_formats` determines a/b/c packing, so it must be called
+    // jit_gemm_pd_t::init runs init_attrs + scales_ok + zp_ok + gs_ok +
+    // init_post_ops. xe_hp_systolic uses its own packed-aware lda/ldb/ldc
+    // helpers (lda_packed/ldb_packed/ldc_packed); it must NOT call
+    // init_kernel_lds (get_ld would assert on packed WEIGHTS md).
+    CHECK(jit::jit_gemm_pd_t::init(engine, arch));
+
+    if (dt_int_ok) {
+        // xe_hp_systolic always swaps: kernel-A = matmul WEIGHTS,
+        // kernel-B = matmul SRC. The a_zp_/b_zp_ flags drive
+        // kd_full.select_kernel(...with_a_zero_points,with_b_zero_points...)
+        // and the host arg push of ao/bo in execute(), both kernel-keyed
+        // (ao/bo are already routed by route_by_swap_ab). Invert keying so
+        // the kernel-side bookkeeping matches.
+        a_zp_ = !attr()->zero_points_.has_default_values(kB);
+        b_zp_ = !attr()->zero_points_.has_default_values(kA);
+        c_zp_ = !attr()->zero_points_.has_default_values(kC);
+    }
+
+    VDISPATCH_JIT_GEMM(!use_nocopy(), VERBOSE_SKIP_PRIMITIVE_IMPL);
+
+    // `init_default_formats` determines a/b/c packing, so it must be called
     // prior to this.
     if (!packed_a())
-        limits_ok = limits_ok && (d->lda() != DNNL_RUNTIME_DIM_VAL)
-                && (d->batch() == 1);
+        limits_ok = limits_ok && (gemm_lda() != DNNL_RUNTIME_DIM_VAL)
+                && (batch() == 1);
     if (!packed_b())
-        limits_ok = limits_ok && (d->ldb() != DNNL_RUNTIME_DIM_VAL)
-                && (d->batch() == 1);
+        limits_ok = limits_ok && (gemm_ldb() != DNNL_RUNTIME_DIM_VAL)
+                && (batch() == 1);
     if (!packed_c())
-        limits_ok = limits_ok && (d->ldc() != DNNL_RUNTIME_DIM_VAL);
+        limits_ok = limits_ok && (gemm_ldc() != DNNL_RUNTIME_DIM_VAL);
 
     auto attr_skip_mask = smask_t::scales | smask_t::post_ops;
 
@@ -103,64 +135,64 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
     bool arch_ok = utils::one_of(arch, arch_t::xe_hp, arch_t::xe_hpg,
             arch_t::xe_hpc, arch_t::xe2, arch_t::xe3);
 
-    VDISPATCH_GEMM(limits_ok, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
-    VDISPATCH_GEMM((dt_float_ok || dt_int_ok), VERBOSE_UNSUPPORTED_DT_CFG);
-    VDISPATCH_GEMM(arch_ok, VERBOSE_UNSUPPORTED_ARCH, "gpu");
-    VDISPATCH_GEMM(
+    VDISPATCH_JIT_GEMM(limits_ok, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+    VDISPATCH_JIT_GEMM((dt_float_ok || dt_int_ok), VERBOSE_UNSUPPORTED_DT_CFG);
+    VDISPATCH_JIT_GEMM(arch_ok, VERBOSE_UNSUPPORTED_ARCH, "gpu");
+    VDISPATCH_JIT_GEMM(
             intel_engine->mayiuse(compute::device_ext_t::
                             intel_subgroup_split_matrix_multiply_accumulate),
             VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "systolic array");
-    VDISPATCH_GEMM(attr()->has_default_values(attr_skip_mask),
+    VDISPATCH_JIT_GEMM(attr()->has_default_values(attr_skip_mask),
             VERBOSE_UNSUPPORTED_ATTR);
-    VDISPATCH_GEMM(desc()->sum_ab == sum_ab::sum_none,
+    VDISPATCH_JIT_GEMM(gemm_sum_ab() == sum_ab::sum_none,
             VERBOSE_UNSUPPORTED_FEATURE, "bias reduction");
-    VDISPATCH_GEMM(IMPLICATION(with_bias(),
-                           utils::one_of(d->bias_type(), d->a_type(), f32)
-                                   && d->bias_mask() < 8),
+    // Base allowed {a_type, f32}; the migration accidentally widened the
+    // whitelist with b_type — drop it to restore base parity.
+    VDISPATCH_JIT_GEMM(IMPLICATION(with_bias(),
+                           utils::one_of(bias_type(), gemm_a_type(), f32)
+                                   && gemm_bias_mask() < 8),
             VERBOSE_UNSUPPORTED_BIAS_CFG);
 
     // Limit scope of large buffer implementation support as the ability test
     // large buffers is limited by testing time.
-    VDISPATCH_GEMM(std::max({memory_desc_wrapper(src_md(0)).size(),
-                           memory_desc_wrapper(src_md(1)).size(),
-                           memory_desc_wrapper(src_md(2)).size(),
+    VDISPATCH_JIT_GEMM(std::max({memory_desc_wrapper(src_md(0)).size(),
+                           memory_desc_wrapper(weights_md(0)).size(),
+                           memory_desc_wrapper(weights_md(1)).size(),
                            memory_desc_wrapper(dst_md()).size()})
                     <= (size_t)std::numeric_limits<int32_t>::max(),
             VERBOSE_SHAPE_RESTRICTION);
 
-    CHECK(scales_ok(engine));
-
     if (!attr()->zero_points_.has_default_values()) {
-        VDISPATCH_GEMM(!attr()->zero_points_.has_host_scalars(),
+        VDISPATCH_JIT_GEMM(!attr()->zero_points_.has_host_scalars(),
                 VERBOSE_UNSUPPORTED_ZP_CFG);
-        CHECK(zp_ok(engine));
     }
 
-    CHECK(init_post_ops(engine));
-
     if (dt_int_ok) {
-        VDISPATCH_GEMM(IMPLICATION(a_zp_, !packed_b())
+        VDISPATCH_JIT_GEMM(IMPLICATION(a_zp_, !packed_b())
                         && IMPLICATION(b_zp_, !packed_a()),
                 VERBOSE_UNSUPPORTED_ZP_CFG);
 
         const auto &zp = attr()->zero_points_;
 
-        if (!zp.has_default_values(DNNL_ARG_SRC)) {
-            VDISPATCH_GEMM(
-                    zp.get_mask(DNNL_ARG_SRC) == 0, VERBOSE_UNSUPPORTED_ZP_CFG);
+        if (!zp.has_default_values(kA)) {
+            VDISPATCH_JIT_GEMM(
+                    zp.get_mask(kA) == 0, VERBOSE_UNSUPPORTED_ZP_CFG);
         }
-        if (!zp.has_default_values(DNNL_ARG_WEIGHTS)) {
-            VDISPATCH_GEMM(zp.get_mask(DNNL_ARG_WEIGHTS) == 0,
+        if (!zp.has_default_values(kB)) {
+            VDISPATCH_JIT_GEMM(zp.get_mask(kB) == 0,
                     VERBOSE_UNSUPPORTED_ZP_CFG);
         }
-        if (!zp.has_default_values(DNNL_ARG_DST)) {
-            VDISPATCH_GEMM(utils::one_of(zp.get_mask(DNNL_ARG_DST), 0, (1 << 0),
+        if (!zp.has_default_values(kC)) {
+            VDISPATCH_JIT_GEMM(utils::one_of(zp.get_mask(kC), 0, (1 << 0),
                                    (1 << 1)),
                     VERBOSE_UNSUPPORTED_ZP_CFG);
         }
     }
 
     init_scratchpad();
+
+    // Re-project resolved 2D tags onto orig_*_md_ for external query.
+    CHECK(commit_reshape());
 
     return status::success;
 }
@@ -209,7 +241,6 @@ const nocopy_table_t xe_hpc_x8x8s32_nocopy_bad_ld_table[] = {
 bool xe_hp_systolic_t::pd_t::use_nocopy() {
     using namespace data_type;
 
-    const auto &d = desc();
     auto arch = dev_info_->gpu_arch();
 
     bool xehpc = (arch >= compute::gpu_arch_t::xe_hpc);
@@ -217,20 +248,20 @@ bool xe_hp_systolic_t::pd_t::use_nocopy() {
     if (any_prepacked_) return false;
 
     // Use no-copy for gemv/ger cases.
-    if (d->m() <= 1 || d->n() <= 1 || d->k() <= 1) return true;
+    if (gemm_m() <= 1 || gemm_n() <= 1 || gemm_k() <= 1) return true;
 
     // Use no-copy implementation if one matrix is very small.
-    if (d->m() < 32 && d->n() < 32) return true;
-    if (d->m() < 32 && d->k() < 32) return true;
-    if (d->n() < 32 && d->k() < 32) return true;
+    if (gemm_m() < 32 && gemm_n() < 32) return true;
+    if (gemm_m() < 32 && gemm_k() < 32) return true;
+    if (gemm_n() < 32 && gemm_k() < 32) return true;
 
     // Get LD alignment for A/B.
     unsigned ld_align = 0;
-    if (!packed_a_) ld_align |= (d->lda() * types::data_type_size(d->a_type()));
-    if (!packed_b_) ld_align |= (d->ldb() * types::data_type_size(d->b_type()));
+    if (!packed_a_) ld_align |= (gemm_lda() * types::data_type_size(gemm_a_type()));
+    if (!packed_b_) ld_align |= (gemm_ldb() * types::data_type_size(gemm_b_type()));
 
     // Use no-copy for small/medium sizes.
-    if (utils::one_of(d->a_type(), bf16, f16, s8, u8)) {
+    if (utils::one_of(gemm_a_type(), bf16, f16, s8, u8)) {
         // clang-format off
         const nocopy_table_t *all_tables[2][2][3] = {
             {{xe_hp_f16_nocopy_table, xe_hp_f16_nocopy_table, xe_hp_x8x8s32_nocopy_table},
@@ -239,19 +270,19 @@ bool xe_hp_systolic_t::pd_t::use_nocopy() {
              {xe_hpc_f16_nocopy_bad_ld_table, xe_hpc_f16_nocopy_bad_ld_table, xe_hpc_x8x8s32_nocopy_bad_ld_table}}
         };
         // clang-format on
-        int type_idx = (d->a_type() == f16) ? 0 : (d->a_type() == bf16) ? 1 : 2;
+        int type_idx = (gemm_a_type() == f16) ? 0 : (gemm_a_type() == bf16) ? 1 : 2;
         int arch_idx = xehpc ? 1 : 0;
         bool bad_ld = (ld_align & 3) != 0;
 
         if (arch == compute::gpu_arch_t::xe_hpg && !bad_ld)
-            return use_nocopy_xehpg(d->a_type(), ld_align);
+            return use_nocopy_xehpg(gemm_a_type(), ld_align);
 
         auto table = all_tables[arch_idx][int(bad_ld)][type_idx];
-        long mnl = table->mn_limit[d->transa()][d->transb()];
-        long kl = table->k_limit[d->transa()][d->transb()];
+        long mnl = table->mn_limit[gemm_transa()][gemm_transb()];
+        long kl = table->k_limit[gemm_transa()][gemm_transb()];
 
-        if ((mnl == 0 || d->m() * d->n() < mnl * mnl)
-                && (kl == 0 || d->k() < kl))
+        if ((mnl == 0 || gemm_m() * gemm_n() < mnl * mnl)
+                && (kl == 0 || gemm_k() < kl))
             return true;
     }
 
@@ -262,27 +293,25 @@ bool xe_hp_systolic_t::pd_t::use_nocopy_xehpg(
         data_type_t dt, unsigned ld_align) {
     using namespace data_type;
 
-    const auto &d = desc();
-
     bool align64 = (ld_align & 63) != 0;
     bool align32 = (ld_align & 31) != 0;
-    bool nn = !d->transa() && !d->transb();
-    bool nt = !d->transa() && d->transb();
-    bool tn = d->transa() && !d->transb();
-    auto m = d->m(), n = d->n(), k = d->k();
+    bool nn = !gemm_transa() && !gemm_transb();
+    bool nt = !gemm_transa() && gemm_transb();
+    bool tn = gemm_transa() && !gemm_transb();
+    auto mv = gemm_m(), nv = gemm_n(), kv = gemm_k();
     auto mnM = 1
-            + ((nstl::min<dim_t>(m, 131072) * nstl::min<dim_t>(n, 131072) - 1)
+            + ((nstl::min<dim_t>(mv, 131072) * nstl::min<dim_t>(nv, 131072) - 1)
                     >> 20);
 
-    if (m <= 1024 || n <= 1024) return true;
+    if (mv <= 1024 || nv <= 1024) return true;
 
-    if (utils::one_of(d->a_type(), bf16, f16)) {
+    if (utils::one_of(gemm_a_type(), bf16, f16)) {
         if (nn || nt) {
             if (align64) return true;
-            if (align32 && nn) return (k >= 256) || (mnM <= 16);
+            if (align32 && nn) return (kv >= 256) || (mnM <= 16);
             return (mnM <= 8);
         } else if (tn) {
-            if (align64) return (k <= 2048 || mnM <= 16);
+            if (align64) return (kv <= 2048 || mnM <= 16);
             return (mnM <= 16);
         } else
             return (mnM <= 1);
@@ -294,7 +323,7 @@ bool xe_hp_systolic_t::pd_t::use_nocopy_xehpg(
             if (align32) return (mnM <= 16);
             return (mnM <= 8);
         } else if (tn) {
-            if (align64) return (k >= 512) || (mnM <= 24);
+            if (align64) return (kv >= 512) || (mnM <= 24);
             return (mnM <= 12);
         } else
             return (mnM <= 1);
@@ -303,17 +332,31 @@ bool xe_hp_systolic_t::pd_t::use_nocopy_xehpg(
     return false;
 }
 
-status_t xe_hp_systolic_t::pd_t::set_default_formats(data_type_t dt) {
+status_t xe_hp_systolic_t::pd_t::init_default_formats(data_type_t dt) {
+    CHECK(init_default_formats_impl(dt));
+    return gemm_set_default_formats() ? status::success
+                                      : status::unimplemented;
+}
+
+status_t xe_hp_systolic_t::pd_t::init_default_formats_impl(data_type_t dt) {
     using namespace format_tag;
     using new_kd_t = jit::gen_xe_systolic_kernel_desc_t;
 
     auto sz = types::data_type_size(dt);
-    const auto &d = desc();
     auto arch = dev_info_->gpu_arch();
 
-    auto &a_desc = desc_.b_desc;
-    auto &b_desc = desc_.a_desc;
-    auto &c_desc = desc_.c_desc;
+    // xe_hp_systolic always swaps; kernel-A is matmul WEIGHTS, kernel-B is
+    // matmul SRC, kernel-C is matmul DST. The kernel-A/B zero-point status
+    // follows the same inversion: kernel_a_zp = WEIGHTS zp (matmul kB),
+    // kernel_b_zp = SRC zp (matmul kA).
+    auto &a_desc = weights_md_;
+    auto &b_desc = src_md_;
+    auto &c_desc = dst_md_;
+
+    const bool kernel_a_zp
+            = !attr()->zero_points_.has_default_values(kB);
+    const bool kernel_b_zp
+            = !attr()->zero_points_.has_default_values(kA);
 
     memory_desc_wrapper a_mdw(&a_desc);
     memory_desc_wrapper b_mdw(&b_desc);
@@ -322,7 +365,7 @@ status_t xe_hp_systolic_t::pd_t::set_default_formats(data_type_t dt) {
     bool a_any = a_mdw.format_any();
     bool b_any = b_mdw.format_any();
     bool c_any = c_mdw.format_any();
-    bool batch = d->is_batched();
+    bool batch = is_batched();
 
     if (batch_dims() > 1) return status::unimplemented;
 
@@ -373,8 +416,8 @@ status_t xe_hp_systolic_t::pd_t::set_default_formats(data_type_t dt) {
     if (bc_prepacked_32) unroll_n_ = 32;
     if (bc_prepacked_48) unroll_n_ = 48;
 
-    new_kd_t::choose_unrolls(arch, dev_info_->eu_count(), d->a_type(),
-            d->b_type(), d->c_type(), d->m(), d->n(), d->k(), d->batch(),
+    new_kd_t::choose_unrolls(arch, dev_info_->eu_count(), gemm_a_type(),
+            gemm_b_type(), c_type(), gemm_m(), gemm_n(), gemm_k(), jit::jit_gemm_pd_t::batch(),
             unroll_m_, unroll_n_, alt_);
 
     format_tag_t a_packed_tag = (unroll_m_ == 64) ? a_packed_tag_64
@@ -388,7 +431,7 @@ status_t xe_hp_systolic_t::pd_t::set_default_formats(data_type_t dt) {
     packed_a_ = packed_b_ = packed_c_ = false;
 
     if (a_any) {
-        if (b_zp_) {
+        if (kernel_b_zp) {
             CHECK(memory_desc_init_by_tag(a_desc, unpacked_tag));
         } else {
             CHECK(memory_desc_init_by_tag(a_desc, a_packed_tag));
@@ -407,7 +450,7 @@ status_t xe_hp_systolic_t::pd_t::set_default_formats(data_type_t dt) {
         return status::unimplemented;
 
     if (b_any) {
-        if (a_zp_) {
+        if (kernel_a_zp) {
             CHECK(memory_desc_init_by_tag(b_desc, unpacked_tag));
         } else {
             CHECK(memory_desc_init_by_tag(b_desc, b_packed_tag));
@@ -453,39 +496,38 @@ status_t xe_hp_systolic_t::pd_t::set_default_formats(data_type_t dt) {
     if ((!packed_a_ && unroll_m_ == 16) || (!packed_b_ && unroll_n_ == 16))
         return status::unimplemented;
 
-    return gemm::pd_t::set_default_formats() ? status::success
-                                             : status::unimplemented;
+    return status::success;
 }
 
 void xe_hp_systolic_t::pd_t::init_scratchpad() {
     if (packed_a() && packed_b()) return;
 
-    auto a_type = desc()->a_type();
-    auto b_type = desc()->b_type();
+    auto a_dt = gemm_a_type();
+    auto b_dt = gemm_b_type();
 
-    auto m = desc()->m();
-    auto n = desc()->n();
-    auto k = desc()->k();
+    auto m_ = gemm_m();
+    auto n_ = gemm_n();
+    auto k_ = gemm_k();
 
     int64_t align_m = unroll_m_ * 8; // TODO: this should not be hardcoded
     int64_t align_n = unroll_n_ * 8; // instead read from DriverInfo
 
-    auto m_aligned = utils::rnd_up(m, align_m);
-    auto n_aligned = utils::rnd_up(n, align_n);
+    auto m_aligned = utils::rnd_up(m_, align_m);
+    auto n_aligned = utils::rnd_up(n_, align_n);
 
-    auto max_ldab_packed = max_ld_packed(k);
+    auto max_ldab_packed = max_ld_packed(k_);
 
     auto scratchpad = scratchpad_registry().registrar();
 
     if (!packed_a()) {
         scratchpad.book(memory_tracking::names::key_gemm_blocked_a,
-                m_aligned * max_ldab_packed, types::data_type_size(a_type), 64,
+                m_aligned * max_ldab_packed, types::data_type_size(a_dt), 64,
                 65536);
     }
 
     if (!packed_b()) {
         scratchpad.book(memory_tracking::names::key_gemm_blocked_b,
-                n_aligned * max_ldab_packed, types::data_type_size(b_type), 64,
+                n_aligned * max_ldab_packed, types::data_type_size(b_dt), 64,
                 65536);
     }
 }
@@ -494,15 +536,14 @@ status_t xe_hp_systolic_t::init(impl::engine_t *engine) {
     arch_ = pd()->dev_info_->gpu_arch();
     eu_count_ = pd()->dev_info_->eu_count();
 
-    auto a_type = pd()->desc()->a_type();
-    auto b_type = pd()->desc()->b_type();
+    auto a_type = pd()->gemm_a_type();
+    auto b_type = pd()->gemm_b_type();
 
     int cmask = -1;
 
     if (pd()->with_c_zero_points())
-        cmask = pd()->attr()->zero_points_.get_mask(DNNL_ARG_DST);
-    else if (pd()->with_bias())
-        cmask = pd()->bias_cmask();
+        cmask = pd()->attr()->zero_points_.get_mask(jit::jit_gemm_pd_t::kC);
+    // Bias never flows via CO — it is a binary post-op.
 
     switch (cmask) {
         case 0: co_kind_ = 'F'; break;
@@ -526,7 +567,7 @@ status_t xe_hp_systolic_t::init(impl::engine_t *engine) {
             if (!copy_b ? pd()->packed_a() : pd()->packed_b()) continue;
 
             auto trans
-                    = !copy_b ? pd()->desc()->transa() : pd()->desc()->transb();
+                    = !copy_b ? pd()->gemm_transa() : pd()->gemm_transb();
             xe_systolic_copy_kernel_t params;
             CHECK(params.init(arch_, !copy_b ? a_type : b_type,
                     pd()->unroll_n(), copy_b, trans,
@@ -556,17 +597,16 @@ status_t xe_hp_systolic_t::init_compute(impl::engine_t *engine) {
     auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
     int stepping = intel_engine->device_info()->stepping_id();
 
-    const auto d = pd()->desc();
-
-    auto a_type = d->a_type();
-    auto b_type = d->b_type();
-    auto c_type = d->c_type();
+    auto a_type = pd()->gemm_a_type();
+    auto b_type = pd()->gemm_b_type();
+    auto c_type = pd()->c_type();
     auto co_type = pd()->impl_co_type();
     auto acc_type = pd()->impl_acc_type();
-    bool trans_co = pd()->with_bias() && (d->trans_bias() == dnnl_trans);
+    // Bias never flows via CO; the CO channel carries c-zp (scalar/1D).
+    bool trans_co = false;
 
     bool may_k_block
-            = (d->k() > kd_t::min_block_k(a_type)) && pd()->allow_k_blocking();
+            = (pd()->gemm_k() > kd_t::min_block_k(a_type)) && pd()->allow_k_blocking();
     bool got_info = false;
 
     auto post_ops_ = pd()->post_ops();
@@ -574,7 +614,10 @@ status_t xe_hp_systolic_t::init_compute(impl::engine_t *engine) {
             || (post_ops_->find(primitive_kind::binary) != -1)
             || (post_ops_->find(primitive_kind::prelu) != -1);
     gpu_post_ops_t gpu_post_ops;
-    CHECK(gpu_post_ops_t::make(gpu_post_ops, *post_ops_, pd()->dst_md(),
+    // Use kernel_dst_md(): under reshape the external dst_md() returns the
+    // N-D shadow, but relative_md_t::make's ndim_normalizer must see the
+    // active 2D dst to match the 2D post_ops entries.
+    CHECK(gpu_post_ops_t::make(gpu_post_ops, *post_ops_, pd()->kernel_dst_md(),
             pd()->get_post_op_specializations()));
 
     kd_t kd_full;
@@ -585,13 +628,21 @@ status_t xe_hp_systolic_t::init_compute(impl::engine_t *engine) {
     auto status = kd_full.select_kernel(product, stepping, eu_count_,
             is_integrated, pd()->with_batch(), pd()->packed_c(), trans_co,
             pd()->with_a_zero_points(), pd()->with_b_zero_points(),
-            pd()->with_c_zero_points(), pd()->with_bias(), pd()->alpha(),
+            pd()->with_c_zero_points(), /*with_bias=*/false, pd()->alpha(),
             pd()->beta(), a_type, b_type, c_type, dnnl_s32, dnnl_s32, co_type,
-            acc_type, d->m(), d->n(), d->k(), d->batch(), pd()->unroll_m(),
-            pd()->unroll_n(), pd()->alt(), std::move(gpu_post_ops));
+            acc_type, pd()->gemm_m(), pd()->gemm_n(), pd()->gemm_k(), pd()->batch(),
+            pd()->unroll_m(), pd()->unroll_n(), pd()->alt(),
+            std::move(gpu_post_ops));
 
     if (status != status::success) return status;
 
+    // Use kd_full's catalog-internal problem directly. Inside select_kernel
+    // we transfer_post_ops AND apply postOps.transpose() / per-binary
+    // transpose() so that the kernel-desc problem ends up kernel-keyed
+    // (matches base's pattern; matches gen_t's init_GEMMProblem output for
+    // the same matmul). Calling init_GEMMProblem here would assert via
+    // get_ld() on packed C mds (e.g. dst:AB32a32b for c-zp cases) — base
+    // sidesteps this by reading kd_full's catalog problem directly.
     problem_ = *kd_full.problem();
 
     for (bool first_k_block : {false, true}) {
@@ -616,7 +667,8 @@ status_t xe_hp_systolic_t::init_compute(impl::engine_t *engine) {
                     this_post_ops = &no_post_ops;
                 }
                 CHECK(gpu_post_ops_t::make(gpu_post_ops, *this_post_ops,
-                        pd()->dst_md(), pd()->get_post_op_specializations()));
+                        pd()->kernel_dst_md(),
+                        pd()->get_post_op_specializations()));
 
                 kd_t kd;
 
@@ -624,17 +676,18 @@ status_t xe_hp_systolic_t::init_compute(impl::engine_t *engine) {
                         is_integrated, pd()->with_batch(), pd()->packed_c(),
                         trans_co, pd()->with_a_zero_points(),
                         pd()->with_b_zero_points(), this_c_offset,
-                        pd()->with_bias(), pd()->alpha(), this_beta, a_type,
+                        /*with_bias=*/false, pd()->alpha(), this_beta, a_type,
                         b_type, c_type, dnnl_s32, dnnl_s32, co_type, acc_type,
-                        d->m(), d->n(), d->k(), d->batch(), pd()->unroll_m(),
-                        pd()->unroll_n(), pd()->alt(), std::move(gpu_post_ops));
+                        pd()->gemm_m(), pd()->gemm_n(), pd()->gemm_k(), pd()->batch(),
+                        pd()->unroll_m(), pd()->unroll_n(), pd()->alt(),
+                        std::move(gpu_post_ops));
 
                 if (status != status::success) return status;
 
                 // Protection against C zero-point host scalar implementation in gen gemm
                 auto *kd_problem
                         = const_cast<gemmstone::GEMMProblem *>(kd.problem());
-                kd_problem->coPtrDims = pd()->c_quant.zp_ndims;
+                kd_problem->coPtrDims = pd()->c_zp_ndims();
 
                 if (!got_info) {
                     compute_info_ = *kd.driver_info();
@@ -655,13 +708,13 @@ status_t xe_hp_systolic_t::init_compute(impl::engine_t *engine) {
 }
 
 bool xe_hp_systolic_t::enable_mn_blocking() const {
-    return (pd()->desc()->m() >= 8192) && (pd()->desc()->n() >= 8192);
+    return (pd()->gemm_m() >= 8192) && (pd()->gemm_n() >= 8192);
 }
 
 std::tuple<int64_t, int64_t, int64_t> xe_hp_systolic_t::get_blocking() const {
-    int64_t m = pd()->desc()->m();
-    int64_t n = pd()->desc()->n();
-    int64_t k = pd()->desc()->k();
+    int64_t m = pd()->gemm_m();
+    int64_t n = pd()->gemm_n();
+    int64_t k = pd()->gemm_k();
 
     int64_t unroll_k = compute_info_.unroll[LoopK];
 
@@ -709,7 +762,7 @@ std::tuple<int64_t, int64_t, int64_t> xe_hp_systolic_t::get_blocking() const {
     return std::make_tuple(block_m, block_n, block_k);
 }
 
-status_t xe_hp_systolic_t::launch_copy(const exec_ctx_t &ctx, int64_t r,
+status_t xe_hp_systolic_t::launch_copy(const impl::exec_ctx_t &ctx, int64_t r,
         int64_t c, const memory_storage_t &src, int64_t offset_src,
         int64_t ld_src, const memory_storage_t &dst, int32_t offset_dst,
         int32_t ld_dst, bool copyb) const {
@@ -734,8 +787,8 @@ status_t xe_hp_systolic_t::launch_copy(const exec_ctx_t &ctx, int64_t r,
         align_c = compute_info_.wgTile(LoopN);
     }
 
-    bool transa = (pd()->desc()->transa() == dnnl_trans);
-    bool transb = (pd()->desc()->transb() == dnnl_trans);
+    bool transa = (pd()->gemm_transa() == dnnl_trans);
+    bool transb = (pd()->gemm_transb() == dnnl_trans);
     bool trans = !copyb ? transa : transb;
 
     auto &kernel = copy_kernel_[copyb][false];
@@ -751,7 +804,7 @@ status_t xe_hp_systolic_t::launch_copy(const exec_ctx_t &ctx, int64_t r,
     arg_list.set(6, offset_dst);
     arg_list.set(7, ld_dst);
 
-    auto elt_size = types::data_type_size(pd()->desc()->a_type());
+    auto elt_size = types::data_type_size(pd()->gemm_a_type());
     size_t r_threads = utils::div_up(utils::rnd_up(r, align_r),
             copy_kernel_t::unroll_r(arch_, elt_size, copyb));
     size_t c_threads = utils::div_up(utils::rnd_up(c, align_c),
@@ -779,8 +832,8 @@ status_t xe_hp_systolic_t::launch_copy(const exec_ctx_t &ctx, int64_t r,
     return parallel_for(ctx, nd_range, kernel, arg_list);
 }
 
-status_t xe_hp_systolic_t::launch_clear_sum(const exec_ctx_t &ctx, int64_t r,
-        int64_t c, const memory_storage_t &dst, int32_t offset_dst,
+status_t xe_hp_systolic_t::launch_clear_sum(const impl::exec_ctx_t &ctx,
+        int64_t r, int64_t c, const memory_storage_t &dst, int32_t offset_dst,
         int32_t ld_dst, bool copyb) const {
 
     auto &kernel = copy_kernel_[copyb][true];
@@ -805,11 +858,12 @@ status_t xe_hp_systolic_t::launch_clear_sum(const exec_ctx_t &ctx, int64_t r,
     return parallel_for(ctx, nd_range, kernel, arg_list);
 }
 
-status_t xe_hp_systolic_t::launch_compute(const exec_ctx_t &ctx, int32_t m,
-        int32_t n, int32_t k, const memory_storage_t &ap, int64_t offset_a,
-        int32_t lda, const memory_storage_t &bp, int64_t offset_b, int32_t ldb,
-        const memory_storage_t &c, int64_t offset_c, int32_t ldc, float alpha,
-        float beta, const memory_storage_t *ao, const memory_storage_t *bo,
+status_t xe_hp_systolic_t::launch_compute(const impl::exec_ctx_t &ctx,
+        int32_t m, int32_t n, int32_t k, const memory_storage_t &ap,
+        int64_t offset_a, int32_t lda, const memory_storage_t &bp,
+        int64_t offset_b, int32_t ldb, const memory_storage_t &c,
+        int64_t offset_c, int32_t ldc, float alpha, float beta,
+        const memory_storage_t *ao, const memory_storage_t *bo,
         const memory_storage_t &co, int64_t offset_co, int po_count,
         const memory_storage_t **po_srcs, int64_t *offset_po_src,
         bool first_k_block, bool last_k_block, int32_t batch, int32_t stride_a,
@@ -849,13 +903,10 @@ status_t xe_hp_systolic_t::launch_compute(const exec_ctx_t &ctx, int32_t m,
 
     if (pd()->with_a_zero_points()) arg_list.set(argn++, *ao);
     if (pd()->with_b_zero_points()) arg_list.set(argn++, *bo);
-    if ((pd()->with_bias() || pd()->with_c_zero_points())) {
+    if (pd()->with_c_zero_points()) {
+        // Bias never flows via CO (it is a binary post-op), so no ldco arg.
         arg_list.set(argn++, co);
         arg_list.set(argn++, offset_co);
-        if (pd()->with_bias()) {
-            auto ldco = into<int32_t>(pd()->desc()->ld_bias());
-            arg_list.set(argn++, ldco);
-        }
     }
 
     uint32_t flags = 0;
@@ -877,9 +928,9 @@ status_t xe_hp_systolic_t::launch_compute(const exec_ctx_t &ctx, int32_t m,
 
     if (pd()->with_batch()) {
         for (int i = pd()->batch_dims() - 1; i >= 0; i--) {
-            auto stride_a = int32_t(pd()->desc()->stride_a(i));
-            auto stride_b = int32_t(pd()->desc()->stride_b(i));
-            auto stride_c = int32_t(pd()->desc()->stride_c(i));
+            auto stride_a = int32_t(pd()->gemm_stride_a(i));
+            auto stride_b = int32_t(pd()->gemm_stride_b(i));
+            auto stride_c = int32_t(pd()->stride_c(i));
             arg_list.set(argn++, stride_a);
             arg_list.set(argn++, stride_b);
             arg_list.set(argn++, stride_c);
@@ -893,7 +944,7 @@ status_t xe_hp_systolic_t::launch_compute(const exec_ctx_t &ctx, int32_t m,
             }
         }
         for (int i = 1; i < pd()->batch_dims(); i++) {
-            auto batchSize = uint32_t(pd()->desc()->c_desc.dims[i]);
+            auto batchSize = uint32_t(pd()->dst_md()->dims[i]);
             uint32_t recipBatchSize = jit::uint32_reciprocal(batchSize);
             arg_list.set(argn++, batchSize);
             arg_list.set(argn++, recipBatchSize);
@@ -928,39 +979,43 @@ status_t xe_hp_systolic_t::launch_compute(const exec_ctx_t &ctx, int32_t m,
     return parallel_for(ctx, nd_range, kernel, arg_list);
 }
 
-status_t xe_hp_systolic_t::execute(const exec_ctx_t &ctx) const {
-    auto a_type = pd()->desc()->a_type();
-    auto b_type = pd()->desc()->b_type();
-    auto c_type = pd()->desc()->c_type();
-    auto bias_type = pd()->desc()->bias_type();
+status_t xe_hp_systolic_t::execute(const impl::exec_ctx_t &ctx) const {
+    // Bias flows as a binary post-op; the CO channel carries c-zero-points
+    // only at execute() time.
+    auto a_type = pd()->gemm_a_type();
+    auto b_type = pd()->gemm_b_type();
+    auto c_type = pd()->c_type();
 
-    auto m = pd()->desc()->m();
-    auto n = pd()->desc()->n();
-    auto k = pd()->desc()->k();
-    auto batch = into<int32_t>(pd()->desc()->batch());
+    auto m = pd()->gemm_m();
+    auto n = pd()->gemm_n();
+    auto k = pd()->gemm_k();
+    auto batch = into<int32_t>(pd()->batch());
 
     bool packed_a = pd()->packed_a();
     bool packed_b = pd()->packed_b();
     bool packed_c = pd()->packed_c();
 
-    auto lda = packed_a ? 0 : pd()->desc()->lda();
-    auto ldb = packed_b ? 0 : pd()->desc()->ldb();
+    auto lda = packed_a ? 0 : pd()->gemm_lda();
+    auto ldb = packed_b ? 0 : pd()->gemm_ldb();
     auto ldc = into<int32_t>(
-            packed_c ? pd()->ldc_packed() : pd()->desc()->ldc());
-    auto ldco = into<int32_t>(pd()->with_bias() ? pd()->desc()->ld_bias() : 0);
+            packed_c ? pd()->ldc_packed() : pd()->gemm_ldc());
+    // Bias does not flow via CO; ldco is retained as 0 for the co_kind_=='M'
+    // CO-offset path used by c-zero-points.
+    int32_t ldco = 0;
 
-    auto stride_a = into<int32_t>(pd()->desc()->stride_a());
-    auto stride_b = into<int32_t>(pd()->desc()->stride_b());
-    auto stride_c = into<int32_t>(pd()->desc()->stride_c());
+    auto stride_a = into<int32_t>(pd()->gemm_stride_a());
+    auto stride_b = into<int32_t>(pd()->gemm_stride_b());
+    auto stride_c = into<int32_t>(pd()->stride_c());
 
     auto alpha = pd()->alpha();
     auto beta = pd()->beta();
 
-    auto &a = GEMM_CTX_ARG_STORAGE(b);
-    auto &b = GEMM_CTX_ARG_STORAGE(a);
-    auto &c = GEMM_CTX_ARG_STORAGE(c);
-    auto &c_zp = GEMM_CTX_ARG_STORAGE(c_zero_point);
-    auto &bias = GEMM_CTX_ARG_STORAGE(bias);
+    auto args = exec_args_from_matmul(ctx, pd()->swap_ab());
+    auto &a = GEMM_ARG_STORAGE(a);
+    auto &b = GEMM_ARG_STORAGE(b);
+    auto &c = GEMM_ARG_STORAGE(c);
+    auto &c_zp = GEMM_ARG_STORAGE(c_zero_point);
+    auto &bias = GEMM_ARG_STORAGE(bias);
     auto *co = &c_zp;
     const memory_storage_t *ao = nullptr, *bo = nullptr;
 
@@ -984,42 +1039,29 @@ status_t xe_hp_systolic_t::execute(const exec_ctx_t &ctx) const {
     for (int i = 0; i < po_count; i++) {
         auto &src = pd()->binary_srcs()[i];
         switch (src.type) {
-            case pd_t::binary_src_t::binary:
-                po_srcs[i]
-                        = ctx.args()
-                                  .exec_args
-                                  .at(DNNL_ARG_ATTR_MULTIPLE_POST_OP(src.index)
-                                          | DNNL_ARG_SRC_1)
-                                  .mem()
-                                  ->memory_storage();
+            case pd_t::binary_src_t::binary: {
+                auto *mem = ctx.input(
+                        DNNL_ARG_ATTR_MULTIPLE_POST_OP(src.index)
+                        | DNNL_ARG_SRC_1);
+                po_srcs[i] = mem ? mem->memory_storage() : nullptr;
                 break;
-            case pd_t::binary_src_t::prelu:
-                po_srcs[i]
-                        = ctx.args()
-                                  .exec_args
-                                  .at(DNNL_ARG_ATTR_MULTIPLE_POST_OP(src.index)
-                                          | DNNL_ARG_WEIGHTS)
-                                  .mem()
-                                  ->memory_storage();
+            }
+            case pd_t::binary_src_t::prelu: {
+                auto *mem = ctx.input(
+                        DNNL_ARG_ATTR_MULTIPLE_POST_OP(src.index)
+                        | DNNL_ARG_WEIGHTS);
+                po_srcs[i] = mem ? mem->memory_storage() : nullptr;
                 break;
+            }
             case pd_t::binary_src_t::bias: po_srcs[i] = &bias; break;
-            case pd_t::binary_src_t::scales:
-                switch (src.index) {
-                    case DNNL_ARG_WEIGHTS:
-                        po_srcs[i] = &GEMM_CTX_ARG_STORAGE(a_scales);
-                        break;
-                    case DNNL_ARG_SRC:
-                        po_srcs[i] = &GEMM_CTX_ARG_STORAGE(b_scales);
-                        break;
-                    case DNNL_ARG_DST:
-                        po_srcs[i] = &GEMM_CTX_ARG_STORAGE(c_scales);
-                        break;
-                    default:
-                        po_srcs[i] = nullptr;
-                        assert(!"invalid scale type");
-                        break;
-                }
+            case pd_t::binary_src_t::scales: {
+                // binary_src_t::scales stores matmul attr key
+                // (DNNL_ARG_SRC/WEIGHTS/DST). Look up storage directly — no
+                // swap routing needed for post-op data.
+                auto *mem = ctx.input(DNNL_ARG_ATTR_SCALES | src.index);
+                po_srcs[i] = mem ? mem->memory_storage() : nullptr;
                 break;
+            }
             default: po_srcs[i] = nullptr; break;
         }
     }
@@ -1038,13 +1080,8 @@ status_t xe_hp_systolic_t::execute(const exec_ctx_t &ctx) const {
             po_offsets0[i] = po_srcs[i]->offset() / problem_.Tbinary[i];
 
     if (pd()->with_ab_zero_points()) {
-        ao = &GEMM_CTX_ARG_STORAGE(a_zero_point);
-        bo = &GEMM_CTX_ARG_STORAGE(b_zero_point);
-    }
-
-    if (pd()->with_bias()) {
-        off_co0 = bias.offset() / types::data_type_size(bias_type);
-        co = &bias;
+        ao = &GEMM_ARG_STORAGE(a_zero_point);
+        bo = &GEMM_ARG_STORAGE(b_zero_point);
     }
 
     int64_t block_m = 0, block_n = 0, block_k = 0;

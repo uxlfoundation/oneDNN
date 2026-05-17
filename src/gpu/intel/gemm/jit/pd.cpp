@@ -189,8 +189,11 @@ status_t pd_t::init_post_ops(impl::engine_t *engine) {
         if (converted) b_scale_ndims_override_ = -1;
     }
 
-    bool try_c_scale = !c_scales.is_host_scalar()
-            || (c_scales.is_host_scalar() && num_orig_postops > 0);
+    // Host-scalar c_scale folds into alpha at exec; when there are
+    // additive post-ops (incl. bias_via_binary_), convert to a
+    // binary_div post-op so dst_scale also scales bias.
+    bool try_c_scale = !c_scales.is_host_scalar() || num_orig_postops > 0
+            || bias_via_binary_;
     if (!c_scales.has_default_values() && try_c_scale) {
         bool converted;
         CHECK(maybe_convert_scales_to_postop(c_scale_md_, gemm_arg::C,

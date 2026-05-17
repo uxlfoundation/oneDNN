@@ -162,6 +162,8 @@ struct pd_t : public gemm::pd_t {
         return desc()->bias_type() != data_type::undef && !bias_via_binary_;
     }
 
+    bool bias_via_binary() const { return bias_via_binary_; }
+
     int bias_cmask() const {
         unsigned char to_cmask[8] = {0, 4, 2, 6, 1, 5, 3, 7};
         assert(unsigned(desc()->bias_mask()) < 8);

@@ -20,6 +20,7 @@
 #include "common/dnnl_thread.hpp"
 #include "common/memory_desc_wrapper.hpp"
 
+#include "cpu/rv64/jit_rvv_group_normalization_kernel.hpp"
 #include "cpu/rv64/rvv_group_normalization.hpp"
 
 namespace dnnl {
@@ -90,63 +91,8 @@ inline void stats_reduction(
 inline void norm_spatial_loop(const float *src, float *dst, size_t len,
         float mean_val, float inv_std_val, float gamma_val, float beta_val,
         bool use_scale, bool use_shift) {
-
-    size_t vl_max = __riscv_vsetvlmax_e32m1();
-    size_t idx = 0;
-
-    vfloat32m1_t v_mean = __riscv_vfmv_v_f_f32m1(mean_val, vl_max);
-    vfloat32m1_t v_inv_std = __riscv_vfmv_v_f_f32m1(inv_std_val, vl_max);
-    vfloat32m1_t v_gamma = __riscv_vfmv_v_f_f32m1(gamma_val, vl_max);
-    vfloat32m1_t v_beta = __riscv_vfmv_v_f_f32m1(beta_val, vl_max);
-
-    for (; idx + 4 * vl_max <= len; idx += 4 * vl_max) {
-        vfloat32m1_t v0 = __riscv_vle32_v_f32m1(src + idx + 0 * vl_max, vl_max);
-        vfloat32m1_t v1 = __riscv_vle32_v_f32m1(src + idx + 1 * vl_max, vl_max);
-        vfloat32m1_t v2 = __riscv_vle32_v_f32m1(src + idx + 2 * vl_max, vl_max);
-        vfloat32m1_t v3 = __riscv_vle32_v_f32m1(src + idx + 3 * vl_max, vl_max);
-
-        v0 = __riscv_vfsub_vv_f32m1(v0, v_mean, vl_max);
-        v1 = __riscv_vfsub_vv_f32m1(v1, v_mean, vl_max);
-        v2 = __riscv_vfsub_vv_f32m1(v2, v_mean, vl_max);
-        v3 = __riscv_vfsub_vv_f32m1(v3, v_mean, vl_max);
-
-        v0 = __riscv_vfmul_vv_f32m1(v0, v_inv_std, vl_max);
-        v1 = __riscv_vfmul_vv_f32m1(v1, v_inv_std, vl_max);
-        v2 = __riscv_vfmul_vv_f32m1(v2, v_inv_std, vl_max);
-        v3 = __riscv_vfmul_vv_f32m1(v3, v_inv_std, vl_max);
-
-        if (use_scale) {
-            v0 = __riscv_vfmul_vv_f32m1(v0, v_gamma, vl_max);
-            v1 = __riscv_vfmul_vv_f32m1(v1, v_gamma, vl_max);
-            v2 = __riscv_vfmul_vv_f32m1(v2, v_gamma, vl_max);
-            v3 = __riscv_vfmul_vv_f32m1(v3, v_gamma, vl_max);
-        }
-        if (use_shift) {
-            v0 = __riscv_vfadd_vv_f32m1(v0, v_beta, vl_max);
-            v1 = __riscv_vfadd_vv_f32m1(v1, v_beta, vl_max);
-            v2 = __riscv_vfadd_vv_f32m1(v2, v_beta, vl_max);
-            v3 = __riscv_vfadd_vv_f32m1(v3, v_beta, vl_max);
-        }
-
-        __riscv_vse32_v_f32m1(dst + idx + 0 * vl_max, v0, vl_max);
-        __riscv_vse32_v_f32m1(dst + idx + 1 * vl_max, v1, vl_max);
-        __riscv_vse32_v_f32m1(dst + idx + 2 * vl_max, v2, vl_max);
-        __riscv_vse32_v_f32m1(dst + idx + 3 * vl_max, v3, vl_max);
-    }
-
-    while (idx < len) {
-        size_t vl = __riscv_vsetvl_e32m1(len - idx);
-        vfloat32m1_t v_x = __riscv_vle32_v_f32m1(src + idx, vl);
-
-        v_x = __riscv_vfsub_vf_f32m1(v_x, mean_val, vl);
-        v_x = __riscv_vfmul_vf_f32m1(v_x, inv_std_val, vl);
-
-        if (use_scale) v_x = __riscv_vfmul_vf_f32m1(v_x, gamma_val, vl);
-        if (use_shift) v_x = __riscv_vfadd_vf_f32m1(v_x, beta_val, vl);
-
-        __riscv_vse32_v_f32m1(dst + idx, v_x, vl);
-        idx += vl;
-    }
+    jit_rvv_group_normalization_apply_f32(src, dst, static_cast<dim_t>(len),
+            mean_val, inv_std_val, gamma_val, beta_val, use_scale, use_shift);
 }
 
 } // namespace

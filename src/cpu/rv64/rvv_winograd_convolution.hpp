@@ -150,6 +150,7 @@ struct rvv_wino_convolution_fwd_t : public primitive_t {
 
             VDISPATCH_CONV(mayiuse(v), VERBOSE_UNSUPPORTED_ISA);
             VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
+            const bool is_auto = desc()->alg_kind == alg_kind::convolution_auto;
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_winograd),
                     VERBOSE_BAD_ALGORITHM);
 
@@ -209,11 +210,16 @@ struct rvv_wino_convolution_fwd_t : public primitive_t {
             VDISPATCH_CONV(src_d.dims()[1] >= 96 && dst_d.dims()[1] >= 96,
                     VERBOSE_UNSUPPORTED_FEATURE,
                     "ic and oc must be >= 96 for winograd");
+            VDISPATCH_CONV(!is_auto
+                            || (src_d.dims()[1] >= 128
+                                    && dst_d.dims()[1] >= 128),
+                    VERBOSE_UNSUPPORTED_FEATURE,
+                    "ic and oc must be >= 128 for auto winograd");
 
             const dim_t nb_wino_tiles
                     = ((dst_d.dims()[2] + 1) / 2) * ((dst_d.dims()[3] + 1) / 2);
-            VDISPATCH_CONV(nb_wino_tiles >= 100, VERBOSE_UNSUPPORTED_FEATURE,
-                    "too few winograd tiles");
+            VDISPATCH_CONV(!is_auto || nb_wino_tiles >= 100,
+                    VERBOSE_UNSUPPORTED_FEATURE, "too few winograd tiles");
 
             const int nthr = dnnl_get_max_threads();
             VDISPATCH_CONV(nthr <= 1 || src_d.dims()[0] >= nstl::min(nthr, 8),

@@ -291,7 +291,8 @@ int find_po_in_chain(const po_kind_t *po_chain, po_kind_t kind) {
 }
 
 status_t check_post_op_chain(primitive_attr_t &attr,
-        const memory_desc_wrapper &dst_desc, po_kind_t *po_chain) {
+        const memory_desc_wrapper &dst_desc, po_kind_t *po_chain,
+        data_type_t &binary_dt) {
     auto &po = attr.post_ops_;
     for (int i = 0; i < po.len(); ++i) {
         auto &e = po.entry_[i];
@@ -307,6 +308,7 @@ status_t check_post_op_chain(primitive_attr_t &attr,
                 po_chain[i] = po_kind_t::binary_nvfp4_scale;
             } else {
                 const memory_desc_wrapper bin_desc(e.binary.src1_desc);
+                binary_dt = bin_desc.data_type();
                 if (bin_desc.is_grouped_desc()) {
                     // [total_tokens, N] grouped - element-wise multiply
                     po_chain[i] = po_kind_t::binary_grouped_scale;
@@ -368,7 +370,9 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
     ngroups_ = src_grouped.group_count;
     is_gemv_ = M() < ngroups_;
     with_post_op_ = !attr()->post_ops_.has_default_values();
-    if (with_post_op_) { CHECK(check_post_op_chain(attr_, dst_d, po_chain_)); }
+    if (with_post_op_) {
+        CHECK(check_post_op_chain(attr_, dst_d, po_chain_, binary_dt_));
+    }
 
     // only supported dt for now
     VDISPATCH_MATMUL(utils::one_of(src_dt, f32, f16, bf16, u8, s8, s4, u4,
@@ -554,6 +558,11 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
             find_po_in_chain(po_chain_, po_kind_t::binary_dense_scale) != -1);
     kernel_ctx_.define_int("WITH_BINARY_NVFP4_SCALE",
             find_po_in_chain(po_chain_, po_kind_t::binary_nvfp4_scale) != -1);
+    if (find_po_in_chain(po_chain_, po_kind_t::binary_grouped_scale) != -1
+            || find_po_in_chain(po_chain_, po_kind_t::binary_dense_scale)
+                    != -1) {
+        def_data_type(kernel_ctx_, binary_dt_, "BINARY_SCALE");
+    }
     kernel_ctx_.add_option("-cl-std=CL3.0");
 
     return status::success;

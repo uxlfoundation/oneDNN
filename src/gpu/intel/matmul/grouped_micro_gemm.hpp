@@ -81,6 +81,7 @@ struct grouped_micro_gemm_t : public primitive_t {
         };
         po_kind_t po_chain_[3]
                 = {po_kind_t::none, po_kind_t::none, po_kind_t::none};
+        data_type_t binary_dt_ = data_type::f32;
         int sg_size_ = 0;
         int strategyGRFs_ = 0;
         dim_t ngroups_ = 0;

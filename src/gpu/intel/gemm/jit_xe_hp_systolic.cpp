@@ -50,12 +50,6 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
     dev_info_ = intel_engine->device_info();
     auto arch = dev_info_->gpu_arch();
 
-    // Kernel is column-major; swap A/B to match.
-    // Ordering is safe: on format_any descs apply_swap_ab is dims-only;
-    // strides are resolved later by init_default_formats / set_default_formats.
-    CHECK(apply_swap_ab());
-
-    CHECK(init_attrs(engine));
     const auto &d = desc();
 
     bool dt_float_ok = (d->a_type() == d->b_type()
@@ -66,12 +60,6 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
             && utils::one_of(d->b_type(), u8, s8)
             && utils::one_of(d->c_type(), s32, f32, s8, u8, f16));
 
-    if (dt_int_ok) {
-        a_zp_ = !attr()->zero_points_.has_default_values(gemm_arg::A);
-        b_zp_ = !attr()->zero_points_.has_default_values(gemm_arg::B);
-        c_zp_ = !attr()->zero_points_.has_default_values(gemm_arg::C);
-    }
-
     // LIMITATIONS:
     // - batch is not supported for unpacked inputs.
     // - runtime dims are not supported
@@ -80,10 +68,22 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
 
     VDISPATCH_GEMM(limits_ok, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
+    // Resolve format_any before apply_swap_ab so the swap sees resolved strides.
     // Must check runtime dimensions before calling `init_default_formats` to
     // avoid undefined behavior.
     VDISPATCH_GEMM_SC(
             init_default_formats(d->a_type()), VERBOSE_UNSUPPORTED_TAG);
+
+    // Kernel is column-major; swap A/B to match.
+    CHECK(apply_swap_ab());
+
+    CHECK(init_attrs(engine));
+
+    if (dt_int_ok) {
+        a_zp_ = !attr()->zero_points_.has_default_values(gemm_arg::A);
+        b_zp_ = !attr()->zero_points_.has_default_values(gemm_arg::B);
+        c_zp_ = !attr()->zero_points_.has_default_values(gemm_arg::C);
+    }
 
     VDISPATCH_GEMM_SC(
             attr_.set_default_formats(dst_md(0)), VERBOSE_UNSUPPORTED_TAG);
@@ -310,11 +310,7 @@ bool xe_hp_systolic_t::pd_t::use_nocopy_xehpg(
 }
 
 status_t xe_hp_systolic_t::pd_t::init_default_formats(data_type_t dt) {
-    CHECK(apply_swap_ab());
-    auto rc = init_default_formats_impl(dt);
-    CHECK(apply_swap_ab());
-    if (rc != status::success) return rc;
-
+    CHECK(init_default_formats_impl(dt));
     return gemm::pd_t::set_default_formats() ? status::success
                                              : status::unimplemented;
 }
@@ -327,10 +323,18 @@ status_t xe_hp_systolic_t::pd_t::init_default_formats_impl(data_type_t dt) {
     const auto &d = desc();
     auto arch = dev_info_->gpu_arch();
 
-    // Rename memory descriptors following column major format.
+    // Runs pre-swap on user-orientation descs. The kernel-A slot is
+    // desc_.b_md() (= user-B, becomes desc_.a_md() after the trailing
+    // apply_swap_ab()); the kernel-B slot is desc_.a_md(). The kernel-A/B
+    // zero-point status follows the same inversion.
     auto &a_desc = desc_.b_md();
     auto &b_desc = desc_.a_md();
     auto &c_desc = desc_.c_md();
+
+    const bool kernel_a_zp
+            = !attr()->zero_points_.has_default_values(gemm_arg::B);
+    const bool kernel_b_zp
+            = !attr()->zero_points_.has_default_values(gemm_arg::A);
 
     memory_desc_wrapper a_mdw(&a_desc);
     memory_desc_wrapper b_mdw(&b_desc);
@@ -405,7 +409,7 @@ status_t xe_hp_systolic_t::pd_t::init_default_formats_impl(data_type_t dt) {
     packed_a_ = packed_b_ = packed_c_ = false;
 
     if (a_any) {
-        if (b_zp_) {
+        if (kernel_b_zp) {
             CHECK(memory_desc_init_by_tag(a_desc, unpacked_tag));
         } else {
             CHECK(memory_desc_init_by_tag(a_desc, a_packed_tag));
@@ -424,7 +428,7 @@ status_t xe_hp_systolic_t::pd_t::init_default_formats_impl(data_type_t dt) {
         return status::unimplemented;
 
     if (b_any) {
-        if (a_zp_) {
+        if (kernel_a_zp) {
             CHECK(memory_desc_init_by_tag(b_desc, unpacked_tag));
         } else {
             CHECK(memory_desc_init_by_tag(b_desc, b_packed_tag));

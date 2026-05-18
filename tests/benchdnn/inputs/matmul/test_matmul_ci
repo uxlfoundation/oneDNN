@@ -84,7 +84,9 @@
                    dst:common:2,\
                    src:common:-1+wei:common:1,\
                    src:common:1+dst:common:-2,\
-                   src:common:-1+wei:common:-1+dst:common:2
+                   src:common:1+dst:per_oc,\
+                   src:common:-1+wei:common:-1+dst:common:2,\
+                   src:common:-1+wei:common:-1+dst:per_oc
 --batch=shapes_2d
 --batch=shapes_3d
 

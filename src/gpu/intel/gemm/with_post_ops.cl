@@ -30,9 +30,9 @@
 __kernel void gemm_post_ops(__global SRC_DATA_T *src,
         __global BIAS_DATA_T *bias, __global DST_DATA_T *dst POST_OP_ARGS,
 #if WITH_HOST_SRC_SCALE
-        float a_scale_value,
+        SRC_SCALES_DATA_T a_scale_value,
 #else
-        global float *a_scales,
+        global SRC_SCALES_DATA_T *a_scales,
 #endif
 #if WITH_HOST_WEI_SCALE
         WEI_SCALES_DATA_T b_scale_value,
@@ -62,7 +62,7 @@ __kernel void gemm_post_ops(__global SRC_DATA_T *src,
 #endif
 ) {
 #if WITH_HOST_SRC_SCALE
-    float *a_scales = &a_scale_value;
+    SRC_SCALES_DATA_T *a_scales = &a_scale_value;
 #endif
 #if WITH_HOST_WEI_SCALE
     WEI_SCALES_DATA_T *b_scales = &b_scale_value;
@@ -87,7 +87,8 @@ __kernel void gemm_post_ops(__global SRC_DATA_T *src,
     POST_OP_DATA_T accumulator = 0;
     if (d0 < DST_D0 && d1 < DST_D1 && d2 < DST_D2 && d3 < DST_D3 && d4 < DST_D4
             && d5 < DST_D5) {
-        const float a_scale = A_SCALES ? a_scales[0] : 1;
+        float a_scale = 1;
+        if (A_SCALES) load(&a_scale, a_scales);
         const uint b_scale_dim = (NDIMS == 2) ? d1
                 : (NDIMS == 3)                ? d2
                 : (NDIMS == 4)                ? d3

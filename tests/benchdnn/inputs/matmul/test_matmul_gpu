@@ -147,3 +147,7 @@
 
 # float16 regressions
 --batch=harness_matmul_regression_float16
+
+# regressions
+--check-ref-impl=
+--reset --dt=f16:s4:f32 --stag=ab --wtag=ab --dtag=ba --attr-fpmath=strict:true 2x2:2x2

@@ -103,15 +103,12 @@ private:
             , weights(CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS))
             , bias(CTX_IN_MEM(const char *, DNNL_ARG_BIAS))
             , dst(CTX_OUT_MEM(char *, DNNL_ARG_DST))
-            , post_ops_binary_rhs_arg_vec(binary_injector::prepare_binary_args(
-                      pd->attr()->post_ops_, ctx))
             , wsp_tile(ctx.get_scratchpad_grantor().template get<char>(
                       memory_tracking::names::key_conv_amx_tile_buffer)) {}
         const char *const __restrict src;
         const char *const __restrict weights;
         const char *const __restrict bias;
         char *const __restrict dst;
-        const std::vector<const void *> post_ops_binary_rhs_arg_vec;
         char *const wsp_tile;
     };
 
@@ -125,7 +122,9 @@ private:
             const int32_t *src_zero_points, int32_t *src_zp_comp,
             const int32_t *dst_zero_points, int32_t *s8s8_compensation,
             const void *src_scales, const void *wei_scales,
-            const void *dst_scales_inv, const bool is_last_os = false) const;
+            const void *dst_scales_inv,
+            const void *const *post_ops_binary_rhs_arg,
+            const bool is_last_os = false) const;
     void execute_os_blocking(const brgemm_exec_ctx_t &brgemm_ctx,
             brgemm_batch_element_t *const brg_batch_global,
             const void *src_scales, const void *wei_scales,
@@ -133,14 +132,16 @@ private:
             const int32_t *src_zero_points, int32_t *src_zp_comp,
             const int32_t *dst_zero_points, int32_t *s8s8_compensation,
             char *const c_buffer_global, char *inp_buffer_base,
-            uint8_t *inp_buffer_mask_base) const;
+            uint8_t *inp_buffer_mask_base,
+            const void *const *post_ops_binary_rhs_arg) const;
     void execute_full_spatial(const brgemm_exec_ctx_t &brgemm_ctx,
             brgemm_batch_element_t *const brg_batch_global,
             const void *src_scales, const void *wei_scales,
             const void *dst_scales, void *dst_scales_inv,
             const int32_t *src_zero_points, int32_t *src_zp_comp,
             const int32_t *dst_zero_points, int32_t *s8s8_compensation,
-            char *const c_buffer_global) const;
+            char *const c_buffer_global,
+            const void *const *post_ops_binary_rhs_arg) const;
 
     status_t execute_forward_all(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }

@@ -574,6 +574,8 @@ status_t brdgmm_dw_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
     const std::vector<const void *> post_ops_binary_rhs_arg_vec
             = binary_injector::prepare_binary_args(
                     pd()->attr()->post_ops_, ctx);
+    const void *const *post_ops_binary_rhs_arg
+            = post_ops_binary_rhs_arg_vec.data();
 
     const auto &jcp = pd()->jcp_;
 
@@ -657,7 +659,7 @@ status_t brdgmm_dw_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
         const brgemm_kernel_t *kernel_chb_tail
                 = brdgmm_kernels_[jcp.chb_tail_idx].get();
         brgemm_post_ops_data_t post_ops_data;
-        post_ops_data.binary_post_ops_rhs = post_ops_binary_rhs_arg_vec.data();
+        post_ops_data.binary_post_ops_rhs = post_ops_binary_rhs_arg;
         post_ops_data.data_C_ptr_ = dst;
 
         float *dst_scales_inv_ptr = nullptr;

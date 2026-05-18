@@ -397,6 +397,7 @@ void brgemm_1x1_convolution_fwd_t<isa>::exec_ker(
         const int32_t *src_zero_points, int32_t *src_zp_comp,
         const int32_t *dst_zero_points, int32_t *s8s8_compensation,
         const void *src_scales, const void *wei_scales, const void *dst_scales,
+        const void *const *post_ops_binary_rhs_arg,
         const bool is_last_os) const {
 
     const memory_desc_wrapper src_d(pd()->src_md());
@@ -410,8 +411,6 @@ void brgemm_1x1_convolution_fwd_t<isa>::exec_ker(
     const char *const __restrict weights = brgemm_ctx.weights;
     const char *const __restrict bias = brgemm_ctx.bias;
     char *const __restrict dst = brgemm_ctx.dst;
-    const std::vector<const void *> &post_ops_binary_rhs_arg_vec
-            = brgemm_ctx.post_ops_binary_rhs_arg_vec;
 
     const auto &jcp = pd()->jcp_;
     auto ndims = pd()->ndims();
@@ -520,8 +519,7 @@ void brgemm_1x1_convolution_fwd_t<isa>::exec_ker(
         if (do_postops) {
             const int32_t src_zp_val = src_zero_points ? src_zero_points[0] : 0;
             const brgemm_post_ops_data_t post_ops_data {
-                    static_cast<const void *>(bias_w),
-                    post_ops_binary_rhs_arg_vec.data(),
+                    static_cast<const void *>(bias_w), post_ops_binary_rhs_arg,
                     static_cast<size_t>(g_oc), 0, dst, 0,
                     static_cast<void *>(src_zp_comp_ptr), nullptr,
                     dst_zero_points, false, src_zp_val, false, false,
@@ -573,7 +571,8 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_os_blocking(
         const int32_t *src_zero_points, int32_t *src_zp_comp,
         const int32_t *dst_zero_points, int32_t *s8s8_compensation,
         char *const c_buffer_global, char *inp_buffer_base,
-        uint8_t *inp_buffer_mask_base) const {
+        uint8_t *inp_buffer_mask_base,
+        const void *const *post_ops_binary_rhs_arg) const {
 
     const auto &jcp = pd()->jcp_;
     const bool is_amx = brgemm_convolution_utils::is_amx(isa);
@@ -644,7 +643,8 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_os_blocking(
                             inp_buffer_sp, g, n, ocb, od, oh, ow, icc,
                             &last_brg_idx, src_zero_points, src_zp_comp,
                             dst_zero_points, s8s8_compensation, src_scales,
-                            wei_scales, dst_scales_inv_ptr, is_last_os);
+                            wei_scales, dst_scales_inv_ptr,
+                            post_ops_binary_rhs_arg, is_last_os);
                 }
             }
             last_n = n;
@@ -669,7 +669,8 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_full_spatial(
         const void *wei_scales, const void *dst_scales, void *dst_scales_inv,
         const int32_t *src_zero_points, int32_t *src_zp_comp,
         const int32_t *dst_zero_points, int32_t *s8s8_compensation,
-        char *const c_buffer_global) const {
+        char *const c_buffer_global,
+        const void *const *post_ops_binary_rhs_arg) const {
 
     const auto &jcp = pd()->jcp_;
     const bool is_amx = brgemm_convolution_utils::is_amx(isa);
@@ -712,7 +713,8 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_full_spatial(
                 exec_ker(brgemm_ctx, ithr, brg_batch, c_buffer, nullptr, g, n,
                         ocb, od, oh, ow, icc, &last_brg_idx, src_zero_points,
                         src_zp_comp, dst_zero_points, s8s8_compensation,
-                        src_scales, wei_scales, dst_scales_inv_ptr);
+                        src_scales, wei_scales, dst_scales_inv_ptr,
+                        post_ops_binary_rhs_arg);
             }
             if (jcp.loop_order == loop_ndhwgc)
                 nd_iterator_step(n, jcp.mb, od, OD, oh, OH, owb, jcp.nb_ow, g,
@@ -737,6 +739,12 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::execute_forward_all(
 
     const auto &jcp = pd()->jcp_;
     const memory_desc_wrapper weights_d(pd()->weights_md(0));
+
+    const std::vector<const void *> post_ops_binary_rhs_arg_vec
+            = binary_injector::prepare_binary_args(
+                    pd()->attr()->post_ops_, ctx);
+    const void *const *post_ops_binary_rhs_arg
+            = post_ops_binary_rhs_arg_vec.data();
 
     const void *src_scales
             = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
@@ -785,12 +793,13 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::execute_forward_all(
         execute_os_blocking(brgemm_ctx, brg_batch_global, src_scales,
                 wei_scales, dst_scales, dst_scales_inv, src_zero_points,
                 zp_compensation, dst_zero_points, s8s8_compensation,
-                c_buffer_global, inp_buffer_base, inp_buffer_mask_base);
+                c_buffer_global, inp_buffer_base, inp_buffer_mask_base,
+                post_ops_binary_rhs_arg);
     } else {
         execute_full_spatial(brgemm_ctx, brg_batch_global, src_scales,
                 wei_scales, dst_scales, dst_scales_inv, src_zero_points,
                 zp_compensation, dst_zero_points, s8s8_compensation,
-                c_buffer_global);
+                c_buffer_global, post_ops_binary_rhs_arg);
     }
 
     return status::success;

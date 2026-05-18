@@ -118,7 +118,13 @@ status_t device_info_t::init_attributes(impl::engine_t *engine) {
     auto &device
             = utils::downcast<const xpu::sycl::engine_impl_t *>(engine->impl())
                       ->device();
-    eu_count_ = device.get_info<::sycl::info::device::max_compute_units>();
+    if (device.has(::sycl::aspect::ext_intel_gpu_eu_count)) {
+        eu_count_ = static_cast<int32_t>(
+                device.get_info<
+                        ::sycl::ext::intel::info::device::gpu_eu_count>());
+    } else {
+        eu_count_ = device.get_info<::sycl::info::device::max_compute_units>();
+    }
     max_wg_size_ = device.get_info<::sycl::info::device::max_work_group_size>();
     memory_size_ = device.get_info<::sycl::info::device::global_mem_size>();
     l3_cache_size_

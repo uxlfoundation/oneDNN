@@ -129,7 +129,7 @@ jobs:
           fetch-depth: 0
 
       - name: Python linting
-        uses: oxsecurity/megalinter/flavors/python@8fbdead70d1409964ab3d5afa885e18ee85388bb # v9.4.0
+        uses: oxsecurity/megalinter/flavors/python@0e3ce9b9c8c10effb9b269509cc47ca17cae31c7 # v9.5.0
         id: pyl
         env:
           VALIDATE_ALL_CODEBASE: true

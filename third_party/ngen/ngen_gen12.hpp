@@ -137,11 +137,17 @@ protected:
     constexpr SWSBInfoXeHPC(uint16_t all_, bool dummy) : all{all_} {}
 
     static constexpr14 unsigned combinedMode(SWSBItem itoken, SWSBItem ipipe, Opcode op) {
+        if (op == Opcode::dpas) {
+            if (itoken.token.src && itoken.token.dst) return 1;
+            if (itoken.token.src) return 2;
+            if (itoken.token.dst) return 3;
+            return 0;
+        }
         auto pipe = ipipe.getPipe();
         if (itoken.token.src && itoken.token.dst)
             return (pipe == Pipe::F) ? 2 : (pipe == Pipe::I) ? 3 : 1;
         if (itoken.token.src) return 2;
-        if (itoken.token.dst) return (pipe == Pipe::A || op == Opcode::dpas) ? 3 : 1;
+        if (itoken.token.dst) return (pipe == Pipe::A) ? 3 : 1;
         return 0;
     }
 

@@ -137,7 +137,37 @@ configure_file(
     "${PROJECT_SOURCE_DIR}/include/oneapi/dnnl/dnnl_config.h.in"
     "${PROJECT_BINARY_DIR}/include/oneapi/dnnl/dnnl_config.h"
 )
-include_directories_with_host_compiler_before(${PROJECT_BINARY_DIR}/include)
+
+if(CMAKE_CXX_COMPILER_LAUNCHER)
+    # Adapt the build process when using ccache to improve the hit rate
+    get_filename_component(LAUNCHER "${CMAKE_CXX_COMPILER_LAUNCHER}" NAME)
+    if(LAUNCHER STREQUAL "ccache")
+        file(GLOB_RECURSE GENERATED_HEADERS "${PROJECT_BINARY_DIR}/include/*.h")
+        list(SORT GENERATED_HEADERS)
+        set(GENERATED_HASH "")
+        foreach(HDR IN LISTS GENERATED_HEADERS)
+            file(SHA256 "${HDR}" HDR_HASH)
+            string(APPEND GENERATED_HASH "${HDR_HASH}")
+        endforeach()
+        string(SHA256 GENERATED_HASH "${GENERATED_HASH}")
+        string(SUBSTRING "${GENERATED_HASH}" 0 16 GENERATED_HASH)
+
+        # Use a source level generated directory so that the build is
+        # independent of the build directory name. Uses a hash on generated
+        # files to avoid conflicting build configurations.
+        set(DNNL_GENERATED_INCLUDE_DIR
+          "${PROJECT_SOURCE_DIR}/.dnnl_generated/${GENERATED_HASH}/include")
+        file(COPY "${PROJECT_BINARY_DIR}/include/"
+          DESTINATION "${DNNL_GENERATED_INCLUDE_DIR}")
+        message(STATUS "Generated headers: ${DNNL_GENERATED_INCLUDE_DIR}")
+    endif()
+endif()
+
+if(NOT DNNL_GENERATED_INCLUDE_DIR)
+    set(DNNL_GENERATED_INCLUDE_DIR "${PROJECT_BINARY_DIR}/include")
+endif()
+
+include_directories_with_host_compiler_before(${DNNL_GENERATED_INCLUDE_DIR})
 
 configure_file(
     "${PROJECT_SOURCE_DIR}/README.binary.in"

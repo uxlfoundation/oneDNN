@@ -1008,6 +1008,30 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters(
             is_a_nt_ = true;
         }
 
+        // Re-check A's L1 residency after the "give up on L1" branch above
+        // shrinks k_blk_h. That branch unconditionally sets is_a_nt_ = true,
+        // but the smaller k_blk_h often leaves A's per-iter panel
+        // (k_blk_h * m_decomposition * gemm_dt_sz) fitting in L1 alongside
+        // C/D. In that case prefer caching A in L1 (T0): the same A panel
+        // is reused by every AMX N-tile within one k_blk iteration and
+        // avoiding the NT hint also prevents needless eviction of B/C from
+        // L1/L2.
+        //
+        // The original L1-residency predicate (l1_set_issues) over-estimated
+        // A's footprint by scaling it with l1_eff_factor = div_up(K, k_blk_h),
+        // i.e. counting all K-blocks as co-resident, which forced that branch
+        // to trigger more often than warranted.
+        const size_t a_l1_final
+                = (size_t)k_blk_h * m_decomposition * gemm_dt_sz;
+        // Per-iter L1 budget mirrors the original predicate above.
+        const bool a_fits_l1 = a_l1_final + 2 * c_l1 + d_post <= L1_threshold();
+        // Skip the override for write-bound layers (small K). On such layers
+        // the bottleneck is C writes. Pulling A into L1 evicts the C
+        // accumulator and hurts performance even when A nominally fits.
+        const bool is_write_bound_layer = nthr_k_ == 1
+                && k_per_thread < k_threshold_write_bound_layer_elem;
+        if (a_fits_l1 && !is_write_bound_layer) is_a_nt_ = false;
+
         k_blk_ = k_blk_h;
         k_chunk_size_ = best_k_h;
         n_blk_ = nstl::min(best_n_h * n_decomposition, N);

@@ -1016,12 +1016,13 @@ int dnn_mem_t::initialize_memory_create(const handle_info_t &handle_info) {
         SAFE(is_cpu(engine_) ? OK : FAIL, CRIT);
     }
 
+    const int nhandles = query_md_num_handles(md_);
+
     if (is_cpu(engine_) && handle_info.is_allocate() && !is_sycl) {
         // Allocate memory for native runtime directly.
         is_data_owner_ = true;
         const size_t alignment = 2 * 1024 * 1024;
 
-        const int nhandles = query_md_num_handles(md_);
         for (int i = 0; i < nhandles; i++) {
             size_t sz = dnnl_memory_desc_get_size_v2(md_, i);
             data_.push_back(zmalloc(sz, alignment));
@@ -1044,7 +1045,6 @@ int dnn_mem_t::initialize_memory_create(const handle_info_t &handle_info) {
         SAFE(initialize_memory_create_ze(handle_info), CRIT);
     } else {
         is_data_owner_ = false;
-        const int nhandles = query_md_num_handles(md_);
         std::vector<void *> handles(nhandles, handle_info.ptr);
         DNN_SAFE(dnnl_memory_create_v2(&m_, md_, engine_, (int)handles.size(),
                          handles.data()),
@@ -1061,54 +1061,55 @@ int dnn_mem_t::initialize(
 
     SAFE(initialize_memory_create(handle_info), CRIT);
 
-    if (handle_info.is_allocate()) {
-        // Memory objects consisting of several buffers can rely on indirect
-        // data access through metadata (e.g., sparse memory objects).
-        // Filling metadata buffers with random values can lead to accessing an
-        // address location not controlled by the process. Thus, such metadata
-        // buffers must be always properly filled according to the driver rules.
-        // Filling buffers requires them to be mapped.
-        // To save code on updating every case separately, update the logic in
-        // this common place.
-        // ANCHOR: FILL_SPARSE_METADATA.
-        const bool mem_has_indirect_access = is_sparse_md();
-        if (!has_bench_mode_modifier(mode_modifier_t::no_ref_memory)
-                || mem_has_indirect_access)
-            map();
+    // If the memory object doesn't own its buffers, nothing to do.
+    if (!handle_info.is_allocate()) return OK;
 
-        const int nhandles = query_md_num_handles(md_);
-        for (int i = 0; i < nhandles; i++) {
-            size_t sz = dnnl_memory_desc_get_size_v2(md_, i);
-            if (is_canary_protected_) sz = pad_memory_size(sz, engine_kind_);
+    // Memory objects consisting of several buffers can rely on indirect
+    // data access through metadata (e.g., sparse memory objects).
+    // Filling metadata buffers with random values can lead to accessing an
+    // address location not controlled by the process. Thus, such metadata
+    // buffers must be always properly filled according to the driver rules.
+    // Filling buffers requires them to be mapped.
+    // To save code on updating every case separately, update the logic in
+    // this common place.
+    // ANCHOR: FILL_SPARSE_METADATA.
+    const bool mem_has_indirect_access = is_sparse_md();
+    if (!has_bench_mode_modifier(mode_modifier_t::no_ref_memory)
+            || mem_has_indirect_access)
+        map();
 
-            // Do not fill a memory if its size is zero. Moreover, memset
-            // expects defined pointer, nullptr is not allowed.
-            if (sz == 0 || !prefill) continue;
+    const int nhandles = query_md_num_handles(md_);
+    for (int i = 0; i < nhandles; i++) {
+        size_t sz = dnnl_memory_desc_get_size_v2(md_, i);
+        if (is_canary_protected_) sz = pad_memory_size(sz, engine_kind_);
 
-            // Avoid costy data reorders for cold cache mode when
-            // initializing cold cache buffers.
-            // TODO: consider enabling broadly for perf mode.
-            if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)
-                    || cold_cache_input.cold_cache_mode_
-                            != default_cold_cache_input().cold_cache_mode_) {
+        // Do not fill a memory if its size is zero. Moreover, memset
+        // expects defined pointer, nullptr is not allowed.
+        if (sz == 0 || !prefill) continue;
+
+        // Avoid costy data reorders for cold cache mode when
+        // initializing cold cache buffers.
+        // TODO: consider enabling broadly for perf mode.
+        if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)
+                || cold_cache_input.cold_cache_mode_
+                        != default_cold_cache_input().cold_cache_mode_) {
 #if (DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
         && DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL)
-                if (!is_cpu(engine_))
-                    // Fill memory with pseudo-random data directly on device
-                    // to avoid data compression.
-                    SAFE(this->gpu_fill_random(sz, i), WARN);
-                else
-                    // Fill memory directly with 0x3F3F3F3F (0.747059f).
-                    this->memset(dnnl_mem_default_perf_test_value, sz, i);
-#else
+            if (!is_cpu(engine_))
+                // Fill memory with pseudo-random data directly on device
+                // to avoid data compression.
+                SAFE(this->gpu_fill_random(sz, i), WARN);
+            else
                 // Fill memory directly with 0x3F3F3F3F (0.747059f).
                 this->memset(dnnl_mem_default_perf_test_value, sz, i);
+#else
+            // Fill memory directly with 0x3F3F3F3F (0.747059f).
+            this->memset(dnnl_mem_default_perf_test_value, sz, i);
 #endif
-            } else {
-                // Fill memory with a magic number (NAN for fp data types)
-                // to catch possible uninitialized access.
-                ::memset(mapped_ptrs_[i], dnnl_mem_default_value, sz);
-            }
+        } else {
+            // Fill memory with a magic number (NAN for fp data types)
+            // to catch possible uninitialized access.
+            ::memset(mapped_ptrs_[i], dnnl_mem_default_value, sz);
         }
     }
 

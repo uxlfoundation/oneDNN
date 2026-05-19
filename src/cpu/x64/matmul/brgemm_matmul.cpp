@@ -400,6 +400,12 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         if (bgmmc_.with_wei_decompression && bgmmc_.has_zero_point_b)
             brg.skip_zp_b_compensation = true;
         if (bgmmc_.apply_scales_in_buffer_b) brg.skip_wei_scales = true;
+        if (bgmmc_.is_f4_fused_decompress) {
+            brg.is_f4_fused_decompress = true;
+            brg.skip_wei_scales = true;
+            brg.wei_scales_k_group_size = bgmmc_.wei_scales_k_gsize;
+            brg.dt_wei_scales = bgmmc_.wei_scales_dt;
+        }
         CHECK(brgemm_desc_set_postops(
                 &brg, attr(), &dst_md_, LDD, bgmmc_.bia_dt));
 
@@ -796,6 +802,12 @@ void brgemm_matmul_t<isa>::compute_kernel(
                     = batch_first_dim_idx * (M * N)
                     + (dst_row_logical_off * N + n);
             const char *dst_anchor_point = brgmm_ctx.get_data_C_ptr(0, 0, 0);
+            const void *wei_scales_ptr = brgmm_ctx.get_wei_scales_ptr(n);
+            if (bgmmc.is_f4_fused_decompress) {
+                const dim_t k_start = k_blk_idx * bgmmc.K_blk
+                        * bgmmc.brgemm_batch_size;
+                wei_scales_ptr = brgmm_ctx.get_wei_scales_ptr(n, k_start);
+            }
             const brgemm_post_ops_data_t post_ops_data {
                     static_cast<const void *>(ptr_bias),
                     post_ops_binary_rhs_arg_vec.data(), static_cast<size_t>(n),
@@ -804,16 +816,21 @@ void brgemm_matmul_t<isa>::compute_kernel(
                     static_cast<const void *>(zp_comp_a),
                     static_cast<const void *>(zp_comp_b),
                     brgmm_ctx.get_zp_c_ptr(), false, 1, false, false,
-                    brgmm_ctx.get_src_scales_ptr(),
-                    brgmm_ctx.get_wei_scales_ptr(n),
+                    brgmm_ctx.get_src_scales_ptr(), wei_scales_ptr,
                     brgmm_ctx.get_dst_scales_inv_ptr(ithr)};
             brgemm_kernel_execute_postops(brg_kernel, gemm_batch, addr_batch,
                     (void *)ptr_C, (void *)ptr_D, post_ops_data, scratch,
                     &leading_dimensions);
         } else {
+            const void *wei_scales = nullptr;
+            if (bgmmc.is_f4_fused_decompress) {
+                const dim_t k_start = k_blk_idx * bgmmc.K_blk
+                        * bgmmc.brgemm_batch_size;
+                wei_scales = brgmm_ctx.get_wei_scales_ptr(n, k_start);
+            }
             brgemm_kernel_execute(brg_kernel, gemm_batch, addr_batch,
                     (void *)ptr_C, is_amx ? (void *)wsp_tile : nullptr,
-                    &leading_dimensions);
+                    &leading_dimensions, wei_scales);
         }
 
         maybe_reduce_A(brgmm_ctx, ithr, gemm_batch, m_blk_idx, n_blk_idx,
@@ -852,6 +869,13 @@ void brgemm_matmul_t<isa>::compute_kernel(
                     = batch_first_dim_idx * (M * N)
                     + (dst_row_logical_off * N + n);
             const char *dst_anchor_point = brgmm_ctx.get_data_C_ptr(0, 0, 0);
+            const void *wei_scales_ptr = brgmm_ctx.get_wei_scales_ptr(n);
+            if (bgmmc.is_f4_fused_decompress) {
+                const dim_t k_start = k_blk_idx * bgmmc.K_blk
+                        * bgmmc.brgemm_batch_size
+                        + gemm_batch * bgmmc.K_blk;
+                wei_scales_ptr = brgmm_ctx.get_wei_scales_ptr(n, k_start);
+            }
             const brgemm_post_ops_data_t post_ops_data {
                     static_cast<const void *>(ptr_bias),
                     post_ops_binary_rhs_arg_vec.data(), static_cast<size_t>(n),
@@ -860,17 +884,23 @@ void brgemm_matmul_t<isa>::compute_kernel(
                     static_cast<const void *>(zp_comp_a),
                     static_cast<const void *>(zp_comp_b),
                     brgmm_ctx.get_zp_c_ptr(), false, 1, false, false,
-                    brgmm_ctx.get_src_scales_ptr(),
-                    brgmm_ctx.get_wei_scales_ptr(n),
+                    brgmm_ctx.get_src_scales_ptr(), wei_scales_ptr,
                     brgmm_ctx.get_dst_scales_inv_ptr(ithr)};
 
             brgemm_kernel_execute_postops(brg_kernel_k_tail, 1, addr_batch,
                     (void *)ptr_C, (void *)ptr_D, post_ops_data, scratch,
                     &leading_dimensions);
         } else {
+            const void *wei_scales = nullptr;
+            if (bgmmc.is_f4_fused_decompress) {
+                const dim_t k_start = k_blk_idx * bgmmc.K_blk
+                        * bgmmc.brgemm_batch_size
+                        + gemm_batch * bgmmc.K_blk;
+                wei_scales = brgmm_ctx.get_wei_scales_ptr(n, k_start);
+            }
             brgemm_kernel_execute(brg_kernel_k_tail, 1, addr_batch,
                     (void *)ptr_C, is_amx ? (void *)wsp_tile : nullptr,
-                    &leading_dimensions);
+                    &leading_dimensions, wei_scales);
         }
 
         maybe_reduce_A(brgmm_ctx, ithr, gemm_batch, m_blk_idx, n_blk_idx,

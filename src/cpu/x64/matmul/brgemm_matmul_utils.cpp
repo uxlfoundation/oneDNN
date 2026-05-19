@@ -1963,6 +1963,22 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
             || bgmmc.wei_tag == adbc;
     bgmmc.use_buffer_b = bm_conf_utils.use_buffer_b();
 
+    // Fused f4 path expects plain `ab` layout with nibbles packed along N:
+    //  - B not transposed (plain `ab`)
+    //  - N even so the nibble pair stays inside one byte
+    //  - wei_scales K-group size matches the rd_block (32). Smaller groups
+    //    would require reloading scales mid-microkernel; larger groups are
+    //    not produced by mxfp4 spec.
+    const bool use_fused_f4_decompress = !bgmmc.use_buffer_b
+            && bgmmc.with_wei_decompression && bm_conf_utils.is_f32_with_f4_wei()
+            && !bgmmc.is_amx && is_superset(bgmmc.isa, avx512_core)
+            && bgmmc.wei_scales_dt == data_type::e8m0
+            && !bgmmc.transposed_B && bgmmc.N % 2 == 0
+            && bgmmc.wei_scales_k_gsize == 32;
+    bgmmc.is_f4_fused_decompress = use_fused_f4_decompress;
+
+    if (use_fused_f4_decompress) bgmmc.apply_scales_in_buffer_b = false;
+
     if ((bm_conf_utils.is_f32_f16() || bm_conf_utils.is_f32_bf16())
             && is_superset(bgmmc.isa, avx2) && bm_conf_utils.use_buffer_b()) {
         // ANCHOR: `CONVERT_F32_XF16_DATA_TYPES`

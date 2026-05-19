@@ -245,6 +245,7 @@ struct brgemm_matmul_conf_t {
     bool is_f32_bf16 = false;
     int wei_packed_elems_per_byte = 1;
     bool is_f4_via_convert = false;
+    bool is_f4_fused_decompress = false;
     bool is_tf32 = false;
     bool req_wei_vnni_downconvert = false;
     bool is_runtime_M = false;
@@ -330,10 +331,25 @@ struct brgemm_matmul_conf_utils_t {
         if (bgmmc.is_runtime_N) return true;
         if (bgmmc.is_bf16_with_int_wei) return true;
         if (bgmmc.is_bf16_with_f4_wei) return true;
-        if (bgmmc.is_f16_with_int_wei) return true;
         if (bgmmc.is_f16_with_f4_wei) return true;
+        if (bgmmc.is_f32_with_f4_wei) {
+            // Fused inline decompression wins on small M (decode-style,
+            // memory-bound on B); for large M, copy_b pre-decompression
+            // into a scratchpad lets brgemm run as native f32 GEMM at near
+            // peak.
+            constexpr dim_t fused_M_threshold = 4;
+            const bool use_fused_f4 = !bgmmc.is_amx
+                    && is_superset(bgmmc.isa, avx512_core)
+                    && bgmmc.N % 2 == 0
+                    && bgmmc.wei_scales_k_gsize == 32
+                    && !check_is_transposed(bgmmc.wei_tag)
+                    && bgmmc.wei_tag != format_tag::adbc
+                    && bgmmc.M <= fused_M_threshold;
+            if (use_fused_f4) return false;
+            return true;
+        }
+        if (bgmmc.is_f16_with_int_wei) return true;
         if (bgmmc.is_f32_with_int_wei) return true;
-        if (bgmmc.is_f32_with_f4_wei) return true;
         if (bgmmc.apply_scales_in_buffer_b) return true;
         if (bgmmc.is_gemv) return false;
 

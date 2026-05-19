@@ -24,10 +24,9 @@
 #include "common/verbose.hpp"
 
 #include "cpu/platform.hpp"
+#include "cpu/rv64/jit_generator.hpp"
 #include "cpu/rv64/rvv_brgemm_matmul.hpp"
 #include "cpu/rv64/rvv_postops.hpp"
-
-#include <riscv_vector.h>
 
 namespace dnnl {
 namespace impl {
@@ -39,22 +38,225 @@ using namespace dnnl::impl::status;
 using namespace dnnl::impl::utils;
 using namespace data_type;
 
-// Pack bd rows × K_inner columns from col-major A (with LDA_orig) into
-// contiguous workspace with LDA=bd.
-static void pack_a_tile(float *ws, const float *A, dim_t LDA_orig, dim_t bd,
-        dim_t valid_rows, dim_t K_inner) {
-    for (dim_t k = 0; k < K_inner; k++) {
-        const float *A_col = A + k * LDA_orig;
-        float *ws_row = ws + k * bd;
-        dim_t i = 0;
-        while (i < valid_rows) {
-            size_t vl = __riscv_vsetvl_e32m1(valid_rows - i);
-            vfloat32m1_t v = __riscv_vle32_v_f32m1(A_col + i, vl);
-            __riscv_vse32_v_f32m1(ws_row + i, v, vl);
-            i += vl;
-        }
+// ---------------------------------------------------------------------------
+// JIT kernel: pack_a_tile
+// Copies valid_rows floats per column from col-major A (stride LDA_orig)
+// into contiguous workspace (stride bd). Vectorized with LMUL=m4.
+// ---------------------------------------------------------------------------
+struct jit_pack_a_tile_t : public jit_generator_t {
+    struct call_params_t {
+        float *ws; // offset 0
+        const float *A; // offset 8
+        dim_t LDA_orig; // offset 16
+        dim_t bd; // offset 24
+        dim_t valid_rows; // offset 32
+        dim_t K_inner; // offset 40
+    };
+
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_pack_a_tile_t)
+
+    jit_pack_a_tile_t() : jit_generator_t("jit_pack_a_tile") {
+        create_kernel();
     }
-}
+
+    void operator()(const call_params_t *p) const {
+        jit_generator_t::operator()(p);
+    }
+
+protected:
+    void generate() override {
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
+        using namespace Xbyak_riscv;
+
+        const Reg reg_param = a0;
+        const Reg reg_ws = a1;
+        const Reg reg_A = a2;
+        const Reg reg_LDA = t0;
+        const Reg reg_bd = t1;
+        const Reg reg_K = t2;
+        const Reg reg_k = t3; // outer loop counter
+        const Reg reg_src = t4;
+        const Reg reg_dst = t5;
+        const Reg reg_rows_remaining = t6;
+        const Reg reg_vl = a3;
+        const Reg reg_bytes = a4;
+        const Reg reg_tmp = a5;
+
+        const VReg v_tmp(0);
+
+        // Load parameters
+        ld(reg_ws, reg_param, 0);
+        ld(reg_A, reg_param, 8);
+        ld(reg_LDA, reg_param, 16);
+        ld(reg_bd, reg_param, 24);
+        ld(reg_rows_remaining, reg_param, 32); // reuse as valid_rows temp
+        ld(reg_K, reg_param, 40);
+
+        // Compute LDA_orig * sizeof(float) and bd * sizeof(float)
+        slli(reg_LDA, reg_LDA, 2);
+        slli(reg_bd, reg_bd, 2);
+
+        // Save valid_rows for reuse in each k iteration
+        const Reg reg_valid_rows = a6;
+        ld(reg_valid_rows, reg_param, 32);
+
+        xor_(reg_k, reg_k, reg_k); // k = 0
+
+        Label k_loop, k_done;
+        L(k_loop);
+        beq(reg_k, reg_K, k_done);
+
+        // src = A + k * LDA_bytes
+        mul(reg_tmp, reg_k, reg_LDA);
+        add(reg_src, reg_A, reg_tmp);
+
+        // dst = ws + k * bd_bytes
+        mul(reg_tmp, reg_k, reg_bd);
+        add(reg_dst, reg_ws, reg_tmp);
+
+        // Inner copy loop: copy valid_rows floats
+        mv(reg_rows_remaining, reg_valid_rows);
+        Label copy_loop, copy_done;
+        L(copy_loop);
+        beqz(reg_rows_remaining, copy_done);
+
+        vsetvli(reg_vl, reg_rows_remaining, SEW::e32, LMUL::m4);
+        vle32_v(v_tmp, reg_src);
+        vse32_v(v_tmp, reg_dst);
+
+        slli(reg_bytes, reg_vl, 2);
+        add(reg_src, reg_src, reg_bytes);
+        add(reg_dst, reg_dst, reg_bytes);
+        sub(reg_rows_remaining, reg_rows_remaining, reg_vl);
+        j_(copy_loop);
+
+        L(copy_done);
+
+        addi(reg_k, reg_k, 1);
+        j_(k_loop);
+
+        L(k_done);
+        ret();
+#else
+        ret();
+#endif
+    }
+};
+
+// ---------------------------------------------------------------------------
+// JIT kernel: bias + post-ops for one row
+// Processes N elements: load dst, add bias (vector/scalar/none),
+// apply post-op (none/relu), store dst. Vectorized with LMUL=m1.
+// ---------------------------------------------------------------------------
+struct jit_bias_postops_row_t : public jit_generator_t {
+    // bias_type: 0=none, 1=scalar broadcast, 2=per-element vector
+    // postop: 0=none, 1=relu
+    struct call_params_t {
+        float *row_dst; // offset 0
+        dim_t N; // offset 8
+        const float *bias_ptr; // offset 16
+        int32_t bias_type; // offset 24
+        int32_t postop; // offset 28
+    };
+
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_bias_postops_row_t)
+
+    jit_bias_postops_row_t() : jit_generator_t("jit_bias_postops_row") {
+        create_kernel();
+    }
+
+    void operator()(const call_params_t *p) const {
+        jit_generator_t::operator()(p);
+    }
+
+protected:
+    void generate() override {
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
+        using namespace Xbyak_riscv;
+
+        const Reg reg_param = a0;
+        const Reg reg_dst = a1;
+        const Reg reg_N = a2;
+        const Reg reg_bias = a3;
+        const Reg reg_vl = t0;
+        const Reg reg_bytes = t1;
+        const Reg reg_tmp = t2;
+        const Reg reg_bias_type = t3;
+        const Reg reg_postop = t4;
+
+        const FReg f_bias_scalar = fa0;
+        const FReg f_zero = fa1;
+        const VReg v_acc(0);
+        const VReg v_bias(1);
+
+        // Load parameters
+        ld(reg_dst, reg_param, 0);
+        ld(reg_N, reg_param, 8);
+        ld(reg_bias, reg_param, 16);
+        lw(reg_bias_type, reg_param, 24);
+        lw(reg_postop, reg_param, 28);
+
+        // Prepare f_zero = 0.0 for ReLU
+        xor_(reg_tmp, reg_tmp, reg_tmp);
+        fmv_w_x(f_zero, reg_tmp);
+
+        Label loop, done;
+        L(loop);
+        beqz(reg_N, done);
+
+        vsetvli(reg_vl, reg_N, SEW::e32, LMUL::m1);
+        vle32_v(v_acc, reg_dst);
+
+        // Bias: 0=none, 1=scalar, 2=vector
+        Label bias_scalar, bias_vector, after_bias;
+        bnez(reg_bias_type, bias_scalar);
+
+        // bias_type == 0: no bias
+        j_(after_bias);
+
+        L(bias_scalar);
+        // Load bias[0] into float register
+        flw(f_bias_scalar, reg_bias, 0);
+        // Check if bias_type == 1 (scalar) or 2 (vector)
+        addi(reg_tmp, reg_bias_type, -1);
+        bnez(reg_tmp, bias_vector);
+
+        // Scalar bias: acc += broadcast
+        vfadd_vf(v_acc, v_acc, f_bias_scalar);
+        j_(after_bias);
+
+        L(bias_vector);
+        // Vector bias: acc += bias[n0..n0+vl)
+        vle32_v(v_bias, reg_bias);
+        vfadd_vv(v_acc, v_acc, v_bias);
+        // Advance bias pointer for next iteration
+        slli(reg_bytes, reg_vl, 2);
+        add(reg_bias, reg_bias, reg_bytes);
+
+        L(after_bias);
+
+        // Post-op: ReLU (max(acc, 0))
+        Label postop_done;
+        beqz(reg_postop, postop_done);
+        vfmax_vf(v_acc, v_acc, f_zero);
+        L(postop_done);
+
+        // Store result
+        vse32_v(v_acc, reg_dst);
+
+        // Advance dst pointer
+        slli(reg_bytes, reg_vl, 2);
+        add(reg_dst, reg_dst, reg_bytes);
+        sub(reg_N, reg_N, reg_vl);
+        j_(loop);
+
+        L(done);
+        ret();
+#else
+        ret();
+#endif
+    }
+};
 
 status_t rvv_brgemm_matmul_t::pd_t::init(engine_t *engine) {
     using smask_t = primitive_attr_t::skip_mask_t;
@@ -191,6 +393,10 @@ status_t rvv_brgemm_matmul_t::pd_t::init(engine_t *engine) {
     CHECK(brgemm_kernel_create(&kernel, brg_desc));
     brg_kernel_.reset(kernel);
 
+    // Create JIT kernels for pack_a_tile and bias+postops
+    pack_kernel_.reset(new jit_pack_a_tile_t());
+    bias_postops_kernel_.reset(new jit_bias_postops_row_t());
+
     init_scratchpad();
 
     return status::success;
@@ -222,6 +428,8 @@ status_t rvv_brgemm_matmul_t::execute(const exec_ctx_t &ctx) const {
     const dim_t LDA_orig = N; // row-major weights: original col-major LDA = N
 
     const auto *brg_kernel = pd()->brg_kernel_.get();
+    const auto *pack_kernel = pd()->pack_kernel_.get();
+    const auto *bias_postops_kernel = pd()->bias_postops_kernel_.get();
 
     // Packing workspace from scratchpad.
     // Size: bd × K × sizeof(float). For bd=32, K=4096: 512KB.
@@ -243,7 +451,16 @@ status_t rvv_brgemm_matmul_t::execute(const exec_ctx_t &ctx) const {
         const bool is_tail = (t == bdb);
         const int rows = is_tail ? bdb_tail : bd;
         const float *A_tile = weights + t * bd;
-        pack_a_tile(ws, A_tile, LDA_orig, bd, rows, K);
+
+        // JIT pack_a_tile
+        jit_pack_a_tile_t::call_params_t pack_p;
+        pack_p.ws = ws;
+        pack_p.A = A_tile;
+        pack_p.LDA_orig = LDA_orig;
+        pack_p.bd = bd;
+        pack_p.valid_rows = rows;
+        pack_p.K_inner = K;
+        (*pack_kernel)(&pack_p);
 
         for (dim_t kb = 0; kb < K; kb += BK) {
             const dim_t K_inner = nstl::min(BK, K - kb);
@@ -262,12 +479,11 @@ status_t rvv_brgemm_matmul_t::execute(const exec_ctx_t &ctx) const {
         }
     }
 
-    // Apply bias + post-ops (same as rvv_matmul.cpp)
+    // Apply bias + post-ops using JIT kernel
     const memory_desc_wrapper dst_d(pd()->dst_md());
     const memory_desc_wrapper bias_d(pd()->desc()->bias_desc);
     const float *bias = CTX_IN_MEM(const float *, DNNL_ARG_BIAS);
     const post_ops_t &post_ops = pd()->attr()->post_ops_;
-    rvv_postops_t postops_handler(post_ops);
 
     if (!bias && post_ops.len() == 0) return status::success;
 
@@ -277,6 +493,12 @@ status_t rvv_brgemm_matmul_t::execute(const exec_ctx_t &ctx) const {
     const memory_desc_wrapper src_d(pd()->src_md());
     const dim_t *src_dims_ptr = src_d.dims();
     const dim_t dst_batch_stride = M * N;
+
+    // Determine postop type for JIT kernel
+    int32_t postop = 0;
+    if (post_ops.len() > 0 && post_ops.entry_[0].is_eltwise()
+            && post_ops.entry_[0].eltwise.alg == alg_kind::eltwise_relu)
+        postop = 1;
 
     parallel_nd(batch, [&](dim_t b) {
         float *dst_base = dst + b * dst_batch_stride;
@@ -300,41 +522,38 @@ status_t rvv_brgemm_matmul_t::execute(const exec_ctx_t &ctx) const {
 
             float *row_dst = dst_base + m * N;
 
-            for (dim_t n0 = 0; n0 < N;) {
-                size_t vl = __riscv_vsetvl_e32m1(N - n0);
-                vfloat32m1_t acc = __riscv_vle32_v_f32m1(row_dst + n0, vl);
-
-                if (bias) {
-                    if (bias_d.nelems() == 1) {
-                        acc = __riscv_vfadd_vf_f32m1(acc, bias[0], vl);
-                    } else {
-                        size_t base_bias_off = 0;
-                        if (bias_ndims > 1) {
-                            for (int d = 0; d < bias_ndims - 1; ++d) {
-                                int dst_dim_idx = d + (dst_ndims - bias_ndims);
-                                dim_t idx = (bias_dims[d] == 1)
-                                        ? 0
-                                        : dst_idx_prefix[dst_dim_idx];
-                                base_bias_off += idx * bias_strides[d];
-                            }
-                        }
-
-                        if (bias_dims[bias_ndims - 1] == 1) {
-                            acc = __riscv_vfadd_vf_f32m1(
-                                    acc, bias[base_bias_off], vl);
-                        } else {
-                            const float *bias_ptr = bias + base_bias_off + n0;
-                            vfloat32m1_t bias_vec
-                                    = __riscv_vle32_v_f32m1(bias_ptr, vl);
-                            acc = __riscv_vfadd_vv_f32m1(acc, bias_vec, vl);
+            int32_t bias_type = 0; // 0=none
+            const float *bias_ptr = nullptr;
+            if (bias) {
+                if (bias_d.nelems() == 1) {
+                    bias_type = 1; // scalar broadcast
+                    bias_ptr = bias;
+                } else {
+                    size_t base_bias_off = 0;
+                    if (bias_ndims > 1) {
+                        for (int d = 0; d < bias_ndims - 1; ++d) {
+                            int dst_dim_idx = d + (dst_ndims - bias_ndims);
+                            dim_t idx = (bias_dims[d] == 1)
+                                    ? 0
+                                    : dst_idx_prefix[dst_dim_idx];
+                            base_bias_off += idx * bias_strides[d];
                         }
                     }
+                    bias_ptr = bias + base_bias_off;
+                    if (bias_dims[bias_ndims - 1] == 1)
+                        bias_type = 1; // scalar
+                    else
+                        bias_type = 2; // vector
                 }
-
-                acc = postops_handler.apply(acc, vl);
-                __riscv_vse32_v_f32m1(row_dst + n0, acc, vl);
-                n0 += vl;
             }
+
+            jit_bias_postops_row_t::call_params_t bp;
+            bp.row_dst = row_dst;
+            bp.N = N;
+            bp.bias_ptr = bias_ptr;
+            bp.bias_type = bias_type;
+            bp.postop = postop;
+            (*bias_postops_kernel)(&bp);
         }
     });
 

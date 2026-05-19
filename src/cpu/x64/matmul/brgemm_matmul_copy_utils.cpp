@@ -6035,43 +6035,6 @@ private:
     }
 
     void copy_block(const int nrows, const int ncolumns, bool zeropad) {
-        constexpr int zmm_width_in_bytes = cpu_isa_traits_t<avx512_core>::vlen;
-
-        const bool can_use_vnni_block = !zeropad && nrows % fp8_vnni_k_pack == 0
-                && ncolumns % n_blk_step == 0
-                && tr_src_stride_ == zmm_width_in_bytes;
-
-        if (can_use_vnni_block) {
-            const int num_rows = nrows / k_blk_step;
-            mov(reg_tmp, 2 * src_stride_);
-
-            for (int n = 0; n < ncolumns; n += n_blk_step) {
-                const dim_t src_off = n * fp8_vnni_k_pack * typesize_;
-                const dim_t tr_src_off = n * k_blk_step * tr_typesize_;
-                lea(reg_blk_src, maybe_EVEX_compress_addr(reg_src, src_off));
-                lea(reg_blk_dst,
-                        maybe_EVEX_compress_addr(reg_tr_src, tr_src_off));
-
-                if (conf_->wei_dt == data_type::bf16) {
-                    if (conf_->orig_wei_dt == data_type::f8_e5m2) {
-                        f8_e5m2_cvt_->vcvt_f8_to_bf16_vnni_block(
-                                num_rows, reg_blk_src, reg_tmp, reg_blk_dst);
-                    } else {
-                        f8_e4m3_cvt_->vcvt_f8_to_bf16_vnni_block(
-                                num_rows, reg_blk_src, reg_tmp, reg_blk_dst);
-                    }
-                } else {
-                    if (conf_->orig_wei_dt == data_type::f8_e5m2) {
-                        f8_e5m2_cvt_->vcvt_f8_to_f16_vnni_block(
-                                num_rows, reg_blk_src, reg_tmp, reg_blk_dst);
-                    } else {
-                        f8_e4m3_cvt_->vcvt_f8_to_f16_vnni_block(
-                                num_rows, reg_blk_src, reg_tmp, reg_blk_dst);
-                    }
-                }
-            }
-            return;
-        }
 
         const int direct_nrows = utils::rnd_up(nrows, fp8_vnni_k_pack);
         const int direct_ncolumns = utils::rnd_up(ncolumns, n_blk_step);

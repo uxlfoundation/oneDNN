@@ -673,7 +673,10 @@ void reorder_impl_t::emit(copy_plan_t &plan, const reorder_operand_t &src,
     };
 
     op_init_t from_temp = [&](int elems, ngen::DataType dt) {
-        return plan.newTemp(dt, elems, 1);
+        auto tmp = plan.newTemp(dt, elems, 1);
+        tmp.overwrite = true;
+        tmp.overwriteStride = true;
+        return tmp;
     };
 
     auto emit = [&](reorder_operand_t &dst, const reorder_operand_t &src) {

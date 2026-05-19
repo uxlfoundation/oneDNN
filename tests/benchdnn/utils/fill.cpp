@@ -149,7 +149,8 @@ int fill_scales(const attr_t::arg_scales_t::entry_t &e, dnn_mem_t &mem_dt,
     if (e.has_single_element()) {
         assert(nelems == 1);
         mem_fp.set_f32_elem(0, e.scale);
-        if (mem_dt) mem_dt.set_elem(0, e.scale);
+        // TODO: replace reorder with `fill` that takes any pattern unlike
+        // memset.
     } else {
         /* Do fixed partitioning to have same filling for any number of threads */
         static constexpr int64_t chunk_size = 64;
@@ -173,10 +174,11 @@ int fill_scales(const attr_t::arg_scales_t::entry_t &e, dnn_mem_t &mem_dt,
                         = pow2 < 0 ? (1.f / pow2_shift) : pow2_shift;
                 const float val = gen_val;
                 mem_fp.set_f32_elem(idx, val);
-                if (mem_dt) mem_dt.set_elem(idx, val);
             }
         });
     }
+
+    if (mem_dt) SAFE(mem_dt.reorder(mem_fp), WARN);
 
     return OK;
 }
@@ -192,7 +194,8 @@ int fill_zero_points(
     if (e.has_single_element()) {
         assert(nelems == 1);
         mem_fp.set_f32_elem(0, e.value);
-        if (mem_dt) mem_dt.set_elem(0, e.value);
+        // TODO: replace reorder with `fill` that takes any pattern unlike
+        // memset.
     } else {
         /* Do fixed partitioning to have same filling for any number of threads */
         static constexpr int64_t chunk_size = 64;
@@ -213,10 +216,11 @@ int fill_zero_points(
             for (int64_t idx = idx_start; idx < idx_end; ++idx) {
                 const float zp_val = gen(int_seed);
                 mem_fp.set_f32_elem(idx, zp_val);
-                if (mem_dt) mem_dt.set_elem(idx, zp_val);
             }
         });
     }
+
+    if (mem_dt) SAFE(mem_dt.reorder(mem_fp), WARN);
 
     return OK;
 }

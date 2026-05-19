@@ -171,6 +171,7 @@ int execute_reorder(const dnn_mem_t &src, dnn_mem_t &dst,
         // - For grouped to plain and plain to grouped,
         //   values reside in buffer 0 only.
         const bool can_plain_copy = dnnl_memory_desc_equal(src.md_, dst.md_)
+                || dst.format_kind() == dnnl_format_kind_host_scalar
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
                 || (query_md_sparse_encoding(src.md_) == dnnl_grouped
                         && query_md_num_handles(dst.md_) == 1)

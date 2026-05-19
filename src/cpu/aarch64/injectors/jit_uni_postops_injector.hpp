@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2020 Intel Corporation
 * Copyright 2022-2023 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -23,14 +23,10 @@
 #include <memory>
 
 #include "common/c_types_map.hpp"
-#include "common/primitive_attr.hpp"
-#include "common/type_helpers.hpp"
-#include "common/utils.hpp"
 #include "cpu/aarch64/injectors/injector_utils.hpp"
 #include "cpu/aarch64/injectors/jit_uni_binary_injector.hpp"
 #include "cpu/aarch64/injectors/jit_uni_eltwise_injector.hpp"
 #include "cpu/aarch64/jit_generator.hpp"
-#include <initializer_list>
 
 namespace dnnl {
 namespace impl {
@@ -52,7 +48,7 @@ struct post_ops_ok_args_t;
 /*
  * Checks if postops injection for given args is supported.
  */
-bool is_supported(const post_ops_ok_args_t &post_ops_ok_args);
+bool post_ops_ok(const post_ops_ok_args_t &args);
 
 /*
  * Main mechanism of handling various post-ops types. It utilizes internally
@@ -161,8 +157,6 @@ struct post_ops_ok_args_t {
     const bool sum_requires_same_params;
     const bcast_set_t enabled_bcast_strategy;
 };
-
-bool post_ops_ok(const post_ops_ok_args_t &args);
 
 } // namespace injector
 } // namespace aarch64

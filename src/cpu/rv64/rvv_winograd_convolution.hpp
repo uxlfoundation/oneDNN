@@ -220,6 +220,16 @@ struct rvv_wino_convolution_fwd_t : public primitive_t {
                     = ((dst_d.dims()[2] + 1) / 2) * ((dst_d.dims()[3] + 1) / 2);
             VDISPATCH_CONV(!is_auto || nb_wino_tiles >= 100,
                     VERBOSE_UNSUPPORTED_FEATURE, "too few winograd tiles");
+            const bool is_auto_wino_profitable = !is_auto
+                    || (dst_d.dims()[2] >= 28 && dst_d.dims()[3] >= 28
+                            && ((src_d.dims()[0] >= 50)
+                                    || (src_d.dims()[0] >= 32
+                                            && dst_d.dims()[1] >= 256)
+                                    || (src_d.dims()[0] >= 32
+                                            && dst_d.dims()[2] >= 56
+                                            && dst_d.dims()[3] >= 56)));
+            VDISPATCH_CONV(is_auto_wino_profitable, VERBOSE_UNSUPPORTED_FEATURE,
+                    "shape is not profitable for auto winograd");
 
             const int nthr = dnnl_get_max_threads();
             VDISPATCH_CONV(nthr <= 1 || src_d.dims()[0] >= nstl::min(nthr, 8),

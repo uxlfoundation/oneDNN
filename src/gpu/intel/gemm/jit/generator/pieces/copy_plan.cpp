@@ -1633,6 +1633,11 @@ void CopyPlan::planInt4Downconversion(CopyInstruction &i)
     ie[0]->dst = stmp;
     ie[0]->src0 = osrc;
 
+    if (isW(osrc.type) && osrc.stride == 1 && osrc.overwrite) {
+        stmp = osrc;
+        ie[0]->invalidate();
+    }
+
     // Special case for expanding 4-bit values already at least byte aligned.
     if (ddst.stride >= sStride && sStride > 1 && ssrc.type == DataType::ub && simd >= 4) {
         int dst_mask = 0x0;
@@ -1721,7 +1726,8 @@ void CopyPlan::planInt4Downconversion(CopyInstruction &i)
         ie[2]->op = Opcode::bfn;
         ie[2]->ctrl = 0xEC;
         ie[2]->simd = simd / 2;
-        ie[2]->dst = tmp;
+        ie[2]->dst = stmp;
+        ie[2]->dst.stride *= 2;
         ie[2]->src0 = stmp;
         ie[2]->src0.stride *= 2;
         ie[2]->src1 = stmp;
@@ -1731,12 +1737,13 @@ void CopyPlan::planInt4Downconversion(CopyInstruction &i)
 
         if (simd > 2) {
             ie[3]->op = Opcode::mov;
-            ie[3]->simd = simd/2;
-            ie[3]->dst = tmp;
+            ie[3]->simd = simd / 2;
+            ie[3]->dst = stmp;
             ie[3]->dst.type = DataType::ub;
             ie[3]->dst.stride = 1;
-            ie[3]->src0 = tmp;
-            ie[3]->src0.stride = 2;
+            ie[3]->src0 = ie[2]->dst;
+            ie[3]->src0.stride *= 2;
+            ie[3]->src0.offset *= 2;
             ie[3]->src0.type = DataType::ub;
 
             ie[4]->op = Opcode::mov;
@@ -1746,9 +1753,7 @@ void CopyPlan::planInt4Downconversion(CopyInstruction &i)
             if (ddst.vs != 0)
                 ie[4]->dst.stride = ddst.vs / ddst.width;
             ie[4]->dst.offset /= 2;
-            ie[4]->src0 = tmp;
-            ie[4]->src0.stride = 1;
-            ie[4]->src0.type = DataType::ub;
+            ie[4]->src0 = ie[3]->dst;
         } else {
             ie[3]->op = Opcode::mov;
             ie[3]->simd = simd / 2;
@@ -1756,8 +1761,8 @@ void CopyPlan::planInt4Downconversion(CopyInstruction &i)
             ie[3]->dst.type = DataType::ub;
             ie[3]->dst.stride = 1;
             ie[3]->dst.offset /= 2;
-            ie[3]->src0 = tmp;
-            ie[3]->src0.stride = 2;
+            ie[3]->src0 = ie[2]->dst;
+            ie[3]->src0.stride *= 2;
             ie[3]->src0.type = DataType::ub;
 
             ie[4]->invalidate();

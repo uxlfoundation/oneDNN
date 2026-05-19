@@ -2740,7 +2740,19 @@ void CopyPlan::legalizeRegions()
         }
 
         int dstBO  = i.dst.byteOffset();
+        int src0BO = i.src0.byteOffset();
+        int src1BO = i.src1.byteOffset();
+        int src2BO = i.src2.byteOffset();
         int dstBS  = i.dst.byteStride();
+        int src0BS = i.src0.byteStride();
+        int src1BS = i.src1.byteStride();
+        int src2BS = i.src2.byteStride();
+
+        bool nullDst = i.dst.isNull();
+        if (nullDst) {
+            i.dst.offset = src0BO / getBytes(dt);
+            dstBO = src0BO, dstBS = src0BS;
+        }
 
         /* Check for swizzling */
         bool canSwizzle = true, splitQWMov = false;
@@ -2764,28 +2776,18 @@ void CopyPlan::legalizeRegions()
             };
 
             if (!isFlat(i.src1)) {
-                if (isCommutative(i.op) && i.src0.kind == CopyOperand::GRF && isFlat(i.src0))
+                if (isCommutative(i.op) && i.src0.kind == CopyOperand::GRF && isFlat(i.src0)) {
                     std::swap(i.src0, i.src1);
-                else
+                    std::swap(src0BO, src1BO);
+                    std::swap(src0BS, src1BS);
+                } else
                     canSwizzle = false;
             }
         }
 
-        int src0BO = i.src0.byteOffset();
-        int src1BO = i.src1.byteOffset();
-        int src2BO = i.src2.byteOffset();
-        int src0BS = i.src0.byteStride();
-        int src1BS = i.src1.byteStride();
-        int src2BS = i.src2.byteStride();
-
-        bool nullDst = i.dst.isNull();
-        if (nullDst) {
-            i.dst.offset = src0BO / getBytes(dt);
-            dstBO = src0BO, dstBS = src0BS;
-        }
-
         if (!canSwizzle) {
-            int dboMask = GRF::bytes(hw) - (isFP(dt) ? 1 : 4);
+            bool strict = isFP(dt) || (hw >= HW::Xe3p && i.op != Opcode::mov);
+            int dboMask = GRF::bytes(hw) - (strict ? 1 : 4);
 
             auto matchesDstBO = [=](int bo) -> bool {
                 return (dstBO & dboMask) == (bo & dboMask);

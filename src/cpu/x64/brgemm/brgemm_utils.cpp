@@ -43,7 +43,7 @@ impl::data_type_t get_accum_datatype(brgemm_desc_t *brg) {
     // this assert should check if 'init_kernel_datatype()' was previously
     // called.
     assert(brg->is_int8 || brg->is_bf16 || brg->is_f32 || brg->is_f16
-            || brg->is_fp8 || brg->is_xf16_fp8);
+            || brg->is_fp8);
     return brg->is_int8 ? data_type::s32 : data_type::f32;
 }
 
@@ -64,10 +64,8 @@ status_t init_kernel_datatype(
             && utils::one_of(dt_b, data_type::f32, data_type::f16);
     brg->is_fp8 = one_of(dt_a, data_type::f8_e5m2, data_type::f8_e4m3)
             && one_of(dt_b, data_type::f8_e5m2, data_type::f8_e4m3);
-    brg->is_xf16_fp8 = one_of(dt_a, data_type::bf16, data_type::f16)
-            && one_of(dt_b, data_type::f8_e5m2, data_type::f8_e4m3);
     if (utils::everyone_is(false, brg->is_int8, brg->is_bf16, brg->is_f32,
-                brg->is_f16, brg->is_fp8, brg->is_xf16_fp8)) {
+                brg->is_f16, brg->is_fp8)) {
         assert(!"Unsupported data type");
         return status::unimplemented;
     }
@@ -195,7 +193,7 @@ void set_isa_impl(brgemm_desc_t *brg) {
                 is_isa_ok(avx512_core), avx512_core, is_isa_ok(avx2_vnni_2),
                 avx2_vnni_2, is_isa_ok(avx2_vnni), avx2_vnni, is_isa_ok(avx2),
                 avx2);
-    } else if (one_of(true, brg->is_fp8, brg->is_xf16_fp8)) {
+    } else if (brg->is_fp8) {
         brg->isa_impl = utils::map(true, isa_undef, is_isa_ok(avx10_2_amx_2),
                 avx10_2_amx_2, is_isa_ok(avx10_1_512_amx_fp16),
                 avx10_1_512_amx_fp16, is_isa_ok(avx10_1_512_amx),
@@ -692,7 +690,7 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
     if (!IMPLICATION((brg->rdb_tail
                              % ((brg->is_bf16_tmm || brg->is_f16_tmm) ? 2 : 4))
                         != 0,
-                brg->is_tf32 || (brg->is_input_convert() && !brg->is_xf16_fp8)
+                brg->is_tf32 || brg->is_input_convert()
                         || brg->amx_wary_k_tail() || brg->fused_copy_a)) {
         return status::unimplemented;
     }
@@ -1098,10 +1096,8 @@ status_t init_brgemm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
             = brg->is_bf16 && is_superset(brg->isa_impl, avx512_core_amx);
     brg->is_f16_tmm
             = brg->is_f16 && is_superset(brg->isa_impl, avx512_core_amx_fp16);
-    brg->is_fp8_tmm = (one_of(true, brg->is_fp8, brg->is_bf16_fp8())
-                              && is_superset(brg->isa_impl, avx512_core_amx))
-            || (brg->is_f16_fp8()
-                    && is_superset(brg->isa_impl, avx512_core_amx_fp16));
+    brg->is_fp8_tmm
+            = brg->is_fp8 && is_superset(brg->isa_impl, avx512_core_amx_fp16);
 
     brg->has_int8_vnni = isa_has_int8_vnni(brg->isa_impl);
 

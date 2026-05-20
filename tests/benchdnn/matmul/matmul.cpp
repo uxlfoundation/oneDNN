@@ -1004,10 +1004,12 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
                 // Grouped SRC/DST are excluded from `is_sparse` to keep the
                 // sparse and grouped paths separate below, so exclude them here
-                // to allow `no_ref_memory` to work for grouped cases
+                // to allow `no_ref_memory` to work for grouped cases.
+                // The hint is a direct runtime input to the library, not
+                // reference memory, so it must always be filled.
                 && !(is_grouped
-                        && (exec_arg == DNNL_ARG_SRC
-                                || exec_arg == DNNL_ARG_DST))
+                        && (exec_arg == DNNL_ARG_SRC || exec_arg == DNNL_ARG_DST
+                                || exec_arg == DNNL_ARG_HINT_MAX_GROUP_SIZE))
 #endif
                 && !is_sparse)
             continue;

@@ -720,6 +720,7 @@ inline Product ELFCodeGenerator<hw>::getBinaryHWInfo(const std::vector<uint8_t> 
 
     if (hw_ != HW::Unknown && outProduct.family == ProductFamily::Unknown)
         outProduct.family = genericProductFamily(hw_);
+    outProduct.type = getPlatformType(outProduct.family);
     return outProduct;
 }
 

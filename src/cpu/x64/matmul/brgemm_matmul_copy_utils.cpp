@@ -45,8 +45,7 @@ struct jit_brgemm_matmul_copy_a_impl_t : public jit_brgemm_matmul_copy_a_t,
         , jit_generator_t(jit_name())
         , typesize_(conf_->a_dt_sz)
         , tr_typesize_(conf_->tr_a_dt_sz)
-        , vnni_granularity_(data_type_vnni_granularity(
-                  conf_->is_xf16_fp8 ? conf_->wei_dt : conf_->src_dt))
+        , vnni_granularity_(data_type_vnni_granularity(conf_->src_dt))
         , k_step_(vlen_ / nstl::max(typesize_, tr_typesize_))
         , src_stride_(conf_->copy_A_src_stride)
         , tr_src_stride_((conf_->use_buffer_a_tail_only
@@ -557,9 +556,7 @@ struct jit_brgemm_matmul_copy_a_transposed_impl_t
         // See the note in `create_brgemm_matmul_copy_b` why `orig_src_dt` used.
         , use_fp16_instructions_(conf_->isa == avx512_core_fp16
                   && conf_->orig_src_dt == data_type::f16
-                  && conf_->src_dt == data_type::f32)
-        , vnni_granularity_for_store_(data_type_vnni_granularity(
-                  conf_->is_xf16_fp8 ? conf_->wei_dt : conf_->src_dt)) {}
+                  && conf_->src_dt == data_type::f32) {}
 
     void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
     status_t create_kernel() override {
@@ -587,7 +584,6 @@ private:
     const bool is_f8;
     const bool is_dynamic_src_ld;
     const bool use_fp16_instructions_;
-    const int vnni_granularity_for_store_;
 
     opmask_t kFFFF = k1;
     opmask_t k3333 = k1;
@@ -1076,7 +1072,7 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Zmm>::transpose_bf16(
                 = idx_within_blk + 1 - 2 * (idx_within_blk % 2);
         return blk_sz * mapped_blk_idx + mapped_idx_within_blk;
     };
-    const int rows_to_store = rnd_up(nrows, vnni_granularity_for_store_);
+    const int rows_to_store = rnd_up(nrows, 2);
     const int store_mask
             = rows_to_store < rows_step ? (1 << rows_to_store) - 1 : 0xffff;
     kmovx(kTail, store_mask);

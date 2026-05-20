@@ -477,7 +477,7 @@ status_t jit_sse41_conv_fwd_kernel_f32_t::init_conf(jit_conv_conf_t &jcp,
                                     post_ops, dst_d));
     VDISPATCH_CONV_IC(post_ops_ok_, VERBOSE_UNSUPPORTED_POSTOP);
 
-    const bool flat = jcp.ic == 3;
+    const bool flat = jcp.ic == 3 || jcp.ic == 1;
     const bool mimo = !flat;
 
     const bool tag_ok = true

@@ -129,6 +129,10 @@ mb1_g16ic16oc16_ih5oh2kh2sh3ph0
 # AVX JIT incorrectly calculates output when nb_oc_block results in a prime number
 --reset --dir=FWD_I mb1ic3ih320oc51oh160kh7sh2ph3n"regression_oc-channel"
 
+# Grayscale (IC=1) plain-layout forward convolution regression coverage
+--reset --dt=f32 --dir=FWD_D --stag=axb --dtag=axb --skip-impl=ref
+mb1_ic1oc16_ih5oh5kh3ph1_iw5ow5kw3pw1n"regression_grayscale_ic1_plain"
+
 # Dilated convolution with ih<=dh when there is _no_ compute work.
 --reset --dt=u8:s8:u8 mb1ic16ih1iw1oc16oh2ow1kh3kw1dh1ph1n"regression_dh_equals_ih"
 

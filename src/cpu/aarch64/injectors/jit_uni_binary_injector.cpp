@@ -15,12 +15,12 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
+
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 
-#include "common/primitive.hpp"
 #include "common/primitive_attr.hpp"
-#include "common/primitive_exec_types.hpp"
 #include "common/utils.hpp"
 #include "cpu/aarch64/injectors/jit_uni_binary_injector.hpp"
 
@@ -1393,7 +1393,8 @@ void jit_uni_binary_injector_t<isa>::inject_binary(
             load_rhs(rhs_arg_data_type, tmp_vmm, rhs_addr, tail_load_mode,
                     with_tail);
 
-        if (rhs_arg_data_type != data_type::f32) cvt_to_f32(tmp_vmm);
+        if (rhs_arg_data_type != data_type::f32)
+            host_->uni_scvtf(tmp_vmm.s, tmp_vmm.s);
 
         execute_binary(alg, dst, host_->P_ALL_ONE, dst, tmp_vmm);
     } else {
@@ -1451,26 +1452,22 @@ rhs_address_t jit_uni_binary_injector_t<isa>::remove_bcast_bit(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_binary_injector_t<isa>::cvt_to_f32(const Vmm &tmp_vmm) const {
-    host_->uni_scvtf(tmp_vmm.s, tmp_vmm.s);
-}
-
-template <cpu_isa_t isa>
 void jit_uni_binary_injector_t<isa>::execute_broadcast_no_tail(
         const data_type_t &data_type, const Vmm &tmp_vmm,
         const rhs_address_t &rhs_addr) const {
     switch (data_type) {
         case data_type::f32:
-            host_->add_imm(host_->X_DEFAULT_ADDR, rhs_addr.base_,
-                    rhs_addr.offt_, host_->X_TMP_0);
-            host_->uni_ldr(tmp_vmm, host_->X_DEFAULT_ADDR);
-            break;
         case data_type::s32:
             host_->add_imm(host_->X_DEFAULT_ADDR, rhs_addr.base_,
                     rhs_addr.offt_, host_->X_TMP_0);
-            host_->ld1rw(Xbyak_aarch64::ZRegS(tmp_vmm.getIdx()),
-                    host_->P_ALL_ONE / Xbyak_aarch64::T_z,
-                    Xbyak_aarch64::ptr(host_->X_DEFAULT_ADDR));
+            if (is_superset(isa, sve)) {
+                host_->ld1rw(Xbyak_aarch64::ZRegS(tmp_vmm.getIdx()),
+                        host_->P_ALL_ONE / Xbyak_aarch64::T_z,
+                        Xbyak_aarch64::ptr(host_->X_DEFAULT_ADDR));
+            } else {
+                host_->ld1r(Xbyak_aarch64::VReg4S {tmp_vmm.getIdx()},
+                        Xbyak_aarch64::ptr(host_->X_DEFAULT_ADDR));
+            }
             break;
         case data_type::s8:
         case data_type::u8:

@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2020 Intel Corporation
 * Copyright 2022-2024 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -19,18 +19,14 @@
 #ifndef CPU_AARCH64_INJECTORS_JIT_UNI_BINARY_INJECTOR_HPP
 #define CPU_AARCH64_INJECTORS_JIT_UNI_BINARY_INJECTOR_HPP
 
-#include <array>
-#include <cassert>
 #include <functional>
 #include <map>
 #include <utility>
-#include <vector>
 #include <unordered_set>
 
 #include "common/broadcast_strategy.hpp"
 #include "common/c_types_map.hpp"
 #include "common/primitive_attr.hpp"
-#include "common/primitive_exec_types.hpp"
 #include "cpu/aarch64/cpu_isa_traits.hpp"
 #include "cpu/aarch64/injectors/injector_utils.hpp"
 #include "cpu/aarch64/jit_generator.hpp"
@@ -594,7 +590,6 @@ private:
             const rhs_address_t &rhs_addr) const;
     void load_rhs_i8_no_tail(const data_type_t &data_type, const Vmm &tmp_reg,
             const rhs_address_t &rhs_addr) const;
-    void cvt_to_f32(const Vmm &tmp_reg) const;
     /*
      * Returns pair consisting of flag indication preservation is needed for vmm
      * index in second member that should be used as temporary vmm inside inject

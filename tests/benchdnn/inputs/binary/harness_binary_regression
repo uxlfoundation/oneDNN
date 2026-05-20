@@ -10,3 +10,6 @@
 
 # Large-axis index stress
 --reset --allow-enum-tags-only=0 --alg=ADD --stag=abcd:abcd --dtag=abcd --sdt=f16:f16 --ddt=f16 1x1x512x65536:1x1x512x65536
+
+# Post-op with non-broadcast load
+--reset --alg=add --attr-post-ops=binary_div:f32:common 1x4:1x4

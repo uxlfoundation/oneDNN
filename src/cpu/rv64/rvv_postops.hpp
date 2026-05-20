@@ -36,6 +36,7 @@ struct rvv_postops_t {
         if (po.len() > 0) {
             if (po.entry_[0].is_eltwise()) {
                 alg_ = po.entry_[0].eltwise.alg;
+                alpha_ = po.entry_[0].eltwise.alpha;
             } else if (po.entry_[0].is_binary()) {
                 alg_ = po.entry_[0].binary.alg;
             }
@@ -112,7 +113,8 @@ struct rvv_postops_t {
         return status::success;
     }
 
-    explicit rvv_postops_t(alg_kind_t alg) : alg_(alg) {}
+    explicit rvv_postops_t(alg_kind_t alg, float alpha = 0.f)
+        : alg_(alg), alpha_(alpha) {}
 
     static bool post_ops_ok(const post_ops_t &po) {
         if (po.len() == 0) return true;
@@ -135,8 +137,14 @@ struct rvv_postops_t {
     inline vfloat32m1_t apply(vfloat32m1_t v, size_t vl) const {
         switch (alg_) {
             case alg_kind::eltwise_relu: {
-                vfloat32m1_t zero = __riscv_vfmv_v_f_f32m1(0.f, vl);
-                return __riscv_vfmax_vv_f32m1(v, zero, vl);
+                if (alpha_ == 0.f) {
+                    vfloat32m1_t zero = __riscv_vfmv_v_f_f32m1(0.f, vl);
+                    return __riscv_vfmax_vv_f32m1(v, zero, vl);
+                }
+
+                vbool32_t p = __riscv_vmfgt_vf_f32m1_b32(v, 0.f, vl);
+                vfloat32m1_t vneg = __riscv_vfmul_vf_f32m1(v, alpha_, vl);
+                return __riscv_vmerge_vvm_f32m1(vneg, v, p, vl);
             }
             default: return v;
         }
@@ -147,6 +155,7 @@ struct rvv_postops_t {
 
 private:
     alg_kind_t alg_ = alg_kind::undef;
+    float alpha_ = 0.f;
     post_ops_t po_;
     int post_op_start_index_ = 0;
     data_type_t dst_data_type_ = data_type::undef;

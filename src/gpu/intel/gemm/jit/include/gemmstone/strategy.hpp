@@ -260,7 +260,7 @@ struct GEMMStrategyPOD : public CommonStrategy {
     bool shrinkWGK = false;                      //   Shrink wgK automatically to try to fit dispatch in 1 wave (or smaller)?
                                     ZPAD(J, 3)
     int fillGoal = 0;                            //     With shrinkWGK, try to fill this fraction of available thread slots, measured in sixteenths (0 = default).
-    int cInterleaveChunk = 1;                    // Minimum chunk size for interleaving columns of C among threads
+    bool cInterleave = false;                    // Enable C-interleaved tile: interleave columns of C among threads (chunk = 64/Tc_ext).
     bool kParallelVariable = false;              // If true, generate kernel that uses variable k-parallelization for load balancing.
     bool fuseBeta = false;                       //   Fuse beta scaling into kernel? (kParallel/kParallelVariable, requires linear ordering)
     bool fusePostOps = false;                    //   Fuse post-operations into kernel? (kParallel/kParallelVariable, requires linear ordering)
@@ -268,7 +268,7 @@ struct GEMMStrategyPOD : public CommonStrategy {
     bool zeroTempC = false;                      //   Use pre-zeroed temporary C memory.
     bool relaxedAccumulation = false;            //   Allow downconversion of partial contributions to Tc_ext.
                                                  //     If false (default), only downconvert C at the end of the calculation.
-                                    ZPAD(K, 2)
+                                    ZPAD(K, 1)
     int kPadding = 32;                           //   Pad k dimension when load balancing (kParallel/kParallelVariable)
     int barrierFreq = 0;                         // If > 0, set a periodic barrier every barrierFreq k loops to keep threads together.
     bool splitBarrier = false;                   //   Use split barriers for these periodic barriers?
@@ -335,6 +335,7 @@ struct GEMMStrategy : public GEMMStrategyPOD
     void trimKChain(ngen::HW hw, int k, const GEMMProblem &problem);
 
     int wgTile(LoopType l)                            const { return unroll[l] * wg[l]; }
+    int cInterleaveChunk(Type Tc_ext)                 const { return cInterleave ? 64 / Tc_ext : 1; }
 
     bool lateExit()                                   const { return (slmBuffers > 0) || barrierFreq || kParallelLocal || fuseBeta || fusePostOps || cooperativePF; }
 

@@ -313,8 +313,8 @@ double evaluateECore(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, 
     // TODO: Improve this heuristic for strided matrices, by using the
     // real ldc instead of assuming a tight leading dimension
     auto cLayout = charLayout(e.selector.layouts[2][0]);
-    auto Tc = extPrecision(e.selector.precisions[2], true);
-    auto ldc = static_cast<int32_t>(Tc * (isColMajor(cLayout) ? m : n) * e.driverInfo.cInterleaveChunk());
+    auto Tc = (dp.Tc_ext == Type::invalid) ? extPrecision(e.selector.precisions[2], true) : dp.Tc_ext;
+    auto ldc = static_cast<int32_t>(Tc * (isColMajor(cLayout) ? m : n) * e.driverInfo.cInterleaveChunk(Tc));
     auto xChunk = 64 / gcd(ldc, 64);
     auto xUnroll = e.driverInfo.unroll[isColMajor(cLayout) ? LoopM : LoopN];
     auto minCacheLinesPerXDim = div_up(xUnroll * Tc, 64);  // Assuming starting aligned to cache line
@@ -508,16 +508,17 @@ DerivedEvaluateParams getDerivedParams(const kcatalog::Entry &e, const EvaluateP
         }
     }
 
-    if (e.driverInfo.cInterleaveChunk() > 1) {
+    if (e.driverInfo.cInterleaveEnabled()) {
         // TODO: Factor in the base alignment of the C matrix (offsetC), and
         // actual leading dimensions
         auto cLayout = charLayout(e.selector.layouts[2][0]);
-        auto Tc = extPrecision(e.selector.precisions[2], true);
-        auto ldc = static_cast<int>(Tc * (isColMajor(cLayout) ? p.sizes.m : p.sizes.n) * e.driverInfo.cInterleaveChunk());
+        // Use the actual runtime Tc_ext if provided; else fall back to the catalog's C type size.
+        auto Tc = (p.Tc_ext == Type::invalid) ? extPrecision(e.selector.precisions[2], true) : p.Tc_ext;
+        auto ldc = static_cast<int>(Tc * (isColMajor(cLayout) ? p.sizes.m : p.sizes.n) * e.driverInfo.cInterleaveChunk(Tc));
         auto &wgCountX = isColMajor(cLayout) ? dp.wgCountM : dp.wgCountN;
         auto &wgCountY = isColMajor(cLayout) ? dp.wgCountN : dp.wgCountM;
-        wgCountY = round_up(wgCountY, e.driverInfo.cInterleaveChunk());
-        if (e.driverInfo.cInterleaveChunk() > 1 && (ldc * Tc % 64 > 0)) {
+        wgCountY = align_up(wgCountY, e.driverInfo.cInterleaveChunk(Tc));
+        if (e.driverInfo.cInterleaveEnabled() && (ldc * Tc % 64 > 0)) {
             auto wgTileX = e.driverInfo.wgTile(isColMajor(cLayout) ? LoopM : LoopN);
             auto maxShift = 64 / Tc - 1;
             wgCountX += div_up(maxShift, wgTileX);

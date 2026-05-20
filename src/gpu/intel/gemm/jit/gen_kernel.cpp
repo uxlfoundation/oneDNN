@@ -558,6 +558,7 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_product_t product, int stepping,
     eval_params_.euCount = eu_count;
     eval_params_.batch = (problem.batchDims > 0);
     eval_params_.deterministic = (mode & mode_deterministic);
+    eval_params_.Tc_ext = problem.Tc_ext;
 
     SelectionObserver observer = entryObserver;
     tags_ = match_params[0].tags;
@@ -729,6 +730,7 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
     eval_params.postOps = !problem_.postOps.empty();
     eval_params.cConvert = (acc_type != c_type);
     eval_params.batch = (batch_dims > 0);
+    eval_params.Tc_ext = problem_.Tc_ext;
 
     SelectionObserver observer = entryObserver;
 

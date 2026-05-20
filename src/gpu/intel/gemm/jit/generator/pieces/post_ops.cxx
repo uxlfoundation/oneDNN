@@ -528,7 +528,7 @@ void Generator<hw>::gemmLoadBinaryOpArgs(const GEMMProblem &problem, const GEMMS
     }
 
     // CTI: Shift to the starting column + increase LDs due to interleaving
-    if (strategy.cInterleaveChunk > 1) {
+    if (strategy.cInterleave) {
         for (size_t i = 0; i < problem.postOps.len(); i++) {
             auto offset = state.inputs.binaryOffsets[i];
             if (!offset.isValid()) continue;
@@ -536,10 +536,10 @@ void Generator<hw>::gemmLoadBinaryOpArgs(const GEMMProblem &problem, const GEMMS
             bool row = problem.postOps.binaryRow[i];
             bool col = problem.postOps.binaryCol[i];
             if (!(row && col)) continue;
-            
+
             auto ld = state.inputs.binaryLDs[i];
             emad(1, offset, offset, state.ctiShiftJ0, ld, strategy, state);
-            mulConstant(1, ld, ld, strategy.cInterleaveChunk);
+            mulConstant(1, ld, ld, strategy.cInterleaveChunk(problem.Tc_ext));
         }
         if (!strategy.persistentLoop()) state.ra.safeRelease(state.ctiShiftJ0);
     }

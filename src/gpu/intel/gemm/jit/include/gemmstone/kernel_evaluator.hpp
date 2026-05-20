@@ -38,6 +38,7 @@ struct EvaluateParams {
     bool postOps = false;
     bool batch = false;
     bool deterministic = false;
+    Type Tc_ext = Type::invalid;    // External C element type; Type::invalid = use catalog precision
 };
 
 struct DerivedEvaluateParams : public EvaluateParams {

@@ -24,11 +24,18 @@ governance:
 - changed-files:
   - any-glob-to-any-file:
     - '.github/CODEOWNERS'
+    - 'rfcs/template.md'
+    - 'README.md'
     - 'SECURITY.md'
     - 'MAINTAINERS.md'
     - 'CONTRIBUTING.md'
     - 'CODING_STANDARDS.md'
     - 'CODE_OF_CONDUCT.md'
+
+# RFC
+RFC:
+- changed-files:
+  - any-glob-to-any-file: 'rfcs/**'
 
 # Github automation
 devops:

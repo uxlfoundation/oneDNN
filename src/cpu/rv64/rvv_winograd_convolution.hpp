@@ -40,8 +40,8 @@ namespace cpu {
 namespace rv64 {
 
 // Winograd domain specification for GEMM-based Winograd convolution.
-// Single-core execution: processes batches sequentially with
-// local input/output buffers to keep working set in cache.
+// Batch-parallel execution: workers process disjoint batch ranges and use
+// private input/output scratchpad slices to preserve cache locality.
 struct WinogradDomainSpec_t {
     // Matrix dimensions for brgemm: C[OC×tiles] = A[OC×IC] × B[IC×tiles]
     dim_t M; // Total tiles per batch = ceil(oh/2) * ceil(ow/2)

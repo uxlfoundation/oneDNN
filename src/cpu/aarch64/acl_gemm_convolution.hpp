@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Arm Ltd. and affiliates
+* Copyright 2020-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -21,8 +21,8 @@
 #include "cpu/cpu_convolution_pd.hpp"
 
 #include "acl_convolution_utils.hpp"
-#include "acl_post_ops.hpp"
 #include "arm_compute/runtime/experimental/operators/CpuGemmConv2d.h"
+#include "post_ops_fallback.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -44,7 +44,7 @@ struct acl_gemm_convolution_fwd_t : public primitive_t {
         status_t init(engine_t *engine);
 
         acl_conv_conf_t acp_ = utils::zero<decltype(acp_)>();
-        acl_post_ops_t post_ops;
+        post_ops_fallback_t post_ops;
     };
 
     acl_gemm_convolution_fwd_t(const pd_t *apd)

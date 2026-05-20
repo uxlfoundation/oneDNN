@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2025 Arm Ltd. and affiliates
+* Copyright 2021-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -137,6 +137,35 @@ status_t convert_to_acl_act(
 status_t convert_to_acl_act(const post_ops_t::entry_t::eltwise_t &elt,
         arm_compute::ActivationLayerInfo &act_info) {
     return convert_to_acl_act(elt.alg, elt.alpha, elt.beta, act_info);
+}
+
+status_t try_fuse_first_acl_post_op(const post_ops_t &post_ops,
+        data_type_t dst_data_type, int post_op_start_index,
+        arm_compute::ActivationLayerInfo &act_info, int &next_post_op_index) {
+    act_info = arm_compute::ActivationLayerInfo();
+    next_post_op_index = post_op_start_index;
+
+    if (post_op_start_index >= post_ops.len()) return status::success;
+
+    const auto &po = post_ops.entry_[post_op_start_index];
+    if (!po.is_eltwise()) return status::success;
+
+    // Keep fp16 eltwise unfused so it can run through the fp32 fallback path.
+    if (dst_data_type == data_type::f16) return status::success;
+
+    // Non-unit scale blocks ACL fusion but should still be handled by the
+    // generic post-op fallback rather than rejecting the primitive outright.
+    if (po.eltwise.scale != 1.0f) return status::success;
+
+    status_t st = convert_to_acl_act(po.eltwise, act_info);
+    if (st == status::unimplemented) {
+        act_info = arm_compute::ActivationLayerInfo();
+        return status::success;
+    }
+    if (st != status::success) return st;
+
+    next_post_op_index = post_op_start_index + 1;
+    return status::success;
 }
 
 status_t tensor_info(arm_compute::TensorInfo &info, const memory_desc_t &md) {

@@ -17,8 +17,8 @@
 #ifndef CPU_AARCH64_ACL_DECONVOLUTION_HPP
 #define CPU_AARCH64_ACL_DECONVOLUTION_HPP
 
-#include "cpu/aarch64/acl_post_ops.hpp"
 #include "cpu/aarch64/cpu_isa_traits.hpp"
+#include "cpu/aarch64/post_ops_fallback.hpp"
 #include "cpu/cpu_deconvolution_pd.hpp"
 
 namespace dnnl {
@@ -303,17 +303,18 @@ struct acl_deconvolution_fwd_t : public primitive_t {
             CHECK(post_ops.init(engine, attr_.post_ops_, dst_md_));
             acl_pd_conf.use_dst_acc_for_sum = post_ops.has_sum();
 
+            auto scratchpad = scratchpad_registry().registrar();
             if (acl_pd_conf.use_dst_acc_for_sum) {
-                auto scratchpad = scratchpad_registry().registrar();
                 scratchpad.book(memory_tracking::names::key_generic_acc,
                         dst_d.nelems(), dst_d.data_type_size());
             }
+            post_ops.init_scratchpad(scratchpad);
 
             return status::success;
         }
 
         acl_deconv_conf_t acl_pd_conf = utils::zero<decltype(acl_pd_conf)>();
-        acl_post_ops_t post_ops;
+        post_ops_fallback_t post_ops;
 
     private:
         bool post_ops_ok() const {

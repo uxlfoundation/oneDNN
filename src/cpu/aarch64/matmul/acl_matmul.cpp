@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2025 Arm Ltd. and affiliates
+* Copyright 2021-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -126,11 +126,10 @@ status_t acl_matmul_t::pd_t::init(engine_t *engine) {
                                              accumulation_mode::s32))),
             "accumulation mode is not valid for the data type combination");
 
-    if (is_fp16_ok) {
-        const bool use_fp32_acc = utils::one_of(attr()->acc_mode_,
-                accumulation_mode::strict, accumulation_mode::f32);
-        amp_.gemm_info.set_use_fp32_acc(use_fp32_acc);
-    }
+    const bool use_fp32_acc = utils::one_of(attr()->acc_mode_,
+            accumulation_mode::strict, accumulation_mode::f32);
+
+    if (is_fp16_ok) { amp_.gemm_info.set_use_fp32_acc(use_fp32_acc); }
 
     if (weights_format_kind_ == format_kind::any) {
         CHECK(acl_matmul_utils::init_conf_matmul<true>(
@@ -155,9 +154,20 @@ status_t acl_matmul_t::pd_t::init(engine_t *engine) {
 
     amp_.do_act = false;
     arm_compute::ActivationLayerInfo act_info;
-    CHECK(acl_post_ops.init(engine, attr_.post_ops_, dst_md_, act_info,
-            amp_.gemm_info.accumulate() ? 1 : 0));
+    int post_op_start_index = amp_.gemm_info.accumulate() ? 1 : 0;
+    CHECK(acl_utils::try_fuse_first_acl_post_op(attr_.post_ops_,
+            dst_md_.data_type, post_op_start_index, act_info,
+            post_op_start_index));
+
+    const bool uses_post_ops = post_op_start_index < attr_.post_ops_.len();
+    VDISPATCH_MATMUL(!(dst_md()->data_type == data_type::f16
+                             && desc()->accum_data_type == data_type::f32
+                             && use_fp32_acc && uses_post_ops),
+            "matmul post-op fallback does not support f32 accumulation "
+            "with f16 dst");
+
     amp_.gemm_info.set_activation_info(act_info);
+    CHECK(post_ops.init(engine, attr_.post_ops_, dst_md_, post_op_start_index));
 
     if (act_info.enabled()
             && !arm_compute::experimental::op::ll::CpuGemmAssemblyDispatch::
@@ -168,7 +178,7 @@ status_t acl_matmul_t::pd_t::init(engine_t *engine) {
                 dst_info_to_use, dst_info_to_use, act_info));
         amp_.do_act = true;
     }
-    amp_.use_dst_acc_for_sum = acl_post_ops.has_sum();
+    amp_.use_dst_acc_for_sum = post_ops.has_sum();
 
     // Validate ACL GEMM
     if (amp_.do_transC) {
@@ -198,6 +208,7 @@ status_t acl_matmul_t::pd_t::init(engine_t *engine) {
     aux_mem_req = asm_gemm.workspace();
     CHECK(acl_matmul_utils::init_scratchpad(
             scratchpad, amp_, src_md_, weights_md_, dst_md_, aux_mem_req));
+    post_ops.init_scratchpad(scratchpad);
 
     return status::success;
 }
@@ -234,7 +245,7 @@ status_t acl_matmul_t::execute_forward(const exec_ctx_t &ctx) const {
     dst_tensor.allocator()->init(amp.dst_tensor_info);
 
     // If we have an unfused sum post op, put the result in a scratchpad tensor.
-    // Result will be summed to the dst during acl_post_ops.execute
+    // Result will be summed to the dst during post_ops.execute
     auto dst_base = use_dst_acc_for_sum
             ? scratchpad.get<void>(
                       memory_tracking::names::key_matmul_dst_in_acc_dt)
@@ -373,7 +384,7 @@ status_t acl_matmul_t::execute_forward(const exec_ctx_t &ctx) const {
     }
 
     void *dst = dst_tensor.buffer();
-    pd()->acl_post_ops.execute(ctx, dst);
+    status = pd()->post_ops.execute(ctx, dst);
 
     return status;
 }

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022,2024 Arm Ltd. and affiliates
+* Copyright 2022, 2024, 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -35,7 +35,7 @@ status_t acl_deconvolution_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 
     bool use_dst_acc_for_sum = pd()->acl_pd_conf.use_dst_acc_for_sum;
     // If we have an unfused sum post op, put the result in a scratchpad tensor.
-    // Result will be summed to the dst during acl_post_ops.execute
+    // Result will be summed to the dst during post_ops.execute
     auto dst_base = use_dst_acc_for_sum
             ? scratchpad.get<void>(memory_tracking::names::key_generic_acc)
             : CTX_OUT_MEM(void *, DNNL_ARG_DST);
@@ -54,14 +54,14 @@ status_t acl_deconvolution_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     acl_obj.deconv.run();
 
     void *dst = acl_obj.dst_tensor.buffer();
-    pd()->post_ops.execute(ctx, dst);
+    status_t status = pd()->post_ops.execute(ctx, dst);
 
     acl_obj.src_tensor.allocator()->free();
     acl_obj.dst_tensor.allocator()->free();
     acl_obj.bia_tensor.allocator()->free();
     acl_obj.wei_tensor.allocator()->free();
 
-    return status::success;
+    return status;
 }
 
 } // namespace aarch64

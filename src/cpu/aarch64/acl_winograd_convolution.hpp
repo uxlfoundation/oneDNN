@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Arm Ltd. and affiliates
+* Copyright 2020-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -95,22 +95,27 @@ struct acl_wino_convolution_fwd_t : public primitive_t {
 
             set_default_alg_kind(alg_kind::convolution_winograd);
 
+            int post_op_start_index = 0;
+            CHECK(acl_utils::try_fuse_first_acl_post_op(attr_.post_ops_,
+                    dst_md_.data_type, post_op_start_index, acp_.act_info,
+                    post_op_start_index));
             CHECK(post_ops.init(
-                    engine, attr_.post_ops_, dst_md_, acp_.act_info));
+                    engine, attr_.post_ops_, dst_md_, post_op_start_index));
             acp_.use_dst_acc_for_sum = post_ops.has_sum();
 
+            auto scratchpad = scratchpad_registry().registrar();
             if (acp_.use_dst_acc_for_sum) {
                 const memory_desc_wrapper dst_d(&dst_md_);
-                auto scratchpad = scratchpad_registry().registrar();
                 scratchpad.book(memory_tracking::names::key_generic_acc,
                         dst_d.nelems(), dst_d.data_type_size());
             }
+            post_ops.init_scratchpad(scratchpad);
 
             return status::success;
         }
 
         acl_conv_conf_t acp_ = utils::zero<decltype(acp_)>();
-        acl_post_ops_t post_ops;
+        post_ops_fallback_t post_ops;
     };
 
     acl_wino_convolution_fwd_t(const pd_t *apd) : primitive_t(apd) {}

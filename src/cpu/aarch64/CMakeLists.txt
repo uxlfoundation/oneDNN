@@ -1,5 +1,5 @@
 #*******************************************************************************
-# Copyright 2020-2022 Arm Ltd. and affiliates
+# Copyright 2020-2022, 2026 Arm Ltd. and affiliates
 # Copyright 2020-2021 FUJITSU LIMITED
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,6 +24,9 @@ if(NOT DNNL_AARCH64_USE_ACL)
     file(GLOB_RECURSE ACL_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/acl_*.[ch]
         ${CMAKE_CURRENT_SOURCE_DIR}/acl_*.[ch]pp
+        )
+    list(APPEND ACL_FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/post_ops_fallback.cpp
         )
     list(REMOVE_ITEM SOURCES ${ACL_FILES})
 endif()

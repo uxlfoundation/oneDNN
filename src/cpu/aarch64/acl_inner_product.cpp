@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2022,2024-2026 Arm Ltd. and affiliates
+* Copyright 2021-2022, 2024-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -53,7 +53,7 @@ status_t acl_inner_product_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     const auto &scratchpad = ctx.get_scratchpad_grantor();
 
     // If we have an unfused sum post op, put the result in a scratchpad tensor.
-    // Result will be summed to the dst during acl_post_ops.execute
+    // Result will be summed to the dst during post_ops.execute
     auto dst_base = use_dst_acc_for_sum
             ? scratchpad.get<void>(memory_tracking::names::key_generic_acc)
             : CTX_OUT_MEM(void *, DNNL_ARG_DST);
@@ -86,7 +86,7 @@ status_t acl_inner_product_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     inner_product_op_->run(run_pack);
 
     void *dst = dst_tensor.buffer();
-    pd()->post_ops.execute(ctx, dst);
+    CHECK(pd()->post_ops.execute(ctx, dst));
 
     return status::success;
 }
@@ -114,12 +114,13 @@ status_t acl_inner_product_fwd_t::pd_t::init(engine_t *engine) {
 
     CHECK(init_conf_ip(engine, weights_format_kind_received));
 
+    auto scratchpad = scratchpad_registry().registrar();
     if (aip_.use_dst_acc_for_sum) {
         const memory_desc_wrapper dst_d(&dst_md_);
-        auto scratchpad = scratchpad_registry().registrar();
         scratchpad.book(memory_tracking::names::key_generic_acc, dst_d.nelems(),
                 dst_d.data_type_size());
     }
+    post_ops.init_scratchpad(scratchpad);
 
     return status::success;
 }
@@ -175,8 +176,11 @@ status_t acl_inner_product_fwd_t::pd_t::init_conf_ip(
     aip_.fc_info.enable_fast_math = utils::one_of(
             attr()->fpmath_.mode_, fpmath_mode::bf16, fpmath_mode::any);
 
-    CHECK(post_ops.init(
-            engine, attr_.post_ops_, dst_md_, aip_.fc_info.activation_info));
+    int post_op_start_index = 0;
+    CHECK(acl_utils::try_fuse_first_acl_post_op(attr_.post_ops_,
+            dst_md_.data_type, post_op_start_index,
+            aip_.fc_info.activation_info, post_op_start_index));
+    CHECK(post_ops.init(engine, attr_.post_ops_, dst_md_, post_op_start_index));
     aip_.use_dst_acc_for_sum = post_ops.has_sum();
 
     // WeightFormat::ANY tells ACL we can handle any format

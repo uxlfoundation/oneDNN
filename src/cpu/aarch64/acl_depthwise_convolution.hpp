@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Arm Ltd. and affiliates
+* Copyright 2023-2024, 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -39,7 +39,7 @@ struct acl_depthwise_convolution_fwd_t : public primitive_t {
         status_t init(engine_t *engine);
 
         acl_conv_conf_t acp_ = utils::zero<decltype(acp_)>();
-        acl_post_ops_t post_ops;
+        post_ops_fallback_t post_ops;
     };
 
     acl_depthwise_convolution_fwd_t(const pd_t *apd)

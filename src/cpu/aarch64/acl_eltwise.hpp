@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Arm Ltd. and affiliates
+* Copyright 2021-2024, 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -47,7 +47,7 @@ struct acl_eltwise_fwd_t : public primitive_t {
 
         acl_eltwise_conf_t aep;
 
-        friend struct acl_post_ops_t;
+        friend struct post_ops_fallback_t;
     };
 
     acl_eltwise_fwd_t(const pd_t *apd)
@@ -60,7 +60,7 @@ struct acl_eltwise_fwd_t : public primitive_t {
 private:
     status_t execute_forward(const exec_ctx_t &ctx) const;
 
-    // Execute forward with arbitrary src and dst, used by acl_post_ops_t
+    // Execute forward with arbitrary src and dst, used by post_ops_fallback_t
     status_t execute_forward(
             const exec_ctx_t &ctx, const void *src, void *dst) const;
 
@@ -68,7 +68,7 @@ private:
 
     std::unique_ptr<Op> act_;
 
-    friend struct acl_post_ops_t;
+    friend struct post_ops_fallback_t;
 }; // acl_eltwise_fwd_t
 
 } // namespace aarch64

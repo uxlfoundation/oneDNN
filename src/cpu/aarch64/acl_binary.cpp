@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022, 2024 Arm Ltd. and affiliates
+* Copyright 2022, 2024, 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -189,8 +189,11 @@ status_t acl_binary_t::init(engine_t *engine) {
     return status::success;
 }
 
-status_t acl_binary_t::execute_forward(const exec_ctx_t &ctx, const void *src0,
-        const void *src1, void *dst) const {
+status_t acl_binary_t::execute_forward(const exec_ctx_t &ctx) const {
+
+    auto src0 = CTX_IN_MEM(const void *, DNNL_ARG_SRC_0);
+    auto src1 = CTX_IN_MEM(const void *, DNNL_ARG_SRC_1);
+    auto dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
 
     auto asp = pd()->asp_;
 
@@ -213,15 +216,6 @@ status_t acl_binary_t::execute_forward(const exec_ctx_t &ctx, const void *src0,
     binary_op_->run(run_pack);
 
     return status::success;
-}
-
-status_t acl_binary_t::execute_forward(const exec_ctx_t &ctx) const {
-
-    auto src0 = CTX_IN_MEM(const void *, DNNL_ARG_SRC_0);
-    auto src1 = CTX_IN_MEM(const void *, DNNL_ARG_SRC_1);
-    auto dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
-
-    return execute_forward(ctx, src0, src1, dst);
 }
 
 status_t acl_binary_t::execute(const exec_ctx_t &ctx) const {

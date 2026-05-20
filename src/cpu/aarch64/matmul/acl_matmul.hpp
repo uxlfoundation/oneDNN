@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2025 Arm Ltd. and affiliates
+* Copyright 2021-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -17,8 +17,8 @@
 #ifndef CPU_AARCH64_MATMUL_ACL_MATMUL_HPP
 #define CPU_AARCH64_MATMUL_ACL_MATMUL_HPP
 
-#include "cpu/aarch64/acl_post_ops.hpp"
 #include "cpu/aarch64/matmul/acl_matmul_utils.hpp"
+#include "cpu/aarch64/post_ops_fallback.hpp"
 #include "cpu/matmul/cpu_matmul_pd.hpp"
 
 #include <mutex>
@@ -38,7 +38,7 @@ struct acl_matmul_t : public primitive_t {
         status_t init(engine_t *engine);
 
         acl_matmul_conf_t amp_ = utils::zero<decltype(amp_)>();
-        acl_post_ops_t acl_post_ops;
+        post_ops_fallback_t post_ops;
         dnnl::impl::format_kind_t weights_format_kind_;
     };
 

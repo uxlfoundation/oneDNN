@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Arm Ltd. and affiliates
+* Copyright 2024-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -189,7 +189,7 @@ status_t acl_lowp_matmul_t::pd_t::init(engine_t *engine) {
     // Even if dst is s8, we do the post ops in f32
     memory_desc_t post_ops_default_md = dst_md_;
     post_ops_default_md.data_type = f32;
-    CHECK(acl_post_ops.init(engine, attr_.post_ops_, post_ops_default_md,
+    CHECK(fallback_post_ops.init(engine, attr_.post_ops_, post_ops_default_md,
             almc_.gemm_info.accumulate() ? 1 : 0));
 
     almc_.dst_tensor_info = arm_compute::TensorInfo(
@@ -231,6 +231,7 @@ status_t acl_lowp_matmul_t::pd_t::init(engine_t *engine) {
     // quantization/dequantization layer has empty workspace.
     auto scratchpad = scratchpad_registry().registrar();
     CHECK(init_scratchpad(scratchpad, aux_mem_req));
+    fallback_post_ops.init_scratchpad(scratchpad);
 
     return status::success;
 }
@@ -349,18 +350,21 @@ status_t acl_lowp_matmul_t::execute(const exec_ctx_t &ctx) const {
         dst_cast_tensor.allocator()->import_memory(dst_cast);
     }
 
+    bool dst_s8_tensor_imported = false;
     if ((pd()->almc_.dst_is_s8 && pd()->almc_.sum_is_fused) || dst_cast) {
         auto dst_s8 = CTX_OUT_MEM(int8_t *, DNNL_ARG_DST);
         dst_s8_tensor.allocator()->init(alcm.dst_s8_tensor_info);
         dst_s8_tensor.allocator()->import_memory(const_cast<int8_t *>(dst_s8));
+        dst_s8_tensor_imported = true;
         // oneDNN expects all intermediate operations to be performed
         // before taking dst scale and offset into account
         dst_s8_tensor.info()->set_quantization_info(
                 arm_compute::QuantizationInfo(1, 0, true));
 
         arm_compute::ITensorPack pack;
+        auto *dequant_dst_tensor = dst_cast ? &dst_cast_tensor : &dst_tensor;
         pack.add_tensor(arm_compute::TensorType::ACL_SRC, &dst_s8_tensor);
-        pack.add_tensor(arm_compute::TensorType::ACL_DST, &dst_tensor);
+        pack.add_tensor(arm_compute::TensorType::ACL_DST, dequant_dst_tensor);
         dequant_->run(pack);
     }
 
@@ -402,7 +406,7 @@ status_t acl_lowp_matmul_t::execute(const exec_ctx_t &ctx) const {
     // these are in-place so that dst=src. However, when there is a non-fused
     // sum, we set dst to be the tensor where data to be summed is stored.
     void *dst_post_ops;
-    if (pd()->acl_post_ops.has_sum() && !pd()->almc_.sum_is_fused) {
+    if (pd()->fallback_post_ops.has_sum() && !pd()->almc_.sum_is_fused) {
         if (pd()->almc_.dst_is_s8) {
             dst_post_ops = dst_cast_tensor.buffer();
         } else {
@@ -411,27 +415,33 @@ status_t acl_lowp_matmul_t::execute(const exec_ctx_t &ctx) const {
     } else {
         dst_post_ops = src_post_ops;
     }
-    pd()->acl_post_ops.execute(ctx, src_post_ops, dst_post_ops);
+    status_t post_ops_status
+            = pd()->fallback_post_ops.execute(ctx, src_post_ops, dst_post_ops);
 
     // free() here tells ACL it can no longer use it, it does not deallocate
     src_tensor.allocator()->free();
     wei_tensor.allocator()->free();
     if (with_bias) { bia_tensor.allocator()->free(); }
 
-    if (pd()->almc_.dst_is_s8) {
+    if (post_ops_status == status::success && pd()->almc_.dst_is_s8) {
         auto dst_s8 = CTX_OUT_MEM(int8_t *, DNNL_ARG_DST);
         dst_s8_tensor.allocator()->init(alcm.dst_s8_tensor_info);
         dst_s8_tensor.allocator()->import_memory(const_cast<int8_t *>(dst_s8));
+        dst_s8_tensor_imported = true;
         dst_s8_tensor.info()->set_quantization_info(
                 arm_compute::QuantizationInfo(
                         1.0 / (*dst_scale), dst_zero_point, true));
         arm_compute::ITensorPack pack;
-        pack.add_tensor(arm_compute::TensorType::ACL_SRC, &dst_tensor);
+        auto *quant_src_tensor = dst_cast ? &dst_cast_tensor : &dst_tensor;
+        pack.add_tensor(arm_compute::TensorType::ACL_SRC, quant_src_tensor);
         pack.add_tensor(arm_compute::TensorType::ACL_DST, &dst_s8_tensor);
         quant_->run(pack);
         dst_s8_tensor.allocator()->free();
+        dst_s8_tensor_imported = false;
     }
 
+    if (dst_s8_tensor_imported) { dst_s8_tensor.allocator()->free(); }
+    if (dst_cast) { dst_cast_tensor.allocator()->free(); }
     dst_tensor.allocator()->free();
 
     return status::success;

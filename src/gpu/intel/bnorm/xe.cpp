@@ -279,7 +279,7 @@ static status_t init_conf_common(lookup_table::params_t &conf, offsets_t &off,
     if (conf.use_fused_atomics_reduction()) {
         auto *gpu_attr
                 = downcast<gpu_primitive_attr_t *>(pd->attr()->gpu_attr_.get());
-        bool large_grf_mode = gpu_attr && gpu_attr->threads_per_eu() == 4;
+        bool large_grf_mode = gpu_attr && gpu_attr->grf_per_thread() > 128;
         adjust_lws_calc_kernel(
                 conf, dispatch_calc_stat, intel_engine, large_grf_mode);
 

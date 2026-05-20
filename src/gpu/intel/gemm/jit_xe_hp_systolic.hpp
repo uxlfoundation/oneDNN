@@ -146,8 +146,8 @@ struct xe_hp_systolic_t : public gemm::primitive_t {
 
         status_t query(query_t what, int idx, void *result) const override {
             switch ((int)what) {
-                case (int)query::preferred_gpu_threads_per_eu: {
-                    *(int *)result = 4;
+                case (int)query::preferred_gpu_grf_per_thread: {
+                    *(int *)result = 256;
                     break;
                 }
                 default: return gemm::pd_t::query(what, idx, result);

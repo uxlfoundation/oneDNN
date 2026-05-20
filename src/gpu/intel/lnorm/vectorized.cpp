@@ -244,7 +244,7 @@ static status_t init_conf_common(
 
     auto *gpu_attr = utils::downcast<gpu_primitive_attr_t *>(
             pd->attr()->gpu_attr_.get());
-    bool large_grf_mode = gpu_attr && gpu_attr->threads_per_eu() == 4;
+    bool large_grf_mode = gpu_attr && gpu_attr->grf_per_thread() > 128;
     auto eu_count = intel_engine->device_info()->eu_count();
     auto threads_per_eu
             = device_info_t::threads_per_eu(gpu_arch, large_grf_mode);

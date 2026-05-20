@@ -341,14 +341,14 @@ struct gemm_bwd_weights_t : public primitive_t {
                                 0.0f),
                         VERBOSE_UNSUPPORTED_TAG);
                 primitive_attr_t reduction_attr = *attr();
-                int threads_per_eu;
+                int grf_per_thread;
                 auto status
-                        = gemm_pd_->query(query::preferred_gpu_threads_per_eu,
-                                0, &threads_per_eu);
+                        = gemm_pd_->query(query::preferred_gpu_grf_per_thread,
+                                0, &grf_per_thread);
                 if (status == status::success) {
                     VDISPATCH_INNER_PRODUCT_SC(
                             reduction_attr.set_gpu_attr(
-                                    gpu_primitive_attr_t(threads_per_eu)),
+                                    gpu_primitive_attr_t(grf_per_thread)),
                             VERBOSE_UNSUPPORTED_ATTR);
                 }
                 primitive_desc_iterator_t it(engine, (op_desc_t *)&reduction_d,

@@ -298,7 +298,7 @@ status_t combined_t::pd_t::init_conf(impl::engine_t *engine) {
 
     auto *gpu_attr
             = utils::downcast<gpu_primitive_attr_t *>(attr()->gpu_attr_.get());
-    bool large_grf_mode = gpu_attr && gpu_attr->threads_per_eu() == 4;
+    bool large_grf_mode = gpu_attr && gpu_attr->grf_per_thread() > 128;
     // Further break up phases if needed, for parallelism
     data_type_t accum_data_type = types::default_accum_data_type(
             src_mdw.data_type(), data_type::undef);

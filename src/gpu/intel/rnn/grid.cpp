@@ -151,7 +151,7 @@ static status_t init_layouts_data(offsets_t &off,
 }
 
 static status_t init_ocl_conf(ocl_conf_t &ocl_conf, const pd_t *pd,
-        const conf_t &conf, int threads_per_eu,
+        const conf_t &conf, int grf_per_thread,
         const compute::device_info_t &device_info, offsets_t &off) {
 
     const memory_desc_wrapper &src_iter_c_d = pd->src_md(2);
@@ -205,7 +205,7 @@ static status_t init_ocl_conf(ocl_conf_t &ocl_conf, const pd_t *pd,
     ocl_conf.wei_qparam_mask = pd->attr()->rnn_weights_qparams_.mask_;
     ocl_conf.is_testmode = conf.is_testmode;
 
-    ocl_conf.threads_per_eu = threads_per_eu;
+    ocl_conf.grf_per_thread = grf_per_thread;
     ocl_conf.subgroup_size = dev_getenv(
             "subgroup_size", device_info.max_subgroup_size(ocl_conf.acc_dt));
     auto max_elemwise_threads
@@ -256,7 +256,7 @@ static status_t init_ocl_conf(ocl_conf_t &ocl_conf, const pd_t *pd,
                 dim_t mb_tg = b_thread;
                 dim_t mb_block = mb_thr * mb_tg;
                 if (size_t(dhc_tg * mb_tg) > device_info.max_wg_size(
-                            threads_per_eu == 4, ocl_conf.subgroup_size))
+                            grf_per_thread > 128, ocl_conf.subgroup_size))
                     break;
 
                 double score = [&]() {
@@ -345,7 +345,7 @@ status_t ocl_conf_t::init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const {
     // Fwd operations are not well optimized for larger grf mode
     primitive_attr_t ocl_attr;
     if (!is_fwd)
-        CHECK(ocl_attr.set_gpu_attr(gpu_primitive_attr_t(threads_per_eu)));
+        CHECK(ocl_attr.set_gpu_attr(gpu_primitive_attr_t(grf_per_thread)));
     ocl_attr.deterministic_ = deterministic;
     kernel_ctx = compute::kernel_ctx_t(&ocl_attr);
 
@@ -745,7 +745,7 @@ status_t simple_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
     dim_t dhc = conf.dhc;
 
     auto fpmath_mode = this->attr()->fpmath_.mode_;
-    int threads_per_eu = 0;
+    int grf_per_thread = 0;
 
     // The inputs of create_gemm_pd describe a gemm in column major.
     // Below, we have to transpose the a and b descriptor to describe
@@ -772,12 +772,12 @@ status_t simple_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
         CHECK(dnnl::impl::create_gemm_pd(gemm_pd, engine, &a_md, &b_md, &c_md,
                 &glob_zero_md, c_dt, &attr));
         bool verbose = get_verbose_dev_mode(verbose_t::debuginfo) > 1;
-        if (threads_per_eu == 0 || verbose) {
+        if (grf_per_thread == 0 || verbose) {
             auto t = 0;
-            auto s = gemm_pd->query(query::preferred_gpu_threads_per_eu, 0, &t);
-            if (threads_per_eu == 0)
-                threads_per_eu = (status::success != s) ? t : 128;
-            if (verbose && t != threads_per_eu)
+            auto s = gemm_pd->query(query::preferred_gpu_grf_per_thread, 0, &t);
+            if (grf_per_thread == 0)
+                grf_per_thread = (status::success == s) ? t : 128;
+            if (verbose && t != grf_per_thread)
                 verbose_printf("[WARNING] GEMM grf modes are inconsistent\n");
         }
         return status::success;
@@ -936,7 +936,7 @@ status_t simple_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
         }
     }
 
-    VDISPATCH_RNN_SC(init_ocl_conf(ocl_conf, this, conf, threads_per_eu,
+    VDISPATCH_RNN_SC(init_ocl_conf(ocl_conf, this, conf, grf_per_thread,
                              device_info, this->off),
             "init_ocl_conf()");
 

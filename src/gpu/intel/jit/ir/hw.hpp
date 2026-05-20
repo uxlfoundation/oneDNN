@@ -56,7 +56,7 @@ inline dsl::hw_t make_ir_hw(const impl::engine_t *engine) {
 inline bool prefer_large_grf(
         const dsl::hw_t &hw, const gpu_primitive_attr_t *gpu_attr) {
     if (!gpu_attr || !hw.large_grf_support()) return false;
-    return gpu_attr->threads_per_eu() * 2 == hw.threads_per_eu();
+    return gpu_attr->grf_per_thread() > 128;
 }
 
 } // namespace jit

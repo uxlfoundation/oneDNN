@@ -179,7 +179,7 @@ private:
         if (attr && attr->gpu_attr_) {
             auto *gpu_attr = utils::downcast<gpu_primitive_attr_t *>(
                     attr->gpu_attr_.get());
-            if (gpu_attr->threads_per_eu() == 4) {
+            if (gpu_attr->grf_per_thread() > 128) {
                 add_option("-cl-intel-256-GRF-per-thread");
             }
         }

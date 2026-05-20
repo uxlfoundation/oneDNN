@@ -372,9 +372,8 @@ struct gen_t : public primitive_t {
 
         status_t query(query_t what, int idx, void *result) const override {
             switch ((int)what) {
-                case (int)query::preferred_gpu_threads_per_eu: {
-                    int grfs = kernel_desc_.driver_info()->grfCount;
-                    *(int *)result = (grfs > 128) ? 4 : 8;
+                case (int)query::preferred_gpu_grf_per_thread: {
+                    *(int *)result = kernel_desc_.driver_info()->grfCount;
                     break;
                 }
                 default: return gemm::pd_t::query(what, idx, result);

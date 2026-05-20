@@ -58,11 +58,7 @@ ref_conf_t::ref_conf_t(const subproblem_t &subprb, alg_kind_t alg,
     conf.alg = alg;
     conf.src_dt = src_dt;
     conf.dst_dt = dst_dt;
-    auto arch = device_info.gpu_arch();
-    const int base_threads_per_eu
-            = compute::device_info_t::threads_per_eu(arch);
-    conf.threads_per_eu
-            = gpu_attr ? gpu_attr->threads_per_eu() : base_threads_per_eu;
+    conf.grf_per_thread = gpu_attr ? gpu_attr->grf_per_thread() : 128;
 }
 
 status_t ref_conf_t::init_dispatcher(const subproblem_t &subprb,
@@ -218,7 +214,7 @@ static void init_kernel_ctx_common(
 status_t ref_key_params_t::get_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     primitive_attr_t ocl_attr;
-    CHECK(ocl_attr.set_gpu_attr(gpu_primitive_attr_t(threads_per_eu)));
+    CHECK(ocl_attr.set_gpu_attr(gpu_primitive_attr_t(grf_per_thread)));
     kernel_ctx = compute::kernel_ctx_t(&ocl_attr);
 
     init_kernel_ctx_common(kernel_ctx, *this);

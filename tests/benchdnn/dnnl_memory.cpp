@@ -172,13 +172,10 @@ int execute_reorder(const dnn_mem_t &src, dnn_mem_t &dst,
         //   values reside in buffer 0 only.
         const bool can_plain_copy = dnnl_memory_desc_equal(src.md_, dst.md_)
                 || dst.format_kind() == dnnl_format_kind_host_scalar
-#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
-                || (query_md_sparse_encoding(src.md_) == dnnl_grouped
+                || (has_grouped_encoding(src.md_)
                         && query_md_num_handles(dst.md_) == 1)
-                || (query_md_sparse_encoding(dst.md_) == dnnl_grouped
-                        && query_md_num_handles(src.md_) == 1)
-#endif
-                ;
+                || (has_grouped_encoding(dst.md_)
+                        && query_md_num_handles(src.md_) == 1);
         if (can_plain_copy) {
             BENCHDNN_PRINT(2, "%s\n", "[REORDER] Fallback to plain copy.");
             const int64_t chunk_size = 64;
@@ -777,17 +774,17 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dnn_mem_t::init_host_scalar_md(
     return md;
 }
 
-#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
 benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dnn_mem_t::init_grouped_md(
         int ndims, const dnnl_dims_t dims, dnnl_data_type_t data_type,
         int variable_dim_idx, dnnl_dim_t group_count,
         dnnl_data_type_t offsets_dt) {
     dnnl_memory_desc_t md {};
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
     DNN_SAFE_V(dnnl_memory_desc_create_with_grouped_encoding(&md, ndims, dims,
             data_type, variable_dim_idx, group_count, offsets_dt));
+#endif
     return md;
 }
-#endif
 
 int dnn_mem_t::initialize_memory_create_sycl(const handle_info_t &handle_info) {
 #ifdef DNNL_WITH_SYCL
@@ -1464,6 +1461,14 @@ bool has_sparse_md(const dnn_mem_map_t &dnn_mem_map) {
         if (m.is_sparse_md()) return true;
     }
     return false;
+}
+
+bool has_grouped_encoding(const_dnnl_memory_desc_t md) {
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    return query_md_sparse_encoding(md) == dnnl_grouped;
+#else
+    return false;
+#endif
 }
 
 dnnl_memory_desc_t clone_md(const_dnnl_memory_desc_t md) {

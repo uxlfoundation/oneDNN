@@ -791,7 +791,6 @@ bool parse_encoding(std::vector<sparse_options_t> &sparse_options,
             str, option_name, help);
 }
 
-#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
 // Format: DIM_IDX:NUM_GROUPS:size0+size1+...+sizeN[:max_size][,config2,...]
 // - DIM_IDX is the dimension index, where src MxK * weights KxN = dst MxN
 //   0 = M,  1 = K, 2 = N
@@ -823,6 +822,13 @@ bool parse_grouped(std::vector<sparse_options_t> &sparse_options,
     utils::add_option_to_help(option_name, help);
     const std::string pattern = utils::get_pattern(option_name);
     if (!utils::option_matched(pattern, str)) return false;
+
+#if !DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    BENCHDNN_PRINT(0, "%s\n",
+            "\'--grouped\' option requires DNNL_EXPERIMENTAL_GROUPED_MEMORY "
+            "build option set to ON.");
+    SAFE_V(FAIL);
+#endif
 
     str = str + pattern.size();
     std::string full_str(str);
@@ -931,7 +937,6 @@ bool parse_grouped(std::vector<sparse_options_t> &sparse_options,
 
     return true;
 }
-#endif
 
 bool parse_multi_tag(std::vector<std::vector<std::string>> &tag,
         const std::vector<std::vector<std::string>> &def_tag, const char *str,

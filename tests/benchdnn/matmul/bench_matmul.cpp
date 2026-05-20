@@ -127,7 +127,6 @@ int verify_input(const settings_t &s, const settings_t &def) {
     return OK;
 }
 
-#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
 // Validate input consistency for grouped encoding
 //
 // Notes:
@@ -135,7 +134,7 @@ int verify_input(const settings_t &s, const settings_t &def) {
 //   DST, so we only validate SRC parameters
 // - Currently only M dimension grouping is supported
 int verify_grouped_input(const settings_t &s) {
-    if (s.sparse_options[0].get_encoding(DNNL_ARG_SRC) == dnnl_grouped) {
+    if (s.sparse_options[0].is_grouped(DNNL_ARG_SRC)) {
 
         const int variable_dim_idx
                 = s.sparse_options[0].get_variable_dim_idx(DNNL_ARG_SRC);
@@ -179,7 +178,6 @@ int verify_grouped_input(const settings_t &s) {
     }
     return OK;
 }
-#endif
 
 static const std::string help_bia_mask
         = "UINT    (Default: `2`)\n    Specifies a bit-mask that indicates "
@@ -221,9 +219,7 @@ int bench(int argc, char **argv) {
                 || parse_tag(s.wtag, def.wtag, argv[0], "wtag")
                 || parse_tag(s.dtag, def.dtag, argv[0], "dtag")
                 || parse_encoding(s.sparse_options, argv[0], "encoding")
-#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
                 || parse_grouped(s.sparse_options, argv[0], "grouped")
-#endif
                 || parse_strides(s.strides, def.strides, argv[0], "strides")
                 || parse_dt(s.bia_dt, def.bia_dt, argv[0], "bia-dt")
                 // TODO: remove this later
@@ -240,9 +236,7 @@ int bench(int argc, char **argv) {
             parse_prb_vdims(s.prb_vdims, argv[0]);
 
             SAFE(verify_input(s, def), WARN);
-#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
             SAFE(verify_grouped_input(s), WARN);
-#endif
 
             s.finalize();
             check_correctness(s, task_executor);

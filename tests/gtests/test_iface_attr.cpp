@@ -193,6 +193,8 @@ TEST_F(attr_test_t, TestZeroPointsWithGroups) {
         // three-element groups should be rejected
         EXPECT_ANY_THROW(
                 attr.set_zero_points(arg, 1 << 0, {1, 4, 1}, data_type::s8));
+        // groups with mask=0 should be rejected
+        EXPECT_ANY_THROW(attr.set_zero_points(arg, 0, {4, 1}, data_type::s8));
     }
 
     for (auto arg : unsupported_args) {
@@ -283,6 +285,8 @@ TEST_F(attr_test_t, TestPrecomputedReductionsWithGroups) {
         // three-element groups should be rejected
         EXPECT_ANY_THROW(
                 attr.set_precomputed_reductions(arg, 1 << 0, {1, 4, 1}));
+        // groups with mask=0 should be rejected
+        EXPECT_ANY_THROW(attr.set_precomputed_reductions(arg, 0, {4, 1}));
     }
 
     for (auto arg : unsupported_args) {
@@ -322,6 +326,8 @@ HANDLE_EXCEPTIONS_FOR_TEST_F(attr_test_t, TestScalesWithGroups) {
         EXPECT_ANY_THROW(attr.set_scales(arg, 1 << 0, {4}));
         // three-element groups should be rejected
         EXPECT_ANY_THROW(attr.set_scales(arg, 1 << 0, {1, 4, 1}));
+        // groups with mask=0 should be rejected
+        EXPECT_ANY_THROW(attr.set_scales(arg, 0, {4, 1}));
         // scales with groups and a data type
         attr.set_scales(arg, 1 << 0, {4, 1}, data_type::f32);
         // single host scale for supported arg with data type specified

@@ -709,6 +709,8 @@ status_t dnnl_primitive_attr_set_zero_points_v2(dnnl_primitive_attr_t attr,
     } else {
         VCHECK_ATTR(mask >= 0, VERBOSE_BAD_PARAM, "mask");
         VCHECK_ATTR(group_ndims >= 0, VERBOSE_BAD_PARAM, "group_ndims");
+        VCHECK_ATTR(IMPLICATION(group_ndims > 0, mask > 0), VERBOSE_BAD_PARAM,
+                "mask incompatible with group_dims");
         return attr->zero_points_.set(
                 arg, mask, data_type, group_ndims, group_dims);
     }
@@ -730,6 +732,8 @@ status_t dnnl_primitive_attr_set_precomputed_reductions(
             VERBOSE_BAD_PARAM, "group_dims");
     VCHECK_ATTR(utils::one_of(group_ndims, 0, 2), VERBOSE_BAD_PARAM,
             "group_ndims must be 0 or 2");
+    VCHECK_ATTR(IMPLICATION(group_ndims > 0, mask > 0), VERBOSE_BAD_PARAM,
+            "mask incompatible with group_dims");
 
     return attr->precomputed_reductions_.set(
             arg, mask, data_type, group_ndims, group_dims);

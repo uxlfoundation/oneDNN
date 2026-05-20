@@ -428,12 +428,6 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
             }
         }
 
-        if (bgmmc_.isa == avx10_2_512 && bgmmc_.is_xf16_fp8) {
-            // This reduces the number of upconversions of weights in non-AMX kernel;
-            // activations do not require upconversions.
-            brgattr.hint_loop_order = brgemm_lo_bl_1load;
-        }
-
         CHECK(brgemm_desc_set_attr(&brg, brgattr));
         CHECK(brgemm_desc_finalize(&brg));
 

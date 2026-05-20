@@ -246,15 +246,15 @@ status_t check_isa_with_datatype(
                     one_of(isa, avx512_core_amx_fp16, avx512_core_fp16))
             && IMPLICATION(bm_conf_utils.is_f32_with_int_wei(),
                     one_of(isa, avx512_core, avx2))
-            && IMPLICATION(bm_conf_utils.is_f8(),
-                    is_superset(isa, avx512_core_amx)
-                            || is_superset(isa, avx10_2_512))
             && IMPLICATION(bm_conf_utils.is_bf16_fp8(),
                     one_of(isa, avx512_core_amx, avx512_core_amx_fp16,
                             avx10_2_512))
             && IMPLICATION(bm_conf_utils.is_f16_fp8(),
                     one_of(isa, avx512_core_amx_fp16, avx10_2_512))
-            && IMPLICATION(bm_conf_utils.is_bf8() && !bm_conf_utils.is_f8(),
+            && IMPLICATION(bm_conf_utils.is_f8(),
+                    is_superset(isa, avx512_core_amx_fp16)
+                            || is_superset(isa, avx10_2_512))
+            && IMPLICATION(bm_conf_utils.is_bf8(),
                     is_superset(isa, avx512_core_amx_fp16));
     return ok ? status::success : status::unimplemented;
 }

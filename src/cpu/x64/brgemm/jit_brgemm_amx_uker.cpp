@@ -61,7 +61,7 @@ struct jit_brgemm_amx_uker_base_t : public jit_base_brgemm_kernel_t {
             }
         }
 
-        if (brg.is_fp8 || brg.is_xf16_fp8 || has_f8_e5m2_binary_postops
+        if (brg.is_fp8 || has_f8_e5m2_binary_postops
                 || has_f8_e4m3_binary_postops) {
             if (one_of(data_type::f8_e5m2, brg.dt_a, brg.dt_b, brg.dt_d)
                     || has_f8_e5m2_binary_postops)
@@ -532,7 +532,7 @@ private:
             int tile_num_col_bytes, reg64_t reg_data, int offset,
             reg64_t reg_data_stride, reg64_t reg_buf);
 
-    bool maybe_pre_process_data(brgemm_iteration_t &bi, const Tmm &t1,
+    void maybe_pre_process_data(brgemm_iteration_t &bi, const Tmm &t1,
             reg64_t reg_base, dim_t offset, reg64_t reg_stride,
             matrix_kind_t mk);
 
@@ -1859,8 +1859,8 @@ void jit_brgemm_amx_uker_base_t::maybe_tileloadd_nt(
     if (brg.is_input_convert()) {
         // try_load_nt is not supported in maybe_pre_process_data as there is
         // no guarantee that the data is cache line aligned.
-        if (maybe_pre_process_data(bi, t1, reg_base, offset, reg_stride, mk))
-            return;
+        maybe_pre_process_data(bi, t1, reg_base, offset, reg_stride, mk);
+        return;
     }
 
     if (maybe_pre_process_k_tail(
@@ -2215,22 +2215,16 @@ void jit_brgemm_amx_uker_base_t::bf32_downconvert_to_vnni(
     }
 }
 
-bool jit_brgemm_amx_uker_base_t::maybe_pre_process_data(brgemm_iteration_t &bi,
+void jit_brgemm_amx_uker_base_t::maybe_pre_process_data(brgemm_iteration_t &bi,
         const Tmm &t1, reg64_t reg_base, dim_t offset, reg64_t reg_stride,
         matrix_kind_t mk) {
-
-    const bool is_A = mk == matrix_A;
-    if (is_A && brg.is_xf16_fp8) return false;
-
-    const bool never_save_transform = brg.is_fp8
-            || (brg.dt_a == data_type::f16 && brg.dt_b == data_type::f8_e5m2);
 
     const auto &tloop = imap_[bi.apply_postops];
     auto should_save_transform = [&](matrix_kind_t mk) {
         // For fp8 via conversion we use temporal buffer heavily for conversion.
         // Therefore saved data may be overwritten
         // TODO: remove this restriction
-        if (never_save_transform) return false;
+        if (brg.is_fp8_via_convert()) return false;
         // save if there is a reuse
         if (mk == matrix_A) {
             return tloop.ldis.size() > 1;
@@ -2241,6 +2235,7 @@ bool jit_brgemm_amx_uker_base_t::maybe_pre_process_data(brgemm_iteration_t &bi,
 
     const auto dt = mk == matrix_A ? brg.dt_a : brg.dt_b;
 
+    const bool is_A = mk == matrix_A;
     auto &transform_buf = is_A ? transform_buf_map_A_ : transform_buf_map_B_;
 
     const auto transform_offset
@@ -2248,15 +2243,11 @@ bool jit_brgemm_amx_uker_base_t::maybe_pre_process_data(brgemm_iteration_t &bi,
     const auto max_bdb2 = tloop.bdis[0].block2();
     const auto max_rdb = tloop.rdis.size();
     const auto matrix_a_offset = transform_offset;
-    // a and b can share the same buffer in case of never_save_transform;
-    // a is not converted in case of is_xf16_fp8, so no need for buffer for a.
-    const auto scratch_a_tiles = never_save_transform || brg.is_xf16_fp8
-            ? 0
-            : nstl::max<int>(should_save_transform(mk),
-                    should_save_transform(matrix_A) * brg.brgattr.max_bs
-                            * max_bdb2 * max_rdb);
-    const auto matrix_b_offset
-            = transform_offset + brgemm_desc_t::tilesize * scratch_a_tiles;
+    const auto matrix_b_offset = transform_offset
+            + brgemm_desc_t::tilesize
+                    * (nstl::max<int>(should_save_transform(mk),
+                            should_save_transform(matrix_A) * brg.brgattr.max_bs
+                                    * max_bdb2 * max_rdb));
     const auto matrix_offset = is_A ? matrix_a_offset : matrix_b_offset;
     const std::string key
             = std::to_string(bi.bsi->pos) + "_" + std::to_string(offset);
@@ -2265,7 +2256,7 @@ bool jit_brgemm_amx_uker_base_t::maybe_pre_process_data(brgemm_iteration_t &bi,
         auto buf_idx = transform_buf[key];
         auto offt = matrix_offset + buf_idx * brgemm_desc_t::tilesize;
         tileloadd(t1, ptr[reg_buf + reg_converted_stride + offt]);
-        return true;
+        return;
     }
 
     auto buf_offt = matrix_offset;
@@ -2280,7 +2271,7 @@ bool jit_brgemm_amx_uker_base_t::maybe_pre_process_data(brgemm_iteration_t &bi,
     mov(reg_converted_stride, zmm_width_in_bytes);
 
     const int max_tiles = amx::get_max_palette_size();
-    JIT_ASSERT_RET(t1.getIdx() >= 0 && t1.getIdx() < max_tiles, false);
+    JIT_ASSERT(t1.getIdx() >= 0 && t1.getIdx() < max_tiles);
     const auto num_rows = palette_.rows[t1.getIdx()];
     const auto num_col_bytes = palette_.cols[t1.getIdx()];
     if (is_A) {
@@ -2288,8 +2279,6 @@ bool jit_brgemm_amx_uker_base_t::maybe_pre_process_data(brgemm_iteration_t &bi,
             bf32_downconvert(bi, num_rows, num_col_bytes, reg_base, offset,
                     reg_stride, reg_buf);
         else {
-            assert(brg.is_fp8);
-            // The same type as for weights
             const auto A_dst_dt = brg.is_fp8_weights_converted_to_bf16()
                     ? data_type::bf16
                     : data_type::f16;
@@ -2314,8 +2303,6 @@ bool jit_brgemm_amx_uker_base_t::maybe_pre_process_data(brgemm_iteration_t &bi,
 
     // reset buf pointer.
     if (buf_offt) sub(reg_buf, buf_offt);
-
-    return true;
 }
 
 void jit_brgemm_amx_uker_base_t::pre_process_k_tail_fused_copy_a(

@@ -386,9 +386,10 @@ void gen_desc_t::update_driver_info() {
 
 std::vector<const gemmstone::kcatalog::Entry *>
 gen_nocopy_desc_t::select_kernel(compute::gpu_product_t product, int stepping,
-        int eu_count, bool has_systolic, bool is_integrated, compute_mode mode,
-        const gemmstone::GEMMProblem &problem, float alpha, float beta, dim_t m,
-        dim_t n, dim_t k, dim_t lda, dim_t ldb, dim_t ldc, dim_t batch) {
+        const compute::device_info_t &dev_info, bool has_systolic,
+        compute_mode mode, const gemmstone::GEMMProblem &problem, float alpha,
+        float beta, dim_t m, dim_t n, dim_t k, dim_t lda, dim_t ldb, dim_t ldc,
+        dim_t batch) {
     using namespace ngen;
     using namespace kcatalog;
 
@@ -400,13 +401,13 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_product_t product, int stepping,
     m_ = into<int>(m);
     n_ = into<int>(n);
     k_ = into<int>(k);
-    eu_count_ = eu_count;
+    eu_count_ = dev_info.eu_count();
     disable_systolic_ = !has_systolic;
     relaxed_acc_ = mode & mode_relaxed_acc;
 
     // Select a kernel from the catalog.
     std::vector<MatchParams> match_params;
-    MatchParams base(hw_, has_systolic, is_integrated, problem);
+    MatchParams base(hw_, has_systolic, dev_info.is_integrated(), problem);
     /* Reuse PVC strategies for legacy mode on Xe3p */
     if (hw_ == ngen::HW::Xe3p && !efficient_64b_)
         base.selector.hw = kcatalog::HWTagXeHPC;
@@ -555,7 +556,7 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_product_t product, int stepping,
     eval_params_.beta = beta;
     eval_params_.postOps = !problem.postOps.empty();
     eval_params_.cConvert = (problem.Tc != problem.Tc_ext);
-    eval_params_.euCount = eu_count;
+    eval_params_.euCount = dev_info.eu_count();
     eval_params_.batch = (problem.batchDims > 0);
     eval_params_.deterministic = (mode & mode_deterministic);
 
@@ -610,13 +611,14 @@ status_t gen_nocopy_desc_t::finalize() {
 }
 
 status_t gen_xe_systolic_kernel_desc_t::select_kernel(
-        compute::gpu_product_t product, int stepping, int eu_count,
-        bool is_integrated, int batch_dims, bool packed_c, bool trans_co,
-        bool a_offset, bool b_offset, bool c_offset, bool bias, float alpha,
-        float beta, data_type_t a_type, data_type_t b_type, data_type_t c_type,
-        data_type_t ao_type, data_type_t bo_type, data_type_t co_type,
-        data_type_t acc_type, dim_t m, dim_t n, dim_t k, dim_t batch,
-        int unroll_m, int unroll_n, bool alt, gpu_post_ops_t &&post_ops) {
+        compute::gpu_product_t product, int stepping,
+        const compute::device_info_t &dev_info, int batch_dims, bool packed_c,
+        bool trans_co, bool a_offset, bool b_offset, bool c_offset, bool bias,
+        float alpha, float beta, data_type_t a_type, data_type_t b_type,
+        data_type_t c_type, data_type_t ao_type, data_type_t bo_type,
+        data_type_t co_type, data_type_t acc_type, dim_t m, dim_t n, dim_t k,
+        dim_t batch, int unroll_m, int unroll_n, bool alt,
+        gpu_post_ops_t &&post_ops) {
     using namespace ngen;
     using namespace kcatalog;
 
@@ -628,7 +630,7 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
     m_ = into<int>(m);
     n_ = into<int>(n);
     k_ = into<int>(k);
-    eu_count_ = eu_count;
+    eu_count_ = dev_info.eu_count();
 
     if (!utils::one_of(hw_, HW::XeHP, HW::XeHPG, HW::XeHPC, HW::Xe2, HW::Xe3,
                 HW::Xe3p))
@@ -697,7 +699,7 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
     }
 
     // Find it in the catalog.
-    MatchParams match_params(hw_, true, is_integrated, problem_);
+    MatchParams match_params(hw_, true, dev_info.is_integrated(), problem_);
 
     // By default gemmstone assumes that the accumulation type must be at least
     // as wide as the output type. For oneDNN this restriction is not needed.
@@ -725,7 +727,7 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
     eval_params.sizes = match_params.sizes;
     eval_params.alpha = alpha;
     eval_params.beta = beta;
-    eval_params.euCount = eu_count;
+    eval_params.euCount = dev_info.eu_count();
     eval_params.postOps = !problem_.postOps.empty();
     eval_params.cConvert = (acc_type != c_type);
     eval_params.batch = (batch_dims > 0);

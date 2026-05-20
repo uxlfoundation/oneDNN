@@ -419,7 +419,10 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, const ngen
     if (systolicAvailable)
         *tagPtr++ = ReqSystolic;
 
-    if (product.type == ngen::PlatformType::Integrated) *tagPtr++ = ReqIntegrated;
+    if (product.type == ngen::PlatformType::Integrated)
+        *tagPtr++ = ReqIntegrated;
+    if (product.type == ngen::PlatformType::Discrete)
+        *tagPtr++ = ReqDiscrete;
 
     if (problem.batch != BatchMode::None) {
         *tagPtr++ = ReqBatch;

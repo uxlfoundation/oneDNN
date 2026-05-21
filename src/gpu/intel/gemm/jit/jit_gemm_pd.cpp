@@ -1322,11 +1322,14 @@ status_t jit_gemm_pd_t::init_GEMMProblem(
                 int(types::data_type_size(zp_wei.get_data_type())));
 
     // Matmul-side group dims, consolidated per arg (zp / gs / scales must
-    // agree). NO intermediate pd fields: written straight into problem.
+    // agree). Read from kernel_input_ so that maybe_reshape_2d's adjusted
+    // groups (post-batch-fold) are used; reading attr() here would return
+    // the un-reshaped group dims and produce e.g. aqGroupM=1 instead of 2
+    // for a 2x1x... → 2x... batch-into-M fold (gotcha #34).
     auto consolidate = [&](int matmul_arg, int &g0, int &g1) -> status_t {
-        const auto &zp = attr()->zero_points_.get(matmul_arg);
-        const auto &gs = attr()->precomputed_reductions_.get(matmul_arg);
-        const auto &sc = attr()->scales_.get(matmul_arg);
+        const auto &zp = kernel_input_.zero_points.get(matmul_arg);
+        const auto &gs = kernel_input_.precomputed_reductions.get(matmul_arg);
+        const auto &sc = kernel_input_.scales.get(matmul_arg);
         g0 = 0;
         g1 = 0;
         auto add = [&](const quant_entry_t &e) -> status_t {

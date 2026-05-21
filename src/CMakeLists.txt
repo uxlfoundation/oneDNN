@@ -77,7 +77,7 @@ if(DNNL_EXPERIMENTAL)
 endif()
 
 if(DNNL_EXPERIMENTAL_UKERNEL)
-    if(DNNL_TARGET_ARCH STREQUAL "X64" OR DNNL_TARGET_ARCH STREQUAL "AARCH64" OR DNNL_TARGET_ARCH STREQUAL "RISCV64")
+    if(DNNL_TARGET_ARCH STREQUAL "X64" OR DNNL_TARGET_ARCH STREQUAL "AARCH64")
         message(STATUS "Experimental functionality for ukernels is enabled")
     else()
         message(FATAL_ERROR "ukernel API isn't supported for ${DNNL_TARGET_ARCH}.")
@@ -124,23 +124,6 @@ if(UNIX)
         add_definitions_with_host_compiler(-DDNNL_ENABLE_MEM_DEBUG)
     endif()
 endif()
-
-if(DNNL_XBYAK_NO_EXCEPTION)
-    add_definitions_with_host_compiler(-DDNNL_XBYAK_NO_EXCEPTION)
-endif()
-
-macro(enable_conditional_compilation4 target)
-    if(COMMAND ov_mark_target_as_cc)
-        ov_mark_target_as_cc(${target})
-        if(SELECTIVE_BUILD STREQUAL "ON")
-            # After disabling a block of code, some variables might be unused.
-            if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU"
-                    OR CMAKE_CXX_COMPILER_ID MATCHES "^(Apple)?Clang$")
-                target_compile_options(${target} PRIVATE -Wno-unused-variable)
-            endif()
-        endif()
-    endif()
-endmacro()
 
 add_subdirectory(common)
 

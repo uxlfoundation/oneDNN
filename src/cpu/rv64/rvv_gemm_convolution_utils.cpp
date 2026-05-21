@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2016 Intel Corporation
+* Copyright 2025 Institute of Software, Chinese Academy of Sciences
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,12 +15,15 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "cpu/rv64/rvv_gemm_convolution_utils.hpp"
+#include <riscv_vector.h>
+
+
 #include "common/bfloat16.hpp"
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
+#include "cpu/rv64/rvv_gemm_convolution_utils.hpp"
 #include "cpu/scale_utils.hpp"
 
 #include "cpu/platform.hpp"

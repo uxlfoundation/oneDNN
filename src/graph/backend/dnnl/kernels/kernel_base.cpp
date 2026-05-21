@@ -32,8 +32,8 @@ status_t kernel_base_t::compile(const dnnl_partition_impl_t *part,
 
 status_t kernel_base_t::execute(const stream_t *astream,
         const std::vector<tensor_t> &inputs,
-        const std::vector<tensor_t> &outputs) {
-    return execute_impl(astream, inputs, outputs);
+        const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf) {
+    return execute_impl(astream, inputs, outputs, scratchpad_buf);
 }
 
 bool kernel_base_t::enabled_constant_cache() const {

@@ -640,20 +640,6 @@ dnnl::accumulation_mode str2accumulation_mode(
     }
 }
 
-void prolong_temporary_scratchpad_lifetime(const stream_t *g_stream,
-        const std::shared_ptr<temporary_scratchpad_t> &scratchpad) {
-#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
-    auto *tp_stream
-            = dnnl::impl::utils::downcast<dnnl::impl::cpu::cpu_stream_t *>(
-                    const_cast<stream_t *>(g_stream));
-    tp_stream->before_exec_hook();
-
-    parallel(1, [=](int, int) { UNUSED(scratchpad); });
-
-    tp_stream->after_exec_hook();
-#endif
-}
-
 status_t dnnl_primitive_execute_without_tp_hook(const primitive &prim,
         const stream &astream,
         const std::unordered_map<int, memory> &exec_args) {

@@ -162,7 +162,7 @@ void sdp_decomp_kernel_t<quantized, dt>::prepare_sub_args(
 template <bool quantized, memory::data_type dt>
 status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
         const stream_t *g_stream, const std::vector<tensor_t> &inputs,
-        const std::vector<tensor_t> &outputs) {
+        const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf) {
     dnnl::stream strm = make_dnnl_stream(p_engine_, *g_stream);
 
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
@@ -194,10 +194,8 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
     char *dst2_user_pointer = static_cast<char *>(outputs[0].get_data_handle());
 
     size_t block_size = sdp_registry_.size();
-    auto scratchpad = std::make_shared<temporary_scratchpad_t>(
-            block_size * sdp_cfg_.nthr, p_engine_, *g_alloc_);
-    assertm(scratchpad->size() >= sdp_registry_.size(),
-            "no enough scratchpad memory");
+    auto scratchpad = std::make_shared<scratchpad_t>(
+            scratchpad_buf, block_size * sdp_cfg_.nthr, p_engine_, *g_alloc_);
     grantor_t var_grantor = sdp_registry_.grantor(scratchpad->get_buffer());
 
     const auto get_mem_dt_size = [](const memory &m) -> size_t {
@@ -413,7 +411,7 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
     tp_stream->after_exec_hook();
 #endif
 
-    prolong_temporary_scratchpad_lifetime(g_stream, scratchpad);
+    prolong_scratchpad_lifetime(g_stream, scratchpad);
 
     return status::success;
 }

@@ -49,20 +49,20 @@ public:
 
     status_t execute(const stream_t *g_stream,
             const std::vector<tensor_t> &inputs,
-            const std::vector<tensor_t> &outputs) override {
-        // We don't need to resort the inputs and outputs
-        return kernel_->execute(g_stream, inputs, outputs);
+            const std::vector<tensor_t> &outputs,
+            const tensor_t *scratchpad_buf) override {
+        return kernel_->execute(g_stream, inputs, outputs, scratchpad_buf);
     }
 
 #ifdef DNNL_WITH_SYCL
     status_t execute_sycl(const stream_t *g_stream,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
+            const tensor_t *scratchpad_buf,
             const std::vector<::sycl::event> &sycl_deps,
             ::sycl::event *sycl_event) override {
-        // We don't need to resort the inputs and outputs
-        return kernel_->execute_sycl(
-                g_stream, inputs, outputs, sycl_deps, sycl_event);
+        return kernel_->execute_sycl(g_stream, inputs, outputs, scratchpad_buf,
+                sycl_deps, sycl_event);
     }
 #endif
 
@@ -72,12 +72,17 @@ public:
     status_t execute_ocl(const stream_t *g_stream,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
+            const tensor_t *scratchpad_buf,
             const std::vector<cl_event> &ocl_deps,
             cl_event *ocl_event) override {
         return kernel_->execute_ocl(
-                g_stream, inputs, outputs, ocl_deps, ocl_event);
+                g_stream, inputs, outputs, scratchpad_buf, ocl_deps, ocl_event);
     }
 #endif
+
+    size_t get_scratchpad_size() const override {
+        return kernel_->get_scratchpad_size();
+    }
 
     std::string str() const override { return kernel_->str(); }
 

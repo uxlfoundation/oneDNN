@@ -70,12 +70,14 @@ public:
 
     status_t execute_impl(const stream_t *stream,
             const std::vector<tensor_t> &inputs,
-            const std::vector<tensor_t> &outputs) override;
+            const std::vector<tensor_t> &outputs,
+            const tensor_t *scratchpad_buf) override;
 
 #ifdef DNNL_WITH_SYCL
     status_t sycl_execute_impl(const stream_t *stream,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
+            const tensor_t *scratchpad_buf,
             const std::vector<::sycl::event> &deps,
             ::sycl::event *ret_event) override;
 #endif
@@ -84,10 +86,12 @@ public:
     status_t ocl_execute_impl(const stream_t *stream,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
-            const std::vector<cl_event> &deps, cl_event *ret_event) override;
+            const tensor_t *scratchpad_buf, const std::vector<cl_event> &deps,
+            cl_event *ret_event) override;
 #endif
 
     DEF_KERNEL_METHOD_STR(gated_mlp_primitive_kernel_t)
+    DEF_KERNEL_METHOD_SCRATCHPAD_SIZE()
     DNNL_DISALLOW_COPY_AND_ASSIGN(gated_mlp_primitive_kernel_t)
 };
 

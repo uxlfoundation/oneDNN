@@ -77,12 +77,14 @@ public:
 
     status_t execute_impl(const stream_t *g_stream,
             const std::vector<tensor_t> &inputs,
-            const std::vector<tensor_t> &outputs) override;
+            const std::vector<tensor_t> &outputs,
+            const tensor_t *scratchpad_buf) override;
 
 #ifdef DNNL_WITH_SYCL
     status_t sycl_execute_impl(const stream_t *g_stream,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
+            const tensor_t *scratchpad_buf,
             const std::vector<::sycl::event> &sycl_deps,
             ::sycl::event *sycl_event) override;
 #endif
@@ -91,10 +93,12 @@ public:
     status_t ocl_execute_impl(const stream_t *g_stream,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
+            const tensor_t *scratchpad_buf,
             const std::vector<cl_event> &cl_deps, cl_event *ret_event) override;
 #endif
 
     DEF_KERNEL_METHOD_STR(resampling_fwd_t)
+    DEF_KERNEL_METHOD_SCRATCHPAD_SIZE()
     DNNL_DISALLOW_COPY_AND_ASSIGN(resampling_fwd_t)
 };
 
@@ -132,12 +136,14 @@ public:
 
     status_t execute_impl(const stream_t *g_stream,
             const std::vector<tensor_t> &inputs,
-            const std::vector<tensor_t> &outputs) override;
+            const std::vector<tensor_t> &outputs,
+            const tensor_t *scratchpad_buf) override;
 
 #ifdef DNNL_WITH_SYCL
     status_t sycl_execute_impl(const stream_t *g_stream,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
+            const tensor_t *scratchpad_buf,
             const std::vector<::sycl::event> &sycl_deps,
             ::sycl::event *sycl_event) override;
 #endif
@@ -146,10 +152,12 @@ public:
     status_t ocl_execute_impl(const stream_t *g_stream,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
+            const tensor_t *scratchpad_buf,
             const std::vector<cl_event> &cl_deps, cl_event *ret_event) override;
 #endif
 
     DEF_KERNEL_METHOD_STR(resampling_bwd_t)
+    DEF_KERNEL_METHOD_SCRATCHPAD_SIZE()
     DNNL_DISALLOW_COPY_AND_ASSIGN(resampling_bwd_t)
 };
 #endif

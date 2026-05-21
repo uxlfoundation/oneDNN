@@ -49,6 +49,7 @@ public:
     status_t prepare_inplace_pairs_impl() override;
 
     DEF_KERNEL_METHOD_STR(conv_transpose_fwd_t)
+    DEF_KERNEL_METHOD_SCRATCHPAD_SIZE()
 };
 
 using float_convtranspose_fwd = conv_transpose_fwd_t</* quantized */ false>;
@@ -63,6 +64,7 @@ public:
             const std::vector<logical_tensor_t> &outputs) override;
 
     DEF_KERNEL_METHOD_STR(conv_transpose_bwd_data_t)
+    DEF_KERNEL_METHOD_SCRATCHPAD_SIZE()
 };
 
 struct conv_transpose_bwd_weights_t : public conv_base_t {
@@ -73,6 +75,7 @@ public:
             const std::vector<logical_tensor_t> &outputs) override;
 
     DEF_KERNEL_METHOD_STR(conv_transpose_bwd_weights_t)
+    DEF_KERNEL_METHOD_SCRATCHPAD_SIZE()
 };
 #endif
 

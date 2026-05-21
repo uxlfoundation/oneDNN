@@ -135,7 +135,7 @@ void reorder_t<quantized>::prepare_args_set(const execution_args_set_t *res,
 template <bool quantized>
 status_t reorder_t<quantized>::execute_impl(const stream_t *g_stream,
         const std::vector<tensor_t> &inputs,
-        const std::vector<tensor_t> &outputs) {
+        const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf) {
     dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
 
     // each thread's own local resource
@@ -143,12 +143,9 @@ status_t reorder_t<quantized>::execute_impl(const stream_t *g_stream,
     execution_args_set_t *res = res_cache.get_or_add(
             reinterpret_cast<size_t>(this), resource_ctor_);
 
-    auto scratchpad = std::make_shared<temporary_scratchpad_t>(
+    auto scratchpad = std::make_shared<scratchpad_t>(scratchpad_buf,
             memory_planner_.total_internal_temporary_size(), p_engine_,
             *g_alloc_);
-    assertm(scratchpad->size()
-                    >= memory_planner_.total_internal_temporary_size(),
-            "no enough scratchpad memory");
     prepare_args_set(res, inputs, outputs, *scratchpad);
 
     constant_tensor_cache_t::cached_t c_buffer;
@@ -195,7 +192,7 @@ status_t reorder_t<quantized>::execute_impl(const stream_t *g_stream,
         subgraph_->execs_[i]->execute(p_stream, res->get_exec_args()[i]);
     }
 
-    prolong_temporary_scratchpad_lifetime(g_stream, scratchpad);
+    prolong_scratchpad_lifetime(g_stream, scratchpad);
 
     return status::success;
 }
@@ -204,7 +201,7 @@ status_t reorder_t<quantized>::execute_impl(const stream_t *g_stream,
 template <bool quantized>
 status_t reorder_t<quantized>::sycl_execute_impl(const stream_t *g_stream,
         const std::vector<tensor_t> &inputs,
-        const std::vector<tensor_t> &outputs,
+        const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<::sycl::event> &sycl_deps,
         ::sycl::event *sycl_event) {
 
@@ -217,13 +214,10 @@ status_t reorder_t<quantized>::sycl_execute_impl(const stream_t *g_stream,
     execution_args_set_t *res = res_cache.get_or_add(
             reinterpret_cast<size_t>(this), resource_ctor_);
 
-    temporary_scratchpad_t scratchpad(
+    auto scratchpad = std::make_shared<scratchpad_t>(scratchpad_buf,
             memory_planner_.total_internal_temporary_size(), p_engine_,
             *g_alloc_);
-    assertm(scratchpad.size()
-                    >= memory_planner_.total_internal_temporary_size(),
-            "no enough scratchpad memory");
-    prepare_args_set(res, inputs, outputs, scratchpad);
+    prepare_args_set(res, inputs, outputs, *scratchpad);
 
     constant_tensor_cache_t::cached_t c_buffer;
     if (enabled_constant_cache()) {
@@ -272,7 +266,7 @@ status_t reorder_t<quantized>::sycl_execute_impl(const stream_t *g_stream,
         if (returned_event) deps = {*returned_event};
     }
 
-    scratchpad.set_deps(returned_event ? *returned_event : ::sycl::event {});
+    scratchpad->set_deps(returned_event ? *returned_event : ::sycl::event {});
     if (sycl_event)
         *sycl_event = returned_event ? *returned_event : ::sycl::event {};
 
@@ -284,7 +278,7 @@ status_t reorder_t<quantized>::sycl_execute_impl(const stream_t *g_stream,
 template <bool quantized>
 status_t reorder_t<quantized>::ocl_execute_impl(const stream_t *g_stream,
         const std::vector<tensor_t> &inputs,
-        const std::vector<tensor_t> &outputs,
+        const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<cl_event> &cl_deps, cl_event *ret_event) {
 
     auto deps = cl_deps;
@@ -296,13 +290,10 @@ status_t reorder_t<quantized>::ocl_execute_impl(const stream_t *g_stream,
     execution_args_set_t *res = res_cache.get_or_add(
             reinterpret_cast<size_t>(this), resource_ctor_);
 
-    temporary_scratchpad_t scratchpad(
+    auto scratchpad = std::make_shared<scratchpad_t>(scratchpad_buf,
             memory_planner_.total_internal_temporary_size(), p_engine_,
             *g_alloc_);
-    assertm(scratchpad.size()
-                    >= memory_planner_.total_internal_temporary_size(),
-            "no enough scratchpad memory");
-    prepare_args_set(res, inputs, outputs, scratchpad);
+    prepare_args_set(res, inputs, outputs, *scratchpad);
 
     constant_tensor_cache_t::cached_t c_buffer;
     if (enabled_constant_cache()) {
@@ -351,7 +342,7 @@ status_t reorder_t<quantized>::ocl_execute_impl(const stream_t *g_stream,
         deps = {returned_event};
     }
 
-    scratchpad.set_deps(returned_event);
+    scratchpad->set_deps(returned_event);
     if (ret_event) *ret_event = returned_event;
 
     return status::success;

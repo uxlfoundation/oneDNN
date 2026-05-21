@@ -35,72 +35,40 @@ namespace impl {
 namespace graph {
 namespace dnnl_impl {
 
+// Unified scratchpad class that handles both library-managed (temporary) and
+// user-provided buffer modes. When user_buf is non-null, the buffer lifecycle
+// is managed by the user; otherwise the library allocates and frees the buffer.
 class scratchpad_t {
 public:
-    virtual ~scratchpad_t() = default;
-    virtual char *get_buffer() const = 0;
-    virtual size_t size() const = 0;
-};
+    scratchpad_t(const tensor_t *user_buf, size_t size, const dnnl::engine &eng,
+            const allocator_t &alloc);
 
-// The buffer is allocated when creating the temporary_scratchpad_t and
-// deallocated when destroying the temporary_scratchpad_t
-class temporary_scratchpad_t : public scratchpad_t {
-public:
-    temporary_scratchpad_t(
-            size_t size, const dnnl::engine &eng, const allocator_t &alloc)
-        : buffer_(nullptr)
-        , size_(size)
-        , eng_(&eng)
-        , alloc_(&alloc)
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-        , ocl_e_(nullptr)
-#endif
-    {
-        if (size > 0) {
-            buffer_ = reinterpret_cast<char *>(dnnl_allocator_t::malloc(
-                    size, eng, &alloc, allocator_t::mem_type_t::temp));
-        }
-        if (!buffer_) { size_ = 0; }
-    }
-
-    ~temporary_scratchpad_t() override {
-        if (eng_->get_kind() == dnnl::engine::kind::cpu) {
-#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL
-            dnnl_allocator_t::free(buffer_, *eng_, alloc_, e_);
-#else
-            dnnl_allocator_t::free(buffer_, *eng_, alloc_);
-#endif
-        } else if (eng_->get_kind() == dnnl::engine::kind::gpu) {
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-            dnnl_allocator_t::free(buffer_, *eng_, alloc_, ocl_e_);
-#elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
-            dnnl_allocator_t::free(buffer_, *eng_, alloc_, e_);
-#else
-            assert(!"unsupport gpu runtime");
-#endif
-        }
-        size_ = 0;
-    }
+    ~scratchpad_t();
 
     // Disable assignment and copy
-    temporary_scratchpad_t(const temporary_scratchpad_t &) = delete;
-    temporary_scratchpad_t &operator=(const temporary_scratchpad_t &) = delete;
+    scratchpad_t(const scratchpad_t &) = delete;
+    scratchpad_t &operator=(const scratchpad_t &) = delete;
 
-    char *get_buffer() const override { return buffer_; }
-
-    size_t size() const override { return size_; }
+    char *get_buffer() const { return buffer_; }
+    size_t size() const { return size_; }
+    bool is_user_managed() const { return user_managed_; }
 
 #ifdef DNNL_WITH_SYCL
-    void set_deps(::sycl::event event) { e_ = std::move(event); }
+    void set_deps(::sycl::event event) {
+        if (!user_managed_) e_ = std::move(event);
+    }
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    void set_deps(cl_event event) { ocl_e_ = event; }
+    void set_deps(cl_event event) {
+        if (!user_managed_) ocl_e_ = event;
+    }
 #endif
 
 private:
     char *buffer_;
     size_t size_;
+    bool user_managed_;
     const dnnl::engine *eng_;
     const allocator_t *alloc_;
 #ifdef DNNL_WITH_SYCL
@@ -111,6 +79,14 @@ private:
     cl_event ocl_e_;
 #endif
 };
+
+// This function artificially extends the `scratchpad_t` object's lifetime to
+// keep alive the handle this scratchpad object manages. An alternative approach
+// is to manage its handles through a system of caches the same way it's done
+// for memory objects before they are passed into a primitive execute call.
+// No-op if the scratchpad is user-managed.
+void prolong_scratchpad_lifetime(const stream_t *g_stream,
+        const std::shared_ptr<scratchpad_t> &scratchpad);
 
 class registrar_t;
 class grantor_t;

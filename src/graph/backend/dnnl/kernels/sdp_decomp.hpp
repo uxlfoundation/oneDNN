@@ -82,7 +82,8 @@ public:
 
     status_t execute_impl(const stream_t *g_stream,
             const std::vector<tensor_t> &inputs,
-            const std::vector<tensor_t> &outputs) override;
+            const std::vector<tensor_t> &outputs,
+            const tensor_t *scratchpad_buf) override;
 
     class sdp_args_set_t {
     public:
@@ -145,6 +146,7 @@ public:
     status_t sycl_execute_impl(const stream_t *g_stream,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
+            const tensor_t *scratchpad_buf,
             const std::vector<::sycl::event> &sycl_deps,
             ::sycl::event *sycl_event) override {
         UNUSED(g_stream);
@@ -160,6 +162,7 @@ public:
     status_t ocl_execute_impl(const stream_t *g_stream,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
+            const tensor_t *scratchpad_buf,
             const std::vector<cl_event> &cl_deps,
             cl_event *ret_event) override {
         UNUSED(g_stream);
@@ -172,6 +175,9 @@ public:
 #endif
 
     DEF_KERNEL_METHOD_STR(sdp_decomp_kernel_t)
+    size_t get_scratchpad_size() const override {
+        return sdp_registry_.size() * sdp_cfg_.nthr;
+    }
     DNNL_DISALLOW_COPY_AND_ASSIGN(sdp_decomp_kernel_t)
 };
 

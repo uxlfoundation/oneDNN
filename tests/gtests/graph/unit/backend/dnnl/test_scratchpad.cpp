@@ -32,24 +32,24 @@ namespace graph = dnnl::impl::graph;
 
 TEST(test_scratchpad, TemporaryScratchpad) {
     using dnnl::impl::graph::allocator_t;
-    using dnnl::impl::graph::dnnl_impl::temporary_scratchpad_t;
+    using dnnl::impl::graph::dnnl_impl::scratchpad_t;
 
     graph::engine_t *g_eng = get_engine();
     allocator_t *alloc = static_cast<allocator_t *>(g_eng->get_allocator());
     dnnl::engine p_eng = dnnl::impl::graph::dnnl_impl::make_dnnl_engine(*g_eng);
 
     // No seg fault here because the memory will be deleted when
-    // temporary_scratchpad_t is destroyed
+    // scratchpad_t is destroyed
     std::vector<size_t> buf_sizes = {512, 1024, 2048, 4096};
     for (size_t i = 0; i < buf_sizes.size(); i++) {
-        temporary_scratchpad_t scratchpad(buf_sizes[i], p_eng, *alloc);
+        scratchpad_t scratchpad(nullptr, buf_sizes[i], p_eng, *alloc);
         // the scratchpad size will be changed
         ASSERT_EQ(buf_sizes[i], scratchpad.size());
     }
 
     buf_sizes = {4096, 2048, 1024, 512};
     for (size_t i = 0; i < buf_sizes.size(); i++) {
-        temporary_scratchpad_t scratchpad(buf_sizes[i], p_eng, *alloc);
+        scratchpad_t scratchpad(nullptr, buf_sizes[i], p_eng, *alloc);
         // the scratchpad size will be changed
         ASSERT_EQ(buf_sizes[i], scratchpad.size());
     }

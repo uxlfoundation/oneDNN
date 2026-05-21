@@ -385,29 +385,30 @@ void gen_desc_t::update_driver_info() {
 }
 
 std::vector<const gemmstone::kcatalog::Entry *>
-gen_nocopy_desc_t::select_kernel(compute::gpu_product_t product, int stepping,
-        const compute::device_info_t &dev_info, bool has_systolic,
+gen_nocopy_desc_t::select_kernel(const compute::device_info_t &dev_info,
         compute_mode mode, const gemmstone::GEMMProblem &problem, float alpha,
         float beta, dim_t m, dim_t n, dim_t k, dim_t lda, dim_t ldb, dim_t ldc,
         dim_t batch) {
     using namespace ngen;
     using namespace kcatalog;
 
+    const compute::gpu_product_t &product = dev_info.gpu_product();
+
     product_ = compute::device_info_t::ngen_product(product);
     hw_ = getCore(product_.family);
     arch_ = convert_ngen_arch_to_dnnl(hw_);
-    stepping_ = stepping;
+    stepping_ = dev_info.stepping_id();
     problem_.product = product_;
     m_ = into<int>(m);
     n_ = into<int>(n);
     k_ = into<int>(k);
     eu_count_ = dev_info.eu_count();
-    disable_systolic_ = !has_systolic;
+    disable_systolic_ = !dev_info.mayiuse_systolic();
     relaxed_acc_ = mode & mode_relaxed_acc;
 
     // Select a kernel from the catalog.
     std::vector<MatchParams> match_params;
-    MatchParams base(hw_, has_systolic, dev_info.is_integrated(), problem);
+    MatchParams base(hw_, dev_info.mayiuse_systolic(), product_, problem);
     /* Reuse PVC strategies for legacy mode on Xe3p */
     if (hw_ == ngen::HW::Xe3p && !efficient_64b_)
         base.selector.hw = kcatalog::HWTagXeHPC;
@@ -420,7 +421,7 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_product_t product, int stepping,
     base.sizes.n = n;
     base.sizes.k = k;
     base.sizes.batch = batch;
-    base.stepping = stepping;
+    base.stepping = dev_info.stepping_id();
     base.ignoreCase = true;
 
     bool can_2d_a = (lda * problem.Ta_ext <= 16777216);
@@ -611,7 +612,6 @@ status_t gen_nocopy_desc_t::finalize() {
 }
 
 status_t gen_xe_systolic_kernel_desc_t::select_kernel(
-        compute::gpu_product_t product, int stepping,
         const compute::device_info_t &dev_info, int batch_dims, bool packed_c,
         bool trans_co, bool a_offset, bool b_offset, bool c_offset, bool bias,
         float alpha, float beta, data_type_t a_type, data_type_t b_type,
@@ -622,10 +622,12 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
     using namespace ngen;
     using namespace kcatalog;
 
+    const compute::gpu_product_t &product = dev_info.gpu_product();
+
     product_ = compute::device_info_t::ngen_product(product);
     hw_ = getCore(product_.family);
     arch_ = convert_ngen_arch_to_dnnl(hw_);
-    stepping_ = stepping;
+    stepping_ = dev_info.stepping_id();
     problem_.product = product_;
     m_ = into<int>(m);
     n_ = into<int>(n);
@@ -699,7 +701,7 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
     }
 
     // Find it in the catalog.
-    MatchParams match_params(hw_, true, dev_info.is_integrated(), problem_);
+    MatchParams match_params(hw_, true, product_, problem_);
 
     // By default gemmstone assumes that the accumulation type must be at least
     // as wide as the output type. For oneDNN this restriction is not needed.

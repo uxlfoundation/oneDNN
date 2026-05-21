@@ -554,7 +554,6 @@ status_t xe_hp_systolic_t::init_compute(impl::engine_t *engine) {
     using kd_t = jit::gen_xe_systolic_kernel_desc_t;
 
     auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
-    int stepping = intel_engine->device_info()->stepping_id();
 
     const auto d = pd()->desc();
 
@@ -579,11 +578,8 @@ status_t xe_hp_systolic_t::init_compute(impl::engine_t *engine) {
 
     kd_t kd_full;
 
-    bool is_integrated = intel_engine->device_info()->is_integrated();
-    auto product = intel_engine->device_info()->gpu_product();
-
-    auto status = kd_full.select_kernel(product, stepping, eu_count_,
-            is_integrated, pd()->with_batch(), pd()->packed_c(), trans_co,
+    auto status = kd_full.select_kernel(*intel_engine->device_info(),
+            pd()->with_batch(), pd()->packed_c(), trans_co,
             pd()->with_a_zero_points(), pd()->with_b_zero_points(),
             pd()->with_c_zero_points(), pd()->with_bias(), pd()->alpha(),
             pd()->beta(), a_type, b_type, c_type, dnnl_s32, dnnl_s32, co_type,
@@ -620,14 +616,14 @@ status_t xe_hp_systolic_t::init_compute(impl::engine_t *engine) {
 
                 kd_t kd;
 
-                auto status = kd.select_kernel(product, stepping, eu_count_,
-                        is_integrated, pd()->with_batch(), pd()->packed_c(),
-                        trans_co, pd()->with_a_zero_points(),
-                        pd()->with_b_zero_points(), this_c_offset,
-                        pd()->with_bias(), pd()->alpha(), this_beta, a_type,
-                        b_type, c_type, dnnl_s32, dnnl_s32, co_type, acc_type,
-                        d->m(), d->n(), d->k(), d->batch(), pd()->unroll_m(),
-                        pd()->unroll_n(), pd()->alt(), std::move(gpu_post_ops));
+                auto status = kd.select_kernel(*intel_engine->device_info(),
+                        pd()->with_batch(), pd()->packed_c(), trans_co,
+                        pd()->with_a_zero_points(), pd()->with_b_zero_points(),
+                        this_c_offset, pd()->with_bias(), pd()->alpha(),
+                        this_beta, a_type, b_type, c_type, dnnl_s32, dnnl_s32,
+                        co_type, acc_type, d->m(), d->n(), d->k(), d->batch(),
+                        pd()->unroll_m(), pd()->unroll_n(), pd()->alt(),
+                        std::move(gpu_post_ops));
 
                 if (status != status::success) return status;
 

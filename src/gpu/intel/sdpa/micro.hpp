@@ -108,7 +108,7 @@ struct micro_bwd_params_t : trivially_serializable_t<micro_bwd_params_t> {
 
     const std::vector<const char *> &get_kernel_names() const {
         static const std::vector<const char *> kernel_names_bwd
-                = {"preprocess_Di", "micro_sdpa_bwd", "postprocess_dQ"};
+                = {"preprocess_Di", "micro_sdpa_bwd", "postprocess_dQKV"};
         return kernel_names_bwd;
     }
 
@@ -561,7 +561,7 @@ private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     status_t execute_backward(const exec_ctx_t &ctx) const;
 
-    compute::kernel_t kernel_, preprocess_, postprocess_;
+    compute::kernel_t kernel_, preprocess_, postprocess_dQKV_;
 };
 
 } // namespace sdpa

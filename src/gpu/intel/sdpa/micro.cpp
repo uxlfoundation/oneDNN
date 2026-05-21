@@ -769,11 +769,11 @@ status_t micro_bwd_t::init(impl::engine_t *engine) {
 
     preprocess_ = kernels[0];
     kernel_ = kernels[1];
-    postprocess_ = kernels[2];
+    postprocess_dQKV_ = kernels[2];
 
     if (!preprocess_) return status::runtime_error;
     if (!kernel_) return status::runtime_error;
-    if (!postprocess_) return status::runtime_error;
+    if (!postprocess_dQKV_) return status::runtime_error;
     return status::success;
 }
 
@@ -1038,6 +1038,10 @@ status_t micro_bwd_t::pd_t::init_scratchpad(impl::engine_t *engine) {
         size_t dV_size = memory_desc_wrapper(desc()->diff_val_md()).nelems();
         scratchpad.book(memory_tracking::names::key_sdpa_dV_reduction, dV_size,
                 types::data_type_size(dkv_scratch_data_t), gpu_align);
+        printf("Booked intermediate dK and dV scratch space for grouped "
+               "quantization "
+               "with group size %d and data type f16 ? %d\n",
+                conf.kv_group_size, dkv_scratch_data_t == data_type::f16);
     }
 
     // space for D_i preprocess result
@@ -2020,7 +2024,7 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
         append_strides(pp, dq_off);
         append_offs(pp, diff_qry_off);
         CHECK(parallel_for(
-                ctx, compute::nd_range_t(gws_p, lws_p), postprocess_, pp));
+                ctx, compute::nd_range_t(gws_p, lws_p), postprocess_dQKV_, pp));
     }
 
     if (needs_intermediate_dKV) {
@@ -2051,8 +2055,8 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
                 pp.append((int64_t)dk_off[1][3]);
             }
             append_offs(pp, diff_key_off);
-            CHECK(parallel_for(
-                    ctx, compute::nd_range_t(gws_p, lws_p), postprocess_, pp));
+            CHECK(parallel_for(ctx, compute::nd_range_t(gws_p, lws_p),
+                    postprocess_dQKV_, pp));
         }
         // dV
         {
@@ -2067,8 +2071,8 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
             pp.append((int)(K * D));
             append_strides(pp, dv_off);
             append_offs(pp, diff_val_off);
-            CHECK(parallel_for(
-                    ctx, compute::nd_range_t(gws_p, lws_p), postprocess_, pp));
+            CHECK(parallel_for(ctx, compute::nd_range_t(gws_p, lws_p),
+                    postprocess_dQKV_, pp));
         }
     }
 

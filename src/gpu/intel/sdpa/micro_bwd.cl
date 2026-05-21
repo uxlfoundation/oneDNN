@@ -1265,8 +1265,8 @@ preprocess_Di(global float *Di, const global DST_DATA_T *A,
 }
 
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) kernel void
-postprocess_dQ(global DST_DATA_T *dst, global const float *src, int nelems,
-        DQ_STRIDES, FULL_QRY_OFFSETS) {
+postprocess_dQKV(global DST_DATA_T *dst, global const DST_DATA_T_DKDV *src,
+        int nelems, DQ_STRIDES, FULL_QRY_OFFSETS) {
     uint b0 = get_group_id(1);
     uint b1 = get_group_id(2);
 
@@ -1282,6 +1282,10 @@ postprocess_dQ(global DST_DATA_T *dst, global const float *src, int nelems,
         size_t col = idx % QRY_D3;
         size_t src_idx = (size_t)row * DQ_S2 + col * DQ_S3;
         size_t dst_idx = (size_t)row * QRY_S2 + col * QRY_S3;
+#if REDUCE_DST_F16
+        dst[dst_idx] = src[src_idx];
+#else
         dst[dst_idx] = TO_DATA_T(src[src_idx]);
+#endif
     }
 }

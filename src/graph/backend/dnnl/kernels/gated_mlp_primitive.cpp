@@ -144,17 +144,17 @@ void gated_mlp_primitive_kernel_t<quantized>::prepare_args_set(
 template <bool quantized>
 status_t gated_mlp_primitive_kernel_t<quantized>::execute_impl(
         const stream_t *stream, const std::vector<tensor_t> &inputs,
-        const std::vector<tensor_t> &outputs) {
+        const std::vector<tensor_t> &outputs, void *scratchpad_buf) {
     dnnl::stream p_stream = make_dnnl_stream(p_engine_, *stream);
 
     thread_local_cache_t<execution_args_set_t> res_cache;
     execution_args_set_t *res = res_cache.get_or_add(
             reinterpret_cast<size_t>(this), resource_ctor_);
 
-    temporary_scratchpad_t scratchpad(
+    auto scratchpad = std::make_shared<scratchpad_t>(scratchpad_buf,
             memory_planner_.total_internal_temporary_size(), p_engine_,
             *g_alloc_);
-    prepare_args_set(res, inputs, outputs, scratchpad);
+    prepare_args_set(res, inputs, outputs, *scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
         subgraph_->execs_[i]->execute(p_stream, res->get_exec_args()[i]);
@@ -167,7 +167,7 @@ status_t gated_mlp_primitive_kernel_t<quantized>::execute_impl(
 template <bool quantized>
 status_t gated_mlp_primitive_kernel_t<quantized>::sycl_execute_impl(
         const stream_t *stream, const std::vector<tensor_t> &inputs,
-        const std::vector<tensor_t> &outputs,
+        const std::vector<tensor_t> &outputs, void *scratchpad_buf,
         const std::vector<::sycl::event> &sycl_deps, ::sycl::event *ret_event) {
 // gated_mlp_primitive_kernel_t only supports Intel GPU.
 #if DNNL_GPU_VENDOR != DNNL_VENDOR_INTEL
@@ -182,10 +182,10 @@ status_t gated_mlp_primitive_kernel_t<quantized>::sycl_execute_impl(
     execution_args_set_t *res = res_cache.get_or_add(
             reinterpret_cast<size_t>(this), resource_ctor_);
 
-    temporary_scratchpad_t scratchpad(
+    auto scratchpad = std::make_shared<scratchpad_t>(scratchpad_buf,
             memory_planner_.total_internal_temporary_size(), p_engine_,
             *g_alloc_);
-    prepare_args_set(res, inputs, outputs, scratchpad);
+    prepare_args_set(res, inputs, outputs, *scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
         if (subgraph_->is_constant_[i]) continue;
@@ -194,7 +194,7 @@ status_t gated_mlp_primitive_kernel_t<quantized>::sycl_execute_impl(
         if (returned_event) deps = {*returned_event};
     }
 
-    scratchpad.set_deps(returned_event ? *returned_event : ::sycl::event {});
+    scratchpad->set_deps(returned_event ? *returned_event : ::sycl::event {});
     if (ret_event)
         *ret_event = returned_event ? *returned_event : ::sycl::event {};
 
@@ -206,7 +206,7 @@ status_t gated_mlp_primitive_kernel_t<quantized>::sycl_execute_impl(
 template <bool quantized>
 status_t gated_mlp_primitive_kernel_t<quantized>::ocl_execute_impl(
         const stream_t *stream, const std::vector<tensor_t> &inputs,
-        const std::vector<tensor_t> &outputs,
+        const std::vector<tensor_t> &outputs, void *scratchpad_buf,
         const std::vector<cl_event> &ocl_deps, cl_event *ret_event) {
     auto deps = ocl_deps;
     cl_event returned_event {};
@@ -217,10 +217,10 @@ status_t gated_mlp_primitive_kernel_t<quantized>::ocl_execute_impl(
     execution_args_set_t *res = res_cache.get_or_add(
             reinterpret_cast<size_t>(this), resource_ctor_);
 
-    temporary_scratchpad_t scratchpad(
+    auto scratchpad = std::make_shared<scratchpad_t>(scratchpad_buf,
             memory_planner_.total_internal_temporary_size(), p_engine_,
             *g_alloc_);
-    prepare_args_set(res, inputs, outputs, scratchpad);
+    prepare_args_set(res, inputs, outputs, *scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
         if (subgraph_->is_constant_[i]) continue;
@@ -229,7 +229,7 @@ status_t gated_mlp_primitive_kernel_t<quantized>::ocl_execute_impl(
         deps.assign(1, returned_event);
     }
 
-    scratchpad.set_deps(returned_event);
+    scratchpad->set_deps(returned_event);
     if (ret_event) *ret_event = returned_event;
 
     return status::success;

@@ -70,12 +70,13 @@ public:
 
     status_t execute_impl(const stream_t *stream,
             const std::vector<tensor_t> &inputs,
-            const std::vector<tensor_t> &outputs) override;
+            const std::vector<tensor_t> &outputs,
+            void *scratchpad_buf) override;
 
 #ifdef DNNL_WITH_SYCL
     status_t sycl_execute_impl(const stream_t *stream,
             const std::vector<tensor_t> &inputs,
-            const std::vector<tensor_t> &outputs,
+            const std::vector<tensor_t> &outputs, void *scratchpad_buf,
             const std::vector<::sycl::event> &deps,
             ::sycl::event *ret_event) override;
 #endif
@@ -83,7 +84,7 @@ public:
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     status_t ocl_execute_impl(const stream_t *stream,
             const std::vector<tensor_t> &inputs,
-            const std::vector<tensor_t> &outputs,
+            const std::vector<tensor_t> &outputs, void *scratchpad_buf,
             const std::vector<cl_event> &deps, cl_event *ret_event) override;
 #endif
 

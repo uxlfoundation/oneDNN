@@ -111,26 +111,23 @@ void reduction_t<quantized>::prepare_args_set(const execution_args_set_t *res,
 template <bool quantized>
 status_t reduction_t<quantized>::execute_impl(const stream_t *g_stream,
         const std::vector<tensor_t> &inputs,
-        const std::vector<tensor_t> &outputs) {
+        const std::vector<tensor_t> &outputs, void *scratchpad_buf) {
     dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
 
     thread_local_cache_t<execution_args_set_t> res_cache;
     execution_args_set_t *res = res_cache.get_or_add(
             reinterpret_cast<size_t>(this), resource_ctor_);
 
-    auto scratchpad = std::make_shared<temporary_scratchpad_t>(
+    auto scratchpad = std::make_shared<scratchpad_t>(scratchpad_buf,
             memory_planner_.total_internal_temporary_size(), p_engine_,
             *g_alloc_);
-    assertm(scratchpad->size()
-                    >= memory_planner_.total_internal_temporary_size(),
-            "no enough scratchpad memory");
     prepare_args_set(res, inputs, outputs, *scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
         subgraph_->execs_[i]->execute(p_stream, res->get_exec_args()[i]);
     }
 
-    prolong_temporary_scratchpad_lifetime(g_stream, scratchpad);
+    prolong_scratchpad_lifetime(g_stream, scratchpad);
 
     return status::success;
 }
@@ -139,7 +136,7 @@ status_t reduction_t<quantized>::execute_impl(const stream_t *g_stream,
 template <bool quantized>
 status_t reduction_t<quantized>::sycl_execute_impl(const stream_t *g_stream,
         const std::vector<tensor_t> &inputs,
-        const std::vector<tensor_t> &outputs,
+        const std::vector<tensor_t> &outputs, void *scratchpad_buf,
         const std::vector<::sycl::event> &sycl_deps,
         ::sycl::event *sycl_event) {
 
@@ -151,13 +148,10 @@ status_t reduction_t<quantized>::sycl_execute_impl(const stream_t *g_stream,
     execution_args_set_t *res = res_cache.get_or_add(
             reinterpret_cast<size_t>(this), resource_ctor_);
 
-    temporary_scratchpad_t scratchpad(
+    auto scratchpad = std::make_shared<scratchpad_t>(scratchpad_buf,
             memory_planner_.total_internal_temporary_size(), p_engine_,
             *g_alloc_);
-    assertm(scratchpad.size()
-                    >= memory_planner_.total_internal_temporary_size(),
-            "no enough scratchpad memory");
-    prepare_args_set(res, inputs, outputs, scratchpad);
+    prepare_args_set(res, inputs, outputs, *scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
         returned_event = subgraph_->execs_[i]->execute_sycl(
@@ -165,7 +159,7 @@ status_t reduction_t<quantized>::sycl_execute_impl(const stream_t *g_stream,
         if (returned_event) deps = {*returned_event};
     }
 
-    scratchpad.set_deps(returned_event ? *returned_event : ::sycl::event {});
+    scratchpad->set_deps(returned_event ? *returned_event : ::sycl::event {});
     if (sycl_event)
         *sycl_event = returned_event ? *returned_event : ::sycl::event {};
 
@@ -177,7 +171,7 @@ status_t reduction_t<quantized>::sycl_execute_impl(const stream_t *g_stream,
 template <bool quantized>
 status_t reduction_t<quantized>::ocl_execute_impl(const stream_t *g_stream,
         const std::vector<tensor_t> &inputs,
-        const std::vector<tensor_t> &outputs,
+        const std::vector<tensor_t> &outputs, void *scratchpad_buf,
         const std::vector<cl_event> &cl_deps, cl_event *ret_event) {
 
     auto deps = cl_deps;
@@ -188,13 +182,10 @@ status_t reduction_t<quantized>::ocl_execute_impl(const stream_t *g_stream,
     execution_args_set_t *res = res_cache.get_or_add(
             reinterpret_cast<size_t>(this), resource_ctor_);
 
-    temporary_scratchpad_t scratchpad(
+    auto scratchpad = std::make_shared<scratchpad_t>(scratchpad_buf,
             memory_planner_.total_internal_temporary_size(), p_engine_,
             *g_alloc_);
-    assertm(scratchpad.size()
-                    >= memory_planner_.total_internal_temporary_size(),
-            "no enough scratchpad memory");
-    prepare_args_set(res, inputs, outputs, scratchpad);
+    prepare_args_set(res, inputs, outputs, *scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
         returned_event = subgraph_->execs_[i]->execute_ocl(
@@ -202,7 +193,7 @@ status_t reduction_t<quantized>::ocl_execute_impl(const stream_t *g_stream,
         deps = {returned_event};
     }
 
-    scratchpad.set_deps(returned_event);
+    scratchpad->set_deps(returned_event);
     if (ret_event) *ret_event = returned_event;
 
     return status::success;

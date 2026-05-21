@@ -51,10 +51,6 @@ bool is_data_supported(cpu_isa_t isa, data_type_t data_type) {
 bool is_supported(cpu_isa_t isa, const dnnl::impl::memory_desc_t &src1_desc,
         const memory_desc_wrapper &dst_d,
         const bcast_set_t &supported_strategy_set) {
-    // FIXME: address SVE correctness issues (failing convs and matmuls when
-    // used with binary post-ops)
-    VCHECK_BIN_INJ_BOOL(isa == asimd, VERBOSE_UNSUPPORTED_ISA);
-
     VCHECK_BIN_INJ_BOOL(is_data_supported(isa, src1_desc.data_type),
             VERBOSE_ISA_DT_MISMATCH);
 

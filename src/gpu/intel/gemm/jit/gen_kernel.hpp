@@ -103,7 +103,7 @@ struct gen_desc_t {
 protected:
     compute::gpu_arch_t arch_;
     ngen::HW hw_ = ngen::HW::Unknown;
-    ngen::Product product_ = {};
+    ngen::Product product_;
     int stepping_ = 0;
     gemmstone::GEMMProblem problem_ = {};
     gemmstone::GEMMStrategy strategy_;

@@ -668,8 +668,6 @@ inline Product ELFCodeGenerator<hw>::getBinaryHWInfo(const std::vector<uint8_t> 
 
     Product outProduct;
     HW hw_ = HW::Unknown;
-    outProduct.family = ProductFamily::Unknown;
-    outProduct.stepping = 0;
 
     auto zebinELF = reinterpret_cast<const ZebinELF *>(binary.data());
     if (zebinELF->valid()) {

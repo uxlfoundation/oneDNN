@@ -195,7 +195,7 @@ struct GEMMProblem : public CommonProblem {
     bool cMXScale = false;
     MatrixAddressing sroundSeed;
     PostOpsProblem postOps;                         // Fused post operations to apply
-    ngen::Product product = {};
+    ngen::Product product;
 
     // The following data is derived from the postOps and does not need
     //   to be considered for equality/hashing purposes.

@@ -334,8 +334,7 @@ Product OpenCLCodeGenerator<hw>::detectHWInfo(cl_device_id device)
 template <HW hw>
 Product OpenCLCodeGenerator<hw>::detectHWInfo(cl_context context, cl_device_id device)
 {
-    Product product{};
-    product.family = ProductFamily::Unknown;
+    Product product;
 
     // Try CL_DEVICE_IP_VERSION_INTEL query first.
     cl_uint ipVersion = 0;      /* should be cl_version, but older CL/cl.h may not define cl_version */

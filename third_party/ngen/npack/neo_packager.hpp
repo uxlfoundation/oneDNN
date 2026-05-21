@@ -298,7 +298,7 @@ inline NGEN_NAMESPACE::Product decodeHWIPVersion(uint32_t rawVersion)
         };
     } version;
 
-    NGEN_NAMESPACE::Product outProduct = {NGEN_NAMESPACE::ProductFamily::Unknown, 0, NGEN_NAMESPACE::PlatformType::Unknown};
+    NGEN_NAMESPACE::Product outProduct;
 
     version.raw = rawVersion;
     switch (version.architecture) {

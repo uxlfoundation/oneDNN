@@ -129,6 +129,29 @@ dnnl_status_t DNNL_API dnnl_graph_ocl_interop_compiled_partition_execute(
         const_dnnl_graph_tensor_t *outputs, const cl_event *deps, int ndeps,
         cl_event *return_event);
 
+/// Execute a compiled partition with OpenCL runtime.
+///
+/// @param compiled_partition The handle of target compiled_partition.
+/// @param stream The stream used for execution
+/// @param num_inputs The number of input tensors
+/// @param inputs A list of input tensors
+/// @param num_outputs The number of output tensors
+/// @param outputs A non-empty list of output tensors
+/// @param scratchpad User-provided scratchpad tensor. If not provided, the
+///     implementation will allocate scratchpad internally.
+/// @param deps Optional handle of list with `cl_event` dependencies.
+/// @param ndeps Number of dependencies.
+/// @param return_event The handle of cl_event.
+/// @returns #dnnl_success on success and a status describing the
+///     error otherwise.
+dnnl_status_t DNNL_API dnnl_graph_ocl_interop_compiled_partition_execute_v2(
+        const_dnnl_graph_compiled_partition_t compiled_partition,
+        dnnl_stream_t stream, size_t num_inputs,
+        const_dnnl_graph_tensor_t *inputs, size_t num_outputs,
+        const_dnnl_graph_tensor_t *outputs,
+        const_dnnl_graph_tensor_t scratchpad, const cl_event *deps, int ndeps,
+        cl_event *return_event);
+
 /// @} dnnl_graph_api_ocl_interop
 
 /// @} dnnl_graph_api_interop

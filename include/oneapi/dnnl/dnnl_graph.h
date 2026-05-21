@@ -524,6 +524,38 @@ dnnl_status_t DNNL_API dnnl_graph_compiled_partition_execute(
         const_dnnl_graph_tensor_t *inputs, size_t num_outputs,
         const_dnnl_graph_tensor_t *outputs);
 
+/// Returns the required scratchpad memory size in bytes.
+///
+/// @param compiled_partition The handle of target compiled partition.
+/// @param size Output scratchpad size in bytes.
+/// @returns #dnnl_success on success or a status describing the error
+///     otherwise.
+dnnl_status_t DNNL_API dnnl_graph_compiled_partition_get_scratchpad_size(
+        const_dnnl_graph_compiled_partition_t compiled_partition, size_t *size);
+
+/// Executes a compiled partition.
+///
+/// @note The user can provide a scratchpad buffer for execution. If not
+/// provided, the library will allocate an internal scratchpad buffer for the
+/// execution. For user-provided scratchpad buffer, it should have a size no
+/// less than the value returned by #get_scratchpad_size API. The user is
+/// responsible for the memory management of the user-provided scratchpad
+/// buffer, including allocation, deallocation, and thread-safety.
+///
+/// @param compiled_partition The handle of target compiled partition.
+/// @param stream The stream used for execution.
+/// @param num_inputs The number of input tensors.
+/// @param inputs A list of input tensors.
+/// @param num_outputs The number of output tensors.
+/// @param outputs A non-empty list of output tensors.
+/// @param scratchpad User-provided scratchpad buffer pointer.
+/// @returns #dnnl_success on success or a status describing the error otherwise.
+dnnl_status_t DNNL_API dnnl_graph_compiled_partition_execute_v2(
+        const_dnnl_graph_compiled_partition_t compiled_partition,
+        dnnl_stream_t stream, size_t num_inputs,
+        const_dnnl_graph_tensor_t *inputs, size_t num_outputs,
+        const_dnnl_graph_tensor_t *outputs, void *scratchpad);
+
 /// Destroys a compiled partition.
 ///
 /// @param compiled_partition The compiled partition to be destroyed.

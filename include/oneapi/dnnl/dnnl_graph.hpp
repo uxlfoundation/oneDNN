@@ -736,11 +736,21 @@ public:
 
     /// Execute a compiled partition.
     ///
+    /// @note The user can provide a scratchpad buffer for execution. If not
+    /// provided, the library will allocate an internal scratchpad buffer for
+    /// the execution. For user-provided scratchpad buffer, it should have a
+    /// size no less than the value returned by #get_scratchpad_size API. The
+    /// user is responsible for the memory management of the user-provided
+    /// scratchpad buffer, including allocation, deallocation, and
+    /// thread-safety.
+    ///
     /// @param astream Stream object to run over.
     /// @param inputs A list of input tensors.
     /// @param outputs A list of output tensors.
+    /// @param scratchpad User-provided scratchpad buffer pointer.
     void execute(stream &astream, const std::vector<tensor> &inputs,
-            const std::vector<tensor> &outputs) const {
+            const std::vector<tensor> &outputs,
+            void *scratchpad = nullptr) const {
         std::vector<const_dnnl_graph_tensor_t> c_inputs;
         c_inputs.reserve(inputs.size());
         for (auto &in : inputs) {
@@ -753,10 +763,21 @@ public:
         }
 
         error::wrap_c_api(
-                dnnl_graph_compiled_partition_execute(get(), astream.get(),
+                dnnl_graph_compiled_partition_execute_v2(get(), astream.get(),
                         c_inputs.size(), c_inputs.data(), c_outputs.size(),
-                        c_outputs.data()),
-                "could not execute the compiled_partition");
+                        c_outputs.data(), scratchpad),
+                "could not execute the compiled_partition with scratchpad");
+    }
+
+    /// Returns the required scratchpad memory size in bytes for execution.
+    ///
+    /// @returns The scratchpad size in bytes.
+    size_t get_scratchpad_size() const {
+        size_t size = 0;
+        error::wrap_c_api(
+                dnnl_graph_compiled_partition_get_scratchpad_size(get(), &size),
+                "could not get scratchpad size from compiled_partition");
+        return size;
     }
 };
 

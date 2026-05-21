@@ -114,6 +114,40 @@ inline sycl::event execute(compiled_partition &c_partition, stream &astream,
     return sycl_event;
 }
 
+/// Executes a compiled partition with a user-managed scratchpad in a specified
+/// stream and returns a SYCL event.
+///
+/// @param c_partition Compiled partition to execute.
+/// @param astream Stream object to run over
+/// @param inputs Arguments map.
+/// @param outputs Arguments map.
+/// @param scratchpad User-provided scratchpad buffer pointer.
+/// @param deps Optional vector with `sycl::event` dependencies.
+/// @returns Output event.
+inline sycl::event execute(compiled_partition &c_partition, stream &astream,
+        const std::vector<tensor> &inputs, std::vector<tensor> &outputs,
+        void *scratchpad, const std::vector<sycl::event> &deps = {}) {
+    std::vector<const_dnnl_graph_tensor_t> c_inputs;
+    c_inputs.reserve(inputs.size());
+    for (auto &in : inputs) {
+        c_inputs.push_back(in.get());
+    }
+    std::vector<const_dnnl_graph_tensor_t> c_outputs;
+    c_outputs.reserve(outputs.size());
+    for (auto &out : outputs) {
+        c_outputs.push_back(out.get());
+    }
+
+    sycl::event sycl_event;
+    error::wrap_c_api(dnnl_graph_sycl_interop_compiled_partition_execute_v2(
+                              c_partition.get(), astream.get(), c_inputs.size(),
+                              c_inputs.data(), c_outputs.size(),
+                              c_outputs.data(), scratchpad, &deps, &sycl_event),
+            "could not execute the compiled_partition with scratchpad on a "
+            "specified sycl stream");
+    return sycl_event;
+}
+
 } // namespace sycl_interop
 
 /// @} dnnl_graph_api_sycl_interop

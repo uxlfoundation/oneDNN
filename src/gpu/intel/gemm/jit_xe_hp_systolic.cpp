@@ -42,9 +42,10 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
     assert(engine->kind() == engine_kind::gpu);
     auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
-    // Collapse broadcast-batch dims to 2D / 3D BEFORE resolving format_any.
-    // commit_reshape at end of init flips reshape_applied_ so external
-    // queries see the original N-D shape.
+    // Collapse broadcast-batch dims to 2D / 3D into kernel_input_ BEFORE
+    // resolving format_any. commit_resolved_tags at end of init writes the
+    // resolved tags back to the user-facing src_md_/weights_md_/dst_md_/
+    // bias_md_ so external queries see the user N-D shape.
     CHECK(maybe_reshape_2d());
 
     VDISPATCH_JIT_GEMM(intel_engine->mayiuse_ngen_kernels(),
@@ -55,12 +56,12 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
     dev_info_ = intel_engine->device_info();
     auto arch = dev_info_->gpu_arch();
 
-    // Pre-swap dtype probes read the matmul md types directly (SRC=A, WEI=B,
-    // DST=C). xe_hp_systolic always swaps below, but these dispatch checks
-    // exist purely on matmul-keyed types and don't depend on swap.
-    const auto matmul_a_type = src_md_.data_type;
-    const auto matmul_b_type = weights_md_.data_type;
-    const auto matmul_c_type = dst_md_.data_type;
+    // Pre-swap dtype probes read the kernel-view md types directly (SRC=A,
+    // WEI=B, DST=C). xe_hp_systolic always swaps below, but these dispatch
+    // checks exist purely on matmul-keyed types and don't depend on swap.
+    const auto matmul_a_type = kernel_src_md()->data_type;
+    const auto matmul_b_type = kernel_weights_md()->data_type;
+    const auto matmul_c_type = kernel_dst_md()->data_type;
 
     bool dt_float_ok = (matmul_a_type == matmul_b_type
             && utils::one_of(matmul_a_type, bf16, f16)
@@ -94,8 +95,9 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
     // SRC, b_desc = matmul WEIGHTS; gemm_desc_t::gemm_lda() = get_ld(b_desc) =
     // get_ld(matmul-WEIGHTS)). Packed sides use lda_packed/ldb_packed and
     // these fields stay 0 (execute()'s `packed_a ? 0 : pd()->gemm_lda()`).
-    if (!packed_a_) gemm_lda_ = jit::jit_gemm_pd_t::get_ld(weights_md_);
-    if (!packed_b_) gemm_ldb_ = jit::jit_gemm_pd_t::get_ld(src_md_);
+    if (!packed_a_)
+        gemm_lda_ = jit::jit_gemm_pd_t::get_ld(*kernel_weights_md());
+    if (!packed_b_) gemm_ldb_ = jit::jit_gemm_pd_t::get_ld(*kernel_src_md());
 
     // jit_gemm_pd_t::init runs init_attrs + scales_ok + zp_ok + gs_ok +
     // init_post_ops. xe_hp_systolic uses its own packed-aware lda/ldb/ldc
@@ -154,11 +156,13 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
             VERBOSE_UNSUPPORTED_BIAS_CFG);
 
     // Limit scope of large buffer implementation support as the ability test
-    // large buffers is limited by testing time.
-    VDISPATCH_JIT_GEMM(std::max({memory_desc_wrapper(src_md(0)).size(),
-                           memory_desc_wrapper(weights_md(0)).size(),
-                           memory_desc_wrapper(weights_md(1)).size(),
-                           memory_desc_wrapper(dst_md()).size()})
+    // large buffers is limited by testing time. The kernel-view mds carry
+    // the active 2D/3D-collapsed shape that matches the kernel's actual
+    // memory access pattern.
+    VDISPATCH_JIT_GEMM(std::max({memory_desc_wrapper(kernel_src_md()).size(),
+                           memory_desc_wrapper(kernel_weights_md()).size(),
+                           memory_desc_wrapper(kernel_bias_md()).size(),
+                           memory_desc_wrapper(kernel_dst_md()).size()})
                     <= (size_t)std::numeric_limits<int32_t>::max(),
             VERBOSE_SHAPE_RESTRICTION);
 
@@ -191,8 +195,9 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
 
     init_scratchpad();
 
-    // Re-project resolved 2D tags onto orig_*_md_ for external query.
-    CHECK(commit_reshape());
+    // Project resolved format tags from the kernel-view mds back into the
+    // user-facing src_md_/weights_md_/dst_md_/bias_md_.
+    CHECK(commit_resolved_tags());
 
     return status::success;
 }
@@ -348,10 +353,12 @@ status_t xe_hp_systolic_t::pd_t::init_default_formats_impl(data_type_t dt) {
     // xe_hp_systolic always swaps; kernel-A is matmul WEIGHTS, kernel-B is
     // matmul SRC, kernel-C is matmul DST. The kernel-A/B zero-point status
     // follows the same inversion: kernel_a_zp = WEIGHTS zp (matmul kB),
-    // kernel_b_zp = SRC zp (matmul kA).
-    auto &a_desc = weights_md_;
-    auto &b_desc = src_md_;
-    auto &c_desc = dst_md_;
+    // kernel_b_zp = SRC zp (matmul kA). Operate on the kernel-view mds so
+    // format_any resolution lands in kernel_input_; commit_resolved_tags
+    // surfaces the resolved tags back to the user-facing mds at end of init.
+    auto &a_desc = kernel_input_.weights_md;
+    auto &b_desc = kernel_input_.src_md;
+    auto &c_desc = kernel_input_.dst_md;
 
     const bool kernel_a_zp
             = !attr()->zero_points_.has_default_values(kB);
@@ -944,7 +951,7 @@ status_t xe_hp_systolic_t::launch_compute(const impl::exec_ctx_t &ctx,
             }
         }
         for (int i = 1; i < pd()->batch_dims(); i++) {
-            auto batchSize = uint32_t(pd()->dst_md()->dims[i]);
+            auto batchSize = uint32_t(pd()->kernel_dst_md()->dims[i]);
             uint32_t recipBatchSize = jit::uint32_reciprocal(batchSize);
             arg_list.set(argn++, batchSize);
             arg_list.set(argn++, recipBatchSize);

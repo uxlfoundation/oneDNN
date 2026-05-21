@@ -50,25 +50,35 @@ namespace jit {
 
 // Shared base for JIT GEMM impls registered against matmul.
 //
-// Design rule (doctrine, decided 2026-05-18; tightened 2026-05-20): the pd
-// stores matmul-convention state only (un-mutated src_md_/weights_md_/
-// dst_md_/bias_md_, matmul-keyed attr_) plus the swap_ab_ flag. Accessor
-// naming convention:
-//   * `M()`, `N()`, `K()`, `src_md_`, `weights_md_`, `dst_md_`, `c_type()`,
-//     `stride_c()`, `with_bias()`, etc. — matmul-natural; never depend on
-//     swap_ab_. `with_bias()` is inherited from matmul_pd_t unchanged.
+// Design rule (doctrine, decided 2026-05-18; tightened 2026-05-20; further
+// tightened 2026-05-20): there are two namespaces:
+//   * USER-facing — `attr()`, `desc()`, and the inherited matmul_pd_t mds
+//     `src_md_/weights_md_/dst_md_/bias_md_`. These carry the user N-D
+//     shape and remain un-mutated for shape/mask throughout init. At the
+//     end of init they receive resolved format tags via commit_resolved_tags.
+//     This is the surface the framework queries via `arg_md()`/`src_md()`.
+//   * KERNEL-facing — `kernel_input_` (jit_gemm_input_t). Holds the 2D/3D
+//     reshape-collapsed mds, reshape-rescaled quant entries (scales/zero
+//     points/precomputed_reductions), the canonicalized post_ops_, and the
+//     derived quant mds. This is the surface that init_GEMMProblem reads.
+// Accessor naming convention:
+//   * `M()`, `N()`, `K()`, `ndims()`, `batch()`, `c_type()`,
+//     `stride_c()`, `with_bias()` — kernel-view; read from kernel_input_.
+//   * `kernel_src_md()`, `kernel_weights_md()`, `kernel_dst_md()`,
+//     `kernel_bias_md()`, `kernel_post_ops()` — explicit kernel-view
+//     accessors for code that needs the underlying mds.
 //   * `gemm_m()`, `gemm_n()`, `gemm_k()`, `gemm_lda()`, `gemm_ldb()`,
 //     `gemm_transa()`, `gemm_transb()`, `gemm_a_type()`, `gemm_b_type()`,
 //     `gemm_stride_a()`, `gemm_stride_b()`, `gemm_bias_mask()`,
 //     `gemm_bias_cmask()`, `gemm_sum_ab()`, `gemm_sum_ab_cmask()` —
-//     kernel-view (BLAS convention, post-swap); compute on demand from
-//     un-mutated mds + swap_ab_. These are the ONLY swap-aware accessors.
-// `init_GEMMProblem` reads matmul-natural state and writes directly into a
+//     BLAS-view (post-swap); compute on demand from kernel_input_ mds +
+//     swap_ab_. These are the ONLY swap-aware accessors.
+// `init_GEMMProblem` reads kernel_input_ and writes directly into a
 // GEMMProblem; if swap_ab_ is set, the problem is GEMMProblem::transpose()'d
 // once at the end. Post-init, kernel-side code reads runtime shape from the
 // pd via the `gemm_*` accessors and compile-time catalog state from the
-// stowed problem. NO pd-side shadow of attr/quant-state survives past
-// init_GEMMProblem.
+// stowed problem. NO pd-side shadow of attr/quant-state outside of
+// kernel_input_ survives past init.
 struct jit_gemm_pd_t : public gpu::gpu_matmul_pd_t {
     using gpu::gpu_matmul_pd_t::gpu_matmul_pd_t;
 
@@ -102,6 +112,42 @@ struct jit_gemm_pd_t : public gpu::gpu_matmul_pd_t {
         binary_src_t(type_t type_, int index_) : type(type_), index(index_) {}
     };
 
+    // Kernel-facing input view, populated by maybe_reshape_2d. Holds the
+    // (possibly 2D/3D-collapsed) mds, reshape-rescaled quant entries, the
+    // canonicalized post_ops_ (prelu→binary in init_post_ops), and the
+    // derived quant mds. Always populated after maybe_reshape_2d, whether
+    // or not collapse fires (no-collapse path copies user state as-is).
+    struct jit_gemm_input_t {
+        memory_desc_t src_md {};
+        memory_desc_t weights_md {};
+        memory_desc_t dst_md {};
+        memory_desc_t bias_md {};
+
+        // Reshape-rescaled attr copies. Framework does NOT leak these via
+        // query() (only attr_ keys are looked up for buffer binding), so
+        // we are free to keep canonical kernel-view copies here without
+        // touching attr_.
+        scales_t scales {};
+        zero_points_t zero_points {};
+        precomputed_reductions_t precomputed_reductions {};
+
+        // Canonicalized (prelu→binary, bias-via-binary prepended) post-ops
+        // with src1_desc built against kernel-view dst_md. attr_.post_ops_
+        // stays in user/framework form for arg validation.
+        post_ops_t post_ops {};
+        std::vector<binary_src_t> binary_srcs {};
+        memory_desc_t prelu_wei_md {};
+
+        // Cached quant mds derived from the entries + the kernel-view src/
+        // weights/dst mds. Built by init_quant_mds.
+        memory_desc_t src_scale_md {}, wei_scale_md {}, dst_scale_md {};
+        memory_desc_t src_zp_md {}, wei_zp_md {}, dst_zp_md {};
+        memory_desc_t src_gs_md {}, wei_gs_md {};
+
+        // True iff maybe_reshape_2d collapsed dims (ndims < user ndims).
+        bool reshape_applied = false;
+    };
+
     static constexpr post_op::specializations_t get_post_op_specializations() {
         using mode_t = post_op::specializations_t::inline_mode_t;
         using sum_t = post_op::specializations_t::sum_t;
@@ -124,24 +170,41 @@ struct jit_gemm_pd_t : public gpu::gpu_matmul_pd_t {
     void init_quant_mds();
 
     // Broadcast-batch collapse to 2D (when weights batch is fully 1) or 3D
-    // (when ndims > 3). Mutates src_md_/weights_md_/dst_md_/bias_md_ and
-    // attr_.scales_/zero_points_/precomputed_reductions_/post_ops_ in place.
-    // Snapshots the originals into orig_*_md_ so commit_reshape() can later
-    // re-project resolved tags back to the user N-D shape. Idempotent; safe
-    // no-op when inapplicable or when GEMM_ALLOW_RESHAPE is disabled.
+    // (when ndims > 3). Populates kernel_input_ with the reshaped state.
+    // When collapse doesn't apply, copies the user-view mds/attr entries
+    // into kernel_input_ unchanged. attr_ and the user-facing
+    // src_md_/weights_md_/dst_md_/bias_md_ are NEVER mutated for shape or
+    // mask — only commit_resolved_tags writes resolved format tags back.
+    // Idempotent; safe no-op when called twice.
     status_t maybe_reshape_2d();
 
-    // Finalize: re-project resolved 2D/3D tags onto orig_*_md_ at the user
-    // ndims via memory_desc_reshape, then set reshape_applied_=true. After
-    // this point the external src_md/weights_md/dst_md overrides return the
-    // shadow N-D mds while internal field reads of src_md_/weights_md_/
-    // dst_md_/bias_md_ continue to see the active 2D/3D state.
-    status_t commit_reshape();
+    // Finalize: project resolved format tags from kernel_input_.{src,
+    // weights,dst,bias}_md back onto the user-facing src_md_/weights_md_/
+    // dst_md_/bias_md_ at the user ndims via memory_desc_reshape. This is
+    // how `format::any` gets surfaced to the framework — same direction as
+    // base's set_default_params.
+    status_t commit_resolved_tags();
 
-    // Kernel-view accessor for the active dst md. Always returns &dst_md_
-    // regardless of reshape_applied_, so xe_hp_systolic's init_compute can
-    // build gpu_post_ops_t against the 2D ndim_normalizer reference.
-    const memory_desc_t *kernel_dst_md() const { return &dst_md_; }
+    // Kernel-view accessors for the active mds. These return the
+    // (possibly 2D/3D-collapsed) state that init_GEMMProblem consumes,
+    // independently of what the external query surface returns. Use these
+    // wherever code needs the kernel-view md (post_ops binding via
+    // ndim_normalizer, batch-dim strides in execute, etc.).
+    const memory_desc_t *kernel_src_md() const {
+        return &kernel_input_.src_md;
+    }
+    const memory_desc_t *kernel_weights_md() const {
+        return &kernel_input_.weights_md;
+    }
+    const memory_desc_t *kernel_dst_md() const {
+        return &kernel_input_.dst_md;
+    }
+    const memory_desc_t *kernel_bias_md() const {
+        return &kernel_input_.bias_md;
+    }
+    const post_ops_t *kernel_post_ops() const {
+        return &kernel_input_.post_ops;
+    }
 
     status_t init_post_ops(impl::engine_t *engine);
     status_t init_attrs(impl::engine_t *engine);
@@ -190,13 +253,27 @@ struct jit_gemm_pd_t : public gpu::gpu_matmul_pd_t {
     //       c_type/etc. are matmul-natural and never depend on swap_ab_. -----
     bool swap_ab() const { return swap_ab_; }
 
+    // Kernel-view M/N/K/ndims/batch — shadow matmul_pd_t's helpers so that
+    // every read returns the (possibly 2D/3D-collapsed) kernel sizes. The
+    // user-view sizes are recoverable via `desc()->{src,dst}_desc.dims`
+    // or via the un-overridden inherited helpers (none of the JIT impls
+    // need them).
+    int ndims() const { return kernel_input_.dst_md.ndims; }
+    dim_t M() const { return kernel_input_.dst_md.dims[ndims() - 2]; }
+    dim_t N() const { return kernel_input_.dst_md.dims[ndims() - 1]; }
+    dim_t K() const { return kernel_input_.src_md.dims[ndims() - 1]; }
+    dim_t batch() const {
+        return utils::array_product(kernel_input_.dst_md.dims, batch_dims());
+    }
+    bool with_bias() const { return kernel_input_.bias_md.ndims != 0; }
+    bool batched() const { return ndims() > 2; }
+
     dim_t gemm_m() const { return swap_ab_ ? N() : M(); }
     dim_t gemm_n() const { return swap_ab_ ? M() : N(); }
     dim_t gemm_k() const { return K(); }
 
     int batch_dims() const { return nstl::max(ndims() - 2, 0); }
     bool is_batched() const { return ndims() > 2; }
-    dim_t batch() const { return matmul_pd_t::batch(); }
 
     // gemm_lda()/gemm_ldb() return the kernel-tuned cache when populated
     // (gen_t's init_kernel_lds + skinny-N flip + pad-to-16; xe_hp_systolic's
@@ -224,20 +301,22 @@ struct jit_gemm_pd_t : public gpu::gpu_matmul_pd_t {
     dim_t gemm_stride_b(int dim = 0) const {
         return stride_for(gemm_b_md(), dim);
     }
-    dim_t stride_c(int dim = 0) const { return stride_for(dst_md_, dim); }
+    dim_t stride_c(int dim = 0) const {
+        return stride_for(kernel_input_.dst_md, dim);
+    }
 
     data_type_t gemm_a_type() const { return gemm_a_md().data_type; }
     data_type_t gemm_b_type() const { return gemm_b_md().data_type; }
-    data_type_t c_type() const { return dst_md_.data_type; }
+    data_type_t c_type() const { return kernel_input_.dst_md.data_type; }
     data_type_t acc_type() const { return desc()->accum_data_type; }
 
     // DOCTRINE: matmul-driven bias is ALWAYS routed through binary post-op.
     // The legacy cOffset=Pre / co_t bias-as-CO path is gone — init_post_ops
     // prepends bias as a binary_add post-op and the kernel-side CO channel
-    // carries c-zero-points / sum_ab only. `with_bias()` resolves to the
-    // inherited `matmul_pd_t::with_bias()` (true iff a bias md was supplied).
+    // carries c-zero-points / sum_ab only.
     data_type_t bias_type() const {
-        return with_bias() ? bias_md_.data_type : data_type::undef;
+        return with_bias() ? kernel_input_.bias_md.data_type
+                           : data_type::undef;
     }
 
     int gemm_bias_mask() const;
@@ -270,17 +349,19 @@ struct jit_gemm_pd_t : public gpu::gpu_matmul_pd_t {
         }
     }
 
-    // ----- Quant entry accessors (matmul-keyed; attr_ is never re-keyed). -----
+    // ----- Quant entry accessors (matmul-keyed; kernel_input_ entries are
+    //       never re-keyed, mirroring attr_). All reads go via kernel_input_
+    //       so reshape-rescaled masks/groups are seen consistently. -----
     bool with_a_scales() const { return a_scale_ndims() >= 0; }
     bool with_b_scales() const { return b_scale_ndims() >= 0; }
     bool with_c_scales() const {
-        return !attr()->scales_.has_default_values(kC);
+        return !kernel_input_.scales.has_default_values(kC);
     }
 
     bool with_a_zero_points() const { return a_zp_ndims() >= 0; }
     bool with_b_zero_points() const { return b_zp_ndims() >= 0; }
     bool with_c_zero_points() const {
-        return !attr()->zero_points_.has_default_values(kC);
+        return !kernel_input_.zero_points.has_default_values(kC);
     }
 
     bool with_a_group_sums() const { return a_gs_ndims() >= 0; }
@@ -291,7 +372,7 @@ struct jit_gemm_pd_t : public gpu::gpu_matmul_pd_t {
                 == rounding_mode::stochastic;
     }
     bool with_mx_scale() const {
-        const auto &c_scales = attr()->scales_.get(kC);
+        const auto &c_scales = kernel_input_.scales.get(kC);
         return !c_scales.has_default_groups() && c_scales.is_mx();
     }
 
@@ -305,73 +386,74 @@ struct jit_gemm_pd_t : public gpu::gpu_matmul_pd_t {
     bool b_gs_2d() const { return b_gs_ndims() >= 2; }
 
     data_type_t a_scale_dt() const {
-        return attr()->scales_.get(kA).get_data_type();
+        return kernel_input_.scales.get(kA).get_data_type();
     }
     data_type_t b_scale_dt() const {
-        return attr()->scales_.get(kB).get_data_type();
+        return kernel_input_.scales.get(kB).get_data_type();
     }
     data_type_t c_scale_dt() const {
-        return attr()->scales_.get(kC).get_data_type();
+        return kernel_input_.scales.get(kC).get_data_type();
     }
     data_type_t a_zp_dt() const {
-        return attr()->zero_points_.get(kA).get_data_type();
+        return kernel_input_.zero_points.get(kA).get_data_type();
     }
     data_type_t b_zp_dt() const {
-        return attr()->zero_points_.get(kB).get_data_type();
+        return kernel_input_.zero_points.get(kB).get_data_type();
     }
     data_type_t c_zp_dt() const {
-        return attr()->zero_points_.get(kC).get_data_type();
+        return kernel_input_.zero_points.get(kC).get_data_type();
     }
     data_type_t a_gs_dt() const {
-        return attr()->precomputed_reductions_.get(kA).get_data_type();
+        return kernel_input_.precomputed_reductions.get(kA).get_data_type();
     }
     data_type_t b_gs_dt() const {
-        return attr()->precomputed_reductions_.get(kB).get_data_type();
+        return kernel_input_.precomputed_reductions.get(kB).get_data_type();
     }
 
     int a_zp_ndims() const {
-        return quant_entry_ndims(
-                attr()->zero_points_.get(kA), src_zp_md_, ndims() - 1);
+        return quant_entry_ndims(kernel_input_.zero_points.get(kA),
+                kernel_input_.src_zp_md, ndims() - 1);
     }
     int b_zp_ndims() const {
-        return quant_entry_ndims(
-                attr()->zero_points_.get(kB), wei_zp_md_, ndims() - 2);
+        return quant_entry_ndims(kernel_input_.zero_points.get(kB),
+                kernel_input_.wei_zp_md, ndims() - 2);
     }
     int c_zp_ndims() const {
-        return quant_entry_ndims(
-                attr()->zero_points_.get(kC), dst_zp_md_, -1);
+        return quant_entry_ndims(kernel_input_.zero_points.get(kC),
+                kernel_input_.dst_zp_md, -1);
     }
     int a_gs_ndims() const {
-        return quant_entry_ndims(attr()->precomputed_reductions_.get(kA),
-                src_gs_md_, ndims() - 1);
+        return quant_entry_ndims(kernel_input_.precomputed_reductions.get(kA),
+                kernel_input_.src_gs_md, ndims() - 1);
     }
     int b_gs_ndims() const {
-        return quant_entry_ndims(attr()->precomputed_reductions_.get(kB),
-                wei_gs_md_, ndims() - 2);
+        return quant_entry_ndims(kernel_input_.precomputed_reductions.get(kB),
+                kernel_input_.wei_gs_md, ndims() - 2);
     }
     int a_scale_ndims() const {
         if (a_scale_ndims_override_ != INT_MIN) return a_scale_ndims_override_;
-        return quant_entry_ndims(
-                attr()->scales_.get(kA), src_scale_md_, ndims() - 1);
+        return quant_entry_ndims(kernel_input_.scales.get(kA),
+                kernel_input_.src_scale_md, ndims() - 1);
     }
     int b_scale_ndims() const {
         if (b_scale_ndims_override_ != INT_MIN) return b_scale_ndims_override_;
-        return quant_entry_ndims(
-                attr()->scales_.get(kB), wei_scale_md_, ndims() - 2);
+        return quant_entry_ndims(kernel_input_.scales.get(kB),
+                kernel_input_.wei_scale_md, ndims() - 2);
     }
     int c_scale_ndims() const {
-        return quant_entry_ndims(attr()->scales_.get(kC), dst_scale_md_, -1);
+        return quant_entry_ndims(kernel_input_.scales.get(kC),
+                kernel_input_.dst_scale_md, -1);
     }
 
     bool a_force_gs() const {
-        return !attr()->precomputed_reductions_.has_default_values(kA);
+        return !kernel_input_.precomputed_reductions.has_default_values(kA);
     }
     bool b_force_gs() const {
-        return !attr()->precomputed_reductions_.has_default_values(kB);
+        return !kernel_input_.precomputed_reductions.has_default_values(kB);
     }
 
     bool zp_host_scalar(int arg) const {
-        return attr()->zero_points_.get(arg).is_host_scalar();
+        return kernel_input_.zero_points.get(arg).is_host_scalar();
     }
     bool a_zp_host_scalar() const { return zp_host_scalar(kA); }
     bool b_zp_host_scalar() const { return zp_host_scalar(kB); }
@@ -432,29 +514,30 @@ struct jit_gemm_pd_t : public gpu::gpu_matmul_pd_t {
     }
 
     // beta == the sum-post-op scale (0.0f when no sum is present). with_sum()
-    // / sum_at_begin() derive from the final canonicalized post_ops_ (note
-    // that bias-via-binary prepends a binary_add at index 0; if the user's
-    // sum was originally at index 0 it ends up at index 1 post-prepend, so
-    // sum_at_begin() correctly reports false — the kernel needs higher
-    // accumulator precision when anything precedes the sum). All three are
-    // derived rather than stored to satisfy the doctrine "no pd-side
-    // shadow members for post_ops_-derivable state".
+    // / sum_at_begin() derive from the final canonicalized
+    // kernel_input_.post_ops (note that bias-via-binary prepends a
+    // binary_add at index 0; if the user's sum was originally at index 0
+    // it ends up at index 1 post-prepend, so sum_at_begin() correctly
+    // reports false — the kernel needs higher accumulator precision when
+    // anything precedes the sum).
     // NOTE: is_sum() with default args requires scale==1.0 and zp==0 — too
     // restrictive for our purposes. Match the kind directly so a sum with
     // arbitrary scale (which is exactly what beta() must track) is detected.
     bool with_sum() const {
-        for (int i = 0; i < post_ops_.len(); ++i)
-            if (post_ops_.entry_[i].kind == primitive_kind::sum) return true;
+        const auto &po = kernel_input_.post_ops;
+        for (int i = 0; i < po.len(); ++i)
+            if (po.entry_[i].kind == primitive_kind::sum) return true;
         return false;
     }
     bool sum_at_begin() const {
-        return post_ops_.len() > 0
-                && post_ops_.entry_[0].kind == primitive_kind::sum;
+        const auto &po = kernel_input_.post_ops;
+        return po.len() > 0 && po.entry_[0].kind == primitive_kind::sum;
     }
     float beta() const {
-        for (int i = 0; i < post_ops_.len(); ++i)
-            if (post_ops_.entry_[i].kind == primitive_kind::sum)
-                return post_ops_.entry_[i].sum.scale;
+        const auto &po = kernel_input_.post_ops;
+        for (int i = 0; i < po.len(); ++i)
+            if (po.entry_[i].kind == primitive_kind::sum)
+                return po.entry_[i].sum.scale;
         return 0.0f;
     }
 
@@ -465,23 +548,25 @@ struct jit_gemm_pd_t : public gpu::gpu_matmul_pd_t {
     dim_t zp_stride(int idx, int arg) const;
     dim_t gs_stride(int idx, int arg) const;
 
-    const post_ops_t *post_ops() const { return &post_ops_; }
+    const post_ops_t *post_ops() const { return &kernel_input_.post_ops; }
     const std::vector<binary_src_t> &binary_srcs() const {
-        return binary_srcs_;
+        return kernel_input_.binary_srcs;
     }
 
     // True iff any post-op contributes work beyond a scalar scale: eltwise,
     // user-binary, prelu (canonicalized to binary), or bias (via binary).
-    // Scale-derived binaries (binary_srcs_[i].type == scales) do NOT count
+    // Scale-derived binaries (binary_srcs[i].type == scales) do NOT count
     // — they're a representation choice for what is semantically a scale.
     // Sum entries also don't count (they're handled via problem.beta and
     // a separate gate `with_sum() && with_c_scales()`).
     bool non_scale_po() const {
-        for (int i = 0; i < post_ops_.len(); ++i) {
-            const auto &e = post_ops_.entry_[i];
+        const auto &po = kernel_input_.post_ops;
+        const auto &bsrcs = kernel_input_.binary_srcs;
+        for (int i = 0; i < po.len(); ++i) {
+            const auto &e = po.entry_[i];
             if (e.is_eltwise()) return true;
             if (e.is_binary()) {
-                auto t = binary_srcs_[i].type;
+                auto t = bsrcs[i].type;
                 if (t == binary_src_t::binary || t == binary_src_t::bias
                         || t == binary_src_t::prelu)
                     return true;
@@ -491,75 +576,40 @@ struct jit_gemm_pd_t : public gpu::gpu_matmul_pd_t {
     }
 
     // ----- Quant memory descriptors (matmul-keyed: src=A, wei=B, dst=C). -----
-    const memory_desc_t &a_scale_md() const { return src_scale_md_; }
-    const memory_desc_t &b_scale_md() const { return wei_scale_md_; }
-    const memory_desc_t &c_scale_md() const { return dst_scale_md_; }
-    const memory_desc_t &a_zp_md() const { return src_zp_md_; }
-    const memory_desc_t &b_zp_md() const { return wei_zp_md_; }
-    const memory_desc_t &c_zp_md() const { return dst_zp_md_; }
-    const memory_desc_t &a_gs_md() const { return src_gs_md_; }
-    const memory_desc_t &b_gs_md() const { return wei_gs_md_; }
+    const memory_desc_t &a_scale_md() const {
+        return kernel_input_.src_scale_md;
+    }
+    const memory_desc_t &b_scale_md() const {
+        return kernel_input_.wei_scale_md;
+    }
+    const memory_desc_t &c_scale_md() const {
+        return kernel_input_.dst_scale_md;
+    }
+    const memory_desc_t &a_zp_md() const { return kernel_input_.src_zp_md; }
+    const memory_desc_t &b_zp_md() const { return kernel_input_.wei_zp_md; }
+    const memory_desc_t &c_zp_md() const { return kernel_input_.dst_zp_md; }
+    const memory_desc_t &a_gs_md() const { return kernel_input_.src_gs_md; }
+    const memory_desc_t &b_gs_md() const { return kernel_input_.wei_gs_md; }
 
-    // ----- External md getters. When maybe_reshape_2d() has collapsed the
-    //       active mds to 2D/3D, the user-facing query surface (framework
-    //       arg binding, with_post_ops adoption, etc.) needs the original
-    //       N-D shape. The shadow orig_*_md_ are populated by commit_reshape
-    //       with the resolved tags at user ndims. Internal reads of
-    //       src_md_/weights_md_/dst_md_/bias_md_ field references continue
-    //       to return the kernel-view 2D/3D state. -----
-    const memory_desc_t *src_md(
-            int index = 0, bool user_input = false) const override {
-        if (reshape_applied_ && !user_input && index == 0)
-            return &orig_src_md_;
-        return matmul_pd_t::src_md(index, user_input);
-    }
-    const memory_desc_t *weights_md(
-            int index = 0, bool user_input = false) const override {
-        if (reshape_applied_ && !user_input) {
-            if (index == 0) return &orig_weights_md_;
-            if (index == 1) return &orig_bias_md_;
-        }
-        return matmul_pd_t::weights_md(index, user_input);
-    }
-    const memory_desc_t *dst_md(
-            int index = 0, bool user_input = false) const override {
-        if (reshape_applied_ && !user_input && index == 0)
-            return &orig_dst_md_;
-        return matmul_pd_t::dst_md(index, user_input);
-    }
+    // External md getters fall through to matmul_pd_t — `src_md(0, false)`
+    // returns &src_md_ (user ndims, resolved tags via commit_resolved_tags),
+    // `src_md(0, true)` returns desc()->src_desc (raw user input). The
+    // kernel-view mds are reached via the explicit `kernel_*_md()` helpers.
 
     // ----- Pd state (stable across swap or used only at init time). -----
     bool swap_ab_ = false;
 
-    // Shadow mds carrying the user-facing N-D shape with resolved tags. See
-    // maybe_reshape_2d / commit_reshape. Empty (ndims==0) when reshape is not
-    // applied or when reshape rejected via bcast_ok.
-    memory_desc_t orig_src_md_ {};
-    memory_desc_t orig_weights_md_ {};
-    memory_desc_t orig_dst_md_ {};
-    memory_desc_t orig_bias_md_ {};
-    bool reshape_applied_ = false;
+    // Kernel-facing input view. Source of truth for shapes/masks consumed
+    // by init_GEMMProblem and downstream kernel code.
+    jit_gemm_input_t kernel_input_ {};
 
     // a/b_scale_ndims_override_: INT_MIN sentinel = override unset. The
     // override is set to -1 after a 1D scale is converted to a binary
     // post-op, so that with_a_scales() / with_b_scales() / a_scale_ndims()
     // see "no scale" post-conversion (the scale buffer now flows via
-    // binary_srcs_[i] with type == scales, not via attr_.scales_).
-    //
-    // TODO (review.md FIX #2): doctrine-clean alternatives are (a) derive
-    // post-conversion state from binary_srcs_ (scan for entry of type
-    // scales && index == kA/kB) instead of an int sentinel, or (b) clear
-    // the attr_.scales_ entry on conversion. (a) is cheap but the readers
-    // are on the hot init path; (b) risks framework binding side effects
-    // since attr_ keys the user's `DNNL_ARG_ATTR_SCALES | arg` lookup at
-    // exec time. Leaving in place for this pass.
+    // binary_srcs[i] with type == scales, not via kernel_input_.scales).
     int a_scale_ndims_override_ = INT_MIN;
     int b_scale_ndims_override_ = INT_MIN;
-
-    post_ops_t post_ops_;
-    std::vector<binary_src_t> binary_srcs_;
-
-    memory_desc_t prelu_wei_md = {};
 
     // Kernel-view (post-swap) tuned leading dims and trans-A/B; may differ
     // from natural ld/trans (e.g. padded for skinny K). Set by base ::init()
@@ -581,14 +631,6 @@ struct jit_gemm_pd_t : public gpu::gpu_matmul_pd_t {
     // Swap trailing M/N axes of an md in place (matmul→kernel view).
     static void transpose_mn_axes(memory_desc_t &md);
 
-protected:
-    // Matmul-keyed quant memory descriptors. Populated by init_quant_mds()
-    // from matmul attrs keyed by DNNL_ARG_SRC/WEIGHTS/DST. Never re-keyed
-    // under swap_ab_; the swap is applied inside init_GEMMProblem.
-    memory_desc_t src_scale_md_ = {}, wei_scale_md_ = {}, dst_scale_md_ = {};
-    memory_desc_t src_zp_md_ = {}, wei_zp_md_ = {}, dst_zp_md_ = {};
-    memory_desc_t src_gs_md_ = {}, wei_gs_md_ = {};
-
 private:
     dim_t stride_for(const memory_desc_t &md, int dim) const {
         if (dim >= md.ndims - 2 || md.dims[dim] == 1) return 0;
@@ -597,41 +639,34 @@ private:
     static int mask_to_gemm(int mask, int nd);
     static int swap_mask_bits(int mask, int i, int j);
 
-    // The matmul md that plays the kernel-A role: matmul WEIGHTS under swap,
-    // matmul SRC otherwise. Likewise for kernel-B. Used only by the
+    // The kernel-view md that plays the kernel-A role: matmul WEIGHTS under
+    // swap, matmul SRC otherwise. Likewise for kernel-B. Used only by the
     // compute_gemm_* helpers below to derive kernel-view ld/trans/type/stride.
     const memory_desc_t &gemm_a_md() const {
-        return swap_ab_ ? weights_md_ : src_md_;
+        return swap_ab_ ? kernel_input_.weights_md : kernel_input_.src_md;
     }
     const memory_desc_t &gemm_b_md() const {
-        return swap_ab_ ? src_md_ : weights_md_;
+        return swap_ab_ ? kernel_input_.src_md : kernel_input_.weights_md;
     }
 
     // Kernel-view leading-dim / transpose computations. base's gemm path
     // used these directly on the matmul md (with the matmul-natural axis
-    // ordering); the post-init compute_gemm_*() helpers mirror that. The
-    // previous implementation mn-transposed the md under swap_ab_ and then
-    // NEGATEd get_trans — which is mathematically equivalent for
-    // non-degenerate matrices but diverges for the [m, 1] / [1, n] / K=1
-    // single-axis cases (mn-transpose is a no-op semantically, but flips
-    // which get_ld / get_trans branch fires). For matmul K=1 with compact
-    // SRC strides this produced ldb=N/trans=T where base had ldb=1/trans=N,
-    // and the resulting pad branch corrupted output. Reading the matmul md
-    // un-mutated keeps the behavior identical to base for both cases.
+    // ordering); the post-init compute_gemm_*() helpers mirror that.
     dim_t compute_gemm_lda() const { return get_ld(gemm_a_md()); }
     dim_t compute_gemm_ldb() const { return get_ld(gemm_b_md()); }
-    dim_t compute_ldc() const { return get_ld(dst_md_); }
-    // Bias helpers MUST read the active bias_md_ field, not the virtual
-    // weights_md(1) — under reshape_applied_ the latter returns the N-D
-    // shadow used for framework arg binding, not the 2D kernel view.
+    dim_t compute_ldc() const { return get_ld(kernel_input_.dst_md); }
+    // Bias helpers read kernel_input_.bias_md (the 2D-reshaped view if
+    // reshape fired), so that ld_bias matches the kernel view of dst.
     dim_t compute_ld_bias() const {
-        return bias_md_.ndims >= 2 ? get_ld(bias_md_) : 1;
+        return kernel_input_.bias_md.ndims >= 2
+                ? get_ld(kernel_input_.bias_md)
+                : 1;
     }
     transpose_t compute_gemm_transa() const { return get_trans(gemm_a_md()); }
     transpose_t compute_gemm_transb() const { return get_trans(gemm_b_md()); }
     transpose_t compute_trans_bias() const {
         if (!with_bias()) return transpose::notrans;
-        return get_trans(bias_md_);
+        return get_trans(kernel_input_.bias_md);
     }
 };
 

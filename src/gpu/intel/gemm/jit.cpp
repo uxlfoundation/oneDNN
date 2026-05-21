@@ -244,7 +244,7 @@ status_t gen_t::launch_nocopy(const impl::exec_ctx_t &ctx,
             }
         }
         for (int i = 1; i < pd()->batch_dims(); i++) {
-            auto batchSize = uint32_t(pd()->dst_md(0)->dims[i]);
+            auto batchSize = uint32_t(pd()->kernel_dst_md()->dims[i]);
             arg_list.set(argn++, batchSize);
             if (jit::enable_generator_dsl()) {
                 uint64_t magic = dnnl::impl::gpu::intel::jit::ir_utils::

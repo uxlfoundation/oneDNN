@@ -114,7 +114,7 @@ transpose_t jit_gemm_pd_t::trans_bias() const { return compute_trans_bias(); }
 
 int jit_gemm_pd_t::gemm_bias_mask() const {
     if (!with_bias()) return 0;
-    const auto &b = bias_md_;
+    const auto &b = kernel_input_.bias_md;
     assert(b.ndims <= 6);
     int per_dim_mask = 0;
     for (int i = 0; i < b.ndims; ++i)
@@ -192,13 +192,28 @@ static status_t adjust_quant(quant_entries_t &entries, int arg,
     return status::success;
 }
 
-status_t jit_gemm_pd_t::maybe_reshape_2d() {
-    // Idempotency: a prior call's snapshot occupies orig_src_md_. Bail.
-    if (orig_src_md_.ndims != 0) return status::success;
+static void copy_user_into_kernel_input(jit_gemm_pd_t::jit_gemm_input_t &ki,
+        const memory_desc_t &src_md, const memory_desc_t &weights_md,
+        const memory_desc_t &dst_md, const memory_desc_t &bias_md,
+        const primitive_attr_t &attr) {
+    ki.src_md = src_md;
+    ki.weights_md = weights_md;
+    ki.dst_md = dst_md;
+    ki.bias_md = bias_md;
+    ki.scales = attr.scales_;
+    ki.zero_points = attr.zero_points_;
+    ki.precomputed_reductions = attr.precomputed_reductions_;
+    ki.post_ops = attr.post_ops_;
+    ki.reshape_applied = false;
+}
 
-    // Read the live active mds. matmul_pd_t initializes src_md_/weights_md_/
-    // dst_md_/bias_md_ from desc()->X_desc in its constructor; at this point
-    // they are still the user-bound mds (no impl init has run yet).
+status_t jit_gemm_pd_t::maybe_reshape_2d() {
+    // Idempotency: a prior call already populated kernel_input_. Bail.
+    if (kernel_input_.src_md.ndims != 0) return status::success;
+
+    // matmul_pd_t initializes src_md_/weights_md_/dst_md_/bias_md_ from
+    // desc()->X_desc in its constructor; at this point they are still the
+    // user-bound mds (no impl init has run yet).
     const memory_desc_t *a_md = &src_md_;
     const memory_desc_t *b_md = &weights_md_;
     const memory_desc_t *c_md = &dst_md_;
@@ -215,8 +230,11 @@ status_t jit_gemm_pd_t::maybe_reshape_2d() {
     const bool allow_reshape
             = gpu_utils::dev_getenv("GEMM_ALLOW_RESHAPE", true);
 
-    if (!allow_reshape || !(reshape_2d || reshape_3d))
+    if (!allow_reshape || !(reshape_2d || reshape_3d)) {
+        copy_user_into_kernel_input(
+                kernel_input_, src_md_, weights_md_, dst_md_, bias_md_, attr_);
         return status::success;
+    }
 
     const int ndims = a_md->ndims;
     const int reshape_size = reshape_2d ? 2 : 3;
@@ -269,6 +287,11 @@ status_t jit_gemm_pd_t::maybe_reshape_2d() {
 
     // Stage reshaped post_ops in a local copy.
     post_ops_t reshaped_post_ops = attr_.post_ops_;
+    auto fall_back_no_reshape = [&]() -> status_t {
+        copy_user_into_kernel_input(
+                kernel_input_, src_md_, weights_md_, dst_md_, bias_md_, attr_);
+        return status::success;
+    };
     for (int i = 0; i < attr_.post_ops_.len(); ++i) {
         auto &po = reshaped_post_ops.entry_[i];
         if (po.is_binary()) {
@@ -278,7 +301,8 @@ status_t jit_gemm_pd_t::maybe_reshape_2d() {
                 a_dim *= po_desc.dims[po_desc.ndims - j];
             // post-ops cannot be applied if applied only on a subset of
             // batch dims.
-            if (a_dim != c_dims[0] && a_dim > 1) return status::success;
+            if (a_dim != c_dims[0] && a_dim > 1)
+                return fall_back_no_reshape();
             const bool has_dims = po_desc.ndims > 0;
             dims_t po_dims {};
             if (reshape_2d) {
@@ -305,13 +329,13 @@ status_t jit_gemm_pd_t::maybe_reshape_2d() {
             dim_t mask_dim = 1;
             for (int j = 0; j < c_md->ndims - batch_idx; ++j) {
                 if ((mask >> j) & 1) {
-                    if (new_mask != 0) return status::success;
+                    if (new_mask != 0) return fall_back_no_reshape();
                     new_mask |= c_md->dims[j] == 1 ? 0 : 1;
                     mask_dim *= c_md->dims[j];
                 }
                 batch_dim *= c_md->dims[j];
             }
-            if (batch_dim != mask_dim) return status::success;
+            if (batch_dim != mask_dim) return fall_back_no_reshape();
             const int shift = c_md->ndims - batch_idx;
             const int non_batch_mask = mask >> shift;
             // prelu is axb-format; reshape changes which axis is innermost,
@@ -319,7 +343,7 @@ status_t jit_gemm_pd_t::maybe_reshape_2d() {
             // collapsed.
             if (non_batch_mask > 2
                     || (non_batch_mask > 0 && new_mask > 0))
-                return status::success;
+                return fall_back_no_reshape();
             new_mask |= non_batch_mask << 1;
             reshaped_post_ops.entry_[i].prelu.mask = new_mask;
         }
@@ -352,7 +376,7 @@ status_t jit_gemm_pd_t::maybe_reshape_2d() {
     bcast_ok = bcast_ok
             && safe_bcast_quant(attr_.zero_points_.get(DNNL_ARG_WEIGHTS),
                     b_md->dims, b_dims);
-    if (!bcast_ok) return status::success;
+    if (!bcast_ok) return fall_back_no_reshape();
 
     // Stage rescaled quant entries.
     scales_t reshaped_scales = attr_.scales_;
@@ -375,49 +399,67 @@ status_t jit_gemm_pd_t::maybe_reshape_2d() {
     CHECK(adjust_quant(reshaped_pr, DNNL_ARG_WEIGHTS, *b_md, b_md_reshaped,
             diff_dims, ndims, reshape_size));
 
-    // Commit: snapshot originals, then overwrite active mds and attr.
-    orig_src_md_ = src_md_;
-    orig_weights_md_ = weights_md_;
-    orig_dst_md_ = dst_md_;
-    orig_bias_md_ = bias_md_;
-
-    src_md_ = a_md_reshaped;
-    weights_md_ = b_md_reshaped;
-    dst_md_ = c_md_reshaped;
-    if (with_bia) bias_md_ = bia_md_reshaped;
-
-    attr_.scales_ = std::move(reshaped_scales);
-    attr_.zero_points_ = std::move(reshaped_zp);
-    attr_.precomputed_reductions_ = std::move(reshaped_pr);
-    attr_.post_ops_ = std::move(reshaped_post_ops);
+    // Commit reshape into kernel_input_ only. attr_ and the user-facing
+    // src_md_/weights_md_/dst_md_/bias_md_ stay untouched (their resolved
+    // tags are written back in commit_resolved_tags at end of init).
+    kernel_input_.src_md = a_md_reshaped;
+    kernel_input_.weights_md = b_md_reshaped;
+    kernel_input_.dst_md = c_md_reshaped;
+    if (with_bia) kernel_input_.bias_md = bia_md_reshaped;
+    kernel_input_.scales = std::move(reshaped_scales);
+    kernel_input_.zero_points = std::move(reshaped_zp);
+    kernel_input_.precomputed_reductions = std::move(reshaped_pr);
+    kernel_input_.post_ops = std::move(reshaped_post_ops);
+    kernel_input_.reshape_applied = true;
 
     return status::success;
 }
 
-status_t jit_gemm_pd_t::commit_reshape() {
-    // No-op when maybe_reshape_2d didn't run or rejected via bcast_ok.
-    if (orig_src_md_.ndims == 0) return status::success;
-    if (reshape_applied_) return status::success;
-
-    // Re-project resolved 2D/3D tags onto orig_*_md_ at the original ndims
-    // (mirrors base's set_default_params; gemm.hpp:383-401).
-    auto reproject = [](memory_desc_t &orig,
-                             const memory_desc_t &resolved) -> status_t {
-        if (orig.ndims == resolved.ndims) {
-            orig = resolved;
+status_t jit_gemm_pd_t::commit_resolved_tags() {
+    // Project resolved format tags from kernel_input_.{src,weights,dst,bias}
+    // _md back into the user-facing src_md_/weights_md_/dst_md_/bias_md_
+    // (matmul_pd_t members) at the user ndims. This surfaces format::any
+    // resolution to the framework (mirrors base's set_default_params at
+    // ../base/src/gpu/intel/matmul/gemm.hpp:383-401).
+    auto reproject = [](memory_desc_t &user,
+                             const memory_desc_t &kernel) -> status_t {
+        if (user.ndims == kernel.ndims) {
+            user = kernel;
             return status::success;
         }
         memory_desc_t out {};
-        CHECK(memory_desc_reshape(out, resolved, orig.ndims, orig.dims));
-        orig = out;
+        CHECK(memory_desc_reshape(out, kernel, user.ndims, user.dims));
+        user = out;
         return status::success;
     };
-    CHECK(reproject(orig_src_md_, src_md_));
-    CHECK(reproject(orig_weights_md_, weights_md_));
-    CHECK(reproject(orig_dst_md_, dst_md_));
-    if (with_bias()) CHECK(reproject(orig_bias_md_, bias_md_));
+    CHECK(reproject(src_md_, kernel_input_.src_md));
+    CHECK(reproject(weights_md_, kernel_input_.weights_md));
+    CHECK(reproject(dst_md_, kernel_input_.dst_md));
+    if (with_bias()) CHECK(reproject(bias_md_, kernel_input_.bias_md));
 
-    reshape_applied_ = true;
+    // Project resolved binary-post-op src1_desc back to attr_.post_ops_ so
+    // the framework's arg_md(ATTR_MULTIPLE_POST_OP|i|SRC_1) — which returns
+    // &attr_.post_ops_.entry_[i].binary.src1_desc directly — sees the
+    // concrete tag. Without this, format::any-bound user binaries fail at
+    // memory creation. Bias/scales-as-binary are kernel-only (their kernel
+    // entry has no matching attr_ slot), so the mapping is gated on
+    // binary_srcs[k].type == binary (user-provided binary).
+    const auto &binary_srcs = kernel_input_.binary_srcs;
+    const auto &k_post_ops = kernel_input_.post_ops;
+    for (int k = 0; k < int(binary_srcs.size()); ++k) {
+        if (binary_srcs[k].type != binary_src_t::binary) continue;
+        const int user_idx = binary_srcs[k].index;
+        const auto &kernel_entry = k_post_ops.entry_[k];
+        if (!kernel_entry.is_binary()) continue;
+        auto &user_entry = attr_.post_ops_.entry_[user_idx];
+        if (!user_entry.is_binary()) continue;
+        CHECK(reproject(
+                user_entry.binary.src1_desc, kernel_entry.binary.src1_desc));
+        if (user_entry.binary.src2_desc.ndims != 0
+                || kernel_entry.binary.src2_desc.ndims != 0)
+            CHECK(reproject(user_entry.binary.src2_desc,
+                    kernel_entry.binary.src2_desc));
+    }
     return status::success;
 }
 
@@ -432,51 +474,67 @@ bool jit_gemm_pd_t::gemm_set_default_formats() {
         return true;
     };
     bool ok = true;
-    ok = ok && set_one(&src_md_);
-    ok = ok && set_one(&weights_md_);
-    ok = ok && set_one(&bias_md_);
-    ok = ok && set_one(&dst_md_);
+    // Resolve format_any on the KERNEL-view mds (kernel_input_.X_md). The
+    // user-facing src_md_/weights_md_/dst_md_/bias_md_ inherit the resolved
+    // tags later via commit_resolved_tags. set_default_formats on the
+    // canonicalized kernel post_ops uses kernel_input_.dst_md so that any
+    // binary src1_desc resolved against `format::any` lines up with the
+    // 2D/3D-collapsed dst.
+    ok = ok && set_one(&kernel_input_.src_md);
+    ok = ok && set_one(&kernel_input_.weights_md);
+    ok = ok && set_one(&kernel_input_.bias_md);
+    ok = ok && set_one(&kernel_input_.dst_md);
     ok = ok && set_one(&reduce_md_);
-    ok = ok && (attr_.post_ops_.set_default_formats(&dst_md_) == status::success);
+    ok = ok
+            && (kernel_input_.post_ops.set_default_formats(&kernel_input_.dst_md)
+                    == status::success);
     if (ok) init_quant_mds();
     return ok;
 }
 
 void jit_gemm_pd_t::init_quant_mds() {
-    // Populate matmul-keyed quant mds from un-mutated matmul mds. Never
-    // re-keyed under swap; the swap moves into init_GEMMProblem.
-    const auto &scales = attr_.scales_;
-    const auto &zps = attr_.zero_points_;
-    const auto &gs = attr_.precomputed_reductions_;
-    (void)scales.get(kA).get_md(src_scale_md_, src_md_);
-    (void)scales.get(kB).get_md(wei_scale_md_, weights_md_);
-    (void)scales.get(kC).get_md(dst_scale_md_, dst_md_);
-    (void)zps.get(kA).get_md(src_zp_md_, src_md_);
-    (void)zps.get(kB).get_md(wei_zp_md_, weights_md_);
-    (void)zps.get(kC).get_md(dst_zp_md_, dst_md_);
-    (void)gs.get(kA).get_md(src_gs_md_, src_md_);
-    (void)gs.get(kB).get_md(wei_gs_md_, weights_md_);
+    // Build kernel-view quant mds from reshape-rescaled scales/zp/gs entries
+    // and the kernel-view mds. Never re-keyed under swap; the swap moves
+    // into init_GEMMProblem.
+    const auto &scales = kernel_input_.scales;
+    const auto &zps = kernel_input_.zero_points;
+    const auto &gs = kernel_input_.precomputed_reductions;
+    (void)scales.get(kA).get_md(
+            kernel_input_.src_scale_md, kernel_input_.src_md);
+    (void)scales.get(kB).get_md(
+            kernel_input_.wei_scale_md, kernel_input_.weights_md);
+    (void)scales.get(kC).get_md(
+            kernel_input_.dst_scale_md, kernel_input_.dst_md);
+    (void)zps.get(kA).get_md(kernel_input_.src_zp_md, kernel_input_.src_md);
+    (void)zps.get(kB).get_md(
+            kernel_input_.wei_zp_md, kernel_input_.weights_md);
+    (void)zps.get(kC).get_md(kernel_input_.dst_zp_md, kernel_input_.dst_md);
+    (void)gs.get(kA).get_md(kernel_input_.src_gs_md, kernel_input_.src_md);
+    (void)gs.get(kB).get_md(
+            kernel_input_.wei_gs_md, kernel_input_.weights_md);
 }
 
 status_t jit_gemm_pd_t::canonicalize_post_ops() {
-    // Promote prelu to binary on the local kernel-side post_ops_ copy only.
-    // attr_ stays in the framework-facing form (primitive_kind::prelu) so
-    // user arg binding under DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx)|DNNL_ARG_WEIGHTS
-    // (the prelu slope key) still validates and reaches exec — without this
-    // separation the framework rejected the user's prelu-keyed bind because
-    // the post-canonicalize attr advertised a binary post-op (expecting
+    // Promote prelu to binary on the kernel-view kernel_input_.post_ops
+    // copy only. attr_ stays in the framework-facing form
+    // (primitive_kind::prelu) so user arg binding under
+    // DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx)|DNNL_ARG_WEIGHTS (the prelu slope
+    // key) still validates and reaches exec — without this separation the
+    // framework rejected the user's prelu-keyed bind because the post-
+    // canonicalize attr advertised a binary post-op (expecting
     // DNNL_ARG_SRC_1) and exec then threw std::out_of_range looking up the
-    // missing prelu key. Idempotent; safe to run whether or not apply_swap_ab
-    // was invoked earlier.
+    // missing prelu key. Idempotent; safe to run whether or not
+    // apply_swap_ab was invoked earlier.
     const int nd = ndims();
-    for (int i = 0; i < post_ops_.len(); ++i) {
-        auto &e = post_ops_.entry_[i];
+    auto &post_ops = kernel_input_.post_ops;
+    const auto &kdst_md = kernel_input_.dst_md;
+    for (int i = 0; i < post_ops.len(); ++i) {
+        auto &e = post_ops.entry_[i];
         if (!e.is_prelu()) continue;
         const int mask = e.prelu.mask;
         dims_t weight_dims {};
         for (int d = 0; d < nd; ++d)
-            weight_dims[d]
-                    = ((mask >> d) & 0x1) ? dst_md_.dims[d] : 1;
+            weight_dims[d] = ((mask >> d) & 0x1) ? kdst_md.dims[d] : 1;
         memory_desc_t src1 {};
         CHECK(memory_desc_init_by_strides(
                 src1, nd, weight_dims, data_type::f32, nullptr));
@@ -545,9 +603,9 @@ bool jit_gemm_pd_t::valid_2d_mask(int mask, int nd, bool per_tensor_ok) {
 bool jit_gemm_pd_t::dy_quant_enabled() const {
     using namespace data_type;
     // Type checks are matmul-symmetric (do not depend on which operand is
-    // kernel-A): read SRC/WEIGHTS dtypes directly off the matmul mds.
-    const auto a_dt = src_md_.data_type;
-    const auto b_dt = weights_md_.data_type;
+    // kernel-A): read SRC/WEIGHTS dtypes directly off the kernel-view mds.
+    const auto a_dt = kernel_input_.src_md.data_type;
+    const auto b_dt = kernel_input_.weights_md.data_type;
     bool all_f8 = (utils::one_of(a_dt, f8_e5m2, f8_e4m3)
             && utils::one_of(b_dt, f8_e5m2, f8_e4m3)
             && utils::one_of(c_type(), f8_e5m2, f8_e4m3, f16, bf16, f32));
@@ -569,8 +627,8 @@ bool jit_gemm_pd_t::wei_decomp() const {
         return utils::one_of(t, f16, f32, bf16, f8_e5m2, f8_e4m3);
     };
     // Matmul-symmetric: either operand can be the int_low one.
-    const auto a_dt = src_md_.data_type;
-    const auto b_dt = weights_md_.data_type;
+    const auto a_dt = kernel_input_.src_md.data_type;
+    const auto b_dt = kernel_input_.weights_md.data_type;
     auto int_t = int_low(a_dt) ? a_dt : int_low(b_dt) ? b_dt : data_type::undef;
     auto float_t
             = float_hi(a_dt) ? a_dt : float_hi(b_dt) ? b_dt : data_type::undef;
@@ -587,7 +645,8 @@ bool jit_gemm_pd_t::quant_enabled() const {
 
 bool jit_gemm_pd_t::grouped(int matmul_arg) const {
     // Matmul-natural group probe per matmul-side arg key. Read the consolidated
-    // group(0)/group(1) across zp/gs/scales for the requested entry. arg
+    // group(0)/group(1) across zp/gs/scales for the requested entry from the
+    // kernel-view kernel_input_ (so reshape-rescaled groups are visible). arg
     // semantics:
     //   kA (SRC):     g0 = M-direction, g1 = K-direction.
     //   kB (WEIGHTS): g0 = K-direction, g1 = N-direction.
@@ -595,9 +654,9 @@ bool jit_gemm_pd_t::grouped(int matmul_arg) const {
     // Consumers that need a kernel-A/B view OR the two together (the typical
     // "int_acc detection" symmetric query) compose at the call site.
     auto group01 = [this](int arg, int &g0, int &g1) {
-        const auto &zp = attr()->zero_points_.get(arg);
-        const auto &gs = attr()->precomputed_reductions_.get(arg);
-        const auto &sc = attr()->scales_.get(arg);
+        const auto &zp = kernel_input_.zero_points.get(arg);
+        const auto &gs = kernel_input_.precomputed_reductions.get(arg);
+        const auto &sc = kernel_input_.scales.get(arg);
         g0 = 0;
         g1 = 0;
         auto add = [&](const quant_entry_t &e) {
@@ -625,7 +684,7 @@ bool jit_gemm_pd_t::grouped(int matmul_arg) const {
         return kg || ng;
     }
     if (matmul_arg == kC) {
-        const auto &sc = attr()->scales_.get(kC);
+        const auto &sc = kernel_input_.scales.get(kC);
         if (sc.has_default_groups()) return false;
         g0 = into<int>(sc.get_group(0));
         g1 = into<int>(sc.get_group(1));
@@ -642,31 +701,34 @@ status_t jit_gemm_pd_t::init_post_ops(impl::engine_t *engine) {
     using namespace alg_kind;
     using namespace data_type;
 
-    // Copy attr post-ops to the kernel-side member, then canonicalize prelu
-    // → binary on the LOCAL copy only. attr_ stays in framework form for arg
-    // validation; post_ops_ carries the binary-promoted form for kernel work.
-    post_ops_ = attr()->post_ops_;
+    // kernel_input_.post_ops is already populated by maybe_reshape_2d (from
+    // attr_.post_ops_, reshape-rescaled when applicable). Canonicalize
+    // prelu→binary on the kernel copy only. attr_ stays in framework form
+    // for user arg binding.
     CHECK(canonicalize_post_ops());
-    binary_srcs_.reserve(post_ops_.len() + 4);
+    auto &post_ops = kernel_input_.post_ops;
+    auto &binary_srcs = kernel_input_.binary_srcs;
+    binary_srcs.clear();
+    binary_srcs.reserve(post_ops.len() + 4);
 
     bool ok = true;
     int prelu_count = 0;
-    const int num_orig_postops = post_ops_.len();
-    for (int i = 0; i < post_ops_.len(); i++) {
-        const auto &e = post_ops_.entry_[i];
+    const int num_orig_postops = post_ops.len();
+    for (int i = 0; i < post_ops.len(); i++) {
+        const auto &e = post_ops.entry_[i];
         switch (e.kind) {
             case binary:
                 if (e.binary.alg == binary_prelu) {
-                    binary_srcs_.push_back(
+                    binary_srcs.push_back(
                             binary_src_t {binary_src_t::prelu, int(i)});
-                    prelu_wei_md = e.binary.src1_desc;
+                    kernel_input_.prelu_wei_md = e.binary.src1_desc;
                     prelu_count++;
                     ok &= prelu_count <= 1;
                 } else {
                     ok &= supported_binary_op(e.binary.alg)
                             && is_md_gemm_compatible_plain_format(
                                     &e.binary.src1_desc);
-                    binary_srcs_.push_back(
+                    binary_srcs.push_back(
                             binary_src_t {binary_src_t::binary, int(i)});
                 }
                 break;
@@ -676,17 +738,17 @@ status_t jit_gemm_pd_t::init_post_ops(impl::engine_t *engine) {
                 // sum.scale != 1.0 / sum.zero_point != 0 with default args.
                 bool already_sum = false;
                 for (int j = 0; j < i; ++j)
-                    if (post_ops_.entry_[j].kind == sum) {
+                    if (post_ops.entry_[j].kind == sum) {
                         already_sum = true;
                         break;
                     }
                 ok &= !already_sum;
-                binary_srcs_.push_back(binary_src_t {binary_src_t::none, 0});
+                binary_srcs.push_back(binary_src_t {binary_src_t::none, 0});
                 break;
             }
             case eltwise:
                 ok &= eltwise_injector_f32_is_supported(e.eltwise.alg);
-                binary_srcs_.push_back(binary_src_t {binary_src_t::none, 0});
+                binary_srcs.push_back(binary_src_t {binary_src_t::none, 0});
                 break;
             case prelu:
                 VDISPATCH_JIT_GEMM(false,
@@ -699,21 +761,24 @@ status_t jit_gemm_pd_t::init_post_ops(impl::engine_t *engine) {
 
     VDISPATCH_JIT_GEMM(ok, VERBOSE_UNSUPPORTED_POSTOP);
 
-    const auto &a_scales = attr()->scales_.get(kA);
-    const auto &b_scales = attr()->scales_.get(kB);
-    const auto &c_scales = attr()->scales_.get(kC);
+    const auto &a_scales = kernel_input_.scales.get(kA);
+    const auto &b_scales = kernel_input_.scales.get(kB);
+    const auto &c_scales = kernel_input_.scales.get(kC);
 
-    // matmul-driven bias is ALWAYS routed through binary post-op.
+    // matmul-driven bias is ALWAYS routed through binary post-op. Use the
+    // kernel-view bias md so the binary src1_desc carries the 2D shape.
     if (with_bias()) {
-        VDISPATCH_JIT_GEMM_SC(post_ops_.prepend_binary(binary_add, &bias_md_),
+        VDISPATCH_JIT_GEMM_SC(
+                post_ops.prepend_binary(binary_add, &kernel_input_.bias_md),
                 "%s: bias via binary post-op", VERBOSE_UNSUPPORTED_POSTOP);
-        binary_srcs_.insert(
-                binary_srcs_.begin(), binary_src_t {binary_src_t::bias, 0});
+        binary_srcs.insert(
+                binary_srcs.begin(), binary_src_t {binary_src_t::bias, 0});
     }
 
     auto maybe_convert_scales_to_postop
-            = [this, engine](const memory_desc_t &scale_md, int arg,
-                      int scale_ndims, bool mx, bool &converted) -> status_t {
+            = [this, engine, &post_ops, &binary_srcs](
+                      const memory_desc_t &scale_md, int arg, int scale_ndims,
+                      bool mx, bool &converted) -> status_t {
         const int nd = ndims();
         converted = false;
         if (scale_ndims > 1) return status::success;
@@ -728,17 +793,17 @@ status_t jit_gemm_pd_t::init_post_ops(impl::engine_t *engine) {
             // | src.index) directly — no swap routing.
             if (arg == kC) {
                 VDISPATCH_JIT_GEMM_SC(
-                        post_ops_.append_binary(binary_div, &scale_md),
+                        post_ops.append_binary(binary_div, &scale_md),
                         "%s: %s scales via binary post-op",
                         VERBOSE_UNSUPPORTED_POSTOP, arg2str(arg).c_str());
-                binary_srcs_.push_back(
+                binary_srcs.push_back(
                         binary_src_t {binary_src_t::scales, arg});
             } else {
                 VDISPATCH_JIT_GEMM_SC(
-                        post_ops_.prepend_binary(binary_mul, &scale_md),
+                        post_ops.prepend_binary(binary_mul, &scale_md),
                         "%s: %s scales via binary post-op",
                         VERBOSE_UNSUPPORTED_POSTOP, arg2str(arg).c_str());
-                binary_srcs_.insert(binary_srcs_.begin(),
+                binary_srcs.insert(binary_srcs.begin(),
                         binary_src_t {binary_src_t::scales, arg});
             }
             converted = true;
@@ -748,14 +813,14 @@ status_t jit_gemm_pd_t::init_post_ops(impl::engine_t *engine) {
 
     if (!a_scales.has_default_values() && !a_scales.is_host_scalar()) {
         bool converted;
-        CHECK(maybe_convert_scales_to_postop(src_scale_md_, kA,
+        CHECK(maybe_convert_scales_to_postop(kernel_input_.src_scale_md, kA,
                 a_scale_ndims(), a_scales.is_mx(), converted));
         if (converted) a_scale_ndims_override_ = -1;
     }
 
     if (!b_scales.has_default_values() && !b_scales.is_host_scalar()) {
         bool converted;
-        CHECK(maybe_convert_scales_to_postop(wei_scale_md_, kB,
+        CHECK(maybe_convert_scales_to_postop(kernel_input_.wei_scale_md, kB,
                 b_scale_ndims(), b_scales.is_mx(), converted));
         if (converted) b_scale_ndims_override_ = -1;
     }
@@ -764,7 +829,7 @@ status_t jit_gemm_pd_t::init_post_ops(impl::engine_t *engine) {
             || with_bias();
     if (!c_scales.has_default_values() && try_c_scale) {
         bool converted;
-        CHECK(maybe_convert_scales_to_postop(dst_scale_md_, kC,
+        CHECK(maybe_convert_scales_to_postop(kernel_input_.dst_scale_md, kC,
                 c_scale_ndims(), c_scales.is_mx(), converted));
         gpu_assert(converted || c_scales.is_mx())
                 << "Unable to convert dst scales to a post op";
@@ -779,11 +844,11 @@ status_t jit_gemm_pd_t::init_attrs(impl::engine_t *engine) {
 
 status_t jit_gemm_pd_t::zp_ok(impl::engine_t *engine) {
     using namespace data_type;
-    auto &attr_zps = attr()->zero_points_;
-    if (attr_zps.has_default_values()) return status::success;
-    auto &a_zps = attr_zps.get(kA);
-    auto &b_zps = attr_zps.get(kB);
-    auto &c_zps = attr_zps.get(kC);
+    auto &k_zps = kernel_input_.zero_points;
+    if (k_zps.has_default_values()) return status::success;
+    auto &a_zps = k_zps.get(kA);
+    auto &b_zps = k_zps.get(kB);
+    auto &c_zps = k_zps.get(kC);
 
     const int cmask_a = a_zps.get_mask();
     const int cmask_b = b_zps.get_mask();
@@ -791,8 +856,10 @@ status_t jit_gemm_pd_t::zp_ok(impl::engine_t *engine) {
 
     const int nd = ndims();
     // Type checks are matmul-symmetric; read SRC/WEIGHTS dtypes directly.
-    const bool a_int4 = utils::one_of(src_md_.data_type, s4, u4);
-    const bool b_int4 = utils::one_of(weights_md_.data_type, s4, u4);
+    const bool a_int4
+            = utils::one_of(kernel_input_.src_md.data_type, s4, u4);
+    const bool b_int4
+            = utils::one_of(kernel_input_.weights_md.data_type, s4, u4);
     const bool weights_upconversion
             = wei_decomp() || (a_int4 && dy_quant_enabled());
 
@@ -804,8 +871,8 @@ status_t jit_gemm_pd_t::zp_ok(impl::engine_t *engine) {
             VDISPATCH_JIT_GEMM(a_q2d_group_n == 1,
                     "%s: Grouped N dimension on A matrix",
                     VERBOSE_UNSUPPORTED_ZP_CFG);
-            bool has_prB
-                    = !attr()->precomputed_reductions_.has_default_values(kB);
+            bool has_prB = !kernel_input_.precomputed_reductions
+                                    .has_default_values(kB);
             bool is_dequantized = !dy_quant_enabled() || !b_int4 || a_int4;
             VDISPATCH_JIT_GEMM(IMPLICATION(a_zp_2d(), is_dequantized || has_prB),
                     "%s: Nontrivial groups on A matrix, and no precomputed "
@@ -844,7 +911,7 @@ status_t jit_gemm_pd_t::zp_ok(impl::engine_t *engine) {
         }
     }
 
-    if (!attr_zps.has_default_values(kC)) {
+    if (!k_zps.has_default_values(kC)) {
         VDISPATCH_JIT_GEMM(
                 IMPLICATION(!c_zps.is_host_scalar(),
                         utils::one_of(cmask_c, 0, mask_scalar, mask_c_m)),
@@ -855,29 +922,29 @@ status_t jit_gemm_pd_t::zp_ok(impl::engine_t *engine) {
 }
 
 status_t jit_gemm_pd_t::gs_ok(impl::engine_t *engine) {
-    auto &attr_gs = attr()->precomputed_reductions_;
-    if (attr_gs.has_default_values()) return status::success;
+    auto &k_gs = kernel_input_.precomputed_reductions;
+    if (k_gs.has_default_values()) return status::success;
 
-    VDISPATCH_JIT_GEMM(attr_gs.has_default_values(kC),
+    VDISPATCH_JIT_GEMM(k_gs.has_default_values(kC),
             VERBOSE_UNSUPPORTED_PR_CFG);
 
-    bool with_a_group_sums_ = !attr_gs.has_default_values(kA);
-    bool with_b_group_sums_ = !attr_gs.has_default_values(kB);
+    bool with_a_group_sums_ = !k_gs.has_default_values(kA);
+    bool with_b_group_sums_ = !k_gs.has_default_values(kB);
 
     VDISPATCH_JIT_GEMM(
             IMPLICATION(with_a_group_sums_,
-                    attr_gs.get_data_type(kA) == data_type::s32),
+                    k_gs.get_data_type(kA) == data_type::s32),
             VERBOSE_UNSUPPORTED_DT_CFG);
     VDISPATCH_JIT_GEMM(
             IMPLICATION(with_b_group_sums_,
-                    attr_gs.get_data_type(kB) == data_type::s32),
+                    k_gs.get_data_type(kB) == data_type::s32),
             VERBOSE_UNSUPPORTED_DT_CFG);
 
     return status::success;
 }
 
 status_t jit_gemm_pd_t::scales_ok(impl::engine_t *engine) {
-    const auto &scales = attr()->scales_;
+    const auto &scales = kernel_input_.scales;
     if (scales.has_default_values()) return status::success;
     const int nd = ndims();
     using namespace data_type;
@@ -917,7 +984,7 @@ status_t jit_gemm_pd_t::scales_ok(impl::engine_t *engine) {
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
 
         // M+N dimensions must have trivial strides for Dynamic Dst Quant.
-        const auto &md = dst_md_;
+        const auto &md = kernel_input_.dst_md;
         auto strides = md.format_desc.blocking.strides;
         VDISPATCH_JIT_GEMM(strides[md.ndims - 1] == 1,
                 "%s: unsupported mx_scale strides",
@@ -1022,9 +1089,13 @@ status_t jit_gemm_pd_t::init_GEMMProblem(
     // postOps and binary[]) is GEMMProblem::transpose()'d once. This is the
     // single swap_ab boundary; nothing else in the pd is rotated under swap.
 
-    const auto src_t = src_md_.data_type;
-    const auto wei_t = weights_md_.data_type;
-    const auto dst_t = dst_md_.data_type;
+    const auto &k_src_md = kernel_input_.src_md;
+    const auto &k_wei_md = kernel_input_.weights_md;
+    const auto &k_dst_md = kernel_input_.dst_md;
+
+    const auto src_t = k_src_md.data_type;
+    const auto wei_t = k_wei_md.data_type;
+    const auto dst_t = k_dst_md.data_type;
 
     const auto M_ = M();
     const auto N_ = N();
@@ -1033,14 +1104,14 @@ status_t jit_gemm_pd_t::init_GEMMProblem(
     // Natural matmul leading dims. (For LDA/LDB/LDC the kernel-view values
     // come from the pd's swap-aware helpers; here we only need the matmul
     // sizes for the alignment/size estimates.)
-    const auto lda_matmul = get_ld(src_md_);
-    const auto ldb_matmul = get_ld(weights_md_);
-    const auto ldc_matmul = get_ld(dst_md_);
+    const auto lda_matmul = get_ld(k_src_md);
+    const auto ldb_matmul = get_ld(k_wei_md);
+    const auto ldc_matmul = get_ld(k_dst_md);
 
     // Matmul SRC is M×K row-major; the kernel views it as col-major K×M.
     // Take the natural matmul "is trans" via get_trans on the un-mutated md.
-    bool tr_a_matmul = (get_trans(src_md_) == transpose::trans);
-    bool tr_b_matmul = (get_trans(weights_md_) == transpose::trans);
+    bool tr_a_matmul = (get_trans(k_src_md) == transpose::trans);
+    bool tr_b_matmul = (get_trans(k_wei_md) == transpose::trans);
 
     // Single-row/column padding (matmul-keyed, mirrors base's pad-to-16 in
     // jit.hpp). The padded ld is used only for alignment/size estimates;
@@ -1064,11 +1135,11 @@ status_t jit_gemm_pd_t::init_GEMMProblem(
             types::elements_to_bytes(dst_t, ldc_matmul));
     for (int b = 0; b < batch_dims(); b++) {
         int stride_bytes_a = utils::max_pow2_div(
-                types::elements_to_bytes(src_t, stride_for(src_md_, b)));
+                types::elements_to_bytes(src_t, stride_for(k_src_md, b)));
         int stride_bytes_b = utils::max_pow2_div(
-                types::elements_to_bytes(wei_t, stride_for(weights_md_, b)));
+                types::elements_to_bytes(wei_t, stride_for(k_wei_md, b)));
         int stride_bytes_c = utils::max_pow2_div(
-                types::elements_to_bytes(dst_t, stride_for(dst_md_, b)));
+                types::elements_to_bytes(dst_t, stride_for(k_dst_md, b)));
         if (stride_bytes_a) align_a = nstl::min(align_a, stride_bytes_a);
         if (stride_bytes_b) align_b = nstl::min(align_b, stride_bytes_b);
         if (stride_bytes_c) align_c = nstl::min(align_c, stride_bytes_c);
@@ -1089,7 +1160,7 @@ status_t jit_gemm_pd_t::init_GEMMProblem(
     // (Base used the same formula but with KERNEL-VIEW trans, which is the
     // negated sense relative to matmul-natural — porting it verbatim under-
     // triggered needA64 for >4 GiB skinny-K / skinny-M shapes.)
-    const bool tr_c_matmul = (get_trans(dst_md_) == transpose::trans);
+    const bool tr_c_matmul = (get_trans(k_dst_md) == transpose::trans);
     auto a_size = (tr_a_matmul ? K_ : M_) * lda_matmul
             * types::data_type_size(src_t);
     auto b_size = (tr_b_matmul ? N_ : K_) * ldb_matmul
@@ -1101,12 +1172,12 @@ status_t jit_gemm_pd_t::init_GEMMProblem(
             || (types::is_integral_dt(src_t) && types::is_integral_dt(wei_t));
     int_acc &= !(grouped(kA) || grouped(kB));
 
-    // Matmul-side group-zero detection (no kernel rotation yet).
-    auto sc_src = attr()->scales_.get(kA);
-    auto sc_wei = attr()->scales_.get(kB);
-    auto sc_dst = attr()->scales_.get(kC);
-    auto zp_src = attr()->zero_points_.get(kA);
-    auto zp_wei = attr()->zero_points_.get(kB);
+    // Kernel-view group-zero detection (no kernel rotation yet).
+    auto sc_src = kernel_input_.scales.get(kA);
+    auto sc_wei = kernel_input_.scales.get(kB);
+    auto sc_dst = kernel_input_.scales.get(kC);
+    auto zp_src = kernel_input_.zero_points.get(kA);
+    auto zp_wei = kernel_input_.zero_points.get(kB);
 
     // Bias never flows via the CO channel — it is prepended as a binary
     // post-op in init_post_ops. The CO channel carries only c-zero-points
@@ -1119,8 +1190,9 @@ status_t jit_gemm_pd_t::init_GEMMProblem(
             : (utils::one_of(data_type::f64, src_t, wei_t) ? data_type::f64
                                                            : data_type::f32);
 
-    bool with_binary = (post_ops_.find(primitive_kind::binary) != -1)
-            || (post_ops_.find(primitive_kind::prelu) != -1);
+    const auto &k_post_ops = kernel_input_.post_ops;
+    bool with_binary = (k_post_ops.find(primitive_kind::binary) != -1)
+            || (k_post_ops.find(primitive_kind::prelu) != -1);
 
     bool need_x32_acc = with_binary || !IMPLICATION(with_sum(), sum_at_begin());
 
@@ -1158,7 +1230,7 @@ status_t jit_gemm_pd_t::init_GEMMProblem(
             = tr_a_matmul ? MatrixLayout::N : MatrixLayout::T;
     problem.B.layout
             = tr_b_matmul ? MatrixLayout::N : MatrixLayout::T;
-    problem.C.layout = (get_trans(dst_md_) == transpose::trans)
+    problem.C.layout = (get_trans(k_dst_md) == transpose::trans)
             ? MatrixLayout::N
             : MatrixLayout::T;
     problem.A.crosspack = problem.B.crosspack = problem.C.crosspack = 1;
@@ -1302,7 +1374,7 @@ status_t jit_gemm_pd_t::init_GEMMProblem(
 
     gpu_post_ops_t gpu_post_ops;
     CHECK(gpu_post_ops_t::make(
-            gpu_post_ops, post_ops_, dst_md_, get_post_op_specializations()));
+            gpu_post_ops, k_post_ops, k_dst_md, get_post_op_specializations()));
 
     CHECK(transfer_post_ops(problem, std::move(gpu_post_ops)));
 
@@ -1392,14 +1464,14 @@ status_t jit_gemm_pd_t::init_GEMMProblem(
     // without explicit fixup since the default A.layout=T after the math
     // transpose maps to the same final state.
     if (!swap_ab_ && N_ == 1
-            && get_trans(weights_md_) == transpose::notrans) {
+            && get_trans(k_wei_md) == transpose::notrans) {
         problem.B.layout = MatrixLayout::N;
         dim_t pad_ldb_skinny = utils::rnd_up(ldb_matmul, 16);
         int align_b_skinny = utils::max_pow2_div(
                 types::elements_to_bytes(wei_t, pad_ldb_skinny));
         for (int b = 0; b < batch_dims(); b++) {
             int stride_bytes_b = utils::max_pow2_div(types::elements_to_bytes(
-                    wei_t, stride_for(weights_md_, b)));
+                    wei_t, stride_for(k_wei_md, b)));
             if (stride_bytes_b)
                 align_b_skinny = nstl::min(align_b_skinny, stride_bytes_b);
         }
@@ -1419,56 +1491,59 @@ status_t jit_gemm_pd_t::init_GEMMProblem(
 }
 
 dim_t jit_gemm_pd_t::ld_binary(int idx) const {
-    switch (binary_srcs_[idx].type) {
+    switch (kernel_input_.binary_srcs[idx].type) {
         case binary_src_t::binary: {
-            const auto &entry = post_ops_.entry_[idx];
+            const auto &entry = kernel_input_.post_ops.entry_[idx];
             assert(entry.kind == primitive_kind::binary);
             return get_ld(entry.binary.src1_desc);
         }
         case binary_src_t::bias: return ld_bias();
-        case binary_src_t::prelu: return get_ld(prelu_wei_md);
+        case binary_src_t::prelu: return get_ld(kernel_input_.prelu_wei_md);
         default: return 1;
     }
 }
 
 dim_t jit_gemm_pd_t::stride_binary(int idx, int stride) const {
-    switch (binary_srcs_[idx].type) {
+    switch (kernel_input_.binary_srcs[idx].type) {
         case binary_src_t::binary:
         case binary_src_t::scales:
         case binary_src_t::bias: {
-            const auto &entry = post_ops_.entry_[idx];
+            const auto &entry = kernel_input_.post_ops.entry_[idx];
             assert(entry.kind == primitive_kind::binary);
             return get_stride(entry.binary.src1_desc, stride);
         }
-        case binary_src_t::prelu: return get_stride(prelu_wei_md, stride);
+        case binary_src_t::prelu:
+            return get_stride(kernel_input_.prelu_wei_md, stride);
         default: return 0;
     }
 }
 
 dim_t jit_gemm_pd_t::scale_stride(int idx, int arg) const {
     gpu_assert(utils::one_of(arg, kA, kB));
-    const memory_desc_t *md_ptr
-            = (arg == kA) ? &src_scale_md_ : &wei_scale_md_;
+    const memory_desc_t *md_ptr = (arg == kA) ? &kernel_input_.src_scale_md
+                                              : &kernel_input_.wei_scale_md;
     gpu_assert(memory_desc_wrapper(md_ptr).is_plain())
-            << "Expected plain scale_md_";
+            << "Expected plain scale_md";
     if (md_ptr->dims[idx] == 1) return 0;
     return md_ptr->format_desc.blocking.strides[idx];
 }
 
 dim_t jit_gemm_pd_t::zp_stride(int idx, int arg) const {
     gpu_assert(utils::one_of(arg, kA, kB));
-    const memory_desc_t *md_ptr = (arg == kA) ? &src_zp_md_ : &wei_zp_md_;
+    const memory_desc_t *md_ptr = (arg == kA) ? &kernel_input_.src_zp_md
+                                              : &kernel_input_.wei_zp_md;
     gpu_assert(memory_desc_wrapper(md_ptr).is_plain())
-            << "Expected plain zp_md_";
+            << "Expected plain zp_md";
     if (md_ptr->dims[idx] == 1) return 0;
     return md_ptr->format_desc.blocking.strides[idx];
 }
 
 dim_t jit_gemm_pd_t::gs_stride(int idx, int arg) const {
     gpu_assert(utils::one_of(arg, kA, kB));
-    const memory_desc_t *md_ptr = (arg == kA) ? &src_gs_md_ : &wei_gs_md_;
+    const memory_desc_t *md_ptr = (arg == kA) ? &kernel_input_.src_gs_md
+                                              : &kernel_input_.wei_gs_md;
     gpu_assert(memory_desc_wrapper(md_ptr).is_plain())
-            << "Expected plain gs_md_";
+            << "Expected plain gs_md";
     if (md_ptr->dims[idx] == 1) return 0;
     return md_ptr->format_desc.blocking.strides[idx];
 }

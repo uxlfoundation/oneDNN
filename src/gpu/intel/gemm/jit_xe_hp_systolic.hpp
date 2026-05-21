@@ -109,20 +109,23 @@ struct xe_hp_systolic_t : public intel::primitive_t {
         // s8:s8:f16+ab-tag dst:AB32a32b, scrambling the kernel's row stride
         // through the C panel and producing ~99% errors.
         dim_t lda_packed(int64_t k) const {
-            return packed_a() ? weights_md_.format_desc.blocking
-                                        .strides[with_batch() ? 2 : 1]
+            return packed_a() ? kernel_weights_md()
+                                                ->format_desc.blocking
+                                                .strides[with_batch() ? 2 : 1]
                             / unroll_m()
                               : get_ld_packed(k);
         }
         dim_t ldb_packed(int64_t k) const {
-            return packed_b() ? src_md_.format_desc.blocking
-                                        .strides[with_batch() ? 1 : 0]
+            return packed_b() ? kernel_src_md()
+                                                ->format_desc.blocking
+                                                .strides[with_batch() ? 1 : 0]
                             / unroll_n()
                               : get_ld_packed(k);
         }
         dim_t ldc_packed() const {
-            return packed_c() ? dst_md_.format_desc.blocking
-                                        .strides[with_batch() ? 1 : 0]
+            return packed_c() ? kernel_dst_md()
+                                                ->format_desc.blocking
+                                                .strides[with_batch() ? 1 : 0]
                             / unroll_n()
                               : 0;
         }

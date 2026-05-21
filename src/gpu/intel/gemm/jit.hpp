@@ -57,11 +57,12 @@ struct gen_t : public intel::primitive_t {
             auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
             // Collapse broadcast-batch dims to 2D / 3D BEFORE resolving
-            // format_any. With concrete user-supplied tags the active mds
-            // and attr land in the kernel-view shape that catalog lookup
-            // expects; format_any falls through unchanged (memory_desc_reshape
-            // rejects, bcast_ok=false). commit_reshape at end of init flips
-            // reshape_applied_ so external queries see the original N-D.
+            // format_any. With concrete user-supplied tags the kernel-view
+            // mds and attr in kernel_input_ land in the kernel-view shape
+            // that catalog lookup expects; format_any falls through unchanged
+            // (memory_desc_reshape rejects, bcast_ok=false). At end of init
+            // commit_resolved_tags reflects resolved tags back to the user-
+            // facing src_md_/weights_md_/dst_md_/bias_md_.
             CHECK(maybe_reshape_2d());
 
             // Resolve format_any before apply_swap_ab().
@@ -77,11 +78,14 @@ struct gen_t : public intel::primitive_t {
             //   (b) column-major user DST — kernel can write col-major C
             //       directly without the row-major-via-swap workaround.
             // Pre-swap, kernel-A = matmul SRC, kernel-B = matmul WEIGHTS,
-            // kernel-C = matmul DST — read directly from matmul mds.
-            const auto user_ldc = jit::jit_gemm_pd_t::get_ld(dst_md_);
-            const auto user_c_trans = jit::jit_gemm_pd_t::get_trans(dst_md_);
+            // kernel-C = matmul DST — read directly from kernel_input_ mds.
+            const auto user_ldc
+                    = jit::jit_gemm_pd_t::get_ld(*kernel_dst_md());
+            const auto user_c_trans
+                    = jit::jit_gemm_pd_t::get_trans(*kernel_dst_md());
             const auto natural_transb = gemm_transb();
-            const auto natural_ldb = jit::jit_gemm_pd_t::get_ld(weights_md_);
+            const auto natural_ldb
+                    = jit::jit_gemm_pd_t::get_ld(*kernel_weights_md());
             const bool check_ldb = ((natural_transb == transpose::trans
                                             && natural_ldb == 1)
                     || (natural_transb == transpose::notrans));
@@ -217,7 +221,8 @@ struct gen_t : public intel::primitive_t {
 
             VDISPATCH_JIT_GEMM(utils::one_of(bias_type(), data_type::undef, f64,
                                        f32, bf16, f16, f8_e5m2, f8_e4m3)
-                            && (bias_md_.ndims <= 6) && gemm_bias_mask() < 8,
+                            && (kernel_bias_md()->ndims <= 6)
+                            && gemm_bias_mask() < 8,
                     VERBOSE_UNSUPPORTED_BIAS_CFG);
             VDISPATCH_JIT_GEMM(
                     IMPLICATION(with_bias(),
@@ -233,16 +238,21 @@ struct gen_t : public intel::primitive_t {
                                        utils::one_of(gemm_a_type(), s8, u8)),
                     VERBOSE_UNSUPPORTED_POSTOP);
             auto c_kernel_type = jit::convert_dnnl_to_kernel_type(c_type());
-            for (int i = 0; i < dst_md_.ndims; i++) {
-                auto c_stride = dst_md_.format_desc.blocking.strides[i];
-                VDISPATCH_JIT_GEMM(IMPLICATION(c_kernel_type.is4(),
-                                           c_stride == 1 || c_stride % 2 == 0),
-                        VERBOSE_SHAPE_RESTRICTION);
+            {
+                const auto &kdst = *kernel_dst_md();
+                for (int i = 0; i < kdst.ndims; i++) {
+                    auto c_stride = kdst.format_desc.blocking.strides[i];
+                    VDISPATCH_JIT_GEMM(
+                            IMPLICATION(c_kernel_type.is4(),
+                                    c_stride == 1 || c_stride % 2 == 0),
+                            VERBOSE_SHAPE_RESTRICTION);
+                }
             }
 
-            bool with_binary = (post_ops_.find(binary) != -1)
-                    || (post_ops_.find(prelu) != -1);
-            bool with_eltwise = (post_ops_.find(eltwise) != -1);
+            const auto &k_post_ops = *kernel_post_ops();
+            bool with_binary = (k_post_ops.find(binary) != -1)
+                    || (k_post_ops.find(prelu) != -1);
+            bool with_eltwise = (k_post_ops.find(eltwise) != -1);
 
             // Check GPU architecture.
             bool arch_ok = utils::one_of(arch_, arch_t::xe_lp, arch_t::xe_hp,
@@ -407,9 +417,10 @@ struct gen_t : public intel::primitive_t {
 
             init_scratchpad();
 
-            // Re-project resolved 2D tags onto orig_*_md_ for external query
-            // (framework arg binding sees the user's N-D shape).
-            CHECK(commit_reshape());
+            // Project resolved format tags from the kernel-view mds back
+            // onto the user-facing src_md_/weights_md_/dst_md_/bias_md_ so
+            // the framework sees the resolved N-D shape.
+            CHECK(commit_resolved_tags());
 
             return status::success;
         }
@@ -435,39 +446,43 @@ struct gen_t : public intel::primitive_t {
             auto m_ = M();
             auto n_ = N();
             auto k_ = K();
-            // Pre-swap: SRC=A, WEIGHTS=B. Read user-facing layouts here.
-            auto a_t = (utils::one_of(src_md_.data_type, s4, u4))
+            // Pre-swap: kernel-A=SRC, kernel-B=WEIGHTS. Read from kernel-view
+            // mds (kernel_input_.X_md).
+            auto &k_src = kernel_input_.src_md;
+            auto &k_wei = kernel_input_.weights_md;
+            auto &k_dst = kernel_input_.dst_md;
+            auto a_t = (utils::one_of(k_src.data_type, s4, u4))
                     ? s8
-                    : src_md_.data_type;
-            auto b_t = (utils::one_of(weights_md_.data_type, s4, u4))
+                    : k_src.data_type;
+            auto b_t = (utils::one_of(k_wei.data_type, s4, u4))
                     ? s8
-                    : weights_md_.data_type;
-            auto c_t = dst_md_.data_type;
+                    : k_wei.data_type;
+            auto c_t = k_dst.data_type;
 
             bool is_f16 = utils::everyone_is(f16, a_t, b_t, c_t);
             bool is_bf16 = utils::everyone_is(bf16, a_t, b_t, c_t);
             bool is_xe_hp_plus = arch_ >= arch_t::xe_hp;
 
-            memory_desc_wrapper a_mdw(&src_md_);
-            memory_desc_wrapper b_mdw(&weights_md_);
-            memory_desc_wrapper c_mdw(&dst_md_);
+            memory_desc_wrapper a_mdw(&k_src);
+            memory_desc_wrapper b_mdw(&k_wei);
+            memory_desc_wrapper c_mdw(&k_dst);
 
             bool a_any = a_mdw.format_any();
             bool b_any = b_mdw.format_any();
             bool c_any = c_mdw.format_any();
 
-            if (!a_any && !is_md_gemm_compatible_plain_format(&src_md_))
+            if (!a_any && !is_md_gemm_compatible_plain_format(&k_src))
                 return status::unimplemented;
-            if (!b_any && !is_md_gemm_compatible_plain_format(&weights_md_))
+            if (!b_any && !is_md_gemm_compatible_plain_format(&k_wei))
                 return status::unimplemented;
             if (!c_any
                     && !is_md_gemm_compatible_plain_format(
-                            &dst_md_, no_transpose_c))
+                            &k_dst, no_transpose_c))
                 return status::unimplemented;
 
-            // Pre-swap "is A trans" reads from natural a_md (= src_md_).
-            bool is_a_trans = (get_trans(src_md_) == transpose::trans);
-            bool is_b_trans = (get_trans(weights_md_) == transpose::trans);
+            // Pre-swap "is A trans" reads from natural a_md (= matmul SRC).
+            bool is_a_trans = (get_trans(k_src) == transpose::trans);
+            bool is_b_trans = (get_trans(k_wei) == transpose::trans);
 
             auto lda_choice = is_a_trans ? m_ : k_;
             auto ldb_choice = is_b_trans ? k_ : n_;
@@ -527,17 +542,17 @@ struct gen_t : public intel::primitive_t {
                         md, md.ndims, dims, md.data_type, strides));
                 return status::success;
             };
-            if (a_any) CHECK(cache_line_align_md(src_md_));
-            if (b_any) CHECK(cache_line_align_md(weights_md_));
+            if (a_any) CHECK(cache_line_align_md(k_src));
+            if (b_any) CHECK(cache_line_align_md(k_wei));
 
             if ((is_f16 || is_bf16) && is_xe_hp_plus && use_tn) {
                 if (a_any && b_any) {
-                    CHECK(memory_desc_init_by_tag(src_md_, dotrans));
-                    CHECK(memory_desc_init_by_tag(weights_md_, notrans));
+                    CHECK(memory_desc_init_by_tag(k_src, dotrans));
+                    CHECK(memory_desc_init_by_tag(k_wei, notrans));
                 } else if (a_any && !is_b_trans) {
-                    CHECK(memory_desc_init_by_tag(src_md_, dotrans));
+                    CHECK(memory_desc_init_by_tag(k_src, dotrans));
                 } else if (b_any && is_a_trans) {
-                    CHECK(memory_desc_init_by_tag(weights_md_, notrans));
+                    CHECK(memory_desc_init_by_tag(k_wei, notrans));
                 }
             }
 

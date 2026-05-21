@@ -29,8 +29,10 @@ problem.A.layout = tr_a_matmul ? MatrixLayout::N : MatrixLayout::T;  // matmul S
 problem.B.layout = tr_b_matmul ? MatrixLayout::N : MatrixLayout::T;  // matmul WEIGHTS
 problem.C.layout = (get_trans(dst_md_) == transpose::trans)
         ? MatrixLayout::N : MatrixLayout::T;                          // matmul DST
-// binary in transfer_post_ops:
-atype.layout = trans ? MatrixLayout::N : MatrixLayout::T;
+// binary in transfer_post_ops — gated on is_multi_col, NOT is_multi_row.
+// See gotcha #21.
+bool layout_trans = is_multi_col && !src_rmd.inner_dim.is_innermost();
+atype.layout = layout_trans ? MatrixLayout::N : MatrixLayout::T;
 ```
 
 ### `transfer_post_ops` broadcast_mask bit convention (MUST FOLLOW)
@@ -53,7 +55,11 @@ Reading `& 1` for row / `& 2` for col produces **kernel-canonical** (already-swa
 ### Rules going forward
 
 1. **Pre-transpose init is matmul-side-keyed.** Every problem field is set as if `swap_ab_=false`. AO/AScale/Ag/sumA/Tao/Ta_scale/Tag/aqGroup{M,K}/aoPtrDims/asPtrDims come from matmul-SRC (kA). BO/BScale/Bg/sumB/Tbo/Tb_scale/Tbg/bqGroup{N,K}/boPtrDims/bsPtrDims come from matmul-WEIGHTS (kB). CO/cqGroup{M,N}/Tco/Tc_scale come from matmul-DST. No `swap_ab_` ternaries in the pre-transpose block.
-2. **One single `if (swap_ab_) problem.transpose();` at the end of `init_GEMMProblem`.** Full transpose, no parameter. No `std::swap` patches, no `problem.X.transpose()` undos, no MatrixLayout resets, no per-field mirror branches for skinny-N or any other case. **Single documented exception** (review.md #5): the matmul-natural skinny-N WEIGHTS layout/alignment fixup lives as a post-transpose block immediately after the `if (swap_ab_) problem.transpose();` call, because `transpose()` doesn't run under `swap_ab_=false` and the pre-transpose block can't host the swap-aware condition. Look for the `DOCTRINE EXEMPTION (review.md #5)` marker in `jit_gemm_pd.cpp`. Do not add further exceptions without explicit reasoning.
+2. **One single `if (swap_ab_) problem.transpose();` at the end of `init_GEMMProblem`.** Full transpose, no parameter. No `std::swap` patches, no `problem.X.transpose()` undos, no MatrixLayout resets, no per-field mirror branches for skinny-N or any other case. **Two documented exemptions**:
+   - (a) **Skinny-N WEIGHTS layout/alignment fixup** (review.md #5): runs post-transpose because `transpose()` doesn't run under `swap_ab_=false` and the pre-transpose block can't host the swap-aware condition. Look for the `DOCTRINE EXEMPTION (review.md #5)` marker.
+   - (b) **CO.layout reset to `N` when CO is unused under swap_ab** (gotcha #23): base's swap_ab branch does NOT touch CO; worktree's full `transpose()` unconditionally flips `CO.layout`. When `cOffset == None && !sumA && !sumB` the field is part of the catalog hash but otherwise unused, so we restore the default after `transpose()`. Block lives immediately after `if (swap_ab_) problem.transpose();`.
+
+   Do not add further exceptions without explicit reasoning.
 3. **Any field that needs to swap under `swap_ab_` MUST be swapped by `GEMMProblem::transpose()`.** If you discover a missed field, fix `problem_utils.cpp` — don't patch the caller. The current `transpose()` already covers: A/B, AO/BO, A_scale/B_scale, Ag/Bg, types (Ta/Tb/Ta_ext/Tb_ext/Tao/Tbo/Ta_scale/Tb_scale/Tag/Tbg), aOffset/bOffset, ao/bo/asPtrDims, aqGroupM/bqGroupN, aqGroupK/bqGroupK, cqGroupM/cqGroupN, forceGroupSumsA/B, sumA/sumB, postOps, and per-binary[].
 4. **Outside `init_GEMMProblem`, the source of truth is the stowed `GEMMProblem`, not `desc()`/`attr()`/pd shadow fields.**
 
@@ -186,6 +192,25 @@ The `B_scale = T` is unconditional (the `if (!bScale2D) B_scale = T` from the pr
 Surfaced as 5 matmul failures pre-fix (`f4_e2m1` mx-scales, `bf16:u8` broadcast-batch, `f16:u4` weight-decomp, `f4_e2m1` e8m0 mx-scales) — every case with non-trivial `attr-scales`, regardless of dt or 4-bit-ness. The earlier `late_scale_path = !wei_decomp_ && !any_4bit` guard plus `tr_a_matmul` / `tr_b_matmul` conditions were ad-hoc patches for a subset; deleting them and applying the universal rule above fixes the rest by construction.
 
 **Doctrine guard:** any other layout-tag field where base's pre-init rule looks "side-keyed but kernel-keyed under the hood" (i.e., the rule's `bScale2D`-style flag changes meaning under `std::swap(a_quant, b_quant)`) needs the same derive-from-post-state treatment, not a literal port.
+
+### 23. `CO.layout` reset to `N` when CO is unused under swap_ab
+`GEMMProblem::transpose()` unconditionally flips `CO.layout` (because real `c_offset` / `sum_ab` users need it swapped). Base's swap_ab branch in `init_GEMMProblem` doesn't touch CO at all (`../base/src/gpu/intel/gemm/jit/pd.cpp:807-815`). So when `cOffset == COffset::None && !sumA && !sumB` — i.e. CO is unused — base leaves `CO.layout = N` (default) while worktree's full transpose ends at `T` under `swap_ab_`. CO is part of the catalog hash, so the divergence flips kernel selection in branches the post-op binary path otherwise behaves identically.
+
+Fix block lives immediately after `if (swap_ab_) problem.transpose();` in `init_GEMMProblem` (`jit_gemm_pd.cpp:1447`). Restore `CO.layout = N` only when the field has no real consumer. The `c_offset` / `sum_ab` path sets `CO.layout` explicitly pre-transpose, so under those branches the post-transpose value is the desired one and the reset doesn't fire.
+
+**Doctrine guard:** if you find another field that `transpose()` flips but base's swap_ab branch never touches, the same pattern applies — restore to the default after transpose under the matching "field is unused" predicate.
+
+### 24. `transfer_post_ops` binary `atype.layout` is gated on `is_multi_col`, not `is_multi_row`
+The natural-looking matmul-natural pre-transpose layout rule is `atype.layout = is_multi_row && !innermost ? N : T` (mirroring A/B). That round-trips for "both vary" and "only N varies" cases, but for "only M varies" (e.g. prelu per_oc on a 2D-reshaped matmul) it produces `worktree.atype.layout = N` while base lands at `T`. Base reads bit 0 of `broadcast_mask` (kernel-row = matmul-N post-swap) for "row varies"; worktree reads bit 1 (matmul-M) for matmul-natural "row varies" — the two definitions diverge for axes that the catalog hash distinguishes.
+
+Empirically the correct gate is the DUAL of base's: `is_multi_col && !src_rmd.inner_dim.is_innermost()` keeps the matmul-natural→kernel-canonical round-trip aligned for all four 1D/2D varying-axis cases (`only-M`, `only-N`, `both`, `neither`). The full `problem.transpose()` at the swap_ab boundary then lands on base's kernel-canonical value.
+
+```cpp
+bool layout_trans = is_multi_col && !src_rmd.inner_dim.is_innermost();
+atype.layout = layout_trans ? MatrixLayout::N : MatrixLayout::T;
+```
+
+**Doctrine guard:** when porting a base rule that reads `broadcast_mask` bit 0 (kernel-row), the matmul-natural analogue is `mask & 2` (matmul-M = bit 1), but if the post-transpose target field is "row varies"-keyed in base's kernel view, you may need the DUAL — derive from the desired post-state, not by literal axis substitution.
 
 ---
 

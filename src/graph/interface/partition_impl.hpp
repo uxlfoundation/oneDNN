@@ -351,13 +351,13 @@ public:
     ///     implemented outside oneDNN Graph.
     virtual status_t execute(const stream_t *astream,
             const std::vector<tensor_t> &inputs,
-            const std::vector<tensor_t> &outputs)
+            const std::vector<tensor_t> &outputs, const tensor_t *scratchpad)
             = 0;
 
 #ifdef DNNL_WITH_SYCL
     virtual status_t execute_sycl(const stream_t *astream,
             const std::vector<tensor_t> &inputs,
-            const std::vector<tensor_t> &outputs,
+            const std::vector<tensor_t> &outputs, const tensor_t *scratchpad,
             const std::vector<::sycl::event> &sycl_deps,
             ::sycl::event *sycl_event)
             = 0;
@@ -366,10 +366,13 @@ public:
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     virtual status_t execute_ocl(const stream_t *astream,
             const std::vector<tensor_t> &inputs,
-            const std::vector<tensor_t> &outputs,
+            const std::vector<tensor_t> &outputs, const tensor_t *scratchpad,
             const std::vector<cl_event> &ocl_deps, cl_event *ocl_event)
             = 0;
 #endif
+
+    /// Returns the required scratchpad size in bytes.
+    virtual size_t get_scratchpad_size() const = 0;
 
 protected:
     /// The engine which this compiled_partition_impl_t is specialized

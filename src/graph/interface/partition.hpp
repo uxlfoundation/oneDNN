@@ -178,12 +178,14 @@ public:
 
     graph::status_t execute(const graph::stream_t *astream,
             const std::vector<graph::tensor_t> &inputs,
-            const std::vector<graph::tensor_t> &outputs) const;
+            const std::vector<graph::tensor_t> &outputs,
+            const graph::tensor_t *scratchpad = nullptr) const;
 
 #ifdef DNNL_WITH_SYCL
     graph::status_t execute_sycl(const graph::stream_t *astream,
             const std::vector<graph::tensor_t> &inputs,
             const std::vector<graph::tensor_t> &outputs,
+            const graph::tensor_t *scratchpad,
             const std::vector<::sycl::event> &sycl_deps,
             ::sycl::event *sycl_event) const;
 #endif
@@ -192,8 +194,14 @@ public:
     graph::status_t execute_ocl(const graph::stream_t *astream,
             const std::vector<graph::tensor_t> &inputs,
             const std::vector<graph::tensor_t> &outputs,
-            const std::vector<cl_event> &sycl_deps, cl_event *sycl_event) const;
+            const graph::tensor_t *scratchpad,
+            const std::vector<cl_event> &ocl_deps, cl_event *ocl_event) const;
 #endif
+
+    size_t get_scratchpad_size() const {
+        if (!pimpl_) return 0;
+        return pimpl_->get_scratchpad_size();
+    }
 
     graph::status_t query_logical_tensor(
             size_t tid, graph::logical_tensor_t *lt) const {

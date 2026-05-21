@@ -257,6 +257,51 @@ Fix in `jit_gemm_pd.cpp:618-639`: enforce matmul-WEIGHTS in int_low and matmul-S
 
 **Doctrine guard:** "matmul-symmetric" is a tempting simplification but wrong whenever the decision genuinely cares which operand plays which role. Weights-decompression is semantically asymmetric (compressed weights, high-precision activations) — port accordingly.
 
+### 29. `get_trans` must gate on `last_dim != 1` (mirror base/`gemm_types.hpp`)
+Worktree's `get_trans` previously dropped the `inner_n != 1` clause (gotcha #10) to fix RNN BWD_DW when an mn-transposed md was being queried for ld/trans. Per gotcha #11 the mn-transposition was later removed; the RNN scenario now uses the original md and `last_dim != 1 ? trans : notrans` works for both RNN and matmul. Without the gate, matmul `[M, 1]` dtag=ba (strides `[1, M]`) is misclassified as TRANS → `user_c_trans=trans` in `gen_t::init` → forces the want_un_swap path → conflict with K==1 force-swap → `VDISPATCH_JIT_GEMM(IMPLICATION(user_c_trans=trans, want_un_swap))` rejects → falls to `ocl:ref` (sweep round 01's `100x1:1x1 dtag=ba`, etc.).
+
+Fix at `jit_gemm_pd.cpp:56-75`: `return inner_n != 1 && strides[md.ndims-1] != 1 ? trans : notrans;` — same formula as `../base/src/common/gemm_types.hpp:90-91`.
+
+**Doctrine guard:** when a `[m, 1]` or `[1, n]` md flows through `get_trans`, the n-axis stride is unobservable (single column / row), so trans-ness must fall back to NOTRANS. Bare `strides[n] != 1 → trans` misclassifies these degenerate axes.
+
+### 30. `valid_2d_mask` per-tensor branch must use kernel-view full mask
+`valid_2d_mask(mask, nd, per_tensor_ok)` checked `mask == full_tensor_mask()` to accept the per-tensor case, but `full_tensor_mask()` is `matmul_pd_t`'s method (`(1 << user_ndims) - 1`) — keyed off the user-facing ndims. After `maybe_reshape_2d` collapses batch dims, the kernel-view `nd` < user ndims, and `kernel_input_.scales`/`zero_points` have been re-keyed to kernel ndims, so the matmul-side `full_tensor_mask()` overshoots. Real impact: 4D matmul with MX scales (`--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 6x2x14x96:6x2x96x32`) collapses to 3D, scale mask becomes 7, but `full_tensor_mask()` is still 15 → `7 != 15` → rejected at `scales_ok` `jit_gemm_pd.cpp:973`.
+
+Fix at `jit_gemm_pd.cpp:603-616`: use `const int kernel_full_mask = (1 << nd) - 1;` inside the function instead of `full_tensor_mask()`.
+
+**Doctrine guard:** any helper called from `scales_ok` / `zp_ok` / `gs_ok` that takes `nd` as a parameter must use that `nd` consistently throughout. `matmul_pd_t::ndims()` and `matmul_pd_t::full_tensor_mask()` reflect the user view; `jit_gemm_pd_t::ndims()` and derived `kernel_full_mask = (1 << nd) - 1` reflect the kernel view. Mixing them silently misclassifies cases where `maybe_reshape_2d` has collapsed dims.
+
+### 31. Asymmetric quant checks: side-swap-aware (`dy_quant_enabled` + `weights_upconversion`)
+Both checks were ported as "matmul-symmetric" but their semantic actually depends on which operand carries the int_low/compressed data. Base under `swap_ab=0` has `base.a = matmul-WEIGHTS` and `base.b = matmul-SRC`, so base's `dy_quant_enabled` tested `a_type ∈ {u8,s8,s4,u4} && b_type ∈ {u8,s8}` = matmul-WEIGHTS int_low ∧ matmul-SRC int8. The "matmul-symmetric" port checked `src_dt ∈ {u8,s8,s4,u4} && wei_dt ∈ {u8,s8}` — *reversed*. Same with `weights_upconversion = wei_decomp || (a_int4 && dy_quant_enabled)` where base's `a_int4` = matmul-WEIGHTS int4 (= worktree's `b_int4`). Both bugs surfaced as s8:s4:f16 / s8:u4:f16 wei-zp cases rejected by `zp_ok` (`weights_upconversion=false → per_tensor_ok=false → valid_2d_mask` fails on per_tensor zp).
+
+Fix in `jit_gemm_pd.cpp`: 
+- `dy_quant_enabled`: check `wei_dt ∈ {u8,s8,s4,u4} && src_dt ∈ {u8,s8}`.
+- `weights_upconversion = wei_decomp() || (b_int4 && dy_quant_enabled())`.
+
+**Doctrine guard:** any predicate inherited from base that names "a_type"/"b_type"/"a_int4"/"b_int4" is naming base's BLAS-side operand, not the matmul side. Translate `base.a → worktree.b (matmul-WEIGHTS = kB)` and `base.b → worktree.a (matmul-SRC = kA)` for the type/side identity, then apply the original predicate logic. Same gotcha class as #27, #28.
+
+### 32. Un-swap requires gemm_b ∈ {u8, s8} when matmul-WEIGHTS is INT4 (s4/u4)
+`gen_t::init` line 179-181 enforces `gemm_a ∈ {u8,s8,u4,s4} ⇒ gemm_b ∈ {u8,s8} ∨ wei_decomp()`. Under un_swap, `gemm_b = matmul-WEIGHTS`. For matmul SRC=int8 + WEIGHTS=int4 with `wei_decomp=false` (e.g., `s8:u4:f16` 2x1x64:2x64x1, dy_quant case), un_swap puts INT4 on gemm_b → rejected. Base swaps for this case (base.a = matmul-WEIGHTS = INT4, base.b = matmul-SRC = INT8 → accepted).
+
+Fix at `jit.hpp:96-106`: gate `want_un_swap &= !wei_int4` where `wei_int4 = matmul-WEIGHTS ∈ {s4, u4}`. Forces the swap whenever WEIGHTS is INT4 (regardless of wei_decomp), so gemm_a always carries the INT4 operand and the int-DT check at `jit.hpp:179` accepts.
+
+**Doctrine guard:** any `gen_t` DT check that constrains `gemm_a`/`gemm_b` to specific dtype sets implicitly assumes a particular side mapping. If un_swap can land the constrained side on a value outside the accepted set, an additional `want_un_swap` gate is required to force the swap for that case.
+
+### 33. K==1 + col-major DST + N>1: un_swap is required AND lda pad must be skipped
+Worktree's `gen_t::init` has two competing rules: K==1 forces `want_un_swap=false` (gotcha #16), col-major DST requires `want_un_swap=true` (gotcha #17). The pad-lda branch (`gemm_k()==1 && !gemm_trans_a()`) is the only thing that breaks under K==1+un_swap — the kernel itself is fine. Fix is to (a) keep the K==1 force-swap gate but exempt col-major-DST cases, and (b) skip the lda pad when `!swap_ab_` (un_swap K==1 path).
+
+The pad assumes `gemm_lda_` is the K-stride (BLAS notrans convention). Under un_swap K==1, kernel-A is matmul-SRC (full M dim) and `gemm_lda_` is the matmul-SRC M-stride (per `get_ld`'s notrans + inner_m>1 branch — the K-stride is unobservable since K=1). Padding the M-stride to 16 desynchronizes the kernel's row reads from the actual layout → garbage output. Under swap_ab K==1, kernel-A is matmul-WEIGHTS [K=1, N], so M_kernel=N and the matrix has a single K-column; the padded ld is harmless because no row beyond the first is read.
+
+Fix in `jit.hpp`:
+- gate: `want_un_swap &= (gemm_k() > 1) || (user_c_trans == transpose::trans);` (was `&= (gemm_k() > 1)`).
+- pad: `if ((gemm_k() == 1 && !gemm_trans_a() && swap_ab_) || (m_ == 1 && gemm_trans_a()))` (added `&& swap_ab_` to the first clause).
+
+For the N=1 sub-case (e.g., `100x1:1x1 dtag=ba`), gotcha #29's `get_trans` restore reclassifies the DST as NOTRANS (since last_dim=1), so `user_c_trans=notrans` and the col-major-DST exemption doesn't fire → swap-only path applies (same as before). The fix is targeted to K==1+col-major-DST+N>1 only; the gotcha #16 K==1+N=1 protection is preserved.
+
+Surfaced as 10 `jit→ref` regressions in the 20-round sweep (all cases like `10x1:1x20 dtag=ba`, `3x30x1:3x1x20 dtag=acb`, etc.). All 10 now dispatch `jit:gemm:any` and pass correctness.
+
+**Doctrine guard:** the pad-lda branch was inherited from base and assumes base's invariant that "K==1+notrans means K-stride is being padded". Worktree's matmul-natural orientation breaks that invariant for un_swap K==1, where `gemm_lda_` is the M-stride (because `get_ld` falls through to the M-stride branch when inner_n=1). When porting any base helper that pads a leading dim, audit whether worktree's `get_ld` can land on a different stride axis under the new orientation — if yes, gate the pad on `swap_ab_` (or pre-compute the K-stride explicitly).
+
 ---
 
 ## File map

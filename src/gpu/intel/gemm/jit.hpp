@@ -95,14 +95,32 @@ struct gen_t : public intel::primitive_t {
             // Weights-only compression: catalog only has skinny-N for quant-in-A.
             want_un_swap &= !wei_decomp();
 
+            // When matmul-WEIGHTS is INT4 (s4/u4) and we don't take the
+            // wei_decomp path, the int-DT check at line 179-181 requires
+            // gemm_b ∈ {u8, s8}. Un-swap puts gemm_b = matmul-WEIGHTS = INT4,
+            // which the check rejects. Force the swap so gemm_a takes the
+            // INT4 operand (matching base's gemm_a = matmul-WEIGHTS under
+            // base.swap_ab=1 for cases like s8:u4:f16, s8:s4:f16, etc.).
+            const bool wei_int4 = utils::one_of(
+                    kernel_weights_md()->data_type, data_type::s4,
+                    data_type::u4);
+            want_un_swap &= !wei_int4;
+
             // Skinny-K (K==1) requires the column-major kernel: the matmul-
             // natural un-swap puts the large matmul-M-dim on kernel-A, after
             // which the (gemm_k()==1 && !gemm_trans_a()) pad below sets gemm_lda_ to 16 even
             // though actual stride is 1 → kernel over-reads matmul-SRC by 16x
             // and dst is garbage. Base always swaps for K==1 (its apply_swap_ab
             // mapped kernel-A to matmul-WEIGHTS, where pad-lda lands on a 1-row
-            // matrix and is benign). Mirror that here.
-            want_un_swap &= (gemm_k() > 1);
+            // matrix and is benign). Mirror that here, EXCEPT when DST is
+            // col-major: in that case the VDISPATCH below requires un_swap, so
+            // we keep un_swap on but suppress the lda pad in the K==1 + un_swap
+            // path (the pad assumes lda is K-stride; for matmul-SRC col-major
+            // K==1 it is M-stride and padding it desynchronizes the kernel's
+            // row reads from the actual matmul-SRC layout).
+            const bool keep_un_swap_for_colmajor_dst
+                    = (user_c_trans == transpose::trans);
+            want_un_swap &= (gemm_k() > 1) || keep_un_swap_for_colmajor_dst;
 
             // No kernels with transposed C if un-swap is disabled (e.g. due
             // to wei_decomp() or K==1) — this case cannot be handled.
@@ -165,7 +183,13 @@ struct gen_t : public intel::primitive_t {
             }
 
             // Pad leading dimensions in case of a single row/column.
-            if ((gemm_k() == 1 && !gemm_trans_a()) || (m_ == 1 && gemm_trans_a())) {
+            // Under !swap_ab_ + K==1, kernel-A is matmul-SRC (full M dim) and
+            // gemm_lda_ here is the M-stride (per get_ld's notrans degenerate-
+            // K=1 branch), NOT the K-stride. Padding that to 16 desynchronizes
+            // the kernel's row reads from the actual matmul-SRC layout (gotcha
+            // #16 / #33). Skip the pad in that orientation.
+            if ((gemm_k() == 1 && !gemm_trans_a() && swap_ab_)
+                    || (m_ == 1 && gemm_trans_a())) {
                 gemm_lda_ = utils::rnd_up(gemm_lda_, 16);
             }
 

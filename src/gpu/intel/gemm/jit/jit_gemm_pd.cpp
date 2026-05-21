@@ -64,12 +64,18 @@ transpose_t jit_gemm_pd_t::get_trans(const memory_desc_t &md) {
     const dim_t notranspose_ld
             = inner_m > 1 ? strides[md.ndims - 2] : inner_n;
     if (is_4bit && notranspose_ld % 2 != 0) return transpose::trans;
-    // Stride along the n-axis governs trans-ness. The legacy code also gated
-    // on inner_n != 1, but that short-circuited the degenerate single-column
-    // case ([m, 1] strides [1, m]) to NOTRANS, then get_ld returned the wrong
-    // stride. Mn-transposed dst/src/wei mds with a 1-axis hit this when the
-    // kernel runs swap_ab_=true on a matmul-skinny shape.
-    return strides[md.ndims - 1] != 1 ? transpose::trans : transpose::notrans;
+    // When the inner (n-axis) dim is 1, the matrix has a single column and
+    // the n-axis stride is unobservable — fall back to NOTRANS to match
+    // base's gemm_types.hpp get_trans (`last_dim != 1 && stride != 1`). The
+    // earlier worktree dropped this gate to fix RNN BWD_DW (gotcha #10) when
+    // mds were mn-transposed via ld_kernel_view; that mn-transpose path was
+    // removed (gotcha #11), so the gate is restored here. Without it,
+    // matmul DST [M, 1] dtag=ba (strides [1, M]) is misclassified as TRANS,
+    // forcing the want_un_swap path in gen_t and rejecting K==1 cases that
+    // base accepts via swap_ab=true.
+    return inner_n != 1 && strides[md.ndims - 1] != 1
+            ? transpose::trans
+            : transpose::notrans;
 }
 
 dim_t jit_gemm_pd_t::get_ld(const memory_desc_t &md) {
@@ -595,23 +601,35 @@ int jit_gemm_pd_t::quant_entry_ndims(
 }
 
 bool jit_gemm_pd_t::valid_2d_mask(int mask, int nd, bool per_tensor_ok) {
-    return (mask == full_tensor_mask() && per_tensor_ok)
+    // The per-tensor check must use the kernel-view full mask ((1 << nd) - 1),
+    // not matmul_pd_t::full_tensor_mask() which is keyed off the user ndims.
+    // After maybe_reshape_2d collapses batch dims, kernel-view nd < user
+    // ndims, and the scale/zp mask has been re-keyed to the kernel view too —
+    // so anchoring to the user mask here misclassifies legitimate per-tensor
+    // configurations (e.g. 4D matmul with MX scales collapsing to 3D, scale
+    // mask 7 vs user full_mask 15).
+    const int kernel_full_mask = (1 << nd) - 1;
+    return (mask == kernel_full_mask && per_tensor_ok)
             || utils::one_of(mask, (1 << (nd - 1)),
                     (1 << (nd - 1)) + (1 << (nd - 2)));
 }
 
 bool jit_gemm_pd_t::dy_quant_enabled() const {
     using namespace data_type;
-    // Type checks are matmul-symmetric (do not depend on which operand is
-    // kernel-A): read SRC/WEIGHTS dtypes directly off the kernel-view mds.
-    const auto a_dt = kernel_input_.src_md.data_type;
-    const auto b_dt = kernel_input_.weights_md.data_type;
-    bool all_f8 = (utils::one_of(a_dt, f8_e5m2, f8_e4m3)
-            && utils::one_of(b_dt, f8_e5m2, f8_e4m3)
+    // Dynamic quant is asymmetric: base's a-side checked the low-precision
+    // operand and base.b-side the higher-precision one. Under base.swap_ab=0
+    // base.a = matmul-WEIGHTS and base.b = matmul-SRC, so the matmul-keyed
+    // analogue is WEIGHTS ∈ {u8,s8,s4,u4} AND SRC ∈ {u8,s8} (gotcha #27).
+    // The previous "matmul-symmetric" form rejected s8:s4:f16 wei-zp cases
+    // because matmul-SRC=s8 ∉ {s4,u4}.
+    const auto src_dt = kernel_input_.src_md.data_type;
+    const auto wei_dt = kernel_input_.weights_md.data_type;
+    bool all_f8 = (utils::one_of(src_dt, f8_e5m2, f8_e4m3)
+            && utils::one_of(wei_dt, f8_e5m2, f8_e4m3)
             && utils::one_of(c_type(), f8_e5m2, f8_e4m3, f16, bf16, f32));
     return (utils::one_of(c_type(), f32, f16, bf16, u8, s8)
-                   && utils::one_of(a_dt, u8, s8, s4, u4)
-                   && utils::one_of(b_dt, u8, s8))
+                   && utils::one_of(wei_dt, u8, s8, s4, u4)
+                   && utils::one_of(src_dt, u8, s8))
             || all_f8;
 }
 
@@ -857,8 +875,13 @@ status_t jit_gemm_pd_t::zp_ok(impl::engine_t *engine) {
             = utils::one_of(kernel_input_.src_md.data_type, s4, u4);
     const bool b_int4
             = utils::one_of(kernel_input_.weights_md.data_type, s4, u4);
+    // weights_upconversion = "weights are upconverted (decompressed)". In
+    // base this was `a_int4 && dy_quant_enabled` where base.a = matmul-
+    // WEIGHTS under swap_ab=0; the matmul-keyed analogue is b_int4
+    // (gotcha #27). Without this swap, s8:s4:f16 wei-zp per_tensor was
+    // rejected by zp_ok because per_tensor_ok defaulted to false.
     const bool weights_upconversion
-            = wei_decomp() || (a_int4 && dy_quant_enabled());
+            = wei_decomp() || (b_int4 && dy_quant_enabled());
 
     if (!a_zps.has_default_values()) {
         // INT4 ZPs on SRC do not expand the range in a meaningful way; base's

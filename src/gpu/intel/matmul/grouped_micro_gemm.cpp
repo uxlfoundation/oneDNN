@@ -299,6 +299,9 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
     VDISPATCH_MATMUL(src_d.is_grouped_desc() && dst_d.is_grouped_desc(),
             VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
+    VDISPATCH_MATMUL(
+            !with_reduce(), VERBOSE_UNSUPPORTED_FEATURE, "bias reduction");
+
     // Weights should be dense
     VDISPATCH_MATMUL(!wei_d.is_sparse_desc() && !wei_d.is_grouped_desc(),
             VERBOSE_UNSUPPORTED_SPARSE_CFG);

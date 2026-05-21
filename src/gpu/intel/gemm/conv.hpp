@@ -46,6 +46,8 @@ struct conv_t : public intel::primitive_t {
             VDISPATCH_JIT_GEMM(attr()->has_default_values(
                                        primitive_attr_t::skip_mask_t::gpu_attr),
                     VERBOSE_UNSUPPORTED_ATTR);
+            VDISPATCH_JIT_GEMM(!with_reduce(), VERBOSE_UNSUPPORTED_FEATURE,
+                    "bias reduction");
 
             auto conv_desc = convolution_desc_t();
 

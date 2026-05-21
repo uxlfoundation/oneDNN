@@ -53,6 +53,8 @@ struct ref_sparse_t : public primitive_t {
             bool is_f32_dt = utils::everyone_is(f32, src_dt_, wei_dt_, dst_dt_);
             VDISPATCH_MATMUL(
                     is_f32_dt || is_f16_dt, VERBOSE_UNSUPPORTED_DT_CFG);
+            VDISPATCH_MATMUL(!with_reduce(), VERBOSE_UNSUPPORTED_FEATURE,
+                    "bias reduction");
 
             bool is_src_coo_sparse = src_d.is_sparse_desc()
                     && (src_d.encoding() == sparse_encoding::coo);

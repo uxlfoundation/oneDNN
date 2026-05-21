@@ -107,30 +107,18 @@ namespace gemm {
 
 // Memory-desc introspection helpers used by SDPA / grouped_micro_gemm /
 // gated_mlp to compute kernel-A/B leading dims and transposition flags.
-// Bit-identical to the former gemm_desc_t::get_trans / get_ld static methods,
-// preserved so callers keep their original layout decisions.
-//
-// KNOWN PRE-EXISTING BUG (intentionally preserved for bit-compat with base):
-// the `last_dim != 1` short-circuit silently mis-classifies degenerate
-// single-column/row matrices (e.g. [m, 1] strides [1, m] returns notrans
-// even though the n-axis carries the larger stride). See CLAUDE.md gotcha
-// #10 — the internal copy in jit_gemm_pd_t::get_trans was fixed there by
-// dropping the `last_dim != 1` gate. Do NOT copy this helper assuming it's
-// canonical; if you need correct behavior on degenerate shapes, use the
-// internal jit_gemm_pd_t::get_trans / get_ld directly.
 static inline transpose_t get_md_trans(const memory_desc_t &md) {
     if (!md.ndims) return transpose::notrans;
 
     using namespace data_type;
     const bool is_4bit = utils::one_of(md.data_type, f4_e2m1, f4_e3m0, s4, u4);
-    dim_t last_dim = md.dims[md.ndims - 1];
     auto strides = md.format_desc.blocking.strides;
-    dim_t notranspose_ld
-            = md.dims[md.ndims - 2] > 1 ? strides[md.ndims - 2] : last_dim;
+    dim_t notranspose_ld = md.dims[md.ndims - 2] > 1
+            ? strides[md.ndims - 2]
+            : md.dims[md.ndims - 1];
     if (is_4bit && notranspose_ld % 2 != 0) return transpose::trans;
 
-    return last_dim != 1 && strides[md.ndims - 1] != 1 ? transpose::trans
-                                                       : transpose::notrans;
+    return strides[md.ndims - 1] != 1 ? transpose::trans : transpose::notrans;
 }
 
 static inline dim_t get_md_ld(const memory_desc_t &md) {

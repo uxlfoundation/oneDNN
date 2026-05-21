@@ -980,11 +980,20 @@ status_t transfer_post_ops(
             problem.postOps.binaryTrans[i] = trans;
 
             MatrixAddressing atype;
-            // T=row-major, N=col-major (matmul-natural). trans=true means the
-            // binary's inner_dim is along M (col-major-like), so it gets N;
-            // notrans (row-major along N) gets T. Mirrors the A/B/C convention
-            // — final problem.transpose() under swap_ab_ flips to gemm view.
-            atype.layout = trans ? MatrixLayout::N : MatrixLayout::T;
+            // Matmul-natural pre-transpose layout. Gated on is_multi_col (not
+            // is_multi_row) so the value is the post-transpose-DUAL of base's
+            // kernel-canonical layout. Base reads bit 0 (kernel-row =
+            // matmul-N) for "row varies"; worktree reads bit 1 (matmul-M) for
+            // matmul-natural "row varies". The two agree for "both vary" and
+            // "only N varies", but diverge for "only M varies" (e.g. prelu
+            // per_oc on 2D-reshaped matmul), where base.is_multi_row=false
+            // while worktree.is_multi_row=true. Gating on is_multi_col keeps
+            // the matmul-natural→kernel-canonical transpose round-trip aligned
+            // for all four 1D/2D varying-axis cases.
+            bool layout_trans
+                    = is_multi_col && !src_rmd.inner_dim.is_innermost();
+            atype.layout
+                    = layout_trans ? MatrixLayout::N : MatrixLayout::T;
             atype.crosspack = 1;
             atype.packSize = 0;
             atype.setAlignment(T.size());
@@ -1354,6 +1363,19 @@ status_t jit_gemm_pd_t::init_GEMMProblem(
     // "Core doctrine: init in matmul-natural + one transpose".
     if (swap_ab_) {
         problem.transpose();
+        // Doctrine exemption: GEMMProblem::transpose() unconditionally flips
+        // CO.layout, but base's swap_ab branch does NOT touch CO (see
+        // ../base/src/gpu/intel/gemm/jit/pd.cpp:807-815). When CO is unused
+        // (no c_offset / sum_ab) the field is still part of the catalog hash,
+        // so leaving it flipped under swap_ab causes a kernel-selection
+        // mismatch with base. Restore the default (N) here so an unused CO
+        // matches base regardless of swap_ab. The c_offset/sum_ab block above
+        // sets CO.layout explicitly pre-transpose so that branch still ends
+        // at base's kernel-canonical value after the flip.
+        if (problem.cOffset == COffset::None && !problem.sumA
+                && !problem.sumB) {
+            problem.CO.layout = MatrixLayout::N;
+        }
     }
 
     // DOCTRINE EXEMPTION (review.md #5). The matmul-natural skinny-N path

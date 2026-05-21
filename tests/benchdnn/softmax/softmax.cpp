@@ -231,15 +231,7 @@ int fill_data_bwd(data_kind_t data_kind, int exec_arg, const prb_t *prb,
 
 void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
     skip_unimplemented_data_type({prb->sdt, prb->ddt}, prb->dir, res);
-    skip_unimplemented_sum_po(prb->attr, res, dnnl_softmax, prb->sdt);
-    skip_unimplemented_binary_po(prb->attr, res);
-    skip_unimplemented_prelu_po(prb->attr, res, dnnl_softmax);
 
-    if (prb->attr.post_ops.find(attr_t::post_ops_t::kind_t::SUM) != -1) {
-        res->state = SKIPPED;
-        res->reason = reason_t::skip_not_supported;
-        return;
-    }
     // Softmax with stats is not supported in the primitive implementation
     // But it is supported in the graph implementation, we will handle it
     // separately by marking it as DEFERRED.

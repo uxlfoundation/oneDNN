@@ -80,6 +80,33 @@ __attribute__((overloadable)) int global_atomic_add(global int *p, int v) {
     return atomic_add(p, v);
 }
 
+#ifndef TILE_ATOMIC_ADD_DEBUG
+#define TILE_ATOMIC_ADD_DEBUG 0
+#endif
+
+#define TILE_ATOMIC_ADD_DEBUG_COND() \
+    (TILE_ATOMIC_ADD_DEBUG && get_group_id(0) == 0 && get_group_id(1) == 0 \
+            && get_group_id(2) == 0)
+
+#define TILE_ATOMIC_ADD_DEBUG_PRINT_ENABLED(enable) \
+    ((enable) && TILE_ATOMIC_ADD_DEBUG_COND())
+
+#ifndef TILE_ATOMIC_TAG_UNKNOWN
+#define TILE_ATOMIC_TAG_UNKNOWN 0
+#endif
+
+#ifndef TILE_ATOMIC_TAG_DV
+#define TILE_ATOMIC_TAG_DV 1
+#endif
+
+#ifndef TILE_ATOMIC_TAG_DK
+#define TILE_ATOMIC_TAG_DK 2
+#endif
+
+#define TILE_ATOMIC_TAG_NAME(tag) \
+    ((tag) == TILE_ATOMIC_TAG_DV ? "dV" \
+                                 : ((tag) == TILE_ATOMIC_TAG_DK ? "dK" : "?"))
+
 #define DEF_BLOCK_LOAD_STORE(type, itype, suffix, n) \
     __attribute__((overloadable)) type##n block_load( \
             const global type *p, int vlen) \
@@ -1026,6 +1053,28 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
             } \
         } \
     } \
+    __attribute__((overloadable)) void tile_atomic_add_full_debug(tile_type t, \
+            global element_type *ptr, int ld, int offset_r, int offset_c, \
+            int debug_enable, int debug_tag, int id) { \
+        ptr += ld * offset_c + offset_r; \
+        _Pragma("unroll") for (int j = 0; j < bc * nbc; j++, ptr += ld) { \
+            _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; i0 += sg) { \
+                int i = i0 + get_sub_group_local_id(); \
+                element_type _v = tile_access(t, i0, j, sg, br, bc, nbr); \
+                element_type _old = global_atomic_add(ptr + i, _v); \
+                if (TILE_ATOMIC_ADD_DEBUG_PRINT_ENABLED(debug_enable)) { \
+                    int _r = offset_r + i; \
+                    int _c = offset_c + j; \
+                    int _idx = _c * ld + _r; \
+                    printf("[DBG][tile_atomic_add_full][%s %d] ld=%d r=%d " \
+                           "c=%d idx=%d i=%d j=%d old=%f add=%f new=%f \n", \
+                            TILE_ATOMIC_TAG_NAME(debug_tag), id, ld, _r, _c, \
+                            _idx, i, j, (float)_old, (float)_v, \
+                            (float)(_old + _v)); \
+                } \
+            } \
+        } \
+    } \
     __attribute__((overloadable)) void tile_atomic_add(tile_type t, \
             global element_type *ptr, int m, int n, int ld, int offset_r, \
             int offset_c) { \
@@ -1041,6 +1090,40 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
                     if (offset_r + i < m) \
                         (void)global_atomic_add(ptr + i, \
                                 tile_access(t, i0, j, sg, br, bc, nbr)); \
+                } \
+            } \
+        } \
+    } \
+    __attribute__((overloadable)) void tile_atomic_add_debug(tile_type t, \
+            global element_type *ptr, int m, int n, int ld, int offset_r, \
+            int offset_c, int debug_enable, int debug_tag, int id) { \
+        if (m >= (offset_r + (br * nbr)) && n >= (offset_c + (bc * nbc))) { \
+            tile_atomic_add_full_debug(t, ptr, ld, offset_r, offset_c, \
+                    debug_enable, debug_tag, id); \
+            return; \
+        } \
+        ptr += ld * offset_c + offset_r; \
+        _Pragma("unroll") for (int j = 0; j < bc * nbc; j++, ptr += ld) { \
+            if (offset_c + j < n) { \
+                _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; i0 += sg) { \
+                    int i = i0 + get_sub_group_local_id(); \
+                    if (offset_r + i < m) { \
+                        element_type _v \
+                                = tile_access(t, i0, j, sg, br, bc, nbr); \
+                        element_type _old = global_atomic_add(ptr + i, _v); \
+                        if (TILE_ATOMIC_ADD_DEBUG_PRINT_ENABLED( \
+                                    debug_enable)) { \
+                            int _r = offset_r + i; \
+                            int _c = offset_c + j; \
+                            int _idx = _c * ld + _r; \
+                            printf("[DBG][tile_atomic][%s - %d] ld=%d r=%d " \
+                                   "c=%d idx=%d i=%d j=%d old=%f add=%f " \
+                                   "new=%f \n", \
+                                    TILE_ATOMIC_TAG_NAME(debug_tag), id, ld, \
+                                    _r, _c, _idx, i, j, (float)_old, \
+                                    (float)_v, (float)(_old + _v)); \
+                        } \
+                    } \
                 } \
             } \
         } \

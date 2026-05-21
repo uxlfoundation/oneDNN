@@ -769,11 +769,13 @@ status_t micro_bwd_t::init(impl::engine_t *engine) {
 
     preprocess_ = kernels[0];
     kernel_ = kernels[1];
-    postprocess_dQKV_ = kernels[2];
+    postprocess_dQ_ = kernels[2];
+    postprocess_dKV_ = kernels[3];
 
     if (!preprocess_) return status::runtime_error;
     if (!kernel_) return status::runtime_error;
-    if (!postprocess_dQKV_) return status::runtime_error;
+    if (!postprocess_dQ_) return status::runtime_error;
+    if (!postprocess_dKV_) return status::runtime_error;
     return status::success;
 }
 
@@ -2044,7 +2046,7 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
         append_strides(pp, dq_off);
         append_offs(pp, diff_qry_off);
         CHECK(parallel_for(
-                ctx, compute::nd_range_t(gws_p, lws_p), postprocess_dQKV_, pp));
+                ctx, compute::nd_range_t(gws_p, lws_p), postprocess_dQ_, pp));
     }
 
     if (needs_intermediate_dKV) {
@@ -2078,7 +2080,7 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
             }
             append_offs(pp, diff_key_off);
             CHECK(parallel_for(ctx, compute::nd_range_t(gws_p, lws_p),
-                    postprocess_dQKV_, pp));
+                    postprocess_dKV_, pp));
         }
         // dV
         {
@@ -2096,7 +2098,7 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
             append_strides(pp, dv_off);
             append_offs(pp, diff_val_off);
             CHECK(parallel_for(ctx, compute::nd_range_t(gws_p, lws_p),
-                    postprocess_dQKV_, pp));
+                    postprocess_dKV_, pp));
         }
     }
 

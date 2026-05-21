@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/include/philox.h"
+#define TILE_ATOMIC_ADD_DEBUG 1
 #include "gpu/intel/include/tile_ops.h"
 #include "gpu/intel/include/types_interop.h"
 #include "gpu/intel/sdpa/utils.h"
@@ -494,13 +495,90 @@ inline float round_to_dst(float v) {
 }
 #endif
 
+#define DEBUG_PRINT_TILE(tag, tile, id) \
+    do { \
+        _Pragma("unroll") for (int _i = 0; \
+                               _i < sizeof((tile).x) / sizeof((tile).x[0]); \
+                               _i++) { \
+            _Pragma("unroll") for (int _j = 0; _j < sizeof((tile).x[0]) \
+                                           / sizeof((tile).x[0][0]); \
+                                   _j++) { \
+                printf("[DBG][%s %d][%d,%d]=%f \n", tag, id, _i, _j, \
+                        (float)(tile).x[_i][_j]); \
+            } \
+        } \
+    } while (0)
+
+#define DEBUG_PRINT_TILE_PAIR(tag, tile_a, tile_b, id) \
+    do { \
+        _Pragma("unroll") for (int _i = 0; _i \
+                               < sizeof((tile_a).x) / sizeof((tile_a).x[0]); \
+                               _i++) { \
+            _Pragma("unroll") for (int _j = 0; _j < sizeof((tile_a).x[0]) \
+                                           / sizeof((tile_a).x[0][0]); \
+                                   _j++) { \
+                float _before = (float)(tile_a).x[_i][_j]; \
+                float _after = (float)(tile_b).x[_i][_j]; \
+                printf("[DBG][%s %d][%d,%d] /*before=%f after=%f*/ diff=%f\n", \
+                        tag, id, _i, _j, \
+                        /*_before, _after,*/ _after - _before); \
+            } \
+        } \
+    } while (0)
+
+#define DEBUG_PRINT_LOAD_STORE_TABLE(tag, load_tile, store_tile, id) \
+    do { \
+        _Pragma("unroll") for (int _i = 0; _i < sizeof((load_tile).x) \
+                                       / sizeof((load_tile).x[0]); \
+                               _i++) { \
+            printf("[DBG][%s][row=%d]", tag, _i); \
+            _Pragma("unroll") for (int _j = 0; _j < sizeof((load_tile).x[0]) \
+                                           / sizeof((load_tile).x[0][0]); \
+                                   _j++) { \
+                float _l = (float)(load_tile).x[_i][_j]; \
+                float _s = (float)(store_tile).x[_i][_j]; \
+                printf("id: %d (load=%f store=%f added=%f at col: %d)", id, \
+                        _l, _s, _s - _l, _j); \
+            } \
+            printf("\n"); \
+        } \
+    } while (0)
+
+#define DEBUG_PRINT_SLM_REGION(tag, slm_ptr, base_r, base_c, ld, tile, id) \
+    do { \
+        _Pragma("unroll") for (int _i = 0; \
+                               _i < sizeof((tile).x) / sizeof((tile).x[0]); \
+                               _i++) { \
+            printf("[DBG][%s %d][row=%d]", tag, id, _i); \
+            _Pragma("unroll") for (int _j = 0; _j < sizeof((tile).x[0]) \
+                                           / sizeof((tile).x[0][0]); \
+                                   _j++) { \
+                size_t _idx = (size_t)(base_r + _i) \
+                        + (size_t)(base_c + _j) * (ld); \
+                printf(" c%d=%f", _j, (float)(slm_ptr)[_idx]); \
+            } \
+            printf("\n"); \
+        } \
+    } while (0)
+
+#ifndef DEBUG_TILE_PRINT_BARRIERS
+#define DEBUG_TILE_PRINT_BARRIERS 1
+#endif
+
+#if DEBUG_TILE_PRINT_BARRIERS
+#define DEBUG_WG_BARRIER() barrier(CLK_LOCAL_MEM_FENCE)
+#else
+#define DEBUG_WG_BARRIER()
+#endif
+
 inline void tile_store_dV(dv_store_tile_type *dV_tile_slm,
         global DST_DATA_T_DKDV *dV, int m, int n, int ld, int offset_r,
         int offset_c, int rem) {
 
 #if IS_GQA
 #if REDUCE_DST_F16
-    tile_atomic_add(*dV_tile_slm, dV, m, n, ld, offset_r, offset_c);
+    tile_atomic_add_debug(*dV_tile_slm, dV, m, n, ld, offset_r, offset_c, 1,
+            TILE_ATOMIC_TAG_DV, get_sub_group_local_id());
 #else
     tile_elementwise_s(*dV_tile_slm, round_to_dst);
     tile_atomic_add(*dV_tile_slm, dV, m, n, ld, offset_r, offset_c);
@@ -527,7 +605,8 @@ inline void tile_store_dK_t(dv_store_tile_type *dK_tile,
 
 #if IS_GQA
 #if REDUCE_DST_F16
-    tile_atomic_add(*dK_tile, dK, m, n, ld, offset_r, offset_c);
+    tile_atomic_add_debug(*dK_tile, dK, m, n, ld, offset_r, offset_c, 1,
+            TILE_ATOMIC_TAG_DK, get_sub_group_local_id());
 #else
     tile_elementwise_s(*dK_tile, round_to_dst);
     tile_atomic_add(*dK_tile, dK, m, n, ld, offset_r, offset_c);
@@ -984,16 +1063,41 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             uint sg_j0_vs = sg_j_vs * ugemm_vs_sg_tile_n;
 
             // accumulate dv tile to slm
+            DEBUG_WG_BARRIER();
             if (sg_ij < sg_per_wg_BcD) {
 #if REDUCE_DST_F16
                 dv_reduce_f16_tile dV_tile1_store;
                 tile_copy(dV_tile1, dV_tile1_store);
+                /*if (get_group_id(0) == 0 && get_group_id(1) == 0
+                        && get_group_id(2) == 0 && sg_ij == 0) {
+                    printf("[DBG][dV][tile_copy] q0=%d k0=%d sg=%d\n", q0, k0,
+                            get_sub_group_local_id());
+                    DEBUG_PRINT_TILE_PAIR("dV_tile1_vs_store", dV_tile1,
+                            dV_tile1_store, get_sub_group_local_id());
+                }*/
 #else
                 dv_store_tile_type dV_tile1_store;
                 dV_tile1_store = dV_tile1;
 #endif
+                /*if (get_group_id(0) == 0 && get_group_id(1) == 0
+                        && get_group_id(2) == 0 && sg_ij == 0
+                        && get_sub_group_local_id() == 1) {
+                    printf("[DBG][dV][slm_before_add] q0=%d k0=%d\n", q0,
+                            k0);
+                    DEBUG_PRINT_SLM_REGION("dV_slm_before", dV_slm, sg_i0_vs,
+                            sg_j0_vs, D_MAX, dV_tile1_store, get_sub_group_local_id())
+                }*/
                 tile_slm_add(dV_tile1_store, dV_slm, D_MAX, sg_i0_vs, sg_j0_vs);
+                if (get_group_id(0) == 0 && get_group_id(1) == 0
+                        && get_group_id(2) == 0 && sg_ij == 0
+                        && get_sub_group_local_id() == 0) {
+                    printf("[DBG][dV][slm_after_add] q0=%d k0=%d\n", q0, k0);
+                    DEBUG_PRINT_SLM_REGION("dV_slm_after", dV_slm, sg_i0_vs,
+                            sg_j0_vs, D_MAX, dV_tile1_store,
+                            get_sub_group_local_id());
+                }
             }
+            DEBUG_WG_BARRIER();
         }
 
 #if DO_MM
@@ -1090,22 +1194,46 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             uint sg_j0_dk = sg_j_qdSt * ugemm_qdSt_sg_tile_n;
 
             // dk slm tile
+            DEBUG_WG_BARRIER();
             if (sg_ij < sg_per_wg_BcD) {
 #if REDUCE_DST_F16
                 a_reduce_f16_tile dK_tile1_store;
                 tile_copy(dK_tile1, dK_tile1_store);
+                /*if (get_group_id(0) == 0 && get_group_id(1) == 0
+                        && get_group_id(2) == 0 && sg_ij == 0) {
+                    printf("[DBG][dK][tile_copy] q0=%d k0=%d sg=%d\n", q0, k0,
+                            get_sub_group_local_id());
+                    DEBUG_PRINT_TILE_PAIR("dK_tile1_vs_store", dK_tile1,
+                            dK_tile1_store, get_sub_group_local_id());
+                }*/
 #else
                 dk_store_tile_type dK_tile1_store;
                 dK_tile1_store = dK_tile1;
 #endif
 #if TRANSPOSE_K
+                /*if (get_group_id(0) == 0 && get_group_id(1) == 0
+                        && get_group_id(2) == 0 && sg_ij == 0) {
+                    printf("[DBG][dK][slm_before_add_t] q0=%d k0=%d\n", q0, k0);
+                    DEBUG_PRINT_SLM_REGION("dK_slm_before_t", dK_slm, sg_i0_dk,
+                            sg_j0_dk, D_MAX, dK_tile1_store,
+                            get_sub_group_local_id());
+                }*/
                 tile_slm_add_t(
                         dK_tile1_store, dK_slm, D_MAX, sg_i0_dk, sg_j0_dk);
+                if (get_group_id(0) == 0 && get_group_id(1) == 0
+                        && get_group_id(2) == 0 && sg_ij == 0
+                        && get_sub_group_local_id() == 0) {
+                    printf("[DBG][dK][slm_after_add_t] q0=%d k0=%d\n", q0, k0);
+                    DEBUG_PRINT_SLM_REGION("dK_slm_after_t", dK_slm, sg_i0_dk,
+                            sg_j0_dk, D_MAX, dK_tile1_store,
+                            get_sub_group_local_id());
+                }
 #else
                 tile_slm_add(dK_tile1_store, dK_slm, ugemm_kq_wg_tile_m,
                         sg_i0_dk, sg_j0_dk);
 #endif
             }
+            DEBUG_WG_BARRIER();
         }
 
 #if !USE_SYSTOLIC_UKERNEL
@@ -1154,12 +1282,24 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
     dv_store_tile_type dV_tile_slm;
 
+    DEBUG_WG_BARRIER();
     if (sg_ij < sg_per_wg_BcD) {
         tile_load(&dV_tile_slm, dV_slm, D_MAX, ugemm_kq_wg_tile_m, D_MAX,
                 sg_i0_vs, sg_j0_vs);
+        dv_store_tile_type dV_tile_before_store = dV_tile_slm;
         tile_store_dV(&dV_tile_slm, dV, d, k, lddv, sg_i0_vs, wg_i0 + sg_j0_vs,
                 remainder_k);
+        if (get_group_id(0) == 0 && get_group_id(1) == 0 && get_group_id(2) == 0
+                && sg_ij == 0 && get_sub_group_local_id() == 0) {
+            dv_store_tile_type dV_tile_after_store;
+            tile_load(&dV_tile_after_store, dV, d, k, lddv, sg_i0_vs,
+                    wg_i0 + sg_j0_vs);
+            DEBUG_PRINT_LOAD_STORE_TABLE("dV load_vs_store",
+                    dV_tile_before_store, dV_tile_slm,
+                    get_sub_group_local_id());
+        }
     }
+    DEBUG_WG_BARRIER();
     // /update dV
 
     //////// update dK
@@ -1167,12 +1307,27 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     // transposed dK_slm (D*Bc) matches dV tile layout
     dv_store_tile_type dK_tile_t;
 
+    DEBUG_WG_BARRIER();
     if (sg_ij < sg_per_wg_BcD) {
+        dv_store_tile_type dK_tile_before_store;
         tile_load(&dK_tile_t, dK_slm, D_MAX, ugemm_kq_wg_tile_m, D_MAX,
                 sg_i0_vs, sg_j0_vs);
+        dK_tile_before_store = dK_tile_t;
         tile_store_dK_t(&dK_tile_t, dK, d, k, lddk, sg_i0_vs, wg_i0 + sg_j0_vs,
                 remainder_k);
+        if (get_group_id(0) == 0 && get_group_id(1) == 0 && get_group_id(2) == 0
+                && sg_ij == 0 && get_sub_group_local_id() == 0) {
+            dv_store_tile_type dK_tile_after_store;
+            tile_load(&dK_tile_after_store, dK, d, k, lddk, sg_i0_vs,
+                    wg_i0 + sg_j0_vs);
+            printf("[DBG][dK][load_vs_store] k0=%d q0end=%d sg=%d\n", k0, q0end,
+                    get_sub_group_local_id());
+            DEBUG_PRINT_LOAD_STORE_TABLE("dK_load_vs_store",
+                    dK_tile_before_store, dK_tile_after_store,
+                    get_sub_group_local_id());
+        }
     }
+    DEBUG_WG_BARRIER();
 #else
     // non-transposed dK_slm uses qdSt layout (Bc*D) and indexing
     uint sg_i0_dk = sg_i_qdSt * ugemm_qdSt_sg_tile_m;
@@ -1280,7 +1435,29 @@ preprocess_Di(global float *Di, const global DST_DATA_T *A,
 }
 
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) kernel void
-postprocess_dQKV(global DST_DATA_T *dst, global const DST_DATA_T_DKDV *src,
+postprocess_dQ(global DST_DATA_T *dst, global const float *src, int nelems,
+        DQ_STRIDES, FULL_QRY_OFFSETS) {
+    uint b0 = get_group_id(1);
+    uint b1 = get_group_id(2);
+
+    const size_t src_offset = DQ_BATCH(b1, b0);
+    const size_t dst_offset = QRY_BATCH(b1, b0);
+
+    /* Locate dQ matrices within batch */
+    src += src_offset;
+    dst += dst_offset;
+    size_t idx = get_global_id(0);
+    if (idx < nelems) {
+        size_t row = idx / QRY_D3;
+        size_t col = idx % QRY_D3;
+        size_t src_idx = (size_t)row * DQ_S2 + col * DQ_S3;
+        size_t dst_idx = (size_t)row * QRY_S2 + col * QRY_S3;
+        dst[dst_idx] = TO_DATA_T(src[src_idx]);
+    }
+}
+
+__attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) kernel void
+postprocess_dKV(global DST_DATA_T *dst, global const DST_DATA_T_DKDV *src,
         int nelems, DQ_STRIDES, FULL_QRY_OFFSETS) {
     uint b0 = get_group_id(1);
     uint b1 = get_group_id(2);

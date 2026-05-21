@@ -113,8 +113,8 @@ struct ref_grouped_t : public primitive_t {
 
             with_post_op_ = !attr()->post_ops_.has_default_values();
             if (with_post_op_) {
-                CHECK(check_post_op_chain(
-                        *attr(), dst_d, po_chain_, binary_scale_dts_));
+                CHECK(check_post_op_chain(*attr(), dst_d, group_count_,
+                        po_chain_, binary_scale_dts_));
             }
 
             return status::success;

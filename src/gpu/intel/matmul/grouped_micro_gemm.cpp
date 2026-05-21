@@ -327,7 +327,7 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
     with_post_op_ = !attr()->post_ops_.has_default_values();
     if (with_post_op_) {
         CHECK(check_post_op_chain(
-                *attr(), dst_d, po_chain_, binary_scale_dts_));
+                *attr(), dst_d, ngroups_, po_chain_, binary_scale_dts_));
     }
 
     // only supported dt for now

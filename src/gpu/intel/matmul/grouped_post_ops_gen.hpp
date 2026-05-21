@@ -44,7 +44,7 @@ enum class po_kind_t {
 int find_po_in_chain(const po_kind_t *po_chain, po_kind_t kind);
 
 status_t check_post_op_chain(const primitive_attr_t &attr,
-        const memory_desc_wrapper &dst_desc, po_kind_t *po_chain,
+        const memory_desc_wrapper &dst_desc, dim_t ngroups, po_kind_t *po_chain,
         data_type_t *scale_arr);
 
 void set_binary_scales_dt(const primitive_attr_t &attr,

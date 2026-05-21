@@ -39,7 +39,7 @@ int find_po_in_chain(const po_kind_t *po_chain, po_kind_t kind) {
 }
 
 status_t check_post_op_chain(const primitive_attr_t &attr,
-        const memory_desc_wrapper &dst_desc, po_kind_t *po_chain,
+        const memory_desc_wrapper &dst_desc, dim_t ngroups, po_kind_t *po_chain,
         data_type_t *scale_arr) {
     auto &po = attr.post_ops_;
     scale_arr[0] = data_type::undef;
@@ -58,8 +58,11 @@ status_t check_post_op_chain(const primitive_attr_t &attr,
                     VERBOSE_UNSUPPORTED_POSTOP);
 
             const memory_desc_wrapper po_mdw(po.entry_[i].binary.src1_desc);
-            if (po_mdw.nelems() == 1 && po_mdw.data_type() == data_type::f32
+            if (po_mdw.nelems() == ngroups
+                    && po_mdw.data_type() == data_type::f32
                     && !po_mdw.is_host_scalar_desc()) {
+                // [G, 1] operand: one scale per group (expert), e.g. nvfp4
+                // per-expert global scale.
                 po_chain[i] = po_kind_t::binary_nvfp4_scale;
             } else {
                 if (po_mdw.is_grouped_desc()) {
@@ -192,7 +195,7 @@ inline void apply_post_ops_chain(ugemm_grouped_c_type *c_tile, long n, long m, l
             } else if (po_chain[i] == po_kind_t::binary_nvfp4_scale) {
                 s += utils::format(
                         R"(
-    float gs_%d = *nvfp4_scale;
+    float gs_%d = nvfp4_scale[batch];
 #define binary_mul_%d(v) ((v) * gs_%d)
     tile_elementwise((*c_tile), binary_mul_%d);
 #undef binary_mul_%d
@@ -263,7 +266,7 @@ inline ACC_DATA_T apply_post_ops_chain(
     }
 )";
             } else if (po_chain[i] == po_kind_t::binary_nvfp4_scale) {
-                s += "    dst *= *nvfp4_scale;\n";
+                s += "    dst *= nvfp4_scale[group_id];\n";
             }
         }
     }

@@ -212,6 +212,51 @@ atype.layout = layout_trans ? MatrixLayout::N : MatrixLayout::T;
 
 **Doctrine guard:** when porting a base rule that reads `broadcast_mask` bit 0 (kernel-row), the matmul-natural analogue is `mask & 2` (matmul-M = bit 1), but if the post-transpose target field is "row varies"-keyed in base's kernel view, you may need the DUAL — derive from the desired post-state, not by literal axis substitution.
 
+### 25. `C.layout` is hard-coded `N` in base; worktree must force-N post-init
+Base unconditionally sets `problem.C.layout = MatrixLayout::N` (`../base/src/gpu/intel/gemm/jit/pd.cpp:671`) regardless of swap_ab or dst layout. The kernel codegen actively asserts on it (`generator/pieces/gemm.cxx:517`: `if (problem.C.layout != MatrixLayout::N) stub();`). The catalog selector hashes `layoutChar(C.layout)` (`selector/kernel_selector.cpp:392`), so any `T` produces a catalog miss.
+
+Worktree's pre-fix derivation `problem.C.layout = (get_trans(dst) == trans) ? N : T` produced `T` for row-major matmul DST whenever the case took `swap_ab_=false` through `gen_t.want_un_swap` (skinny-N with row-major dst). `GEMMProblem::transpose()` flips C.layout, so under `swap_ab_=true` the pre-T → post-N path matched base anyway — but the skinny-N + row-major-dst path stayed at T → catalog miss → falls back to `ocl:ref`. Surfaced as `--dt=s8:s8:f16 --attr-post-ops=add:f32 1x300:300x1` plus `~150 cases / 1913` shifting `jit:gemm` → `ocl:ref` in the 20-round sweep.
+
+Fix: set `problem.C.layout = MatrixLayout::N` unconditionally at the end of `init_GEMMProblem` (after the `if (swap_ab_) transpose()` block, `jit_gemm_pd.cpp:1466`). The kernel writes via `ldc`, not `C.layout` — base passes correct row-major dst output with C.layout=N, so the override is safe.
+
+**Doctrine guard:** when base hard-codes a field to a fixed value irrespective of swap_ab (no per-aux transpose call in base's swap_ab branch), mirror with a post-transpose override in worktree. Don't try to encode it pre-transpose: `transpose()` flips, breaking the fixed value under swap_ab=true.
+
+### 26. `AO`/`BO` layout post-transpose: base hard-codes AO=N, BO=conditional
+Base initializes `AO.layout = N` (always) and `BO.layout = T if !bOffset2D else N` pre-init (`../base/.../pd.cpp:698, 706`); under base.swap_ab=1 it then flips both via per-aux `.transpose()` at line 810-811. The `bOffset2D` flag here is base's b-side (kernel-B = matmul-SRC under swap=0), not the matmul-side meaning.
+
+Worktree's matmul-natural pre-init builds AO/BO on the **matmul** slots (AO = matmul-SRC zp, BO = matmul-WEIGHTS zp). The full `problem.transpose()` then std::swaps the structs AND flips both layouts. Carrying base's literal pre-rule (`if (!bOffset2D_wt) BO=T`, where `bOffset2D_wt` is matmul-WEIGHTS 2D-ness) gives the wrong post-state for the wei_decomp case (matmul-WEIGHTS zp 2D, matmul-SRC default): worktree's pre AO=N, BO=N → post AO=T, BO=T, while base has AO=N, BO=T. The AO mismatch makes the kernel read 2D wei-zp data with wrong stride → wrong output (catalog DOES match since AO.layout isn't in the selector hash, but the runtime kernel diverges).
+
+Surfaced as `--dt=bf16:s4:bf16 wei-zp=per_ocic:s4:192x1 wei-scales=per_oc:f16 fpmath=bf16:true 12x4x576:12x576x192`: dispatches to `jit:gemm` post-fix but with ~99% errors before the AO.layout override.
+
+Fix lives in the `if (swap_ab_) { ... }` block immediately after `transpose()` (`jit_gemm_pd.cpp:1456-1465`):
+```cpp
+problem.AO.layout = MatrixLayout::N;
+problem.BO.layout = !problem.bOffset2D() ? MatrixLayout::T : MatrixLayout::N;
+```
+After transpose, `problem.bOffset2D()` reads the post-swap state (= matmul-SRC zp 2D-ness when swap_ab_=true), matching base's swap_ab=0 semantics where bOffset2D = matmul-SRC 2D.
+
+**Doctrine guard:** any zp/scale/gs aux field where base's pre-init rule is "side-keyed but kernel-keyed under the hood" AND that the per-aux `.transpose()` then flips, needs post-transpose override in worktree (not pre-init replication).
+
+### 27. `zp_ok` block contents are matmul-keyed but the s4/u4 reject was on the wrong side
+Base's `zp_ok` had two blocks: `a_zps` (kernel-A = matmul-WEIGHTS under base.swap_ab=0) doing per_oc/per_ic + 2D-groups checks (no s4/u4 reject), `b_zps` (kernel-B = matmul-SRC) doing the s4/u4 reject + simpler mask checks. Worktree's `kA = DNNL_ARG_SRC`, `kB = DNNL_ARG_WEIGHTS`, so worktree's `a_zps` is matmul-SRC and `b_zps` is matmul-WEIGHTS.
+
+The block CONTENT in worktree was partially translated but the s4/u4 reject stayed on `b_zps` — i.e., applied to matmul-WEIGHTS zp. Semantically the rule "INT4 ZPs on SRC do not expand the range in a meaningful way" applies to the SRC side, not the WEIGHTS side, so the reject must run on `a_zps`. Surfaced as `--dt=f16:s4:f16 wei-zp=per_oc:s4` (and other wei-zp=s4 cases) rejecting via `b_zps.get_data_type() s4/u4` at the WEIGHTS check.
+
+Also: worktree's b_zps 2D-groups path read `b_zps.get_group(0)` (literal port from base's b_zps which was matmul-SRC and where get_group(0) = M-group on SRC), but in worktree b_zps = matmul-WEIGHTS where the analogous "N-group on WEIGHTS" check requires `get_group(1)` (= the second masked dim of the WEIGHTS zp, which is N for `per_ocic:s4:K_groupxN_group`).
+
+Fix in `jit_gemm_pd.cpp:866-913`:
+- Move `VDISPATCH_JIT_GEMM(!one_of(zps.get_data_type(), s4, u4), ...)` from the `b_zps` block to the top of the `a_zps` block.
+- Change `b_q2d_group_n = b_zps.get_group(0)` → `b_zps.get_group(1)`, and tighten the check to `== 1` (matching base's "N group on WEIGHTS must be 1").
+
+**Doctrine guard:** any check copied from base that uses `a_zps`/`b_zps` semantics needs side-swap-aware translation. base's "a side" = matmul-WEIGHTS (under base.swap_ab=0) → worktree's b side (matmul-WEIGHTS = kB). base's "b side" = matmul-SRC → worktree's a side (matmul-SRC = kA).
+
+### 28. `wei_decomp` must be matmul-asymmetric: WEIGHTS in int_low, SRC in float_hi
+Base's wei_decomp checks `a_type ∈ int_low_set` (= matmul-WEIGHTS under base.swap=0) and `b_type ∈ float_hi_set` (= matmul-SRC). An earlier worktree port labeled this "matmul-symmetric" and accepted either operand in either role. That break the f8_e5m2:f4_e2m1 case: both operands are in BOTH sets (f8_e5m2 ∈ int_low and ∈ float_hi; f4_e2m1 ∈ int_low only), and the symmetric logic picks matmul-SRC as the int_low operand (first hit), then `int_t == float_t` short-circuit returns false → wei_decomp=false → strict `gemm_a_type==gemm_b_type` check at `jit.hpp:199` fires → `tensors a and b have inconsistent datatypes` → falls back to `ocl:ref`.
+
+Fix in `jit_gemm_pd.cpp:618-639`: enforce matmul-WEIGHTS in int_low and matmul-SRC in float_hi (mirror base's `a_type=matmul-WEIGHTS / b_type=matmul-SRC` keying).
+
+**Doctrine guard:** "matmul-symmetric" is a tempting simplification but wrong whenever the decision genuinely cares which operand plays which role. Weights-decompression is semantically asymmetric (compressed weights, high-precision activations) — port accordingly.
+
 ---
 
 ## File map

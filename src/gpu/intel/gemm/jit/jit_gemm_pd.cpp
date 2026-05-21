@@ -617,26 +617,23 @@ bool jit_gemm_pd_t::dy_quant_enabled() const {
 
 bool jit_gemm_pd_t::wei_decomp() const {
     using namespace data_type;
-    auto c_ok = utils::one_of(c_type(), f32, f16, bf16, f8_e5m2, f8_e4m3);
-    if (!c_ok) return false;
-    auto int_low = [](data_type_t t) {
-        return utils::one_of(t, u8, s8, s4, u4, f8_e4m3, f8_e5m2, f4_e2m1,
-                f4_e3m0);
-    };
-    auto float_hi = [](data_type_t t) {
-        return utils::one_of(t, f16, f32, bf16, f8_e5m2, f8_e4m3);
-    };
-    // Matmul-symmetric: either operand can be the int_low one.
-    const auto a_dt = kernel_input_.src_md.data_type;
-    const auto b_dt = kernel_input_.weights_md.data_type;
-    auto int_t = int_low(a_dt) ? a_dt : int_low(b_dt) ? b_dt : data_type::undef;
-    auto float_t
-            = float_hi(a_dt) ? a_dt : float_hi(b_dt) ? b_dt : data_type::undef;
-    if (int_t == data_type::undef || float_t == data_type::undef
-            || int_t == float_t)
-        return false;
-    return types::data_type_bits(int_t) < types::data_type_bits(float_t)
-            && attr()->mayiconvert(int_t, f32);
+    // Weights-decompression: matmul-WEIGHTS is the low-precision/compressed
+    // operand, matmul-SRC is the higher-precision floating operand. Mirrors
+    // base's check (../base/.../pd.cpp:217-227) which keys on a_type=matmul-
+    // WEIGHTS and b_type=matmul-SRC under base's BLAS view. Earlier "matmul-
+    // symmetric" worktree variant broke f8_e5m2:f4_e2m1 (both operands match
+    // both int_low and float_hi sets; symmetric logic picked SRC as int_t and
+    // returned false).
+    const auto src_dt = kernel_input_.src_md.data_type;
+    const auto wei_dt = kernel_input_.weights_md.data_type;
+    return (utils::one_of(c_type(), f32, f16, bf16, f8_e5m2, f8_e4m3)
+                   && utils::one_of(wei_dt, u8, s8, s4, u4, f8_e4m3, f8_e5m2,
+                           f4_e2m1, f4_e3m0)
+                   && utils::one_of(
+                           src_dt, f16, f32, bf16, f8_e5m2, f8_e4m3))
+            && types::data_type_bits(wei_dt)
+            < types::data_type_bits(src_dt)
+            && attr()->mayiconvert(wei_dt, f32);
 }
 
 bool jit_gemm_pd_t::quant_enabled() const {
@@ -864,6 +861,12 @@ status_t jit_gemm_pd_t::zp_ok(impl::engine_t *engine) {
             = wei_decomp() || (a_int4 && dy_quant_enabled());
 
     if (!a_zps.has_default_values()) {
+        // INT4 ZPs on SRC do not expand the range in a meaningful way; base's
+        // analogous check sits in the kernel-B (= matmul-SRC) block. Worktree
+        // is matmul-keyed so the reject lives here on a_zps (matmul-SRC).
+        VDISPATCH_JIT_GEMM(!utils::one_of(a_zps.get_data_type(), s4, u4),
+                VERBOSE_UNSUPPORTED_ZP_CFG);
+
         if (!a_zps.has_default_groups()) {
             VDISPATCH_JIT_GEMM(valid_2d_mask(cmask_a, nd, weights_upconversion),
                     "%s: unsupported A mask", VERBOSE_UNSUPPORTED_ZP_CFG);
@@ -890,14 +893,14 @@ status_t jit_gemm_pd_t::zp_ok(impl::engine_t *engine) {
     }
 
     if (!b_zps.has_default_values()) {
-        VDISPATCH_JIT_GEMM(!utils::one_of(b_zps.get_data_type(), s4, u4),
-                VERBOSE_UNSUPPORTED_ZP_CFG);
-
         if (!b_zps.has_default_groups()) {
-            VDISPATCH_JIT_GEMM(valid_2d_mask(cmask_b, nd, false),
+            VDISPATCH_JIT_GEMM(valid_2d_mask(cmask_b, nd, weights_upconversion),
                     "%s: unsupported B mask", VERBOSE_UNSUPPORTED_ZP_CFG);
-            const auto b_q2d_group_n = b_zps.get_group(0);
-            VDISPATCH_JIT_GEMM(utils::one_of(b_q2d_group_n, 1, gemm_n()),
+            // N-group on matmul-WEIGHTS. For 2D ZP with group_dims [K, N],
+            // get_group(1) is the N (output-channel) group. Base's analogous
+            // check on matmul-WEIGHTS zp (pd.cpp:365) strictly requires == 1.
+            const auto b_q2d_group_n = b_zps.get_group(1);
+            VDISPATCH_JIT_GEMM(b_q2d_group_n == 1,
                     "%s: Nontrivial N groups on B matrix",
                     VERBOSE_UNSUPPORTED_ZP_CFG);
             bool is_dequantized = !dy_quant_enabled() || !a_int4 || b_int4;
@@ -1221,18 +1224,17 @@ status_t jit_gemm_pd_t::init_GEMMProblem(
     problem.Tao = convert_dnnl_to_kernel_type(zp_src.get_data_type());
     problem.Tbo = convert_dnnl_to_kernel_type(zp_wei.get_data_type());
     problem.Tco = convert_dnnl_to_kernel_type(co_t);
-    // MatrixLayout::T = row-major, ::N = col-major. Set A/B/C consistently
-    // from matmul-natural storage: row-major matmul md → T, col-major → N.
-    // The final problem.transpose() under swap_ab_ flips all three together,
-    // landing the gemm col-major view (N for the row-major-matmul case) that
-    // matches base's catalog hash.
+    // MatrixLayout::T = row-major, ::N = col-major. Set A/B consistently from
+    // matmul-natural storage: row-major matmul md → T, col-major → N. The
+    // final problem.transpose() under swap_ab_ flips both, landing the gemm
+    // col-major view (N for the row-major-matmul case) that matches base's
+    // catalog hash. C.layout is hard-coded N (see post-transpose override
+    // below; gotcha #25).
     problem.A.layout
             = tr_a_matmul ? MatrixLayout::N : MatrixLayout::T;
     problem.B.layout
             = tr_b_matmul ? MatrixLayout::N : MatrixLayout::T;
-    problem.C.layout = (get_trans(k_dst_md) == transpose::trans)
-            ? MatrixLayout::N
-            : MatrixLayout::T;
+    problem.C.layout = MatrixLayout::N;
     problem.A.crosspack = problem.B.crosspack = problem.C.crosspack = 1;
     problem.A.packSize = problem.B.packSize = problem.C.packSize = 0;
     problem.A.setAlignment(align_a);
@@ -1448,7 +1450,34 @@ status_t jit_gemm_pd_t::init_GEMMProblem(
                 && !problem.sumB) {
             problem.CO.layout = MatrixLayout::N;
         }
+        // Doctrine exemption (gotcha #26): base hard-codes AO.layout=N pre
+        // and only conditionally sets BO.layout=T (../base/.../pd.cpp:698,
+        // 706); under base.swap_ab=1, per-aux .transpose() at line 810-811
+        // flips both. Worktree's matmul-natural pre-init has AO/BO holding
+        // matmul-SRC/WEIGHTS zp slots; the full transpose() rotates them to
+        // the kernel-A/B view. For wei_decomp cases (matmul-WEIGHTS zp 2D,
+        // matmul-SRC zp default), worktree.swap_ab=1 corresponds to base.swap
+        // _ab=0 (no per-aux flip), so the kernel-A side (matmul-WEIGHTS slot
+        // post-transpose, = worktree's AO) should be N and kernel-B side (=
+        // worktree's BO, holding matmul-SRC) should be T (since matmul-SRC
+        // zp is not 2D). Without this, AO ends at T and the kernel reads
+        // the 2D wei-zp data with wrong stride → wrong output. The condition
+        // mirrors base's `if (!bOffset2D()) BO=T`, but in worktree's post-
+        // transpose state bOffset2D reads matmul-SRC zp 2D-ness.
+        problem.AO.layout = MatrixLayout::N;
+        problem.BO.layout
+                = !problem.bOffset2D() ? MatrixLayout::T : MatrixLayout::N;
     }
+
+    // Doctrine exemption (gotcha #25): C.layout is hard-coded N in base for
+    // all swap_ab paths (../base/src/gpu/intel/gemm/jit/pd.cpp:671), and the
+    // kernel codegen asserts on it (gemm.cxx:517: `if (C.layout != N)
+    // stub();`). The catalog selector hashes layoutChar(C.layout) (see
+    // kernel_selector.cpp:392), so any divergence causes a catalog miss.
+    // GEMMProblem::transpose() flips C.layout, so under swap_ab_ the pre-N
+    // becomes T post-transpose; restore N here. For swap_ab_=false the pre-N
+    // already matches; the assignment is a no-op.
+    problem.C.layout = MatrixLayout::N;
 
     // DOCTRINE EXEMPTION (review.md #5). The matmul-natural skinny-N path
     // (swap_ab_=false, N==1, WEIGHTS naturally notrans) needs B.layout=N

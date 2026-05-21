@@ -213,16 +213,13 @@ struct ref_grouped_t : public primitive_t {
                         (int)zp_gK);
             }
 
-            // Below is to allow using format_any for scalar [1, 1] as binary
-            // post-ops for NVFP4 global scale support
+            // Resolve format_any for dense binary post-ops
             const auto &po = attr()->post_ops_;
             for (int i = 0; i < po.len(); ++i) {
                 auto &e = attr_.post_ops_.entry_[i];
                 if (e.is_binary()) {
                     const memory_desc_wrapper src1_d(e.binary.src1_desc);
                     if (src1_d.format_any()) {
-                        VDISPATCH_MATMUL(src1_d.count_non_unit_dims(0),
-                                VERBOSE_UNSUPPORTED_POSTOP);
                         CHECK(memory_desc_init_by_strides(
                                 e.binary.src1_desc, nullptr));
                     }

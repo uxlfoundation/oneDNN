@@ -330,7 +330,12 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
                         }
                         const dim_t bin_M = bin_d.dims()[0];
                         const dim_t bin_N = bin_d.dims()[1];
-                        const dim_t eff_m = bin_M > 1 ? (row_base + m) : 0;
+                        // Per-group [G, 1]: index is group_id
+                        // Per-row [total_M, *]: index is row_base + m
+                        const bool per_group
+                                = (bin_M == group_count && bin_N == 1);
+                        const dim_t eff_m
+                                = per_group ? group_id : (row_base + m);
                         const dim_t eff_n = bin_N > 1 ? n : 0;
                         const float val
                                 = io::load_float_value(bin_d.data_type(),

@@ -63,7 +63,7 @@ public:
     DNNL_DISALLOW_COPY_AND_ASSIGN(register_preserve_guard_t);
     ~register_preserve_guard_t();
     size_t calc_vmm_to_preserve_size_bytes(
-            const std::initializer_list<Xbyak_aarch64::VReg> &vmm_to_preserve)
+            const std::initializer_list<Xbyak_aarch64::VReg> vmm_to_preserve)
             const;
     size_t stack_space_occupied() const;
 

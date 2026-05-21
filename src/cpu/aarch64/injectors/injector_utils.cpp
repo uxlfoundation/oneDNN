@@ -127,23 +127,27 @@ register_preserve_guard_t<isa>::~register_preserve_guard_t() {
 
 template <cpu_isa_t isa>
 size_t register_preserve_guard_t<isa>::calc_vmm_to_preserve_size_bytes(
-        const std::initializer_list<Xbyak_aarch64::VReg> &vmm_to_preserve)
+        const std::initializer_list<Xbyak_aarch64::VReg> vmm_to_preserve)
         const {
 
-    return std::accumulate(vmm_to_preserve.begin(), vmm_to_preserve.end(),
-            std::size_t(0u),
-            [](std::size_t accum, const Xbyak_aarch64::VReg &vmm) {
-        return accum + simd_bytes(isa);
-    });
+    return vmm_to_preserve.size() * simd_bytes(isa);
 }
 
 template <cpu_isa_t isa>
 size_t register_preserve_guard_t<isa>::stack_space_occupied() const {
-    constexpr static size_t reg64_size = 8;
-    const size_t stack_space_occupied
-            = vmm_to_preserve_size_bytes_ + gpr_regs_.size() * reg64_size;
+    constexpr static size_t reg64_size_bytes = 8;
+    constexpr static size_t stack_alignment_bytes = 16;
 
-    return stack_space_occupied;
+    // If gpr_regs_ need to be backed up then round up to the nearest multiple
+    // of 16 to preserve stack alignment.
+    const size_t gpr_space = utils::rnd_up(
+            gpr_regs_.size() * reg64_size_bytes, stack_alignment_bytes);
+
+    // vec_space is always 16-aligned because simd_bytes() is always a multiple
+    // of 16;
+    const size_t vec_space = vec_regs_.size() * simd_bytes(isa);
+
+    return gpr_space + vec_space;
 }
 
 template <cpu_isa_t isa>

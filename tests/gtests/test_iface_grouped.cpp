@@ -617,6 +617,55 @@ HANDLE_EXCEPTIONS_FOR_TEST(
             dnnl::error);
 }
 
+TEST(iface_grouped_test_t, TestBinaryPostOpDenseShapes) {
+    engine eng = get_test_engine();
+
+    const int ngroups = 4;
+    const int total_m = 32;
+    const int K = 64;
+    const int N = 32;
+
+    auto src_md = memory::desc::grouped({total_m, K}, dt::f32, 0, ngroups);
+    auto wei_md
+            = memory::desc({ngroups, K, N}, dt::f32, memory::format_tag::abc);
+    auto dst_md = memory::desc::grouped({total_m, N}, dt::f32, 0, ngroups);
+
+    // Scalar [1, 1] binary post-op should be rejected
+    {
+        auto scalar_md = memory::desc({1, 1}, dt::f32, memory::format_tag::ab);
+        post_ops po;
+        po.append_binary(algorithm::binary_mul, scalar_md);
+        primitive_attr attr;
+        attr.set_post_ops(po);
+        EXPECT_THROW(matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr),
+                dnnl::error);
+    }
+
+    // Per-group [G, 1] binary post-op is supported
+    {
+        auto per_group_md
+                = memory::desc({ngroups, 1}, dt::f32, memory::format_tag::ab);
+        post_ops po;
+        po.append_binary(algorithm::binary_mul, per_group_md);
+        primitive_attr attr;
+        attr.set_post_ops(po);
+        EXPECT_NO_THROW(
+                matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr));
+    }
+
+    // Per-row [total_M, 1] binary post-op is supported
+    {
+        auto per_row_md
+                = memory::desc({total_m, 1}, dt::f32, memory::format_tag::ab);
+        post_ops po;
+        po.append_binary(algorithm::binary_mul, per_row_md);
+        primitive_attr attr;
+        attr.set_post_ops(po);
+        EXPECT_NO_THROW(
+                matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr));
+    }
+}
+
 } // namespace dnnl
 
 #endif // DNNL_EXPERIMENTAL_GROUPED_MEMORY

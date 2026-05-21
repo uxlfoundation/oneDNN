@@ -15,7 +15,7 @@
 --reset
 --skip-impl=ref
 
---dt=u8:s8:u8,s8:s8:f32
+--dt=u8:s8:u8,s8:s8:s32
 --stag=ab,ba --wtag=ab,ba --dtag=ab
 --runtime_dims_masks=0,2:1
 --bia-dt=undef,f32,u8 --bia_mask=2

@@ -212,13 +212,20 @@ status_t grouped_matmul_attr_check(
                                 && bin_g.variable_dim_idx
                                         == dst_g.variable_dim_idx,
                         VERBOSE_INCONSISTENT_MDS, "binary post-op", "dst");
-            } else if (!src1_d.format_any()) {
-                // Dense binary post-op:
-                // only support N == 1 (scalar/per-row) or ab layout
+            } else {
+                // Validate dense binary post-op descriptor:
+                // only per-group (e.g., NVFP4 with [G, 1])
+                // or per-row shapes are allowed
+                const dim_t bin_M = src1_d.dims()[0];
                 const dim_t bin_N = src1_d.dims()[src1_d.ndims() - 1];
+                const dim_t total_M = dst_d.dims()[0];
+                const dim_t gc = dst_d.sparse_desc().grouped_desc.group_count;
                 VCHECK_MATMUL_UNIMPL(
                         bin_N == 1 || src1_d.matches_one_of_tag(format_tag::ab),
                         VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "binary post-op");
+                VCHECK_MATMUL_UNIMPL(utils::one_of(bin_M, gc, total_M)
+                                && IMPLICATION(bin_M == gc, bin_N == 1),
+                        VERBOSE_INCONSISTENT_MDS, "binary post-op", "dst");
             }
         }
     }

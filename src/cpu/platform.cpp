@@ -20,11 +20,27 @@
 
 #include "cpu/platform.hpp"
 
-#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
 #include <algorithm>
+#include <cctype>
+#include <fstream>
+#include <string>
+#include <utility>
+#include <vector>
+
+#if defined(__linux__)
+#include <dirent.h>
+#include <sys/types.h>
+#elif defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
+
+#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
 
 #if defined(_WIN32)
-#include <windows.h>
+// windows.h already included above for NUMA query.
 #elif defined(__GLIBC__)
 #include <sched.h>
 #endif
@@ -347,6 +363,214 @@ unsigned get_max_threads_to_use() {
     return num_cores_per_socket;
 }
 #endif
+
+std::vector<std::vector<int>> numa_topology_t::query_numa_node_cpus() {
+    std::vector<std::vector<int>> nodes;
+#if defined(__linux__)
+    // Parse strings of the form "0-31,192-223" produced by the kernel in
+    // /sys/devices/system/node/nodeN/cpulist.
+    auto parse_cpulist = [](const std::string &s) {
+        std::vector<int> cpus;
+        size_t i = 0;
+        while (i < s.size()) {
+            while (i < s.size() && std::isspace((unsigned char)s[i]))
+                ++i;
+            if (i >= s.size()) break;
+            int a = 0;
+            bool have_a = false;
+            while (i < s.size() && std::isdigit((unsigned char)s[i])) {
+                a = a * 10 + (s[i] - '0');
+                ++i;
+                have_a = true;
+            }
+            if (!have_a) break;
+            int b = a;
+            if (i < s.size() && s[i] == '-') {
+                ++i;
+                b = 0;
+                while (i < s.size() && std::isdigit((unsigned char)s[i])) {
+                    b = b * 10 + (s[i] - '0');
+                    ++i;
+                }
+            }
+            for (int c = a; c <= b; ++c)
+                cpus.push_back(c);
+            if (i < s.size() && s[i] == ',') ++i;
+        }
+        return cpus;
+    };
+
+    const char *base = "/sys/devices/system/node";
+    DIR *dir = ::opendir(base);
+    if (!dir) return nodes;
+
+    std::vector<std::pair<int, std::vector<int>>> entries;
+    int max_id = -1;
+    for (struct dirent *ent = ::readdir(dir); ent != nullptr;
+            ent = ::readdir(dir)) {
+        const char *name = ent->d_name;
+        if (name[0] != 'n' || name[1] != 'o' || name[2] != 'd'
+                || name[3] != 'e')
+            continue;
+        const char *p = name + 4;
+        if (*p == '\0') continue;
+        int id = 0;
+        bool ok = true;
+        for (; *p; ++p) {
+            if (!std::isdigit((unsigned char)*p)) {
+                ok = false;
+                break;
+            }
+            id = id * 10 + (*p - '0');
+        }
+        if (!ok) continue;
+
+        std::string path = std::string(base) + "/" + name + "/cpulist";
+        std::ifstream ifs(path);
+        if (!ifs.is_open()) continue;
+        std::string line;
+        std::getline(ifs, line);
+        entries.emplace_back(id, parse_cpulist(line));
+        if (id > max_id) max_id = id;
+    }
+    ::closedir(dir);
+
+    if (max_id >= 0) {
+        nodes.resize(max_id + 1);
+        for (auto &e : entries)
+            nodes[e.first] = std::move(e.second);
+    }
+#elif defined(_WIN32)
+    // Use GetLogicalProcessorInformationEx(RelationNumaNode, ...) to enumerate
+    // NUMA nodes and their owning CPU masks. Each NUMA_NODE_RELATIONSHIP carries
+    // a single GROUP_AFFINITY (one Windows processor group, up to 64 CPUs).
+    // For systems with more than one processor group, multiple records can
+    // share the same NodeNumber; we merge them. Logical CPU ids are encoded as
+    //     cpu_id = group_index * 64 + bit_index
+    // which matches the "global processor index" convention also used by tools
+    // like Process Explorer.
+    DWORD len = 0;
+    GetLogicalProcessorInformationEx(RelationNumaNode, nullptr, &len);
+    if (len == 0) return nodes;
+
+    std::vector<char> buf(len);
+    if (!GetLogicalProcessorInformationEx(RelationNumaNode,
+                reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX *>(
+                        buf.data()),
+                &len))
+        return nodes;
+
+    int max_id = -1;
+    std::vector<std::pair<int, std::vector<int>>> entries;
+    const char *p = buf.data();
+    const char *end = p + len;
+    while (p < end) {
+        const auto &info = *reinterpret_cast<
+                const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX *>(p);
+        p += info.Size;
+        if (info.Relationship != RelationNumaNode) continue;
+
+        const int id = static_cast<int>(info.NumaNode.NodeNumber);
+        const GROUP_AFFINITY &ga = info.NumaNode.GroupMask;
+        const int group_base = static_cast<int>(ga.Group) * 64;
+
+        std::vector<int> cpus;
+        KAFFINITY mask = ga.Mask;
+        for (int bit = 0; bit < 64; ++bit) {
+            if (mask & (KAFFINITY {1} << bit)) cpus.push_back(group_base + bit);
+        }
+        entries.emplace_back(id, std::move(cpus));
+        if (id > max_id) max_id = id;
+    }
+
+    if (max_id >= 0) {
+        nodes.resize(max_id + 1);
+        for (auto &e : entries) {
+            // Merge if multiple records map to the same NUMA node id (one per
+            // processor group).
+            auto &dst = nodes[e.first];
+            dst.insert(dst.end(), e.second.begin(), e.second.end());
+        }
+        // Keep CPUs sorted so that range collapsing produces tight ranges.
+        for (auto &v : nodes)
+            std::sort(v.begin(), v.end());
+    }
+#endif
+    return nodes;
+}
+
+namespace {
+
+// Collapse a sorted CPU list into contiguous ranges.
+std::vector<numa_topology_t::cpu_range_t> encode_cpu_ranges(
+        const std::vector<int> &cpus) {
+    std::vector<numa_topology_t::cpu_range_t> ranges;
+    for (size_t i = 0; i < cpus.size();) {
+        size_t j = i;
+        while (j + 1 < cpus.size() && cpus[j + 1] == cpus[j] + 1)
+            ++j;
+        ranges.push_back({cpus[i], cpus[j]});
+        i = j + 1;
+    }
+    return ranges;
+}
+
+} // namespace
+
+numa_topology_t::numa_topology_t() {
+    auto raw = query_numa_node_cpus();
+    if (raw.empty()) return;
+
+    nodes_.reserve(raw.size());
+    for (size_t i = 0; i < raw.size(); ++i) {
+        if (raw[i].empty()) continue;
+        node_info_t info;
+        info.id = static_cast<int>(i);
+        info.cpu_ranges = encode_cpu_ranges(raw[i]);
+        nodes_.push_back(std::move(info));
+    }
+    num_nodes_ = nodes_.size();
+}
+
+const numa_topology_t &numa_topology_t::instance() {
+    static const numa_topology_t inst;
+    return inst;
+}
+
+const numa_topology_t::node_info_t *numa_topology_t::node_by_id(int id) const {
+    for (const auto &n : nodes_)
+        if (n.id == id) return &n;
+    return nullptr;
+}
+
+int numa_topology_t::node_of_cpu(int cpu) const {
+    for (const auto &n : nodes_)
+        for (const auto &r : n.cpu_ranges)
+            if (cpu >= r.first && cpu <= r.last) return n.id;
+    return -1;
+}
+
+int numa_topology_t::num_nodes_for_threads(int nthr) const {
+    if (nthr <= 0 || num_nodes_ == 0) return 0;
+
+    // Threads are assumed to occupy a contiguous range of logical CPU ids
+    // [0, nthr-1]. Count how many NUMA nodes contain at least one CPU in
+    // that range.
+    int nodes_used = 0;
+    for (const auto &n : nodes_) {
+        bool intersects = false;
+        for (const auto &r : n.cpu_ranges) {
+            // Range [r.first, r.last] intersects [0, nthr-1] iff
+            //   r.first <= nthr-1  &&  r.last >= 0.
+            if (r.first <= nthr - 1 && r.last >= 0) {
+                intersects = true;
+                break;
+            }
+        }
+        if (intersects) ++nodes_used;
+    }
+    return nodes_used;
+}
 
 int get_vector_register_size() {
 #if DNNL_X64

@@ -20,6 +20,8 @@
 
 #include "oneapi/dnnl/dnnl_config.h"
 
+#include <vector>
+
 #include "common/c_types_map.hpp"
 #include "common/impl_registration.hpp"
 #include "common/z_magic.hpp"
@@ -182,6 +184,84 @@ unsigned DNNL_API get_num_cores();
 #if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
 unsigned DNNL_API get_max_threads_to_use();
 #endif
+
+// Encapsulates NUMA (incl. SubNUMA-cluster) topology of the system.
+//
+// Topology is queried from the OS only once, in the constructor. After that
+// all accessors are cheap, read-only lookups. Use `instance()` to get a
+// process-wide cached object, or construct your own if you need a fresh
+// snapshot (e.g. for tests).
+//
+// On Linux the data is parsed from /sys/devices/system/node/nodeN/cpulist.
+// On other platforms the topology is reported as empty / not available.
+class DNNL_API numa_topology_t {
+public:
+    // Inclusive numeric range of contiguous CPU ids: [first, last].
+    struct cpu_range_t {
+        int first;
+        int last;
+
+        int size() const { return last - first + 1; }
+    };
+
+    // Compact description of a single NUMA node.
+    struct node_info_t {
+        int id; // NUMA node id as reported by the OS
+        // CPU ids that belong to this node, collapsed into contiguous
+        // ranges (matches the "0-31,192-223" style produced by lscpu, but
+        // as numeric pairs). A node may have multiple ranges (e.g. when
+        // SMT pairs the two threads of a core into very different CPU id
+        // spaces).
+        std::vector<cpu_range_t> cpu_ranges;
+
+        // Total number of CPUs in this node (sum of all range sizes).
+        int num_cpus() const {
+            int n = 0;
+            for (const auto &r : cpu_ranges)
+                n += r.size();
+            return n;
+        }
+    };
+
+    numa_topology_t();
+
+    // Process-wide cached instance (lazily initialized, thread-safe).
+    static const numa_topology_t &instance();
+
+    // True if the OS reported at least one NUMA node.
+    bool is_available() const { return num_nodes_ > 0; }
+
+    // Number of NUMA nodes actually present.
+    size_t num_nodes() const { return num_nodes_; }
+
+    // All present nodes (entries with id >= 0), in id order.
+    const std::vector<node_info_t> &nodes() const { return nodes_; }
+
+    // Look up a node by its OS-reported id. Returns nullptr if absent.
+    const node_info_t *node_by_id(int id) const;
+
+    // For a logical CPU id, return the owning node's id, or -1 if unknown.
+    int node_of_cpu(int cpu) const;
+
+    // Returns the number of NUMA nodes that contain at least one CPU from
+    // the contiguous range [0, nthr-1]. Use this to estimate how many NUMA
+    // nodes a thread pool of size `nthr` would touch when its threads are
+    // pinned to logical CPUs starting from CPU 0. Returns 0 if topology is
+    // not available or nthr <= 0.
+    int num_nodes_for_threads(int nthr) const;
+
+private:
+    // Queries NUMA topology from the OS.
+    // On Linux this is parsed from /sys/devices/system/node/nodeN/cpulist.
+    // The outer vector is indexed by NUMA node id; each inner vector
+    // contains the logical CPU ids that belong to that node (sorted,
+    // expanded from the "0-31,192-223" style ranges). On unsupported
+    // platforms the result is empty.
+    static std::vector<std::vector<int>> query_numa_node_cpus();
+
+    std::vector<node_info_t> nodes_;
+    size_t num_nodes_ = 0;
+};
 
 constexpr int get_cache_line_size() {
     return 64;

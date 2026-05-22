@@ -450,6 +450,17 @@ po.append_binary(algorithm::binary_mul, routing_md);
 attr.set_post_ops(po);
 ~~~
 
+Binary multiply with per-group broadcast (one value per expert):
+~~~cpp
+// [num_groups, 1] tensor, one scalar per expert
+auto scale_md = memory::desc({num_groups, 1},
+    memory::data_type::f32, memory::format_tag::ab);
+
+post_ops po;
+po.append_binary(algorithm::binary_mul, scale_md);
+attr.set_post_ops(po);
+~~~
+
 ### Execution Hints
 
 An optional execution-time hint `DNNL_ARG_HINT_MAX_GROUP_SIZE` can be provided to
@@ -504,15 +515,16 @@ The following are supported:
   Common patterns include `eltwise_swish` for SiLU activation,
   `binary_mul` with a `[total_tokens, N]` grouped or dense tensor,
   `binary_mul` with a `[total_tokens, 1]` dense tensor,
-  and `[1, 1]` that could be used to apply a global scale for NVFP4.
+  and `[num_groups, 1]` for a per-group global scale (e.g. NVFP4).
+  Scalar `[1, 1]` binary post-ops are not supported for grouped matmul.
   For grouped binary tensors, the per-group offsets must match the grouped dst
   partition.
- 
+
  @attention The GPU implementation supports at most one dense binary multiplication
   post-op and at most one grouped binary multiplication post-op. Providing more
   than one of either kind is not supported on GPU.
 
-- Bias supports per-expert shape.
+- Bias supports per-group shape.
 - Supported on CPU and GPU engines.
 
 #### Supported Data Types

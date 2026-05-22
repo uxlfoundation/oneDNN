@@ -35,6 +35,7 @@ status_t serialize_desc(
         CASE(convolution)
         CASE(deconvolution)
         CASE(eltwise)
+        CASE(gated_mlp)
         CASE(group_normalization)
         CASE(inner_product)
         CASE(layer_normalization)

@@ -621,6 +621,21 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
     uint sg_ij = sub_group_broadcast(get_local_id(1), 0);
 
+        if (get_group_id(0) == 0 && get_group_id(1) == 0 && get_group_id(2) == 0
+                        && get_local_id(0) == 0 && get_local_id(1) == 0
+                        && get_local_id(2) == 0) {
+                uint ng0 = get_num_groups(0);
+                uint ng1 = get_num_groups(1);
+                uint ng2 = get_num_groups(2);
+                uint total_groups = ng0 * ng1 * ng2;
+                printf("[DBG][launch][micro_sdpa_bwd] groups=(%u,%u,%u) "
+                       "total_groups=%u lws=(%lu,%lu,%lu) gws=(%lu,%lu,%lu)\n",
+                        ng0, ng1, ng2, total_groups, (ulong)get_local_size(0),
+                        (ulong)get_local_size(1), (ulong)get_local_size(2),
+                        (ulong)get_global_size(0), (ulong)get_global_size(1),
+                        (ulong)get_global_size(2));
+        }
+
     uint b1 = get_group_id(2);
 
     // TODO: batch q=1 cases to KV_GROUP_SIZE

@@ -1717,6 +1717,21 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
 
     const auto &conf = pd()->conf;
 
+    auto print_dispatch = [](const char *tag, const compute::range_t &gws,
+                                  const compute::range_t &lws) {
+        const size_t groups0 = (lws[0] == 0) ? 0 : gws[0] / lws[0];
+        const size_t groups1 = (lws[1] == 0) ? 0 : gws[1] / lws[1];
+        const size_t groups2 = (lws[2] == 0) ? 0 : gws[2] / lws[2];
+        const size_t total_groups = groups0 * groups1 * groups2;
+        printf("[DBG][dispatch][%s] gws=(%llu,%llu,%llu) lws=(%llu,%llu,%llu) "
+               "groups=(%llu,%llu,%llu) total_groups=%llu\n",
+                tag, (unsigned long long)gws[0], (unsigned long long)gws[1],
+                (unsigned long long)gws[2], (unsigned long long)lws[0],
+                (unsigned long long)lws[1], (unsigned long long)lws[2],
+                (unsigned long long)groups0, (unsigned long long)groups1,
+                (unsigned long long)groups2, (unsigned long long)total_groups);
+    };
+
     const bwd_config_t config = {conf.ukernel_config.unroll_m_BcBr,
             conf.ukernel_config.unroll_n_BcBr, conf.ukernel_config.unroll_m_DBc,
             conf.ukernel_config.unroll_n_DBc, conf.ukernel_config.unroll_m_DBr,
@@ -1832,6 +1847,8 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     gws_preprocess[0] *= utils::div_up(Q, wg_tile_q);
     gws_preprocess[1] *= pd()->dst_md()->dims[1];
     gws_preprocess[2] *= pd()->desc()->batch();
+
+    print_dispatch("bwd_preprocess", gws_preprocess, lws);
 
     auto nd_range_preprocess = compute::nd_range_t(gws_preprocess, lws);
 
@@ -1982,6 +1999,7 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     gws[0] *= utils::div_up(K, wg_tile_k);
     gws[1] *= pd()->dst_md()->dims[1];
     gws[2] *= pd()->desc()->batch();
+    print_dispatch("bwd_main", gws, lws);
     auto nd_range = compute::nd_range_t(gws, lws);
 
     CHECK(parallel_for(ctx, nd_range, kernel_, arg_list));
@@ -2017,6 +2035,8 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
         gws_p[1] *= pd()->dst_md()->dims[1]; // Q heads
         gws_p[2] *= pd()->desc()->batch();
 
+        print_dispatch("bwd_postprocess_dQ", gws_p, lws_p);
+
         compute::kernel_arg_list_t pp;
         pp.append(diff_q);
         pp.append(*diff_q_scratch);
@@ -2038,6 +2058,8 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
             gws_p[0] *= utils::div_up(K * D, lws_pp);
             gws_p[1] *= num_kv_heads; // KV heads
             gws_p[2] *= pd()->desc()->batch();
+
+            print_dispatch("bwd_postprocess_dK", gws_p, lws_p);
 
             compute::kernel_arg_list_t pp;
             pp.append(diff_k);
@@ -2064,6 +2086,8 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
             gws_p[0] *= utils::div_up(K * D, lws_pp);
             gws_p[1] *= num_kv_heads;
             gws_p[2] *= pd()->desc()->batch();
+
+            print_dispatch("bwd_postprocess_dV", gws_p, lws_p);
 
             compute::kernel_arg_list_t pp;
             pp.append(diff_v);

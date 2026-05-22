@@ -1896,13 +1896,18 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
         if (needs_zero_dKV) {
             auto &dK_buf = needs_intermediate_dKV ? *diff_k_scratch : diff_k;
             auto &dV_buf = needs_intermediate_dKV ? *diff_v_scratch : diff_v;
-            const size_t scratch_kv_bytes = size_t(batch * num_kv_heads * K * D)
-                    * types::data_type_size(dkv_scratch_data_t);
+            // Use the full mdw size to cover any padding/alignment in the
+            // scratchpad allocation; previously scratch_kv_bytes used
+            // batch*num_kv_heads*K*D which could miss padded tail bytes,
+            // leaving uninitialized memory that subsequent atomic adds read as
+            // NaN or garbage.
             const size_t dK_bytes = needs_intermediate_dKV
-                    ? scratch_kv_bytes
+                    ? diff_key_mdw.nelems()
+                            * types::data_type_size(dkv_scratch_data_t)
                     : diff_key_mdw.size();
             const size_t dV_bytes = needs_intermediate_dKV
-                    ? scratch_kv_bytes
+                    ? diff_val_mdw.nelems()
+                            * types::data_type_size(dkv_scratch_data_t)
                     : diff_val_mdw.size();
             CHECK(zero_fill(dK_buf, dK_bytes));
             CHECK(zero_fill(dV_buf, dV_bytes));

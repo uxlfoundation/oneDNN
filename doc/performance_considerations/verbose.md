@@ -119,6 +119,21 @@ Please see the profiling example [here](@ref performance_profiling_cpp), as it
 uses ONEDNN_VERBOSE output to tune oneDNN code to align with
 [best practices](@ref dev_guide_inference).
 
+#### Asynchronous Verbose Mode for GPU engines
+
+When oneDNN verbose mode is enabled for primitive execution profiling, the 
+execution time for synchronous runtimes is calculated based on the wall time 
+measured before and after primitive execution. 
+For GPU runtimes, which are generally asynchronous, using synchronizing 
+methodology can lead to additional overhead due to host-to-device stream 
+synchronization on entry and on exit in the `dnnl::primitive::execute()` call.
+
+To ensure accurate tracking of timing information for GPU runtimes, the verbose 
+mode uses a non-blocking approach which prints device-measured 
+times for primitive execution instead of relying on the wall time 
+measurements. Asynchronous profiling is currently supported only for OpenCL 
+and SYCL runtimes on Intel GPUs.
+
 ### Understanding why a given implementation is dispatched
 
 When performance is lower than expected, it is usually likely due to
@@ -231,12 +246,6 @@ where:
    memory is dense, the field will be empty.
 5. `extra_flags` is unspecified information that is intended for development
    purposes.
-
-@note
-When oneDNN verbose mode is enabled with GPU engines, oneDNN adds extra stream
-synchronization on entry and on exit in the dnnl::primitive::execute() call.
-The execution time is calculated based on wall time measured before and after
-primitive execution.
 
 @note
 When oneDNN verbose mode is enabled for builds with

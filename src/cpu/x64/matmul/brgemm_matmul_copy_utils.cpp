@@ -72,7 +72,6 @@ struct jit_brgemm_matmul_copy_a_impl_t : public jit_brgemm_matmul_copy_a_t,
 
 private:
     using reg64_t = const Xbyak::Reg64;
-    using reg32_t = const Xbyak::Reg32;
     using opmask_t = const Xbyak::Opmask;
 
     static constexpr int vlen_ = vreg_traits_t<Vmm>::vlen;
@@ -5964,6 +5963,105 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::generate() {
 
 template struct jit_brgemm_matmul_copy_b_cvt_bf16_t<Zmm>;
 
+inline void validate_xf16_fp8_copy_b_preconditions(
+        const brgemm_matmul_conf_t *conf, bool expect_blocked_B,
+        bool expect_transposed_B) {
+    assert(conf->is_xf16_fp8);
+    assert(conf->blocked_B == expect_blocked_B);
+    assert(conf->transposed_B == expect_transposed_B);
+    assert(!conf->has_zero_point_b);
+    assert(!conf->apply_scales_in_buffer_b);
+    assert(!conf->is_wei_zp_per_k && !conf->is_wei_zp_per_n);
+    assert(one_of(conf->wei_dt, data_type::bf16, data_type::f16));
+}
+
+alignas(64) static constexpr uint8_t xf16_fp8_plain_to_split_pack_idx[64]
+        = {0, 16, 1, 17, 2, 18, 3, 19, 4, 20, 5, 21, 6, 22, 7, 23, 8, 24, 9, 25,
+                10, 26, 11, 27, 12, 28, 13, 29, 14, 30, 15, 31, 32, 48, 33, 49,
+                34, 50, 35, 51, 36, 52, 37, 53, 38, 54, 39, 55, 40, 56, 41, 57,
+                42, 58, 43, 59, 44, 60, 45, 61, 46, 62, 47, 63};
+
+struct fp8_to_xf16_cvt_helper_t {
+    // Reserved by fp8 conversion routines. Keep kernel register maps disjoint.
+    static constexpr int cvt_xmm0_idx = 0;
+    static constexpr int cvt_xmm1_idx = 1;
+    static constexpr int cvt_xmm2_idx = 2;
+    static constexpr int cvt_xmm3_idx = 3;
+    static constexpr int cvt_xmm4_idx = 4;
+    static constexpr int cvt_opmask_idx = 4;
+
+    static Xbyak::Reg64 cvt_scratch_gpr() { return Xbyak::util::r8; }
+
+    fp8_to_xf16_cvt_helper_t(
+            jit_generator_t *host, const brgemm_matmul_conf_t *conf)
+        : host_(host), conf_(conf) {
+        if (conf_->orig_wei_dt == data_type::f8_e5m2) {
+            f8_e5m2_cvt_ = utils::make_unique<fp8_conversion_e5m2_t>(host,
+                    Xmm(cvt_xmm0_idx), Xmm(cvt_xmm1_idx), Xmm(cvt_xmm2_idx),
+                    Xbyak::Opmask(cvt_opmask_idx), cvt_scratch_gpr());
+        } else {
+            f8_e4m3_cvt_ = utils::make_unique<fp8_conversion_e4m3_t>(host,
+                    Xmm(cvt_xmm0_idx), Xmm(cvt_xmm1_idx), Xmm(cvt_xmm2_idx),
+                    Xmm(cvt_xmm3_idx), Xmm(cvt_xmm4_idx), cvt_scratch_gpr());
+        }
+    }
+
+    void prepare_tables() {
+        if (f8_e5m2_cvt_) f8_e5m2_cvt_->prepare_table();
+        if (f8_e4m3_cvt_) f8_e4m3_cvt_->prepare_table();
+    }
+
+    void convert(const Xbyak::Zmm &dst0, const Xbyak::Zmm &dst1,
+            const Xbyak::Operand &src_op) {
+        if (conf_->wei_dt == data_type::bf16) {
+            if (conf_->orig_wei_dt == data_type::f8_e5m2) {
+                f8_e5m2_cvt_->vcvt_f8_to_bf16_vnni(dst0, dst1, src_op);
+            } else {
+                f8_e4m3_cvt_->vcvt_f8_to_bf16_vnni(dst0, dst1, src_op);
+            }
+        } else {
+            if (conf_->orig_wei_dt == data_type::f8_e5m2) {
+                f8_e5m2_cvt_->vcvt_f8_to_f16_vnni(dst0, dst1, src_op);
+            } else {
+                f8_e4m3_cvt_->vcvt_f8_to_f16_vnni(dst0, dst1, src_op);
+            }
+        }
+    }
+
+    void convert_from_packed_plain(const Xbyak::Zmm &dst0,
+            const Xbyak::Zmm &dst1, const Xbyak::Zmm &src_pack) {
+        const Xbyak::Ymm ymm_src_lo(src_pack.getIdx());
+        const Xbyak::Ymm ymm_src_hi(dst1.getIdx());
+
+        // Split packed [64B] into two 32B chunks and run direct fp8->xf16.
+        host_->vextractf64x4(ymm_src_hi, src_pack, 1);
+
+        if (conf_->wei_dt == data_type::bf16) {
+            if (conf_->orig_wei_dt == data_type::f8_e5m2) {
+                f8_e5m2_cvt_->vcvt_f8_to_bf16(dst0, ymm_src_lo);
+                f8_e5m2_cvt_->vcvt_f8_to_bf16(dst1, ymm_src_hi);
+            } else {
+                f8_e4m3_cvt_->vcvt_f8_to_bf16(dst0, ymm_src_lo);
+                f8_e4m3_cvt_->vcvt_f8_to_bf16(dst1, ymm_src_hi);
+            }
+        } else {
+            if (conf_->orig_wei_dt == data_type::f8_e5m2) {
+                f8_e5m2_cvt_->vcvt_f8_to_f16(dst0, ymm_src_lo);
+                f8_e5m2_cvt_->vcvt_f8_to_f16(dst1, ymm_src_hi);
+            } else {
+                f8_e4m3_cvt_->vcvt_f8_to_f16(dst0, ymm_src_lo);
+                f8_e4m3_cvt_->vcvt_f8_to_f16(dst1, ymm_src_hi);
+            }
+        }
+    }
+
+private:
+    jit_generator_t *host_;
+    const brgemm_matmul_conf_t *conf_;
+    std::unique_ptr<fp8_conversion_e5m2_t> f8_e5m2_cvt_;
+    std::unique_ptr<fp8_conversion_e4m3_t> f8_e4m3_cvt_;
+};
+
 struct jit_brgemm_matmul_copy_cvt_fp8_to_xf16_t
     : public jit_brgemm_matmul_copy_b_t,
       public jit_generator_t {
@@ -5975,23 +6073,9 @@ struct jit_brgemm_matmul_copy_cvt_fp8_to_xf16_t
         , typesize_(conf->b_dt_sz)
         , tr_typesize_(conf->tr_b_dt_sz)
         , src_stride_(conf->LDB * k_blk_step * typesize_)
-        , tr_src_stride_(conf->LDB * k_blk_step * tr_typesize_) {
-        assert(conf->is_xf16_fp8);
-        assert(conf->blocked_B);
-        assert(!conf->has_zero_point_b);
-        assert(!conf->apply_scales_in_buffer_b);
-        assert(!conf->is_wei_zp_per_k && !conf->is_wei_zp_per_n);
-        assert(!conf->is_wei_scale_per_k && !conf->is_wei_scale_per_n);
-        assert(one_of(conf->wei_dt, data_type::bf16, data_type::f16));
-
-        // Initialize fp8 conversion helpers.
-        if (conf_->orig_wei_dt == data_type::f8_e5m2) {
-            f8_e5m2_cvt_ = utils::make_unique<fp8_conversion_e5m2_t>(
-                    this, Xmm(2), Xmm(3), Xmm(4), k4, r11);
-        } else {
-            f8_e4m3_cvt_ = utils::make_unique<fp8_conversion_e4m3_t>(
-                    this, Xmm(2), Xmm(3), Xmm(4), Xmm(5), Xmm(6), r11);
-        }
+        , tr_src_stride_(conf->LDB * k_blk_step * tr_typesize_)
+        , cvt_helper_(this, conf) {
+        validate_xf16_fp8_copy_b_preconditions(conf, true, conf->transposed_B);
     }
 
     void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
@@ -6001,7 +6085,6 @@ struct jit_brgemm_matmul_copy_cvt_fp8_to_xf16_t
 
 private:
     using reg64_t = const Xbyak::Reg64;
-    using zmm = const Xbyak::Zmm;
 
     enum {
         k_blk_step = 2,
@@ -6012,31 +6095,26 @@ private:
     const int typesize_, tr_typesize_;
     const dim_t src_stride_, tr_src_stride_;
 
+    fp8_to_xf16_cvt_helper_t cvt_helper_;
+
     reg64_t reg_src = rax;
     reg64_t reg_tr_src = rbx;
-    reg64_t reg_K_iters = r8;
-    reg64_t reg_N_blk = r9;
-    reg64_t reg_tmp = r10;
+    reg64_t reg_K_iters = r9;
+    reg64_t reg_N_blk = r10;
+    reg64_t reg_tmp = r11;
     reg64_t reg_src_back = r12;
     reg64_t reg_tr_src_back = r13;
     reg64_t reg_blk_src = r14;
     reg64_t reg_blk_dst = r15;
 
-    std::unique_ptr<fp8_conversion_e5m2_t> f8_e5m2_cvt_;
-    std::unique_ptr<fp8_conversion_e4m3_t> f8_e4m3_cvt_;
-
-    void prepare_fp8_emu_tables() {
-        if (f8_e5m2_cvt_) f8_e5m2_cvt_->prepare_table();
-        if (f8_e4m3_cvt_) f8_e4m3_cvt_->prepare_table();
-    }
+    Zmm zmm_dst0 = Zmm(5);
+    Zmm zmm_dst1 = Zmm(6);
+    Zmm zmm_src_pack = Zmm(7);
 
     void copy_block(const int nrows, const int ncolumns, bool zeropad) {
 
         const int direct_nrows = utils::rnd_up(nrows, fp8_vnni_k_pack);
         const int direct_ncolumns = utils::rnd_up(ncolumns, n_blk_step);
-
-        const auto dst_zmm0 = zmm(0);
-        const auto dst_zmm1 = zmm(1);
 
         for_(int k = 0; k < direct_nrows; k += fp8_vnni_k_pack)
         for (int n = 0; n < direct_ncolumns; n += n_blk_step) {
@@ -6048,40 +6126,24 @@ private:
             const dim_t tr_src_off1 = tr_src_off0 + tr_src_stride_;
 
             if (zeropad) {
-                uni_vpxor(dst_zmm0, dst_zmm0, dst_zmm0);
-                uni_vpxor(dst_zmm1, dst_zmm1, dst_zmm1);
+                uni_vpxor(zmm_dst0, zmm_dst0, zmm_dst0);
+                uni_vpxor(zmm_dst1, zmm_dst1, zmm_dst1);
             } else {
                 const auto src_addr
                         = maybe_EVEX_compress_addr(reg_src, src_off);
-                vmovdqu8(zmm(7), src_addr);
+                vmovdqu8(zmm_src_pack, src_addr);
 
                 const auto &src_op
-                        = static_cast<const Xbyak::Operand &>(zmm(7));
-                if (conf_->wei_dt == data_type::bf16) {
-                    if (conf_->orig_wei_dt == data_type::f8_e5m2) {
-                        this->f8_e5m2_cvt_->vcvt_f8_to_bf16_vnni(
-                                dst_zmm0, dst_zmm1, src_op);
-                    } else {
-                        this->f8_e4m3_cvt_->vcvt_f8_to_bf16_vnni(
-                                dst_zmm0, dst_zmm1, src_op);
-                    }
-                } else {
-                    if (conf_->orig_wei_dt == data_type::f8_e5m2) {
-                        this->f8_e5m2_cvt_->vcvt_f8_to_f16_vnni(
-                                dst_zmm0, dst_zmm1, src_op);
-                    } else {
-                        this->f8_e4m3_cvt_->vcvt_f8_to_f16_vnni(
-                                dst_zmm0, dst_zmm1, src_op);
-                    }
-                }
+                        = static_cast<const Xbyak::Operand &>(zmm_src_pack);
+                cvt_helper_.convert(zmm_dst0, zmm_dst1, src_op);
             }
 
             const auto store_addr0
                     = maybe_EVEX_compress_addr(reg_tr_src, tr_src_off0);
             const auto store_addr1
                     = maybe_EVEX_compress_addr(reg_tr_src, tr_src_off1);
-            uni_vmovups(store_addr0, dst_zmm0);
-            uni_vmovups(store_addr1, dst_zmm1);
+            uni_vmovups(store_addr0, zmm_dst0);
+            uni_vmovups(store_addr1, zmm_dst1);
         }
     }
 
@@ -6207,7 +6269,7 @@ private:
 
         L(done);
         postamble();
-        prepare_fp8_emu_tables();
+        cvt_helper_.prepare_tables();
     }
 };
 
@@ -6225,23 +6287,9 @@ struct jit_brgemm_matmul_copy_cvt_fp8_to_xf16_plain_t
         , tr_typesize_(conf->tr_b_dt_sz)
         , src_row_stride_(conf->copy_B_wei_stride)
         , src_stride_(k_blk_step * src_row_stride_)
-        , tr_src_stride_(conf->LDB * k_blk_step * tr_typesize_) {
-        assert(conf->is_xf16_fp8);
-        assert(!conf->blocked_B);
-        assert(!conf->transposed_B);
-        assert(!conf->has_zero_point_b);
-        assert(!conf->apply_scales_in_buffer_b);
-        assert(!conf->is_wei_zp_per_k && !conf->is_wei_zp_per_n);
-        assert(!conf->is_wei_scale_per_k && !conf->is_wei_scale_per_n);
-        assert(one_of(conf->wei_dt, data_type::bf16, data_type::f16));
-
-        if (conf_->orig_wei_dt == data_type::f8_e5m2) {
-            f8_e5m2_cvt_ = utils::make_unique<fp8_conversion_e5m2_t>(
-                    this, Xmm(2), Xmm(3), Xmm(4), k4, r11);
-        } else {
-            f8_e4m3_cvt_ = utils::make_unique<fp8_conversion_e4m3_t>(
-                    this, Xmm(2), Xmm(3), Xmm(4), Xmm(5), Xmm(6), r11);
-        }
+        , tr_src_stride_(conf->LDB * k_blk_step * tr_typesize_)
+        , cvt_helper_(this, conf) {
+        validate_xf16_fp8_copy_b_preconditions(conf, false, false);
     }
 
     void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
@@ -6253,7 +6301,6 @@ private:
     using reg64_t = const Xbyak::Reg64;
     using reg32_t = const Xbyak::Reg32;
     using opmask_t = const Xbyak::Opmask;
-    using zmm = const Xbyak::Zmm;
 
     enum {
         k_blk_step = 2,
@@ -6264,41 +6311,32 @@ private:
     const int typesize_, tr_typesize_;
     const dim_t src_row_stride_, src_stride_, tr_src_stride_;
 
+    fp8_to_xf16_cvt_helper_t cvt_helper_;
+
     reg64_t reg_src = rax;
     reg64_t reg_tr_src = rbx;
-    reg64_t reg_K_iters = r8;
-    reg64_t reg_N_blk = r9;
-    reg64_t reg_tmp = r10;
-    reg32_t regw_tmp = r10d;
+    reg64_t reg_K_iters = r9;
+    reg64_t reg_N_blk = r10;
+    reg64_t reg_tmp = r11;
+    reg32_t regw_tmp = r11d;
     reg64_t reg_src_back = r12;
     reg64_t reg_tr_src_back = r13;
 
+    Zmm zmm_dst0 = Zmm(5);
+    Zmm zmm_dst1 = Zmm(6);
+    Zmm zmm_src_pack = Zmm(7);
+    Zmm zmm_permute = Zmm(8);
+
+    constexpr static int xmm_work_reg_base_idx = 9;
+
     opmask_t kTail = k1;
 
-    std::unique_ptr<fp8_conversion_e5m2_t> f8_e5m2_cvt_;
-    std::unique_ptr<fp8_conversion_e4m3_t> f8_e4m3_cvt_;
-
-    void prepare_fp8_emu_tables() {
-        if (f8_e5m2_cvt_) f8_e5m2_cvt_->prepare_table();
-        if (f8_e4m3_cvt_) f8_e4m3_cvt_->prepare_table();
-    }
-
     void copy_block(const int nrows, const int ncolumns, bool zeropad) {
-        alignas(64) static constexpr uint8_t plain_to_vnni_pack_idx[64] = {0,
-                16, 32, 48, 1, 17, 33, 49, 2, 18, 34, 50, 3, 19, 35, 51, 4, 20,
-                36, 52, 5, 21, 37, 53, 6, 22, 38, 54, 7, 23, 39, 55, 8, 24, 40,
-                56, 9, 25, 41, 57, 10, 26, 42, 58, 11, 27, 43, 59, 12, 28, 44,
-                60, 13, 29, 45, 61, 14, 30, 46, 62, 15, 31, 47, 63};
-
         const int direct_nrows = utils::rnd_up(nrows, fp8_vnni_k_pack);
         const int direct_ncolumns = utils::rnd_up(ncolumns, n_blk_step);
 
-        const auto dst_zmm0 = zmm(0);
-        const auto dst_zmm1 = zmm(1);
-        const auto zmm_src_pack = zmm(7);
-        const auto zmm_permute = zmm(30);
-
-        mov(reg_tmp, reinterpret_cast<size_t>(plain_to_vnni_pack_idx));
+        mov(reg_tmp,
+                reinterpret_cast<size_t>(xf16_fp8_plain_to_split_pack_idx));
         vmovdqu8(zmm_permute, ptr[reg_tmp]);
 
         for_(int k = 0; k < direct_nrows; k += fp8_vnni_k_pack)
@@ -6311,8 +6349,8 @@ private:
             const dim_t tr_src_off1 = tr_src_off0 + tr_src_stride_;
 
             if (zeropad || rows_left <= 0 || cols_left <= 0) {
-                uni_vpxor(dst_zmm0, dst_zmm0, dst_zmm0);
-                uni_vpxor(dst_zmm1, dst_zmm1, dst_zmm1);
+                uni_vpxor(zmm_dst0, zmm_dst0, zmm_dst0);
+                uni_vpxor(zmm_dst1, zmm_dst1, zmm_dst1);
             } else {
                 const bool is_n_tail = cols_left < n_blk_step;
                 if (is_n_tail) {
@@ -6323,7 +6361,7 @@ private:
 
                 uni_vpxor(zmm_src_pack, zmm_src_pack, zmm_src_pack);
                 for (int r = 0; r < fp8_vnni_k_pack; ++r) {
-                    const auto xmm_src = Xmm(8 + r);
+                    const auto xmm_src = Xmm(xmm_work_reg_base_idx + r);
                     const dim_t src_off
                             = (k + r) * src_row_stride_ + n * typesize_;
                     if (r < rows_left) {
@@ -6339,37 +6377,21 @@ private:
                     vinserti32x4(zmm_src_pack, zmm_src_pack, xmm_src, r);
                 }
 
-                // Convert row-wise [r0|r1|r2|r3] byte pack to VNNI quad order.
-                // Expected order per column n is [r0[n], r1[n], r2[n], r3[n]].
+                // Reorder row-wise [r0|r1|r2|r3] into split-pack layout for
+                // direct conversion: low 32B interleave [r0[n], r1[n]],
+                // high 32B interleave [r2[n], r3[n]].
                 vpermb(zmm_src_pack, zmm_permute, zmm_src_pack);
 
-                const auto &src_op
-                        = static_cast<const Xbyak::Operand &>(zmm_src_pack);
-                if (conf_->wei_dt == data_type::bf16) {
-                    if (conf_->orig_wei_dt == data_type::f8_e5m2) {
-                        this->f8_e5m2_cvt_->vcvt_f8_to_bf16_vnni(
-                                dst_zmm0, dst_zmm1, src_op);
-                    } else {
-                        this->f8_e4m3_cvt_->vcvt_f8_to_bf16_vnni(
-                                dst_zmm0, dst_zmm1, src_op);
-                    }
-                } else {
-                    if (conf_->orig_wei_dt == data_type::f8_e5m2) {
-                        this->f8_e5m2_cvt_->vcvt_f8_to_f16_vnni(
-                                dst_zmm0, dst_zmm1, src_op);
-                    } else {
-                        this->f8_e4m3_cvt_->vcvt_f8_to_f16_vnni(
-                                dst_zmm0, dst_zmm1, src_op);
-                    }
-                }
+                cvt_helper_.convert_from_packed_plain(
+                        zmm_dst0, zmm_dst1, zmm_src_pack);
             }
 
             const auto store_addr0
                     = maybe_EVEX_compress_addr(reg_tr_src, tr_src_off0);
             const auto store_addr1
                     = maybe_EVEX_compress_addr(reg_tr_src, tr_src_off1);
-            uni_vmovups(store_addr0, dst_zmm0);
-            uni_vmovups(store_addr1, dst_zmm1);
+            uni_vmovups(store_addr0, zmm_dst0);
+            uni_vmovups(store_addr1, zmm_dst1);
         }
     }
 
@@ -6495,7 +6517,7 @@ private:
 
         L(done);
         postamble();
-        prepare_fp8_emu_tables();
+        cvt_helper_.prepare_tables();
     }
 };
 
@@ -6512,23 +6534,9 @@ struct jit_brgemm_matmul_copy_cvt_fp8_to_xf16_transposed_t
         , typesize_(conf->b_dt_sz)
         , tr_typesize_(conf->tr_b_dt_sz)
         , src_row_stride_(conf->copy_B_wei_stride)
-        , tr_src_stride_(conf->LDB * k_blk_step * tr_typesize_) {
-        assert(conf->is_xf16_fp8);
-        assert(!conf->blocked_B);
-        assert(conf->transposed_B);
-        assert(!conf->has_zero_point_b);
-        assert(!conf->apply_scales_in_buffer_b);
-        assert(!conf->is_wei_zp_per_k && !conf->is_wei_zp_per_n);
-        assert(!conf->is_wei_scale_per_k && !conf->is_wei_scale_per_n);
-        assert(one_of(conf->wei_dt, data_type::bf16, data_type::f16));
-
-        if (conf_->orig_wei_dt == data_type::f8_e5m2) {
-            f8_e5m2_cvt_ = utils::make_unique<fp8_conversion_e5m2_t>(
-                    this, Xmm(2), Xmm(3), Xmm(4), k4, r11);
-        } else {
-            f8_e4m3_cvt_ = utils::make_unique<fp8_conversion_e4m3_t>(
-                    this, Xmm(2), Xmm(3), Xmm(4), Xmm(5), Xmm(6), r11);
-        }
+        , tr_src_stride_(conf->LDB * k_blk_step * tr_typesize_)
+        , cvt_helper_(this, conf) {
+        validate_xf16_fp8_copy_b_preconditions(conf, false, true);
     }
 
     void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
@@ -6539,7 +6547,6 @@ struct jit_brgemm_matmul_copy_cvt_fp8_to_xf16_transposed_t
 private:
     using reg64_t = const Xbyak::Reg64;
     using reg32_t = const Xbyak::Reg32;
-    using zmm = const Xbyak::Zmm;
 
     enum {
         k_blk_step = 2,
@@ -6550,39 +6557,30 @@ private:
     const int typesize_, tr_typesize_;
     const dim_t src_row_stride_, tr_src_stride_;
 
+    fp8_to_xf16_cvt_helper_t cvt_helper_;
+
     reg64_t reg_src = rax;
     reg64_t reg_tr_src = rbx;
-    reg64_t reg_K_iters = r8;
-    reg64_t reg_N_blk = r9;
-    reg64_t reg_tmp = r10;
-    reg32_t regw_tmp = r10d;
+    reg64_t reg_K_iters = r9;
+    reg64_t reg_N_blk = r10;
+    reg64_t reg_tmp = r11;
+    reg32_t regw_tmp = r11d;
     reg64_t reg_src_back = r12;
     reg64_t reg_tr_src_back = r13;
 
-    std::unique_ptr<fp8_conversion_e5m2_t> f8_e5m2_cvt_;
-    std::unique_ptr<fp8_conversion_e4m3_t> f8_e4m3_cvt_;
+    Zmm zmm_dst0 = Zmm(5);
+    Zmm zmm_dst1 = Zmm(6);
+    Zmm zmm_src_pack = Zmm(7);
+    Zmm zmm_permute = Zmm(8);
 
-    void prepare_fp8_emu_tables() {
-        if (f8_e5m2_cvt_) f8_e5m2_cvt_->prepare_table();
-        if (f8_e4m3_cvt_) f8_e4m3_cvt_->prepare_table();
-    }
+    constexpr static int xmm_work_reg_base_idx = 9;
 
     void copy_block(const int nrows, const int ncolumns, bool zeropad) {
-        alignas(64) static constexpr uint8_t plain_to_vnni_pack_idx[64] = {0,
-                16, 32, 48, 1, 17, 33, 49, 2, 18, 34, 50, 3, 19, 35, 51, 4, 20,
-                36, 52, 5, 21, 37, 53, 6, 22, 38, 54, 7, 23, 39, 55, 8, 24, 40,
-                56, 9, 25, 41, 57, 10, 26, 42, 58, 11, 27, 43, 59, 12, 28, 44,
-                60, 13, 29, 45, 61, 14, 30, 46, 62, 15, 31, 47, 63};
-
         const int direct_nrows = utils::rnd_up(nrows, fp8_vnni_k_pack);
         const int direct_ncolumns = utils::rnd_up(ncolumns, n_blk_step);
 
-        const auto dst_zmm0 = zmm(0);
-        const auto dst_zmm1 = zmm(1);
-        const auto zmm_src_pack = zmm(7);
-        const auto zmm_permute = zmm(30);
-
-        mov(reg_tmp, reinterpret_cast<size_t>(plain_to_vnni_pack_idx));
+        mov(reg_tmp,
+                reinterpret_cast<size_t>(xf16_fp8_plain_to_split_pack_idx));
         vmovdqu8(zmm_permute, ptr[reg_tmp]);
 
         for_(int k = 0; k < direct_nrows; k += fp8_vnni_k_pack)
@@ -6595,59 +6593,46 @@ private:
             const dim_t tr_src_off1 = tr_src_off0 + tr_src_stride_;
 
             if (zeropad || rows_left <= 0 || cols_left <= 0) {
-                uni_vpxor(dst_zmm0, dst_zmm0, dst_zmm0);
-                uni_vpxor(dst_zmm1, dst_zmm1, dst_zmm1);
+                uni_vpxor(zmm_dst0, zmm_dst0, zmm_dst0);
+                uni_vpxor(zmm_dst1, zmm_dst1, zmm_dst1);
             } else {
                 uni_vpxor(zmm_src_pack, zmm_src_pack, zmm_src_pack);
 
                 for (int r = 0; r < fp8_vnni_k_pack; ++r) {
-                    const auto xmm_src = Xmm(8 + r);
-                    uni_vpxor(xmm_src, xmm_src, xmm_src);
-
+                    const auto xmm_src = Xmm(xmm_work_reg_base_idx + r);
                     if (r < rows_left) {
+                        const bool is_n_tail = cols_left < n_blk_step;
+                        if (is_n_tail) uni_vpxor(xmm_src, xmm_src, xmm_src);
+
                         for (int c = 0; c < n_blk_step; ++c) {
                             if (c >= cols_left) break;
                             const dim_t src_off = (n + c) * src_row_stride_
                                     + (k + r) * typesize_;
-                            movzx(regw_tmp, byte[reg_src + src_off]);
-                            vpinsrb(xmm_src, xmm_src, regw_tmp, c);
+                            vpinsrb(xmm_src, xmm_src, byte[reg_src + src_off],
+                                    c);
                         }
+                    } else {
+                        uni_vpxor(xmm_src, xmm_src, xmm_src);
                     }
 
                     vinserti32x4(zmm_src_pack, zmm_src_pack, xmm_src, r);
                 }
 
-                // Convert row-wise [r0|r1|r2|r3] byte pack to VNNI quad order.
-                // Expected order per column n is [r0[n], r1[n], r2[n], r3[n]].
+                // Reorder row-wise [r0|r1|r2|r3] into split-pack layout for
+                // direct conversion: low 32B interleave [r0[n], r1[n]],
+                // high 32B interleave [r2[n], r3[n]].
                 vpermb(zmm_src_pack, zmm_permute, zmm_src_pack);
 
-                const auto &src_op
-                        = static_cast<const Xbyak::Operand &>(zmm_src_pack);
-                if (conf_->wei_dt == data_type::bf16) {
-                    if (conf_->orig_wei_dt == data_type::f8_e5m2) {
-                        this->f8_e5m2_cvt_->vcvt_f8_to_bf16_vnni(
-                                dst_zmm0, dst_zmm1, src_op);
-                    } else {
-                        this->f8_e4m3_cvt_->vcvt_f8_to_bf16_vnni(
-                                dst_zmm0, dst_zmm1, src_op);
-                    }
-                } else {
-                    if (conf_->orig_wei_dt == data_type::f8_e5m2) {
-                        this->f8_e5m2_cvt_->vcvt_f8_to_f16_vnni(
-                                dst_zmm0, dst_zmm1, src_op);
-                    } else {
-                        this->f8_e4m3_cvt_->vcvt_f8_to_f16_vnni(
-                                dst_zmm0, dst_zmm1, src_op);
-                    }
-                }
+                cvt_helper_.convert_from_packed_plain(
+                        zmm_dst0, zmm_dst1, zmm_src_pack);
             }
 
             const auto store_addr0
                     = maybe_EVEX_compress_addr(reg_tr_src, tr_src_off0);
             const auto store_addr1
                     = maybe_EVEX_compress_addr(reg_tr_src, tr_src_off1);
-            uni_vmovups(store_addr0, dst_zmm0);
-            uni_vmovups(store_addr1, dst_zmm1);
+            uni_vmovups(store_addr0, zmm_dst0);
+            uni_vmovups(store_addr1, zmm_dst1);
         }
     }
 
@@ -6773,7 +6758,7 @@ private:
 
         L(done);
         postamble();
-        prepare_fp8_emu_tables();
+        cvt_helper_.prepare_tables();
     }
 };
 

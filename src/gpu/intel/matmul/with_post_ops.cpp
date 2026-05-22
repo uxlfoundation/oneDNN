@@ -304,7 +304,8 @@ void with_post_ops_t::pd_t::init_scratchpad() {
     if (use_scratchpad_with_post_op_worker) {
         memory_desc_wrapper dst_mdw(dst_md());
         scratchpad.book(memory_tracking::names::key_gemm_tmp_buffer,
-                dst_mdw.size(), types::data_type_size(desc_.accum_data_type));
+                dst_mdw.nelems(/*with_padding=*/true),
+                types::data_type_size(desc_.accum_data_type));
     }
     scratchpad.book(memory_tracking::names::key_nested_multiple,
             pd_->scratchpad_registry());

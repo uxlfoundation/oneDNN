@@ -1608,4 +1608,39 @@ __attribute__((overloadable)) void cooperative_prefetch_2d_internal(
         } \
     }
 
+// Atomically adds tile elements, converted to float, to a global float buffer.
+// Use this instead of tile_atomic_add when the tile element type (e.g. half)
+// differs from the global scratch type (float), avoiding f16 atomic builtins.
+#define DECLARE_2D_TILE_ATOMIC_ADD_F32(tile_type, sg, br, bc, nbr, nbc) \
+    __attribute__((overloadable)) void tile_atomic_add_f32(tile_type t, \
+            global float *ptr, int m, int n, int ld, int offset_r, \
+            int offset_c) { \
+        if (m >= (offset_r + (br * nbr)) \
+                && n >= (offset_c + (bc * nbc))) { \
+            global float *p = ptr + ld * offset_c + offset_r; \
+            _Pragma("unroll") for (int j = 0; j < bc * nbc; j++, p += ld) { \
+                _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; \
+                                       i0 += sg) { \
+                    int i = i0 + get_sub_group_local_id(); \
+                    (void)global_atomic_add(p + i, \
+                            (float)tile_access(t, i0, j, sg, br, bc, nbr)); \
+                } \
+            } \
+            return; \
+        } \
+        ptr += ld * offset_c + offset_r; \
+        _Pragma("unroll") for (int j = 0; j < bc * nbc; j++, ptr += ld) { \
+            if (offset_c + j < n) { \
+                _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; \
+                                       i0 += sg) { \
+                    int i = i0 + get_sub_group_local_id(); \
+                    if (offset_r + i < m) \
+                        (void)global_atomic_add(ptr + i, \
+                                (float)tile_access( \
+                                        t, i0, j, sg, br, bc, nbr)); \
+                } \
+            } \
+        } \
+    }
+
 #endif

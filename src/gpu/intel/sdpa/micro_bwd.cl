@@ -455,37 +455,48 @@ inline void tile_store_k_slm(
 #define NEEDS_INTERMEDIATE_DQ 1
 #endif
 
-#if IS_GQA && !REDUCE_DST_F16
+#if IS_GQA
 #define DST_DATA_T_DKDV float
 #else
 #define DST_DATA_T_DKDV DST_DATA_T
 #endif
 
 #if REDUCE_DST_F16
-DECLARE_2D_TILE(dv_reduce_f16_tile, DST_DATA_T_DKDV, SUBGROUP_SIZE,
+// SLM accumulation tiles stay in f16 (DST_DATA_T) to save SLM space.
+// The global scratch is f32 (DST_DATA_T_DKDV=float); tile_atomic_add_f32
+// converts f16->f32 at the global write step, avoiding __builtin_IB_atomic_add_global_f16.
+DECLARE_2D_TILE(dv_reduce_f16_tile, DST_DATA_T, SUBGROUP_SIZE,
         ugemm_vs_c_type_block0, ugemm_vs_c_type_block1, ugemm_vs_c_type_nblock0,
         ugemm_vs_c_type_nblock1)
-DECLARE_2D_TILE(a_reduce_f16_tile, DST_DATA_T_DKDV, SUBGROUP_SIZE,
+DECLARE_2D_TILE(a_reduce_f16_tile, DST_DATA_T, SUBGROUP_SIZE,
         ugemm_qdSt_c_type_block0, ugemm_qdSt_c_type_block1,
         ugemm_qdSt_c_type_nblock0, ugemm_qdSt_c_type_nblock1)
-DECLARE_2D_TILE_SLM_ADD(dv_reduce_f16_tile, DST_DATA_T_DKDV, SUBGROUP_SIZE,
+DECLARE_2D_TILE_SLM_ADD(dv_reduce_f16_tile, DST_DATA_T, SUBGROUP_SIZE,
         ugemm_vs_c_type_block0, ugemm_vs_c_type_block1, ugemm_vs_c_type_nblock0,
         ugemm_vs_c_type_nblock1)
 #if (ugemm_qdSt_c_type_block0 != ugemm_vs_c_type_block0) \
         || (ugemm_qdSt_c_type_block1 != ugemm_vs_c_type_block1) \
         || (ugemm_qdSt_c_type_nblock0 != ugemm_vs_c_type_nblock0) \
         || (ugemm_qdSt_c_type_nblock1 != ugemm_vs_c_type_nblock1)
-DECLARE_2D_TILE_SLM_ADD(a_reduce_f16_tile, DST_DATA_T_DKDV, SUBGROUP_SIZE,
+DECLARE_2D_TILE_SLM_ADD(a_reduce_f16_tile, DST_DATA_T, SUBGROUP_SIZE,
         ugemm_qdSt_c_type_block0, ugemm_qdSt_c_type_block1,
         ugemm_qdSt_c_type_nblock0, ugemm_qdSt_c_type_nblock1)
 #endif
-DECLARE_2D_TILE_SLM_ADD_T(a_reduce_f16_tile, DST_DATA_T_DKDV, SUBGROUP_SIZE,
+DECLARE_2D_TILE_SLM_ADD_T(a_reduce_f16_tile, DST_DATA_T, SUBGROUP_SIZE,
         ugemm_qdSt_c_type_block0, ugemm_qdSt_c_type_block1,
         ugemm_qdSt_c_type_nblock0, ugemm_qdSt_c_type_nblock1)
+// f32 global atomic add declarations for the f16->f32 conversion step.
+DECLARE_2D_TILE_ATOMIC_ADD_F32(dv_tile_type_dst, SUBGROUP_SIZE,
+        ugemm_vs_sg_tile_m, 1, 1, ugemm_vs_sg_tile_n)
+DECLARE_2D_TILE_ATOMIC_ADD_F32(a_tile_type_dst, SUBGROUP_SIZE,
+        ugemm_qdSt_sg_tile_m, 1, 1, ugemm_qdSt_sg_tile_n)
 
-#define SLM_DKDV_DATA_T DST_DATA_T_DKDV
+#define SLM_DKDV_DATA_T DST_DATA_T
 typedef dv_tile_type_dst dv_store_tile_type;
 typedef a_tile_type_dst dk_store_tile_type;
+inline float round_to_dst(DST_DATA_T v) {
+    return CONVERT_FLOAT_T(v);
+}
 #else
 #define SLM_DKDV_DATA_T float
 typedef dv_tile_type dv_store_tile_type;
@@ -579,8 +590,9 @@ inline void tile_store_dV(dv_store_tile_type *dV_tile_slm,
 
 #if IS_GQA
 #if REDUCE_DST_F16
-    tile_atomic_add_debug(*dV_tile_slm, dV, m, n, ld, offset_r, offset_c, 1,
-            TILE_ATOMIC_TAG_DV, get_sub_group_local_id());
+    // f16 SLM tile -> convert to f32 -> f32 global atomic add.
+    // Avoids __builtin_IB_atomic_add_global_f16 which can produce NaN.
+    tile_atomic_add_f32(*dV_tile_slm, dV, m, n, ld, offset_r, offset_c);
 #else
     tile_elementwise_s(*dV_tile_slm, round_to_dst);
     tile_atomic_add(*dV_tile_slm, dV, m, n, ld, offset_r, offset_c);
@@ -607,8 +619,7 @@ inline void tile_store_dK_t(dv_store_tile_type *dK_tile,
 
 #if IS_GQA
 #if REDUCE_DST_F16
-    tile_atomic_add_debug(*dK_tile, dK, m, n, ld, offset_r, offset_c, 1,
-            TILE_ATOMIC_TAG_DK, get_sub_group_local_id());
+    tile_atomic_add_f32(*dK_tile, dK, m, n, ld, offset_r, offset_c);
 #else
     tile_elementwise_s(*dK_tile, round_to_dst);
     tile_atomic_add(*dK_tile, dK, m, n, ld, offset_r, offset_c);
@@ -635,7 +646,7 @@ inline void tile_store_dK(dk_store_tile_type *dK_tile,
 
 #if IS_GQA
 #if REDUCE_DST_F16
-    tile_atomic_add(*dK_tile, dK, m, n, ld, offset_r, offset_c);
+    tile_atomic_add_f32(*dK_tile, dK, m, n, ld, offset_r, offset_c);
 #else
     tile_elementwise_s(*dK_tile, round_to_dst);
     tile_atomic_add(*dK_tile, dK, m, n, ld, offset_r, offset_c);
@@ -1293,9 +1304,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                 remainder_k);
         if (get_group_id(0) == 0 && get_group_id(1) == 0 && get_group_id(2) == 0
                 && sg_ij == 0 && get_sub_group_local_id() == 0) {
-            dv_store_tile_type dV_tile_after_store;
-            tile_load(&dV_tile_after_store, dV, d, k, lddv, sg_i0_vs,
-                    wg_i0 + sg_j0_vs);
+            // dV is now global float* (f32 scratch); can't tile_load into half tile.
             DEBUG_PRINT_LOAD_STORE_TABLE("dV load_vs_store",
                     dV_tile_before_store, dV_tile_slm,
                     get_sub_group_local_id());
@@ -1319,13 +1328,11 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                 remainder_k);
         if (get_group_id(0) == 0 && get_group_id(1) == 0 && get_group_id(2) == 0
                 && sg_ij == 0 && get_sub_group_local_id() == 0) {
-            dv_store_tile_type dK_tile_after_store;
-            tile_load(&dK_tile_after_store, dK, d, k, lddk, sg_i0_vs,
-                    wg_i0 + sg_j0_vs);
+            // dK is now global float* (f32 scratch); can't tile_load into half tile.
             printf("[DBG][dK][load_vs_store] k0=%d q0end=%d sg=%d\n", k0, q0end,
                     get_sub_group_local_id());
             DEBUG_PRINT_LOAD_STORE_TABLE("dK_load_vs_store",
-                    dK_tile_before_store, dK_tile_after_store,
+                    dK_tile_before_store, dK_tile_before_store,
                     get_sub_group_local_id());
         }
     }
@@ -1477,7 +1484,8 @@ postprocess_dKV(global DST_DATA_T *dst, global const DST_DATA_T_DKDV *src,
         size_t src_idx = (size_t)row * DQ_S2 + col * DQ_S3;
         size_t dst_idx = (size_t)row * QRY_S2 + col * QRY_S3;
 #if REDUCE_DST_F16
-        dst[dst_idx] = src[src_idx];
+        // src is global float* (f32 scratch); convert to DST_DATA_T (e.g. half).
+        dst[dst_idx] = TO_DATA_T(src[src_idx]);
 #else
         dst[dst_idx] = TO_DATA_T(src[src_idx]);
 #endif

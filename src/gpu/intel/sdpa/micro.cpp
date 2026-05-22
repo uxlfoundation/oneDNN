@@ -1020,10 +1020,9 @@ status_t micro_bwd_t::pd_t::init_scratchpad(impl::engine_t *engine) {
     auto gpu_align
             = utils::downcast<gpu::engine_t *>(engine)->get_buffer_alignment();
     size_t wspace_size = memory_desc_wrapper(desc()->diff_qry_md()).nelems();
-    // f32 can directly atomic add to output.
-    // Keep the DKV scratch space in the same dtype as dst.
-    const data_type_t dkv_scratch_data_t
-            = conf.data_t == data_type::f16 ? data_type::f16 : data_type::f32;
+    // Always use f32 scratch for dK/dV. tile_atomic_add_f32 converts f16->f32
+    // at the atomic add step, avoiding __builtin_IB_atomic_add_global_f16.
+    const data_type_t dkv_scratch_data_t = data_type::f32;
 
     if (conf.data_t != data_type::f32) {
         scratchpad.book(memory_tracking::names::key_sdpa_dQ_reduction,
@@ -1042,8 +1041,8 @@ status_t micro_bwd_t::pd_t::init_scratchpad(impl::engine_t *engine) {
                 types::data_type_size(dkv_scratch_data_t), gpu_align);
         printf("Booked intermediate dK and dV scratch space for grouped "
                "quantization "
-               "with group size %d and data type f16 ? %d\n",
-                conf.kv_group_size, dkv_scratch_data_t == data_type::f16);
+               "with group size %d and data type f32 (always)\n",
+                conf.kv_group_size);
     }
 
     // space for D_i preprocess result
@@ -1711,8 +1710,8 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
 
     const data_type_t data_t = pd()->dst_md()->data_type;
     const bool needs_intermediate_dQ = (data_t != data_type::f32);
-    const data_type_t dkv_scratch_data_t
-            = (data_t == data_type::f16) ? data_type::f16 : data_type::f32;
+    // Always use f32 scratch for dK/dV; see init_scratchpad comment.
+    const data_type_t dkv_scratch_data_t = data_type::f32;
     const bool needs_intermediate_dKV
             = (kv_group_size > 1 && data_t != data_type::f32);
     const bool needs_zero_dKV = (kv_group_size > 1);
@@ -1887,20 +1886,35 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
 
         // always zero dQ
         auto &dQ_buf = needs_intermediate_dQ ? *diff_q_scratch : diff_q;
+        const size_t dQ_formula_bytes
+                = size_t(batch * num_q_heads * Q * D) * sizeof(float);
         const size_t dQ_bytes = needs_intermediate_dQ
-                ? size_t(batch * num_q_heads * Q * D) * sizeof(float)
+                ? dQ_formula_bytes
                 : diff_qry_mdw.size();
+        printf("[DBG][zero_fill][dQ]"
+               " intermediate=%d"
+               " nelems=%zu formula_elems=%zu"
+               " nelems*sz=%zu formula_bytes=%zu fill_bytes=%zu"
+               " match=%d\n",
+                (int)needs_intermediate_dQ,
+                (size_t)diff_qry_mdw.nelems(),
+                size_t(batch * num_q_heads * Q * D),
+                diff_qry_mdw.nelems() * sizeof(float),
+                dQ_formula_bytes,
+                dQ_bytes,
+                dQ_formula_bytes == diff_qry_mdw.nelems() * sizeof(float));
         CHECK(zero_fill(dQ_buf, dQ_bytes));
 
         // zero dK/dV for GQA cases
         if (needs_zero_dKV) {
             auto &dK_buf = needs_intermediate_dKV ? *diff_k_scratch : diff_k;
             auto &dV_buf = needs_intermediate_dKV ? *diff_v_scratch : diff_v;
-            // Use the full mdw size to cover any padding/alignment in the
-            // scratchpad allocation; previously scratch_kv_bytes used
-            // batch*num_kv_heads*K*D which could miss padded tail bytes,
-            // leaving uninitialized memory that subsequent atomic adds read as
-            // NaN or garbage.
+            const size_t old_dK_formula_bytes
+                    = size_t(batch * num_kv_heads * K * D)
+                    * types::data_type_size(dkv_scratch_data_t);
+            const size_t old_dV_formula_bytes
+                    = size_t(batch * num_kv_heads * K * D)
+                    * types::data_type_size(dkv_scratch_data_t);
             const size_t dK_bytes = needs_intermediate_dKV
                     ? diff_key_mdw.nelems()
                             * types::data_type_size(dkv_scratch_data_t)
@@ -1909,9 +1923,34 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
                     ? diff_val_mdw.nelems()
                             * types::data_type_size(dkv_scratch_data_t)
                     : diff_val_mdw.size();
+            printf("[DBG][zero_fill][dK]"
+                   " intermediate=%d"
+                   " nelems=%zu old_formula_elems=%zu"
+                   " fill_bytes(new)=%zu fill_bytes(old)=%zu"
+                   " undercount=%zd\n",
+                    (int)needs_intermediate_dKV,
+                    (size_t)diff_key_mdw.nelems(),
+                    size_t(batch * num_kv_heads * K * D),
+                    dK_bytes, old_dK_formula_bytes,
+                    (ssize_t)dK_bytes - (ssize_t)old_dK_formula_bytes);
+            printf("[DBG][zero_fill][dV]"
+                   " intermediate=%d"
+                   " nelems=%zu old_formula_elems=%zu"
+                   " fill_bytes(new)=%zu fill_bytes(old)=%zu"
+                   " undercount=%zd\n",
+                    (int)needs_intermediate_dKV,
+                    (size_t)diff_val_mdw.nelems(),
+                    size_t(batch * num_kv_heads * K * D),
+                    dV_bytes, old_dV_formula_bytes,
+                    (ssize_t)dV_bytes - (ssize_t)old_dV_formula_bytes);
             CHECK(zero_fill(dK_buf, dK_bytes));
             CHECK(zero_fill(dV_buf, dV_bytes));
         }
+        // DEBUG: force GPU completion of all fills before kernel launch
+        // to confirm/deny synchronization race as root cause of NaNs.
+        printf("[DBG][zero_fill] waiting for fills to complete...\n");
+        CHECK(compute_stream->wait());
+        printf("[DBG][zero_fill] fills complete, launching kernel\n");
     }
 
     /// backwards pass kernel, calculates dK, dV, dQ(float)

@@ -236,7 +236,7 @@ struct reusable_fwd_t : public primitive_t {
                 auto *gpu_attr = utils::downcast<gpu_primitive_attr_t *>(
                         attr()->gpu_attr_.get());
                 return intel_engine->device_info()->max_wg_size(
-                        gpu_attr && gpu_attr->grf_per_thread() > 128);
+                        gpu_attr ? gpu_attr->grf_per_thread() : 128);
             }();
 
             const size_t num_workers_per_workgroup = dnnl::impl::utils::div_up(

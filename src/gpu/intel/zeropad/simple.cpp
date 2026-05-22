@@ -308,8 +308,8 @@ status_t simple_t::execute_subg_16_mask_and_clear_dt_1B(const exec_ctx_t &ctx,
 
     auto *gpu_attr = utils::downcast<gpu_primitive_attr_t *>(
             pd()->attr()->gpu_attr_.get());
-    bool large_grf_mode = gpu_attr && gpu_attr->grf_per_thread() > 128;
-    const size_t max_local_ws = device->max_wg_size(large_grf_mode, 16);
+    int grf_per_thread = gpu_attr ? gpu_attr->grf_per_thread() : 128;
+    const size_t max_local_ws = device->max_wg_size(grf_per_thread, 16);
 
     const auto &dims = mdw.dims();
     const auto nelems = mdw.nelems(true);

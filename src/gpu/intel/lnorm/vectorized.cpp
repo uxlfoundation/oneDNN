@@ -35,7 +35,7 @@ bool mayiuse_sg(const int sg_size, impl::engine_t *engine) {
 }
 
 bool is_fused_kernel_applicable(conf_t &conf, const pd_t *pd,
-        impl::engine_t *engine, bool large_grf_mode) {
+        impl::engine_t *engine, int grf_per_thread) {
     auto *intel_engine = utils::downcast<engine_t *>(engine);
 
     auto gpu_arch = intel_engine->device_info()->gpu_arch();
@@ -45,7 +45,7 @@ bool is_fused_kernel_applicable(conf_t &conf, const pd_t *pd,
     auto max_eus_per_wg = device_info_t::max_eus_per_wg(gpu_arch);
     const int max_ss = utils::div_up(eu_count, max_eus_per_wg);
     const size_t max_wg_size
-            = intel_engine->device_info()->max_wg_size(large_grf_mode);
+            = intel_engine->device_info()->max_wg_size(grf_per_thread);
     const size_t max_slm_size = device_info_t::max_slm_size(
             intel_engine->device_info()->gpu_product());
 
@@ -244,14 +244,15 @@ static status_t init_conf_common(
 
     auto *gpu_attr = utils::downcast<gpu_primitive_attr_t *>(
             pd->attr()->gpu_attr_.get());
-    bool large_grf_mode = gpu_attr && gpu_attr->grf_per_thread() > 128;
+    int grf_per_thread = gpu_attr ? gpu_attr->grf_per_thread() : 128;
+    bool large_grf_mode = grf_per_thread > 128;
     auto eu_count = intel_engine->device_info()->eu_count();
     auto threads_per_eu
             = device_info_t::threads_per_eu(gpu_arch, large_grf_mode);
     auto max_eus_per_wg = device_info_t::max_eus_per_wg(gpu_arch);
     const int max_ss = utils::div_up(eu_count, max_eus_per_wg);
     const size_t max_wg_size
-            = intel_engine->device_info()->max_wg_size(large_grf_mode);
+            = intel_engine->device_info()->max_wg_size(grf_per_thread);
 
     // Vectorized vs Reference heuristics.
     // PVC, FWD:
@@ -371,7 +372,7 @@ static status_t init_conf_common(
         // so if it's applicable we should build kernels for both approaches.
 
         conf.use_fused
-                = is_fused_kernel_applicable(conf, pd, engine, large_grf_mode);
+                = is_fused_kernel_applicable(conf, pd, engine, grf_per_thread);
 
         const int best_sg_size = [&]() {
             int size = desired_sg_size;

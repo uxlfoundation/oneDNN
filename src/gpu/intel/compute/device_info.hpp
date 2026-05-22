@@ -207,7 +207,8 @@ public:
     static int grf_size(gpu_arch_t gpu_arch);
     int grf_size() const { return grf_size(gpu_arch_); }
     int min_subgroup_size() const;
-    size_t max_wg_size(bool large_grf_mode, size_t subgroup_size = 0) const;
+    size_t max_wg_size(
+            int grf_per_thread = 128, size_t subgroup_size = 0) const;
     int eu_count() const { return eu_count_; }
     int hw_threads() const { return hw_threads_[0]; }
     int hw_threads(bool large_grf_mode) const {

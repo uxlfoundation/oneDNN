@@ -38,8 +38,7 @@ inline dsl::hw_t make_ir_hw(const impl::engine_t *engine) {
     auto *device_info = intel_engine->device_info();
     auto product = get_ngen_product(*device_info);
     int eu_count = device_info->eu_count();
-    int max_wg_size = static_cast<int>(
-            device_info->max_wg_size(/*large_grf_mode=*/false));
+    int max_wg_size = static_cast<int>(device_info->max_wg_size());
     size_t l3_cache_size = device_info->l3_cache_size();
     dsl::hw::attr_t attr = dsl::hw::attr_t::none;
     if (intel_engine->mayiuse_large_grf_mode())

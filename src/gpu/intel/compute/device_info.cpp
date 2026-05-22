@@ -241,7 +241,8 @@ int device_info_t::max_subgroup_size(data_type_t type) const {
 }
 
 size_t device_info_t::max_wg_size(
-        bool large_grf_mode, size_t subgroup_size) const {
+        int grf_per_thread, size_t subgroup_size) const {
+    bool large_grf_mode = grf_per_thread > 128;
     size_t device_max_wg_size
             = large_grf_mode ? max_wg_size_ / 2 : max_wg_size_;
     if (subgroup_size > 0) {

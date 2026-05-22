@@ -31,7 +31,7 @@ namespace reduction {
 struct phase_conf_t : public subproblem_t {
     phase_conf_t(const subproblem_t &subprb, data_type_t src_type,
             data_type_t dst_type, const intel::engine_t *intel_engine,
-            bool large_grf_mode);
+            int grf_per_thread);
     bool can_use_block_reads();
     data_type_t src_type, dst_type;
     compute::nd_range_t nd_range;

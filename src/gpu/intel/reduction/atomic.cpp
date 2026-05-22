@@ -107,7 +107,7 @@ atomic_conf_t::atomic_conf_t(const subproblem_t &subprb, alg_kind_t alg,
     conf.grf_per_thread = gpu_attr ? gpu_attr->grf_per_thread() : 128;
 
     const bool large_grf_mode = conf.grf_per_thread > 128;
-    const size_t max_wg_size = device_info.max_wg_size(large_grf_mode);
+    const size_t max_wg_size = device_info.max_wg_size(conf.grf_per_thread);
     const int eu_count = device_info.eu_count();
     const size_t max_sg_per_wg = utils::div_up(max_wg_size, conf.subgroup_size);
 

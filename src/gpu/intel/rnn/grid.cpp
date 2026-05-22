@@ -256,7 +256,7 @@ static status_t init_ocl_conf(ocl_conf_t &ocl_conf, const pd_t *pd,
                 dim_t mb_tg = b_thread;
                 dim_t mb_block = mb_thr * mb_tg;
                 if (size_t(dhc_tg * mb_tg) > device_info.max_wg_size(
-                            grf_per_thread > 128, ocl_conf.subgroup_size))
+                            grf_per_thread, ocl_conf.subgroup_size))
                     break;
 
                 double score = [&]() {

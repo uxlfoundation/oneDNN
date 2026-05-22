@@ -99,6 +99,7 @@ public:
 
     // Number of EUs per Xe core (maps to dual subslice on XeHPG).
     int eus_per_core() const;
+    int grf_per_eu() const;
     int threads_per_eu(int regs = 128) const;
     int cache_line_size() const;
 
@@ -130,8 +131,10 @@ protected:
 
 private:
     size_t max_wg_size(int regs = 128) const {
-        bool is_large_grf = (regs > 128);
-        return is_large_grf ? max_wg_size_ / 2 : max_wg_size_;
+        // max_wg_size_ implicitly assumes 128 GRF/thread - other GRF modes will vary
+        size_t thread_per_eu = threads_per_eu(regs);
+        size_t base_thread_per_eu = threads_per_eu(128);
+        return max_wg_size_ * thread_per_eu / base_thread_per_eu;
     }
 
     ngen::HW hw_ = {};

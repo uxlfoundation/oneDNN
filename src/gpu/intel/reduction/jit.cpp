@@ -85,10 +85,9 @@ status_t gen_t::pd_t::init_conf(impl::engine_t *engine) {
         const compute::gpu_arch_t arch = device_info.gpu_arch();
         auto *gpu_attr = utils::downcast<gpu_primitive_attr_t *>(
                 attr()->gpu_attr_.get());
-        const bool large_grf_mode
-                = gpu_attr && gpu_attr->grf_per_thread() > 128;
+        const int grf_per_thread = gpu_attr ? gpu_attr->grf_per_thread() : 128;
         const int threads_per_eu
-                = compute::device_info_t::threads_per_eu(arch, large_grf_mode);
+                = compute::device_info_t::threads_per_eu(arch, grf_per_thread);
         int tg_size = utils::rnd_down_pow2(
                 device_info.max_eus_per_wg() * threads_per_eu);
         while (nthreads % tg_size != 0) {

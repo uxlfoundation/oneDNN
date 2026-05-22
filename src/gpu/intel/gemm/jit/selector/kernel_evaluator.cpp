@@ -26,6 +26,19 @@
 
 GEMMSTONE_NAMESPACE_START
 
+static inline int grfPerEU(char hw)
+{
+    switch (hw) {
+        case kcatalog::HWTagGen12LP: return 896;
+        case kcatalog::HWTagXeHPG:
+        case kcatalog::HWTagXeHPC:
+        case kcatalog::HWTagXe2:
+        case kcatalog::HWTagXe3:
+        case kcatalog::HWTagXe3p:   return 1024;
+    }
+    return 1024;
+}
+
 template <typename T1, typename T2>
 static inline T1 divUp(T1 x, T2 y)
 {
@@ -536,14 +549,7 @@ DerivedEvaluateParams getDerivedParams(const kcatalog::Entry &e, const EvaluateP
     dp.threadCount *= threadsPerWG;
     dp.threadCount *= (dp.wgCountK * p.sizes.batch);
 
-    switch (e.selector.hw) {
-        case kcatalog::HWTagGen12LP:
-            dp.threadsPerEU = 7;
-            break;
-        default:
-            dp.threadsPerEU = (e.driverInfo.grfCount > 128) ? 4 : 8;
-            break;
-    }
+    dp.threadsPerEU = grfPerEU(e.selector.hw) / e.driverInfo.grfCount;
 
     int ssCount;
     switch (e.selector.hw) {

@@ -245,10 +245,9 @@ static status_t init_conf_common(
     auto *gpu_attr = utils::downcast<gpu_primitive_attr_t *>(
             pd->attr()->gpu_attr_.get());
     int grf_per_thread = gpu_attr ? gpu_attr->grf_per_thread() : 128;
-    bool large_grf_mode = grf_per_thread > 128;
     auto eu_count = intel_engine->device_info()->eu_count();
     auto threads_per_eu
-            = device_info_t::threads_per_eu(gpu_arch, large_grf_mode);
+            = device_info_t::threads_per_eu(gpu_arch, grf_per_thread);
     auto max_eus_per_wg = device_info_t::max_eus_per_wg(gpu_arch);
     const int max_ss = utils::div_up(eu_count, max_eus_per_wg);
     const size_t max_wg_size

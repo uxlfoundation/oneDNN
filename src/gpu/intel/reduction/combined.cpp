@@ -87,13 +87,12 @@ phase_conf_t::phase_conf_t(const subproblem_t &subprb, data_type_t src_type,
     }
     with_block_reads = can_use_block_reads();
 
-    bool large_grf_mode = grf_per_thread > 128;
     const int num_EU = intel_engine->device_info()->eu_count();
     const int max_wg_size = static_cast<int>(
             intel_engine->device_info()->max_wg_size(grf_per_thread));
     compute::gpu_arch_t arch = intel_engine->device_info()->gpu_arch();
     int threads_per_eu
-            = large_grf_mode ? 4 : compute::device_info_t::threads_per_eu(arch);
+            = compute::device_info_t::threads_per_eu(arch, grf_per_thread);
     int num_threads = num_EU * threads_per_eu;
 
     // inner_dim can either be:
@@ -198,11 +197,9 @@ status_t split_into_phases(const subproblem_t &subprb,
     // so only split when parallelism is low and reductions per thread is large
     const bool low_parallelism
             = [&intel_engine, &grf_per_thread, &try_phase]() {
-        bool large_grf_mode = grf_per_thread > 128;
         compute::gpu_arch_t arch = intel_engine->device_info()->gpu_arch();
-        int threads_per_EU = large_grf_mode
-                ? 4
-                : compute::device_info_t::threads_per_eu(arch);
+        int threads_per_EU
+                = compute::device_info_t::threads_per_eu(arch, grf_per_thread);
         const int num_EU = intel_engine->device_info()->eu_count();
         const int min_threads = gpu_utils::dev_getenv(
                 "combined_reduction_occ_thresh", threads_per_EU * num_EU / 2);

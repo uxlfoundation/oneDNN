@@ -214,11 +214,12 @@ public:
     int hw_threads(bool large_grf_mode) const {
         return hw_threads_[large_grf_mode ? 1 : 0];
     }
-    static int threads_per_eu(gpu_arch_t gpu_arch, bool large_grf_mode = false);
+    static int grf_per_eu(gpu_arch_t gpu_arch);
+    static int threads_per_eu(gpu_arch_t gpu_arch, int grf_per_thread = 128);
     static int max_slm_size(gpu_product_t product);
     static int max_slm_size_per_tg(gpu_product_t product);
     static int max_slm_size_per_tg(
-            int tg_size, bool large_grf_mode, gpu_product_t product);
+            int tg_size, int grf_per_thread, gpu_product_t product);
     size_t memory_size() const { return memory_size_; }
     size_t l3_cache_size() const { return l3_cache_size_; }
     size_t icache_size() const;

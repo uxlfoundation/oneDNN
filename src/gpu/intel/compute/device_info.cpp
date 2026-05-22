@@ -242,30 +242,35 @@ int device_info_t::max_subgroup_size(data_type_t type) const {
 
 size_t device_info_t::max_wg_size(
         int grf_per_thread, size_t subgroup_size) const {
-    bool large_grf_mode = grf_per_thread > 128;
+    // max_wg_size_ implicitly assumes 128 GRF/thread - other GRF modes will vary
+    size_t thread_per_eu = threads_per_eu(gpu_arch_, grf_per_thread);
+    size_t base_thread_per_eu = threads_per_eu(gpu_arch_, 128);
     size_t device_max_wg_size
-            = large_grf_mode ? max_wg_size_ / 2 : max_wg_size_;
+            = max_wg_size_ * thread_per_eu / base_thread_per_eu;
     if (subgroup_size > 0) {
-        size_t sg_max_wg_size = threads_per_eu(gpu_arch_, large_grf_mode)
-                * max_eus_per_wg_ * subgroup_size;
+        size_t sg_max_wg_size = thread_per_eu * max_eus_per_wg_ * subgroup_size;
         return std::min(device_max_wg_size, sg_max_wg_size);
     }
     return device_max_wg_size;
 }
 
-int device_info_t::threads_per_eu(gpu_arch_t gpu_arch, bool large_grf_mode) {
+int device_info_t::grf_per_eu(gpu_arch_t gpu_arch) {
     switch (gpu_arch) {
-        case gpu::intel::compute::gpu_arch_t::xe_lp: return 7;
+        case gpu::intel::compute::gpu_arch_t::xe_lp: return 896;
         case gpu::intel::compute::gpu_arch_t::xe_hp:
         case gpu::intel::compute::gpu_arch_t::xe_hpg:
         case gpu::intel::compute::gpu_arch_t::xe_hpc:
         case gpu::intel::compute::gpu_arch_t::xe2:
         case gpu::intel::compute::gpu_arch_t::xe3p:
-        case gpu::intel::compute::gpu_arch_t::xe3:
-            return large_grf_mode ? 4 : 8;
-        case gpu::intel::compute::gpu_arch_t::unknown: return 7;
+        case gpu::intel::compute::gpu_arch_t::xe3: return 1024;
+        case gpu::intel::compute::gpu_arch_t::unknown: return 896;
     }
-    return 7;
+    return 1024;
+}
+
+int device_info_t::threads_per_eu(gpu_arch_t gpu_arch, int grf_per_thread) {
+    gpu_assert(grf_per_thread > 0) << "Invalid GRF per thread";
+    return grf_per_eu(gpu_arch) / grf_per_thread;
 }
 
 int device_info_t::max_slm_size(gpu_product_t product) {
@@ -301,12 +306,12 @@ int device_info_t::max_slm_size_per_tg(gpu_product_t product) {
 }
 
 int device_info_t::max_slm_size_per_tg(
-        int tg_size, bool large_grf_mode, gpu_product_t product) {
+        int tg_size, int grf_per_thread, gpu_product_t product) {
     auto gpu_arch = jit::convert_ngen_arch_to_dnnl(
             ngen::getCore(ngen_product(product).family));
     int eus_per_ss = max_eus_per_wg(gpu_arch);
     int tgs_per_ss
-            = eus_per_ss * threads_per_eu(gpu_arch, large_grf_mode) / tg_size;
+            = eus_per_ss * threads_per_eu(gpu_arch, grf_per_thread) / tg_size;
     int slm_per_tg = max_slm_size(product) / tgs_per_ss;
     return std::min(max_slm_size_per_tg(product), slm_per_tg);
 }
@@ -338,8 +343,8 @@ status_t device_info_t::init_attributes_common(impl::engine_t *engine) {
     }
 #endif
 
-    hw_threads_[0] = eu_count_ * threads_per_eu(gpu_arch_, false);
-    hw_threads_[1] = eu_count_ * threads_per_eu(gpu_arch_, true);
+    hw_threads_[0] = eu_count_ * threads_per_eu(gpu_arch_, 128);
+    hw_threads_[1] = eu_count_ * threads_per_eu(gpu_arch_, 256);
 
     max_eus_per_wg_ = max_eus_per_wg(gpu_arch_);
     max_subgroup_size_ = max_subgroup_size(gpu_arch_);

@@ -343,9 +343,6 @@ status_t device_info_t::init_attributes_common(impl::engine_t *engine) {
     }
 #endif
 
-    hw_threads_[0] = eu_count_ * threads_per_eu(gpu_arch_, 128);
-    hw_threads_[1] = eu_count_ * threads_per_eu(gpu_arch_, 256);
-
     max_eus_per_wg_ = max_eus_per_wg(gpu_arch_);
     max_subgroup_size_ = max_subgroup_size(gpu_arch_);
     max_exec_size_ = max_exec_size(gpu_arch_);
@@ -368,7 +365,6 @@ status_t device_info_t::init_serialized_device_info(
     serialized_device_info_.append(runtime_version_.major);
     serialized_device_info_.append(runtime_version_.minor);
     serialized_device_info_.append(runtime_version_.build);
-    serialized_device_info_.append_array(2, hw_threads_);
     serialized_device_info_.append(eu_count_);
     serialized_device_info_.append(max_eus_per_wg_);
     serialized_device_info_.append(max_subgroup_size_);
@@ -408,8 +404,6 @@ status_t device_info_t::init_from_cache_blob(
     DESERIALIZE(runtime_version_.major, int);
     DESERIALIZE(runtime_version_.minor, int);
     DESERIALIZE(runtime_version_.build, int);
-    DESERIALIZE(hw_threads_[0], int32_t);
-    DESERIALIZE(hw_threads_[1], int32_t);
     DESERIALIZE(eu_count_, int32_t);
     DESERIALIZE(max_eus_per_wg_, int32_t);
     DESERIALIZE(max_subgroup_size_, int32_t);

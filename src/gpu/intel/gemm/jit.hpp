@@ -518,9 +518,8 @@ struct gen_t : public primitive_t {
 
         int max_k_sliced_groups() const {
             const auto *info = kernel_desc()->driver_info();
-            bool large_grf_mode = (info->grfCount > 128);
 
-            auto groups = dev_info_->hw_threads(large_grf_mode)
+            auto groups = dev_info_->hw_threads(info->grfCount)
                     / (info->wg[gemmstone::LoopM] * info->wg[gemmstone::LoopN]);
             if (info->kParallelVariable()) groups *= 2;
 
@@ -564,7 +563,7 @@ struct gen_t : public primitive_t {
 
             zero_pool_bytes_ = pd()->max_k_sliced_groups() * 64 * zg_cl;
 
-            auto zg_max = pd()->dev_info_->hw_threads(false);
+            auto zg_max = pd()->dev_info_->hw_threads();
             zero_pool_chunk_size_ = zg_max * 2 * 2 * 64;
 
             auto *intel_engine = utils::downcast<intel::engine_t *>(engine);

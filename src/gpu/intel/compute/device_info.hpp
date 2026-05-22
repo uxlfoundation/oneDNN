@@ -210,9 +210,8 @@ public:
     size_t max_wg_size(
             int grf_per_thread = 128, size_t subgroup_size = 0) const;
     int eu_count() const { return eu_count_; }
-    int hw_threads() const { return hw_threads_[0]; }
-    int hw_threads(bool large_grf_mode) const {
-        return hw_threads_[large_grf_mode ? 1 : 0];
+    int hw_threads(int grf_per_thread = 128) const {
+        return eu_count_ * threads_per_eu(gpu_arch_, grf_per_thread);
     }
     static int grf_per_eu(gpu_arch_t gpu_arch);
     static int threads_per_eu(gpu_arch_t gpu_arch, int grf_per_thread = 128);
@@ -287,10 +286,6 @@ protected:
     std::string name_;
     xpu::runtime_version_t runtime_version_;
 
-    // total number of hardware threads:
-    // [0] - default mode
-    // [1] - large GRF mode
-    int32_t hw_threads_[2] = {0, 0};
     int32_t eu_count_ = 0;
     int32_t max_eus_per_wg_ = 0;
     int32_t max_subgroup_size_ = 16;

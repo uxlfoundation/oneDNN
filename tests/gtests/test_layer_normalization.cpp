@@ -173,7 +173,6 @@ protected:
         const bool is_cpu = get_test_engine_kind() == engine::kind::cpu;
         aa.po_eltwise = is_cpu;
         aa.po_binary = is_cpu;
-        aa.po_sum = is_cpu;
 
         if (is_int8) aa.scales = true;
 

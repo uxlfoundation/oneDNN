@@ -171,6 +171,7 @@ primitive:
 | Propagation | Type      | Operation                                            | Description                                                   | Restrictions                                                                       |
 |:------------|:----------|:-----------------------------------------------------|:--------------------------------------------------------------|:-----------------------------------------------------------------------------------|
 | forward     | attribute | [Scales](@ref dnnl::primitive_attr::set_scales_mask) | Scales the corresponding tensor by the given scale factor(s). | Supported only for int8 layer normalization and one scale per tensor is supported. |
+| forward     | Post-op   | [Eltwise](@ref dnnl::post_ops::append_eltwise)       | Applies an @ref dnnl_api_eltwise operation to the result      |                                                                                    |
 | forward     | Post-op   | [Binary](@ref dnnl::post_ops::append_binary)         | Applies a @ref dnnl_api_binary operation to the result.       | General binary post-op restrictions.                                               |
 
 ### Data Type Support

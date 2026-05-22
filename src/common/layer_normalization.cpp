@@ -193,7 +193,7 @@ status_t layer_normalization_attr_check(const layer_normalization_desc_t &desc,
         if (!attr->post_ops_.has_default_values()) {
             const auto &po = attr->post_ops_;
             using namespace primitive_kind;
-            VCHECK_LNORM_UNIMPL(po.has_default_values({binary, eltwise, sum}),
+            VCHECK_LNORM_UNIMPL(po.has_default_values({binary, eltwise}),
                     VERBOSE_UNSUPPORTED_POSTOP);
 
             // Note: verbose support is inside the call.

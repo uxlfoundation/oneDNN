@@ -91,6 +91,42 @@ __attribute__((overloadable)) int global_atomic_add(global int *p, int v) {
 #define TILE_ATOMIC_ADD_DEBUG_PRINT_ENABLED(enable) \
     ((enable) && TILE_ATOMIC_ADD_DEBUG_COND())
 
+#ifndef TILE_ATOMIC_NAN_TRAP
+#define TILE_ATOMIC_NAN_TRAP 0
+#endif
+
+#ifndef TILE_ATOMIC_NAN_TRAP_HARD
+#define TILE_ATOMIC_NAN_TRAP_HARD 0
+#endif
+
+#ifndef TILE_ATOMIC_ABS_TRAP_THRESHOLD
+#define TILE_ATOMIC_ABS_TRAP_THRESHOLD 0.0f
+#endif
+
+#define TILE_ATOMIC_NONFINITE(v) (!isfinite((float)(v)))
+
+#define TILE_ATOMIC_LARGE(v) \
+    ((TILE_ATOMIC_ABS_TRAP_THRESHOLD > 0.0f) \
+            && fabs((float)(v)) > TILE_ATOMIC_ABS_TRAP_THRESHOLD)
+
+#define TILE_ATOMIC_NAN_DETECTED(old_v, add_v) \
+    (TILE_ATOMIC_NONFINITE(old_v) || TILE_ATOMIC_NONFINITE(add_v) \
+            || TILE_ATOMIC_NONFINITE((old_v) + (add_v)))
+
+#define TILE_ATOMIC_LARGE_DETECTED(old_v, add_v) \
+    (TILE_ATOMIC_LARGE(old_v) || TILE_ATOMIC_LARGE(add_v) \
+            || TILE_ATOMIC_LARGE((old_v) + (add_v)))
+
+#define TILE_ATOMIC_TRAP_DETECTED(old_v, add_v) \
+    (TILE_ATOMIC_NAN_DETECTED(old_v, add_v) \
+            || TILE_ATOMIC_LARGE_DETECTED(old_v, add_v))
+
+#if TILE_ATOMIC_NAN_TRAP_HARD
+#define TILE_ATOMIC_NAN_HALT() __builtin_trap()
+#else
+#define TILE_ATOMIC_NAN_HALT() return
+#endif
+
 #ifndef TILE_ATOMIC_TAG_UNKNOWN
 #define TILE_ATOMIC_TAG_UNKNOWN 0
 #endif
@@ -1062,15 +1098,32 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
                 int i = i0 + get_sub_group_local_id(); \
                 element_type _v = tile_access(t, i0, j, sg, br, bc, nbr); \
                 element_type _old = global_atomic_add(ptr + i, _v); \
-                if (TILE_ATOMIC_ADD_DEBUG_PRINT_ENABLED(debug_enable)) { \
+                if (TILE_ATOMIC_NAN_TRAP \
+                        && TILE_ATOMIC_TRAP_DETECTED(_old, _v)) { \
                     int _r = offset_r + i; \
                     int _c = offset_c + j; \
                     int _idx = _c * ld + _r; \
-                    printf("[DBG][tile_atomic_add_full][%s %d] ld=%d r=%d " \
-                           "c=%d idx=%d i=%d j=%d old=%f add=%f new=%f \n", \
-                            TILE_ATOMIC_TAG_NAME(debug_tag), id, ld, _r, _c, \
-                            _idx, i, j, (float)_old, (float)_v, \
-                            (float)(_old + _v)); \
+                    int _sgid = (int)get_sub_group_id(); \
+                    int _sglid = (int)get_sub_group_local_id(); \
+                    int _gid0 = (int)get_group_id(0); \
+                    int _gid1 = (int)get_group_id(1); \
+                    int _gid2 = (int)get_group_id(2); \
+                    float _new = (float)(_old + _v); \
+                    int _nf = TILE_ATOMIC_NAN_DETECTED(_old, _v); \
+                    int _large = TILE_ATOMIC_LARGE_DETECTED(_old, _v); \
+                            printf("\n" \
+                               "==============================================================\n" \
+                           "[ATOMIC-TRAP][tile_atomic_add_full][%s %d]\n" \
+                           "  nonfinite=%d large=%d threshold=%f\n" \
+                               "  sg=%d sglid=%d gid=(%d,%d,%d)\n" \
+                               "  ld=%d r=%d c=%d idx=%d i=%d j=%d\n" \
+                               "  old=%f add=%f new=%f\n" \
+                               "==============================================================\n", \
+                            TILE_ATOMIC_TAG_NAME(debug_tag), id, _nf, \
+                            _large, (float)TILE_ATOMIC_ABS_TRAP_THRESHOLD, \
+                            _sgid, _sglid, _gid0, _gid1, _gid2, ld, _r, _c, \
+                            _idx, i, j, (float)_old, (float)_v, _new); \
+                    TILE_ATOMIC_NAN_HALT(); \
                 } \
             } \
         } \
@@ -1111,17 +1164,32 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
                         element_type _v \
                                 = tile_access(t, i0, j, sg, br, bc, nbr); \
                         element_type _old = global_atomic_add(ptr + i, _v); \
-                        if (TILE_ATOMIC_ADD_DEBUG_PRINT_ENABLED( \
-                                    debug_enable)) { \
+                        if (TILE_ATOMIC_NAN_TRAP \
+                            && TILE_ATOMIC_TRAP_DETECTED(_old, _v)) { \
                             int _r = offset_r + i; \
                             int _c = offset_c + j; \
                             int _idx = _c * ld + _r; \
-                            printf("[DBG][tile_atomic][%s - %d] ld=%d r=%d " \
-                                   "c=%d idx=%d i=%d j=%d old=%f add=%f " \
-                                   "new=%f \n", \
-                                    TILE_ATOMIC_TAG_NAME(debug_tag), id, ld, \
-                                    _r, _c, _idx, i, j, (float)_old, \
-                                    (float)_v, (float)(_old + _v)); \
+                            int _sgid = (int)get_sub_group_id(); \
+                            int _sglid = (int)get_sub_group_local_id(); \
+                            int _gid0 = (int)get_group_id(0); \
+                            int _gid1 = (int)get_group_id(1); \
+                            int _gid2 = (int)get_group_id(2); \
+                            float _new = (float)(_old + _v); \
+                            int _nf = TILE_ATOMIC_NAN_DETECTED(_old, _v); \
+                            int _large = TILE_ATOMIC_LARGE_DETECTED(_old, _v); \
+                            printf("\n" \
+                                   "==============================================================\n" \
+                                   "[ATOMIC-TRAP][tile_atomic_add][%s %d]\n" \
+                                   "  nonfinite=%d large=%d threshold=%f\n" \
+                                   "  sg=%d sglid=%d gid=(%d,%d,%d)\n" \
+                                   "  ld=%d r=%d c=%d idx=%d i=%d j=%d\n" \
+                                   "  old=%f add=%f new=%f\n" \
+                                   "==============================================================\n", \
+                                TILE_ATOMIC_TAG_NAME(debug_tag), id, _nf, \
+                                _large, (float)TILE_ATOMIC_ABS_TRAP_THRESHOLD, \
+                                _sgid, _sglid, _gid0, _gid1, _gid2, ld, _r, \
+                                _c, _idx, i, j, (float)_old, (float)_v, _new); \
+                            TILE_ATOMIC_NAN_HALT(); \
                         } \
                     } \
                 } \

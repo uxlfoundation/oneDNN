@@ -16,6 +16,8 @@
 
 #include "gpu/intel/include/philox.h"
 #define TILE_ATOMIC_ADD_DEBUG 1
+#define TILE_ATOMIC_NAN_TRAP 1
+#define TILE_ATOMIC_ABS_TRAP_THRESHOLD 4096.0f
 #include "gpu/intel/include/tile_ops.h"
 #include "gpu/intel/include/types_interop.h"
 #include "gpu/intel/sdpa/utils.h"

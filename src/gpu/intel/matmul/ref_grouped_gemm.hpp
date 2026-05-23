@@ -110,9 +110,27 @@ struct ref_grouped_t : public primitive_t {
             VDISPATCH_MATMUL(attr()->zero_points_.has_default_values(),
                     VERBOSE_UNSUPPORTED_ATTR);
 
-            // No post-ops for now
-            VDISPATCH_MATMUL(attr()->post_ops_.has_default_values(),
+            // Only eltwise and binary post-ops supported
+            VDISPATCH_MATMUL(
+                    attr()->post_ops_.has_default_values(
+                            {primitive_kind::eltwise, primitive_kind::binary}),
                     VERBOSE_UNSUPPORTED_POSTOP);
+
+            // Initialize binary post-op memory descriptors: grouped dst is
+            // sparse, so set_default_formats can't derive from dst layout.
+            const auto &po = attr()->post_ops_;
+            for (int i = 0; i < po.len(); ++i) {
+                auto &e = attr_.post_ops_.entry_[i];
+                if (e.is_binary()) {
+                    const memory_desc_wrapper src1_d(e.binary.src1_desc);
+                    if (src1_d.format_any()) {
+                        VDISPATCH_MATMUL(src1_d.count_non_unit_dims(0),
+                                VERBOSE_UNSUPPORTED_POSTOP);
+                        CHECK(memory_desc_init_by_strides(
+                                e.binary.src1_desc, nullptr));
+                    }
+                }
+            }
 
             return status::success;
         }
@@ -148,14 +166,9 @@ struct ref_grouped_t : public primitive_t {
             def_data_type(kernel_ctx, pd()->weights_md(1)->data_type, "BIA");
         }
 
-        const auto &attr_scales = pd()->attr()->scales_;
-        const bool with_src_scales
-                = !attr_scales.has_default_values(DNNL_ARG_SRC);
-        kernel_ctx.define_int("WITH_SRC_SCALES", with_src_scales ? 1 : 0);
-
-        const bool with_wei_scales
-                = !attr_scales.has_default_values(DNNL_ARG_WEIGHTS);
-        kernel_ctx.define_int("WITH_WEI_SCALES", with_wei_scales ? 1 : 0);
+        auto attr_info = attr_info_t::create(pd()->attr());
+        CHECK(def_attr_info(kernel_ctx, attr_info, pd()->attr()->post_ops_,
+                *pd()->dst_md()));
 
         return create_kernel(
                 engine, &kernel_, "ref_grouped_gemm_matmul", kernel_ctx);

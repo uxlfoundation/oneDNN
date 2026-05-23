@@ -72,6 +72,9 @@ status_t ref_grouped_t::execute_ref(const exec_ctx_t &ctx) const {
         arg_list.set(next_arg++, wei_scales);
     }
 
+    next_arg = append_post_ops_to_arg_list(
+            ctx, arg_list, next_arg, pd()->attr()->post_ops_, *pd()->dst_md());
+
     // Simple 3D dispatch for ref impl clarity
     compute::range_t gws
             = {(size_t)group_count, (size_t)total_tokens, (size_t)N};

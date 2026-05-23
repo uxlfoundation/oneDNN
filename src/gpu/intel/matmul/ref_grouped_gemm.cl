@@ -14,6 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "gpu/intel/include/post_ops.h"
 #include "gpu/intel/include/types.h"
 
 // Grouped GEMM OCL reference kernel
@@ -60,7 +61,7 @@ __kernel void ref_grouped_gemm_matmul(
         ,
         __global const float *wei_scales
 #endif
-) {
+                POST_OP_ARGS) {
 
     const int group_id = get_global_id(0);
     const int m = get_global_id(1);
@@ -125,5 +126,9 @@ __kernel void ref_grouped_gemm_matmul(
 
     const long out_idx = (long)m * N + n;
 
-    dst_group[out_idx] = REF_TO_DST(acc);
+    POST_OP_DATA_T po_acc = acc;
+    POST_OP_DATA_T sum_src;
+    APPLY_POST_OPS_SERIAL(po_acc, sum_src, dst_start + m, n, 0, 0, 0, 0);
+
+    dst_group[out_idx] = REF_TO_DST(po_acc);
 }

@@ -614,8 +614,18 @@ int append_post_ops_to_arg_list_base(const exec_args_t &args,
             memory_desc_wrapper src_mdw = src;
             for (int i = 0; i < src_mdw.ndims(); i++) {
                 if (!src_rmd.is_broadcast(i, src_mdw.ndims())
-                        && !src_rmd.is_inner_dim(i, src_mdw.ndims()))
-                    arg_list.set(post_op_idx++, src_mdw.strides()[i]);
+                        && !src_rmd.is_inner_dim(i, src_mdw.ndims())) {
+                    if (src_mdw.is_grouped_desc()) {
+                        // Grouped values are row-major: compute stride from
+                        // trailing dimensions.
+                        dim_t stride = 1;
+                        for (int j = src_mdw.ndims() - 1; j > i; j--)
+                            stride *= src_mdw.dims()[j];
+                        arg_list.set(post_op_idx++, stride);
+                    } else {
+                        arg_list.set(post_op_idx++, src_mdw.strides()[i]);
+                    }
+                }
             }
         } else if (e.is_eltwise()) {
             arg_list.set(post_op_idx++, e.eltwise.alpha);

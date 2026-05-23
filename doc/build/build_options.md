@@ -30,7 +30,6 @@ oneDNN supports the following build-time options.
 | ONEDNN_SAFE_RBP                 | ON, **OFF**                                         | Enables restriction for JIT kernels to pollute RBP vector register content                                         |
 | ONEDNN_VERBOSE                  | **ON**, OFF                                         | Enables [verbose mode](@ref dev_guide_verbose)                                                                     |
 | ONEDNN_DEV_MODE                 | ON, **OFF**                                         | Enables internal tracing and `debuginfo` logging in verbose output (for oneDNN developers)                         |
-| ONEDNN_AARCH64_USE_ACL          | ON, **OFF**                                         | Enables integration with Arm Compute Library for AArch64 builds                                                    |
 | ONEDNN_BLAS_VENDOR              | **NONE**, ARMPL, ACCELERATE                         | Defines an external BLAS library to link to for GEMM-like operations                                               |
 | ONEDNN_GPU_VENDOR               | NONE, **INTEL**, NVIDIA, AMD                        | When DNNL_GPU_RUNTIME is not NONE defines GPU vendor for GPU engines otherwise its value is NONE                   |
 | ONEDNN_DPCPP_HOST_COMPILER      | **DEFAULT**, *GNU or Clang C++ compiler executable* | Specifies host compiler executable for SYCL runtime                                                                |
@@ -286,30 +285,7 @@ for a limited number of operations, provided by AArch64 libraries.
 
 | AArch64 build configuration          | CMake Option              | Environment variables                    | Dependencies                                                                                                                 |
 |:-------------------------------------|:--------------------------|:-----------------------------------------|:-----------------------------------------------------------------------------------------------------------------------------|
-| Arm Compute Library based primitives | ONEDNN_AARCH64_USE_ACL=ON | ACL_ROOT_DIR=*</path/to/ComputeLibrary>* | [Arm Compute Library](https://github.com/ARM-software/ComputeLibrary)                                                        |
 | Vendor BLAS library support          | ONEDNN_BLAS_VENDOR=ARMPL  | None                                     | [Arm Performance Libraries](https://developer.arm.com/tools-and-software/server-and-hpc/downloads/arm-performance-libraries) |
-
-#### Arm Compute Library
-Arm Compute Library is an open-source library for machine learning applications.
-The development repository is available from
-[mlplatform.org](https://review.mlplatform.org/admin/repos/ml%2FComputeLibrary,general),
-and releases are also available on [GitHub](https://github.com/ARM-software/ComputeLibrary).
-The `ONEDNN_AARCH64_USE_ACL` CMake option is used to enable Compute Library integration:
-
-~~~sh
-$ cmake -DONEDNN_AARCH64_USE_ACL=ON ..
-~~~
-
-This assumes that the environment variable `ACL_ROOT_DIR` is
-set to the location of Arm Compute Library, which must be downloaded and built
-independently of oneDNN.
-
-@warning
-For a debug build of oneDNN it is advisable to specify a Compute Library build
-which has also been built with debug enabled.
-
-@warning
-oneDNN only supports builds with Compute Library v23.11 or later.
 
 #### Vendor BLAS libraries
 oneDNN can use a standard BLAS library for GEMM operations.

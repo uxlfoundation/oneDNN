@@ -1,0 +1,4 @@
+[submodule "third_party/kleidiai"]
+	path = third_party/kleidiai
+	url = https://gitlab.arm.com/kleidi/kleidiai.git
+	branch = feature/add-kleidiai-ops

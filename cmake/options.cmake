@@ -1,5 +1,6 @@
 #===============================================================================
 # Copyright 2018 Intel Corporation
+# Copyright 2026 Arm Ltd. and affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -420,13 +421,3 @@ set(DNNL_BLAS_VENDOR "NONE" CACHE STRING
         FindBLAS will search default library paths for a known BLAS
         installation. This vendor is supported for performance analysis
         purposes only.")
-
-# ==============================================
-# AArch64 optimizations with Arm Compute Library
-# ==============================================
-
-option(DNNL_AARCH64_USE_ACL "Enables use of AArch64 optimised functions
-    from Arm Compute Library.
-    This is only supported on AArch64 builds and assumes there is a
-    functioning Compute Library build available at the location specified by the
-    environment variable ACL_ROOT_DIR." OFF)

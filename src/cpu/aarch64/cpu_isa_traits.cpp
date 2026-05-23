@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2019 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
+# Copyright 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -24,6 +25,7 @@
 #include "cpu/aarch64/cpu_isa_traits.hpp"
 #include "cpu/cpu_engine.hpp"
 #include "cpu/platform.hpp"
+#include "kleidiai/experimental/ops/include/kai/ops/newgemm_lib.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -31,6 +33,12 @@ namespace cpu {
 namespace aarch64 {
 
 namespace {
+
+CPUInfo *get_CPUInfo() {
+    static CPUInfo ci;
+    return &ci;
+}
+
 #ifdef DNNL_ENABLE_MAX_CPU_ISA
 cpu_isa_t init_max_cpu_isa() {
     cpu_isa_t max_cpu_isa_val = isa_all;
@@ -157,6 +165,12 @@ status_t set_max_cpu_isa(dnnl_cpu_isa_t isa) {
 dnnl_cpu_isa_t get_effective_cpu_isa() {
     return get_isa_info_t().convert_to_public_enum();
 }
+
+bool mayiuse_f16() {
+
+    return get_CPUInfo()->has_fp16();
+}
+
 } // namespace aarch64
 } // namespace cpu
 } // namespace impl

@@ -577,7 +577,7 @@ Mathematically, the computations are:
 where
 
 - \f$\operatorname{conv}_{s32}\f$ is just a regular convolution which takes source and
-  weights with `int8` data type and compute the result in int32 data type (int32
+  weights with `int8` data type and compute the result in `int32` data type (`int32`
   is chosen to avoid overflows during the computations);
 
 - \f$comp_{s32}\f$ is a compensation term to account for

@@ -340,7 +340,7 @@ Assumptions:
 - the weights tensor is passed in runtime using
 DNNL_ARG_ATTR_MULTIPLE_POST_OP(index) | DNNL_ARG_WEIGHTS mechanism, where index
 is the sequence number of the prelu in post-operations chain;
-- only fp32 weights tensor data type is supported;
+- only `fp32` weights tensor data type is supported;
 - only plain layout (a, ab, acb, acdb, acdeb) is supported for weights tensor;
 - mask defines the correspondence between the output tensor dimensions and
   the prelu weights tensor. The set i-th bit indicates that a dedicated weights

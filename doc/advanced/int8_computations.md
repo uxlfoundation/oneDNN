@@ -1,22 +1,22 @@
-Nuances of int8 Computations {#dev_guide_int8_computations}
+Nuances of `int8` Computations {#dev_guide_int8_computations}
 ===========================================================
 
-> This document uses **int8** to denote 8-bit integer no matter whether it is
+> This document uses **`int8`** to denote 8-bit integer no matter whether it is
 > signed or unsigned. To emphasize the signedness of the data type
 > **`u8`** (`uint8_t`) or **`s8`** (`int8_t`) are used. In particular, if a
 > primitive has two inputs the types would be written using "/". For instance:
-> - int8 GEMM denotes any integer GEMM with 8-bit integer inputs, while
+> - `int8` GEMM denotes any integer GEMM with 8-bit integer inputs, while
 > - `u8`/`s8` GEMM denotes dnnl_gemm_u8s8s32() only.
 
-The operation primitives that work with the int8 data type
+The operation primitives that work with the `int8` data type
 (#dnnl::memory::data_type::s8 and #dnnl::memory::data_type::u8)
 typically use `s32` (`int32_t`) as an intermediate data type
 (#dnnl::memory::data_type::s32) to avoid integer overflows.
 
-For instance, the int8 average [pooling](@ref dev_guide_pooling) primitive
-accumulates the int8 input values in a window to an `s32` accumulator, then
+For instance, the `int8` average [pooling](@ref dev_guide_pooling) primitive
+accumulates the `int8` input values in a window to an `s32` accumulator, then
 divides the result by the window size, and then stores the result back to the
-int8 destination:
+`int8` destination:
 
 - \f$
     \dst_{s8}(...) =
@@ -32,11 +32,11 @@ int8 destination:
   \f$
 
 @note
-The max pooling primitive can directly work with int8 data types.
+The max pooling primitive can directly work with `int8` data types.
 
 Using an `s32` accumulator is especially important for matrix-multiply such as
 operation primitives that have chains of multiplication and accumulation of
-int8 values. These primitives are:
+`int8` values. These primitives are:
  * [Convolution](@ref dev_guide_convolution)
  * Int8 GEMMs: dnnl_gemm_s8s8s32() and dnnl_gemm_u8s8s32()
  * [Inner Product](@ref dev_guide_inner_product)
@@ -65,7 +65,7 @@ systems and the reasons behind them.
 
 Instruction Set Architecture (ISA) has special instructions that enable
 multiplying and adding the vectors of `u8` and `s8` very efficiently. oneDNN
-enables int8 support using these particular instructions.
+enables `int8` support using these particular instructions.
 
 Unfortunately, these instructions do not have the counterparts that work with
 vectors of the same type (either `s8`/`s8` or `u8`/`u8`). The details for the `s8`/`s8`
@@ -284,7 +284,7 @@ the implementations are given below:
 
 ## GPU
 
-See @ref dev_guide_data_types for details of int8 data type support on GPU.
+See @ref dev_guide_data_types for details of `int8` data type support on GPU.
 
 ## References
 

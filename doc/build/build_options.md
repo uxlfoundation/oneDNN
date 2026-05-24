@@ -240,7 +240,7 @@ $ cmake -DONEDNN_CPU_RUNTIME=TBB -DTBBROOT=/opt/intel/path/tbb ..
 ~~~
 
 oneDNN has functional limitations if built with TBB:
-* Winograd convolution algorithm is not supported for fp32 backward
+* Winograd convolution algorithm is not supported for `fp32` backward
   by data and backward by weights propagation.
 
 #### Threadpool

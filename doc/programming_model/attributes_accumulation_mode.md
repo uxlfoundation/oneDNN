@@ -13,9 +13,9 @@ can be used for accumulation purposes for that given primitive.
 
 The @ref dnnl::accumulation_mode primitive attribute accepts:
 - `strict` (default): For floating-point primitives (as defined in
-@ref dev_guide_data_types), the default accumulation datatype is f32
-(or f64 for f64 primitives).  For integral primitives (as defined in
-@ref dev_guide_data_types), the default accumulation datatype is s32.
+@ref dev_guide_data_types), the default accumulation datatype is `f32`
+(or `f64` for `f64` primitives).  For integral primitives (as defined in
+@ref dev_guide_data_types), the default accumulation datatype is `s32`.
 - `relaxed`: Same as strict except some partial accumulators can be
   rounded to the src/dst datatype in memory.
 - `any`: Uses the fastest implementation available with one of the

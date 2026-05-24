@@ -182,7 +182,7 @@ The operation supports the following combinations of data types:
 | forward     | f32, bf16, f16, u8, s8, f64 | f32, bf16, f16, u8, s8, f64 | f32, bf16, f16 |
 | backward    | f32, bf16, f16, f64         | f32, bf16, f16, f64         | f32, bf16, f16 |
 
-Mean and Variance data types are always f32 and independent of Source and
+Mean and Variance data types are always `f32` and independent of Source and
 Destination data types.
 
 ### Data Representation

@@ -3,8 +3,8 @@ DynamicDequantize {#dev_guide_op_dynamicdequantize}
 
 ## General
 
-The Dynamic Dequantize operation converts a quantized (s4, u4, s8, or u8) tensor
-to an bf16, f16 or f32 tensor. It supports per-tensor, per-channel, and per-group asymmetric
+The Dynamic Dequantize operation converts a quantized (`s4`, `u4`, `s8`, or `u8`) tensor
+to an `bf16`, `f16` or `f32` tensor. It supports per-tensor, per-channel, and per-group asymmetric
 linear de-quantization. The rounding mode is defined by the library
 implementation. Unlike the @ref dev_guide_op_dequantize, Dynamic Dequantize takes
 scales and zero-points as operator src tensors.
@@ -47,7 +47,7 @@ constructing an operation.
 | 1     | `scales`      | Required             |
 | 2     | `zps`         | Optional             |
 
-@note `scales` is a bf16/f16/f32 tensor to be applied to the de-quantization
+@note `scales` is a `bf16`/`f16`/`f32` tensor to be applied to the de-quantization
 formula. For `qtype` = `per-tensor`, there should be only one element in the
 `scales` tensor. For `qtype` = `per-channel`, the element number should be equal
 to the element number of the src tensor along the dimension axis. For

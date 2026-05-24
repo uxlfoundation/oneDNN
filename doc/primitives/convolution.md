@@ -358,7 +358,7 @@ algorithms:
 
 - _Direct_. The convolution operation is computed directly using SIMD
   instructions. This is the algorithm used for the most shapes and supports
-  int8, f32, bf16, f16, f8_e5m2, and f64 data types.
+  `int8`, `f32`, `bf16`, `f16`, `f8_e5m2`, and `f64` data types.
 
 - _Winograd_. This algorithm reduces computational complexity of convolution
   at the expense of accuracy loss and additional memory operations. The
@@ -366,14 +366,14 @@ algorithms:
   Networks by A. Lavin and S. Gray](https://arxiv.org/abs/1509.09308). The
   Winograd algorithm often results in the best performance, but it is
   applicable only to particular shapes. Winograd supports
-  GPU (f16 and f32) and AArch64 CPU engines. Winograd does not support
+  GPU (`f16` and `f32`) and AArch64 CPU engines. Winograd does not support
   threadpool on AArch64 CPU engines.
 
 - _Implicit GEMM_. The convolution operation is reinterpreted in terms of
   matrix-matrix multiplication by rearranging the source data into a
   [scratchpad memory](@ref dev_guide_attributes_scratchpad). This is a fallback
   algorithm that is dispatched automatically when other implementations are
-  not available. GEMM convolution supports the int8, f32, and bf16 data types.
+  not available. GEMM convolution supports the `int8`, `f32`, and `bf16` data types.
 
 ### Direct Algorithm
 
@@ -448,10 +448,10 @@ of Winograd algorithm implementations.
      Xe-HPC and Xe2-LPG, and Xe2-HPG uArch.
 
 4. **CPU**
-   - Only reference support for fp8 data types (f8_e5m2, f8_e4m3) is
+   - Only reference support for fp8 data types (`f8_e5m2`, `f8_e4m3`) is
      is available on CPU.
    - No support is available for f4_e3m0 or f4_e2m1.
-   - No support is available for f64.
+   - No support is available for `f64`.
 
 ## Performance Tips
 

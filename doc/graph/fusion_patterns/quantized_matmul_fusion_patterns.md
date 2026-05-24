@@ -76,7 +76,7 @@ platforms follow the general description in the [Data Types Guide](@ref dev_guid
 
 ## Limitations
 
-- F2F Conversion Subgraph used for `bias` tensor only supports f32 to bf16 data
+- F2F Conversion Subgraph used for `bias` tensor only supports `f32` to `bf16` data
   type conversion.
 
 ## Implementation Notes

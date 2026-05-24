@@ -154,24 +154,24 @@ Create a convolution **primitive descriptor**, passing the post-op infused
 auto conv_prim_descr = convolution_forward::primitive_desc(..., attrs, engine);
 ~~~
 
-## int8 Inference
+## `int8` Inference
 
-oneDNN supports low precision int8 for inference execution. Note that not all
- primitives have int8 versions. Sometimes the speed benefits would be minimal,
+oneDNN supports low precision `int8` for inference execution. Note that not all
+ primitives have `int8` versions. Sometimes the speed benefits would be minimal,
 or the loss in accuracy is not acceptable. Also the soft-max classifier only
-supports fp32, so int8 inference will require a reorder before executing this
+supports fp32, so `int8` inference will require a reorder before executing this
 primitive.
 
-By default, the oneDNN reorder primitive does not scale upon casting to int8.
-In order to compress fp32 data to int8 precision while still preserving
+By default, the oneDNN reorder primitive does not scale upon casting to `int8`.
+In order to compress fp32 data to `int8` precision while still preserving
 the entire shape of the distribution, a process called **quantization** must
 applied. Quantization will scale the data based on its range to efficiently fill
-the bits available for int8 type.
+the bits available for `int8` type.
 
 To achieve quantization upon casting, the user must provide a few inputs to
-oneDNN in order to use int8 inference:
+oneDNN in order to use `int8` inference:
 
-* Specify data type at creation of primitive descriptor (int8 in this case)
+* Specify data type at creation of primitive descriptor (`int8` in this case)
 * Provide a scaling factor for oneDNN reorder primitive
 * Provide an output scaling factor the operation primitive
 

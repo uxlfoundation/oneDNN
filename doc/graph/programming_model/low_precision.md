@@ -1,8 +1,8 @@
 Low Precision {#dev_guide_graph_low_precision}
 ==============================================
 
-oneDNN Graph provides low precision support with int8 (signed/unsigned 8-bit
-integer), bf16 and f16 data types. oneDNN Graph API expects the computation
+oneDNN Graph provides low precision support with `int8` (signed/unsigned 8-bit
+integer), `bf16` and `f16` data types. oneDNN Graph API expects the computation
 graph is converted to low precision representation, the data's precision and
 quantization parameters are specified explicitly. oneDNN Graph API
 implementation will strictly respect the numeric precision of the computation.
@@ -18,11 +18,11 @@ static quantization:
 - [Quantize](@ref dev_guide_op_quantize)
 
 Dequantize operation takes integer tensor with its associated scale and zero
-point and returns f32 tensor. Quantize operation takes f32 tensor, scale, zero
+point and returns `f32` tensor. Quantize operation takes `f32` tensor, scale, zero
 point, and returns integer tensor. The scale and zero point are single dimension
 tensors, which could contain one value for the per-tensor quantization case or
 multiple values for the per-channel quantization case. The integer tensor could
-be represented in unsigned int8 or signed int8 data type. Zero point could be
+be represented in unsigned `int8` or signed `int8` data type. Zero point could be
 zero for symmetric quantization scheme, and a non-zero value for asymmetric
 quantization scheme.
 
@@ -46,9 +46,9 @@ more or fewer operations.
 ## BF16/F16
 
 oneDNN Graph provides [TypeCast](@ref dev_guide_op_typecast) operation, which
-can convert a f32 tensor to bf16 or f16, and vice versa. It is used to support
+can convert a `f32` tensor to `bf16` or `f16`, and vice versa. It is used to support
 auto mixed precision mechanism in popular deep learning frameworks. All oneDNN
-Graph operations support bf16 and f16 data types.
+Graph operations support `bf16` and `f16` data types.
 
 A TypeCast operation performing down conversion should be inserted clearly to
 indicate the use of low numeric precision. oneDNN Graph implementation fully

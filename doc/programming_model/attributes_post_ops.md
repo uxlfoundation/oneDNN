@@ -146,7 +146,7 @@ result, the computation will be:
 
 @note
 * **GPU**
-    * Currently only a u8/s8 data type parameter is supported.
+    * Currently only a `u8`/`s8` data type parameter is supported.
     * Zero point is not supported.
 
 @anchor dev_guide_attributes_post_ops_depthwise
@@ -208,7 +208,7 @@ Supported data types
 @note
   * Though it is called a post-operation type, it does not follow the
     post-operation convention which implies an application of operation in
-    f32 data type.
+    `f32` data type.
 
   * Currently only supported for 2D 1x1 convolution.
 
@@ -225,7 +225,7 @@ Supported data types
     lifetime has to be handled by user separately since the library does not
     provide a mechanism to query an intermediate output of base convolution.
 
-  * Currently, f16 support for depthwise fusion is only through reference fusion
+  * Currently, `f16` support for depthwise fusion is only through reference fusion
     implementation. Thus, performance gain is not expected for this data type.
 
 @anchor dev_guide_attributes_post_ops_binary

@@ -158,7 +158,7 @@ of any preceding compute-intensive primitive.
    support.
 
 2. **GPU**
-    - #dnnl_pooling_max for f64 data type will return `-FLT_MAX` as an output
+    - #dnnl_pooling_max for `f64` data type will return `-FLT_MAX` as an output
       value instead of `-DBL_MAX` in scenarios when pooling kernel is applied
       to a completely padded area.
 

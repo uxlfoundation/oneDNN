@@ -56,7 +56,7 @@ graph (DAG) using oneDNN Graph API.
 
 ### Floating-point Gated-MLP
 
-oneDNN defines floating-point (f32, bf16, and f16) Gated-MLP as follows. The blue
+oneDNN defines floating-point (`f32`, `bf16`, and `f16`) Gated-MLP as follows. The blue
 nodes are required when defining a Gated-MLP pattern while the brown nodes are
 optional.
 
@@ -96,7 +96,7 @@ platforms follow the general description in @ref dev_guide_data_types.
 1. oneDNN primitive-based Gated-MLP is implemented as the reference
    implementation on both Intel Architecture Processors and Intel Graphics
    Products. In this case, floating-point Gated-MLP patterns are usually
-   implemented with three f32, bf16, or f16 matmul (with binary or eltwise
+   implemented with three `f32`, `bf16`, or `f16` matmul (with binary or eltwise
    post-ops) primitives.
 2. The Gated-MLP patterns functionally supports all input shapes meeting the
    shape requirements of each operation in the graph. For example, the `MatMul`

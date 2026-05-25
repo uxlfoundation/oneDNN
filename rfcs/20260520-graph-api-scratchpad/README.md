@@ -306,4 +306,5 @@ clarify this behavior.
 
 ## Recommendation
 
-TBD.
+It is recommended to implement the proposal B in section 4.2 with a backward
+compatible support to the current API behavior.

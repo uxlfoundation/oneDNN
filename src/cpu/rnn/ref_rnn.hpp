@@ -37,9 +37,22 @@
 #include "cpu/aarch64/rnn/rnn_brgemm_utils.hpp"
 #endif
 #include "cpu/rnn/rnn_utils.hpp"
+
+#if DNNL_X64
+#define RNN_AMX_SCRATCHPAD_ACTUAL amx_scratchpad,
+#else
+#define RNN_AMX_SCRATCHPAD_ACTUAL
+#endif
+
 namespace dnnl {
 namespace impl {
 namespace cpu {
+
+#if DNNL_X64
+namespace rnn_brgemm_arch = x64;
+#elif DNNL_AARCH64
+namespace rnn_brgemm_arch = aarch64;
+#endif
 
 namespace {
 template <typename gates_t, typename acc_t>
@@ -115,10 +128,9 @@ struct ref_rnn_common_t : public primitive_t {
 
     using class_name
             = ref_rnn_common_t<aprop, src_type, weights_type, acc_type>;
-#if DNNL_X64
-    using ref_rnn_brgemm_t = x64::rnn_brgemm_utils::rnn_brgemm_t<aprop>;
-#elif DNNL_AARCH64
-    using ref_rnn_brgemm_t = aarch64::rnn_brgemm_utils::rnn_brgemm_t<aprop>;
+#if DNNL_X64 || DNNL_AARCH64
+    using ref_rnn_brgemm_t
+            = rnn_brgemm_arch::rnn_brgemm_utils::rnn_brgemm_t<aprop>;
 #endif
 
     using cell_execution_f
@@ -144,14 +156,8 @@ struct ref_rnn_common_t : public primitive_t {
         using base_pd_t::base_pd_t;
 
         const char *impl_name() const {
-#if DNNL_X64
-            using namespace dnnl::impl::cpu::x64;
-            return rnn_.is_brgemm
-                    ? JIT_IMPL_NAME_HELPER("brgemm:", rnn_.brgemm_isa, "")
-                    : rnn_.use_matmul ? "ref+matmul"
-                                      : "ref";
-#elif DNNL_AARCH64
-            using namespace dnnl::impl::cpu::aarch64;
+#if DNNL_X64 || DNNL_AARCH64
+            using namespace rnn_brgemm_arch;
             return rnn_.is_brgemm
                     ? JIT_IMPL_NAME_HELPER("brgemm:", rnn_.brgemm_isa, "")
                     : rnn_.use_matmul ? "ref+matmul"
@@ -194,12 +200,12 @@ struct ref_rnn_common_t : public primitive_t {
     status_t execute(const exec_ctx_t &ctx) const override;
 
 protected:
-#if DNNL_X64
+#if DNNL_X64 || DNNL_AARCH64
     ref_rnn_brgemm_t rnn_brgemm_;
+#endif
+#if DNNL_X64
     std::shared_ptr<primitive_t> bf32_wei_layer_reorder_;
     std::shared_ptr<primitive_t> bf32_wei_iter_reorder_;
-#elif DNNL_AARCH64
-    ref_rnn_brgemm_t rnn_brgemm_;
 #endif
 
     template <typename input_t>

@@ -1,6 +1,5 @@
 /*******************************************************************************
 * Copyright 2019 Intel Corporation
-* Copyright 2026 FUJITSU LIMITED
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -106,9 +105,7 @@ struct rnn_postgemm_dispatcher_t {
     virtual ~rnn_postgemm_dispatcher_t() = default;
 
     status_t init(const rnn_utils::rnn_conf_t &rnn) {
-#if DNNL_X64
-        CHECK(initialize_jit(rnn));
-#endif
+        DNNL_X64_ONLY(CHECK(initialize_jit(rnn)));
         return status::success;
     }
 

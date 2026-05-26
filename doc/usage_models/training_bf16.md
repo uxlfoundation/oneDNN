@@ -6,7 +6,7 @@ Bfloat16 Training {#dev_guide_training_bf16}
 ## Introduction
 
 On the path to better performance, a recent proposal introduces the idea of
-working with a `bfloat16` (`bf16`) 16-bit floating point data type based on the
+working with a `bf16` 16-bit floating point data type based on the
 IEEE 32-bit single-precision floating point data type (`f32`).
 
 Both `bf16` and `f32` have an 8-bit exponent. However, while `f32` has a 23-bit
@@ -19,7 +19,7 @@ data type, `f16`. Compared directly to `f16`, which has a 5-bit exponent and a
 
 @img{img_bf16_diagram.png,Diagram depicting the bit-wise layout of f32\, bf16\, and f16 floating point data types.,80%,}
 
-More details of the `bfloat16` data type can be found at
+More details of the `bf16` data type can be found at
 [Intel's site](https://www.intel.com/content/dam/develop/external/us/en/documents/bf16-hardware-numerics-definition-white-paper.pdf)
 and [TensorFlow's documentation](https://cloud.google.com/tpu/docs/bfloat16).
 
@@ -29,15 +29,15 @@ executing on hardware that supports
 [Intel DL Boost `bfloat16` instructions](https://www.intel.com/content/dam/develop/external/us/en/documents/architecture-instruction-set-extensions-programming-reference.pdf),
 `bf16` may offer an increase in computational throughput.
 
-## `bfloat16` Support
+## `bf16` Support
 
 Most of the primitives have been updated to support the `bf16` data type for
 source and weights tensors. Destination tensors can be specified to have either
 the `bf16` or `f32` data type. The latter is intended for cases in which the
-output is to be fed to operations that do not support `bfloat16` or require
+output is to be fed to operations that do not support `bf16` or require
 better precision.
 
-## `bfloat16` Workflow
+## `bf16` Workflow
 
 The main difference between implementing training with the `f32` data type and
 with the `bf16` data type is the way the weights updates are treated. With the

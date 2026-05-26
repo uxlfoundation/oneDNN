@@ -14,7 +14,7 @@ library is depicted in the following image:
 
 ## Best Practices for Inference
 
-## `fp32` Inference
+## `f32` Inference
 
 **Use Forward Inference Primitives**
 
@@ -159,11 +159,11 @@ auto conv_prim_descr = convolution_forward::primitive_desc(..., attrs, engine);
 oneDNN supports low precision `int8` for inference execution. Note that not all
  primitives have `int8` versions. Sometimes the speed benefits would be minimal,
 or the loss in accuracy is not acceptable. Also the soft-max classifier only
-supports `fp32`, so `int8` inference will require a reorder before executing this
+supports `f32`, so `int8` inference will require a reorder before executing this
 primitive.
 
 By default, the oneDNN reorder primitive does not scale upon casting to `int8`.
-In order to compress `fp32` data to `int8` precision while still preserving
+In order to compress `f32` data to `int8` precision while still preserving
 the entire shape of the distribution, a process called **quantization** must
 applied. Quantization will scale the data based on its range to efficiently fill
 the bits available for `int8` type.

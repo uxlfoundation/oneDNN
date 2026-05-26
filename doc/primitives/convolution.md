@@ -448,7 +448,7 @@ of Winograd algorithm implementations.
      Xe-HPC and Xe2-LPG, and Xe2-HPG uArch.
 
 4. **CPU**
-   - Only reference support for `fp8` data types (`f8_e5m2`, `f8_e4m3`) is
+   - Only reference support for `f8` data types (`f8_e5m2`, `f8_e4m3`) is
      is available on CPU.
    - No support is available for `f4_e3m0` or `f4_e2m1`.
    - No support is available for `f64`.

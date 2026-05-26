@@ -181,7 +181,7 @@ run-time attributes in use.
    - Sum post-op doesn't support data types other than destination data type.
    - Bias of `bf16` data type is supported for configurations with `bf16` source data
      type and weights `bf16` data type, and up to three-dimensional matrices.
-   - Optimized implementations for `fp8` data type are available only on Intel(R)
+   - Optimized implementations for `f8` data type are available only on Intel(R)
      Data Center GPU Max Series and Intel(R) Xe2 Graphics.
    - Configuration with `int8` source data type, `s8` weight data type and `bf16`
      destination data type doesn't support:

@@ -2,12 +2,12 @@ Data Types {#dev_guide_data_types}
 ==================================
 
 oneDNN functionality supports a number of numerical
-data types. IEEE single precision floating-point (`fp32`) is considered
+data types. IEEE single precision floating-point (`f32`) is considered
 to be the golden standard in deep learning applications and is supported
 in all the library functions. The purpose of low precision data types
 support is to improve performance of compute intensive operations, such as
 convolutions, inner product, and recurrent neural network cells
-in comparison to `fp32`.
+in comparison to `f32`.
 
 | Data type | Description                                                                                                                                                                             |
 |:----------|:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -112,7 +112,7 @@ rounded but not guaranteed to be correctly rounded (the returned value
 is not always the closest one but one of the two closest representable
 value). In particular, some hardware platforms have no direct
 conversion instructions from `f32` data type to low-precision data types
-such as `fp8` or `fp4`, and will perform conversion through an
+such as `f8` or `fp4`, and will perform conversion through an
 intermediate data type (for example `f16` or `bf16`), which may result in
 [double
 rounding](https://en.wikipedia.org/wiki/Rounding#Double_rounding).
@@ -165,7 +165,7 @@ can be found in @ref dev_guide_attributes_rounding_mode.
 ## Hardware Limitations
 
 While all the platforms oneDNN supports have hardware acceleration for
-`fp32` arithmetic, that is not the case for other data types. Support
+`f32` arithmetic, that is not the case for other data types. Support
 for low precision data types may not be available for older
 platforms. The next sections explain limitations that exist for low
 precision data types for Intel 64/AMD64 based processors and Intel Graphpics.
@@ -189,7 +189,7 @@ table indicates data types support for every supported ISA:
 | Intel AVX10.1 with Intel AMX (int8, bf16)            |         | `+`     | `+`     | `.`(3)  | `+`     |         |         |         | `.`     |
 | Intel AVX10.1 with Intel AMX (int8, bf16, f16)       |         | `+`     | `+`     | `+`     | `+`     | `.`     | `.`     |         | `.`     |
 | Intel AVX10.2                                        |         | `+`     | `+`     | `+`     | `+`     | `.`     |         |         | `.`     |
-| Intel AVX10.2 with Intel AMX (int8, bf16, fp16, fp8) |         | `+`     | `+`     | `+`     | `+`     | `+`     | `+`     |         | `.`     |
+| Intel AVX10.2 with Intel AMX (int8, bf16, f16, f8) |         | `+`     | `+`     | `+`     | `+`     | `+`     | `+`     |         | `.`     |
 
 Legend:
 * `+` indicates oneDNN uses hardware-native compute support for this data type.
@@ -198,11 +198,11 @@ Legend:
 Footnotes:
 1. See @ref dev_guide_int8_computations in the Developer Guide for additional
    limitations related to `int8` arithmetic.
-2. The library has functional `bfloat16` support on processors with
+2. The library has functional `bf16` support on processors with
    Intel AVX-512 Byte and Word Instructions (AVX512BW) support for validation
-   purposes. The performance of `bfloat16` primitives on platforms without
-   hardware acceleration for `bfloat16` is 3-4x lower in comparison to
-   the same operations on the `fp32` data type.
+   purposes. The performance of `bf16` primitives on platforms without
+   hardware acceleration for `bf16` is 3-4x lower in comparison to
+   the same operations on the `f32` data type.
 3. Intel AVX-512 `f16` instructions accumulate to `f16`. To avoid overflow, the `f16`
    primitives might up-convert the data to `f32` before performing math operations.
    This can lead to scenarios where a `f16` primitive may perform slower than

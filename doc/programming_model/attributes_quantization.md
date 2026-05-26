@@ -107,7 +107,7 @@ data types (e.g., `int8` to `int16` or `int32`), when those conversions do not
 impact accuracy.
 
 During execution, primitives implementations avoid integer overflows
-and maintain integer accuracy by using wider data types (e.g., `int32`)
+and maintain integer accuracy by using wider data types (e.g., `s32`)
 for intermediate values and accumulators.
 
 Results are then converted as
@@ -577,7 +577,7 @@ Mathematically, the computations are:
 where
 
 - \f$\operatorname{conv}_{s32}\f$ is just a regular convolution which takes source and
-  weights with `int8` data type and compute the result in `int32` data type (`int32`
+  weights with `int8` data type and compute the result in `s32` data type (`s32`
   is chosen to avoid overflows during the computations);
 
 - \f$comp_{s32}\f$ is a compensation term to account for

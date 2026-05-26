@@ -195,7 +195,7 @@ with oneDNN:
 
 10. When creating your working memory and memory descriptor, specify
    the type of memory you want to work with. This can be either 16-bit Brain Float
-   (`bf16`) or 32-bit Floating Point (`fp32`). More details about using `bf16` for training
+   (`bf16`) or 32-bit Floating Point (`f32`). More details about using `bf16` for training
    are detailed in the section @ref dev_guide_training_bf16.
 
 Most of these techniques are shown in the following examples:

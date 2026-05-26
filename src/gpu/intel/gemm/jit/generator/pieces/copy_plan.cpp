@@ -3345,6 +3345,8 @@ void CopyPlan::optimizeWriteCombine()
             auto &i1 = insns[n1];
             if (!canWC(hw, i1)) break;
             if (i1.dst.grf != i0.dst.grf) break;
+            if (i1.dst.temp ^ i0.dst.temp) break;
+            if (i1.dst.temp && i0.dst.temp && i1.dst.value != i0.dst.value) break;
             if (i1.dst.offset + n != i0.dst.offset + n1) break;
             if (i0.dst.offset / 4 != i1.dst.offset / 4) break;
             cnumMin = std::min(cnumMin, i1.cnumMin);

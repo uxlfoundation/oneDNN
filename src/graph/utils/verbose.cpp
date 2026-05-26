@@ -221,6 +221,8 @@ std::string init_info_partition(const engine_t *engine,
     ss << ",fpm:" << fpmath_mode2str(fpm.mode_);
     if (fpm.apply_to_int_) ss << ":true";
 
+    ss << ",scratchpad:" << compiled_partition->get_scratchpad_size();
+
     ss << "," << compiled_partition->get_pimpl()->str();
 
     ss << "," << partition.get_assigned_backend()->get_name();

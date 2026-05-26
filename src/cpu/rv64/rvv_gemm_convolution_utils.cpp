@@ -17,7 +17,6 @@
 
 #include <riscv_vector.h>
 
-
 #include "common/bfloat16.hpp"
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
@@ -235,25 +234,31 @@ void transpose_dt(const conv_gemm_conf_t &jcp, const T *__restrict im,
     const dim_t ic_stride = jcp.id * jcp.ih * jcp.iw;
     const dim_t IC = jcp.ngroups * jcp.ic;
     const dim_t IHW = jcp.ih * jcp.iw;
-    constexpr dim_t ic_block = platform::get_cache_line_size();
-    const dim_t nb_ic = jcp.ic / ic_block;
-    const dim_t ic_blocked = nb_ic * ic_block;
+
     parallel_nd(jcp.id, jcp.ih, [&](dim_t id, dim_t ih) {
         const T *__restrict im_h = im + id * IHW * IC + ih * jcp.iw * IC;
         T *__restrict imtr_h = imtr + id * IHW + ih * jcp.iw;
+        
         for (dim_t iw = 0; iw < jcp.iw; iw++) {
             const T *__restrict im_w = im_h + iw * IC;
             T *__restrict imtr_w = imtr_h + iw;
-            for (dim_t icb = 0; icb < nb_ic; icb++) {
-                const T *__restrict im_icb = im_w + icb * ic_block;
-                T *__restrict imtr_icb = imtr_w + icb * ic_block * ic_stride;
-                PRAGMA_OMP_SIMD()
-                for (dim_t ic = 0; ic < ic_block; ic++) {
-                    imtr_icb[ic * ic_stride] = im_icb[ic] + shift;
+
+            if (sizeof(T) == 4) {
+                const float *f_im = reinterpret_cast<const float *>(im_w);
+                float *f_imtr = reinterpret_cast<float *>(imtr_w);
+                ptrdiff_t stride_in_bytes = ic_stride * sizeof(float);
+                
+                dim_t ic = 0;
+                while (ic < jcp.ic) {
+                    size_t vl = __riscv_vsetvl_e32m8(jcp.ic - ic);
+                    vfloat32m8_t v_data = __riscv_vle32_v_f32m8(f_im + ic, vl);
+                    __riscv_vsse32_v_f32m8(f_imtr + ic * ic_stride, stride_in_bytes, v_data, vl);
+                    ic += vl;
                 }
-            }
-            for (dim_t ic = ic_blocked; ic < jcp.ic; ic++) {
-                imtr_w[ic * ic_stride] = im_w[ic] + shift;
+            } else {
+                for (dim_t ic = 0; ic < jcp.ic; ic++) {
+                    imtr_w[ic * ic_stride] = im_w[ic] + shift;
+                }
             }
         }
     });
@@ -342,14 +347,14 @@ void im2col_dt_3d(const conv_gemm_conf_t &jcp, const void *__restrict _imtr,
                 return;
             }
             const im_dt *__restrict imtr_loc = imtr + (ic * jcp.id + id) * IHW;
-            const dim_t oh_start
-                    = saturate(dim_t(0), jcp.oh, div_up(tp - kh, 2));
-            const dim_t oh_end
-                    = saturate(dim_t(0), jcp.oh, div_up(jcp.ih + tp - kh, 2));
-            const dim_t ow_start
-                    = saturate(dim_t(0), jcp.ow, div_up(lp - kw, 2));
-            const dim_t ow_end
-                    = saturate(dim_t(0), jcp.ow, div_up(jcp.iw + lp - kw, 2));
+            const dim_t oh_start = nstl::min(
+                    jcp.oh, div_up(nstl::max(dim_t(0), tp - kh), 2));
+            const dim_t oh_end = nstl::min(
+                    jcp.oh, div_up(nstl::max(dim_t(0), jcp.ih + tp - kh), 2));
+            const dim_t ow_start = nstl::min(
+                    jcp.ow, div_up(nstl::max(dim_t(0), lp - kw), 2));
+            const dim_t ow_end = nstl::min(
+                    jcp.ow, div_up(nstl::max(dim_t(0), jcp.iw + lp - kw), 2));
             for (dim_t oh = oh_start, ih = oh_start * 2 - tp + kh; oh < oh_end;
                     ++oh, ih += 2) {
                 col_dt *__restrict col_h = col_loc + oh * jcp.ow;
@@ -372,14 +377,14 @@ void im2col_dt_3d(const conv_gemm_conf_t &jcp, const void *__restrict _imtr,
                 return;
             }
             const im_dt *__restrict imtr_loc = imtr + (ic * jcp.id + id) * IHW;
-            const dim_t oh_start
-                    = saturate(dim_t(0), jcp.oh, div_up(tp - kh * dh, sh));
-            const dim_t oh_end = saturate(
-                    dim_t(0), jcp.oh, div_up(jcp.ih + tp - kh * dh, sh));
-            const dim_t ow_start
-                    = saturate(dim_t(0), jcp.ow, div_up(lp - kw * dw, sw));
-            const dim_t ow_end = saturate(
-                    dim_t(0), jcp.ow, div_up(jcp.iw + lp - kw * dw, sw));
+            const dim_t oh_start = nstl::min(
+                    jcp.oh, div_up(nstl::max(dim_t(0), tp - kh * dh), sh));
+            const dim_t oh_end = nstl::min(jcp.oh,
+                    div_up(nstl::max(dim_t(0), jcp.ih + tp - kh * dh), sh));
+            const dim_t ow_start = nstl::min(
+                    jcp.ow, div_up(nstl::max(dim_t(0), lp - kw * dw), sw));
+            const dim_t ow_end = nstl::min(jcp.ow,
+                    div_up(nstl::max(dim_t(0), jcp.iw + lp - kw * dw), sw));
             for (dim_t oh = oh_start, ih = oh_start * sh - tp + kh * dh;
                     oh < oh_end; ++oh, ih += sh) {
                 col_dt *__restrict col_h = col_loc + oh * jcp.ow;
@@ -428,13 +433,13 @@ void im2col(const conv_gemm_conf_t &jcp, const data_type_t *__restrict im,
     const dim_t oh_end = last_oh + 1;
     const dim_t first_ow = ss % jcp.ow;
     const dim_t last_ow = (ss + sb - 1) % jcp.ow;
+    const bool no_w_padding = (lp == 0 && jcp.r_pad == 0);
 
     const data_t zero_val = 0;
 
     if (jcp.outer_threading) {
         if (sw == 1) {
             // Generated code is more optimized for stride_w == 1
-            // because innermost loop is by width
             for (dim_t ic = 0; ic < cb; ic++) {
                 const data_t *__restrict im_ic = _im + (ic + cs) * im_step;
                 for_(dim_t kh = 0; kh < jcp.kh; kh++)
@@ -449,17 +454,31 @@ void im2col(const conv_gemm_conf_t &jcp, const data_type_t *__restrict im,
                         const dim_t ow_end
                                 = (oh == last_oh) ? (last_ow + 1) : jcp.ow;
                         data_t *__restrict col_ = col_k + oh * jcp.ow - ss;
-                        if (ih < 0 || ih >= jcp.ih)
+                        
+                        if (ih < 0 || ih >= jcp.ih) {
                             for (dim_t ow = ow_begin; ow < ow_end; ow++)
                                 col_[ow] = zero_val;
-                        else {
-                            for (dim_t ow = ow_begin; ow < ow_end; ++ow) {
-                                const dim_t iw = ow;
-                                if (iw < lp - kw * dw
-                                        || iw >= jcp.iw + lp - kw * dw)
-                                    col_[ow] = zero_val;
-                                else
-                                    col_[ow] = im_[iw];
+                        } else {
+                            if (sizeof(data_t) == 4 && no_w_padding
+                                    && ow_end - ow_begin >= 8) {
+                                dim_t ow = ow_begin;
+                                const data_t *im_ptr = im_;
+                                while (ow < ow_end) {
+                                    size_t vl = __riscv_vsetvl_e32m8(ow_end - ow);
+                                    vfloat32m8_t v_data = __riscv_vle32_v_f32m8(
+                                            reinterpret_cast<const float *>(im_ptr + ow), vl);
+                                    __riscv_vse32_v_f32m8(
+                                            reinterpret_cast<float *>(col_ + ow), v_data, vl);
+                                    ow += vl;
+                                }
+                            } else {
+                                for (dim_t ow = ow_begin; ow < ow_end; ++ow) {
+                                    const dim_t iw = ow;
+                                    if (iw < lp - kw * dw || iw >= jcp.iw + lp - kw * dw)
+                                        col_[ow] = zero_val;
+                                    else
+                                        col_[ow] = im_[iw];
+                                }
                             }
                         }
                     }
@@ -478,29 +497,43 @@ void im2col(const conv_gemm_conf_t &jcp, const data_type_t *__restrict im,
                         const dim_t ow_end
                                 = (oh == last_oh) ? (last_ow + 1) : jcp.ow;
                         data_t *__restrict col_oh = col_k + oh * jcp.ow - ss;
-                        if (ih < 0 || ih >= jcp.ih)
+                        
+                        if (ih < 0 || ih >= jcp.ih) {
                             for (dim_t ow = ow_begin; ow < ow_end; ow++)
                                 col_oh[ow] = zero_val;
-                        else
-                            for (dim_t ow = ow_begin; ow < ow_end; ow++) {
-                                const dim_t iw = ow * sw - lp + kw * dw;
-                                if (iw < 0 || iw >= jcp.iw)
-                                    col_oh[ow] = zero_val;
-                                else {
-                                    const ptrdiff_t im_idx = ih * jcp.iw + iw;
-                                    col_oh[ow] = im_[im_idx];
+                        } else {
+                            if (sizeof(data_t) == 4 && no_w_padding && ow_end - ow_begin >= 8) {
+                                dim_t ow = ow_begin;
+                                const data_t *im_row = im_ + ih * jcp.iw - lp + kw * dw;
+                                ptrdiff_t src_byte_stride = sw * sizeof(float);
+                                
+                                while (ow < ow_end) {
+                                    size_t vl = __riscv_vsetvl_e32m8(ow_end - ow);
+                                    vfloat32m8_t v_data = __riscv_vlse32_v_f32m8(
+                                            reinterpret_cast<const float *>(im_row + ow * sw),
+                                            src_byte_stride, vl);
+                                    __riscv_vse32_v_f32m8(
+                                            reinterpret_cast<float *>(col_oh + ow), v_data, vl);
+                                    ow += vl;
+                                }
+                            } else {
+                                for (dim_t ow = ow_begin; ow < ow_end; ow++) {
+                                    const dim_t iw = ow * sw - lp + kw * dw;
+                                    if (iw < 0 || iw >= jcp.iw)
+                                        col_oh[ow] = zero_val;
+                                    else {
+                                        const ptrdiff_t im_idx = ih * jcp.iw + iw;
+                                        col_oh[ow] = im_[im_idx];
+                                    }
                                 }
                             }
+                        }
                     }
                 }
             }
         }
     } else {
-        // TODO: optimize threading if jcp.ic*jcp.kh*jcp.kw*oh_range is small
-        // comparing to number of threads
         const dim_t oh_range = oh_end - oh_begin;
-        // Generated code is more optimized for stride_w == 1
-        // because innermost loop is by width
         if (sw == 1)
             parallel_nd(cb, jcp.kh, jcp.kw, oh_range,
                     [&](dim_t ic, dim_t kh, dim_t kw, dim_t ohr) {
@@ -513,17 +546,33 @@ void im2col(const conv_gemm_conf_t &jcp, const data_type_t *__restrict im,
                 const data_t *__restrict im_
                         = _im + (ic + cs) * im_step + ih * jcp.iw;
                 const dim_t iw_shift = kw * dw - lp;
-                if (ih < 0 || ih >= jcp.ih)
+                
+                if (ih < 0 || ih >= jcp.ih) {
                     for (dim_t ow = ow_start; ow < ow_end; ow++)
                         col_oh[ow] = zero_val;
-                else
-                    for (dim_t ow = ow_start; ow < ow_end; ow++) {
-                        const dim_t iw = ow + iw_shift;
-                        if (iw < 0 || iw >= jcp.iw)
-                            col_oh[ow] = zero_val;
-                        else
-                            col_oh[ow] = im_[iw];
+                } else {
+                    if (sizeof(data_t) == 4 && no_w_padding
+                            && ow_end - ow_start >= 8) {
+                        dim_t ow = ow_start;
+                        const data_t *im_ptr = im_ + iw_shift;
+                        while (ow < ow_end) {
+                            size_t vl = __riscv_vsetvl_e32m8(ow_end - ow);
+                            vfloat32m8_t v_data = __riscv_vle32_v_f32m8(
+                                    reinterpret_cast<const float *>(im_ptr + ow), vl);
+                            __riscv_vse32_v_f32m8(
+                                    reinterpret_cast<float *>(col_oh + ow), v_data, vl);
+                            ow += vl;
+                        }
+                    } else {
+                        for (dim_t ow = ow_start; ow < ow_end; ow++) {
+                            const dim_t iw = ow + iw_shift;
+                            if (iw < 0 || iw >= jcp.iw)
+                                col_oh[ow] = zero_val;
+                            else
+                                col_oh[ow] = im_[iw];
+                        }
                     }
+                }
             });
         else
             parallel_nd(cb, jcp.kh, jcp.kw, oh_range,
@@ -535,19 +584,37 @@ void im2col(const conv_gemm_conf_t &jcp, const data_type_t *__restrict im,
                 data_t *__restrict col_oh = _col + ic * col_step
                         + (kh * jcp.kw + kw) * sb + oh * jcp.ow - ss;
                 const data_t *__restrict im_ = _im + (ic + cs) * im_step;
-                if (ih < 0 || ih >= jcp.ih)
+                
+                if (ih < 0 || ih >= jcp.ih) {
                     for (dim_t ow = ow_start; ow < ow_end; ow++)
                         col_oh[ow] = zero_val;
-                else
-                    for (dim_t ow = ow_start; ow < ow_end; ow++) {
-                        const dim_t iw = ow * sw - lp + kw * dw;
-                        if (iw < 0 || iw >= jcp.iw)
-                            col_oh[ow] = zero_val;
-                        else {
-                            const ptrdiff_t im_idx = ih * jcp.iw + iw;
-                            col_oh[ow] = im_[im_idx];
+                } else {
+                    if (sizeof(data_t) == 4 && no_w_padding && ow_end - ow_start >= 8) {
+                        dim_t ow = ow_start;
+                        const data_t *im_row = im_ + ih * jcp.iw - lp + kw * dw;
+                        ptrdiff_t src_byte_stride = sw * sizeof(float);
+                        
+                        while (ow < ow_end) {
+                            size_t vl = __riscv_vsetvl_e32m8(ow_end - ow);
+                            vfloat32m8_t v_data = __riscv_vlse32_v_f32m8(
+                                    reinterpret_cast<const float *>(im_row + ow * sw),
+                                    src_byte_stride, vl);
+                            __riscv_vse32_v_f32m8(
+                                    reinterpret_cast<float *>(col_oh + ow), v_data, vl);
+                            ow += vl;
+                        }
+                    } else {
+                        for (dim_t ow = ow_start; ow < ow_end; ow++) {
+                            const dim_t iw = ow * sw - lp + kw * dw;
+                            if (iw < 0 || iw >= jcp.iw)
+                                col_oh[ow] = zero_val;
+                            else {
+                                const ptrdiff_t im_idx = ih * jcp.iw + iw;
+                                col_oh[ow] = im_[im_idx];
+                            }
                         }
                     }
+                }
             });
     }
 }
@@ -561,18 +628,13 @@ template void im2col(const conv_gemm_conf_t &jcp,
 
 /* col[kh][kw][ic][oh][ow] <-- im2col_dt(im[ih][iw][ic]) */
 template <typename orig_im_dt, typename orig_col_dt>
-void im2col_dt(const conv_gemm_conf_t &jcp, const void *__restrict _im,
-        void *__restrict _imtr, orig_col_dt *__restrict _col, dim_t hs,
-        dim_t hb, dim_t ws, dim_t wb) {
-    // For performance reasons, use uint16_t as a proxy for bfloat16_t
-    using im_dt =
-            typename utils::conditional<data_traits_t<orig_im_dt>::data_type
-                            == bf16,
-                    uint16_t, orig_im_dt>::type;
-    using col_dt =
-            typename utils::conditional<data_traits_t<orig_col_dt>::data_type
-                            == bf16,
-                    uint16_t, orig_col_dt>::type;
+void im2col_dt(const conv_gemm_conf_t &jcp, const im2col_addr_cache_t *cache,
+        const void *__restrict _im, void *__restrict _imtr,
+        orig_col_dt *__restrict _col, dim_t hs, dim_t hb, dim_t ws, dim_t wb) {
+    
+    using im_dt = typename utils::conditional<data_traits_t<orig_im_dt>::data_type == bf16, uint16_t, orig_im_dt>::type;
+    using col_dt = typename utils::conditional<data_traits_t<orig_col_dt>::data_type == bf16, uint16_t, orig_col_dt>::type;
+    
     const im_dt *__restrict im = reinterpret_cast<const im_dt *__restrict>(_im);
     im_dt *__restrict imtr = reinterpret_cast<im_dt *__restrict>(_imtr);
     col_dt *__restrict col = reinterpret_cast<col_dt *__restrict>(_col);
@@ -582,13 +644,12 @@ void im2col_dt(const conv_gemm_conf_t &jcp, const void *__restrict _im,
     const dim_t dw = 1 + jcp.dilate_w;
     const dim_t sh = jcp.stride_h;
     const dim_t sw = jcp.stride_w;
-    const dim_t im_iw_stride = jcp.ic * jcp.ngroups;
+    const dim_t im_iw_stride = (cache && cache->is_cached) ? cache->src_ic_stride : jcp.ic * jcp.ngroups;
     const dim_t im_ih_stride = jcp.iw * im_iw_stride;
     const dim_t tp = jcp.t_pad;
     const dim_t lp = jcp.l_pad;
 
     if (jcp.outer_threading && sh == 1 && sw == 1 && dh == 1 && dw == 1) {
-        /* im[ih][iw][ic] --> imtr[ic][ih][iw] --> col[kh][kw][ic][oh][ow] */
         const dim_t hp = hs - tp;
         const dim_t wp = ws - lp;
         const dim_t ih_start = saturate(dim_t(0), jcp.ih, hp);
@@ -601,6 +662,7 @@ void im2col_dt(const conv_gemm_conf_t &jcp, const void *__restrict _im,
 
         const dim_t imtr_ic_stride = ihb * iwb;
         const ptrdiff_t imtr_idx_shift = ih_start * iwb + iw_start;
+        
         for (dim_t ic = 0; ic < jcp.ic; ic++) {
             const ptrdiff_t imtr_idx_ic = ic * imtr_ic_stride - imtr_idx_shift;
             for (dim_t ih = ih_start; ih < ih_end; ih++) {
@@ -617,37 +679,56 @@ void im2col_dt(const conv_gemm_conf_t &jcp, const void *__restrict _im,
 
         const dim_t oh_init = ih_start - hp;
         const dim_t ow_init = iw_start - wp;
+        
         for (dim_t kh = 0; kh < jcp.kh; kh++) {
             const ptrdiff_t col_idx_kh = kh * col_kh_stride;
             const dim_t oh_kh = oh_init - kh;
             const dim_t oh_start = saturate(dim_t(0), hb, oh_kh);
             const dim_t oh_end = saturate(dim_t(0), hb, oh_kh + ihb);
+            
             for (dim_t kw = 0; kw < jcp.kw; kw++) {
-                const ptrdiff_t col_idx_kw
-                        = col_idx_kh + kw * jcp.ic * col_ic_str;
+                const ptrdiff_t col_idx_kw = col_idx_kh + kw * jcp.ic * col_ic_str;
                 const dim_t ow_kw = ow_init - kw;
                 const dim_t imtr_shift = oh_kh * iwb + ow_kw;
                 const dim_t ow_start = saturate(dim_t(0), wb, ow_kw);
                 const dim_t ow_end = saturate(dim_t(0), wb, ow_kw + iwb);
+                
                 for (dim_t ic = 0; ic < jcp.ic; ic++) {
                     const ptrdiff_t col_idx_ic = col_idx_kw + ic * col_ic_str;
                     const dim_t imtr_idx_ic = ic * imtr_ic_stride - imtr_shift;
+                    
                     for (dim_t oh = 0; oh < oh_start; oh++) {
                         const ptrdiff_t col_idx_oh = col_idx_ic + oh * wb;
                         for (dim_t ow = 0; ow < wb; ++ow)
                             col[col_idx_oh + ow] = shift;
                     }
+                    
                     for (dim_t oh = oh_start; oh < oh_end; oh++) {
                         const ptrdiff_t col_idx_oh = col_idx_ic + oh * wb;
                         const ptrdiff_t imtr_idx_oh = imtr_idx_ic + oh * iwb;
+                        
                         for (dim_t ow = 0; ow < ow_start; ++ow)
                             col[col_idx_oh + ow] = shift;
-                        for (dim_t ow = ow_start; ow < ow_end; ++ow)
-                            col[col_idx_oh + ow]
-                                    = imtr[imtr_idx_oh + ow] + shift;
+                            
+                        if (sizeof(col_dt) == 4 && ow_end - ow_start >= 8) {
+                            dim_t ow = ow_start;
+                            while (ow < ow_end) {
+                                size_t vl = __riscv_vsetvl_e32m8(ow_end - ow);
+                                vfloat32m8_t v_data = __riscv_vle32_v_f32m8(
+                                        reinterpret_cast<const float *>(imtr + imtr_idx_oh + ow), vl);
+                                __riscv_vse32_v_f32m8(
+                                        reinterpret_cast<float *>(col + col_idx_oh + ow), v_data, vl);
+                                ow += vl;
+                            }
+                        } else {
+                            for (dim_t ow = ow_start; ow < ow_end; ++ow)
+                                col[col_idx_oh + ow] = imtr[imtr_idx_oh + ow] + shift;
+                        }
+                        
                         for (dim_t ow = ow_end; ow < wb; ++ow)
                             col[col_idx_oh + ow] = shift;
                     }
+                    
                     for (dim_t oh = oh_end; oh < hb; oh++) {
                         const ptrdiff_t col_idx_oh = col_idx_ic + oh * wb;
                         for (dim_t ow = 0; ow < wb; ++ow)
@@ -657,30 +738,46 @@ void im2col_dt(const conv_gemm_conf_t &jcp, const void *__restrict _im,
             }
         }
     } else {
-        parallel_nd(jcp.kh, jcp.kw, jcp.ic, hb,
-                [&](dim_t kh, dim_t kw, dim_t ic, dim_t oh) {
+        parallel_nd(jcp.kh, jcp.kw, jcp.ic, hb, [&](dim_t kh, dim_t kw, dim_t ic, dim_t oh) {
             const dim_t hp = tp - kh * dh;
             const dim_t ih = (oh + hs) * sh - hp;
-            const ptrdiff_t col_idx_base
-                    = (((kh * jcp.kw + kw) * jcp.ic + ic) * hb + oh) * wb;
-            if (ih < 0 || ih >= jcp.ih)
+            const ptrdiff_t col_idx_base = (((kh * jcp.kw + kw) * jcp.ic + ic) * hb + oh) * wb;
+            
+            if (ih < 0 || ih >= jcp.ih) {
                 for (dim_t ow = 0; ow < wb; ow++)
                     col[col_idx_base + ow] = shift;
-            else {
+            } else {
                 const dim_t wp = lp - kw * dw;
-                const dim_t ow_start
-                        = saturate(dim_t(0), wb, div_up(wp, sw) - ws);
-                const dim_t ow_end
-                        = saturate(dim_t(0), wb, div_up(jcp.iw + wp, sw) - ws);
+                const dim_t ow_start = saturate(dim_t(0), wb, div_up(nstl::max(dim_t(0), wp), sw) - ws);
+                const dim_t ow_end = saturate(dim_t(0), wb, div_up(nstl::max(dim_t(0), jcp.iw + wp), sw) - ws);
+                
                 for (dim_t ow = 0; ow < ow_start; ow++)
                     col[col_idx_base + ow] = shift;
+                    
                 const dim_t iw_base = ws * sw - wp;
                 const ptrdiff_t im_idx_base = ih * im_ih_stride + ic;
-                for (dim_t ow = ow_start; ow < ow_end; ow++) {
-                    const dim_t iw = iw_base + ow * sw;
-                    const ptrdiff_t im_idx = im_idx_base + iw * im_iw_stride;
-                    col[col_idx_base + ow] = im[im_idx] + shift;
+                
+                if (sizeof(col_dt) == 4 && ow_end - ow_start >= 8) {
+                    dim_t ow = ow_start;
+                    ptrdiff_t src_byte_stride = sw * im_iw_stride * sizeof(float);
+                    
+                    while (ow < ow_end) {
+                        size_t vl = __riscv_vsetvl_e32m8(ow_end - ow);
+                        vfloat32m8_t v_data = __riscv_vlse32_v_f32m8(
+                                reinterpret_cast<const float *>(im + im_idx_base + (iw_base + ow * sw) * im_iw_stride),
+                                src_byte_stride, vl);
+                        __riscv_vse32_v_f32m8(
+                                reinterpret_cast<float *>(col + col_idx_base + ow), v_data, vl);
+                        ow += vl;
+                    }
+                } else {
+                    for (dim_t ow = ow_start; ow < ow_end; ow++) {
+                        const dim_t iw = iw_base + ow * sw;
+                        const ptrdiff_t im_idx = im_idx_base + iw * im_iw_stride;
+                        col[col_idx_base + ow] = im[im_idx] + shift;
+                    }
                 }
+                
                 for (dim_t ow = ow_end; ow < wb; ow++)
                     col[col_idx_base + ow] = shift;
             }
@@ -689,24 +786,27 @@ void im2col_dt(const conv_gemm_conf_t &jcp, const void *__restrict _im,
 }
 
 template void im2col_dt<int8_t, uint8_t>(const conv_gemm_conf_t &jcp,
-        const void *__restrict im, void *__restrict imtr,
-        uint8_t *__restrict col, dim_t hs, dim_t hb, dim_t ws, dim_t wb);
+        const im2col_addr_cache_t *cache, const void *__restrict im,
+        void *__restrict imtr, uint8_t *__restrict col, dim_t hs, dim_t hb,
+        dim_t ws, dim_t wb);
 template void im2col_dt<uint8_t, uint8_t>(const conv_gemm_conf_t &jcp,
-        const void *__restrict im, void *__restrict imtr,
-        uint8_t *__restrict col, dim_t hs, dim_t hb, dim_t ws, dim_t wb);
+        const im2col_addr_cache_t *cache, const void *__restrict im,
+        void *__restrict imtr, uint8_t *__restrict col, dim_t hs, dim_t hb,
+        dim_t ws, dim_t wb);
 template void im2col_dt<float, float>(const conv_gemm_conf_t &jcp,
-        const void *__restrict im, void *__restrict imtr, float *__restrict col,
-        dim_t hs, dim_t hb, dim_t ws, dim_t wb);
+        const im2col_addr_cache_t *cache, const void *__restrict im,
+        void *__restrict imtr, float *__restrict col, dim_t hs, dim_t hb,
+        dim_t ws, dim_t wb);
 
 template void im2col_dt<bfloat16_t, bfloat16_t>(const conv_gemm_conf_t &jcp,
-        const void *__restrict im, void *__restrict imtr,
-        bfloat16_t *__restrict col, dim_t hs, dim_t hb, dim_t ws, dim_t wb);
+        const im2col_addr_cache_t *cache, const void *__restrict im,
+        void *__restrict imtr, bfloat16_t *__restrict col, dim_t hs, dim_t hb,
+        dim_t ws, dim_t wb);
 
 /* im[id][ih][iw][ic] <-- col2im_dt_3d(col[od][oh][ow][kd][kh][kw][ic]) */
 template <typename orig_T>
 void col2im_dt(const conv_gemm_conf_t &jcp, const orig_T *__restrict _col,
         orig_T *__restrict _im) {
-    // For performance reasons, use uint16_t as a proxy for bfloat16_t
     using T = typename utils::conditional<
             data_traits_t<orig_T>::data_type == bf16, uint16_t, orig_T>::type;
     const T *__restrict col = reinterpret_cast<const T *__restrict>(_col);
@@ -733,13 +833,30 @@ void col2im_dt(const conv_gemm_conf_t &jcp, const orig_T *__restrict _col,
         for_(dim_t id = d_s; id < d_e; ++id)
         for_(dim_t ih = h_s; ih < h_e; ++ih)
         for (dim_t iw = w_s; iw < w_e; ++iw) {
-            PRAGMA_OMP_SIMD()
-            for (dim_t ic = 0; ic < jcp.ic; ++ic) {
-                im[((id * jcp.ih + ih) * jcp.iw + iw) * jcp.ic + ic] = 0;
+            const size_t idx = ((id * jcp.ih + ih) * jcp.iw + iw) * jcp.ic;
+            if (std::is_same<orig_T, float>::value) {
+                dim_t ic = 0;
+                while (ic < jcp.ic) {
+                    size_t vl = __riscv_vsetvl_e32m8(jcp.ic - ic);
+                    vfloat32m8_t v_zero = __riscv_vfmv_v_f_f32m8(0.0f, vl);
+                    __riscv_vse32_v_f32m8(reinterpret_cast<float*>(&im[idx + ic]), v_zero, vl);
+                    ic += vl;
+                }
+            } else if (std::is_same<orig_T, int32_t>::value) {
+                dim_t ic = 0;
+                while (ic < jcp.ic) {
+                    size_t vl = __riscv_vsetvl_e32m8(jcp.ic - ic);
+                    vint32m8_t v_zero = __riscv_vmv_v_x_i32m8(0, vl);
+                    __riscv_vse32_v_i32m8(reinterpret_cast<int32_t*>(&im[idx + ic]), v_zero, vl);
+                    ic += vl;
+                }
+            } else {
+                for (dim_t ic = 0; ic < jcp.ic; ++ic) {
+                    im[idx + ic] = 0;
+                }
             }
         }
 
-        // TODO: reduce region: [0.. oh] --> [h_s * sh .. h_e * sh]
         for_(dim_t od = 0; od < jcp.od; ++od)
         for_(dim_t oh = 0; oh < jcp.oh; ++oh)
         for_(dim_t ow = 0; ow < jcp.ow; ++ow)
@@ -766,9 +883,31 @@ void col2im_dt(const conv_gemm_conf_t &jcp, const orig_T *__restrict _col,
                             * jcp.ic;
                     const size_t im_idx
                             = ((id * jcp.ih + ih) * jcp.iw + iw) * jcp.ic;
-                    PRAGMA_OMP_SIMD()
-                    for (dim_t ic = 0; ic < jcp.ic; ++ic) {
-                        im[im_idx + ic] += col[col_idx + ic];
+
+                    if (std::is_same<orig_T, float>::value) {
+                        dim_t ic = 0;
+                        while (ic < jcp.ic) {
+                            size_t vl = __riscv_vsetvl_e32m8(jcp.ic - ic);
+                            vfloat32m8_t v_im = __riscv_vle32_v_f32m8(reinterpret_cast<float*>(&im[im_idx + ic]), vl);
+                            vfloat32m8_t v_col = __riscv_vle32_v_f32m8(reinterpret_cast<const float*>(&col[col_idx + ic]), vl);
+                            vfloat32m8_t v_res = __riscv_vfadd_vv_f32m8(v_im, v_col, vl);
+                            __riscv_vse32_v_f32m8(reinterpret_cast<float*>(&im[im_idx + ic]), v_res, vl);
+                            ic += vl;
+                        }
+                    } else if (std::is_same<orig_T, int32_t>::value) {
+                        dim_t ic = 0;
+                        while (ic < jcp.ic) {
+                            size_t vl = __riscv_vsetvl_e32m8(jcp.ic - ic);
+                            vint32m8_t v_im = __riscv_vle32_v_i32m8(reinterpret_cast<int32_t*>(&im[im_idx + ic]), vl);
+                            vint32m8_t v_col = __riscv_vle32_v_i32m8(reinterpret_cast<const int32_t*>(&col[col_idx + ic]), vl);
+                            vint32m8_t v_res = __riscv_vadd_vv_i32m8(v_im, v_col, vl);
+                            __riscv_vse32_v_i32m8(reinterpret_cast<int32_t*>(&im[im_idx + ic]), v_res, vl);
+                            ic += vl;
+                        }
+                    } else {
+                        for (dim_t ic = 0; ic < jcp.ic; ++ic) {
+                            im[im_idx + ic] += col[col_idx + ic];
+                        }
                     }
                 }
             }
@@ -907,9 +1046,13 @@ void col2im(const conv_gemm_conf_t &jcp, const float *col, float *im,
         const float *__restrict col_icb = col + ic * col_step;
 
         if (spatial_step == 0) {
-            PRAGMA_OMP_SIMD()
-            for (dim_t is = 0; is < iS; ++is)
-                img_ithr[is] = 0.;
+            dim_t is = 0;
+            while (is < iS) {
+                size_t vl = __riscv_vsetvl_e32m8(iS - is);
+                vfloat32m8_t v_zero = __riscv_vfmv_v_f_f32m8(0.0f, vl);
+                __riscv_vse32_v_f32m8(img_ithr + is, v_zero, vl);
+                is += vl;
+            }
         }
 
         float *__restrict img_kh = img_ithr;
@@ -929,13 +1072,53 @@ void col2im(const conv_gemm_conf_t &jcp, const float *col, float *im,
                         col_ += ow_work;
                         continue;
                     }
-                    for (dim_t ow = ow_begin; ow < ow_end; ++ow, ++col_) {
-                        const dim_t iw = ow * jcp.stride_w - jcp.l_pad;
-                        const dim_t iw_ = iw + kw * (1 + jcp.dilate_w);
-                        if (iw_ < 0 || iw_ >= jcp.iw) continue;
 
-                        const size_t im_idx = ih * jcp.iw + iw;
-                        im_[im_idx] += *col_;
+                    const dim_t wp = jcp.l_pad - kw * (1 + jcp.dilate_w);
+                    const dim_t valid_ow_start = saturate(dim_t(0), jcp.ow, div_up(nstl::max(dim_t(0), wp), jcp.stride_w));
+                    const dim_t valid_ow_end = saturate(dim_t(0), jcp.ow, div_up(nstl::max(dim_t(0), jcp.iw + wp), jcp.stride_w));
+                    
+                    dim_t act_ow_start = nstl::max(ow_begin, valid_ow_start);
+                    dim_t act_ow_end = nstl::min(ow_end, valid_ow_end);
+
+                    if (act_ow_start < act_ow_end) {
+                        col_ += (act_ow_start - ow_begin);
+                        
+                        if (jcp.stride_w == 1 && act_ow_end - act_ow_start >= 8) {
+                            dim_t ow = act_ow_start;
+                            while (ow < act_ow_end) {
+                                size_t vl = __riscv_vsetvl_e32m8(act_ow_end - ow);
+                                const size_t im_idx = ih * jcp.iw + (ow - jcp.l_pad);
+                                vfloat32m8_t v_col = __riscv_vle32_v_f32m8(col_, vl);
+                                vfloat32m8_t v_im = __riscv_vle32_v_f32m8(&im_[im_idx], vl);
+                                vfloat32m8_t v_res = __riscv_vfadd_vv_f32m8(v_im, v_col, vl);
+                                __riscv_vse32_v_f32m8(&im_[im_idx], v_res, vl);
+                                ow += vl;
+                                col_ += vl;
+                            }
+                        } else if (jcp.stride_w > 1 && act_ow_end - act_ow_start >= 8) {
+                            dim_t ow = act_ow_start;
+                            ptrdiff_t im_byte_stride = jcp.stride_w * sizeof(float);
+                            while (ow < act_ow_end) {
+                                size_t vl = __riscv_vsetvl_e32m8(act_ow_end - ow);
+                                const size_t im_idx = ih * jcp.iw + (ow * jcp.stride_w - jcp.l_pad);
+                                vfloat32m8_t v_col = __riscv_vle32_v_f32m8(col_, vl);
+                                vfloat32m8_t v_im = __riscv_vlse32_v_f32m8(&im_[im_idx], im_byte_stride, vl);
+                                vfloat32m8_t v_res = __riscv_vfadd_vv_f32m8(v_im, v_col, vl);
+                                __riscv_vsse32_v_f32m8(&im_[im_idx], im_byte_stride, v_res, vl);
+                                ow += vl;
+                                col_ += vl;
+                            }
+                        } else {
+                            for (dim_t ow = act_ow_start; ow < act_ow_end; ++ow, ++col_) {
+                                const dim_t iw = ow * jcp.stride_w - jcp.l_pad;
+                                const size_t im_idx = ih * jcp.iw + iw;
+                                im_[im_idx] += *col_;
+                            }
+                        }
+                        
+                        col_ += (ow_end - act_ow_end);
+                    } else {
+                        col_ += ow_work;
                     }
                 }
                 col_icb += wei_stride;
@@ -948,9 +1131,14 @@ void col2im(const conv_gemm_conf_t &jcp, const float *col, float *im,
     auto ker = [&](dim_t ic) {
         float *__restrict im_ = im + ic * im_step;
         const float *__restrict col_ = col + ic * col_step;
-        PRAGMA_OMP_SIMD()
-        for (dim_t is = 0; is < iS; ++is)
-            im_[is] = 0.;
+        
+        dim_t is = 0;
+        while (is < iS) {
+            size_t vl = __riscv_vsetvl_e32m8(iS - is);
+            vfloat32m8_t v_zero = __riscv_vfmv_v_f_f32m8(0.0f, vl);
+            __riscv_vse32_v_f32m8(im_ + is, v_zero, vl);
+            is += vl;
+        }
 
         for_(dim_t kh = 0; kh < jcp.kh; ++kh)
         for (dim_t oh = 0; oh < jcp.oh; ++oh) {
@@ -958,16 +1146,44 @@ void col2im(const conv_gemm_conf_t &jcp, const float *col, float *im,
                     = oh * jcp.stride_h - jcp.t_pad + kh * (1 + jcp.dilate_h);
             if (ih < 0 || ih >= jcp.ih) continue;
 
-            for_(dim_t kw = 0; kw < jcp.kw; ++kw)
-            for (dim_t ow = 0; ow < jcp.ow; ++ow) {
-                const dim_t iw = ow * jcp.stride_w - jcp.l_pad
-                        + kw * (1 + jcp.dilate_w);
-                if (iw < 0 || iw >= jcp.iw) continue;
+            for (dim_t kw = 0; kw < jcp.kw; ++kw) {
+                const dim_t wp = jcp.l_pad - kw * (1 + jcp.dilate_w);
+                const dim_t ow_start = saturate(dim_t(0), jcp.ow, div_up(nstl::max(dim_t(0), wp), jcp.stride_w));
+                const dim_t ow_end = saturate(dim_t(0), jcp.ow, div_up(nstl::max(dim_t(0), jcp.iw + wp), jcp.stride_w));
 
-                const size_t col_idx
-                        = ((kh * jcp.kw + kw) * jcp.oh + oh) * jcp.ow + ow;
-                const size_t im_idx = ih * jcp.iw + iw;
-                im_[im_idx] += col_[col_idx];
+                if (jcp.stride_w == 1 && ow_end - ow_start >= 8) {
+                    dim_t ow = ow_start;
+                    while (ow < ow_end) {
+                        size_t vl = __riscv_vsetvl_e32m8(ow_end - ow);
+                        const size_t col_idx = ((kh * jcp.kw + kw) * jcp.oh + oh) * jcp.ow + ow;
+                        const size_t im_idx = ih * jcp.iw + (ow - wp);
+                        vfloat32m8_t v_col = __riscv_vle32_v_f32m8(&col_[col_idx], vl);
+                        vfloat32m8_t v_im = __riscv_vle32_v_f32m8(&im_[im_idx], vl);
+                        vfloat32m8_t v_res = __riscv_vfadd_vv_f32m8(v_im, v_col, vl);
+                        __riscv_vse32_v_f32m8(&im_[im_idx], v_res, vl);
+                        ow += vl;
+                    }
+                } else if (jcp.stride_w > 1 && ow_end - ow_start >= 8) {
+                    dim_t ow = ow_start;
+                    ptrdiff_t im_byte_stride = jcp.stride_w * sizeof(float);
+                    while (ow < ow_end) {
+                        size_t vl = __riscv_vsetvl_e32m8(ow_end - ow);
+                        const size_t col_idx = ((kh * jcp.kw + kw) * jcp.oh + oh) * jcp.ow + ow;
+                        const size_t im_idx = ih * jcp.iw + (ow * jcp.stride_w - wp);
+                        vfloat32m8_t v_col = __riscv_vle32_v_f32m8(&col_[col_idx], vl);
+                        vfloat32m8_t v_im = __riscv_vlse32_v_f32m8(&im_[im_idx], im_byte_stride, vl);
+                        vfloat32m8_t v_res = __riscv_vfadd_vv_f32m8(v_im, v_col, vl);
+                        __riscv_vsse32_v_f32m8(&im_[im_idx], im_byte_stride, v_res, vl);
+                        ow += vl;
+                    }
+                } else {
+                    for (dim_t ow = ow_start; ow < ow_end; ++ow) {
+                        const dim_t iw = ow * jcp.stride_w - wp;
+                        const size_t col_idx = ((kh * jcp.kw + kw) * jcp.oh + oh) * jcp.ow + ow;
+                        const size_t im_idx = ih * jcp.iw + iw;
+                        im_[im_idx] += col_[col_idx];
+                    }
+                }
             }
         }
     };
@@ -1306,6 +1522,18 @@ status_t init_conf(conv_gemm_conf_t &jcp,
                         = (float)inner_work / rnd_up(inner_work, max_threads);
                 if (thr_eff >= inner_thr_eff / 2 && h_block > 0
                         && w_block > 0) {
+                    // Align blocks to RVV vector length and cache lines
+                    const int cache_line_size
+                            = platform::get_cache_line_size() / data_size;
+                    const int vec_align = simd_w;
+                    const int block_align
+                            = nstl::max(cache_line_size, vec_align);
+
+                    h_block = rnd_dn(h_block, block_align);
+                    w_block = rnd_dn(w_block, block_align);
+                    h_block = nstl::max(dim_t(vec_align), h_block);
+                    w_block = nstl::max(dim_t(vec_align), w_block);
+
                     jcp.oh_block = h_block;
                     jcp.ow_block = w_block;
                     jcp.outer_threading = true;
@@ -1477,6 +1705,22 @@ status_t init_conf(conv_gemm_conf_t &jcp,
                         = (float)inner_work / rnd_up(inner_work, max_threads);
                 if (thr_eff >= inner_thr_eff / 2 && h_block > 0
                         && w_block > 0) {
+                    // Align blocks to RVV vector length and cache lines
+                    const int cache_line_size
+                            = platform::get_cache_line_size() / data_size;
+                    const int vec_align = simd_w;
+                    const int block_align
+                            = nstl::max(cache_line_size, vec_align);
+
+                    h_block = rnd_dn(h_block, block_align);
+                    w_block = rnd_dn(w_block, block_align);
+                    h_block = nstl::max(size_t {1}, h_block);
+                    w_block = nstl::max(size_t {1}, w_block);
+                    h_block = nstl::max(
+                            static_cast<size_t>(vec_align), h_block);
+                    w_block = nstl::max(
+                            static_cast<size_t>(vec_align), w_block);
+
                     jcp.oh_block = static_cast<int>(h_block);
                     jcp.ow_block = static_cast<int>(w_block);
                     jcp.outer_threading = true;

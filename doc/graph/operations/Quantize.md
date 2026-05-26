@@ -54,4 +54,4 @@ Quantize operation supports the following data type combinations.
 | f32 | s8, u8, f8_e4m3, f8_e5m2 |
 
 @note This operation is to support
-[`int8` quantization](@ref dev_guide_graph_int8_quantization_model) model.
+[int8 quantization](@ref dev_guide_graph_int8_quantization_model) model.

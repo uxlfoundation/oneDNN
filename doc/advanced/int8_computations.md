@@ -70,7 +70,7 @@ enables `int8` support using these particular instructions.
 Unfortunately, these instructions do not have the counterparts that work with
 vectors of the same type (either `s8`/`s8` or `u8`/`u8`). The details for the `s8`/`s8`
 case are covered in the
-[2. Inputs of the same type: `s8`](@ref dg_i8_comp_s12) section below.
+[2. Inputs of the same type: s8](@ref dg_i8_comp_s12) section below.
 
 #### 1.1. Processors with the Intel AVX2 or Intel AVX-512 Support
 
@@ -251,7 +251,7 @@ might be much greater though in this case. Consider the following example:
 Note that processors with no support of the Intel AVX2 and Intel AVX512
 Instruction Set or with support of the Intel DL Boost Instruction Set are not
 affected by these issues due to the reasons described in
-[1. Inputs of mixed type: `u8` and `s8`](@ref dg_i8_comp_s11) section above.
+[1. Inputs of mixed type: u8 and s8](@ref dg_i8_comp_s11) section above.
 
 Different primitives solve the potential overflow differently. The overview of
 the implementations are given below:

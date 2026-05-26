@@ -406,10 +406,13 @@ status_t memory_desc_init_by_packed_encoding(memory_desc_t &memory_desc,
 // Parameters:
 // - variable_dim_idx: Index of dimension with variable size
 // - group_count: Number of groups
-// - dims: Total dimensions (e.g., [total_M, K] where total_M = sum of M_i)
+// - dims: Total dimensions
 //
 // Supported below:
-// - 2D tensors with variable first dimension
+// - 2D tensors with variable dim 0 (e.g., [total_M, K]) or dim 1
+//   (e.g., [K, total_M])
+// - The variable dim is the innermost dim of the values buffer
+//   (e.g., row-major for idx = 0, col-major for idx = 1)
 // - Other dimensions must be uniform across all groups
 status_t memory_desc_init_with_grouped_encoding(memory_desc_t &memory_desc,
         int ndims, const dims_t dims, data_type_t data_type,
@@ -434,18 +437,12 @@ status_t memory_desc_init_with_grouped_encoding(memory_desc_t &memory_desc,
     VCHECK_MEMORY(variable_dim_idx >= 0 && variable_dim_idx < ndims,
             invalid_arguments, VERBOSE_BAD_PARAM, "variable_dim_idx");
 
-    // Currently only first dimension can be variable
-    VCHECK_MEMORY(variable_dim_idx == 0, unimplemented, VERBOSE_BAD_PARAM,
-            "variable_dim_idx");
-
     for (int d = 0; d < ndims; ++d) {
         VCHECK_MEMORY(!is_runtime_value(dims[d]), invalid_arguments,
                 VERBOSE_RUNTIMEDIM_UNSUPPORTED);
         VCHECK_MEMORY(
                 dims[d] > 0, invalid_arguments, VERBOSE_BAD_DIM, "dims", d);
     }
-
-    dim_t K = dims[1]; // Uniform dimension
 
     auto md = memory_desc_t();
     md.ndims = ndims;
@@ -459,7 +456,7 @@ status_t memory_desc_init_with_grouped_encoding(memory_desc_t &memory_desc,
     // describing the variable structure (similar to CSR with rowptr/colind)
     md.format_kind = format_kind::sparse;
     md.format_desc.sparse_desc.encoding = sparse_encoding::grouped;
-    md.format_desc.sparse_desc.nnz = dims[0] /* total_M */ * K;
+    md.format_desc.sparse_desc.nnz = utils::array_product(dims, ndims);
     md.format_desc.sparse_desc.metadata_types[0] = offsets_dt;
     md.format_desc.sparse_desc.grouped_desc.group_count = group_count;
     md.format_desc.sparse_desc.grouped_desc.variable_dim_idx = variable_dim_idx;

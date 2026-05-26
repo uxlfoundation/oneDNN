@@ -65,9 +65,34 @@ void load_bias(
 #endif
 
 #if WITH_POST_OP
+
+/* Binary scale pointer type and conversion for non-f32 binary inputs.
+ * BINARY_SCALE_DATA_T is defined by the host (def_data_type) when
+ * WITH_BINARY_GROUPED_SCALE or WITH_BINARY_DENSE_SCALE is set. */
+#if WITH_BINARY_GROUPED_SCALE || WITH_BINARY_DENSE_SCALE
+#ifdef BINARY_SCALE_DT_F16
+#define BINARY_SCALE_TILE_DATA_T half
+#define BINARY_SCALE_TO_FLOAT(v) convert_float(v)
+#elif defined(BINARY_SCALE_DT_BF16)
+#define BINARY_SCALE_TILE_DATA_T ushort
+#define BINARY_SCALE_TO_FLOAT(v) into_float(as_bf16(v))
+#else
+#define BINARY_SCALE_TILE_DATA_T float
+#define BINARY_SCALE_TO_FLOAT(v) (v)
+#endif
+#endif
+
 #if WITH_BINARY_GROUPED_SCALE
 // Binary tile matches c_tile dimensions for element-wise multiply [total_tokens, N]
 typedef ugemm_grouped_c_type binary_group_tile_type;
+
+#ifndef BINARY_SCALE_DT_F32
+// Input tile in native type for load, then convert to f32
+DECLARE_2D_TILE(binary_group_in_tile_type, BINARY_SCALE_TILE_DATA_T,
+        SUBGROUP_SIZE, ugemm_grouped_c_type_block0,
+        ugemm_grouped_c_type_block1, ugemm_grouped_c_type_nblock0,
+        ugemm_grouped_c_type_nblock1)
+#endif
 #endif
 
 #if WITH_BINARY_DENSE_SCALE
@@ -83,6 +108,12 @@ DECLARE_2D_TILE_HREDUCE(ugemm_grouped_c_type, SUBGROUP_SIZE,
         ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1,
         binary_dense_tile_type, SUBGROUP_SIZE, binary_dense_scale_br,
         binary_dense_scale_bc, binary_dense_scale_nbr, binary_dense_scale_nbc)
+
+#ifndef BINARY_SCALE_DT_F32
+DECLARE_2D_TILE(binary_dense_in_tile_type, BINARY_SCALE_TILE_DATA_T,
+        SUBGROUP_SIZE, binary_dense_scale_br, binary_dense_scale_bc,
+        binary_dense_scale_nbr, binary_dense_scale_nbc)
+#endif
 #endif
 
 #include "grouped_post_ops.h"
@@ -324,8 +355,13 @@ grouped_micro_gemm(const global SRC_DATA_T *src, long ldsrc,
         const global WEI_SCALES_DATA_T *wei_attr_scales,
         const global WEI_ZP_DATA_T *wei_attr_zp, const long ldweiq,
         const long n, const long k, const global BIA_DATA_T *bias,
+#if WITH_BINARY_GROUPED_SCALE || WITH_BINARY_DENSE_SCALE
+        const global BINARY_SCALE_TILE_DATA_T *binary_grouped_scale,
+        const global BINARY_SCALE_TILE_DATA_T *binary_dense_scale,
+#else
         const global float *binary_grouped_scale,
         const global float *binary_dense_scale,
+#endif
         const global float *binary_nvfp4_scale,
         const global int *binary_grouped_offset) {
 #if WITH_SLM

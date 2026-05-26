@@ -153,6 +153,12 @@ struct rvv_postops_t {
     status_t execute(
             const exec_ctx_t &ctx, void *src, void *dst = nullptr) const;
 
+    // Only valid when constructed from post_ops_t (narrow constructor).
+    // Callers enforce via post_ops_ok() that only ReLU is accepted,
+    // so these always return well-defined values in supported paths.
+    bool is_relu_postop() const { return alg_ == alg_kind::eltwise_relu; }
+    float relu_alpha() const { return alpha_; }
+
 private:
     alg_kind_t alg_ = alg_kind::undef;
     float alpha_ = 0.f;

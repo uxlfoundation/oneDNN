@@ -2706,13 +2706,6 @@ struct simple_reorder_t : public primitive_t {
 
             const memory_desc_wrapper input_d(src_md);
 
-            int mask = -1;
-            if (!attr->scales_.has_default_values(DNNL_ARG_DST)) {
-                mask = attr->scales_.get_mask(DNNL_ARG_DST);
-                if (input_d.has_runtime_dims_or_strides() && mask > 0)
-                    return status::unimplemented;
-            }
-
             auto _pd = make_unique_pd<pd_t>(attr, src_engine->kind(), src_md,
                     dst_engine->kind(), dst_md);
             if (_pd == nullptr) return status::out_of_memory;
@@ -2724,15 +2717,6 @@ struct simple_reorder_t : public primitive_t {
             auto scratchpad = _pd->scratchpad_registry().registrar();
             scratchpad.book(memory_tracking::names::key_reorder_space,
                     scratchpad_sz_, 1, 16);
-
-            if (mask > 0) {
-                dim_t D_mask;
-                _pd->get_D_values(input_d, mask, nullptr, &D_mask, nullptr);
-                scratchpad.template book<float>(
-                        memory_tracking::names::
-                                key_reorder_precomputed_dst_scales,
-                        D_mask);
-            }
 
             CHECK(_pd->init_scratchpad_md());
             return safe_ptr_assign(*reorder_pd, _pd.release());

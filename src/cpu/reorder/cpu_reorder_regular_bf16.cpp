@@ -58,6 +58,8 @@ const impl_list_map_t &regular_bf16_impl_list_map() {
 
             REG_SR(bf16, any, bf16, any, fmt_order::any, spec::reference)
             REG_SR(bf16, any, f32, any, fmt_order::any, spec::reference)
+            REG_SR(bf16, any, f16, any, fmt_order::any, spec::reference)
+            REG_SR(bf16, any, s32, any, fmt_order::any, spec::reference)
             REG_SR(bf16, any, s8, any, fmt_order::any, spec::reference)
             REG_SR(bf16, any, u8, any, fmt_order::any, spec::reference)
             REG_SR(bf16, any, f8_e5m2, any, fmt_order::any, spec::reference)

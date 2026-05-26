@@ -92,6 +92,7 @@ public:
 #endif
 
     DEF_KERNEL_METHOD_STR(prelu_fwd_t)
+    DEF_KERNEL_METHOD_SCRATCHPAD_SIZE()
     DNNL_DISALLOW_COPY_AND_ASSIGN(prelu_fwd_t)
 };
 
@@ -150,6 +151,7 @@ public:
 #endif
 
     DEF_KERNEL_METHOD_STR(prelu_bwd_t)
+    DEF_KERNEL_METHOD_SCRATCHPAD_SIZE()
     DNNL_DISALLOW_COPY_AND_ASSIGN(prelu_bwd_t)
 };
 #endif

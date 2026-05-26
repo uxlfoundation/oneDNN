@@ -81,6 +81,7 @@ public:
             cl_event *ocl_event) override;
 #endif
     DEF_KERNEL_METHOD_STR(genindex_t)
+    DEF_KERNEL_METHOD_SCRATCHPAD_SIZE()
     DNNL_DISALLOW_COPY_AND_ASSIGN(genindex_t)
 };
 

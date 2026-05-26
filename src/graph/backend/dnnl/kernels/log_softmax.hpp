@@ -94,6 +94,7 @@ public:
 #endif
 
     DEF_KERNEL_METHOD_STR(logsoftmax_fwd_t)
+    DEF_KERNEL_METHOD_SCRATCHPAD_SIZE()
     DNNL_DISALLOW_COPY_AND_ASSIGN(logsoftmax_fwd_t)
 };
 
@@ -155,6 +156,7 @@ public:
     }
 
     DEF_KERNEL_METHOD_STR(logsoftmax_bwd_t)
+    DEF_KERNEL_METHOD_SCRATCHPAD_SIZE()
     DNNL_DISALLOW_COPY_AND_ASSIGN(logsoftmax_bwd_t)
 };
 #endif

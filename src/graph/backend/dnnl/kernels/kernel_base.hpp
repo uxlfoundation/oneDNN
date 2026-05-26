@@ -100,7 +100,7 @@ struct kernel_base_t {
 
     /// Returns the scratchpad size in bytes required for execution. The default
     /// implementation returns 0 indicating no scratchpad is needed.
-    virtual size_t get_scratchpad_size() const { return 0; }
+    virtual size_t get_scratchpad_size() const = 0;
 
     // A string identity used in verbose indicating which kernels is dispatched
     // for a compiled partition.
@@ -124,6 +124,11 @@ using FCreateKernel = std::function<kernel_ptr(void)>;
 #define DEF_KERNEL_METHOD_STR(name) \
     std::string str() const override { \
         return #name; \
+    }
+
+#define DEF_KERNEL_METHOD_SCRATCHPAD_SIZE() \
+    size_t get_scratchpad_size() const override { \
+        return memory_planner_.total_internal_temporary_size(); \
     }
 
 } // namespace dnnl_impl

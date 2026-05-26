@@ -99,6 +99,7 @@ public:
     }
 
     DEF_KERNEL_METHOD_STR(matmul_t)
+    DEF_KERNEL_METHOD_SCRATCHPAD_SIZE()
     DNNL_DISALLOW_COPY_AND_ASSIGN(matmul_t)
 };
 

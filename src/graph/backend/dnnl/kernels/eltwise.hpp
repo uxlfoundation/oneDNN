@@ -101,6 +101,7 @@ public:
 #endif
 
     DEF_KERNEL_METHOD_STR(eltwise_fwd_t)
+    DEF_KERNEL_METHOD_SCRATCHPAD_SIZE()
     DNNL_DISALLOW_COPY_AND_ASSIGN(eltwise_fwd_t)
 };
 
@@ -160,6 +161,7 @@ public:
 #endif
 
     DEF_KERNEL_METHOD_STR(eltwise_bwd_t)
+    DEF_KERNEL_METHOD_SCRATCHPAD_SIZE()
     DNNL_DISALLOW_COPY_AND_ASSIGN(eltwise_bwd_t)
 };
 #endif

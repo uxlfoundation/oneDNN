@@ -99,6 +99,7 @@ public:
     }
 
     DEF_KERNEL_METHOD_STR(reorder_t)
+    DEF_KERNEL_METHOD_SCRATCHPAD_SIZE()
     DNNL_DISALLOW_COPY_AND_ASSIGN(reorder_t)
 };
 

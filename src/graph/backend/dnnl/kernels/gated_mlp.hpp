@@ -108,6 +108,9 @@ public:
 #endif
 
     std::string str() const override { return kernel->str(); }
+    size_t get_scratchpad_size() const override {
+        return kernel->get_scratchpad_size();
+    }
 };
 } // namespace dnnl_impl
 } // namespace graph

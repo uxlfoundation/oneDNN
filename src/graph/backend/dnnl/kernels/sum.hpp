@@ -92,6 +92,7 @@ public:
 #endif
 
     DEF_KERNEL_METHOD_STR(sum_t)
+    DEF_KERNEL_METHOD_SCRATCHPAD_SIZE()
     DNNL_DISALLOW_COPY_AND_ASSIGN(sum_t)
 };
 

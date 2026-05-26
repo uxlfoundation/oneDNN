@@ -93,6 +93,7 @@ public:
             const std::vector<logical_tensor_t> &outputs);
 
     DEF_KERNEL_METHOD_STR(sdp_bwd_primitive_kernel_t)
+    DEF_KERNEL_METHOD_SCRATCHPAD_SIZE()
     DNNL_DISALLOW_COPY_AND_ASSIGN(sdp_bwd_primitive_kernel_t)
 };
 

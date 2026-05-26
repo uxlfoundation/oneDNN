@@ -193,7 +193,7 @@ status_t mqa_decomp_kernel_t<quantized, dt>::execute_impl(
     // allocate the internal memory
     size_t block_size = mqa_registry_.size();
     auto scratchpad = std::make_shared<scratchpad_t>(
-            nullptr, block_size * mqa_cfg_.nthr, p_engine_, *g_alloc_);
+            scratchpad_buf, block_size * mqa_cfg_.nthr, p_engine_, *g_alloc_);
     grantor_t var_grantor = mqa_registry_.grantor(scratchpad->get_buffer());
 
     const auto get_mem_dt_size = [](const memory &m) -> size_t {

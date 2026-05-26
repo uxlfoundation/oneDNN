@@ -173,6 +173,9 @@ public:
 #endif
 
     DEF_KERNEL_METHOD_STR(sdp_decomp_kernel_t)
+    size_t get_scratchpad_size() const override {
+        return sdp_registry_.size() * sdp_cfg_.nthr;
+    }
     DNNL_DISALLOW_COPY_AND_ASSIGN(sdp_decomp_kernel_t)
 };
 

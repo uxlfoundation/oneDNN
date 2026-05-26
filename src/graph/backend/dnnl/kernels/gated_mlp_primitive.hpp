@@ -89,6 +89,7 @@ public:
 #endif
 
     DEF_KERNEL_METHOD_STR(gated_mlp_primitive_kernel_t)
+    DEF_KERNEL_METHOD_SCRATCHPAD_SIZE()
     DNNL_DISALLOW_COPY_AND_ASSIGN(gated_mlp_primitive_kernel_t)
 };
 

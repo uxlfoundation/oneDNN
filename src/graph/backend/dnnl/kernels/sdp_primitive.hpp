@@ -94,6 +94,7 @@ public:
 #endif
 
     DEF_KERNEL_METHOD_STR(sdp_primitive_kernel_t)
+    DEF_KERNEL_METHOD_SCRATCHPAD_SIZE()
     DNNL_DISALLOW_COPY_AND_ASSIGN(sdp_primitive_kernel_t)
 };
 

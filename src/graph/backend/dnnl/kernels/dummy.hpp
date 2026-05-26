@@ -67,6 +67,8 @@ public:
             const std::vector<cl_event> &cl_deps, cl_event *ret_event) override;
 #endif
 
+    size_t get_scratchpad_size() const override { return 0; }
+
     DEF_KERNEL_METHOD_STR(dummy_kernel_t)
     DNNL_DISALLOW_COPY_AND_ASSIGN(dummy_kernel_t)
 };

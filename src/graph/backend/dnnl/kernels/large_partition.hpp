@@ -108,6 +108,7 @@ public:
 #endif
 
     DEF_KERNEL_METHOD_STR(larger_partition_kernel_t)
+    DEF_KERNEL_METHOD_SCRATCHPAD_SIZE()
     DNNL_DISALLOW_COPY_AND_ASSIGN(larger_partition_kernel_t)
 };
 

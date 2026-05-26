@@ -97,6 +97,7 @@ public:
     }
 
     DEF_KERNEL_METHOD_STR(reduction_t)
+    DEF_KERNEL_METHOD_SCRATCHPAD_SIZE()
     DNNL_DISALLOW_COPY_AND_ASSIGN(reduction_t)
 };
 

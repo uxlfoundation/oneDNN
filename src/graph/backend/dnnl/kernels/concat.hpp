@@ -91,6 +91,7 @@ public:
 #endif
 
     DEF_KERNEL_METHOD_STR(concat_t)
+    DEF_KERNEL_METHOD_SCRATCHPAD_SIZE()
     DNNL_DISALLOW_COPY_AND_ASSIGN(concat_t)
 };
 

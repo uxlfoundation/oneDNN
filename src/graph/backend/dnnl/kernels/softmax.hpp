@@ -96,6 +96,7 @@ public:
 #endif
 
     DEF_KERNEL_METHOD_STR(softmax_fwd_t)
+    DEF_KERNEL_METHOD_SCRATCHPAD_SIZE()
     DNNL_DISALLOW_COPY_AND_ASSIGN(softmax_fwd_t)
 };
 
@@ -157,6 +158,7 @@ public:
     }
 
     DEF_KERNEL_METHOD_STR(softmax_bwd_t)
+    DEF_KERNEL_METHOD_SCRATCHPAD_SIZE()
     DNNL_DISALLOW_COPY_AND_ASSIGN(softmax_bwd_t)
 };
 #endif

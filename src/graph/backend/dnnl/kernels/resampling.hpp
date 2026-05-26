@@ -96,6 +96,7 @@ public:
 #endif
 
     DEF_KERNEL_METHOD_STR(resampling_fwd_t)
+    DEF_KERNEL_METHOD_SCRATCHPAD_SIZE()
     DNNL_DISALLOW_COPY_AND_ASSIGN(resampling_fwd_t)
 };
 
@@ -152,6 +153,7 @@ public:
 #endif
 
     DEF_KERNEL_METHOD_STR(resampling_bwd_t)
+    DEF_KERNEL_METHOD_SCRATCHPAD_SIZE()
     DNNL_DISALLOW_COPY_AND_ASSIGN(resampling_bwd_t)
 };
 #endif

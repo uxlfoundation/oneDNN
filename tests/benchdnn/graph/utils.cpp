@@ -57,41 +57,29 @@ bdnn_state_t convert_state(const dnnl_status_t &s) {
 
 void compiled_partition_executor(dnnl::graph::compiled_partition &cp,
         dnnl::stream &stream, const std::vector<dnnl::graph::tensor> &inputs,
-        const std::vector<dnnl::graph::tensor> &outputs) {
+        const std::vector<dnnl::graph::tensor> &outputs,
+        const dnnl::graph::tensor &scratchpad) {
     if (is_cpu()) {
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL
         dnnl::graph::sycl_interop::execute(cp, stream, inputs,
-                const_cast<std::vector<dnnl::graph::tensor> &>(outputs));
+                const_cast<std::vector<dnnl::graph::tensor> &>(outputs),
+                scratchpad);
 #else
-        cp.execute(stream, inputs, outputs);
+        cp.execute(stream, inputs, outputs, scratchpad);
 #endif
     } else {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
         dnnl::graph::sycl_interop::execute(cp, stream, inputs,
-                const_cast<std::vector<dnnl::graph::tensor> &>(outputs));
+                const_cast<std::vector<dnnl::graph::tensor> &>(outputs),
+                scratchpad);
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
         dnnl::graph::ocl_interop::execute(cp, stream, inputs,
-                const_cast<std::vector<dnnl::graph::tensor> &>(outputs));
+                const_cast<std::vector<dnnl::graph::tensor> &>(outputs),
+                scratchpad);
 #else
         assert(!"unsupported gpu runtime");
 #endif
     }
-}
-
-int execute_and_wait(const std::vector<dnnl::graph::compiled_partition> &cp_v,
-        const std::vector<std::vector<dnnl::graph::tensor>> &inputs_v,
-        const std::vector<std::vector<dnnl::graph::tensor>> &outputs_v,
-        res_t *res) {
-    cpp_stream_t stream {get_graph_engine()};
-    for (size_t i = 0; i < cp_v.size(); i++) {
-        perf_function_t perf_func = std::bind(&compiled_partition_executor,
-                cp_v[i], std::placeholders::_1, std::placeholders::_2,
-                std::placeholders::_3);
-        DNN_GRAPH_SAFE(perf_func(stream, inputs_v[i], outputs_v[i]), CRIT, res);
-        DNN_GRAPH_SAFE(stream.wait(), CRIT, res);
-    }
-    res->state = EXECUTED;
-    return OK;
 }
 
 inline dnnl::stream::flags get_profiling_flags() {
@@ -107,7 +95,7 @@ inline int measure_perf_aggregate(timer::timer_t &t,
         std::vector<perf_function_t> &perf_func_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &inputs_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &outputs_v,
-        res_t *res) {
+        const std::vector<dnnl::graph::tensor> &scratchpads, res_t *res) {
     const int max_batch_times = 4096;
     // Nvidia/AMD don't support profiling.
     const bool use_profiling = is_gpu() && !is_nvidia_gpu() && !is_amd_gpu();
@@ -121,7 +109,8 @@ inline int measure_perf_aggregate(timer::timer_t &t,
     const auto sz = perf_func_v.size();
     if (!has_bench_mode_bit(mode_bit_t::sim)) {
         for (size_t i = 0; i < sz; i++) {
-            DNN_GRAPH_SAFE(perf_func_v[i](stream, inputs_v[i], outputs_v[i]),
+            DNN_GRAPH_SAFE(perf_func_v[i](stream, inputs_v[i], outputs_v[i],
+                                   scratchpads[i]),
                     WARN, res);
             DNN_GRAPH_SAFE(stream.wait(), WARN, res);
         }
@@ -138,7 +127,8 @@ inline int measure_perf_aggregate(timer::timer_t &t,
     while (true) {
         for_(int i = 0; i < cur_batch_times; i++)
         for (size_t j = 0; j < sz; j++) {
-            DNN_GRAPH_SAFE(perf_func_v[j](stream, inputs_v[j], outputs_v[j]),
+            DNN_GRAPH_SAFE(perf_func_v[j](stream, inputs_v[j], outputs_v[j],
+                                   scratchpads[j]),
                     WARN, res);
         }
         DNN_GRAPH_SAFE(stream.wait(), WARN, res);
@@ -197,7 +187,7 @@ inline int measure_perf_individual(timer::timer_t &t,
         std::vector<perf_function_t> &perf_func_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &inputs_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &outputs_v,
-        res_t *res) {
+        const std::vector<dnnl::graph::tensor> &scratchpads, res_t *res) {
     const bool use_profiling = is_gpu() && !is_nvidia_gpu() && !is_amd_gpu();
     const dnnl::stream::flags flags = use_profiling
             ? dnnl::stream::flags::default_flags | get_profiling_flags()
@@ -208,7 +198,8 @@ inline int measure_perf_individual(timer::timer_t &t,
     while (true) {
         auto sz = perf_func_v.size();
         for (size_t i = 0; i < sz; i++) {
-            DNN_GRAPH_SAFE(perf_func_v[i](stream, inputs_v[i], outputs_v[i]),
+            DNN_GRAPH_SAFE(perf_func_v[i](stream, inputs_v[i], outputs_v[i],
+                                   scratchpads[i]),
                     WARN, res);
         }
         t.stamp();
@@ -220,17 +211,17 @@ inline int measure_perf_individual(timer::timer_t &t,
 int measure_perf(timer::timer_t &t, std::vector<perf_function_t> &perf_func_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &inputs_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &outputs_v,
-        res_t *res) {
+        const std::vector<dnnl::graph::tensor> &scratchpads, res_t *res) {
     const auto &engine = get_test_engine();
     if (has_bench_mode_bit(mode_bit_t::perf)) {
         // enable GPU profiling, Nvidia/AMD dose not support profiling.
         int ret = OK;
         if (is_async(engine)) {
             ret = measure_perf_aggregate(
-                    t, perf_func_v, inputs_v, outputs_v, res);
+                    t, perf_func_v, inputs_v, outputs_v, scratchpads, res);
         } else {
             ret = measure_perf_individual(
-                    t, perf_func_v, inputs_v, outputs_v, res);
+                    t, perf_func_v, inputs_v, outputs_v, scratchpads, res);
         }
         return ret;
     } else {
@@ -242,16 +233,17 @@ int measure_perf(timer::timer_t &t,
         const std::vector<dnnl::graph::compiled_partition> &cp_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &inputs_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &outputs_v,
-        res_t *res) {
+        const std::vector<dnnl::graph::tensor> &scratchpads, res_t *res) {
     std::vector<perf_function_t> perf_func_v;
     perf_func_v.reserve(cp_v.size());
     for (size_t i = 0; i < cp_v.size(); i++) {
         perf_func_v.emplace_back(std::bind(&compiled_partition_executor,
                 cp_v[i], std::placeholders::_1, std::placeholders::_2,
-                std::placeholders::_3));
+                std::placeholders::_3, std::placeholders::_4));
     }
 
-    int status = measure_perf(t, perf_func_v, inputs_v, outputs_v, res);
+    int status = measure_perf(
+            t, perf_func_v, inputs_v, outputs_v, scratchpads, res);
     if (res) res->state = EXECUTED;
 
     return status;

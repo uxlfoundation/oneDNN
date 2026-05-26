@@ -632,6 +632,7 @@ int doit(const prb_t *prb, res_t *res) {
     std::unordered_set<size_t> id_to_set_any_layout;
     std::vector<compiled_partition> c_partitions;
     std::vector<std::vector<tensor>> input_ts_all, output_ts_all;
+    std::vector<tensor> scratchpad_ts_all;
     // Extend the partition_mem_map_t's lifecycle as input_ts/output_ts hold the
     // same addresses as in partition_mem_map_t for perf mode
     // TODO: Once the API allocating memory when creating tensors is provided by
@@ -671,6 +672,18 @@ int doit(const prb_t *prb, res_t *res) {
         record_queried_logical_tensors(
                 outputs, c_partitions.back(), id_to_queried_logical_tensors);
     }
+
+    // Allocate scratchpad buffer for each compiled partition.
+    scratchpad_ts_all.reserve(c_partitions.size());
+    for (auto &cp : c_partitions) {
+        auto scratchpad_lt = cp.get_scratchpad_logical_tensor();
+        if (scratchpad_lt.get_mem_size() > 0) {
+            scratchpad_ts_all.emplace_back(scratchpad_lt, eng);
+        } else {
+            scratchpad_ts_all.emplace_back();
+        }
+    }
+
     if (bench_mode == bench_mode_t::init) return res->state = INITIALIZED, OK;
 
     // `idx_offset` points to the correspondent `compiled_partition`, if any
@@ -769,7 +782,8 @@ int doit(const prb_t *prb, res_t *res) {
 
             std::function<void()> record_fn = std::bind(
                     compiled_partition_executor, c_partitions[i - idx_offset],
-                    std::ref(strm), input_ts, output_ts);
+                    std::ref(strm), input_ts, output_ts,
+                    scratchpad_ts_all[i - idx_offset]);
             auto exec = sycl_graph_ctx::record_and_finalize(
                     strm, queue, record_fn, res);
             if (!exec) return FAIL;
@@ -779,8 +793,9 @@ int doit(const prb_t *prb, res_t *res) {
             stream_staller_t staller(strm);
             // Need following clean-up steps as the memories have been mappped
             // to device. Otherwise the deconstruction will fail.
-            DNN_GRAPH_SAFE(c_partitions[i - idx_offset].execute(
-                                   strm, input_ts, output_ts),
+            DNN_GRAPH_SAFE(
+                    c_partitions[i - idx_offset].execute(strm, input_ts,
+                            output_ts, scratchpad_ts_all[i - idx_offset]),
                     (WARN | NEED_CLEANUP), res);
             staller.release();
 
@@ -825,7 +840,7 @@ int doit(const prb_t *prb, res_t *res) {
 
     if (has_bench_mode_bit(mode_bit_t::perf)) {
         SAFE(measure_perf(res->timer_map.perf_timer(), c_partitions,
-                     input_ts_all, output_ts_all, res),
+                     input_ts_all, output_ts_all, scratchpad_ts_all, res),
                 WARN);
     }
 

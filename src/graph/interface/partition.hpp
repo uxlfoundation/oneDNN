@@ -236,6 +236,21 @@ public:
         return info_.c_str();
     }
 
+    // Returns verbose info string with scratchpad mode (user/library)
+    // inserted at execution time.
+    std::string exec_info(bool user_scratchpad) const {
+        std::string s(info());
+        // Replace "scratchpad:" with "scratchpad:user:" or
+        // "scratchpad:library:" to indicate runtime management mode.
+        auto pos = s.find(",scratchpad:");
+        if (pos != std::string::npos) {
+            // Insert mode after "scratchpad:"
+            size_t insert_at = pos + sizeof(",scratchpad:") - 1;
+            s.insert(insert_at, user_scratchpad ? "user:" : "library:");
+        }
+        return s;
+    }
+
 private:
     std::shared_ptr<graph::compiled_partition_impl_t> pimpl_;
 

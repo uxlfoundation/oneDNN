@@ -65,10 +65,6 @@ void load_bias(
 #endif
 
 #if WITH_POST_OP
-#define WITH_BINARY \
-    (WITH_BINARY_GROUPED_SCALE || WITH_BINARY_DENSE_SCALE \
-            || WITH_BINARY_NVFP4_SCALE)
-
 /* Binary scale pointer type and conversion for non-f32 binary inputs.
  * BINARY_SCALE_DATA_T is defined by the host (def_data_type) when
  * WITH_BINARY_GROUPED_SCALE or WITH_BINARY_DENSE_SCALE is set. */
@@ -76,25 +72,18 @@ void load_bias(
 #ifdef BINARY_SCALE_DT_F16
 #define BINARY_SCALE_TILE_DATA_T half
 #define BINARY_SCALE_TO_FLOAT(v) convert_float(v)
-#define AS_BINARY_SCALE_PTR(p) ((const global half *)(p))
 #elif defined(BINARY_SCALE_DT_BF16)
 #define BINARY_SCALE_TILE_DATA_T ushort
 #define BINARY_SCALE_TO_FLOAT(v) into_float(as_bf16(v))
-#define AS_BINARY_SCALE_PTR(p) ((const global ushort *)(p))
 #else
 #define BINARY_SCALE_TILE_DATA_T float
 #define BINARY_SCALE_TO_FLOAT(v) (v)
-#define AS_BINARY_SCALE_PTR(p) ((const global float *)(p))
 #endif
-#define BINARY_SCALE_ELEMS_PER_BYTE \
-    (sizeof(float) / sizeof(BINARY_SCALE_TILE_DATA_T))
 #endif
 
 #if WITH_BINARY_GROUPED_SCALE
-// Binary tile in f32 matches c_tile dimensions for element-wise multiply
-DECLARE_2D_TILE(binary_group_tile_type, float, SUBGROUP_SIZE,
-        ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
-        ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1)
+// Binary tile matches c_tile dimensions for element-wise multiply [total_tokens, N]
+typedef ugemm_grouped_c_type binary_group_tile_type;
 
 #ifndef BINARY_SCALE_DT_F32
 // Input tile in native type for load, then convert to f32
@@ -125,6 +114,9 @@ DECLARE_2D_TILE(binary_dense_in_tile_type, BINARY_SCALE_TILE_DATA_T,
         binary_dense_scale_nbr, binary_dense_scale_nbc)
 #endif
 #endif
+
+#include "grouped_post_ops.h"
+
 #endif
 
 #if WITH_SPARSE_GROUPS
@@ -363,13 +355,15 @@ grouped_micro_gemm(const global SRC_DATA_T *src, long ldsrc,
         const global WEI_SCALES_DATA_T *wei_attr_scales,
         const global WEI_ZP_DATA_T *wei_attr_zp, const long ldweiq,
         const long n, const long k, const global BIA_DATA_T *bias,
-        float po_alpha, float po_scale,
 #if WITH_BINARY_GROUPED_SCALE || WITH_BINARY_DENSE_SCALE
-        const global BINARY_SCALE_TILE_DATA_T *binary_scale,
+        const global BINARY_SCALE_TILE_DATA_T *binary_grouped_scale,
+        const global BINARY_SCALE_TILE_DATA_T *binary_dense_scale,
 #else
-        const global float *binary_scale,
+        const global float *binary_grouped_scale,
+        const global float *binary_dense_scale,
 #endif
-        const global int *binary_offset) {
+        const global float *binary_nvfp4_scale,
+        const global int *binary_grouped_offset) {
 #if WITH_SLM
     local char slm[MAX(ugemm_grouped_slm_size, slm_sparse_total_size)];
 #else
@@ -467,51 +461,10 @@ grouped_micro_gemm(const global SRC_DATA_T *src, long ldsrc,
     tile_vbroadcast_add(&c_tile, bias_tile);
 #endif
 
-#if WITH_ELTWISE
-#define eltwise_apply(v) ((po_scale) * ((v) / (1.0f + exp(-(po_alpha) * (v)))))
-    tile_elementwise(c_tile, eltwise_apply);
-#undef eltwise_apply
-#endif
-
-#if WITH_BINARY_GROUPED_SCALE
-    const global BINARY_SCALE_TILE_DATA_T *group_scale_ptr
-            = binary_scale + src_offset * lddst;
-    binary_group_tile_type binary_group_tile;
-#if BINARY_SCALE_DT_F32
-    tile_load(&binary_group_tile, group_scale_ptr, n, m, lddst, sg_i0, sg_j0);
-#else
-    binary_group_in_tile_type binary_group_in_tile;
-    tile_load(&binary_group_in_tile, group_scale_ptr, n, m, lddst, sg_i0,
-            sg_j0);
-    tile_convert(binary_group_in_tile, binary_group_tile,
-            BINARY_SCALE_TO_FLOAT);
-#endif
-#define binary_mul(a, b) ((a) * (b))
-    tile_binary(c_tile, binary_group_tile, binary_mul);
-#undef binary_mul
-#endif
-
-#if WITH_BINARY_DENSE_SCALE
-    // [total_tokens, 1] dense tensor - horizontal broadcast
-    const global BINARY_SCALE_TILE_DATA_T *dense_scale_ptr
-            = binary_scale + src_offset;
-    binary_dense_tile_type dense_scale_tile;
-#if BINARY_SCALE_DT_F32
-    tile_load(&dense_scale_tile, dense_scale_ptr, m, 1, 0, sg_j0, 0);
-#else
-    binary_dense_in_tile_type dense_scale_in_tile;
-    tile_load(&dense_scale_in_tile, dense_scale_ptr, m, 1, 0, sg_j0, 0);
-    tile_convert(dense_scale_in_tile, dense_scale_tile,
-            BINARY_SCALE_TO_FLOAT);
-#endif
-    tile_hbroadcast_mul(&c_tile, dense_scale_tile);
-#endif
-
-#if WITH_BINARY_NVFP4_SCALE
-    float gs = *binary_scale;
-#define binary_mul(v) ((v) * gs)
-    tile_elementwise(c_tile, binary_mul);
-#undef binary_mul
+#if WITH_POST_OP
+    apply_post_ops_chain(&c_tile, n, m, lddst, sg_i0, sg_j0, src_offset, batch,
+            binary_grouped_scale, binary_dense_scale, binary_nvfp4_scale,
+            binary_grouped_offset);
 #endif
 
     store_results(&c_tile, dst, n, m, lddst, sg_i0, sg_j0);

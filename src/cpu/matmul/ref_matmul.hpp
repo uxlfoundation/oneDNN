@@ -70,7 +70,7 @@ struct ref_matmul_t : public primitive_t {
                             attr_.mayiconvert(wei_type, src_type)),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_MATMUL(IMPLICATION(src_type == f16,
-                                     utils::one_of(dst_type, f32, f16)),
+                                     utils::one_of(dst_type, f32, f16, u8, s8)),
                     VERBOSE_UNSUPPORTED_DT);
             // TODO: any implication on allowed dst data type for fp8?
             VDISPATCH_MATMUL(

@@ -21,26 +21,34 @@
 #include "primitive_desc.hpp"
 #include "utils.hpp"
 
+#include <string>
+
 namespace dnnl {
 namespace impl {
 
-// This key takes prop_kind and correspondent data_type for src, wei and dst.
+// This key takes prop_kind and correspondent data types for src, wei and dst
+// and forms a regex string that compounds several data type configs.
+// Notation:
+// * To use exact data type, use its name as in include, e.g. f32, bf16, etc.
+// * To use any floating-point type, use xf. Adding a number will limit bits,
+//   e.g., xf8 means any fp8 type.
+// * To use any int8 type, use xi8.
+// * To use any data type use *.
 struct pk_dt_impl_key_t {
-    prop_kind_t kind;
-    data_type_t src_dt, wei_dt, dst_dt;
+    pk_dt_impl_key_t(prop_kind_t kind, const std::string &s)
+        : kind_(kind), s_dt_(s) {}
+
+    pk_dt_impl_key_t(prop_kind_t kind, data_type_t src_dt, data_type_t wei_dt,
+            data_type_t dst_dt);
 
     bool operator<(const pk_dt_impl_key_t &rhs) const {
-        return value() < rhs.value();
+        if (kind_ == rhs.kind_) return s_dt_ < rhs.s_dt_;
+        return kind_ < rhs.kind_;
     }
 
 private:
-    size_t value() const {
-        const size_t dtm = data_type::data_type_max;
-        const size_t m1 = static_cast<size_t>(kind) * dtm;
-        const size_t m2 = (m1 + static_cast<size_t>(src_dt)) * dtm;
-        const size_t m3 = (m2 + static_cast<size_t>(wei_dt)) * dtm;
-        return m3 + static_cast<size_t>(dst_dt);
-    }
+    prop_kind_t kind_;
+    std::string s_dt_;
 };
 
 // This is a simpler version of key to use only prop_kind.

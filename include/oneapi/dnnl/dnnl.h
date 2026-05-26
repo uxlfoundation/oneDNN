@@ -1169,6 +1169,10 @@ dnnl_status_t DNNL_API dnnl_memory_desc_create_with_packed_encoding(
 /// - Values buffer: 9 x 256 elements
 /// - Offsets buffer: [1, 4, 9] (cumulative token counts)
 ///
+/// `variable_dim_idx` may be either 0 or 1:
+/// - `variable_dim_idx == 0` implies row-major storage (`ab`)
+/// - `variable_dim_idx == 1` implies col-major storage (`ba`)
+///
 /// @note
 ///     Only s32 offsets are currently supported.
 ///

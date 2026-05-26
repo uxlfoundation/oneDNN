@@ -192,6 +192,21 @@ void bench_gqa(engine::kind ekind, logical_tensor::data_type dt,
     compiled_partition cp = partitions[0].compile(
             {query, key, scale, mask, value}, {output}, eng);
 
+    // Query scratchpad logical tensor and allocate scratchpad buffer. Here we
+    // leverage the tensor API to allocate the scratchpad buffer for
+    // convenience. In real applications, users can also manage the scratchpad
+    // buffer by:
+    // 1) query the scratchpad logical tensor from a compiled partition.
+    // 2) query the scratchpad size from the scratchpad logical tensor.
+    // 3) allocate a buffer with the required size.
+    // 4) create a tensor object with the scratchpad logical tensor, the buffer,
+    //    and the engine where the buffer is associated.
+    auto scratchpad_lt = cp.get_scratchpad_logical_tensor();
+    tensor scratchpad_ts;
+    if (scratchpad_lt.get_mem_size() > 0) {
+        scratchpad_ts = tensor(scratchpad_lt, eng);
+    }
+
     // Allocate user data.
     std::vector<float> query_data(product(q_sz));
     std::vector<float> key_data(product(kv_sz));
@@ -221,17 +236,17 @@ void bench_gqa(engine::kind ekind, logical_tensor::data_type dt,
     write_to_dnnl_tensor(value_data.data(), ts_value);
 
     // Warmup run.
-    // Execute the compiled partition of mqa.
-    cp.execute(
-            strm, {ts_query, ts_key, ts_scale, ts_mask, ts_value}, {ts_output});
+    // Execute the compiled partition of gqa with user-managed scratchpad.
+    cp.execute(strm, {ts_query, ts_key, ts_scale, ts_mask, ts_value},
+            {ts_output}, scratchpad_ts);
 
     // Wait for the computation to finish.
     strm.wait();
 
     // First run.
     auto start_first = std::chrono::steady_clock::now();
-    cp.execute(
-            strm, {ts_query, ts_key, ts_scale, ts_mask, ts_value}, {ts_output});
+    cp.execute(strm, {ts_query, ts_key, ts_scale, ts_mask, ts_value},
+            {ts_output}, scratchpad_ts);
     strm.wait();
     auto end_first = std::chrono::steady_clock::now();
     std::chrono::duration<double, std::milli> dur_first
@@ -244,7 +259,7 @@ void bench_gqa(engine::kind ekind, logical_tensor::data_type dt,
     auto start = std::chrono::steady_clock::now();
     for (int i = 0; i <= runs; i++)
         cp.execute(strm, {ts_query, ts_key, ts_scale, ts_mask, ts_value},
-                {ts_output});
+                {ts_output}, scratchpad_ts);
     strm.wait();
     auto end = std::chrono::steady_clock::now();
     std::chrono::duration<double, std::milli> duration = end - start;

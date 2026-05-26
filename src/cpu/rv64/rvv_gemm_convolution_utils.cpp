@@ -66,76 +66,72 @@ void im2col_3d(const conv_gemm_conf_t &jcp, const data_type_t *im,
         const data_t *__restrict im_loc = _im + ic * im_step;
         data_t *__restrict col_loc = _col + ic * col_step;
         dim_t id = od * jcp.stride_d - jcp.f_pad;
+        
         for (dim_t kd = 0; kd < jcp.kd; ++kd) {
             data_t *__restrict col_ = col_loc + kd * jcp.kh * jcp.kw * OHW;
             if (id < 0 || id >= jcp.id) {
-                dim_t ih_ = -jcp.t_pad;
-                for (dim_t kh = 0; kh < jcp.kh; ++kh) {
-                    dim_t ih = ih_;
-                    for (dim_t oh = 0; oh < jcp.oh; ++oh) {
-                        if (ih < 0 || ih >= jcp.ih) {
-                            ih += jcp.stride_h;
-                            continue;
-                        }
-                        dim_t iw_ = -jcp.l_pad;
-                        for (dim_t kw = 0; kw < jcp.kw; ++kw) {
-                            dim_t iw = iw_;
-                            for (dim_t ow = 0; ow < jcp.ow; ++ow) {
-                                if (iw < 0 || iw >= jcp.iw) {
-                                    iw += jcp.stride_w;
-                                    continue;
-                                }
-
-                                const size_t col_idx
-                                        = kw * OHW + oh * jcp.ow + ow;
-
-                                col_[col_idx] = 0;
-                                iw += jcp.stride_w;
-                            }
-                            iw_ += (1 + jcp.dilate_w);
-                        }
-                        ih += jcp.stride_h;
+                if (sizeof(data_t) == 4) {
+                    dim_t total = jcp.kh * jcp.kw * OHW;
+                    dim_t idx = 0;
+                    while (idx < total) {
+                        size_t vl = __riscv_vsetvl_e32m8(total - idx);
+                        vfloat32m8_t v_zero = __riscv_vfmv_v_f_f32m8(0.0f, vl);
+                        __riscv_vse32_v_f32m8(reinterpret_cast<float*>(col_ + idx), v_zero, vl);
+                        idx += vl;
                     }
-                    ih_ += (1 + jcp.dilate_h);
-                    col_ += jcp.kw * OHW;
+                } else {
+                    for (dim_t i = 0; i < jcp.kh * jcp.kw * OHW; ++i) col_[i] = 0;
                 }
             } else {
                 const data_t *__restrict im_ = im_loc + id * jcp.ih * jcp.iw;
-                dim_t ih_ = -jcp.t_pad;
                 for (dim_t kh = 0; kh < jcp.kh; ++kh) {
-                    dim_t ih = ih_;
                     for (dim_t oh = 0; oh < jcp.oh; ++oh) {
-                        if (ih < 0 || ih >= jcp.ih) {
-                            ih += jcp.stride_h;
-                            continue;
-                        }
-                        dim_t iw_ = -jcp.l_pad;
+                        dim_t ih = oh * jcp.stride_h - jcp.t_pad + kh * (1 + jcp.dilate_h);
+                        if (ih < 0 || ih >= jcp.ih) continue;
+                        
                         for (dim_t kw = 0; kw < jcp.kw; ++kw) {
-                            dim_t iw = iw_;
-                            for (dim_t ow = 0; ow < jcp.ow; ++ow) {
-                                if (iw < 0 || iw >= jcp.iw) {
-                                    iw += jcp.stride_w;
-                                    continue;
+                            const dim_t wp = jcp.l_pad - kw * (1 + jcp.dilate_w);
+                            const dim_t valid_ow_start = saturate(dim_t(0), jcp.ow, div_up(nstl::max(dim_t(0), wp), jcp.stride_w));
+                            const dim_t valid_ow_end = saturate(dim_t(0), jcp.ow, div_up(nstl::max(dim_t(0), jcp.iw + wp), jcp.stride_w));
+                            
+                            const size_t col_base_idx = kw * OHW + oh * jcp.ow;
+                            
+                            if (valid_ow_start < valid_ow_end) {
+                                dim_t ow = valid_ow_start;
+                                if (sizeof(data_t) == 4 && valid_ow_end - valid_ow_start >= 8) {
+                                    if (jcp.stride_w == 1) {
+                                        while (ow < valid_ow_end) {
+                                            size_t vl = __riscv_vsetvl_e32m8(valid_ow_end - ow);
+                                            const size_t im_idx = ih * jcp.iw + (ow - wp);
+                                            vfloat32m8_t v_data = __riscv_vle32_v_f32m8(reinterpret_cast<const float*>(&im_[im_idx]), vl);
+                                            __riscv_vse32_v_f32m8(reinterpret_cast<float*>(&col_[col_base_idx + ow]), v_data, vl);
+                                            ow += vl;
+                                        }
+                                    } else {
+                                        ptrdiff_t src_byte_stride = jcp.stride_w * sizeof(float);
+                                        while (ow < valid_ow_end) {
+                                            size_t vl = __riscv_vsetvl_e32m8(valid_ow_end - ow);
+                                            const size_t im_idx = ih * jcp.iw + (ow * jcp.stride_w - wp);
+                                            vfloat32m8_t v_data = __riscv_vlse32_v_f32m8(reinterpret_cast<const float*>(&im_[im_idx]), src_byte_stride, vl);
+                                            __riscv_vse32_v_f32m8(reinterpret_cast<float*>(&col_[col_base_idx + ow]), v_data, vl);
+                                            ow += vl;
+                                        }
+                                    }
+                                } else {
+                                    for (; ow < valid_ow_end; ++ow) {
+                                        const size_t im_idx = ih * jcp.iw + (ow * jcp.stride_w - wp);
+                                        col_[col_base_idx + ow] = im_[im_idx];
+                                    }
                                 }
-
-                                const size_t col_idx
-                                        = kw * OHW + oh * jcp.ow + ow;
-                                const size_t im_idx = ih * jcp.iw + iw;
-
-                                col_[col_idx] = im_[im_idx];
-                                iw += jcp.stride_w;
                             }
-                            iw_ += (1 + jcp.dilate_w);
                         }
-                        ih += jcp.stride_h;
                     }
-                    ih_ += (1 + jcp.dilate_h);
-                    col_ += jcp.kw * OHW;
                 }
             }
             id += (1 + jcp.dilate_d);
         }
     };
+
     auto compute_im2col_padding = [&](dim_t ic) {
         const dim_t first_oh = spatial_step / jcp.ow;
         const dim_t last_oh = (spatial_step + spatial_block - 1) / jcp.ow;
@@ -147,65 +143,122 @@ void im2col_3d(const conv_gemm_conf_t &jcp, const data_type_t *im,
         const data_t *__restrict im_loc = _im + ic * im_step;
         data_t *__restrict col_loc = _col + ic * col_step;
         dim_t id = od * jcp.stride_d - jcp.f_pad;
+        
         for (dim_t kd = 0; kd < jcp.kd; ++kd) {
             data_t *__restrict col_ = col_loc + kd * jcp.kh * jcp.kw * OHW;
             if (id < 0 || id >= jcp.id) {
-                for (dim_t kh = 0; kh < jcp.kh; ++kh) {
-                    for (dim_t oh = oh_begin; oh < oh_end; ++oh) {
-                        const dim_t ow_begin = (oh == first_oh) ? first_ow : 0;
-                        const dim_t ow_end
-                                = (oh == last_oh) ? (last_ow + 1) : jcp.ow;
-                        for (dim_t kw = 0; kw < jcp.kw; ++kw) {
-                            for (dim_t ow = ow_begin; ow < ow_end; ++ow) {
-                                const size_t col_idx = kw * OHW + oh * jcp.ow
-                                        + ow - spatial_step;
-                                col_[col_idx] = 0;
-                            }
-                        }
+                if (sizeof(data_t) == 4) {
+                    dim_t total = jcp.kh * jcp.kw * OHW;
+                    dim_t idx = 0;
+                    while (idx < total) {
+                        size_t vl = __riscv_vsetvl_e32m8(total - idx);
+                        vfloat32m8_t v_zero = __riscv_vfmv_v_f_f32m8(0.0f, vl);
+                        __riscv_vse32_v_f32m8(reinterpret_cast<float*>(col_ + idx), v_zero, vl);
+                        idx += vl;
                     }
-                    col_ += jcp.kw * OHW;
+                } else {
+                    for (dim_t i = 0; i < jcp.kh * jcp.kw * OHW; ++i) col_[i] = 0;
                 }
             } else {
                 const data_t *__restrict im_ = im_loc + id * jcp.ih * jcp.iw;
-                dim_t ih_ = oh_begin * jcp.stride_h - jcp.t_pad;
                 for (dim_t kh = 0; kh < jcp.kh; ++kh) {
-                    dim_t ih = ih_;
                     for (dim_t oh = oh_begin; oh < oh_end; ++oh) {
                         const dim_t ow_begin = (oh == first_oh) ? first_ow : 0;
-                        const dim_t ow_end
-                                = (oh == last_oh) ? (last_ow + 1) : jcp.ow;
+                        const dim_t ow_end = (oh == last_oh) ? (last_ow + 1) : jcp.ow;
+                        
+                        dim_t ih = oh * jcp.stride_h - jcp.t_pad + kh * (1 + jcp.dilate_h);
+                        
                         if (ih < 0 || ih >= jcp.ih) {
                             for (dim_t kw = 0; kw < jcp.kw; ++kw) {
-                                for (dim_t ow = ow_begin; ow < ow_end; ++ow) {
-                                    const size_t col_idx = kw * OHW
-                                            + oh * jcp.ow + ow - spatial_step;
-                                    col_[col_idx] = 0;
+                                const size_t col_base_idx = kw * OHW + oh * jcp.ow - spatial_step;
+                                if (sizeof(data_t) == 4) {
+                                    dim_t ow = ow_begin;
+                                    while (ow < ow_end) {
+                                        size_t vl = __riscv_vsetvl_e32m8(ow_end - ow);
+                                        vfloat32m8_t v_zero = __riscv_vfmv_v_f_f32m8(0.0f, vl);
+                                        __riscv_vse32_v_f32m8(reinterpret_cast<float*>(&col_[col_base_idx + ow]), v_zero, vl);
+                                        ow += vl;
+                                    }
+                                } else {
+                                    for (dim_t ow = ow_begin; ow < ow_end; ++ow) {
+                                        col_[col_base_idx + ow] = 0;
+                                    }
                                 }
                             }
-                            ih += jcp.stride_h;
                             continue;
                         }
-                        dim_t iw_ = ow_begin * jcp.stride_w - jcp.l_pad;
+                        
                         for (dim_t kw = 0; kw < jcp.kw; ++kw) {
-                            dim_t iw = iw_;
-                            for (dim_t ow = ow_begin; ow < ow_end; ++ow) {
-                                const size_t col_idx = kw * OHW + oh * jcp.ow
-                                        + ow - spatial_step;
-                                if (iw < 0 || iw >= jcp.iw) {
-                                    col_[col_idx] = 0;
-                                    iw += jcp.stride_w;
-                                    continue;
+                            const dim_t wp = jcp.l_pad - kw * (1 + jcp.dilate_w);
+                            const dim_t valid_ow_start = saturate(dim_t(0), jcp.ow, div_up(nstl::max(dim_t(0), wp), jcp.stride_w));
+                            const dim_t valid_ow_end = saturate(dim_t(0), jcp.ow, div_up(nstl::max(dim_t(0), jcp.iw + wp), jcp.stride_w));
+                            
+                            dim_t act_ow_start = nstl::max(ow_begin, valid_ow_start);
+                            dim_t act_ow_end = nstl::min(ow_end, valid_ow_end);
+                            
+                            const size_t col_base_idx = kw * OHW + oh * jcp.ow - spatial_step;
+                            
+                            // 1. Zero out left padding
+                            if (ow_begin < act_ow_start) {
+                                if (sizeof(data_t) == 4) {
+                                    dim_t ow = ow_begin;
+                                    while (ow < act_ow_start) {
+                                        size_t vl = __riscv_vsetvl_e32m8(act_ow_start - ow);
+                                        vfloat32m8_t v_zero = __riscv_vfmv_v_f_f32m8(0.0f, vl);
+                                        __riscv_vse32_v_f32m8(reinterpret_cast<float*>(&col_[col_base_idx + ow]), v_zero, vl);
+                                        ow += vl;
+                                    }
+                                } else {
+                                    for (dim_t ow = ow_begin; ow < act_ow_start; ++ow) col_[col_base_idx + ow] = 0;
                                 }
-                                const size_t im_idx = ih * jcp.iw + iw;
-                                col_[col_idx] = im_[im_idx];
-                                iw += jcp.stride_w;
                             }
-                            iw_ += (1 + jcp.dilate_w);
+                            
+                            // 2. Copy valid data
+                            if (act_ow_start < act_ow_end) {
+                                dim_t ow = act_ow_start;
+                                if (sizeof(data_t) == 4 && act_ow_end - act_ow_start >= 8) {
+                                    if (jcp.stride_w == 1) {
+                                        while (ow < act_ow_end) {
+                                            size_t vl = __riscv_vsetvl_e32m8(act_ow_end - ow);
+                                            const size_t im_idx = ih * jcp.iw + (ow - wp);
+                                            vfloat32m8_t v_data = __riscv_vle32_v_f32m8(reinterpret_cast<const float*>(&im_[im_idx]), vl);
+                                            __riscv_vse32_v_f32m8(reinterpret_cast<float*>(&col_[col_base_idx + ow]), v_data, vl);
+                                            ow += vl;
+                                        }
+                                    } else {
+                                        ptrdiff_t src_byte_stride = jcp.stride_w * sizeof(float);
+                                        while (ow < act_ow_end) {
+                                            size_t vl = __riscv_vsetvl_e32m8(act_ow_end - ow);
+                                            const size_t im_idx = ih * jcp.iw + (ow * jcp.stride_w - wp);
+                                            vfloat32m8_t v_data = __riscv_vlse32_v_f32m8(reinterpret_cast<const float*>(&im_[im_idx]), src_byte_stride, vl);
+                                            __riscv_vse32_v_f32m8(reinterpret_cast<float*>(&col_[col_base_idx + ow]), v_data, vl);
+                                            ow += vl;
+                                        }
+                                    }
+                                } else {
+                                    for (; ow < act_ow_end; ++ow) {
+                                        const size_t im_idx = ih * jcp.iw + (ow * jcp.stride_w - wp);
+                                        col_[col_base_idx + ow] = im_[im_idx];
+                                    }
+                                }
+                            }
+                            
+                            // 3. Zero out right padding
+                            if (act_ow_end < ow_end) {
+                                if (sizeof(data_t) == 4) {
+                                    dim_t ow = act_ow_end;
+                                    while (ow < ow_end) {
+                                        size_t vl = __riscv_vsetvl_e32m8(ow_end - ow);
+                                        vfloat32m8_t v_zero = __riscv_vfmv_v_f_f32m8(0.0f, vl);
+                                        __riscv_vse32_v_f32m8(reinterpret_cast<float*>(&col_[col_base_idx + ow]), v_zero, vl);
+                                        ow += vl;
+                                    }
+                                } else {
+                                    for (dim_t ow = act_ow_end; ow < ow_end; ++ow) col_[col_base_idx + ow] = 0;
+                                }
+                            }
                         }
-                        ih += jcp.stride_h;
                     }
-                    ih_ += (1 + jcp.dilate_h);
-                    col_ += jcp.kw * OHW;
                 }
             }
             id += (1 + jcp.dilate_d);
@@ -279,7 +332,6 @@ template void transpose_dt(const conv_gemm_conf_t &jcp,
 template <typename orig_im_dt, typename orig_col_dt>
 void im2col_dt_3d(const conv_gemm_conf_t &jcp, const void *__restrict _imtr,
         orig_col_dt *__restrict _col, dim_t od) {
-    // For performance reasons, use uint16_t as a proxy for bfloat16_t
     using im_dt =
             typename utils::conditional<data_traits_t<orig_im_dt>::data_type
                             == bf16,
@@ -316,8 +368,17 @@ void im2col_dt_3d(const conv_gemm_conf_t &jcp, const void *__restrict _imtr,
                     + kw * col_kw_s + ic * col_ic_s;
             const dim_t id = od - fp + kd;
             if (id < 0 || id >= jcp.id) {
-                for (ptrdiff_t i = 0; i < OHW; i++)
-                    col_loc[i] = shift;
+                if (sizeof(col_dt) == 4 && shift == 0) {
+                    dim_t i = 0;
+                    while (i < OHW) {
+                        size_t vl = __riscv_vsetvl_e32m8(OHW - i);
+                        vfloat32m8_t v_zero = __riscv_vfmv_v_f_f32m8(0.0f, vl);
+                        __riscv_vse32_v_f32m8(reinterpret_cast<float*>(col_loc + i), v_zero, vl);
+                        i += vl;
+                    }
+                } else {
+                    for (ptrdiff_t i = 0; i < OHW; i++) col_loc[i] = shift;
+                }
                 return;
             }
             const im_dt *__restrict imtr_loc = imtr + (ic * jcp.id + id) * IHW;
@@ -329,9 +390,21 @@ void im2col_dt_3d(const conv_gemm_conf_t &jcp, const void *__restrict _imtr,
                     oh++, ih++) {
                 col_dt *__restrict col_h = col_loc + oh * jcp.ow;
                 const im_dt *__restrict imtr_h = imtr_loc + ih * jcp.iw;
-                for (dim_t ow = ow_start, iw = ow_start - lp + kw; ow < ow_end;
-                        ow++, iw++) {
-                    col_h[ow] = imtr_h[iw];
+                
+                if (sizeof(col_dt) == 4 && shift == 0 && ow_end - ow_start >= 8) {
+                    dim_t ow = ow_start;
+                    dim_t iw = ow_start - lp + kw;
+                    while (ow < ow_end) {
+                        size_t vl = __riscv_vsetvl_e32m8(ow_end - ow);
+                        vfloat32m8_t v_data = __riscv_vle32_v_f32m8(reinterpret_cast<const float*>(&imtr_h[iw]), vl);
+                        __riscv_vse32_v_f32m8(reinterpret_cast<float*>(&col_h[ow]), v_data, vl);
+                        ow += vl;
+                        iw += vl;
+                    }
+                } else {
+                    for (dim_t ow = ow_start, iw = ow_start - lp + kw; ow < ow_end; ow++, iw++) {
+                        col_h[ow] = imtr_h[iw] + shift;
+                    }
                 }
             }
         });
@@ -342,8 +415,17 @@ void im2col_dt_3d(const conv_gemm_conf_t &jcp, const void *__restrict _imtr,
                     + kw * col_kw_s + ic * col_ic_s;
             const dim_t id = od * 2 - fp + kd;
             if (id < 0 || id >= jcp.id) {
-                for (ptrdiff_t i = 0; i < OHW; i++)
-                    col_loc[i] = shift;
+                if (sizeof(col_dt) == 4 && shift == 0) {
+                    dim_t i = 0;
+                    while (i < OHW) {
+                        size_t vl = __riscv_vsetvl_e32m8(OHW - i);
+                        vfloat32m8_t v_zero = __riscv_vfmv_v_f_f32m8(0.0f, vl);
+                        __riscv_vse32_v_f32m8(reinterpret_cast<float*>(col_loc + i), v_zero, vl);
+                        i += vl;
+                    }
+                } else {
+                    for (ptrdiff_t i = 0; i < OHW; i++) col_loc[i] = shift;
+                }
                 return;
             }
             const im_dt *__restrict imtr_loc = imtr + (ic * jcp.id + id) * IHW;
@@ -359,9 +441,22 @@ void im2col_dt_3d(const conv_gemm_conf_t &jcp, const void *__restrict _imtr,
                     ++oh, ih += 2) {
                 col_dt *__restrict col_h = col_loc + oh * jcp.ow;
                 const im_dt *__restrict imtr_h = imtr_loc + ih * jcp.iw;
-                for (dim_t ow = ow_start, iw = ow_start * 2 - lp + kw;
-                        ow < ow_end; ++ow, iw += 2) {
-                    col_h[ow] = imtr_h[iw];
+                
+                if (sizeof(col_dt) == 4 && shift == 0 && ow_end - ow_start >= 8) {
+                    dim_t ow = ow_start;
+                    dim_t iw = ow_start * 2 - lp + kw;
+                    ptrdiff_t src_byte_stride = 2 * sizeof(float);
+                    while (ow < ow_end) {
+                        size_t vl = __riscv_vsetvl_e32m8(ow_end - ow);
+                        vfloat32m8_t v_data = __riscv_vlse32_v_f32m8(reinterpret_cast<const float*>(&imtr_h[iw]), src_byte_stride, vl);
+                        __riscv_vse32_v_f32m8(reinterpret_cast<float*>(&col_h[ow]), v_data, vl);
+                        ow += vl;
+                        iw += vl * 2;
+                    }
+                } else {
+                    for (dim_t ow = ow_start, iw = ow_start * 2 - lp + kw; ow < ow_end; ++ow, iw += 2) {
+                        col_h[ow] = imtr_h[iw] + shift;
+                    }
                 }
             }
         });
@@ -372,8 +467,17 @@ void im2col_dt_3d(const conv_gemm_conf_t &jcp, const void *__restrict _imtr,
                     + kw * col_kw_s + ic * col_ic_s;
             const dim_t id = od * sd - fp + kd * dd;
             if (id < 0 || id >= jcp.id) {
-                for (ptrdiff_t i = 0; i < OHW; i++)
-                    col_loc[i] = shift;
+                if (sizeof(col_dt) == 4 && shift == 0) {
+                    dim_t i = 0;
+                    while (i < OHW) {
+                        size_t vl = __riscv_vsetvl_e32m8(OHW - i);
+                        vfloat32m8_t v_zero = __riscv_vfmv_v_f_f32m8(0.0f, vl);
+                        __riscv_vse32_v_f32m8(reinterpret_cast<float*>(col_loc + i), v_zero, vl);
+                        i += vl;
+                    }
+                } else {
+                    for (ptrdiff_t i = 0; i < OHW; i++) col_loc[i] = shift;
+                }
                 return;
             }
             const im_dt *__restrict imtr_loc = imtr + (ic * jcp.id + id) * IHW;
@@ -389,9 +493,22 @@ void im2col_dt_3d(const conv_gemm_conf_t &jcp, const void *__restrict _imtr,
                     oh < oh_end; ++oh, ih += sh) {
                 col_dt *__restrict col_h = col_loc + oh * jcp.ow;
                 const im_dt *__restrict imtr_h = imtr_loc + ih * jcp.iw;
-                for (dim_t ow = ow_start, iw = ow_start * sw - lp + kw * dw;
-                        ow < ow_end; ++ow, iw += sw) {
-                    col_h[ow] = imtr_h[iw];
+                
+                if (sizeof(col_dt) == 4 && shift == 0 && ow_end - ow_start >= 8) {
+                    dim_t ow = ow_start;
+                    dim_t iw = ow_start * sw - lp + kw * dw;
+                    ptrdiff_t src_byte_stride = sw * sizeof(float);
+                    while (ow < ow_end) {
+                        size_t vl = __riscv_vsetvl_e32m8(ow_end - ow);
+                        vfloat32m8_t v_data = __riscv_vlse32_v_f32m8(reinterpret_cast<const float*>(&imtr_h[iw]), src_byte_stride, vl);
+                        __riscv_vse32_v_f32m8(reinterpret_cast<float*>(&col_h[ow]), v_data, vl);
+                        ow += vl;
+                        iw += vl * sw;
+                    }
+                } else {
+                    for (dim_t ow = ow_start, iw = ow_start * sw - lp + kw * dw; ow < ow_end; ++ow, iw += sw) {
+                        col_h[ow] = imtr_h[iw] + shift;
+                    }
                 }
             }
         });
@@ -965,15 +1082,54 @@ void col2im_3d(const conv_gemm_conf_t &jcp, const float *col, float *im,
                     continue;
                 }
 
-                for (dim_t ow = ow_begin; ow < ow_end; ++ow, ++col_off) {
-                    const dim_t iw = ow * jcp.stride_w - jcp.l_pad
-                            + kw * (1 + jcp.dilate_w);
-                    if (iw < 0 || iw >= jcp.iw) { continue; }
+                const dim_t wp = jcp.l_pad - kw * (1 + jcp.dilate_w);
+                const dim_t valid_ow_start = saturate(dim_t(0), jcp.ow, div_up(nstl::max(dim_t(0), wp), jcp.stride_w));
+                const dim_t valid_ow_end = saturate(dim_t(0), jcp.ow, div_up(nstl::max(dim_t(0), jcp.iw + wp), jcp.stride_w));
+                
+                dim_t act_ow_start = nstl::max(ow_begin, valid_ow_start);
+                dim_t act_ow_end = nstl::min(ow_end, valid_ow_end);
 
-                    const size_t col_idx
-                            = (kh * jcp.kw + kw) * wei_stride + col_off;
-                    const size_t im_idx = ih * jcp.iw + iw;
-                    im_[im_idx] += col_[col_idx];
+                if (act_ow_start < act_ow_end) {
+                    col_off += (act_ow_start - ow_begin);
+                    
+                    if (jcp.stride_w == 1 && act_ow_end - act_ow_start >= 8) {
+                        dim_t ow = act_ow_start;
+                        while (ow < act_ow_end) {
+                            size_t vl = __riscv_vsetvl_e32m8(act_ow_end - ow);
+                            const size_t col_idx = (kh * jcp.kw + kw) * wei_stride + col_off;
+                            const size_t im_idx = ih * jcp.iw + (ow - wp);
+                            vfloat32m8_t v_col = __riscv_vle32_v_f32m8(&col_[col_idx], vl);
+                            vfloat32m8_t v_im = __riscv_vle32_v_f32m8(&im_[im_idx], vl);
+                            vfloat32m8_t v_res = __riscv_vfadd_vv_f32m8(v_im, v_col, vl);
+                            __riscv_vse32_v_f32m8(&im_[im_idx], v_res, vl);
+                            ow += vl;
+                            col_off += vl;
+                        }
+                    } else if (jcp.stride_w > 1 && act_ow_end - act_ow_start >= 8) {
+                        dim_t ow = act_ow_start;
+                        ptrdiff_t im_byte_stride = jcp.stride_w * sizeof(float);
+                        while (ow < act_ow_end) {
+                            size_t vl = __riscv_vsetvl_e32m8(act_ow_end - ow);
+                            const size_t col_idx = (kh * jcp.kw + kw) * wei_stride + col_off;
+                            const size_t im_idx = ih * jcp.iw + (ow * jcp.stride_w - wp);
+                            vfloat32m8_t v_col = __riscv_vle32_v_f32m8(&col_[col_idx], vl);
+                            vfloat32m8_t v_im = __riscv_vlse32_v_f32m8(&im_[im_idx], im_byte_stride, vl);
+                            vfloat32m8_t v_res = __riscv_vfadd_vv_f32m8(v_im, v_col, vl);
+                            __riscv_vsse32_v_f32m8(&im_[im_idx], im_byte_stride, v_res, vl);
+                            ow += vl;
+                            col_off += vl;
+                        }
+                    } else {
+                        for (dim_t ow = act_ow_start; ow < act_ow_end; ++ow, ++col_off) {
+                            const dim_t iw = ow * jcp.stride_w - wp;
+                            const size_t col_idx = (kh * jcp.kw + kw) * wei_stride + col_off;
+                            const size_t im_idx = ih * jcp.iw + iw;
+                            im_[im_idx] += col_[col_idx];
+                        }
+                    }
+                    col_off += (ow_end - act_ow_end);
+                } else {
+                    col_off += ow_work;
                 }
             }
             col_ += jcp.kh * jcp.kw * wei_stride;
@@ -1001,16 +1157,44 @@ void col2im_3d(const conv_gemm_conf_t &jcp, const float *col, float *im,
                         + kh * (1 + jcp.dilate_h);
                 if (ih < 0 || ih >= jcp.ih) continue;
 
-                for_(dim_t ow = 0; ow < jcp.ow; ++ow)
                 for (dim_t kw = 0; kw < jcp.kw; ++kw) {
-                    const dim_t iw = ow * jcp.stride_w - jcp.l_pad
-                            + kw * (1 + jcp.dilate_w);
-                    if (iw < 0 || iw >= jcp.iw) continue;
+                    const dim_t wp = jcp.l_pad - kw * (1 + jcp.dilate_w);
+                    const dim_t ow_start = saturate(dim_t(0), jcp.ow, div_up(nstl::max(dim_t(0), wp), jcp.stride_w));
+                    const dim_t ow_end = saturate(dim_t(0), jcp.ow, div_up(nstl::max(dim_t(0), jcp.iw + wp), jcp.stride_w));
 
-                    const size_t col_idx
-                            = ((kh * jcp.kw + kw) * jcp.oh + oh) * jcp.ow + ow;
-                    const size_t im_idx = ih * jcp.iw + iw;
-                    im_[im_idx] += col_[col_idx];
+                    if (jcp.stride_w == 1 && ow_end - ow_start >= 8) {
+                        dim_t ow = ow_start;
+                        while (ow < ow_end) {
+                            size_t vl = __riscv_vsetvl_e32m8(ow_end - ow);
+                            const size_t col_idx = ((kh * jcp.kw + kw) * jcp.oh + oh) * jcp.ow + ow;
+                            const size_t im_idx = ih * jcp.iw + (ow - wp);
+                            vfloat32m8_t v_col = __riscv_vle32_v_f32m8(&col_[col_idx], vl);
+                            vfloat32m8_t v_im = __riscv_vle32_v_f32m8(&im_[im_idx], vl);
+                            vfloat32m8_t v_res = __riscv_vfadd_vv_f32m8(v_im, v_col, vl);
+                            __riscv_vse32_v_f32m8(&im_[im_idx], v_res, vl);
+                            ow += vl;
+                        }
+                    } else if (jcp.stride_w > 1 && ow_end - ow_start >= 8) {
+                        dim_t ow = ow_start;
+                        ptrdiff_t im_byte_stride = jcp.stride_w * sizeof(float);
+                        while (ow < ow_end) {
+                            size_t vl = __riscv_vsetvl_e32m8(ow_end - ow);
+                            const size_t col_idx = ((kh * jcp.kw + kw) * jcp.oh + oh) * jcp.ow + ow;
+                            const size_t im_idx = ih * jcp.iw + (ow * jcp.stride_w - wp);
+                            vfloat32m8_t v_col = __riscv_vle32_v_f32m8(&col_[col_idx], vl);
+                            vfloat32m8_t v_im = __riscv_vlse32_v_f32m8(&im_[im_idx], im_byte_stride, vl);
+                            vfloat32m8_t v_res = __riscv_vfadd_vv_f32m8(v_im, v_col, vl);
+                            __riscv_vsse32_v_f32m8(&im_[im_idx], im_byte_stride, v_res, vl);
+                            ow += vl;
+                        }
+                    } else {
+                        for (dim_t ow = ow_start; ow < ow_end; ++ow) {
+                            const dim_t iw = ow * jcp.stride_w - wp;
+                            const size_t col_idx = ((kh * jcp.kw + kw) * jcp.oh + oh) * jcp.ow + ow;
+                            const size_t im_idx = ih * jcp.iw + iw;
+                            im_[im_idx] += col_[col_idx];
+                        }
+                    }
                 }
             }
 

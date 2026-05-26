@@ -126,22 +126,17 @@ enum { CRIT = 0x001, WARN = 0x002, NEED_CLEANUP = 0x004 };
 
 using perf_function_t = std::function<void(dnnl::stream &,
         const std::vector<dnnl::graph::tensor> &inputs,
-        const std::vector<dnnl::graph::tensor> &outputs)>;
+        const std::vector<dnnl::graph::tensor> &outputs, void *scratchpad)>;
 
 void compiled_partition_executor(dnnl::graph::compiled_partition &cp,
         dnnl::stream &stream, const std::vector<dnnl::graph::tensor> &inputs,
-        const std::vector<dnnl::graph::tensor> &outputs);
-
-int execute_and_wait(const std::vector<dnnl::graph::compiled_partition> &cp_v,
-        const std::vector<std::vector<dnnl::graph::tensor>> &inputs_v,
-        const std::vector<std::vector<dnnl::graph::tensor>> &outputs_v,
-        res_t *res);
+        const std::vector<dnnl::graph::tensor> &outputs, void *scratchpad);
 
 int measure_perf(timer::timer_t &t,
         const std::vector<dnnl::graph::compiled_partition> &cp_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &inputs_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &outputs_v,
-        res_t *res);
+        const std::vector<void *> &scratchpads, res_t *res);
 
 dnnl::graph::op::kind opstr2kind(const std::string &kind);
 bool is_unary(const std::string &kind);

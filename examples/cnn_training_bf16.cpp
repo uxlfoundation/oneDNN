@@ -382,7 +382,7 @@ void simple_net(engine::kind engine_kind) {
 
     auto conv_user_diff_weights_memory
             = memory({{conv_weights_tz}, memory::data_type::f32,
-                             memory::format_tag::nchw},
+                             memory::format_tag::oihw},
                     eng);
     auto conv_diff_bias_memory = memory(
             {{conv_bias_tz}, memory::data_type::f32, memory::format_tag::x},

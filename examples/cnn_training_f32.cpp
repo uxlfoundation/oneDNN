@@ -349,7 +349,7 @@ void simple_net(engine::kind engine_kind) {
 
     auto conv_user_diff_weights_memory
             = memory({{conv_weights_tz}, memory::data_type::f32,
-                             memory::format_tag::nchw},
+                             memory::format_tag::oihw},
                     eng);
     write_to_dnnl_memory(conv_user_diff_weights_buffer.data(),
             conv_user_diff_weights_memory);

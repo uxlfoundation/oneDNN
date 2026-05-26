@@ -82,7 +82,7 @@ void concat_example(dnnl::engine::kind engine_kind) {
 
     for (int n = 0; n < num_src; ++n) {
         src_mds.emplace_back(
-                src_dims, memory::data_type::f32, memory::format_tag::nchw);
+                src_dims, memory::data_type::f32, memory::format_tag::nhwc);
         src_mems.emplace_back(src_mds.back(), engine);
 
         // Write data to memory object's handle.

@@ -84,7 +84,7 @@
 /// a pooling and consists of the following steps:
 /// 1. Create a pooling primitive descriptor based on the memory format chosen
 ///    by the convolution primitive.
-/// 2. Create memory descriptors for input and output data in the NCHW memory
+/// 2. Create memory descriptors for input and output data in the NHWC memory
 ///    format.
 /// 3. Determine if input and output data needs to be reordered from/to the
 ///    optimized memory format.
@@ -176,20 +176,20 @@ void memory_format_propagation_tutorial(engine::kind engine_kind) {
     /// @subsection memory_format_propagation_sub3 Create source and destination memory objects
     ///
     /// We assume that the 'user' source and destination memory format is
-    /// NCHW. Since there is no result validation in this tutorial, we do not
+    /// NHWC. Since there is no result validation in this tutorial, we do not
     /// bother with filling the data with some values and let oneDNN
     /// allocate the memory.
     ///
     /// @snippet memory_format_propagation.cpp Create source and destination memory objects
     // [Create source and destination memory objects]
     auto src_mem = memory(
-            {{N, IC, H, W}, memory::data_type::f32, memory::format_tag::nchw},
+            {{N, IC, H, W}, memory::data_type::f32, memory::format_tag::nhwc},
             eng);
     auto weights_mem = memory({{OC, IC, KH, KW}, memory::data_type::f32,
                                       memory::format_tag::oihw},
             eng);
     auto dst_mem = memory(
-            {{N, OC, H, W}, memory::data_type::f32, memory::format_tag::nchw},
+            {{N, OC, H, W}, memory::data_type::f32, memory::format_tag::nhwc},
             eng);
     // [Create source and destination memory objects]
 
@@ -335,34 +335,37 @@ int main(int argc, char **argv) {
 ///
 /// ~~~sh
 /// $ ONEDNN_VERBOSE=1 ./memory-format-propagation-cpp
-/// onednn_verbose,v0,info,oneDNN <ver> (Git Hash <hash>)
-/// onednn_verbose,v0,info,cpu,runtime:OpenMP
-/// onednn_verbose,v0,info,cpu,isa:Intel AVX2
-/// onednn_verbose,v0,info,gpu,runtime:none
-/// onednn_verbose,v0,exec,cpu,reorder,jit:uni,undef,
-///     src_f32::blocked:abcd:f0 dst_f32::blocked:aBcd8b:f0,,,1x128x14x14,0.326904
-/// onednn_verbose,v0,exec,cpu,reorder,jit:uni,undef,
-///     src_f32::blocked:abcd:f0 dst_f32::blocked:ABcd8b8a:f0,,,256x128x3x3,0.244141
-/// onednn_verbose,v0,exec,cpu,convolution,jit:avx2,forward_inference,
-///     src_f32::blocked:aBcd8b:f0 wei_f32::blocked:ABcd8b8a:f0 bia_undef::undef::f0 dst_f32::blocked:aBcd8b:f0,,
-///     alg:convolution_direct,mb1_ic128oc256_ih14oh14kh3sh1dh0ph1_iw14ow14kw3sw1dw0pw1,1.20312
-/// onednn_verbose,v0,exec,cpu,pooling,jit:avx,forward_inference,
-///     src_f32::blocked:aBcd8b:f0 dst_f32::blocked:aBcd8b:f0 ws_undef::undef::f0,,
-///     alg:pooling_max,mb1ic256_ih14oh14kh3sh1ph1_iw14ow14kw3sw1pw1,0.187012
-/// onednn_verbose,v0,exec,cpu,reorder,jit:uni,undef,
-///     src_f32::blocked:aBcd8b:f0 dst_f32::blocked:abcd:f0,,,1x256x14x14,0.0419922
+/// onednn_verbose,v1,info,oneDNN <ver> (Git Hash <hash>)
+/// onednn_verbose,v1,info,cpu,runtime:OpenMP
+/// onednn_verbose,v1,info,cpu,isa:Intel AVX2
+/// onednn_verbose,v1,info,gpu,runtime:none
+/// onednn_verbose,v1,info,graph,backend,0:dnnl_backend
+/// onednn_verbose,v1,primitive,info,template:operation,engine,primitive,implementation,prop_kind,memory_descriptors,attributes,auxiliary,problem_desc,exec_time
+/// onednn_verbose,v1,graph,info,template:operation,engine,partition_id,partition_kind,op_names,data_formats,logical_tensors,fpmath_mode,implementation,backend,exec_time
+/// onednn_verbose,v1,primitive,exec,cpu,reorder,jit:uni,undef,
+///     src:f32::blocked:abcd::f0 dst:f32::blocked:Acdb16a::f0,,,256x128x3x3,1.54907
+/// onednn_verbose,v1,primitive,exec,cpu,convolution,
+///     brg_conv_fwd:avx2,forward_inference,
+///     src:f32:a:blocked:acdb::f0 wei:f32:a:blocked:Acdb16a::f0 bia:undef::undef::: dst:f32:a:blocked:acdb::f0,,
+///     alg:convolution_direct,mb1_ic128oc256_ih14oh14kh3sh1dh0ph1_iw14ow14kw3sw1dw0pw1,1.35791
+/// onednn_verbose,v1,primitive,exec,cpu,pooling,jit:avx2,forward_inference,
+///     src:f32::blocked:acdb::f0 dst:f32:a:blocked:acdb::f0,,
+///     alg:pooling_max,mb1ic256_ih14oh14kh3sh1dh0ph1_iw14ow14kw3sw1dw0pw1,1.34204
 /// Example passed on CPU.
 /// ~~~
 ///
 /// From this output we can deduce that:
-/// * The convolution primitive picked up @ref
-///   dnnl::memory::format_tag::aBcd8b optimized memory format for
-///   activations. In this format the channels dimension (denoted by letter B
-///   since it is the second dimension; see also @ref dev_guide_conventions)
-///   is blocked by a factor of 8. Because of this memory format is different
-///   from the NCHW format the tutorial uses, the source and destination had
-///   to be reordered to and from this optimized memory layout.
-/// * The convolution primitive picked up @ref
-///   dnnl::memory::format_tag::ABcd8b8a optimized memory format (output (A)
-///   and input (B) channel dimensions blocked by 8) which we also had to
-///   reorder the initial weights to since they are in the OIHW memory format.
+/// * The convolution primitive picked up @ref dnnl::memory::format_tag::acdb
+///   (NHWC-like) memory format for activations. The input and output tensors
+///   are both in acdb format, which means that no reorders are needed for
+///   activations between convolution and subsequent operations. This
+///   demonstrates memory format propagation across convolution and subsequent
+///   operations.
+/// * The convolution primitive picked up @ref dnnl::memory::format_tag::Acdb16a
+///   optimized memory format for weights (channel dimension blocked by 16).
+///   Since the original weights are provided in the abcd (OIHW) format, they
+///   must be reordered once before execution.
+/// * The pooling primitive also operates on @ref dnnl::memory::format_tag::acdb
+///   layout for both source and destination tensors, reusing the same
+///   memory format selected by convolution. This confirms that the chosen
+///   layout is propagated through the pipeline without additional conversions.

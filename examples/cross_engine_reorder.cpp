@@ -116,10 +116,10 @@ void cross_engine_reorder_tutorial() {
     //  [reorder cpu2gpu]
     const auto tz = memory::dims {2, 16, 1, 1};
     auto m_cpu
-            = memory({{tz}, memory::data_type::f32, memory::format_tag::nchw},
+            = memory({{tz}, memory::data_type::f32, memory::format_tag::nhwc},
                     cpu_engine);
     auto m_gpu
-            = memory({{tz}, memory::data_type::f32, memory::format_tag::nchw},
+            = memory({{tz}, memory::data_type::f32, memory::format_tag::nhwc},
                     gpu_engine);
     fill(m_cpu, tz);
     auto r1 = reorder(m_cpu, m_gpu);

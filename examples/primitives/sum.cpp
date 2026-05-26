@@ -81,7 +81,7 @@ void sum_example(dnnl::engine::kind engine_kind) {
 
     for (int n = 0; n < num_src; ++n) {
         src_md.emplace_back(
-                src_dims, memory::data_type::f32, memory::format_tag::nchw);
+                src_dims, memory::data_type::f32, memory::format_tag::nhwc);
         src_mem.emplace_back(src_md.back(), engine);
 
         // Write data to memory object's handle.

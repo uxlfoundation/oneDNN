@@ -75,11 +75,11 @@ void binary_example(dnnl::engine::kind engine_kind) {
 
     // Create src and dst memory descriptors.
     auto src_0_md = memory::desc(
-            src_0_dims, memory::data_type::f32, memory::format_tag::nchw);
+            src_0_dims, memory::data_type::f32, memory::format_tag::nhwc);
     auto src_1_md = memory::desc(
-            src_1_dims, memory::data_type::f32, memory::format_tag::nchw);
+            src_1_dims, memory::data_type::f32, memory::format_tag::nhwc);
     auto dst_md = memory::desc(
-            src_0_dims, memory::data_type::f32, memory::format_tag::nchw);
+            src_0_dims, memory::data_type::f32, memory::format_tag::nhwc);
 
     // Create src memory objects.
     auto src_0_mem = memory(src_0_md, engine);

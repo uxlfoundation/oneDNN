@@ -84,9 +84,9 @@ void inner_product_example(dnnl::engine::kind engine_kind) {
     });
 
     // Create memory descriptors and memory objects for src and dst. In this
-    // example, NCHW layout is assumed.
+    // example, NHWC layout is assumed.
     auto src_md = memory::desc(
-            src_dims, memory::data_type::f32, memory::format_tag::nchw);
+            src_dims, memory::data_type::f32, memory::format_tag::nhwc);
     auto bias_md = memory::desc(
             bias_dims, memory::data_type::f32, memory::format_tag::a);
     auto dst_md = memory::desc(

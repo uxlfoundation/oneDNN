@@ -33,13 +33,15 @@ class iface_grouped_test_t : public ::testing::Test {};
 TEST(iface_grouped_test_t, TestGroupedMDCreation) {
     const int ngroups = 3;
     const int K = 256;
-    int variable_dim_idx = 0;
+
+    // variable_dim_idx = 0
+    ASSERT_NO_THROW(memory::desc::grouped({9, K}, dt::f32, 0, ngroups));
 
     ASSERT_NO_THROW(
-            memory::desc::grouped({9, K}, dt::f32, variable_dim_idx, ngroups));
+            memory::desc::grouped({4, K}, dt::f16, 0, ngroups, dt::s32));
 
-    ASSERT_NO_THROW(memory::desc::grouped(
-            {4, K}, dt::f16, variable_dim_idx, ngroups, dt::s32));
+    // variable_dim_idx = 1
+    ASSERT_NO_THROW(memory::desc::grouped({K, 9}, dt::f32, 1, ngroups));
 }
 
 TEST(iface_grouped_test_t, TestGroupedMDInvalidArgs) {
@@ -54,11 +56,11 @@ TEST(iface_grouped_test_t, TestGroupedMDInvalidArgs) {
     EXPECT_THROW(memory::desc::grouped({4, K}, dt::f32, 0, 0), dnnl::error);
     EXPECT_THROW(memory::desc::grouped({4, K}, dt::f32, 0, -1), dnnl::error);
 
-    // Invalid variable_dim_idx: only 0 is supported for now
+    // Invalid variable_dim_idx: out of range for a 2D tensor
     EXPECT_THROW(
             memory::desc::grouped({4, K}, dt::f32, -1, ngroups), dnnl::error);
     EXPECT_THROW(
-            memory::desc::grouped({4, K}, dt::f32, 1, ngroups), dnnl::error);
+            memory::desc::grouped({4, K}, dt::f32, 2, ngroups), dnnl::error);
 
     // Runtime dimensions not supported
     EXPECT_THROW(memory::desc::grouped(
@@ -111,6 +113,21 @@ TEST(iface_grouped_test_t, TestGroupedMDQueries) {
         // Note, that this return empty vector since strides are not supported
         memory::dims strides = md.get_strides();
         ASSERT_TRUE(strides.empty());
+    }
+
+    {
+        // variable_dim_idx = 1, dims = [K, total_tokens]
+        const memory::dims dims_t = {K, total_tokens};
+        memory::desc md;
+        ASSERT_NO_THROW(md
+                = memory::desc::grouped(dims_t, dt::f32, 1, ngroups, dt::s32));
+
+        ASSERT_EQ(md.get_dims(), dims_t);
+        ASSERT_EQ(md.get_sparse_encoding(), memory::sparse_encoding::grouped);
+        ASSERT_EQ(md.get_nnz(), K * total_tokens);
+        ASSERT_EQ(md.get_size(0),
+                K * total_tokens * memory::data_type_size(dt::f32));
+        ASSERT_EQ(md.get_size(1), ngroups * memory::data_type_size(dt::s32));
     }
 }
 
@@ -381,38 +398,98 @@ TEST(iface_grouped_test_t, TestGroupedMatmulPatterns) {
 
     const int ngroups = 2;
     const int M = 4, K = 8, N = 6;
+    const auto abc = memory::format_tag::abc;
 
-    // Valid case: Grouped * Regular 3D -> Grouped (MoE forward pass)
-    auto grouped_src = memory::desc::grouped({M, K}, dt::f32, 0, ngroups);
-    auto regular_3d_wei
-            = memory::desc({ngroups, K, N}, dt::f32, memory::format_tag::abc);
-    auto grouped_dst = memory::desc::grouped({M, N}, dt::f32, 0, ngroups);
+    // Shapes to mix and match:
 
+    // 2D grouped, variable idx = 0
+    auto src_grouped_var0 = memory::desc::grouped({M, K}, dt::f32, 0, ngroups);
+    auto wei_grouped_var0 = memory::desc::grouped({K, N}, dt::f32, 0, ngroups);
+    auto dst_grouped_var0 = memory::desc::grouped({M, N}, dt::f32, 0, ngroups);
+
+    // 2D grouped, variable idx = 1
+    auto src_grouped_var1 = memory::desc::grouped({M, K}, dt::f32, 1, ngroups);
+    auto wei_grouped_var1 = memory::desc::grouped({K, N}, dt::f32, 1, ngroups);
+
+    // Dense 3D shapes
+    auto src_dense_3d = memory::desc({ngroups, M / ngroups, K}, dt::f32, abc);
+    auto wei_dense_3d = memory::desc({ngroups, K, N}, dt::f32, abc);
+    auto dst_dense_3d = memory::desc({ngroups, M, N}, dt::f32, abc);
+
+    // Valid cases:
+
+    // grouped(varM) * dense 3D -> grouped(varM) (MoE forward)
     EXPECT_NO_THROW(matmul::primitive_desc(
-            eng, grouped_src, regular_3d_wei, grouped_dst));
+            eng, src_grouped_var0, wei_dense_3d, dst_grouped_var0));
 
-    // Not supported case: Grouped * Regular 3D -> Regular 3D
-    auto regular_3d_dst = memory::desc(
-            {ngroups, M / ngroups, N}, dt::f32, memory::format_tag::abc);
+    // grouped(varK) * grouped(varK) -> dense 3D (MoE backward)
+    EXPECT_NO_THROW(matmul::primitive_desc(
+            eng, src_grouped_var1, wei_grouped_var0, dst_dense_3d));
 
+    // Unsupported cases:
+
+    // grouped(varM) * dense 3D -> dense 3D
     EXPECT_THROW(matmul::primitive_desc(
-                         eng, grouped_src, regular_3d_wei, regular_3d_dst),
+                         eng, src_grouped_var0, wei_dense_3d, dst_dense_3d),
             dnnl::error);
 
-    // Not supported case: Regular 3D * Regular 3D -> Grouped
-    auto regular_3d_src = memory::desc(
-            {ngroups, M / ngroups, K}, dt::f32, memory::format_tag::abc);
-
+    // dense 3D * dense 3D -> grouped
     EXPECT_THROW(matmul::primitive_desc(
-                         eng, regular_3d_src, regular_3d_wei, grouped_dst),
+                         eng, src_dense_3d, wei_dense_3d, dst_grouped_var0),
             dnnl::error);
 
-    // Not supported case: Grouped * Grouped -> Regular 3D
-    auto grouped_wei = memory::desc::grouped({K, N}, dt::f32, 0, ngroups);
-
+    // grouped(varM) * grouped(varK) -> dense 3D
     EXPECT_THROW(matmul::primitive_desc(
-                         eng, grouped_src, grouped_wei, regular_3d_dst),
+                         eng, src_grouped_var0, wei_grouped_var0, dst_dense_3d),
             dnnl::error);
+
+    // grouped(varK) * grouped(varN) -> dense 3D
+    EXPECT_THROW(matmul::primitive_desc(
+                         eng, src_grouped_var1, wei_grouped_var1, dst_dense_3d),
+            dnnl::error);
+}
+
+TEST(iface_grouped_test_t, TestGrouped2Dby2DUnsupportedAttr) {
+    engine eng = get_test_engine();
+
+    const int ngroups = 2;
+    const int M = 4, K = 8, N = 6;
+
+    // Valid 2Dx2D config: grouped(varK) * grouped(varK) -> dense 3D
+    auto src_md = memory::desc::grouped({M, K}, dt::f32, 1, ngroups);
+    auto wei_md = memory::desc::grouped({K, N}, dt::f32, 0, ngroups);
+    auto dst_md
+            = memory::desc({ngroups, M, N}, dt::f32, memory::format_tag::abc);
+
+    // Default attributes are supported
+    EXPECT_NO_THROW(matmul::primitive_desc(eng, src_md, wei_md, dst_md));
+
+    // 2Dx2D supports only default attributes
+    // Scales
+    {
+        primitive_attr attr;
+        attr.set_scales_mask(DNNL_ARG_SRC, 0);
+        EXPECT_THROW(matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr),
+                dnnl::error);
+    }
+
+    // Zero points
+    {
+        primitive_attr attr;
+        attr.set_zero_points_mask(DNNL_ARG_WEIGHTS, 0);
+        EXPECT_THROW(matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr),
+                dnnl::error);
+    }
+
+    // Post-ops
+    {
+        post_ops po;
+        po.append_eltwise(algorithm::eltwise_swish, 1.f, 0.f);
+        primitive_attr attr;
+        attr.set_post_ops(po);
+        EXPECT_THROW(matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr),
+                dnnl::error);
+    }
 }
 
 HANDLE_EXCEPTIONS_FOR_TEST(iface_grouped_test_t, TestMaxGroupMHint) {

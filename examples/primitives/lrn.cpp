@@ -70,7 +70,7 @@ void lrn_example(dnnl::engine::kind engine_kind) {
     auto dst_md = memory::desc(
             src_dims, memory::data_type::f32, memory::format_tag::nhwc);
     auto src_mem = memory(src_md, engine);
-    auto dst_mem = memory(src_md, engine);
+    auto dst_mem = memory(dst_md, engine);
 
     // Write data to memory object's handle.
     write_to_dnnl_memory(src_data.data(), src_mem);

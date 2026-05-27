@@ -56,5 +56,5 @@ dnnl::set_default_fpmath_mode (C++ API) functions.
 @note
 For builds where Arm Compute Library is enabled, setting
 `ONEDNN_DEFAULT_FPMATH_MODE` to `BF16` or `ANY` will instruct Compute Library to
-dispatch `bfloat16` kernels where available, provided the hardware supports
+dispatch bfloat16 kernels where available, provided the hardware supports
 `bfloat16` instructions. _Note: this may introduce a drop in accuracy._

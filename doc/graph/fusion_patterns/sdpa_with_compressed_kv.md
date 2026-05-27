@@ -111,7 +111,7 @@ the shape requirements of each operation in the graph.
     - Optimized implementation is available for compressed SDPA with `f16`
     computation data type on Intel Graphics Products with Intel(R) Xe Matrix
     Extensions (Intel(R) XMX) support.
-    - If int4 zero-points are specified, optimized implementation will be only
+    - If `s4`/`u4` zero-points are specified, optimized implementation will be only
     available when the group size equals 16.
 
 ## References

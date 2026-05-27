@@ -76,6 +76,9 @@ struct stream_t : public gpu::intel::stream_t {
         return profiler_->get_info(data_kind, num_entries, data);
     }
 
+    status_t run_verbose_profiler(
+            const std::string &pd_info, double start_ms) const override;
+
     ::sycl::queue &queue() const { return *impl()->queue(); }
 
     status_t enqueue_primitive(const primitive_iface_t *prim_iface,
@@ -96,6 +99,35 @@ struct stream_t : public gpu::intel::stream_t {
     }
 
     status_t barrier() override { return impl()->barrier(); }
+
+    ~stream_t() override {
+        if (is_verbose_profiler_enabled() && verbose_profiler_) {
+            try {
+                if (!recording()) {
+                    status_t status = enter_immediate_mode();
+                    if (status == status::success) {
+                        verbose_profiler_->wait_for_pending_primitives();
+                        exit_immediate_mode();
+                    } else {
+                        VWARN(primitive, exec,
+                                "profiler error: failed to enter immediate "
+                                "mode for verbose profiler cleanup");
+                        verbose_profiler_->reset();
+                    }
+                }
+            } catch (const ::sycl::exception &e) {
+                VWARN(primitive, exec,
+                        "profiler error: SYCL error during verbose "
+                        "profiler "
+                        "cleanup: %s",
+                        e.what());
+            } catch (...) {
+                VWARN(primitive, exec,
+                        "profiler error: failures during verbose profiler "
+                        "cleanup");
+            }
+        }
+    }
 
     const xpu::sycl::context_t &sycl_ctx() const { return impl()->sycl_ctx(); }
     xpu::sycl::context_t &sycl_ctx() { return impl()->sycl_ctx(); }

@@ -70,6 +70,67 @@ status_t stream_profiler_t::get_info(profiling_data_kind_t data_kind,
     return xpu::stream_profiler_t::get_info_impl(stamp2entry, data_kind, data);
 }
 
+status_t verbose_profiler_t::get_aggregate_exec_time(
+        uint64_t stamp, double &duration_ms) const {
+    using namespace ::sycl::info;
+    auto prof_data = event_map_.find(stamp);
+    if (prof_data == event_map_.end()) return status::invalid_arguments;
+
+    const auto &evts = prof_data->second.prim_evts;
+    if (evts.empty()) {
+        duration_ms = 0.0;
+        return status::success;
+    }
+
+    uint64_t agg_start = UINT64_MAX;
+    uint64_t agg_end = 0;
+
+    for (const auto &ev : evts) {
+        if (!ev) continue;
+        const xpu::sycl::event_t &sycl_event
+                = *utils::downcast<xpu::sycl::event_t *>(ev.get());
+        assert(sycl_event.size() == 1);
+
+        auto evbeg
+                = sycl_event[0]
+                          .get_profiling_info<event_profiling::command_start>();
+        auto evend
+                = sycl_event[0]
+                          .get_profiling_info<event_profiling::command_end>();
+        agg_start = std::min(agg_start, evbeg);
+        agg_end = std::max(agg_end, evend);
+    }
+
+    duration_ms = static_cast<double>(agg_end - agg_start) * 1e-6;
+    return status::success;
+}
+
+bool verbose_profiler_t::is_event_complete(
+        const std::shared_ptr<xpu::event_t> &event) const {
+    if (!event) return true;
+
+    const xpu::sycl::event_t &sycl_event
+            = *utils::downcast<xpu::sycl::event_t *>(event.get());
+    assert(sycl_event.size() == 1);
+
+    auto status
+            = sycl_event[0]
+                      .get_info<
+                              ::sycl::info::event::command_execution_status>();
+
+    return (status == ::sycl::info::event_command_status::complete);
+}
+
+void verbose_profiler_t::wait_for_event_completion(
+        const std::shared_ptr<xpu::event_t> &event) const {
+    if (!event) return;
+
+    const xpu::sycl::event_t &sycl_event
+            = *utils::downcast<xpu::sycl::event_t *>(event.get());
+    assert(sycl_event.size() == 1);
+    ::sycl::event::wait({sycl_event[0]});
+}
+
 } // namespace sycl
 } // namespace xpu
 } // namespace impl

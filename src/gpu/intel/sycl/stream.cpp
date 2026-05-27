@@ -40,6 +40,14 @@ status_t stream_t::init() {
     if (is_profiling_enabled())
         profiler_ = utils::make_unique<xpu::sycl::stream_profiler_t>(this);
 
+    // Enables profiling capabilities to allow the verbose mode to print
+    // profiling info using device measured times.
+    // The verbose profiler state is fixed at stream initialization and does not
+    // respond to runtime changes made via set_dnnl_verbose().
+    // TODO: allow runtime control of the asynchronous verbose mode via
+    // set_dnnl_verbose()
+    CHECK(init_verbose_profiler());
+
     const auto &sycl_engine_impl
             = *utils::downcast<const xpu::sycl::engine_impl_t *>(
                     engine()->impl());
@@ -49,7 +57,8 @@ status_t stream_t::init() {
     // If queue_ is not set then construct it
     if (!impl()->queue()) {
         ::sycl::property_list props;
-        if (is_profiling_enabled() && sycl_dev.is_gpu()) {
+        if ((is_profiling_enabled() || is_verbose_profiler_enabled())
+                && sycl_dev.is_gpu()) {
             props = (flags() & stream_flags::in_order)
                     ? ::sycl::property_list {::sycl::property::queue::
                                                      in_order {},
@@ -63,6 +72,10 @@ status_t stream_t::init() {
                     : ::sycl::property_list {};
         }
         impl()->set_queue(::sycl::queue(sycl_ctx, sycl_dev, props));
+
+        // Re-initializes verbose profiler to check for supported backend
+        CHECK(init_verbose_profiler());
+
     } else {
         // TODO: Compare device and context of the engine with those of the
         // queue after SYCL adds support for device/context comparison.
@@ -77,6 +90,10 @@ status_t stream_t::init() {
         if (!args_ok) return status::invalid_arguments;
     }
 
+    if (is_verbose_profiler_enabled())
+        verbose_profiler_
+                = utils::make_unique<xpu::sycl::verbose_profiler_t>(this);
+
     if (is_profiling_enabled() && sycl_dev.is_gpu() && !queue().is_in_order()) {
         VERROR(common, dpcpp,
                 "DPC++ kernel profiling is not supported with out-of-order "
@@ -89,11 +106,34 @@ status_t stream_t::init() {
 
 void stream_t::before_exec_hook() {
     if (is_profiling_enabled()) profiler_->start_profiling();
+    if (is_verbose_profiler_enabled() && !recording())
+        verbose_profiler_->update_primitive_stamp();
 }
 
 void stream_t::after_exec_hook() {
     sycl_ctx().set_deps(xpu::sycl::event_t());
     if (is_profiling_enabled()) profiler_->stop_profiling();
+    if (is_verbose_profiler_enabled() && !recording()) {
+        auto status = enter_immediate_mode();
+        if (status == status::success) {
+            verbose_profiler_->check_for_completed_primitives();
+            exit_immediate_mode();
+        }
+    }
+}
+
+status_t stream_t::run_verbose_profiler(
+        const std::string &pd_info, double start_ms) const {
+    if (!is_verbose_profiler_enabled()) return status::invalid_arguments;
+    if (!recording()) {
+        CHECK(verbose_profiler_->add_to_pending_primitive_list(
+                start_ms, pd_info));
+    } else {
+        VWARN(primitive, exec,
+                "%s, skipped verbose profiling as sycl graph is recording",
+                pd_info.c_str());
+    }
+    return status::success;
 }
 
 // The following code needs sycl::queue::ext_oneapi_get_graph(), but it may

@@ -65,7 +65,7 @@ void load_bias(
 #endif
 
 /* Binary scale pointer type: always defined so kernel params compile.
- * BINARY_SCALE_DT_* is set by the host only when a binary scale post-op is active. */
+- * BINARY_SCALE_DT_* is set by the host only when a binary scale post-op is active. */
 #if defined(BINARY_SCALE_DT_F16)
 #define BINARY_SCALE_TILE_DATA_T half
 #define BINARY_SCALE_TO_FLOAT(v) convert_float(v)
@@ -76,14 +76,12 @@ void load_bias(
 #define BINARY_SCALE_TILE_DATA_T float
 #define BINARY_SCALE_TO_FLOAT(v) (v)
 #else
-// No binary scale active; define a placeholder type for kernel arg list.
+// No binary scale active; define a placeholder type for kernel arg list
 #define BINARY_SCALE_TILE_DATA_T float
 #endif
 
 #if WITH_POST_OP
 #if WITH_BINARY_GROUPED_SCALE
-// Binary tile matches c_tile dimensions for element-wise multiply [total_tokens, N]
-typedef ugemm_grouped_c_type binary_group_tile_type;
 #if !defined(BINARY_SCALE_DT_F32)
 // Intermediate tile for loading non-float binary scale data before converting
 DECLARE_2D_TILE(binary_group_in_tile_type, BINARY_SCALE_TILE_DATA_T, SUBGROUP_SIZE,
@@ -109,7 +107,7 @@ DECLARE_2D_TILE(binary_dense_in_tile_type, BINARY_SCALE_TILE_DATA_T, SUBGROUP_SI
 DECLARE_2D_TILE_HREDUCE(ugemm_grouped_c_type, SUBGROUP_SIZE,
         ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
         ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1,
-        binary_dense_tile_type, SUBGROUP_SIZE, binary_dense_scale_br,
+        ugemm_grouped_c_type, SUBGROUP_SIZE, binary_dense_scale_br,
         binary_dense_scale_bc, binary_dense_scale_nbr, binary_dense_scale_nbc)
 #endif
 
@@ -354,8 +352,7 @@ grouped_micro_gemm(const global SRC_DATA_T *src, long ldsrc,
         const long n, const long k, const global BIA_DATA_T *bias,
         const global BINARY_SCALE_TILE_DATA_T *binary_grouped_scale,
         const global BINARY_SCALE_TILE_DATA_T *binary_dense_scale,
-        const global float *binary_nvfp4_scale,
-        const global int *binary_grouped_offset) {
+        const global float *binary_nvfp4_scale) {
 #if WITH_SLM
     local char slm[MAX(ugemm_grouped_slm_size, slm_sparse_total_size)];
 #else
@@ -455,8 +452,7 @@ grouped_micro_gemm(const global SRC_DATA_T *src, long ldsrc,
 
 #if WITH_POST_OP
     apply_post_ops_chain(&c_tile, n, m, lddst, sg_i0, sg_j0, src_offset, batch,
-            binary_grouped_scale, binary_dense_scale, binary_nvfp4_scale,
-            binary_grouped_offset);
+            binary_grouped_scale, binary_dense_scale, binary_nvfp4_scale);
 #endif
 
     store_results(&c_tile, dst, n, m, lddst, sg_i0, sg_j0);

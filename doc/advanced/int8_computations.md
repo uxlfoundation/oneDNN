@@ -1,9 +1,9 @@
-Nuances of `int8` Computations {#dev_guide_int8_computations}
+Nuances of int8 Computations {#dev_guide_int8_computations}
 ===========================================================
 
-> This document uses **`int8`** to denote 8-bit integer no matter whether it is
+> This document uses **int8** to denote 8-bit integer no matter whether it is
 > signed or unsigned. To emphasize the signedness of the data type
-> **`u8`** (`uint8_t`) or **`s8`** (`int8_t`) are used. In particular, if a
+> **u8** (`uint8_t`) or **s8** (`int8_t`) are used. In particular, if a
 > primitive has two inputs the types would be written using "/". For instance:
 > - `int8` GEMM denotes any integer GEMM with 8-bit integer inputs, while
 > - `u8`/`s8` GEMM denotes dnnl_gemm_u8s8s32() only.
@@ -61,7 +61,7 @@ systems and the reasons behind them.
 ## CPU
 
 @anchor dg_i8_comp_s11
-### 1. Inputs of mixed type: `u8` and `s8`
+### 1. Inputs of mixed type: u8 and s8
 
 Instruction Set Architecture (ISA) has special instructions that enable
 multiplying and adding the vectors of `u8` and `s8` very efficiently. oneDNN
@@ -190,7 +190,7 @@ Since the instruction always computes the result accurately, no special
 tricks are required, and operations follow the semantics shown above.
 
 @anchor dg_i8_comp_s12
-### 2. Inputs of the same type: `s8`
+### 2. Inputs of the same type: s8
 
 As mentioned above, with the current instruction set it is impossible to
 multiply and add two vectors of the `s8` data type as efficiently as it is
@@ -265,7 +265,7 @@ the implementations are given below:
   introduces an error that might insignificantly affect the inference accuracy
   (compared to a platform with the Intel DL Boost Instruction Set).
 
-2. **`s8`/`s8` GEMM** (dnnl_gemm_s8s8s32()) does nothing to handle the overflow
+2. `s8`/`s8` **GEMM** (dnnl_gemm_s8s8s32()) does nothing to handle the overflow
    issue. It is up to the user to prepare the data so that the
    overflow/saturation does not occur. For instance, the user can specify
    `s7` `[-64, 63]` instead of `s8` for the second input.

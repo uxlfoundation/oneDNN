@@ -18,7 +18,8 @@
 
 namespace conv {
 
-cfg_t::cfg_t(const prb_t *prb, const std::vector<data_kind_t> &kinds) {
+cfg_t::cfg_t(const prb_t *prb, const std::vector<data_kind_t> &kinds)
+    : base_cfg_t(prb->attr.acc_mode) {
     output_data_kind_ = (prb->dir & FLAG_FWD) ? DST
             : (prb->dir & FLAG_WEI)           ? WEI
                                               : SRC;
@@ -29,8 +30,6 @@ cfg_t::cfg_t(const prb_t *prb, const std::vector<data_kind_t> &kinds) {
                 cfg_entry_t {
                         kind, orig_data_type, data_type, get_cfg_map(kind)});
     }
-
-    acc_mode_ = prb->attr.acc_mode;
 
     // Keep legacy filling for Wino.
     if (prb->alg == WINO) {

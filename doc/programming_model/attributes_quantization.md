@@ -9,7 +9,7 @@ both signed and unsigned, enabling reduced-precision inference on
 supported hardware.
 
 Similarly, some primitives support
-[Open Compute Project (OCP) 8-bit Floating Point (`f8`) data types][f8-spec]
+[Open Compute Project (OCP) 8-bit Floating Point (OFP8) data types][f8-spec]
 designed to accelerate AI workloads, including training and inference
 of large neural networks. Lowering precision to 8 bits with `f8` enables faster
 computation and reduced memory usage.

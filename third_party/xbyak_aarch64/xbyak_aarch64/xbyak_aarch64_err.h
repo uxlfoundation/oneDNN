@@ -1,6 +1,7 @@
 #pragma once
 /*******************************************************************************
  * Copyright 2019-2023 FUJITSU LIMITED
+ * Copyright 2026 Arm Ltd. and affiliates
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -49,6 +50,13 @@ enum {
   ERR_BAD_ADDRESSING,
   ERR_BAD_SCALE,
   ERR_MUNMAP,
+  ERR_RM_REG_NOT_IN_USE,
+  ERR_RM_REG_IN_USE,
+  ERR_RM_NO_UNALLOCATED_REG,
+  ERR_RM_ILLEGAL_REG_FAMILY,
+  ERR_RM_REG_NOT_TRACKED,
+  ERR_RM_REG_ALREADY_TRACKED,
+  ERR_RM_BAD_SCOPE,
 };
 
 class Error : public std::exception {

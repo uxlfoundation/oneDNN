@@ -377,8 +377,6 @@ void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, boo
                                          const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     auto Ta = problem.Ta, Tb = problem.Tb, Tc = problem.Tc_compute();
-    if (state.upConvertATo8Bit) Ta = Ta == Type::s4 ? Type::s8 : Type::u8;
-    if (state.upConvertBTo8Bit) Tb = Tb == Type::s4 ? Type::s8 : Type::u8;
     bool globalCM = state.C_layout.colMajor();
     auto params = systolicParams(problem);
     auto ksys = params.ksys;

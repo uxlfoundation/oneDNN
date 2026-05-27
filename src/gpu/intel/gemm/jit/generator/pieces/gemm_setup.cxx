@@ -1635,12 +1635,6 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
     state.repackA |= problem.earlyDequantizeA() && !slmA;
     state.repackB |= problem.earlyDequantizeB() && !slmB;
 
-    bool is_xe3p = (hw == ngen::HW::Xe3p);
-    state.upConvertATo8Bit =  is_xe3p && Ta.bits() == 4 && Tb.bits() == 8 && strategy.systolic;
-    state.upConvertBTo8Bit =  is_xe3p && Tb.bits() == 4 && Ta.bits() == 8 && strategy.systolic;
-
-    state.repackA |= state.upConvertATo8Bit;
-    state.repackB |= state.upConvertBTo8Bit;
     if (crosspackA == 0) crosspackA = 1;
     if (crosspackB == 0) crosspackB = 1;
 
@@ -1659,17 +1653,11 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
                 state.ka_repack = gcd(problem.aqGroupK, state.ka_repack);
                 repackN = std::max(state.ka_repack, outerProductCount(problem, strategy));
         }
-	    auto Ta_repack = Ta;
-	    if (state.upConvertATo8Bit)
-	    	Ta_repack = Ta == Type::s4 ? Type::s8 : Type::u8;
-	    state.Ar_layout = RegisterLayout(hw, Ta_repack, unrollM, repackN, state.A_layout.colMajor(), state.upConvertATo8Bit ? crosspackA/2 : crosspackA, tileM_A, tileK_A, true, splitA);
+	    state.Ar_layout = RegisterLayout(hw, Ta, unrollM, repackN, state.A_layout.colMajor(), crosspackA, tileM_A, tileK_A, true, splitA);
     }
 
     if (state.repackB) {
-	    auto Tb_repack = Tb;
-	    if (state.upConvertBTo8Bit)
-	        Tb_repack = Tb == Type::s4 ? Type::s8 : Type::u8;
-	    state.Br_layout = RegisterLayout(hw, Tb_repack, strategy.kb_load, unrollN, state.B_layout.colMajor(), state.upConvertBTo8Bit ? crosspackB/2 : crosspackB, tileK_B, tileN_B, true, splitB);
+	    state.Br_layout = RegisterLayout(hw, Tb, strategy.kb_load, unrollN, state.B_layout.colMajor(), crosspackB, tileK_B, tileN_B, true, splitB);
     }
     // Prepare to repack C if needed, and choose repack tile size.
     if (Tc != Tc_compute || problem.forceLateQuant(minOuterProductCount(problem, strategy))) {

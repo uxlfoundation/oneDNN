@@ -758,7 +758,7 @@
 #elif SUM_DT_F4_E3M0
 #define SUM_TO_REF(x) into_float(x)
 #else
-#define SUM_TO_REF
+#define SUM_TO_REF AS_SUM_DATA_T
 #endif
 #endif
 

@@ -8,7 +8,7 @@ quantization parameters are specified explicitly. oneDNN Graph API
 implementation will strictly respect the numeric precision of the computation.
 
 @anchor dev_guide_graph_int8_quantization_model
-## int8
+## INT8
 
 oneDNN Graph API provides below two operations to support quantized model with
 static quantization:

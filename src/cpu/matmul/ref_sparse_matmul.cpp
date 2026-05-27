@@ -89,8 +89,10 @@ status_t ref_sparse_matmul_t::execute(const exec_ctx_t &ctx) const {
             wei_pointers = wei_row_pointers;
         }
 
+        const dim_t M_stride = src_d.dims()[0] == 1 ? 0 : src_d.strides()[0];
+        const dim_t K_stride = src_d.dims()[1] == 1 ? 0 : src_d.strides()[1];
         run_csr_kernel(src, wei_values, wei_indices, wei_pointers, dst, M, N, K,
-                mm_dt, src_d.is_sparse_desc());
+                mm_dt, src_d.is_sparse_desc(), M_stride, K_stride);
 
     } else if (src_d.is_sparse_desc()) {
         const auto weights = CTX_IN_MEM(const void *, DNNL_ARG_WEIGHTS);
@@ -131,8 +133,12 @@ status_t ref_sparse_matmul_t::execute(const exec_ctx_t &ctx) const {
             src_pointers = src_row_pointers;
         }
 
+        const dim_t K_stride
+                = weights_d.dims()[0] == 1 ? 0 : weights_d.strides()[0];
+        const dim_t N_stride
+                = weights_d.dims()[1] == 1 ? 0 : weights_d.strides()[1];
         run_csr_kernel(weights, src_values, src_indices, src_pointers, dst, M,
-                N, K, mm_dt, src_d.is_sparse_desc());
+                N, K, mm_dt, src_d.is_sparse_desc(), K_stride, N_stride);
     }
     return status::success;
 }
@@ -152,7 +158,8 @@ void ref_sparse_matmul_t::cvt_coo_indices_to_csr_pointers(
 void ref_sparse_matmul_t::run_csr_kernel(const void *dmat, const void *values,
         const int32_t *indices, const int32_t *pointers, void *res,
         const dim_t M, const dim_t N, const dim_t K, const data_type_t mm_dt,
-        bool is_src_sparse) const {
+        bool is_src_sparse, const dim_t M_or_K_stride,
+        const dim_t K_or_N_stride) const {
 
     if (is_src_sparse) {
         // With a sparse source tensor, the matrix multiplication is carried out
@@ -167,7 +174,8 @@ void ref_sparse_matmul_t::run_csr_kernel(const void *dmat, const void *values,
                 float c_val = io::load_float_value(mm_dt, res, c_idx);
 
                 for (dim_t k = row_start; k < row_end; k++) {
-                    const dim_t b_idx = indices[k] * N + n;
+                    const dim_t b_idx
+                            = indices[k] * M_or_K_stride + n * K_or_N_stride;
                     const float a_val = io::load_float_value(mm_dt, values, k);
                     const float b_val
                             = io::load_float_value(mm_dt, dmat, b_idx);
@@ -185,7 +193,7 @@ void ref_sparse_matmul_t::run_csr_kernel(const void *dmat, const void *values,
                 const dim_t row_start = pointers[k];
                 const dim_t row_end = pointers[k + 1];
                 for (dim_t n = row_start; n < row_end; n++) {
-                    const dim_t a_idx = m * K + k;
+                    const dim_t a_idx = m * M_or_K_stride + k * K_or_N_stride;
                     const dim_t c_idx = m * N + indices[n];
                     const float a_val
                             = io::load_float_value(mm_dt, dmat, a_idx);

@@ -226,10 +226,12 @@ The following data type combinations are supported:
 | f16, f16, f16               | s32      |
 | f32, f32, f32               | s32      |
 
-The following format tags are supported for dense input/output
-tensors:
+The following format tags are supported for dense input tensors:
 
-* ab
+* `ab`
+* `ba`
+
+Dense output tensor supports only format tag `ab`.
 
 @note Check the example @ref cpu_matmul_csr_cpp.
 

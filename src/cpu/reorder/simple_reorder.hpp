@@ -2180,9 +2180,6 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 simple_attr_check(attr, false, true), VERBOSE_UNSUPPORTED_ATTR);
         VDISPATCH_REORDER_IC(
                 input_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
-        VDISPATCH_REORDER_IC(
-                IMPLICATION(!output_d.is_dense(), output_d.is_plain()),
-                VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
 
         return status::success;
     }
@@ -2295,10 +2292,6 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
 
         VDISPATCH_REORDER_IC(
                 input_d.nelems() % 2 == 0, "Unsupported dimensions");
-        VDISPATCH_REORDER_IC(
-                input_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
-        VDISPATCH_REORDER_IC(
-                output_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
 
         using smask_t = primitive_attr_t::skip_mask_t;
         smask_t skip_mask = smask_t::scales_data_type | smask_t::scales_groups
@@ -2310,9 +2303,22 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         return status::success;
     }
 
+    // Scratchpad is for two-phased algorithm which separates data and format
+    // conversions.
+    // The final size is defined by int4 input which might have blocked format
+    // which in turn might require more space when converted to f32 compared to
+    // original output.
     static size_t get_scratchpad_size(const memory_desc_wrapper &input_d,
             const memory_desc_wrapper &output_d) {
-        return output_d.size();
+        memory_desc_t input_f32_md;
+        auto st = memory_desc_init_by_md_and_dt(
+                input_f32_md, *input_d.md_, data_type::f32);
+        if (st != status::success) {
+            assert(!"unexpected unsuccessful status");
+            return output_d.size();
+        }
+        return std::max(
+                output_d.size(), memory_desc_wrapper(input_f32_md).size());
     }
 
     static status_t execute(const cpu_reorder_pd_t *pd, const exec_ctx_t &ctx) {
@@ -2342,8 +2348,8 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         wspace = need_second_pass ? wspace : output;
 
         // To avoid clashes between threads each byte (or 2 elements)
-        // is handled by a single thread
-        const dim_t work_amount = input_d.nelems() / 2;
+        // is handled by a single thread.
+        const dim_t work_amount = input_d.nelems(true) / 2;
 
         parallel(0, [=](const int ithr, const int nthr) {
             auto u8_input = reinterpret_cast<const uint8_t *>(input);

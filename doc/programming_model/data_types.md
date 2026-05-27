@@ -189,7 +189,7 @@ table indicates data types support for every supported ISA:
 | Intel AVX10.1 with Intel AMX (int8, bf16)            |         | `+`     | `+`     | `.`(3)  | `+`     |         |         |         | `.`     |
 | Intel AVX10.1 with Intel AMX (int8, bf16, f16)       |         | `+`     | `+`     | `+`     | `+`     | `.`     | `.`     |         | `.`     |
 | Intel AVX10.2                                        |         | `+`     | `+`     | `+`     | `+`     | `.`     |         |         | `.`     |
-| Intel AVX10.2 with Intel AMX (int8, bf16, f16, f8) |         | `+`     | `+`     | `+`     | `+`     | `+`     | `+`     |         | `.`     |
+| Intel AVX10.2 with Intel AMX (int8, bf16, fp16, fp8) |         | `+`     | `+`     | `+`     | `+`     | `+`     | `+`     |         | `.`     |
 
 Legend:
 * `+` indicates oneDNN uses hardware-native compute support for this data type.

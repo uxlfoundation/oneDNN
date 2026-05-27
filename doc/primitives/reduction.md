@@ -87,7 +87,7 @@ The following attributes are supported:
 
 ### Data Types Support
 
-The source and destination tensors may have `f32`, `bf16`, `f16` or `int8` data
+The source and destination tensors may have `f32`, `bf16`, `f16`, `s8`, or `u8` data
 types.
 See @ref dev_guide_data_types page for more details.
 

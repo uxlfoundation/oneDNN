@@ -3,15 +3,15 @@ SDPA with Compressed Key and Value {#dev_guide_graph_sdpa_compressed_kv}
 
 ## Overview
 
-int4 and `int8` compressions for Key and Value are exploited in fused Scaled
+`s4`/`u4` and `u8`/`s8` compressions for Key and Value are exploited in fused Scaled
 Dot-Product Attention (SDPA)[1] to reduce the memory footprint of generative
 inference of LLM, especially when KV cache mechanism is adopted. Specifically,
-Key and Value tensors are stored using lower precision data types like int4 and
-`int8` to reduce memory usage, and are subsequently de-quantized to wider floating
+Key and Value tensors are stored using lower precision data types like `s4`/`u4` and
+`u8`/`s8` to reduce memory usage, and are subsequently de-quantized to wider floating
 point data types such as `f16` and `bf16` for computation.
 
 Note that grouped quantization is required to improve the model accuracy,
-especially for int4 data types. In this case, group size is needed as an
+especially for `s4`/`u4` data types. In this case, group size is needed as an
 attribute for quantization, which indicates the number of elements that share
 the same scaling factor and zero-points in each quantization group.
 
@@ -35,8 +35,8 @@ of compressed SDPA patterns:
 3. SDPA with compressed Key and floating-point Value.
 
 The floating-point data types include `f32`, `f16` and `bf16`, and the compressed
-data type refers to low-precision integral data types, including int4 (`u4`/`s4`)
-and `int8` (`u8`/`s8`) data types.
+data type refers to low-precision integral data types, including `s4`/`u4`
+and `u8`/`s8` data types.
 
 In oneDNN Graph API, we support quantization through a pattern with quantization
 operations such as [DynamicDequantize](@ref dev_guide_op_dynamicdequantize) and

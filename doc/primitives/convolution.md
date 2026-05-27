@@ -358,7 +358,7 @@ algorithms:
 
 - _Direct_. The convolution operation is computed directly using SIMD
   instructions. This is the algorithm used for the most shapes and supports
-  `int8`, `f32`, `bf16`, `f16`, `f8_e5m2`, and `f64` data types.
+  `s8`/`u8`, `f32`, `bf16`, `f16`, `f8_e5m2`, and `f64` data types.
 
 - _Winograd_. This algorithm reduces computational complexity of convolution
   at the expense of accuracy loss and additional memory operations. The
@@ -373,7 +373,7 @@ algorithms:
   matrix-matrix multiplication by rearranging the source data into a
   [scratchpad memory](@ref dev_guide_attributes_scratchpad). This is a fallback
   algorithm that is dispatched automatically when other implementations are
-  not available. GEMM convolution supports the `int8`, `f32`, and `bf16` data types.
+  not available. GEMM convolution supports the `s8`/`u8`, `f32`, and `bf16` data types.
 
 ### Direct Algorithm
 

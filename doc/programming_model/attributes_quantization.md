@@ -549,7 +549,7 @@ See examples:
 
 ## Quantization Workflows Examples
 
-### Breakdown of Convolution with INT8 Quantization
+### Breakdown of Convolution with int8 Quantization
 
 Consider a convolution with bias. The tensors are represented as:
 

@@ -183,7 +183,7 @@ run-time attributes in use.
      type and weights `bf16` data type, and up to three-dimensional matrices.
    - Optimized implementations for `f8` data type are available only on Intel(R)
      Data Center GPU Max Series and Intel(R) Xe2 Graphics.
-   - Configuration with `int8` source data type, `s8` weight data type and `bf16`
+   - Configuration with `s8`/`u8` source data type, `s8` weight data type and `bf16`
      destination data type doesn't support:
      * Destination zero point.
      * Runtime dimensions.
@@ -192,7 +192,7 @@ run-time attributes in use.
 
 
 3. **CPU**
-   - Configurations with `int8` source data type, `s8` weight data type and `f16`
+   - Configurations with `s8`/`u8` source data type, `s8` weight data type and `f16`
      destination data type aren't supported.
    - Configurations with floating point source data type, integer weights data
      type and floating point destination data type are not optimized.

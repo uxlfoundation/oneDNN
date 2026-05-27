@@ -39,6 +39,7 @@ namespace graph {
 namespace dnnl_impl {
 
 using value_ptr = std::shared_ptr<value_t>;
+using ltw = logical_tensor_wrapper_t;
 
 dnnl::primitive_attr make_dnnl_primitive_attr(
         const std::shared_ptr<op_t> &op, const fusion_info_t &fusion_info) {
@@ -209,10 +210,14 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
     }
 
     if (fusion_info.dropout_) {
-        // TODO: output mask and non-host-scalar seed/offset/probability are not enabled yet
+        // TODO: output mask is not enabled yet.
+        const auto prop_type = ltw(
+                fusion_info.dropout_->get_op()->get_input_logical_tensor(1))
+                                       .property_type();
         memory::desc mask_desc;
         attr.set_dropout(mask_desc, /*seed_dt*/ memory::data_type::s64,
-                /*use_offset*/ true, /*use_host_scalars*/ true);
+                /*use_offset*/ true,
+                /*use_host_scalars*/ prop_type == property_type::host_scalar);
     }
 
     // convert post ops

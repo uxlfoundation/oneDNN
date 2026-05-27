@@ -1507,6 +1507,20 @@ status_t fuse_dropout(std::shared_ptr<subgraph_t> &sg) {
         auto base_op = fuse_group.first;
         auto dropout_op = fuse_group.second;
 
+        // check if the seed, offset, and probability have the same property.
+        const auto seed_prop
+                = ltw(dropout_op->get_input_logical_tensor(1)).property_type();
+        const auto offset_prop
+                = ltw(dropout_op->get_input_logical_tensor(2)).property_type();
+        const auto prob_prop
+                = ltw(dropout_op->get_input_logical_tensor(3)).property_type();
+
+        VCHECK_TRANSFORM(seed_prop == offset_prop && offset_prop == prob_prop,
+                status::unimplemented,
+                "The seed, offset, and probability inputs of dropout should "
+                "all have the same property (either all host scalars or all "
+                "device tensors)");
+
         if (!base_op->has_attr(op_attr::fusion_info)) {
             fusion_info_t fusion_info;
             base_op->set_attr<fusion_info_t>(op_attr::fusion_info, fusion_info);

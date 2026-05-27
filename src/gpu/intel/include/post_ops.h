@@ -51,6 +51,15 @@ float fwd_binary(unsigned algorithm, POST_OP_DATA_T x, POST_OP_DATA_T y) {
     }
 }
 
+float fwd_ternary(
+        unsigned algorithm, POST_OP_DATA_T x, POST_OP_DATA_T y, int cond) {
+    switch (algorithm) {
+        // ternary
+        case binary_select: return cond ? x : y; break;
+        default: return 0.f;
+    }
+}
+
 // unused arguments are maintained for interface compatibility
 #define APPLY_PO_BINARY(idx, acc, _sum_src, x0, x1, x2, x3, x4, x5) \
     { \
@@ -59,6 +68,20 @@ float fwd_binary(unsigned algorithm, POST_OP_DATA_T x, POST_OP_DATA_T y) {
         POST_OP_DATA_T po_src \
                 = load(po_src, (CONCAT3(po, idx, _binary_arg)) + po_off); \
         acc = fwd_binary(CONCAT3(PO_, idx, _ALG), acc, po_src); \
+    }
+
+// unused arguments are maintained for interface compatibility
+#define APPLY_PO_TERNARY(idx, acc, _sum_src, x0, x1, x2, x3, x4, x5) \
+    { \
+        const auto po_off \
+                = OFF_RMD(CONCAT2(PO_, idx), x0, x1, x2, x3, x4, x5); \
+        POST_OP_DATA_T po_src \
+                = load(po_src, (CONCAT3(po, idx, _binary_arg)) + po_off); \
+        const auto po2_off \
+                = OFF_RMD(CONCAT2(PO2_, idx), x0, x1, x2, x3, x4, x5); \
+        int po_cond \
+                = load(po_cond, (CONCAT3(po, idx, _binary_arg2)) + po2_off); \
+        acc = fwd_ternary(CONCAT3(PO_, idx, _ALG), acc, po_src, po_cond); \
     }
 
 // unused arguments are maintained for interface compatibility

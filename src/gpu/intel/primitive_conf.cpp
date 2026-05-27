@@ -415,7 +415,6 @@ bool post_ops_with_binary_ok(const primitive_attr_t *attr,
                 && (is_eltwise(po_idx) || is_sum(po_idx) || is_binary(po_idx)
                         || is_prelu(po_idx));
         if (is_binary(po_idx)) {
-            if (p.entry_[po_idx].is_binary_with_ternary_op()) return false;
             const auto &bin_desc = p.entry_[po_idx].binary.src1_desc;
             bool has_runtime_dims = false;
             int num_size_one_dims = 0;
@@ -512,8 +511,6 @@ status_t def_post_ops_cfg(compute::kernel_ctx_t &kernel_ctx,
                                   const post_ops_t::entry_t &e, int idx_) {
         std::string idx = std::to_string(idx_);
         if (e.is_binary() || e.is_prelu()) {
-            kernel_ctx.add_option("-DAPPLY_PO_" + idx + "=APPLY_PO_BINARY");
-
             post_op::relative_md_t src_rmd;
             if (e.is_binary()) {
                 kernel_ctx.register_buffer_size(e.binary.src1_desc);
@@ -545,6 +542,37 @@ status_t def_post_ops_cfg(compute::kernel_ctx_t &kernel_ctx,
                 if (!src_rmd.is_broadcast(i, dst_md.ndims)
                         && !src_rmd.is_inner_dim(i, dst_md.ndims))
                     po_kernel_args += std::string(", dim_t " + stride_vars[i]);
+            }
+
+            if (!e.is_binary_with_ternary_op()) {
+                kernel_ctx.add_option("-DAPPLY_PO_" + idx + "=APPLY_PO_BINARY");
+            } else {
+                kernel_ctx.add_option(
+                        "-DAPPLY_PO_" + idx + "=APPLY_PO_TERNARY");
+
+                post_op::relative_md_t src2_rmd;
+                kernel_ctx.register_buffer_size(e.binary.src2_desc);
+                CHECK(post_op::relative_md_t::make(
+                        src2_rmd, e.binary.src2_desc, {}));
+
+                std::array<std::string, MAX_NDIMS> stride2_vars;
+                for (int i = 0; i < dst_md.ndims; i++) {
+                    stride2_vars[i]
+                            = "po" + idx + "_stride2_" + std::to_string(i);
+                }
+                kernel_ctx.add_option(src2_rmd.ocl_defines(
+                        "PO2_" + idx, stride2_vars, dst_md.ndims));
+                set_post_op_uses(src2_rmd.dt);
+
+                po_kernel_args += std::string(", const __global ")
+                        + get_type_name(src2_rmd.dt) + " *po" + idx
+                        + "_binary_arg2";
+                for (int i = 0; i < dst_md.ndims; i++) {
+                    if (!src2_rmd.is_broadcast(i, dst_md.ndims)
+                            && !src2_rmd.is_inner_dim(i, dst_md.ndims))
+                        po_kernel_args
+                                += std::string(", dim_t " + stride2_vars[i]);
+                }
             }
         } else if (e.is_eltwise()) {
             define_float("po" + idx + "_alpha", e.eltwise.alpha);
@@ -616,6 +644,28 @@ int append_post_ops_to_arg_list_base(const exec_args_t &args,
                 if (!src_rmd.is_broadcast(i, src_mdw.ndims())
                         && !src_rmd.is_inner_dim(i, src_mdw.ndims()))
                     arg_list.set(post_op_idx++, src_mdw.strides()[i]);
+            }
+
+            // src2 arg for ternary ops (binary_select).
+            if (e.is_binary_with_ternary_op()) {
+                auto arg2 = args.at(DNNL_ARG_ATTR_MULTIPLE_POST_OP(po_idx)
+                        | DNNL_ARG_SRC_2);
+                gpu_assert(arg2.is_const());
+                auto &binary_arg2 = arg2.mem()
+                        ? *(arg2.mem()->memory_storage())
+                        : dnnl::impl::memory_storage_t::empty_storage();
+                arg_list.set(post_op_idx++, binary_arg2);
+
+                post_op::relative_md_t src2_rmd;
+                status_t status = post_op::relative_md_t::make(
+                        src2_rmd, e.binary.src2_desc, {});
+                gpu_assert(status == status::success);
+                memory_desc_wrapper src2_mdw = e.binary.src2_desc;
+                for (int i = 0; i < src2_mdw.ndims(); i++) {
+                    if (!src2_rmd.is_broadcast(i, src2_mdw.ndims())
+                            && !src2_rmd.is_inner_dim(i, src2_mdw.ndims()))
+                        arg_list.set(post_op_idx++, src2_mdw.strides()[i]);
+                }
             }
         } else if (e.is_eltwise()) {
             arg_list.set(post_op_idx++, e.eltwise.alpha);

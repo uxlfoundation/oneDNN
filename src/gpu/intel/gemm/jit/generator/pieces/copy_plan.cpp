@@ -985,9 +985,10 @@ bool CopyPlan::planShflUpconvertXe3p(CopyInstruction &i)
     // If dst is integral, only use shfl.idx4 in case 1 and only when src and dst have valid offsets for shfl.idx4.
 
     auto st = i.src0.type, dt = i.dst.type;
-    bool _16 = (getBytes(dt) == 2);
+    const bool _16 = (getBytes(dt) == 2);
+    const auto minElems = _16 ? 32 : 64;  // minimum 4-bit elements per shfl.idx4 instruction
 
-    bool laneAligned = (i.src0.vs == 8 && i.src0.width * getBytes(dt) == 8 && i.src0.stride == 1);
+    bool laneAligned = (i.src0.vs == 8 && i.src0.width * getBytes(dt) == 4 && i.src0.stride == 1);
     if ((i.src0.vs || i.src0.width) && !laneAligned)
         return false;       /* unsupported 2D region */
     if (!laneAligned && i.src0.stride != 1)
@@ -996,32 +997,31 @@ bool CopyPlan::planShflUpconvertXe3p(CopyInstruction &i)
         return false;       /* unaligned input */
 
     auto x = i.src0, y = i.dst;
-    bool copySrc = !laneAligned || x.byteOffset() >= 4;
-    bool copyDst = (y.stride != 1 || y.offset != 0);
+    const bool copySrc = !laneAligned || x.byteOffset() >= 4;
+    const bool copyDst = (y.stride != 1 || y.offset != 0 || i.simd % minElems);
 
     if (isInt(dt) && (copySrc || copyDst))
         return false;       /* use normal sequence */
 
-    if (i.simd < 16) return false;
     auto lut = getResource(CopyResource::makeShflLUT(st, dt));
     if (!lut)
         return false;       /* no LUT available */
     lut.type = DataType::ud;
     lut.stride = 0;         /* will be fixed up later */
 
-    int orig_simd  = i.simd;
-    if (copySrc) {
-         i.simd /= 2;
-         i.simd = std::max(16, i.simd);
-    }
-
-    auto ie = splitMultiple<3>(i);
 
     x.offset >>= (_16 ? 1 : 2);
     x.type = (_16 ? DataType::ub : DataType::uw);
 
-    if (copyDst)
+    int orig_simd  = i.simd;
+    if (copyDst) {
+        // Round up SIMD to ensure a valid shfl.
+        i.simd = round_up(i.simd, minElems);
         y = newTemp(dt, i.simd, 1);
+    }
+
+    i.simd /= (_16 ? 2 : 4);
+    auto ie = splitMultiple<3>(i);
 
     if (copySrc) {
         ie[0]->op = Opcode::mov;
@@ -1030,7 +1030,8 @@ bool CopyPlan::planShflUpconvertXe3p(CopyInstruction &i)
         x.type = (_16 ? DataType::ub : DataType::uw);
         x.stride = (_16 ? 4 : 2);
         ie[0]->dst = x;
-    }
+    } else
+        ie[0]->invalidate();
 
     ie[1]->op = Opcode::shfl;
     ie[1]->dst = y;

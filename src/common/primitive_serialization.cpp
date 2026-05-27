@@ -58,6 +58,14 @@ status_t serialize_desc(
     return status::success;
 }
 
+void serialize_md_blocking_desc(
+        serialization_stream_t &sstream, const blocking_desc_t &bd, int ndims) {
+    sstream.append_array(ndims, bd.strides);
+    sstream.append(bd.inner_nblks);
+    sstream.append_array(bd.inner_nblks, bd.inner_blks);
+    sstream.append_array(bd.inner_nblks, bd.inner_idxs);
+}
+
 void serialize(serialization_stream_t &sstream, const memory_desc_t &md) {
     sstream.append(md.ndims);
     sstream.append_array(md.ndims, md.dims);
@@ -68,17 +76,29 @@ void serialize(serialization_stream_t &sstream, const memory_desc_t &md) {
     sstream.append(md.format_kind);
     // format desc
     switch ((int)md.format_kind) {
-        case format_kind::sparse:
         case format_kind::undef:
         case format_kind::any:
         case format_kind::host_scalar: break; // no additional data to serialize
+        case format_kind::sparse:
+            sstream.append(md.format_desc.sparse_desc.encoding);
+            sstream.append(md.format_desc.sparse_desc.nnz);
+            sstream.append_array(sparse_desc_t::max_metadata_types,
+                    md.format_desc.sparse_desc.metadata_types);
+            // User cannot initialize `packed_desc` therefore `packed_desc`
+            // is always zero initialized.
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+            if (md.format_desc.sparse_desc.encoding
+                    == sparse_encoding::grouped) {
+                sstream.append(
+                        md.format_desc.sparse_desc.grouped_desc.group_count);
+                sstream.append(md.format_desc.sparse_desc.grouped_desc
+                                       .variable_dim_idx);
+            }
+#endif
+            break;
         case format_kind::blocked:
-            sstream.append_array(md.ndims, md.format_desc.blocking.strides);
-            sstream.append(md.format_desc.blocking.inner_nblks);
-            sstream.append_array(md.format_desc.blocking.inner_nblks,
-                    md.format_desc.blocking.inner_blks);
-            sstream.append_array(md.format_desc.blocking.inner_nblks,
-                    md.format_desc.blocking.inner_idxs);
+            serialize_md_blocking_desc(
+                    sstream, md.format_desc.blocking, md.ndims);
             break;
         case format_kind::wino:
             sstream.append(md.format_desc.wino_desc.wino_format);

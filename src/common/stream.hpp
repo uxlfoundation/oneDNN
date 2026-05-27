@@ -28,7 +28,7 @@
 
 struct dnnl_stream : public dnnl::impl::c_compatible {
     dnnl_stream(dnnl::impl::engine_t *engine, dnnl::impl::stream_impl_t *impl)
-        : engine_(engine), impl_(impl) {}
+        : engine_(engine), impl_(impl), use_verbose_profiler_(false) {}
     virtual ~dnnl_stream() = default;
 
     /** returns stream's engine */
@@ -73,6 +73,21 @@ struct dnnl_stream : public dnnl::impl::c_compatible {
 
     bool is_profiling_enabled() const { return impl_->is_profiling_enabled(); }
 
+    bool is_verbose_profiler_enabled() const { return use_verbose_profiler_; }
+
+    dnnl::impl::status_t init_verbose_profiler() {
+        use_verbose_profiler_
+                = impl_->supports_verbose_profiling(engine_->kind());
+        return dnnl::impl::status::success;
+    }
+
+    virtual dnnl::impl::status_t run_verbose_profiler(
+            const std::string &pd_info, double start_ms) const {
+        if (!is_verbose_profiler_enabled())
+            return dnnl::impl::status::invalid_arguments;
+        return dnnl::impl::status::unimplemented;
+    }
+
     virtual dnnl::impl::status_t zero_pad(const dnnl::impl::memory_t *memory,
             const dnnl::impl::exec_ctx_t &ctx);
 
@@ -91,6 +106,7 @@ struct dnnl_stream : public dnnl::impl::c_compatible {
 protected:
     dnnl::impl::engine_t *engine_;
     std::unique_ptr<dnnl::impl::stream_impl_t> impl_;
+    bool use_verbose_profiler_;
 };
 
 #endif

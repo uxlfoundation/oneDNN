@@ -733,12 +733,18 @@ status_t pd_t::init_GEMMProblem(
         problem.cqGroupN = c_quant.group_n;
     }
 
-    if (problem.Ta_ext.isInt4() && problem.Tb_ext.isInt8()
-            && a_quant.zp_ndims >= 0)
-        problem.Ta = Type::s8;
-    if (problem.Tb_ext.isInt4() && problem.Ta_ext.isInt8()
-            && b_quant.zp_ndims >= 0)
-        problem.Tb = Type::s8;
+    // Mixed s8/s4 DPAS support:
+    // - Xe3p: Not supported, require s4->s8 upconversion
+    // - pre-Xe3p: supported, but only when s4 matrix doesn't have zero points
+    bool has_s8s4_dpas = getCore(problem.product.family) != ngen::HW::Xe3p;
+    if (problem.Ta_ext.isInt4() && problem.Tb_ext.isInt8()) {
+        bool s8s4_dpas_ok = has_s8s4_dpas && (a_quant.zp_ndims < 0);
+        if (!s8s4_dpas_ok) problem.Ta = Type::s8;
+    }
+    if (problem.Tb_ext.isInt4() && problem.Ta_ext.isInt8()) {
+        bool s8s4_dpas_ok = has_s8s4_dpas && (b_quant.zp_ndims < 0);
+        if (!s8s4_dpas_ok) problem.Tb = Type::s8;
+    }
 
     if (problem.Ta.isInteger()) problem.Ts = Type::f32;
 

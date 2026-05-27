@@ -54,18 +54,31 @@ struct ref_sparse_t : public primitive_t {
             VDISPATCH_MATMUL(
                     is_f32_dt || is_f16_dt, VERBOSE_UNSUPPORTED_DT_CFG);
 
-            bool is_src_coo_sparse = src_d.is_sparse_desc()
-                    && (src_d.encoding() == sparse_encoding::coo);
-            VDISPATCH_MATMUL(is_src_coo_sparse, VERBOSE_UNSUPPORTED_SPARSE_CFG);
+            VDISPATCH_MATMUL(dst_md()->ndims == 2, VERBOSE_BAD_NDIMS, "dst",
+                    dst_md()->ndims);
 
-            bool is_meta_data_valid = src_d.metadata_type(0) == s32;
+            // One of tensors must be sparse, not none, not both.
+            VDISPATCH_MATMUL(src_d.is_sparse_desc() ^ wei_d.is_sparse_desc(),
+                    VERBOSE_UNSUPPORTED_SPARSE_CFG);
+            const auto &sparse_d = src_d.is_sparse_desc() ? src_d : wei_d;
+            const auto &dense_d = src_d.is_sparse_desc() ? wei_d : src_d;
+            VDISPATCH_MATMUL(
+                    utils::one_of(sparse_d.encoding(), sparse_encoding::coo,
+                            sparse_encoding::csr),
+                    VERBOSE_UNSUPPORTED_SPARSE_CFG);
+
+            bool is_meta_data_valid = sparse_d.metadata_type(0) == s32;
+            if (sparse_d.encoding() == sparse_encoding::csr)
+                is_meta_data_valid = is_meta_data_valid
+                        && sparse_d.metadata_type(1) == s32;
             VDISPATCH_MATMUL(
                     is_meta_data_valid, VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
             VDISPATCH_MATMUL(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
-            bool wei_tag_check
-                    = wei_d.matches_one_of_tag(format_tag::ab, format_tag::ba);
-            VDISPATCH_MATMUL(wei_tag_check, VERBOSE_UNSUPPORTED_TAG);
+            bool dense_tag_check
+                    = dense_d.matches_one_of_tag(format_tag::ab, format_tag::ba)
+                    != format_tag::undef;
+            VDISPATCH_MATMUL(dense_tag_check, VERBOSE_UNSUPPORTED_TAG);
 
             VDISPATCH_MATMUL(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
@@ -90,14 +103,26 @@ struct ref_sparse_t : public primitive_t {
         const memory_desc_wrapper src_d(pd()->src_md(0));
         const memory_desc_wrapper wei_d(pd()->weights_md(0));
         const memory_desc_wrapper dst_d(pd()->dst_md(0));
+
+        bool is_src_sparse = src_d.is_sparse_desc();
+        const auto &sparse_d = is_src_sparse ? src_d : wei_d;
+        bool is_csr = sparse_d.encoding() == sparse_encoding::csr;
+        kernel_ctx.define_int("IS_CSR", is_csr ? 1 : 0);
+        kernel_ctx.define_int("SPARSE_WEI", is_src_sparse ? 0 : 1);
+
         offsets_t off;
-        set_offsets(src_d, off.src_off);
-        set_offsets(wei_d, off.wei_off);
+        if (!src_d.is_sparse_desc()) {
+            set_offsets(src_d, off.src_off);
+            def_offsets(off.src_off, kernel_ctx, "SRC", ndims);
+        }
+        if (!wei_d.is_sparse_desc()) {
+            set_offsets(wei_d, off.wei_off);
+            def_offsets(off.wei_off, kernel_ctx, "WEI", ndims);
+        }
         set_offsets(dst_d, off.dst_off);
-        def_offsets(off.src_off, kernel_ctx, "SRC", ndims);
-        def_offsets(off.wei_off, kernel_ctx, "WEI", ndims);
         def_offsets(off.dst_off, kernel_ctx, "DST", ndims);
         kernel_ctx.define_int("NDIMS", ndims);
+        kernel_ctx.define_int("K", pd()->src_md()->dims[1]);
 
         def_data_type(kernel_ctx, pd()->src_dt_, "SRC");
         def_data_type(kernel_ctx, pd()->wei_dt_, "WEI");

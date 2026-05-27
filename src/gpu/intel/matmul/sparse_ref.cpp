@@ -25,25 +25,31 @@ namespace intel {
 namespace matmul {
 
 status_t ref_sparse_t::execute_ref(const exec_ctx_t &ctx) const {
-    const auto &a_values = CTX_IN_STORAGE(DNNL_ARG_SRC, 0);
-    const auto &a_rows = CTX_IN_STORAGE(DNNL_ARG_SRC, 1);
-    const auto &a_cols = CTX_IN_STORAGE(DNNL_ARG_SRC, 2);
-
     const auto a_d = ctx.memory_mdw(DNNL_ARG_SRC, pd()->src_md());
+    const auto b_d = ctx.memory_mdw(DNNL_ARG_WEIGHTS, pd()->weights_md());
     const auto c_d = ctx.memory_mdw(DNNL_ARG_DST, pd()->dst_md());
-    const dim_t nnz = a_d.nnz();
 
-    const auto &b = CTX_IN_STORAGE(DNNL_ARG_WEIGHTS);
+    bool is_src_sparse = a_d.is_sparse_desc();
+    int sparse_arg = is_src_sparse ? DNNL_ARG_SRC : DNNL_ARG_WEIGHTS;
+    int dense_arg = is_src_sparse ? DNNL_ARG_WEIGHTS : DNNL_ARG_SRC;
+
+    const auto &sp_values = CTX_IN_STORAGE(sparse_arg, 0);
+    const auto &sp_meta0 = CTX_IN_STORAGE(sparse_arg, 1);
+    const auto &sp_meta1 = CTX_IN_STORAGE(sparse_arg, 2);
+    const auto &dense = CTX_IN_STORAGE(dense_arg);
     auto &c = CTX_OUT_STORAGE(DNNL_ARG_DST);
+
+    const auto &sparse_d = is_src_sparse ? a_d : b_d;
+    const dim_t nnz = sparse_d.nnz();
 
     const dim_t M = c_d.dims()[0];
     const dim_t N = c_d.dims()[1];
 
     compute::kernel_arg_list_t arg_list;
-    arg_list.set(0, a_values);
-    arg_list.set(1, a_rows);
-    arg_list.set(2, a_cols);
-    arg_list.set(3, b);
+    arg_list.set(0, sp_values);
+    arg_list.set(1, sp_meta0);
+    arg_list.set(2, sp_meta1);
+    arg_list.set(3, dense);
     arg_list.set(4, c);
     arg_list.set(5, nnz);
     compute::range_t gws = {(size_t)M, (size_t)N};

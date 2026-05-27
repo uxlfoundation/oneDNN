@@ -1714,26 +1714,41 @@ void CopyPlan::planInt4Downconversion(CopyInstruction &i)
 
         ie[4]->invalidate();
     } else if (simd > 1 && ddst.stride == 1) {
-        ie[1]->op = Opcode::shl;
-        ie[1]->simd = simd / 2;
-        ie[1]->dst = stmp;
-        ie[1]->dst.offset += 1;
-        ie[1]->dst.stride *= 2;
-        ie[1]->src0 = stmp;
-        ie[1]->src0.offset += 1;
-        ie[1]->src0.stride *= 2;
-        ie[1]->src1 = Immediate::uw(0x4);
+        if (hw < HW::Xe3p) {
+            ie[1]->op = Opcode::shl;
+            ie[1]->simd = simd / 2;
+            ie[1]->dst = stmp;
+            ie[1]->dst.offset += 1;
+            ie[1]->dst.stride *= 2;
+            ie[1]->src0 = stmp;
+            ie[1]->src0.offset += 1;
+            ie[1]->src0.stride *= 2;
+            ie[1]->src1 = Immediate::uw(0x4);
+        } else {
+            // Single-instruction shift + alignment
+            // Note: clobbers even words in tmp
+            ie[1]->op = Opcode::shr;
+            ie[1]->simd = simd / 2;
+            ie[1]->dst = tmp;
+            ie[1]->dst.type = DataType::uw;
+            ie[1]->dst.stride = stmp.stride * 2;
+            ie[1]->dst.offset = stmp.offset;
+            ie[1]->src0 = stmp;
+            ie[1]->src0.type = DataType::ud;
+            ie[1]->src0.offset /= 2;
+            ie[1]->src1 = Immediate::uw(0xC);
+        }
 
         ie[2]->op = Opcode::bfn;
-        ie[2]->ctrl = 0xEC;
+        // Note: Xe3p path has junk in low 4 bits of src1.
+        ie[2]->ctrl = hw < HW::Xe3p ? 0xEC : 0xAC;
         ie[2]->simd = simd / 2;
-        ie[2]->dst = stmp;
+        ie[2]->dst = hw < HW::Xe3p ? stmp : tmp;
         ie[2]->dst.stride *= 2;
+        ie[2]->dst.offset = stmp.offset;
         ie[2]->src0 = stmp;
         ie[2]->src0.stride *= 2;
-        ie[2]->src1 = stmp;
-        ie[2]->src1.offset += 1;
-        ie[2]->src1.stride *= 2;
+        ie[2]->src1 = ie[1]->dst;
         ie[2]->src2 = Immediate::uw(0x0F);
 
         if (simd > 2) {

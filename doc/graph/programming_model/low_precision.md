@@ -22,7 +22,7 @@ point and returns `f32` tensor. Quantize operation takes `f32` tensor, scale, ze
 point, and returns integer tensor. The scale and zero point are single dimension
 tensors, which could contain one value for the per-tensor quantization case or
 multiple values for the per-channel quantization case. The integer tensor could
-be represented in unsigned `int8` or signed `int8` data type. Zero point could be
+be represented in `u8` or `s8` data type. Zero point could be
 zero for symmetric quantization scheme, and a non-zero value for asymmetric
 quantization scheme.
 

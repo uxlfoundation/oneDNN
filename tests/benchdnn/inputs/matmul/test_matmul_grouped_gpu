@@ -3,8 +3,9 @@
 # grouped_mm:        bf16/f16, mat2 row-major (abc) and col-major (acb)
 # scaled_grouped_mm: mat2 col-major (acb), mat1 row-major (default stag)
 
-
---batch=test_matmul_grouped_ci
+--reset
+--batch=harness_matmul_grouped_2dby3d
+--batch=harness_matmul_grouped_2dby2d
 
 --reset
 

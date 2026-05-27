@@ -59,8 +59,3 @@ Dropout operation supports the following data type combinations.
 | f32   | f32   | u8   | u64   | u64    | f32         |
 | bf16  | bf16  | u8   | u64   | u64    | f32         |
 | f16   | f16   | u8   | u64   | u64    | f32         |
-
-## Implementation Limitations
-
-1. The `seed`, `offset`, and `probability` inputs only support logical tensors
-   with property type set to `host_scalar`.

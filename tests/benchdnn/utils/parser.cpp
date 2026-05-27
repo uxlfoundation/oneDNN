@@ -810,7 +810,7 @@ bool parse_encoding(std::vector<sparse_options_t> &sparse_options,
 
 // Format: DIM_IDX:NUM_GROUPS:size0+size1+...+sizeN[:max_size][,config2,...]
 // - DIM_IDX is the dimension index, where src MxK * weights KxN = dst MxN
-//   0 = M,  1 = K, 2 = N
+//   0 = M,  1 = K
 // - NUM_GROUPS is the number of tensors in the group (number of experts)
 // - size0+size1+...+sizeN are the '+'-separated sizes for each in the group,
 //   with sum equal to the total size along DIM_IDX
@@ -880,10 +880,10 @@ bool parse_grouped(std::vector<sparse_options_t> &sparse_options,
 
         int variable_dim_idx = static_cast<int>(utils::stoll_safe(dim_idx_str));
 
-        // Validate dimension index (0=M, 1=K, 2=N)
-        if (variable_dim_idx < 0 || variable_dim_idx > 2) {
+        // Validate dimension index (0=M, 1=K)
+        if (variable_dim_idx < 0 || variable_dim_idx > 1) {
             BENCHDNN_PRINT(0,
-                    "Error: dimension index must be 0 (M), 1 (K), or 2 (N), "
+                    "Error: dimension index must be 0 (M) or 1 (K) "
                     "got %d\n",
                     variable_dim_idx);
             SAFE_V(FAIL);
@@ -924,11 +924,13 @@ bool parse_grouped(std::vector<sparse_options_t> &sparse_options,
             SAFE_V(FAIL);
         }
 
-        // Set grouped encoding based on variable_dim_idx
-        // For matmul: src is MxK, weights is KxN, dst is MxN
-        // - dim 0 (M): affects src and dst
-        // - dim 1 (K): affects src and weights
-        // - dim 2 (N): affects weights and dst
+        // Set grouped encoding based on the src varying dim:
+        //  - dim 0 (M varies, 2Dx3D variant)
+        //    src is [total_M, K] (var_dim_idx=0),  wei is dense [G, K, N],
+        //    dst is [total_M, N] (var_dim_idx=0)
+        //  - dim 1 (K/contraction varies, 2Dx2D variant)
+        //    src is [M, total_K] (var_dim_idx=1), wei is [total_K, N] (var_dim_idx=0),
+        //    dst is dense 3D [G, M, N]
         if (variable_dim_idx == 0) {
             v.set_grouped(DNNL_ARG_SRC, variable_dim_idx, group_count, sizes,
                     max_variable_dim);
@@ -937,12 +939,8 @@ bool parse_grouped(std::vector<sparse_options_t> &sparse_options,
         } else if (variable_dim_idx == 1) {
             v.set_grouped(DNNL_ARG_SRC, variable_dim_idx, group_count, sizes,
                     max_variable_dim);
-            v.set_grouped(DNNL_ARG_WEIGHTS, variable_dim_idx, group_count,
-                    sizes, max_variable_dim);
-        } else if (variable_dim_idx == 2) {
-            v.set_grouped(DNNL_ARG_WEIGHTS, variable_dim_idx, group_count,
-                    sizes, max_variable_dim);
-            v.set_grouped(DNNL_ARG_DST, variable_dim_idx, group_count, sizes,
+            v.set_grouped(DNNL_ARG_WEIGHTS,
+                    /* var_dim_idx is different here */ 0, group_count, sizes,
                     max_variable_dim);
         }
 

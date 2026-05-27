@@ -554,9 +554,19 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(memory_desc_t &B_md,
             bgmmc.wei_tag = blocked_B_layouts_allowed && !bgmmc.is_runtime_N
                             && !bgmmc.is_int4_weights
                     ? this->pick_blocked_B_layout(default_n_block)
-                    : bgmmc.is_int4_weights && bgmmc.N % 2 != 0
-                    ? transposed_tensor_layout_tag
                     : plain_tensor_layout_tag;
+
+            // For N == 1 force transposed layout because copy-B kernel is
+            // significantly faster.
+            if (bgmmc.wei_tag == plain_tensor_layout_tag && bgmmc.N == 1) {
+                bgmmc.wei_tag = transposed_tensor_layout_tag;
+            }
+
+            // Plain copy-B kernel does not support odd sizes for subbyte types.
+            // Using transposed version for these cases.
+            if (bgmmc.is_int4_weights && bgmmc.N % 2 != 0) {
+                bgmmc.wei_tag = transposed_tensor_layout_tag;
+            }
         }
         VCONDCHECK_BG(
                 format_tag::undef != bgmmc.wei_tag, VERBOSE_UNSUPPORTED_TAG)
@@ -587,11 +597,19 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(memory_desc_t &B_md,
                     : memory_desc_matches_one_of_tag(B_md,
                               plain_tensor_layout_tag,
                               transposed_tensor_layout_tag, acbd, adbc);
+
+            // For N == 1 force transposed layout because copy-B kernel is
+            // significantly faster.
+            if (bgmmc.wei_tag == plain_tensor_layout_tag && bgmmc.N == 1) {
+                bgmmc.wei_tag = transposed_tensor_layout_tag;
+            }
+
             // Plain copy-B kernel does not support odd sizes for subbyte types.
             // Using transposed version for these cases.
             if (bgmmc.is_int4_weights && bgmmc.N % 2 != 0) {
                 bgmmc.wei_tag = transposed_tensor_layout_tag;
             }
+
             if (bgmmc.wei_tag == format_tag::undef) {
                 if (gemm_based::check_gemm_input_format(B_md)) {
                     bgmmc.wei_tag = helper.transB() == 'N'

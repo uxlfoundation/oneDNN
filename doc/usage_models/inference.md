@@ -14,7 +14,7 @@ library is depicted in the following image:
 
 ## Best Practices for Inference
 
-## `f32` Inference
+## f32 Inference
 
 **Use Forward Inference Primitives**
 
@@ -154,7 +154,7 @@ Create a convolution **primitive descriptor**, passing the post-op infused
 auto conv_prim_descr = convolution_forward::primitive_desc(..., attrs, engine);
 ~~~
 
-## `int8` Inference
+## int8 Inference
 
 oneDNN supports low precision `int8` for inference execution. Note that not all
  primitives have `int8` versions. Sometimes the speed benefits would be minimal,

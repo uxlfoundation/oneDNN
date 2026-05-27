@@ -112,7 +112,7 @@ rounded but not guaranteed to be correctly rounded (the returned value
 is not always the closest one but one of the two closest representable
 value). In particular, some hardware platforms have no direct
 conversion instructions from `f32` data type to low-precision data types
-such as `f8` or `fp4`, and will perform conversion through an
+such as `f8` or `f4`, and will perform conversion through an
 intermediate data type (for example `f16` or `bf16`), which may result in
 [double
 rounding](https://en.wikipedia.org/wiki/Rounding#Double_rounding).
@@ -197,7 +197,7 @@ Legend:
 
 Footnotes:
 1. See @ref dev_guide_int8_computations in the Developer Guide for additional
-   limitations related to `int8` arithmetic.
+   limitations related to `u8`/`s8` arithmetic.
 2. The library has functional `bf16` support on processors with
    Intel AVX-512 Byte and Word Instructions (AVX512BW) support for validation
    purposes. The performance of `bf16` primitives on platforms without

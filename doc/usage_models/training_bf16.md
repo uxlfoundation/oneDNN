@@ -29,7 +29,7 @@ executing on hardware that supports
 [Intel DL Boost `bfloat16` instructions](https://www.intel.com/content/dam/develop/external/us/en/documents/architecture-instruction-set-extensions-programming-reference.pdf),
 `bf16` may offer an increase in computational throughput.
 
-## `bf16` Support
+## bf16 Support
 
 Most of the primitives have been updated to support the `bf16` data type for
 source and weights tensors. Destination tensors can be specified to have either
@@ -37,7 +37,7 @@ the `bf16` or `f32` data type. The latter is intended for cases in which the
 output is to be fed to operations that do not support `bf16` or require
 better precision.
 
-## `bf16` Workflow
+## bf16 Workflow
 
 The main difference between implementing training with the `f32` data type and
 with the `bf16` data type is the way the weights updates are treated. With the

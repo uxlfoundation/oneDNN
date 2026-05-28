@@ -128,38 +128,6 @@ jobs:
           ONEDNN_THREADING: ${{ matrix.config.threading }}
           LD_LIBRARY_PATH: ${{ github.workspace }}/oneDNN_pkg/ComputeLibrary/build
 
-      - name: Find last successful run
-        if: failure()
-        id: get-stable-cache
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          key: latest-nightly-success-sha
-          path: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/stable.sha
-
-      - name: Use backup stable hash
-        if: failure() && steps.get-stable-cache.outputs.cache-hit != 'true'
-        run: echo ${{ fromJson(steps.get-versions.outputs.output).dependencies.onednn-base }} > ${{ github.workspace }}/oneDNN/.github/automation/aarch64/stable.sha
-
-      - name: Get stable hash
-        if: failure()
-        id: get-stable
-        run: echo "stable-hash=$(cat ${{ github.workspace }}/oneDNN/.github/automation/aarch64/stable.sha)" >> $GITHUB_OUTPUT
-
-      - name: Run git bisect
-        if: failure()
-        shell: bash
-        working-directory: ${{ github.workspace }}/oneDNN
-        run: |
-          mkdir build
-          python .github/automation/aarch64/bisect_ctest.py --unique ${{ steps.get-stable.outputs.stable-hash }} ${{ github.workspace }}/test_results.log ${{ github.workspace }}/oneDNN/build
-        env:
-          ACL_ROOT_DIR: ${{ github.workspace }}/oneDNN_pkg/ComputeLibrary
-          LD_LIBRARY_PATH: ${{ github.workspace }}/oneDNN_pkg/ComputeLibrary/build
-
-      - name: Reset to HEAD
-        if: failure()
-        working-directory: ${{ github.workspace }}/oneDNN
-        run: git bisect reset
 
       - name: Update wiki
         if: ${{ (success() || failure()) && github.ref == 'refs/heads/main' }}
@@ -169,26 +137,6 @@ jobs:
           title: ${{ matrix.config.name }}
           in-file: ${{ github.workspace }}/test_results.xml
   
-  save-success-hash:
-    runs-on: ubuntu-24.04
-    needs: test
-    steps:
-      - name: Checkout oneDNN
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-          path: oneDNN
-      
-      - name: Create hash file
-        working-directory: ${{ github.workspace }}/oneDNN
-        run: echo "$(git rev-parse --short HEAD)" > .github/automation/aarch64/stable.sha
-
-      - name: Save hash
-        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          key: latest-nightly-success-sha
-          path: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/stable.sha
-
   #* This job adds a check named "Nightly AArch64" that represents overall
   #* workflow status and can be used in branch rulesets
   status:

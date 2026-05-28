@@ -42,7 +42,7 @@ struct conv_fwd_executable_t : public op_executable_t {
             const std::unordered_map<int, memory> &args) const override;
 
 #ifdef DNNL_WITH_SYCL
-    ::sycl::event execute_sycl(const stream &stream,
+    std::optional<::sycl::event> execute_sycl(const stream &stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<::sycl::event> &deps) const override;
 #endif
@@ -77,7 +77,7 @@ struct conv_bwd_data_executable_t : public op_executable_t {
     }
 
 #ifdef DNNL_WITH_SYCL
-    ::sycl::event execute_sycl(const stream &stream,
+    std::optional<::sycl::event> execute_sycl(const stream &stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<::sycl::event> &deps) const override {
         auto e = dnnl::sycl_interop::execute(prim_, stream, args, deps);
@@ -118,7 +118,7 @@ struct conv_bwd_weights_executable_t : public op_executable_t {
     }
 
 #ifdef DNNL_WITH_SYCL
-    ::sycl::event execute_sycl(const stream &stream,
+    std::optional<::sycl::event> execute_sycl(const stream &stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<::sycl::event> &deps) const override {
         auto e = dnnl::sycl_interop::execute(prim_, stream, args, deps);

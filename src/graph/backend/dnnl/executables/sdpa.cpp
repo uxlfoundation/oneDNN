@@ -118,8 +118,8 @@ void sdpa_executable_t::execute(const stream &stream,
 }
 
 #ifdef DNNL_WITH_SYCL
-::sycl::event sdpa_executable_t::execute_sycl(const stream &stream,
-        const std::unordered_map<int, memory> &args,
+std::optional<::sycl::event> sdpa_executable_t::execute_sycl(
+        const stream &stream, const std::unordered_map<int, memory> &args,
         const std::vector<::sycl::event> &deps) const {
     std::vector<dnnl_exec_arg_t> c_args;
     c_args.reserve(args.size());
@@ -326,8 +326,8 @@ void sdpa_bwd_executable_t::execute(const stream &stream,
 }
 
 #ifdef DNNL_WITH_SYCL
-::sycl::event sdpa_bwd_executable_t::execute_sycl(const stream &stream,
-        const std::unordered_map<int, memory> &args,
+std::optional<::sycl::event> sdpa_bwd_executable_t::execute_sycl(
+        const stream &stream, const std::unordered_map<int, memory> &args,
         const std::vector<::sycl::event> &deps) const {
     std::vector<dnnl_exec_arg_t> c_args;
     c_args.reserve(args.size());

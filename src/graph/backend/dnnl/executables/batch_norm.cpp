@@ -124,7 +124,7 @@ void bn_folding_t::execute(const stream &stream,
 }
 
 #ifdef DNNL_WITH_SYCL
-::sycl::event bn_folding_t::execute_sycl(const stream &stream,
+std::optional<::sycl::event> bn_folding_t::execute_sycl(const stream &stream,
         const std::unordered_map<int, memory> &args,
         const std::vector<::sycl::event> &deps) const {
     UNUSED(args);
@@ -655,8 +655,8 @@ void batchnorm_executable_t::execute(const stream &stream,
 }
 
 #ifdef DNNL_WITH_SYCL
-::sycl::event batchnorm_executable_t::execute_sycl(const stream &stream,
-        const std::unordered_map<int, memory> &args,
+std::optional<::sycl::event> batchnorm_executable_t::execute_sycl(
+        const stream &stream, const std::unordered_map<int, memory> &args,
         const std::vector<::sycl::event> &deps) const {
     if (!is_training_) {
         auto e = dnnl::sycl_interop::execute(prim_, stream, args, deps);

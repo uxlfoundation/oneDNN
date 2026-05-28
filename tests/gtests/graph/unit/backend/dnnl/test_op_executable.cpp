@@ -65,32 +65,29 @@ TEST(test_op_executable, DummyImpl) {
 
     // test empty input events
     auto returned_event0 = op_exec->execute_sycl(p_stream, {}, {});
-    const auto &event_list0 = returned_event0.get_wait_list();
-    ASSERT_EQ(event_list0.size(), 0U);
-    ASSERT_EQ(
-            returned_event0
-                    .get_info<::sycl::info::event::command_execution_status>(),
-            ::sycl::info::event_command_status::complete);
+    ASSERT_FALSE(returned_event0.has_value());
 
     // test one input event
     ::sycl::event input_event0;
     auto returned_event1 = op_exec->execute_sycl(p_stream, {}, {input_event0});
-    ASSERT_EQ(returned_event1, input_event0);
+    ASSERT_TRUE(returned_event1.has_value());
+    ASSERT_EQ(*returned_event1, input_event0);
     ASSERT_EQ(
             returned_event1
-                    .get_info<::sycl::info::event::command_execution_status>(),
+                    ->get_info<::sycl::info::event::command_execution_status>(),
             ::sycl::info::event_command_status::complete);
 
     // test two input events
     ::sycl::event input_event1;
     auto returned_event2 = op_exec->execute_sycl(
             p_stream, {}, {std::move(input_event0), std::move(input_event1)});
-    const auto &event_list2 = returned_event2.get_wait_list();
+    ASSERT_TRUE(returned_event2.has_value());
+    const auto &event_list2 = returned_event2->get_wait_list();
     ASSERT_LE(event_list2.size(), 2U);
-    returned_event2.wait();
+    returned_event2->wait();
     ASSERT_EQ(
             returned_event2
-                    .get_info<::sycl::info::event::command_execution_status>(),
+                    ->get_info<::sycl::info::event::command_execution_status>(),
             ::sycl::info::event_command_status::complete);
 }
 #endif

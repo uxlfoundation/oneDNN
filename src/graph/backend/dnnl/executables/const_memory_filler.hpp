@@ -72,7 +72,7 @@ struct const_memory_filler_t : public op_executable_t {
     }
 
 #ifdef DNNL_WITH_SYCL
-    ::sycl::event execute_sycl(const stream &stream,
+    std::optional<::sycl::event> execute_sycl(const stream &stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<::sycl::event> &deps) const override {
         void *data_handle = static_cast<void *>(

@@ -102,8 +102,8 @@ void genindex_executable_t::execute(const stream &stream,
 }
 
 #ifdef DNNL_WITH_SYCL
-::sycl::event genindex_executable_t::execute_sycl_impl(const stream &stream,
-        const std::unordered_map<int, memory> &args,
+std::optional<::sycl::event> genindex_executable_t::execute_sycl_impl(
+        const stream &stream, const std::unordered_map<int, memory> &args,
         const std::vector<::sycl::event> &deps) const {
     if (stream.get_engine().get_kind() == engine::kind::cpu) {
         auto strm_t = stream.get();
@@ -150,8 +150,8 @@ void genindex_executable_t::execute(const stream &stream,
 #endif
 }
 
-::sycl::event genindex_executable_t::execute_sycl(const stream &stream,
-        const std::unordered_map<int, memory> &args,
+std::optional<::sycl::event> genindex_executable_t::execute_sycl(
+        const stream &stream, const std::unordered_map<int, memory> &args,
         const std::vector<::sycl::event> &deps) const {
     if (get_verbose(dnnl::impl::verbose_t::exec_profile,
                 dnnl::impl::component_t::graph)) {
@@ -162,7 +162,7 @@ void genindex_executable_t::execute(const stream &stream,
         double duration_ms = dnnl::impl::get_msec() - start_ms;
         VPROF(start_ms, graph, exec, VERBOSE_profile, info_.c_str(),
                 duration_ms);
-        return {}; // no event returned in profiling mode
+        return std::nullopt; // no event returned in profiling mode
     } else {
         return execute_sycl_impl(stream, args, deps);
     }

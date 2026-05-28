@@ -141,7 +141,7 @@ status_t genindex_t::sycl_execute_impl(const stream_t *g_stream,
         ::sycl::event *sycl_event) {
     if (p_engine_.get_kind() == engine::kind::gpu) {
         auto deps = sycl_deps;
-        ::sycl::event returned_event;
+        std::optional<::sycl::event> returned_event;
         dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
 
         thread_local_cache_t<execution_args_set_t> res_cache;
@@ -152,10 +152,11 @@ status_t genindex_t::sycl_execute_impl(const stream_t *g_stream,
             if (subgraph_->is_constant_[i]) continue;
             returned_event = subgraph_->execs_[i]->execute_sycl(
                     p_stream, res->get_exec_args()[i], deps);
-            deps = {returned_event};
+            if (returned_event) deps = {*returned_event};
         }
 
-        if (sycl_event) *sycl_event = returned_event;
+        if (sycl_event)
+            *sycl_event = returned_event ? *returned_event : ::sycl::event {};
 
         return status::success;
     }

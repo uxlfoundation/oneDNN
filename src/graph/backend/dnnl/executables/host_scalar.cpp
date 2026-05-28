@@ -40,15 +40,17 @@ void host_scalar_executable_t::execute(const stream &stream,
 }
 
 #ifdef DNNL_WITH_SYCL
-::sycl::event host_scalar_executable_t::execute_sycl(const stream &stream,
-        const std::unordered_map<int, memory> &args,
+std::optional<::sycl::event> host_scalar_executable_t::execute_sycl(
+        const stream &stream, const std::unordered_map<int, memory> &args,
         const std::vector<::sycl::event> &deps) const {
     auto it_src = args.find(DNNL_ARG_FROM);
     auto it_dst = args.find(DNNL_ARG_TO);
 
     if (it_src == args.end() || it_dst == args.end()) {
+        // TODO(xxx): this case should not happen. We may want to convert it to
+        // a verbose error.
         assert(!"cannot find memory for DNNL_ARG_FROM or DNNL_ARG_TO");
-        return {};
+        return std::nullopt;
     }
 
     const memory &src_mem = it_src->second;

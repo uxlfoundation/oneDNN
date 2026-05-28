@@ -41,12 +41,17 @@ void memory_reparser_t::execute(const stream &stream,
 }
 
 #ifdef DNNL_WITH_SYCL
-::sycl::event memory_reparser_t::execute_sycl(const stream &stream,
-        const std::unordered_map<int, memory> &args,
+std::optional<::sycl::event> memory_reparser_t::execute_sycl(
+        const stream &stream, const std::unordered_map<int, memory> &args,
         const std::vector<::sycl::event> &deps) const {
     auto from = args.find(DNNL_ARG_FROM);
     auto to = args.find(DNNL_ARG_TO);
-    if (from == args.end() || to == args.end()) return {};
+    if (from == args.end() || to == args.end()) {
+        // TODO(xxx): this case should not happen. We may want to convert it to
+        // a verbose error.
+        assert(!"cannot find memory for DNNL_ARG_FROM or DNNL_ARG_TO");
+        return std::nullopt;
+    }
 
     if (from->second.get_data_handle() == to->second.get_data_handle())
         return dummy_impl_t::execute_sycl(stream, args, deps);

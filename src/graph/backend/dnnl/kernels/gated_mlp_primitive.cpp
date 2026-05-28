@@ -174,7 +174,7 @@ status_t gated_mlp_primitive_kernel_t<quantized>::sycl_execute_impl(
     return status::unimplemented;
 #endif
     auto deps = sycl_deps;
-    ::sycl::event returned_event;
+    std::optional<::sycl::event> returned_event;
 
     dnnl::stream p_stream = make_dnnl_stream(p_engine_, *stream);
 
@@ -191,11 +191,12 @@ status_t gated_mlp_primitive_kernel_t<quantized>::sycl_execute_impl(
         if (subgraph_->is_constant_[i]) continue;
         returned_event = subgraph_->execs_[i]->execute_sycl(
                 p_stream, res->get_exec_args()[i], deps);
-        deps = {returned_event};
+        if (returned_event) deps = {*returned_event};
     }
 
-    scratchpad.set_deps(returned_event);
-    if (ret_event) *ret_event = returned_event;
+    scratchpad.set_deps(returned_event ? *returned_event : ::sycl::event {});
+    if (ret_event)
+        *ret_event = returned_event ? *returned_event : ::sycl::event {};
 
     return status::success;
 }

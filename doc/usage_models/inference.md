@@ -75,7 +75,7 @@ dest_mem_descr = memory::desc(args*, memory::format_tag::any);
 weights_mem_descr = memory::desc(args*, memory::format_tag::any);
 ~~~
 
-Use these three *memory descriptors* with 'format_tag=any`
+Use these three *memory descriptors* with `format_tag=any`
 to create **primitive descriptor**
 ~~~cpp
 auto conv_prim_descr = convolution_forward::primitive_desc(...,

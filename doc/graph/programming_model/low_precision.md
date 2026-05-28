@@ -46,7 +46,7 @@ more or fewer operations.
 ## BF16/F16
 
 oneDNN Graph provides [TypeCast](@ref dev_guide_op_typecast) operation, which
-can convert a `f32` tensor to `bf16` or `f16`, and vice versa. It is used to support
+can convert an `f32` tensor to `bf16` or `f16`, and vice versa. It is used to support
 auto mixed precision mechanism in popular deep learning frameworks. All oneDNN
 Graph operations support `bf16` and `f16` data types.
 

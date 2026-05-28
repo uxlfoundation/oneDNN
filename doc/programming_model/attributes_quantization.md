@@ -589,7 +589,7 @@ where
   potential saturation if the values are out of the range of the `int8` data
   type.
 
-- \f$\operatorname{s32\_to\_f32}()\f$ converts an `int8` value to
+- \f$\operatorname{s32\_to\_f32}()\f$ converts an `s32` value to
   `f32` with potential rounding. This conversion is typically
   necessary to apply `f32` scaling factors.
 

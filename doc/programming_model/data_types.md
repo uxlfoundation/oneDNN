@@ -205,7 +205,7 @@ Footnotes:
    the same operations on the `f32` data type.
 3. Intel AVX-512 `f16` instructions accumulate to `f16`. To avoid overflow, the `f16`
    primitives might up-convert the data to `f32` before performing math operations.
-   This can lead to scenarios where a `f16` primitive may perform slower than
+   This can lead to scenarios where an `f16` primitive may perform slower than
    similar `f32` primitive.
 
 ### Intel Graphics

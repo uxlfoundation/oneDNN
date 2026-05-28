@@ -488,8 +488,13 @@ The following are supported:
   - Weight Scales: column-wise (`mask = (1 << 0) | (1 << 2)`) and
     K-grouped (`mask = (1 << 0) | (1 << 1) | (1 << 2)`) with group specification
     are supported.
-  - Scale data type includes: `f32`, `bf16`, `f16`, `e8m0` for MXFP8 and MXFP4,
-    `f8_e4m3` for NVFP4 block scales.
+  - Scales are not supported when the corresponding tensor data type is
+    `f32`, `bf16`, or `f16`. Scale data type depends on tensor data type:
+
+    | Tensor data type           | Scale data type           |
+    |:---------------------------|:--------------------------|
+    | f8_e5m2, f8_e4m3, f4_e2m1  | f32, e8m0, f8_e4m3        |
+    | u8, s8, s4, u4             | f32, bf16, f16            |
 - Zero points attribute for source and weights tensors:
   - The masks must match the scales mask
   - Source zero points data types include `u8`, `s8`

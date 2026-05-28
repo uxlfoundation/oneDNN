@@ -13,10 +13,10 @@ The operation primitives that work with the `int8` data type
 typically use `s32` (`int32_t`) as an intermediate data type
 (#dnnl::memory::data_type::s32) to avoid integer overflows.
 
-For instance, the `int8` average [pooling](@ref dev_guide_pooling) primitive
-accumulates the `int8` input values in a window to an `s32` accumulator, then
+For instance, the `s8` average [pooling](@ref dev_guide_pooling) primitive
+accumulates the `s8` input values in a window to an `s32` accumulator, then
 divides the result by the window size, and then stores the result back to the
-`int8` destination:
+`s8` destination:
 
 - \f$
     \dst_{s8}(...) =

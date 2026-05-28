@@ -718,9 +718,10 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
             const brg_int8_t &k, const dnnl::impl::post_ops_t &eltwise = {})
         : brg_(k) {
         for (auto &e : eltwise.entry_) {
+            // Keep p1-p5 intact: this kernel reuses them for tail loads/stores.
             eltwise_injectors_.emplace_back(utils::make_unique<
                     jit_uni_eltwise_injector_t<to_vla_sve(isa)>>(
-                    this, e.eltwise));
+                    this, e.eltwise, true, XReg(0), p6, p7));
         }
     }
     ~jit_int8_matmul_kernel_t() override = default;

@@ -139,9 +139,6 @@ struct ref_grouped_t : public primitive_t {
                     VDISPATCH_MATMUL(gN == 1, VERBOSE_UNSUPPORTED_SCALES_CFG);
                 }
             }
-            VDISPATCH_MATMUL(attr_scales.has_default_values(DNNL_ARG_DST),
-                    VERBOSE_UNSUPPORTED_SCALES_CFG);
-
             // Zero-points are supported for src and wei: for WOQ (fp src) and
             // for int arithmetic (int src)
             const auto &attr_zps = attr()->zero_points_;

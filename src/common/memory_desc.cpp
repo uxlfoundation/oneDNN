@@ -409,10 +409,10 @@ status_t memory_desc_init_by_packed_encoding(memory_desc_t &memory_desc,
 // - dims: Total dimensions
 //
 // Supported below:
-// - 2D tensors with variable dim 0 (e.g., [total_M, K]) or dim 1
-//   (e.g., [K, total_M])
-// - The variable dim is the innermost dim of the values buffer
-//   (e.g., row-major for idx = 0, col-major for idx = 1)
+// - 2D tensors only with variable dim 0 (e.g., [total_M, K]) or dim 1
+//   (e.g., [M, total_K])
+// - The variable dim is the outermost dim of the values
+//   buffer: idx=0 -> row-major (ab), idx=1 -> col-major (ba)
 // - Other dimensions must be uniform across all groups
 status_t memory_desc_init_with_grouped_encoding(memory_desc_t &memory_desc,
         int ndims, const dims_t dims, data_type_t data_type,
@@ -422,7 +422,7 @@ status_t memory_desc_init_with_grouped_encoding(memory_desc_t &memory_desc,
         return success;
     }
 
-    VCHECK_MEMORY(ndims <= 2, unimplemented, VERBOSE_BAD_NDIMS, "", ndims);
+    VCHECK_MEMORY(ndims == 2, unimplemented, VERBOSE_BAD_NDIMS, "", ndims);
 
     CHECK(memory_desc_sanity_check(ndims, dims, data_type, format_kind::undef));
 
@@ -458,8 +458,14 @@ status_t memory_desc_init_with_grouped_encoding(memory_desc_t &memory_desc,
     md.format_desc.sparse_desc.encoding = sparse_encoding::grouped;
     md.format_desc.sparse_desc.nnz = utils::array_product(dims, ndims);
     md.format_desc.sparse_desc.metadata_types[0] = offsets_dt;
-    md.format_desc.sparse_desc.grouped_desc.group_count = group_count;
-    md.format_desc.sparse_desc.grouped_desc.variable_dim_idx = variable_dim_idx;
+    auto &grouped = md.format_desc.sparse_desc.grouped_desc;
+    grouped.group_count = group_count;
+    grouped.variable_dim_idx = variable_dim_idx;
+    // layout is determined by variable_dim_idx + dims:
+    //   idx=0 row-major (ab): {dims[1], 1}
+    //   idx=1 col-major (ba): {1, dims[0]}
+    grouped.strides[variable_dim_idx] = dims[1 - variable_dim_idx];
+    grouped.strides[1 - variable_dim_idx] = 1;
 
     memory_desc = md;
 

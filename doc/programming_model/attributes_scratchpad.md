@@ -100,7 +100,7 @@ created using the same engine that the primitive uses.
 
 ## Examples
 
-#### Library Manages Scratchpad
+### Library Manages Scratchpad
 
 As mentioned above, this is a default behavior. We only want to highlight how a
 user can query the amount of memory consumed by a primitive due to a scratchpad.
@@ -120,7 +120,7 @@ auto zero_md = dnnl::memory::desc();
 assert(op_pd.scratchpad_desc() == zero_md);
 ~~~
 
-#### User Manages Scratchpad
+### User Manages Scratchpad
 
 ~~~cpp
 // Create an empty (default) attributes

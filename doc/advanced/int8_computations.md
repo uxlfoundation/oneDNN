@@ -9,9 +9,9 @@ Nuances of int8 Computations {#dev_guide_int8_computations}
 > - `u8`/`s8` GEMM denotes dnnl_gemm_u8s8s32() only.
 
 The operation primitives that work with the `int8` data type
-(#dnnl::memory::data_type::s8 and #dnnl::memory::data_type::u8)
+(@ref dnnl_s8 and @ref dnnl_u8)
 typically use `s32` (`int32_t`) as an intermediate data type
-(#dnnl::memory::data_type::s32) to avoid integer overflows.
+(@ref dnnl_s32) to avoid integer overflows.
 
 For instance, the `s8` average [pooling](@ref dev_guide_pooling) primitive
 accumulates the `s8` input values in a window to an `s32` accumulator, then

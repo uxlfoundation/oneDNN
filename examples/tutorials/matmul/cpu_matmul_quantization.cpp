@@ -37,12 +37,12 @@
 /// \f]
 ///
 /// First, we produce the reference result, having the original matrices
-/// \f$A\f$ and \f$B\f$ be in #dnnl::memory::data_type::f32 data type.
+/// \f$A\f$ and \f$B\f$ be in @ref dnnl_f32 data type.
 ///
 /// For reduced precision computations, the matrices \f$A\f$ and \f$C\f$ will
-/// use #dnnl::memory::data_type::u8 data type and would have the appropriate
+/// use @ref dnnl_u8 data type and would have the appropriate
 /// zero points. For the matrix \f$B\f$, we will use the
-/// #dnnl::memory::data_type::s8 data type, assuming that the data is centered
+/// @ref dnnl_s8 data type, assuming that the data is centered
 /// around zero (hence, the zero point would be simply 0).
 ///
 /// The quantization formula is:

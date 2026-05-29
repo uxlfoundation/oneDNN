@@ -56,11 +56,22 @@ def fix_undefined_labels(rst_dir):
     using Doxygen compound IDs, but only defines the top-level compound
     label, not individual member labels."""
 
+    # Remove stale stubs from previous builds so they don't pollute the
+    # scan below.
+    stubs_path = os.path.join(rst_dir, "_label_stubs.rst")
+    if os.path.exists(stubs_path):
+        os.remove(stubs_path)
+
     ref_re = re.compile(r":ref:`[^`]*<(doxid-[^>]+)>`")
     def_re = re.compile(r"^\.\.\s+_(doxid-[^:]+):", re.MULTILINE)
+    target_re = re.compile(r":target:`[^`]*<(doxid-[^>]+)>`")
 
     referenced = set()
     defined = set()
+    # Labels defined via :target: inside ref-code-blocks.  These are
+    # document-local and cannot be resolved cross-document, but we must
+    # not create .. _label: stubs in the same file (that causes duplicates).
+    target_defined = {}  # label -> filename
     rst_files = {}  # basename -> full path
 
     for root, _, fnames in os.walk(rst_dir):
@@ -72,6 +83,8 @@ def fix_undefined_labels(rst_dir):
                 content = f.read()
             referenced.update(ref_re.findall(content))
             defined.update(def_re.findall(content))
+            for t in target_re.findall(content):
+                target_defined[t] = fname
             rst_files[fname] = path
 
     missing = sorted(referenced - defined)
@@ -109,7 +122,10 @@ def fix_undefined_labels(rst_dir):
                 ):
                     fname = pfx + "_" + fname[len(pfx):]
                     break
-            if fname in rst_files:
+            # If the file already has a :target: for this label, appending
+            # a .. _label: to the same file would create a duplicate.
+            # Route to orphan stubs instead.
+            if fname in rst_files and target_defined.get(label) != fname:
                 file_labels.setdefault(fname, []).append(label)
                 continue
 

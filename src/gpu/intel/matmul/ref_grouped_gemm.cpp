@@ -71,7 +71,31 @@ status_t ref_grouped_t::execute_ref(const exec_ctx_t &ctx) const {
                 = CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
         arg_list.set(next_arg++, wei_scales);
     }
-
+    if (pd()->with_post_op_) {
+        const auto &po_chain = pd()->po_chain_;
+        const memory_storage_t *grouped_scale
+                = &memory_storage_t::empty_storage();
+        const memory_storage_t *dense_scale
+                = &memory_storage_t::empty_storage();
+        const memory_storage_t *nvfp4_scale
+                = &memory_storage_t::empty_storage();
+        for (int i = 0; i < pd()->attr()->post_ops_.len(); ++i) {
+            auto &e = pd()->attr()->post_ops_.entry_[i];
+            if (!e.is_binary()) continue;
+            const int po_arg
+                    = DNNL_ARG_ATTR_MULTIPLE_POST_OP(i) | DNNL_ARG_SRC_1;
+            if (po_chain[i] == po_kind_t::binary_grouped_scale) {
+                grouped_scale = &CTX_IN_STORAGE(po_arg, 0);
+            } else if (po_chain[i] == po_kind_t::binary_dense_scale) {
+                dense_scale = &CTX_IN_STORAGE(po_arg, 0);
+            } else if (po_chain[i] == po_kind_t::binary_nvfp4_scale) {
+                nvfp4_scale = &CTX_IN_STORAGE(po_arg, 0);
+            }
+        }
+        arg_list.set(next_arg++, *grouped_scale);
+        arg_list.set(next_arg++, *dense_scale);
+        arg_list.set(next_arg++, *nvfp4_scale);
+    }
     // Simple 3D dispatch for ref impl clarity
     compute::range_t gws
             = {(size_t)group_count, (size_t)total_tokens, (size_t)N};

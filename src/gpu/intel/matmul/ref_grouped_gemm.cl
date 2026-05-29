@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/include/types.h"
+#include "grouped_post_ops.h"
 
 // Grouped GEMM OCL reference kernel
 //
@@ -39,6 +40,7 @@
 //  Row-wise (per-token) src scales
 //  Column-wise weight scales
 //  Bias addition (shape [group_count, N])
+//  Post-ops: eltwise (swish), grouped/dense binary scale, nvfp4 scale
 __kernel void ref_grouped_gemm_matmul(
         __global const SRC_DATA_T *src, // Buffer 0: concatenated values
         __global const int
@@ -59,6 +61,12 @@ __kernel void ref_grouped_gemm_matmul(
 #if WITH_WEI_SCALES
         ,
         __global const float *wei_scales
+#endif
+#if WITH_POST_OP
+        ,
+        __global const BINARY_SCALE_DATA_T *binary_grouped_scale,
+        __global const BINARY_SCALE_DATA_T *binary_dense_scale,
+        __global const float *binary_nvfp4_scale
 #endif
 ) {
 
@@ -124,6 +132,11 @@ __kernel void ref_grouped_gemm_matmul(
 #endif
 
     const long out_idx = (long)m * N + n;
+
+#if WITH_POST_OP
+    acc = apply_post_ops_chain(acc, m, n, group_id, dst_offsets,
+            binary_grouped_scale, binary_dense_scale, binary_nvfp4_scale);
+#endif
 
     dst_group[out_idx] = REF_TO_DST(acc);
 }

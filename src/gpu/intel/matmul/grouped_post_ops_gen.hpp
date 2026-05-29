@@ -54,6 +54,11 @@ data_type_t get_binary_scale_dt(
 std::string generate_post_ops_microgemm_header(
         const primitive_attr_t &attr, const po_kind_t *po_chain);
 
+/* Generates the apply_post_ops_chain() OpenCL function for the reference
+ * grouped GEMM kernel. Uses a scalar DST_DATA_T * instead of a tile. */
+std::string generate_post_ops_refgemm_header(
+        const primitive_attr_t &attr, const po_kind_t *po_chain);
+
 } // namespace matmul
 } // namespace intel
 } // namespace gpu

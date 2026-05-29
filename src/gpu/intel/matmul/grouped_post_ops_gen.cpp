@@ -74,12 +74,9 @@ status_t check_post_op_chain(const primitive_attr_t &attr,
             }
         }
     }
-
     data_type_t bin_scale_dt = get_binary_scale_dt(attr, po_chain);
-    VCHECK_MATMUL(
-            bin_scale_dt == data_type::undef
-                    || utils::one_of(bin_scale_dt, data_type::f16,
-                            data_type::bf16, data_type::f32),
+    VCHECK_MATMUL(utils::one_of(bin_scale_dt, data_type::f16, data_type::bf16,
+                          data_type::f32),
             VERBOSE_UNSUPPORTED_POSTOP);
 
     return status::success;
@@ -178,6 +175,58 @@ std::string generate_post_ops_microgemm_header(
         }
     }
 
+    os << "}\n";
+    return os.str();
+}
+
+std::string generate_post_ops_refgemm_header(
+        const primitive_attr_t &attr, const po_kind_t *po_chain) {
+    std::ostringstream os;
+    os << "#if BINARY_SCALE_DT_F16\n";
+    os << "#define BINARY_SCALE_DATA_T half\n";
+    os << "#define BINARY_SCALE_TO_FLOAT(v) convert_float(v)\n";
+    os << "#elif BINARY_SCALE_DT_BF16\n";
+    os << "#define BINARY_SCALE_DATA_T ushort\n";
+    os << "#define BINARY_SCALE_TO_FLOAT(v) into_float(as_bf16(v))\n";
+    os << "#else\n";
+    os << "#define BINARY_SCALE_DATA_T float\n";
+    os << "#define BINARY_SCALE_TO_FLOAT(v) (v)\n";
+    os << "#endif\n\n";
+    os << "inline  ACC_DATA_T apply_post_ops_chain(\n";
+    os << "        ACC_DATA_T dst, long m, long n, off_t group_id,\n";
+    os << "        const global int *dst_offsets,\n";
+    os << "        const global BINARY_SCALE_DATA_T *grouped_scale,\n";
+    os << "        const global BINARY_SCALE_DATA_T *dense_scale,\n";
+    os << "        const global float *nvfp4_scale) {\n";
+
+    const auto &po = attr.post_ops_;
+    for (int i = 0; i < po.len(); ++i) {
+        const auto &e = po.entry_[i];
+        if (e.is_eltwise()) {
+            os << "    dst = (" << to_ocl_float(e.eltwise.scale)
+               << ") * (dst / (1.0f + exp(-(" << to_ocl_float(e.eltwise.alpha)
+               << ") * dst)));\n";
+        } else if (e.is_binary()) {
+            if (po_chain[i] == po_kind_t::binary_grouped_scale) {
+                os << "    {\n";
+                os << "        off_t grouped_offset = (group_id > 0) ? "
+                      "dst_offsets[group_id - 1] : 0;\n";
+                os << "        dst *= BINARY_SCALE_TO_FLOAT("
+                      "grouped_scale[(grouped_offset + m) * N + n]);\n";
+                os << "    }\n";
+            } else if (po_chain[i] == po_kind_t::binary_dense_scale) {
+                os << "    {\n";
+                os << "        off_t grouped_offset = (group_id > 0) ? "
+                      "dst_offsets[group_id - 1] : 0;\n";
+                os << "        dst *= BINARY_SCALE_TO_FLOAT("
+                      "dense_scale[grouped_offset + m]);\n";
+                os << "    }\n";
+            } else if (po_chain[i] == po_kind_t::binary_nvfp4_scale) {
+                os << "    dst *= *nvfp4_scale;\n";
+            }
+        }
+    }
+    os << " return dst;\n";
     os << "}\n";
     return os.str();
 }

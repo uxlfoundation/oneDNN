@@ -3749,6 +3749,8 @@ void CopyInstruction::dump(std::ostream &os, const CopyPlan &plan, bool sortInfo
 
     if (op == Opcode::shfl)
         os << "shfl.idx4";
+    else if (op == Opcode::dnscl)
+        os << "dnscl";
     else
         os << getMnemonic(op, HW::Gen9);
     switch (op) {
@@ -3770,7 +3772,7 @@ void CopyInstruction::dump(std::ostream &os, const CopyPlan &plan, bool sortInfo
     if (src1) {
         os << '\t';
         src1.dump(os);
-        if (src2) {
+        if (src2 || op == Opcode::dnscl) {
             os << '\t';
             src2.dump(os);
         }

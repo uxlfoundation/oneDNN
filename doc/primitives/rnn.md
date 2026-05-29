@@ -65,6 +65,7 @@ The RNN API provides four cell functions:
 -   [Linear-before-reset AUGRU](#linear-before-reset-augru), a three-gate recurrent
     unit cell with the linear layer before the reset gate and the attention update gate.
 
+@anchor vanilla-rnn
 ### Vanilla RNN
 
 A single-gate recurrent cell initialized
@@ -87,6 +88,7 @@ a_t &= W \cdot h_{t,l-1} + U \cdot h_{t-1, l} + B \\
 h_t &= activation(a_t)
 \f]
 
+@anchor lstm
 ### LSTM
 
 #### LSTM (or Vanilla LSTM)
@@ -203,6 +205,7 @@ If the `weights_projection_desc` passed to the primitive descriptor constructor
 is a zero memory descriptor, the primitive will behave the same as in LSTM
 primitive without projection.
 
+@anchor gru
 ### GRU
 
 A three-gate gated recurrent unit cell, initialized
@@ -235,6 +238,7 @@ achieve this by multiplying \f$W_u\f$, \f$U_u\f$ and \f$B_u\f$ by \f$-1\f$.
 This is possible as \f$u_t = \sigma(W_u \cdot h_{t,l-1} + U_u \cdot h_{t-1, l}
 + B_u)\f$, and \f$1 – \sigma(a) = \sigma(-a)\f$.
 
+@anchor linear-before-reset-gru
 ### Linear-Before-Reset GRU
 
 A three-gate gated recurrent unit cell with linear layer applied before the
@@ -269,6 +273,7 @@ achieve this by multiplying \f$W_u\f$, \f$U_u\f$ and \f$B_u\f$ by \f$-1\f$.
 This is possible as \f$u_t = \sigma(W_u \cdot h_{t,l-1} + U_u \cdot h_{t-1, l}
 + B_u)\f$, and \f$1 – \sigma(a) = \sigma(-a)\f$.
 
+@anchor augru
 ### AUGRU
 
 A three-gate gated recurrent unit cell, initialized
@@ -297,6 +302,7 @@ h_t &= \tilde u_t * h_{t-1, l} + (1 - \tilde u_t) * o_t
 where \f$W_*\f$ are in \weightslayer, \f$U_*\f$ are in
 \weightsiter, and \f$B_*\f$ are stored in \bias.
 
+@anchor linear-before-reset-augru
 ### Linear-Before-Reset AUGRU
 
 A three-gate gated recurrent unit cell with linear layer applied before the

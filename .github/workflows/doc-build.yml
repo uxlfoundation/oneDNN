@@ -1,0 +1,63 @@
+# *******************************************************************************
+# Copyright 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# *******************************************************************************
+
+name: "Documentation"
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "doc/**"
+      - "include/oneapi/dnnl/**"
+      - "cmake/doc.cmake"
+      - "cmake/Doxygen.cmake"
+      - "cmake/Doxyrest.cmake"
+      - "cmake/Sphinx.cmake"
+  workflow_dispatch:
+
+# Declare default permissions as read only.
+permissions: read-all
+
+# Kill stale checks
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  doc-build:
+    name: Build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up conda
+        uses: conda-incubator/setup-miniconda@8ee1f361103df19b6f8c8655fd3967a8ecb162d5 # v4.0.1
+        with:
+          environment-file: doc/environment.yml
+          activate-environment: onednn-doc
+          miniforge-version: latest
+
+      - name: Configure
+        shell: bash -el {0}
+        run: cmake -S . -B build -DONEDNN_BUILD_DOC=ON -DONEDNN_CPU_RUNTIME=SEQ
+
+      - name: Build documentation
+        shell: bash -el {0}
+        run: cmake --build build --target doc -j$(nproc)

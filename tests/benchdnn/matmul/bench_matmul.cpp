@@ -131,50 +131,67 @@ int verify_input(const settings_t &s, const settings_t &def) {
 
 // Validate input consistency for grouped encoding
 //
-// Notes:
-// - `--grouped` parameter uses the same configuration for both SRC and
-//   DST, so we only validate SRC parameters
-// - Currently only M dimension grouping is supported
+// Two configurations are supported:
+//  - 2Dx3D with variable_dim_idx=0: src is [total_M, K] with dim 0
+//    variable (row-major), wei is dense 3D [G, K, N],
+//    dst is [total_M, N] with dim 0 variable,
+//  - 2Dx2D with variable_dim_idx=1: src is [M, total_K] with dim 1
+//    variable (col-major), wei is [total_K, N] with dim 0
+//    variable (row-major), dst is dense 3D [G, M, N]
 int verify_grouped_input(const settings_t &s) {
-    if (s.sparse_options[0].is_grouped(DNNL_ARG_SRC)) {
+    if (!s.sparse_options[0].is_grouped(DNNL_ARG_SRC)) return OK;
 
-        const int variable_dim_idx
-                = s.sparse_options[0].get_variable_dim_idx(DNNL_ARG_SRC);
+    const int variable_dim_idx
+            = s.sparse_options[0].get_variable_dim_idx(DNNL_ARG_SRC);
 
-        // Validate variable_dim_idx (only M dimension supported by benchdnn)
-        // TODO: remove once benchdnn supports grouping on other dimensions
-        if (variable_dim_idx != 0) {
+    if (variable_dim_idx != 0 && variable_dim_idx != 1) {
+        BENCHDNN_PRINT(0,
+                "ERROR: grouped encoding supports dim 0 (2Dx3D) or "
+                "dim 1 (2Dx2D , got dim %d\n",
+                variable_dim_idx);
+        SAFE_V(FAIL);
+    }
+
+    // The library cannot validate group sizes at primitive creation time,
+    // so benchdnn checks them here
+    int64_t total_var = 0;
+    const auto &group_sizes = s.sparse_options[0].get_group_sizes(DNNL_ARG_SRC);
+    for (size_t i = 0; i < group_sizes.size(); i++) {
+        if (group_sizes[i] < 0) {
             BENCHDNN_PRINT(0,
-                    "ERROR: grouped encoding only supports M dimension "
-                    "(dim 0), got dim %d\n",
-                    variable_dim_idx);
+                    "ERROR: group_sizes[%zu] must be non-negative, got %lld\n",
+                    i, (long long)group_sizes[i]);
             SAFE_V(FAIL);
         }
+        total_var += group_sizes[i];
+    }
 
-        // The library cannot validate group sizes at primitive creation time,
-        // so benchdnn must check them at primitive creation time
-        int64_t total_M = 0;
-        const auto &group_sizes
-                = s.sparse_options[0].get_group_sizes(DNNL_ARG_SRC);
-        for (size_t i = 0; i < group_sizes.size(); i++) {
-            if (group_sizes[i] < 0) {
-                BENCHDNN_PRINT(0,
-                        "ERROR: group_sizes[%zu] must be positive, "
-                        "got %lld\n",
-                        i, (long long)group_sizes[i]);
-                SAFE_V(FAIL);
-            }
-            total_M += group_sizes[i];
+    // The variable dim is encoded in the src tensor at variable_dim_idx
+    const auto &src_dims = s.prb_vdims.vdims[0];
+    const int64_t expected = src_dims[variable_dim_idx];
+    if (total_var != expected) {
+        BENCHDNN_PRINT(0,
+                "ERROR: sum of group sizes (%lld) doesn't match src "
+                "variable dim (%lld)\n",
+                (long long)total_var, (long long)expected);
+        SAFE_V(FAIL);
+    }
+
+    // The 2Dx2D variant additionally requires wei dim 0 == src dim 1
+    // (i.e., shared contraction dim)
+    if (variable_dim_idx == 1) {
+        const auto &wei_dims = s.prb_vdims.vdims[1];
+        if (wei_dims.size() != 2) {
+            BENCHDNN_PRINT(0, "%s\n",
+                    "ERROR: 2Dx2D variant (variable_dim_idx=1) requires 2D "
+                    "weights with shape [total_K, N]");
+            SAFE_V(FAIL);
         }
-
-        // Check consistency with M dimension of src tensor
-        const auto &src_dims = s.prb_vdims.vdims[0]; // [M, K]
-        const int64_t expected_M = src_dims[0];
-        if (total_M != expected_M) {
+        if (wei_dims[0] != src_dims[1]) {
             BENCHDNN_PRINT(0,
-                    "ERROR: sum of group M dimensions (%lld) doesn't match "
-                    "src M (%lld)\n",
-                    (long long)total_M, (long long)expected_M);
+                    "ERROR: 2Dx2D variant wei dim 0 (%lld) must match src "
+                    "dim 1 (%lld)\n",
+                    (long long)wei_dims[0], (long long)src_dims[1]);
             SAFE_V(FAIL);
         }
     }

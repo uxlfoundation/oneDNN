@@ -926,6 +926,7 @@ inline void RegData::fixup(HW hw, int execSize, int execWidth, DataType defaultT
                 if (hs != 1) throw invalid_region_exception();
 #endif
                 vs = 1;
+                width = 1;
                 hs = 0;
             }
         } else if (execSize == width) {

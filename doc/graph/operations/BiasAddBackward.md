@@ -4,7 +4,7 @@ BiasAddBackward {#dev_guide_op_biasaddbackward}
 ## General
 
 BiasAddBackward operation computes the gradients on the bias tensor for
-BiasAdd operator. This op accumulates all the values from \f$\diffdst\f$ into
+BiasAdd operator. This op accumulates all the values from \f$\operatorname{diffdst}\f$ into
 the channel dimension, the axis depends on the layout of \src tensor.
 
 ## Operation attributes

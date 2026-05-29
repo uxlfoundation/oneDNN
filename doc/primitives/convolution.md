@@ -18,9 +18,7 @@ higher and lower dimensions. Variable names follow the standard
 @note Mathematical operation commonly called "convolution" in the context of deep
 learning workloads is actually cross-correlation.
 
-Let \src, \weights and \dst be \f$N \times IC \times IH \times
-IW\f$, \f$OC \times IC \times KH \times KW\f$, and \f$N \times OC \times OH
-\times OW\f$ tensors respectively. Let \bias be a 1D tensor with \f$OC\f$
+Let \src, \weights and \dst be \f$N \times IC \times IH \times IW\f$, \f$OC \times IC \times KH \times KW\f$, and \f$N \times OC \times OH \times OW\f$ tensors respectively. Let \bias be a 1D tensor with \f$OC\f$
 elements.
 
 Furthermore, let the remaining convolution parameters be:
@@ -36,18 +34,18 @@ The following formulas show how oneDNN computes convolutions. They are
 broken down into several types to simplify the exposition, but in reality the
 convolution types can be combined.
 
-To further simplify the formulas, we assume that \f$\src(n, ic, ih, iw) = 0\f$
+To further simplify the formulas, we assume that \f$\operatorname{src}(n, ic, ih, iw) = 0\f$
 if \f$ih < 0\f$, or \f$ih \geq IH\f$, or \f$iw < 0\f$, or \f$iw \geq IW\f$.
 
 ### Forward
 
 #### Regular Convolution
 
-\f[\dst(n, oc, oh, ow) =  \bias(oc) \\
+\f[\operatorname{dst}(n, oc, oh, ow) =  \operatorname{bias}(oc) \\
     + \sum_{ic=0}^{IC-1}\sum_{kh=0}^{KH-1}\sum_{kw=0}^{KW-1}
-        \src(n, ic, oh \cdot SH + kh - PH_L, ow \cdot SW + kw - PW_L)
+        \operatorname{src}(n, ic, oh \cdot SH + kh - PH_L, ow \cdot SW + kw - PW_L)
         \cdot
-        \weights(oc, ic, kh, kw).\f]
+        \operatorname{weights}(oc, ic, kh, kw).\f]
 
 Here:
 
@@ -58,18 +56,17 @@ Here:
 #### Convolution with Groups
 
 In the API, oneDNN adds a separate groups dimension to memory objects
-representing \weights tensors and represents weights as \f$G \times OC_G \times
-IC_G \times KH \times KW \f$ 5D tensors for 2D convolutions with groups.
+representing \weights tensors and represents weights as \f$G \times OC_G \times IC_G \times KH \times KW\f$ 5D tensors for 2D convolutions with groups.
 
 \f[
-    \dst(n, g \cdot OC_G + oc_g, oh, ow) =
-        \bias(g \cdot OC_G + oc_g) \\
+    \operatorname{dst}(n, g \cdot OC_G + oc_g, oh, ow) =
+        \operatorname{bias}(g \cdot OC_G + oc_g) \\
         +
         \sum_{ic_g=0}^{IC_G-1}\sum_{kh=0}^{KH-1}\sum_{kw=0}^{KW-1}
-            \src(n, g \cdot IC_G + ic_g, oh \cdot SH + kh - PH_L,
+            \operatorname{src}(n, g \cdot IC_G + ic_g, oh \cdot SH + kh - PH_L,
                     ow \cdot SW + kw - PW_L)
             \cdot
-            \weights(g, oc_g, ic_g, kh, kw),
+            \operatorname{weights}(g, oc_g, ic_g, kh, kw),
 \f]
 
 where
@@ -82,29 +79,27 @@ The case when \f$OC_G = IC_G = 1\f$ is also known as *a depthwise convolution*.
 #### Convolution with Dilation
 
 \f[
-    \dst(n, oc, oh, ow) =
-        \bias(oc) \\
+    \operatorname{dst}(n, oc, oh, ow) =
+        \operatorname{bias}(oc) \\
         +
         \sum_{ic=0}^{IC-1}\sum_{kh=0}^{KH-1}\sum_{kw=0}^{KW-1}
-            \src(n, ic, oh \cdot SH + kh \cdot (DH + 1) - PH_L,
+            \operatorname{src}(n, ic, oh \cdot SH + kh \cdot (DH + 1) - PH_L,
                     ow \cdot SW + kw \cdot (DW + 1) - PW_L)
             \cdot
-            \weights(oc, ic, kh, kw).
+            \operatorname{weights}(oc, ic, kh, kw).
 \f]
 
 Here:
 
-- \f$OH = \left\lfloor{\frac{IH - DKH + PH_L + PH_R}{SH}}
-        \right\rfloor + 1,\f$ where \f$DKH = 1 + (KH - 1) \cdot (DH + 1)\f$, and
+- \f$OH = \left\lfloor{\frac{IH - DKH + PH_L + PH_R}{SH}} \right\rfloor + 1,\f$ where \f$DKH = 1 + (KH - 1) \cdot (DH + 1)\f$, and
 
-- \f$OW = \left\lfloor{\frac{IW - DKW + PW_L + PW_R}{SW}}
-        \right\rfloor + 1,\f$ where \f$DKW = 1 + (KW - 1) \cdot (DW + 1)\f$.
+- \f$OW = \left\lfloor{\frac{IW - DKW + PW_L + PW_R}{SW}} \right\rfloor + 1,\f$ where \f$DKW = 1 + (KW - 1) \cdot (DW + 1)\f$.
 
 @note In oneDNN, convolution without dilation is defined by setting the dilation
 parameters to `0`. This differs from PyTorch and TensorFlow, where a non-dilated
 case corresponds to a dilation value of `1`. As a result, the PyTorch and
 TensorFlow dilation parameters need to be adjusted by subtracting `1` (for example,
-\f$DH_onednn = DH_torch - 1\f$, and \f$DW_onednn = DW_torch - 1\f$).
+\f$DH_{\text{onednn}} = DH_{\text{torch}} - 1\f$, and \f$DW_{\text{onednn}} = DW_{\text{torch}} - 1\f$).
 
 #### Deconvolution (Transposed Convolution)
 
@@ -292,10 +287,10 @@ Consider the following pseudo-code:
 The would lead to the following:
 
 \f[
-    \dst(\overline{x}) =
+    \operatorname{dst}(\overline{x}) =
         \gamma \cdot \tanh \left(
-            scale_{src} \cdot conv(\src, \weights) +
-            \beta  \cdot \dst(\overline{x})
+            scale_{src} \cdot conv(\operatorname{src}, \operatorname{weights}) +
+            \beta  \cdot \operatorname{dst}(\overline{x})
         \right)
 \f]
 
@@ -317,10 +312,10 @@ The following pseudo-code:
 That would lead to the following:
 
 \f[
-    \dst(\overline{x}) =
-        \beta \cdot \dst(\overline{x}) +
+    \operatorname{dst}(\overline{x}) =
+        \beta \cdot \operatorname{dst}(\overline{x}) +
         \gamma \cdot ReLU \left(
-            scale_{weights} \cdot conv(\src, \weights),
+            scale_{weights} \cdot conv(\operatorname{src}, \operatorname{weights}),
             \eta
         \right)
 \f]
@@ -344,9 +339,9 @@ The following pseudo-code:
 That would lead to the following:
 
 \f[
-    \dst(\overline{x}) =
+    \operatorname{dst}(\overline{x}) =
         \gamma \cdot ReLU \left(
-            scale_{src} \cdot conv(\src - shift_{src}, \weights),
+            scale_{src} \cdot conv(\operatorname{src} - shift_{src}, \operatorname{weights}),
             \eta
         \right) + shift_{dst}
 \f]

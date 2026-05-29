@@ -34,11 +34,11 @@ standard @ref dev_guide_conventions.
 For no broadcast case, results are calculated using formula:
 
 \f[
-    \dst(n, c, h, w) =
+    \operatorname{dst}(n, c, h, w) =
         \begin{cases}
-        \src(n, c, h, w)  & \mbox{if } \src(n, c, h, w) > 0 \\
-        \src(n, c, h, w) \cdot \weights(n, c, h, w) & \mbox{if }
-        \src(n, c, h, w) \leq 0
+        \operatorname{src}(n, c, h, w)  & \mbox{if } \operatorname{src}(n, c, h, w) > 0 \\
+        \operatorname{src}(n, c, h, w) \cdot \operatorname{weights}(n, c, h, w) & \mbox{if }
+        \operatorname{src}(n, c, h, w) \leq 0
         \end{cases}
 \f]
 
@@ -52,24 +52,24 @@ and #dnnl_forward_inference propagation kinds.
 
 ### Backward
 
-The backward propagation computes \f$\diffsrc\f$ and \f$\diffweights\f$.
+The backward propagation computes \f$\operatorname{diffsrc}\f$ and \f$\operatorname{diffweights}\f$.
 For no broadcast case, results are calculated using formula:
 
 \f[
-    \diffdst(n, c, h, w) &=
+    \operatorname{diffdst}(n, c, h, w) &=
         \begin{cases}
-        \diffdst(n, c, h, w)  & \mbox{if } \src(n, c, h, w) > 0 \\
-        \diffdst(n, c, h, w) \cdot \weights(n, c, h, w) &
-        \mbox{if } \src(n, c, h, w) \leq 0
+        \operatorname{diffdst}(n, c, h, w)  & \mbox{if } \operatorname{src}(n, c, h, w) > 0 \\
+        \operatorname{diffdst}(n, c, h, w) \cdot \operatorname{weights}(n, c, h, w) &
+        \mbox{if } \operatorname{src}(n, c, h, w) \leq 0
         \end{cases}\\\\
-    \diffweights(n, c, h, w) &=
-        \min(\src(n, c, h, w), 0) \cdot \diffdst(n, c, h, w)
+    \operatorname{diffweights}(n, c, h, w) &=
+        \min(\operatorname{src}(n, c, h, w), 0) \cdot \operatorname{diffdst}(n, c, h, w)
 \f]
 
 Similar to forward propagation, result is calculated taking into
 account shared dimensions of weights tensor.
-\f$\diffweights\f$ results are accumulated according to weights tensor shared
-dimensions, since \f$\diffweights\f$ tensor must match \f$\weights\f$ tensor.
+\f$\operatorname{diffweights}\f$ results are accumulated according to weights tensor shared
+dimensions, since \f$\operatorname{diffweights}\f$ tensor must match \f$\operatorname{weights}\f$ tensor.
 
 
 ## Execution Arguments
@@ -79,12 +79,12 @@ argument index as specified by the following table.
 
 | Argument           | Index                 | Type   |
 |--------------------|-----------------------|--------|
-| \f$\src\f$         | DNNL_ARG_SRC          | Input  |
-| \f$\weights\f$     | DNNL_ARG_WEIGHTS      | Input  |
-| \f$\dst\f$         | DNNL_ARG_DST          | Output |
-| \f$\diffsrc\f$     | DNNL_ARG_DIFF_SRC     | Output |
-| \f$\diffdst\f$     | DNNL_ARG_DIFF_DST     | Input  |
-| \f$\diffweights\f$ | DNNL_ARG_DIFF_WEIGHTS | Output |
+| \f$\operatorname{src}\f$         | DNNL_ARG_SRC          | Input  |
+| \f$\operatorname{weights}\f$     | DNNL_ARG_WEIGHTS      | Input  |
+| \f$\operatorname{dst}\f$         | DNNL_ARG_DST          | Output |
+| \f$\operatorname{diffsrc}\f$     | DNNL_ARG_DIFF_SRC     | Output |
+| \f$\operatorname{diffdst}\f$     | DNNL_ARG_DIFF_DST     | Input  |
+| \f$\operatorname{diffweights}\f$ | DNNL_ARG_DIFF_WEIGHTS | Output |
 | [scratchpad]       | DNNL_ARG_SCRATCHPAD   | Output |
 
 [scratchpad]: @ref dev_guide_attributes_scratchpad

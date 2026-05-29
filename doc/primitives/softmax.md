@@ -19,31 +19,31 @@ variable names follow the standard @ref dev_guide_conventions).
 Softmax:
 
 \f[
-    \dst(\overline{ou}, c, \overline{in}) =
+    \operatorname{dst}(\overline{ou}, c, \overline{in}) =
         \frac
-        {e^{\src(\overline{ou}, c, \overline{in}) - \nu(\overline{ou}, \overline{in})}}
+        {e^{\operatorname{src}(\overline{ou}, c, \overline{in}) - \nu(\overline{ou}, \overline{in})}}
         {
             \sum\limits_{ic}
-                e^{\src(\overline{ou}, ic, \overline{in}) - \nu(\overline{ou}, \overline{in})}
+                e^{\operatorname{src}(\overline{ou}, ic, \overline{in}) - \nu(\overline{ou}, \overline{in})}
         }
 \f]
 
 Logsoftmax:
 
 \f[
-    \dst(\overline{ou}, c, \overline{in}) =
+    \operatorname{dst}(\overline{ou}, c, \overline{in}) =
         \ln\left({\frac
         {
-            e^{\src(\overline{ou}, c, \overline{in}) - \nu(\overline{ou}, \overline{in})}
+            e^{\operatorname{src}(\overline{ou}, c, \overline{in}) - \nu(\overline{ou}, \overline{in})}
         }
         {
             \sum\limits_{ic}
-                e^{\src(\overline{ou}, ic, \overline{in}) - \nu(\overline{ou}, \overline{in})}
+                e^{\operatorname{src}(\overline{ou}, ic, \overline{in}) - \nu(\overline{ou}, \overline{in})}
         }}\right) =
-        \left(\src(\overline{ou}, c, \overline{in}) - \nu(\overline{ou}, \overline{in})\right)
+        \left(\operatorname{src}(\overline{ou}, c, \overline{in}) - \nu(\overline{ou}, \overline{in})\right)
             - \ln\left(
                     \sum\limits_{ic}
-                    e^{\src(\overline{ou}, ic, \overline{in}) - \nu(\overline{ou}, \overline{in})}
+                    e^{\operatorname{src}(\overline{ou}, ic, \overline{in}) - \nu(\overline{ou}, \overline{in})}
                  \right)
 \f]
 
@@ -57,7 +57,7 @@ Above
 \f[
     \nu(\overline{ou}, \overline{in}) =
         \max\limits_{ic}
-        \src(\overline{ou}, ic, \overline{in})
+        \operatorname{src}(\overline{ou}, ic, \overline{in})
 \f]
 
 #### Difference Between Forward Training and Forward Inference
@@ -67,8 +67,8 @@ and #dnnl_forward_inference propagation kinds.
 
 ### Backward
 
-The backward propagation computes \f$\diffsrc(ou, c, in)\f$, based on
-\f$\diffdst(ou, c, in)\f$ and \f$\dst(ou, c, in)\f$.
+The backward propagation computes \f$\operatorname{diffsrc}(ou, c, in)\f$, based on
+\f$\operatorname{diffdst}(ou, c, in)\f$ and \f$\operatorname{dst}(ou, c, in)\f$.
 
 ## Execution Arguments
 When executed, the inputs and outputs should be mapped to an execution

@@ -3,8 +3,8 @@ AvgPoolBackward {#dev_guide_op_avgpoolbackward}
 
 ## General
 
-AvgPoolBackward operation accepts \f$\diffdst\f$ tensor and \f$\srcshape\f$
-tensor (optional), and calculates \f$\diffsrc\f$ tensor.
+AvgPoolBackward operation accepts \f$\operatorname{diffdst}\f$ tensor and \f$\operatorname{srcshape}\f$
+tensor (optional), and calculates \f$\operatorname{diffsrc}\f$ tensor.
 
 ## Operation attributes
 

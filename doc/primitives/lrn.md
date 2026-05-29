@@ -17,26 +17,26 @@ follow the standard @ref dev_guide_conventions):
 LRN across channels:
 
 \f[
-    \dst(n, c, h, w) =
+    \operatorname{dst}(n, c, h, w) =
         \left\{k + \frac{\alpha}{n_{l}}
             \sum\limits_{i=-(n_{l}-1)/2}^{(n_{l}+1)/2-1}
-                (\src(n, c+i, h, w))^2
+                (\operatorname{src}(n, c+i, h, w))^2
         \right\}^{-\beta}
         \cdot
-        \src(n, c, h, w),
+        \operatorname{src}(n, c, h, w),
 \f]
 
 LRN within a single channel:
 
 \f[
-    \dst(n, c, h, w) =
+    \operatorname{dst}(n, c, h, w) =
         \left\{k + \frac{\alpha}{n_{l}}
             \sum\limits_{i=-(n_{l}-1)/2}^{(n_{l}+1)/2-1}
             \sum\limits_{j=-(n_{l}-1)/2}^{(n_{l}+1)/2-1}
-                (\src(n, c, h+i, w+j))^2
+                (\operatorname{src}(n, c, h+i, w+j))^2
         \right\}^{-\beta}
         \cdot
-        \src(n, c, h, w),
+        \operatorname{src}(n, c, h, w),
 \f]
 
 where \f$n_{l}\f$ is the @p local_size. Formulas are provided for 2D spatial
@@ -44,8 +44,8 @@ data case.
 
 ### Backward
 
-The backward propagation computes \f$\diffsrc(n, c, h, w)\f$, based on
-\f$\diffdst(n, c, h, w)\f$ and \f$\src(n, c, h, w)\f$.
+The backward propagation computes \f$\operatorname{diffsrc}(n, c, h, w)\f$, based on
+\f$\operatorname{diffdst}(n, c, h, w)\f$ and \f$\operatorname{src}(n, c, h, w)\f$.
 
 ## Execution Arguments
 

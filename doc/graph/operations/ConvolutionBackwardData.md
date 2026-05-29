@@ -3,8 +3,8 @@ ConvolutionBackwardData {#dev_guide_op_convolutionbackwarddata}
 
 ## General
 
-ConvolutionBackwardData operation accepts \f$\diffdst\f$, \weights and optional
-dst shape as inputs, and compute the \f$\diffsrc\f$.
+ConvolutionBackwardData operation accepts \f$\operatorname{diffdst}\f$, \weights and optional
+dst shape as inputs, and compute the \f$\operatorname{diffsrc}\f$.
 
 If `auto_pad` attribute is specified to one of `valid`, `same_upper` and
 `same_lower`, `pads_begin` and `pads_end` attributes will be ignored. The

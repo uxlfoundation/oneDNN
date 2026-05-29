@@ -7,9 +7,7 @@ Convolution operation performs the convolution between src tensor and weight
 tensor, which is defined as by the following formulas. Variable names follow the
 standard @ref dev_guide_conventions.
 
-Let \src, \weights and \dst tensors have shape \f$N \times IC \times IH \times
-IW\f$, \f$OC \times IC \times KH \times KW\f$, and \f$N \times OC \times OH
-\times OW\f$ respectively.
+Let \src, \weights and \dst tensors have shape \f$N \times IC \times IH \times IW\f$, \f$OC \times IC \times KH \times KW\f$, and \f$N \times OC \times OH \times OW\f$ respectively.
 
 Furthermore, let the remaining convolution parameters be:
 
@@ -84,11 +82,9 @@ The attribute `dilation` contains the element which is \f$>1\f$.
 
 Here:
 
-- \f$OH = \left\lfloor{\frac{IH - DKH + PH_L + PH_R}{SH}}
-        \right\rfloor + 1,\f$ where \f$DKH = 1 + (KH - 1) \cdot DH\f$, and
+- \f$OH = \left\lfloor{\frac{IH - DKH + PH_L + PH_R}{SH}} \right\rfloor + 1,\f$ where \f$DKH = 1 + (KH - 1) \cdot DH\f$, and
 
-- \f$OW = \left\lfloor{\frac{IW - DKW + PW_L + PW_R}{SW}}
-        \right\rfloor + 1,\f$ where \f$DKW = 1 + (KW - 1) \cdot DW\f$.
+- \f$OW = \left\lfloor{\frac{IW - DKW + PW_L + PW_R}{SW}} \right\rfloor + 1,\f$ where \f$DKW = 1 + (KW - 1) \cdot DW\f$.
 
 ## Operation attributes
 

@@ -7,9 +7,9 @@ BatchNormForwardTraining operation performs batch normalization at training mode
 
 Mean and variance are computed at runtime, the following formulas are used:
 
-- \f$\mu(c) = \frac{1}{NHW} \sum\limits_{nhw} \src(n, c, h, w)_{}\f$,
+- \f$\mu(c) = \frac{1}{NHW} \sum\limits_{nhw} \operatorname{src}(n, c, h, w)_{}\f$,
 
-- \f$\sigma^2(c) = \frac{1}{NHW} \sum\limits_{nhw} {}_{} (\src(n, c, h, w) - \mu(c))^2\f$.
+- \f$\sigma^2(c) = \frac{1}{NHW} \sum\limits_{nhw} {}_{} (\operatorname{src}(n, c, h, w) - \mu(c))^2\f$.
 
 ## Operation attributes
 

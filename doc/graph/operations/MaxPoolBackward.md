@@ -3,8 +3,8 @@ MaxPoolBackward {#dev_guide_op_maxpoolbackward}
 
 ## General
 
-AvgPoolBackward operation accepts \src tensor and \f$\diffdst\f$ tensor, and
-calculates \f$\diffsrc\f$ tensor.
+AvgPoolBackward operation accepts \src tensor and \f$\operatorname{diffdst}\f$ tensor, and
+calculates \f$\operatorname{diffsrc}\f$ tensor.
 
 ## Operation attributes
 

@@ -18,9 +18,9 @@ cases of higher and lower dimensions. Variable names follow the standard
 @ref dev_guide_conventions.
 
 \f[
-    \dst(n, c, h, w) =
+    \operatorname{dst}(n, c, h, w) =
        \gamma(c) \cdot
-       \frac{\src(n, c, h, w) - \mu(c)} {\sqrt{\sigma^2(c) + \varepsilon}}
+       \frac{\operatorname{src}(n, c, h, w) - \mu(c)} {\sqrt{\sigma^2(c) + \varepsilon}}
        + \beta(c),
 \f]
 
@@ -37,9 +37,9 @@ where
 Mean and variance are computed at runtime or provided by a user. When mean and
 variance are computed at runtime, the following formulas are used:
 
-- \f$\mu(c) = \frac{1}{NHW} \sum\limits_{nhw} \src(n, c, h, w)_{}\f$,
+- \f$\mu(c) = \frac{1}{NHW} \sum\limits_{nhw} \operatorname{src}(n, c, h, w)_{}\f$,
 
-- \f$\sigma^2(c) = \frac{1}{NHW} \sum\limits_{nhw} {}_{} (\src(n, c, h, w) - \mu(c))^2\f$.
+- \f$\sigma^2(c) = \frac{1}{NHW} \sum\limits_{nhw} {}_{} (\operatorname{src}(n, c, h, w) - \mu(c))^2\f$.
 
 The \f$\gamma(c)\f$ and \f$\beta(c)\f$ tensors are considered learnable.
 
@@ -82,10 +82,10 @@ In training mode, the primitive also optionally supports:
 ### Backward
 
 The backward propagation computes
-\f$\diffsrc(n, c, h, w)\f$,
-\f$\diffgamma(c)^*\f$, and \f$\diffbeta(c)^*\f$
+\f$\operatorname{diffsrc}(n, c, h, w)\f$,
+\f$\operatorname{diffgamma}(c)^*\f$, and \f$\operatorname{diffbeta}(c)^*\f$
 based on
-\f$\diffdst(n, c, h, w)\f$, \f$\src(n, c, h, w)\f$, \f$\mu(c)\f$,
+\f$\operatorname{diffdst}(n, c, h, w)\f$, \f$\operatorname{src}(n, c, h, w)\f$, \f$\mu(c)\f$,
 \f$\sigma^2(c)\f$, and \f$\gamma(c) ^*\f$.
 
 The tensors marked with an asterisk are used only when the primitive is
@@ -102,11 +102,11 @@ requires different inputs and outputs.  For clarity, a summary is shown below.
 |:-------------------------------------------------------------|:-------------------------------------------------------------------------------------------------------------------|:-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:-----------------------------------------------------------------------------------------------------------------|
 | #dnnl_normalization_flags_none                               | *Inputs*: \src <br><br> *Outputs*: \dst                                                                            | *Inputs*: \src <br><br> *Outputs*: \dst, \f$\mu\f$, \f$\sigma^2\f$                                                                                                                       | *Inputs*: \diffdst, \src, \f$\mu\f$, \f$\sigma^2\f$ <br><br> *Outputs*: \diffsrc                                                                                                              | Same as for #dnnl_backward                                                                                       |
 | #dnnl_use_global_stats                                       | *Inputs*: \src, \f$\mu\f$, \f$\sigma^2\f$ <br><br> *Outputs*: \dst                                                 | *Inputs*: \src, \f$\mu\f$, \f$\sigma^2\f$ <br><br> *Outputs*: \dst                                                                                                                       | *Inputs*: \diffdst, \src, \f$\mu\f$, \f$\sigma^2\f$ <br><br> *Outputs*: \diffsrc                                                                                                              | Same as for #dnnl_backward                                                                                       |
-| #dnnl_use_scale                                              | *Inputs*: \src, \f$\gamma\f$  <br><br> *Outputs*: \dst                                                             | *Inputs*: \src, \f$\gamma\f$ <br><br> *Outputs*: \dst, \f$\mu\f$, \f$\sigma^2\f$                                                                                                         | *Inputs*: \diffdst, \src, \f$\mu\f$, \f$\sigma^2\f$, \f$\gamma\f$ <br><br> *Outputs*: \diffsrc, \f$\diffgamma\f$                                                                              | Not supported                                                                                                    |
-| #dnnl_use_shift                                              | *Inputs*: \src, \f$\beta\f$ <br><br> *Outputs*: \dst                                                               | *Inputs*: \src, \f$\beta\f$ <br><br> *Outputs*: \dst, \f$\mu\f$, \f$\sigma^2\f$                                                                                                          | *Inputs*: \diffdst, \src, \f$\mu\f$, \f$\sigma^2\f$  <br><br> *Outputs*: \diffsrc, \f$\diffbeta\f$                                                                                | Not supported                                                                                                    |
-| #dnnl_use_global_stats \| #dnnl_use_scale \| #dnnl_use_shift | *Inputs*: \src, \f$\mu\f$, \f$\sigma^2\f$, \f$\gamma\f$, \f$\beta\f$ <br><br> *Outputs*: \dst                      | *Inputs*: \src, \f$\mu\f$, \f$\sigma^2\f$, \f$\gamma\f$, \f$\beta\f$ <br><br> *Outputs*: \dst                                                                                            | *Inputs*: \diffdst, \src, \f$\mu\f$, \f$\sigma^2\f$, \f$\gamma\f$  <br><br> *Outputs*: \diffsrc, \f$\diffgamma\f$, \f$\diffbeta\f$                                                | Not supported                                                                                                    |
+| #dnnl_use_scale                                              | *Inputs*: \src, \f$\gamma\f$  <br><br> *Outputs*: \dst                                                             | *Inputs*: \src, \f$\gamma\f$ <br><br> *Outputs*: \dst, \f$\mu\f$, \f$\sigma^2\f$                                                                                                         | *Inputs*: \diffdst, \src, \f$\mu\f$, \f$\sigma^2\f$, \f$\gamma\f$ <br><br> *Outputs*: \diffsrc, \f$\operatorname{diffgamma}\f$                                                                              | Not supported                                                                                                    |
+| #dnnl_use_shift                                              | *Inputs*: \src, \f$\beta\f$ <br><br> *Outputs*: \dst                                                               | *Inputs*: \src, \f$\beta\f$ <br><br> *Outputs*: \dst, \f$\mu\f$, \f$\sigma^2\f$                                                                                                          | *Inputs*: \diffdst, \src, \f$\mu\f$, \f$\sigma^2\f$  <br><br> *Outputs*: \diffsrc, \f$\operatorname{diffbeta}\f$                                                                                | Not supported                                                                                                    |
+| #dnnl_use_global_stats \| #dnnl_use_scale \| #dnnl_use_shift | *Inputs*: \src, \f$\mu\f$, \f$\sigma^2\f$, \f$\gamma\f$, \f$\beta\f$ <br><br> *Outputs*: \dst                      | *Inputs*: \src, \f$\mu\f$, \f$\sigma^2\f$, \f$\gamma\f$, \f$\beta\f$ <br><br> *Outputs*: \dst                                                                                            | *Inputs*: \diffdst, \src, \f$\mu\f$, \f$\sigma^2\f$, \f$\gamma\f$  <br><br> *Outputs*: \diffsrc, \f$\operatorname{diffgamma}\f$, \f$\operatorname{diffbeta}\f$                                                | Not supported                                                                                                    |
 | `flags` \| #dnnl_fuse_norm_relu                              | *Inputs*: same as with `flags` <br><br> *Outputs*: same as with `flags`                                            | *Inputs*: same as with `flags` <br><br> *Outputs*: same as with `flags`, [Workspace](@ref dev_guide_inference_and_training_aspects_workspace)                                            | *Inputs*: same as with `flags`, [Workspace](@ref dev_guide_inference_and_training_aspects_workspace) <br><br> *Outputs*: same as with `flags`                                                 | Same as for #dnnl_backward if `flags` do not contain #dnnl_use_scale or #dnnl_use_shift; not supported otherwise |
-| `flags` \| #dnnl_fuse_norm_add_relu                          | *Inputs*: same as with `flags` and \f$\src_1\f$ for fused binary addition <br><br> *Outputs*: same as with `flags` | *Inputs*: same as with `flags` and \f$\src_1\f$ for fused binary addition <br><br> *Outputs*: same as with `flags`, [Workspace](@ref dev_guide_inference_and_training_aspects_workspace) | *Inputs*: same as with `flags`, [Workspace](@ref dev_guide_inference_and_training_aspects_workspace) <br><br> *Outputs*: same as with `flags` and \f$\diffsrc_1\f$ for fused binary addition | Same as for #dnnl_backward if `flags` do not contain #dnnl_use_scale or #dnnl_use_shift; not supported otherwise |
+| `flags` \| #dnnl_fuse_norm_add_relu                          | *Inputs*: same as with `flags` and \f$\operatorname{src}_1\f$ for fused binary addition <br><br> *Outputs*: same as with `flags` | *Inputs*: same as with `flags` and \f$\operatorname{src}_1\f$ for fused binary addition <br><br> *Outputs*: same as with `flags`, [Workspace](@ref dev_guide_inference_and_training_aspects_workspace) | *Inputs*: same as with `flags`, [Workspace](@ref dev_guide_inference_and_training_aspects_workspace) <br><br> *Outputs*: same as with `flags` and \f$\operatorname{diffsrc}_1\f$ for fused binary addition | Same as for #dnnl_backward if `flags` do not contain #dnnl_use_scale or #dnnl_use_shift; not supported otherwise |
 
 When executed, the inputs and outputs should be mapped to an execution
 argument index as specified by the following table.
@@ -114,7 +114,7 @@ argument index as specified by the following table.
 | Argument                  | Index                    | Type         |
 |---------------------------|--------------------------|--------------|
 | \src                      | DNNL_ARG_SRC             | Input        |
-| \f$\src_1\f$              | DNNL_ARG_SRC_1           | Input        |
+| \f$\operatorname{src}_1\f$              | DNNL_ARG_SRC_1           | Input        |
 | \f$\gamma\f$              | DNNL_ARG_SCALE           | Input        |
 | \f$\beta\f$               | DNNL_ARG_SHIFT           | Input        |
 | mean (\f$\mu\f$)          | DNNL_ARG_MEAN            | Input/Output |
@@ -123,9 +123,9 @@ argument index as specified by the following table.
 | workspace                 | DNNL_ARG_WORKSPACE       | Input/Output |
 | \diffdst                  | DNNL_ARG_DIFF_DST        | Input        |
 | \diffsrc                  | DNNL_ARG_DIFF_SRC        | Output       |
-| \f$\diffsrc_1\f$          | DNNL_ARG_DIFF_SRC_1      | Output       |
-| \f$\diffgamma\f$          | DNNL_ARG_DIFF_SCALE      | Output       |
-| \f$\diffbeta\f$           | DNNL_ARG_DIFF_SHIFT      | Output       |
+| \f$\operatorname{diffsrc}_1\f$          | DNNL_ARG_DIFF_SRC_1      | Output       |
+| \f$\operatorname{diffgamma}\f$          | DNNL_ARG_DIFF_SCALE      | Output       |
+| \f$\operatorname{diffbeta}\f$           | DNNL_ARG_DIFF_SHIFT      | Output       |
 | [scratchpad]              | DNNL_ARG_SCRATCHPAD      | Output       |
 
 [scratchpad]: @ref dev_guide_attributes_scratchpad
@@ -156,10 +156,10 @@ argument index as specified by the following table.
    binary addition and ReLU activation (#dnnl_fuse_norm_add_relu).
    In this case:
    - on the forward propagation the primitive has one additional input,
-     \f$\src_1\f$, that should have memory descriptor equal to primitive
+     \f$\operatorname{src}_1\f$, that should have memory descriptor equal to primitive
      `dst_desc` memory descriptor.
    - on the backward propagation the primitive has one additional output,
-     \f$\diffsrc_1\f$, that should have memory descriptor equal to primitive
+     \f$\operatorname{diffsrc}_1\f$, that should have memory descriptor equal to primitive
      `diff_dst_desc` memory descriptor.
 
 5. As mentioned above, the batch normalization primitive can be fused with

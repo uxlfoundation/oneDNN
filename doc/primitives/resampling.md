@@ -23,19 +23,14 @@ only for 2D spatial data which are straightforward to generalize to cases of
 higher and lower dimensions. Variable names follow the standard
 @ref dev_guide_conventions.
 
-Let \src and \dst be \f$N \times C \times IH \times IW\f$ and \f$N
-\times C \times OH \times OW\f$ tensors respectively. Let
+Let \src and \dst be \f$N \times C \times IH \times IW\f$ and \f$N \times C \times OH \times OW\f$ tensors respectively. Let
 \f$ F_h = \frac{OH}{IH} \f$ and \f$ F_w = \frac{OW}{IW} \f$ define scaling
 factors in each spatial dimension.
 
 The following formulas show how oneDNN computes resampling for nearest neighbor
 and bilinear interpolation methods.
 To further simplify the formulas, we assume the following:
-\f$\src(n, ic, ih, iw) = \begin{cases}
-\src(n, ic, ih, 0), & \text{if}\ iw < 0 \\
-\src(n, ic, ih, iw), & \text{if}\ IW - 1 \geq iw \geq 0 \\
-\src(n, ic, ih, IW - 1), & \text{if}\ iw > IW - 1
-\end{cases}\f$
+\f$\operatorname{src}(n, ic, ih, iw) = \begin{cases} \operatorname{src}(n, ic, ih, 0), & \text{if}\ iw < 0 \\ \operatorname{src}(n, ic, ih, iw), & \text{if}\ IW - 1 \geq iw \geq 0 \\ \operatorname{src}(n, ic, ih, IW - 1), & \text{if}\ iw > IW - 1 \end{cases}\f$
 
 Same assumptions apply for \f$ih\f$. Definitions of \f$ih\f$ and \f$iw\f$ are
 provided below with a correspondent algorithm.
@@ -44,7 +39,7 @@ provided below with a correspondent algorithm.
 
 #### Nearest Neighbor Resampling
 
-\f[\dst(n, c, oh, ow) =  \src(n, c, ih, iw)\f]
+\f[\operatorname{dst}(n, c, oh, ow) =  \operatorname{src}(n, c, ih, iw)\f]
 
 where
 
@@ -54,11 +49,11 @@ where
 #### Bilinear Resampling
 
 \f[
-    \dst(n, c, oh, ow) =
-            \src(n, c, ih_0, iw_0) \cdot (1 - W_{ih}) \cdot (1 - W_{iw}) + \\
-            \src(n, c, ih_1, iw_0) \cdot W_{ih} \cdot (1 - W_{iw}) + \\
-            \src(n, c, ih_0, iw_1) \cdot (1 - W_{ih}) \cdot W_{iw} + \\
-            \src(n, c, ih_1, iw_1) \cdot W_{ih} \cdot W_{iw} \\
+    \operatorname{dst}(n, c, oh, ow) =
+            \operatorname{src}(n, c, ih_0, iw_0) \cdot (1 - W_{ih}) \cdot (1 - W_{iw}) + \\
+            \operatorname{src}(n, c, ih_1, iw_0) \cdot W_{ih} \cdot (1 - W_{iw}) + \\
+            \operatorname{src}(n, c, ih_0, iw_1) \cdot (1 - W_{ih}) \cdot W_{iw} + \\
+            \operatorname{src}(n, c, ih_1, iw_1) \cdot W_{ih} \cdot W_{iw} \\
 \f]
 
 where
@@ -110,16 +105,11 @@ argument index as specified by the following table.
    point factors, or the source and destination memory descriptors and factors.
    In case when user does not provide the destination descriptor, the
    destination dimensions are deduced using the factors:
-   \f$
-     output\_spatial\_size = \left\lfloor{
-        \frac{input\_spatial\_size} {F}
-     }\right\rfloor
-   \f$.
+   \f$output\_spatial\_size = \left\lfloor{ \frac{input\_spatial\_size} {F} }\right\rfloor\f$.
 
 @note
     Implementation of resampling algorithm uses factors as defined by the
-    relation \f$F = \frac{output\_spatial\_ size} {
-    input\_spatial\_size}\f$ that do not necessarily equal to the ones passed
+    relation \f$F = \frac{output\_spatial\_ size} { input\_spatial\_size}\f$ that do not necessarily equal to the ones passed
     by the user.
 
 

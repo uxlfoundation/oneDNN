@@ -13,7 +13,7 @@ The eltwise primitive applies an operation to every element of the tensor (the
 variable names follow the standard @ref dev_guide_conventions):
 
 \f[
-    \dst_{i_1, \ldots, i_k} = Operation\left(\src_{i_1, \ldots, i_k}\right).
+    \operatorname{dst}_{i_1, \ldots, i_k} = Operation\left(\operatorname{src}_{i_1, \ldots, i_k}\right).
 \f]
 
 For notational convenience, in the formulas below we will denote individual
@@ -108,8 +108,8 @@ argument index as specified by the following table.
    safely done in-place.
 
 3. For some operations it might be beneficial to compute backward
-   propagation based on \f$\dst(\overline{s})\f$, rather than on
-   \f$\src(\overline{s})\f$, for improved performance.
+   propagation based on \f$\operatorname{dst}(\overline{s})\f$, rather than on
+   \f$\operatorname{src}(\overline{s})\f$, for improved performance.
 
 4. For logsigmoid original formula \f$ d = \log_{e}(\frac{1}{1+e^{-s}})\f$ was
    replaced by \f$ d = -soft\_relu(-s)\f$ for numerical stability.

@@ -3,8 +3,8 @@ ConvTransposeBackwardWeights {#dev_guide_op_convtransposebackwardweights}
 
 ## General
 
-ConvTransposeBackwardWeights operation takes \f$\diffdst\f$, \src and optional
-\f$weights\_shape\f$ computes \f$\diffweights\f$.
+ConvTransposeBackwardWeights operation takes \f$\operatorname{diffdst}\f$, \src and optional
+\f$weights\_shape\f$ computes \f$\operatorname{diffweights}\f$.
 
 ## Operation attributes
 

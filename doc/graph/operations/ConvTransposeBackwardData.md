@@ -3,8 +3,8 @@ ConvTransposeBackwardData {#dev_guide_op_convtransposebackwarddata}
 
 ## General
 
-ConvTransposeBackwardData operation takes \f$\diffdst\f$ and \weights and
-computes \f$\diffsrc\f$.
+ConvTransposeBackwardData operation takes \f$\operatorname{diffdst}\f$ and \weights and
+computes \f$\operatorname{diffsrc}\f$.
 
 ## Operation attributes
 

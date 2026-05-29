@@ -20,20 +20,20 @@ standard @ref dev_guide_conventions.
 Max pooling:
 
 \f[
-    \dst(n, c, oh, ow) =
+    \operatorname{dst}(n, c, oh, ow) =
         \max\limits_{kh, kw}
         \left(
-            \src(n, c, oh \cdot SH + kh \cdot (DH + 1) - PH_L, ow \cdot SW + kw \cdot (DW + 1) - PW_L)
+            \operatorname{src}(n, c, oh \cdot SH + kh \cdot (DH + 1) - PH_L, ow \cdot SW + kw \cdot (DW + 1) - PW_L)
         \right)
 \f]
 
 Average pooling:
 
 \f[
-    \dst(n, c, oh, ow) =
+    \operatorname{dst}(n, c, oh, ow) =
         \frac{1}{DENOM}
         \sum\limits_{kh, kw}
-            \src(n, c, oh \cdot SH + kh \cdot (DH + 1) - PH_L, ow \cdot SW + kw \cdot (DW + 1) - PW_L)
+            \operatorname{src}(n, c, oh \cdot SH + kh \cdot (DH + 1) - PH_L, ow \cdot SW + kw \cdot (DW + 1) - PW_L)
 \f]
 
 Here output spatial dimensions are calculated similarly to how they are done in
@@ -53,8 +53,7 @@ Average pooling supports two algorithms:
 
 ### Backward
 
-The backward propagation computes \f$\diffsrc(n, c, h,
-w)\f$, based on \f$\diffdst(n, c, h, w)\f$ and (in
+The backward propagation computes \f$\operatorname{diffsrc}(n, c, h, w)\f$, based on \f$\operatorname{diffdst}(n, c, h, w)\f$ and (in
 case of max pooling) `workspace`.
 
 ## Execution Arguments

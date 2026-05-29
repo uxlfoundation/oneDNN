@@ -6,10 +6,10 @@ LayerNormBackward {#dev_guide_op_layernormbackward}
 LayerNormBackward performs the backward of LayerNorm operation.
 
 The backward propagation computes
-\f$\diffsrc(t, n, c)\f$,
-\f$\diffgamma(c)^*\f$, and \f$\diffbeta(c)^*\f$
+\f$\operatorname{diffsrc}(t, n, c)\f$,
+\f$\operatorname{diffgamma}(c)^*\f$, and \f$\operatorname{diffbeta}(c)^*\f$
 based on
-\f$\diffdst(t, n, c)\f$, \f$src(t, n, c)\f$, \f$\mu(t, n)\f$,
+\f$\operatorname{diffdst}(t, n, c)\f$, \f$src(t, n, c)\f$, \f$\mu(t, n)\f$,
 \f$\sigma^2(t, n)\f$, \f$\gamma(c) ^*\f$, and \f$\beta(c) ^*\f$.
 
 The tensors marked with an asterisk are used only when the operation is

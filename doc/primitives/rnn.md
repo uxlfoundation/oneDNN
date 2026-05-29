@@ -27,11 +27,11 @@ The RNN primitive supports four modes for evaluation direction:
 Even though the RNN primitive supports passing a different number of channels
 for \srclayer, \srciter, \dstlayer, and \dstiter, we always require the
 following conditions in order for the dimension to be consistent:
-- \f$channels(\dstlayer) = channels(\dstiter)\f$,
-- when \f$T > 1\f$, \f$channels(\srciter) = channels(\dstiter)\f$,
-- when \f$L > 1\f$, \f$channels(\srclayer) = channels(\dstlayer)\f$,
+- \f$channels(\operatorname{dstlayer}) = channels(\operatorname{dstiter})\f$,
+- when \f$T > 1\f$, \f$channels(\operatorname{srciter}) = channels(\operatorname{dstiter})\f$,
+- when \f$L > 1\f$, \f$channels(\operatorname{srclayer}) = channels(\operatorname{dstlayer})\f$,
 - when using the `bidirectional_concat` direction,
- \f$channels(\dstlayer) = 2 * channels(\dstiter)\f$.
+ \f$channels(\operatorname{dstlayer}) = 2 * channels(\operatorname{dstiter})\f$.
 
 The general formula for the execution of a stack of unrolled recurrent cells
 depends on the current iteration of the previous layer (\f$h_{t,l-1}\f$ and
@@ -125,8 +125,7 @@ where \f$W_*\f$ are stored in \weightslayer, \f$U_*\f$ are stored in
 
 @note
 In order for the dimensions to be consistent, we require
-\f$channels(\srciterc) = channels(\dstiterc) =
-channels(\dstiter)\f$.
+\f$channels(\operatorname{srciterc}) = channels(\operatorname{dstiterc}) = channels(\operatorname{dstiter})\f$.
 
 #### LSTM with Peephole
 
@@ -235,8 +234,7 @@ where \f$W_*\f$ are in \weightslayer, \f$U_*\f$ are in
 
 @note If you need to replace u_t by (1-u_t) when computing h_t, you can
 achieve this by multiplying \f$W_u\f$, \f$U_u\f$ and \f$B_u\f$ by \f$-1\f$.
-This is possible as \f$u_t = \sigma(W_u \cdot h_{t,l-1} + U_u \cdot h_{t-1, l}
-+ B_u)\f$, and \f$1 – \sigma(a) = \sigma(-a)\f$.
+This is possible as \f$u_t = \sigma(W_u \cdot h_{t,l-1} + U_u \cdot h_{t-1, l} + B_u)\f$, and \f$1 – \sigma(a) = \sigma(-a)\f$.
 
 @anchor linear-before-reset-gru
 ### Linear-Before-Reset GRU
@@ -270,8 +268,7 @@ the bias, we implicitly require the order of these gates to be `u`, `r`, and
 
 @note If you need to replace u_t by (1-u_t) when computing h_t, you can
 achieve this by multiplying \f$W_u\f$, \f$U_u\f$ and \f$B_u\f$ by \f$-1\f$.
-This is possible as \f$u_t = \sigma(W_u \cdot h_{t,l-1} + U_u \cdot h_{t-1, l}
-+ B_u)\f$, and \f$1 – \sigma(a) = \sigma(-a)\f$.
+This is possible as \f$u_t = \sigma(W_u \cdot h_{t,l-1} + U_u \cdot h_{t-1, l} + B_u)\f$, and \f$1 – \sigma(a) = \sigma(-a)\f$.
 
 @anchor augru
 ### AUGRU

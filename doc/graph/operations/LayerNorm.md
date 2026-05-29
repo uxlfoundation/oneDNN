@@ -10,9 +10,9 @@ dimension of the data tensor. It is defined by the following formulas which is
 the same as @ref dev_guide_layer_normalization.
 
 \f[
-    \dst(t, n, c) =
+    \operatorname{dst}(t, n, c) =
        \gamma(c) \cdot
-       \frac{\src(t, n, c) - \mu(t, n)} {\sqrt{\sigma^2(t, n) + \epsilon}}
+       \frac{\operatorname{src}(t, n, c) - \mu(t, n)} {\sqrt{\sigma^2(t, n) + \epsilon}}
        + \beta(c),
 \f]
 
@@ -27,9 +27,9 @@ where
 Mean and variance are computed at runtime or provided by a user. When mean and
 variance are computed at runtime, the following formulas are used:
 
-- \f$\mu(t, n) = \frac{1}{C} \sum\limits_{c} \src(t, n, c)_{}\f$,
+- \f$\mu(t, n) = \frac{1}{C} \sum\limits_{c} \operatorname{src}(t, n, c)_{}\f$,
 
-- \f$\sigma^2(t, n) = \frac{1}{C} \sum\limits_{c} {}_{} (\src(t, n, c) - \mu(t, n))^2\f$.
+- \f$\sigma^2(t, n) = \frac{1}{C} \sum\limits_{c} {}_{} (\operatorname{src}(t, n, c) - \mu(t, n))^2\f$.
 
 ## Operation attributes
 

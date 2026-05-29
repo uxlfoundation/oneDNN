@@ -3,8 +3,8 @@ ConvolutionBackwardWeights {#dev_guide_op_convolutionbackwardweights}
 
 ## General
 
-ConvolutionBackwardWeights operation accepts \src, \f$\diffdst\f$ and optional
-weights shape as inputs, and compute the \f$\diffweights\f$.
+ConvolutionBackwardWeights operation accepts \src, \f$\operatorname{diffdst}\f$ and optional
+weights shape as inputs, and compute the \f$\operatorname{diffweights}\f$.
 
 ## Operation attributes
 

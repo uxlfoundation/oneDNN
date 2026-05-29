@@ -19,9 +19,9 @@ cases of higher dimensions. Variable names follow the standard
 @ref dev_guide_conventions.
 
 \f[
-    \dst(t, n, c) =
+    \operatorname{dst}(t, n, c) =
        \gamma(c) \cdot
-       \frac{\src(t, n, c) - \mu(t, n)} {\sqrt{\sigma^2(t, n) + \varepsilon}}
+       \frac{\operatorname{src}(t, n, c) - \mu(t, n)} {\sqrt{\sigma^2(t, n) + \varepsilon}}
        + \beta(c),
 \f]
 
@@ -38,9 +38,9 @@ where
 Mean and variance are computed at runtime or provided by a user. When mean and
 variance are computed at runtime, the following formulas are used:
 
-- \f$\mu(t, n) = \frac{1}{C} \sum\limits_{c} \src(t, n, c)_{}\f$,
+- \f$\mu(t, n) = \frac{1}{C} \sum\limits_{c} \operatorname{src}(t, n, c)_{}\f$,
 
-- \f$\sigma^2(t, n) = \frac{1}{C} \sum\limits_{c} {}_{} (\src(t, n, c) - \mu(t, n))^2\f$.
+- \f$\sigma^2(t, n) = \frac{1}{C} \sum\limits_{c} {}_{} (\operatorname{src}(t, n, c) - \mu(t, n))^2\f$.
 
 The \f$\gamma(c)\f$ and \f$\beta(c)\f$ tensors are considered learnable.
 
@@ -58,10 +58,10 @@ The \f$\gamma(c)\f$ and \f$\beta(c)\f$ tensors are considered learnable.
 ### Backward
 
 The backward propagation computes
-\f$\diffsrc(t, n, c)\f$,
-\f$\diffgamma(c)^*\f$, and \f$\diffbeta(c)^*\f$
+\f$\operatorname{diffsrc}(t, n, c)\f$,
+\f$\operatorname{diffgamma}(c)^*\f$, and \f$\operatorname{diffbeta}(c)^*\f$
 based on
-\f$\diffdst(t, n, c)\f$, \f$src(t, n, c)\f$, \f$\mu(t, n)\f$,
+\f$\operatorname{diffdst}(t, n, c)\f$, \f$src(t, n, c)\f$, \f$\mu(t, n)\f$,
 \f$\sigma^2(t, n)\f$, \f$\gamma(c) ^*\f$, and \f$\beta(c) ^*\f$.
 
 The tensors marked with an asterisk are used only when the primitive is
@@ -74,13 +74,13 @@ The layer normalization primitive also supports root mean square normalization
 (RMSNorm) via #dnnl_rms_norm flag. RMSNorm is a simplification of layer
 normalization that skips re-centering the data assuming that the mean is zero
 and uses root mean square statistics
-\f$\sqrt{\frac{1}{C} \sum\limits_{c} (\src(t, n, c))^2}\f$ instead of a variance.
+\f$\sqrt{\frac{1}{C} \sum\limits_{c} (\operatorname{src}(t, n, c))^2}\f$ instead of a variance.
 
 For the forward step, RMSNorm is then defined by the following formula:
 \f[
-   \dst(t, n, c) =
+   \operatorname{dst}(t, n, c) =
       \gamma(c) \cdot
-   \frac{\src(t, n, c)} {\sqrt{\frac{1}{C} \sum\limits_{c} (\src(t, n, c))^2 + \varepsilon}}
+   \frac{\operatorname{src}(t, n, c)} {\sqrt{\frac{1}{C} \sum\limits_{c} (\operatorname{src}(t, n, c))^2 + \varepsilon}}
    + \beta(c),
 \f]
 

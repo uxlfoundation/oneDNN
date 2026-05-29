@@ -32,7 +32,8 @@ hw_t::hw_t(const ngen::Product &product, int eu_count, int max_wg_size,
 
 ngen::Product hw_t::product() const {
     ngen::Product product;
-    std::memcpy(&product, &product_, sizeof(product));
+    std::memcpy(static_cast<void *>(&product),
+            static_cast<const void *>(&product_), sizeof(product));
     return product;
 }
 

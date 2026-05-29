@@ -72,8 +72,8 @@ inline void pattern_utils_t::match(graph_t &backend_graph,
 inline void pattern_utils_t::fuse(
         graph_t &backend_graph, std::vector<op_t *> &matched_op_list) {
     for (auto &matched_op : matched_op_list) {
-        std::shared_ptr<op_t> partition_fused_op(
-                new op_t(matched_op->get_kind()));
+        std::shared_ptr<op_t> partition_fused_op
+                = std::make_shared<op_t>(matched_op->get_kind());
         // merge the op ids
         partition_fused_op->add_op_ids(matched_op->get_op_ids());
 

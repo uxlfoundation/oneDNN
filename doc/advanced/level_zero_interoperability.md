@@ -34,7 +34,7 @@ objects.
 | \                  | \                                                                                          | dnnl::ze_interop::get_device(const engine &)  |
 | \                  | \                                                                                          | dnnl::ze_interop::get_context(const engine &) |
 | Stream             | dnnl::ze_interop::make_stream(const engine &, ze_command_list_handle_t, bool)              | dnnl::ze_interop::get_list(const stream &)    |
-| Memory (USM-based) | dnnl::ze_interop::make_memory(const memory::desc &, const engine &, void \*)               | dnnl::memory::get_data_handle()               |
+| Memory (USM-based) | dnnl::ze_interop::make_memory(const memory::desc &, const engine &, void\*)               | dnnl::memory::get_data_handle()               |
 
 ## Level Zero USM Interfaces for Memory Objects
 
@@ -44,7 +44,7 @@ devices.
 
 To construct a oneDNN memory object, use the following interface:
 
-- dnnl::ze_interop::make_memory(const memory::desc &, const engine &, void \*)
+- dnnl::ze_interop::make_memory(const memory::desc &, const engine &, void\*)
 
     Constructs a USM-based memory object. The `handle` could be one of special
     values #DNNL_MEMORY_ALLOCATE or #DNNL_MEMORY_NONE, or it could be a

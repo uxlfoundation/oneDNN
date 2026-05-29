@@ -33,7 +33,7 @@ objects and how to query underlying OpenCL objects for existing oneDNN objects.
 | \                     | \                                                                                                       | dnnl::ocl_interop::get_context(const engine &)       |
 | Stream                | dnnl::ocl_interop::make_stream(const engine &, cl_command_queue)                                        | dnnl::ocl_interop::get_command_queue(const stream &) |
 | Memory (Buffer-based) | dnnl::memory(const memory::desc &, const engine &, cl_mem)                                              | dnnl::ocl_interop::get_mem_object(const memory &)    |
-| Memory (USM-based)    | dnnl::ocl_interop::make_memory(const memory::desc &, const engine &, ocl_interop::memory_kind, void \*) | dnnl::memory::get_data_handle()                      |
+| Memory (USM-based)    | dnnl::ocl_interop::make_memory(const memory::desc &, const engine &, ocl_interop::memory_kind, void\*) | dnnl::memory::get_data_handle()                      |
 
 ## OpenCL Buffers and USM Interfaces for Memory Objects
 
@@ -47,14 +47,14 @@ the default. The USM model requires using the interoperability API.
 
 To construct a oneDNN memory object, use one of the following interfaces:
 
-- dnnl::ocl_interop::make_memory(const memory::desc &, const engine &, ocl_interop::memory_kind kind, void \*handle)
+- dnnl::ocl_interop::make_memory(const memory::desc &, const engine &, ocl_interop::memory_kind kind, void\* handle)
 
     Constructs a USM-based or buffer-based memory object depending on memory
     allocation kind `kind`. The `handle` could be one of special values
     #DNNL_MEMORY_ALLOCATE or #DNNL_MEMORY_NONE, or it could be a user-provided
     USM pointer. The latter works only when `kind` is dnnl::ocl_interop::memory_kind::usm.
 
-- dnnl::memory(const memory::desc &, const engine &, void \*)
+- dnnl::memory(const memory::desc &, const engine &, void\*)
 
     Constructs a buffer-based memory object. The call is equivalent to calling the
     function above with with `kind` equal to dnnl::ocl_interop::memory_kind::buffer.

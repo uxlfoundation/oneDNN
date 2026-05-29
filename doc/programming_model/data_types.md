@@ -176,6 +176,11 @@ oneDNN performance optimizations for Intel Architecture Processors are
 specialized based on Instruction Set Architecture (ISA). The following
 table indicates data types support for every supported ISA:
 
+@note
+    In oneDNN documentation, `int8` is used as a shorthand for both `s8`
+    (signed) and `u8` (unsigned) 8-bit integer types. See @ref
+    dev_guide_int8_computations for more details.
+
 | ISA                                                  | f64     | f32     | bf16    | f16     | s8/u8   | f8_e4m3 | f8_e5m2 | f4_e2m1 | s4/u4   |
 | ---------------------------------------------------- | ------- | ------- | ------- | ------- | ------- | ------- | ------- | ------- | ------- | 
 | Intel SSE4.1                                         |         | `+`     |         |         |         |         |         |         |         |

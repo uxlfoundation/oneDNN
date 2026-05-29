@@ -20,10 +20,10 @@ See also:
 ## Quantization Model
 
 oneDNN supports two main categories of quantization:
-- Static Quantization (see @ref quantization_mode::dnnl_quantization_mode_static_sazp)
+- Static Quantization (see @ref dnnl_quantization_mode_static_sazp)
   with scales only (symmetric) or scales and zero-points (asymmetric),
   where scales are applied after zero-point.
-- Dynamic Quantization (see @ref quantization_mode::dnnl_quantization_mode_dynamic_mx)
+- Dynamic Quantization (see @ref dnnl_quantization_mode_dynamic_mx)
   compliant with the [OCP Microscaling (MX) Formats Specification][mx-spec].
 
 To support quantization, primitives should be created and executed as
@@ -114,7 +114,7 @@ Results are then converted as
 necessary before the result is written to the output memory objects.
 
 The scales are applied in single precision floating point data type
-(#dnnl::memory::data_type::f32) before downconversion to the
+(@ref dnnl_f32) before downconversion to the
 destination data type. When converting to integral data types,
 implementations typically saturate, whereas for floating-point
 data types, underflow/overflow can occur. To force saturation in
@@ -336,8 +336,8 @@ attr.set_scales(DNNL_ARG_WEIGHTS, (1 << 0) + (1 << 1), groups,
 ~~~
 
 See examples:
-- [Matmul with Advanced Quantization](#matmul-with-advanced-quantization)
-- [Matmul with Precomputed Reductions and Advanced Quantization](#matmul-with-precomputed-reductions-and-advanced-quantization)
+- [Matmul with Advanced Quantization](#matrix-multiplication-with-weight-only-quantization-woq)
+- [Matmul with Precomputed Reductions and Advanced Quantization](#matrix-multiplication-with-precomputed-reductions-and-advanced-quantization)
 - @ref matmul_with_weight_only_quantization_cpp
 
 ##### Special Case: MX-compatible Block Scaling (or Dynamic Quantization)
@@ -374,8 +374,8 @@ attr.set_scales(DNNL_ARG_SRC, (1 << 0) + (1 << 1), {},
 ~~~
 
 See examples:
-- [Matmul with Advanced Quantization](#matmul-with-advanced-quantization)
-- [Matmul with Precomputed Reductions and Advanced Quantization](#matmul-with-precomputed-reductions-and-advanced-quantization)
+- [Matmul with Advanced Quantization](#matrix-multiplication-with-weight-only-quantization-woq)
+- [Matmul with Precomputed Reductions and Advanced Quantization](#matrix-multiplication-with-precomputed-reductions-and-advanced-quantization)
 - @ref matmul_with_weight_only_quantization_cpp
 
 @anchor dgaq_zps
@@ -448,7 +448,7 @@ attr.set_zero_points(DNNL_ARG_WEIGHTS, (1 << 0) + (1 << 1), groups,
 
 See examples:
 - [Convolution with Per-output-channel Quantization](#convolution-with-per-output-channel-quantization)
-- [Matmul with Precomputed Reductions and Advanced Quantization](#matmul-with-precomputed-reductions-and-advanced-quantization)
+- [Matmul with Precomputed Reductions and Advanced Quantization](#matrix-multiplication-with-precomputed-reductions-and-advanced-quantization)
 - @ref inference_int8_matmul_cpp
 - @ref matmul_with_weight_only_quantization_cpp
 

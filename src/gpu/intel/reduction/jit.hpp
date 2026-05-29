@@ -42,7 +42,7 @@ struct gen_t : public primitive_t {
     struct pd_t : public reduction::pd_t {
         using reduction::pd_t::pd_t;
 
-        DECLARE_COMMON_PD_T("jit:ref", gen_t);
+        DECLARE_COMMON_PD_T("jit:xe", gen_t);
 
         status_t init(impl::engine_t *engine) {
             // Require the corresponding environment variable - skip this impl

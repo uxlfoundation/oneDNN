@@ -37,7 +37,7 @@ struct ref_reorder_t : public gpu::generic::sycl::primitive_t {
     struct pd_t : public gpu_reorder_pd_t {
         using gpu_reorder_pd_t::gpu_reorder_pd_t;
 
-        DECLARE_COMMON_PD_T("dpcpp:ref:any", ref_reorder_t);
+        DECLARE_COMMON_PD_T("sycl:ref:any", ref_reorder_t);
 
         status_t init(impl::engine_t *engine, impl::engine_t *src_engine,
                 impl::engine_t *dst_engine) {

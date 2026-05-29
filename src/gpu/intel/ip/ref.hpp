@@ -131,7 +131,7 @@ struct ref_bwd_data_t : public primitive_t {
     struct pd_t : public bwd_data_pd_t {
         using bwd_data_pd_t::bwd_data_pd_t;
 
-        DECLARE_COMMON_PD_T("ref:any", ref_bwd_data_t);
+        DECLARE_COMMON_PD_T("ocl:ref:any", ref_bwd_data_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
@@ -196,7 +196,7 @@ struct ref_bwd_weights_t : public primitive_t {
     struct pd_t : public bwd_weights_pd_t {
         using bwd_weights_pd_t::bwd_weights_pd_t;
 
-        DECLARE_COMMON_PD_T("ref:any", ref_bwd_weights_t);
+        DECLARE_COMMON_PD_T("ocl:ref:any", ref_bwd_weights_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;

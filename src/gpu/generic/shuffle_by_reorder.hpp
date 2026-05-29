@@ -37,7 +37,7 @@ struct shuffle_by_reorder_t : public gpu::primitive_t {
     struct pd_t : public gpu_shuffle_pd_t {
         using gpu_shuffle_pd_t::gpu_shuffle_pd_t;
 
-        DECLARE_COMMON_PD_T("reorder:any", shuffle_by_reorder_t);
+        DECLARE_COMMON_PD_T("reorder-based:any", shuffle_by_reorder_t);
 
         status_t init(impl::engine_t *engine) {
             const auto &md_src = is_fwd() ? src_md() : diff_src_md();

@@ -176,7 +176,7 @@ struct ref_rnn_fwd_t : ref_rnn_common_base_t {
 
         pd_t(const pd_t &other) = default;
 
-        DECLARE_COMMON_PD_T("ref:any", ref_rnn_fwd_t);
+        DECLARE_COMMON_PD_T("sycl:ref:any", ref_rnn_fwd_t);
 
         status_t init(impl::engine_t *engine);
 
@@ -263,7 +263,7 @@ struct ref_rnn_bwd_t : ref_rnn_common_base_t {
 
         pd_t(const pd_t &other) = default;
 
-        DECLARE_COMMON_PD_T("ref:any", ref_rnn_bwd_t);
+        DECLARE_COMMON_PD_T("sycl:ref:any", ref_rnn_bwd_t);
 
         status_t init(impl::engine_t *engine);
 

@@ -63,7 +63,7 @@ struct ref_inner_product_fwd_t : public gpu::generic::sycl::primitive_t {
         using gpu_inner_product_fwd_pd_t::gpu_inner_product_fwd_pd_t;
         using sm = primitive_attr_t::skip_mask_t;
 
-        DECLARE_COMMON_PD_T("dpcpp:ref:any", ref_inner_product_fwd_t);
+        DECLARE_COMMON_PD_T("sycl:ref:any", ref_inner_product_fwd_t);
 
         status_t init(impl::engine_t *engine);
 
@@ -97,7 +97,7 @@ struct ref_inner_product_bwd_data_t : public gpu::generic::sycl::primitive_t {
 
     struct pd_t : public gpu_inner_product_bwd_data_pd_t {
         using gpu_inner_product_bwd_data_pd_t::gpu_inner_product_bwd_data_pd_t;
-        DECLARE_COMMON_PD_T("dpcpp:ref:any", ref_inner_product_bwd_data_t);
+        DECLARE_COMMON_PD_T("sycl:ref:any", ref_inner_product_bwd_data_t);
 
         status_t init(impl::engine_t *engine);
 
@@ -132,7 +132,7 @@ struct ref_inner_product_bwd_weights_t
     struct pd_t : public gpu_inner_product_bwd_weights_pd_t {
         using gpu_inner_product_bwd_weights_pd_t::
                 gpu_inner_product_bwd_weights_pd_t;
-        DECLARE_COMMON_PD_T("dpcpp:ref:any", ref_inner_product_bwd_weights_t);
+        DECLARE_COMMON_PD_T("sycl:ref:any", ref_inner_product_bwd_weights_t);
 
         status_t init(impl::engine_t *engine);
 

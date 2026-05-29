@@ -38,7 +38,7 @@ struct ref_binary_t : public gpu::generic::sycl::primitive_t {
     struct pd_t : public gpu_binary_pd_t {
         using gpu_binary_pd_t::gpu_binary_pd_t;
 
-        DECLARE_COMMON_PD_T("dpcpp:ref:any", ref_binary_t);
+        DECLARE_COMMON_PD_T("sycl:ref:any", ref_binary_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;

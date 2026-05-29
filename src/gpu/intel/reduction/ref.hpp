@@ -34,7 +34,7 @@ struct ref_t : public primitive_t {
     struct pd_t : public reduction::pd_t {
         using reduction::pd_t::pd_t;
 
-        DECLARE_COMMON_PD_T("ref:any", ref_t);
+        DECLARE_COMMON_PD_T("ocl:ref:any", ref_t);
 
         status_t init(impl::engine_t *engine) {
             using sm = primitive_attr_t::skip_mask_t;

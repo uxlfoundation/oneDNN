@@ -38,7 +38,7 @@ struct ref_shuffle_t : public gpu::generic::sycl::primitive_t {
     struct pd_t : public gpu_shuffle_pd_t {
         using gpu_shuffle_pd_t::gpu_shuffle_pd_t;
 
-        DECLARE_COMMON_PD_T("dpcpp:ref:any", ref_shuffle_t);
+        DECLARE_COMMON_PD_T("sycl:ref:any", ref_shuffle_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace format_tag;

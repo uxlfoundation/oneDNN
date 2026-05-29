@@ -40,7 +40,7 @@ struct ref_deconvolution_bwd_weights_t
     struct pd_t : public deconvolution_bwd_weights_pd_t {
         using deconvolution_bwd_weights_pd_t::deconvolution_bwd_weights_pd_t;
 
-        DECLARE_COMMON_PD_T("dpcpp:ref:any", ref_deconvolution_bwd_weights_t);
+        DECLARE_COMMON_PD_T("sycl:ref:any", ref_deconvolution_bwd_weights_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;

@@ -40,7 +40,7 @@ struct ref_batch_normalization_fwd_t : public gpu::generic::sycl::primitive_t {
     struct pd_t : public gpu_batch_normalization_fwd_pd_t {
         using gpu_batch_normalization_fwd_pd_t::
                 gpu_batch_normalization_fwd_pd_t;
-        DECLARE_COMMON_PD_T("dpcpp:ref:any", ref_batch_normalization_fwd_t);
+        DECLARE_COMMON_PD_T("sycl:ref:any", ref_batch_normalization_fwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
@@ -104,7 +104,7 @@ struct ref_batch_normalization_bwd_t : public gpu::generic::sycl::primitive_t {
         using gpu_batch_normalization_bwd_pd_t::
                 gpu_batch_normalization_bwd_pd_t;
 
-        DECLARE_COMMON_PD_T("dpcpp:ref:any", ref_batch_normalization_bwd_t);
+        DECLARE_COMMON_PD_T("sycl:ref:any", ref_batch_normalization_bwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;

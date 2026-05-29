@@ -37,7 +37,7 @@ struct ref_sum_many_inputs_t : public gpu::generic::sycl::primitive_t {
     struct pd_t : public gpu_sum_pd_t {
         using gpu_sum_pd_t::gpu_sum_pd_t;
 
-        DECLARE_SUM_PD_t("dpcpp:ref:sum_many_inputs", ref_sum_many_inputs_t);
+        DECLARE_SUM_PD_t("sycl:many_inputs:any", ref_sum_many_inputs_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;

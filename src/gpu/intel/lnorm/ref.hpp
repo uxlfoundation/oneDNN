@@ -34,7 +34,7 @@ struct ref_fwd_t : public primitive_t {
     struct pd_t : public fwd_pd_t {
         using fwd_pd_t::fwd_pd_t;
 
-        DECLARE_COMMON_PD_T("lnorm_ref:any", ref_fwd_t);
+        DECLARE_COMMON_PD_T("ocl:ref:any", ref_fwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
@@ -114,7 +114,7 @@ struct ref_bwd_t : public primitive_t {
     struct pd_t : public bwd_pd_t {
         using bwd_pd_t::bwd_pd_t;
 
-        DECLARE_COMMON_PD_T("lnorm_ref:any", ref_bwd_t);
+        DECLARE_COMMON_PD_T("ocl:ref:any", ref_bwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;

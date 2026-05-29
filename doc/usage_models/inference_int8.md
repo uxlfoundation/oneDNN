@@ -88,12 +88,9 @@ The scaling factors are:
 
 Finally, the quantized input values for the `int8` operation are calculated as:
 
-+ \f$\alpha_{u8} = \lceil Q_{\alpha} \alpha_{f32} \rceil\f$
-   \f$ = \Bigl \lceil 17 \cdot [15, 14, \ldots, 11 ] \Bigr \rceil = [255, 238, \ldots, 187] \f$
++ \f$\alpha_{u8} = \lceil Q_{\alpha} \alpha_{f32} \rceil = \Bigl \lceil 17 \cdot [15, 14, \ldots, 11 ] \Bigr \rceil = [255, 238, \ldots, 187]\f$
 
-+ \f$W_{s8} = \lceil Q_{w} W_{f32} \rceil
-    = \Bigl \lceil 12.96 \cdot [-5.1 , 6.8, \ldots, -1.2, 9.8 ] \Bigr \rceil
-    = [-66, 88, \ldots, -15, 127] \f$
++ \f$W_{s8} = \lceil Q_{w} W_{f32} \rceil = \Bigl \lceil 12.96 \cdot [-5.1 , 6.8, \ldots, -1.2, 9.8 ] \Bigr \rceil = [-66, 88, \ldots, -15, 127]\f$
 
 These arrays are the new inputs for the `int8` net.
 

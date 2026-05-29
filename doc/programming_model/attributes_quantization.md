@@ -132,7 +132,7 @@ computed in `f32` precision. As a result the destination quantization
 parameters are applied after the post-ops as follows:
 
 \f[
-   \dst[:] = post\_ops(OP(src[:], weights[:], ...)) / scale_{\dst} + zp_{\dst}
+   \operatorname{dst}[:] = post\_ops(OP(src[:], weights[:], ...)) / scale_{\operatorname{dst}} + zp_{\operatorname{dst}}
 \f]
 
 Quantizing and dequantizing values between post-operations can be achieved
@@ -268,13 +268,13 @@ target hardware. Refer to primitives documentation for the details.
 In the simplest case, when there is only one common scaling factor the attribute changes
 the op behavior from
 \f[
-    \dst[:] = Op(...)
+    \operatorname{dst}[:] = Op(...)
 \f]
 
 to
 
 \f[
-    \dst[:] = scale \cdot Op(...).
+    \operatorname{dst}[:] = scale \cdot Op(...).
 \f]
 
 ~~~cpp
@@ -505,7 +505,7 @@ reductions over the source tensor during matrix multiplication. This involves
 summing source tensor values across groups along the reduction dimension:
 
 \f[
-\dst_{m,n}=\sum_{g=0}^{G-1}\sum_{k={K\over{G}}g}^{{K\over{G}}(g+1)-1}{\src_{m,k}(\weights_{k,n}-zp_{\weights}(g,n))}=\sum_{k=0}^{K-1}{\src_{m,k}\weights_{k,n}}-\sum_{g=0}^{G-1}zp_{\weights}(g,n)\underbrace{\sum_{k={K\over{G}}g}^{{K\over{G}}(g+1)-1}\src_{m,k}}_{R_{m,g}}
+\operatorname{dst}_{m,n}=\sum_{g=0}^{G-1}\sum_{k={K\over{G}}g}^{{K\over{G}}(g+1)-1}{\operatorname{src}_{m,k}(\operatorname{weights}_{k,n}-zp_{\operatorname{weights}}(g,n))}=\sum_{k=0}^{K-1}{\operatorname{src}_{m,k}\operatorname{weights}_{k,n}}-\sum_{g=0}^{G-1}zp_{\operatorname{weights}}(g,n)\underbrace{\sum_{k={K\over{G}}g}^{{K\over{G}}(g+1)-1}\operatorname{src}_{m,k}}_{R_{m,g}}
 \f]
 
 where `R` represents the precomputed reductions that can be calculated
@@ -553,25 +553,25 @@ See examples:
 
 Consider a convolution with bias. The tensors are represented as:
 
-- \f$\src_{f32}[:] = scale_{\src} \cdot (\src_{int8}[:] - zp_{\src})\f$
-- \f$\weights_{f32}[:] = scale_{\weights} \cdot \weights_{int8}[:]\f$
-- \f$\dst_{f32}[:] = scale_{\dst} \cdot (\dst_{int8}[:] - zp_{\dst})\f$
+- \f$\operatorname{src}_{f32}[:] = scale_{\operatorname{src}} \cdot (\operatorname{src}_{int8}[:] - zp_{\operatorname{src}})\f$
+- \f$\operatorname{weights}_{f32}[:] = scale_{\operatorname{weights}} \cdot \operatorname{weights}_{int8}[:]\f$
+- \f$\operatorname{dst}_{f32}[:] = scale_{\operatorname{dst}} \cdot (\operatorname{dst}_{int8}[:] - zp_{\operatorname{dst}})\f$
 
-Here the \f$\src_{f32}, \weights_{f32}, \dst_{f32}\f$ are not
+Here the \f$\operatorname{src}_{f32}, \operatorname{weights}_{f32}, \operatorname{dst}_{f32}\f$ are not
 computed at all, the whole work happens with `int8` tensors. So the task
-is to compute the \f$\dst_{int8}\f$ tensor, using the \f$\src_{int8}\f$,
-\f$\weights_{int8}\f$ tensors passed at execution time, as well as the
-corresponding quantization parameters \f$scale_{\src}\f$, \f$scale_{\weights}\f$,
-\f$scale_{\dst}\f$, and \f$zp_{\src}\f$, \f$zp_{\dst}\f$.
+is to compute the \f$\operatorname{dst}_{int8}\f$ tensor, using the \f$\operatorname{src}_{int8}\f$,
+\f$\operatorname{weights}_{int8}\f$ tensors passed at execution time, as well as the
+corresponding quantization parameters \f$scale_{\operatorname{src}}\f$, \f$scale_{\operatorname{weights}}\f$,
+\f$scale_{\operatorname{dst}}\f$, and \f$zp_{\operatorname{src}}\f$, \f$zp_{\operatorname{dst}}\f$.
 Mathematically, the computations are:
 
 \f[
-   \dst_{int8}[:] =
+   \operatorname{dst}_{int8}[:] =
       \operatorname{f32\_to\_int8}(
-         (scale_{\src} \cdot scale_{\weights} \cdot
-         \operatorname{s32\_to\_f32}(conv_{s32}(\src_{int8}, \weights_{int8})
-	   - zp_{\src} \cdot comp_{s32}) + bias_{f32}) / scale_{\dst}
-           + zp_{\dst} )
+         (scale_{\operatorname{src}} \cdot scale_{\operatorname{weights}} \cdot
+         \operatorname{s32\_to\_f32}(conv_{s32}(\operatorname{src}_{int8}, \operatorname{weights}_{int8})
+	   - zp_{\operatorname{src}} \cdot comp_{s32}) + bias_{f32}) / scale_{\operatorname{dst}}
+           + zp_{\operatorname{dst}} )
 \f]
 
 where
@@ -581,7 +581,7 @@ where
   is chosen to avoid overflows during the computations);
 
 - \f$comp_{s32}\f$ is a compensation term to account for
-  \f$\src\f$ non-zero zero-point. This term is computed by the oneDNN
+  \f$\operatorname{src}\f$ non-zero zero-point. This term is computed by the oneDNN
   library and can typically be pre-computed ahead of time, for example
   during weights reorder.
 
@@ -605,22 +605,22 @@ of the computations. It seems impossible to implement the same trick for the
 input channels, since that would require re-quantization for every input
 data point.
 
-- \f$\src_{f32}(n, ic, ih, iw) = scale_{\src} \cdot \src_{int8}(n, ic, ih, iw)\f$
+- \f$\operatorname{src}_{f32}(n, ic, ih, iw) = scale_{\operatorname{src}} \cdot \operatorname{src}_{int8}(n, ic, ih, iw)\f$
 
-- \f$\weights_{f32}(oc, ic, kh, kw) = scale_{\weights}(oc) \cdot \weights_{int8}(oc, ic, kh, kw)\f$
+- \f$\operatorname{weights}_{f32}(oc, ic, kh, kw) = scale_{\operatorname{weights}}(oc) \cdot \operatorname{weights}_{int8}(oc, ic, kh, kw)\f$
 
-- \f$\dst_{f32}(n, oc, oh, ow) = scale_{\dst} \cdot \dst_{int8}(n, oc, oh, ow)\f$
+- \f$\operatorname{dst}_{f32}(n, oc, oh, ow) = scale_{\operatorname{dst}} \cdot \operatorname{dst}_{int8}(n, oc, oh, ow)\f$
 
 Note that now the weights' scaling factor depends on \f$oc\f$.
 
-To compute the \f$\dst_{int8}\f$ we need to perform the following:
+To compute the \f$\operatorname{dst}_{int8}\f$ we need to perform the following:
 
 \f[
 
-    \dst_{int8}(n, oc, oh, ow) =
+    \operatorname{dst}_{int8}(n, oc, oh, ow) =
         \operatorname{f32\_to\_int8}(
-            \frac{scale_{\src} \cdot scale_{\weights}(oc) \cdot
-            conv_{s32}(\src_{int8}, \weights_{int8})|_{(n, oc, oh, ow)} + \bias_{f32}}{scale_{\dst}}
+            \frac{scale_{\operatorname{src}} \cdot scale_{\operatorname{weights}}(oc) \cdot
+            conv_{s32}(\operatorname{src}_{int8}, \operatorname{weights}_{int8})|_{(n, oc, oh, ow)} + \operatorname{bias}_{f32}}{scale_{\operatorname{dst}}}
         ).
 \f]
 
@@ -629,12 +629,13 @@ oneDNN provides reorders that can perform per-channel scaling:
 
 \f[
 
-    \weights_{int8}(oc, ic, kh, kw) =
+    \operatorname{weights}_{int8}(oc, ic, kh, kw) =
         \operatorname{f32\_to\_int8}(
-            \weights_{f32}(oc, ic, kh, kw) / scale_{weights}(oc)
+            \operatorname{weights}_{f32}(oc, ic, kh, kw) / scale_{weights}(oc)
         ).
 \f]
 
+@anchor weights-preparation-with-per-output-channel-scaling
 #### Weights Preparation with Per-output-channel Scaling
 
 ~~~cpp
@@ -677,6 +678,7 @@ oneDNN provides reorders that can perform per-channel scaling:
 // ...
 ~~~
 
+@anchor convolution-with-per-output-channel-quantization
 #### Convolution with Per-output-channel Quantization
 
 Building upon the weights preparation shown above, this section shows
@@ -739,6 +741,7 @@ weight scaling with global source and destination scaling.
 // ...
 ~~~
 
+@anchor matrix-multiplication-with-weight-only-quantization-woq
 ### Matrix Multiplication with Weight-only Quantization (WoQ)
 
 This example describes a process of weight-only quantization (WoQ)
@@ -796,6 +799,7 @@ For a full tutorial, refer to @ref matmul_with_weight_only_quantization_cpp.
 // ...
 ~~~
 
+@anchor matrix-multiplication-with-precomputed-reductions-and-advanced-quantization
 ### Matrix Multiplication with Precomputed Reductions and Advanced Quantization
 
 This example extends the [Weight-only Quantization](#matrix-multiplication-with-weight-only-quantization-woq)

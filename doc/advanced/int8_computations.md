@@ -18,18 +18,7 @@ accumulates the `s8` input values in a window to an `s32` accumulator, then
 divides the result by the window size, and then stores the result back to the
 `s8` destination:
 
-- \f$
-    \dst_{s8}(...) =
-        (s8)
-        \Biggl(
-            \Biggl(
-                \sum\limits_{kh,kw}
-                (s32)\src_{s8}(...)
-            \Biggr)
-            \div
-            (kh \cdot kw)
-        \Biggr)
-  \f$
+- \f$\dst_{s8}(...) = (s8) \Biggl( \Biggl( \sum\limits_{kh,kw} (s32)\src_{s8}(...) \Biggr) \div (kh \cdot kw) \Biggr)\f$
 
 @note
 The max pooling primitive can directly work with `int8` data types.

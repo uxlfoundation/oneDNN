@@ -182,7 +182,12 @@ struct memory_desc_wrapper : public c_compatible {
         return sparse_desc().nnz;
     }
 
-    const dims_t &strides() const { return blocking_desc().strides; }
+    const dims_t &strides() const {
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+        if (is_grouped_desc()) return sparse_desc().grouped_desc.strides;
+#endif
+        return blocking_desc().strides;
+    }
 
     const memory_extra_desc_t &extra() const { return md_->extra; }
 

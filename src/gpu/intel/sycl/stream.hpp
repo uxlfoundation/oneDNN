@@ -86,13 +86,12 @@ struct stream_t : public gpu::intel::stream_t {
     status_t copy(const memory_storage_t &src, const memory_storage_t &dst,
             size_t size, const xpu::event_t &deps,
             xpu::event_t &out_dep) override {
-        return impl()->copy(
-                this, src, dst, size, deps, out_dep, profiler_.get());
+        return impl()->copy(this, src, dst, size, deps, out_dep, &profiler());
     }
 
     status_t fill(const memory_storage_t &dst, uint8_t pattern, size_t size,
             const xpu::event_t &deps, xpu::event_t &out_dep) override {
-        return impl()->fill(dst, pattern, size, deps, out_dep, profiler_.get());
+        return impl()->fill(dst, pattern, size, deps, out_dep, &profiler());
     }
 
     status_t barrier() override { return impl()->barrier(); }

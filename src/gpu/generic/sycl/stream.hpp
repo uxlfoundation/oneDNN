@@ -48,22 +48,34 @@ public:
         return status::success;
     }
 
-    ::sycl::queue &queue() const { return *impl()->queue(); }
-
     status_t wait() override {
         queue().wait_and_throw();
         return status::success;
     }
 
+    status_t reset_profiling() override {
+        if (!is_profiling_enabled()) return status::invalid_arguments;
+        profiler_->reset();
+        return status::success;
+    }
+
+    status_t get_profiling_data(profiling_data_kind_t data_kind,
+            int *num_entries, uint64_t *data) const override {
+        if (!is_profiling_enabled()) return status::invalid_arguments;
+        return profiler_->get_info(data_kind, num_entries, data);
+    }
+
+    ::sycl::queue &queue() const { return *impl()->queue(); }
+
     status_t copy(const memory_storage_t &src, const memory_storage_t &dst,
             size_t size, const xpu::event_t &deps,
             xpu::event_t &out_dep) override {
-        return impl()->copy(this, src, dst, size, deps, out_dep);
+        return impl()->copy(this, src, dst, size, deps, out_dep, &profiler());
     }
 
     status_t fill(const memory_storage_t &dst, uint8_t pattern, size_t size,
             const xpu::event_t &deps, xpu::event_t &out_dep) override {
-        return impl()->fill(dst, pattern, size, deps, out_dep);
+        return impl()->fill(dst, pattern, size, deps, out_dep, &profiler());
     }
 
     const xpu::sycl::context_t &sycl_ctx() const { return impl()->sycl_ctx(); }

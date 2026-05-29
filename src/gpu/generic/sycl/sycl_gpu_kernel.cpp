@@ -14,11 +14,10 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "common/stream.hpp"
-
 #include "xpu/sycl/stream_impl.hpp"
 
 #include "gpu/generic/sycl/sycl_gpu_kernel.hpp"
+#include "gpu/gpu_stream.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -38,6 +37,13 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
         cgh.use_kernel_bundle(*kernel_bundle_);
         cgf(cgh);
     });
+
+    if (stream.is_profiling_enabled()) {
+        auto sycl_event = utils::make_unique<xpu::sycl::event_t>(
+                std::vector<::sycl::event> {event});
+        auto *gpu_stream = utils::downcast<gpu::stream_t *>(&stream);
+        gpu_stream->profiler().register_event(std::move(sycl_event));
+    }
 
     deps = {event};
     return status::success;

@@ -28,6 +28,10 @@ namespace impl {
 #define DNNL_ARG_WEIGHTS_UP DNNL_ARG_WEIGHTS_1
 #define DNNL_ARG_WEIGHTS_DOWN DNNL_ARG_WEIGHTS_2
 
+#define VCHECK_GATED_MLP(cond, msg, ...) \
+    VCONDCHECK(primitive, create, check, gated_mlp, (cond), \
+            status::invalid_arguments, msg, ##__VA_ARGS__)
+
 #define VDISPATCH_GATED_MLP(cond, msg, ...) \
     VCONDCHECK(primitive, create, dispatch, gated_mlp, (cond), \
             status::unimplemented, "%s," msg, this->info(engine), \
@@ -60,8 +64,14 @@ struct gated_mlp_pd_t : public primitive_desc_t {
 
     const gated_mlp_desc_t *desc() const { return &desc_; }
     dim_t MB() const { return arg_md(DNNL_ARG_SRC)->dims[0]; }
-    dim_t IC() const { return arg_md(DNNL_ARG_SRC)->dims[1]; }
-    dim_t OC() const { return arg_md(DNNL_ARG_WEIGHTS_GATE)->dims[1]; }
+    dim_t IC() const {
+        auto md = arg_md(DNNL_ARG_SRC);
+        return md->dims[md->ndims - 1];
+    }
+    dim_t OC() const {
+        auto md = arg_md(DNNL_ARG_WEIGHTS_GATE);
+        return md->dims[md->ndims - 1];
+    }
     alg_kind_t activation() const { return desc_.activation; }
 
     int n_outputs() const override { return 1; }
@@ -112,49 +122,6 @@ struct gated_mlp_pd_t : public primitive_desc_t {
         }
     }
 
-protected:
-    gated_mlp_pd_t(const op_desc_t *adesc, const primitive_attr_t *attr,
-            const hint_class *hint_fwd_pd)
-        : primitive_desc_t(attr, base_pkind)
-        , desc_(*op_desc_t::to_desc<gated_mlp_desc_t>(adesc)) {}
-
-    bool pd_ok() const {
-        if (!utils::one_of(activation(), alg_kind::eltwise_gelu_erf,
-                    alg_kind::eltwise_gelu_tanh, alg_kind::eltwise_swish))
-            return false;
-        const auto &idxs = all_idxs();
-        const auto dims = all_dims(MB(), IC(), OC());
-        for (int i = 0; i < int(dims.size()); i++) {
-            const auto *md = arg_md(idxs[i]);
-            if ((md->dims[0] != dims[i][0]) || (md->dims[1] != dims[i][1])
-                    || (md->ndims != 2))
-                return false;
-        }
-        return true;
-    }
-
-    bool set_default_format(const memory_desc_t *md) {
-        return !memory_desc_wrapper(md).format_any();
-    }
-
-    bool set_default_formats() {
-        bool ok = true;
-        for (auto idx : all_idxs())
-            ok &= set_default_format(arg_md(idx));
-        ok &= attr_.post_ops_.set_default_formats(arg_md(DNNL_ARG_DST))
-                == status::success;
-        return ok;
-    }
-
-private:
-    gated_mlp_desc_t desc_;
-
-    const memory_desc_t *src0_md() const { return &desc_.src_desc; }
-    const memory_desc_t *w_gate_md() const { return &desc_.w_gate_desc; }
-    const memory_desc_t *w_up_md() const { return &desc_.w_up_desc; }
-    const memory_desc_t *w_down_md() const { return &desc_.w_down_desc; }
-    const memory_desc_t *dst0_md() const { return &desc_.dst_desc; }
-
     static const std::vector<int> &all_idxs() {
         static const std::vector<int> idx {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS_GATE,
                 DNNL_ARG_WEIGHTS_UP, DNNL_ARG_WEIGHTS_DOWN, DNNL_ARG_DST};
@@ -172,18 +139,20 @@ private:
         };
     }
 
-    static int group_size(
-            const quant_entries_t &q, const memory_desc_t &desc, int arg) {
-        dim_t out = utils::array_product(desc.dims, desc.ndims);
-        if (q.has_default_groups(arg)) {
-            for (int idx : mask_iterator(q.get_mask(arg)))
-                out /= desc.dims[idx];
-        } else {
-            for (int idx : mask_iterator(q.get_mask(arg)))
-                out /= (desc.dims[idx] / q.get_group(arg, idx));
-        }
-        return static_cast<int>(out);
-    }
+protected:
+    gated_mlp_pd_t(const op_desc_t *adesc, const primitive_attr_t *attr,
+            const hint_class *hint_fwd_pd)
+        : primitive_desc_t(attr, base_pkind)
+        , desc_(*op_desc_t::to_desc<gated_mlp_desc_t>(adesc)) {}
+
+private:
+    gated_mlp_desc_t desc_;
+
+    const memory_desc_t *src0_md() const { return &desc_.src_desc; }
+    const memory_desc_t *w_gate_md() const { return &desc_.w_gate_desc; }
+    const memory_desc_t *w_up_md() const { return &desc_.w_up_desc; }
+    const memory_desc_t *w_down_md() const { return &desc_.w_down_desc; }
+    const memory_desc_t *dst0_md() const { return &desc_.dst_desc; }
 };
 // NOLINTEND(google-default-arguments)
 

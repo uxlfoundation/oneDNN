@@ -116,15 +116,9 @@ status_t micro_horz_t::pd_t::init(impl::engine_t *engine) {
     //        VERBOSE_SKIP_PRIMITIVE_IMPL);
     memory_desc_t inter_md;
     CHECK(get_gate_dst_md(inter_md));
-
-#ifdef UGEMM_UP_ONLY
-    CHECK(init_microkernels(engine, &inter_md));
-#else
-    VDISPATCH_GATED_MLP(pd_ok(), VERBOSE_INCONSISTENT_PRB);
-    VDISPATCH_GATED_MLP_SC(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
-
     CHECK(init_microkernels(engine, &inter_md));
 
+#ifndef UGEMM_UP_ONLY
     primitive_attr_t down_attr;
     CHECK(move_attr(down_attr, DNNL_ARG_WEIGHTS_DOWN, DNNL_ARG_WEIGHTS));
     auto down_desc = matmul_desc_t();

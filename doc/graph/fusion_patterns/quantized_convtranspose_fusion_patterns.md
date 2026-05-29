@@ -22,9 +22,7 @@ pattern while the brown nodes are optional.
    subgraphs, while the second subgraph applies only to `weights`.
    See [Dequantize](@ref dev_guide_op_dequantize) and [Quantize](@ref dev_guide_op_quantize)
    operations in Graph API.
-
    ![q2f_conversion_subgraph](images/q2f_conversion_quantized_convtranspose.png)
-
 2. **ConvTranspose Operation**: Performs transposed convolution between the
    `src` and `weights` tensors. The `bias` tensor is optional. See the
    [ConvTranspose](@ref dev_guide_op_convtranspose) operation in the Graph API
@@ -33,16 +31,12 @@ pattern while the brown nodes are optional.
    - [BiasAdd](@ref dev_guide_op_biasadd) operation.
    - Binary and Unary operations: refer to the Note in
      [Fusion Patterns](graph_fusion_patterns.html).
-
    Combination Rules:
-
    ![epilogue subgraph](images/epilogue_subgraph_general_2.png)
-
    - **BiasAdd**: If present, must be the first op in the epilogue subgraph and
      can only appear once.
    - N=20, 0 to 20 Binary or Unary operations are supported in the epilogue
      subgraph.
-
 4. **F2Q Conversion Subgraph**: Converts the output tensor from floating-point
    to quantized data type. It is constructed by a [Quantize](@ref dev_guide_op_quantize)
    operation.

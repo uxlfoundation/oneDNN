@@ -28,11 +28,8 @@ brown nodes are optional.
    - [Convolution](@ref dev_guide_op_convolution) operation.
    - Binary and Unary operations: refer to the Note in
      [Fusion Patterns](graph_fusion_patterns.html).
-
    Combination Rules:
-
    ![epilogue subgraph](images/epilogue_subgraph_conv.png)
-
    - **BiasAdd**: If present, must be the first op in the epilogue subgraph and
      can only appear once.
    - **BatchNormInference**: If present, must precede Binary or Unary operations
@@ -41,7 +38,6 @@ brown nodes are optional.
      fused with 1x1 Convolution and can only appear once.
    - N=20, 0 to 20 Binary or Unary operations are supported in the epilogue
      subgraph.
-
 3. **F2F Conversion Subgraph**: Converts the output tensor from floating-point to
    another floating-point. It is constructed by a [TypeCast](@ref dev_guide_op_typecast)
    operation.

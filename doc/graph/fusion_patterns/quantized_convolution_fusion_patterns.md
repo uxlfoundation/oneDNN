@@ -24,15 +24,11 @@ while the brown nodes are optional.
    See [Dequantize](@ref dev_guide_op_dequantize), [TypeCast](@ref dev_guide_op_typecast)
    and [Quantize](@ref dev_guide_op_quantize)
    operations in Graph API.
-
    ![q2f_conversion_subgraph](images/q2f_conversion_quantized_conv_matmul.png)
-
 2. **F2F Conversion Subgraph**: Converts `bias` tensor from floating-point to
    another floating-point. It is constructed by a [TypeCast](@ref dev_guide_op_typecast)
    operation.
-
    ![f2f_conversion_subgraph](images/f2f_conversion.png)
-
 3. **Convolution Operation**: Performs convolution between the `src` and
    `weights` tensors. The `bias` tensor is optional. See the [Convolution](@ref dev_guide_op_convolution)
    operation in the Graph API for more details.
@@ -40,16 +36,12 @@ while the brown nodes are optional.
    - [BiasAdd](@ref dev_guide_op_biasadd) operation.
    - Binary and Unary operations: refer to the Note in
      [Fusion Patterns](graph_fusion_patterns.html).
-
    Combination Rules:
-
    ![epilogue subgraph](images/epilogue_subgraph_general_2.png)
-
    - **BiasAdd**: If present, must be the first op in the epilogue subgraph and
      can only appear once.
    - N=20, 0 to 20 Binary or Unary operations are supported in the epilogue
      subgraph.
-
 5. **F2F/F2Q Conversion Subgraph**: Converts the output
    tensor from floating-point to floating-point or quantized data type. It can
    be one of the following subgraphs. See [TypeCast](@ref dev_guide_op_typecast)

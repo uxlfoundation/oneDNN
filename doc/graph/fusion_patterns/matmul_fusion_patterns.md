@@ -25,18 +25,14 @@ nodes are optional.
    - Binary and Unary operations: refer to the Note in
      [Fusion Patterns](graph_fusion_patterns.html).
    - [Select](@ref dev_guide_op_select) operation.
-
    Combination Rules:
-
    ![epilogue subgraph](images/epilogue_subgraph_matmul.png)
-
    - **BiasAdd**: If present, must be the first op in the epilogue subgraph and
      can only appear once.
    - N=20, 0 to 20 Binary or Unary operations are supported in the epilogue
      subgraph.
    - **Select**: If present, must follow binary/unary operations (if present)
      and can only appear once.
-
 3. **F2F Conversion Subgraph**: Converts the output tensor from floating-point to
    another floating-point. It is constructed by a [TypeCast](@ref dev_guide_op_typecast)
    operation.

@@ -23,15 +23,11 @@ while the brown nodes are optional.
    See [Dequantize](@ref dev_guide_op_dequantize), [TypeCast](@ref dev_guide_op_typecast)
    and [Quantize](@ref dev_guide_op_quantize)
    operations in Graph API.
-
    ![q2f_conversion_subgraph](images/q2f_conversion_quantized_conv_matmul.png)
-
 2. **F2F Conversion Subgraph**: Converts `bias` tensor from floating-point to
    another floating-point. It is constructed by a [TypeCast](@ref dev_guide_op_typecast)
    operation.
-
    ![f2f_conversion_subgraph](images/f2f_conversion.png)
-
 3. **MatMul Operation**: Performs matrix multiplication between the `src` and
    `weights` tensors. The `bias` tensor is optional. See the [MatMul](@ref dev_guide_op_matmul)
    operation in the Graph API for more details.
@@ -40,18 +36,14 @@ while the brown nodes are optional.
    - Binary and Unary operations: refer to the Note in
      [Fusion Patterns](graph_fusion_patterns.html).
    - [Select](@ref dev_guide_op_select) operation.
-
    Combination rules:
-
    ![epilogue subgraph](images/epilogue_subgraph_matmul.png)
-
    - **BiasAdd**: If present, must be the first op in the epilogue subgraph and
      can only appear once.
    - N=20, 0 to 20 Binary or Unary operations are supported in the epilogue
      subgraph.
    - **Select**: If present, must follow binary/unary operations (if present)
      and can only appear once.
-
 5. **F2F/F2Q Conversion Subgraph**: Converts the output
    tensor from floating-point to floating-point or quantized data type. It can
    be one of the following subgraphs, the last two subgraphs are implementations

@@ -21,17 +21,13 @@ brown nodes are optional.
 2. **Epilogue Subgraph**: Optional and can include the following operations:
    - Binary and Unary operations: refer to the Note in
      [Fusion Patterns](graph_fusion_patterns.html).
-
    ![epilogue subgraph](images/epilogue_subgraph_general_1.png)
-
    - N=20, 0 to 20 Binary or Unary operations are supported in the epilogue
      subgraph.
 3. **F2F Conversion Subgraph**: Converts the output tensor from floating-point
    to another floating-point. It is constructed by a [TypeCast](@ref dev_guide_op_typecast)
    operation.
-
    ![f2f_conversion_subgraph](images/f2f_conversion.png)
-
 4. **F2Q Conversion Subgraph**: Converts the output tensor from floating-point
    to quantized data type. It is constructed by a [Quantize](@ref dev_guide_op_quantize)
    operations in Graph API.

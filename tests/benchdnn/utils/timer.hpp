@@ -94,7 +94,13 @@ struct timer_t {
     size_t times_;
     uint64_t ticks_[n_modes], ticks_start_;
     double ms_[n_modes], ms_start_;
-    std::vector<double> ms_vec_; // Collects all measurements.
+    // Per-sample (ms, ticks) measurements, kept together so filtering applies
+    // to both consistently and frequency can be re-derived post-filter.
+    struct sample_t {
+        double ms;
+        uint64_t ticks;
+    };
+    std::vector<sample_t> samples_; // Collects all measurements.
 };
 
 // Designated timers to support benchdnn performance reporting and general time

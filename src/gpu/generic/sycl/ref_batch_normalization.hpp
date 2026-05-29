@@ -78,7 +78,8 @@ struct ref_batch_normalization_fwd_t : public gpu::generic::sycl::primitive_t {
                     VERBOSE_UNSUPPORTED_DT);
 
             if (is_training() && (fuse_norm_relu() || fuse_norm_add_relu()))
-                init_default_ws(8);
+                CHECK(init_default_ws(8));
+
             return init_conf();
         }
         status_t init_conf();
@@ -145,9 +146,10 @@ struct ref_batch_normalization_bwd_t : public gpu::generic::sycl::primitive_t {
                     VERBOSE_OUT_OF_RANGE_DIMS, "diff_src");
 
             if (fuse_norm_relu() || fuse_norm_add_relu()) {
-                init_default_ws(8);
+                CHECK(init_default_ws(8));
                 VDISPATCH_BNORM(compare_ws(hint_fwd_pd_), VERBOSE_WS_INIT);
             }
+
             return init_conf();
         }
 

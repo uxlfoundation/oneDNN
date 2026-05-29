@@ -80,7 +80,9 @@ public:
                 : nullptr;
         auto storage = utils::make_unique<usm_memory_storage_t>(engine());
         if (!storage) return nullptr;
-        storage->init(memory_flags_t::use_runtime_ptr, size, sub_ptr);
+        auto status
+                = storage->init(memory_flags_t::use_runtime_ptr, size, sub_ptr);
+        if (status != status::success) return nullptr;
         return storage;
     }
 

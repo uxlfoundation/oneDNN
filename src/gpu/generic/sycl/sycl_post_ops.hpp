@@ -187,8 +187,11 @@ struct ref_prelu_op_t {
         using namespace format_tag;
         auto dat_tag = utils::pick(
                 ndims_ - 2, ab, acb, acdb, acdeb); // prelu post-op uses axb
-        memory_desc_init_by_tag(
+        auto status = memory_desc_init_by_tag(
                 prelu_desc, ndims_, prelu_dims, src_mdw.data_type(), dat_tag);
+        assert(status == status::success);
+        if (status != status::success) return;
+
         utils::array_copy(
                 strides_, prelu_desc.format_desc.blocking.strides, ndims_);
 

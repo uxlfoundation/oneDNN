@@ -175,7 +175,7 @@ end
 
 function formatDocBlock_anchor(block, context)
 	local text = getDocBlockText(block, context)
-	return ":target:`doxid-" .. block.id .. "`" .. text
+	return "\n\n.. _doxid-" .. block.id .. ":\n\n" .. text
 end
 
 function formatDocBlock_image(block, context)

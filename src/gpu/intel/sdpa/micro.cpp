@@ -1057,6 +1057,10 @@ status_t micro_fwd_params_t::get_kernel_ctx(
     using namespace micro;
     kernel_ctx.require_stateless_addressing(require_stateless_addressing);
 
+    // Keep fp32 divide/sqrt correctly rounded to stabilize SDPA numerics
+    // This is needed to suppress f16 dropout noise seen in the bwd dV path
+    kernel_ctx.add_option("-cl-fp32-correctly-rounded-divide-sqrt");
+
     kernel_ctx.define_int("NDIMS", ndims);
     kernel_ctx.set_data_type(data_t);
 

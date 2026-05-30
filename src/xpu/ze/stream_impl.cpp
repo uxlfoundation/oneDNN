@@ -147,7 +147,7 @@ status_t stream_impl_t::copy(const impl::memory_storage_t &src,
 
     const auto &ze_deps = event_t::from(deps);
     ze_event_handle_t out_event = create_event();
-    CHECK(ze::zeCommandListAppendMemoryCopy(list_, dst.data_handle(),
+    CHECK(append_memory_copy(list(), list_mutex(), dst.data_handle(),
             src.data_handle(), size, out_event, ze_deps.size(),
             ze_deps.data()));
     if (out_event) event_t::from(out_dep).append(out_event);
@@ -161,7 +161,7 @@ status_t stream_impl_t::fill(const impl::memory_storage_t &dst, uint8_t pattern,
 
     const auto &ze_deps = event_t::from(deps);
     ze_event_handle_t out_event = create_event();
-    CHECK(ze::zeCommandListAppendMemoryFill(list_, dst.data_handle(), &pattern,
+    CHECK(append_memory_fill(list(), list_mutex(), dst.data_handle(), &pattern,
             sizeof(pattern), size, out_event, ze_deps.size(), ze_deps.data()));
     if (out_event) event_t::from(out_dep).append(out_event);
 

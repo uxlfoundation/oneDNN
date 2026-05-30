@@ -221,9 +221,9 @@ void memory_storage_t::free(impl::engine_t *engine, void *ptr) {
 status_t memory_storage_t::memcpy(
         impl::stream_t *stream, void *dst, const void *src, size_t size) const {
     auto *ze_stream_impl
-            = utils::downcast<const xpu::ze::stream_impl_t *>(stream->impl());
-    return ze::zeCommandListAppendMemoryCopy(
-            ze_stream_impl->list(), dst, src, size, nullptr, 0, nullptr);
+            = utils::downcast<xpu::ze::stream_impl_t *>(stream->impl());
+    return append_memory_copy(ze_stream_impl->list(),
+            ze_stream_impl->list_mutex(), dst, src, size, nullptr, 0, nullptr);
 }
 
 } // namespace ze

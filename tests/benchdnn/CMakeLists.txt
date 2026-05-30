@@ -81,16 +81,6 @@ function(register_benchdnn_test engine driver test_file)
         set(mode_modifier "--mode-modifier=P")
     endif()
 
-    # TODO: workaround a hang in Level Zero backend when during parallel
-    # creation several resources are initialized.
-    # Remove me once resolved.
-    if(${engine} MATCHES "gpu"
-       AND ${driver} MATCHES "rnn"
-       AND ${DNNL_GPU_VENDOR} MATCHES "INTEL"
-       AND ${DNNL_GPU_RUNTIME} MATCHES "ZE")
-        set(mode_modifier "")
-    endif()
-
     foreach(tm ${test_mode})
         string(REPLACE "test_" "test_benchdnn_mode${tm}_" target_name ${test_file})
         set(cmd "--mode=${tm} ${mode_modifier} -v1 --engine=${engine} --${driver} --batch=${test_file}")

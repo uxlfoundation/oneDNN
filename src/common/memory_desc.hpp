@@ -277,6 +277,9 @@ status_t memory_desc_sanity_check(int ndims, const dims_t dims,
 
 status_t memory_desc_sanity_check(const memory_desc_t &md);
 
+status_t memory_desc_strides_check(
+        const memory_desc_t &md, const dims_t strides);
+
 status_t memory_desc_init_host_scalar(
         memory_desc_t &memory_desc, data_type_t data_type);
 

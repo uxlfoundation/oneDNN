@@ -1349,6 +1349,15 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
                     if (sendg.src1RegFile == RegFileARF) return false;
                     region = DependencyRegion(hw, GRFRange(sendg.src1Reg, sendg.src1Len));
                     break;
+                // ind0/ind1 are indirect descriptor reads from scalar register s0.
+                case 2:
+                    if (!sendg.ind0Present) return false;
+                    region = DependencyRegion(hw, 1, ScalarRegister(0).uq(sendg.ind0)(1));
+                    return true;
+                case 3:
+                    if (!sendg.ind1Present) return false;
+                    region = DependencyRegion(hw, 1, ScalarRegister(0).uq(sendg.ind1_desc42_46)(1));
+                    return true;
                 default: return false;
             }
             return true;
@@ -1370,6 +1379,15 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
                     regNum = sendg.src1Reg | (sendgx.src1Reg8 << 8);
                     len = sendg.src1Len;
                     break;
+                // ind0/ind1 are indirect descriptor reads from scalar register s0.
+                case 2:
+                    if (!sendg.ind0Present) return false;
+                    region = DependencyRegion(hw, 1, ScalarRegister(0).uq(sendg.ind0)(1));
+                    return true;
+                case 3:
+                    if (!sendg.ind1Present) return false;
+                    region = DependencyRegion(hw, 1, ScalarRegister(0).uq(sendg.ind1_desc42_46)(1));
+                    return true;
                 default: return false;
             }
             if (regNum == 0x1FF)

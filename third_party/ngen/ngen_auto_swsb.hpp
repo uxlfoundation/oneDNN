@@ -479,6 +479,10 @@ DependencyRegion::DependencyRegion(HW hw_, int esize, RegData rr)
     checkWAW = false;
     rf = rr.getRegFile();
 
+    // Strip out the 0x100 ARFType::s marker so a directly-constructed scalar
+    // register matches the base decoded from an instruction.
+    if (rf == RegFileARF) base &= 0xFF;
+
     int hs = rr.getHS(), vs = rr.getVS();
     int nh = rr.getWidth();
     if (nh == 0) nh = 1;

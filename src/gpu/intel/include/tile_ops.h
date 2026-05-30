@@ -382,6 +382,23 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
                 = __builtin_convertvector(t.x[i], __typeof__(t_new.x[i])); \
     } while (0)
 
+/* Combined tile_copy + tile_elementwise_s in a single loop.
+ * Converts element types via __builtin_convertvector into t_new, then applies
+ * scalar function f to each element of t_new. */
+#define tile_copy_apply(t, t_new, f) \
+    do { \
+        _Pragma("unroll") for (int i = 0; i < sizeof(t.x) / sizeof(t.x[0]); \
+                               i++) { \
+            (t_new).x[i] = __builtin_convertvector( \
+                    (t).x[i], __typeof__((t_new).x[i])); \
+            _Pragma("unroll") for (int s = 0; s < sizeof((t_new).x[0]) \
+                                           / sizeof((t_new).x[0][0]); \
+                                   s++)(t_new) \
+                    .x[i][s] \
+                    = f((t_new).x[i][s]); \
+        } \
+    } while (0)
+
 #define tile_convert(t, t_new, conversion_func) \
     do { \
         _Pragma("unroll") for (int i = 0; i < sizeof(t.x) / sizeof(t.x[0]); \

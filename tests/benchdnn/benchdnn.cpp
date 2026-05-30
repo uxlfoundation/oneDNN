@@ -164,7 +164,7 @@ int main(int argc, char **argv) {
     print_impl_names_csv_summary();
 
     // Failed cases summary.
-    if (has_bench_mode_bit(mode_bit_t::corr) && summary.failed_cases
+    if (!has_bench_mode_bit(mode_bit_t::perf) && summary.failed_cases
             && !benchdnn_stat.failed_cases.empty()) {
         printf("===========================================================\n");
         printf("= Failed cases summary (--summary=no-failures to disable) =\n");

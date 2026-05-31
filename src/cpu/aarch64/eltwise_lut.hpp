@@ -17,7 +17,6 @@
 #ifndef CPU_AARCH64_ELTWISE_LUT_HPP
 #define CPU_AARCH64_ELTWISE_LUT_HPP
 
-#include <cstdint>
 #include <vector>
 
 #include "common/bfloat16.hpp"
@@ -27,9 +26,6 @@
 #include "common/utils.hpp"
 
 #include "cpu/cpu_eltwise_pd.hpp"
-#include "cpu/platform.hpp"
-
-#include "cpu/primitive_attr_postops.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -54,8 +50,6 @@ struct eltwise_lut_fwd_t : public primitive_t {
             VDISPATCH_ELTWISE(everyone_is(data_type, src_md()->data_type,
                                       dst_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_ELTWISE(platform::has_data_type_support(data_type),
-                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_ELTWISE(
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_ELTWISE(src_d.is_dense(true), VERBOSE_NONTRIVIAL_STRIDE);
@@ -64,55 +58,17 @@ struct eltwise_lut_fwd_t : public primitive_t {
             VDISPATCH_ELTWISE(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
 
-            VDISPATCH_ELTWISE(data_type == ::dnnl::impl::data_type::bf16,
-                    VERBOSE_UNSUPPORTED_DT);
-
-            const auto *spec = get_bf16_fwd_lut_spec_(desc()->alg_kind);
-            VDISPATCH_ELTWISE(spec != nullptr, VERBOSE_BAD_ALGORITHM);
-
-            const float alpha = spec->ignore_alpha_beta ? 0.f : desc()->alpha;
-            const float beta = spec->ignore_alpha_beta ? 0.f : desc()->beta;
-            bf16_lut_.resize(1u << 16);
-            for (uint32_t raw = 0; raw < (1u << 16); ++raw) {
-                const bfloat16_t x_bf16(
-
-                        static_cast<uint16_t>(raw), /*ignored=*/true);
-                const float x = static_cast<float>(x_bf16);
-                const float y = compute_eltwise_scalar_fwd(
-                        desc()->alg_kind, x, alpha, beta);
-                bf16_lut_[raw] = bfloat16_t(y);
-            }
+            VDISPATCH_ELTWISE(check_alg_kind(), VERBOSE_BAD_ALGORITHM);
 
             return status::success;
         }
 
-        std::vector<bfloat16_t> bf16_lut_;
-
     private:
-        struct bf16_fwd_lut_spec_t {
-            alg_kind_t alg_kind;
-            bool ignore_alpha_beta;
-        };
-
-        static const bf16_fwd_lut_spec_t *get_bf16_fwd_lut_spec_(
-                alg_kind_t alg_kind) {
-            // Add new LUT eltwise algos
-            static const bf16_fwd_lut_spec_t specs[] = {
-                    {alg_kind::eltwise_gelu_erf, /*ignore_alpha_beta*/ true},
-                    // SiLU is swish with alpha = 1.
-                    {alg_kind::eltwise_swish, /*ignore_alpha_beta*/ false},
-                    {alg_kind::eltwise_gelu_tanh, /*ignore_alpha_beta*/ true},
-                    {alg_kind::eltwise_tanh, /*ignore_alpha_beta*/ true},
-                    {alg_kind::eltwise_logistic, /*ignore_alpha_beta*/ true},
-                    {alg_kind::eltwise_exp, /*ignore_alpha_beta*/ true},
-                    {alg_kind::eltwise_log, /*ignore_alpha_beta*/ true},
-                    {alg_kind::eltwise_sqrt, /*ignore_alpha_beta*/ true},
-            };
-
-            for (const auto &s : specs) {
-                if (s.alg_kind == alg_kind) return &s;
-            }
-            return nullptr;
+        bool check_alg_kind() const {
+            using namespace ::dnnl::impl::alg_kind;
+            return utils::one_of(desc()->alg_kind, eltwise_gelu_erf,
+                    eltwise_swish, eltwise_gelu_tanh, eltwise_tanh,
+                    eltwise_logistic, eltwise_exp, eltwise_log, eltwise_sqrt);
         }
     };
 
@@ -125,6 +81,7 @@ struct eltwise_lut_fwd_t : public primitive_t {
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
+    std::vector<data_t> lut_;
 };
 
 } // namespace cpu

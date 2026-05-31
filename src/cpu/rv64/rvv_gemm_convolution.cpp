@@ -16,13 +16,13 @@
 *******************************************************************************/
 
 #include <atomic>
-#include <riscv_vector.h>
 
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 #include "cpu/rv64/rvv_gemm_convolution.hpp"
+#include "cpu/rv64/jit_rvv_gemm_convolution_post_kernel.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -192,23 +192,10 @@ status_t riscv_gemm_convolution_fwd_t::execute_forward_thr_nspc(
                         if (jcp.with_bias) {
                             size_t n_elems = end_oc - start_oc + 1;
                             if (n_elems > 0) {
-                                size_t oc = 0;
                                 const data_t *b_ptr = bia_arr + start_oc;
                                 data_t *d_ptr = dst_arr + start_oc;
-
-                                while (oc < n_elems) {
-                                    size_t vl = __riscv_vsetvl_e32m1(
-                                            n_elems - oc);
-                                    vfloat32m1_t v_dst = __riscv_vle32_v_f32m1(
-                                            d_ptr + oc, vl);
-                                    vfloat32m1_t v_bias = __riscv_vle32_v_f32m1(
-                                            b_ptr + oc, vl);
-                                    v_dst = __riscv_vfadd_vv_f32m1(
-                                            v_dst, v_bias, vl);
-                                    __riscv_vse32_v_f32m1(
-                                            d_ptr + oc, v_dst, vl);
-                                    oc += vl;
-                                }
+                                jit_rvv_gemm_convolution_apply_bias(
+                                        d_ptr, b_ptr, n_elems);
                             }
                         }
 
@@ -359,50 +346,8 @@ status_t riscv_gemm_convolution_fwd_t::execute_forward_ncsp(
                                 data_t b = jcp.with_bias ? bias[oc_start + oc]
                                                          : 0;
                                 data_t *d_ = _dst + oc * M;
-
-                                if (eltwise.alpha == 0.0f) {
-                                    int oS = 0;
-                                    while (oS < m) {
-                                        size_t vl
-                                                = __riscv_vsetvl_e32m1(m - oS);
-                                        vfloat32m1_t v_d
-                                                = __riscv_vle32_v_f32m1(
-                                                        d_ + oS, vl);
-                                        v_d = __riscv_vfadd_vf_f32m1(
-                                                v_d, b, vl); // Add bias
-
-                                        v_d = __riscv_vfmax_vf_f32m1(
-                                                v_d, 0.0f, vl);
-
-                                        if (eltwise.scale != 1.0f) {
-                                            v_d = __riscv_vfmul_vf_f32m1(
-                                                    v_d, eltwise.scale, vl);
-                                        }
-
-                                        __riscv_vse32_v_f32m1(d_ + oS, v_d, vl);
-                                        oS += vl;
-                                    }
-                                } else {
-                                    int oS = 0;
-                                    while (oS < m) {
-                                        size_t vl
-                                                = __riscv_vsetvl_e32m1(m - oS);
-                                        vfloat32m1_t v_d
-                                                = __riscv_vle32_v_f32m1(
-                                                        d_ + oS, vl);
-                                        v_d = __riscv_vfadd_vf_f32m1(
-                                                v_d, b, vl); // Add bias
-                                        vbool32_t mask
-                                                = __riscv_vmflt_vf_f32m1_b32(
-                                                        v_d, 0.0f, vl);
-                                        v_d = __riscv_vfmul_vf_f32m1_m(
-                                                mask, v_d, eltwise.alpha, vl);
-                                        v_d = __riscv_vfmul_vf_f32m1(
-                                                v_d, eltwise.scale, vl);
-                                        __riscv_vse32_v_f32m1(d_ + oS, v_d, vl);
-                                        oS += vl;
-                                    }
-                                }
+                                jit_rvv_gemm_convolution_apply_scalar_bias_relu(
+                                        d_, m, b, eltwise.alpha, eltwise.scale);
                             });
                             fast_relu_done = true;
                         }
@@ -429,16 +374,7 @@ status_t riscv_gemm_convolution_fwd_t::execute_forward_ncsp(
                     parallel_nd(step.oc, [&](dim_t oc) {
                         data_t b = bias[oc_start + oc];
                         data_t *d_ = _dst + oc * M;
-
-                        int oS = 0;
-                        while (oS < m) {
-                            size_t vl = __riscv_vsetvl_e32m1(m - oS);
-                            vfloat32m1_t v_d
-                                    = __riscv_vle32_v_f32m1(d_ + oS, vl);
-                            v_d = __riscv_vfadd_vf_f32m1(v_d, b, vl);
-                            __riscv_vse32_v_f32m1(d_ + oS, v_d, vl);
-                            oS += vl;
-                        }
+                        jit_rvv_gemm_convolution_apply_scalar_bias(d_, m, b);
                     });
                 }
             }

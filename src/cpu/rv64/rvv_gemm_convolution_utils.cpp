@@ -15,13 +15,12 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include <riscv_vector.h>
-
 #include "common/bfloat16.hpp"
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
+#include "cpu/rv64/jit_rvv_gemm_convolution_copy_kernel.hpp"
 #include "cpu/rv64/rvv_gemm_convolution_utils.hpp"
 #include "cpu/scale_utils.hpp"
 
@@ -457,22 +456,14 @@ void im2col(const conv_gemm_conf_t &jcp, const data_type_t *__restrict im,
                             // Only apply for float(4 bytes) type to ensure correctness
                             if (sizeof(data_t) == 4 && no_w_padding
                                     && ow_end - ow_begin >= 16) {
-                                dim_t ow = ow_begin;
                                 // Pre-calculate base pointer for current row
                                 const data_t *im_ptr = im_;
-                                while (ow < ow_end) {
-                                    size_t vl
-                                            = __riscv_vsetvl_e32m4(ow_end - ow);
-                                    vfloat32m4_t v_data = __riscv_vle32_v_f32m4(
-                                            reinterpret_cast<const float *>(
-                                                    im_ptr + ow),
-                                            vl);
-                                    __riscv_vse32_v_f32m4(
-                                            reinterpret_cast<float *>(
-                                                    col_ + ow),
-                                            v_data, vl);
-                                    ow += vl;
-                                }
+                                jit_rvv_gemm_convolution_copy_f32(
+                                        reinterpret_cast<const float *>(
+                                                im_ptr + ow_begin),
+                                        reinterpret_cast<float *>(
+                                                col_ + ow_begin),
+                                        ow_end - ow_begin);
                             } else {
                                 for (dim_t ow = ow_begin; ow < ow_end; ++ow) {
                                     const dim_t iw = ow;
@@ -543,21 +534,14 @@ void im2col(const conv_gemm_conf_t &jcp, const data_type_t *__restrict im,
                     // Only apply for float(4 bytes) type to ensure correctness
                     if (sizeof(data_t) == 4 && sw == 1 && no_w_padding
                             && ow_end - ow_start >= 16) {
-                        dim_t ow = ow_start;
                         // Pre-calculate base pointer for current row
                         const data_t *im_ptr
                                 = im_ + iw_shift; // iw_shift = kw*dw - lp
-                        while (ow < ow_end) {
-                            size_t vl = __riscv_vsetvl_e32m4(ow_end - ow);
-                            vfloat32m4_t v_data = __riscv_vle32_v_f32m4(
-                                    reinterpret_cast<const float *>(
-                                            im_ptr + ow),
-                                    vl);
-                            __riscv_vse32_v_f32m4(
-                                    reinterpret_cast<float *>(col_oh + ow),
-                                    v_data, vl);
-                            ow += vl;
-                        }
+                        jit_rvv_gemm_convolution_copy_f32(
+                                reinterpret_cast<const float *>(
+                                        im_ptr + ow_start),
+                                reinterpret_cast<float *>(col_oh + ow_start),
+                                ow_end - ow_start);
                     } else {
                         for (dim_t ow = ow_start; ow < ow_end; ow++) {
                             const dim_t iw = ow + iw_shift;
@@ -691,19 +675,12 @@ void im2col_dt(const conv_gemm_conf_t &jcp, const im2col_addr_cache_t *cache,
                             col[col_idx_oh + ow] = shift;
                         // Vectorized data copy for contiguous regions
                         if (ow_end - ow_start >= 4) {
-                            dim_t ow = ow_start;
-                            while (ow < ow_end) {
-                                size_t vl = __riscv_vsetvl_e32m4(ow_end - ow);
-                                vfloat32m4_t v_data = __riscv_vle32_v_f32m4(
-                                        reinterpret_cast<const float *>(
-                                                imtr + imtr_idx_oh + ow),
-                                        vl);
-                                __riscv_vse32_v_f32m4(
-                                        reinterpret_cast<float *>(
-                                                col + col_idx_oh + ow),
-                                        v_data, vl);
-                                ow += vl;
-                            }
+                            jit_rvv_gemm_convolution_copy_f32(
+                                    reinterpret_cast<const float *>(
+                                            imtr + imtr_idx_oh + ow_start),
+                                    reinterpret_cast<float *>(
+                                            col + col_idx_oh + ow_start),
+                                    ow_end - ow_start);
                         } else {
                             for (dim_t ow = ow_start; ow < ow_end; ++ow)
                                 col[col_idx_oh + ow]
@@ -742,18 +719,12 @@ void im2col_dt(const conv_gemm_conf_t &jcp, const im2col_addr_cache_t *cache,
                 const ptrdiff_t im_idx_base = ih * im_ih_stride + ic;
                 // Vectorized data copy for stride=1
                 if (sw == 1 && ow_end - ow_start >= 4) {
-                    dim_t ow = ow_start;
-                    while (ow < ow_end) {
-                        size_t vl = __riscv_vsetvl_e32m4(ow_end - ow);
-                        vfloat32m4_t v_data = __riscv_vle32_v_f32m4(
-                                reinterpret_cast<const float *>(
-                                        im + im_idx_base + iw_base + ow),
-                                vl);
-                        __riscv_vse32_v_f32m4(reinterpret_cast<float *>(
-                                                      col + col_idx_base + ow),
-                                v_data, vl);
-                        ow += vl;
-                    }
+                    jit_rvv_gemm_convolution_copy_f32(
+                            reinterpret_cast<const float *>(
+                                    im + im_idx_base + iw_base + ow_start),
+                            reinterpret_cast<float *>(
+                                    col + col_idx_base + ow_start),
+                            ow_end - ow_start);
                 } else {
                     for (dim_t ow = ow_start; ow < ow_end; ow++) {
                         const dim_t iw = iw_base + ow * sw;

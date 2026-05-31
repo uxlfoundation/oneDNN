@@ -14,8 +14,7 @@
  * limitations under the License.
  ******************************************************************************/
 
-#include <riscv_vector.h>
-
+#include "cpu/rv64/jit_rvv_inner_product_kernel.hpp"
 #include "cpu/rv64/rvv_inner_product.hpp"
 
 namespace dnnl {
@@ -49,65 +48,17 @@ dim_t get_ip_weights_off(const memory_desc_wrapper &mdw, int ndims, dim_t oc,
 
 float compute_ip_rvv_fwd_f32_f32(
         const void *src, const void *weights, const dim_t len) {
-    const float *x = reinterpret_cast<const float *>(src);
-    const float *w = reinterpret_cast<const float *>(weights);
-
-    float acc_scalar = 0.0f;
-    for (dim_t i = 0; i < len;) {
-        size_t vl = __riscv_vsetvl_e32m1(static_cast<size_t>(len - i));
-        vfloat32m1_t vx = __riscv_vle32_v_f32m1(x + i, vl);
-        vfloat32m1_t vw = __riscv_vle32_v_f32m1(w + i, vl);
-        vfloat32m1_t vprod = __riscv_vfmul_vv_f32m1(vx, vw, vl);
-        vfloat32m1_t vzero = __riscv_vfmv_v_f_f32m1(0.0f, vl);
-        vfloat32m1_t vred = __riscv_vfredusum_vs_f32m1_f32m1(vprod, vzero, vl);
-        float partial = __riscv_vfmv_f_s_f32m1_f32(vred);
-        acc_scalar += partial;
-        i += static_cast<dim_t>(vl);
-    }
-    return acc_scalar;
+    return jit_rvv_inner_product_fwd_f32_f32(src, weights, len);
 }
 
 float compute_ip_rvv_fwd_s8_s8(
         const void *src, const void *weights, const dim_t len) {
-    const int8_t *x = reinterpret_cast<const int8_t *>(src);
-    const int8_t *w = reinterpret_cast<const int8_t *>(weights);
-
-    int32_t acc_i32 = 0;
-    for (dim_t i = 0; i < len;) {
-        size_t vl = __riscv_vsetvl_e8m1(static_cast<size_t>(len - i));
-        vint8m1_t vx_b = __riscv_vle8_v_i8m1(x + i, vl);
-        vint8m1_t vw_b = __riscv_vle8_v_i8m1(w + i, vl);
-        vint16m2_t vprod_i16 = __riscv_vwmul_vv_i16m2(vx_b, vw_b, vl);
-        vint32m1_t vzero32 = __riscv_vmv_v_x_i32m1(0, vl);
-        vint32m1_t vsum32
-                = __riscv_vwredsum_vs_i16m2_i32m1(vprod_i16, vzero32, vl);
-        int32_t partial = __riscv_vmv_x_s_i32m1_i32(vsum32);
-        acc_i32 += partial;
-        i += static_cast<dim_t>(vl);
-    }
-    return static_cast<float>(acc_i32);
+    return jit_rvv_inner_product_fwd_s8_s8(src, weights, len);
 }
 
 float compute_ip_rvv_fwd_u8_s8(
         const void *src, const void *weights, const dim_t len) {
-    const uint8_t *x = reinterpret_cast<const uint8_t *>(src);
-    const int8_t *w = reinterpret_cast<const int8_t *>(weights);
-
-    int32_t acc_i32 = 0;
-    for (dim_t i = 0; i < len;) {
-        size_t vl = __riscv_vsetvl_e8m1(static_cast<size_t>(len - i));
-        vuint8m1_t vx_b = __riscv_vle8_v_u8m1(x + i, vl);
-        vint8m1_t vw_b = __riscv_vle8_v_i8m1(w + i, vl);
-        // Mixed-sign widen multiply: u8 * s8 -> i16
-        vint16m2_t vprod_i16 = __riscv_vwmulsu_vv_i16m2(vw_b, vx_b, vl);
-        vint32m1_t vzero32 = __riscv_vmv_v_x_i32m1(0, vl);
-        vint32m1_t vsum32
-                = __riscv_vwredsum_vs_i16m2_i32m1(vprod_i16, vzero32, vl);
-        int32_t partial = __riscv_vmv_x_s_i32m1_i32(vsum32);
-        acc_i32 += partial;
-        i += static_cast<dim_t>(vl);
-    }
-    return static_cast<float>(acc_i32);
+    return jit_rvv_inner_product_fwd_u8_s8(src, weights, len);
 }
 
 float compute_ip_rvv_fwd(const void *src_base, const void *wei_base,

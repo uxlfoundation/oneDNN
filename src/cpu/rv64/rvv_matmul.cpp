@@ -18,8 +18,8 @@
 #include "common/dnnl_thread.hpp"
 #include "common/utils.hpp"
 #include "cpu/rv64/gemm/rvv_gemm_f32.hpp"
+#include "cpu/rv64/jit_rvv_matmul_post_kernel.hpp"
 #include "cpu/rv64/rvv_postops.hpp"
-#include <riscv_vector.h>
 
 namespace dnnl {
 namespace impl {
@@ -163,41 +163,32 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
 
             float *row_dst = dst_base + m * N;
 
-            for (dim_t n0 = 0; n0 < N;) {
-                size_t vl = __riscv_vsetvl_e32m1(N - n0);
-                vfloat32m1_t acc = __riscv_vle32_v_f32m1(row_dst + n0, vl);
-
-                if (bias) {
-                    if (bias_d.nelems() == 1) {
-                        acc = __riscv_vfadd_vf_f32m1(acc, bias[0], vl);
-                    } else {
-                        size_t base_bias_off = 0;
-                        if (bias_ndims > 1) {
-                            for (int d = 0; d < bias_ndims - 1; ++d) {
-                                int dst_dim_idx = d + (dst_ndims - bias_ndims);
-                                dim_t idx = (bias_dims[d] == 1)
-                                        ? 0
-                                        : dst_idx_prefix[dst_dim_idx];
-                                base_bias_off += idx * bias_strides[d];
-                            }
-                        }
-
-                        if (bias_dims[bias_ndims - 1] == 1) {
-                            acc = __riscv_vfadd_vf_f32m1(
-                                    acc, bias[base_bias_off], vl);
-                        } else {
-                            const float *bias_ptr = bias + base_bias_off + n0;
-                            vfloat32m1_t bias_vec
-                                    = __riscv_vle32_v_f32m1(bias_ptr, vl);
-                            acc = __riscv_vfadd_vv_f32m1(acc, bias_vec, vl);
+            const float *bias_ptr = nullptr;
+            bool scalar_bias = false;
+            if (bias) {
+                if (bias_d.nelems() == 1) {
+                    bias_ptr = bias;
+                    scalar_bias = true;
+                } else {
+                    size_t base_bias_off = 0;
+                    if (bias_ndims > 1) {
+                        for (int d = 0; d < bias_ndims - 1; ++d) {
+                            int dst_dim_idx = d + (dst_ndims - bias_ndims);
+                            dim_t idx = (bias_dims[d] == 1)
+                                    ? 0
+                                    : dst_idx_prefix[dst_dim_idx];
+                            base_bias_off += idx * bias_strides[d];
                         }
                     }
-                }
 
-                acc = postops_handler.apply(acc, vl);
-                __riscv_vse32_v_f32m1(row_dst + n0, acc, vl);
-                n0 += vl;
+                    bias_ptr = bias + base_bias_off;
+                    scalar_bias = bias_dims[bias_ndims - 1] == 1;
+                }
             }
+
+            jit_rvv_matmul_post_apply(row_dst, bias_ptr, N, bias != nullptr,
+                    scalar_bias, postops_handler.is_relu_postop(),
+                    postops_handler.relu_alpha());
         }
     });
 

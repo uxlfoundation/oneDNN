@@ -19,7 +19,6 @@
 
 #include <memory>
 #include <vector>
-#include <riscv_vector.h>
 
 #include "common/primitive_desc_iterator.hpp"
 #include "cpu/rv64/rvv_binary.hpp"
@@ -126,27 +125,6 @@ struct rvv_postops_t {
         switch (e.eltwise.alg) {
             case alg_kind::eltwise_relu: return true;
             default: return false;
-        }
-    }
-
-    /**
-     * @warning This function is part of the old post-ops integration style
-     * and is kept for compatibility with existing usages (e.g. rvv_matmul).
-     * New post-ops implementations should use the primitive-based `execute` method.
-     */
-    inline vfloat32m1_t apply(vfloat32m1_t v, size_t vl) const {
-        switch (alg_) {
-            case alg_kind::eltwise_relu: {
-                if (alpha_ == 0.f) {
-                    vfloat32m1_t zero = __riscv_vfmv_v_f_f32m1(0.f, vl);
-                    return __riscv_vfmax_vv_f32m1(v, zero, vl);
-                }
-
-                vbool32_t p = __riscv_vmfgt_vf_f32m1_b32(v, 0.f, vl);
-                vfloat32m1_t vneg = __riscv_vfmul_vf_f32m1(v, alpha_, vl);
-                return __riscv_vmerge_vvm_f32m1(vneg, v, p, vl);
-            }
-            default: return v;
         }
     }
 

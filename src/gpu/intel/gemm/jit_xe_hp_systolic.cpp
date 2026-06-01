@@ -50,7 +50,7 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
     dev_info_ = intel_engine->device_info();
     auto arch = dev_info_->gpu_arch();
 
-    CHECK(init_attrs(engine));
+    CHECK(init_attrs(cfg_, engine));
     const auto &d = desc();
 
     bool dt_float_ok = (d->a_type() == d->b_type()
@@ -128,15 +128,15 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
                     <= (size_t)std::numeric_limits<int32_t>::max(),
             VERBOSE_SHAPE_RESTRICTION);
 
-    CHECK(scales_ok(engine));
+    CHECK(scales_ok(cfg_, engine));
 
     if (!attr()->zero_points_.has_default_values()) {
         VDISPATCH_GEMM(!attr()->zero_points_.has_host_scalars(),
                 VERBOSE_UNSUPPORTED_ZP_CFG);
-        CHECK(zp_ok(engine));
+        CHECK(zp_ok(cfg_, engine));
     }
 
-    CHECK(init_post_ops(engine));
+    CHECK(init_post_ops(cfg_, engine));
 
     if (dt_int_ok) {
         VDISPATCH_GEMM(IMPLICATION(a_zp_, !packed_b())
@@ -568,12 +568,12 @@ status_t xe_hp_systolic_t::init_compute(impl::engine_t *engine) {
             = (d->k() > kd_t::min_block_k(a_type)) && pd()->allow_k_blocking();
     bool got_info = false;
 
-    auto post_ops_ = pd()->post_ops();
-    bool with_post_ops = (post_ops_->find(primitive_kind::eltwise) != -1)
-            || (post_ops_->find(primitive_kind::binary) != -1)
-            || (post_ops_->find(primitive_kind::prelu) != -1);
+    const auto &post_ops_ = pd()->cfg().post_ops;
+    bool with_post_ops = (post_ops_.find(primitive_kind::eltwise) != -1)
+            || (post_ops_.find(primitive_kind::binary) != -1)
+            || (post_ops_.find(primitive_kind::prelu) != -1);
     gpu_post_ops_t gpu_post_ops;
-    CHECK(gpu_post_ops_t::make(gpu_post_ops, *post_ops_, pd()->dst_md(),
+    CHECK(gpu_post_ops_t::make(gpu_post_ops, post_ops_, pd()->dst_md(),
             pd()->get_post_op_specializations()));
 
     kd_t kd_full;
@@ -603,7 +603,7 @@ status_t xe_hp_systolic_t::init_compute(impl::engine_t *engine) {
             else {
                 auto this_beta = pd()->beta();
                 bool this_c_offset = pd()->with_c_zero_points();
-                auto *this_post_ops = pd()->post_ops();
+                const post_ops_t *this_post_ops = &pd()->cfg().post_ops;
                 post_ops_t no_post_ops;
 
                 if (!first_k_block) this_beta = 1.0f;
@@ -630,7 +630,7 @@ status_t xe_hp_systolic_t::init_compute(impl::engine_t *engine) {
                 // Protection against C zero-point host scalar implementation in gen gemm
                 auto *kd_problem
                         = const_cast<gemmstone::GEMMProblem *>(kd.problem());
-                kd_problem->coPtrDims = pd()->c_quant.zp_ndims;
+                kd_problem->coPtrDims = pd()->cfg().c_quant.zp_ndims;
 
                 if (!got_info) {
                     compute_info_ = *kd.driver_info();
@@ -868,7 +868,7 @@ status_t xe_hp_systolic_t::launch_compute(const exec_ctx_t &ctx, int32_t m,
         arg_list.set(argn++, offset_po_src[i]);
 
         if (problem_.postOps.binaryRow[i] && problem_.postOps.binaryCol[i])
-            arg_list.set(argn++, int32_t(pd()->ld_binary(i)));
+            arg_list.set(argn++, int32_t(pd()->cfg().ld_binary(i)));
     }
 
     if (pd()->with_batch()) {
@@ -884,7 +884,8 @@ status_t xe_hp_systolic_t::launch_compute(const exec_ctx_t &ctx, int32_t m,
             if (problem_.postOps.binaryBatch[i]) {
                 for (int b = 0; b < pd()->batch_dims(); b++) {
                     auto top = pd()->batch_dims() - b - 1;
-                    arg_list.set(argn++, int32_t(pd()->stride_binary(i, top)));
+                    arg_list.set(argn++,
+                            int32_t(pd()->cfg().stride_binary(i, top)));
                 }
             }
         }
@@ -974,13 +975,14 @@ status_t xe_hp_systolic_t::execute(const exec_ctx_t &ctx) const {
 
     const memory_storage_t *po_srcs[GEMM_MAX_PO];
 
-    int po_count = pd()->post_ops()->len();
+    const auto &cfg = pd()->cfg();
+    int po_count = cfg.post_ops.len();
     assert(po_count <= GEMM_MAX_PO);
 
     for (int i = 0; i < po_count; i++) {
-        auto &src = pd()->binary_srcs()[i];
+        auto &src = cfg.binary_srcs[i];
         switch (src.type) {
-            case pd_t::binary_src_t::binary:
+            case jit::binary_src_t::binary:
                 po_srcs[i]
                         = ctx.args()
                                   .exec_args
@@ -989,7 +991,7 @@ status_t xe_hp_systolic_t::execute(const exec_ctx_t &ctx) const {
                                   .mem()
                                   ->memory_storage();
                 break;
-            case pd_t::binary_src_t::prelu:
+            case jit::binary_src_t::prelu:
                 po_srcs[i]
                         = ctx.args()
                                   .exec_args
@@ -998,8 +1000,8 @@ status_t xe_hp_systolic_t::execute(const exec_ctx_t &ctx) const {
                                   .mem()
                                   ->memory_storage();
                 break;
-            case pd_t::binary_src_t::bias: po_srcs[i] = &bias; break;
-            case pd_t::binary_src_t::scales:
+            case jit::binary_src_t::bias: po_srcs[i] = &bias; break;
+            case jit::binary_src_t::scales:
                 switch (src.index) {
                     case DNNL_ARG_WEIGHTS:
                         po_srcs[i] = &GEMM_CTX_ARG_STORAGE(a_scales);
@@ -1103,7 +1105,7 @@ status_t xe_hp_systolic_t::execute(const exec_ctx_t &ctx) const {
                     bool row = problem_.postOps.binaryRow[i],
                          col = problem_.postOps.binaryCol[i];
                     if (row && col) {
-                        auto ld = pd()->ld_binary(i);
+                        auto ld = cfg.ld_binary(i);
                         po_offsets[i] += isColMajor(problem_.binary[i].layout)
                                 ? (Bn * ld + Bm)
                                 : (Bm * ld + Bn);

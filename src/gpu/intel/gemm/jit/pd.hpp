@@ -21,6 +21,7 @@
 
 #include "common/c_types_map.hpp"
 #include "common/gemm_types.hpp"
+#include "common/memory_storage.hpp"
 #include "gemmstone/problem.hpp"
 #include "gpu/intel/gemm/config.hpp"
 #include "gpu/intel/gemm/exec_types.hpp"
@@ -50,38 +51,81 @@ struct quant_params {
     bool zp_host_scalar = false;
 };
 
-status_t transfer_post_ops(
-        gemmstone::GEMMProblem &problem, gpu_post_ops_t &&post_ops_);
+struct binary_src_t {
+    enum type_t { none, scales, bias, binary, prelu } type;
+    int index;
+
+    binary_src_t(type_t type_, int index_) : type(type_), index(index_) {}
+};
+
+// Canonical kernel-facing projection of pd_t state. Phase A populators
+// (pd_t::init_attrs / init_post_ops) write into this cfg in user
+// orientation; Phase B applies swap_fold in place to flip to kernel
+// orientation. swap_ab is encoded exactly once inside swap_fold;
+// downstream consumers (Phase C validators, init_GEMMProblem,
+// transfer_post_ops, gen_t::execute, launch_nocopy) read cfg.* uniformly
+// and never branch on pd()->swap_ab() again.
+struct kernel_config_t {
+    // A/B/C scalars.
+    data_type_t a_type = data_type::undef;
+    data_type_t b_type = data_type::undef;
+    data_type_t c_type = data_type::undef;
+    dim_t m = 0, n = 0, k = 0;
+    dim_t lda = 0, ldb = 0, ldc = 0;
+    bool trans_a = false, trans_b = false;
+    int align_a = 0, align_b = 0, align_c = 0;
+
+    // Sub-configurations in kernel-cfg orientation. group_m/n are
+    // swapped under swap_ab.
+    quant_params a_quant, b_quant, c_quant;
+    sum_ab_t sum_ab = sum_ab::sum_none;
+    bool trans_co = false;
+
+    // Quant memory descriptors. A/B-side are swap-folded; C-side is
+    // passthrough. Plain MDs; strides used for batch-dim lookups.
+    memory_desc_t a_scale_md = {}, b_scale_md = {}, c_scale_md = {};
+    memory_desc_t a_zp_md = {}, b_zp_md = {}, c_zp_md = {};
+    memory_desc_t a_gs_md = {}, b_gs_md = {};
+
+    // Post-op tail (populated by init_post_ops; swap-invariant).
+    post_ops_t post_ops;
+    std::vector<binary_src_t> binary_srcs;
+    memory_desc_t prelu_wei_md = {};
+    bool with_sum = false;
+    bool sum_at_begin = false;
+    bool non_scale_po = false;
+
+    // Bias cfg (swap-invariant; bias is fused as the C-side
+    // offset/binary input).
+    bool bias_via_binary = false;
+    bool with_bias = false;
+    int bias_cmask = -1;
+    dim_t ld_bias = 0;
+
+    // Init-time scalar — extracted from sum post-op in Phase A.
+    float beta = 0.0f;
+
+    // Carries the swap signal to transfer_post_ops for per-binary layout
+    // selection and to init_GEMMProblem for layout flipping on
+    // AO/BO/A_scale/B_scale/Ag/Bg.
+    bool swap_ab = false;
+
+    // Leading-dim / stride lookups for post-op binary src (swap-invariant;
+    // the bias/binary/prelu memory descriptors are in user orientation).
+    dim_t ld_binary(int idx) const;
+    dim_t stride_binary(int idx, int stride = 0) const;
+};
 
 struct pd_t : public gemm::pd_t {
     using gemm::pd_t::pd_t;
 
-    // Assumes desc() was already initialized with default formats
-    status_t init(impl::engine_t *engine, compute::gpu_arch_t arch) {
+    using binary_src_t = jit::binary_src_t;
 
-        arch_ = arch;
-        with_sround_ = attr()->rounding_mode_.get(DNNL_ARG_DST)
-                == rounding_mode::stochastic;
-
-        lda_ = desc()->lda();
-        ldb_ = desc()->ldb();
-        transa_ = desc()->transa() == dnnl_trans;
-        transb_ = desc()->transb() == dnnl_trans;
-
-        CHECK(init_attrs(engine));
-        CHECK(scales_ok(engine));
-        CHECK(zp_ok(engine));
-        CHECK(gs_ok(engine));
-        CHECK(init_post_ops(engine));
-        return status::success;
-    }
-
-    struct binary_src_t {
-        enum type_t { none, scales, bias, binary, prelu } type;
-        int index;
-
-        binary_src_t(type_t type_, int index_) : type(type_), index(index_) {}
-    };
+    // Assumes desc() was already initialized with default formats. Runs
+    // Phase A (populate cfg in user orientation, then validate user attrs).
+    // Phase B (decide_swap_ab + pad_lda + swap_fold) and Phase C
+    // (kernel-cap checks) run inside derived gen_t::pd_t::init.
+    status_t init(impl::engine_t *engine, compute::gpu_arch_t arch);
 
     static constexpr post_op::specializations_t get_post_op_specializations() {
         using mode_t = post_op::specializations_t::inline_mode_t;
@@ -96,59 +140,50 @@ struct pd_t : public gemm::pd_t {
                 binary_div, binary_min, binary_max);
     }
 
-    status_t init_post_ops(impl::engine_t *engine);
-    status_t init_attrs(impl::engine_t *engine);
-    status_t scales_ok(impl::engine_t *engine);
-    status_t zp_ok(impl::engine_t *engine);
-    status_t gs_ok(impl::engine_t *engine);
+    // Phase A populators — write into cfg in user orientation. The engine
+    // parameter is unused but required so the VDISPATCH_GEMM macro can
+    // call this->info(engine) in error reporting.
+    status_t init_attrs(kernel_config_t &cfg, impl::engine_t *engine);
+    status_t init_post_ops(kernel_config_t &cfg, impl::engine_t *engine);
 
-    dim_t ld_binary(int idx) const;
-    dim_t stride_binary(int idx, int stride = 0) const;
+    // Phase A validators — read cfg + attr; report errors in user terms.
+    status_t scales_ok(const kernel_config_t &cfg, impl::engine_t *engine);
+    status_t zp_ok(const kernel_config_t &cfg, impl::engine_t *engine);
+    status_t gs_ok(const kernel_config_t &cfg, impl::engine_t *engine);
 
-    const post_ops_t *post_ops() const { return &post_ops_; }
-    const std::vector<binary_src_t> &binary_srcs() const {
-        return binary_srcs_;
+    // Phase B — decide whether to swap A/B. Overridden by gen_t; default
+    // returns false (no swap) for impls that don't support the swap path.
+    virtual bool decide_swap_ab(const kernel_config_t &cfg) const {
+        return false;
     }
+
     bool valid_2d_mask(int mask, int ndims, bool per_tensor_ok = true);
 
     status_t init_GEMMProblem(gemmstone::GEMMProblem &problem,
-            const intel::engine_t *engine) const;
+            const intel::engine_t *engine, const kernel_config_t &cfg) const;
 
-    float beta_ = 0.0f;
+    // Canonical kernel-facing projection (Phase A populates in user
+    // orientation; Phase B's swap_fold flips it to kernel orientation).
+    kernel_config_t cfg_;
+    const kernel_config_t &cfg() const { return cfg_; }
 
-    bool with_sum_ = false;
-    bool sum_at_begin_ = false;
+    static constexpr int mask_scalar = 1 << 0;
+    static constexpr int mask_per_oc = 1 << 1;
+    static constexpr int mask_per_ic = 1 << 2;
 
-    bool bias_via_binary_ = false;
-    bool wei_decomp_ = false;
-    bool dy_quant_enabled_ = false;
-    bool quant_enabled_ = false;
-
-    quant_params a_quant, b_quant, c_quant;
-
-    bool non_scale_po_ = false;
-
-    post_ops_t post_ops_;
-    std::vector<binary_src_t> binary_srcs_;
-
-    int cmask_a_ = INT_MIN;
-    int cmask_b_ = INT_MIN;
-    int cmask_c_ = INT_MIN;
-
-    const int mask_scalar = 1 << 0;
-    const int mask_per_oc = 1 << 1;
-    const int mask_per_ic = 1 << 2;
-
-    const int idx_a = DNNL_ARG_WEIGHTS;
-    memory_desc_t prelu_wei_md, a_scale_md_, b_scale_md_, c_scale_md_;
-    memory_desc_t a_zp_md_, b_zp_md_, c_zp_md_;
-    memory_desc_t a_gs_md_, b_gs_md_;
-    bool swap_ab_ = false;
     dim_t lda_ = 0, ldb_ = 0;
     bool transa_ = false, transb_ = false;
-    bool with_sround_ = false;
-    bool with_mx_scale_ = false;
     compute::gpu_arch_t arch_ = compute::gpu_arch_t::unknown;
+
+    int cmask_a() const {
+        return attr()->zero_points_.get(DNNL_ARG_A).get_mask();
+    }
+    int cmask_b() const {
+        return attr()->zero_points_.get(DNNL_ARG_B).get_mask();
+    }
+    int cmask_c() const {
+        return attr()->zero_points_.get(DNNL_ARG_C).get_mask();
+    }
 
     float alpha() const {
         auto attr_info = attr_info_t::create(attr());
@@ -162,26 +197,7 @@ struct pd_t : public gemm::pd_t {
         return 1.0f;
     }
 
-    float beta() const { return beta_; }
-
-    bool with_bias() const {
-        return desc()->bias_type() != data_type::undef && !bias_via_binary_;
-    }
-
-    int bias_cmask() const {
-        unsigned char to_cmask[8] = {0, 4, 2, 6, 1, 5, 3, 7};
-        assert(unsigned(desc()->bias_mask()) < 8);
-        return with_bias() ? to_cmask[desc()->bias_mask() & 7] : -1;
-    }
-
     sum_ab_t sum_ab() const { return desc()->sum_ab; }
-
-    bool a_zp_2d() const { return a_quant.zp_ndims >= 2; }
-    bool b_zp_2d() const { return b_quant.zp_ndims >= 2; }
-
-    bool a_gs_2d() const { return a_quant.gs_ndims >= 2; }
-    bool b_gs_2d() const { return b_quant.gs_ndims >= 2; }
-
     bool with_sum_ab() const { return sum_ab() != sum_ab::sum_none; }
 
     int sum_ab_cmask() const {
@@ -192,33 +208,25 @@ struct pd_t : public gemm::pd_t {
             case sum_ab::sum_b_col: return 2;
         }
     }
-    bool with_a_scales() const { return (a_quant.scale_ndims >= 0); }
-    bool with_b_scales() const { return (b_quant.scale_ndims >= 0); }
     bool with_c_scales() const {
         return !attr()->scales_.has_default_values(DNNL_ARG_DST);
     }
-
-    bool with_a_zero_points() const { return (a_quant.zp_ndims >= 0); }
-    bool with_b_zero_points() const { return (b_quant.zp_ndims >= 0); }
     bool with_c_zero_points() const {
         return !attr()->zero_points_.has_default_values(DNNL_ARG_DST);
     }
 
-    bool with_a_group_sums() const { return (a_quant.gs_ndims >= 0); }
-    bool with_b_group_sums() const { return (b_quant.gs_ndims >= 0); }
+    bool with_sround() const {
+        return attr()->rounding_mode_.get(DNNL_ARG_DST)
+                == rounding_mode::stochastic;
+    }
+    bool with_mx_scale() const {
+        return attr()->scales_.get(DNNL_ARG_C).is_mx();
+    }
 
-    bool with_sround() const { return with_sround_; }
-    bool with_mx_scale() const { return with_mx_scale_; }
+    bool dy_quant_enabled() const;
+    bool wei_decomp() const;
 
-    bool a_scales_2d() const { return a_quant.scale_ndims > 1; }
-    bool b_scales_2d() const { return b_quant.scale_ndims > 1; }
-    bool c_scales_2d() const { return c_quant.scale_ndims > 1; }
-
-    bool dy_quant_enabled();
-    bool wei_decomp();
-    bool quant_enabled();
-
-    bool swap_ab() const { return swap_ab_; }
+    bool swap_ab() const { return cfg_.swap_ab; }
 
     int batch_dims() const { return nstl::max(desc()->c_desc.ndims - 2, 0); }
     bool trans_a() const { return transa_; }
@@ -250,16 +258,6 @@ struct pd_t : public gemm::pd_t {
     dim_t scale_stride(int idx, int arg) const;
     dim_t zp_stride(int idx, int arg) const;
     dim_t gs_stride(int idx, int arg) const;
-    bool a_grouped() const {
-        bool k_grouped = 1 < a_quant.group_k && a_quant.group_k < desc()->k();
-        bool m_grouped = 1 < a_quant.group_m && a_quant.group_m < desc()->m();
-        return k_grouped || m_grouped;
-    }
-    bool b_grouped() const {
-        bool k_grouped = 1 < b_quant.group_k && b_quant.group_k < desc()->k();
-        bool n_grouped = 1 < b_quant.group_n && b_quant.group_n < desc()->n();
-        return k_grouped || n_grouped;
-    }
     bool a_zp_host_scalar() const {
         auto attr_info = attr_info_t::create(attr());
         return attr_info.with_host_wei_zp;
@@ -272,12 +270,6 @@ struct pd_t : public gemm::pd_t {
         auto attr_info = attr_info_t::create(attr());
         return attr_info.with_host_dst_zp;
     }
-    int a_q2d_group_k() const { return a_quant.group_k; }
-    int a_q2d_group_m() const { return a_quant.group_m; }
-    int b_q2d_group_k() const { return b_quant.group_k; }
-    int b_q2d_group_n() const { return b_quant.group_n; }
-    int c_q2d_group_m() const { return c_quant.group_m; }
-    int c_q2d_group_n() const { return c_quant.group_n; }
     int align(int arg) const {
         auto dt = get_type(arg);
         auto align = utils::max_pow2_div(types::elements_to_bytes(dt, ld(arg)));
@@ -288,6 +280,97 @@ struct pd_t : public gemm::pd_t {
         }
         return int(align);
     }
+};
+
+// Phase B — leading-dim padding and in-place swap fold. swap_fold
+// flips user→kernel orientation; pad_lda is the orientation-aware
+// padding that runs between the swap decision and swap_fold.
+void pad_lda(kernel_config_t &cfg, bool swap);
+void swap_fold(kernel_config_t &cfg, bool swap);
+
+// Populate problem.postOps and problem.binary from a gpu_post_ops_t,
+// folding per-binary layout selection by cfg.swap_ab so that no post-hoc
+// problem.postOps.transpose()/b.transpose() pass is required.
+status_t transfer_post_ops(gemmstone::GEMMProblem &problem,
+        gpu_post_ops_t &&post_ops, const kernel_config_t &cfg);
+
+// Runtime-time projection of pd_t + exec_ctx_t state in kernel-cfg
+// orientation. Inherits kernel_config_t's swap-folded scalars/flags and adds
+// runtime-bound storages, host scalars, base offsets, and stride lookups.
+// All A/B-side fields (storages, ao/bo, scales, group sums, cmask) are
+// already swap_ab-folded; downstream consumers (gen_t::execute,
+// gen_t::launch_nocopy) read cfg.* uniformly and never branch on
+// pd()->swap_ab() again. Init-time consumers (init_GEMMProblem,
+// transfer_post_ops) take 'const kernel_config_t&' and so cannot reach any of
+// the runtime fields below — the type still enforces phase separation.
+struct exec_config_t : kernel_config_t {
+    // Primary A/B/C storages (A/B routed under swap_ab).
+    const memory_storage_t *a = nullptr;
+    const memory_storage_t *b = nullptr;
+    const memory_storage_t *c = nullptr;
+
+    // Quantization storages (swap-folded).
+    const memory_storage_t *ao = nullptr;
+    const memory_storage_t *bo = nullptr;
+    const memory_storage_t *a_scales = nullptr;
+    const memory_storage_t *b_scales = nullptr;
+    const memory_storage_t *c_scales = nullptr;
+    const memory_storage_t *ag = nullptr;
+    const memory_storage_t *bg = nullptr;
+
+    // Merged c-offset / bias / sum_ab storage; the kernel sees one ptr.
+    const memory_storage_t *co = nullptr;
+
+    // Stochastic round seed.
+    const memory_storage_t *sround_seed = nullptr;
+
+    // Host scalar values; ao/bo are sign-flipped and swap-folded.
+    int16_t ao_host_scalar = 0;
+    int16_t bo_host_scalar = 0;
+    int16_t co_host_scalar = 0;
+
+    // Per-side flags (swap-folded).
+    bool with_a_zero_points = false;
+    bool with_b_zero_points = false;
+
+    // Resolved at execute time (host-scalar scales fold into alpha).
+    float alpha = 1.0f;
+    bool with_mx_scale = false;
+
+    // Already swap_ab-folded (A/B mask bits exchanged under swap_ab).
+    int cmask = 0;
+
+    // Base offsets, in elements (kernel-cfg: a is the kernel's A storage).
+    size_t off_a0 = 0;
+    size_t off_b0 = 0;
+    size_t off_c0 = 0;
+    int64_t off_co0 = 0;
+
+    // Backing pd_t + effective DNNL_ARG routing for batch/scale/zp/gs
+    // stride lookups. eff_a_arg/eff_b_arg are swapped if swap_ab.
+    const pd_t *pd = nullptr;
+    int eff_a_arg = DNNL_ARG_A;
+    int eff_b_arg = DNNL_ARG_B;
+
+    dim_t stride_a(int dim) const { return pd->stride(eff_a_arg, dim); }
+    dim_t stride_b(int dim) const { return pd->stride(eff_b_arg, dim); }
+    dim_t stride_c(int dim) const { return pd->desc()->stride_c(dim); }
+    // The quant memory descriptors (a/b_scale_md, a/b_zp_md, a/b_gs_md) live
+    // on the cfg and are already swap-folded to kernel orientation by
+    // swap_fold. So index them by the *kernel* side (A/B) directly — NOT
+    // eff_arg, which would re-apply the swap and read the empty opposite-side
+    // md (crash on batched + swap_ab + one-sided quant). Contrast stride_a/b
+    // above, which reach the unswapped desc() and so must route via eff_arg.
+    dim_t scale_stride_a(int idx) const {
+        return pd->scale_stride(idx, DNNL_ARG_A);
+    }
+    dim_t scale_stride_b(int idx) const {
+        return pd->scale_stride(idx, DNNL_ARG_B);
+    }
+    dim_t zp_stride_a(int idx) const { return pd->zp_stride(idx, DNNL_ARG_A); }
+    dim_t zp_stride_b(int idx) const { return pd->zp_stride(idx, DNNL_ARG_B); }
+    dim_t gs_stride_a(int idx) const { return pd->gs_stride(idx, DNNL_ARG_A); }
+    dim_t gs_stride_b(int idx) const { return pd->gs_stride(idx, DNNL_ARG_B); }
 };
 
 } // namespace jit

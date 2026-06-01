@@ -64,18 +64,11 @@ struct xe_hp_systolic_t : public gemm::primitive_t {
         }
 
         float alpha() const { return 1.0f; }
-        float beta() const { return beta_; }
+        float beta() const { return cfg().beta; }
 
-        bool with_bias() const {
-            return (desc()->bias_type() != data_type::undef)
-                    && !bias_via_binary_;
-        }
+        bool with_bias() const { return cfg().with_bias; }
 
-        int bias_cmask() const {
-            unsigned char to_cmask[8] = {0, 4, 2, 6, 1, 5, 3, 7};
-            assert(unsigned(desc()->bias_mask()) < 8);
-            return with_bias() ? to_cmask[desc()->bias_mask() & 7] : -1;
-        }
+        int bias_cmask() const { return cfg().bias_cmask; }
 
         bool packed_a() const { return packed_a_; }
         bool packed_b() const { return packed_b_; }
@@ -136,8 +129,9 @@ struct xe_hp_systolic_t : public gemm::primitive_t {
 
         bool allow_k_blocking() const {
             return (desc()->acc_type == desc()->c_type())
-                    && IMPLICATION(post_ops()->len() > 0,
-                            post_ops()->entry_[0].kind == primitive_kind::sum);
+                    && IMPLICATION(cfg().post_ops.len() > 0,
+                            cfg().post_ops.entry_[0].kind
+                                    == primitive_kind::sum);
         }
 
         int unroll_m() const { return unroll_m_; }

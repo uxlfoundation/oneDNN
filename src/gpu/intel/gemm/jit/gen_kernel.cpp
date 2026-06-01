@@ -685,7 +685,10 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
     if (alpha == 1.0f) problem_.alpha = (int)alpha;
     if (beta == 0.0f || beta == 1.0f) problem_.beta = (int)beta;
 
-    auto status = transfer_post_ops(problem_, std::move(post_ops));
+    // No matmul→GEMM swap_ab context at the microkernel selector; pass a
+    // default-constructed config (swap=false).
+    auto status = transfer_post_ops(
+            problem_, std::move(post_ops), kernel_config_t {});
     if (status != status::success) return status;
 
     if (c_offset) problem_.cOffset = COffset::Post;

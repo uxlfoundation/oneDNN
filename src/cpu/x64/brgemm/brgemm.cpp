@@ -284,18 +284,23 @@ status_t brgemv_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
         impl::data_type_t dt_x, bool transA, float alpha, float beta, dim_t LDA,
         dim_t INCY, dim_t M, dim_t N, bool treat_y_as_row) {
 
-    // Only f32 is supported for now.
-    if (!utils::everyone_is(data_type::f32, dt_a, dt_x))
+    using namespace data_type;
+    // GEMV uses f32 accumulators with upconvert from the input dt; both
+    // operands must share the same dt.
+    if (!utils::one_of(dt_a, f32, bf16, f16) || dt_a != dt_x)
         return status::unimplemented;
 
     // The transA kernel requires the output to be contiguous.
     if (transA && INCY > 1) return status::unimplemented;
 
+    // Set `is_gemv` before `brgemm_desc_init` so the GEMV branch in
+    // `set_isa_impl` (and other downstream consumers) can take effect.
+    brg->is_gemv = true;
+
     CHECK(brgemm_desc_init(brg, isa, type, dt_a, dt_x, false, false,
             brgemm_row_major, alpha, beta, LDA, 1, INCY, M, 1, N, nullptr,
             false));
 
-    brg->is_gemv = true;
     // Initialize transA here because `brgemm_desc_init` would otherwise return
     // unimplemented since brgemm doesn't support this case and we don't pass
     // the `is_gemv` flag to `brgemm_desc_init`. This keeps the GEMV
@@ -348,11 +353,13 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
     const auto dt_d = dst_md->data_type;
 
     // check that bias and output data type are supported by isa
-    if (!IMPLICATION(one_of(data_type::bf16, dt_bias, dt_d),
+    // GEMV on `avx2` admits bf16/f16 bias/dst.
+    const bool is_gemv_avx2 = brg->is_gemv && brg->isa_impl == avx2;
+    if (!IMPLICATION(one_of(data_type::bf16, dt_bias, dt_d) && !is_gemv_avx2,
                 is_superset(brg->isa_impl, avx512_core)
                         || is_superset(brg->isa_impl, avx2_vnni_2)))
         return status::unimplemented;
-    if (!IMPLICATION(one_of(data_type::f16, dt_bias, dt_d),
+    if (!IMPLICATION(one_of(data_type::f16, dt_bias, dt_d) && !is_gemv_avx2,
                 is_superset(brg->isa_impl, avx512_core_fp16)
                         || is_superset(brg->isa_impl, avx2_vnni_2)))
         return status::unimplemented;

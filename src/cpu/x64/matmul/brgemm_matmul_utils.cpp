@@ -270,6 +270,20 @@ status_t check_isa_with_datatype(
     return ok ? status::success : status::unimplemented;
 }
 
+// The single isa class that may handle GEMV for a given datatype. GEMV
+// accumulates in f32 (upconvert from the input dt), so it can run on (isa, dt)
+// combinations the general `check_isa_with_datatype` table rejects. bf16/f16
+// up/down-convert in software on the avx2 vector kernel (vpmovzxwd/vpslld,
+// vcvtph2ps, and an avx2 f32->bf16 round on store), so no bf16/f16-specific
+// isa is required: every supported dt runs on plain avx2.
+bool gemv_isa_ok(
+        const cpu_isa_t isa, const brgemm_matmul_conf_utils_t &bm_conf_utils) {
+    if (bm_conf_utils.is_bf16()) return isa == avx2;
+    if (bm_conf_utils.is_f16()) return isa == avx2;
+    if (bm_conf_utils.is_f32()) return isa == avx2;
+    return false;
+}
+
 status_t check_datatype_cfg(const brgemm_matmul_conf_utils_t &bm_conf_utils) {
     const bool ok
             = one_of(true, bm_conf_utils.is_f32(), bm_conf_utils.is_bf16(),
@@ -494,8 +508,7 @@ format_tag_t brgemm_matmul_conf_utils_t::get_gemv_B_tag(
  * GEMV is applicable only when:
  *   - M == 1 or N == 1
  *   - reduction is not used
- *   - data type is f32
- *   - fpmath mode is strict
+ *   - data type is f32, bf16, or f16
  *   - A and B formats can be resolved to supported GEMV layouts
  *   - output layout satisfies GEMV requirements
  */
@@ -503,14 +516,16 @@ bool is_gemv_applicable(const brgemm_matmul_conf_t &bgmmc,
         const brgemm_matmul_conf_utils_t &bm_conf_utils,
         const memory_desc_t &A_md, const memory_desc_t &B_md,
         const memory_desc_t &C_md, const primitive_attr_t &attr) {
+    if (!::getenv("GEMV")) return false;
 
     if (bgmmc.M != 1 && bgmmc.N != 1) return false;
 
     // Reduction is not supported for GEMV code path.
     if (bgmmc.with_reduce) return false;
 
-    // BRGEMV currently supports only f32.
-    if (!bm_conf_utils.is_f32()) return false;
+    if (!(bm_conf_utils.is_f32() || bm_conf_utils.is_bf16()
+                || bm_conf_utils.is_f16()))
+        return false;
 
     const format_tag_t gemv_A_tag = bm_conf_utils.get_gemv_A_tag(A_md);
     const format_tag_t gemv_B_tag = bm_conf_utils.get_gemv_B_tag(B_md);
@@ -554,19 +569,9 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(memory_desc_t &B_md,
             bgmmc.wei_tag = blocked_B_layouts_allowed && !bgmmc.is_runtime_N
                             && !bgmmc.is_int4_weights
                     ? this->pick_blocked_B_layout(default_n_block)
+                    : bgmmc.is_int4_weights && bgmmc.N % 2 != 0
+                    ? transposed_tensor_layout_tag
                     : plain_tensor_layout_tag;
-
-            // For N == 1 force transposed layout because copy-B kernel is
-            // significantly faster.
-            if (bgmmc.wei_tag == plain_tensor_layout_tag && bgmmc.N == 1) {
-                bgmmc.wei_tag = transposed_tensor_layout_tag;
-            }
-
-            // Plain copy-B kernel does not support odd sizes for subbyte types.
-            // Using transposed version for these cases.
-            if (bgmmc.is_int4_weights && bgmmc.N % 2 != 0) {
-                bgmmc.wei_tag = transposed_tensor_layout_tag;
-            }
         }
         VCONDCHECK_BG(
                 format_tag::undef != bgmmc.wei_tag, VERBOSE_UNSUPPORTED_TAG)
@@ -597,19 +602,11 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(memory_desc_t &B_md,
                     : memory_desc_matches_one_of_tag(B_md,
                               plain_tensor_layout_tag,
                               transposed_tensor_layout_tag, acbd, adbc);
-
-            // For N == 1 force transposed layout because copy-B kernel is
-            // significantly faster.
-            if (bgmmc.wei_tag == plain_tensor_layout_tag && bgmmc.N == 1) {
-                bgmmc.wei_tag = transposed_tensor_layout_tag;
-            }
-
             // Plain copy-B kernel does not support odd sizes for subbyte types.
             // Using transposed version for these cases.
             if (bgmmc.is_int4_weights && bgmmc.N % 2 != 0) {
                 bgmmc.wei_tag = transposed_tensor_layout_tag;
             }
-
             if (bgmmc.wei_tag == format_tag::undef) {
                 if (gemm_based::check_gemm_input_format(B_md)) {
                     bgmmc.wei_tag = helper.transB() == 'N'
@@ -1158,10 +1155,21 @@ float compute_blocking_heuristic_avx512(brgemm_matmul_conf_t &bgmmc,
 
 float compute_blocking_heuristic_avx2(brgemm_matmul_conf_t &bgmmc,
         const brgemm_matmul_conf_utils_t &bm_conf_utils,
-        const matmul_avx512_blocking_params_t::matmul_params_t &matmul,
+        const matmul_avx512_blocking_params_t::matmul_params_t &matmul_,
         matmul_avx512_blocking_params_t &best_blocking) {
-    const int nthr = bgmmc.nthr;
 
+    // When it's the GEMV case and swapping A and B is required, we
+    // re-create `matmul_params_t` with swapped M and N parameters. Otherwise,
+    // we use the original object.
+    // We need this to ensure consistent blocking parameters for the same
+    // GEMV code path across different scenarios (M=1 and N=1).
+    const bool swap_m_n_blks = bgmmc.is_gemv && bgmmc.gemv_swap_a_b;
+    const auto &matmul = swap_m_n_blks
+            ? matmul_avx512_blocking_params_t::matmul_params_t(
+                      matmul_.N, matmul_.M, matmul_.K, matmul_.batch)
+            : matmul_;
+
+    const int nthr = bgmmc.nthr;
     const int max_m_blk
             = static_cast<int>(nstl::min(/*64*/ (dim_t)256, matmul.M));
     int min_m_blk
@@ -1209,6 +1217,16 @@ float compute_blocking_heuristic_avx2(brgemm_matmul_conf_t &bgmmc,
             best_blocking = cur_params;
         }
     }
+
+    // The matmul driver expects blocking parameters that are consistent with
+    // the original problem, therefore, we need to swap the M and N blocking
+    // parameters.
+    if (swap_m_n_blks) {
+        std::swap(best_blocking.m_chunks, best_blocking.n_chunks);
+        std::swap(best_blocking.m_blk, best_blocking.n_blk);
+        std::swap(best_blocking.m_tail, best_blocking.n_tail);
+    }
+
     return best_imbalance;
 }
 
@@ -1495,7 +1513,14 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
             bias_md.format_kind == format_kind::any);
 
     VCHECK_BG(check_datatype_cfg(bm_conf_utils), VERBOSE_UNSUPPORTED_DT_CFG);
-    VCHECK_BG(check_isa_with_datatype(isa, bm_conf_utils),
+    // GEMV may run on (isa, dt) combinations the general table rejects (it
+    // upconverts to f32). The applicable rule-set isn't known until `is_gemv`
+    // is determined (needs M/N, set below), so permit anything valid under
+    // EITHER rule-set here; the authoritative check follows `is_gemv`.
+    const status_t base_dt_isa_st = check_isa_with_datatype(isa, bm_conf_utils);
+    const bool gemv_isa = gemv_isa_ok(isa, bm_conf_utils);
+    VCHECK_BG(base_dt_isa_st == status::success || gemv_isa ? status::success
+                                                            : base_dt_isa_st,
             VERBOSE_ISA_DT_MISMATCH);
 
     bgmmc.is_amx = is_superset(isa, avx512_core_amx);
@@ -1660,8 +1685,13 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     bgmmc.is_gemv = is_gemv_applicable(
             bgmmc, bm_conf_utils, src_md, weights_md, dst_md, attr);
-    VCONDCHECK_BG(IMPLICATION(bgmmc.is_gemv, isa == avx2),
-            "Fall back to the AVX2 implementation for the GEMV code path");
+    // Authoritative dt/isa check now that `is_gemv` is known: a GEMV problem
+    // must run on a gemv-capable isa for its dt; a non-GEMV problem falls back
+    // to the general-table result. Subsumes the earlier permissive gate.
+    VCHECK_BG(bgmmc.is_gemv
+                    ? (gemv_isa ? status::success : status::unimplemented)
+                    : base_dt_isa_st,
+            VERBOSE_ISA_DT_MISMATCH);
 
     if (bgmmc.is_gemv) {
         bgmmc.gemv_strategy = bm_conf_utils.get_gemv_strategy(

@@ -1263,7 +1263,22 @@ void jit_brgemm_kernel_t<Wmm>::gemv_apply_bias(
     const bool is_bias_scalar = !brg.treat_y_as_row;
     auto bias = vmm_tmp(0);
 
-    if (is_bias_scalar) vbroadcastss(bias, ptr[reg_aux_bias + bias_offset(0)]);
+    if (is_bias_scalar) {
+        const auto addr = ptr[reg_aux_bias + bias_offset(0)];
+        switch (brg.dt_bias) {
+            case data_type::f32: vbroadcastss(bias, addr); break;
+            case data_type::bf16:
+                vpbroadcastw(bias, addr);
+                uni_vpslld(bias, bias, 16);
+                break;
+            case data_type::f16:
+                vpbroadcastw(Xmm(bias.getIdx()), addr);
+                uni_vcvtph2psx(Xmm(bias.getIdx()), Xmm(bias.getIdx()));
+                vbroadcastss(bias, Xmm(bias.getIdx()));
+                break;
+            default: assert(!"unsupported bias data type");
+        }
+    }
 
     for (dim_t bd = 0; bd < bd_block; bd++) {
         auto acc = accm(1, bd, 0);
@@ -1273,18 +1288,16 @@ void jit_brgemm_kernel_t<Wmm>::gemv_apply_bias(
             continue;
         }
 
-        const auto addr = ptr[reg_aux_bias + bias_offset(bd)];
-
         if (brg.gemv_acc_is_vector()) {
-            if (gemv_is_tail_acc(bd, bd_block, is_bdb_tail))
-                vmaskmovps(bias, vmm_tail_mask(), addr);
-            else
-                uni_vmovups(bias, addr);
-
+            const int elems = gemv_is_tail_acc(bd, bd_block, is_bdb_tail)
+                    ? brg.gemv_tail
+                    : gemv_elems_per_vector_acc();
+            load_data(brg.dt_bias, bias, reg_aux_bias, bias_offset(bd), elems);
             uni_vaddps(acc, acc, bias);
         } else {
-            uni_vmovss(Xmm(bias.getIdx()), addr);
-            uni_vaddss(Xmm(acc.getIdx()), Xmm(acc.getIdx()), bias);
+            load_data(brg.dt_bias, bias, reg_aux_bias, bias_offset(bd), 1);
+            uni_vaddss(
+                    Xmm(acc.getIdx()), Xmm(acc.getIdx()), Xmm(bias.getIdx()));
         }
     }
 }
@@ -1887,13 +1900,37 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
             }
         } else {
             if (brg.is_gemv) {
-                if (brg.gemv_acc_is_vector()) {
-                    if (gemv_is_tail_acc(bd, bd_block, is_bdb_tail))
-                        vmaskmovps(addr, vmm_tail_mask(), vmm);
-                    else
-                        uni_vmovups(addr, vmm);
+                const int elems = !brg.gemv_acc_is_vector() ? 1
+                        : gemv_is_tail_acc(bd, bd_block, is_bdb_tail)
+                        ? brg.gemv_tail
+                        : gemv_elems_per_vector_acc();
+                if (brg.dt_d == data_type::bf16) {
+                    // No avx2_vnni_2 / avx512_core_bf16 on this path, so
+                    // `vcvtneps2bf16` is unavailable. Emulate the hardware
+                    // round-to-nearest-even f32->bf16 with avx2 integer ops so
+                    // the bf16 output matches the wider-isa kernels bit-for-bit.
+                    const Xbyak::Ymm ymm_acc = Xbyak::Ymm(vmm.getIdx());
+                    const Xbyak::Ymm ymm_bias = Xbyak::Ymm(vmm_tmp(0).getIdx());
+                    const Xbyak::Ymm ymm_lsb = Xbyak::Ymm(vmm_tmp(2).getIdx());
+                    const Xbyak::Xmm xmm_acc = Xbyak::Xmm(vmm.getIdx());
+                    const Xbyak::Xmm xmm_hi = Xbyak::Xmm(ymm_lsb.getIdx());
+                    mov(reg_tmp_gpr.cvt32(), 0x00007fff);
+                    uni_vmovd(
+                            Xbyak::Xmm(ymm_bias.getIdx()), reg_tmp_gpr.cvt32());
+                    uni_vpbroadcastd(ymm_bias, Xbyak::Xmm(ymm_bias.getIdx()));
+                    uni_vpsrld(ymm_lsb, ymm_acc, 16);
+                    uni_vpslld(ymm_lsb, ymm_lsb, 31);
+                    uni_vpsrld(ymm_lsb, ymm_lsb, 31); // lsb = (x >> 16) & 1
+                    uni_vpaddd(ymm_lsb, ymm_lsb, ymm_bias); // 0x7fff + lsb
+                    uni_vpaddd(ymm_acc, ymm_acc, ymm_lsb); // x + rounding bias
+                    uni_vpsrld(ymm_acc, ymm_acc, 16); // bf16 in low 16 of dword
+                    vextracti128(xmm_hi, ymm_acc, 1);
+                    uni_vpackusdw(xmm_acc, xmm_acc, xmm_hi); // pack to words
+                    store_bytes(ymm_acc, reg_aux_D, D_offset(bd, ld),
+                            elems * sizeof(bfloat16_t));
                 } else {
-                    uni_vmovss(addr, vmm);
+                    store_data(
+                            brg.dt_d, vmm, reg_aux_D, D_offset(bd, ld), elems);
                 }
             } else {
                 const dim_t ld_block = is_tail ? brg.ldb_tail : brg.ld_block;
@@ -2712,38 +2749,78 @@ void jit_brgemm_kernel_t<Wmm>::gemv_microkernel(
 
     const dim_t bd_block = brg.gemv_num_acc_blocks(is_bdb_tail);
 
+    // Loads simd_w elements of type `dt` from `addr` into `vmm`, converting
+    // to f32. When `is_tail` is true, loads `tail_count` elements instead.
+    const auto load_to_f32
+            = [this](const Vmm vmm, const Xbyak::Address addr,
+                      const data_type_t dt, bool is_tail, int tail_count) {
+        const auto tail_bytes = tail_count * types::data_type_size(dt);
+        if (dt == data_type::f32) {
+            if (is_tail)
+                vmaskmovps(vmm, vmm_tail_mask(), addr);
+            else
+                uni_vmovups(vmm, addr);
+        } else if (dt == data_type::bf16) {
+            if (is_tail) {
+                load_bytes(Xmm(vmm.getIdx()), addr, tail_bytes);
+                uni_vpmovzxwd(vmm, Xmm(vmm.getIdx()));
+            } else {
+                uni_vpmovzxwd(vmm, addr);
+            }
+            uni_vpslld(vmm, vmm, 16);
+        } else if (dt == data_type::f16) {
+            if (is_tail) {
+                load_bytes(Xmm(vmm.getIdx()), addr, tail_bytes);
+                uni_vcvtph2psx(vmm, Xmm(vmm.getIdx()));
+            } else {
+                uni_vcvtph2psx(vmm, addr);
+            }
+        } else {
+            assert(!"unsupported GEMV input data type");
+        }
+    };
+
+    // Broadcasts the scalar at `addr` (of type `dt`) into all elements of
+    // `vmm` as f32.
+    const auto bcast_to_f32 = [this](const Vmm vmm, const Xbyak::Address addr,
+                                      const data_type_t dt) {
+        if (dt == data_type::f32) {
+            vbroadcastss(vmm, addr);
+        } else if (dt == data_type::bf16) {
+            vpbroadcastw(vmm, addr);
+            uni_vpslld(vmm, vmm, 16);
+        } else if (dt == data_type::f16) {
+            vpbroadcastw(Xmm(vmm.getIdx()), addr);
+            uni_vcvtph2psx(Xmm(vmm.getIdx()), Xmm(vmm.getIdx()));
+            vbroadcastss(vmm, Xmm(vmm.getIdx()));
+        } else {
+            assert(!"unsupported GEMV input data type");
+        }
+    };
+
     if (!brg.transA) {
         maybe_set_avx_mask(is_rd_tail);
 
-        if (is_rd_tail)
-            vmaskmovps(gemv_load_b(), vmm_tail_mask(), ptr[reg_aux_B]);
-        else
-            uni_vmovups(gemv_load_b(), ptr[reg_aux_B]);
+        load_to_f32(gemv_load_b(), ptr[reg_aux_B], brg.dt_b, is_rd_tail,
+                brg.gemv_tail);
 
         for (dim_t bd = 0; bd < bd_block; bd++) {
-            auto a_addr = ptr[reg_aux_A + A_offset(bd, 0)];
-
-            if (is_rd_tail)
-                vmaskmovps(gemv_load_a(), vmm_tail_mask(), a_addr);
-            else
-                uni_vmovups(gemv_load_a(), a_addr);
-
+            const auto a_addr = ptr[reg_aux_A + A_offset(bd, 0)];
+            load_to_f32(
+                    gemv_load_a(), a_addr, brg.dt_a, is_rd_tail, brg.gemv_tail);
             uni_vfmadd231ps(accm(1, bd, 0), gemv_load_a(), gemv_load_b());
         }
     } else {
-        vbroadcastss(gemv_load_b(), ptr[reg_aux_B]);
+        bcast_to_f32(gemv_load_b(), ptr[reg_aux_B], brg.dt_b);
 
         for (dim_t bd = 0; bd < bd_block; bd++) {
             const bool is_tail_acc
                     = gemv_is_tail_acc(bd, bd_block, is_bdb_tail);
             const auto a_addr = ptr[reg_aux_A + A_offset(bd, 0)];
 
-            if (is_tail_acc) {
-                maybe_set_avx_mask(true);
-                vmaskmovps(gemv_load_a(), vmm_tail_mask(), a_addr);
-            } else {
-                uni_vmovups(gemv_load_a(), a_addr);
-            }
+            if (is_tail_acc) maybe_set_avx_mask(true);
+            load_to_f32(gemv_load_a(), a_addr, brg.dt_a, is_tail_acc,
+                    brg.gemv_tail);
 
             uni_vfmadd231ps(accm(1, bd, 0), gemv_load_a(), gemv_load_b());
         }

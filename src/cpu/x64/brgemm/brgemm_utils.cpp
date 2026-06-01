@@ -125,6 +125,15 @@ void set_isa_impl(brgemm_desc_t *brg) {
                 one_of(brg->isa_user, isa_undef, isa);
     };
 
+    // GEMV is only supported for the avx2 isa. The early return skips the
+    // general is_zmm/is_ymm computation below, so set the kernel-width flags
+    // here (kernel creation selects the Ymm kernel from `is_ymm`).
+    if (brg->is_gemv) {
+        if (brg->isa_user == avx2) brg->isa_impl = avx2;
+        brg->is_ymm = true;
+        return;
+    }
+
     if (brg->is_tf32) {
         brg->isa_impl = avx10_2_amx_2;
     } else if (brg->is_bf32) {

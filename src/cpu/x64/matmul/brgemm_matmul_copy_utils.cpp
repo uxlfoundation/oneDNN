@@ -6599,36 +6599,78 @@ private:
             } else {
                 uni_vpxor(zmm_src_pack, zmm_src_pack, zmm_src_pack);
 
-                const bool is_n_tail = cols_left < n_blk_step;
                 const auto xmm_src0 = Xmm(xmm_work_reg_base_idx + 0);
                 const auto xmm_src1 = Xmm(xmm_work_reg_base_idx + 1);
                 const auto xmm_src2 = Xmm(xmm_work_reg_base_idx + 2);
                 const auto xmm_src3 = Xmm(xmm_work_reg_base_idx + 3);
+                const auto xmm_dword_pack0 = Xmm(14);
+                const auto xmm_dword_pack1 = Xmm(15);
+                const auto xmm_dword_pack2 = Xmm(16);
+                const auto xmm_dword_pack3 = Xmm(17);
+                const auto zmm_dword_pack = Zmm(18);
+                const auto zmm_shifted = Zmm(19);
+                const reg32_t regw_tmp2 = edx;
+                uni_vpxor(xmm_dword_pack0, xmm_dword_pack0, xmm_dword_pack0);
+                uni_vpxor(xmm_dword_pack1, xmm_dword_pack1, xmm_dword_pack1);
+                uni_vpxor(xmm_dword_pack2, xmm_dword_pack2, xmm_dword_pack2);
+                uni_vpxor(xmm_dword_pack3, xmm_dword_pack3, xmm_dword_pack3);
 
-                if (is_n_tail || rows_left < fp8_vnni_k_pack) {
-                    uni_vpxor(xmm_src0, xmm_src0, xmm_src0);
-                    uni_vpxor(xmm_src1, xmm_src1, xmm_src1);
-                    uni_vpxor(xmm_src2, xmm_src2, xmm_src2);
-                    uni_vpxor(xmm_src3, xmm_src3, xmm_src3);
-                }
-
-                // Iterate source by columns first so row bytes k..k+3 are read
-                // from nearby addresses before moving to the next column.
+                // Build 16 dwords where each dword packs row bytes
+                // [r0|r1|r2|r3] for one column.
                 for (int c = 0; c < n_blk_step; ++c) {
                     if (c >= cols_left) break;
                     const dim_t src_off
                             = (n + c) * src_row_stride_ + k * typesize_;
-                    vpinsrb(xmm_src0, xmm_src0, byte[reg_src + src_off], c);
-                    if (rows_left > 1)
-                        vpinsrb(xmm_src1, xmm_src1,
-                                byte[reg_src + src_off + 1 * typesize_], c);
-                    if (rows_left > 2)
-                        vpinsrb(xmm_src2, xmm_src2,
-                                byte[reg_src + src_off + 2 * typesize_], c);
-                    if (rows_left > 3)
-                        vpinsrb(xmm_src3, xmm_src3,
-                                byte[reg_src + src_off + 3 * typesize_], c);
+
+                    if (rows_left >= fp8_vnni_k_pack) {
+                        mov(regw_tmp, dword[reg_src + src_off]);
+                    } else {
+                        movzx(regw_tmp, byte[reg_src + src_off]);
+                        if (rows_left > 1) {
+                            movzx(regw_tmp2,
+                                    byte[reg_src + src_off + 1 * typesize_]);
+                            shl(regw_tmp2, 8);
+                            or_(regw_tmp, regw_tmp2);
+                        }
+                        if (rows_left > 2) {
+                            movzx(regw_tmp2,
+                                    byte[reg_src + src_off + 2 * typesize_]);
+                            shl(regw_tmp2, 16);
+                            or_(regw_tmp, regw_tmp2);
+                        }
+                    }
+
+                    if (c < 4)
+                        vpinsrd(xmm_dword_pack0, xmm_dword_pack0, regw_tmp,
+                                c % 4);
+                    else if (c < 8)
+                        vpinsrd(xmm_dword_pack1, xmm_dword_pack1, regw_tmp,
+                                c % 4);
+                    else if (c < 12)
+                        vpinsrd(xmm_dword_pack2, xmm_dword_pack2, regw_tmp,
+                                c % 4);
+                    else
+                        vpinsrd(xmm_dword_pack3, xmm_dword_pack3, regw_tmp,
+                                c % 4);
                 }
+
+                vinserti32x4(
+                        zmm_dword_pack, zmm_dword_pack, xmm_dword_pack0, 0);
+                vinserti32x4(
+                        zmm_dword_pack, zmm_dword_pack, xmm_dword_pack1, 1);
+                vinserti32x4(
+                        zmm_dword_pack, zmm_dword_pack, xmm_dword_pack2, 2);
+                vinserti32x4(
+                        zmm_dword_pack, zmm_dword_pack, xmm_dword_pack3, 3);
+
+                // Extract row bytes from packed dwords.
+                vpmovdb(xmm_src0, zmm_dword_pack);
+                vpsrld(zmm_shifted, zmm_dword_pack, 8);
+                vpmovdb(xmm_src1, zmm_shifted);
+                vpsrld(zmm_shifted, zmm_dword_pack, 16);
+                vpmovdb(xmm_src2, zmm_shifted);
+                vpsrld(zmm_shifted, zmm_dword_pack, 24);
+                vpmovdb(xmm_src3, zmm_shifted);
 
                 vinserti32x4(zmm_src_pack, zmm_src_pack, xmm_src0, 0);
                 vinserti32x4(zmm_src_pack, zmm_src_pack, xmm_src1, 1);

@@ -298,6 +298,10 @@ status_t rnn_common_fwd_desc_init(rnn_desc_t *rnn_desc, prop_kind_t prop_kind,
         float beta = 0.0f) {
     using namespace alg_kind;
 
+    VCONDCHECK_RNN(one_of(prop_kind, prop_kind::forward_training,
+                           prop_kind::forward_inference),
+            VERBOSE_BAD_PROPKIND);
+
     // check that a supported cell kind has been passed
     VCONDCHECK_RNN(one_of(cell_kind, vanilla_rnn, vanilla_lstm, vanilla_gru,
                            lbr_gru, vanilla_augru, lbr_augru),
@@ -404,6 +408,8 @@ status_t rnn_common_bwd_desc_init(rnn_desc_t *rnn_desc, prop_kind_t prop_kind,
         alg_kind_t activation = alg_kind::undef, float alpha = 0.0f,
         float beta = 0.0f) {
     using namespace alg_kind;
+
+    VCONDCHECK_RNN(prop_kind == prop_kind::backward, VERBOSE_BAD_PROPKIND);
 
     // check that a supported cell kind has been passed
     VCONDCHECK_RNN(one_of(cell_kind, vanilla_rnn, vanilla_lstm, vanilla_gru,

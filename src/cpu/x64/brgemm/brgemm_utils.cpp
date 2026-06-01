@@ -815,6 +815,9 @@ status_t brgemm_blocking_vmm_gemv(brgemm_desc_t *brg) {
         brg->bdb_tail = brg->bcast_dim % brg->bd_block;
 
         brg->rd_block = simd_w;
+        // bf16 `vdpbf16ps` packs two bf16 per f32 lane, so one Zmm covers
+        // `2*simd_w` reduction elements per pass.
+        if (brg->gemv_use_vdpbf16ps()) brg->rd_block = 2 * simd_w;
         brg->rdb = brg->reduce_dim / brg->rd_block;
         brg->rdb_tail = brg->reduce_dim % brg->rd_block;
 

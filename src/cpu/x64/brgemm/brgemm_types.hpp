@@ -463,6 +463,16 @@ struct brgemm_desc_t {
         return full_accs + has_tail_acc;
     }
 
+    // Use native `vdpbf16ps` for the non-transA bf16 GEMV inner loop instead of
+    // the bf16->f32 upconvert + `vfmadd231ps`. Only on the Zmm
+    // `avx512_core_bf16` kernel (where the instruction is native and f32 accum
+    // is preserved). When true, the blocking doubles `rd_block` to `2*simd_w`
+    // so each Zmm absorbs `2*simd_w` bf16 (one `vdpbf16ps` lane per bf16 pair).
+    bool gemv_use_vdpbf16ps() const {
+        return is_gemv && !transA && is_bf16 && is_zmm
+                && is_superset(isa_impl, avx512_core_bf16);
+    }
+
     // return 'true' when FP8 MAC is not natively supported by the CPU ISA
     bool is_fp8_via_convert() const {
         return is_fp8 && utils::one_of(isa_impl, avx10_1_512_amx_fp16, avx10_2);

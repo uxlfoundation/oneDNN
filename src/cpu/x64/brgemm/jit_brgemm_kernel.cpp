@@ -2901,6 +2901,35 @@ void jit_brgemm_kernel_t<Wmm>::gemv_microkernel(
     };
 
     if (!brg.transA) {
+        if (brg.gemv_use_vdpbf16ps()) {
+            // Native bf16 dot-product path: keep A and B as raw bf16 and
+            // accumulate pairwise into f32. Each Zmm holds `2*simd_w` bf16
+            // (rd_block was doubled to match), `vdpbf16ps` folds each bf16 pair
+            // into one f32 lane, and `reduce_gemv_accumulators` sums all lanes.
+            assert(brg.is_zmm && brg.gemv_tail <= 32);
+            const auto b = gemv_load_b();
+            if (!is_rd_tail)
+                uni_vmovups(b, ptr[reg_aux_B]);
+            else
+                // `rd_tail_mask` (prologue-set, loop-invariant) holds the K-tail
+                // bf16-lane mask; zeroed B lanes null the unpaired products, so
+                // an odd tail is handled correctly.
+                vmovdqu16(b | rd_tail_mask | T_z, ptr[reg_aux_B]);
+
+            for (dim_t bd = 0; bd < bd_block; bd++) {
+                const auto a_addr = ptr[reg_aux_A + A_offset(bd, 0)];
+                if (!is_rd_tail) {
+                    vdpbf16ps(accm(1, bd, 0), b, a_addr);
+                } else {
+                    // Mask-load A to avoid reading past the matrix end.
+                    const auto a = gemv_load_a();
+                    vmovdqu16(a | rd_tail_mask | T_z, a_addr);
+                    vdpbf16ps(accm(1, bd, 0), b, a);
+                }
+            }
+            return;
+        }
+
         load_to_f32(gemv_load_b(), ptr[reg_aux_B], brg.dt_b, is_rd_tail,
                 brg.gemv_tail);
 

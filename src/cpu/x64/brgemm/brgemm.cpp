@@ -352,14 +352,14 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
     brg->is_runtime_ldd = is_runtime_value(LDD);
     const auto dt_d = dst_md->data_type;
 
-    // check that bias and output data type are supported by isa
-    // GEMV on `avx2` admits bf16/f16 bias/dst.
-    const bool is_gemv_avx2 = brg->is_gemv && brg->isa_impl == avx2;
-    if (!IMPLICATION(one_of(data_type::bf16, dt_bias, dt_d) && !is_gemv_avx2,
+    // check that bias and output data type are supported by isa.
+    // GEMV always upconverts to f32 and handles bf16/f16 bias/dst via convert
+    // on whatever isa it was routed to, so it bypasses the native-isa check.
+    if (!IMPLICATION(one_of(data_type::bf16, dt_bias, dt_d) && !brg->is_gemv,
                 is_superset(brg->isa_impl, avx512_core)
                         || is_superset(brg->isa_impl, avx2_vnni_2)))
         return status::unimplemented;
-    if (!IMPLICATION(one_of(data_type::f16, dt_bias, dt_d) && !is_gemv_avx2,
+    if (!IMPLICATION(one_of(data_type::f16, dt_bias, dt_d) && !brg->is_gemv,
                 is_superset(brg->isa_impl, avx512_core_fp16)
                         || is_superset(brg->isa_impl, avx2_vnni_2)))
         return status::unimplemented;

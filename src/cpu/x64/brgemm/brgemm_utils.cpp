@@ -125,12 +125,16 @@ void set_isa_impl(brgemm_desc_t *brg) {
                 one_of(brg->isa_user, isa_undef, isa);
     };
 
-    // GEMV is only supported for the avx2 isa. The early return skips the
-    // general is_zmm/is_ymm computation below, so set the kernel-width flags
-    // here (kernel creation selects the Ymm kernel from `is_ymm`).
+    // GEMV runs on the isa it was dispatched at (selected by `gemv_isa_ok` in
+    // the matmul layer); honor it instead of forcing avx2. This early return
+    // skips the general is_zmm/is_ymm computation below, so set the kernel-width
+    // flags here (kernel creation selects the Zmm/Ymm kernel from them).
     if (brg->is_gemv) {
-        if (brg->isa_user == avx2) brg->isa_impl = avx2;
-        brg->is_ymm = true;
+        if (brg->isa_user != isa_undef) brg->isa_impl = brg->isa_user;
+        brg->is_zmm = mayiuse(avx512_core)
+                && is_superset(brg->isa_impl, avx512_core);
+        brg->is_ymm = !brg->is_zmm && mayiuse(avx2)
+                && is_superset(brg->isa_impl, avx2);
         return;
     }
 
@@ -786,9 +790,12 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
  *
  */
 status_t brgemm_blocking_vmm_gemv(brgemm_desc_t *brg) {
-    const int simd_w = 8;
+    // f32 lanes per vector: 16 for a zmm (avx512) gemv kernel, 8 for ymm (avx2/
+    // avx2_vnni_2). Must match the kernel width or the reduction blocking and
+    // the loads disagree.
+    const int simd_w = brg->is_zmm ? 16 : 8;
 
-    assert(utils::one_of(brg->isa_impl, avx2, avx2_vnni, avx2_vnni_2));
+    assert(brg->is_zmm || brg->is_ymm);
     assert(brg->load_dim == 1);
 
     // Blocking parameters for the non-transposed case.

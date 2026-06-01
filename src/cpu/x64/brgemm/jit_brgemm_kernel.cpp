@@ -266,6 +266,11 @@ private:
     Xbyak::Opmask fp8_col_mask = Xbyak::Opmask(4);
     Xbyak::Opmask kmask_fp8_aux = Xbyak::Opmask(5);
     Xbyak::Opmask rd_tail_mask = Xbyak::Opmask(6);
+    // Dedicated mask for the GEMV post-op output store. Must differ from
+    // `rd_tail_mask` (the prologue-set K-tail load mask), otherwise storing one
+    // bd-block would clobber the K-tail mask used by the next bd-block's
+    // accumulation.
+    Xbyak::Opmask gemv_store_mask = Xbyak::Opmask(7);
 
     static int get_max_effective_vregs(const brgemm_desc_t &brg) {
         auto used_vregs = 0;
@@ -750,10 +755,6 @@ U jit_brgemm_kernel_t<Wmm>::vmm_mask(const U vmm_in, bool mask_flag, bool store,
 template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::maybe_set_avx_mask(bool is_tail) {
     if (IMPLICATION(is_tail, isa_has_masks(brg.isa_impl))) return;
-    // Note: `is_tail` may be true even when `gemv_tail == 0`.
-    // In this case, the block is a tail block, but there is no partial
-    // accumulator (only full accumulators are present).
-    if (brg.is_gemv && brg.gemv_tail == 0) return;
     vmovups(vmm_tail_mask(), ptr[rip + avx_tail_mask_]);
 }
 
@@ -1288,17 +1289,41 @@ void jit_brgemm_kernel_t<Wmm>::gemv_apply_bias(
             continue;
         }
 
-        if (brg.gemv_acc_is_vector()) {
-            const int elems = gemv_is_tail_acc(bd, bd_block, is_bdb_tail)
-                    ? brg.gemv_tail
-                    : gemv_elems_per_vector_acc();
-            load_data(brg.dt_bias, bias, reg_aux_bias, bias_offset(bd), elems);
-            uni_vaddps(acc, acc, bias);
+        // Load `elems` bias values as f32 (Zmm-safe): an opmask decorator on
+        // avx512 (f16 keeps a lower-width byte load, since vcvtph2ps has no
+        // opmask), `load_data` on avx2.
+        const bool is_vec = brg.gemv_acc_is_vector();
+        const int elems = !is_vec ? 1
+                : gemv_is_tail_acc(bd, bd_block, is_bdb_tail)
+                ? brg.gemv_tail
+                : gemv_elems_per_vector_acc();
+        const auto bias_addr = ptr[reg_aux_bias + bias_offset(bd)];
+        if (isa_has_masks(brg.isa_impl)) {
+            mov(reg_tmp_gpr, (static_cast<size_t>(1) << elems) - 1);
+            kmovq(rd_tail_mask, reg_tmp_gpr);
+            switch (brg.dt_bias) {
+                case data_type::f32:
+                    uni_vmovups(bias | rd_tail_mask | T_z, bias_addr);
+                    break;
+                case data_type::bf16:
+                    uni_vpmovzxwd(bias | rd_tail_mask | T_z, bias_addr);
+                    uni_vpslld(bias, bias, 16);
+                    break;
+                case data_type::f16:
+                    load_bytes(Vmm_lower_t(bias.getIdx()), bias_addr,
+                            elems * static_cast<int>(sizeof(float16_t)));
+                    uni_vcvtph2psx(bias, Vmm_lower_t(bias.getIdx()));
+                    break;
+                default: assert(!"unsupported bias data type");
+            }
         } else {
-            load_data(brg.dt_bias, bias, reg_aux_bias, bias_offset(bd), 1);
+            load_data(brg.dt_bias, bias, reg_aux_bias, bias_offset(bd), elems);
+        }
+        if (is_vec)
+            uni_vaddps(acc, acc, bias);
+        else
             uni_vaddss(
                     Xmm(acc.getIdx()), Xmm(acc.getIdx()), Xmm(bias.getIdx()));
-        }
     }
 }
 
@@ -1488,7 +1513,16 @@ void jit_brgemm_kernel_t<Wmm>::apply_alpha_beta(
                 if (brg.gemv_acc_is_vector()) {
                     if (!gemv_is_tail_acc(bd, bd_block, is_bdb_tail)) {
                         uni_vaddps(vmm, vmm, ptr_C);
+                    } else if (isa_has_masks(brg.isa_impl)) {
+                        // avx512: masked partial-C load (opmask decorator),
+                        // `vmaskmovps` is VEX-only and can't encode zmm. The
+                        // opmask is set once in the prologue.
+                        uni_vmovups(vmm_prev_dst | rd_tail_mask | T_z, ptr_C);
+                        uni_vaddps(vmm, vmm, vmm_prev_dst);
                     } else {
+                        // avx2: `vmm_beta`/`vmm_tail_mask` share `Vmm(1)`, so
+                        // reload the vector mask before use.
+                        maybe_set_avx_mask(/*is_tail=*/true);
                         vmaskmovps(vmm_prev_dst, vmm_tail_mask(), ptr_C);
                         uni_vaddps(vmm, vmm, vmm_prev_dst);
                     }
@@ -1668,7 +1702,29 @@ void jit_brgemm_kernel_t<Wmm>::reduce_gemv_accumulators(dim_t bd_block) {
     auto workspace = bcst();
     for (dim_t bd = 0; bd < bd_block; bd++) {
         auto acc = accm(1, bd, 0);
-        regops::horizontal_add_ps(this, acc, workspace);
+        if (is_superset(brg.isa_impl, avx512_core)) {
+            // On avx512 the gemv accumulators live in the high vector registers
+            // (zmm16-31). `horizontal_add_ps` reduces via `vextractf128` /
+            // `vhaddps`, which are VEX-only and cannot encode those registers
+            // (the encoder would need EVEX, which those mnemonics lack). Reduce
+            // with EVEX-encodable ops instead (extract + shuffle + add); the
+            // final scalar lands in lane 0, which the gemv store reads.
+            const Xbyak::Zmm zmm_acc(acc.getIdx());
+            const Xbyak::Ymm ymm_acc(acc.getIdx());
+            const Xbyak::Ymm ymm_ws(workspace.getIdx());
+            const Xbyak::Xmm xmm_acc(acc.getIdx());
+            const Xbyak::Xmm xmm_ws(workspace.getIdx());
+            vextractf64x4(ymm_ws, zmm_acc, 1);
+            vaddps(ymm_acc, ymm_acc, ymm_ws);
+            vextractf32x4(xmm_ws, ymm_acc, 1);
+            vaddps(xmm_acc, xmm_acc, xmm_ws);
+            vshufps(xmm_ws, xmm_acc, xmm_acc, 0x4E);
+            vaddps(xmm_acc, xmm_acc, xmm_ws);
+            vshufps(xmm_ws, xmm_acc, xmm_acc, 0xB1);
+            vaddps(xmm_acc, xmm_acc, xmm_ws);
+        } else {
+            regops::horizontal_add_ps(this, acc, workspace);
+        }
     }
 }
 
@@ -1858,7 +1914,61 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
         if (brg.brgattr.hint_prefetchw == brgemm_prfw_loop_store
                 && !is_superset(brg.isa_impl, avx10_2))
             prefetchw(addr);
-        if (is_superset(brg.isa_impl, avx512_core)) {
+        if (brg.is_gemv) {
+            // GEMV store. non-transA reduces each accumulator to a scalar
+            // (elems == 1); transA stores `elems` contiguous outputs. avx512
+            // uses an opmask decorator (`rd_tail_mask`, free on the non-AMX
+            // gemv path) for a single masked store; avx2 (no opmask) uses
+            // `store_data`.
+            const int elems = !brg.gemv_acc_is_vector() ? 1
+                    : gemv_is_tail_acc(bd, bd_block, is_bdb_tail)
+                    ? brg.gemv_tail
+                    : gemv_elems_per_vector_acc();
+            if (isa_has_masks(brg.isa_impl)) {
+                mov(reg_tmp_gpr, (static_cast<size_t>(1) << elems) - 1);
+                kmovq(gemv_store_mask, reg_tmp_gpr);
+                switch (brg.dt_d) {
+                    case data_type::f32:
+                    case data_type::s32:
+                        uni_vmovups(addr, vmm | gemv_store_mask);
+                        break;
+                    case data_type::bf16:
+                        vcvtneps2bf16(vmm_lower, vmm, get_encoding());
+                        vmovdqu16(addr, vmm_lower | gemv_store_mask);
+                        break;
+                    case data_type::f16:
+                        vcvtps2ph(vmm_lower, vmm, _op_mxcsr);
+                        vmovdqu16(addr, vmm_lower | gemv_store_mask);
+                        break;
+                    default: assert(!"unsupported gemv dst data type");
+                }
+            } else if (brg.dt_d == data_type::bf16) {
+                // No avx2_vnni_2 / avx512_core_bf16 on this path, so
+                // `vcvtneps2bf16` is unavailable. Emulate the hardware
+                // round-to-nearest-even f32->bf16 with avx2 integer ops so the
+                // bf16 output matches the wider-isa kernels bit-for-bit.
+                const Xbyak::Ymm ymm_acc = Xbyak::Ymm(vmm.getIdx());
+                const Xbyak::Ymm ymm_bias = Xbyak::Ymm(vmm_tmp(0).getIdx());
+                const Xbyak::Ymm ymm_lsb = Xbyak::Ymm(vmm_tmp(2).getIdx());
+                const Xbyak::Xmm xmm_acc = Xbyak::Xmm(vmm.getIdx());
+                const Xbyak::Xmm xmm_hi = Xbyak::Xmm(ymm_lsb.getIdx());
+                mov(reg_tmp_gpr.cvt32(), 0x00007fff);
+                uni_vmovd(Xbyak::Xmm(ymm_bias.getIdx()), reg_tmp_gpr.cvt32());
+                uni_vpbroadcastd(ymm_bias, Xbyak::Xmm(ymm_bias.getIdx()));
+                uni_vpsrld(ymm_lsb, ymm_acc, 16);
+                uni_vpslld(ymm_lsb, ymm_lsb, 31);
+                uni_vpsrld(ymm_lsb, ymm_lsb, 31); // lsb = (x >> 16) & 1
+                uni_vpaddd(ymm_lsb, ymm_lsb, ymm_bias); // 0x7fff + lsb
+                uni_vpaddd(ymm_acc, ymm_acc, ymm_lsb); // x + rounding bias
+                uni_vpsrld(ymm_acc, ymm_acc, 16); // bf16 in low 16 of dword
+                vextracti128(xmm_hi, ymm_acc, 1);
+                uni_vpackusdw(xmm_acc, xmm_acc, xmm_hi); // pack to words
+                store_bytes(ymm_acc, reg_aux_D, D_offset(bd, ld),
+                        elems * sizeof(bfloat16_t));
+            } else {
+                store_data(brg.dt_d, vmm, reg_aux_D, D_offset(bd, ld), elems);
+            }
+        } else if (is_superset(brg.isa_impl, avx512_core)) {
             const Vmm r_vmm = vmm_mask(vmm, is_tail, true, k_mask);
             const Vmm_lower_t r_ymm
                     = vmm_mask(vmm_lower, is_tail, true, k_mask);
@@ -1899,47 +2009,12 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
                 }
             }
         } else {
-            if (brg.is_gemv) {
-                const int elems = !brg.gemv_acc_is_vector() ? 1
-                        : gemv_is_tail_acc(bd, bd_block, is_bdb_tail)
-                        ? brg.gemv_tail
-                        : gemv_elems_per_vector_acc();
-                if (brg.dt_d == data_type::bf16) {
-                    // No avx2_vnni_2 / avx512_core_bf16 on this path, so
-                    // `vcvtneps2bf16` is unavailable. Emulate the hardware
-                    // round-to-nearest-even f32->bf16 with avx2 integer ops so
-                    // the bf16 output matches the wider-isa kernels bit-for-bit.
-                    const Xbyak::Ymm ymm_acc = Xbyak::Ymm(vmm.getIdx());
-                    const Xbyak::Ymm ymm_bias = Xbyak::Ymm(vmm_tmp(0).getIdx());
-                    const Xbyak::Ymm ymm_lsb = Xbyak::Ymm(vmm_tmp(2).getIdx());
-                    const Xbyak::Xmm xmm_acc = Xbyak::Xmm(vmm.getIdx());
-                    const Xbyak::Xmm xmm_hi = Xbyak::Xmm(ymm_lsb.getIdx());
-                    mov(reg_tmp_gpr.cvt32(), 0x00007fff);
-                    uni_vmovd(
-                            Xbyak::Xmm(ymm_bias.getIdx()), reg_tmp_gpr.cvt32());
-                    uni_vpbroadcastd(ymm_bias, Xbyak::Xmm(ymm_bias.getIdx()));
-                    uni_vpsrld(ymm_lsb, ymm_acc, 16);
-                    uni_vpslld(ymm_lsb, ymm_lsb, 31);
-                    uni_vpsrld(ymm_lsb, ymm_lsb, 31); // lsb = (x >> 16) & 1
-                    uni_vpaddd(ymm_lsb, ymm_lsb, ymm_bias); // 0x7fff + lsb
-                    uni_vpaddd(ymm_acc, ymm_acc, ymm_lsb); // x + rounding bias
-                    uni_vpsrld(ymm_acc, ymm_acc, 16); // bf16 in low 16 of dword
-                    vextracti128(xmm_hi, ymm_acc, 1);
-                    uni_vpackusdw(xmm_acc, xmm_acc, xmm_hi); // pack to words
-                    store_bytes(ymm_acc, reg_aux_D, D_offset(bd, ld),
-                            elems * sizeof(bfloat16_t));
-                } else {
-                    store_data(
-                            brg.dt_d, vmm, reg_aux_D, D_offset(bd, ld), elems);
-                }
-            } else {
-                const dim_t ld_block = is_tail ? brg.ldb_tail : brg.ld_block;
-                if (is_tail && types::data_type_size(brg.dt_b) == sizeof(float))
-                    vmaskmovps(addr, vmm_tail_mask(), vmm);
-                else
-                    store_data(brg.dt_d, vmm, reg_aux_D, D_offset(bd, ld),
-                            ld_block);
-            }
+            const dim_t ld_block = is_tail ? brg.ldb_tail : brg.ld_block;
+            if (is_tail && types::data_type_size(brg.dt_b) == sizeof(float))
+                vmaskmovps(addr, vmm_tail_mask(), vmm);
+            else
+                store_data(
+                        brg.dt_d, vmm, reg_aux_D, D_offset(bd, ld), ld_block);
         }
         if (brg.is_runtime_ldd && bd_block > 1 && ld == ld_block2 - 1)
             reg_D_shift_bytes.addTo(reg_aux_D);
@@ -2074,10 +2149,18 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_without_post_ops(
                 prefetchw(addr_c);
             auto vmm = accm(1, bd, 0);
             if (brg.gemv_acc_is_vector()) {
-                if (gemv_is_tail_acc(bd, bd_block, is_bdb_tail))
-                    vmaskmovps(addr_c, vmm_tail_mask(), vmm);
-                else
+                if (!gemv_is_tail_acc(bd, bd_block, is_bdb_tail))
                     uni_vmovups(addr_c, vmm);
+                else if (isa_has_masks(brg.isa_impl)) {
+                    // avx512: masked store (opmask decorator); `vmaskmovps` is
+                    // VEX-only and can't encode zmm. The opmask is set once in
+                    // the prologue.
+                    uni_vmovups(addr_c | rd_tail_mask, vmm);
+                } else {
+                    // avx2: reload the shared vector mask before use.
+                    maybe_set_avx_mask(/*is_tail=*/true);
+                    vmaskmovps(addr_c, vmm_tail_mask(), vmm);
+                }
             } else {
                 uni_vmovss(addr_c, Xmm(vmm.getIdx()));
             }
@@ -2117,7 +2200,11 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
 
     if (!brg.is_gemv)
         maybe_set_avx_mask(is_ld_tail);
-    else if (brg.gemv_acc_is_vector())
+    else if (brg.gemv_acc_is_vector() && brg.gemv_tail > 0)
+        // The avx2 vector tail mask is only consumed by the partial-vector
+        // store, which requires `gemv_tail > 0`. When `gemv_tail == 0` even a
+        // bdb-tail block stores full vectors, so skip loading the mask (its
+        // data label is only emitted when `gemv_tail > 0`).
         maybe_set_avx_mask(is_bdb_tail);
 
     if (brg.is_tmm) {
@@ -2755,25 +2842,40 @@ void jit_brgemm_kernel_t<Wmm>::gemv_microkernel(
             = [this](const Vmm vmm, const Xbyak::Address addr,
                       const data_type_t dt, bool is_tail, int tail_count) {
         const auto tail_bytes = tail_count * types::data_type_size(dt);
+        const bool use_kmask = isa_has_masks(brg.isa_impl);
         if (dt == data_type::f32) {
-            if (is_tail)
-                vmaskmovps(vmm, vmm_tail_mask(), addr);
-            else
+            if (!is_tail)
                 uni_vmovups(vmm, addr);
+            else if (use_kmask)
+                uni_vmovups(vmm | rd_tail_mask | T_z, addr);
+            else
+                vmaskmovps(vmm, vmm_tail_mask(), addr);
         } else if (dt == data_type::bf16) {
-            if (is_tail) {
-                load_bytes(Xmm(vmm.getIdx()), addr, tail_bytes);
-                uni_vpmovzxwd(vmm, Xmm(vmm.getIdx()));
-            } else {
+            if (!is_tail)
                 uni_vpmovzxwd(vmm, addr);
+            else if (use_kmask)
+                uni_vpmovzxwd(vmm | rd_tail_mask | T_z, addr);
+            else {
+                // avx2 has no opmask: load `tail_count` bf16 into the
+                // lower-width register, then zero-extend.
+                load_bytes(Vmm_lower_t(vmm.getIdx()), addr, tail_bytes);
+                uni_vpmovzxwd(vmm, Vmm_lower_t(vmm.getIdx()));
             }
             uni_vpslld(vmm, vmm, 16);
         } else if (dt == data_type::f16) {
-            if (is_tail) {
-                load_bytes(Xmm(vmm.getIdx()), addr, tail_bytes);
-                uni_vcvtph2psx(vmm, Xmm(vmm.getIdx()));
-            } else {
+            // `uni_vcvtph2psx` itself (EVEX `vcvtph2ps`) encodes high regs, but
+            // its memory form has no opmask. For the tail, load the f16 values
+            // first, then convert: on avx512 use a masked 16-bit load
+            // (`vmovdqu16`, EVEX-safe for high regs); on avx2 fall back to a
+            // lower-width byte load.
+            if (!is_tail)
                 uni_vcvtph2psx(vmm, addr);
+            else if (use_kmask) {
+                vmovdqu16(Vmm_lower_t(vmm.getIdx()) | rd_tail_mask | T_z, addr);
+                uni_vcvtph2psx(vmm, Vmm_lower_t(vmm.getIdx()));
+            } else {
+                load_bytes(Vmm_lower_t(vmm.getIdx()), addr, tail_bytes);
+                uni_vcvtph2psx(vmm, Vmm_lower_t(vmm.getIdx()));
             }
         } else {
             assert(!"unsupported GEMV input data type");
@@ -2799,8 +2901,6 @@ void jit_brgemm_kernel_t<Wmm>::gemv_microkernel(
     };
 
     if (!brg.transA) {
-        maybe_set_avx_mask(is_rd_tail);
-
         load_to_f32(gemv_load_b(), ptr[reg_aux_B], brg.dt_b, is_rd_tail,
                 brg.gemv_tail);
 
@@ -2818,7 +2918,6 @@ void jit_brgemm_kernel_t<Wmm>::gemv_microkernel(
                     = gemv_is_tail_acc(bd, bd_block, is_bdb_tail);
             const auto a_addr = ptr[reg_aux_A + A_offset(bd, 0)];
 
-            if (is_tail_acc) maybe_set_avx_mask(true);
             load_to_f32(gemv_load_a(), a_addr, brg.dt_a, is_tail_acc,
                     brg.gemv_tail);
 
@@ -3085,6 +3184,13 @@ void jit_brgemm_kernel_t<Wmm>::bs_loop(dim_t bd_block2, bool is_bdb_tail,
         const auto is_valid_bd
                 = need_comp_pads && vpad != 0 ? bd_b <= bd_e : bd_b < bd_e;
         if (!is_valid_bd) return;
+
+        // The GEMV avx2 tail uses a vector mask register (`vmm_tail_mask`,
+        // aliased with `Vmm(1)`); load it before the microkernel runs. On
+        // avx512 the dedicated opmask is set once in the prologue, so this is a
+        // no-op there.
+        if (brg.is_gemv && brg.gemv_tail > 0)
+            maybe_set_avx_mask(/*is_tail=*/true);
 
         if (brg.is_tmm) {
             const bool is_rd_tail = false;
@@ -3547,6 +3653,15 @@ void jit_brgemm_kernel_t<Wmm>::generate() {
         kmovq(ld_full_mask, reg_mask);
         mov(reg_mask, tail_mask);
         kmovq(ld_tail_mask, reg_mask);
+
+        // GEMV uses a dedicated opmask (`rd_tail_mask`) for its single tail
+        // (the K-reduction tail for non-transA, the M-output tail for transA).
+        // It is loop-invariant and the opmask is never reused on the gemv path,
+        // so set it once here.
+        if (brg.is_gemv && brg.gemv_tail > 0) {
+            mov(reg_mask, (static_cast<size_t>(1) << brg.gemv_tail) - 1);
+            kmovq(rd_tail_mask, reg_mask);
+        }
     }
 
     if (brg.is_int8 && !brg.has_int8_vnni) {

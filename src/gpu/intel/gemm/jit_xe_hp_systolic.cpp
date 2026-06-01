@@ -20,6 +20,7 @@
 #include "common/type_helpers.hpp"
 #include "common/verbose_msg.hpp"
 #include "gpu/intel/compute/utils.hpp"
+#include "gpu/intel/gemm/jit/pd.hpp"
 #include "gpu/intel/gemm/jit/walk_orders.hpp"
 #include "gpu/intel/gemm/utils.hpp"
 #include "gpu/intel/gemm/xe_systolic_copy_kernel.hpp"
@@ -159,6 +160,18 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
                     VERBOSE_UNSUPPORTED_ZP_CFG);
         }
     }
+
+    // Phase A finalizer — seed the kernel projection (scalars, matrix types,
+    // orientation, post-op binary metadata) into cfg_, shared with gen_t.
+    CHECK(seed_problem(cfg_));
+
+    // Phase B — systolic never swaps A/B (decide_swap_ab is the base default
+    // false). swap_fold is then a no-op that only records swap_ab=false, so
+    // cfg_ stays in (kernel == user) orientation. pad_lda is intentionally
+    // not run: systolic does not pad degenerate leading dims.
+    bool swap = decide_swap_ab(cfg_);
+    VDISPATCH_GEMM(!swap, VERBOSE_UNSUPPORTED_FEATURE, "swap_ab");
+    jit::swap_fold(cfg_, swap);
 
     init_scratchpad();
 
@@ -552,43 +565,34 @@ status_t xe_hp_systolic_t::init(impl::engine_t *engine) {
 
 status_t xe_hp_systolic_t::init_compute(impl::engine_t *engine) {
     using kd_t = jit::gen_xe_systolic_kernel_desc_t;
+    using namespace gemmstone;
 
     auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto &dev_info = *intel_engine->device_info();
 
     const auto d = pd()->desc();
-
     auto a_type = d->a_type();
-    auto b_type = d->b_type();
-    auto c_type = d->c_type();
-    auto co_type = pd()->impl_co_type();
-    auto acc_type = pd()->impl_acc_type();
-    bool trans_co = pd()->with_bias() && (d->trans_bias() == dnnl_trans);
+
+    // Build the canonical problem from the shared cfg/problem init path
+    // (same init_GEMMProblem as gen_t). The systolic kernel-descriptor
+    // selector specializes its packed addressing on top of this problem.
+    GEMMProblem base;
+    CHECK(pd()->init_GEMMProblem(base, intel_engine, pd()->cfg()));
+    problem_ = base;
 
     bool may_k_block
             = (d->k() > kd_t::min_block_k(a_type)) && pd()->allow_k_blocking();
     bool got_info = false;
 
-    const auto &post_ops_ = pd()->cfg().post_ops;
-    bool with_post_ops = (post_ops_.find(primitive_kind::eltwise) != -1)
-            || (post_ops_.find(primitive_kind::binary) != -1)
-            || (post_ops_.find(primitive_kind::prelu) != -1);
-    gpu_post_ops_t gpu_post_ops;
-    CHECK(gpu_post_ops_t::make(gpu_post_ops, post_ops_, pd()->dst_md(),
-            pd()->get_post_op_specializations()));
+    // Non-sum post-ops (binary/eltwise/prelu, including converted A/B/C scales
+    // and bias) force the final-k-block kernel to differ from the partial one.
+    bool with_post_ops = base.hasNonSum1PostOp();
 
-    kd_t kd_full;
-
-    auto status = kd_full.select_kernel(*intel_engine->device_info(),
-            pd()->with_batch(), pd()->packed_c(), trans_co,
-            pd()->with_a_zero_points(), pd()->with_b_zero_points(),
-            pd()->with_c_zero_points(), pd()->with_bias(), pd()->alpha(),
-            pd()->beta(), a_type, b_type, c_type, dnnl_s32, dnnl_s32, co_type,
-            acc_type, d->m(), d->n(), d->k(), d->batch(), pd()->unroll_m(),
-            pd()->unroll_n(), pd()->alt(), std::move(gpu_post_ops));
-
-    if (status != status::success) return status;
-
-    problem_ = *kd_full.problem();
+    auto select = [&](kd_t &kd, const GEMMProblem &p, float beta) {
+        return kd.select_kernel(dev_info, p, pd()->with_batch(),
+                pd()->packed_c(), pd()->alpha(), beta, d->m(), d->n(), d->k(),
+                d->batch(), pd()->unroll_m(), pd()->unroll_n(), pd()->alt());
+    };
 
     for (bool first_k_block : {false, true}) {
         for (bool last_k_block : {false, true}) {
@@ -601,36 +605,23 @@ status_t xe_hp_systolic_t::init_compute(impl::engine_t *engine) {
                 kernel_[first_k_block][last_k_block]
                         = kernel_[false][last_k_block];
             else {
-                auto this_beta = pd()->beta();
-                bool this_c_offset = pd()->with_c_zero_points();
-                const post_ops_t *this_post_ops = &pd()->cfg().post_ops;
-                post_ops_t no_post_ops;
+                float this_beta = first_k_block ? pd()->beta() : 1.0f;
 
-                if (!first_k_block) this_beta = 1.0f;
+                // Produce the k-block variant by mutating a clone of the base
+                // problem. Non-final k-blocks drop the C zero-point (Post)
+                // offset and all post-ops (bias (Pre) is retained); this is
+                // the old this_c_offset=false + empty-post-ops variant.
+                GEMMProblem p = base;
                 if (!last_k_block) {
-                    this_c_offset = false;
-                    this_post_ops = &no_post_ops;
+                    if (p.cOffset == COffset::Post) p.cOffset = COffset::None;
+                    p.postOps = {};
+                    p.binary.clear();
+                    p.Tbinary.clear();
                 }
-                CHECK(gpu_post_ops_t::make(gpu_post_ops, *this_post_ops,
-                        pd()->dst_md(), pd()->get_post_op_specializations()));
 
                 kd_t kd;
-
-                auto status = kd.select_kernel(*intel_engine->device_info(),
-                        pd()->with_batch(), pd()->packed_c(), trans_co,
-                        pd()->with_a_zero_points(), pd()->with_b_zero_points(),
-                        this_c_offset, pd()->with_bias(), pd()->alpha(),
-                        this_beta, a_type, b_type, c_type, dnnl_s32, dnnl_s32,
-                        co_type, acc_type, d->m(), d->n(), d->k(), d->batch(),
-                        pd()->unroll_m(), pd()->unroll_n(), pd()->alt(),
-                        std::move(gpu_post_ops));
-
+                auto status = select(kd, p, this_beta);
                 if (status != status::success) return status;
-
-                // Protection against C zero-point host scalar implementation in gen gemm
-                auto *kd_problem
-                        = const_cast<gemmstone::GEMMProblem *>(kd.problem());
-                kd_problem->coPtrDims = pd()->cfg().c_quant.zp_ndims;
 
                 if (!got_info) {
                     compute_info_ = *kd.driver_info();
@@ -976,7 +967,7 @@ status_t xe_hp_systolic_t::execute(const exec_ctx_t &ctx) const {
     const memory_storage_t *po_srcs[GEMM_MAX_PO];
 
     const auto &cfg = pd()->cfg();
-    int po_count = cfg.post_ops.len();
+    int po_count = int(cfg.binary_srcs.size());
     assert(po_count <= GEMM_MAX_PO);
 
     for (int i = 0; i < po_count; i++) {

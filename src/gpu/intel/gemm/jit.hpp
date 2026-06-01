@@ -96,21 +96,11 @@ struct gen_t : public primitive_t {
                             d->lda(), d->ldb(), d->ldc(), d->batch()),
                     VERBOSE_UNSUPPORTED_TAG);
 
-            // Seed the cfg's user-orientation A/B/C scalars. Phase B
-            // (pad_lda + swap_fold) reads/mutates these in place.
-            cfg_.a_type = d->a_type();
-            cfg_.b_type = d->b_type();
-            cfg_.c_type = d->c_type();
-            cfg_.m = d->m();
-            cfg_.n = d->n();
-            cfg_.k = d->k();
-            cfg_.lda = lda_;
-            cfg_.ldb = ldb_;
-            cfg_.ldc = d->ldc();
-            cfg_.trans_a = transa_;
-            cfg_.trans_b = transb_;
-            cfg_.sum_ab = d->sum_ab;
-            cfg_.trans_co = (d->trans_bias() == dnnl_trans);
+            // Seed the kernel projection (A/B/C scalars, matrix types, A/B/C/CO
+            // orientation, and post-op binary metadata) in user orientation;
+            // swap_fold's cfg.problem.transpose() folds it to kernel orientation
+            // below. Shared with xe_hp_systolic via jit::pd_t::seed_problem.
+            CHECK(seed_problem(cfg_));
 
             // Phase B — decide swap, pad lda/ldb, fold into kernel
             // orientation. After this point cfg_ is the kernel projection.
@@ -120,59 +110,50 @@ struct gen_t : public primitive_t {
             VDISPATCH_GEMM(IMPLICATION(d->transc() == dnnl_trans, swap),
                     VERBOSE_UNSUPPORTED_TAG);
             jit::pad_lda(cfg_, swap);
-            // Keep pd_t::lda_/ldb_/transa_/transb_ in sync with the
-            // user-orientation pad applied via pad_lda, since pd_t::ld()
-            // / trans_a() consumers (e.g. align()) read them.
-            lda_ = cfg_.lda;
-            ldb_ = cfg_.ldb;
-            transa_ = cfg_.trans_a;
-            transb_ = cfg_.trans_b;
             jit::swap_fold(cfg_, swap);
-            // Mirror cfg_ alignments so pd_t::align() (which still reads
-            // user-orientation ld(arg)) feeds init_GEMMProblem consistently.
-            cfg_.align_a = align(swap ? DNNL_ARG_B : DNNL_ARG_A);
-            cfg_.align_b = align(swap ? DNNL_ARG_A : DNNL_ARG_B);
-            cfg_.align_c = align(DNNL_ARG_C);
+            // cfg_ is now the kernel projection. Leading-dim alignments are
+            // derived inside init_GEMMProblem from the swap-folded cfg.
 
             const auto &cfg = cfg_;
 
             // Phase C — kernel-capability checks (read from cfg).
-            if (utils::one_of(cfg.c_type, s32, f16, bf16, f32, u8, s8)
-                    && utils::one_of(cfg.a_type, u8, s8, u4, s4)) {
+            if (utils::one_of(cfg.c_type(), s32, f16, bf16, f32, u8, s8)
+                    && utils::one_of(cfg.a_type(), u8, s8, u4, s4)) {
                 VDISPATCH_GEMM(
-                        (utils::one_of(cfg.b_type, u8, s8) || wei_decomp()),
+                        (utils::one_of(cfg.b_type(), u8, s8) || wei_decomp()),
                         VERBOSE_UNSUPPORTED_DT);
 
-                VDISPATCH_GEMM(IMPLICATION(utils::one_of(cfg.c_type, f32, s8,
+                VDISPATCH_GEMM(IMPLICATION(utils::one_of(cfg.c_type(), f32, s8,
                                                    u8, f16, bf16),
                                        arch_ >= arch_t::xe_hp),
                         VERBOSE_ISA_DT_MISMATCH);
-            } else if (utils::one_of(cfg.a_type, f16, bf16)) {
-                VDISPATCH_GEMM(cfg.b_type == cfg.a_type,
+            } else if (utils::one_of(cfg.a_type(), f16, bf16)) {
+                VDISPATCH_GEMM(cfg.b_type() == cfg.a_type(),
                         VERBOSE_INCONSISTENT_DT, "a", "b");
-                VDISPATCH_GEMM(utils::one_of(cfg.c_type, cfg.a_type, f32,
+                VDISPATCH_GEMM(utils::one_of(cfg.c_type(), cfg.a_type(), f32,
                                        f8_e5m2, f8_e4m3),
                         VERBOSE_INCONSISTENT_DT, "a", "c");
-                VDISPATCH_GEMM(utils::one_of(d->acc_type, cfg.a_type, f32),
+                VDISPATCH_GEMM(utils::one_of(d->acc_type, cfg.a_type(), f32),
                         VERBOSE_INCONSISTENT_DT, "a", "acc");
             } else if (!wei_decomp()) {
-                VDISPATCH_GEMM(utils::one_of(cfg.a_type, f64, f32, f16, bf16,
+                VDISPATCH_GEMM(utils::one_of(cfg.a_type(), f64, f32, f16, bf16,
                                        f8_e5m2, f8_e4m3, f4_e2m1, f4_e3m0),
                         VERBOSE_UNSUPPORTED_DT);
-                VDISPATCH_GEMM(
-                        (cfg.b_type == cfg.a_type
-                                || (utils::one_of(cfg.a_type, f8_e5m2, f8_e4m3)
-                                        && utils::one_of(
-                                                cfg.b_type, f8_e5m2, f8_e4m3))
-                                || (utils::one_of(cfg.a_type, f4_e2m1, f4_e3m0)
-                                        && utils::one_of(
-                                                cfg.b_type, f4_e2m1, f4_e3m0))),
+                VDISPATCH_GEMM((cfg.b_type() == cfg.a_type()
+                                       || (utils::one_of(cfg.a_type(), f8_e5m2,
+                                                   f8_e4m3)
+                                               && utils::one_of(cfg.b_type(),
+                                                       f8_e5m2, f8_e4m3))
+                                       || (utils::one_of(cfg.a_type(), f4_e2m1,
+                                                   f4_e3m0)
+                                               && utils::one_of(cfg.b_type(),
+                                                       f4_e2m1, f4_e3m0))),
                         VERBOSE_INCONSISTENT_DT, "a", "b");
-                VDISPATCH_GEMM(utils::one_of(d->acc_type, cfg.a_type, f32),
+                VDISPATCH_GEMM(utils::one_of(d->acc_type, cfg.a_type(), f32),
                         VERBOSE_UNSUPPORTED_DT);
-                VDISPATCH_GEMM(
-                        IMPLICATION(utils::one_of(f64, cfg.a_type, cfg.b_type),
-                                dev_info_->has_native(f64)),
+                VDISPATCH_GEMM(IMPLICATION(utils::one_of(f64, cfg.a_type(),
+                                                   cfg.b_type()),
+                                       dev_info_->has_native(f64)),
                         VERBOSE_UNSUPPORTED_DT);
             }
 
@@ -191,7 +172,7 @@ struct gen_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_BIAS_CFG);
             VDISPATCH_GEMM(
                     IMPLICATION(with_bias_orig,
-                            (cfg.c_type != f64 || d->bias_type() == f64)),
+                            (cfg.c_type() != f64 || d->bias_type() == f64)),
                     VERBOSE_UNSUPPORTED_BIAS_CFG);
             VDISPATCH_GEMM(
                     IMPLICATION(with_sum_ab(),
@@ -200,8 +181,11 @@ struct gen_t : public primitive_t {
                                             DNNL_ARG_DST))),
                     VERBOSE_UNSUPPORTED_ATTR);
 
-            VDISPATCH_GEMM(cfg.post_ops.check_sum_consistency(cfg.c_type,
-                                   utils::one_of(cfg.a_type, s8, u8)),
+            // check_sum_consistency inspects only the sum entry, which the
+            // bias/scale->binary conversions leave untouched, so the original
+            // user post-ops give the same verdict as the converted list did.
+            VDISPATCH_GEMM(attr()->post_ops_.check_sum_consistency(cfg.c_type(),
+                                   utils::one_of(cfg.a_type(), s8, u8)),
                     VERBOSE_UNSUPPORTED_POSTOP);
             auto c_kernel_type
                     = jit::convert_dnnl_to_kernel_type(desc_.c_desc.data_type);
@@ -212,9 +196,16 @@ struct gen_t : public primitive_t {
                         VERBOSE_SHAPE_RESTRICTION);
             }
 
-            bool with_binary = (cfg.post_ops.find(binary) != -1)
-                    || (cfg.post_ops.find(prelu) != -1);
-            bool with_eltwise = (cfg.post_ops.find(eltwise) != -1);
+            // Derive from the lowered, swap-folded problem.postOps (prelu is
+            // lowered to a binary there, matching the old find(binary)||
+            // find(prelu); converted scales/bias are binaries too, as before).
+            bool with_binary = cfg.problem.hasBinaryPostOp();
+            bool with_eltwise = false;
+            for (size_t i = 0; i < cfg.problem.postOps.len(); i++)
+                if (cfg.problem.postOps[i].is_eltwise()) {
+                    with_eltwise = true;
+                    break;
+                }
 
             // Check GPU architecture.
             bool arch_ok = utils::one_of(arch_, arch_t::xe_lp, arch_t::xe_hp,
@@ -227,9 +218,9 @@ struct gen_t : public primitive_t {
 
             // Grouped scales break pre-XeHPG kernels due to increased register pressure
             bool A_grouped
-                    = 1 < cfg.a_quant.group_k && cfg.a_quant.group_k < cfg.k;
+                    = 1 < cfg.problem.aqGroupK && cfg.problem.aqGroupK < cfg.k;
             bool B_grouped
-                    = 1 < cfg.b_quant.group_k && cfg.b_quant.group_k < cfg.k;
+                    = 1 < cfg.problem.bqGroupK && cfg.problem.bqGroupK < cfg.k;
             VDISPATCH_GEMM(IMPLICATION(arch_ == compute::gpu_arch_t::xe_lp,
                                    !(A_grouped || B_grouped)),
                     VERBOSE_UNSUPPORTED_FEATURE, "grouped scales");
@@ -237,7 +228,7 @@ struct gen_t : public primitive_t {
             // Size checks for fused reduction kernels.
             if (with_sum_ab()) {
                 auto mnk = cfg.m * cfg.n * cfg.k;
-                if (arch_ == arch_t::xe_hpc && cfg.a_type == f32)
+                if (arch_ == arch_t::xe_hpc && cfg.a_type() == f32)
                     VDISPATCH_GEMM(
                             (mnk <= 256 * 1024 * 1024), VERBOSE_LARGE_SHAPES);
             }
@@ -302,8 +293,8 @@ struct gen_t : public primitive_t {
                 if (kernel_desc_.driver_info()->kParallel()
                         && !kernel_desc_.driver_info()->fusedPostOps()) {
                     bool po_valid = !cfg.non_scale_po
-                            && !(cfg.with_sum && with_c_scales())
-                            && utils::one_of(cfg.c_type, f32, s32);
+                            && !(with_sum() && with_c_scales())
+                            && utils::one_of(cfg.c_type(), f32, s32);
                     if (!po_valid && print_verbose)
                         dnnl::impl::verbose_printf(
                                 "info,gpu,gemm,skipping:%s,Invalid post op.\n",
@@ -313,7 +304,7 @@ struct gen_t : public primitive_t {
                 // Limited post-op support for low-precision accumulation.
                 if (kernel_desc_.problem()->Tc.size() < 4) {
                     bool need_x32_acc = with_binary
-                            || !IMPLICATION(cfg.with_sum, cfg.sum_at_begin);
+                            || !IMPLICATION(with_sum(), sum_at_begin());
                     valid &= !need_x32_acc;
                     if (need_x32_acc && print_verbose)
                         dnnl::impl::verbose_printf(

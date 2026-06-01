@@ -70,14 +70,17 @@ int quant_entry_ndims(
 }
 
 bool a_grouped(const kernel_config_t &cfg) {
-    bool k_grouped = 1 < cfg.a_quant.group_k && cfg.a_quant.group_k < cfg.k;
-    bool m_grouped = 1 < cfg.a_quant.group_m && cfg.a_quant.group_m < cfg.m;
+    // Group sizes live in cfg.problem (populated in Phase A, kernel-oriented
+    // after swap_fold). The sole caller (init_GEMMProblem) is post-swap, so
+    // cfg.problem.aqGroup* matches the old post-swap cfg.a_quant.group_*.
+    bool k_grouped = 1 < cfg.problem.aqGroupK && cfg.problem.aqGroupK < cfg.k;
+    bool m_grouped = 1 < cfg.problem.aqGroupM && cfg.problem.aqGroupM < cfg.m;
     return k_grouped || m_grouped;
 }
 
 bool b_grouped(const kernel_config_t &cfg) {
-    bool k_grouped = 1 < cfg.b_quant.group_k && cfg.b_quant.group_k < cfg.k;
-    bool n_grouped = 1 < cfg.b_quant.group_n && cfg.b_quant.group_n < cfg.n;
+    bool k_grouped = 1 < cfg.problem.bqGroupK && cfg.problem.bqGroupK < cfg.k;
+    bool n_grouped = 1 < cfg.problem.bqGroupN && cfg.problem.bqGroupN < cfg.n;
     return k_grouped || n_grouped;
 }
 
@@ -85,11 +88,6 @@ bool b_grouped(const kernel_config_t &cfg) {
 
 status_t pd_t::init(impl::engine_t *engine, compute::gpu_arch_t arch) {
     arch_ = arch;
-
-    lda_ = desc()->lda();
-    ldb_ = desc()->ldb();
-    transa_ = desc()->transa() == dnnl_trans;
-    transb_ = desc()->transb() == dnnl_trans;
 
     // Phase A — populate cfg in user orientation. The validators (scales_ok,
     // zp_ok, gs_ok) are interleaved with the populators here because
@@ -112,15 +110,19 @@ status_t pd_t::init_post_ops(kernel_config_t &cfg, impl::engine_t *engine) {
 
     const auto d = desc();
 
-    // Examine post-ops and remember binary srcs.
-    cfg.post_ops = attr()->post_ops_;
-    cfg.binary_srcs.reserve(cfg.post_ops.len() + 4);
+    // Examine post-ops and remember binary srcs. The converted list lives only
+    // in this transient `po`; its lowered form is committed to cfg.problem.postOps
+    // at the end of this function. The per-entry runtime residue (source md +
+    // arg routing) is captured into cfg.binary_srcs[*] as we go.
+    post_ops_t po = attr()->post_ops_;
+    cfg.binary_srcs.reserve(po.len() + 4);
 
     bool ok = true;
+    bool seen_sum = false;
     int prelu_count = 0;
-    const int num_orig_postops = cfg.post_ops.len();
-    for (int i = 0; i < cfg.post_ops.len(); i++) {
-        const auto &e = cfg.post_ops.entry_[i];
+    const int num_orig_postops = po.len();
+    for (int i = 0; i < po.len(); i++) {
+        const auto &e = po.entry_[i];
         switch (e.kind) {
             case binary:
                 ok &= supported_binary_op(e.binary.alg)
@@ -128,12 +130,12 @@ status_t pd_t::init_post_ops(kernel_config_t &cfg, impl::engine_t *engine) {
                                 &e.binary.src1_desc);
                 cfg.binary_srcs.push_back(
                         binary_src_t {binary_src_t::binary, int(i)});
+                cfg.binary_srcs.back().src_md = e.binary.src1_desc;
                 cfg.non_scale_po = true;
                 break;
             case sum:
-                ok &= !cfg.with_sum;
-                cfg.with_sum = true;
-                cfg.sum_at_begin = (i == 0);
+                ok &= !seen_sum;
+                seen_sum = true;
                 cfg.binary_srcs.push_back(binary_src_t {binary_src_t::none, 0});
                 cfg.beta = e.sum.scale;
                 break;
@@ -142,16 +144,19 @@ status_t pd_t::init_post_ops(kernel_config_t &cfg, impl::engine_t *engine) {
                 cfg.binary_srcs.push_back(binary_src_t {binary_src_t::none, 0});
                 cfg.non_scale_po = true;
                 break;
-            case prelu:
+            case prelu: {
+                memory_desc_t prelu_md = {};
+                ok &= get_prelu_md(e.prelu.mask, dst_md()->dims, prelu_md,
+                              dst_md()->ndims)
+                        == status::success;
                 cfg.binary_srcs.push_back(
                         binary_src_t {binary_src_t::prelu, int(i)});
-                ok &= get_prelu_md(e.prelu.mask, dst_md()->dims,
-                              cfg.prelu_wei_md, dst_md()->ndims)
-                        == status::success;
+                cfg.binary_srcs.back().src_md = prelu_md;
                 prelu_count++;
                 ok &= prelu_count <= 1;
                 cfg.non_scale_po = true;
                 break;
+            }
             default: VDISPATCH_GEMM(false, VERBOSE_UNSUPPORTED_POSTOP);
         }
     }
@@ -165,25 +170,27 @@ status_t pd_t::init_post_ops(kernel_config_t &cfg, impl::engine_t *engine) {
     const auto &b_scales = attr()->scales_.get(DNNL_ARG_B);
     const auto &c_scales = attr()->scales_.get(DNNL_ARG_C);
 
-    cfg.bias_via_binary = (desc()->bias_type() != data_type::undef)
+    // Transient: bias is folded into a binary post-op (it never outlives this
+    // function — `with_bias` below captures the persistent signal).
+    const bool bias_via_binary = (desc()->bias_type() != data_type::undef)
             && (d->bias_desc.ndims >= 1 || !a_scales.has_default_values()
                     || !b_scales.has_default_values()
                     || !attr()->zero_points_.has_default_values(DNNL_ARG_C));
-    if (cfg.bias_via_binary) {
-        VDISPATCH_GEMM_SC(
-                cfg.post_ops.prepend_binary(binary_add, &d->bias_desc),
+    if (bias_via_binary) {
+        VDISPATCH_GEMM_SC(po.prepend_binary(binary_add, &d->bias_desc),
                 "%s: bias via binary post-op", VERBOSE_UNSUPPORTED_POSTOP);
         cfg.binary_srcs.insert(
                 cfg.binary_srcs.begin(), binary_src_t {binary_src_t::bias, 0});
+        cfg.binary_srcs.front().src_md = d->bias_desc;
     }
-    cfg.non_scale_po |= cfg.bias_via_binary;
+    cfg.non_scale_po |= bias_via_binary;
 
     // Bias-cfg derivatives. `with_bias` is false when bias was
     // converted to a binary post-op above; `ld_bias` is still needed
     // by `ld_binary` in that case (the bias is still the binary
     // post-op's source), so populate it whenever a bias exists.
     if (desc()->bias_type() != data_type::undef) {
-        cfg.with_bias = !cfg.bias_via_binary;
+        cfg.with_bias = !bias_via_binary;
         unsigned char to_cmask[8] = {0, 4, 2, 6, 1, 5, 3, 7};
         assert(unsigned(desc()->bias_mask()) < 8);
         cfg.bias_cmask = cfg.with_bias ? to_cmask[desc()->bias_mask() & 7] : -1;
@@ -191,7 +198,7 @@ status_t pd_t::init_post_ops(kernel_config_t &cfg, impl::engine_t *engine) {
     }
 
     auto maybe_convert_scales_to_postop
-            = [this, &cfg, engine](const memory_desc_t &scale_md, int arg,
+            = [this, &cfg, &po, engine](const memory_desc_t &scale_md, int arg,
                       int scale_ndims, bool mx, bool &converted) -> status_t {
         auto ndims = desc()->c_desc.ndims;
         // Scales on A/B can be converted to postops if
@@ -203,38 +210,41 @@ status_t pd_t::init_post_ops(kernel_config_t &cfg, impl::engine_t *engine) {
         convert &= !mx;
         if (convert) {
             if (arg == DNNL_ARG_C) {
-                VDISPATCH_GEMM_SC(
-                        cfg.post_ops.append_binary(binary_div, &scale_md),
+                VDISPATCH_GEMM_SC(po.append_binary(binary_div, &scale_md),
                         "%s: %s scales via binary post-op",
                         VERBOSE_UNSUPPORTED_POSTOP, arg2str(arg).c_str());
                 cfg.binary_srcs.push_back(
                         binary_src_t {binary_src_t::scales, arg});
+                cfg.binary_srcs.back().src_md = scale_md;
             } else {
-                VDISPATCH_GEMM_SC(
-                        cfg.post_ops.prepend_binary(binary_mul, &scale_md),
+                VDISPATCH_GEMM_SC(po.prepend_binary(binary_mul, &scale_md),
                         "%s: %s scales via binary post-op",
                         VERBOSE_UNSUPPORTED_POSTOP, arg2str(arg).c_str());
                 cfg.binary_srcs.insert(cfg.binary_srcs.begin(),
                         binary_src_t {binary_src_t::scales, arg});
+                cfg.binary_srcs.front().src_md = scale_md;
             }
             converted = true;
         }
         return status::success;
     };
 
+    // cfg.problem.{as,bs,cs}PtrDims were populated from scale_ndims in
+    // init_attrs; converting scales to post-ops drops the A/B scale arg, so
+    // reset the corresponding ptr-dims to -1 (matches the old scale_ndims=-1).
     if (!a_scales.has_default_values() && !a_scales.is_host_scalar()) {
         // Host scalar scale will be converted to Alpha
         bool converted;
         CHECK(maybe_convert_scales_to_postop(cfg.a_scale_md, DNNL_ARG_A,
-                cfg.a_quant.scale_ndims, a_scales.is_mx(), converted));
-        if (converted) cfg.a_quant.scale_ndims = -1;
+                cfg.problem.asPtrDims, a_scales.is_mx(), converted));
+        if (converted) cfg.problem.asPtrDims = -1;
     }
 
     if (!b_scales.has_default_values() && !b_scales.is_host_scalar()) {
         bool converted;
         CHECK(maybe_convert_scales_to_postop(cfg.b_scale_md, DNNL_ARG_B,
-                cfg.b_quant.scale_ndims, b_scales.is_mx(), converted));
-        if (converted) cfg.b_quant.scale_ndims = -1;
+                cfg.problem.bsPtrDims, b_scales.is_mx(), converted));
+        if (converted) cfg.problem.bsPtrDims = -1;
     }
 
     bool try_c_scale = !c_scales.is_host_scalar()
@@ -242,12 +252,56 @@ status_t pd_t::init_post_ops(kernel_config_t &cfg, impl::engine_t *engine) {
     if (!c_scales.has_default_values() && try_c_scale) {
         bool converted;
         CHECK(maybe_convert_scales_to_postop(cfg.c_scale_md, DNNL_ARG_C,
-                cfg.c_quant.scale_ndims, c_scales.is_mx(), converted));
+                cfg.problem.csPtrDims, c_scales.is_mx(), converted));
         // Conversion of dst scales to post ops is currently supported for all
         // cases supported in the library.
         gpu_assert(converted || c_scales.is_mx())
                 << "Unable to convert dst scales to a post op";
     }
+
+    // Commit the converted post-ops to the kernel projection in user
+    // orientation; swap_fold's cfg.problem.transpose() folds postOps/binary
+    // afterward. The transient `po` is not stored on the cfg — only the
+    // lowered problem.postOps + binary_srcs (with per-entry src_md) survive.
+    gpu_post_ops_t gpu_post_ops;
+    CHECK(gpu_post_ops_t::make(
+            gpu_post_ops, po, dst_md(), get_post_op_specializations()));
+    CHECK(transfer_post_ops(cfg.problem, std::move(gpu_post_ops)));
+
+    return status::success;
+}
+
+status_t pd_t::seed_problem(kernel_config_t &cfg) {
+    const auto d = desc();
+
+    // Seed the cfg's user-orientation A/B/C scalars. Phase B (pad_lda +
+    // swap_fold) reads/mutates these in place.
+    cfg.m = d->m();
+    cfg.n = d->n();
+    cfg.k = d->k();
+    cfg.lda = d->lda();
+    cfg.ldb = d->ldb();
+    cfg.ldc = d->ldc();
+
+    // Seed the embedded problem's matrix types and A/B/C/CO orientation
+    // (user orientation); swap_fold's transpose() folds them downstream.
+    // cfg.{a,b,c}_type()/trans_a()/trans_b() project them back to dnnl, and
+    // init_GEMMProblem consumes them via `problem = cfg.problem`.
+    using gemmstone::MatrixLayout;
+    auto to_layout
+            = [](bool t) { return t ? MatrixLayout::T : MatrixLayout::N; };
+    cfg.problem.Ta_ext = convert_dnnl_to_kernel_type(d->a_type());
+    cfg.problem.Tb_ext = convert_dnnl_to_kernel_type(d->b_type());
+    cfg.problem.Tc_ext = convert_dnnl_to_kernel_type(d->c_type());
+    cfg.problem.A.layout = to_layout(d->transa() == dnnl_trans);
+    cfg.problem.B.layout = to_layout(d->transb() == dnnl_trans);
+    cfg.problem.C.layout = MatrixLayout::N;
+    cfg.problem.CO.layout = to_layout(d->trans_bias() == dnnl_trans);
+
+    // The post-op binary metadata (problem.postOps/binary/Tbinary) is committed
+    // by init_post_ops (in user orientation, before this seed runs); swap_fold's
+    // cfg.problem.transpose() folds it along with the A/B/C/CO orientation set
+    // above.
 
     return status::success;
 }
@@ -312,71 +366,86 @@ status_t pd_t::init_attrs(kernel_config_t &cfg, impl::engine_t *engine) {
     VDISPATCH_GEMM_SC(c_scales.get_md(cfg.c_scale_md, desc_.c_desc),
             VERBOSE_DESC_CREATION_FAIL, "C scales");
 
+    // Collapse the per-side quant inputs directly into cfg.problem (the kernel
+    // projection) in user orientation; swap_fold transposes it in Phase B via
+    // problem.transpose(). Done here in Phase A so the validators (which run
+    // before init_post_ops) read cfg.problem rather than raw quant scalars.
+    // init_post_ops re-derives the A/B scale ptr-dims if it converts scales
+    // into post-ops. Matrix types (Ta/Tb/Tc_ext) are seeded separately in
+    // gen_t::pd_t::init (still undef here).
+    auto &p = cfg.problem;
     auto ndims = d->c_desc.ndims;
-    cfg.a_quant.zp_ndims = quant_entry_ndims(a_zps, cfg.a_zp_md, ndims - 2);
-    cfg.b_quant.zp_ndims = quant_entry_ndims(b_zps, cfg.b_zp_md, ndims - 1);
-    cfg.c_quant.zp_ndims = quant_entry_ndims(c_zps, cfg.c_zp_md, -1);
-    cfg.a_quant.gs_ndims = quant_entry_ndims(a_gs, cfg.a_gs_md, ndims - 2);
-    cfg.b_quant.gs_ndims = quant_entry_ndims(b_gs, cfg.b_gs_md, ndims - 1);
-    cfg.a_quant.scale_ndims
-            = quant_entry_ndims(a_scales, cfg.a_scale_md, ndims - 2);
-    cfg.b_quant.scale_ndims
-            = quant_entry_ndims(b_scales, cfg.b_scale_md, ndims - 1);
-    cfg.c_quant.scale_ndims = quant_entry_ndims(c_scales, cfg.c_scale_md, -1);
 
-    cfg.a_quant.scales_type = a_scales.get_data_type();
-    cfg.a_quant.zp_type = a_zps.get_data_type();
-    cfg.a_quant.gs_type = a_gs.get_data_type();
-    cfg.a_quant.force_gs = !a_gs.has_default_values();
-    cfg.a_quant.zp_host_scalar = a_zp_host_scalar();
+    // A/B zero points. A host-scalar zp folds aoPtrDims/boPtrDims to -1.
+    const int a_zp_ndims = quant_entry_ndims(a_zps, cfg.a_zp_md, ndims - 2);
+    const int b_zp_ndims = quant_entry_ndims(b_zps, cfg.b_zp_md, ndims - 1);
+    const bool a_zp_hs = a_zp_host_scalar();
+    const bool b_zp_hs = b_zp_host_scalar();
+    p.Tao = convert_dnnl_to_kernel_type(a_zps.get_data_type());
+    p.Tbo = convert_dnnl_to_kernel_type(b_zps.get_data_type());
+    if (a_zp_ndims >= 0 || a_zp_hs) p.aOffset = gemmstone::ABOffset::Calc;
+    if (b_zp_ndims >= 0 || b_zp_hs) p.bOffset = gemmstone::ABOffset::Calc;
+    p.aoPtrDims = a_zp_hs ? -1 : a_zp_ndims;
+    p.boPtrDims = b_zp_hs ? -1 : b_zp_ndims;
+
+    // A/B scales.
+    p.asPtrDims = quant_entry_ndims(a_scales, cfg.a_scale_md, ndims - 2);
+    p.bsPtrDims = quant_entry_ndims(b_scales, cfg.b_scale_md, ndims - 1);
+    if (a_scales.get_data_type() != data_type::undef)
+        p.Ta_scale = convert_dnnl_to_kernel_type(a_scales.get_data_type());
+    if (b_scales.get_data_type() != data_type::undef)
+        p.Tb_scale = convert_dnnl_to_kernel_type(b_scales.get_data_type());
+
+    // A/B group sums (the gs type is derived later from the gs md in
+    // init_GEMMProblem, so it is not seeded here).
+    p.agPtrDims = quant_entry_ndims(a_gs, cfg.a_gs_md, ndims - 2);
+    p.bgPtrDims = quant_entry_ndims(b_gs, cfg.b_gs_md, ndims - 1);
+    p.forceGroupSumsA = !a_gs.has_default_values();
+    p.forceGroupSumsB = !b_gs.has_default_values();
+
+    // C-side quant (swap-invariant). coPtrDims carries the RAW c-zp
+    // dimensionality (no host-scalar fold): gen_t folds a host-scalar c-zp to
+    // -1 itself in init_GEMMProblem, while xe_hp_systolic consumes it directly
+    // (it rejects host-scalar zps upstream, so raw == folded there).
+    p.coPtrDims = quant_entry_ndims(c_zps, cfg.c_zp_md, -1);
+    if (c_scales.get_data_type() != data_type::undef) {
+        p.csPtrDims = quant_entry_ndims(c_scales, cfg.c_scale_md, -1);
+        p.Tc_scale = convert_dnnl_to_kernel_type(c_scales.get_data_type());
+        if (!c_scales.has_default_groups()) {
+            p.cqGroupM = into<int>(c_scales.get_group(1));
+            p.cqGroupN = into<int>(c_scales.get_group(0));
+        }
+    }
+
+    p.sumA = (d->sum_ab == sum_ab::sum_b_col);
+    p.sumB = (d->sum_ab == sum_ab::sum_a_row);
+
     // XXX, gemmstone support: if multiple grouped quantization attributes exist
-    // for one matrix, they must have the same group size (default/unset is 0)
+    // for one matrix, they must have the same group size (default/unset is 0).
     const auto &set_if_consistent
-            = [this, engine](int &quant_dim, int new_dim, int arg) -> status_t {
-        VDISPATCH_GEMM(utils::one_of(quant_dim, 0, new_dim),
+            = [this, engine](int &group, int new_group, int arg) -> status_t {
+        VDISPATCH_GEMM(utils::one_of(group, 0, new_group),
                 "%s: %s quantization attrs with different group sizes",
                 VERBOSE_UNSUPPORTED_ATTR, arg2str(arg).c_str());
-        quant_dim = new_dim;
+        group = new_group;
         return status::success;
     };
-    const auto &set_a_groups = [&set_if_consistent](quant_params &quant,
-                                       const quant_entry_t &entry) -> status_t {
+    // g0/g1 receive get_group(0)/get_group(1): for A that is (K, M), for B
+    // (N, K) — matching the original per-side group mapping.
+    const auto &set_groups
+            = [&set_if_consistent](int &g0, int &g1, const quant_entry_t &entry,
+                      int arg) -> status_t {
         if (entry.has_default_groups()) return status::success;
-        CHECK(set_if_consistent(
-                quant.group_k, into<int>(entry.get_group(0)), DNNL_ARG_A));
-        CHECK(set_if_consistent(
-                quant.group_m, into<int>(entry.get_group(1)), DNNL_ARG_A));
+        CHECK(set_if_consistent(g0, into<int>(entry.get_group(0)), arg));
+        CHECK(set_if_consistent(g1, into<int>(entry.get_group(1)), arg));
         return status::success;
     };
-    CHECK(set_a_groups(cfg.a_quant, a_zps));
-    CHECK(set_a_groups(cfg.a_quant, a_gs));
-    CHECK(set_a_groups(cfg.a_quant, a_scales));
-
-    cfg.b_quant.scales_type = b_scales.get_data_type();
-    cfg.b_quant.zp_type = b_zps.get_data_type();
-    cfg.b_quant.gs_type = b_gs.get_data_type();
-    cfg.b_quant.force_gs = !b_gs.has_default_values();
-    cfg.b_quant.zp_host_scalar = b_zp_host_scalar();
-    const auto &set_b_groups = [&set_if_consistent](quant_params &quant,
-                                       const quant_entry_t &entry) -> status_t {
-        if (entry.has_default_groups()) return status::success;
-        CHECK(set_if_consistent(
-                quant.group_n, into<int>(entry.get_group(0)), DNNL_ARG_B));
-        CHECK(set_if_consistent(
-                quant.group_k, into<int>(entry.get_group(1)), DNNL_ARG_B));
-        return status::success;
-    };
-    CHECK(set_b_groups(cfg.b_quant, b_zps));
-    CHECK(set_b_groups(cfg.b_quant, b_gs));
-    CHECK(set_b_groups(cfg.b_quant, b_scales));
-
-    cfg.c_quant.scales_type = c_scales.get_data_type();
-    cfg.c_quant.zp_type = c_zps.get_data_type();
-    if (!c_scales.has_default_groups()) {
-        cfg.c_quant.group_m = into<int>(c_scales.get_group(1));
-        cfg.c_quant.group_n = into<int>(c_scales.get_group(0));
-    }
-    cfg.c_quant.zp_host_scalar = c_zp_host_scalar();
+    CHECK(set_groups(p.aqGroupK, p.aqGroupM, a_zps, DNNL_ARG_A));
+    CHECK(set_groups(p.aqGroupK, p.aqGroupM, a_gs, DNNL_ARG_A));
+    CHECK(set_groups(p.aqGroupK, p.aqGroupM, a_scales, DNNL_ARG_A));
+    CHECK(set_groups(p.bqGroupN, p.bqGroupK, b_zps, DNNL_ARG_B));
+    CHECK(set_groups(p.bqGroupN, p.bqGroupK, b_gs, DNNL_ARG_B));
+    CHECK(set_groups(p.bqGroupN, p.bqGroupK, b_scales, DNNL_ARG_B));
 
     return status::success;
 }
@@ -395,9 +464,12 @@ status_t pd_t::zp_ok(const kernel_config_t &cfg, impl::engine_t *engine) {
     const bool weights_upconversion
             = wei_decomp() || (a_int4 && dy_quant_enabled());
 
-    const bool a_zp_2d = cfg.a_quant.zp_ndims >= 2;
-    const bool b_zp_2d = cfg.b_quant.zp_ndims >= 2;
-    const bool a_scales_2d = cfg.a_quant.scale_ndims > 1;
+    // cfg.problem was populated in init_attrs (pre-swap, user orientation), so
+    // these match the old raw zp_ndims>=2 / scale_ndims>1 reads. A host-scalar
+    // zp is never 2D, so the aoPtrDims fold is irrelevant to aOffset2D().
+    const bool a_zp_2d = cfg.problem.aOffset2D();
+    const bool b_zp_2d = cfg.problem.bOffset2D();
+    const bool a_scales_2d = cfg.problem.aScale2D();
 
     if (!a_zps.has_default_values()) {
         // Groups determine supported masks.
@@ -551,8 +623,8 @@ bool pd_t::valid_2d_mask(int mask, int ndims, bool per_tensor_ok) {
                     (1 << (ndims - 1)) + (1 << (ndims - 2)));
 }
 
-status_t transfer_post_ops(gemmstone::GEMMProblem &problem,
-        gpu_post_ops_t &&post_ops_, const kernel_config_t &cfg) {
+status_t transfer_post_ops(
+        gemmstone::GEMMProblem &problem, gpu_post_ops_t &&post_ops_) {
     using namespace gemmstone;
     problem.postOps = std::move(post_ops_);
     const auto &post_ops = problem.postOps;
@@ -566,9 +638,6 @@ status_t transfer_post_ops(gemmstone::GEMMProblem &problem,
         problem.postOps.binaryCol = {};
         problem.postOps.binaryBatch = {};
         problem.postOps.binaryTrans = {};
-
-        if (problem.Ta == Type::f16) problem.Ts = Type::f32;
-        if (problem.Ta.isF8() || problem.Tb.isF8()) problem.Ts = Type::f32;
 
         for (size_t i = 0; i < po_count; i++) {
             const auto &entry = post_ops[i];
@@ -589,22 +658,19 @@ status_t transfer_post_ops(gemmstone::GEMMProblem &problem,
 
             bool trans = is_multi_row && !src_rmd.inner_dim.is_innermost();
 
-            // Fold the swap_ab post-pass into per-entry layout selection:
-            // PostOpsProblem::transpose() swaps Row<->Col and flips Trans;
-            // MatrixAddressing::transpose() flips N<->T. Apply once here
-            // instead of post-hoc.
-            const bool eff_trans = (trans != cfg.swap_ab);
-
+            // Build each binary entry in USER (un-swapped) orientation. The
+            // A/B swap is folded once, downstream, by swap_fold's
+            // cfg.problem.transpose(): PostOpsProblem::transpose() swaps
+            // Row<->Col and flips binaryTrans; MatrixAddressing::transpose()
+            // flips N<->T. binaryBatch and Tbinary are swap-invariant.
             problem.Tbinary.push_back(T);
-            problem.postOps.binaryRow[i]
-                    = cfg.swap_ab ? is_multi_col : is_multi_row;
-            problem.postOps.binaryCol[i]
-                    = cfg.swap_ab ? is_multi_row : is_multi_col;
+            problem.postOps.binaryRow[i] = is_multi_row;
+            problem.postOps.binaryCol[i] = is_multi_col;
             problem.postOps.binaryBatch[i] = src_rmd.ndims() >= 3;
-            problem.postOps.binaryTrans[i] = eff_trans;
+            problem.postOps.binaryTrans[i] = trans;
 
             MatrixAddressing atype;
-            atype.layout = eff_trans ? MatrixLayout::T : MatrixLayout::N;
+            atype.layout = trans ? MatrixLayout::T : MatrixLayout::N;
             atype.crosspack = 1;
             atype.packSize = 0;
             atype.setAlignment(T.size());
@@ -620,7 +686,13 @@ status_t pd_t::init_GEMMProblem(gemmstone::GEMMProblem &problem,
         const intel::engine_t *engine, const kernel_config_t &cfg) const {
     // Set up problem structure.
     using namespace gemmstone;
-    problem = {};
+    // Seed from the embedded, swap-folded kernel projection. The migrated
+    // scalar fields (Ta/Tb/Tc_ext, Tao/Tbo, Ta/Tb/Tc_scale, a/b offset
+    // modes + ptrDims, aq/bq/cq groups, sumA/sumB, forceGroupSums, c-scale
+    // ptrDims) come from cfg.problem; addressing/layout/alignment and derived
+    // register types (Ta/Tb/Tc/Ts/Tco) are computed below and overwrite the
+    // seed's defaults.
+    problem = cfg.problem;
 
     problem.product = get_ngen_product(*engine->device_info());
     bool has_systolic
@@ -629,41 +701,50 @@ status_t pd_t::init_GEMMProblem(gemmstone::GEMMProblem &problem,
             || engine->mayiuse(compute::device_ext_t::
                             intel_subgroup_split_matrix_multiply_accumulate);
 
-    auto align_a
-            = nstl::max(cfg.align_a, (int)types::data_type_size(cfg.a_type));
-    auto a_size = (cfg.trans_a ? cfg.m : cfg.k) * cfg.lda
-            * types::data_type_size(cfg.a_type);
+    // Leading-dim / batch-stride alignment. cfg.{lda,ldb,a_type,b_type} are
+    // already swap-folded to kernel orientation; the desc() batch strides are
+    // user-frame, so select the effective side via cfg.swap_ab. (Formerly
+    // precomputed into cfg.align_* in jit.hpp before swap_fold; now derived here
+    // so the alignment is not persistent cfg state.)
+    const int a_batch_arg = cfg.swap_ab ? DNNL_ARG_B : DNNL_ARG_A;
+    const int b_batch_arg = cfg.swap_ab ? DNNL_ARG_A : DNNL_ARG_B;
+    auto align_a = nstl::max(align(cfg.lda, cfg.a_type(), a_batch_arg),
+            (int)types::data_type_size(cfg.a_type()));
+    auto a_size = (cfg.trans_a() ? cfg.m : cfg.k) * cfg.lda
+            * types::data_type_size(cfg.a_type());
 
-    auto align_b
-            = nstl::max(cfg.align_b, (int)types::data_type_size(cfg.b_type));
-    auto b_size = (cfg.trans_b ? cfg.k : cfg.n) * cfg.ldb
-            * types::data_type_size(cfg.b_type);
+    auto align_b = nstl::max(align(cfg.ldb, cfg.b_type(), b_batch_arg),
+            (int)types::data_type_size(cfg.b_type()));
+    auto b_size = (cfg.trans_b() ? cfg.k : cfg.n) * cfg.ldb
+            * types::data_type_size(cfg.b_type());
 
-    bool int_acc = utils::one_of(cfg.a_type, data_type::s8, data_type::u8)
-            || (types::is_integral_dt(cfg.a_type)
-                    && types::is_integral_dt(cfg.b_type));
+    bool int_acc = utils::one_of(cfg.a_type(), data_type::s8, data_type::u8)
+            || (types::is_integral_dt(cfg.a_type())
+                    && types::is_integral_dt(cfg.b_type()));
     int_acc &= !(a_grouped(cfg) || b_grouped(cfg));
-    auto align_c
-            = nstl::max(cfg.align_c, (int)types::data_type_size(cfg.c_type));
-    auto c_size = cfg.n * cfg.ldc * types::data_type_size(cfg.c_type);
+    auto align_c = nstl::max(align(cfg.ldc, cfg.c_type(), DNNL_ARG_C),
+            (int)types::data_type_size(cfg.c_type()));
+    auto c_size = cfg.n * cfg.ldc * types::data_type_size(cfg.c_type());
 
     auto co_type = cfg.with_bias ? desc()->bias_type()
             : with_sum_ab()      ? desc()->sum_ab_type
             : int_acc            ? data_type::s32
-                                 : cfg.c_type;
+                                 : cfg.c_type();
 
     // Choose accumulation data type.
     auto acc_type = int_acc
             ? data_type::s32
-            : (utils::one_of(data_type::f64, cfg.a_type, cfg.b_type)
+            : (utils::one_of(data_type::f64, cfg.a_type(), cfg.b_type())
                               ? data_type::f64
                               : data_type::f32);
 
-    bool with_binary = (cfg.post_ops.find(primitive_kind::binary) != -1)
-            || (cfg.post_ops.find(primitive_kind::prelu) != -1);
+    // problem.postOps is already populated (carried by `problem = cfg.problem`)
+    // and lowers prelu into a binary, so hasBinaryPostOp() covers the old
+    // find(binary)||find(prelu) (converted A/B/C scales + bias included, as
+    // before).
+    bool with_binary = problem.hasBinaryPostOp();
 
-    bool need_x32_acc
-            = with_binary || !IMPLICATION(cfg.with_sum, cfg.sum_at_begin);
+    bool need_x32_acc = with_binary || !IMPLICATION(with_sum(), sum_at_begin());
     auto acc_mode = attr()->acc_mode_;
 
     // Strict acc mode default.
@@ -692,16 +773,17 @@ status_t pd_t::init_GEMMProblem(gemmstone::GEMMProblem &problem,
     bool c_offset = with_c_zero_points();
     bool bias = cfg.with_bias;
 
-    problem.Ta = problem.Ta_ext = convert_dnnl_to_kernel_type(cfg.a_type);
-    problem.Tb = problem.Tb_ext = convert_dnnl_to_kernel_type(cfg.b_type);
+    // Ta_ext/Tb_ext/Tc_ext/Tao/Tbo seeded from cfg.problem; register types
+    // and the C-offset type are derived here.
+    problem.Ta = problem.Ta_ext;
+    problem.Tb = problem.Tb_ext;
     problem.Tc = convert_dnnl_to_kernel_type(acc_type);
-    problem.Tc_ext = convert_dnnl_to_kernel_type(cfg.c_type);
     problem.Ts = problem.Tc;
-    problem.Tao = convert_dnnl_to_kernel_type(cfg.a_quant.zp_type);
-    problem.Tbo = convert_dnnl_to_kernel_type(cfg.b_quant.zp_type);
     problem.Tco = convert_dnnl_to_kernel_type(co_type);
-    problem.A.layout = cfg.trans_a ? MatrixLayout::T : MatrixLayout::N;
-    problem.B.layout = cfg.trans_b ? MatrixLayout::T : MatrixLayout::N;
+    // A/B.layout are already the swap-folded values (seeded in gen_t::pd_t::init
+    // and carried by `problem = cfg.problem`); only force C back to N (the cfg's
+    // C.layout may have been flipped by swap_fold's transpose() but C is never
+    // transposed).
     problem.C.layout = MatrixLayout::N;
     problem.A.crosspack = problem.B.crosspack = problem.C.crosspack = 1;
     problem.A.packSize = problem.B.packSize = problem.C.packSize = 0;
@@ -720,14 +802,7 @@ status_t pd_t::init_GEMMProblem(gemmstone::GEMMProblem &problem,
         problem.batch = BatchMode::Strided;
         problem.batchDims = batch_dims();
     }
-    if (cfg.a_quant.zp_ndims >= 0 || cfg.a_quant.zp_host_scalar)
-        problem.aOffset = ABOffset::Calc;
-    if (cfg.b_quant.zp_ndims >= 0 || cfg.b_quant.zp_host_scalar)
-        problem.bOffset = ABOffset::Calc;
-    problem.aoPtrDims = cfg.a_quant.zp_host_scalar ? -1 : cfg.a_quant.zp_ndims;
-    problem.boPtrDims = cfg.b_quant.zp_host_scalar ? -1 : cfg.b_quant.zp_ndims;
-    problem.asPtrDims = cfg.a_quant.scale_ndims;
-    problem.bsPtrDims = cfg.b_quant.scale_ndims;
+    // aOffset/bOffset + ao/bo/as/bs PtrDims seeded from cfg.problem.
 
     // Default A-side layout is N, B-side T (one-shot 1D-friendly default).
     // Under swap_ab, the previous swap_ab post-pass called .transpose() on
@@ -746,76 +821,75 @@ status_t pd_t::init_GEMMProblem(gemmstone::GEMMProblem &problem,
     // allows block loads (i.e. A -> N and B -> T)
     if (!problem.bOffset2D()) problem.BO.layout = layout_T;
     if (!problem.bScale2D()) problem.B_scale.layout = layout_T;
-    if (cfg.b_quant.gs_ndims < 2) problem.Bg.layout = layout_T;
+    if (problem.bgPtrDims < 2) problem.Bg.layout = layout_T;
 
-    if (cfg.a_quant.zp_type != data_type::undef)
-        problem.AO.setAlignment(
-                int(types::data_type_size(cfg.a_quant.zp_type)));
-    if (cfg.b_quant.zp_type != data_type::undef)
-        problem.BO.setAlignment(
-                int(types::data_type_size(cfg.b_quant.zp_type)));
-    problem.aqGroupK = cfg.a_quant.group_k;
-    problem.bqGroupK = cfg.b_quant.group_k;
-    problem.aqGroupM = cfg.a_quant.group_m;
-    problem.bqGroupN = cfg.b_quant.group_n;
-    if (cfg.a_quant.scales_type != data_type::undef) {
-        problem.Ta_scale = convert_dnnl_to_kernel_type(cfg.a_quant.scales_type);
-        problem.A_scale.setAlignment(
-                int(types::data_type_size(cfg.a_quant.scales_type)));
-    }
-    if (cfg.b_quant.scales_type != data_type::undef) {
-        problem.Tb_scale = convert_dnnl_to_kernel_type(cfg.b_quant.scales_type);
-        problem.B_scale.setAlignment(
-                int(types::data_type_size(cfg.b_quant.scales_type)));
-    }
+    // Group sizes, offset/scale types + ptrDims, and cq groups are all seeded
+    // from cfg.problem. Offset/scale-matrix alignments and cMXScale are derived
+    // here from the (already-seeded) kernel quant types; paddedSize() gives the
+    // external byte size (== the old data_type_size), matching the Ag/Bg
+    // alignment below. Type::invalid marks an absent type (undef -> invalid).
+    if (problem.Tao != Type::invalid)
+        problem.AO.setAlignment(problem.Tao.paddedSize());
+    if (problem.Tbo != Type::invalid)
+        problem.BO.setAlignment(problem.Tbo.paddedSize());
+    if (problem.Ta_scale != Type::invalid)
+        problem.A_scale.setAlignment(problem.Ta_scale.paddedSize());
+    if (problem.Tb_scale != Type::invalid)
+        problem.B_scale.setAlignment(problem.Tb_scale.paddedSize());
 
-    if (cfg.c_quant.scales_type != data_type::undef) {
-        problem.csPtrDims = cfg.c_quant.scale_ndims;
-        problem.cMXScale = with_mx_scale();
-        problem.Tc_scale = convert_dnnl_to_kernel_type(cfg.c_quant.scales_type);
-        problem.cqGroupM = cfg.c_quant.group_m;
-        problem.cqGroupN = cfg.c_quant.group_n;
-    }
+    if (problem.Tc_scale != Type::invalid) problem.cMXScale = with_mx_scale();
 
     // Mixed s8/s4 DPAS support:
     // - Xe3p: Not supported, require s4->s8 upconversion
     // - pre-Xe3p: supported, but only when s4 matrix doesn't have zero points
     bool has_s8s4_dpas = getCore(problem.product.family) != ngen::HW::Xe3p;
+    // "s4 matrix has no zero points" — the old check was zp_ndims < 0, i.e.
+    // no zp at all. That maps to aOffset == None (NOT aoPtrDims < 0, which a
+    // host-scalar zp also satisfies but must still force upconversion).
     if (problem.Ta_ext.isInt4() && problem.Tb_ext.isInt8()) {
-        bool s8s4_dpas_ok = has_s8s4_dpas && (cfg.a_quant.zp_ndims < 0);
+        bool s8s4_dpas_ok
+                = has_s8s4_dpas && (problem.aOffset == ABOffset::None);
         if (!s8s4_dpas_ok) problem.Ta = Type::s8;
     }
     if (problem.Tb_ext.isInt4() && problem.Ta_ext.isInt8()) {
-        bool s8s4_dpas_ok = has_s8s4_dpas && (cfg.b_quant.zp_ndims < 0);
+        bool s8s4_dpas_ok
+                = has_s8s4_dpas && (problem.bOffset == ABOffset::None);
         if (!s8s4_dpas_ok) problem.Tb = Type::s8;
     }
 
     if (problem.Ta.isInteger()) problem.Ts = Type::f32;
 
+    // Post-op accumulation-type bump, relocated from transfer_post_ops (which
+    // now runs pre-swap in gen_t::pd_t::init, before register types exist).
+    // problem.postOps is already populated and carried by `problem = cfg.problem`;
+    // gate on it to match the old `post_ops.len() > 0` guard. Reads the final
+    // register Ta/Tb (post s4/s8 upconversion above) — identical to the old
+    // placement inside transfer_post_ops.
+    if (problem.postOps.len() > 0) {
+        if (problem.Ta == Type::f16) problem.Ts = Type::f32;
+        if (problem.Ta.isF8() || problem.Tb.isF8()) problem.Ts = Type::f32;
+    }
+
     if (alpha() == 1.0f) problem.alpha = (int)alpha();
     if (cfg.beta == 0.0f || cfg.beta == 1.0f) problem.beta = (int)cfg.beta;
 
-    gpu_post_ops_t gpu_post_ops;
-    CHECK(gpu_post_ops_t::make(gpu_post_ops, cfg.post_ops, dst_md(),
-            get_post_op_specializations()));
+    // post-ops (problem.postOps/binary/Tbinary) were built and swap-folded
+    // upstream; only the runtime-derived stochastic-round flag remains (below).
 
-    CHECK(transfer_post_ops(problem, std::move(gpu_post_ops), cfg));
-
-    if (c_offset || bias || cfg.sum_ab != sum_ab::sum_none) {
+    if (c_offset || bias || problem.sumA || problem.sumB) {
         assert(!(c_offset && bias));
         if (bias) problem.cOffset = COffset::Pre;
         if (c_offset) problem.cOffset = COffset::Post;
         problem.CO.crosspack = 1;
         problem.CO.alignment = problem.C.alignment;
-        problem.CO.layout = cfg.trans_co ? MatrixLayout::T : MatrixLayout::N;
-        problem.coPtrDims
-                = cfg.c_quant.zp_host_scalar ? -1 : cfg.c_quant.zp_ndims;
+        // CO.layout is the swap-folded value seeded in gen_t::pd_t::init and
+        // carried by `problem = cfg.problem`.
+        // coPtrDims already holds the raw c-zp dimensionality (seeded in
+        // init_attrs); fold a host-scalar c-zp to -1 here.
+        if (c_zp_host_scalar()) problem.coPtrDims = -1;
     }
 
-    problem.sumA = (cfg.sum_ab == sum_ab::sum_b_col);
-    problem.sumB = (cfg.sum_ab == sum_ab::sum_a_row);
-    problem.forceGroupSumsA = cfg.a_quant.force_gs;
-    problem.forceGroupSumsB = cfg.b_quant.force_gs;
+    // sumA/sumB and forceGroupSumsA/B seeded from cfg.problem.
 
     problem.postOps.cStochasticRound = dst_sround;
 
@@ -823,18 +897,18 @@ status_t pd_t::init_GEMMProblem(gemmstone::GEMMProblem &problem,
         problem.autoTypeConversions(has_systolic);
 
     if (problem.needsAGroupSums()) {
-        data_type_t gs_dt = cfg.a_quant.gs_type == data_type::undef
-                ? data_type::s32
-                : cfg.a_quant.gs_type;
+        // Group-sum type: read from the (already swap-folded) group-sum md;
+        // default to s32 when absent. Mirrors the old cfg.a_qr.gs_type source.
+        data_type_t gs_dt = memory_desc_wrapper(cfg.a_gs_md).data_type();
+        if (gs_dt == data_type::undef) gs_dt = data_type::s32;
         problem.Tag = convert_dnnl_to_kernel_type(gs_dt);
         problem.Ag.setAlignment(problem.Tag.paddedSize());
         if (problem.bqGroupK == 0) problem.bqGroupK = problem.aqGroupK;
         if (problem.aqGroupK == 0) problem.aqGroupK = problem.bqGroupK;
     }
     if (problem.needsBGroupSums()) {
-        data_type_t gs_dt = cfg.b_quant.gs_type == data_type::undef
-                ? data_type::s32
-                : cfg.b_quant.gs_type;
+        data_type_t gs_dt = memory_desc_wrapper(cfg.b_gs_md).data_type();
+        if (gs_dt == data_type::undef) gs_dt = data_type::s32;
         problem.Tbg = convert_dnnl_to_kernel_type(gs_dt);
         problem.Bg.setAlignment(problem.Tbg.paddedSize());
         if (problem.aqGroupK == 0) problem.aqGroupK = problem.bqGroupK;
@@ -850,64 +924,55 @@ status_t pd_t::init_GEMMProblem(gemmstone::GEMMProblem &problem,
     return status::success;
 }
 
-dim_t pd_t::scale_stride(int idx, int arg) const {
-    gpu_assert(utils::one_of(arg, DNNL_ARG_A, DNNL_ARG_B));
-    const memory_desc_t *md_ptr
-            = (arg == DNNL_ARG_A) ? &cfg_.a_scale_md : &cfg_.b_scale_md;
-    gpu_assert(memory_desc_wrapper(md_ptr).is_plain())
-            << "Expected plain scale_md_";
-    if (md_ptr->dims[idx] == 1) return 0;
-    return md_ptr->format_desc.blocking.strides[idx];
+namespace {
+// Per-batch-dim stride of a single (swap-folded, kernel-oriented) quant md.
+// The md is already in kernel orientation, so the caller selects the side by
+// passing the right md — there is no DNNL_ARG to get wrong.
+dim_t quant_md_stride(const memory_desc_t &md, int idx) {
+    gpu_assert(memory_desc_wrapper(&md).is_plain())
+            << "Expected plain quant md";
+    if (md.dims[idx] == 1) return 0;
+    return md.format_desc.blocking.strides[idx];
 }
+} // namespace
 
-dim_t pd_t::zp_stride(int idx, int arg) const {
-    gpu_assert(utils::one_of(arg, DNNL_ARG_A, DNNL_ARG_B));
-    const memory_desc_t *md_ptr
-            = (arg == DNNL_ARG_A) ? &cfg_.a_zp_md : &cfg_.b_zp_md;
-    gpu_assert(memory_desc_wrapper(md_ptr).is_plain())
-            << "Expected plain zp_md_";
-    if (md_ptr->dims[idx] == 1) return 0;
-    return md_ptr->format_desc.blocking.strides[idx];
+dim_t pd_t::a_scale_stride(int idx) const {
+    return quant_md_stride(cfg_.a_scale_md, idx);
 }
-
-dim_t pd_t::gs_stride(int idx, int arg) const {
-    gpu_assert(utils::one_of(arg, DNNL_ARG_A, DNNL_ARG_B));
-    const memory_desc_t *md_ptr
-            = (arg == DNNL_ARG_A) ? &cfg_.a_gs_md : &cfg_.b_gs_md;
-    gpu_assert(memory_desc_wrapper(md_ptr).is_plain())
-            << "Expected plain gs_md_";
-    if (md_ptr->dims[idx] == 1) return 0;
-    return md_ptr->format_desc.blocking.strides[idx];
+dim_t pd_t::b_scale_stride(int idx) const {
+    return quant_md_stride(cfg_.b_scale_md, idx);
+}
+dim_t pd_t::a_zp_stride(int idx) const {
+    return quant_md_stride(cfg_.a_zp_md, idx);
+}
+dim_t pd_t::b_zp_stride(int idx) const {
+    return quant_md_stride(cfg_.b_zp_md, idx);
+}
+dim_t pd_t::a_gs_stride(int idx) const {
+    return quant_md_stride(cfg_.a_gs_md, idx);
+}
+dim_t pd_t::b_gs_stride(int idx) const {
+    return quant_md_stride(cfg_.b_gs_md, idx);
 }
 
 dim_t kernel_config_t::ld_binary(int idx) const {
-    switch (binary_srcs[idx].type) {
-        case binary_src_t::binary: {
-            const auto &entry = post_ops.entry_[idx];
-            assert(entry.kind == primitive_kind::binary);
-            return gemm_desc_t::get_ld(entry.binary.src1_desc);
-        }
+    const auto &src = binary_srcs[idx];
+    switch (src.type) {
+        case binary_src_t::binary: return gemm_desc_t::get_ld(src.src_md);
         case binary_src_t::bias: return ld_bias;
-        case binary_src_t::prelu: {
-            return gemm_desc_t::get_ld(prelu_wei_md);
-        }
-
+        case binary_src_t::prelu: return gemm_desc_t::get_ld(src.src_md);
         default: return 1;
     }
 }
 
 dim_t kernel_config_t::stride_binary(int idx, int stride) const {
-    switch (binary_srcs[idx].type) {
+    const auto &src = binary_srcs[idx];
+    switch (src.type) {
         case binary_src_t::binary:
         case binary_src_t::scales:
-        case binary_src_t::bias: {
-            const auto &entry = post_ops.entry_[idx];
-            assert(entry.kind == primitive_kind::binary);
-            return gemm_desc_t::get_stride(entry.binary.src1_desc, stride);
-        }
-        case binary_src_t::prelu: {
-            return gemm_desc_t::get_stride(prelu_wei_md, stride);
-        }
+        case binary_src_t::bias:
+        case binary_src_t::prelu:
+            return gemm_desc_t::get_stride(src.src_md, stride);
         default: return 0;
     }
 }
@@ -916,44 +981,50 @@ void pad_lda(kernel_config_t &cfg, bool swap) {
     // Runs in user orientation (before swap_fold). When swap_ab is on,
     // the gen_t path can replace a non-transposed A of width 1 with a
     // transposed A of width k; mirrors the historical jit.hpp logic.
-    if (swap && !cfg.trans_a && cfg.m == 1) {
-        cfg.trans_a = true;
+    if (swap && !cfg.trans_a() && cfg.m == 1) {
+        cfg.problem.A.layout = gemmstone::MatrixLayout::T;
         cfg.lda = cfg.k;
     }
 
     // Pad leading dimensions in case of a single row/column.
-    if ((cfg.k == 1 && !cfg.trans_a) || (cfg.m == 1 && cfg.trans_a))
+    if ((cfg.k == 1 && !cfg.trans_a()) || (cfg.m == 1 && cfg.trans_a()))
         cfg.lda = utils::rnd_up(cfg.lda, 16);
-    if ((cfg.n == 1 && !cfg.trans_b) || (cfg.k == 1 && cfg.trans_b))
+    if ((cfg.n == 1 && !cfg.trans_b()) || (cfg.k == 1 && cfg.trans_b()))
         cfg.ldb = utils::rnd_up(cfg.ldb, 16);
 }
 
 void swap_fold(kernel_config_t &cfg, bool swap) {
     cfg.swap_ab = swap;
     if (!swap) return;
-    // Swapping A and B is equivalent to transposing both, so trans flips.
-    std::swap(cfg.a_type, cfg.b_type);
+    // Swapping A and B is equivalent to transposing both. The orientation
+    // (A/B/CO.layout) and matrix types (Ta/Tb_ext) ride on cfg.problem and are
+    // swapped+flipped by problem.transpose() below, so trans_a()/trans_b()/
+    // a_type()/b_type() follow automatically — no separate fields to flip.
     std::swap(cfg.m, cfg.n);
     std::swap(cfg.lda, cfg.ldb);
-    std::swap(cfg.trans_a, cfg.trans_b);
-    cfg.trans_a = !cfg.trans_a;
-    cfg.trans_b = !cfg.trans_b;
-    std::swap(cfg.align_a, cfg.align_b);
-    // After swap, the kernel's A-side reads from the matmul B's quant
-    // params, with group_m/group_n exchanged (M and N are exchanged).
-    std::swap(cfg.a_quant, cfg.b_quant);
-    std::swap(cfg.a_quant.group_m, cfg.a_quant.group_n);
-    std::swap(cfg.b_quant.group_m, cfg.b_quant.group_n);
-    if (cfg.sum_ab == sum_ab::sum_a_row)
-        cfg.sum_ab = sum_ab::sum_b_col;
-    else if (cfg.sum_ab == sum_ab::sum_b_col)
-        cfg.sum_ab = sum_ab::sum_a_row;
-    cfg.trans_co = !cfg.trans_co;
-    // Quant memory descriptors follow the swap of the quant_params.
+    // After swap, the kernel's A-side reads from the matmul B's quant state.
+    // The entire quant subset rides on cfg.problem (transposed below); nothing
+    // quant-related is stored separately on the cfg anymore. sumA/sumB are
+    // swapped by problem.transpose() below (no separate cfg.sum_ab to flip).
+    // Quant memory descriptors follow the swap of the quant state.
     std::swap(cfg.a_scale_md, cfg.b_scale_md);
     std::swap(cfg.a_zp_md, cfg.b_zp_md);
     std::swap(cfg.a_gs_md, cfg.b_gs_md);
-    // c_scale_md, c_zp_md, prelu_wei_md, post-op tail are swap-invariant.
+    // c_scale_md, c_zp_md, binary_srcs (per-entry src_md) are swap-invariant.
+
+    // Fold the embedded problem to kernel orientation. transpose() swaps
+    // A/B types, addressing, offsets, scale/offset/group-sum ptrDims
+    // (ao/bo, as/bs, ag/bg), group sizes (aqGroupM<->bqGroupN, aqGroupK<->
+    // bqGroupK), sumA/sumB, postOps and binaries. It does NOT swap two
+    // A/B-paired things:
+    //   - forceGroupSumsA/B: populated pre-swap, so swap them explicitly here.
+    //   - Tag/Tbg (group-sum types): not seeded into cfg.problem at all; they
+    //     are derived post-swap in init_GEMMProblem from the already-swapped
+    //     group-sum mds (cfg.a_gs_md/cfg.b_gs_md, swapped above), so no swap is
+    //     needed here. If they ever get seeded into cfg.problem in init_attrs,
+    //     add a swap for them too.
+    cfg.problem.transpose();
+    std::swap(cfg.problem.forceGroupSumsA, cfg.problem.forceGroupSumsB);
 }
 
 } // namespace jit

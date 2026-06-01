@@ -155,13 +155,15 @@ private:
 };
 
 struct gen_xe_systolic_kernel_desc_t : public gen_desc_t {
+    // Consume the shared, init_GEMMProblem-built problem (carrying matrix
+    // types, accumulation/offset types, the offset/bias modes via aOffset/
+    // bOffset/cOffset/CO.layout, postOps and coPtrDims) and specialize the
+    // systolic packed addressing on top of it. The residual scheduling args
+    // (alpha/beta floats, sizes, unrolls) are passed directly.
     status_t select_kernel(const compute::device_info_t &dev_info,
-            int batch_dims, bool packed_c, bool trans_co, bool a_offset,
-            bool b_offset, bool c_offset, bool bias, float alpha, float beta,
-            data_type_t a_type, data_type_t b_type, data_type_t c_type,
-            data_type_t ao_type, data_type_t bo_type, data_type_t co_type,
-            data_type_t acc_type, dim_t m, dim_t n, dim_t k, dim_t batch,
-            int unroll_m, int unroll_n, bool alt, gpu_post_ops_t &&post_ops);
+            const gemmstone::GEMMProblem &in, int batch_dims, bool packed_c,
+            float alpha, float beta, dim_t m, dim_t n, dim_t k, dim_t batch,
+            int unroll_m, int unroll_n, bool alt);
 
     static void choose_unrolls(compute::gpu_arch_t arch, int eu_count,
             data_type_t a_type, data_type_t b_type, data_type_t c_type, dim_t m,

@@ -613,15 +613,24 @@ status_t gen_nocopy_desc_t::finalize() {
 }
 
 status_t gen_xe_systolic_kernel_desc_t::select_kernel(
-        const compute::device_info_t &dev_info, int batch_dims, bool packed_c,
-        bool trans_co, bool a_offset, bool b_offset, bool c_offset, bool bias,
-        float alpha, float beta, data_type_t a_type, data_type_t b_type,
-        data_type_t c_type, data_type_t ao_type, data_type_t bo_type,
-        data_type_t co_type, data_type_t acc_type, dim_t m, dim_t n, dim_t k,
-        dim_t batch, int unroll_m, int unroll_n, bool alt,
-        gpu_post_ops_t &&post_ops) {
+        const compute::device_info_t &dev_info,
+        const gemmstone::GEMMProblem &in, int batch_dims, bool packed_c,
+        float alpha, float beta, dim_t m, dim_t n, dim_t k, dim_t batch,
+        int unroll_m, int unroll_n, bool alt) {
     using namespace ngen;
     using namespace kcatalog;
+
+    // Recover dnnl matrix types and the offset/bias modes from the shared
+    // problem; the systolic-specific addressing (packed layouts, alignment,
+    // A/B offset load mode, ao/bo types) is set fresh below, so only the
+    // genuinely equivalent fields are sourced from `in`.
+    auto a_type = convert_kernel_to_dnnl_type(in.Ta_ext);
+    auto c_type = convert_kernel_to_dnnl_type(in.Tc_ext);
+    bool a_offset = (in.aOffset != ABOffset::None);
+    bool b_offset = (in.bOffset != ABOffset::None);
+    bool c_offset = (in.cOffset == COffset::Post);
+    bool bias = (in.cOffset == COffset::Pre);
+    bool trans_co = (in.CO.layout == MatrixLayout::T);
 
     const compute::gpu_product_t &product = dev_info.gpu_product();
 
@@ -645,14 +654,14 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
     auto ksys = int(32 / types::data_type_size(a_type));
     auto csys = int(4 / types::data_type_size(a_type));
 
-    problem_.Ta = problem_.Ta_ext = convert_dnnl_to_kernel_type(a_type);
-    problem_.Tb = problem_.Tb_ext = convert_dnnl_to_kernel_type(b_type);
-    problem_.Tc = convert_dnnl_to_kernel_type(acc_type);
-    problem_.Tc_ext = convert_dnnl_to_kernel_type(c_type);
+    problem_.Ta = problem_.Ta_ext = in.Ta_ext;
+    problem_.Tb = problem_.Tb_ext = in.Tb_ext;
+    problem_.Tc = in.Tc;
+    problem_.Tc_ext = in.Tc_ext;
     problem_.Ts = Type::f32;
-    problem_.Tao = convert_dnnl_to_kernel_type(ao_type);
-    problem_.Tbo = convert_dnnl_to_kernel_type(bo_type);
-    problem_.Tco = convert_dnnl_to_kernel_type(co_type);
+    problem_.Tao = Type::s32;
+    problem_.Tbo = Type::s32;
+    problem_.Tco = in.Tco;
     problem_.A.layout = MatrixLayout::PackedColumns;
     problem_.B.layout = MatrixLayout::PackedRows;
     problem_.C.layout = MatrixLayout::N;
@@ -685,11 +694,12 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
     if (alpha == 1.0f) problem_.alpha = (int)alpha;
     if (beta == 0.0f || beta == 1.0f) problem_.beta = (int)beta;
 
-    // No matmul→GEMM swap_ab context at the microkernel selector; pass a
-    // default-constructed config (swap=false).
-    auto status = transfer_post_ops(
-            problem_, std::move(post_ops), kernel_config_t {});
-    if (status != status::success) return status;
+    // Post-ops were already lowered+folded into `in` by the shared init path
+    // (gpu_post_ops_t::make + transfer_post_ops in seed_problem). The systolic
+    // path never swaps A/B, so they are already in kernel orientation here.
+    problem_.postOps = in.postOps;
+    problem_.binary = in.binary;
+    problem_.Tbinary = in.Tbinary;
 
     if (c_offset) problem_.cOffset = COffset::Post;
 
@@ -703,6 +713,12 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
         problem_.CO.crosspack = 1;
         problem_.CO.alignment = problem_.C.alignment;
     }
+
+    // Carry the raw C-offset dimensionality from the shared problem. Host
+    // scalar c-zps are rejected upstream for this impl, so the raw value
+    // needs no host-scalar fold here (subsumes the old manual coPtrDims
+    // re-sync that ran after select_kernel).
+    problem_.coPtrDims = in.coPtrDims;
 
     // Find it in the catalog.
     MatchParams match_params(hw_, true, product_, problem_);
@@ -735,7 +751,7 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
     eval_params.beta = beta;
     eval_params.euCount = dev_info.eu_count();
     eval_params.postOps = !problem_.postOps.empty();
-    eval_params.cConvert = (acc_type != c_type);
+    eval_params.cConvert = (in.Tc != in.Tc_ext);
     eval_params.batch = (batch_dims > 0);
     eval_params.Tc_ext = problem_.Tc_ext;
 

@@ -189,12 +189,12 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
                 // relaxed by rounding down the surface pointer and adjusting
                 // the width accordingly.
                 auto base_alignment = intel::jit::block_2d_base_alignment(hw);
-                auto a_size = types::data_type_size(exec_cfg.a_type);
+                auto a_size = types::data_type_size(exec_cfg.a_type());
                 if (stride_a * a_size % base_alignment) {
                     gpu_warning() << "Unimplemented load transform";
                     return status::runtime_error;
                 }
-                auto b_size = types::data_type_size(exec_cfg.b_type);
+                auto b_size = types::data_type_size(exec_cfg.b_type());
                 if (stride_b * b_size % base_alignment) {
                     gpu_warning() << "Unimplemented load transform";
                     return status::runtime_error;
@@ -309,9 +309,9 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
     // gate the offset_aq/bq arg by the same cfg, not by pd()->a/b_quant
     // (matmul-frame), or the arg list mismatches when matmul-A and matmul-B
     // have different zp_ndims and swap_ab is on.
-    if (exec_cfg.a_quant.zp_ndims > 0 || problem->aScale2D())
+    if (problem->aoPtrDims > 0 || problem->aScale2D())
         arg_list.set(argn++, offset_aq);
-    if (exec_cfg.b_quant.zp_ndims > 0 || problem->bScale2D())
+    if (problem->boPtrDims > 0 || problem->bScale2D())
         arg_list.set(argn++, offset_bq);
 
     lws[0] *= nocopy_info()->subgroupSize;
@@ -356,7 +356,7 @@ static status_t build_exec_config(jit::exec_config_t &exec_cfg,
     const memory_storage_t *co = &GEMM_CTX_ARG_STORAGE(c_zero_point);
     if (pd->with_c_zero_points()) {
         exec_cfg.off_co0
-                = types::bytes_to_elements(exec_cfg.c_type, co->offset())
+                = types::bytes_to_elements(exec_cfg.c_type(), co->offset())
                 + pd->dyn_offset_co;
         cmask = pd->attr()->zero_points_.get_mask(DNNL_ARG_DST);
         if (co->is_host_scalar()) {
@@ -368,29 +368,28 @@ static status_t build_exec_config(jit::exec_config_t &exec_cfg,
     } else if (exec_cfg.with_bias) {
         co = &GEMM_CTX_ARG_STORAGE(bias);
         exec_cfg.off_co0
-                = types::bytes_to_elements(exec_cfg.c_type, co->offset());
+                = types::bytes_to_elements(exec_cfg.c_type(), co->offset());
         cmask = exec_cfg.bias_cmask;
     } else if (pd->with_sum_ab()) {
         co = &GEMM_CTX_ARG_STORAGE(sum_ab);
         exec_cfg.off_co0
-                = types::bytes_to_elements(exec_cfg.c_type, co->offset());
+                = types::bytes_to_elements(exec_cfg.c_type(), co->offset());
         cmask = pd->sum_ab_cmask();
     }
     exec_cfg.co = co;
 
     // ao/bo and host scalars (sign-flipped to match kernel convention).
-    // Read pre-swap (i.e. user-orientation) presence flags from the
-    // matmul-frame quant_params; the swap fold below routes them.
+    // Presence in user (matmul) orientation. exec_cfg.problem is kernel-oriented, so
+    // user-A is kernel-B under swap. aOffset==Calc covers BOTH tensor and
+    // host-scalar zps (the problem folds a host scalar to aoPtrDims==-1 but
+    // keeps aOffset==Calc); the swap fold below routes the bound storages.
+    using gemmstone::ABOffset;
     const bool a_zp_user
-            = (exec_cfg.swap_ab ? exec_cfg.b_quant : exec_cfg.a_quant).zp_ndims
-                    >= 0
-            || (exec_cfg.swap_ab ? exec_cfg.b_quant : exec_cfg.a_quant)
-                       .zp_host_scalar;
+            = (s ? exec_cfg.problem.bOffset : exec_cfg.problem.aOffset)
+            == ABOffset::Calc;
     const bool b_zp_user
-            = (exec_cfg.swap_ab ? exec_cfg.a_quant : exec_cfg.b_quant).zp_ndims
-                    >= 0
-            || (exec_cfg.swap_ab ? exec_cfg.a_quant : exec_cfg.b_quant)
-                       .zp_host_scalar;
+            = (s ? exec_cfg.problem.aOffset : exec_cfg.problem.bOffset)
+            == ABOffset::Calc;
     exec_cfg.with_a_zero_points = a_zp_user;
     exec_cfg.with_b_zero_points = b_zp_user;
     if (exec_cfg.with_a_zero_points || exec_cfg.with_b_zero_points) {
@@ -407,16 +406,13 @@ static status_t build_exec_config(jit::exec_config_t &exec_cfg,
         exec_cfg.bo_host_scalar = static_cast<int16_t>(-bo_host);
     }
 
-    // 2D scales are bound to storages. Read from matmul-frame (pre-swap)
-    // quant_params; the swap fold below routes the storage.
+    // 2D scales are bound to storages. Presence in user orientation from the
+    // kernel-oriented problem (user-A is kernel-B under swap); the swap fold
+    // below routes the storage.
     const bool a_scales_2d_user
-            = (exec_cfg.swap_ab ? exec_cfg.b_quant : exec_cfg.a_quant)
-                      .scale_ndims
-            > 1;
+            = s ? exec_cfg.problem.bScale2D() : exec_cfg.problem.aScale2D();
     const bool b_scales_2d_user
-            = (exec_cfg.swap_ab ? exec_cfg.a_quant : exec_cfg.b_quant)
-                      .scale_ndims
-            > 1;
+            = s ? exec_cfg.problem.aScale2D() : exec_cfg.problem.bScale2D();
     if (a_scales_2d_user) exec_cfg.a_scales = &GEMM_CTX_ARG_STORAGE(a_scales);
     if (b_scales_2d_user) exec_cfg.b_scales = &GEMM_CTX_ARG_STORAGE(b_scales);
     if (exec_cfg.with_mx_scale)
@@ -449,13 +445,13 @@ static status_t build_exec_config(jit::exec_config_t &exec_cfg,
     const auto eff_dyn_offset_a = s ? pd->dyn_offset_b : pd->dyn_offset_a;
     const auto eff_dyn_offset_b = s ? pd->dyn_offset_a : pd->dyn_offset_b;
     exec_cfg.off_a0
-            = types::bytes_to_elements(exec_cfg.a_type, exec_cfg.a->offset())
+            = types::bytes_to_elements(exec_cfg.a_type(), exec_cfg.a->offset())
             + eff_dyn_offset_a;
     exec_cfg.off_b0
-            = types::bytes_to_elements(exec_cfg.b_type, exec_cfg.b->offset())
+            = types::bytes_to_elements(exec_cfg.b_type(), exec_cfg.b->offset())
             + eff_dyn_offset_b;
     exec_cfg.off_c0
-            = types::bytes_to_elements(exec_cfg.c_type, exec_cfg.c->offset())
+            = types::bytes_to_elements(exec_cfg.c_type(), exec_cfg.c->offset())
             + pd->dyn_offset_c;
 
     // Resolve host-scalar scales into alpha; this used to live in
@@ -540,7 +536,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     const memory_storage_t *po_srcs[GEMM_MAX_PO];
     auto &bias = GEMM_CTX_ARG_STORAGE(bias);
 
-    int po_count = exec_cfg.post_ops.len();
+    int po_count = int(exec_cfg.binary_srcs.size());
     assert(po_count <= GEMM_MAX_PO);
 
     for (int i = 0; i < po_count; i++) {
@@ -605,11 +601,11 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         block_n = nocopy_info()->blockingAlt[1];
     }
 
-    if (!utils::one_of(exec_cfg.c_type, data_type::f32, data_type::f16))
+    if (!utils::one_of(exec_cfg.c_type(), data_type::f32, data_type::f16))
         block_k = k;
-    if (exec_cfg.post_ops.len() > 0
-            && exec_cfg.post_ops.entry_[0].kind != primitive_kind::sum)
-        block_k = k;
+    // problem.postOps is the lowered, swap-folded list; transpose() does not
+    // reorder ops, so postOps[0] matches the old converted post_ops.entry_[0].
+    if (problem.postOps.len() > 0 && !problem.postOps[0].is_sum()) block_k = k;
 
     if (k_parallel_fixed)
         block_k = into<int32_t>(pd()->kernel_desc()->aux_params()->k0);
@@ -644,24 +640,22 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
             if (size_m > block_m) size_m = block_m;
 
             auto off_a_src = exec_cfg.off_a0
-                    + (!exec_cfg.trans_a ? (Bm + Bk * lda) : (Bk + Bm * lda));
+                    + (!exec_cfg.trans_a() ? (Bm + Bk * lda) : (Bk + Bm * lda));
 
             for (int64_t Bn = 0; Bn < n; Bn += block_n) {
                 int64_t size_n = n - Bn;
                 if (size_n > block_n) size_n = block_n;
 
                 auto off_b_src = exec_cfg.off_b0
-                        + (!exec_cfg.trans_b ? (Bk + Bn * ldb)
-                                             : (Bn + Bk * ldb));
+                        + (!exec_cfg.trans_b() ? (Bk + Bn * ldb)
+                                               : (Bn + Bk * ldb));
 
                 auto off_c = exec_cfg.off_c0 + Bm + Bn * ldc;
 
                 auto off_aq = off_aq0;
                 auto off_bq = off_bq0;
-                if (exec_cfg.a_quant.zp_ndims >= 1 || exec_cfg.a_scales)
-                    off_aq += Bm;
-                if (exec_cfg.b_quant.zp_ndims >= 1 || exec_cfg.b_scales)
-                    off_bq += Bn;
+                if (problem.aoPtrDims >= 1 || exec_cfg.a_scales) off_aq += Bm;
+                if (problem.boPtrDims >= 1 || exec_cfg.b_scales) off_bq += Bn;
 
                 auto off_co = exec_cfg.off_co0;
                 switch (exec_cfg.cmask & 3) {

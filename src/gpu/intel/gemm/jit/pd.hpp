@@ -37,23 +37,43 @@ namespace jit {
 
 #define GEMM_MAX_PO 36
 
-struct quant_params {
-    data_type_t scales_type = data_type::undef;
-    data_type_t zp_type = data_type::undef;
-    data_type_t gs_type = data_type::undef;
-    int scale_ndims = -1;
-    int zp_ndims = -1;
-    int gs_ndims = -1;
-    int group_k = 0;
-    int group_m = 0;
-    int group_n = 0;
-    bool force_gs = false;
-    bool zp_host_scalar = false;
-};
+// Reverse of convert_dnnl_to_kernel_type (gen_kernel.hpp): map a gemmstone
+// kernel Type back to a dnnl data_type_t. The forward map is a bijection over
+// the GEMM-relevant types, so this round-trips exactly. Used by kernel_config_t's
+// a/b/c_type() accessors, which keep the matrix types only as
+// problem.Ta/Tb/Tc_ext.
+inline data_type_t convert_kernel_to_dnnl_type(gemmstone::Type type) {
+    using gemmstone::Type;
+    switch (type) {
+        case Type::f64: return data_type::f64;
+        case Type::f32: return data_type::f32;
+        case Type::f16: return data_type::f16;
+        case Type::bf16: return data_type::bf16;
+        case Type::bf8: return data_type::f8_e5m2;
+        case Type::hf8: return data_type::f8_e4m3;
+        case Type::f8_e8m0: return data_type::e8m0;
+        case Type::f4_e2m1: return data_type::f4_e2m1;
+        case Type::f4_e3m0: return data_type::f4_e3m0;
+        case Type::s32: return data_type::s32;
+        case Type::u8: return data_type::u8;
+        case Type::s8: return data_type::s8;
+        case Type::u4: return data_type::u4;
+        case Type::s4: return data_type::s4;
+        case Type::invalid: return data_type::undef;
+        default: gpu_error_not_expected(); return data_type::undef;
+    }
+}
 
 struct binary_src_t {
     enum type_t { none, scales, bias, binary, prelu } type;
     int index;
+    // Source memory descriptor for the post-op input (binary src1 / bias /
+    // prelu weights / scales md), in user orientation. Snapshot taken in
+    // init_post_ops; swap-invariant (matches the old swap-invariant
+    // post_ops/prelu_wei_md). Feeds ld_binary/stride_binary so they no longer
+    // index a stored post_ops_t. Empty ({}) for the `none` types (sum/eltwise)
+    // and for `scales` in ld_binary (which returns 1, as before).
+    memory_desc_t src_md = {};
 
     binary_src_t(type_t type_, int index_) : type(type_), index(index_) {}
 };
@@ -66,20 +86,42 @@ struct binary_src_t {
 // transfer_post_ops, gen_t::execute, launch_nocopy) read cfg.* uniformly
 // and never branch on pd()->swap_ab() again.
 struct kernel_config_t {
+    // Embedded kernel projection. Phase-A populators write the migrated
+    // scalar subset here; swap_fold keeps it kernel-oriented via
+    // GEMMProblem::transpose(); init_GEMMProblem consumes it. The legacy
+    // fields below remain as Phase-A populator scratch / validator input.
+    gemmstone::GEMMProblem problem;
+
+    // Matrix types are the embedded problem's Ta/Tb/Tc_ext; these accessors
+    // project them back to dnnl data_type_t. swap_fold flips A/B via
+    // problem.transpose(), so a_type()/b_type() follow the swap automatically
+    // (no separate fields to keep in sync).
+    data_type_t a_type() const {
+        return convert_kernel_to_dnnl_type(problem.Ta_ext);
+    }
+    data_type_t b_type() const {
+        return convert_kernel_to_dnnl_type(problem.Tb_ext);
+    }
+    data_type_t c_type() const {
+        return convert_kernel_to_dnnl_type(problem.Tc_ext);
+    }
+    // A/B orientation lives in problem.A/B.layout (seeded in Phase A from the
+    // user trans flags; folded by problem.transpose() in swap_fold). The C-side
+    // (trans_co) is likewise problem.CO.layout — no accessor is needed since
+    // only init_GEMMProblem consumes it, straight from the folded problem.
+    bool trans_a() const {
+        return problem.A.layout == gemmstone::MatrixLayout::T;
+    }
+    bool trans_b() const {
+        return problem.B.layout == gemmstone::MatrixLayout::T;
+    }
+
+    // sum_ab lives in the embedded problem as sumA/sumB (populated in Phase A,
+    // swapped by problem.transpose() in swap_fold).
+
     // A/B/C scalars.
-    data_type_t a_type = data_type::undef;
-    data_type_t b_type = data_type::undef;
-    data_type_t c_type = data_type::undef;
     dim_t m = 0, n = 0, k = 0;
     dim_t lda = 0, ldb = 0, ldc = 0;
-    bool trans_a = false, trans_b = false;
-    int align_a = 0, align_b = 0, align_c = 0;
-
-    // Sub-configurations in kernel-cfg orientation. group_m/n are
-    // swapped under swap_ab.
-    quant_params a_quant, b_quant, c_quant;
-    sum_ab_t sum_ab = sum_ab::sum_none;
-    bool trans_co = false;
 
     // Quant memory descriptors. A/B-side are swap-folded; C-side is
     // passthrough. Plain MDs; strides used for batch-dim lookups.
@@ -87,17 +129,18 @@ struct kernel_config_t {
     memory_desc_t a_zp_md = {}, b_zp_md = {}, c_zp_md = {};
     memory_desc_t a_gs_md = {}, b_gs_md = {};
 
-    // Post-op tail (populated by init_post_ops; swap-invariant).
-    post_ops_t post_ops;
+    // Post-op tail (populated by init_post_ops; swap-invariant). The lowered
+    // post-op semantics live solely in problem.postOps/binary/Tbinary; the
+    // irreducible per-entry runtime residue (source md for ld/stride lookups +
+    // arg routing) lives on binary_srcs[*].{src_md,type,index}. There is no
+    // stored post_ops_t: with_sum/sum_at_begin derive from the original user
+    // post-ops via pd_t::with_sum()/sum_at_begin(); binary/eltwise presence
+    // derives from problem.postOps.
     std::vector<binary_src_t> binary_srcs;
-    memory_desc_t prelu_wei_md = {};
-    bool with_sum = false;
-    bool sum_at_begin = false;
     bool non_scale_po = false;
 
     // Bias cfg (swap-invariant; bias is fused as the C-side
     // offset/binary input).
-    bool bias_via_binary = false;
     bool with_bias = false;
     int bias_cmask = -1;
     dim_t ld_bias = 0;
@@ -146,6 +189,14 @@ struct pd_t : public gemm::pd_t {
     status_t init_attrs(kernel_config_t &cfg, impl::engine_t *engine);
     status_t init_post_ops(kernel_config_t &cfg, impl::engine_t *engine);
 
+    // Phase A finalizer — seed the kernel projection from desc(): the A/B/C
+    // scalars (m/n/k/ld*), the embedded problem's matrix types and A/B/C/CO
+    // orientation. The post-op binary metadata (problem.postOps/binary/
+    // Tbinary) is committed by init_post_ops, which must run first. swap_fold
+    // then folds the whole problem to kernel orientation. Shared by gen_t and
+    // xe_hp_systolic.
+    status_t seed_problem(kernel_config_t &cfg);
+
     // Phase A validators — read cfg + attr; report errors in user terms.
     status_t scales_ok(const kernel_config_t &cfg, impl::engine_t *engine);
     status_t zp_ok(const kernel_config_t &cfg, impl::engine_t *engine);
@@ -171,8 +222,6 @@ struct pd_t : public gemm::pd_t {
     static constexpr int mask_per_oc = 1 << 1;
     static constexpr int mask_per_ic = 1 << 2;
 
-    dim_t lda_ = 0, ldb_ = 0;
-    bool transa_ = false, transb_ = false;
     compute::gpu_arch_t arch_ = compute::gpu_arch_t::unknown;
 
     int cmask_a() const {
@@ -199,6 +248,18 @@ struct pd_t : public gemm::pd_t {
 
     sum_ab_t sum_ab() const { return desc()->sum_ab; }
     bool with_sum_ab() const { return sum_ab() != sum_ab::sum_none; }
+
+    // Sum post-op presence and whether it is the first post-op. Derived from
+    // the original user post-ops: the sum entry survives the bias/scale->binary
+    // conversions in init_post_ops, and reading the pre-conversion ordering for
+    // sum_at_begin reproduces the value captured before those prepends.
+    bool with_sum() const {
+        return attr()->post_ops_.find(primitive_kind::sum) != -1;
+    }
+    bool sum_at_begin() const {
+        const auto &po = attr()->post_ops_;
+        return po.len() > 0 && po.entry_[0].kind == primitive_kind::sum;
+    }
 
     int sum_ab_cmask() const {
         switch (sum_ab()) {
@@ -229,17 +290,8 @@ struct pd_t : public gemm::pd_t {
     bool swap_ab() const { return cfg_.swap_ab; }
 
     int batch_dims() const { return nstl::max(desc()->c_desc.ndims - 2, 0); }
-    bool trans_a() const { return transa_; }
-    bool trans_b() const { return transb_; }
     bool trans_bias() const { return desc()->trans_bias() == dnnl_trans; }
 
-    dim_t ld(int arg) const {
-        if (arg == DNNL_ARG_A) return lda_;
-        if (arg == DNNL_ARG_B) return ldb_;
-        if (arg == DNNL_ARG_C) return desc()->ldc();
-        gpu_error_not_expected();
-        return 0;
-    }
     dim_t stride(int arg, int dim) const {
         if (arg == DNNL_ARG_A) return desc()->stride_a(dim);
         if (arg == DNNL_ARG_B) return desc()->stride_b(dim);
@@ -247,17 +299,18 @@ struct pd_t : public gemm::pd_t {
         gpu_error_not_expected();
         return 0;
     }
-    data_type_t get_type(int arg) const {
-        if (arg == DNNL_ARG_A) return desc()->a_type();
-        if (arg == DNNL_ARG_B) return desc()->b_type();
-        if (arg == DNNL_ARG_C) return desc()->c_type();
-        gpu_error_not_expected();
-        return data_type::undef;
-    }
 
-    dim_t scale_stride(int idx, int arg) const;
-    dim_t zp_stride(int idx, int arg) const;
-    dim_t gs_stride(int idx, int arg) const;
+    // Per-batch-dim strides of the (already swap-folded) quant memory
+    // descriptors. Named by kernel side (A/B) and take no DNNL_ARG, so a
+    // caller cannot re-apply the A/B swap that swap_fold already baked into
+    // cfg_.{a,b}_*_md. Contrast stride() above, which reads the unswapped
+    // desc() and so legitimately takes a user-frame DNNL_ARG.
+    dim_t a_scale_stride(int idx) const;
+    dim_t b_scale_stride(int idx) const;
+    dim_t a_zp_stride(int idx) const;
+    dim_t b_zp_stride(int idx) const;
+    dim_t a_gs_stride(int idx) const;
+    dim_t b_gs_stride(int idx) const;
     bool a_zp_host_scalar() const {
         auto attr_info = attr_info_t::create(attr());
         return attr_info.with_host_wei_zp;
@@ -270,12 +323,15 @@ struct pd_t : public gemm::pd_t {
         auto attr_info = attr_info_t::create(attr());
         return attr_info.with_host_dst_zp;
     }
-    int align(int arg) const {
-        auto dt = get_type(arg);
-        auto align = utils::max_pow2_div(types::elements_to_bytes(dt, ld(arg)));
+    // Leading-dim / batch-stride alignment in bytes. `ld` and `dt` are the
+    // (kernel-oriented) leading dim and type taken from the cfg; `batch_arg`
+    // selects the desc() batch strides — a user-frame DNNL_ARG, so the caller
+    // applies the swap_ab fold by passing the effective side.
+    int align(dim_t ld, data_type_t dt, int batch_arg) const {
+        auto align = utils::max_pow2_div(types::elements_to_bytes(dt, ld));
         for (int b = 0; b < batch_dims(); b++) {
             auto stride_bytes = utils::max_pow2_div(
-                    types::elements_to_bytes(dt, stride(arg, b)));
+                    types::elements_to_bytes(dt, stride(batch_arg, b)));
             align = (stride_bytes ? nstl::min(align, stride_bytes) : align);
         }
         return int(align);
@@ -288,11 +344,11 @@ struct pd_t : public gemm::pd_t {
 void pad_lda(kernel_config_t &cfg, bool swap);
 void swap_fold(kernel_config_t &cfg, bool swap);
 
-// Populate problem.postOps and problem.binary from a gpu_post_ops_t,
-// folding per-binary layout selection by cfg.swap_ab so that no post-hoc
-// problem.postOps.transpose()/b.transpose() pass is required.
-status_t transfer_post_ops(gemmstone::GEMMProblem &problem,
-        gpu_post_ops_t &&post_ops, const kernel_config_t &cfg);
+// Populate problem.postOps and problem.binary from a gpu_post_ops_t, in user
+// (un-swapped) orientation. The A/B swap is folded by the caller via
+// problem.transpose() (in swap_fold), so this builds no swap_ab dependency.
+status_t transfer_post_ops(
+        gemmstone::GEMMProblem &problem, gpu_post_ops_t &&post_ops);
 
 // Runtime-time projection of pd_t + exec_ctx_t state in kernel-cfg
 // orientation. Inherits kernel_config_t's swap-folded scalars/flags and adds
@@ -357,20 +413,17 @@ struct exec_config_t : kernel_config_t {
     dim_t stride_c(int dim) const { return pd->desc()->stride_c(dim); }
     // The quant memory descriptors (a/b_scale_md, a/b_zp_md, a/b_gs_md) live
     // on the cfg and are already swap-folded to kernel orientation by
-    // swap_fold. So index them by the *kernel* side (A/B) directly — NOT
-    // eff_arg, which would re-apply the swap and read the empty opposite-side
-    // md (crash on batched + swap_ab + one-sided quant). Contrast stride_a/b
-    // above, which reach the unswapped desc() and so must route via eff_arg.
-    dim_t scale_stride_a(int idx) const {
-        return pd->scale_stride(idx, DNNL_ARG_A);
-    }
-    dim_t scale_stride_b(int idx) const {
-        return pd->scale_stride(idx, DNNL_ARG_B);
-    }
-    dim_t zp_stride_a(int idx) const { return pd->zp_stride(idx, DNNL_ARG_A); }
-    dim_t zp_stride_b(int idx) const { return pd->zp_stride(idx, DNNL_ARG_B); }
-    dim_t gs_stride_a(int idx) const { return pd->gs_stride(idx, DNNL_ARG_A); }
-    dim_t gs_stride_b(int idx) const { return pd->gs_stride(idx, DNNL_ARG_B); }
+    // swap_fold. Forward to the kernel-side pd_t accessors, which take no
+    // DNNL_ARG — so the A/B swap cannot be re-applied here (re-applying it
+    // read the empty opposite-side md: crash on batched + swap_ab + one-sided
+    // quant). Contrast stride_a/b above, which reach the unswapped desc() and
+    // so must route via eff_arg.
+    dim_t scale_stride_a(int idx) const { return pd->a_scale_stride(idx); }
+    dim_t scale_stride_b(int idx) const { return pd->b_scale_stride(idx); }
+    dim_t zp_stride_a(int idx) const { return pd->a_zp_stride(idx); }
+    dim_t zp_stride_b(int idx) const { return pd->b_zp_stride(idx); }
+    dim_t gs_stride_a(int idx) const { return pd->a_gs_stride(idx); }
+    dim_t gs_stride_b(int idx) const { return pd->b_gs_stride(idx); }
 };
 
 } // namespace jit

@@ -48,21 +48,6 @@ struct xe_hp_systolic_t : public gemm::primitive_t {
         size_t dyn_offset_b = 0;
         size_t dyn_offset_c = 0;
 
-        data_type_t impl_co_type() const {
-            using namespace data_type;
-            return with_bias() ? desc()->bias_type()
-                               : (utils::one_of(desc()->a_type(), s8, u8)
-                                                 ? s32
-                                                 : desc()->c_type());
-        }
-
-        data_type_t impl_acc_type() const {
-            using namespace data_type;
-            return utils::one_of(desc()->c_type(), s8, u8, f16, bf16, f32)
-                    ? (utils::one_of(desc()->a_type(), s8, u8) ? s32 : f32)
-                    : s32;
-        }
-
         float alpha() const { return 1.0f; }
         float beta() const { return cfg().beta; }
 
@@ -128,10 +113,12 @@ struct xe_hp_systolic_t : public gemm::primitive_t {
         bool with_c_zero_points() const { return c_zp_; }
 
         bool allow_k_blocking() const {
+            // problem.postOps is the lowered post-op list (committed in
+            // init_post_ops; systolic never swaps, so it equals the converted
+            // user list). Matches the old cfg().post_ops.entry_[0]==sum guard.
+            const auto &po = cfg().problem.postOps;
             return (desc()->acc_type == desc()->c_type())
-                    && IMPLICATION(cfg().post_ops.len() > 0,
-                            cfg().post_ops.entry_[0].kind
-                                    == primitive_kind::sum);
+                    && IMPLICATION(po.len() > 0, po[0].is_sum());
         }
 
         int unroll_m() const { return unroll_m_; }

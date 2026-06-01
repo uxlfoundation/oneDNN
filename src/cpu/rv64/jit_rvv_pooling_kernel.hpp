@@ -32,12 +32,15 @@ struct jit_rvv_pooling_fwd_kernel_t : public jit_generator_t {
         dim_t channels;
         dim_t id_start, ih_start, iw_start;
         dim_t id_end, ih_end, iw_end;
-        dim_t inW_stride; // IW * C (elements)
-        dim_t inD_stride; // IH * IW * C (elements)
+        dim_t inW_stride; // IW * C (elements) for NHWC, IW for NCHW
+        dim_t inD_stride; // IH * IW * C (elements) for NHWC, IH*IW for NCHW
+        dim_t w_spatial_byte_stride; // channels*4 for NHWC, 1*4 for NCHW
         float init_val; // -FLT_MAX for max, 0.0 for avg
         float scale_val; // 1.0/count for avg, unused for max
         float relu_alpha;
         bool with_relu;
+        dim_t src_vec_byte_stride; // byte stride between vector elements in src
+        dim_t dst_vec_byte_stride; // byte stride between vector elements in dst
     };
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_rvv_pooling_fwd_kernel_t)

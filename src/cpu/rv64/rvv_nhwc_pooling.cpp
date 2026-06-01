@@ -88,10 +88,13 @@ kernel_t::call_params_t make_pooling_params(kernel_t::alg_t alg,
     p.iw_end = iw_end;
     p.inW_stride = inW_stride;
     p.inD_stride = inD_stride;
+    p.w_spatial_byte_stride = channels * sizeof(float);
     p.init_val = init_val;
     p.scale_val = scale_val;
     p.relu_alpha = relu_alpha;
     p.with_relu = with_relu;
+    p.src_vec_byte_stride = (dim_t)sizeof(float);
+    p.dst_vec_byte_stride = (dim_t)sizeof(float);
     return p;
 }
 

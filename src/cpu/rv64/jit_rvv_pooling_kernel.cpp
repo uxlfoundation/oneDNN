@@ -41,7 +41,7 @@ void jit_rvv_pooling_fwd_kernel_t::generate() {
 
     // Save callee-saved regs (s0-s7) to hold loop invariants across the
     // nested id/ih/iw/channel loops (src/dst ptrs, strides, range bounds)
-    const int stack_size = 8 * 8;
+    const int stack_size = 10 * 8;
     addi(sp, sp, -stack_size);
     sd(s0, sp, 0);
     sd(s1, sp, 8);
@@ -51,6 +51,8 @@ void jit_rvv_pooling_fwd_kernel_t::generate() {
     sd(s5, sp, 40);
     sd(s6, sp, 48);
     sd(s7, sp, 56);
+    sd(s8, sp, 64);
+    sd(s9, sp, 72);
 
     // Load params from call_params_t
     using p_t = call_params_t;
@@ -65,6 +67,7 @@ void jit_rvv_pooling_fwd_kernel_t::generate() {
     ld(a2, reg_param, static_cast<int>(offsetof(p_t, iw_end)));
     ld(t2, reg_param, static_cast<int>(offsetof(p_t, inW_stride)));
     ld(t3, reg_param, static_cast<int>(offsetof(p_t, inD_stride)));
+    ld(s3, reg_param, static_cast<int>(offsetof(p_t, w_spatial_byte_stride)));
     flw(fa0, reg_param, static_cast<int>(offsetof(p_t, init_val)));
     flw(ft1, reg_param, static_cast<int>(offsetof(p_t, scale_val)));
     flw(fa2, reg_param, static_cast<int>(offsetof(p_t, relu_alpha)));
@@ -75,11 +78,13 @@ void jit_rvv_pooling_fwd_kernel_t::generate() {
     slli(s4, t2, 2); // inW_stride_bytes = inW_stride * 4
     slli(s5, t3, 2); // inD_stride_bytes = inD_stride * 4
 
-    // Byte stride to advance one pixel in W: channels * sizeof(float)
-    slli(s3, s2, 2); // W_spatial_byte_stride = channels * 4
-
     // Load with_relu flag (t3 is free after inD_stride consumed into s5)
     lbu(t3, reg_param, static_cast<int>(offsetof(p_t, with_relu)));
+
+    ld(s8, reg_param, static_cast<int>(offsetof(p_t, src_vec_byte_stride)));
+    ld(s9, reg_param, static_cast<int>(offsetof(p_t, dst_vec_byte_stride)));
+
+    addi(t4, x0, 4); // constant for unit-stride comparison
 
     // Channel loop: process channels in vector chunks
     Label ch_loop, ch_done;
@@ -124,8 +129,16 @@ void jit_rvv_pooling_fwd_kernel_t::generate() {
     L(iw_loop);
     bge(a5, a2, iw_done); // if iw >= iw_end, done
 
-    // Load and accumulate
-    vle32_v(v_tmp, a7);
+    // Load — use vle32_v for unit stride to avoid potential uarch penalty
+    {
+        Label strided_src, src_ld_done;
+        bne(s8, t4, strided_src);
+        vle32_v(v_tmp, a7);
+        j_(src_ld_done);
+        L(strided_src);
+        vlse32_v(v_tmp, a7, s8);
+        L(src_ld_done);
+    }
     if (alg_ == alg_t::max_pool) {
         vfmax_vv(v_acc, v_acc, v_tmp);
     } else {
@@ -166,12 +179,37 @@ void jit_rvv_pooling_fwd_kernel_t::generate() {
     L(relu_alpha_zero);
     vfmax_vf(v_acc, v_acc, fa1);
     L(relu_done);
-    // Store result
-    vse32_v(v_acc, s1);
+    // Store result — use vse32_v for unit stride
+    {
+        Label strided_dst, dst_st_done;
+        bne(s9, t4, strided_dst);
+        vse32_v(v_acc, s1);
+        j_(dst_st_done);
+        L(strided_dst);
+        vsse32_v(v_acc, s1, s9);
+        L(dst_st_done);
+    }
 
-    // Advance src/dst pointers by vl * 4 bytes
-    slli(t1, t0, 2);
+    // Advance src/dst pointers by vl * stride
+    {
+        Label strided_src_adv, src_adv_done;
+        bne(s8, t4, strided_src_adv);
+        slli(t1, t0, 2);
+        j_(src_adv_done);
+        L(strided_src_adv);
+        mul(t1, t0, s8);
+        L(src_adv_done);
+    }
     add(s0, s0, t1);
+    {
+        Label strided_dst_adv, dst_adv_done;
+        bne(s9, t4, strided_dst_adv);
+        slli(t1, t0, 2);
+        j_(dst_adv_done);
+        L(strided_dst_adv);
+        mul(t1, t0, s9);
+        L(dst_adv_done);
+    }
     add(s1, s1, t1);
     sub(s2, s2, t0); // channels -= vl
 
@@ -187,6 +225,8 @@ void jit_rvv_pooling_fwd_kernel_t::generate() {
     ld(s5, sp, 40);
     ld(s6, sp, 48);
     ld(s7, sp, 56);
+    ld(s8, sp, 64);
+    ld(s9, sp, 72);
     addi(sp, sp, stack_size);
 
     ret();

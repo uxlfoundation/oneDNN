@@ -6598,25 +6598,41 @@ private:
             } else {
                 uni_vpxor(zmm_src_pack, zmm_src_pack, zmm_src_pack);
 
-                for (int r = 0; r < fp8_vnni_k_pack; ++r) {
-                    const auto xmm_src = Xmm(xmm_work_reg_base_idx + r);
-                    if (r < rows_left) {
-                        const bool is_n_tail = cols_left < n_blk_step;
-                        if (is_n_tail) uni_vpxor(xmm_src, xmm_src, xmm_src);
+                const bool is_n_tail = cols_left < n_blk_step;
+                const auto xmm_src0 = Xmm(xmm_work_reg_base_idx + 0);
+                const auto xmm_src1 = Xmm(xmm_work_reg_base_idx + 1);
+                const auto xmm_src2 = Xmm(xmm_work_reg_base_idx + 2);
+                const auto xmm_src3 = Xmm(xmm_work_reg_base_idx + 3);
 
-                        for (int c = 0; c < n_blk_step; ++c) {
-                            if (c >= cols_left) break;
-                            const dim_t src_off = (n + c) * src_row_stride_
-                                    + (k + r) * typesize_;
-                            vpinsrb(xmm_src, xmm_src, byte[reg_src + src_off],
-                                    c);
-                        }
-                    } else {
-                        uni_vpxor(xmm_src, xmm_src, xmm_src);
-                    }
-
-                    vinserti32x4(zmm_src_pack, zmm_src_pack, xmm_src, r);
+                if (is_n_tail || rows_left < fp8_vnni_k_pack) {
+                    uni_vpxor(xmm_src0, xmm_src0, xmm_src0);
+                    uni_vpxor(xmm_src1, xmm_src1, xmm_src1);
+                    uni_vpxor(xmm_src2, xmm_src2, xmm_src2);
+                    uni_vpxor(xmm_src3, xmm_src3, xmm_src3);
                 }
+
+                // Iterate source by columns first so row bytes k..k+3 are read
+                // from nearby addresses before moving to the next column.
+                for (int c = 0; c < n_blk_step; ++c) {
+                    if (c >= cols_left) break;
+                    const dim_t src_off
+                            = (n + c) * src_row_stride_ + k * typesize_;
+                    vpinsrb(xmm_src0, xmm_src0, byte[reg_src + src_off], c);
+                    if (rows_left > 1)
+                        vpinsrb(xmm_src1, xmm_src1,
+                                byte[reg_src + src_off + 1 * typesize_], c);
+                    if (rows_left > 2)
+                        vpinsrb(xmm_src2, xmm_src2,
+                                byte[reg_src + src_off + 2 * typesize_], c);
+                    if (rows_left > 3)
+                        vpinsrb(xmm_src3, xmm_src3,
+                                byte[reg_src + src_off + 3 * typesize_], c);
+                }
+
+                vinserti32x4(zmm_src_pack, zmm_src_pack, xmm_src0, 0);
+                vinserti32x4(zmm_src_pack, zmm_src_pack, xmm_src1, 1);
+                vinserti32x4(zmm_src_pack, zmm_src_pack, xmm_src2, 2);
+                vinserti32x4(zmm_src_pack, zmm_src_pack, xmm_src3, 3);
 
                 // Reorder row-wise [r0|r1|r2|r3] into split-pack layout for
                 // direct conversion: low 32B interleave [r0[n], r1[n]],

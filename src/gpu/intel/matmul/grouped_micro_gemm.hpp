@@ -25,7 +25,7 @@
 #include "common/primitive.hpp"
 #include "common/utils.hpp"
 #include "gemmstone/microkernel/package.hpp"
-#include "gpu/intel/matmul/config.hpp"
+#include "gpu/intel/matmul/types.hpp"
 #include "gpu/intel/primitive.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 

@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_GEMM_CONFIG_HPP
-#define GPU_INTEL_GEMM_CONFIG_HPP
+#ifndef GPU_INTEL_GEMM_TYPES_HPP
+#define GPU_INTEL_GEMM_TYPES_HPP
 
 #include "common/primitive_exec_types.hpp"
 #include "gpu/gpu_gemm_pd.hpp"

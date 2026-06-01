@@ -55,7 +55,7 @@ struct gen_t : public primitive_t {
             // swapped data type/alignment requirements. Currently mostly
             // affects weights-only compression cases, since A/B have
             // different data types.
-            s &= !wei_decomp();
+            s &= !cfg.wei_decomp;
             return s;
         }
 
@@ -75,12 +75,6 @@ struct gen_t : public primitive_t {
             dev_info_ = intel_engine->device_info();
             arch_ = dev_info_->gpu_arch();
 
-            // Populate cfg.problem in one contiguous post-set_default_formats
-            // pass, ordered identity -> attributes -> (validate) -> post-ops:
-            // seed_problem here, the rest inside jit::pd_t::init. The only hard
-            // pin is set_default_formats -> seed_problem, so lda/ldb/ldc capture
-            // the final packed strides. finalize_problem is the post-swap_fold
-            // hardware-derived tail.
             CHECK(seed_problem(cfg_));
 
             CHECK(jit::pd_t::init(engine, arch_));
@@ -101,7 +95,7 @@ struct gen_t : public primitive_t {
                             d->lda(), d->ldb(), d->ldc(), d->batch()),
                     VERBOSE_UNSUPPORTED_TAG);
 
-            // Phase B — after swap_fold, cfg_ is the kernel projection.
+            // After swap_fold, cfg_ is the kernel-frame projection.
             bool swap = decide_swap_ab(cfg_);
             // No kernels with transposed C, if swap_ab is disabled (e.g.
             // due to wei_decomp()) - this case cannot be handled.
@@ -115,7 +109,7 @@ struct gen_t : public primitive_t {
             if (utils::one_of(cfg.c_type(), s32, f16, bf16, f32, u8, s8)
                     && utils::one_of(cfg.a_type(), u8, s8, u4, s4)) {
                 VDISPATCH_GEMM(
-                        (utils::one_of(cfg.b_type(), u8, s8) || wei_decomp()),
+                        (utils::one_of(cfg.b_type(), u8, s8) || cfg.wei_decomp),
                         VERBOSE_UNSUPPORTED_DT);
 
                 VDISPATCH_GEMM(IMPLICATION(utils::one_of(cfg.c_type(), f32, s8,
@@ -130,7 +124,7 @@ struct gen_t : public primitive_t {
                         VERBOSE_INCONSISTENT_DT, "a", "c");
                 VDISPATCH_GEMM(utils::one_of(d->acc_type, cfg.a_type(), f32),
                         VERBOSE_INCONSISTENT_DT, "a", "acc");
-            } else if (!wei_decomp()) {
+            } else if (!cfg.wei_decomp) {
                 VDISPATCH_GEMM(utils::one_of(cfg.a_type(), f64, f32, f16, bf16,
                                        f8_e5m2, f8_e4m3, f4_e2m1, f4_e3m0),
                         VERBOSE_UNSUPPORTED_DT);
@@ -170,7 +164,7 @@ struct gen_t : public primitive_t {
                             (cfg.c_type() != f64 || d->bias_type() == f64)),
                     VERBOSE_UNSUPPORTED_BIAS_CFG);
             VDISPATCH_GEMM(
-                    IMPLICATION(with_sum_ab(),
+                    IMPLICATION(cfg.with_sum_ab(),
                             !with_bias_orig
                                     && (attr()->zero_points_.has_default_values(
                                             DNNL_ARG_DST))),
@@ -212,7 +206,7 @@ struct gen_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_FEATURE, "grouped scales");
 
             // Size checks for fused reduction kernels.
-            if (with_sum_ab()) {
+            if (cfg.with_sum_ab()) {
                 auto mnk = cfg.m * cfg.n * cfg.k;
                 if (arch_ == arch_t::xe_hpc && cfg.a_type() == f32)
                     VDISPATCH_GEMM(
@@ -235,7 +229,9 @@ struct gen_t : public primitive_t {
             if (attr()->acc_mode_ == accumulation_mode::relaxed)
                 set_mode(mode, kernel_desc_t::mode_relaxed_acc);
 
-            if (wei_decomp()) { set_mode(mode, kernel_desc_t::mode_w_decomp); }
+            if (cfg.wei_decomp) {
+                set_mode(mode, kernel_desc_t::mode_w_decomp);
+            }
 
             // GEMM kernels down convert the following parameters to
             // int/uint32_t
@@ -279,7 +275,7 @@ struct gen_t : public primitive_t {
                 if (kernel_desc_.driver_info()->kParallel()
                         && !kernel_desc_.driver_info()->fusedPostOps()) {
                     bool po_valid = !cfg.non_scale_po
-                            && !(with_sum() && with_c_scales())
+                            && !(cfg.with_sum && with_c_scales())
                             && utils::one_of(cfg.c_type(), f32, s32);
                     if (!po_valid && print_verbose)
                         dnnl::impl::verbose_printf(
@@ -290,7 +286,7 @@ struct gen_t : public primitive_t {
                 // Limited post-op support for low-precision accumulation.
                 if (kernel_desc_.problem()->Tc.size() < 4) {
                     bool need_x32_acc = with_binary
-                            || !IMPLICATION(with_sum(), sum_at_begin());
+                            || !IMPLICATION(cfg.with_sum, cfg.sum_at_begin);
                     valid &= !need_x32_acc;
                     if (need_x32_acc && print_verbose)
                         dnnl::impl::verbose_printf(
@@ -348,6 +344,9 @@ struct gen_t : public primitive_t {
 
             VDISPATCH_GEMM(
                     kernel_success, "matching kernel not found in catalog");
+
+            // Adopt the selected entry's finalized problem as the source of truth.
+            cfg_.problem = *kernel_desc_.problem();
 
             init_scratchpad();
 
@@ -496,7 +495,7 @@ struct gen_t : public primitive_t {
                 int temp_c_sz = nstl::max(
                         (int)types::data_type_size(desc()->c_type()), 4);
                 int temp_c_elems = info->wgTile(LoopM) * info->wgTile(LoopN);
-                if (with_sum_ab())
+                if (cfg_.with_sum_ab())
                     temp_c_elems += nstl::max(
                             info->wgTile(LoopM), info->wgTile(LoopN));
                 temp_c_elems = utils::rnd_up(temp_c_elems, 64);
@@ -521,11 +520,6 @@ struct gen_t : public primitive_t {
 
             return groups;
         }
-
-        size_t dyn_offset_a = 0;
-        size_t dyn_offset_b = 0;
-        size_t dyn_offset_c = 0;
-        size_t dyn_offset_co = 0;
 
         const compute::device_info_t *dev_info_ = nullptr;
         compute::gpu_arch_t arch_ = compute::gpu_arch_t::unknown;

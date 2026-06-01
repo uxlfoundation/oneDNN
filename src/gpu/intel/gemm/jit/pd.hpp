@@ -23,8 +23,8 @@
 #include "common/gemm_types.hpp"
 #include "common/memory_storage.hpp"
 #include "gemmstone/problem.hpp"
-#include "gpu/intel/gemm/config.hpp"
 #include "gpu/intel/gemm/exec_types.hpp"
+#include "gpu/intel/gemm/types.hpp"
 #include "gpu/intel/post_ops.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
@@ -42,6 +42,8 @@ inline data_type_t convert_kernel_to_dnnl_type(gemmstone::Type type) {
     switch (type) {
         case Type::f64: return data_type::f64;
         case Type::f32: return data_type::f32;
+        // tf32 buffers are physically f32.
+        case Type::tf32: return data_type::f32;
         case Type::f16: return data_type::f16;
         case Type::bf16: return data_type::bf16;
         case Type::bf8: return data_type::f8_e5m2;
@@ -68,8 +70,8 @@ struct binary_src_t {
     binary_src_t(type_t type_, int index_) : type(type_), index(index_) {}
 };
 
-// Kernel-facing projection of pd_t state. swap_ab is encoded exactly once,
-// inside swap_fold; consumers read cfg.* and never branch on swap_ab again.
+// Kernel-facing projection of pd_t state. swap_ab is folded once in swap_fold;
+// consumers read cfg.* without branching on swap_ab.
 struct kernel_config_t {
     gemmstone::GEMMProblem problem;
 
@@ -88,6 +90,23 @@ struct kernel_config_t {
     bool trans_b() const {
         return problem.B.layout == gemmstone::MatrixLayout::T;
     }
+
+    // Folded problem: aOffset==Calc is kernel-A's zp state (covers tensor and
+    // host-scalar zps; a host scalar folds aoPtrDims to -1 but keeps Calc).
+    bool with_a_zero_points() const {
+        return problem.aOffset == gemmstone::ABOffset::Calc;
+    }
+    bool with_b_zero_points() const {
+        return problem.bOffset == gemmstone::ABOffset::Calc;
+    }
+
+    // sumA/sumB carry the sum_ab reduction; the OR is swap-invariant.
+    bool with_sum_ab() const { return problem.sumA || problem.sumB; }
+
+    // swap_ab routing for ctx-arg-frame pd lookups (e.g. per-arg strides):
+    // the only place swap_ab re-enters once folded.
+    int eff_a_arg() const { return swap_ab ? DNNL_ARG_B : DNNL_ARG_A; }
+    int eff_b_arg() const { return swap_ab ? DNNL_ARG_A : DNNL_ARG_B; }
 
     dim_t m = 0, n = 0, k = 0;
     dim_t lda = 0, ldb = 0, ldc = 0;
@@ -124,12 +143,10 @@ struct kernel_config_t {
 
     data_type_t bias_type = data_type::undef;
     data_type_t sum_ab_type = data_type::undef;
-    bool with_sum_ab = false;
     accumulation_mode_t acc_mode = accumulation_mode::strict;
     bool wei_decomp = false;
     bool with_sround = false;
     bool with_c_zp = false;
-    bool c_zp_host_scalar = false;
     bool with_mx_scale = false;
     bool with_sum = false;
     bool sum_at_begin = false;
@@ -148,10 +165,8 @@ struct kernel_config_t {
         return int(a);
     }
 
-    // Debug tripwire: set at the end of finalize_problem, asserted before the
-    // finalized-problem reads (select_kernel / systolic problem_ / execute).
-    // Not serialized (kernel_config_t never is), so it cannot perturb cache keys;
-    // copied with cfg_ on clone, so a cloned pd still passes the assert.
+    // Debug tripwire: set by finalize_problem, asserted before finalized-problem
+    // reads (select_kernel / systolic problem_ / execute). Not serialized.
     bool finalized_ = false;
 
     dim_t ld_binary(int idx) const;
@@ -183,9 +198,8 @@ struct pd_t : public gemm::pd_t {
     status_t init_attrs(kernel_config_t &cfg, impl::engine_t *engine);
     status_t init_post_ops(kernel_config_t &cfg, impl::engine_t *engine);
 
-    // Seeds the kernel projection (types, A/B/C/CO orientation, m/n/k, ld*)
-    // from desc(). Must run after set_default_formats so lda/ldb/ldc reflect
-    // the final packed/plain strides; independent of init_attrs/init_post_ops.
+    // Seeds the kernel projection (types, orientation, m/n/k, ld*) from desc().
+    // Must run after set_default_formats so ld* reflect the final strides.
     status_t seed_problem(kernel_config_t &cfg);
 
     status_t scales_ok(const kernel_config_t &cfg, impl::engine_t *engine);
@@ -235,18 +249,10 @@ struct pd_t : public gemm::pd_t {
     }
 
     sum_ab_t sum_ab() const { return desc()->sum_ab; }
-    bool with_sum_ab() const { return sum_ab() != sum_ab::sum_none; }
 
-    // Post-op source-of-truth rule. Two representations answer different
-    // questions and must not be confused:
-    //  - ORIGINAL attr()->post_ops_ (here, check_sum_consistency, non_scale_po):
-    //    "did the user request a sum, and where". Sum identity is invariant
-    //    across the bias/scale->binary lowering, so read the original to avoid
-    //    over-counting converted scales as binaries.
-    //  - CONVERTED problem.postOps (hasBinaryPostOp/hasEltwisePostOp/
-    //    hasNonSum1PostOp, the execute-path postOps[0].is_sum()): "what fused
-    //    ops the kernel emits". The binary/eltwise op set is *defined* by the
-    //    lowering, so read the converted list.
+    // Sum identity is invariant across the bias/scale->binary lowering, so read
+    // the ORIGINAL attr()->post_ops_ (not the CONVERTED problem.postOps) to
+    // avoid over-counting converted scales as binaries.
     bool with_sum() const {
         return attr()->post_ops_.find(primitive_kind::sum) != -1;
     }
@@ -265,17 +271,6 @@ struct pd_t : public gemm::pd_t {
     }
     bool with_c_scales() const {
         return !attr()->scales_.has_default_values(DNNL_ARG_DST);
-    }
-    bool with_c_zero_points() const {
-        return !attr()->zero_points_.has_default_values(DNNL_ARG_DST);
-    }
-
-    bool with_sround() const {
-        return attr()->rounding_mode_.get(DNNL_ARG_DST)
-                == rounding_mode::stochastic;
-    }
-    bool with_mx_scale() const {
-        return attr()->scales_.get(DNNL_ARG_C).is_mx();
     }
 
     bool dy_quant_enabled() const;
@@ -302,18 +297,6 @@ struct pd_t : public gemm::pd_t {
     dim_t b_zp_stride(int idx) const;
     dim_t a_gs_stride(int idx) const;
     dim_t b_gs_stride(int idx) const;
-    bool a_zp_host_scalar() const {
-        auto attr_info = attr_info_t::create(attr());
-        return attr_info.with_host_wei_zp;
-    }
-    bool b_zp_host_scalar() const {
-        auto attr_info = attr_info_t::create(attr());
-        return attr_info.with_host_src_zp;
-    }
-    bool c_zp_host_scalar() const {
-        auto attr_info = attr_info_t::create(attr());
-        return attr_info.with_host_dst_zp;
-    }
 };
 
 void pad_lda(kernel_config_t &cfg, bool swap);
@@ -322,9 +305,13 @@ void swap_fold(kernel_config_t &cfg, bool swap);
 status_t transfer_post_ops(
         gemmstone::GEMMProblem &problem, gpu_post_ops_t &&post_ops);
 
-// pd_t + exec_ctx_t state in kernel-cfg orientation: all A/B-side fields are
-// already swap_ab-folded, so consumers read cfg.* without branching on swap_ab.
-struct exec_config_t : kernel_config_t {
+// Runtime-only exec state (storage pointers, host scalars, offsets, resolved
+// alpha); the finalized cfg_ is reached by reference via cfg(). A/B storage
+// is swap_ab-routed once in build_exec_config; the cfg it reaches is folded.
+struct exec_config_t {
+    const pd_t *pd = nullptr;
+    const kernel_config_t &cfg() const { return pd->cfg(); }
+
     const memory_storage_t *a = nullptr;
     const memory_storage_t *b = nullptr;
     const memory_storage_t *c = nullptr;
@@ -345,30 +332,21 @@ struct exec_config_t : kernel_config_t {
     int16_t bo_host_scalar = 0;
     int16_t co_host_scalar = 0;
 
-    bool with_a_zero_points = false;
-    bool with_b_zero_points = false;
-
-    // alpha, with_mx_scale and cmask are inherited from kernel_config_t: the Phase-A
-    // snapshot is the kernel-selection input; build_exec_config overwrites alpha
-    // with the runtime-resolved value (snapshot x host scalar scales).
+    // Runtime-resolved alpha (cfg().alpha snapshot x host scalar scales),
+    // computed in build_exec_config.
+    float alpha = 1.0f;
 
     size_t off_a0 = 0;
     size_t off_b0 = 0;
     size_t off_c0 = 0;
     int64_t off_co0 = 0;
 
-    const pd_t *pd = nullptr;
-    int eff_a_arg = DNNL_ARG_A;
-    int eff_b_arg = DNNL_ARG_B;
-
-    dim_t stride_a(int dim) const { return pd->stride(eff_a_arg, dim); }
-    dim_t stride_b(int dim) const { return pd->stride(eff_b_arg, dim); }
+    dim_t stride_a(int dim) const { return pd->stride(cfg().eff_a_arg(), dim); }
+    dim_t stride_b(int dim) const { return pd->stride(cfg().eff_b_arg(), dim); }
     dim_t stride_c(int dim) const { return pd->desc()->stride_c(dim); }
-    // The quant mds are already swap-folded on the cfg, so these forward to
-    // the kernel-side pd_t accessors that take no DNNL_ARG: re-routing via
-    // eff_arg would double-swap and read the empty opposite-side md (crash on
-    // batched + swap_ab + one-sided quant). stride_a/b above reach the
-    // unswapped desc() and so must route via eff_arg.
+    // Quant mds are already swap-folded, so forward to the side-named accessors;
+    // routing via eff_arg would double-swap and read the empty opposite-side md.
+    // (stride_a/b above reach the unswapped desc(), so they must use eff_arg.)
     dim_t scale_stride_a(int idx) const { return pd->a_scale_stride(idx); }
     dim_t scale_stride_b(int idx) const { return pd->b_scale_stride(idx); }
     dim_t zp_stride_a(int idx) const { return pd->a_zp_stride(idx); }

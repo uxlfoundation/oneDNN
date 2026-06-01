@@ -86,8 +86,8 @@ bool b_grouped(const kernel_config_t &cfg) {
 status_t pd_t::init(impl::engine_t *engine, compute::gpu_arch_t arch) {
     arch_ = arch;
 
-    // The validators must run before init_post_ops, which assumes the
-    // attr cases they reject (e.g. unsupported 2D dst scales) are filtered out.
+    // Validators must run before init_post_ops, which relies on the rejected
+    // attr cases (e.g. unsupported 2D dst scales) being filtered out.
     CHECK(init_attrs(cfg_, engine));
     CHECK(scales_ok(cfg_, engine));
     CHECK(zp_ok(cfg_, engine));
@@ -248,18 +248,17 @@ status_t pd_t::init_post_ops(kernel_config_t &cfg, impl::engine_t *engine) {
             gpu_post_ops, po, dst_md(), get_post_op_specializations()));
     CHECK(transfer_post_ops(cfg.problem, std::move(gpu_post_ops)));
 
-    // Snapshot alpha here, not at seed: alpha() reads attr()->post_ops_, so this
-    // is the latest populator before finalize and captures the final value.
+    // alpha() reads attr()->post_ops_, so snapshot it here (after post-ops are
+    // final), not at seed.
     cfg.alpha = alpha();
 
-    // Snapshot the C-side offset mask (DST zp / bias / sum_ab, same precedence
-    // the execute path selects co from) in user frame; swap_fold folds its
-    // column<->row bits so build_exec_config reads cfg.cmask with no swap_ab branch.
-    if (with_c_zero_points())
+    // C-side offset mask (DST zp / bias / sum_ab, in that precedence) in user
+    // frame; swap_fold folds its column<->row bits.
+    if (cfg.with_c_zp)
         cfg.cmask = attr()->zero_points_.get_mask(DNNL_ARG_DST);
     else if (cfg.with_bias)
         cfg.cmask = cfg.bias_cmask;
-    else if (with_sum_ab())
+    else if (cfg.with_sum_ab())
         cfg.cmask = sum_ab_cmask();
 
     return status::success;
@@ -286,11 +285,9 @@ status_t pd_t::seed_problem(kernel_config_t &cfg) {
     cfg.problem.C.layout = MatrixLayout::N;
     cfg.problem.CO.layout = to_layout(d->trans_bias() == dnnl_trans);
 
-    // Phase-A snapshot for a descriptor-free finalize_problem. Batch strides are
-    // captured here (post-set_default_formats, so they reflect the final packed
-    // strides) in USER frame; swap_fold folds them. These are exactly what
-    // align()'s stride(arg, b) reads today. alpha is snapshotted later (end of
-    // init_post_ops); everything else here is orientation-invariant.
+    // Batch strides captured post-set_default_formats (final packed strides) in
+    // user frame; swap_fold folds them. Everything else here is
+    // orientation-invariant.
     const int bd = batch_dims();
     gpu_assert(bd <= kernel_config_t::max_batch_dims);
     cfg.batch_dims = bd;
@@ -301,13 +298,12 @@ status_t pd_t::seed_problem(kernel_config_t &cfg) {
     }
     cfg.bias_type = d->bias_type();
     cfg.sum_ab_type = d->sum_ab_type;
-    cfg.with_sum_ab = with_sum_ab();
     cfg.acc_mode = attr()->acc_mode_;
     cfg.wei_decomp = wei_decomp();
-    cfg.with_sround = with_sround();
-    cfg.with_c_zp = with_c_zero_points();
-    cfg.c_zp_host_scalar = c_zp_host_scalar();
-    cfg.with_mx_scale = with_mx_scale();
+    cfg.with_sround = attr()->rounding_mode_.get(DNNL_ARG_DST)
+            == rounding_mode::stochastic;
+    cfg.with_c_zp = !attr()->zero_points_.has_default_values(DNNL_ARG_DST);
+    cfg.with_mx_scale = attr()->scales_.get(DNNL_ARG_C).is_mx();
     cfg.with_sum = with_sum();
     cfg.sum_at_begin = sum_at_begin();
 
@@ -380,8 +376,8 @@ status_t pd_t::init_attrs(kernel_config_t &cfg, impl::engine_t *engine) {
 
     const int a_zp_ndims = quant_entry_ndims(a_zps, cfg.a_zp_md, ndims - 2);
     const int b_zp_ndims = quant_entry_ndims(b_zps, cfg.b_zp_md, ndims - 1);
-    const bool a_zp_hs = a_zp_host_scalar();
-    const bool b_zp_hs = b_zp_host_scalar();
+    const bool a_zp_hs = a_zps.is_host_scalar();
+    const bool b_zp_hs = b_zps.is_host_scalar();
     p.Tao = convert_dnnl_to_kernel_type(a_zps.get_data_type());
     p.Tbo = convert_dnnl_to_kernel_type(b_zps.get_data_type());
     if (a_zp_ndims >= 0 || a_zp_hs) p.aOffset = gemmstone::ABOffset::Calc;
@@ -403,7 +399,7 @@ status_t pd_t::init_attrs(kernel_config_t &cfg, impl::engine_t *engine) {
 
     // Fold a host-scalar c-zp to -1 (matching aoPtrDims/boPtrDims), so -1 means
     // "none or host-scalar" everywhere.
-    p.coPtrDims = c_zp_host_scalar()
+    p.coPtrDims = c_zps.is_host_scalar()
             ? -1
             : quant_entry_ndims(c_zps, cfg.c_zp_md, -1);
     if (c_scales.get_data_type() != data_type::undef) {
@@ -459,7 +455,7 @@ status_t pd_t::zp_ok(const kernel_config_t &cfg, impl::engine_t *engine) {
     const bool a_int4 = utils::one_of(desc()->a_type(), s4, u4);
     const bool b_int4 = utils::one_of(desc()->b_type(), s4, u4);
     const bool weights_upconversion
-            = wei_decomp() || (a_int4 && dy_quant_enabled());
+            = cfg.wei_decomp || (a_int4 && dy_quant_enabled());
 
     const bool a_zp_2d = cfg.problem.aOffset2D();
     const bool b_zp_2d = cfg.problem.bOffset2D();
@@ -493,7 +489,7 @@ status_t pd_t::zp_ok(const kernel_config_t &cfg, impl::engine_t *engine) {
             // Weights zp can only be performantly enabled during upconversion
             // for cases that perform decompression.
             VDISPATCH_GEMM(IMPLICATION(a_scales_2d,
-                                   !(b_int4 && !wei_decomp() && !a_int4)),
+                                   !(b_int4 && !cfg.wei_decomp && !a_int4)),
                     "%s: 2D scales on A matrix, but no weights "
                     "decompression",
                     VERBOSE_UNSUPPORTED_ZP_CFG);
@@ -583,13 +579,13 @@ status_t pd_t::scales_ok(const kernel_config_t &cfg, impl::engine_t *engine) {
         auto mask = dst_scales.get_mask();
         bool supportedMask
                 = utils::one_of(mask, 0, mask_scalar, mask_per_oc, mask_per_ic)
-                || (!dst_scales.has_default_groups() && with_mx_scale()
+                || (!dst_scales.has_default_groups() && cfg.with_mx_scale
                         && valid_2d_mask(mask, ndims));
         VDISPATCH_GEMM(supportedMask, "%s: unsupported C mask",
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
     }
 
-    if (!dst_scales.has_default_values() && with_mx_scale()) {
+    if (!dst_scales.has_default_values() && cfg.with_mx_scale) {
         // Dynamic Dst Quant only supported with `1x32` groups.
         VDISPATCH_GEMM(dst_scales.get_group(0) == 1
                         && dst_scales.get_group(1) == 32
@@ -709,7 +705,7 @@ status_t pd_t::finalize_problem(
     auto c_size = cfg.n * cfg.ldc * types::data_type_size(cfg.c_type());
 
     auto co_type = cfg.with_bias ? cfg.bias_type
-            : cfg.with_sum_ab    ? cfg.sum_ab_type
+            : cfg.with_sum_ab()  ? cfg.sum_ab_type
             : int_acc            ? data_type::s32
                                  : cfg.c_type();
 
@@ -943,9 +939,8 @@ void pad_lda(kernel_config_t &cfg, bool swap) {
 }
 
 void swap_fold(kernel_config_t &cfg, bool swap) {
-    // swap_ab defaults false and is set only here, so this catches a double
-    // invocation across the base/subclass split (which would double-swap into a
-    // state that still looks self-consistent to the post-fold asserts below).
+    // swap_ab is set only here; guard against a double swap_fold (which would
+    // double-swap into a still-self-consistent state).
     gpu_assert(!cfg.swap_ab) << "swap_fold invoked twice";
     cfg.swap_ab = swap;
     if (swap) {

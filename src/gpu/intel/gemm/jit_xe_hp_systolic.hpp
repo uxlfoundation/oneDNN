@@ -44,10 +44,6 @@ struct xe_hp_systolic_t : public gemm::primitive_t {
         bool use_nocopy_xehpg(data_type_t dt, unsigned ld_align);
         status_t set_default_formats(data_type_t dt);
 
-        size_t dyn_offset_a = 0;
-        size_t dyn_offset_b = 0;
-        size_t dyn_offset_c = 0;
-
         float alpha() const { return 1.0f; }
         float beta() const { return cfg().beta; }
 
@@ -188,8 +184,6 @@ private:
 
     char co_kind_ = 'N';
     bool walk_n_first_ = false;
-
-    gemmstone::GEMMProblem problem_;
 
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };

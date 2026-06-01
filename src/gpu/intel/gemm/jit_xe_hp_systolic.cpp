@@ -129,12 +129,8 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
                     <= (size_t)std::numeric_limits<int32_t>::max(),
             VERBOSE_SHAPE_RESTRICTION);
 
-    // Populate cfg.problem in one contiguous post-set_default_formats pass,
-    // ordered identity -> attributes -> (validate) -> post-ops. init_attrs is
-    // format-invariant (get_md reads only base_md.dims), so deferring it past
-    // set_default_formats is byte-identical; the only hard pin is
-    // set_default_formats -> seed_problem (lda/ldb/ldc capture the final packed
-    // strides). finalize_problem is the post-swap_fold hardware-derived tail.
+    // Must run after set_default_formats: seed_problem captures final packed
+    // lda/ldb/ldc.
     CHECK(seed_problem(cfg_));
     CHECK(init_attrs(cfg_, engine));
 
@@ -170,7 +166,7 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
         }
     }
 
-    // Systolic never swaps A/B, so cfg_ stays in (kernel == user) orientation.
+    // Systolic never swaps A/B.
     bool swap = decide_swap_ab(cfg_);
     VDISPATCH_GEMM(!swap, VERBOSE_UNSUPPORTED_FEATURE, "swap_ab");
     jit::swap_fold(cfg_, swap);
@@ -579,8 +575,7 @@ status_t xe_hp_systolic_t::init_compute(impl::engine_t *engine) {
 
     gpu_assert(pd()->cfg().finalized_)
             << "init_compute reads an unfinalized problem";
-    problem_ = pd()->cfg().problem;
-    const GEMMProblem &base = problem_;
+    const GEMMProblem &base = pd()->cfg().problem;
 
     bool may_k_block
             = (d->k() > kd_t::min_block_k(a_type)) && pd()->allow_k_blocking();
@@ -864,7 +859,8 @@ status_t xe_hp_systolic_t::launch_compute(const exec_ctx_t &ctx, int32_t m,
         arg_list.set(argn++, *po_srcs[i]);
         arg_list.set(argn++, offset_po_src[i]);
 
-        if (problem_.postOps.binaryRow[i] && problem_.postOps.binaryCol[i])
+        const auto &problem = pd()->cfg().problem;
+        if (problem.postOps.binaryRow[i] && problem.postOps.binaryCol[i])
             arg_list.set(argn++, int32_t(pd()->cfg().ld_binary(i)));
     }
 
@@ -878,7 +874,7 @@ status_t xe_hp_systolic_t::launch_compute(const exec_ctx_t &ctx, int32_t m,
             arg_list.set(argn++, stride_c);
         }
         for (int i = 0; i < po_count; i++) {
-            if (problem_.postOps.binaryBatch[i]) {
+            if (pd()->cfg().problem.postOps.binaryBatch[i]) {
                 for (int b = 0; b < pd()->batch_dims(); b++) {
                     auto top = pd()->batch_dims() - b - 1;
                     arg_list.set(argn++,
@@ -1020,18 +1016,15 @@ status_t xe_hp_systolic_t::execute(const exec_ctx_t &ctx) const {
         }
     }
 
-    size_t off_a0
-            = a.offset() / types::data_type_size(a_type) + pd()->dyn_offset_a;
-    size_t off_b0
-            = b.offset() / types::data_type_size(b_type) + pd()->dyn_offset_b;
-    size_t off_c0
-            = c.offset() / types::data_type_size(c_type) + pd()->dyn_offset_c;
+    size_t off_a0 = a.offset() / types::data_type_size(a_type);
+    size_t off_b0 = b.offset() / types::data_type_size(b_type);
+    size_t off_c0 = c.offset() / types::data_type_size(c_type);
     int64_t off_co0 = 0;
 
     int64_t po_offsets0[GEMM_MAX_PO] = {0}, po_offsets[GEMM_MAX_PO] = {0};
     for (int i = 0; i < po_count; i++)
         if (po_srcs[i])
-            po_offsets0[i] = po_srcs[i]->offset() / problem_.Tbinary[i];
+            po_offsets0[i] = po_srcs[i]->offset() / cfg.problem.Tbinary[i];
 
     if (pd()->with_ab_zero_points()) {
         ao = &GEMM_CTX_ARG_STORAGE(a_zero_point);
@@ -1091,7 +1084,7 @@ status_t xe_hp_systolic_t::execute(const exec_ctx_t &ctx) const {
                     case 'R': off_co += Bm; break;
                     case 'C': off_co += Bn; break;
                     case 'M':
-                        off_co += isColMajor(problem_.CO.layout)
+                        off_co += isColMajor(cfg.problem.CO.layout)
                                 ? (Bn * ldco + Bm)
                                 : (Bm * ldco + Bn);
                         break;
@@ -1100,11 +1093,12 @@ status_t xe_hp_systolic_t::execute(const exec_ctx_t &ctx) const {
 
                 for (int i = 0; i < po_count; i++) {
                     po_offsets[i] = po_offsets0[i];
-                    bool row = problem_.postOps.binaryRow[i],
-                         col = problem_.postOps.binaryCol[i];
+                    bool row = cfg.problem.postOps.binaryRow[i],
+                         col = cfg.problem.postOps.binaryCol[i];
                     if (row && col) {
                         auto ld = cfg.ld_binary(i);
-                        po_offsets[i] += isColMajor(problem_.binary[i].layout)
+                        po_offsets[i]
+                                += isColMajor(cfg.problem.binary[i].layout)
                                 ? (Bn * ld + Bm)
                                 : (Bm * ld + Bn);
                     } else if (row)

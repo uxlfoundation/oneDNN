@@ -30,6 +30,7 @@
 #include "gpu/intel/gemm/jit/pd.hpp"
 #include "gpu/intel/gemm/primitive.hpp"
 #include "gpu/intel/gemm/utils.hpp"
+#include "gpu/intel/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -44,8 +45,6 @@ struct gen_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("jit:gemm:any", gen_t);
 
-        // Phase B — gen_t supports the swap_ab path; predicate today
-        // covers m=1 / transposed-C cases and excludes wei_decomp.
         bool decide_swap_ab(const jit::kernel_config_t &cfg) const override {
             const auto d = desc();
             bool check_lda = ((d->transa() == dnnl_notrans && d->lda() == 1)
@@ -76,8 +75,14 @@ struct gen_t : public primitive_t {
             dev_info_ = intel_engine->device_info();
             arch_ = dev_info_->gpu_arch();
 
-            // Phase A — populate cfg_ in user orientation and validate
-            // user attrs.
+            // Populate cfg.problem in one contiguous post-set_default_formats
+            // pass, ordered identity -> attributes -> (validate) -> post-ops:
+            // seed_problem here, the rest inside jit::pd_t::init. The only hard
+            // pin is set_default_formats -> seed_problem, so lda/ldb/ldc capture
+            // the final packed strides. finalize_problem is the post-swap_fold
+            // hardware-derived tail.
+            CHECK(seed_problem(cfg_));
+
             CHECK(jit::pd_t::init(engine, arch_));
 
             const auto d = desc();
@@ -96,14 +101,7 @@ struct gen_t : public primitive_t {
                             d->lda(), d->ldb(), d->ldc(), d->batch()),
                     VERBOSE_UNSUPPORTED_TAG);
 
-            // Seed the kernel projection (A/B/C scalars, matrix types, A/B/C/CO
-            // orientation, and post-op binary metadata) in user orientation;
-            // swap_fold's cfg.problem.transpose() folds it to kernel orientation
-            // below. Shared with xe_hp_systolic via jit::pd_t::seed_problem.
-            CHECK(seed_problem(cfg_));
-
-            // Phase B — decide swap, pad lda/ldb, fold into kernel
-            // orientation. After this point cfg_ is the kernel projection.
+            // Phase B — after swap_fold, cfg_ is the kernel projection.
             bool swap = decide_swap_ab(cfg_);
             // No kernels with transposed C, if swap_ab is disabled (e.g.
             // due to wei_decomp()) - this case cannot be handled.
@@ -111,12 +109,9 @@ struct gen_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_TAG);
             jit::pad_lda(cfg_, swap);
             jit::swap_fold(cfg_, swap);
-            // cfg_ is now the kernel projection. Leading-dim alignments are
-            // derived inside init_GEMMProblem from the swap-folded cfg.
 
             const auto &cfg = cfg_;
 
-            // Phase C — kernel-capability checks (read from cfg).
             if (utils::one_of(cfg.c_type(), s32, f16, bf16, f32, u8, s8)
                     && utils::one_of(cfg.a_type(), u8, s8, u4, s4)) {
                 VDISPATCH_GEMM(
@@ -163,8 +158,8 @@ struct gen_t : public primitive_t {
             VDISPATCH_GEMM(intel_engine->mayiuse_ngen_kernels(),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "ngen_kernels");
 
-            // Do not use `cfg.with_bias` as the bias operation may have been
-            // moved into a post-op (and so cfg.with_bias is false then).
+            // Do not use `cfg.with_bias`: the bias may have been moved into a
+            // post-op, leaving cfg.with_bias false.
             bool with_bias_orig = d->bias_type() != data_type::undef;
             VDISPATCH_GEMM(utils::one_of(d->bias_type(), data_type::undef, f64,
                                    f32, bf16, f16, f8_e5m2, f8_e4m3)
@@ -182,8 +177,7 @@ struct gen_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_ATTR);
 
             // check_sum_consistency inspects only the sum entry, which the
-            // bias/scale->binary conversions leave untouched, so the original
-            // user post-ops give the same verdict as the converted list did.
+            // bias/scale->binary conversions leave untouched.
             VDISPATCH_GEMM(attr()->post_ops_.check_sum_consistency(cfg.c_type(),
                                    utils::one_of(cfg.a_type(), s8, u8)),
                     VERBOSE_UNSUPPORTED_POSTOP);
@@ -196,16 +190,8 @@ struct gen_t : public primitive_t {
                         VERBOSE_SHAPE_RESTRICTION);
             }
 
-            // Derive from the lowered, swap-folded problem.postOps (prelu is
-            // lowered to a binary there, matching the old find(binary)||
-            // find(prelu); converted scales/bias are binaries too, as before).
             bool with_binary = cfg.problem.hasBinaryPostOp();
-            bool with_eltwise = false;
-            for (size_t i = 0; i < cfg.problem.postOps.len(); i++)
-                if (cfg.problem.postOps[i].is_eltwise()) {
-                    with_eltwise = true;
-                    break;
-                }
+            bool with_eltwise = cfg.problem.hasEltwisePostOp();
 
             // Check GPU architecture.
             bool arch_ok = utils::one_of(arch_, arch_t::xe_lp, arch_t::xe_hp,
@@ -260,11 +246,9 @@ struct gen_t : public primitive_t {
                             <= std::numeric_limits<uint32_t>::max(),
                     VERBOSE_SHAPE_RESTRICTION);
 
-            // Phase D — build problem and pick a kernel.
-            gemmstone::GEMMProblem problem;
-            CHECK(init_GEMMProblem(problem, intel_engine, cfg));
+            CHECK(finalize_problem(cfg_, intel_engine));
 
-            VDISPATCH_GEMM(IMPLICATION(problem.Tc == gemmstone::Type::f64,
+            VDISPATCH_GEMM(IMPLICATION(cfg.problem.Tc == gemmstone::Type::f64,
                                    !with_eltwise && !with_binary),
                     VERBOSE_UNSUPPORTED_POSTOP);
 
@@ -273,13 +257,15 @@ struct gen_t : public primitive_t {
 
             bool print_verbose = get_verbose(verbose_t::debuginfo) >= 5;
             bool kernel_success = false;
-            auto entries = kernel_desc_.select_kernel(*dev_info_, mode, problem,
-                    alpha(), cfg.beta, cfg.m, cfg.n, cfg.k, cfg.lda, cfg.ldb,
-                    cfg.ldc, d->batch());
+            gpu_assert(cfg.finalized_)
+                    << "select_kernel reads an unfinalized problem";
+            auto entries = kernel_desc_.select_kernel(*dev_info_, mode,
+                    cfg.problem, alpha(), cfg.beta, cfg.m, cfg.n, cfg.k,
+                    cfg.lda, cfg.ldb, cfg.ldc, d->batch());
 
             for (auto &entry : entries) {
                 kernel_desc_.set_entry(entry);
-                kernel_desc_.set_problem(problem);
+                kernel_desc_.set_problem(cfg.problem);
                 auto status = kernel_desc_.finalize();
                 // select_kernel can return a strategy that failed in the finalize call
                 bool valid = status == status::success;

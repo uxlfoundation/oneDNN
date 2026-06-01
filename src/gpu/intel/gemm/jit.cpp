@@ -305,10 +305,8 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         arg_list.set(argn++, slm, nullptr);
     }
 
-    // Kernel arg layout is generated from problem->ao/aSPtrDims (kernel-cfg);
-    // gate the offset_aq/bq arg by the same cfg, not by pd()->a/b_quant
-    // (matmul-frame), or the arg list mismatches when matmul-A and matmul-B
-    // have different zp_ndims and swap_ab is on.
+    // Gate by the kernel-cfg problem (not matmul-frame pd()->a/b_quant), or
+    // the arg list mismatches under swap_ab with differing A/B zp_ndims.
     if (problem->aoPtrDims > 0 || problem->aScale2D())
         arg_list.set(argn++, offset_aq);
     if (problem->boPtrDims > 0 || problem->bScale2D())
@@ -326,23 +324,28 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
     return status;
 }
 
-// Build an exec_config_t from pd_t + exec_ctx_t. Inherits the kernel-cfg
-// projection from pd->cfg() (already swap-folded by Phase B); this
-// function only binds runtime storages, resolves host scalars (folding
-// scales into alpha), and routes the cmask through swap_ab. After this
-// runs, execute()/launch_nocopy() read exec_cfg.* uniformly without further
-// swap-aware branching.
+template <typename T>
+static T pick_a(bool swap_ab, T a, T b) {
+    return swap_ab ? b : a;
+}
+template <typename T>
+static T pick_b(bool swap_ab, T a, T b) {
+    return swap_ab ? a : b;
+}
+
 static status_t build_exec_config(jit::exec_config_t &exec_cfg,
         const gen_t::pd_t *pd, const exec_ctx_t &ctx) {
     static_cast<jit::kernel_config_t &>(exec_cfg) = pd->cfg();
     const bool s = exec_cfg.swap_ab;
 
+    // swap_ab survives on the execute path only as the A/B routing decision,
+    // applied once per runtime ctx-arg binding via pick_a/pick_b (no second
+    // std::swap). All flags read the already-folded exec_cfg.problem directly.
     exec_cfg.pd = pd;
     exec_cfg.eff_a_arg = s ? DNNL_ARG_B : DNNL_ARG_A;
     exec_cfg.eff_b_arg = s ? DNNL_ARG_A : DNNL_ARG_B;
     exec_cfg.with_mx_scale = pd->with_mx_scale();
 
-    // A/B primary storages: kernel-A reads from matmul-B under swap.
     auto &a_phys = GEMM_CTX_ARG_STORAGE(a);
     auto &b_phys = GEMM_CTX_ARG_STORAGE(b);
     exec_cfg.a = s ? &a_phys : &b_phys;
@@ -350,15 +353,13 @@ static status_t build_exec_config(jit::exec_config_t &exec_cfg,
     exec_cfg.c = &GEMM_CTX_ARG_STORAGE(c);
     exec_cfg.sround_seed = &GEMM_CTX_ARG_STORAGE(sround_seed);
 
-    // Select co (c_zero_point / bias / sum_ab) and the raw matmul-frame
-    // cmask; the swap fold below routes it into kernel-cfg.
-    int cmask = 0;
+    // exec_cfg.cmask is already kernel-frame (seeded in init_post_ops, folded in
+    // swap_fold); only the co storage / off_co0 selection is runtime here.
     const memory_storage_t *co = &GEMM_CTX_ARG_STORAGE(c_zero_point);
     if (pd->with_c_zero_points()) {
         exec_cfg.off_co0
                 = types::bytes_to_elements(exec_cfg.c_type(), co->offset())
                 + pd->dyn_offset_co;
-        cmask = pd->attr()->zero_points_.get_mask(DNNL_ARG_DST);
         if (co->is_host_scalar()) {
             int co_host = 0;
             CHECK(maybe_get_host_scalar_value(*co, co_host));
@@ -369,29 +370,20 @@ static status_t build_exec_config(jit::exec_config_t &exec_cfg,
         co = &GEMM_CTX_ARG_STORAGE(bias);
         exec_cfg.off_co0
                 = types::bytes_to_elements(exec_cfg.c_type(), co->offset());
-        cmask = exec_cfg.bias_cmask;
     } else if (pd->with_sum_ab()) {
         co = &GEMM_CTX_ARG_STORAGE(sum_ab);
         exec_cfg.off_co0
                 = types::bytes_to_elements(exec_cfg.c_type(), co->offset());
-        cmask = pd->sum_ab_cmask();
     }
     exec_cfg.co = co;
 
-    // ao/bo and host scalars (sign-flipped to match kernel convention).
-    // Presence in user (matmul) orientation. exec_cfg.problem is kernel-oriented, so
-    // user-A is kernel-B under swap. aOffset==Calc covers BOTH tensor and
-    // host-scalar zps (the problem folds a host scalar to aoPtrDims==-1 but
-    // keeps aOffset==Calc); the swap fold below routes the bound storages.
+    // Read the folded problem directly: exec_cfg.problem is kernel-frame after
+    // swap_fold, so aOffset==Calc is exactly kernel-A's zp state (Calc covers
+    // tensor and host-scalar zps — a host scalar folds aoPtrDims to -1 but keeps
+    // aOffset==Calc).
     using gemmstone::ABOffset;
-    const bool a_zp_user
-            = (s ? exec_cfg.problem.bOffset : exec_cfg.problem.aOffset)
-            == ABOffset::Calc;
-    const bool b_zp_user
-            = (s ? exec_cfg.problem.aOffset : exec_cfg.problem.bOffset)
-            == ABOffset::Calc;
-    exec_cfg.with_a_zero_points = a_zp_user;
-    exec_cfg.with_b_zero_points = b_zp_user;
+    exec_cfg.with_a_zero_points = (exec_cfg.problem.aOffset == ABOffset::Calc);
+    exec_cfg.with_b_zero_points = (exec_cfg.problem.bOffset == ABOffset::Calc);
     if (exec_cfg.with_a_zero_points || exec_cfg.with_b_zero_points) {
         const auto *ao_phys = &GEMM_CTX_ARG_STORAGE(a_zero_point);
         const auto *bo_phys = &GEMM_CTX_ARG_STORAGE(b_zero_point);
@@ -400,50 +392,35 @@ static status_t build_exec_config(jit::exec_config_t &exec_cfg,
             CHECK(maybe_get_host_scalar_value(*ao_phys, ao_host));
         if (bo_phys->is_host_scalar())
             CHECK(maybe_get_host_scalar_value(*bo_phys, bo_host));
-        exec_cfg.ao = ao_phys;
-        exec_cfg.bo = bo_phys;
-        exec_cfg.ao_host_scalar = static_cast<int16_t>(-ao_host);
-        exec_cfg.bo_host_scalar = static_cast<int16_t>(-bo_host);
+        exec_cfg.ao = pick_a(s, ao_phys, bo_phys);
+        exec_cfg.bo = pick_b(s, ao_phys, bo_phys);
+        exec_cfg.ao_host_scalar
+                = static_cast<int16_t>(pick_a(s, -ao_host, -bo_host));
+        exec_cfg.bo_host_scalar
+                = static_cast<int16_t>(pick_b(s, -ao_host, -bo_host));
     }
 
-    // 2D scales are bound to storages. Presence in user orientation from the
-    // kernel-oriented problem (user-A is kernel-B under swap); the swap fold
-    // below routes the storage.
-    const bool a_scales_2d_user
-            = s ? exec_cfg.problem.bScale2D() : exec_cfg.problem.aScale2D();
-    const bool b_scales_2d_user
-            = s ? exec_cfg.problem.aScale2D() : exec_cfg.problem.bScale2D();
-    if (a_scales_2d_user) exec_cfg.a_scales = &GEMM_CTX_ARG_STORAGE(a_scales);
-    if (b_scales_2d_user) exec_cfg.b_scales = &GEMM_CTX_ARG_STORAGE(b_scales);
+    // 2D-scale presence reads the folded problem; storage routes through swap.
+    auto &a_scales_phys = GEMM_CTX_ARG_STORAGE(a_scales);
+    auto &b_scales_phys = GEMM_CTX_ARG_STORAGE(b_scales);
+    if (exec_cfg.problem.aScale2D())
+        exec_cfg.a_scales = pick_a(s, &a_scales_phys, &b_scales_phys);
+    if (exec_cfg.problem.bScale2D())
+        exec_cfg.b_scales = pick_b(s, &a_scales_phys, &b_scales_phys);
     if (exec_cfg.with_mx_scale)
         exec_cfg.c_scales = &GEMM_CTX_ARG_STORAGE(c_scales);
 
-    // Bind both group-sum storages in matmul-frame; the swap fold below
-    // routes them. (Conditioning on problem.needs{A,B}GroupSums here would
-    // mis-pair them — under swap_ab the kernel A may need the matmul-B
-    // group sums, but the matching matmul-A slot would be left null and
-    // the swap would then null out the slot the kernel actually reads.)
-    exec_cfg.ag = &GEMM_CTX_ARG_STORAGE(a_group_sums);
-    exec_cfg.bg = &GEMM_CTX_ARG_STORAGE(b_group_sums);
+    // Bind kernel-side directly: gating on problem.needs{A,B}GroupSums here
+    // would mis-pair them under swap_ab and null out the slot the kernel reads.
+    auto &ag_phys = GEMM_CTX_ARG_STORAGE(a_group_sums);
+    auto &bg_phys = GEMM_CTX_ARG_STORAGE(b_group_sums);
+    exec_cfg.ag = pick_a(s, &ag_phys, &bg_phys);
+    exec_cfg.bg = pick_b(s, &ag_phys, &bg_phys);
 
-    // Single swap fold for storages, scalars, per-side flags, and cmask.
-    if (s) {
-        std::swap(exec_cfg.ao, exec_cfg.bo);
-        std::swap(exec_cfg.ao_host_scalar, exec_cfg.bo_host_scalar);
-        std::swap(exec_cfg.a_scales, exec_cfg.b_scales);
-        std::swap(exec_cfg.ag, exec_cfg.bg);
-        std::swap(exec_cfg.with_a_zero_points, exec_cfg.with_b_zero_points);
-        uint8_t swap_table[4] = {0, 2, 1, 3};
-        cmask = (cmask & ~3) | swap_table[cmask & 3];
-    }
-    exec_cfg.cmask = cmask;
-
-    // Base byte offsets, in elements. dyn_offset_a/b are matmul-frame; route
-    // them through the swap so kernel-A pairs with matmul-B's dyn_offset under
-    // swap_ab. dyn_offset_* are unused (always 0) today, so this is a latent
-    // bug fix — kept consistent for when callers start setting them.
-    const auto eff_dyn_offset_a = s ? pd->dyn_offset_b : pd->dyn_offset_a;
-    const auto eff_dyn_offset_b = s ? pd->dyn_offset_a : pd->dyn_offset_b;
+    // dyn_offset_a/b are matmul-frame; route through swap to pair with the
+    // kernel's A/B.
+    const auto eff_dyn_offset_a = pick_a(s, pd->dyn_offset_a, pd->dyn_offset_b);
+    const auto eff_dyn_offset_b = pick_b(s, pd->dyn_offset_a, pd->dyn_offset_b);
     exec_cfg.off_a0
             = types::bytes_to_elements(exec_cfg.a_type(), exec_cfg.a->offset())
             + eff_dyn_offset_a;
@@ -454,11 +431,6 @@ static status_t build_exec_config(jit::exec_config_t &exec_cfg,
             = types::bytes_to_elements(exec_cfg.c_type(), exec_cfg.c->offset())
             + pd->dyn_offset_c;
 
-    // Resolve host-scalar scales into alpha; this used to live in
-    // gen_t::execute and reach into pd->attr() directly. Phase A's
-    // pd_t::alpha() returns 9.99f for "host scalar present" so the
-    // kernel-desc selector can disambiguate; the runtime value is folded
-    // here.
     exec_cfg.alpha = pd->alpha();
     if (pd->attr()->scales_.has_host_scalars()) {
         const auto &a_scales = pd->attr()->scales_.get(DNNL_ARG_A);
@@ -603,8 +575,6 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
 
     if (!utils::one_of(exec_cfg.c_type(), data_type::f32, data_type::f16))
         block_k = k;
-    // problem.postOps is the lowered, swap-folded list; transpose() does not
-    // reorder ops, so postOps[0] matches the old converted post_ops.entry_[0].
     if (problem.postOps.len() > 0 && !problem.postOps[0].is_sum()) block_k = k;
 
     if (k_parallel_fixed)

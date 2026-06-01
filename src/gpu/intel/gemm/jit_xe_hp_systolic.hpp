@@ -113,9 +113,6 @@ struct xe_hp_systolic_t : public gemm::primitive_t {
         bool with_c_zero_points() const { return c_zp_; }
 
         bool allow_k_blocking() const {
-            // problem.postOps is the lowered post-op list (committed in
-            // init_post_ops; systolic never swaps, so it equals the converted
-            // user list). Matches the old cfg().post_ops.entry_[0]==sum guard.
             const auto &po = cfg().problem.postOps;
             return (desc()->acc_type == desc()->c_type())
                     && IMPLICATION(po.len() > 0, po[0].is_sum());

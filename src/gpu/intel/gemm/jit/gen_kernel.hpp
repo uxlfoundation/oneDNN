@@ -154,16 +154,24 @@ private:
     gemmstone::Scalar beta_;
 };
 
+// Runtime problem sizes for kernel selection (not held by GEMMProblem).
+struct select_dims_t {
+    dim_t m = -1, n = -1, k = -1, batch = 1;
+};
+
+// Systolic perf/dispatch inputs not modeled by GEMMProblem. `batched` is the
+// 0/1 with_batch() signal, not in.batchDims (see select_kernel).
+struct systolic_perf_params_t {
+    bool batched = false;
+    bool packed_c = false;
+    int unroll_m = 0, unroll_n = 0;
+    bool alt = false;
+};
+
 struct gen_xe_systolic_kernel_desc_t : public gen_desc_t {
-    // Consume the shared, init_GEMMProblem-built problem (carrying matrix
-    // types, accumulation/offset types, the offset/bias modes via aOffset/
-    // bOffset/cOffset/CO.layout, postOps and coPtrDims) and specialize the
-    // systolic packed addressing on top of it. The residual scheduling args
-    // (alpha/beta floats, sizes, unrolls) are passed directly.
     status_t select_kernel(const compute::device_info_t &dev_info,
-            const gemmstone::GEMMProblem &in, int batch_dims, bool packed_c,
-            float alpha, float beta, dim_t m, dim_t n, dim_t k, dim_t batch,
-            int unroll_m, int unroll_n, bool alt);
+            const gemmstone::GEMMProblem &in, const select_dims_t &dims,
+            float alpha, float beta, const systolic_perf_params_t &perf);
 
     static void choose_unrolls(compute::gpu_arch_t arch, int eu_count,
             data_type_t a_type, data_type_t b_type, data_type_t c_type, dim_t m,

@@ -215,6 +215,11 @@ struct GEMMProblem : public CommonProblem {
             if (e.is_binary()) return true;
         return false;
     }
+    bool hasEltwisePostOp() const {
+        for (auto &e : postOps.ops)
+            if (e.is_eltwise()) return true;
+        return false;
+    }
     bool hasSum1PostOpAtEnd() const {
         return !postOps.empty() && postOps.ops.back().is_sum();
     }

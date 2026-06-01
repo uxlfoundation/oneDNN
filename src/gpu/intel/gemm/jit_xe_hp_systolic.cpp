@@ -24,6 +24,7 @@
 #include "gpu/intel/gemm/jit/walk_orders.hpp"
 #include "gpu/intel/gemm/utils.hpp"
 #include "gpu/intel/gemm/xe_systolic_copy_kernel.hpp"
+#include "gpu/intel/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -51,7 +52,6 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
     dev_info_ = intel_engine->device_info();
     auto arch = dev_info_->gpu_arch();
 
-    CHECK(init_attrs(cfg_, engine));
     const auto &d = desc();
 
     bool dt_float_ok = (d->a_type() == d->b_type()
@@ -129,6 +129,15 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
                     <= (size_t)std::numeric_limits<int32_t>::max(),
             VERBOSE_SHAPE_RESTRICTION);
 
+    // Populate cfg.problem in one contiguous post-set_default_formats pass,
+    // ordered identity -> attributes -> (validate) -> post-ops. init_attrs is
+    // format-invariant (get_md reads only base_md.dims), so deferring it past
+    // set_default_formats is byte-identical; the only hard pin is
+    // set_default_formats -> seed_problem (lda/ldb/ldc capture the final packed
+    // strides). finalize_problem is the post-swap_fold hardware-derived tail.
+    CHECK(seed_problem(cfg_));
+    CHECK(init_attrs(cfg_, engine));
+
     CHECK(scales_ok(cfg_, engine));
 
     if (!attr()->zero_points_.has_default_values()) {
@@ -161,17 +170,12 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
         }
     }
 
-    // Phase A finalizer — seed the kernel projection (scalars, matrix types,
-    // orientation, post-op binary metadata) into cfg_, shared with gen_t.
-    CHECK(seed_problem(cfg_));
-
-    // Phase B — systolic never swaps A/B (decide_swap_ab is the base default
-    // false). swap_fold is then a no-op that only records swap_ab=false, so
-    // cfg_ stays in (kernel == user) orientation. pad_lda is intentionally
-    // not run: systolic does not pad degenerate leading dims.
+    // Systolic never swaps A/B, so cfg_ stays in (kernel == user) orientation.
     bool swap = decide_swap_ab(cfg_);
     VDISPATCH_GEMM(!swap, VERBOSE_UNSUPPORTED_FEATURE, "swap_ab");
     jit::swap_fold(cfg_, swap);
+
+    CHECK(finalize_problem(cfg_, intel_engine));
 
     init_scratchpad();
 
@@ -573,25 +577,30 @@ status_t xe_hp_systolic_t::init_compute(impl::engine_t *engine) {
     const auto d = pd()->desc();
     auto a_type = d->a_type();
 
-    // Build the canonical problem from the shared cfg/problem init path
-    // (same init_GEMMProblem as gen_t). The systolic kernel-descriptor
-    // selector specializes its packed addressing on top of this problem.
-    GEMMProblem base;
-    CHECK(pd()->init_GEMMProblem(base, intel_engine, pd()->cfg()));
-    problem_ = base;
+    gpu_assert(pd()->cfg().finalized_)
+            << "init_compute reads an unfinalized problem";
+    problem_ = pd()->cfg().problem;
+    const GEMMProblem &base = problem_;
 
     bool may_k_block
             = (d->k() > kd_t::min_block_k(a_type)) && pd()->allow_k_blocking();
     bool got_info = false;
 
-    // Non-sum post-ops (binary/eltwise/prelu, including converted A/B/C scales
-    // and bias) force the final-k-block kernel to differ from the partial one.
     bool with_post_ops = base.hasNonSum1PostOp();
 
     auto select = [&](kd_t &kd, const GEMMProblem &p, float beta) {
-        return kd.select_kernel(dev_info, p, pd()->with_batch(),
-                pd()->packed_c(), pd()->alpha(), beta, d->m(), d->n(), d->k(),
-                d->batch(), pd()->unroll_m(), pd()->unroll_n(), pd()->alt());
+        jit::select_dims_t dims;
+        dims.m = d->m();
+        dims.n = d->n();
+        dims.k = d->k();
+        dims.batch = d->batch();
+        jit::systolic_perf_params_t perf;
+        perf.batched = pd()->with_batch();
+        perf.packed_c = pd()->packed_c();
+        perf.unroll_m = pd()->unroll_m();
+        perf.unroll_n = pd()->unroll_n();
+        perf.alt = pd()->alt();
+        return kd.select_kernel(dev_info, p, dims, pd()->alpha(), beta, perf);
     };
 
     for (bool first_k_block : {false, true}) {
@@ -607,10 +616,7 @@ status_t xe_hp_systolic_t::init_compute(impl::engine_t *engine) {
             else {
                 float this_beta = first_k_block ? pd()->beta() : 1.0f;
 
-                // Produce the k-block variant by mutating a clone of the base
-                // problem. Non-final k-blocks drop the C zero-point (Post)
-                // offset and all post-ops (bias (Pre) is retained); this is
-                // the old this_c_offset=false + empty-post-ops variant.
+                // Non-final k-blocks drop C zero-point and post-ops (keep bias).
                 GEMMProblem p = base;
                 if (!last_k_block) {
                     if (p.cOffset == COffset::Post) p.cOffset = COffset::None;
@@ -967,6 +973,7 @@ status_t xe_hp_systolic_t::execute(const exec_ctx_t &ctx) const {
     const memory_storage_t *po_srcs[GEMM_MAX_PO];
 
     const auto &cfg = pd()->cfg();
+    gpu_assert(cfg.finalized_) << "execute reads an unfinalized problem";
     int po_count = int(cfg.binary_srcs.size());
     assert(po_count <= GEMM_MAX_PO);
 

@@ -614,16 +614,15 @@ status_t gen_nocopy_desc_t::finalize() {
 
 status_t gen_xe_systolic_kernel_desc_t::select_kernel(
         const compute::device_info_t &dev_info,
-        const gemmstone::GEMMProblem &in, int batch_dims, bool packed_c,
-        float alpha, float beta, dim_t m, dim_t n, dim_t k, dim_t batch,
-        int unroll_m, int unroll_n, bool alt) {
+        const gemmstone::GEMMProblem &in, const select_dims_t &dims,
+        float alpha, float beta, const systolic_perf_params_t &perf) {
     using namespace ngen;
     using namespace kcatalog;
 
-    // Recover dnnl matrix types and the offset/bias modes from the shared
-    // problem; the systolic-specific addressing (packed layouts, alignment,
-    // A/B offset load mode, ao/bo types) is set fresh below, so only the
-    // genuinely equivalent fields are sourced from `in`.
+    const dim_t m = dims.m, n = dims.n, k = dims.k, batch = dims.batch;
+    const int unroll_m = perf.unroll_m, unroll_n = perf.unroll_n;
+    const bool packed_c = perf.packed_c, alt = perf.alt;
+
     auto a_type = convert_kernel_to_dnnl_type(in.Ta_ext);
     auto c_type = convert_kernel_to_dnnl_type(in.Tc_ext);
     bool a_offset = (in.aOffset != ABOffset::None);
@@ -679,9 +678,10 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
     problem_.B.setAlignment(32);
     problem_.C.setAlignment(int(types::data_type_size(c_type)));
     if (packed_c) problem_.C = problem_.B;
-    if (batch_dims > 0) {
+    if (perf.batched) {
         problem_.batch = BatchMode::Strided;
-        problem_.batchDims = batch_dims;
+        // Multi-dim batch (ndims>3) is rejected upstream, so this is 1.
+        problem_.batchDims = in.batchDims;
     }
     if (a_offset) {
         problem_.aOffset = ABOffset::Load;
@@ -694,9 +694,6 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
     if (alpha == 1.0f) problem_.alpha = (int)alpha;
     if (beta == 0.0f || beta == 1.0f) problem_.beta = (int)beta;
 
-    // Post-ops were already lowered+folded into `in` by the shared init path
-    // (gpu_post_ops_t::make + transfer_post_ops in seed_problem). The systolic
-    // path never swaps A/B, so they are already in kernel orientation here.
     problem_.postOps = in.postOps;
     problem_.binary = in.binary;
     problem_.Tbinary = in.Tbinary;
@@ -714,10 +711,6 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
         problem_.CO.alignment = problem_.C.alignment;
     }
 
-    // Carry the raw C-offset dimensionality from the shared problem. Host
-    // scalar c-zps are rejected upstream for this impl, so the raw value
-    // needs no host-scalar fold here (subsumes the old manual coPtrDims
-    // re-sync that ran after select_kernel).
     problem_.coPtrDims = in.coPtrDims;
 
     // Find it in the catalog.
@@ -752,7 +745,7 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
     eval_params.euCount = dev_info.eu_count();
     eval_params.postOps = !problem_.postOps.empty();
     eval_params.cConvert = (in.Tc != in.Tc_ext);
-    eval_params.batch = (batch_dims > 0);
+    eval_params.batch = perf.batched;
     eval_params.Tc_ext = problem_.Tc_ext;
 
     SelectionObserver observer = entryObserver;

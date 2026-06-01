@@ -26,6 +26,12 @@ namespace impl {
 namespace xpu {
 namespace ocl {
 
+// Raw event accessors shared by stream_profiler_t and verbose_profiler_t.
+status_t query_event_timestamps(
+        const xpu::event_t &event, uint64_t &beg, uint64_t &end);
+bool query_event_complete(const xpu::event_t &event);
+void wait_event(const xpu::event_t &event);
+
 struct stream_profiler_t : public xpu::stream_profiler_t {
     stream_profiler_t(const impl::stream_t *stream)
         : xpu::stream_profiler_t(stream) {}
@@ -38,14 +44,18 @@ struct verbose_profiler_t : public xpu::verbose_profiler_t {
     verbose_profiler_t(const impl::stream_t *stream)
         : xpu::verbose_profiler_t(stream) {}
 
-    status_t get_aggregate_exec_time(
-            uint64_t stamp, double &duration_ms) const override;
+    status_t event_timestamps(const xpu::event_t &event, uint64_t &beg,
+            uint64_t &end) const override {
+        return query_event_timestamps(event, beg, end);
+    }
 
-    bool is_event_complete(
-            const std::shared_ptr<xpu::event_t> &event) const override;
+    bool event_complete(const xpu::event_t &event) const override {
+        return query_event_complete(event);
+    }
 
-    void wait_for_event_completion(
-            const std::shared_ptr<xpu::event_t> &event) const override;
+    void event_wait(const xpu::event_t &event) const override {
+        wait_event(event);
+    }
 };
 
 } // namespace ocl

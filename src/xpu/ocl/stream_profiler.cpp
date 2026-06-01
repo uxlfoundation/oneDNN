@@ -35,6 +35,37 @@ thread_local uint64_t verbose_profiler_t::current_primitive_stamp_ = 0;
 
 namespace ocl {
 
+status_t query_event_timestamps(
+        const xpu::event_t &event, uint64_t &beg, uint64_t &end) {
+    const auto &ocl_event = *utils::downcast<const xpu::ocl::event_t *>(&event);
+    assert(ocl_event.size() == 1);
+    cl_ulong b, e;
+    OCL_CHECK(xpu::ocl::clGetEventProfilingInfo(ocl_event[0].get(),
+            CL_PROFILING_COMMAND_START, sizeof(b), &b, nullptr));
+    OCL_CHECK(xpu::ocl::clGetEventProfilingInfo(ocl_event[0].get(),
+            CL_PROFILING_COMMAND_END, sizeof(e), &e, nullptr));
+    beg = b;
+    end = e;
+    return status::success;
+}
+
+bool query_event_complete(const xpu::event_t &event) {
+    const auto &ocl_event = *utils::downcast<const xpu::ocl::event_t *>(&event);
+    assert(ocl_event.size() == 1);
+    cl_int status;
+    cl_int err = xpu::ocl::clGetEventInfo(ocl_event[0].get(),
+            CL_EVENT_COMMAND_EXECUTION_STATUS, sizeof(cl_int), &status,
+            nullptr);
+    return err == CL_SUCCESS && status == CL_COMPLETE;
+}
+
+void wait_event(const xpu::event_t &event) {
+    const auto &ocl_event = *utils::downcast<const xpu::ocl::event_t *>(&event);
+    assert(ocl_event.size() == 1);
+    cl_event ev = ocl_event[0].get();
+    xpu::ocl::clWaitForEvents(1, &ev);
+}
+
 status_t stream_profiler_t::get_info(profiling_data_kind_t data_kind,
         int *num_entries, uint64_t *data) const {
     if (!num_entries) return status::invalid_arguments;
@@ -54,14 +85,8 @@ status_t stream_profiler_t::get_info(profiling_data_kind_t data_kind,
     std::map<uint64_t, xpu::stream_profiler_t::entry_t> stamp2entry;
     int idx = 0;
     for (auto &ev : events_) {
-        const xpu::ocl::event_t &ocl_event
-                = *utils::downcast<xpu::ocl::event_t *>(ev.event.get());
-        cl_ulong beg, end;
-        assert(ocl_event.size() == 1);
-        OCL_CHECK(xpu::ocl::clGetEventProfilingInfo(ocl_event[0].get(),
-                CL_PROFILING_COMMAND_START, sizeof(beg), &beg, nullptr));
-        OCL_CHECK(xpu::ocl::clGetEventProfilingInfo(ocl_event[0].get(),
-                CL_PROFILING_COMMAND_END, sizeof(end), &end, nullptr));
+        uint64_t beg, end;
+        CHECK(query_event_timestamps(*ev.event, beg, end));
         if (is_per_kernel) {
             data[idx++] = static_cast<uint64_t>(end - beg);
             continue;
@@ -76,64 +101,6 @@ status_t stream_profiler_t::get_info(profiling_data_kind_t data_kind,
     }
     if (is_per_kernel) return status::success;
     return xpu::stream_profiler_t::get_info_impl(stamp2entry, data_kind, data);
-}
-
-status_t verbose_profiler_t::get_aggregate_exec_time(
-        uint64_t stamp, double &duration_ms) const {
-    auto prof_data = event_map_.find(stamp);
-    if (prof_data == event_map_.end()) return status::invalid_arguments;
-
-    const auto &evts = prof_data->second.prim_evts;
-    if (evts.empty()) {
-        duration_ms = 0.0;
-        return status::success;
-    }
-
-    cl_ulong agg_start = UINT64_MAX;
-    cl_ulong agg_end = 0;
-
-    for (const auto &ev : evts) {
-        const xpu::ocl::event_t &ocl_event
-                = *utils::downcast<xpu::ocl::event_t *>(ev.get());
-        assert(ocl_event.size() == 1);
-
-        cl_ulong evbeg, evend;
-        OCL_CHECK(xpu::ocl::clGetEventProfilingInfo(ocl_event[0].get(),
-                CL_PROFILING_COMMAND_START, sizeof(evbeg), &evbeg, nullptr));
-        OCL_CHECK(xpu::ocl::clGetEventProfilingInfo(ocl_event[0].get(),
-                CL_PROFILING_COMMAND_END, sizeof(evend), &evend, nullptr));
-        agg_start = std::min(agg_start, evbeg);
-        agg_end = std::max(agg_end, evend);
-    }
-
-    duration_ms = static_cast<double>(agg_end - agg_start) * 1e-6;
-    return status::success;
-}
-
-bool verbose_profiler_t::is_event_complete(
-        const std::shared_ptr<xpu::event_t> &event) const {
-    if (!event) return true;
-
-    const xpu::ocl::event_t &ocl_event
-            = *utils::downcast<xpu::ocl::event_t *>(event.get());
-    assert(ocl_event.size() == 1);
-
-    cl_int status;
-    cl_int err = xpu::ocl::clGetEventInfo(ocl_event[0].get(),
-            CL_EVENT_COMMAND_EXECUTION_STATUS, sizeof(cl_int), &status,
-            nullptr);
-
-    return (err == CL_SUCCESS && status == CL_COMPLETE);
-}
-
-void verbose_profiler_t::wait_for_event_completion(
-        const std::shared_ptr<xpu::event_t> &event) const {
-    if (!event) return;
-
-    const xpu::ocl::event_t &ocl_event
-            = *utils::downcast<xpu::ocl::event_t *>(event.get());
-    cl_event cl_ev = ocl_event[0].get();
-    xpu::ocl::clWaitForEvents(1, &cl_ev);
 }
 
 } // namespace ocl

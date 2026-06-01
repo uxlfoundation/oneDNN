@@ -249,12 +249,44 @@ struct verbose_profiler_t {
         }
     }
 
-    virtual status_t get_aggregate_exec_time(
-            uint64_t stamp, double &duration_ms) const
+    // Per-runtime primitive: read device start/end timestamps (ns) of an event.
+    virtual status_t event_timestamps(
+            const xpu::event_t &event, uint64_t &beg, uint64_t &end) const
             = 0;
-    virtual bool is_event_complete(
-            const std::shared_ptr<xpu::event_t> &event) const
-            = 0;
+
+    // Generic aggregation of a primitive's event timestamps into a duration.
+    status_t get_aggregate_exec_time(
+            uint64_t stamp, double &duration_ms) const {
+        auto prof_data = event_map_.find(stamp);
+        if (prof_data == event_map_.end()) return status::invalid_arguments;
+
+        const auto &evts = prof_data->second.prim_evts;
+        if (evts.empty()) {
+            duration_ms = 0.0;
+            return status::success;
+        }
+
+        uint64_t agg_start = std::numeric_limits<uint64_t>::max();
+        uint64_t agg_end = 0;
+        for (const auto &ev : evts) {
+            if (!ev) continue;
+            uint64_t beg, end;
+            status_t st = event_timestamps(*ev, beg, end);
+            if (st != status::success) return st;
+            if (beg < agg_start) agg_start = beg;
+            if (end > agg_end) agg_end = end;
+        }
+        duration_ms = static_cast<double>(agg_end - agg_start) * 1e-6;
+        return status::success;
+    }
+
+    // Per-runtime primitive: is a single device event complete?
+    virtual bool event_complete(const xpu::event_t &event) const = 0;
+
+    bool is_event_complete(const std::shared_ptr<xpu::event_t> &event) const {
+        if (!event) return true;
+        return event_complete(*event);
+    }
 
     void wait_for_pending_primitives() {
         std::lock_guard<std::recursive_mutex> lock(m_);
@@ -278,9 +310,14 @@ struct verbose_profiler_t {
         reset();
     }
 
-    virtual void wait_for_event_completion(
-            const std::shared_ptr<xpu::event_t> &event) const
-            = 0;
+    // Per-runtime primitive: block until a single device event completes.
+    virtual void event_wait(const xpu::event_t &event) const = 0;
+
+    void wait_for_event_completion(
+            const std::shared_ptr<xpu::event_t> &event) const {
+        if (!event) return;
+        event_wait(*event);
+    }
 
 protected:
     std::recursive_mutex m_;

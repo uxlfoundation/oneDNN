@@ -29,9 +29,37 @@ namespace impl {
 namespace xpu {
 namespace sycl {
 
+status_t query_event_timestamps(
+        const xpu::event_t &event, uint64_t &beg, uint64_t &end) {
+    using namespace ::sycl::info;
+    const auto &sycl_event
+            = *utils::downcast<const xpu::sycl::event_t *>(&event);
+    assert(sycl_event.size() == 1);
+    beg = sycl_event[0].get_profiling_info<event_profiling::command_start>();
+    end = sycl_event[0].get_profiling_info<event_profiling::command_end>();
+    return status::success;
+}
+
+bool query_event_complete(const xpu::event_t &event) {
+    const auto &sycl_event
+            = *utils::downcast<const xpu::sycl::event_t *>(&event);
+    assert(sycl_event.size() == 1);
+    auto status
+            = sycl_event[0]
+                      .get_info<
+                              ::sycl::info::event::command_execution_status>();
+    return status == ::sycl::info::event_command_status::complete;
+}
+
+void wait_event(const xpu::event_t &event) {
+    const auto &sycl_event
+            = *utils::downcast<const xpu::sycl::event_t *>(&event);
+    assert(sycl_event.size() == 1);
+    ::sycl::event::wait({sycl_event[0]});
+}
+
 status_t stream_profiler_t::get_info(profiling_data_kind_t data_kind,
         int *num_entries, uint64_t *data) const {
-    using namespace ::sycl::info;
     if (!num_entries) return status::invalid_arguments;
     bool is_per_kernel = (data_kind == profiling_data_kind::time_per_kernel);
     if (!data) {
@@ -49,14 +77,8 @@ status_t stream_profiler_t::get_info(profiling_data_kind_t data_kind,
     std::map<uint64_t, stream_profiler_t::entry_t> stamp2entry;
     int idx = 0;
     for (auto &ev : events_) {
-        const xpu::sycl::event_t &sycl_event
-                = *utils::downcast<xpu::sycl::event_t *>(ev.event.get());
-        assert(sycl_event.size() == 1);
-        auto beg
-                = sycl_event[0]
-                          .get_profiling_info<event_profiling::command_start>();
-        auto end = sycl_event[0]
-                           .get_profiling_info<event_profiling::command_end>();
+        uint64_t beg, end;
+        CHECK(query_event_timestamps(*ev.event, beg, end));
         if (is_per_kernel) {
             data[idx++] = static_cast<uint64_t>(end - beg);
             continue;
@@ -68,67 +90,6 @@ status_t stream_profiler_t::get_info(profiling_data_kind_t data_kind,
     }
     if (is_per_kernel) return status::success;
     return xpu::stream_profiler_t::get_info_impl(stamp2entry, data_kind, data);
-}
-
-status_t verbose_profiler_t::get_aggregate_exec_time(
-        uint64_t stamp, double &duration_ms) const {
-    using namespace ::sycl::info;
-    auto prof_data = event_map_.find(stamp);
-    if (prof_data == event_map_.end()) return status::invalid_arguments;
-
-    const auto &evts = prof_data->second.prim_evts;
-    if (evts.empty()) {
-        duration_ms = 0.0;
-        return status::success;
-    }
-
-    uint64_t agg_start = UINT64_MAX;
-    uint64_t agg_end = 0;
-
-    for (const auto &ev : evts) {
-        if (!ev) continue;
-        const xpu::sycl::event_t &sycl_event
-                = *utils::downcast<xpu::sycl::event_t *>(ev.get());
-        assert(sycl_event.size() == 1);
-
-        auto evbeg
-                = sycl_event[0]
-                          .get_profiling_info<event_profiling::command_start>();
-        auto evend
-                = sycl_event[0]
-                          .get_profiling_info<event_profiling::command_end>();
-        agg_start = std::min(agg_start, evbeg);
-        agg_end = std::max(agg_end, evend);
-    }
-
-    duration_ms = static_cast<double>(agg_end - agg_start) * 1e-6;
-    return status::success;
-}
-
-bool verbose_profiler_t::is_event_complete(
-        const std::shared_ptr<xpu::event_t> &event) const {
-    if (!event) return true;
-
-    const xpu::sycl::event_t &sycl_event
-            = *utils::downcast<xpu::sycl::event_t *>(event.get());
-    assert(sycl_event.size() == 1);
-
-    auto status
-            = sycl_event[0]
-                      .get_info<
-                              ::sycl::info::event::command_execution_status>();
-
-    return (status == ::sycl::info::event_command_status::complete);
-}
-
-void verbose_profiler_t::wait_for_event_completion(
-        const std::shared_ptr<xpu::event_t> &event) const {
-    if (!event) return;
-
-    const xpu::sycl::event_t &sycl_event
-            = *utils::downcast<xpu::sycl::event_t *>(event.get());
-    assert(sycl_event.size() == 1);
-    ::sycl::event::wait({sycl_event[0]});
 }
 
 } // namespace sycl

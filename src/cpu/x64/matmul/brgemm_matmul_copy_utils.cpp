@@ -6089,7 +6089,7 @@ private:
     enum {
         k_blk_step = 2,
         n_blk_step = 16,
-        fp8_vnni_k_pack = 4,
+        fp8_rows_per_pack = 4,
     };
 
     const int typesize_, tr_typesize_;
@@ -6113,14 +6113,14 @@ private:
 
     void copy_block(const int nrows, const int ncolumns, bool zeropad) {
 
-        const int direct_nrows = utils::rnd_up(nrows, fp8_vnni_k_pack);
+        const int direct_nrows = utils::rnd_up(nrows, fp8_rows_per_pack);
         const int direct_ncolumns = utils::rnd_up(ncolumns, n_blk_step);
 
-        for_(int k = 0; k < direct_nrows; k += fp8_vnni_k_pack)
+        for_(int k = 0; k < direct_nrows; k += fp8_rows_per_pack)
         for (int n = 0; n < direct_ncolumns; n += n_blk_step) {
             const int k_blk = k / k_blk_step;
             const dim_t src_off
-                    = k_blk * src_stride_ + n * fp8_vnni_k_pack * typesize_;
+                    = k_blk * src_stride_ + n * fp8_rows_per_pack * typesize_;
             const dim_t tr_src_off0
                     = k_blk * tr_src_stride_ + n * k_blk_step * tr_typesize_;
             const dim_t tr_src_off1 = tr_src_off0 + tr_src_stride_;
@@ -6156,7 +6156,7 @@ private:
 
         auto compute_K_loop_body = [&](const reg64_t &reg_K, int ncolumns,
                                            bool zeropad) {
-            const int k_step = fp8_vnni_k_pack;
+            const int k_step = fp8_rows_per_pack;
             const int k_unroll = 8;
             const int k_unroll_rows = k_unroll * k_step;
 
@@ -6305,7 +6305,7 @@ private:
     enum {
         k_blk_step = 2,
         n_blk_step = 16,
-        fp8_vnni_k_pack = 4,
+        fp8_rows_per_pack = 4,
     };
 
     const int typesize_, tr_typesize_;
@@ -6332,14 +6332,14 @@ private:
     opmask_t kTail = k1;
 
     void copy_block(const int nrows, const int ncolumns, bool zeropad) {
-        const int direct_nrows = utils::rnd_up(nrows, fp8_vnni_k_pack);
+        const int direct_nrows = utils::rnd_up(nrows, fp8_rows_per_pack);
         const int direct_ncolumns = utils::rnd_up(ncolumns, n_blk_step);
 
         mov(reg_tmp,
                 reinterpret_cast<size_t>(xf16_fp8_plain_to_split_pack_idx));
         vmovdqu8(zmm_permute, ptr[reg_tmp]);
 
-        for_(int k = 0; k < direct_nrows; k += fp8_vnni_k_pack)
+        for_(int k = 0; k < direct_nrows; k += fp8_rows_per_pack)
         for (int n = 0; n < direct_ncolumns; n += n_blk_step) {
             const int rows_left = nrows - k;
             const int cols_left = ncolumns - n;
@@ -6360,7 +6360,7 @@ private:
                 }
 
                 uni_vpxor(zmm_src_pack, zmm_src_pack, zmm_src_pack);
-                for (int r = 0; r < fp8_vnni_k_pack; ++r) {
+                for (int r = 0; r < fp8_rows_per_pack; ++r) {
                     const auto xmm_src = Xmm(xmm_work_reg_base_idx + r);
                     const dim_t src_off
                             = (k + r) * src_row_stride_ + n * typesize_;
@@ -6402,9 +6402,9 @@ private:
         mov(reg_tr_src, ptr[param1 + GET_OFF(tr_src)]);
         mov(reg_N_blk, ptr[param1 + GET_OFF(current_N_blk)]);
 
-        auto compute_K_loop_body
-                = [&](const reg64_t &reg_K, int ncolumns, bool zeropad) {
-            const int k_step = fp8_vnni_k_pack;
+        auto compute_K_loop_body = [&](const reg64_t &reg_K, int ncolumns,
+                                           bool zeropad) {
+            const int k_step = fp8_rows_per_pack;
             const int k_unroll = 8;
             const int k_unroll_rows = k_unroll * k_step;
 
@@ -6551,7 +6551,7 @@ private:
     enum {
         k_blk_step = 2,
         n_blk_step = 16,
-        fp8_vnni_k_pack = 4,
+        fp8_rows_per_pack = 4,
     };
 
     const int typesize_, tr_typesize_;
@@ -6576,14 +6576,14 @@ private:
     constexpr static int xmm_work_reg_base_idx = 9;
 
     void copy_block(const int nrows, const int ncolumns, bool zeropad) {
-        const int direct_nrows = utils::rnd_up(nrows, fp8_vnni_k_pack);
+        const int direct_nrows = utils::rnd_up(nrows, fp8_rows_per_pack);
         const int direct_ncolumns = utils::rnd_up(ncolumns, n_blk_step);
 
         mov(reg_tmp,
                 reinterpret_cast<size_t>(xf16_fp8_plain_to_split_pack_idx));
         vmovdqu8(zmm_permute, ptr[reg_tmp]);
 
-        for_(int k = 0; k < direct_nrows; k += fp8_vnni_k_pack)
+        for_(int k = 0; k < direct_nrows; k += fp8_rows_per_pack)
         for (int n = 0; n < direct_ncolumns; n += n_blk_step) {
             const int rows_left = nrows - k;
             const int cols_left = ncolumns - n;
@@ -6621,7 +6621,7 @@ private:
                     const dim_t src_off
                             = (n + c) * src_row_stride_ + k * typesize_;
 
-                    if (rows_left >= fp8_vnni_k_pack) {
+                    if (rows_left >= fp8_rows_per_pack) {
                         mov(regw_tmp, dword[reg_src + src_off]);
                     } else {
                         movzx(regw_tmp, byte[reg_src + src_off]);
@@ -6701,9 +6701,9 @@ private:
         mov(reg_tr_src, ptr[param1 + GET_OFF(tr_src)]);
         mov(reg_N_blk, ptr[param1 + GET_OFF(current_N_blk)]);
 
-        auto compute_K_loop_body
-                = [&](const reg64_t &reg_K, int ncolumns, bool zeropad) {
-            const int k_step = fp8_vnni_k_pack;
+        auto compute_K_loop_body = [&](const reg64_t &reg_K, int ncolumns,
+                                           bool zeropad) {
+            const int k_step = fp8_rows_per_pack;
             const int k_unroll = 8;
             const int k_unroll_rows = k_unroll * k_step;
 

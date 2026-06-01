@@ -75,7 +75,7 @@ struct gen_t : public primitive_t {
             dev_info_ = intel_engine->device_info();
             arch_ = dev_info_->gpu_arch();
 
-            CHECK(seed_problem(cfg_));
+            CHECK(seed_kernel_config(cfg_));
 
             CHECK(jit::pd_t::init(engine, arch_));
 
@@ -95,14 +95,15 @@ struct gen_t : public primitive_t {
                             d->lda(), d->ldb(), d->ldc(), d->batch()),
                     VERBOSE_UNSUPPORTED_TAG);
 
-            // After swap_fold, cfg_ is the kernel-frame projection.
+            // After apply_swap_ab, cfg_ holds the kernel-orientation cfg
+            // (A/B and their strides folded per swap_ab).
             bool swap = decide_swap_ab(cfg_);
             // No kernels with transposed C, if swap_ab is disabled (e.g.
             // due to wei_decomp()) - this case cannot be handled.
             VDISPATCH_GEMM(IMPLICATION(d->transc() == dnnl_trans, swap),
                     VERBOSE_UNSUPPORTED_TAG);
             jit::pad_lda(cfg_, swap);
-            jit::swap_fold(cfg_, swap);
+            jit::apply_swap_ab(cfg_, swap);
 
             const auto &cfg = cfg_;
 

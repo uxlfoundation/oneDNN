@@ -70,8 +70,8 @@ struct binary_src_t {
     binary_src_t(type_t type_, int index_) : type(type_), index(index_) {}
 };
 
-// Kernel-facing projection of pd_t state. swap_ab is folded once in swap_fold;
-// consumers read cfg.* without branching on swap_ab.
+// Kernel-facing snapshot of pd_t state. swap_ab is folded once in
+// apply_swap_ab; consumers read cfg.* without branching on swap_ab.
 struct kernel_config_t {
     gemmstone::GEMMProblem problem;
 
@@ -103,7 +103,7 @@ struct kernel_config_t {
     // sumA/sumB carry the sum_ab reduction; the OR is swap-invariant.
     bool with_sum_ab() const { return problem.sumA || problem.sumB; }
 
-    // swap_ab routing for ctx-arg-frame pd lookups (e.g. per-arg strides):
+    // swap_ab routing for per-ctx-arg pd lookups (e.g. per-arg strides):
     // the only place swap_ab re-enters once folded.
     int eff_a_arg() const { return swap_ab ? DNNL_ARG_B : DNNL_ARG_A; }
     int eff_b_arg() const { return swap_ab ? DNNL_ARG_A : DNNL_ARG_B; }
@@ -111,7 +111,7 @@ struct kernel_config_t {
     dim_t m = 0, n = 0, k = 0;
     dim_t lda = 0, ldb = 0, ldc = 0;
 
-    // Quant mds: A/B-side are swap-folded; C-side is passthrough.
+    // Quant mds: A/B-side are swap_ab-folded; C-side is passthrough.
     memory_desc_t a_scale_md = {}, b_scale_md = {}, c_scale_md = {};
     memory_desc_t a_zp_md = {}, b_zp_md = {}, c_zp_md = {};
     memory_desc_t a_gs_md = {}, b_gs_md = {};
@@ -123,8 +123,8 @@ struct kernel_config_t {
     int bias_cmask = -1;
     dim_t ld_bias = 0;
 
-    // C-side offset mask (DST zp / bias / sum_ab precedence); seeded user-frame
-    // in init_post_ops, column<->row folded by swap_fold.
+    // C-side offset mask (DST zp / bias / sum_ab precedence); seeded in user
+    // orientation in init_post_ops, column<->row folded by apply_swap_ab.
     int cmask = 0;
 
     float beta = 0.0f;
@@ -132,9 +132,9 @@ struct kernel_config_t {
     bool swap_ab = false;
 
     // Descriptor/attr snapshot finalize_problem needs, so finalize reads only
-    // cfg.* (+ engine HW state). Batch strides are user-frame at seed then
-    // swap-folded (C is orientation-invariant); ab_layout_N/T are swap-folded
-    // orientation defaults; the rest are orientation-invariant.
+    // cfg.* (+ engine HW state). Batch strides are user-orientation at seed
+    // then swap_ab-folded (C is orientation-invariant); ab_layout_N/T are
+    // swap_ab-folded orientation defaults; the rest are orientation-invariant.
     static constexpr int max_batch_dims = DNNL_MAX_NDIMS - 2;
     dim_t a_batch_strides[max_batch_dims] = {};
     dim_t b_batch_strides[max_batch_dims] = {};
@@ -154,7 +154,8 @@ struct kernel_config_t {
     gemmstone::MatrixLayout ab_layout_N = gemmstone::MatrixLayout::N;
     gemmstone::MatrixLayout ab_layout_T = gemmstone::MatrixLayout::T;
 
-    // Byte alignment of a leading dim folded with its swap-folded batch strides.
+    // Byte alignment of a leading dim folded with its swap_ab-folded batch
+    // strides.
     int align_bytes(dim_t ld, data_type_t dt, const dim_t *bstr) const {
         auto a = utils::max_pow2_div(types::elements_to_bytes(dt, ld));
         for (int b = 0; b < batch_dims; b++) {
@@ -198,9 +199,9 @@ struct pd_t : public gemm::pd_t {
     status_t init_attrs(kernel_config_t &cfg, impl::engine_t *engine);
     status_t init_post_ops(kernel_config_t &cfg, impl::engine_t *engine);
 
-    // Seeds the kernel projection (types, orientation, m/n/k, ld*) from desc().
+    // Seeds the kernel cfg (types, orientation, m/n/k, ld*) from desc().
     // Must run after set_default_formats so ld* reflect the final strides.
-    status_t seed_problem(kernel_config_t &cfg);
+    status_t seed_kernel_config(kernel_config_t &cfg);
 
     status_t scales_ok(const kernel_config_t &cfg, impl::engine_t *engine);
     status_t zp_ok(const kernel_config_t &cfg, impl::engine_t *engine);
@@ -213,7 +214,7 @@ struct pd_t : public gemm::pd_t {
     bool valid_2d_mask(int mask, int ndims, bool per_tensor_ok = true);
 
     // Completes cfg.problem with HW/register-derived fields. Must run after
-    // swap_fold: the derived fields are transpose-blind.
+    // apply_swap_ab: the derived fields are transpose-blind.
     status_t finalize_problem(
             kernel_config_t &cfg, const intel::engine_t *engine) const;
 
@@ -289,7 +290,7 @@ struct pd_t : public gemm::pd_t {
         return 0;
     }
 
-    // Strides of the already-swap-folded quant mds; named by kernel side and
+    // Strides of the already swap_ab-folded quant mds; named by kernel side and
     // take no DNNL_ARG so callers cannot re-apply the swap.
     dim_t a_scale_stride(int idx) const;
     dim_t b_scale_stride(int idx) const;
@@ -300,7 +301,7 @@ struct pd_t : public gemm::pd_t {
 };
 
 void pad_lda(kernel_config_t &cfg, bool swap);
-void swap_fold(kernel_config_t &cfg, bool swap);
+void apply_swap_ab(kernel_config_t &cfg, bool swap);
 
 status_t transfer_post_ops(
         gemmstone::GEMMProblem &problem, gpu_post_ops_t &&post_ops);
@@ -344,7 +345,7 @@ struct exec_config_t {
     dim_t stride_a(int dim) const { return pd->stride(cfg().eff_a_arg(), dim); }
     dim_t stride_b(int dim) const { return pd->stride(cfg().eff_b_arg(), dim); }
     dim_t stride_c(int dim) const { return pd->desc()->stride_c(dim); }
-    // Quant mds are already swap-folded, so forward to the side-named accessors;
+    // Quant mds are already swap_ab-folded, so forward to the side-named accessors;
     // routing via eff_arg would double-swap and read the empty opposite-side md.
     // (stride_a/b above reach the unswapped desc(), so they must use eff_arg.)
     dim_t scale_stride_a(int idx) const { return pd->a_scale_stride(idx); }

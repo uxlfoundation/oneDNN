@@ -253,7 +253,7 @@ status_t pd_t::init_post_ops(kernel_config_t &cfg, impl::engine_t *engine) {
     cfg.alpha = alpha();
 
     // C-side offset mask (DST zp / bias / sum_ab, in that precedence) in user
-    // frame; swap_fold folds its column<->row bits.
+    // orientation; apply_swap_ab folds its column<->row bits.
     if (cfg.with_c_zp)
         cfg.cmask = attr()->zero_points_.get_mask(DNNL_ARG_DST);
     else if (cfg.with_bias)
@@ -264,7 +264,7 @@ status_t pd_t::init_post_ops(kernel_config_t &cfg, impl::engine_t *engine) {
     return status::success;
 }
 
-status_t pd_t::seed_problem(kernel_config_t &cfg) {
+status_t pd_t::seed_kernel_config(kernel_config_t &cfg) {
     const auto d = desc();
 
     cfg.m = d->m();
@@ -286,7 +286,7 @@ status_t pd_t::seed_problem(kernel_config_t &cfg) {
     cfg.problem.CO.layout = to_layout(d->trans_bias() == dnnl_trans);
 
     // Batch strides captured post-set_default_formats (final packed strides) in
-    // user frame; swap_fold folds them. Everything else here is
+    // user orientation; apply_swap_ab folds them. Everything else here is
     // orientation-invariant.
     const int bd = batch_dims();
     gpu_assert(bd <= kernel_config_t::max_batch_dims);
@@ -682,7 +682,7 @@ status_t pd_t::finalize_problem(
             || engine->mayiuse(compute::device_ext_t::
                             intel_subgroup_split_matrix_multiply_accumulate);
 
-    // Batch strides are swap-folded on the cfg, so align reads only cfg.*.
+    // Batch strides are swap_ab-folded on the cfg, so align reads only cfg.*.
     auto align_a = nstl::max(
             cfg.align_bytes(cfg.lda, cfg.a_type(), cfg.a_batch_strides),
             (int)types::data_type_size(cfg.a_type()));
@@ -925,7 +925,7 @@ dim_t kernel_config_t::stride_binary(int idx, int stride) const {
 }
 
 void pad_lda(kernel_config_t &cfg, bool swap) {
-    // Runs in user orientation, before swap_fold.
+    // Runs in user orientation, before apply_swap_ab.
     if (swap && !cfg.trans_a() && cfg.m == 1) {
         cfg.problem.A.layout = gemmstone::MatrixLayout::T;
         cfg.lda = cfg.k;
@@ -938,10 +938,10 @@ void pad_lda(kernel_config_t &cfg, bool swap) {
         cfg.ldb = utils::rnd_up(cfg.ldb, 16);
 }
 
-void swap_fold(kernel_config_t &cfg, bool swap) {
-    // swap_ab is set only here; guard against a double swap_fold (which would
+void apply_swap_ab(kernel_config_t &cfg, bool swap) {
+    // swap_ab is set only here; guard against applying it twice (which would
     // double-swap into a still-self-consistent state).
-    gpu_assert(!cfg.swap_ab) << "swap_fold invoked twice";
+    gpu_assert(!cfg.swap_ab) << "swap_ab applied twice";
     cfg.swap_ab = swap;
     if (swap) {
         std::swap(cfg.m, cfg.n);

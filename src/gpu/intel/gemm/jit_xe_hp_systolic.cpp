@@ -129,9 +129,9 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
                     <= (size_t)std::numeric_limits<int32_t>::max(),
             VERBOSE_SHAPE_RESTRICTION);
 
-    // Must run after set_default_formats: seed_problem captures final packed
-    // lda/ldb/ldc.
-    CHECK(seed_problem(cfg_));
+    // Must run after set_default_formats: seed_kernel_config captures final
+    // packed lda/ldb/ldc.
+    CHECK(seed_kernel_config(cfg_));
     CHECK(init_attrs(cfg_, engine));
 
     CHECK(scales_ok(cfg_, engine));
@@ -169,7 +169,7 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
     // Systolic never swaps A/B.
     bool swap = decide_swap_ab(cfg_);
     VDISPATCH_GEMM(!swap, VERBOSE_UNSUPPORTED_FEATURE, "swap_ab");
-    jit::swap_fold(cfg_, swap);
+    jit::apply_swap_ab(cfg_, swap);
 
     CHECK(finalize_problem(cfg_, intel_engine));
 
@@ -318,7 +318,7 @@ bool xe_hp_systolic_t::pd_t::use_nocopy_xehpg(
 
 status_t xe_hp_systolic_t::pd_t::set_default_formats(data_type_t dt) {
     using namespace format_tag;
-    using new_kd_t = jit::gen_xe_systolic_kernel_desc_t;
+    using new_kd_t = jit::gen_xe_systolic_desc_t;
 
     auto sz = types::data_type_size(dt);
     const auto &d = desc();
@@ -564,7 +564,7 @@ status_t xe_hp_systolic_t::init(impl::engine_t *engine) {
 }
 
 status_t xe_hp_systolic_t::init_compute(impl::engine_t *engine) {
-    using kd_t = jit::gen_xe_systolic_kernel_desc_t;
+    using kd_t = jit::gen_xe_systolic_desc_t;
     using namespace gemmstone;
 
     auto *intel_engine = utils::downcast<intel::engine_t *>(engine);

@@ -612,7 +612,7 @@ status_t gen_nocopy_desc_t::finalize() {
     return gen_desc_t::finalize(tags_.c_str());
 }
 
-status_t gen_xe_systolic_kernel_desc_t::select_kernel(
+status_t gen_xe_systolic_desc_t::select_kernel(
         const compute::device_info_t &dev_info,
         const gemmstone::GEMMProblem &in, const select_dims_t &dims,
         float alpha, float beta, const systolic_perf_params_t &perf) {
@@ -758,7 +758,7 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
     return finalize(match_params.tags);
 }
 
-void gen_xe_systolic_kernel_desc_t::choose_unrolls(compute::gpu_arch_t arch,
+void gen_xe_systolic_desc_t::choose_unrolls(compute::gpu_arch_t arch,
         int eu_count, data_type_t a_type, data_type_t b_type,
         data_type_t c_type, dim_t m, dim_t n, dim_t k, dim_t batch,
         int &unroll_m, int &unroll_n, bool &alt) {

@@ -168,7 +168,7 @@ struct systolic_perf_params_t {
     bool alt = false;
 };
 
-struct gen_xe_systolic_kernel_desc_t : public gen_desc_t {
+struct gen_xe_systolic_desc_t : public gen_desc_t {
     status_t select_kernel(const compute::device_info_t &dev_info,
             const gemmstone::GEMMProblem &in, const select_dims_t &dims,
             float alpha, float beta, const systolic_perf_params_t &perf);
@@ -215,9 +215,8 @@ struct key_validator_t<gemm::jit::gen_nocopy_desc_t> {
 };
 
 template <>
-struct key_validator_t<gemm::jit::gen_xe_systolic_kernel_desc_t> {
-    static bool is_valid(
-            const gemm::jit::gen_xe_systolic_kernel_desc_t &derived) {
+struct key_validator_t<gemm::jit::gen_xe_systolic_desc_t> {
+    static bool is_valid(const gemm::jit::gen_xe_systolic_desc_t &derived) {
         return key_validator_t<gemm::jit::gen_desc_t>::is_valid(derived);
     }
 };

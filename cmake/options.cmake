@@ -312,6 +312,10 @@ set(OPENCLROOT "" CACHE STRING
     "Path to OpenCL SDK.
     Use this option to specify custom location for OpenCL.")
 
+set(DNNL_ZE_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/third_party/level_zero" CACHE STRING
+    "Path to Level Zero headers. Defaults to the headers bundled in
+    third_party/level_zero.")
+
 # TODO: move logic to other cmake files?
 # Shortcuts for SYCL/DPC++
 if(DNNL_CPU_RUNTIME STREQUAL "DPCPP" OR DNNL_CPU_RUNTIME STREQUAL "SYCL")

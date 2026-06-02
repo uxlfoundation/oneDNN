@@ -76,6 +76,7 @@ set(COMPAT_CACHE_STRING_VARS
     "USE_CLANG_SANITIZER"
     "USE_CLANG_TIDY"
     "BLAS_VENDOR"
+    "ZE_INCLUDE_DIR"
     )
 
 # Map DNNL_ to ONEDNN_ options

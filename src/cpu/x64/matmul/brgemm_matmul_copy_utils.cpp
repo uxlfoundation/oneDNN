@@ -6838,7 +6838,7 @@ status_t create_brgemm_matmul_copy_b(
             const bool isa_ok = is_superset(conf->isa, avx10_2_512)
                     || (is_fp8_to_f16
                                     ? is_superset(
-                                              conf->isa, avx10_1_512_amx_fp16)
+                                            conf->isa, avx10_1_512_amx_fp16)
                                     : is_superset(conf->isa, avx512_core_amx));
             if (isa_ok) {
                 CHECK(safe_ptr_assign(copy_ker,
@@ -6893,17 +6893,17 @@ status_t create_brgemm_matmul_copy_b(
             const bool isa_ok = is_superset(conf->isa, avx10_2_512)
                     || (is_fp8_to_f16
                                     ? is_superset(
-                                              conf->isa, avx10_1_512_amx_fp16)
+                                            conf->isa, avx10_1_512_amx_fp16)
                                     : is_superset(conf->isa, avx512_core_amx));
             if (isa_ok)
                 CHECK(safe_ptr_assign(copy_ker,
                         conf->blocked_B
                                 ? static_cast<jit_brgemm_matmul_copy_b_t *>(
-                                          new jit_brgemm_matmul_copy_cvt_fp8_to_xf16_t(
-                                                  conf))
+                                        new jit_brgemm_matmul_copy_cvt_fp8_to_xf16_t(
+                                                conf))
                                 : static_cast<jit_brgemm_matmul_copy_b_t *>(
-                                          new jit_brgemm_matmul_copy_cvt_fp8_to_xf16_plain_t(
-                                                  conf))));
+                                        new jit_brgemm_matmul_copy_cvt_fp8_to_xf16_plain_t(
+                                                conf))));
             else {
                 assert(!"Unsupported isa for xf16_fp8");
                 return status::unimplemented;

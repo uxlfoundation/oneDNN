@@ -81,7 +81,7 @@ struct jit_brgemm_kernel_t : public jit_base_brgemm_kernel_t {
                         brg.dt_d)
                     || has_f8_e5m2_binary_postops)
                 // Note: avoid using 'vmm0' since it is used as
-                // 'fp8_to_xf16_upconvert()' param and would collision with these
+                // 'fp8_to_f16_upconvert()' param and would collision with these
                 // emulation vmms
                 f8_e5m2_cvt_ = utils::make_unique<fp8_conversion_e5m2_t>(this,
                         vmm_fp8_emu_aux1(), vmm_fp8_emu_aux2(),
@@ -377,11 +377,11 @@ private:
         return Vmm(isa_num_vregs(brg.isa_impl) - 5);
     }
     Vmm vmm_fp8_load() const noexcept {
-        // Re-use it as output when converting fp8 to xf16 vnni
+        // Re-use it as output when converting fp8 to f16 vnni
         return Vmm(isa_num_vregs(brg.isa_impl) - 5);
     }
     Vmm vmm_fp8_bcst() const noexcept {
-        // Re-use it as output when converting fp8 to xf16 vnni
+        // Re-use it as output when converting fp8 to f16 vnni
         return Vmm(isa_num_vregs(brg.isa_impl) - 4);
     }
 
@@ -423,12 +423,12 @@ private:
     void zero_accumulators(dim_t bd_block2, bool is_bdb_tail, dim_t ld_block,
             bool is_ld_tail, bool skip_accumulation);
 
-    void fp8_to_xf16_upconvert(dim_t num_rows, dim_t tile_num_col_bytes,
+    void fp8_to_f16_upconvert(dim_t num_rows, dim_t tile_num_col_bytes,
             reg64_t reg_base, dim_t offset, reg64_t reg_data_stride,
-            data_type_t dt, bool is_rd_tail, data_type_t dst_dt);
-    void fp8_to_xf16_upconvert_to_vnni(dim_t num_rows, dim_t tile_num_col_bytes,
+            data_type_t dt, bool is_rd_tail);
+    void fp8_to_f16_upconvert_to_vnni(dim_t num_rows, dim_t tile_num_col_bytes,
             reg64_t reg_base, dim_t offset, reg64_t reg_data_stride,
-            data_type_t dt, bool is_rd_tail, data_type_t dst_dt);
+            data_type_t dt, bool is_rd_tail);
     void reduce_gemv_accumulators(dim_t bd_block);
     void store_accumulators(dim_t bd_block2, bool is_bdb_tail, dim_t ld_block,
             bool is_ld_tail, bool skip_accumulation);
@@ -1114,13 +1114,12 @@ void jit_brgemm_kernel_t<Wmm>::zero_accumulators(dim_t bd_block2,
     }
 }
 
-// This method up-converts the data from bf8 to f16/bf16 and saves at reg_buf.
+// This method up-converts the data from bf8 to f16 and saves at reg_buf.
 // Generally used by matrix_A, where no vnni transformation of data is needed.
 template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::fp8_to_xf16_upconvert(dim_t num_rows,
+void jit_brgemm_kernel_t<Wmm>::fp8_to_f16_upconvert(dim_t num_rows,
         dim_t tile_num_col_bytes, reg64_t reg_base, dim_t offset,
-        reg64_t reg_data_stride, data_type_t dt, bool is_rd_tail,
-        data_type_t dst_dt) {
+        reg64_t reg_data_stride, data_type_t dt, bool is_rd_tail) {
 
     dim_t rd_block = is_rd_tail ? brg.rdb_tail : brg.rd_block;
 
@@ -1142,23 +1141,11 @@ void jit_brgemm_kernel_t<Wmm>::fp8_to_xf16_upconvert(dim_t num_rows,
     lea(reg_data_aux, ptr[reg_base + offset]);
 
     for (dim_t r = 0; r < num_rows; ++r) {
-        if (dt == data_type::f8_e5m2) {
-            if (dst_dt == data_type::bf16) {
-                f8_e5m2_cvt_->vcvt_f8_to_bf16(zmm_1_masked, ptr[reg_data_aux]);
-            } else if (dst_dt == data_type::f16) {
-                f8_e5m2_cvt_->vcvt_f8_to_f16(zmm_1_masked, ptr[reg_data_aux]);
-            } else {
-                assert(!"unsupported data type");
-            }
-        } else if (dt == data_type::f8_e4m3) {
-            if (dst_dt == data_type::bf16) {
-                f8_e4m3_cvt_->vcvt_f8_to_bf16(zmm_1_masked, ptr[reg_data_aux]);
-            } else if (dst_dt == data_type::f16) {
-                f8_e4m3_cvt_->vcvt_f8_to_f16(zmm_1_masked, ptr[reg_data_aux]);
-            } else {
-                assert(!"unsupported data type");
-            }
-        } else
+        if (dt == data_type::f8_e5m2)
+            f8_e5m2_cvt_->vcvt_f8_to_f16(zmm_1_masked, ptr[reg_data_aux]);
+        else if (dt == data_type::f8_e4m3)
+            f8_e4m3_cvt_->vcvt_f8_to_f16(zmm_1_masked, ptr[reg_data_aux]);
+        else
             assert(!"unsupported data type");
 
         vmovups(ptr[reg_buf_aux + r * zmm_width_in_bytes_], zmm_1);
@@ -1167,12 +1154,11 @@ void jit_brgemm_kernel_t<Wmm>::fp8_to_xf16_upconvert(dim_t num_rows,
 }
 
 // This method up-converts and transforms the data from fp8_vnni to f16_vnni
-// or bf16_vnni format. Generally used by matrix_B.
+// format. Generally used by matrix_B.
 template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::fp8_to_xf16_upconvert_to_vnni(dim_t num_rows,
+void jit_brgemm_kernel_t<Wmm>::fp8_to_f16_upconvert_to_vnni(dim_t num_rows,
         dim_t tile_num_col_bytes, reg64_t reg_base, dim_t offset,
-        reg64_t reg_data_stride, data_type_t dt, bool is_rd_tail,
-        data_type_t dst_dt) {
+        reg64_t reg_data_stride, data_type_t dt, bool is_rd_tail) {
     const dim_t num_cols_ele = tile_num_col_bytes / 2; // 32 for full tile
     const dim_t num_N = num_cols_ele / 2; // 16 for full tile
     const auto zmm_2 = vmm_tmp(2);
@@ -1188,27 +1174,13 @@ void jit_brgemm_kernel_t<Wmm>::fp8_to_xf16_upconvert_to_vnni(dim_t num_rows,
     const dim_t r_end = utils::div_up(rd_block, vnni_granularity);
     assert(r_end <= num_rows && "bad tile parameters");
 
-    if (dt == data_type::f8_e5m2) {
-        if (dst_dt == data_type::bf16) {
-            f8_e5m2_cvt_->vcvt_f8_to_bf16_vnni_block(
-                    r_end, reg_data_aux, reg_data_stride, reg_buf_aux);
-        } else if (dst_dt == data_type::f16) {
-            f8_e5m2_cvt_->vcvt_f8_to_f16_vnni_block(
-                    r_end, reg_data_aux, reg_data_stride, reg_buf_aux);
-        } else {
-            assert(!"unsupported data type");
-        }
-    } else if (dt == data_type::f8_e4m3) {
-        if (dst_dt == data_type::bf16) {
-            f8_e4m3_cvt_->vcvt_f8_to_bf16_vnni_block(
-                    r_end, reg_data_aux, reg_data_stride, reg_buf_aux);
-        } else if (dst_dt == data_type::f16) {
-            f8_e4m3_cvt_->vcvt_f8_to_f16_vnni_block(
-                    r_end, reg_data_aux, reg_data_stride, reg_buf_aux);
-        } else {
-            assert(!"unsupported data type");
-        }
-    } else
+    if (dt == data_type::f8_e5m2)
+        f8_e5m2_cvt_->vcvt_f8_to_f16_vnni_block(
+                r_end, reg_data_aux, reg_data_stride, reg_buf_aux);
+    else if (dt == data_type::f8_e4m3)
+        f8_e4m3_cvt_->vcvt_f8_to_f16_vnni_block(
+                r_end, reg_data_aux, reg_data_stride, reg_buf_aux);
+    else
         assert(!"unsupported data type");
 
     // zero rest of the tile data
@@ -2544,17 +2516,11 @@ void jit_brgemm_kernel_t<Wmm>::maybe_pre_process_data(
     const Zmm zmm_out1 = Zmm(vmm_out1.getIdx());
     const Zmm zmm_out2 = Zmm(vmm_out2.getIdx());
 
-    if (dt == data_type::f8_e5m2) {
-        if (brg.is_fp8_weights_converted_to_bf16())
-            f8_e5m2_cvt_->vcvt_f8_to_bf16_vnni(zmm_out1, zmm_out2, zmm_out1);
-        else
-            f8_e5m2_cvt_->vcvt_f8_to_f16_vnni(zmm_out1, zmm_out2, zmm_out1);
-    } else if (dt == data_type::f8_e4m3) {
-        if (brg.is_fp8_weights_converted_to_bf16())
-            f8_e4m3_cvt_->vcvt_f8_to_bf16_vnni(zmm_out1, zmm_out2, zmm_out1);
-        else
-            f8_e4m3_cvt_->vcvt_f8_to_f16_vnni(zmm_out1, zmm_out2, zmm_out1);
-    } else
+    if (dt == data_type::f8_e5m2)
+        f8_e5m2_cvt_->vcvt_f8_to_f16_vnni(zmm_out1, zmm_out2, zmm_out1);
+    else if (dt == data_type::f8_e4m3)
+        f8_e4m3_cvt_->vcvt_f8_to_f16_vnni(zmm_out1, zmm_out2, zmm_out1);
+    else
         assert(!"unsupported data type.");
 }
 
@@ -2568,20 +2534,14 @@ void jit_brgemm_kernel_t<Wmm>::maybe_pre_process_data(matrix_kind_t matrix_kind,
     add(reg_buf_aux, transform_offset);
 
     switch (matrix_kind) {
-        case matrix_A: {
-            const auto A_dst_dt = brg.is_fp8_weights_converted_to_bf16()
-                    ? data_type::bf16
-                    : data_type::f16;
-            fp8_to_xf16_upconvert(num_rows, num_col_bytes, reg_base, offset,
-                    reg_stride, brg.dt_a, is_rd_tail, A_dst_dt);
-        } break;
-        case matrix_B: {
-            const auto B_dst_dt = brg.is_fp8_weights_converted_to_bf16()
-                    ? data_type::bf16
-                    : data_type::f16;
-            fp8_to_xf16_upconvert_to_vnni(num_rows, num_col_bytes, reg_base,
-                    offset, reg_stride, brg.dt_b, is_rd_tail, B_dst_dt);
-        } break;
+        case matrix_A:
+            fp8_to_f16_upconvert(num_rows, num_col_bytes, reg_base, offset,
+                    reg_stride, brg.dt_a, is_rd_tail);
+            break;
+        case matrix_B:
+            fp8_to_f16_upconvert_to_vnni(num_rows, num_col_bytes, reg_base,
+                    offset, reg_stride, brg.dt_b, is_rd_tail);
+            break;
         default: assert(!"Wrong Matrix");
     }
 
@@ -2724,9 +2684,7 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel_amx(dim_t bd_block2,
         using namespace data_type;
         if (brg.is_tf32) {
             tmmultf32ps(x1, x2, x3);
-        } else if (brg.is_fp8_weights_converted_to_bf16()) {
-            tdpbf16ps(x1, x2, x3);
-        } else if (brg.is_fp8_weights_converted_to_f16()) {
+        } else if (brg.is_fp8 && brg.is_fp8_via_convert()) {
             tdpfp16ps(x1, x2, x3);
         } else if (brg.dt_a == f8_e5m2 && brg.dt_b == f8_e5m2) {
             tdpbf8ps(x1, x2, x3);
@@ -2783,13 +2741,9 @@ template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::dot_product(Vmm v1, Vmm v2, Vmm v3) {
     if (brg.is_f16 && brg.isa_impl == avx10_2)
         vdpphps(v1, v2, v3);
-    else if (brg.is_fp8_weights_converted_to_bf16()) {
-        assert(brg.is_fp8_via_convert_non_amx());
-        vdpbf16ps(v1, v2, v3);
-    } else if (brg.is_fp8_weights_converted_to_f16()) {
-        assert(brg.is_fp8_via_convert_non_amx());
+    else if (brg.is_fp8 && brg.is_fp8_via_convert_non_amx())
         vdpphps(v1, v2, v3);
-    } else if (brg.is_f32 || brg.is_f16
+    else if (brg.is_f32 || brg.is_f16
             || (brg.is_bf16 && brg.isa_impl == avx2_vnni_2))
         uni_vfmadd231ps(v1, v2, v3);
     else if (brg.is_bf16)
@@ -2805,8 +2759,7 @@ void jit_brgemm_kernel_t<Wmm>::dot_product(Vmm v1, Vmm v2, Vmm v3) {
                     int8_ones_words());
             vpaddd(v1, v1, int8_dot_product_temp());
         }
-    } else
-        assert(!"unsupported data type");
+    }
 }
 
 template <typename Wmm>
@@ -3175,7 +3128,7 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
 
     for (dim_t rd = 0; rd < rd_loop; rd += brg.rd_step) {
         if (brg.n_bcast_1_load) {
-            for (dim_t bd = bd_b; bd < bd_e; bd++)
+            for (dim_t bd = bd_b; bd < bd_e && !is_emdbd; bd++)
                 broadcast_A(bcst(bd), bd, rd);
             for (dim_t ld = 0; ld < ld_block2; ld++) {
                 load_B(0, rd, ld);

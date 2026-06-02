@@ -37,7 +37,7 @@ struct eltwise_lut_fwd_t : public primitive_t {
 
     struct pd_t : public cpu_eltwise_fwd_pd_t {
         using cpu_eltwise_fwd_pd_t::cpu_eltwise_fwd_pd_t;
-        DECLARE_COMMON_PD_T("eltwise_lut", eltwise_lut_fwd_t);
+        DECLARE_COMMON_PD_T("lut", eltwise_lut_fwd_t);
 
         status_t init(engine_t *engine) {
             using namespace ::dnnl::impl;

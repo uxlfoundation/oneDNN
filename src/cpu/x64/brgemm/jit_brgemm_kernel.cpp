@@ -1395,10 +1395,27 @@ void jit_brgemm_kernel_t<Wmm>::gemv_apply_wei_scales(
         const auto addr = ptr[reg_aux_wei_scales + wei_scales_offset(bd)];
 
         if (brg.gemv_acc_is_vector()) {
-            if (gemv_is_tail_acc(bd, bd_block, is_bdb_tail))
-                vmaskmovps(vmm_wei_scales, vmm_tail_mask(), addr);
-            else
-                uni_vmovups(vmm_wei_scales, addr);
+            // Load `elems` f32 scale values (Zmm-safe): an opmask decorator on
+            // avx512 (`vmaskmovps` is VEX-only and can't encode zmm), `load_data`
+            // on avx2.
+            const int elems = gemv_is_tail_acc(bd, bd_block, is_bdb_tail)
+                    ? brg.gemv_tail
+                    : gemv_elems_per_vector_acc();
+            if (isa_has_masks(brg.isa_impl)) {
+                // reg_aux_wei_scales doesn't alias reg_tmp_gpr (== rbx), but
+                // restore the base pointer after setting the mask to mirror the
+                // bias path and stay robust to register-allocation changes. Use
+                // gemv_store_mask (not rd_tail_mask) so the K-tail load mask
+                // survives across bd-blocks.
+                mov(reg_tmp_gpr, (static_cast<size_t>(1) << elems) - 1);
+                kmovq(gemv_store_mask, reg_tmp_gpr);
+                reg_aux_wei_scales.restore();
+                uni_vmovups(vmm_wei_scales | gemv_store_mask | T_z,
+                        ptr[reg_aux_wei_scales + wei_scales_offset(bd)]);
+            } else {
+                load_data(data_type::f32, vmm_wei_scales, reg_aux_wei_scales,
+                        wei_scales_offset(bd), elems);
+            }
 
             uni_vmulps(acc, acc, vmm_wei_scales);
         } else {

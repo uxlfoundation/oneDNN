@@ -41,7 +41,11 @@ struct chunk_params_t {
     const dnn_mem_t *dropout_mask = nullptr;
 
     // Problem dims
+    int64_t N = 0, K = 0;
     int64_t dst_M_group = 1, dst_N_group = 1;
+
+    // Weights strides are invariant across chunks
+    int64_t wei_k_stride = 0, wei_n_stride = 0;
 
     // Feature flags
     bool has_src_scale = false, has_wei_scale = false, has_dst_scale = false;
@@ -60,8 +64,8 @@ struct chunk_params_t {
     std::vector<int64_t> src_zp_groups, wei_zp_groups;
     std::vector<int64_t> dst_scale_groups;
 
-    // K-grouping related
-    int64_t smallest_k_group = 0, n_k_groups = 0;
+    // Smallest quantization group
+    int64_t smallest_k_group = 0;
 
     // Dst scale storage type
     dnnl_data_type_t dst_scale_dt;
@@ -150,7 +154,6 @@ static chunk_params_t make_chunk_params(const prb_t *prb, const args_t &args) {
                                                                   : prb->k;
     p.smallest_k_group = gcd<int64_t>(
             {src_scale_group, wei_scale_group, src_zp_group, wei_zp_group});
-    p.n_k_groups = prb->k / p.smallest_k_group;
 
     p.dst_scale_dt = prb->attr.scales.get(DNNL_ARG_DST).dt;
 
@@ -171,23 +174,32 @@ static chunk_params_t make_chunk_params(const prb_t *prb, const args_t &args) {
     p.bia_dt = prb->bia_dt;
     p.dst_dt = prb->dst_dt();
 
+    p.N = prb->n;
+    p.K = prb->k;
+    const int wei_ndims = p.wei_m->ndims();
+    p.wei_k_stride = p.wei_m->strides()[wei_ndims - 2];
+    p.wei_n_stride = p.wei_m->strides()[wei_ndims - 1];
+
     return p;
 }
 
 // Computational kernel for a single (mc, nc) chunk of output
 //
 // _base and _stride are used to compute the actual offsets as follows:
-//   src(m, k)    = (src_row_base + m) * K + k
+//   src(m, k)    = src_base + m * K + k (src is always row-major,
+//                  for grouped matmul, src_base is the start of the group)
 //   wei_ab(k, n) = wei_base + k * N + n (for scales and zps)
 //   wei(k, n)    = wei_base + k * wei_k_stride + n * wei_n_stride
 //   dst(m, n)    = (dst_row_base + m) * N + n
 //   bia(m, n)    = bia_base + m * bia_m_stride + n * bia_n_stride
 static void compute_ref_matmul_chunk(const chunk_params_t &p, int64_t M,
-        int64_t N, int64_t K, int64_t mc, int64_t nc, int64_t src_row_base,
-        int64_t wei_base, int64_t wei_k_stride, int64_t wei_n_stride,
+        int64_t Kg, int64_t mc, int64_t nc, int64_t src_base, int64_t wei_base,
         int64_t dst_row_base, int64_t bia_base, int64_t bia_m_stride,
         int64_t bia_n_stride, const attr_t &attr, const args_t &args,
         int64_t group_id = 0) {
+    const int64_t N = p.N, K = p.K;
+    const int64_t wei_k_stride = p.wei_k_stride, wei_n_stride = p.wei_n_stride;
+
     // Mutable per-element quant params; initialised to the single value when
     // applicable and overwritten per K-group otherwise.
     int src_zp = p.src_zp_single;
@@ -195,17 +207,22 @@ static void compute_ref_matmul_chunk(const chunk_params_t &p, int64_t M,
     float src_scale = p.src_scale_single;
     float wei_scale = p.wei_scale_single;
 
+    // Adjustment for K block to be processed
+    // smallest_k_group is either the per-problem granularity or full K when unquantized
+    // for varK grouped matmul, we should process up to Kg instead of K
+    const int64_t k_block = MIN2(p.smallest_k_group, Kg);
+    const int64_t n_k_groups = Kg /* empty K group */ ? Kg / k_block : 0;
+
     for_(int64_t m = mc * p.dst_M_group; m < MIN2((mc + 1) * p.dst_M_group, M);
             ++m)
     for_(int64_t n = nc * p.dst_N_group; n < MIN2((nc + 1) * p.dst_N_group, N);
             ++n)
     {
         float dst = 0;
-        for (int64_t gK = 0; gK < p.n_k_groups; gK++) {
-            const auto src_gK_off
-                    = (src_row_base + m) * K + gK * p.smallest_k_group;
+        for (int64_t gK = 0; gK < n_k_groups; gK++) {
+            const auto src_gK_off = src_base + m * K + gK * k_block;
             // Note: scales/zero-points are still always in `tag::abx` format.
-            const auto wei_gK_off = wei_base + gK * p.smallest_k_group * N + n;
+            const auto wei_gK_off = wei_base + gK * k_block * N + n;
 
             if (p.has_src_zp && !p.has_src_single_zp) {
                 const auto src_zp_idx = p.src_m->get_idx(src_gK_off,
@@ -229,9 +246,9 @@ static void compute_ref_matmul_chunk(const chunk_params_t &p, int64_t M,
                 wei_scale = p.wei_scales->get_f32_elem(wei_scale_idx);
             }
 
-            for (int64_t k = 0; k < p.smallest_k_group; ++k) {
-                const auto kk = gK * p.smallest_k_group + k;
-                const auto src_off = (src_row_base + m) * K + kk;
+            for (int64_t k = 0; k < k_block; ++k) {
+                const auto kk = gK * k_block + k;
+                const auto src_off = src_base + m * K + kk;
                 const auto wei_off
                         = wei_base + kk * wei_k_stride + n * wei_n_stride;
 
@@ -321,67 +338,75 @@ static void compute_ref_matmul_chunk(const chunk_params_t &p, int64_t M,
     }
 }
 
-// Reference implementation for grouped matmul
-// Computes per-group matmuls: for each group g, dst[g] = src[g] * wei[g]
+// Reference implementation for grouped matmul.
 //
-// src and dst are in grouped format, stored as concatenated
-// 2D [total_M, K] / [total_M, N] reference buffers
-// wei ref is always stored in acb layout [G, N, K], since init_ref_memory_args
-// creates the ref buffer with strides [N*K, 1, K]
+// Per group g, computes dst[g] = src[g] * wei[g]. Two layouts are supported,
+// selected by which argument is grouped alongside src:
 //
-// Note, that per-group ranges are read from the grouped memory
-// descriptor offsets
+//   variable M (2Dx3D): src+dst grouped. M_g varies per group; K, N fixed.
+//     src/dst are concatenated row-major buffers [total_M, K] / [total_M, N];
+//     wei is per-group dense [G, K, N]. Supports a per-group bias [G, N].
+//
+//   variable K (2Dx2D): src+wei grouped. K_g varies per group; M, N fixed.
+//     src is row-major [M, total_K] in the reference, wei is row-major
+//     [total_K, N], dst is dense [G, M, N]. No bias.
+//
+// Per-group ranges are read from the grouped memory descriptor offsets.
 void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
-    // Start of each group in reference buffers
+    const bool var_M = prb->sparse_options.is_grouped(DNNL_ARG_DST);
+
     const int64_t group_count = prb->sparse_options.get_group_count();
-    const auto &M_dims = prb->sparse_options.get_group_sizes();
+    const auto &group_sizes = prb->sparse_options.get_group_sizes();
 
     std::vector<int64_t> group_offsets(group_count + 1);
     group_offsets[0] = 0;
-    int64_t max_M_g = 0;
+    int64_t max_group_size = 0;
     for (int64_t g = 0; g < group_count; g++) {
-        group_offsets[g + 1] = group_offsets[g] + M_dims[g];
-        max_M_g = MAX2(max_M_g, M_dims[g]);
+        group_offsets[g + 1] = group_offsets[g] + group_sizes[g];
+        max_group_size = MAX2(max_group_size, group_sizes[g]);
     }
 
     // Precompute common parameters for the different chunks computations
     const chunk_params_t params = make_chunk_params(prb, args);
 
-    const int wei_ndims = params.wei_m->ndims();
-    const int64_t wei_k_stride = params.wei_m->strides()[wei_ndims - 2];
-    const int64_t wei_n_stride = params.wei_m->strides()[wei_ndims - 1];
-
+    // For var_M, M differs per group; for var_K, M is fixed
+    const int64_t M_chunks
+            = div_up(var_M ? max_group_size : prb->m, params.dst_M_group);
     const int64_t N_chunks = div_up(prb->n, params.dst_N_group);
-    const int64_t max_M_chunks = div_up(max_M_g, params.dst_M_group);
 
     // Parallelize over groups and (mc, nc) chunks within each group
-    benchdnn_parallel_nd(group_count, max_M_chunks, N_chunks,
+    benchdnn_parallel_nd(group_count, M_chunks, N_chunks,
             [&](int64_t g, int64_t mc, int64_t nc) {
-        const int64_t M_g = M_dims[g];
-        if (M_g == 0) return;
-        if (mc * params.dst_M_group >= M_g) return;
+        const int64_t off = group_offsets[g];
+        const int64_t M = var_M ? group_sizes[g] : prb->m;
+        if (M == 0) return;
+        if (mc * params.dst_M_group >= M) return;
 
-        // Precompute offsets for this group
-        //   src(m, k)    = (src_row_base + m) * K + k
-        //   wei_ab(k, n) = wei_base + k * N + n (for scales and zps)
-        //   wei(k, n)    = wei_base + k * wei_k_stride + n * wei_n_stride
-        //   dst(m, n)    = (dst_row_base + m) * N + n
-        //   bia(m, n)    = bia_base + m * bia_m_stride + n * bia_n_stride
-        const int64_t src_row_base = group_offsets[g];
-        const int64_t wei_base = g * prb->k * prb->n;
-        const int64_t dst_row_base = group_offsets[g];
+        // Per-group base offsets:
+        //   src(m, k) = src_base + m * K + k
+        //   wei(k, n) = wei_base + k * wei_k_stride + n * wei_n_stride
+        //   dst(m, n) = (dst_row_base + m) * N + n
+        //   bia(m, n) = bia_base + m * bia_m_stride + n * bia_n_stride
+        //
+        // Note, that var_M offsets groups along rows (off*K),
+        // var_K along K-columns (off)
+        const int64_t src_base = var_M ? off * prb->k : off;
+        const int64_t wei_base
+                = var_M ? g * prb->k * prb->n : off * params.wei_k_stride;
+        const int64_t dst_row_base = var_M ? off : g * prb->m;
+
+        // Row stride is total_K, however var_K reduces over the group K_g
+        const int64_t Kg = var_M ? prb->k : group_sizes[g];
 
         int64_t bia_base = 0, bia_m_stride = 0, bia_n_stride = 0;
-        if (params.bia_dt != dnnl_data_type_undef) {
+        if (var_M && params.bia_dt != dnnl_data_type_undef) {
             bia_base = g * prb->n;
-            bia_m_stride = 0; // bias is per-group, not per-row
-            bia_n_stride = 1;
+            bia_n_stride = 1; // bias is per-group, not per-row
         }
 
-        compute_ref_matmul_chunk(params, M_g, prb->n, prb->k, mc, nc,
-                src_row_base, wei_base, wei_k_stride, wei_n_stride,
+        compute_ref_matmul_chunk(params, M, Kg, mc, nc, src_base, wei_base,
                 dst_row_base, bia_base, bia_m_stride, bia_n_stride, prb->attr,
-                args, g);
+                args, /* group_id = */ g);
     });
 }
 
@@ -414,10 +439,6 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
     const auto wei_broadcast_mask = prb->weights_broadcast_mask();
     const auto bias_broadcast_mask = prb->bias_broadcast_mask();
 
-    const int wei_ndims = params.wei_m->ndims();
-    const int64_t wei_k_stride = params.wei_m->strides()[wei_ndims - 2];
-    const int64_t wei_n_stride = params.wei_m->strides()[wei_ndims - 1];
-
     benchdnn_parallel_nd(
             MB, M_chunks, N_chunks, [&](int64_t mb, int64_t mc, int64_t nc) {
         int64_t src_mb = 0;
@@ -444,9 +465,9 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
         const int64_t wei_base = wei_mb * K * N;
         const int64_t dst_row_base = mb * M;
 
-        compute_ref_matmul_chunk(params, M, N, K, mc, nc, src_row_base,
-                wei_base, wei_k_stride, wei_n_stride, dst_row_base, bia_base,
-                bia_m_stride, bia_n_stride, prb->attr, args);
+        compute_ref_matmul_chunk(params, M, /* Kg = */ K, mc, nc,
+                /* src_base = */ src_row_base * K, wei_base, dst_row_base,
+                bia_base, bia_m_stride, bia_n_stride, prb->attr, args);
     });
 }
 
@@ -569,7 +590,8 @@ void compute_ref(const base_prb_t *base_prb, dir_t dir, const args_t &args,
             = prb->sparse_options.get_encoding(DNNL_ARG_WEIGHTS);
 
     if (prb->sparse_options.is_grouped(DNNL_ARG_SRC)
-            && prb->sparse_options.is_grouped(DNNL_ARG_DST)) {
+            && (prb->sparse_options.is_grouped(DNNL_ARG_DST)
+                    || prb->sparse_options.is_grouped(DNNL_ARG_WEIGHTS))) {
         compute_ref_grouped_matmul(prb, args);
     } else if (src_encoding == dnnl_csr || wei_encoding == dnnl_csr
             || src_encoding == dnnl_coo || wei_encoding == dnnl_coo) {

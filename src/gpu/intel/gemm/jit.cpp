@@ -137,7 +137,8 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         arg_list.set(argn++, ldcq);
     }
     if (problem->usesCOPtr()) {
-        if (exec_cfg.co->is_null()) return status::runtime_error;
+        if (!check_memory_storage(exec_cfg.co, "co"))
+            return status::runtime_error;
         arg_list.set(argn++, *exec_cfg.co);
         arg_list.set(argn++, offset_co);
         if (cfg.with_bias) {

@@ -590,7 +590,8 @@ status_t brgemm_desc_set_attr(
     if (brgattr.hint_fused_copy_a) brg->fused_copy_a = true;
 
     if (brg->is_fp8
-            && !utils::one_of(true, is_superset(brg->isa_impl, avx512_core_amx),
+            && !utils::one_of(true,
+                    is_superset(brg->isa_impl, avx512_core_amx_fp16),
                     is_superset(brg->isa_impl, avx10_2_512)))
         return status::unimplemented;
 

@@ -193,11 +193,10 @@ void set_isa_impl(brgemm_desc_t *brg) {
                         is_isa_ok(avx2_vnni_2), avx2_vnni_2,
                         is_isa_ok(avx2_vnni), avx2_vnni, is_isa_ok(avx2), avx2);
     } else if (brg->is_fp8) {
-        brg->isa_impl
-                = utils::map(true, isa_undef, is_isa_ok(avx10_2_512_amx_2),
-                        avx10_2_512_amx_2, is_isa_ok(avx10_1_512_amx_fp16),
-                        avx10_1_512_amx_fp16, is_isa_ok(avx10_1_512_amx),
-                        avx10_1_512_amx, is_isa_ok(avx10_2_512), avx10_2_512);
+        brg->isa_impl = utils::map(true, isa_undef,
+                is_isa_ok(avx10_2_512_amx_2), avx10_2_512_amx_2,
+                is_isa_ok(avx10_1_512_amx_fp16), avx10_1_512_amx_fp16,
+                is_isa_ok(avx10_2_512), avx10_2_512);
     }
 }
 

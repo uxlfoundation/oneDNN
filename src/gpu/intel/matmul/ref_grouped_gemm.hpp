@@ -37,6 +37,9 @@ namespace gpu {
 namespace intel {
 namespace matmul {
 
+// Two grouped matmul patterns are supported:
+// 2D grouped src (variable M) x 3D dense wei -> 2D grouped dst (variable M)
+// 2D grouped src (variable K) x 2D grouped wei (variable M) -> dense 3D dst
 struct ref_grouped_t : public primitive_t {
     using primitive_t::primitive_t;
     struct pd_t : public matmul::pd_t {
@@ -44,37 +47,57 @@ struct ref_grouped_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:ref_grouped:any", ref_grouped_t);
 
-        // Weights are 3D: [G, K, N]
-        // Override masks to include 0th expert dimension
+        // For 3D weights [G, K, N], override masks to include 0th expert dim
         int wei_qmask_K() const { return (1 << 0) | (1 << 1); }
-
         int wei_qmask_N() const { return (1 << 0) | (1 << 2); }
 
+        bool is_2dby2d() const { return is_2dby2d_; }
+
         status_t init(impl::engine_t *engine) {
-            using namespace data_type;
-
-            src_dt_ = src_md()->data_type;
-            dst_dt_ = dst_md()->data_type;
-            wei_dt_ = weights_md(0)->data_type;
-
             memory_desc_wrapper src_d(src_md());
             memory_desc_wrapper wei_d(weights_md(0));
-            memory_desc_wrapper dst_d(dst_md());
 
             VDISPATCH_MATMUL(
                     !with_reduce(), VERBOSE_UNSUPPORTED_FEATURE, "reduce");
-            // Supported configurations: grouped src/dst, dense 3D weights
-            VDISPATCH_MATMUL(src_d.is_grouped_desc() && dst_d.is_grouped_desc(),
-                    VERBOSE_UNSUPPORTED_SPARSE_CFG);
-            VDISPATCH_MATMUL(wei_d.is_blocking_desc() && wei_d.ndims() == 3,
-                    VERBOSE_UNSUPPORTED_SPARSE_CFG);
+
+            // Detect pattern (2Dx3D vs 2Dx2D) and initialize
+            VDISPATCH_MATMUL(
+                    src_d.is_grouped_desc(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
+            is_2dby2d_ = wei_d.is_grouped_desc();
 
             const auto &src_grouped = src_d.sparse_desc().grouped_desc;
             group_count_ = src_grouped.group_count;
 
+            return is_2dby2d_ ? init_2dby2d(engine) : init_2dby3d(engine);
+        }
+
+        dim_t group_count_ = 0;
+        bool with_post_op_ = false;
+        po_kind_t po_chain_[3]
+                = {po_kind_t::none, po_kind_t::none, po_kind_t::none};
+        data_type_t binary_scale_dts_[2] = {data_type::undef, data_type::undef};
+
+    private:
+        bool is_2dby2d_ = false;
+
+        status_t init_2dby3d(impl::engine_t *engine) {
+            using namespace data_type;
+            const auto src_type = src_md(0)->data_type;
+            const auto wei_type = weights_md(0)->data_type;
+            const auto dst_type = dst_md(0)->data_type;
+
+            memory_desc_wrapper wei_d(weights_md(0));
+            memory_desc_wrapper dst_d(dst_md());
+
+            // Supported configurations: grouped src/dst, dense 3D weights
+            VDISPATCH_MATMUL(
+                    dst_d.is_grouped_desc(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
+            VDISPATCH_MATMUL(wei_d.is_blocking_desc() && wei_d.ndims() == 3,
+                    VERBOSE_UNSUPPORTED_SPARSE_CFG);
+
             // GPU ref currently only supports matching data types
-            VDISPATCH_MATMUL(src_dt_ == wei_dt_ && src_dt_ == dst_dt_
-                            && utils::one_of(src_dt_, f32, bf16, f16),
+            VDISPATCH_MATMUL(src_type == wei_type && src_type == dst_type
+                            && utils::one_of(src_type, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT_CFG);
 
             // Check for supported quantization schemes
@@ -122,20 +145,39 @@ struct ref_grouped_t : public primitive_t {
             return status::success;
         }
 
-        data_type_t src_dt_ = data_type::undef;
-        data_type_t dst_dt_ = data_type::undef;
-        data_type_t wei_dt_ = data_type::undef;
-        dim_t group_count_ = 0;
-        bool with_post_op_ = false;
-        po_kind_t po_chain_[3]
-                = {po_kind_t::none, po_kind_t::none, po_kind_t::none};
-        data_type_t binary_scale_dts_[2] = {data_type::undef, data_type::undef};
+        status_t init_2dby2d(impl::engine_t *engine) {
+            using namespace data_type;
+            const auto src_type = src_md(0)->data_type;
+            const auto wei_type = weights_md(0)->data_type;
+            const auto dst_type = dst_md(0)->data_type;
+
+            memory_desc_wrapper dst_d(dst_md());
+
+            // Resolve format_any to plain dense
+            if (dst_d.format_any())
+                CHECK(memory_desc_init_by_strides(dst_md_, nullptr));
+
+            // Only plain 3D dst is supported
+            VDISPATCH_MATMUL(dst_d.is_plain(), VERBOSE_UNSUPPORTED_TAG);
+            VDISPATCH_MATMUL(dst_d.ndims() == 3, VERBOSE_BAD_NDIMS, "dst",
+                    dst_d.ndims());
+
+            VDISPATCH_MATMUL(src_type == wei_type && src_type == dst_type
+                            && utils::one_of(src_type, f32, bf16, f16),
+                    VERBOSE_UNSUPPORTED_DT_CFG);
+
+            VDISPATCH_MATMUL(
+                    attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
+            VDISPATCH_MATMUL(!with_bias(), VERBOSE_UNSUPPORTED_BIAS_CFG);
+
+            return status::success;
+        }
     };
 
     status_t init(impl::engine_t *engine) override {
         compute::kernel_ctx_t kernel_ctx;
 
-        kernel_ctx.set_data_type(pd()->dst_dt_);
+        kernel_ctx.set_data_type(pd()->dst_md()->data_type);
         const auto &po_chain = pd()->po_chain_;
         bool with_binary_grouped_scale
                 = (find_po_in_chain(po_chain, po_kind_t::binary_grouped_scale)
@@ -146,14 +188,11 @@ struct ref_grouped_t : public primitive_t {
         bool with_binary_nvfp4_scale
                 = (find_po_in_chain(po_chain, po_kind_t::binary_nvfp4_scale)
                         != -1);
-        def_data_type(kernel_ctx, pd()->src_dt_, "SRC");
-        def_data_type(kernel_ctx, pd()->wei_dt_, "WEI");
-        def_data_type(kernel_ctx, pd()->dst_dt_, "DST");
+        def_data_type(kernel_ctx, pd()->src_md()->data_type, "SRC");
+        def_data_type(kernel_ctx, pd()->weights_md(0)->data_type, "WEI");
+        def_data_type(kernel_ctx, pd()->dst_md()->data_type, "DST");
         def_data_type(kernel_ctx, pd()->desc()->accum_data_type, "ACC");
 
-        kernel_ctx.define_int("K", pd()->src_md()->dims[1]);
-        kernel_ctx.define_int("N", pd()->weights_md(0)->dims[2]);
-        kernel_ctx.define_int("GROUP_COUNT", pd()->group_count_);
         kernel_ctx.define_int("WITH_POST_OP", pd()->with_post_op_);
         kernel_ctx.define_int(
                 "WITH_BINARY_GROUPED_SCALE", with_binary_grouped_scale);
@@ -182,39 +221,30 @@ struct ref_grouped_t : public primitive_t {
                     "BINARY_SCALE_DENSE");
         }
 
-        // Check if weights are transposed (acb format)
-        memory_desc_wrapper wei_d(pd()->weights_md(0));
-        const bool wei_transposed = wei_d.matches_tag(format_tag::acb);
-        kernel_ctx.define_int("WEI_TRANSPOSED", wei_transposed ? 1 : 0);
-
-        const bool with_bias = pd()->with_bias();
-        kernel_ctx.define_int("WITH_BIAS", with_bias ? 1 : 0);
-        if (with_bias) {
-            def_data_type(kernel_ctx, pd()->weights_md(1)->data_type, "BIA");
-        }
         kernel_ctx.add_custom_header("grouped_post_ops.h",
                 generate_post_ops_refgemm_header(*pd()->attr(), po_chain));
 
+        const bool with_bias = pd()->with_bias();
         const auto &attr_scales = pd()->attr()->scales_;
         const bool with_src_scales
                 = !attr_scales.has_default_values(DNNL_ARG_SRC);
-        kernel_ctx.define_int("WITH_SRC_SCALES", with_src_scales ? 1 : 0);
-
         const bool with_wei_scales
                 = !attr_scales.has_default_values(DNNL_ARG_WEIGHTS);
+
+        kernel_ctx.define_int("WITH_BIAS", with_bias ? 1 : 0);
+        kernel_ctx.define_int("WITH_SRC_SCALES", with_src_scales ? 1 : 0);
         kernel_ctx.define_int("WITH_WEI_SCALES", with_wei_scales ? 1 : 0);
+        if (with_bias)
+            def_data_type(kernel_ctx, pd()->weights_md(1)->data_type, "BIA");
 
         return create_kernel(
                 engine, &kernel_, "ref_grouped_gemm_matmul", kernel_ctx);
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
-        return execute_ref(ctx);
-    }
+    status_t execute(const exec_ctx_t &ctx) const override;
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    status_t execute_ref(const exec_ctx_t &ctx) const;
     compute::kernel_t kernel_;
 };
 

@@ -6835,7 +6835,7 @@ status_t create_brgemm_matmul_copy_b(
         if (conf->is_xf16_fp8
                 && one_of(conf->wei_dt, data_type::bf16, data_type::f16)) {
             const bool is_fp8_to_f16 = conf->wei_dt == data_type::f16;
-            const bool isa_ok = is_superset(conf->isa, avx10_2)
+            const bool isa_ok = is_superset(conf->isa, avx10_2_512)
                     || (is_fp8_to_f16
                                     ? is_superset(
                                               conf->isa, avx10_1_512_amx_fp16)
@@ -6890,7 +6890,7 @@ status_t create_brgemm_matmul_copy_b(
         } else if (conf->is_xf16_fp8
                 && one_of(conf->wei_dt, data_type::bf16, data_type::f16)) {
             const bool is_fp8_to_f16 = conf->wei_dt == data_type::f16;
-            const bool isa_ok = is_superset(conf->isa, avx10_2)
+            const bool isa_ok = is_superset(conf->isa, avx10_2_512)
                     || (is_fp8_to_f16
                                     ? is_superset(
                                               conf->isa, avx10_1_512_amx_fp16)

@@ -1764,8 +1764,9 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         const bool use_orig_wei_layout
                 = bgmmc_.is_xf16_fp8 && bgmmc_.use_buffer_b;
         const int wei_k_blk = use_orig_wei_layout
-                ? get_wei_k_blk(bgmmc_.orig_wei_dt)
-                : (bgmmc_.is_bf32 ? get_wei_k_blk(f32) : bgmmc_.wei_k_blk);
+                ? data_type_vnni_simd_elems(bgmmc_.orig_wei_dt, bgmmc_.isa)
+                : (bgmmc_.is_bf32 ? data_type_vnni_simd_elems(f32, bgmmc_.isa)
+                                  : bgmmc_.wei_k_blk);
         const int k_idx = bgmmc_.blocked_B ? k / wei_k_blk : k;
         const int n_idx = bgmmc_.blocked_B ? n / bgmmc_.wei_n_blk : n;
         const int int4_fac = bgmmc_.is_int4_weights ? 2 : 1;
@@ -1996,7 +1997,7 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         const bool use_orig_wei_layout
                 = bgmmc_.is_xf16_fp8 && bgmmc_.use_buffer_b;
         const int wei_k_blk = use_orig_wei_layout
-                ? get_wei_k_blk(bgmmc_.orig_wei_dt)
+                ? data_type_vnni_simd_elems(bgmmc_.orig_wei_dt, bgmmc_.isa)
                 : bgmmc_.wei_k_blk;
         int x0 = k % wei_k_blk;
         int x1 = n % bgmmc_.wei_n_blk;

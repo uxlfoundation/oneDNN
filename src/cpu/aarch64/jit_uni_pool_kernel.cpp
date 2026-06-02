@@ -23,7 +23,7 @@
 #include <cstdint>
 #include "cpu/aarch64/jit_uni_pool_kernel.hpp"
 
-#include "xbyak_aarch64/xbyak_aarch64/xbyak_aarch64_util.h"
+#include "xbyak_aarch64/xbyak_aarch64_util.h"
 
 namespace dnnl {
 namespace impl {

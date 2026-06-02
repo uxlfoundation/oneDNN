@@ -30,7 +30,7 @@
 #include "cpu/aarch64/jit_uni_softmax.hpp"
 #include "cpu/cpu_primitive.hpp"
 
-#include "xbyak_aarch64/xbyak_aarch64/xbyak_aarch64_util.h"
+#include "xbyak_aarch64/xbyak_aarch64_util.h"
 
 namespace dnnl {
 namespace impl {

@@ -21,7 +21,7 @@
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 #include "cpu/aarch64/jit_generator.hpp"
-#include "xbyak_aarch64/xbyak_aarch64/xbyak_aarch64_reg.h"
+#include "xbyak_aarch64/xbyak_aarch64_reg.h"
 
 #include "cpu/aarch64/matmul/brgemm_matmul_copy_utils.hpp"
 

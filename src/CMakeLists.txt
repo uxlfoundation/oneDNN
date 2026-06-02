@@ -23,7 +23,30 @@ file(GLOB HEADERS_SUBDIR
     ${CMAKE_CURRENT_SOURCE_DIR}/../include/oneapi/dnnl/*.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../include/oneapi/dnnl/*.hpp
     )
-include_directories_with_host_compiler(${PROJECT_SOURCE_DIR}/third_party)
+
+if(DNNL_ENABLE_JIT_PROFILING OR DNNL_ENABLE_ITT_TASKS)
+    set(ITTNOTIFY_ROOT "${PROJECT_SOURCE_DIR}/third_party/ittnotify")
+    include_directories_with_host_compiler(${ITTNOTIFY_ROOT})
+endif()
+if(DNNL_GPU_VENDOR STREQUAL "INTEL" AND DNNL_GPU_RUNTIME MATCHES "^(OCL|SYCL|DPCPP)$")
+    include_directories_with_host_compiler(${PROJECT_SOURCE_DIR}/third_party/mdapi)
+endif()
+if(DNNL_GPU_VENDOR STREQUAL "INTEL" AND DNNL_GPU_RUNTIME MATCHES "^(SYCL|DPCPP|ZE)$")
+    include_directories_with_host_compiler(${PROJECT_SOURCE_DIR}/third_party/level_zero)
+endif()
+if(DNNL_TARGET_ARCH STREQUAL "X64")
+    include_directories_with_host_compiler(${PROJECT_SOURCE_DIR}/third_party/xbyak)
+endif()
+if(DNNL_TARGET_ARCH STREQUAL "AARCH64")
+    include_directories_with_host_compiler(${PROJECT_SOURCE_DIR}/third_party/xbyak_aarch64)
+endif()
+if(DNNL_TARGET_ARCH STREQUAL "RV64")
+    include_directories_with_host_compiler(${PROJECT_SOURCE_DIR}/third_party/xbyak_riscv)
+endif()
+if(DNNL_EXPERIMENTAL_LOGGING)
+    include_directories_with_host_compiler(${PROJECT_SOURCE_DIR}/third_party/spdlog)
+endif()
+
 include_directories_with_host_compiler(${CMAKE_CURRENT_SOURCE_DIR})
 
 if (DNNL_LIBRARY_TYPE STREQUAL "SHARED")

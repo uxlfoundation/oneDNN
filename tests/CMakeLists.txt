@@ -18,7 +18,17 @@ if (NOT DNNL_BUILD_TESTS)
     return()
 endif()
 
-include_directories_with_host_compiler(${PROJECT_SOURCE_DIR}/third_party)
+# Benchdnn and gtests include cpu_isa_traits.hpp, which depends on Xbyak.
+# TODO: Move Xbyak dependency to gtests when benchdnn stops using cpu_isa_traits.hpp
+if(DNNL_TARGET_ARCH STREQUAL "X64")
+    include_directories_with_host_compiler(${PROJECT_SOURCE_DIR}/third_party/xbyak)
+endif()
+if(DNNL_TARGET_ARCH STREQUAL "AARCH64")
+    include_directories_with_host_compiler(${PROJECT_SOURCE_DIR}/third_party/xbyak_aarch64)
+endif()
+if(DNNL_TARGET_ARCH STREQUAL "RV64")
+    include_directories_with_host_compiler(${PROJECT_SOURCE_DIR}/third_party/xbyak_riscv)
+endif()
 
 # propagate TEST specific flags
 append(CMAKE_C_FLAGS "${CMAKE_TEST_CCXX_FLAGS}")

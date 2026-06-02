@@ -716,8 +716,6 @@ struct brgemm_kernel_params_t {
     size_t do_post_ops = 0;
     size_t do_apply_comp = 0;
     size_t BS = 0;
-    // Used for K-grouped scales application
-    dim_t k_start = 0;
 
     /*
      * ptr to table of void * elements that are pointers to post_op binary

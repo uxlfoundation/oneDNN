@@ -79,13 +79,6 @@ void brgemm_desc_t::cleanup_dst_md() {
     dst_md_ = nullptr;
 }
 
-void brgemm_kernel_execute_params(
-        const brgemm_kernel_t *brg, brgemm_kernel_params_t &params) {
-    assert(brg);
-
-    (*brg)(&params);
-}
-
 void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, int bs,
         const brgemm_batch_element_t *batch, void *ptr_C, void *scratch,
         const brgemm_dynamic_values_t *dynamic_values) {

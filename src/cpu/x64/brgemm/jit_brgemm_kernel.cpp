@@ -2889,8 +2889,14 @@ void jit_brgemm_kernel_t<Wmm>::gemv_microkernel(
         if (dt == data_type::f32) {
             vbroadcastss(vmm, addr);
         } else if (dt == data_type::bf16) {
-            vpbroadcastw(vmm, addr);
-            uni_vpslld(vmm, vmm, 16);
+            // avx2_vnni_2 broadcast-converts bf16->f32 in one op; otherwise
+            // broadcast the raw bf16 and shift it into the f32 high half.
+            if (brg.isa_impl == avx2_vnni_2) {
+                vbcstnebf162ps(vmm, addr);
+            } else {
+                vpbroadcastw(vmm, addr);
+                uni_vpslld(vmm, vmm, 16);
+            }
         } else if (dt == data_type::f16) {
             vpbroadcastw(Xmm(vmm.getIdx()), addr);
             uni_vcvtph2psx(Xmm(vmm.getIdx()), Xmm(vmm.getIdx()));
@@ -2925,6 +2931,50 @@ void jit_brgemm_kernel_t<Wmm>::gemv_microkernel(
                     const auto a = gemv_load_a();
                     vmovdqu16(a | rd_tail_mask | T_z, a_addr);
                     vdpbf16ps(accm(1, bd, 0), b, a);
+                }
+            }
+            return;
+        }
+
+        if (brg.gemv_use_bf16_ne_convert()) {
+            // avx2_vnni_2 bf16: AVX-NE-CONVERT upconverts `2*simd_w` contiguous
+            // bf16 per pass via paired even/odd converts (`rd_block` was doubled
+            // to match), roughly doubling the bf16 reduction throughput vs. the
+            // `vpmovzxwd` path. The even (k = 0,2,..) and odd (k = 1,3,..)
+            // partial products feed the same accumulator; `reduce_gemv_
+            // accumulators` sums all lanes afterwards.
+            const int simd_w = brg.is_zmm ? 16 : 8;
+            if (!is_rd_tail) {
+                const auto b = gemv_load_b();
+                const auto a = gemv_load_a();
+                vcvtneebf162ps(b, ptr[reg_aux_B]);
+                for (dim_t bd = 0; bd < bd_block; bd++) {
+                    vcvtneebf162ps(a, ptr[reg_aux_A + A_offset(bd, 0)]);
+                    uni_vfmadd231ps(accm(1, bd, 0), a, b);
+                }
+                vcvtneobf162ps(b, ptr[reg_aux_B]);
+                for (dim_t bd = 0; bd < bd_block; bd++) {
+                    vcvtneobf162ps(a, ptr[reg_aux_A + A_offset(bd, 0)]);
+                    uni_vfmadd231ps(accm(1, bd, 0), a, b);
+                }
+            } else {
+                // AVX-NE-CONVERT has no masked/partial form, so upconvert the
+                // remaining `gemv_tail` (< 2*simd_w) bf16 with `vpmovzxwd` in
+                // <= simd_w chunks.
+                for (int off = 0; off < brg.gemv_tail; off += simd_w) {
+                    const int cnt = nstl::min<int>(simd_w, brg.gemv_tail - off);
+                    const bool is_chunk_tail = cnt < simd_w;
+                    load_to_f32(gemv_load_b(),
+                            ptr[reg_aux_B + off * brg.typesize_B], brg.dt_b,
+                            is_chunk_tail, cnt);
+                    for (dim_t bd = 0; bd < bd_block; bd++) {
+                        const auto a_addr = ptr[reg_aux_A + A_offset(bd, 0)
+                                + off * brg.typesize_A];
+                        load_to_f32(gemv_load_a(), a_addr, brg.dt_a,
+                                is_chunk_tail, cnt);
+                        uni_vfmadd231ps(
+                                accm(1, bd, 0), gemv_load_a(), gemv_load_b());
+                    }
                 }
             }
             return;

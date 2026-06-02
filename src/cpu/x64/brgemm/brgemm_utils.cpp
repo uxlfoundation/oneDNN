@@ -816,8 +816,10 @@ status_t brgemm_blocking_vmm_gemv(brgemm_desc_t *brg) {
 
         brg->rd_block = simd_w;
         // bf16 `vdpbf16ps` packs two bf16 per f32 lane, so one Zmm covers
-        // `2*simd_w` reduction elements per pass.
-        if (brg->gemv_use_vdpbf16ps()) brg->rd_block = 2 * simd_w;
+        // `2*simd_w` reduction elements per pass. The avx2_vnni_2 AVX-NE-CONVERT
+        // path upconverts the same `2*simd_w` bf16 via paired even/odd converts.
+        if (brg->gemv_use_vdpbf16ps() || brg->gemv_use_bf16_ne_convert())
+            brg->rd_block = 2 * simd_w;
         brg->rdb = brg->reduce_dim / brg->rd_block;
         brg->rdb_tail = brg->reduce_dim % brg->rd_block;
 

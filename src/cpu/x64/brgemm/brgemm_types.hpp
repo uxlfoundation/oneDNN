@@ -473,6 +473,15 @@ struct brgemm_desc_t {
                 && is_superset(isa_impl, avx512_core_bf16);
     }
 
+    // Use AVX-NE-CONVERT (`vcvtneebf162ps`/`vcvtneobf162ps`) for the non-transA
+    // bf16 GEMV inner loop on the Ymm `avx2_vnni_2` kernel: a paired even/odd
+    // convert upconverts `2*simd_w` contiguous bf16 to f32 per pass (vs. the
+    // `vpmovzxwd`+`vpslld` path that handles `simd_w`). When true, the blocking
+    // doubles `rd_block` to `2*simd_w` to match.
+    bool gemv_use_bf16_ne_convert() const {
+        return is_gemv && !transA && is_bf16 && isa_impl == avx2_vnni_2;
+    }
+
     // return 'true' when FP8 MAC is not natively supported by the CPU ISA
     bool is_fp8_via_convert() const {
         return is_fp8 && utils::one_of(isa_impl, avx10_1_512_amx_fp16, avx10_2);

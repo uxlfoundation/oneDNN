@@ -39,8 +39,7 @@ void dispatch_gemm_convolution_copy(
 
 } // namespace
 
-jit_rvv_gemm_convolution_copy_kernel_t::
-        jit_rvv_gemm_convolution_copy_kernel_t()
+jit_rvv_gemm_convolution_copy_kernel_t::jit_rvv_gemm_convolution_copy_kernel_t()
     : jit_generator_t("jit_rvv_gemm_convolution_copy_kernel") {
     create_kernel();
 }

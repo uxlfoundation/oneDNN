@@ -26,8 +26,8 @@ namespace rv64 {
 using namespace Xbyak_riscv;
 
 #define AFFINE_OFF(field) \
-    static_cast<int32_t>( \
-            offsetof(jit_rvv_softmax_f16_affine_kernel_t::call_params_t, field))
+    static_cast<int32_t>(offsetof( \
+            jit_rvv_softmax_f16_affine_kernel_t::call_params_t, field))
 #define STRIDED_OFF(field) \
     static_cast<int32_t>(offsetof( \
             jit_rvv_softmax_f16_strided_kernel_t::call_params_t, field))
@@ -52,15 +52,13 @@ void dispatch_strided(
 
 jit_rvv_softmax_f16_affine_kernel_t::jit_rvv_softmax_f16_affine_kernel_t(
         bool src_f32)
-    : jit_generator_t("jit_rvv_softmax_f16_affine_kernel")
-    , src_f32_(src_f32) {
+    : jit_generator_t("jit_rvv_softmax_f16_affine_kernel"), src_f32_(src_f32) {
     create_kernel();
 }
 
 jit_rvv_softmax_f16_strided_kernel_t::jit_rvv_softmax_f16_strided_kernel_t(
         bool gather)
-    : jit_generator_t("jit_rvv_softmax_f16_strided_kernel")
-    , gather_(gather) {
+    : jit_generator_t("jit_rvv_softmax_f16_strided_kernel"), gather_(gather) {
     create_kernel();
 }
 
@@ -71,9 +69,8 @@ void jit_rvv_softmax_f16_affine_from_f16(const dnnl::impl::float16_t *src,
     dispatch_affine<false>(&p);
 }
 
-void jit_rvv_softmax_f16_affine_from_f32(
-        const float *src, dnnl::impl::float16_t *dst, dim_t len, float sub,
-        float mul) {
+void jit_rvv_softmax_f16_affine_from_f32(const float *src,
+        dnnl::impl::float16_t *dst, dim_t len, float sub, float mul) {
     const jit_rvv_softmax_f16_affine_kernel_t::call_params_t p {
             src, dst, len, sub, mul};
     dispatch_affine<true>(&p);

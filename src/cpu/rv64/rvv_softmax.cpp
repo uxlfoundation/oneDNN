@@ -122,8 +122,7 @@ void compute_softmax_f16_rvv(const dnnl::impl::float16_t *src,
         }
         const float inv_sum = sum_exp ? (1.0f / sum_exp) : 1.0f;
 
-        jit_rvv_softmax_f16_affine_from_f32(
-                tmp_dst, dst, len, 0.0f, inv_sum);
+        jit_rvv_softmax_f16_affine_from_f32(tmp_dst, dst, len, 0.0f, inv_sum);
         delete[] tmp_dst;
     }
 }

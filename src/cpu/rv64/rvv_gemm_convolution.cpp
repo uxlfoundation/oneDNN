@@ -21,8 +21,8 @@
 #include "common/dnnl_thread.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
-#include "cpu/rv64/rvv_gemm_convolution.hpp"
 #include "cpu/rv64/jit_rvv_gemm_convolution_post_kernel.hpp"
+#include "cpu/rv64/rvv_gemm_convolution.hpp"
 
 namespace dnnl {
 namespace impl {

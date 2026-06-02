@@ -35,16 +35,15 @@ template <bool vector_bias, bool with_relu, bool relu_alpha_zero,
         bool with_scale>
 void dispatch_gemm_convolution_post(
         const jit_rvv_gemm_convolution_post_kernel_t::call_params_t *p) {
-    static const jit_rvv_gemm_convolution_post_kernel_t kernel(vector_bias,
-            with_relu, relu_alpha_zero, with_scale);
+    static const jit_rvv_gemm_convolution_post_kernel_t kernel(
+            vector_bias, with_relu, relu_alpha_zero, with_scale);
     kernel(p);
 }
 
 } // namespace
 
-jit_rvv_gemm_convolution_post_kernel_t::
-        jit_rvv_gemm_convolution_post_kernel_t(bool vector_bias, bool with_relu,
-                bool relu_alpha_zero, bool with_scale)
+jit_rvv_gemm_convolution_post_kernel_t::jit_rvv_gemm_convolution_post_kernel_t(
+        bool vector_bias, bool with_relu, bool relu_alpha_zero, bool with_scale)
     : jit_generator_t("jit_rvv_gemm_convolution_post_kernel")
     , vector_bias_(vector_bias)
     , with_relu_(with_relu)

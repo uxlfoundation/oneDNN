@@ -44,8 +44,7 @@ protected:
     void generate() override;
 };
 
-void jit_rvv_gemm_convolution_copy_f32(
-        const float *src, float *dst, dim_t len);
+void jit_rvv_gemm_convolution_copy_f32(const float *src, float *dst, dim_t len);
 
 } // namespace rv64
 } // namespace cpu

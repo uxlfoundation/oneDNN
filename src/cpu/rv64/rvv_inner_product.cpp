@@ -14,8 +14,8 @@
  * limitations under the License.
  ******************************************************************************/
 
-#include "cpu/rv64/jit_rvv_inner_product_kernel.hpp"
 #include "cpu/rv64/rvv_inner_product.hpp"
+#include "cpu/rv64/jit_rvv_inner_product_kernel.hpp"
 
 namespace dnnl {
 namespace impl {

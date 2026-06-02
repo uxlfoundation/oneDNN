@@ -1299,14 +1299,20 @@ void jit_brgemm_kernel_t<Wmm>::gemv_apply_bias(
                 : gemv_elems_per_vector_acc();
         const auto bias_addr = ptr[reg_aux_bias + bias_offset(bd)];
         if (isa_has_masks(brg.isa_impl)) {
+            // reg_aux_bias may alias reg_tmp_gpr (== rbx) when extended GPRs are
+            // unavailable, so set the load mask first, then re-materialize the
+            // bias base pointer before dereferencing it. Use gemv_store_mask
+            // (not rd_tail_mask) so the K-tail load mask survives across
+            // bd-blocks.
             mov(reg_tmp_gpr, (static_cast<size_t>(1) << elems) - 1);
-            kmovq(rd_tail_mask, reg_tmp_gpr);
+            kmovq(gemv_store_mask, reg_tmp_gpr);
+            reg_aux_bias.restore();
             switch (brg.dt_bias) {
                 case data_type::f32:
-                    uni_vmovups(bias | rd_tail_mask | T_z, bias_addr);
+                    uni_vmovups(bias | gemv_store_mask | T_z, bias_addr);
                     break;
                 case data_type::bf16:
-                    uni_vpmovzxwd(bias | rd_tail_mask | T_z, bias_addr);
+                    uni_vpmovzxwd(bias | gemv_store_mask | T_z, bias_addr);
                     uni_vpslld(bias, bias, 16);
                     break;
                 case data_type::f16:
@@ -1633,6 +1639,17 @@ void jit_brgemm_kernel_t<Wmm>::apply_post_ops(dim_t bd_block, dim_t ld_block2,
 
                 const auto &vmm_sum_zp = vmm_tmp(1);
 
+                // The non-vector GEMV path reads a single destination element
+                // per accumulator for the sum post-op. Build the one-element
+                // load mask now, before reg_ptr_sum_scale (which aliases
+                // reg_tmp_gpr) is set up below, so the mask build does not
+                // clobber the sum-scale pointer.
+                if (brg.is_gemv && !brg.gemv_acc_is_vector()
+                        && isa_has_masks(brg.isa_impl)) {
+                    mov(reg_tmp_gpr, 1);
+                    kmovq(gemv_store_mask, reg_tmp_gpr);
+                }
+
                 if (p_sum_zp_reg_set) {
                     assert(!brg.is_gemv && "feature is not supported for gemv");
                     mov(reg_ptr_sum_zp, reinterpret_cast<size_t>(p_sum_zp));
@@ -1668,16 +1685,27 @@ void jit_brgemm_kernel_t<Wmm>::apply_post_ops(dim_t bd_block, dim_t ld_block2,
                         cvt2ps(brg.sum_dt, vmm_prev_dst, addr, is_tail, false,
                                 k_mask, ld_size);
                     } else {
-                        const bool is_tail = brg.gemv_acc_is_vector()
+                        const bool is_vec = brg.gemv_acc_is_vector();
+                        const bool is_tail = is_vec
                                 && gemv_is_tail_acc(bd, bd_end, is_bdb_tail);
 
-                        const auto ignored_k_mask = ld_full_mask; // not used
-
-                        const dim_t elements_to_load = is_tail
-                                ? brg.gemv_tail
-                                : brg.bd_block / brg.gemv_bd_block();
-                        cvt2ps(brg.sum_dt, vmm_prev_dst, addr, is_tail, false,
-                                ignored_k_mask, elements_to_load);
+                        // The GEMV destination (D) is exactly sized, so only the
+                        // scalar (non-vector) accumulator and the partial tail
+                        // accumulator are narrower than a full vector and must
+                        // be masked to avoid reading past the end of the buffer.
+                        // Full non-tail vector accumulators cover a whole SIMD
+                        // width of valid outputs and can be loaded directly.
+                        // Use rd_tail_mask (prologue-set, gemv_tail bits) for the
+                        // vector tail and gemv_store_mask (set above, one bit)
+                        // for the non-vector scalar load.
+                        const dim_t elems = !is_vec ? 1
+                                : is_tail           ? brg.gemv_tail
+                                          : gemv_elems_per_vector_acc();
+                        const bool needs_mask = !is_vec || is_tail;
+                        const auto k_mask
+                                = is_vec ? rd_tail_mask : gemv_store_mask;
+                        cvt2ps(brg.sum_dt, vmm_prev_dst, addr, needs_mask,
+                                false, k_mask, elems);
                     }
 
                     if (p_sum_zp_reg_set)
@@ -3757,6 +3785,23 @@ void jit_brgemm_kernel_t<Wmm>::generate() {
         if (brg.is_gemv && brg.gemv_tail > 0) {
             mov(reg_mask, (static_cast<size_t>(1) << brg.gemv_tail) - 1);
             kmovq(rd_tail_mask, reg_mask);
+        }
+
+        // The shared binary post-op injector uses `ld_tail_mask` as the tail
+        // predicate for accumulators it treats as tails, with zero-masking. On
+        // the GEMV path `ldb_tail` is always 0, so the generic `ld_tail_mask`
+        // set above is empty; the injector would then zero-mask the whole
+        // accumulator and wipe the result. Repurpose `ld_tail_mask` with the
+        // GEMV tail size reported to the injector: one element for the
+        // scalar (non-transA) path where every accumulator is a single output
+        // element, and `gemv_tail` elements for the transA vector path where
+        // only the partial-vector tail accumulator is masked. `ld_tail_mask`
+        // has no other consumer on the GEMV path.
+        if (brg.is_gemv && brg.with_binary) {
+            const dim_t gemv_tail_size
+                    = brg.gemv_acc_is_vector() ? brg.gemv_tail : 1;
+            mov(reg_mask, (static_cast<size_t>(1) << gemv_tail_size) - 1);
+            kmovq(ld_tail_mask, reg_mask);
         }
     }
 

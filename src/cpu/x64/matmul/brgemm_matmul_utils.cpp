@@ -523,8 +523,6 @@ bool is_gemv_applicable(const brgemm_matmul_conf_t &bgmmc,
         const brgemm_matmul_conf_utils_t &bm_conf_utils,
         const memory_desc_t &A_md, const memory_desc_t &B_md,
         const memory_desc_t &C_md, const primitive_attr_t &attr) {
-    if (!::getenv("GEMV")) return false;
-
     if (bgmmc.M != 1 && bgmmc.N != 1) return false;
 
     // Reduction is not supported for GEMV code path.

@@ -235,7 +235,7 @@ std::string generate_post_ops_refgemm_header(
 #endif
 
 inline ACC_DATA_T apply_post_ops_chain(
-        ACC_DATA_T dst, long m, long n, off_t group_id,
+        ACC_DATA_T dst, long m, long n, off_t group_id, long N,
         const global int *dst_offsets,
         const global BINARY_SCALE_GROUPED_DATA_T *grouped_scale,
         const global BINARY_SCALE_DENSE_DATA_T *dense_scale,

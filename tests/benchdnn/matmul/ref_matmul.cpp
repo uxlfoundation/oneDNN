@@ -177,17 +177,17 @@ static chunk_params_t make_chunk_params(const prb_t *prb, const args_t &args) {
 // Computational kernel for a single (mc, nc) chunk of output
 //
 // _base and _stride are used to compute the actual offsets as follows:
-//   src(m, k)    = (src_row_base + m) * K + k
+//   src(m, k)    = src_base + m * src_m_stride + k * src_k_stride
 //   wei_ab(k, n) = wei_base + k * N + n (for scales and zps)
 //   wei(k, n)    = wei_base + k * wei_k_stride + n * wei_n_stride
 //   dst(m, n)    = (dst_row_base + m) * N + n
 //   bia(m, n)    = bia_base + m * bia_m_stride + n * bia_n_stride
 static void compute_ref_matmul_chunk(const chunk_params_t &p, int64_t M,
-        int64_t N, int64_t K, int64_t mc, int64_t nc, int64_t src_row_base,
-        int64_t wei_base, int64_t wei_k_stride, int64_t wei_n_stride,
-        int64_t dst_row_base, int64_t bia_base, int64_t bia_m_stride,
-        int64_t bia_n_stride, const attr_t &attr, const args_t &args,
-        int64_t group_id = 0) {
+        int64_t N, int64_t mc, int64_t nc, int64_t src_base,
+        int64_t src_m_stride, int64_t src_k_stride, int64_t wei_base,
+        int64_t wei_k_stride, int64_t wei_n_stride, int64_t dst_row_base,
+        int64_t bia_base, int64_t bia_m_stride, int64_t bia_n_stride,
+        const attr_t &attr, const args_t &args, int64_t group_id = 0) {
     // Mutable per-element quant params; initialised to the single value when
     // applicable and overwritten per K-group otherwise.
     int src_zp = p.src_zp_single;
@@ -202,8 +202,8 @@ static void compute_ref_matmul_chunk(const chunk_params_t &p, int64_t M,
     {
         float dst = 0;
         for (int64_t gK = 0; gK < p.n_k_groups; gK++) {
-            const auto src_gK_off
-                    = (src_row_base + m) * K + gK * p.smallest_k_group;
+            const auto src_gK_off = src_base + m * src_m_stride
+                    + gK * p.smallest_k_group * src_k_stride;
             // Note: scales/zero-points are still always in `tag::abx` format.
             const auto wei_gK_off = wei_base + gK * p.smallest_k_group * N + n;
 
@@ -231,7 +231,8 @@ static void compute_ref_matmul_chunk(const chunk_params_t &p, int64_t M,
 
             for (int64_t k = 0; k < p.smallest_k_group; ++k) {
                 const auto kk = gK * p.smallest_k_group + k;
-                const auto src_off = (src_row_base + m) * K + kk;
+                const auto src_off
+                        = src_base + m * src_m_stride + kk * src_k_stride;
                 const auto wei_off
                         = wei_base + kk * wei_k_stride + n * wei_n_stride;
 
@@ -331,7 +332,7 @@ static void compute_ref_matmul_chunk(const chunk_params_t &p, int64_t M,
 //
 // Note, that per-group ranges are read from the grouped memory
 // descriptor offsets
-void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
+void compute_ref_grouped_matmul_2dby3d(const prb_t *prb, const args_t &args) {
     // Start of each group in reference buffers
     const int64_t group_count = prb->sparse_options.get_group_count();
     const auto &M_dims = prb->sparse_options.get_group_sizes();
@@ -378,10 +379,64 @@ void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
             bia_n_stride = 1;
         }
 
-        compute_ref_matmul_chunk(params, M_g, prb->n, prb->k, mc, nc,
-                src_row_base, wei_base, wei_k_stride, wei_n_stride,
-                dst_row_base, bia_base, bia_m_stride, bia_n_stride, prb->attr,
-                args, g);
+        compute_ref_matmul_chunk(params, M_g, prb->n, mc, nc,
+                /* src_base = */ src_row_base * prb->k,
+                /* src_m_stride = */ prb->k, /* src_k_stride = */ 1, wei_base,
+                wei_k_stride, wei_n_stride, dst_row_base, bia_base,
+                bia_m_stride, bia_n_stride, prb->attr, args, /* group_id = */ g);
+    });
+}
+
+// Reference implementation for grouped matmul (2Dx2D, variable K)
+// Computes per-group matmuls: for each group g, dst[g] = src[g] * wei[g]
+//
+// src ref is col-major [M, total_K], wei ref is row-major [total_K, N],
+// dst ref is dense [G, M, N]
+//
+// Note, that per-group K ranges are read from the grouped memory
+// descriptor offsets
+void compute_ref_grouped_matmul_2dby2d(const prb_t *prb, const args_t &args) {
+    const int64_t group_count = prb->sparse_options.get_group_count();
+    const auto &K_dims = prb->sparse_options.get_group_sizes();
+
+    std::vector<int64_t> group_offsets(group_count + 1);
+    group_offsets[0] = 0;
+    for (int64_t g = 0; g < group_count; g++)
+        group_offsets[g + 1] = group_offsets[g] + K_dims[g];
+
+    // Precompute common parameters for the different chunks computations
+    const chunk_params_t params = make_chunk_params(prb, args);
+
+    const auto &src_strides = params.src_m->strides();
+    const auto &wei_strides = params.wei_m->strides();
+
+    const int64_t M_chunks = div_up(prb->m, params.dst_M_group);
+    const int64_t N_chunks = div_up(prb->n, params.dst_N_group);
+
+    // Parallelize over groups and (mc, nc) chunks within each group
+    benchdnn_parallel_nd(group_count, M_chunks, N_chunks,
+            [&](int64_t g, int64_t mc, int64_t nc) {
+        const int64_t K_g = K_dims[g];
+        const int64_t off = group_offsets[g];
+
+        // Per-group K extent; set chunk params so the chunk kernel iterates K_g.
+        chunk_params_t pg = params;
+        pg.n_k_groups = 1;
+        pg.smallest_k_group = K_g;
+
+        // Precompute offsets for this group
+        //   src(m, k) = src_base + m * src_m_stride + k * src_k_stride
+        //   wei(k, n) = wei_base + k * wei_k_stride + n * wei_n_stride
+        //   dst(m, n) = (dst_row_base + m) * N + n
+        const int64_t src_base = off * src_strides[1];
+        const int64_t wei_base = off * wei_strides[0];
+        const int64_t dst_row_base = g * prb->m;
+
+        compute_ref_matmul_chunk(pg, prb->m, prb->n, mc, nc, src_base,
+                src_strides[0], src_strides[1], wei_base, wei_strides[0],
+                wei_strides[1], dst_row_base,
+                /* bia_base = */ 0, /* bia_m_stride = */ 0,
+                /* bia_n_stride = */ 0, prb->attr, args);
     });
 }
 
@@ -444,9 +499,11 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
         const int64_t wei_base = wei_mb * K * N;
         const int64_t dst_row_base = mb * M;
 
-        compute_ref_matmul_chunk(params, M, N, K, mc, nc, src_row_base,
-                wei_base, wei_k_stride, wei_n_stride, dst_row_base, bia_base,
-                bia_m_stride, bia_n_stride, prb->attr, args);
+        compute_ref_matmul_chunk(params, M, N, mc, nc,
+                /* src_base = */ src_row_base * K, /* src_m_stride = */ K,
+                /* src_k_stride = */ 1, wei_base, wei_k_stride, wei_n_stride,
+                dst_row_base, bia_base, bia_m_stride, bia_n_stride, prb->attr,
+                args);
     });
 }
 
@@ -570,7 +627,10 @@ void compute_ref(const base_prb_t *base_prb, dir_t dir, const args_t &args,
 
     if (prb->sparse_options.is_grouped(DNNL_ARG_SRC)
             && prb->sparse_options.is_grouped(DNNL_ARG_DST)) {
-        compute_ref_grouped_matmul(prb, args);
+        compute_ref_grouped_matmul_2dby3d(prb, args);
+    } else if (prb->sparse_options.is_grouped(DNNL_ARG_SRC)
+            && prb->sparse_options.is_grouped(DNNL_ARG_WEIGHTS)) {
+        compute_ref_grouped_matmul_2dby2d(prb, args);
     } else if (src_encoding == dnnl_csr || wei_encoding == dnnl_csr
             || src_encoding == dnnl_coo || wei_encoding == dnnl_coo) {
         compute_ref_sparse_matmul(prb, args);

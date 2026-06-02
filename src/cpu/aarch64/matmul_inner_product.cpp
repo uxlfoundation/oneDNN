@@ -17,6 +17,7 @@
 
 #include "cpu/aarch64/matmul_inner_product.hpp"
 
+#include "common/memory_desc.hpp"
 #include "cpu/cpu_primitive.hpp"
 
 namespace dnnl {
@@ -33,6 +34,103 @@ format_tag_t pick_plain_tag(int ndims) {
 format_tag_t pick_transposed_tag(int ndims) {
     using namespace format_tag;
     return utils::pick(ndims - 2, ba, cba, cdba, cdeba);
+}
+
+int inner_block(const memory_desc_t &md, int dim) {
+    int block = 1;
+    const auto &blk = md.format_desc.blocking;
+    for (int i = 0; i < blk.inner_nblks; ++i)
+        if (blk.inner_idxs[i] == dim) block *= blk.inner_blks[i];
+    return block;
+}
+
+status_t init_4d_fixed_ip_weights_md(memory_desc_t &ip_wei_md,
+        const memory_desc_t &mm_wei_md, const memory_desc_t &hint_wei_md,
+        format_tag_t src_tag) {
+    using namespace format_tag;
+
+    // Matmul selects a flattened KxO weights layout. Inner product needs the
+    // same physical layout expressed as OIHW/OHWI, with K (HWI) unflattened and the
+    // spatial order matching the source layout, so we can't do a plain axis permutation.
+    if (hint_wei_md.ndims != 4) return status::unimplemented;
+    if (!utils::one_of(src_tag, abcd, acdb)) return status::unimplemented;
+
+    const int interleaved_by = inner_block(mm_wei_md, 1);
+    const int block_by = inner_block(mm_wei_md, 0);
+    if (interleaved_by <= 1) return status::unimplemented;
+
+    ip_wei_md = hint_wei_md;
+    ip_wei_md.format_kind = format_kind::blocked;
+    ip_wei_md.offset0 = 0;
+    ip_wei_md.extra = mm_wei_md.extra;
+    ip_wei_md.format_desc.blocking = blocking_desc_t {};
+
+    for (int d = 0; d < ip_wei_md.ndims; ++d) {
+        ip_wei_md.padded_dims[d] = ip_wei_md.dims[d];
+        ip_wei_md.padded_offsets[d] = 0;
+    }
+
+    const dim_t O_dim = 0;
+    const dim_t I_dim = src_tag == abcd ? 3 : 1;
+    const dim_t spatial_dim0 = src_tag == abcd ? 2 : 3;
+    const dim_t spatial_dim1 = src_tag == abcd ? 1 : 2;
+
+    auto &blk = ip_wei_md.format_desc.blocking;
+
+    blk.strides[I_dim] = interleaved_by * block_by;
+    ip_wei_md.padded_dims[I_dim]
+            = utils::rnd_up(ip_wei_md.dims[I_dim], block_by);
+
+    dim_t outer_stride = interleaved_by * ip_wei_md.padded_dims[I_dim];
+    blk.strides[spatial_dim0] = outer_stride;
+    outer_stride *= ip_wei_md.padded_dims[spatial_dim0];
+    blk.strides[spatial_dim1] = outer_stride;
+    outer_stride *= ip_wei_md.padded_dims[spatial_dim1];
+
+    blk.strides[O_dim] = outer_stride;
+    ip_wei_md.padded_dims[O_dim]
+            = utils::rnd_up(ip_wei_md.dims[O_dim], interleaved_by);
+
+    blk.inner_nblks = 1 + (block_by > 1);
+    blk.inner_idxs[0] = O_dim;
+    blk.inner_blks[0] = interleaved_by;
+    if (block_by > 1) {
+        blk.inner_idxs[1] = I_dim;
+        blk.inner_blks[1] = block_by;
+    }
+
+    return status::success;
+}
+
+status_t translate_matmul_weights_md(memory_desc_t &ip_wei_md,
+        const memory_desc_t &mm_wei_md, const memory_desc_t &hint_wei_md,
+        format_tag_t src_tag) {
+    if (mm_wei_md.ndims != 2) return status::unimplemented;
+
+    int transpose_perm[DNNL_MAX_NDIMS] {};
+    for (int d = 0; d < mm_wei_md.ndims; ++d)
+        transpose_perm[d] = d;
+    transpose_perm[0] = 1;
+    transpose_perm[1] = 0;
+
+    memory_desc_t transposed_mm_wei_md {};
+    CHECK(memory_desc_permute_axes(
+            transposed_mm_wei_md, mm_wei_md, transpose_perm));
+
+    if (hint_wei_md.ndims == transposed_mm_wei_md.ndims) {
+        ip_wei_md = transposed_mm_wei_md;
+        return status::success;
+    }
+
+    if (hint_wei_md.ndims == 4) {
+        const status_t status = init_4d_fixed_ip_weights_md(
+                ip_wei_md, mm_wei_md, hint_wei_md, src_tag);
+        if (status == status::success) return status;
+    }
+
+    const status_t status = memory_desc_reshape(ip_wei_md, transposed_mm_wei_md,
+            hint_wei_md.ndims, hint_wei_md.dims);
+    return status == status::success ? status::success : status::unimplemented;
 }
 
 } // namespace
@@ -86,27 +184,29 @@ status_t matmul_inner_product_fwd_t::pd_t::init_matmul_params(
         engine_t *engine) {
     using namespace format_tag;
 
-    const auto src_tag = pick_plain_tag(src_md()->ndims);
+    auto src_tag = pick_plain_tag(src_md()->ndims);
     const auto wei_plain_tag = pick_plain_tag(weights_md()->ndims);
     const auto wei_transposed_tag = pick_transposed_tag(weights_md()->ndims);
 
     auto mm_wei_tag = format_tag::undef;
+    const bool wei_md_is_any = weights_md_.format_kind == format_kind::any;
+
+    VDISPATCH_INNER_PRODUCT(weights_md()->ndims <= 4,
+            VERBOSE_UNSUPPORTED_TAG_S, "weights");
 
     if (src_md_.format_kind == format_kind::any) {
         CHECK(memory_desc_init_by_tag(src_md_, src_md_.ndims, src_md_.dims,
                 src_md_.data_type, src_tag));
+    } else if (src_md()->ndims == 4
+            && memory_desc_matches_tag(*src_md(), abcd) && wei_md_is_any) {
+        src_tag = abcd;
     } else {
         VDISPATCH_INNER_PRODUCT(memory_desc_matches_tag(*src_md(), src_tag),
                 VERBOSE_UNSUPPORTED_TAG_S, "src");
     }
 
-    if (weights_md_.format_kind == format_kind::any) {
-        // Request the IP weights in transposed form so the nested matmul sees
-        // a regular KxN matrix and can stay on kai's non-transposed B
-        // path.
-        CHECK(memory_desc_init_by_tag(weights_md_, weights_md_.ndims,
-                weights_md_.dims, weights_md_.data_type, wei_transposed_tag));
-        mm_wei_tag = ab;
+    if (wei_md_is_any) {
+        mm_wei_tag = any;
     } else if (memory_desc_matches_tag(*weights_md(), wei_plain_tag)) {
         mm_wei_tag = ba;
     } else if (memory_desc_matches_tag(*weights_md(), wei_transposed_tag)) {
@@ -138,6 +238,7 @@ status_t matmul_inner_product_fwd_t::pd_t::init_matmul_params(
     memory_desc_t mm_src_md {};
     memory_desc_t mm_wei_md {};
     memory_desc_t mm_dst_md {};
+    const memory_desc_t ip_wei_md_hint = weights_md_;
 
     CHECK(init_inner_product_matmul_md(mm_src_md, *src_md(), ab));
     CHECK(init_inner_product_matmul_md(
@@ -168,6 +269,11 @@ status_t matmul_inner_product_fwd_t::pd_t::init_matmul_params(
                     &mm_dst_md, with_bias() ? &mm_bia_md : nullptr,
                     &matmul_attr),
             VERBOSE_PRIMITIVE_CREATION_FAIL, "matmul");
+
+    if (wei_md_is_any) {
+        CHECK(translate_matmul_weights_md(
+                weights_md_, *matmul_pd_->weights_md(), ip_wei_md_hint, src_tag));
+    }
 
     return status::success;
 }

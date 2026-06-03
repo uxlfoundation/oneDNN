@@ -639,7 +639,11 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
     bool is_wei_dense = (wei_encoding == dnnl_sparse_encoding_undef);
     bool is_src_coo_sparse
             = (prb->sparse_options.get_encoding(DNNL_ARG_SRC) == dnnl_coo);
-    if (!prb->sparse_options.is_def() && is_gpu()
+    // Guard grouped configs so they get UNIMPLEMENTED (not a SKIPPED)
+    const bool is_any_grouped = prb->sparse_options.is_grouped(DNNL_ARG_SRC)
+            || prb->sparse_options.is_grouped(DNNL_ARG_WEIGHTS)
+            || prb->sparse_options.is_grouped(DNNL_ARG_DST);
+    if (!prb->sparse_options.is_def() && is_gpu() && !is_any_grouped
             && (!is_wei_dense || !is_src_coo_sparse)) {
         BENCHDNN_PRINT(2,
                 "[SKIP][%s:%d]: GPU sparse matmul only supports COO encoding "

@@ -2432,6 +2432,7 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                     : brg.rdb_tail;
         } else
             rd_loop = brg.rdb_tail;
+printf("is rd tail: %d, rd loop: %d\n", is_rd_tail, rd_loop);
     } else
         rd_loop = brg.rd_block;
 
@@ -3100,7 +3101,8 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
 template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::generate() {
     preamble();
-
+printf("load dim: %d, %d, bcast dim: %d, %d, reduce dim: %d, %d\n", brg.load_dim, brg.ld_block, brg.bcast_dim, brg.bd_block, brg.reduce_dim, brg.rd_block);
+printf("rdb tail: %d, rd step: %d\n", brg.rdb_tail, brg.rd_step);
     sub(rsp, regscratchpad_.Size());
 
     vpad_exist

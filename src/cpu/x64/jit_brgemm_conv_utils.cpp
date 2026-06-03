@@ -2155,7 +2155,7 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     bool relo_conv_weights_wi = true;
     const auto rd_wi = jcp.kw * jcp.ic;
     const auto rnd_rd_wi = (float)rnd_up(rd_wi, jcp.simd_w);
-    if (!jcp.wei_plain && relo_supported_isa && relo_reasonable_isa) {
+    if (!jcp.wei_plain && relo_supported_isa && relo_reasonable_isa && !jcp.is_fp8) {
         if (jcp.vnni_block == 1 /* For f32 weights are in needed layout */
                 || (jcp.ic % jcp.vnni_block == 0
                         && IMPLICATION(
@@ -2188,6 +2188,7 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
         perf_relo = perf_relo && jcp.kw > 1;
 
         try_relo_wi = (relo_supported_shape && perf_relo && relo_supported_isa);
+
         if (try_relo_wi) try_exec_trans = true;
     }
 
@@ -2477,7 +2478,7 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     VDISPATCH_CONV_IC(IMPLICATION(jcp.is_bf32, jcp.use_uker),
             "cannot use unrolled kernel for current datatype configuration");
-
+printf("K: %d, %d, is relo: %d\n", jcp.K, jcp.K_tail, jcp.is_relo());
     return status::success;
 }
 
@@ -2604,7 +2605,7 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     jcp.N = jcp.oc >= jcp.oc_block ? jcp.oc_block : 0;
     jcp.N_tail = jcp.oc % jcp.oc_block;
     jcp.K_tail = jcp.ic % jcp.ic_block;
-
+printf("K: %d, %d, is relo: %d\n", jcp.K, jcp.K_tail, jcp.is_relo());
     jcp.gemm_batch_size = jcp.nb_ic_blocking;
     // to avoid cache concurrent access from different threads
     size_t sc_size = sizeof(brgemm_batch_element_t);

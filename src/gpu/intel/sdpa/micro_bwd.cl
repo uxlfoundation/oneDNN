@@ -377,6 +377,18 @@ DECLARE_2D_TILE_SLM_ADD_T(a_tile_type, float, SUBGROUP_SIZE,
 
 #define binary_add(x, y) ((x) + (y))
 
+#if defined(QRY_DT_F16)
+inline float round_to_dq_atomic(float v) {
+        return convert_float(convert_half(v));
+}
+#endif
+
+#if defined(DST_DT_F16)
+inline float round_to_dkdv_partial(float v) {
+        return convert_float(convert_half(v));
+}
+#endif
+
 inline void tile_load_k(k_tile_type *K_tile, const global KEY_DATA_T *K,
         int seq_len, int head_size, int ldk, int seq_off, int sg_ij,
         int load_rem) {
@@ -969,6 +981,10 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
             // accumulate dv tile to slm
             if (sg_ij < sg_per_wg_BcD) {
+#if defined(DST_DT_F16)
+                // Keep per-q partials on f16 boundaries before SLM reduction.
+                tile_elementwise_s(dV_tile1, round_to_dkdv_partial);
+#endif
                 dv_acc_tile_type dV_tile1_store;
                 tile_copy(dV_tile1, dV_tile1_store);
                 tile_slm_add(dV_tile1_store, dV_slm, D_MAX, sg_i0_vs, sg_j0_vs);
@@ -1070,6 +1086,10 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
             // dk slm tile
             if (sg_ij < sg_per_wg_BcD) {
+#if defined(DST_DT_F16)
+                // Keep per-q partials on f16 boundaries before SLM reduction.
+                tile_elementwise_s(dK_tile1, round_to_dkdv_partial);
+#endif
                 dk_acc_tile_type dK_tile1_store;
                 tile_copy(dK_tile1, dK_tile1_store);
 #if TRANSPOSE_K
@@ -1114,8 +1134,12 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             uint sg_i0_dq = sg_i_ktq * ugemm_ktq_sg_tile_m;
             uint sg_j0_dq = sg_j_ktq * ugemm_ktq_sg_tile_n + q0;
 
-            if (sg_ij < sg_per_wg_BrD)
+        	if (sg_ij < sg_per_wg_BrD) {
+#if defined(QRY_DT_F16)
+                tile_elementwise_s(dQ_tile, round_to_dq_atomic);
+#endif
                 tile_atomic_add(dQ_tile, dQ, d, q, lddq, sg_i0_dq, sg_j0_dq);
+            }
         }
     }
 

@@ -6069,6 +6069,440 @@ status_t create_brgemm_matmul_copy_a(
     return copy_ker->create_kernel();
 }
 
+// Copy-C kernel for acdb dst: 16×16 transpose from scratch buffer to dst.
+struct jit_brgemm_matmul_copy_c_avx512_t : public jit_brgemm_matmul_copy_c_t,
+                                           public jit_generator_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_c_avx512_t)
+
+    jit_brgemm_matmul_copy_c_avx512_t(const brgemm_matmul_conf_t *conf)
+        : jit_brgemm_matmul_copy_c_t(conf)
+        , jit_generator_t(jit_name())
+        , dt_sz_(conf->c_dt_sz)
+        , batch_(conf->acdb_inner_batch)
+        , buf_batch_stride_(conf->acdb_buf_per_batch_sz)
+        , buf_row_stride_(conf->N * dt_sz_)
+        , dst_n_stride_(conf->C_strides[0])
+        , dst_m_stride_(conf->C_strides[1])
+        , batch_tail_(conf->acdb_inner_batch % 16)
+        , tail_mask_val_(batch_tail_ ? (uint16_t)((1 << batch_tail_) - 1)
+                                     : (uint16_t)0xFFFF) {}
+
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
+
+private:
+    const int dt_sz_;
+    const int batch_;
+    const dim_t buf_batch_stride_;
+    const dim_t buf_row_stride_;
+    const dim_t dst_n_stride_;
+    const dim_t dst_m_stride_;
+    const int batch_tail_;  // batch_ % 16
+    const uint16_t tail_mask_val_;
+
+    using reg64_t = const Reg64;
+
+    reg64_t reg_src = r12;
+    reg64_t reg_dst = rbx;
+    reg64_t reg_M = rcx;
+    reg64_t reg_N = rdx;
+    reg64_t reg_src_row = r8;
+    reg64_t reg_dst_row = r9;
+    reg64_t reg_n_iter = r10;
+    reg64_t reg_tmp = r11;
+    reg64_t reg_tmp2 = r13;
+
+    Opmask k_tail_mask = k1;
+
+    // zmm0-zmm15: 16 data registers for transpose
+    // zmm16-zmm31: temporaries for transpose
+    Zmm zmm_src(int i) { return Zmm(i); }
+    Zmm zmm_tmp(int i) { return Zmm(16 + i); }
+
+    void emit_16x16_transpose();
+    void generate() override;
+};
+
+void jit_brgemm_matmul_copy_c_avx512_t::emit_16x16_transpose() {
+    // In-register 16x16 f32 transpose.
+    // Input: zmm0..zmm15 (rows), Output: zmm0..zmm15 (columns)
+
+    // Phase 1: interleave pairs
+    for (int i = 0; i < 16; i += 2) {
+        vunpcklps(zmm_tmp(i), zmm_src(i), zmm_src(i + 1));
+        vunpckhps(zmm_tmp(i + 1), zmm_src(i), zmm_src(i + 1));
+    }
+
+    // Phase 2: shuffle 64-bit pairs
+    for (int i = 0; i < 16; i += 4) {
+        vshufps(zmm_src(i + 0), zmm_tmp(i), zmm_tmp(i + 2), 0x44);
+        vshufps(zmm_src(i + 1), zmm_tmp(i), zmm_tmp(i + 2), 0xEE);
+        vshufps(zmm_src(i + 2), zmm_tmp(i + 1), zmm_tmp(i + 3), 0x44);
+        vshufps(zmm_src(i + 3), zmm_tmp(i + 1), zmm_tmp(i + 3), 0xEE);
+    }
+
+    // Phase 3: shuffle 128-bit lanes
+    for (int i = 0; i < 4; i++) {
+        vshuff64x2(zmm_tmp(i), zmm_src(i), zmm_src(i + 4), 0x88);
+        vshuff64x2(zmm_tmp(i + 4), zmm_src(i), zmm_src(i + 4), 0xDD);
+    }
+    for (int i = 0; i < 4; i++) {
+        vshuff64x2(zmm_tmp(i + 8), zmm_src(i + 8), zmm_src(i + 12), 0x88);
+        vshuff64x2(zmm_tmp(i + 12), zmm_src(i + 8), zmm_src(i + 12), 0xDD);
+    }
+
+    // Phase 4: final 256-bit shuffle
+    for (int i = 0; i < 4; i++) {
+        vshuff64x2(zmm_src(i), zmm_tmp(i), zmm_tmp(i + 8), 0x88);
+        vshuff64x2(zmm_src(i + 8), zmm_tmp(i), zmm_tmp(i + 8), 0xDD);
+    }
+    for (int i = 0; i < 4; i++) {
+        vshuff64x2(zmm_src(i + 4), zmm_tmp(i + 4), zmm_tmp(i + 12), 0x88);
+        vshuff64x2(zmm_src(i + 12), zmm_tmp(i + 4), zmm_tmp(i + 12), 0xDD);
+    }
+}
+
+void jit_brgemm_matmul_copy_c_avx512_t::generate() {
+    preamble();
+
+    mov(reg_src, ptr[abi_param1 + GET_OFF(src)]);
+    mov(reg_dst, ptr[abi_param1 + GET_OFF(dst)]);
+    mov(reg_M, ptr[abi_param1 + GET_OFF(current_M_blk)]);
+    mov(reg_N, ptr[abi_param1 + GET_OFF(current_N_blk)]);
+
+    // Setup tail mask for last batch chunk if batch % 16 != 0
+    if (batch_tail_) {
+        mov(reg_tmp, (uint64_t)tail_mask_val_);
+        kmovw(k_tail_mask, Reg32(reg_tmp.getIdx()));
+    }
+
+    mov(reg_src_row, reg_src);
+    mov(reg_dst_row, reg_dst);
+
+    Label m_loop_label, done_label;
+    L(m_loop_label);
+    cmp(reg_M, 0);
+    jle(done_label, T_NEAR);
+
+    xor_(reg_n_iter, reg_n_iter);
+
+    Label n_loop_16, n_tail_label, n_done_label;
+    L(n_loop_16);
+    {
+        mov(reg_tmp, reg_N);
+        sub(reg_tmp, reg_n_iter);
+        cmp(reg_tmp, 16);
+        jl(n_tail_label, T_NEAR);
+
+        // Process batch in chunks of 16 for the 16x16 transpose.
+        for (int b_chunk = 0; b_chunk < batch_; b_chunk += 16) {
+            const int chunk_len = nstl::min(16, batch_ - b_chunk);
+            const bool is_tail_chunk = (chunk_len < 16);
+
+            // Load chunk_len ZMMs from batch buffers, zero-pad rest
+            mov(reg_tmp, reg_n_iter);
+            imul(reg_tmp, reg_tmp, dt_sz_);
+            add(reg_tmp, reg_src_row);
+            for (int b = 0; b < 16; b++) {
+                if (b < chunk_len)
+                    vmovups(zmm_src(b),
+                            ptr[reg_tmp
+                                    + (b_chunk + b) * buf_batch_stride_]);
+                else
+                    vpxorq(zmm_src(b), zmm_src(b), zmm_src(b));
+            }
+
+            // 16x16 in-register transpose
+            emit_16x16_transpose();
+
+            // Store transposed values to dst at batch offset
+            const dim_t dst_b_offset = b_chunk * dt_sz_;
+            for (int n = 0; n < 16; n++) {
+                auto dst_addr = ptr[reg_dst_row + n * dst_n_stride_
+                        + dst_b_offset];
+                if (!is_tail_chunk)
+                    vmovups(dst_addr, zmm_src(n));
+                else
+                    vmovups(dst_addr | k_tail_mask, zmm_src(n));
+            }
+        }
+
+        add(reg_n_iter, 16);
+        add(reg_dst_row, 16 * dst_n_stride_);
+        jmp(n_loop_16, T_NEAR);
+    }
+
+    L(n_tail_label);
+    {
+        cmp(reg_n_iter, reg_N);
+        jge(n_done_label, T_NEAR);
+
+        // Scalar tail: one element at a time
+        Label tail_loop;
+        L(tail_loop);
+        cmp(reg_n_iter, reg_N);
+        jge(n_done_label, T_NEAR);
+
+        mov(reg_tmp, reg_n_iter);
+        imul(reg_tmp, reg_tmp, dt_sz_);
+        add(reg_tmp, reg_src_row);
+        for (int b = 0; b < batch_; b++) {
+            vmovss(Xmm(0), ptr[reg_tmp + b * buf_batch_stride_]);
+            vmovss(ptr[reg_dst_row + b * dt_sz_], Xmm(0));
+        }
+
+        add(reg_dst_row, dst_n_stride_);
+        inc(reg_n_iter);
+        jmp(tail_loop, T_NEAR);
+    }
+
+    L(n_done_label);
+    add(reg_src_row, buf_row_stride_);
+    mov(reg_dst_row, reg_dst);
+    dec(reg_M);
+    add(reg_dst, dst_m_stride_);
+    mov(reg_dst_row, reg_dst);
+    jmp(m_loop_label, T_NEAR);
+
+    L(done_label);
+    postamble();
+}
+
+// Copy-C kernel for adbc dst: 16×16 transpose from scratch buffer to dst.
+struct jit_brgemm_matmul_copy_c_adbc_avx512_t
+    : public jit_brgemm_matmul_copy_c_t,
+      public jit_generator_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_c_adbc_avx512_t)
+
+    jit_brgemm_matmul_copy_c_adbc_avx512_t(const brgemm_matmul_conf_t *conf)
+        : jit_brgemm_matmul_copy_c_t(conf)
+        , jit_generator_t(jit_name())
+        , dt_sz_(conf->c_dt_sz)
+        , src_row_stride_(conf->LDC * conf->c_dt_sz)
+        , dst_n_stride_(conf->C_strides[0]) {}
+
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
+
+private:
+    const int dt_sz_;
+    const dim_t src_row_stride_; // LDC * dt_sz between rows in buf_C
+    const dim_t dst_n_stride_; // stride between N positions in dst
+
+    using reg64_t = const Reg64;
+
+    reg64_t reg_src = r12;
+    reg64_t reg_dst = rbx;
+    reg64_t reg_M = rcx;
+    reg64_t reg_N = rdx;
+    reg64_t reg_m_iter = r8;
+    reg64_t reg_n_iter = r9;
+    reg64_t reg_tmp = r10;
+    reg64_t reg_src_row = r11;
+    reg64_t reg_dst_col = r13;
+
+    Zmm zmm_src(int i) { return Zmm(i); }
+    Zmm zmm_tmp(int i) { return Zmm(16 + i); }
+
+    void emit_16x16_transpose();
+    void generate() override;
+};
+
+void jit_brgemm_matmul_copy_c_adbc_avx512_t::emit_16x16_transpose() {
+    // In-register 16×16 f32 transpose.
+    // Input: zmm0..zmm15 (rows from buf_C), Output: zmm0..zmm15 (columns)
+
+    // Phase 1: interleave pairs
+    for (int i = 0; i < 16; i += 2) {
+        vunpcklps(zmm_tmp(i), zmm_src(i), zmm_src(i + 1));
+        vunpckhps(zmm_tmp(i + 1), zmm_src(i), zmm_src(i + 1));
+    }
+
+    // Phase 2: shuffle 64-bit pairs
+    for (int i = 0; i < 16; i += 4) {
+        vshufps(zmm_src(i + 0), zmm_tmp(i), zmm_tmp(i + 2), 0x44);
+        vshufps(zmm_src(i + 1), zmm_tmp(i), zmm_tmp(i + 2), 0xEE);
+        vshufps(zmm_src(i + 2), zmm_tmp(i + 1), zmm_tmp(i + 3), 0x44);
+        vshufps(zmm_src(i + 3), zmm_tmp(i + 1), zmm_tmp(i + 3), 0xEE);
+    }
+
+    // Phase 3: shuffle 128-bit lanes
+    for (int i = 0; i < 4; i++) {
+        vshuff64x2(zmm_tmp(i), zmm_src(i), zmm_src(i + 4), 0x88);
+        vshuff64x2(zmm_tmp(i + 4), zmm_src(i), zmm_src(i + 4), 0xDD);
+    }
+    for (int i = 0; i < 4; i++) {
+        vshuff64x2(zmm_tmp(i + 8), zmm_src(i + 8), zmm_src(i + 12), 0x88);
+        vshuff64x2(zmm_tmp(i + 12), zmm_src(i + 8), zmm_src(i + 12), 0xDD);
+    }
+
+    // Phase 4: final 256-bit shuffle
+    for (int i = 0; i < 4; i++) {
+        vshuff64x2(zmm_src(i), zmm_tmp(i), zmm_tmp(i + 8), 0x88);
+        vshuff64x2(zmm_src(i + 8), zmm_tmp(i), zmm_tmp(i + 8), 0xDD);
+    }
+    for (int i = 0; i < 4; i++) {
+        vshuff64x2(zmm_src(i + 4), zmm_tmp(i + 4), zmm_tmp(i + 12), 0x88);
+        vshuff64x2(zmm_src(i + 12), zmm_tmp(i + 4), zmm_tmp(i + 12), 0xDD);
+    }
+}
+
+void jit_brgemm_matmul_copy_c_adbc_avx512_t::generate() {
+    preamble();
+
+    mov(reg_src, ptr[abi_param1 + GET_OFF(src)]);
+    mov(reg_dst, ptr[abi_param1 + GET_OFF(dst)]);
+    mov(reg_M, ptr[abi_param1 + GET_OFF(current_M_blk)]);
+    mov(reg_N, ptr[abi_param1 + GET_OFF(current_N_blk)]);
+
+    // Outer loop over M in chunks of 16
+    xor_(reg_m_iter, reg_m_iter);
+    Label m_loop_16, m_tail_label, done_label;
+
+    L(m_loop_16);
+    {
+        mov(reg_tmp, reg_M);
+        sub(reg_tmp, reg_m_iter);
+        cmp(reg_tmp, 16);
+        jl(m_tail_label, T_NEAR);
+
+        // reg_src_row = reg_src + m_iter * src_row_stride
+        mov(reg_src_row, reg_m_iter);
+        imul(reg_src_row, reg_src_row, src_row_stride_);
+        add(reg_src_row, reg_src);
+
+        // reg_dst_col = reg_dst + m_iter * dt_sz (M is contiguous)
+        mov(reg_dst_col, reg_m_iter);
+        imul(reg_dst_col, reg_dst_col, dt_sz_);
+        add(reg_dst_col, reg_dst);
+
+        // Inner loop over N in chunks of 16
+        xor_(reg_n_iter, reg_n_iter);
+        Label n_loop_16, n_tail_label, n_done_label;
+
+        L(n_loop_16);
+        {
+            mov(reg_tmp, reg_N);
+            sub(reg_tmp, reg_n_iter);
+            cmp(reg_tmp, 16);
+            jl(n_tail_label, T_NEAR);
+
+            // Load 16 rows of 16 N elements each
+            for (int i = 0; i < 16; i++) {
+                vmovups(zmm_src(i),
+                        ptr[reg_src_row + i * src_row_stride_
+                                + reg_n_iter * dt_sz_]);
+            }
+
+            emit_16x16_transpose();
+
+            // Store 16 transposed rows: each goes to dst at n_stride offset
+            for (int i = 0; i < 16; i++) {
+                // dst_col + (n_iter + i) * dst_n_stride
+                mov(reg_tmp, reg_n_iter);
+                add(reg_tmp, i);
+                imul(reg_tmp, reg_tmp, dst_n_stride_);
+                vmovups(ptr[reg_dst_col + reg_tmp], zmm_src(i));
+            }
+
+            add(reg_n_iter, 16);
+            jmp(n_loop_16, T_NEAR);
+        }
+
+        L(n_tail_label);
+        {
+            // Scalar tail for remaining N elements
+            cmp(reg_n_iter, reg_N);
+            jge(n_done_label, T_NEAR);
+
+            Label n_scalar_loop;
+            L(n_scalar_loop);
+            cmp(reg_n_iter, reg_N);
+            jge(n_done_label, T_NEAR);
+
+            // For this N position, copy 16 M values one-by-one
+            mov(reg_tmp, reg_n_iter);
+            imul(reg_tmp, reg_tmp, dst_n_stride_);
+            // reg_tmp = dst offset for this N column
+
+            for (int i = 0; i < 16; i++) {
+                Xmm xmm_val = Xmm(0);
+                vmovss(xmm_val,
+                        ptr[reg_src_row + i * src_row_stride_
+                                + reg_n_iter * dt_sz_]);
+                vmovss(ptr[reg_dst_col + reg_tmp + i * dt_sz_], xmm_val);
+            }
+
+            inc(reg_n_iter);
+            jmp(n_scalar_loop, T_NEAR);
+        }
+
+        L(n_done_label);
+        add(reg_m_iter, 16);
+        jmp(m_loop_16, T_NEAR);
+    }
+
+    L(m_tail_label);
+    {
+        // M tail: process remaining rows one-by-one
+        cmp(reg_m_iter, reg_M);
+        jge(done_label, T_NEAR);
+
+        Label m_scalar_loop, m_tail_n_done;
+        L(m_scalar_loop);
+        cmp(reg_m_iter, reg_M);
+        jge(done_label, T_NEAR);
+
+        // reg_src_row = reg_src + m_iter * src_row_stride
+        mov(reg_src_row, reg_m_iter);
+        imul(reg_src_row, reg_src_row, src_row_stride_);
+        add(reg_src_row, reg_src);
+
+        // dst offset for this M position
+        mov(reg_dst_col, reg_m_iter);
+        imul(reg_dst_col, reg_dst_col, dt_sz_);
+        add(reg_dst_col, reg_dst);
+
+        xor_(reg_n_iter, reg_n_iter);
+        Label m_tail_n_loop;
+        L(m_tail_n_loop);
+        cmp(reg_n_iter, reg_N);
+        jge(m_tail_n_done, T_NEAR);
+
+        // Load one element, store to dst
+        Xmm xmm_val = Xmm(0);
+        vmovss(xmm_val, ptr[reg_src_row + reg_n_iter * dt_sz_]);
+        mov(reg_tmp, reg_n_iter);
+        imul(reg_tmp, reg_tmp, dst_n_stride_);
+        vmovss(ptr[reg_dst_col + reg_tmp], xmm_val);
+
+        inc(reg_n_iter);
+        jmp(m_tail_n_loop, T_NEAR);
+
+        L(m_tail_n_done);
+        inc(reg_m_iter);
+        jmp(m_scalar_loop, T_NEAR);
+    }
+
+    L(done_label);
+    postamble();
+}
+
+status_t create_brgemm_matmul_copy_c(
+        std::unique_ptr<jit_brgemm_matmul_copy_c_t> &copy_ker,
+        const brgemm_matmul_conf_t *conf) {
+    if (conf->dst_is_adbc)
+        copy_ker = utils::make_unique<jit_brgemm_matmul_copy_c_adbc_avx512_t>(
+                conf);
+    else
+        copy_ker = utils::make_unique<jit_brgemm_matmul_copy_c_avx512_t>(conf);
+    return copy_ker->create_kernel();
+}
+
 } // namespace matmul
 } // namespace x64
 } // namespace cpu

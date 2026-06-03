@@ -709,7 +709,8 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_tags(memory_desc_t &A_md,
                 : plain_tensor_layout_tag;
         bgmmc.dst_tag
                 = memory_desc_matches_one_of_tag(C_md, plain_tensor_layout_tag,
-                        allowed_transposed_tensor_layout_tag, acbd);
+                        allowed_transposed_tensor_layout_tag, acbd, acdb,
+                        adbc);
         if (bgmmc.dst_tag == format_tag::undef) {
             if (gemm_based::check_gemm_output_format(C_md)) {
                 // Note: Here we batch layout may not be accurately represented
@@ -1673,6 +1674,38 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     VCHECK_BG(bm_conf_utils.set_or_check_tags(src_md, dst_md, bias_md, helper),
             VERBOSE_UNSUPPORTED_TAG);
+    // Detect dst layouts where N (ndims-1) is not innermost, requiring a
+    // copy C kernel. Use stride-based checks for generality: layouts with
+    // unit batch may degenerate to plain strides and skip the copy path.
+    bgmmc.dst_is_acdb = false;
+    bgmmc.dst_is_adbc = false;
+    if (bgmmc.ndims >= 4) {
+        const auto &dst_strides = dst_d.blocking_desc().strides;
+        const bool dst_N_not_innermost
+                = dst_strides[bgmmc.ndims - 1] != 1;
+        const bool dst_M_innermost
+                = dst_strides[bgmmc.ndims - 2] == 1;
+        bgmmc.dst_is_adbc = dst_N_not_innermost && dst_M_innermost;
+        bgmmc.dst_is_acdb = dst_N_not_innermost && !dst_M_innermost;
+    }
+    // acdb/adbc dst is only supported for f32 dst.
+    VCONDCHECK_BG(!((bgmmc.dst_is_acdb || bgmmc.dst_is_adbc)
+                          && bgmmc.dst_dt != data_type::f32),
+            VERBOSE_UNSUPPORTED_DT);
+    // acdb/adbc dst with sum post-op is not yet supported (sum reads from D
+    // buffer which would not contain prior dst values).
+    VCONDCHECK_BG(!((bgmmc.dst_is_acdb || bgmmc.dst_is_adbc)
+                          && bgmmc.with_sum),
+            VERBOSE_UNSUPPORTED_POSTOP);
+    // acdb/adbc dst is not supported for gemv: brgemv handles strided writes
+    // directly via INCY and does not need the copy C kernel.
+    VCONDCHECK_BG(
+            !((bgmmc.dst_is_acdb || bgmmc.dst_is_adbc) && bgmmc.is_gemv),
+            VERBOSE_UNSUPPORTED_TAG);
+    // Parallel K reduction with acdb/adbc dst is not yet supported.
+    VCONDCHECK_BG(
+            !((bgmmc.dst_is_acdb || bgmmc.dst_is_adbc) && bgmmc.nthr_k > 1),
+            VERBOSE_UNSUPPORTED_TAG)
     VCHECK_BG(attr.set_default_formats(&dst_md), VERBOSE_UNSUPPORTED_TAG);
     VCONDCHECK_BG(post_ops_ok(bgmmc, attr, dst_d), VERBOSE_UNSUPPORTED_POSTOP);
 
@@ -1759,13 +1792,14 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     // We cannot change M at this point as all gemv related parameters have
     // already been set up.
-    // For 4D tensors with acbd layout, avoid merging batches to prevent stride issues
+    // For 4D tensors with acbd/acdb layout, avoid merging batches to prevent stride issues
     const bool merge_batch_dims_into_M = !(bgmmc.is_gemv && bgmmc.gemv_swap_a_b)
             && bgmmc.batch > 1 && bgmmc.bcast_B_desc.bcast_across_all_batch_dims
             && plain_A_layout && helper.is_src_dst_layout_batch_fusable()
             && post_ops_ok(
                     bgmmc, attr, dst_d, true /* limit_bcast_strategies_set */)
-            && !(bgmmc.ndims == 4 && src_d.matches_tag(format_tag::acbd));
+            && !(bgmmc.ndims == 4 && src_d.matches_tag(format_tag::acbd))
+            && !bgmmc.dst_is_acdb && !bgmmc.dst_is_adbc;
     if (merge_batch_dims_into_M) {
         bgmmc.M *= bgmmc.batch;
         bgmmc.batch = 1;
@@ -1944,6 +1978,28 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                                 : bgmmc.N_blk)
                         * (bgmmc.is_runtime_N ? bgmmc.N_chunk_size : 1)
                 : bgmmc.LDD;
+    }
+
+    // acdb dst: N stride != 1, use scratch buffer + copy-out.
+    if (bgmmc.dst_is_acdb) {
+        bgmmc.LDD = bgmmc.N;
+        bgmmc.acdb_buf_per_batch_sz = bgmmc.M * bgmmc.N * bgmmc.c_dt_sz;
+        // For 4D (axbxMxN) only the inner batch dim b is contiguous.
+        bgmmc.acdb_inner_batch = bgmmc.batch_ndims > 1
+                ? dst_d.dims()[1]
+                : bgmmc.batch;
+        bgmmc.use_buffer_c = true;
+        bgmmc.LDC = (bgmmc.is_amx ? nstl::min((dim_t)32, bgmmc.N_blk)
+                                  : bgmmc.N_blk)
+                * (bgmmc.is_runtime_N ? bgmmc.N_chunk_size : 1);
+    }
+
+    // adbc dst: N stride != 1, use scratch buffer + per-tile scatter.
+    if (bgmmc.dst_is_adbc) {
+        bgmmc.use_buffer_c = true;
+        bgmmc.LDC = (bgmmc.is_amx ? nstl::min((dim_t)32, bgmmc.N_blk)
+                                  : bgmmc.N_blk)
+                * (bgmmc.is_runtime_N ? bgmmc.N_chunk_size : 1);
     }
 
     bgmmc.is_src_batch_layout_trivial
@@ -2409,7 +2465,11 @@ void init_scratchpad(memory_tracking::registrar_t &scratchpad,
         scratchpad.book(key_conv_amx_tile_buffer,
                 static_cast<size_t>(bgmmc.nthr) * bgmmc.wsp_tile_per_thr_bytes,
                 default_data_align);
-    if (bgmmc.is_runtime_M || bgmmc.is_runtime_N)
+    if (bgmmc.dst_is_acdb)
+        scratchpad.book(key_brgemm_primitive_buffer_d,
+                bgmmc.acdb_buf_per_batch_sz * bgmmc.batch,
+                default_data_align);
+    else if (bgmmc.is_runtime_M || bgmmc.is_runtime_N)
         scratchpad.book(key_brgemm_primitive_buffer_d,
                 bgmmc.M_blk * bgmmc.N_blk * bgmmc.c_dt_sz * bgmmc.nthr,
                 default_data_align);

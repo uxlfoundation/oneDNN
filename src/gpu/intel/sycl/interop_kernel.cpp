@@ -174,10 +174,28 @@ status_t interop_kernel_t::parallel_for(impl::stream_t &stream,
         }
     });
 
-    if (stream.is_profiling_enabled()) {
-        auto sycl_event = utils::make_unique<xpu::sycl::event_t>(
+    // Event registration for profilers is managed to allow the
+    // verbose_profiler_t operate independently from other profilers without
+    // forced profiling flags or double-move issues.
+    if (stream.is_profiling_enabled() || stream.is_verbose_profiler_enabled()) {
+        auto primary_event = utils::make_unique<xpu::sycl::event_t>(
                 std::vector<::sycl::event> {event});
-        gpu_stream->profiler().register_event(std::move(sycl_event));
+
+        if (stream.is_profiling_enabled()) {
+            auto cloned_event = primary_event->clone();
+            gpu_stream->profiler().register_event(
+                    std::unique_ptr<xpu::sycl::event_t>(
+                            static_cast<xpu::sycl::event_t *>(
+                                    cloned_event.release())));
+        }
+
+        // checking for primitive stamps avoids logging for uninitialized profilers
+        if (stream.is_verbose_profiler_enabled()
+                && gpu_stream->verbose_profiler().stamp() > 0) {
+            gpu_stream->verbose_profiler().register_primitive_event(
+                    std::shared_ptr<xpu::sycl::event_t>(
+                            primary_event.release()));
+        }
     }
 
     xpu::sycl::event_t::from(out_dep).events = {std::move(event)};

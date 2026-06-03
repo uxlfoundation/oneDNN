@@ -21,6 +21,7 @@
 #include "ngen_object_helpers.hpp"
 
 #include <algorithm>
+#include <numeric>
 
 GEMMSTONE_NAMESPACE_START
 
@@ -299,7 +300,9 @@ void CopyPlan::transform()
 /* Basic operations on copy plans. */
 CopyInstruction &CopyPlan::append(CopyInstruction &&i)
 {
-    i.cnumMin = i.cnumMax = int16_t(insns.size());
+    auto offset = insns.empty() ? 0 : insns.back().range.end + 1;
+    i.range.start = offset;
+    i.range.end = offset + i.simd - 1;
     insns.push_back(std::move(i));
     return insns.back();
 }
@@ -477,39 +480,40 @@ std::array<CopyInstruction*, n> CopyPlan::splitMultiple(CopyInstruction &i)
 //   a call to mergeChanges.
 CopyInstruction &CopyPlan::join(CopyInstruction &i1, CopyInstruction &i2, int maxGap)
 {
-    // Reorder cnums to be adjacent, if possible, to reduce temporary usage.
+    // Reorder ranges to be adjacent, if possible, to reduce temporary usage.
     CopyInstruction *ifirst = nullptr, *ilast = nullptr;
-    if (i1.cnumMax < i2.cnumMin)
+    if (i1.range.end < i2.range.start)
         ifirst = &i1, ilast = &i2;
-    else if (i2.cnumMax < i1.cnumMin)
+    else if (i2.range.end < i1.range.start)
         ifirst = &i2, ilast = &i1;
 
     if (ifirst && ilast) {
-        bool gapTooLarge = (ifirst->cnumMax + maxGap + 1 < ilast->cnumMin);
-        if (!freezeCNums && trySwapCNumRanges(ilast->cnumMin, ilast->cnumMax, ifirst->cnumMax + 1))
+        bool gapTooLarge = (ifirst->range.end + maxGap + 1 < ilast->range.start);
+        if (!freezeRange && trySwapRanges(ilast->range, ifirst->range.end + 1))
             gapTooLarge = false;
         if (gapTooLarge)
             return invalidInsn;
     }
 
-    i1.cnumMin = std::min(i1.cnumMin, i2.cnumMin);
-    i1.cnumMax = std::max(i1.cnumMax, i2.cnumMax);
+    i1.range |= i2.range;
     i2.invalidate();
 
     return i1;
 }
 
-// Try to swap cnums so that the range [min0, max0] is moved to start at min1.
+// Try to swap ranges so that the range [min0, max0] is moved to start at min1.
 // Returns true if successful.
-bool CopyPlan::trySwapCNumRanges(int16_t min0, int16_t max0, int16_t min1)
+bool CopyPlan::trySwapRanges(const CopyRange &range, int min1)
 {
-    int16_t max1 = min1 + max0 - min0;
+    const auto &min0 = range.start;
+    const auto &max0 = range.end;
+    int max1 = min1 + max0 - min0;
     if (max0 >= min1 && max1 >= min0) return false;       /* ranges overlap */
 
     // Check validity of swap.
-    auto moveOK = [](CopyInstruction &i, int16_t minN, int16_t maxN) -> bool {
-        if (i.cnumMin < minN && i.cnumMax >= minN) return false;
-        if (i.cnumMax > maxN && i.cnumMin <= maxN) return false;
+    auto moveOK = [](CopyInstruction &i, int minN, int maxN) -> bool {
+        if (i.range.start < minN && i.range.end >= minN) return false;
+        if (i.range.end > maxN && i.range.start <= maxN) return false;
         return true;
     };
 
@@ -524,12 +528,12 @@ bool CopyPlan::trySwapCNumRanges(int16_t min0, int16_t max0, int16_t min1)
     }
 
     // Execute swap.
-    int16_t diff = min1 - min0;
+    int diff = min1 - min0;
     auto swap = [=](CopyInstruction &i) {
-        if (i.cnumMin >= min0 && i.cnumMax <= max0)
-            i.cnumMin += diff, i.cnumMax += diff;
-        else if (i.cnumMin >= min1 && i.cnumMax <= max1)
-            i.cnumMin -= diff, i.cnumMax -= diff;
+        if (i.range.start >= min0 && i.range.end <= max0)
+            i.range.start += diff, i.range.end += diff;
+        else if (i.range.start >= min1 && i.range.end <= max1)
+            i.range.start -= diff, i.range.end -= diff;
     };
 
     for (auto &i: insns)    swap(i);
@@ -2427,41 +2431,13 @@ void CopyPlan::checkNoSubbytes()
             stub("Unexpected 4-bit type");
 }
 
-// Collapse multiple-cnum instructions into single-cnum instructions if possible.
-void CopyPlan::collapseCNums()
-{
-    int ncnum = 0;
-    for (auto &i: insns)
-        ncnum = std::max(ncnum, i.cnumMax + 1);
-
-    std::vector<int16_t> snapDown(ncnum);
-    for (auto &i: insns)
-        for (auto cnum = i.cnumMin; cnum <= i.cnumMax; cnum++)
-            snapDown[cnum] = std::max(snapDown[cnum], i.cnumMin);
-
-    // remap cnums to be as small as possible
-    int16_t cnumMin = 0;
-    int16_t cnumMax = 0;
-    for (auto &cnum: snapDown) {
-        if (cnum > cnumMax) {
-            cnumMax = cnum;
-            cnumMin = cnumMin + 1;
-        }
-        if (cnum > cnumMin) cnum = cnumMin;
-    }
-
-    for (auto &i: insns) {
-        i.cnumMin = snapDown[i.cnumMin];
-        i.cnumMax = snapDown[i.cnumMax];
-    }
-}
-
 // Pass to legalize SIMD lengths.
 // If initial = true, does not perform complete legalization,
 //   only SIMD32 limits for complex conversion sequences.
 void CopyPlan::legalizeSIMD(bool initial)
 {
     int grf = GRF::bytes(hw);
+    int simdOff = 0;
     bool splitting = false;
     bool rerun = false;
 
@@ -2479,10 +2455,6 @@ void CopyPlan::legalizeSIMD(bool initial)
     if (!initial)
         checkNoSubbytes();
 
-    collapseCNums();
-    for (auto &i: insns)
-        i.cnumSub = 0;
-
     // Basic rule: maximum of 2 registers per operand.
     auto opSimdMax = [&] (const CopyOperand &op, bool src2 = false) {
         if (op.kind != CopyOperand::GRF || op.stride == 0) return 64;
@@ -2492,7 +2464,6 @@ void CopyPlan::legalizeSIMD(bool initial)
     };
 
     auto ninsn = insns.size();
-    std::vector<std::pair<int16_t, int16_t>> cnumOffsets;
     for (size_t n = 0; n < ninsn; ) {
         auto &i = insns[n];
 
@@ -2546,7 +2517,14 @@ void CopyPlan::legalizeSIMD(bool initial)
 
         if (simd0 < i.simd || splitting) {
             auto &isplit = split(i, false);
+            auto length = i.range.end - i.range.start + 1;
+            auto simdOrig = simdOff + i.simd;
+
+            auto startOff = (simdOff * length) / simdOrig;
+            auto endOff = ((simdOff + simd0) * length - 1) / simdOrig;
             isplit.simd = simd0;
+            isplit.range.start = i.range.start + startOff;
+            isplit.range.end = i.range.start + endOff;
 
             auto advance = [grf](CopyOperand &op, int n) {
                 if (op.kind == CopyOperand::Flag)
@@ -2563,8 +2541,6 @@ void CopyPlan::legalizeSIMD(bool initial)
                 op.offset -= grfOffset * ne;
             };
 
-            i.cnumSub++;
-
             i.simd -= simd0;
             advance(i.dst, simd0);
             advance(i.src0, simd0);
@@ -2572,33 +2548,14 @@ void CopyPlan::legalizeSIMD(bool initial)
             advance(i.src2, simd0);
             advance(i.flag, simd0);
             splitting = (i.simd > 0);
+            simdOff += simd0;
         } else {
-            if (i.cnumSub > 0)
-                cnumOffsets.emplace_back(i.cnumMax, i.cnumSub - 1);
+            simdOff = 0;
             n++;    /* done with this instruction */
         }
     }
 
     mergeChanges();
-
-    /* Split apart cnums */
-    int16_t offset = 0;
-    std::sort(cnumOffsets.begin(), cnumOffsets.end());
-    for (auto &cnumOffset : cnumOffsets)
-        cnumOffset.second = offset += cnumOffset.second;
-
-    for (auto &i : insns) {
-        int16_t offset = 0;
-        for (auto &cnumOffset : cnumOffsets) {
-             if (i.cnumMax <= cnumOffset.first)
-                 break;
-            offset = cnumOffset.second;
-        }
-        i.cnumMin += offset;
-        i.cnumMax += offset;
-        if (i.cnumMin == i.cnumMax)
-            i.cnumMin = i.cnumMax += i.cnumSub;
-    }
 
     if (rerun)
         legalizeSIMD(initial);
@@ -3006,7 +2963,7 @@ void CopyPlan::sort(SortType type)
             case SortType::PhaseOnly:
                 return std::make_tuple(i.phase, 0, 0);
             case SortType::SourceOrder:
-                return std::make_tuple(i.phase, int(i.cnumMin), int(i.cnumMax));
+                return std::make_tuple(i.phase, int(i.range.start), int(i.range.end));
             case SortType::Register:
             default:
                 auto &op = i.dst.temp ? i.src0 : i.dst;
@@ -3355,7 +3312,7 @@ void CopyPlan::optimizeWriteCombine()
             n++; continue;
         }
 
-        auto cnumMin = i0.cnumMin, cnumMax = i0.cnumMax;
+        auto range = i0.range;
         size_t n1;
         for (n1 = n + 1; n1 < ninsn; n1++) {
             auto &i1 = insns[n1];
@@ -3365,17 +3322,14 @@ void CopyPlan::optimizeWriteCombine()
             if (i1.dst.temp && i0.dst.temp && i1.dst.value != i0.dst.value) break;
             if (i1.dst.offset + n != i0.dst.offset + n1) break;
             if (i0.dst.offset / 4 != i1.dst.offset / 4) break;
-            cnumMin = std::min(cnumMin, i1.cnumMin);
-            cnumMax = std::max(cnumMax, i1.cnumMax);
+            range |= i1.range;
         }
 
         auto length = int(rounddown_pow2(n1 - n));
         for (n1 = n; n1 + 1 < n + length; n1++)
             insns[n1].atomic = true;
-        for (n1 = n; n1 < n + length; n1++) {
-            insns[n1].cnumMin = cnumMin;
-            insns[n1].cnumMax = cnumMax;
-        }
+        for (n1 = n; n1 < n + length; n1++)
+            insns[n1].range = range;
 
         n += length;
     }
@@ -3483,17 +3437,17 @@ struct AllocationManager {
         return allocateRange(temp);
     }
 
-    void release(int cnum) {
-        release(cnum, grfAllocations);
-        release(cnum, flagAllocations);
+    void release(int end) {
+        release(end, grfAllocations);
+        release(end, flagAllocations);
     }
 
 private:
     template <typename AllocationType>
-    void release(int cnum, std::vector<AllocationType> &allocs) {
+    void release(int end, std::vector<AllocationType> &allocs) {
         for (size_t i = 0; i < allocs.size();) {
             auto &alloc = allocs[i];
-            if (alloc.cnum < cnum) {
+            if (alloc.end < end) {
                 dealloc(alloc);
                 std::swap(allocs[i], allocs[allocs.size() - 1]);
                 allocs.pop_back();
@@ -3505,12 +3459,12 @@ private:
 protected:
     struct GRFAllocation {
         GRFRange range;
-        int cnum;
+        int end;
     };
 
     struct FlagAllocation {
         FlagRegister flag;
-        int cnum;
+        int end;
     };
 
     void dealloc(GRFAllocation &alloc) { grfAllocator(0, alloc.range); }
@@ -3521,7 +3475,7 @@ protected:
         flagAllocator(temp.bytes, flag);
         if (!flag.isValid()) return false;
         temp.assignment = flag.index();
-        flagAllocations.push_back({flag, temp.cnumMax});
+        flagAllocations.push_back({flag, temp.range.end});
         return true;
     }
 
@@ -3531,7 +3485,7 @@ protected:
         grfAllocator(grfs, range);
         if (!range.isValid()) return false;
         temp.assignment = range.getBase();
-        grfAllocations.push_back({range, temp.cnumMax});
+        grfAllocations.push_back({range, temp.range.end});
         return true;
     }
 
@@ -3547,8 +3501,7 @@ void CopyPlan::materializeTemps(const GRFAllocator &grfAllocator, const FlagAllo
 {
     std::vector<CopyInstruction> sortedInsns;
     AllocationManager manager(hw, grfAllocator, flagAllocator);
-    uint16_t minPhaseTemp = 0xFFFF, maxPhaseTemp = 0xFFFF;
-    int ncnum = 0;
+    uint16_t minPhaseTemp = 0xFFFF, maxPhaseTemp = 0x0;
 
     sortedInsns.reserve(insns.size());
     manager.reserve(temps.size());
@@ -3562,89 +3515,107 @@ void CopyPlan::materializeTemps(const GRFAllocator &grfAllocator, const FlagAllo
         }
         if (haveTemp) {
             minPhaseTemp = std::min(minPhaseTemp, i.phase);
-            maxPhaseTemp = i.phase;
+            maxPhaseTemp = std::max(maxPhaseTemp, i.phase);
         }
-        ncnum = std::max(ncnum, i.cnumMax + 1);
     }
 
-    /* Check which instruction groups must be issued together */
-    auto groupInstructions = [&](std::vector<bool> &joined, bool reset = false) {
-        if (reset) joined.assign(joined.size(), false);
+    // No temporaries used
+    if (minPhaseTemp > maxPhaseTemp) return;
 
-        for (auto &i: insns)
-            if (i.phase >= minPhaseTemp && i.phase <= maxPhaseTemp)
-                for (int cnum = i.cnumMin; cnum < i.cnumMax; cnum++)
-                    joined[cnum] = true;
+    /* Check which instruction groups must be issued together */
+    auto groupInstructions = [&](std::vector<bool> &joined, CopyRange &range) {
+        range = {};
+        joined.assign(joined.size(), false);
+
+        for (auto &i: insns) {
+            if (i.phase < minPhaseTemp || i.phase > maxPhaseTemp)
+                continue;
+            for (auto j = i.range.start; j < i.range.end; j++)
+                joined[j] = true;
+            range |= i.range;
+        }
     };
 
-    std::vector<bool> joined(ncnum);
-    groupInstructions(joined);
+    CopyRange range0;
+    for (auto &i : insns)
+        range0 |= i.range;
 
-    /* Sort instructions and temporaries by parent instruction (cnum) */
-    std::vector<std::pair<int, int>> cnumOrder;
-    cnumOrder.reserve(temps.size());
+    CopyRange range;
+    std::vector<bool> joined(range0.end + 1);
+    groupInstructions(joined, range);
 
-    for (size_t t = 0; t < temps.size(); t++)
-        cnumOrder.push_back(std::make_pair(temps[t].cnumMin, int(t)));
-    std::sort(cnumOrder.begin(), cnumOrder.end());
+    /* Sort instructions and temporaries by element index */
 
-    auto emit = [&](int cnumMin, int cnumMax, uint16_t minPhase, uint16_t maxPhase) {
+    auto cmp = [&](int i, int j) {
+        const auto &ri = temps[i].range;
+        const auto &rj = temps[j].range;
+        if (ri != rj) return ri < rj;
+        return i < j;
+    };
+
+    std::vector<int> rangeOrder(temps.size());
+    std::iota(rangeOrder.begin(), rangeOrder.end(), 0);
+    std::sort(rangeOrder.begin(), rangeOrder.end(), cmp);
+
+    auto emit = [&](const CopyRange &range, uint16_t minPhase, uint16_t maxPhase) {
         bool emitted = false;
-        for (const auto &i: insns)
-            if (i.cnumMin >= cnumMin && i.cnumMax < cnumMax && i.phase >= minPhase && i.phase <= maxPhase) {
-                sortedInsns.push_back(i);
-                emitted = true;
-            }
+        for (const auto &i: insns) {
+            if (i.phase < minPhase || i.phase > maxPhase)
+                continue;
+            if (i.range.start < range.start || i.range.end > range.end)
+                continue;
+            sortedInsns.push_back(i);
+            emitted = true;
+        }
         return emitted;
     };
 
     /* Issue instructions up to first temporary */
     if (minPhaseTemp > 0x0000)
-        emit(0, ncnum, 0x0000, minPhaseTemp - 1);
+        emit(range0, 0x0000, minPhaseTemp - 1);
 
-    auto order = cnumOrder.begin();
-    const auto end = cnumOrder.end();
-    int cnum0 = 0, cnum1 = ncnum;
+    auto order = rangeOrder.begin();
+    const auto end = rangeOrder.end();
     while (order != end) {
         for (; order != end; ++order) {
-            auto &temp = temps[order->second];
+            auto &temp = temps[*order];
             // Don't allocate unused temporaries.
-            if (temp.cnumMin > temp.cnumMax) continue;
+            if (!temp.range) continue;
             if (!manager.allocate(temp)) {
-                cnum1 = temp.cnumMin; break;
+                range.end = temp.range.start - 1; break;
             }
         }
 
         /* Back off to the nearest instruction group boundary */
-        while (cnum1 > 0 && joined[cnum1 - 1])
-            cnum1--;
-        if (cnum1 <= cnum0) {
+        while (range.end >= range.start && joined[range.end])
+            range.end--;
+        if (range.end < range.start) {
             bool emitted = false;
             if (order != end) {
-                auto &temp = temps[order->second];
+                auto &temp = temps[*order];
                 if (temp.phaseMin > minPhaseTemp) {
-                    emitted = emit(0, ncnum, minPhaseTemp, temp.phaseMin - 1);
+                    emitted = emit(range0, minPhaseTemp, temp.phaseMin - 1);
                     minPhaseTemp = temp.phaseMin;
                 }
             }
             if (!emitted)
                 throw out_of_registers_exception();
-            groupInstructions(joined, /*reset=*/true);
+            groupInstructions(joined, range);
         }
 
         /* Issue instructions for this batch of instruction groups */
-        emit(cnum0, cnum1, minPhaseTemp, maxPhaseTemp);
+        emit(range, minPhaseTemp, maxPhaseTemp);
 
-        manager.release(cnum1);
-        cnum0 = cnum1;
-        cnum1 = ncnum;
+        manager.release(range.end + 1);
+        range.start = range.end + 1;
+        range.end = range0.end;
     }
 
     /* Issue any remaining instructions */
-    if (cnum0 < ncnum)
-        emit(cnum0, cnum1, minPhaseTemp, maxPhaseTemp);
+    if (range.start <= range0.end)
+        emit(range, minPhaseTemp, maxPhaseTemp);
     if (maxPhaseTemp < 0xFFFF)
-        emit(0, ncnum, maxPhaseTemp + 1, 0xFFFF);
+        emit(range0, maxPhaseTemp + 1, 0xFFFF);
 
     std::swap(insns, sortedInsns);
 
@@ -3781,7 +3752,7 @@ void CopyInstruction::dump(std::ostream &os, const CopyPlan &plan, bool sortInfo
         os << "\t{Atomic}";
 
     if (sortInfo)
-        os << "\t\t(phase = " << phase << ", cnum = [" << cnumMin << ", " << cnumMax << "])";
+        os << "\t\t(phase = " << phase << ", range = " << range.str() << ')';
 }
 
 void CopyOperand::dump(std::ostream &os) const

@@ -523,13 +523,16 @@ static int fill_grouped_offsets(
     return OK;
 }
 
-// Fill grouped data (values + offsets) for SRC
-// Note: currently only M dimension is supported for grouping
+// Fill grouped data (values + offsets) for SRC (2Dx3D and 2Dx2D variants) or
+// WEI (2Dx2D variant only)
+// The values buffer is filled as a contiguous 2D
+// tensor (offsets describe per-group slicing, not value placement)
 static int fill_grouped_data(data_kind_t kind, const prb_t *prb,
         dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
-    if (kind != SRC) {
+    if (kind != SRC && kind != WEI) {
         BENCHDNN_PRINT(0,
-                "Error: grouped filling only supports SRC, got kind=%d\n",
+                "Error: grouped filling only supports SRC or WEI, got "
+                "kind=%d\n",
                 (int)kind);
         return FAIL;
     }

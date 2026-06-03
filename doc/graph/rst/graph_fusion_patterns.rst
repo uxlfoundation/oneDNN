@@ -10,6 +10,7 @@ Fusion Patterns
    dev_guide_graph_gqa
    dev_guide_graph_sdpa_compressed_kv
    dev_guide_graph_sdpa
+   dev_guide_graph_sdpa_quantized
    MatMul <dev_guide_graph_matmul_fusion_patterns>
    Quantized MatMul <dev_guide_graph_quantized_matmul_fusion_patterns>
    Convolution <dev_guide_graph_convolution_fusion_patterns>

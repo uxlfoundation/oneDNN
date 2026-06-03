@@ -1549,7 +1549,15 @@ static bool parse_fix_times_per_prb(
     bool parsed = parse_single_value_option(fix_times_per_prb,
             default_fix_times_per_prb, utils::stoll_safe, str, option_name,
             help);
-    if (parsed) fix_times_per_prb = MAX2(0, fix_times_per_prb);
+    if (parsed) {
+        if (bench_mode == bench_mode_t::perf_sim) {
+            BENCHDNN_PRINT(0, "%s\n",
+                    "Error: mode=S can't be adjusted. It implies "
+                    "fix-times-per-prb=1.");
+            exit(2);
+        }
+        fix_times_per_prb = MAX2(0, fix_times_per_prb);
+    }
     return parsed;
 }
 
@@ -1648,6 +1656,7 @@ static bool parse_mode(
               "    * `C` for correctness testing.\n"
               "    * `P` for performance testing.\n"
               "    * `F` for fast performance testing (GPU only).\n"
+              "    * `S` for simulation performance testing.\n"
               "    * `B` for bitwise (numerical determinism) testing.\n"
               "    More details at "
             + doc_url + "benchdnn_general_info.md\n";
@@ -1683,6 +1692,12 @@ static bool parse_mode(
                     break;
                 case 'b':
                 case 'B': mode = bench_mode_t::bitwise; break;
+                case 's':
+                case 'S':
+                    mode = bench_mode_t::perf_sim;
+                    fix_times_per_prb = 1;
+                    bench_mode_modifier |= mode_modifier_t::no_ref_memory;
+                    break;
                 default:
                     BENCHDNN_PRINT(0, "%s\n%s", "Error: mode value is invalid.",
                             help.c_str());

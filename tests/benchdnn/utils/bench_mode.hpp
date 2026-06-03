@@ -38,6 +38,8 @@ enum class mode_bit_t : unsigned {
     fast = 0x20,
     // `bitwise` bit is for a numerical determinism validation flow.
     bitwise = 0x40,
+    // `sim` bit is for a single-run simulation-friendly performance flow.
+    sim = 0x80,
 };
 
 // Mode modifiers is an extension of `bench_mode_t` abstraction which specifies
@@ -67,6 +69,7 @@ enum class bench_mode_t : unsigned {
     corr = exec | static_cast<unsigned>(mode_bit_t::corr),
     perf = exec | static_cast<unsigned>(mode_bit_t::perf),
     perf_fast = perf | static_cast<unsigned>(mode_bit_t::fast),
+    perf_sim = perf | static_cast<unsigned>(mode_bit_t::sim),
     bitwise = exec | static_cast<unsigned>(mode_bit_t::bitwise),
 };
 

@@ -1149,9 +1149,10 @@ std::ostream &dump_global_params(std::ostream &s) {
     // updated default values take effect before parsing a state of a problem.
     if (canonical || bench_mode != default_bench_mode)
         s << "--mode=" << bench_mode << " ";
-    // Don't dump modifiers if F mode is used to keep the repro simple.
+    // Don't dump modifiers if F or S mode is used to keep the repro simple.
     if (canonical
             || (bench_mode != bench_mode_t::perf_fast
+                    && bench_mode != bench_mode_t::perf_sim
                     && bench_mode_modifier != default_bench_mode_modifier))
         s << "--mode-modifier=" << bench_mode_modifier << " ";
     // Don't dump max_ms_per_prb if F mode is used to keep the repro simple.
@@ -1159,7 +1160,10 @@ std::ostream &dump_global_params(std::ostream &s) {
             || (bench_mode != bench_mode_t::perf_fast
                     && max_ms_per_prb != default_max_ms_per_prb))
         s << "--max-ms-per-prb=" << max_ms_per_prb << " ";
-    if (canonical || fix_times_per_prb != default_fix_times_per_prb)
+    // Don't dump fix_times_per_prb if S mode is used to keep the repro simple.
+    if (canonical
+            || (bench_mode != bench_mode_t::perf_sim
+                    && fix_times_per_prb != default_fix_times_per_prb))
         s << "--fix-times-per-prb=" << fix_times_per_prb << " ";
 
     s << "--" << driver_name << " ";

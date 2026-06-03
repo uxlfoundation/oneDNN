@@ -366,6 +366,9 @@ bool cold_cache_t::should_stop() const {
 
 bool cold_cache_t::use_cold_cache(
         const std::vector<dnnl_exec_arg_t> &dnnl_args) const {
+    // Cold cache is not supported in single-run/simulation mode.
+    if (has_bench_mode_bit(mode_bit_t::sim)) return false;
+
     const bool cc_wei
             = cold_cache_input_.cold_cache_mode_ == cold_cache_mode_t::wei;
     const bool cc_all

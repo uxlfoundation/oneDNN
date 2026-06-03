@@ -35,9 +35,11 @@ std::ostream &operator<<(std::ostream &s, bench_mode_t mode) {
     if (mode == bench_mode_t::exec) s << "R";
     if (has_bench_mode_bit(mode_bit_t::corr)) s << "C";
     if (has_bench_mode_bit(mode_bit_t::perf)
-            && !has_bench_mode_bit(mode_bit_t::fast))
+            && !has_bench_mode_bit(mode_bit_t::fast)
+            && !has_bench_mode_bit(mode_bit_t::sim))
         s << "P";
     if (has_bench_mode_bit(mode_bit_t::fast)) s << "F";
+    if (has_bench_mode_bit(mode_bit_t::sim)) s << "S";
     if (has_bench_mode_bit(mode_bit_t::bitwise)) s << "B";
     return s;
 }

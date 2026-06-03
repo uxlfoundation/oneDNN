@@ -700,9 +700,12 @@ int update_timer_with_profiling_info(timer::timer_t &t, bool use_profiling,
 
 inline int measure_perf_individual(timer::timer_t &t, dnnl_stream_t stream,
         perf_function_t &perf_func, std::vector<dnnl_exec_arg_t> &dnnl_args) {
-    // Warm-up run.
-    DNN_SAFE(perf_func(stream, dnnl_args), WARN);
-    DNN_SAFE(dnnl_stream_wait(stream), CRIT);
+    // Warm-up run, this is not measured due to possibility the associated
+    // kernel has not been built and skews the results.
+    if (!has_bench_mode_bit(mode_bit_t::sim)) {
+        DNN_SAFE(perf_func(stream, dnnl_args), WARN);
+        DNN_SAFE(dnnl_stream_wait(stream), CRIT);
+    }
 
     cold_cache_t cold_cache(dnnl_args, stream);
 
@@ -727,9 +730,14 @@ inline int measure_perf_aggregate(timer::timer_t &t,
 
     // Warm-up run, this is not measured due to possibility the associated
     // kernel has not been built and skews the results.
+    if (!has_bench_mode_bit(mode_bit_t::sim)) {
+        for (size_t j = 0; j < v_stream.size(); j++) {
+            DNN_SAFE(perf_func(v_stream[j], dnnl_args[j]), WARN);
+            DNN_SAFE(dnnl_stream_wait(v_stream[j]), CRIT);
+        }
+    }
+
     for (size_t j = 0; j < v_stream.size(); j++) {
-        DNN_SAFE(perf_func(v_stream[j], dnnl_args[j]), WARN);
-        DNN_SAFE(dnnl_stream_wait(v_stream[j]), CRIT);
         cold_cache[j] = cold_cache_t(dnnl_args[j], v_stream[j]);
         if (use_profiling) reset_gpu_profiling(v_stream[j]);
     }

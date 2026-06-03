@@ -96,6 +96,16 @@ otherwise. The following modes (`--mode`) are supported:
   enabled to align data filling with the Fast Performance mode.
 * Fast Performance (`F`): This flow executes Performance mode with `P` and `M`
   modifiers (see below) enabled and updated maximum measuring time per case.
+* Simulation Performance (`S`): This flow is intended for scenarios where
+  execution time is prohibitively expensive, such as running under a hardware
+  simulator. It behaves like Performance mode with the following specifics:
+  - Input tensor fill-in is skipped. Since data values are not important (no
+    correctness check is performed), the `M` modifier (see below) is enabled,
+    which also skips mapping/unmapping memory objects.
+  - The warm-up run is skipped.
+  - Execution is limited to a single run per problem (equivalent to
+    `--fix-times-per-prb=1`).
+  - Cold cache is not supported.
 
 ## Mode modifiers
 

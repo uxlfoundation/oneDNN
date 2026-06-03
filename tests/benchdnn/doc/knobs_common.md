@@ -154,6 +154,10 @@ runtimes. `KIND` values can be `usm` (default), `buffer`, `usm_device`
                automatically enabled to align data filling with `--mode=F`
   - `F` or `f` for fast performance testing, an alias for
                `--mode=P --mode-modifier=PM --max-ms-per-prb=10`
+  - `S` or `s` for simulation performance testing: skips warm-up, skips input
+    tensor fill-in, limits execution to a single run per problem, and disables
+    cold cache. Useful when execution time is prohibitively expensive, e.g.
+    when running under a hardware simulator.
   - `B` or `b` for bitwise (numerical determinism) testing
   - `R` or `r` for run mode, enables `--mode-modifier=M`
   - `I` or `i` for initialization mode

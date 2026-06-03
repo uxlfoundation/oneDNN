@@ -1059,6 +1059,14 @@ int dnn_mem_t::initialize(
 
     SAFE(initialize_memory_create(handle_info), CRIT);
 
+    // In single-run/simulation mode, data values are not important since no
+    // correctness check is performed, so input data fill-in (and the associated
+    // map/unmap) is skipped to reduce overhead. The `no_ref_memory` modifier is
+    // set alongside `--mode=S` so the cleanup path skips unmapping. Sparse memory
+    // objects rely on metadata buffers that must always be filled to avoid
+    // out-of-bounds access, so they fall through to the regular handling.
+    if (has_bench_mode_bit(mode_bit_t::sim) && !is_sparse_md()) return OK;
+
     // If the memory object doesn't own its buffers, nothing to do.
     if (!handle_info.is_allocate()) return OK;
 

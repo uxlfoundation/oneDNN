@@ -377,17 +377,7 @@ DECLARE_2D_TILE_SLM_ADD_T(a_tile_type, float, SUBGROUP_SIZE,
 
 #define binary_add(x, y) ((x) + (y))
 
-#if defined(QRY_DT_F16)
-inline float round_to_dq_atomic(float v) {
-        return convert_float(convert_half(v));
-}
-#endif
 
-#if defined(DST_DT_F16)
-inline float round_to_dkdv_partial(float v) {
-        return convert_float(convert_half(v));
-}
-#endif
 
 inline void tile_load_k(k_tile_type *K_tile, const global KEY_DATA_T *K,
         int seq_len, int head_size, int ldk, int seq_off, int sg_ij,
@@ -494,6 +484,12 @@ typedef dv_reduce_tile_type dv_acc_tile_type;
 typedef a_reduce_tile_type dk_acc_tile_type;
 inline float round_to_dst(float v) {
     return v;
+}
+inline float round_to_dq_atomic(float v) {
+        return convert_float(convert_half(v));
+}
+inline float round_to_dkdv_partial(float v) {
+        return convert_float(convert_half(v));
 }
 #else
 #define SLM_DKDV_DATA_T float
@@ -950,6 +946,9 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #endif
 
             // Store softmax for ugemm_vs B-operand
+#if REDUCE_DKDV_F16
+            tile_elementwise_s(S_tile, round_to_dkdv_partial);
+#endif
 #if USE_SYSTOLIC_UKERNEL
             s_tile_type_packed S_tile_packed;
             tile_copy_to_vec2_cvt(
@@ -981,7 +980,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
             // accumulate dv tile to slm
             if (sg_ij < sg_per_wg_BcD) {
-#if defined(DST_DT_F16)
+#if REDUCE_DKDV_F16
                 // Keep per-q partials on f16 boundaries before SLM reduction.
                 tile_elementwise_s(dV_tile1, round_to_dkdv_partial);
 #endif
@@ -1009,7 +1008,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         p_sum_tile_type D_i;
         tile_fill(D_i, 0.0f);
         tile_load(&D_i, Di, q0end, 1, q0end, q0 + sg_j0_kq, 0);
-#if defined(DST_DT_F16)
+#if REDUCE_DKDV_F16
         tile_elementwise_s(D_i, round_to_dkdv_partial);
 #endif
         tile_hbroadcast_sub(&dP_tile,
@@ -1033,9 +1032,9 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
 #define binary_mul_scale(x, y) ((x) * (y) * scale)
             tile_binary(dP_tile, S2_tile, binary_mul_scale);
-#if defined(DST_DT_F16)
-                        // Stabilize dP payload before it is consumed by dK/dQ paths.
-                        tile_elementwise_s(dP_tile, round_to_dkdv_partial);
+#if REDUCE_DKDV_F16
+			// Stabilize dP payload before it is consumed by dK/dQ paths.
+			tile_elementwise_s(dP_tile, round_to_dkdv_partial);
 #endif
         }
 
@@ -1054,7 +1053,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         {
             p_tile_type_reblock P_tile_reblock;
             tile_copy_reblock(dP_tile, &P_tile_reblock);
-#if defined(DST_DT_F16)
+#if REDUCE_DKDV_F16
             // Align dS payload precision before it feeds both dK and dQ paths.
             tile_elementwise_s(P_tile_reblock, round_to_dkdv_partial);
 #endif
@@ -1097,7 +1096,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
             // dk slm tile
             if (sg_ij < sg_per_wg_BcD) {
-#if defined(DST_DT_F16)
+#if REDUCE_DKDV_F16
                 // Keep per-q partials on f16 boundaries before SLM reduction.
                 tile_elementwise_s(dK_tile1, round_to_dkdv_partial);
 #endif

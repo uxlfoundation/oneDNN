@@ -21,7 +21,7 @@
 --reset --skip-impl=ref --stag=any --wtag=any --dtag=bac --dt=f16:f16:u8  5x5777x134:5x134x377
 --reset --skip-impl=ref --stag=any --wtag=cab --dtag=abc --dt=f16:u8:f16 --attr-fpmath=f16:true 5x143x5194:5x5194x2
 --reset --skip-impl=ref --stag=cab --wtag=cab --dtag=abc --dt=f32:s8:f16 --attr-fpmath=strict:true 2x25x745:2x745x7130
---reset --skip-impl=ref --stag=acb --wtag=any --dtag=abc --dt=f16:u4:f32 --attr-fpmath=f16:true 2x2764x182:2x182x27
+--reset --skip-impl=ref --stag=acb --wtag=acb --dtag=abc --dt=f16:u4:f32 --attr-fpmath=f16:true 2x2764x182:2x182x27
 --reset --skip-impl=ref --stag=cab --wtag=acb --dtag=bac --dt=bf16:u8:bf16 --attr-fpmath=bf16:true 4x3x4:4x4x2
 --reset --skip-impl=ref --stag=abc --wtag=bac --dtag=abc --dt=bf16:bf16:u8  3x2468x2:3x2x49
 --reset --skip-impl=ref --stag=abc --wtag=abc --dtag=any --dt=s8:u8:f16  2x772x19:2x19x101
@@ -32,7 +32,7 @@
 --reset --skip-impl=ref --stag=bac --wtag=acb --dtag=bac --dt=f32:u8:f16 --attr-fpmath=tf32:true 2x21x2312:2x2312x1
 --reset --skip-impl=ref --stag=any --wtag=cab --dtag=any --dt=bf16:s4:bf16 --attr-fpmath=bf16:true  1x329x596:1x596x2092
 --reset --skip-impl=ref --stag=abc --wtag=any --dtag=bac --dt=f32:s8:bf16 --attr-fpmath=f16:true 2x559x1142:2x1142x4
---reset --skip-impl=ref --stag=abc --wtag=any --dtag=any --dt=f16:s4:f16 --attr-fpmath=f16:true  3x22x1:3x1x81
+--reset --skip-impl=ref --stag=abc --wtag=any --dtag=any --dt=f16:s4:f16 --attr-fpmath=f16:true  3x22x1:3x1x82
 --reset --skip-impl=ref --stag=cab --wtag=acb --dtag=bac --dt=f8_e5m2:f8_e5m2:f16  4x3x5:4x5x42
 --reset --skip-impl=ref --stag=any --wtag=abc --dtag=bac --dt=f8_e5m2:f8_e4m3:f32  7x2x1517:7x1517x591
 --reset --skip-impl=ref --stag=abc --wtag=cab --dtag=bac --dt=f32:u8:bf16 --attr-fpmath=strict:true 2x1485x784:2x784x159
@@ -165,7 +165,7 @@
 --reset --skip-impl=ref --stag=cab --wtag=cab --dtag=bac --dt=f32:u8:f32 --attr-fpmath=strict:true 1x223x370:1x370x5
 --reset --skip-impl=ref --stag=acb --wtag=cab --dtag=bac --dt=f32:s8:f32 --attr-fpmath=bf16:true 2x33x7364:2x7364x11
 --reset --skip-impl=ref --stag=cab --wtag=bac --dtag=abc --dt=f8_e4m3:f8_e4m3:f16  1x26x54:1x54x791
---reset --skip-impl=ref --stag=any --wtag=any --dtag=abc --dt=f16:s4:f16 --attr-fpmath=f16:true 1x53x420:1x420x85
+--reset --skip-impl=ref --stag=any --wtag=acb --dtag=abc --dt=f16:s4:f16 --attr-fpmath=f16:true 1x53x420:1x420x85
 --reset --skip-impl=ref --stag=bac --wtag=cab --dtag=bac --dt=f32:s8:f16 --attr-fpmath=strict:true 8x2262x20:8x20x1908
 --reset --skip-impl=ref --stag=acb --wtag=bac --dtag=bac --dt=s8:u8:s32  2x1035x2589:2x2589x2
 --reset --skip-impl=ref --stag=acb --wtag=any --dtag=bac --dt=f8_e5m2:f8_e5m2:bf16  7x4x10:7x10x4
@@ -181,7 +181,7 @@
 --reset --skip-impl=ref --stag=acb --wtag=cab --dtag=abc --dt=f8_e4m3:f8_e5m2:bf16  3x7058x143:3x143x30
 --reset --skip-impl=ref --stag=cab --wtag=abc --dtag=any --dt=bf16:bf16:bf16  3x77x7030:3x7030x2691
 --reset --skip-impl=ref --stag=acb --wtag=any --dtag=abc --dt=f16:s8:f16 --attr-fpmath=f16:true  2x4848x2:2x2x43
---reset --skip-impl=ref --stag=any --wtag=any --dtag=bac --dt=bf16:s4:bf16 --attr-fpmath=bf16:true  2x2076x9:2x9x1317
+--reset --skip-impl=ref --stag=any --wtag=any --dtag=bac --dt=bf16:s4:bf16 --attr-fpmath=bf16:true  2x2076x9:2x9x1318
 --reset --skip-impl=ref --stag=abc --wtag=any --dtag=abc --dt=f64:f64:f64  1x112x7:1x7x10
 --reset --skip-impl=ref --stag=cab --wtag=abc --dtag=abc --dt=bf16:u4:bf16 --attr-fpmath=bf16:true  4x808x4:4x4x4
 --reset --skip-impl=ref --stag=bac --wtag=cab --dtag=any --dt=f16:f16:f16  2x2x4:2x4x14
@@ -205,7 +205,7 @@
 --reset --skip-impl=ref --stag=acb --wtag=bac --dtag=bac --dt=f32:u8:f32 --attr-fpmath=f16:true 3x84x4350:3x4350x234
 --reset --skip-impl=ref --stag=cab --wtag=bac --dtag=any --dt=f32:s8:bf16 --attr-fpmath=strict:true 2x548x4:2x4x23
 --reset --skip-impl=ref --stag=acb --wtag=cab --dtag=bac --dt=bf16:s4:f32 --attr-fpmath=bf16:true 7x349x12:7x12x2
---reset --skip-impl=ref --stag=any --wtag=any --dtag=abc --dt=bf16:u4:bf16 --attr-fpmath=bf16:true 3x4x921:3x921x5359
+--reset --skip-impl=ref --stag=any --wtag=any --dtag=abc --dt=bf16:u4:bf16 --attr-fpmath=bf16:true 3x4x921:3x921x5360
 --reset --skip-impl=ref --stag=any --wtag=abc --dtag=bac --dt=f8_e5m2:f8_e4m3:f16  1x527x18:1x18x3938
 --reset --skip-impl=ref --stag=acb --wtag=acb --dtag=abc --dt=f32:s8:bf16 --attr-fpmath=bf16:true 5x1470x824:5x824x151
 --reset --skip-impl=ref --stag=acb --wtag=abc --dtag=any --dt=f16:f16:f32  3x1779x72:3x72x506
@@ -392,7 +392,7 @@
 --reset --skip-impl=ref --stag=any --wtag=any --dtag=abc --dt=f32:f32:f32 --attr-fpmath=bf16 2x5911x18:2x18x12
 --reset --skip-impl=ref --stag=abc --wtag=abc --dtag=any --dt=f16:s8:f32 --attr-fpmath=f16:true 2x3434x56:2x56x5545
 --reset --skip-impl=ref --stag=any --wtag=bac --dtag=bac --dt=f16:u8:f16 --attr-fpmath=f16:true 1x3x24:1x24x6
---reset --skip-impl=ref --stag=acb --wtag=any --dtag=any --dt=f16:s4:f16 --attr-fpmath=f16:true  5x154x6433:5x6433x3
+--reset --skip-impl=ref --stag=acb --wtag=any --dtag=any --dt=f16:s4:f16 --attr-fpmath=f16:true  5x154x6433:5x6433x4
 --reset --skip-impl=ref --stag=bac --wtag=cab --dtag=any --dt=f32:u8:f32 --attr-fpmath=f16:true 3x1028x2242:3x2242x137
 --reset --skip-impl=ref --stag=cab --wtag=bac --dtag=abc --dt=f32:u8:f16 --attr-fpmath=bf16:true 6x9x4935:6x4935x21
 --reset --skip-impl=ref --stag=cab --wtag=bac --dtag=bac --dt=bf16:bf16:u8  3x3467x13:3x13x4
@@ -405,7 +405,7 @@
 --reset --skip-impl=ref --stag=acb --wtag=bac --dtag=any --dt=f16:u4:f16 --attr-fpmath=f16:true  2x7414x9:2x9x2
 --reset --skip-impl=ref --stag=bac --wtag=any --dtag=abc --dt=f8_e4m3:f8_e4m3:f32  6x2162x3:6x3x2690
 --reset --skip-impl=ref --stag=cab --wtag=abc --dtag=any --dt=f32:f32:f32 --attr-fpmath=f16 3x72x5146:3x5146x509
---reset --skip-impl=ref --stag=any --wtag=any --dtag=bac --dt=bf16:s4:f32 --attr-fpmath=bf16:true 4x7x2797:4x2797x15
+--reset --skip-impl=ref --stag=any --wtag=any --dtag=bac --dt=bf16:s4:f32 --attr-fpmath=bf16:true 4x7x2797:4x2797x16
 --reset --skip-impl=ref --stag=any --wtag=any --dtag=bac --dt=f16:u8:f16 --attr-fpmath=f16:true 2x33x337:2x337x50
 --reset --skip-impl=ref --stag=abc --wtag=cab --dtag=any --dt=f8_e5m2:f8_e4m3:f32  1x2x707:1x707x2290
 --reset --skip-impl=ref --stag=cab --wtag=bac --dtag=abc --dt=f32:u8:bf16 --attr-fpmath=bf16:true 2x9x159:2x159x69
@@ -457,7 +457,7 @@
 --reset --skip-impl=ref --stag=acb --wtag=acb --dtag=abc --dt=s8:u8:u8  5x3328x1:5x1x889
 --reset --skip-impl=ref --stag=cab --wtag=abc --dtag=abc --dt=f16:u8:f16 --attr-fpmath=f16:true  4x2x100:4x100x6
 --reset --skip-impl=ref --stag=any --wtag=bac --dtag=bac --dt=s8:u8:u8  1x2x2:1x2x320
---reset --skip-impl=ref --stag=abc --wtag=any --dtag=bac --dt=f16:s4:f32 --attr-fpmath=f16:true 2x2914x5:2x5x23
+--reset --skip-impl=ref --stag=abc --wtag=any --dtag=bac --dt=f16:s4:f32 --attr-fpmath=f16:true 2x2914x5:2x5x24
 --reset --skip-impl=ref --stag=acb --wtag=bac --dtag=abc --dt=f32:u8:f32 --attr-fpmath=tf32:true 2x34x1328:2x1328x17
 --reset --skip-impl=ref --stag=abc --wtag=bac --dtag=abc --dt=f32:f32:f32 --attr-fpmath=bf16 4x1x49:4x49x22
 --reset --skip-impl=ref --stag=abc --wtag=cab --dtag=abc --dt=f16:s8:f16 --attr-fpmath=f16:true  5x4x6257:5x6257x6555
@@ -534,7 +534,7 @@
 --reset --skip-impl=ref --stag=acb --wtag=bac --dtag=abc --dt=f16:s8:f16 --attr-fpmath=f16:true  3x1381x11:3x11x4408
 --reset --skip-impl=ref --stag=acb --wtag=acb --dtag=abc --dt=bf16:u4:bf16 --attr-fpmath=bf16:true 8x599x1388:8x1388x1
 --reset --skip-impl=ref --stag=bac --wtag=bac --dtag=any --dt=f32:s8:f32 --attr-fpmath=tf32:true 2x3x55:2x55x131
---reset --skip-impl=ref --stag=acb --wtag=any --dtag=any --dt=f16:s4:f16 --attr-fpmath=f16:true 3x2785x46:3x46x235
+--reset --skip-impl=ref --stag=acb --wtag=acb --dtag=any --dt=f16:s4:f16 --attr-fpmath=f16:true 3x2785x46:3x46x235
 --reset --skip-impl=ref --stag=acb --wtag=cab --dtag=abc --dt=bf16:s8:bf16 --attr-fpmath=bf16:true  4x45x8018:4x8018x102
 --reset --skip-impl=ref --stag=acb --wtag=abc --dtag=bac --dt=f8_e4m3:f8_e5m2:f32  4x3x5318:4x5318x4
 --reset --skip-impl=ref --stag=any --wtag=any --dtag=abc --dt=f8_e5m2:f8_e4m3:f8_e4m3  1x88x903:1x903x23
@@ -553,7 +553,7 @@
 --reset --skip-impl=ref --stag=bac --wtag=cab --dtag=any --dt=f32:u8:f32 --attr-fpmath=strict:true 2x1x11:2x11x2
 --reset --skip-impl=ref --stag=bac --wtag=abc --dtag=bac --dt=f64:f64:f64  2x6x1832:2x1832x5
 --reset --skip-impl=ref --stag=bac --wtag=acb --dtag=any --dt=f8_e5m2:f8_e5m2:f32  2x5746x114:2x114x528
---reset --skip-impl=ref --stag=any --wtag=any --dtag=abc --dt=f16:s4:f16 --attr-fpmath=f16:true  1x93x2352:1x2352x13
+--reset --skip-impl=ref --stag=any --wtag=acb --dtag=abc --dt=f16:s4:f16 --attr-fpmath=f16:true  1x93x2352:1x2352x13
 --reset --skip-impl=ref --stag=bac --wtag=acb --dtag=bac --dt=bf16:u8:f32 --attr-fpmath=bf16:true 4x308x128:4x128x261
 --reset --skip-impl=ref --stag=cab --wtag=bac --dtag=bac --dt=bf16:s8:bf16 --attr-fpmath=bf16:true  7x3689x2800:7x2800x2
 --reset --skip-impl=ref --stag=acb --wtag=bac --dtag=abc --dt=u8:u8:f32  5x4x5:5x5x46
@@ -766,7 +766,7 @@
 --reset --skip-impl=ref --stag=abc --wtag=acb --dtag=abc --dt=f32:u8:f16 --attr-fpmath=strict:true 2x54x316:2x316x1794
 --reset --skip-impl=ref --stag=cab --wtag=any --dtag=bac --dt=f8_e4m3:f8_e4m3:bf16  2x353x3:2x3x246
 --reset --skip-impl=ref --stag=acb --wtag=any --dtag=abc --dt=f8_e5m2:f8_e5m2:f8_e5m2  5x13x989:5x989x1751
---reset --skip-impl=ref --stag=abc --wtag=any --dtag=abc --dt=bf16:u4:bf16 --attr-fpmath=bf16:true 1x10x172:1x172x2465
+--reset --skip-impl=ref --stag=abc --wtag=acb --dtag=abc --dt=bf16:u4:bf16 --attr-fpmath=bf16:true 1x10x172:1x172x2465
 --reset --skip-impl=ref --stag=any --wtag=acb --dtag=abc --dt=u8:u8:u8  8x429x2:8x2x496
 --reset --skip-impl=ref --stag=any --wtag=acb --dtag=any --dt=u8:u8:s32  2x1729x209:2x209x3
 --reset --skip-impl=ref --stag=abc --wtag=acb --dtag=bac --dt=f32:u8:f16 --attr-fpmath=bf16:true 3x4x13:3x13x18
@@ -874,7 +874,7 @@
 --reset --skip-impl=ref --stag=any --wtag=cab --dtag=abc --dt=f8_e5m2:f8_e4m3:f8_e5m2  3x10x64:3x64x1
 --reset --skip-impl=ref --stag=abc --wtag=abc --dtag=abc --dt=u8:u8:s32  2x8x330:2x330x248
 --reset --skip-impl=ref --stag=abc --wtag=abc --dtag=abc --dt=f16:s8:f16 --attr-fpmath=f16:true 6x1x39:6x39x466
---reset --skip-impl=ref --stag=acb --wtag=any --dtag=any --dt=bf16:s4:f32 --attr-fpmath=bf16:true 3x826x7197:3x7197x3891
+--reset --skip-impl=ref --stag=acb --wtag=any --dtag=any --dt=bf16:s4:f32 --attr-fpmath=bf16:true 3x826x7197:3x7197x3892
 --reset --skip-impl=ref --stag=any --wtag=abc --dtag=any --dt=f16:s4:f16 --attr-fpmath=f16:true 1x1105x62:1x62x664
 --reset --skip-impl=ref --stag=abc --wtag=abc --dtag=abc --dt=u8:u8:f32  6x1443x745:6x745x1
 --reset --skip-impl=ref --stag=any --wtag=acb --dtag=abc --dt=s8:u8:f16  7x3342x2:7x2x1510
@@ -941,7 +941,7 @@
 --reset --skip-impl=ref --stag=any --wtag=cab --dtag=abc --dt=f32:s8:f16 --attr-fpmath=tf32:true 6x1x7:6x7x1216
 --reset --skip-impl=ref --stag=any --wtag=bac --dtag=abc --dt=u8:u8:f32  3x3691x1583:3x1583x491
 --reset --skip-impl=ref --stag=cab --wtag=bac --dtag=abc --dt=s8:u8:bf16  5x23x7788:5x7788x80
---reset --skip-impl=ref --stag=any --wtag=any --dtag=any --dt=f16:s4:f16 --attr-fpmath=f16:true  5x3952x760:5x760x137
+--reset --skip-impl=ref --stag=any --wtag=acb --dtag=any --dt=f16:s4:f16 --attr-fpmath=f16:true  5x3952x760:5x760x137
 --reset --skip-impl=ref --stag=cab --wtag=acb --dtag=abc --dt=bf16:bf16:f32  7x43x755:7x755x1
 --reset --skip-impl=ref --stag=acb --wtag=any --dtag=any --dt=f8_e5m2:f8_e4m3:f16  1x1023x2688:1x2688x20
 --reset --skip-impl=ref --stag=bac --wtag=any --dtag=abc --dt=bf16:bf16:s8  1x15x1:1x1x165

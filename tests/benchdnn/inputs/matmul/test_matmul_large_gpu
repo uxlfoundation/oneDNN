@@ -21,7 +21,7 @@
 --reset --skip-impl=ref --stag=ab --wtag=ab --dtag=ab --dt=bf16:u8:bf16 --attr-fpmath=bf16:true 6549540x350:350x222
 --reset --skip-impl=ref --stag=ba --wtag=ab --dtag=ab --dt=f32:u8:f32 --attr-fpmath=strict:true 93894038x69:69x7
 --reset --skip-impl=ref --stag=ab --wtag=ab --dtag=ab --dt=f32:f32:f32 --attr-fpmath=bf16 90044944x10:10x47
---reset --skip-impl=ref --stag=any --wtag=any --dtag=any --dt=f32:u4:f32 --attr-fpmath=strict:true 69212x8:8x87115
+--reset --skip-impl=ref --stag=any --wtag=ba --dtag=any --dt=f32:u4:f32 --attr-fpmath=strict:true 69212x8:8x87115
 --reset --skip-impl=ref --stag=ab --wtag=ab --dtag=ab --dt=bf16:u8:bf16 --attr-fpmath=bf16:true 13632175x517:517x2
 --reset --skip-impl=ref --stag=ab --wtag=ba --dtag=ab --dt=f16:u8:f16 --attr-fpmath=f16:true 1598596x640:640x834
 --reset --skip-impl=ref --stag=ba --wtag=ab --dtag=ab --dt=f16:u8:f16 --attr-fpmath=f16:true 122689288x8:8x45
@@ -77,7 +77,7 @@
 --reset --skip-impl=ref --stag=ab --wtag=ab --dtag=ab --dt=bf16:bf16:bf16  6840x25:25x445117
 --reset --skip-impl=ref --stag=ab --wtag=ab --dtag=ab --dt=f32:f32:f32 --attr-fpmath=tf32 243x3:3x11621290
 --reset --skip-impl=ref --stag=ba --wtag=ab --dtag=ab --dt=f32:u8:f32 --attr-fpmath=strict:true 225x680:680x8365953
---reset --skip-impl=ref --stag=any --wtag=any --dtag=any --dt=f32:u4:f32 --attr-fpmath=strict:true 331x16:16x6457275
+--reset --skip-impl=ref --stag=any --wtag=ba --dtag=any --dt=f32:u4:f32 --attr-fpmath=strict:true 331x16:16x6457275
 --reset --skip-impl=ref --stag=ab --wtag=ba --dtag=ab --dt=f32:f32:f32 --attr-fpmath=f16 303052658x14:14x2
 --reset --skip-impl=ref --stag=ba --wtag=ab --dtag=ab --dt=f32:f32:f32 --attr-fpmath=f16 28802x228:228x162201
 --reset --skip-impl=ref --stag=ba --wtag=ab --dtag=ab --dt=f16:u8:f16 --attr-fpmath=f16:true 56x92:92x18682172

@@ -108,16 +108,58 @@ status_t memory_desc_strides_check(
         block_size *= blk.inner_blks[iblk];
     }
 
-    // A custom comparator to yield linear order on perm
-    auto idx_sorter = [&](const int a, const int b) -> bool {
-        if (strides[a] == strides[b] && md.padded_dims[a] == md.padded_dims[b])
-            return a < b;
-        else if (strides[a] == strides[b])
-            return md.padded_dims[a] < md.padded_dims[b];
-        else
-            return strides[a] < strides[b];
+    // Returns `true` if @p idx is among blocked indices and @p pos_idx saves
+    // its position when passed.
+    auto is_inner_index = [&](const int idx, int *pos_idx = nullptr) {
+        for (int iblk = 0; iblk < blk.inner_nblks; ++iblk) {
+            if (blk.inner_idxs[iblk] == idx) {
+                if (pos_idx) *pos_idx = idx;
+                return true;
+            }
+        }
+        return false;
     };
-    std::sort(perm, perm + md.ndims, idx_sorter);
+
+    // A custom comparator sorting perm dimension indices by strides.
+    // Typically, strides are all different and sorting is smooth.
+    // But there're situations, when they are same. Such situation involve:
+    // * Dims of 1;
+    // * Blocked dimension contains a single block, e.g., dim=16, block=32;
+    //
+    // In such case, prioritize blocked dimensions as more innermost over unit
+    // dimensions.
+    auto stride_sorter = [&](const int a, const int b) -> bool {
+        if (strides[a] == strides[b]) {
+            int pos_a = 0;
+            int pos_b = 0;
+            if (is_inner_index(a, &pos_a) + is_inner_index(b, &pos_b) == 2) {
+                // When both dimensions are blocked, check how many blocks they
+                // have. For same strides it means at least one of them has a
+                // single block which should go first.
+                // If strides are same and both blocks are unit, put in natural
+                // blocking order.
+                auto block_ratio_a = md.padded_dims[a] / blocks[a];
+                auto block_ratio_b = md.padded_dims[b] / blocks[b];
+                if (block_ratio_a == block_ratio_b)
+                    return pos_a > pos_b;
+                else
+                    return block_ratio_a < block_ratio_b;
+            } else if (is_inner_index(a) + is_inner_index(b) == 1) {
+                // When it's just one, the one that blocked goes first.
+                return is_inner_index(a);
+            } else {
+                // When none are blocked, the unit dim goes first, and if equal,
+                // the natural order is used.
+                if (md.padded_dims[a] == md.padded_dims[b])
+                    return a < b;
+                else
+                    return md.padded_dims[a] < md.padded_dims[b];
+            }
+        } else {
+            return strides[a] < strides[b];
+        }
+    };
+    std::sort(perm, perm + md.ndims, stride_sorter);
 
     // tracks max stride for integral overflow checks
     dim_t max_stride = 1;
@@ -160,7 +202,9 @@ status_t memory_desc_strides_check(
                 status::invalid_arguments, VERBOSE_INTEGRAL_OVERFLOW_DIM,
                 "strides", d);
 
-        min_stride = block_size * strides[d] * (padded_dim / blocks[d]);
+        // `strides` already account block_size in it, use block ratio to
+        // increase the minimal stride requirement.
+        min_stride = strides[d] * blocks_ratio;
         if (max_stride <= strides[d]) {
             max_stride = strides[d];
             max_stride_d = d;
@@ -222,6 +266,7 @@ status_t memory_desc_init_by_tag(memory_desc_t &memory_desc, int ndims,
         // nop
     } else if (format_kind == format_kind::blocked) {
         status = memory_desc_wrapper::compute_blocking(md, tag);
+        CHECK(memory_desc_strides_check(md, md.format_desc.blocking.strides));
     } else {
         assert(!"unreachable");
         status = invalid_arguments;

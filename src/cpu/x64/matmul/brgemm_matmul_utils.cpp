@@ -228,6 +228,15 @@ bool is_batch_layout_trivial(
     return max_batch_stride / min_batch_stride == batch;
 }
 
+bool dims_adjacent(
+        const memory_desc_wrapper &mdw, const int outer, const int inner) {
+    const auto &dims = mdw.dims();
+    const auto &strides = mdw.strides();
+    if (dims[outer] == 1) return true;
+    const dim_t inner_stride = dims[inner] > 1 ? strides[inner] : 1;
+    return strides[outer] == dims[inner] * inner_stride;
+}
+
 status_t check_isa_with_datatype(
         const cpu_isa_t isa, const brgemm_matmul_conf_utils_t &bm_conf_utils) {
     const bool ok
@@ -1811,15 +1820,24 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     const bool plain_A_layout = bm_conf_utils.check_is_plain(bgmmc.src_tag)
             || bgmmc.treat_A_as_plain;
 
+    // Merging the batch dimensions into M is only valid when M and K are
+    // adjacent in memory, i.e. no batch dimension is physically interleaved
+    // between them (e.g. an acbd layout). The format tag is unreliable here
+    // since tag matching ignores strides of unit dimensions.
+    const bool m_and_k_contiguous
+            = dims_adjacent(src_d, bgmmc.ndims - 2, bgmmc.ndims - 1);
+
     // We cannot change M at this point as all gemv related parameters have
     // already been set up.
-    // For 4D tensors with acbd layout, avoid merging batches to prevent stride issues
+    // TODO: move this logic into a dedicated function. The conditions that
+    // guard the merge are currently scattered across several helpers and this
+    // call site.
     const bool merge_batch_dims_into_M = !(bgmmc.is_gemv && bgmmc.gemv_swap_a_b)
             && bgmmc.batch > 1 && bgmmc.bcast_B_desc.bcast_across_all_batch_dims
             && plain_A_layout && helper.is_src_dst_layout_batch_fusable()
             && post_ops_ok(
                     bgmmc, attr, dst_d, true /* limit_bcast_strategies_set */)
-            && !(bgmmc.ndims == 4 && src_d.matches_tag(format_tag::acbd));
+            && m_and_k_contiguous;
     if (merge_batch_dims_into_M) {
         bgmmc.M *= bgmmc.batch;
         bgmmc.batch = 1;

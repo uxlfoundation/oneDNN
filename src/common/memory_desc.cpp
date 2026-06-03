@@ -141,6 +141,13 @@ status_t memory_desc_strides_check(
                     status::invalid_arguments, VERBOSE_INTEGRAL_OVERFLOW_DIM,
                     "strides", d);
 
+        using namespace data_type;
+        if (utils::one_of(md.data_type, s4, u4, f4_e2m1)) {
+            VCONDCHECK(common, create, check, memory,
+                    IMPLICATION(strides[d] > 1, strides[d] % 2 == 0),
+                    status::invalid_arguments, VERBOSE_BAD_DIM, "strides", d);
+        }
+
         // update min_stride for next iteration
         const auto padded_dim = md.padded_dims[d];
 

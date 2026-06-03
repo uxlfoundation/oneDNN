@@ -665,43 +665,6 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
             ? utils::get_dims_mask(dst_desc->dims, op_d.bias_desc.dims, ndims)
             : 0;
 
-    using namespace data_type;
-    if (weights_desc->format_kind == format_kind::blocked
-            && utils::one_of(
-                    weights_desc->data_type, s4, u4, f4_e2m1, f4_e3m0)) {
-        const auto &wei_strides = weights_desc->format_desc.blocking.strides;
-
-        int n_unit_strides = 0;
-        for (int d = 0; d < ndims; d++) {
-            // This check restricts N=1 cases for subbyte types:
-            // `--wtag=abc 6x975x2080:6x2080x1` will return invalid_args.
-            // TODO: remove the check and verify the library.
-            if (wei_strides[d] == 1) {
-                n_unit_strides++;
-                VCHECK_MATMUL(
-                        n_unit_strides <= 1, VERBOSE_BAD_DIM, "weights", d);
-            }
-            VCHECK_MATMUL(
-                    IMPLICATION(wei_strides[d] > 1, wei_strides[d] % 2 == 0),
-                    VERBOSE_BAD_DIM, "weights", d);
-        }
-    }
-    if (src_desc->format_kind == format_kind::blocked
-            && utils::one_of(src_desc->data_type, s4, u4, f4_e2m1, f4_e3m0)) {
-        const auto &src_strides = src_desc->format_desc.blocking.strides;
-
-        int n_unit_strides = 0;
-        for (int d = 0; d < ndims; d++) {
-            if (src_strides[d] == 1) {
-                n_unit_strides++;
-                VCHECK_MATMUL(n_unit_strides <= 1, VERBOSE_BAD_DIM, "src", d);
-            }
-            VCHECK_MATMUL(
-                    IMPLICATION(src_strides[d] > 1, src_strides[d] % 2 == 0),
-                    VERBOSE_BAD_DIM, "src", d);
-        }
-    }
-
     // check if other dims match.
     for (int d = 0; d < ndims - 2; ++d) {
         const dim_t s_dim = src_desc->dims[d];

@@ -251,15 +251,20 @@ struct pd_t : public gemm::pd_t {
 
     sum_ab_t sum_ab() const { return desc()->sum_ab; }
 
-    // Sum identity is invariant across the bias/scale->binary lowering, so read
-    // the ORIGINAL attr()->post_ops_ (not the CONVERTED problem.postOps) to
-    // avoid over-counting converted scales as binaries.
+    // Derived from the finalized GEMM post-op chain the kernel executes
+    // (problem.postOps), not the user attr: bias/scale lowering prepends
+    // binaries, so a sum the user wrote first may not be first here. The
+    // accumulator-width gate (need_x32_acc) needs this executed-chain order,
+    // since "sum is the first applied op" is what allows a narrow accumulator.
+    // Valid only after init_post_ops populates problem.postOps.
     bool with_sum() const {
-        return attr()->post_ops_.find(primitive_kind::sum) != -1;
+        for (const auto &e : cfg_.problem.postOps.ops)
+            if (e.is_sum()) return true;
+        return false;
     }
     bool sum_at_begin() const {
-        const auto &po = attr()->post_ops_;
-        return po.len() > 0 && po.entry_[0].kind == primitive_kind::sum;
+        const auto &ops = cfg_.problem.postOps.ops;
+        return ops.len() > 0 && ops[0].is_sum();
     }
 
     int sum_ab_cmask() const {

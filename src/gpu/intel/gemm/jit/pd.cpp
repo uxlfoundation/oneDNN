@@ -261,6 +261,11 @@ status_t pd_t::init_post_ops(kernel_config_t &cfg, impl::engine_t *engine) {
     else if (cfg.with_sum_ab())
         cfg.cmask = sum_ab_cmask();
 
+    // Seeded here, not in seed_kernel_config: with_sum()/sum_at_begin() read
+    // the lowered problem.postOps, populated just above by transfer_post_ops.
+    cfg.with_sum = with_sum();
+    cfg.sum_at_begin = sum_at_begin();
+
     return status::success;
 }
 
@@ -304,8 +309,6 @@ status_t pd_t::seed_kernel_config(kernel_config_t &cfg) {
             == rounding_mode::stochastic;
     cfg.with_c_zp = !attr()->zero_points_.has_default_values(DNNL_ARG_DST);
     cfg.with_mx_scale = attr()->scales_.get(DNNL_ARG_C).is_mx();
-    cfg.with_sum = with_sum();
-    cfg.sum_at_begin = sum_at_begin();
 
     return status::success;
 }

@@ -2458,7 +2458,7 @@ void CopyPlan::legalizeSIMD(bool initial)
     // Basic rule: maximum of 2 registers per operand.
     auto opSimdMax = [&] (const CopyOperand &op, bool src2 = false) {
         if (op.kind != CopyOperand::GRF || op.stride == 0) return 64;
-        int nregs = (!src2 || ((op.offset == 0) && (op.stride == 1))) ? 2 : 1;
+        int nregs = (!src2 || ((op.offset == 0) && (op.stride == 1)) || hw > ngen::HW::XeHPG ) ? 2 : 1;
         int remaining = (bytesToElements(nregs * grf, op.type) - (op.offset + 1)) / op.stride + 1;
         return rounddown_pow2(remaining);
     };

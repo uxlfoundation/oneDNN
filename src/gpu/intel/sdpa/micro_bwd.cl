@@ -1009,6 +1009,9 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         p_sum_tile_type D_i;
         tile_fill(D_i, 0.0f);
         tile_load(&D_i, Di, q0end, 1, q0end, q0 + sg_j0_kq, 0);
+#if defined(DST_DT_F16)
+        tile_elementwise_s(D_i, round_to_dkdv_partial);
+#endif
         tile_hbroadcast_sub(&dP_tile,
                 D_i); // needs output to be transposed from vtdA layout.C = N
 
@@ -1030,6 +1033,10 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
 #define binary_mul_scale(x, y) ((x) * (y) * scale)
             tile_binary(dP_tile, S2_tile, binary_mul_scale);
+#if defined(DST_DT_F16)
+                        // Stabilize dP payload before it is consumed by dK/dQ paths.
+                        tile_elementwise_s(dP_tile, round_to_dkdv_partial);
+#endif
         }
 
         if (remainder_k) {
@@ -1047,6 +1054,10 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         {
             p_tile_type_reblock P_tile_reblock;
             tile_copy_reblock(dP_tile, &P_tile_reblock);
+#if defined(DST_DT_F16)
+            // Align dS payload precision before it feeds both dK and dQ paths.
+            tile_elementwise_s(P_tile_reblock, round_to_dkdv_partial);
+#endif
 #if WITH_DS
             tile_store(P_tile_reblock, dS, k_chunk, q_nchunk, k, k0 + sg_i0_kq,
                     q0 + sg_j0_kq);

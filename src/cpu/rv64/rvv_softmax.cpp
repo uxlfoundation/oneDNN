@@ -108,8 +108,10 @@ void compute_softmax_f16_rvv(const dnnl::impl::float16_t *src,
         }
         const float log_sum = logf(sum_exp);
 
-        jit_rvv_softmax_f16_affine_from_f16(
-                src, dst, len, max_val + log_sum, 1.0f);
+        const float sub = max_val + log_sum;
+        for (dim_t i = 0; i < len; ++i) {
+            dst[i] = dnnl::impl::float16_t((float)src[i] - sub);
+        }
     } else {
         float *tmp_dst = new float[len];
         float sum_exp = 0.f;

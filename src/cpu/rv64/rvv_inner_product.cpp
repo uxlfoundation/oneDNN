@@ -63,7 +63,7 @@ float compute_ip_rvv_fwd_u8_s8(
 
 float compute_ip_rvv_fwd(const void *src_base, const void *wei_base,
         const dim_t len, const data_type_t src_dt, const data_type_t wei_dt) {
-    float acc;
+    float acc = 0.0f;
     switch (src_dt) {
         case data_type::f32:
             if (wei_dt == data_type::f32) {

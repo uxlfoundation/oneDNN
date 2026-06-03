@@ -96,8 +96,6 @@ find_path(OpenCL_INCLUDE_DIR
 
 _FIND_OPENCL_VERSION()
 
-message(STATUS "Found OpenCL headers: ${OpenCL_INCLUDE_DIR}")
-
 if(WIN32)
   if(CMAKE_SIZEOF_VOID_P EQUAL 4)
     find_library(OpenCL_LIBRARY

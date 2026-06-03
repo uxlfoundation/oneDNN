@@ -312,6 +312,10 @@ set(OPENCLROOT "" CACHE STRING
     "Path to OpenCL SDK.
     Use this option to specify custom location for OpenCL.")
 
+set(DNNL_OCL_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/third_party/opencl" CACHE STRING
+    "Path to OpenCL headers. Defaults to the headers bundled in
+    third_party/opencl.")
+
 set(DNNL_ZE_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/third_party/level_zero" CACHE STRING
     "Path to Level Zero headers. Defaults to the headers bundled in
     third_party/level_zero.")

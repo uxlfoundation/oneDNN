@@ -411,14 +411,17 @@ int brgemm_matmul_conf_utils_t::get_default_n_block(
 */
 gemv_strategy_t brgemm_matmul_conf_utils_t::get_gemv_strategy(
         format_tag_t A_tag, format_tag_t B_tag) const {
-    if (bgmmc.M == 1 && B_tag == plain_tensor_layout_tag)
-        return gemv_strategy_t::m1_B_plain;
-    if (bgmmc.M == 1 && B_tag == transposed_tensor_layout_tag)
-        return gemv_strategy_t::m1_B_trans;
+    // Note: keep n1_A_plain ahead of the m1_B_* checks. It avoids swapping
+    // A and B (which would disable merging batch dims into M), so it is less
+    // restrictive and preferred for the M == 1 && N == 1 case.
     if (bgmmc.N == 1 && A_tag == plain_tensor_layout_tag)
         return gemv_strategy_t::n1_A_plain;
     if (bgmmc.N == 1 && A_tag == transposed_tensor_layout_tag)
         return gemv_strategy_t::n1_A_trans;
+    if (bgmmc.M == 1 && B_tag == plain_tensor_layout_tag)
+        return gemv_strategy_t::m1_B_plain;
+    if (bgmmc.M == 1 && B_tag == transposed_tensor_layout_tag)
+        return gemv_strategy_t::m1_B_trans;
 
     return gemv_strategy_t::none;
 }

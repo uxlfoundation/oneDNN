@@ -224,7 +224,8 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
         OCL_CHECK(err);
         xpu::ocl::event_t::from(out_dep).events = {event};
     } else {
-        bool save_event = save_events_ || stream.is_profiling_enabled();
+        bool save_event = save_events_ || stream.is_profiling_enabled()
+                || stream.is_verbose_profiler_enabled();
         cl_int err = xpu::ocl::clEnqueueNDRangeKernel(queue, *kernel, ndims,
                 nullptr, range.global_range().data(),
                 range.local_range() ? range.local_range().data() : nullptr, 0,
@@ -232,9 +233,29 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
         OCL_CHECK(err);
     }
 
-    if (stream.is_profiling_enabled()) {
-        ocl_stream->profiler().register_event(
-                utils::make_unique<xpu::ocl::event_t>(std::move(event)));
+    // Event registration for profilers is managed to allow the
+    // verbose_profiler_t operate independently from other profilers without
+    // forced profiling flags or double-move issues.
+    if (stream.is_profiling_enabled() || stream.is_verbose_profiler_enabled()) {
+        auto primary_event
+                = utils::make_unique<xpu::ocl::event_t>(std::move(event));
+
+        if (stream.is_profiling_enabled()) {
+            auto cloned_event = primary_event->clone();
+            ocl_stream->profiler().register_event(
+                    std::unique_ptr<xpu::ocl::event_t>(
+                            static_cast<xpu::ocl::event_t *>(
+                                    cloned_event.release())));
+        }
+
+        // checking for primitive stamps avoids logging for uninitialized
+        // profilers
+        if (stream.is_verbose_profiler_enabled()
+                && ocl_stream->verbose_profiler().stamp() > 0) {
+            ocl_stream->verbose_profiler().register_primitive_event(
+                    std::shared_ptr<xpu::ocl::event_t>(
+                            primary_event.release()));
+        }
     }
 
     return status::success;

@@ -153,13 +153,22 @@ status_t stream_t::run_verbose_profiler(
 status_t stream_t::copy(const memory_storage_t &src,
         const memory_storage_t &dst, size_t size, const xpu::event_t &deps,
         xpu::event_t &out_dep) {
-    return impl()->copy(this, src, dst, size, deps, out_dep, profiler_.get());
+    xpu::verbose_profiler_t *vp
+            = is_verbose_profiler_enabled() && verbose_profiler_.is_set()
+            ? verbose_profiler_.get().get()
+            : nullptr;
+    return impl()->copy(
+            this, src, dst, size, deps, out_dep, profiler_.get(), vp);
 }
 
 status_t stream_t::fill(const memory_storage_t &dst, uint8_t pattern,
         size_t size, const xpu::event_t &deps, xpu::event_t &out_dep) {
+    xpu::verbose_profiler_t *vp
+            = is_verbose_profiler_enabled() && verbose_profiler_.is_set()
+            ? verbose_profiler_.get().get()
+            : nullptr;
     return impl()->fill(
-            this, dst, pattern, size, deps, out_dep, profiler_.get());
+            this, dst, pattern, size, deps, out_dep, profiler_.get(), vp);
 }
 
 status_t stream_t::barrier() {

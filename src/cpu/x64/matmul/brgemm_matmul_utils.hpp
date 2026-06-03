@@ -472,6 +472,12 @@ void mem_advice_init(brgemm_matmul_conf_t &bgmmc);
 
 bool is_batch_layout_trivial(const memory_desc_wrapper &mdw, const dim_t batch);
 
+// Returns true if logical dimension `inner_dim` is nested immediately inside
+// `outer_dim` in memory, i.e. no other dimension is physically interleaved
+// between them (`stride(outer_dim) == dim(inner_dim) * stride(inner_dim)`).
+bool dims_adjacent(const memory_desc_wrapper &mdw, const int outer_dim,
+        const int inner_dim);
+
 /**
  * Returns the total block size along the K dimension, as the product of
  * the fixed outer block size and the VNNI granularity.

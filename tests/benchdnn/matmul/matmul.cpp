@@ -774,7 +774,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
     const auto wei_encoding
             = prb->sparse_options.get_encoding(DNNL_ARG_WEIGHTS);
 
-    const bool is_grouped = prb->sparse_options.is_grouped(DNNL_ARG_SRC)
+    const bool is_grouped_2dby3d = prb->sparse_options.is_grouped(DNNL_ARG_SRC)
             && prb->sparse_options.is_grouped(DNNL_ARG_DST);
     const bool is_grouped_2dby2d = prb->sparse_options.is_2dby2d();
 
@@ -790,12 +790,13 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         // Route grouped to the generic else branch below
         const bool is_sparse_src = exec_arg == DNNL_ARG_SRC
                 && !prb->sparse_options.is_encoding_def(DNNL_ARG_SRC)
-                && !is_grouped;
+                && !prb->sparse_options.is_grouped(DNNL_ARG_SRC);
         const bool is_sparse_wei = exec_arg == DNNL_ARG_WEIGHTS
-                && wei_encoding != dnnl_sparse_encoding_undef;
+                && wei_encoding != dnnl_sparse_encoding_undef
+                && !prb->sparse_options.is_grouped(DNNL_ARG_WEIGHTS);
         const bool is_sparse_dst = exec_arg == DNNL_ARG_DST
                 && !prb->sparse_options.is_encoding_def(DNNL_ARG_DST)
-                && !is_grouped;
+                && !prb->sparse_options.is_grouped(DNNL_ARG_DST);
         const bool is_sparse = is_sparse_src || is_sparse_wei || is_sparse_dst;
         const bool is_sparse_wei_packed
                 = is_sparse_wei && wei_encoding == dnnl_packed;
@@ -803,7 +804,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         // Grouped binary post-op offsets are needed even under no_ref_memory,
         // so exclude them from the skip below
         bool is_grouped_bin_po = false;
-        if (is_grouped) {
+        if (is_grouped_2dby3d) {
             const auto &po = prb->attr.post_ops;
             const int po_idx
                     = exec_arg / DNNL_ARG_ATTR_MULTIPLE_POST_OP_BASE - 1;
@@ -814,17 +815,20 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
         // See the comment at the beginning of the function.
         if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)
-                // Grouped SRC/DST are excluded from `is_sparse` to keep the
-                // sparse and grouped paths separate below, so exclude them here
-                // to allow `no_ref_memory` to work for grouped cases.
-                // The hint is a direct runtime input to the library, not
-                // reference memory, so it must always be filled.
-                && !(is_grouped
-                        && (exec_arg == DNNL_ARG_SRC || exec_arg == DNNL_ARG_DST
+                // Grouped args are excluded from `is_sparse` to keep the
+                // sparse and grouped paths separate; exclude them here so
+                // `no_ref_memory` still fills direct runtime inputs.
+                && !((is_grouped_2dby3d
+                             && (exec_arg == DNNL_ARG_SRC
+                                     || exec_arg == DNNL_ARG_DST))
+                        || (is_grouped_2dby2d
+                                && (exec_arg == DNNL_ARG_SRC
+                                        || exec_arg == DNNL_ARG_WEIGHTS))
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
-                                || exec_arg == DNNL_ARG_HINT_MAX_GROUP_SIZE
+                        || ((is_grouped_2dby3d || is_grouped_2dby2d)
+                                && exec_arg == DNNL_ARG_HINT_MAX_GROUP_SIZE)
 #endif
-                                || is_grouped_bin_po))
+                        || is_grouped_bin_po)
                 && !is_sparse)
             continue;
 
@@ -847,29 +851,45 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                                 /* prefill = */ false));
             }
         } else {
-            if (exec_arg == DNNL_ARG_WEIGHTS) {
-                const auto ndims = mem.ndims();
-                const auto &dims = mem.dims();
-                // Switch the format tag from "ab" to "ba" but to handle batched
-                // cases, use strides instead.
-                dnnl_dims_t strides {};
-                dnnl_dim_t stride = 1;
-                for (int d = ndims - 2; d >= 0; d--) {
-                    strides[d] = stride * dims[d + 1];
-                    stride = strides[d];
+            // 2Dx2D SRC [M, total_K] is col-major with variable_dim_idx=1
+            //
+            // Note: There is no reorder for grouped memory, so ref must manually
+            // set the col-major strides for SRC
+            if (is_grouped_2dby2d && exec_arg == DNNL_ARG_SRC) {
+                dnnl_dims_t dims_2d = {prb->m, prb->k};
+                // Col-major: stride_m = 1, stride_K = M
+                auto fp_d = dnn_mem_t::init_md(
+                        2, dims_2d, dnnl_f32, tag::any, {1, prb->m});
+                ref_mem_map.emplace(exec_arg,
+                        dnn_mem_t(fp_d, ref_engine, /* prefill = */ false));
+            } else
+                // Grouped WEI (2Dx2D [total_K, N]) is row-major (same as
+                // tag::abx) and has no reorder, so it must skip the transpose
+                // and fall through to the else path below
+                if (exec_arg == DNNL_ARG_WEIGHTS
+                        && !prb->sparse_options.is_grouped(DNNL_ARG_WEIGHTS)) {
+                    const auto ndims = mem.ndims();
+                    const auto &dims = mem.dims();
+                    // Switch the format tag from "ab" to "ba" but to handle batched
+                    // cases, use strides instead.
+                    dnnl_dims_t strides {};
+                    dnnl_dim_t stride = 1;
+                    for (int d = ndims - 2; d >= 0; d--) {
+                        strides[d] = stride * dims[d + 1];
+                        stride = strides[d];
+                    }
+                    strides[ndims - 2] = 1;
+                    strides[ndims - 1] = dims[ndims - 2];
+                    ref_mem_map.emplace(exec_arg,
+                            dnn_mem_t(mem.md_, dnnl_f32, strides, ref_engine,
+                                    /* prefill = */ false));
+                } else if (exec_arg != DNNL_ARG_SCRATCHPAD) {
+                    // Scratchpad memory relates to a primitive. If reference needs
+                    // it, use switch below to define a memory desc for it.
+                    ref_mem_map.emplace(exec_arg,
+                            dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
+                                    /* prefill = */ false));
                 }
-                strides[ndims - 2] = 1;
-                strides[ndims - 1] = dims[ndims - 2];
-                ref_mem_map.emplace(exec_arg,
-                        dnn_mem_t(mem.md_, dnnl_f32, strides, ref_engine,
-                                /* prefill = */ false));
-            } else if (exec_arg != DNNL_ARG_SCRATCHPAD) {
-                // Scratchpad memory relates to a primitive. If reference needs
-                // it, use switch below to define a memory desc for it.
-                ref_mem_map.emplace(exec_arg,
-                        dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
-                                /* prefill = */ false));
-            }
         }
         auto &ref_mem = ref_mem_map[exec_arg];
 
@@ -893,7 +913,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                         WARN);
                 break;
             case DNNL_ARG_DST: {
-                if (is_grouped) {
+                if (is_grouped_2dby3d) {
                     // Only offsets need to be filled
                     // as values are computed by the library
                     SAFE(fill_grouped_offsets(mem, prb->sparse_options), WARN);

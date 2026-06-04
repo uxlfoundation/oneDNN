@@ -687,10 +687,10 @@ size_t matmul_amx_blocking_params_macro_t::l2_matrix_usage(size_t k_chunk_size,
         size_t m_or_n_blk, size_t k_blk, bool is_horizontal,
         bool force_transform_matrix_to_l2) const {
     int decomposition = is_horizontal ? m_decomposition : n_decomposition;
-    int l1_matrix_size = 2 * decomposition
+    size_t l1_matrix_size = 2 * decomposition
             * nstl::min(k_blk * k_chunk_size, (size_t)k_per_thread)
             * gemm_dt_sz; // 2 for prefetch
-    int l2_matrix_size = m_or_n_blk
+    size_t l2_matrix_size = m_or_n_blk
             * nstl::min(k_blk * k_chunk_size, (size_t)k_per_thread)
             * gemm_dt_sz;
     if (force_transform_matrix_to_l2) {
@@ -699,14 +699,14 @@ size_t matmul_amx_blocking_params_macro_t::l2_matrix_usage(size_t k_chunk_size,
                 * (is_horizontal ? b_dt_sz : a_dt_sz);
     }
     // Calculate C post size (output buffer)
-    int c_post_size;
+    size_t c_post_size;
     if (is_horizontal) {
         c_post_size = 2 * m_decomposition * rnd_up(m_or_n_blk * c_dt_sz, 64);
     } else {
         c_post_size = 2 * rnd_up(n_decomposition * c_dt_sz, 64) * m_or_n_blk;
     }
     // Calculate C tmp size (partial results buffer)
-    int c_tmp_size;
+    size_t c_tmp_size;
     if (k_blk == (size_t)K || (acc_dt == dst_dt && nthr_k_ == 1)) {
         c_tmp_size = 2 * m_decomposition * n_decomposition * acc_dt_sz;
     } else {
@@ -721,13 +721,13 @@ size_t matmul_amx_blocking_params_macro_t::l2_matrix_and_c_usage(
         bool is_horizontal) const {
     size_t per_thread_for_l1_matrix
             = is_horizontal ? m_per_thread : n_per_thread;
-    int l1_matrix_size = 2 * per_thread_for_l1_matrix
+    size_t l1_matrix_size = 2 * per_thread_for_l1_matrix
             * nstl::min(k_blk * k_chunk_size, (size_t)k_per_thread)
             * gemm_dt_sz; // 2x factor to make sure C is fresher than A,B in LRU
-    int l2_matrix_size = 2 * m_or_n_blk
+    size_t l2_matrix_size = 2 * m_or_n_blk
             * nstl::min(k_blk * k_chunk_size, (size_t)k_per_thread)
             * gemm_dt_sz; // 2x factor to make sure C is fresher than A,B in LRU
-    int c_size
+    size_t c_size
             = per_thread_for_l1_matrix * m_or_n_blk * acc_dt_sz; // Keep C in L2
     return l1_matrix_size + l2_matrix_size + c_size;
 }

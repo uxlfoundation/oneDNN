@@ -150,10 +150,10 @@ if (DNNL_TARGET_ARCH STREQUAL "RV64")
         check_cxx_source_compiles("#include <riscv_vector.h>
                                    #ifndef __riscv_zvfh
                                    #error \"Zvfh extension is not supported by the compiler\"
-                                   #endif
+                                   #endif   
                                    int main() {
                                     vfloat16m1_t a;
-                                    return 0;
+                                    return 0; 
                                    };"
                                    CAN_COMPILE_ZVFH_INTRINSICS
         )
@@ -161,7 +161,7 @@ if (DNNL_TARGET_ARCH STREQUAL "RV64")
 
         set(CAN_COMPILE_RVV_INTRINSICS TRUE)
 
-        # If explicitly passed DNNL_ARCH_OPT_FLAGS without V or Zvfh in the -march
+        # If explicitly passed DNNL_ARCH_OPT_FLAGS without V or Zvfh in the -march 
         # string, disable their code paths even if the toolchain supports them.
         if (DEFINED DNNL_ARCH_OPT_FLAGS AND DNNL_ARCH_OPT_FLAGS MATCHES "-march=")
             string(FIND "${DNNL_ARCH_OPT_FLAGS}" "gcv" _dnnl_rv64_v_pos)

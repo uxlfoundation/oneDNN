@@ -398,7 +398,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
                     brgemm_row_major, alpha, vbeta, LDA, bgmmc_.LDB, bgmmc_.LDC,
                     vM, vN, vK, nullptr, bgmmc_.is_tf32));
         }
-
+printf("isa: %d, brg type: %d, src dt: %d, wei dt: %d, vM-N-K: %d, %d, %d\n", kernel_isa, bgmmc_.brg_type, bgmmc_.src_dt, bgmmc_.wei_dt, vM, vN, vK);
         auto LDD = bgmmc_.LDD;
         if (bgmmc_.with_wei_decompression && bgmmc_.has_zero_point_b)
             brg.skip_zp_b_compensation = true;
@@ -585,6 +585,7 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
 
         const int ithr_bmn = brgmm_ctx.get_thread_idx_for_bmn_gemm(ithr);
         const int ithr_k = brgmm_ctx.get_thread_idx_for_k(ithr);
+printf("chunks - M: %d, N: %d, K: %d, bmn: %d, ithr k: %d\n", M_chunks, K_chunks, N_chunks, ithr_bmn, ithr_k);
         if (ithr_bmn < 0 || ithr_k < 0) return;
         int start {0}, end {0};
         balance211(brgmm_ctx.get_parallel_work_amount_gemm(),
@@ -611,6 +612,7 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
         int m_chunks_per_thread = div_up(M_chunks, bgmmc.nthr_m);
         int n_chunks_per_thread = div_up(N_chunks, bgmmc.nthr_n);
         int batch_per_thread = div_up(bgmmc.batch, bgmmc.nthr_b);
+printf("chunks per thr - m: %d, n: %d, batch: %d\n", m_chunks_per_thread, n_chunks_per_thread, batch_per_thread);
         if (brgmm_ctx.is_chunks_horizontal_process_order())
             nd_iterator_init(start, bt, bgmmc.nthr_b, mt, bgmmc.nthr_m, nt,
                     bgmmc.nthr_n, b_per_t, batch_per_thread, mc_per_t,
@@ -1518,7 +1520,8 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                 pd->attr()->post_ops_, ctx);
         base_brg_ker_idx_
                 = pd->get_brg_kernel_idx(false, true, 0, 0, false, false);
-        vnni_factor = data_type_vnni_granularity(bgmmc.wei_dt);
+        const auto vnni_block_dt = get_mac_emu_data_type(bgmmc.wei_dt, bgmmc.isa, bgmmc.isa == avx10_2);
+        vnni_factor = data_type_vnni_granularity(vnni_block_dt);
 
         reorder_zp_a_comp_ptr_ = nullptr;
         if (bgmmc_.has_zero_point_a && bgmmc_.blocked_B) {

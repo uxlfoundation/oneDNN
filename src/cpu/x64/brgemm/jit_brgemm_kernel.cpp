@@ -274,7 +274,7 @@ private:
         if (brg.is_int8 && !brg.has_int8_vnni)
             used_vregs = 2;
         else if (brg.is_fp8_via_convert())
-            used_vregs = 5;
+            used_vregs = 0;
         else if (brg.is_f16_b_non_amx_vnni())
             used_vregs = 2;
         return isa_num_vregs(brg.isa_impl) - used_vregs;

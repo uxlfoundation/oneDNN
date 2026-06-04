@@ -86,7 +86,8 @@ int get_wei_k_blk(data_type_t wei_dt) {
     const int k_outer_block = 16;
 
     // VNNI granularity determines the inner block size along K.
-    const int k_inner_block = data_type_vnni_granularity(wei_dt);
+    const data_type_t vnni_block_dt = get_mac_emu_data_type(wei_dt, avx10_2, true);
+    const int k_inner_block = data_type_vnni_granularity(vnni_block_dt);
 
     return k_outer_block * k_inner_block;
 }
@@ -536,6 +537,7 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(memory_desc_t &B_md,
         VCONDCHECK_BG(
                 format_tag::undef != bgmmc.wei_tag, VERBOSE_UNSUPPORTED_TAG)
     }
+printf("wei tag: %d\n", bgmmc.wei_tag);
     return status::success;
 }
 
@@ -674,7 +676,7 @@ format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
 
     if (bgmmc.ndims > 3) return format_tag::undef;
 
-    if (is_int8() || is_f8()) {
+    if (is_int8() || (is_f8() && bgmmc.isa != avx10_2)) {
         switch (n_blk) {
             case 64: return bgmmc.ndims == 3 ? aCB16b64c4b : BA16a64b4a;
             case 48: return bgmmc.ndims == 3 ? aCB16b48c4b : BA16a48b4a;
@@ -690,7 +692,7 @@ format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
             || is_f32_bf16() || is_f16_with_int_wei() || is_f32_with_int_wei();
 
     if ((prefer_amx_or_avx2_vnni_2 && is_amx_or_avx2_vnni_2) || is_bf16()
-            || is_bf16_with_int_wei()) {
+            || is_bf16_with_int_wei() || is_f8()) {
         switch (n_blk) {
             case 64: return bgmmc.ndims == 3 ? aCB16b64c2b : BA16a64b2a;
             case 48: return bgmmc.ndims == 3 ? aCB16b48c2b : BA16a48b2a;
@@ -1818,7 +1820,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         bgmmc.req_wei_vnni_downconvert
                 = bm_conf_utils.wei_down_convert_to_vnni();
     }
-
+printf("use buffer a: %d, use buffer b: %d\n", bgmmc.use_buffer_a, bgmmc.use_buffer_b);
     VCHECK_BG(bm_conf_utils.set_B_flags(weights_md), VERBOSE_BLOCKING_FAIL, "");
 
     bgmmc.M_tail = bgmmc.is_runtime_M ? 0 : bgmmc.M % bgmmc.M_blk;
@@ -1948,7 +1950,9 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         //      [n = N / LDB][k = K / wei_k_blk][k = wei_k_blk / vnni][n = LDB][k = vnni]
         bgmmc.LDB2 = rnd_up(bgmmc.K, bgmmc.wei_k_blk) * bgmmc.LDB;
     }
-
+printf("LDA/B/C/D: %d, %d, %d, %d, M: %d, %d, N: %d, %d, K: %d, %d\n", bgmmc.LDA, bgmmc.LDB, bgmmc.LDC, bgmmc.LDD, bgmmc.M, bgmmc.M_blk, bgmmc.N, bgmmc.N_blk, bgmmc.K, bgmmc.K_blk);
+printf("wei n blk: %d, k blk: %d\n", bgmmc.wei_n_blk, bgmmc.wei_k_blk);
+//printf("is gemv: %d, use fused copy a: %d\n", bgmmc.is_gemv, bgmmc.use_fused_copy_a);
     return status::success;
 }
 
@@ -1959,7 +1963,7 @@ status_t init_conf(brgemm_matmul_conf_t &conf, dim_t batch, dim_t M, dim_t K,
 
     const auto vnni_granularity = data_type_vnni_granularity(out_type);
     if (vnni_granularity <= 0) return status::invalid_arguments;
-
+printf("init conf\n");
     // Zero initialize the `conf` to avoid access to 'garbage' in members.
     conf = brgemm_matmul_conf_t();
 

@@ -26,90 +26,83 @@ if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
     set(DNNL_IS_MAIN_PROJECT TRUE)
 endif()
 
-# ========
-# Features
-# ========
+# ==============
+# Common options
+# ==============
 
-option(DNNL_VERBOSE
-    "allows oneDNN be verbose whenever ONEDNN_VERBOSE
-    environment variable set to 1" ON) # enabled by default
-
-option(DNNL_ENABLE_CONCURRENT_EXEC
-    "disables sharing a common scratchpad between primitives.
-    This option must be turned ON if there is a possibility of executing
-    distinct primitives concurrently.
-    CAUTION: enabling this option increases memory consumption."
-    OFF) # disabled by default
-
-option(DNNL_ENABLE_PRIMITIVE_CACHE "enables primitive cache." ON)
-    # enabled by default
-
-option(DNNL_ENABLE_MAX_CPU_ISA
-    "enables control of CPU ISA detected by oneDNN via DNNL_MAX_CPU_ISA
-    environment variable and dnnl_set_max_cpu_isa() function" ON)
-
-option(DNNL_ENABLE_CPU_ISA_HINTS
-    "enables control of CPU ISA specific hints by oneDNN via DNNL_CPU_ISA_HINTS
-    environment variable and dnnl_set_cpu_isa_hints() function" ON)
-
-option(ONEDNN_BUILD_GRAPH "builds graph component" ON)
-
-option(ONEDNN_ENABLE_GRAPH_DUMP "enables control of dumping graph artifacts via
-    ONEDNN_GRAPH_DUMP environment variable. The option and feature are valid only
-    when ONEDNN_BUILD_GRAPH is ON" ON) # enabled by default
-
-# =============================
-# Building properties and scope
-# =============================
+# ---------------------
+# Library configuration
+# ---------------------
 
 set(DNNL_LIBRARY_TYPE "SHARED" CACHE STRING
-    "specifies whether oneDNN library should be SHARED or STATIC")
+    "Specifies whether oneDNN library should be SHARED or STATIC")
 
-option(DNNL_BUILD_DOC "builds documentation" ${DNNL_IS_MAIN_PROJECT})
-set(ONEDNN_DOC_VERSIONS_JSON "" CACHE STRING "Location of JSON file for
-    PyData Sphinx Theme version switcher. Must be a stable, persistent,
-    fully resolved URL. Enables documentation version switcher when set.")
+set(DNNL_LIBRARY_NAME "dnnl" CACHE STRING
+    "Specifies name of the library. For example, user can use this variable to
+     specify custom library names for CPU and GPU configurations to safely
+     include them into their CMake project via add_subdirectory")
 
-option(DNNL_BUILD_EXAMPLES "builds examples" ${DNNL_IS_MAIN_PROJECT})
-option(DNNL_BUILD_TESTS "builds tests" ${DNNL_IS_MAIN_PROJECT})
-option(DNNL_BUILD_FOR_CI
-    "specifies whether oneDNN library will use special testing environment for
-    internal testing processes"
-    OFF)
-option(DNNL_DEV_MODE "Enables internal tracing capabilities" OFF)
-option(DNNL_WERROR "treat warnings as errors" OFF)
+message(STATUS "DNNL_LIBRARY_NAME: ${DNNL_LIBRARY_NAME}")
 
-set(DNNL_TEST_SET "CI" CACHE STRING
-    "specifies the testing coverage. The variable consists of two parts:
-    the set value defining the number of test cases, and the modifiers for
-    testing commands. The input is expected in the CMake list style - a
-    semicolon separated string, e.g., DNNL_TEST_SET=CI;NO_CORR.")
+set(DNNL_ARCH_OPT_FLAGS "HostOpts" CACHE STRING
+    "Specifies compiler optimization flags (see below for more information).
+    If empty default optimization level would be applied which depends on the
+    compiler being used.
+
+    - For Intel C++ Compilers the default option is `-xSSE4.1` which instructs
+      the compiler to generate the code for the processors that support SSE4.1
+      instructions. This option would not allow to run the library on older
+      architectures.
+
+    - For GNU* Compiler Collection and Clang, the default option is `-msse4.1` which
+      behaves similarly to the description above.
+
+    - For Clang and GCC compilers on RISC-V architecture this option accepts `-march=<ISA-string>` flag
+      to control whether or not oneDNN should be compiled with RVV Intrinsics. Use this option with
+      `-march=rv64gc` or `-march=rv64gcv` value to compile oneDNN with and without RVV Intrinsics respectively.
+      If the option is not provided, CMake will decide based on the active toolchain and compiler flags.
+
+    - For all other cases there are no special optimizations flags.
+
+    If the library is to be built for generic architecture (e.g. built by a
+    Linux distribution maintainer) one may want to specify DNNL_ARCH_OPT_FLAGS=\"\"
+    to not use any host-specific instructions")
+
+set(DNNL_BLAS_VENDOR "NONE" CACHE STRING
+    "Use an external BLAS library. Valid values:
+      - NONE (default)
+        Use internal BLAS implementation. Recommended in most situations.
+      - ACCELERATE: Accelerate BLAS
+      - ARMPL: Arm Performance Libraries
+      - ANY: FindBLAS will search default library paths for a known BLAS
+        installation. This vendor is supported for performance analysis
+        purposes only.")
+
+set(DNNL_DPCPP_HOST_COMPILER "DEFAULT" CACHE STRING
+    "Specifies host compiler for Intel oneAPI DPC++ Compiler")
 
 set(DNNL_INSTALL_MODE "DEFAULT" CACHE STRING
-    "specifies installation mode; supports DEFAULT and BUNDLE.
-
+    "Specifies installation mode; supports DEFAULT and BUNDLE.
     When BUNDLE option is set oneDNN will be installed as a bundle
-    which contains examples and benchdnn.")
+    which contains examples and benchdnn.") # internal
 if (NOT "${DNNL_INSTALL_MODE}" MATCHES "^(DEFAULT|BUNDLE)$")
     message(FATAL_ERROR "Unsupported install mode: ${DNNL_INSTALL_MODE}")
 endif()
 
-set(DNNL_CODE_COVERAGE "OFF" CACHE STRING
-    "specifies which supported tool for code coverage will be used
-    Currently only gcov supported")
-if(NOT "${DNNL_CODE_COVERAGE}" MATCHES "^(OFF|GCOV)$")
-    message(FATAL_ERROR "Unsupported code coverage tool: ${DNNL_CODE_COVERAGE}")
-endif()
+# -------------
+# Functionality
+# -------------
 
-set(DNNL_DPCPP_HOST_COMPILER "DEFAULT" CACHE STRING
-    "specifies host compiler for Intel oneAPI DPC++ Compiler")
+option(ONEDNN_BUILD_GRAPH "Enables Graph API and related optimizations" ON)
 
-set(DNNL_LIBRARY_NAME "dnnl" CACHE STRING
-    "specifies name of the library. For example, user can use this variable to
-     specify a custom library names for CPU and GPU configurations to safely
-     include them into their CMake project via add_subdirectory")
+option(DNNL_ENABLE_CONCURRENT_EXEC
+    "Disables sharing a common scratchpad between primitives.
+    This option must be turned ON if there is a possibility of executing
+    distinct primitives concurrently.
+    CAUTION: enabling this option increases memory consumption."
+    OFF)
 
-message(STATUS "DNNL_LIBRARY_NAME: ${DNNL_LIBRARY_NAME}")
+option(DNNL_ENABLE_PRIMITIVE_CACHE "Enables primitive cache." ON)
 
 set(DNNL_ENABLE_WORKLOAD "TRAINING" CACHE STRING
     "Specifies a set of functionality to be available at build time. Designed to
@@ -135,6 +128,178 @@ set(DNNL_ENABLE_PRIMITIVE "ALL" CACHE STRING
       is a mandatory delimiter between names. This is the way to specify several
       primitives to be available in the final binary.")
 
+option(DNNL_EXPERIMENTAL
+    "Enables experimental features in oneDNN.
+    When enabled, each experimental feature has to be individually selected
+    using environment variables."
+    OFF)
+
+option(DNNL_EXPERIMENTAL_UKERNEL
+    "Enables experimental functionality for ukernels. This option works
+    independently from DNNL_EXPERIMENTAL."
+    OFF)
+
+option(DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    "Enables experimental support for grouped memory format and grouped GEMM.
+    This option works independently from DNNL_EXPERIMENTAL."
+    OFF)
+
+option(DNNL_EXPERIMENTAL_PROFILING
+    "Enables experimental profiling capabilities. This option works independently
+    from DNNL_EXPERIMENTAL."
+    OFF)
+
+option(DNNL_EXPERIMENTAL_LOGGING
+    "Enables experimental functionality for logging. This option works
+    independently from DNNL_EXPERIMENTAL."
+    OFF)
+
+option(DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
+    "Enables experimental SYCL OpenCL kernel compiler extension. This option
+    works independently from DNNL_EXPERIMENTAL."
+    OFF)
+
+# -------------------
+# Debug and profiling
+# -------------------
+
+option(DNNL_ENABLE_JIT_PROFILING
+    "Enables registration of oneDNN kernels that are generated at
+    runtime with VTune Profiler (on by default). Without the
+    registrations, VTune Profiler would report data collected inside
+    the kernels as `outside any known module`."
+    ON)
+
+option(DNNL_ENABLE_ITT_TASKS
+    "Enables ITT Tasks tagging feature and tag all primitive execution
+    (on by default). VTune Profiler can group profiling results based
+    on those ITT tasks and show corresponding timeline information."
+    ON)
+
+option(ONEDNN_ENABLE_GRAPH_DUMP "Enables saving subgraphs defined using
+    Graph API to disk when ONEDNN_GRAPH_DUMP environment variable is set."
+    ON)
+
+option(DNNL_VERBOSE "Enables verbose mode output when ONEDNN_VERBOSE
+    environment variable set" ON)
+
+option(DNNL_DEV_MODE "Enables internal tracing capabilities" OFF)
+
+# -------------
+# Documentation
+# -------------
+
+option(DNNL_BUILD_DOC "Enables building documentation" ${DNNL_IS_MAIN_PROJECT})
+
+set(ONEDNN_DOC_VERSIONS_JSON "" CACHE STRING "Location of JSON file for
+    PyData Sphinx Theme version switcher. Must be a stable, persistent,
+    fully resolved URL. Enables documentation version switcher when set.")
+
+# ----------
+# Validation
+# ----------
+
+option(DNNL_BUILD_EXAMPLES "Enables building examples" ${DNNL_IS_MAIN_PROJECT})
+
+option(DNNL_BUILD_TESTS "Enables building tests" ${DNNL_IS_MAIN_PROJECT})
+
+set(DNNL_TEST_SET "CI" CACHE STRING
+    "Specifies the testing coverage. The variable consists of two parts:
+    the set value defining the number of test cases, and the modifiers for
+    testing commands. The input is expected in the CMake list style - a
+    semicolon separated string, e.g., DNNL_TEST_SET=CI;NO_CORR.")
+
+set(DNNL_CODE_COVERAGE "OFF" CACHE STRING
+    "Enables code coverage instrumentation. Currently only gcov supported")
+if(NOT "${DNNL_CODE_COVERAGE}" MATCHES "^(OFF|GCOV)$")
+    message(FATAL_ERROR "Unsupported code coverage tool: ${DNNL_CODE_COVERAGE}")
+endif()
+
+set(DNNL_USE_CLANG_SANITIZER "" CACHE STRING
+    "Instructs build system to use a Clang sanitizer. Possible values:
+    Address: enables AddressSanitizer
+    Leak: enables LeakSanitizer
+    Memory: enables MemorySanitizer
+    MemoryWithOrigin: enables MemorySanitizer with origin tracking
+    Thread: enables ThreadSanitizer
+    Undefined: enables UndefinedBehaviourSanitizer
+    This feature is only available on Linux.")
+
+set(DNNL_USE_CLANG_TIDY "NONE" CACHE STRING
+    "Instructs build system to use clang-tidy. Valid values:
+    - NONE (default)
+      Clang-tidy is disabled.
+    - CHECK
+      Enables checks from .clang-tidy.
+    - FIX
+      Enables checks from .clang-tidy and fix found issues.
+    This feature is only available on Linux.")
+
+option(DNNL_WERROR "Enables treating warnings as errors" OFF)
+
+option(DNNL_BUILD_FOR_CI
+    "Specifies whether oneDNN library will use special testing environment for
+    internal testing processes"
+    OFF) # internal
+
+option(DNNL_ENABLE_MEM_DEBUG "Enables memory-related debug functionality,
+    such as buffer overflow (default) and underflow, using gtests and benchdnn.
+    Additionally, this option enables testing of out-of-memory handling by the
+    library, such as failed memory allocations, using primitive-related gtests.
+    This feature is experimental and is only available on Linux." OFF) # internal
+
+option(DNNL_ENABLE_STACK_CHECKER "Enables stack checker that can be used to get
+    information about stack consumption for a particular library entry point.
+    This feature is only available on Linux (see src/common/stack_checker.hpp
+    for more details).
+    Note: This option requires enabling concurrent scratchpad
+    (DNNL_ENABLE_CONCURRENT_EXEC)." OFF) # internal
+
+option(BENCHDNN_USE_RDPMC
+    "Enables rdpmc counter to report precise CPU frequency in benchdnn.
+    CAUTION: may not work on all cpus (hence disabled by default)"
+    OFF) # internal
+
+# ===========
+# CPU options
+# ===========
+
+# ------------------
+# Common CPU options
+# ------------------
+
+set(DNNL_CPU_RUNTIME "OMP" CACHE STRING
+    "Specifies the threading runtime for CPU engines;
+    supports OMP (default), TBB, SYCL, SEQ, or THREADPOOL.")
+
+if(NOT "${DNNL_CPU_RUNTIME}" MATCHES "^(NONE|OMP|TBB|SEQ|THREADPOOL|DPCPP|SYCL)$")
+    message(FATAL_ERROR "Unsupported CPU runtime: ${DNNL_CPU_RUNTIME}")
+endif()
+
+set(_DNNL_TEST_THREADPOOL_IMPL "STANDALONE" CACHE STRING
+    "Specifies which threadpool implementation will be used in tests when
+    the librariy is built with DNNL_CPU_RUNTIME=THREADPOOL. Valid values: STANDALONE, EIGEN,
+    EIGEN_ASYNC, TBB")
+if(NOT "${_DNNL_TEST_THREADPOOL_IMPL}" MATCHES "^(STANDALONE|TBB|EIGEN|EIGEN_ASYNC)$")
+    message(FATAL_ERROR
+        "Unsupported threadpool implementation: ${_DNNL_TEST_THREADPOOL_IMPL}")
+endif()
+
+set(TBBROOT "" CACHE STRING
+    "Path to Threading Building Blocks (TBB) package.")
+
+# ---------------
+# x64 CPU options
+# ---------------
+
+option(DNNL_ENABLE_MAX_CPU_ISA
+    "Enables control of CPU ISA detected by oneDNN via DNNL_MAX_CPU_ISA
+    environment variable and dnnl_set_max_cpu_isa() function" ON)
+
+option(DNNL_ENABLE_CPU_ISA_HINTS
+    "Enables control of CPU ISA specific hints by oneDNN via DNNL_CPU_ISA_HINTS
+    environment variable and dnnl_set_cpu_isa_hints() function" ON)
+
 set(DNNL_ENABLE_PRIMITIVE_CPU_ISA "ALL" CACHE STRING
     "Specifies a set of implementations using specific CPU ISA to be available
     at build time. Regardless of value chosen, compiler-based optimized
@@ -144,14 +309,6 @@ set(DNNL_ENABLE_PRIMITIVE_CPU_ISA "ALL" CACHE STRING
       Possible values are: SSE41, AVX2, AVX512, AMX. The linear order is
       SSE41 < AVX2 < AVX512 < AMX. It means that if user selects, e.g. AVX2 ISA,
       SSE41 implementations will also be available at build time.")
-
-set(DNNL_ENABLE_PRIMITIVE_GPU_ISA "ALL" CACHE STRING
-    "Specifies a set of implementations using specific GPU ISA to be available
-    at build time. Regardless of value chosen, reference OpenCL-based
-    implementations will always be available. Valid values:
-    - ALL (the default). Includes all ISA to be enabled.
-    - <ISA_NAME>;<ISA_NAME>;... Includes only selected ISA to be enabled.
-      Possible values are: XELP, XEHP, XEHPG, XEHPC, XE2, XE3, XE3P.")
 
 set(ONEDNN_ENABLE_GEMM_KERNELS_ISA "ALL" CACHE STRING
     "Specifies an ISA set of GeMM kernels residing in x64/gemm folder to be
@@ -163,142 +320,45 @@ set(ONEDNN_ENABLE_GEMM_KERNELS_ISA "ALL" CACHE STRING
       SSE41 < AVX2 < AVX512 < AMX (or ALL). It means that if user selects, e.g.
       AVX2 ISA, SSE41 kernels will also present at build time.")
 
-set(DNNL_AMD_SYCL_KERNELS_TARGET_ARCH "" CACHE STRING
-    "Specifies the target architecture (e.g. gfx90a when compiling on AMD MI210)
-    to be used for compiling generic SYCL kernels for AMD vendor.
-    When this option is set to a valid architecture (see LLVM target column in
-    https://rocm.docs.amd.com/projects/install-on-linux/en/latest/reference/system-requirements.html#supported-gpus
-    for supported architectures), the generic SYCL kernels will be enabled for AMD
-    vendor. If not set, the SYCL kernels will not be compiled.
-    Warning: This option is temporary and will be removed as soon as the compiler
-    stops to require specifying the target architecture. After removing the option
-    the generic SYCL kernels will always be enabled for AMD vendor.")
-
-# =============
-# Optimizations
-# =============
-
-set(DNNL_ARCH_OPT_FLAGS "HostOpts" CACHE STRING
-    "specifies compiler optimization flags (see below for more information).
-    If empty default optimization level would be applied which depends on the
-    compiler being used.
-
-    - For Intel C++ Compilers the default option is `-xSSE4.1` which instructs
-      the compiler to generate the code for the processors that support SSE4.1
-      instructions. This option would not allow to run the library on older
-      architectures.
-
-    - For GNU* Compiler Collection and Clang, the default option is `-msse4.1` which
-      behaves similarly to the description above.
-
-    - For Clang and GCC compilers on RISC-V architecture this option accepts `-march=<ISA-string>` flag
-      to control wthether or not oneDNN should be compiled with RVV Intrinsics. Use this option with
-      `-march=rv64gc` or `-march=rv64gcv` value to compile oneDNN with and without RVV Intrinsics respectively.
-      If the option is not provided, CMake will decide based on the active toolchain and compiler flags.
-
-    - For all other cases there are no special optimizations flags.
-
-    If the library is to be built for generic architecture (e.g. built by a
-    Linux distributive maintainer) one may want to specify DNNL_ARCH_OPT_FLAGS=\"\"
-    to not use any host specific instructions")
-
-option(DNNL_EXPERIMENTAL
-    "Enables experimental features in oneDNN.
-    When enabled, each experimental feature has to be individually selected
-    using environment variables."
-    OFF) # disabled by default
-
-option(DNNL_EXPERIMENTAL_UKERNEL
-    "Enable experimental functionality for ukernels. This option works
-    independently from DNNL_EXPERIMENTAL."
-    OFF) # disabled by default
-
-option(DNNL_EXPERIMENTAL_GROUPED_MEMORY
-    "Enable experimental support for grouped memory format and grouped GEMM.
-    This option works independently from DNNL_EXPERIMENTAL."
-    OFF) # disabled by default
-
-option(DNNL_EXPERIMENTAL_PROFILING
-    "Enable experimental profiling capabilities. This option works independently
-    from DNNL_EXPERIMENTAL."
-    OFF) # disabled by default
-
-option(DNNL_EXPERIMENTAL_LOGGING
-    "Enable experimental functionality for logging. This option works
-    independently from DNNL_EXPERIMENTAL."
-    OFF) # disabled by default
-
-option(DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
-    "Enable experimental SYCL OpenCL kernel compiler extension. This option
-    works independently from DNNL_EXPERIMENTAL."
-    OFF) # disabled by default
-
 option(DNNL_SAFE_RBP
-    "Make RBP register untouchable in JIT kernels to allow stack unwind"
-    OFF) # disabled by default
+    "Prohibits RBP register clobbering in JIT kernels. Use this option to enable
+    runtime profiling with tools like Flame Graph."
+    OFF)
 
-# ======================
-# Profiling capabilities
-# ======================
+# -------------------
+# AArch64 CPU options
+# -------------------
 
-# TODO: restore default to ON after the issue with linking C files by
-# Intel oneAPI DPC++ Compiler is fixed. Currently this compiler issues a warning
-# when linking object files built from C and C++ sources.
-option(DNNL_ENABLE_JIT_PROFILING
-    "Enable registration of oneDNN kernels that are generated at
-    runtime with VTune Profiler (on by default). Without the
-    registrations, VTune Profiler would report data collected inside
-    the kernels as `outside any known module`."
-    ON)
+option(DNNL_AARCH64_USE_ACL "Enables use of AArch64 optimised functions
+    from Arm Compute Library.
+    This is only supported on AArch64 builds and assumes there is a
+    functioning Compute Library build available at the location specified by the
+    environment variable ACL_ROOT_DIR." OFF)
 
-option(DNNL_ENABLE_ITT_TASKS
-    "Enable ITT Tasks tagging feature and tag all primitive execution
-    (on by default). VTune Profiler can group profiling results based
-    on those ITT tasks and show corresponding timeline information."
-    ON)
+# ===========
+# GPU options
+# ===========
 
-# ===================
-# Engine capabilities
-# ===================
-
-set(DNNL_CPU_RUNTIME "OMP" CACHE STRING
-    "specifies the threading runtime for CPU engines;
-    supports OMP (default), TBB or SYCL (SYCL CPU engines).
-
-    To use Threading Building Blocks (TBB) one should also
-    set TBBROOT (either environment variable or CMake option) to the library
-    location.")
-if(NOT "${DNNL_CPU_RUNTIME}" MATCHES "^(NONE|OMP|TBB|SEQ|THREADPOOL|DPCPP|SYCL)$")
-    message(FATAL_ERROR "Unsupported CPU runtime: ${DNNL_CPU_RUNTIME}")
-endif()
-
-set(_DNNL_TEST_THREADPOOL_IMPL "STANDALONE" CACHE STRING
-    "specifies which threadpool implementation to use when
-    DNNL_CPU_RUNTIME=THREADPOOL is selected. Valid values: STANDALONE, EIGEN,
-    EIGEN_ASYNC, TBB")
-if(NOT "${_DNNL_TEST_THREADPOOL_IMPL}" MATCHES "^(STANDALONE|TBB|EIGEN|EIGEN_ASYNC)$")
-    message(FATAL_ERROR
-        "Unsupported threadpool implementation: ${_DNNL_TEST_THREADPOOL_IMPL}")
-endif()
-
-set(TBBROOT "" CACHE STRING
-    "path to Thread Building Blocks (TBB).
-    Use this option to specify TBB installation locaton.")
+# ------------------
+# Common GPU options
+# ------------------
 
 set(DNNL_GPU_RUNTIME "NONE" CACHE STRING
-    "specifies the runtime to use for GPU engines.
+    "Specifies the runtime to use for GPU engines.
     Can be NONE (default; no GPU engines), OCL (OpenCL GPU engines)
     or SYCL (SYCL GPU engines).
 
     Using OpenCL for GPU requires setting OPENCLROOT if the libraries are
     installed in a non-standard location.")
+
 if(NOT "${DNNL_GPU_RUNTIME}" MATCHES "^(OCL|NONE|DPCPP|SYCL|ZE)$")
     message(FATAL_ERROR "Unsupported GPU runtime: ${DNNL_GPU_RUNTIME}")
 endif()
 
 set(DNNL_GPU_VENDOR "NONE" CACHE STRING
     "When DNNL_GPU_RUNTIME is not NONE DNNL_GPU_VENDOR specifies target GPU
-    vendor for GPU engines. Can be INTEL (default), NVIDIA or AMD.")
+    vendor for GPU engines. Can be INTEL (default when DNNL_GPU_RUNTIME is
+    not NONE), NVIDIA, AMD, or GENERIC.")
 
 if(NOT DNNL_GPU_RUNTIME STREQUAL "NONE" AND DNNL_GPU_VENDOR STREQUAL "NONE")
     set(DNNL_GPU_VENDOR "INTEL")
@@ -307,6 +367,18 @@ endif()
 if(NOT "${DNNL_GPU_VENDOR}" MATCHES "^(NONE|INTEL|NVIDIA|AMD|GENERIC)$")
     message(FATAL_ERROR "Unsupported GPU vendor: ${DNNL_GPU_VENDOR}")
 endif()
+
+# -----------------
+# Intel GPU options
+# -----------------
+
+set(DNNL_ENABLE_PRIMITIVE_GPU_ISA "ALL" CACHE STRING
+    "Specifies a set of implementations using specific GPU ISA to be available
+    at build time. Regardless of value chosen, reference OpenCL-based
+    implementations will always be available. Valid values:
+    - ALL (the default). Includes all ISA to be enabled.
+    - <ISA_NAME>;<ISA_NAME>;... Includes only selected ISA to be enabled.
+      Possible values are: XELP, XEHP, XEHPG, XEHPC, XE2, XE3, XE3P.")
 
 set(OPENCLROOT "" CACHE STRING
     "Path to OpenCL SDK.
@@ -320,121 +392,21 @@ set(DNNL_ZE_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/third_party/level_zero" CACHE STR
     "Path to Level Zero headers. Defaults to the headers bundled in
     third_party/level_zero.")
 
-# TODO: move logic to other cmake files?
-# Shortcuts for SYCL/DPC++
-if(DNNL_CPU_RUNTIME STREQUAL "DPCPP" OR DNNL_CPU_RUNTIME STREQUAL "SYCL")
-    set(DNNL_CPU_SYCL true)
-else()
-    set(DNNL_CPU_SYCL false)
-endif()
-
-if("${DNNL_CPU_RUNTIME}" MATCHES "^(DPCPP|SYCL)$" AND NOT DNNL_GPU_RUNTIME STREQUAL DNNL_CPU_RUNTIME)
-    message(FATAL_ERROR "CPU runtime ${DNNL_CPU_RUNTIME} requires GPU runtime ${DNNL_CPU_RUNTIME}")
-endif()
-
-if(DNNL_GPU_RUNTIME STREQUAL "DPCPP" OR DNNL_GPU_RUNTIME STREQUAL "SYCL")
-    set(DNNL_GPU_SYCL true)
-    set(DNNL_SYCL_CUDA OFF)
-    set(DNNL_SYCL_HIP OFF)
-    set(DNNL_SYCL_GENERIC OFF)
-    if(DNNL_GPU_VENDOR STREQUAL "NVIDIA")
-        set(DNNL_SYCL_CUDA ON)
-    endif()
-    if(DNNL_GPU_VENDOR STREQUAL "AMD")
-        set(DNNL_SYCL_HIP ON)
-    endif()
-    if(DNNL_GPU_VENDOR STREQUAL "GENERIC")
-        set(DNNL_SYCL_GENERIC ON)
-    endif()
-else()
-    set(DNNL_GPU_SYCL false)
-endif()
-
-if(DNNL_CPU_SYCL OR DNNL_GPU_SYCL)
-    set(DNNL_WITH_SYCL true)
-else()
-    set(DNNL_WITH_SYCL false)
-endif()
-
-if(DNNL_SYCL_HIP AND NOT "${DNNL_AMD_SYCL_KERNELS_TARGET_ARCH}" STREQUAL "")
-    add_definitions(-DDNNL_AMD_ENABLE_SYCL_KERNELS)
-    set(DNNL_AMD_ENABLE_SYCL_KERNELS TRUE)
-endif()
-
-# =============
-# Miscellaneous
-# =============
-
-option(BENCHDNN_USE_RDPMC
-    "enables rdpms counter to report precise cpu frequency in benchdnn.
-    CAUTION: may not work on all cpus (hence disabled by default)"
-    OFF) # disabled by default
-
-# =========================
-# Developer and debug flags
-# =========================
-
-set(DNNL_USE_CLANG_SANITIZER "" CACHE STRING
-    "instructs build system to use a Clang sanitizer. Possible values:
-    Address: enables AddressSanitizer
-    Leak: enables LeakSanitizer
-    Memory: enables MemorySanitizer
-    MemoryWithOrigin: enables MemorySanitizer with origin tracking
-    Thread: enables ThreadSanitizer
-    Undefined: enables UndefinedBehaviourSanitizer
-    This feature is experimental and is only available on Linux.")
-
-option(DNNL_ENABLE_MEM_DEBUG "enables memory-related debug functionality,
-    such as buffer overflow (default) and underflow, using gtests and benchdnn.
-    Additionally, this option enables testing of out-of-memory handling by the
-    library, such as failed memory allocations, using primitive-related gtests.
-    This feature is experimental and is only available on Linux." OFF)
-
-set(DNNL_USE_CLANG_TIDY "NONE" CACHE STRING
-    "Instructs build system to use clang-tidy. Valid values:
-    - NONE (default)
-      Clang-tidy is disabled.
-    - CHECK
-      Enables checks from .clang-tidy.
-    - FIX
-      Enables checks from .clang-tidy and fix found issues.
-    This feature is only available on Linux.")
-
-option(DNNL_ENABLE_STACK_CHECKER "enables stack checker that can be used to get
-    information about stack consumption for a particular library entry point.
-    This feature is only available on Linux (see src/common/stack_checker.hpp
-    for more details).
-    Note: This option requires enabling concurrent scratchpad
-    (DNNL_ENABLE_CONCURRENT_EXEC)." OFF)
-
 option(DNNL_DISABLE_GPU_REF_KERNELS
-        "builds oneDNN with only optimized kernels for GPU compute
-        primitives" OFF)
+    "Disables use of reference implementations on Intel GPUs."
+    OFF) # internal
 
-# =============================
-# External BLAS library options
-# =============================
+# -----------------
+# Other GPU options
+# -----------------
 
-set(DNNL_BLAS_VENDOR "NONE" CACHE STRING
-    "Use an external BLAS library. Valid values:
-      - NONE (default)
-        Use internal BLAS implementation. Recommended in most situations.
-      - ACCELERATE
-        (https://developer.apple.com/documentation/accelerate/blas)
-      - ARMPL
-        Arm Performance Libraries
-        (https://developer.arm.com/tools-and-software/server-and-hpc/downloads/arm-performance-libraries)
-      - ANY
-        FindBLAS will search default library paths for a known BLAS
-        installation. This vendor is supported for performance analysis
-        purposes only.")
-
-# ==============================================
-# AArch64 optimizations with Arm Compute Library
-# ==============================================
-
-option(DNNL_AARCH64_USE_ACL "Enables use of AArch64 optimised functions
-    from Arm Compute Library.
-    This is only supported on AArch64 builds and assumes there is a
-    functioning Compute Library build available at the location specified by the
-    environment variable ACL_ROOT_DIR." OFF)
+set(DNNL_AMD_SYCL_KERNELS_TARGET_ARCH "" CACHE STRING
+    "Specifies the target architecture (e.g. gfx90a when compiling on AMD MI210)
+    to be used for compiling generic SYCL kernels for AMD vendor.
+    When this option is set to a valid architecture (see LLVM target column in
+    https://rocm.docs.amd.com/projects/install-on-linux/en/latest/reference/system-requirements.html#supported-gpus
+    for supported architectures), the generic SYCL kernels will be enabled for AMD
+    vendor. If not set, the SYCL kernels will not be compiled.
+    Warning: This option is temporary and will be removed as soon as the compiler
+    stops to require specifying the target architecture. After removing the option
+    the generic SYCL kernels will always be enabled for AMD vendor.") # internal

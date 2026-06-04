@@ -447,3 +447,8 @@ mb1_ic1oc1_ih32oh16kh2sh2dh0ph0_iw64ow64kw4sw1dw0pw1
 --reset
 --dt=u8:s8:u8 --attr-zero-points=src:per_oc
 g960mb32ic960ih7oc960oh7kh5ph2
+
+# BRGEMM-based exec_trans case with IC tail and K_tail == ic_block
+--reset
+--dt=bf16:bf16:bf16 --dir=FWD_I
+g1mb1ic48ih10iw1oc48kh128kw1ph64pw0

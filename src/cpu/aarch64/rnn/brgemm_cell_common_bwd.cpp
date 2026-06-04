@@ -36,8 +36,8 @@ brgemm_diff_src_layer_iter_t<weights_t, scratch_t,
         const rnn_utils::rnn_conf_t &rnn,
         rnn_utils::cell_position_t cell_position, scratch_t *scratch_gates,
         weights_t *w_iter, weights_t *w_layer, gemm_acc_t *diff_src_iter,
-        gemm_acc_t *diff_src_layer,
-        aarch64::brgemm_batch_element_t *addr_batch_global)
+        gemm_acc_t *diff_src_layer, gemm_acc_t *gemm_acc_scratchpad,
+        brgemm_batch_element_t *addr_batch_global)
     : rnn_brgemm_(rnn_brgemm)
     , rnn_(rnn)
     , A_(scratch_gates)
@@ -83,6 +83,7 @@ brgemm_diff_src_layer_iter_t<weights_t, scratch_t,
               rnn_brgemm_.diff_src_.kernel_iter_layer_K_tail_beta1_.get())
     , kernel_layer_nk_tail_(
               rnn_brgemm_.diff_src_.kernel_layer_NK_tail_beta1_.get())
+    , gemm_acc_scratchpad_(gemm_acc_scratchpad)
     , addr_batch_global_(addr_batch_global) {}
 
 template <typename weights_t, typename scratch_t, typename gemm_acc_t>
@@ -103,7 +104,7 @@ void brgemm_diff_src_layer_iter_t<weights_t, scratch_t, gemm_acc_t>::kernel(
     int n_block_id = 0, m_block_id = 0;
     nd_iterator_init(start, n_block_id, n_blocking_, m_block_id, m_blocking_);
 
-    aarch64::brgemm_batch_element_t *const addr_batch
+    brgemm_batch_element_t *const addr_batch
             = addr_batch_global_ + ithr * (k_blocks_n_gates_ + 1);
 
     const auto n_gates = rnn_.n_gates;
@@ -224,7 +225,8 @@ brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
         scratch_t *const A_layer_transposed_scratch, const scratch_t *scratch,
         scratch_t *scratch_gates_blocked, gemm_acc_t *diff_weights_iter,
         gemm_acc_t *diff_weights_layer, gemm_acc_t *diff_bias,
-        aarch64::brgemm_batch_element_t *addr_batch_global)
+        gemm_acc_t *gemm_acc_scratchpad,
+        brgemm_batch_element_t *addr_batch_global)
     : rnn_brgemm_(rnn_brgemm)
     , rnn_(rnn)
     , A_iter_(src_iter)
@@ -270,6 +272,7 @@ brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
     , kernel_layer_nk_tail_(
               rnn_brgemm.diff_wei_.kernel_layer_NK_tail_beta1_.get())
     , cell_position_(cell_position)
+    , gemm_acc_scratchpad_(gemm_acc_scratchpad)
     , addr_batch_global_(addr_batch_global) {}
 
 template <typename src_layer_t, typename src_iter_t, typename scratch_t,
@@ -318,7 +321,7 @@ void brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
         last_m_block_id = -1;
     nd_iterator_init(start, n_block_id, n_blocking_, m_block_id, m_blocking_);
 
-    aarch64::brgemm_batch_element_t *const addr_batch
+    brgemm_batch_element_t *const addr_batch
             = addr_batch_global_ + ithr * (k_blocks_ + 1);
 
     while (start < end) {

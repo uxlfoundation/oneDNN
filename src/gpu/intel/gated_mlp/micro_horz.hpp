@@ -17,6 +17,7 @@
 #ifndef GPU_INTEL_GATED_MLP_MICRO_HORZ_HPP
 #define GPU_INTEL_GATED_MLP_MICRO_HORZ_HPP
 
+#include <vector>
 #include "common/c_types_map.hpp"
 #include "common/gated_mlp_pd.hpp"
 #include "common/primitive.hpp"
@@ -43,7 +44,9 @@ struct micro_horz_t : public primitive_t {
         status_t init(impl::engine_t *engine);
 
         status_t get_gate_dst_md(memory_desc_t &retn) const {
-            data_type_t dt = arg_md(DNNL_ARG_WEIGHTS_DOWN)->data_type;
+            // inferring the type
+            auto down_md = arg_md(DNNL_ARG_WEIGHTS_DOWN);
+            data_type_t dt = down_md->data_type;
             switch (dt) {
                 case data_type::f32:
                 case data_type::bf16:
@@ -58,10 +61,38 @@ struct micro_horz_t : public primitive_t {
                     break;
                 default: return status::unimplemented;
             }
-            std::vector<dim_t> dims {MB(), OC()};
+            // now inferring the shape
+            std::vector<dim_t> dims {MB(), 1};
+            format_tag_t tag = format_tag::abc;
+            if (down_md->ndims == 2) {
+                dims[1] = OC();
+                tag = format_tag::ab;
+            } else {
+                gpu_assert(down_md->ndims == 3);
+                dims.emplace_back(OC());
+            }
             CHECK(memory_desc_init_by_tag(
-                    retn, int(dims.size()), dims.data(), dt, format_tag::ab));
+                    retn, int(dims.size()), dims.data(), dt, tag));
             return status::success;
+        }
+
+        dnnl_data_type_t get_accum_type() const {
+            auto is_float = [](dnnl_data_type_t dt) {
+                return utils::one_of(dt, dnnl_f32, dnnl_f16, dnnl_bf16);
+            };
+            static const std::vector<int> all_idx {
+                    DNNL_ARG_SRC, DNNL_ARG_WEIGHTS_UP, DNNL_ARG_WEIGHTS_GATE};
+            auto src_dt = arg_md(all_idx[0])->data_type;
+            auto wu_dt = arg_md(all_idx[1])->data_type;
+            auto wg_dt = arg_md(all_idx[2])->data_type;
+            if (is_float(wu_dt) != is_float(wg_dt)) return dnnl_data_type_undef;
+            if (is_float(src_dt) || is_float(wu_dt) || is_float(wg_dt))
+                return dnnl_f32;
+            bool has_scales = false;
+            for (auto &i : all_idx)
+                has_scales |= !attr()->scales_.has_default_values(i)
+                        && (attr()->scales_.get_mask(i) != 0);
+            return (has_scales) ? dnnl_f32 : dnnl_s32;
         }
 
         status_t set_default_formats() {
@@ -80,11 +111,18 @@ struct micro_horz_t : public primitive_t {
         std::shared_ptr<primitive_desc_t> gemm_down_pd_;
 
     private:
-        status_t move_attr(primitive_attr_t &retn, int from, int to) {
-            CHECK(retn.set_fpmath_mode(
-                    attr()->fpmath_.mode_, attr()->fpmath_.apply_to_int_));
-            CHECK(retn.scales_.set(to, attr()->scales_.get(from)));
-            CHECK(retn.zero_points_.set(to, attr()->zero_points_.get(from)));
+        status_t move_attr_down(primitive_attr_t &retn, int w_from, int w_to) {
+            auto wd_dt = arg_md(w_from)->data_type;
+            // Down SRC is always floating-point, but WEI isn't
+            CHECK((utils::one_of(wd_dt, dnnl_f32, dnnl_f16, dnnl_bf16))
+                            ? retn.set_fpmath_mode(fpmath_mode::strict, false)
+                            : retn.set_fpmath_mode(fpmath_mode::any, true));
+            // all per-primitive post-ops are for Down, not for Gate/Up
+            CHECK(retn.set_post_ops(attr()->post_ops_));
+            // quantizations on weights
+            CHECK(retn.scales_.set(w_to, attr()->scales_.get(w_from)));
+            CHECK(retn.zero_points_.set(
+                    w_to, attr()->zero_points_.get(w_from)));
             return status::success;
         }
 

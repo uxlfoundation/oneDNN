@@ -40,69 +40,62 @@ struct gated_mlp_config_t {
     int wg_m_gwu, wg_n_gwu;
 };
 
-bool with_wts_quant(const quant_entries_t &q, int arg) {
-    return !q.has_default_values(arg);
-}
-bool with_wts_gate_scales(const micro_horz_t::pd_t *pd) {
-    return with_wts_quant(pd->attr()->scales_, DNNL_ARG_WEIGHTS_GATE);
-}
-bool with_wts_up_scales(const micro_horz_t::pd_t *pd) {
-    return with_wts_quant(pd->attr()->scales_, DNNL_ARG_WEIGHTS_UP);
-}
-bool with_wts_down_scales(const micro_horz_t::pd_t *pd) {
-    return with_wts_quant(pd->attr()->scales_, DNNL_ARG_WEIGHTS_DOWN);
-}
-bool with_wts_gate_zp(const micro_horz_t::pd_t *pd) {
-    return with_wts_quant(pd->attr()->zero_points_, DNNL_ARG_WEIGHTS_GATE);
-}
-bool with_wts_up_zp(const micro_horz_t::pd_t *pd) {
-    return with_wts_quant(pd->attr()->zero_points_, DNNL_ARG_WEIGHTS_UP);
-}
-bool with_wts_down_zp(const micro_horz_t::pd_t *pd) {
-    return with_wts_quant(pd->attr()->zero_points_, DNNL_ARG_WEIGHTS_DOWN);
+// TODO: refine the config selection process
+gated_mlp_config_t select_config(const compute::device_info_t &dev_info) {
+    if (dev_info.gpu_arch() > compute::gpu_arch_t::xe3) {
+        return {32, 32, 1, 1};
+    } else if (dev_info.gpu_arch() > compute::gpu_arch_t::xe_hpg) {
+        return {32, 16, 1, 1};
+    } else {
+        return {8, 8, 4, 4};
+    }
 }
 
-data_type_t wts_quant_dt(const quant_entries_t &q, int arg) {
-    return q.get_data_type(arg);
-}
-data_type_t wts_gate_scales_dt(const micro_horz_t::pd_t *pd) {
-    return wts_quant_dt(pd->attr()->scales_, DNNL_ARG_WEIGHTS_GATE);
-}
-data_type_t wts_up_scales_dt(const micro_horz_t::pd_t *pd) {
-    return wts_quant_dt(pd->attr()->scales_, DNNL_ARG_WEIGHTS_UP);
-}
-data_type_t wts_down_scales_dt(const micro_horz_t::pd_t *pd) {
-    return wts_quant_dt(pd->attr()->scales_, DNNL_ARG_WEIGHTS_DOWN);
-}
-data_type_t wts_gate_zp_dt(const micro_horz_t::pd_t *pd) {
-    return wts_quant_dt(pd->attr()->zero_points_, DNNL_ARG_WEIGHTS_GATE);
-}
-data_type_t wts_up_zp_dt(const micro_horz_t::pd_t *pd) {
-    return wts_quant_dt(pd->attr()->zero_points_, DNNL_ARG_WEIGHTS_UP);
-}
-data_type_t wts_down_zp_dt(const micro_horz_t::pd_t *pd) {
-    return wts_quant_dt(pd->attr()->zero_points_, DNNL_ARG_WEIGHTS_DOWN);
-}
+#define CASE(gen, name, ...) \
+    gen(name##_scales, scales_, __VA_ARGS__) \
+            gen(name##_zp, zero_points_, __VA_ARGS__)
 
-dim_t wts_group_size(const micro_horz_t::pd_t *pd, int arg) {
-    auto gs = pd->attr()->scales_.get_group(arg, 0);
-    auto gz = pd->attr()->zero_points_.get_group(arg, 0);
-    gpu_assert(IMPLICATION(gs && gz, gs == gz));
-    return gs;
-}
-dim_t wts_gate_group_size(const micro_horz_t::pd_t *pd) {
-    return wts_group_size(pd, DNNL_ARG_WEIGHTS_GATE);
-}
-dim_t wts_up_group_size(const micro_horz_t::pd_t *pd) {
-    return wts_group_size(pd, DNNL_ARG_WEIGHTS_UP);
-}
-dim_t wts_down_group_size(const micro_horz_t::pd_t *pd) {
-    return wts_group_size(pd, DNNL_ARG_WEIGHTS_DOWN);
-}
+#define WITH_QUANT(name, quant, arg) \
+    bool with_##name(const micro_horz_t::pd_t *pd) { \
+        return !pd->attr()->quant.has_default_values(arg); \
+    }
+CASE(WITH_QUANT, src, DNNL_ARG_SRC)
+CASE(WITH_QUANT, wts_gate, DNNL_ARG_WEIGHTS_GATE)
+CASE(WITH_QUANT, wts_up, DNNL_ARG_WEIGHTS_UP)
+CASE(WITH_QUANT, wts_down, DNNL_ARG_WEIGHTS_DOWN)
+#undef WITH_QUANT
 
-bool with_quantize_common(const quant_entries_t &q, int arg) {
-    return !q.has_default_values(arg) && (q.get_mask(arg) == 0);
-}
+#define WITH_QUANT_COMMON(name, quant, arg) \
+    bool with_common_##name(const micro_horz_t::pd_t *pd) { \
+        return with_##name(pd) && (pd->attr()->quant.get_mask(arg) == 0); \
+    }
+CASE(WITH_QUANT_COMMON, src, DNNL_ARG_SRC)
+CASE(WITH_QUANT_COMMON, wts_gate, DNNL_ARG_WEIGHTS_GATE)
+CASE(WITH_QUANT_COMMON, wts_up, DNNL_ARG_WEIGHTS_UP)
+CASE(WITH_QUANT_COMMON, wts_down, DNNL_ARG_WEIGHTS_DOWN)
+#undef QUANT_COMMON
+
+#define QUANT_DT(name, quant, arg) \
+    data_type_t name##_dt(const micro_horz_t::pd_t *pd) { \
+        return pd->attr()->quant.get_data_type(arg); \
+    }
+CASE(QUANT_DT, src, DNNL_ARG_SRC)
+CASE(QUANT_DT, wts_gate, DNNL_ARG_WEIGHTS_GATE)
+CASE(QUANT_DT, wts_up, DNNL_ARG_WEIGHTS_UP)
+CASE(QUANT_DT, wts_down, DNNL_ARG_WEIGHTS_DOWN)
+#undef QUANT_DT
+
+#define QUANT_GS(name, quant, arg, idx) \
+    dim_t name##_group_size(const micro_horz_t::pd_t *pd) { \
+        return pd->attr()->quant.get_group(arg, idx); \
+    }
+CASE(QUANT_GS, src, DNNL_ARG_SRC, 1)
+CASE(QUANT_GS, wts_gate, DNNL_ARG_WEIGHTS_GATE, 0)
+CASE(QUANT_GS, wts_up, DNNL_ARG_WEIGHTS_UP, 0)
+CASE(QUANT_GS, wts_down, DNNL_ARG_WEIGHTS_DOWN, 0)
+#undef QUANT_GS
+
+#undef CASE
 
 int sg_size(impl::engine_t *engine) {
     auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
@@ -112,15 +105,14 @@ int sg_size(impl::engine_t *engine) {
 } // anonymous namespace
 
 status_t micro_horz_t::pd_t::init(impl::engine_t *engine) {
-    //VDISPATCH_GATED_MLP(gpu_utils::dev_getenv("gmlp_horz_ukern", false),
-    //        VERBOSE_SKIP_PRIMITIVE_IMPL);
     memory_desc_t inter_md;
     CHECK(get_gate_dst_md(inter_md));
+    CHECK(set_default_formats());
     CHECK(init_microkernels(engine, &inter_md));
 
 #ifndef UGEMM_UP_ONLY
     primitive_attr_t down_attr;
-    CHECK(move_attr(down_attr, DNNL_ARG_WEIGHTS_DOWN, DNNL_ARG_WEIGHTS));
+    CHECK(move_attr_down(down_attr, DNNL_ARG_WEIGHTS_DOWN, DNNL_ARG_WEIGHTS));
     auto down_desc = matmul_desc_t();
     CHECK(impl::matmul_desc_init(&down_desc, &inter_md,
             arg_md(DNNL_ARG_WEIGHTS_DOWN), nullptr, arg_md(DNNL_ARG_DST)));
@@ -141,31 +133,38 @@ status_t micro_horz_t::pd_t::init(impl::engine_t *engine) {
     return status::success;
 }
 
-gemmstone::Type get_ab_type(gemmstone::Type src, gemmstone::Type wei) {
-    using ty = gemmstone::Type;
-    if (src == ty::f32) return ty::f32;
-    if (src == ty::bf16)
-        return (utils::one_of(wei, ty::u4, ty::s4, ty::u8, ty::s8, ty::bf16))
-                ? ty::bf16
-                : ty::invalid;
-    if (src == ty::f16)
-        return (utils::one_of(wei, ty::u4, ty::s4, ty::u8, ty::s8, ty::f16))
-                ? ty::f16
-                : ty::invalid;
-    return ty::invalid;
-}
-
 status_t micro_horz_t::pd_t::init_microkernels(
         impl::engine_t *engine, const memory_desc_t *inter_md) {
     assert(engine->kind() == engine_kind::gpu);
     auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
     auto *dev_info = intel_engine->device_info();
 
-    VCONDCHECK(primitive, create, check, gated_mlp,
+    VCONDCHECK(primitive, create, dispatch, gated_mlp,
             compute::mayiuse_microkernels(intel_engine), status::unimplemented,
             "Microkernels not supported by the OpenCL driver.");
 
-    gated_mlp_config_t config = {16, 16, 2, 2};
+    auto config = select_config(*dev_info);
+
+#ifdef DNNL_DEV_MODE
+    auto gmlp_conf = gpu_utils::dev_getenv("GMLP_CONF", std::string());
+    if (!gmlp_conf.empty()) {
+        std::vector<int> tokens;
+        std::stringstream ss(gmlp_conf);
+        std::string tmp;
+        try {
+            while (getline(ss, tmp, ' '))
+                tokens.push_back(std::stoi(tmp));
+            if (tokens.size() == 4) {
+                config.unroll_m_gwu = tokens[0];
+                config.unroll_n_gwu = tokens[1];
+                config.wg_m_gwu = tokens[2];
+                config.wg_n_gwu = tokens[3];
+            }
+        } catch (...) {}
+        printf("GMLP_CONF: (%d %d %d %d)\n", config.unroll_m_gwu,
+                config.unroll_n_gwu, config.wg_m_gwu, config.wg_n_gwu);
+    }
+#endif
 
     gemmstone::microkernel::HWInformation hw_info;
     hw_info.euCount = dev_info->eu_count();
@@ -177,65 +176,159 @@ status_t micro_horz_t::pd_t::init_microkernels(
     if (hw_info.gmdid == 0) return status::unimplemented;
 
     gemmstone::GEMMProblem problem;
-    problem.Ta_ext = gemm::jit::convert_dnnl_to_kernel_type(
-            arg_md(DNNL_ARG_WEIGHTS_GATE)->data_type);
-    problem.Tb_ext = gemm::jit::convert_dnnl_to_kernel_type(
-            arg_md(DNNL_ARG_SRC)->data_type);
-    problem.Tc_ext
-            = gemm::jit::convert_dnnl_to_kernel_type(inter_md->data_type);
-    problem.Ta = problem.Tb = get_ab_type(problem.Tb_ext, problem.Ta_ext);
-    problem.Tc = gemmstone::Type::f32;
-    problem.Ts = problem.Tc;
+    auto a_dt = arg_md(DNNL_ARG_WEIGHTS_GATE)->data_type;
+    auto b_dt = arg_md(DNNL_ARG_SRC)->data_type;
+    problem.Ta = problem.Ta_ext = gemm::jit::convert_dnnl_to_kernel_type(a_dt);
+    problem.Tb = problem.Tb_ext = gemm::jit::convert_dnnl_to_kernel_type(b_dt);
+    problem.Tc = problem.Tc_ext = problem.Ts
+            = gemm::jit::convert_dnnl_to_kernel_type(get_accum_type());
 
-    VCONDCHECK(primitive, create, check, gated_mlp,
-            (problem.Ta != gemmstone::Type::invalid)
+    // Mixed int8/int4 DPAS support:
+    // - Xe3p: Not supported, requires int4->int8 upconversion
+    if (dev_info->gpu_arch() == compute::gpu_arch_t::xe3p) {
+        if ((problem.Ta_ext.isInt4()) && (problem.Tb_ext.isInt8()))
+            problem.Ta = gemmstone::Type::s8;
+        if ((problem.Ta_ext.isInt8()) && (problem.Tb_ext.isInt4()))
+            problem.Tb = gemmstone::Type::s8;
+    }
+    VCONDCHECK(primitive, create, dispatch, gated_mlp,
+            (problem.Tc != gemmstone::Type::invalid)
+                    && (problem.Ta != gemmstone::Type::invalid)
                     && (problem.Tb != gemmstone::Type::invalid),
-            status::unimplemented, "Incompatible A/B types in uGEMM.");
+            status::unimplemented, "Incompatible A/B/C types in uGEMM.");
 
     auto problem_wgu = std::move(problem);
     problem_wgu.A.layout = gemmstone::MatrixLayout::T;
-    problem_wgu.B.layout = gemmstone::MatrixLayout::Pr;
-    problem_wgu.C.layout = gemmstone::MatrixLayout::T;
+    problem_wgu.B.layout = gemmstone::MatrixLayout::N;
+    problem_wgu.C.layout = gemmstone::MatrixLayout::N;
 
+    const memory_desc_wrapper src_mdw(arg_md(DNNL_ARG_SRC));
     const memory_desc_wrapper W_gate_mdw(arg_md(DNNL_ARG_WEIGHTS_GATE));
     const memory_desc_wrapper W_up_mdw(arg_md(DNNL_ARG_WEIGHTS_UP));
     auto alignment = [](const memory_desc_wrapper &mdw) {
         return int(gemm_desc_t::get_ld(*mdw.md_) * mdw.data_type_size());
     };
-    problem_wgu.A.setAlignment(gemmstone::microkernel::alignmentForLD(
-            std::min(alignment(W_gate_mdw), alignment(W_up_mdw))));
-    problem_wgu.B.setAlignment(64);
-    problem_wgu.B.crosspack = 2;
+    if (alignment(W_gate_mdw) != alignment(W_up_mdw))
+        return status::unimplemented;
+    problem_wgu.A.setAlignment(
+            gemmstone::microkernel::alignmentForLD(alignment(W_gate_mdw)));
+    problem_wgu.B.setAlignment(
+            gemmstone::microkernel::alignmentForLD(alignment(src_mdw)));
 
-    problem_wgu.B.tileR = uint16_t(config.unroll_m_gwu * config.wg_m_gwu);
-    problem_wgu.B.tileC = uint16_t(sg_size(engine));
+    if (with_wts_gate_scales(this) != with_wts_up_scales(this))
+        return status::unimplemented;
+    if (wts_gate_scales_group_size(this) != wts_up_scales_group_size(this))
+        return status::unimplemented;
 
-    bool wgu_common_scales
-            = with_quantize_common(attr()->scales_, DNNL_ARG_WEIGHTS_GATE);
-    bool wgu_common_zp
-            = with_quantize_common(attr()->zero_points_, DNNL_ARG_WEIGHTS_GATE);
+    if (with_wts_gate_zp(this) != with_wts_up_zp(this))
+        return status::unimplemented;
+    if (wts_gate_zp_group_size(this) != wts_up_zp_group_size(this))
+        return status::unimplemented;
 
-    if (with_wts_gate_scales(this) && !wgu_common_scales) {
+    if (with_src_scales(this) && !with_common_src_scales(this)) {
+        auto scale_dt = src_scales_dt(this);
+        problem_wgu.Tb_scale = gemm::jit::convert_dnnl_to_kernel_type(scale_dt);
+        problem_wgu.B_scale.alignment
+                = uint8_t(types::data_type_size(scale_dt));
+        problem_wgu.bsPtrDims = 2; // no 1D-scales for uGEMM at this point
+        problem_wgu.B_scale.layout = (problem_wgu.bsPtrDims > 1)
+                ? gemmstone::MatrixLayout::N
+                : gemmstone::MatrixLayout::T;
+    }
+    if (with_wts_gate_scales(this) && !with_common_wts_gate_scales(this)) {
         auto scale_dt = wts_gate_scales_dt(this);
         problem_wgu.Ta_scale = gemm::jit::convert_dnnl_to_kernel_type(scale_dt);
         problem_wgu.A_scale.alignment
                 = uint8_t(types::data_type_size(scale_dt));
+        problem_wgu.asPtrDims = 2; // no 1D-scales for uGEMM at this point
         problem_wgu.A_scale.layout = gemmstone::MatrixLayout::N;
-        problem_wgu.asPtrDims = 2;
-    }
-    if (with_wts_gate_zp(this)) {
-        auto zp_dt = wts_gate_zp_dt(this);
-        problem_wgu.Tao = gemm::jit::convert_dnnl_to_kernel_type(zp_dt);
-        problem_wgu.AO.alignment = uint8_t(types::data_type_size(zp_dt));
-        problem_wgu.AO.layout = gemmstone::MatrixLayout::N;
-        problem_wgu.aoPtrDims = (wgu_common_zp) ? 0 : 2;
-        problem_wgu.aOffset = gemmstone::ABOffset::Calc;
     }
 
+    if (with_src_zp(this)) {
+        if (problem_wgu.Tb.isInt4()) problem_wgu.Tb = gemmstone::Type::s8;
+        auto zp_dt = src_zp_dt(this);
+        problem_wgu.bOffset = gemmstone::ABOffset::Calc;
+        problem_wgu.Tbo = gemm::jit::convert_dnnl_to_kernel_type(zp_dt);
+        problem_wgu.BO.alignment = uint8_t(types::data_type_size(zp_dt));
+        problem_wgu.boPtrDims = (!with_common_src_zp(this))
+                ? (src_zp_group_size(this) > 1) ? 2 : 1
+                : 0;
+        problem_wgu.BO.layout = (problem_wgu.boPtrDims > 1)
+                ? gemmstone::MatrixLayout::N
+                : gemmstone::MatrixLayout::T;
+    }
+    if (with_wts_gate_zp(this)) {
+        if (problem_wgu.Ta.isInt4()) problem_wgu.Ta = gemmstone::Type::s8;
+        auto zp_dt = wts_gate_zp_dt(this);
+        problem_wgu.aOffset = gemmstone::ABOffset::Calc;
+        problem_wgu.Tao = gemm::jit::convert_dnnl_to_kernel_type(zp_dt);
+        problem_wgu.AO.alignment = uint8_t(types::data_type_size(zp_dt));
+        problem_wgu.aoPtrDims = (!with_common_wts_gate_zp(this))
+                ? (wts_gate_zp_group_size(this) > 1) ? 2 : 1
+                : 0;
+        problem_wgu.AO.layout = gemmstone::MatrixLayout::N;
+    }
+
+    if (with_src_scales(this) || with_src_zp(this)) {
+        problem_wgu.bqGroupN = 1;
+        problem_wgu.bqGroupK = int(IC());
+        // TODO
+        //VCONDCHECK(primitive, create, dispatch, gated_mlp,
+        //        src_scales_group_size(this) == src_zp_group_size(this),
+        //        status::unimplemented, "Incompatible src scale/zp groups.");
+        if (src_scales_group_size(this) > 1)
+            problem_wgu.bqGroupK = int(src_scales_group_size(this));
+        if (src_zp_group_size(this) > 1)
+            problem_wgu.bqGroupK = int(src_zp_group_size(this));
+    }
     if (with_wts_gate_scales(this) || with_wts_gate_zp(this)) {
-        problem_wgu.aqGroupM = problem_wgu.aqGroupK = 1;
-        if (!wgu_common_scales && !wgu_common_zp)
-            problem_wgu.aqGroupK = int(wts_gate_group_size(this));
+        problem_wgu.aqGroupM = 1;
+        problem_wgu.aqGroupK = int(IC());
+        // TODO
+        //VCONDCHECK(primitive, create, dispatch, gated_mlp,
+        //        wts_gate_scales_group_size(this) == wts_gate_zp_group_size(this),
+        //        status::unimplemented, "Incompatible gate scale/zp groups.");
+        if (wts_gate_scales_group_size(this) > 1)
+            problem_wgu.aqGroupK = int(wts_gate_scales_group_size(this));
+        if (wts_gate_zp_group_size(this) > 1)
+            problem_wgu.aqGroupK = int(wts_gate_zp_group_size(this));
+    }
+
+    // upconversions
+    bool upconvert = false;
+
+    // convert to F16/F16 if INT8/F16 or F16/INT8
+    if ((problem_wgu.Ta_ext.isInt8() && problem_wgu.Tb_ext.isFP())
+            || (problem_wgu.Ta_ext.isFP() && problem_wgu.Tb_ext.isInt8())) {
+        problem_wgu.Ta = problem_wgu.Tb = (problem_wgu.Ta_ext.isFP())
+                ? problem_wgu.Ta_ext
+                : problem_wgu.Tb_ext;
+        upconvert = true;
+    }
+    // convert to F16 if dual INT8 gets quantized (see gemm/jit/gen_kernel.cpp)
+    if (((src_scales_group_size(this) > 1)
+                || (wts_gate_scales_group_size(this) > 1) || with_src_zp(this))
+            && problem_wgu.Ta_ext.isInt8() && problem_wgu.Tb_ext.isInt8()
+            && with_wts_gate_zp(this)) {
+        problem_wgu.Ta = problem_wgu.Tb = gemmstone::Type::f16;
+        upconvert = true;
+    }
+    // bumping up the quant dims for upconverted cases
+    if (upconvert) {
+        if (problem_wgu.asPtrDims == 1) {
+            problem_wgu.asPtrDims = 2;
+            problem_wgu.A_scale.layout = gemmstone::MatrixLayout::N;
+            VCONDCHECK(primitive, create, dispatch, gated_mlp,
+                    problem_wgu.aqGroupK == IC(), status::unimplemented,
+                    "Incompatible gate scale/zp groups.");
+        }
+        if (problem_wgu.bsPtrDims == 1) {
+            problem_wgu.bsPtrDims = 2;
+            problem_wgu.B_scale.layout = gemmstone::MatrixLayout::N;
+            VCONDCHECK(primitive, create, dispatch, gated_mlp,
+                    problem_wgu.bqGroupK == IC(), status::unimplemented,
+                    "Incompatible src scale/zp groups.");
+        }
     }
 
     /* Set up transposed problem size */
@@ -256,11 +349,12 @@ status_t micro_horz_t::pd_t::init_microkernels(
     reqs_wgu.push_back(gemmstone::StrategyRequirement::WGN == config.wg_n_gwu);
 
     gemmstone::microkernel::GEMMOptions opts_wgu;
-    opts_wgu.localB = true;
-    opts_wgu.slmPtr = true;
-
-    opts_wgu.scaleA = with_wts_gate_scales(this) && !wgu_common_scales;
+    opts_wgu.scaleB = with_src_scales(this) && !with_common_src_scales(this);
+    opts_wgu.offsetB = with_src_zp(this);
+    opts_wgu.scaleA
+            = with_wts_gate_scales(this) && !with_common_wts_gate_scales(this);
     opts_wgu.offsetA = with_wts_gate_zp(this);
+    opts_wgu.slmPtr = true;
 
     try {
         gemm_gate_up_pkg_
@@ -270,13 +364,21 @@ status_t micro_horz_t::pd_t::init_microkernels(
                 "gemm_gateup microkernel generation failed with message: %s",
                 e.what());
     }
+
+    size_t kern_slm = gemm_gate_up_pkg().getSetting("slm_size")
+            + types::data_type_size(get_accum_type()) * config.unroll_m_gwu
+                    * config.wg_m_gwu * config.unroll_n_gwu * config.wg_n_gwu;
+    size_t slm = compute::device_info_t::max_slm_size(dev_info->product());
+
+    VCONDCHECK(primitive, create, dispatch, gated_mlp, kern_slm <= slm,
+            status::unimplemented, "Insufficient SLM size for uGEMM.");
+
     return status::success;
 }
 
 status_t micro_horz_t::init(impl::engine_t *engine) {
     compute::kernel_ctx_t kernel_ctx;
 
-    int ndims = 2;
     memory_desc_t inter_md;
     CHECK(pd()->get_gate_dst_md(inter_md));
     const memory_desc_wrapper inter_mdw(inter_md);
@@ -297,14 +399,24 @@ status_t micro_horz_t::init(impl::engine_t *engine) {
     set_offsets(W_down_mdw, W_down_off);
     set_offsets(dst_mdw, dst_off);
 
-    def_offsets(inter_off, kernel_ctx, "INTER", ndims);
-    def_offsets(src_off, kernel_ctx, "SRC", ndims);
-    def_offsets(W_gate_off, kernel_ctx, "W_GATE", ndims);
-    def_offsets(W_up_off, kernel_ctx, "W_UP", ndims);
-    def_offsets(W_down_off, kernel_ctx, "W_DOWN", ndims);
-    def_offsets(dst_off, kernel_ctx, "DST", ndims);
-    kernel_ctx.define_int("NDIMS", ndims);
+    kernel_ctx.define_int("WGU_QUANT_S0", pd()->OC());
+    if (with_src_scales(pd()) && !with_common_src_scales(pd())) {
+        kernel_ctx.define_int(
+                "SRC_QUANT_S0", pd()->IC() / src_scales_group_size(pd()));
+    } else if (with_src_zp(pd())) {
+        kernel_ctx.define_int(
+                "SRC_QUANT_S0", pd()->IC() / src_zp_group_size(pd()));
+    }
 
+    def_offsets(inter_off, kernel_ctx, "INTER", inter_mdw.ndims());
+    def_offsets(src_off, kernel_ctx, "SRC", src_mdw.ndims());
+    def_offsets(W_gate_off, kernel_ctx, "W_GATE", W_gate_mdw.ndims());
+    def_offsets(W_up_off, kernel_ctx, "W_UP", W_up_mdw.ndims());
+    def_offsets(W_down_off, kernel_ctx, "W_DOWN", W_down_mdw.ndims());
+    def_offsets(dst_off, kernel_ctx, "DST", dst_mdw.ndims());
+    kernel_ctx.define_int("NDIMS", inter_mdw.ndims());
+
+    def_data_type(kernel_ctx, pd()->get_accum_type(), "ACCUM");
     def_data_type(kernel_ctx, inter_mdw.data_type(), "INTER");
     def_data_type(kernel_ctx, src_mdw.data_type(), "SRC");
     def_data_type(kernel_ctx, W_gate_mdw.data_type(), "WTS_GATE");
@@ -312,10 +424,12 @@ status_t micro_horz_t::init(impl::engine_t *engine) {
     def_data_type(kernel_ctx, W_down_mdw.data_type(), "WTS_DOWN");
     def_data_type(kernel_ctx, dst_mdw.data_type(), "DST");
 
+    def_data_type(kernel_ctx, src_scales_dt(pd()), "SRC_ATTR_SCALES");
     def_data_type(kernel_ctx, wts_gate_scales_dt(pd()), "WTS_GATE_ATTR_SCALES");
     def_data_type(kernel_ctx, wts_up_scales_dt(pd()), "WTS_UP_ATTR_SCALES");
     def_data_type(kernel_ctx, wts_down_scales_dt(pd()), "WTS_DOWN_ATTR_SCALES");
 
+    def_data_type(kernel_ctx, src_zp_dt(pd()), "SRC_ATTR_ZP");
     def_data_type(kernel_ctx, wts_gate_zp_dt(pd()), "WTS_GATE_ATTR_ZP");
     def_data_type(kernel_ctx, wts_up_zp_dt(pd()), "WTS_UP_ATTR_ZP");
     def_data_type(kernel_ctx, wts_down_zp_dt(pd()), "WTS_DOWN_ATTR_ZP");
@@ -346,32 +460,30 @@ status_t micro_horz_t::init(impl::engine_t *engine) {
         default: kernel_ctx.define_int("ACTIVATION_SWISH", 1);
     }
 
-    auto attr = pd()->attr();
+    kernel_ctx.define_int("SRC_SCALES",
+            (int(with_src_scales(pd())) << 1)
+                    | int(with_common_src_scales(pd())));
+    kernel_ctx.define_int("WTS_GATE_SCALES",
+            (int(with_wts_gate_scales(pd())) << 1)
+                    | int(with_common_wts_gate_scales(pd())));
+    kernel_ctx.define_int("WTS_UP_SCALES",
+            (int(with_wts_up_scales(pd())) << 1)
+                    | int(with_common_wts_up_scales(pd())));
+    kernel_ctx.define_int("WTS_DOWN_SCALES",
+            (int(with_wts_down_scales(pd())) << 1)
+                    | int(with_common_wts_down_scales(pd())));
 
-    int wts_gate_scales_mask = (int(with_wts_gate_scales(pd())) << 1)
-            | int(with_quantize_common(attr->scales_, DNNL_ARG_WEIGHTS_GATE));
-    int wts_up_scales_mask = (int(with_wts_up_scales(pd())) << 1)
-            | int(with_quantize_common(attr->scales_, DNNL_ARG_WEIGHTS_UP));
-    int wts_down_scales_mask = (int(with_wts_down_scales(pd())) << 1)
-            | int(with_quantize_common(attr->scales_, DNNL_ARG_WEIGHTS_DOWN));
-
-    kernel_ctx.define_int("WTS_GATE_SCALES", wts_gate_scales_mask);
-    kernel_ctx.define_int("WTS_UP_SCALES", wts_up_scales_mask);
-    kernel_ctx.define_int("WTS_DOWN_SCALES", wts_down_scales_mask);
-
-    int wts_gate_zp_mask = (int(with_wts_gate_zp(pd())) << 1)
-            | int(with_quantize_common(
-                    attr->zero_points_, DNNL_ARG_WEIGHTS_GATE));
-    int wts_up_zp_mask = (int(with_wts_up_zp(pd())) << 1)
-            | int(with_quantize_common(
-                    attr->zero_points_, DNNL_ARG_WEIGHTS_UP));
-    int wts_down_zp_mask = (int(with_wts_down_zp(pd())) << 1)
-            | int(with_quantize_common(
-                    attr->zero_points_, DNNL_ARG_WEIGHTS_DOWN));
-
-    kernel_ctx.define_int("WTS_GATE_ZERO_POINTS", wts_gate_zp_mask);
-    kernel_ctx.define_int("WTS_UP_ZERO_POINTS", wts_up_zp_mask);
-    kernel_ctx.define_int("WTS_DOWN_ZERO_POINTS", wts_down_zp_mask);
+    kernel_ctx.define_int("SRC_ZERO_POINTS",
+            (int(with_src_zp(pd())) << 1) | int(with_common_src_zp(pd())));
+    kernel_ctx.define_int("WTS_GATE_ZERO_POINTS",
+            (int(with_wts_gate_zp(pd())) << 1)
+                    | int(with_common_wts_gate_zp(pd())));
+    kernel_ctx.define_int("WTS_UP_ZERO_POINTS",
+            (int(with_wts_up_zp(pd())) << 1)
+                    | int(with_common_wts_up_zp(pd())));
+    kernel_ctx.define_int("WTS_DOWN_ZERO_POINTS",
+            (int(with_wts_down_zp(pd())) << 1)
+                    | int(with_common_wts_down_zp(pd())));
 
     using namespace data_type;
     auto elems_per_byte = [](data_type_t dt) {
@@ -381,6 +493,8 @@ status_t micro_horz_t::init(impl::engine_t *engine) {
             default: return 1;
         }
     };
+    kernel_ctx.define_int(
+            "SRC_ELEMENTS_PER_BYTE", elems_per_byte(src_mdw.data_type()));
     kernel_ctx.define_int("WTS_GATE_ELEMENTS_PER_BYTE",
             elems_per_byte(W_gate_mdw.data_type()));
     kernel_ctx.define_int(
@@ -388,6 +502,8 @@ status_t micro_horz_t::init(impl::engine_t *engine) {
     kernel_ctx.define_int("WTS_DOWN_ELEMENTS_PER_BYTE",
             elems_per_byte(W_down_mdw.data_type()));
 
+    kernel_ctx.define_int(
+            "SRC_ZP_ELEMENTS_PER_BYTE", elems_per_byte(src_zp_dt(pd())));
     kernel_ctx.define_int("WTS_GATE_ZP_ELEMENTS_PER_BYTE",
             elems_per_byte(wts_gate_zp_dt(pd())));
     kernel_ctx.define_int(
@@ -395,17 +511,39 @@ status_t micro_horz_t::init(impl::engine_t *engine) {
     kernel_ctx.define_int("WTS_DOWN_ZP_ELEMENTS_PER_BYTE",
             elems_per_byte(wts_down_zp_dt(pd())));
 
-    if (with_wts_gate_scales(pd()) || with_wts_gate_zp(pd()))
-        kernel_ctx.define_int("WTS_GATE_GROUP_SIZE", wts_gate_group_size(pd()));
-    if (with_wts_up_scales(pd()) || with_wts_up_zp(pd()))
-        kernel_ctx.define_int("WTS_UP_GROUP_SIZE", wts_up_group_size(pd()));
-    if (with_wts_down_scales(pd()) || with_wts_down_zp(pd()))
-        kernel_ctx.define_int("WTS_DOWN_GROUP_SIZE", wts_down_group_size(pd()));
+    if (with_src_scales(pd()))
+        kernel_ctx.define_int(
+                "SRC_SCALES_GROUP_SIZE", src_scales_group_size(pd()));
+    if (with_src_zp(pd()))
+        kernel_ctx.define_int("SRC_ZP_GROUP_SIZE", src_zp_group_size(pd()));
+
+    if (with_wts_gate_scales(pd()))
+        kernel_ctx.define_int(
+                "WTS_GATE_SCALES_GROUP_SIZE", wts_gate_scales_group_size(pd()));
+    if (with_wts_gate_zp(pd()))
+        kernel_ctx.define_int(
+                "WTS_GATE_ZP_GROUP_SIZE", wts_gate_zp_group_size(pd()));
+
+    if (with_wts_up_scales(pd()))
+        kernel_ctx.define_int(
+                "WTS_UP_SCALES_GROUP_SIZE", wts_up_scales_group_size(pd()));
+    if (with_wts_up_zp(pd()))
+        kernel_ctx.define_int(
+                "WTS_UP_ZP_GROUP_SIZE", wts_up_zp_group_size(pd()));
+
+    if (with_wts_down_scales(pd()))
+        kernel_ctx.define_int(
+                "WTS_DOWN_SCALES_GROUP_SIZE", wts_down_scales_group_size(pd()));
+    if (with_wts_down_zp(pd()))
+        kernel_ctx.define_int(
+                "WTS_DOWN_ZP_GROUP_SIZE", wts_down_zp_group_size(pd()));
 
 #ifdef UGEMM_UP_ONLY
     kernel_ctx.define_int("UGEMM_UP_ONLY", 1);
 #endif
 
+    kernel_ctx.define_int(
+            "WITH_SLM", pd()->gemm_gate_up_pkg().getSetting("slm_size") > 0);
     kernel_ctx.define_int("SUBGROUP_SIZE", sg_size(engine));
 
     int tile_wgu_m = pd()->gemm_gate_up_pkg().getSetting("wg_tile_m");
@@ -446,6 +584,8 @@ status_t micro_horz_t::execute(const exec_ctx_t &ctx) const {
     const auto &W_down = CTX_IN_STORAGE(DNNL_ARG_WEIGHTS_DOWN);
     auto &dst = CTX_OUT_STORAGE(DNNL_ARG_DST);
 
+    const auto &src_scales
+            = CTX_IN_STORAGE(DNNL_ARG_SRC | DNNL_ARG_ATTR_SCALES);
     const auto &wts_gate_scales
             = CTX_IN_STORAGE(DNNL_ARG_WEIGHTS_GATE | DNNL_ARG_ATTR_SCALES);
     const auto &wts_up_scales
@@ -453,6 +593,8 @@ status_t micro_horz_t::execute(const exec_ctx_t &ctx) const {
     const auto &wts_down_scales
             = CTX_IN_STORAGE(DNNL_ARG_WEIGHTS_DOWN | DNNL_ARG_ATTR_SCALES);
 
+    const auto &src_zp
+            = CTX_IN_STORAGE(DNNL_ARG_SRC | DNNL_ARG_ATTR_ZERO_POINTS);
     const auto &wts_gate_zp
             = CTX_IN_STORAGE(DNNL_ARG_WEIGHTS_GATE | DNNL_ARG_ATTR_ZERO_POINTS);
     const auto &wts_up_zp
@@ -466,8 +608,8 @@ status_t micro_horz_t::execute(const exec_ctx_t &ctx) const {
 
     auto &gemm_gate_up_pkg = pd()->gemm_gate_up_pkg();
 
-    auto wg_tile_OC = gemm_gate_up_pkg.getSetting("wg_tile_m");
-    auto wg_tile_MB = gemm_gate_up_pkg.getSetting("wg_tile_n");
+    auto wg_tile_m = gemm_gate_up_pkg.getSetting("wg_tile_m");
+    auto wg_tile_n = gemm_gate_up_pkg.getSetting("wg_tile_n");
     auto sg_per_wg = gemm_gate_up_pkg.getSetting("sg_per_wg_m")
             * gemm_gate_up_pkg.getSetting("sg_per_wg_n");
 
@@ -489,6 +631,8 @@ status_t micro_horz_t::execute(const exec_ctx_t &ctx) const {
 #else
     arg_list.set(iter++, *inter_src_stor);
 #endif
+    arg_list.set(iter++, src_scales);
+    arg_list.set(iter++, src_zp);
     arg_list.set(iter++, wts_gate_scales);
     arg_list.set(iter++, wts_gate_zp);
     arg_list.set(iter++, wts_up_scales);
@@ -499,8 +643,8 @@ status_t micro_horz_t::execute(const exec_ctx_t &ctx) const {
     compute::range_t lws = {(size_t)sg_size(engine), (size_t)sg_per_wg, 1};
     compute::range_t gws = lws;
 
-    gws[0] *= utils::div_up(OC, wg_tile_OC);
-    gws[2] *= utils::div_up(MB, wg_tile_MB);
+    gws[0] *= utils::div_up(MB, wg_tile_n);
+    gws[2] *= utils::div_up(OC, wg_tile_m);
 
     auto nd_range = compute::nd_range_t(gws, lws);
     CHECK(parallel_for(ctx, nd_range, gemm_gate_up_, arg_list));
@@ -523,6 +667,12 @@ status_t micro_horz_t::execute(const exec_ctx_t &ctx) const {
         down_args[DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS] = ctx.args().at(
                 DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS_DOWN);
 
+    const auto &post_ops = pd()->attr()->post_ops_;
+    for (int p = 0, pl = post_ops.len(); p < pl; p++) {
+        if (!post_ops.entry_[p].is_like_binary()) continue;
+        auto idx = DNNL_ARG_ATTR_MULTIPLE_POST_OP(p) | DNNL_ARG_SRC_1;
+        down_args[idx] = ctx.args().at(idx);
+    }
     exec_ctx_t down_ctx(ctx, std::move(down_args));
     auto *down_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
             memory_tracking::names::key_nested_multiple + DNNL_ARG_WEIGHTS_DOWN,

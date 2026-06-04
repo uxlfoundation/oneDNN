@@ -576,7 +576,13 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     if (jcp_.N > 0) Nv.push_back(false);
     if (has_N_tail) Nv.push_back(true);
 
-    const auto has_K_tail = jcp_.K_tail > 0 && jcp_.K_tail != jcp_.K;
+    // exec_trans may still require an is_K_tail kernel even when K_tail == K,
+    // because the last-IC-block path is keyed by the K-tail variant.
+    const auto has_K_tail = jcp_.K_tail > 0
+            && (jcp_.K_tail != jcp_.K
+                    || (jcp_.exec_type == exec_trans
+                            && jcp_.K_tail == jcp_.ic_block));
+
     std::vector<bool> Kv;
     if (jcp_.K > 0) Kv.push_back(false);
     if (has_K_tail) Kv.push_back(true);

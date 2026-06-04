@@ -1851,16 +1851,19 @@ static void maybe_print_cpu_engine_error_message() {
 
 engine_t::engine_t(dnnl_engine_kind_t engine_kind) {
     size_t idx = engine_kind == dnnl_cpu ? 0 : engine_index;
-    dnnl_engine_t engine = nullptr;
-    dnnl_status_t status = dnnl_engine_create(&engine, engine_kind, idx);
-    if (engine_kind == dnnl_cpu && status != dnnl_success)
-        maybe_print_cpu_engine_error_message();
+    try {
+        engine_ = dnnl::engine(
+                static_cast<dnnl::engine::kind>(engine_kind), idx);
+    } catch (const dnnl::error &e) {
+        if (engine_kind == dnnl_cpu) maybe_print_cpu_engine_error_message();
+        DNN_SAFE_V(e.status);
+    }
     if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) {
         if (has_bench_mode_bit(mode_bit_t::corr)) {
             BENCHDNN_PRINT(0, "%s\n",
                     "Error: the modifier to disable host memory usage "
                     "cannot be used for correctness testing.");
-            status = dnnl_invalid_arguments;
+            DNN_SAFE_V(dnnl_invalid_arguments);
         }
     }
     // Temporary workaround.
@@ -1869,9 +1872,6 @@ engine_t::engine_t(dnnl_engine_kind_t engine_kind) {
     if (has_bench_mode_bit(mode_bit_t::perf) && engine_kind == dnnl_gpu) {
         bench_mode_modifier |= mode_modifier_t::no_ref_memory;
     }
-    DNN_SAFE_V(status);
-    // Take ownership of the just created handle.
-    engine_.reset(engine);
 }
 
 engine_t::engine_t(dnnl_engine_t engine) : engine_(engine, /* weak = */ true) {}
@@ -1884,56 +1884,35 @@ engine_t::engine_t(const engine_t &other, bool recreate_on_copy) {
         return;
     }
 
-    dnnl_engine_kind_t engine_kind;
-    DNN_SAFE_V(dnnl_engine_get_kind(other.engine_.get(), &engine_kind));
-
-    dnnl_engine_t engine = nullptr;
-    if (engine_kind == dnnl_cpu) {
+    const auto engine_kind = other.engine_.get_kind();
+    if (engine_kind == dnnl::engine::kind::cpu) {
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL
-        void *dev;
-        void *ctx;
-        DNN_SAFE_V(
-                dnnl_sycl_interop_engine_get_device(other.engine_.get(), &dev));
-        DNN_SAFE_V(dnnl_sycl_interop_engine_get_context(
-                other.engine_.get(), &ctx));
-        DNN_SAFE_V(dnnl_sycl_interop_engine_create(&engine, dev, ctx));
+        engine_ = dnnl::sycl_interop::make_engine(
+                dnnl::sycl_interop::get_device(other.engine_),
+                dnnl::sycl_interop::get_context(other.engine_));
 #else
-        DNN_SAFE_V(dnnl_engine_create(&engine, dnnl_cpu, 0));
+        engine_ = dnnl::engine(dnnl::engine::kind::cpu, 0);
 #endif
-    } else if (engine_kind == dnnl_gpu) {
+    } else if (engine_kind == dnnl::engine::kind::gpu) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-        cl_device_id dev;
-        cl_context ctx;
-        DNN_SAFE_V(dnnl_ocl_interop_get_device(other.engine_.get(), &dev));
-        DNN_SAFE_V(
-                dnnl_ocl_interop_engine_get_context(other.engine_.get(), &ctx));
-        DNN_SAFE_V(dnnl_ocl_interop_engine_create(&engine, dev, ctx));
+        engine_ = dnnl::ocl_interop::make_engine(
+                dnnl::ocl_interop::get_device(other.engine_),
+                dnnl::ocl_interop::get_context(other.engine_));
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
-        void *dev;
-        void *ctx;
-        DNN_SAFE_V(
-                dnnl_sycl_interop_engine_get_device(other.engine_.get(), &dev));
-        DNN_SAFE_V(dnnl_sycl_interop_engine_get_context(
-                other.engine_.get(), &ctx));
-        DNN_SAFE_V(dnnl_sycl_interop_engine_create(&engine, dev, ctx));
+        engine_ = dnnl::sycl_interop::make_engine(
+                dnnl::sycl_interop::get_device(other.engine_),
+                dnnl::sycl_interop::get_context(other.engine_));
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
-        ze_driver_handle_t drv;
-        ze_device_handle_t dev;
-        ze_context_handle_t ctx;
-        DNN_SAFE_V(
-                dnnl_ze_interop_engine_get_driver(other.engine_.get(), &drv));
-        DNN_SAFE_V(
-                dnnl_ze_interop_engine_get_device(other.engine_.get(), &dev));
-        DNN_SAFE_V(
-                dnnl_ze_interop_engine_get_context(other.engine_.get(), &ctx));
-        DNN_SAFE_V(dnnl_ze_interop_engine_create(&engine, drv, dev, ctx));
+        engine_ = dnnl::ze_interop::make_engine(
+                dnnl::ze_interop::get_driver(other.engine_),
+                dnnl::ze_interop::get_device(other.engine_),
+                dnnl::ze_interop::get_context(other.engine_));
 #else
         assert(!"unsupported GPU runtime");
 #endif
     } else {
         assert(!"unsupported engine kind");
     }
-    engine_.reset(engine);
 }
 
 dnnl_engine_kind_t engine_t::get_kind() const {
@@ -1941,7 +1920,7 @@ dnnl_engine_kind_t engine_t::get_kind() const {
     // `any` kind.
     if (engine_.get(/* allow_empty = */ true) == nullptr)
         return dnnl_any_engine;
-    return query_engine_kind(engine_.get());
+    return static_cast<dnnl_engine_kind_t>(engine_.get_kind());
 }
 
 stream_t::stream_t(const engine_t &engine, void *interop_obj) {

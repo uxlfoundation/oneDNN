@@ -129,20 +129,12 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
                     <= (size_t)std::numeric_limits<int32_t>::max(),
             VERBOSE_SHAPE_RESTRICTION);
 
-    // Must run after set_default_formats: seed_kernel_config captures final
-    // packed lda/ldb/ldc.
-    CHECK(seed_kernel_config(cfg_));
-    CHECK(init_attrs(cfg_, engine));
+    // After set_default_formats so the seeded ld* reflect final packing.
+    CHECK(jit::pd_t::init(engine, arch));
 
-    CHECK(scales_ok(cfg_, engine));
-
-    if (!attr()->zero_points_.has_default_values()) {
-        VDISPATCH_GEMM(!attr()->zero_points_.has_host_scalars(),
-                VERBOSE_UNSUPPORTED_ZP_CFG);
-        CHECK(zp_ok(cfg_, engine));
-    }
-
-    CHECK(init_post_ops(cfg_, engine));
+    // Systolic does not support host-scalar zero points.
+    VDISPATCH_GEMM(!attr()->zero_points_.has_host_scalars(),
+            VERBOSE_UNSUPPORTED_ZP_CFG);
 
     if (dt_int_ok) {
         VDISPATCH_GEMM(IMPLICATION(a_zp_, !packed_b())

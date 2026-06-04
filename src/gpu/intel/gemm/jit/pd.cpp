@@ -86,6 +86,9 @@ bool b_grouped(const kernel_config_t &cfg) {
 status_t pd_t::init(impl::engine_t *engine, compute::gpu_arch_t arch) {
     arch_ = arch;
 
+    // Seed the kernel cfg before the validators/builders read it.
+    CHECK(seed_kernel_config(cfg_));
+
     // Validators must run before init_post_ops, which relies on the rejected
     // attr cases (e.g. unsupported 2D dst scales) being filtered out.
     CHECK(init_attrs(cfg_, engine));

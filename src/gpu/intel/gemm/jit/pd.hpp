@@ -179,7 +179,8 @@ struct pd_t : public gemm::pd_t {
 
     using binary_src_t = jit::binary_src_t;
 
-    // Assumes desc() was already initialized with default formats.
+    // Seeds the kernel cfg, then runs the attr/post-op validators and
+    // builders. Assumes desc() was initialized with default formats.
     status_t init(impl::engine_t *engine, compute::gpu_arch_t arch);
 
     static constexpr post_op::specializations_t get_post_op_specializations() {

@@ -164,7 +164,7 @@ void sdp_primitive_kernel_t<quantized>::prepare_args_set(
 template <bool quantized>
 status_t sdp_primitive_kernel_t<quantized>::execute_impl(
         const stream_t *g_stream, const std::vector<tensor_t> &inputs,
-        const std::vector<tensor_t> &outputs, void *scratchpad_buf) {
+        const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf) {
     dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
 
     thread_local_cache_t<execution_args_set_t> res_cache;
@@ -187,7 +187,7 @@ status_t sdp_primitive_kernel_t<quantized>::execute_impl(
 template <bool quantized>
 status_t sdp_primitive_kernel_t<quantized>::sycl_execute_impl(
         const stream_t *g_stream, const std::vector<tensor_t> &inputs,
-        const std::vector<tensor_t> &outputs, void *scratchpad_buf,
+        const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<::sycl::event> &sycl_deps,
         ::sycl::event *sycl_event) {
 // sdp_primitive_kernel_t only supports Intel GPU.
@@ -226,7 +226,7 @@ status_t sdp_primitive_kernel_t<quantized>::sycl_execute_impl(
 template <bool quantized>
 status_t sdp_primitive_kernel_t<quantized>::ocl_execute_impl(
         const stream_t *g_stream, const std::vector<tensor_t> &inputs,
-        const std::vector<tensor_t> &outputs, void *scratchpad_buf,
+        const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<cl_event> &cl_deps, cl_event *ret_event) {
     auto deps = cl_deps;
     cl_event returned_event {};

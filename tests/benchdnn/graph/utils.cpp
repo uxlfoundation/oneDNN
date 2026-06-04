@@ -57,7 +57,8 @@ bdnn_state_t convert_state(const dnnl_status_t &s) {
 
 void compiled_partition_executor(dnnl::graph::compiled_partition &cp,
         dnnl::stream &stream, const std::vector<dnnl::graph::tensor> &inputs,
-        const std::vector<dnnl::graph::tensor> &outputs, void *scratchpad) {
+        const std::vector<dnnl::graph::tensor> &outputs,
+        const dnnl::graph::tensor &scratchpad) {
     if (is_cpu()) {
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL
         dnnl::graph::sycl_interop::execute(cp, stream, inputs,
@@ -94,7 +95,7 @@ inline int measure_perf_aggregate(timer::timer_t &t,
         std::vector<perf_function_t> &perf_func_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &inputs_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &outputs_v,
-        const std::vector<void *> &scratchpads, res_t *res) {
+        const std::vector<dnnl::graph::tensor> &scratchpads, res_t *res) {
     const int max_batch_times = 4096;
     // Nvidia/AMD don't support profiling.
     const bool use_profiling = is_gpu() && !is_nvidia_gpu() && !is_amd_gpu();
@@ -184,7 +185,7 @@ inline int measure_perf_individual(timer::timer_t &t,
         std::vector<perf_function_t> &perf_func_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &inputs_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &outputs_v,
-        const std::vector<void *> &scratchpads, res_t *res) {
+        const std::vector<dnnl::graph::tensor> &scratchpads, res_t *res) {
     const bool use_profiling = is_gpu() && !is_nvidia_gpu() && !is_amd_gpu();
     const dnnl::stream::flags flags = use_profiling
             ? dnnl::stream::flags::default_flags | get_profiling_flags()
@@ -208,7 +209,7 @@ inline int measure_perf_individual(timer::timer_t &t,
 int measure_perf(timer::timer_t &t, std::vector<perf_function_t> &perf_func_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &inputs_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &outputs_v,
-        const std::vector<void *> &scratchpads, res_t *res) {
+        const std::vector<dnnl::graph::tensor> &scratchpads, res_t *res) {
     const auto &engine = get_test_engine();
     if (has_bench_mode_bit(mode_bit_t::perf)) {
         // enable GPU profiling, Nvidia/AMD dose not support profiling.
@@ -230,7 +231,7 @@ int measure_perf(timer::timer_t &t,
         const std::vector<dnnl::graph::compiled_partition> &cp_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &inputs_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &outputs_v,
-        const std::vector<void *> &scratchpads, res_t *res) {
+        const std::vector<dnnl::graph::tensor> &scratchpads, res_t *res) {
     std::vector<perf_function_t> perf_func_v;
     perf_func_v.reserve(cp_v.size());
     for (size_t i = 0; i < cp_v.size(); i++) {

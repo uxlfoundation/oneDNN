@@ -146,13 +146,13 @@ inline cl_event execute(compiled_partition &c_partition, stream &astream,
 /// @param astream Stream object to run over
 /// @param inputs Arguments map.
 /// @param outputs Arguments map.
-/// @param scratchpad User-provided scratchpad buffer. If nullptr, the
+/// @param scratchpad User-provided scratchpad tensor. If not provided, the
 ///     implementation will allocate scratchpad internally.
 /// @param deps Optional vector with `cl_event` dependencies.
 /// @returns Output event.
 inline cl_event execute(compiled_partition &c_partition, stream &astream,
         const std::vector<tensor> &inputs, std::vector<tensor> &outputs,
-        void *scratchpad, const std::vector<cl_event> &deps = {}) {
+        const tensor &scratchpad, const std::vector<cl_event> &deps = {}) {
     std::vector<const_dnnl_graph_tensor_t> c_inputs;
     c_inputs.reserve(inputs.size());
     for (auto &in : inputs) {
@@ -171,7 +171,7 @@ inline cl_event execute(compiled_partition &c_partition, stream &astream,
             dnnl_graph_ocl_interop_compiled_partition_execute_v2(
                     c_partition.get(), astream.get(), c_inputs.size(),
                     c_inputs.data(), c_outputs.size(), c_outputs.data(),
-                    scratchpad, c_deps, (int)deps.size(), &ocl_event),
+                    scratchpad.get(), c_deps, (int)deps.size(), &ocl_event),
             "could not execute the compiled_partition with scratchpad on a "
             "specified opencl stream");
     return ocl_event;

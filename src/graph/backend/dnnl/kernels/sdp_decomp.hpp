@@ -83,7 +83,7 @@ public:
     status_t execute_impl(const stream_t *g_stream,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
-            void *scratchpad_buf) override;
+            const tensor_t *scratchpad_buf) override;
 
     class sdp_args_set_t {
     public:
@@ -145,7 +145,8 @@ public:
 #ifdef DNNL_WITH_SYCL
     status_t sycl_execute_impl(const stream_t *g_stream,
             const std::vector<tensor_t> &inputs,
-            const std::vector<tensor_t> &outputs, void *scratchpad_buf,
+            const std::vector<tensor_t> &outputs,
+            const tensor_t *scratchpad_buf,
             const std::vector<::sycl::event> &sycl_deps,
             ::sycl::event *sycl_event) override {
         UNUSED(g_stream);
@@ -160,7 +161,8 @@ public:
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     status_t ocl_execute_impl(const stream_t *g_stream,
             const std::vector<tensor_t> &inputs,
-            const std::vector<tensor_t> &outputs, void *scratchpad_buf,
+            const std::vector<tensor_t> &outputs,
+            const tensor_t *scratchpad_buf,
             const std::vector<cl_event> &cl_deps,
             cl_event *ret_event) override {
         UNUSED(g_stream);

@@ -524,15 +524,6 @@ dnnl_status_t DNNL_API dnnl_graph_compiled_partition_execute(
         const_dnnl_graph_tensor_t *inputs, size_t num_outputs,
         const_dnnl_graph_tensor_t *outputs);
 
-/// Returns the required scratchpad memory size in bytes.
-///
-/// @param compiled_partition The handle of target compiled partition.
-/// @param size Output scratchpad size in bytes.
-/// @returns #dnnl_success on success or a status describing the error
-///     otherwise.
-dnnl_status_t DNNL_API dnnl_graph_compiled_partition_get_scratchpad_size(
-        const_dnnl_graph_compiled_partition_t compiled_partition, size_t *size);
-
 /// Executes a compiled partition.
 ///
 /// @note The user can provide a scratchpad buffer for execution. If not
@@ -548,13 +539,14 @@ dnnl_status_t DNNL_API dnnl_graph_compiled_partition_get_scratchpad_size(
 /// @param inputs A list of input tensors.
 /// @param num_outputs The number of output tensors.
 /// @param outputs A non-empty list of output tensors.
-/// @param scratchpad User-provided scratchpad buffer pointer.
+/// @param scratchpad User-provided scratchpad tensor.
 /// @returns #dnnl_success on success or a status describing the error otherwise.
 dnnl_status_t DNNL_API dnnl_graph_compiled_partition_execute_v2(
         const_dnnl_graph_compiled_partition_t compiled_partition,
         dnnl_stream_t stream, size_t num_inputs,
         const_dnnl_graph_tensor_t *inputs, size_t num_outputs,
-        const_dnnl_graph_tensor_t *outputs, void *scratchpad);
+        const_dnnl_graph_tensor_t *outputs,
+        const_dnnl_graph_tensor_t scratchpad);
 
 /// Destroys a compiled partition.
 ///
@@ -596,6 +588,21 @@ dnnl_status_t DNNL_API dnnl_graph_compiled_partition_get_inplace_ports(
         const_dnnl_graph_compiled_partition_t compiled_partition,
         size_t *num_inplace_pairs,
         const dnnl_graph_inplace_pair_t **inplace_pairs);
+
+/// Queries the scratchpad logical tensor from a compiled partition. The
+/// scratchpad logical tensor describes the required scratchpad buffer for
+/// execution. The data type is u8 and the layout is strided with a single
+/// dimension equal to the scratchpad size in bytes. If no scratchpad is needed,
+/// the logical tensor will have a zero size dimension.
+///
+/// @param compiled_partition The handle of target compiled_partition.
+/// @param lt The output logical tensor describing the scratchpad.
+/// @returns #dnnl_success on success or a status describing the error
+///     otherwise.
+dnnl_status_t DNNL_API
+dnnl_graph_compiled_partition_get_scratchpad_logical_tensor(
+        const_dnnl_graph_compiled_partition_t compiled_partition,
+        dnnl_graph_logical_tensor_t *lt);
 
 /// @} dnnl_graph_api_compiled_partition
 

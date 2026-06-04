@@ -14,6 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "graph/interface/tensor.hpp"
+
 #include "graph/backend/dnnl/scratchpad.hpp"
 
 #include "common/stream.hpp"
@@ -27,8 +29,8 @@ namespace impl {
 namespace graph {
 namespace dnnl_impl {
 
-scratchpad_t::scratchpad_t(void *user_buf, size_t size, const dnnl::engine &eng,
-        const allocator_t &alloc)
+scratchpad_t::scratchpad_t(const tensor_t *user_buf, size_t size,
+        const dnnl::engine &eng, const allocator_t &alloc)
     : buffer_(nullptr)
     , size_(size)
     , user_managed_(user_buf != nullptr)
@@ -39,7 +41,7 @@ scratchpad_t::scratchpad_t(void *user_buf, size_t size, const dnnl::engine &eng,
 #endif
 {
     if (user_buf) {
-        buffer_ = reinterpret_cast<char *>(user_buf);
+        buffer_ = reinterpret_cast<char *>(user_buf->get_data_handle());
     } else if (size > 0) {
         buffer_ = reinterpret_cast<char *>(dnnl_allocator_t::malloc(
                 size, eng, &alloc, allocator_t::mem_type_t::temp));

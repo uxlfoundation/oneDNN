@@ -92,7 +92,8 @@ dnnl_status_t DNNL_API dnnl_graph_sycl_interop_compiled_partition_execute(
 /// @param inputs A list of input tensors
 /// @param num_outputs The number of output tensors
 /// @param outputs A non-empty list of output tensors
-/// @param scratchpad User-provided scratchpad buffer pointer
+/// @param scratchpad User-provided scratchpad tensor. If not provided, the
+///     implementation will allocate scratchpad internally.
 /// @param deps Optional handle of list with `sycl::event` dependencies
 /// @param sycl_event The handle of sycl event
 /// @returns #dnnl_success on success and a status describing the
@@ -101,7 +102,8 @@ dnnl_status_t DNNL_API dnnl_graph_sycl_interop_compiled_partition_execute_v2(
         const_dnnl_graph_compiled_partition_t compiled_partition,
         dnnl_stream_t stream, size_t num_inputs,
         const_dnnl_graph_tensor_t *inputs, size_t num_outputs,
-        const_dnnl_graph_tensor_t *outputs, void *scratchpad, const void *deps,
+        const_dnnl_graph_tensor_t *outputs,
+        const_dnnl_graph_tensor_t scratchpad, const void *deps,
         void *sycl_event);
 
 /// @} dnnl_graph_api_sycl_interop

@@ -54,18 +54,21 @@ struct kernel_base_t {
 
     status_t execute(const stream_t *astream,
             const std::vector<tensor_t> &inputs,
-            const std::vector<tensor_t> &outputs, void *scratchpad = nullptr);
+            const std::vector<tensor_t> &outputs,
+            const tensor_t *scratchpad_buf = nullptr);
 
     // each subclass should implement execute_impl()
     virtual status_t execute_impl(const stream_t *astream,
             const std::vector<tensor_t> &inputs,
-            const std::vector<tensor_t> &outputs, void *scratchpad_buf)
+            const std::vector<tensor_t> &outputs,
+            const tensor_t *scratchpad_buf)
             = 0;
 
 #ifdef DNNL_WITH_SYCL
     status_t execute_sycl(const stream_t *astream,
             const std::vector<tensor_t> &inputs,
-            const std::vector<tensor_t> &outputs, void *scratchpad_buf,
+            const std::vector<tensor_t> &outputs,
+            const tensor_t *scratchpad_buf,
             const std::vector<::sycl::event> &sycl_deps,
             ::sycl::event *sycl_event) {
         return sycl_execute_impl(astream, inputs, outputs, scratchpad_buf,
@@ -74,7 +77,8 @@ struct kernel_base_t {
 
     virtual status_t sycl_execute_impl(const stream_t *astream,
             const std::vector<tensor_t> &inputs,
-            const std::vector<tensor_t> &outputs, void *scratchpad_buf,
+            const std::vector<tensor_t> &outputs,
+            const tensor_t *scratchpad_buf,
             const std::vector<::sycl::event> &sycl_deps,
             ::sycl::event *sycl_event)
             = 0;
@@ -83,7 +87,8 @@ struct kernel_base_t {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     status_t execute_ocl(const stream_t *astream,
             const std::vector<tensor_t> &inputs,
-            const std::vector<tensor_t> &outputs, void *scratchpad_buf,
+            const std::vector<tensor_t> &outputs,
+            const tensor_t *scratchpad_buf,
             const std::vector<cl_event> &ocl_deps, cl_event *ocl_event) {
         return ocl_execute_impl(
                 astream, inputs, outputs, scratchpad_buf, ocl_deps, ocl_event);
@@ -91,15 +96,15 @@ struct kernel_base_t {
 
     virtual status_t ocl_execute_impl(const stream_t *astream,
             const std::vector<tensor_t> &inputs,
-            const std::vector<tensor_t> &outputs, void *scratchpad_buf,
+            const std::vector<tensor_t> &outputs,
+            const tensor_t *scratchpad_buf,
             const std::vector<cl_event> &ocl_deps, cl_event *ocl_event)
             = 0;
 #endif
 
     virtual status_t prepare_inplace_pairs_impl() { return status::success; }
 
-    /// Returns the scratchpad size in bytes required for execution. The default
-    /// implementation returns 0 indicating no scratchpad is needed.
+    /// Returns the scratchpad size in bytes required for execution.
     virtual size_t get_scratchpad_size() const = 0;
 
     // A string identity used in verbose indicating which kernels is dispatched

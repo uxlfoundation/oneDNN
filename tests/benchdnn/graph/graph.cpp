@@ -633,7 +633,6 @@ int doit(const prb_t *prb, res_t *res) {
     std::vector<compiled_partition> c_partitions;
     std::vector<std::vector<tensor>> input_ts_all, output_ts_all;
     std::vector<tensor> scratchpad_ts_all;
-    std::vector<void *> scratchpads;
     // Extend the partition_mem_map_t's lifecycle as input_ts/output_ts hold the
     // same addresses as in partition_mem_map_t for perf mode
     // TODO: Once the API allocating memory when creating tensors is provided by
@@ -676,24 +675,12 @@ int doit(const prb_t *prb, res_t *res) {
 
     // Allocate scratchpad buffer for each compiled partition.
     scratchpad_ts_all.reserve(c_partitions.size());
-    scratchpads.reserve(c_partitions.size());
     for (auto &cp : c_partitions) {
-        size_t scratchpad_size = cp.get_scratchpad_size();
-        if (scratchpad_size > 0) {
-            logical_tensor::dims scratchpad_dims
-                    = {static_cast<logical_tensor::dim>(scratchpad_size)};
-            // Leverage the tensor API to allocate scratchpad buffer for
-            // convenience. Use SIZE_MAX as the id of scratchpad logical tensor
-            // since it's not used for any actual logical tensor in graph and
-            // won't cause id conflict.
-            logical_tensor scratchpad_lt(SIZE_MAX,
-                    logical_tensor::data_type::u8, scratchpad_dims,
-                    logical_tensor::layout_type::strided);
+        auto scratchpad_lt = cp.get_scratchpad_logical_tensor();
+        if (scratchpad_lt.get_mem_size() > 0) {
             scratchpad_ts_all.emplace_back(scratchpad_lt, eng);
-            scratchpads.push_back(scratchpad_ts_all.back().get_data_handle());
         } else {
             scratchpad_ts_all.emplace_back();
-            scratchpads.push_back(nullptr);
         }
     }
 
@@ -793,10 +780,10 @@ int doit(const prb_t *prb, res_t *res) {
             ::sycl::queue queue = dnnl::sycl_interop::get_queue(strm);
             SAFE(sycl_graph_ctx::validate_backend(queue, res), FAIL);
 
-            std::function<void()> record_fn
-                    = std::bind(compiled_partition_executor,
-                            c_partitions[i - idx_offset], std::ref(strm),
-                            input_ts, output_ts, scratchpads[i - idx_offset]);
+            std::function<void()> record_fn = std::bind(
+                    compiled_partition_executor, c_partitions[i - idx_offset],
+                    std::ref(strm), input_ts, output_ts,
+                    scratchpad_ts_all[i - idx_offset]);
             auto exec = sycl_graph_ctx::record_and_finalize(
                     strm, queue, record_fn, res);
             if (!exec) return FAIL;
@@ -806,8 +793,9 @@ int doit(const prb_t *prb, res_t *res) {
             stream_staller_t staller(strm);
             // Need following clean-up steps as the memories have been mappped
             // to device. Otherwise the deconstruction will fail.
-            DNN_GRAPH_SAFE(c_partitions[i - idx_offset].execute(strm, input_ts,
-                                   output_ts, scratchpads[i - idx_offset]),
+            DNN_GRAPH_SAFE(
+                    c_partitions[i - idx_offset].execute(strm, input_ts,
+                            output_ts, scratchpad_ts_all[i - idx_offset]),
                     (WARN | NEED_CLEANUP), res);
             staller.release();
 
@@ -852,7 +840,7 @@ int doit(const prb_t *prb, res_t *res) {
 
     if (has_bench_mode_bit(mode_bit_t::perf)) {
         SAFE(measure_perf(res->timer_map.perf_timer(), c_partitions,
-                     input_ts_all, output_ts_all, scratchpads, res),
+                     input_ts_all, output_ts_all, scratchpad_ts_all, res),
                 WARN);
     }
 

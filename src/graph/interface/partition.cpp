@@ -309,18 +309,10 @@ status_t DNNL_API dnnl_graph_compiled_partition_execute(
             num_inputs, inputs, num_outputs, outputs, nullptr);
 }
 
-status_t DNNL_API dnnl_graph_compiled_partition_get_scratchpad_size(
-        const compiled_partition_t *compiled_partition, size_t *size) {
-    if (utils::any_null(compiled_partition, size))
-        return status::invalid_arguments;
-    *size = compiled_partition->get_scratchpad_size();
-    return status::success;
-}
-
 status_t DNNL_API dnnl_graph_compiled_partition_execute_v2(
         const compiled_partition_t *compiled_partition, stream_t *stream,
         size_t num_inputs, const tensor_t **inputs, size_t num_outputs,
-        const tensor_t **outputs, void *scratchpad) {
+        const tensor_t **outputs, const tensor_t *scratchpad) {
     if (utils::any_null(stream, compiled_partition, inputs, outputs))
         return status::invalid_arguments;
 
@@ -372,7 +364,7 @@ status_t DNNL_API dnnl_graph_sycl_interop_compiled_partition_execute(
 status_t DNNL_API dnnl_graph_sycl_interop_compiled_partition_execute_v2(
         const compiled_partition_t *compiled_partition, stream_t *stream,
         size_t num_inputs, const tensor_t **inputs, size_t num_outputs,
-        const tensor_t **outputs, void *scratchpad, const void *deps,
+        const tensor_t **outputs, const tensor_t *scratchpad, const void *deps,
         void *sycl_event) {
 #ifdef DNNL_WITH_SYCL
     if (utils::any_null(stream, compiled_partition, inputs, outputs))
@@ -455,8 +447,8 @@ status_t DNNL_API dnnl_graph_ocl_interop_compiled_partition_execute(
 status_t DNNL_API dnnl_graph_ocl_interop_compiled_partition_execute_v2(
         const compiled_partition_t *compiled_partition, stream_t *stream,
         size_t num_inputs, const tensor_t **inputs, size_t num_outputs,
-        const tensor_t **outputs, void *scratchpad, const cl_event *deps,
-        int ndeps, cl_event *ocl_event) {
+        const tensor_t **outputs, const tensor_t *scratchpad,
+        const cl_event *deps, int ndeps, cl_event *ocl_event) {
     if (utils::any_null(stream, compiled_partition, inputs, outputs))
         return status::invalid_arguments;
     if (stream->engine()->kind() != engine_kind::gpu) {
@@ -528,6 +520,26 @@ status_t DNNL_API dnnl_graph_compiled_partition_get_inplace_ports(
     const auto &cp_inplace_pairs = compiled_partition->get_inplace_pairs();
     *num_inplace_pairs = cp_inplace_pairs.size();
     *inplace_pairs = cp_inplace_pairs.data();
+
+    return status::success;
+}
+
+status_t DNNL_API dnnl_graph_compiled_partition_get_scratchpad_logical_tensor(
+        const compiled_partition_t *compiled_partition, logical_tensor_t *lt) {
+    if (utils::any_null(compiled_partition, lt))
+        return status::invalid_arguments;
+
+    const size_t scratchpad_size = compiled_partition->get_scratchpad_size();
+
+    // Build a 1-D logical tensor with data_type u8 and strided layout
+    *lt = logical_tensor_t();
+    lt->id = std::numeric_limits<size_t>::max();
+    lt->ndims = 1;
+    lt->dims[0] = static_cast<dnnl_dim_t>(scratchpad_size);
+    lt->data_type = data_type::u8;
+    lt->property = property_type::variable;
+    lt->layout_type = layout_type::strided;
+    lt->layout.strides[0] = 1;
 
     return status::success;
 }
@@ -733,7 +745,8 @@ status_t dnnl_graph_partition::compile(
 
 status_t dnnl_graph_compiled_partition::execute(const stream_t *astream,
         const std::vector<tensor_t> &inputs,
-        const std::vector<tensor_t> &outputs, void *scratchpad) const {
+        const std::vector<tensor_t> &outputs,
+        const tensor_t *scratchpad) const {
     if (astream->engine()->kind() == engine_kind::gpu) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
         return execute_sycl(astream, inputs, outputs, scratchpad, {}, nullptr);
@@ -771,7 +784,7 @@ status_t dnnl_graph_compiled_partition::execute(const stream_t *astream,
 #ifdef DNNL_WITH_SYCL
 status_t dnnl_graph_compiled_partition::execute_sycl(const stream_t *astream,
         const std::vector<tensor_t> &inputs,
-        const std::vector<tensor_t> &outputs, void *scratchpad,
+        const std::vector<tensor_t> &outputs, const tensor_t *scratchpad,
         const std::vector<::sycl::event> &sycl_deps,
         ::sycl::event *sycl_event) const {
     // TODO(xxx): need to improve the check of two engines. On dev-graph, there
@@ -799,7 +812,8 @@ status_t dnnl_graph_compiled_partition::execute_sycl(const stream_t *astream,
 graph::status_t dnnl_graph_compiled_partition::execute_ocl(
         const graph::stream_t *astream,
         const std::vector<graph::tensor_t> &inputs,
-        const std::vector<graph::tensor_t> &outputs, void *scratchpad,
+        const std::vector<graph::tensor_t> &outputs,
+        const graph::tensor_t *scratchpad,
         const std::vector<cl_event> &ocl_deps, cl_event *ocl_event) const {
     if (!astream || (astream->engine()->kind() != pimpl_->get_engine()->kind()))
         return status::invalid_arguments;

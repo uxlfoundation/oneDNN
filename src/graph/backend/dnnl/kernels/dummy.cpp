@@ -57,14 +57,14 @@ status_t dummy_kernel_t::compile_impl(const dnnl_partition_impl_t *part,
 
 status_t dummy_kernel_t::execute_impl(const stream_t *g_stream,
         const std::vector<tensor_t> &inputs,
-        const std::vector<tensor_t> &outputs, void *scratchpad_buf) {
+        const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf) {
     return status::success;
 }
 
 #ifdef DNNL_WITH_SYCL
 status_t dummy_kernel_t::sycl_execute_impl(const stream_t *g_stream,
         const std::vector<tensor_t> &inputs,
-        const std::vector<tensor_t> &outputs, void *scratchpad_buf,
+        const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<::sycl::event> &sycl_deps,
         ::sycl::event *sycl_event) {
 
@@ -93,7 +93,7 @@ status_t dummy_kernel_t::sycl_execute_impl(const stream_t *g_stream,
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 status_t dummy_kernel_t::ocl_execute_impl(const stream_t *g_stream,
         const std::vector<tensor_t> &inputs,
-        const std::vector<tensor_t> &outputs, void *scratchpad_buf,
+        const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<cl_event> &cl_deps, cl_event *ret_event) {
 
     dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);

@@ -179,12 +179,13 @@ public:
     graph::status_t execute(const graph::stream_t *astream,
             const std::vector<graph::tensor_t> &inputs,
             const std::vector<graph::tensor_t> &outputs,
-            void *scratchpad = nullptr) const;
+            const graph::tensor_t *scratchpad = nullptr) const;
 
 #ifdef DNNL_WITH_SYCL
     graph::status_t execute_sycl(const graph::stream_t *astream,
             const std::vector<graph::tensor_t> &inputs,
-            const std::vector<graph::tensor_t> &outputs, void *scratchpad,
+            const std::vector<graph::tensor_t> &outputs,
+            const graph::tensor_t *scratchpad,
             const std::vector<::sycl::event> &sycl_deps,
             ::sycl::event *sycl_event) const;
 #endif
@@ -192,7 +193,8 @@ public:
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     graph::status_t execute_ocl(const graph::stream_t *astream,
             const std::vector<graph::tensor_t> &inputs,
-            const std::vector<graph::tensor_t> &outputs, void *scratchpad,
+            const std::vector<graph::tensor_t> &outputs,
+            const graph::tensor_t *scratchpad,
             const std::vector<cl_event> &ocl_deps, cl_event *ocl_event) const;
 #endif
 

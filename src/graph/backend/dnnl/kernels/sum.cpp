@@ -110,7 +110,7 @@ void sum_t::prepare_args_set(const execution_args_set_t *res,
 
 status_t sum_t::execute_impl(const stream_t *g_stream,
         const std::vector<tensor_t> &inputs,
-        const std::vector<tensor_t> &outputs, void *scratchpad_buf) {
+        const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf) {
     dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
 
     // each thread's own local resource
@@ -135,7 +135,7 @@ status_t sum_t::execute_impl(const stream_t *g_stream,
 #ifdef DNNL_WITH_SYCL
 status_t sum_t::sycl_execute_impl(const stream_t *g_stream,
         const std::vector<tensor_t> &inputs,
-        const std::vector<tensor_t> &outputs, void *scratchpad_buf,
+        const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<::sycl::event> &sycl_deps,
         ::sycl::event *sycl_event) {
 
@@ -170,7 +170,7 @@ status_t sum_t::sycl_execute_impl(const stream_t *g_stream,
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 status_t sum_t::ocl_execute_impl(const stream_t *g_stream,
         const std::vector<tensor_t> &inputs,
-        const std::vector<tensor_t> &outputs, void *scratchpad_buf,
+        const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<cl_event> &cl_deps, cl_event *ret_event) {
 
     auto deps = cl_deps;

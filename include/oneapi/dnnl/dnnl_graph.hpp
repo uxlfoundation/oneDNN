@@ -734,23 +734,38 @@ public:
         return inplace_options;
     }
 
+    /// Returns the scratchpad logical tensor describing the required scratchpad
+    /// buffer for execution. The logical tensor has data type u8 and strided
+    /// layout with a single dimension equal to the scratchpad size in bytes.
+    ///
+    /// @returns A logical tensor describing the scratchpad.
+    logical_tensor get_scratchpad_logical_tensor() const {
+        dnnl_graph_logical_tensor_t lt;
+        error::wrap_c_api(
+                dnnl_graph_compiled_partition_get_scratchpad_logical_tensor(
+                        get(), &lt),
+                "could not get scratchpad logical tensor from "
+                "compiled_partition");
+        return logical_tensor {lt};
+    }
+
     /// Execute a compiled partition.
     ///
-    /// @note The user can provide a scratchpad buffer for execution. If not
+    /// @note The user can provide a scratchpad tensor for execution. If not
     /// provided, the library will allocate an internal scratchpad buffer for
-    /// the execution. For user-provided scratchpad buffer, it should have a
-    /// size no less than the value returned by #get_scratchpad_size API. The
-    /// user is responsible for the memory management of the user-provided
-    /// scratchpad buffer, including allocation, deallocation, and
-    /// thread-safety.
+    /// the execution. For user-provided scratchpad tensor, the size is
+    /// determined by the logical tensor returned by the
+    /// #get_scratchpad_logical_tensor API. The user is responsible for the
+    /// memory management of the user-provided scratchpad tensor, including
+    /// allocation, deallocation, and thread-safety.
     ///
     /// @param astream Stream object to run over.
     /// @param inputs A list of input tensors.
     /// @param outputs A list of output tensors.
-    /// @param scratchpad User-provided scratchpad buffer pointer.
+    /// @param scratchpad User-provided scratchpad tensor.
     void execute(stream &astream, const std::vector<tensor> &inputs,
             const std::vector<tensor> &outputs,
-            void *scratchpad = nullptr) const {
+            const tensor &scratchpad = tensor()) const {
         std::vector<const_dnnl_graph_tensor_t> c_inputs;
         c_inputs.reserve(inputs.size());
         for (auto &in : inputs) {
@@ -765,19 +780,8 @@ public:
         error::wrap_c_api(
                 dnnl_graph_compiled_partition_execute_v2(get(), astream.get(),
                         c_inputs.size(), c_inputs.data(), c_outputs.size(),
-                        c_outputs.data(), scratchpad),
+                        c_outputs.data(), scratchpad.get(true)),
                 "could not execute the compiled_partition with scratchpad");
-    }
-
-    /// Returns the required scratchpad memory size in bytes for execution.
-    ///
-    /// @returns The scratchpad size in bytes.
-    size_t get_scratchpad_size() const {
-        size_t size = 0;
-        error::wrap_c_api(
-                dnnl_graph_compiled_partition_get_scratchpad_size(get(), &size),
-                "could not get scratchpad size from compiled_partition");
-        return size;
     }
 };
 

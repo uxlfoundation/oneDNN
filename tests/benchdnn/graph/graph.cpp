@@ -620,12 +620,7 @@ int doit(const prb_t *prb, res_t *res) {
 
     const dnnl::engine &eng = get_graph_engine();
 
-    const bool use_profiling = has_bench_mode_bit(mode_bit_t::perf)
-            && is_gpu(eng.get()) && !is_nvidia_gpu(eng.get())
-            && !is_amd_gpu(eng.get());
-    dnnl_stream_flags_t flags
-            = stream_kind2stream_flags(stream_kind, use_profiling);
-    cpp_stream_t strm {eng, static_cast<dnnl::stream::flags>(flags)};
+    stream_t strm {get_graph_engine()};
 
     // mark the output logical tensors of partition as ANY layout enabled
     std::unordered_set<size_t> id_to_set_any_layout;

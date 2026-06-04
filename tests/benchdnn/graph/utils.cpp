@@ -82,15 +82,6 @@ void compiled_partition_executor(dnnl::graph::compiled_partition &cp,
     }
 }
 
-inline dnnl::stream::flags get_profiling_flags() {
-#ifdef DNNL_EXPERIMENTAL_PROFILING
-    return dnnl::stream::flags::profiling;
-#else
-    return static_cast<dnnl::stream::flags>(
-            dnnl::impl::stream_flags::profiling);
-#endif
-}
-
 inline int measure_perf_aggregate(timer::timer_t &t,
         std::vector<perf_function_t> &perf_func_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &inputs_v,
@@ -99,10 +90,7 @@ inline int measure_perf_aggregate(timer::timer_t &t,
     const int max_batch_times = 4096;
     // Nvidia/AMD don't support profiling.
     const bool use_profiling = is_gpu() && !is_nvidia_gpu() && !is_amd_gpu();
-    const dnnl::stream::flags flags = use_profiling
-            ? dnnl::stream::flags::default_flags | get_profiling_flags()
-            : dnnl::stream::flags::default_flags;
-    cpp_stream_t stream {get_graph_engine(), flags};
+    stream_t stream {get_graph_engine()};
 
     // Warm-up run, this is not measured due to possibility the associated
     // kernel has not been built and skews the results.
@@ -120,7 +108,7 @@ inline int measure_perf_aggregate(timer::timer_t &t,
             = fix_times_per_prb ? fix_times_per_prb : min_times_per_prb;
 
     t.reset();
-    reset_gpu_profiling(((dnnl::stream)stream).get());
+    reset_gpu_profiling(stream);
 
     bool is_first_loop = true;
     size_t prim_num = 1;
@@ -138,10 +126,10 @@ inline int measure_perf_aggregate(timer::timer_t &t,
             std::vector<uint64_t> cycles;
             // Cannot determine the number of expected profiling entries
             // beforehand so pass -1.
-            SAFE(get_gpu_profiling_info(((dnnl::stream)stream).get(), nsecs,
-                         cycles, /*expected_num_entries=*/-1),
+            SAFE(get_gpu_profiling_info(
+                         stream, nsecs, cycles, /*expected_num_entries=*/-1),
                     CRIT);
-            reset_gpu_profiling(((dnnl::stream)stream).get());
+            reset_gpu_profiling(stream);
 
             // Profiling should have information to report, otherwise, stop.
             if (nsecs.empty()) {
@@ -188,11 +176,7 @@ inline int measure_perf_individual(timer::timer_t &t,
         const std::vector<std::vector<dnnl::graph::tensor>> &inputs_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &outputs_v,
         const std::vector<dnnl::graph::tensor> &scratchpads, res_t *res) {
-    const bool use_profiling = is_gpu() && !is_nvidia_gpu() && !is_amd_gpu();
-    const dnnl::stream::flags flags = use_profiling
-            ? dnnl::stream::flags::default_flags | get_profiling_flags()
-            : dnnl::stream::flags::default_flags;
-    cpp_stream_t stream {get_graph_engine(), flags};
+    stream_t stream {get_graph_engine()};
 
     t.reset();
     while (true) {
@@ -1258,20 +1242,6 @@ dnnl::graph::logical_tensor::layout_type str2layout(
         return dnnl::graph::logical_tensor::layout_type::undef;
 }
 
-cpp_stream_t::cpp_stream_t(
-        const dnnl::engine &eng, dnnl::stream::flags flags, void *interop_obj) {
-#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
-    if (eng.get_kind() == dnnl::engine::kind::cpu) {
-        auto tp = static_cast<dnnl::threadpool_interop::threadpool_iface *>(
-                interop_obj);
-        if (tp == nullptr) tp = dnnl::testing::get_threadpool();
-        stream_ = dnnl::threadpool_interop::make_stream(eng, tp);
-        return;
-    }
-#endif
-    stream_ = dnnl::stream {eng, flags};
-}
-
 engine_t make_graph_engine(bool use_host) {
 
     dnnl::graph::allocator &alloc = get_graph_allocator(use_host);
@@ -1317,47 +1287,6 @@ dnnl_data_type_t convert_dt(const dnnl::graph::logical_tensor::data_type dt) {
         case graph_dt::undef:
         default: return dnnl_data_type_undef;
     }
-}
-
-stream_staller_t::stream_staller_t(graph::cpp_stream_t &stream) {
-#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
-    const auto &eng = stream.get_engine();
-    auto eng_kind = eng.get_kind();
-    if (eng_kind != dnnl::engine::kind::cpu) return;
-
-    auto tp = dnnl::threadpool_interop::get_threadpool(stream);
-
-    // `tp` is not expected to be empty for CPU streams with threadpol runtime.
-    if (!tp) SAFE_V(FAIL);
-
-    // Only relevant for asynchronous threadpool, synchronous will
-    // deadlock.
-    if (tp->get_flags()
-            != dnnl::threadpool_interop::threadpool_iface::ASYNCHRONOUS)
-        return;
-
-    // Each thread from the threadpool should get the task to be stalled.
-    const int num_tasks = tp->get_num_threads();
-
-    // The main thread must be let through, otherwise it deadlocks as
-    // task submission won't happen.
-    std::thread::id main_thr_id = std::this_thread::get_id();
-
-    // Shared future allows to pass all waiting threads at once inside the
-    // palallel call.
-    std::shared_future<void> fut(prom_.get_future());
-
-    tp->parallel_for(num_tasks, [=](int, int) {
-        std::thread::id id_thr = std::this_thread::get_id();
-        if (id_thr != main_thr_id) fut.wait();
-    });
-#endif
-}
-
-void stream_staller_t::release() {
-#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
-    prom_.set_value();
-#endif
 }
 
 } // namespace graph

@@ -116,16 +116,20 @@ private:
 };
 
 struct stream_t {
-    stream_t() : stream_(nullptr), is_owner_(false) {}
-    stream_t(dnnl_engine_t engine, void *interop_obj = nullptr);
-    ~stream_t();
-    operator dnnl_stream_t() const { return stream_; }
-    stream_t &operator=(stream_t &&rhs);
+    stream_t() = default;
+    stream_t(const engine_t &engine, void *interop_obj = nullptr);
+    operator dnnl_stream_t() const {
+        return stream_.get(/* allow_empty = */ true);
+    }
+    operator dnnl::stream &() { return stream_; }
+    // Wrapper over dnnl::stream::wait() to avoid explicit casts to dnnl::stream
+    // at graph driver call sites.
+    void wait() { stream_.wait(); }
+    stream_t &operator=(stream_t &&rhs) = default;
 
 private:
     BENCHDNN_DISALLOW_COPY_AND_ASSIGN(stream_t);
-    dnnl_stream_t stream_;
-    bool is_owner_;
+    dnnl::stream stream_;
 };
 
 // Engine used to run oneDNN primitives for testing.

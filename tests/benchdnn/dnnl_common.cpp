@@ -1944,13 +1944,15 @@ dnnl_engine_kind_t engine_t::get_kind() const {
     return query_engine_kind(engine_.get());
 }
 
-stream_t::stream_t(dnnl_engine_t engine, void *interop_obj) : is_owner_(true) {
+stream_t::stream_t(const engine_t &engine, void *interop_obj) {
 #if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
     if (is_cpu(engine)) {
         auto tp = static_cast<dnnl::threadpool_interop::threadpool_iface *>(
                 interop_obj);
         if (tp == nullptr) tp = dnnl::testing::get_threadpool();
-        SAFE_V(dnnl_threadpool_interop_stream_create(&stream_, engine, tp));
+        dnnl_stream_t stream = nullptr;
+        SAFE_V(dnnl_threadpool_interop_stream_create(&stream, engine, tp));
+        stream_.reset(stream);
         return;
     }
 #endif
@@ -1959,21 +1961,9 @@ stream_t::stream_t(dnnl_engine_t engine, void *interop_obj) : is_owner_(true) {
             && is_gpu(engine) && !is_nvidia_gpu(engine) && !is_amd_gpu(engine);
     dnnl_stream_flags_t flags
             = stream_kind2stream_flags(stream_kind, use_profiling);
-    DNN_SAFE_V(dnnl_stream_create(&stream_, engine, flags));
-}
-
-stream_t::~stream_t() {
-    if (is_owner_) DNN_SAFE_V(dnnl_stream_destroy(stream_));
-}
-
-stream_t &stream_t::operator=(stream_t &&rhs) {
-    if (&rhs == this) return *this;
-
-    stream_ = rhs.stream_;
-    is_owner_ = rhs.is_owner_;
-
-    rhs.is_owner_ = false;
-    return *this;
+    dnnl_stream_t stream = nullptr;
+    DNN_SAFE_V(dnnl_stream_create(&stream, engine, flags));
+    stream_.reset(stream);
 }
 
 float reorder_rescale_factor() {

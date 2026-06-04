@@ -8,6 +8,6 @@ dependencies:
   - doxyrest=2.1.2
   - doxygen=1.8.14
   - graphviz=2.40.1
-  - sphinx=6.2.1
-  - sphinx-book-theme=1.1.4
+  - sphinx=7.4.7
+  - sphinx-book-theme=1.2.0
   - sphinx-copybutton=0.5.2

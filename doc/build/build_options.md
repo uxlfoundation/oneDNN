@@ -1,58 +1,60 @@
 Use Build Options {#dev_guide_build_options}
 ============================================
 
-oneDNN supports the following build-time options.
-
-| CMake Option                    | Supported values (defaults in bold)                 | Description                                                                                                        |
-|:--------------------------------|:----------------------------------------------------|:-------------------------------------------------------------------------------------------------------------------|
-| ONEDNN_LIBRARY_TYPE             | **SHARED**, STATIC                                  | Defines the resulting library type                                                                                 |
-| ONEDNN_CPU_RUNTIME              | NONE, **OMP**, TBB, SEQ, THREADPOOL, SYCL           | Defines the threading runtime for CPU engines                                                                      |
-| ONEDNN_GPU_RUNTIME              | **NONE**, OCL, SYCL, ZE                             | Defines the offload runtime for GPU engines                                                                        |
-| ONEDNN_BUILD_DOC                | **ON**, OFF                                         | Controls building the documentation                                                                                |
-| ONEDNN_DOC_VERSIONS_JSON        | **""**, *string*                                    | Location of JSON file for [PyData Sphinx Theme version switcher]. Enables documentation version switcher when set. |
-| ONEDNN_BUILD_EXAMPLES           | **ON**, OFF                                         | Controls building the examples                                                                                     |
-| ONEDNN_BUILD_TESTS              | **ON**, OFF                                         | Controls building the tests                                                                                        |
-| ONEDNN_BUILD_GRAPH              | **ON**, OFF                                         | Controls building graph component                                                                                  |
-| ONEDNN_ENABLE_GRAPH_DUMP        | **ON**, OFF                                         | Controls dumping graph artifacts                                                                                   |
-| ONEDNN_ARCH_OPT_FLAGS           | *compiler flags*                                    | Specifies compiler optimization flags (see warning note below)                                                     |
-| ONEDNN_ENABLE_CONCURRENT_EXEC   | ON, **OFF**                                         | Disables sharing a common scratchpad between primitives in #dnnl::scratchpad_mode::library mode                    |
-| ONEDNN_ENABLE_JIT_PROFILING     | **ON**, OFF                                         | Enables [integration with performance profilers](@ref dev_guide_profilers)                                         |
-| ONEDNN_ENABLE_ITT_TASKS         | **ON**, OFF                                         | Enables [integration with performance profilers](@ref dev_guide_profilers)                                         |
-| ONEDNN_ENABLE_PRIMITIVE_CACHE   | **ON**, OFF                                         | Enables [primitive cache](@ref dev_guide_primitive_cache)                                                          |
-| ONEDNN_ENABLE_MAX_CPU_ISA       | **ON**, OFF                                         | Enables [CPU dispatcher controls](@ref dev_guide_cpu_dispatcher_control)                                           |
-| ONEDNN_ENABLE_CPU_ISA_HINTS     | **ON**, OFF                                         | Enables [CPU ISA hints](@ref dev_guide_cpu_isa_hints)                                                              |
-| ONEDNN_ENABLE_WORKLOAD          | **TRAINING**, INFERENCE                             | Specifies a set of functionality to be available based on workload                                                 |
-| ONEDNN_ENABLE_PRIMITIVE         | **ALL**, PRIMITIVE_NAME                             | Specifies a set of functionality to be available based on primitives                                               |
-| ONEDNN_ENABLE_PRIMITIVE_CPU_ISA | **ALL**, CPU_ISA_NAME                               | Specifies a set of functionality to be available for CPU backend based on CPU ISA                                  |
-| ONEDNN_ENABLE_PRIMITIVE_GPU_ISA | **ALL**, GPU_ISA_NAME                               | Specifies a set of functionality to be available for GPU backend based on GPU ISA                                  |
-| ONEDNN_ENABLE_GEMM_KERNELS_ISA  | **ALL**, NONE, ISA_NAME                             | Specifies a set of functionality to be available for GeMM kernels for CPU backend based on ISA                     |
-| ONEDNN_EXPERIMENTAL             | ON, **OFF**                                         | Enables [experimental features](@ref dev_guide_experimental)                                                       |
-| ONEDNN_SAFE_RBP                 | ON, **OFF**                                         | Enables restriction for JIT kernels to pollute RBP vector register content                                         |
-| ONEDNN_VERBOSE                  | **ON**, OFF                                         | Enables [verbose mode](@ref dev_guide_verbose)                                                                     |
-| ONEDNN_DEV_MODE                 | ON, **OFF**                                         | Enables internal tracing and `debuginfo` logging in verbose output (for oneDNN developers)                         |
-| ONEDNN_AARCH64_USE_ACL          | ON, **OFF**                                         | Enables integration with Arm Compute Library for AArch64 builds                                                    |
-| ONEDNN_BLAS_VENDOR              | **NONE**, ARMPL, ACCELERATE                         | Defines an external BLAS library to link to for GEMM-like operations                                               |
-| ONEDNN_GPU_VENDOR               | NONE, **INTEL**, NVIDIA, AMD                        | When DNNL_GPU_RUNTIME is not NONE defines GPU vendor for GPU engines otherwise its value is NONE                   |
-| ONEDNN_DPCPP_HOST_COMPILER      | **DEFAULT**, *GNU or Clang C++ compiler executable* | Specifies host compiler executable for SYCL runtime                                                                |
-| ONEDNN_LIBRARY_NAME             | **dnnl**, *library name*                            | Specifies name of the library                                                                                      |
-| ONEDNN_TEST_SET                 | SMOKE, **CI**, NIGHTLY, MODIFIER_NAME               | Specifies the testing coverage enabled through the generated testing targets                                       |
-
-[PyData Sphinx Theme version switcher]: https://pydata-sphinx-theme.readthedocs.io/en/stable/user_guide/version-dropdown.html
-
-All building options listed support their counterparts with `DNNL` prefix
-instead of `ONEDNN`. `DNNL` options would take precedence over `ONEDNN`
-versions, if both versions are specified.
-
-`ONEDNN_BUILD_DOC`, `ONEDNN_BUILD_EXAMPLES` and `ONEDNN_BUILD_TESTS` are disabled
-by default when oneDNN is built as a sub-project.
+oneDNN provides extensive configuration capabilities via build options:
+* [Common options](@ref opt_common) manage library platform-agnostic
+  capabilities.
+* [CPU options](@ref opt_cpu) manage behavior of CPU engine and
+  platform-specific code generation for CPUs.
+* [GPU options](@ref opt_gpu) manage behavior of GPU engine.
 
 All other building options or values that can be found in CMake files are
 intended for development/debug purposes and are subject to change without
 notice. Please avoid using them.
 
+@anchor opt_common
 ## Common options
 
-### Host compiler
+These options apply to the whole library regardless of the target engine.
+
+### Library configuration
+
+| CMake Option                    | Default     | Supported values   | Description                                                                                |
+|:--------------------------------|:------------|:-------------------|:-------------------------------------------------------------------------------------------|
+| ONEDNN_LIBRARY_TYPE             | **SHARED**  | STATIC             | Defines the resulting library type                                                         |
+| ONEDNN_LIBRARY_NAME             | **dnnl**    | \<string\>         | Specifies name of the library                                                              |
+| [ONEDNN_ARCH_OPT_FLAGS]         | *varies*    | \<compiler flags\> | Specifies compiler optimization flags. Default value depends on the platform and compiler. |
+| [ONEDNN_DPCPP_HOST_COMPILER]    | **DEFAULT** | g++, clang++       | Specifies host compiler executable for SYCL runtime                                        |
+
+[ONEDNN_ARCH_OPT_FLAGS]: @ref opt_arch_opt_flags
+[ONEDNN_DPCPP_HOST_COMPILER]: @ref opt_dpcpp_host_compiler
+
+@anchor opt_arch_opt_flags
+#### ONEDNN_ARCH_OPT_FLAGS
+
+oneDNN uses JIT code generation to implement most of its functionality
+and will choose the best code based on detected processor features. However,
+some oneDNN functionality will still benefit from targeting a specific
+processor architecture at build time. You can use `ONEDNN_ARCH_OPT_FLAGS` CMake
+option for this.
+
+For Intel(R) C++ Compilers, the default option is `-xSSE4.1`, which instructs
+the compiler to generate the code for the processors that support SSE4.1
+instructions. This option would not allow you to run the library on
+older processor architectures.
+
+For GNU\* Compilers and Clang, the default option is `-msse4.1`.
+
+@warning
+While use of `ONEDNN_ARCH_OPT_FLAGS` option gives better performance, the
+resulting library can be run only on systems that have instruction set
+compatible with the target instruction set. Therefore, `ONEDNN_ARCH_OPT_FLAGS`
+should be set to an empty string (`""`) if the resulting library needs to be
+portable.
+
+@anchor opt_dpcpp_host_compiler
+#### ONEDNN_DPCPP_HOST_COMPILER
+
 When building oneDNN with oneAPI DPC++/C++ Compiler user can specify a custom
 host compiler. The host compiler is a compiler that will be used by the main
 compiler driver to perform host compilation step.
@@ -76,21 +78,38 @@ section in oneAPI DPC++/C++ Compiler Developer Guide.
 @warning
 The minimum allowed Clang C++ compiler version is 8.0.0.
 
-### Configuring functionality
+### Functionality
+
+| CMake Option                  | Default      | Supported values | Description                                                                                     |
+|:------------------------------|:-------------|:-----------------|:------------------------------------------------------------------------------------------------|
+| ONEDNN_BUILD_GRAPH            | **ON**       | OFF              | Controls building graph component                                                               |
+| [ONEDNN_ENABLE_WORKLOAD]      | **TRAINING** | INFERENCE        | Specifies a set of functionality to be available based on workload                              |
+| [ONEDNN_ENABLE_PRIMITIVE]     | **ALL**      | \<list\>         | Specifies a set of functionality to be available based on primitives                            |
+| ONEDNN_ENABLE_CONCURRENT_EXEC | **OFF**      | ON               | Disables sharing a common scratchpad between primitives in #dnnl::scratchpad_mode::library mode |
+| ONEDNN_ENABLE_PRIMITIVE_CACHE | **ON**       | OFF              | Enables [primitive cache](@ref dev_guide_primitive_cache)                                       |
+| ONEDNN_EXPERIMENTAL           | **OFF**      | ON               | Enables [experimental features](@ref dev_guide_experimental)                                    |
+
+[ONEDNN_ENABLE_WORKLOAD]: @ref opt_enable_workload
+[ONEDNN_ENABLE_PRIMITIVE]: @ref opt_enable_primitive
+
 Using `ONEDNN_ENABLE_WORKLOAD` and `ONEDNN_ENABLE_PRIMITIVE` it is possible to
 limit functionality available in the final shared object or statically linked
 application. This helps to reduce the amount of disk space occupied by an app.
 
+@anchor opt_enable_workload
 #### ONEDNN_ENABLE_WORKLOAD
+
 This option supports only two values: `TRAINING` (the default) and `INFERENCE`.
 `INFERENCE` enables only forward propagation kind part of functionality,
 removing all backward-related functionality, except those which are
 dependencies for forward propagation kind part.
 
+@anchor opt_enable_primitive
 #### ONEDNN_ENABLE_PRIMITIVE
+
 This option supports several values: `ALL` (the default) which enables all
-primitives implementations or a set of `BATCH_NORMALIZATION`, `BINARY`,
-`CONCAT`, `CONVOLUTION`, `DECONVOLUTION`, `ELTWISE`, `GROUP_NORMALIZATION`,
+primitives implementations or any subset of the following list: `BATCH_NORMALIZATION`,
+`BINARY`, `CONCAT`, `CONVOLUTION`, `DECONVOLUTION`, `ELTWISE`, `GROUP_NORMALIZATION`,
 `INNER_PRODUCT`, `LAYER_NORMALIZATION`, `LRN`, `MATMUL`, `POOLING`, `PRELU`,
 `REDUCTION`, `REORDER`, `RESAMPLING`, `RNN`, `SDPA`, `SHUFFLE`, `SOFTMAX`,
 `SUM`. When a set is used, only those selected primitives implementations will
@@ -98,70 +117,69 @@ be available. Attempting to use other primitive implementations will end up
 returning an unimplemented status when creating primitive descriptor. In order
 to specify a set, a CMake-style string should be used, with semicolon
 delimiters, as in this example:
-```
+~~~sh
 -DONEDNN_ENABLE_PRIMITIVE=CONVOLUTION;MATMUL;REORDER
-```
+~~~
 
-#### ONEDNN_ENABLE_PRIMITIVE_CPU_ISA
-This option supports several values: `ALL` (the default) which enables all
-ISA implementations or one of `SSE41`, `AVX2`, `AVX512`, and `AMX`. Values are
-linearly ordered as `SSE41` < `AVX2` < `AVX512` < `AMX`. When specified,
-selected ISA and all ISA that are "smaller" will be available. When specified,
-[CPU dispatcher controls](@ref dev_guide_cpu_dispatcher_control) are also
-affected in compliance with the option.
+@note
+Graph API (enabled via `ONEDNN_BUILD_GRAPH`) is not compatible with
+`ONEDNN_ENABLE_PRIMITIVE` values other than `ALL`.
 
-Note that `AVX2` denotes whole AVX2-based family ISAs, `AVX512` denotes whole
-AVX512-based family ISAs, as well as `AMX` denotes any ISA containing AMX unit.
+### Profiling and debug
 
-Example that enables SSE41 and AVX2 sets:
-```
--DONEDNN_ENABLE_PRIMITIVE_CPU_ISA=AVX2
-```
+| CMake Option                | Default | Supported values | Description                                                                                |
+|:----------------------------|:--------|:-----------------|:-------------------------------------------------------------------------------------------|
+| ONEDNN_ENABLE_JIT_PROFILING | **ON**  | OFF              | Enables [integration with performance profilers](@ref dev_guide_profilers)                 |
+| ONEDNN_ENABLE_ITT_TASKS     | **ON**  | OFF              | Enables [integration with performance profilers](@ref dev_guide_profilers)                 |
+| ONEDNN_ENABLE_GRAPH_DUMP    | **ON**  | OFF              | Controls dumping graph artifacts                                                           |
+| ONEDNN_VERBOSE              | **ON**  | OFF              | Enables [verbose mode](@ref dev_guide_verbose)                                             |
+| ONEDNN_DEV_MODE             | **OFF** | ON               | Enables internal tracing and `debuginfo` logging in verbose output (for oneDNN developers) |
 
-#### ONEDNN_ENABLE_PRIMITIVE_GPU_ISA
-This option supports several values: `ALL` (the default) which enables all
-ISA implementations or any set of `XELP`, `XEHP`, `XEHPG`, `XEHPC`, `XE2`,
-and `XE3`. Selected ISA will enable correspondent parts in just-in-time
-kernel generation based implementations. OpenCL based kernels and
-implementations will always be available. Example that enables XeLP and XeHP
-set:
-```
--DONEDNN_ENABLE_PRIMITIVE_GPU_ISA=XELP;XEHP
-```
+### Documentation
 
-#### ONEDNN_ENABLE_GEMM_KERNELS_ISA
-This option supports several values: `ALL` (the default) which enables all
-ISA kernels from x64/gemm folder, `NONE` which disables all kernels and removes
-correspondent interfaces, or one of `SSE41`, `AVX2`, and `AVX512`. Values are
-linearly ordered as `SSE41` < `AVX2` < `AVX512`. When specified, selected ISA
-and all ISA that are "smaller" will be available. Example that leaves SSE41 and
-AVX2 sets, but removes AVX512 and AMX kernels:
-```
--DONEDNN_ENABLE_GEMM_KERNELS_ISA=AVX2
-```
+| CMake Option             | Default | Supported values | Description                                                                                                        |
+|:-------------------------|:--------|:-----------------|:-------------------------------------------------------------------------------------------------------------------|
+| ONEDNN_BUILD_DOC         | **ON**  | OFF              | Controls building the documentation                                                                                |
+| ONEDNN_DOC_VERSIONS_JSON | \       | \<url\>          | Location of JSON file for [PyData Sphinx Theme version switcher]. Enables documentation version switcher when set. |
 
-#### ONEDNN_SAFE_RBP
-Supported exclusively on x64 CPU architectures for BRGEMM-based primitives.
-When enabled (`ON`), this control ensures that JIT-generated kernels preserve
-the RBP register state, preventing corruption of frame pointers. This
-facilitates accurate stack unwinding and profiler trace collection from
-JIT-compiled code regions. Enabling this feature may introduce performance
-overhead due to additional register management.
+[PyData Sphinx Theme version switcher]: https://pydata-sphinx-theme.readthedocs.io/en/stable/user_guide/version-dropdown.html
 
-### Configuring testing
+@note `ONEDNN_BUILD_DOC` is disabled by default when oneDNN is built as a sub-project.
 
+### Validation
+
+| CMake Option                 | Default  | Supported values                                           | Description                                                                  |
+|:-----------------------------|:---------|:-----------------------------------------------------------|:-----------------------------------------------------------------------------|
+| ONEDNN_BUILD_EXAMPLES        | **ON**   | OFF                                                        | Controls building the examples                                               |
+| ONEDNN_BUILD_TESTS           | **ON**   | OFF                                                        | Controls building the tests                                                  |
+| [ONEDNN_TEST_SET]            | **CI**   | SMOKE, NIGHTLY, \<list\>                                   | Specifies the testing coverage enabled through the generated testing targets |
+| ONEDNN_CODE_COVERAGE         | **OFF**  | gcov                                                       | Enables code coverage instrumentation                                        |
+| [ONEDNN_USE_CLANG_SANITIZER] | \        | Address, Leak, Memory, MemoryWithOrigin, Thread, Undefined | Instructs build system to use a Clang sanitizer                              |
+| [ONEDNN_USE_CLANG_TIDY]      | **NONE** | CHECK, FIX                                                 | Instructs build system to use clang-tidy                                     |
+| ONEDNN_WERROR                | **OFF**  | ON                                                         | Enables treating warnings as errors                                          |
+
+[ONEDNN_TEST_SET]: @ref opt_test_set
+[ONEDNN_USE_CLANG_SANITIZER]: @ref opt_use_clang_sanitizer
+[ONEDNN_USE_CLANG_TIDY]: @ref opt_use_clang_tidy
+
+@note `ONEDNN_BUILD_EXAMPLES` and `ONEDNN_BUILD_TESTS` are disabled
+by default when oneDNN is built as a sub-project.
+
+@anchor opt_test_set
 #### ONEDNN_TEST_SET
+
 This option specifies testing coverage enabled through testing targets generated
 by the build system. The variable consists of two parts: the set value which
 defines the number of test cases, and the modifiers for testing commands. The
 final string must contain a single value for a set and as many compatible values
 for modifiers.
 
-The set value is defined by one of: `SMOKE`, `CI`, or `NIGHTLY`.
-The modifier values (referred as `MODIFIER_NAME`) are one of: `NO_CORR`,
-`ADD_BITWISE`.
-The input is expected in the CMake list style - a semicolon separated string -
-e.g., `ONEDNN_TEST_SET=CI;NO_CORR`.
+The set value is defined by one of: `SMOKE`, `CI`, or `NIGHTLY`. These may
+be used with one of the following modifier values: `NO_CORR`, `ADD_BITWISE`.
+The set and modifiers are passed as a semicolon separated list. For example:
+~~~sh
+-DONEDNN_TEST_SET=CI;NO_CORR
+~~~
 
 When `SMOKE` value is specified, it enables a short set of test cases which
 verifies that basic library functionality works as expected.
@@ -178,39 +196,50 @@ When `ADD_BITWISE` modifier value is specified, the build system will add an
 additional set of tests with a bitwise validation mode for benchdnn. The
 correctness set remains unmodified.
 
+@anchor opt_use_clang_sanitizer
+#### ONEDNN_USE_CLANG_SANITIZER
+
+Instructs build system to use a Clang sanitizer. Supported values:
+* Address: enables AddressSanitizer
+* Leak: enables LeakSanitizer
+* Memory: enables MemorySanitizer
+* MemoryWithOrigin: enables MemorySanitizer with origin tracking
+* Thread: enables ThreadSanitizer
+* Undefined: enables UndefinedBehaviourSanitizer
+
+This feature is only available on Linux.
+
+@anchor opt_use_clang_tidy
+#### ONEDNN_USE_CLANG_TIDY
+
+Instructs build system to use clang-tidy. Valid values:
+* NONE (default): Clang-tidy is disabled.
+* CHECK: Enables checks from .clang-tidy.
+* FIX: Enables checks from .clang-tidy and fix found issues.
+
+This feature is only available on Linux.
+
+@anchor opt_cpu
 ## CPU Options
-Intel Architecture Processors and compatible devices are supported by
-oneDNN CPU engine. The CPU engine is built by default but can be disabled
-at build time by setting `ONEDNN_CPU_RUNTIME` to `NONE`. In this case,
-GPU engine must be enabled.
 
-### Targeting Specific Architecture
-oneDNN uses JIT code generation to implement most of its functionality
-and will choose the best code based on detected processor features. However,
-some oneDNN functionality will still benefit from targeting a specific
-processor architecture at build time. You can use `ONEDNN_ARCH_OPT_FLAGS` CMake
-option for this.
+### Common CPU options
 
-For Intel(R) C++ Compilers, the default option is `-xSSE4.1`, which instructs
-the compiler to generate the code for the processors that support SSE4.1
-instructions. This option would not allow you to run the library on
-older processor architectures.
+| CMake Option         | Default     | Supported values                 | Description                                                          |
+|:---------------------|:------------|:---------------------------------|:---------------------------------------------------------------------|
+| [ONEDNN_CPU_RUNTIME] | **OMP**     | NONE, TBB, SEQ, THREADPOOL, SYCL | Defines the threading runtime for CPU engines                        |
+| [ONEDNN_BLAS_VENDOR] | **NONE**    | ARMPL, ACCELERATE, ANY           | Defines an external BLAS library to link to for GEMM-like operations |
 
-For GNU\* Compilers and Clang, the default option is `-msse4.1`.
+[ONEDNN_CPU_RUNTIME]: @ref opt_cpu_runtime
+[ONEDNN_BLAS_VENDOR]: @ref opt_blas_vendor
 
-@warning
-While use of `ONEDNN_ARCH_OPT_FLAGS` option gives better performance, the
-resulting library can be run only on systems that have instruction set
-compatible with the target instruction set. Therefore, `ARCH_OPT_FLAGS`
-should be set to an empty string (`""`) if the resulting library needs to be
-portable.
+@anchor opt_cpu_runtime
+#### ONEDNN_CPU_RUNTIME
 
-### Runtimes
 CPU engine can use OpenMP, Threading Building Blocks (TBB) or sequential
-threading runtimes. OpenMP threading is the default build mode. This behavior
-is controlled by the `ONEDNN_CPU_RUNTIME` CMake option.
+threading runtimes. OpenMP threading is the default build mode. Choose the runtime
+that matches threading runtime used in your application.
 
-#### OpenMP
+##### OpenMP
 oneDNN uses OpenMP runtime library provided by the compiler.
 
 When building oneDNN with oneAPI DPC++/C++ Compiler the library will link
@@ -225,7 +254,7 @@ undefined behavior including incorrect results or crashes. However as long as
 both the library and the application use the same or compatible compilers there
 would be no conflicts.
 
-#### Threading Building Blocks (TBB)
+##### Threading Building Blocks (TBB)
 To build oneDNN with TBB support, set `ONEDNN_CPU_RUNTIME` to `TBB`:
 
 ~~~sh
@@ -243,7 +272,7 @@ oneDNN has functional limitations if built with TBB:
 * Winograd convolution algorithm is not supported for `f32` backward
   by data and backward by weights propagation.
 
-#### Threadpool
+##### Threadpool
 To build oneDNN with support for threadpool threading, set `ONEDNN_CPU_RUNTIME`
 to `THREADPOOL`:
 
@@ -257,7 +286,7 @@ Threadpool threading support has the same limitations as TBB plus more:
   time. At the primitive execution time, the threadpool is responsible for
   balancing this decomposition across available worker threads.
 
-##### Threadpool validation
+###### Threadpool validation
 The `_ONEDNN_TEST_THREADPOOL_IMPL` CMake variable controls which of the three
 threadpool implementations would be used for testing: `STANDALONE`, `TBB`,
 `EIGEN`, `EIGEN_ASYNC`.
@@ -277,32 +306,98 @@ For example:
 $ cmake -DONEDNN_CPU_RUNTIME=THREADPOOL -D_ONEDNN_TEST_THREADPOOL_IMPL=EIGEN -DCMAKE_PREFIX_PATH="/path/to/eigen/share/eigen3/cmake;/path/to/absl/lib64/cmake" ..
 ~~~
 
-### AArch64 Options
+@anchor opt_blas_vendor
+#### ONEDNN_BLAS_VENDOR
 
-oneDNN includes experimental support for Arm 64-bit Architecture (AArch64).
-By default, AArch64 builds will use the reference implementations throughout.
-The following options enable the use of AArch64 optimised implementations
-for a limited number of operations, provided by AArch64 libraries.
+oneDNN can use an external BLAS library to improve performance
+of GEMM operations. The following options are supported:
+* `NONE` (default): Use internal GEMM implementation.
+* `ARMPL`: [Arm Performance Libraries] available on AArch64 CPUs
+* `ACCELERATE`: [Accelerate BLAS] available on Apple Silicon
+* `ANY`: CMake FindBLAS will search default library paths for one
+  of supported BLAS libraries. This option is supported for performance
+  analysis purposes only.
 
-| AArch64 build configuration          | CMake Option              | Environment variables                    | Dependencies                                                                                                                 |
-|:-------------------------------------|:--------------------------|:-----------------------------------------|:-----------------------------------------------------------------------------------------------------------------------------|
-| Arm Compute Library based primitives | ONEDNN_AARCH64_USE_ACL=ON | ACL_ROOT_DIR=*</path/to/ComputeLibrary>* | [Arm Compute Library](https://github.com/ARM-software/ComputeLibrary)                                                        |
-| Vendor BLAS library support          | ONEDNN_BLAS_VENDOR=ARMPL  | None                                     | [Arm Performance Libraries](https://developer.arm.com/tools-and-software/server-and-hpc/downloads/arm-performance-libraries) |
+[Arm Performance Libraries]: https://developer.arm.com/tools-and-software/server-and-hpc/downloads/arm-performance-libraries
+[Accelerate BLAS]: https://developer.apple.com/documentation/accelerate/blas
 
-#### Arm Compute Library
-Arm Compute Library is an open-source library for machine learning applications.
-The development repository is available from
-[mlplatform.org](https://review.mlplatform.org/admin/repos/ml%2FComputeLibrary,general),
-and releases are also available on [GitHub](https://github.com/ARM-software/ComputeLibrary).
-The `ONEDNN_AARCH64_USE_ACL` CMake option is used to enable Compute Library integration:
+### x64 CPU options
+
+| CMake Option                      | Default | Supported values | Description                                                                                    |
+|:----------------------------------|:--------|:-----------------|:-----------------------------------------------------------------------------------------------|
+| ONEDNN_ENABLE_MAX_CPU_ISA         | **ON**  | OFF              | Enables [CPU dispatcher controls](@ref dev_guide_cpu_dispatcher_control)                       |
+| [ONEDNN_ENABLE_PRIMITIVE_CPU_ISA] | **ALL** | \<list\>         | Specifies a set of functionality to be available for CPU backend based on CPU ISA              |
+| [ONEDNN_ENABLE_GEMM_KERNELS_ISA]  | **ALL** | NONE, \<list\>   | Specifies a set of functionality to be available for GeMM kernels for CPU backend based on ISA |
+| ONEDNN_ENABLE_CPU_ISA_HINTS       | **ON**  | OFF              | Enables [CPU ISA hints](@ref dev_guide_cpu_isa_hints)                                          |
+| [ONEDNN_SAFE_RBP]                 | **OFF** | ON               | Enables restriction for JIT kernels to pollute RBP vector register content                     |
+
+[ONEDNN_ENABLE_PRIMITIVE_CPU_ISA]: @ref opt_enable_primitive_cpu_isa
+[ONEDNN_ENABLE_GEMM_KERNELS_ISA]: @ref opt_enable_gemm_kernels_isa
+[ONEDNN_SAFE_RBP]: @ref opt_safe_rbp
+
+@anchor opt_enable_primitive_cpu_isa
+#### ONEDNN_ENABLE_PRIMITIVE_CPU_ISA
+
+This option supports several values: `ALL` (the default) which enables all
+ISA implementations or one of `SSE41`, `AVX2`, `AVX512`, and `AMX`. Values are
+linearly ordered as `SSE41` < `AVX2` < `AVX512` < `AMX`. When specified,
+selected ISA and all ISA that are "smaller" will be available. When specified,
+[CPU dispatcher controls](@ref dev_guide_cpu_dispatcher_control) are also
+affected in compliance with the option.
+
+Note that `AVX2` denotes whole AVX2-based family ISAs, `AVX512` denotes whole
+AVX512-based family ISAs, as well as `AMX` denotes any ISA containing AMX unit.
+
+Example that enables SSE41 and AVX2 sets:
+```
+-DONEDNN_ENABLE_PRIMITIVE_CPU_ISA=AVX2
+```
+
+@anchor opt_enable_gemm_kernels_isa
+#### ONEDNN_ENABLE_GEMM_KERNELS_ISA
+
+This option supports several values: `ALL` (the default) which enables all
+ISA kernels from x64/gemm folder, `NONE` which disables all kernels and removes
+correspondent interfaces, or one of `SSE41`, `AVX2`, and `AVX512`. Values are
+linearly ordered as `SSE41` < `AVX2` < `AVX512`. When specified, selected ISA
+and all ISA that are "smaller" will be available. Example that leaves SSE41 and
+AVX2 sets, but removes AVX512 and AMX kernels:
+```
+-DONEDNN_ENABLE_GEMM_KERNELS_ISA=AVX2
+```
+
+@anchor opt_safe_rbp
+#### ONEDNN_SAFE_RBP
+
+Supported exclusively on x64 CPU architectures for BRGEMM-based primitives.
+When enabled (`ON`), this control ensures that JIT-generated kernels preserve
+the RBP register state, preventing corruption of frame pointers. This
+facilitates accurate stack unwinding and profiler trace collection from
+JIT-compiled code regions. Enabling this feature may introduce performance
+overhead due to additional register management.
+
+### AArch64 CPU options
+
+| CMake Option             | Default | Supported values | Description                                                     |
+|:-------------------------|:--------|:-----------------|:----------------------------------------------------------------|
+| [ONEDNN_AARCH64_USE_ACL] | **OFF** | ON               | Enables integration with Arm Compute Library for AArch64 builds |
+
+[ONEDNN_AARCH64_USE_ACL]: @ref opt_aarch64_use_acl
+
+@anchor opt_aarch64_use_acl
+#### ONEDNN_AARCH64_USE_ACL
+
+This option enables [Arm Compute Library] based primitives. ACL is an
+open-source library for machine learning applications.
+The `ONEDNN_AARCH64_USE_ACL` CMake option is used to enable ACL integration:
 
 ~~~sh
 $ cmake -DONEDNN_AARCH64_USE_ACL=ON ..
 ~~~
 
 This assumes that the environment variable `ACL_ROOT_DIR` is
-set to the location of Arm Compute Library, which must be downloaded and built
-independently of oneDNN.
+set to the location of Arm Compute Library (`ACL_ROOT_DIR=</path/to/ComputeLibrary>`),
+which must be downloaded and built independently of oneDNN.
 
 @warning
 For a debug build of oneDNN it is advisable to specify a Compute Library build
@@ -311,46 +406,60 @@ which has also been built with debug enabled.
 @warning
 oneDNN only supports builds with Compute Library v23.11 or later.
 
-#### Vendor BLAS libraries
-oneDNN can use a standard BLAS library for GEMM operations.
-The `ONEDNN_BLAS_VENDOR` build option controls BLAS library selection, and
-defaults to `NONE`. For AArch64 builds with GCC, use the
-[Arm Performance Libraries](https://developer.arm.com/tools-and-software/server-and-hpc/downloads/arm-performance-libraries):
+[Arm Compute Library]: https://github.com/ARM-software/ComputeLibrary
 
-~~~sh
-$ cmake -DONEDNN_BLAS_VENDOR=ARMPL ..
-~~~
-
-Additional options available for development/debug purposes. These options are
-subject to change without notice, see
-[`cmake/options.cmake`](https://github.com/uxlfoundation/oneDNN/blob/main/cmake/options.cmake)
-for details.
-
+@anchor opt_gpu
 ## GPU Options
-Intel Graphics is supported by oneDNN GPU engine. GPU engine
-is disabled in the default build configuration.
 
-### Runtimes
-To enable GPU support you need to specify the GPU runtime by setting
-`ONEDNN_GPU_RUNTIME` CMake option. The default value is `"NONE"` which
-corresponds to no GPU support in the library.
+### Common GPU options
 
-#### OpenCL
-Building oneDNN with OpenCL runtime requires an OpenCL SDK. You can
-explicitly specify the path to the SDK using CMake option `-DOPENCLROOT`.
+| CMake Option         | Default   | Supported values     | Description                                         |
+|:---------------------|:----------|:---------------------|:----------------------------------------------------|
+| [ONEDNN_GPU_RUNTIME] | **NONE**  | SYCL, OCL, ZE        | Defines the offload runtime for GPU engines         |
+| ONEDNN_GPU_VENDOR    | **INTEL** | NVIDIA, AMD, GENERIC | Specifies GPU vendor to enable code specialization. |
 
+[ONEDNN_GPU_RUNTIME]: @ref opt_gpu_runtime
+
+@anchor opt_gpu_runtime
+#### ONEDNN_GPU_RUNTIME
+
+To enable GPU support you need to specify the GPU runtime by setting the
+`ONEDNN_GPU_RUNTIME` CMake option. Choose the runtime that matches how your
+application manages GPU devices, queues, and memory:
+- `SYCL` links to SYCL runtime and enables [SYCL interoperability API].
+  This runtime requires [oneAPI DPC++ Compiler]. SYCL is recommended runtime
+  for new applications.
+- `OCL` links to OpenCL runtime and enables [OpenCL interoperability API].
+  Supported only for Intel GPUs.
+- `ZE` links to Level Zero runtime and enables [Level Zero interoperability API].
+  Supported only for Intel GPUs.
+
+[SYCL interoperability API]: @ref dev_guide_dpcpp_interoperability
+[OpenCL interoperability API]: @ref dev_guide_opencl_interoperability
+[Level Zero interoperability API]: @ref dev_guide_level_zero_interoperability
+[oneAPI DPC++ Compiler]: https://github.com/intel/llvm#oneapi-dpc-compiler
+
+### Intel GPU options
+
+| CMake Option                      | Default                    | Supported values | Description                                                                 |
+|:----------------------------------|:---------------------------|:-----------------|:----------------------------------------------------------------------------|
+| [ONEDNN_ENABLE_PRIMITIVE_GPU_ISA] | **ALL**                    | \<list\>         | Specifies the list Intel GPU microarchitectures supported by JIT generators |
+
+[ONEDNN_ENABLE_PRIMITIVE_GPU_ISA]: @ref opt_enable_primitive_gpu_isa
+
+@anchor opt_enable_primitive_gpu_isa
+#### ONEDNN_ENABLE_PRIMITIVE_GPU_ISA
+
+This option controls support of Intel GPU microarchitectures in oneDNN JIT
+generator. By default all microarchitectures supported by the library are
+enabled. The list of supported microarchitectures can be restricted to any
+subset of the following list: `XELP`, `XEHP`, `XEHPG`, `XEHPC`, `XE2`, `XE3`,
+and `XE3P`.
+
+To enable support for JIT optimizations on Xe2 archtiecture and newer GPUs set
+the value as follows:
 ~~~sh
-$ cmake -DONEDNN_GPU_RUNTIME=OCL -DOPENCLROOT=/path/to/opencl/sdk ..
+-DONEDNN_ENABLE_PRIMITIVE_GPU_ISA=XE2;XE3;XE3P
 ~~~
 
-@anchor component_limitation
-## Graph component limitations
-
-The graph component can be enabled via the build option `ONEDNN_BUILD_GRAPH`.
-But the build option does not work with some values of other build options.
-Specifying the options and values simultaneously in one build will lead to a
-CMake error.
-
-| CMake Option            | Unsupported Values |
-|:------------------------|:-------------------|
-| ONEDNN_ENABLE_PRIMITIVE | PRIMITIVE_NAME     |
+OpenCL C implementations are not affected by this option.

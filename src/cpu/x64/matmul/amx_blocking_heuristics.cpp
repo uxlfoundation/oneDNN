@@ -32,19 +32,19 @@ using namespace data_type;
 using namespace format_tag;
 void matmul_amx_blocking_params_t::update_configuration(
         brgemm_matmul_conf_t &bgmmc) const {
-    bgmmc.nthr_k = nthr_k_;
-    bgmmc.nthr_m = nthr_m_;
-    bgmmc.nthr_n = nthr_n_;
-    bgmmc.nthr_b = nthr_b_;
-    bgmmc.nthr = nthr_;
+    bgmmc.nthr_k = static_cast<int>(nthr_k_);
+    bgmmc.nthr_m = static_cast<int>(nthr_m_);
+    bgmmc.nthr_n = static_cast<int>(nthr_n_);
+    bgmmc.nthr_b = static_cast<int>(nthr_b_);
+    bgmmc.nthr = static_cast<int>(nthr_);
     bgmmc.M_blk = m_blk_;
-    bgmmc.M_chunk_size = m_chunk_size_;
+    bgmmc.M_chunk_size = static_cast<int>(m_chunk_size_);
     bgmmc.N_blk = n_blk_;
-    bgmmc.N_chunk_size = n_chunk_size_;
+    bgmmc.N_chunk_size = static_cast<int>(n_chunk_size_);
 
     bgmmc.K_blk = k_blk_;
-    bgmmc.K_chunk_size = k_chunk_size_;
-    bgmmc.brgemm_batch_size = brgemm_batch_size_;
+    bgmmc.K_chunk_size = static_cast<int>(k_chunk_size_);
+    bgmmc.brgemm_batch_size = static_cast<int>(brgemm_batch_size_);
 
     bgmmc.use_buffer_c = need_buf_c_;
     bgmmc.use_buffer_a = need_buf_a_;
@@ -67,7 +67,8 @@ dim_t matmul_amx_blocking_params_t::get_actual_lda() const {
         return treat_A_as_plain ? K : A_strides[1 - transposed_A] / a_dt_sz;
 
     constexpr int bytes_in_cacheline = 64;
-    const int elems_in_cacheline = bytes_in_cacheline / a_dt_sz;
+    const int elems_in_cacheline
+            = static_cast<int>(bytes_in_cacheline / a_dt_sz);
     dim_t lda = rnd_up(k_blk_, elems_in_cacheline);
     const bool is_big_2_pow = lda >= 512 && math::is_pow2(lda);
     if (is_big_2_pow) lda += elems_in_cacheline;
@@ -200,12 +201,15 @@ bool matmul_amx_blocking_params_macro_t::maybe_small_dims_heuristics(
         best_blocking.n_decomposition
                 = nstl::min(bgmmc.N, (dim_t)bgmmc.wei_n_blk);
         best_blocking.m_decomposition = bgmmc.M;
-        uint32_t n_per_core = div_up(bgmmc.N, bgmmc.nthr);
+        uint32_t n_per_core
+                = static_cast<uint32_t>(div_up(bgmmc.N, bgmmc.nthr));
         n_per_core = rnd_up(n_per_core, best_blocking.n_decomposition);
-        best_blocking.set_core_divs(1, 1, 1, div_up(bgmmc.N, n_per_core));
+        best_blocking.set_core_divs(
+                1, 1, 1, static_cast<int>(div_up(bgmmc.N, n_per_core)));
 
-        if (best_blocking.nthr_n_
-                < core_utilization_threshold * best_blocking.nthr) {
+        if (static_cast<float>(best_blocking.nthr_n_)
+                < core_utilization_threshold
+                        * static_cast<float>(best_blocking.nthr)) {
             return false;
         }
         best_blocking.m_blk_ = bgmmc.M;
@@ -233,13 +237,16 @@ bool matmul_amx_blocking_params_macro_t::maybe_small_dims_heuristics(
 
     } else if (bgmmc.K <= best_blocking.wei_k_blk && bgmmc.batch == 1) {
 
-        const uint32_t m_per_core = div_up(bgmmc.M, bgmmc.nthr);
-        best_blocking.set_core_divs(1, div_up(bgmmc.M, m_per_core), 1, 1);
+        const uint32_t m_per_core
+                = static_cast<uint32_t>(div_up(bgmmc.M, bgmmc.nthr));
+        best_blocking.set_core_divs(
+                1, static_cast<int>(div_up(bgmmc.M, m_per_core)), 1, 1);
         best_blocking.set_tmul_sizes();
         best_blocking.set_decomposition();
 
-        if (best_blocking.nthr_m_
-                < core_utilization_threshold * best_blocking.nthr) {
+        if (static_cast<float>(best_blocking.nthr_m_)
+                < core_utilization_threshold
+                        * static_cast<float>(best_blocking.nthr)) {
             return false;
         }
         best_blocking.m_blk_ = best_blocking.m_decomposition;
@@ -268,7 +275,8 @@ bool matmul_amx_blocking_params_macro_t::maybe_small_dims_heuristics(
 
     } else if (bgmmc.N <= 32 && bgmmc.batch == 1) {
 
-        const uint32_t m_per_core = div_up(bgmmc.M, bgmmc.nthr);
+        const uint32_t m_per_core
+                = static_cast<uint32_t>(div_up(bgmmc.M, bgmmc.nthr));
 
         best_blocking.m_per_thread = m_per_core;
         // in this case 2 full are preferable
@@ -282,10 +290,11 @@ bool matmul_amx_blocking_params_macro_t::maybe_small_dims_heuristics(
         const size_t m_per_core_actual = rnd_up(
                 best_blocking.m_per_thread, best_blocking.m_decomposition);
         best_blocking.set_core_divs(
-                1, div_up(bgmmc.M, m_per_core_actual), 1, 1);
+                1, static_cast<int>(div_up(bgmmc.M, m_per_core_actual)), 1, 1);
 
-        if (best_blocking.nthr_m_
-                < core_utilization_threshold * best_blocking.nthr) {
+        if (static_cast<float>(best_blocking.nthr_m_)
+                < core_utilization_threshold
+                        * static_cast<float>(best_blocking.nthr)) {
             return false;
         }
 
@@ -327,7 +336,7 @@ bool matmul_amx_blocking_params_macro_t::find_best_blocking(
 
     for (size_t nthr_to_check = bgmmc.nthr; nthr_to_check > 0;
             nthr_to_check--) {
-        current_blocking.nthr_ = nthr_to_check;
+        current_blocking.nthr_ = static_cast<int>(nthr_to_check);
 
         for (int b_div = 1; b_div <= current_blocking.nthr_; ++b_div) {
             if (current_blocking.nthr_ % b_div != 0) continue;
@@ -357,11 +366,13 @@ bool matmul_amx_blocking_params_macro_t::find_best_blocking(
 
     if (best_blocking.use_buffer_b && !best_blocking.transposed_B
             && !best_blocking.is_horizontal) {
-        current_blocking.nthr_ = best_blocking.nthr_b_ * best_blocking.nthr_m_
-                * best_blocking.nthr_n_ * best_blocking.nthr_k_;
-        current_blocking.set_core_divs(best_blocking.nthr_b_,
-                best_blocking.nthr_m_, best_blocking.nthr_k_,
-                best_blocking.nthr_n_);
+        current_blocking.nthr_
+                = static_cast<int>(best_blocking.nthr_b_ * best_blocking.nthr_m_
+                        * best_blocking.nthr_n_ * best_blocking.nthr_k_);
+        current_blocking.set_core_divs(static_cast<int>(best_blocking.nthr_b_),
+                static_cast<int>(best_blocking.nthr_m_),
+                static_cast<int>(best_blocking.nthr_k_),
+                static_cast<int>(best_blocking.nthr_n_));
         if (current_blocking.set_blocking_parameters(true)
                 && current_blocking > best_blocking) {
             best_blocking = current_blocking;
@@ -391,8 +402,8 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
     int max_n_tmul = 16;
     // Reducing k-tmul or n-tmul does not shorten the cycles.
     // However, reducing mtmul reduces the number of cycles required to execute a single tmul instruction.
-    int num_cycles_per_tmul
-            = m_tmul * max_k_tmul * max_n_tmul / macs_per_cycle_base;
+    int num_cycles_per_tmul = static_cast<int>(m_tmul) * max_k_tmul * max_n_tmul
+            / macs_per_cycle_base;
 
     // Calculate reduction cycles
     float strip_1_size_shared, strip_1_size_private, strip_1_share_coef;
@@ -406,70 +417,74 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
         size_t strip_dst_size = m_decomposition * n_per_thread
                 * (nthr_k_ == 1 ? c_dt_sz : acc_dt_sz);
         // Amount of compute
-        num_tmuls_per_strip = m_decomposition * k_per_thread * n_per_thread
-                / (m_tmul * k_tmul * n_tmul);
+        num_tmuls_per_strip = static_cast<float>(m_decomposition * k_per_thread
+                * n_per_thread / (m_tmul * k_tmul * n_tmul));
         // Amount of strips in the execution
-        num_strip = div_up(m_per_thread, m_decomposition);
+        num_strip = static_cast<float>(div_up(m_per_thread, m_decomposition));
         // B is blocked to the L2 in horizontal traversal, its loads are NT
-        nt_mat_l1_miss = b_size;
+        nt_mat_l1_miss = static_cast<float>(b_size);
         // Number of times A is reused from L1 in a strip
-        l1_reuse = div_up(n_blk_, n_decomposition);
+        l1_reuse = static_cast<float>(div_up(n_blk_, n_decomposition));
 
         // In horizontal multiple cores load the same B to L2
-        strip_1_size_shared = b_size;
+        strip_1_size_shared = static_cast<float>(b_size);
         // In strip 1 there is no sharing of A since there are no prefetches
         size_t strip_1_size_private_a
                 = m_decomposition * k_per_thread * gemm_dt_sz;
-        strip_1_size_private = strip_1_size_private_a + strip_dst_size;
+        strip_1_size_private
+                = static_cast<float>(strip_1_size_private_a + strip_dst_size);
         // The cores that share B
-        strip_1_share_coef = nthr_m_;
+        strip_1_share_coef = static_cast<float>(nthr_m_);
 
         // In the mid strips B is reused from L2 and
         // A is prefetched by multiple cores.
-        strip_mid_size_shared = m_decomposition * k_per_thread
-                * gemm_dt_sz; // A size per strip
+        strip_mid_size_shared = static_cast<float>(
+                m_decomposition * k_per_thread * gemm_dt_sz);
         // C is private to a core, since each core writes to a distinct buffer
-        strip_mid_size_private = strip_dst_size;
+        strip_mid_size_private = static_cast<float>(strip_dst_size);
         // share_coeff - the cores that share A
-        strip_mid_share_coef = std::max((size_t)1, nthr_n_);
+        strip_mid_share_coef = static_cast<float>(std::max((size_t)1, nthr_n_));
 
         // Calculate the number of cache lines to be processed in AVX postops
-        num_postop_cache_lines = m_decomposition * div_up(n_per_thread, n_tmul);
+        num_postop_cache_lines = static_cast<float>(
+                m_decomposition * div_up(n_per_thread, n_tmul));
 
     } else {
         // Amount of C/D bytes that are written per core
         size_t strip_dst_size = n_decomposition * m_per_thread
                 * (nthr_k_ == 1 ? c_dt_sz : acc_dt_sz);
         // Amount of compute
-        num_tmuls_per_strip = n_decomposition * k_per_thread * m_per_thread
-                / (m_tmul * k_tmul * n_tmul);
+        num_tmuls_per_strip = static_cast<float>(n_decomposition * k_per_thread
+                * m_per_thread / (m_tmul * k_tmul * n_tmul));
         // Amount of strips in the execution
-        num_strip = div_up(n_per_thread, n_decomposition);
+        num_strip = static_cast<float>(div_up(n_per_thread, n_decomposition));
         // A is blocked to the L2 in vertical traversal, its loads are NT
-        nt_mat_l1_miss = a_size;
+        nt_mat_l1_miss = static_cast<float>(a_size);
         // Number of times B is reused from L1 in a strip
-        l1_reuse = div_up(m_blk_, m_decomposition);
+        l1_reuse = static_cast<float>(div_up(m_blk_, m_decomposition));
 
         // In vertical multiple cores load the same A to L2
-        strip_1_size_shared = a_size;
+        strip_1_size_shared = static_cast<float>(a_size);
         // In strip 1 there is no sharing of B since there are no prefetches
         size_t strip_1_size_private_b
                 = n_decomposition * k_per_thread * gemm_dt_sz;
-        strip_1_size_private = strip_1_size_private_b + strip_dst_size;
+        strip_1_size_private
+                = static_cast<float>(strip_1_size_private_b + strip_dst_size);
         // The cores that share A
-        strip_1_share_coef = nthr_n_;
+        strip_1_share_coef = static_cast<float>(nthr_n_);
 
         // In the mid strips A is reused from L2 and
         // B is prefetched by multiple cores.
-        strip_mid_size_shared = n_decomposition * k_per_thread
-                * gemm_dt_sz; // B size per strip
+        strip_mid_size_shared = static_cast<float>(
+                n_decomposition * k_per_thread * gemm_dt_sz);
         // C is private to a core, since each core writes to a distinct buffer
-        strip_mid_size_private = strip_dst_size;
+        strip_mid_size_private = static_cast<float>(strip_dst_size);
         // share_coeff - the cores that share B
-        strip_mid_share_coef = std::max((size_t)1, nthr_m_);
+        strip_mid_share_coef = static_cast<float>(std::max((size_t)1, nthr_m_));
 
         // Calculate the number of cache lines to be processed in AVX postops
-        num_postop_cache_lines = m_per_thread * div_up(n_decomposition, n_tmul);
+        num_postop_cache_lines = static_cast<float>(
+                m_per_thread * div_up(n_decomposition, n_tmul));
     }
     // There are 2 L1 misses for the L1 matrix:
     //   1. For the prefetch to the L2 (==L1 miss)
@@ -477,25 +492,29 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
     float temporal_matrix_l1_miss = strip_mid_size_shared * 2;
     float temporal_matrix_l1_hit = strip_mid_size_shared * (l1_reuse - 1);
 
-    float c_elem_per_strip = m_blk_ * n_blk_;
+    float c_elem_per_strip = static_cast<float>(m_blk_ * n_blk_);
 
     // C post write miss in bytes = m_blk_ * (#n_decompositions in BRGEMM) * (#cache lines per n_decomposition) * 64
-    float c_post_write_miss = m_blk_ * div_up(n_blk_, n_decomposition)
-            * rnd_up(n_decomposition * c_dt_sz, 64);
+    float c_post_write_miss
+            = static_cast<float>(m_blk_ * div_up(n_blk_, n_decomposition)
+                    * rnd_up(n_decomposition * c_dt_sz, 64));
     // C post write total in bytes = m_blk_ * (#n_decompositions in BRGEMM) * (#writes per n_decomposition) * 64
-    float c_post_write_total = m_blk_ * div_up(n_blk_, n_decomposition)
-            * div_up(n_decomposition, 16) * 64;
+    float c_post_write_total
+            = static_cast<float>(m_blk_ * div_up(n_blk_, n_decomposition)
+                    * div_up(n_decomposition, 16) * 64);
     float c_post_write_hit = c_post_write_total - c_post_write_miss;
 
-    float c_post_read_c_tmp = c_elem_per_strip * acc_dt_sz;
+    float c_post_read_c_tmp = c_elem_per_strip * static_cast<float>(acc_dt_sz);
 
     float c_tmp_l1_cycles;
     if (k_blk_ == K) {
-        c_tmp_l1_cycles = acc_dt_sz * c_elem_per_strip * k_chunk_size_
+        c_tmp_l1_cycles = static_cast<float>(acc_dt_sz) * c_elem_per_strip
+                * static_cast<float>(k_chunk_size_)
                 / bw_interpulator.l1_load_hit_bw;
     } else {
         // TODO: modify wrt wsp
-        c_tmp_l1_cycles = acc_dt_sz * c_elem_per_strip * k_chunk_size_
+        c_tmp_l1_cycles = static_cast<float>(acc_dt_sz) * c_elem_per_strip
+                * static_cast<float>(k_chunk_size_)
                 / bw_interpulator.l1_store_miss_bw;
     }
 
@@ -507,12 +526,14 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
             + temporal_matrix_l1_hit / bw_interpulator.l1_load_hit_bw
             + nt_mat_l1_miss / bw_interpulator.l1_load_miss_bw + c_l1_cycles;
 
-    float b_transform_cycles_h = strip1_b_tranform_h
-            ? strip_1_size_shared / bw_interpulator.get_bw(strip_1_share_coef)
-            : 0;
+    float b_transform_cycles_h = strip1_b_tranform_h ? strip_1_size_shared
+                    / bw_interpulator.get_bw(
+                            static_cast<int>(strip_1_share_coef))
+                                                     : 0;
 
     float b_transform_cycles_v = strips_b_tranform_v ? strip_mid_size_shared
-                    / bw_interpulator.get_bw(strip_mid_share_coef)
+                    / bw_interpulator.get_bw(
+                            static_cast<int>(strip_mid_share_coef))
                                                      : 0;
 
     float strip_mid_dram;
@@ -522,17 +543,19 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
         strip_mid_llc = strip_mid_size_private / bw_interpulator.llc_bw;
     } else {
         strip_mid_dram = strip_mid_size_shared
-                        / bw_interpulator.get_bw(strip_mid_share_coef)
+                        / bw_interpulator.get_bw(
+                                static_cast<int>(strip_mid_share_coef))
                 + strip_mid_size_private / bw_interpulator.get_bw(1);
 
         strip_mid_llc = (strip_mid_size_private + strip_mid_size_shared)
                 / bw_interpulator.llc_bw;
     }
 
-    float strip_tmul = num_tmuls_per_strip * num_cycles_per_tmul;
+    float strip_tmul
+            = num_tmuls_per_strip * static_cast<float>(num_cycles_per_tmul);
 
-    float strip_avx
-            = this->postops_inst_count * num_postop_cache_lines / avx_ipc;
+    float strip_avx = static_cast<float>(this->postops_inst_count)
+            * num_postop_cache_lines / avx_ipc;
     float strip_mid_cycles = b_transform_cycles_v
             + std::max({strip_mid_dram, strip_mid_llc, l1_cycles, strip_tmul,
                     strip_avx});
@@ -541,7 +564,8 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
     if (!strip1_b_tranform_h)
         // default for vertical and horizontal without b transform
         strip_1_cycles = strip_1_size_shared
-                        / bw_interpulator.get_bw(strip_1_share_coef)
+                        / bw_interpulator.get_bw(
+                                static_cast<int>(strip_1_share_coef))
                 + strip_1_size_private / bw_interpulator.get_bw(1);
     else if (strip1_b_in_mlc_h)
         strip_1_cycles = strip_mid_cycles; // strip 1 is regular strip;
@@ -557,8 +581,8 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
 
     if (nthr_k_ != 1) {
         if (c_size_per_core * 2 < L2_threshold() && batch == 1) {
-            float reduction_read_bytes = (M * rnd_up(N, 16) * acc_dt_sz)
-                    * ((nthr_k_ - 1)) / (nthr_m_ * nthr_n_);
+            float reduction_read_bytes = static_cast<float>(M * rnd_up(N, 16)
+                    * acc_dt_sz * (nthr_k_ - 1) / (nthr_m_ * nthr_n_));
             float reduction_read_cycles;
             if (a_size + b_size + d_size < L2_threshold()) {
                 reduction_read_cycles
@@ -569,7 +593,7 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
             }
 
             float reduction_write_bytes
-                    = (M * N * c_dt_sz) / (nthr_m_ * nthr_n_);
+                    = static_cast<float>(M * N * c_dt_sz / (nthr_m_ * nthr_n_));
             float reduction_write_cycles
                     = reduction_write_bytes / bw_interpulator.get_bw(1);
             // Add reduction const overhead - measured
@@ -584,9 +608,11 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
         reduction_cycles = 0;
     }
 
-    float total_macs = M * K * N * batch;
-    float total_cycles = (gemm_cycles + reduction_cycles) * b_per_thread;
-    float peak_macs_per_cycle = (macs_per_cycle_base / gemm_dt_sz) * nthr;
+    float total_macs = static_cast<float>(M * K * N * batch);
+    float total_cycles = (gemm_cycles + reduction_cycles)
+            * static_cast<float>(b_per_thread);
+    float peak_macs_per_cycle
+            = static_cast<float>((macs_per_cycle_base / gemm_dt_sz) * nthr);
     float peak_cycles = total_macs / peak_macs_per_cycle;
     return peak_cycles / total_cycles;
 }
@@ -686,31 +712,36 @@ std::set<dim_t> matmul_amx_blocking_params_macro_t::blk_candidates(
 size_t matmul_amx_blocking_params_macro_t::l2_matrix_usage(size_t k_chunk_size,
         size_t m_or_n_blk, size_t k_blk, bool is_horizontal,
         bool force_transform_matrix_to_l2) const {
-    int decomposition = is_horizontal ? m_decomposition : n_decomposition;
-    int l1_matrix_size = 2 * decomposition
+    int decomposition = static_cast<int>(
+            is_horizontal ? m_decomposition : n_decomposition);
+    int l1_matrix_size = static_cast<int>(2 * decomposition
             * nstl::min(k_blk * k_chunk_size, (size_t)k_per_thread)
-            * gemm_dt_sz; // 2 for prefetch
-    int l2_matrix_size = m_or_n_blk
+            * gemm_dt_sz); // 2 for prefetch
+    int l2_matrix_size = static_cast<int>(m_or_n_blk
             * nstl::min(k_blk * k_chunk_size, (size_t)k_per_thread)
-            * gemm_dt_sz;
+            * gemm_dt_sz);
     if (force_transform_matrix_to_l2) {
         /* L2 matrix orig size */
-        l2_matrix_size += m_or_n_blk * k_blk * k_chunk_size
-                * (is_horizontal ? b_dt_sz : a_dt_sz);
+        l2_matrix_size += static_cast<int>(m_or_n_blk * k_blk * k_chunk_size
+                * (is_horizontal ? b_dt_sz : a_dt_sz));
     }
     // Calculate C post size (output buffer)
     int c_post_size;
     if (is_horizontal) {
-        c_post_size = 2 * m_decomposition * rnd_up(m_or_n_blk * c_dt_sz, 64);
+        c_post_size = static_cast<int>(
+                2 * m_decomposition * rnd_up(m_or_n_blk * c_dt_sz, 64));
     } else {
-        c_post_size = 2 * rnd_up(n_decomposition * c_dt_sz, 64) * m_or_n_blk;
+        c_post_size = static_cast<int>(
+                2 * rnd_up(n_decomposition * c_dt_sz, 64) * m_or_n_blk);
     }
     // Calculate C tmp size (partial results buffer)
     int c_tmp_size;
     if (k_blk == (size_t)K || (acc_dt == dst_dt && nthr_k_ == 1)) {
-        c_tmp_size = 2 * m_decomposition * n_decomposition * acc_dt_sz;
+        c_tmp_size = static_cast<int>(
+                2 * m_decomposition * n_decomposition * acc_dt_sz);
     } else {
-        c_tmp_size = 2 * decomposition * m_or_n_blk * acc_dt_sz;
+        c_tmp_size
+                = static_cast<int>(2 * decomposition * m_or_n_blk * acc_dt_sz);
     }
 
     return l1_matrix_size + l2_matrix_size + c_tmp_size + c_post_size;
@@ -721,23 +752,25 @@ size_t matmul_amx_blocking_params_macro_t::l2_matrix_and_c_usage(
         bool is_horizontal) const {
     size_t per_thread_for_l1_matrix
             = is_horizontal ? m_per_thread : n_per_thread;
-    int l1_matrix_size = 2 * per_thread_for_l1_matrix
+    int l1_matrix_size = static_cast<int>(2 * per_thread_for_l1_matrix
             * nstl::min(k_blk * k_chunk_size, (size_t)k_per_thread)
-            * gemm_dt_sz; // 2x factor to make sure C is fresher than A,B in LRU
-    int l2_matrix_size = 2 * m_or_n_blk
+            * gemm_dt_sz); // 2x factor to make sure C is fresher than A,B in LRU
+    int l2_matrix_size = static_cast<int>(2 * m_or_n_blk
             * nstl::min(k_blk * k_chunk_size, (size_t)k_per_thread)
-            * gemm_dt_sz; // 2x factor to make sure C is fresher than A,B in LRU
-    int c_size
-            = per_thread_for_l1_matrix * m_or_n_blk * acc_dt_sz; // Keep C in L2
+            * gemm_dt_sz); // 2x factor to make sure C is fresher than A,B in LRU
+    int c_size = static_cast<int>(
+            per_thread_for_l1_matrix * m_or_n_blk * acc_dt_sz); // Keep C in L2
     return l1_matrix_size + l2_matrix_size + c_size;
 }
 
 int matmul_amx_blocking_params_macro_t::bw(size_t m_blk, size_t k_chunk_size,
         size_t k_blk, size_t n_blk, bool is_horizontal) const {
-    int a_bw = m_blk * nstl::min(k_blk * k_chunk_size, (size_t)k_per_thread)
-            * gemm_dt_sz;
-    int b_bw = n_blk * nstl::min(k_blk * k_chunk_size, (size_t)k_per_thread)
-            * gemm_dt_sz;
+    int a_bw = static_cast<int>(m_blk
+            * nstl::min(k_blk * k_chunk_size, (size_t)k_per_thread)
+            * gemm_dt_sz);
+    int b_bw = static_cast<int>(n_blk
+            * nstl::min(k_blk * k_chunk_size, (size_t)k_per_thread)
+            * gemm_dt_sz);
     int c_bw;
 
     if ((l2_matrix_and_c_usage(k_chunk_size, is_horizontal ? n_blk : m_blk,
@@ -748,22 +781,23 @@ int matmul_amx_blocking_params_macro_t::bw(size_t m_blk, size_t k_chunk_size,
             && nthr_k_ == 1) {
         c_bw = 0;
     } else {
-        c_bw = m_blk * n_blk * acc_dt_sz;
+        c_bw = static_cast<int>(m_blk * n_blk * acc_dt_sz);
     }
     return a_bw + b_bw + c_bw;
 }
 
 int matmul_amx_blocking_params_macro_t::compute(
         size_t m_blk, size_t k_chunk_size, size_t k_blk, size_t n_blk) const {
-    return m_blk * nstl::min(k_blk * k_chunk_size, (size_t)k_per_thread)
-            * n_blk;
+    return static_cast<int>(m_blk
+            * nstl::min(k_blk * k_chunk_size, (size_t)k_per_thread) * n_blk);
 }
 
 float matmul_amx_blocking_params_macro_t::ratio(size_t m_blk,
         size_t k_chunk_size, size_t k_blk, size_t n_blk,
         bool is_horizontal) const {
     return static_cast<float>(compute(m_blk, k_chunk_size, k_blk, n_blk))
-            / bw(m_blk, k_chunk_size, k_blk, n_blk, is_horizontal);
+            / static_cast<float>(
+                    bw(m_blk, k_chunk_size, k_blk, n_blk, is_horizontal));
 }
 
 float matmul_amx_blocking_params_macro_t::evaluate_single_core_blocking(
@@ -981,7 +1015,8 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters(
         // If the number of cycles for postops per cache line is larger than
         // the number of AMX cycles per cache line, then the calculation is
         // postops bound.
-        return postops_inst_count / avx_ipc > div_up(k_blk, k_tmul);
+        return static_cast<float>(postops_inst_count) / avx_ipc
+                > static_cast<float>(div_up(k_blk, k_tmul));
     };
 
     if (is_horizontal) {
@@ -1124,7 +1159,7 @@ void matmul_amx_blocking_params_macro_t::set_core_divs(
     n_per_thread = div_up(N, nthr_n_);
     b_per_thread = div_up(this->batch, nthr_b_);
 
-    nthr_mnb_ = nthr_ / nthr_k_;
+    nthr_mnb_ = static_cast<int>(nthr_ / nthr_k_);
 }
 
 void matmul_amx_blocking_params_micro_t::find_best_blocking(
@@ -1163,28 +1198,32 @@ void matmul_amx_blocking_params_micro_t::find_best_blocking(
     for (int nthr_k = 1; nthr_k <= max_nthr_k; nthr_k++) {
         int nthr_bmn = bgmmc.nthr / nthr_k;
 
-        int num_M_blk = bgmmc.is_runtime_M ? 1 : div_up(bgmmc.M, bgmmc.M_blk);
-        int num_N_blk = bgmmc.is_runtime_N ? 1 : div_up(bgmmc.N, bgmmc.N_blk);
+        int num_M_blk = bgmmc.is_runtime_M
+                ? 1
+                : static_cast<int>(div_up(bgmmc.M, bgmmc.M_blk));
+        int num_N_blk = bgmmc.is_runtime_N
+                ? 1
+                : static_cast<int>(div_up(bgmmc.N, bgmmc.N_blk));
         int k_parallel_work = nstl::min(max_k_parallel_work, nthr_k);
-        int num_parallel_work
-                = bgmmc.batch * num_M_blk * num_N_blk * k_parallel_work;
+        int num_parallel_work = static_cast<int>(bgmmc.batch) * num_M_blk
+                * num_N_blk * k_parallel_work;
         const bool a_lot_of_parallel_work_lvl2
                 = num_parallel_work > 16 * bgmmc.nthr;
-        const bool low_parallelism
-                = static_cast<float>(num_parallel_work) < 1.5f * bgmmc.nthr;
+        const bool low_parallelism = static_cast<float>(num_parallel_work)
+                < 1.5f * static_cast<float>(bgmmc.nthr);
         const bool maybe_low_blocking
                 = is_amx_int8 && bm_conf_utils.maybe_low_brg_blocking();
         const int min_M_blk = !bgmmc.is_runtime_M
                         && (maybe_low_blocking || low_parallelism)
                         && bgmmc.M_blk > 32
-                ? div_up(bgmmc.M_blk, 2)
-                : bgmmc.M_blk;
+                ? static_cast<int>(div_up(bgmmc.M_blk, 2))
+                : static_cast<int>(bgmmc.M_blk);
         const int min_N_blk = !bgmmc.is_runtime_N && low_parallelism
                         && is_amx_xf16 && !bm_conf_utils.check_n_blk_fixed()
                         && bgmmc.N_blk > 32 && !runtime_dims
                         && !bgmmc.transposed_B // Transposed copy B kernel doesn't support adjusting N_blk
                 ? 32
-                : bgmmc.N_blk;
+                : static_cast<int>(bgmmc.N_blk);
         const int desired_M_chunk = bgmmc.is_runtime_M
                 ? runtime_M_chunk
                 : nstl::min(4, num_M_blk);
@@ -1193,7 +1232,7 @@ void matmul_amx_blocking_params_micro_t::find_best_blocking(
                 : nstl::min(a_lot_of_parallel_work_lvl2 ? 6 : 4, num_N_blk);
 
         std::unordered_set<int> mblk_candidates;
-        for (int m_blk = bgmmc.M_blk; m_blk >= min_M_blk;
+        for (int m_blk = static_cast<int>(bgmmc.M_blk); m_blk >= min_M_blk;
                 m_blk = m_blk > 1 ? div_up(m_blk, 2) : m_blk - 1) {
             if (IMPLICATION(maybe_low_blocking, m_blk != bgmmc.M_blk))
                 mblk_candidates.insert(m_blk);
@@ -1211,7 +1250,8 @@ void matmul_amx_blocking_params_micro_t::find_best_blocking(
         }
 
         bool found_best_blocking = false;
-        for_(int n_blk = bgmmc.N_blk; n_blk >= min_N_blk; n_blk -= 16)
+        for_(int n_blk = static_cast<int>(bgmmc.N_blk); n_blk >= min_N_blk;
+                n_blk -= 16)
         for_(int m_blk : mblk_candidates)
         for_(int n_ch_sz = desired_N_chunk; n_ch_sz >= 1; n_ch_sz--)
         for (int m_ch_sz = desired_M_chunk; m_ch_sz >= 1; m_ch_sz--, iter++) {
@@ -1224,11 +1264,14 @@ void matmul_amx_blocking_params_micro_t::find_best_blocking(
             // TODO: Verify whether using a chunk count of 1 for runtime M and N is optimal for
             // this heuristic. The previous implementation inadvertently used DNNL_RUNTIME_DIM_VAL
             // for M and N in arithmetic, producing incorrect work_amount values.
-            int m_chunks
-                    = bgmmc.is_runtime_M ? 1 : div_up(bgmmc.M, m_blk * m_ch_sz);
-            int n_chunks
-                    = bgmmc.is_runtime_N ? 1 : div_up(bgmmc.N, n_blk * n_ch_sz);
-            int work_amount = bgmmc.batch * m_chunks * n_chunks;
+            int m_chunks = bgmmc.is_runtime_M
+                    ? 1
+                    : static_cast<int>(div_up(bgmmc.M, m_blk * m_ch_sz));
+            int n_chunks = bgmmc.is_runtime_N
+                    ? 1
+                    : static_cast<int>(div_up(bgmmc.N, n_blk * n_ch_sz));
+            int work_amount
+                    = static_cast<int>(bgmmc.batch) * m_chunks * n_chunks;
 
             bool skip_config = work_amount < nthr_bmn * 3
                     && work_amount % nthr_bmn != 0 && max_nthr_k == 1;
@@ -1260,8 +1303,8 @@ void matmul_amx_blocking_params_micro_t::update_k_blocking_dependent_params() {
 void matmul_amx_blocking_params_micro_t::set_blocking_parameters(
         int nthr_k, int n_blk, int n_chunk_size, int m_blk, int m_chunk_size) {
     nthr_k_ = nstl::max(1, nthr_k);
-    nthr_mnb_ = nthr / nthr_k_;
-    nthr_ = nthr_mnb_ * nthr_k_;
+    nthr_mnb_ = static_cast<int>(nthr / nthr_k_);
+    nthr_ = static_cast<int>(nthr_mnb_ * nthr_k_);
     n_blk_ = n_blk;
     n_chunk_size_ = n_chunk_size;
     m_blk_ = m_blk;
@@ -1351,26 +1394,33 @@ float matmul_amx_blocking_params_micro_t::get_thread_balance_scores() const {
     assert(!(is_runtime_M && is_runtime_N)
             && "single runtime dim is supported");
     // Ignore M sizes in thread balance computation as actual M size is unknown
-    if (is_runtime_M) return (float)N / rnd_up(N, n_chunk_elems_);
+    if (is_runtime_M)
+        return static_cast<float>(N)
+                / static_cast<float>(rnd_up(N, n_chunk_elems_));
     // Ignore N sizes in thread balance computation as actual N size is unknown
-    if (is_runtime_N) return (float)M / rnd_up(M, m_chunk_elems_);
+    if (is_runtime_N)
+        return static_cast<float>(M)
+                / static_cast<float>(rnd_up(M, m_chunk_elems_));
 
     const dim_t num_M_chunks = div_up(M, m_chunk_elems_);
     const dim_t num_N_chunks = div_up(N, n_chunk_elems_);
-    float mnb_parallel_score = batch * ((float)M / m_chunk_elems_)
-            * ((float)N / n_chunk_elems_)
-            / rnd_up(batch * num_M_chunks * num_N_chunks, nthr_mnb_)
-            * nthr_mnb_;
+    float mnb_parallel_score = static_cast<float>(batch)
+            * (static_cast<float>(M) / static_cast<float>(m_chunk_elems_))
+            * (static_cast<float>(N) / static_cast<float>(n_chunk_elems_))
+            / static_cast<float>(
+                    rnd_up(batch * num_M_chunks * num_N_chunks, nthr_mnb_))
+            * static_cast<float>(nthr_mnb_);
     float k_parallel_score = 1.0f;
     if (nthr_k_ > 1) {
         const dim_t num_K_chunks = div_up(K, k_chunk_elems_);
         const float parallel_reduction_penalty = 0.8f;
         k_parallel_score = parallel_reduction_penalty
-                * ((float)K / k_chunk_elems_) / rnd_up(num_K_chunks, nthr_k_)
-                * nthr_k_;
+                * (static_cast<float>(K) / static_cast<float>(k_chunk_elems_))
+                / static_cast<float>(rnd_up(num_K_chunks, nthr_k_))
+                * static_cast<float>(nthr_k_);
     }
 
-    return mnb_parallel_score * k_parallel_score / nthr;
+    return mnb_parallel_score * k_parallel_score / static_cast<float>(nthr);
 }
 
 // Returns score for current blocking parameters' values in range [0, 1]
@@ -1385,10 +1435,12 @@ float matmul_amx_blocking_params_micro_t::get_copied_data_reusage_scores()
     const dim_t desired_N_chunk_size = is_runtime_N
             ? effective_n_chunk_sz
             : nstl::min(N, effective_n_chunk_sz);
-    const float coef_M = nstl::min(
-            static_cast<float>(m_chunk_elems_) / desired_M_chunk_size, 1.0f);
-    const float coef_N = nstl::min(
-            static_cast<float>(n_chunk_elems_) / desired_N_chunk_size, 1.0f);
+    const float coef_M = nstl::min(static_cast<float>(m_chunk_elems_)
+                    / static_cast<float>(desired_M_chunk_size),
+            1.0f);
+    const float coef_N = nstl::min(static_cast<float>(n_chunk_elems_)
+                    / static_cast<float>(desired_N_chunk_size),
+            1.0f);
     return 0.5f * (coef_M + coef_N);
 }
 
@@ -1396,8 +1448,10 @@ float matmul_amx_blocking_params_micro_t::get_copied_data_reusage_scores()
 // for L2 utilization
 float matmul_amx_blocking_params_micro_t::get_L2_utilization_scores() const {
     const float relative_difference_with_L2
-            = fabsf((float)L2_threshold() - blocking_chunk_mem_size_)
-            / nstl::max(L2_threshold(), blocking_chunk_mem_size_);
+            = fabsf(static_cast<float>(L2_threshold())
+                      - static_cast<float>(blocking_chunk_mem_size_))
+            / static_cast<float>(
+                    nstl::max(L2_threshold(), blocking_chunk_mem_size_));
     return 1.0f - relative_difference_with_L2;
 }
 
@@ -1411,7 +1465,7 @@ float matmul_amx_blocking_params_micro_t::calculate_blocking_scores() const {
                 brgemm_batch_size_))
         return 0.0f;
 
-    const float nthr_coeff = nstl::min(nthr, 100);
+    const float nthr_coeff = static_cast<float>(nstl::min(nthr, 100));
     const float reusage_factor = 1.0f;
     // For runtume M the actual size is unknown, use independent on num_threads
     // balance factors

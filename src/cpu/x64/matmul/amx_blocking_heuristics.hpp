@@ -34,8 +34,8 @@ public:
         , nthr_n_(nstl::max(nthr_n, 1))
         , nthr_k_(nstl::max(nthr_k, 1))
         , nthr_b_(nstl::max(nthr_b, 1))
-        , nthr_mnb_(nthr / nthr_k_)
-        , nthr_(nthr_mnb_ * nthr_k_)
+        , nthr_mnb_(nthr / static_cast<int>(nthr_k_))
+        , nthr_(nthr_mnb_ * static_cast<int>(nthr_k_))
         , n_blk_(N_blk)
         , n_chunk_size_(N_chunk_size)
         , n_chunk_elems_(n_blk_ * n_chunk_size_)
@@ -197,7 +197,9 @@ class bw_map_t {
 public:
     bw_map_t() = default;
 
-    float get_bw(int x) const { return linear_interpolation(multicore_bw, x); }
+    float get_bw(int x) const {
+        return linear_interpolation(multicore_bw, static_cast<float>(x));
+    }
 
     // All the following bandwidth measurements were taken on an
     // EMR machine with two NUMA domains, each containing 32 cores.
@@ -222,7 +224,7 @@ private:
     float linear_interpolation(
             const std::map<int, float> &points, float x) const {
         // Find the interval [x0, x1] where x0 <= x <= x1
-        auto it = points.lower_bound(x);
+        auto it = points.lower_bound(static_cast<int>(x));
         if (it == points.end()) {
             return points.rbegin()
                     ->second; // x is greater than the largest x in the map
@@ -240,7 +242,9 @@ private:
         float y1 = it1->second;
 
         // Perform linear interpolation
-        return y0 + (y1 - y0) * (x - x0) / (x1 - x0);
+        return y0
+                + (y1 - y0) * (x - static_cast<float>(x0))
+                / static_cast<float>(x1 - x0);
     }
 };
 

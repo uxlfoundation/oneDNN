@@ -168,7 +168,7 @@ template <typename src_dt>
 void pp_src_and_weights_zero_points(std::vector<int32_t> &src_comp,
         std::vector<int32_t> &wei_comp, dim_t M, dim_t N, dim_t K,
         const src_dt *src, dim_t src_s0, dim_t src_s1, const int8_t *wei,
-        dim_t wei_s0, dim_t wei_s1, int32_t *acc, int ldc,
+        dim_t wei_s0, dim_t wei_s1, int32_t *acc, dim_t ldc,
         int32_t src_zero_point, int32_t wei_zero_point) {
     if (wei_zero_point) {
         for_(dim_t m = 0; m < M; ++m)
@@ -190,7 +190,7 @@ void pp_src_and_weights_zero_points(std::vector<int32_t> &src_comp,
     for (dim_t n = 0; n < N; ++n)
         acc[m * ldc + n] += 0 - src_zero_point * wei_comp[n]
                 - wei_zero_point * src_comp[m]
-                + src_zero_point * wei_zero_point * (int)K;
+                + src_zero_point * wei_zero_point * static_cast<int>(K);
 }
 
 status_t gemm_x8s8s32x_matmul_t::execute_ref(const exec_ctx_t &ctx) const {

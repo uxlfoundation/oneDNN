@@ -203,7 +203,7 @@
 --dt=f16:f16:f16
 --wtag=abc,acb
 --grouped=0:4:8+8+8+8,0:4:8+0+16+8
---attr-post-ops=eltwise_swish:1.0+mul:f32:3:grouped,eltwise_swish:1.0+mul:f16:3:grouped,eltwise_swish:1.0+mul:bf16:3:grouped
+--attr-post-ops=eltwise_swish:1.0+mul:f32:3:grouped,eltwise_swish:1.0+mul:f16:3:grouped,eltwise_swish:1.0+mul:bf16:3:grouped,eltwise_swish:1.0+mul:f32:1:ab,eltwise_swish:1.0+mul:f16:1:ab
 32x64:4x64x32
 
 # Post-ops + bias: binary_mul per-row and grouped with bias
@@ -224,3 +224,11 @@
 --attr-scales=wei:7:f16:32x1
 --attr-post-ops=mul:f32:1:ab,mul:f16:1:ab,mul:f32:3:grouped,mul:f16:3:grouped
 32x128:4x128x64
+
+# Post-ops: multi-binary chains (grouped + dense, 3-op)
+--reset
+--dt=f16:f16:f16
+--wtag=abc
+--grouped=0:4:8+8+8+8
+--attr-post-ops=mul:f16:3:grouped+mul:f32:1:ab,eltwise_swish:1.0+mul:f16:3:grouped+mul:f32:1:ab
+32x64:4x64x32

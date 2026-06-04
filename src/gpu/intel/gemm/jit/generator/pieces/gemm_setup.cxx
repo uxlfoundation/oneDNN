@@ -3005,6 +3005,9 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
             if(problem.hasBScalePtr()){
                     state.ra.claim(state.inputs.strideScaleB[i]);
             }
+            if(problem.hasCMXScale()){
+                    state.ra.claim(state.inputs.strideScaleC[i]);
+            }
             if(problem.hasAOffsetPtr()){
                     state.ra.claim(state.inputs.strideOffsetA[i]);
             }

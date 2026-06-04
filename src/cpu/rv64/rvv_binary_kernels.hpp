@@ -508,6 +508,151 @@ static inline void rvv_binary_apply_u8(const alg_kind_t alg, const void *x,
     rvv_binary_kernel_u8(x, y, dst, c, len, eval, dt);
 }
 
+/* --- Native f16 path (Zvfh) ---
+ *
+ * Computes entirely in vfloat16m1_t. No widening to f32; vl is set at
+ * e16m1 so each iteration processes (vlen/16) elements, doubling the
+ * lane density vs an f32-domain path. Comparison ops produce 1.0_h /
+ * 0.0_h in f16 (both exact, matches the ref impl).
+ *
+ * bf16 is intentionally not added here: RVV has no native bf16
+ * arithmetic (Zvfbfmin/Zvfbfwma only provide conversion and widening
+ * FMA, not add/sub/max/cmp). A future PR can add a widen-narrow bf16
+ * path if needed.
+ */
+
+#ifdef DNNL_RISCV_USE_ZVFH_INTRINSICS
+using eval_f16m1_t = vfloat16m1_t (*)(vfloat16m1_t, vfloat16m1_t, size_t);
+
+inline vfloat16m1_t rvv_binary_add_f16(
+        vfloat16m1_t x, vfloat16m1_t y, size_t vl) {
+    return __riscv_vfadd_vv_f16m1(x, y, vl);
+}
+inline vfloat16m1_t rvv_binary_div_f16(
+        vfloat16m1_t x, vfloat16m1_t y, size_t vl) {
+    return __riscv_vfdiv_vv_f16m1(x, y, vl);
+}
+inline vfloat16m1_t rvv_binary_max_f16(
+        vfloat16m1_t x, vfloat16m1_t y, size_t vl) {
+    return __riscv_vfmax_vv_f16m1(x, y, vl);
+}
+inline vfloat16m1_t rvv_binary_min_f16(
+        vfloat16m1_t x, vfloat16m1_t y, size_t vl) {
+    return __riscv_vfmin_vv_f16m1(x, y, vl);
+}
+inline vfloat16m1_t rvv_binary_mul_f16(
+        vfloat16m1_t x, vfloat16m1_t y, size_t vl) {
+    return __riscv_vfmul_vv_f16m1(x, y, vl);
+}
+inline vfloat16m1_t rvv_binary_sub_f16(
+        vfloat16m1_t x, vfloat16m1_t y, size_t vl) {
+    return __riscv_vfsub_vv_f16m1(x, y, vl);
+}
+
+// Comparison helper: 1.0_h where the predicate holds, 0.0_h elsewhere.
+static inline vfloat16m1_t mask_to_one_zero_f16(vbool16_t mask, size_t vl) {
+    vfloat16m1_t zero = __riscv_vfmv_v_f_f16m1((_Float16)0.f, vl);
+    return __riscv_vfmerge_vfm_f16m1(zero, (_Float16)1.f, mask, vl);
+}
+inline vfloat16m1_t rvv_binary_ge_f16(
+        vfloat16m1_t x, vfloat16m1_t y, size_t vl) {
+    return mask_to_one_zero_f16(__riscv_vmfge_vv_f16m1_b16(x, y, vl), vl);
+}
+inline vfloat16m1_t rvv_binary_gt_f16(
+        vfloat16m1_t x, vfloat16m1_t y, size_t vl) {
+    return mask_to_one_zero_f16(__riscv_vmfgt_vv_f16m1_b16(x, y, vl), vl);
+}
+inline vfloat16m1_t rvv_binary_le_f16(
+        vfloat16m1_t x, vfloat16m1_t y, size_t vl) {
+    return mask_to_one_zero_f16(__riscv_vmfle_vv_f16m1_b16(x, y, vl), vl);
+}
+inline vfloat16m1_t rvv_binary_lt_f16(
+        vfloat16m1_t x, vfloat16m1_t y, size_t vl) {
+    return mask_to_one_zero_f16(__riscv_vmflt_vv_f16m1_b16(x, y, vl), vl);
+}
+inline vfloat16m1_t rvv_binary_eq_f16(
+        vfloat16m1_t x, vfloat16m1_t y, size_t vl) {
+    return mask_to_one_zero_f16(__riscv_vmfeq_vv_f16m1_b16(x, y, vl), vl);
+}
+inline vfloat16m1_t rvv_binary_ne_f16(
+        vfloat16m1_t x, vfloat16m1_t y, size_t vl) {
+    return mask_to_one_zero_f16(__riscv_vmfne_vv_f16m1_b16(x, y, vl), vl);
+}
+
+inline eval_f16m1_t get_eval_f16(const alg_kind_t alg) {
+    switch (alg) {
+        case alg_kind::binary_add: return rvv_binary_add_f16;
+        case alg_kind::binary_div: return rvv_binary_div_f16;
+        case alg_kind::binary_max: return rvv_binary_max_f16;
+        case alg_kind::binary_min: return rvv_binary_min_f16;
+        case alg_kind::binary_mul: return rvv_binary_mul_f16;
+        case alg_kind::binary_sub: return rvv_binary_sub_f16;
+        case alg_kind::binary_ge: return rvv_binary_ge_f16;
+        case alg_kind::binary_gt: return rvv_binary_gt_f16;
+        case alg_kind::binary_le: return rvv_binary_le_f16;
+        case alg_kind::binary_lt: return rvv_binary_lt_f16;
+        case alg_kind::binary_eq: return rvv_binary_eq_f16;
+        case alg_kind::binary_ne: return rvv_binary_ne_f16;
+        default: return nullptr;
+    }
+}
+
+static inline void rvv_binary_kernel_f16(const void *x_base, const void *y_base,
+        void *dst_base, const int8_t * /*c*/, dim_t len, eval_f16m1_t eval,
+        const data_type_t dt) {
+    for (dim_t i = 0; i < len;) {
+        size_t vl = __riscv_vsetvl_e16m1(static_cast<size_t>(len - i));
+        const _Float16 *x = reinterpret_cast<const _Float16 *>(
+                static_cast<const char *>(x_base)
+                + i * types::data_type_size(dt));
+        const _Float16 *y = reinterpret_cast<const _Float16 *>(
+                static_cast<const char *>(y_base)
+                + i * types::data_type_size(dt));
+        _Float16 *dst = reinterpret_cast<_Float16 *>(
+                static_cast<char *>(dst_base) + i * types::data_type_size(dt));
+        vfloat16m1_t vx = __riscv_vle16_v_f16m1(x, vl);
+        vfloat16m1_t vy = __riscv_vle16_v_f16m1(y, vl);
+        vfloat16m1_t vd = eval(vx, vy, vl);
+        __riscv_vse16_v_f16m1(dst, vd, vl);
+        i += static_cast<dim_t>(vl);
+    }
+}
+
+// Select: native f16 merge under an int8 mask. The i8 mask occupies LMUL=mf2
+// to match the f16m1 element count; the corresponding mask register is b16.
+inline void rvv_binary_select_kernel_f16(const _Float16 *x, const _Float16 *y,
+        _Float16 *dst, const int8_t *c, dim_t len) {
+    for (dim_t i = 0; i < len;) {
+        size_t vl = __riscv_vsetvl_e16m1(static_cast<size_t>(len - i));
+        vfloat16m1_t vx = __riscv_vle16_v_f16m1(x + i, vl);
+        vfloat16m1_t vy = __riscv_vle16_v_f16m1(y + i, vl);
+        vint8mf2_t vc8 = __riscv_vle8_v_i8mf2(c + i, vl);
+        vbool16_t mask
+                = __riscv_vmsne_vx_i8mf2_b16(vc8, static_cast<int8_t>(0), vl);
+        vfloat16m1_t vsel = __riscv_vmerge_vvm_f16m1(vy, vx, mask, vl);
+        __riscv_vse16_v_f16m1(dst + i, vsel, vl);
+        i += static_cast<dim_t>(vl);
+    }
+}
+
+static inline void rvv_binary_apply_f16(const alg_kind_t alg, const void *x,
+        const void *y, void *dst, const int8_t *c, const dim_t len,
+        const data_type_t dt) {
+    if (alg == alg_kind::binary_select) {
+        rvv_binary_select_kernel_f16(reinterpret_cast<const _Float16 *>(x),
+                reinterpret_cast<const _Float16 *>(y),
+                reinterpret_cast<_Float16 *>(dst), c, len);
+        return;
+    }
+    auto eval = get_eval_f16(alg);
+    if (!eval) {
+        assert(!"[rvv_binary_apply_f16] unknown binary alg_kind");
+        return;
+    }
+    rvv_binary_kernel_f16(x, y, dst, c, len, eval, dt);
+}
+#endif // DNNL_RISCV_USE_ZVFH_INTRINSICS
+
 } // namespace rv64
 } // namespace cpu
 } // namespace impl

@@ -122,8 +122,6 @@ bool has_data_type_support(data_type_t data_type) {
 #endif
 #elif DNNL_AARCH64
             return aarch64::mayiuse_bf16();
-#elif DNNL_RV64
-            return rv64::mayiuse(rv64::zvfbfmin);
 #else
             return false;
 #endif
@@ -165,8 +163,6 @@ bool has_training_support(data_type_t data_type) {
 #endif
 #elif defined(DNNL_AARCH64_USE_ACL)
             return arm_compute::CPUInfo::get().has_bf16();
-#elif DNNL_RV64
-            return rv64::mayiuse(rv64::zvfbfmin);
 #else
             return false;
 #endif

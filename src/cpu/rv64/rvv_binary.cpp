@@ -53,6 +53,11 @@ static inline void compute_binary_rvv(const alg_kind_t alg, const void *x,
         case data_type::u8:
             rvv_binary_apply_u8(alg, x, y, dst, c, len, dt);
             break;
+#ifdef DNNL_RISCV_USE_ZVFH_INTRINSICS
+        case data_type::f16:
+            rvv_binary_apply_f16(alg, x, y, dst, c, len, dt);
+            break;
+#endif
         default: assert(!"Unsupported data type for RVV binary");
     }
 }

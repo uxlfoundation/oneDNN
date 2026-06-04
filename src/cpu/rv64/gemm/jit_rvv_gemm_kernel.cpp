@@ -95,7 +95,8 @@ void jit_rvv_gemm_kernel_t::generate() {
     slli(reg_ldb_bytes, reg_ldb_bytes, 2);
     slli(reg_ldc_bytes, reg_ldc_bytes, 2);
 
-    vsetvli(x0, reg_m, SEW::e32, LMUL::m4);
+    // Active lanes are overwritten and inactive lanes are never consumed.
+    vsetvli(x0, reg_m, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
 
     const Reg &reg_tmp3 = reg_param;
 

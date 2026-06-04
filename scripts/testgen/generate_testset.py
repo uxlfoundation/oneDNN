@@ -103,6 +103,64 @@ COVERAGE_DIMS = {
 }
 
 
+# ─── Targeted augmentations ───────────────────────────────────────────────────
+#
+# When pairwise coverage misses known-important combinations because the source
+# nightly log contained an incomplete parameter sweep (e.g., only 3-D layouts
+# for a given dtype), these entries inject synthetic commands.
+#
+# Each entry: (primitive, dtype_regex, [extra_command_strings])
+# The extra commands are bare benchdnn args (no --primitive / --engine),
+# identical to what load_log returns.  They are prepended to the test pool and
+# marked as forced so the greedy selector always picks them.
+#
+# Reference bugs driving each augmentation are noted in comments.
+TARGETED_AUGMENTATIONS: list[tuple[str, str, list[str]]] = [
+    # MFDNN-14869 (PVC): bf16:f8_e4m3:bf16 with 2-D transposed layouts (ab/ba)
+    # failed because the nightly log only contained 3-D (abc) shapes for this
+    # dtype, so the pairwise algorithm never generated a 2-D ab/ba test.
+    # The bug triggers in the no-scales path; attr-scales changes the kernel
+    # selection and avoids the buggy code path.
+    (
+        "matmul",
+        r"^bf16:f8_e4m3:bf16$",
+        [
+            "--dt=bf16:f8_e4m3:bf16 --stag=ab --wtag=ba --dtag=ab"
+            " --skip-impl=ref 1x25:25x32",
+            "--dt=bf16:f8_e4m3:bf16 --stag=ab --wtag=ba --dtag=ab"
+            " --skip-impl=ref 256x512:512x1024",
+        ],
+    ),
+]
+
+
+def get_augmentations(cmds: list[str], prim: str) -> list[str]:
+    """Return forced synthetic commands for *prim* based on dtypes found in cmds.
+
+    Scans the dt/sdt values present in *cmds*; for each TARGETED_AUGMENTATIONS
+    entry that matches, adds the synthetic commands.  Only adds commands not
+    already present in *cmds*.
+    """
+    import re as _re
+    existing = set(cmds)
+    dt_values: set[str] = set()
+    for cmd in cmds:
+        for tok in cmd.split():
+            if tok.startswith("--dt="):
+                dt_values.add(tok[5:])
+
+    result: list[str] = []
+    for aug_prim, pat, extra_cmds in TARGETED_AUGMENTATIONS:
+        if aug_prim != prim:
+            continue
+        rx = _re.compile(pat)
+        if any(rx.match(v) for v in dt_values):
+            for ec in extra_cmds:
+                if ec not in existing:
+                    result.append(ec)
+    return result
+
+
 # ─── Log parsing ─────────────────────────────────────────────────────────────
 
 def load_log(path: str) -> list[str]:
@@ -672,10 +730,14 @@ def compute_coverage(
 
 # ─── Batch file writing ───────────────────────────────────────────────────────
 
-def write_batch_file(path: str, selected_cmds: list[str]):
+def write_batch_file(path: str, selected_cmds: list[str],
+                     aug_cmds: list[str] | None = None):
     os.makedirs(os.path.dirname(path), exist_ok=True)
+    aug_set = set(aug_cmds) if aug_cmds else set()
     with open(path, "w") as f:
         for cmd in selected_cmds:
+            if cmd in aug_set:
+                f.write("# targeted augmentation (see TARGETED_AUGMENTATIONS)\n")
             f.write("--reset " + clean_cmd(cmd) + "\n")
 
 
@@ -816,18 +878,27 @@ def main():
         cmds = load_log(log_path)
         print(f"{len(cmds)} unique tests")
 
+        # Collect forced augmentation commands (synthetic tests for known gaps).
+        aug_cmds = get_augmentations(cmds, prim)
+        if aug_cmds:
+            print(f"         Injecting {len(aug_cmds)} targeted augmentation(s)")
+
         print(f"         Extracting features ... ", end="", flush=True)
         features = [extract_features(c, prim) for c in cmds]
         print("done")
 
-        print(f"         Selecting up to {max_count} tests ... ", end="", flush=True)
+        # Reserve budget for forced augmentations.
+        effective_max = max(0, max_count - len(aug_cmds))
+        print(f"         Selecting up to {effective_max} tests (+ {len(aug_cmds)} forced) ... ",
+              end="", flush=True)
         selected_idx = greedy_pairwise_select(
-            cmds, features, dims, max_count, seed=args.seed
+            cmds, features, dims, effective_max, seed=args.seed
         )
         print(f"selected {len(selected_idx)}")
 
-        sel_cmds = [cmds[i] for i in selected_idx]
-        sel_feats = [features[i] for i in selected_idx]
+        sel_cmds = [cmds[i] for i in selected_idx] + aug_cmds
+        sel_feats = ([features[i] for i in selected_idx]
+                     + [extract_features(c, prim) for c in aug_cmds])
 
         coverage = compute_coverage(features, sel_feats, dims, prim)
 
@@ -838,7 +909,7 @@ def main():
             print(f"         ✓ 100% pairwise coverage achieved")
 
         batch_path = os.path.join(out_dir, f"{prim}_generated.txt")
-        write_batch_file(batch_path, sel_cmds)
+        write_batch_file(batch_path, sel_cmds, aug_cmds)
         print(f"         Wrote: {batch_path}")
 
         results[prim] = {

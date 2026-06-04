@@ -1996,5 +1996,7 @@
 --reset --allow-enum-tags-only=false --dt=f16:f16:f16 --stag=abcd --wtag=abcd --dtag=abcd --attr-post-ops=clip:-1:1 1x8x1x64:1x8x64x123_n"00a56a9b14a4e021f6095f5160d9372d*20"
 --reset --dt=f32:s8:bf16 --stag=bac --wtag=cab --attr-fpmath=bf16:true --skip-impl=ref 3x8x221:3x221x8
 --reset --dt=u8:s8:u8 --strides=26880x8960x128x1::36750x12250x175x1 1x3x35x64:3x1x64x35
---reset --allow-enum-tags-only=false --dt=f16:f16:f16 --stag=abcd --wtag=cabd --dtag=acbd 1x8x1x290:1x8x290x64_n"22105d18e39d284c3566d59f81d10b1e*20"
---reset --allow-enum-tags-only=false --dt=f16:f16:f16 --stag=abcd --wtag=abcd --dtag=abcd --attr-post-ops=clip:-1:1 1x8x1x64:1x8x64x75_n"98e9f804aa2a70c617796a7d50baad36*20"
+# targeted augmentation (see TARGETED_AUGMENTATIONS)
+--reset --dt=bf16:f8_e4m3:bf16 --stag=ab --wtag=ba --dtag=ab --skip-impl=ref 1x25:25x32
+# targeted augmentation (see TARGETED_AUGMENTATIONS)
+--reset --dt=bf16:f8_e4m3:bf16 --stag=ab --wtag=ba --dtag=ab --skip-impl=ref 256x512:512x1024

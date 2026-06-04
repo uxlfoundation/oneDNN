@@ -1233,9 +1233,9 @@ inline void rvv_eltwise_bwd_kernel_f16(void *diff_src_base,
         const _Float16 *src = reinterpret_cast<const _Float16 *>(
                 static_cast<const char *>(src_base)
                 + i * types::data_type_size(dt));
-        _Float16 *diff_src
-                = reinterpret_cast<_Float16 *>(static_cast<char *>(diff_src_base)
-                        + i * types::data_type_size(dt));
+        _Float16 *diff_src = reinterpret_cast<_Float16 *>(
+                static_cast<char *>(diff_src_base)
+                + i * types::data_type_size(dt));
         vfloat16m1_t vdd = __riscv_vle16_v_f16m1(diff_dst, vl);
         vfloat16m1_t vs = __riscv_vle16_v_f16m1(src, vl);
         vfloat16m1_t vds = eval(vdd, vs, alpha, beta, vl);

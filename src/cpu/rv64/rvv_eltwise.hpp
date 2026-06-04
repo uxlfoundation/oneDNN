@@ -24,6 +24,7 @@
 
 #include "cpu/cpu_eltwise_pd.hpp"
 #include "cpu/platform.hpp"
+#include "cpu/rv64/cpu_isa_traits.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -44,8 +45,16 @@ struct rvv_eltwise_fwd_t : public primitive_t {
 
             const data_type_t d_type = dst_md()->data_type;
             using namespace dnnl::impl::data_type;
-            bool type_ok = utils::one_of(d_type, f32, s32, s8, u8);
+            bool type_ok = utils::one_of(d_type, f32, s32, s8, u8, f16, bf16);
             VDISPATCH_ELTWISE(type_ok, VERBOSE_UNSUPPORTED_DT);
+            // f16 requires Zvfh (provides f16<->f32 conversion + native arith).
+            VDISPATCH_ELTWISE(
+                    IMPLICATION(d_type == f16, mayiuse(zvfh)),
+                    VERBOSE_UNSUPPORTED_ISA);
+            // bf16 requires Zvfbfmin (provides bf16<->f32 conversion).
+            VDISPATCH_ELTWISE(
+                    IMPLICATION(d_type == bf16, mayiuse(zvfbfmin)),
+                    VERBOSE_UNSUPPORTED_ISA);
             VDISPATCH_ELTWISE(
                     src_md()->data_type == d_type, VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_ELTWISE(platform::has_data_type_support(d_type),
@@ -100,8 +109,14 @@ struct rvv_eltwise_bwd_t : public primitive_t {
 
             const data_type_t d_type = src_md()->data_type;
             using namespace dnnl::impl::data_type;
-            bool type_ok = utils::one_of(d_type, f32, s32, s8, u8);
+            bool type_ok = utils::one_of(d_type, f32, s32, s8, u8, f16, bf16);
             VDISPATCH_ELTWISE(type_ok, VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_ELTWISE(
+                    IMPLICATION(d_type == f16, mayiuse(zvfh)),
+                    VERBOSE_UNSUPPORTED_ISA);
+            VDISPATCH_ELTWISE(
+                    IMPLICATION(d_type == bf16, mayiuse(zvfbfmin)),
+                    VERBOSE_UNSUPPORTED_ISA);
             VDISPATCH_ELTWISE(
                     utils::everyone_is(d_type, diff_src_md()->data_type,
                             diff_dst_md()->data_type),

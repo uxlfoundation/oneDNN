@@ -51,6 +51,16 @@ void compute_eltwise_rvv_fwd(const alg_kind_t alg, const void *src, void *dst,
         case data_type::u8:
             rvv_eltwise_apply_fwd_u8(alg, src, dst, len, alpha, beta, dt);
             break;
+#ifdef DNNL_RISCV_USE_ZVFH_INTRINSICS
+        case data_type::f16:
+            rvv_eltwise_apply_fwd_f16(alg, src, dst, len, alpha, beta, dt);
+            break;
+#endif
+#ifdef DNNL_RISCV_USE_ZVFBFWMA_INTRINSICS
+        case data_type::bf16:
+            rvv_eltwise_apply_fwd_bf16(alg, src, dst, len, alpha, beta, dt);
+            break;
+#endif
         default: assert(!"Unsupported data type for RVV eltwise");
     }
 }
@@ -76,6 +86,18 @@ void compute_eltwise_rvv_bwd(const alg_kind_t alg, void *diff_src,
             rvv_eltwise_apply_bwd_u8(
                     alg, diff_src, diff_dst, src, len, alpha, beta, dt);
             break;
+#ifdef DNNL_RISCV_USE_ZVFH_INTRINSICS
+        case data_type::f16:
+            rvv_eltwise_apply_bwd_f16(
+                    alg, diff_src, diff_dst, src, len, alpha, beta, dt);
+            break;
+#endif
+#ifdef DNNL_RISCV_USE_ZVFBFWMA_INTRINSICS
+        case data_type::bf16:
+            rvv_eltwise_apply_bwd_bf16(
+                    alg, diff_src, diff_dst, src, len, alpha, beta, dt);
+            break;
+#endif
         default: assert(!"Unsupported data type for RVV eltwise");
     }
 }

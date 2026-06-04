@@ -39,12 +39,16 @@ namespace rv64 {
 enum cpu_isa_bit_t : unsigned {
     v_bit = 1u << 0,
     zvfh_bit = 1u << 1,
+    zvfbfmin_bit = 1u << 2,
+    zvfbfwma_bit = 1u << 3,
 };
 
 enum cpu_isa_t : unsigned {
     isa_undef = 0u,
     v = v_bit,
     zvfh = zvfh_bit | v,
+    zvfbfmin = zvfbfmin_bit | v,
+    zvfbfwma = zvfbfwma_bit | zvfbfmin,
     isa_all = ~0u,
 };
 
@@ -79,6 +83,12 @@ private:
     }
 };
 
+// Zvfbfmin / Zvfbfwma are gated at build time by the compiler's own
+// extension macros. The cmake march test pins the build flag based on
+// the running toolchain + CPU; the binary contains the bf16 path only
+// when -march already advertises it, so we trust the build flag as the
+// runtime answer too. This keeps the binary self-consistent in exchange
+// for assuming build target == run target.
 inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {
     MAYBE_UNUSED(soft);
     const Riscv64Cpu &cpu = Riscv64Cpu::getInstance();
@@ -86,6 +96,18 @@ inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {
     switch (cpu_isa) {
         case v: return cpu.get_has_v();
         case zvfh: return cpu.get_has_v() && cpu.get_has_zvfh();
+        case zvfbfmin:
+#ifdef __riscv_zvfbfmin
+            return cpu.get_has_v();
+#else
+            return false;
+#endif
+        case zvfbfwma:
+#ifdef __riscv_zvfbfwma
+            return cpu.get_has_v();
+#else
+            return false;
+#endif
         case isa_undef: return true;
         case isa_all: return false;
     }
@@ -118,7 +140,9 @@ inline int get_vlen_implementation_id(int vlen) {
     ((isa) == isa_undef ? prefix STRINGIFY(any) : \
     ((isa) == v ? prefix STRINGIFY(rvv) : \
     ((isa) == zvfh ? prefix STRINGIFY(rvv_zvfh) : \
-    prefix suffix_if_any)))
+    ((isa) == zvfbfmin ? prefix STRINGIFY(rvv_zvfbfmin) : \
+    ((isa) == zvfbfwma ? prefix STRINGIFY(rvv_zvfbfwma) : \
+    prefix suffix_if_any)))))
 /* clang-format on */
 
 } // namespace rv64

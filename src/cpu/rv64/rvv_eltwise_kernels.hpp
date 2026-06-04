@@ -1016,6 +1016,159 @@ inline void rvv_eltwise_apply_bwd_u8(alg_kind_t alg, void *diff_src,
             diff_src, diff_dst, src, len, alpha, beta, eval, dt);
 }
 
+/* --- f16 / bf16 widen-narrow paths ---
+ *
+ * Both kernels load 16-bit operands into a vector register at LMUL=mf2,
+ * widen to f32m1, reuse the existing f32 eval functions, then narrow back.
+ * vl is computed against e32m1 so the widened f32 vector fits in one
+ * register group; the 16-bit half consumes mf2.
+ *
+ * f16 widening is provided by Zvfh (which implies Zvfhmin's conversion
+ * ops). bf16 widening is provided by Zvfbfmin (which Zvfbfwma implies).
+ * Both flavors compute in f32 -> we inherit all 8 existing eltwise algs
+ * without per-op specialization.
+ */
+
+#ifdef DNNL_RISCV_USE_ZVFH_INTRINSICS
+inline void rvv_eltwise_fwd_kernel_f16(const void *src_base, void *dst_base,
+        dim_t len, float alpha, float beta, eval_fwd_f32_fn_t eval,
+        const data_type_t dt) {
+    for (dim_t i = 0; i < len;) {
+        size_t vl = __riscv_vsetvl_e32m1(static_cast<size_t>(len - i));
+        const _Float16 *src = reinterpret_cast<const _Float16 *>(
+                static_cast<const char *>(src_base)
+                + i * types::data_type_size(dt));
+        _Float16 *dst = reinterpret_cast<_Float16 *>(
+                static_cast<char *>(dst_base) + i * types::data_type_size(dt));
+        vfloat16mf2_t vin_f16 = __riscv_vle16_v_f16mf2(src, vl);
+        vfloat32m1_t vin_f32 = __riscv_vfwcvt_f_f_v_f32m1(vin_f16, vl);
+        vfloat32m1_t vout_f32 = eval(vin_f32, alpha, beta, vl);
+        vfloat16mf2_t vout_f16 = __riscv_vfncvt_f_f_w_f16mf2(vout_f32, vl);
+        __riscv_vse16_v_f16mf2(dst, vout_f16, vl);
+        i += static_cast<dim_t>(vl);
+    }
+}
+
+inline void rvv_eltwise_bwd_kernel_f16(void *diff_src_base,
+        const void *diff_dst_base, const void *src_base, dim_t len, float alpha,
+        float beta, eval_bwd_f32_fn_t eval, const data_type_t dt) {
+    for (dim_t i = 0; i < len;) {
+        size_t vl = __riscv_vsetvl_e32m1(static_cast<size_t>(len - i));
+        const _Float16 *diff_dst = reinterpret_cast<const _Float16 *>(
+                static_cast<const char *>(diff_dst_base)
+                + i * types::data_type_size(dt));
+        const _Float16 *src = reinterpret_cast<const _Float16 *>(
+                static_cast<const char *>(src_base)
+                + i * types::data_type_size(dt));
+        _Float16 *diff_src
+                = reinterpret_cast<_Float16 *>(static_cast<char *>(diff_src_base)
+                        + i * types::data_type_size(dt));
+        vfloat16mf2_t vdd_f16 = __riscv_vle16_v_f16mf2(diff_dst, vl);
+        vfloat16mf2_t vs_f16 = __riscv_vle16_v_f16mf2(src, vl);
+        vfloat32m1_t vdd_f32 = __riscv_vfwcvt_f_f_v_f32m1(vdd_f16, vl);
+        vfloat32m1_t vs_f32 = __riscv_vfwcvt_f_f_v_f32m1(vs_f16, vl);
+        vfloat32m1_t vds_f32 = eval(vdd_f32, vs_f32, alpha, beta, vl);
+        vfloat16mf2_t vds_f16 = __riscv_vfncvt_f_f_w_f16mf2(vds_f32, vl);
+        __riscv_vse16_v_f16mf2(diff_src, vds_f16, vl);
+        i += static_cast<dim_t>(vl);
+    }
+}
+
+inline void rvv_eltwise_apply_fwd_f16(alg_kind_t alg, const void *src,
+        void *dst, dim_t len, float alpha, float beta, const data_type_t dt) {
+    auto eval = get_eval_fwd_f32(alg);
+    if (!eval) {
+        assert(!"[rvv_eltwise_apply_fwd_f16] unknown eltwise alg_kind");
+        return;
+    }
+    rvv_eltwise_fwd_kernel_f16(src, dst, len, alpha, beta, eval, dt);
+}
+
+inline void rvv_eltwise_apply_bwd_f16(alg_kind_t alg, void *diff_src,
+        const void *diff_dst, const void *src, dim_t len, float alpha,
+        float beta, const data_type_t dt) {
+    auto eval = get_eval_bwd_f32(alg);
+    if (!eval) {
+        assert(!"[rvv_eltwise_apply_bwd_f16] unknown eltwise alg_kind");
+        return;
+    }
+    rvv_eltwise_bwd_kernel_f16(
+            diff_src, diff_dst, src, len, alpha, beta, eval, dt);
+}
+#endif // DNNL_RISCV_USE_ZVFH_INTRINSICS
+
+#ifdef DNNL_RISCV_USE_ZVFBFWMA_INTRINSICS
+inline void rvv_eltwise_fwd_kernel_bf16(const void *src_base, void *dst_base,
+        dim_t len, float alpha, float beta, eval_fwd_f32_fn_t eval,
+        const data_type_t dt) {
+    for (dim_t i = 0; i < len;) {
+        size_t vl = __riscv_vsetvl_e32m1(static_cast<size_t>(len - i));
+        const __bf16 *src = reinterpret_cast<const __bf16 *>(
+                static_cast<const char *>(src_base)
+                + i * types::data_type_size(dt));
+        __bf16 *dst = reinterpret_cast<__bf16 *>(
+                static_cast<char *>(dst_base) + i * types::data_type_size(dt));
+        vbfloat16mf2_t vin_bf16 = __riscv_vle16_v_bf16mf2(src, vl);
+        vfloat32m1_t vin_f32
+                = __riscv_vfwcvtbf16_f_f_v_f32m1(vin_bf16, vl);
+        vfloat32m1_t vout_f32 = eval(vin_f32, alpha, beta, vl);
+        vbfloat16mf2_t vout_bf16
+                = __riscv_vfncvtbf16_f_f_w_bf16mf2(vout_f32, vl);
+        __riscv_vse16_v_bf16mf2(dst, vout_bf16, vl);
+        i += static_cast<dim_t>(vl);
+    }
+}
+
+inline void rvv_eltwise_bwd_kernel_bf16(void *diff_src_base,
+        const void *diff_dst_base, const void *src_base, dim_t len, float alpha,
+        float beta, eval_bwd_f32_fn_t eval, const data_type_t dt) {
+    for (dim_t i = 0; i < len;) {
+        size_t vl = __riscv_vsetvl_e32m1(static_cast<size_t>(len - i));
+        const __bf16 *diff_dst = reinterpret_cast<const __bf16 *>(
+                static_cast<const char *>(diff_dst_base)
+                + i * types::data_type_size(dt));
+        const __bf16 *src = reinterpret_cast<const __bf16 *>(
+                static_cast<const char *>(src_base)
+                + i * types::data_type_size(dt));
+        __bf16 *diff_src = reinterpret_cast<__bf16 *>(
+                static_cast<char *>(diff_src_base)
+                + i * types::data_type_size(dt));
+        vbfloat16mf2_t vdd_bf16 = __riscv_vle16_v_bf16mf2(diff_dst, vl);
+        vbfloat16mf2_t vs_bf16 = __riscv_vle16_v_bf16mf2(src, vl);
+        vfloat32m1_t vdd_f32
+                = __riscv_vfwcvtbf16_f_f_v_f32m1(vdd_bf16, vl);
+        vfloat32m1_t vs_f32 = __riscv_vfwcvtbf16_f_f_v_f32m1(vs_bf16, vl);
+        vfloat32m1_t vds_f32 = eval(vdd_f32, vs_f32, alpha, beta, vl);
+        vbfloat16mf2_t vds_bf16
+                = __riscv_vfncvtbf16_f_f_w_bf16mf2(vds_f32, vl);
+        __riscv_vse16_v_bf16mf2(diff_src, vds_bf16, vl);
+        i += static_cast<dim_t>(vl);
+    }
+}
+
+inline void rvv_eltwise_apply_fwd_bf16(alg_kind_t alg, const void *src,
+        void *dst, dim_t len, float alpha, float beta, const data_type_t dt) {
+    auto eval = get_eval_fwd_f32(alg);
+    if (!eval) {
+        assert(!"[rvv_eltwise_apply_fwd_bf16] unknown eltwise alg_kind");
+        return;
+    }
+    rvv_eltwise_fwd_kernel_bf16(src, dst, len, alpha, beta, eval, dt);
+}
+
+inline void rvv_eltwise_apply_bwd_bf16(alg_kind_t alg, void *diff_src,
+        const void *diff_dst, const void *src, dim_t len, float alpha,
+        float beta, const data_type_t dt) {
+    auto eval = get_eval_bwd_f32(alg);
+    if (!eval) {
+        assert(!"[rvv_eltwise_apply_bwd_bf16] unknown eltwise alg_kind");
+        return;
+    }
+    rvv_eltwise_bwd_kernel_bf16(
+            diff_src, diff_dst, src, len, alpha, beta, eval, dt);
+}
+#endif // DNNL_RISCV_USE_ZVFBFWMA_INTRINSICS
+
 } // namespace rv64
 } // namespace cpu
 } // namespace impl

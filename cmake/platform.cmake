@@ -150,31 +150,60 @@ if (DNNL_TARGET_ARCH STREQUAL "RV64")
         check_cxx_source_compiles("#include <riscv_vector.h>
                                    #ifndef __riscv_zvfh
                                    #error \"Zvfh extension is not supported by the compiler\"
-                                   #endif   
+                                   #endif
                                    int main() {
                                     vfloat16m1_t a;
-                                    return 0; 
+                                    return 0;
                                    };"
                                    CAN_COMPILE_ZVFH_INTRINSICS
         )
         set(CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS_SAVE})
 
+        # Zvfbfwma (vector bf16 widening multiply-add). Pulls in Zvfbfmin
+        # and Zfbfmin via the spec's implication chain.
+        set(ARCH_SIMD_TEST_FLAGS "-march=rv64gcv_zvfh_zfbfmin_zvfbfmin_zvfbfwma")
+        set(CMAKE_REQUIRED_FLAGS_SAVE ${CMAKE_REQUIRED_FLAGS})
+        set(CMAKE_REQUIRED_FLAGS "${ARCH_SIMD_TEST_FLAGS}")
+        check_cxx_source_compiles("#include <riscv_vector.h>
+                                   #if !defined(__riscv_zvfbfmin) || !defined(__riscv_zvfbfwma)
+                                   #error \"Zvfbfmin/Zvfbfwma not supported by the compiler\"
+                                   #endif
+                                   int main() {
+                                    vbfloat16mf2_t a;
+                                    vfloat32m1_t   b;
+                                    (void)a; (void)b;
+                                    return 0;
+                                   };"
+                                   CAN_COMPILE_ZVFBFWMA_INTRINSICS
+        )
+        set(CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS_SAVE})
+
         set(CAN_COMPILE_RVV_INTRINSICS TRUE)
 
-        # If explicitly passed DNNL_ARCH_OPT_FLAGS without V or Zvfh in the -march 
-        # string, disable their code paths even if the toolchain supports them.
+        # If explicitly passed DNNL_ARCH_OPT_FLAGS without V/Zvfh/Zvfbfwma in
+        # the -march string, disable their code paths even if the toolchain
+        # supports them.
         if (DEFINED DNNL_ARCH_OPT_FLAGS AND DNNL_ARCH_OPT_FLAGS MATCHES "-march=")
             string(FIND "${DNNL_ARCH_OPT_FLAGS}" "gcv" _dnnl_rv64_v_pos)
             string(FIND "${DNNL_ARCH_OPT_FLAGS}" "zvfh" _dnnl_rv64_zvfh_pos)
+            string(FIND "${DNNL_ARCH_OPT_FLAGS}" "zvfbfwma" _dnnl_rv64_zvfbfwma_pos)
             if (_dnnl_rv64_v_pos EQUAL -1)
                 set(CAN_COMPILE_RVV_INTRINSICS FALSE)
                 set(CAN_COMPILE_ZVFH_INTRINSICS FALSE)
-            elseif (_dnnl_rv64_zvfh_pos EQUAL -1)
-                set(CAN_COMPILE_ZVFH_INTRINSICS FALSE)
+                set(CAN_COMPILE_ZVFBFWMA_INTRINSICS FALSE)
+            else()
+                if (_dnnl_rv64_zvfh_pos EQUAL -1)
+                    set(CAN_COMPILE_ZVFH_INTRINSICS FALSE)
+                endif()
+                if (_dnnl_rv64_zvfbfwma_pos EQUAL -1)
+                    set(CAN_COMPILE_ZVFBFWMA_INTRINSICS FALSE)
+                endif()
             endif()
         endif()
 
-        if (CAN_COMPILE_ZVFH_INTRINSICS)
+        if (CAN_COMPILE_ZVFBFWMA_INTRINSICS)
+            set(RV64_MARCH_FLAG "-march=rv64gcv_zvfh_zfbfmin_zvfbfmin_zvfbfwma")
+        elseif (CAN_COMPILE_ZVFH_INTRINSICS)
             set(RV64_MARCH_FLAG "-march=rv64gcv_zvfh")
         elseif (CAN_COMPILE_RVV_INTRINSICS)
             set(RV64_MARCH_FLAG "-march=rv64gcv")
@@ -182,9 +211,10 @@ if (DNNL_TARGET_ARCH STREQUAL "RV64")
             set(RV64_MARCH_FLAG "-march=rv64gc")
         endif()
     else()
-        # RVV is not supported, so Zvfh is also not supported
+        # RVV is not supported, so Zvfh / Zvfbfwma are also not supported
         set(CAN_COMPILE_RVV_INTRINSICS FALSE)
         set(CAN_COMPILE_ZVFH_INTRINSICS FALSE)
+        set(CAN_COMPILE_ZVFBFWMA_INTRINSICS FALSE)
         set(RV64_MARCH_FLAG "-march=rv64gc")
     endif()
 
@@ -198,10 +228,17 @@ if (DNNL_TARGET_ARCH STREQUAL "RV64")
         add_definitions(-DDNNL_RISCV_USE_ZVFH_INTRINSICS)
     endif()
 
+    set(DNNL_RISCV_USE_ZVFBFWMA_INTRINSICS ${CAN_COMPILE_ZVFBFWMA_INTRINSICS})
+    if (${DNNL_RISCV_USE_ZVFBFWMA_INTRINSICS})
+        add_definitions(-DDNNL_RISCV_USE_ZVFBFWMA_INTRINSICS)
+    endif()
+
     message(STATUS "Can compile RVV Intrinsics: ${CAN_COMPILE_RVV_INTRINSICS}")
     message(STATUS "Can compile Zvfh Intrinsics: ${CAN_COMPILE_ZVFH_INTRINSICS}")
+    message(STATUS "Can compile Zvfbfwma Intrinsics: ${CAN_COMPILE_ZVFBFWMA_INTRINSICS}")
     message(STATUS "DNNL_RISCV_USE_RVV_INTRINSICS: ${DNNL_RISCV_USE_RVV_INTRINSICS}")
     message(STATUS "DNNL_RISCV_USE_ZVFH_INTRINSICS: ${DNNL_RISCV_USE_ZVFH_INTRINSICS}")
+    message(STATUS "DNNL_RISCV_USE_ZVFBFWMA_INTRINSICS: ${DNNL_RISCV_USE_ZVFBFWMA_INTRINSICS}")
     message(STATUS "Using RV64 march flag: ${RV64_MARCH_FLAG}")
 endif()
 

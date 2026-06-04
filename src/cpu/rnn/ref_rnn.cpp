@@ -304,7 +304,6 @@ ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
     using namespace format_tag;
     using namespace rnn_utils;
 #if DNNL_X64 || DNNL_AARCH64
-    using namespace rnn_brgemm_arch;
     const alg_kind_t cell_kind = this->desc()->cell_kind;
 
     const data_type_t src_layer_dt = this->desc()->src_layer_desc.data_type;
@@ -479,8 +478,8 @@ ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
     // must be called after configure_brgemm()
     set_workspace_sizes<class_name>(rnn_, *this->desc());
 
-    // Only AMX LSTM supports s8s8 now
 #if DNNL_X64
+    // Only AMX LSTM supports s8s8 now
     VDISPATCH_RNN(!(rnn_.is_signed_int8_conf() && !rnn_.is_cell_int8_amx()),
             VERBOSE_UNSUPPORTED_DT);
 #endif
@@ -1063,8 +1062,8 @@ rnn_grid_execution_sig((ref_rnn_common_t<aprop, src_type, weights_type,
         CHECK((this->*merged_layer_func)(ctx, rnn, cell_position,
                 SAFE_PTR(weights_layer, lay, dir, 0), src_layer, scratch_gates_,
                 SAFE_PTR(ws_diff_states_layer, lay, dir, 0, 0),
-                SAFE_PTR(diff_weights_layer, lay, dir, 0),
-                RNN_AMX_SCRATCHPAD_ACTUAL addr_batch_global));
+                SAFE_PTR(diff_weights_layer, lay, dir, 0), gemm_acc_scratchpad,
+                addr_batch_global));
 #else
         CHECK((this->*merged_layer_func)(rnn, cell_position,
                 SAFE_PTR(weights_layer, lay, dir, 0), src_layer, scratch_gates_,
@@ -1201,8 +1200,8 @@ rnn_grid_execution_sig((ref_rnn_common_t<aprop, src_type, weights_type,
                     proj_ht, scratch_diff_ht_,
                     SAFE_PTR(ws_grid, lay, dir, iter, 0), scratch_cell_,
                     scratch_gates_blocked_, scratch_src_layer_,
-                    scratch_src_iter_, cell_dst_iter,
-                    RNN_AMX_SCRATCHPAD_ACTUAL addr_batch_global));
+                    scratch_src_iter_, cell_dst_iter, gemm_acc_scratchpad,
+                    addr_batch_global));
 #else
             CHECK((this->*cell_func)(ctx, rnn, cell_position, cell_dst_layer,
                     cell_dst_iter_c,
@@ -1230,7 +1229,7 @@ rnn_grid_execution_sig((ref_rnn_common_t<aprop, src_type, weights_type,
                     SAFE_PTR(ws_gates, lay, dir, iter, 0), cell_scratch_gates,
                     proj_ht, scratch_diff_ht_,
                     SAFE_PTR(ws_grid, lay, dir, iter, 0), scratch_cell_,
-                    cell_dst_iter, amx_scratchpad));
+                    cell_dst_iter, gemm_acc_scratchpad));
 #endif
         }
 
@@ -2089,21 +2088,22 @@ status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
             = scratchpad.template get<scratch_t>(key_rnn_src_iter_trans);
 #endif
 
-#if DNNL_X64
-    gemm_acc_t *amx_scratchpad = nullptr;
-    if (rnn.is_brgemm && rnn.is_cell_amx()) {
-        amx_scratchpad = scratchpad.template get<gemm_acc_t>(
-                key_brgemm_primitive_buffer);
-    }
-#endif
+    gemm_acc_t *gemm_acc_scratchpad = nullptr;
 #if DNNL_X64 || DNNL_AARCH64
-    rnn_brgemm_arch::brgemm_batch_element_t *addr_batch_global = nullptr;
+    brgemm_batch_element_t *addr_batch_global = nullptr;
+
     if (rnn.is_brgemm) {
-        addr_batch_global = scratchpad.template get<
-                rnn_brgemm_arch::brgemm_batch_element_t>(
+#if DNNL_X64
+        if (rnn.is_cell_amx()) {
+            gemm_acc_scratchpad = scratchpad.template get<gemm_acc_t>(
+                    key_brgemm_primitive_buffer);
+        }
+#endif
+        addr_batch_global = scratchpad.template get<brgemm_batch_element_t>(
                 key_brgemm_primitive_batch);
     }
 #endif
+
     // Fetching buffers from the workspace
     // if no workspace was provided we use the scratchpad
     char *scratch_ptr = scratchpad.template get<char>(key_rnn_space);
@@ -2287,8 +2287,8 @@ status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
             scratch_diff_ht, scratch_cell, scratch_gates_blocked,
             scratch_src_layer, scratch_src_iter, diff_augru_attention,
             diff_weights_layer, diff_weights_iter, diff_weights_projection,
-            diff_weights_peephole, diff_bias,
-            RNN_AMX_SCRATCHPAD_ACTUAL addr_batch_global));
+            diff_weights_peephole, diff_bias, gemm_acc_scratchpad,
+            addr_batch_global));
 #else
     CHECK((this->*grid_computation)(ctx, rnn, ptr_wei_layer, ptr_wei_iter,
             ptr_wei_projection, weights_peephole, w_projection_comp, ptr_bias,
@@ -2299,7 +2299,7 @@ status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
             ws_gates, ws_ht, ws_grid, scratch_gates, scratch_ht,
             scratch_diff_ht, scratch_cell, diff_augru_attention,
             diff_weights_layer, diff_weights_iter, diff_weights_projection,
-            diff_weights_peephole, diff_bias, amx_scratchpad));
+            diff_weights_peephole, diff_bias, gemm_acc_scratchpad));
 #endif
 
     // Finally we copy the results to the result buffers

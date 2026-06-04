@@ -42,7 +42,8 @@ public:
             rnn_utils::cell_position_t cell_position, const src_t *src_iter,
             const src_t *src_layer, weights_t *w_iter, weights_t *w_layer,
             scratch_t *scratch_gates, scratch_t *scratch_cell_,
-            aarch64::brgemm_batch_element_t *addr_batch_global,
+            gemm_acc_t *gemm_acc_scratchpad,
+            brgemm_batch_element_t *addr_batch_global,
             const postgemm_fused_t &fused_postgemm);
 
     void execute() const;
@@ -99,6 +100,7 @@ private:
     const brgemm_kernel_t *const brgemm_kernel_layer_k_tail_;
     const brgemm_kernel_t *const brgemm_kernel_layer_nk_tail_;
 
+    gemm_acc_t *const gemm_acc_scratchpad_;
     brgemm_batch_element_t *const addr_batch_global_;
     const postgemm_fused_t fused_postgemm_;
 
@@ -119,7 +121,8 @@ public:
             const rnn_utils::rnn_conf_t &rnn,
             rnn_utils::cell_position_t cell_position, const src_t *proj_ht,
             const weights_t *w_projection, gemm_acc_t *output,
-            aarch64::brgemm_batch_element_t *addr_batch_global,
+            gemm_acc_t *gemm_acc_scratchpad,
+            brgemm_batch_element_t *addr_batch_global,
             const postgemm_fused_t &fused_postgemm);
 
     void execute() const;
@@ -143,6 +146,7 @@ private:
     const dim_t B_n_offset_;
     const dim_t Bp_kb_offset_;
 
+    gemm_acc_t *const gemm_acc_scratchpad_;
     brgemm_batch_element_t *const addr_batch_global_;
 
     const brgemm_kernel_t *const brgemm_kernel_main_;
@@ -164,8 +168,8 @@ public:
             rnn_utils::cell_position_t cell_position, const src_t *src_iter,
             const src_t *src_layer, weights_t *w_iter, weights_t *w_iter1,
             weights_t *w_layer, src_t *d_layer, scratch_t *scratch_gates,
-            scratch_t *scratch_cell,
-            aarch64::brgemm_batch_element_t *addr_batch_global,
+            scratch_t *scratch_cell, gemm_acc_t *gemm_acc_scratchpad,
+            brgemm_batch_element_t *addr_batch_global,
             const postgemm_fused_t &fused_postgemm_part1,
             const postgemm_fused_t &fused_postgemm_part2);
 
@@ -231,6 +235,7 @@ private:
     const brgemm_kernel_t *const brgemm_kernel_layer_k_tail_;
     const brgemm_kernel_t *const brgemm_kernel_layer_nk_tail_;
 
+    gemm_acc_t *const gemm_acc_scratchpad_;
     brgemm_batch_element_t *const addr_batch_global_;
 
     const postgemm_fused_t fused_postgemm_part1_;
@@ -249,7 +254,8 @@ public:
             const rnn_utils::rnn_conf_t &rnn,
             rnn_utils::cell_position_t cell_position, const src_t *src_layer,
             weights_t *w_layer, scratch_t *scratch_gates,
-            aarch64::brgemm_batch_element_t *addr_batch_global);
+            gemm_acc_t *gemm_acc_scratchpad,
+            brgemm_batch_element_t *addr_batch_global);
 
     void execute() const;
 
@@ -283,6 +289,7 @@ private:
     const brgemm_kernel_t *const brgemm_kernel_layer_k_tail_;
     const brgemm_kernel_t *const brgemm_kernel_layer_nk_tail_;
 
+    gemm_acc_t *const gemm_acc_scratchpad_;
     brgemm_batch_element_t *const addr_batch_global_;
 };
 

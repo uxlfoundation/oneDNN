@@ -38,21 +38,9 @@
 #endif
 #include "cpu/rnn/rnn_utils.hpp"
 
-#if DNNL_X64
-#define RNN_AMX_SCRATCHPAD_ACTUAL amx_scratchpad,
-#else
-#define RNN_AMX_SCRATCHPAD_ACTUAL
-#endif
-
 namespace dnnl {
 namespace impl {
 namespace cpu {
-
-#if DNNL_X64
-namespace rnn_brgemm_arch = x64;
-#elif DNNL_AARCH64
-namespace rnn_brgemm_arch = aarch64;
-#endif
 
 namespace {
 template <typename gates_t, typename acc_t>
@@ -129,8 +117,7 @@ struct ref_rnn_common_t : public primitive_t {
     using class_name
             = ref_rnn_common_t<aprop, src_type, weights_type, acc_type>;
 #if DNNL_X64 || DNNL_AARCH64
-    using ref_rnn_brgemm_t
-            = rnn_brgemm_arch::rnn_brgemm_utils::rnn_brgemm_t<aprop>;
+    using ref_rnn_brgemm_t = rnn_brgemm_utils::rnn_brgemm_t<aprop>;
 #endif
 
     using cell_execution_f
@@ -157,7 +144,6 @@ struct ref_rnn_common_t : public primitive_t {
 
         const char *impl_name() const {
 #if DNNL_X64 || DNNL_AARCH64
-            using namespace rnn_brgemm_arch;
             return rnn_.is_brgemm
                     ? JIT_IMPL_NAME_HELPER("brgemm:", rnn_.brgemm_isa, "")
                     : rnn_.use_matmul ? "ref+matmul"

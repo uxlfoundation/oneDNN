@@ -38,8 +38,8 @@ public:
             const rnn_utils::rnn_conf_t &rnn,
             rnn_utils::cell_position_t cell_position, scratch_t *scratch_gates,
             weights_t *w_iter, weights_t *w_layer, gemm_acc_t *diff_src_iter,
-            gemm_acc_t *diff_src_layer,
-            aarch64::brgemm_batch_element_t *addr_batch_global);
+            gemm_acc_t *diff_src_layer, gemm_acc_t *gemm_acc_scratchpad,
+            brgemm_batch_element_t *addr_batch_global);
 
     void execute() const;
 
@@ -92,6 +92,7 @@ private:
     const brgemm_kernel_t *const kernel_layer_k_tail_;
     const brgemm_kernel_t *const kernel_layer_nk_tail_;
 
+    gemm_acc_t *const gemm_acc_scratchpad_;
     brgemm_batch_element_t *const addr_batch_global_;
 };
 
@@ -111,8 +112,8 @@ public:
             scratch_t *const A_layer_transposed_scratch,
             const scratch_t *scratch, scratch_t *scratch_gates_blocked,
             gemm_acc_t *diff_weights_iter, gemm_acc_t *diff_weights_layer,
-            gemm_acc_t *diff_bias,
-            aarch64::brgemm_batch_element_t *addr_batch_global);
+            gemm_acc_t *diff_bias, gemm_acc_t *gemm_acc_scratchpad,
+            brgemm_batch_element_t *addr_batch_global);
 
     void execute() const;
 
@@ -165,6 +166,7 @@ private:
 
     const rnn_utils::cell_position_t cell_position_;
 
+    gemm_acc_t *const gemm_acc_scratchpad_;
     brgemm_batch_element_t *const addr_batch_global_;
 
     void kernel(const int ithr, const int nthr) const;

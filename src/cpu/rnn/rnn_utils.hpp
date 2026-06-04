@@ -29,17 +29,12 @@
 #include "cpu/platform.hpp"
 
 #include "cpu/gemm/gemm_pack.hpp"
+#include "cpu/simple_q10n.hpp"
 
 #if DNNL_X64
 #include "cpu/x64/cpu_isa_traits.hpp"
 #elif DNNL_AARCH64
 #include "cpu/aarch64/cpu_isa_traits.hpp"
-#endif
-
-#if DNNL_X64
-#define RNN_AMX_SCRATCHPAD_ARG gemm_acc_t *amx_scratchpad,
-#else
-#define RNN_AMX_SCRATCHPAD_ARG
 #endif
 
 #define rnn_postgemm_sig_args \
@@ -57,14 +52,18 @@
 
 #define rnn_postgemm_sig(f) void f(rnn_postgemm_sig_args) const
 
+// gemm_acc_scratchpad is a GEMM accumulation scratchpad used by tile-based
+// brgemm kernels (AMX on x64, MMLA/SME on aarch64). It can be nullptr on
+// implementations that don't need it (e.g. current AArch64 SVE kernels).
+
 #if DNNL_X64 || DNNL_AARCH64
 #define rnn_merged_layer_execution_sig_args \
     const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
             rnn_utils::cell_position_t cell_position, weights_t **w_layer_, \
             const src_layer_t *src_layer_, scratch_t *scratch_gates_, \
             gemm_acc_t *diff_src_layer_, gemm_acc_t *diff_w_layer_, \
-            RNN_AMX_SCRATCHPAD_ARG rnn_brgemm_arch::brgemm_batch_element_t \
-                    *addr_batch_global
+            gemm_acc_t *gemm_acc_scratchpad, \
+            brgemm_batch_element_t *addr_batch_global
 
 #define rnn_cell_execution_sig_args \
     const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
@@ -84,9 +83,8 @@
             ht_t *proj_ht_, gemm_acc_t *scratch_diff_ht_, gates_t *ws_grid_, \
             scratch_t *scratch_cell_, scratch_t *scratch_gates_blocked_, \
             scratch_t *scratch_src_layer_, scratch_t *scratch_src_iter_, \
-            dst_iter_t *dst_iter_, \
-            RNN_AMX_SCRATCHPAD_ARG rnn_brgemm_arch::brgemm_batch_element_t \
-                    *addr_batch_global
+            dst_iter_t *dst_iter_, gemm_acc_t *gemm_acc_scratchpad, \
+            brgemm_batch_element_t *addr_batch_global
 
 #define rnn_grid_execution_sig_args \
     const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
@@ -108,9 +106,8 @@
             gemm_acc_t *diff_augru_attention_, \
             gemm_acc_t *diff_weights_layer_, gemm_acc_t *diff_weights_iter_, \
             float *diff_weights_projection_, float *diff_weights_peephole_, \
-            float *diff_bias_, \
-            RNN_AMX_SCRATCHPAD_ARG rnn_brgemm_arch::brgemm_batch_element_t \
-                    *addr_batch_global
+            float *diff_bias_, gemm_acc_t *gemm_acc_scratchpad, \
+            brgemm_batch_element_t *addr_batch_global
 
 #else
 
@@ -137,7 +134,7 @@
             float *diff_bias_, gates_t *ws_gates_, scratch_t *scratch_gates_, \
             ht_t *proj_ht_, gemm_acc_t *scratch_diff_ht_, gates_t *ws_grid_, \
             scratch_t *scratch_cell_, dst_iter_t *dst_iter_, \
-            gemm_acc_t *amx_scratchpad
+            gemm_acc_t *gemm_acc_scratchpad
 
 #define rnn_grid_execution_sig_args \
     const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
@@ -157,7 +154,7 @@
             scratch_t *scratch_cell_, gemm_acc_t *diff_augru_attention_, \
             gemm_acc_t *diff_weights_layer_, gemm_acc_t *diff_weights_iter_, \
             float *diff_weights_projection_, float *diff_weights_peephole_, \
-            float *diff_bias_, gemm_acc_t *amx_scratchpad
+            float *diff_bias_, gemm_acc_t *gemm_acc_scratchpad
 
 #endif
 
@@ -212,9 +209,9 @@ namespace impl {
 namespace cpu {
 
 #if DNNL_X64
-namespace rnn_brgemm_arch = x64;
+using namespace x64;
 #elif DNNL_AARCH64
-namespace rnn_brgemm_arch = aarch64;
+using namespace aarch64;
 #endif
 
 namespace rnn_utils {
@@ -294,7 +291,7 @@ struct diff_src_brgemm_conf_t {
     dim_t LDA = 0, LDB = 0, LDC = 0;
 
 #if DNNL_X64 || DNNL_AARCH64
-    rnn_brgemm_arch::cpu_isa_t isa = rnn_brgemm_arch::isa_undef;
+    cpu_isa_t isa = isa_undef;
 #endif
 
     brgemm_rnn_execute_loop_order_t loop_order
@@ -315,7 +312,7 @@ struct diff_wei_brgemm_conf_t {
     bool global_transpose = false;
 
 #if DNNL_X64 || DNNL_AARCH64
-    rnn_brgemm_arch::cpu_isa_t isa = rnn_brgemm_arch::isa_undef;
+    cpu_isa_t isa = isa_undef;
 #endif
 
     brgemm_rnn_execute_loop_order_t loop_order
@@ -672,7 +669,7 @@ struct rnn_conf_t {
 
     int nthr;
 #if DNNL_X64 || DNNL_AARCH64
-    rnn_brgemm_arch::cpu_isa_t brgemm_isa;
+    cpu_isa_t brgemm_isa = isa_undef;
 #endif
     bool unfused_post_gemm;
     brgemm_rnn_execute_loop_order_t loop_order

@@ -20,12 +20,12 @@
 #include "common/dnnl_thread.hpp"
 #include "common/utils.hpp"
 
-using namespace dnnl::impl::utils;
-
 namespace dnnl {
 namespace impl {
 namespace cpu {
 namespace aarch64 {
+
+using namespace dnnl::impl::utils;
 
 template <typename src_t, typename weights_t, typename scratch_t,
         typename gemm_acc_t>
@@ -35,7 +35,8 @@ brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t,
         rnn_utils::cell_position_t cell_position, const src_t *src_iter,
         const src_t *src_layer, weights_t *w_iter, weights_t *w_layer,
         scratch_t *scratch_gates, scratch_t *scratch_cell,
-        aarch64::brgemm_batch_element_t *addr_batch_global,
+        gemm_acc_t *gemm_acc_scratchpad,
+        brgemm_batch_element_t *addr_batch_global,
         const postgemm_fused_t &fused_postgemm)
     : rnn_brgemm_(rnn_brgemm)
     , rnn_(rnn)
@@ -84,6 +85,7 @@ brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t,
               rnn_brgemm_.kernel_layer_K1_tail_b1_[layer_desc_idx_].get())
     , brgemm_kernel_layer_nk_tail_(
               rnn_brgemm_.kernel_layer_NK1_tail_b1_[layer_desc_idx_].get())
+    , gemm_acc_scratchpad_(gemm_acc_scratchpad)
     , addr_batch_global_(addr_batch_global)
     , fused_postgemm_(fused_postgemm)
     , is_fused_layer_iter_brgemm_(!rnn_.is_lbr && rnn_.sic == rnn_.slc
@@ -406,7 +408,8 @@ brgemm_dst_proj_t<src_t, weights_t, gemm_acc_t>::brgemm_dst_proj_t(
         const ref_rnn_brgemm_t &rnn_brgemm, const rnn_utils::rnn_conf_t &rnn,
         rnn_utils::cell_position_t cell_position, const src_t *proj_ht,
         const weights_t *w_projection, gemm_acc_t *output,
-        aarch64::brgemm_batch_element_t *addr_batch_global,
+        gemm_acc_t *gemm_acc_scratchpad,
+        brgemm_batch_element_t *addr_batch_global,
         const postgemm_fused_t &fused_postgemm)
     : rnn_brgemm_(rnn_brgemm)
     , rnn_(rnn)
@@ -422,6 +425,7 @@ brgemm_dst_proj_t<src_t, weights_t, gemm_acc_t>::brgemm_dst_proj_t(
     , work_amount_proj_(rnn_.Nproj_blocks * rnn_.M_blocks)
     , B_n_offset_(rnn_.Kprojpadded * rnn_.n_block)
     , Bp_kb_offset_(rnn_.kproj_block * rnn_.n_block)
+    , gemm_acc_scratchpad_(gemm_acc_scratchpad)
     , addr_batch_global_(addr_batch_global)
     , brgemm_kernel_main_(rnn_brgemm_.kernel_proj_b0_[proj_desc_idx_].get())
     , brgemm_kernel_n_tail_(
@@ -500,8 +504,8 @@ brgemm_gru_t<src_t, weights_t, scratch_t, gemm_acc_t>::brgemm_gru_t(
         rnn_utils::cell_position_t cell_position, const src_t *src_iter,
         const src_t *src_layer, weights_t *w_iter0, weights_t *w_iter1,
         weights_t *w_layer, src_t *d_layer, scratch_t *scratch_gates,
-        scratch_t *scratch_cell,
-        aarch64::brgemm_batch_element_t *addr_batch_global,
+        scratch_t *scratch_cell, gemm_acc_t *gemm_acc_scratchpad,
+        brgemm_batch_element_t *addr_batch_global,
         const postgemm_fused_t &fused_postgemm_part1,
         const postgemm_fused_t &fused_postgemm_part2)
     : rnn_brgemm_(rnn_brgemm)
@@ -566,6 +570,7 @@ brgemm_gru_t<src_t, weights_t, scratch_t, gemm_acc_t>::brgemm_gru_t(
               rnn_brgemm_.kernel_layer_K1_tail_b1_[layer_desc_idx_].get())
     , brgemm_kernel_layer_nk_tail_(
               rnn_brgemm_.kernel_layer_NK1_tail_b1_[layer_desc_idx_].get())
+    , gemm_acc_scratchpad_(gemm_acc_scratchpad)
     , addr_batch_global_(addr_batch_global)
     , fused_postgemm_part1_(fused_postgemm_part1)
     , fused_postgemm_part2_(fused_postgemm_part2)
@@ -755,7 +760,8 @@ brgemm_merged_layer_t<src_t, weights_t, scratch_t,
         const rnn_utils::rnn_conf_t &rnn,
         rnn_utils::cell_position_t cell_position, const src_t *src_layer,
         weights_t *w_layer, scratch_t *scratch_gates,
-        aarch64::brgemm_batch_element_t *addr_batch_global)
+        gemm_acc_t *gemm_acc_scratchpad,
+        brgemm_batch_element_t *addr_batch_global)
     : rnn_brgemm_(rnn_brgemm)
     , rnn_(rnn)
     , layer_desc_idx_(rnn_.layer_brgemm_desc(cell_position))
@@ -781,6 +787,7 @@ brgemm_merged_layer_t<src_t, weights_t, scratch_t,
     , brgemm_kernel_layer_nk_tail_(
               rnn_brgemm_.kernel_layermerged_NK1_tail_b1_[layer_desc_idx_]
                       .get())
+    , gemm_acc_scratchpad_(gemm_acc_scratchpad)
     , addr_batch_global_(addr_batch_global) {}
 
 template <typename src_t, typename weights_t, typename scratch_t,

@@ -88,7 +88,7 @@ void compute_softmax_f32_rvv(const float *src, float *dst, dim_t len,
     }
 }
 
-#if defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
 // f16 compute kernel
 void compute_softmax_f16_rvv(const dnnl::impl::float16_t *src,
         dnnl::impl::float16_t *dst, dim_t len, bool is_logsoftmax,
@@ -109,9 +109,7 @@ void compute_softmax_f16_rvv(const dnnl::impl::float16_t *src,
         const float log_sum = logf(sum_exp);
 
         const float sub = max_val + log_sum;
-        for (dim_t i = 0; i < len; ++i) {
-            dst[i] = dnnl::impl::float16_t((float)src[i] - sub);
-        }
+        jit_rvv_softmax_f16_affine_from_f16(src, dst, len, sub, 1.0f);
     } else {
         float *tmp_dst = new float[len];
         float sum_exp = 0.f;
@@ -188,7 +186,7 @@ status_t rvv_softmax_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
                 });
             }
         } break;
-#if defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
         case data_type::f16: {
             const auto *src_f16
                     = static_cast<const dnnl::impl::float16_t *>(src);

@@ -129,6 +129,7 @@ void jit_rvv_softmax_f16_affine_kernel_t::generate() {
 
     vfsub_vf(v_f32, v_f32, f_sub);
     vfmul_vf(v_f32, v_f32, f_mul);
+    vsetvli(reg_vl, reg_vl, SEW::e16, LMUL::m1);
     vfncvt_f_f_w(v_dst, v_f32);
     vse16_v(v_dst, reg_dst);
 

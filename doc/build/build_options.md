@@ -444,6 +444,8 @@ application manages GPU devices, queues, and memory:
 | CMake Option                      | Default                    | Supported values | Description                                                                 |
 |:----------------------------------|:---------------------------|:-----------------|:----------------------------------------------------------------------------|
 | [ONEDNN_ENABLE_PRIMITIVE_GPU_ISA] | **ALL**                    | \<list\>         | Specifies the list Intel GPU microarchitectures supported by JIT generators |
+| ONEDNN_OCL_INCLUDE_DIR            | **third_party/opencl**     | \<path\>         | Location of OpenCL headers                                                  |
+| ONEDNN_ZE_INCLUDE_DIR             | **third_party/level_zero** | \<path\>         | Location of Level Zero headers and Intel GPU driver extensions              |
 
 [ONEDNN_ENABLE_PRIMITIVE_GPU_ISA]: @ref opt_enable_primitive_gpu_isa
 

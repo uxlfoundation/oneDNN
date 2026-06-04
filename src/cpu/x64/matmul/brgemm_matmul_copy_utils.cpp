@@ -42,9 +42,10 @@ struct jit_brgemm_matmul_copy_a_impl_t : public jit_brgemm_matmul_copy_a_t,
     jit_brgemm_matmul_copy_a_impl_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_a_t(conf)
         , jit_generator_t(jit_name())
-        , typesize_(conf_->a_dt_sz)
-        , tr_typesize_(conf_->tr_a_dt_sz)
-        , vnni_granularity_(data_type_vnni_granularity(conf_->src_dt))
+        , typesize_(static_cast<int>(conf_->a_dt_sz))
+        , tr_typesize_(static_cast<int>(conf_->tr_a_dt_sz))
+        , vnni_granularity_(
+                  static_cast<int>(data_type_vnni_granularity(conf_->src_dt)))
         , k_step_(vlen_ / nstl::max(typesize_, tr_typesize_))
         , src_stride_(conf_->copy_A_src_stride)
         , tr_src_stride_((conf_->use_buffer_a_tail_only
@@ -262,8 +263,9 @@ void jit_brgemm_matmul_copy_a_impl_t<
 template <typename Vmm>
 void jit_brgemm_matmul_copy_a_impl_t<Vmm>::copy_K_loop(
         bool is_K_tail, bool is_first_K_iter, bool is_last_K_iter) {
-    const int K_blk = is_K_tail ? conf_->K % conf_->K_blk
-                                : nstl::min(conf_->K, conf_->K_blk);
+    const int K_blk
+            = static_cast<int>(is_K_tail ? conf_->K % conf_->K_blk
+                                         : nstl::min(conf_->K, conf_->K_blk));
     const int k_tail = K_blk % k_step_;
     const int num_k_iters = K_blk / k_step_;
     const int num_acc = utils::saturate(1, (int)num_comp_acc_, num_k_iters);
@@ -292,7 +294,7 @@ void jit_brgemm_matmul_copy_a_impl_t<Vmm>::copy_K_loop(
             const int k_idx = kb * k_loop_unroll_ + k;
             const size_t offset
                     = static_cast<size_t>(k_idx) * k_step_ * typesize_;
-            load_vmm(k, offset);
+            load_vmm(k, static_cast<int>(offset));
             maybe_compute_compensation(k_idx, get_vmm_copy(k));
         }
         if (allow_input_shift_for_s8s8 && conf_->s8s8_compensation_required) {
@@ -327,7 +329,7 @@ void jit_brgemm_matmul_copy_a_impl_t<Vmm>::copy_K_loop(
                 const size_t offset
                         = (static_cast<size_t>(kb) * k_loop_unroll_ + k)
                         * k_step_ * tr_typesize_;
-                store_vmm(k, offset);
+                store_vmm(k, static_cast<int>(offset));
             }
         }
     }
@@ -435,8 +437,8 @@ void jit_brgemm_matmul_copy_a_impl_t<Vmm>::copy_M_loop(
 
     copy_K_loop(is_K_tail, is_first_K_iter, is_last_K_iter);
 
-    add(reg_src, src_stride_);
-    add(reg_tr_src, tr_src_stride_);
+    add(reg_src, static_cast<uint32_t>(src_stride_));
+    add(reg_tr_src, static_cast<uint32_t>(tr_src_stride_));
     if (do_compute_compensation_) {
         // shift comp pointers
         if (!(is_first_K_iter && is_last_K_iter))
@@ -474,7 +476,7 @@ void jit_brgemm_matmul_copy_a_impl_t<Vmm>::generate() {
                 = conf_->K_tail > 0 ? conf_->K % conf_->K_blk : 0;
         if (K_blk_tail > 0) {
             Label not_K_tail;
-            cmp(reg_K_blk, K_blk_tail);
+            cmp(reg_K_blk, static_cast<uint32_t>(K_blk_tail));
             jne(not_K_tail, T_NEAR);
             copy_M_loop(true, is_first_K_iter, is_last_K_iter);
             jmp(copy_body_done, T_NEAR);
@@ -499,7 +501,7 @@ void jit_brgemm_matmul_copy_a_impl_t<Vmm>::generate() {
         {
             // first K iteration
             Label first_not_last;
-            cmp(reg_K_start, last_K_threshold);
+            cmp(reg_K_start, static_cast<uint32_t>(last_K_threshold));
             jl(first_not_last, T_NEAR);
             copy_body(true, true);
             jmp(done, T_NEAR);
@@ -510,7 +512,7 @@ void jit_brgemm_matmul_copy_a_impl_t<Vmm>::generate() {
         }
 
         L(not_first);
-        cmp(reg_K_start, last_K_threshold);
+        cmp(reg_K_start, static_cast<uint32_t>(last_K_threshold));
         jl(not_first_not_last, T_NEAR);
 
         copy_body(false, true);
@@ -1131,8 +1133,8 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Vmm>::transpose_common_ymm(
     const dim_t dst_B_offset = dst_stride * avx2_transpose_size;
     const int B_rows = nstl::min(avx2_transpose_size, nrows);
     const int B_columns = nstl::max(ncolumns - avx2_transpose_size, 0);
-    add(src, src_B_offset);
-    add(dst, dst_B_offset);
+    add(src, static_cast<uint32_t>(src_B_offset));
+    add(dst, static_cast<uint32_t>(dst_B_offset));
     jit_generator_t::transpose(src, dst, src_stride, dst_stride, B_rows,
             B_columns, dt, ymm_tmp, ymm_tail_mask, xmm_upper_tail_mask);
 
@@ -1140,8 +1142,8 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Vmm>::transpose_common_ymm(
     const dim_t dst_C_offset = dt_size * avx2_transpose_size;
     const int C_rows = nstl::max(nrows - avx2_transpose_size, 0);
     const int C_columns = nstl::min(avx2_transpose_size, ncolumns);
-    add(src, -src_B_offset + src_C_offset);
-    add(dst, -dst_B_offset + dst_C_offset);
+    add(src, static_cast<uint32_t>(-src_B_offset + src_C_offset));
+    add(dst, static_cast<uint32_t>(-dst_B_offset + dst_C_offset));
     jit_generator_t::transpose(src, dst, src_stride, dst_stride, C_rows,
             C_columns, dt, ymm_tmp, ymm_tail_mask, xmm_upper_tail_mask);
 
@@ -1151,12 +1153,12 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Vmm>::transpose_common_ymm(
             = dst_stride * avx2_transpose_size + dt_size * avx2_transpose_size;
     const int D_rows = nstl::max(nrows - avx2_transpose_size, 0);
     const int D_columns = nstl::max(ncolumns - avx2_transpose_size, 0);
-    add(src, -src_C_offset + src_D_offset);
-    add(dst, -dst_C_offset + dst_D_offset);
+    add(src, static_cast<uint32_t>(-src_C_offset + src_D_offset));
+    add(dst, static_cast<uint32_t>(-dst_C_offset + dst_D_offset));
     jit_generator_t::transpose(src, dst, src_stride, dst_stride, D_rows,
             D_columns, dt, ymm_tmp, ymm_tail_mask, xmm_upper_tail_mask);
-    sub(src, src_D_offset);
-    sub(dst, dst_D_offset);
+    sub(src, static_cast<uint32_t>(src_D_offset));
+    sub(dst, static_cast<uint32_t>(dst_D_offset));
 }
 
 template <>
@@ -1443,10 +1445,12 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Vmm>::generate() {
 
     if (!is_f8) init_masks();
 
-    const int k_block_tail = conf_->K_blk % rows_step;
-    const int last_k_block_tail = (conf_->K % conf_->K_blk) % rows_step;
-    const int m_block_tail = conf_->M_blk % columns_step;
-    const int last_m_block_tail = conf_->M_tail % columns_step;
+    const int k_block_tail = static_cast<int>(conf_->K_blk % rows_step);
+    const int last_k_block_tail
+            = static_cast<int>((conf_->K % conf_->K_blk) % rows_step);
+    const int m_block_tail = static_cast<int>(conf_->M_blk % columns_step);
+    const int last_m_block_tail
+            = static_cast<int>(conf_->M_tail % columns_step);
 
     auto compute_m_loop
             = [&](reg64_t &reg_base, reg64_t &reg_tr_base, int nrows) {
@@ -1461,8 +1465,8 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Vmm>::generate() {
         L(m_loop);
         {
             deploy_transpose(reg_m_dst, reg_m_src, nrows, columns_step);
-            add(reg_m_src, m_loop_src_shift);
-            add(reg_m_dst, m_loop_dst_shift);
+            add(reg_m_src, static_cast<uint32_t>(m_loop_src_shift));
+            add(reg_m_dst, static_cast<uint32_t>(m_loop_dst_shift));
         }
         sub(reg_loop_m, columns_step);
         cmp(reg_loop_m, columns_step);
@@ -1514,8 +1518,8 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Vmm>::generate() {
             if (is_dynamic_src_ld)
                 add(reg_k_src, ptr[rsp + dynamic_src_ld_x_kstep_offt_]);
             else
-                add(reg_k_src, k_loop_src_shift);
-            add(reg_k_dst, k_loop_dst_shift);
+                add(reg_k_src, static_cast<uint32_t>(k_loop_src_shift));
+            add(reg_k_dst, static_cast<uint32_t>(k_loop_dst_shift));
         }
         sub(reg_loop_k, rows_step);
         cmp(reg_loop_k, rows_step);
@@ -1574,10 +1578,11 @@ struct jit_brgemm_matmul_copy_a_transposed_int8_impl_t
         , k_loop_dst_shift_(rows_step_ * conf_->tr_a_dt_sz)
         , has_vpermb_(cpu().has(Xbyak::util::Cpu::tAVX512_VBMI))
         , is_dynamic_src_ld_(conf_->is_runtime_M)
-        , k_block_tail_(conf_->K_blk % rows_step_)
-        , last_k_block_tail_((conf_->K % conf_->K_blk) % rows_step_)
-        , m_block_tail_(conf_->M_blk % columns_step_)
-        , last_m_block_tail_(conf_->M_tail % columns_step_)
+        , k_block_tail_(static_cast<int>(conf_->K_blk % rows_step_))
+        , last_k_block_tail_(
+                  static_cast<int>((conf_->K % conf_->K_blk) % rows_step_))
+        , m_block_tail_(static_cast<int>(conf_->M_blk % columns_step_))
+        , last_m_block_tail_(static_cast<int>(conf_->M_tail % columns_step_))
         , do_compute_compensation_(conf_->has_zero_point_b) {}
 
     void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
@@ -2052,8 +2057,8 @@ void jit_brgemm_matmul_copy_a_transposed_int8_impl_t::compute_m_loop(
     L(m_loop);
     {
         deploy_transpose(reg_m_dst_, reg_m_src_, nrows, columns_step_);
-        add(reg_m_src_, m_loop_src_shift_);
-        add(reg_m_dst_, m_loop_dst_shift_);
+        add(reg_m_src_, static_cast<uint32_t>(m_loop_src_shift_));
+        add(reg_m_dst_, static_cast<uint32_t>(m_loop_dst_shift_));
     }
     sub(reg_loop_m_, columns_step_);
     cmp(reg_loop_m_, columns_step_);
@@ -2114,8 +2119,8 @@ void jit_brgemm_matmul_copy_a_transposed_int8_impl_t::compute_k_loop(
         if (is_dynamic_src_ld_)
             add(reg_k_src_, ptr[rsp + dynamic_src_ld_x_kstep_offt_]);
         else
-            add(reg_k_src_, k_loop_src_shift_);
-        add(reg_k_dst_, k_loop_dst_shift_);
+            add(reg_k_src_, static_cast<uint32_t>(k_loop_src_shift_));
+        add(reg_k_dst_, static_cast<uint32_t>(k_loop_dst_shift_));
     }
     sub(reg_loop_k_, rows_step_);
     cmp(reg_loop_k_, rows_step_);
@@ -2310,7 +2315,7 @@ void jit_brgemm_matmul_copy_a_transposed_int8_impl_t::generate() {
         jne(not_first, T_NEAR);
         {
             Label first_not_last;
-            cmp(reg_tmp_, last_K_threshold);
+            cmp(reg_tmp_, static_cast<uint32_t>(last_K_threshold));
             jl(first_not_last, T_NEAR);
             compute_k_loop(true, true);
             jmp(done, T_NEAR);
@@ -2321,7 +2326,7 @@ void jit_brgemm_matmul_copy_a_transposed_int8_impl_t::generate() {
         }
 
         L(not_first);
-        cmp(reg_tmp_, last_K_threshold);
+        cmp(reg_tmp_, static_cast<uint32_t>(last_K_threshold));
         jl(not_first_not_last, T_NEAR);
 
         compute_k_loop(false, true);
@@ -3040,7 +3045,8 @@ private:
             if (do_N_loop_)
                 // (n_blk_step_ /conf_->LDB) --> # of LDBs handled by copy_4x64
                 add(reg_tr_src,
-                        (n_blk_step_ / conf_->LDB) * conf_->LDB2 * typesize);
+                        static_cast<uint32_t>((n_blk_step_ / conf_->LDB)
+                                * conf_->LDB2 * typesize));
             else
                 add(reg_tr_src, n_blk_step_ * k_blk_step_ * typesize);
 
@@ -3326,7 +3332,7 @@ private:
     void load_ymm(int ymm_idx, size_t offset, bool is_tail, size_t tail_sz) {
         Xbyak::Ymm vmm_src = Xbyak::Ymm(ymm_idx);
         if (is_tail) {
-            load_bytes(vmm_src, reg_src, offset, tail_sz);
+            load_bytes(vmm_src, reg_src, offset, static_cast<int>(tail_sz));
         } else
             uni_vmovups(vmm_src, ptr[reg_src + offset]);
     }
@@ -3339,8 +3345,8 @@ private:
             if (pass == 0 && ncolumns >= simd_w_) mov(reg_src_backup, reg_src);
             assert(one_of(pass, 0, 1));
             const dim_t tr_src_off_base = k * tr_src_stride_;
-            const int set_1_tr_src_offset
-                    = tr_src_off_base + pass * 2 * n_blk_step_;
+            const int set_1_tr_src_offset = static_cast<int>(
+                    tr_src_off_base + pass * 2 * n_blk_step_);
             const int row_start = k * k_blk_step_;
             const int row_end = nstl::min(row_start + k_blk_step_, nrows);
             if (!zeropad) {
@@ -3459,8 +3465,10 @@ void jit_brgemm_matmul_copy_b_int8_t<Vmm>::generate() {
         L(K_loop_unrolled);
         copy_block(k_unroll * k_blk_step_, ncolumns, is_N_tail, zeropad);
         if (!zeropad && !is_dynamic_stride_)
-            add(reg_src, k_unroll * k_blk_step_ * src_stride_);
-        add(reg_tr_src, k_unroll * tr_src_stride_);
+            add(reg_src,
+                    static_cast<uint32_t>(
+                            k_unroll * k_blk_step_ * src_stride_));
+        add(reg_tr_src, static_cast<uint32_t>(k_unroll * tr_src_stride_));
 
         sub(reg_K, k_unroll * k_blk_step_);
         cmp(reg_K, k_unroll * k_blk_step_);
@@ -3472,29 +3480,30 @@ void jit_brgemm_matmul_copy_b_int8_t<Vmm>::generate() {
 
         copy_block(k_blk_step_, ncolumns, is_N_tail, zeropad);
         if (!zeropad && !is_dynamic_stride_)
-            add(reg_src, k_blk_step_ * src_stride_);
-        add(reg_tr_src, tr_src_stride_);
+            add(reg_src, static_cast<uint32_t>(k_blk_step_ * src_stride_));
+        add(reg_tr_src, static_cast<uint32_t>(tr_src_stride_));
 
         sub(reg_K, k_blk_step_);
         jmp(K_loop_single, T_NEAR);
 
         L(K_loop_tail_or_done);
 
-        int k_blk_tail = conf_->K % k_blk_step_;
+        int k_blk_tail = static_cast<int>(conf_->K % k_blk_step_);
         if (k_blk_tail > 0) {
             Label K_loop_done;
             cmp(reg_K, 0);
             jle(K_loop_done, T_NEAR);
 
             copy_block(k_blk_tail, ncolumns, is_N_tail, zeropad);
-            add(reg_tr_src, tr_src_stride_);
+            add(reg_tr_src, static_cast<uint32_t>(tr_src_stride_));
             sub(reg_K, k_blk_tail);
             L(K_loop_done);
         }
     };
 
     auto compute_K_loop = [&](bool is_N_tail) {
-        int ncolumns = is_N_tail ? conf_->N_tail : conf_->N_blk;
+        int ncolumns
+                = static_cast<int>(is_N_tail ? conf_->N_tail : conf_->N_blk);
         // 'param1' register (rcx on Windows) re-written in compute_K_loop_body
         // so we need to read and keep 'current_K_pad' parameter in stack before
         // the call
@@ -3512,7 +3521,7 @@ void jit_brgemm_matmul_copy_b_int8_t<Vmm>::generate() {
 
     if (conf_->N_tail > 0 || is_dynamic_N_) {
         Label main_N_blk;
-        cmp(reg_N_blk, conf_->N_blk);
+        cmp(reg_N_blk, static_cast<uint32_t>(conf_->N_blk));
         je(main_N_blk, T_NEAR);
         compute_K_loop(true);
         jmp(done, T_NEAR);
@@ -3580,7 +3589,9 @@ void jit_brgemm_matmul_copy_b_int8_t<Vmm>::generate() {
             }
 
             L(skip_acc);
-            cmp(reg_K_start, rnd_up(conf_->K, conf_->K_blk) - conf_->K_blk);
+            cmp(reg_K_start,
+                    static_cast<uint32_t>(
+                            rnd_up(conf_->K, conf_->K_blk) - conf_->K_blk));
             jl(store, T_NEAR);
 
             if (req_s8s8_comp) {
@@ -3652,9 +3663,9 @@ struct jit_brgemm_matmul_copy_b_bf16_t
 
     jit_brgemm_matmul_copy_b_bf16_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_b_common_t(conf)
-        , typesize(conf->b_dt_sz)
-        , tr_typesize(conf->tr_b_dt_sz)
-        , wei_scales_typesize(conf->wei_scales_dt_sz)
+        , typesize(static_cast<int>(conf->b_dt_sz))
+        , tr_typesize(static_cast<int>(conf->tr_b_dt_sz))
+        , wei_scales_typesize(static_cast<int>(conf->wei_scales_dt_sz))
         , src_stride(conf->copy_B_wei_stride)
         , tr_src_stride(conf_->LDB * k_blk_step * tr_typesize)
         , is_src_int4(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
@@ -3836,7 +3847,8 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::copy_2x32(
         if (!isa_has_masks(conf_->isa)) {
             if (is_tail)
                 load_bytes(src_load, load_addr,
-                        columns_tail * tr_typesize / elems_per_byte);
+                        static_cast<int>(
+                                columns_tail * tr_typesize / elems_per_byte));
             else
                 uni_vmovups(src_load, load_addr);
             load_value(src_reg, src_reg, vmm_permd, conf_->orig_wei_dt, false);
@@ -4000,7 +4012,8 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::copy_block(
     mov(ptr[rsp + reg_tr_src_offs], reg_tr_src);
     xor_(reg_copy_block_n_shift, reg_copy_block_n_shift);
 
-    int current_n_blk_step = do_N_loop ? conf_->LDB : n_blk_step;
+    int current_n_blk_step
+            = static_cast<int>(do_N_loop ? conf_->LDB : n_blk_step);
 
     Label loop_row_start, loop_row_tail, loop_row_done;
     cmp(reg_dynamic_tail, current_n_blk_step);
@@ -4013,8 +4026,8 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::copy_block(
 
         if (do_N_loop) {
             add(reg_tr_src,
-                    (current_n_blk_step / conf_->LDB) * conf_->LDB2
-                            * tr_typesize);
+                    static_cast<uint32_t>((current_n_blk_step / conf_->LDB)
+                            * conf_->LDB2 * tr_typesize));
             add(reg_src,
                     conf_->B_strides[0] == typesize
                             ? current_n_blk_step * typesize
@@ -4101,9 +4114,9 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::generate() {
         // Only when k_group_size < k_blk_step
         // Otherwise default K-loop is used
         if (is_wei_grouped_over_k) {
-            const int k_group_size = conf_->is_wei_zp_per_k
-                    ? conf_->wei_zp_k_gsize
-                    : conf_->wei_scales_k_gsize;
+            const int k_group_size = static_cast<int>(conf_->is_wei_zp_per_k
+                            ? conf_->wei_zp_k_gsize
+                            : conf_->wei_scales_k_gsize);
             if (k_group_size < k_blk_step) {
                 if (zeropad) return;
                 copy_block(
@@ -4122,8 +4135,10 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::generate() {
         copy_block(k_unroll * k_blk_step, ncolumns, is_N_tail, zeropad);
 
         if (!zeropad && !is_dynamic_stride)
-            add(reg_src, (k_unroll * k_blk_step * src_stride) / elems_per_byte);
-        add(reg_tr_src, k_unroll * tr_src_stride);
+            add(reg_src,
+                    static_cast<uint32_t>((k_unroll * k_blk_step * src_stride)
+                            / elems_per_byte));
+        add(reg_tr_src, static_cast<uint32_t>(k_unroll * tr_src_stride));
 
         sub(reg_K, k_unroll * k_blk_step);
         cmp(reg_K, k_unroll * k_blk_step);
@@ -4135,29 +4150,32 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::generate() {
 
         copy_block(k_blk_step, ncolumns, is_N_tail, zeropad);
         if (!zeropad && !is_dynamic_stride)
-            add(reg_src, (k_blk_step * src_stride) / elems_per_byte);
-        add(reg_tr_src, tr_src_stride);
+            add(reg_src,
+                    static_cast<uint32_t>(
+                            (k_blk_step * src_stride) / elems_per_byte));
+        add(reg_tr_src, static_cast<uint32_t>(tr_src_stride));
 
         sub(reg_K, k_blk_step);
         jmp(K_loop_single, T_NEAR);
 
         L(K_loop_tail_or_done);
 
-        int k_blk_tail = conf_->K % k_blk_step;
+        int k_blk_tail = static_cast<int>(conf_->K % k_blk_step);
         if (k_blk_tail > 0) {
             Label K_loop_done;
             cmp(reg_K, 0);
             jle(K_loop_done, T_NEAR);
 
             copy_block(k_blk_tail, ncolumns, is_N_tail, zeropad);
-            add(reg_tr_src, tr_src_stride);
+            add(reg_tr_src, static_cast<uint32_t>(tr_src_stride));
             sub(reg_K, k_blk_tail);
             L(K_loop_done);
         }
     };
 
     auto compute_K_loop = [&](bool is_N_tail) {
-        int ncolumns = is_N_tail ? conf_->N_tail : conf_->N_blk;
+        int ncolumns
+                = static_cast<int>(is_N_tail ? conf_->N_tail : conf_->N_blk);
         // 'param1' register (rcx on Windows) re-written in compute_K_loop_body
         // so we need to read and keep 'current_K_pad' parameter in stack before
         // the call
@@ -4173,7 +4191,7 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::generate() {
 
     if (conf_->N_tail > 0 || is_dynamic_N) {
         Label main_N_blk;
-        cmp(reg_N_blk, conf_->N_blk);
+        cmp(reg_N_blk, static_cast<uint32_t>(conf_->N_blk));
         je(main_N_blk, T_NEAR);
         compute_K_loop(true);
         jmp(done, T_NEAR);
@@ -4283,7 +4301,8 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::copy_16_x_n_block(
                 (k * src_stride_ + n * typesize_in_) / src_elems_per_byte_);
         if (is_tail && !isa_has_masks(conf_->isa)) {
             load_bytes(src_vmm, addr,
-                    (ncolumns % simd_w_) * typesize_in_ / src_elems_per_byte_);
+                    static_cast<int>((ncolumns % simd_w_) * typesize_in_
+                            / src_elems_per_byte_));
             load_value(src_vmm, src_vmm, vmm_permd, conf_->orig_wei_dt, false);
         } else
             load_value(src_vmm, addr, vmm_permd, conf_->orig_wei_dt, is_tail);
@@ -4307,7 +4326,8 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::copy_16_x_n_block(
         const auto addr = maybe_EVEX_compress_addr(reg_zp_ptr, offset);
         if (is_tail && !isa_has_masks(conf_->isa)) {
             load_bytes(vmm_zp_b_shift, addr,
-                    (ncolumns % simd_w_) * zp_dt_sz / elems_per_byte);
+                    static_cast<int>(
+                            (ncolumns % simd_w_) * zp_dt_sz / elems_per_byte));
             load_value(vmm_zp_b_shift, vmm_zp_b_shift, vmm_permd, zp_dt, false);
         } else
             load_value(vmm_zp_b_shift, addr, vmm_permd, zp_dt, is_tail);
@@ -4326,8 +4346,8 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::copy_16_x_n_block(
         const auto offset = n * scales_dt_sz;
         const auto addr = maybe_EVEX_compress_addr(reg_wei_scales, offset);
         if (is_tail && !isa_has_masks(conf_->isa)) {
-            load_bytes(
-                    vmm_wei_scales, addr, (ncolumns % simd_w_) * scales_dt_sz);
+            load_bytes(vmm_wei_scales, addr,
+                    static_cast<int>((ncolumns % simd_w_) * scales_dt_sz));
             load_scale_value(vmm_wei_scales, vmm_wei_scales, scales_dt, false);
         } else
             load_scale_value(vmm_wei_scales, addr, scales_dt, is_tail);
@@ -4381,8 +4401,10 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::compute_k_loop(int ncolumns) {
         jl(K_end_label, T_NEAR);
 
         copy_16_x_n_block(unroll, ncolumns);
-        add(reg_src, (unroll * src_stride_) / src_elems_per_byte_);
-        add(reg_tr_src, unroll * tr_src_stride_);
+        add(reg_src,
+                static_cast<uint32_t>(
+                        (unroll * src_stride_) / src_elems_per_byte_));
+        add(reg_tr_src, static_cast<uint32_t>(unroll * tr_src_stride_));
 
         sub(reg_K_iters, unroll);
         jmp(K_start_label, T_NEAR);
@@ -4450,15 +4472,15 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::generate() {
     Label done;
     if (conf_->N_tail > 0) {
         Label not_N_tail;
-        cmp(reg_N_blk, conf_->N_tail);
+        cmp(reg_N_blk, static_cast<uint32_t>(conf_->N_tail));
         jne(not_N_tail, T_NEAR);
-        compute_k_loop(conf_->N_tail);
+        compute_k_loop(static_cast<int>(conf_->N_tail));
         jmp(done, T_NEAR);
 
         L(not_N_tail);
     }
 
-    compute_k_loop(conf_->N_blk);
+    compute_k_loop(static_cast<int>(conf_->N_blk));
     L(done);
 
     postamble();
@@ -4474,10 +4496,11 @@ struct jit_brgemm_matmul_copy_b_transposed_t
 
     jit_brgemm_matmul_copy_b_transposed_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_b_common_t(conf)
-        , typesize_(conf_->b_dt_sz)
-        , tr_typesize_(conf_->tr_b_dt_sz)
-        , wei_scales_typesize_(conf_->wei_scales_dt_sz)
-        , vnni_granularity_(data_type_vnni_granularity(conf_->wei_dt))
+        , typesize_(static_cast<int>(conf_->b_dt_sz))
+        , tr_typesize_(static_cast<int>(conf_->tr_b_dt_sz))
+        , wei_scales_typesize_(static_cast<int>(conf_->wei_scales_dt_sz))
+        , vnni_granularity_(
+                  static_cast<int>(data_type_vnni_granularity(conf_->wei_dt)))
         , k_blk_step_(vlen_ / tr_typesize_)
         , is_wei_grouped_over_k_(
                   conf_->is_wei_zp_per_k || conf_->is_wei_scale_per_k)
@@ -4751,7 +4774,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::init_tail_mask(
                 ? size_t(((size_t)1 << div_up(dt_step * columns_tail, 2)) - 1)
                 : size_t(((size_t)1 << dt_step * columns_tail) - 1);
         if (req_cvtps2xf16_)
-            kmovw(kTail, tail_mask);
+            kmovw(kTail, static_cast<uint32_t>(tail_mask));
         else
             kmovq(kTail, tail_mask);
     }
@@ -5155,7 +5178,8 @@ void jit_brgemm_matmul_copy_b_transposed_t<Ymm>::copy_row_x_col(
 
             if (is_tail && !preloaded_int4) {
                 load_bytes(vmm_src, addr,
-                        columns_tail * typesize_ / src_elems_per_byte_);
+                        static_cast<int>(columns_tail * typesize_
+                                / src_elems_per_byte_));
                 load_value(
                         vmm_src, vmm_src, vmm_permd, conf_->orig_wei_dt, false);
             } else {
@@ -5283,7 +5307,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::compute_K_loop(bool is_N_tail,
     MAYBE_UNUSED(is_last_K_iter);
     const int N_chunk_tail = is_dynamic_N_
             ? 1 /* just to force tail processing */
-            : conf_->N % n_blk_step_;
+            : static_cast<int>(conf_->N % n_blk_step_);
     const int nrows = is_N_tail ? N_chunk_tail : n_blk_step_;
     if (do_compute_compensation_)
         uni_vpxor(vmm_comp_acc, vmm_comp_acc, vmm_comp_acc);
@@ -5301,8 +5325,12 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::compute_K_loop(bool is_N_tail,
 
     L(K_loop);
     copy_row_x_col(nrows, k_blk_step_);
-    add(reg_src, (k_blk_step_ * typesize_) / src_elems_per_byte_);
-    add(reg_tr_src, k_blk_step_ / vnni_granularity_ * tr_src_stride_);
+    add(reg_src,
+            static_cast<uint32_t>(
+                    (k_blk_step_ * typesize_) / src_elems_per_byte_));
+    add(reg_tr_src,
+            static_cast<uint32_t>(
+                    k_blk_step_ / vnni_granularity_ * tr_src_stride_));
 
     sub(reg_K_iters, k_blk_step_);
     cmp(reg_K_iters, k_blk_step_);
@@ -5355,34 +5383,41 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::compute_N_loop(
     L(N_loop);
     compute_K_loop(false, curr_K_tail, is_first_K_iter, is_last_K_iter);
 
-    add(reg_src_base, (n_blk_step_ * src_stride_) / src_elems_per_byte_);
+    add(reg_src_base,
+            static_cast<uint32_t>(
+                    (n_blk_step_ * src_stride_) / src_elems_per_byte_));
     if (conf_->LDB2 > 0) {
         Label small_increment, ldb_off_done;
         mov(regq_tmp, ptr[rsp + ldb_step_idx_offs]);
         add(regq_tmp, n_blk_step_);
 
-        cmp(regq_tmp, conf_->LDB);
+        cmp(regq_tmp, static_cast<uint32_t>(conf_->LDB));
         jne(small_increment, T_NEAR);
 
         add(reg_tr_src_base,
-                -conf_->LDB * vnni_granularity_ * tr_typesize_
+                static_cast<uint32_t>(
+                        -conf_->LDB * vnni_granularity_ * tr_typesize_
                         + n_blk_step_ * vnni_granularity_ * tr_typesize_
-                        + conf_->LDB2 * tr_typesize_);
+                        + conf_->LDB2 * tr_typesize_));
         mov(regq_tmp, 0);
         mov(ptr[rsp + ldb_step_idx_offs], regq_tmp);
         jmp(ldb_off_done, T_NEAR);
         L(small_increment);
-        add(reg_tr_src_base, n_blk_step_ * vnni_granularity_ * tr_typesize_);
+        add(reg_tr_src_base,
+                static_cast<uint32_t>(
+                        n_blk_step_ * vnni_granularity_ * tr_typesize_));
         mov(ptr[rsp + ldb_step_idx_offs], regq_tmp);
         L(ldb_off_done);
     } else {
-        add(reg_tr_src_base, n_blk_step_ * vnni_granularity_ * tr_typesize_);
+        add(reg_tr_src_base,
+                static_cast<uint32_t>(
+                        n_blk_step_ * vnni_granularity_ * tr_typesize_));
     }
 
     if (conf_->is_wei_scale_per_n) {
         const auto &scales_dt_sz = conf_->wei_scales_dt_sz;
         const auto offset = n_blk_step_ * scales_dt_sz;
-        add(reg_wei_scales, offset);
+        add(reg_wei_scales, static_cast<uint32_t>(offset));
     }
 
     if (conf_->is_wei_zp_per_n) {
@@ -5391,11 +5426,11 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::compute_N_loop(
         const auto elems_per_byte
                 = one_of(zp_dt, data_type::s4, data_type::u4) ? 2 : 1;
         const auto offset = n_blk_step_ * zp_dt_sz / elems_per_byte;
-        add(reg_zp_ptr, offset);
+        add(reg_zp_ptr, static_cast<uint32_t>(offset));
     }
 
-    if (req_zp_comp_) add(reg_zp_comp_ptr, comp_shift_);
-    if (req_s8s8_comp_) add(reg_comp_ptr, comp_shift_);
+    if (req_zp_comp_) add(reg_zp_comp_ptr, static_cast<uint32_t>(comp_shift_));
+    if (req_s8s8_comp_) add(reg_comp_ptr, static_cast<uint32_t>(comp_shift_));
 
     sub(reg_N_iters, n_blk_step_);
     cmp(reg_N_iters, n_blk_step_);
@@ -5486,22 +5521,25 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::generate() {
         }
 
         if (is_wei_grouped_over_k_ && grouped_k < k_blk_step_) {
-            compute_N_loop(grouped_k, is_first_K_iter, is_last_K_iter);
+            compute_N_loop(static_cast<int>(grouped_k), is_first_K_iter,
+                    is_last_K_iter);
             return;
         }
 
         Label compute_body_done;
         if (conf_->K_tail > 0 && K_blk_tail != K_tail_tail) {
             Label not_K_tail;
-            cmp(reg_K_iters, k_blk);
+            cmp(reg_K_iters, static_cast<uint32_t>(k_blk));
             je(not_K_tail, T_NEAR);
-            compute_N_loop(K_tail_tail, is_first_K_iter, is_last_K_iter);
+            compute_N_loop(static_cast<int>(K_tail_tail), is_first_K_iter,
+                    is_last_K_iter);
             jmp(compute_body_done, T_NEAR);
 
             L(not_K_tail);
         }
 
-        compute_N_loop(K_blk_tail, is_first_K_iter, is_last_K_iter);
+        compute_N_loop(
+                static_cast<int>(K_blk_tail), is_first_K_iter, is_last_K_iter);
         L(compute_body_done);
     };
 
@@ -5526,7 +5564,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::generate() {
         {
             // first K iteration
             Label first_not_last;
-            cmp(reg_K_start, last_K_threshold);
+            cmp(reg_K_start, static_cast<uint32_t>(last_K_threshold));
             jl(first_not_last, T_NEAR);
             compute_body(true, true);
             jmp(done, T_NEAR);
@@ -5537,7 +5575,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::generate() {
         }
 
         L(not_first);
-        cmp(reg_K_start, last_K_threshold);
+        cmp(reg_K_start, static_cast<uint32_t>(last_K_threshold));
         jl(not_first_not_last, T_NEAR);
 
         compute_body(false, true);
@@ -5562,9 +5600,9 @@ struct jit_brgemm_matmul_copy_b_cvt_bf16_t
 
     jit_brgemm_matmul_copy_b_cvt_bf16_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_b_common_t(conf)
-        , typesize_(conf->b_dt_sz)
-        , tr_typesize_(conf->tr_b_dt_sz)
-        , wei_scales_typesize_(conf_->wei_scales_dt_sz)
+        , typesize_(static_cast<int>(conf->b_dt_sz))
+        , tr_typesize_(static_cast<int>(conf->tr_b_dt_sz))
+        , wei_scales_typesize_(static_cast<int>(conf_->wei_scales_dt_sz))
         , is_src_int4_(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
         , src_elems_per_byte_(is_src_int4_ ? 2 : 1)
         , src_stride_(
@@ -5652,7 +5690,8 @@ private:
             test(reg_k_start, 1);
             jz(even_k, T_NEAR);
             // Shift back to start of the vnni block
-            sub(reg_src, typesize_ / src_elems_per_byte_);
+            sub(reg_src,
+                    static_cast<uint32_t>(typesize_ / src_elems_per_byte_));
             L(even_k);
         }
     }
@@ -5853,9 +5892,9 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::generate() {
         // Only when k_group_size < k_blk_step
         // Otherwise default K-loop is used
         if (is_wei_grouped_over_k_) {
-            const int k_group_size = conf_->is_wei_zp_per_k
-                    ? conf_->wei_zp_k_gsize
-                    : conf_->wei_scales_k_gsize;
+            const int k_group_size = static_cast<int>(conf_->is_wei_zp_per_k
+                            ? conf_->wei_zp_k_gsize
+                            : conf_->wei_scales_k_gsize);
             if (k_group_size == 1) {
                 if (zeropad) return;
                 copy_block(k_group_size, ncolumns, /*zeropad= */ false);
@@ -5870,8 +5909,8 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::generate() {
 
         L(K_loop_unrolled);
         copy_block(k_unroll * k_blk_step, ncolumns, zeropad);
-        add(reg_src, k_unroll * src_stride_);
-        add(reg_tr_src, k_unroll * tr_src_stride_);
+        add(reg_src, static_cast<uint32_t>(k_unroll * src_stride_));
+        add(reg_tr_src, static_cast<uint32_t>(k_unroll * tr_src_stride_));
 
         sub(reg_K, k_unroll * k_blk_step);
         cmp(reg_K, k_unroll * k_blk_step);
@@ -5882,21 +5921,21 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::generate() {
         jl(K_loop_tail_or_done, T_NEAR);
 
         copy_block(k_blk_step, ncolumns, zeropad);
-        add(reg_src, src_stride_);
-        add(reg_tr_src, tr_src_stride_);
+        add(reg_src, static_cast<uint32_t>(src_stride_));
+        add(reg_tr_src, static_cast<uint32_t>(tr_src_stride_));
 
         sub(reg_K, k_blk_step);
         jmp(K_loop_single, T_NEAR);
 
         L(K_loop_tail_or_done);
 
-        const int k_blk_tail = conf_->K % k_blk_step;
+        const int k_blk_tail = static_cast<int>(conf_->K % k_blk_step);
         if (k_blk_tail > 0) {
             Label K_loop_done;
             cmp(reg_K, 0);
             jle(K_loop_done, T_NEAR);
             copy_block(k_blk_tail, ncolumns, zeropad);
-            add(reg_tr_src, tr_src_stride_);
+            add(reg_tr_src, static_cast<uint32_t>(tr_src_stride_));
             sub(reg_K, k_blk_tail);
             L(K_loop_done);
         }
@@ -5921,20 +5960,20 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::generate() {
 
     if (conf_->LDB2 != 0) {
         Label main_N_loop, main_N_loop_tail;
-        int tail = conf_->N % conf_->LDB;
+        int tail = static_cast<int>(conf_->N % conf_->LDB);
 
         if (tail != 0) {
-            cmp(reg_N_blk, conf_->LDB);
+            cmp(reg_N_blk, static_cast<uint32_t>(conf_->LDB));
             jl(main_N_loop_tail, T_NEAR);
         }
 
         L(main_N_loop);
-        compute_K_loop(conf_->LDB);
-        add(reg_src, conf_->LDB2 * typesize_);
-        add(reg_tr_src, conf_->LDB2 * tr_typesize_);
+        compute_K_loop(static_cast<int>(conf_->LDB));
+        add(reg_src, static_cast<uint32_t>(conf_->LDB2 * typesize_));
+        add(reg_tr_src, static_cast<uint32_t>(conf_->LDB2 * tr_typesize_));
 
-        sub(reg_N_blk, conf_->LDB);
-        cmp(reg_N_blk, conf_->LDB);
+        sub(reg_N_blk, static_cast<uint32_t>(conf_->LDB));
+        cmp(reg_N_blk, static_cast<uint32_t>(conf_->LDB));
         jge(main_N_loop, T_NEAR);
 
         if (tail != 0) {
@@ -5947,15 +5986,15 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::generate() {
     } else {
         if (conf_->N_tail > 0) {
             Label main_N_blk;
-            cmp(reg_N_blk, conf_->N_blk);
+            cmp(reg_N_blk, static_cast<uint32_t>(conf_->N_blk));
             je(main_N_blk, T_NEAR);
-            compute_K_loop(conf_->N_tail);
+            compute_K_loop(static_cast<int>(conf_->N_tail));
             jmp(done, T_NEAR);
 
             L(main_N_blk);
         }
 
-        compute_K_loop(conf_->N_blk);
+        compute_K_loop(static_cast<int>(conf_->N_blk));
     }
     L(done);
     postamble();

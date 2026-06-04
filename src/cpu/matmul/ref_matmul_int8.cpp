@@ -231,7 +231,7 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
                             src_zp_md);
                     const auto src_zp = io::load_int_value(
                             src_zp_dt, src_zero_points, src_zp_offset);
-                    acc += group_k * wei_zp * src_zp;
+                    acc += static_cast<int>(group_k) * wei_zp * src_zp;
                 }
             }
 

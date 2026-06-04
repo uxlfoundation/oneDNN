@@ -361,7 +361,7 @@ int main(int argc, char **argv) {
 ///   activations between convolution and subsequent operations. This
 ///   demonstrates memory format propagation across convolution and subsequent
 ///   operations.
-/// * The convolution primitive picked up @ref dnnl::memory::format_tag::Acdb16a
+/// * The convolution primitive picked up `Acdb16a`
 ///   optimized memory format for weights (channel dimension blocked by 16).
 ///   Since the original weights are provided in the abcd (OIHW) format, they
 ///   must be reordered once before execution.

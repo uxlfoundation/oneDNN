@@ -1272,24 +1272,25 @@ cpp_stream_t::cpp_stream_t(
     stream_ = dnnl::stream {eng, flags};
 }
 
-cpp_engine_t::cpp_engine_t(bool use_host) {
+engine_t make_graph_engine(bool use_host) {
 
     dnnl::graph::allocator &alloc = get_graph_allocator(use_host);
 
     if (use_host || is_cpu()) {
-        engine_ = make_engine_with_allocator(dnnl::engine::kind::cpu,
-                static_cast<size_t>(engine_index), alloc);
+        return engine_t(make_engine_with_allocator(dnnl::engine::kind::cpu,
+                static_cast<size_t>(engine_index), alloc));
     } else {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
-        engine_ = make_engine_with_allocator(dnnl::engine::kind::gpu,
-                static_cast<size_t>(engine_index), alloc);
+        return engine_t(make_engine_with_allocator(dnnl::engine::kind::gpu,
+                static_cast<size_t>(engine_index), alloc));
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
         // needs to prepare ocl_malloc_wrapper and ocl_free_wrapper and call
         // make_engine_with_allocator instead.
-        engine_ = dnnl::engine(
-                dnnl::engine::kind::gpu, static_cast<size_t>(engine_index));
+        return engine_t(dnnl::engine(
+                dnnl::engine::kind::gpu, static_cast<size_t>(engine_index)));
 #else
         assert(!"unsupported gpu runtime");
+        return engine_t(dnnl::engine {});
 #endif
     }
 }

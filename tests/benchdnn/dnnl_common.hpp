@@ -24,7 +24,7 @@
 #include <vector>
 #include <unordered_map>
 
-#include "oneapi/dnnl/dnnl.h"
+#include "oneapi/dnnl/dnnl.hpp"
 
 #include "common.hpp"
 #include "dnn_types.hpp"
@@ -100,15 +100,19 @@ extern int num_streams;
 struct engine_t {
     engine_t(dnnl_engine_kind_t engine_kind);
     engine_t(dnnl_engine_t engine);
-    engine_t(const engine_t &other);
-    ~engine_t();
-    operator dnnl_engine_t() const { return engine_; }
+    engine_t(const dnnl::engine &engine);
+    // `recreate_on_copy=true` forces to construct a brand new engine_t object
+    // with underlying interop objects from `other`.
+    // When `recreate_on_copy=false`, copy follows a weak_ptr semantics that
+    // `dnnl::engine` provides.
+    engine_t(const engine_t &other, bool recreate_on_copy = false);
+    operator dnnl_engine_t() const { return engine_.get(); }
+    operator const dnnl::engine &() const { return engine_; }
     dnnl_engine_kind_t get_kind() const;
 
 private:
     engine_t &operator=(engine_t &other) = delete;
-    dnnl_engine_t engine_;
-    bool is_owner_;
+    dnnl::engine engine_;
 };
 
 struct stream_t {
@@ -534,7 +538,7 @@ int init_prim(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &user_prim,
         // where CPU and GPU engines are re-created because this is a commonly
         // used scenario in the frameworks.
         // NOLINTNEXTLINE(performance-unnecessary-copy-initialization)
-        engine_t engine(get_test_engine());
+        engine_t engine(get_test_engine(), /* recreate_on_copy = */ true);
 
         // The first primitive creation using a temporary engine.
         SAFE(create_primitive(primw, engine, init_pd_func, prb, res, dir, hint,

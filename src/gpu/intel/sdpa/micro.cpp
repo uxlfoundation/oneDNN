@@ -1300,6 +1300,10 @@ status_t micro_bwd_params_t::get_kernel_ctx(
     kernel_ctx.define_int("USE_SYSTOLIC_UKERNEL", use_systolic_ukernel);
     kernel_ctx.define_int("WITH_DROPOUT", dropout);
     kernel_ctx.define_int("DROPOUT_HOST_SCALARS", dropout_host_scalars);
+    // Use regular getenv so this debug knob works in release builds too.
+    kernel_ctx.define_int("DEBUG_DV_DIRECT_ATOMIC",
+            getenv_int("SDPA_DEBUG_DV_DIRECT_ATOMIC",
+                    getenv_int("sdpa_debug_dv_direct_atomic", 0)));
 
     micro::HWInformation hw_info;
     gemmstone::GEMMProblem problem_kq, problem_vs;

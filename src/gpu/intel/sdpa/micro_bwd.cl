@@ -38,6 +38,10 @@
 
 #define q_tile_sg_n DIV_UP(ugemm_kq_wg_tile_n, sg_per_wg)
 
+#ifndef DEBUG_DV_DIRECT_ATOMIC
+#define DEBUG_DV_DIRECT_ATOMIC 0
+#endif
+
 /* Instantiate tile types and operations */
 typedef ugemm_kq_c_type s_tile_type; // Bc*Br tile
 typedef ugemm_qdSt_c_type a_tile_type; // Bc*D tile
@@ -978,15 +982,21 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             uint sg_i0_vs = sg_i_vs * ugemm_vs_sg_tile_m;
             uint sg_j0_vs = sg_j_vs * ugemm_vs_sg_tile_n;
 
-            // accumulate dv tile to slm
+                        // Debug mode: accumulate dV directly to global to isolate dV SLM
+                        // reduction effects (GQA only). Default path is unchanged.
             if (sg_ij < sg_per_wg_BcD) {
 #if REDUCE_DKDV_F16
                 // Keep per-q partials on f16 boundaries before SLM reduction.
                 tile_elementwise_s(dV_tile1, round_to_dkdv_partial);
 #endif
+#if IS_GQA && DEBUG_DV_DIRECT_ATOMIC
+                                tile_atomic_add(
+                                                dV_tile1, dV, d, k, lddv, sg_i0_vs, wg_i0 + sg_j0_vs);
+#else
                 dv_acc_tile_type dV_tile1_store;
                 tile_copy(dV_tile1, dV_tile1_store);
                 tile_slm_add(dV_tile1_store, dV_slm, D_MAX, sg_i0_vs, sg_j0_vs);
+#endif
             }
         }
 
@@ -1154,6 +1164,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     }
 
     //////// update dV
+#if !(IS_GQA && DEBUG_DV_DIRECT_ATOMIC)
     uint sg_i0_vs = sg_i_vs * ugemm_vs_sg_tile_m;
     uint sg_j0_vs = sg_j_vs * ugemm_vs_sg_tile_n;
 
@@ -1168,6 +1179,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         tile_store_dV(&dV_tile_slm, dV, d, k, lddv, sg_i0_vs, wg_i0 + sg_j0_vs,
                 remainder_k);
     }
+#endif
     // /update dV
 
     //////// update dK

@@ -388,8 +388,10 @@ int execute_and_wait(perf_function_t &exec_func, const dnnl_engine_t &engine,
     if (use_sycl_graph_exec(engine)) {
         std::function<void()> record_fn
                 = std::bind(exec_func, std::ref(stream), std::cref(dnnl_args));
-        if (execute_in_graph_mode(stream, record_fn, res) != OK) return FAIL;
-        status = dnnl_success;
+        // TIME_EXECUTE is done inside this call.
+        int st = execute_in_graph_mode(stream, record_fn, res);
+        // Update status only on success.
+        if (st == OK) status = dnnl_success;
     } else {
         stream_staller_t staller(stream);
         TIME_EXECUTE(status = exec_func(stream, dnnl_args));

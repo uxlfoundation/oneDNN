@@ -31,11 +31,13 @@ using namespace Xbyak_riscv;
 
 namespace {
 
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
 void dispatch_gemm_convolution_copy(
         const jit_rvv_gemm_convolution_copy_kernel_t::call_params_t *p) {
     static const jit_rvv_gemm_convolution_copy_kernel_t kernel;
     kernel(p);
 }
+#endif
 
 } // namespace
 
@@ -46,9 +48,14 @@ jit_rvv_gemm_convolution_copy_kernel_t::jit_rvv_gemm_convolution_copy_kernel_t()
 
 void jit_rvv_gemm_convolution_copy_f32(
         const float *src, float *dst, dim_t len) {
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
     const jit_rvv_gemm_convolution_copy_kernel_t::call_params_t p {
             src, dst, len};
     dispatch_gemm_convolution_copy(&p);
+#else
+    for (dim_t i = 0; i < len; ++i)
+        dst[i] = src[i];
+#endif
 }
 
 void jit_rvv_gemm_convolution_copy_kernel_t::generate() {

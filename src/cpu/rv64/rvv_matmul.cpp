@@ -186,9 +186,20 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
                 }
             }
 
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
             jit_rvv_matmul_post_apply(row_dst, bias_ptr, N, bias != nullptr,
                     scalar_bias, postops_handler.is_relu_postop(),
                     postops_handler.relu_alpha());
+#else
+            const bool with_relu = postops_handler.is_relu_postop();
+            const float relu_alpha = postops_handler.relu_alpha();
+            for (dim_t n = 0; n < N; ++n) {
+                float value = row_dst[n];
+                if (bias) value += bias_ptr[scalar_bias ? 0 : n];
+                if (with_relu && !(value > 0.0f)) value *= relu_alpha;
+                row_dst[n] = value;
+            }
+#endif
         }
     });
 

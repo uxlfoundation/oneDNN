@@ -54,20 +54,31 @@ jit_rvv_gemm_convolution_post_kernel_t::jit_rvv_gemm_convolution_post_kernel_t(
 
 void jit_rvv_gemm_convolution_apply_bias(
         float *dst, const float *bias, dim_t len) {
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
     const jit_rvv_gemm_convolution_post_kernel_t::call_params_t p {
             dst, bias, len, 0.0f, 0.0f, 1.0f};
     dispatch_gemm_convolution_post<true, false, true, false>(&p);
+#else
+    for (dim_t i = 0; i < len; ++i)
+        dst[i] += bias[i];
+#endif
 }
 
 void jit_rvv_gemm_convolution_apply_scalar_bias(
         float *dst, dim_t len, float bias) {
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
     const jit_rvv_gemm_convolution_post_kernel_t::call_params_t p {
             dst, nullptr, len, bias, 0.0f, 1.0f};
     dispatch_gemm_convolution_post<false, false, true, false>(&p);
+#else
+    for (dim_t i = 0; i < len; ++i)
+        dst[i] += bias;
+#endif
 }
 
 void jit_rvv_gemm_convolution_apply_scalar_bias_relu(
         float *dst, dim_t len, float bias, float relu_alpha, float scale) {
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
     const jit_rvv_gemm_convolution_post_kernel_t::call_params_t p {
             dst, nullptr, len, bias, relu_alpha, scale};
     const bool alpha_zero = relu_alpha == 0.0f;
@@ -79,6 +90,16 @@ void jit_rvv_gemm_convolution_apply_scalar_bias_relu(
     } else {
         dispatch_gemm_convolution_post<false, true, false, true>(&p);
     }
+#else
+    for (dim_t i = 0; i < len; ++i) {
+        float value = dst[i] + bias;
+        if (relu_alpha == 0.0f)
+            value = value > 0.0f ? value : 0.0f;
+        else if (value < 0.0f)
+            value *= relu_alpha;
+        dst[i] = value * scale;
+    }
+#endif
 }
 
 void jit_rvv_gemm_convolution_post_kernel_t::generate() {

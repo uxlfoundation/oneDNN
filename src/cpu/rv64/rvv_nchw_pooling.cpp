@@ -36,6 +36,7 @@ namespace {
 
 using kernel_t = jit_rvv_pooling_fwd_kernel_t;
 
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
 struct init_scale_t {
     float init_val;
     float scale_val;
@@ -55,6 +56,7 @@ init_scale_t compute_init_scale(kernel_t::alg_t alg, int id_start, int id_end,
         return {0.0f, (count > 0) ? 1.0f / (float)count : 0.0f};
     }
 }
+#endif
 
 template <kernel_t::alg_t alg>
 static float compute_scalar_pool(const float *src, int id_start, int id_end,
@@ -100,7 +102,9 @@ void Pooling_f32_jit_nchw(const float *src, float *dst, dim_t batch,
         dim_t strideH, dim_t strideW, dim_t padF, dim_t padT, dim_t padL,
         bool with_relu, float relu_alpha) {
 
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
     static const kernel_t kernel(alg);
+#endif
 
     const size_t spatial_size = (size_t)inD * inH * inW;
     const size_t dst_spatial_size = (size_t)outD * outH * outW;
@@ -137,7 +141,7 @@ void Pooling_f32_jit_nchw(const float *src, float *dst, dim_t batch,
 
         // Interior OW positions — vectorized along OW
         if (int_lo < int_hi) {
-
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
             // Interior has full kernel window in W, so iw range = [0, kerW)
             auto iv = compute_init_scale(alg, id_start, id_end, ih_start,
                     ih_end, 0, (int)kerW, kerD, kerH, kerW);
@@ -166,6 +170,15 @@ void Pooling_f32_jit_nchw(const float *src, float *dst, dim_t batch,
             p.src_vec_byte_stride = strideW * (dim_t)sizeof(float);
             p.dst_vec_byte_stride = (dim_t)sizeof(float);
             kernel(&p);
+#else
+            for (dim_t ow = int_lo; ow < int_hi; ++ow) {
+                const int iw_s = (int)(ow * strideW - padL);
+                const int iw_e = iw_s + (int)kerW;
+                dst_oh[ow] = compute_scalar_pool<alg>(src_ch, id_start, id_end,
+                        ih_start, ih_end, iw_s, iw_e, inW, inH, kerD, kerH,
+                        kerW, with_relu, relu_alpha);
+            }
+#endif
         }
 
         // Right boundary OW positions — scalar (avoids JIT call overhead)
@@ -187,7 +200,9 @@ void Pooling_f32_jit_nchw_ow1(const float *src, float *dst, dim_t batch,
         dim_t strideH, dim_t strideW, dim_t padF, dim_t padT, dim_t padL,
         bool with_relu, float relu_alpha) {
 
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
     static const kernel_t kernel(alg);
+#endif
 
     const size_t spatial_size = (size_t)inD * inH * inW;
     const size_t dst_spatial_size = (size_t)outD * outH * outW;
@@ -202,6 +217,7 @@ void Pooling_f32_jit_nchw_ow1(const float *src, float *dst, dim_t batch,
         const int iw_start = std::max(-(int)padL, 0);
         const int iw_end = std::min(-(int)padL + (int)kerW, (int)inW);
 
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
         auto iv = compute_init_scale(alg, id_start, id_end, ih_start, ih_end,
                 iw_start, iw_end, kerD, kerH, kerW);
 
@@ -234,6 +250,17 @@ void Pooling_f32_jit_nchw_ow1(const float *src, float *dst, dim_t batch,
         p.src_vec_byte_stride = (dim_t)(spatial_size * sizeof(float));
         p.dst_vec_byte_stride = (dim_t)(dst_spatial_size * sizeof(float));
         kernel(&p);
+#else
+        for (dim_t c = 0; c < channels; ++c) {
+            const float *src_ch
+                    = src + ((size_t)mb * channels + c) * spatial_size;
+            float *dst_ch
+                    = dst + ((size_t)mb * channels + c) * dst_spatial_size;
+            dst_ch[od * outH * outW + oh * outW] = compute_scalar_pool<alg>(
+                    src_ch, id_start, id_end, ih_start, ih_end, iw_start,
+                    iw_end, inW, inH, kerD, kerH, kerW, with_relu, relu_alpha);
+        }
+#endif
     });
 }
 

@@ -52,6 +52,7 @@
 
 #include "utils/cold_cache.hpp"
 #include "utils/dnnl_query.hpp"
+#include "utils/execution_mode.hpp"
 #include "utils/fill.hpp"
 #include "utils/stream_kind.hpp"
 
@@ -1696,32 +1697,6 @@ memory_kind_ext_t str2memory_kind(const char *str) {
 
     assert(!"not expected");
     return memory_kind_ext_t::usm;
-}
-
-const char *execution_mode2str(execution_mode_t mode) {
-#define EXECUTION_MODE_TO_STR(name, ...) \
-    if (execution_mode_t::name == mode) return #name;
-
-    EXECUTION_MODE_TO_STR(direct);
-    EXECUTION_MODE_TO_STR(graph);
-#undef EXECUTION_MODE_STR
-
-    BENCHDNN_PRINT(0, "%s", "Error: execution mode value is not recognized.\n");
-    SAFE_V(FAIL);
-    return "";
-}
-
-execution_mode_t str2execution_mode(const char *str) {
-#define STR_TO_EXECUTION_MODE(name, ...) \
-    if (!strcasecmp(#name, str)) return execution_mode_t::name;
-
-    STR_TO_EXECUTION_MODE(direct);
-    STR_TO_EXECUTION_MODE(graph);
-#undef STR_TO_EXECUTION_MODE
-
-    BENCHDNN_PRINT(0, "%s", "Error: execution mode value is not recognized.\n");
-    SAFE_V(FAIL);
-    return execution_mode_t::direct;
 }
 
 float reorder_rescale_factor() {

@@ -78,6 +78,7 @@ phase_conf_t::phase_conf_t(const subproblem_t &subprb, data_type_t src_type,
     , src_type(src_type)
     , dst_type(dst_type)
     , subgroup_size(intel_engine->device_info()->max_subgroup_size()) {
+    auto &device_info = *intel_engine->device_info();
     // Short-circuit if zero-dim is present
     gpu_assert(reduction_block.block != 0) << "Reducing over 0 elements";
     if (outer_block.block == 0 || inner_block.block == 0) {
@@ -87,12 +88,11 @@ phase_conf_t::phase_conf_t(const subproblem_t &subprb, data_type_t src_type,
     }
     with_block_reads = can_use_block_reads();
 
-    const int num_EU = intel_engine->device_info()->eu_count();
-    const int max_wg_size = static_cast<int>(
-            intel_engine->device_info()->max_wg_size(grf_per_thread));
-    compute::gpu_arch_t arch = intel_engine->device_info()->gpu_arch();
-    int threads_per_eu
-            = compute::device_info_t::threads_per_eu(arch, grf_per_thread);
+    const int num_EU = device_info.eu_count();
+    const int max_wg_size
+            = static_cast<int>(device_info.max_wg_size(grf_per_thread));
+    compute::gpu_arch_t arch = device_info.gpu_arch();
+    int threads_per_eu = device_info.threads_per_eu(grf_per_thread);
     int num_threads = num_EU * threads_per_eu;
 
     // inner_dim can either be:
@@ -195,12 +195,10 @@ status_t split_into_phases(const subproblem_t &subprb,
     //Heuristic:
     // subsplitting has a high cost due to launching multiple sequential threads,
     // so only split when parallelism is low and reductions per thread is large
-    const bool low_parallelism
-            = [&intel_engine, &grf_per_thread, &try_phase]() {
-        compute::gpu_arch_t arch = intel_engine->device_info()->gpu_arch();
-        int threads_per_EU
-                = compute::device_info_t::threads_per_eu(arch, grf_per_thread);
-        const int num_EU = intel_engine->device_info()->eu_count();
+    auto &device_info = *intel_engine->device_info();
+    const bool low_parallelism = [&device_info, &grf_per_thread, &try_phase]() {
+        int threads_per_EU = device_info.threads_per_eu(grf_per_thread);
+        const int num_EU = device_info.eu_count();
         const int min_threads = gpu_utils::dev_getenv(
                 "combined_reduction_occ_thresh", threads_per_EU * num_EU / 2);
         const int dispatched_threads

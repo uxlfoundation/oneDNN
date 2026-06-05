@@ -111,8 +111,7 @@ atomic_conf_t::atomic_conf_t(const subproblem_t &subprb, alg_kind_t alg,
     const size_t max_sg_per_wg = utils::div_up(max_wg_size, conf.subgroup_size);
 
     // number of subgroups (threads) to saturate the GPU
-    const int threads_per_eu
-            = compute::device_info_t::threads_per_eu(arch, conf.grf_per_thread);
+    const int threads_per_eu = device_info.threads_per_eu(conf.grf_per_thread);
     const int target_subgroups = eu_count * threads_per_eu;
 
     const dim_t max_local_size

@@ -85,15 +85,15 @@ dim_t get_nhwc_calc_stat_ic(dim_t ic, int ic_block, int sg_size) {
 
 void init_hw_params(hw_params_t &hw_params, impl::engine_t *engine) {
     auto *intel_engine = downcast<intel::engine_t *>(engine);
-    auto gpu_arch = intel_engine->device_info()->gpu_arch();
-    hw_params.gpu_arch = gpu_arch;
-    hw_params.eu_count = intel_engine->device_info()->eu_count();
-    hw_params.threads_per_eu = compute::device_info_t::threads_per_eu(gpu_arch);
-    hw_params.max_lws = intel_engine->device_info()->max_wg_size();
-    hw_params.eus_per_ss = intel_engine->device_info()->max_eus_per_wg();
+    auto &device_info = *intel_engine->device_info();
+    hw_params.gpu_arch = device_info.gpu_arch();
+    hw_params.eu_count = device_info.eu_count();
+    hw_params.threads_per_eu = device_info.threads_per_eu();
+    hw_params.max_lws = device_info.max_wg_size();
+    hw_params.eus_per_ss = device_info.max_eus_per_wg();
     hw_params.max_ss = div_up(hw_params.eu_count, hw_params.eus_per_ss);
-    hw_params.max_slm_size = compute::device_info_t::max_slm_size(
-            intel_engine->device_info()->gpu_product());
+    hw_params.max_slm_size
+            = compute::device_info_t::max_slm_size(device_info.gpu_product());
     hw_params.engine = engine;
 
     // Experimentally selected, based on microbenchmarks results

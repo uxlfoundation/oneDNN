@@ -80,8 +80,27 @@ int hw_t::grf_per_eu() const {
         default: gpu_error_not_expected(); return 1024;
     }
 }
+
+namespace {
+int max_threads_per_eu(const ngen::Product product) {
+    auto family = product.family;
+    switch (getCore(family)) {
+        case ngen::HW::XeLP: return 7;
+        case ngen::HW::XeHP:
+        case ngen::HW::XeHPG:
+        case ngen::HW::XeHPC:
+        case ngen::HW::Xe2:
+        case ngen::HW::Xe3: return 8;
+        case ngen::HW::Xe3p: return family == ngen::ProductFamily::CRI ? 10 : 8;
+        default: gpu_error_not_expected();
+    }
+    return 8;
+}
+} // namespace
+
 int hw_t::threads_per_eu(int regs) const {
-    return grf_per_eu() / regs;
+    int max_threads = max_threads_per_eu(product());
+    return std::min(max_threads, grf_per_eu() / regs);
 }
 
 int hw_t::cache_line_size() const {

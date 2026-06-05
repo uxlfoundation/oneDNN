@@ -263,7 +263,7 @@ status_t gen_desc_t::finalize(const char *tags) {
                 thread_per_tg *= std::max(strategy_.wg[LoopK], 1);
             dim_t thread_gpu = eu_count_
                     * compute::device_info_t::threads_per_eu(
-                            arch_, strategy_.GRFs);
+                            jit::to_gpu_product(product_), strategy_.GRFs);
             dim_t tiles_gpu = thread_gpu / thread_per_tg;
 
             bool use_linear = (m_tiles * n_tiles <= tiles_gpu);

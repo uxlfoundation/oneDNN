@@ -23,12 +23,8 @@
 
 #include "common/c_types_map.hpp"
 #include "common/serialization.hpp"
-#include "common/utils.hpp"
 #include "common/z_magic.hpp"
-
 #include "xpu/utils.hpp"
-
-#include "oneapi/dnnl/dnnl_config.h"
 
 // NOLINTBEGIN(readability-identifier-naming)
 namespace ngen {
@@ -197,10 +193,14 @@ public:
             int grf_per_thread = 128, size_t subgroup_size = 0) const;
     int eu_count() const { return eu_count_; }
     int hw_threads(int grf_per_thread = 128) const {
-        return eu_count_ * threads_per_eu(gpu_arch_, grf_per_thread);
+        return eu_count_ * threads_per_eu(gpu_product_, grf_per_thread);
     }
     static int grf_per_eu(gpu_arch_t gpu_arch);
-    static int threads_per_eu(gpu_arch_t gpu_arch, int grf_per_thread = 128);
+    static int threads_per_eu(
+            const gpu_product_t &product, int grf_per_thread = 128);
+    int threads_per_eu(int grf_per_thread = 128) const {
+        return threads_per_eu(gpu_product_, grf_per_thread);
+    }
     static int max_slm_size(gpu_product_t product);
     static int max_slm_size_per_tg(gpu_product_t product);
     static int max_slm_size_per_tg(

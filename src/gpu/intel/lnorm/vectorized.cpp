@@ -177,7 +177,8 @@ static status_t init_conf_common(
         conf_t &conf, const pd_t *pd, impl::engine_t *engine) {
 
     auto *intel_engine = utils::downcast<engine_t *>(engine);
-    auto gpu_arch = intel_engine->device_info()->gpu_arch();
+    auto &device_info = *intel_engine->device_info();
+    auto gpu_arch = device_info.gpu_arch();
 
     // Limited due to performance reasons
     // Vectorized implementation can be used for FWD on DG2+, for BWD on PVC+
@@ -245,13 +246,11 @@ static status_t init_conf_common(
     auto *gpu_attr = utils::downcast<gpu_primitive_attr_t *>(
             pd->attr()->gpu_attr_.get());
     int grf_per_thread = gpu_attr ? gpu_attr->grf_per_thread() : 128;
-    auto eu_count = intel_engine->device_info()->eu_count();
-    auto threads_per_eu
-            = device_info_t::threads_per_eu(gpu_arch, grf_per_thread);
+    auto eu_count = device_info.eu_count();
+    auto threads_per_eu = device_info.threads_per_eu(grf_per_thread);
     auto max_eus_per_wg = device_info_t::max_eus_per_wg(gpu_arch);
     const int max_ss = utils::div_up(eu_count, max_eus_per_wg);
-    const size_t max_wg_size
-            = intel_engine->device_info()->max_wg_size(grf_per_thread);
+    const size_t max_wg_size = device_info.max_wg_size(grf_per_thread);
 
     // Vectorized vs Reference heuristics.
     // PVC, FWD:

@@ -176,9 +176,8 @@ public:
         *skip_check = false;
 
         if (hw != HW::Unknown) {
-            auto product = engine->device_info()->gpu_product();
-            binary_format_kernel_t<hw> binary_format_kernel(
-                    engine, compute::device_info_t::ngen_product(product));
+            const ngen::Product &product = engine->device_info()->product();
+            binary_format_kernel_t<hw> binary_format_kernel(engine, product);
             auto status = engine->create_kernel(&kernel, &binary_format_kernel);
             if (status != status::success) return nullptr;
             *skip_check = binary_format_kernel.binaryIsZebin();

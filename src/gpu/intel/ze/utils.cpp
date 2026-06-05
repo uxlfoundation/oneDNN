@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/ze/utils.hpp"
+#include <memory>
 
 #include "gpu/intel/jit/binary_format.hpp"
 #include "gpu/intel/jit/utils/type_bridge.hpp"
@@ -162,15 +163,14 @@ status_t compile_native_module(ze_module_handle_t *module_ptr,
 
 status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
         ze_context_handle_t context, uint32_t &ip_version,
-        compute::gpu_arch_t &gpu_arch, compute::gpu_product_t &product_,
+        compute::gpu_arch_t &gpu_arch, std::unique_ptr<ngen::Product> &product_,
         uint64_t &native_extensions, bool &mayiuse_systolic,
         bool &mayiuse_ngen_kernels, bool &is_efficient_64bit) {
     using namespace ngen;
-    ngen::Product product = LevelZeroCodeGenerator<HW::Unknown>::detectHWInfo(
-            context, device);
+    product_ = utils::make_unique<ngen::Product>(
+            LevelZeroCodeGenerator<HW::Unknown>::detectHWInfo(context, device));
 
-    gpu_arch = jit::convert_ngen_arch_to_dnnl(ngen::getCore(product.family));
-    std::memcpy(&product_, &product, sizeof(ngen::Product));
+    gpu_arch = jit::convert_ngen_arch_to_dnnl(ngen::getCore(product_->family));
 
     mayiuse_systolic = false;
     if (get_ze_device_enabled_systolic_intel(device, mayiuse_systolic)
@@ -179,21 +179,21 @@ status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
 
     /* Some old drivers do not report systolic availability. Manually override
        systolic availability based on product family. */
-    switch (product.family) {
+    switch (product_->family) {
         case ProductFamily::DG2:
         case ProductFamily::ARL:
         case ProductFamily::PVC: mayiuse_systolic = true;
         default: break;
     }
 
-    bool is_xelpg = (product.family == ProductFamily::ARL
-            || product.family == ProductFamily::MTL);
+    bool is_xelpg = (product_->family == ProductFamily::ARL
+            || product_->family == ProductFamily::MTL);
     CHECK(get_ze_device_enabled_native_float_atomics(
             device, native_extensions, is_xelpg));
 
     is_efficient_64bit
             = LevelZeroCodeGenerator<HW::Unknown>::detectEfficient64Bit(
-                    context, device, getCore(product.family));
+                    context, device, getCore(product_->family));
     CHECK(jit::init_mayiuse_ngen_kernels(
             engine, gpu_arch, mayiuse_ngen_kernels));
 

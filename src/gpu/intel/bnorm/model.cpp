@@ -93,7 +93,7 @@ void init_hw_params(hw_params_t &hw_params, impl::engine_t *engine) {
     hw_params.eus_per_ss = device_info.max_eus_per_wg();
     hw_params.max_ss = div_up(hw_params.eu_count, hw_params.eus_per_ss);
     hw_params.max_slm_size
-            = compute::device_info_t::max_slm_size(device_info.gpu_product());
+            = compute::device_info_t::max_slm_size(device_info.product());
     hw_params.engine = engine;
 
     // Experimentally selected, based on microbenchmarks results

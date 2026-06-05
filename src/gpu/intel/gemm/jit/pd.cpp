@@ -567,7 +567,7 @@ status_t pd_t::init_GEMMProblem(
     using namespace gemmstone;
     problem = {};
 
-    problem.product = get_ngen_product(*engine->device_info());
+    problem.product = engine->device_info()->product();
     bool has_systolic
             = engine->mayiuse(compute::device_ext_t::
                               intel_subgroup_matrix_multiply_accumulate)

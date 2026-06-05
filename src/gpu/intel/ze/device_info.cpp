@@ -43,7 +43,7 @@ status_t device_info_t::init_arch(impl::engine_t *engine) {
     auto device = ze_engine->device();
 
     return init_gpu_hw_info(engine, device, context, ip_version_, gpu_arch_,
-            gpu_product_, native_extensions_, mayiuse_systolic_,
+            product_, native_extensions_, mayiuse_systolic_,
             mayiuse_ngen_kernels_, is_efficient_64bit_);
 }
 

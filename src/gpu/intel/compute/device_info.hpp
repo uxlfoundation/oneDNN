@@ -24,6 +24,7 @@
 #include "common/c_types_map.hpp"
 #include "common/serialization.hpp"
 #include "common/z_magic.hpp"
+#include "gpu/intel/utils.hpp"
 #include "xpu/utils.hpp"
 
 // NOLINTBEGIN(readability-identifier-naming)
@@ -49,12 +50,6 @@ enum class gpu_arch_t {
     xe2,
     xe3,
     xe3p,
-};
-
-// Memory for storing ngen::Product to avoid directly including nGEN because of
-// header dependencies outside of src/gpu/intel.
-struct alignas(int) gpu_product_t {
-    unsigned char data[12];
 };
 
 static inline const char *to_string(gpu_arch_t arch) {
@@ -159,7 +154,7 @@ uint64_t get_future_extensions(
 
 struct device_info_t {
 public:
-    virtual ~device_info_t() = default;
+    virtual ~device_info_t();
 
     status_t init(impl::engine_t *engine,
             const std::vector<uint8_t> &cache_blob = {});
@@ -171,8 +166,10 @@ public:
         return native_extensions_ & (uint64_t)ext;
     }
     gpu_arch_t gpu_arch() const { return gpu_arch_; }
-    const gpu_product_t &gpu_product() const { return gpu_product_; }
-    static const ngen::Product &ngen_product(const gpu_product_t &product);
+    const ngen::Product &product() const {
+        gpu_assert(product_) << "Product information not available";
+        return *product_;
+    }
     ngen::HW ngen_hw() const;
     int stepping_id() const;
     uint64_t native_extensions() const { return native_extensions_; }
@@ -193,18 +190,18 @@ public:
             int grf_per_thread = 128, size_t subgroup_size = 0) const;
     int eu_count() const { return eu_count_; }
     int hw_threads(int grf_per_thread = 128) const {
-        return eu_count_ * threads_per_eu(gpu_product_, grf_per_thread);
+        return eu_count_ * threads_per_eu(*product_, grf_per_thread);
     }
     static int grf_per_eu(gpu_arch_t gpu_arch);
     static int threads_per_eu(
-            const gpu_product_t &product, int grf_per_thread = 128);
+            const ngen::Product &product, int grf_per_thread = 128);
     int threads_per_eu(int grf_per_thread = 128) const {
-        return threads_per_eu(gpu_product_, grf_per_thread);
+        return threads_per_eu(*product_, grf_per_thread);
     }
-    static int max_slm_size(gpu_product_t product);
-    static int max_slm_size_per_tg(gpu_product_t product);
+    static int max_slm_size(const ngen::Product &product);
+    static int max_slm_size_per_tg(const ngen::Product &product);
     static int max_slm_size_per_tg(
-            int tg_size, int grf_per_thread, gpu_product_t product);
+            int tg_size, int grf_per_thread, const ngen::Product &product);
     size_t memory_size() const { return memory_size_; }
     size_t l3_cache_size() const { return l3_cache_size_; }
     size_t icache_size() const;
@@ -262,7 +259,7 @@ protected:
     virtual status_t init_attributes(impl::engine_t *engine) = 0;
 
     gpu_arch_t gpu_arch_ = compute::gpu_arch_t::unknown;
-    gpu_product_t gpu_product_ = {};
+    std::unique_ptr<ngen::Product> product_;
     uint32_t ip_version_ = 0;
     bool mayiuse_systolic_ = false;
     bool mayiuse_ngen_kernels_ = false;

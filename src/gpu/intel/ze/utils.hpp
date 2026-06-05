@@ -17,6 +17,7 @@
 #ifndef GPU_INTEL_ZE_UTILS_HPP
 #define GPU_INTEL_ZE_UTILS_HPP
 
+#include <memory>
 #include "gpu/intel/compute/device_info.hpp"
 
 #include "xpu/ze/utils.hpp"
@@ -29,7 +30,7 @@ namespace ze {
 
 status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
         ze_context_handle_t context, uint32_t &ip_version,
-        compute::gpu_arch_t &gpu_arch, compute::gpu_product_t &product,
+        compute::gpu_arch_t &gpu_arch, std::unique_ptr<ngen::Product> &product,
         uint64_t &native_extensions, bool &mayiuse_systolic,
         bool &mayiuse_ngen_kernels, bool &is_efficient_64bit);
 

@@ -47,7 +47,7 @@ bool is_fused_kernel_applicable(conf_t &conf, const pd_t *pd,
     const size_t max_wg_size
             = intel_engine->device_info()->max_wg_size(grf_per_thread);
     const size_t max_slm_size = device_info_t::max_slm_size(
-            intel_engine->device_info()->gpu_product());
+            intel_engine->device_info()->product());
 
     // Plain layout only
     const bool is_plain = src_mdw.matches_one_of_tag(ab, abc)

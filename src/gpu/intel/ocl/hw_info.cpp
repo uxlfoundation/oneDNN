@@ -58,18 +58,17 @@ xpu::runtime_version_t get_driver_version(cl_device_id device) {
 
 status_t init_gpu_hw_info(impl::engine_t *engine, cl_device_id device,
         cl_context ctx, uint32_t &ip_version, compute::gpu_arch_t &gpu_arch,
-        compute::gpu_product_t &product_, uint64_t &native_extensions,
+        std::unique_ptr<ngen::Product> &product_, uint64_t &native_extensions,
         bool &mayiuse_systolic, bool &mayiuse_ngen_kernels,
         bool &is_efficient_64bit) {
     using namespace ngen;
-    ngen::Product product
-            = ngen::OpenCLCodeGenerator<HW::Unknown>::detectHWInfo(ctx, device);
-    HW hw = getCore(product.family);
-    bool is_xelpg = (product.family == ngen::ProductFamily::ARL
-            || product.family == ngen::ProductFamily::MTL);
+    product_ = utils::make_unique<ngen::Product>(
+            OpenCLCodeGenerator<HW::Unknown>::detectHWInfo(ctx, device));
+    HW hw = getCore(product_->family);
+    bool is_xelpg = (product_->family == ngen::ProductFamily::ARL
+            || product_->family == ngen::ProductFamily::MTL);
 
-    gpu_arch = jit::convert_ngen_arch_to_dnnl(ngen::getCore(product.family));
-    std::memcpy(&product_, &product, sizeof(ngen::Product));
+    gpu_arch = jit::convert_ngen_arch_to_dnnl(ngen::getCore(product_->family));
 
     mayiuse_systolic = false;
     CHECK(get_ocl_device_enabled_systolic_intel(device, mayiuse_systolic));

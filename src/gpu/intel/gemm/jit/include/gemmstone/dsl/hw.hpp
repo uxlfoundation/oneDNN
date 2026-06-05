@@ -76,8 +76,19 @@ public:
     hw_t() = default;
     explicit hw_t(const ngen::Product &product, int eu_count, int max_wg_size,
             size_t l3_cache_size, attr_t attr);
+    hw_t(const hw_t &);
+    hw_t operator=(const hw_t &other) {
+        hw_t tmp(other);
+        std::swap(product_, tmp.product_);
+        std::swap(hw_, tmp.hw_);
+        std::swap(eu_count_, tmp.eu_count_);
+        std::swap(max_wg_size_, tmp.max_wg_size_);
+        std::swap(l3_cache_size_, tmp.l3_cache_size_);
+        std::swap(attr_, tmp.attr_);
+        return *this;
+    }
 
-    ngen::Product product() const;
+    const ngen::Product &product() const;
     ngen::ProductFamily family() const;
     int stepping() const;
     ngen::HW ngen_hw() const { return hw_; }
@@ -111,23 +122,20 @@ public:
     bool operator>=(ngen::HW rhs) const { return hw_ >= rhs; }
     bool operator==(ngen::HW rhs) const { return hw_ == rhs; }
     bool operator!=(ngen::HW rhs) const { return hw_ != rhs; }
-#if __cplusplus >= 202002L
-    bool operator==(const hw_t &other) const = default;
-#endif
+    bool operator==(const hw_t &other) const {
+        return hw_ == other.hw_ && eu_count_ == other.eu_count_
+                && max_wg_size_ == other.max_wg_size_
+                && l3_cache_size_ == other.l3_cache_size_
+                && attr_ == other.attr_
+                && (product_ == other.product_
+                        || (product_ && other.product_
+                                && *product_ == *other.product_));
+    }
 
 protected:
-    // Memory for storing ngen::Product to avoid nGEN header dependency in IR
-    struct alignas(int) product_t {
-        unsigned char data[12] = {};
-        product_t() = default;
-        product_t(const ngen::Product &product);
-        const ngen::Product &operator()() const;
-#if __cplusplus >= 202002L
-        bool operator==(const product_t &other) const = default;
-#endif
-    };
-
-    product_t product_;
+    // use product_t as an opaque handle to ngen::Product to avoid ngen dependency here
+    using product_t = const ngen::Product *;
+    std::unique_ptr<ngen::Product> product_;
 
 private:
     size_t max_wg_size(int regs = 128) const {

@@ -178,12 +178,10 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
             if (swap_ab) std::swap(stride_a, stride_b);
             auto stride_c = int64_t(pd()->desc()->stride_c(i));
             if (jit::enable_generator_dsl()) {
+                auto *intel_engine = utils::downcast<intel::engine_t *>(
+                        compute_stream->engine());
                 auto hw = ngen::getCore(
-                        ((ngen::Product *)&utils::downcast<intel::engine_t *>(
-                                 compute_stream->engine())
-                                        ->device_info()
-                                        ->gpu_product())
-                                ->family);
+                        intel_engine->device_info()->product().family);
 
                 // 2d Surface pointer needs to be 64 byte aligned. When negative
                 // bounds checking is unnecessary, this restriction can be

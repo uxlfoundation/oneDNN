@@ -23,18 +23,25 @@ namespace dsl {
 
 hw_t::hw_t(const ngen::Product &product, int eu_count, int max_wg_size,
         size_t l3_cache_size, attr_t attr)
-    : product_(product)
+    : product_(make_unique<ngen::Product>(product))
     , hw_(ngen::getCore(product.family))
     , eu_count_(eu_count)
     , max_wg_size_(max_wg_size)
     , l3_cache_size_(l3_cache_size)
     , attr_(attr) {}
 
-ngen::Product hw_t::product() const {
-    ngen::Product product;
-    std::memcpy(static_cast<void *>(&product),
-            static_cast<const void *>(&product_), sizeof(product));
-    return product;
+hw_t::hw_t(const hw_t &other)
+    : product_(other.product_ ? make_unique<ngen::Product>(*other.product_)
+                              : nullptr)
+    , hw_(other.hw_)
+    , eu_count_(other.eu_count_)
+    , max_wg_size_(other.max_wg_size_)
+    , l3_cache_size_(other.l3_cache_size_)
+    , attr_(other.attr_) {}
+
+const ngen::Product &hw_t::product() const {
+    gpu_assert(product_) << "Product information not available";
+    return *product_;
 }
 
 ngen::ProductFamily hw_t::family() const {
@@ -91,7 +98,8 @@ int max_threads_per_eu(const ngen::Product product) {
         case ngen::HW::XeHPC:
         case ngen::HW::Xe2:
         case ngen::HW::Xe3: return 8;
-        case ngen::HW::Xe3p: return family == ngen::ProductFamily::CRI ? 10 : 8;
+        case ngen::HW::Xe3p:
+            return family == ngen::ProductFamily::NVLP ? 10 : 8;
         default: gpu_error_not_expected();
     }
     return 8;
@@ -123,12 +131,6 @@ std::string hw_t::str() const {
     oss << ", stepping: " << stepping();
     oss << ", EUs: " << eu_count();
     return oss.str();
-}
-
-hw_t::product_t::product_t(const ngen::Product &product) {
-    static_assert(sizeof(product) == sizeof(*this),
-            "ngen::Product and hw_t::product must be binary compatible");
-    std::memcpy(this, &product, sizeof(product));
 }
 
 } // namespace dsl

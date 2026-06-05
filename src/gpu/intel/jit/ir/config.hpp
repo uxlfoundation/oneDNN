@@ -322,7 +322,7 @@ public:
             const dsl::kernel::options_t &options, dim_t tg_elems) {
         auto arch = convert_ngen_arch_to_dnnl(options.hw());
         int threads_per_eu = compute::device_info_t::threads_per_eu(
-                jit::to_gpu_product(options.hw().product()), options.regs());
+                options.hw().product(), options.regs());
         int eus_per_subslice = compute::device_info_t::max_eus_per_wg(arch);
         int subslice_count = options.hw().eu_count() / eus_per_subslice;
 

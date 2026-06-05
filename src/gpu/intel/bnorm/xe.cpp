@@ -67,7 +67,7 @@ static void adjust_lws_calc_kernel(lookup_table::params_t &conf,
     const int max_ss = div_up(eu_count, eus_per_ss);
 
     const int max_slm_size = compute::device_info_t::max_slm_size(
-            intel_engine->device_info()->gpu_product());
+            intel_engine->device_info()->product());
     auto generated_nd = dispatch.nd_range();
     const compute::range_t &base_gws = generated_nd.global_range();
     const compute::range_t &base_lws = generated_nd.local_range();

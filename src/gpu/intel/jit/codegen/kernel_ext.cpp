@@ -106,8 +106,7 @@ void ir_kernel_t::generate_from_ir(
 
     if (local_range_) {
         size_t max_slm_size = compute::device_info_t::max_slm_size_per_tg(
-                thread_group_size(), options_.regs(),
-                to_gpu_product(options_.hw().product()));
+                thread_group_size(), options_.regs(), options_.hw().product());
         if (interface.getSLMSize() > max_slm_size) {
             gpu_trace() << "SLM size limit exceeded: " << interface.getSLMSize()
                         << " > " << max_slm_size;

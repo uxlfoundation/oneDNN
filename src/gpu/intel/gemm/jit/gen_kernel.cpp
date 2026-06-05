@@ -263,7 +263,7 @@ status_t gen_desc_t::finalize(const char *tags) {
                 thread_per_tg *= std::max(strategy_.wg[LoopK], 1);
             dim_t thread_gpu = eu_count_
                     * compute::device_info_t::threads_per_eu(
-                            jit::to_gpu_product(product_), strategy_.GRFs);
+                            product_, strategy_.GRFs);
             dim_t tiles_gpu = thread_gpu / thread_per_tg;
 
             bool use_linear = (m_tiles * n_tiles <= tiles_gpu);
@@ -392,9 +392,7 @@ gen_nocopy_desc_t::select_kernel(const compute::device_info_t &dev_info,
     using namespace ngen;
     using namespace kcatalog;
 
-    const compute::gpu_product_t &product = dev_info.gpu_product();
-
-    product_ = compute::device_info_t::ngen_product(product);
+    product_ = dev_info.product();
     hw_ = getCore(product_.family);
     arch_ = convert_ngen_arch_to_dnnl(hw_);
     stepping_ = dev_info.stepping_id();
@@ -623,9 +621,7 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
     using namespace ngen;
     using namespace kcatalog;
 
-    const compute::gpu_product_t &product = dev_info.gpu_product();
-
-    product_ = compute::device_info_t::ngen_product(product);
+    product_ = dev_info.product();
     hw_ = getCore(product_.family);
     arch_ = convert_ngen_arch_to_dnnl(hw_);
     stepping_ = dev_info.stepping_id();

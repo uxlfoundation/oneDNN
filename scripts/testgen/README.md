@@ -155,3 +155,42 @@ benchdnn --matmul --engine=gpu \
 Adding a new primitive requires:
 1. Defining its coverage dimensions in `COVERAGE_DIMS`
 2. Adding a feature extractor branch in `extract_features()`
+
+## Black-box augmentation
+
+In addition to the log-driven pairwise testsets, a complementary set of
+**500 black-box tests** (250 matmul + 250 conv) covers input-space corners
+that are unlikely to appear in production nightly logs:
+
+| Category | Matmul examples | Conv examples |
+|----------|----------------|---------------|
+| Edge dimensions | GEMV (M=1), GEMM-N=1, K=1, M=N=K=1 | IC=1 (grayscale), IC=3 (RGB), OC=1, IC=OC=1 |
+| GPU tail sizes | 127×127, 129×129, 255×255, 257×257, 511×511 | prime spatial sizes (7, 13, 27) |
+| Layout corners | `ba:ba`, `bca:cab`, transposed 3D perms | `axb` (NXC), asymmetric strides `sh≠sw` |
+| Kernel variety | — | 1D (kw=1..21), 3D (3×3×3, 1×3×3), asymmetric (1×3, 3×1, 1×7, 7×1), even (2×2, 4×4) |
+| Dilation | — | dh=1,2,3,7; dilated depthwise; dilated 1D |
+| Depthwise | — | g=IC=OC for g=16,32,64,128,256 with asymmetric/dilated kernels |
+| Attention | Q·Kᵀ decode (M=1, N=64), 4D `abcd` multiply | — |
+| LLM FFN | token×d_model, single-token inference | — |
+| int4 group sizes | 16, 32, 64, 128, 256, 512 | — |
+| fpmath modes | tf32, bf16, f16 applied to f32 src/dst | — |
+
+Generate the black-box augmentation files:
+
+```bash
+python3 gen_blackbox_tests.py
+# Produces: matmul_blackbox.txt  conv_blackbox.txt
+```
+
+These are referenced from the nightly test drivers:
+- `tests/benchdnn/inputs/matmul/test_matmul_gpu`
+- `tests/benchdnn/inputs/conv/test_conv_gpu`
+
+### Validation against known bugs
+
+| Bug | Hardware | Testset catches? | Notes |
+|-----|----------|-----------------|-------|
+| MFDNN-14935 (f4_e2m1 mx-scale) | Xe3LPG | ✅ Yes (exact shape in log-driven set) | |
+| MFDNN-14869 (bf16:f8_e4m3 ab/ba layout) | PVC | ✅ Yes (targeted augmentation in `harness_matmul_new_nightly_gen`) | Not in log; added via `TARGETED_AUGMENTATIONS` |
+| MFDNN-15146 (f16:s4 fpmath abc) | XeHPG | ✅ Yes (shape variant in log-driven set) | |
+| MFDNN-15114 (21M-column extreme shape) | XeHPG | ⚠️ Out of scope | Only ref impl; budget-constrained testset cannot include extreme shapes |

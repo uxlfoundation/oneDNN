@@ -1,1 +1,2 @@
 --batch=harness_matmul_new_nightly_gen
+--batch=harness_matmul_blackbox_gen

@@ -1,1 +1,2 @@
 --batch=harness_conv_new_nightly_gen
+--batch=harness_conv_blackbox_gen

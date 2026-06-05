@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2024 Intel Corporation
-* Copyright 2024 Arm Ltd. and affiliates
+* Copyright 2024, 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -16,19 +16,6 @@
 *******************************************************************************/
 
 #include "graph/backend/dnnl/platform.hpp"
-
-#if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
-#if DNNL_X64
-#include "cpu/x64/cpu_isa_traits.hpp"
-#elif DNNL_RV64
-#include "cpu/rv64/cpu_isa_traits.hpp"
-#elif DNNL_AARCH64
-#if defined(DNNL_AARCH64_USE_ACL)
-// For checking if fp16 isa is supported on the platform
-#include "arm_compute/core/CPP/CPPTypes.h"
-#endif
-#endif
-#endif
 
 namespace dnnl {
 namespace impl {
@@ -100,40 +87,7 @@ bool get_dtype_support_status(engine_kind_t eng, data_type_t dtype, dir_t dir) {
 
 bool has_cpu_data_type_support(data_type_t data_type) {
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
-    switch (data_type) {
-        case data_type::bf16:
-#if DNNL_X64
-            using namespace dnnl::impl::cpu::x64;
-            return mayiuse(avx512_core) || mayiuse(avx2_vnni_2);
-#elif DNNL_PPC64
-#if defined(USE_CBLAS) && defined(BLAS_HAS_SBGEMM) && defined(__MMA__)
-            return true;
-#endif
-#elif defined(DNNL_AARCH64_USE_ACL)
-            return arm_compute::CPUInfo::get().has_bf16();
-#else
-            return false;
-#endif
-        case data_type::f16:
-#if DNNL_X64
-            return mayiuse(avx512_core_fp16) || mayiuse(avx2_vnni_2);
-#elif DNNL_RV64
-            using namespace dnnl::impl::cpu::rv64;
-            return mayiuse(zvfh);
-#elif defined(DNNL_AARCH64_USE_ACL)
-            return arm_compute::CPUInfo::get().has_fp16();
-#else
-            return false;
-#endif
-        case data_type::f8_e5m2:
-        case data_type::f8_e4m3:
-#if DNNL_X64
-            return mayiuse(avx512_core_fp16);
-#else
-            return false;
-#endif
-        default: return true;
-    }
+    return dnnl::impl::cpu::platform::has_data_type_support(data_type);
 #else
     return false;
 #endif
@@ -141,33 +95,7 @@ bool has_cpu_data_type_support(data_type_t data_type) {
 
 bool has_cpu_training_support(data_type_t data_type) {
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
-    switch (data_type) {
-        case data_type::bf16:
-#if DNNL_X64
-            using namespace dnnl::impl::cpu::x64;
-            return mayiuse(avx512_core);
-#elif DNNL_PPC64
-#if defined(USE_CBLAS) && defined(BLAS_HAS_SBGEMM) && defined(__MMA__)
-            return true;
-#endif
-#elif defined(DNNL_AARCH64_USE_ACL)
-            return arm_compute::CPUInfo::get().has_bf16();
-#else
-            return false;
-#endif
-        case data_type::f16:
-#if DNNL_X64
-            return mayiuse(avx512_core_fp16);
-#elif DNNL_RV64
-            using namespace dnnl::impl::cpu::rv64;
-            return mayiuse(zvfh);
-#elif defined(DNNL_AARCH64_USE_ACL)
-            return arm_compute::CPUInfo::get().has_fp16();
-#else
-            return false;
-#endif
-        default: return true;
-    }
+    return dnnl::impl::cpu::platform::has_training_support(data_type);
 #else
     return false;
 #endif

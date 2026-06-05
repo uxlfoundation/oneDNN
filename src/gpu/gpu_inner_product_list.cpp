@@ -18,7 +18,7 @@
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
 #include "gpu/intel/ip/conv.hpp"
-#include "gpu/intel/ip/gemm.hpp"
+#include "gpu/intel/ip/matmul.hpp"
 #include "gpu/intel/ip/ref.hpp"
 #endif
 
@@ -46,7 +46,7 @@ using namespace dnnl::impl::prop_kind;
 const std::map<pk_impl_key_t, std::vector<impl_list_item_t>>
         impl_list_map REG_IP_P({
     {{forward}, {
-        GPU_INSTANCE_INTEL(intel::ip::gemm_fwd_t)
+        GPU_INSTANCE_INTEL(intel::ip::matmul_fwd_t)
         GPU_INSTANCE_INTEL(intel::ip::conv_fwd_t)
         GPU_INSTANCE_INTEL_REF(intel::ip::ref_fwd_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_gemm_inner_product_fwd_t)
@@ -56,8 +56,8 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>>
         nullptr,
     }},
     {{backward}, REG_BWD_PK({
-        GPU_INSTANCE_INTEL(intel::ip::gemm_bwd_data_t)
-        GPU_INSTANCE_INTEL(intel::ip::gemm_bwd_weights_t)
+        GPU_INSTANCE_INTEL(intel::ip::matmul_bwd_data_t)
+        GPU_INSTANCE_INTEL(intel::ip::matmul_bwd_weights_t)
         GPU_INSTANCE_INTEL_REF(intel::ip::ref_bwd_data_t)
         GPU_INSTANCE_INTEL_REF(intel::ip::ref_bwd_weights_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_gemm_inner_product_bwd_data_t)

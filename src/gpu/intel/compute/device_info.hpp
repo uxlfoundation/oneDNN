@@ -192,7 +192,6 @@ public:
     int hw_threads(int grf_per_thread = 128) const {
         return eu_count_ * threads_per_eu(*product_, grf_per_thread);
     }
-    static int grf_per_eu(gpu_arch_t gpu_arch);
     static int threads_per_eu(
             const ngen::Product &product, int grf_per_thread = 128);
     int threads_per_eu(int grf_per_thread = 128) const {

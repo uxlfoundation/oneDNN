@@ -75,20 +75,23 @@ int hw_t::eus_per_core() const {
         default: gpu_error_not_expected(); return 8;
     }
 }
-int hw_t::grf_per_eu() const {
-    switch (hw_) {
+
+namespace {
+int grf_per_eu(const ngen::Product &product) {
+    ngen::HW hw = ngen::getCore(product.family);
+    switch (hw) {
         case ngen::HW::XeLP: return 896;
         case ngen::HW::XeHP:
         case ngen::HW::XeHPG:
         case ngen::HW::XeHPC:
         case ngen::HW::Xe2:
         case ngen::HW::Xe3:
-        case ngen::HW::Xe3p: return 1024;
+        case ngen::HW::Xe3p:
+            return product.family == ngen::ProductFamily::CRI ? 2048 : 1024;
         default: gpu_error_not_expected(); return 1024;
     }
 }
 
-namespace {
 int max_threads_per_eu(const ngen::Product product) {
     auto family = product.family;
     switch (getCore(family)) {
@@ -108,7 +111,7 @@ int max_threads_per_eu(const ngen::Product product) {
 
 int hw_t::threads_per_eu(int regs) const {
     int max_threads = max_threads_per_eu(product());
-    return std::min(max_threads, grf_per_eu() / regs);
+    return std::min(max_threads, grf_per_eu(product()) / regs);
 }
 
 int hw_t::cache_line_size() const {

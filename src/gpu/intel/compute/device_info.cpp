@@ -247,21 +247,24 @@ size_t device_info_t::max_wg_size(
     return device_max_wg_size;
 }
 
-int device_info_t::grf_per_eu(gpu_arch_t gpu_arch) {
-    switch (gpu_arch) {
-        case gpu::intel::compute::gpu_arch_t::xe_lp: return 896;
-        case gpu::intel::compute::gpu_arch_t::xe_hp:
-        case gpu::intel::compute::gpu_arch_t::xe_hpg:
-        case gpu::intel::compute::gpu_arch_t::xe_hpc:
-        case gpu::intel::compute::gpu_arch_t::xe2:
-        case gpu::intel::compute::gpu_arch_t::xe3p:
-        case gpu::intel::compute::gpu_arch_t::xe3: return 1024;
-        case gpu::intel::compute::gpu_arch_t::unknown: return 896;
+namespace {
+int grf_per_eu(const ngen::Product &product) {
+    ngen::HW hw = ngen::getCore(product.family);
+    switch (hw) {
+        case ngen::HW::XeLP: return 896;
+        case ngen::HW::XeHP:
+        case ngen::HW::XeHPG:
+        case ngen::HW::XeHPC:
+        case ngen::HW::Xe2:
+        case ngen::HW::Xe3: return 1024;
+        case ngen::HW::Xe3p:
+            return product.family == ngen::ProductFamily::CRI ? 2048 : 1024;
+        case ngen::HW::Unknown: return 896;
+        default: gpu_error_not_expected();
     }
     return 1024;
 }
 
-namespace {
 int max_threads_per_eu(const ngen::Product &product) {
     ngen::HW hw = ngen::getCore(product.family);
     gpu_arch_t arch = jit::convert_ngen_arch_to_dnnl(hw);
@@ -285,10 +288,8 @@ int max_threads_per_eu(const ngen::Product &product) {
 int device_info_t::threads_per_eu(
         const ngen::Product &product, int grf_per_thread) {
     gpu_assert(grf_per_thread > 0) << "Invalid GRF per thread";
-    ngen::HW hw = ngen::getCore(product.family);
-    gpu_arch_t arch = jit::convert_ngen_arch_to_dnnl(hw);
     int hw_max = max_threads_per_eu(product);
-    return std::min(hw_max, grf_per_eu(arch) / grf_per_thread);
+    return std::min(hw_max, grf_per_eu(product) / grf_per_thread);
 }
 
 int device_info_t::max_slm_size(const ngen::Product &product) {

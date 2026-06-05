@@ -110,7 +110,6 @@ public:
 
     // Number of EUs per Xe core (maps to dual subslice on XeHPG).
     int eus_per_core() const;
-    int grf_per_eu() const;
     int threads_per_eu(int regs = 128) const;
     int cache_line_size() const;
 

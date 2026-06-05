@@ -1250,8 +1250,14 @@ status_t micro_fwd_params_t::get_kernel_ctx(
     kernel_ctx.add_custom_header("gemm_vs.h",
             micro::generateShim(gemm_vs, HostLanguage::OpenCL_C, shimOptions));
 
-    if (gemm_kq.grfMin > 128 || gemm_vs.grfMin > 128)
+    const int grf_min = std::max(gemm_kq.grfMin, gemm_vs.grfMin);
+    const auto product = ngen::npack::decodeHWIPVersion(hw_info.gmdid);
+    const bool is_xe3p = getCore(product.family) >= ngen::HW::Xe3p;
+    if (is_xe3p && grf_min > 256) {
+        kernel_ctx.add_option("-cl-intel-512-GRF-per-thread");
+    } else if (grf_min > 128) {
         kernel_ctx.add_option("-cl-intel-256-GRF-per-thread");
+    }
 
     return status::success;
 }
@@ -1459,9 +1465,15 @@ status_t micro_bwd_params_t::get_kernel_ctx(
             gemm_qdSt, HostLanguage::OpenCL_C, shimOptions);
     kernel_ctx.add_custom_header("gemm_qdSt.h", std::move(gemm_qdSt_header));
 
-    if (gemm_kq.grfMin > 128 || gemm_vs.grfMin > 128 || gemm_vtdA.grfMin > 128
-            || gemm_ktq.grfMin > 128 || gemm_qdSt.grfMin > 128)
+    const int grf_min = std::max({gemm_kq.grfMin, gemm_vs.grfMin,
+            gemm_vtdA.grfMin, gemm_ktq.grfMin, gemm_qdSt.grfMin});
+    const auto product = ngen::npack::decodeHWIPVersion(hw_info.gmdid);
+    const bool is_xe3p = getCore(product.family) >= ngen::HW::Xe3p;
+    if (is_xe3p && grf_min > 256) {
+        kernel_ctx.add_option("-cl-intel-512-GRF-per-thread");
+    } else if (grf_min > 128) {
         kernel_ctx.add_option("-cl-intel-256-GRF-per-thread");
+    }
 
     return status::success;
 }

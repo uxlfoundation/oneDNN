@@ -17,6 +17,7 @@
 #ifndef UTILS_EXECUTION_MODE_HPP
 #define UTILS_EXECUTION_MODE_HPP
 
+#include <functional>
 #include <sstream>
 
 enum class execution_mode_t { direct, graph };
@@ -42,7 +43,18 @@ private:
     execution_mode_t saved_mode_;
 };
 
+// Forward declarations for `execute_in_graph_mode`.
+struct engine_t;
+struct stream_t;
+struct res_t;
+
 // Returns true if SYCL command graph execution mode is active.
-bool use_sycl_graph_exec();
+bool use_sycl_graph_exec(const engine_t &engine);
+
+// Executes `record_func` inside a SYCL command graph and replays it. Used when
+// `execution_mode` is set to `graph`. Returns OK on success, FAIL on error
+// (with `res->state` set to FAILED when `res` is not null).
+int execute_in_graph_mode(
+        stream_t &stream, const std::function<void()> &record_func, res_t *res);
 
 #endif

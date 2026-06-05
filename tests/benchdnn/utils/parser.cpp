@@ -704,6 +704,8 @@ execution_mode_t str2execution_mode(const std::string &str) {
         return execution_mode_t::direct;
     } else if (s == "graph") {
         return execution_mode_t::graph;
+    } else if (s == "native_graph") {
+        return execution_mode_t::native_graph;
     } else {
         BENCHDNN_PRINT(
                 0, "%s", "Error: execution mode value is not recognized.\n");

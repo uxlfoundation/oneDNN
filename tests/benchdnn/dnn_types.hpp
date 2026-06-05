@@ -540,6 +540,8 @@ struct attr_t {
     // build time, otherwise scratchpad pointers are invalidated (as were
     // created inside threads that no longer exist when execution time comes).
     // Relevant for both engines since GPU uses CPU for faster validation.
+    //
+    // Same situation with native_graph execution mode.
     static dnnl_scratchpad_mode_t get_default_scratchpad_mode();
 
     arg_scales_t scales;

@@ -20,7 +20,11 @@
 #include <functional>
 #include <sstream>
 
-enum class execution_mode_t { direct, graph };
+enum class execution_mode_t {
+    direct,
+    graph,
+    native_graph,
+};
 
 extern execution_mode_t execution_mode;
 extern execution_mode_t default_execution_mode;

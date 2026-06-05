@@ -28,13 +28,15 @@ execution_mode_t execution_mode {default_execution_mode};
 std::ostream &operator<<(std::ostream &s, execution_mode_t mode) {
     if (mode == execution_mode_t::direct) s << "direct";
     if (mode == execution_mode_t::graph) s << "graph";
+    if (mode == execution_mode_t::native_graph) s << "native_graph";
 
     return s;
 }
 
 bool use_sycl_graph_exec(const engine_t &engine) {
     return is_gpu(engine) && is_sycl_engine(engine)
-            && execution_mode == execution_mode_t::graph;
+            && (execution_mode == execution_mode_t::graph
+                    || execution_mode == execution_mode_t::native_graph);
 }
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_DPCPP
@@ -61,6 +63,26 @@ int validate_backend(const ::sycl::queue &queue, res_t *res) {
     return OK;
 }
 
+// Verify that compiler supports this mode.
+// Note: can't be checked in parser.cpp since this macros requires <sycl.hpp>
+// header to be defined.
+int validate_features(res_t *res) {
+#if defined(SYCL_EXT_ONEAPI_GRAPH) && SYCL_EXT_ONEAPI_GRAPH >= 2
+    return OK;
+#elif defined(SYCL_EXT_ONEAPI_GRAPH) && SYCL_EXT_ONEAPI_GRAPH < 2
+    BENCHDNN_PRINTF(0, "%s",
+            "Error: this compiler version doesn't support native graph "
+            "recording mode");
+    if (res) res->state = FAILED;
+    return FAIL;
+#elif !defined(SYCL_EXT_ONEAPI_GRAPH)
+    BENCHDNN_PRINTF(0, "%s",
+            "Error: this compiler doesn't support native graph recording");
+    if (res) res->state = FAILED;
+    return FAIL;
+#endif
+}
+
 // Record operations into a SYCL command graph and return the finalized
 // executable. `record_func` is called while the queue is in recording state.
 // Returns nullptr on failure (with res->state set to FAILED).
@@ -74,8 +96,16 @@ std::unique_ptr<sycl_exec_graph_t> record_and_finalize(stream_t &stream,
     stream.wait();
     queue.wait_and_throw();
 
-    syclex::command_graph sycl_graph {queue.get_context(), queue.get_device(),
-            {syclex::property::graph::assume_buffer_outlives_graph {}}};
+    ::sycl::property_list prop_list {
+            syclex::property::graph::assume_buffer_outlives_graph {}};
+    if (execution_mode == execution_mode_t::native_graph) {
+#if defined(SYCL_EXT_ONEAPI_GRAPH) && SYCL_EXT_ONEAPI_GRAPH >= 2
+        prop_list = {syclex::property::graph::assume_buffer_outlives_graph {},
+                syclex::property::graph::enable_native_recording {}};
+#endif
+    }
+    syclex::command_graph sycl_graph {
+            queue.get_context(), queue.get_device(), prop_list};
 
     try {
         sycl_graph.begin_recording(queue);
@@ -88,8 +118,8 @@ std::unique_ptr<sycl_exec_graph_t> record_and_finalize(stream_t &stream,
         try {
             sycl_graph.end_recording(queue);
         } catch (...) {}
-        BENCHDNN_PRINT(0, "%s %s\n",
-                "[ERROR] SYCL graph execution exception:", e.what());
+        BENCHDNN_PRINT(
+                0, "%s %s\n", "[ERROR] SYCL graph record exception:", e.what());
         if (res) res->state = FAILED;
         return nullptr;
     }
@@ -119,6 +149,7 @@ int execute_in_graph_mode(stream_t &stream,
     try {
         ::sycl::queue queue = dnnl::sycl_interop::get_queue(stream);
         if (validate_backend(queue, res) != OK) return FAIL;
+        if (validate_features(res) != OK) return FAIL;
 
         auto exec = record_and_finalize(stream, queue, record_func, res);
         if (!exec) return FAIL;

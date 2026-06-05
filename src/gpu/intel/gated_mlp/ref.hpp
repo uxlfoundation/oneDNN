@@ -168,13 +168,8 @@ struct ref_t : public primitive_t {
                 impl::engine_t *e, const primitive_attr_t &attr,
                 const memory_desc_t *src_desc, const memory_desc_t *wei_desc,
                 const memory_desc_t *dst_desc) const {
-            auto desc = matmul_desc_t();
-            CHECK(impl::matmul_desc_init(
-                    &desc, src_desc, wei_desc, nullptr, dst_desc));
-            primitive_desc_iterator_t it(e, (op_desc_t *)&desc, &attr, nullptr);
-            if (!it.is_initialized()) return status::out_of_memory;
-            retn = *(++it);
-            return (retn) ? status::success : status::unimplemented;
+            return impl::create_matmul_pd(
+                    retn, e, src_desc, wei_desc, nullptr, dst_desc, &attr);
         }
     };
 

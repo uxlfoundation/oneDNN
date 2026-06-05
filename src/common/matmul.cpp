@@ -15,8 +15,10 @@
 *******************************************************************************/
 
 #include <assert.h>
+#include "matmul_pd.hpp"
 #include "opdesc.hpp"
 #include "primitive_desc_iface.hpp"
+#include "primitive_desc_iterator.hpp"
 
 #include "oneapi/dnnl/dnnl.h"
 
@@ -708,6 +710,34 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
         const memory_desc_t *bias_desc, const memory_desc_t *dst_desc) {
     return matmul_desc_init(matmul_desc, src_desc, weights_desc, bias_desc,
             dst_desc, nullptr, matmul_reduce_kind::undef);
+}
+
+status_t create_matmul_pd(std::shared_ptr<primitive_desc_t> &matmul_pd,
+        engine_t *engine, const memory_desc_t *src_md,
+        const memory_desc_t *wei_md, const memory_desc_t *bias_md,
+        const memory_desc_t *dst_md, const primitive_attr_t *attr,
+        const memory_desc_t *reduce_md, matmul_reduce_kind_t reduce_kind,
+        data_type_t acc_dt) {
+    matmul_pd = nullptr;
+    matmul_desc_t matmul_desc;
+    CHECK(matmul_desc_init(&matmul_desc, src_md, wei_md, bias_md, dst_md,
+            reduce_md, reduce_kind));
+    if (acc_dt != data_type::undef) matmul_desc.accum_data_type = acc_dt;
+
+    primitive_attr_t matmul_attr = *attr;
+
+    primitive_desc_iterator_t it(
+            engine, (op_desc_t *)&matmul_desc, &matmul_attr, nullptr);
+    if (!it.is_initialized()) return status::out_of_memory;
+
+    while (++it != it.end()) {
+        if (*it) {
+            matmul_pd = *it;
+            return status::success;
+        }
+    }
+    VCHECK_MATMUL_UNIMPL(false, VERBOSE_PRIMITIVE_CREATION_FAIL, "matmul");
+    return status::unimplemented;
 }
 
 } // namespace impl

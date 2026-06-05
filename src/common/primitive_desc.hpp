@@ -17,6 +17,7 @@
 #ifndef COMMON_PRIMITIVE_DESC_HPP
 #define COMMON_PRIMITIVE_DESC_HPP
 
+#include <cstring>
 #include <typeindex>
 
 #include "oneapi/dnnl/dnnl.h"
@@ -574,6 +575,13 @@ protected:
     friend struct dnnl::impl::impl_list_item_t;
 };
 // NOLINTEND(google-default-arguments)
+
+// Reference impls are apriori the slowest and undesired when
+// creating a nested primitive. Match the "ref:any" naming
+// convention.
+inline bool is_ref_impl(const primitive_desc_t *pd) {
+    return pd && strstr(pd->name(), "ref:any") != nullptr;
+}
 
 } // namespace impl
 } // namespace dnnl

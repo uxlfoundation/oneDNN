@@ -68,6 +68,8 @@ struct gemm_t : public primitive_t {
                     is_dense_format_kind(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
             auto maybe_reshape = [&]() -> status_t {
+                // reduce output is not handled by the reshape logic.
+                if (with_reduce()) return status::success;
                 dim_t batch_b_dims = 1;
                 for (int i = 0; i < b_md->ndims - 2; i++) {
                     batch_b_dims *= b_md->dims[i];
@@ -361,9 +363,17 @@ struct gemm_t : public primitive_t {
             VDISPATCH_MATMUL_SC(maybe_reshape(), VERBOSE_IMPL_HEURISTIC_FAIL,
                     "2D/3D reshaping");
 
+            if (with_reduce()) {
+                VDISPATCH_MATMUL(reduce_kind() == matmul_reduce_kind::src,
+                        VERBOSE_UNSUPPORTED_ATTR);
+                sum_ab_ = sum_ab::sum_a_row;
+                sum_ab_type_ = reduce_md()->data_type;
+            }
+
             // We create a gemm_pd and resolve 'any' desc by querying gemm_pd
-            VDISPATCH_MATMUL_SC(create_gemm_pd(gemm_pd_, engine, a_md, b_md,
-                                        c_md, bias_md, acc_dt, &gemm_attr),
+            VDISPATCH_MATMUL_SC(
+                    create_gemm_pd(gemm_pd_, engine, a_md, b_md, c_md, bias_md,
+                            acc_dt, &gemm_attr, false, sum_ab_, sum_ab_type_),
                     VERBOSE_PRIMITIVE_CREATION_FAIL, "gemm");
             VDISPATCH_MATMUL_SC(set_default_params(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_MATMUL_SC(attr_.set_default_formats(dst_md(0)),
@@ -375,6 +385,8 @@ struct gemm_t : public primitive_t {
         }
 
         std::shared_ptr<primitive_desc_t> gemm_pd_;
+        sum_ab_t sum_ab_ = sum_ab::sum_none;
+        data_type_t sum_ab_type_ = data_type::undef;
 
     private:
         // We cannot change the number of dimensions in the input mds.

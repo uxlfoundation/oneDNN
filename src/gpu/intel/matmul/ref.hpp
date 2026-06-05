@@ -57,6 +57,8 @@ struct ref_t : public primitive_t {
             VDISPATCH_MATMUL(
                     is_dense_format_kind(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
             VDISPATCH_MATMUL(
+                    !with_reduce(), VERBOSE_UNSUPPORTED_FEATURE, "reduce");
+            VDISPATCH_MATMUL(
                     attr()->has_default_values(smask_t::scales_data_type
                             | smask_t::scales_groups | smask_t::dropout
                             | smask_t::zero_points_data_type

@@ -70,6 +70,8 @@ struct ref_sparse_t : public primitive_t {
             VDISPATCH_MATMUL(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_MATMUL(!with_bias(), VERBOSE_UNSUPPORTED_BIAS_CFG);
+            VDISPATCH_MATMUL(
+                    !with_reduce(), VERBOSE_UNSUPPORTED_FEATURE, "reduce");
 
             return status::success;
         }

@@ -49,6 +49,14 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
         const memory_desc_t *src_desc, const memory_desc_t *weights_desc,
         const memory_desc_t *bias_desc, const memory_desc_t *dst_desc);
 
+status_t create_matmul_pd(std::shared_ptr<primitive_desc_t> &matmul_pd,
+        engine_t *engine, const memory_desc_t *src_md,
+        const memory_desc_t *wei_md, const memory_desc_t *bias_md,
+        const memory_desc_t *dst_md, const primitive_attr_t *attr,
+        const memory_desc_t *reduce_md = nullptr,
+        matmul_reduce_kind_t reduce_kind = matmul_reduce_kind::undef,
+        data_type_t acc_dt = data_type::undef);
+
 // NOLINTBEGIN(google-default-arguments)
 struct matmul_pd_t : public primitive_desc_t {
     static constexpr auto base_pkind = primitive_kind::matmul;

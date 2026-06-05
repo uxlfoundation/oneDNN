@@ -20,7 +20,6 @@
 #include <unordered_map>
 
 #include "utils/cold_cache.hpp"
-#include "utils/execution_mode.hpp"
 #include "utils/fill.hpp"
 #include "utils/parser.hpp"
 #include "utils/stream_kind.hpp"
@@ -697,6 +696,20 @@ bool str2bool(const std::string &str) {
         SAFE_V(FAIL);
     }
     return false;
+}
+
+execution_mode_t str2execution_mode(const std::string &str) {
+    auto s = utils::lowercase(str);
+    if (s == "direct") {
+        return execution_mode_t::direct;
+    } else if (s == "graph") {
+        return execution_mode_t::graph;
+    } else {
+        BENCHDNN_PRINT(
+                0, "%s", "Error: execution mode value is not recognized.\n");
+        SAFE_V(FAIL);
+    }
+    return execution_mode_t::direct;
 }
 
 } // namespace parsers
@@ -1839,9 +1852,9 @@ static bool parse_execution_mode(
               "    * `graph` to execute the primitive using a graph backend.\n"
               "          Currently limited to the experimental SYCL Graph on "
               "DPC++ builds.\n";
-    bool parsed = parse_single_value_option(execution_mode,
-            execution_mode_t::direct, str2execution_mode, str, option_name,
-            help);
+    bool parsed
+            = parse_single_value_option(execution_mode, default_execution_mode,
+                    parsers::str2execution_mode, str, option_name, help);
 
 #if !defined(DNNL_WITH_SYCL)
     if (parsed) {

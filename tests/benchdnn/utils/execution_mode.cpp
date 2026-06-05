@@ -18,32 +18,14 @@
 #include "common.hpp"
 #include "dnnl_common.hpp"
 
-execution_mode_t execution_mode {execution_mode_t::direct};
+execution_mode_t default_execution_mode {execution_mode_t::direct};
+execution_mode_t execution_mode {default_execution_mode};
 
-const char *execution_mode2str(execution_mode_t mode) {
-#define EXECUTION_MODE_TO_STR(name, ...) \
-    if (execution_mode_t::name == mode) return #name;
+std::ostream &operator<<(std::ostream &s, execution_mode_t mode) {
+    if (mode == execution_mode_t::direct) s << "direct";
+    if (mode == execution_mode_t::graph) s << "graph";
 
-    EXECUTION_MODE_TO_STR(direct);
-    EXECUTION_MODE_TO_STR(graph);
-#undef EXECUTION_MODE_TO_STR
-
-    BENCHDNN_PRINT(0, "%s", "Error: execution mode value is not recognized.\n");
-    SAFE_V(FAIL);
-    return "";
-}
-
-execution_mode_t str2execution_mode(const char *str) {
-#define STR_TO_EXECUTION_MODE(name, ...) \
-    if (!strcasecmp(#name, str)) return execution_mode_t::name;
-
-    STR_TO_EXECUTION_MODE(direct);
-    STR_TO_EXECUTION_MODE(graph);
-#undef STR_TO_EXECUTION_MODE
-
-    BENCHDNN_PRINT(0, "%s", "Error: execution mode value is not recognized.\n");
-    SAFE_V(FAIL);
-    return execution_mode_t::direct;
+    return s;
 }
 
 bool use_sycl_graph_exec() {

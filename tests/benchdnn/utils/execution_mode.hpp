@@ -17,13 +17,14 @@
 #ifndef UTILS_EXECUTION_MODE_HPP
 #define UTILS_EXECUTION_MODE_HPP
 
+#include <sstream>
+
 enum class execution_mode_t { direct, graph };
 
-extern execution_mode_t execution_mode; // user execution mode
+extern execution_mode_t execution_mode;
+extern execution_mode_t default_execution_mode;
 
-const char *execution_mode2str(execution_mode_t mode);
-
-execution_mode_t str2execution_mode(const char *str);
+std::ostream &operator<<(std::ostream &s, execution_mode_t mode);
 
 // RAII guard that temporarily overrides `execution_mode` and restores the
 // original value when the guard goes out of scope.

@@ -1198,8 +1198,8 @@ std::ostream &dump_global_params(std::ostream &s) {
         s << "--cold-cache=" << cold_cache_input << " ";
     if (canonical || !buffer_prefix.empty())
         s << "--buffer-prefix=" << buffer_prefix << " ";
-    if (canonical || execution_mode != execution_mode_t::direct)
-        s << "--execution-mode=" << execution_mode2str(execution_mode) << " ";
+    if (canonical || execution_mode != default_execution_mode)
+        s << "--execution-mode=" << execution_mode << " ";
 
     return s;
 }

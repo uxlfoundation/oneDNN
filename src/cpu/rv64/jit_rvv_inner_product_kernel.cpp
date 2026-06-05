@@ -176,6 +176,8 @@ void jit_rvv_inner_product_kernel_t::generate_x8_s8(bool src_is_u8) {
         vwmulsu_vv(v_prod, v_wei, v_src);
     else
         vwmul_vv(v_prod, v_src, v_wei);
+
+    vsetvli(reg_vl, reg_vl, SEW::e16, LMUL::m2);
     vmv_v_x(v_zero, x0);
     vwredsum_vs(v_sum, v_prod, v_zero);
     vmv_x_s(reg_part, v_sum);

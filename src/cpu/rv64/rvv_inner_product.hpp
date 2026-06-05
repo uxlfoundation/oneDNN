@@ -53,6 +53,9 @@ struct rvv_inner_product_fwd_t : public primitive_t {
             VDISPATCH_INNER_PRODUCT(
                     check_types(src_type, wei_type, dst_type, bia_type),
                     VERBOSE_UNSUPPORTED_DT);
+#if !(defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1)
+            VDISPATCH_INNER_PRODUCT(false, VERBOSE_UNSUPPORTED_ISA);
+#endif
 
             using smask_t = primitive_attr_t::skip_mask_t;
             VDISPATCH_INNER_PRODUCT(attr()->has_default_values(smask_t::none),
@@ -95,8 +98,10 @@ struct rvv_inner_product_fwd_t : public primitive_t {
                 const data_type_t &wei_type, const data_type_t &dst_type,
                 const data_type_t &bia_type) const {
             using namespace data_type;
-            const bool dst_ok = dst_type == f32;
-            const bool src_wei_ok = src_type == f32 && wei_type == f32;
+            const bool dst_ok = utils::one_of(dst_type, f32, s32, s8, u8);
+            const bool src_wei_ok = (src_type == f32 && wei_type == f32)
+                    || (src_type == s8 && wei_type == s8)
+                    || (src_type == u8 && wei_type == s8);
             const bool bia_ok = IMPLICATION(
                     with_bias(), utils::one_of(bia_type, f32, src_type));
             return dst_ok && src_wei_ok && bia_ok

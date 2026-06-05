@@ -75,20 +75,6 @@ static inline const char *to_string(gpu_arch_t arch) {
 #undef CASE
 }
 
-static inline gpu_arch_t str2gpu_arch(const char *str) {
-#define CASE(_case) \
-    if (!strcmp(STRINGIFY(_case), str)) return gpu_arch_t::_case
-    CASE(xe_lp);
-    CASE(xe_hp);
-    CASE(xe_hpg);
-    CASE(xe_hpc);
-    CASE(xe2);
-    CASE(xe3);
-    CASE(xe3p);
-    return gpu_arch_t::unknown;
-#undef CASE
-}
-
 enum class device_ext_t : uint64_t {
     // clang-format off
     // OpenCL data types

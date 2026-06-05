@@ -30,6 +30,7 @@
 #include "dnnl_debug.hpp"
 #include "tests/test_thread.hpp"
 #include "utils/dims.hpp"
+#include "utils/execution_mode.hpp"
 #include "utils/impl_filter.hpp"
 #include "utils/settings.hpp"
 
@@ -68,6 +69,8 @@ namespace parsers {
 attr_t::post_ops_t str2attr_post_ops(const std::string &s);
 
 bool str2bool(const std::string &s);
+
+execution_mode_t str2execution_mode(const std::string &s);
 
 } // namespace parsers
 

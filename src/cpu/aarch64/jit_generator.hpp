@@ -173,7 +173,6 @@ public:
     const Xbyak_aarch64::XReg X_TMP_4 = x27;
     const Xbyak_aarch64::XReg X_DEFAULT_ADDR = x28;
     const Xbyak_aarch64::XReg X_SP = x21;
-    const Xbyak_aarch64::XReg X_TRANSLATOR_STACK = x22;
     const Xbyak_aarch64::PReg P_TMP = p7;
     const Xbyak_aarch64::PReg P_TMP_0 = p11;
     const Xbyak_aarch64::PReg P_TMP_1 = p12;
@@ -187,7 +186,6 @@ public:
     const int x_tmp_vec_size = x_tmp_vec.size();
 
     const Xbyak_aarch64::XReg param1 = abi_param1;
-    constexpr static size_t translator_stack_offset = 1024 * 128;
     constexpr static uint32_t DUMMY_IDX = 99;
 
     inline size_t get_size_of_abi_save_regs() const {
@@ -230,7 +228,6 @@ public:
         }
 
         mov(X_SP, sp);
-        sub_imm(X_TRANSLATOR_STACK, X_SP, translator_stack_offset, X_TMP_0);
     }
 
     void postamble() {

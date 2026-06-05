@@ -22,6 +22,7 @@
 #include <unordered_map>
 
 #include "gpu/intel/bnorm/config.hpp"
+#include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/config.hpp"
 
 namespace dnnl {

@@ -24,6 +24,7 @@
 
 #include "cpu/cpu_binary_pd.hpp"
 #include "cpu/platform.hpp"
+#include "cpu/rv64/cpu_isa_traits.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -39,9 +40,12 @@ struct rvv_binary_t : public primitive_t {
             UNUSED(engine);
             const data_type_t d_type = dst_md()->data_type;
             VDISPATCH_BINARY(
-                    utils::one_of(d_type, data_type::f32, data_type::s32,
-                            data_type::s8, data_type::u8),
+                    utils::one_of(d_type, data_type::f32, data_type::f16,
+                            data_type::s32, data_type::s8, data_type::u8),
                     VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_BINARY(
+                    IMPLICATION(d_type == data_type::f16, mayiuse(zvfh)),
+                    VERBOSE_UNSUPPORTED_ISA);
 
             VDISPATCH_BINARY(utils::everyone_is(d_type, src_md(0)->data_type,
                                      src_md(1)->data_type)

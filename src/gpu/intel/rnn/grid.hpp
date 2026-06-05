@@ -36,19 +36,19 @@ namespace gpu {
 namespace intel {
 namespace rnn {
 
-enum gemm_kind_t {
-    gemm_iter_fwd,
-    gemm_iter_fwd_2,
-    gemm_layer_fwd,
-    gemm_layer_fwd_src,
-    gemm_iter_bwd,
-    gemm_iter_bwd_2,
-    gemm_layer_bwd,
-    gemm_layer_bwd_src,
-    gemm_diff_wei_iter,
-    gemm_diff_wei_iter_2,
-    gemm_diff_wei_layer,
-    gemm_diff_wei_layer_src
+enum matmul_kind_t {
+    matmul_iter_fwd,
+    matmul_iter_fwd_2,
+    matmul_layer_fwd,
+    matmul_layer_fwd_src,
+    matmul_iter_bwd,
+    matmul_iter_bwd_2,
+    matmul_layer_bwd,
+    matmul_layer_bwd_src,
+    matmul_diff_wei_iter,
+    matmul_diff_wei_iter_2,
+    matmul_diff_wei_layer,
+    matmul_diff_wei_layer_src
 };
 
 template <prop_kind_t aprop>
@@ -62,7 +62,7 @@ struct simple_common_t : public primitive_t {
     using elemwise_gru_lbr_f = elemwise_sig_gru_lbr((class_name::*));
     using cell_execution_f = cell_execution_sig((class_name::*));
     using grid_execution_f = grid_execution_sig((class_name::*));
-    using gemm_t = gemm_sig((class_name::*));
+    using matmul_t = matmul_sig((class_name::*));
 
     using base_pd_t =
             typename impl::utils::conditional<aprop == prop_kind::forward,
@@ -89,18 +89,18 @@ struct simple_common_t : public primitive_t {
         bool is_xe_hpc = false;
         int max_eus_per_wg = 0;
 
-        std::shared_ptr<primitive_desc_t> gemm_iter_fwd_pd_;
-        std::shared_ptr<primitive_desc_t> gemm_iter_fwd_2_pd_;
-        std::shared_ptr<primitive_desc_t> gemm_layer_fwd_pd_;
-        std::shared_ptr<primitive_desc_t> gemm_layer_fwd_src_pd_;
-        std::shared_ptr<primitive_desc_t> gemm_iter_bwd_pd_;
-        std::shared_ptr<primitive_desc_t> gemm_iter_bwd_2_pd_;
-        std::shared_ptr<primitive_desc_t> gemm_layer_bwd_pd_;
-        std::shared_ptr<primitive_desc_t> gemm_layer_bwd_src_pd_;
-        std::shared_ptr<primitive_desc_t> gemm_diff_wei_layer_pd_;
-        std::shared_ptr<primitive_desc_t> gemm_diff_wei_layer_src_pd_;
-        std::shared_ptr<primitive_desc_t> gemm_diff_wei_iter_pd_;
-        std::shared_ptr<primitive_desc_t> gemm_diff_wei_iter_2_pd_;
+        std::shared_ptr<primitive_desc_t> matmul_iter_fwd_pd_;
+        std::shared_ptr<primitive_desc_t> matmul_iter_fwd_2_pd_;
+        std::shared_ptr<primitive_desc_t> matmul_layer_fwd_pd_;
+        std::shared_ptr<primitive_desc_t> matmul_layer_fwd_src_pd_;
+        std::shared_ptr<primitive_desc_t> matmul_iter_bwd_pd_;
+        std::shared_ptr<primitive_desc_t> matmul_iter_bwd_2_pd_;
+        std::shared_ptr<primitive_desc_t> matmul_layer_bwd_pd_;
+        std::shared_ptr<primitive_desc_t> matmul_layer_bwd_src_pd_;
+        std::shared_ptr<primitive_desc_t> matmul_diff_wei_layer_pd_;
+        std::shared_ptr<primitive_desc_t> matmul_diff_wei_layer_src_pd_;
+        std::shared_ptr<primitive_desc_t> matmul_diff_wei_iter_pd_;
+        std::shared_ptr<primitive_desc_t> matmul_diff_wei_iter_2_pd_;
 
     private:
         void init_scratchpad(dim_t workspace_size) {
@@ -110,18 +110,18 @@ struct simple_common_t : public primitive_t {
                     OCL_BUFFER_ALIGNMENT, 4096);
             utils::scratch_t::book(scratchpad, conf,
                     {
-                            gemm_iter_fwd_pd_.get(),
-                            gemm_iter_fwd_2_pd_.get(),
-                            gemm_layer_fwd_pd_.get(),
-                            gemm_layer_fwd_src_pd_.get(),
-                            gemm_iter_bwd_pd_.get(),
-                            gemm_iter_bwd_2_pd_.get(),
-                            gemm_layer_bwd_pd_.get(),
-                            gemm_layer_bwd_src_pd_.get(),
-                            gemm_diff_wei_layer_pd_.get(),
-                            gemm_diff_wei_layer_src_pd_.get(),
-                            gemm_diff_wei_iter_pd_.get(),
-                            gemm_diff_wei_iter_2_pd_.get(),
+                            matmul_iter_fwd_pd_.get(),
+                            matmul_iter_fwd_2_pd_.get(),
+                            matmul_layer_fwd_pd_.get(),
+                            matmul_layer_fwd_src_pd_.get(),
+                            matmul_iter_bwd_pd_.get(),
+                            matmul_iter_bwd_2_pd_.get(),
+                            matmul_layer_bwd_pd_.get(),
+                            matmul_layer_bwd_src_pd_.get(),
+                            matmul_diff_wei_layer_pd_.get(),
+                            matmul_diff_wei_layer_src_pd_.get(),
+                            matmul_diff_wei_iter_pd_.get(),
+                            matmul_diff_wei_iter_2_pd_.get(),
                     });
         }
     }; // struct pd_t : public base_pd_t
@@ -172,7 +172,7 @@ private:
     elemwise_sig_gru(gru_elemwise);
     elemwise_sig_gru_lbr(gru_lbr_elemwise);
 
-    gemm_sig(gemm_primitive);
+    matmul_sig(matmul_primitive);
 
     float (*activation_func)(float dd, float s, float alpha, float cliping)
             = nullptr;
@@ -225,18 +225,18 @@ private:
     std::vector<compute::kernel_t> kernels_;
 
     // ptrs to GEMM primitives
-    std::shared_ptr<impl::primitive_t> gemm_layer_fwd_;
-    std::shared_ptr<impl::primitive_t> gemm_layer_fwd_src_;
-    std::shared_ptr<impl::primitive_t> gemm_iter_fwd_;
-    std::shared_ptr<impl::primitive_t> gemm_iter_fwd_2_;
-    std::shared_ptr<impl::primitive_t> gemm_layer_bwd_;
-    std::shared_ptr<impl::primitive_t> gemm_layer_bwd_src_;
-    std::shared_ptr<impl::primitive_t> gemm_iter_bwd_;
-    std::shared_ptr<impl::primitive_t> gemm_iter_bwd_2_;
-    std::shared_ptr<impl::primitive_t> gemm_diff_wei_layer_;
-    std::shared_ptr<impl::primitive_t> gemm_diff_wei_layer_src_;
-    std::shared_ptr<impl::primitive_t> gemm_diff_wei_iter_;
-    std::shared_ptr<impl::primitive_t> gemm_diff_wei_iter_2_;
+    std::shared_ptr<impl::primitive_t> matmul_layer_fwd_;
+    std::shared_ptr<impl::primitive_t> matmul_layer_fwd_src_;
+    std::shared_ptr<impl::primitive_t> matmul_iter_fwd_;
+    std::shared_ptr<impl::primitive_t> matmul_iter_fwd_2_;
+    std::shared_ptr<impl::primitive_t> matmul_layer_bwd_;
+    std::shared_ptr<impl::primitive_t> matmul_layer_bwd_src_;
+    std::shared_ptr<impl::primitive_t> matmul_iter_bwd_;
+    std::shared_ptr<impl::primitive_t> matmul_iter_bwd_2_;
+    std::shared_ptr<impl::primitive_t> matmul_diff_wei_layer_;
+    std::shared_ptr<impl::primitive_t> matmul_diff_wei_layer_src_;
+    std::shared_ptr<impl::primitive_t> matmul_diff_wei_iter_;
+    std::shared_ptr<impl::primitive_t> matmul_diff_wei_iter_2_;
 
     // offset variables set in workspace and used in offset calculations for
     // grid & cell execution and fwd & bwd kernel macros

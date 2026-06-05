@@ -29,9 +29,10 @@
 #include "gpu/intel/rnn/grid.hpp"
 
 #include "common/c_types_map.hpp"
+#include "common/memory.hpp"
+#include "common/primitive_exec_types.hpp"
 #include "common/type_helpers.hpp"
-#include "gpu/intel/gemm/primitive.hpp"
-#include "gpu/intel/gemm/utils.hpp"
+#include "gpu/intel/matmul/utils.hpp"
 #include "gpu/intel/primitive_attr.hpp"
 #include "gpu/intel/rnn/config.hpp"
 
@@ -747,34 +748,39 @@ status_t simple_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
     auto fpmath_mode = this->attr()->fpmath_.mode_;
     int grf_per_thread = 0;
 
-    // The inputs of create_gemm_pd describe a gemm in column major.
-    // Below, we have to transpose the a and b descriptor to describe
-    // the GEMM as a row major problem.
-    auto create_gemm_pd =
-            [&](std::shared_ptr<primitive_desc_t> &gemm_pd, dim_t m, dim_t n,
-                    dim_t k, strides_t<2> a_strides, strides_t<2> b_strides,
-                    strides_t<2> c_strides, data_type_t a_dt, data_type_t b_dt,
-                    data_type_t c_dt, float beta) -> status_t {
-        memory_desc_t a_md, b_md, c_md;
-        dims_t a_dims = {n, k}, b_dims = {k, m}, c_dims = {n, m};
-
-        dims_t b_strides_md = {b_strides[0], b_strides[1]};
-        CHECK(memory_desc_init_by_strides(b_md, 2, b_dims, b_dt, b_strides_md));
-        dims_t a_strides_md = {a_strides[0], a_strides[1]};
-        CHECK(memory_desc_init_by_strides(a_md, 2, a_dims, a_dt, a_strides_md));
-        dims_t c_strides_md = {c_strides[0], c_strides[1]};
-        CHECK(memory_desc_init_by_strides(c_md, 2, c_dims, c_dt, c_strides_md));
-
+    // Each RNN matmul is expressed in natural row-major form:
+    //   dst[M, N] = src[M, K] * wei[K, N]
+    // with any operand transpose encoded in the strides.
+    auto create_matmul =
+            [&](std::shared_ptr<primitive_desc_t> &matmul_pd, dim_t M, dim_t N,
+                    dim_t K, strides_t<2> src_strides, strides_t<2> wei_strides,
+                    strides_t<2> dst_strides, data_type_t src_dt,
+                    data_type_t wei_dt, data_type_t dst_dt,
+                    float beta) -> status_t {
         primitive_attr_t attr;
         CHECK(attr.post_ops_.append_sum(beta));
         CHECK(attr.set_fpmath_mode(fpmath_mode));
         attr.deterministic_ = this->attr()->deterministic_;
-        CHECK(dnnl::impl::create_gemm_pd(gemm_pd, engine, &a_md, &b_md, &c_md,
-                &glob_zero_md, c_dt, &attr));
+
+        memory_desc_t src_md, wei_md, dst_md;
+        dims_t src_dims = {M, K}, wei_dims = {K, N}, dst_dims = {M, N};
+        dims_t src_strides_md = {src_strides[0], src_strides[1]};
+        CHECK(memory_desc_init_by_strides(
+                src_md, 2, src_dims, src_dt, src_strides_md));
+        dims_t wei_strides_md = {wei_strides[0], wei_strides[1]};
+        CHECK(memory_desc_init_by_strides(
+                wei_md, 2, wei_dims, wei_dt, wei_strides_md));
+        dims_t dst_strides_md = {dst_strides[0], dst_strides[1]};
+        CHECK(memory_desc_init_by_strides(
+                dst_md, 2, dst_dims, dst_dt, dst_strides_md));
+        CHECK(dnnl::impl::create_matmul_pd(matmul_pd, engine, &src_md, &wei_md,
+                nullptr, &dst_md, &attr, /*skip_ref=*/true, nullptr,
+                matmul_reduce_kind::undef, dst_dt));
         bool verbose = get_verbose_dev_mode(verbose_t::debuginfo) > 1;
         if (grf_per_thread == 0 || verbose) {
             auto t = 0;
-            auto s = gemm_pd->query(query::preferred_gpu_grf_per_thread, 0, &t);
+            auto s = matmul_pd->query(
+                    query::preferred_gpu_grf_per_thread, 0, &t);
             if (grf_per_thread == 0)
                 grf_per_thread = (status::success == s) ? t : 128;
             if (verbose && t != grf_per_thread)
@@ -787,58 +793,59 @@ status_t simple_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
             = conf.merge_gemm_layer ? batch * conf.n_iter : batch;
     dim_t iter_merged_size = conf.merge_gemm_iter ? batch * conf.n_iter : batch;
 
-    float gemm_iter_fwd_beta = this->is_lbr() ? 0.0f : 1.0f;
-    float gemm_iter_bwd_beta = this->is_lbr() ? 1.0f : 0.0f;
+    float matmul_iter_fwd_beta = this->is_lbr() ? 0.0f : 1.0f;
+    float matmul_iter_bwd_beta = this->is_lbr() ? 1.0f : 0.0f;
     if (aprop == prop_kind::forward || conf.recompute_gates) {
         if (!conf.cell_fusion.gemm_layer) {
             VDISPATCH_RNN_SC(
-                    create_gemm_pd(gemm_layer_fwd_pd_, n_gates * dhc,
-                            layer_merged_size, slc, {conf.states_ws_ld, 1},
+                    create_matmul(matmul_layer_fwd_pd_, layer_merged_size,
+                            n_gates * dhc, slc, {conf.states_ws_ld, 1},
                             {off.weights_layer[2], off.weights_layer[4]},
-                            {conf.scratch_gates_ld, 1}, weights_type, src_type,
+                            {conf.scratch_gates_ld, 1}, src_type, weights_type,
                             conf.acc_data_type, 0.0),
-                    "create_gemm_pd(gemm_layer_fwd_pd_)");
+                    "create_matmul(matmul_layer_fwd_pd_)");
             if (!conf.copy_src_layer) {
                 if (off.src_layer[1] != conf.states_ws_ld)
                     VDISPATCH_RNN_SC(
-                            create_gemm_pd(gemm_layer_fwd_src_pd_,
-                                    n_gates * dhc, layer_merged_size, slc,
+                            create_matmul(matmul_layer_fwd_src_pd_,
+                                    layer_merged_size, n_gates * dhc, slc,
                                     {off.src_layer[1], off.src_layer[2]},
                                     {off.weights_layer[2],
                                             off.weights_layer[4]},
-                                    {conf.scratch_gates_ld, 1}, weights_type,
-                                    src_type, conf.acc_data_type, 0.0),
-                            "create_gemm_pd(gemm_layer_fwd_src_pd_)");
+                                    {conf.scratch_gates_ld, 1}, src_type,
+                                    weights_type, conf.acc_data_type, 0.0),
+                            "create_matmul(matmul_layer_fwd_src_pd_)");
                 else
-                    gemm_layer_fwd_src_pd_ = gemm_layer_fwd_pd_;
+                    matmul_layer_fwd_src_pd_ = matmul_layer_fwd_pd_;
             }
         }
         if (!conf.cell_fusion.gemm_iter) {
             if (conf.is_vanilla_gru) {
                 VDISPATCH_RNN_SC(
-                        create_gemm_pd(gemm_iter_fwd_pd_, (n_gates - 1) * dhc,
-                                batch, sic, {conf.states_ws_ld, 1},
-                                {off.weights_iter[2], off.weights_iter[4]},
-                                {conf.scratch_gates_ld, 1}, weights_type,
-                                src_type, conf.acc_data_type,
-                                gemm_iter_fwd_beta),
-                        "create_gemm_pd(gemm_iter_fwd_pd_)");
-                VDISPATCH_RNN_SC(
-                        create_gemm_pd(gemm_iter_fwd_2_pd_, dhc, batch, sic,
+                        create_matmul(matmul_iter_fwd_pd_, batch,
+                                (n_gates - 1) * dhc, sic,
                                 {conf.states_ws_ld, 1},
                                 {off.weights_iter[2], off.weights_iter[4]},
-                                {conf.scratch_gates_ld, 1}, weights_type,
-                                src_type, conf.acc_data_type,
-                                gemm_iter_fwd_beta),
-                        "create_gemm_pd(gemm_iter_fwd_2_pd_)");
+                                {conf.scratch_gates_ld, 1}, src_type,
+                                weights_type, conf.acc_data_type,
+                                matmul_iter_fwd_beta),
+                        "create_matmul(matmul_iter_fwd_pd_)");
+                VDISPATCH_RNN_SC(
+                        create_matmul(matmul_iter_fwd_2_pd_, batch, dhc, sic,
+                                {conf.states_ws_ld, 1},
+                                {off.weights_iter[2], off.weights_iter[4]},
+                                {conf.scratch_gates_ld, 1}, src_type,
+                                weights_type, conf.acc_data_type,
+                                matmul_iter_fwd_beta),
+                        "create_matmul(matmul_iter_fwd_2_pd_)");
             } else {
                 VDISPATCH_RNN_SC(
-                        create_gemm_pd(gemm_iter_fwd_pd_, n_gates * dhc, batch,
-                                sic, {conf.states_ws_ld, 1},
+                        create_matmul(matmul_iter_fwd_pd_, batch,
+                                n_gates * dhc, sic, {conf.states_ws_ld, 1},
                                 {off.weights_iter[2], off.weights_iter[4]},
-                                {conf.gates_ws_ld, 1}, weights_type, src_type,
-                                conf.acc_data_type, gemm_iter_fwd_beta),
-                        "create_gemm_pd(gemm_iter_fwd_pd_)");
+                                {conf.gates_ws_ld, 1}, src_type, weights_type,
+                                conf.acc_data_type, matmul_iter_fwd_beta),
+                        "create_matmul(matmul_iter_fwd_pd_)");
             }
         }
     }
@@ -846,93 +853,94 @@ status_t simple_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
     if (aprop == prop_kind::backward) {
         if (conf.is_vanilla_gru) {
             VDISPATCH_RNN_SC(
-                    create_gemm_pd(gemm_iter_bwd_pd_, sic, batch,
+                    create_matmul(matmul_iter_bwd_pd_, batch, sic,
                             (n_gates - 1) * dhc,
                             {conf.scratch_diff_gates_ld, 1},
                             {off.weights_iter[4], off.weights_iter[2]},
-                            {conf.scratch_diff_states_ld, 1}, weights_type,
-                            src_type, conf.acc_data_type, 1.0f),
-                    "create_gemm_pd(gemm_iter_bwd_pd_)");
+                            {conf.scratch_diff_states_ld, 1}, src_type,
+                            weights_type, conf.acc_data_type, 1.0f),
+                    "create_matmul(matmul_iter_bwd_pd_)");
             VDISPATCH_RNN_SC(
-                    create_gemm_pd(gemm_iter_bwd_2_pd_, sic, batch, dhc,
+                    create_matmul(matmul_iter_bwd_2_pd_, batch, sic, dhc,
                             {conf.scratch_diff_gates_ld, 1},
                             {off.weights_iter[4], off.weights_iter[2]},
-                            {conf.scratch_diff_states_ld, 1}, weights_type,
-                            src_type, conf.acc_data_type, 0.0f),
-                    "create_gemm_pd(gemm_iter_bwd_2_pd_)");
+                            {conf.scratch_diff_states_ld, 1}, src_type,
+                            weights_type, conf.acc_data_type, 0.0f),
+                    "create_matmul(matmul_iter_bwd_2_pd_)");
             VDISPATCH_RNN_SC(
-                    create_gemm_pd(gemm_diff_wei_iter_pd_, (n_gates - 1) * dhc,
-                            sic, iter_merged_size, {1, conf.states_ws_ld},
+                    create_matmul(matmul_diff_wei_iter_pd_, sic,
+                            (n_gates - 1) * dhc, iter_merged_size,
+                            {1, conf.states_ws_ld},
                             {conf.scratch_diff_gates_ld, 1},
                             {off.diff_weights_iter[2],
                                     off.diff_weights_iter[4]},
-                            weights_type, src_type, conf.acc_data_type, 1.0f),
-                    "create_gemm_pd(gemm_diff_wei_iter_pd_)");
+                            src_type, weights_type, conf.acc_data_type, 1.0f),
+                    "create_matmul(matmul_diff_wei_iter_pd_)");
             VDISPATCH_RNN_SC(
-                    create_gemm_pd(gemm_diff_wei_iter_2_pd_, dhc, sic,
+                    create_matmul(matmul_diff_wei_iter_2_pd_, sic, dhc,
                             iter_merged_size, {1, conf.states_ws_ld},
                             {conf.scratch_diff_gates_ld, 1},
                             {off.diff_weights_iter[2],
                                     off.diff_weights_iter[4]},
-                            weights_type, src_type, conf.acc_data_type, 1.0f),
-                    "create_gemm_pd(gemm_diff_wei_iter_2_pd_)");
+                            src_type, weights_type, conf.acc_data_type, 1.0f),
+                    "create_matmul(matmul_diff_wei_iter_2_pd_)");
         } else {
             VDISPATCH_RNN_SC(
-                    create_gemm_pd(gemm_iter_bwd_pd_, sic, batch, n_gates * dhc,
-                            {conf.scratch_diff_gates_ld, 1},
+                    create_matmul(matmul_iter_bwd_pd_, batch, sic,
+                            n_gates * dhc, {conf.scratch_diff_gates_ld, 1},
                             {off.weights_iter[4], off.weights_iter[2]},
-                            {conf.scratch_diff_states_ld, 1}, weights_type,
-                            src_type, conf.acc_data_type, gemm_iter_bwd_beta),
-                    "create_gemm_pd(gemm_iter_bwd_pd_)");
+                            {conf.scratch_diff_states_ld, 1}, src_type,
+                            weights_type, conf.acc_data_type, matmul_iter_bwd_beta),
+                    "create_matmul(matmul_iter_bwd_pd_)");
             VDISPATCH_RNN_SC(
-                    create_gemm_pd(gemm_diff_wei_iter_pd_, n_gates * dhc, sic,
-                            iter_merged_size, {1, conf.states_ws_ld},
+                    create_matmul(matmul_diff_wei_iter_pd_, sic,
+                            n_gates * dhc, iter_merged_size, {1, conf.states_ws_ld},
                             {conf.scratch_diff_gates_ld, 1},
                             {off.diff_weights_iter[2],
                                     off.diff_weights_iter[4]},
-                            weights_type, src_type, conf.acc_data_type, 1.0f),
-                    "create_gemm_pd(gemm_diff_wei_iter_pd_)");
+                            src_type, weights_type, conf.acc_data_type, 1.0f),
+                    "create_matmul(matmul_diff_wei_iter_pd_)");
         }
         VDISPATCH_RNN_SC(
-                create_gemm_pd(gemm_layer_bwd_pd_, slc, layer_merged_size,
+                create_matmul(matmul_layer_bwd_pd_, layer_merged_size, slc,
                         n_gates * dhc, {conf.scratch_diff_gates_ld, 1},
                         {off.weights_layer[4], off.weights_layer[2]},
-                        {conf.scratch_diff_states_ld, 1}, weights_type,
-                        src_type, conf.acc_data_type, 0.0f),
-                "create_gemm_pd(gemm_layer_bwd_pd_)");
+                        {conf.scratch_diff_states_ld, 1}, src_type,
+                        weights_type, conf.acc_data_type, 0.0f),
+                "create_matmul(matmul_layer_bwd_pd_)");
         if (!conf.copy_diff_src_layer) {
             if (conf.scratch_diff_states_ld != off.diff_src_layer[1])
                 VDISPATCH_RNN_SC(
-                        create_gemm_pd(gemm_layer_bwd_src_pd_, slc,
-                                layer_merged_size, n_gates * dhc,
+                        create_matmul(matmul_layer_bwd_src_pd_,
+                                layer_merged_size, slc, n_gates * dhc,
                                 {conf.scratch_diff_gates_ld, 1},
                                 {off.weights_layer[4], off.weights_layer[2]},
-                                {off.diff_src_layer[1], 1}, weights_type,
-                                src_type, conf.acc_data_type, 0.0f),
-                        "create_gemm_pd(gemm_layer_bwd_src_pd_)");
+                                {off.diff_src_layer[1], 1}, src_type,
+                                weights_type, conf.acc_data_type, 0.0f),
+                        "create_matmul(matmul_layer_bwd_src_pd_)");
             else
-                gemm_layer_bwd_src_pd_ = gemm_layer_bwd_pd_;
+                matmul_layer_bwd_src_pd_ = matmul_layer_bwd_pd_;
         }
         VDISPATCH_RNN_SC(
-                create_gemm_pd(gemm_diff_wei_layer_pd_, n_gates * dhc, slc,
+                create_matmul(matmul_diff_wei_layer_pd_, slc, n_gates * dhc,
                         layer_merged_size, {1, conf.states_ws_ld},
                         {conf.scratch_diff_gates_ld, 1},
                         {off.diff_weights_layer[2], off.diff_weights_layer[4]},
-                        weights_type, src_type, conf.acc_data_type, 1.0f),
-                "create_gemm_pd(gemm_diff_wei_layer_pd_)");
+                        src_type, weights_type, conf.acc_data_type, 1.0f),
+                "create_matmul(matmul_diff_wei_layer_pd_)");
         if (!conf.copy_src_layer) {
             if (off.src_layer[1] != conf.states_ws_ld)
-                VDISPATCH_RNN_SC(create_gemm_pd(gemm_diff_wei_layer_src_pd_,
-                                         n_gates * dhc, slc, layer_merged_size,
+                VDISPATCH_RNN_SC(create_matmul(matmul_diff_wei_layer_src_pd_,
+                                         slc, n_gates * dhc, layer_merged_size,
                                          {off.src_layer[2], off.src_layer[1]},
                                          {conf.scratch_diff_gates_ld, 1},
                                          {off.diff_weights_layer[2],
                                                  off.diff_weights_layer[4]},
-                                         weights_type, src_type,
+                                         src_type, weights_type,
                                          conf.acc_data_type, 1.0f),
-                        "create_gemm_pd(gemm_diff_wei_layer_src_pd_)");
+                        "create_matmul(matmul_diff_wei_layer_src_pd_)");
             else
-                gemm_diff_wei_layer_src_pd_ = gemm_diff_wei_layer_pd_;
+                matmul_diff_wei_layer_src_pd_ = matmul_diff_wei_layer_pd_;
         }
     }
 
@@ -979,64 +987,70 @@ status_t simple_common_t<aprop>::init(impl::engine_t *engine) {
     const auto &kernel_names = pd()->ocl_conf.get_kernel_names();
     CHECK(create_kernels(engine, kernels_, kernel_names, pd()->ocl_conf));
 
-    bool gemm_ok = utils::everyone_is(status::success,
-            pd()->gemm_layer_fwd_pd_ ? create_nested_primitive(gemm_layer_fwd_,
-                                               pd()->gemm_layer_fwd_pd_, engine)
-                                     : status::success,
-            pd()->gemm_layer_fwd_src_pd_
-                    ? create_nested_primitive(gemm_layer_fwd_src_,
-                              pd()->gemm_layer_fwd_src_pd_, engine)
+    bool matmul_ok = utils::everyone_is(status::success,
+            pd()->matmul_layer_fwd_pd_
+                    ? create_nested_primitive(matmul_layer_fwd_,
+                              pd()->matmul_layer_fwd_pd_, engine)
                     : status::success,
-            pd()->gemm_iter_fwd_pd_ ? create_nested_primitive(gemm_iter_fwd_,
-                                              pd()->gemm_iter_fwd_pd_, engine)
-                                    : status::success);
+            pd()->matmul_layer_fwd_src_pd_
+                    ? create_nested_primitive(matmul_layer_fwd_src_,
+                              pd()->matmul_layer_fwd_src_pd_, engine)
+                    : status::success,
+            pd()->matmul_iter_fwd_pd_
+                    ? create_nested_primitive(matmul_iter_fwd_,
+                              pd()->matmul_iter_fwd_pd_, engine)
+                    : status::success);
     switch (aprop) {
         case prop_kind::forward:
-            gemm_ok = true
+            matmul_ok = true
                     && utils::everyone_is(status::success,
                             conf.is_vanilla_gru
-                                    ? create_nested_primitive(gemm_iter_fwd_2_,
-                                              pd()->gemm_iter_fwd_2_pd_, engine)
+                                    ? create_nested_primitive(
+                                              matmul_iter_fwd_2_,
+                                              pd()->matmul_iter_fwd_2_pd_,
+                                              engine)
                                     : status::success);
             break;
         case prop_kind::backward:
-            gemm_ok = true
+            matmul_ok = true
                     && utils::everyone_is(status::success,
-                            create_nested_primitive(gemm_layer_bwd_,
-                                    pd()->gemm_layer_bwd_pd_, engine),
-                            (pd()->gemm_layer_bwd_src_pd_
+                            create_nested_primitive(matmul_layer_bwd_,
+                                    pd()->matmul_layer_bwd_pd_, engine),
+                            (pd()->matmul_layer_bwd_src_pd_
                                             ? create_nested_primitive(
-                                                      gemm_layer_bwd_src_,
-                                                      pd()->gemm_layer_bwd_src_pd_,
+                                                      matmul_layer_bwd_src_,
+                                                      pd()->matmul_layer_bwd_src_pd_,
                                                       engine)
                                             : status::success),
-                            create_nested_primitive(gemm_iter_bwd_,
-                                    pd()->gemm_iter_bwd_pd_, engine),
-                            create_nested_primitive(gemm_diff_wei_layer_,
-                                    pd()->gemm_diff_wei_layer_pd_, engine),
-                            (pd()->gemm_diff_wei_layer_src_pd_
+                            create_nested_primitive(matmul_iter_bwd_,
+                                    pd()->matmul_iter_bwd_pd_, engine),
+                            create_nested_primitive(matmul_diff_wei_layer_,
+                                    pd()->matmul_diff_wei_layer_pd_, engine),
+                            (pd()->matmul_diff_wei_layer_src_pd_
                                             ? create_nested_primitive(
-                                                      gemm_diff_wei_layer_src_,
-                                                      pd()->gemm_diff_wei_layer_src_pd_,
+                                                      matmul_diff_wei_layer_src_,
+                                                      pd()->matmul_diff_wei_layer_src_pd_,
                                                       engine)
                                             : status::success),
-                            create_nested_primitive(gemm_diff_wei_iter_,
-                                    pd()->gemm_diff_wei_iter_pd_, engine),
+                            create_nested_primitive(matmul_diff_wei_iter_,
+                                    pd()->matmul_diff_wei_iter_pd_, engine),
                             conf.is_vanilla_gru
-                                    ? create_nested_primitive(gemm_iter_bwd_2_,
-                                              pd()->gemm_iter_bwd_2_pd_, engine)
+                                    ? create_nested_primitive(
+                                              matmul_iter_bwd_2_,
+                                              pd()->matmul_iter_bwd_2_pd_,
+                                              engine)
                                     : status::success,
                             conf.is_vanilla_gru
                                     ? create_nested_primitive(
-                                              gemm_diff_wei_iter_2_,
-                                              pd()->gemm_diff_wei_iter_2_pd_,
+                                              matmul_diff_wei_iter_2_,
+                                              pd()->matmul_diff_wei_iter_2_pd_,
                                               engine)
                                     : status::success);
             break;
         default: assert(!"unknown prop_kind"); return status::invalid_arguments;
     }
 
-    if (!gemm_ok) return status::runtime_error;
+    if (!matmul_ok) return status::runtime_error;
 
     return status::success;
 }
@@ -1085,88 +1099,96 @@ status_t simple_common_t<aprop>::init_res_storage(
 }
 
 template <prop_kind_t aprop>
-gemm_sig((simple_common_t<aprop>::gemm_primitive)) {
-    // We flip A and B here since the GEMM API is row major but the
-    // RNN code describes GEMM in column major fashion
-    gemm::exec_args_t gemm_args;
-    gemm_args.a = b.get();
-    gemm_args.b = a.get();
-    gemm_args.c = c.get();
-
-    auto gemm_ctx = gemm::exec_ctx_t(ctx, gemm_args);
-
-    const auto init_gemm_nested_scratchpad
-            = [&](const std::shared_ptr<impl::primitive_t> &gemm, int key) {
-        auto *nested_grantor
-                = create_nested_grantor(ctx.get_scratchpad_grantor(), key,
-                        gemm->pd()->scratchpad_registry());
-        gemm_ctx.set_scratchpad_grantor(nested_grantor);
-    };
-
-    switch (gemm_kind) {
-        case gemm_iter_fwd:
-            init_gemm_nested_scratchpad(
-                    gemm_iter_fwd_, utils::scratch_t::key_gemm_iter_fwd);
-            CHECK(gemm::gemm(gemm_iter_fwd_)->execute(gemm_ctx));
+matmul_sig((simple_common_t<aprop>::matmul_primitive)) {
+    // Resolve the nested matmul primitive and its scratchpad key by kind.
+    std::shared_ptr<impl::primitive_t> prim;
+    int key = 0;
+    switch (matmul_kind) {
+        case matmul_iter_fwd:
+            prim = matmul_iter_fwd_;
+            key = utils::scratch_t::key_matmul_iter_fwd;
             break;
-        case gemm_iter_fwd_2:
-            init_gemm_nested_scratchpad(
-                    gemm_iter_fwd_2_, utils::scratch_t::key_gemm_iter_fwd_2);
-            CHECK(gemm::gemm(gemm_iter_fwd_2_)->execute(gemm_ctx));
+        case matmul_iter_fwd_2:
+            prim = matmul_iter_fwd_2_;
+            key = utils::scratch_t::key_matmul_iter_fwd_2;
             break;
-        case gemm_layer_fwd:
-            init_gemm_nested_scratchpad(
-                    gemm_layer_fwd_, utils::scratch_t::key_gemm_layer_fwd);
-            CHECK(gemm::gemm(gemm_layer_fwd_)->execute(gemm_ctx));
+        case matmul_layer_fwd:
+            prim = matmul_layer_fwd_;
+            key = utils::scratch_t::key_matmul_layer_fwd;
             break;
-        case gemm_layer_fwd_src:
-            init_gemm_nested_scratchpad(gemm_layer_fwd_src_,
-                    utils::scratch_t::key_gemm_layer_fwd_src);
-            CHECK(gemm::gemm(gemm_layer_fwd_src_)->execute(gemm_ctx));
+        case matmul_layer_fwd_src:
+            prim = matmul_layer_fwd_src_;
+            key = utils::scratch_t::key_matmul_layer_fwd_src;
             break;
-        case gemm_iter_bwd:
-            init_gemm_nested_scratchpad(
-                    gemm_iter_bwd_, utils::scratch_t::key_gemm_iter_bwd);
-            CHECK(gemm::gemm(gemm_iter_bwd_)->execute(gemm_ctx));
+        case matmul_iter_bwd:
+            prim = matmul_iter_bwd_;
+            key = utils::scratch_t::key_matmul_iter_bwd;
             break;
-        case gemm_iter_bwd_2:
-            init_gemm_nested_scratchpad(
-                    gemm_iter_bwd_2_, utils::scratch_t::key_gemm_iter_bwd_2);
-            CHECK(gemm::gemm(gemm_iter_bwd_2_)->execute(gemm_ctx));
+        case matmul_iter_bwd_2:
+            prim = matmul_iter_bwd_2_;
+            key = utils::scratch_t::key_matmul_iter_bwd_2;
             break;
-        case gemm_layer_bwd:
-            init_gemm_nested_scratchpad(
-                    gemm_layer_bwd_, utils::scratch_t::key_gemm_layer_bwd);
-            CHECK(gemm::gemm(gemm_layer_bwd_)->execute(gemm_ctx));
+        case matmul_layer_bwd:
+            prim = matmul_layer_bwd_;
+            key = utils::scratch_t::key_matmul_layer_bwd;
             break;
-        case gemm_layer_bwd_src:
-            init_gemm_nested_scratchpad(
-                    gemm_layer_bwd_src_, utils::scratch_t::key_gemm_layer_bwd);
-            CHECK(gemm::gemm(gemm_layer_bwd_src_)->execute(gemm_ctx));
+        case matmul_layer_bwd_src:
+            prim = matmul_layer_bwd_src_;
+            key = utils::scratch_t::key_matmul_layer_bwd;
             break;
-        case gemm_diff_wei_iter:
-            init_gemm_nested_scratchpad(gemm_diff_wei_iter_,
-                    utils::scratch_t::key_gemm_diff_wei_iter);
-            CHECK(gemm::gemm(gemm_diff_wei_iter_)->execute(gemm_ctx));
+        case matmul_diff_wei_iter:
+            prim = matmul_diff_wei_iter_;
+            key = utils::scratch_t::key_matmul_diff_wei_iter;
             break;
-        case gemm_diff_wei_layer:
-            init_gemm_nested_scratchpad(gemm_diff_wei_layer_,
-                    utils::scratch_t::key_gemm_diff_wei_layer);
-            CHECK(gemm::gemm(gemm_diff_wei_layer_)->execute(gemm_ctx));
+        case matmul_diff_wei_iter_2:
+            prim = matmul_diff_wei_iter_2_;
+            key = utils::scratch_t::key_matmul_diff_wei_iter_2;
             break;
-        case gemm_diff_wei_layer_src:
-            init_gemm_nested_scratchpad(gemm_diff_wei_layer_src_,
-                    utils::scratch_t::key_gemm_diff_wei_layer_src);
-            CHECK(gemm::gemm(gemm_diff_wei_layer_src_)->execute(gemm_ctx));
+        case matmul_diff_wei_layer:
+            prim = matmul_diff_wei_layer_;
+            key = utils::scratch_t::key_matmul_diff_wei_layer;
             break;
-        case gemm_diff_wei_iter_2:
-            init_gemm_nested_scratchpad(gemm_diff_wei_iter_2_,
-                    utils::scratch_t::key_gemm_diff_wei_iter_2);
-            CHECK(gemm::gemm(gemm_diff_wei_iter_2_)->execute(gemm_ctx));
+        case matmul_diff_wei_layer_src:
+            prim = matmul_diff_wei_layer_src_;
+            key = utils::scratch_t::key_matmul_diff_wei_layer_src;
             break;
-        default: assert(!"unknown gemm_kind"); return status::runtime_error;
+        default:
+            assert(!"unexpected matmul_kind");
+            return status::runtime_error;
     }
-    return status::success;
+
+    auto *mm_pd = prim->pd().get();
+
+    // clone() resets the storage offset to 0, so re-apply it (same dance as
+    // sub_buffer_t). Operands are in natural row-major order: src, wei, dst.
+    auto with_off =
+            [](const memory_storage_t &s) -> std::unique_ptr<memory_storage_t> {
+        auto out = s.clone();
+        if (out) out->set_offset(s.offset());
+        return out;
+    };
+    std::unique_ptr<memory_t, memory_deleter_t> src_mem, wei_mem, dst_mem;
+    CHECK(safe_ptr_assign(src_mem,
+            new memory_t(
+                    engine, mm_pd->src_md(), with_off(src.get_storage()))));
+    CHECK(safe_ptr_assign(wei_mem,
+            new memory_t(
+                    engine, mm_pd->weights_md(), with_off(wei.get_storage()))));
+    CHECK(safe_ptr_assign(dst_mem,
+            new memory_t(
+                    engine, mm_pd->dst_md(), with_off(dst.get_storage()))));
+
+    exec_args_t matmul_args;
+    matmul_args[DNNL_ARG_SRC] = {src_mem.get(), true};
+    matmul_args[DNNL_ARG_WEIGHTS] = {wei_mem.get(), true};
+    matmul_args[DNNL_ARG_DST] = {dst_mem.get(), false};
+
+    exec_ctx_t matmul_ctx(ctx, std::move(matmul_args));
+    auto *nested_grantor = create_nested_grantor(
+            ctx.get_scratchpad_grantor(), key, mm_pd->scratchpad_registry());
+    matmul_ctx.set_scratchpad_grantor(nested_grantor);
+
+    return prim->execute(matmul_ctx);
 }
 
 //*************** Grid computations strategy: linear ***************//
@@ -1208,13 +1230,13 @@ grid_execution_sig((simple_common_t<aprop>::linear_execution)) {
                         : workspace.states_range(
                                   lay - 1, lay - 1, dir, dir, 0, n_iter);
 
-                auto gemm_grid_layer_fwd = (!conf.copy_src_layer && lay == 0)
-                        ? gemm_layer_fwd_src
-                        : gemm_layer_fwd;
+                auto matmul_grid_layer_fwd = (!conf.copy_src_layer && lay == 0)
+                        ? matmul_layer_fwd_src
+                        : matmul_layer_fwd;
 
-                CHECK(gemm_primitive(engine, ctx,
-                        user_data.wei_layer(lay, dir, true), grid_layer,
-                        *scratch.gates(), gemm_grid_layer_fwd));
+                CHECK(matmul_primitive(engine, ctx, grid_layer,
+                        user_data.wei_layer(lay, dir, true), *scratch.gates(),
+                        matmul_grid_layer_fwd));
             }
 
             for (dim_t i = 0; i < n_iter; i += conf.iter_loop) {
@@ -1228,27 +1250,29 @@ grid_execution_sig((simple_common_t<aprop>::linear_execution)) {
                         ? user_data.src_layer(dir, 0)
                         : workspace.states(lay - 1, dir, 0);
 
-                auto gemm_diff_wei_grid_layer
+                auto matmul_diff_wei_grid_layer
                         = (!conf.copy_src_layer && lay == 0)
-                        ? gemm_diff_wei_layer_src
-                        : gemm_diff_wei_layer;
+                        ? matmul_diff_wei_layer_src
+                        : matmul_diff_wei_layer;
 
                 // TODO: Fix sub-buffer size
                 auto diff_states
                         = scratch.diff_states(lay, dir, conf.n_states, 0);
 
-                CHECK(gemm_primitive(engine, ctx,
-                        user_data.wei_layer(lay, dir, true),
-                        *scratch.diff_gates(), diff_states, gemm_layer_bwd));
-                CHECK(gemm_primitive(engine, ctx, *scratch.diff_gates(),
-                        grid_layer, user_data.diff_wei_layer(lay, dir, true),
-                        gemm_diff_wei_grid_layer));
+                CHECK(matmul_primitive(engine, ctx, *scratch.diff_gates(),
+                        user_data.wei_layer(lay, dir, true), diff_states,
+                        matmul_layer_bwd));
+                CHECK(matmul_primitive(engine, ctx, grid_layer,
+                        *scratch.diff_gates(),
+                        user_data.diff_wei_layer(lay, dir, true),
+                        matmul_diff_wei_grid_layer));
             }
 
             if (aprop == prop_kind::backward && conf.merge_gemm_iter) {
-                CHECK(gemm_primitive(engine, ctx, *scratch.diff_gates(),
-                        grid_iter, user_data.diff_wei_iter(lay, dir, true),
-                        gemm_diff_wei_iter));
+                CHECK(matmul_primitive(engine, ctx, grid_iter,
+                        *scratch.diff_gates(),
+                        user_data.diff_wei_iter(lay, dir, true),
+                        matmul_diff_wei_iter));
             }
         }
     }

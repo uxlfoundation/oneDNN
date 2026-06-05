@@ -94,10 +94,10 @@
             const memory_storage_t &diff_bias, const memory_storage_t *scales, \
             const memory_storage_t *tm_scales) const
 
-#define gemm_sig(f) \
+#define matmul_sig(f) \
     status_t f(impl::engine_t *engine, const exec_ctx_t &ctx, \
-            const utils::sub_buffer_t &a, const utils::sub_buffer_t &b, \
-            const utils::sub_buffer_t &c, gemm_kind_t gemm_kind) const
+            const utils::sub_buffer_t &src, const utils::sub_buffer_t &wei, \
+            const utils::sub_buffer_t &dst, matmul_kind_t matmul_kind) const
 
 namespace dnnl {
 namespace impl {
@@ -569,18 +569,18 @@ struct scratch_t : public data_helper_t {
     using mst = memory_storage_t;
 
     enum {
-        key_gemm_iter_fwd = memory_tracking::names::key_nested_multiple,
-        key_gemm_iter_fwd_2,
-        key_gemm_layer_fwd,
-        key_gemm_layer_fwd_src,
-        key_gemm_iter_bwd,
-        key_gemm_iter_bwd_2,
-        key_gemm_layer_bwd,
-        key_gemm_layer_bwd_src,
-        key_gemm_diff_wei_layer,
-        key_gemm_diff_wei_layer_src,
-        key_gemm_diff_wei_iter,
-        key_gemm_diff_wei_iter_2,
+        key_matmul_iter_fwd = memory_tracking::names::key_nested_multiple,
+        key_matmul_iter_fwd_2,
+        key_matmul_layer_fwd,
+        key_matmul_layer_fwd_src,
+        key_matmul_iter_bwd,
+        key_matmul_iter_bwd_2,
+        key_matmul_layer_bwd,
+        key_matmul_layer_bwd_src,
+        key_matmul_diff_wei_layer,
+        key_matmul_diff_wei_layer_src,
+        key_matmul_diff_wei_iter,
+        key_matmul_diff_wei_iter_2,
     };
 
     scratch_t(const conf_t &conf, const memory_tracking::grantor_t &scratchpad)
@@ -593,7 +593,7 @@ struct scratch_t : public data_helper_t {
         diff_ht_ = scratchpad.get_memory_storage(key_rnn_diff_ht);
     }
 
-    struct gemm_pds_t {
+    struct matmul_pds_t {
         const primitive_desc_t *iter_fwd_pd;
         const primitive_desc_t *iter_fwd_2_pd;
         const primitive_desc_t *layer_fwd_pd;
@@ -609,7 +609,7 @@ struct scratch_t : public data_helper_t {
     };
 
     static void book(memory_tracking::registrar_t &scratchpad,
-            const conf_t &conf, const gemm_pds_t &gemms) {
+            const conf_t &conf, const matmul_pds_t &matmuls) {
         using namespace memory_tracking::names;
         if (conf.scratch_gates_size > 0)
             scratchpad.book(key_rnn_gates, conf.scratch_gates_size, 1,
@@ -621,45 +621,45 @@ struct scratch_t : public data_helper_t {
         scratchpad.book(key_rnn_diff_ht, conf.scratch_dhG1_size, 1,
                 OCL_BUFFER_ALIGNMENT, 4096);
         // book scratchpad for nested primitives
-        if (gemms.layer_fwd_pd) {
-            scratchpad.book(key_gemm_layer_fwd,
-                    gemms.layer_fwd_pd->scratchpad_registry());
+        if (matmuls.layer_fwd_pd) {
+            scratchpad.book(key_matmul_layer_fwd,
+                    matmuls.layer_fwd_pd->scratchpad_registry());
         }
-        if (gemms.layer_fwd_src_pd) {
-            scratchpad.book(key_gemm_layer_fwd_src,
-                    gemms.layer_fwd_src_pd->scratchpad_registry());
+        if (matmuls.layer_fwd_src_pd) {
+            scratchpad.book(key_matmul_layer_fwd_src,
+                    matmuls.layer_fwd_src_pd->scratchpad_registry());
         }
-        if (gemms.iter_fwd_pd) {
-            scratchpad.book(key_gemm_iter_fwd,
-                    gemms.iter_fwd_pd->scratchpad_registry());
+        if (matmuls.iter_fwd_pd) {
+            scratchpad.book(key_matmul_iter_fwd,
+                    matmuls.iter_fwd_pd->scratchpad_registry());
         }
 
         if (conf.is_fwd) {
             if (conf.is_vanilla_gru)
-                scratchpad.book(key_gemm_iter_fwd_2,
-                        gemms.iter_fwd_2_pd->scratchpad_registry());
+                scratchpad.book(key_matmul_iter_fwd_2,
+                        matmuls.iter_fwd_2_pd->scratchpad_registry());
         } else {
             scratchpad.book(key_rnn_diff_gates, conf.scratch_diff_gates_size, 1,
                     OCL_BUFFER_ALIGNMENT, 4096);
-            scratchpad.book(key_gemm_iter_bwd,
-                    gemms.iter_bwd_pd->scratchpad_registry());
-            scratchpad.book(key_gemm_layer_bwd,
-                    gemms.layer_bwd_pd->scratchpad_registry());
-            if (gemms.layer_bwd_src_pd)
-                scratchpad.book(key_gemm_layer_bwd_src,
-                        gemms.layer_bwd_src_pd->scratchpad_registry());
-            scratchpad.book(key_gemm_diff_wei_layer,
-                    gemms.diff_wei_layer_pd->scratchpad_registry());
-            if (gemms.diff_wei_layer_src_pd)
-                scratchpad.book(key_gemm_diff_wei_layer_src,
-                        gemms.diff_wei_layer_src_pd->scratchpad_registry());
-            scratchpad.book(key_gemm_diff_wei_iter,
-                    gemms.diff_wei_iter_pd->scratchpad_registry());
+            scratchpad.book(key_matmul_iter_bwd,
+                    matmuls.iter_bwd_pd->scratchpad_registry());
+            scratchpad.book(key_matmul_layer_bwd,
+                    matmuls.layer_bwd_pd->scratchpad_registry());
+            if (matmuls.layer_bwd_src_pd)
+                scratchpad.book(key_matmul_layer_bwd_src,
+                        matmuls.layer_bwd_src_pd->scratchpad_registry());
+            scratchpad.book(key_matmul_diff_wei_layer,
+                    matmuls.diff_wei_layer_pd->scratchpad_registry());
+            if (matmuls.diff_wei_layer_src_pd)
+                scratchpad.book(key_matmul_diff_wei_layer_src,
+                        matmuls.diff_wei_layer_src_pd->scratchpad_registry());
+            scratchpad.book(key_matmul_diff_wei_iter,
+                    matmuls.diff_wei_iter_pd->scratchpad_registry());
             if (conf.is_vanilla_gru) {
-                scratchpad.book(key_gemm_iter_bwd_2,
-                        gemms.iter_bwd_2_pd->scratchpad_registry());
-                scratchpad.book(key_gemm_diff_wei_iter_2,
-                        gemms.diff_wei_iter_2_pd->scratchpad_registry());
+                scratchpad.book(key_matmul_iter_bwd_2,
+                        matmuls.iter_bwd_2_pd->scratchpad_registry());
+                scratchpad.book(key_matmul_diff_wei_iter_2,
+                        matmuls.diff_wei_iter_2_pd->scratchpad_registry());
             }
         }
     }

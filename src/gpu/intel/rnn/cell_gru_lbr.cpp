@@ -54,12 +54,12 @@ cell_execution_sig((simple_common_t<aprop>::cell_execution_gru_lbr)) {
     auto cell_iter = workspace.states(lay, dir, iter - 1);
     auto cell_iter_strides = workspace.states_strides();
 
-    auto gemm_cell_layer_fwd = !conf.copy_src_layer && lay == 0
-            ? gemm_layer_fwd_src
-            : gemm_layer_fwd;
-    auto gemm_diff_wei_cell_layer = !conf.copy_src_layer && lay == 0
-            ? gemm_diff_wei_layer_src
-            : gemm_diff_wei_layer;
+    auto matmul_cell_layer_fwd = !conf.copy_src_layer && lay == 0
+            ? matmul_layer_fwd_src
+            : matmul_layer_fwd;
+    auto matmul_diff_wei_cell_layer = !conf.copy_src_layer && lay == 0
+            ? matmul_diff_wei_layer_src
+            : matmul_diff_wei_layer;
 
     auto scratch_gates = scratch.gates(iter);
     strides_t<2> scratch_gates_strides
@@ -73,12 +73,12 @@ cell_execution_sig((simple_common_t<aprop>::cell_execution_gru_lbr)) {
     if (aprop == prop_kind::forward) {
         // call made when cell execution is enabled
         if (!conf.merge_gemm_layer && !conf.cell_fusion.gemm_layer)
-            CHECK(gemm_primitive(engine, ctx, wei_layer, cell_layer,
-                    scratch_gates, gemm_cell_layer_fwd));
+            CHECK(matmul_primitive(engine, ctx, cell_layer, wei_layer,
+                    scratch_gates, matmul_cell_layer_fwd));
 
         if (!conf.cell_fusion.gemm_iter)
-            CHECK(gemm_primitive(engine, ctx, wei_iter, cell_iter, scratch_cell,
-                    gemm_iter_fwd));
+            CHECK(matmul_primitive(engine, ctx, cell_iter, wei_iter,
+                    scratch_cell, matmul_iter_fwd));
 
         if (!use_cell) {
             CHECK((this->*elemwise_gru_lbr)(ctx, dir, lay, iter, conf.dhc,
@@ -117,22 +117,22 @@ cell_execution_sig((simple_common_t<aprop>::cell_execution_gru_lbr)) {
                 tm_scales, diff_bias));
 
         if (!conf.merge_gemm_layer) {
-            CHECK(gemm_primitive(engine, ctx, diff_gates, cell_layer,
+            CHECK(matmul_primitive(engine, ctx, cell_layer, diff_gates,
                     user_data.diff_wei_layer(lay, dir),
-                    gemm_diff_wei_cell_layer));
+                    matmul_diff_wei_cell_layer));
 
-            auto gemm_layer_cell_bwd = !conf.copy_diff_src_layer && lay == 0
-                    ? gemm_layer_bwd_src
-                    : gemm_layer_bwd;
-            CHECK(gemm_primitive(engine, ctx, wei_layer, diff_gates,
-                    diff_states1, gemm_layer_cell_bwd));
+            auto matmul_layer_cell_bwd = !conf.copy_diff_src_layer && lay == 0
+                    ? matmul_layer_bwd_src
+                    : matmul_layer_bwd;
+            CHECK(matmul_primitive(engine, ctx, diff_gates, wei_layer,
+                    diff_states1, matmul_layer_cell_bwd));
         }
 
-        CHECK(gemm_primitive(engine, ctx, wei_iter, scratch_cell, diff_states,
-                gemm_iter_bwd));
+        CHECK(matmul_primitive(engine, ctx, scratch_cell, wei_iter, diff_states,
+                matmul_iter_bwd));
 
-        CHECK(gemm_primitive(engine, ctx, scratch_cell, cell_iter,
-                user_data.diff_wei_iter(lay, dir), gemm_diff_wei_iter));
+        CHECK(matmul_primitive(engine, ctx, cell_iter, scratch_cell,
+                user_data.diff_wei_iter(lay, dir), matmul_diff_wei_iter));
     }
     return status::success;
 }

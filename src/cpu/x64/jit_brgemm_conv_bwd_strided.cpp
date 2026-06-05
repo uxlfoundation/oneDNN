@@ -445,9 +445,10 @@ int brgemm_convolution_bwd_strided_t<isa>::get_comp_offset(const int g,
 
     assert(IMPLICATION(jcp.req_cal_comp_pad, comp_idx >= 0));
 
-    return jcp.req_cal_comp_pad ? g * comp_icb_sz + icb * comp_ker_sz
-                    + comp_idx * comp_kw_sz + comp_iw * comp_iw_sz
-                                : (g * jcp.nb_ic + icb) * jcp.ic_block;
+    return jcp.req_cal_comp_pad
+            ? static_cast<int>(g * comp_icb_sz + icb * comp_ker_sz
+                      + comp_idx * comp_kw_sz + comp_iw * comp_iw_sz)
+            : (g * jcp.nb_ic + icb) * jcp.ic_block;
 }
 
 template <cpu_isa_t isa>
@@ -1221,8 +1222,10 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_base(
     const int ocb = btc.occ * jcp.nb_oc_blocking;
     const int oc = ocb * jcp.oc_block;
     const int g_oc = btc.g * jcp.oc + oc;
-    const dim_t iw = static_cast<dim_t>(btc.iwb) * jcp.iw_block + btc.sw;
-    const dim_t iw_raw = static_cast<dim_t>(btc.iwb) * jcp.iw_block;
+    const int iw = static_cast<int>(
+            static_cast<dim_t>(btc.iwb) * jcp.iw_block + btc.sw);
+    const int iw_raw
+            = static_cast<int>(static_cast<dim_t>(btc.iwb) * jcp.iw_block);
     const dim_t ih = btc.ih;
     const dim_t id = btc.id;
     const bool is_oc_tail
@@ -1361,7 +1364,7 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_base(
                                 + iw_b * jcp.ic_without_padding);
 
         ptr_C = (jcp.use_buffer) ? btc.c_buffer
-                        + acc_dsz * div_up(nstl::max((dim_t)0, iw_b - iw), SW)
+                        + acc_dsz * div_up(nstl::max(0, iw_b - iw), SW)
                                 * jcp.LDC
                                  : static_cast<char *>(ptr_D);
 
@@ -1468,7 +1471,8 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_trans(
     const int g_ic = btc.g * jcp.ic + ic;
     const int ocb = btc.occ * jcp.nb_oc_blocking;
     const int oc = ocb * jcp.oc_block;
-    const dim_t iw = static_cast<dim_t>(btc.iwb) * jcp.iw_block + btc.sw;
+    const int iw = static_cast<int>(
+            static_cast<dim_t>(btc.iwb) * jcp.iw_block + btc.sw);
     const dim_t ih = btc.ih;
     const dim_t id = btc.id;
 

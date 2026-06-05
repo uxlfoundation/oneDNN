@@ -115,9 +115,9 @@ void jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t::execute_forward_thr(
     const bool is_2d = pd()->ndims() == 4;
     const bool is_3d = pd()->ndims() == 5;
 
-    const int stride_d = pd()->KSD();
-    const int stride_h = pd()->KSH();
-    const int stride_w = pd()->KSW();
+    const int stride_d = static_cast<int>(pd()->KSD());
+    const int stride_h = static_cast<int>(pd()->KSH());
+    const int stride_w = static_cast<int>(pd()->KSW());
 
     auto offset = weights_d.size() - weights_d.additional_buffer_size();
     char *w = const_cast<char *>(weights);

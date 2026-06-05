@@ -385,7 +385,7 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::fwd_kw_ow_loop(const int icb,
                                                 : inp_kw_sz_);
     }
 
-    copy_ow(m_block, n_block, 0, comp_ow_l);
+    copy_ow(m_block, n_block, 0, static_cast<int>(comp_ow_l));
 }
 template <typename Vmm>
 void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::kw_loop_base(const int icb,

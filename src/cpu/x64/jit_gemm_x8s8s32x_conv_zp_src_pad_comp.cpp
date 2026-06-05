@@ -232,8 +232,8 @@ void jit_gemm_x8s8s32x_zp_pad_comp_helper_t::
         host_->mov(reg_zp_pad_comp_tmp_, zp_pad_com_w_);
     }
 
-    host_->imul(
-            reg_zp_pad_comp_tmp_, reg_zp_pad_comp_tmp_, jcp_.oc * jcp_.ngroups);
+    host_->imul(reg_zp_pad_comp_tmp_, reg_zp_pad_comp_tmp_,
+            static_cast<int>(jcp_.oc * jcp_.ngroups));
     host_->add(reg_zp_pad_comp_tmp_, g_oc_offset);
     host_->imul(reg_zp_pad_comp_tmp_, reg_zp_pad_comp_tmp_, sizeof(int32_t));
     host_->mov(reg_zp_pad_comp_, zp_pad_com_base_);

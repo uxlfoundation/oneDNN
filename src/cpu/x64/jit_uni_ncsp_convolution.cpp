@@ -73,9 +73,10 @@ status_t reduction_helper_t::reshape_weights(
     dims_t reduce {};
     // 1 (batch) + groups + 2 (c/g and sp) for matmul
     // groups + convolution dims for convolution
-    const dim_t ndims_out = to_matmul ? 1 + pd_->with_groups() + 2
-                                      : pd_->with_groups() + pd_->ndims();
-    const dim_t ndims_ch = 2 + pd_->with_groups();
+    const int ndims_out
+            = static_cast<int>(to_matmul ? 1 + pd_->with_groups() + 2
+                                         : pd_->with_groups() + pd_->ndims());
+    const int ndims_ch = 2 + pd_->with_groups();
     // this will never be the case for convolution reduction to matmul but
     // adding in for compiler errors.
     if (ndims_out > DNNL_MAX_NDIMS) return status::invalid_arguments;

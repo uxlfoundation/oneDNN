@@ -78,12 +78,12 @@ status_t jit_uni_x8s8s32x_deconv_fwd_kernel_t<isa>::init_conf(
     const bool is_3d = ndims == 5;
     const bool is_avx2 = isa == avx2;
 
-    jcp.ngroups = with_groups ? weights_d.dims()[0] : 1;
-    jcp.oc = dst_d.dims()[1] / jcp.ngroups;
-    jcp.ic = src_d.dims()[1] / jcp.ngroups;
-    jcp.id = is_3d ? src_d.dims()[2] : 1;
-    jcp.oc_without_padding = dst_d.dims()[1] / jcp.ngroups;
-    jcp.ic_without_padding = src_d.dims()[1] / jcp.ngroups;
+    jcp.ngroups = with_groups ? static_cast<int>(weights_d.dims()[0]) : 1;
+    jcp.oc = static_cast<int>(dst_d.dims()[1]) / jcp.ngroups;
+    jcp.ic = static_cast<int>(src_d.dims()[1]) / jcp.ngroups;
+    jcp.id = is_3d ? static_cast<int>(src_d.dims()[2]) : 1;
+    jcp.oc_without_padding = static_cast<int>(dst_d.dims()[1]) / jcp.ngroups;
+    jcp.ic_without_padding = static_cast<int>(src_d.dims()[1]) / jcp.ngroups;
     jcp.is_depthwise = true && with_groups
             && utils::everyone_is(
                     1, jcp.ic_without_padding, jcp.oc_without_padding);
@@ -183,21 +183,23 @@ status_t jit_uni_x8s8s32x_deconv_fwd_kernel_t<isa>::init_conf(
     }
 
     jcp.prop_kind = cd.prop_kind;
-    jcp.mb = src_d.dims()[0];
-    jcp.ih = is_1d ? 1 : src_d.dims()[ndims - 2];
-    jcp.iw = src_d.dims()[ndims - 1];
-    jcp.od = is_3d ? dst_d.dims()[2] : 1;
-    jcp.oh = is_1d ? 1 : dst_d.dims()[ndims - 2];
-    jcp.ow = dst_d.dims()[ndims - 1];
-    jcp.kd = is_3d ? weights_d.dims()[with_groups + 2] : 1;
-    jcp.kh = is_1d ? 1 : weights_d.dims()[with_groups + ndims - 2];
-    jcp.kw = weights_d.dims()[with_groups + ndims - 1];
-    jcp.f_pad = is_3d ? cd.padding[0][0] : 0;
-    jcp.t_pad = is_1d ? 0 : cd.padding[0][ndims - 4];
-    jcp.l_pad = cd.padding[0][ndims - 3];
-    jcp.stride_d = is_3d ? cd.strides[0] : 1;
-    jcp.stride_h = is_1d ? 1 : cd.strides[ndims - 4];
-    jcp.stride_w = cd.strides[ndims - 3];
+    jcp.mb = static_cast<int>(src_d.dims()[0]);
+    jcp.ih = is_1d ? 1 : static_cast<int>(src_d.dims()[ndims - 2]);
+    jcp.iw = static_cast<int>(src_d.dims()[ndims - 1]);
+    jcp.od = is_3d ? static_cast<int>(dst_d.dims()[2]) : 1;
+    jcp.oh = is_1d ? 1 : static_cast<int>(dst_d.dims()[ndims - 2]);
+    jcp.ow = static_cast<int>(dst_d.dims()[ndims - 1]);
+    jcp.kd = is_3d ? static_cast<int>(weights_d.dims()[with_groups + 2]) : 1;
+    jcp.kh = is_1d
+            ? 1
+            : static_cast<int>(weights_d.dims()[with_groups + ndims - 2]);
+    jcp.kw = static_cast<int>(weights_d.dims()[with_groups + ndims - 1]);
+    jcp.f_pad = is_3d ? static_cast<int>(cd.padding[0][0]) : 0;
+    jcp.t_pad = is_1d ? 0 : static_cast<int>(cd.padding[0][ndims - 4]);
+    jcp.l_pad = static_cast<int>(cd.padding[0][ndims - 3]);
+    jcp.stride_d = is_3d ? static_cast<int>(cd.strides[0]) : 1;
+    jcp.stride_h = is_1d ? 1 : static_cast<int>(cd.strides[ndims - 4]);
+    jcp.stride_w = static_cast<int>(cd.strides[ndims - 3]);
 
     if (jcp.is_depthwise) {
         jcp.ch_block = is_avx2 ? 8 : 4;
@@ -228,9 +230,9 @@ status_t jit_uni_x8s8s32x_deconv_fwd_kernel_t<isa>::init_conf(
     VDISPATCH_DECONVOLUTION_IC(
             set_or_check_wei_format(), VERBOSE_UNSUPPORTED_TAG_S, "weights");
 
-    jcp.dilate_d = is_3d ? cd.dilates[0] : 0;
-    jcp.dilate_h = is_1d ? 0 : cd.dilates[ndims - 4];
-    jcp.dilate_w = cd.dilates[ndims - 3];
+    jcp.dilate_d = is_3d ? static_cast<int>(cd.dilates[0]) : 0;
+    jcp.dilate_h = is_1d ? 0 : static_cast<int>(cd.dilates[ndims - 4]);
+    jcp.dilate_w = static_cast<int>(cd.dilates[ndims - 3]);
 
     VDISPATCH_DECONVOLUTION_IC(
             !(!IMPLICATION(jcp.dilate_d, jcp.stride_d == 1)
@@ -756,7 +758,8 @@ void jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa, Vmm>::compute_ker(int ur_w,
                 }
             }
             for (int ocb = 0; ocb < jcp_.nb_oc_blocking; ocb++) {
-                const int aux_filt_off = kernel_offset(ocb, icb1, ki);
+                const int aux_filt_off
+                        = static_cast<int>(kernel_offset(ocb, icb1, ki));
 
                 if (_end - _start > 0) {
                     if (jcp_.is_depthwise) {

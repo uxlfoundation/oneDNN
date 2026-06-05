@@ -848,9 +848,10 @@ inline int brgemm_convolution_fwd_t<isa>::get_comp_offset(const int g,
     const auto comp_idx
             = get_comp_ker_idx(kd_b, kd_e, kh_b, kh_e, kw_b, kw_e, cur_comp_oh);
     assert(IMPLICATION(jcp.req_cal_comp_pad, comp_idx >= 0));
-    return jcp.req_cal_comp_pad ? g * comp_ocb_sz + ocb * comp_ker_sz
-                    + comp_idx * comp_kw_sz + cur_comp_ow * comp_ow_sz
-                                : (g * jcp.nb_oc + ocb) * jcp.oc_block;
+    return jcp.req_cal_comp_pad
+            ? static_cast<int>(g * comp_ocb_sz + ocb * comp_ker_sz
+                      + comp_idx * comp_kw_sz + cur_comp_ow * comp_ow_sz)
+            : (g * jcp.nb_oc + ocb) * jcp.oc_block;
 }
 
 template <cpu_isa_t isa>
@@ -1567,12 +1568,18 @@ status_t brgemm_convolution_fwd_t<isa>::cal_compensation(
                     kh_ee {kh_es[k]}, kw_bb {kw_bs[k]}, kw_ee {kw_es[k]};
             assert(kd_ee > kd_bb && kh_ee > kh_bb && kw_ee > kw_bb);
 
-            const auto kd_b = maybe_invert_range(kd_bb, kd_ee, KD);
-            const auto kd_e = maybe_invert_range(kd_ee, kd_bb, KD);
-            const auto kh_b = maybe_invert_range(kh_bb, kh_ee, KH);
-            const auto kh_e = maybe_invert_range(kh_ee, kh_bb, KH);
-            const auto kw_b = maybe_invert_range(kw_bb, kw_ee, KW);
-            const auto kw_e = maybe_invert_range(kw_ee, kw_bb, KW);
+            const auto kd_b = maybe_invert_range(
+                    static_cast<int>(kd_bb), static_cast<int>(kd_ee), KD);
+            const auto kd_e = maybe_invert_range(
+                    static_cast<int>(kd_ee), static_cast<int>(kd_bb), KD);
+            const auto kh_b = maybe_invert_range(
+                    static_cast<int>(kh_bb), static_cast<int>(kh_ee), KH);
+            const auto kh_e = maybe_invert_range(
+                    static_cast<int>(kh_ee), static_cast<int>(kh_bb), KH);
+            const auto kw_b = maybe_invert_range(
+                    static_cast<int>(kw_bb), static_cast<int>(kw_ee), KW);
+            const auto kw_e = maybe_invert_range(
+                    static_cast<int>(kw_ee), static_cast<int>(kw_bb), KW);
 
             const auto inp_oc_block
                     = is_relo_with_relo_weights ? 16 : jcp.oc_block;
@@ -2026,8 +2033,8 @@ void brgemm_convolution_fwd_t<isa>::maybe_conv_inp(brgemm_thread_ctx_t &btc,
                     int size_to_sero = 0;
                     const auto zero_elem_size
                             = (dim_t)src_dsz * jcp.inp_ic_block;
-                    size_to_sero
-                            = zero_elem_size * (jcp.iw_block - actual_iw_block);
+                    size_to_sero = static_cast<int>(
+                            zero_elem_size * (jcp.iw_block - actual_iw_block));
                     for (size_t iih = 0; iih < cp.h_count; iih++) {
                         void *const __restrict p_zeroing = (char *)cp.dst
                                 + (dim_t)src_dsz * iih * _pd->pbuf_w_sz

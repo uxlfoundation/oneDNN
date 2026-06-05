@@ -526,7 +526,9 @@ void jit_pp_ker_t::generate() {
     // Rewind pointers that point to data that is indexed by output channel
     // (bias or per-oc scaling factors)
     const auto rewind_ptrs = [&]() {
-        if (jcp_.with_bias) sub(reg_bias_, jcp_.oc * bias_data_type_size_);
+        if (jcp_.with_bias)
+            sub(reg_bias_,
+                    static_cast<uint32_t>(jcp_.oc * bias_data_type_size_));
         if (jcp_.zp.src_exists) {
             const auto offset = jcp_.oc * sizeof(int32_t);
             sub(reg_zp_src_comp_, offset);
@@ -535,7 +537,7 @@ void jit_pp_ker_t::generate() {
         }
         if (jcp_.scale_idx_mult) {
             assert(jcp_.scale_idx_mult == 1);
-            sub(reg_scales_, jcp_.oc * sizeof(float));
+            sub(reg_scales_, static_cast<uint32_t>(jcp_.oc * sizeof(float)));
         }
         add(reg_dst_, (jcp_.dst_os_stride - jcp_.oc) * dst_data_type_size_);
     };
@@ -595,7 +597,7 @@ void jit_pp_ker_t::generate() {
     // Main loop
     Label main_loop_end;
     {
-        cmp(reg_len_, jcp_.oc);
+        cmp(reg_len_, static_cast<uint32_t>(jcp_.oc));
         jle(main_loop_end, T_NEAR);
 
         Label main_loop;
@@ -644,8 +646,8 @@ void jit_pp_ker_t::generate() {
             }
 
             rewind_ptrs();
-            sub(reg_len_, jcp_.oc);
-            cmp(reg_len_, jcp_.oc);
+            sub(reg_len_, static_cast<uint32_t>(jcp_.oc));
+            cmp(reg_len_, static_cast<uint32_t>(jcp_.oc));
             jge(main_loop, T_NEAR);
         }
     }

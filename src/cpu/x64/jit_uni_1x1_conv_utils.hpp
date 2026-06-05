@@ -87,7 +87,7 @@ inline void rtus_prepare(conv_pd_t *self, const convolution_desc_t *&conv_d,
     if (ndims == 4) self->rtus_.conv_d_.strides[1] = 1;
     utils::array_set(self->rtus_.conv_d_.padding[0], 0, 2);
     if (ndims == 4) utils::array_set(self->rtus_.conv_d_.padding[1], 0, 2);
-    const int ic = src_d->dims[1];
+    const int ic = static_cast<int>(src_d->dims[1]);
     if (self->desc()->prop_kind == prop_kind::backward_data) {
         data_type_t data_type = self->rtus_.conv_d_.diff_src_desc.data_type;
         src_d = &(self->rtus_.conv_d_.diff_src_desc = *dst_d);
@@ -551,15 +551,16 @@ inline status_t init_rtus_driver(conv_t *self) {
 
     const auto &cd = *conf.desc();
     const int ndims = conf.ndims();
-    const int stride_h = (conf.ndims() == 3) ? 1 : cd.strides[0];
-    const int stride_w = cd.strides[ndims - 3];
+    const int stride_h
+            = (conf.ndims() == 3) ? 1 : static_cast<int>(cd.strides[0]);
+    const int stride_w = static_cast<int>(cd.strides[ndims - 3]);
 
     const bool is_bwd_data = cd.prop_kind == prop_kind::backward_data;
     const auto &src_d = is_bwd_data ? *conf.diff_src_md() : *conf.src_md();
 
-    const int ih = ndims == 3 ? 1 : src_d.dims[2];
-    const int iw = src_d.dims[ndims - 1];
-    const int ic = src_d.dims[1];
+    const int ih = ndims == 3 ? 1 : static_cast<int>(src_d.dims[2]);
+    const int iw = static_cast<int>(src_d.dims[ndims - 1]);
+    const int ic = static_cast<int>(src_d.dims[1]);
 
     const auto src_tag = memory_desc_wrapper(src_d).matches_one_of_tag(
             format_tag::nhwc, format_tag::nwc);

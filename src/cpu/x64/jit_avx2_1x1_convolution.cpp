@@ -101,9 +101,12 @@ void jit_avx2_1x1_convolution_fwd_t::execute_forward_thr(const int ithr,
 
     const int ndims = dst_d.ndims();
 
-    const int stride_d = (ndims == 5) ? pd()->desc()->strides[0] : 1;
-    const int stride_h = (ndims == 3) ? 1 : pd()->desc()->strides[ndims - 4];
-    const int stride_w = pd()->desc()->strides[ndims - 3];
+    const int stride_d
+            = (ndims == 5) ? static_cast<int>(pd()->desc()->strides[0]) : 1;
+    const int stride_h = (ndims == 3)
+            ? 1
+            : static_cast<int>(pd()->desc()->strides[ndims - 4]);
+    const int stride_w = static_cast<int>(pd()->desc()->strides[ndims - 3]);
 
     const int nb_oc = jcp.nb_load;
     const int nb_ic = jcp.nb_reduce;
@@ -388,9 +391,12 @@ void jit_avx2_1x1_convolution_bwd_data_t::execute_backward_data(
     assert(jcp.stride_w == 1 && jcp.stride_h == 1 && jcp.stride_d == 1);
     const int ndims = diff_dst_d.ndims();
 
-    const int stride_d = (ndims == 5) ? pd()->desc()->strides[0] : 1;
-    const int stride_h = (ndims == 3) ? 1 : pd()->desc()->strides[ndims - 4];
-    const int stride_w = pd()->desc()->strides[ndims - 3];
+    const int stride_d
+            = (ndims == 5) ? static_cast<int>(pd()->desc()->strides[0]) : 1;
+    const int stride_h = (ndims == 3)
+            ? 1
+            : static_cast<int>(pd()->desc()->strides[ndims - 4]);
+    const int stride_w = static_cast<int>(pd()->desc()->strides[ndims - 3]);
 
     const int nb_ic = jcp.nb_load;
     const int nb_oc = jcp.nb_reduce;
@@ -561,12 +567,15 @@ void jit_avx2_1x1_convolution_bwd_weights_t::execute_backward_weights(
     const int nb_oc_blocking = jcp.nb_load_blocking;
     const int load_work = div_up(nb_oc, nb_oc_blocking);
 
-    const int sp_dim = jcp.reduce_dim;
+    const int sp_dim = static_cast<int>(jcp.reduce_dim);
     const int mb_sp_work = jcp.mb * sp_dim;
 
-    const int stride_d = (ndims == 5) ? pd()->desc()->strides[0] : 1;
-    const int stride_h = (ndims == 3) ? 1 : pd()->desc()->strides[ndims - 4];
-    const int stride_w = pd()->desc()->strides[ndims - 3];
+    const int stride_d
+            = (ndims == 5) ? static_cast<int>(pd()->desc()->strides[0]) : 1;
+    const int stride_h = (ndims == 3)
+            ? 1
+            : static_cast<int>(pd()->desc()->strides[ndims - 4]);
+    const int stride_w = static_cast<int>(pd()->desc()->strides[ndims - 3]);
 
     const bool is_src_layout_nxc = utils::one_of(
             jcp.src_tag, format_tag::nwc, format_tag::nhwc, format_tag::ndhwc);

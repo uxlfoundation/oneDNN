@@ -145,9 +145,12 @@ void jit_avx512_core_bf16_1x1_convolution_fwd_t<dst_type>::execute_forward_thr(
     float *store_buffer = scratchpad.template get<float>(key_conv_store_wsp);
 
     const int ndims = src_d.ndims();
-    const int stride_d = (ndims == 5) ? pd()->desc()->strides[0] : 1;
-    const int stride_h = (ndims == 3) ? 1 : pd()->desc()->strides[ndims - 4];
-    const int stride_w = pd()->desc()->strides[ndims - 3];
+    const int stride_d
+            = (ndims == 5) ? static_cast<int>(pd()->desc()->strides[0]) : 1;
+    const int stride_h = (ndims == 3)
+            ? 1
+            : static_cast<int>(pd()->desc()->strides[ndims - 4]);
+    const int stride_w = static_cast<int>(pd()->desc()->strides[ndims - 3]);
 
     auto p = jit_1x1_conv_args_t();
 
@@ -491,9 +494,12 @@ void jit_avx512_core_bf16_1x1_convolution_bwd_data_t<
             : nullptr;
     float *store_buffer = scratchpad.template get<float>(key_conv_store_wsp);
     const int ndims = diff_src_d.ndims();
-    const int stride_d = (ndims == 5) ? pd()->desc()->strides[0] : 1;
-    const int stride_h = (ndims == 3) ? 1 : pd()->desc()->strides[ndims - 4];
-    const int stride_w = pd()->desc()->strides[ndims - 3];
+    const int stride_d
+            = (ndims == 5) ? static_cast<int>(pd()->desc()->strides[0]) : 1;
+    const int stride_h = (ndims == 3)
+            ? 1
+            : static_cast<int>(pd()->desc()->strides[ndims - 4]);
+    const int stride_w = static_cast<int>(pd()->desc()->strides[ndims - 3]);
 
     const int work_amount = jcp.mb * jcp.ngroups * jcp.nb_bcast;
 
@@ -723,8 +729,9 @@ void jit_avx512_core_bf16_1x1_convolution_bwd_weights_t<diff_weights_type>::
     const int sp_nb = jcp.nb_reduce;
     const int mb_sp_work = jcp.mb * sp_nb;
 
-    const int stride_h = (ndims == 3) ? 1 : pd()->desc()->strides[0];
-    const int stride_w = pd()->desc()->strides[ndims - 3];
+    const int stride_h
+            = (ndims == 3) ? 1 : static_cast<int>(pd()->desc()->strides[0]);
+    const int stride_w = static_cast<int>(pd()->desc()->strides[ndims - 3]);
 
     auto step = [](int default_step, int remaining, int tail_step) {
         assert(default_step <= tail_step);
@@ -906,8 +913,9 @@ void jit_avx512_core_bf16_1x1_convolution_bwd_weights_t<diff_weights_type>::
                         if (!jcp.uses_permw_transposition) {
                             bf16_support::jit_call_t ptr;
                             ptr.nelems = p.reduce_dim;
-                            int thr_src_block_size = rnd_up(jcp.reduce_dim, 2)
-                                    * jcp.ic_block * jcp.nb_bcast_blocking_max;
+                            int thr_src_block_size = static_cast<int>(
+                                    rnd_up(jcp.reduce_dim, 2) * jcp.ic_block
+                                    * jcp.nb_bcast_blocking_max);
                             src_data_t *tr_src
                                     = &tr_src_buffer[ithr * thr_src_block_size];
                             for (int bs = 0; bs < bcast_step; bs++) {
@@ -933,8 +941,9 @@ void jit_avx512_core_bf16_1x1_convolution_bwd_weights_t<diff_weights_type>::
                             }
 
                             p.bcast_data = (void *)tr_src;
-                            int thr_dst_block_size = rnd_up(jcp.reduce_dim, 2)
-                                    * jcp.oc_block * jcp.nb_load_blocking_max;
+                            int thr_dst_block_size = static_cast<int>(
+                                    rnd_up(jcp.reduce_dim, 2) * jcp.oc_block
+                                    * jcp.nb_load_blocking_max);
                             diff_dst_data_t *tr_diff_dst = &tr_diff_buffer[ithr
                                     * thr_dst_block_size];
                             for (int ls = 0; ls < load_step; ls++) {

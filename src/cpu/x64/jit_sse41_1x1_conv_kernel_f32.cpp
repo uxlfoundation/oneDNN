@@ -569,25 +569,26 @@ status_t jit_sse41_1x1_conv_kernel_f32_t::init_conf(jit_1x1_conv_conf_t &jcp,
 
     jcp.prop_kind = cd.prop_kind;
 
-    jcp.ngroups = with_groups ? weights_d.dims()[0] : 1;
-    jcp.mb = src_d.dims()[0];
+    jcp.ngroups = with_groups ? static_cast<int>(weights_d.dims()[0]) : 1;
+    jcp.mb = static_cast<int>(src_d.dims()[0]);
 
-    jcp.oc = dst_d.dims()[1] / jcp.ngroups;
-    jcp.ic = src_d.dims()[1] / jcp.ngroups;
+    jcp.oc = static_cast<int>(dst_d.dims()[1]) / jcp.ngroups;
+    jcp.ic = static_cast<int>(src_d.dims()[1]) / jcp.ngroups;
 
-    jcp.ih = (ndims == 3) ? 1 : src_d.dims()[2];
-    jcp.iw = src_d.dims()[ndims - 1];
-    jcp.oh = (ndims == 3) ? 1 : dst_d.dims()[2];
-    jcp.ow = dst_d.dims()[ndims - 1];
+    jcp.ih = (ndims == 3) ? 1 : static_cast<int>(src_d.dims()[2]);
+    jcp.iw = static_cast<int>(src_d.dims()[ndims - 1]);
+    jcp.oh = (ndims == 3) ? 1 : static_cast<int>(dst_d.dims()[2]);
+    jcp.ow = static_cast<int>(dst_d.dims()[ndims - 1]);
 
-    jcp.kh = (ndims == 3) ? 1 : weights_d.dims()[with_groups + 2];
-    jcp.kw = weights_d.dims()[with_groups + ndims - 1];
+    jcp.kh = (ndims == 3) ? 1
+                          : static_cast<int>(weights_d.dims()[with_groups + 2]);
+    jcp.kw = static_cast<int>(weights_d.dims()[with_groups + ndims - 1]);
 
-    jcp.t_pad = (ndims == 3) ? 0 : cd.padding[0][0];
-    jcp.l_pad = cd.padding[0][ndims - 3];
+    jcp.t_pad = (ndims == 3) ? 0 : static_cast<int>(cd.padding[0][0]);
+    jcp.l_pad = static_cast<int>(cd.padding[0][ndims - 3]);
 
-    jcp.stride_h = (ndims == 3) ? 1 : cd.strides[0];
-    jcp.stride_w = cd.strides[ndims - 3];
+    jcp.stride_h = (ndims == 3) ? 1 : static_cast<int>(cd.strides[0]);
+    jcp.stride_w = static_cast<int>(cd.strides[ndims - 3]);
 
     jcp.with_bias = cd.bias_desc.format_kind != format_kind::undef;
 
@@ -709,7 +710,7 @@ status_t jit_sse41_1x1_conv_kernel_f32_t::init_conf(jit_1x1_conv_conf_t &jcp,
         load_blocking_max = is_data_layout_nxc ? jcp.load_dim : 144;
         bcast_blocking = 128; // affects load balancing across threads
         bcast_blocking_max = 192;
-        reduce_blocking = is_data_layout_nxc ? jcp.reduce_dim
+        reduce_blocking = is_data_layout_nxc ? static_cast<int>(jcp.reduce_dim)
                                              : 128; // affects L1$ utilization
     } else if (jcp.prop_kind == backward_data) {
         jcp.reduce_dim = jcp.oc;
@@ -782,7 +783,8 @@ status_t jit_sse41_1x1_conv_kernel_f32_t::init_conf(jit_1x1_conv_conf_t &jcp,
         load_blocking_max = load_blocking;
         assert(jcp.load_dim % load_blocking == 0);
 
-        bcast_blocking = div_up(jcp.bcast_dim, jcp.bcast_block);
+        bcast_blocking
+                = static_cast<int>(div_up(jcp.bcast_dim, jcp.bcast_block));
         while (true) {
             if (bcast_blocking <= 9)
                 break;
@@ -808,7 +810,8 @@ status_t jit_sse41_1x1_conv_kernel_f32_t::init_conf(jit_1x1_conv_conf_t &jcp,
     assert(reduce_blocking);
 
     assert(jcp.bcast_block % jcp.ur == 0);
-    jcp.ur_tail = (jcp.with_dw_conv ? jcp.ow : jcp.bcast_dim) % jcp.ur;
+    jcp.ur_tail = (jcp.with_dw_conv ? jcp.ow : static_cast<int>(jcp.bcast_dim))
+            % jcp.ur;
 
     jcp.nb_bcast_blocking = bcast_blocking / jcp.bcast_block;
     jcp.nb_bcast_blocking_max = bcast_blocking_max / jcp.bcast_block;
@@ -816,9 +819,9 @@ status_t jit_sse41_1x1_conv_kernel_f32_t::init_conf(jit_1x1_conv_conf_t &jcp,
     jcp.nb_load_blocking_max = load_blocking_max / jcp.load_block;
     jcp.nb_reduce_blocking = reduce_blocking / jcp.reduce_block;
 
-    jcp.nb_bcast = div_up(jcp.bcast_dim, jcp.bcast_block);
+    jcp.nb_bcast = static_cast<int>(div_up(jcp.bcast_dim, jcp.bcast_block));
     jcp.nb_load = div_up(jcp.load_dim, jcp.load_block);
-    jcp.nb_reduce = div_up(jcp.reduce_dim, jcp.reduce_block);
+    jcp.nb_reduce = static_cast<int>(div_up(jcp.reduce_dim, jcp.reduce_block));
 
     return status::success;
 }

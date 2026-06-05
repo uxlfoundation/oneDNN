@@ -969,11 +969,13 @@ float brg_blocking_t::est_eff() {
     int nb_oh_thr {1}, oh_thr {1}, nb_od_thr {1}, od_thr {1};
     if (!is_os_blocking) {
         const auto dim_oh = nb_sp * dim_sp;
-        nb_oh_thr = nstl::min(static_cast<dim_t>(nb_oh), div_up(job, dim_oh));
+        nb_oh_thr = static_cast<int>(
+                nstl::min(static_cast<dim_t>(nb_oh), div_up(job, dim_oh)));
         oh_thr = nstl::min(oh, nb_oh_thr * oh_block);
 
         const auto dim_od = nb_oh * dim_oh;
-        nb_od_thr = nstl::min(static_cast<dim_t>(nb_od), div_up(job, dim_od));
+        nb_od_thr = static_cast<int>(
+                nstl::min(static_cast<dim_t>(nb_od), div_up(job, dim_od)));
         od_thr = nstl::min(od, nb_od_thr * od_block);
     }
 
@@ -1000,7 +1002,7 @@ float brg_blocking_t::est_eff() {
     // oh_block almost all is 1. TODO: manage oh_block != 1
     // -- harness: loop by oh_blocks --
     l++;
-    src_is = kd * kh * rnd_inp_simd(sp_thr, kw, ic);
+    src_is = kd * kh * rnd_inp_simd(static_cast<int>(sp_thr), kw, ic);
     loop[l].src.set(oh_block * src_is, 1);
     loop[l].dst.set(sp_thr * rnd_oc_for_sp, 1);
     loop[l].wei.set(wei_op * simd_w, nb_oh_thr);
@@ -1431,7 +1433,7 @@ float brg_blocking_t::est_eff_1x1() {
         loop[l].src.set(sp_block * rnd_simd(ic), nb_oc_thr);
         loop[l].dst.set(sp_block * oc_block, 1);
         wei_is = oc_block * ic;
-        wei_op = nsimd_oc_thr * ic;
+        wei_op = static_cast<int>(nsimd_oc_thr * ic);
         loop[l].wei.set(wei_is, 1);
     }
 
@@ -1465,7 +1467,8 @@ float brg_blocking_t::est_eff_1x1() {
     if (loop_order != loop_ndhwgc) {
         // -- harness: loop by oc_block --
         l++;
-        loop[l].src.set(od_thr * oh_thr * rnd_simd(sp_thr * ic_blocking_size),
+        loop[l].src.set(od_thr * oh_thr
+                        * rnd_simd(static_cast<int>(sp_thr) * ic_blocking_size),
                 nb_oc_thr);
         loop[l].dst.set(oc_block * od_thr * oh_thr * sp_thr, 1);
         loop[l].wei.set(oc_block * ic, 1);
@@ -1483,7 +1486,7 @@ float brg_blocking_t::est_eff_1x1() {
             * ic_blocking_size;
     const auto dst_op = static_cast<dim_t>(mb_thr) * nsimd_oc_thr * od_thr
             * oh_thr * sp_thr;
-    wei_op = nsimd_oc_thr * ic;
+    wei_op = static_cast<int>(nsimd_oc_thr * ic);
 
     // for "real" application set bench_iterations to 1
     const auto iterations = bench_iterations;
@@ -1701,31 +1704,33 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     jcp.ndims = ndims;
     jcp.prop_kind = cd.prop_kind;
-    jcp.ngroups = with_groups ? weights_d.dims()[0] : 1;
-    jcp.mb = src_d.dims()[0];
-    jcp.oc_without_padding = dst_d.dims()[1];
+    jcp.ngroups = static_cast<int>(with_groups ? weights_d.dims()[0] : 1);
+    jcp.mb = static_cast<int>(src_d.dims()[0]);
+    jcp.oc_without_padding = static_cast<int>(dst_d.dims()[1]);
     jcp.oc = jcp.oc_without_padding / jcp.ngroups;
-    jcp.ic_without_padding = src_d.dims()[1] / jcp.ngroups;
+    jcp.ic_without_padding = static_cast<int>(src_d.dims()[1] / jcp.ngroups);
     jcp.ic = jcp.ic_without_padding;
-    jcp.id = (ndims == 5) ? src_d.dims()[2] : 1;
-    jcp.ih = (ndims == 3) ? 1 : src_d.dims()[ndims - 2];
-    jcp.iw = src_d.dims()[ndims - 1];
-    jcp.od = (ndims == 5) ? dst_d.dims()[2] : 1;
-    jcp.oh = (ndims == 3) ? 1 : dst_d.dims()[ndims - 2];
-    jcp.ow = dst_d.dims()[ndims - 1];
-    jcp.kd = (ndims == 5) ? weights_d.dims()[with_groups + 2] : 1;
-    jcp.kh = (ndims == 3) ? 1 : weights_d.dims()[with_groups + ndims - 2];
-    jcp.kw = weights_d.dims()[with_groups + ndims - 1];
-    jcp.f_pad = (ndims == 5) ? cd.padding[0][0] : 0;
-    jcp.t_pad = (ndims == 3) ? 0 : cd.padding[0][ndims - 4];
-    jcp.l_pad = cd.padding[0][ndims - 3];
-    jcp.stride_d = (ndims == 5) ? cd.strides[0] : 1;
-    jcp.stride_h = (ndims == 3) ? 1 : cd.strides[ndims - 4];
-    jcp.stride_w = cd.strides[ndims - 3];
+    jcp.id = static_cast<int>((ndims == 5) ? src_d.dims()[2] : 1);
+    jcp.ih = static_cast<int>((ndims == 3) ? 1 : src_d.dims()[ndims - 2]);
+    jcp.iw = static_cast<int>(src_d.dims()[ndims - 1]);
+    jcp.od = static_cast<int>((ndims == 5) ? dst_d.dims()[2] : 1);
+    jcp.oh = static_cast<int>((ndims == 3) ? 1 : dst_d.dims()[ndims - 2]);
+    jcp.ow = static_cast<int>(dst_d.dims()[ndims - 1]);
+    jcp.kd = static_cast<int>(
+            (ndims == 5) ? weights_d.dims()[with_groups + 2] : 1);
+    jcp.kh = static_cast<int>(
+            (ndims == 3) ? 1 : weights_d.dims()[with_groups + ndims - 2]);
+    jcp.kw = static_cast<int>(weights_d.dims()[with_groups + ndims - 1]);
+    jcp.f_pad = static_cast<int>((ndims == 5) ? cd.padding[0][0] : 0);
+    jcp.t_pad = static_cast<int>((ndims == 3) ? 0 : cd.padding[0][ndims - 4]);
+    jcp.l_pad = static_cast<int>(cd.padding[0][ndims - 3]);
+    jcp.stride_d = static_cast<int>((ndims == 5) ? cd.strides[0] : 1);
+    jcp.stride_h = static_cast<int>((ndims == 3) ? 1 : cd.strides[ndims - 4]);
+    jcp.stride_w = static_cast<int>(cd.strides[ndims - 3]);
 
-    jcp.dilate_d = (ndims == 5) ? cd.dilates[0] : 0;
-    jcp.dilate_h = (ndims == 3) ? 0 : cd.dilates[ndims - 4];
-    jcp.dilate_w = cd.dilates[ndims - 3];
+    jcp.dilate_d = static_cast<int>((ndims == 5) ? cd.dilates[0] : 0);
+    jcp.dilate_h = static_cast<int>((ndims == 3) ? 0 : cd.dilates[ndims - 4]);
+    jcp.dilate_w = static_cast<int>(cd.dilates[ndims - 3]);
 
     jcp.os = jcp.od * jcp.oh * jcp.ow;
 

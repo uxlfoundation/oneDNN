@@ -1428,27 +1428,30 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     jcp.isa = isa;
     jcp.ndims = ndims;
     jcp.prop_kind = cd.prop_kind;
-    jcp.ngroups = with_groups ? weights_d.dims()[0] : 1;
-    jcp.mb = diff_src_d.dims()[0];
-    jcp.oc_without_padding = diff_dst_d.dims()[1] / jcp.ngroups;
+    jcp.ngroups = static_cast<int>(with_groups ? weights_d.dims()[0] : 1);
+    jcp.mb = static_cast<int>(diff_src_d.dims()[0]);
+    jcp.oc_without_padding
+            = static_cast<int>(diff_dst_d.dims()[1] / jcp.ngroups);
     jcp.oc = jcp.oc_without_padding;
-    jcp.ic_without_padding = diff_src_d.dims()[1];
+    jcp.ic_without_padding = static_cast<int>(diff_src_d.dims()[1]);
     jcp.ic = jcp.ic_without_padding / jcp.ngroups;
-    jcp.id = (ndims == 5) ? diff_src_d.dims()[2] : 1;
-    jcp.ih = (ndims == 3) ? 1 : diff_src_d.dims()[ndims - 2];
-    jcp.iw = diff_src_d.dims()[ndims - 1];
-    jcp.od = (ndims == 5) ? diff_dst_d.dims()[2] : 1;
-    jcp.oh = (ndims == 3) ? 1 : diff_dst_d.dims()[ndims - 2];
-    jcp.ow = diff_dst_d.dims()[ndims - 1];
-    jcp.kd = (ndims == 5) ? weights_d.dims()[with_groups + 2] : 1;
-    jcp.kh = (ndims == 3) ? 1 : weights_d.dims()[with_groups + ndims - 2];
-    jcp.kw = weights_d.dims()[with_groups + ndims - 1];
-    jcp.f_pad = (ndims == 5) ? cd.padding[0][0] : 0;
-    jcp.t_pad = (ndims == 3) ? 0 : cd.padding[0][ndims - 4];
-    jcp.l_pad = cd.padding[0][ndims - 3];
-    jcp.stride_d = (ndims == 5) ? cd.strides[0] : 1;
-    jcp.stride_h = (ndims == 3) ? 1 : cd.strides[ndims - 4];
-    jcp.stride_w = cd.strides[ndims - 3];
+    jcp.id = static_cast<int>((ndims == 5) ? diff_src_d.dims()[2] : 1);
+    jcp.ih = static_cast<int>((ndims == 3) ? 1 : diff_src_d.dims()[ndims - 2]);
+    jcp.iw = static_cast<int>(diff_src_d.dims()[ndims - 1]);
+    jcp.od = static_cast<int>((ndims == 5) ? diff_dst_d.dims()[2] : 1);
+    jcp.oh = static_cast<int>((ndims == 3) ? 1 : diff_dst_d.dims()[ndims - 2]);
+    jcp.ow = static_cast<int>(diff_dst_d.dims()[ndims - 1]);
+    jcp.kd = static_cast<int>(
+            (ndims == 5) ? weights_d.dims()[with_groups + 2] : 1);
+    jcp.kh = static_cast<int>(
+            (ndims == 3) ? 1 : weights_d.dims()[with_groups + ndims - 2]);
+    jcp.kw = static_cast<int>(weights_d.dims()[with_groups + ndims - 1]);
+    jcp.f_pad = static_cast<int>((ndims == 5) ? cd.padding[0][0] : 0);
+    jcp.t_pad = static_cast<int>((ndims == 3) ? 0 : cd.padding[0][ndims - 4]);
+    jcp.l_pad = static_cast<int>(cd.padding[0][ndims - 3]);
+    jcp.stride_d = static_cast<int>((ndims == 5) ? cd.strides[0] : 1);
+    jcp.stride_h = static_cast<int>((ndims == 3) ? 1 : cd.strides[ndims - 4]);
+    jcp.stride_w = static_cast<int>(cd.strides[ndims - 3]);
 
     VDISPATCH_CONV_IC(!everyone_is(1, jcp.stride_d, jcp.stride_h, jcp.stride_w),
             VERBOSE_UNSUPPORTED_FEATURE, "unit strides are not supported");
@@ -1462,9 +1465,9 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             VERBOSE_UNSUPPORTED_FEATURE,
             "deconvolution with uneven spatial dimensions is not supported");
 
-    jcp.dilate_d = (ndims == 5) ? cd.dilates[0] : 0;
-    jcp.dilate_h = (ndims == 3) ? 0 : cd.dilates[ndims - 4];
-    jcp.dilate_w = cd.dilates[ndims - 3];
+    jcp.dilate_d = static_cast<int>((ndims == 5) ? cd.dilates[0] : 0);
+    jcp.dilate_h = static_cast<int>((ndims == 3) ? 0 : cd.dilates[ndims - 4]);
+    jcp.dilate_w = static_cast<int>(cd.dilates[ndims - 3]);
 
     VDISPATCH_CONV_IC(everyone_is(0, jcp.dilate_d, jcp.dilate_h, jcp.dilate_w),
             VERBOSE_UNSUPPORTED_FEATURE, "non-zero dilations are detected");
@@ -1703,7 +1706,7 @@ void set_k_range(int P, int D, int S, dim_t i, dim_t O, int K, int &k_s,
         int &k_f, bool is_w) {
     int s(0), o_test(0);
     while (true) {
-        o_test = i + P - s * D;
+        o_test = static_cast<int>(i + P - s * D);
         if (o_test % S == 0) break;
         s++;
     }

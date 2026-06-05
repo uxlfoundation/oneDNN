@@ -117,9 +117,12 @@ void jit_uni_x8s8s32x_1x1_convolution_fwd_t<isa>::execute_forward_thr(
     const int work_amount = jcp.mb * jcp.ngroups * jcp.nb_bcast;
 
     const int ndims = dst_d.ndims();
-    const int stride_d = (ndims == 5) ? pd()->desc()->strides[0] : 1;
-    const int stride_h = (ndims == 3) ? 1 : pd()->desc()->strides[ndims - 4];
-    const int stride_w = pd()->desc()->strides[ndims - 3];
+    const int stride_d
+            = (ndims == 5) ? static_cast<int>(pd()->desc()->strides[0]) : 1;
+    const int stride_h = (ndims == 3)
+            ? 1
+            : static_cast<int>(pd()->desc()->strides[ndims - 4]);
+    const int stride_w = static_cast<int>(pd()->desc()->strides[ndims - 3]);
 
     auto offset = weights_d.size() - weights_d.additional_buffer_size();
     char *w = const_cast<char *>(weights);

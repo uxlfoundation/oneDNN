@@ -156,7 +156,8 @@ jit_avx512_core_amx_convolution_fwd_t::execute_forward_reduced_lowering(
     if (req_zero_point_buffer && zp_pbuff_outer_compute) {
         const size_t wei_oc_step = (size_t)jcp.kh * jcp.kw * jcp.ic_block_int_np
                 * jcp.nb_oc_blocking * jcp.oc_block;
-        const int sp_stride = mem_blk_off(dst_d, 0, 0, 0, 0, 1);
+        const int sp_stride
+                = static_cast<int>(mem_blk_off(dst_d, 0, 0, 0, 0, 1));
         const int dilate_h = jcp.dilate_h + 1;
         const int gen_kh = (jcp.kh - 1) * dilate_h + 1;
         const int oh_work = jcp.oh_pad;
@@ -164,9 +165,9 @@ jit_avx512_core_amx_convolution_fwd_t::execute_forward_reduced_lowering(
                 [= COMPAT_THIS_CAPTURE](dim_t g, dim_t occ, dim_t oh) {
             auto p = jit_conv_args_t();
 
-            const int oh_ = oh >= zp_buff_b_pad_start
-                    ? b_pad_start + oh - zp_buff_b_pad_start
-                    : oh;
+            const int oh_ = static_cast<int>(oh) >= zp_buff_b_pad_start
+                    ? b_pad_start + static_cast<int>(oh) - zp_buff_b_pad_start
+                    : static_cast<int>(oh);
             const int ih = oh_ * jcp.stride_h - jcp.t_pad;
             const int t_overflow
                     = nstl::min(jcp.kh, div_up(max(0, -ih), dilate_h));
@@ -176,8 +177,8 @@ jit_avx512_core_amx_convolution_fwd_t::execute_forward_reduced_lowering(
             p.b_overflow = b_overflow;
             p.kh_padding = nstl::max(0, jcp.kh - t_overflow - b_overflow);
 
-            const int ocb
-                    = g * jcp.oc + occ * jcp.nb_oc_blocking * jcp.oc_block;
+            const int ocb = static_cast<int>(g) * jcp.oc
+                    + static_cast<int>(occ) * jcp.nb_oc_blocking * jcp.oc_block;
             const size_t ch_offset = dst_d.blk_off(0, ocb);
             const size_t sp_offset = oh * jcp.ow_pad * sp_stride;
             p.zero_point_pbuff = &zero_point_pbuff[ch_offset + sp_offset];
@@ -226,7 +227,8 @@ jit_avx512_core_amx_convolution_fwd_t::execute_forward_reduced_lowering(
         }
 
         const int oh_work = jcp.oh_pad;
-        const int sp_stride = mem_blk_off(dst_d, 0, 0, 0, 0, 1);
+        const int sp_stride
+                = static_cast<int>(mem_blk_off(dst_d, 0, 0, 0, 0, 1));
         const int dilate_h = jcp.dilate_h + 1;
         const int gen_kh = (jcp.kh - 1) * dilate_h + 1;
         const size_t wei_oc_step = (size_t)jcp.kh * jcp.kw * jcp.ic_block_int_np
@@ -519,7 +521,8 @@ status_t jit_avx512_core_amx_convolution_fwd_t::execute_forward(
     const bool zp_pbuff_parallel_block
             = req_zero_point_buffer && !zp_pbuff_outer_compute;
     if (req_zero_point_buffer && zp_pbuff_outer_compute) {
-        const int sp_stride = mem_blk_off(dst_d, 0, 0, 0, 0, 1);
+        const int sp_stride
+                = static_cast<int>(mem_blk_off(dst_d, 0, 0, 0, 0, 1));
         const int dilate_d = jcp.dilate_d + 1;
         const int gen_kd = (jcp.kd - 1) * dilate_d + 1;
         const int dilate_h = jcp.dilate_h + 1;
@@ -531,9 +534,10 @@ status_t jit_avx512_core_amx_convolution_fwd_t::execute_forward(
                         dim_t g, dim_t occ, dim_t od, dim_t oh) {
             auto p = jit_conv_args_t();
 
-            const int od_ = od >= zp_buff_back_pad_start
-                    ? back_pad_start + od - zp_buff_back_pad_start
-                    : od;
+            const int od_ = static_cast<int>(od) >= zp_buff_back_pad_start
+                    ? back_pad_start + static_cast<int>(od)
+                            - zp_buff_back_pad_start
+                    : static_cast<int>(od);
             const int id = od_ * jcp.stride_d - jcp.f_pad;
             const int f_overflow
                     = nstl::min(jcp.kd, div_up(max(0, -id), dilate_d));
@@ -542,9 +546,9 @@ status_t jit_avx512_core_amx_convolution_fwd_t::execute_forward(
             p.f_overflow = f_overflow;
             p.back_overflow = back_overflow;
             p.kd_padding = nstl::max(0, jcp.kd - f_overflow - back_overflow);
-            const int oh_ = oh >= zp_buff_b_pad_start
-                    ? b_pad_start + oh - zp_buff_b_pad_start
-                    : oh;
+            const int oh_ = static_cast<int>(oh) >= zp_buff_b_pad_start
+                    ? b_pad_start + static_cast<int>(oh) - zp_buff_b_pad_start
+                    : static_cast<int>(oh);
             const int ih = oh_ * jcp.stride_h - jcp.t_pad;
             const int t_overflow
                     = nstl::min(jcp.kh, div_up(max(0, -ih), dilate_h));
@@ -554,8 +558,8 @@ status_t jit_avx512_core_amx_convolution_fwd_t::execute_forward(
             p.b_overflow = b_overflow;
             p.kh_padding = nstl::max(0, jcp.kh - t_overflow - b_overflow);
 
-            const int ocb
-                    = g * jcp.oc + occ * jcp.nb_oc_blocking * jcp.oc_block;
+            const int ocb = static_cast<int>(g) * jcp.oc
+                    + static_cast<int>(occ) * jcp.nb_oc_blocking * jcp.oc_block;
             const size_t ch_offset = dst_d.blk_off(0, ocb);
             auto sp_offset = (od * jcp.oh_pad + oh) * jcp.ow_pad * sp_stride;
             p.zero_point_pbuff = &zero_point_pbuff[ch_offset + sp_offset];
@@ -605,7 +609,8 @@ status_t jit_avx512_core_amx_convolution_fwd_t::execute_forward(
         }
 
         const int oh_work = jcp.oh_pad;
-        const int sp_stride = mem_blk_off(dst_d, 0, 0, 0, 0, 1);
+        const int sp_stride
+                = static_cast<int>(mem_blk_off(dst_d, 0, 0, 0, 0, 1));
         const int dilate_d = jcp.dilate_d + 1;
         const int dilate_h = jcp.dilate_h + 1;
         const int gen_kh = (jcp.kh - 1) * dilate_h + 1;

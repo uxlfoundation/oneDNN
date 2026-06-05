@@ -2308,33 +2308,34 @@ status_t jit_avx512_core_amx_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     jcp.isa = avx512_core_amx;
     jcp.ndims = ndims;
     jcp.prop_kind = cd.prop_kind;
-    jcp.ngroups = with_groups ? weights_d.dims()[0] : 1;
+    jcp.ngroups = static_cast<int>(with_groups ? weights_d.dims()[0] : 1);
 
-    jcp.mb = src_d.dims()[0];
-    jcp.oc = dst_d.dims()[1] / jcp.ngroups;
+    jcp.mb = static_cast<int>(src_d.dims()[0]);
+    jcp.oc = static_cast<int>(dst_d.dims()[1] / jcp.ngroups);
     jcp.oc_without_padding = jcp.oc;
-    jcp.ic = src_d.dims()[1] / jcp.ngroups;
+    jcp.ic = static_cast<int>(src_d.dims()[1] / jcp.ngroups);
     jcp.ic_without_padding = jcp.ic;
-    jcp.id = is_3d ? src_d.dims()[2] : 1;
-    jcp.ih = !is_1d ? src_d.dims()[ndims - 2] : 1;
-    jcp.iw = src_d.dims()[ndims - 1];
-    jcp.od = is_3d ? dst_d.dims()[2] : 1;
-    jcp.oh = !is_1d ? dst_d.dims()[ndims - 2] : 1;
-    jcp.ow = dst_d.dims()[ndims - 1];
-    jcp.kd = is_3d ? weights_d.dims()[with_groups + 2] : 1;
-    jcp.kh = !is_1d ? weights_d.dims()[with_groups + ndims - 2] : 1;
-    jcp.kw = weights_d.dims()[with_groups + ndims - 1];
-    jcp.f_pad = is_3d ? cd.padding[0][0] : 0;
-    jcp.t_pad = !is_1d ? cd.padding[0][ndims - 4] : 0;
-    jcp.l_pad = cd.padding[0][ndims - 3];
-    jcp.stride_d = is_3d ? cd.strides[0] : 1;
-    jcp.stride_h = !is_1d ? cd.strides[ndims - 4] : 1;
-    jcp.stride_w = cd.strides[ndims - 3];
+    jcp.id = static_cast<int>(is_3d ? src_d.dims()[2] : 1);
+    jcp.ih = static_cast<int>(!is_1d ? src_d.dims()[ndims - 2] : 1);
+    jcp.iw = static_cast<int>(src_d.dims()[ndims - 1]);
+    jcp.od = static_cast<int>(is_3d ? dst_d.dims()[2] : 1);
+    jcp.oh = static_cast<int>(!is_1d ? dst_d.dims()[ndims - 2] : 1);
+    jcp.ow = static_cast<int>(dst_d.dims()[ndims - 1]);
+    jcp.kd = static_cast<int>(is_3d ? weights_d.dims()[with_groups + 2] : 1);
+    jcp.kh = static_cast<int>(
+            !is_1d ? weights_d.dims()[with_groups + ndims - 2] : 1);
+    jcp.kw = static_cast<int>(weights_d.dims()[with_groups + ndims - 1]);
+    jcp.f_pad = static_cast<int>(is_3d ? cd.padding[0][0] : 0);
+    jcp.t_pad = static_cast<int>(!is_1d ? cd.padding[0][ndims - 4] : 0);
+    jcp.l_pad = static_cast<int>(cd.padding[0][ndims - 3]);
+    jcp.stride_d = static_cast<int>(is_3d ? cd.strides[0] : 1);
+    jcp.stride_h = static_cast<int>(!is_1d ? cd.strides[ndims - 4] : 1);
+    jcp.stride_w = static_cast<int>(cd.strides[ndims - 3]);
     jcp.with_bias = cd.bias_desc.format_kind != format_kind::undef;
 
-    jcp.dilate_d = is_3d ? cd.dilates[ndims - 5] : 0;
-    jcp.dilate_h = !is_1d ? cd.dilates[ndims - 4] : 0;
-    jcp.dilate_w = cd.dilates[ndims - 3];
+    jcp.dilate_d = static_cast<int>(is_3d ? cd.dilates[ndims - 5] : 0);
+    jcp.dilate_h = static_cast<int>(!is_1d ? cd.dilates[ndims - 4] : 0);
+    jcp.dilate_w = static_cast<int>(cd.dilates[ndims - 3]);
 
     const int gen_kd = (jcp.kd - 1) * (jcp.dilate_d + 1) + 1;
     const int gen_kh = (jcp.kh - 1) * (jcp.dilate_h + 1) + 1;
@@ -3813,36 +3814,37 @@ status_t jit_avx512_core_amx_bwd_data_kernel_t::init_conf(jit_conv_conf_t &jcp,
     jcp.isa = is_f16 ? avx512_core_amx_fp16 : avx512_core_amx;
     jcp.ndims = ndims;
     jcp.prop_kind = cd.prop_kind;
-    jcp.ngroups = with_groups ? weights_d.dims()[0] : 1;
+    jcp.ngroups = static_cast<int>(with_groups ? weights_d.dims()[0] : 1);
 
-    jcp.mb = diff_src_d.dims()[0];
-    jcp.oc = diff_dst_d.dims()[1] / jcp.ngroups;
+    jcp.mb = static_cast<int>(diff_src_d.dims()[0]);
+    jcp.oc = static_cast<int>(diff_dst_d.dims()[1] / jcp.ngroups);
     jcp.oc_without_padding = jcp.oc;
-    jcp.ic = diff_src_d.dims()[1] / jcp.ngroups;
+    jcp.ic = static_cast<int>(diff_src_d.dims()[1] / jcp.ngroups);
     jcp.ic_without_padding = jcp.ic;
-    jcp.id = is_3d ? diff_src_d.dims()[2] : 1;
-    jcp.ih = !is_1d ? diff_src_d.dims()[ndims - 2] : 1;
-    jcp.iw = diff_src_d.dims()[ndims - 1];
-    jcp.od = is_3d ? diff_dst_d.dims()[2] : 1;
-    jcp.oh = !is_1d ? diff_dst_d.dims()[ndims - 2] : 1;
-    jcp.ow = diff_dst_d.dims()[ndims - 1];
-    jcp.kd = is_3d ? weights_d.dims()[with_groups + 2] : 1;
-    jcp.kh = !is_1d ? weights_d.dims()[with_groups + ndims - 2] : 1;
-    jcp.kw = weights_d.dims()[with_groups + ndims - 1];
-    jcp.f_pad = is_3d ? cd.padding[0][0] : 0;
-    jcp.t_pad = !is_1d ? cd.padding[0][ndims - 4] : 0;
-    jcp.l_pad = cd.padding[0][ndims - 3];
-    jcp.stride_d = is_3d ? cd.strides[0] : 1;
-    jcp.stride_h = !is_1d ? cd.strides[ndims - 4] : 1;
-    jcp.stride_w = cd.strides[ndims - 3];
+    jcp.id = static_cast<int>(is_3d ? diff_src_d.dims()[2] : 1);
+    jcp.ih = static_cast<int>(!is_1d ? diff_src_d.dims()[ndims - 2] : 1);
+    jcp.iw = static_cast<int>(diff_src_d.dims()[ndims - 1]);
+    jcp.od = static_cast<int>(is_3d ? diff_dst_d.dims()[2] : 1);
+    jcp.oh = static_cast<int>(!is_1d ? diff_dst_d.dims()[ndims - 2] : 1);
+    jcp.ow = static_cast<int>(diff_dst_d.dims()[ndims - 1]);
+    jcp.kd = static_cast<int>(is_3d ? weights_d.dims()[with_groups + 2] : 1);
+    jcp.kh = static_cast<int>(
+            !is_1d ? weights_d.dims()[with_groups + ndims - 2] : 1);
+    jcp.kw = static_cast<int>(weights_d.dims()[with_groups + ndims - 1]);
+    jcp.f_pad = static_cast<int>(is_3d ? cd.padding[0][0] : 0);
+    jcp.t_pad = static_cast<int>(!is_1d ? cd.padding[0][ndims - 4] : 0);
+    jcp.l_pad = static_cast<int>(cd.padding[0][ndims - 3]);
+    jcp.stride_d = static_cast<int>(is_3d ? cd.strides[0] : 1);
+    jcp.stride_h = static_cast<int>(!is_1d ? cd.strides[ndims - 4] : 1);
+    jcp.stride_w = static_cast<int>(cd.strides[ndims - 3]);
 
     // No bias for xf16 case to simplify integration with ref_deconvolution
     jcp.with_bias = bias_md && !is_xf16_convolution
             && cd.bias_desc.format_kind != format_kind::undef;
 
-    jcp.dilate_d = is_3d ? cd.dilates[ndims - 5] : 0;
-    jcp.dilate_h = !is_1d ? cd.dilates[ndims - 4] : 0;
-    jcp.dilate_w = cd.dilates[ndims - 3];
+    jcp.dilate_d = static_cast<int>(is_3d ? cd.dilates[ndims - 5] : 0);
+    jcp.dilate_h = static_cast<int>(!is_1d ? cd.dilates[ndims - 4] : 0);
+    jcp.dilate_w = static_cast<int>(cd.dilates[ndims - 3]);
 
     VDISPATCH_CONV_IC(!(jcp.dilate_d != 0 && jcp.stride_d != 1),
             "unsupported stride/dilation values");
@@ -4332,8 +4334,10 @@ void jit_avx512_core_amx_bwd_weights_kernel_t::compute_full_spat_loop(
 
             L(kh_loop_work);
 
-            mul_by_const(reg_ihs, reg_tmp, get_src_offset(0, 0, 1));
-            mul_by_const(reg_ohs, reg_tmp, get_ddst_offset(0, 1));
+            mul_by_const(reg_ihs, reg_tmp,
+                    static_cast<int>(get_src_offset(0, 0, 1)));
+            mul_by_const(
+                    reg_ohs, reg_tmp, static_cast<int>(get_ddst_offset(0, 1)));
 
             add(reg_src, reg_ihs);
             add(reg_ddst, reg_ohs);
@@ -5025,8 +5029,8 @@ void jit_avx512_core_amx_bwd_weights_kernel_t::compute_od_loop_common(
         mov(reg_kd_count, ptr[param + GET_OFF(kd_padding)]);
     } else {
         const int kd_padding = jcp.kd - kd_front_pad - kd_back_pad;
-        const int kd_offset = get_kernel_offset(
-                0, nstl::min(jcp.kd - 1, kd_front_pad) * jcp.kh * jcp.kw);
+        const int kd_offset = static_cast<int>(get_kernel_offset(
+                0, nstl::min(jcp.kd - 1, kd_front_pad) * jcp.kh * jcp.kw));
         add(reg_kernel, kd_offset);
         xor_(reg_d_index, reg_d_index);
         mov(reg_kd_count, kd_padding);
@@ -5242,35 +5246,37 @@ status_t jit_avx512_core_amx_bwd_weights_kernel_t::init_conf(
     jcp.ndims = ndims;
     jcp.prop_kind = cd.prop_kind;
 
-    jcp.ngroups = with_groups ? diff_weights_d.dims()[0] : 1;
-    jcp.mb = src_d.dims()[0];
+    jcp.ngroups = static_cast<int>(with_groups ? diff_weights_d.dims()[0] : 1);
+    jcp.mb = static_cast<int>(src_d.dims()[0]);
 
-    jcp.oc = diff_dst_d.dims()[1] / jcp.ngroups;
+    jcp.oc = static_cast<int>(diff_dst_d.dims()[1] / jcp.ngroups);
     jcp.oc_without_padding = jcp.oc;
-    jcp.ic = src_d.dims()[1] / jcp.ngroups;
+    jcp.ic = static_cast<int>(src_d.dims()[1] / jcp.ngroups);
 
-    jcp.id = (ndims == 5) ? src_d.dims()[2] : 1;
-    jcp.ih = (ndims == 3) ? 1 : src_d.dims()[ndims - 2];
-    jcp.iw = src_d.dims()[ndims - 1];
-    jcp.od = (ndims == 5) ? diff_dst_d.dims()[2] : 1;
-    jcp.oh = (ndims == 3) ? 1 : diff_dst_d.dims()[ndims - 2];
-    jcp.ow = diff_dst_d.dims()[ndims - 1];
+    jcp.id = static_cast<int>((ndims == 5) ? src_d.dims()[2] : 1);
+    jcp.ih = static_cast<int>((ndims == 3) ? 1 : src_d.dims()[ndims - 2]);
+    jcp.iw = static_cast<int>(src_d.dims()[ndims - 1]);
+    jcp.od = static_cast<int>((ndims == 5) ? diff_dst_d.dims()[2] : 1);
+    jcp.oh = static_cast<int>((ndims == 3) ? 1 : diff_dst_d.dims()[ndims - 2]);
+    jcp.ow = static_cast<int>(diff_dst_d.dims()[ndims - 1]);
 
-    jcp.kd = (ndims == 5) ? diff_weights_d.dims()[with_groups + 2] : 1;
-    jcp.kh = (ndims == 3) ? 1 : diff_weights_d.dims()[with_groups + ndims - 2];
-    jcp.kw = diff_weights_d.dims()[with_groups + ndims - 1];
+    jcp.kd = static_cast<int>(
+            (ndims == 5) ? diff_weights_d.dims()[with_groups + 2] : 1);
+    jcp.kh = static_cast<int>(
+            (ndims == 3) ? 1 : diff_weights_d.dims()[with_groups + ndims - 2]);
+    jcp.kw = static_cast<int>(diff_weights_d.dims()[with_groups + ndims - 1]);
 
-    jcp.f_pad = (ndims == 5) ? cd.padding[0][0] : 0;
-    jcp.t_pad = (ndims == 3) ? 0 : cd.padding[0][ndims - 4];
-    jcp.l_pad = cd.padding[0][ndims - 3];
+    jcp.f_pad = static_cast<int>((ndims == 5) ? cd.padding[0][0] : 0);
+    jcp.t_pad = static_cast<int>((ndims == 3) ? 0 : cd.padding[0][ndims - 4]);
+    jcp.l_pad = static_cast<int>(cd.padding[0][ndims - 3]);
 
-    jcp.stride_d = (ndims == 5) ? cd.strides[0] : 1;
-    jcp.stride_h = (ndims == 3) ? 1 : cd.strides[ndims - 4];
-    jcp.stride_w = cd.strides[ndims - 3];
+    jcp.stride_d = static_cast<int>((ndims == 5) ? cd.strides[0] : 1);
+    jcp.stride_h = static_cast<int>((ndims == 3) ? 1 : cd.strides[ndims - 4]);
+    jcp.stride_w = static_cast<int>(cd.strides[ndims - 3]);
 
-    jcp.dilate_d = (ndims == 5) ? cd.dilates[0] : 0;
-    jcp.dilate_h = (ndims == 3) ? 0 : cd.dilates[ndims - 4];
-    jcp.dilate_w = cd.dilates[ndims - 3];
+    jcp.dilate_d = static_cast<int>((ndims == 5) ? cd.dilates[0] : 0);
+    jcp.dilate_h = static_cast<int>((ndims == 3) ? 0 : cd.dilates[ndims - 4]);
+    jcp.dilate_w = static_cast<int>(cd.dilates[ndims - 3]);
 
     int ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
     int ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);

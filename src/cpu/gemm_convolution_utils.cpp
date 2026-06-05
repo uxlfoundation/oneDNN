@@ -1308,7 +1308,7 @@ status_t init_conf(conv_gemm_conf_t &jcp,
                         < thr_eff_treshold) // we didn't find suitable h_block
                 {
                     h_block = 1;
-                    int nb_h = oh;
+                    int nb_h = static_cast<int>(oh);
                     do {
                         dim_t nb_w = div_up(ow, w_block);
                         dim_t work_amount = jcp.ngroups * jcp.mb * nb_h * nb_w;
@@ -1900,7 +1900,7 @@ status_t init_conf(conv_gemm_conf_t &jcp,
                     }
                 }
                 jcp.outer_threading = true;
-                jcp.nthr_oc = best_nthr_oc;
+                jcp.nthr_oc = static_cast<int>(best_nthr_oc);
                 jcp.oc_block = best_ocb;
                 jcp.os_block = best_osb;
                 jcp.ic_block = best_icb;
@@ -2100,9 +2100,9 @@ status_t init_conf(conv_gemm_conf_t &jcp,
                     // Required memory in this scenario overflows the
                     // available memory due to the large dimensions.
                     const int min_os_block = simd_w;
-                    const int max_os_block = (int)available_mem
+                    const int max_os_block = static_cast<int>((int)available_mem
                             / ((int)gemm_col_datatype_size * jcp.nthr
-                                    * (jcp.im2col_sz / jcp.os));
+                                    * (jcp.im2col_sz / jcp.os)));
                     // Choose an arbitrary small coeficient reduce spatial
                     // dimensions.
                     // TODO: better heuristic to determine os_block based

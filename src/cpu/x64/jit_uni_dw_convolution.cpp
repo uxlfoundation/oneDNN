@@ -255,15 +255,15 @@ void jit_uni_dw_convolution_bwd_data_t<isa, diff_dst_type,
 
         auto iwork = start;
         while (iwork < end) {
-            int ch = chb * jcp.nb_ch_blocking;
+            int ch = static_cast<int>(chb) * jcp.nb_ch_blocking;
 
-            const int work_rem = end - iwork;
-            const dim_t i_t_overflow
-                    = nstl::max(dim_t(0), jcp.kh - 1 - ih - jcp.t_pad);
-            const dim_t i_b_overflow = nstl::max(
-                    dim_t(0), jcp.kh - 1 - (jcp.ih - 1 - ih) - jcp.b_pad);
+            const int work_rem = static_cast<int>(end - iwork);
+            const int i_t_overflow = static_cast<int>(
+                    nstl::max(dim_t(0), jcp.kh - 1 - ih - jcp.t_pad));
+            const int i_b_overflow = static_cast<int>(nstl::max(
+                    dim_t(0), jcp.kh - 1 - (jcp.ih - 1 - ih) - jcp.b_pad));
 
-            int oh = ih + jcp.t_pad - i_b_overflow;
+            int oh = static_cast<int>(ih + jcp.t_pad - i_b_overflow);
             int stride_off_h = oh % jcp.stride_h;
             oh /= jcp.stride_h;
 
@@ -274,8 +274,8 @@ void jit_uni_dw_convolution_bwd_data_t<isa, diff_dst_type,
                 int ur_str_w = 1;
                 for (; iw < l_border; iw += jcp.stride_w) {
                     jit_conv_args_t par_conv = kernel_params(ur_str_w, iw, oh,
-                            ih, i_t_overflow, i_b_overflow, stride_off_h, ch, n,
-                            work_rem);
+                            static_cast<int>(ih), i_t_overflow, i_b_overflow,
+                            stride_off_h, ch, static_cast<int>(n), work_rem);
 
                     (*kernel_)(&par_conv);
                 }
@@ -284,8 +284,8 @@ void jit_uni_dw_convolution_bwd_data_t<isa, diff_dst_type,
                 ur_str_w = (aux_w - iw) / jcp.stride_w;
                 if (ur_str_w > 0) {
                     jit_conv_args_t par_conv = kernel_params(ur_str_w, iw, oh,
-                            ih, i_t_overflow, i_b_overflow, stride_off_h, ch, n,
-                            work_rem);
+                            static_cast<int>(ih), i_t_overflow, i_b_overflow,
+                            stride_off_h, ch, static_cast<int>(n), work_rem);
 
                     (*kernel_)(&par_conv);
 
@@ -296,8 +296,8 @@ void jit_uni_dw_convolution_bwd_data_t<isa, diff_dst_type,
                 ur_str_w = 1;
                 for (; iw < jcp.iw; iw += jcp.stride_w) {
                     jit_conv_args_t par_conv = kernel_params(ur_str_w, iw, oh,
-                            ih, i_t_overflow, i_b_overflow, stride_off_h, ch, n,
-                            work_rem);
+                            static_cast<int>(ih), i_t_overflow, i_b_overflow,
+                            stride_off_h, ch, static_cast<int>(n), work_rem);
 
                     (*kernel_)(&par_conv);
                 }

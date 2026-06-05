@@ -209,7 +209,7 @@ void jit_avx512_core_bf16_convolution_fwd_t::execute_forward_2d(
 
             int ocb = occ * jcp.nb_oc_blocking;
             int g = gg * g_blocking;
-            int work_rem = end - start;
+            int work_rem = static_cast<int>(end - start);
             int ih_s = -jcp.t_pad + oh_s * jcp.stride_h;
             int oh_e = oh_s + work_rem > jcp.oh ? jcp.oh : oh_s + work_rem;
             if (jcp.loop_order == loop_nhwcg) oh_e = oh_s + 1; //step instead
@@ -337,7 +337,7 @@ void jit_avx512_core_bf16_convolution_fwd_t::execute_forward_3d(
 
             int ocb = occ * jcp.nb_oc_blocking;
             int g = gg * g_blocking;
-            int work_rem = end - start;
+            int work_rem = static_cast<int>(end - start);
             int ih_s = -jcp.t_pad + oh_s * jcp.stride_h;
             int oh_e = oh_s + work_rem > jcp.oh ? jcp.oh : oh_s + work_rem;
             if (jcp.loop_order == loop_nhwcg) oh_e = oh_s + 1; //step instead
@@ -465,7 +465,7 @@ void jit_avx512_core_bf16_convolution_bwd_data_t ::execute_backward_data_3d(
         while (start < end) {
             int icb = icc * jcp.nb_ic_blocking;
             int g = gg * g_blocking;
-            int work_rem = end - start;
+            int work_rem = static_cast<int>(end - start);
             int ih_e = ih_s + work_rem > jcp.ih ? jcp.ih : ih_s + work_rem;
             if (jcp.loop_order == loop_nhwcg) ih_e = ih_s + 1; //step instead
 
@@ -632,7 +632,7 @@ void jit_avx512_core_bf16_convolution_bwd_data_t ::execute_backward_data(
         while (start < end) {
             int icb = icc * jcp.nb_ic_blocking;
             int g = gg * g_blocking;
-            int work_rem = end - start;
+            int work_rem = static_cast<int>(end - start);
             int ih_e = ih_s + work_rem > jcp.ih ? jcp.ih : ih_s + work_rem;
             if (jcp.loop_order == loop_nhwcg) ih_e = ih_s + 1; //step instead
             int iw_s = iwb * jcp.iw_block;
@@ -1056,7 +1056,7 @@ void jit_avx512_core_bf16_convolution_bwd_weights_t ::compute_diff_weights_2d(
 
     while (start < end) {
         auto p = jit_conv_args_t();
-        int work_rem = end - start;
+        int work_rem = static_cast<int>(end - start);
         const int oh_e = oh_s + work_rem > jcp.oh ? jcp.oh : oh_s + work_rem;
         int ih_s = nstl::max(0, -jcp.t_pad + oh_s * jcp.stride_h);
         const int ih_e = nstl::min(
@@ -1288,7 +1288,7 @@ void jit_avx512_core_bf16_convolution_bwd_weights_t ::compute_diff_weights_3d(
     nd_iterator_init(start, img, jcp.mb, od_s, jcp.od);
     while (start < end) {
         auto p = jit_conv_args_t();
-        int work_rem = end - start;
+        int work_rem = static_cast<int>(end - start);
         const int od_e = od_s + work_rem > jcp.od ? jcp.od : od_s + work_rem;
         int id_s = nstl::max(0, -jcp.f_pad + od_s * jcp.stride_d);
         const int id_e = nstl::min(

@@ -102,9 +102,12 @@ void jit_avx512_common_1x1_convolution_fwd_t<src_type, wei_type,
             : nullptr;
 
     const int ndims = src_d.ndims();
-    const int stride_d = (ndims == 5) ? pd()->desc()->strides[0] : 1;
-    const int stride_h = (ndims == 3) ? 1 : pd()->desc()->strides[ndims - 4];
-    const int stride_w = pd()->desc()->strides[ndims - 3];
+    const int stride_d
+            = (ndims == 5) ? static_cast<int>(pd()->desc()->strides[0]) : 1;
+    const int stride_h = (ndims == 3)
+            ? 1
+            : static_cast<int>(pd()->desc()->strides[ndims - 4]);
+    const int stride_w = static_cast<int>(pd()->desc()->strides[ndims - 3]);
 
     auto step = [](int default_step, int remaining, int tail_step) {
         assert(default_step <= tail_step);
@@ -464,9 +467,12 @@ void jit_avx512_common_1x1_convolution_bwd_data_t<diff_dst_type, wei_type,
 
     assert(jcp.stride_w == 1 && jcp.stride_h == 1 && jcp.stride_d == 1);
 
-    const int stride_d = (ndims == 5) ? pd()->desc()->strides[0] : 1;
-    const int stride_h = (ndims == 3) ? 1 : pd()->desc()->strides[ndims - 4];
-    const int stride_w = pd()->desc()->strides[ndims - 3];
+    const int stride_d
+            = (ndims == 5) ? static_cast<int>(pd()->desc()->strides[0]) : 1;
+    const int stride_h = (ndims == 3)
+            ? 1
+            : static_cast<int>(pd()->desc()->strides[ndims - 4]);
+    const int stride_w = static_cast<int>(pd()->desc()->strides[ndims - 3]);
 
     const int nb_ic = jcp.nb_load;
     const int nb_oc = jcp.nb_reduce;
@@ -669,8 +675,9 @@ void jit_avx512_common_1x1_convolution_bwd_weights_t::execute_backward_weights(
     const int sp_nb = jcp.nb_reduce;
     const int mb_sp_work = jcp.mb * sp_nb;
 
-    const int stride_h = (ndims == 3) ? 1 : pd()->desc()->strides[0];
-    const int stride_w = pd()->desc()->strides[ndims - 3];
+    const int stride_h
+            = (ndims == 3) ? 1 : static_cast<int>(pd()->desc()->strides[0]);
+    const int stride_w = static_cast<int>(pd()->desc()->strides[ndims - 3]);
 
     auto step = [](int default_step, int remaining, int tail_step) {
         assert(default_step <= tail_step);

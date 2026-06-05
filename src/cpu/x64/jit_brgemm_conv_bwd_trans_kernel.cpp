@@ -227,7 +227,7 @@ void jit_avx512_core_brgemm_conv_bwd_trans_kernel_t<Vmm>::generate() {
             // TODO: adjust step to improve zeroing efficiency for small oc
             for (dim_t ow = 0; ow < dst_w_block; ow++)
                 zero_oc_block(is_oc_tail, ow * dst_w_offset);
-            add(aux_dst_ptr, dst_h_offset);
+            add(aux_dst_ptr, static_cast<uint32_t>(dst_h_offset));
 
             dec(kh_over);
             jnz(kh_tover_label, T_NEAR);
@@ -241,10 +241,10 @@ void jit_avx512_core_brgemm_conv_bwd_trans_kernel_t<Vmm>::generate() {
         L(kh_label);
         {
             copy_iw_block(is_oc_tail);
-            auto inp_h_offset = jcp.ow * ow_size;
+            auto inp_h_offset = static_cast<uint32_t>(jcp.ow * ow_size);
 
             add(aux_inp_ptr, inp_h_offset);
-            add(aux_dst_ptr, dst_h_offset);
+            add(aux_dst_ptr, static_cast<uint32_t>(dst_h_offset));
 
             dec(reg_hc);
             cmp(reg_hc, reg_b_pad);
@@ -260,7 +260,7 @@ void jit_avx512_core_brgemm_conv_bwd_trans_kernel_t<Vmm>::generate() {
             // TODO: adjust step to improve zeroing efficiency for small oc
             for (dim_t ow = 0; ow < dst_w_block; ow++)
                 zero_oc_block(is_oc_tail, ow * dst_w_offset);
-            add(aux_dst_ptr, dst_h_offset);
+            add(aux_dst_ptr, static_cast<uint32_t>(dst_h_offset));
 
             dec(reg_hc);
             jnz(kh_bover_label, T_NEAR);
@@ -268,8 +268,8 @@ void jit_avx512_core_brgemm_conv_bwd_trans_kernel_t<Vmm>::generate() {
         L(no_kh_bover_label);
 
         // End IC Loop
-        auto inp_cb_offset = oc_block_sz;
-        auto dst_cb_offset = jcp.ohp * dst_h_offset;
+        auto inp_cb_offset = static_cast<uint32_t>(oc_block_sz);
+        auto dst_cb_offset = static_cast<uint32_t>(jcp.ohp * dst_h_offset);
 
         add(inp_ptr, inp_cb_offset);
         add(dst_ptr, dst_cb_offset);

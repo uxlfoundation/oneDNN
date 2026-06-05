@@ -248,27 +248,6 @@ struct graph_fpmath_mode_t {
     bool override_json_value_ = false;
 };
 
-// RAII guard that temporarily overrides `execution_mode` and restores the
-// original value when the guard goes out of scope.
-struct execution_mode_guard_t {
-    execution_mode_guard_t(execution_mode_t mode)
-        : saved_mode_(execution_mode) {
-        execution_mode = mode;
-    }
-    ~execution_mode_guard_t() { execution_mode = saved_mode_; }
-
-    execution_mode_guard_t(const execution_mode_guard_t &) = delete;
-    execution_mode_guard_t &operator=(const execution_mode_guard_t &) = delete;
-
-private:
-    execution_mode_t saved_mode_;
-};
-
-// Returns true if SYCL command graph execution mode is active.
-inline bool use_sycl_graph_exec() {
-    return is_sycl_engine() && execution_mode == execution_mode_t::graph;
-}
-
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
 // TODO(xxx): Consolidate the SYCL graph utilities under a single umbrella and
 // reuse them across benchdnn (eg. dnnl_common.cpp).

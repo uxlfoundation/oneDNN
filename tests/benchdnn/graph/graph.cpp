@@ -25,6 +25,7 @@
 #include "dnnl_common.hpp"
 #include "graph.hpp"
 #include "ref_partition.hpp"
+#include "utils/execution_mode.hpp"
 #include "utils/parser.hpp"
 #include "utils/stream_kind.hpp"
 

@@ -38,6 +38,7 @@
 #include "dnnl_memory.hpp"
 #include "utils/cold_cache.hpp"
 #include "utils/dims.hpp"
+#include "utils/execution_mode.hpp"
 #include "utils/fill.hpp"
 #include "utils/parser.hpp"
 #include "utils/stream_kind.hpp"

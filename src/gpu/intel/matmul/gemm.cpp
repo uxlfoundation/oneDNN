@@ -46,6 +46,7 @@ status_t gemm_t::execute(const exec_ctx_t &ctx) const {
     args.b = &CTX_IN_STORAGE(DNNL_ARG_WEIGHTS);
     args.c = &CTX_OUT_STORAGE(DNNL_ARG_DST);
     args.bias = &CTX_IN_STORAGE(DNNL_ARG_BIAS);
+    if (pd()->with_reduce()) args.sum_ab = &CTX_OUT_STORAGE(DNNL_ARG_REDUCE);
 
     // Note: we have to swap `a` and `b` zero-point arguments because,
     // - gemm primitive is created with row major desc,
@@ -74,7 +75,8 @@ status_t gemm_t::execute(const exec_ctx_t &ctx) const {
     args.exec_args = ctx.args();
     gemm::desc_t desc;
     CHECK(create_gemm_desc(&desc, src_d.md_, weights_d.md_, dst_d.md_,
-            bia_d.md_, pd()->desc()->accum_data_type, ctx.stream()->engine()));
+            bia_d.md_, pd()->desc()->accum_data_type, ctx.stream()->engine(),
+            pd()->sum_ab_, pd()->sum_ab_type_));
 
     gemm::exec_ctx_t gemm_ctx(ctx, args, &desc);
 

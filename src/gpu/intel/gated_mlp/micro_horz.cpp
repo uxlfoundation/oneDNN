@@ -172,6 +172,7 @@ status_t micro_horz_t::pd_t::init_microkernels(
     hw_info.gmdid = dev_info->ip_version();
     hw_info.systolicAvailable = intel_engine->mayiuse(
             compute::device_ext_t::intel_subgroup_matrix_multiply_accumulate);
+    hw_info.isEfficient64Bit = dev_info->is_efficient_64bit();
 
     if (hw_info.gmdid == 0) return status::unimplemented;
 

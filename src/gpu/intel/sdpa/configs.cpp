@@ -816,6 +816,7 @@ void deserialize_config_to_gemmstone(micro::HWInformation &hwInfo,
     hwInfo.gmdid = ukernel_config.hwinfo.gmdid;
     hwInfo.euCount = ukernel_config.hwinfo.euCount;
     hwInfo.systolicAvailable = ukernel_config.hwinfo.systolicAvailable;
+    hwInfo.isEfficient64Bit = ukernel_config.hwinfo.isEfficient64Bit;
 
     // options kq, vs
     auto deserialize_options
@@ -915,6 +916,7 @@ void deserialize_config_to_gemmstone(micro::HWInformation &hwInfo,
     hwInfo.gmdid = ukernel_config.hwinfo.gmdid;
     hwInfo.euCount = ukernel_config.hwinfo.euCount;
     hwInfo.systolicAvailable = ukernel_config.hwinfo.systolicAvailable;
+    hwInfo.isEfficient64Bit = ukernel_config.hwinfo.isEfficient64Bit;
 
     // options kq, vs
     auto deserialize_options

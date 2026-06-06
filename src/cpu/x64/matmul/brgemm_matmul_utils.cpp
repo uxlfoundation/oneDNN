@@ -999,6 +999,30 @@ struct matmul_avx512_blocking_params_t {
     }
 };
 
+// When it's the GEMV case and swapping A and B is required, we re-create
+// `matmul_params_t` with swapped M and N parameters. Otherwise, we use the
+// original object. We need this to ensure consistent blocking parameters for
+// the same GEMV code path across different scenarios (M=1 and N=1).
+matmul_avx512_blocking_params_t::matmul_params_t maybe_swap_mn_params(
+        const brgemm_matmul_conf_t &bgmmc,
+        const matmul_avx512_blocking_params_t::matmul_params_t &matmul) {
+    if (bgmmc.is_gemv && bgmmc.gemv_swap_a_b)
+        return matmul_avx512_blocking_params_t::matmul_params_t(
+                matmul.N, matmul.M, matmul.K, matmul.batch);
+    return matmul;
+}
+
+// The matmul driver expects blocking parameters that are consistent with
+// the original problem, therefore, we need to swap the M and N blocking
+// parameters to reverse the effect of `maybe_swap_mn_params`.
+void maybe_unswap_mn_blocking(const brgemm_matmul_conf_t &bgmmc,
+        matmul_avx512_blocking_params_t &best_blocking) {
+    if (!(bgmmc.is_gemv && bgmmc.gemv_swap_a_b)) return;
+    std::swap(best_blocking.m_chunks, best_blocking.n_chunks);
+    std::swap(best_blocking.m_blk, best_blocking.n_blk);
+    std::swap(best_blocking.m_tail, best_blocking.n_tail);
+}
+
 float compute_blocking_heuristic_avx512(brgemm_matmul_conf_t &bgmmc,
         const brgemm_matmul_conf_utils_t &bm_conf_utils,
         const matmul_avx512_blocking_params_t::matmul_params_t &matmul,
@@ -1227,17 +1251,7 @@ float compute_blocking_heuristic_avx2_f32(brgemm_matmul_conf_t &bgmmc,
         matmul_avx512_blocking_params_t &best_blocking) {
     float best_imbalance = 1.f; // reduce
 
-    // When it's the GEMV case and swapping A and B is required, we
-    // re-create `matmul_params_t` with swapped M and N parameters. Otherwise,
-    // we use the original object.
-    // We need this to ensure consistent blocking parameters for the same
-    // GEMV code path across different scenarios (M=1 and N=1).
-    const bool swap_m_n_blks = bgmmc.is_gemv && bgmmc.gemv_swap_a_b;
-    const auto &matmul = swap_m_n_blks
-            ? matmul_avx512_blocking_params_t::matmul_params_t(
-                      matmul_.N, matmul_.M, matmul_.K, matmul_.batch)
-            : matmul_;
-
+    const auto matmul = maybe_swap_mn_params(bgmmc, matmul_);
     const int nthr = bgmmc.nthr;
 
     dim_t max_m_blk = nstl::min((dim_t)256, matmul.M);
@@ -1293,14 +1307,8 @@ float compute_blocking_heuristic_avx2_f32(brgemm_matmul_conf_t &bgmmc,
         }
     }
 
-    // The matmul driver expects blocking parameters that are consistent with
-    // the original problem, therefore, we need to swap the M and N blocking
-    // parameters.
-    if (swap_m_n_blks) {
-        std::swap(best_blocking.m_chunks, best_blocking.n_chunks);
-        std::swap(best_blocking.m_blk, best_blocking.n_blk);
-        std::swap(best_blocking.m_tail, best_blocking.n_tail);
-    }
+    maybe_unswap_mn_blocking(bgmmc, best_blocking);
+
     return best_imbalance;
 }
 

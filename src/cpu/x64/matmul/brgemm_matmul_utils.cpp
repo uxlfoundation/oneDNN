@@ -1160,8 +1160,8 @@ float compute_blocking_heuristic_avx512(brgemm_matmul_conf_t &bgmmc,
             float cur_imbalance = cur_params.get_imbalance();
 
             const int m_chunk_size = 1;
-            const auto m_chunks = div_up(bgmmc.M, m_blk * m_chunk_size);
-            const auto n_chunks = div_up(bgmmc.N, n_blk * n_chunk_size);
+            const auto m_chunks = div_up(matmul.M, m_blk * m_chunk_size);
+            const auto n_chunks = div_up(matmul.N, n_blk * n_chunk_size);
             const auto work_amount = bgmmc.batch * m_chunks * n_chunks;
 
             int nthr_bmn = nthr / nthr_k;

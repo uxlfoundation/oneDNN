@@ -279,6 +279,27 @@ status_t check_isa_with_datatype(
     return ok ? status::success : status::unimplemented;
 }
 
+// The GEMV code path has requirements for (isa, dt) combinations that may
+// differ from what the general `check_isa_with_datatype` table allows.
+//
+// Whether the GEMV code path is applicable is not known when
+// `check_isa_with_datatype` is called. Therefore, both
+// `check_isa_with_datatype` and `gemv_check_isa_with_datatype` are called and
+// the final decision is made later, once GEMV applicability is known.
+status_t gemv_check_isa_with_datatype(
+        const cpu_isa_t isa, const brgemm_matmul_conf_utils_t &bm_conf_utils) {
+    // Valid GEMV (dt, isa) combinations:
+    // - f32  -> avx2
+    // - bf16 -> avx512_core_bf16
+    // - f16  -> avx512_core
+    // Any other data type or isa is unsupported.
+    const bool ok = (bm_conf_utils.is_f32() && isa == avx2)
+            || (bm_conf_utils.is_bf16() && isa == avx512_core_bf16)
+            || (bm_conf_utils.is_f16() && isa == avx512_core);
+
+    return ok ? status::success : status::unimplemented;
+}
+
 status_t check_datatype_cfg(const brgemm_matmul_conf_utils_t &bm_conf_utils) {
     const bool ok
             = one_of(true, bm_conf_utils.is_f32(), bm_conf_utils.is_bf16(),
@@ -510,8 +531,7 @@ format_tag_t brgemm_matmul_conf_utils_t::get_gemv_B_tag(
  * GEMV is applicable only when:
  *   - M == 1 or N == 1
  *   - reduction is not used
- *   - data type is f32
- *   - fpmath mode is strict
+ *   - data type is f32, bf16, or f16
  *   - A and B formats can be resolved to supported GEMV layouts
  *   - output layout satisfies GEMV requirements
  */
@@ -525,8 +545,16 @@ bool is_gemv_applicable(const brgemm_matmul_conf_t &bgmmc,
     // Reduction is not supported for GEMV code path.
     if (bgmmc.with_reduce) return false;
 
-    // BRGEMV currently supports only f32.
-    if (!bm_conf_utils.is_f32()) return false;
+    // GEMV applicability must ensure that at least one `brgemm_matmul_t<isa>`
+    // instantiation can execute the case because GEMM/GEMV dispatching logic
+    // relies on it. Here we require the platform to support the exact isa that
+    // `gemv_check_isa_with_datatype` mandates for the data type:
+    // f32 -> avx2, bf16 -> avx512_core_bf16, f16 -> avx512_core.
+    // This also rejects any data type not supported by the GEMV path.
+    const bool gemv_isa_dt_supported = (bm_conf_utils.is_f32() && mayiuse(avx2))
+            || (bm_conf_utils.is_bf16() && mayiuse(avx512_core_bf16))
+            || (bm_conf_utils.is_f16() && mayiuse(avx512_core));
+    if (!gemv_isa_dt_supported) return false;
 
     const format_tag_t gemv_A_tag = bm_conf_utils.get_gemv_A_tag(A_md);
     const format_tag_t gemv_B_tag = bm_conf_utils.get_gemv_B_tag(B_md);
@@ -1044,8 +1072,10 @@ void maybe_unswap_mn_blocking(const brgemm_matmul_conf_t &bgmmc,
 
 float compute_blocking_heuristic_avx512(brgemm_matmul_conf_t &bgmmc,
         const brgemm_matmul_conf_utils_t &bm_conf_utils,
-        const matmul_avx512_blocking_params_t::matmul_params_t &matmul,
+        const matmul_avx512_blocking_params_t::matmul_params_t &matmul_,
         matmul_avx512_blocking_params_t &best_blocking) {
+
+    const auto matmul = maybe_swap_mn_params(bgmmc, matmul_);
     const int nthr = bgmmc.nthr;
 
     const bool need_large_m_blk = bgmmc.ndims == 2 && bm_conf_utils.is_f32()
@@ -1205,6 +1235,9 @@ float compute_blocking_heuristic_avx512(brgemm_matmul_conf_t &bgmmc,
             }
         }
     }
+
+    maybe_unswap_mn_blocking(bgmmc, best_blocking);
+
     return best_imbalance;
 }
 
@@ -1212,8 +1245,9 @@ float compute_blocking_heuristic_avx2(brgemm_matmul_conf_t &bgmmc,
         const brgemm_matmul_conf_utils_t &bm_conf_utils,
         const matmul_avx512_blocking_params_t::matmul_params_t &matmul,
         matmul_avx512_blocking_params_t &best_blocking) {
-    const int nthr = bgmmc.nthr;
+    assert(!bgmmc.is_gemv);
 
+    const int nthr = bgmmc.nthr;
     const int max_m_blk
             = static_cast<int>(nstl::min(/*64*/ (dim_t)256, matmul.M));
     int min_m_blk
@@ -1531,7 +1565,27 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
             bias_md.format_kind == format_kind::any);
 
     VCHECK_BG(check_datatype_cfg(bm_conf_utils), VERBOSE_UNSUPPORTED_DT_CFG);
-    VCHECK_BG(check_isa_with_datatype(isa, bm_conf_utils),
+
+    // The GEMM and GEMV code paths have different (isa, dt) requirements.
+    // At this stage, we do not yet know whether the GEMV path applies to the
+    // current problem. Reorganizing this initialization to determine that here
+    // would introduce an undesirable dependency on the position of the
+    // `is_gemv_applicable()` call.
+    //
+    // To avoid this, we perform the checks independently using two functions:
+    //
+    // * check_isa_with_datatype()      — validates (isa, dt) for the GEMM path
+    // * gemv_check_isa_with_datatype() — validates (isa, dt) for the GEMV path
+    //
+    // We call both functions here and defer selecting the relevant result until
+    // after `is_gemv_applicable()` is evaluated.
+    const status_t check_isa_dt_st
+            = check_isa_with_datatype(isa, bm_conf_utils);
+    const status_t gemv_check_isa_dt_st
+            = gemv_check_isa_with_datatype(isa, bm_conf_utils);
+
+    VCONDCHECK_BG(
+            one_of(status::success, check_isa_dt_st, gemv_check_isa_dt_st),
             VERBOSE_ISA_DT_MISMATCH);
 
     bgmmc.is_amx = is_superset(isa, avx512_core_amx);
@@ -1696,8 +1750,26 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     bgmmc.is_gemv = is_gemv_applicable(
             bgmmc, bm_conf_utils, src_md, weights_md, dst_md, attr);
-    VCONDCHECK_BG(IMPLICATION(bgmmc.is_gemv, isa == avx2),
-            "Fall back to the AVX2 implementation for the GEMV code path");
+
+    // At this point, GEMV applicability is known so we decide how to interpret
+    // the (isa, dt) check statuses:
+    // - `check_isa_dt_st`         (GEMM path)
+    // - `gemv_check_isa_dt_st`    (GEMV path)
+    //
+    // If GEMV is applicable we use `gemv_check_isa_dt_st` to drive the
+    // instantiation search:
+    // - `status::success`:        this instantiation is valid
+    // - `status::unimplemented`:  this instantiation is not applicable
+    //
+    // This relies on the invariant that the GEMV path is applicable guarantees
+    // the existence of at least one valid instantiation for GEMV
+    // (`is_gemv_applicable` checks data type support independently of ida).
+    // Therefore, a failure here only means that the *current* instantiation is
+    // not the right one.
+    //
+    // If GEMV is not applicable we use `check_isa_dt_st`.
+    VCHECK_BG(bgmmc.is_gemv ? gemv_check_isa_dt_st : check_isa_dt_st,
+            VERBOSE_ISA_DT_MISMATCH);
 
     if (bgmmc.is_gemv) {
         bgmmc.gemv_strategy = bm_conf_utils.get_gemv_strategy(

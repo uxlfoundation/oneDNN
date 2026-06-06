@@ -111,13 +111,14 @@ struct jit_brgemm_kernel_t : public jit_base_brgemm_kernel_t {
             const dim_t tail_size = !brg.is_gemv
                     ? brg.ldb_tail
                     : (brg.gemv_acc_is_vector() ? brg.gemv_tail : 1);
+            const auto k_mask = !brg.is_gemv ? ld_tail_mask : gemv_partial_mask;
 
             const binary_injector::rhs_arg_static_params_t rhs_sp {
                     static_cast<size_t>(vmm_tmp(0).getIdx()), this->r14,
                     this->r15, this->r13, preserve_gpr, preserve_vmm,
                     GET_OFF(post_ops_binary_rhs_arg_vec), GET_OFF(data_C_ptr_),
-                    dst_md_wrapper, static_cast<size_t>(tail_size),
-                    ld_tail_mask, use_exact_tail_scalar_bcast};
+                    dst_md_wrapper, static_cast<size_t>(tail_size), k_mask,
+                    use_exact_tail_scalar_bcast};
 
             const binary_injector::static_params_t bsp {this->param1,
                     binary_injector::get_all_strategies_supported_by_injector(),
@@ -261,10 +262,30 @@ private:
     bool with_binary_non_scalar_bcast_ = false;
     const int max_effective_vregs;
 
+    // Opmask(2) and Opmask(3) have slightly different semantics in the GEMM
+    // and GEMV code paths. This is why we have GEMV-specific aliases.
+    //
+    // GEMM:
+    //   ld_full_mask - all bits in the mask are set; used along the load
+    //                  dimension.
+    //   ld_tail_mask - only bits corresponding to the load dimension tail
+    //                  are set.
     Xbyak::Opmask ld_full_mask = Xbyak::Opmask(2);
     Xbyak::Opmask ld_tail_mask = Xbyak::Opmask(3);
+
+    // GEMV:
+    //   gemv_full_mask    - all bits in the mask are set; used along the
+    //                       broadcast dimension.
+    //   gemv_partial_mask - only bits corresponding to the broadcast-dimension
+    //                       tail are set when transA is true. When transA is
+    //                       false, only one bit is set because we store one
+    //                       element.
+    Xbyak::Opmask gemv_full_mask = Xbyak::Opmask(2);
+    Xbyak::Opmask gemv_partial_mask = Xbyak::Opmask(3);
+
     Xbyak::Opmask fp8_col_mask = Xbyak::Opmask(4);
     Xbyak::Opmask kmask_fp8_aux = Xbyak::Opmask(5);
+    // Used for both AMX GEMM and GEMV code paths.
     Xbyak::Opmask rd_tail_mask = Xbyak::Opmask(6);
 
     static int get_max_effective_vregs(const brgemm_desc_t &brg) {
@@ -1263,7 +1284,22 @@ void jit_brgemm_kernel_t<Wmm>::gemv_apply_bias(
     const bool is_bias_scalar = !brg.treat_y_as_row;
     auto bias = vmm_tmp(0);
 
-    if (is_bias_scalar) vbroadcastss(bias, ptr[reg_aux_bias + bias_offset(0)]);
+    if (is_bias_scalar) {
+        const auto addr = ptr[reg_aux_bias + bias_offset(0)];
+        switch (brg.dt_bias) {
+            case data_type::f32: vbroadcastss(bias, addr); break;
+            case data_type::bf16:
+                vpbroadcastw(bias, addr);
+                uni_vpslld(bias, bias, 16);
+                break;
+            case data_type::f16:
+                vpbroadcastw(Xmm(bias.getIdx()), addr);
+                vcvtph2ps(Xmm(bias.getIdx()), Xmm(bias.getIdx()));
+                vbroadcastss(bias, Xmm(bias.getIdx()));
+                break;
+            default: assert(!"unsupported bias data type");
+        }
+    }
 
     for (dim_t bd = 0; bd < bd_block; bd++) {
         auto acc = accm(1, bd, 0);
@@ -1275,17 +1311,41 @@ void jit_brgemm_kernel_t<Wmm>::gemv_apply_bias(
 
         const auto addr = ptr[reg_aux_bias + bias_offset(bd)];
 
-        if (brg.gemv_acc_is_vector()) {
-            if (gemv_is_tail_acc(bd, bd_block, is_bdb_tail))
-                vmaskmovps(bias, vmm_tail_mask(), addr);
-            else
-                uni_vmovups(bias, addr);
+        if (is_superset(brg.isa_impl, avx512_core)) {
+            const bool use_partial_mask = !brg.gemv_acc_is_vector()
+                    || gemv_is_tail_acc(bd, bd_block, is_bdb_tail);
+            const auto k_mask
+                    = use_partial_mask ? gemv_partial_mask : gemv_full_mask;
 
-            uni_vaddps(acc, acc, bias);
+            switch (brg.dt_bias) {
+                case data_type::f32:
+                    uni_vmovups(bias | k_mask | T_z, addr);
+                    break;
+                case data_type::bf16:
+                    uni_vpmovzxwd(bias | k_mask | T_z, addr);
+                    uni_vpslld(bias, bias, 16);
+                    break;
+                case data_type::f16:
+                    vcvtph2ps(bias | k_mask | T_z, addr);
+                    break;
+                default: assert(!"unsupported bias data type");
+            }
         } else {
-            uni_vmovss(Xmm(bias.getIdx()), addr);
-            uni_vaddss(Xmm(acc.getIdx()), Xmm(acc.getIdx()), bias);
+            if (brg.gemv_acc_is_vector()) {
+                if (gemv_is_tail_acc(bd, bd_block, is_bdb_tail))
+                    vmaskmovps(bias, vmm_tail_mask(), addr);
+                else
+                    uni_vmovups(bias, addr);
+            } else {
+                uni_vmovss(Xmm(bias.getIdx()), addr);
+            }
         }
+
+        if (brg.gemv_acc_is_vector())
+            uni_vaddps(acc, acc, bias);
+        else
+            uni_vaddss(
+                    Xmm(acc.getIdx()), Xmm(acc.getIdx()), Xmm(bias.getIdx()));
     }
 }
 
@@ -1344,7 +1404,21 @@ void jit_brgemm_kernel_t<Wmm>::gemv_apply_wei_scales(
 
     if (is_single_scale) {
         const auto addr = ptr[reg_aux_wei_scales + wei_scales_offset(0)];
-        vbroadcastss(vmm_wei_scales, addr);
+
+        switch (brg.dt_wei_scales) {
+            case data_type::f32: vbroadcastss(vmm_wei_scales, addr); break;
+            case data_type::bf16:
+                vpbroadcastw(vmm_wei_scales, addr);
+                uni_vpslld(vmm_wei_scales, vmm_wei_scales, 16);
+                break;
+            case data_type::f16:
+                vpbroadcastw(Xmm(vmm_wei_scales.getIdx()), addr);
+                vcvtph2ps(Xmm(vmm_wei_scales.getIdx()),
+                        Xmm(vmm_wei_scales.getIdx()));
+                vbroadcastss(vmm_wei_scales, Xmm(vmm_wei_scales.getIdx()));
+                break;
+            default: assert(!"unsupported wei scales data type");
+        }
     }
 
     for (dim_t bd = 0; bd < bd_block; bd++) {
@@ -1356,17 +1430,41 @@ void jit_brgemm_kernel_t<Wmm>::gemv_apply_wei_scales(
         }
         const auto addr = ptr[reg_aux_wei_scales + wei_scales_offset(bd)];
 
-        if (brg.gemv_acc_is_vector()) {
-            if (gemv_is_tail_acc(bd, bd_block, is_bdb_tail))
-                vmaskmovps(vmm_wei_scales, vmm_tail_mask(), addr);
-            else
-                uni_vmovups(vmm_wei_scales, addr);
+        if (is_superset(brg.isa_impl, avx512_core)) {
+            const bool use_partial_mask = !brg.gemv_acc_is_vector()
+                    || gemv_is_tail_acc(bd, bd_block, is_bdb_tail);
+            const auto k_mask
+                    = use_partial_mask ? gemv_partial_mask : gemv_full_mask;
 
-            uni_vmulps(acc, acc, vmm_wei_scales);
+            switch (brg.dt_wei_scales) {
+                case data_type::f32:
+                    uni_vmovups(vmm_wei_scales | k_mask | T_z, addr);
+                    break;
+                case data_type::bf16:
+                    uni_vpmovzxwd(vmm_wei_scales | k_mask | T_z, addr);
+                    uni_vpslld(vmm_wei_scales, vmm_wei_scales, 16);
+                    break;
+                case data_type::f16:
+                    vcvtph2ps(vmm_wei_scales | k_mask | T_z, addr);
+                    break;
+                default: assert(!"unsupported wei scales data type");
+            }
         } else {
-            uni_vmovss(vmm_wei_scales, addr);
-            uni_vmulss(Xmm(acc.getIdx()), Xmm(acc.getIdx()), vmm_wei_scales);
+            if (brg.gemv_acc_is_vector()) {
+                if (gemv_is_tail_acc(bd, bd_block, is_bdb_tail))
+                    vmaskmovps(vmm_wei_scales, vmm_tail_mask(), addr);
+                else
+                    uni_vmovups(vmm_wei_scales, addr);
+            } else {
+                uni_vmovss(Xmm(vmm_wei_scales.getIdx()), addr);
+            }
         }
+
+        if (brg.gemv_acc_is_vector())
+            uni_vmulps(acc, acc, vmm_wei_scales);
+        else
+            uni_vmulss(Xmm(acc.getIdx()), Xmm(acc.getIdx()),
+                    Xmm(vmm_wei_scales.getIdx()));
     }
 }
 
@@ -1475,6 +1573,10 @@ void jit_brgemm_kernel_t<Wmm>::apply_alpha_beta(
                 if (brg.gemv_acc_is_vector()) {
                     if (!gemv_is_tail_acc(bd, bd_block, is_bdb_tail)) {
                         uni_vaddps(vmm, vmm, ptr_C);
+                    } else if (is_superset(brg.isa_impl, avx512_core)) {
+                        uni_vmovups(
+                                vmm_prev_dst | gemv_partial_mask | T_z, ptr_C);
+                        uni_vaddps(vmm, vmm, vmm_prev_dst);
                     } else {
                         vmaskmovps(vmm_prev_dst, vmm_tail_mask(), ptr_C);
                         uni_vaddps(vmm, vmm, vmm_prev_dst);
@@ -1604,16 +1706,16 @@ void jit_brgemm_kernel_t<Wmm>::apply_post_ops(dim_t bd_block, dim_t ld_block2,
                         cvt2ps(brg.sum_dt, vmm_prev_dst, addr, is_tail, false,
                                 k_mask, ld_size);
                     } else {
-                        const bool is_tail = brg.gemv_acc_is_vector()
-                                && gemv_is_tail_acc(bd, bd_end, is_bdb_tail);
+                        const bool use_partial_mask = !brg.gemv_acc_is_vector()
+                                || gemv_is_tail_acc(bd, bd_block, is_bdb_tail);
+                        const auto k_mask = use_partial_mask ? gemv_partial_mask
+                                                             : gemv_full_mask;
 
-                        const auto ignored_k_mask = ld_full_mask; // not used
-
-                        const dim_t elements_to_load = is_tail
-                                ? brg.gemv_tail
+                        const dim_t elements_to_load = use_partial_mask
+                                ? brg.gemv_acc_is_vector() ? brg.gemv_tail : 1
                                 : brg.bd_block / brg.gemv_bd_block();
-                        cvt2ps(brg.sum_dt, vmm_prev_dst, addr, is_tail, false,
-                                ignored_k_mask, elements_to_load);
+                        cvt2ps(brg.sum_dt, vmm_prev_dst, addr, use_partial_mask,
+                                false, k_mask, elements_to_load);
                     }
 
                     if (p_sum_zp_reg_set)
@@ -1845,7 +1947,39 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
         if (brg.brgattr.hint_prefetchw == brgemm_prfw_loop_store
                 && !is_superset(brg.isa_impl, avx10_2))
             prefetchw(addr);
-        if (is_superset(brg.isa_impl, avx512_core)) {
+
+        if (brg.is_gemv) {
+            if (is_superset(brg.isa_impl, avx512_core)) {
+                const bool use_partial_mask = !brg.gemv_acc_is_vector()
+                        || gemv_is_tail_acc(bd, bd_block, is_bdb_tail);
+                const auto k_mask
+                        = use_partial_mask ? gemv_partial_mask : gemv_full_mask;
+
+                switch (brg.dt_d) {
+                    case data_type::f32: uni_vmovups(addr, vmm | k_mask); break;
+                    case data_type::bf16:
+                        vcvtneps2bf16(vmm_lower, vmm, get_encoding());
+                        vmovdqu16(addr, vmm_lower | k_mask);
+                        break;
+                    case data_type::f16:
+                        vcvtps2ph(vmm_lower, vmm, _op_mxcsr);
+                        vmovdqu16(addr, vmm_lower | k_mask);
+                        break;
+                    default: assert(!"unsupported gemv dst data type");
+                }
+            } else {
+                assert(brg.dt_d == data_type::f32);
+                if (brg.gemv_acc_is_vector()) {
+                    if (gemv_is_tail_acc(bd, bd_block, is_bdb_tail))
+                        vmaskmovps(addr, vmm_tail_mask(), vmm);
+                    else
+                        uni_vmovups(addr, vmm);
+                } else {
+                    uni_vmovss(addr, vmm);
+                }
+            }
+            // Non-gemv path.
+        } else if (is_superset(brg.isa_impl, avx512_core)) {
             const Vmm r_vmm = vmm_mask(vmm, is_tail, true, k_mask);
             const Vmm_lower_t r_ymm
                     = vmm_mask(vmm_lower, is_tail, true, k_mask);
@@ -1886,23 +2020,12 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
                 }
             }
         } else {
-            if (brg.is_gemv) {
-                if (brg.gemv_acc_is_vector()) {
-                    if (gemv_is_tail_acc(bd, bd_block, is_bdb_tail))
-                        vmaskmovps(addr, vmm_tail_mask(), vmm);
-                    else
-                        uni_vmovups(addr, vmm);
-                } else {
-                    uni_vmovss(addr, vmm);
-                }
-            } else {
-                const dim_t ld_block = is_tail ? brg.ldb_tail : brg.ld_block;
-                if (is_tail && types::data_type_size(brg.dt_b) == sizeof(float))
-                    vmaskmovps(addr, vmm_tail_mask(), vmm);
-                else
-                    store_data(brg.dt_d, vmm, reg_aux_D, D_offset(bd, ld),
-                            ld_block);
-            }
+            const dim_t ld_block = is_tail ? brg.ldb_tail : brg.ld_block;
+            if (is_tail && types::data_type_size(brg.dt_b) == sizeof(float))
+                vmaskmovps(addr, vmm_tail_mask(), vmm);
+            else
+                store_data(
+                        brg.dt_d, vmm, reg_aux_D, D_offset(bd, ld), ld_block);
         }
         if (brg.is_runtime_ldd && bd_block > 1 && ld == ld_block2 - 1)
             reg_D_shift_bytes.addTo(reg_aux_D);
@@ -2031,18 +2154,31 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_without_post_ops(
 
     if (brg.is_gemv) {
         for (dim_t bd = 0; bd < bd_block; bd++) {
+            const bool need_prefetch
+                    = brg.brgattr.hint_prefetchw == brgemm_prfw_loop_store
+                    && !is_superset(brg.isa_impl, avx10_2);
+
             const auto addr_c = ptr[reg_aux_C + C_offset(bd, 0)];
-            if (brg.brgattr.hint_prefetchw == brgemm_prfw_loop_store
-                    && !is_superset(brg.isa_impl, avx10_2))
-                prefetchw(addr_c);
+            if (need_prefetch) prefetchw(addr_c);
+
             auto vmm = accm(1, bd, 0);
-            if (brg.gemv_acc_is_vector()) {
-                if (gemv_is_tail_acc(bd, bd_block, is_bdb_tail))
-                    vmaskmovps(addr_c, vmm_tail_mask(), vmm);
-                else
-                    uni_vmovups(addr_c, vmm);
+
+            if (is_superset(brg.isa_impl, avx512_core)) {
+                const bool use_partial_mask = !brg.gemv_acc_is_vector()
+                        || gemv_is_tail_acc(bd, bd_block, is_bdb_tail);
+                const auto k_mask
+                        = use_partial_mask ? gemv_partial_mask : gemv_full_mask;
+                uni_vmovups(addr_c | k_mask, vmm);
             } else {
-                uni_vmovss(addr_c, Xmm(vmm.getIdx()));
+                assert(brg.dt_d == data_type::f32);
+                if (brg.gemv_acc_is_vector()) {
+                    if (gemv_is_tail_acc(bd, bd_block, is_bdb_tail))
+                        vmaskmovps(addr_c, vmm_tail_mask(), vmm);
+                    else
+                        uni_vmovups(addr_c, vmm);
+                } else {
+                    uni_vmovss(addr_c, Xmm(vmm.getIdx()));
+                }
             }
         }
     } else {
@@ -2262,7 +2398,6 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
         else
             bd_block = is_bdb_tail ? brg.bdb_tail : brg.bd_block;
         assert(bd_block > 0);
-
         if (brg.is_gemv && !brg.gemv_acc_is_vector())
             reduce_gemv_accumulators(bd_block);
 
@@ -2712,39 +2847,72 @@ void jit_brgemm_kernel_t<Wmm>::gemv_microkernel(
 
     const dim_t bd_block = brg.gemv_num_acc_blocks(is_bdb_tail);
 
+    const auto load_and_convert_to_f32
+            = [this](const Vmm vmm, const Xbyak::Address addr,
+                      const data_type_t dt, bool is_tail) {
+        if (is_superset(brg.isa_impl, avx512_core)) {
+            assert(one_of(brg.dt_a, data_type::bf16, data_type::f16));
+            assert(one_of(brg.dt_b, data_type::bf16, data_type::f16));
+
+            const auto tail_mask
+                    = brg.transA ? gemv_partial_mask : rd_tail_mask;
+            const auto kmask = is_tail ? tail_mask : gemv_full_mask;
+
+            if (dt == data_type::bf16) {
+                uni_vpmovzxwd(vmm | kmask | T_z, addr);
+                uni_vpslld(vmm, vmm, 16);
+            } else if (dt == data_type::f16) {
+                vmovdqu16(Vmm_lower_t(vmm.getIdx()) | kmask | T_z, addr);
+                vcvtph2ps(vmm, Vmm_lower_t(vmm.getIdx()));
+            } else
+                assert(!"unsupported data type");
+        } else {
+            assert(brg.isa_impl == avx2);
+            if (is_tail)
+                vmaskmovps(vmm, vmm_tail_mask(), addr);
+            else
+                uni_vmovups(vmm, addr);
+        }
+    };
+
+    const auto bcast_and_convert_to_f32
+            = [this](const Vmm vmm, const Xbyak::Address addr,
+                      const data_type_t dt) {
+        if (dt == data_type::f32) {
+            vbroadcastss(vmm, addr);
+        } else if (dt == data_type::bf16) {
+            vpbroadcastw(vmm, addr);
+            uni_vpslld(vmm, vmm, 16);
+        } else if (dt == data_type::f16) {
+            vpbroadcastw(Xmm(vmm.getIdx()), addr);
+            vcvtph2ps(Xmm(vmm.getIdx()), Xmm(vmm.getIdx()));
+            vbroadcastss(vmm, Xmm(vmm.getIdx()));
+        } else {
+            assert(!"unsupported GEMV input data type");
+        }
+    };
+
     if (!brg.transA) {
         maybe_set_avx_mask(is_rd_tail);
 
-        if (is_rd_tail)
-            vmaskmovps(gemv_load_b(), vmm_tail_mask(), ptr[reg_aux_B]);
-        else
-            uni_vmovups(gemv_load_b(), ptr[reg_aux_B]);
+        load_and_convert_to_f32(
+                gemv_load_b(), ptr[reg_aux_B], brg.dt_b, is_rd_tail);
 
         for (dim_t bd = 0; bd < bd_block; bd++) {
-            auto a_addr = ptr[reg_aux_A + A_offset(bd, 0)];
-
-            if (is_rd_tail)
-                vmaskmovps(gemv_load_a(), vmm_tail_mask(), a_addr);
-            else
-                uni_vmovups(gemv_load_a(), a_addr);
-
+            const auto a_addr = ptr[reg_aux_A + A_offset(bd, 0)];
+            load_and_convert_to_f32(
+                    gemv_load_a(), a_addr, brg.dt_a, is_rd_tail);
             uni_vfmadd231ps(accm(1, bd, 0), gemv_load_a(), gemv_load_b());
         }
     } else {
-        vbroadcastss(gemv_load_b(), ptr[reg_aux_B]);
-
+        bcast_and_convert_to_f32(gemv_load_b(), ptr[reg_aux_B], brg.dt_b);
         for (dim_t bd = 0; bd < bd_block; bd++) {
             const bool is_tail_acc
                     = gemv_is_tail_acc(bd, bd_block, is_bdb_tail);
             const auto a_addr = ptr[reg_aux_A + A_offset(bd, 0)];
-
-            if (is_tail_acc) {
-                maybe_set_avx_mask(true);
-                vmaskmovps(gemv_load_a(), vmm_tail_mask(), a_addr);
-            } else {
-                uni_vmovups(gemv_load_a(), a_addr);
-            }
-
+            maybe_set_avx_mask(is_tail_acc);
+            load_and_convert_to_f32(
+                    gemv_load_a(), a_addr, brg.dt_a, is_tail_acc);
             uni_vfmadd231ps(accm(1, bd, 0), gemv_load_a(), gemv_load_b());
         }
     }
@@ -3463,13 +3631,32 @@ void jit_brgemm_kernel_t<Wmm>::generate() {
 
     if (is_superset(brg.isa_impl, avx512_core)) {
         const auto full_mask = size_t {0xffffffffffffffff};
-        const auto tail_mask = size_t((1 << brg.ldb_tail) - 1);
-        reg64_t reg_mask = rax;
 
-        mov(reg_mask, full_mask);
-        kmovq(ld_full_mask, reg_mask);
-        mov(reg_mask, tail_mask);
-        kmovq(ld_tail_mask, reg_mask);
+        if (!brg.is_gemv) {
+            const auto tail_mask = size_t((1 << brg.ldb_tail) - 1);
+            reg64_t reg_mask = rax;
+
+            mov(reg_mask, full_mask);
+            kmovq(ld_full_mask, reg_mask);
+            mov(reg_mask, tail_mask);
+            kmovq(ld_tail_mask, reg_mask);
+        } else {
+            const auto partial_mask
+                    = brg.transA ? size_t((1 << brg.gemv_tail) - 1) : 1;
+            reg64_t reg_mask = rax;
+
+            mov(reg_mask, full_mask);
+            kmovq(gemv_full_mask, reg_mask);
+            mov(reg_mask, partial_mask);
+            kmovq(gemv_partial_mask, reg_mask);
+
+            // non-transA GEMV code path may require a mask for the reduce
+            // dimension.
+            if (!brg.transA && brg.gemv_tail > 0) {
+                mov(reg_mask, static_cast<size_t>((1 << brg.gemv_tail) - 1));
+                kmovq(rd_tail_mask, reg_mask);
+            }
+        }
     }
 
     if (brg.is_int8 && !brg.has_int8_vnni) {

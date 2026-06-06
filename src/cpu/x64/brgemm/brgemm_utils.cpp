@@ -125,6 +125,18 @@ void set_isa_impl(brgemm_desc_t *brg) {
                 one_of(brg->isa_user, isa_undef, isa);
     };
 
+    if (brg->is_gemv) {
+        if (everyone_is(data_type::f32, brg->dt_a, brg->dt_b)) {
+            brg->isa_impl = is_isa_ok(avx2) ? avx2 : isa_undef;
+        } else if (everyone_is(data_type::bf16, brg->dt_a, brg->dt_b)) {
+            brg->isa_impl = is_isa_ok(avx512_core_bf16) ? avx512_core_bf16
+                                                        : isa_undef;
+        } else if (everyone_is(data_type::f16, brg->dt_a, brg->dt_b)) {
+            brg->isa_impl = is_isa_ok(avx512_core) ? avx512_core : isa_undef;
+        }
+        return;
+    }
+
     if (brg->is_tf32) {
         brg->isa_impl = avx10_2_amx_2;
     } else if (brg->is_bf32) {
@@ -777,10 +789,10 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
  *
  */
 status_t brgemm_blocking_vmm_gemv(brgemm_desc_t *brg) {
-    const int simd_w = 8;
-
-    assert(utils::one_of(brg->isa_impl, avx2, avx2_vnni, avx2_vnni_2));
+    assert(utils::one_of(brg->isa_impl, avx2, avx512_core, avx512_core_bf16));
     assert(brg->load_dim == 1);
+
+    const int simd_w = is_superset(brg->isa_impl, avx512_core) ? 16 : 8;
 
     // Blocking parameters for the non-transposed case.
     if (!brg->transA) {

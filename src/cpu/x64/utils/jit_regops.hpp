@@ -29,10 +29,10 @@ namespace regops {
  * Horizontally sums packed fp32 values in a 128-bit XMM register.
  * @param code JIT code generator instance.
  * @param src Source XMM register.i
- * @param workspace Optional dummy register (ignored).
+ * @param workspace Temporary XMM register.
  */
-void horizontal_add_ps(jit_generator_t *code, Xbyak::Xmm src,
-        Xbyak::Xmm workspace = Xbyak::Xmm {});
+void horizontal_add_ps(
+        jit_generator_t *code, Xbyak::Xmm src, Xbyak::Xmm workspace);
 
 /**
  * Horizontally sums packed fp32 values in a 256-bit YMM register,

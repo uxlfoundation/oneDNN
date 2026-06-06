@@ -20,6 +20,7 @@
 #include "gpu/intel/matmul/gemm.hpp"
 #include "gpu/intel/matmul/grouped_micro_gemm.hpp"
 #include "gpu/intel/matmul/ref.hpp"
+#include "gpu/intel/matmul/reshape.hpp"
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
 #include "gpu/intel/matmul/ref_grouped_gemm.hpp"
 #endif
@@ -47,6 +48,7 @@ namespace {
 
 // clang-format off
 constexpr impl_list_item_t impl_list[] = REG_MATMUL_P({
+        GPU_INSTANCE_INTEL(intel::matmul::reshape_t)
         GPU_INSTANCE_INTEL(intel::matmul::gemm_t)
         GPU_INSTANCE_INTEL(intel::matmul::ref_sparse_t)
         GPU_INSTANCE_GROUPED(intel::matmul::grouped_micro_gemm_t)

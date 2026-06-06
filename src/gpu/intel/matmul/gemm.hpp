@@ -365,6 +365,15 @@ struct gemm_t : public primitive_t {
             VDISPATCH_MATMUL_SC(create_gemm_pd(gemm_pd_, engine, a_md, b_md,
                                         c_md, bias_md, acc_dt, &gemm_attr),
                     VERBOSE_PRIMITIVE_CREATION_FAIL, "gemm");
+
+            // Any productive reshape (one that yields a working gemm pd) is
+            // caught earlier by matmul::reshape_t, registered first in the
+            // matmul list. maybe_reshape() may still fold here, but only
+            // unproductively (create_gemm_pd then fails and we yield to ref);
+            // a fold must never survive into a successful gemm pd.
+            gpu_assert(a_md == src_md() && b_md == weights_md()
+                    && c_md == dst_md())
+                    << "unexpected reshape in matmul::gemm_t";
             VDISPATCH_MATMUL_SC(set_default_params(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_MATMUL_SC(attr_.set_default_formats(dst_md(0)),
                     VERBOSE_UNSUPPORTED_POSTOP);

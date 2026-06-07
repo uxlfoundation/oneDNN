@@ -21,7 +21,7 @@
 #include "common/dnnl_thread.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
-#include "cpu/rv64/jit_rvv_gemm_convolution_copy_kernel.hpp"
+#include "cpu/rv64/jit_rvv_gemm_convolution_kernel.hpp"
 #include "cpu/scale_utils.hpp"
 
 #include "cpu/platform.hpp"

@@ -24,7 +24,7 @@
 #include "common/primitive.hpp"
 #include "cpu/cpu_softmax_pd.hpp"
 #include "cpu/rv64/cpu_isa_traits.hpp"
-#include "cpu/rv64/jit_rvv_softmax_affine_kernel.hpp"
+#include "cpu/rv64/jit_rvv_softmax_kernel.hpp"
 
 namespace dnnl {
 namespace impl {

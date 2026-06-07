@@ -19,7 +19,7 @@
 #include "common/float16.hpp"
 #include "common/nstl.hpp"
 
-#include "cpu/rv64/jit_rvv_softmax_f16_kernel.hpp"
+#include "cpu/rv64/jit_rvv_softmax_kernel.hpp"
 #include "cpu/rv64/rvv_softmax.hpp"
 
 namespace dnnl {

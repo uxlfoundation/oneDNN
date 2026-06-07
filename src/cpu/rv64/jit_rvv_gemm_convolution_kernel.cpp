@@ -16,7 +16,7 @@
 
 #include <cstddef>
 
-#include "cpu/rv64/jit_rvv_gemm_convolution_post_kernel.hpp"
+#include "cpu/rv64/jit_rvv_gemm_convolution_kernel.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -25,11 +25,22 @@ namespace rv64 {
 
 using namespace Xbyak_riscv;
 
-#define GET_OFF(field) \
+#define COPY_OFF(field) \
+    static_cast<int32_t>(offsetof( \
+            jit_rvv_gemm_convolution_copy_kernel_t::call_params_t, field))
+#define POST_OFF(field) \
     static_cast<int32_t>(offsetof( \
             jit_rvv_gemm_convolution_post_kernel_t::call_params_t, field))
 
 namespace {
+
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
+void dispatch_gemm_convolution_copy(
+        const jit_rvv_gemm_convolution_copy_kernel_t::call_params_t *p) {
+    static const jit_rvv_gemm_convolution_copy_kernel_t kernel;
+    kernel(p);
+}
+#endif
 
 template <bool vector_bias, bool with_relu, bool relu_alpha_zero,
         bool with_scale>
@@ -41,6 +52,59 @@ void dispatch_gemm_convolution_post(
 }
 
 } // namespace
+
+jit_rvv_gemm_convolution_copy_kernel_t::jit_rvv_gemm_convolution_copy_kernel_t()
+    : jit_generator_t("jit_rvv_gemm_convolution_copy_kernel") {
+    create_kernel();
+}
+
+void jit_rvv_gemm_convolution_copy_f32(
+        const float *src, float *dst, dim_t len) {
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
+    const jit_rvv_gemm_convolution_copy_kernel_t::call_params_t p {
+            src, dst, len};
+    dispatch_gemm_convolution_copy(&p);
+#else
+    for (dim_t i = 0; i < len; ++i)
+        dst[i] = src[i];
+#endif
+}
+
+void jit_rvv_gemm_convolution_copy_kernel_t::generate() {
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
+    const Reg reg_param = a0;
+    const Reg reg_src = a1;
+    const Reg reg_dst = a2;
+    const Reg reg_len = a3;
+    const Reg reg_vl = t0;
+    const Reg reg_bytes = t1;
+
+    const VReg v_data(4);
+
+    ld(reg_src, reg_param, COPY_OFF(src));
+    ld(reg_dst, reg_param, COPY_OFF(dst));
+    ld(reg_len, reg_param, COPY_OFF(len));
+
+    Label loop, done;
+    L(loop);
+    beqz(reg_len, done);
+
+    vsetvli(reg_vl, reg_len, SEW::e32, LMUL::m4);
+    vle32_v(v_data, reg_src);
+    vse32_v(v_data, reg_dst);
+
+    slli(reg_bytes, reg_vl, 2);
+    add(reg_src, reg_src, reg_bytes);
+    add(reg_dst, reg_dst, reg_bytes);
+    sub(reg_len, reg_len, reg_vl);
+    j_(loop);
+
+    L(done);
+    ret();
+#else
+    ret();
+#endif
+}
 
 jit_rvv_gemm_convolution_post_kernel_t::jit_rvv_gemm_convolution_post_kernel_t(
         bool vector_bias, bool with_relu, bool relu_alpha_zero, bool with_scale)
@@ -121,12 +185,12 @@ void jit_rvv_gemm_convolution_post_kernel_t::generate() {
     const VReg v_bias(8);
     const VReg v_tmp(12);
 
-    ld(reg_dst, reg_param, GET_OFF(dst));
-    ld(reg_bias, reg_param, GET_OFF(bias));
-    ld(reg_len, reg_param, GET_OFF(len));
-    flw(f_bias, reg_param, GET_OFF(scalar_bias));
-    flw(f_alpha, reg_param, GET_OFF(relu_alpha));
-    flw(f_scale, reg_param, GET_OFF(scale));
+    ld(reg_dst, reg_param, POST_OFF(dst));
+    ld(reg_bias, reg_param, POST_OFF(bias));
+    ld(reg_len, reg_param, POST_OFF(len));
+    flw(f_bias, reg_param, POST_OFF(scalar_bias));
+    flw(f_alpha, reg_param, POST_OFF(relu_alpha));
+    flw(f_scale, reg_param, POST_OFF(scale));
     fmv_w_x(f_zero, x0);
 
     Label loop, done;

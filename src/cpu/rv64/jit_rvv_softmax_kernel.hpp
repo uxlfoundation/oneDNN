@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_RV64_JIT_RVV_SOFTMAX_F16_KERNEL_HPP
-#define CPU_RV64_JIT_RVV_SOFTMAX_F16_KERNEL_HPP
+#ifndef CPU_RV64_JIT_RVV_SOFTMAX_KERNEL_HPP
+#define CPU_RV64_JIT_RVV_SOFTMAX_KERNEL_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/float16.hpp"
@@ -25,6 +25,27 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 namespace rv64 {
+
+struct jit_rvv_softmax_affine_kernel_t : public jit_generator_t {
+    struct call_params_t {
+        const float *src;
+        float *dst;
+        dim_t len;
+        float sub;
+        float mul;
+    };
+
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_rvv_softmax_affine_kernel_t)
+
+    jit_rvv_softmax_affine_kernel_t();
+
+    void operator()(const call_params_t *p) const {
+        jit_generator_t::operator()(p);
+    }
+
+protected:
+    void generate() override;
+};
 
 struct jit_rvv_softmax_f16_affine_kernel_t : public jit_generator_t {
     struct call_params_t {
@@ -90,4 +111,4 @@ void jit_rvv_softmax_f16_scatter(const dnnl::impl::float16_t *src,
 } // namespace impl
 } // namespace dnnl
 
-#endif // CPU_RV64_JIT_RVV_SOFTMAX_F16_KERNEL_HPP
+#endif // CPU_RV64_JIT_RVV_SOFTMAX_KERNEL_HPP

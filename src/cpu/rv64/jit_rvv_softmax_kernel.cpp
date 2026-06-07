@@ -16,7 +16,7 @@
 
 #include <cstddef>
 
-#include "cpu/rv64/jit_rvv_softmax_f16_kernel.hpp"
+#include "cpu/rv64/jit_rvv_softmax_kernel.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -25,30 +25,82 @@ namespace rv64 {
 
 using namespace Xbyak_riscv;
 
-#define AFFINE_OFF(field) \
+#define F16_AFFINE_OFF(field) \
     static_cast<int32_t>(offsetof( \
             jit_rvv_softmax_f16_affine_kernel_t::call_params_t, field))
-#define STRIDED_OFF(field) \
+#define F16_STRIDED_OFF(field) \
     static_cast<int32_t>(offsetof( \
             jit_rvv_softmax_f16_strided_kernel_t::call_params_t, field))
 
 namespace {
 
 template <bool src_f32>
-void dispatch_affine(
+void dispatch_f16_affine(
         const jit_rvv_softmax_f16_affine_kernel_t::call_params_t *p) {
     static const jit_rvv_softmax_f16_affine_kernel_t kernel(src_f32);
     kernel(p);
 }
 
 template <bool gather>
-void dispatch_strided(
+void dispatch_f16_strided(
         const jit_rvv_softmax_f16_strided_kernel_t::call_params_t *p) {
     static const jit_rvv_softmax_f16_strided_kernel_t kernel(gather);
     kernel(p);
 }
 
 } // namespace
+
+jit_rvv_softmax_affine_kernel_t::jit_rvv_softmax_affine_kernel_t()
+    : jit_generator_t("jit_rvv_softmax_affine_kernel") {
+    create_kernel();
+}
+
+void jit_rvv_softmax_affine_kernel_t::generate() {
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
+    const Reg reg_param = a0;
+    const Reg reg_src = a1;
+    const Reg reg_dst = a2;
+    const Reg reg_len = a3;
+    const Reg reg_vl = t0;
+    const Reg reg_bytes = t1;
+    const Reg reg_tmp = t2;
+
+    const FReg f_sub = fa0;
+    const FReg f_mul = fa1;
+
+    const VReg v_src(0);
+
+    // call_params_t layout:
+    //  0: src, 8: dst, 16: len, 24: sub, 28: mul
+    ld(reg_src, reg_param, 0);
+    ld(reg_dst, reg_param, 8);
+    ld(reg_len, reg_param, 16);
+
+    lw(reg_tmp, reg_param, 24);
+    fmv_w_x(f_sub, reg_tmp);
+    lw(reg_tmp, reg_param, 28);
+    fmv_w_x(f_mul, reg_tmp);
+
+    Label loop, done;
+    L(loop);
+    beqz(reg_len, done);
+    vsetvli(reg_vl, reg_len, SEW::e32, LMUL::m1);
+    vle32_v(v_src, reg_src);
+    vfsub_vf(v_src, v_src, f_sub);
+    vfmul_vf(v_src, v_src, f_mul);
+    vse32_v(v_src, reg_dst);
+    slli(reg_bytes, reg_vl, 2);
+    add(reg_src, reg_src, reg_bytes);
+    add(reg_dst, reg_dst, reg_bytes);
+    sub(reg_len, reg_len, reg_vl);
+    j_(loop);
+
+    L(done);
+    ret();
+#else
+    ret();
+#endif
+}
 
 jit_rvv_softmax_f16_affine_kernel_t::jit_rvv_softmax_f16_affine_kernel_t(
         bool src_f32)
@@ -66,28 +118,28 @@ void jit_rvv_softmax_f16_affine_from_f16(const dnnl::impl::float16_t *src,
         dnnl::impl::float16_t *dst, dim_t len, float sub, float mul) {
     const jit_rvv_softmax_f16_affine_kernel_t::call_params_t p {
             src, dst, len, sub, mul};
-    dispatch_affine<false>(&p);
+    dispatch_f16_affine<false>(&p);
 }
 
 void jit_rvv_softmax_f16_affine_from_f32(const float *src,
         dnnl::impl::float16_t *dst, dim_t len, float sub, float mul) {
     const jit_rvv_softmax_f16_affine_kernel_t::call_params_t p {
             src, dst, len, sub, mul};
-    dispatch_affine<true>(&p);
+    dispatch_f16_affine<true>(&p);
 }
 
 void jit_rvv_softmax_f16_gather(const dnnl::impl::float16_t *src,
         dnnl::impl::float16_t *dst, dim_t len, dim_t stride_bytes) {
     const jit_rvv_softmax_f16_strided_kernel_t::call_params_t p {
             src, dst, len, stride_bytes};
-    dispatch_strided<true>(&p);
+    dispatch_f16_strided<true>(&p);
 }
 
 void jit_rvv_softmax_f16_scatter(const dnnl::impl::float16_t *src,
         dnnl::impl::float16_t *dst, dim_t len, dim_t stride_bytes) {
     const jit_rvv_softmax_f16_strided_kernel_t::call_params_t p {
             src, dst, len, stride_bytes};
-    dispatch_strided<false>(&p);
+    dispatch_f16_strided<false>(&p);
 }
 
 void jit_rvv_softmax_f16_affine_kernel_t::generate() {
@@ -107,11 +159,11 @@ void jit_rvv_softmax_f16_affine_kernel_t::generate() {
     const VReg v_f32(8);
     const VReg v_dst(4);
 
-    ld(reg_src, reg_param, AFFINE_OFF(src));
-    ld(reg_dst, reg_param, AFFINE_OFF(dst));
-    ld(reg_len, reg_param, AFFINE_OFF(len));
-    flw(f_sub, reg_param, AFFINE_OFF(sub));
-    flw(f_mul, reg_param, AFFINE_OFF(mul));
+    ld(reg_src, reg_param, F16_AFFINE_OFF(src));
+    ld(reg_dst, reg_param, F16_AFFINE_OFF(dst));
+    ld(reg_len, reg_param, F16_AFFINE_OFF(len));
+    flw(f_sub, reg_param, F16_AFFINE_OFF(sub));
+    flw(f_mul, reg_param, F16_AFFINE_OFF(mul));
 
     Label loop, done;
     L(loop);
@@ -163,10 +215,10 @@ void jit_rvv_softmax_f16_strided_kernel_t::generate() {
 
     const VReg v_data(4);
 
-    ld(reg_src, reg_param, STRIDED_OFF(src));
-    ld(reg_dst, reg_param, STRIDED_OFF(dst));
-    ld(reg_len, reg_param, STRIDED_OFF(len));
-    ld(reg_stride, reg_param, STRIDED_OFF(stride_bytes));
+    ld(reg_src, reg_param, F16_STRIDED_OFF(src));
+    ld(reg_dst, reg_param, F16_STRIDED_OFF(dst));
+    ld(reg_len, reg_param, F16_STRIDED_OFF(len));
+    ld(reg_stride, reg_param, F16_STRIDED_OFF(stride_bytes));
 
     Label loop, done;
     L(loop);

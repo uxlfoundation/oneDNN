@@ -26,7 +26,7 @@ namespace cpu {
 namespace rv64 {
 
 struct jit_rvv_inner_product_kernel_t : public jit_generator_t {
-    enum class dt_pair_t { f32_f32, s8_s8, u8_s8 };
+    enum class dt_pair_t { s8_s8, u8_s8 };
 
     struct call_params_t {
         const void *src;
@@ -47,14 +47,11 @@ protected:
     void generate() override;
 
 private:
-    void generate_f32_f32();
     void generate_x8_s8(bool src_is_u8);
 
     dt_pair_t dt_pair_;
 };
 
-float jit_rvv_inner_product_fwd_f32_f32(
-        const void *src, const void *weights, dim_t len);
 float jit_rvv_inner_product_fwd_s8_s8(
         const void *src, const void *weights, dim_t len);
 float jit_rvv_inner_product_fwd_u8_s8(

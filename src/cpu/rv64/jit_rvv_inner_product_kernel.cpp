@@ -47,15 +47,6 @@ jit_rvv_inner_product_kernel_t::jit_rvv_inner_product_kernel_t(
     create_kernel();
 }
 
-float jit_rvv_inner_product_fwd_f32_f32(
-        const void *src, const void *weights, dim_t len) {
-    float acc = 0.0f;
-    const jit_rvv_inner_product_kernel_t::call_params_t p {
-            src, weights, len, &acc};
-    return dispatch_jit_inner_product<
-            jit_rvv_inner_product_kernel_t::dt_pair_t::f32_f32>(&p);
-}
-
 float jit_rvv_inner_product_fwd_s8_s8(
         const void *src, const void *weights, dim_t len) {
     float acc = 0.0f;
@@ -77,64 +68,9 @@ float jit_rvv_inner_product_fwd_u8_s8(
 void jit_rvv_inner_product_kernel_t::generate() {
 #if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
     switch (dt_pair_) {
-        case dt_pair_t::f32_f32: generate_f32_f32(); break;
         case dt_pair_t::s8_s8: generate_x8_s8(false); break;
         case dt_pair_t::u8_s8: generate_x8_s8(true); break;
     }
-#else
-    ret();
-#endif
-}
-
-void jit_rvv_inner_product_kernel_t::generate_f32_f32() {
-#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
-    const Reg reg_param = a0;
-    const Reg reg_src = a1;
-    const Reg reg_wei = a2;
-    const Reg reg_len = a3;
-    const Reg reg_acc_ptr = a4;
-    const Reg reg_vl = t0;
-    const Reg reg_bytes = t1;
-
-    const FReg f_acc = fa0;
-    const FReg f_part = fa1;
-    const FReg f_zero = fa2;
-
-    const VReg v_src(4);
-    const VReg v_wei(8);
-    const VReg v_prod(12);
-    const VReg v_zero(16);
-    const VReg v_sum(17);
-
-    ld(reg_src, reg_param, GET_OFF(src));
-    ld(reg_wei, reg_param, GET_OFF(weights));
-    ld(reg_len, reg_param, GET_OFF(len));
-    ld(reg_acc_ptr, reg_param, GET_OFF(acc));
-    fmv_w_x(f_acc, x0);
-    fmv_w_x(f_zero, x0);
-
-    Label loop, done;
-    L(loop);
-    beqz(reg_len, done);
-
-    vsetvli(reg_vl, reg_len, SEW::e32, LMUL::m1);
-    vle32_v(v_src, reg_src);
-    vle32_v(v_wei, reg_wei);
-    vfmul_vv(v_prod, v_src, v_wei);
-    vfmv_v_f(v_zero, f_zero);
-    vfredusum_vs(v_sum, v_prod, v_zero);
-    vfmv_f_s(f_part, v_sum);
-    fadd_s(f_acc, f_acc, f_part);
-
-    slli(reg_bytes, reg_vl, 2);
-    add(reg_src, reg_src, reg_bytes);
-    add(reg_wei, reg_wei, reg_bytes);
-    sub(reg_len, reg_len, reg_vl);
-    j_(loop);
-
-    L(done);
-    fsw(f_acc, reg_acc_ptr, 0);
-    ret();
 #else
     ret();
 #endif

@@ -23,7 +23,7 @@ endif()
 
 set(Coverage_cmake_included true)
 
-if(NOT DNNL_CODE_COVERAGE)
+if(DNNL_CODE_COVERAGE STREQUAL "NONE")
     return()
 endif()
 

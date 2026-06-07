@@ -22,11 +22,6 @@ endif()
 set(blas_cmake_included true)
 include("cmake/options.cmake")
 
-# Retains existing functionality of _DNNL_USE_MKL
-if(_DNNL_USE_MKL)
-    set(DNNL_BLAS_VENDOR "MKL")
-endif()
-
 if(DNNL_BLAS_VENDOR STREQUAL "NONE")
     return()
 endif()

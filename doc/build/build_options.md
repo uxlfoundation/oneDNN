@@ -146,15 +146,15 @@ Graph API (enabled via `ONEDNN_BUILD_GRAPH`) is not compatible with
 
 ### Validation
 
-| CMake Option                 | Default  | Supported values                                           | Description                                                                  |
-|:-----------------------------|:---------|:-----------------------------------------------------------|:-----------------------------------------------------------------------------|
-| ONEDNN_BUILD_EXAMPLES        | **ON**   | OFF                                                        | Controls building the examples                                               |
-| ONEDNN_BUILD_TESTS           | **ON**   | OFF                                                        | Controls building the tests                                                  |
-| [ONEDNN_TEST_SET]            | **CI**   | SMOKE, NIGHTLY, \<list\>                                   | Specifies the testing coverage enabled through the generated testing targets |
-| ONEDNN_CODE_COVERAGE         | **OFF**  | gcov                                                       | Enables code coverage instrumentation                                        |
-| [ONEDNN_USE_CLANG_SANITIZER] | \        | Address, Leak, Memory, MemoryWithOrigin, Thread, Undefined | Instructs build system to use a Clang sanitizer                              |
-| [ONEDNN_USE_CLANG_TIDY]      | **NONE** | CHECK, FIX                                                 | Instructs build system to use clang-tidy                                     |
-| ONEDNN_WERROR                | **OFF**  | ON                                                         | Enables treating warnings as errors                                          |
+| CMake Option                 | Default   | Supported values                                           | Description                                                                  |
+|:-----------------------------|:----------|:-----------------------------------------------------------|:-----------------------------------------------------------------------------|
+| ONEDNN_BUILD_EXAMPLES        | **ON**    | OFF                                                        | Controls building the examples                                               |
+| ONEDNN_BUILD_TESTS           | **ON**    | OFF                                                        | Controls building the tests                                                  |
+| [ONEDNN_TEST_SET]            | **CI**    | SMOKE, NIGHTLY, \<list\>                                   | Specifies the testing coverage enabled through the generated testing targets |
+| ONEDNN_CODE_COVERAGE         | **NONE**  | gcov                                                       | Enables code coverage instrumentation                                        |
+| [ONEDNN_USE_CLANG_SANITIZER] | \         | Address, Leak, Memory, MemoryWithOrigin, Thread, Undefined | Instructs build system to use a Clang sanitizer                              |
+| [ONEDNN_USE_CLANG_TIDY]      | **NONE**  | CHECK, FIX                                                 | Instructs build system to use clang-tidy                                     |
+| ONEDNN_WERROR                | **OFF**   | ON                                                         | Enables treating warnings as errors                                          |
 
 [ONEDNN_TEST_SET]: @ref opt_test_set
 [ONEDNN_USE_CLANG_SANITIZER]: @ref opt_use_clang_sanitizer

@@ -86,8 +86,6 @@ string(TOUPPER "${CMAKE_BUILD_TYPE}" UPPERCASE_CMAKE_BUILD_TYPE)
 
 set(LIB_PACKAGE_NAME "dnnl")
 
-include("cmake/dnnl_compat.cmake")
-
 include("cmake/utils.cmake")
 include("cmake/options.cmake")
 include("cmake/SYCL.cmake")

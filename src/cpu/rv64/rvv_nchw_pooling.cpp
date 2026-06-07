@@ -18,6 +18,10 @@
 #include <algorithm>
 #include <cfloat>
 
+#if defined(DNNL_RISCV_USE_RVV_INTRINSICS)
+#include <riscv_vector.h>
+#endif
+
 #include "common/dnnl_thread.hpp"
 #include "common/nstl.hpp"
 #include "common/stream.hpp"
@@ -263,6 +267,218 @@ void Pooling_f32_jit_nchw_ow1(const float *src, float *dst, dim_t batch,
 #endif
     });
 }
+
+// === Intrinsics-based fallback for low-channel OW>1 shapes ===
+// The JIT kernel has per-call overhead (callee-save/restore, parameter loads)
+// that is poorly amortized when channel count is low. For C < 288, the
+// intrinsics path avoids this overhead and matches the original baseline.
+
+#if defined(DNNL_RISCV_USE_RVV_INTRINSICS)
+static void MaxPooling_intrin(const float *src, float *dst, dim_t batch,
+        dim_t channels, dim_t outD, dim_t outH, dim_t outW, dim_t inD,
+        dim_t inH, dim_t inW, dim_t kerD, dim_t kerH, dim_t kerW, dim_t strideD,
+        dim_t strideH, dim_t strideW, dim_t padFront, dim_t padTop,
+        dim_t padLeft) {
+
+    parallel_nd(batch, channels, outD, outH, outW,
+            [&](dim_t mb, dim_t c, dim_t od, dim_t oh, dim_t ow) {
+        const size_t dst_offset = (size_t)outW * outH * outD * channels * mb
+                + (size_t)outW * outH * outD * c + (size_t)outW * outH * od
+                + (size_t)outW * oh + (size_t)ow;
+        const auto src_offset
+                = ((size_t)inW * inH * inD) * ((size_t)channels * mb + c);
+        const auto local_src = &src[src_offset];
+        const auto IWH = (size_t)inW * inH;
+
+        int od_offset = od * strideD - padFront;
+        int oh_offset = oh * strideH - padTop;
+        int ow_offset = ow * strideW - padLeft;
+        int iw_start = std::max(ow_offset, 0);
+        int iw_end = std::min(ow_offset + (int)kerW, (int)inW);
+
+        if (iw_start >= iw_end) {
+            dst[dst_offset] = -FLT_MAX;
+            return;
+        }
+
+        size_t size = iw_end - iw_start;
+        size_t cycleLength = __riscv_vsetvl_e32m1(size);
+        vfloat32m1_t vmax = __riscv_vfmv_v_f_f32m1(-FLT_MAX, cycleLength);
+
+        for (int id = std::max(od_offset, 0);
+                id < std::min(od_offset + (int)kerD, (int)inD); id++)
+            for (int ih = std::max(oh_offset, 0);
+                    ih < std::min(oh_offset + (int)kerH, (int)inH); ih++) {
+                const auto local_src_offset
+                        = IWH * id + (size_t)inW * ih + std::max(ow_offset, 0);
+
+                size_t iw = 0;
+                for (; iw + cycleLength <= size; iw += cycleLength) {
+                    vfloat32m1_t vsrc = __riscv_vle32_v_f32m1(
+                            &local_src[local_src_offset + iw], cycleLength);
+                    vmax = __riscv_vfmax_vv_f32m1(vsrc, vmax, cycleLength);
+                }
+
+                size_t tailLength = __riscv_vsetvl_e32m1(size - iw);
+                {
+                    vfloat32m1_t vsrc = __riscv_vle32_v_f32m1(
+                            &local_src[local_src_offset + iw], tailLength);
+                    vmax = __riscv_vfmax_vv_f32m1(vsrc, vmax, tailLength);
+                }
+            }
+
+        vfloat32m1_t min_scalar = __riscv_vfmv_v_f_f32m1(-FLT_MAX, 1);
+        cycleLength = __riscv_vsetvl_e32m1(size);
+        vfloat32m1_t vred_res;
+        vred_res = __riscv_vfredmax_vs_f32m1_f32m1(
+                vmax, min_scalar, cycleLength);
+        __riscv_vse32_v_f32m1(&dst[dst_offset], vred_res, 1);
+    });
+}
+
+static void AvgPoolingIncludePadding_intrin(const float *src, float *dst,
+        dim_t batch, dim_t channels, dim_t outD, dim_t outH, dim_t outW,
+        dim_t inD, dim_t inH, dim_t inW, dim_t kerD, dim_t kerH, dim_t kerW,
+        dim_t strideD, dim_t strideH, dim_t strideW, dim_t padFront,
+        dim_t padTop, dim_t padLeft) {
+
+    const float kernel_volume = (float)(kerD * kerH * kerW);
+
+    parallel_nd(batch, channels, outD, outH, outW,
+            [&](dim_t mb, dim_t c, dim_t od, dim_t oh, dim_t ow) {
+        const size_t dst_offset = (size_t)outW * outH * outD * channels * mb
+                + (size_t)outW * outH * outD * c + (size_t)outW * outH * od
+                + (size_t)outW * oh + (size_t)ow;
+        const auto src_offset
+                = ((size_t)inW * inH * inD) * ((size_t)channels * mb + c);
+        const auto local_src = &src[src_offset];
+        const auto IWH = (size_t)inW * inH;
+
+        int od_offset = od * strideD - padFront;
+        int oh_offset = oh * strideH - padTop;
+        int ow_offset = ow * strideW - padLeft;
+        int iw_start = std::max(ow_offset, 0);
+        int iw_end = std::min(ow_offset + (int)kerW, (int)inW);
+
+        if (iw_start >= iw_end) {
+            dst[dst_offset] = 0.0f;
+            return;
+        }
+
+        size_t size = iw_end - iw_start;
+        size_t cycleLength = __riscv_vsetvl_e32m1(size);
+        vfloat32m1_t vsum = __riscv_vfmv_v_f_f32m1(0.0f, cycleLength);
+
+        for (int id = std::max(od_offset, 0);
+                id < std::min(od_offset + (int)kerD, (int)inD); id++)
+            for (int ih = std::max(oh_offset, 0);
+                    ih < std::min(oh_offset + (int)kerH, (int)inH); ih++) {
+                const size_t local_src_offset
+                        = IWH * id + (size_t)inW * ih + iw_start;
+
+                size_t iw = 0;
+                for (; iw + cycleLength <= size; iw += cycleLength) {
+                    vfloat32m1_t vsrc = __riscv_vle32_v_f32m1(
+                            &local_src[local_src_offset + iw], cycleLength);
+                    vsum = __riscv_vfadd_vv_f32m1(vsum, vsrc, cycleLength);
+                }
+
+                size_t tailLength = __riscv_vsetvl_e32m1(size - iw);
+                {
+                    vfloat32m1_t vsrc = __riscv_vle32_v_f32m1(
+                            &local_src[local_src_offset + iw], tailLength);
+                    vsum = __riscv_vfadd_vv_f32m1(vsum, vsrc, tailLength);
+                }
+            }
+
+        vfloat32m1_t zero_scalar = __riscv_vfmv_v_f_f32m1(0.0f, 1);
+        cycleLength = __riscv_vsetvl_e32m1(size);
+        vfloat32m1_t vred_res;
+        vred_res = __riscv_vfredusum_vs_f32m1_f32m1(
+                vsum, zero_scalar, cycleLength);
+
+        float red_res;
+        __riscv_vse32_v_f32m1(&red_res, vred_res, 1);
+        dst[dst_offset] = red_res / kernel_volume;
+    });
+}
+
+static void AvgPoolingExcludePadding_intrin(const float *src, float *dst,
+        dim_t batch, dim_t channels, dim_t outD, dim_t outH, dim_t outW,
+        dim_t inD, dim_t inH, dim_t inW, dim_t kerD, dim_t kerH, dim_t kerW,
+        dim_t strideD, dim_t strideH, dim_t strideW, dim_t padFront,
+        dim_t padTop, dim_t padLeft) {
+
+    parallel_nd(batch, channels, outD, outH, outW,
+            [&](dim_t mb, dim_t c, dim_t od, dim_t oh, dim_t ow) {
+        const size_t dst_offset = (size_t)outW * outH * outD * channels * mb
+                + (size_t)outW * outH * outD * c + (size_t)outW * outH * od
+                + (size_t)outW * oh + (size_t)ow;
+        const auto src_offset
+                = ((size_t)inW * inH * inD) * ((size_t)channels * mb + c);
+        const auto local_src = &src[src_offset];
+        const auto IWH = (size_t)inW * inH;
+
+        int od_offset = od * strideD - padFront;
+        int oh_offset = oh * strideH - padTop;
+        int ow_offset = ow * strideW - padLeft;
+        int iw_start = std::max(ow_offset, 0);
+        int iw_end = std::min(ow_offset + (int)kerW, (int)inW);
+
+        if (iw_start >= iw_end) {
+            dst[dst_offset] = 0.0f;
+            return;
+        }
+
+        size_t size = iw_end - iw_start;
+        size_t cycleLength = __riscv_vsetvl_e32m1(size);
+        vfloat32m1_t vsum = __riscv_vfmv_v_f_f32m1(0.0f, cycleLength);
+        size_t count = 0;
+
+        for (int id = od_offset; id < od_offset + (int)kerD; id++) {
+            if (id < 0 || id >= (int)inD) continue;
+            for (int ih = oh_offset; ih < oh_offset + (int)kerH; ih++) {
+                if (ih < 0 || ih >= (int)inH) continue;
+                if (iw_start >= iw_end) continue;
+
+                const size_t local_src_offset
+                        = IWH * id + (size_t)inW * ih + iw_start;
+                size_t iw = 0;
+
+                for (; iw + cycleLength <= size; iw += cycleLength) {
+                    vfloat32m1_t vsrc = __riscv_vle32_v_f32m1(
+                            &local_src[local_src_offset + iw], cycleLength);
+                    vsum = __riscv_vfadd_vv_f32m1(vsum, vsrc, cycleLength);
+                }
+
+                size_t tailLength = __riscv_vsetvl_e32m1(size - iw);
+                {
+                    vfloat32m1_t vsrc = __riscv_vle32_v_f32m1(
+                            &local_src[local_src_offset + iw], tailLength);
+                    vsum = __riscv_vfadd_vv_f32m1(vsum, vsrc, tailLength);
+                }
+
+                count += size;
+            }
+        }
+
+        if (count == 0) {
+            dst[dst_offset] = 0.0f;
+            return;
+        }
+
+        vfloat32m1_t zero_scalar = __riscv_vfmv_v_f_f32m1(0.0f, 1);
+        cycleLength = __riscv_vsetvl_e32m1(size);
+        vfloat32m1_t vred_res;
+        vred_res = __riscv_vfredusum_vs_f32m1_f32m1(
+                vsum, zero_scalar, cycleLength);
+
+        float red_res;
+        __riscv_vse32_v_f32m1(&red_res, vred_res, 1);
+        dst[dst_offset] = red_res / (float)count;
+    });
+}
+#endif // DNNL_RISCV_USE_RVV_INTRINSICS
 
 #if defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
 #include <riscv_vector.h>
@@ -514,11 +730,17 @@ status_t riscv_nchw_pooling_fwd_t::execute_forward(
         const bool with_relu = postops_handler.is_relu_postop();
         const float relu_alpha = postops_handler.relu_alpha();
 
+        // JIT OW-vectorized path has per-call overhead (callee-save/restore,
+        // parameter loads) that is poorly amortized when channel count is low.
+        // Use intrinsics fallback for C < 288 to avoid 10-27% regression on
+        // low-channel, large-spatial shapes.
+        static constexpr dim_t jit_ow_min_channels = 288;
+        const bool use_jit_ow = (OW > 1) && (C >= jit_ow_min_channels);
         bool relu_fused_in_kernel = false;
 
         using kalg = kernel_t::alg_t;
-        if (OW > 1) {
-            // OW vectorization (any stride).
+        if (use_jit_ow) {
+            // OW vectorization (any stride), high-C shapes only
             relu_fused_in_kernel = with_relu;
             if (is_max_pool) {
                 Pooling_f32_jit_nchw<kalg::max_pool>(src, dst, MB, C, OD, OH,
@@ -554,10 +776,44 @@ status_t riscv_nchw_pooling_fwd_t::execute_forward(
                 return status::unimplemented;
             }
         } else {
-            return status::unimplemented;
+            // Low-C OW>1: intrinsics fallback to avoid JIT overhead regression
+#if defined(DNNL_RISCV_USE_RVV_INTRINSICS)
+            if (is_max_pool) {
+                MaxPooling_intrin(src, dst, MB, C, OD, OH, OW, ID, IH, IW, KD,
+                        KH, KW, SD, SH, SW, padF, padT, padL);
+            } else if (is_avg_pool_include) {
+                AvgPoolingIncludePadding_intrin(src, dst, MB, C, OD, OH, OW, ID,
+                        IH, IW, KD, KH, KW, SD, SH, SW, padF, padT, padL);
+            } else if (is_avg_pool_exclude) {
+                AvgPoolingExcludePadding_intrin(src, dst, MB, C, OD, OH, OW, ID,
+                        IH, IW, KD, KH, KW, SD, SH, SW, padF, padT, padL);
+            } else {
+                return status::unimplemented;
+            }
+#else
+            // No intrinsics available, use JIT path despite potential regression
+            relu_fused_in_kernel = with_relu;
+            if (is_max_pool) {
+                Pooling_f32_jit_nchw<kalg::max_pool>(src, dst, MB, C, OD, OH,
+                        OW, ID, IH, IW, KD, KH, KW, SD, SH, SW, padF, padT,
+                        padL, with_relu, relu_alpha);
+            } else if (is_avg_pool_exclude) {
+                Pooling_f32_jit_nchw<kalg::avg_exclude>(src, dst, MB, C, OD, OH,
+                        OW, ID, IH, IW, KD, KH, KW, SD, SH, SW, padF, padT,
+                        padL, with_relu, relu_alpha);
+            } else if (is_avg_pool_include) {
+                Pooling_f32_jit_nchw<kalg::avg_include>(src, dst, MB, C, OD, OH,
+                        OW, ID, IH, IW, KD, KH, KW, SD, SH, SW, padF, padT,
+                        padL, with_relu, relu_alpha);
+            } else {
+                return status::unimplemented;
+            }
+#endif
         }
 
-        // ReLU is fused in the JIT kernel. Other post-ops are handled here.
+        // Post-ops: execute all post-ops for the intrinsics fallback path.
+        // For the JIT path, ReLU was fused in the kernel; if the post-op is
+        // not ReLU (e.g. binary), execute it here.
         if (!pd()->attr()->post_ops_.has_default_values()
                 && !relu_fused_in_kernel) {
             CHECK(pd()->postops_.execute(ctx, dst, dst));

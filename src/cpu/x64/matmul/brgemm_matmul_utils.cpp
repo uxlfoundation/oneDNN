@@ -1770,7 +1770,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     // adjacent in memory, i.e. no batch dimension is physically interleaved
     // between them (e.g. an acbd layout). The format tag is unreliable here
     // since tag matching ignores strides of unit dimensions.
-    const bool m_and_k_contiguous
+    const bool m_and_k_adjacent
             = dims_adjacent(src_d, bgmmc.ndims - 2, bgmmc.ndims - 1);
 
     // We cannot change M at this point as all gemv related parameters have
@@ -1783,7 +1783,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
             && plain_A_layout && helper.is_src_dst_layout_batch_fusable()
             && post_ops_ok(
                     bgmmc, attr, dst_d, true /* limit_bcast_strategies_set */)
-            && m_and_k_contiguous;
+            && m_and_k_adjacent;
     if (merge_batch_dims_into_M) {
         bgmmc.M *= bgmmc.batch;
         bgmmc.batch = 1;

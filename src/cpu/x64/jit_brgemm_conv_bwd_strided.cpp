@@ -159,6 +159,7 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::init(engine_t *engine) {
 
     const auto KD = ndims_pick(jcp_.kd, 1, 1);
     const auto KH = ndims_pick(jcp_.kh, jcp_.kh, 1);
+    const auto KW = jcp_.kw;
     const auto KD_BLOCK = ndims_pick(jcp_.kd_block, 1, 1);
     const auto KH_BLOCK = ndims_pick(jcp_.kh_block, jcp_.kh_block, 1);
 
@@ -174,14 +175,14 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::init(engine_t *engine) {
     // kw_s aligns to stride sector (0..SW-1), so kw_range = KW - kw_s.
     std::vector<int> batch_sizes;
     if (jcp_.exec_type == exec_trans && is_amx) {
-        const auto KW = jcp_.kw;
         std::set<int> bs_set;
         bs_set.insert(0); // for skip_accumulation case
         for (int kd_range = 1; kd_range <= KD_BLOCK; kd_range++) {
             const auto kd_l = div_up(kd_range, SD);
             for (int kh_range = 1; kh_range <= KH_BLOCK; kh_range++) {
                 const auto kh_l = div_up(kh_range, SH);
-                for (int kw_s_off = 0; kw_s_off < SW; kw_s_off++) {
+                for (int kw_s_off = 0; kw_s_off < nstl::min(KW, SW);
+                        kw_s_off++) {
                     const auto kw_range = KW - kw_s_off;
                     const auto kw_l = div_up(kw_range, SW);
                     bs_set.insert(kd_l * kh_l * kw_l);
@@ -213,7 +214,44 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::init(engine_t *engine) {
     for (auto bs : batch_sizes) {
         auto M = (i_M) ? jcp_.M_tail : jcp_.M;
         if (M <= 0) continue;
-        CHECK(add_brg_descriptor(M, i_N, i_K, i_init, bs));
+        CHECK(add_brg_descriptor(M, i_N, i_K, i_init, 0, {}, bs));
+    }
+
+    // When has_uneven_iw, the tail iw block may have fewer valid spatial
+    // points for certain stride sectors.
+    if (jcp_.has_uneven_iw && jcp_.exec_type == exec_trans) {
+        const auto M_full = jcp_.M > 0 ? jcp_.M : jcp_.M_tail;
+        const auto eff_iw = jcp_.iw_tail > 0 ? jcp_.iw_tail : jcp_.iw;
+        for (int sw = 0; sw < SW; sw++) {
+            if (eff_iw <= sw) continue;
+            const auto M_sw = static_cast<int>(div_up(eff_iw - sw, SW));
+            if (M_sw > 0 && M_sw < M_full) {
+                if (jcp_.use_uker) {
+                    // AMX uker: use bd_mask with constant M to avoid tile
+                    // reconfiguration. The uker skips masked rows during
+                    // postops store.
+                    std::vector<char> mask(M_full, 0);
+                    for (int i = 0; i < M_sw; i++)
+                        mask[i] = 1;
+                    for_(int i_N = N_begin; i_N < N_end; i_N++)
+                    for_(int i_init = i_init_begin; i_init < i_init_end;
+                            i_init++)
+                    for_(int i_K = K_begin; i_K < K_end; i_K++)
+                    for (auto bs : batch_sizes) {
+                        CHECK(add_brg_descriptor(
+                                M_full, i_N, i_K, i_init, M_sw, mask, bs));
+                    }
+                } else {
+                    // Without uker: use the actual reduced M directly.
+                    for_(int i_N = N_begin; i_N < N_end; i_N++)
+                    for_(int i_init = i_init_begin; i_init < i_init_end;
+                            i_init++)
+                    for (int i_K = K_begin; i_K < K_end; i_K++) {
+                        CHECK(add_brg_descriptor(M_sw, i_N, i_K, i_init));
+                    }
+                }
+            }
+        }
     }
 
     if (jcp_.exec_type == exec_base) {
@@ -258,8 +296,9 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::init(engine_t *engine) {
 }
 
 template <cpu_isa_t isa>
-status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::add_brg_descriptor(
-        int vM, bool is_N_tail, bool is_K_tail, bool do_init, int bs) {
+status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::add_brg_descriptor(int vM,
+        bool is_N_tail, bool is_K_tail, bool do_init, int bd_mask_idx,
+        const std::vector<char> &bd_mask, int bs) {
 
     if (do_init && is_K_tail && jcp_.K > 0) return status::success;
 
@@ -274,7 +313,8 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::add_brg_descriptor(
 
     if (vN == 0 || vK == 0) return status::success;
 
-    auto brg_idx = get_brg_idx(vM, do_init, is_N_tail, is_K_tail, bs);
+    auto brg_idx
+            = get_brg_idx(vM, do_init, is_N_tail, is_K_tail, bd_mask_idx, bs);
     // if brgemm_desc_t already created then skip this iteration
     if (brg_idx != -1) return status::success;
 
@@ -316,9 +356,8 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::add_brg_descriptor(
     }
 
     brgattr.wary_A_k_tail_read = false;
-    // use_M_mask is always 0 for brgemm_convolution_bwd_strided_t
-    brgattr.bd_mask = nullptr;
-    brgattr.bd_mask_level = jcp_.use_M_mask;
+    brgattr.bd_mask = bd_mask.empty() ? nullptr : bd_mask.data();
+    brgattr.bd_mask_level = bd_mask.empty() ? 0 : 1;
 
     if (is_amx) {
         brgattr.max_top_vpad = 0;
@@ -339,9 +378,11 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::add_brg_descriptor(
 
     jcp_.amx_buf_size_per_thread = nstl::max(
             brg.get_wsp_buffer_size(), jcp_.amx_buf_size_per_thread);
-    brg_idx = brgs_->insert(brg);
+    brg_idx = brgs_->insert(
+            brg, bd_mask, std::vector<brgemm_batch_element_t> {});
 
-    const std::array<int, 5> key = {vM, is_N_tail, is_K_tail, do_init, bs};
+    const std::array<int, 6> key
+            = {vM, is_N_tail, is_K_tail, do_init, bd_mask_idx, bs};
     if (brg_indices.find(key) == brg_indices.end()) {
         brg_indices.insert({key, brg_idx});
         brg_indices_c++;
@@ -506,7 +547,17 @@ void brgemm_convolution_bwd_strided_t<isa>::create_kernels() {
             auto M = (i_M) ? jcp.M_tail : jcp.M;
             add_po_kernels(i_N, M, M);
         }
+    } else if (jcp.exec_type == exec_trans && jcp.use_uker) {
+        // For exec_trans with AMX uker: create post-op kernels for positions
+        // with no valid kd/kh overlap (perform_outwork handles these).
+        for_(int i_N = N_begin; i_N < N_end; i_N++)
+        for (int i_M = M_begin; i_M < M_end; i_M++) {
+            auto M = (i_M) ? jcp.M_tail : jcp.M;
+            add_po_kernels(i_N, M, M);
+        }
+    }
 
+    if (jcp.exec_type == exec_base) {
         // create brgemm kernels for iw_blocks with padded areas and
         // apply post-ops on final iteration by kw to padded areas in iw_block
         int kw_s {0}, kw_full_s {0}, kw_full_f {0}, kw_f {0}, iw_s {0},
@@ -1005,6 +1056,38 @@ void brgemm_convolution_bwd_strided_t<isa>::cal_compensation(
                     g, jcp.ngroups, icb, jcp.nb_ic, k, jcp.ker_ranges_size);
         }
     });
+
+    // For exec_trans + s8s8: the brgemm adds +128 shift to ALL input values
+    // including zero-padding. Boundary positions need the same full-range
+    // s8s8 compensation as center positions. The JIT kernel computes
+    // boundary-limited values (correct for zp but insufficient for s8s8).
+    // Broadcast center position values to all positions in each sw sector.
+    if (jcp.exec_type == exec_trans && jcp.s8s8_compensation_required
+            && s8s8_comp_buffer) {
+        const auto SW = jcp.stride_w;
+        const auto nb_iw = div_up(jcp.iw, SW);
+        const auto ic_block = jcp.ic_block;
+        const auto center_iwb = nb_iw / 2;
+
+        for_(dim_t g = 0; g < jcp.ngroups; g++)
+        for_(int icb = 0; icb < jcp.nb_ic; icb++)
+        for (int k = 0; k < jcp.ker_ranges_size; k++) {
+            const auto base_offs
+                    = g * comp_icb_sz + icb * comp_ker_sz + k * comp_kw_sz;
+            for (int sw = 0; sw < SW; sw++) {
+                const auto center_comp_iw = sw * nb_iw + center_iwb;
+                const auto center_offs = base_offs + center_comp_iw * ic_block;
+                for (int iwb = 0; iwb < nb_iw; iwb++) {
+                    if (iwb == center_iwb) continue;
+                    const auto comp_iw = sw * nb_iw + iwb;
+                    const auto dst_offs = base_offs + comp_iw * ic_block;
+                    std::memcpy(&s8s8_comp_buffer[dst_offs],
+                            &s8s8_comp_buffer[center_offs],
+                            ic_block * sizeof(int32_t));
+                }
+            }
+        }
+    }
 }
 
 template <cpu_isa_t isa>
@@ -1110,27 +1193,30 @@ void brgemm_convolution_bwd_strided_t<isa>::call_brgemm_kernel(
         char *ptr_D, const char *bias_w, int g_ic, bool do_postops,
         const void *binary_post_ops_rhs, int32_t src_zp_val,
         int32_t *src_zp_ptr, const int32_t *dst_zp_ptr, int32_t *s8s8_comp,
-        bool do_only_comp, bool is_first_call_postops) const {
+        bool do_only_comp, bool is_first_call_postops,
+        const char *dst_orig_override) const {
 
     const auto _pd = pd();
     const auto &jcp = _pd->jcp_;
 
+    if (brg_idx < 0) return;
     const auto brg_ker = brg_kernels_[brg_idx];
-    assert(brg_ker != nullptr);
-
+    if (!brg_ker) return;
     if (is_first_call_postops) return;
-
-    brgemm_palettes_.maybe_tile_configure(is_amx, btc.cur_brg_idx, brg_idx);
 
     const auto do_only_pass_comp = !do_postops && jcp.src_zero_point
             && (jcp.req_brg_comp_pad || jcp.max_vpad > 0);
     const auto do_skip_accm = batch_size == 0;
+
+    brgemm_palettes_.maybe_tile_configure(is_amx, btc.cur_brg_idx, brg_idx);
     const auto maybe_do_postops = one_of(
             true, do_postops, do_only_comp, do_only_pass_comp, do_skip_accm);
     if (maybe_do_postops) {
+        const auto dst_orig = dst_orig_override ? dst_orig_override
+                                                : btc.brgemm_ctx.diff_src;
         const brgemm_post_ops_data_t post_ops_data {
                 static_cast<const char *>(bias_w), binary_post_ops_rhs,
-                static_cast<size_t>(g_ic), 0, btc.brgemm_ctx.diff_src, 0,
+                static_cast<size_t>(g_ic), 0, dst_orig, 0,
                 static_cast<void *>(src_zp_ptr), nullptr, dst_zp_ptr,
                 do_skip_accm, src_zp_val, do_only_comp, do_only_pass_comp,
                 btc.src_scales,
@@ -1142,10 +1228,10 @@ void brgemm_convolution_bwd_strided_t<isa>::call_brgemm_kernel(
         void *scratch = is_amx ? static_cast<void *>(btc.wsp_tile)
                                : static_cast<void *>(s8s8_comp);
 
-        if (do_postops || do_skip_accm)
+        if (do_postops || do_skip_accm) {
             brgemm_kernel_execute_postops(brg_ker, batch_size, btc.brg_batch,
                     ptr_C, ptr_D, post_ops_data, scratch);
-        else
+        } else
             brgemm_kernel_execute_postops(brg_ker, batch_size, btc.brg_batch,
                     ptr_C, ptr_C, post_ops_data, scratch);
     } else
@@ -1551,7 +1637,16 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_trans(
 
     ptr_C = (jcp.use_buffer) ? btc.c_buffer : static_cast<char *>(ptr_D);
 
-    const auto ker_i = (jcp.M > 0 ? jcp.M : jcp.M_tail);
+    const auto full_m = jcp.M > 0 ? jcp.M : jcp.M_tail;
+    // When need_out_buffer, the short stripe (sw > 0 with odd IW) has fewer
+    // valid spatial points. Use the reduced M only for the postops call to
+    // avoid OOB binary operand access. Accumulation is safe with full M
+    // (ghost column reads/writes are in-bounds in the padded buffers).
+    const auto iw_remaining
+            = jcp.iw - static_cast<dim_t>(btc.iwb) * jcp.iw_block - btc.sw;
+    const auto ker_i_postops = (need_out_buffer && iw_remaining > 0)
+            ? static_cast<int>(div_up(iw_remaining, jcp.stride_w))
+            : full_m;
 
     bool is_first_call_postops = false,
          is_first_call_postops_state_changed = false;
@@ -1611,10 +1706,39 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_trans(
             }
             k_sum += k;
         }
+        // For deconvolution with sum post-op and out_buffer: pre-copy
+        // existing output values into out_buffer so sum reads correct data.
+        if (do_postops && need_out_buffer && jcp.is_deconv && jcp.with_sum) {
+            const auto iw_begin
+                    = static_cast<dim_t>(btc.iwb) * jcp.iw_block + btc.sw;
+            const auto real_dst = diff_src
+                    + dst_dsz
+                            * (btc.n * dst_d_sz + g_ic + id * dst_h_sz
+                                    + ih * dst_w_sz
+                                    + iw_begin * jcp.ic_without_padding);
+            const int ic_len = is_ic_tail ? (jcp.ic - ic) : jcp.ic_block;
+            const auto ic_bytes = static_cast<size_t>(ic_len) * dst_dsz;
+            const auto stride_bytes = static_cast<size_t>(jcp.stride_w)
+                    * jcp.ic_without_padding * dst_dsz;
+            for (int m = 0; m < ker_i_postops; m++) {
+                const auto iw_pos = iw_begin + m * jcp.stride_w;
+                if (iw_pos >= jcp.iw) break;
+                std::memcpy(ptr_D + m * stride_bytes,
+                        real_dst + m * stride_bytes, ic_bytes);
+            }
+        }
+        const char *fake_dst = need_out_buffer && jcp.is_deconv ? btc.out_buffer
+                        - dst_dsz
+                                * (btc.n * dst_d_sz + g_ic + id * dst_h_sz
+                                        + ih * dst_w_sz
+                                        + static_cast<dim_t>(btc.iwb)
+                                                * jcp.iw_block
+                                                * jcp.ic_without_padding)
+                                                                : nullptr;
         call_brgemm_kernel(btc, brg_idx, k_sum, ptr_C, ptr_D, bias_w, g_ic,
                 do_postops, post_ops_binary_rhs_arg_vec.data(), btc.src_zp_val,
                 src_zp, btc.dst_zp_vals, s8s8_comp, false,
-                is_first_call_postops);
+                is_first_call_postops, fake_dst);
         if (!is_first_call_postops_state_changed) {
             const auto do_only_pass_comp = !do_postops && jcp.src_zero_point
                     && (jcp.req_brg_comp_pad || jcp.max_vpad > 0);
@@ -1645,22 +1769,40 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_trans(
                 : get_comp_offset(btc.g, btc.icb, iw, 0, 0, 0, 0, 0, 0);
 
         if (nb_oc_b > 0) {
-            const auto brg_idx = _pd->get_brg_idx(
-                    ker_i, do_init, is_ic_tail, false, jcp.use_uker ? k_l : 0);
-            call_brgemm(brg_idx, 0, nb_oc_b, comp_ker_offs,
-                    do_postwork && !is_oc_tail);
+            const auto do_postops_here = do_postwork && !is_oc_tail;
+            int brg_idx;
+            if (jcp.use_uker) {
+                // AMX: always use full_m, masked descriptor for postops
+                const auto is_masked
+                        = do_postops_here && (ker_i_postops < full_m);
+                brg_idx = _pd->get_brg_idx(full_m, do_init, is_ic_tail, false,
+                        is_masked ? ker_i_postops : 0, k_l);
+            } else {
+                // Non-AMX: use actual reduced M for postops call
+                const auto m = do_postops_here ? ker_i_postops : full_m;
+                brg_idx = _pd->get_brg_idx(m, do_init, is_ic_tail, false);
+            }
+            call_brgemm(brg_idx, 0, nb_oc_b, comp_ker_offs, do_postops_here);
         }
 
         if (is_oc_tail) {
+            int brg_oc_tail_idx;
             const auto use_init_ker = (do_init && nb_oc_b == 0);
-            const auto brg_oc_tail_idx = _pd->get_brg_idx(ker_i, use_init_ker,
-                    is_ic_tail, true, jcp.use_uker ? k_l : 0);
+            if (jcp.use_uker) {
+                const auto is_masked = do_postwork && (ker_i_postops < full_m);
+                brg_oc_tail_idx = _pd->get_brg_idx(full_m, use_init_ker,
+                        is_ic_tail, true, is_masked ? ker_i_postops : 0, k_l);
+            } else {
+                const auto m = do_postwork ? ker_i_postops : full_m;
+                brg_oc_tail_idx
+                        = _pd->get_brg_idx(m, use_init_ker, is_ic_tail, true);
+            }
             call_brgemm(
                     brg_oc_tail_idx, nb_oc_b, 1, comp_ker_offs, do_postwork);
         }
     };
 
-    if (kd_f > kd_s && kh_f > kh_s) {
+    if (kd_f > kd_s && kh_f > kh_s && kw_f > kw_s) {
         // kw values covering full ow_block
         for (kd_b = kd_s; kd_b < kd_f; kd_b += KD_BLOCK) {
             kd_e = nstl::min(kd_f, kd_b + KD_BLOCK);
@@ -1670,9 +1812,53 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_trans(
             }
         }
     } else {
-        kd_b = kd_e = kd_s;
-        kh_b = kh_e = kh_s;
-        kdhw_loop();
+        // No valid kd/kh positions: k_l will be 0 (skip accumulation).
+        if (jcp.use_uker) {
+            // AMX uker cannot execute with batch_size=0 at runtime.
+            // Use perform_outwork to handle zero-init and post-ops.
+            const auto do_init = btc.occ == 0;
+            const auto do_postwork
+                    = need_postwork && btc.occ == (oc_chunks - 1);
+            // For deconv with sum post-op and out_buffer: pre-copy
+            // existing output values so sum reads correct data.
+            if (do_postwork && need_out_buffer && jcp.is_deconv
+                    && jcp.with_sum) {
+                const auto iw_begin
+                        = static_cast<dim_t>(btc.iwb) * jcp.iw_block + btc.sw;
+                const auto real_dst = diff_src
+                        + dst_dsz
+                                * (btc.n * dst_d_sz + g_ic + id * dst_h_sz
+                                        + ih * dst_w_sz
+                                        + iw_begin * jcp.ic_without_padding);
+                const int ic_len = is_ic_tail ? (jcp.ic - ic) : jcp.ic_block;
+                const auto ic_bytes = static_cast<size_t>(ic_len) * dst_dsz;
+                const auto stride_bytes = static_cast<size_t>(jcp.stride_w)
+                        * jcp.ic_without_padding * dst_dsz;
+                for (int m = 0; m < ker_i_postops; m++) {
+                    const auto iw_pos = iw_begin + m * jcp.stride_w;
+                    if (iw_pos >= jcp.iw) break;
+                    std::memcpy(ptr_D + m * stride_bytes,
+                            real_dst + m * stride_bytes, ic_bytes);
+                }
+            }
+            const dim_t iw_raw = static_cast<dim_t>(btc.iwb) * jcp.iw_block;
+            perform_outwork(diff_src_base, diff_src, btc.c_buffer, bias_w,
+                    btc.id, btc.ih, iw, iw_raw, g_ic, is_ic_tail, iw, iw, 0, 0,
+                    post_ops_binary_rhs_arg_vec.data(), btc.src_zp_val,
+                    btc.src_zp_comp_ptr, btc.dst_zp_vals, btc.s8s8_comp_ptr, 0,
+                    do_init, do_postwork, false, btc.src_scales, btc.wei_scales,
+                    btc.dst_scales);
+        } else {
+            // Non-AMX: brgemm handles batch_size=0 (skip_accumulation)
+            // correctly at runtime via var_bs.
+            // Set kd_e=kd_f and kh_e=kh_f so do_postwork evaluates to true,
+            // ensuring post-ops (including sum pre-copy) are applied.
+            kd_b = kd_s;
+            kd_e = kd_f;
+            kh_b = kh_s;
+            kh_e = kh_f;
+            kdhw_loop();
+        }
     }
 }
 

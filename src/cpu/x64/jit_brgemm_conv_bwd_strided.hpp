@@ -72,12 +72,12 @@ struct brgemm_convolution_bwd_strided_t : public primitive_t {
                 hasher_t<asize>>;
 
         int brg_indices_c {0};
-        Arrmap<5> brg_indices;
+        Arrmap<6> brg_indices;
 
         int get_brg_idx(int m, bool do_initialization, bool is_N_tail,
-                bool is_K_tail, int bs = 0) const {
-            const auto brg_idx = brg_indices.find(
-                    {m, is_N_tail, is_K_tail, do_initialization, bs});
+                bool is_K_tail, int bd_mask_idx = 0, int bs = 0) const {
+            const auto brg_idx = brg_indices.find({m, is_N_tail, is_K_tail,
+                    do_initialization, bd_mask_idx, bs});
             if (brg_idx == brg_indices.end()) return -1;
             return brg_idx->second;
         }
@@ -95,7 +95,8 @@ struct brgemm_convolution_bwd_strided_t : public primitive_t {
         }
 
         status_t add_brg_descriptor(int M, bool is_N_tail, bool is_K_tail,
-                bool do_init, int bs = 0);
+                bool do_init, int bd_mask_idx = 0,
+                const std::vector<char> &bd_mask = {}, int bs = 0);
         void get_kw_range(int iw, int iw_raw, int &kw_s, int &kw_full_s,
                 int &kw_full_e, int &kw_e) const;
         void get_iw_range(
@@ -204,8 +205,8 @@ private:
             int batch_size, char *ptr_C, char *ptr_D, const char *bias_w,
             int g_ic, bool do_postops, const void *binary_post_ops_rhs,
             int32_t src_zp_val, int32_t *src_zp_ptr, const int32_t *dst_zp_ptr,
-            int32_t *s8s8_comp, bool do_only_comp,
-            bool is_first_call_postops) const;
+            int32_t *s8s8_comp, bool do_only_comp, bool is_first_call_postops,
+            const char *dst_orig_override = nullptr) const;
 
     void maybe_trans_inp(int ithr, const char *__restrict input,
             char *__restrict inp_buffer, uint8_t *__restrict inp_buffer_mask,

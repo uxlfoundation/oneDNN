@@ -1454,13 +1454,6 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             VERBOSE_UNSUPPORTED_FEATURE, "unit strides are not supported");
 
     jcp.has_uneven_iw = jcp.iw % jcp.stride_w != 0;
-    const bool has_uneven_spatial = jcp.id % jcp.stride_d != 0
-            || jcp.ih % jcp.stride_h != 0 || jcp.has_uneven_iw;
-
-    bool is_deconv_with_uneven_spatial = cd.use_inversion && has_uneven_spatial;
-    VDISPATCH_CONV_IC(!is_deconv_with_uneven_spatial,
-            VERBOSE_UNSUPPORTED_FEATURE,
-            "deconvolution with uneven spatial dimensions is not supported");
 
     jcp.is_deconv = cd.use_inversion;
 

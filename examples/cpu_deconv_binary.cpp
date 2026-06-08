@@ -15,17 +15,24 @@
 *******************************************************************************/
 
 /// @example cpu_deconv_binary.cpp
-/// @brief This example demonstrates INT8 deconvolution + binary multiply with
+/// @brief This example demonstrates INT8 deconvolution + binary post-ops with
 /// broadcast, implemented in three ways:
-///   1. Graph API (Dequant + ConvTranspose + Multiply + Quantize)
+///   1. Graph API (Dequant + ConvTranspose + Binary + Quantize)
 ///   2. Primitive API with binary post-op (fused int8 deconv)
 ///   3. Primitive API with separate primitives (unfused)
+///
+/// Five binary operations are demonstrated:
+///   - binary_mul (Multiply)
+///   - binary_max (Maximum)
+///   - binary_min (Minimum)
+///   - binary_div (Divide)
+///   - binary_sub (Subtract)
 ///
 /// Quantization config (matching test_convtranspose int8 pattern):
 ///   src:  u8, scale=1/255, zp=-4 (asymmetric)
 ///   wei:  s8, scale=1/127 per-channel, zp=0
-///   dst:  s8, scale=0.1, zp=0
-///   binary_src1: f32 {1, 1, 1} (broadcast scalar, value=1.5)
+///   dst:  s8, scale=1, zp=78
+///   binary_src1: f32 {1, 1, 1} (broadcast scalar, value=1.0)
 ///
 /// Shapes (1D / 3D tensors):
 ///   src:  {1, 8, 12}  (NCW)
@@ -66,9 +73,34 @@ bool allclose_int8(const std::vector<int8_t> &a, const std::vector<int8_t> &b,
     return true;
 }
 
+// Helper: map primitive algorithm to graph op kind
+graph::op::kind to_graph_binary_kind(algorithm alg) {
+    switch (alg) {
+        case algorithm::binary_mul: return graph::op::kind::Multiply;
+        case algorithm::binary_max: return graph::op::kind::Maximum;
+        case algorithm::binary_min: return graph::op::kind::Minimum;
+        case algorithm::binary_div: return graph::op::kind::Divide;
+        case algorithm::binary_sub: return graph::op::kind::Subtract;
+        default:
+            throw std::runtime_error("Unsupported binary algorithm for graph");
+    }
+}
+
+// Helper: algorithm name string
+const char *binary_alg_name(algorithm alg) {
+    switch (alg) {
+        case algorithm::binary_mul: return "Multiply";
+        case algorithm::binary_max: return "Maximum";
+        case algorithm::binary_min: return "Minimum";
+        case algorithm::binary_div: return "Divide";
+        case algorithm::binary_sub: return "Subtract";
+        default: return "Unknown";
+    }
+}
+
 // =============================================================================
 // Method 1: Graph API
-//   Dequantize(u8->f32) -> Dequantize(s8->f32) -> ConvTranspose -> Multiply
+//   Dequantize(u8->f32) -> Dequantize(s8->f32) -> ConvTranspose -> Binary
 //       -> Quantize(f32->s8)
 // =============================================================================
 std::vector<int8_t> run_graph_api(engine &eng, stream &strm,
@@ -76,7 +108,8 @@ std::vector<int8_t> run_graph_api(engine &eng, stream &strm,
         const memory::dims &dst_shape, const memory::dims &binary_shape,
         std::vector<uint8_t> &src_data, std::vector<int8_t> &wei_data,
         std::vector<float> &binary_data, float src_scale, int64_t src_zp,
-        std::vector<float> &wei_scales, float dst_scale, int64_t dst_zp) {
+        std::vector<float> &wei_scales, float dst_scale, int64_t dst_zp,
+        algorithm binary_alg) {
 
     using lt = graph::logical_tensor;
     using dt = graph::logical_tensor::data_type;
@@ -134,11 +167,11 @@ std::vector<int8_t> run_graph_api(engine &eng, stream &strm,
     convtranspose_op.add_input(wei_f32_lt);
     convtranspose_op.add_output(deconv_dst_lt);
 
-    // Op 3: Multiply (binary)
-    graph::op multiply_op(3, graph::op::kind::Multiply, "multiply");
-    multiply_op.add_input(deconv_dst_lt);
-    multiply_op.add_input(binary_src_lt);
-    multiply_op.add_output(binary_dst_lt);
+    // Op 3: Binary (Multiply or Maximum)
+    graph::op binary_op(3, to_graph_binary_kind(binary_alg), "binary");
+    binary_op.add_input(deconv_dst_lt);
+    binary_op.add_input(binary_src_lt);
+    binary_op.add_output(binary_dst_lt);
 
     // Op 4: Quantize output (f32 -> s8)
     graph::op quant_dst(4, graph::op::kind::Quantize, "quant_dst");
@@ -155,7 +188,7 @@ std::vector<int8_t> run_graph_api(engine &eng, stream &strm,
     g.add_op(dequant_src);
     g.add_op(dequant_wei);
     g.add_op(convtranspose_op);
-    g.add_op(multiply_op);
+    g.add_op(binary_op);
     g.add_op(quant_dst);
     g.finalize();
 
@@ -186,7 +219,7 @@ std::vector<int8_t> run_graph_api(engine &eng, stream &strm,
 
 // =============================================================================
 // Method 2: Primitive API - Int8 deconv with binary post-op (fused)
-//   u8 src + s8 weights -> s8 dst, with scales, zero_points, binary_mul
+//   u8 src + s8 weights -> s8 dst, with scales, zero_points, binary post-op
 //   Uses format_tag::any to let the library pick optimal layouts, then
 //   reorders from plain format to optimal before execution.
 // =============================================================================
@@ -195,7 +228,8 @@ std::vector<int8_t> run_primitive_fused(engine &eng, stream &strm,
         const memory::dims &dst_shape, const memory::dims &binary_shape,
         std::vector<uint8_t> &src_data, std::vector<int8_t> &wei_data,
         std::vector<float> &binary_data, float src_scale, int32_t src_zp,
-        std::vector<float> &wei_scales, float dst_scale, int32_t dst_zp) {
+        std::vector<float> &wei_scales, float dst_scale, int32_t dst_zp,
+        algorithm binary_alg) {
 
     int64_t OC = wei_shape[1]; // IOW: {IC, OC, KW}
     memory::dims prim_wei_shape = {wei_shape[1], wei_shape[0], wei_shape[2]};
@@ -228,7 +262,7 @@ std::vector<int8_t> run_primitive_fused(engine &eng, stream &strm,
 
     // Binary post-op
     post_ops pops;
-    pops.append_binary(algorithm::binary_mul, binary_md);
+    pops.append_binary(binary_alg, binary_md);
     attr.set_post_ops(pops);
 
     // Create primitive descriptor with format_tag::any
@@ -315,7 +349,7 @@ std::vector<int8_t> run_primitive_fused(engine &eng, stream &strm,
 // =============================================================================
 // Method 3: Primitive API - Separate primitives (unfused)
 //   Step 1: deconv (u8 src + s8 wei -> f32 dst) with scales/zps
-//   Step 2: binary multiply (f32)
+//   Step 2: binary op (f32)
 //   Step 3: quantize via reorder (f32 -> s8) with dst scale/zp
 //   Uses format_tag::any and reorders for optimal layouts.
 // =============================================================================
@@ -324,7 +358,8 @@ std::vector<int8_t> run_primitive_unfused(engine &eng, stream &strm,
         const memory::dims &dst_shape, const memory::dims &binary_shape,
         std::vector<uint8_t> &src_data, std::vector<int8_t> &wei_data,
         std::vector<float> &binary_data, float src_scale, int32_t src_zp,
-        std::vector<float> &wei_scales, float dst_scale, int32_t dst_zp) {
+        std::vector<float> &wei_scales, float dst_scale, int32_t dst_zp,
+        algorithm binary_alg) {
 
     int64_t OC = wei_shape[1]; // IOW: {IC, OC, KW}
     memory::dims prim_wei_shape = {wei_shape[1], wei_shape[0], wei_shape[2]};
@@ -417,9 +452,9 @@ std::vector<int8_t> run_primitive_unfused(engine &eng, stream &strm,
         deconv_dst_plain = deconv_dst_mem;
     }
 
-    // Step 2: Binary multiply (f32 x f32 -> f32)
-    auto binary_pd = binary::primitive_desc(eng, algorithm::binary_mul,
-            dst_f32_md_plain, binary_md, dst_f32_md_plain);
+    // Step 2: Binary op (f32 x f32 -> f32)
+    auto binary_pd = binary::primitive_desc(
+            eng, binary_alg, dst_f32_md_plain, binary_md, dst_f32_md_plain);
 
     auto binary_src1_mem = memory(binary_md, eng);
     auto binary_dst_mem = memory(dst_f32_md_plain, eng);
@@ -464,83 +499,37 @@ std::vector<int8_t> run_primitive_unfused(engine &eng, stream &strm,
 }
 
 // =============================================================================
-// Main
+// Run all 3 methods for a given binary algorithm and compare results
 // =============================================================================
-void deconv_binary_example() {
-    // Configuration matching test_convtranspose int8 pattern
-    // src: {N=1, IC=8, IW=12}, wei: {IC=8, OC=8, KW=3} in IOW format
-    // dst: {N=1, OC=8, OW=14}, binary: {1, 1, 1} scalar broadcast
-    memory::dims src_shape = {1, 8, 12};
-    memory::dims wei_shape = {8, 8, 3}; // IOW: {IC, OC, KW}
-    memory::dims dst_shape = {1, 8, 14};
-    memory::dims binary_shape = {1, 1, 1};
+void run_and_compare(engine &eng, stream &strm, const memory::dims &src_shape,
+        const memory::dims &wei_shape, const memory::dims &dst_shape,
+        const memory::dims &binary_shape, std::vector<uint8_t> &src_data,
+        std::vector<int8_t> &wei_data, std::vector<float> &binary_data,
+        float src_scale, int64_t src_zp, std::vector<float> &wei_scales,
+        float dst_scale, int64_t dst_zp, algorithm binary_alg) {
 
-    int64_t OC = 8;
-
-    // Quantization parameters
-    float src_scale = 1.f / 255.f;
-    int64_t src_zp = -4;
-    std::vector<float> wei_scales(OC, 1.f / 127.f);
-    float dst_scale = 0.1f;
-    int64_t dst_zp = 0;
-
-    // Generate test data with full u8/s8 ranges for interesting output
-    std::default_random_engine gen(7);
-    std::uniform_real_distribution<float> u8_dist(0.0f, 255.0f);
-    std::uniform_real_distribution<float> s8_dist(-128.0f, 127.0f);
-
-    std::vector<uint8_t> src_data(product(src_shape));
-    std::vector<int8_t> wei_data(product(wei_shape));
-    std::vector<float> binary_data(product(binary_shape));
-
-    std::generate(src_data.begin(), src_data.end(),
-            [&]() { return static_cast<uint8_t>(u8_dist(gen)); });
-    std::generate(wei_data.begin(), wei_data.end(),
-            [&]() { return static_cast<int8_t>(s8_dist(gen)); });
-    // Non-trivial binary multiply value to show the op has effect
-    std::fill(binary_data.begin(), binary_data.end(), 1.5f);
-
-    std::cout << "INT8 Deconv + Binary Multiply Example" << std::endl;
-    std::cout << "Configuration:" << std::endl;
-    std::cout << "  src:  u8 {1, 8, 12} (NCW), scale=" << src_scale
-              << ", zp=" << src_zp << std::endl;
-    std::cout << "  wei:  s8 {8, 8, 3}  (IOW), scale=1/127 per-channel"
+    std::cout << "--- Deconv + Binary " << binary_alg_name(binary_alg) << " ---"
               << std::endl;
-    std::cout << "  dst:  s8 {1, 8, 14} (NCW), scale=" << dst_scale
-              << ", zp=" << dst_zp << std::endl;
-    std::cout << "  binary: f32 {1, 1, 1} (broadcast), value=" << binary_data[0]
-              << std::endl;
-    std::cout << std::endl;
 
-    engine eng(engine::kind::cpu, 0);
-    stream strm(eng);
-
-    // enabled verbose
-    dnnl_set_verbose(1);
-
-    // Run all three methods
-    std::cout << "Method 1: Graph API (Dequant->ConvTranspose->Multiply->Quant)"
-              << std::endl;
+    std::cout << "Method 1: Graph API (Dequant->ConvTranspose->"
+              << binary_alg_name(binary_alg) << "->Quant)" << std::endl;
     auto result_graph = run_graph_api(eng, strm, src_shape, wei_shape,
             dst_shape, binary_shape, src_data, wei_data, binary_data, src_scale,
-            src_zp, wei_scales, dst_scale, dst_zp);
+            src_zp, wei_scales, dst_scale, dst_zp, binary_alg);
 
     std::cout << "Method 2: Primitive API with binary post-op (fused int8)"
               << std::endl;
     auto result_fused = run_primitive_fused(eng, strm, src_shape, wei_shape,
             dst_shape, binary_shape, src_data, wei_data, binary_data, src_scale,
             static_cast<int32_t>(src_zp), wei_scales, dst_scale,
-            static_cast<int32_t>(dst_zp));
+            static_cast<int32_t>(dst_zp), binary_alg);
 
     std::cout << "Method 3: Primitive API with separate primitives (unfused)"
               << std::endl;
     auto result_unfused = run_primitive_unfused(eng, strm, src_shape, wei_shape,
             dst_shape, binary_shape, src_data, wei_data, binary_data, src_scale,
             static_cast<int32_t>(src_zp), wei_scales, dst_scale,
-            static_cast<int32_t>(dst_zp));
-
-    // disable verbose
-    dnnl_set_verbose(0);
+            static_cast<int32_t>(dst_zp), binary_alg);
 
     // Compare results (allow atol=1 for int8 rounding differences)
     std::cout << std::endl
@@ -559,24 +548,107 @@ void deconv_binary_example() {
               << (pass_fused_vs_unfused ? "PASS" : "FAIL") << std::endl;
 
     // Print first few output values
-    std::cout << std::endl << "First 10 output values (s8):" << std::endl;
+    std::cout << std::endl << "First 20 output values (s8):" << std::endl;
     std::cout << "  Graph:    ";
-    for (int i = 0; i < 10; i++)
+    for (int i = 0; i < 20; i++)
         std::cout << static_cast<int>(result_graph[i]) << " ";
     std::cout << std::endl;
     std::cout << "  Fused:    ";
-    for (int i = 0; i < 10; i++)
+    for (int i = 0; i < 20; i++)
         std::cout << static_cast<int>(result_fused[i]) << " ";
     std::cout << std::endl;
     std::cout << "  Unfused:  ";
-    for (int i = 0; i < 10; i++)
+    for (int i = 0; i < 20; i++)
         std::cout << static_cast<int>(result_unfused[i]) << " ";
-    std::cout << std::endl;
+    std::cout << std::endl << std::endl;
 
     if (!pass_graph_vs_fused || !pass_graph_vs_unfused
             || !pass_fused_vs_unfused) {
-        throw std::runtime_error("Results mismatch between implementations!");
+        throw std::runtime_error(std::string("Results mismatch for binary ")
+                + binary_alg_name(binary_alg) + "!");
     }
+}
+
+// =============================================================================
+// Main
+// =============================================================================
+void deconv_binary_example() {
+    // Configuration matching test_convtranspose int8 pattern
+    // src: {N=1, IC=8, IW=12}, wei: {IC=8, OC=8, KW=3} in IOW format
+    // dst: {N=1, OC=8, OW=14}, binary: {1, 1, 1} scalar broadcast
+    memory::dims src_shape = {1, 8, 12};
+    memory::dims wei_shape = {8, 8, 3}; // IOW: {IC, OC, KW}
+    memory::dims dst_shape = {1, 8, 14};
+    memory::dims binary_shape = {1, 1, 1};
+
+    int64_t OC = 8;
+
+    // Quantization parameters (matching test_convtranspose.cpp)
+    float src_scale = 1.f / 255.f;
+    int64_t src_zp = -4;
+    std::vector<float> wei_scales(OC, 1.f / 127.f);
+    float dst_scale = 1.f;
+    int64_t dst_zp = 78;
+
+    // Generate test data with ranges matching test_convtranspose.cpp
+    std::default_random_engine gen(7);
+    std::uniform_real_distribution<float> u8_dist(0.0f, 25.0f);
+    std::uniform_real_distribution<float> s8_dist(-1.0f, 25.0f);
+
+    std::vector<uint8_t> src_data(product(src_shape));
+    std::vector<int8_t> wei_data(product(wei_shape));
+    std::vector<float> binary_data(product(binary_shape));
+
+    std::generate(src_data.begin(), src_data.end(),
+            [&]() { return static_cast<uint8_t>(u8_dist(gen)); });
+    std::generate(wei_data.begin(), wei_data.end(),
+            [&]() { return static_cast<int8_t>(s8_dist(gen)); });
+    // Binary value matching test_convtranspose.cpp
+    std::fill(binary_data.begin(), binary_data.end(), 1.0f);
+
+    std::cout << "INT8 Deconv + Binary Example" << std::endl;
+    std::cout << "Configuration:" << std::endl;
+    std::cout << "  src:  u8 {1, 8, 12} (NCW), scale=" << src_scale
+              << ", zp=" << src_zp << std::endl;
+    std::cout << "  wei:  s8 {8, 8, 3}  (IOW), scale=1/127 per-channel"
+              << std::endl;
+    std::cout << "  dst:  s8 {1, 8, 14} (NCW), scale=" << dst_scale
+              << ", zp=" << dst_zp << std::endl;
+    std::cout << "  binary: f32 {1, 1, 1} (broadcast), value=" << binary_data[0]
+              << std::endl;
+    std::cout << std::endl;
+
+    engine eng(engine::kind::cpu, 0);
+    stream strm(eng);
+
+    dnnl_set_verbose(1);
+
+    // Case 1: Deconv + Binary Multiply
+    run_and_compare(eng, strm, src_shape, wei_shape, dst_shape, binary_shape,
+            src_data, wei_data, binary_data, src_scale, src_zp, wei_scales,
+            dst_scale, dst_zp, algorithm::binary_mul);
+
+    // Case 2: Deconv + Binary Maximum
+    run_and_compare(eng, strm, src_shape, wei_shape, dst_shape, binary_shape,
+            src_data, wei_data, binary_data, src_scale, src_zp, wei_scales,
+            dst_scale, dst_zp, algorithm::binary_max);
+
+    // Case 3: Deconv + Binary Minimum
+    run_and_compare(eng, strm, src_shape, wei_shape, dst_shape, binary_shape,
+            src_data, wei_data, binary_data, src_scale, src_zp, wei_scales,
+            dst_scale, dst_zp, algorithm::binary_min);
+
+    // Case 4: Deconv + Binary Divide
+    run_and_compare(eng, strm, src_shape, wei_shape, dst_shape, binary_shape,
+            src_data, wei_data, binary_data, src_scale, src_zp, wei_scales,
+            dst_scale, dst_zp, algorithm::binary_div);
+
+    // Case 5: Deconv + Binary Subtract
+    run_and_compare(eng, strm, src_shape, wei_shape, dst_shape, binary_shape,
+            src_data, wei_data, binary_data, src_scale, src_zp, wei_scales,
+            dst_scale, dst_zp, algorithm::binary_sub);
+
+    dnnl_set_verbose(0);
 }
 
 int main(int argc, char **argv) {

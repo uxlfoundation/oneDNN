@@ -1873,11 +1873,8 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     }
 
     // We need to correct A_strides if batched dimensions are merged in M and
-    // A layout is formally transposed but could be treated as plain
-    // For 4D tensors, only apply adjustment for treat_A_as_plain, not for acbd tag
-    const bool adjust_for_acbd = src_d.matches_tag(acbd) && bgmmc.ndims == 3;
-    bgmmc.adjust_a_strides = merge_batch_dims_into_M
-            && (adjust_for_acbd || bgmmc.treat_A_as_plain);
+    // A layout is formally transposed but could be treated as plain.
+    bgmmc.adjust_a_strides = merge_batch_dims_into_M && bgmmc.treat_A_as_plain;
     if (bgmmc.adjust_a_strides) bgmmc.A_strides[1] = bgmmc.A_strides[2];
 
     // We need to correct C_strides if batched dimensions are merged in M and

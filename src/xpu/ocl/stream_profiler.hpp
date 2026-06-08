@@ -34,6 +34,30 @@ struct stream_profiler_t : public xpu::stream_profiler_t {
             uint64_t *data) const override;
 };
 
+struct verbose_profiler_t : public xpu::verbose_profiler_t {
+    verbose_profiler_t(const impl::stream_t *stream)
+        : xpu::verbose_profiler_t(stream) {}
+
+    ~verbose_profiler_t() override {
+        try {
+            wait_for_pending_primitives();
+        } catch (...) {
+            VWARN(primitive, exec,
+                    "profiler error: failures during verbose profiling "
+                    "cleanup");
+        }
+    }
+
+    status_t get_aggregate_exec_time(
+            uint64_t stamp, double &duration_ms) const override;
+
+    bool is_event_complete(
+            const std::shared_ptr<xpu::event_t> &event) const override;
+
+    void wait_for_event_completion(
+            const std::shared_ptr<xpu::event_t> &event) const override;
+};
+
 } // namespace ocl
 } // namespace xpu
 } // namespace impl

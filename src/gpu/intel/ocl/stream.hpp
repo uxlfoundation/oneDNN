@@ -53,7 +53,14 @@ struct stream_t : public intel::stream_t {
         return status::success;
     }
 
-    status_t wait() override { return impl()->wait(); }
+    status_t wait() override {
+        // processes and logs any pending primitives before the blocking wait
+        if (is_verbose_profiler_enabled() && verbose_profiler_.is_set()) {
+            verbose_profiler_.get()->check_for_completed_primitives();
+        }
+
+        return impl()->wait();
+    }
 
     void before_exec_hook() override;
     void after_exec_hook() override;
@@ -75,6 +82,9 @@ struct stream_t : public intel::stream_t {
         if (!is_profiling_enabled()) return status::invalid_arguments;
         return profiler_->get_info(data_kind, num_entries, data);
     }
+
+    status_t run_verbose_profiler(
+            const std::string &pd_info, double start_ms) const override;
 
     cl_command_queue queue() const { return impl()->queue(); }
 

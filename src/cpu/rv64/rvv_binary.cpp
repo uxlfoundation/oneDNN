@@ -24,7 +24,6 @@
 
 #include "cpu/primitive_attr_postops.hpp"
 #include "cpu/rv64/jit_rvv_binary_kernel.hpp"
-#include "cpu/rv64/jit_rvv_binary_kernel_f16.hpp"
 #include "cpu/rv64/rvv_binary_kernels.hpp"
 
 #include "cpu/rv64/rvv_binary.hpp"

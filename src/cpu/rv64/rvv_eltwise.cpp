@@ -22,8 +22,6 @@
 #include "common/math_utils.hpp"
 #include "common/type_helpers.hpp"
 
-#include "cpu/rv64/jit_rvv_eltwise_bwd_kernel_f16.hpp"
-#include "cpu/rv64/jit_rvv_eltwise_fwd_kernel_f16.hpp"
 #include "cpu/rv64/jit_rvv_eltwise_kernel.hpp"
 #include "cpu/rv64/rvv_eltwise.hpp"
 #include "cpu/rv64/rvv_eltwise_kernels.hpp"

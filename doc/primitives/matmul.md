@@ -507,6 +507,11 @@ The following are supported:
   and `[1, 1]` that could be used to apply a global scale for NVFP4.
   For grouped binary tensors, the per-group offsets must match the grouped dst
   partition.
+ 
+ @attention The GPU implementation supports at most one dense binary multiplication
+  post-op and at most one grouped binary multiplication post-op. Providing more
+  than one of either kind is not supported on GPU.
+
 - Bias supports per-expert shape.
 - Supported on CPU and GPU engines.
 

@@ -19,6 +19,7 @@
 
 #include "common/memory_storage.hpp"
 #include "common/stream.hpp"
+#include "common/thread_local_storage.hpp"
 
 #include "xpu/context.hpp"
 #include "xpu/stream_profiler.hpp"
@@ -46,10 +47,21 @@ public:
     }
     xpu::stream_profiler_t &profiler() { return *profiler_; }
 
+    virtual const xpu::verbose_profiler_t &verbose_profiler() const {
+        return *verbose_profiler_.get();
+    }
+
+    xpu::verbose_profiler_t &verbose_profiler() {
+        return *verbose_profiler_.get();
+    }
+
     virtual double get_freq(const xpu::event_t &event) const { return 0.0; }
 
 protected:
     std::unique_ptr<xpu::stream_profiler_t> profiler_;
+    mutable utils::thread_local_storage_t<
+            std::unique_ptr<xpu::verbose_profiler_t>>
+            verbose_profiler_;
 };
 
 } // namespace gpu

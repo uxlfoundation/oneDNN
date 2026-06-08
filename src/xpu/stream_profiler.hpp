@@ -17,13 +17,17 @@
 #ifndef XPU_STREAM_PROFILER_HPP
 #define XPU_STREAM_PROFILER_HPP
 
+#include <atomic>
 #include <cassert>
 #include <limits>
 #include <map>
 #include <mutex>
+#include <string>
+#include <thread>
 #include <vector>
 
 #include "common/c_types_map.hpp"
+#include "common/verbose.hpp"
 
 #include "xpu/context.hpp"
 
@@ -118,6 +122,161 @@ protected:
     uint64_t stamp_;
     const stream_t *stream_;
     void (*callback_)(uint64_t, uint64_t) = nullptr;
+};
+
+// The verbose profiler is intended to log primitive profiling info with
+// execution times computed from device measured timing data without
+// host-to-device synchronization costs and without blocking stream.wait()
+// calls. This profiler operates independently from other stream profilers
+// during the primitive execution.
+struct verbose_profiler_t {
+    verbose_profiler_t(const stream_t *stream, int stamp = 0)
+        : profiler_paused_(false)
+        , current_primitive_stamp_(stamp)
+        , stream_(stream) {}
+
+    virtual ~verbose_profiler_t() = default;
+
+    uint64_t stamp() const { return current_primitive_stamp_; }
+
+    struct prim_profile_data_t {
+        double start_ms = 0.0;
+        std::string pd_info;
+        std::vector<std::shared_ptr<xpu::event_t>> prim_evts;
+    };
+
+    void reset() {
+        current_primitive_stamp_ = 0;
+        event_map_.clear();
+    }
+
+    // This allows force-pauses the profiler for unsupported scenarios -
+    // pausing action is localized to each thread for multi-threaded
+    // execution
+    void pause_profiling() { profiler_paused_ = true; }
+    void unpause_profiling() { profiler_paused_ = false; }
+    bool is_profiler_paused() const { return profiler_paused_; }
+
+    // The profiler operates via management of the event_map_ which tracks
+    // the profiler events w.r.t primitives. Each primitive is assigned
+    // a unique stamp which is updated during before_exec_hook() calls
+    // before primitive execution.
+    void update_primitive_stamp() {
+        if (profiler_paused_) return;
+
+        current_primitive_stamp_++;
+        // Creates new empty entry which is later populated with profiling info
+        event_map_[current_primitive_stamp_] = prim_profile_data_t {};
+    }
+
+    /* maps kernel events to the primitive stamp as they are enqueued */
+    void register_primitive_event(const std::shared_ptr<xpu::event_t> &event) {
+        if (profiler_paused_) return;
+
+        auto prof_data = event_map_.find(current_primitive_stamp_);
+        if (prof_data != event_map_.end()) {
+            prof_data->second.prim_evts.push_back(event);
+        }
+    }
+
+    /* populates profiling data based on the enqueued event map */
+    status_t add_to_pending_primitive_list(
+            double start_ms, const std::string &pd_info) {
+        if (profiler_paused_) return status::success;
+
+        auto prof_data = event_map_.find(current_primitive_stamp_);
+        if (prof_data != event_map_.end()) {
+            prof_data->second.start_ms = start_ms;
+            prof_data->second.pd_info = pd_info;
+        }
+        return status::success;
+    }
+
+    // Completed primitive executions are periodically checked and logged
+    // during after_exec_hook() calls and during stream destruction.
+    // The profiler does not wait for pending events to complete
+    // and instead prints them at the next concurrent after_exec_hook()
+    // call.
+    void check_for_completed_primitives() {
+        if (profiler_paused_) return;
+
+        for (auto it = event_map_.begin(); it != event_map_.end();) {
+            uint64_t cstamp = it->first;
+            auto &prof_data = it->second;
+            auto &evts = prof_data.prim_evts;
+            double duration_ms = 0.0;
+
+            // handles primitives with no kernels - here,
+            // device time is effectively zero
+            if (evts.empty() && !prof_data.pd_info.empty()) {
+                VPROF(prof_data.start_ms, primitive, exec, VERBOSE_profile,
+                        prof_data.pd_info.c_str(), duration_ms);
+                it = event_map_.erase(it);
+                continue;
+            }
+
+            // avoids logging info for empty descriptors
+            if (prof_data.pd_info.empty()) {
+                it = event_map_.erase(it);
+                continue;
+            }
+
+            // the polling check is paused at the first pending primitive
+            // and resumed again at the next check. This ensures the
+            // primitives are logged in the same order they were enqueued
+            if (!is_event_complete(evts.back())) { break; }
+
+            status_t status = get_aggregate_exec_time(cstamp, duration_ms);
+
+            if (status == status::success) {
+                VPROF(prof_data.start_ms, primitive, exec, VERBOSE_profile,
+                        prof_data.pd_info.c_str(), duration_ms);
+            }
+
+            // the primitive info entry is removed after logging
+            // to avoid blowing up the sizes of event_map_
+            it = event_map_.erase(it);
+        }
+    }
+
+    // This is invoked during profiler destruction to account
+    // for any pending primitives that have not yet been logged.
+    void wait_for_pending_primitives() {
+        if (profiler_paused_) return;
+
+        for (auto &map_entry : event_map_) {
+            auto &prof_data = map_entry.second;
+            auto &evts = prof_data.prim_evts;
+
+            // For in-order queues, waiting on the last event is sufficient
+            if (!evts.empty() && evts.back()) {
+                wait_for_event_completion(evts.back());
+            }
+        }
+        check_for_completed_primitives();
+
+        if (!event_map_.empty())
+            VWARN(primitive, exec,
+                    "profiling error: failed to log pending primitive info");
+
+        reset();
+    }
+
+    virtual status_t get_aggregate_exec_time(
+            uint64_t stamp, double &duration_ms) const
+            = 0;
+    virtual bool is_event_complete(
+            const std::shared_ptr<xpu::event_t> &event) const
+            = 0;
+    virtual void wait_for_event_completion(
+            const std::shared_ptr<xpu::event_t> &event) const
+            = 0;
+
+protected:
+    bool profiler_paused_;
+    uint64_t current_primitive_stamp_;
+    const stream_t *stream_;
+    std::map<uint64_t, prim_profile_data_t> event_map_;
 };
 
 } // namespace xpu

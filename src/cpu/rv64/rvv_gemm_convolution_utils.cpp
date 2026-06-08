@@ -82,7 +82,7 @@ void im2col_3d(const conv_gemm_conf_t &jcp, const data_type_t *im,
                         idx += vl;
                     }
                 } else {
-                    for (dim_t i = 0; i < jcp.kh * jcp.kw * OHW; ++i)
+                    for (dim_t i = 0; i < static_cast<dim_t>(jcp.kh * jcp.kw * OHW); ++i)
                         col_[i] = 0;
                 }
             } else {
@@ -198,7 +198,7 @@ void im2col_3d(const conv_gemm_conf_t &jcp, const data_type_t *im,
                         idx += vl;
                     }
                 } else {
-                    for (dim_t i = 0; i < jcp.kh * jcp.kw * OHW; ++i)
+                    for (dim_t i = 0; i < static_cast<dim_t>(jcp.kh * jcp.kw * OHW); ++i)
                         col_[i] = 0;
                 }
             } else {

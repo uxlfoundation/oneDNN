@@ -892,6 +892,7 @@ struct jit_brgemm_conv_conf_t {
     bool tr_icb_chunk = false;
     int vnni_block {1};
     bool has_uneven_iw;
+    bool is_deconv;
     int trans_dim_koef {1};
     bool extendable_k = false;
     brgemm_kernel_loop_order_t brgemm_kernel_loop_order {brgemm_lo_default};

@@ -72,12 +72,12 @@ struct brgemm_convolution_bwd_strided_t : public primitive_t {
                 hasher_t<asize>>;
 
         int brg_indices_c {0};
-        Arrmap<4> brg_indices;
+        Arrmap<5> brg_indices;
 
         int get_brg_idx(int m, bool do_initialization, bool is_N_tail,
-                bool is_K_tail) const {
+                bool is_K_tail, int bs = 0) const {
             const auto brg_idx = brg_indices.find(
-                    {m, is_N_tail, is_K_tail, do_initialization});
+                    {m, is_N_tail, is_K_tail, do_initialization, bs});
             if (brg_idx == brg_indices.end()) return -1;
             return brg_idx->second;
         }
@@ -94,8 +94,8 @@ struct brgemm_convolution_bwd_strided_t : public primitive_t {
             return 0;
         }
 
-        status_t add_brg_descriptor(
-                int M, bool is_N_tail, bool is_K_tail, bool do_init);
+        status_t add_brg_descriptor(int M, bool is_N_tail, bool is_K_tail,
+                bool do_init, int bs = 0);
         void get_kw_range(int iw, int iw_raw, int &kw_s, int &kw_full_s,
                 int &kw_full_e, int &kw_e) const;
         void get_iw_range(

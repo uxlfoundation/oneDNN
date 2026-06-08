@@ -162,8 +162,37 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::init(engine_t *engine) {
     const auto KD_BLOCK = ndims_pick(jcp_.kd_block, 1, 1);
     const auto KH_BLOCK = ndims_pick(jcp_.kh_block, jcp_.kh_block, 1);
 
+    const auto SD = ndims_pick(jcp_.stride_d, 1, 1);
+    const auto SH = ndims_pick(jcp_.stride_h, jcp_.stride_h, 1);
     const auto SW = jcp_.stride_w;
     const auto IW = jcp_.iw;
+
+    const auto is_amx = brgemm_convolution_bwd_utils::is_amx(isa);
+
+    // Enumerate all possible batch sizes for exec_trans AMX path.
+    // k_l = div_up(kd_range, SD) * div_up(kh_range, SH) * div_up(kw_range, SW)
+    // kw_s aligns to stride sector (0..SW-1), so kw_range = KW - kw_s.
+    std::vector<int> batch_sizes;
+    if (jcp_.exec_type == exec_trans && is_amx) {
+        const auto KW = jcp_.kw;
+        std::set<int> bs_set;
+        bs_set.insert(0); // for skip_accumulation case
+        for (int kd_range = 1; kd_range <= KD_BLOCK; kd_range++) {
+            const auto kd_l = div_up(kd_range, SD);
+            for (int kh_range = 1; kh_range <= KH_BLOCK; kh_range++) {
+                const auto kh_l = div_up(kh_range, SH);
+                for (int kw_s_off = 0; kw_s_off < SW; kw_s_off++) {
+                    const auto kw_range = KW - kw_s_off;
+                    const auto kw_l = div_up(kw_range, SW);
+                    bs_set.insert(kd_l * kh_l * kw_l);
+                }
+            }
+        }
+        batch_sizes.assign(bs_set.begin(), bs_set.end());
+    } else {
+        batch_sizes.push_back(0); // default: use jcp_.max_batch
+    }
+
     // TODO: this is only needed if we have d/h padding exceeding kd/kh
     int M_begin = 0;
     int M_end = (jcp_.M_tail == jcp_.M) ? 1 : 2;
@@ -180,10 +209,11 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::init(engine_t *engine) {
     for_(int i_N = N_begin; i_N < N_end; i_N++)
     for_(int i_M = M_begin; i_M < M_end; i_M++)
     for_(int i_init = i_init_begin; i_init < i_init_end; i_init++)
-    for (int i_K = K_begin; i_K < K_end; i_K++) {
+    for_(int i_K = K_begin; i_K < K_end; i_K++)
+    for (auto bs : batch_sizes) {
         auto M = (i_M) ? jcp_.M_tail : jcp_.M;
         if (M <= 0) continue;
-        CHECK(add_brg_descriptor(M, i_N, i_K, i_init));
+        CHECK(add_brg_descriptor(M, i_N, i_K, i_init, bs));
     }
 
     if (jcp_.exec_type == exec_base) {
@@ -229,7 +259,7 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::init(engine_t *engine) {
 
 template <cpu_isa_t isa>
 status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::add_brg_descriptor(
-        int vM, bool is_N_tail, bool is_K_tail, bool do_init) {
+        int vM, bool is_N_tail, bool is_K_tail, bool do_init, int bs) {
 
     if (do_init && is_K_tail && jcp_.K > 0) return status::success;
 
@@ -244,7 +274,7 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::add_brg_descriptor(
 
     if (vN == 0 || vK == 0) return status::success;
 
-    auto brg_idx = get_brg_idx(vM, do_init, is_N_tail, is_K_tail);
+    auto brg_idx = get_brg_idx(vM, do_init, is_N_tail, is_K_tail, bs);
     // if brgemm_desc_t already created then skip this iteration
     if (brg_idx != -1) return status::success;
 
@@ -265,10 +295,10 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::add_brg_descriptor(
     brgattr.use_uker = jcp_.use_uker;
     brgattr.use_interleave_stores = jcp_.use_interleave_stores;
     brgattr.hint_prefetching = jcp_.hint_prefetching;
-    brgattr.max_bs = jcp_.max_batch;
+    brgattr.max_bs = bs > 0 ? bs : jcp_.max_batch;
     brgattr.hint_innermost_loop = jcp_.brgemm_bd_loop_innermost
             ? brgemm_bd_loop_innermost
-            : brgemm_ld_loop_innermost;
+            : brgemm_innermost_undef;
     if (jcp_.amx_tile_load_xx) {
         // assuming 2x2 decomposition in amx brgemm kernel
         // and overlap of input by kw
@@ -311,7 +341,7 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::add_brg_descriptor(
             brg.get_wsp_buffer_size(), jcp_.amx_buf_size_per_thread);
     brg_idx = brgs_->insert(brg);
 
-    const std::array<int, 4> key = {vM, is_N_tail, is_K_tail, do_init};
+    const std::array<int, 5> key = {vM, is_N_tail, is_K_tail, do_init, bs};
     if (brg_indices.find(key) == brg_indices.end()) {
         brg_indices.insert({key, brg_idx});
         brg_indices_c++;
@@ -1615,16 +1645,16 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_trans(
                 : get_comp_offset(btc.g, btc.icb, iw, 0, 0, 0, 0, 0, 0);
 
         if (nb_oc_b > 0) {
-            const auto brg_idx
-                    = _pd->get_brg_idx(ker_i, do_init, is_ic_tail, false);
+            const auto brg_idx = _pd->get_brg_idx(
+                    ker_i, do_init, is_ic_tail, false, jcp.use_uker ? k_l : 0);
             call_brgemm(brg_idx, 0, nb_oc_b, comp_ker_offs,
                     do_postwork && !is_oc_tail);
         }
 
         if (is_oc_tail) {
             const auto use_init_ker = (do_init && nb_oc_b == 0);
-            const auto brg_oc_tail_idx
-                    = _pd->get_brg_idx(ker_i, use_init_ker, is_ic_tail, true);
+            const auto brg_oc_tail_idx = _pd->get_brg_idx(ker_i, use_init_ker,
+                    is_ic_tail, true, jcp.use_uker ? k_l : 0);
             call_brgemm(
                     brg_oc_tail_idx, nb_oc_b, 1, comp_ker_offs, do_postwork);
         }

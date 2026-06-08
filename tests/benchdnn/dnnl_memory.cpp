@@ -1492,8 +1492,12 @@ size_t get_logical_size(const_dnnl_memory_desc_t md) {
 
     const auto dims = query_md_dims(md);
     int64_t nelems = 1;
-    for (int i = 0; i < ndims; ++i)
+    for (int i = 0; i < ndims; ++i) {
+        // TODO: enable when there's a base_prb_t which can pass md from prb and
+        // not from a primitive.
+        if (dims[i] == DNNL_RUNTIME_DIM_VAL) return 0;
         nelems *= dims[i];
+    }
 
     const auto dt = query_md_data_type(md);
     const size_t dt_size = dnnl_data_type_size(dt);

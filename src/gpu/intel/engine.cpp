@@ -104,3 +104,11 @@ const char *dnnl_impl_gpu_intel_get_isa_name(dnnl::impl::engine_t *engine) {
     auto *device_info = intel_engine->device_info();
     return intel::compute::to_string(device_info->gpu_arch());
 }
+
+void dnnl_impl_gpu_intel_clear_device_info_cache() {
+    using namespace dnnl::impl;
+    using namespace dnnl::impl::gpu::intel;
+
+    utils::lock_write_t lock(device_info_cache_mutex());
+    device_info_cache().clear();
+}

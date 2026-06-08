@@ -24,9 +24,26 @@
 #include "oneapi/dnnl/dnnl_ocl.hpp"
 #endif
 
+extern "C" void dnnl_impl_gpu_intel_clear_device_info_cache();
+
 namespace dnnl {
 
 class persistent_cache_api_test_t : public ::testing::Test {};
+
+void check_engine_usable(const engine &eng) {
+    memory::desc md({4, 4}, memory::data_type::f32, memory::format_tag::ab);
+    auto prim = matmul(matmul::primitive_desc {eng, md, md, md});
+
+    auto src = test::make_memory(md, eng);
+    auto wei = test::make_memory(md, eng);
+    auto dst = test::make_memory(md, eng);
+
+    stream strm(eng);
+    prim.execute(strm,
+            {{DNNL_ARG_SRC, src}, {DNNL_ARG_WEIGHTS, wei},
+                    {DNNL_ARG_DST, dst}});
+    strm.wait();
+}
 
 HANDLE_EXCEPTIONS_FOR_TEST(
         persistent_cache_api_test_t, TestPersistentCacheAPI) {
@@ -86,11 +103,17 @@ HANDLE_EXCEPTIONS_FOR_TEST(
     ASSERT_TRUE(!cache_blob.empty());
     ASSERT_TRUE(!cache_blob_id.empty());
 
+    // Force init_from_cache_blob, otherwise the device info is reused from the
+    // internal cache.
+    dnnl_impl_gpu_intel_clear_device_info_cache();
+
     auto eng = make_engine(
             get_device(test_engine), get_context(test_engine), cache_blob);
 
     ASSERT_EQ(get_engine_cache_blob(eng), cache_blob);
     ASSERT_EQ(get_engine_cache_blob_id(get_device(eng)), cache_blob_id);
+
+    check_engine_usable(eng);
 }
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
 HANDLE_EXCEPTIONS_FOR_TEST(
@@ -118,6 +141,10 @@ HANDLE_EXCEPTIONS_FOR_TEST(
     ASSERT_TRUE(!cache_blob.empty());
     ASSERT_TRUE(!cache_blob_id.empty());
 
+    // Force init_from_cache_blob, otherwise the device info is reused from the
+    // internal cache.
+    dnnl_impl_gpu_intel_clear_device_info_cache();
+
     auto eng = make_engine(get_driver(test_engine), get_device(test_engine),
             get_context(test_engine), cache_blob);
 
@@ -125,6 +152,8 @@ HANDLE_EXCEPTIONS_FOR_TEST(
     ASSERT_EQ(
             get_engine_cache_blob_id(get_driver(test_engine), get_device(eng)),
             cache_blob_id);
+
+    check_engine_usable(eng);
 }
 
 #endif

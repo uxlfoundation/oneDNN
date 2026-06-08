@@ -188,9 +188,7 @@ status_t stream_impl_t::copy(impl::stream_t *stream,
         stream_profiler->register_event(std::move(profiler_event));
     }
 
-    // checking for primitive stamps avoids logging for uninitialized
-    // profilers
-    if (verbose_profiler && verbose_profiler->stamp() > 0) {
+    if (verbose_profiler) {
         auto verbose_event = std::make_shared<xpu::ocl::event_t>(
                 std::vector<xpu::ocl::wrapper_t<cl_event>> {out_event});
         verbose_profiler->register_primitive_event(verbose_event);
@@ -252,9 +250,7 @@ status_t stream_impl_t::fill(impl::stream_t *stream,
         stream_profiler->register_event(std::move(profiler_event));
     }
 
-    // checking for primitive stamps avoids logging for uninitialized
-    // profilers
-    if (verbose_profiler && verbose_profiler->stamp() > 0) {
+    if (verbose_profiler) {
         auto verbose_event = std::make_shared<xpu::ocl::event_t>(
                 std::vector<xpu::ocl::wrapper_t<cl_event>> {out_event});
         verbose_profiler->register_primitive_event(verbose_event);

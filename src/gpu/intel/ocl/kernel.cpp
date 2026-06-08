@@ -248,10 +248,7 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
                                     cloned_event.release())));
         }
 
-        // checking for primitive stamps avoids logging for uninitialized
-        // profilers
-        if (stream.is_verbose_profiler_enabled()
-                && ocl_stream->verbose_profiler().stamp() > 0) {
+        if (stream.is_verbose_profiler_enabled()) {
             ocl_stream->verbose_profiler().register_primitive_event(
                     std::shared_ptr<xpu::ocl::event_t>(
                             primary_event.release()));

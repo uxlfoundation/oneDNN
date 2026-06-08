@@ -354,8 +354,7 @@ status_t device_info_t::init_attributes_common(impl::engine_t *engine) {
 status_t device_info_t::init_serialized_device_info(
         const std::vector<uint8_t> &cache_blob) {
     if (!cache_blob.empty()) {
-        serialized_device_info_.append_array(
-                cache_blob.size(), cache_blob.data());
+        serialized_device_info_ = serialization_stream_t::from_data(cache_blob);
         return status::success;
     }
 
@@ -370,7 +369,11 @@ status_t device_info_t::init_serialized_device_info(
     serialized_device_info_.append(max_subgroup_size_);
     serialized_device_info_.append(max_exec_size_);
     serialized_device_info_.append(max_wg_size_);
+    serialized_device_info_.append(memory_size_);
     serialized_device_info_.append(l3_cache_size_);
+    serialized_device_info_.append(max_kernel_param_size_);
+    serialized_device_info_.append(device_address_bits_);
+    serialized_device_info_.append(max_allocation_size_);
     serialized_device_info_.append(extensions_);
     serialized_device_info_.append(native_extensions_);
     serialized_device_info_.append(mayiuse_systolic_);
@@ -379,9 +382,7 @@ status_t device_info_t::init_serialized_device_info(
     serialized_device_info_.append(mayiuse_non_uniform_work_groups_);
     serialized_device_info_.append(is_efficient_64bit_);
 
-    const size_t name_size = name_.size();
-    serialized_device_info_.append(name_size);
-    serialized_device_info_.append_array(name_size, name_.data());
+    serialized_device_info_.append(name_);
 
     return status::success;
 }
@@ -390,44 +391,35 @@ status_t device_info_t::init_from_cache_blob(
         const std::vector<uint8_t> &cache_blob) {
     if (cache_blob.empty()) return status::invalid_arguments;
 
-    size_t pos = 0;
-#define DESERIALIZE(val, expected_type) \
-    static_assert(std::is_same<std::remove_reference<decltype(val)>::type, \
-                          expected_type>::value, \
-            #val " has incorrect type"); \
-    (val) = *reinterpret_cast<const expected_type *>(cache_blob.data() + pos); \
-    pos += sizeof(expected_type);
+    auto s = serialization_stream_t::from_data(cache_blob);
+    deserializer_t d(s);
 
-    DESERIALIZE(gpu_arch_, compute::gpu_arch_t);
-    DESERIALIZE(gpu_product_, compute::gpu_product_t);
-    DESERIALIZE(ip_version_, uint32_t);
-    DESERIALIZE(runtime_version_.major, int);
-    DESERIALIZE(runtime_version_.minor, int);
-    DESERIALIZE(runtime_version_.build, int);
-    DESERIALIZE(eu_count_, int32_t);
-    DESERIALIZE(max_eus_per_wg_, int32_t);
-    DESERIALIZE(max_subgroup_size_, int32_t);
-    DESERIALIZE(max_exec_size_, int);
-    DESERIALIZE(max_wg_size_, size_t);
-    DESERIALIZE(l3_cache_size_, size_t);
-    DESERIALIZE(extensions_, uint64_t);
-    DESERIALIZE(native_extensions_, uint64_t);
-    DESERIALIZE(mayiuse_systolic_, bool);
-    DESERIALIZE(mayiuse_ngen_kernels_, bool);
-    DESERIALIZE(mayiuse_system_memory_allocators_, bool);
-    DESERIALIZE(mayiuse_non_uniform_work_groups_, bool);
-    DESERIALIZE(is_efficient_64bit_, bool);
-#undef DESERIALIZE
+    d.pop(gpu_arch_);
+    d.pop(gpu_product_);
+    d.pop(ip_version_);
+    d.pop(runtime_version_.major);
+    d.pop(runtime_version_.minor);
+    d.pop(runtime_version_.build);
+    d.pop(eu_count_);
+    d.pop(max_eus_per_wg_);
+    d.pop(max_subgroup_size_);
+    d.pop(max_exec_size_);
+    d.pop(max_wg_size_);
+    d.pop(memory_size_);
+    d.pop(l3_cache_size_);
+    d.pop(max_kernel_param_size_);
+    d.pop(device_address_bits_);
+    d.pop(max_allocation_size_);
+    d.pop(extensions_);
+    d.pop(native_extensions_);
+    d.pop(mayiuse_systolic_);
+    d.pop(mayiuse_ngen_kernels_);
+    d.pop(mayiuse_system_memory_allocators_);
+    d.pop(mayiuse_non_uniform_work_groups_);
+    d.pop(is_efficient_64bit_);
 
-    // name_ is not trivially copyable type
-    const size_t name_size
-            = *reinterpret_cast<const size_t *>(cache_blob.data() + pos);
-    pos += sizeof(size_t);
-    name_ = std::string(
-            reinterpret_cast<const char *>(cache_blob.data() + pos), name_size);
-    pos += name_size;
-    assert(name_size == name_.size());
-    assert(pos == cache_blob.size());
+    d.pop(name_);
+    assert(d.empty());
 
     return status::success;
 }

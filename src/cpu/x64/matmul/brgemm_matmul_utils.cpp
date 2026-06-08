@@ -1872,8 +1872,8 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         bgmmc.C_strides[d] = bgmmc.c_dt_sz * dst_d.blocking_desc().strides[dim];
     }
 
-    // We need to correct A_strides if batched dimensions are merged in M and
-    // A layout is formally transposed but could be treated as plain.
+    // We need to adjust A_strides if the batched dimensions are merged into M
+    // and A layout can be treated as plain.
     bgmmc.adjust_a_strides = merge_batch_dims_into_M && bgmmc.treat_A_as_plain;
     if (bgmmc.adjust_a_strides) bgmmc.A_strides[1] = bgmmc.A_strides[2];
 

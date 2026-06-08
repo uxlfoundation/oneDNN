@@ -1754,12 +1754,6 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
             && (adjust_for_acbd || bgmmc.treat_A_as_plain);
     if (bgmmc.adjust_a_strides) bgmmc.A_strides[1] = bgmmc.A_strides[2];
 
-    // We need to correct C_strides if batched dimensions are merged in M and
-    // C layout is formally transposed but could be treated as plain
-    if (merge_batch_dims_into_M && dst_d.matches_tag(acbd)) {
-        bgmmc.C_strides[1] = bgmmc.C_strides[2];
-    }
-
     // BF32 'Hint' Heuristic:
     // Under the following conditions, F32 through AVX512_CORE performs better
     // than using BF32 arithmetic.

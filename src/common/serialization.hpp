@@ -22,6 +22,7 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#include <string>
 #include <vector>
 #include <type_traits>
 
@@ -112,6 +113,8 @@ struct serialization_stream_t {
         for (const typename T::value_type &d : v)
             append<typename T::value_type>(d);
     }
+
+    void append(const std::string &s) { append_array(s.size(), s.data()); }
 
     template <typename Arg1, typename Arg2, typename... Args>
     void append(const Arg1 &a1, const Arg2 &a2, const Args &...args) {
@@ -253,6 +256,14 @@ struct deserializer_t {
             pop(t);
             v.emplace_back(t);
         }
+    }
+
+    void pop(std::string &s) {
+        size_t size = 0;
+        pop(size);
+        s.resize(size);
+        sstream_.get(idx_, size, reinterpret_cast<uint8_t *>(&s[0]));
+        idx_ += size;
     }
 
     template <typename T,

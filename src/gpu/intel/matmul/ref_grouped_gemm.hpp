@@ -26,8 +26,8 @@
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
 #include "common/utils.hpp"
-#include "gpu/intel/matmul/config.hpp"
 #include "gpu/intel/matmul/grouped_post_ops_gen.hpp"
+#include "gpu/intel/matmul/types.hpp"
 #include "gpu/intel/primitive.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 

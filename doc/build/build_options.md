@@ -411,10 +411,10 @@ oneDNN only supports builds with Compute Library v23.11 or later.
 
 ### Common GPU options
 
-| CMake Option         | Default   | Supported values     | Description                                         |
-|:---------------------|:----------|:---------------------|:----------------------------------------------------|
-| [ONEDNN_GPU_RUNTIME] | **NONE**  | SYCL, OCL, ZE        | Defines the offload runtime for GPU engines         |
-| ONEDNN_GPU_VENDOR    | **INTEL** | NVIDIA, AMD, GENERIC | Specifies GPU vendor to enable code specialization. |
+| CMake Option         | Default   | Supported values     | Description                                                                   |
+|:---------------------|:----------|:---------------------|:------------------------------------------------------------------------------|
+| [ONEDNN_GPU_RUNTIME] | **NONE**  | SYCL, OCL, ZE        | Defines the offload runtime for GPU engines                                   |
+| ONEDNN_GPU_VENDOR    | **INTEL** | NVIDIA, AMD, GENERIC | Specifies target GPU vendor for GPU engines when DNNL_GPU_RUNTIME is not NONE |
 
 [ONEDNN_GPU_RUNTIME]: @ref opt_gpu_runtime
 

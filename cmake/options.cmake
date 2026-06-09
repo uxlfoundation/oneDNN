@@ -387,16 +387,11 @@ if(NOT "${DNNL_GPU_RUNTIME}" MATCHES "^(OCL|NONE|DPCPP|SYCL|ZE)$")
     message(FATAL_ERROR "Unsupported GPU runtime: ${DNNL_GPU_RUNTIME}")
 endif()
 
-onednn_option(GPU_VENDOR "NONE"
-    "When DNNL_GPU_RUNTIME is not NONE DNNL_GPU_VENDOR specifies target GPU
-    vendor for GPU engines. Can be INTEL (default when DNNL_GPU_RUNTIME is
-    not NONE), NVIDIA, AMD, or GENERIC.")
+onednn_option(GPU_VENDOR "INTEL"
+    "Specifies target GPU vendor for GPU engines when DNNL_GPU_RUNTIME
+    is not NONE. Can be INTEL (default), NVIDIA, AMD, or GENERIC.")
 
-if(NOT DNNL_GPU_RUNTIME STREQUAL "NONE" AND DNNL_GPU_VENDOR STREQUAL "NONE")
-    set(DNNL_GPU_VENDOR "INTEL")
-endif()
-
-if(NOT "${DNNL_GPU_VENDOR}" MATCHES "^(NONE|INTEL|NVIDIA|AMD|GENERIC)$")
+if(NOT "${DNNL_GPU_VENDOR}" MATCHES "^(INTEL|NVIDIA|AMD|GENERIC)$")
     message(FATAL_ERROR "Unsupported GPU vendor: ${DNNL_GPU_VENDOR}")
 endif()
 

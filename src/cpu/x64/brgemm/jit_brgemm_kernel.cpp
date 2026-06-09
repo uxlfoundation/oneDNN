@@ -2937,11 +2937,24 @@ void jit_brgemm_kernel_t<Wmm>::gemv_microkernel(
             }
         }
     } else {
+        // Same idea as the non-transA path but here each A row is strided by
+        // LDA per reduce step so the prefetch distance is in reduce steps not
+        // bytes. Only enabled for the avx512 path (bf16/f16): it moves half the
+        // bytes of f32 so it's latency-bound (stalls on strided misses) and
+        // benefits from prefetch. f32/avx2 is already at the BW limit so leave
+        // it to the HW prefetcher.
+        constexpr dim_t gemv_pf_rd_steps_ahead = 8;
+        const bool do_pf = is_superset(brg.isa_impl, avx512_core);
+
         bcast_and_convert_to_f32(gemv_load_b(), ptr[reg_aux_B], brg.dt_b);
         for (dim_t bd = 0; bd < bd_block; bd++) {
             const bool is_tail_acc
                     = gemv_is_tail_acc(bd, bd_block, is_bdb_tail);
             const auto a_addr = ptr[reg_aux_A + A_offset(bd, 0)];
+            if (do_pf) {
+                prefetcht0(ptr[reg_aux_A + A_offset(bd, 0)
+                        + gemv_pf_rd_steps_ahead * rdb_A_offset()]);
+            }
             maybe_set_avx_mask(is_tail_acc);
             load_and_convert_to_f32(
                     gemv_load_a(), a_addr, brg.dt_a, is_tail_acc);

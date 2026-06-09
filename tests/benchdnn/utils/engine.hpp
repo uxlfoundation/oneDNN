@@ -61,6 +61,7 @@ extern dnnl_engine_kind_t engine_tgt_kind;
 extern size_t engine_index;
 
 struct engine_t {
+    engine_t() = default;
     engine_t(dnnl_engine_kind_t engine_kind);
     engine_t(dnnl_engine_t engine);
     engine_t(const dnnl::engine &engine);
@@ -69,7 +70,10 @@ struct engine_t {
     // When `recreate_on_copy=false`, copy follows a weak_ptr semantics that
     // `dnnl::engine` provides.
     engine_t(const engine_t &other, bool recreate_on_copy = false);
-    operator dnnl_engine_t() const { return engine_.get(); }
+    engine_t &operator=(engine_t &&other) = default;
+    operator dnnl_engine_t() const {
+        return engine_.get(/* allow_empty = */ true);
+    }
     operator const dnnl::engine &() const { return engine_; }
 
     bool is_cpu() const;

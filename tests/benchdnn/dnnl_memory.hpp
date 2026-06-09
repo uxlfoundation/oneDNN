@@ -23,6 +23,7 @@
 
 #include "common.hpp"
 #include "utils/dims.hpp"
+#include "utils/engine.hpp"
 #include "utils/wrapper.hpp"
 
 #define dnnl_mem_default_value 0xFF
@@ -41,21 +42,21 @@ struct dnn_mem_t {
     };
 
     dnn_mem_t() { map(); }
-    dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_engine_t engine, bool prefill,
+    dnn_mem_t(const_dnnl_memory_desc_t md, const engine_t &engine, bool prefill,
             const handle_info_t &handle_info = handle_info_t::allocate());
 
     dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_data_type_t dt,
-            const std::string &tag, dnnl_engine_t engine, bool prefill);
+            const std::string &tag, const engine_t &engine, bool prefill);
     dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_data_type_t dt,
-            const dnnl_dims_t strides, dnnl_engine_t engine, bool prefill);
+            const dnnl_dims_t strides, const engine_t &engine, bool prefill);
 
     dnn_mem_t(int ndims, const dnnl_dims_t dims, dnnl_data_type_t dt,
-            const std::string &tag, dnnl_engine_t engine, bool prefill);
+            const std::string &tag, const engine_t &engine, bool prefill);
     dnn_mem_t(int ndims, const dnnl_dims_t dims, dnnl_data_type_t dt,
-            const dnnl_dims_t strides, dnnl_engine_t engine, bool prefill);
+            const dnnl_dims_t strides, const engine_t &engine, bool prefill);
 
     dnn_mem_t(const dnn_mem_t &rhs, dnnl_data_type_t dt, const std::string &tag,
-            dnnl_engine_t engine);
+            const engine_t &engine);
 
     // Construct a host-scalar memory object, initialized with 0x3F pattern.
     dnn_mem_t(const_dnnl_memory_desc_t md);
@@ -73,8 +74,7 @@ struct dnn_mem_t {
         data_ = std::move(rhs.data_);
         is_data_owner_ = rhs.is_data_owner_;
         active_ = rhs.active_;
-        engine_kind_ = rhs.engine_kind_;
-        engine_ = rhs.engine_;
+        engine_ = std::move(rhs.engine_);
         is_mapped_ = (bool)rhs.is_mapped_;
         mapped_ptrs_ = std::move(rhs.mapped_ptrs_);
 
@@ -163,8 +163,7 @@ struct dnn_mem_t {
         return get_idx(logical_idx, dims_mask, ndims(), dims_t());
     }
 
-    dnnl_engine_t engine() const { return engine_; }
-    dnnl_engine_kind_t engine_kind() const { return engine_kind_; }
+    const engine_t &engine() const { return engine_; }
 
     bool is_mapped() const { return is_mapped_; }
 
@@ -178,17 +177,16 @@ struct dnn_mem_t {
     int gpu_fill_random(size_t size, int buffer_index) const;
 #endif
 
-    static dnn_mem_t create_from_host_ptr(
-            const dnnl_memory_desc_t &md, dnnl_engine_t engine, void *host_ptr);
+    static dnn_mem_t create_from_host_ptr(const dnnl_memory_desc_t &md,
+            const engine_t &engine, void *host_ptr);
 
     // Increases memory size to catch potential buffer overreads and
     // overwrites. The padded area is filled with a canary value.
-    static size_t pad_memory_size(size_t sz, dnnl_engine_kind_t engine_kind,
-            bool *was_padded = nullptr);
+    size_t pad_memory_size(size_t sz, bool *was_padded = nullptr) const;
     // Increases memory descriptor size to catch potential buffer overreads and
     // overwrites. The padded area is filled with a canary value.
-    static dnnl_memory_desc_t pad_memory_desc(const_dnnl_memory_desc_t md,
-            dnnl_engine_kind_t engine_kind, bool *was_padded = nullptr);
+    dnnl_memory_desc_t pad_memory_desc(
+            const_dnnl_memory_desc_t md, bool *was_padded = nullptr) const;
     // Initializes zero memory descriptor
     static benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> init_md();
     // Initializes memory descriptor from sporadic tag or strides.
@@ -230,12 +228,13 @@ private:
     bool is_data_owner_ = false;
     bool active_ = false;
 
-    dnnl_engine_kind_t engine_kind_ = dnnl_any_engine;
-    dnnl_engine_t engine_ = nullptr;
+    engine_t engine_;
 
     mutable bool is_mapped_ = false;
     mutable std::vector<void *> mapped_ptrs_;
 
+    int init_memory(dnnl_memory_t *ret, const dnnl_memory_desc_t &md,
+            dnnl_memory_t mem);
     int initialize_memory_create_sycl(const handle_info_t &handle_info);
     int initialize_memory_create_opencl(const handle_info_t &handle_info);
     int initialize_memory_create_ze(const handle_info_t &handle_info);
@@ -252,7 +251,7 @@ private:
     //
     // The flag is propagated to the toppest dnn_mem_t constructors. In case
     // when in doubt, always use `true` to stay on the safe side of things.
-    int initialize(dnnl_engine_t engine, bool prefill,
+    int initialize(bool prefill,
             const handle_info_t &handle_info = handle_info_t::allocate());
     int initialize_by_host_scalar(const_dnnl_memory_desc_t md, void *value);
 

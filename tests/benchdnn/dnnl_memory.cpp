@@ -54,60 +54,65 @@ extern "C" dnnl_status_t dnnl_memory_desc_create_with_string_tag(
 extern "C" dnnl_status_t dnnl_memory_desc_set_data_type(
         dnnl_memory_desc_t memory_desc, dnnl_data_type_t data_type);
 
-dnn_mem_t::dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_engine_t engine,
-        bool prefill, const handle_info_t &handle_info) {
+dnn_mem_t::dnn_mem_t(const_dnnl_memory_desc_t md, const engine_t &engine,
+        bool prefill, const handle_info_t &handle_info)
+    : engine_(engine), is_mapped_(false) {
     if (query_md_ndims(md) > 0) {
         auto status = dnnl_memory_desc_clone(&md_, md);
         (void)status;
         assert(status == dnnl_success);
-        active_ = (initialize(engine, prefill, handle_info) == OK);
+        active_ = (initialize(prefill, handle_info) == OK);
     }
 }
 
 dnn_mem_t::dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_data_type_t dt,
-        const std::string &tag, dnnl_engine_t engine, bool prefill) {
+        const std::string &tag, const engine_t &engine, bool prefill)
+    : engine_(engine), is_mapped_(false) {
     const int ndims = query_md_ndims(md);
     if (ndims > 0) {
         auto md_wrapper = dnn_mem_t::init_md(ndims, query_md_dims(md), dt, tag);
         md_ = md_wrapper.release();
-        active_ = (initialize(engine, prefill) == OK);
+        active_ = (initialize(prefill) == OK);
     }
 }
 
 dnn_mem_t::dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_data_type_t dt,
-        const dnnl_dims_t strides, dnnl_engine_t engine, bool prefill) {
+        const dnnl_dims_t strides, const engine_t &engine, bool prefill)
+    : engine_(engine), is_mapped_(false) {
     const int ndims = query_md_ndims(md);
     if (ndims > 0) {
         auto status = dnnl_memory_desc_create_with_strides(
                 &md_, ndims, query_md_dims(md), dt, strides);
         (void)status;
         assert(status == dnnl_success);
-        active_ = (initialize(engine, prefill) == OK);
+        active_ = (initialize(prefill) == OK);
     }
 }
 
 dnn_mem_t::dnn_mem_t(int ndims, const dnnl_dims_t dims, dnnl_data_type_t dt,
-        const std::string &tag, dnnl_engine_t engine, bool prefill) {
+        const std::string &tag, const engine_t &engine, bool prefill)
+    : engine_(engine), is_mapped_(false) {
     if (ndims > 0) {
         auto md_wrapper = dnn_mem_t::init_md(ndims, dims, dt, tag);
         md_ = md_wrapper.release();
-        active_ = (initialize(engine, prefill) == OK);
+        active_ = (initialize(prefill) == OK);
     }
 }
 
 dnn_mem_t::dnn_mem_t(int ndims, const dnnl_dims_t dims, dnnl_data_type_t dt,
-        const dnnl_dims_t strides, dnnl_engine_t engine, bool prefill) {
+        const dnnl_dims_t strides, const engine_t &engine, bool prefill)
+    : engine_(engine), is_mapped_(false) {
     if (ndims > 0) {
         auto status = dnnl_memory_desc_create_with_strides(
                 &md_, ndims, dims, dt, strides);
         (void)status;
         assert(status == dnnl_success);
-        active_ = (initialize(engine, prefill) == OK);
+        active_ = (initialize(prefill) == OK);
     }
 }
 
 dnn_mem_t::dnn_mem_t(const dnn_mem_t &rhs, dnnl_data_type_t dt,
-        const std::string &tag, dnnl_engine_t engine)
+        const std::string &tag, const engine_t &engine)
     : dnn_mem_t(rhs.md_, dt, tag, engine, /* prefill = */ true) {
     // Prefill is `true` unconditionally because of reorder involved.
     if (active_) {
@@ -142,7 +147,7 @@ int execute_reorder(const dnn_mem_t &src, dnn_mem_t &dst,
         || (DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE)) \
         && DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
     const auto &cpu_engine = get_cpu_engine();
-    if (src.engine_kind() == dnnl_gpu || dst.engine_kind() == dnnl_gpu) {
+    if (src.engine().is_gpu() || dst.engine().is_gpu()) {
 
         dnnl_status_t status = dnnl_reorder_primitive_desc_create(
                 &r_pd_, src.md_, cpu_engine, dst.md_, cpu_engine, attr);
@@ -196,7 +201,7 @@ int execute_reorder(const dnn_mem_t &src, dnn_mem_t &dst,
     auto r_pd = make_benchdnn_dnnl_wrapper(r_pd_);
     const auto &scratchpad_md = query_md(r_pd, DNNL_ARG_SCRATCHPAD);
     const auto &scratchpad_engine
-            = dst.engine_kind() == dnnl_gpu ? dst.engine() : src.engine();
+            = dst.engine().is_gpu() ? dst.engine() : src.engine();
 
     // Scratchpad memory will be mapped at the call below (if `attr` utilizes
     // user-mode scratchpad) or inside `execute_and_wait` (for the library-mode)
@@ -484,15 +489,11 @@ int64_t dnn_mem_t::get_idx(int64_t logical_idx, int dims_mask, const int ndims,
 // object `mem`. The size of `mem` must not be less than the size of `md`.
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL || defined(DNNL_WITH_SYCL) \
         || DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
-static int init_memory(
+int dnn_mem_t::init_memory(
         dnnl_memory_t *ret, const dnnl_memory_desc_t &md, dnnl_memory_t mem) {
-
-    dnnl_engine_t engine;
-    DNN_SAFE(dnnl_memory_get_engine(mem, &engine), CRIT);
-
-    bool is_sycl = is_sycl_engine(engine);
-    bool is_opencl = is_opencl_engine(engine);
-    bool is_ze = is_ze_engine(engine);
+    // `mem` is constructed with `engine_`, so `engine_` is used directly here
+    // instead of querying the engine from `mem`. The engine kinds must match.
+    assert(query_engine_kind(engine_) == query_engine_kind(query_engine(mem)));
 
     if (ret == nullptr) return FAIL;
     *ret = nullptr;
@@ -502,27 +503,27 @@ static int init_memory(
     for (int i = 0; i < nhandles; i++)
         DNN_SAFE(dnnl_memory_get_data_handle_v2(mem, &handles[i], i), CRIT);
 
-    if (is_opencl) {
+    if (is_opencl_engine(engine_)) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
         dnnl_ocl_interop_memory_kind_t mem_kind;
         DNN_SAFE(dnnl_ocl_interop_memory_get_memory_kind(mem, &mem_kind), CRIT);
-        DNN_SAFE(dnnl_ocl_interop_memory_create_v2(ret, md, engine, mem_kind,
+        DNN_SAFE(dnnl_ocl_interop_memory_create_v2(ret, md, engine_, mem_kind,
                          (int)handles.size(), handles.data()),
                 CRIT);
 #endif
-    } else if (is_sycl) {
+    } else if (is_sycl_engine(engine_)) {
 #ifdef DNNL_WITH_SYCL
         dnnl_sycl_interop_memory_kind_t mem_kind;
         DNN_SAFE(
                 dnnl_sycl_interop_memory_get_memory_kind(mem, &mem_kind), CRIT);
-        DNN_SAFE(dnnl_sycl_interop_memory_create_v2(ret, md, engine, mem_kind,
+        DNN_SAFE(dnnl_sycl_interop_memory_create_v2(ret, md, engine_, mem_kind,
                          (int)handles.size(), handles.data()),
                 CRIT);
 #endif
-    } else if (is_ze) {
+    } else if (is_ze_engine(engine_)) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
         DNN_SAFE(dnnl_ze_interop_memory_create(
-                         ret, md, engine, (int)handles.size(), handles.data()),
+                         ret, md, engine_, (int)handles.size(), handles.data()),
                 CRIT);
 #endif
     } else {
@@ -701,16 +702,14 @@ int dnn_mem_t::gpu_fill_random(size_t size, int buffer_index) const {
 #endif
 
 dnn_mem_t dnn_mem_t::create_from_host_ptr(
-        const dnnl_memory_desc_t &md, dnnl_engine_t engine, void *host_ptr) {
+        const dnnl_memory_desc_t &md, const engine_t &engine, void *host_ptr) {
     // Pre-allocated handle_info won't use prefill no matter what.
     return dnn_mem_t(md, engine, /* prefill = */ false, {true, host_ptr});
 }
 
-size_t dnn_mem_t::pad_memory_size(
-        size_t sz, dnnl_engine_kind_t engine_kind, bool *was_padded) {
+size_t dnn_mem_t::pad_memory_size(size_t sz, bool *was_padded) const {
     if (was_padded) *was_padded = false;
-    if (sz == 0 || !has_bench_mode_bit(mode_bit_t::corr)
-            || engine_kind == dnnl_cpu)
+    if (sz == 0 || !has_bench_mode_bit(mode_bit_t::corr) || engine().is_cpu())
         return sz;
 
     const size_t page_size = 4096;
@@ -719,17 +718,17 @@ size_t dnn_mem_t::pad_memory_size(
     return padded_sz;
 }
 
-dnnl_memory_desc_t dnn_mem_t::pad_memory_desc(const_dnnl_memory_desc_t md,
-        dnnl_engine_kind_t engine_kind, bool *was_padded) {
+dnnl_memory_desc_t dnn_mem_t::pad_memory_desc(
+        const_dnnl_memory_desc_t md, bool *was_padded) const {
     if (was_padded) *was_padded = false;
     // TODO: add padded memory descriptor support for sparse memory.
     if (query_md_format_kind(md) == dnnl_format_kind_sparse) return nullptr;
     size_t old_sz = dnnl_memory_desc_get_size(md);
     if (old_sz == 0 || !has_bench_mode_bit(mode_bit_t::corr)
-            || engine_kind == dnnl_cpu)
+            || engine().is_cpu())
         return nullptr;
 
-    size_t sz = pad_memory_size(old_sz, engine_kind, was_padded);
+    size_t sz = pad_memory_size(old_sz, was_padded);
     if (sz == old_sz) return nullptr;
 
     dnnl_memory_desc_t ret;
@@ -842,7 +841,7 @@ int dnn_mem_t::initialize_memory_create_sycl(const handle_info_t &handle_info) {
         return OK;
     }
 
-    auto md_padded = pad_memory_desc(md_, engine_kind_, &is_canary_protected_);
+    auto md_padded = pad_memory_desc(md_, &is_canary_protected_);
     if (!md_padded) md_padded = md_;
 
     switch (memory_kind) {
@@ -866,9 +865,8 @@ int dnn_mem_t::initialize_memory_create_sycl(const handle_info_t &handle_info) {
             SAFE(handle_info.is_allocate() ? OK : FAIL, CRIT);
             is_data_owner_ = true;
 
-            auto eng = dnnl::engine(engine_, true);
-            auto dev = dnnl::sycl_interop::get_device(eng);
-            auto ctx = dnnl::sycl_interop::get_context(eng);
+            auto dev = dnnl::sycl_interop::get_device(engine_);
+            auto ctx = dnnl::sycl_interop::get_context(engine_);
 
             const int nhandles = query_md_num_handles(md_);
             for (int i = 0; i < nhandles; i++) {
@@ -917,7 +915,7 @@ int dnn_mem_t::initialize_memory_create_opencl(
 
     SAFE(handle_info.is_allocate() ? OK : FAIL, CRIT);
 
-    auto md_padded = pad_memory_desc(md_, engine_kind_, &is_canary_protected_);
+    auto md_padded = pad_memory_desc(md_, &is_canary_protected_);
     if (!md_padded) md_padded = md_;
 
     switch (memory_kind) {
@@ -986,7 +984,7 @@ int dnn_mem_t::initialize_memory_create_ze(const handle_info_t &handle_info) {
 
     SAFE(handle_info.is_allocate() ? OK : FAIL, CRIT);
 
-    auto md_padded = pad_memory_desc(md_, engine_kind_, &is_canary_protected_);
+    auto md_padded = pad_memory_desc(md_, &is_canary_protected_);
     if (!md_padded) md_padded = md_;
 
     switch (memory_kind) {
@@ -1086,12 +1084,7 @@ int dnn_mem_t::initialize_memory_create(const handle_info_t &handle_info) {
     return OK;
 }
 
-int dnn_mem_t::initialize(
-        dnnl_engine_t engine, bool prefill, const handle_info_t &handle_info) {
-    is_mapped_ = false;
-    engine_ = engine;
-    engine_kind_ = query_engine_kind(engine_);
-
+int dnn_mem_t::initialize(bool prefill, const handle_info_t &handle_info) {
     SAFE(initialize_memory_create(handle_info), CRIT);
 
     // In single-run/simulation mode, data values are not important since no
@@ -1122,7 +1115,7 @@ int dnn_mem_t::initialize(
     const int nhandles = query_md_num_handles(md_);
     for (int i = 0; i < nhandles; i++) {
         size_t sz = dnnl_memory_desc_get_size_v2(md_, i);
-        if (is_canary_protected_) sz = pad_memory_size(sz, engine_kind_);
+        if (is_canary_protected_) sz = pad_memory_size(sz);
 
         // Do not fill a memory if its size is zero. Moreover, memset
         // expects defined pointer, nullptr is not allowed.
@@ -1182,13 +1175,12 @@ int dnn_mem_t::initialize_by_host_scalar(
 }
 
 static int cleanup_sycl(
-        const dnnl_engine_t &engine, const std::vector<void *> &data) {
+        const engine_t &engine, const std::vector<void *> &data) {
 #ifdef DNNL_WITH_SYCL
     switch (memory_kind) {
         case memory_kind_ext_t::usm_device:
         case memory_kind_ext_t::usm_shared: {
-            auto eng = dnnl::engine(engine, true);
-            auto ctx = dnnl::sycl_interop::get_context(eng);
+            auto ctx = dnnl::sycl_interop::get_context(engine);
             for (void *p : data)
                 ::sycl::free(p, ctx);
             break;
@@ -1200,7 +1192,7 @@ static int cleanup_sycl(
 }
 
 static int cleanup_opencl(
-        const dnnl_engine_t &engine, const std::vector<void *> &data) {
+        const engine_t &engine, const std::vector<void *> &data) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     switch (memory_kind) {
         case memory_kind_ext_t::usm_device:
@@ -1214,8 +1206,7 @@ static int cleanup_opencl(
     return OK;
 }
 
-static int cleanup_ze(
-        const dnnl_engine_t &engine, const std::vector<void *> &data) {
+static int cleanup_ze(const engine_t &engine, const std::vector<void *> &data) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
     switch (memory_kind) {
         case memory_kind_ext_t::usm_device:
@@ -1445,7 +1436,7 @@ int check_buffer_overwrite(const dnn_mem_t &mem, int arg, res_t *res) {
     if (!mem.is_canary_protected()) return OK;
 
     size_t sz = mem.size();
-    size_t sz_padded = dnn_mem_t::pad_memory_size(sz, mem.engine_kind());
+    size_t sz_padded = mem.pad_memory_size(sz);
 
     auto *mem_ptr = (const uint8_t *)mem;
     for (size_t i = sz; i < sz_padded; i++) {

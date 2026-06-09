@@ -511,13 +511,14 @@ struct send_2d_desc_t {
     // Reduce the number of messages by increasing count per
     // message.
     void try_promote_count() {
-        int max_count = block_2d_max_count(hw, op == send_op_t::prefetch,
+        std::vector<int> counts = block_2d_counts(hw, op == send_op_t::prefetch,
                 op == send_op_t::store, transpose, w, type.size());
-        while (c * 2 <= max_count) {
-            if (w_rcount % 2 != 0) break;
-            c *= 2;
-            w_rcount /= 2;
-        }
+        for (auto i : counts)
+            if (w_rcount % i == 0) {
+                c = i;
+                w_rcount /= i;
+                break;
+            }
     }
 
     bool is_supported(const v2::view_t &view, const prover_t &prover) const {

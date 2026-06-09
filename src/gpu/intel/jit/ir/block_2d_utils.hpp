@@ -91,13 +91,19 @@ inline bool block_2d_pitch_ok(
     return true;
 }
 
-inline int block_2d_max_count(ngen::HW hw, bool is_prefetch, bool is_store,
-        bool is_transpose, int block_width, int type_size) {
-    if (is_store || is_transpose) return 1;
-    if (hw == ngen::HW::Xe3p && is_prefetch) {
-        return 256 / (block_width * type_size);
+// Returns all valid counts for given parameters in descending size.
+inline std::vector<int> block_2d_counts(ngen::HW hw, bool is_prefetch,
+        bool is_store, bool is_transpose, int block_width, int type_size) {
+    if (is_store || is_transpose) return {1};
+    std::vector<int> res;
+    bool allow_256b = (hw >= ngen::HW::Xe3p) && is_prefetch;
+    for (auto i : {4, 2, 1}) {
+        int nbytes = block_width * type_size * i;
+        if (nbytes <= 64) res.push_back(i);
+        if (allow_256b && nbytes == 256) res.push_back(i);
     }
-    return 64 / (block_width * type_size);
+    if (res.empty()) gpu_error_not_expected();
+    return res;
 }
 
 } // namespace jit

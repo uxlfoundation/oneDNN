@@ -664,8 +664,8 @@ struct send_2d_params_t {
 
     bool is_prefetch() const { return send_op == send_op_t::prefetch; }
 
-    int max_count(const dsl::hw_t &hw) const {
-        return block_2d_max_count(hw.ngen_hw(), is_prefetch(), is_store(),
+    std::vector<int> get_counts(const dsl::hw_t &hw) const {
+        return block_2d_counts(hw.ngen_hw(), is_prefetch(), is_store(),
                 transpose, w, type.size());
     }
 
@@ -673,11 +673,13 @@ struct send_2d_params_t {
     // message.
     void try_promote_count(const dsl::hw_t &hw) {
         if (vnni_factor != 1) return;
-        while (c * 2 <= max_count(hw)) {
-            if (w_rcount % 2 != 0) break;
-            c *= 2;
-            w_rcount /= 2;
-        }
+        std::vector<int> counts = get_counts(hw);
+        for (auto i : counts)
+            if (w_rcount % i == 0) {
+                c = i;
+                w_rcount /= i;
+                break;
+            }
     }
 
     bool apply_vnni_factor(int factor, const dsl::hw_t &hw) {
@@ -695,9 +697,9 @@ struct send_2d_params_t {
         if (H % factor != 0)
             return fail_2d("Can't apply VNNI factor: invalid surface height.");
         if (c != 1) return fail_2d("Can't apply VNNI factor: invalid count.");
-        if (factor > max_count(hw))
+        if (factor > get_counts(hw)[0])
             return fail_2d(
-                    "Can't apply VNNI factor: factor exceeds max_count(hw).");
+                    "Can't apply VNNI factor: factor exceeds max_count.");
         W *= factor;
         H /= factor;
         P *= factor;

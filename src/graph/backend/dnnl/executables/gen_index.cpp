@@ -122,6 +122,7 @@ std::optional<::sycl::event> genindex_executable_t::execute_sycl_impl(
     }
 #if (DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE) \
         && (DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL)
+    double start_ms = dnnl::impl::get_msec();
     auto compute_stream
             = dnnl::impl::utils::downcast<gpu::intel::stream_t *>(stream.get());
     compute::range_t gws = {static_cast<size_t>(nelems_)};
@@ -139,7 +140,8 @@ std::optional<::sycl::event> genindex_executable_t::execute_sycl_impl(
             sycl_stream->sycl_ctx().get_deps(),
             sycl_stream->sycl_ctx().get_deps());
     auto return_event = sycl_stream->get_output_event();
-
+    if (sycl_stream->is_verbose_profiler_enabled())
+        sycl_stream->run_verbose_profiler(info_, start_ms);
     sycl_stream->after_exec_hook();
     return return_event;
 #else
@@ -155,13 +157,18 @@ std::optional<::sycl::event> genindex_executable_t::execute_sycl(
         const std::vector<::sycl::event> &deps) const {
     if (get_verbose(dnnl::impl::verbose_t::exec_profile,
                 dnnl::impl::component_t::graph)) {
-        stream.get()->wait();
-        double start_ms = dnnl::impl::get_msec();
-        execute_sycl_impl(stream, args, deps);
-        stream.get()->wait();
-        double duration_ms = dnnl::impl::get_msec() - start_ms;
-        VPROF(start_ms, graph, exec, VERBOSE_profile, info_.c_str(),
-                duration_ms);
+        if (!stream.get()->is_verbose_profiler_enabled()) {
+            stream.get()->wait();
+            double start_ms = dnnl::impl::get_msec();
+            execute_sycl_impl(stream, args, deps);
+            stream.get()->wait();
+            double duration_ms = dnnl::impl::get_msec() - start_ms;
+            VPROF(start_ms, graph, exec, VERBOSE_profile, info_.c_str(),
+                    duration_ms);
+        } else {
+            execute_sycl_impl(stream, args, deps);
+        }
+
         return std::nullopt; // no event returned in profiling mode
     } else {
         return execute_sycl_impl(stream, args, deps);
@@ -174,6 +181,7 @@ cl_event genindex_executable_t::execute_ocl_impl(const stream &stream,
         const std::unordered_map<int, memory> &args,
         const std::vector<cl_event> &deps) const {
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
+    double start_ms = dnnl::impl::get_msec();
     auto compute_stream
             = dnnl::impl::utils::downcast<gpu::intel::stream_t *>(stream.get());
 
@@ -204,7 +212,8 @@ cl_event genindex_executable_t::execute_ocl_impl(const stream &stream,
         auto last = ocl_stream->get_output_event();
         return_event = last.release();
     }
-
+    if (ocl_stream->is_verbose_profiler_enabled())
+        ocl_stream->run_verbose_profiler(info_, start_ms);
     ocl_stream->after_exec_hook();
     return return_event;
 #else
@@ -220,13 +229,17 @@ cl_event genindex_executable_t::execute_ocl(const stream &stream,
         const std::vector<cl_event> &deps) const {
     if (get_verbose(dnnl::impl::verbose_t::exec_profile,
                 dnnl::impl::component_t::graph)) {
-        stream.get()->wait();
-        double start_ms = dnnl::impl::get_msec();
-        execute_ocl_impl(stream, args, deps);
-        stream.get()->wait();
-        double duration_ms = dnnl::impl::get_msec() - start_ms;
-        VPROF(start_ms, graph, exec, VERBOSE_profile, info_.c_str(),
-                duration_ms);
+        if (!stream.get()->is_verbose_profiler_enabled()) {
+            stream.get()->wait();
+            double start_ms = dnnl::impl::get_msec();
+            execute_ocl_impl(stream, args, deps);
+            stream.get()->wait();
+            double duration_ms = dnnl::impl::get_msec() - start_ms;
+            VPROF(start_ms, graph, exec, VERBOSE_profile, info_.c_str(),
+                    duration_ms);
+        } else {
+            execute_ocl_impl(stream, args, deps);
+        }
         return nullptr; // no event returned in profiling mode
     } else {
         return execute_ocl_impl(stream, args, deps);

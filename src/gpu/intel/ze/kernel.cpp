@@ -181,9 +181,25 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
             &group_count, out_event, ze_deps.size(), ze_deps.data()));
 
     if (out_event) xpu::ze::event_t::from(out_dep).append(out_event);
-    if (stream.is_profiling_enabled()) {
-        ze_stream->profiler().register_event(
-                utils::make_unique<xpu::ze::event_t>(out_event));
+
+    // Event registration for profilers is managed to allow the verbose_profiler_t
+    // operate independently from other profilers without forced profiling flags or
+    // double-move issues.
+    if (stream.is_profiling_enabled() || stream.is_verbose_profiler_enabled()) {
+        auto primary_event = utils::make_unique<xpu::ze::event_t>(out_event);
+
+        if (stream.is_profiling_enabled()) {
+            auto cloned_event = primary_event->clone();
+            ze_stream->profiler().register_event(
+                    std::unique_ptr<xpu::ze::event_t>(
+                            static_cast<xpu::ze::event_t *>(
+                                    cloned_event.release())));
+        }
+
+        if (stream.is_verbose_profiler_enabled()) {
+            ze_stream->verbose_profiler().register_primitive_event(
+                    std::shared_ptr<xpu::ze::event_t>(primary_event.release()));
+        }
     }
 
     return status::success;

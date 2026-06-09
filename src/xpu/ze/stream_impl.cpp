@@ -46,12 +46,13 @@ status_t stream_impl_t::init(
                 "Level Zero kernel profiling is not supported with "
                 "out-of-order queues");
         return status::invalid_arguments;
-    } else if ((flags() & stream_flags::out_of_order)
-            || is_profiling_enabled()) {
+    } else if ((flags() & stream_flags::out_of_order) || is_profiling_enabled()
+            || supports_verbose_profiling(engine_kind::gpu)) {
         ze_event_pool_desc_t event_pool_desc {};
         event_pool_desc.stype = ZE_STRUCTURE_TYPE_EVENT_POOL_DESC;
         event_pool_desc.flags = ZE_EVENT_POOL_FLAG_HOST_VISIBLE;
-        if (is_profiling_enabled())
+        if (is_profiling_enabled()
+                || supports_verbose_profiling(engine_kind::gpu))
             event_pool_desc.flags |= ZE_EVENT_POOL_FLAG_KERNEL_TIMESTAMP;
         // Note: 16K number is taken randomly as big enough to fit mode=F perf
         // validation or a single model profiling.

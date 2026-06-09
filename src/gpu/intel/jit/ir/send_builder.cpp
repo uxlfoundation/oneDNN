@@ -466,14 +466,14 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
     bool transpose = hint.transpose;
 
     // Try to reduce the number of messages by increasing count per message.
-    int try_count = count * 2;
-    int max_count = block_2d_max_count(ir_ctx_->hw(), is_prefetch, is_store,
-            transpose, width, mem_type_.size());
-    while (try_count <= max_count) {
-        if (b0.size % (try_count * width) != 0) break;
-        count = try_count;
-        try_count *= 2;
-    }
+    // Select the highest valid count.
+    std::vector<int> counts = block_2d_counts(ir_ctx_->hw(), is_prefetch,
+            is_store, transpose, width, mem_type_.size());
+    for (auto i : counts)
+        if (b0.size % (i * width) == 0) {
+            count = i;
+            break;
+        }
 
     int W = surface_width;
     int H = surface_height;
@@ -665,9 +665,9 @@ bool access_builder_t::fixup_send_2d_params(const dsl::type_t &send_type,
     int factor = 64 / surface_width_size;
     if (h % factor != 0) return false;
 
-    int max_count = block_2d_max_count(ir_ctx_->hw(),
+    int max_count = block_2d_counts(ir_ctx_->hw(),
             send_op_ == send_op_t::prefetch, send_op_ == send_op_t::store,
-            transpose, w, send_type.size());
+            transpose, w, send_type.size())[0];
 
     if (factor > max_count) return false;
 

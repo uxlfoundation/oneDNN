@@ -16,12 +16,12 @@
 *******************************************************************************/
 
 #include <atomic>
-#include <riscv_vector.h>
 
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
+#include "cpu/rv64/jit_rvv_gemm_convolution_kernel.hpp"
 #include "cpu/rv64/rvv_gemm_convolution.hpp"
 
 namespace dnnl {
@@ -192,7 +192,6 @@ status_t riscv_gemm_convolution_fwd_t::execute_forward_thr_nspc(
                         if (jcp.with_bias) {
                             size_t n_elems = end_oc - start_oc + 1;
                             if (n_elems > 0) {
-                                size_t oc = 0;
                                 const data_t *b_ptr = bia_arr + start_oc;
                                 data_t *d_ptr = dst_arr + start_oc;
 

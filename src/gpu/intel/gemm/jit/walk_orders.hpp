@@ -55,8 +55,7 @@ inline void linear_order_args(compute::kernel_arg_list_t &arg_list, int &argn,
     auto group_count = groups_m * groups_n;
 
     uint32_t ss_count = dev_info->eu_count() / dev_info->max_eus_per_wg();
-    bool large_grf_mode = (info.grfCount > 128);
-    uint32_t thread_per_ss = dev_info->hw_threads(large_grf_mode) / ss_count;
+    uint32_t thread_per_ss = dev_info->hw_threads(info.grfCount) / ss_count;
     uint32_t thread_per_tg = into<uint32_t>(lws.nelems());
     uint32_t tg_per_ss = thread_per_ss / thread_per_tg;
     uint32_t concurrent_tg = tg_per_ss * ss_count;

@@ -36,6 +36,18 @@ dnnl_alg_kind_t query_alg_kind(const_dnnl_primitive_desc_t pd) {
     return alg_kind;
 }
 
+const dnnl_dims_t &query_strides(const_dnnl_primitive_desc_t pd) {
+    dnnl_dims_t *strides;
+    dnnl_primitive_desc_query(pd, dnnl_query_strides, 0, &strides);
+    return *strides;
+}
+
+const dnnl_dims_t &query_kernels(const_dnnl_primitive_desc_t pd) {
+    dnnl_dims_t *kernels;
+    dnnl_primitive_desc_query(pd, dnnl_query_kernel, 0, &kernels);
+    return *kernels;
+}
+
 std::string query_impl_info(const_dnnl_primitive_desc_t pd) {
     const char *str = nullptr;
     dnnl_primitive_desc_query(pd, dnnl_query_impl_info_str, 0, &str);

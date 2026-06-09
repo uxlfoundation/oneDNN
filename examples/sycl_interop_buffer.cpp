@@ -121,7 +121,7 @@ void sycl_interop_buffer_tutorial(engine::kind engine_kind) {
     /// Next, we create a memory object. We need to specify dimensions of our
     /// memory by passing a memory::dims object. Then we create a memory
     /// descriptor with these dimensions, with the dnnl::memory::data_type::f32
-    /// data type, and with the dnnl::memory::format_tag::nchw memory format.
+    /// data type, and with the dnnl::memory::format_tag::nhwc memory format.
     /// Finally, we construct a memory object and pass the memory descriptor.
     /// The library allocates memory internally.
     /// @snippet  sycl_interop_buffer.cpp memory alloc
@@ -131,7 +131,7 @@ void sycl_interop_buffer_tutorial(engine::kind engine_kind) {
             std::multiplies<size_t>());
 
     memory::desc mem_d(
-            tz_dims, memory::data_type::f32, memory::format_tag::nchw);
+            tz_dims, memory::data_type::f32, memory::format_tag::nhwc);
 
     memory mem = sycl_interop::make_memory(
             mem_d, eng, sycl_interop::memory_kind::buffer);

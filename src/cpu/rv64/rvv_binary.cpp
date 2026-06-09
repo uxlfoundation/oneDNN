@@ -44,6 +44,10 @@ static inline void compute_binary_rvv(const alg_kind_t alg, const void *x,
                     reinterpret_cast<const float *>(y), c,
                     reinterpret_cast<float *>(dst), len);
             break;
+        case data_type::f16:
+            assert(jit_rvv_binary_f16_supported(alg));
+            jit_rvv_binary_apply_f16(alg, x, y, c, dst, len);
+            break;
         case data_type::s32:
             rvv_binary_apply_s32(alg, x, y, dst, c, len, dt);
             break;

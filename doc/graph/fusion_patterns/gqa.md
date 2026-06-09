@@ -35,7 +35,7 @@ directional acyclic graph (DAG) using oneDNN Graph API.
 
 oneDNN extends the
 [SDPA pattern](@ref dev_guide_graph_sdpa) to support two types of floating-point
-(f32, bf16, and f16) GQA patterns. The blue nodes are required when defining a
+(`f32`, `bf16`, and `f16`) GQA patterns. The blue nodes are required when defining a
 GQA pattern while the brown nodes are optional. The key difference between the
 two types of GQA patterns lies in whether the input and output tensors have 4D
 or 5D shapes. The optional StaticReshape operations are used to convert the tensors
@@ -86,7 +86,7 @@ and Value tensors are provided in a grouped format.
 
 ### GQA for Training Forward Propagation
 
-oneDNN defines floating-point (f32, bf16, or f16) GQA for training forward
+oneDNN defines floating-point (`f32`, `bf16`, or `f16`) GQA for training forward
 propagation as follows. The blue nodes are required while the brown nodes are optional.
 
 ![GQA forward pattern](images/gqa_forward.png)
@@ -102,7 +102,7 @@ differences from the 5D inference pattern are:
 
 ### GQA for Training Backpropagation
 
-oneDNN defines floating-point (f32, bf16, or f16) GQA for training
+oneDNN defines floating-point (`f32`, `bf16`, or `f16`) GQA for training
 backpropagation as follows, it currently supports 5D input and output tensors.
 The blue nodes are required while the brown nodes are optional.
 
@@ -123,7 +123,7 @@ The blue nodes are required while the brown nodes are optional.
    propagation. See [Subtract](@ref dev_guide_op_subtract) and [Exp](@ref dev_guide_op_exp)
    in Graph API.
 5. The Dropout, TypeCast, MatMul and ReduceSum operations after Exp are used to compute the
-   gradients with respect to Value. TypeCast is required for bf16 and f16
+   gradients with respect to Value. TypeCast is required for `bf16` and `f16`
    training scenarios. ReduceSum reduces the Value gradients from
    (N, H_kv, N_rep, S, D) to (N, H_kv, 1, S, D). See [TypeCast](@ref dev_guide_op_typecast)
    and [ReduceSum](@ref dev_guide_op_reducesum) in Graph API.
@@ -140,18 +140,18 @@ The blue nodes are required while the brown nodes are optional.
    and is used to compute the gradients of the score.
 10. The TypeCast, two MatMul and ReduceSum operations after the Scale node
    compute the gradients with respect to Query and Key, respectively. TypeCast
-   is required for bf16 and f16 training scenarios. ReduceSum reduces the Key
+   is required for `bf16` and `f16` training scenarios. ReduceSum reduces the Key
    gradients from (N, H_kv, N_rep, S, D) to (N, H_kv, 1, S, D).
 11. The optional End operation marks the output of Multiply as a
     partition output, representing the gradients with respect to the Mask. Note
     that the output shape of `dM` is (N, H_kv, N_rep, S, S) and the data
-    type is f32. The library does not perform any reduction or typecast on this
-    output (for example, reducing to (1, 1, 1, S, S), casting to f16).
+    type is `f32`. The library does not perform any reduction or typecast on this
+    output (for example, reducing to (1, 1, 1, S, S), casting to `f16`).
 
 ## Data Types
 
-oneDNN supports the floating-point GQA pattern with data types f32, bf16, and
-f16. You can specify the data type via the input and output data type fields of
+oneDNN supports the floating-point GQA pattern with data types `f32`, `bf16`, and
+`f16`. You can specify the data type via the input and output data type fields of
 logical tensors for each operation. oneDNN does not support mixing different
 floating data types in a floating-point GQA pattern.
 

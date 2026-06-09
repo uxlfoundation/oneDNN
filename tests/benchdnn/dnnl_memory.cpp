@@ -171,13 +171,11 @@ int execute_reorder(const dnn_mem_t &src, dnn_mem_t &dst,
         // - For grouped to plain and plain to grouped,
         //   values reside in buffer 0 only.
         const bool can_plain_copy = dnnl_memory_desc_equal(src.md_, dst.md_)
-#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
-                || (query_md_sparse_encoding(src.md_) == dnnl_grouped
+                || dst.format_kind() == dnnl_format_kind_host_scalar
+                || (has_grouped_encoding(src.md_)
                         && query_md_num_handles(dst.md_) == 1)
-                || (query_md_sparse_encoding(dst.md_) == dnnl_grouped
-                        && query_md_num_handles(src.md_) == 1)
-#endif
-                ;
+                || (has_grouped_encoding(dst.md_)
+                        && query_md_num_handles(src.md_) == 1);
         if (can_plain_copy) {
             BENCHDNN_PRINT(2, "%s\n", "[REORDER] Fallback to plain copy.");
             const int64_t chunk_size = 64;
@@ -776,17 +774,17 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dnn_mem_t::init_host_scalar_md(
     return md;
 }
 
-#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
 benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dnn_mem_t::init_grouped_md(
         int ndims, const dnnl_dims_t dims, dnnl_data_type_t data_type,
         int variable_dim_idx, dnnl_dim_t group_count,
         dnnl_data_type_t offsets_dt) {
     dnnl_memory_desc_t md {};
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
     DNN_SAFE_V(dnnl_memory_desc_create_with_grouped_encoding(&md, ndims, dims,
             data_type, variable_dim_idx, group_count, offsets_dt));
+#endif
     return md;
 }
-#endif
 
 int dnn_mem_t::initialize_memory_create_sycl(const handle_info_t &handle_info) {
 #ifdef DNNL_WITH_SYCL
@@ -1016,12 +1014,13 @@ int dnn_mem_t::initialize_memory_create(const handle_info_t &handle_info) {
         SAFE(is_cpu(engine_) ? OK : FAIL, CRIT);
     }
 
+    const int nhandles = query_md_num_handles(md_);
+
     if (is_cpu(engine_) && handle_info.is_allocate() && !is_sycl) {
         // Allocate memory for native runtime directly.
         is_data_owner_ = true;
         const size_t alignment = 2 * 1024 * 1024;
 
-        const int nhandles = query_md_num_handles(md_);
         for (int i = 0; i < nhandles; i++) {
             size_t sz = dnnl_memory_desc_get_size_v2(md_, i);
             data_.push_back(zmalloc(sz, alignment));
@@ -1044,7 +1043,6 @@ int dnn_mem_t::initialize_memory_create(const handle_info_t &handle_info) {
         SAFE(initialize_memory_create_ze(handle_info), CRIT);
     } else {
         is_data_owner_ = false;
-        const int nhandles = query_md_num_handles(md_);
         std::vector<void *> handles(nhandles, handle_info.ptr);
         DNN_SAFE(dnnl_memory_create_v2(&m_, md_, engine_, (int)handles.size(),
                          handles.data()),
@@ -1061,54 +1059,63 @@ int dnn_mem_t::initialize(
 
     SAFE(initialize_memory_create(handle_info), CRIT);
 
-    if (handle_info.is_allocate()) {
-        // Memory objects consisting of several buffers can rely on indirect
-        // data access through metadata (e.g., sparse memory objects).
-        // Filling metadata buffers with random values can lead to accessing an
-        // address location not controlled by the process. Thus, such metadata
-        // buffers must be always properly filled according to the driver rules.
-        // Filling buffers requires them to be mapped.
-        // To save code on updating every case separately, update the logic in
-        // this common place.
-        // ANCHOR: FILL_SPARSE_METADATA.
-        const bool mem_has_indirect_access = is_sparse_md();
-        if (!has_bench_mode_modifier(mode_modifier_t::no_ref_memory)
-                || mem_has_indirect_access)
-            map();
+    // In single-run/simulation mode, data values are not important since no
+    // correctness check is performed, so input data fill-in (and the associated
+    // map/unmap) is skipped to reduce overhead. The `no_ref_memory` modifier is
+    // set alongside `--mode=S` so the cleanup path skips unmapping. Sparse memory
+    // objects rely on metadata buffers that must always be filled to avoid
+    // out-of-bounds access, so they fall through to the regular handling.
+    if (has_bench_mode_bit(mode_bit_t::sim) && !is_sparse_md()) return OK;
 
-        const int nhandles = query_md_num_handles(md_);
-        for (int i = 0; i < nhandles; i++) {
-            size_t sz = dnnl_memory_desc_get_size_v2(md_, i);
-            if (is_canary_protected_) sz = pad_memory_size(sz, engine_kind_);
+    // If the memory object doesn't own its buffers, nothing to do.
+    if (!handle_info.is_allocate()) return OK;
 
-            // Do not fill a memory if its size is zero. Moreover, memset
-            // expects defined pointer, nullptr is not allowed.
-            if (sz == 0 || !prefill) continue;
+    // Memory objects consisting of several buffers can rely on indirect
+    // data access through metadata (e.g., sparse memory objects).
+    // Filling metadata buffers with random values can lead to accessing an
+    // address location not controlled by the process. Thus, such metadata
+    // buffers must be always properly filled according to the driver rules.
+    // Filling buffers requires them to be mapped.
+    // To save code on updating every case separately, update the logic in
+    // this common place.
+    // ANCHOR: FILL_SPARSE_METADATA.
+    const bool mem_has_indirect_access = is_sparse_md();
+    if (!has_bench_mode_modifier(mode_modifier_t::no_ref_memory)
+            || mem_has_indirect_access)
+        map();
 
-            // Avoid costy data reorders for cold cache mode when
-            // initializing cold cache buffers.
-            // TODO: consider enabling broadly for perf mode.
-            if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)
-                    || cold_cache_input.cold_cache_mode_
-                            != default_cold_cache_input().cold_cache_mode_) {
+    const int nhandles = query_md_num_handles(md_);
+    for (int i = 0; i < nhandles; i++) {
+        size_t sz = dnnl_memory_desc_get_size_v2(md_, i);
+        if (is_canary_protected_) sz = pad_memory_size(sz, engine_kind_);
+
+        // Do not fill a memory if its size is zero. Moreover, memset
+        // expects defined pointer, nullptr is not allowed.
+        if (sz == 0 || !prefill) continue;
+
+        // Avoid costy data reorders for cold cache mode when
+        // initializing cold cache buffers.
+        // TODO: consider enabling broadly for perf mode.
+        if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)
+                || cold_cache_input.cold_cache_mode_
+                        != default_cold_cache_input().cold_cache_mode_) {
 #if (DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
         && DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL)
-                if (!is_cpu(engine_))
-                    // Fill memory with pseudo-random data directly on device
-                    // to avoid data compression.
-                    SAFE(this->gpu_fill_random(sz, i), WARN);
-                else
-                    // Fill memory directly with 0x3F3F3F3F (0.747059f).
-                    this->memset(dnnl_mem_default_perf_test_value, sz, i);
-#else
+            if (!is_cpu(engine_))
+                // Fill memory with pseudo-random data directly on device
+                // to avoid data compression.
+                SAFE(this->gpu_fill_random(sz, i), WARN);
+            else
                 // Fill memory directly with 0x3F3F3F3F (0.747059f).
                 this->memset(dnnl_mem_default_perf_test_value, sz, i);
+#else
+            // Fill memory directly with 0x3F3F3F3F (0.747059f).
+            this->memset(dnnl_mem_default_perf_test_value, sz, i);
 #endif
-            } else {
-                // Fill memory with a magic number (NAN for fp data types)
-                // to catch possible uninitialized access.
-                ::memset(mapped_ptrs_[i], dnnl_mem_default_value, sz);
-            }
+        } else {
+            // Fill memory with a magic number (NAN for fp data types)
+            // to catch possible uninitialized access.
+            ::memset(mapped_ptrs_[i], dnnl_mem_default_value, sz);
         }
     }
 
@@ -1464,9 +1471,33 @@ bool has_sparse_md(const dnn_mem_map_t &dnn_mem_map) {
     return false;
 }
 
+bool has_grouped_encoding(const_dnnl_memory_desc_t md) {
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    return query_md_sparse_encoding(md) == dnnl_grouped;
+#else
+    return false;
+#endif
+}
+
 dnnl_memory_desc_t clone_md(const_dnnl_memory_desc_t md) {
     dnnl_memory_desc_t cloned_md;
     auto status = dnnl_memory_desc_clone(&cloned_md, md);
     if (status != dnnl_success) return nullptr;
     return cloned_md;
+}
+
+size_t get_logical_size(const_dnnl_memory_desc_t md) {
+    const auto ndims = query_md_ndims(md);
+    if (ndims == 0) return 0;
+
+    const auto dims = query_md_dims(md);
+    int64_t nelems = 1;
+    for (int i = 0; i < ndims; ++i)
+        nelems *= dims[i];
+
+    const auto dt = query_md_data_type(md);
+    const size_t dt_size = dnnl_data_type_size(dt);
+    const size_t dt_bits = bits_dt(dt);
+    const size_t elems_in_byte = div_up(size_t(8), dt_bits);
+    return div_up(static_cast<size_t>(nelems) * dt_size, elems_in_byte);
 }

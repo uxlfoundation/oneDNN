@@ -228,6 +228,15 @@ bool is_batch_layout_trivial(
     return max_batch_stride / min_batch_stride == batch;
 }
 
+bool dims_adjacent(const memory_desc_wrapper &mdw, const int outer_dim,
+        const int inner_dim) {
+    const auto &dims = mdw.dims();
+    const auto &strides = mdw.strides();
+    if (dims[outer_dim] == 1) return true;
+    const dim_t inner_stride = dims[inner_dim] > 1 ? strides[inner_dim] : 1;
+    return strides[outer_dim] == dims[inner_dim] * inner_stride;
+}
+
 status_t check_isa_with_datatype(
         const cpu_isa_t isa, const brgemm_matmul_conf_utils_t &bm_conf_utils) {
     const bool ok
@@ -554,9 +563,19 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(memory_desc_t &B_md,
             bgmmc.wei_tag = blocked_B_layouts_allowed && !bgmmc.is_runtime_N
                             && !bgmmc.is_int4_weights
                     ? this->pick_blocked_B_layout(default_n_block)
-                    : bgmmc.is_int4_weights && bgmmc.N % 2 != 0
-                    ? transposed_tensor_layout_tag
                     : plain_tensor_layout_tag;
+
+            // For N == 1 force transposed layout because copy-B kernel is
+            // significantly faster.
+            if (bgmmc.wei_tag == plain_tensor_layout_tag && bgmmc.N == 1) {
+                bgmmc.wei_tag = transposed_tensor_layout_tag;
+            }
+
+            // Plain copy-B kernel does not support odd sizes for subbyte types.
+            // Using transposed version for these cases.
+            if (bgmmc.is_int4_weights && bgmmc.N % 2 != 0) {
+                bgmmc.wei_tag = transposed_tensor_layout_tag;
+            }
         }
         VCONDCHECK_BG(
                 format_tag::undef != bgmmc.wei_tag, VERBOSE_UNSUPPORTED_TAG)
@@ -587,11 +606,19 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(memory_desc_t &B_md,
                     : memory_desc_matches_one_of_tag(B_md,
                               plain_tensor_layout_tag,
                               transposed_tensor_layout_tag, acbd, adbc);
+
+            // For N == 1 force transposed layout because copy-B kernel is
+            // significantly faster.
+            if (bgmmc.wei_tag == plain_tensor_layout_tag && bgmmc.N == 1) {
+                bgmmc.wei_tag = transposed_tensor_layout_tag;
+            }
+
             // Plain copy-B kernel does not support odd sizes for subbyte types.
             // Using transposed version for these cases.
             if (bgmmc.is_int4_weights && bgmmc.N % 2 != 0) {
                 bgmmc.wei_tag = transposed_tensor_layout_tag;
             }
+
             if (bgmmc.wei_tag == format_tag::undef) {
                 if (gemm_based::check_gemm_input_format(B_md)) {
                     bgmmc.wei_tag = helper.transB() == 'N'
@@ -1739,15 +1766,24 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     const bool plain_A_layout = bm_conf_utils.check_is_plain(bgmmc.src_tag)
             || bgmmc.treat_A_as_plain;
 
+    // Merging the batch dimensions into M is only valid when M and K are
+    // adjacent in memory, i.e. no batch dimension is physically interleaved
+    // between them (e.g. an acbd layout). The format tag is unreliable here
+    // since tag matching ignores strides of unit dimensions.
+    const bool m_and_k_contiguous
+            = dims_adjacent(src_d, bgmmc.ndims - 2, bgmmc.ndims - 1);
+
     // We cannot change M at this point as all gemv related parameters have
     // already been set up.
-    // For 4D tensors with acbd layout, avoid merging batches to prevent stride issues
+    // TODO: move this logic into a dedicated function. The conditions that
+    // guard the merge are currently scattered across several helpers and this
+    // call site.
     const bool merge_batch_dims_into_M = !(bgmmc.is_gemv && bgmmc.gemv_swap_a_b)
             && bgmmc.batch > 1 && bgmmc.bcast_B_desc.bcast_across_all_batch_dims
             && plain_A_layout && helper.is_src_dst_layout_batch_fusable()
             && post_ops_ok(
                     bgmmc, attr, dst_d, true /* limit_bcast_strategies_set */)
-            && !(bgmmc.ndims == 4 && src_d.matches_tag(format_tag::acbd));
+            && m_and_k_contiguous;
     if (merge_batch_dims_into_M) {
         bgmmc.M *= bgmmc.batch;
         bgmmc.batch = 1;
@@ -1990,35 +2026,44 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     const bool runtime_dims
             = bgmmc.is_runtime_M || bgmmc.is_runtime_N || bgmmc.is_runtime_K;
 
-    bool is_small_shapes = bgmmc.is_amx && !runtime_dims;
+    bool allow_small_shape_fallback = bgmmc.is_amx && !runtime_dims;
 
     // Disable 'small_shape' heuristic for amx_fp16 until it is validated with
     // performance measurements.
-    is_small_shapes = is_small_shapes && (bgmmc.isa != avx512_core_amx_fp16);
-
-    if (bm_conf_utils.is_bf16() || bm_conf_utils.is_f16()
-            || bm_conf_utils.is_f32_f16() || bm_conf_utils.is_f32_bf16()
-            || bm_conf_utils.is_bf16_with_int_wei()
-            || bm_conf_utils.is_f16_with_int_wei()
-            || bm_conf_utils.is_f32_with_int_wei()) {
-        // empirical observation for performance breakpoint between amx and vnni
-        // bf16/f16
-        const dim_t buffer_a_chunk_sz_limit = 126;
-        is_small_shapes = is_small_shapes
-                && bgmmc.buffer_a_gb_stride <= buffer_a_chunk_sz_limit;
-    } else if (bm_conf_utils.is_f8() || bm_conf_utils.is_bf8()) {
-        is_small_shapes = false;
-    } else {
-        is_small_shapes = is_small_shapes && bgmmc.ndims < 3
-                && ((bgmmc.M == 1 && bgmmc.K == 256)
-                        || (bgmmc.M <= 32 && bgmmc.M * bgmmc.N <= 256)
-                        || bgmmc.K <= 16);
-    }
+    allow_small_shape_fallback
+            = allow_small_shape_fallback && !bgmmc.packed_sparse_weights;
     // This is the only implementation that support the packed_sparse_weights
     // case therefore there is no fallback for it.
-    is_small_shapes = is_small_shapes && !bgmmc.packed_sparse_weights;
-    VCONDCHECK_BG(!is_small_shapes, VERBOSE_SMALL_SHAPES);
+    allow_small_shape_fallback
+            = allow_small_shape_fallback && !bgmmc.packed_sparse_weights;
 
+    // avx512 doesn’t support native s8s8, but amx does so falling back to avx512 is not supported.
+    bool is_s8s8_matmul = bgmmc.src_dt == s8 && bgmmc.wei_dt == s8;
+    allow_small_shape_fallback = allow_small_shape_fallback && !is_s8s8_matmul;
+
+    if (allow_small_shape_fallback) {
+        bool is_small_shapes = false;
+        if (bm_conf_utils.is_bf16() || bm_conf_utils.is_f16()
+                || bm_conf_utils.is_f32_f16() || bm_conf_utils.is_f32_bf16()
+                || bm_conf_utils.is_bf16_with_int_wei()
+                || bm_conf_utils.is_f16_with_int_wei()
+                || bm_conf_utils.is_f32_with_int_wei()) {
+            // empirical observation for performance breakpoint between amx and vnni
+            // bf16/f16
+            const dim_t buffer_a_chunk_sz_limit = 126;
+            is_small_shapes = is_small_shapes
+                    && bgmmc.buffer_a_gb_stride <= buffer_a_chunk_sz_limit;
+        } else if (bm_conf_utils.is_f8() || bm_conf_utils.is_bf8()) {
+            is_small_shapes = false;
+        } else {
+            is_small_shapes = is_small_shapes && bgmmc.ndims < 3
+                    && ((bgmmc.M == 1 && bgmmc.K == 256)
+                            || (bgmmc.M <= 32 && bgmmc.M * bgmmc.N <= 256)
+                            || bgmmc.K <= 16);
+        }
+
+        VCONDCHECK_BG(!is_small_shapes, VERBOSE_SMALL_SHAPES);
+    }
     if (bgmmc.use_buffer_b) {
         // If B is copied to a temporary buffer then the layout of B is
         //      [n = n_blk / LDB][k = k_blk / wei_k_blk][k = wei_k_blk / vnni][n = LDB][k = vnni]

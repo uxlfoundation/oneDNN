@@ -112,7 +112,8 @@ void jit_brgemm_kernel_t::generate() {
     lw(reg_beta, reg_param, 48); // beta bits
     ld(reg_bias, reg_param, 56); // bias pointer
 
-    vsetvli(x0, reg_tmp1, SEW::e32, LMUL::m4);
+    // Active lanes are overwritten and inactive lanes are never consumed.
+    vsetvli(x0, reg_tmp1, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
 
     li(reg_lda, LDA_bytes);
     li(reg_ldb, LDB_bytes);

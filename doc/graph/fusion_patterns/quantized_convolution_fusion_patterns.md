@@ -73,7 +73,7 @@ platforms follow the general description in the [Data Types Guide](@ref dev_guid
 ## Implementation Limitations
 
 1. F2Q Conversion Subgraph used for `dst` tensor only supports
-   bf16 to f32 data type conversion.
+   `bf16` to `f32` data type conversion.
 
 ## Implementation Notes
 

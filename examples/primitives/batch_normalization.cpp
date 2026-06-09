@@ -88,9 +88,9 @@ void batch_normalization_example(dnnl::engine::kind engine_kind) {
 
     // Create src and scale/shift memory descriptors and memory objects.
     auto src_md = memory::desc(
-            src_dims, memory::data_type::f32, memory::format_tag::nchw);
+            src_dims, memory::data_type::f32, memory::format_tag::nhwc);
     auto dst_md = memory::desc(
-            src_dims, memory::data_type::f32, memory::format_tag::nchw);
+            src_dims, memory::data_type::f32, memory::format_tag::nhwc);
     auto scaleshift_md = memory::desc(
             scaleshift_dims, memory::data_type::f32, memory::format_tag::x);
 

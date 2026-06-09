@@ -21,6 +21,7 @@
 #include <string>
 
 #include "gemmstone/config.hpp"
+#include "gemmstone/type.hpp"
 
 GEMMSTONE_NAMESPACE_START
 
@@ -74,8 +75,7 @@ enum DriverInfoFlags : uint64_t {
     FlagExtraWG = 0x400000,            // Add an additional workgroup.
     FlagAGroupSums = 0x1000000,        // Kernel needs A group sums.
     FlagBGroupSums = 0x2000000,        // Kernel needs B group sums.
-    FlagMaskCInterleave = 0x3F0000000, // C interleave chunk size
-    FlagShiftCInterleave = 28,         //   (starting bit)
+    FlagCInterleave = 0x8000000,       // C interleave: interleave columns of C among threads (chunk = 64/Tc_ext).
 };
 
 // Driver information, shared by all kernel types.
@@ -137,10 +137,13 @@ struct CommonDriverInfo {
         return (sixteenths > 0) ? (sixteenths / 16.0f) : 1.0f;
     }
 
-    int cInterleaveChunk() const {
-        // Only the lowest 7 bits are set after the shift, so this cast is safe.
-        int chunk = static_cast<int>((flags & FlagMaskCInterleave) >> FlagShiftCInterleave);
-        return chunk ? chunk : 1;
+    bool cInterleaveEnabled() const {
+        return flags & FlagCInterleave;
+    }
+
+    // Returns the C interleave chunk size (columns of C per thread).
+    int cInterleaveChunk(Type Tc_ext) const {
+        return cInterleaveEnabled() ? 64 / Tc_ext : 1;
     }
 
 };

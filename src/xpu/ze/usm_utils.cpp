@@ -32,8 +32,9 @@ status_t fill(impl::stream_t *stream, void *ptr, uint8_t pattern, size_t size) {
     auto *ze_stream_impl
             = utils::downcast<xpu::ze::stream_impl_t *>(stream->impl());
 
-    CHECK(ze::zeCommandListAppendMemoryFill(ze_stream_impl->list(), ptr,
-            &pattern, sizeof(pattern), size, nullptr, 0, nullptr));
+    CHECK(append_memory_fill(ze_stream_impl->list(),
+            ze_stream_impl->list_mutex(), ptr, &pattern, sizeof(pattern), size,
+            nullptr, 0, nullptr));
 
     return status::success;
 }
@@ -44,8 +45,8 @@ status_t copy(impl::stream_t *stream, void *dst, const void *src, size_t size) {
     auto *ze_stream_impl
             = utils::downcast<xpu::ze::stream_impl_t *>(stream->impl());
 
-    CHECK(ze::zeCommandListAppendMemoryCopy(
-            ze_stream_impl->list(), dst, src, size, nullptr, 0, nullptr));
+    CHECK(append_memory_copy(ze_stream_impl->list(),
+            ze_stream_impl->list_mutex(), dst, src, size, nullptr, 0, nullptr));
 
     return status::success;
 }

@@ -20,11 +20,8 @@
 
 #include "common/c_types_map.hpp"
 #include "common/nstl.hpp"
-#include "common/type_helpers.hpp"
-#include "common/utils.hpp"
 
 #include "cpu/aarch64/brgemm/brgemm_types.hpp"
-#include "cpu/aarch64/cpu_barrier.hpp"
 #include "cpu/aarch64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/aarch64/jit_generator.hpp"
 
@@ -170,15 +167,13 @@ private:
         if ((ld_idx < idx) && (idx <= dsc_idx)) {
             is_push = false;
         } else {
-            str(z_tmp, ptr(X_TRANSLATOR_STACK, -1, Xbyak_aarch64::MUL_VL));
+            str(z_tmp, ptr(X_SP, -1, Xbyak_aarch64::MUL_VL));
             is_push = true;
         }
         return z_tmp;
     }
     void pop_z_tmp(Xbyak_aarch64::ZReg z_tmp) {
-        if (is_push) {
-            ldr(z_tmp, ptr(X_TRANSLATOR_STACK, -1, Xbyak_aarch64::MUL_VL));
-        }
+        if (is_push) { ldr(z_tmp, ptr(X_SP, -1, Xbyak_aarch64::MUL_VL)); }
     }
 
     void init_masks();

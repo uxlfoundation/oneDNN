@@ -89,7 +89,7 @@ void simple_net_int8(engine::kind engine_kind) {
     /// @snippet cnn_inference_int8.cpp Allocate buffers
     //[Allocate buffers]
     auto user_src_memory = memory(
-            {{conv_src_tz}, memory::data_type::f32, memory::format_tag::nchw},
+            {{conv_src_tz}, memory::data_type::f32, memory::format_tag::nhwc},
             eng);
     write_to_dnnl_memory(user_src.data(), user_src_memory);
     auto user_weights_memory
@@ -264,7 +264,7 @@ void simple_net_int8(engine::kind engine_kind) {
     /// @snippet cnn_inference_int8.cpp Dequantize the result
     ///[Dequantize the result]
     auto user_dst_memory = memory(
-            {{conv_dst_tz}, memory::data_type::f32, memory::format_tag::nchw},
+            {{conv_dst_tz}, memory::data_type::f32, memory::format_tag::nhwc},
             eng);
     write_to_dnnl_memory(user_dst.data(), user_dst_memory);
     primitive_attr dst_attr;

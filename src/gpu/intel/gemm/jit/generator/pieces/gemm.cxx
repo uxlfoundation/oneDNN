@@ -287,11 +287,11 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
 
     ngen::Subregister ldbStrided, ldcStrided;
     ngen::Subregister fullN;
-    if (strategy.cInterleaveChunk > 1) {
+    if (strategy.cInterleave) {
         ldbStrided = state.ra.alloc_sub<uint32_t>();
         ldcStrided = state.ra.alloc_sub<uint32_t>();
-        mulConstant(1, ldbStrided, state.inputs.ldb, strategy.cInterleaveChunk);
-        mulConstant(1, ldcStrided, state.inputs.ldc[0], strategy.cInterleaveChunk);
+        mulConstant(1, ldbStrided, state.inputs.ldb, strategy.cInterleaveChunk(problem.Tc_ext));
+        mulConstant(1, ldcStrided, state.inputs.ldc[0], strategy.cInterleaveChunk(problem.Tc_ext));
 
         fullN = state.inputs.n;
         if (strategy.persistentLoop()) {
@@ -360,11 +360,11 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
     if (strategy.kParallel)
         idK = state.ra.alloc_sub<uint32_t>(getHint(HintType::TempComp0, strategy));
 
-    if (strategy.cInterleaveChunk > 1) {
-        divDown(idN, state.inputs.groupIDN, strategy.cInterleaveChunk, strategy, state);
+    if (strategy.cInterleave) {
+        divDown(idN, state.inputs.groupIDN, strategy.cInterleaveChunk(problem.Tc_ext), strategy, state);
     }
 
-    auto &srcIDN = (strategy.cInterleaveChunk > 1) ? idN : state.inputs.groupIDN;
+    auto &srcIDN = strategy.cInterleave ? idN : state.inputs.groupIDN;
     if (strategy.fixedWG(problem)) {
         mulConstant(1, idM, state.inputs.groupIDM, strategy.wg[LoopM]);
         mulConstant(1, idN, srcIDN, strategy.wg[LoopN]);
@@ -391,9 +391,9 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
     }
 
     Subregister wgChunkRem;
-    if (strategy.cInterleaveChunk > 1) {
+    if (strategy.cInterleave) {
         wgChunkRem = state.ra.alloc_sub<uint32_t>();
-        mod(wgChunkRem, state.inputs.groupIDN, strategy.cInterleaveChunk, strategy, state);
+        mod(wgChunkRem, state.inputs.groupIDN, strategy.cInterleaveChunk(problem.Tc_ext), strategy, state);
     }
 
     if (wgCheck || gemmtBarriers) {
@@ -401,9 +401,9 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
         state.wgJ0 = state.ra.alloc_sub<uint32_t>(getHint(HintType::TempComp1, strategy));
 
         mulConstant(1, state.wgI0, idM, strategy.unroll[LoopM]);
-        mulConstant(1, state.wgJ0, idN, strategy.unroll[LoopN] * strategy.cInterleaveChunk);
+        mulConstant(1, state.wgJ0, idN, strategy.unroll[LoopN] * strategy.cInterleaveChunk(problem.Tc_ext));
 
-        if (strategy.cInterleaveChunk > 1) {
+        if (strategy.cInterleave) {
             add(1, state.wgJ0, state.wgJ0, wgChunkRem);
         }
     }
@@ -414,9 +414,9 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
         add(1 | gt | state.flagAP, idK, idK, state.lidK);
 
     mulConstant(1, state.i0, idM, strategy.unroll[LoopM]);
-    mulConstant(1, state.j0, idN, strategy.unroll[LoopN] * strategy.cInterleaveChunk);
+    mulConstant(1, state.j0, idN, strategy.unroll[LoopN] * strategy.cInterleaveChunk(problem.Tc_ext));
 
-    if (strategy.cInterleaveChunk > 1) {
+    if (strategy.cInterleave) {
         add(1, state.j0, state.j0, wgChunkRem);
         state.ra.safeRelease(wgChunkRem);
     }
@@ -503,8 +503,8 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
     if (!strategy.needsMNLocalIDs())
         state.lidM = state.lidN = invalid;
 
-    if (strategy.cInterleaveChunk > 1) {
-        // Idea: The B and C matrices are reinterpreted as being made of X strided submatrices (X = strategy.cInterleaveChunk), with the columns interleaved.
+    if (strategy.cInterleave) {
+        // Idea: The B and C matrices are reinterpreted as being made of X strided submatrices (X = cInterleaveChunk), with the columns interleaved.
         //    Due to interleaving, the leading dimension of each of these matrices is X * ldc. When each submatrix
         //    has an ld that's cache-line-aligned, we can shift these matrices along the rows to a cache line boundary
         //    and write to C without cache line contention. Implementation is as follows:
@@ -518,15 +518,15 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
 
         auto shiftJ0 = state.wgJ0.isValid() ? state.wgJ0 : state.j0;
         add(1, state.inputs.n, -shiftJ0, fullN);
-        divUp(state.inputs.n, state.inputs.n, strategy.cInterleaveChunk, strategy, state);
+        divUp(state.inputs.n, state.inputs.n, strategy.cInterleaveChunk(problem.Tc_ext), strategy, state);
 
         emad(1, state.offsetB, state.offsetB, shiftJ0, state.inputs.ldb, strategy, state);
         emad(1, state.offsetC[0], state.offsetC[0], shiftJ0, state.inputs.ldc[0], strategy, state);
         if (state.wgJ0.isValid()) {
             add(1, state.j0, state.j0, -shiftJ0);
-            divUp(state.j0, state.j0, strategy.cInterleaveChunk, strategy, state);
+            divUp(state.j0, state.j0, strategy.cInterleaveChunk(problem.Tc_ext), strategy, state);
         }
-        if (problem.hasBinaryPostOp() && strategy.cInterleaveChunk > 1) {
+        if (problem.hasBinaryPostOp() && strategy.cInterleave) {
             state.ctiShiftJ0 = state.ra.alloc_sub<int32_t>();
             mov(1, state.ctiShiftJ0, shiftJ0);
         }
@@ -673,7 +673,7 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
         state.ra.safeRelease(state.groupCountMN);
     }
 
-    if (strategy.cInterleaveChunk > 1) {
+    if (strategy.cInterleave) {
         state.ra.safeRelease(ldcStrided);
     }
 
@@ -709,7 +709,7 @@ void Generator<hw>::gemmSubkernel(GEMMProblem &problem, GEMMStrategy &strategy, 
     if (remM || !earlyExit) {
         state.remaindersFused[LoopM] = state.remainders[LoopM] = state.ra.alloc_sub<uint32_t>(getHint(HintType::LongTerm, strategy));
         InstructionModifier mod = 1 | sat;
-        if (!fusedremM && earlyExit && strategy.cInterleaveChunk == 1)
+        if (!fusedremM && earlyExit && !strategy.cInterleave)
             mod = mod | le | f0[1];
         add(mod, state.remainders[LoopM], -state.i0, state.inputs.m);
     }
@@ -729,7 +729,7 @@ void Generator<hw>::gemmSubkernel(GEMMProblem &problem, GEMMStrategy &strategy, 
         }
     }
     if (remM) {
-        if (strategy.cInterleaveChunk > 1) {
+        if (strategy.cInterleave) {
             // if state.unclampedI0 < 0: Use unrollM + state.unclampedI0 for upper bound
             FlagRegister flag = state.ra.alloc_flag();
             Subregister upper = state.ra.alloc_sub<uint32_t>();

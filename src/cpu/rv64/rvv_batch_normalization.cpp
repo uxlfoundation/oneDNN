@@ -17,12 +17,12 @@
 #include <assert.h>
 #include <math.h>
 #include <vector>
-#include <riscv_vector.h>
 
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/type_helpers.hpp"
 
+#include "cpu/rv64/jit_rvv_batch_normalization_kernel.hpp"
 #include "cpu/rv64/rvv_batch_normalization.hpp"
 
 namespace dnnl {
@@ -32,43 +32,12 @@ namespace rv64 {
 
 namespace {
 
-// If per_elem_params is false, uses broadcast scalars mean/sm/sv (mean[0], sm[0], sv[0]).
-// If true, loads per-element mean/sm/sv from the provided arrays.
 static inline void bn_fwd_kernel_f32(const void *s_base, void *d_base,
         size_t len, const float *mean, const float *sm, const float *sv,
-        bool per_elem_params, const rv64::rvv_postops_t &po) {
-    const size_t data_size = types::data_type_size(data_type::f32);
-    for (size_t i = 0; i < len;) {
-        size_t vl = __riscv_vsetvl_e32m1(len - i);
-
-        const float *s_ptr = reinterpret_cast<const float *>(
-                reinterpret_cast<const char *>(s_base) + i * data_size);
-        float *d_ptr = reinterpret_cast<float *>(
-                reinterpret_cast<char *>(d_base) + i * data_size);
-
-        vfloat32m1_t vx = __riscv_vle32_v_f32m1(s_ptr, vl);
-
-        vfloat32m1_t vmean_v;
-        vfloat32m1_t vsm_v;
-        vfloat32m1_t vsv_v;
-        if (per_elem_params) {
-            vmean_v = __riscv_vle32_v_f32m1(mean + i, vl);
-            vsm_v = __riscv_vle32_v_f32m1(sm + i, vl);
-            vsv_v = __riscv_vle32_v_f32m1(sv + i, vl);
-        } else {
-            vmean_v = __riscv_vfmv_v_f_f32m1(mean[0], vl);
-            vsm_v = __riscv_vfmv_v_f_f32m1(sm[0], vl);
-            vsv_v = __riscv_vfmv_v_f_f32m1(sv[0], vl);
-        }
-
-        vfloat32m1_t vtmp = __riscv_vfsub_vv_f32m1(vx, vmean_v, vl);
-        vfloat32m1_t vout = __riscv_vfmul_vv_f32m1(vtmp, vsm_v, vl);
-        vout = __riscv_vfadd_vv_f32m1(vout, vsv_v, vl);
-        vout = po.apply(vout, vl);
-
-        __riscv_vse32_v_f32m1(d_ptr, vout, vl);
-        i += vl;
-    }
+        bool per_elem_params, bool with_relu) {
+    jit_rvv_batch_normalization_apply_f32(static_cast<const float *>(s_base),
+            static_cast<float *>(d_base), static_cast<dim_t>(len), mean, sm, sv,
+            per_elem_params, with_relu);
 }
 
 } // namespace
@@ -98,9 +67,8 @@ status_t rvv_batch_normalization_fwd_t::execute_forward(
             ? CTX_IN_MEM(const float *, DNNL_ARG_SHIFT)
             : nullptr;
 
-    rv64::rvv_postops_t po = pd()->fused_relu_in_kernel()
-            ? rv64::rvv_postops_t(alg_kind::eltwise_relu)
-            : rv64::rvv_postops_t(pd()->attr()->post_ops_);
+    const bool with_relu = pd()->fused_relu_in_kernel()
+            || pd()->attr()->post_ops_.find(primitive_kind::eltwise) != -1;
 
     auto off = [&](dim_t n, dim_t c, dim_t d, dim_t h, dim_t w) -> size_t {
         switch (ndims) {
@@ -138,7 +106,8 @@ status_t rvv_batch_normalization_fwd_t::execute_forward(
                     const float sm_b[1] = {sm};
                     const float sv_b[1] = {sv};
                     bn_fwd_kernel_f32(s_ptr, d_ptr, static_cast<size_t>(W),
-                            mean_b, sm_b, sv_b, /*per_elem_params=*/false, po);
+                            mean_b, sm_b, sv_b, /*per_elem_params=*/false,
+                            with_relu);
                     break;
                 }
                 default:
@@ -176,7 +145,7 @@ status_t rvv_batch_normalization_fwd_t::execute_forward(
 
                     bn_fwd_kernel_f32(s_ptr, d_ptr, static_cast<size_t>(C),
                             mean, sm_arr, sv_arr,
-                            /*per_elem_params=*/true, po);
+                            /*per_elem_params=*/true, with_relu);
                     break;
                 }
                 default:

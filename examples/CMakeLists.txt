@@ -24,13 +24,7 @@ append(CMAKE_CXX_FLAGS "${CMAKE_EXAMPLE_CCXX_FLAGS}")
 
 # Link the examples to the OpenCL runtime
 if(DNNL_GPU_RUNTIME STREQUAL "OCL")
-    find_package(OpenCL REQUIRED)
-    if(OpenCL_FOUND)
-        add_definitions(-DCL_TARGET_OPENCL_VERSION=120)
-        list(APPEND EXTRA_SHARED_LIBS OpenCL::OpenCL)
-    else()
-        message(FATAL_ERROR "OpenCL SDK is not found; you can use OPENCLROOT CMake option to specify the path or disable building tests with ONEDNN_BUILD_EXAMPLES=OFF")
-    endif()
+    list(APPEND EXTRA_SHARED_LIBS OpenCL::OpenCL)
 endif()
 
 if(DNNL_WITH_SYCL)

@@ -350,6 +350,7 @@ void parseStrategy(const std::string &str, HW hw, const GEMMProblem &problem, GE
         {"rn", [](ParserContext& ctx) { ctx.strategy.reverse[LoopN] = true; }},
         {"ym", [](ParserContext& ctx) { ctx.strategy.scramble[LoopM] = true; }},
         {"yn", [](ParserContext& ctx) { ctx.strategy.scramble[LoopN] = true; }},
+        {"cti", [](ParserContext& ctx) { ctx.strategy.cInterleave = true; }},
         
         /* K-Parallelism Settings */
         {"kr", [](ParserContext& ctx) { ctx.strategy.kParallelLocal = true; }},
@@ -507,9 +508,6 @@ void parseStrategy(const std::string &str, HW hw, const GEMMProblem &problem, GE
         } else if (mod.substr(0, 3) == "dot") {
             mod.erase(0,3);
             strategy.dotVL = mod.empty() ? 1 : std::stoi(mod);
-        } else if (mod.substr(0, 3) == "cti") {
-            mod.erase(0,3);
-            strategy.cInterleaveChunk = mod.empty() ? 64 / problem.Tc_ext : std::stoi(mod);
         } else if (mod.length() >= 2) {
             if (mod.substr(0, 2) == "ms")
                 strategy.mSplitThresh = stoi(mod.substr(2));
@@ -959,9 +957,7 @@ std::string unparseStrategy(HW hw, const GEMMProblem &problem, const GEMMStrateg
     if (!strategy.jointSplit)           s << " njs";
     if (strategy.mSplitThresh)          s << " ms" << strategy.mSplitThresh;
     if (strategy.nSplitThresh)          s << " ns" << strategy.nSplitThresh;
-
-    if (strategy.cInterleaveChunk > 1)  s << " cti" << strategy.cInterleaveChunk;
-
+    if (strategy.cInterleave)           s << " cti";
     if (strategy.kParallel)             s << " kb";
     if (strategy.kParallelVariable)     s << " kv";
     if (strategy.fuseBeta)              s << (strategy.altFusedBeta ? " afb" : " fb");

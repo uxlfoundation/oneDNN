@@ -61,9 +61,9 @@ argument index as specified by the following table.
    - Quantized weights for convolution with #dnnl_s8 source data type cannot
      be dequantized back to the #dnnl_f32 data type;
 
-   - Only reference support is available for reorders to or from f8_e4m3.
+   - Only reference support is available for reorders to or from `f8_e4m3`.
 
-   - Optimized implementation of reorders to or from f8_e5m2 is available on
+   - Optimized implementation of reorders to or from `f8_e5m2` is available on
      Intel(R) Data Center GPU Max Series Only.
 
 3. To alleviate the problem a user may rely on fact that the reorder from
@@ -156,7 +156,7 @@ information on sparse encding.
    support.
 
 2. **CPU**
-   - Reorders between bf16, f16 and s32 data types are not supported.
+   - Reorders between `bf16`, `f16` and `s32` data types are not supported.
 
 3. **GPU**
    - Only tensors of 6 or fewer dimensions are supported.

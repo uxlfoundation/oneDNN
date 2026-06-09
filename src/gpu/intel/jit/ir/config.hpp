@@ -321,8 +321,8 @@ public:
     static int get_max_threadgroups_per_wave(
             const dsl::kernel::options_t &options, dim_t tg_elems) {
         auto arch = convert_ngen_arch_to_dnnl(options.hw());
-        int threads_per_eu = compute::device_info_t::threads_per_eu(
-                arch, options.regs() > 128);
+        int threads_per_eu
+                = compute::device_info_t::threads_per_eu(arch, options.regs());
         int eus_per_subslice = compute::device_info_t::max_eus_per_wg(arch);
         int subslice_count = options.hw().eu_count() / eus_per_subslice;
 

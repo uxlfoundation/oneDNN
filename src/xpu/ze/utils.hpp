@@ -29,6 +29,8 @@
 
 #include "xpu/utils.hpp"
 
+#include <mutex>
+
 namespace dnnl {
 namespace impl {
 namespace xpu {
@@ -242,6 +244,14 @@ xpu::device_uuid_t get_device_uuid(ze_device_handle_t device);
 status_t get_device_index(size_t *index, ze_device_handle_t device);
 std::string get_kernel_name(ze_kernel_handle_t kernel);
 ze_memory_type_t get_pointer_type(ze_context_handle_t, const void *ptr);
+status_t append_memory_copy(ze_command_list_handle_t list,
+        std::mutex &list_mutex, void *dst, const void *src, size_t size,
+        ze_event_handle_t out_event, uint32_t num_deps_events,
+        ze_event_handle_t *deps_events);
+status_t append_memory_fill(ze_command_list_handle_t list,
+        std::mutex &list_mutex, void *dst, const void *pattern,
+        size_t pattern_size, size_t size, ze_event_handle_t out_event,
+        uint32_t num_deps_events, ze_event_handle_t *deps_events);
 
 } // namespace ze
 } // namespace xpu

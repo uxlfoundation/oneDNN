@@ -1094,10 +1094,9 @@ std::ostream &operator<<(
         const std::vector<int> args
                 = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST};
 
-#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
         bool has_grouped = false;
         for (const int arg : args) {
-            if (sparse_options.get_encoding(arg) == dnnl_grouped) {
+            if (sparse_options.is_grouped(arg)) {
                 has_grouped = true;
                 // Output format: --grouped=0:8:32+64+...
                 int var_idx = sparse_options.get_variable_dim_idx(arg);
@@ -1114,9 +1113,7 @@ std::ostream &operator<<(
                 break;
             }
         }
-        if (!has_grouped)
-#endif
-        {
+        if (!has_grouped) {
             // Rest of sparse options use different format: --encoding=...
             s << "--encoding=";
             for (int i = 0; i < (int)args.size(); i++) {
@@ -1152,9 +1149,10 @@ std::ostream &dump_global_params(std::ostream &s) {
     // updated default values take effect before parsing a state of a problem.
     if (canonical || bench_mode != default_bench_mode)
         s << "--mode=" << bench_mode << " ";
-    // Don't dump modifiers if F mode is used to keep the repro simple.
+    // Don't dump modifiers if F or S mode is used to keep the repro simple.
     if (canonical
             || (bench_mode != bench_mode_t::perf_fast
+                    && bench_mode != bench_mode_t::perf_sim
                     && bench_mode_modifier != default_bench_mode_modifier))
         s << "--mode-modifier=" << bench_mode_modifier << " ";
     // Don't dump max_ms_per_prb if F mode is used to keep the repro simple.
@@ -1162,7 +1160,10 @@ std::ostream &dump_global_params(std::ostream &s) {
             || (bench_mode != bench_mode_t::perf_fast
                     && max_ms_per_prb != default_max_ms_per_prb))
         s << "--max-ms-per-prb=" << max_ms_per_prb << " ";
-    if (canonical || fix_times_per_prb != default_fix_times_per_prb)
+    // Don't dump fix_times_per_prb if S mode is used to keep the repro simple.
+    if (canonical
+            || (bench_mode != bench_mode_t::perf_sim
+                    && fix_times_per_prb != default_fix_times_per_prb))
         s << "--fix-times-per-prb=" << fix_times_per_prb << " ";
 
     s << "--" << driver_name << " ";
@@ -1336,7 +1337,6 @@ int attr_args_t::prepare_post_ops_mds(const attr_t &attr, int ndims,
     for (int d = 0; d < ndims; ++d)
         dims[d] = prb_dims[d];
 
-#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
     int grouped_var_dim_idx = -1;
     dnnl_dim_t grouped_count = 0;
     if (sparse_options) {
@@ -1344,7 +1344,6 @@ int attr_args_t::prepare_post_ops_mds(const attr_t &attr, int ndims,
                 = sparse_options->get_variable_dim_idx(DNNL_ARG_SRC);
         grouped_count = sparse_options->get_group_count();
     }
-#endif
 
     // iterate over all post ops and prepare md for each binary
     for (int idx = 0; idx < po.len(); ++idx) {
@@ -1362,13 +1361,11 @@ int attr_args_t::prepare_post_ops_mds(const attr_t &attr, int ndims,
             auto rhs_tensor_desc = dnn_mem_t::init_md(ndims, rhs_tensor_dims,
                     po_rhs_tensor_entry.dt, po_rhs_tensor_entry.tag,
                     po_rhs_tensor_entry.strides);
-#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
             if (e.binary.grouped) {
                 rhs_tensor_desc = dnn_mem_t::init_grouped_md(ndims,
                         rhs_tensor_dims, po_rhs_tensor_entry.dt,
                         grouped_var_dim_idx, grouped_count);
             }
-#endif
             mds.emplace((DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx)
                                 | po_rhs_tensor_entry.arg_attr_mask),
                     std::move(rhs_tensor_desc));

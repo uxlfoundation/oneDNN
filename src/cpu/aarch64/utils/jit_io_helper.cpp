@@ -80,7 +80,7 @@ jit_io_helper_t<Vmm>::jit_io_helper_t(jit_generator_t *host,
     static constexpr bool is_zmm
             = std::is_same<Vmm, Xbyak_aarch64::ZReg>::value;
     MAYBE_UNUSED(is_zmm);
-    assert(IMPLICATION(!is_superset(isa_, sve_128), !is_zmm)
+    assert(IMPLICATION(!is_superset(isa_, sve), !is_zmm)
             && "This architecture does not support z registers.");
 }
 
@@ -136,7 +136,7 @@ template <typename Vmm>
 void jit_io_helper_t<Vmm>::init_full_mask() {
     assert(gather_conf_.has_value() && "Config for loading with the use of gather instruction is not set.");
 
-    if (isa_ == sve_256) {
+    if (simd_bytes(isa_) == 32) {
         const Vmm vmm_mask = Vmm(gather_conf_->full_vmm_mask_idx_);
         host_->eor(Xbyak_aarch64::ZReg(vmm_mask.getIdx()).d,
                 Xbyak_aarch64::ZReg(vmm_mask.getIdx()).d,
@@ -438,7 +438,7 @@ static void load_bytes(jit_generator *host, const Xbyak_aarch64::VReg &vmm,
     if (load_size > 16) {
         host->str(host->z31,
                 Xbyak_aarch64::ptr(
-                        host->X_TRANSLATOR_STACK, -1, Xbyak_aarch64::MUL_VL));
+                        host->X_SP, -1, Xbyak_aarch64::MUL_VL));
         const Xbyak_aarch64::ZReg z_vmm(vmm.getIdx());
         const Xbyak_aarch64::ZReg z_tmp(host->z31.getIdx());
         host->ptrue(host->P_TMP.d, Xbyak_aarch64::VL2);
@@ -453,7 +453,7 @@ static void load_bytes(jit_generator *host, const Xbyak_aarch64::VReg &vmm,
         host->mov(z_vmm.s, host->P_NOT_256 / Xbyak_aarch64::T_m, 0);
         host->ldr(host->z31,
                 Xbyak_aarch64::ptr(
-                        host->X_TRANSLATOR_STACK, -1, Xbyak_aarch64::MUL_VL));
+                        host->X_SP, -1, Xbyak_aarch64::MUL_VL));
     }
 }
 
@@ -487,7 +487,7 @@ static void load_bytes_to_dword_extension(jit_generator *host,
     }
     host->str(host->z31,
             Xbyak_aarch64::ptr(
-                    host->X_TRANSLATOR_STACK, -1, Xbyak_aarch64::MUL_VL));
+                    host->X_SP, -1, Xbyak_aarch64::MUL_VL));
     // For load_size == 8/4, do load/extension in one go
     const Xbyak_aarch64::ZReg z_tmp(host->z31.getIdx());
     if (load_size == 8) {
@@ -528,7 +528,7 @@ static void load_bytes_to_dword_extension(jit_generator *host,
     }
     host->ldr(host->z31,
             Xbyak_aarch64::ptr(
-                    host->X_TRANSLATOR_STACK, -1, Xbyak_aarch64::MUL_VL));
+                    host->X_SP, -1, Xbyak_aarch64::MUL_VL));
 }
 template <typename Vmm>
 void load_data(jit_generator *host, data_type_t type_in, const Vmm &vmm,
@@ -565,6 +565,9 @@ void jit_io_helper_t<Xbyak_aarch64::VReg>::load_f32(
         const Xbyak_aarch64::XReg &src_addr, const int offt,
         const Xbyak_aarch64::VReg &dst_vmm, const bool tail,
         const Xbyak_aarch64::PReg &mask) {
+
+    // Inactive elements should be zeroed to match SVE behaviour
+    host_->uni_clear(dst_vmm);
 
     if (tail && tail_conf_->tail_size_ > 0) {
         // tail_size_ = nelems % simd_w_, so it cannot be greater than (simd_w_ - 1), which is 4 for VReg.
@@ -867,16 +870,14 @@ void jit_io_helper_t<Vmm>::store_i8_sdb(Xbyak_aarch64::XReg addr,
         const Vmm &src_vmm, const bool tail, const Xbyak_aarch64::PReg &mask) {
     UNUSED(tail);
     host_->str(host_->z31,
-            Xbyak_aarch64::ptr(
-                    host_->X_TRANSLATOR_STACK, -1, Xbyak_aarch64::MUL_VL));
+            Xbyak_aarch64::ptr(host_->X_SP, -1, Xbyak_aarch64::MUL_VL));
     const Xbyak_aarch64::ZReg z_tmp(host_->z31.getIdx());
     host_->mov(z_tmp.d, Xbyak_aarch64::ZRegD(src_vmm.getIdx()));
     host_->smin(z_tmp.s, 127);
     host_->smax(z_tmp.s, -128);
     host_->st1b(z_tmp.s, mask, Xbyak_aarch64::ptr(addr));
     host_->ldr(host_->z31,
-            Xbyak_aarch64::ptr(
-                    host_->X_TRANSLATOR_STACK, -1, Xbyak_aarch64::MUL_VL));
+            Xbyak_aarch64::ptr(host_->X_SP, -1, Xbyak_aarch64::MUL_VL));
 }
 
 template <>
@@ -931,15 +932,13 @@ void jit_io_helper_t<Vmm>::store_i8_udb(Xbyak_aarch64::XReg addr,
         const Vmm &src_vmm, const bool tail, const Xbyak_aarch64::PReg &mask) {
     UNUSED(tail);
     host_->str(host_->z31,
-            Xbyak_aarch64::ptr(
-                    host_->X_TRANSLATOR_STACK, -1, Xbyak_aarch64::MUL_VL));
+            Xbyak_aarch64::ptr(host_->X_SP, -1, Xbyak_aarch64::MUL_VL));
     const Xbyak_aarch64::ZReg z_tmp(host_->z31.getIdx());
     host_->mov(z_tmp.d, Xbyak_aarch64::ZRegD(src_vmm.getIdx()));
     host_->umin(z_tmp.s, 255);
     host_->st1b(z_tmp.s, mask, Xbyak_aarch64::ptr(addr));
     host_->ldr(host_->z31,
-            Xbyak_aarch64::ptr(
-                    host_->X_TRANSLATOR_STACK, -1, Xbyak_aarch64::MUL_VL));
+            Xbyak_aarch64::ptr(host_->X_SP, -1, Xbyak_aarch64::MUL_VL));
 }
 
 template <typename Vmm>

@@ -73,7 +73,7 @@ The detailed explanation is provided in the corresponding sections.
 - [Scratchpad](@ref dev_guide_attributes_scratchpad) behavior: handling the
   intermediate temporary memory by the library or a user.
 - [Floating-point math mode](@ref dev_guide_attributes_fpmath_mode) to
-  allow implicit down-conversions of f32 values during computation.
+  allow implicit down-conversions of `f32` values during computation.
 - [Accumulation mode](@ref dev_guide_attributes_accumulation_mode) to
   allow the usage of lower precision datatypes for accumulation.
 - [Rounding mode](@ref dev_guide_attributes_rounding_mode) to control
@@ -82,7 +82,7 @@ The detailed explanation is provided in the corresponding sections.
   run-to-run deterministic primitive execution.
 - [Dropout](@ref dev_guide_attributes_dropout) to apply pseudo-random dropout
   to the output buffer.
-- [Quantization](@ref dev_guide_attributes_quantization) settings used in INT8
+- [Quantization](@ref dev_guide_attributes_quantization) settings used in int8
   inference.
 - [Post-ops](@ref dev_guide_attributes_post_ops) to fuse a primitive with
   some operation applied to the primitive's result. Used mostly for inference.

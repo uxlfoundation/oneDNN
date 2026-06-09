@@ -19,19 +19,15 @@
 #include <float.h>
 
 #include "common/c_types_map.hpp"
-#include "common/dnnl_thread.hpp"
-#include "common/memory.hpp"
 #include "common/memory_tracking.hpp"
 #include "common/nstl.hpp"
-#include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 
-#include "cpu/aarch64/cpu_barrier.hpp"
 #include "cpu/platform.hpp"
 
 #include "cpu/aarch64/injectors/injector_utils.hpp"
 #include "cpu/aarch64/injectors/jit_uni_binary_injector.hpp"
-#include "cpu/aarch64/injectors/jit_uni_eltwise_injector.hpp"
+#include "cpu/aarch64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/aarch64/jit_sve_1x1_conv_kernel.hpp"
 #include "cpu/aarch64/jit_uni_1x1_conv_utils.hpp"
 
@@ -502,14 +498,14 @@ void jit_sve_1x1_conv_kernel_t<isa>::generate() {
     if (load_dim_tail) {
         const WReg w_tmp(reg_load_dim_tail_mask.getIdx());
         mov_imm(w_tmp, (1 << load_dim_tail) - 1);
-        st1w(zreg_tmp1.s, P_ALL_ONE / T_z, ptr(X_TRANSLATOR_STACK, -1, MUL_VL));
+        st1w(zreg_tmp1.s, P_ALL_ONE / T_z, ptr(X_SP, -1, MUL_VL));
         index(zreg_tmp.s, 0, 1);
         mov(zreg_tmp1.s, 1);
         lsl(zreg_tmp1.s, P_ALL_ONE / T_m, zreg_tmp.s);
         dup(zreg_tmp.s, w_tmp);
         and_(zreg_tmp.d, zreg_tmp.d, zreg_tmp1.d);
         cmpne(k_load_dim_tail_mask.s, P_ALL_ONE, zreg_tmp.s, 0);
-        ldr(zreg_tmp1, ptr(X_TRANSLATOR_STACK, -1, MUL_VL));
+        ldr(zreg_tmp1, ptr(X_SP, -1, MUL_VL));
     }
 
     auto load_loop_body = [=](int load_loop_blk) {

@@ -326,7 +326,7 @@ const kcatalog::Entry *upper_bound(const kcatalog::Catalog &catalog, const kcata
 }
 
 
-MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isIntegrated, const GEMMProblem &problem_)
+MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, const ngen::Product &product, const GEMMProblem &problem_)
 {
     using namespace kcatalog;
 
@@ -419,7 +419,10 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
     if (systolicAvailable)
         *tagPtr++ = ReqSystolic;
 
-    if (isIntegrated) *tagPtr++ = ReqIntegrated;
+    if (product.type == ngen::PlatformType::Integrated)
+        *tagPtr++ = ReqIntegrated;
+    if (product.type == ngen::PlatformType::Discrete)
+        *tagPtr++ = ReqDiscrete;
 
     if (problem.batch != BatchMode::None) {
         *tagPtr++ = ReqBatch;

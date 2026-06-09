@@ -24,28 +24,6 @@ namespace cpu {
 namespace aarch64 {
 namespace injector {
 
-bool is_supported(const post_ops_ok_args_t &post_ops_ok_args) {
-    const cpu_isa_t isa = post_ops_ok_args.isa;
-    const post_ops_t &post_ops = post_ops_ok_args.post_ops;
-    const memory_desc_wrapper *dst_d = post_ops_ok_args.dst_d;
-    const auto &enabled_bcast_strategy
-            = post_ops_ok_args.enabled_bcast_strategy;
-
-    for (const auto &post_op : post_ops.entry_) {
-        if (post_op.is_eltwise()) {
-            const auto res = eltwise_injector::is_supported(
-                    to_vla_sve(isa), post_op.eltwise.alg);
-            if (!res) return false;
-        } else if (post_op.is_binary()) {
-            const auto &src1_desc = post_op.binary.src1_desc;
-            const auto res = binary_injector::is_supported(
-                    isa, src1_desc, *dst_d, enabled_bcast_strategy);
-            if (!res) return false;
-        }
-    }
-    return true;
-}
-
 template <cpu_isa_t isa>
 jit_uni_postops_injector_t<isa>::jit_uni_postops_injector_t(
         jit_generator_t *host, const post_ops_t &post_ops,
@@ -195,54 +173,58 @@ post_ops_ok_args_t::post_ops_ok_args_t(const cpu_isa_t isa,
     , enabled_bcast_strategy(enabled_bcast_strategy) {};
 
 bool post_ops_ok(const post_ops_ok_args_t &post_ops_ok_args) {
-    const cpu_isa_t isa = post_ops_ok_args.isa;
-    const std::vector<post_op_type> &accepted_post_op_types
-            = post_ops_ok_args.accepted_post_op_types;
-    const post_ops_t &post_ops = post_ops_ok_args.post_ops;
-    const bool sum_at_pos_0_only = post_ops_ok_args.sum_at_pos_0_only;
-    const bool sum_requires_scale_one = post_ops_ok_args.sum_requires_scale_one;
-    const bool sum_requires_zp_zero = post_ops_ok_args.sum_requires_zp_zero;
-    const bool sum_requires_same_params
-            = post_ops_ok_args.sum_requires_same_params;
+    const auto &args = post_ops_ok_args;
+
+    const post_ops_t &post_ops = args.post_ops;
 
     // Save scale and zero point of first sum postop in order to check that any
     // subsequent sum postops have the same values. This check is necessary
     // because there is only one lambda injector.
-    const auto sum_idx = post_ops.find(primitive_kind::sum);
-    const bool with_sum = sum_idx != -1;
-    const auto &entry
-            = with_sum ? post_ops.entry_[sum_idx] : dnnl_post_ops::entry_t();
-    const auto sum_scale = with_sum ? entry.sum.scale : 0;
-    const auto sum_zero_point = with_sum ? entry.sum.zero_point : 0;
+    const auto first_sum_idx = post_ops.find(primitive_kind::sum);
+    const bool with_sum = first_sum_idx != -1;
+    const auto &maybe_sum_entry = with_sum ? post_ops.entry_[first_sum_idx]
+                                           : dnnl_post_ops::entry_t();
+    const auto first_sum_scale = with_sum ? maybe_sum_entry.sum.scale : 0;
+    const auto first_sum_zero_point
+            = with_sum ? maybe_sum_entry.sum.zero_point : 0;
 
     const auto is_accepted_postop = [&](const int idx) {
-        for (const auto &post_op : accepted_post_op_types) {
+        for (const auto &post_op : args.accepted_post_op_types) {
             const auto &entry = post_ops.entry_[idx];
             switch (post_op) {
                 case sum:
                     if (entry.is_sum(false, false)) {
-                        if (sum_requires_same_params
-                                && entry.sum.scale != sum_scale)
+                        if (args.sum_requires_same_params
+                                && entry.sum.scale != first_sum_scale)
                             return false;
-                        if (sum_requires_same_params
-                                && entry.sum.zero_point != sum_zero_point)
+                        if (args.sum_requires_same_params
+                                && entry.sum.zero_point != first_sum_zero_point)
                             return false;
-                        if (sum_requires_scale_one && entry.sum.scale != 1)
+                        if (args.sum_requires_scale_one && entry.sum.scale != 1)
                             return false;
-                        if (sum_requires_zp_zero && entry.sum.zero_point != 0)
+                        if (args.sum_requires_zp_zero
+                                && entry.sum.zero_point != 0)
                             return false;
-                        return IMPLICATION(sum_at_pos_0_only, idx == 0);
+                        return IMPLICATION(args.sum_at_pos_0_only, idx == 0);
                     }
                     break;
                 case eltwise:
                     if (entry.is_eltwise()) {
                         const auto alg = entry.eltwise.alg;
                         return eltwise_injector::is_supported(
-                                to_vla_sve(isa), alg);
+                                to_vla_sve(args.isa), alg);
                     }
                     break;
                 case binary:
-                    if (entry.is_binary()) { return isa == asimd; }
+                    // TODO: support alg_kind::prelu with entry.is_like_binary()
+                    if (entry.is_binary()) {
+                        //TODO: support alg_kind::select
+                        if (entry.is_binary_with_ternary_op()) return false;
+
+                        return binary_injector::is_supported(
+                                to_vla_sve(args.isa), entry.binary.src1_desc,
+                                *args.dst_d, args.enabled_bcast_strategy);
+                    }
                     break;
                 default: assert(false && "Unhandled post_op type");
             }

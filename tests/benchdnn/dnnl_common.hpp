@@ -269,9 +269,10 @@ int collect_mem_size(check_mem_size_args_t &mem_size_args,
 
 inline bool should_stop(const timer::timer_t &t) {
     const bool stop = false
-            || (fix_times_per_prb && t.times() >= fix_times_per_prb)
+            || (fix_times_per_prb
+                    && t.times() >= static_cast<size_t>(fix_times_per_prb))
             || (!fix_times_per_prb && t.total_ms() >= max_ms_per_prb
-                    && t.times() >= min_times_per_prb);
+                    && t.times() >= static_cast<size_t>(min_times_per_prb));
     return stop;
 }
 
@@ -955,8 +956,7 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
     // Grouped max variable dim hint
     // Optional host scalar, created when src is a grouped descriptor
-    if (query_md_sparse_encoding(query_md(const_pd, DNNL_ARG_SRC))
-            == dnnl_grouped) {
+    if (has_grouped_encoding(query_md(const_pd, DNNL_ARG_SRC))) {
         auto hint_md = dnn_mem_t::init_host_scalar_md(dnnl_s32);
         mem_map.emplace(DNNL_ARG_HINT_MAX_GROUP_SIZE, dnn_mem_t(hint_md));
     }

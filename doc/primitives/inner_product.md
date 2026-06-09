@@ -140,10 +140,8 @@ The following masks are supported by the primitive:
 - 1, which applies a scale value per output channel for
   `DNNL_ARG_WEIGHTS` argument.
 
-When scales masks are specified, the user must provide the
-corresponding scales as additional input memory objects with argument
-`DNNL_ARG_ATTR_SCALES | DNNL_ARG_${MEMORY_INDEX}` during the execution
-stage.
+Scales require additional memory arguments at execution time. See the
+[quantization guide](@ref dgaq_execution) for details.
 
 
 ## Implementation Limitations

@@ -118,11 +118,13 @@ inline int measure_perf_aggregate(timer::timer_t &t,
 
     // Warm-up run, this is not measured due to possibility the associated
     // kernel has not been built and skews the results.
-    auto sz = perf_func_v.size();
-    for (size_t i = 0; i < sz; i++) {
-        DNN_GRAPH_SAFE(
-                perf_func_v[i](stream, inputs_v[i], outputs_v[i]), WARN, res);
-        DNN_GRAPH_SAFE(stream.wait(), WARN, res);
+    const auto sz = perf_func_v.size();
+    if (!has_bench_mode_bit(mode_bit_t::sim)) {
+        for (size_t i = 0; i < sz; i++) {
+            DNN_GRAPH_SAFE(perf_func_v[i](stream, inputs_v[i], outputs_v[i]),
+                    WARN, res);
+            DNN_GRAPH_SAFE(stream.wait(), WARN, res);
+        }
     }
 
     int cur_batch_times

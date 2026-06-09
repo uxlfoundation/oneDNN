@@ -2,12 +2,12 @@ Data Types {#dev_guide_data_types}
 ==================================
 
 oneDNN functionality supports a number of numerical
-data types. IEEE single precision floating-point (fp32) is considered
+data types. IEEE single precision floating-point (`f32`) is considered
 to be the golden standard in deep learning applications and is supported
 in all the library functions. The purpose of low precision data types
 support is to improve performance of compute intensive operations, such as
 convolutions, inner product, and recurrent neural network cells
-in comparison to fp32.
+in comparison to `f32`.
 
 | Data type | Description                                                                                                                                                                             |
 |:----------|:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -25,7 +25,7 @@ in comparison to fp32.
 | f4\_e3m0  | 4-bit floating-point with 3 exponent bits and no mantissa bit(1)                                                                                                                        |
 
 Footnotes:
-1. f4\_e3m0 is deprecated, and will be removed in a future release.
+1. `f4_e3m0` is deprecated, and will be removed in a future release.
 
 ## Inference and Training
 
@@ -47,12 +47,12 @@ oneDNN supports training and inference with the following data types:
 | u4        | `+`(2)    |          |
 
 Footnotes:
-1. f64 support is limited to matmul, convolution, reorder, layer normalization, and
+1. `f64` support is limited to matmul, convolution, reorder, layer normalization, and
    pooling primitives on Intel GPUs.
-2. s4/u4 data types are only supported as a storage data type for weights argument
+2. `s4`/`u4` data types are only supported as a storage data type for weights argument
    in case of weight-only quantization. For more details, refer to
    [Matmul Tutorial: weight-only quantization](@ref matmul_with_weight_only_quantization_cpp).
-3. f4\_e3m0 is deprecated, and will be removed in a future release.
+3. `f4_e3m0` is deprecated, and will be removed in a future release.
 
 @note
     Data type support may also be limited by hardware capabilities. Refer to
@@ -79,9 +79,9 @@ guide.
 
 During a primitive computation, oneDNN can use different datatypes
 than those of the inputs/outputs. In particular, oneDNN uses wider
-accumulator datatypes (s32 for integral computations, and f32/f64 for
-floating-point computations), and converts intermediate results to f32
-before applying post-ops (f64 configuration does not support
+accumulator datatypes (`s32` for integral computations, and `f32`/`f64` for
+floating-point computations), and converts intermediate results to `f32`
+before applying post-ops (`f64` configuration does not support
 post-ops).  The following formula governs the datatypes dynamic during
 a primitive computation:
 
@@ -90,17 +90,17 @@ a primitive computation:
 \f]
 
 The `Op` output datatype depends on the datatype of its inputs:
-- if `src`, `weights`, ... are floating-point datatype (f32, f16,
-  bf16, f8\_e5m2, f8\_e4m3, f4\_e2m1, f4\_e3m0), then the `Op` outputs f32 elements.
-- if `src`, `weights`, ... are integral datatypes (s8, u8, s32), then
-  the `Op` outputs s32 elements.
+- if `src`, `weights`, ... are floating-point datatype (`f32`, `f16`,
+  `bf16`, `f8_e5m2`, `f8_e4m3`, `f4_e2m1`, `f4_e3m0`), then the `Op` outputs `f32` elements.
+- if `src`, `weights`, ... are integral datatypes (`s8`, `u8`, `s32`), then
+  the `Op` outputs `s32` elements.
 - if the primitive allows to mix input datatypes, the `Op` outputs
-  datatype will be s32 if its weights are an integral datatype, or f32
+  datatype will be `s32` if its weights are an integral datatype, or `f32`
   otherwise.
 
 The accumulation datatype used during `Op` computation is governed by
-the `accumulation_mode` attribute of the primitive. By default, f32 is
-used for floating-point primitives (or f64 for f64 primitives) and s32
+the `accumulation_mode` attribute of the primitive. By default, `f32` is
+used for floating-point primitives (or `f64` for `f64` primitives) and `s32`
 is used for integral primitives.
 
 No downconversions are allowed by default, but can be enabled using
@@ -111,9 +111,9 @@ The \f$convert_{dst\_dt}\f$ conversion is guaranteed to be faithfully
 rounded but not guaranteed to be correctly rounded (the returned value
 is not always the closest one but one of the two closest representable
 value). In particular, some hardware platforms have no direct
-conversion instructions from f32 data type to low-precision data types
-such as fp8 or fp4, and will perform conversion through an
-intermediate data type (for example f16 or bf16), which may result in
+conversion instructions from `f32` data type to low-precision data types
+such as `f8` or `f4`, and will perform conversion through an
+intermediate data type (for example `f16` or `bf16`), which may result in
 [double
 rounding](https://en.wikipedia.org/wiki/Rounding#Double_rounding).
 
@@ -165,7 +165,7 @@ can be found in @ref dev_guide_attributes_rounding_mode.
 ## Hardware Limitations
 
 While all the platforms oneDNN supports have hardware acceleration for
-fp32 arithmetic, that is not the case for other data types. Support
+`f32` arithmetic, that is not the case for other data types. Support
 for low precision data types may not be available for older
 platforms. The next sections explain limitations that exist for low
 precision data types for Intel 64/AMD64 based processors and Intel Graphpics.
@@ -197,16 +197,16 @@ Legend:
 
 Footnotes:
 1. See @ref dev_guide_int8_computations in the Developer Guide for additional
-   limitations related to int8 arithmetic.
-2. The library has functional bfloat16 support on processors with
+   limitations related to `u8`/`s8` arithmetic.
+2. The library has functional `bf16` support on processors with
    Intel AVX-512 Byte and Word Instructions (AVX512BW) support for validation
-   purposes. The performance of bfloat16 primitives on platforms without
-   hardware acceleration for bfloat16 is 3-4x lower in comparison to
-   the same operations on the fp32 data type.
-3. Intel AVX-512 f16 instructions accumulate to f16. To avoid overflow, the f16
-   primitives might up-convert the data to f32 before performing math operations.
-   This can lead to scenarios where a f16 primitive may perform slower than
-   similar f32 primitive.
+   purposes. The performance of `bf16` primitives on platforms without
+   hardware acceleration for `bf16` is 3-4x lower in comparison to
+   the same operations on the `f32` data type.
+3. Intel AVX-512 `f16` instructions accumulate to `f16`. To avoid overflow, the `f16`
+   primitives might up-convert the data to `f32` before performing math operations.
+   This can lead to scenarios where an `f16` primitive may perform slower than
+   similar `f32` primitive.
 
 ### Intel Graphics
 
@@ -255,7 +255,7 @@ Legend:
 * `.` indicates oneDNN supports this data type via conversion to a higher precision data type.
 
 Footnotes:
-1. Xe-LP architecture does not natively support f16 operations with f32
+1. Xe-LP architecture does not natively support `f16` operations with `f32`
    accumulation. Consider using
    [relaxed accumulation mode](@ref dev_guide_attributes_accumulation_mode)
    for the best performance results.

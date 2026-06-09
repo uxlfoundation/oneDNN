@@ -104,18 +104,16 @@ atomic_conf_t::atomic_conf_t(const subproblem_t &subprb, alg_kind_t alg,
     if (outer_block.block == 0 || inner_block.block == 0) return;
 
     auto arch = device_info.gpu_arch();
-    const int base_threads_per_eu
-            = compute::device_info_t::threads_per_eu(arch);
-    conf.threads_per_eu
-            = gpu_attr ? gpu_attr->threads_per_eu() : base_threads_per_eu;
+    conf.grf_per_thread = gpu_attr ? gpu_attr->grf_per_thread() : 128;
 
-    const bool large_grf_mode = conf.threads_per_eu == 4;
-    const size_t max_wg_size = device_info.max_wg_size(large_grf_mode);
+    const size_t max_wg_size = device_info.max_wg_size(conf.grf_per_thread);
     const int eu_count = device_info.eu_count();
     const size_t max_sg_per_wg = utils::div_up(max_wg_size, conf.subgroup_size);
 
     // number of subgroups (threads) to saturate the GPU
-    const int target_subgroups = eu_count * conf.threads_per_eu;
+    const int threads_per_eu
+            = compute::device_info_t::threads_per_eu(arch, conf.grf_per_thread);
+    const int target_subgroups = eu_count * threads_per_eu;
 
     const dim_t max_local_size
             = std::min(into<dim_t>(max_sg_per_wg), reduction_block.block);
@@ -487,7 +485,7 @@ static void init_kernel_ctx_common(
 status_t atomic_key_params_t::get_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     primitive_attr_t ocl_attr;
-    CHECK(ocl_attr.set_gpu_attr(gpu_primitive_attr_t(threads_per_eu)));
+    CHECK(ocl_attr.set_gpu_attr(gpu_primitive_attr_t(grf_per_thread)));
     kernel_ctx = compute::kernel_ctx_t(&ocl_attr);
 
     init_kernel_ctx_common(kernel_ctx, *this);

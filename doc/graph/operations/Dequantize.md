@@ -3,10 +3,10 @@ Dequantize {#dev_guide_op_dequantize}
 
 ## General
 
-Dequantize operation converts a quantized (u8/s8/f8_e4m3/f8_e5m2) tensor to an
-f32 tensor. It supports both per-tensor and per-channel asymmetric linear
+Dequantize operation converts a quantized (`u8`/`s8`/`f8_e4m3`/`f8_e5m2`) tensor to an
+`f32` tensor. It supports both per-tensor and per-channel asymmetric linear
 de-quantization. Rounding mode is library-implementation defined. Zero points
-(`zps` in the attribute table) are not supported for f8_e4m3 and f8_e5m2
+(`zps` in the attribute table) are not supported for `f8_e4m3` and `f8_e5m2`
 dequantization.
 
 For per-tensor de-quantization:

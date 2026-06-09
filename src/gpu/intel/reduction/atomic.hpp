@@ -54,7 +54,7 @@ struct atomic_key_params_t : trivially_serializable_t<atomic_key_params_t> {
     data_type_t src_type, dst_type;
 
     // Implementation-specific parameters
-    int32_t threads_per_eu;
+    int32_t grf_per_thread;
     int32_t subgroup_size;
     int32_t vect_size;
     int32_t full_unroll_factor;

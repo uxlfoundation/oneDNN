@@ -24,7 +24,7 @@
 #include "common/primitive.hpp"
 #include "cpu/cpu_softmax_pd.hpp"
 #include "cpu/rv64/cpu_isa_traits.hpp"
-#include "cpu/rv64/jit_rvv_softmax_affine_kernel.hpp"
+#include "cpu/rv64/jit_rvv_softmax_kernel.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -75,6 +75,9 @@ struct rvv_softmax_fwd_t : public primitive_t {
             VDISPATCH_SOFTMAX(mayiuse(v), VERBOSE_UNSUPPORTED_ISA);
             if (is_f16) {
                 VDISPATCH_SOFTMAX(mayiuse(zvfh), VERBOSE_UNSUPPORTED_ISA);
+#if !(defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1)
+                VDISPATCH_SOFTMAX(false, VERBOSE_UNSUPPORTED_ISA);
+#endif
             }
             VDISPATCH_SOFTMAX(
                     platform::has_data_type_support(src_md()->data_type),

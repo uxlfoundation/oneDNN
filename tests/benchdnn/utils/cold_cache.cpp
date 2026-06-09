@@ -62,7 +62,7 @@ cold_cache_t::cold_cache_t(
 
     static size_t gpu_cache_capacity = 0;
     SAFE_V(get_gpu_cache_size(gpu_cache_capacity));
-    static const size_t gpu_cache_size_upper_bound = gpu_cache_capacity * 2;
+    static const size_t gpu_cache_size_upper_bound = gpu_cache_capacity * 4;
 
     const auto cache_capacity
             = is_gpu() ? gpu_cache_capacity : cpu_cache_capacity;
@@ -366,6 +366,9 @@ bool cold_cache_t::should_stop() const {
 
 bool cold_cache_t::use_cold_cache(
         const std::vector<dnnl_exec_arg_t> &dnnl_args) const {
+    // Cold cache is not supported in single-run/simulation mode.
+    if (has_bench_mode_bit(mode_bit_t::sim)) return false;
+
     const bool cc_wei
             = cold_cache_input_.cold_cache_mode_ == cold_cache_mode_t::wei;
     const bool cc_all

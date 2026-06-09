@@ -103,7 +103,7 @@ struct gen_desc_t {
 protected:
     compute::gpu_arch_t arch_;
     ngen::HW hw_ = ngen::HW::Unknown;
-    ngen::Product product_ = {};
+    ngen::Product product_;
     int stepping_ = 0;
     gemmstone::GEMMProblem problem_ = {};
     gemmstone::GEMMStrategy strategy_;
@@ -140,8 +140,7 @@ struct gen_nocopy_desc_t : public gen_desc_t {
     }
 
     std::vector<const gemmstone::kcatalog::Entry *> select_kernel(
-            compute::gpu_product_t product, int stepping, int eu_count,
-            bool has_systolic, bool is_integrated, compute_mode mode,
+            const compute::device_info_t &dev_info, compute_mode mode,
             const gemmstone::GEMMProblem &problem, float alpha, float beta,
             dim_t m, dim_t n, dim_t k, dim_t lda, dim_t ldb, dim_t ldc,
             dim_t batch);
@@ -156,14 +155,13 @@ private:
 };
 
 struct gen_xe_systolic_kernel_desc_t : public gen_desc_t {
-    status_t select_kernel(compute::gpu_product_t product, int stepping,
-            int eu_count, bool is_integrated, int batch_dims, bool packed_c,
-            bool trans_co, bool a_offset, bool b_offset, bool c_offset,
-            bool bias, float alpha, float beta, data_type_t a_type,
-            data_type_t b_type, data_type_t c_type, data_type_t ao_type,
-            data_type_t bo_type, data_type_t co_type, data_type_t acc_type,
-            dim_t m, dim_t n, dim_t k, dim_t batch, int unroll_m, int unroll_n,
-            bool alt, gpu_post_ops_t &&post_ops);
+    status_t select_kernel(const compute::device_info_t &dev_info,
+            int batch_dims, bool packed_c, bool trans_co, bool a_offset,
+            bool b_offset, bool c_offset, bool bias, float alpha, float beta,
+            data_type_t a_type, data_type_t b_type, data_type_t c_type,
+            data_type_t ao_type, data_type_t bo_type, data_type_t co_type,
+            data_type_t acc_type, dim_t m, dim_t n, dim_t k, dim_t batch,
+            int unroll_m, int unroll_n, bool alt, gpu_post_ops_t &&post_ops);
 
     static void choose_unrolls(compute::gpu_arch_t arch, int eu_count,
             data_type_t a_type, data_type_t b_type, data_type_t c_type, dim_t m,

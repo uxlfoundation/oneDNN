@@ -91,12 +91,12 @@ void simple_net(engine::kind engine_kind, int times = 100) {
     //[Allocate buffers]
 
     /// Create memory that describes data layout in the buffers. This example
-    /// uses dnnl::memory::format_tag::nchw (batch-channels-height-width)
+    /// uses dnnl::memory::format_tag::nhwc (batch-height-width-channels)
     /// for input data and dnnl::memory::format_tag::oihw for weights.
     /// @snippet cnn_inference_f32.cpp Create user memory
     //[Create user memory]
     auto user_src_memory = memory(
-            {{conv1_src_tz}, memory::data_type::f32, memory::format_tag::nchw},
+            {{conv1_src_tz}, memory::data_type::f32, memory::format_tag::nhwc},
             eng);
     write_to_dnnl_memory(user_src.data(), user_src_memory);
     auto user_weights_memory
@@ -114,7 +114,7 @@ void simple_net(engine::kind engine_kind, int times = 100) {
     /// The `any` format enables the convolution primitive to choose the data
     /// format that will result in best performance based on its input
     /// parameters (convolution kernel sizes, strides, padding, and so on).
-    /// If the resulting format is different from `nchw`, the user data must be
+    /// If the resulting format is different from `nhwc`, the user data must be
     /// transformed to the format required for the convolution (as explained
     /// below).
     /// @snippet cnn_inference_f32.cpp Create convolution memory descriptors

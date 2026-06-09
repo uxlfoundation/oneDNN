@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2020 Intel Corporation
 * Copyright 2020-2022 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -15,13 +15,14 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
-#include "cpu/aarch64/jit_uni_i8i8_pooling.hpp"
-#include <math.h>
+
+#include <cmath>
 
 #include "common/dnnl_thread.hpp"
 #include "common/utils.hpp"
 
 #include "cpu/aarch64/jit_generator.hpp"
+#include "cpu/aarch64/jit_uni_i8i8_pooling.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -610,15 +611,15 @@ template <>
 void jit_uni_i8i8_pooling_fwd_ker_t<sve_512>::init_mask() {
     using namespace data_type;
 
-    sub(X_TRANSLATOR_STACK, X_TRANSLATOR_STACK, 8 * max_num_ll);
+    sub(X_SP, X_SP, 8 * max_num_ll);
 
     for (int ll = 0; ll < max_num_ll; ll++) {
         mov_imm(reg_mask, jpp.tail[ll]);
-        str(reg_mask, ptr(X_TRANSLATOR_STACK, 8 * ll));
+        str(reg_mask, ptr(X_SP, 8 * ll));
     }
     for (int ll = 0; ll < max_num_ll; ll++) {
-        ldr(PReg(mask(ll)), ptr(X_TRANSLATOR_STACK));
-        add(X_TRANSLATOR_STACK, X_TRANSLATOR_STACK, 8);
+        ldr(PReg(mask(ll)), ptr(X_SP));
+        add(X_SP, X_SP, 8);
     }
 }
 

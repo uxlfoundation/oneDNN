@@ -122,6 +122,32 @@ ze_memory_type_t get_pointer_type(
     return memory_allocation_properties.type;
 }
 
+status_t append_memory_copy(ze_command_list_handle_t list,
+        std::mutex &list_mutex, void *dst, const void *src, size_t size,
+        ze_event_handle_t out_event, uint32_t num_deps_events,
+        ze_event_handle_t *deps_events) {
+    std::lock_guard<std::mutex> guard(list_mutex);
+
+    // This function is not thread-safe, guarding it with exclusive access.
+    CHECK(ze::zeCommandListAppendMemoryCopy(
+            list, dst, src, size, out_event, num_deps_events, deps_events));
+
+    return status::success;
+}
+
+status_t append_memory_fill(ze_command_list_handle_t list,
+        std::mutex &list_mutex, void *dst, const void *pattern,
+        size_t pattern_size, size_t size, ze_event_handle_t out_event,
+        uint32_t num_deps_events, ze_event_handle_t *deps_events) {
+    std::lock_guard<std::mutex> guard(list_mutex);
+
+    // This function is not thread-safe, guarding it with exclusive access.
+    CHECK(ze::zeCommandListAppendMemoryFill(list, dst, pattern, pattern_size,
+            size, out_event, num_deps_events, deps_events));
+
+    return status::success;
+}
+
 } // namespace ze
 } // namespace xpu
 } // namespace impl

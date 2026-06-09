@@ -747,7 +747,15 @@ CPU_INSTANTIATE_TEST_SUITE_P(TestRnn, rnn_forward_test_f32,
                         {fmt::tnc, fmt::undef, fmt::ldigo, fmt::ldigo,
                                 fmt::undef, fmt::undef, fmt::ldgo, fmt::tnc,
                                 fmt::undef},
-                        test_rnn_sizes_t {3, 1, 5, 1, 4, 4, 4, 4}}));
+                        test_rnn_sizes_t {3, 1, 5, 1, 4, 4, 4, 4}},
+                /* Check for invalid prop_kind: backward is not valid for forward */
+                cfg_f32 {PLAIN_RNN(alg::eltwise_tanh), prop_kind::backward,
+                        dir::unidirectional_left2right,
+                        {fmt::tnc, fmt::ldnc, fmt::ldigo, fmt::ldigo,
+                                fmt::undef, fmt::undef, fmt::ldgo, fmt::tnc,
+                                fmt::ldnc},
+                        test_rnn_sizes_t {1, 1, 1, 1, 1, 1, 1, 1}, true,
+                        dnnl_invalid_arguments}));
 
 TEST_P(rnn_forward_test_f32, TestsRnnGPU) {}
 GPU_INSTANTIATE_TEST_SUITE_P(TestRnn, rnn_forward_test_f32,
@@ -806,7 +814,15 @@ GPU_INSTANTIATE_TEST_SUITE_P(TestRnn, rnn_forward_test_f32,
                         {fmt::tnc, fmt::undef, fmt::ldigo, fmt::ldigo,
                                 fmt::undef, fmt::undef, fmt::ldgo, fmt::tnc,
                                 fmt::undef},
-                        test_rnn_sizes_t {3, 1, 5, 1, 4, 4, 4, 4}}));
+                        test_rnn_sizes_t {3, 1, 5, 1, 4, 4, 4, 4}},
+                /* Check for invalid prop_kind: backward is not valid for forward */
+                cfg_f32 {PLAIN_RNN(alg::eltwise_tanh), prop_kind::backward,
+                        dir::unidirectional_left2right,
+                        {fmt::tnc, fmt::ldnc, fmt::ldigo, fmt::ldigo,
+                                fmt::undef, fmt::undef, fmt::ldgo, fmt::tnc,
+                                fmt::ldnc},
+                        test_rnn_sizes_t {1, 1, 1, 1, 1, 1, 1, 1}, true,
+                        dnnl_invalid_arguments}));
 
 TEST_P(lstm_forward_test_f32, TestsLSTM) {}
 CPU_INSTANTIATE_TEST_SUITE_P(TestLSTM, lstm_forward_test_f32,
@@ -850,7 +866,15 @@ CPU_INSTANTIATE_TEST_SUITE_P(TestLSTM, lstm_forward_test_f32,
                         {fmt::tnc, fmt::ldnc, fmt::ldigo, fmt::ldigo,
                                 fmt::undef, fmt::undef, fmt::ldgo, fmt::tnc,
                                 fmt::undef},
-                        test_rnn_sizes_t {3, 1, 5, 1, 4, 4, 4, 4}}));
+                        test_rnn_sizes_t {3, 1, 5, 1, 4, 4, 4, 4}},
+                /* Check for invalid prop_kind: backward is not valid for forward */
+                cfg_f32 {NOT_RNN, prop_kind::backward,
+                        dir::unidirectional_left2right,
+                        {fmt::tnc, fmt::ldnc, fmt::ldigo, fmt::ldigo,
+                                fmt::undef, fmt::undef, fmt::ldgo, fmt::tnc,
+                                fmt::ldnc},
+                        test_rnn_sizes_t {1, 1, 1, 1, 1, 1, 1, 1}, true,
+                        dnnl_invalid_arguments}));
 
 TEST_P(gru_forward_test_f32, TestsGRU) {}
 CPU_INSTANTIATE_TEST_SUITE_P(TestGRU, gru_forward_test_f32,
@@ -866,7 +890,15 @@ CPU_INSTANTIATE_TEST_SUITE_P(TestGRU, gru_forward_test_f32,
                         {fmt::tnc, fmt::ldnc, fmt::ldigo, fmt::ldigo,
                                 fmt::undef, fmt::undef, fmt::ldgo, fmt::tnc,
                                 fmt::undef},
-                        test_rnn_sizes_t {3, 1, 5, 1, 4, 4, 4, 4}}));
+                        test_rnn_sizes_t {3, 1, 5, 1, 4, 4, 4, 4}},
+                /* Check for invalid prop_kind: backward is not valid for forward */
+                cfg_f32 {NOT_RNN, prop_kind::backward,
+                        dir::unidirectional_left2right,
+                        {fmt::tnc, fmt::ldnc, fmt::ldigo, fmt::ldigo,
+                                fmt::undef, fmt::undef, fmt::ldgo, fmt::tnc,
+                                fmt::ldnc},
+                        test_rnn_sizes_t {1, 1, 1, 1, 1, 1, 1, 1}, true,
+                        dnnl_invalid_arguments}));
 
 TEST_P(lbr_gru_forward_test_f32, TestsGRUlbr) {}
 CPU_INSTANTIATE_TEST_SUITE_P(TestGRUlbr, lbr_gru_forward_test_f32,
@@ -882,7 +914,15 @@ CPU_INSTANTIATE_TEST_SUITE_P(TestGRUlbr, lbr_gru_forward_test_f32,
                         {fmt::tnc, fmt::ldnc, fmt::ldigo, fmt::ldigo,
                                 fmt::undef, fmt::undef, fmt::ldgo, fmt::tnc,
                                 fmt::undef},
-                        test_rnn_sizes_t {3, 1, 5, 1, 4, 4, 4, 4}}));
+                        test_rnn_sizes_t {3, 1, 5, 1, 4, 4, 4, 4}},
+                /* Check for invalid prop_kind: backward is not valid for forward */
+                cfg_f32 {NOT_RNN, prop_kind::backward,
+                        dir::unidirectional_left2right,
+                        {fmt::tnc, fmt::ldnc, fmt::ldigo, fmt::ldigo,
+                                fmt::undef, fmt::undef, fmt::ldgo, fmt::tnc,
+                                fmt::ldnc},
+                        test_rnn_sizes_t {1, 1, 1, 1, 1, 1, 1, 1}, true,
+                        dnnl_invalid_arguments}));
 
 TEST_P(augru_forward_test_f32, TestsAUGRU) {}
 CPU_INSTANTIATE_TEST_SUITE_P(TestAUGRU, augru_forward_test_f32,
@@ -898,7 +938,15 @@ CPU_INSTANTIATE_TEST_SUITE_P(TestAUGRU, augru_forward_test_f32,
                         {fmt::tnc, fmt::ldnc, fmt::ldigo, fmt::ldigo,
                                 fmt::undef, fmt::undef, fmt::ldgo, fmt::tnc,
                                 fmt::undef},
-                        test_rnn_sizes_t {1, 1, 5, 1, 4, 4, 4, 4}}));
+                        test_rnn_sizes_t {1, 1, 5, 1, 4, 4, 4, 4}},
+                /* Check for invalid prop_kind: backward is not valid for forward */
+                cfg_f32 {NOT_RNN, prop_kind::backward,
+                        dir::unidirectional_left2right,
+                        {fmt::tnc, fmt::ldnc, fmt::ldigo, fmt::ldigo,
+                                fmt::undef, fmt::undef, fmt::ldgo, fmt::tnc,
+                                fmt::ldnc},
+                        test_rnn_sizes_t {1, 1, 1, 1, 1, 1, 1, 1}, true,
+                        dnnl_invalid_arguments}));
 
 TEST_P(lbr_augru_forward_test_f32, TestsAUGRUlbr) {}
 CPU_INSTANTIATE_TEST_SUITE_P(TestAUGRUlbr, lbr_augru_forward_test_f32,
@@ -914,6 +962,14 @@ CPU_INSTANTIATE_TEST_SUITE_P(TestAUGRUlbr, lbr_augru_forward_test_f32,
                         {fmt::tnc, fmt::ldnc, fmt::ldigo, fmt::ldigo,
                                 fmt::undef, fmt::undef, fmt::ldgo, fmt::tnc,
                                 fmt::undef},
-                        test_rnn_sizes_t {1, 1, 5, 1, 4, 4, 4, 4}}));
+                        test_rnn_sizes_t {1, 1, 5, 1, 4, 4, 4, 4}},
+                /* Check for invalid prop_kind: backward is not valid for forward */
+                cfg_f32 {NOT_RNN, prop_kind::backward,
+                        dir::unidirectional_left2right,
+                        {fmt::tnc, fmt::ldnc, fmt::ldigo, fmt::ldigo,
+                                fmt::undef, fmt::undef, fmt::ldgo, fmt::tnc,
+                                fmt::ldnc},
+                        test_rnn_sizes_t {1, 1, 1, 1, 1, 1, 1, 1}, true,
+                        dnnl_invalid_arguments}));
 
 } // namespace dnnl

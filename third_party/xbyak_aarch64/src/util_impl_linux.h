@@ -1,6 +1,6 @@
 /*******************************************************************************
  * Copyright 2020-2023 FUJITSU LIMITED
- * Copyright 2025 Arm Ltd. and affiliates
+ * Copyright 2025-2026 Arm Ltd. and affiliates
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -418,6 +418,8 @@ private:
 
     if (hwcap & HWCAP_FP)
       type_ |= (Type)XBYAK_AARCH64_HWCAP_FP;
+    if (hwcap & HWCAP_FPHP)
+      type_ |= (Type)XBYAK_AARCH64_HWCAP_FPHP;
     if (hwcap & HWCAP_ASIMD)
       type_ |= (Type)XBYAK_AARCH64_HWCAP_ADVSIMD;
     if (hwcap & HWCAP_CRC32)

@@ -30,7 +30,7 @@
 #include "cpu/aarch64/jit_uni_softmax.hpp"
 #include "cpu/cpu_primitive.hpp"
 
-#include "xbyak_aarch64/xbyak_aarch64/xbyak_aarch64_util.h"
+#include "xbyak_aarch64/xbyak_aarch64_util.h"
 
 namespace dnnl {
 namespace impl {
@@ -642,9 +642,9 @@ void jit_softmax_sve_t::backward() {
 
 void jit_softmax_sve_t::prepare_mask() {
     if (simd_w_ > cpu_isa_traits<sve_128>::vlen / sizeof(float)) {
-        sub_imm(X_TRANSLATOR_STACK, X_TRANSLATOR_STACK, 64 * 2, X_TMP_0);
-        str(p_shuff0, ptr(X_TRANSLATOR_STACK, 0, MUL_VL));
-        str(p_shuff1, ptr(X_TRANSLATOR_STACK, 1, MUL_VL));
+        sub_imm(X_SP, X_SP, 64 * 2, X_TMP_0);
+        str(p_shuff0, ptr(X_SP, 0, MUL_VL));
+        str(p_shuff1, ptr(X_SP, 1, MUL_VL));
         not_(P_TMP_1.b, P_ALL_ONE, P_ALL_ONE.b);
         trn1(p_shuff0.d, P_ALL_ONE.d, P_TMP_1.d);
         trn1(p_shuff0.d, p_shuff0.d, p_shuff0.d);
@@ -656,9 +656,9 @@ void jit_softmax_sve_t::prepare_mask() {
 }
 
 void jit_softmax_sve_t::restore_mask() {
-    ldr(p_shuff0, ptr(X_TRANSLATOR_STACK, 0, MUL_VL));
-    ldr(p_shuff1, ptr(X_TRANSLATOR_STACK, 1, MUL_VL));
-    add_imm(X_TRANSLATOR_STACK, X_TRANSLATOR_STACK, 64 * 2, X_TMP_0);
+    ldr(p_shuff0, ptr(X_SP, 0, MUL_VL));
+    ldr(p_shuff1, ptr(X_SP, 1, MUL_VL));
+    add_imm(X_SP, X_SP, 64 * 2, X_TMP_0);
 }
 
 void jit_softmax_sve_t::generate() {

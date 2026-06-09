@@ -40,36 +40,34 @@ void host_scalar_executable_t::execute(const stream &stream,
 }
 
 #ifdef DNNL_WITH_SYCL
-::sycl::event host_scalar_executable_t::execute_sycl(const stream &stream,
-        const std::unordered_map<int, memory> &args,
+std::optional<::sycl::event> host_scalar_executable_t::execute_sycl(
+        const stream &stream, const std::unordered_map<int, memory> &args,
         const std::vector<::sycl::event> &deps) const {
     auto it_src = args.find(DNNL_ARG_FROM);
     auto it_dst = args.find(DNNL_ARG_TO);
 
     if (it_src == args.end() || it_dst == args.end()) {
+        // TODO(xxx): this case should not happen. We may want to convert it to
+        // a verbose error.
         assert(!"cannot find memory for DNNL_ARG_FROM or DNNL_ARG_TO");
-        return {};
+        return std::nullopt;
     }
 
     const memory &src_mem = it_src->second;
     const memory &dst_mem = it_dst->second;
 
-    // Use queue.memcpy() to copy the host scalar value to device memory. We
-    // have to wait here as the val is on stack and will become invalid if
-    // queue.memcpy() is asynchronous. A better solution may be supporting
-    // host scalar memory to device memory reorder primitive.
-    auto sycl_queue = dnnl::sycl_interop::get_queue(stream);
+    // get_data_handle() is blocked for host scalar memories at the C API
+    // level, so we access the underlying storage pointer directly.
+    void *src_ptr = const_cast<memory_t *>(src_mem.get())
+                            ->memory_storage()
+                            ->data_handle();
+    void *dst_ptr = dst_mem.get_data_handle();
     const size_t size = src_mem.get_desc().get_size();
-    const auto dt = src_mem.get_desc().get_data_type();
-    assert(size == types::data_type_size(static_cast<impl::data_type_t>(dt)));
-    DNNL_HOST_SCALAR_TYPE_SWITCH(dt, DType, {
-        const DType val = src_mem.get_host_scalar_value<DType>();
-        sycl_queue
-                .memcpy(dst_mem.get_data_handle(),
-                        static_cast<const void *>(&val), size)
-                .wait();
+    auto sycl_queue = dnnl::sycl_interop::get_queue(stream);
+    return sycl_queue.submit([&](::sycl::handler &cgh) {
+        cgh.depends_on(deps);
+        cgh.memcpy(dst_ptr, src_ptr, size);
     });
-    return {};
 }
 #endif
 

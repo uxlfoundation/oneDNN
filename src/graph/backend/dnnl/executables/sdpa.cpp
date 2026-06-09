@@ -23,6 +23,8 @@ namespace impl {
 namespace graph {
 namespace dnnl_impl {
 
+using ltw = logical_tensor_wrapper_t;
+
 sdpa_executable_t::sdpa_executable_t(std::shared_ptr<op_t> &op,
         const dnnl::engine &p_engine, pd_cache_t &pd_cache,
         const fpmath_t &fpmath, bool use_block_layout)
@@ -52,8 +54,11 @@ sdpa_executable_t::sdpa_executable_t(std::shared_ptr<op_t> &op,
     attr.set_fpmath_mode(static_cast<dnnl::fpmath_mode>(fpmath.mode_));
     if (with_dropout_) {
         dnnl::memory::desc dropout_mask_desc;
+        auto prop_type
+                = ltw(op->get_input_logical_tensor(idx++)).property_type();
         attr.set_dropout(dropout_mask_desc, dnnl::memory::data_type::s64,
-                /*use_offset*/ true, /*use_host_scalars*/ true);
+                /*use_offset*/ true,
+                /*use_host_scalars*/ prop_type == property_type::host_scalar);
     }
 
     is_invert_scale_ = op->has_attr(op_attr::is_invert_scale)
@@ -112,8 +117,8 @@ void sdpa_executable_t::execute(const stream &stream,
 }
 
 #ifdef DNNL_WITH_SYCL
-::sycl::event sdpa_executable_t::execute_sycl(const stream &stream,
-        const std::unordered_map<int, memory> &args,
+std::optional<::sycl::event> sdpa_executable_t::execute_sycl(
+        const stream &stream, const std::unordered_map<int, memory> &args,
         const std::vector<::sycl::event> &deps) const {
     std::vector<dnnl_exec_arg_t> c_args;
     c_args.reserve(args.size());
@@ -265,8 +270,11 @@ sdpa_bwd_executable_t::sdpa_bwd_executable_t(std::shared_ptr<op_t> &op,
 
     if (with_dropout_) {
         dnnl::memory::desc dropout_mask_desc;
+        auto prop_type
+                = ltw(op->get_input_logical_tensor(idx++)).property_type();
         attr.set_dropout(dropout_mask_desc, dnnl::memory::data_type::s64,
-                /*use_offset*/ true, /*use_host_scalars*/ true);
+                /*use_offset*/ true,
+                /*use_host_scalars*/ prop_type == property_type::host_scalar);
     }
 
     dim_t kv_head_number = op->get_input_logical_tensor(1).dims[1];
@@ -313,8 +321,8 @@ void sdpa_bwd_executable_t::execute(const stream &stream,
 }
 
 #ifdef DNNL_WITH_SYCL
-::sycl::event sdpa_bwd_executable_t::execute_sycl(const stream &stream,
-        const std::unordered_map<int, memory> &args,
+std::optional<::sycl::event> sdpa_bwd_executable_t::execute_sycl(
+        const stream &stream, const std::unordered_map<int, memory> &args,
         const std::vector<::sycl::event> &deps) const {
     std::vector<dnnl_exec_arg_t> c_args;
     c_args.reserve(args.size());

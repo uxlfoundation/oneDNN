@@ -76,17 +76,8 @@ status_t init_gpu_hw_info(impl::engine_t *engine, cl_device_id device,
     CHECK(get_ocl_device_enabled_native_float_atomics(
             device, native_extensions, is_xelpg));
 
-    if (hw <= ngen::HW::Xe3) {
-        auto status = jit::gpu_supports_binary_format(
-                &mayiuse_ngen_kernels, engine);
-        if (status != status::success) {
-            VWARN(common, runtime,
-                    "ngen fallback (gpu does not support binary format "
-                    "kernels)");
-            mayiuse_ngen_kernels = false;
-        }
-    } else if (hw != ngen::HW::Unknown)
-        mayiuse_ngen_kernels = true;
+    CHECK(jit::init_mayiuse_ngen_kernels(
+            engine, gpu_arch, mayiuse_ngen_kernels));
 
     is_efficient_64bit = OpenCLCodeGenerator<HW::Unknown>::detectEfficient64Bit(
             ctx, device, hw);

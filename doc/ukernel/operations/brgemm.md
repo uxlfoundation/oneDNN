@@ -28,8 +28,8 @@ matrix:
 ## Data Types
 
 In general, C represents an accumulation buffer. Hence, when computations are
-carried in floating-point arithmetic, C shall be of type f32; when computation
-is carried in integer arithmetic, C should be of type s32.
+carried in floating-point arithmetic, C shall be of type `f32`; when computation
+is carried in integer arithmetic, C should be of type `s32`.
 
 The BRGeMM ukernel supports the following combinations of data-types.
 

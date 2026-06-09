@@ -86,6 +86,7 @@ bool useAutoAtomic(HW hw, const GEMMProblem &problem, const GEMMStrategy &strate
     return (hw >= HW::XeHPG)
             && (ignoreBeta || problem.beta1())
             && hasNativeAtomicAdd(hw, problem.Tc_ext.real(), problem.C, strategy.C)
+            && (problem.Tacc_min == Type::invalid || problem.Tacc_min.isSubsetOf(problem.Tc_ext))
             && !strategy.cLoadAhead
             && (problem.postOps.len() == 0 || problem.hasSum1PostOpAtEnd())
             && (problem.cOffset != COffset::Post)

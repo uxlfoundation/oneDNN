@@ -21,7 +21,9 @@
 
 #include "gpu/intel/jit/binary_format.hpp"
 
+#include "common/impl_registration.hpp"
 #include "common/utils.hpp"
+#include "common/verbose.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/engine.hpp"
 #include "gpu/intel/jit/generator.hpp"
@@ -362,6 +364,47 @@ status_t gpu_supports_binary_format(bool *ok, impl::engine_t *engine) {
 
     *ok = (result != 0);
 
+    return status::success;
+}
+
+status_t init_mayiuse_ngen_kernels(impl::engine_t *engine,
+        compute::gpu_arch_t arch, bool &mayiuse_ngen_kernels) {
+    mayiuse_ngen_kernels = false;
+
+    // Bail out if the detected architecture is disabled at build time.
+    bool arch_enabled = false;
+    switch (arch) {
+        case compute::gpu_arch_t::xe_lp:
+            REG_XELP_ISA(arch_enabled = true);
+            break;
+        // xe_hp is intentionally skipped: no publicly released hardware.
+        case compute::gpu_arch_t::xe_hp: break;
+        case compute::gpu_arch_t::xe_hpg:
+            REG_XEHPG_ISA(arch_enabled = true);
+            break;
+        case compute::gpu_arch_t::xe_hpc:
+            REG_XEHPC_ISA(arch_enabled = true);
+            break;
+        case compute::gpu_arch_t::xe2: REG_XE2_ISA(arch_enabled = true); break;
+        case compute::gpu_arch_t::xe3: REG_XE3_ISA(arch_enabled = true); break;
+        case compute::gpu_arch_t::xe3p:
+            REG_XE3P_ISA(arch_enabled = true);
+            break;
+        case compute::gpu_arch_t::unknown: break;
+    }
+    if (!arch_enabled) return status::success;
+
+    if (arch <= compute::gpu_arch_t::xe3p) {
+        auto status = gpu_supports_binary_format(&mayiuse_ngen_kernels, engine);
+        if (status != status::success) {
+            VWARN(common, runtime,
+                    "nGEN fallback (gpu does not support binary format "
+                    "kernels)");
+            mayiuse_ngen_kernels = false;
+        }
+    } else {
+        mayiuse_ngen_kernels = true;
+    }
     return status::success;
 }
 

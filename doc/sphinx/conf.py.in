@@ -33,6 +33,16 @@ import os
 import re
 import subprocess
 import sys
+import warnings
+
+# Doxyrest 2.1.2 uses deprecated Sphinx APIs that will break in Sphinx 8.
+# Suppressing the warning since we cannot upgrade doxyrest and must stay
+# on Sphinx 7.x.
+warnings.filterwarnings(
+    "ignore",
+    category=DeprecationWarning,
+    message=".*Sphinx 8 will drop support.*",
+)
 
 
 def whereis(binary):

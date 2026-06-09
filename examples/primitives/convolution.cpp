@@ -101,15 +101,15 @@ void convolution_example(dnnl::engine::kind engine_kind) {
     });
 
     // Create memory objects for tensor data (src, weights, dst). In this
-    // example, NCHW layout is assumed for src and dst, and OIHW for weights.
+    // example, NHWC layout is assumed for src and dst, and OIHW for weights.
     auto user_src_mem = memory(
-            {src_dims, memory::data_type::f32, memory::format_tag::nchw},
+            {src_dims, memory::data_type::f32, memory::format_tag::nhwc},
             engine);
     auto user_weights_mem = memory(
             {weights_dims, memory::data_type::f32, memory::format_tag::oihw},
             engine);
     auto user_dst_mem = memory(
-            {dst_dims, memory::data_type::f32, memory::format_tag::nchw},
+            {dst_dims, memory::data_type::f32, memory::format_tag::nhwc},
             engine);
 
     // Create memory descriptors with format_tag::any for the primitive. This
@@ -263,15 +263,15 @@ void depthwise_convolution_example(dnnl::engine::kind engine_kind) {
     });
 
     // Create memory objects for tensor data (src, weights, dst). In this
-    // example, NCHW layout is assumed for src and dst, and OIHW for weights.
+    // example, NHWC layout is assumed for src and dst, and OIHW for weights.
     auto user_src_mem = memory(
-            {src_dims, memory::data_type::f32, memory::format_tag::nchw},
+            {src_dims, memory::data_type::f32, memory::format_tag::nhwc},
             engine);
     auto user_weights_mem = memory(
             {weights_dims, memory::data_type::f32, memory::format_tag::goihw},
             engine);
     auto user_dst_mem = memory(
-            {dst_dims, memory::data_type::f32, memory::format_tag::nchw},
+            {dst_dims, memory::data_type::f32, memory::format_tag::nhwc},
             engine);
 
     // Create memory descriptors with format_tag::any for the primitive. This

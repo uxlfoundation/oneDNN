@@ -65,11 +65,11 @@ static void init_net_data(float *data, uint32_t dim, const dnnl_dim_t *dims) {
         }
     } else if (dim == 4) {
         for (dnnl_dim_t in = 0; in < dims[0]; ++in)
-            for (dnnl_dim_t ic = 0; ic < dims[1]; ++ic)
-                for (dnnl_dim_t ih = 0; ih < dims[2]; ++ih)
-                    for (dnnl_dim_t iw = 0; iw < dims[3]; ++iw) {
-                        dnnl_dim_t indx = in * dims[1] * dims[2] * dims[3]
-                                + ic * dims[2] * dims[3] + ih * dims[3] + iw;
+            for (dnnl_dim_t ih = 0; ih < dims[2]; ++ih)
+                for (dnnl_dim_t iw = 0; iw < dims[3]; ++iw)
+                    for (dnnl_dim_t ic = 0; ic < dims[1]; ++ic) {
+                        dnnl_dim_t indx = in * dims[2] * dims[3] * dims[1]
+                                + ih * dims[3] * dims[1] + iw * dims[1] + ic;
                         data[indx] = (float)(indx % 1637);
                     }
     }
@@ -199,7 +199,7 @@ void simple_net() {
     // create memory for user data
     dnnl_memory_t conv_user_src_memory, conv_user_weights_memory,
             conv_user_bias_memory;
-    init_data_memory(ndims, conv_user_src_sizes, dnnl_nchw, engine, conv_src,
+    init_data_memory(ndims, conv_user_src_sizes, dnnl_nhwc, engine, conv_src,
             &conv_user_src_memory);
     init_data_memory(ndims, conv_user_weights_sizes, dnnl_oihw, engine,
             conv_weights, &conv_user_weights_memory);
@@ -369,7 +369,7 @@ void simple_net() {
 
     // create memory for user dst data
     dnnl_memory_t pool_user_dst_memory;
-    init_data_memory(4, pool_dst_sizes, dnnl_nchw, engine, net_dst,
+    init_data_memory(4, pool_dst_sizes, dnnl_nhwc, engine, net_dst,
             &pool_user_dst_memory);
 
     // create a pooling primitive descriptor
@@ -440,7 +440,7 @@ void simple_net() {
 
     // create memory for user diff dst data
     dnnl_memory_t pool_user_diff_dst_memory;
-    init_data_memory(4, pool_dst_sizes, dnnl_nchw, engine, net_diff_dst,
+    init_data_memory(4, pool_dst_sizes, dnnl_nhwc, engine, net_diff_dst,
             &pool_user_diff_dst_memory);
 
     // Pooling Backward

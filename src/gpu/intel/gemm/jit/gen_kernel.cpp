@@ -263,7 +263,7 @@ status_t gen_desc_t::finalize(const char *tags) {
                 thread_per_tg *= std::max(strategy_.wg[LoopK], 1);
             dim_t thread_gpu = eu_count_
                     * compute::device_info_t::threads_per_eu(
-                            arch_, strategy_.GRFs > 128);
+                            arch_, strategy_.GRFs);
             dim_t tiles_gpu = thread_gpu / thread_per_tg;
 
             bool use_linear = (m_tiles * n_tiles <= tiles_gpu);
@@ -385,28 +385,30 @@ void gen_desc_t::update_driver_info() {
 }
 
 std::vector<const gemmstone::kcatalog::Entry *>
-gen_nocopy_desc_t::select_kernel(compute::gpu_product_t product, int stepping,
-        int eu_count, bool has_systolic, bool is_integrated, compute_mode mode,
-        const gemmstone::GEMMProblem &problem, float alpha, float beta, dim_t m,
-        dim_t n, dim_t k, dim_t lda, dim_t ldb, dim_t ldc, dim_t batch) {
+gen_nocopy_desc_t::select_kernel(const compute::device_info_t &dev_info,
+        compute_mode mode, const gemmstone::GEMMProblem &problem, float alpha,
+        float beta, dim_t m, dim_t n, dim_t k, dim_t lda, dim_t ldb, dim_t ldc,
+        dim_t batch) {
     using namespace ngen;
     using namespace kcatalog;
+
+    const compute::gpu_product_t &product = dev_info.gpu_product();
 
     product_ = compute::device_info_t::ngen_product(product);
     hw_ = getCore(product_.family);
     arch_ = convert_ngen_arch_to_dnnl(hw_);
-    stepping_ = stepping;
+    stepping_ = dev_info.stepping_id();
     problem_.product = product_;
     m_ = into<int>(m);
     n_ = into<int>(n);
     k_ = into<int>(k);
-    eu_count_ = eu_count;
-    disable_systolic_ = !has_systolic;
+    eu_count_ = dev_info.eu_count();
+    disable_systolic_ = !dev_info.mayiuse_systolic();
     relaxed_acc_ = mode & mode_relaxed_acc;
 
     // Select a kernel from the catalog.
     std::vector<MatchParams> match_params;
-    MatchParams base(hw_, has_systolic, is_integrated, problem);
+    MatchParams base(hw_, dev_info.mayiuse_systolic(), product_, problem);
     /* Reuse PVC strategies for legacy mode on Xe3p */
     if (hw_ == ngen::HW::Xe3p && !efficient_64b_)
         base.selector.hw = kcatalog::HWTagXeHPC;
@@ -419,7 +421,7 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_product_t product, int stepping,
     base.sizes.n = n;
     base.sizes.k = k;
     base.sizes.batch = batch;
-    base.stepping = stepping;
+    base.stepping = dev_info.stepping_id();
     base.ignoreCase = true;
 
     bool can_2d_a = (lda * problem.Ta_ext <= 16777216);
@@ -555,9 +557,10 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_product_t product, int stepping,
     eval_params_.beta = beta;
     eval_params_.postOps = !problem.postOps.empty();
     eval_params_.cConvert = (problem.Tc != problem.Tc_ext);
-    eval_params_.euCount = eu_count;
+    eval_params_.euCount = dev_info.eu_count();
     eval_params_.batch = (problem.batchDims > 0);
     eval_params_.deterministic = (mode & mode_deterministic);
+    eval_params_.Tc_ext = problem.Tc_ext;
 
     SelectionObserver observer = entryObserver;
     tags_ = match_params[0].tags;
@@ -610,25 +613,27 @@ status_t gen_nocopy_desc_t::finalize() {
 }
 
 status_t gen_xe_systolic_kernel_desc_t::select_kernel(
-        compute::gpu_product_t product, int stepping, int eu_count,
-        bool is_integrated, int batch_dims, bool packed_c, bool trans_co,
-        bool a_offset, bool b_offset, bool c_offset, bool bias, float alpha,
-        float beta, data_type_t a_type, data_type_t b_type, data_type_t c_type,
-        data_type_t ao_type, data_type_t bo_type, data_type_t co_type,
-        data_type_t acc_type, dim_t m, dim_t n, dim_t k, dim_t batch,
-        int unroll_m, int unroll_n, bool alt, gpu_post_ops_t &&post_ops) {
+        const compute::device_info_t &dev_info, int batch_dims, bool packed_c,
+        bool trans_co, bool a_offset, bool b_offset, bool c_offset, bool bias,
+        float alpha, float beta, data_type_t a_type, data_type_t b_type,
+        data_type_t c_type, data_type_t ao_type, data_type_t bo_type,
+        data_type_t co_type, data_type_t acc_type, dim_t m, dim_t n, dim_t k,
+        dim_t batch, int unroll_m, int unroll_n, bool alt,
+        gpu_post_ops_t &&post_ops) {
     using namespace ngen;
     using namespace kcatalog;
+
+    const compute::gpu_product_t &product = dev_info.gpu_product();
 
     product_ = compute::device_info_t::ngen_product(product);
     hw_ = getCore(product_.family);
     arch_ = convert_ngen_arch_to_dnnl(hw_);
-    stepping_ = stepping;
+    stepping_ = dev_info.stepping_id();
     problem_.product = product_;
     m_ = into<int>(m);
     n_ = into<int>(n);
     k_ = into<int>(k);
-    eu_count_ = eu_count;
+    eu_count_ = dev_info.eu_count();
 
     if (!utils::one_of(hw_, HW::XeHP, HW::XeHPG, HW::XeHPC, HW::Xe2, HW::Xe3,
                 HW::Xe3p))
@@ -697,7 +702,7 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
     }
 
     // Find it in the catalog.
-    MatchParams match_params(hw_, true, is_integrated, problem_);
+    MatchParams match_params(hw_, true, product_, problem_);
 
     // By default gemmstone assumes that the accumulation type must be at least
     // as wide as the output type. For oneDNN this restriction is not needed.
@@ -725,10 +730,11 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
     eval_params.sizes = match_params.sizes;
     eval_params.alpha = alpha;
     eval_params.beta = beta;
-    eval_params.euCount = eu_count;
+    eval_params.euCount = dev_info.eu_count();
     eval_params.postOps = !problem_.postOps.empty();
     eval_params.cConvert = (acc_type != c_type);
     eval_params.batch = (batch_dims > 0);
+    eval_params.Tc_ext = problem_.Tc_ext;
 
     SelectionObserver observer = entryObserver;
 
@@ -1028,13 +1034,11 @@ status_t gen_kernel_t::get_kernel(
             REG_XE3P_ISA(ARCH_DISPATCH(Xe3p))
             default: assert(!"Unsupported architecture"); break;
         }
-    } catch (const ngen::out_of_registers_exception &err) {
-        // OOR is not an unrecoverable error, so let's not scare the user
+    } catch (const std::runtime_error &err) {
+        // Print kernel generation errors only in debug mode
         VDEBUGINFO(1, primitive, gpu, "%s,%s,%s", "jit::gemm", err.what(),
                 dump_kernel(desc()->hw_, desc()->problem_, desc()->strategy_)
                         .c_str());
-    } catch (const std::runtime_error &err) {
-        VERROR(primitive, gpu, "%s,%s", "jit::gemm", err.what());
     }
 #undef ARCH_DISPATCH
 

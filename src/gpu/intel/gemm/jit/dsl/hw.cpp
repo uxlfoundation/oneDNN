@@ -32,7 +32,8 @@ hw_t::hw_t(const ngen::Product &product, int eu_count, int max_wg_size,
 
 ngen::Product hw_t::product() const {
     ngen::Product product;
-    std::memcpy(&product, &product_, sizeof(product));
+    std::memcpy(static_cast<void *>(&product),
+            static_cast<const void *>(&product_), sizeof(product));
     return product;
 }
 
@@ -67,18 +68,20 @@ int hw_t::eus_per_core() const {
         default: gpu_error_not_expected(); return 8;
     }
 }
-int hw_t::threads_per_eu(int regs) const {
-    bool is_large_grf = (regs > 128);
+int hw_t::grf_per_eu() const {
     switch (hw_) {
-        case ngen::HW::XeLP: return 7;
+        case ngen::HW::XeLP: return 896;
         case ngen::HW::XeHP:
         case ngen::HW::XeHPG:
         case ngen::HW::XeHPC:
         case ngen::HW::Xe2:
         case ngen::HW::Xe3:
-        case ngen::HW::Xe3p: return is_large_grf ? 4 : 8;
-        default: gpu_error_not_expected(); return 8;
+        case ngen::HW::Xe3p: return 1024;
+        default: gpu_error_not_expected(); return 1024;
     }
+}
+int hw_t::threads_per_eu(int regs) const {
+    return grf_per_eu() / regs;
 }
 
 int hw_t::cache_line_size() const {

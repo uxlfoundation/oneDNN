@@ -22,6 +22,7 @@
 #include "common/math_utils.hpp"
 #include "common/type_helpers.hpp"
 
+#include "cpu/rv64/jit_rvv_eltwise_kernel.hpp"
 #include "cpu/rv64/rvv_eltwise.hpp"
 #include "cpu/rv64/rvv_eltwise_kernels.hpp"
 
@@ -38,7 +39,12 @@ void compute_eltwise_rvv_fwd(const alg_kind_t alg, const void *src, void *dst,
         const data_type_t dt) {
     switch (dt) {
         case data_type::f32:
-            rvv_eltwise_apply_fwd_f32(alg, src, dst, len, alpha, beta, dt);
+            jit_rvv_eltwise_apply_f32(alg, static_cast<const float *>(src),
+                    static_cast<float *>(dst), len, alpha, beta);
+            break;
+        case data_type::f16:
+            assert(jit_rvv_eltwise_fwd_f16_supported(alg));
+            jit_rvv_eltwise_apply_fwd_f16(alg, src, dst, len, alpha, beta);
             break;
         case data_type::s32:
             rvv_eltwise_apply_fwd_s32(alg, src, dst, len, alpha, beta, dt);
@@ -61,6 +67,11 @@ void compute_eltwise_rvv_bwd(const alg_kind_t alg, void *diff_src,
         case data_type::f32:
             rvv_eltwise_apply_bwd_f32(
                     alg, diff_src, diff_dst, src, len, alpha, beta, dt);
+            break;
+        case data_type::f16:
+            assert(jit_rvv_eltwise_bwd_f16_supported(alg));
+            jit_rvv_eltwise_apply_bwd_f16(
+                    alg, diff_src, diff_dst, src, len, alpha, beta);
             break;
         case data_type::s32:
             rvv_eltwise_apply_bwd_s32(

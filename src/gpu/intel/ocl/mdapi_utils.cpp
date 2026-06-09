@@ -63,7 +63,10 @@ static bool close_metrics_device(MetricsDiscovery::IMetricsDevice_1_13 *device,
 }
 
 static void open_lib(std::shared_ptr<void> &lib) {
-    void *handle = dlopen("libmd.so.1", RTLD_LAZY);
+    // The library was renamed from `libmd.so.1` to `libigdmd.so.1`. Try the
+    // new name first and fall back to the old for compatibility.
+    void *handle = dlopen("libigdmd.so.1", RTLD_LAZY);
+    if (!handle) handle = dlopen("libmd.so.1", RTLD_LAZY);
     if (handle) {
         lib = std::shared_ptr<void>(handle, [](void *h) {
             if (h) dlclose(h);

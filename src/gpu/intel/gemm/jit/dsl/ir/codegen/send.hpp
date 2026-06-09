@@ -49,7 +49,7 @@ inline ngen::CacheSettingsLSC get_cache_settings(
                     break;
                 case ngen::HW::Xe3p:
                     if (is_store) {
-                        ret = ngen::CacheSettingsLSC::L1UC_L2UC_L3WB;
+                        ret = ngen::CacheSettingsLSC::L1UC_L2WB_L3UC;
                     } else if (is_load || is_prefetch) {
                         ret = ngen::CacheSettingsLSC::L1C_L2C_L3C;
                     }

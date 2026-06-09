@@ -1,6 +1,7 @@
 #pragma once
 /*******************************************************************************
  * Copyright 2019-2023 FUJITSU LIMITED
+ * Copyright 2026 Arm Ltd. and affiliates
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -77,3 +78,5 @@ const uint64_t NUM_VREG_BYTES = 16;
 const uint64_t NUM_ZREG_BYTES = 64;
 #include "xbyak_aarch64_gen.h"
 } // namespace Xbyak_aarch64
+
+#include "xbyak_aarch64_reg_manager.h"

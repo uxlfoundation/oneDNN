@@ -17,6 +17,7 @@
 #define GRAPH_BACKEND_DNNL_EXECUTABLES_BASE_HPP
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -118,7 +119,15 @@ struct op_executable_t {
             = 0;
     virtual bool is_initialized() const = 0;
 #ifdef DNNL_WITH_SYCL
-    virtual ::sycl::event execute_sycl(const stream &stream,
+    // The returned event is used to indicate when the execution is finished.
+    // The caller can use the event to build dependency for later execution. But
+    // some executables actually do nothing and may return a default empty
+    // event. The default empty event cannot be recorded in SYCL graph and need
+    // to be skipped when passing it to the next executable. So we use
+    // std::optional here to indicate whether the returned event is valid or
+    // not. std::optional is available since C++17 which is required to build
+    // with SYCL support.
+    virtual std::optional<::sycl::event> execute_sycl(const stream &stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<::sycl::event> &deps) const
             = 0;
@@ -194,13 +203,13 @@ struct dummy_impl_t : public op_executable_t {
     }
 
 #ifdef DNNL_WITH_SYCL
-    ::sycl::event execute_sycl(const stream &stream,
+    std::optional<::sycl::event> execute_sycl(const stream &stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<::sycl::event> &deps) const override {
         UNUSED(stream);
 
-        // Fast path: if no event, return an immediate event.
-        if (deps.empty()) return {};
+        // No-op: return nullopt to indicate no real work was submitted.
+        if (deps.empty()) return std::nullopt;
 
         // Fast path: if only one event, return it.
         if (deps.size() == 1) return deps[0];

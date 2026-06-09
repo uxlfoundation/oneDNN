@@ -15,11 +15,11 @@
 ******************************************************************************/
 
 #include <math.h>
-#include <riscv_vector.h>
 
 #include "common/float16.hpp"
 #include "common/nstl.hpp"
 
+#include "cpu/rv64/jit_rvv_softmax_kernel.hpp"
 #include "cpu/rv64/rvv_softmax.hpp"
 
 namespace dnnl {
@@ -88,7 +88,7 @@ void compute_softmax_f32_rvv(const float *src, float *dst, dim_t len,
     }
 }
 
-#if defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
 // f16 compute kernel
 void compute_softmax_f16_rvv(const dnnl::impl::float16_t *src,
         dnnl::impl::float16_t *dst, dim_t len, bool is_logsoftmax,
@@ -108,17 +108,8 @@ void compute_softmax_f16_rvv(const dnnl::impl::float16_t *src,
         }
         const float log_sum = logf(sum_exp);
 
-        for (dim_t i = 0; i < len;) {
-            size_t vl = __riscv_vsetvl_e16m1((size_t)(len - i));
-            vfloat16m1_t v_src
-                    = __riscv_vle16_v_f16m1((const _Float16 *)(src + i), vl);
-            vfloat32m2_t v_f32 = __riscv_vfwcvt_f_f_v_f32m2(v_src, vl);
-            vfloat32m2_t v_res = __riscv_vfsub_vf_f32m2(v_f32, max_val, vl);
-            v_res = __riscv_vfsub_vf_f32m2(v_res, log_sum, vl);
-            vfloat16m1_t v_out = __riscv_vfncvt_f_f_w_f16m1(v_res, vl);
-            __riscv_vse16_v_f16m1((_Float16 *)(dst + i), v_out, vl);
-            i += (dim_t)vl;
-        }
+        const float sub = max_val + log_sum;
+        jit_rvv_softmax_f16_affine_from_f16(src, dst, len, sub, 1.0f);
     } else {
         float *tmp_dst = new float[len];
         float sum_exp = 0.f;
@@ -131,16 +122,7 @@ void compute_softmax_f16_rvv(const dnnl::impl::float16_t *src,
         }
         const float inv_sum = sum_exp ? (1.0f / sum_exp) : 1.0f;
 
-        for (dim_t i = 0; i < len;) {
-            size_t vl = __riscv_vsetvl_e16m1((size_t)(len - i));
-
-            vfloat32m2_t v_f32 = __riscv_vle32_v_f32m2(tmp_dst + i, vl);
-            vfloat32m2_t v_res = __riscv_vfmul_vf_f32m2(v_f32, inv_sum, vl);
-            vfloat16m1_t v_out = __riscv_vfncvt_f_f_w_f16m1(v_res, vl);
-            __riscv_vse16_v_f16m1((_Float16 *)(dst + i), v_out, vl);
-
-            i += (dim_t)vl;
-        }
+        jit_rvv_softmax_f16_affine_from_f32(tmp_dst, dst, len, 0.0f, inv_sum);
         delete[] tmp_dst;
     }
 }
@@ -204,7 +186,7 @@ status_t rvv_softmax_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
                 });
             }
         } break;
-#if defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
         case data_type::f16: {
             const auto *src_f16
                     = static_cast<const dnnl::impl::float16_t *>(src);
@@ -234,36 +216,22 @@ status_t rvv_softmax_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
                     dim_t start {0}, end {0};
                     balance211(work_amount, nthr, ithr, start, end);
 
-                    size_t stride_bytes = rsp.inner_size * sizeof(_Float16);
+                    dim_t stride_bytes
+                            = rsp.inner_size * sizeof(dnnl::impl::float16_t);
 
                     for (dim_t idx = start; idx < end; ++idx) {
                         const dim_t outer = idx / rsp.inner_size;
                         const dim_t i = idx % rsp.inner_size;
                         const dim_t base = outer * outer_stride + i;
 
-                        for (dim_t a = 0; a < rsp.axis_size;) {
-                            size_t vl = __riscv_vsetvl_e16m1(rsp.axis_size - a);
-                            vfloat16m1_t v = __riscv_vlse16_v_f16m1(
-                                    (const _Float16 *)(src_f16 + base
-                                            + a * rsp.inner_size),
-                                    stride_bytes, vl);
-                            __riscv_vse16_v_f16m1((_Float16 *)(tmp + a), v, vl);
-                            a += (dim_t)vl;
-                        }
+                        jit_rvv_softmax_f16_gather(src_f16 + base, tmp,
+                                rsp.axis_size, stride_bytes);
 
                         compute_softmax_f16_rvv(tmp, tmp, rsp.axis_size,
                                 rsp.is_logsoftmax, is_softmax_inf_as_zero);
 
-                        for (dim_t a = 0; a < rsp.axis_size;) {
-                            size_t vl = __riscv_vsetvl_e16m1(rsp.axis_size - a);
-                            vfloat16m1_t v = __riscv_vle16_v_f16m1(
-                                    (const _Float16 *)(tmp + a), vl);
-                            __riscv_vsse16_v_f16m1(
-                                    (_Float16 *)(dst_f16 + base
-                                            + a * rsp.inner_size),
-                                    stride_bytes, v, vl);
-                            a += (dim_t)vl;
-                        }
+                        jit_rvv_softmax_f16_scatter(tmp, dst_f16 + base,
+                                rsp.axis_size, stride_bytes);
                     }
                 });
             }

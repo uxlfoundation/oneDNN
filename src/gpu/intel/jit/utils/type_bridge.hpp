@@ -30,7 +30,9 @@ namespace jit {
 
 inline ngen::Product get_ngen_product(const compute::device_info_t &info) {
     ngen::Product ret;
-    std::memcpy(&ret, &info.gpu_product(), sizeof(ngen::Product));
+    std::memcpy(static_cast<void *>(&ret),
+            static_cast<const void *>(&info.gpu_product()),
+            sizeof(ngen::Product));
     return ret;
 }
 

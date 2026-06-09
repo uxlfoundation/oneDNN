@@ -14,15 +14,15 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
-
 #include <riscv_vector.h>
 
+#include "cpu/rv64/rvv_gemm_convolution_utils.hpp"
 #include "common/bfloat16.hpp"
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
-#include "cpu/rv64/rvv_gemm_convolution_utils.hpp"
+#include "cpu/rv64/jit_rvv_gemm_convolution_kernel.hpp"
 #include "cpu/scale_utils.hpp"
 
 #include "cpu/platform.hpp"

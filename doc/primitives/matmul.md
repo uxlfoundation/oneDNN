@@ -113,7 +113,7 @@ types for source, destination, weights, and bias tensors:
 | u8, s8              | u8, s8, u4, s4                         | u8, s8, s32, f32, f16, bf16         | u8, s8, s32, f32, f16, bf16 |
 
 Footnotes:
-1. f4_e3m0 is deprecated, and will be removed in a future release.
+1. `f4_e3m0` is deprecated, and will be removed in a future release.
 
 ### Data Representation
 
@@ -159,28 +159,14 @@ The following attributes and post-ops are supported:
 | Post-op   | [Binary](@ref dnnl::post_ops::append_binary)                   | Applies a @ref dnnl_api_binary operation to the result                        | General binary post-op restrictions |
 | Post-op   | [Prelu](@ref dnnl::post_ops::append_prelu)                     | Applies an @ref dnnl_api_prelu operation to the result                        |                                     |
 
-The following masks are supported by the primitive:
-- 0, which applies one scale / zero point value to an entire tensor
-- 1, which applies a scale / zero point values along `k`-dimension
-  for #DNNL_ARG_WEIGHTS. Values could be grouped along this dimension
-  via specifying scales / zero points shapes for the attribute
-  (see the code example @ref matmul_with_weight_only_quantization_cpp).
-- 2, which applies a scale / zero point values per column along the
-  `n`-dimension for #DNNL_ARG_WEIGHTS.
+The `mask` and `groups` parameters for scales and zero-points follow the
+conventions described in the
+[quantization guide](@ref dgaq_constructing_mask_and_groups).
 
-When scales and/or zero-points masks are specified, the user must
-provide the corresponding scales and/or zero-points as additional
-input memory objects with argument `DNNL_ARG_ATTR_SCALES |
-DNNL_ARG_${MEMORY_INDEX}` or `DNNL_ARG_ATTR_ZERO_POINTS |
-DNNL_ARG_${MEMORY_INDEX}` during the execution stage. For instance, a
-source tensor zero points memory argument would be passed with index
-(`DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC`).
-
-When Dropout is specified, at the execution stage the user must provide 2 input
-memory objects with #DNNL_ARG_ATTR_DROPOUT_PROBABILITY (1x1x...x1 f32 value
-from 0.f to 1.f) and #DNNL_ARG_ATTR_DROPOUT_SEED (1x1x...x1 s32 value from INT_MIN
-to INT_MAX), and 1 output memory object with #DNNL_ARG_ATTR_DROPOUT_MASK (u8
-memory buffer that shares its shape with the destination buffer).
+Scales, zero-points, and dropout require additional memory arguments at
+execution time. See the
+[quantization guide](@ref dgaq_execution) and the
+[dropout guide](@ref dev_guide_attributes_dropout) for details.
 
 @note Check the [list of examples and tutorials](#examples) below to see
 run-time attributes in use.
@@ -193,11 +179,11 @@ run-time attributes in use.
    - Supports up to 6 dimensions.
    - Source zero point mask of `0` is only supported.
    - Sum post-op doesn't support data types other than destination data type.
-   - Bias of bf16 data type is supported for configurations with bf16 source data
-     type and weights bf16 data type, and up to three-dimensional matrices.
-   - Optimized implementations for fp8 data type are available only on Intel(R)
+   - Bias of `bf16` data type is supported for configurations with `bf16` source data
+     type and weights `bf16` data type, and up to three-dimensional matrices.
+   - Optimized implementations for `f8` data type are available only on Intel(R)
      Data Center GPU Max Series and Intel(R) Xe2 Graphics.
-   - Configuration with int8 source data type, s8 weight data type and bf16
+   - Configuration with `s8`/`u8` source data type, `s8` weight data type and `bf16`
      destination data type doesn't support:
      * Destination zero point.
      * Runtime dimensions.
@@ -206,7 +192,7 @@ run-time attributes in use.
 
 
 3. **CPU**
-   - Configurations with int8 source data type, s8 weight data type and f16
+   - Configurations with `s8`/`u8` source data type, `s8` weight data type and `f16`
      destination data type aren't supported.
    - Configurations with floating point source data type, integer weights data
      type and floating point destination data type are not optimized.
@@ -411,6 +397,15 @@ attr.set_scales_mask(DNNL_ARG_WEIGHTS, (1 << 0) | (1 << 2));
 // Layout: standard ab layout
 ~~~
 
+K-grouped weight scales (e.g., MXFP8 with block size 32):
+~~~cpp
+attr.set_scales(DNNL_ARG_WEIGHTS, (1 << 0) | (1 << 1) | (1 << 2),
+    {32, 1}, memory::data_type::e8m0);
+// Groups are 2D {gK, gN} and are applied to two last dimensions of the tensor
+// Scale tensor: [num_groups, K/32, N] - dense 3D tensor
+// Layout: standard abc layout
+~~~
+
 Bias per expert:
 ~~~cpp
 // Bias: [num_groups, N] - dense 2D tensor
@@ -493,8 +488,13 @@ The following are supported:
   - Weight Scales: column-wise (`mask = (1 << 0) | (1 << 2)`) and
     K-grouped (`mask = (1 << 0) | (1 << 1) | (1 << 2)`) with group specification
     are supported.
-  - Scale data type includes: `f32`, `bf16`, `f16`, `e8m0` for MXFP8 and MXFP4,
-    `f8_e4m3` for NVFP4 block scales.
+  - Scales are not supported when the corresponding tensor data type is
+    `f32`, `bf16`, or `f16`. Scale data type depends on tensor data type:
+
+    | Tensor data type           | Scale data type           |
+    |:---------------------------|:--------------------------|
+    | f8_e5m2, f8_e4m3, f4_e2m1  | f32, e8m0, f8_e4m3        |
+    | u8, s8, s4, u4             | f32, bf16, f16            |
 - Zero points attribute for source and weights tensors:
   - The masks must match the scales mask
   - Source zero points data types include `u8`, `s8`

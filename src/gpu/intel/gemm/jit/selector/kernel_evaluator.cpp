@@ -26,6 +26,19 @@
 
 GEMMSTONE_NAMESPACE_START
 
+static inline int grfPerEU(char hw)
+{
+    switch (hw) {
+        case kcatalog::HWTagGen12LP: return 896;
+        case kcatalog::HWTagXeHPG:
+        case kcatalog::HWTagXeHPC:
+        case kcatalog::HWTagXe2:
+        case kcatalog::HWTagXe3:
+        case kcatalog::HWTagXe3p:   return 1024;
+    }
+    return 1024;
+}
+
 template <typename T1, typename T2>
 static inline T1 divUp(T1 x, T2 y)
 {
@@ -313,8 +326,8 @@ double evaluateECore(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, 
     // TODO: Improve this heuristic for strided matrices, by using the
     // real ldc instead of assuming a tight leading dimension
     auto cLayout = charLayout(e.selector.layouts[2][0]);
-    auto Tc = extPrecision(e.selector.precisions[2], true);
-    auto ldc = static_cast<int32_t>(Tc * (isColMajor(cLayout) ? m : n) * e.driverInfo.cInterleaveChunk());
+    auto Tc = (dp.Tc_ext == Type::invalid) ? extPrecision(e.selector.precisions[2], true) : dp.Tc_ext;
+    auto ldc = static_cast<int32_t>(Tc * (isColMajor(cLayout) ? m : n) * e.driverInfo.cInterleaveChunk(Tc));
     auto xChunk = 64 / gcd(ldc, 64);
     auto xUnroll = e.driverInfo.unroll[isColMajor(cLayout) ? LoopM : LoopN];
     auto minCacheLinesPerXDim = div_up(xUnroll * Tc, 64);  // Assuming starting aligned to cache line
@@ -508,16 +521,17 @@ DerivedEvaluateParams getDerivedParams(const kcatalog::Entry &e, const EvaluateP
         }
     }
 
-    if (e.driverInfo.cInterleaveChunk() > 1) {
+    if (e.driverInfo.cInterleaveEnabled()) {
         // TODO: Factor in the base alignment of the C matrix (offsetC), and
         // actual leading dimensions
         auto cLayout = charLayout(e.selector.layouts[2][0]);
-        auto Tc = extPrecision(e.selector.precisions[2], true);
-        auto ldc = static_cast<int>(Tc * (isColMajor(cLayout) ? p.sizes.m : p.sizes.n) * e.driverInfo.cInterleaveChunk());
+        // Use the actual runtime Tc_ext if provided; else fall back to the catalog's C type size.
+        auto Tc = (p.Tc_ext == Type::invalid) ? extPrecision(e.selector.precisions[2], true) : p.Tc_ext;
+        auto ldc = static_cast<int>(Tc * (isColMajor(cLayout) ? p.sizes.m : p.sizes.n) * e.driverInfo.cInterleaveChunk(Tc));
         auto &wgCountX = isColMajor(cLayout) ? dp.wgCountM : dp.wgCountN;
         auto &wgCountY = isColMajor(cLayout) ? dp.wgCountN : dp.wgCountM;
-        wgCountY = round_up(wgCountY, e.driverInfo.cInterleaveChunk());
-        if (e.driverInfo.cInterleaveChunk() > 1 && (ldc * Tc % 64 > 0)) {
+        wgCountY = round_up(wgCountY, e.driverInfo.cInterleaveChunk(Tc));
+        if (e.driverInfo.cInterleaveEnabled() && (ldc * Tc % 64 > 0)) {
             auto wgTileX = e.driverInfo.wgTile(isColMajor(cLayout) ? LoopM : LoopN);
             auto maxShift = 64 / Tc - 1;
             wgCountX += div_up(maxShift, wgTileX);
@@ -535,14 +549,7 @@ DerivedEvaluateParams getDerivedParams(const kcatalog::Entry &e, const EvaluateP
     dp.threadCount *= threadsPerWG;
     dp.threadCount *= (dp.wgCountK * p.sizes.batch);
 
-    switch (e.selector.hw) {
-        case kcatalog::HWTagGen12LP:
-            dp.threadsPerEU = 7;
-            break;
-        default:
-            dp.threadsPerEU = (e.driverInfo.grfCount > 128) ? 4 : 8;
-            break;
-    }
+    dp.threadsPerEU = grfPerEU(e.selector.hw) / e.driverInfo.grfCount;
 
     int ssCount;
     switch (e.selector.hw) {

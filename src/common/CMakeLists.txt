@@ -23,7 +23,7 @@ file(GLOB SOURCES
 if(DNNL_ENABLE_JIT_PROFILING OR DNNL_ENABLE_ITT_TASKS)
     if(DNNL_TARGET_ARCH STREQUAL "AARCH64" OR DNNL_TARGET_ARCH STREQUAL "X64")
         file(GLOB ITT_SOURCES
-            ${PROJECT_SOURCE_DIR}/third_party/ittnotify/*.c
+            ${ITTNOTIFY_ROOT}/ittnotify/*.c
             )
         list(APPEND SOURCES ${ITT_SOURCES})
 
@@ -33,10 +33,10 @@ if(DNNL_ENABLE_JIT_PROFILING OR DNNL_ENABLE_ITT_TASKS)
             set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DITT_API_IPT_SUPPORT")
             if(UNIX OR MINGW)
                 enable_language(ASM)
-                set(ITT_PT ${PROJECT_SOURCE_DIR}/third_party/ittnotify/ittptmark64.S)
+                set(ITT_PT ${ITTNOTIFY_ROOT}/ittnotify/ittptmark64.S)
             else()
                 enable_language(ASM_MASM)
-                set(ITT_PT ${PROJECT_SOURCE_DIR}/third_party/ittnotify/ittptmark64.asm)
+                set(ITT_PT ${ITTNOTIFY_ROOT}/ittnotify/ittptmark64.asm)
             endif()
             list(APPEND SOURCES ${ITT_PT})
         endif()

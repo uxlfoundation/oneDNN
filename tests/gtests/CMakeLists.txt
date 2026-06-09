@@ -19,6 +19,7 @@ if(WIN32 AND DNNL_WITH_SYCL)
     add_definitions(-DGTEST_HAS_SEH=0)
 endif()
 
+include_directories_with_host_compiler(${PROJECT_SOURCE_DIR}/third_party/gtest/include)
 add_subdirectory(${PROJECT_SOURCE_DIR}/third_party/gtest gtest)
 
 set(APP_NAME "gtest")

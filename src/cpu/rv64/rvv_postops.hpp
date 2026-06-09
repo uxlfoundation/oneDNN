@@ -19,7 +19,6 @@
 
 #include <memory>
 #include <vector>
-#include <riscv_vector.h>
 
 #include "common/primitive_desc_iterator.hpp"
 #include "cpu/rv64/rvv_binary.hpp"
@@ -36,6 +35,7 @@ struct rvv_postops_t {
         if (po.len() > 0) {
             if (po.entry_[0].is_eltwise()) {
                 alg_ = po.entry_[0].eltwise.alg;
+                alpha_ = po.entry_[0].eltwise.alpha;
             } else if (po.entry_[0].is_binary()) {
                 alg_ = po.entry_[0].binary.alg;
             }
@@ -112,7 +112,8 @@ struct rvv_postops_t {
         return status::success;
     }
 
-    explicit rvv_postops_t(alg_kind_t alg) : alg_(alg) {}
+    explicit rvv_postops_t(alg_kind_t alg, float alpha = 0.f)
+        : alg_(alg), alpha_(alpha) {}
 
     static bool post_ops_ok(const post_ops_t &po) {
         if (po.len() == 0) return true;
@@ -127,26 +128,18 @@ struct rvv_postops_t {
         }
     }
 
-    /**
-     * @warning This function is part of the old post-ops integration style
-     * and is kept for compatibility with existing usages (e.g. rvv_matmul).
-     * New post-ops implementations should use the primitive-based `execute` method.
-     */
-    inline vfloat32m1_t apply(vfloat32m1_t v, size_t vl) const {
-        switch (alg_) {
-            case alg_kind::eltwise_relu: {
-                vfloat32m1_t zero = __riscv_vfmv_v_f_f32m1(0.f, vl);
-                return __riscv_vfmax_vv_f32m1(v, zero, vl);
-            }
-            default: return v;
-        }
-    }
-
     status_t execute(
             const exec_ctx_t &ctx, void *src, void *dst = nullptr) const;
 
+    // Only valid when constructed from post_ops_t (narrow constructor).
+    // Callers enforce via post_ops_ok() that only ReLU is accepted,
+    // so these always return well-defined values in supported paths.
+    bool is_relu_postop() const { return alg_ == alg_kind::eltwise_relu; }
+    float relu_alpha() const { return alpha_; }
+
 private:
     alg_kind_t alg_ = alg_kind::undef;
+    float alpha_ = 0.f;
     post_ops_t po_;
     int post_op_start_index_ = 0;
     data_type_t dst_data_type_ = data_type::undef;

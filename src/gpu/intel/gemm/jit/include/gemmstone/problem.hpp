@@ -169,6 +169,7 @@ struct GEMMProblem : public CommonProblem {
     Type Tao, Tbo, Tco;                             // Types for A/B/C offsets.
     Type Ta_scale, Tb_scale, Tc_scale;              // Types for A/B/C scales.
     Type Tag, Tbg;                                  // Types for A/B group sums.
+    Type Tacc_min;                                  // Type for minimum C accumulation precision.
 
     Scalar alpha, beta;                             // Scaling factors for A*B and C, respectively.
     MatrixAddressing A, B, C;                       // Addressing information for A/B/C matrices.
@@ -195,7 +196,7 @@ struct GEMMProblem : public CommonProblem {
     bool cMXScale = false;
     MatrixAddressing sroundSeed;
     PostOpsProblem postOps;                         // Fused post operations to apply
-    ngen::Product product = {};
+    ngen::Product product;
 
     // The following data is derived from the postOps and does not need
     //   to be considered for equality/hashing purposes.
@@ -301,6 +302,7 @@ struct GEMMProblem : public CommonProblem {
     bool usesCOPtr() const { return (hasCOffsetPtr() && cOffset != COffset::None) || sumA || sumB; }
     bool allowMatrixOffset() const { return (cOffset == COffset::Pre); }
 
+    // Data type of dst registers for dpas/mad/dp4a.
     Type Tc_compute() const {
         if (Ta.isInteger() && Tb.isInteger() && Tc == Type::f32)
             return Type::s32;

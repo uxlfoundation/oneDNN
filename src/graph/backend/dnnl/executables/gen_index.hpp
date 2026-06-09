@@ -42,10 +42,10 @@ struct genindex_executable_t : public op_executable_t {
             const std::unordered_map<int, memory> &args) const;
 
 #ifdef DNNL_WITH_SYCL
-    ::sycl::event execute_sycl(const stream &stream,
+    std::optional<::sycl::event> execute_sycl(const stream &stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<::sycl::event> &deps) const override;
-    ::sycl::event execute_sycl_impl(const stream &stream,
+    std::optional<::sycl::event> execute_sycl_impl(const stream &stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<::sycl::event> &deps) const;
 #endif

@@ -115,12 +115,26 @@ static inline size_t maxSLMPerWG(ngen::Product p, int grfCount)
     return slmMax;
 }
 
+static inline int GRFPerEU(ngen::HW hw)
+{
+    switch (hw) {
+        case ngen::HW::XeLP:  return 896; // Equivalent for 128 GRF/thread, 7 threads/EU.
+        case ngen::HW::XeHP:
+        case ngen::HW::XeHPG:
+        case ngen::HW::XeHPC:
+        case ngen::HW::Xe2:
+        case ngen::HW::Xe3:
+        case ngen::HW::Xe3p:  return 1024;
+        default:              return 0;
+    }
+}
+
 static inline int threadsPerEU(ngen::HW hw, const CommonStrategy &strategy)
 {
-    if (hw >= ngen::HW::XeHP)
-        return (strategy.GRFs > 128) ? 4 : 8;
-    else
+    if (hw <= ngen::HW::XeLP)
         return 7;
+
+    return GRFPerEU(hw) / strategy.GRFs;
 }
 
 static inline int eusPerSubslice(ngen::HW hw)

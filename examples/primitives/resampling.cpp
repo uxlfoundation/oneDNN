@@ -69,9 +69,9 @@ void resampling_example(dnnl::engine::kind engine_kind) {
 
     // Create memory descriptors and memory objects for src and dst.
     auto src_md = memory::desc(
-            src_dims, memory::data_type::f32, memory::format_tag::nchw);
+            src_dims, memory::data_type::f32, memory::format_tag::nhwc);
     auto dst_md = memory::desc(
-            dst_dims, memory::data_type::f32, memory::format_tag::nchw);
+            dst_dims, memory::data_type::f32, memory::format_tag::nhwc);
 
     auto src_mem = memory(src_md, engine);
     auto dst_mem = memory(dst_md, engine);

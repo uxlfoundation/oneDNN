@@ -40,7 +40,7 @@ using namespace dnnl;
 /// - How to create memory descriptors with grouped encoding
 /// - Specifying variable-dimension groups with offsets array
 /// - Using per-token (row-wise) src and per-expert-column (column-wise)
-///   weight scales
+///   wei scales with f8_e4m3 data
 /// - Executing matmul primitive
 ///
 /// @include matmul_grouped.cpp
@@ -90,22 +90,17 @@ void grouped_matmul_example(engine::kind engine_kind) {
               << std::endl;
     std::cout << std::endl;
 
-    std::vector<float> src_data(total_tokens * K);
-    for (int i = 0; i < total_tokens * K; ++i) {
-        src_data[i] = i / 10.f;
-    }
+    // FP8 row-wise recipe: f8_e4m3 src/wei, bf16 dst, f32 scales
+    // src and wei are filled with raw bytes for simplicity
+    std::vector<uint8_t> src_data(total_tokens * K);
+    for (int i = 0; i < total_tokens * K; ++i)
+        src_data[i] = static_cast<uint8_t>(i % 128);
 
-    std::vector<float> weights_data(num_experts * N * K);
-    for (int e = 0; e < num_experts; ++e) {
-        for (int n = 0; n < N; ++n) {
-            for (int k = 0; k < K; ++k) {
-                weights_data[e * N * K + n * K + k]
-                        = (e * K * N + k * N + n) / 20.f;
-            }
-        }
-    }
+    std::vector<uint8_t> weights_data(num_experts * N * K);
+    for (int i = 0; i < num_experts * N * K; ++i)
+        weights_data[i] = static_cast<uint8_t>(i % 128);
 
-    std::vector<float> dst_data(total_tokens * N, 0.0f);
+    std::vector<uint16_t> dst_data(total_tokens * N, 0);
 
     // Create memory descriptors with grouped encoding
     // variable_dim_idx=0 indicates M dimension varies per group
@@ -114,11 +109,11 @@ void grouped_matmul_example(engine::kind engine_kind) {
     memory::dims dst_dims = {total_tokens, N};
 
     auto src_md = memory::desc::grouped(
-            src_dims, memory::data_type::f32, 0, num_experts);
+            src_dims, memory::data_type::f8_e4m3, 0, num_experts);
     auto dst_md = memory::desc::grouped(
-            dst_dims, memory::data_type::f32, 0, num_experts);
+            dst_dims, memory::data_type::bf16, 0, num_experts);
     auto weights_md = memory::desc(
-            weights_dims, memory::data_type::f32, memory::format_tag::acb);
+            weights_dims, memory::data_type::f8_e4m3, memory::format_tag::acb);
 
     // Create memory objects
     // Grouped memory has 2 buffers:
@@ -141,7 +136,9 @@ void grouped_matmul_example(engine::kind engine_kind) {
     // Create primitive attributes with scales
     primitive_attr matmul_attr;
 
-    // Row-wise (per-token) src scales: one scale per token
+    // Row-wise (per-token) src scales: one f32 scale per token.
+    // The buffer is concatenated across experts, mirroring how src tokens
+    // are concatenated in the grouped src memory.
     std::vector<float> src_scales(total_tokens);
     for (int32_t i = 0; i < total_tokens; ++i)
         src_scales[i] = 1.0f + (i % 100) / 500.0f;

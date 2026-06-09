@@ -73,7 +73,7 @@ void sycl_usm_tutorial(engine::kind engine_kind) {
             sycl_interop::get_device(eng), sycl_interop::get_context(eng));
 
     memory::desc mem_d(
-            tz_dims, memory::data_type::f32, memory::format_tag::nchw);
+            tz_dims, memory::data_type::f32, memory::format_tag::nhwc);
 
     memory mem = sycl_interop::make_memory(
             mem_d, eng, sycl_interop::memory_kind::usm, usm_buffer);

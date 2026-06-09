@@ -18,7 +18,17 @@ if (NOT DNNL_BUILD_TESTS)
     return()
 endif()
 
-include_directories_with_host_compiler(${PROJECT_SOURCE_DIR}/third_party)
+# Benchdnn and gtests include cpu_isa_traits.hpp, which depends on Xbyak.
+# TODO: Move Xbyak dependency to gtests when benchdnn stops using cpu_isa_traits.hpp
+if(DNNL_TARGET_ARCH STREQUAL "X64")
+    include_directories_with_host_compiler(${PROJECT_SOURCE_DIR}/third_party/xbyak)
+endif()
+if(DNNL_TARGET_ARCH STREQUAL "AARCH64")
+    include_directories_with_host_compiler(${PROJECT_SOURCE_DIR}/third_party/xbyak_aarch64)
+endif()
+if(DNNL_TARGET_ARCH STREQUAL "RV64")
+    include_directories_with_host_compiler(${PROJECT_SOURCE_DIR}/third_party/xbyak_riscv)
+endif()
 
 # propagate TEST specific flags
 append(CMAKE_C_FLAGS "${CMAKE_TEST_CCXX_FLAGS}")
@@ -30,13 +40,7 @@ set(CMAKE_TEST_CCXX_NOWARN_FLAGS)
 append(CMAKE_TEST_CCXX_NOWARN_FLAGS "${CMAKE_CCXX_NOWARN_FLAGS}")
 
 if(DNNL_GPU_RUNTIME STREQUAL "OCL")
-    find_package(OpenCL REQUIRED)
-    if(OpenCL_FOUND)
-        add_definitions(-DCL_TARGET_OPENCL_VERSION=120)
-        list(APPEND EXTRA_SHARED_LIBS OpenCL::OpenCL)
-    else()
-        message(FATAL_ERROR "OpenCL SDK is not found; you can use OPENCLROOT CMake option to specify the path or disable building tests with ONEDNN_BUILD_TESTS=OFF")
-    endif()
+    list(APPEND EXTRA_SHARED_LIBS OpenCL::OpenCL)
 endif()
 if(DNNL_GPU_RUNTIME STREQUAL "ZE")
     list(APPEND EXTRA_SHARED_LIBS ze_loader)

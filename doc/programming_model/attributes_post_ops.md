@@ -118,7 +118,7 @@ This feature might improve performance for cases like residual learning
 blocks, where the result of a convolution is accumulated to the previously
 computed activations. The scale and zero point parameters can be used in the
 following scenarios:
-- [INT8](@ref dev_guide_attributes_quantization) inference when the result
+- [int8](@ref dev_guide_attributes_quantization) inference when the result
 and previous activations have different magnitudes. The data_type of the sum
 operand should be one of `s32`, `s8` or `u8`
 - Beta parameter using scale (for example, GEMM beta parameter). In this
@@ -146,7 +146,7 @@ result, the computation will be:
 
 @note
 * **GPU**
-    * Currently only a u8/s8 data type parameter is supported.
+    * Currently only a `u8`/`s8` data type parameter is supported.
     * Zero point is not supported.
 
 @anchor dev_guide_attributes_post_ops_depthwise
@@ -208,7 +208,7 @@ Supported data types
 @note
   * Though it is called a post-operation type, it does not follow the
     post-operation convention which implies an application of operation in
-    f32 data type.
+    `f32` data type.
 
   * Currently only supported for 2D 1x1 convolution.
 
@@ -225,7 +225,7 @@ Supported data types
     lifetime has to be handled by user separately since the library does not
     provide a mechanism to query an intermediate output of base convolution.
 
-  * Currently, f16 support for depthwise fusion is only through reference fusion
+  * Currently, `f16` support for depthwise fusion is only through reference fusion
     implementation. Thus, performance gain is not expected for this data type.
 
 @anchor dev_guide_attributes_post_ops_binary
@@ -340,7 +340,7 @@ Assumptions:
 - the weights tensor is passed in runtime using
 DNNL_ARG_ATTR_MULTIPLE_POST_OP(index) | DNNL_ARG_WEIGHTS mechanism, where index
 is the sequence number of the prelu in post-operations chain;
-- only fp32 weights tensor data type is supported;
+- only `f32` weights tensor data type is supported;
 - only plain layout (a, ab, acb, acdb, acdeb) is supported for weights tensor;
 - mask defines the correspondence between the output tensor dimensions and
   the prelu weights tensor. The set i-th bit indicates that a dedicated weights

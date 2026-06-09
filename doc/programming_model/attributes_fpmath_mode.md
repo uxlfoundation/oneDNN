@@ -12,17 +12,17 @@ allow implicit down-conversions of floating-point types.
 
 When passed to a primitive creation, the @ref dnnl::fpmath_mode
 primitive attribute specifies which implicit down-conversions are
-allowed for that given primitive. Only down-conversions from f32 to
-narrower data-types (f16, bf16, or tf32) are currently allowed. Furthermore
+allowed for that given primitive. Only down-conversions from `f32` to
+narrower data-types (`f16`, `bf16`, or `tf32`) are currently allowed. Furthermore
 these down-conversions are allowed only during computation, and do not
-affect the storage datatype (which must remain f32).
+affect the storage datatype (which must remain `f32`).
 
 The @ref dnnl::fpmath_mode primitive attribute can take 3 types of values:
 - the `strict` mode disables any down-conversion.
-- the `any` mode allows all conversions from f32 to a smaller
-  floating-point datatype (f16, bf16, or tf32).
-- a specific datatype (f16, bf16, or tf32) which specifically allows
-  down-conversion only from f32 to a datatype at least as accurate as
+- the `any` mode allows all conversions from `f32` to a smaller
+  floating-point datatype (`f16`, `bf16`, or `tf32`).
+- a specific datatype (`f16`, `bf16`, or `tf32`) which specifically allows
+  down-conversion only from `f32` to a datatype at least as accurate as
   the specified data-type (at least same number of exponent and
   mantissa bits).
 
@@ -57,4 +57,4 @@ dnnl::set_default_fpmath_mode (C++ API) functions.
 For builds where Arm Compute Library is enabled, setting
 `ONEDNN_DEFAULT_FPMATH_MODE` to `BF16` or `ANY` will instruct Compute Library to
 dispatch bfloat16 kernels where available, provided the hardware supports
-bfloat16 instructions. _Note: this may introduce a drop in accuracy._
+`bfloat16` instructions. _Note: this may introduce a drop in accuracy._

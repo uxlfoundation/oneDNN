@@ -15,13 +15,14 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
+
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 
-#include "common/primitive.hpp"
 #include "common/primitive_attr.hpp"
-#include "common/primitive_exec_types.hpp"
 #include "common/utils.hpp"
+#include "common/verbose_msg.hpp"
 #include "cpu/aarch64/injectors/jit_uni_binary_injector.hpp"
 
 namespace dnnl {
@@ -30,10 +31,14 @@ namespace cpu {
 namespace aarch64 {
 namespace binary_injector {
 
+#define VCHECK_BIN_INJ_BOOL(cond, msg) \
+    VCONDCHECK(primitive, create, check, binary_injector, cond, false, msg);
+
 static bcast_set_t get_all_strategies_supported_by_injector() {
     return bcast_set_t {broadcasting_strategy_t::scalar,
             broadcasting_strategy_t::per_oc,
             broadcasting_strategy_t::per_oc_spatial,
+            broadcasting_strategy_t::per_mb_spatial,
             broadcasting_strategy_t::per_mb_w, broadcasting_strategy_t::per_w,
             broadcasting_strategy_t::no_broadcast};
 }
@@ -41,6 +46,22 @@ static bcast_set_t get_all_strategies_supported_by_injector() {
 bool is_data_supported(cpu_isa_t isa, data_type_t data_type) {
     UNUSED(isa);
     return !(data_type == data_type::bf16);
+}
+
+bool is_supported(cpu_isa_t isa, const dnnl::impl::memory_desc_t &src1_desc,
+        const memory_desc_wrapper &dst_d,
+        const bcast_set_t &supported_strategy_set) {
+    // FIXME: address SVE correctness issues (failing convs and matmuls when
+    // used with binary post-ops)
+    VCHECK_BIN_INJ_BOOL(isa == asimd, VERBOSE_UNSUPPORTED_ISA);
+
+    VCHECK_BIN_INJ_BOOL(is_data_supported(isa, src1_desc.data_type),
+            VERBOSE_ISA_DT_MISMATCH);
+
+    VCHECK_BIN_INJ_BOOL(memory_desc_wrapper(src1_desc).is_dense(true),
+            VERBOSE_NONTRIVIAL_STRIDE);
+
+    return is_bcast_supported(src1_desc, dst_d, supported_strategy_set);
 }
 
 static bool src1_desc_layout_same_as_dst_d(
@@ -72,19 +93,12 @@ bool is_bcast_supported(const dnnl::impl::memory_desc_t &src1_desc,
     const auto bcast_type = get_rhs_arg_broadcasting_strategy(
             src1_desc, dst_d, supported_strategy_set);
 
-    if (bcast_type == broadcasting_strategy_t::no_broadcast) {
-        // in case of no broadcast data layout of dst and src1 have to be the same
-        if (!src1_desc_layout_same_as_dst_d(src1_desc, dst_d)) return false;
-    }
+    VCHECK_BIN_INJ_BOOL(
+            IMPLICATION(bcast_type == broadcasting_strategy_t::no_broadcast,
+                    src1_desc_layout_same_as_dst_d(src1_desc, dst_d)),
+            "src1 and dst must have the same layout if not broadcasting");
 
     return bcast_type != broadcasting_strategy_t::unsupported;
-}
-
-bool is_supported(cpu_isa_t isa, const dnnl::impl::memory_desc_t &src1_desc,
-        const memory_desc_wrapper &dst_d,
-        const bcast_set_t &supported_strategy_set) {
-    return is_data_supported(isa, src1_desc.data_type)
-            && is_bcast_supported(src1_desc, dst_d, supported_strategy_set);
 }
 
 bool binary_args_broadcast_supported(const post_ops_t &post_ops,
@@ -1393,7 +1407,8 @@ void jit_uni_binary_injector_t<isa>::inject_binary(
             load_rhs(rhs_arg_data_type, tmp_vmm, rhs_addr, tail_load_mode,
                     with_tail);
 
-        if (rhs_arg_data_type != data_type::f32) cvt_to_f32(tmp_vmm);
+        if (rhs_arg_data_type != data_type::f32)
+            host_->uni_scvtf(tmp_vmm.s, tmp_vmm.s);
 
         execute_binary(alg, dst, host_->P_ALL_ONE, dst, tmp_vmm);
     } else {
@@ -1451,26 +1466,22 @@ rhs_address_t jit_uni_binary_injector_t<isa>::remove_bcast_bit(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_binary_injector_t<isa>::cvt_to_f32(const Vmm &tmp_vmm) const {
-    host_->uni_scvtf(tmp_vmm.s, tmp_vmm.s);
-}
-
-template <cpu_isa_t isa>
 void jit_uni_binary_injector_t<isa>::execute_broadcast_no_tail(
         const data_type_t &data_type, const Vmm &tmp_vmm,
         const rhs_address_t &rhs_addr) const {
     switch (data_type) {
         case data_type::f32:
-            host_->add_imm(host_->X_DEFAULT_ADDR, rhs_addr.base_,
-                    rhs_addr.offt_, host_->X_TMP_0);
-            host_->uni_ldr(tmp_vmm, host_->X_DEFAULT_ADDR);
-            break;
         case data_type::s32:
             host_->add_imm(host_->X_DEFAULT_ADDR, rhs_addr.base_,
                     rhs_addr.offt_, host_->X_TMP_0);
-            host_->ld1rw(Xbyak_aarch64::ZRegS(tmp_vmm.getIdx()),
-                    host_->P_ALL_ONE / Xbyak_aarch64::T_z,
-                    Xbyak_aarch64::ptr(host_->X_DEFAULT_ADDR));
+            if (is_superset(isa, sve)) {
+                host_->ld1rw(Xbyak_aarch64::ZRegS(tmp_vmm.getIdx()),
+                        host_->P_ALL_ONE / Xbyak_aarch64::T_z,
+                        Xbyak_aarch64::ptr(host_->X_DEFAULT_ADDR));
+            } else {
+                host_->ld1r(Xbyak_aarch64::VReg4S {tmp_vmm.getIdx()},
+                        Xbyak_aarch64::ptr(host_->X_DEFAULT_ADDR));
+            }
             break;
         case data_type::s8:
         case data_type::u8:

@@ -396,10 +396,10 @@ Forward                | All (3)                     | f16        | f16         
 Forward inference      | Vanilla LSTM, LSTMP and GRU | u8         | u8                 | s8      | f32  | u8, f32
 Forward inference      | Vanilla LSTM, LSTMP         | s8         | s8                 | s8      | f32  | s8, f32
 
-(1) With LSTM and Peephole LSTM cells, the cell state datatype is f32,
-except for the f16 configuration.
+(1) With LSTM and Peephole LSTM cells, the cell state datatype is `f32`,
+except for the `f16` configuration.
 
-(2) In backward propagation, all `diff_*` tensors are in f32.
+(2) In backward propagation, all `diff_*` tensors are in `f32`.
 
 (3) Projection LSTM is not supported.
 
@@ -435,7 +435,7 @@ different.
 
 ### Post-Ops and Attributes
 
-Currently post-ops and attributes are only used by the int8 variants of
+Currently post-ops and attributes are only used by the `int8` variants of
 LSTM and GRU. See the markdown @ref cpu_rnn_inference_int8_cpp for more
 details on how to use and set these quantization parameters.
 
@@ -449,17 +449,17 @@ details on how to use and set these quantization parameters.
    is initialized).
 
 2. **CPU**
-   - oneDNN supports s8 as input data only on systems with Advanced Matrix
+   - oneDNN supports `s8` as input data only on systems with Advanced Matrix
      Extension(AMX) support.
-   - Projection LSTM for bf16 data type is not supported.
-   - f16 data type is not supported.
+   - Projection LSTM for `bf16` data type is not supported.
+   - `f16` data type is not supported.
 
 2. **GPU**
    - No support for AUGRU.
    - No support for Peephole LSTM and Projection LSTM.
    - Int8 support is provided for LSTM only.
    - Int8 workloads require weights layouts to be #dnnl_format_tag_any.
-   - Bias and cell state of bf16 data type is not supported.
+   - Bias and cell state of `bf16` data type is not supported.
 
 ## Examples
 

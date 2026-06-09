@@ -213,14 +213,6 @@ struct gen_t : public primitive_t {
                                    !(A_grouped || B_grouped)),
                     VERBOSE_UNSUPPORTED_FEATURE, "grouped scales");
 
-            bool has_systolic
-                    = intel_engine->mayiuse(compute::device_ext_t::
-                                      intel_subgroup_matrix_multiply_accumulate)
-                    || intel_engine->mayiuse(compute::device_ext_t::
-                                    intel_subgroup_split_matrix_multiply_accumulate);
-
-            bool is_integrated = dev_info_->is_integrated();
-
             // Size checks for fused reduction kernels.
             if (with_sum_ab()) {
                 auto mnk = d->m() * d->n() * d->k();
@@ -272,11 +264,8 @@ struct gen_t : public primitive_t {
             auto lda = ld(DNNL_ARG_A);
             auto ldb = ld(DNNL_ARG_B);
             if (swap_ab_) std::swap(lda, ldb);
-            auto product = intel_engine->device_info()->gpu_product();
-            int stepping = dev_info_->stepping_id();
-            auto entries = kernel_desc_.select_kernel(product, stepping,
-                    dev_info_->eu_count(), has_systolic, is_integrated, mode,
-                    problem, alpha(), beta(), m, n, d->k(), lda, ldb, d->ldc(),
+            auto entries = kernel_desc_.select_kernel(*dev_info_, mode, problem,
+                    alpha(), beta(), m, n, d->k(), lda, ldb, d->ldc(),
                     d->batch());
 
             for (auto &entry : entries) {
@@ -372,9 +361,8 @@ struct gen_t : public primitive_t {
 
         status_t query(query_t what, int idx, void *result) const override {
             switch ((int)what) {
-                case (int)query::preferred_gpu_threads_per_eu: {
-                    int grfs = kernel_desc_.driver_info()->grfCount;
-                    *(int *)result = (grfs > 128) ? 4 : 8;
+                case (int)query::preferred_gpu_grf_per_thread: {
+                    *(int *)result = kernel_desc_.driver_info()->grfCount;
                     break;
                 }
                 default: return gemm::pd_t::query(what, idx, result);
@@ -530,9 +518,8 @@ struct gen_t : public primitive_t {
 
         int max_k_sliced_groups() const {
             const auto *info = kernel_desc()->driver_info();
-            bool large_grf_mode = (info->grfCount > 128);
 
-            auto groups = dev_info_->hw_threads(large_grf_mode)
+            auto groups = dev_info_->hw_threads(info->grfCount)
                     / (info->wg[gemmstone::LoopM] * info->wg[gemmstone::LoopN]);
             if (info->kParallelVariable()) groups *= 2;
 
@@ -576,7 +563,7 @@ struct gen_t : public primitive_t {
 
             zero_pool_bytes_ = pd()->max_k_sliced_groups() * 64 * zg_cl;
 
-            auto zg_max = pd()->dev_info_->hw_threads(false);
+            auto zg_max = pd()->dev_info_->hw_threads();
             zero_pool_chunk_size_ = zg_max * 2 * 2 * 64;
 
             auto *intel_engine = utils::downcast<intel::engine_t *>(engine);

@@ -16,6 +16,7 @@
 
 #include <riscv_vector.h>
 
+#include "cpu/rv64/jit_rvv_inner_product_kernel.hpp"
 #include "cpu/rv64/rvv_inner_product.hpp"
 
 namespace dnnl {
@@ -69,50 +70,17 @@ float compute_ip_rvv_fwd_f32_f32(
 
 float compute_ip_rvv_fwd_s8_s8(
         const void *src, const void *weights, const dim_t len) {
-    const int8_t *x = reinterpret_cast<const int8_t *>(src);
-    const int8_t *w = reinterpret_cast<const int8_t *>(weights);
-
-    int32_t acc_i32 = 0;
-    for (dim_t i = 0; i < len;) {
-        size_t vl = __riscv_vsetvl_e8m1(static_cast<size_t>(len - i));
-        vint8m1_t vx_b = __riscv_vle8_v_i8m1(x + i, vl);
-        vint8m1_t vw_b = __riscv_vle8_v_i8m1(w + i, vl);
-        vint16m2_t vprod_i16 = __riscv_vwmul_vv_i16m2(vx_b, vw_b, vl);
-        vint32m1_t vzero32 = __riscv_vmv_v_x_i32m1(0, vl);
-        vint32m1_t vsum32
-                = __riscv_vwredsum_vs_i16m2_i32m1(vprod_i16, vzero32, vl);
-        int32_t partial = __riscv_vmv_x_s_i32m1_i32(vsum32);
-        acc_i32 += partial;
-        i += static_cast<dim_t>(vl);
-    }
-    return static_cast<float>(acc_i32);
+    return jit_rvv_inner_product_fwd_s8_s8(src, weights, len);
 }
 
 float compute_ip_rvv_fwd_u8_s8(
         const void *src, const void *weights, const dim_t len) {
-    const uint8_t *x = reinterpret_cast<const uint8_t *>(src);
-    const int8_t *w = reinterpret_cast<const int8_t *>(weights);
-
-    int32_t acc_i32 = 0;
-    for (dim_t i = 0; i < len;) {
-        size_t vl = __riscv_vsetvl_e8m1(static_cast<size_t>(len - i));
-        vuint8m1_t vx_b = __riscv_vle8_v_u8m1(x + i, vl);
-        vint8m1_t vw_b = __riscv_vle8_v_i8m1(w + i, vl);
-        // Mixed-sign widen multiply: u8 * s8 -> i16
-        vint16m2_t vprod_i16 = __riscv_vwmulsu_vv_i16m2(vw_b, vx_b, vl);
-        vint32m1_t vzero32 = __riscv_vmv_v_x_i32m1(0, vl);
-        vint32m1_t vsum32
-                = __riscv_vwredsum_vs_i16m2_i32m1(vprod_i16, vzero32, vl);
-        int32_t partial = __riscv_vmv_x_s_i32m1_i32(vsum32);
-        acc_i32 += partial;
-        i += static_cast<dim_t>(vl);
-    }
-    return static_cast<float>(acc_i32);
+    return jit_rvv_inner_product_fwd_u8_s8(src, weights, len);
 }
 
 float compute_ip_rvv_fwd(const void *src_base, const void *wei_base,
         const dim_t len, const data_type_t src_dt, const data_type_t wei_dt) {
-    float acc;
+    float acc = 0.0f;
     switch (src_dt) {
         case data_type::f32:
             if (wei_dt == data_type::f32) {

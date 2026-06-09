@@ -57,7 +57,7 @@ struct MatchParamsBase
     const StrategyRequirement *extraReqs = nullptr;
 
     MatchParamsBase() = default;
-    MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isIntegrated, const GEMMProblem &problem);
+    MatchParamsBase(ngen::HW hw, bool systolicAvailable, const ngen::Product &product, const GEMMProblem &problem);
 
 protected:
     std::array<char, 32> temp;
@@ -66,8 +66,8 @@ protected:
 struct MatchParams : public MatchParamsBase
 {
     MatchParams() = default;
-    MatchParams(ngen::HW hw, bool systolicAvailable, bool isIntegrated, const GEMMProblem &problem)
-            : MatchParamsBase(hw, systolicAvailable, isIntegrated, problem) {}
+    MatchParams(ngen::HW hw, bool systolicAvailable, const ngen::Product &product, const GEMMProblem &problem)
+            : MatchParamsBase(hw, systolicAvailable, product, problem) {}
 
     // NOLINTNEXTLINE(bugprone-copy-constructor-init)
     MatchParams(const MatchParams &other) { *this = other; }

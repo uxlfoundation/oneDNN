@@ -327,8 +327,8 @@ struct lws_strategy_t {
     virtual bool is_included(const mapped_block_t &blocks) const = 0;
 
     size_t get_max_wg_size() const {
-        bool large_grf_mode = gpu_attr && gpu_attr->threads_per_eu() == 4;
-        return engine->device_info()->max_wg_size(large_grf_mode);
+        int grf_per_thread = gpu_attr ? gpu_attr->grf_per_thread() : 128;
+        return engine->device_info()->max_wg_size(grf_per_thread);
     }
 
 protected:

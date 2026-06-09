@@ -72,15 +72,15 @@ void prelu_example(dnnl::engine::kind engine_kind) {
     std::fill(weights_data.begin(), weights_data.end(), 0.3f);
 
     // Create memory objects for tensor data (src, weights, dst). In this
-    // example, NCHW layout is assumed for src, weights and dst.
+    // example, NHWC layout is assumed for src, weights and dst.
     auto user_src_mem = memory(
-            {src_dims, memory::data_type::f32, memory::format_tag::nchw},
+            {src_dims, memory::data_type::f32, memory::format_tag::nhwc},
             engine);
     auto user_weights_mem = memory(
-            {weights_dims, memory::data_type::f32, memory::format_tag::nchw},
+            {weights_dims, memory::data_type::f32, memory::format_tag::nhwc},
             engine);
     auto user_dst_mem = memory(
-            {dst_dims, memory::data_type::f32, memory::format_tag::nchw},
+            {dst_dims, memory::data_type::f32, memory::format_tag::nhwc},
             engine);
 
     // Create memory descriptors for the primitive. Src tag is set
@@ -89,7 +89,7 @@ void prelu_example(dnnl::engine::kind engine_kind) {
     // primitive implementation, and that layout may differ from the one
     // provided by the user.
     auto src_md = memory::desc(
-            src_dims, memory::data_type::f32, memory::format_tag::nchw);
+            src_dims, memory::data_type::f32, memory::format_tag::nhwc);
     auto weights_md = memory::desc(
             weights_dims, memory::data_type::f32, memory::format_tag::any);
     auto dst_md = memory::desc(

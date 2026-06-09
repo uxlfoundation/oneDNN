@@ -185,6 +185,12 @@ size_t get_md_hash(const memory_desc_t &md) {
                     sparse_desc_t::max_metadata_types);
             // User cannot initialize `packed_desc` therefore `packed_desc`
             // is always zero initialized.
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+            seed = hash_combine(
+                    seed, md.format_desc.sparse_desc.grouped_desc.group_count);
+            seed = hash_combine(seed,
+                    md.format_desc.sparse_desc.grouped_desc.variable_dim_idx);
+#endif
             break;
         default: assert(!"unknown format_kind");
     }

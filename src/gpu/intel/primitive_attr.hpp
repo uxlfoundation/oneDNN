@@ -26,30 +26,30 @@ namespace gpu {
 namespace intel {
 
 struct gpu_primitive_attr_t : public primitive_attr_item_t {
-    gpu_primitive_attr_t(int threads_per_eu = 0)
-        : threads_per_eu_(threads_per_eu) {}
+    gpu_primitive_attr_t(int grf_per_thread = 0)
+        : grf_per_thread_(grf_per_thread) {}
 
     std::unique_ptr<primitive_attr_item_t> clone() const override {
-        return utils::make_unique<gpu_primitive_attr_t>(threads_per_eu_);
+        return utils::make_unique<gpu_primitive_attr_t>(grf_per_thread_);
     }
 
-    bool has_default_values() const override { return threads_per_eu_ == 0; }
+    bool has_default_values() const override { return grf_per_thread_ == 0; }
 
     bool is_equal(const primitive_attr_item_t &other) const override {
         auto *other_ptr = utils::downcast<const gpu_primitive_attr_t *>(&other);
-        return threads_per_eu_ == other_ptr->threads_per_eu_;
+        return grf_per_thread_ == other_ptr->grf_per_thread_;
     }
 
-    size_t get_hash() const override { return threads_per_eu_; }
+    size_t get_hash() const override { return grf_per_thread_; }
 
     void serialize(serialization_stream_t &stream) const override {
-        stream.append(threads_per_eu_);
+        stream.append(grf_per_thread_);
     }
 
-    int threads_per_eu() const { return threads_per_eu_; }
+    int grf_per_thread() const { return grf_per_thread_; }
 
 private:
-    int threads_per_eu_;
+    int grf_per_thread_;
 };
 
 } // namespace intel

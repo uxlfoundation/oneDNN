@@ -45,10 +45,6 @@ struct ref_resampling_fwd_t : public primitive_t {
 
             VDISPATCH_RESAMPLING(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_RESAMPLING(
-                    !utils::one_of(data_type::f64, src_md()->data_type,
-                            dst_md()->data_type),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_RESAMPLING(
                     platform::has_data_type_support(src_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_RESAMPLING(
@@ -102,10 +98,6 @@ struct ref_resampling_bwd_t : public primitive_t {
         status_t init(engine_t *engine) {
             using namespace data_type;
             VDISPATCH_RESAMPLING(!is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_RESAMPLING(
-                    !utils::one_of(data_type::f64, diff_src_md()->data_type,
-                            diff_dst_md()->data_type),
-                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_RESAMPLING(
                     platform::has_data_type_support(diff_src_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);

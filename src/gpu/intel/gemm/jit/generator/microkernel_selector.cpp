@@ -201,7 +201,6 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
     auto hw = getCore(product.family);
     auto stepping = hwInfo.gmdid & 0xFF;
 
-    bool isIntegrated = getPlatformType(product.family) == PlatformType::Integrated;
     problem.product = product;
     /* Strip internal upconversions */
     auto problemMatch = problem;
@@ -209,7 +208,7 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
     if (problemMatch.Tb_ext.bits() < problemMatch.Tb.bits()) problemMatch.Tb = problemMatch.Tb_ext;
 
     /* Create catalog matcher */
-    MatchParams matchParams(hw, hwInfo.systolicAvailable, isIntegrated, problemMatch);
+    MatchParams matchParams(hw, hwInfo.systolicAvailable, product, problemMatch);
 
     matchParams.sizes = sizes;
     matchParams.stepping = stepping;

@@ -162,6 +162,7 @@ status_t grouped_matmul_desc_init(matmul_desc_t *matmul_desc,
 status_t grouped_matmul_attr_check(
         const matmul_desc_t &desc, const primitive_attr_t *attr) {
     using smask_t = primitive_attr_t::skip_mask_t;
+    using namespace data_type;
 
     if (attr == nullptr) return status::success;
     if (attr->has_default_values()) return status::success;
@@ -173,6 +174,21 @@ status_t grouped_matmul_attr_check(
     VCHECK_MATMUL_UNIMPL(
             attr->has_default_values(allowed_mask, desc.dst_desc.data_type),
             VERBOSE_UNSUPPORTED_ATTR);
+
+    const auto src_dt = desc.src_desc.data_type;
+    const auto wei_dt = desc.weights_desc.data_type;
+    const auto &sc = attr->scales_;
+
+    // Dissalow scales on fp src/wei/dst data as real-world applications
+    // rely on low precision fp or integer (e.g., WoQ) data
+    VCHECK_MATMUL_UNIMPL(IMPLICATION(utils::one_of(src_dt, f32, bf16, f16),
+                                 sc.has_default_values(DNNL_ARG_SRC)),
+            VERBOSE_UNSUPPORTED_SCALES_CFG);
+    VCHECK_MATMUL_UNIMPL(IMPLICATION(utils::one_of(wei_dt, f32, bf16, f16),
+                                 sc.has_default_values(DNNL_ARG_WEIGHTS)),
+            VERBOSE_UNSUPPORTED_SCALES_CFG);
+    VCHECK_MATMUL_UNIMPL(sc.has_default_values(DNNL_ARG_DST),
+            VERBOSE_UNSUPPORTED_SCALES_CFG);
 
     // Post-ops: only eltwise and binary_mul are supported
     const memory_desc_wrapper dst_d(&desc.dst_desc);

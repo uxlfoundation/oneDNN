@@ -334,8 +334,7 @@ Product OpenCLCodeGenerator<hw>::detectHWInfo(cl_device_id device)
 template <HW hw>
 Product OpenCLCodeGenerator<hw>::detectHWInfo(cl_context context, cl_device_id device)
 {
-    Product product{};
-    product.family = ProductFamily::Unknown;
+    Product product;
 
     // Try CL_DEVICE_IP_VERSION_INTEL query first.
     cl_uint ipVersion = 0;      /* should be cl_version, but older CL/cl.h may not define cl_version */
@@ -352,9 +351,11 @@ Product OpenCLCodeGenerator<hw>::detectHWInfo(cl_context context, cl_device_id d
         product = ELFCodeGenerator<hw>::getBinaryHWInfo(binary);
     }
 
-    cl_bool integrated;
-    if (dynamic::clGetDeviceInfo(device, CL_DEVICE_HOST_UNIFIED_MEMORY, sizeof(integrated), &integrated, nullptr) == CL_SUCCESS)
-        product.type = integrated ? PlatformType::Integrated : PlatformType::Discrete;
+    if (product.type == PlatformType::Unknown) {
+        cl_bool integrated;
+        if (dynamic::clGetDeviceInfo(device, CL_DEVICE_HOST_UNIFIED_MEMORY, sizeof(integrated), &integrated, nullptr) == CL_SUCCESS)
+            product.type = integrated ? PlatformType::Integrated : PlatformType::Discrete;
+    }
 
     return product;
 }

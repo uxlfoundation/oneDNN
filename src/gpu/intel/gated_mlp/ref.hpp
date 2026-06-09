@@ -42,9 +42,6 @@ struct ref_t : public primitive_t {
         DECLARE_COMMON_PD_T("ocl:ref:any", ref_t);
 
         status_t init(impl::engine_t *engine) {
-            VDISPATCH_GATED_MLP(pd_ok(), VERBOSE_INCONSISTENT_PRB);
-            VDISPATCH_GATED_MLP(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
-
             memory_desc_t gate_dst_md, up_dst_md;
             CHECK(get_gate_dst_md(gate_dst_md));
             CHECK(get_up_dst_md(up_dst_md));
@@ -124,24 +121,53 @@ struct ref_t : public primitive_t {
 
     private:
         status_t get_gate_up_dst_md(memory_desc_t &retn, data_type_t dt) const {
-            std::vector<dim_t> dims {MB(), OC()};
+            std::vector<dim_t> dims {MB(), 1};
+            format_tag_t tag = format_tag::abc;
+            if (arg_md(DNNL_ARG_WEIGHTS_GATE)->ndims == 2) {
+                dims[1] = OC();
+                tag = format_tag::ab;
+            } else {
+                gpu_assert(arg_md(DNNL_ARG_WEIGHTS_GATE)->ndims == 3);
+                dims.emplace_back(OC());
+            }
             CHECK(memory_desc_init_by_tag(
-                    retn, int(dims.size()), dims.data(), dt, format_tag::ab));
+                    retn, int(dims.size()), dims.data(), dt, tag));
             return status::success;
         }
 
-        status_t move_attr(primitive_attr_t &retn, int from, int to) {
-            CHECK(retn.set_fpmath_mode(
-                    attr()->fpmath_.mode_, attr()->fpmath_.apply_to_int_));
-            CHECK(retn.scales_.set(to, attr()->scales_.get(from)));
-            CHECK(retn.zero_points_.set(to, attr()->zero_points_.get(from)));
+        status_t move_attr(primitive_attr_t &retn, int w_from, int w_to) const {
+            if (w_from == DNNL_ARG_WEIGHTS_DOWN) { // Down
+                auto wd_dt = arg_md(w_from)->data_type;
+                // Down SRC is always floating-point, but WEI isn't
+                CHECK((utils::one_of(wd_dt, dnnl_f32, dnnl_f16, dnnl_bf16))
+                                ? retn.set_fpmath_mode(
+                                          fpmath_mode::strict, false)
+                                : retn.set_fpmath_mode(fpmath_mode::any, true));
+                // all per-primitive post-ops are for Down, not for Gate/Up
+                CHECK(retn.set_post_ops(attr()->post_ops_));
+            } else { // Gate or Up
+                CHECK(retn.set_fpmath_mode(
+                        attr()->fpmath_.mode_, attr()->fpmath_.apply_to_int_));
+                // Quant on SRC
+                CHECK(retn.scales_.set(
+                        DNNL_ARG_SRC, attr()->scales_.get(DNNL_ARG_SRC)));
+                CHECK(retn.zero_points_.set(
+                        DNNL_ARG_SRC, attr()->zero_points_.get(DNNL_ARG_SRC)));
+                // Precomp on WEI
+                CHECK(retn.precomputed_reductions_.set(
+                        w_to, attr()->precomputed_reductions_.get(w_from)));
+            }
+            // Quant on WEI, same logic for all 3 of the GEMMs
+            CHECK(retn.scales_.set(w_to, attr()->scales_.get(w_from)));
+            CHECK(retn.zero_points_.set(
+                    w_to, attr()->zero_points_.get(w_from)));
             return status::success;
         }
 
         status_t create_matmul(std::shared_ptr<primitive_desc_t> &retn,
                 impl::engine_t *e, const primitive_attr_t &attr,
                 const memory_desc_t *src_desc, const memory_desc_t *wei_desc,
-                const memory_desc_t *dst_desc) {
+                const memory_desc_t *dst_desc) const {
             auto desc = matmul_desc_t();
             CHECK(impl::matmul_desc_init(
                     &desc, src_desc, wei_desc, nullptr, dst_desc));
@@ -160,20 +186,32 @@ struct ref_t : public primitive_t {
     }
 
     status_t execute(const exec_ctx_t &ctx) const override {
-        auto prep_weights_and_run
-                = [&](exec_args_t &&args, int idx,
+        auto prep_quant_and_run
+                = [&](exec_args_t &&args, int src, int wei,
                           const std::shared_ptr<impl::primitive_t> &prim) {
-            args[DNNL_ARG_WEIGHTS] = ctx.args().at(idx);
-            if (!pd()->attr()->scales_.has_default_values(idx))
+            if (!pd()->attr()->scales_.has_default_values(src))
+                args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC]
+                        = ctx.args().at(DNNL_ARG_ATTR_SCALES | src);
+            if (!pd()->attr()->zero_points_.has_default_values(src))
+                args[DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC]
+                        = ctx.args().at(DNNL_ARG_ATTR_ZERO_POINTS | src);
+
+            args[DNNL_ARG_WEIGHTS] = ctx.args().at(wei);
+            if (!pd()->attr()->scales_.has_default_values(wei))
                 args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS]
-                        = ctx.args().at(DNNL_ARG_ATTR_SCALES | idx);
-            if (!pd()->attr()->zero_points_.has_default_values(idx))
+                        = ctx.args().at(DNNL_ARG_ATTR_SCALES | wei);
+            if (!pd()->attr()->zero_points_.has_default_values(wei))
                 args[DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS]
-                        = ctx.args().at(DNNL_ARG_ATTR_ZERO_POINTS | idx);
+                        = ctx.args().at(DNNL_ARG_ATTR_ZERO_POINTS | wei);
+            if (!pd()->attr()->precomputed_reductions_.has_default_values(wei))
+                args[DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS | DNNL_ARG_WEIGHTS]
+                        = ctx.args().at(
+                                DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS | wei);
+
             exec_ctx_t nested_ctx(ctx, std::move(args));
             auto *nested_grantor
                     = create_nested_grantor(ctx.get_scratchpad_grantor(),
-                            memory_tracking::names::key_nested_multiple + idx,
+                            memory_tracking::names::key_nested_multiple + wei,
                             prim->pd()->scratchpad_registry());
             nested_ctx.set_scratchpad_grantor(nested_grantor);
             CHECK(prim->execute(nested_ctx));
@@ -201,8 +239,8 @@ struct ref_t : public primitive_t {
             exec_args_t args;
             args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_SRC);
             args[DNNL_ARG_DST] = memory_arg_t {inter_src_mem.get(), false};
-            CHECK(prep_weights_and_run(
-                    std::move(args), DNNL_ARG_WEIGHTS_UP, gemm_up_));
+            CHECK(prep_quant_and_run(std::move(args), DNNL_ARG_SRC,
+                    DNNL_ARG_WEIGHTS_UP, gemm_up_));
         } while (false);
         do {
             exec_args_t args;
@@ -211,15 +249,21 @@ struct ref_t : public primitive_t {
             // N.B.: not POST_OP(0), since POST_OP(0) is occupied by activation
             args[DNNL_ARG_ATTR_MULTIPLE_POST_OP(1) | DNNL_ARG_SRC_1]
                     = memory_arg_t {inter_src_mem.get(), true};
-            CHECK(prep_weights_and_run(
-                    std::move(args), DNNL_ARG_WEIGHTS_GATE, gemm_gate_));
+            CHECK(prep_quant_and_run(std::move(args), DNNL_ARG_SRC,
+                    DNNL_ARG_WEIGHTS_GATE, gemm_gate_));
         } while (false);
         do {
             exec_args_t args;
             args[DNNL_ARG_SRC] = memory_arg_t {inter_wei_mem.get(), true};
             args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DST);
-            CHECK(prep_weights_and_run(
-                    std::move(args), DNNL_ARG_WEIGHTS_DOWN, gemm_down_));
+            const auto &post_ops = pd()->attr()->post_ops_;
+            for (int p = 0, pl = post_ops.len(); p < pl; p++) {
+                if (!post_ops.entry_[p].is_like_binary()) continue;
+                auto idx = DNNL_ARG_ATTR_MULTIPLE_POST_OP(p) | DNNL_ARG_SRC_1;
+                args[idx] = ctx.args().at(idx);
+            }
+            CHECK(prep_quant_and_run(std::move(args), DNNL_ARG_UNDEF,
+                    DNNL_ARG_WEIGHTS_DOWN, gemm_down_));
         } while (false);
 
         return status::success;

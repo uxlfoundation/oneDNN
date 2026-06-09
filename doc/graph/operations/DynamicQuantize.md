@@ -3,7 +3,7 @@ DynamicQuantize {#dev_guide_op_dynamicquantize}
 
 ## General
 
-DynamicQuantize operation converts a f32 tensor to a quantized (s8 or u8)
+DynamicQuantize operation converts an `f32` tensor to a quantized (`s8` or `u8`)
 tensor. It supports both per-tensor and per-channel asymmetric linear
 quantization. The target quantized data type is specified via the data type of
 dst logical tensor. Rounding mode is library-implementation defined.
@@ -36,7 +36,7 @@ constructing an operation.
 | 1     | `scales`      | Required             |
 | 2     | `zps`         | Optional             |
 
-@note `scales` is a f32 1D tensor to be applied to the quantization formula. For
+@note `scales` is an `f32` 1D tensor to be applied to the quantization formula. For
 `qtype` = `per-tensor`, there should be only one element in the scales tensor.
 For `qtype` = `per-channel`, the element number should be equal to the element
 number of src tensor along the dimension axis.

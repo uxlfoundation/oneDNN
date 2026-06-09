@@ -77,7 +77,7 @@ void simple_net(engine::kind engine_kind) {
 
     // create memory for user data
     auto conv_user_src_memory = memory(
-            {{conv_src_tz}, memory::data_type::f32, memory::format_tag::nchw},
+            {{conv_src_tz}, memory::data_type::f32, memory::format_tag::nhwc},
             eng);
     write_to_dnnl_memory(net_src.data(), conv_user_src_memory);
 
@@ -232,7 +232,7 @@ void simple_net(engine::kind engine_kind) {
 
     // create memory for pool dst data in user format
     auto pool_user_dst_memory = memory(
-            {{pool_dst_tz}, memory::data_type::f32, memory::format_tag::nchw},
+            {{pool_dst_tz}, memory::data_type::f32, memory::format_tag::nhwc},
             eng);
 
     // create pool dst memory descriptor in format any for bfloat16 data type
@@ -278,7 +278,7 @@ void simple_net(engine::kind engine_kind) {
 
     // create memory for user diff dst data stored in float data type
     auto pool_user_diff_dst_memory = memory(
-            {{pool_dst_tz}, memory::data_type::f32, memory::format_tag::nchw},
+            {{pool_dst_tz}, memory::data_type::f32, memory::format_tag::nhwc},
             eng);
     write_to_dnnl_memory(net_diff_dst.data(), pool_user_diff_dst_memory);
 
@@ -382,7 +382,7 @@ void simple_net(engine::kind engine_kind) {
 
     auto conv_user_diff_weights_memory
             = memory({{conv_weights_tz}, memory::data_type::f32,
-                             memory::format_tag::nchw},
+                             memory::format_tag::oihw},
                     eng);
     auto conv_diff_bias_memory = memory(
             {{conv_bias_tz}, memory::data_type::f32, memory::format_tag::x},

@@ -66,7 +66,7 @@ platforms follow the general description in the [Data Types Guide](@ref dev_guid
 1. Convolution as a post op (Depthwise Convolution) is not supported on GPU.
 2. Convolution and BatchNormInference cannot co-exist in the epilogue subgraph.
 3. F2F Conversion Subgraph used for `dst` tensor only supports
-   bf16 to f32 data type conversion.
+   `bf16` to `f32` data type conversion.
 
 ## Implementation Notes
 

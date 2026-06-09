@@ -59,10 +59,10 @@ static size_t get_slm_buff_size(
 // Local group size adjustment.
 static void adjust_lws_calc_kernel(lookup_table::params_t &conf,
         compute::dispatch_t &dispatch, impl::engine_t *engine,
-        bool large_grf_mode) {
+        int grf_per_thread) {
     auto *intel_engine = downcast<intel::engine_t *>(engine);
     auto eu_count = intel_engine->device_info()->eu_count();
-    auto max_lws = intel_engine->device_info()->max_wg_size(large_grf_mode);
+    auto max_lws = intel_engine->device_info()->max_wg_size(grf_per_thread);
     auto eus_per_ss = intel_engine->device_info()->max_eus_per_wg();
     const int max_ss = div_up(eu_count, eus_per_ss);
 
@@ -279,9 +279,9 @@ static status_t init_conf_common(lookup_table::params_t &conf, offsets_t &off,
     if (conf.use_fused_atomics_reduction()) {
         auto *gpu_attr
                 = downcast<gpu_primitive_attr_t *>(pd->attr()->gpu_attr_.get());
-        bool large_grf_mode = gpu_attr && gpu_attr->threads_per_eu() == 4;
+        int grf_per_thread = gpu_attr ? gpu_attr->grf_per_thread() : 128;
         adjust_lws_calc_kernel(
-                conf, dispatch_calc_stat, intel_engine, large_grf_mode);
+                conf, dispatch_calc_stat, intel_engine, grf_per_thread);
 
         VDISPATCH_BNORM_IC(
                 intel_engine->mayiuse(compute::device_ext_t::ext_float_atomics),

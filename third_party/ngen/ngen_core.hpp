@@ -292,10 +292,14 @@ enum class ProductFamily : int {
 enum class PlatformType {Unknown, Integrated, Discrete};
 
 struct Product {
-    ProductFamily family;
-    int stepping;
-    PlatformType type;
+    Product() = default;
+    Product(ProductFamily family_, int stepping_, PlatformType type_) : family(family_), stepping(stepping_), type(type_) {}
+
+    ProductFamily family = ProductFamily::Unknown;
+    int stepping = 0;
+    PlatformType type = PlatformType::Unknown;
 };
+static_assert(std::is_trivially_copyable<Product>(), "Product must be trivially copyable");
 
 static inline bool operator==(const Product &p1, const Product &p2) { return p1.family == p2.family && p1.stepping == p2.stepping && p1.type == p2.type; }
 static inline bool operator!=(const Product &p1, const Product &p2) { return !(p1 == p2); }

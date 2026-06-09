@@ -6,7 +6,7 @@ Int8 Inference {#dev_guide_inference_int8}
 To push higher performance during inference computations, recent work has
 focused on computing at a lower precision (that is, shrinking the size of data
 for activations and weights) to achieve higher throughput. Eight-bit
-computations (referred to as int8) offer improved performance over
+computations (referred to as `int8`) offer improved performance over
 higher-precision types because they enable packing more data into a single
 instruction, at the cost of reduced (but acceptable) accuracy.
 
@@ -17,7 +17,7 @@ There are different ways to use lower precision to perform inference. The
 quantization model oneDNN supports.
 
 ### Quantization Process
-To operate with int8 data types from a higher-precision format (for example,
+To operate with `int8` data types from a higher-precision format (for example,
 32-bit floating point), data must first be _quantized_. The quantization
 process converts a given input into a lower-precision format. The precision and
 accuracy factors are determined by the scaling factors.
@@ -25,7 +25,7 @@ accuracy factors are determined by the scaling factors.
 ### Range of the Data
 The data range is usually obtained by sampling the dataset of previous
 executions in the original data type (for example, the activations and weights
-from training in f32):
+from training in `f32`):
 
 + \f$ R = \max(abs(T))\f$.
 
@@ -36,7 +36,7 @@ computation of the lower-precision results.
 
 ### Scaling Factor
 The **quantization factor** is used to convert the
-original values into the corresponding int8 range and is calculated as:
+original values into the corresponding `int8` range and is calculated as:
 
 + \f$ Q_{\alpha} = \frac{255}{R_{\alpha}}\f$ is the
 quantization factor for activations with non-negative values.
@@ -86,7 +86,7 @@ The scaling factors are:
 
 + \f$ Q_{w} = \frac{127}{R_{w}} = \frac{127}{9.8} = 12.96\f$
 
-Finally, the quantized input values for the int8 operation are calculated as:
+Finally, the quantized input values for the `int8` operation are calculated as:
 
 + \f$\alpha_{u8} = \lceil Q_{\alpha} \alpha_{f32} \rceil\f$
    \f$ = \Bigl \lceil 17 \cdot [15, 14, \ldots, 11 ] \Bigr \rceil = [255, 238, \ldots, 187] \f$
@@ -95,12 +95,12 @@ Finally, the quantized input values for the int8 operation are calculated as:
     = \Bigl \lceil 12.96 \cdot [-5.1 , 6.8, \ldots, -1.2, 9.8 ] \Bigr \rceil
     = [-66, 88, \ldots, -15, 127] \f$
 
-These arrays are the new inputs for the int8 net.
+These arrays are the new inputs for the `int8` net.
 
 ## Int8 Support
 
-oneDNN supports int8 computations for inference by allowing one to specify that
-primitives' input and output memory objects use int8 data types. int8
+oneDNN supports `int8` computations for inference by allowing one to specify that
+primitives' input and output memory objects use `int8` data types. `int8`
 primitive implementations are optimized for high performance on the compatible
 hardware (see @ref dev_guide_data_types).
 
@@ -114,7 +114,7 @@ the case of an unsupported combination, the library returns an error.
 
 In oneDNN, the scaling factors are applied to each memory object of a primitive.
 Moreover, to perform input transformations (for example, source and
-weights), oneDNN performs quantizing and dequantizing of data for int8 using
+weights), oneDNN performs quantizing and dequantizing of data for `int8` using
 the **reorder primitive**.
 
 oneDNN has two formats for defining the quantization
@@ -148,4 +148,4 @@ affected by the scaling factor.
 
 ## Example
 
-@ref cnn_inference_int8_cpp example walks through the steps of int8 inference.
+@ref cnn_inference_int8_cpp example walks through the steps of `int8` inference.

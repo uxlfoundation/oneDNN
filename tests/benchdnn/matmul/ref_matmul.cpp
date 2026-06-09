@@ -320,7 +320,6 @@ static void compute_ref_matmul_chunk(const chunk_params_t &p, int64_t M,
     }
 }
 
-#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
 // Reference implementation for grouped matmul
 // Computes per-group matmuls: for each group g, dst[g] = src[g] * wei[g]
 //
@@ -384,7 +383,6 @@ void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
                 args);
     });
 }
-#endif // DNNL_EXPERIMENTAL_GROUPED_MEMORY
 
 void compute_ref_matmul(const prb_t *prb, const args_t &args) {
     // Fast return if any dim is zero. Common logic doesn't apply because of
@@ -568,15 +566,11 @@ void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
     const auto wei_encoding
             = prb->sparse_options.get_encoding(DNNL_ARG_WEIGHTS);
 
-#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
-    const auto dst_encoding = prb->sparse_options.get_encoding(DNNL_ARG_DST);
-
-    if (src_encoding == dnnl_grouped && dst_encoding == dnnl_grouped) {
+    if (prb->sparse_options.is_grouped(DNNL_ARG_SRC)
+            && prb->sparse_options.is_grouped(DNNL_ARG_DST)) {
         compute_ref_grouped_matmul(prb, args);
-    } else
-#endif
-            if (src_encoding == dnnl_csr || wei_encoding == dnnl_csr
-                    || src_encoding == dnnl_coo || wei_encoding == dnnl_coo) {
+    } else if (src_encoding == dnnl_csr || wei_encoding == dnnl_csr
+            || src_encoding == dnnl_coo || wei_encoding == dnnl_coo) {
         compute_ref_sparse_matmul(prb, args);
     } else {
         compute_ref_matmul(prb, args);

@@ -48,11 +48,10 @@ static size_t get_slm_buff_size(
 }
 // Local group size adjustment for calc_stat kernel
 static void adjust_lws_calc_kernel(int ic_block, nhwc_params_t &conf,
-        compute::dispatch_t &dispatch, impl::engine_t *engine,
-        bool large_grf_mode = false) {
+        compute::dispatch_t &dispatch, impl::engine_t *engine) {
     auto *intel_engine = downcast<intel::engine_t *>(engine);
     auto eu_count = intel_engine->device_info()->eu_count();
-    auto max_lws = intel_engine->device_info()->max_wg_size(large_grf_mode);
+    auto max_lws = intel_engine->device_info()->max_wg_size();
     auto eus_per_ss = intel_engine->device_info()->max_eus_per_wg();
     const int max_ss = div_up(eu_count, eus_per_ss);
     const int max_slm_size = compute::device_info_t::max_slm_size(

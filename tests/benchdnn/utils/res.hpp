@@ -58,14 +58,20 @@ enum dir_t {
 
 struct check_mem_size_args_t {
     check_mem_size_args_t() = default;
-    check_mem_size_args_t(
-            const_dnnl_primitive_desc_t pd, bool want_input, dir_t dir)
-        : pd(pd), want_input(want_input), dir(dir) {}
+    check_mem_size_args_t(const_dnnl_primitive_desc_t pd, bool want_input,
+            dir_t dir, bool use_logical_size = false)
+        : pd(pd)
+        , want_input(want_input)
+        , dir(dir)
+        , use_logical_size(use_logical_size) {}
 
     // Input args: get their values only at construction.
     const_dnnl_primitive_desc_t pd = nullptr;
     bool want_input = false;
     dir_t dir = DIR_UNDEF; // See ANCHOR: MEM_CHECK_ARGS_DIR;
+    // Logical size is used to properly return iobytes for bandwidth
+    // calculation. Padded or strided area mustn't be included.
+    bool use_logical_size = false;
 
     // Manually input args: must be set by the user to handle additional logic.
     //

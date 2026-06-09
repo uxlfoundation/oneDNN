@@ -33,7 +33,7 @@ graph (DAG) using oneDNN Graph API.
 
 ### Floating-point SDPA for Inference
 
-oneDNN defines floating-point (f32, bf16, or f16) SDPA as follows. The blue
+oneDNN defines floating-point (`f32`, `bf16`, or `f16`) SDPA as follows. The blue
 nodes are required when defining an SDPA pattern while the brown parts are
 optional.
 
@@ -95,7 +95,7 @@ optional.
 
 ### Floating-point SDPA for Training Forward Propagation
 
-oneDNN defines floating-point (f32, bf16, or f16) SDPA for training forward
+oneDNN defines floating-point (`f32`, `bf16`, or `f16`) SDPA for training forward
 propagation as follows. The blue nodes are required while the brown nodes are optional.
 
 ![SDPA pattern](images/sdpa_forward.png)
@@ -107,7 +107,7 @@ API for more details.
 
 ### Floating-point SDPA for Training Backpropagation
 
-oneDNN defines floating-point (f32, bf16, or f16) SDPA for training
+oneDNN defines floating-point (`f32`, `bf16`, or `f16`) SDPA for training
 backpropagation as follows. The blue nodes are required while the brown nodes
 are optional.
 
@@ -128,7 +128,7 @@ are optional.
    propagation. See [Subtract](@ref dev_guide_op_subtract) and [Exp](@ref dev_guide_op_exp)
    in Graph API.
 5. The Dropout, TypeCast and MatMul operations after Exp are used to compute the
-   gradients with respect to Value. TypeCast is required for bf16 and f16
+   gradients with respect to Value. TypeCast is required for `bf16` and `f16`
    training scenarios. See [TypeCast](@ref dev_guide_op_typecast) in Graph API.
 6. The MatMul takes the output gradients (`dO`) and the Value as inputs to
    compute the gradients of the probabilities.
@@ -143,25 +143,25 @@ are optional.
    and is used to compute the gradients of the score.
 10. The TypeCast and two MatMul operations after the Scale node compute the
    gradients with respect to Query and Key, respectively. TypeCast is required
-   for bf16 and f16 training scenarios.
+   for `bf16` and `f16` training scenarios.
 11. The optional End operation marks the output of Multiply as a
     partition output, representing the gradients with respect to the Mask. Note
     that the output shape of `dM` is (N, H, S, S) and the data
-    type is f32. The library does not perform any reduction or typecast on this
-    output (for example, reducing to (1, 1, S, S), casting to f16).
+    type is `f32`. The library does not perform any reduction or typecast on this
+    output (for example, reducing to (1, 1, S, S), casting to `f16`).
 
 ## Data Types
 
-oneDNN supports the floating-point SDPA pattern with data types f32, bf16, and
-f16. You can specify the data type via the input and output logical tensors'
+oneDNN supports the floating-point SDPA pattern with data types `f32`, `bf16`, and
+`f16`. You can specify the data type via the input and output logical tensors'
 data type fields for each operation.
 
-oneDNN supports bf16 or f16 SDPA with f32 intermediate type. For
-inference and traing forward propagation, the Q, K and V tensors use bf16 or f16
+oneDNN supports `bf16` or `f16` SDPA with `f32` intermediate type. For
+inference and traing forward propagation, the Q, K and V tensors use `bf16` or `f16`
 data types, while the outputs of the first MatMul, Scale, Mask, and the input of
-SoftMax are in f32. Similarly, in training backpropagation, the Q, K, V, dO, dQ,
-dK and dV tensors use bf16 or f16, while the Stats input uses f32. The intermediate
-tensors are in f32, except those after TypeCast, which cast to bf16 or f16.
+SoftMax are in `f32`. Similarly, in training backpropagation, the Q, K, V, dO, dQ,
+dK and dV tensors use `bf16` or `f16`, while the Stats input uses `f32`. The intermediate
+tensors are in `f32`, except those after TypeCast, which cast to `bf16` or `f16`.
 
 The definition of the data types and support status on different CPU and GPU
 platforms follow the general description in @ref dev_guide_data_types.
@@ -170,9 +170,9 @@ platforms follow the general description in @ref dev_guide_data_types.
 
 1. oneDNN primitive-based SDPA is implemented as the reference implementation on
    both Intel Architecture Processors and Intel Graphics Products. In this case,
-   floating-point SDPA patterns are usually implemented with f32, bf16, or f16
+   floating-point SDPA patterns are usually implemented with `f32`, `bf16`, or `f16`
    matmul (with post-ops) and softmax primitives, while quantized SDPA patterns
-   are implemented with int8 matmul (with post-ops) and f32, bf16, or f16
+   are implemented with `int8` matmul (with post-ops) and `f32`, `bf16`, or `f16`
    softmax primitives. The reference implementation requires memory to store the
    intermediate results of the dot products between Query and Key which takes
    \f$O(S^2)\f$ memory. It may lead to out-of-memory error when computing long

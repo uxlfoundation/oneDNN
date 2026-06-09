@@ -136,8 +136,8 @@ void binary_executable_t::execute(const stream &stream,
 }
 
 #ifdef DNNL_WITH_SYCL
-::sycl::event binary_executable_t::execute_sycl(const stream &stream,
-        const std::unordered_map<int, memory> &args,
+std::optional<::sycl::event> binary_executable_t::execute_sycl(
+        const stream &stream, const std::unordered_map<int, memory> &args,
         const std::vector<::sycl::event> &deps) const {
     if (is_dummy_) { return dummy_impl_.execute_sycl(stream, args, deps); }
 
@@ -146,8 +146,10 @@ void binary_executable_t::execute(const stream &stream,
         auto it_dst = args.find(DNNL_ARG_DST);
         auto it_src = args.find(DNNL_GRAPH_ARG_POST_SRC);
         if (it_dst == args.end() || it_src == args.end()) {
-            assert(!("cannot find the required memory"));
-            return {};
+            // TODO(xxx): this case should not happen. We may want to convert it to
+            // a verbose error.
+            assert(!"cannot find memory for DNNL_ARG_POST_SRC or DNNL_ARG_DST");
+            return std::nullopt;
         }
 
         memory &dst_mem = const_cast<memory &>(it_dst->second);

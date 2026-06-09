@@ -368,7 +368,6 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
             VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "microkernels");
 
     // Check for supported quantization schemes
-    const scales_t &attr_scales = attr()->scales_;
     if (src_quant_.with_scale()) {
         VDISPATCH_MATMUL(utils::one_of(src_quant_.scale_dt(), f32, f16, bf16,
                                  f8_e5m2, f8_e4m3, e8m0, f4_e2m1, f4_e3m0),
@@ -426,9 +425,6 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
                 ": wei scale(%d) and zp(%d) mask must match",
                 wei_scale_mask, wei_zp_mask);
     }
-
-    VDISPATCH_MATMUL(attr_scales.has_default_values(DNNL_ARG_DST),
-            VERBOSE_UNSUPPORTED_SCALES_CFG);
 
     {
         // Only support a single binary post-op with a scalar operand for now, which

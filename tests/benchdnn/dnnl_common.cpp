@@ -667,11 +667,45 @@ void finalize() {
 #endif
 }
 
+int update_timer_with_profiling_info(timer::timer_t &t, bool use_profiling,
+        const std::vector<stream_t> &v_stream, int execute_count) {
+    if (!use_profiling) {
+        t.stamp(execute_count * num_streams);
+        return OK;
+    }
+
+    std::vector<std::vector<uint64_t>> v_nsecs(num_streams);
+    std::vector<std::vector<uint64_t>> v_cycles(num_streams);
+    for (size_t j = 0; j < v_stream.size(); j++) {
+        SAFE(get_gpu_profiling_info(
+                     v_stream[j], v_nsecs[j], v_cycles[j], execute_count),
+                CRIT);
+        reset_gpu_profiling(v_stream[j]);
+
+        // Profiling should have information to report, otherwise, stop.
+        if (v_nsecs[j].empty()) {
+            BENCHDNN_PRINT(0, "%s\n",
+                    "WARNING: no counters were found during profiling.");
+            return FAIL;
+        }
+    }
+
+    for_(size_t j = 0; j < v_stream.size(); j++)
+    for (size_t i = 0; i < v_nsecs[j].size(); i++) {
+        t.stop(1, (int64_t)v_cycles[j][i], v_nsecs[j][i] / 1e6);
+    }
+
+    return OK;
+}
+
 inline int measure_perf_individual(timer::timer_t &t, dnnl_stream_t stream,
         perf_function_t &perf_func, std::vector<dnnl_exec_arg_t> &dnnl_args) {
-    // Warm-up run.
-    DNN_SAFE(perf_func(stream, dnnl_args), WARN);
-    DNN_SAFE(dnnl_stream_wait(stream), CRIT);
+    // Warm-up run, this is not measured due to possibility the associated
+    // kernel has not been built and skews the results.
+    if (!has_bench_mode_bit(mode_bit_t::sim)) {
+        DNN_SAFE(perf_func(stream, dnnl_args), WARN);
+        DNN_SAFE(dnnl_stream_wait(stream), CRIT);
+    }
 
     cold_cache_t cold_cache(dnnl_args, stream);
 
@@ -689,96 +723,74 @@ inline int measure_perf_individual(timer::timer_t &t, dnnl_stream_t stream,
 inline int measure_perf_aggregate(timer::timer_t &t,
         const std::vector<stream_t> &v_stream, perf_function_t &perf_func,
         std::vector<std::vector<dnnl_exec_arg_t>> &dnnl_args) {
-    // There seems to be some limit to how many kernels can be queued in OCL
-    // builds and 4096 seems to be a nice number under that limit.
-    // Otherwise, hangs in perf validation are observed due to many kernels
-    // being queued at once.
-    static constexpr int max_batch_times = 4096;
-
     std::vector<cold_cache_t> cold_cache(num_streams);
 
     // Nvidia/AMD don't support profiling.
     const bool use_profiling = is_gpu() && !is_nvidia_gpu() && !is_amd_gpu();
 
+    // Warm-up run, this is not measured due to possibility the associated
+    // kernel has not been built and skews the results.
+    if (!has_bench_mode_bit(mode_bit_t::sim)) {
+        for (size_t j = 0; j < v_stream.size(); j++) {
+            DNN_SAFE(perf_func(v_stream[j], dnnl_args[j]), WARN);
+            DNN_SAFE(dnnl_stream_wait(v_stream[j]), CRIT);
+        }
+    }
+
     for (size_t j = 0; j < v_stream.size(); j++) {
-        // Warm-up run, this is not measured due to possibility the associated
-        // kernel has not been built and skews the results.
-        DNN_SAFE(perf_func(v_stream[j], dnnl_args[j]), WARN);
-        DNN_SAFE(dnnl_stream_wait(v_stream[j]), CRIT);
         cold_cache[j] = cold_cache_t(dnnl_args[j], v_stream[j]);
         if (use_profiling) reset_gpu_profiling(v_stream[j]);
     }
 
-    bool is_first_loop = true;
-    int cur_batch_times
-            = fix_times_per_prb ? fix_times_per_prb : min_times_per_prb;
+    int num_submissions = 0;
+    if (fix_times_per_prb) {
+        // If user specified the number of runs, just use it.
+        num_submissions = fix_times_per_prb;
+    } else {
+        // Otherwise, use an estimate run, which is not a part of final time
+        // collection. It's used to calculate the number of submissions to run
+        // before synchronization. Done on a single stream.
+        t.reset();
+        DNN_SAFE(perf_func(v_stream[0], dnnl_args[0]), WARN);
+        DNN_SAFE(dnnl_stream_wait(v_stream[0]), CRIT);
+        SAFE(update_timer_with_profiling_info(t, use_profiling, v_stream, 1),
+                WARN);
 
-    t.reset();
-    while (true) {
-        // Keep separate var due to a `break` inside the loop.
-        int execute_count = 0;
-        // Keep inner loop over streams for better submission overlapping.
-        for_(int i = 0; i < cur_batch_times; i++)
-        for (size_t j = 0; j < v_stream.size(); j++) {
-            if (!cold_cache[j].update_dnnl_args(dnnl_args[j])) break;
-            DNN_SAFE(perf_func(v_stream[j], dnnl_args[j]), WARN);
-            execute_count++;
-        }
-
-        for (size_t j = 0; j < v_stream.size(); j++) {
-            DNN_SAFE(dnnl_stream_wait(v_stream[j]), CRIT);
-        }
-
-        if (use_profiling) {
-            std::vector<std::vector<uint64_t>> v_nsecs(num_streams);
-            std::vector<std::vector<uint64_t>> v_cycles(num_streams);
-            bool nsecs_is_empty = false;
-            for (size_t j = 0; j < v_stream.size(); j++) {
-                SAFE(get_gpu_profiling_info(v_stream[j], v_nsecs[j],
-                             v_cycles[j], execute_count),
-                        CRIT);
-                reset_gpu_profiling(v_stream[j]);
-
-                // Profiling should have information to report, otherwise, stop.
-                if (v_nsecs[j].empty()) {
-                    nsecs_is_empty = true;
-                    BENCHDNN_PRINT(0, "%s\n",
-                            "WARNING: no counters were found during "
-                            "profiling.");
-                    break;
-                }
-            }
-            if (nsecs_is_empty) break;
-
-            for_(size_t j = 0; j < v_stream.size(); j++)
-            for (size_t i = 0; i < v_nsecs[j].size(); i++) {
-                t.stop(1, (int64_t)v_cycles[j][i], v_nsecs[j][i] / 1e6);
-            }
-        } else {
-            t.stamp(cur_batch_times * num_streams);
-        }
-
-        // Assumption that for each stream cold_cache acts same.
-        if (should_stop(t) || cold_cache[0].should_stop()) break;
-
-        // Adjust cur_batch_times after the first batch run
-        if (is_first_loop) {
-            double ms_min = t.ms(timer::timer_t::min);
-            // Heuristic: try to use ~5 batch runs for the whole benchmark
-            int batch_times_heuristic = (ms_min == 0.0)
-                    ? INT_MAX
-                    : MAX2(1,
-                              (int)((max_ms_per_prb - t.total_ms()) / ms_min
-                                      / 5));
-            cur_batch_times = MIN2(max_batch_times, batch_times_heuristic);
-            is_first_loop = false;
-        }
+        double ms_min = t.total_ms();
+        if (ms_min == 0.0) SAFE_V(FAIL);
+        num_submissions
+                = MAX2(min_times_per_prb, (int)(max_ms_per_prb / ms_min));
     }
+
+    BENCHDNN_PRINT(
+            4, "%s%d%s\n", "[PERF]: submissions: ", num_submissions, ";");
+    // Measuring loop. A single synchronization point, called once, the number
+    // of submissions determined above based on n_times or plain time criterion.
+    t.reset();
+    // Keep a separate variable due to a `break` inside the loop.
+    int execute_count = 0;
+    // Keep inner loop over streams for better submission overlapping.
+    for_(int i = 0; i < num_submissions; i++)
+    for (size_t j = 0; j < v_stream.size(); j++) {
+        if (!cold_cache[j].update_dnnl_args(dnnl_args[j])) break;
+        DNN_SAFE(perf_func(v_stream[j], dnnl_args[j]), WARN);
+        execute_count++;
+    }
+
+    for (size_t j = 0; j < v_stream.size(); j++) {
+        DNN_SAFE(dnnl_stream_wait(v_stream[j]), CRIT);
+    }
+
+    SAFE(update_timer_with_profiling_info(
+                 t, use_profiling, v_stream, execute_count),
+            WARN);
 
     if (use_profiling) {
         for (size_t j = 0; j < v_stream.size(); j++) {
             notify_gpu_profiling_complete(v_stream[j]);
         }
+
+        t.filter_collection();
     }
 
     return OK;
@@ -866,6 +878,11 @@ bool check_md_consistency_with_tag(
     return dnnl_memory_desc_equal(md_new_tag, md);
 }
 
+// Note: CPU support can be simplified if prop_kind is passed, however, this
+// prop kind must come from prb directly, not queried, as if not implemented,
+// pd will come empty and there's nothing to query. prop_kind is not available
+// in prb as of now and it will require dir_t -> prop_kind_t replacement
+// refactor across the stack.
 void skip_unimplemented_data_type(
         const std::vector<dnnl_data_type_t> &v_dt, dir_t dir, res_t *res) {
     const bool has_f64_support = is_f64_supported();
@@ -913,6 +930,8 @@ void skip_unimplemented_data_type(
             default: break;
         }
         if (need_skip) {
+            BENCHDNN_PRINTF(2, "%s%s%s", "[SKIP]: Data type \'", dt2str(i_dt),
+                    "\' is not supported on this platform.");
             res->state = SKIPPED;
             res->reason = reason_t::skip_data_type;
             return;
@@ -1484,7 +1503,12 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
 
 void add_md_size(const_dnnl_memory_desc_t md,
         check_mem_size_args_t &check_mem_size_args) {
-    const auto mem_size = dnnl_memory_desc_get_size(md);
+    size_t mem_size = SIZE_MAX;
+    if (check_mem_size_args.use_logical_size) {
+        mem_size = get_logical_size(md);
+    } else {
+        mem_size = dnnl_memory_desc_get_size(md);
+    }
     // Runtime mem size is not defined.
     if (mem_size == 0 || mem_size == DNNL_RUNTIME_SIZE_VAL) return;
 
@@ -1669,15 +1693,18 @@ int collect_mem_size(check_mem_size_args_t &mem_size_args,
 }
 
 int get_memory_footprint(const_dnnl_primitive_desc_t const_pd, res_t *res) {
-    check_mem_size_args_t check_mem_in_size_args(
-            const_pd, /* want_input = */ true, DIR_UNDEF);
+    check_mem_size_args_t check_mem_in_size_args(const_pd,
+            /* want_input = */ true, DIR_UNDEF,
+            /* use_logical_size */ true);
     get_memory_bytes(check_mem_in_size_args); // Get input bytes.
-    check_mem_size_args_t check_mem_out_size_args(
-            const_pd, /* want_input = */ false, DIR_UNDEF);
+    check_mem_size_args_t check_mem_out_size_args(const_pd,
+            /* want_input = */ false, DIR_UNDEF,
+            /* use_logical_size */ true);
     get_memory_bytes(check_mem_out_size_args); // Get output bytes.
 
-    // Sum post-ops include dst bytes as an input. Not included in get_memory_bytes
-    // since it would cause `collect_mem_size` to double-count dst bytes.
+    // Sum post-ops include dst bytes as an input. Not included in
+    // `get_memory_bytes` since it would cause `collect_mem_size` to
+    // double-count dst bytes.
     auto const_attr_po = query_post_ops(const_pd);
     auto po_len = dnnl_post_ops_len(const_attr_po);
     for (int idx = 0; idx < po_len; ++idx) {
@@ -1715,6 +1742,50 @@ int get_memory_footprint(const_dnnl_primitive_desc_t const_pd, res_t *res) {
         const auto fixed_src_size = src_size / static_cast<size_t>(total_elems)
                 * static_cast<size_t>(read_elems);
         check_mem_in_size_args.total_size_device += fixed_src_size - src_size;
+    }
+
+    const auto &adjust_src_bytes_for_stride
+            = [&check_mem_in_size_args](const_dnnl_memory_desc_t src_md,
+                      int spatial_dims, const dnnl_dims_t strides,
+                      const dnnl_dims_t kernels) {
+        double kernel_ratio = 1;
+        for (int d = 0; d < spatial_dims; d++) {
+            auto stride = strides[d];
+            auto kernel = kernels[d];
+            if (stride > kernel) {
+                kernel_ratio *= static_cast<double>(stride) / kernel;
+            }
+        }
+        const auto src_size = dnnl_memory_desc_get_size(src_md);
+        const auto fixed_src_size = static_cast<size_t>(
+                static_cast<double>(src_size) / kernel_ratio);
+        check_mem_in_size_args.total_size_device += fixed_src_size - src_size;
+    };
+
+    // When a dimensional stride is bigger than kernel window, it means there
+    // are less reads from source by stride/kernel times.
+    if (is_fwd_prop_kind(prop) && kind == dnnl_convolution) {
+        auto src_md = query_md(const_pd, DNNL_ARG_SRC);
+        auto wei_md = query_md(const_pd, DNNL_ARG_WEIGHTS);
+        auto src_ndims = query_md_ndims(src_md);
+        auto wei_ndims = query_md_ndims(wei_md);
+        auto with_groups = src_ndims < wei_ndims;
+        auto wei_dims = query_md_dims(wei_md);
+
+        auto strides = query_strides(const_pd);
+        adjust_src_bytes_for_stride(
+                src_md, src_ndims - 2, strides, &wei_dims[with_groups + 2]);
+    }
+
+    // When a dimensional stride is bigger than kernel window, it means there
+    // are less reads from source by stride/kernel times.
+    if (is_fwd_prop_kind(prop) && kind == dnnl_pooling) {
+        auto src_md = query_md(const_pd, DNNL_ARG_SRC);
+        auto ndims = query_md_ndims(src_md);
+
+        auto strides = query_strides(const_pd);
+        auto kernels = query_kernels(const_pd);
+        adjust_src_bytes_for_stride(src_md, ndims - 2, strides, kernels);
     }
 
     res->ibytes = check_mem_in_size_args.total_size_device;

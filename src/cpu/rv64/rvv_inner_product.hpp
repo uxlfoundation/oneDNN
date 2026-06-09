@@ -53,6 +53,9 @@ struct rvv_inner_product_fwd_t : public primitive_t {
             VDISPATCH_INNER_PRODUCT(
                     check_types(src_type, wei_type, dst_type, bia_type),
                     VERBOSE_UNSUPPORTED_DT);
+#if !(defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1)
+            VDISPATCH_INNER_PRODUCT(false, VERBOSE_UNSUPPORTED_ISA);
+#endif
 
             using smask_t = primitive_attr_t::skip_mask_t;
             VDISPATCH_INNER_PRODUCT(attr()->has_default_values(smask_t::none),

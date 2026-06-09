@@ -139,7 +139,7 @@
 --reset --dt=0:f16+1:f16 --case=op/f32/rmsnorm.json
 
 # select
---reset --dt=bf16 --in-shapes=2:1x1x1x128 --case=op/f32/select.json
+--reset --dt=f16 --in-shapes=2:1x1x1x128 --case=op/f32/select.json
 # concat
 --reset --dt=f16 --in-shapes=0:1x4096x14x14+1:1x4096x14x14 --case=op/f32/concat.json
 --reset --dt=f16 --in-shapes=0:64x128x28x28+1:64x128x28x28 --op-attrs=0:axis:1 --case=op/f32/concat.json

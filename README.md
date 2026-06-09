@@ -139,8 +139,8 @@ oneDNN supports systems meeting the following requirements:
 The following tools are required to build oneDNN documentation:
 * [Doxygen] 1.8.5 or later
 * [Doxyrest] 2.1.2 or later
-* [Sphinx] 6.2.1 or later
-* [sphinx-book-theme] 1.1.4 or later
+* [Sphinx] 7.4.7 or later
+* [sphinx-book-theme] 1.2.0 or later
 * [sphinx-copybutton] 0.5.2 or later
 * [graphviz] 2.40.1
 

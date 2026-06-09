@@ -58,7 +58,7 @@ platforms follow the general description in the [Data Types Guide](@ref dev_guid
 
 ## Implementation Limitations
 
-1. Epilogue Subgraph only supports f32 input, output and intermediate data type.
+1. Epilogue Subgraph only supports `f32` input, output and intermediate data type.
 
 ## Implementation Notes
 

@@ -791,7 +791,6 @@ bool parse_encoding(std::vector<sparse_options_t> &sparse_options,
             str, option_name, help);
 }
 
-#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
 // Format: DIM_IDX:NUM_GROUPS:size0+size1+...+sizeN[:max_size][,config2,...]
 // - DIM_IDX is the dimension index, where src MxK * weights KxN = dst MxN
 //   0 = M,  1 = K, 2 = N
@@ -823,6 +822,13 @@ bool parse_grouped(std::vector<sparse_options_t> &sparse_options,
     utils::add_option_to_help(option_name, help);
     const std::string pattern = utils::get_pattern(option_name);
     if (!utils::option_matched(pattern, str)) return false;
+
+#if !DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    BENCHDNN_PRINT(0, "%s\n",
+            "\'--grouped\' option requires DNNL_EXPERIMENTAL_GROUPED_MEMORY "
+            "build option set to ON.");
+    SAFE_V(FAIL);
+#endif
 
     str = str + pattern.size();
     std::string full_str(str);
@@ -931,7 +937,6 @@ bool parse_grouped(std::vector<sparse_options_t> &sparse_options,
 
     return true;
 }
-#endif
 
 bool parse_multi_tag(std::vector<std::vector<std::string>> &tag,
         const std::vector<std::vector<std::string>> &def_tag, const char *str,
@@ -1544,7 +1549,15 @@ static bool parse_fix_times_per_prb(
     bool parsed = parse_single_value_option(fix_times_per_prb,
             default_fix_times_per_prb, utils::stoll_safe, str, option_name,
             help);
-    if (parsed) fix_times_per_prb = MAX2(0, fix_times_per_prb);
+    if (parsed) {
+        if (bench_mode == bench_mode_t::perf_sim) {
+            BENCHDNN_PRINT(0, "%s\n",
+                    "Error: mode=S can't be adjusted. It implies "
+                    "fix-times-per-prb=1.");
+            exit(2);
+        }
+        fix_times_per_prb = MAX2(0, fix_times_per_prb);
+    }
     return parsed;
 }
 
@@ -1643,6 +1656,7 @@ static bool parse_mode(
               "    * `C` for correctness testing.\n"
               "    * `P` for performance testing.\n"
               "    * `F` for fast performance testing (GPU only).\n"
+              "    * `S` for simulation performance testing.\n"
               "    * `B` for bitwise (numerical determinism) testing.\n"
               "    More details at "
             + doc_url + "benchdnn_general_info.md\n";
@@ -1678,6 +1692,12 @@ static bool parse_mode(
                     break;
                 case 'b':
                 case 'B': mode = bench_mode_t::bitwise; break;
+                case 's':
+                case 'S':
+                    mode = bench_mode_t::perf_sim;
+                    fix_times_per_prb = 1;
+                    bench_mode_modifier |= mode_modifier_t::no_ref_memory;
+                    break;
                 default:
                     BENCHDNN_PRINT(0, "%s\n%s", "Error: mode value is invalid.",
                             help.c_str());

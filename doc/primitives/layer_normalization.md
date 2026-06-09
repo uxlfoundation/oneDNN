@@ -171,6 +171,7 @@ primitive:
 | Propagation | Type      | Operation                                            | Description                                                   | Restrictions                                                                       |
 |:------------|:----------|:-----------------------------------------------------|:--------------------------------------------------------------|:-----------------------------------------------------------------------------------|
 | forward     | attribute | [Scales](@ref dnnl::primitive_attr::set_scales_mask) | Scales the corresponding tensor by the given scale factor(s). | Supported only for int8 layer normalization and one scale per tensor is supported. |
+| forward     | Post-op   | [Eltwise](@ref dnnl::post_ops::append_eltwise)       | Applies an @ref dnnl_api_eltwise operation to the result      |                                                                                    |
 | forward     | Post-op   | [Binary](@ref dnnl::post_ops::append_binary)         | Applies a @ref dnnl_api_binary operation to the result.       | General binary post-op restrictions.                                               |
 
 ### Data Type Support
@@ -182,7 +183,7 @@ The operation supports the following combinations of data types:
 | forward     | f32, bf16, f16, u8, s8, f64 | f32, bf16, f16, u8, s8, f64 | f32, bf16, f16 |
 | backward    | f32, bf16, f16, f64         | f32, bf16, f16, f64         | f32, bf16, f16 |
 
-Mean and Variance data types are always f32 and independent of Source and
+Mean and Variance data types are always `f32` and independent of Source and
 Destination data types.
 
 ### Data Representation

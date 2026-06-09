@@ -116,7 +116,7 @@ struct ocl_conf_t {
 
     status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
 
-    int threads_per_eu = 0;
+    int grf_per_thread = 0;
     int subgroup_size = 0;
     int cell_kind = 0;
     int activation_kind = 0;

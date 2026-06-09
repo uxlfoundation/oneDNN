@@ -24,6 +24,7 @@
 #include "xpu/ze/utils.hpp"
 
 #include <list>
+#include <mutex>
 
 namespace dnnl {
 namespace impl {
@@ -63,11 +64,17 @@ public:
 
     ze_command_list_handle_t list() const { return list_; }
 
+    std::mutex &list_mutex() { return list_mutex_; }
+
     static status_t init_flags(
             unsigned *flags, ze_command_list_handle_t list, bool profiling);
 
 private:
     xpu::ze::wrapper_t<ze_command_list_handle_t> list_;
+    // Mutex secures all non-thread-safe operations over the `list_` are
+    // serialized. Lives in stream to ensure each list comes with its own mutex,
+    // as the requirement applies to the same command list during submission.
+    std::mutex list_mutex_;
     // TODO: `event_pool_` seems to belong to `ctx_` as events can't be created
     // in multithreaded scenario and having a thread_local event pool should
     // address it.

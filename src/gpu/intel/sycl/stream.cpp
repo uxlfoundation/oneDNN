@@ -105,40 +105,46 @@ status_t stream_t::init() {
 
 void stream_t::before_exec_hook() {
     if (is_profiling_enabled()) profiler_->start_profiling();
-    if (is_verbose_profiler_enabled() && !recording()) {
+    if (is_verbose_profiler_enabled()) {
         auto &profiler = verbose_profiler_.get(
                 utils::make_unique<xpu::sycl::verbose_profiler_t>(this));
-        profiler->update_primitive_stamp();
+        // Device event profiling and SYCL graph recording are incompatible
+        // because the graph execution creates a different execution context
+        // with new events that do not inherit the original queue's profiling
+        // properties. This causes profiling info queries on graph events to
+        // throw exceptions.
+        // Switching back to host-side verbose logging is also not viable
+        // as the SYCL graph recording breaks on stream.wait() synchronization
+        // calls.
+        // The current approach is to skip profiling for the primitive whenever
+        // graph is recording and resume thereafter to avoid runtime exceptions.
+        if (recording()) {
+            profiler->pause_profiling();
+        } else {
+            profiler->update_primitive_stamp();
+        }
     }
 }
 
 void stream_t::after_exec_hook() {
     sycl_ctx().set_deps(xpu::sycl::event_t());
     if (is_profiling_enabled()) profiler_->stop_profiling();
-    if (is_verbose_profiler_enabled() && !recording()) {
+    if (is_verbose_profiler_enabled()) {
         verbose_profiler().check_for_completed_primitives();
+        if (verbose_profiler().is_profiler_paused())
+            verbose_profiler().unpause_profiling();
     }
 }
 
 status_t stream_t::run_verbose_profiler(
         const std::string &pd_info, double start_ms) const {
     if (!is_verbose_profiler_enabled()) return status::invalid_arguments;
-    // Device event profiling and SYCL graph recording are incompatible
-    // because the graph execution creates a different execution context
-    // with new events that do not inherit the original queue's profiling
-    // properties. This causes profiling info queries on graph events to
-    // throw exceptions.
-    // Switching back to host-side verbose logging is also not viable
-    // as the SYCL graph recording breaks on stream.wait() synchronization
-    // calls.
-    // The current approach is to skip profiling for the primitive whenever
-    // graph is recording and resume thereafter to avoid runtime exceptions.
     if (!recording()) {
         CHECK(verbose_profiler_.get()->add_to_pending_primitive_list(
                 start_ms, pd_info));
     } else {
         VWARN(primitive, exec,
-                "%s, skipped verbose profiling as sycl graph is recording",
+                "%s,verbose profiling is paused when sycl graph is recording",
                 pd_info.c_str());
     }
     return status::success;

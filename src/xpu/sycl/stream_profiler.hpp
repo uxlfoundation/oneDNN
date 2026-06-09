@@ -20,6 +20,7 @@
 #include "common/c_types_map.hpp"
 
 #include "xpu/stream_profiler.hpp"
+#include "xpu/sycl/utils.hpp"
 
 namespace dnnl {
 namespace impl {

@@ -810,7 +810,7 @@ status_t brgemm_blocking_vmm_gemv(brgemm_desc_t *brg) {
         brg->bdb = brg->bcast_dim / brg->bd_block;
         brg->bdb_tail = brg->bcast_dim % brg->bd_block;
 
-        brg->rd_block = simd_w;
+        brg->rd_block = brg->gemv_use_vdpbf16ps() ? 2 * simd_w : simd_w;
         brg->rdb = brg->reduce_dim / brg->rd_block;
         brg->rdb_tail = brg->reduce_dim % brg->rd_block;
 

@@ -2895,14 +2895,35 @@ void jit_brgemm_kernel_t<Wmm>::gemv_microkernel(
     if (!brg.transA) {
         maybe_set_avx_mask(is_rd_tail);
 
-        load_and_convert_to_f32(
-                gemv_load_b(), ptr[reg_aux_B], brg.dt_b, is_rd_tail);
+        const auto a_vmm = gemv_load_a();
+        const auto b_vmm = gemv_load_b();
+
+        const auto b_addr = ptr[reg_aux_B];
+
+        if (brg.gemv_use_vdpbf16ps()) {
+            if (is_rd_tail)
+                vmovdqu16(b_vmm | rd_tail_mask | T_z, b_addr);
+            else
+                uni_vmovups(b_vmm, b_addr);
+        } else {
+            load_and_convert_to_f32(b_vmm, b_addr, brg.dt_b, is_rd_tail);
+        }
 
         for (dim_t bd = 0; bd < bd_block; bd++) {
+            const auto acc = accm(1, bd, 0);
             const auto a_addr = ptr[reg_aux_A + A_offset(bd, 0)];
-            load_and_convert_to_f32(
-                    gemv_load_a(), a_addr, brg.dt_a, is_rd_tail);
-            uni_vfmadd231ps(accm(1, bd, 0), gemv_load_a(), gemv_load_b());
+
+            if (brg.gemv_use_vdpbf16ps()) {
+                if (is_rd_tail) {
+                    vmovdqu16(a_vmm | rd_tail_mask | T_z, a_addr);
+                    vdpbf16ps(acc, b_vmm, a_vmm);
+                } else {
+                    vdpbf16ps(acc, b_vmm, a_addr);
+                }
+            } else {
+                load_and_convert_to_f32(a_vmm, a_addr, brg.dt_a, is_rd_tail);
+                uni_vfmadd231ps(acc, a_vmm, b_vmm);
+            }
         }
     } else {
         bcast_and_convert_to_f32(gemv_load_b(), ptr[reg_aux_B], brg.dt_b);

@@ -463,6 +463,13 @@ struct brgemm_desc_t {
         return full_accs + has_tail_acc;
     }
 
+    // Returns true when GEMV can use native `vdpbf16ps` instead of
+    // bf16->f32 conversion + `vfmadd231ps`.
+    bool gemv_use_vdpbf16ps() const {
+        assert(is_gemv);
+        return !transA && is_bf16;
+    }
+
     // return 'true' when FP8 MAC is not natively supported by the CPU ISA
     bool is_fp8_via_convert() const {
         return is_fp8 && utils::one_of(isa_impl, avx10_1_512_amx_fp16, avx10_2);

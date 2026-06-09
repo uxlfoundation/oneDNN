@@ -1915,12 +1915,20 @@ engine_t::engine_t(const engine_t &other, bool recreate_on_copy) {
     }
 }
 
-dnnl_engine_kind_t engine_t::get_kind() const {
+dnnl::engine::kind engine_t::get_kind() const {
     // An empty engine (e.g., a host scalar memory carries no engine) returns
     // `any` kind.
     if (engine_.get(/* allow_empty = */ true) == nullptr)
-        return dnnl_any_engine;
-    return static_cast<dnnl_engine_kind_t>(engine_.get_kind());
+        return dnnl::engine::kind::any;
+    return engine_.get_kind();
+}
+
+bool engine_t::is_cpu() const {
+    return get_kind() == dnnl::engine::kind::cpu;
+}
+
+bool engine_t::is_gpu() const {
+    return get_kind() == dnnl::engine::kind::gpu;
 }
 
 stream_t::stream_t(const engine_t &engine, void *interop_obj) {

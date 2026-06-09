@@ -108,9 +108,12 @@ struct engine_t {
     engine_t(const engine_t &other, bool recreate_on_copy = false);
     operator dnnl_engine_t() const { return engine_.get(); }
     operator const dnnl::engine &() const { return engine_; }
-    dnnl_engine_kind_t get_kind() const;
+
+    bool is_cpu() const;
+    bool is_gpu() const;
 
 private:
+    dnnl::engine::kind get_kind() const;
     engine_t &operator=(engine_t &other) = delete;
     dnnl::engine engine_;
 };
@@ -135,7 +138,8 @@ private:
 // Engine used to run oneDNN primitives for testing.
 inline const engine_t &get_test_engine() {
     static const engine_t instance(engine_tgt_kind);
-    assert(instance.get_kind() == engine_tgt_kind);
+    assert((engine_tgt_kind == dnnl_cpu && instance.is_cpu())
+            || (engine_tgt_kind == dnnl_gpu && instance.is_gpu()));
     return instance;
 }
 

@@ -435,8 +435,7 @@ int skip_unimplemented_ops(const dnnl::graph::partition &partition,
     static const std::vector<std::string> unimplemented_ops {"Pow"};
     // A list of ops that don't have DNNL backend support so far on GPU.
     static const std::vector<std::string> unimplemented_ops_gpu {};
-    const dnnl::engine &eng = get_graph_engine();
-    bool is_gpu = eng.get_kind() == dnnl::engine::kind::gpu;
+    const bool is_gpu = get_graph_engine().is_gpu();
     // For an unsupported partition, retrieve all operation IDs, find a
     // correspondent operation kind in a deserialized_graph_t and match it against
     // a list of known unsupported ops.
@@ -479,8 +478,7 @@ int skip_unimplemented_ops(const dnnl::graph::partition &partition,
 int skip_unimplemented_accumulation_mode(
         const dnnl::graph::partition &partition, const deserialized_graph_t &dg,
         res_t *res) {
-    const dnnl::engine &eng = get_graph_engine();
-    bool is_cpu = eng.get_kind() == dnnl::engine::kind::cpu;
+    const bool is_cpu = get_graph_engine().is_cpu();
     if (!is_cpu) return OK;
     const std::vector<size_t> &partition_op_ids = partition.get_ops();
     for (const size_t op_id : partition_op_ids) {

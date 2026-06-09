@@ -331,13 +331,23 @@ status_t DNNL_API dnnl_graph_compiled_partition_execute(
                         & dnnl::threadpool_interop::threadpool_iface::
                                 ASYNCHRONOUS);
 #endif
-        if (block_on_wait) stream->wait();
-        double start_ms = dnnl::impl::get_msec();
-        CHECK(compiled_partition->execute(stream, ins, outs));
-        if (block_on_wait) stream->wait();
-        double duration_ms = dnnl::impl::get_msec() - start_ms;
-        VPROF(start_ms, graph, exec, VERBOSE_profile,
-                compiled_partition->info(), duration_ms);
+
+        if (!stream->is_verbose_profiler_enabled()) {
+            if (block_on_wait) stream->wait();
+            double start_ms = dnnl::impl::get_msec();
+
+            if (block_on_wait) stream->wait();
+            double duration_ms = dnnl::impl::get_msec() - start_ms;
+            VPROF(start_ms, graph, exec, VERBOSE_profile,
+                    compiled_partition->info(), duration_ms);
+        } else {
+            // For OpenCL/SYCL GPU streams, the verbose logs print device-
+            // measured execution times in a non-blocking manner.
+            double start_ms = dnnl::impl::get_msec();
+            CHECK(compiled_partition->execute(stream, ins, outs));
+            CHECK(stream->run_verbose_profiler(
+                    compiled_partition->info(), start_ms));
+        }
     } else {
         CHECK(compiled_partition->execute(stream, ins, outs));
     }
@@ -372,7 +382,8 @@ status_t DNNL_API dnnl_graph_sycl_interop_compiled_partition_execute(
     }
     if (get_verbose(dnnl::impl::verbose_t::exec_profile,
                 dnnl::impl::component_t::graph)) {
-        stream->wait();
+        bool use_profiler = stream->is_verbose_profiler_enabled();
+        if (!use_profiler) stream->wait();
         double start_ms = dnnl::impl::get_msec();
         if (deps != nullptr) {
             const auto &sycl_deps = *(const std::vector<::sycl::event> *)deps;
@@ -382,10 +393,15 @@ status_t DNNL_API dnnl_graph_sycl_interop_compiled_partition_execute(
             CHECK(compiled_partition->execute_sycl(stream, ins, outs, {},
                     static_cast<::sycl::event *>(sycl_event)));
         }
-        stream->wait();
-        double duration_ms = dnnl::impl::get_msec() - start_ms;
-        VPROF(start_ms, graph, exec, VERBOSE_profile,
-                compiled_partition->info(), duration_ms);
+        if (!use_profiler) {
+            stream->wait();
+            double duration_ms = dnnl::impl::get_msec() - start_ms;
+            VPROF(start_ms, graph, exec, VERBOSE_profile,
+                    compiled_partition->info(), duration_ms);
+        } else {
+            CHECK(stream->run_verbose_profiler(
+                    compiled_partition->info(), start_ms));
+        }
     } else {
         if (deps != nullptr) {
             const auto &sycl_deps = *(const std::vector<::sycl::event> *)deps;
@@ -435,7 +451,8 @@ status_t DNNL_API dnnl_graph_ocl_interop_compiled_partition_execute(
 
     if (get_verbose(dnnl::impl::verbose_t::exec_profile,
                 dnnl::impl::component_t::graph)) {
-        stream->wait();
+        bool use_profiler = stream->is_verbose_profiler_enabled();
+        if (!use_profiler) stream->wait();
         double start_ms = dnnl::impl::get_msec();
         if (deps != nullptr) {
             std::vector<cl_event> ocl_deps(deps, deps + ndeps);
@@ -445,10 +462,15 @@ status_t DNNL_API dnnl_graph_ocl_interop_compiled_partition_execute(
             CHECK(compiled_partition->execute_ocl(
                     stream, ins, outs, {}, ocl_event));
         }
-        stream->wait();
-        double duration_ms = dnnl::impl::get_msec() - start_ms;
-        VPROF(start_ms, graph, exec, VERBOSE_profile,
-                compiled_partition->info(), duration_ms);
+        if (!use_profiler) {
+            stream->wait();
+            double duration_ms = dnnl::impl::get_msec() - start_ms;
+            VPROF(start_ms, graph, exec, VERBOSE_profile,
+                    compiled_partition->info(), duration_ms);
+        } else {
+            CHECK(stream->run_verbose_profiler(
+                    compiled_partition->info(), start_ms));
+        }
     } else {
         if (deps != nullptr) {
             std::vector<cl_event> ocl_deps(deps, deps + ndeps);

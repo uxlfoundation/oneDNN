@@ -18,8 +18,8 @@
 #define GPU_INTEL_GEMM_REF_HPP
 
 #include "common/serialization.hpp"
-#include "gpu/intel/gemm/config.hpp"
 #include "gpu/intel/gemm/primitive.hpp"
+#include "gpu/intel/gemm/types.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {

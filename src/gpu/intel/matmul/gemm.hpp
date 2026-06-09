@@ -24,7 +24,7 @@
 #include "common/primitive_attr_quant.hpp"
 #include "common/primitive_desc_iterator.hpp"
 #include "gpu/intel/gemm/utils.hpp"
-#include "gpu/intel/matmul/config.hpp"
+#include "gpu/intel/matmul/types.hpp"
 #include "gpu/intel/primitive.hpp"
 #include "gpu/intel/utils.hpp"
 

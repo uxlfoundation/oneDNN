@@ -44,39 +44,6 @@ struct xe_hp_systolic_t : public gemm::primitive_t {
         bool use_nocopy_xehpg(data_type_t dt, unsigned ld_align);
         status_t set_default_formats(data_type_t dt);
 
-        size_t dyn_offset_a = 0;
-        size_t dyn_offset_b = 0;
-        size_t dyn_offset_c = 0;
-
-        data_type_t impl_co_type() const {
-            using namespace data_type;
-            return with_bias() ? desc()->bias_type()
-                               : (utils::one_of(desc()->a_type(), s8, u8)
-                                                 ? s32
-                                                 : desc()->c_type());
-        }
-
-        data_type_t impl_acc_type() const {
-            using namespace data_type;
-            return utils::one_of(desc()->c_type(), s8, u8, f16, bf16, f32)
-                    ? (utils::one_of(desc()->a_type(), s8, u8) ? s32 : f32)
-                    : s32;
-        }
-
-        float alpha() const { return 1.0f; }
-        float beta() const { return beta_; }
-
-        bool with_bias() const {
-            return (desc()->bias_type() != data_type::undef)
-                    && !bias_via_binary_;
-        }
-
-        int bias_cmask() const {
-            unsigned char to_cmask[8] = {0, 4, 2, 6, 1, 5, 3, 7};
-            assert(unsigned(desc()->bias_mask()) < 8);
-            return with_bias() ? to_cmask[desc()->bias_mask() & 7] : -1;
-        }
-
         bool packed_a() const { return packed_a_; }
         bool packed_b() const { return packed_b_; }
         bool packed_c() const { return packed_c_; }
@@ -92,7 +59,7 @@ struct xe_hp_systolic_t : public gemm::primitive_t {
         }
 
         int64_t get_ld_packed(int64_t k, bool get_max = false) const {
-            auto a_sz = types::data_type_size(desc()->a_type());
+            auto a_sz = types::data_type_size(cfg().a_type());
 
             int unroll_k = int(32 / a_sz);
             auto ld = utils::rnd_up(k, unroll_k);
@@ -106,43 +73,59 @@ struct xe_hp_systolic_t : public gemm::primitive_t {
         }
 
         dim_t lda_packed(int64_t k) const {
-            return packed_a() ? desc()->b_desc.format_desc.blocking
-                                        .strides[with_batch() ? 2 : 1]
-                            / unroll_m()
+            return packed_a() ? a_packed_stride_ / unroll_m()
                               : get_ld_packed(k);
         }
         dim_t ldb_packed(int64_t k) const {
-            return packed_b() ? desc()->a_desc.format_desc.blocking
-                                        .strides[with_batch() ? 1 : 0]
-                            / unroll_n()
+            return packed_b() ? b_packed_stride_ / unroll_n()
                               : get_ld_packed(k);
         }
         dim_t ldc_packed() const {
-            return packed_c() ? desc()->c_desc.format_desc.blocking
-                                        .strides[with_batch() ? 1 : 0]
-                            / unroll_n()
-                              : 0;
+            return packed_c() ? c_packed_stride_ / unroll_n() : 0;
         }
 
-        int batch_dims() const {
-            return nstl::max(desc()->c_desc.ndims - 2, 0);
+        // C-offset kind from the active C-side mask:
+        // 'F' full / 'R' row / 'C' column / 'M' both / 'N' none.
+        char co_kind() const {
+            int m = -1;
+            if (cfg().with_c_zero_points() || cfg().with_bias())
+                m = cfg().cmask;
+            switch (m) {
+                case 0: return 'F';
+                case (1 << 1): return 'R';
+                case (1 << 0): return 'C';
+                case 3: return 'M';
+                default: return 'N';
+            }
         }
 
-        bool with_batch() const { return desc()->is_batched(); }
-        bool with_a_zero_points() const { return a_zp_; }
-        bool with_b_zero_points() const { return b_zp_; }
-        bool with_ab_zero_points() const { return a_zp_ || b_zp_; }
-        bool with_c_zero_points() const { return c_zp_; }
+        bool with_batch() const { return cfg().problem.batchDims >= 1; }
+        // Int-only datatype config; reads desc() since it is used pre-cfg-seed.
+        bool dt_int_ok() const {
+            using namespace data_type;
+            const auto &d = desc();
+            return utils::one_of(d->a_type(), u8, s8)
+                    && utils::one_of(d->b_type(), u8, s8)
+                    && utils::one_of(d->c_type(), s32, f32, s8, u8, f16);
+        }
+        bool with_ab_zero_points() const {
+            return cfg().with_a_zero_points() || cfg().with_b_zero_points();
+        }
 
         bool allow_k_blocking() const {
-            return (desc()->acc_type == desc()->c_type())
-                    && IMPLICATION(post_ops()->len() > 0,
-                            post_ops()->entry_[0].kind == primitive_kind::sum);
+            const auto &po = cfg().problem.postOps;
+            return (acc_type_ == cfg().c_type())
+                    && IMPLICATION(po.len() > 0, po[0].is_sum());
         }
 
         int unroll_m() const { return unroll_m_; }
         int unroll_n() const { return unroll_n_; }
         bool alt() const { return alt_; }
+
+        // Shared kernel geometry, snapshotted from selection in init().
+        const gemmstone::CommonDriverInfo &driver_info() const {
+            return driver_info_;
+        }
 
         status_t query(query_t what, int idx, void *result) const override {
             switch ((int)what) {
@@ -160,10 +143,13 @@ struct xe_hp_systolic_t : public gemm::primitive_t {
     private:
         bool any_prepacked_ = false;
         bool packed_a_ = false, packed_b_ = false, packed_c_ = false;
-        bool a_zp_ = false, b_zp_ = false, c_zp_ = false;
         int unroll_m_ = 0;
         int unroll_n_ = 0;
         bool alt_ = false;
+        // Prepacked input leading-dim strides (raw, pre-/unroll), seeded in init.
+        dim_t a_packed_stride_ = 0, b_packed_stride_ = 0, c_packed_stride_ = 0;
+        data_type_t acc_type_ = data_type::undef;
+        gemmstone::CommonDriverInfo driver_info_;
     };
 
     status_t init(impl::engine_t *engine) override;
@@ -203,15 +189,8 @@ private:
     compute::kernel_t kernel_[2][2]; // [first_k_block][last_k_block]
     compute::kernel_t copy_kernel_[2][2]; // [trans][clear_sum]
 
-    gemmstone::CommonDriverInfo compute_info_;
-
     compute::gpu_arch_t arch_ = compute::gpu_arch_t::unknown;
     int eu_count_ = 0;
-
-    char co_kind_ = 'N';
-    bool walk_n_first_ = false;
-
-    gemmstone::GEMMProblem problem_;
 
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };

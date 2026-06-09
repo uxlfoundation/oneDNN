@@ -15,8 +15,8 @@
 *******************************************************************************/
 
 #include "gpu/intel/matmul/gemm.hpp"
-#include "gpu/intel/gemm/config.hpp"
 #include "gpu/intel/gemm/primitive.hpp"
+#include "gpu/intel/gemm/types.hpp"
 
 namespace dnnl {
 namespace impl {

@@ -20,8 +20,8 @@
 #ifdef DNNL_DEV_MODE
 
 #include "common/convolution_pd.hpp"
-#include "gpu/intel/gemm/config.hpp"
 #include "gpu/intel/gemm/primitive.hpp"
+#include "gpu/intel/gemm/types.hpp"
 
 namespace dnnl {
 namespace impl {

@@ -214,6 +214,11 @@ struct GEMMProblem : public CommonProblem {
             if (e.is_binary()) return true;
         return false;
     }
+    bool hasEltwisePostOp() const {
+        for (auto &e : postOps.ops)
+            if (e.is_eltwise()) return true;
+        return false;
+    }
     bool hasSum1PostOpAtEnd() const {
         return !postOps.empty() && postOps.ops.back().is_sum();
     }
@@ -342,6 +347,7 @@ struct GEMMProblem : public CommonProblem {
         s.append(aOffset, bOffset);
         s.append(aoPtrDims, boPtrDims, coPtrDims);
         s.append(asPtrDims, bsPtrDims, csPtrDims);
+        s.append(hasGroupSumsA, hasGroupSumsB);
         s.append(aqGroupM, aqGroupK);
         s.append(bqGroupN, bqGroupK);
         s.append(cqGroupM, cqGroupN);

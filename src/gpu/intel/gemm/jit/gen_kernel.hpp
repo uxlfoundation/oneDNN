@@ -84,7 +84,7 @@ struct gen_desc_t {
     }
     compute::gpu_arch_t arch() const { return arch_; }
 
-    bool has_entry() { return entry_ != nullptr; }
+    bool has_entry() const { return entry_ != nullptr; }
 
     const gemmstone::kcatalog::Entry &entry() const {
         assert(entry_ != nullptr);
@@ -154,14 +154,11 @@ private:
     gemmstone::Scalar beta_;
 };
 
-struct gen_xe_systolic_kernel_desc_t : public gen_desc_t {
+struct gen_xe_systolic_desc_t : public gen_desc_t {
     status_t select_kernel(const compute::device_info_t &dev_info,
-            int batch_dims, bool packed_c, bool trans_co, bool a_offset,
-            bool b_offset, bool c_offset, bool bias, float alpha, float beta,
-            data_type_t a_type, data_type_t b_type, data_type_t c_type,
-            data_type_t ao_type, data_type_t bo_type, data_type_t co_type,
-            data_type_t acc_type, dim_t m, dim_t n, dim_t k, dim_t batch,
-            int unroll_m, int unroll_n, bool alt, gpu_post_ops_t &&post_ops);
+            const gemmstone::GEMMProblem &in, int batch_dims, bool packed_c,
+            float alpha, float beta, dim_t m, dim_t n, dim_t k, dim_t batch,
+            int unroll_m, int unroll_n, bool alt);
 
     static void choose_unrolls(compute::gpu_arch_t arch, int eu_count,
             data_type_t a_type, data_type_t b_type, data_type_t c_type, dim_t m,
@@ -205,9 +202,8 @@ struct key_validator_t<gemm::jit::gen_nocopy_desc_t> {
 };
 
 template <>
-struct key_validator_t<gemm::jit::gen_xe_systolic_kernel_desc_t> {
-    static bool is_valid(
-            const gemm::jit::gen_xe_systolic_kernel_desc_t &derived) {
+struct key_validator_t<gemm::jit::gen_xe_systolic_desc_t> {
+    static bool is_valid(const gemm::jit::gen_xe_systolic_desc_t &derived) {
         return key_validator_t<gemm::jit::gen_desc_t>::is_valid(derived);
     }
 };

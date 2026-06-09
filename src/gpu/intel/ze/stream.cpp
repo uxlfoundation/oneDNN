@@ -44,17 +44,31 @@ status_t stream_t::create_stream(impl::stream_t **stream,
 }
 
 status_t stream_t::init() {
-    if (is_profiling_enabled()) {
-        ze_device_properties_t device_properties {};
-        device_properties.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES_1_2;
-        CHECK(xpu::ze::zeDeviceGetProperties(
-                utils::downcast<engine_t *>(engine())->device(),
-                &device_properties));
 
-        uint64_t max_timestamp_value
-                = (1ULL << device_properties.kernelTimestampValidBits) - 1;
-        profiler_ = utils::make_unique<xpu::ze::stream_profiler_t>(this,
-                1e9 / device_properties.timerResolution, max_timestamp_value);
+    // Enables profiling capabilities to allow the verbose mode to print
+    // profiling info using device measured times.
+    // The verbose profiler state is fixed at stream initialization and does not
+    // respond to runtime changes made via set_dnnl_verbose().
+    // TODO: allow runtime control of the asynchronous verbose mode via
+    // set_dnnl_verbose()
+    CHECK(init_verbose_profiler());
+
+    if (is_profiling_enabled() || is_verbose_profiler_enabled()) {
+        std::pair<double, uint64_t> device_props = get_device_properties(
+                utils::downcast<engine_t *>(engine())->device());
+        double timer_frequency = device_props.first;
+        uint64_t max_timestamp_value = device_props.second;
+
+        if (is_profiling_enabled()) {
+            profiler_ = utils::make_unique<xpu::ze::stream_profiler_t>(
+                    this, timer_frequency, max_timestamp_value);
+        }
+
+        if (is_verbose_profiler_enabled()) {
+            verbose_profiler_.set(
+                    utils::make_unique<xpu::ze::verbose_profiler_t>(
+                            this, timer_frequency, max_timestamp_value));
+        }
     }
 
     return status::success;
@@ -62,12 +76,32 @@ status_t stream_t::init() {
 
 void stream_t::before_exec_hook() {
     if (is_profiling_enabled()) profiler_->start_profiling();
+    if (is_verbose_profiler_enabled()) {
+        std::pair<double, uint64_t> device_props = get_device_properties(
+                utils::downcast<engine_t *>(engine())->device());
+        double timer_frequency = device_props.first;
+        uint64_t max_timestamp_value = device_props.second;
+        auto &profiler = verbose_profiler_.get(
+                utils::make_unique<xpu::ze::verbose_profiler_t>(
+                        this, timer_frequency, max_timestamp_value));
+        profiler->update_primitive_stamp();
+    }
 }
 
 void stream_t::after_exec_hook() {
     ze_ctx().set_deps(xpu::ze::event_t());
 
     if (is_profiling_enabled()) profiler_->stop_profiling();
+    if (is_verbose_profiler_enabled() && verbose_profiler_.is_set())
+        verbose_profiler().check_for_completed_primitives();
+}
+
+status_t stream_t::run_verbose_profiler(
+        const std::string &pd_info, double start_ms) const {
+    if (!is_verbose_profiler_enabled()) return status::invalid_arguments;
+    CHECK(verbose_profiler_.get()->add_to_pending_primitive_list(
+            start_ms, pd_info));
+    return status::success;
 }
 
 status_t stream_t::reset_profiling() {

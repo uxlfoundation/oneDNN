@@ -53,6 +53,14 @@ public:
 
     status_t barrier();
 
+    bool supports_verbose_profiling(engine_kind_t eng) const override {
+        if (!get_verbose(verbose_t::exec_profile)) return false;
+        if (eng != engine_kind::gpu) return false;
+        // verbose profiling support is only for in-order queues
+        if (flags() & stream_flags::out_of_order) return false;
+        return true;
+    }
+
     const xpu::ze::context_t &ze_ctx() const;
     xpu::ze::context_t &ze_ctx();
     xpu::context_t &ctx();

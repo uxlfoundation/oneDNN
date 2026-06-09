@@ -14,7 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/gemm/config.hpp"
+#include "gpu/intel/gemm/types.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {

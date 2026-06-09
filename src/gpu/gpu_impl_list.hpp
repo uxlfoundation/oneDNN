@@ -74,7 +74,8 @@ namespace gpu {
 #if defined(DNNL_WITH_SYCL) \
         && ((DNNL_GPU_VENDOR == DNNL_VENDOR_GENERIC) \
                 || (DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA) \
-                || defined(DNNL_AMD_ENABLE_SYCL_KERNELS))
+                || defined(DNNL_AMD_ENABLE_SYCL_KERNELS) \
+                || defined(DNNL_ENABLE_SYCL_KERNELS))
 #define DNNL_GPU_GENERIC_SYCL_ONLY(...) __VA_ARGS__
 #define GENERIC_SYCL_KERNELS_ENABLED
 #else

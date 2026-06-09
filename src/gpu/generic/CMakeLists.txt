@@ -22,7 +22,8 @@ file(GLOB SOURCES
 # - Always enable generic SYCL kernels for generic vendor.
 # - Always enable generic SYCL kernels for NVIDIA vendor.
 # - Only enable the generic SYCL kernels for AMD vendor if target architecture has been specified.
-if(DNNL_SYCL_GENERIC OR DNNL_SYCL_CUDA OR DNNL_AMD_ENABLE_SYCL_KERNELS)
+if(DNNL_INTERNAL_ENABLE_GENERIC_SYCL_KERNELS OR DNNL_SYCL_GENERIC
+    OR DNNL_SYCL_CUDA OR DNNL_AMD_ENABLE_SYCL_KERNELS)
     add_subdirectory(sycl)
 endif()
 

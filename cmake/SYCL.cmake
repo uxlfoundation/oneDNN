@@ -157,6 +157,10 @@ else()
     message(STATUS "DPC++ support is enabled (OpenCL and Level Zero)")
 endif()
 
+if(DNNL_INTERNAL_ENABLE_GENERIC_SYCL_KERNELS)
+    add_definitions(-DDNNL_ENABLE_SYCL_KERNELS)
+endif()
+
 # XXX: Suppress warning coming from SYCL headers:
 #   #pragma message("The Intel extensions have been moved into cl_ext.h.
 #   Please include cl_ext.h directly.")

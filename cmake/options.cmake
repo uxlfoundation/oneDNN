@@ -436,3 +436,7 @@ onednn_option(AMD_SYCL_KERNELS_TARGET_ARCH ""
     Warning: This option is temporary and will be removed as soon as the compiler
     stops to require specifying the target architecture. After removing the option
     the generic SYCL kernels will always be enabled for AMD vendor.") # internal
+
+onednn_option(INTERNAL_ENABLE_GENERIC_SYCL_KERNELS OFF
+    "Enables implementations with generic SYCL kernels when DNNL_GPU_VENDOR is
+    not GENERIC.")

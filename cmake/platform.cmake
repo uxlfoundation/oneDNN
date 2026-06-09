@@ -229,6 +229,8 @@ if(MSVC)
         append(CMAKE_CCXX_FLAGS "/utf-8")
         # Enable __cplusplus macro to align behavior with other compilers
         append(CMAKE_CCXX_FLAGS "/Zc:__cplusplus")
+        # treat implicit narrowing conversions as errors
+        append(CMAKE_CCXX_FLAGS "/we4244")
         # workaround: macro outputs defined token in msvs header
         append(CMAKE_CCXX_NOWARN_FLAGS "/wd5105")
     endif()

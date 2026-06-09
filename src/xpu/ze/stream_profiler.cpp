@@ -32,6 +32,7 @@ namespace ze {
 
 status_t verbose_profiler_t::get_aggregate_exec_time(
         uint64_t stamp, double &duration_ms) const {
+    if (profiler_paused_) return status::success;
 
     auto prof_data = event_map_.find(stamp);
     if (prof_data == event_map_.end()) return status::invalid_arguments;
@@ -78,6 +79,7 @@ status_t verbose_profiler_t::get_aggregate_exec_time(
 
 bool verbose_profiler_t::is_event_complete(
         const std::shared_ptr<xpu::event_t> &event) const {
+    if (profiler_paused_) return true;
     if (!event) return true;
 
     const xpu::ze::event_t &ze_event
@@ -90,6 +92,7 @@ bool verbose_profiler_t::is_event_complete(
 
 void verbose_profiler_t::wait_for_event_completion(
         const std::shared_ptr<xpu::event_t> &event) const {
+    if (profiler_paused_) return;
     if (!event) return;
 
     const xpu::ze::event_t &ze_event

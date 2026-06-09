@@ -93,9 +93,9 @@ void jit_brdgmm_kernel_base_t::read_params() {
         add_imm(X_DEFAULT_ADDR, param1, GET_OFF(ptr_B), X_TMP_0);
         ldr(reg_aux1_B, ptr(X_DEFAULT_ADDR));
         if (brg.brgattr.max_bs > 1) {
-            add_imm(X_DEFAULT_ADDR, X_SP, reg_A_offs_, X_TMP_0); //rsp=X_SP
+            add_imm(X_DEFAULT_ADDR, sp, reg_A_offs_, X_TMP_0);
             str(reg_aux1_A, ptr(X_DEFAULT_ADDR));
-            add_imm(X_DEFAULT_ADDR, X_SP, reg_B_offs_, X_TMP_0);
+            add_imm(X_DEFAULT_ADDR, sp, reg_B_offs_, X_TMP_0);
             str(reg_aux1_B, ptr(X_DEFAULT_ADDR));
         }
     }
@@ -104,8 +104,7 @@ void jit_brdgmm_kernel_base_t::read_params() {
         add_imm(X_DEFAULT_ADDR, param1, GET_OFF(batch), X_TMP_0);
         ldr(reg_aux_batch_addr, ptr(X_DEFAULT_ADDR));
         if (brg.brgattr.max_bs > 1) {
-            add_imm(X_DEFAULT_ADDR, X_SP, reg_batch0_addr_offs_,
-                    X_TMP_0); //rsp=X_SP
+            add_imm(X_DEFAULT_ADDR, sp, reg_batch0_addr_offs_, X_TMP_0);
             str(reg_aux_batch_addr, ptr(X_DEFAULT_ADDR));
         }
     }
@@ -113,26 +112,26 @@ void jit_brdgmm_kernel_base_t::read_params() {
     if (brg.with_bias) {
         add_imm(X_DEFAULT_ADDR, param1, GET_OFF(ptr_bias), X_TMP_0);
         ldr(reg_tmp, ptr(X_DEFAULT_ADDR));
-        add_imm(X_DEFAULT_ADDR, X_SP, reg_bias_offs_, X_TMP_0); //rsp=X_SP
+        add_imm(X_DEFAULT_ADDR, sp, reg_bias_offs_, X_TMP_0);
         str(reg_tmp, ptr(X_DEFAULT_ADDR));
     }
 
     if (brg.with_scales) {
         add_imm(X_DEFAULT_ADDR, param1, GET_OFF(ptr_scales), X_TMP_0);
         ldr(reg_tmp, ptr(X_DEFAULT_ADDR));
-        add_imm(X_DEFAULT_ADDR, X_SP, reg_scales_offs_, X_TMP_0);
+        add_imm(X_DEFAULT_ADDR, sp, reg_scales_offs_, X_TMP_0);
         str(reg_tmp, ptr(X_DEFAULT_ADDR));
     }
 
     if (brg.with_dst_scales) {
         add_imm(X_DEFAULT_ADDR, param1, GET_OFF(ptr_dst_scales), X_TMP_0);
         ldr(reg_tmp, ptr(X_DEFAULT_ADDR));
-        add_imm(X_DEFAULT_ADDR, X_SP, reg_dst_scales_offs_, X_TMP_0);
+        add_imm(X_DEFAULT_ADDR, sp, reg_dst_scales_offs_, X_TMP_0);
         str(reg_tmp, ptr(X_DEFAULT_ADDR));
     }
 
     if (brg.with_binary) {
-        add_imm(X_DEFAULT_ADDR, X_SP, abi_param1_offs_, X_TMP_0);
+        add_imm(X_DEFAULT_ADDR, sp, abi_param1_offs_, X_TMP_0);
         str(param1, ptr(X_DEFAULT_ADDR));
     }
 }
@@ -150,14 +149,14 @@ void jit_brdgmm_kernel_base_t::load_accumulators(int m_blocks, int n_blocks) {
 void jit_brdgmm_kernel_base_t::restore_A_B_matrices() {
     if (brg.brgattr.max_bs > 1
             && (one_of(brg.type, brgemm_addr, brgemm_offs) || has_vpad())) {
-        add_imm(X_DEFAULT_ADDR, X_SP, reg_batch0_addr_offs_, X_TMP_0);
+        add_imm(X_DEFAULT_ADDR, sp, reg_batch0_addr_offs_, X_TMP_0);
         ldr(reg_aux_batch_addr, ptr(X_DEFAULT_ADDR));
     }
 
     if (brg.type == brgemm_strd && brg.brgattr.max_bs > 1) {
-        add_imm(X_DEFAULT_ADDR, X_SP, reg_A_offs_, X_TMP_0);
+        add_imm(X_DEFAULT_ADDR, sp, reg_A_offs_, X_TMP_0);
         ldr(reg_aux1_A, ptr(X_DEFAULT_ADDR));
-        add_imm(X_DEFAULT_ADDR, X_SP, reg_B_offs_, X_TMP_0);
+        add_imm(X_DEFAULT_ADDR, sp, reg_B_offs_, X_TMP_0);
         ldr(reg_aux1_B, ptr(X_DEFAULT_ADDR));
     }
 }
@@ -267,7 +266,7 @@ void jit_brdgmm_kernel_base_t::apply_post_ops(
     }
 
     if (brg.with_binary) {
-        add_imm(X_DEFAULT_ADDR, X_SP, abi_param1_offs_, X_TMP_0);
+        add_imm(X_DEFAULT_ADDR, sp, abi_param1_offs_, X_TMP_0);
         ldr(reg_binary_params, ptr(X_DEFAULT_ADDR));
 
         if (with_binary_non_scalar_bcast_) {
@@ -352,7 +351,7 @@ void jit_brdgmm_kernel_base_t::store_accumulators_apply_post_ops(
     const bool dq2ps_required = brg.is_int8;
     const int v_substep = vnni_substep();
     if (brg.with_scales) {
-        add_imm(X_DEFAULT_ADDR, X_SP, reg_scales_offs_, X_TMP_0); //rsp=X_SP
+        add_imm(X_DEFAULT_ADDR, sp, reg_scales_offs_, X_TMP_0);
         ldr(reg_aux_scales, ptr(X_DEFAULT_ADDR));
         if (brg.is_oc_scale) {
             mov_imm(X_TMP_1, sizeof(float));
@@ -396,7 +395,7 @@ void jit_brdgmm_kernel_base_t::store_accumulators_apply_post_ops(
     }
 
     if (brg.with_bias) {
-        add_imm(X_DEFAULT_ADDR, X_SP, reg_bias_offs_, X_TMP_0);
+        add_imm(X_DEFAULT_ADDR, sp, reg_bias_offs_, X_TMP_0);
         ldr(reg_aux_bias, ptr(X_DEFAULT_ADDR));
         mov_imm(X_TMP_1, brg.typesize_bias);
         mul(X_TMP_1, reg_aux_N, X_TMP_1);
@@ -425,7 +424,7 @@ void jit_brdgmm_kernel_base_t::store_accumulators_apply_post_ops(
     if (postops_injector_) apply_post_ops(m_blocks, n_blocks, has_n_tail);
 
     if (brg.with_dst_scales) {
-        add_imm(X_DEFAULT_ADDR, X_SP, reg_dst_scales_offs_, X_TMP_0); //rsp=X_SP
+        add_imm(X_DEFAULT_ADDR, sp, reg_dst_scales_offs_, X_TMP_0);
         ldr(reg_aux_dst_scales, ptr(X_DEFAULT_ADDR));
         auto vmm_dst_scales = vmm_tmp(0);
         ld1rw(vmm_dst_scales.s, P_ALL_ONE / T_z, ptr(reg_aux_dst_scales));
@@ -933,14 +932,14 @@ void jit_brdgmm_kernel_base_t::init_masks() {
 void jit_brdgmm_kernel_base_t::generate() {
 
     preamble();
-    sub_imm(X_SP, X_SP, stack_space_needed_, X_TMP_0); //rsp=X_SP
+    sub_imm(sp, sp, utils::rnd_up(stack_space_needed_, 16), X_TMP_0);
 
     init_masks();
 
     read_params();
     compute_loop();
 
-    add_imm(X_SP, X_SP, stack_space_needed_, X_TMP_0);
+    add_imm(sp, sp, utils::rnd_up(stack_space_needed_, 16), X_TMP_0);
     postamble();
 
     if (brg.with_eltwise) postops_injector_->prepare_table();

@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2018 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
-* Copyright 2022-2025 Arm Ltd. and affiliates
+* Copyright 2022-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -1610,7 +1610,7 @@ void jit_uni_reorder_kernel_f32_t::loop_end(Label &l, XReg reg_cnt, int len,
 
         // On the stack should be an information if node
         // was processed with tail or not.
-        ldr(X_TMP_0, post_ptr(X_SP, X_TMP_0.getBit() / 8));
+        ldr(X_TMP_0, post_ptr(sp, 16));
 
         cmp(X_TMP_0, with_tail_info_);
         b(NE, if_end);
@@ -1680,12 +1680,12 @@ void jit_uni_reorder_kernel_f32_t::create_loops(const simple_impl_desc_t &desc,
         Label loop, if_no_tail, if_end;
 
         if (curr_node_has_tail) {
-            const size_t reg_bytes = X_TMP_0.getBit() / 8;
+            const size_t reg_bytes = utils::rnd_up(X_TMP_0.getBit() / 8, 16);
             if (prb_.nodes[curr_node_id].is_parent_empty()) {
                 mov(reg_loop_cnt, tail_size);
                 // Put info that node is being processed with tail.
                 mov(X_TMP_0, with_tail_info_);
-                str(X_TMP_0, pre_ptr(X_SP, -static_cast<int>(reg_bytes)));
+                str(X_TMP_0, pre_ptr(sp, -static_cast<int>(reg_bytes)));
             } else {
                 ldr(X_TMP_0, ptr(data_chunk_addr(parent_node_id)));
                 check_if_this_is_last_chunk(X_TMP_0, parent_node_id);
@@ -1693,14 +1693,14 @@ void jit_uni_reorder_kernel_f32_t::create_loops(const simple_impl_desc_t &desc,
                 mov(reg_loop_cnt, tail_size);
                 // Put info that node is being processed with tail.
                 mov(X_TMP_0, with_tail_info_);
-                str(X_TMP_0, pre_ptr(X_SP, -static_cast<int>(reg_bytes)));
+                str(X_TMP_0, pre_ptr(sp, -static_cast<int>(reg_bytes)));
                 b(if_end);
 
                 L(if_no_tail);
                 mov(reg_loop_cnt, node_size);
                 // Put info that node is being processed without tail.
                 mov(X_TMP_0, without_tail_info_);
-                str(X_TMP_0, pre_ptr(X_SP, -static_cast<int>(reg_bytes)));
+                str(X_TMP_0, pre_ptr(sp, -static_cast<int>(reg_bytes)));
                 L(if_end);
             }
         }

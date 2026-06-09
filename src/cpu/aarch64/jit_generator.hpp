@@ -172,7 +172,6 @@ public:
     const Xbyak_aarch64::XReg X_TMP_3 = x26;
     const Xbyak_aarch64::XReg X_TMP_4 = x27;
     const Xbyak_aarch64::XReg X_DEFAULT_ADDR = x28;
-    const Xbyak_aarch64::XReg X_SP = x21;
     const Xbyak_aarch64::PReg P_TMP = p7;
     const Xbyak_aarch64::PReg P_TMP_0 = p11;
     const Xbyak_aarch64::PReg P_TMP_1 = p12;
@@ -226,8 +225,6 @@ public:
             ptrue(P_NOT_256.b, Xbyak_aarch64::VL32);
             not_(P_NOT_256.b, P_ALL_ONE / Xbyak_aarch64::T_z, P_NOT_256.b);
         }
-
-        mov(X_SP, sp);
     }
 
     void postamble() {

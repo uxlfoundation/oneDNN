@@ -167,13 +167,13 @@ private:
         if ((ld_idx < idx) && (idx <= dsc_idx)) {
             is_push = false;
         } else {
-            str(z_tmp, ptr(X_SP, -1, Xbyak_aarch64::MUL_VL));
+            str(z_tmp, ptr(sp, -1, Xbyak_aarch64::MUL_VL));
             is_push = true;
         }
         return z_tmp;
     }
     void pop_z_tmp(Xbyak_aarch64::ZReg z_tmp) {
-        if (is_push) { ldr(z_tmp, ptr(X_SP, -1, Xbyak_aarch64::MUL_VL)); }
+        if (is_push) { ldr(z_tmp, ptr(sp, -1, Xbyak_aarch64::MUL_VL)); }
     }
 
     void init_masks();

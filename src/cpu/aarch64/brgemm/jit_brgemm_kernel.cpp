@@ -582,51 +582,51 @@ void jit_brgemm_kernel_t::ldb_regs_shift(int ld_block2, bool is_tail) {
             X_TMP_0);
 
     if (brg.with_bias) {
-        LDR_IMM(reg_aux_bias, X_SP, reg_aux_bias_offs_);
+        LDR_IMM(reg_aux_bias, sp, reg_aux_bias_offs_);
         add_imm(reg_aux_bias, reg_aux_bias,
                 (is_tail) ? bias_offset(1, true) : bias_offset(ld_block2),
                 X_TMP_0);
-        STR_IMM(reg_aux_bias, X_SP, reg_aux_bias_offs_);
+        STR_IMM(reg_aux_bias, sp, reg_aux_bias_offs_);
     }
     if (brg.req_s8s8_compensation) {
-        LDR_IMM(reg_aux_compensation, X_SP, reg_aux_comp_offs_);
+        LDR_IMM(reg_aux_compensation, sp, reg_aux_comp_offs_);
         add_imm(reg_aux_compensation, reg_aux_compensation,
                 (is_tail) ? compensations_offset(1, true)
                           : compensations_offset(ld_block2),
                 X_TMP_0);
-        STR_IMM(reg_aux_compensation, X_SP, reg_aux_comp_offs_);
+        STR_IMM(reg_aux_compensation, sp, reg_aux_comp_offs_);
     }
     if (brg.with_scales) {
-        LDR_IMM(reg_aux_scales, X_SP, reg_aux_scales_offs_);
+        LDR_IMM(reg_aux_scales, sp, reg_aux_scales_offs_);
         add_imm(reg_aux_scales, reg_aux_scales,
                 (is_tail) ? scales_offset(1, true) : scales_offset(ld_block2),
                 X_TMP_0);
-        STR_IMM(reg_aux_scales, X_SP, reg_aux_scales_offs_);
+        STR_IMM(reg_aux_scales, sp, reg_aux_scales_offs_);
     }
     if (brg.zp_type_a != brgemm_broadcast_t::none) {
-        LDR_IMM(reg_aux_zp_comp_a, X_SP, reg_aux_zp_comp_a_offs_);
+        LDR_IMM(reg_aux_zp_comp_a, sp, reg_aux_zp_comp_a_offs_);
         add_imm(reg_aux_zp_comp_a, reg_aux_zp_comp_a,
                 (is_tail) ? zp_comp_a_offset(1, true)
                           : zp_comp_a_offset(ld_block2),
                 X_TMP_0);
-        STR_IMM(reg_aux_zp_comp_a, X_SP, reg_aux_zp_comp_a_offs_);
+        STR_IMM(reg_aux_zp_comp_a, sp, reg_aux_zp_comp_a_offs_);
     }
     if (brg.zp_type_c == brgemm_broadcast_t::per_n) {
-        LDR_IMM(reg_aux_zp_c_values, X_SP, reg_aux_zp_c_values_offs_);
+        LDR_IMM(reg_aux_zp_c_values, sp, reg_aux_zp_c_values_offs_);
         add_imm(reg_aux_zp_c_values, reg_aux_zp_c_values,
                 (is_tail) ? zp_c_values_offset(1, true)
                           : zp_c_values_offset(ld_block2),
                 X_TMP_0);
-        STR_IMM(reg_aux_zp_c_values, X_SP, reg_aux_zp_c_values_offs_);
+        STR_IMM(reg_aux_zp_c_values, sp, reg_aux_zp_c_values_offs_);
     }
 }
 
 void jit_brgemm_kernel_t::advance_bd_block2_post_op_regs(int bd_block2) {
     if (brg.zp_type_b != brgemm_broadcast_t::none) {
-        LDR_IMM(reg_zp_comp_b, X_SP, reg_zp_comp_b_offs_);
+        LDR_IMM(reg_zp_comp_b, sp, reg_zp_comp_b_offs_);
         add_imm(reg_zp_comp_b, reg_zp_comp_b, bdb_zp_comp_b_offset(bd_block2),
                 X_TMP_0);
-        STR_IMM(reg_zp_comp_b, X_SP, reg_zp_comp_b_offs_);
+        STR_IMM(reg_zp_comp_b, sp, reg_zp_comp_b_offs_);
     }
 }
 
@@ -636,38 +636,38 @@ void jit_brgemm_kernel_t::copy_post_ops_stack_values_to_aux(bool is_reg_tail) {
         mov(reg_aux_D, reg_D);
         eor(reg_b_offset, reg_b_offset, reg_b_offset);
         if (brg.with_bias) {
-            LDR_IMM(reg_bias, X_SP, reg_bias_offs_);
-            STR_IMM(reg_bias, X_SP, reg_aux_bias_offs_);
+            LDR_IMM(reg_bias, sp, reg_bias_offs_);
+            STR_IMM(reg_bias, sp, reg_aux_bias_offs_);
         }
         if (brg.req_s8s8_compensation) {
-            LDR_IMM(reg_compensation, X_SP, reg_comp_offs_);
-            STR_IMM(reg_compensation, X_SP, reg_aux_comp_offs_);
+            LDR_IMM(reg_compensation, sp, reg_comp_offs_);
+            STR_IMM(reg_compensation, sp, reg_aux_comp_offs_);
         }
         if (brg.with_scales) {
-            LDR_IMM(reg_scales, X_SP, reg_scales_offs_);
-            STR_IMM(reg_scales, X_SP, reg_aux_scales_offs_);
+            LDR_IMM(reg_scales, sp, reg_scales_offs_);
+            STR_IMM(reg_scales, sp, reg_aux_scales_offs_);
         }
 
         if (brg.zp_type_a != brgemm_broadcast_t::none) {
-            LDR_IMM(reg_zp_comp_a, X_SP, reg_zp_comp_a_offs_);
-            STR_IMM(reg_zp_comp_a, X_SP, reg_aux_zp_comp_a_offs_);
+            LDR_IMM(reg_zp_comp_a, sp, reg_zp_comp_a_offs_);
+            STR_IMM(reg_zp_comp_a, sp, reg_aux_zp_comp_a_offs_);
         }
 
         if (brg.zp_type_c != brgemm_broadcast_t::none) {
-            LDR_IMM(reg_zp_c_values, X_SP, reg_zp_c_values_offs_);
-            STR_IMM(reg_zp_c_values, X_SP, reg_aux_zp_c_values_offs_);
+            LDR_IMM(reg_zp_c_values, sp, reg_zp_c_values_offs_);
+            STR_IMM(reg_zp_c_values, sp, reg_aux_zp_c_values_offs_);
         }
     }
     if (brg.zp_type_b != brgemm_broadcast_t::none) {
-        LDR_IMM(reg_zp_comp_b, X_SP, reg_zp_comp_b_offs_);
-        STR_IMM(reg_zp_comp_b, X_SP, reg_aux_zp_comp_b_offs_);
+        LDR_IMM(reg_zp_comp_b, sp, reg_zp_comp_b_offs_);
+        STR_IMM(reg_zp_comp_b, sp, reg_aux_zp_comp_b_offs_);
     }
 }
 
 void jit_brgemm_kernel_t::read_params() {
     Label label_done;
 
-    if (brg.with_binary) { STR_IMM(param1, X_SP, abi_param1_offs_); }
+    if (brg.with_binary) { STR_IMM(param1, sp, abi_param1_offs_); }
 
     if (brg.type == brgemm_addr) {
         LDR_IMM(reg_addr_batch, param1, GET_OFF(batch));
@@ -682,10 +682,10 @@ void jit_brgemm_kernel_t::read_params() {
 
         if (brg.type == brgemm_offs) {
             LDR_IMM(reg_offs_batch, param1, GET_OFF(batch));
-            STR_IMM(reg_offs_batch, X_SP, origin_offs_batch_offs_);
+            STR_IMM(reg_offs_batch, sp, origin_offs_batch_offs_);
         } else {
             LDR_IMM(reg_strd_batch, param1, GET_OFF(batch));
-            STR_IMM(reg_strd_batch, X_SP, origin_strd_batch_offs_);
+            STR_IMM(reg_strd_batch, sp, origin_strd_batch_offs_);
         }
     }
 
@@ -699,49 +699,49 @@ void jit_brgemm_kernel_t::read_params() {
     // brg.req_s8s8_compensation case
     if (brg.req_s8s8_compensation) {
         ldr(reg_buf, ptr(param1, GET_OFF(ptr_buf)));
-        str(reg_buf, ptr(X_SP, reg_buf_offs_));
+        str(reg_buf, ptr(sp, reg_buf_offs_));
     }
 
     if (brg.with_bias) {
         ldr(reg_bias, ptr(param1, GET_OFF(ptr_bias)));
-        str(reg_bias, ptr(X_SP, reg_bias_offs_));
+        str(reg_bias, ptr(sp, reg_bias_offs_));
     }
     if (brg.with_scales) {
         ldr(reg_scales, ptr(param1, GET_OFF(ptr_scales)));
-        str(reg_scales, ptr(X_SP, reg_scales_offs_));
+        str(reg_scales, ptr(sp, reg_scales_offs_));
     }
 
     if (brg.zp_type_a != brgemm_broadcast_t::none) {
         ldr(reg_zp_comp_a, ptr(param1, GET_OFF(a_zp_compensations)));
-        str(reg_zp_comp_a, ptr(X_SP, reg_zp_comp_a_offs_));
+        str(reg_zp_comp_a, ptr(sp, reg_zp_comp_a_offs_));
     }
 
     if (brg.zp_type_b != brgemm_broadcast_t::none) {
         ldr(reg_zp_comp_b, ptr(param1, GET_OFF(b_zp_compensations)));
-        str(reg_zp_comp_b, ptr(X_SP, reg_zp_comp_b_offs_));
+        str(reg_zp_comp_b, ptr(sp, reg_zp_comp_b_offs_));
     }
 
     if (brg.zp_type_c != brgemm_broadcast_t::none) {
         ldr(reg_zp_c_values, ptr(param1, GET_OFF(c_zp_values)));
-        str(reg_zp_c_values, ptr(X_SP, reg_zp_c_values_offs_));
+        str(reg_zp_c_values, ptr(sp, reg_zp_c_values_offs_));
     }
 
     if (brg.with_dst_scales) {
         ldr(reg_dst_scales, ptr(param1, GET_OFF(ptr_dst_scales)));
-        str(reg_dst_scales, ptr(X_SP, reg_dst_scales_offs_));
+        str(reg_dst_scales, ptr(sp, reg_dst_scales_offs_));
     }
 
     ldr(reg_do_post_ops, ptr(param1, GET_OFF(do_post_ops)));
-    str(reg_do_post_ops, ptr(X_SP, reg_do_post_ops_offs_));
+    str(reg_do_post_ops, ptr(sp, reg_do_post_ops_offs_));
 
     ldr(reg_skip_accm, ptr(param1, GET_OFF(skip_accm)));
-    str(reg_skip_accm, ptr(X_SP, reg_skip_accm_offs_));
+    str(reg_skip_accm, ptr(sp, reg_skip_accm_offs_));
 
     ldr(reg_zp_a_val, ptr(param1, GET_OFF(zp_a_val)));
-    str(reg_zp_a_val, ptr(X_SP, reg_zp_a_val_offs_));
+    str(reg_zp_a_val, ptr(sp, reg_zp_a_val_offs_));
 
     ldr(reg_do_comp, ptr(param1, GET_OFF(do_apply_comp)));
-    str(reg_do_comp, ptr(X_SP, reg_do_comp_offs_));
+    str(reg_do_comp, ptr(sp, reg_do_comp_offs_));
 }
 
 void jit_brgemm_kernel_t::zero_accumulators(int bd_block2, bool is_bdb_tail,
@@ -809,7 +809,7 @@ void jit_brgemm_kernel_t::apply_post_ops(
             register_guard(brg.with_binary, this, {param1});
     const auto guard_space = register_guard.stack_space_occupied();
     if (brg.with_binary) {
-        add_imm(X_DEFAULT_ADDR, X_SP, abi_param1_offs_ + guard_space, X_TMP_0);
+        add_imm(X_DEFAULT_ADDR, sp, abi_param1_offs_ + guard_space, X_TMP_0);
         ldr(param1, ptr(X_DEFAULT_ADDR));
 
         if (with_binary_non_scalar_bcast_) {
@@ -912,7 +912,7 @@ void jit_brgemm_kernel_t::store_accumulators_apply_post_ops(
         // otherwise it would be a Kx1 case.
         if (brg.is_gemv && brg.is_oc_scale && brg.LDB != 1) {
             int offset = 0;
-            add_imm(X_DEFAULT_ADDR, X_SP, reg_aux_scales_offs_, X_TMP_0);
+            add_imm(X_DEFAULT_ADDR, sp, reg_aux_scales_offs_, X_TMP_0);
             ldr(reg_aux_scales, ptr(X_DEFAULT_ADDR));
             for (int ld = 0; ld < ld_block2; ld++) {
                 for (int bd = 0; bd < bd_block; bd++) {
@@ -932,12 +932,12 @@ void jit_brgemm_kernel_t::store_accumulators_apply_post_ops(
             }
 
             // update the scale pointer
-            LDR_IMM(reg_aux_scales, X_SP, reg_aux_scales_offs_);
+            LDR_IMM(reg_aux_scales, sp, reg_aux_scales_offs_);
             add_imm(reg_aux_scales, reg_aux_scales, offset + sizeof(float),
                     X_TMP_0);
-            STR_IMM(reg_aux_scales, X_SP, reg_scales_offs_);
+            STR_IMM(reg_aux_scales, sp, reg_scales_offs_);
         } else {
-            add_imm(X_DEFAULT_ADDR, X_SP, reg_aux_scales_offs_, X_TMP_0);
+            add_imm(X_DEFAULT_ADDR, sp, reg_aux_scales_offs_, X_TMP_0);
             ldr(reg_aux_scales, ptr(X_DEFAULT_ADDR));
             for (int ld = 0; ld < ld_block2; ld++) {
                 const auto addr = X_DEFAULT_ADDR;
@@ -972,7 +972,7 @@ void jit_brgemm_kernel_t::store_accumulators_apply_post_ops(
     }
 
     if (brg.with_bias) {
-        LDR_IMM(reg_aux_bias, X_SP, reg_aux_bias_offs_);
+        LDR_IMM(reg_aux_bias, sp, reg_aux_bias_offs_);
 
         auto x_addr = reg_aux_bias;
         auto zmm_bias = z_tmp_1();
@@ -1003,9 +1003,9 @@ void jit_brgemm_kernel_t::store_accumulators_apply_post_ops(
             }
 
             // update the bias pointer
-            LDR_IMM(reg_aux_bias, X_SP, reg_aux_bias_offs_);
+            LDR_IMM(reg_aux_bias, sp, reg_aux_bias_offs_);
             add_imm(reg_aux_bias, reg_aux_bias, offset + 4, X_TMP_0);
-            STR_IMM(reg_aux_bias, X_SP, reg_bias_offs_);
+            STR_IMM(reg_aux_bias, sp, reg_bias_offs_);
 
         } else {
             for_(int ld = 0; ld < ld_block2; ld++)
@@ -1032,7 +1032,7 @@ void jit_brgemm_kernel_t::store_accumulators_apply_post_ops(
         apply_post_ops(bd_block, ld_block2, ldb_and_bdb_offset, is_ld_tail);
 
     if (brg.with_dst_scales) {
-        add_imm(X_DEFAULT_ADDR, X_SP, reg_dst_scales_offs_, X_TMP_0);
+        add_imm(X_DEFAULT_ADDR, sp, reg_dst_scales_offs_, X_TMP_0);
         ldr(reg_aux_dst_scales, ptr(X_DEFAULT_ADDR));
         auto vmm_dst_scales = z_tmp_1();
         ld1rw(vmm_dst_scales.s, P_ALL_ONE / T_z, ptr(reg_aux_dst_scales));
@@ -1046,7 +1046,7 @@ void jit_brgemm_kernel_t::store_accumulators_apply_post_ops(
     }
 
     if (brg.zp_type_c != brgemm_broadcast_t::none) {
-        add_imm(X_DEFAULT_ADDR, X_SP, reg_aux_zp_c_values_offs_, X_TMP_0);
+        add_imm(X_DEFAULT_ADDR, sp, reg_aux_zp_c_values_offs_, X_TMP_0);
         ldr(reg_aux_zp_c_values, ptr(X_DEFAULT_ADDR));
         auto vmm_zp_c = z_tmp_1();
         if (brg.zp_type_c == brgemm_broadcast_t::per_tensor) {
@@ -1137,12 +1137,12 @@ void jit_brgemm_kernel_t::apply_compensation(
 
     if (!brg.req_cal_comp_pads && brg.zp_type_a != brgemm_broadcast_t::none) {
         auto vmm_zp_a_val = z_tmp_2();
-        add_imm(X_DEFAULT_ADDR, X_SP, reg_zp_a_val_offs_, X_TMP_0);
-        add_imm(reg_zp_a_val, X_SP, reg_zp_a_val_offs_, X_TMP_0);
+        add_imm(X_DEFAULT_ADDR, sp, reg_zp_a_val_offs_, X_TMP_0);
+        add_imm(reg_zp_a_val, sp, reg_zp_a_val_offs_, X_TMP_0);
         ldr(W_TMP_0, ptr(reg_zp_a_val));
         dup(vmm_zp_a_val.s, W_TMP_0);
 
-        add_imm(X_DEFAULT_ADDR, X_SP, reg_aux_zp_comp_a_offs_, X_TMP_1);
+        add_imm(X_DEFAULT_ADDR, sp, reg_aux_zp_comp_a_offs_, X_TMP_1);
         ldr(reg_aux_zp_comp_a, ptr(X_DEFAULT_ADDR));
         for (int ld = 0; ld < ld_block2; ld++) {
             const bool is_tail = is_ld_tail && ld + 1 == ld_block2;
@@ -1166,7 +1166,7 @@ void jit_brgemm_kernel_t::apply_compensation(
     }
 
     if (brg.zp_type_b != brgemm_broadcast_t::none) {
-        add_imm(X_DEFAULT_ADDR, X_SP, reg_aux_zp_comp_b_offs_, X_TMP_0);
+        add_imm(X_DEFAULT_ADDR, sp, reg_aux_zp_comp_b_offs_, X_TMP_0);
         ldr(reg_aux_zp_comp_b, ptr(X_DEFAULT_ADDR));
         for (int bd = 0; bd < bd_block; bd++) {
             int zp_comp_b_off = zp_comp_b_offset(bd);
@@ -1179,7 +1179,7 @@ void jit_brgemm_kernel_t::apply_compensation(
     }
 
     if (!brg.req_cal_comp_pads && brg.req_s8s8_compensation) {
-        ldr(reg_aux_compensation, ptr(X_SP, reg_aux_comp_offs_));
+        ldr(reg_aux_compensation, ptr(sp, reg_aux_comp_offs_));
         for (int ld = 0; ld < ld_block2; ld++) {
             auto vmm_comp = z_tmp_1();
             int comp_offset = compensations_offset(ld);
@@ -1272,7 +1272,7 @@ void jit_brgemm_kernel_t::store_accumulators(int bd_block2, bool is_bdb_tail,
 
     if (brg.is_int8 && (brg.req_s8s8_compensation || has_zero_points)) {
         Label label_store_without_comp;
-        ldr(reg_do_comp, ptr(X_SP, reg_do_comp_offs_));
+        ldr(reg_do_comp, ptr(sp, reg_do_comp_offs_));
         cmp_imm(reg_do_comp, 0, X_TMP_0);
         b(EQ, label_store_without_comp);
         apply_compensation(bd_block, ld_block2, is_ld_tail);
@@ -1286,7 +1286,7 @@ void jit_brgemm_kernel_t::store_accumulators(int bd_block2, bool is_bdb_tail,
     if (are_post_ops_applicable) {
         Label label_store_without_post_ops;
 
-        LDR_IMM(reg_do_post_ops, X_SP, reg_do_post_ops_offs_);
+        LDR_IMM(reg_do_post_ops, sp, reg_do_post_ops_offs_);
         cmp_imm(reg_do_post_ops, 0, X_TMP_0);
         b(EQ, label_store_without_post_ops);
         if (brg.is_gemv) { sum_into_one_lane(bd_block, ld_block2, is_ld_tail); }
@@ -1338,9 +1338,9 @@ void jit_brgemm_kernel_t::restore_A_B_matrices() {
 
         if (restore_reg_batch) {
             if (brg.type == brgemm_offs) {
-                ldr(reg_offs_batch, ptr(X_SP, origin_offs_batch_offs_));
+                ldr(reg_offs_batch, ptr(sp, origin_offs_batch_offs_));
             } else {
-                ldr(reg_offs_batch, ptr(X_SP, origin_strd_batch_offs_));
+                ldr(reg_offs_batch, ptr(sp, origin_strd_batch_offs_));
             }
         }
     }
@@ -1398,9 +1398,9 @@ void jit_brgemm_kernel_t::set_A_B_matrices() {
         mov_imm(reg_tmp_gpr, brg.stride_b);
         add(reg_aux1_B, reg_aux1_B, reg_tmp_gpr);
         if (vpad_exist) {
-            ldr(reg_strd_batch, ptr(X_SP, origin_strd_batch_offs_));
+            ldr(reg_strd_batch, ptr(sp, origin_strd_batch_offs_));
             mov_imm(reg_strd_batch, sizeof(brgemm_batch_element_t));
-            str(reg_strd_batch, ptr(X_SP, origin_strd_batch_offs_));
+            str(reg_strd_batch, ptr(sp, origin_strd_batch_offs_));
         }
     }
     add(reg_aux_A, reg_aux_A, reg_a_offset);
@@ -1500,13 +1500,13 @@ void jit_brgemm_kernel_t::compute_int8_compensation(int rd_loop, int bd_b,
     };
 
     if (n_bcast_1_load && brg.zp_type_a != brgemm_broadcast_t::none) {
-        str(reg_bdb_loop, ptr(X_SP, reg_bdb_loop_offs_));
+        str(reg_bdb_loop, ptr(sp, reg_bdb_loop_offs_));
         const auto reg32_scratch = WReg(reg_zp_a_input_shift.getIdx());
         mov_imm(reg32_scratch, 0x1010101);
         dup(z_one_bytes().s, reg32_scratch);
-        ldr(reg32_scratch, ptr(X_SP, reg_zp_a_val_offs_));
+        ldr(reg32_scratch, ptr(sp, reg_zp_a_val_offs_));
         dup(z_zp_a_shift().s, reg32_scratch);
-        ldr(reg_bdb_loop, ptr(X_SP, reg_bdb_loop_offs_));
+        ldr(reg_bdb_loop, ptr(sp, reg_bdb_loop_offs_));
     }
 
     for_(int rd = 0; rd < rd_loop; rd += brg.rd_step)
@@ -1892,25 +1892,23 @@ void jit_brgemm_kernel_t::ldb_loop(int bd_block2, bool is_bdb_tail,
                 skip_accumulation);
 
         if (is_ldb_loop_) {
-            STR_IMM(reg_D, X_SP, reg_D_offs_);
+            STR_IMM(reg_D, sp, reg_D_offs_);
         } else {
             mov(reg_ldb_loop, reg_D);
         }
-        if (brg.brgattr.max_bs > 1) {
-            STR_IMM(reg_aux_D, X_SP, reg_aux_D_offs_);
-        }
+        if (brg.brgattr.max_bs > 1) { STR_IMM(reg_aux_D, sp, reg_aux_D_offs_); }
 
         if (brg.alpha != 0.f && !skip_accumulation) {
             restore_A_B_matrices();
 
             if (brg.req_s8s8_compensation) { assert(!"unsupported\n"); }
             if (need_comp_pads && brg.zp_type_a != brgemm_broadcast_t::none) {
-                str(reg_bdb_loop, ptr(X_SP, reg_bdb_loop_offs_));
+                str(reg_bdb_loop, ptr(sp, reg_bdb_loop_offs_));
                 const auto reg32_scratch = WReg(reg_zp_a_input_shift.getIdx());
                 mov(z_one_bytes().b, 1);
-                ldr(reg32_scratch, ptr(X_SP, reg_zp_a_val_offs_));
+                ldr(reg32_scratch, ptr(sp, reg_zp_a_val_offs_));
                 dup(z_zp_a_shift().s, reg32_scratch);
-                ldr(reg_bdb_loop, ptr(X_SP, reg_bdb_loop_offs_));
+                ldr(reg_bdb_loop, ptr(sp, reg_bdb_loop_offs_));
             }
 
             if (brg.brgattr.max_bs > 1) { mov(reg_BS_loop, reg_BS); }
@@ -1931,7 +1929,7 @@ void jit_brgemm_kernel_t::ldb_loop(int bd_block2, bool is_bdb_tail,
                                 : ((brg.type == brgemm_offs) ? reg_offs_batch
                                                              : reg_strd_batch);
                         if (brg.type == brgemm_strd) {
-                            LDR_IMM(reg_strd_batch, X_SP,
+                            LDR_IMM(reg_strd_batch, sp,
                                     origin_strd_batch_offs_);
                         }
                         ldr(reg_aux_A_vpad,
@@ -1990,13 +1988,11 @@ void jit_brgemm_kernel_t::ldb_loop(int bd_block2, bool is_bdb_tail,
         }
 
         if (is_ldb_loop_) {
-            LDR_IMM(reg_D, X_SP, reg_D_offs_);
+            LDR_IMM(reg_D, sp, reg_D_offs_);
         } else {
             mov(reg_D, reg_ldb_loop);
         }
-        if (brg.brgattr.max_bs > 1) {
-            LDR_IMM(reg_aux_D, X_SP, reg_aux_D_offs_);
-        }
+        if (brg.brgattr.max_bs > 1) { LDR_IMM(reg_aux_D, sp, reg_aux_D_offs_); }
 
         store_accumulators(bd_block2, is_bdb_tail, ld_block2, is_ld_tail,
                 skip_accumulation);
@@ -2194,7 +2190,7 @@ void jit_brgemm_kernel_t::bdb_loop() {
 
     if (brg.brgattr.generate_skip_accumulation) {
         Label bdb_loop_skip_acc_label, bdb_loop_done_label;
-        LDR_IMM(reg_skip_accm, X_SP, reg_skip_accm_offs_);
+        LDR_IMM(reg_skip_accm, sp, reg_skip_accm_offs_);
         cmp_imm(reg_skip_accm, 0, X_TMP_0);
         b(NE, bdb_loop_skip_acc_label);
 
@@ -2220,6 +2216,8 @@ void jit_brgemm_kernel_t::generate() {
     size_t simd_w_ = simd_elems(data_type::f32, brg.isa_impl);
 
     preamble();
+    sub_imm(sp, sp, utils::rnd_up(stack_space_needed_, 16), X_TMP_0);
+
     // Can we remove this?
     if (simd_w_ != cpu_sveLen / sizeof(float)) {
         set_preg(P_ALL_ONE.b, simd_w_ * 4, X_TMP_0, X_TMP_1);
@@ -2231,9 +2229,6 @@ void jit_brgemm_kernel_t::generate() {
     mov(x1, x3);
     mov(x8, x4);
     mov(x9, x5);
-
-    sub_imm(X_SP, X_SP, stack_space_needed_,
-            X_TMP_0); //rsp=X_SP
 
     vpad_exist
             = (brg.brgattr.max_top_vpad > 0 || brg.brgattr.max_bottom_vpad > 0)
@@ -2250,8 +2245,7 @@ void jit_brgemm_kernel_t::generate() {
 
     bdb_loop();
 
-    add_imm(X_SP, X_SP, stack_space_needed_, X_TMP_0);
-
+    add_imm(sp, sp, utils::rnd_up(stack_space_needed_, 16), X_TMP_0);
     postamble();
 
     if (brg.with_eltwise) postops_injector_->prepare_table();

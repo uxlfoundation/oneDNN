@@ -611,16 +611,18 @@ template <>
 void jit_uni_i8i8_pooling_fwd_ker_t<sve_512>::init_mask() {
     using namespace data_type;
 
-    sub(X_SP, X_SP, 8 * max_num_ll);
+    const auto stack_space_bytes = utils::rnd_up(8 * max_num_ll, 16);
+    sub_imm(sp, sp, stack_space_bytes, X_TMP_0);
 
     for (int ll = 0; ll < max_num_ll; ll++) {
         mov_imm(reg_mask, jpp.tail[ll]);
-        str(reg_mask, ptr(X_SP, 8 * ll));
+        str(reg_mask, ptr(sp, 8 * ll));
     }
     for (int ll = 0; ll < max_num_ll; ll++) {
-        ldr(PReg(mask(ll)), ptr(X_SP));
-        add(X_SP, X_SP, 8);
+        ldr(PReg(mask(ll)), ptr(sp, 8 * ll));
     }
+
+    add_imm(sp, sp, stack_space_bytes, X_TMP_0);
 }
 
 template <cpu_isa_t isa>

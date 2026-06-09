@@ -41,17 +41,17 @@ register_preserve_guard_t<isa>::register_preserve_guard_t(jit_generator_t *host,
         uint32_t i = 0;
         for (; i < store_pairs; ++i)
             host_->stp(gpr_regs_[2 * i], gpr_regs_[2 * i + 1],
-                    pre_ptr(host_->X_SP, -16));
+                    pre_ptr(host_->sp, -16));
 
         if (has_lone_store) {
             // The hardware requires the stack pointer to be quad-word aligned
             // https://github.com/ARM-software/abi-aa/blob/e2534ac15f02fa2e03b7f336f069f7cf392257d9/aapcs64/aapcs64.rst?#645the-stack
-            host_->str(gpr_regs_[2 * i], pre_ptr(host_->X_SP, -16));
+            host_->str(gpr_regs_[2 * i], pre_ptr(host_->sp, -16));
         }
     }
 
     if (!vec_regs_.empty()) {
-        host_->sub(host_->X_SP, host_->X_SP, vmm_to_preserve_size_bytes_);
+        host_->sub(host_->sp, host_->sp, vmm_to_preserve_size_bytes_);
 
         uint32_t stack_offset = vmm_to_preserve_size_bytes_;
         for (const auto &vmm : vmm_to_preserve) {
@@ -61,17 +61,17 @@ register_preserve_guard_t<isa>::register_preserve_guard_t(jit_generator_t *host,
             if (vlen_bytes > 16) {
                 if (stack_offset % vlen_bytes == 0) {
                     host_->st1w(Xbyak_aarch64::ZRegS(idx), host_->P_ALL_ONE,
-                            ptr(host_->X_SP, stack_offset / vlen_bytes,
+                            ptr(host_->sp, stack_offset / vlen_bytes,
                                     Xbyak_aarch64::MUL_VL));
                 } else {
-                    host_->add_imm(host_->X_DEFAULT_ADDR, host_->X_SP,
+                    host_->add_imm(host_->X_DEFAULT_ADDR, host_->sp,
                             stack_offset, host_->X_TMP_0);
                     host_->st1w(Xbyak_aarch64::ZRegS(idx), host_->P_ALL_ONE,
                             ptr(host_->X_DEFAULT_ADDR));
                 }
             } else {
-                host_->str(Xbyak_aarch64::QReg(idx),
-                        ptr(host_->X_SP, stack_offset));
+                host_->str(
+                        Xbyak_aarch64::QReg(idx), ptr(host_->sp, stack_offset));
             }
         }
     }
@@ -89,17 +89,17 @@ register_preserve_guard_t<isa>::~register_preserve_guard_t() {
         if (vlen_bytes > 16) {
             if (tmp_stack_offset % vlen_bytes == 0) {
                 host_->ld1w(Xbyak_aarch64::ZRegS(idx), host_->P_ALL_ONE,
-                        ptr(host_->X_SP, tmp_stack_offset / vlen_bytes,
+                        ptr(host_->sp, tmp_stack_offset / vlen_bytes,
                                 Xbyak_aarch64::MUL_VL));
             } else {
-                host_->add_imm(host_->X_DEFAULT_ADDR, host_->X_SP,
+                host_->add_imm(host_->X_DEFAULT_ADDR, host_->sp,
                         tmp_stack_offset, host_->X_TMP_0);
                 host_->ld1w(Xbyak_aarch64::ZRegS(idx), host_->P_ALL_ONE,
-                        ptr(host_->X_SP, host_->X_DEFAULT_ADDR));
+                        ptr(host_->sp, host_->X_DEFAULT_ADDR));
             }
         } else {
-            host_->ldr(Xbyak_aarch64::QReg(idx),
-                    ptr(host_->X_SP, tmp_stack_offset));
+            host_->ldr(
+                    Xbyak_aarch64::QReg(idx), ptr(host_->sp, tmp_stack_offset));
         }
 
         tmp_stack_offset += vlen_bytes;
@@ -107,20 +107,19 @@ register_preserve_guard_t<isa>::~register_preserve_guard_t() {
     }
 
     if (vmm_to_preserve_size_bytes_)
-        host_->add_imm(host_->X_SP, host_->X_SP, vmm_to_preserve_size_bytes_,
+        host_->add_imm(host_->sp, host_->sp, vmm_to_preserve_size_bytes_,
                 host_->X_TMP_0);
 
     if (!gpr_regs_.empty()) {
         const bool has_lone_store = gpr_regs_.size() % 2;
 
         if (has_lone_store) {
-            host_->ldr(gpr_regs_.back(), post_ptr(host_->X_SP, 16));
+            host_->ldr(gpr_regs_.back(), post_ptr(host_->sp, 16));
             gpr_regs_.pop_back();
         }
 
         for (int i = gpr_regs_.size() - 1; i > 0; --i) {
-            host_->ldp(
-                    gpr_regs_[i - 1], gpr_regs_[i], post_ptr(host_->X_SP, 16));
+            host_->ldp(gpr_regs_[i - 1], gpr_regs_[i], post_ptr(host_->sp, 16));
         }
     }
 }

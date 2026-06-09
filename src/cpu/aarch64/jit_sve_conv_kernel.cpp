@@ -3950,11 +3950,11 @@ void jit_sve_conv_bwd_weights_kernel_f32_t<isa>::compute_od_loop_partial() {
 
     mov(reg_input_d_org, reg_input_d);
     mov(reg_output_d_org, reg_output_d);
-    str(reg_d_index, pre_ptr(X_SP, -8));
+    str(reg_d_index, pre_ptr(sp, -16));
 
     compute_oh_loop_common();
 
-    ldr(reg_d_index, post_ptr(X_SP, 8));
+    ldr(reg_d_index, post_ptr(sp, 16));
     mov(reg_output_d, reg_output_d_org);
     mov(reg_input_d, reg_input_d_org);
 

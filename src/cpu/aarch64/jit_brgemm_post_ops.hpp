@@ -339,10 +339,10 @@ private:
 
         if (brg.zp_type_a != brgemm_broadcast_t::none) {
             auto vmm_zp_a_val = vmm_tmp(1);
-            ldr(reg_zp_a_val, ptr(X_SP, reg_zp_a_val_offs_));
+            ldr(reg_zp_a_val, ptr(sp, reg_zp_a_val_offs_));
             dup(vmm_zp_a_val.s, WReg(reg_zp_a_val.getIdx()));
 
-            ldr(aux_reg_zp_a_comp, ptr(X_SP, aux_reg_zp_a_comp_offs_));
+            ldr(aux_reg_zp_a_comp, ptr(sp, aux_reg_zp_a_comp_offs_));
             for (int n = 0; n < n_block; n++) {
                 auto vmm_zp_comp_a = vmm_tmp(0);
                 const size_t zp_comp_offset
@@ -359,7 +359,7 @@ private:
         }
 
         if (brg.req_s8s8_compensation) {
-            ldr(aux_reg_s8s8_comp, ptr(X_SP, aux_reg_s8s8_comp_offs_));
+            ldr(aux_reg_s8s8_comp, ptr(sp, aux_reg_s8s8_comp_offs_));
             for (int n = 0; n < n_block; n++) {
                 auto vmm_comp = vmm_tmp(0);
                 const size_t s8s8_comp_offset
@@ -376,7 +376,7 @@ private:
     }
     void maybe_apply_comp(int m_block, int n_block, int tail = 0) {
         Label label_apply_without_comp;
-        ldr(reg_apply_comp, ptr(X_SP, reg_apply_comp_offs_));
+        ldr(reg_apply_comp, ptr(sp, reg_apply_comp_offs_));
         cmp(reg_apply_comp, 0);
         b(EQ, label_apply_without_comp);
         apply_comp(m_block, n_block, tail);
@@ -446,7 +446,7 @@ private:
         if (postops_injector_) inject_attr_postops(m_block, n_block, tail);
 
         if (brg.beta != 0 && brg.with_dst_scales) {
-            ldr(aux_reg_dst_scales, ptr(X_SP, reg_dst_scales_offs_));
+            ldr(aux_reg_dst_scales, ptr(sp, reg_dst_scales_offs_));
             auto vmm_tmp1 = vmm_tmp(1);
             ldr(vmm_tmp1, ptr(aux_reg_dst_scales));
 
@@ -459,7 +459,7 @@ private:
         }
 
         if (brg.beta != 0 && brg.zp_type_c != brgemm_broadcast_t::none) {
-            ldr(aux_reg_zp_c_values, ptr(X_SP, aux_reg_zp_c_values_offs_));
+            ldr(aux_reg_zp_c_values, ptr(sp, aux_reg_zp_c_values_offs_));
             auto vmm_zp_c = vmm_tmp(0);
             if (brg.zp_type_c == brgemm_broadcast_t::per_tensor) {
                 auto vmm_tmp1 = vmm_tmp(1);
@@ -547,16 +547,16 @@ private:
         if (brg.beta != 0) {
             if (jcp.with_bias) mov(aux_reg_bias, reg_bias);
             if (brg.zp_type_c != brgemm_broadcast_t::none) {
-                ldr(aux_reg_zp_c_values, ptr(X_SP, reg_zp_c_values_offs_));
-                str(aux_reg_zp_c_values, ptr(X_SP, aux_reg_zp_c_values_offs_));
+                ldr(aux_reg_zp_c_values, ptr(sp, reg_zp_c_values_offs_));
+                str(aux_reg_zp_c_values, ptr(sp, aux_reg_zp_c_values_offs_));
             }
             if (brg.zp_type_a != brgemm_broadcast_t::none) {
-                ldr(aux_reg_zp_a_comp, ptr(X_SP, reg_zp_a_comp_offs_));
-                str(aux_reg_zp_a_comp, ptr(X_SP, aux_reg_zp_a_comp_offs_));
+                ldr(aux_reg_zp_a_comp, ptr(sp, reg_zp_a_comp_offs_));
+                str(aux_reg_zp_a_comp, ptr(sp, aux_reg_zp_a_comp_offs_));
             }
             if (brg.req_s8s8_compensation) {
-                ldr(aux_reg_s8s8_comp, ptr(X_SP, reg_s8s8_comp_offs_));
-                str(aux_reg_s8s8_comp, ptr(X_SP, aux_reg_s8s8_comp_offs_));
+                ldr(aux_reg_s8s8_comp, ptr(sp, reg_s8s8_comp_offs_));
+                str(aux_reg_s8s8_comp, ptr(sp, aux_reg_s8s8_comp_offs_));
             }
             mov(aux_reg_scales, reg_scales);
         }
@@ -579,23 +579,23 @@ private:
                             bia_typesize_ * oc_l_offset, X_TMP_0);
                 if (brg.zp_type_c != brgemm_broadcast_t::none) {
                     ldr(aux_reg_zp_c_values,
-                            ptr(X_SP, aux_reg_zp_c_values_offs_));
+                            ptr(sp, aux_reg_zp_c_values_offs_));
                     add_imm(aux_reg_zp_c_values, aux_reg_zp_c_values,
                             zp_c_values_offset(n_block2_), X_TMP_0);
                     str(aux_reg_zp_c_values,
-                            ptr(X_SP, aux_reg_zp_c_values_offs_));
+                            ptr(sp, aux_reg_zp_c_values_offs_));
                 }
                 if (brg.zp_type_a != brgemm_broadcast_t::none) {
-                    ldr(aux_reg_zp_a_comp, ptr(X_SP, aux_reg_zp_a_comp_offs_));
+                    ldr(aux_reg_zp_a_comp, ptr(sp, aux_reg_zp_a_comp_offs_));
                     add_imm(aux_reg_zp_a_comp, aux_reg_zp_a_comp,
                             sizeof(int32_t) * oc_l_offset, X_TMP_0);
-                    str(aux_reg_zp_a_comp, ptr(X_SP, aux_reg_zp_a_comp_offs_));
+                    str(aux_reg_zp_a_comp, ptr(sp, aux_reg_zp_a_comp_offs_));
                 }
                 if (brg.req_s8s8_compensation) {
-                    ldr(aux_reg_s8s8_comp, ptr(X_SP, aux_reg_s8s8_comp_offs_));
+                    ldr(aux_reg_s8s8_comp, ptr(sp, aux_reg_s8s8_comp_offs_));
                     add_imm(aux_reg_s8s8_comp, aux_reg_s8s8_comp,
                             sizeof(int32_t) * oc_l_offset, X_TMP_0);
-                    str(aux_reg_s8s8_comp, ptr(X_SP, aux_reg_s8s8_comp_offs_));
+                    str(aux_reg_s8s8_comp, ptr(sp, aux_reg_s8s8_comp_offs_));
                 }
 
                 add_imm(aux_reg_scales, aux_reg_scales,
@@ -618,23 +618,23 @@ private:
                             bia_typesize_ * oc_l_offset, X_TMP_0);
                 if (brg.zp_type_c != brgemm_broadcast_t::none) {
                     ldr(aux_reg_zp_c_values,
-                            ptr(X_SP, aux_reg_zp_c_values_offs_));
+                            ptr(sp, aux_reg_zp_c_values_offs_));
                     add_imm(aux_reg_zp_c_values, aux_reg_zp_c_values,
                             zp_c_values_offset(nb2_tail), X_TMP_0);
                     str(aux_reg_zp_c_values,
-                            ptr(X_SP, aux_reg_zp_c_values_offs_));
+                            ptr(sp, aux_reg_zp_c_values_offs_));
                 }
                 if (brg.zp_type_a != brgemm_broadcast_t::none) {
-                    ldr(aux_reg_zp_a_comp, ptr(X_SP, aux_reg_zp_a_comp_offs_));
+                    ldr(aux_reg_zp_a_comp, ptr(sp, aux_reg_zp_a_comp_offs_));
                     add_imm(aux_reg_zp_a_comp, aux_reg_zp_a_comp,
                             sizeof(int32_t) * oc_l_offset, X_TMP_0);
-                    str(aux_reg_zp_a_comp, ptr(X_SP, aux_reg_zp_a_comp_offs_));
+                    str(aux_reg_zp_a_comp, ptr(sp, aux_reg_zp_a_comp_offs_));
                 }
                 if (brg.req_s8s8_compensation) {
-                    ldr(aux_reg_s8s8_comp, ptr(X_SP, aux_reg_s8s8_comp_offs_));
+                    ldr(aux_reg_s8s8_comp, ptr(sp, aux_reg_s8s8_comp_offs_));
                     add_imm(aux_reg_s8s8_comp, aux_reg_s8s8_comp,
                             sizeof(int32_t) * oc_l_offset, X_TMP_0);
-                    str(aux_reg_s8s8_comp, ptr(X_SP, aux_reg_s8s8_comp_offs_));
+                    str(aux_reg_s8s8_comp, ptr(sp, aux_reg_s8s8_comp_offs_));
                 }
 
                 add_imm(aux_reg_scales, aux_reg_scales,
@@ -654,23 +654,23 @@ private:
                             bia_typesize_ * (nb_tail), X_TMP_0);
                 if (brg.zp_type_c != brgemm_broadcast_t::none) {
                     ldr(aux_reg_zp_c_values,
-                            ptr(X_SP, aux_reg_zp_c_values_offs_));
+                            ptr(sp, aux_reg_zp_c_values_offs_));
                     add_imm(aux_reg_zp_c_values, aux_reg_zp_c_values,
                             zp_c_values_offset(1, nb_tail), X_TMP_0);
                     str(aux_reg_zp_c_values,
-                            ptr(X_SP, aux_reg_zp_c_values_offs_));
+                            ptr(sp, aux_reg_zp_c_values_offs_));
                 }
                 if (brg.zp_type_a != brgemm_broadcast_t::none) {
-                    ldr(aux_reg_zp_a_comp, ptr(X_SP, aux_reg_zp_a_comp_offs_));
+                    ldr(aux_reg_zp_a_comp, ptr(sp, aux_reg_zp_a_comp_offs_));
                     add_imm(aux_reg_zp_a_comp, aux_reg_zp_a_comp,
                             sizeof(int32_t) * nb_tail, X_TMP_0);
-                    str(aux_reg_zp_a_comp, ptr(X_SP, aux_reg_zp_a_comp_offs_));
+                    str(aux_reg_zp_a_comp, ptr(sp, aux_reg_zp_a_comp_offs_));
                 }
                 if (brg.req_s8s8_compensation) {
-                    ldr(aux_reg_s8s8_comp, ptr(X_SP, aux_reg_s8s8_comp_offs_));
+                    ldr(aux_reg_s8s8_comp, ptr(sp, aux_reg_s8s8_comp_offs_));
                     add_imm(aux_reg_s8s8_comp, aux_reg_s8s8_comp,
                             sizeof(int32_t) * nb_tail, X_TMP_0);
-                    str(aux_reg_s8s8_comp, ptr(X_SP, aux_reg_s8s8_comp_offs_));
+                    str(aux_reg_s8s8_comp, ptr(sp, aux_reg_s8s8_comp_offs_));
                 }
                 add_imm(aux_reg_scales, aux_reg_scales,
                         is_oc_scale_ * bia_typesize_ * (nb_tail), X_TMP_0);
@@ -687,6 +687,8 @@ private:
         size_t simd_w_ = simd_elems(data_type::f32, brg.isa_impl);
 
         preamble();
+        sub_imm(sp, sp, utils::rnd_up(stack_space_needed_, 16), X_TMP_0);
+
         if (simd_w_ != cpu_sveLen / sizeof(float)) {
             set_preg(P_ALL_ONE.b, simd_w_ * 4, X_TMP_0, X_TMP_1);
             set_preg(k_full_mask.b, simd_w_ * 4, X_TMP_0, X_TMP_1);
@@ -700,7 +702,7 @@ private:
         mov(x8, x4);
         mov(x9, x5);
 
-        mov(x4, X_SP);
+        mov(x4, sp);
         int nb = brg.load_dim / brg.ld_block;
         int nb_tail = brg.load_dim % brg.ld_block;
 
@@ -725,7 +727,7 @@ private:
             ldr(reg_scales, ptr(X_DEFAULT_ADDR));
             add_imm(X_DEFAULT_ADDR, param1, GET_OFF(apply_comp), X_TMP_0);
             ldr(reg_apply_comp, ptr(X_DEFAULT_ADDR));
-            str(reg_apply_comp, ptr(X_SP, reg_apply_comp_offs_));
+            str(reg_apply_comp, ptr(sp, reg_apply_comp_offs_));
 
             if (jcp.with_bias) {
                 add_imm(X_DEFAULT_ADDR, param1, GET_OFF(ptr_bias), X_TMP_0);
@@ -734,29 +736,29 @@ private:
             if (brg.zp_type_c != brgemm_broadcast_t::none) {
                 add_imm(X_DEFAULT_ADDR, param1, GET_OFF(c_zp_values), X_TMP_0);
                 ldr(reg_zp_c_values, ptr(X_DEFAULT_ADDR));
-                str(reg_zp_c_values, ptr(X_SP, reg_zp_c_values_offs_));
+                str(reg_zp_c_values, ptr(sp, reg_zp_c_values_offs_));
             }
             if (brg.zp_type_a != brgemm_broadcast_t::none) {
                 add_imm(X_DEFAULT_ADDR, param1, GET_OFF(a_zp_compensation),
                         X_TMP_0);
                 ldr(reg_zp_a_comp, ptr(X_DEFAULT_ADDR));
-                str(reg_zp_a_comp, ptr(X_SP, reg_zp_a_comp_offs_));
+                str(reg_zp_a_comp, ptr(sp, reg_zp_a_comp_offs_));
 
                 add_imm(X_DEFAULT_ADDR, param1, GET_OFF(a_comp_val), X_TMP_0);
                 ldr(reg_zp_a_val, ptr(X_DEFAULT_ADDR));
-                str(reg_zp_a_val, ptr(X_SP, reg_zp_a_val_offs_));
+                str(reg_zp_a_val, ptr(sp, reg_zp_a_val_offs_));
             }
             if (brg.req_s8s8_compensation) {
                 add_imm(X_DEFAULT_ADDR, param1, GET_OFF(s8s8_compensation),
                         X_TMP_0);
                 ldr(reg_s8s8_comp, ptr(X_DEFAULT_ADDR));
-                str(reg_s8s8_comp, ptr(X_SP, reg_s8s8_comp_offs_));
+                str(reg_s8s8_comp, ptr(sp, reg_s8s8_comp_offs_));
             }
             if (brg.with_dst_scales) {
                 add_imm(X_DEFAULT_ADDR, param1, GET_OFF(ptr_dst_scales),
                         X_TMP_0);
                 ldr(reg_dst_scales, ptr(X_DEFAULT_ADDR));
-                str(reg_dst_scales, ptr(X_SP, reg_dst_scales_offs_));
+                str(reg_dst_scales, ptr(sp, reg_dst_scales_offs_));
             }
         }
         add_imm(X_DEFAULT_ADDR, param1, GET_OFF(ptr_out), X_TMP_0);
@@ -787,8 +789,7 @@ private:
 
         if (mb_tail > 0) loop_by_N(mb_tail, nb2, nb2_tail, nb_tail);
 
-        add_imm(X_SP, X_SP, stack_space_needed_, X_TMP_0);
-
+        add_imm(sp, sp, utils::rnd_up(stack_space_needed_, 16), X_TMP_0);
         postamble();
 
         if (postops_injector_) postops_injector_->prepare_table();

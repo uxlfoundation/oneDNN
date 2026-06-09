@@ -382,11 +382,11 @@ void jit_uni_binary_kernel_t<isa>::compute_bcast(bool tail) {
 
 template <cpu_isa_t isa>
 void jit_uni_binary_kernel_t<isa>::push(const Xbyak_aarch64::XReg &reg) {
-    str(reg, pre_ptr(X_SP, -static_cast<int>(reg.getBit() / 8)));
+    str(reg, pre_ptr(sp, -16));
 }
 template <cpu_isa_t isa>
 void jit_uni_binary_kernel_t<isa>::pop(const Xbyak_aarch64::XReg &reg) {
-    ldr(reg, post_ptr(X_SP, (reg.getBit() / 8)));
+    ldr(reg, post_ptr(sp, 16));
 }
 
 template <cpu_isa_t isa>

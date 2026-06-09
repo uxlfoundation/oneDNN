@@ -438,7 +438,7 @@ static void load_bytes(jit_generator *host, const Xbyak_aarch64::VReg &vmm,
     if (load_size > 16) {
         host->str(host->z31,
                 Xbyak_aarch64::ptr(
-                        host->X_SP, -1, Xbyak_aarch64::MUL_VL));
+                        host->sp, -1, Xbyak_aarch64::MUL_VL));
         const Xbyak_aarch64::ZReg z_vmm(vmm.getIdx());
         const Xbyak_aarch64::ZReg z_tmp(host->z31.getIdx());
         host->ptrue(host->P_TMP.d, Xbyak_aarch64::VL2);
@@ -453,7 +453,7 @@ static void load_bytes(jit_generator *host, const Xbyak_aarch64::VReg &vmm,
         host->mov(z_vmm.s, host->P_NOT_256 / Xbyak_aarch64::T_m, 0);
         host->ldr(host->z31,
                 Xbyak_aarch64::ptr(
-                        host->X_SP, -1, Xbyak_aarch64::MUL_VL));
+                        host->sp, -1, Xbyak_aarch64::MUL_VL));
     }
 }
 
@@ -487,7 +487,7 @@ static void load_bytes_to_dword_extension(jit_generator *host,
     }
     host->str(host->z31,
             Xbyak_aarch64::ptr(
-                    host->X_SP, -1, Xbyak_aarch64::MUL_VL));
+                    host->sp, -1, Xbyak_aarch64::MUL_VL));
     // For load_size == 8/4, do load/extension in one go
     const Xbyak_aarch64::ZReg z_tmp(host->z31.getIdx());
     if (load_size == 8) {
@@ -528,7 +528,7 @@ static void load_bytes_to_dword_extension(jit_generator *host,
     }
     host->ldr(host->z31,
             Xbyak_aarch64::ptr(
-                    host->X_SP, -1, Xbyak_aarch64::MUL_VL));
+                    host->sp, -1, Xbyak_aarch64::MUL_VL));
 }
 template <typename Vmm>
 void load_data(jit_generator *host, data_type_t type_in, const Vmm &vmm,
@@ -767,9 +767,9 @@ int jit_io_helper_t<Xbyak_aarch64::VReg>::allocate_temp_register(
         // Look for a temporary vector register whose index isn’t the same as lhs.
         if (reg.getIdx() != i) {
             // Allocate space on stack
-            host_->sub(host_->X_SP, host_->X_SP, SIMD_SZ);
+            host_->sub(host_->sp, host_->sp, SIMD_SZ);
             // Store the scratch register into the stack so it's safe to clobber it.
-            host_->str(Xbyak_aarch64::QReg(i), Xbyak_aarch64::ptr(host_->X_SP));
+            host_->str(Xbyak_aarch64::QReg(i), Xbyak_aarch64::ptr(host_->sp));
             // The temporary register was found, therefore there is no need to keep searching.
             return i;
         }
@@ -784,9 +784,9 @@ void jit_io_helper_t<Xbyak_aarch64::VReg>::deallocate_temp_register(
     const int SIMD_SZ = 16; // SIMD register length in bytes
 
     // Restore the scratch register's initial content from the stack.
-    host_->ldr(Xbyak_aarch64::QReg(idx), Xbyak_aarch64::ptr(host_->X_SP));
+    host_->ldr(Xbyak_aarch64::QReg(idx), Xbyak_aarch64::ptr(host_->sp));
     // Free allocated stack space
-    host_->add(host_->X_SP, host_->X_SP, SIMD_SZ);
+    host_->add(host_->sp, host_->sp, SIMD_SZ);
 }
 
 template <>
@@ -870,14 +870,14 @@ void jit_io_helper_t<Vmm>::store_i8_sdb(Xbyak_aarch64::XReg addr,
         const Vmm &src_vmm, const bool tail, const Xbyak_aarch64::PReg &mask) {
     UNUSED(tail);
     host_->str(host_->z31,
-            Xbyak_aarch64::ptr(host_->X_SP, -1, Xbyak_aarch64::MUL_VL));
+            Xbyak_aarch64::ptr(host_->sp, -1, Xbyak_aarch64::MUL_VL));
     const Xbyak_aarch64::ZReg z_tmp(host_->z31.getIdx());
     host_->mov(z_tmp.d, Xbyak_aarch64::ZRegD(src_vmm.getIdx()));
     host_->smin(z_tmp.s, 127);
     host_->smax(z_tmp.s, -128);
     host_->st1b(z_tmp.s, mask, Xbyak_aarch64::ptr(addr));
     host_->ldr(host_->z31,
-            Xbyak_aarch64::ptr(host_->X_SP, -1, Xbyak_aarch64::MUL_VL));
+            Xbyak_aarch64::ptr(host_->sp, -1, Xbyak_aarch64::MUL_VL));
 }
 
 template <>
@@ -932,13 +932,13 @@ void jit_io_helper_t<Vmm>::store_i8_udb(Xbyak_aarch64::XReg addr,
         const Vmm &src_vmm, const bool tail, const Xbyak_aarch64::PReg &mask) {
     UNUSED(tail);
     host_->str(host_->z31,
-            Xbyak_aarch64::ptr(host_->X_SP, -1, Xbyak_aarch64::MUL_VL));
+            Xbyak_aarch64::ptr(host_->sp, -1, Xbyak_aarch64::MUL_VL));
     const Xbyak_aarch64::ZReg z_tmp(host_->z31.getIdx());
     host_->mov(z_tmp.d, Xbyak_aarch64::ZRegD(src_vmm.getIdx()));
     host_->umin(z_tmp.s, 255);
     host_->st1b(z_tmp.s, mask, Xbyak_aarch64::ptr(addr));
     host_->ldr(host_->z31,
-            Xbyak_aarch64::ptr(host_->X_SP, -1, Xbyak_aarch64::MUL_VL));
+            Xbyak_aarch64::ptr(host_->sp, -1, Xbyak_aarch64::MUL_VL));
 }
 
 template <typename Vmm>

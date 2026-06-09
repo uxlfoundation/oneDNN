@@ -513,8 +513,7 @@ inline void jit_uni_pool_kernel_t<isa>::avg_step(int ur_w, int ur_bc, int pad_l,
     }
 
     if (jpp.simple_alg && jpp.ndims == 5) {
-        str(reg_input, pre_ptr(X_SP, -8));
-        str(reg_output, pre_ptr(X_SP, -8));
+        stp(reg_input, reg_output, pre_ptr(sp, -16));
 
         mov(aux_reg_input_d, reg_input);
         ldr(ki, ptr(reg_param, GET_OFF(kd_padding)));
@@ -573,8 +572,7 @@ inline void jit_uni_pool_kernel_t<isa>::avg_step(int ur_w, int ur_bc, int pad_l,
         subs(ki, ki, 1);
         cmp(ki, 0);
         b(GT, kd_label);
-        ldr(reg_output, post_ptr(X_SP, 8));
-        ldr(reg_input, post_ptr(X_SP, 8));
+        ldp(reg_input, reg_output, post_ptr(sp, 16));
     }
 
     if (!jpp.is_backward) {
@@ -634,9 +632,8 @@ inline void jit_uni_pool_kernel_t<isa>::max_step_fwd(int ur_w, int ur_bc,
     }
     if (jpp.is_training) dup(vmm_k_offset, reg_k_shift);
     if (jpp.ndims == 5) {
-        str(reg_input, pre_ptr(X_SP, -8));
+        stp(reg_input, reg_output, pre_ptr(sp, -16));
 
-        str(reg_output, pre_ptr(X_SP, -8));
         mov(aux_reg_input_d, reg_input);
         ldr(ki, ptr(reg_param, GET_OFF(kd_padding)));
         L(kd_label);
@@ -690,8 +687,7 @@ inline void jit_uni_pool_kernel_t<isa>::max_step_fwd(int ur_w, int ur_bc,
         subs(ki, ki, 1);
         cmp(ki, 0);
         b(GT, kd_label);
-        ldr(reg_output, post_ptr(X_SP, 8));
-        ldr(reg_input, post_ptr(X_SP, 8));
+        ldp(reg_input, reg_output, post_ptr(sp, 16));
     }
 
     if (jpp.with_postops)
@@ -775,8 +771,8 @@ inline void jit_uni_pool_kernel_t<isa>::max_step_bwd(int ur_w, int ur_bc,
     dup(vmm_k_offset, reg_k_shift);
 
     if (jpp.simple_alg && jpp.ndims == 5) {
-        str(reg_input, pre_ptr(X_SP, -8));
-        str(reg_output, pre_ptr(X_SP, -8));
+        stp(reg_input, reg_output, pre_ptr(sp, -16));
+
         mov(aux_reg_input_d, reg_input);
 
         ldr(ki, ptr(reg_param, GET_OFF(kd_padding)));
@@ -829,8 +825,7 @@ inline void jit_uni_pool_kernel_t<isa>::max_step_bwd(int ur_w, int ur_bc,
         subs(ki, ki, 1);
         cmp(ki, 0);
         b(GT, kd_label);
-        ldr(reg_output, post_ptr(X_SP, 8));
-        ldr(reg_input, post_ptr(X_SP, 8));
+        ldp(reg_input, reg_output, post_ptr(sp, 16));
     }
 }
 

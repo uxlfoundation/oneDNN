@@ -107,15 +107,16 @@ void jit_uni_eltwise_injector_t<isa>::injector_preamble(
     assert(preserved_gprs_count == aux_gprs_count());
 
     if (save_state_) {
-        const int reg_size = h->x0.getBit() / 8;
-        if (preserve_p_table_) h->str(x_table, pre_ptr(h->X_SP, -reg_size));
+        // TODO: use register_preserve_guard for better stack management
+        const int reg_size = utils::rnd_up(h->x0.getBit() / 8, 16);
+        if (preserve_p_table_) h->str(x_table, pre_ptr(h->sp, -reg_size));
         for (size_t i = 0; i < preserved_gprs_count; ++i)
-            h->str(XReg(preserved_gpr_idxs[i]), pre_ptr(h->X_SP, -reg_size));
+            h->str(XReg(preserved_gpr_idxs[i]), pre_ptr(h->sp, -reg_size));
 
         if (preserve_vmm_) {
             if (preserved_vecs_count)
-                h->sub_imm(h->X_SP, h->X_SP, preserved_vecs_count * vlen,
-                        h->X_TMP_0);
+                h->sub_imm(
+                        h->sp, h->sp, preserved_vecs_count * vlen, h->X_TMP_0);
             for (size_t i = 0; i < preserved_vecs_count; ++i)
                 store_preserved_vec(i, preserved_vec_idxs[i]);
         }
@@ -135,7 +136,7 @@ void jit_uni_eltwise_injector_t<isa>::injector_preamble_tail(
     const int idx_off = vecs_to_preserve - tail_vecs_to_preserve;
 
     if (save_state_) {
-        if (idx_off) h->add_imm(h->X_SP, h->X_SP, idx_off * vlen, h->X_TMP_0);
+        if (idx_off) h->add_imm(h->sp, h->sp, idx_off * vlen, h->X_TMP_0);
 
         for (size_t i = 0; i < tail_vecs_to_preserve; ++i)
             load_preserved_vec(i, preserved_vec_idxs[idx_off + i]);
@@ -148,7 +149,7 @@ void jit_uni_eltwise_injector_t<isa>::injector_preamble_tail(
         for (size_t i = 0; i < tail_vecs_to_preserve; ++i)
             store_preserved_vec(i, preserved_vec_idxs[idx_off + i]);
 
-        if (idx_off) h->sub_imm(h->X_SP, h->X_SP, idx_off * vlen, h->X_TMP_0);
+        if (idx_off) h->sub_imm(h->sp, h->sp, idx_off * vlen, h->X_TMP_0);
     }
 
     assign_regs();
@@ -158,7 +159,7 @@ void jit_uni_eltwise_injector_t<isa>::injector_preamble_tail(
 template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_t<isa>::injector_postamble() {
     using namespace Xbyak_aarch64::util;
-    const int reg_size = h->x0.getBit() / 8;
+    const int reg_size = utils::rnd_up(h->x0.getBit() / 8, 16);
     if (!save_state_) return;
 
     if (preserve_vmm_) {
@@ -166,13 +167,12 @@ void jit_uni_eltwise_injector_t<isa>::injector_postamble() {
             load_preserved_vec(i, preserved_vec_idxs[i]);
 
         if (preserved_vecs_count)
-            h->add_imm(
-                    h->X_SP, h->X_SP, preserved_vecs_count * vlen, h->X_TMP_0);
+            h->add_imm(h->sp, h->sp, preserved_vecs_count * vlen, h->X_TMP_0);
     }
 
     for (int i = aux_gprs_count() - 1; i >= 0; --i)
-        h->ldr(XReg(preserved_gpr_idxs[i]), post_ptr(h->X_SP, reg_size));
-    if (preserve_p_table_) h->ldr(x_table, post_ptr(h->X_SP, reg_size));
+        h->ldr(XReg(preserved_gpr_idxs[i]), post_ptr(h->sp, reg_size));
+    if (preserve_p_table_) h->ldr(x_table, post_ptr(h->sp, reg_size));
 }
 
 template <cpu_isa_t isa>
@@ -195,9 +195,9 @@ template <cpu_isa_t isa>
 inline void jit_uni_eltwise_injector_t<isa>::store_preserved_vec(
         size_t slot, size_t vmm_idx) {
     if (isa == asimd) {
-        h->str(QReg(vmm_idx), ptr(h->X_SP, static_cast<int32_t>(slot * vlen)));
+        h->str(QReg(vmm_idx), ptr(h->sp, static_cast<int32_t>(slot * vlen)));
     } else {
-        h->str(ZReg(vmm_idx), ptr(h->X_SP, slot, MUL_VL));
+        h->str(ZReg(vmm_idx), ptr(h->sp, slot, MUL_VL));
     }
 }
 
@@ -205,9 +205,9 @@ template <cpu_isa_t isa>
 inline void jit_uni_eltwise_injector_t<isa>::load_preserved_vec(
         size_t slot, size_t vmm_idx) {
     if (isa == asimd) {
-        h->ldr(QReg(vmm_idx), ptr(h->X_SP, static_cast<int32_t>(slot * vlen)));
+        h->ldr(QReg(vmm_idx), ptr(h->sp, static_cast<int32_t>(slot * vlen)));
     } else {
-        h->ldr(ZReg(vmm_idx), ptr(h->X_SP, slot, MUL_VL));
+        h->ldr(ZReg(vmm_idx), ptr(h->sp, slot, MUL_VL));
     }
 }
 
@@ -1235,16 +1235,16 @@ void jit_uni_eltwise_injector_t<isa>::gelu_tanh_compute_vector_bwd(
     h->fmul(vmm_aux2, vmm_aux2, vmm_aux0);
 
     // save G2 on stack as tanh uses all available registers
-    h->sub_imm(h->X_SP, h->X_SP, vlen, h->X_TMP_0);
-    h->add_imm(h->X_TMP_0, h->X_SP, 0, h->X_TMP_1);
+    h->sub_imm(h->sp, h->sp, vlen, h->X_TMP_0);
+    h->mov(h->X_TMP_0, h->sp);
     h->str(ZReg(IDX(vmm_aux2)), ptr(h->X_TMP_0));
 
     // T = tanh(G1(x))
     tanh_compute_vector_fwd(vmm_src);
 
-    h->add_imm(h->X_TMP_0, h->X_SP, 0, h->X_TMP_1);
+    h->mov(h->X_TMP_0, h->sp);
     h->ldr(ZReg(IDX(vmm_aux2)), ptr(h->X_TMP_0));
-    h->add_imm(h->X_SP, h->X_SP, vlen, h->X_TMP_0);
+    h->add_imm(h->sp, h->sp, vlen, h->X_TMP_0);
 
     // compute 0.5 * (1 + T) * (1 + G2 * (1 - T))
     // 1) R = G2 * (1 - T) = G2 - G2 * T
@@ -1373,18 +1373,18 @@ void jit_uni_eltwise_injector_t<isa>::swish_compute_vector_bwd(
     h->fmul(vmm_src, vmm_src, table_val(alpha, z_tmp));
 
     // Save R on stack for later usage
-    h->sub_imm(h->X_SP, h->X_SP, vlen, h->X_TMP_0);
+    h->sub_imm(h->sp, h->sp, vlen, h->X_TMP_0);
 
-    h->add_imm(h->X_TMP_0, h->X_SP, 0, h->X_TMP_1);
+    h->mov(h->X_TMP_0, h->sp);
     h->str(ZReg(IDX(vmm_src)), ptr(h->X_TMP_0));
 
     // Q = sigmoid(alpha * s)
     logistic_compute_vector_fwd(vmm_src);
 
-    h->add_imm(h->X_TMP_0, h->X_SP, 0, h->X_TMP_1);
+    h->mov(h->X_TMP_0, h->sp);
     h->ldr(ZReg(IDX(vmm_aux0)), ptr(h->X_TMP_0));
 
-    h->add_imm(h->X_SP, h->X_SP, vlen, h->X_TMP_0);
+    h->add_imm(h->sp, h->sp, vlen, h->X_TMP_0);
 
     // compute Q * (1 + R * (1 - Q))
     // T = R * (1 - Q) = R - R * Q
@@ -1430,8 +1430,8 @@ void jit_uni_eltwise_injector_t<isa>::gelu_erf_compute_vector_bwd(
     h->fmul(vmm_src, vmm_src, table_val(gelu_erf_one_over_sqrt_two, z_tmp));
 
     // Save R on stack for later usage
-    h->sub_imm(h->X_SP, h->X_SP, vlen, h->X_TMP_0);
-    h->add_imm(h->X_TMP_0, h->X_SP, 0, h->X_TMP_1);
+    h->sub_imm(h->sp, h->sp, vlen, h->X_TMP_0);
+    h->mov(h->X_TMP_0, h->sp);
     h->str(ZReg(IDX(vmm_src)), ptr(h->X_TMP_0));
 
     // Q = exp(-R*R)
@@ -1441,7 +1441,7 @@ void jit_uni_eltwise_injector_t<isa>::gelu_erf_compute_vector_bwd(
     exp_compute_vector_fwd(vmm_src);
 
     // T = R / sqrt(pi) * Q
-    h->add_imm(h->X_TMP_0, h->X_SP, 0, h->X_TMP_1);
+    h->mov(h->X_TMP_0, h->sp);
     h->ldr(ZReg(IDX(vmm_aux2)), ptr(h->X_TMP_0));
     h->fmul(vmm_aux2, vmm_aux2, table_val(gelu_erf_one_over_sqrt_pi, z_tmp));
     h->fmul(vmm_aux2, vmm_aux2, vmm_src);
@@ -1451,15 +1451,15 @@ void jit_uni_eltwise_injector_t<isa>::gelu_erf_compute_vector_bwd(
             ZRegD(IDX(table_val(sign_mask, z_tmp))));
 
     // get sign
-    h->add_imm(h->X_TMP_0, h->X_SP, 0, h->X_TMP_1);
+    h->mov(h->X_TMP_0, h->sp);
     h->ldr(ZReg(IDX(vmm_aux0)), ptr(h->X_TMP_0));
     h->and_(ZRegD(IDX(vmm_aux0)), ZRegD(IDX(vmm_aux0)),
             ZRegD(IDX(table_val(sign_mask, z_tmp))));
 
     // abs(x)
-    h->add_imm(h->X_TMP_0, h->X_SP, 0, h->X_TMP_1);
+    h->mov(h->X_TMP_0, h->sp);
     h->ldr(ZReg(IDX(vmm_aux1)), ptr(h->X_TMP_0));
-    h->add_imm(h->X_SP, h->X_SP, vlen, h->X_TMP_0);
+    h->add_imm(h->sp, h->sp, vlen, h->X_TMP_0);
 
     abs_compute_vector_fwd(ZReg(IDX(vmm_aux1)));
 

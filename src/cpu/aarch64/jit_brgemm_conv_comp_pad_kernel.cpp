@@ -72,12 +72,12 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::store_accumulators(
     if (jcp_.src_zero_point) {
         for_(int m = 0; m < m_block; m++)
         for (int n = 0; n < n_block; n++) {
-            str(vmm_zp_shift, ptr(X_SP, -1, MUL_VL));
+            str(vmm_zp_shift, ptr(sp, -1, MUL_VL));
 
             auto vmm = accum(n_block, m, n);
             auto vmm_tmp = vmm_tmp_1();
             auto vmm_zp = vmm_zp_shift;
-            ldr(vmm_tmp, ptr(X_SP, -1, MUL_VL));
+            ldr(vmm_tmp, ptr(sp, -1, MUL_VL));
             add_imm(X_DEFAULT_ADDR, reg_zp_comp_out, out_oc_offset(n), X_TMP_0);
             ldr(vmm_zp, ptr(X_DEFAULT_ADDR));
 
@@ -85,19 +85,19 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::store_accumulators(
             add(vmm_tmp.s, vmm_tmp.s, vmm_zp.s);
             st1w(vmm_tmp.s, P_ALL_ONE / T_z, ptr(X_DEFAULT_ADDR));
 
-            ldr(vmm_zp_shift, ptr(X_SP, -1, MUL_VL));
+            ldr(vmm_zp_shift, ptr(sp, -1, MUL_VL));
         }
     }
 
     if (jcp_.s8s8_compensation_required) {
         for_(int m = 0; m < m_block; m++)
         for (int n = 0; n < n_block; n++) {
-            str(vmm_cp_shift, ptr(X_SP, -1, MUL_VL));
+            str(vmm_cp_shift, ptr(sp, -1, MUL_VL));
 
             auto vmm = accum(n_block, m, n);
             auto vmm_tmp = vmm_tmp_1();
             auto vmm_zp = vmm_cp_shift;
-            ldr(vmm_tmp, ptr(X_SP, -1, MUL_VL));
+            ldr(vmm_tmp, ptr(sp, -1, MUL_VL));
             add_imm(X_DEFAULT_ADDR, reg_comp_out, out_oc_offset(n), X_TMP_0);
             ldr(vmm_zp, ptr(X_DEFAULT_ADDR));
 
@@ -105,7 +105,7 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::store_accumulators(
             add(vmm_tmp.s, vmm_tmp.s, vmm_zp.s);
             st1w(vmm_tmp.s, P_ALL_ONE / T_z, ptr(X_DEFAULT_ADDR));
 
-            ldr(vmm_cp_shift, ptr(X_SP, -1, MUL_VL));
+            ldr(vmm_cp_shift, ptr(sp, -1, MUL_VL));
         }
     }
 }

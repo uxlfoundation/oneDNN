@@ -76,7 +76,7 @@ void jit_sve_1x1_conv_kernel_t<isa>::bcast_loop(int load_loop_blk) {
     mov(aux1_reg_bcast_data, reg_bcast_data);
     mov(aux_reg_bcast_data, reg_bcast_data);
     mov(aux_reg_output_data, reg_output_data);
-    ldr(reg_bcast_loop_iter, ptr(X_SP, reg_bcast_loop_work_offt));
+    ldr(reg_bcast_loop_iter, ptr(sp, reg_bcast_loop_work_offt));
 
     Label bcast_loop;
     Label bcast_loop_tail;
@@ -171,7 +171,7 @@ void jit_sve_1x1_conv_kernel_t<isa>::apply_postops(
             if (mask_flag) rhs_arg_params.vmm_tail_idx_.emplace(vmm_idx);
         });
 
-        ldr(abi_param1, ptr(X_SP, reg_abi_param1_backup));
+        ldr(abi_param1, ptr(sp, reg_abi_param1_backup));
 
         postops_injector_->compute_vector_range(vmm_idxs, rhs_arg_params);
     } else {
@@ -462,13 +462,13 @@ void jit_sve_1x1_conv_kernel_t<isa>::reduce_loop(
 template <cpu_isa_t isa>
 void jit_sve_1x1_conv_kernel_t<isa>::generate() {
     preamble();
+    sub_imm(sp, sp, utils::rnd_up(stack_space_needed, 16), X_TMP_0);
 
-    sub_imm(X_SP, X_SP, stack_space_needed, X_TMP_0);
     if (jcp.with_binary) {
         const auto zeroed_reg = x15;
         eor(zeroed_reg, zeroed_reg, zeroed_reg);
-        str(zeroed_reg, ptr(X_SP, reg_binary_post_op_acc_off));
-        str(param1, ptr(X_SP, reg_abi_param1_backup));
+        str(zeroed_reg, ptr(sp, reg_binary_post_op_acc_off));
+        str(param1, ptr(sp, reg_abi_param1_backup));
     }
 
     /* Pointers indicate weight, input, and output data */
@@ -482,7 +482,7 @@ void jit_sve_1x1_conv_kernel_t<isa>::generate() {
     /* Get workloads of each loop */
     ldr(reg_load_loop_work, ptr(abi_param1, GET_OFF(load_dim)));
     ldr(reg_bcast_loop_work, ptr(abi_param1, GET_OFF(bcast_dim)));
-    str(reg_bcast_loop_work, ptr(X_SP, reg_bcast_loop_work_offt));
+    str(reg_bcast_loop_work, ptr(sp, reg_bcast_loop_work_offt));
     ldr(reg_reduce_loop_work, ptr(abi_param1, GET_OFF(reduce_dim)));
 
     /* A flag for controlling reduce loop */
@@ -498,14 +498,14 @@ void jit_sve_1x1_conv_kernel_t<isa>::generate() {
     if (load_dim_tail) {
         const WReg w_tmp(reg_load_dim_tail_mask.getIdx());
         mov_imm(w_tmp, (1 << load_dim_tail) - 1);
-        st1w(zreg_tmp1.s, P_ALL_ONE / T_z, ptr(X_SP, -1, MUL_VL));
+        st1w(zreg_tmp1.s, P_ALL_ONE / T_z, ptr(sp, -1, MUL_VL));
         index(zreg_tmp.s, 0, 1);
         mov(zreg_tmp1.s, 1);
         lsl(zreg_tmp1.s, P_ALL_ONE / T_m, zreg_tmp.s);
         dup(zreg_tmp.s, w_tmp);
         and_(zreg_tmp.d, zreg_tmp.d, zreg_tmp1.d);
         cmpne(k_load_dim_tail_mask.s, P_ALL_ONE, zreg_tmp.s, 0);
-        ldr(zreg_tmp1, ptr(X_SP, -1, MUL_VL));
+        ldr(zreg_tmp1, ptr(sp, -1, MUL_VL));
     }
 
     auto load_loop_body = [=](int load_loop_blk) {
@@ -541,10 +541,10 @@ void jit_sve_1x1_conv_kernel_t<isa>::generate() {
                         reg_tmp_imm);
                 if (jcp.with_binary) {
                     const auto oc_off_oprnd = aux_reg_load_data;
-                    ldr(oc_off_oprnd, ptr(X_SP, reg_binary_post_op_acc_off));
+                    ldr(oc_off_oprnd, ptr(sp, reg_binary_post_op_acc_off));
                     add_vl_or_imm(oc_off_oprnd, oc_off_oprnd,
                             jcp.load_block * load_loop_blk, X_TMP_0);
-                    str(oc_off_oprnd, ptr(X_SP, reg_binary_post_op_acc_off));
+                    str(oc_off_oprnd, ptr(sp, reg_binary_post_op_acc_off));
                 }
                 break;
             case backward_data:
@@ -616,9 +616,9 @@ void jit_sve_1x1_conv_kernel_t<isa>::generate() {
     }
     L(load_loop_blk[num_ur_cases]);
 
-    add_imm(X_SP, X_SP, stack_space_needed, X_TMP_0);
-
+    add_imm(sp, sp, utils::rnd_up(stack_space_needed, 16), X_TMP_0);
     postamble();
+
     if (jcp.with_eltwise) postops_injector_->prepare_table();
 }
 

@@ -421,33 +421,38 @@ int jit_uni_binary_injector_t<isa>::adjust_temp_vmm_hint(
     return user_hint;
 }
 
+// All stack size calculations need to be rounded up to the nearest multiple
+// of 16 to satisfy architecture requirements
 template <typename Vmm>
 static void push_vmm(jit_generator_t *host, const Vmm &vmm) {
-    host->sub_imm(host->X_SP, host->X_SP, host->cpu_sveLen * 16, host->X_TMP_0);
-    host->uni_str(vmm, host->X_SP);
+    const int32_t stack_space_needed_bytes
+            = utils::rnd_up(vmm.getBit() / 8, 16);
+
+    host->sub_imm(host->sp, host->sp, stack_space_needed_bytes, host->X_TMP_0);
+    host->uni_str(vmm, host->sp);
 }
 
 template <typename Vmm>
 static void pop_vmm(jit_generator_t *host, const Vmm &vmm) {
-    host->uni_ldr(vmm, host->X_SP);
-    host->add_imm(host->X_SP, host->X_SP, host->cpu_sveLen * 16, host->X_TMP_0);
+    const int32_t stack_space_needed_bytes
+            = utils::rnd_up(vmm.getBit() / 8, 16);
+
+    host->uni_ldr(vmm, host->sp);
+    host->add_imm(host->sp, host->sp, stack_space_needed_bytes, host->X_TMP_0);
 }
 
 static void push_opmask(jit_generator_t *host, const Xbyak_aarch64::PReg &k) {
-    static constexpr int k_mask_size = 8;
-    host->sub_imm(host->X_SP, host->X_SP, k_mask_size, host->X_TMP_0);
-    host->str(k, Xbyak_aarch64::ptr(host->X_SP));
+    const int32_t stack_space_needed_bytes = utils::rnd_up(k.getBit() / 8, 16);
+
+    host->sub_imm(host->sp, host->sp, stack_space_needed_bytes, host->X_TMP_0);
+    host->str(k, Xbyak_aarch64::ptr(host->sp));
 }
 
 static void pop_opmask(jit_generator_t *host, const Xbyak_aarch64::PReg &k) {
-    static constexpr int k_mask_size = 8;
-    host->ldr(k, Xbyak_aarch64::ptr(host->X_SP));
-    host->add_imm(host->X_SP, host->X_SP, k_mask_size, host->X_TMP_0);
-}
+    const int32_t stack_space_needed_bytes = utils::rnd_up(k.getBit() / 8, 16);
 
-template <typename Vmm>
-static void restore_stack(jit_generator_t *host, const Vmm &vmm) {
-    host->add_imm(host->X_SP, host->X_SP, host->cpu_sveLen * 16, host->X_TMP_0);
+    host->ldr(k, Xbyak_aarch64::ptr(host->sp));
+    host->add_imm(host->sp, host->sp, stack_space_needed_bytes, host->X_TMP_0);
 }
 
 template <cpu_isa_t isa>
@@ -1997,10 +2002,10 @@ void jit_uni_binary_injector_t<asimd>::execute_binary(alg_kind_t binary_alg,
                 // Pick the SIMD vector register with index i to be the scratch register.
                 v_rhs = Xbyak_aarch64::VReg(i);
                 // Allocate space on stack
-                host_->sub(host_->X_SP, host_->X_SP, SIMD_SZ);
+                host_->sub(host_->sp, host_->sp, SIMD_SZ);
                 // Store the scratch register into the stack so it's safe to clobber it.
-                host_->str(Xbyak_aarch64::QReg(i),
-                        Xbyak_aarch64::ptr(host_->X_SP));
+                host_->str(
+                        Xbyak_aarch64::QReg(i), Xbyak_aarch64::ptr(host_->sp));
                 // Compute the effective address we want to load from.
                 Xbyak_aarch64::XReg x_addr = host_->addr_off(addr.base_,
                         addr.offt_, host_->X_DEFAULT_ADDR, host_->X_TMP_0);
@@ -2068,9 +2073,9 @@ void jit_uni_binary_injector_t<asimd>::execute_binary(alg_kind_t binary_alg,
     if (isAddr) {
         // Restore the scratch register's initial content from the stack.
         host_->ldr(Xbyak_aarch64::QReg(v_rhs.getIdx()),
-                Xbyak_aarch64::ptr(host_->X_SP));
+                Xbyak_aarch64::ptr(host_->sp));
         // Free allocated stack space.
-        host_->add(host_->X_SP, host_->X_SP, SIMD_SZ);
+        host_->add(host_->sp, host_->sp, SIMD_SZ);
     }
 }
 
@@ -2090,9 +2095,9 @@ void jit_uni_binary_injector_t<isa>::execute_binary(alg_kind_t binary_alg,
                 // Pick the SVE vector register with index i to be the scratch register.
                 z_rhs = Vmm(i);
                 // Allocate 1 VL space on stack
-                host_->addvl(host_->X_SP, host_->X_SP, -1);
+                host_->addvl(host_->sp, host_->sp, -1);
                 // Store the scratch register into the stack so it's safe to clobber it.
-                host_->str(z_rhs, Xbyak_aarch64::ptr(host_->X_SP));
+                host_->str(z_rhs, Xbyak_aarch64::ptr(host_->sp));
                 // Compute the effective address we want to load from.
                 Xbyak_aarch64::XReg x_addr = host_->addr_off(addr.base_,
                         addr.offt_, host_->X_DEFAULT_ADDR, host_->X_TMP_0);
@@ -2159,9 +2164,9 @@ void jit_uni_binary_injector_t<isa>::execute_binary(alg_kind_t binary_alg,
 
     if (isAddr) {
         // Restore the scratch register's initial content from the stack.
-        host_->ldr(z_rhs, Xbyak_aarch64::ptr(host_->X_SP));
+        host_->ldr(z_rhs, Xbyak_aarch64::ptr(host_->sp));
         // Free allocated stack space.
-        host_->addvl(host_->X_SP, host_->X_SP, 1);
+        host_->addvl(host_->sp, host_->sp, 1);
     }
 }
 

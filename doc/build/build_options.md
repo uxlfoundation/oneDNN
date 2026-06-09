@@ -139,12 +139,10 @@ Graph API (enabled via `ONEDNN_BUILD_GRAPH`) is not compatible with
 
 | CMake Option             | Default | Supported values | Description                                                                                                        |
 |:-------------------------|:--------|:-----------------|:-------------------------------------------------------------------------------------------------------------------|
-| ONEDNN_BUILD_DOC         | **ON**  | OFF              | Controls building the documentation                                                                                |
+| ONEDNN_BUILD_DOC         | **OFF** | ON               | Controls building the documentation                                                                                |
 | ONEDNN_DOC_VERSIONS_JSON | \       | \<url\>          | Location of JSON file for [PyData Sphinx Theme version switcher]. Enables documentation version switcher when set. |
 
 [PyData Sphinx Theme version switcher]: https://pydata-sphinx-theme.readthedocs.io/en/stable/user_guide/version-dropdown.html
-
-@note `ONEDNN_BUILD_DOC` is disabled by default when oneDNN is built as a sub-project.
 
 ### Validation
 

@@ -189,7 +189,7 @@ option(DNNL_DEV_MODE "Enables internal tracing capabilities" OFF)
 # Documentation
 # -------------
 
-option(DNNL_BUILD_DOC "Enables building documentation" ${DNNL_IS_MAIN_PROJECT})
+option(DNNL_BUILD_DOC "Enables building documentation" OFF)
 
 set(ONEDNN_DOC_VERSIONS_JSON "" CACHE STRING "Location of JSON file for
     PyData Sphinx Theme version switcher. Must be a stable, persistent,

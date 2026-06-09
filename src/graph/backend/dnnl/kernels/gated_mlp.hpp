@@ -71,11 +71,9 @@ public:
         return ret;
     }
 
-    // Use large partition kernel as defautl. Turn the env var to 0 to select
-    // gated_mlp primitive.
     bool force_primitive() const {
         const int force = graph::utils::getenv_int_internal(
-                "GRAPH_GATED_MLP_FORCE_PRIMITIVE", 1);
+                "GRAPH_GATED_MLP_FORCE_PRIMITIVE", 0);
         return force > 0;
     }
 

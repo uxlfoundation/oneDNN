@@ -2893,12 +2893,20 @@ void jit_brgemm_kernel_t<Wmm>::gemv_microkernel(
     };
 
     if (!brg.transA) {
+        // GEMV is bandwidth-bound and the HW prefetcher doesn't keep enough
+        // loads in flight for these streams so SW-prefetch ahead of the load:
+        // the B vector once and each of the A rows. The distance is empirically
+        // tuned.
+        constexpr dim_t gemv_pf_dist = 512; // bytes = 8 cache lines
+
         maybe_set_avx_mask(is_rd_tail);
 
         const auto a_vmm = gemv_load_a();
         const auto b_vmm = gemv_load_b();
 
         const auto b_addr = ptr[reg_aux_B];
+
+        if (!is_rd_tail) prefetcht0(ptr[reg_aux_B + gemv_pf_dist]);
 
         if (brg.gemv_use_vdpbf16ps()) {
             if (is_rd_tail)
@@ -2912,6 +2920,9 @@ void jit_brgemm_kernel_t<Wmm>::gemv_microkernel(
         for (dim_t bd = 0; bd < bd_block; bd++) {
             const auto acc = accm(1, bd, 0);
             const auto a_addr = ptr[reg_aux_A + A_offset(bd, 0)];
+
+            if (!is_rd_tail)
+                prefetcht0(ptr[reg_aux_A + A_offset(bd, 0) + gemv_pf_dist]);
 
             if (brg.gemv_use_vdpbf16ps()) {
                 if (is_rd_tail) {

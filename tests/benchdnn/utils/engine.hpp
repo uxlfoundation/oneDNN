@@ -81,4 +81,21 @@ private:
     dnnl::engine engine_;
 };
 
+// Engine used to run oneDNN primitives for testing.
+const engine_t &get_test_engine();
+
+// Engine used to run all reference native implementations and CPU
+// implementations used by `--fast-ref` option.
+const engine_t &get_cpu_engine();
+
+bool is_cpu(const engine_t &engine = get_test_engine());
+bool is_gpu(const engine_t &engine = get_test_engine());
+bool is_async(const engine_t &engine = get_test_engine());
+bool is_sycl_engine(const engine_t &engine = get_test_engine());
+bool is_opencl_engine(const engine_t &engine = get_test_engine());
+bool is_ze_engine(const engine_t &engine = get_test_engine());
+bool is_nvidia_gpu(const engine_t &engine = get_test_engine());
+bool is_amd_gpu(const engine_t &engine = get_test_engine());
+bool is_generic_gpu(const engine_t &engine = get_test_engine());
+
 #endif

@@ -29,10 +29,32 @@
 #include "oneapi/dnnl/dnnl_ze.hpp"
 #endif
 
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
+#include "oneapi/dnnl/dnnl_threadpool.hpp"
+#include "tests/test_thread.hpp"
+#endif
+
 // Engine kind used to run oneDNN primitives for testing
 dnnl_engine_kind_t engine_tgt_kind = dnnl_cpu;
 // Engine index used to run oneDNN primitives for testing
 size_t engine_index = 0;
+
+const engine_t &get_test_engine() {
+    static const engine_t instance(engine_tgt_kind);
+    assert((engine_tgt_kind == dnnl_cpu && instance.is_cpu())
+            || (engine_tgt_kind == dnnl_gpu && instance.is_gpu()));
+    return instance;
+}
+
+const engine_t &get_cpu_engine() {
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_NONE
+    // In case of lacking CPU engine, just re-use testing one.
+    return get_test_engine();
+#else
+    static const engine_t instance(dnnl_cpu);
+    return instance;
+#endif
+}
 
 namespace {
 void maybe_print_cpu_engine_error_message() {
@@ -129,4 +151,74 @@ bool engine_t::is_cpu() const {
 
 bool engine_t::is_gpu() const {
     return get_kind() == dnnl::engine::kind::gpu;
+}
+
+bool is_cpu(const engine_t &engine) {
+    return engine.is_cpu();
+}
+
+bool is_gpu(const engine_t &engine) {
+    return engine.is_gpu();
+}
+
+bool is_async(const engine_t &engine) {
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
+    if (is_cpu(engine))
+        return dnnl::testing::get_threadpool()->get_flags()
+                & dnnl::threadpool_interop::threadpool_iface::ASYNCHRONOUS;
+#else
+    if (is_cpu(engine)) return DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL;
+#endif
+    // all supported GPU runtimes are async
+    return is_gpu(engine);
+}
+
+bool is_sycl_engine(const engine_t &engine) {
+    if (is_cpu(engine)) return DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL;
+    if (is_gpu(engine)) return DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL;
+    return false;
+}
+
+bool is_opencl_engine(const engine_t &engine) {
+    if (is_gpu(engine)) return DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL;
+    return false;
+}
+
+bool is_ze_engine(const engine_t &engine) {
+    if (is_gpu(engine)) return DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE;
+    return false;
+}
+
+bool is_nvidia_gpu(const engine_t &engine) {
+#if defined(DNNL_WITH_SYCL) && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+    if (!is_gpu(engine)) return false;
+    constexpr int nvidia_vendor_id = 0x10DE;
+    auto eng = dnnl::engine(engine, true);
+    auto device = dnnl::sycl_interop::get_device(eng);
+    const auto eng_vendor_id
+            = device.get_info<::sycl::info::device::vendor_id>();
+    return eng_vendor_id == nvidia_vendor_id;
+#endif
+    return false;
+}
+
+bool is_amd_gpu(const engine_t &engine) {
+#if defined(DNNL_WITH_SYCL) && DNNL_GPU_VENDOR == DNNL_VENDOR_AMD
+    if (!is_gpu(engine)) return false;
+    constexpr int amd_vendor_id = 0x1002;
+    auto eng = dnnl::engine(engine, true);
+    auto device = dnnl::sycl_interop::get_device(eng);
+    const auto eng_vendor_id
+            = device.get_info<::sycl::info::device::vendor_id>();
+    return eng_vendor_id == amd_vendor_id;
+#endif
+    return false;
+}
+
+bool is_generic_gpu(const engine_t &engine) {
+#if defined(DNNL_WITH_SYCL) && DNNL_GPU_VENDOR == DNNL_VENDOR_GENERIC
+    return is_gpu(engine);
+#endif
+
+    return false;
 }

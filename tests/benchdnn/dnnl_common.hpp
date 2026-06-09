@@ -78,36 +78,7 @@ private:
     dnnl::stream stream_;
 };
 
-// Engine used to run oneDNN primitives for testing.
-inline const engine_t &get_test_engine() {
-    static const engine_t instance(engine_tgt_kind);
-    assert((engine_tgt_kind == dnnl_cpu && instance.is_cpu())
-            || (engine_tgt_kind == dnnl_gpu && instance.is_gpu()));
-    return instance;
-}
-
-// Engine used to run all reference native implementations and CPU
-// implementations used by `--fast-ref` option.
-inline const engine_t &get_cpu_engine() {
-#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_NONE
-    // In case of lacking CPU engine, just re-use testing one.
-    return get_test_engine();
-#else
-    static const engine_t instance(dnnl_cpu);
-    return instance;
-#endif
-}
-
-bool is_cpu(const dnnl_engine_t &engine = get_test_engine());
-bool is_gpu(const dnnl_engine_t &engine = get_test_engine());
-bool is_async(const dnnl_engine_t &engine = get_test_engine());
-bool is_sycl_engine(const dnnl_engine_t &engine = get_test_engine());
-bool is_opencl_engine(const dnnl_engine_t &engine = get_test_engine());
-bool is_ze_engine(const dnnl_engine_t &engine = get_test_engine());
-bool is_nvidia_gpu(const dnnl_engine_t &engine = get_test_engine());
-bool is_f64_supported(const dnnl_engine_t &engine = get_test_engine());
-bool is_amd_gpu(const dnnl_engine_t &engine = get_test_engine());
-bool is_generic_gpu(const dnnl_engine_t &engine = get_test_engine());
+bool is_f64_supported(const engine_t &engine = get_test_engine());
 
 // Extended version of dnnl_sycl_interop_memory_kind_t enumeration.
 enum class memory_kind_ext_t {

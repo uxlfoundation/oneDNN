@@ -58,76 +58,6 @@
 extern "C" dnnl_status_t dnnl_impl_notify_profiling_complete(
         dnnl_stream_t stream);
 
-bool is_cpu(const dnnl_engine_t &engine) {
-    return query_engine_kind(engine) == dnnl_cpu;
-}
-
-bool is_gpu(const dnnl_engine_t &engine) {
-    return query_engine_kind(engine) == dnnl_gpu;
-}
-
-bool is_async(const dnnl_engine_t &engine) {
-#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
-    if (is_cpu(engine))
-        return dnnl::testing::get_threadpool()->get_flags()
-                & dnnl::threadpool_interop::threadpool_iface::ASYNCHRONOUS;
-#else
-    if (is_cpu(engine)) return DNNL_CPU_RUNTIME == DNNL_RUNTIME_DPCPP;
-#endif
-    // all supported GPU runtimes are async
-    return is_gpu(engine);
-}
-
-bool is_sycl_engine(const dnnl_engine_t &engine) {
-    if (is_cpu(engine)) return DNNL_CPU_RUNTIME == DNNL_RUNTIME_DPCPP;
-    if (is_gpu(engine)) return DNNL_GPU_RUNTIME == DNNL_RUNTIME_DPCPP;
-    return false;
-}
-
-bool is_opencl_engine(const dnnl_engine_t &engine) {
-    if (is_gpu(engine)) return DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL;
-    return false;
-}
-
-bool is_ze_engine(const dnnl_engine_t &engine) {
-    if (is_gpu(engine)) return DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE;
-    return false;
-}
-
-bool is_nvidia_gpu(const dnnl_engine_t &engine) {
-#if defined(DNNL_WITH_SYCL) && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
-    if (!is_gpu(engine)) return false;
-    constexpr int nvidia_vendor_id = 0x10DE;
-    auto eng = dnnl::engine(engine, true);
-    auto device = dnnl::sycl_interop::get_device(eng);
-    const auto eng_vendor_id
-            = device.get_info<::sycl::info::device::vendor_id>();
-    return eng_vendor_id == nvidia_vendor_id;
-#endif
-    return false;
-}
-
-bool is_amd_gpu(const dnnl_engine_t &engine) {
-#if defined(DNNL_WITH_SYCL) && DNNL_GPU_VENDOR == DNNL_VENDOR_AMD
-    if (!is_gpu(engine)) return false;
-    constexpr int amd_vendor_id = 0x1002;
-    auto eng = dnnl::engine(engine, true);
-    auto device = dnnl::sycl_interop::get_device(eng);
-    const auto eng_vendor_id
-            = device.get_info<::sycl::info::device::vendor_id>();
-    return eng_vendor_id == amd_vendor_id;
-#endif
-    return false;
-}
-
-bool is_generic_gpu(const dnnl_engine_t &engine) {
-#if defined(DNNL_WITH_SYCL) && DNNL_GPU_VENDOR == DNNL_VENDOR_GENERIC
-    return is_gpu(engine);
-#endif
-
-    return false;
-}
-
 int check_pd_cache(const_dnnl_primitive_desc_t pd, res_t *res) {
     // Disable this check for threadpool. A threadpool is always defined in
     // validation infrastructure but creates primitives in a separate
@@ -1090,7 +1020,7 @@ int check_ref_impl_hit(res_t *res) {
     return OK;
 }
 
-bool is_f64_supported(const dnnl_engine_t &engine) {
+bool is_f64_supported(const engine_t &engine) {
     if (!is_gpu(engine)) return false;
     if (is_nvidia_gpu(engine) || is_amd_gpu(engine)) return false;
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_DPCPP

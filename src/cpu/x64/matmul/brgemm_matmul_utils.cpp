@@ -1070,6 +1070,20 @@ void maybe_unswap_mn_blocking(const brgemm_matmul_conf_t &bgmmc,
     std::swap(best_blocking.m_tail, best_blocking.n_tail);
 }
 
+// GEMV is memory-bound so we want the largest possible K_blk because a small
+// K_blk splits K into many K_chunks that accumulate through the C buffer and
+// break A/B streaming. Using one large K_blk keeps the whole reduction in
+// registers.
+//
+// - K_blk is capped as a conservative bound on in-kernel (int32) offsets.
+// - batch_size is set so K_blk * batch_size covers K (K_chunks == 1) so the
+//   brgemm batch loop reduces all K-blocks in registers.
+void compute_gemv_k_blocking(dim_t K, int &k_blk, int &batch_size) {
+    constexpr dim_t max_gemv_k_blk = 16384;
+    k_blk = static_cast<int>(std::min<dim_t>(K, max_gemv_k_blk));
+    batch_size = static_cast<int>(std::max<dim_t>(1, div_up(K, k_blk)));
+}
+
 float compute_blocking_heuristic_avx512(brgemm_matmul_conf_t &bgmmc,
         const brgemm_matmul_conf_utils_t &bm_conf_utils,
         const matmul_avx512_blocking_params_t::matmul_params_t &matmul_,
@@ -1098,7 +1112,9 @@ float compute_blocking_heuristic_avx512(brgemm_matmul_conf_t &bgmmc,
     const bool use_extended_k_blk = matmul.K > 1024
             && (!bm_conf_utils.check_is_transposed(bgmmc.src_tag));
     const dim_t default_k_blk = use_extended_k_blk ? 1024 : 512;
-    const int k_blk = static_cast<int>(nstl::min(matmul.K, default_k_blk));
+    int k_blk = static_cast<int>(nstl::min(matmul.K, default_k_blk));
+    int brgemm_bs = 1;
+    if (bgmmc.is_gemv) compute_gemv_k_blocking(matmul.K, k_blk, brgemm_bs);
     int start_nthr_k = 1;
     int last_nthr_k = 1;
 
@@ -1132,8 +1148,10 @@ float compute_blocking_heuristic_avx512(brgemm_matmul_conf_t &bgmmc,
             }
         }
 
-        // Parallelize across K for shapes with big 'K' dimension
-        bool bwd_w_par_k_blk = bgmmc.batch == 1
+        // Parallelize across K for shapes with big 'K' dimension.
+        // Disabled for GEMV: it needs nthr_k == 1 to keep one continuous,
+        // in-register K-stream.
+        bool bwd_w_par_k_blk = !bgmmc.is_gemv && bgmmc.batch == 1
                 && bm_conf_utils.check_is_transposed(bgmmc.src_tag)
                 && !bm_conf_utils.is_int8()
                 && IMPLICATION(bm_conf_utils.is_bf16(), math::is_pow2(matmul.K))
@@ -1144,9 +1162,10 @@ float compute_blocking_heuristic_avx512(brgemm_matmul_conf_t &bgmmc,
         }
 
         // Enable k-partitioning for huge k and small m/n dimensions.
+        // Disabled for GEMV (same reason: keep nthr_k == 1).
         bool is_huge_k = matmul.K >= 20000;
         bool is_small_mn = matmul.M <= 512 && matmul.N <= 512;
-        bool use_k_partitioning = is_huge_k && is_small_mn;
+        bool use_k_partitioning = !bgmmc.is_gemv && is_huge_k && is_small_mn;
 
         // TODO: expand to other data types.
         use_k_partitioning = use_k_partitioning && bm_conf_utils.is_f32();
@@ -1204,7 +1223,7 @@ float compute_blocking_heuristic_avx512(brgemm_matmul_conf_t &bgmmc,
                 --n_chunk_size)
         for (int m_blk = max_m_blk; m_blk >= min_m_blk; --m_blk) {
             cur_params.update_params(
-                    1, m_blk, n_chunk_size, n_blk, 1, k_blk, nthr_k);
+                    1, m_blk, n_chunk_size, n_blk, brgemm_bs, k_blk, nthr_k);
 
             float cur_imbalance = cur_params.get_imbalance();
 
@@ -1226,7 +1245,8 @@ float compute_blocking_heuristic_avx512(brgemm_matmul_conf_t &bgmmc,
         }
 
         if (!found_best_blocking) {
-            cur_params.update_params(1, min_m_blk, 1, n_blk, 1, k_blk, nthr_k);
+            cur_params.update_params(
+                    1, min_m_blk, 1, n_blk, brgemm_bs, k_blk, nthr_k);
 
             float cur_imbalance = cur_params.get_imbalance();
             if (cur_imbalance < best_imbalance) {
@@ -1317,7 +1337,9 @@ float compute_blocking_heuristic_avx2_f32(brgemm_matmul_conf_t &bgmmc,
             = static_cast<int>(nstl::min(max_n_chunks, n_chunks));
 
     constexpr dim_t default_k_blk = 1024;
-    const int k_blk = static_cast<int>(nstl::min(matmul.K, default_k_blk));
+    int k_blk = static_cast<int>(nstl::min(matmul.K, default_k_blk));
+    int brgemm_bs = 1;
+    if (bgmmc.is_gemv) compute_gemv_k_blocking(matmul.K, k_blk, brgemm_bs);
     const int start_nthr_k = 1;
 
     // for cases with low parallel work, reduce 'min_m_blk' to
@@ -1351,7 +1373,7 @@ float compute_blocking_heuristic_avx2_f32(brgemm_matmul_conf_t &bgmmc,
     for (int m_blk = max_m_blk; m_blk >= min_m_blk; --m_blk) {
         matmul_avx512_blocking_params_t cur_params(matmul, nthr);
         cur_params.update_params(
-                1, m_blk, n_chunk_size, n_blk, 1, k_blk, nthr_k);
+                1, m_blk, n_chunk_size, n_blk, brgemm_bs, k_blk, nthr_k);
 
         float cur_imbalance = cur_params.get_imbalance();
         if (cur_imbalance < best_imbalance) {

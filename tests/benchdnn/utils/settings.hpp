@@ -100,8 +100,8 @@ struct base_settings_t {
     std::vector<attr_t::dropout_t> dropout {attr_t::dropout_t()};
     std::vector<attr_t::rounding_mode_t> rounding_mode {
             attr_t::rounding_mode_t()};
-    std::vector<thr_ctx_t> ctx_init {default_thr_ctx};
-    std::vector<thr_ctx_t> ctx_exe {default_thr_ctx};
+    std::vector<thr_ctx_t> ctx_init {get_default_thr_ctx()};
+    std::vector<thr_ctx_t> ctx_exe {get_default_thr_ctx()};
     impl_filter_t impl_filter;
     const char *pattern = nullptr;
     // Non-parsed members

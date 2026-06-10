@@ -626,8 +626,8 @@ struct gen_t : public primitive_t {
                 zero_pool_chunk_size_ = zg_max * 2 * 2 * 64;
 
                 auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
-                CHECK(lookup_zero_pool(intel_engine, nullptr,
-                        zero_pool_chunk_size_, &zero_pool_));
+                CHECK(lookup_zero_pool(
+                        intel_engine, zero_pool_chunk_size_, &zero_pool_));
 
                 nocopy_kernel_.save_output_events();
             }

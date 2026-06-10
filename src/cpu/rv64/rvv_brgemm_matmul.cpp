@@ -45,17 +45,20 @@ using namespace data_type;
 // ---------------------------------------------------------------------------
 struct jit_pack_a_tile_t : public jit_generator_t {
     struct call_params_t {
-        float *ws; // offset 0
-        const float *A; // offset 8
-        dim_t LDA_orig; // offset 16
-        dim_t bd; // offset 24
+        void *ws; // offset 0
+        const void *A; // offset 8
+        dim_t LDA_orig; // offset 16 — in elements (not bytes)
+        dim_t bd; // offset 24 — in elements
         dim_t valid_rows; // offset 32
         dim_t K_inner; // offset 40
     };
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_pack_a_tile_t)
 
-    jit_pack_a_tile_t() : jit_generator_t("jit_pack_a_tile") {
+    // input_typesize: 4 for f32, 2 for bf16/f16.
+    explicit jit_pack_a_tile_t(int input_typesize)
+        : jit_generator_t("jit_pack_a_tile"), input_typesize_(input_typesize) {
+        assert(input_typesize == 2 || input_typesize == 4);
         create_kernel();
     }
 
@@ -84,6 +87,8 @@ protected:
 
         const VReg v_tmp(0);
 
+        const int elem_shift = (input_typesize_ == 4) ? 2 : 1;
+
         // Load parameters
         ld(reg_ws, reg_param, 0);
         ld(reg_A, reg_param, 8);
@@ -92,9 +97,8 @@ protected:
         ld(reg_rows_remaining, reg_param, 32); // reuse as valid_rows temp
         ld(reg_K, reg_param, 40);
 
-        // Compute LDA_orig * sizeof(float) and bd * sizeof(float)
-        slli(reg_LDA, reg_LDA, 2);
-        slli(reg_bd, reg_bd, 2);
+        slli(reg_LDA, reg_LDA, elem_shift);
+        slli(reg_bd, reg_bd, elem_shift);
 
         // Save valid_rows for reuse in each k iteration
         const Reg reg_valid_rows = a6;
@@ -106,25 +110,28 @@ protected:
         L(k_loop);
         beq(reg_k, reg_K, k_done);
 
-        // src = A + k * LDA_bytes
         mul(reg_tmp, reg_k, reg_LDA);
         add(reg_src, reg_A, reg_tmp);
 
-        // dst = ws + k * bd_bytes
         mul(reg_tmp, reg_k, reg_bd);
         add(reg_dst, reg_ws, reg_tmp);
 
-        // Inner copy loop: copy valid_rows floats
         mv(reg_rows_remaining, reg_valid_rows);
         Label copy_loop, copy_done;
         L(copy_loop);
         beqz(reg_rows_remaining, copy_done);
 
-        vsetvli(reg_vl, reg_rows_remaining, SEW::e32, LMUL::m4);
-        vle32_v(v_tmp, reg_src);
-        vse32_v(v_tmp, reg_dst);
+        if (input_typesize_ == 4) {
+            vsetvli(reg_vl, reg_rows_remaining, SEW::e32, LMUL::m4);
+            vle32_v(v_tmp, reg_src);
+            vse32_v(v_tmp, reg_dst);
+        } else {
+            vsetvli(reg_vl, reg_rows_remaining, SEW::e16, LMUL::m4);
+            vle16_v(v_tmp, reg_src);
+            vse16_v(v_tmp, reg_dst);
+        }
 
-        slli(reg_bytes, reg_vl, 2);
+        slli(reg_bytes, reg_vl, elem_shift);
         add(reg_src, reg_src, reg_bytes);
         add(reg_dst, reg_dst, reg_bytes);
         sub(reg_rows_remaining, reg_rows_remaining, reg_vl);
@@ -141,6 +148,9 @@ protected:
         ret();
 #endif
     }
+
+private:
+    int input_typesize_;
 };
 
 // ---------------------------------------------------------------------------
@@ -293,11 +303,19 @@ status_t rvv_brgemm_matmul_t::pd_t::init(engine_t *engine) {
                     && !bias_mdw.has_runtime_dims_or_strides(),
             VERBOSE_UNSUPPORTED_TAG);
 
-    const bool types_ok = src_mdw.data_type() == f32
-            && wei_mdw.data_type() == f32 && dst_mdw.data_type() == f32
+    // Accepted: f32/f32/f32, bf16/bf16/f32 (Zvfbfwma), f16/f16/f32 (Zvfh).
+    const auto src_dt = src_mdw.data_type();
+    const auto wei_dt = wei_mdw.data_type();
+    const bool same_in_dt = src_dt == wei_dt;
+    const bool in_dt_ok = same_in_dt
+            && (src_dt == f32 || (src_dt == bf16 && mayiuse(zvfbfwma))
+                    || (src_dt == f16 && mayiuse(zvfh)));
+    const bool types_ok = in_dt_ok && dst_mdw.data_type() == f32
             && IMPLICATION(!bias_mdw.is_zero(), bias_mdw.data_type() == f32)
             && desc()->accum_data_type == f32;
     VDISPATCH_MATMUL(types_ok, VERBOSE_UNSUPPORTED_DT);
+
+    input_typesize_ = static_cast<int>(types::data_type_size(src_dt));
 
     VDISPATCH_MATMUL(attr()->has_default_values(smask_t::post_ops, f32),
             VERBOSE_UNSUPPORTED_ATTR);
@@ -375,19 +393,20 @@ status_t rvv_brgemm_matmul_t::pd_t::init(engine_t *engine) {
     VDISPATCH_MATMUL(
             N_ >= 16, VERBOSE_IMPL_HEURISTIC_FAIL, "N too small for brgemm");
 
-    // BRGEMM's copy_A packing reads A sequentially (stride bd_block) while
-    // GEMM reads A with stride N. When A exceeds L2 cache, sequential reads
-    // from DRAM are ~2x faster than strided reads. Two conditions ensure
-    // BRGEMM is beneficial:
-    // 1. K >= 4096: K-blocking amortizes packing overhead
-    // 2. A exceeds L2: N * K * 4 > L2_size
-    // 3. batch * M >= 128: BRGEMM kernel's N-loop needs enough iterations
-    //    to pipeline efficiently; fewer causes regression (benchmarked).
-    const dim_t A_bytes = N_ * K_ * (dim_t)sizeof(float);
-    const auto L2_bytes = platform::get_per_core_cache_size(3);
-    VDISPATCH_MATMUL(K_ >= 4096 && A_bytes > L2_bytes && batch_ * M_ >= 128,
-            VERBOSE_IMPL_HEURISTIC_FAIL,
-            "shape not beneficial for brgemm matmul");
+    // f32 keeps the K/A_bytes thresholds; bf16/f16 only require batch*M.
+    const bool is_low_prec
+            = (src_dt == data_type::bf16 || src_dt == data_type::f16);
+    if (is_low_prec) {
+        VDISPATCH_MATMUL(K_ >= BRGEMM_BK && batch_ * M_ >= 128,
+                VERBOSE_IMPL_HEURISTIC_FAIL,
+                "shape too small for bf16/f16 brgemm matmul");
+    } else {
+        const dim_t A_bytes = N_ * K_ * (dim_t)input_typesize_;
+        const auto L2_bytes = platform::get_per_core_cache_size(3);
+        VDISPATCH_MATMUL(K_ >= 4096 && A_bytes > L2_bytes && batch_ * M_ >= 128,
+                VERBOSE_IMPL_HEURISTIC_FAIL,
+                "shape not beneficial for f32 brgemm matmul");
+    }
 
     // Compute blocking parameters
     const int vlen_f32 = get_platform_vlen() / 32;
@@ -399,16 +418,18 @@ status_t rvv_brgemm_matmul_t::pd_t::init(engine_t *engine) {
     const dim_t LDC = N_;
     const dim_t N_brg = batch_ * M_;
 
+    cpu_isa_t brg_isa = src_dt == bf16 ? zvfbfwma : (src_dt == f16 ? zvfh : v);
+
     brgemm_desc_t brg_desc;
-    CHECK(brgemm_desc_init(&brg_desc, v, brgemm_strd, f32, f32,
+    CHECK(brgemm_desc_init(&brg_desc, brg_isa, brgemm_strd, src_dt, src_dt,
             brgemm_col_major, 1.0f, 0.0f, LDA, LDB, LDC, M_brg, N_brg, K_brg));
 
     brgemm_kernel_t *kernel = nullptr;
     CHECK(brgemm_kernel_create(&kernel, brg_desc));
     brg_kernel_.reset(kernel);
 
-    // Create JIT kernels for pack_a_tile and bias+postops
-    pack_kernel_.reset(new jit_pack_a_tile_t());
+    // pack_a_tile is dtype-aware; bias+postops touch only the f32 dst.
+    pack_kernel_.reset(new jit_pack_a_tile_t(input_typesize_));
     bias_postops_kernel_.reset(new jit_bias_postops_row_t());
 
     init_scratchpad();
@@ -420,19 +441,21 @@ void rvv_brgemm_matmul_t::pd_t::init_scratchpad() {
     using namespace memory_tracking::names;
     const auto &brg = brg_kernel_->get_brg();
     auto scratchpad = scratchpad_registry().registrar();
-    scratchpad.template book<float>(
-            key_brgemm_primitive_buffer_a, brg.bd_block * K_);
+    const size_t ws_bytes = (size_t)brg.bd_block * K_ * input_typesize_;
+    scratchpad.template book<char>(key_brgemm_primitive_buffer_a, ws_bytes);
 }
 
 status_t rvv_brgemm_matmul_t::execute(const exec_ctx_t &ctx) const {
-    auto src = CTX_IN_MEM(const float *, DNNL_ARG_SRC);
-    auto weights = CTX_IN_MEM(const float *, DNNL_ARG_WEIGHTS);
+    // Byte arithmetic so one code path handles f32/bf16/f16.
+    auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
+    auto weights = CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS);
     auto dst = CTX_OUT_MEM(float *, DNNL_ARG_DST);
 
     const dim_t M = pd()->M_;
     const dim_t N = pd()->N_;
     const dim_t K = pd()->K_;
     const dim_t batch = pd()->batch_;
+    const int in_ts = pd()->input_typesize_;
 
     const auto &brg = pd()->brg_kernel_->get_brg();
     const int bd = brg.bd_block;
@@ -445,28 +468,19 @@ status_t rvv_brgemm_matmul_t::execute(const exec_ctx_t &ctx) const {
     const auto *pack_kernel = pd()->pack_kernel_.get();
     const auto *bias_postops_kernel = pd()->bias_postops_kernel_.get();
 
-    // Packing workspace from scratchpad.
-    // Size: bd × K × sizeof(float). For bd=32, K=4096: 512KB.
-    // Pack once per M-tile, then call kernel per K-block with offset.
+    // Packing workspace from scratchpad. Packed once per M-tile, then the
+    // brgemm kernel is called per K-block with offset into the buffer.
     const dim_t BK = BRGEMM_BK;
     auto &grantor = ctx.get_scratchpad_grantor();
-    float *ws = grantor.template get<float>(
+    char *ws = grantor.template get<char>(
             memory_tracking::names::key_brgemm_primitive_buffer_a);
 
-    // Manual M-tile × K-block loop with copy_A packing.
-    //
-    // For each M-tile:
-    // 1. Pack the tile's full A data from col-major (LDA=N) into contiguous
-    //    layout (LDA=bd).
-    // 2. For each K-block, call the JIT kernel with ptr_A pointing into the
-    //    packed buffer at the correct K-block offset.
     const int num_tiles = bdb + (bdb_tail > 0 ? 1 : 0);
     for (int t = 0; t < num_tiles; t++) {
         const bool is_tail = (t == bdb);
         const int rows = is_tail ? bdb_tail : bd;
-        const float *A_tile = weights + t * bd;
+        const char *A_tile = weights + (dim_t)t * bd * in_ts;
 
-        // JIT pack_a_tile
         jit_pack_a_tile_t::call_params_t pack_p;
         pack_p.ws = ws;
         pack_p.A = A_tile;
@@ -481,9 +495,9 @@ status_t rvv_brgemm_matmul_t::execute(const exec_ctx_t &ctx) const {
             const float beta_kb = (kb == 0) ? 0.0f : 1.0f;
 
             brgemm_kernel_params_t p;
-            p.ptr_A = ws + kb * bd;
-            p.ptr_B = src + kb;
-            p.ptr_C = dst + t * bd;
+            p.ptr_A = ws + kb * bd * in_ts;
+            p.ptr_B = src + kb * in_ts;
+            p.ptr_C = dst + t * bd; // dst stays f32
             p.N = total_N;
             p.M = rows;
             p.K = K_inner;

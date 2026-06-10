@@ -410,3 +410,15 @@ set(DNNL_AMD_SYCL_KERNELS_TARGET_ARCH "" CACHE STRING
     Warning: This option is temporary and will be removed as soon as the compiler
     stops to require specifying the target architecture. After removing the option
     the generic SYCL kernels will always be enabled for AMD vendor.") # internal
+
+# ==============================================
+# RISC-V (RV64) ISA assumptions
+# ==============================================
+
+option(DNNL_RISCV_ASSUME_ZVFBFWMA
+    "Force has_zvfbfwma=true at runtime ISA detection. Use on silicon that
+    implements Zvfbfwma but does not advertise it. RV64 only." OFF)
+
+if(DNNL_TARGET_ARCH STREQUAL "RV64" AND DNNL_RISCV_ASSUME_ZVFBFWMA)
+    add_definitions(-DDNNL_RISCV_ASSUME_ZVFBFWMA=1)
+endif()

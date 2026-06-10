@@ -400,10 +400,10 @@ inline int check_pd_w_and_wo_attr(dnnl_engine_t engine,
 
 int check_ref_impl_hit(res_t *res);
 
-template <typename func_t, typename prb_t>
-int init_prim(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &user_prim,
-        const func_t &init_pd_func, const prb_t *prb, res_t *res,
-        dir_t dir = FLAG_FWD, const_dnnl_primitive_desc_t hint = nullptr,
+inline int init_prim(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &user_prim,
+        const init_pd_func_t &init_pd_func, const base_prb_t *base_prb,
+        res_t *res, dir_t dir = FLAG_FWD,
+        const_dnnl_primitive_desc_t hint = nullptr,
         bool is_service_prim = false) {
     benchdnn_dnnl_wrapper_t<dnnl_primitive_t> primw;
 
@@ -416,7 +416,7 @@ int init_prim(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &user_prim,
     // This function MUST NOT take care of cases that return `invalid_arguments`
     // status. The library must return this status for all incorrect API calls
     // and such cases must be updated on the user side.
-    prb->skip_invalid(res);
+    base_prb->skip_invalid(res);
     if (res->state == SKIPPED) return OK;
 #ifndef DNNL_DISABLE_PRIMITIVE_CACHE
 
@@ -432,8 +432,8 @@ int init_prim(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &user_prim,
         engine_t engine(get_test_engine(), /* recreate_on_copy = */ true);
 
         // The first primitive creation using a temporary engine.
-        SAFE(create_primitive(primw, engine, init_pd_func, prb, res, dir, hint,
-                     is_service_prim, /* src_md = */ nullptr,
+        SAFE(create_primitive(primw, engine, init_pd_func, base_prb, res, dir,
+                     hint, is_service_prim, /* src_md = */ nullptr,
                      /* force_f32_dt = */ false),
                 WARN);
         if (res->state == SKIPPED) return OK;
@@ -442,8 +442,8 @@ int init_prim(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &user_prim,
 #endif
     // The second (if the cache is enabled) primitive creation using the global
     // test engine. This primitive is expected to come from the cache.
-    SAFE(create_primitive(primw, get_test_engine(), init_pd_func, prb, res, dir,
-                 hint, is_service_prim, /* src_md = */ nullptr,
+    SAFE(create_primitive(primw, get_test_engine(), init_pd_func, base_prb, res,
+                 dir, hint, is_service_prim, /* src_md = */ nullptr,
                  /* force_f32_dt = */ false),
             WARN);
     if (res->state == SKIPPED) return OK;
@@ -463,7 +463,7 @@ int init_prim(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &user_prim,
     if (has_bench_mode_bit(mode_bit_t::corr)) {
         // Check if adding attributes doesn't cause a fall back to another impl.
         SAFE(check_pd_w_and_wo_attr(
-                     get_test_engine(), init_pd_func, prb, res, dir, hint),
+                     get_test_engine(), init_pd_func, base_prb, res, dir, hint),
                 WARN);
         // Check if unexpected ref impl was hit.
         SAFE(check_ref_impl_hit(res), WARN);
@@ -473,17 +473,18 @@ int init_prim(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &user_prim,
     return res->state = INITIALIZED, OK;
 }
 
-template <typename func_t, typename prb_t>
-int init_prim(const thr_ctx_t &thr_ctx,
+inline int init_prim(const thr_ctx_t &thr_ctx,
         benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &user_prim,
-        const func_t &init_pd_func, prb_t *prb, res_t *res,
-        dir_t dir = FLAG_FWD, const_dnnl_primitive_desc_t hint = nullptr,
+        const init_pd_func_t &init_pd_func, const base_prb_t *base_prb,
+        res_t *res, dir_t dir = FLAG_FWD,
+        const_dnnl_primitive_desc_t hint = nullptr,
         bool is_service_prim = false) {
-    int (*f)(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &, func_t &,
-            const prb_t *, res_t *, dir_t, const_dnnl_primitive_desc_t, bool)
-            = init_prim<func_t, prb_t>;
-    return create_in_thr_ctx(thr_ctx, f, user_prim, init_pd_func, prb, res, dir,
-            hint, is_service_prim);
+    int (*f)(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &,
+            const init_pd_func_t &, const base_prb_t *, res_t *, dir_t,
+            const_dnnl_primitive_desc_t, bool)
+            = init_prim;
+    return create_in_thr_ctx(thr_ctx, f, user_prim, init_pd_func, base_prb, res,
+            dir, hint, is_service_prim);
 }
 
 // `setup_cmp_func` function is defined in every driver.

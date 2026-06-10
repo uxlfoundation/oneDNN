@@ -534,8 +534,10 @@ int checkit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
         if (v_prim[1]) SAFE(check_total_size(res), WARN);
     }
     if (has_bench_mode_bit(mode_bit_t::corr)) {
-        SAFE(check_caches(v_prim[0], prb, res), WARN);
-        if (v_prim[1]) { SAFE(check_caches(v_prim[1], prb, res), WARN); }
+        SAFE(check_caches(v_prim[0], prb->ctx_init, res), WARN);
+        if (v_prim[1]) {
+            SAFE(check_caches(v_prim[1], prb->ctx_init, res), WARN);
+        }
     }
     return OK;
 }

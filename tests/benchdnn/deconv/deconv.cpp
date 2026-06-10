@@ -568,7 +568,7 @@ int checkit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
         }
     }
     if (has_bench_mode_bit(mode_bit_t::corr)) {
-        SAFE(check_caches(v_prim[0], prb, res), WARN);
+        SAFE(check_caches(v_prim[0], prb->ctx_init, res), WARN);
         // Don't check caches for CPU prim as the reference.
     }
     return OK;

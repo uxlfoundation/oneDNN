@@ -221,7 +221,7 @@ int checkit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
             return OK;
         }
 
-        SAFE(check_caches(v_prim[0], prb, res), WARN);
+        SAFE(check_caches(v_prim[0], prb->ctx_init, res), WARN);
     }
     return OK;
 }

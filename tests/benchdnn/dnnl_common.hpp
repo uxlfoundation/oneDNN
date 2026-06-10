@@ -185,9 +185,8 @@ void skip_invalid_inplace(res_t *res, dnnl_data_type_t sdt,
         dnnl_data_type_t ddt, const std::string &stag, const std::string &dtag);
 void skip_unimplemented_arg_scale(const attr_t &attr, res_t *res);
 
-template <typename prb_t>
-int check_caches(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &primw,
-        const prb_t *prb, res_t *res) {
+inline int check_caches(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &primw,
+        const thr_ctx_t &ctx_init, res_t *res) {
     if (!primw) return OK;
 
     // Under assumption of a limited cache capacity, which is usually the case,
@@ -200,10 +199,9 @@ int check_caches(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &primw,
     // of infinite cache though.
     if (!has_bench_mode_modifier(mode_modifier_t::par_create)) {
         const_dnnl_primitive_desc_t pd = query_pd(primw);
-        SAFE(create_in_thr_ctx(prb->ctx_init, check_pd_cache, pd, res), WARN);
+        SAFE(create_in_thr_ctx(ctx_init, check_pd_cache, pd, res), WARN);
         // Check primitive is picked up from the cache if applicable.
-        SAFE(create_in_thr_ctx(
-                     prb->ctx_init, check_primitive_cache, primw, res),
+        SAFE(create_in_thr_ctx(ctx_init, check_primitive_cache, primw, res),
                 WARN);
     }
 

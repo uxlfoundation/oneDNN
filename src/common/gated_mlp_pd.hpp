@@ -76,7 +76,7 @@ struct gated_mlp_pd_t : public primitive_desc_t {
 
     int n_outputs() const override { return 1; }
     int n_inputs() const override {
-        return int(all_idxs().size()) - n_outputs();
+        return int(all_idxs().size()) - n_outputs() + n_binary_po_inputs();
     }
     const op_desc_t *op_desc() const override {
         return reinterpret_cast<const op_desc_t *>(this->desc());

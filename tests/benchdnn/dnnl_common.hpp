@@ -1122,12 +1122,14 @@ int init_ref_memory_args_default_case(int exec_arg, dnn_mem_t &mem,
 int check_bitwise(dnnl_primitive_t prim, const std::vector<data_kind_t> &kinds,
         const args_t &args, const attr_t &attr, bool inplace, res_t *res);
 
-template <typename prb_t>
-int init_prim_ref_common(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &prim_ref,
-        const prb_t *prb_cpu, res_t *res, const init_pd_func_t &init_pd_func) {
+inline int init_prim_ref_common(
+        benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &prim_ref,
+        const base_prb_t *base_prb_cpu, res_t *res,
+        const init_pd_func_t &init_pd_func) {
 
     init_pd_args_t init_pd_args(
-            /* res = */ nullptr, get_cpu_engine(), prb_cpu, prb_cpu->dir,
+            /* res = */ nullptr, get_cpu_engine(), base_prb_cpu,
+            base_prb_cpu->dir,
             /* hint = */ nullptr, /* src_md = */ nullptr);
     init_pd_func(init_pd_args);
 
@@ -1151,7 +1153,7 @@ int init_prim_ref_common(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &prim_ref,
     BENCHDNN_PRINT(5, "CPU reference oneDNN implementation: %s\n",
             query_impl_info(pdw).c_str());
 
-    res->prim_ref_repro = prb_cpu->str();
+    res->prim_ref_repro = base_prb_cpu->str();
     // Replace engine kind for repro line from GPU to CPU.
     const auto eng_pos = res->prim_ref_repro.find("engine=gpu");
     if (eng_pos != std::string::npos) {

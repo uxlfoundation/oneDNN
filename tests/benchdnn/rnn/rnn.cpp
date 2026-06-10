@@ -1306,7 +1306,8 @@ std::vector<data_kind_t> get_kinds_to_check(const prb_t *prb, dir_t dir) {
 }
 
 int createit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
-        const prb_t &prb, res_t *res) {
+        const base_prb_t &base_prb, res_t *res) {
+    const prb_t &prb = static_cast<const prb_t &>(base_prb);
     v_prim.resize(2); // just fwd or fwd + bwd.
     SAFE(init_prim(prb.ctx_init, v_prim[0], init_pd, &prb, res, FLAG_FWD,
                  nullptr, /* is_service_prim = */ prb.dir & FLAG_BWD),
@@ -1320,7 +1321,8 @@ int createit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 }
 
 int checkit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
-        const prb_t *prb, res_t *res) {
+        const base_prb_t *base_prb, res_t *res) {
+    const prb_t *prb = prb_t::from(base_prb);
     if (has_bench_mode_bit(mode_bit_t::exec)) {
         // Set memory used for reference.
         auto &mem_args = res->mem_size_args;
@@ -1349,7 +1351,8 @@ int checkit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 }
 
 int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
-        const prb_t &prb, res_t *res) {
+        const base_prb_t &base_prb, res_t *res) {
+    const prb_t &prb = static_cast<const prb_t &>(base_prb);
     set_zmalloc_max_expected_size(res->mem_size_args.zmalloc_expected_size);
 
     const auto &prim = prb.prop != dnnl_backward ? v_prim[0] : v_prim[1];

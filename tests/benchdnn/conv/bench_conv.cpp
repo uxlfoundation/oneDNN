@@ -58,10 +58,10 @@ void check_correctness(
                     || (i_dt.size() > 1 && i_dt[1] == dnnl_f64);
             i_bia_dt = is_f64 ? dnnl_f64 : dnnl_f32;
         }
-        const prb_t prb(s.desc, i_dir, i_dt, i_bia_dt, i_stag, i_wtag, i_dtag,
-                i_strides, i_alg, i_mb, i_attr, i_ctx_init, i_ctx_exe,
-                s.impl_filter);
-        if (s.pattern && !match_regex(prb.str(), s.pattern)) return;
+        auto prb = std::make_shared<prb_t>(s.desc, i_dir, i_dt, i_bia_dt,
+                i_stag, i_wtag, i_dtag, i_strides, i_alg, i_mb, i_attr,
+                i_ctx_init, i_ctx_exe, s.impl_filter);
+        if (s.pattern && !match_regex(prb->str(), s.pattern)) return;
 
         bool has_dw_po = i_attr.post_ops.convolution_index() >= 0;
         auto &conv_createit

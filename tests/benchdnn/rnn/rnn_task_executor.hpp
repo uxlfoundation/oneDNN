@@ -21,26 +21,15 @@
 #include "utils/parallel.hpp"
 
 #define TASK_EXECUTOR_DECL_TYPES \
-    using create_func_t = std::function<int( \
-            std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &, \
-            const prb_t &, res_t *)>; \
-    using check_cache_func_t = std::function<int( \
-            std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &, \
-            const prb_t *, res_t *)>; \
-    using do_func_t = std::function<int( \
-            const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &, \
-            const prb_t &, res_t *)>; \
-    using driver_task_executor_t = rnn_task_executor_t<prb_t, perf_report_t, \
-            create_func_t, check_cache_func_t, do_func_t>;
+    using driver_task_executor_t = rnn_task_executor_t<perf_report_t>;
 
 extern int repeats_per_prb;
 
-template <typename prb_t, typename perf_report_t, typename create_func_t,
-        typename check_cache_func_t, typename do_func_t>
+template <typename perf_report_t>
 struct rnn_task_executor_t {
     virtual ~rnn_task_executor_t() { assert(tasks_.empty()); }
 
-    void submit(const std::shared_ptr<const prb_t> &prb,
+    void submit(const std::shared_ptr<const base_prb_t> &prb,
             const std::string &perf_template, const create_func_t &create_func,
             const check_cache_func_t &check_cache_func,
             const do_func_t &do_func) {
@@ -76,9 +65,7 @@ struct rnn_task_executor_t {
         tasks_.clear();
     }
 
-    std::vector<rnn_task_t<prb_t, perf_report_t, create_func_t,
-            check_cache_func_t, do_func_t>>
-            tasks_;
+    std::vector<rnn_task_t<perf_report_t>> tasks_;
 
     int get_idx() {
         static int idx = 0;

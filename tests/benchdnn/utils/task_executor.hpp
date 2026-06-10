@@ -21,30 +21,19 @@
 #include "utils/task.hpp"
 
 // A macro serves an unification purpose.
-// It must be a macro due to `prb_t` type is unique per driver.
+// It must be a macro due to `perf_report_t` type is unique per driver.
 #define TASK_EXECUTOR_DECL_TYPES \
-    using create_func_t = std::function<int( \
-            std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &, \
-            const prb_t *, res_t *)>; \
-    using check_func_t = std::function<int( \
-            std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &, \
-            const prb_t *, res_t *)>; \
-    using do_func_t = std::function<int( \
-            const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &, \
-            const prb_t *, res_t *)>; \
-    using driver_task_executor_t = task_executor_t<prb_t, perf_report_t, \
-            create_func_t, check_func_t, do_func_t>;
+    using driver_task_executor_t = task_executor_t<perf_report_t>
 
 extern int repeats_per_prb;
 
-template <typename prb_t, typename perf_report_t, typename create_func_t,
-        typename check_func_t, typename do_func_t>
+template <typename perf_report_t>
 struct task_executor_t {
     virtual ~task_executor_t() { assert(tasks_.empty()); }
 
-    void submit(const prb_t &prb, const std::string &perf_template,
-            const create_func_t &create_func, const check_func_t &check_func,
-            const do_func_t &do_func) {
+    void submit(const std::shared_ptr<base_prb_t> &prb,
+            const std::string &perf_template, const create_func_t &create_func,
+            const check_func_t &check_func, const do_func_t &do_func) {
         static const int nthreads = benchdnn_get_max_threads();
         for (int r = 0; r < repeats_per_prb; r++) {
             tasks_.emplace_back(prb, perf_template, create_func, check_func,
@@ -77,9 +66,7 @@ struct task_executor_t {
         tasks_.clear();
     }
 
-    std::vector<task_t<prb_t, perf_report_t, create_func_t, check_func_t,
-            do_func_t>>
-            tasks_;
+    std::vector<task_t<perf_report_t>> tasks_;
 
     int get_idx() {
         static int idx = 0;

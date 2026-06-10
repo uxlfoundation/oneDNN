@@ -38,10 +38,10 @@ void check_correctness(
     for_(const auto &i_ctx_init : s.ctx_init)
     for_(const auto &i_ctx_exe : s.ctx_exe)
     for (auto i_inplace : s.inplace) {
-        const prb_t prb(s.prb_dims, i_sdt, i_ddt, i_stag, i_dtag,
-                i_input_scales, i_inplace, i_attr, i_ctx_init, i_ctx_exe,
-                s.impl_filter);
-        if (s.pattern && !match_regex(prb.str(), s.pattern)) return;
+        auto prb = std::make_shared<prb_t>(s.prb_dims, i_sdt, i_ddt, i_stag,
+                i_dtag, i_input_scales, i_inplace, i_attr, i_ctx_init,
+                i_ctx_exe, s.impl_filter);
+        if (s.pattern && !match_regex(prb->str(), s.pattern)) return;
 
         task_executor.submit(prb, s.perf_template, createit, checkit, doit);
     }

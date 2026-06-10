@@ -221,9 +221,9 @@ private:
 };
 
 struct perf_report_t : public base_perf_report_t {
-    perf_report_t(const prb_t *prb, const char *perf_template)
+    perf_report_t(const base_prb_t *base_prb, const char *perf_template)
         : base_perf_report_t(perf_template)
-        , p_(prb)
+        , p_(prb_t::from(base_prb))
         , stag_({normalize_tag(p_->stag, p_->ndims)})
         , wtag_(normalize_tag(p_->wtag, p_->ndims))
         , dtag_(normalize_tag(p_->dtag, p_->ndims)) {}
@@ -276,11 +276,11 @@ void compute_ref(const base_prb_t *base_prb, dir_t dir, const args_t &args,
         dnnl_primitive_t prim_ref = nullptr);
 
 int createit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
-        const prb_t *prb, res_t *res);
+        const base_prb_t *base_prb, res_t *res);
 int checkit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
-        const prb_t *prb, res_t *res);
+        const base_prb_t *base_prb, res_t *res);
 int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
-        const prb_t *prb, res_t *res);
+        const base_prb_t *base_prb, res_t *res);
 
 int bench(int argc, char **argv);
 

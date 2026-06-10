@@ -212,9 +212,9 @@ struct cfg_t {
 };
 
 struct perf_report_t : public base_perf_report_t {
-    perf_report_t(const prb_t *prb, const char *perf_template)
+    perf_report_t(const base_prb_t *base_prb, const char *perf_template)
         : base_perf_report_t(perf_template)
-        , p_(prb)
+        , p_(prb_t::from(base_prb))
         , tag_(normalize_tag(p_->tag, p_->ndims)) {}
 
     void dump_desc(std::ostream &s) const override {
@@ -257,11 +257,11 @@ void compute_ref(const base_prb_t *base_prb, dir_t dir, const args_t &args,
         dnnl_primitive_t prim_ref = nullptr);
 
 int createit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
-        const prb_t *prb, res_t *res);
+        const base_prb_t *base_prb, res_t *res);
 int checkit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
-        const prb_t *prb, res_t *res);
+        const base_prb_t *base_prb, res_t *res);
 int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
-        const prb_t *prb, res_t *res);
+        const base_prb_t *base_prb, res_t *res);
 int bench(int argc, char **argv);
 
 } // namespace bnorm

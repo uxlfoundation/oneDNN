@@ -17,21 +17,30 @@
 #ifndef UTILS_TASK_HPP
 #define UTILS_TASK_HPP
 
+#include <functional>
 #include <memory>
 #include <sstream>
 #include <string>
 #include <vector>
 
 #include "common.hpp"
+#include "utils/prb.hpp"
 #include "utils/wrapper.hpp"
 
-template <typename prb_t, typename perf_report_t, typename create_func_t,
-        typename check_func_t, typename do_func_t>
+using create_func_t = std::function<int(
+        std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &,
+        const base_prb_t *, res_t *)>;
+using check_func_t = create_func_t;
+using do_func_t = std::function<int(
+        const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &,
+        const base_prb_t *, res_t *)>;
+
+template <typename perf_report_t>
 struct task_t {
-    task_t(const prb_t &prb, const std::string &perf_template,
-            const create_func_t &create_func, const check_func_t &check_func,
-            const do_func_t &do_func, int idx)
-        : prb_(std::move(prb))
+    task_t(const std::shared_ptr<base_prb_t> &prb,
+            const std::string &perf_template, const create_func_t &create_func,
+            const check_func_t &check_func, const do_func_t &do_func, int idx)
+        : prb_(prb)
         , create_func_(create_func)
         , check_func_(check_func)
         , do_func_(do_func)
@@ -41,7 +50,7 @@ struct task_t {
     int create(bool in_parallel) {
         // Report creation status for problems only in sequential mode as in
         // parallel it's still not clear which one failed.
-        if (!in_parallel) BENCHDNN_PRINT(1, "create: %s\n", prb_.str());
+        if (!in_parallel) BENCHDNN_PRINT(1, "create: %s\n", prb_->str());
 
         if (skip_start(&res_, idx_)) return OK;
         if (bench_mode == bench_mode_t::list) return res_.state = LISTED, OK;
@@ -54,7 +63,7 @@ struct task_t {
         // waits for its line.
         auto &tct = res_.timer_map.get_timer(timer::names::test_case_timer);
         tct.start();
-        SAFE(create_func_(*v_prim_, &prb_, &res_), WARN);
+        SAFE(create_func_(*v_prim_, prb_.get(), &res_), WARN);
         tct.stamp();
         return OK;
     }
@@ -67,7 +76,7 @@ struct task_t {
 
         auto &tct = res_.timer_map.get_timer(timer::names::test_case_timer);
         tct.start();
-        SAFE(check_func_(*v_prim_, &prb_, &res_), WARN);
+        SAFE(check_func_(*v_prim_, prb_.get(), &res_), WARN);
         tct.stamp();
         return OK;
     }
@@ -79,12 +88,12 @@ struct task_t {
         tct.start();
         if (res_.state == INITIALIZED && bench_mode != bench_mode_t::init) {
             // Differentiate a message when the run happens...
-            BENCHDNN_PRINT(1, "run: %s\n", prb_.str());
-            do_func_(*v_prim_, &prb_, &res_);
+            BENCHDNN_PRINT(1, "run: %s\n", prb_->str());
+            do_func_(*v_prim_, prb_.get(), &res_);
         } else {
             // ... versus when it didn't but still indicating the problem went
             // through this part of the flow.
-            BENCHDNN_PRINT(1, "run (just report, no exec): %s\n", prb_.str());
+            BENCHDNN_PRINT(1, "run (just report, no exec): %s\n", prb_->str());
         }
 
         tct.stamp();
@@ -93,7 +102,11 @@ struct task_t {
     }
 
 private:
-    prb_t prb_;
+    // Held via a base-class pointer because storing `base_prb_t` by value would
+    // slice the derived problem descriptor. A pointer to a heap-allocated
+    // concrete object (upcast to `base_prb_t`) is required. `shared_ptr` (over
+    // `unique_ptr`) keeps `task_t` copyable for `tasks_` vector storage.
+    std::shared_ptr<const base_prb_t> prb_;
     create_func_t create_func_;
     check_func_t check_func_;
     do_func_t do_func_;
@@ -116,11 +129,10 @@ private:
 
     // Note: can't be `const` because of `parse_result`.
     int report() {
-        const prb_t *prb = &prb_;
-        parse_result(res_, prb_.str());
+        parse_result(res_, prb_->str());
         if (has_bench_mode_bit(mode_bit_t::perf)) {
-            perf_report_t pr(prb, perf_template_.c_str());
-            pr.report(&res_, prb_.str());
+            perf_report_t pr(prb_.get(), perf_template_.c_str());
+            pr.report(&res_, prb_->str());
         }
         return OK;
     }

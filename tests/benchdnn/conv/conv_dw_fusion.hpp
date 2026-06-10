@@ -35,11 +35,11 @@ using alg_t = conv::alg_t;
 using cfg_t = conv::cfg_t;
 
 int createit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
-        const prb_t *prb, res_t *res);
+        const base_prb_t *base_prb, res_t *res);
 int checkit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
-        const prb_t *prb, res_t *res);
+        const base_prb_t *base_prb, res_t *res);
 int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
-        const prb_t *prb, res_t *res);
+        const base_prb_t *base_prb, res_t *res);
 void get_fused_conv_dst_dims(const int ndims,
         const attr_t::post_ops_t::entry_t &po_entry, const dnnl_dims_t dims,
         dnnl_dims_t fused_conv_dst_dims);

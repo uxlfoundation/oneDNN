@@ -17,17 +17,29 @@
 #ifndef UTILS_TASK_HPP
 #define UTILS_TASK_HPP
 
+#include <functional>
 #include <memory>
 #include <sstream>
 #include <string>
 #include <vector>
 
 #include "common.hpp"
+#include "utils/prb.hpp"
+#include "utils/wrapper.hpp"
 
-template <typename prb_t, typename perf_report_t, typename create_func_t,
-        typename check_cache_func_t, typename do_func_t>
+using create_func_t = std::function<int(
+        std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &,
+        const base_prb_t &, res_t *)>;
+using check_cache_func_t = std::function<int(
+        std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &,
+        const base_prb_t *, res_t *)>;
+using do_func_t = std::function<int(
+        const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &,
+        const base_prb_t &, res_t *)>;
+
+template <typename perf_report_t>
 struct rnn_task_t {
-    rnn_task_t(std::shared_ptr<const prb_t> prb,
+    rnn_task_t(std::shared_ptr<const base_prb_t> prb,
             const std::string &perf_template, const create_func_t &create_func,
             const check_cache_func_t &check_cache_func,
             const do_func_t &do_func, int idx)
@@ -51,7 +63,7 @@ struct rnn_task_t {
         auto &tct = res_.timer_map.get_timer(timer::names::test_case_timer);
         tct.start();
 
-        const prb_t *prb = prb_.get();
+        const base_prb_t *prb = prb_.get();
         SAFE(create_func_(*v_prim_, *prb, &res_), WARN);
         return OK;
     }
@@ -63,14 +75,14 @@ struct rnn_task_t {
         if (!has_bench_mode_bit(mode_bit_t::corr)) return OK;
         if (res_.state != INITIALIZED) return OK;
 
-        const prb_t *prb = prb_.get();
+        const base_prb_t *prb = prb_.get();
         return check_cache_func_(*v_prim_, prb, &res_);
     }
 
     int exec() {
         BENCHDNN_PRINT(1, "run: %s\n", prb_.get()->str());
         if (res_.state == INITIALIZED && bench_mode != bench_mode_t::init) {
-            const prb_t *prb = prb_.get();
+            const base_prb_t *prb = prb_.get();
             do_func_(*v_prim_, *prb, &res_);
         }
 
@@ -83,7 +95,7 @@ struct rnn_task_t {
     }
 
 private:
-    std::shared_ptr<const prb_t> prb_;
+    std::shared_ptr<const base_prb_t> prb_;
     create_func_t create_func_;
     check_cache_func_t check_cache_func_;
     do_func_t do_func_;
@@ -106,7 +118,7 @@ private:
 
     // Note: can't be `const` because of `parse_result`.
     int report() {
-        const prb_t *prb = prb_.get();
+        const base_prb_t *prb = prb_.get();
         parse_result(res_, prb->str());
         if (has_bench_mode_bit(mode_bit_t::perf)) {
             perf_report_t pr(prb, perf_template_.c_str());

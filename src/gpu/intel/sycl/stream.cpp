@@ -124,13 +124,6 @@ bool stream_t::recording() const {
             == syclex::queue_state::recording;
 }
 
-stream_t::weak_graph_t stream_t::get_current_graph_weak() const {
-    bool success;
-    stream_t::weak_graph_t result = get_graph(impl()->queue(), success);
-    if (!success) result.reset();
-    return result;
-}
-
 status_t stream_t::enter_immediate_mode() {
     std::lock_guard<std::mutex> lock(immediate_mode_mutex_);
     if (!immediate_mode_level_++) pause_recording();

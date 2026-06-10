@@ -112,10 +112,6 @@ struct stream_t : public gpu::intel::stream_t {
     }
 
     bool recording() const;
-    using weak_graph_t = ::sycl::ext::oneapi::weak_object<
-            ::sycl::ext::oneapi::experimental::command_graph<::sycl::ext::
-                            oneapi::experimental::graph_state::modifiable>>;
-    weak_graph_t get_current_graph_weak() const;
 
     status_t enter_immediate_mode() override;
     status_t exit_immediate_mode() override;

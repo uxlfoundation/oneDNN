@@ -564,20 +564,22 @@ bool is_gemv_applicable(const brgemm_matmul_conf_t &bgmmc,
     const auto gemv_strategy
             = bm_conf_utils.get_gemv_strategy(gemv_A_tag, gemv_B_tag);
 
-    const bool is_transA_strategy = utils::one_of(gemv_strategy,
-            gemv_strategy_t::n1_A_trans, gemv_strategy_t::m1_B_plain);
-    const bool is_swap_strategy = utils::one_of(gemv_strategy,
-            gemv_strategy_t::m1_B_plain, gemv_strategy_t::m1_B_trans);
-
-    // transA GEMV requires contiguous output (INCY == 1) for tensors with
-    // batch dimensions. Some batched layouts, e.g. `bac`, place the batch
-    // dimension between consecutive GEMV output elements and make INCY > 1.
-    const dim_t ndims = bgmmc.ndims;
-    if (is_transA_strategy && ndims > 2) {
-        const dim_t gemv_incy = is_swap_strategy
-                ? 1
-                : C_md.format_desc.blocking.strides[ndims - 2];
-        if (gemv_incy != 1) return false;
+    // The `n1_A_trans` strategy dispatches the transA BRGEMV kernel, which
+    // vector-stores `y` and therefore requires unit output stride (INCY == 1).
+    // The `m1_B_plain` strategy dispatches the same kernel but swaps A/B, which
+    // automatically forces INCY == 1, so it needs no check here.
+    if (gemv_strategy == gemv_strategy_t::n1_A_trans) {
+        // When the C format is `any` it's not yet initialized at this point, so
+        // we shouldn't read the strides. It will later be initialized with
+        // `plain_tensor_layout_tag`, where N == 1 makes the M axis unit-strided
+        // (INCY == 1), so the `any` case resolves to a contiguous layout by
+        // design and is therefore skipped.
+        //
+        // `dims_adjacent()` validates unit INCY for an explicit C, ignoring
+        // batch-dim permutations and handling unit dimensions safely.
+        if (C_md.format_kind != format_kind::any
+                && !dims_adjacent(C_md, bgmmc.ndims - 2, bgmmc.ndims - 1))
+            return false;
     }
 
     return true;
@@ -744,6 +746,11 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_tags(memory_desc_t &A_md,
         VCHECK_BG(memory_desc_init_by_tag(C_md, desired_C_tag),
                 VERBOSE_UNSUPPORTED_TAG);
         bgmmc.dst_tag = desired_C_tag;
+
+        // `is_gemv_applicable()` assumes that the `any` format tag resolves to
+        // `plain_tensor_layout_tag`.
+        assert(IMPLICATION(
+                bgmmc.is_gemv, bgmmc.dst_tag == plain_tensor_layout_tag));
     } else {
         const memory_desc_wrapper C_mdw(C_md);
         // If one of dims is `1` then `ba` is identical to `ab`.

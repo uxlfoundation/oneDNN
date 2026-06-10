@@ -555,11 +555,11 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
 #if KEY_SCALES || KEY_ZERO_POINTS
     uint ldkq = KEY_D3;
-    uint num_key_groups = d_qk / KEY_GROUP_SIZE;
+    uint num_key_groups = div_up(d_qk, KEY_GROUP_SIZE);
 #endif
 #if VAL_SCALES || VAL_ZERO_POINTS
     uint ldvq = div_up(d_v, VAL_GROUP_SIZE);
-    uint num_val_groups = d_v / VAL_GROUP_SIZE;
+    uint num_val_groups = div_up(d_v, VAL_GROUP_SIZE);
 #endif
 
     /* Subgroup IDs for each GEMM */

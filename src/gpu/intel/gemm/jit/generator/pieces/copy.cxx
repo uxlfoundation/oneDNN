@@ -104,6 +104,19 @@ void Generator<hw>::copyRegisters(Type Ts, Type Td, const RegisterLayout &layout
     }
     if (preshiftedS4) stub("Pre-shifted s4 data not supported on this path");
 
+    // For s4 sources with s4Shift=true (unshifted nibbles), the CopyPlan cannot directly
+    // perform the u4->f16 upconversion. Route through dequantizeInt4 which handles the
+    // full dequantization (XOR shift + u4->u16 + mad/mul) for any destination layout.
+    if (Ts == Type::s4 && s4Shift && alpha == 1 && !conjugate && !preserveSrc) {
+        RegisterLayout emptyLayout;
+        GRFMultirange emptyRegs;
+        if (canDequantizeInt4(layoutSrc, layoutDst, emptyLayout, emptyLayout)) {
+            dequantizeInt4(true, layoutSrc, layoutDst, emptyLayout, emptyLayout,
+                           src, dst, emptyRegs, emptyRegs, dOffR, dOffC, 0, 1, 1, nullptr, strategy, state, s4Shift);
+            return;
+        }
+    }
+
     // Check layouts.
     bool sCM = layoutSrc.colMajor();
     bool dCM = layoutDst.colMajor();

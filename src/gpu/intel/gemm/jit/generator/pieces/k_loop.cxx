@@ -993,13 +993,25 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
 
     auto doRepackB = [&](RegisterLayout &layout, GRFMultirange &regs, bool repackB, int h, int k_load, int k_repack) {
         k_repack = std::max(k_repack, 1);
+        int hb = h % k_load;
         int hbr = h % k_repack;
+        bool s4Shift = true;
+
+        if (repackB) {
+            // Int4 data is commonly expanded from partial registers as a 64
+            // byte register expands to 128 elements. To avoid emitting extra
+            // instructions, perform element-wise operations here.
+            if (canDequantizeInt4(layout, state.Br_layout, {}, {})) {
+                if (hb == 0) dequantizeInt4Shift(Tb_load, regs, strategy);
+                s4Shift = false;
+            }
+        }
 
         if (dequantizeB)
             gemmDequantizeAB(false, layout, state.Br_layout, regs, state.Br_regs, h, k_load, k_repack, kbq_load, problem, strategy, state);
         else
         if (repackB)
-            copyRegisters(layout, state.Br_layout, regs, state.Br_regs, hbr, 0, false, strategy, state);
+            copyRegisters(layout, state.Br_layout, regs, state.Br_regs, hbr, 0, false, strategy, state, false, s4Shift);
         else if (convertB)
             convert(regs, Tb_load, Tb, strategy, state);
     };
@@ -1126,16 +1138,28 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
         if (slmDequantizeA)
             gemmDequantizeAB(true, Ai_layout(h), state.Ao_layout, Ai_regs(h), Ao_regs(h), h, ka_load(h), ka_repack(h), kaq_load, problem, strategy, state);
         else
-        if (slmA && !aioShare(h) && !(slmRemActive(h) && Ai_remIncrCopy))
-            copyRegisters(Ai_layout(h), state.Ao_layout, Ai_regs(h), Ao_regs(h), strategy, state);
+        if (slmA && !aioShare(h) && !(slmRemActive(h) && Ai_remIncrCopy)) {
+            bool s4ShiftA = true;
+            if (!slmRemActive(h) && canDequantizeInt4(Ai_layout(h), state.Ao_layout, {}, {})) {
+                dequantizeInt4Shift(Ta_ext, Ai_regs(h), strategy);
+                s4ShiftA = false;
+            }
+            copyRegisters(Ai_layout(h), state.Ao_layout, Ai_regs(h), Ao_regs(h), strategy, state, false, s4ShiftA);
+        }
         else if (slmConvertA(h))
             convert(Ai_regs(h), Ta_ext, Ta, strategy, state);
 
         if (slmDequantizeB)
             gemmDequantizeAB(false, Bi_layout(h), state.Bo_layout, Bi_regs(h), Bo_regs(h), h, kb_load(h), kb_repack(h), kbq_load, problem, strategy, state);
         else
-        if (slmB && !bioShare(h) && !(slmRemActive(h) && Bi_remIncrCopy))
-            copyRegisters(Bi_layout(h), state.Bo_layout, Bi_regs(h), Bo_regs(h), strategy, state);
+        if (slmB && !bioShare(h) && !(slmRemActive(h) && Bi_remIncrCopy && Bi_incrementalRem)) {
+            bool s4ShiftB = true;
+            if (canDequantizeInt4(Bi_layout(h), state.Bo_layout, {}, {})) {
+                if (h % unrollKSLM == 0) dequantizeInt4Shift(Tb_ext, Bi_regs(h), strategy);
+                s4ShiftB = false;
+            }
+            copyRegisters(Bi_layout(h), state.Bo_layout, Bi_regs(h), Bo_regs(h), strategy, state, false, s4ShiftB);
+        }
         else if (slmConvertB(h))
             convert(Bi_regs(h), Tb_ext, Tb, strategy, state);
 
@@ -1149,8 +1173,10 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
     };
 
     auto checkSLMRepack = [&](Iteration h) {
+        bool slmBCondition = slmB && !bioShare(h) && !(slmRemActive(h) && Bi_remIncrCopy && Bi_incrementalRem);
+
         return (slmA && !aioShare(h) && !(slmRemActive(h) && Ai_remIncrCopy))
-            || (slmB && !bioShare(h) && !(slmRemActive(h) && Bi_remIncrCopy))
+            || slmBCondition
             || (slmRemActive(h) && (slmRemaskA || slmRemaskB))
             || slmConvertA(h)
             || slmConvertB(h);
@@ -1829,7 +1855,12 @@ void Generator<hw>::gemmAiBiRemLoadInc(int h, bool incremental, bool incremental
             if (incrementalCopy) {
                 int rr_eff = doA ? 0 : hh_eff;
                 int cc_eff = doA ? hh_eff : 0;
-                copyRegisters(Xi_layoutK[hh_layout], Xo_layout, Xi_regs, Xo_regs, rr_eff, cc_eff, false, strategy, state);
+                bool s4ShiftInc = true;
+                if (canDequantizeInt4(Xi_layoutK[hh_layout], Xo_layout, RegisterLayout{}, RegisterLayout{})) {
+                    dequantizeInt4Shift(Xi_layoutK[hh_layout].type(), Xi_regs, strategy);
+                    s4ShiftInc = false;
+                }
+                copyRegisters(Xi_layoutK[hh_layout], Xo_layout, Xi_regs, Xo_regs, rr_eff, cc_eff, false, strategy, state, false, s4ShiftInc);
             }
         }
 

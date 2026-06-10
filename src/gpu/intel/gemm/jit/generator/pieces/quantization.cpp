@@ -28,7 +28,10 @@ bool canDequantizeInt4(const RegisterLayout &layoutSrc, const RegisterLayout &la
     if (!Tsrc.isInt4() || !one_of(Tdst, {Type::f16, Type::f32}))
         return false;
 
-    if (layoutOffset.empty() || layoutScale.empty())
+    // Dimension check is needed when quantization parameters (offset/scale) are present,
+    // to ensure element-to-element alignment. For pure type conversion (no offset/scale),
+    // a dimension mismatch is handled by partial writes (valid for SLM remainder paths).
+    if (!layoutOffset.empty() || !layoutScale.empty())
         if (layoutSrc.rows() < layoutDst.rows() || layoutSrc.cols() < layoutDst.cols())
             return false;
 

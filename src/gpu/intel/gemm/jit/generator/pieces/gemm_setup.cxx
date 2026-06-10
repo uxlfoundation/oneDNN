@@ -1220,6 +1220,7 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
         int A_slmCP, B_slmCP;
         int A_tileR, A_tileC, B_tileR, B_tileC;
         std::tie(A_slmCP, B_slmCP) = targetSLMCrosspack(problem, strategy);
+        if (slmB && Tb_ext.isInt4()) B_slmCP = minOuterProductCount(problem, strategy);
         std::tie(A_tileR, A_tileC, B_tileR, B_tileC) = targetKernelTiling(hw, problem, strategy);
         auto opCount = outerProductCount(problem, strategy);
 
@@ -1238,6 +1239,12 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
                 stub("ka_slm must be a multiple of crosspack, or unrollKSLM = crosspack.");
             if (isPacked(problem.A.layout) && problem.A.packSize != static_cast<uint32_t>(unrollM))
                 stub("A panel height must match unroll");
+
+            // For s4/u4 quantized weights, force small crosspack to ensure col-major
+            // SLM layout as required by DPAS. Must come after slmATrans override
+            // which may set A_slmCP = ka_slm (large crosspack -> row-major).
+            if (Ta_ext.isInt4()) A_slmCP = std::max(1, 4 / problem.Ta.real());
+                (int)slmA, (int)slmB, (unsigned)Ta_ext, (unsigned)Tb_ext, (int)problem.Ta.real(), A_slmCP, unrollM);
 
             // Layout in from memory...
             state.Ai = problem.A;
@@ -1439,6 +1446,10 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
             strategy.B.cachingR = CacheSettingsLSC::Default;
             Tb_load = Tb;
             state.bioShare = matchBidirectional(state.Bi_layout, state.Bo_layout);
+            // Sub-byte types (e.g., s4) cannot share GRF with non-sub-byte types (e.g., f16):
+            // the byte-level register data differs, so an explicit conversion is always needed.
+            if (state.Bi_layout.type().is4() || state.Bo_layout.type().is4())
+                state.bioShare = false;
 
             // If we will add k-masking later, check if extra registers are needed.
             state.Bi_regCount = state.Bi_layout.regs();

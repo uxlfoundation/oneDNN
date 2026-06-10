@@ -242,7 +242,8 @@ int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
     return OK;
 }
 
-void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
+void prb_t::skip_unimplemented(res_t *res) const {
+    const prb_t *prb = this; // Kept to avoid mass update
     skip_unimplemented_data_type({prb->get_dt(SRC), prb->get_dt(WEI),
                                          prb->get_dt(BIA), prb->get_dt(DST)},
             prb->dir, res);

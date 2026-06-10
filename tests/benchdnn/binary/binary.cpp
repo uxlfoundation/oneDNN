@@ -139,7 +139,8 @@ dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
     return dnnl_success;
 }
 
-void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
+void prb_t::skip_unimplemented(res_t *res) const {
+    const prb_t *prb = this; // Kept to avoid mass update
     std::vector<dnnl_data_type_t> dts = {prb->sdt[0], prb->sdt[1], prb->ddt};
     skip_unimplemented_data_type(dts, prb->dir, res);
     skip_unimplemented_arg_scale(prb->attr, res);

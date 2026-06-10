@@ -65,6 +65,33 @@ void prb_t::check_block_size() const {
     assert(IMPLICATION(batch_size > 1, k % block_size == 0));
 }
 
+void prb_t::skip_unimplemented(res_t *res) const {
+    const prb_t *prb = this; // Kept to avoid mass update
+    auto is_xf16 = [](dnnl_data_type_t dt) {
+        return dt == dnnl_bf16 || dt == dnnl_f16;
+    };
+    if (!IMPLICATION(is_xf16(prb->bia_dt) || is_xf16(prb->dst_dt()),
+                is_xf16(prb->wei_dt()))) {
+        res->state = SKIPPED;
+        res->reason = reason_t::skip_not_supported;
+        return;
+    }
+    skip_unimplemented_data_type(
+            {prb->src_dt(), prb->wei_dt(), prb->bia_dt, prb->dst_dt()},
+            prb->dir, res);
+    skip_unimplemented_sum_po(
+            prb->attr, res, dnnl_gemm, prb->src_dt(), prb->dst_dt());
+    skip_unimplemented_binary_po(prb->attr, res);
+    skip_unimplemented_prelu_po(prb->attr, res, dnnl_gemm);
+
+    // Unconditionally skip remaining unimplemented cases.
+    // TODO: stop doing it.
+    BENCHDNN_PRINT(
+            2, "%s\n", "The kernel return unimplemented by some reason.");
+    res->state = SKIPPED;
+    res->reason = reason_t::skip_not_supported;
+}
+
 std::string prb_t::set_repro_line() {
     dnnl::impl::stringstream_t s;
     dump_global_params(s);

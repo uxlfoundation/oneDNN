@@ -215,7 +215,8 @@ int fill_mask(dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
     return OK;
 }
 
-void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
+void prb_t::skip_unimplemented(res_t *res) const {
+    const prb_t *prb = this; // Kept to avoid mass update
     skip_unimplemented_data_type(
             {prb->q_dt(), prb->k_dt(), prb->v_dt(), prb->dst_dt()}, prb->dir,
             res);

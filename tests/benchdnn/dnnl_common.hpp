@@ -217,12 +217,11 @@ inline int check_caches(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &primw,
 // descriptor creation. Based on the status, it produces additional checks:
 // * For `invalid_arguments` it just updates the `res` object with it.
 // * For `unimplemented` it checks whether the lack of support is expected or
-//   not. It relies on `skip_unimplemented_prb` function declared and defined
-//   at every driver and expects it to find in correspondent namespace from
-//   where `prb_t` was picked up. If the case is unknown, `UNIMPLEMENTED` status
-//   will be returned.
-template <typename prb_t>
-int check_dnnl_status(dnnl_status_t status, const prb_t *prb, res_t *res) {
+//   not. It relies on the `skip_unimplemented` virtual method overridden by
+//   every driver's `prb_t` to dispatch to its driver-specific logic. If the
+//   case is unknown, `UNIMPLEMENTED` status will be returned.
+inline int check_dnnl_status(
+        dnnl_status_t status, const base_prb_t *base_prb, res_t *res) {
     if (!res || status == dnnl_success) return OK;
 
     switch (status) {
@@ -242,7 +241,7 @@ int check_dnnl_status(dnnl_status_t status, const prb_t *prb, res_t *res) {
             //
             // Note: since it's done post pd creation, code in these
             // driver-defined functions can end up being dead.
-            skip_unimplemented_prb(prb, res);
+            base_prb->skip_unimplemented(res);
             if (res->state == SKIPPED || res->state == DEFERRED) return OK;
 
             // If the case is not known to be skipped, it is unimplemented.

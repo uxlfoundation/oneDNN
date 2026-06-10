@@ -777,7 +777,8 @@ dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
     return dnnl_success;
 }
 
-void skip_unimplemented_prb(const prb_t *prb_, res_t *res) {
+void prb_t::skip_unimplemented(res_t *res) const {
+    const prb_t *prb_ = this;
     const prb_t &prb = *prb_;
     dir_t dir = str2dir(prop2str(prb.prop));
     skip_unimplemented_data_type({prb.cfg[SRC_LAYER].dt}, dir, res);
@@ -1360,7 +1361,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
     auto st = run_execution(v_prim[0], args, res);
     if (st == FAIL) {
-        skip_unimplemented_prb(&prb, res);
+        prb.skip_unimplemented(res);
         if (res->state == SKIPPED || res->state == DEFERRED) return OK;
         return FAIL;
     }

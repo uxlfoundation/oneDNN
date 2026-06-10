@@ -50,6 +50,10 @@ struct base_prb_t {
         return make_benchdnn_dnnl_wrapper<dnnl_memory_desc_t>(nullptr);
     }
 
+    // Checks driver-specific cases of unimplemented functionality post pd
+    // creation. Each driver overrides it with its own logic.
+    virtual void skip_unimplemented(res_t *res) const {}
+
     const char *str() const { return repro.c_str(); }
 
 protected:

@@ -102,7 +102,8 @@ dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
     return dnnl_success;
 }
 
-void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
+void prb_t::skip_unimplemented(res_t *res) const {
+    const prb_t *prb = this; // Kept to avoid mass update
     skip_unimplemented_data_type({prb->dt}, prb->dir, res);
     skip_unimplemented_sum_po(prb->attr, res, dnnl_shuffle, prb->dt);
     skip_unimplemented_binary_po(prb->attr, res);

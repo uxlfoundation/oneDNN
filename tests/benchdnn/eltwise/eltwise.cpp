@@ -286,7 +286,8 @@ int fill_data(int exec_arg, const prb_t *prb, data_kind_t kind,
     return OK;
 }
 
-void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
+void prb_t::skip_unimplemented(res_t *res) const {
+    const prb_t *prb = this; // Kept to avoid mass update
     skip_unimplemented_data_type({prb->dt}, prb->dir, res);
     skip_unimplemented_sum_po(prb->attr, res, dnnl_eltwise, prb->dt);
     skip_unimplemented_binary_po(prb->attr, res);

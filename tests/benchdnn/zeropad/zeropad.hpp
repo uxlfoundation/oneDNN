@@ -69,6 +69,8 @@ struct prb_t : public prb_dims_t, public base_prb_t {
         return downcast<const prb_t *>(base_prb);
     }
 
+    void skip_unimplemented(res_t *res) const override;
+
 private:
     std::string set_repro_line() override;
 };

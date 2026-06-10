@@ -259,8 +259,9 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
     }
 }
 
-void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
-        const args_t &ref_args) {
+void setup_cmp(compare::compare_t &cmp, const base_prb_t *base_prb,
+        data_kind_t kind, const args_t &ref_args) {
+    const prb_t *prb = prb_t::from(base_prb);
     const bool is_bwd = (kind == SRC || kind == SRC_1 || kind == SRC_2);
 
     // Backward chains more matmuls and softmax_backward; needs looser

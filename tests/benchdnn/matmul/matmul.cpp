@@ -889,8 +889,8 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
     }
 }
 
-void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
-        const args_t &ref_args) {
+void setup_cmp(compare::compare_t &cmp, const base_prb_t *base_prb,
+        data_kind_t kind, const args_t &ref_args) {
     cmp.set_zero_trust_percent(90.f); // TODO: why so bad filling?
 }
 

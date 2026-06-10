@@ -486,6 +486,19 @@ int init_prim(const thr_ctx_t &thr_ctx,
             hint, is_service_prim);
 }
 
+// `setup_cmp_func` function is defined in every driver.
+// It takes:
+// * A reference to a `compare_t` object which the function modifies based on
+//   driver's needs.
+// * A pointer to a `base_prb_t` problem.
+// * `data_kind` value to help to setup threshold depending on output argument.
+// * Driver's reference memory arguments since some drivers can't validate
+//   certain scenarios for sure without additional memory arguments.
+// Returns nothing since the object is modified by reference due to lifetime of
+// the compare object is controlled by `check_correctness`.
+using setup_cmp_func_t = std::function<void(
+        compare::compare_t &, const base_prb_t *, data_kind_t, const args_t &)>;
+
 // `check_correctness` function is designed to be called from every driver where
 // correctness validation is needed. It takes:
 // * A pointer to a `prb_t` problem.
@@ -509,28 +522,11 @@ int init_prim(const thr_ctx_t &thr_ctx,
 //   arguments, and CPU primitive for GPU backend, if available.
 // * For each kind to validate it:
 //   - Creates and sets up the compare object. Setting is done with
-//     `setup_cmp_func`.
+//     `setup_cmp_func` (see above).
 //   - Finds correspondent memory arguments from backend and reference and
 //     compares them.
 //   - Result of comparison is saved into `res` object.
-//
-// `setup_cmp_func` is a function that supposed to be defined in every driver's
-// namespace. Its interface is:
-// `void (compare::compare_t &, const prb_t *, data_kind_t, const args_t &);`
-// It takes:
-// * A reference to a `compare_t` object which the function modifies based on
-//   driver's needs.
-// * A pointer to a `prb_t` problem.
-// * `data_kind` value to help to setup threshold depending on output argument.
-// * Driver's reference memory arguments since some drivers can't validate
-//   certain scenarios for sure without additional memory arguments.
-// Returns nothing since the object is modified by reference due to lifetime of
-// the compare object is controlled by `check_correctness`.
-//
-// Note: a dedicated non-templated type for `setup_cmp_func_t` could be used but
-// since it relies on a `prb_t` type which is individual for each driver,
-// it isn't possible without a template.
-template <typename setup_cmp_func_t, typename prb_t>
+template <typename prb_t>
 void check_correctness(const prb_t *prb, const std::vector<data_kind_t> &kinds,
         const args_t &args, const args_t &ref_args,
         const setup_cmp_func_t &setup_cmp_func, res_t *res, dir_t dir,

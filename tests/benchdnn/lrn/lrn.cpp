@@ -129,8 +129,9 @@ void prb_t::skip_unimplemented(res_t *res) const {
 
 void skip_invalid_prb(const prb_t *prb, res_t *res) {}
 
-void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
-        const args_t &ref_args) {
+void setup_cmp(compare::compare_t &cmp, const base_prb_t *base_prb,
+        data_kind_t kind, const args_t &ref_args) {
+    const prb_t *prb = prb_t::from(base_prb);
     // `3` is a const needed to adjust division error
     cmp.set_threshold(compute_n_summands(prb) * 3 * epsilon_dt(prb->dt));
 }

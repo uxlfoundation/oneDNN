@@ -227,8 +227,9 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
     }
 }
 
-void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
-        const args_t &ref_args) {
+void setup_cmp(compare::compare_t &cmp, const base_prb_t *base_prb,
+        data_kind_t kind, const args_t &ref_args) {
+    const prb_t *prb = prb_t::from(base_prb);
     // accounts for inaccurate rootn/pow functions in norm algs.
     float scale = is_norm_alg(prb->alg) ? 5.0f : 1.0f;
     cmp.set_threshold(scale * epsilon_dt(prb->ddt));

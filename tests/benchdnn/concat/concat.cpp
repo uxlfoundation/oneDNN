@@ -143,8 +143,8 @@ void prb_t::skip_unimplemented(res_t *res) const {
 
 void skip_invalid_prb(const prb_t *prb, res_t *res) {}
 
-void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
-        const args_t &ref_args) {}
+void setup_cmp(compare::compare_t &cmp, const base_prb_t *base_prb,
+        data_kind_t kind, const args_t &ref_args) {}
 
 std::vector<int> supported_exec_args(dir_t dir) {
     static const std::vector<int> exec_args = {

@@ -980,8 +980,9 @@ void skip_invalid_prb(const prb_t *prb_, res_t *res) {
     }
 }
 
-void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
-        const args_t &ref_args) {
+void setup_cmp(compare::compare_t &cmp, const base_prb_t *base_prb,
+        data_kind_t kind, const args_t &ref_args) {
+    const prb_t *prb = prb_t::from(base_prb);
     const auto rnn_kind = data_kind2rnn_data_kind(kind);
     const auto &cfg = prb->cfg[rnn_kind];
     // factor 2 is because of the sum of 2 GEMMs

@@ -956,6 +956,18 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         const bool is_sparse_wei_packed
                 = is_sparse_wei && wei_encoding == dnnl_packed;
 
+        // Grouped binary post-op offsets are needed even under no_ref_memory,
+        // so exclude them from the skip below
+        bool is_grouped_bin_po = false;
+        if (is_grouped) {
+            const auto &po = prb->attr.post_ops;
+            const int po_idx
+                    = exec_arg / DNNL_ARG_ATTR_MULTIPLE_POST_OP_BASE - 1;
+            is_grouped_bin_po = po_idx >= 0 && po_idx < po.len()
+                    && po.entry[po_idx].is_binary_kind()
+                    && po.entry[po_idx].binary.grouped;
+        }
+
         // See the comment at the beginning of the function.
         if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)
                 // Grouped SRC/DST are excluded from `is_sparse` to keep the
@@ -968,7 +980,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
                                 || exec_arg == DNNL_ARG_HINT_MAX_GROUP_SIZE
 #endif
-                                ))
+                                || is_grouped_bin_po))
                 && !is_sparse)
             continue;
 
@@ -1069,26 +1081,15 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                 // post filling manipulations.
                 break;
             default: {
+                // For grouped binary post-op fill offsets only
+                if (is_grouped_bin_po) {
+                    SAFE(fill_grouped_offsets(mem, prb->sparse_options), WARN);
+                    if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory))
+                        break;
+                }
                 SAFE(init_ref_memory_args_default_case(
                              exec_arg, mem, ref_mem, prb->attr, res),
                         WARN);
-                // Fill offsets for grouped binary post-op tensors
-                // Note that values are already filled by the default case above
-                if (is_grouped) {
-                    const auto &po = prb->attr.post_ops;
-                    // DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) = BASE * (idx + 1)
-                    const int po_idx
-                            = exec_arg / DNNL_ARG_ATTR_MULTIPLE_POST_OP_BASE
-                            - 1;
-                    const bool is_grouped_bin_po = po_idx >= 0
-                            && po_idx < po.len()
-                            && po.entry[po_idx].is_binary_kind()
-                            && po.entry[po_idx].binary.grouped;
-                    if (is_grouped_bin_po) {
-                        SAFE(fill_grouped_offsets(mem, prb->sparse_options),
-                                WARN);
-                    }
-                }
             } break;
         }
 

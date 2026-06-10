@@ -276,11 +276,16 @@ struct ref_t : public primitive_t {
         bool dyn_scales = pd()->attr()->scales_.get(DNNL_ARG_DST).is_dynamic();
         kernel_ctx.define_int("DYN_SCALES", dyn_scales);
 
-        bool runtime_dims = pd()->has_runtime_dims_or_strides() || ndims > 5;
+        const memory_desc_wrapper src_d(pd()->src_md(0));
+        const memory_desc_wrapper wei_d(pd()->weights_md(0));
+        const memory_desc_wrapper dst_d(pd()->dst_md(0));
+        // Plain layouts use runtime strides to maximize kernel reuse; blocked
+        // layouts require compile-time offset macros.
+        const bool all_plain
+                = src_d.is_plain() && wei_d.is_plain() && dst_d.is_plain();
+        bool runtime_dims
+                = pd()->has_runtime_dims_or_strides() || ndims > 5 || all_plain;
         if (!runtime_dims) {
-            const memory_desc_wrapper src_d(pd()->src_md(0));
-            const memory_desc_wrapper wei_d(pd()->weights_md(0));
-            const memory_desc_wrapper dst_d(pd()->dst_md(0));
             offsets_t off;
             set_offsets(src_d, off.src_off);
             set_offsets(wei_d, off.wei_off);

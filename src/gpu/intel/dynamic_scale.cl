@@ -20,6 +20,10 @@
 #include "gpu/intel/include/types_interop.h"
 #include "gpu/intel/include/types_specific.h"
 
+#define offset6D(d0, d1, d2, d3, d4, d5, s0, s1, s2, s3, s4, s5) \
+    ((d0) * (s0) + (d1) * (s1) + (d2) * (s2) + (d3) * (s3) + (d4) * (s4) \
+            + (d5) * (s5))
+
 inline float clamp_scale(float value) {
     return DST_SCALES_TO_REF(REF_TO_DST_SCALES(value));
 }
@@ -98,9 +102,7 @@ __kernel void dynamic_scale_dst(__global float *restrict src,
 
     long scale_off = 0;
 #if RUNTIME_DIMS
-    scale_off = offset6D(m, n, d0, d1, d2, d3, c_stride_m / 1,
-            c_stride_n / groupSize, c_stride_d0, c_stride_d1, c_stride_d2,
-            c_stride_d3);
+    scale_off = (mb * get_global_size(0) + m) * get_global_size(1) + n;
 #else
     scale_off = DST_SCALE_OFF(n, m, d0, d1, d2, groupSize);
 #endif

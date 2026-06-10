@@ -138,6 +138,8 @@ struct init_pd_args_t {
     bool force_f32_dt;
 };
 
+using init_pd_func_t = std::function<dnnl_status_t(init_pd_args_t &)>;
+
 struct cpu_cache_args_t {
     size_t L2_size = 0;
     size_t L3_size = 0; // = L3_per_core
@@ -312,27 +314,28 @@ inline int fetch_impl(benchdnn_dnnl_wrapper_t<dnnl_primitive_desc_t> &pdw,
 // This is an internal to `init_prim` function that utilizes the logic of
 // creating a `pd` and `prim` and assign them to input wrappers. It allows to
 // remove code duplication and keep all the logic in a single place.
-template <typename func_t, typename prb_t>
-int create_primitive(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &primw,
-        dnnl_engine_t engine, const func_t &init_pd_func, const prb_t *prb,
-        res_t *res, dir_t dir, const_dnnl_primitive_desc_t hint,
-        bool is_service_prim, const_dnnl_memory_desc_t src_md,
-        bool force_f32_dt, bool is_graph_ref = false) {
+inline int create_primitive(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &primw,
+        dnnl_engine_t engine, const init_pd_func_t &init_pd_func,
+        const base_prb_t *base_prb, res_t *res, dir_t dir,
+        const_dnnl_primitive_desc_t hint, bool is_service_prim,
+        const_dnnl_memory_desc_t src_md, bool force_f32_dt,
+        bool is_graph_ref = false) {
     dnnl_status_t status = dnnl_success;
     dnnl_primitive_t prim {};
 
     benchdnn_dnnl_wrapper_t<dnnl_primitive_desc_t> pdw;
 
     init_pd_args_t init_pd_args(
-            res, engine, prb, dir, hint, src_md, force_f32_dt);
+            res, engine, base_prb, dir, hint, src_md, force_f32_dt);
     status = init_pd_func(init_pd_args);
 
-    SAFE(check_dnnl_status(status, prb, res), WARN);
+    SAFE(check_dnnl_status(status, base_prb, res), WARN);
     if (res->state == SKIPPED) return OK;
     if (is_graph_ref && res->state == DEFERRED) return OK;
 
     // Fetch also checks if user requested to skip certain implementations.
-    SAFE(fetch_impl(pdw, init_pd_args, prb->impl_filter, res, is_service_prim),
+    SAFE(fetch_impl(pdw, init_pd_args, base_prb->impl_filter, res,
+                 is_service_prim),
             WARN);
     if (res->state == SKIPPED) return OK;
 
@@ -1122,8 +1125,7 @@ int check_bitwise(dnnl_primitive_t prim, const std::vector<data_kind_t> &kinds,
 
 template <typename prb_t>
 int init_prim_ref_common(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &prim_ref,
-        const prb_t *prb_cpu, res_t *res,
-        dnnl_status_t (*init_pd_func)(init_pd_args_t &)) {
+        const prb_t *prb_cpu, res_t *res, const init_pd_func_t &init_pd_func) {
 
     init_pd_args_t init_pd_args(
             /* res = */ nullptr, get_cpu_engine(), prb_cpu, prb_cpu->dir,

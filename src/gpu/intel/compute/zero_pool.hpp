@@ -21,8 +21,10 @@
 #include <mutex>
 
 #include "common/c_types_map.hpp"
+#include "common/verbose.hpp"
 #include "gpu/intel/engine.hpp"
 #include "gpu/intel/stream.hpp"
+#include "gpu/intel/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -69,7 +71,17 @@ status_t lookup_zero_pool(
         intel::engine_t *engine, size_t chunk_size, zero_pool_t **out_pool);
 void release_zero_pool(zero_pool_t *pool);
 
-inline bool use_zero_pool() { return true; }
+// ONEDNN_GPU_ENABLE_ZERO_POOL=1 selects the zero-pool path (default: scratchpad).
+inline bool use_zero_pool() {
+    static const bool value = [] {
+        bool v = getenv_int_user("GPU_ENABLE_ZERO_POOL", 0) != 0;
+        if (get_verbose(verbose_t::exec_profile))
+            verbose_printf(
+                    "info,gpu,zero_pool:%s\n", v ? "enabled" : "disabled");
+        return v;
+    }();
+    return value;
+}
 
 } // namespace intel
 } // namespace gpu

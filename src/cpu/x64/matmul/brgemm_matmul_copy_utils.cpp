@@ -6114,11 +6114,11 @@ private:
 
     void copy_block(const int nrows, const int ncolumns, bool zeropad) {
 
-        const int direct_nrows = utils::rnd_up(nrows, fp8_rows_per_pack);
-        const int direct_ncolumns = utils::rnd_up(ncolumns, n_blk_step);
+        const int simd_nrows_rounded = utils::rnd_up(nrows, fp8_rows_per_pack);
+        const int simd_ncols_rounded = utils::rnd_up(ncolumns, n_blk_step);
 
-        for_(int k = 0; k < direct_nrows; k += fp8_rows_per_pack)
-        for (int n = 0; n < direct_ncolumns; n += n_blk_step) {
+        for_(int k = 0; k < simd_nrows_rounded; k += fp8_rows_per_pack)
+        for (int n = 0; n < simd_ncols_rounded; n += n_blk_step) {
             const int k_blk = k / k_blk_step;
             const dim_t src_off
                     = k_blk * src_stride_ + n * fp8_rows_per_pack * typesize_;
@@ -6134,9 +6134,7 @@ private:
                         = maybe_EVEX_compress_addr(reg_src, src_off);
                 vmovdqu8(zmm_src_pack, src_addr);
 
-                const auto &src_op
-                        = static_cast<const Xbyak::Operand &>(zmm_src_pack);
-                cvt_helper_.convert(zmm_dst0, zmm_dst1, src_op);
+                cvt_helper_.convert(zmm_dst0, zmm_dst1, zmm_src_pack);
             }
 
             const auto store_addr0
@@ -6333,15 +6331,15 @@ private:
     opmask_t kTail = k1;
 
     void copy_block(const int nrows, const int ncolumns, bool zeropad) {
-        const int direct_nrows = utils::rnd_up(nrows, fp8_rows_per_pack);
-        const int direct_ncolumns = utils::rnd_up(ncolumns, n_blk_step);
+        const int simd_nrows_rounded = utils::rnd_up(nrows, fp8_rows_per_pack);
+        const int simd_ncols_rounded = utils::rnd_up(ncolumns, n_blk_step);
 
         mov(reg_tmp,
                 reinterpret_cast<size_t>(xf16_fp8_plain_to_split_pack_idx));
         vmovdqu8(zmm_permute, ptr[reg_tmp]);
 
-        for_(int k = 0; k < direct_nrows; k += fp8_rows_per_pack)
-        for (int n = 0; n < direct_ncolumns; n += n_blk_step) {
+        for_(int k = 0; k < simd_nrows_rounded; k += fp8_rows_per_pack)
+        for (int n = 0; n < simd_ncols_rounded; n += n_blk_step) {
             const int rows_left = nrows - k;
             const int cols_left = ncolumns - n;
             const int k_blk = k / k_blk_step;
@@ -6577,15 +6575,15 @@ private:
     constexpr static int xmm_work_reg_base_idx = 9;
 
     void copy_block(const int nrows, const int ncolumns, bool zeropad) {
-        const int direct_nrows = utils::rnd_up(nrows, fp8_rows_per_pack);
-        const int direct_ncolumns = utils::rnd_up(ncolumns, n_blk_step);
+        const int simd_nrows_rounded = utils::rnd_up(nrows, fp8_rows_per_pack);
+        const int simd_ncols_rounded = utils::rnd_up(ncolumns, n_blk_step);
 
         mov(reg_tmp,
                 reinterpret_cast<size_t>(xf16_fp8_plain_to_split_pack_idx));
         vmovdqu8(zmm_permute, ptr[reg_tmp]);
 
-        for_(int k = 0; k < direct_nrows; k += fp8_rows_per_pack)
-        for (int n = 0; n < direct_ncolumns; n += n_blk_step) {
+        for_(int k = 0; k < simd_nrows_rounded; k += fp8_rows_per_pack)
+        for (int n = 0; n < simd_ncols_rounded; n += n_blk_step) {
             const int rows_left = nrows - k;
             const int cols_left = ncolumns - n;
             const int k_blk = k / k_blk_step;

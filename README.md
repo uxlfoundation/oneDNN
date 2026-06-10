@@ -214,7 +214,7 @@ GPUs:
 * With SYCL runtime:
   * [Intel oneAPI DPC++/C++ Compiler]
   * OpenCL SDK (with OpenCL 3.0 support)
-  * [oneAPI Level Zero]
+  * [oneAPI Level Zero] with support for API v1.11 or later
   * Intel Graphics Driver with support for OpenCL C 2.0, Intel subgroups
     support, and USM extensions support
 

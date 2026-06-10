@@ -1354,12 +1354,12 @@ float compute_blocking_heuristic_avx2_f32(brgemm_matmul_conf_t &bgmmc,
     size_t max_parallel = matmul.batch * n_chunks;
     const float req_additional_parallel = nthr / max_parallel;
     if (req_additional_parallel > 1) {
-        min_m_blk = saturate<dim_t>(
-                16, max_m_blk, matmul.M / req_additional_parallel);
+        min_m_blk = saturate<dim_t>(nstl::min((dim_t)16, max_m_blk), max_m_blk,
+                matmul.M / req_additional_parallel);
         max_parallel *= div_up(matmul.M, min_m_blk);
     } else if (bm_conf_utils.check_is_transposed(bgmmc.src_tag)
             && matmul.K >= 4096) {
-        min_m_blk = nstl::max((dim_t)16, matmul.M / 4);
+        min_m_blk = nstl::min(max_m_blk, nstl::max((dim_t)16, matmul.M / 4));
     }
 
     bool low_parallel_work = max_parallel % nthr != 0

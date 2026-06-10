@@ -39,14 +39,18 @@ namespace rv64 {
 enum cpu_isa_bit_t : unsigned {
     v_bit = 1u << 0,
     zvfh_bit = 1u << 1,
+    zvfbfwma_bit = 1u << 2,
 };
 
 enum cpu_isa_t : unsigned {
     isa_undef = 0u,
     v = v_bit,
     zvfh = zvfh_bit | v,
+    zvfbfwma = zvfbfwma_bit | v,
     isa_all = ~0u,
 };
+
+bool probe_zvfbfwma();
 
 struct Riscv64Cpu {
 public:
@@ -57,11 +61,13 @@ public:
 
     bool get_has_v() const { return has_v; }
     bool get_has_zvfh() const { return has_zvfh; }
+    bool get_has_zvfbfwma() const { return has_zvfbfwma; }
     uint32_t get_vlen() const { return vlen; }
 
 private:
     bool has_v = false;
     bool has_zvfh = false;
+    bool has_zvfbfwma = false;
     uint32_t vlen = 0;
 
     Riscv64Cpu() {
@@ -73,8 +79,12 @@ private:
         if (has_v) {
             has_zvfh
                     = xbyak_cpu.hasExtension(Xbyak_riscv::RISCVExtension::Zvfh);
+            // HWPROBE / cpuinfo may not surface Zvfbfwma even on silicon
+            // that implements it (firmware / DT lag). Trap-probe instead.
+            has_zvfbfwma = probe_zvfbfwma();
         } else {
             has_zvfh = false;
+            has_zvfbfwma = false;
         }
     }
 };
@@ -86,6 +96,7 @@ inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {
     switch (cpu_isa) {
         case v: return cpu.get_has_v();
         case zvfh: return cpu.get_has_v() && cpu.get_has_zvfh();
+        case zvfbfwma: return cpu.get_has_v() && cpu.get_has_zvfbfwma();
         case isa_undef: return true;
         case isa_all: return false;
     }
@@ -118,7 +129,8 @@ inline int get_vlen_implementation_id(int vlen) {
     ((isa) == isa_undef ? prefix STRINGIFY(any) : \
     ((isa) == v ? prefix STRINGIFY(rvv) : \
     ((isa) == zvfh ? prefix STRINGIFY(rvv_zvfh) : \
-    prefix suffix_if_any)))
+    ((isa) == zvfbfwma ? prefix STRINGIFY(rvv_zvfbfwma) : \
+    prefix suffix_if_any))))
 /* clang-format on */
 
 } // namespace rv64

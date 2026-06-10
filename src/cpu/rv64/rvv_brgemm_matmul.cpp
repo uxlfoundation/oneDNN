@@ -55,7 +55,7 @@ struct jit_pack_a_tile_t : public jit_generator_t {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_pack_a_tile_t)
 
-    // input_typesize: 4 for f32, 2 for f16.
+    // input_typesize: 4 for f32, 2 for bf16/f16.
     explicit jit_pack_a_tile_t(int input_typesize)
         : jit_generator_t("jit_pack_a_tile"), input_typesize_(input_typesize) {
         assert(input_typesize == 2 || input_typesize == 4);
@@ -303,12 +303,13 @@ status_t rvv_brgemm_matmul_t::pd_t::init(engine_t *engine) {
                     && !bias_mdw.has_runtime_dims_or_strides(),
             VERBOSE_UNSUPPORTED_TAG);
 
-    // Accepted: f32/f32/f32, f16/f16/f32 (Zvfh).
+    // Accepted: f32/f32/f32, bf16/bf16/f32 (Zvfbfwma), f16/f16/f32 (Zvfh).
     const auto src_dt = src_mdw.data_type();
     const auto wei_dt = wei_mdw.data_type();
     const bool same_in_dt = src_dt == wei_dt;
-    const bool in_dt_ok
-            = same_in_dt && (src_dt == f32 || (src_dt == f16 && mayiuse(zvfh)));
+    const bool in_dt_ok = same_in_dt
+            && (src_dt == f32 || (src_dt == bf16 && mayiuse(zvfbfwma))
+                    || (src_dt == f16 && mayiuse(zvfh)));
     const bool types_ok = in_dt_ok && dst_mdw.data_type() == f32
             && IMPLICATION(!bias_mdw.is_zero(), bias_mdw.data_type() == f32)
             && desc()->accum_data_type == f32;
@@ -392,12 +393,13 @@ status_t rvv_brgemm_matmul_t::pd_t::init(engine_t *engine) {
     VDISPATCH_MATMUL(
             N_ >= 16, VERBOSE_IMPL_HEURISTIC_FAIL, "N too small for brgemm");
 
-    // f32 keeps the K/A_bytes thresholds; f16 only requires batch*M.
-    const bool is_low_prec = (src_dt == data_type::f16);
+    // f32 keeps the K/A_bytes thresholds; bf16/f16 only require batch*M.
+    const bool is_low_prec
+            = (src_dt == data_type::bf16 || src_dt == data_type::f16);
     if (is_low_prec) {
         VDISPATCH_MATMUL(K_ >= BRGEMM_BK && batch_ * M_ >= 128,
                 VERBOSE_IMPL_HEURISTIC_FAIL,
-                "shape too small for f16 brgemm matmul");
+                "shape too small for bf16/f16 brgemm matmul");
     } else {
         const dim_t A_bytes = N_ * K_ * (dim_t)input_typesize_;
         const auto L2_bytes = platform::get_per_core_cache_size(3);
@@ -416,7 +418,7 @@ status_t rvv_brgemm_matmul_t::pd_t::init(engine_t *engine) {
     const dim_t LDC = N_;
     const dim_t N_brg = batch_ * M_;
 
-    cpu_isa_t brg_isa = src_dt == f16 ? zvfh : v;
+    cpu_isa_t brg_isa = src_dt == bf16 ? zvfbfwma : (src_dt == f16 ? zvfh : v);
 
     brgemm_desc_t brg_desc;
     CHECK(brgemm_desc_init(&brg_desc, brg_isa, brgemm_strd, src_dt, src_dt,
@@ -444,7 +446,7 @@ void rvv_brgemm_matmul_t::pd_t::init_scratchpad() {
 }
 
 status_t rvv_brgemm_matmul_t::execute(const exec_ctx_t &ctx) const {
-    // Byte arithmetic so one code path handles f32/f16.
+    // Byte arithmetic so one code path handles f32/bf16/f16.
     auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS);
     auto dst = CTX_OUT_MEM(float *, DNNL_ARG_DST);

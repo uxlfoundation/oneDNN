@@ -40,11 +40,14 @@ status_t brgemm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
 
     // Supported:
     //   f32  × f32  → f32  (always)
+    //   bf16 × bf16 → f32  (Zvfbfwma widening FMA)
     //   f16  × f16  → f32  (Zvfh widening FMA)
     const bool is_f32 = everyone_is(data_type::f32, dt_a, dt_b);
+    const bool is_bf16
+            = everyone_is(data_type::bf16, dt_a, dt_b) && mayiuse(zvfbfwma);
     const bool is_f16
             = everyone_is(data_type::f16, dt_a, dt_b) && mayiuse(zvfh);
-    if (!is_f32 && !is_f16) return status::unimplemented;
+    if (!is_f32 && !is_bf16 && !is_f16) return status::unimplemented;
 
     *brg = utils::zero<brgemm_desc_t>();
 
@@ -94,11 +97,13 @@ status_t brgemm_kernel_create(
     if (!brg_kernel) return status::invalid_arguments;
     *brg_kernel = nullptr;
 
-    // Pick the per-dtype kernel class. f32 / f16 each live in their
-    // own class so the f32 JIT codegen stays untouched.
+    // Pick the per-dtype kernel class. f32 / bf16 / f16 each live in
+    // their own class so the f32 JIT codegen stays untouched.
     brgemm_kernel_t *kernel = nullptr;
     if (brg.is_f32) {
         kernel = new brgemm_kernel_common_t(brg);
+    } else if (brg.dt_a == data_type::bf16) {
+        kernel = new brgemm_kernel_bf16_t(brg);
     } else if (brg.dt_a == data_type::f16) {
         kernel = new brgemm_kernel_f16_t(brg);
     } else {

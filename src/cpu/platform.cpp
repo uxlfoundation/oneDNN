@@ -122,6 +122,8 @@ bool has_data_type_support(data_type_t data_type) {
 #endif
 #elif DNNL_AARCH64
             return aarch64::mayiuse_bf16();
+#elif DNNL_RV64
+            return rv64::mayiuse(rv64::zvfbfwma);
 #else
             return false;
 #endif

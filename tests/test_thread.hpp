@@ -17,6 +17,7 @@
 #ifndef TEST_THREAD_HPP
 #define TEST_THREAD_HPP
 
+#include <functional>
 #include <iostream>
 
 #include "oneapi/dnnl/dnnl_config.h"
@@ -187,9 +188,7 @@ struct scoped_tp_deactivation_t {
         || DNNL_TBB_THREADING_WITHOUT_CONSTRAINTS
 
 #define RUN_IN_THR_CTX(name) \
-    template <typename F, typename... Args_t> \
-    auto name(const thr_ctx_t &ctx, F &&f, \
-            Args_t &...args) -> decltype(f(args...)) { \
+    inline int name(const thr_ctx_t &ctx, const std::function<int()> &f) { \
 \
         THR_CTX_ASSERT(ctx.core_type == default_thr_ctx.core_type \
                         && ctx.max_concurrency \
@@ -200,7 +199,7 @@ struct scoped_tp_deactivation_t {
                         ? "sequential runtime has no threading" \
                         : "TBB version is too old (>=2021.2 required)"); \
 \
-        return f(args...); \
+        return f(); \
     }
 
 RUN_IN_THR_CTX(create_in_thr_ctx)
@@ -209,9 +208,7 @@ RUN_IN_THR_CTX(execute_in_thr_ctx)
 
 #elif DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_OMP
 #define RUN_IN_THR_CTX(name) \
-    template <typename F, typename... Args_t> \
-    auto name(const thr_ctx_t &ctx, F &&f, \
-            Args_t &...args) -> decltype(f(args...)) { \
+    inline int name(const thr_ctx_t &ctx, const std::function<int()> &f) { \
 \
         THR_CTX_ASSERT(ctx.core_type == default_thr_ctx.core_type, \
                 "core type %d is not supported for OMP runtime\n", \
@@ -219,7 +216,7 @@ RUN_IN_THR_CTX(execute_in_thr_ctx)
 \
         auto max_nthr = omp_get_max_threads(); \
         omp_set_num_threads(ctx.max_concurrency); \
-        auto st = f(args...); \
+        auto st = f(); \
         omp_set_num_threads(max_nthr); \
         return st; \
     }
@@ -230,46 +227,9 @@ RUN_IN_THR_CTX(execute_in_thr_ctx)
 
 #elif DNNL_TBB_THREADING_WITH_CONSTRAINTS
 
-// XXX: Some compilers cannot expand a parameter pack when it is
-// used inside a lambda function. E.g. `[&]{ return f(args...); }`
-// will cause the aforementioned issue. The workaround is to convert
-// the parameter pack into a tuple, then convert it to a parameter pack again
-// and then expand it in the regular way. This way the compiler can digest
-// the code.
-// The return type is not deduced due to the same issue. The solution for
-// that is to assume that the return type is always integer and convert the
-// return value to `dnnl_status_t` if necessary.
-template <typename T>
-constexpr size_t get_number_args() {
-    return std::tuple_size<typename std::remove_reference<T>::type> {};
-}
-
-template <size_t i, typename R>
-struct params_pack_helper_t {
-    template <typename F, typename T, typename... Args_t>
-    static R expand_and_call(F &&f, T &packed_args, Args_t &...unpacked_args) {
-        constexpr size_t cnt = (i == SIZE_MAX)
-                ? get_number_args<decltype(packed_args)>()
-                : i;
-        constexpr size_t idx = get_number_args<decltype(packed_args)>() - cnt;
-        return (R)params_pack_helper_t<cnt - 1, R>::expand_and_call(
-                f, packed_args, unpacked_args..., std::get<idx>(packed_args));
-    }
-};
-
-template <typename R>
-struct params_pack_helper_t<0, R> {
-    template <typename F, typename T, typename... Args_t>
-    static R expand_and_call(F &&f, T &packed_args, Args_t &...unpacked_args) {
-        return (R)f(unpacked_args...);
-    }
-};
-
 #include "oneapi/tbb/info.h"
 #define RUN_IN_THR_CTX(name) \
-    template <typename F, typename... Args_t> \
-    auto name(const thr_ctx_t &ctx, F &&f, \
-            Args_t &...args) -> decltype(f(args...)) { \
+    inline int name(const thr_ctx_t &ctx, const std::function<int()> &f) { \
         static auto core_types = tbb::info:: \
                 core_types(); /* sorted by the relative strength       */ \
 \
@@ -289,11 +249,7 @@ struct params_pack_helper_t<0, R> {
                         .set_core_type(core_type) \
                         .set_max_threads_per_core(ctx.nthr_per_core) \
                         .set_max_concurrency(ctx.max_concurrency)}; \
-        auto packed_args = std::make_tuple(std::ref(args)...); \
-        return (decltype(f(args...)))arena.execute([&] { \
-            return params_pack_helper_t<SIZE_MAX, int>::expand_and_call( \
-                    f, packed_args); \
-        }); \
+        return arena.execute([&] { return f(); }); \
     }
 
 RUN_IN_THR_CTX(create_in_thr_ctx)
@@ -301,24 +257,22 @@ RUN_IN_THR_CTX(execute_in_thr_ctx)
 #undef RUN_IN_THR_CTX
 
 #elif DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
-template <typename F, typename... Args_t>
-auto create_in_thr_ctx(
-        const thr_ctx_t &ctx, F &&f, Args_t &...args) -> decltype(f(args...)) {
+inline int create_in_thr_ctx(
+        const thr_ctx_t &ctx, const std::function<int()> &f) {
     THR_CTX_ASSERT(ctx.core_type == default_thr_ctx.core_type,
             "core type %d is not supported for TP runtime\n", ctx.core_type);
 
     auto tp = dnnl::testing::get_threadpool(ctx);
     auto stp = dnnl::testing::scoped_tp_activation_t(tp);
-    return f(args...);
+    return f();
 }
 
 // The function f shall take an interop obj as last argument
-template <typename F, typename... Args_t>
-auto execute_in_thr_ctx(
-        const thr_ctx_t &ctx, F &&f, Args_t &...args) -> decltype(f(args...)) {
+inline int execute_in_thr_ctx(
+        const thr_ctx_t &ctx, const std::function<int()> &f) {
     THR_CTX_ASSERT(ctx.core_type == default_thr_ctx.core_type,
             "core type %d is not supported for TP runtime\n", ctx.core_type);
-    return f(args...);
+    return f();
 }
 
 #else

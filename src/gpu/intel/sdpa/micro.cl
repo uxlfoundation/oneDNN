@@ -188,26 +188,26 @@ inline void apply_dropout_s_tile(
 #endif
 
 #if USE_SYSTOLIC_UKERNEL
-DECLARE_2D_TILE(q_tile_type, uint, SUBGROUP_SIZE, D_MAX / 2, 1, 1, q_tile_sg_n)
+DECLARE_2D_TILE(q_tile_type, uint, SUBGROUP_SIZE, D_MAX_KQ / 2, 1, 1, q_tile_sg_n)
 #else
-DECLARE_2D_TILE(q_tile_type, FMA_TYPE, SUBGROUP_SIZE, D_MAX, 1, 1, q_tile_sg_n)
+DECLARE_2D_TILE(q_tile_type, FMA_TYPE, SUBGROUP_SIZE, D_MAX_KQ, 1, 1, q_tile_sg_n)
 #endif
 
 #if BLOCK_Q
 
 #if USE_SYSTOLIC_UKERNEL
 DECLARE_2D_TILE_BLOCK_OPS(
-        q_tile_type, uint, SUBGROUP_SIZE, D_MAX / 2, 1, 1, q_tile_sg_n)
+        q_tile_type, uint, SUBGROUP_SIZE, D_MAX_KQ / 2, 1, 1, q_tile_sg_n)
 #else
 DECLARE_2D_TILE_BLOCK_OPS(
-        q_tile_type, FMA_TYPE, SUBGROUP_SIZE, D_MAX, 1, 1, q_tile_sg_n)
+        q_tile_type, FMA_TYPE, SUBGROUP_SIZE, D_MAX_KQ, 1, 1, q_tile_sg_n)
 #endif
 
 #elif Q_ALIGN < 4
 
 #if USE_SYSTOLIC_UKERNEL
 DECLARE_2D_TILE_LOAD_PACKED_VEC(q_tile_type, QRY_DATA_T, VEC_TYPE2,
-        SUBGROUP_SIZE, D_MAX / 2, 1, 1, q_tile_sg_n)
+        SUBGROUP_SIZE, D_MAX_KQ / 2, 1, 1, q_tile_sg_n)
 #endif
 
 #endif
@@ -570,7 +570,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     uint sg_j_vs = sg_ij / ugemm_vs_sg_per_wg_m;
 
     /* SLM allocations -- place in one array to work around compiler bug */
-#define Q_slm_size (D_MAX * ugemm_kq_wg_tile_n * sizeof(QRY_DATA_T))
+#define Q_slm_size (D_MAX_KQ * ugemm_kq_wg_tile_n * sizeof(QRY_DATA_T))
 #define S_slm_size \
     (ugemm_kq_wg_tile_m * ugemm_kq_wg_tile_n * sizeof(QRY_DATA_T))
 #define S_sum_slm_size \
@@ -634,7 +634,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
         /* Store Q tile to SLM */
         tile_store_t_slm_src1(
-                &Q_tile, Q_slm, ugemm_kq_sg_tile_n, D_MAX, q0_copy, 0);
+                &Q_tile, Q_slm, ugemm_kq_sg_tile_n, D_MAX_KQ, q0_copy, 0);
 
 #if Q_ARRIVE_AWAIT_BARRIER
         intel_work_group_barrier_arrive(CLK_LOCAL_MEM_FENCE);
@@ -687,7 +687,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                 /* r */ k,
                 /* c */ num_key_groups,
                 /* rmax */ ugemm_kq_wg_tile_m,
-                /* cmax */ D_MAX / KEY_GROUP_SIZE,
+                /* cmax */ D_MAX_KQ / KEY_GROUP_SIZE,
                 /* ld */ ldkq,
                 /* sg_id */ sg_ij,
                 /* n_sg */ sg_per_wg,
@@ -700,7 +700,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                 /* r */ k,
                 /* c */ num_key_groups,
                 /* rmax */ ugemm_kq_wg_tile_m,
-                /* cmax */ D_MAX / KEY_GROUP_SIZE,
+                /* cmax */ D_MAX_KQ / KEY_GROUP_SIZE,
                 /* ld */ ldkq,
                 /* sg_id */ sg_ij,
                 /* n_sg */ sg_per_wg,
@@ -814,7 +814,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         s_tile_type S_tile
 #endif
                 = ugemm_kq(AS_KEY_TILE_PTR(K), ldk, AS_QRY_SLM_TILE_PTR(Q_slm),
-                        D_MAX, k0end, ugemm_kq_wg_tile_n, d_qk, k0, 0, 0, sg_i_kq,
+                        D_MAX_KQ, k0end, ugemm_kq_wg_tile_n, d_qk, k0, 0, 0, sg_i_kq,
                         sg_j_kq, (local char *)ugemm_slm
 #if KEY_SCALES == QUANTIZE_2D
                         ,
@@ -888,7 +888,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         /* Prefetch V tile. */
         cooperative_prefetch_2d_maybe_rem(
                 /* ptr */ V,
-                /* r */ d,
+                /* r */ d_v,
                 /* c */ k0end - k0,
                 /* rmax */ PREFETCH_D_MAX,
                 /* cmax */ ugemm_kq_wg_tile_m,
@@ -904,7 +904,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                 /* ptr */ V_scales,
                 /* r */ num_val_groups,
                 /* c */ k0end - k0,
-                /* rmax */ PREFETCH_D_MAX / VAL_GROUP_SIZE,
+                /* rmax */ D_MAX_V / VAL_GROUP_SIZE,
                 /* cmax */ k_chunk,
                 /* ld */ ldvq,
                 /* sg_id */ sg_ij,
@@ -918,7 +918,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                 /* ptr */ V_zp,
                 /* r */ num_val_groups,
                 /* c */ k0end - k0,
-                /* rmax */ PREFETCH_D_MAX / VAL_GROUP_SIZE,
+                /* rmax */ D_MAX_V / VAL_GROUP_SIZE,
                 /* cmax */ k_chunk,
                 /* ld */ ldvq,
                 /* sg_id */ sg_ij,
@@ -1029,7 +1029,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                     /* r */ k0end - k0 - ugemm_kq_wg_tile_m,
                     /* c */ d_qk,
                     /* rmax */ ugemm_kq_wg_tile_m,
-                    /* cmax */ D_MAX,
+                    /* cmax */ D_MAX_KQ,
                     /* ld*/ ldk,
                     /* sg_id */ sg_ij,
                     /* n_sg */ sg_per_wg,
@@ -1043,7 +1043,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                     /* r */ k0end - k0 - ugemm_kq_wg_tile_m,
                     /* c */ num_key_groups,
                     /* rmax */ ugemm_kq_wg_tile_m,
-                    /* cmax */ D_MAX / KEY_GROUP_SIZE,
+                    /* cmax */ D_MAX_KQ / KEY_GROUP_SIZE,
                     /* ld */ ldkq,
                     /* sg_id */ sg_ij,
                     /* n_sg */ sg_per_wg,
@@ -1057,7 +1057,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                     /* r */ k0end - k0 - ugemm_kq_wg_tile_m,
                     /* c */ num_key_groups,
                     /* rmax */ ugemm_kq_wg_tile_m,
-                    /* cmax */ D_MAX / KEY_GROUP_SIZE,
+                    /* cmax */ D_MAX_KQ / KEY_GROUP_SIZE,
                     /* ld */ ldkq,
                     /* sg_id */ sg_ij,
                     /* n_sg */ sg_per_wg,
@@ -1088,7 +1088,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                     /* r */ k0end - k0 - ugemm_kq_wg_tile_m,
                     /* c */ q - wg_j0,
                     /* rmax */ ugemm_kq_wg_tile_m,
-                    /* cmax */ (ugemm_kq_wg_tile_n * PREFETCH_D_MAX) / D_MAX,
+                    /* cmax */ (ugemm_kq_wg_tile_n * PREFETCH_D_MAX) / D_MAX_KQ,
                     /* ld */ MSK_S2,
                     /* sg_id */ sg_ij,
                     /* n_sg */ sg_per_wg,

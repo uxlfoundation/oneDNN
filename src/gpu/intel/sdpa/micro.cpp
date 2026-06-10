@@ -834,7 +834,6 @@ static void init_conf_common(conf_t &conf, pd_type *pd) {
     conf.with_causal_mask = pd->with_causal_mask();
 
     conf.subgroup_size = pd->sg_size();
-    conf.d_max = pd->d_max();
 
     bool d_full = (d->head_size() == pd->d_max());
     conf.d_full = d_full;
@@ -849,6 +848,8 @@ static void init_conf_common(conf_t &conf, pd_type *pd) {
 status_t micro_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     using namespace micro;
     init_conf_common(conf, this);
+    conf.d_max_kq = d_max_kq();
+    conf.d_max_v = d_max_v();
 
     conf.require_stateless_addressing = has_large_buffers();
 
@@ -918,7 +919,7 @@ status_t micro_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     int tile_v = vs_wg_tile_m;
 
     bool d_full = conf.d_full;
-    bool v_full = (desc()->head_size() == tile_v);
+    bool v_full = (desc()->values() == tile_v);
 
     auto Q = desc()->queries();
     const dim_t Q_per_kv_group = (Q == 1 ? Q * conf.kv_group_size : Q);
@@ -940,7 +941,7 @@ status_t micro_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
         conf.prefetch_k0 = true;
         conf.prefetch_k = true;
         conf.prefetch_v = true;
-        conf.prefetch_d_max = nstl::min(d_max(), 64);
+        conf.prefetch_d_max = nstl::min(d_max_kq(), 64);
         bool no_rem = d_full && v_full && (desc()->keys() % tile_k == 0);
         conf.prefetch_remainder = !no_rem;
     } else {
@@ -964,6 +965,7 @@ status_t micro_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
 
 status_t micro_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
     init_conf_common(conf, this);
+    conf.d_max = d_max();
 
     conf.require_stateless_addressing = has_large_buffers();
     conf.with_dS = with_dS();
@@ -1113,7 +1115,8 @@ status_t micro_fwd_params_t::get_kernel_ctx(
     kernel_ctx.define_int("WITH_CAUSAL_MASK", with_causal_mask);
 
     kernel_ctx.define_int("SUBGROUP_SIZE", subgroup_size);
-    kernel_ctx.define_int("D_MAX", d_max);
+    kernel_ctx.define_int("D_MAX_KQ", d_max_kq);
+    kernel_ctx.define_int("D_MAX_V", d_max_v);
 
     kernel_ctx.define_int("BLOCK_Q", block_q);
     kernel_ctx.define_int("BLOCK_A", block_a);

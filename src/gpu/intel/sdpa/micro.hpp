@@ -341,13 +341,22 @@ struct micro_fwd_t : public primitive_t {
         int sg_size() const { return sg_size_; }
         bool use_systolic_ukernel() const { return use_systolic_ukernel_; }
 
-        // Block size for head_size, which must be hard-coded into the kernel.
-        int d_max() const {
+        // Block size for the Q/K head dim, baked into the kernel.
+        int d_max_kq() const {
             int head_size = into<int>(desc()->head_size());
             for (int i = 32; i <= 1024; i *= 2)
                 if (head_size <= i) return i;
             return head_size;
         }
+        // Block size for the V/output head dim, baked into the kernel.
+        int d_max_v() const {
+            int v_size = into<int>(desc()->values());
+            for (int i = 32; i <= 1024; i *= 2)
+                if (v_size <= i) return i;
+            return v_size;
+        }
+        // Alias kept for ukernel tileC/tileR sites that use the KQ dimension.
+        int d_max() const { return d_max_kq(); }
 
         compute::gpu_arch_t arch() const { return arch_; }
         micro_fwd_params_t conf;

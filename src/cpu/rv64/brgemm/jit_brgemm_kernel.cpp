@@ -416,6 +416,383 @@ void brgemm_kernel_common_t::operator()(brgemm_kernel_params_t *p) const {
     (*jit_kernel_)(p);
 }
 
+// =====================================================================
+// f16 JIT kernel: f16 x f16 -> f32 via widening FMA (Zvfh).
+// =====================================================================
+
+struct jit_brgemm_f16_kernel_t : public jit_generator_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_f16_kernel_t)
+
+    jit_brgemm_f16_kernel_t(const brgemm_desc_t &brg)
+        : jit_generator_t("rv64_brgemm_kernel_f16_jit"), brg_(brg) {}
+
+    void operator()(brgemm_kernel_params_t *p) const {
+        jit_generator_t::operator()(p);
+    }
+
+    const brgemm_desc_t &get_brg() const { return brg_; }
+
+protected:
+    void generate() override;
+
+private:
+    brgemm_desc_t brg_;
+};
+
+void jit_brgemm_f16_kernel_t::generate() {
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
+    const dim_t LDA_bytes = brg_.LDA * brg_.typesize_A; // f16 → ×2
+    const dim_t LDB_bytes = brg_.LDB * brg_.typesize_B; // f16 → ×2
+    const dim_t LDC_bytes = brg_.LDC * brg_.typesize_C; // f32 → ×4
+    const dim_t N_stride_B = 4 * LDB_bytes;
+    const dim_t N_stride_C = 4 * LDC_bytes;
+
+    const bool use_single_b = (3 * LDB_bytes <= 2047);
+
+    const Reg reg_param = a0;
+    const Reg reg_tmp0 = a0;
+
+    const Reg reg_A = a1;
+    const Reg reg_n = a2;
+    const Reg reg_C = a3;
+    const Reg reg_k = a4;
+    const Reg reg_K_main = a5;
+    const Reg reg_B0 = a6;
+    const Reg reg_B1 = a7;
+
+    const Reg reg_lda = t0;
+    const Reg reg_ldb = t1;
+    const Reg reg_ldc = t2;
+    const Reg reg_K_val = t3;
+    const Reg reg_N = t4;
+    const Reg reg_beta = t5;
+    const Reg reg_tmp1 = t6;
+
+    const Reg reg_A_base = s0;
+    const Reg reg_B_base = s1;
+    const Reg reg_B2 = s2;
+    const Reg reg_B3 = s3;
+    const Reg reg_bias = s4;
+    const Reg reg_M = s5; // M saved for repeated vsetvli configs
+
+    const FReg freg_b0 = fa0;
+    const FReg freg_b1 = fa1;
+    const FReg freg_b2 = fa2;
+    const FReg freg_b3 = fa3;
+
+    const VReg v_c0(0);
+    const VReg v_c1(4);
+    const VReg v_c2(8);
+    const VReg v_c3(12);
+    const VReg v_a0(16); // EMUL=m2 at e16: occupies v16-v17
+    const VReg v_a1(20); // EMUL=m2 at e16: occupies v20-v21
+    const VReg v_tmp(24);
+
+    addi(sp, sp, -56);
+    sd(reg_A_base, sp, 0);
+    sd(reg_B_base, sp, 8);
+    sd(reg_B2, sp, 16);
+    sd(reg_B3, sp, 24);
+    sd(reg_bias, sp, 32);
+    sd(reg_M, sp, 40);
+
+    ld(reg_A_base, reg_param, 0);
+    ld(reg_B_base, reg_param, 8);
+    ld(reg_C, reg_param, 16);
+    ld(reg_N, reg_param, 24);
+    ld(reg_M, reg_param, 32); // keep M around to re-issue vsetvli
+    ld(reg_K_val, reg_param, 40);
+    lw(reg_beta, reg_param, 48);
+    ld(reg_bias, reg_param, 56);
+
+    // Initial vsetvli for C/bias work (e32 m4).
+    vsetvli(x0, reg_M, SEW::e32, LMUL::m4);
+
+    li(reg_lda, LDA_bytes);
+    li(reg_ldb, LDB_bytes);
+    li(reg_ldc, LDC_bytes);
+
+    if (use_single_b) {
+        li(s2, N_stride_B);
+        li(s3, N_stride_C);
+    }
+
+    srli(reg_K_main, reg_K_val, 2);
+    slli(reg_K_main, reg_K_main, 2);
+
+    mv(reg_n, x0);
+
+    Label lbl_n_loop, lbl_n_tail, lbl_n_tail_loop, lbl_n_end;
+
+    L(lbl_n_loop);
+    addi(reg_tmp0, reg_n, 4);
+    blt(reg_N, reg_tmp0, lbl_n_tail);
+
+    mv(reg_A, reg_A_base);
+
+    mv(reg_B0, reg_B_base);
+    if (!use_single_b) {
+        add(reg_B1, reg_B_base, reg_ldb);
+        add(reg_B2, reg_B1, reg_ldb);
+        add(reg_B3, reg_B2, reg_ldb);
+    }
+
+    // Zero accumulators at e32 m4 (4 phys regs each).
+    vmv_v_i(v_c0, 0);
+    vmv_v_i(v_c1, 0);
+    vmv_v_i(v_c2, 0);
+    vmv_v_i(v_c3, 0);
+
+    // Switch to e16/m2 for the K loop. VLMAX matches → vl unchanged.
+    vsetvli(x0, reg_M, SEW::e16, LMUL::m2);
+
+    mv(reg_k, x0);
+    Label lbl_k_main_end, lbl_k_tail, lbl_k_tail_end;
+
+    auto emit_b_load = [&]() {
+        flh(freg_b0, reg_B0, 0);
+        if (use_single_b) {
+            flh(freg_b1, reg_B0, LDB_bytes);
+            flh(freg_b2, reg_B0, 2 * LDB_bytes);
+            flh(freg_b3, reg_B0, 3 * LDB_bytes);
+        } else {
+            flh(freg_b1, reg_B1, 0);
+            flh(freg_b2, reg_B2, 0);
+            flh(freg_b3, reg_B3, 0);
+        }
+    };
+
+    auto emit_b_advance = [&]() {
+        addi(reg_B0, reg_B0, 2);
+        if (!use_single_b) {
+            addi(reg_B1, reg_B1, 2);
+            addi(reg_B2, reg_B2, 2);
+            addi(reg_B3, reg_B3, 2);
+        }
+    };
+
+    auto emit_pipelined_step = [&](const VReg &v_next, const VReg &v_cur) {
+        vle16_v(v_next, reg_A);
+        add(reg_A, reg_A, reg_lda);
+        emit_b_load();
+        vfwmacc_vf(v_c0, freg_b0, v_cur);
+        vfwmacc_vf(v_c1, freg_b1, v_cur);
+        vfwmacc_vf(v_c2, freg_b2, v_cur);
+        vfwmacc_vf(v_c3, freg_b3, v_cur);
+        emit_b_advance();
+    };
+
+    auto emit_drain_step = [&](const VReg &v_cur) {
+        emit_b_load();
+        vfwmacc_vf(v_c0, freg_b0, v_cur);
+        vfwmacc_vf(v_c1, freg_b1, v_cur);
+        vfwmacc_vf(v_c2, freg_b2, v_cur);
+        vfwmacc_vf(v_c3, freg_b3, v_cur);
+        emit_b_advance();
+    };
+
+    beq(reg_K_main, x0, lbl_k_tail);
+
+    addi(reg_tmp1, reg_K_main, -4);
+
+    vle16_v(v_a0, reg_A);
+    add(reg_A, reg_A, reg_lda);
+
+    align(16);
+    {
+        Label lbl_pipe, lbl_pipe_end;
+        L(lbl_pipe);
+        bge(reg_k, reg_tmp1, lbl_pipe_end);
+
+        emit_pipelined_step(v_a1, v_a0);
+        emit_pipelined_step(v_a0, v_a1);
+        emit_pipelined_step(v_a1, v_a0);
+        emit_pipelined_step(v_a0, v_a1);
+
+        addi(reg_k, reg_k, 4);
+        j_(lbl_pipe);
+        L(lbl_pipe_end);
+    }
+
+    emit_pipelined_step(v_a1, v_a0);
+    emit_pipelined_step(v_a0, v_a1);
+    emit_pipelined_step(v_a1, v_a0);
+    emit_drain_step(v_a1);
+    addi(reg_k, reg_k, 4);
+
+    L(lbl_k_main_end);
+
+    L(lbl_k_tail);
+    bge(reg_k, reg_K_val, lbl_k_tail_end);
+
+    vle16_v(v_a0, reg_A);
+    add(reg_A, reg_A, reg_lda);
+    emit_b_load();
+    vfwmacc_vf(v_c0, freg_b0, v_a0);
+    vfwmacc_vf(v_c1, freg_b1, v_a0);
+    vfwmacc_vf(v_c2, freg_b2, v_a0);
+    vfwmacc_vf(v_c3, freg_b3, v_a0);
+    emit_b_advance();
+    addi(reg_k, reg_k, 1);
+    j_(lbl_k_tail);
+
+    L(lbl_k_tail_end);
+
+    // Switch back to e32 m4 for bias add + C store (f32 ops).
+    vsetvli(x0, reg_M, SEW::e32, LMUL::m4);
+
+    {
+        Label lbl_no_bias;
+        beq(reg_bias, x0, lbl_no_bias);
+        vle32_v(v_tmp, reg_bias);
+        vfadd_vv(v_c0, v_c0, v_tmp);
+        vfadd_vv(v_c1, v_c1, v_tmp);
+        vfadd_vv(v_c2, v_c2, v_tmp);
+        vfadd_vv(v_c3, v_c3, v_tmp);
+        L(lbl_no_bias);
+    }
+
+    {
+        mv(reg_tmp0, reg_C);
+        Label lbl_bz, lbl_store_done;
+        beq(reg_beta, x0, lbl_bz);
+
+        vle32_v(v_tmp, reg_tmp0);
+        vfadd_vv(v_tmp, v_tmp, v_c0);
+        vse32_v(v_tmp, reg_tmp0);
+        add(reg_tmp0, reg_tmp0, reg_ldc);
+
+        vle32_v(v_tmp, reg_tmp0);
+        vfadd_vv(v_tmp, v_tmp, v_c1);
+        vse32_v(v_tmp, reg_tmp0);
+        add(reg_tmp0, reg_tmp0, reg_ldc);
+
+        vle32_v(v_tmp, reg_tmp0);
+        vfadd_vv(v_tmp, v_tmp, v_c2);
+        vse32_v(v_tmp, reg_tmp0);
+        add(reg_tmp0, reg_tmp0, reg_ldc);
+
+        vle32_v(v_tmp, reg_tmp0);
+        vfadd_vv(v_tmp, v_tmp, v_c3);
+        vse32_v(v_tmp, reg_tmp0);
+
+        j_(lbl_store_done);
+
+        L(lbl_bz);
+        vse32_v(v_c0, reg_tmp0);
+        add(reg_tmp0, reg_tmp0, reg_ldc);
+        vse32_v(v_c1, reg_tmp0);
+        add(reg_tmp0, reg_tmp0, reg_ldc);
+        vse32_v(v_c2, reg_tmp0);
+        add(reg_tmp0, reg_tmp0, reg_ldc);
+        vse32_v(v_c3, reg_tmp0);
+
+        L(lbl_store_done);
+    }
+
+    if (use_single_b) {
+        add(reg_B_base, reg_B_base, s2);
+        add(reg_C, reg_C, s3);
+    } else {
+        li(reg_tmp1, N_stride_B);
+        add(reg_B_base, reg_B_base, reg_tmp1);
+        li(reg_tmp1, N_stride_C);
+        add(reg_C, reg_C, reg_tmp1);
+    }
+
+    addi(reg_n, reg_n, 4);
+    j_(lbl_n_loop);
+
+    // ---- N tail: 1 column at a time ----
+    L(lbl_n_tail);
+
+    L(lbl_n_tail_loop);
+    bge(reg_n, reg_N, lbl_n_end);
+
+    mv(reg_A, reg_A_base);
+    mv(reg_B0, reg_B_base);
+
+    // We're at e32 m4 here (after the previous iter or initial setup).
+    vmv_v_i(v_c0, 0);
+
+    // Switch to e16 m2 for the single-column K loop.
+    vsetvli(x0, reg_M, SEW::e16, LMUL::m2);
+
+    mv(reg_k, x0);
+    Label lbl_kt2, lbl_kt2_end;
+
+    L(lbl_kt2);
+    bge(reg_k, reg_K_val, lbl_kt2_end);
+
+    vle16_v(v_a0, reg_A);
+    flh(freg_b0, reg_B0, 0);
+    vfwmacc_vf(v_c0, freg_b0, v_a0);
+    add(reg_A, reg_A, reg_lda);
+    addi(reg_B0, reg_B0, 2);
+    addi(reg_k, reg_k, 1);
+    j_(lbl_kt2);
+
+    L(lbl_kt2_end);
+
+    // Back to e32 m4 for bias add + C store.
+    vsetvli(x0, reg_M, SEW::e32, LMUL::m4);
+
+    {
+        Label lbl_no_bias2;
+        beq(reg_bias, x0, lbl_no_bias2);
+        vle32_v(v_tmp, reg_bias);
+        vfadd_vv(v_c0, v_c0, v_tmp);
+        L(lbl_no_bias2);
+    }
+
+    {
+        Label lbl_bz2, lbl_done2;
+        beq(reg_beta, x0, lbl_bz2);
+        vle32_v(v_tmp, reg_C);
+        vfadd_vv(v_tmp, v_tmp, v_c0);
+        vse32_v(v_tmp, reg_C);
+        j_(lbl_done2);
+        L(lbl_bz2);
+        vse32_v(v_c0, reg_C);
+        L(lbl_done2);
+    }
+
+    add(reg_B_base, reg_B_base, reg_ldb);
+    add(reg_C, reg_C, reg_ldc);
+
+    addi(reg_n, reg_n, 1);
+    j_(lbl_n_tail_loop);
+
+    L(lbl_n_end);
+
+    ld(reg_A_base, sp, 0);
+    ld(reg_B_base, sp, 8);
+    ld(reg_B2, sp, 16);
+    ld(reg_B3, sp, 24);
+    ld(reg_bias, sp, 32);
+    ld(reg_M, sp, 40);
+    addi(sp, sp, 56);
+    ret();
+#else
+    ret();
+#endif
+}
+
+brgemm_kernel_f16_t::brgemm_kernel_f16_t(const brgemm_desc_t &brg)
+    : brg_(brg), jit_kernel_(new jit_brgemm_f16_kernel_t(brg)) {}
+
+brgemm_kernel_f16_t::~brgemm_kernel_f16_t() {
+    delete jit_kernel_;
+}
+
+status_t brgemm_kernel_f16_t::create_kernel() {
+    return jit_kernel_->create_kernel();
+}
+
+void brgemm_kernel_f16_t::operator()(brgemm_kernel_params_t *p) const {
+    (*jit_kernel_)(p);
+}
+
 } // namespace rv64
 } // namespace cpu
 } // namespace impl

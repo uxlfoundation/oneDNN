@@ -24,7 +24,7 @@ namespace cpu {
 namespace rv64 {
 
 struct isa_info_t {
-    isa_info_t(cpu_isa_t aisa) : isa(aisa) {};
+    isa_info_t(cpu_isa_t aisa) : isa(aisa) {}
     cpu_isa_t isa;
 };
 

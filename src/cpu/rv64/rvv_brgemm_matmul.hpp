@@ -55,6 +55,8 @@ struct rvv_brgemm_matmul_t : public primitive_t {
         dim_t K_ = 0;
         dim_t batch_ = 0;
         bool weights_are_broadcast_ = false;
+        // Input element size in bytes (4=f32, 2=f16). dst is always f32.
+        int input_typesize_ = 4;
 
     private:
         void init_scratchpad();

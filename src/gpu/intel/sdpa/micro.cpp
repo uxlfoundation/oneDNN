@@ -1581,7 +1581,8 @@ status_t micro_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     const int kv_group_size = pd()->conf.kv_group_size;
     const dim_t Q = pd()->desc()->queries();
     const dim_t K = pd()->desc()->keys();
-    const dim_t D = pd()->desc()->head_size();
+    const dim_t D_qk = pd()->desc()->head_size();
+    const dim_t D_v = pd()->desc()->values();
     const dim_t Q_per_kv_group = (Q == 1 ? Q * kv_group_size : Q);
 
     const fwd_config_t config = {conf.ukernel_config.unroll_m_kq,
@@ -1636,7 +1637,8 @@ status_t micro_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     } else {
         arg_list.append(scale);
     }
-    arg_list.append((int)D);
+    arg_list.append((int)D_qk);
+    arg_list.append((int)D_v);
     arg_list.append((int)K);
     arg_list.append((int)Q);
     arg_list.append(key_scales);

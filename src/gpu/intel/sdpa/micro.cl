@@ -485,7 +485,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #else
         const global SCALE_DATA_T *scale_ptr,
 #endif
-        int d, int k, int q, const global KEY_ATTR_SCALES_DATA_T *K_scales,
+        int d_qk, int d_v, int k, int q, const global KEY_ATTR_SCALES_DATA_T *K_scales,
         const global KEY_ATTR_ZP_DATA_T *K_zp,
         const global VAL_ATTR_SCALES_DATA_T *V_scales,
         const global VAL_ATTR_ZP_DATA_T *V_zp, const int attn_mask_type
@@ -555,11 +555,11 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
 #if KEY_SCALES || KEY_ZERO_POINTS
     uint ldkq = KEY_D3;
-    uint num_key_groups = d / KEY_GROUP_SIZE;
+    uint num_key_groups = d_qk / KEY_GROUP_SIZE;
 #endif
 #if VAL_SCALES || VAL_ZERO_POINTS
-    uint ldvq = div_up(d, VAL_GROUP_SIZE);
-    uint num_val_groups = d / VAL_GROUP_SIZE;
+    uint ldvq = div_up(d_v, VAL_GROUP_SIZE);
+    uint num_val_groups = d_v / VAL_GROUP_SIZE;
 #endif
 
     /* Subgroup IDs for each GEMM */
@@ -630,7 +630,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         q_tile_type Q_tile;
         uint q0_copy = q_tile_sg_n * sg_ij;
 
-        tile_load_src1(&Q_tile, Q, d, q_group_size, ldq, 0, wg_j0 + q0_copy);
+        tile_load_src1(&Q_tile, Q, d_qk, q_group_size, ldq, 0, wg_j0 + q0_copy);
 
         /* Store Q tile to SLM */
         tile_store_t_slm_src1(
@@ -672,7 +672,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         cooperative_prefetch_2d_k(
                 /* ptr */ K,
                 /* r */ k,
-                /* c */ d,
+                /* c */ d_qk,
                 /* rmax */ ugemm_kq_wg_tile_m,
                 /* cmax */ PREFETCH_D_MAX,
                 /* ld */ ldk,
@@ -814,7 +814,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         s_tile_type S_tile
 #endif
                 = ugemm_kq(AS_KEY_TILE_PTR(K), ldk, AS_QRY_SLM_TILE_PTR(Q_slm),
-                        D_MAX, k0end, ugemm_kq_wg_tile_n, d, k0, 0, 0, sg_i_kq,
+                        D_MAX, k0end, ugemm_kq_wg_tile_n, d_qk, k0, 0, 0, sg_i_kq,
                         sg_j_kq, (local char *)ugemm_slm
 #if KEY_SCALES == QUANTIZE_2D
                         ,
@@ -1027,7 +1027,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             cooperative_prefetch_2d_k(
                     /* ptr */ K_next,
                     /* r */ k0end - k0 - ugemm_kq_wg_tile_m,
-                    /* c */ d,
+                    /* c */ d_qk,
                     /* rmax */ ugemm_kq_wg_tile_m,
                     /* cmax */ D_MAX,
                     /* ld*/ ldk,
@@ -1112,7 +1112,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         a_tile_type A_tile1
 #endif
                 = ugemm_vs(AS_VAL_TILE_PTR(V), ldv, AS_QRY_SLM_TILE_PTR(S_slm),
-                        ugemm_kq_wg_tile_m, d, ugemm_kq_wg_tile_n, k_chunk, 0,
+                        ugemm_kq_wg_tile_m, d_v, ugemm_kq_wg_tile_n, k_chunk, 0,
                         0, 0, sg_i_vs, sg_j_vs, (local char *)ugemm_slm
 #if VAL_SCALES == QUANTIZE_2D
                         ,
@@ -1215,13 +1215,13 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     uint sg_j0_vs = sg_j_vs * ugemm_vs_sg_tile_n + wg_j0;
 
 #if BLOCK_2D_A
-    tile_store_block2d(A_tile_dst, (global DST_TILE_DATA_T *)A, d, q_group_size,
+    tile_store_block2d(A_tile_dst, (global DST_TILE_DATA_T *)A, d_v, q_group_size,
             lda, sg_i0_vs, sg_j0_vs);
 #elif BLOCK_A
     tile_store_block_rem_q(A_tile_dst, (global DST_TILE_DATA_T *)A,
             q_group_size, lda, sg_i0_vs, sg_j0_vs);
 #else
-    tile_store(A_tile_dst, (global DST_TILE_DATA_T *)A, d, q_group_size, lda,
+    tile_store(A_tile_dst, (global DST_TILE_DATA_T *)A, d_v, q_group_size, lda,
             sg_i0_vs, sg_j0_vs);
 #endif
 }

@@ -82,7 +82,7 @@ struct micro_fwd_params_t : trivially_serializable_t<micro_fwd_params_t> {
     bool invert_scale, with_attn_scale, with_host_scale, with_attn_mask,
             broadcast_mask_q, with_causal_mask;
     uint8_t padding1[2] = {0};
-    int subgroup_size, d_max;
+    int subgroup_size, d_max_kq, d_max_v;
 
     bool d_full, arch_gte_hpc;
     bool block_q, block_a, block_2d_a;
@@ -233,8 +233,6 @@ struct micro_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_SDPA(set_default_formats() == status::success,
                     VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_SDPA(desc()->values() == desc()->head_size(),
-                    "values does not match head size");
 
             if (utils::one_of(desc()->key_md()->data_type, u4, s4)) {
                 VDISPATCH_SDPA(desc()->keys() % 2 == 0,

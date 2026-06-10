@@ -307,8 +307,8 @@ status_t rvv_brgemm_matmul_t::pd_t::init(engine_t *engine) {
     const auto src_dt = src_mdw.data_type();
     const auto wei_dt = wei_mdw.data_type();
     const bool same_in_dt = src_dt == wei_dt;
-    const bool in_dt_ok = same_in_dt
-            && (src_dt == f32 || (src_dt == f16 && mayiuse(zvfh)));
+    const bool in_dt_ok
+            = same_in_dt && (src_dt == f32 || (src_dt == f16 && mayiuse(zvfh)));
     const bool types_ok = in_dt_ok && dst_mdw.data_type() == f32
             && IMPLICATION(!bias_mdw.is_zero(), bias_mdw.data_type() == f32)
             && desc()->accum_data_type == f32;

@@ -488,7 +488,9 @@ void jit_brgemm_f16_kernel_t::generate() {
     const VReg v_a1(20); // EMUL=m2 at e16: occupies v20-v21
     const VReg v_tmp(24);
 
-    addi(sp, sp, -56);
+    // sp shrinks by 48 bytes: 6 callee-saved regs × 8 = 48,
+    // which keeps sp 16-byte aligned per the RISC-V LP64 ABI.
+    addi(sp, sp, -48);
     sd(reg_A_base, sp, 0);
     sd(reg_B_base, sp, 8);
     sd(reg_B2, sp, 16);
@@ -506,7 +508,7 @@ void jit_brgemm_f16_kernel_t::generate() {
     ld(reg_bias, reg_param, 56);
 
     // Initial vsetvli for C/bias work (e32 m4).
-    vsetvli(x0, reg_M, SEW::e32, LMUL::m4);
+    vsetvli(x0, reg_M, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
 
     li(reg_lda, LDA_bytes);
     li(reg_ldb, LDB_bytes);
@@ -544,7 +546,7 @@ void jit_brgemm_f16_kernel_t::generate() {
     vmv_v_i(v_c3, 0);
 
     // Switch to e16/m2 for the K loop. VLMAX matches → vl unchanged.
-    vsetvli(x0, reg_M, SEW::e16, LMUL::m2);
+    vsetvli(x0, reg_M, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
 
     mv(reg_k, x0);
     Label lbl_k_main_end, lbl_k_tail, lbl_k_tail_end;
@@ -639,7 +641,7 @@ void jit_brgemm_f16_kernel_t::generate() {
     L(lbl_k_tail_end);
 
     // Switch back to e32 m4 for bias add + C store (f32 ops).
-    vsetvli(x0, reg_M, SEW::e32, LMUL::m4);
+    vsetvli(x0, reg_M, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
 
     {
         Label lbl_no_bias;
@@ -716,7 +718,7 @@ void jit_brgemm_f16_kernel_t::generate() {
     vmv_v_i(v_c0, 0);
 
     // Switch to e16 m2 for the single-column K loop.
-    vsetvli(x0, reg_M, SEW::e16, LMUL::m2);
+    vsetvli(x0, reg_M, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
 
     mv(reg_k, x0);
     Label lbl_kt2, lbl_kt2_end;
@@ -735,7 +737,7 @@ void jit_brgemm_f16_kernel_t::generate() {
     L(lbl_kt2_end);
 
     // Back to e32 m4 for bias add + C store.
-    vsetvli(x0, reg_M, SEW::e32, LMUL::m4);
+    vsetvli(x0, reg_M, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
 
     {
         Label lbl_no_bias2;
@@ -771,7 +773,7 @@ void jit_brgemm_f16_kernel_t::generate() {
     ld(reg_B3, sp, 24);
     ld(reg_bias, sp, 32);
     ld(reg_M, sp, 40);
-    addi(sp, sp, 56);
+    addi(sp, sp, 48);
     ret();
 #else
     ret();

@@ -1091,6 +1091,49 @@ void compute_gemv_k_blocking(dim_t K, int &k_blk, int &batch_size) {
     batch_size = static_cast<int>(std::max<dim_t>(1, div_up(K, k_blk)));
 }
 
+// GEMV usually keeps nthr_k == 1 so the K-reduction stays in registers.
+//
+// For n1_A_trans/m1_B_plain, A is column-major (LDA == M). Each K-step accesses
+// A with a stride of M * dt bytes. If that stride is a power of two, accesses
+// repeatedly hit the same cache sets. Once the A footprint exceeds L2, this
+// causes conflict misses and the thread becomes latency-bound. Non-power-of-two
+// strides distribute accesses across cache sets and avoid this issue.
+//
+// Splitting K across threads increases memory-level parallelism and hides the
+// miss latency. The reduction overhead is negligible. However, this only helps
+// when M-parallelism is low. If there are already enough M-blocks to keep cores
+// busy, M-parallelism hides the stalls and K-splitting only adds overhead.
+//
+// Therefore, enable K-splitting only when:
+//  - the A stride (M * dt) is a power of two,
+//  - the A footprint exceeds L2, and
+//  - M-parallelism is too low to fully utilize the cores.
+//
+// div_up(M, min_m_blk) is an upper bound on M-parallelism because the tuner can
+// only select m_blk >= min_m_blk.
+bool is_gemv_k_split_needed(const brgemm_matmul_conf_t &bgmmc,
+        const matmul_avx512_blocking_params_t::matmul_params_t &matmul,
+        int min_m_blk, int nthr) {
+    if (!bgmmc.is_gemv
+            || !utils::one_of(bgmmc.gemv_strategy, gemv_strategy_t::n1_A_trans,
+                    gemv_strategy_t::m1_B_plain))
+        return false;
+
+    const dim_t src_dt_sz = bgmmc.gemv_swap_a_b ? bgmmc.b_dt_sz : bgmmc.a_dt_sz;
+    const size_t src_sz = matmul.M * matmul.K * src_dt_sz;
+    const size_t l2_size = platform::get_per_core_cache_size(2);
+    const dim_t max_m_blocks = div_up(matmul.M, min_m_blk);
+
+    // (a) A's column stride is a power of two.
+    const bool aliasing_stride = math::is_pow2(matmul.M * src_dt_sz);
+    // (b) The A footprint exceeds L2.
+    const bool src_exceeds_l2 = src_sz > l2_size;
+    // (c) There are too few M-blocks to keep cores busy.
+    const bool low_m_parallelism = max_m_blocks <= 2 * nthr;
+
+    return aliasing_stride && src_exceeds_l2 && low_m_parallelism;
+}
+
 float compute_blocking_heuristic_avx512(brgemm_matmul_conf_t &bgmmc,
         const brgemm_matmul_conf_utils_t &bm_conf_utils,
         const matmul_avx512_blocking_params_t::matmul_params_t &matmul_,
@@ -1207,6 +1250,17 @@ float compute_blocking_heuristic_avx512(brgemm_matmul_conf_t &bgmmc,
             start_nthr_k = nthr_k;
             last_nthr_k = nthr_k;
         }
+    }
+
+    // Enable K-split only for the GEMV cache-aliasing case where M-parallelism
+    // is insufficient. (see `is_gemv_k_split_needed` for the rationale).
+    if (is_gemv_k_split_needed(bgmmc, matmul, min_m_blk, nthr)) {
+        const int max_gemv_nthr_k = 4;
+        const int gemv_nthr_k = std::min(nthr, max_gemv_nthr_k);
+        // Re-calculate k blocking.
+        compute_gemv_k_blocking(
+                div_up(matmul.K, gemv_nthr_k), k_blk, brgemm_bs);
+        start_nthr_k = last_nthr_k = gemv_nthr_k;
     }
 
     // Use large m-blocking if possible.

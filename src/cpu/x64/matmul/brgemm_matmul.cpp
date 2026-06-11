@@ -1817,14 +1817,15 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         return batch_ptr + A_strides_[1] * m + A_strides_[0] * k;
     }
 
-    dim_t get_data_B_kn_off(dim_t k, dim_t n) const {
-        // In xf16-fp8 mode, source weights keep original fp8 blocking while
-        // compute-side blocking (bgmmc_.wei_k_blk) is adjusted for xf16.
+    int get_src_wei_k_blk() const {
         const bool use_orig_wei_layout
-                = bgmmc_.is_xf16_fp8 && bgmmc_.use_buffer_b;
-        const int wei_k_blk = use_orig_wei_layout
-                ? get_wei_k_blk(bgmmc_.orig_wei_dt)
-                : (bgmmc_.is_bf32 ? get_wei_k_blk(f32) : bgmmc_.wei_k_blk);
+                = (bgmmc_.is_xf16_fp8 && bgmmc_.use_buffer_b) || bgmmc_.is_bf32;
+        return use_orig_wei_layout ? get_wei_k_blk(bgmmc_.orig_wei_dt)
+                                   : bgmmc_.wei_k_blk;
+    }
+
+    dim_t get_data_B_kn_off(dim_t k, dim_t n) const {
+        const int wei_k_blk = get_src_wei_k_blk();
         const int k_idx = bgmmc_.blocked_B ? k / wei_k_blk : k;
         const int n_idx = bgmmc_.blocked_B ? n / bgmmc_.wei_n_blk : n;
         const int int4_fac = bgmmc_.is_int4_weights ? 2 : 1;
@@ -2056,11 +2057,7 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
 
         if (!bgmmc_.blocked_B) return 0;
 
-        const bool use_orig_wei_layout
-                = bgmmc_.is_xf16_fp8 && bgmmc_.use_buffer_b;
-        const int wei_k_blk = use_orig_wei_layout
-                ? get_wei_k_blk(bgmmc_.orig_wei_dt)
-                : bgmmc_.wei_k_blk;
+        const int wei_k_blk = get_src_wei_k_blk();
         dim_t x0 = k % wei_k_blk;
         dim_t x1 = n % bgmmc_.wei_n_blk;
         dim_t offset = (x0 / vnni_factor) * vnni_factor * bgmmc_.wei_n_blk

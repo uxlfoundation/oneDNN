@@ -5984,11 +5984,22 @@ bool xf16_fp8_copy_b_isa_supported(const brgemm_matmul_conf_t *conf) {
 }
 } // namespace
 
+// Reorders a row-major [r0|r1|r2|r3] pack into the split-pack layout consumed
+// by convert_from_packed_plain (used by the plain fp8->xf16 copy kernel).
 alignas(64) static constexpr uint8_t xf16_fp8_plain_to_split_pack_idx[64]
         = {0, 16, 1, 17, 2, 18, 3, 19, 4, 20, 5, 21, 6, 22, 7, 23, 8, 24, 9, 25,
                 10, 26, 11, 27, 12, 28, 13, 29, 14, 30, 15, 31, 32, 48, 33, 49,
                 34, 50, 35, 51, 36, 52, 37, 53, 38, 54, 39, 55, 40, 56, 41, 57,
                 42, 58, 43, 59, 44, 60, 45, 61, 46, 62, 47, 63};
+
+// Same target layout, but applied to the column-major dword pack built by the
+// transposed copy kernel, fusing the row-byte extraction and reorder into one
+// vpermb.
+alignas(64) static constexpr uint8_t xf16_fp8_dword_pack_to_split_pack_idx[64]
+        = {0, 1, 4, 5, 8, 9, 12, 13, 16, 17, 20, 21, 24, 25, 28, 29, 32, 33, 36,
+                37, 40, 41, 44, 45, 48, 49, 52, 53, 56, 57, 60, 61, 2, 3, 6, 7,
+                10, 11, 14, 15, 18, 19, 22, 23, 26, 27, 30, 31, 34, 35, 38, 39,
+                42, 43, 46, 47, 50, 51, 54, 55, 58, 59, 62, 63};
 
 struct fp8_to_xf16_cvt_helper_t {
     // Reserved by fp8 conversion routines. Keep kernel register maps disjoint.
@@ -6615,16 +6626,11 @@ private:
                 uni_vpxor(zmm_dst0, zmm_dst0, zmm_dst0);
                 uni_vpxor(zmm_dst1, zmm_dst1, zmm_dst1);
             } else {
-                const auto xmm_src0 = Xmm(xmm_work_reg_base_idx + 0);
-                const auto xmm_src1 = Xmm(xmm_work_reg_base_idx + 1);
-                const auto xmm_src2 = Xmm(xmm_work_reg_base_idx + 2);
-                const auto xmm_src3 = Xmm(xmm_work_reg_base_idx + 3);
-                const auto xmm_dword_pack0 = Xmm(xmm_work_reg_base_idx + 4);
-                const auto xmm_dword_pack1 = Xmm(xmm_work_reg_base_idx + 5);
-                const auto xmm_dword_pack2 = Xmm(xmm_work_reg_base_idx + 6);
-                const auto xmm_dword_pack3 = Xmm(xmm_work_reg_base_idx + 7);
-                const auto zmm_dword_pack = Zmm(xmm_work_reg_base_idx + 8);
-                const auto zmm_shifted = Zmm(xmm_work_reg_base_idx + 9);
+                const auto xmm_dword_pack0 = Xmm(xmm_work_reg_base_idx + 0);
+                const auto xmm_dword_pack1 = Xmm(xmm_work_reg_base_idx + 1);
+                const auto xmm_dword_pack2 = Xmm(xmm_work_reg_base_idx + 2);
+                const auto xmm_dword_pack3 = Xmm(xmm_work_reg_base_idx + 3);
+                const auto zmm_dword_pack = Zmm(xmm_work_reg_base_idx + 4);
                 uni_vpxor(xmm_dword_pack0, xmm_dword_pack0, xmm_dword_pack0);
                 uni_vpxor(xmm_dword_pack1, xmm_dword_pack1, xmm_dword_pack1);
                 uni_vpxor(xmm_dword_pack2, xmm_dword_pack2, xmm_dword_pack2);
@@ -6678,24 +6684,11 @@ private:
                 vinserti32x4(
                         zmm_dword_pack, zmm_dword_pack, xmm_dword_pack3, 3);
 
-                // Extract row bytes from packed dwords.
-                vpmovdb(xmm_src0, zmm_dword_pack);
-                vpsrld(zmm_shifted, zmm_dword_pack, 8);
-                vpmovdb(xmm_src1, zmm_shifted);
-                vpsrld(zmm_shifted, zmm_dword_pack, 16);
-                vpmovdb(xmm_src2, zmm_shifted);
-                vpsrld(zmm_shifted, zmm_dword_pack, 24);
-                vpmovdb(xmm_src3, zmm_shifted);
-
-                vinserti32x4(zmm_src_pack, zmm_src_pack, xmm_src0, 0);
-                vinserti32x4(zmm_src_pack, zmm_src_pack, xmm_src1, 1);
-                vinserti32x4(zmm_src_pack, zmm_src_pack, xmm_src2, 2);
-                vinserti32x4(zmm_src_pack, zmm_src_pack, xmm_src3, 3);
-
-                // Reorder row-wise [r0|r1|r2|r3] into split-pack layout for
-                // direct conversion: low 32B interleave [r0[n], r1[n]],
-                // high 32B interleave [r2[n], r3[n]].
-                vpermb(zmm_src_pack, zmm_permute, zmm_src_pack);
+                // Permute the column-major dword packing straight into the
+                // split-pack layout for conversion. This single vpermb fuses
+                // the per-row byte extraction and the row-interleave reorder:
+                // low 32B interleave [r0[n], r1[n]], high 32B [r2[n], r3[n]].
+                vpermb(zmm_src_pack, zmm_permute, zmm_dword_pack);
 
                 cvt_helper_.convert_from_packed_plain(
                         zmm_dst0, zmm_dst1, zmm_src_pack);
@@ -6725,7 +6718,8 @@ private:
         mov(reg_N_blk, ptr[param1 + GET_OFF(current_N_blk)]);
 
         mov(reg_tmp,
-                reinterpret_cast<size_t>(xf16_fp8_plain_to_split_pack_idx));
+                reinterpret_cast<size_t>(
+                        xf16_fp8_dword_pack_to_split_pack_idx));
         vmovdqu8(zmm_permute, ptr[reg_tmp]);
 
         auto compute_K_loop_body

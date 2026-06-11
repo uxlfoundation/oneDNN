@@ -479,24 +479,20 @@ void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, boo
 
                 const int cxCompA = -1, cxCompB = -1, cxCompC = -1, cBuffer = 0;
                 auto bdpasScaleArg = [&](const RegisterLayout Xr_scaleLayout, Type Tx_scaleOp,
-                                         GRFMultirange Xr_scaleRegs, bool isA, int x, int k) {
+                                         GRFMultirange Xr_scaleRegs, bool isA, int x, int h) {
                     RegData XS;
                     if (state.useBDPAS && !Xr_scaleLayout.empty()) {
-                        int neq;
-                        const RegisterBlock *qblock;
+                        if (problem.aqGroupM > 1 || problem.bqGroupN > 1) stub();
 
-                        int r, c, io0, jo0;
-                        r = Xr_scaleLayout.rows();
-                        c = Xr_scaleLayout.cols();
+                        int xqGroupK = isA ? problem.aqGroupK : problem.bqGroupK;
+                        int kxq = isA ? state.kaq : state.kbq;
+                        int kxq_load = xqGroupK * kxq;
+                        int k = (h % kxq_load) / xqGroupK;
 
-                        if (isA) {
-                            io0 = x;
-                            jo0 = (k / problem.aqGroupK) % c;
-                        } else {
-                            io0 = (k / problem.bqGroupK) % r;
-                            jo0 = x;
-                        }
-                        XS = Xr_scaleLayout.find(io0, jo0, Xr_scaleRegs, &neq, &qblock);
+                        int io0 = isA ? x : k;
+                        int jo0 = isA ? k : x;
+
+                        XS = Xr_scaleLayout.find(io0, jo0, Xr_scaleRegs);
                     } else
                         XS = NullRegister().setType(Type::ngen_e8m0());
 

@@ -54,6 +54,16 @@ static inline SystolicParams systolicParams(GEMMProblem problem)
     return params;
 }
 
+// Number of consecutive K-elements sharing a single scale value in BDPAS.
+// 32 for fp4/fp8, 16 for fp16.
+static inline int bdpasBlockK(const GEMMProblem &problem)
+{
+    return std::min(systolicParams(problem).ksys, 32);
+}
+
+// Number of M/N scale entries packed into one BDPAS scale arg tile.
+static constexpr int bdpasTileMN = 32;
+
 // Return # of outer products performed at once.
 static inline int minOuterProductCount(const GEMMProblem &problem, const GEMMStrategy &strategy)
 {

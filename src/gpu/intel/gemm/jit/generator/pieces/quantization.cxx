@@ -44,6 +44,9 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
 
     if (!xo2D && !xoTo2D && !xs2D && !xg2D) return true;
 
+    if (state.useBDPAS && (xo2D || xoTo2D || xg2D))
+        stub("BDPAS with 2D offsets or group sums not supported");
+
     auto &X_strategy       = isA ? strategy.A             : strategy.B;
     auto &X_offsetStrategy = isA ? strategy.AO            : strategy.BO;
     auto &X_scaleStrategy  = isA ? strategy.A_scale       : strategy.B_scale;
@@ -104,6 +107,10 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
     int r, c, k, rNoSLM, cNoSLM;
     int tileR = 0, tileC = 0;
     bool remR = false, remC = false;
+
+    // K-elements processed per BDPAS pass.
+    int bBlockK = state.useBDPAS ? bdpasBlockK(problem) : 0;
+
     if (isA) {
         bool slmA = strategy.slmA;
         rNoSLM = strategy.unroll[LoopM];
@@ -117,7 +124,12 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
         rNoSLM = std::max(1, rNoSLM / xqGroupMN);
         cNoSLM = state.kaqLate = std::max(1, cNoSLM % xqGroupK == 0 ? cNoSLM /  xqGroupK: 1);
         remR = (strategy.remHandling[LoopM] != RemainderHandling::Ignore);
-        if (xqGroupMN <= 1 && xqGroupK > 1) tileC = 1;
+        if (state.useBDPAS) {
+            tileR = bdpasTileMN;
+            tileC = (xqGroupK > bBlockK) ? 1 : state.kaq;
+        } else if (xqGroupMN <= 1 && xqGroupK > 1) {
+            tileC = 1;
+        }
         if (xqGroupMN > 1 && (xqGroupMN % strategy.unroll[LoopM] && strategy.unroll[LoopM] % xqGroupMN))
             stub("Tile size not compatible with group size in m dimension");
     } else {
@@ -133,7 +145,12 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
         cNoSLM = std::max(1, cNoSLM / xqGroupMN);
         rNoSLM = state.kbqLate = std::max(1, rNoSLM % xqGroupK == 0 ?  rNoSLM / xqGroupK : 1);
         remC = (strategy.remHandling[LoopN] != RemainderHandling::Ignore);
-        if (xqGroupMN <= 1 && xqGroupK > 1) tileR = 1;
+        if (state.useBDPAS) {
+            tileR = (xqGroupK > bBlockK) ? 1 : state.kbq;
+            tileC = bdpasTileMN;
+        } else if (xqGroupMN <= 1 && xqGroupK > 1) {
+            tileR = 1;
+        }
         if (xqGroupMN > 1 && (xqGroupMN % strategy.unroll[LoopN] && strategy.unroll[LoopN] % xqGroupMN))
             stub("Tile size not compatible with group size in n dimension");
     }
@@ -148,7 +165,7 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
         remR = remC = false;
     }
 
-    bool wantCM = isA ^ (xqGroupMN > 1);
+    bool wantCM = state.useBDPAS ? isA : isA ^ (xqGroupMN > 1);
     auto chooseAccess = [=](const MatrixAddressing &Xq) {
         return (wantCM == isColMajor(Xq.layout)) ? AccessType::Block : AccessType::Scattered;
     };
@@ -193,16 +210,17 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
     auto makeQRepack = [&, tileR, tileC](Type Txq, Type Txq_int, RegisterLayout &repack, const RegisterLayout &src,
                                          int m, int n, int cp, bool forceRepack) mutable {
         if (cp > 1 || (cColMajor && (cp != src[0].crosspack)) || Txq != Txq_int || forceRepack) {
-            bool allowPartialRegs = false;
-            // Native MXFP DPAS support
-            if (state.useBDPAS) {
-                allowPartialRegs = true;
-                cp = 1;
-                if (isA) {
-                    tileR = problem.aqGroupK;
-                } else {
-                    tileC = problem.bqGroupK;
-                }
+            // Each BDPAS pass reads scales from one half-GRF. When xqGroupK == bdpasBlockK,
+            // each group maps to one pass and scales pack naturally as [group0, group1].
+            // When xqGroupK > bdpasBlockK, both passes share the same group and scales
+            // must be duplicated to the upper half-GRF: [group0, group0].
+            bool allowPartialRegs = state.useBDPAS && xqGroupK == bBlockK;
+            if (state.useBDPAS && xqGroupK > bBlockK) {
+                // Do not support group sizes that aren't multiples of ksys - this case produces mixed
+                // [group0, group0] and [group0, group1] scales args, which is not currently supported.
+                int ksys = systolicParams(problem).ksys;
+                if (xqGroupK % ksys != 0)
+                    stub("BDPAS scale group straddling not supported");
             }
             repack = RegisterLayout(hw, Txq_int, m, n, wantCM, cp, tileR, tileC, allowPartialRegs);
         }
@@ -236,18 +254,16 @@ void Generator<hw>::gemmRepack2DQuantizationData(Type Ts, Type Td, const Registe
         for (int doffC = 0; doffC < layoutDst.cols(); doffC += layoutSrc.cols())
             copyRegisters(Ts, Td, layoutSrc, layoutDst, src, dst, doffR, doffC, false, strategy, state);
 
-    int r = layoutDst.rows();
-    int c = layoutDst.cols();
-    // FP4 bdpas with group > 32 requires duplicating scales into upper half of registers.
-    if(state.useBDPAS && r * c < minOuterProductCount(problem, strategy)){
-        int halfRegElems = elementsPerGRF(hw, Td) / 2;
-        if(r * c > halfRegElems) stub();
-        RegisterLayout offsetLayout(layoutDst);
-        for( auto &b : offsetLayout){
-            if(b.nr * b.nc > halfRegElems) stub();
-            b.offsetBytes += (b.nr * b.nc);
+    // BDPAS: duplicate scale data to the upper half of each GRF for the second pass.
+    // When xqGroupK > bBlockK, both passes within a bdpas share the same scale group,
+    // so the first half's data must be replicated to the second half.
+    if (state.useBDPAS) {
+        if (layoutDst[0].ld == elementsPerGRF(hw, Td)) {
+            auto upperLayout = layoutDst;
+            for (auto &block : upperLayout)
+                block.offsetBytes += bdpasTileMN;
+            copyRegisters(Td, Td, layoutDst, upperLayout, dst, dst, 0, 0, false, strategy, state);
         }
-        copyRegisters(Td, Td, layoutDst, offsetLayout, dst, dst, 0, 0, false, strategy, state); 
     }
 
     // Duplicate data in padded region. TODO: do this as part of the copy.

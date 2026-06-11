@@ -37,4 +37,30 @@ endif()
 
 file(TO_CMAKE_PATH "${DNNL_ZE_INCLUDE_DIR}" DNNL_ZE_INCLUDE_DIR)
 message(STATUS "Found Level Zero headers: ${DNNL_ZE_INCLUDE_DIR}")
+
+# Check that Level Zero API supports minimal version required by oneDNN
+set(ONEDNN_ZE_MIN_API_VERSION_MAJOR 1)
+set(ONEDNN_ZE_MIN_API_VERSION_MINOR 11)
+
+include(CheckCXXSourceCompiles)
+include(CMakePushCheckState)
+cmake_push_check_state()
+set(CMAKE_REQUIRED_INCLUDES "${DNNL_ZE_INCLUDE_DIR}")
+set(CMAKE_REQUIRED_QUIET TRUE)
+check_cxx_source_compiles("
+    #include <level_zero/ze_api.h>
+    #if ZE_API_VERSION_CURRENT_M < ZE_MAKE_VERSION(${ONEDNN_ZE_MIN_API_VERSION_MAJOR}, ${ONEDNN_ZE_MIN_API_VERSION_MINOR})
+    #error \"Level Zero API version is too old\"
+    #endif
+    int main() { return 0; }"
+    ONEDNN_ZE_MIN_API_VERSION_MET)
+cmake_pop_check_state()
+
+if(NOT ONEDNN_ZE_MIN_API_VERSION_MET)
+    message(FATAL_ERROR
+        "Level Zero API version "
+        "v${ONEDNN_ZE_MIN_API_VERSION_MAJOR}.${ONEDNN_ZE_MIN_API_VERSION_MINOR} "
+        "or newer is required")
+endif()
+
 include_directories_with_host_compiler(${DNNL_ZE_INCLUDE_DIR})

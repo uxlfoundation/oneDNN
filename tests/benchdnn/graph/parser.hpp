@@ -17,15 +17,10 @@
 #ifndef BENCHDNN_GRAPH_PARSER_HPP
 #define BENCHDNN_GRAPH_PARSER_HPP
 
+#include "graph/utils.hpp"
+
 #include <map>
 #include <string>
-
-#include "allocator.hpp"
-#include "dnnl_common.hpp"
-#include "oneapi/dnnl/dnnl_graph.hpp"
-#include "utils.hpp"
-
-extern dnnl_engine_kind_t engine_tgt_kind;
 
 namespace graph {
 

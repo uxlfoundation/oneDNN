@@ -17,17 +17,18 @@
 #ifndef MEMORY_POOL_HPP
 #define MEMORY_POOL_HPP
 
-#include <mutex>
-#include <unordered_set>
+#include "oneapi/dnnl/dnnl_config.h"
 
-#include "oneapi/dnnl/dnnl_graph.hpp"
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-#include "oneapi/dnnl/dnnl_graph_ocl.hpp"
-#include "oneapi/dnnl/dnnl_ocl.hpp"
+#include <CL/cl.h>
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
-#include "oneapi/dnnl/dnnl_graph_sycl.hpp"
-#include "oneapi/dnnl/dnnl_sycl.hpp"
+#include <sycl/sycl.hpp>
 #endif
+
+#include <iostream>
+#include <memory>
+#include <mutex>
+#include <unordered_map>
 
 #ifndef UNUSED
 #define UNUSED(x) ((void)(x))

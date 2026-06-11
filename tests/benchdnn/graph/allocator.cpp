@@ -14,9 +14,16 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include <functional>
 #include "allocator.hpp"
 #include "graph_memory.hpp"
+
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
+#include "oneapi/dnnl/dnnl_graph_sycl.hpp"
+#endif
+
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+#include "oneapi/dnnl/dnnl_graph_ocl.hpp"
+#endif
 
 // Throw an exception for not enough memory, which will be caught in
 // DNN_GRAPH_SAFE.

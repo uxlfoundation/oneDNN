@@ -17,16 +17,9 @@
 #ifndef BENCHDNN_GRAPH_ALLOCATOR_HPP
 #define BENCHDNN_GRAPH_ALLOCATOR_HPP
 
-#include <unordered_set>
+#include "graph/memory_pool.hpp"
 
-#include "dnnl_common.hpp"
-#include "memory_pool.hpp"
 #include "oneapi/dnnl/dnnl_graph.hpp"
-
-#ifdef DNNL_WITH_SYCL
-#include "oneapi/dnnl/dnnl_graph_sycl.hpp"
-#include "oneapi/dnnl/dnnl_sycl.hpp"
-#endif
 
 namespace graph {
 

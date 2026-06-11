@@ -25,7 +25,6 @@
 #include <type_traits>
 #include <unordered_map>
 
-#include "setting_handler.hpp"
 #include "utils/compare.hpp"
 #include "utils/settings.hpp"
 

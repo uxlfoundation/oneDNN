@@ -17,7 +17,7 @@
 #ifndef BENCHDNN_GRAPH_INPUT_DISPLACER_HPP
 #define BENCHDNN_GRAPH_INPUT_DISPLACER_HPP
 
-#include "ref_primitive.hpp"
+#include "deserialize.hpp"
 
 #include "src/common/memory_desc.hpp"
 #include "utils/fill.hpp"

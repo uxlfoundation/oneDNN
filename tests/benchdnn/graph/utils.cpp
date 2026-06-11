@@ -18,14 +18,22 @@
 #include <set>
 #include <vector>
 
-#include "cpu/platform.hpp"
+#include "graph/allocator.hpp"
+#include "graph/utils.hpp"
 
-#include "allocator.hpp"
 #include "dnnl_common.hpp"
-#include "utils.hpp"
+
 #include "utils/stream_kind.hpp"
 #include "utils/stringstream.hpp"
 #include "utils/timer.hpp"
+
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
+#include "oneapi/dnnl/dnnl_graph_sycl.hpp"
+#endif
+
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+#include "oneapi/dnnl/dnnl_graph_ocl.hpp"
+#endif
 
 namespace graph {
 

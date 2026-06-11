@@ -17,6 +17,7 @@
 #include "ref_partition.hpp"
 #include "cpu/platform.hpp"
 #include "dnnl_common.hpp"
+#include "setting_handler.hpp"
 
 #include "utils/compare.hpp"
 

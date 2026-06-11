@@ -17,6 +17,8 @@
 #ifndef BENCHDNN_GRAPH_REF_PRIMITIVE_HPP
 #define BENCHDNN_GRAPH_REF_PRIMITIVE_HPP
 
+#include "dnnl_common.hpp"
+
 #include "deserialize.hpp"
 
 #include "utils/dnnl_query.hpp"

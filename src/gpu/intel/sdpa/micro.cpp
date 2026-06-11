@@ -210,12 +210,12 @@ status_t micro_fwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             config->unroll_n_vs * config->wg_n_vs, config->unroll_n_kq,
             config->unroll_n_vs);
 
-    VDISPATCH_SDPA(config->unroll_m_vs * config->wg_m_vs >= d->head_size(),
+    VDISPATCH_SDPA(config->unroll_m_vs * config->wg_m_vs >= d->values(),
             "The vs matmul config work_group tile M(%d*%d=%d) axis must be "
-            "greater than or equal to head size(%ld)",
+            "greater than or equal to values size(%ld)",
             config->unroll_m_vs, config->wg_m_vs,
             config->unroll_m_vs * config->wg_m_vs,
-            static_cast<long int>(d->head_size()));
+            static_cast<long int>(d->values()));
 
     // serializable minimal set of configuration params for ukernels
     // will be used to generate shim ukernels in reusable kernel_ctx
@@ -356,7 +356,7 @@ status_t micro_fwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     if (with_value_scales() && !vs_common_scales) {
         auto scale_dt = value_scales_dt();
         problem_vs.Ta_scale = convert_dnnl_to_kernel_type(scale_dt);
-        problem_vs.A_scale.setAlignment(uint8_t(d->head_size()
+        problem_vs.A_scale.setAlignment(uint8_t(d->values()
                 / value_group_size() * types::data_type_size(scale_dt)));
         problem_vs.A_scale.layout = MatrixLayout::N;
         const int matrix_scale = 2;
@@ -365,7 +365,7 @@ status_t micro_fwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     if (with_value_zp()) {
         auto zp_dt = value_zp_dt();
         problem_vs.Tao = convert_dnnl_to_kernel_type(zp_dt);
-        problem_vs.AO.setAlignment(uint8_t(d->head_size() / value_group_size()
+        problem_vs.AO.setAlignment(uint8_t(d->values() / value_group_size()
                 * types::data_type_size(zp_dt)));
         problem_vs.AO.layout = MatrixLayout::N;
         problem_vs.aoPtrDims = vs_common_zp ? 0 : 2;

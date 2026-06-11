@@ -6353,10 +6353,6 @@ private:
         const int simd_nrows_rounded = utils::rnd_up(nrows, k_blk_step);
         const int simd_ncols_rounded = utils::rnd_up(ncolumns, n_blk_step);
 
-        mov(reg_tmp,
-                reinterpret_cast<size_t>(xf16_fp8_plain_to_split_pack_idx));
-        vmovdqu8(zmm_permute, ptr[reg_tmp]);
-
         for_(int k = 0; k < simd_nrows_rounded; k += k_blk_step)
         for (int n = 0; n < simd_ncols_rounded; n += n_blk_step) {
             const int rows_left = nrows - k;
@@ -6377,7 +6373,6 @@ private:
                     kmovw(kTail, regw_tmp);
                 }
 
-                uni_vpxor(zmm_src_pack, zmm_src_pack, zmm_src_pack);
                 for (int r = 0; r < k_blk_step; ++r) {
                     const auto xmm_src = Xmm(xmm_work_reg_base_idx + r);
                     const dim_t src_off
@@ -6426,6 +6421,10 @@ private:
         mov(reg_src, ptr[param1 + GET_OFF(src)]);
         mov(reg_tr_src, ptr[param1 + GET_OFF(tr_src)]);
         mov(reg_N_blk, ptr[param1 + GET_OFF(current_N_blk)]);
+
+        mov(reg_tmp,
+                reinterpret_cast<size_t>(xf16_fp8_plain_to_split_pack_idx));
+        vmovdqu8(zmm_permute, ptr[reg_tmp]);
 
         auto compute_K_loop_body
                 = [&](const reg64_t &reg_K, int ncolumns, bool zeropad) {
@@ -6603,10 +6602,6 @@ private:
         const int simd_nrows_rounded = utils::rnd_up(nrows, k_blk_step);
         const int simd_ncols_rounded = utils::rnd_up(ncolumns, n_blk_step);
 
-        mov(reg_tmp,
-                reinterpret_cast<size_t>(xf16_fp8_plain_to_split_pack_idx));
-        vmovdqu8(zmm_permute, ptr[reg_tmp]);
-
         for_(int k = 0; k < simd_nrows_rounded; k += k_blk_step)
         for (int n = 0; n < simd_ncols_rounded; n += n_blk_step) {
             const int rows_left = nrows - k;
@@ -6620,8 +6615,6 @@ private:
                 uni_vpxor(zmm_dst0, zmm_dst0, zmm_dst0);
                 uni_vpxor(zmm_dst1, zmm_dst1, zmm_dst1);
             } else {
-                uni_vpxor(zmm_src_pack, zmm_src_pack, zmm_src_pack);
-
                 const auto xmm_src0 = Xmm(xmm_work_reg_base_idx + 0);
                 const auto xmm_src1 = Xmm(xmm_work_reg_base_idx + 1);
                 const auto xmm_src2 = Xmm(xmm_work_reg_base_idx + 2);
@@ -6730,6 +6723,10 @@ private:
         mov(reg_src, ptr[param1 + GET_OFF(src)]);
         mov(reg_tr_src, ptr[param1 + GET_OFF(tr_src)]);
         mov(reg_N_blk, ptr[param1 + GET_OFF(current_N_blk)]);
+
+        mov(reg_tmp,
+                reinterpret_cast<size_t>(xf16_fp8_plain_to_split_pack_idx));
+        vmovdqu8(zmm_permute, ptr[reg_tmp]);
 
         auto compute_K_loop_body
                 = [&](const reg64_t &reg_K, int ncolumns, bool zeropad) {

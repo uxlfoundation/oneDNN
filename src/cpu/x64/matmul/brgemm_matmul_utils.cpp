@@ -537,7 +537,7 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(memory_desc_t &B_md,
         VCONDCHECK_BG(
                 format_tag::undef != bgmmc.wei_tag, VERBOSE_UNSUPPORTED_TAG)
     }
-printf("wei tag: %d\n", bgmmc.wei_tag);
+//printf("wei tag: %d\n", bgmmc.wei_tag);
     return status::success;
 }
 
@@ -1389,6 +1389,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         VCONDCHECK_BG(bgmmc.is_amx, VERBOSE_ISA_SPARSE_ENCODING_MISMATCH);
         VCONDCHECK_BG(bgmmc.wei_dt == s8, VERBOSE_UNSUPPORTED_DT);
     }
+    bgmmc.is_f8 = bm_conf_utils.is_f8();
     bgmmc.is_bf32 = bm_conf_utils.is_bf32();
     bgmmc.is_tf32 = bm_conf_utils.is_tf32();
     bgmmc.is_bf16_with_int_wei = bm_conf_utils.is_bf16_with_int_wei();
@@ -1434,7 +1435,8 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         // Note 3: Since `use_buffer_b()` depends on `bgmmc.wei_tag`, which is
         // set later in the code due to its dependencies, the update of data
         // types to f32 happens below in ANCHOR: `CONVERT_F32_XF16_DATA_TYPES`.
-    } else if (bgmmc.is_f16_with_int_wei && bgmmc.isa != avx512_core_fp16) {
+    } else if ((bgmmc.is_f16_with_int_wei && bgmmc.isa != avx512_core_fp16)
+                  || (bgmmc.is_f8 && bgmmc.isa == avx10_2)) {
         bgmmc.src_dt = f16;
         bgmmc.wei_dt = f16;
         bgmmc.tr_a_dt_sz = types::data_type_size(f16);
@@ -1738,6 +1740,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                     || ((bm_conf_utils.is_f16()
                                 || bm_conf_utils.is_f16_with_int_wei())
                             && isa == avx512_core_fp16)
+                    || (bm_conf_utils.is_f8() && isa == avx10_2)
                     || (bgmmc.wei_zp_type != brgemm_broadcast_t::none
                             && !bm_conf_utils.with_weights_decompression())
                     || bgmmc.transposed_A);
@@ -1820,7 +1823,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         bgmmc.req_wei_vnni_downconvert
                 = bm_conf_utils.wei_down_convert_to_vnni();
     }
-printf("use buffer a: %d, use buffer b: %d\n", bgmmc.use_buffer_a, bgmmc.use_buffer_b);
+//printf("use buffer a: %d, use buffer b: %d\n", bgmmc.use_buffer_a, bgmmc.use_buffer_b);
     VCHECK_BG(bm_conf_utils.set_B_flags(weights_md), VERBOSE_BLOCKING_FAIL, "");
 
     bgmmc.M_tail = bgmmc.is_runtime_M ? 0 : bgmmc.M % bgmmc.M_blk;
@@ -1950,8 +1953,8 @@ printf("use buffer a: %d, use buffer b: %d\n", bgmmc.use_buffer_a, bgmmc.use_buf
         //      [n = N / LDB][k = K / wei_k_blk][k = wei_k_blk / vnni][n = LDB][k = vnni]
         bgmmc.LDB2 = rnd_up(bgmmc.K, bgmmc.wei_k_blk) * bgmmc.LDB;
     }
-printf("LDA/B/C/D: %d, %d, %d, %d, M: %d, %d, N: %d, %d, K: %d, %d\n", bgmmc.LDA, bgmmc.LDB, bgmmc.LDC, bgmmc.LDD, bgmmc.M, bgmmc.M_blk, bgmmc.N, bgmmc.N_blk, bgmmc.K, bgmmc.K_blk);
-printf("wei n blk: %d, k blk: %d\n", bgmmc.wei_n_blk, bgmmc.wei_k_blk);
+//printf("LDA/B/C/D: %d, %d, %d, %d, M: %d, %d, N: %d, %d, K: %d, %d\n", bgmmc.LDA, bgmmc.LDB, bgmmc.LDC, bgmmc.LDD, bgmmc.M, bgmmc.M_blk, bgmmc.N, bgmmc.N_blk, bgmmc.K, bgmmc.K_blk);
+//printf("wei n blk: %d, k blk: %d\n", bgmmc.wei_n_blk, bgmmc.wei_k_blk);
 //printf("is gemv: %d, use fused copy a: %d\n", bgmmc.is_gemv, bgmmc.use_fused_copy_a);
     return status::success;
 }
@@ -1963,7 +1966,7 @@ status_t init_conf(brgemm_matmul_conf_t &conf, dim_t batch, dim_t M, dim_t K,
 
     const auto vnni_granularity = data_type_vnni_granularity(out_type);
     if (vnni_granularity <= 0) return status::invalid_arguments;
-printf("init conf\n");
+
     // Zero initialize the `conf` to avoid access to 'garbage' in members.
     conf = brgemm_matmul_conf_t();
 

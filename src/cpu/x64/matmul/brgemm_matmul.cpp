@@ -1815,27 +1815,15 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         return batch_ptr + A_strides_[1] * m + A_strides_[0] * k;
     }
 
-    // Data type whose VNNI granularity matches the physical source-B blocked
-    // layout, used for the source-side addressing below. This is usually the
-    // compute type bgmmc_.wei_dt, but xf16-fp8 and bf32 leave the source in
-    // its original layout (fp8 VNNI4 / f32 VNNI1, given by orig_wei_dt) and
-    // only up-convert it during the copy. Int-weight decompression also has
-    // orig_wei_dt != wei_dt, but its source is reblocked to the compute
-    // granularity (see pick_blocked_B_layout: is_bf16_with_int_wei -> VNNI2,
-    // is_{f16,f32}_with_int_wei -> VNNI1), so it must keep using wei_dt and is
-    // intentionally not selected here.
+    // Weights type of the data as laid out in memory. fp8->xf16 and bf32 read
+    // the original (orig_wei_dt) data and convert on copy; everything else
+    // reads already in wei_dt.
     data_type_t get_src_wei_dt() const {
-        const bool use_orig_wei_layout
-                = (bgmmc_.is_xf16_fp8 && bgmmc_.use_buffer_b) || bgmmc_.is_bf32;
+        const bool use_orig_wei_layout = bgmmc_.is_xf16_fp8 || bgmmc_.is_bf32;
         return use_orig_wei_layout ? bgmmc_.orig_wei_dt : bgmmc_.wei_dt;
     }
 
-    // K-block size and VNNI granularity of the source weights layout, which
-    // must be used together for source-side addressing.
     int get_src_wei_k_blk() const { return get_wei_k_blk(get_src_wei_dt()); }
-    int get_src_wei_vnni_factor() const {
-        return data_type_vnni_granularity(get_src_wei_dt());
-    }
 
     dim_t get_data_B_kn_off(dim_t k, dim_t n) const {
         const int wei_k_blk = get_src_wei_k_blk();
@@ -2070,14 +2058,14 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
 
         if (!bgmmc_.blocked_B) return 0;
 
-        // Source weights live in their own blocked layout, so both the block
-        // size and the VNNI interleave must use the source granularity.
         const int wei_k_blk = get_src_wei_k_blk();
-        const int vnni = get_src_wei_vnni_factor();
         dim_t x0 = k % wei_k_blk;
         dim_t x1 = n % bgmmc_.wei_n_blk;
+        const int src_vnni_factor
+                = data_type_vnni_granularity(get_src_wei_dt());
         dim_t offset
-                = (x0 / vnni) * vnni * bgmmc_.wei_n_blk + x1 * vnni + x0 % vnni;
+                = (x0 / src_vnni_factor) * src_vnni_factor * bgmmc_.wei_n_blk
+                + x1 * src_vnni_factor + x0 % src_vnni_factor;
         return bgmmc_.b_dt_sz * offset;
     }
 

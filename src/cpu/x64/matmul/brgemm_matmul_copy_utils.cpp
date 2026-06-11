@@ -6001,6 +6001,11 @@ alignas(64) static constexpr uint8_t xf16_fp8_dword_pack_to_split_pack_idx[64]
                 10, 11, 14, 15, 18, 19, 22, 23, 26, 27, 30, 31, 34, 35, 38, 39,
                 42, 43, 46, 47, 50, 51, 54, 55, 58, 59, 62, 63};
 
+// Column iota {0..15}. Scaled by the source column stride at JIT time to form
+// the vpgatherdd index vector used by the transposed fp8->xf16 copy kernel.
+alignas(64) static constexpr uint32_t xf16_fp8_gather_col_iota[16]
+        = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+
 struct fp8_to_xf16_cvt_helper_t {
     // Reserved by fp8 conversion routines. Keep kernel register maps disjoint.
     static constexpr int cvt_xmm0_idx = 0;
@@ -6606,8 +6611,13 @@ private:
     Zmm zmm_dst1 = Zmm(6);
     Zmm zmm_src_pack = Zmm(7);
     Zmm zmm_permute = Zmm(8);
+    // Loop-invariant vpgatherdd column-offset vector (col_iota * src stride).
+    Zmm zmm_gather_idx = Zmm(9);
+    // Writemask for vpgatherdd; reset before every gather (the gather clears
+    // it). Disjoint from the fp8 converter's reserved opmask (k4).
+    Xbyak::Opmask kGather = Xbyak::Opmask(1);
 
-    constexpr static int xmm_work_reg_base_idx = 9;
+    constexpr static int xmm_work_reg_base_idx = 10;
 
     void copy_block(const int nrows, const int ncolumns, bool zeropad) {
         const int simd_nrows_rounded = utils::rnd_up(nrows, k_blk_step);
@@ -6626,63 +6636,98 @@ private:
                 uni_vpxor(zmm_dst0, zmm_dst0, zmm_dst0);
                 uni_vpxor(zmm_dst1, zmm_dst1, zmm_dst1);
             } else {
-                const auto xmm_dword_pack0 = Xmm(xmm_work_reg_base_idx + 0);
-                const auto xmm_dword_pack1 = Xmm(xmm_work_reg_base_idx + 1);
-                const auto xmm_dword_pack2 = Xmm(xmm_work_reg_base_idx + 2);
-                const auto xmm_dword_pack3 = Xmm(xmm_work_reg_base_idx + 3);
                 const auto zmm_dword_pack = Zmm(xmm_work_reg_base_idx + 4);
-                uni_vpxor(xmm_dword_pack0, xmm_dword_pack0, xmm_dword_pack0);
-                uni_vpxor(xmm_dword_pack1, xmm_dword_pack1, xmm_dword_pack1);
-                uni_vpxor(xmm_dword_pack2, xmm_dword_pack2, xmm_dword_pack2);
-                uni_vpxor(xmm_dword_pack3, xmm_dword_pack3, xmm_dword_pack3);
 
-                // Build 16 dwords where each dword packs row bytes
-                // [r0|r1|r2|r3] for one column.
-                for (int c = 0; c < n_blk_step; ++c) {
-                    if (c >= cols_left) break;
-                    const dim_t src_off
-                            = (n + c) * src_row_stride_ + k * typesize_;
+                // A whole 16-column dword tile can be loaded with a single
+                // vpgatherdd, replacing 16 scalar mov + 16 vpinsrd + 4
+                // vinserti32x4 (~36 port-5/ALU uops) with one gather that
+                // lands mostly on the load ports. Only valid when each column
+                // has a full k_blk_step rows (so the dword read stays in
+                // bounds) and the largest column offset fits a signed 32-bit
+                // gather index; otherwise fall back to scalar assembly.
+                const bool use_gather = rows_left >= k_blk_step
+                        && src_row_stride_ <= (dim_t)(INT32_MAX / n_blk_step);
 
-                    if (rows_left >= k_blk_step) {
-                        mov(regw_tmp, dword[reg_src + src_off]);
+                if (use_gather) {
+                    // The column-offset index vector is loop-invariant; the
+                    // per-block base offset folds into the displacement.
+                    const dim_t src_off_base
+                            = n * src_row_stride_ + k * typesize_;
+                    if (cols_left < n_blk_step) {
+                        // N tail: zero unfilled lanes, gather valid columns.
+                        uni_vpxor(
+                                zmm_dword_pack, zmm_dword_pack, zmm_dword_pack);
+                        mov(regw_tmp, (1 << cols_left) - 1);
+                        kmovw(kGather, regw_tmp);
                     } else {
-                        movzx(regw_tmp, byte[reg_src + src_off]);
-                        if (rows_left > 1) {
-                            movzx(regw_tmp2,
-                                    byte[reg_src + src_off + 1 * typesize_]);
-                            shl(regw_tmp2, 8);
-                            or_(regw_tmp, regw_tmp2);
+                        kxnorw(kGather, kGather, kGather);
+                    }
+                    vpgatherdd(zmm_dword_pack | kGather,
+                            ptr[reg_src + zmm_gather_idx + src_off_base]);
+                } else {
+                    const auto xmm_dword_pack0 = Xmm(xmm_work_reg_base_idx + 0);
+                    const auto xmm_dword_pack1 = Xmm(xmm_work_reg_base_idx + 1);
+                    const auto xmm_dword_pack2 = Xmm(xmm_work_reg_base_idx + 2);
+                    const auto xmm_dword_pack3 = Xmm(xmm_work_reg_base_idx + 3);
+                    uni_vpxor(
+                            xmm_dword_pack0, xmm_dword_pack0, xmm_dword_pack0);
+                    uni_vpxor(
+                            xmm_dword_pack1, xmm_dword_pack1, xmm_dword_pack1);
+                    uni_vpxor(
+                            xmm_dword_pack2, xmm_dword_pack2, xmm_dword_pack2);
+                    uni_vpxor(
+                            xmm_dword_pack3, xmm_dword_pack3, xmm_dword_pack3);
+
+                    // Build 16 dwords where each dword packs row bytes
+                    // [r0|r1|r2|r3] for one column.
+                    for (int c = 0; c < n_blk_step; ++c) {
+                        if (c >= cols_left) break;
+                        const dim_t src_off
+                                = (n + c) * src_row_stride_ + k * typesize_;
+
+                        if (rows_left >= k_blk_step) {
+                            mov(regw_tmp, dword[reg_src + src_off]);
+                        } else {
+                            movzx(regw_tmp, byte[reg_src + src_off]);
+                            if (rows_left > 1) {
+                                movzx(regw_tmp2,
+                                        byte[reg_src + src_off
+                                                + 1 * typesize_]);
+                                shl(regw_tmp2, 8);
+                                or_(regw_tmp, regw_tmp2);
+                            }
+                            if (rows_left > 2) {
+                                movzx(regw_tmp2,
+                                        byte[reg_src + src_off
+                                                + 2 * typesize_]);
+                                shl(regw_tmp2, 16);
+                                or_(regw_tmp, regw_tmp2);
+                            }
                         }
-                        if (rows_left > 2) {
-                            movzx(regw_tmp2,
-                                    byte[reg_src + src_off + 2 * typesize_]);
-                            shl(regw_tmp2, 16);
-                            or_(regw_tmp, regw_tmp2);
-                        }
+
+                        if (c < 4)
+                            vpinsrd(xmm_dword_pack0, xmm_dword_pack0, regw_tmp,
+                                    c % 4);
+                        else if (c < 8)
+                            vpinsrd(xmm_dword_pack1, xmm_dword_pack1, regw_tmp,
+                                    c % 4);
+                        else if (c < 12)
+                            vpinsrd(xmm_dword_pack2, xmm_dword_pack2, regw_tmp,
+                                    c % 4);
+                        else
+                            vpinsrd(xmm_dword_pack3, xmm_dword_pack3, regw_tmp,
+                                    c % 4);
                     }
 
-                    if (c < 4)
-                        vpinsrd(xmm_dword_pack0, xmm_dword_pack0, regw_tmp,
-                                c % 4);
-                    else if (c < 8)
-                        vpinsrd(xmm_dword_pack1, xmm_dword_pack1, regw_tmp,
-                                c % 4);
-                    else if (c < 12)
-                        vpinsrd(xmm_dword_pack2, xmm_dword_pack2, regw_tmp,
-                                c % 4);
-                    else
-                        vpinsrd(xmm_dword_pack3, xmm_dword_pack3, regw_tmp,
-                                c % 4);
+                    vinserti32x4(
+                            zmm_dword_pack, zmm_dword_pack, xmm_dword_pack0, 0);
+                    vinserti32x4(
+                            zmm_dword_pack, zmm_dword_pack, xmm_dword_pack1, 1);
+                    vinserti32x4(
+                            zmm_dword_pack, zmm_dword_pack, xmm_dword_pack2, 2);
+                    vinserti32x4(
+                            zmm_dword_pack, zmm_dword_pack, xmm_dword_pack3, 3);
                 }
-
-                vinserti32x4(
-                        zmm_dword_pack, zmm_dword_pack, xmm_dword_pack0, 0);
-                vinserti32x4(
-                        zmm_dword_pack, zmm_dword_pack, xmm_dword_pack1, 1);
-                vinserti32x4(
-                        zmm_dword_pack, zmm_dword_pack, xmm_dword_pack2, 2);
-                vinserti32x4(
-                        zmm_dword_pack, zmm_dword_pack, xmm_dword_pack3, 3);
 
                 // Permute the column-major dword packing straight into the
                 // split-pack layout for conversion. This single vpermb fuses
@@ -6721,6 +6766,17 @@ private:
                 reinterpret_cast<size_t>(
                         xf16_fp8_dword_pack_to_split_pack_idx));
         vmovdqu8(zmm_permute, ptr[reg_tmp]);
+
+        // Build the loop-invariant vpgatherdd column-offset vector:
+        // zmm_gather_idx[c] = c * src_row_stride_.
+        if (src_row_stride_ <= (dim_t)(INT32_MAX / n_blk_step)) {
+            const auto zmm_scratch = Zmm(xmm_work_reg_base_idx);
+            mov(reg_tmp, reinterpret_cast<size_t>(xf16_fp8_gather_col_iota));
+            vmovdqu32(zmm_gather_idx, ptr[reg_tmp]);
+            mov(regw_tmp, static_cast<int>(src_row_stride_));
+            vpbroadcastd(zmm_scratch, regw_tmp);
+            vpmulld(zmm_gather_idx, zmm_gather_idx, zmm_scratch);
+        }
 
         auto compute_K_loop_body
                 = [&](const reg64_t &reg_K, int ncolumns, bool zeropad) {

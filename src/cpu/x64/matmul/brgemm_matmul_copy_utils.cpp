@@ -5964,9 +5964,9 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::generate() {
 
 template struct jit_brgemm_matmul_copy_b_cvt_bf16_t<Zmm>;
 
-inline void validate_xf16_fp8_copy_b_preconditions(
-        const brgemm_matmul_conf_t *conf, bool expect_blocked_B,
-        bool expect_transposed_B) {
+namespace {
+void validate_xf16_fp8_copy_b_preconditions(const brgemm_matmul_conf_t *conf,
+        bool expect_blocked_B, bool expect_transposed_B) {
     assert(conf->is_xf16_fp8);
     assert(conf->blocked_B == expect_blocked_B);
     assert(conf->transposed_B == expect_transposed_B);
@@ -5975,6 +5975,14 @@ inline void validate_xf16_fp8_copy_b_preconditions(
     assert(!conf->is_wei_zp_per_k && !conf->is_wei_zp_per_n);
     assert(one_of(conf->wei_dt, data_type::bf16, data_type::f16));
 }
+
+bool xf16_fp8_copy_b_isa_supported(const brgemm_matmul_conf_t *conf) {
+    if (is_superset(conf->isa, avx10_2)) return true;
+    return conf->wei_dt == data_type::f16
+            ? is_superset(conf->isa, avx10_1_512_amx_fp16)
+            : is_superset(conf->isa, avx512_core_amx);
+}
+} // namespace
 
 alignas(64) static constexpr uint8_t xf16_fp8_plain_to_split_pack_idx[64]
         = {0, 16, 1, 17, 2, 18, 3, 19, 4, 20, 5, 21, 6, 22, 7, 23, 8, 24, 9, 25,
@@ -6852,13 +6860,7 @@ status_t create_brgemm_matmul_copy_b(
     if (conf->transposed_B) {
         if (conf->is_xf16_fp8
                 && one_of(conf->wei_dt, data_type::bf16, data_type::f16)) {
-            const bool is_fp8_to_f16 = conf->wei_dt == data_type::f16;
-            const bool isa_ok = is_superset(conf->isa, avx10_2)
-                    || (is_fp8_to_f16
-                                    ? is_superset(
-                                              conf->isa, avx10_1_512_amx_fp16)
-                                    : is_superset(conf->isa, avx512_core_amx));
-            if (isa_ok) {
+            if (xf16_fp8_copy_b_isa_supported(conf)) {
                 CHECK(safe_ptr_assign(copy_ker,
                         new jit_brgemm_matmul_copy_cvt_fp8_to_xf16_transposed_t(
                                 conf)));
@@ -6907,13 +6909,7 @@ status_t create_brgemm_matmul_copy_b(
                         new jit_brgemm_matmul_copy_b_f32_t<Ymm>(conf)));
         } else if (conf->is_xf16_fp8
                 && one_of(conf->wei_dt, data_type::bf16, data_type::f16)) {
-            const bool is_fp8_to_f16 = conf->wei_dt == data_type::f16;
-            const bool isa_ok = is_superset(conf->isa, avx10_2)
-                    || (is_fp8_to_f16
-                                    ? is_superset(
-                                              conf->isa, avx10_1_512_amx_fp16)
-                                    : is_superset(conf->isa, avx512_core_amx));
-            if (isa_ok)
+            if (xf16_fp8_copy_b_isa_supported(conf))
                 CHECK(safe_ptr_assign(copy_ker,
                         conf->blocked_B
                                 ? static_cast<jit_brgemm_matmul_copy_b_t *>(

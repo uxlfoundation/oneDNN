@@ -6074,7 +6074,7 @@ struct jit_brgemm_matmul_copy_cvt_fp8_to_xf16_t
         , typesize_(conf->b_dt_sz)
         , tr_typesize_(conf->tr_b_dt_sz)
         , src_stride_(conf->LDB * k_blk_step * typesize_)
-        , tr_src_stride_(conf->LDB * k_blk_step * tr_typesize_)
+        , tr_src_stride_(conf->LDB * tr_k_blk_step * tr_typesize_)
         , cvt_helper_(this, conf) {
         validate_xf16_fp8_copy_b_preconditions(conf, true, conf->transposed_B);
     }
@@ -6088,12 +6088,15 @@ private:
     using reg64_t = const Xbyak::Reg64;
 
     enum {
-        k_blk_step = 2,
         n_blk_step = 16,
-        fp8_rows_per_pack = 4,
+        // K-pack size in source (fp8) blocked layout
+        k_blk_step = 4,
+        // K-pack size in destination (xf16) blocked layout
+        tr_k_blk_step = 2,
     };
 
     const int typesize_, tr_typesize_;
+    // Bytes between consecutive fp8 packs and xf16 packs, respectively
     const dim_t src_stride_, tr_src_stride_;
 
     fp8_to_xf16_cvt_helper_t cvt_helper_;
@@ -6114,35 +6117,36 @@ private:
 
     void copy_block(const int nrows, const int ncolumns, bool zeropad) {
 
-        const int simd_nrows_rounded = utils::rnd_up(nrows, fp8_rows_per_pack);
+        const int simd_nrows_rounded = utils::rnd_up(nrows, k_blk_step);
         const int simd_ncols_rounded = utils::rnd_up(ncolumns, n_blk_step);
 
-        for_(int k = 0; k < simd_nrows_rounded; k += fp8_rows_per_pack)
+        for_(int k = 0; k < simd_nrows_rounded; k += k_blk_step)
         for (int n = 0; n < simd_ncols_rounded; n += n_blk_step) {
-            const int k_blk = k / k_blk_step;
+            // One loop step consumes one source K-pack (k_blk_step rows) and produces k_blk_step / tr_k_blk_step destination K-packs (tr_k_blk_step rows each)
+            const int fp8_pack = k / k_blk_step;
+            const int xf16_pack_0 = fp8_pack * (k_blk_step / tr_k_blk_step);
             const dim_t src_off
-                    = k_blk * src_stride_ + n * fp8_rows_per_pack * typesize_;
-            const dim_t tr_src_off0
-                    = k_blk * tr_src_stride_ + n * k_blk_step * tr_typesize_;
-            const dim_t tr_src_off1 = tr_src_off0 + tr_src_stride_;
+                    = fp8_pack * src_stride_ + n * k_blk_step * typesize_;
+            const dim_t tr_src_off_0 = xf16_pack_0 * tr_src_stride_
+                    + n * tr_k_blk_step * tr_typesize_;
+            const dim_t tr_src_off_1 = tr_src_off_0 + tr_src_stride_;
 
             if (zeropad) {
                 uni_vpxor(zmm_dst0, zmm_dst0, zmm_dst0);
                 uni_vpxor(zmm_dst1, zmm_dst1, zmm_dst1);
             } else {
-                const auto src_addr
-                        = maybe_EVEX_compress_addr(reg_src, src_off);
+                const auto src_addr = EVEX_compress_addr(reg_src, src_off);
                 vmovdqu8(zmm_src_pack, src_addr);
 
                 cvt_helper_.convert(zmm_dst0, zmm_dst1, zmm_src_pack);
             }
 
-            const auto store_addr0
-                    = maybe_EVEX_compress_addr(reg_tr_src, tr_src_off0);
-            const auto store_addr1
-                    = maybe_EVEX_compress_addr(reg_tr_src, tr_src_off1);
-            uni_vmovups(store_addr0, zmm_dst0);
-            uni_vmovups(store_addr1, zmm_dst1);
+            const auto store_addr_0
+                    = EVEX_compress_addr(reg_tr_src, tr_src_off_0);
+            const auto store_addr_1
+                    = EVEX_compress_addr(reg_tr_src, tr_src_off_1);
+            uni_vmovups(store_addr_0, zmm_dst0);
+            uni_vmovups(store_addr_1, zmm_dst1);
         }
     }
 
@@ -6155,9 +6159,9 @@ private:
 
         auto compute_K_loop_body
                 = [&](const reg64_t &reg_K, int ncolumns, bool zeropad) {
-            const int k_step = fp8_rows_per_pack;
-            const int k_unroll = 8;
-            const int k_unroll_rows = k_unroll * k_step;
+            constexpr int k_step = k_blk_step;
+            constexpr int k_unroll = 8;
+            constexpr int k_unroll_rows = k_unroll * k_step;
 
             Label K_loop_unrolled, K_loop_single, K_loop_tail_or_done;
             cmp(reg_K, k_unroll_rows);
@@ -6166,7 +6170,7 @@ private:
             L(K_loop_unrolled);
             copy_block(k_unroll_rows, ncolumns, zeropad);
             add(reg_src, (k_unroll_rows / k_blk_step) * src_stride_);
-            add(reg_tr_src, (k_unroll_rows / k_blk_step) * tr_src_stride_);
+            add(reg_tr_src, (k_unroll_rows / tr_k_blk_step) * tr_src_stride_);
 
             sub(reg_K, k_unroll_rows);
             cmp(reg_K, k_unroll_rows);
@@ -6178,34 +6182,21 @@ private:
 
             copy_block(k_step, ncolumns, zeropad);
             add(reg_src, (k_step / k_blk_step) * src_stride_);
-            add(reg_tr_src, (k_step / k_blk_step) * tr_src_stride_);
+            add(reg_tr_src, (k_step / tr_k_blk_step) * tr_src_stride_);
 
             sub(reg_K, k_step);
             jmp(K_loop_single, T_NEAR);
 
             L(K_loop_tail_or_done);
-            Label K_loop_done, K_loop_tail_2, K_loop_tail_3;
+            Label K_loop_done;
             cmp(reg_K, 0);
             jle(K_loop_done, T_NEAR);
-            cmp(reg_K, 1);
-            jne(K_loop_tail_2, T_NEAR);
-            copy_block(1, ncolumns, zeropad);
-            add(reg_tr_src, 2 * tr_src_stride_);
-            sub(reg_K, 1);
-            jmp(K_loop_done, T_NEAR);
-
-            L(K_loop_tail_2);
-            cmp(reg_K, 2);
-            jne(K_loop_tail_3, T_NEAR);
-            copy_block(2, ncolumns, zeropad);
-            add(reg_tr_src, 2 * tr_src_stride_);
-            sub(reg_K, 2);
-            jmp(K_loop_done, T_NEAR);
-
-            L(K_loop_tail_3);
-            copy_block(3, ncolumns, zeropad);
-            add(reg_tr_src, 2 * tr_src_stride_);
-            sub(reg_K, 3);
+            // Tail of 1..k_blk_step-1 K-rows: the source is stored as
+            // whole zero-padded fp8 packs, so one copy_block handles any
+            // tail. Leave reg_src (last source read) and advance reg_tr_src
+            // so the next zero-pad pass appends its packs contiguously.
+            copy_block(k_blk_step, ncolumns, zeropad);
+            add(reg_tr_src, (k_blk_step / tr_k_blk_step) * tr_src_stride_);
 
             L(K_loop_done);
         };
@@ -6285,8 +6276,7 @@ struct jit_brgemm_matmul_copy_cvt_fp8_to_xf16_plain_t
         , typesize_(conf->b_dt_sz)
         , tr_typesize_(conf->tr_b_dt_sz)
         , src_row_stride_(conf->copy_B_wei_stride)
-        , src_stride_(k_blk_step * src_row_stride_)
-        , tr_src_stride_(conf->LDB * k_blk_step * tr_typesize_)
+        , tr_src_stride_(conf->LDB * tr_k_blk_step * tr_typesize_)
         , cvt_helper_(this, conf) {
         validate_xf16_fp8_copy_b_preconditions(conf, false, false);
     }
@@ -6302,13 +6292,15 @@ private:
     using opmask_t = const Xbyak::Opmask;
 
     enum {
-        k_blk_step = 2,
         n_blk_step = 16,
-        fp8_rows_per_pack = 4,
+        // K-pack size in source (fp8) blocked layout.
+        k_blk_step = 4,
+        // K-pack size in destination (xf16) blocked layout.
+        tr_k_blk_step = 2,
     };
 
     const int typesize_, tr_typesize_;
-    const dim_t src_row_stride_, src_stride_, tr_src_stride_;
+    const dim_t src_row_stride_, tr_src_stride_;
 
     fp8_to_xf16_cvt_helper_t cvt_helper_;
 
@@ -6331,21 +6323,21 @@ private:
     opmask_t kTail = k1;
 
     void copy_block(const int nrows, const int ncolumns, bool zeropad) {
-        const int simd_nrows_rounded = utils::rnd_up(nrows, fp8_rows_per_pack);
+        const int simd_nrows_rounded = utils::rnd_up(nrows, k_blk_step);
         const int simd_ncols_rounded = utils::rnd_up(ncolumns, n_blk_step);
 
         mov(reg_tmp,
                 reinterpret_cast<size_t>(xf16_fp8_plain_to_split_pack_idx));
         vmovdqu8(zmm_permute, ptr[reg_tmp]);
 
-        for_(int k = 0; k < simd_nrows_rounded; k += fp8_rows_per_pack)
+        for_(int k = 0; k < simd_nrows_rounded; k += k_blk_step)
         for (int n = 0; n < simd_ncols_rounded; n += n_blk_step) {
             const int rows_left = nrows - k;
             const int cols_left = ncolumns - n;
-            const int k_blk = k / k_blk_step;
-            const dim_t tr_src_off0
-                    = k_blk * tr_src_stride_ + n * k_blk_step * tr_typesize_;
-            const dim_t tr_src_off1 = tr_src_off0 + tr_src_stride_;
+            const int k_blk = k / tr_k_blk_step;
+            const dim_t tr_src_off_0
+                    = k_blk * tr_src_stride_ + n * tr_k_blk_step * tr_typesize_;
+            const dim_t tr_src_off_1 = tr_src_off_0 + tr_src_stride_;
 
             if (zeropad || rows_left <= 0 || cols_left <= 0) {
                 uni_vpxor(zmm_dst0, zmm_dst0, zmm_dst0);
@@ -6359,13 +6351,13 @@ private:
                 }
 
                 uni_vpxor(zmm_src_pack, zmm_src_pack, zmm_src_pack);
-                for (int r = 0; r < fp8_rows_per_pack; ++r) {
+                for (int r = 0; r < k_blk_step; ++r) {
                     const auto xmm_src = Xmm(xmm_work_reg_base_idx + r);
                     const dim_t src_off
                             = (k + r) * src_row_stride_ + n * typesize_;
                     if (r < rows_left) {
                         const auto src_addr
-                                = maybe_EVEX_compress_addr(reg_src, src_off);
+                                = EVEX_compress_addr(reg_src, src_off);
                         if (is_n_tail)
                             vmovdqu8(xmm_src | kTail | T_z, src_addr);
                         else
@@ -6385,12 +6377,12 @@ private:
                         zmm_dst0, zmm_dst1, zmm_src_pack);
             }
 
-            const auto store_addr0
-                    = maybe_EVEX_compress_addr(reg_tr_src, tr_src_off0);
-            const auto store_addr1
-                    = maybe_EVEX_compress_addr(reg_tr_src, tr_src_off1);
-            uni_vmovups(store_addr0, zmm_dst0);
-            uni_vmovups(store_addr1, zmm_dst1);
+            const auto store_addr_0
+                    = EVEX_compress_addr(reg_tr_src, tr_src_off_0);
+            const auto store_addr_1
+                    = EVEX_compress_addr(reg_tr_src, tr_src_off_1);
+            uni_vmovups(store_addr_0, zmm_dst0);
+            uni_vmovups(store_addr_1, zmm_dst1);
         }
     }
 
@@ -6403,7 +6395,7 @@ private:
 
         auto compute_K_loop_body
                 = [&](const reg64_t &reg_K, int ncolumns, bool zeropad) {
-            const int k_step = fp8_rows_per_pack;
+            const int k_step = k_blk_step;
             const int k_unroll = 8;
             const int k_unroll_rows = k_unroll * k_step;
 
@@ -6413,8 +6405,8 @@ private:
 
             L(K_loop_unrolled);
             copy_block(k_unroll_rows, ncolumns, zeropad);
-            add(reg_src, (k_unroll_rows / k_blk_step) * src_stride_);
-            add(reg_tr_src, (k_unroll_rows / k_blk_step) * tr_src_stride_);
+            add(reg_src, k_unroll_rows * src_row_stride_);
+            add(reg_tr_src, (k_unroll_rows / tr_k_blk_step) * tr_src_stride_);
 
             sub(reg_K, k_unroll_rows);
             cmp(reg_K, k_unroll_rows);
@@ -6425,35 +6417,30 @@ private:
             jl(K_loop_tail_or_done, T_NEAR);
 
             copy_block(k_step, ncolumns, zeropad);
-            add(reg_src, (k_step / k_blk_step) * src_stride_);
-            add(reg_tr_src, (k_step / k_blk_step) * tr_src_stride_);
+            add(reg_src, k_step * src_row_stride_);
+            add(reg_tr_src, (k_step / tr_k_blk_step) * tr_src_stride_);
 
             sub(reg_K, k_step);
             jmp(K_loop_single, T_NEAR);
 
             L(K_loop_tail_or_done);
-            Label K_loop_done, K_loop_tail_2, K_loop_tail_3;
+            Label K_loop_done;
             cmp(reg_K, 0);
             jle(K_loop_done, T_NEAR);
-            cmp(reg_K, 1);
-            jne(K_loop_tail_2, T_NEAR);
-            copy_block(1, ncolumns, zeropad);
-            add(reg_tr_src, 2 * tr_src_stride_);
-            sub(reg_K, 1);
-            jmp(K_loop_done, T_NEAR);
-
-            L(K_loop_tail_2);
-            cmp(reg_K, 2);
-            jne(K_loop_tail_3, T_NEAR);
-            copy_block(2, ncolumns, zeropad);
-            add(reg_tr_src, 2 * tr_src_stride_);
-            sub(reg_K, 2);
-            jmp(K_loop_done, T_NEAR);
-
-            L(K_loop_tail_3);
-            copy_block(3, ncolumns, zeropad);
-            add(reg_tr_src, 2 * tr_src_stride_);
-            sub(reg_K, 3);
+            // Tail of 1..k_blk_step-1 K-rows: copy_block zero-pads to a
+            // full fp8 pack and writes whole xf16 packs, so advance
+            // reg_tr_src by the full pack, not the partial row count. Leave
+            // reg_src (last source read) so the next zero-pad pass appends
+            // its packs contiguously.
+            for (int tail_rows = 1; tail_rows < k_blk_step; ++tail_rows) {
+                Label next_tail;
+                cmp(reg_K, tail_rows);
+                jne(next_tail, T_NEAR);
+                copy_block(tail_rows, ncolumns, zeropad);
+                add(reg_tr_src, (k_blk_step / tr_k_blk_step) * tr_src_stride_);
+                jmp(K_loop_done, T_NEAR);
+                L(next_tail);
+            }
 
             L(K_loop_done);
         };
@@ -6533,7 +6520,7 @@ struct jit_brgemm_matmul_copy_cvt_fp8_to_xf16_transposed_t
         , typesize_(conf->b_dt_sz)
         , tr_typesize_(conf->tr_b_dt_sz)
         , src_row_stride_(conf->copy_B_wei_stride)
-        , tr_src_stride_(conf->LDB * k_blk_step * tr_typesize_)
+        , tr_src_stride_(conf->LDB * tr_k_blk_step * tr_typesize_)
         , cvt_helper_(this, conf) {
         validate_xf16_fp8_copy_b_preconditions(conf, false, true);
     }
@@ -6548,9 +6535,11 @@ private:
     using reg32_t = const Xbyak::Reg32;
 
     enum {
-        k_blk_step = 2,
         n_blk_step = 16,
-        fp8_rows_per_pack = 4,
+        // K-pack size in source (fp8) blocked layout.
+        k_blk_step = 4,
+        // K-pack size in destination (xf16) blocked layout.
+        tr_k_blk_step = 2,
     };
 
     const int typesize_, tr_typesize_;
@@ -6564,8 +6553,9 @@ private:
     reg64_t reg_N_blk = r10;
     reg64_t reg_tmp = r11;
     reg32_t regw_tmp = r11d;
-    reg64_t reg_src_back = r12;
-    reg64_t reg_tr_src_back = r13;
+    reg32_t regw_tmp2 = r12d;
+    reg64_t reg_src_back = r13;
+    reg64_t reg_tr_src_back = r14;
 
     Zmm zmm_dst0 = Zmm(5);
     Zmm zmm_dst1 = Zmm(6);
@@ -6575,21 +6565,21 @@ private:
     constexpr static int xmm_work_reg_base_idx = 9;
 
     void copy_block(const int nrows, const int ncolumns, bool zeropad) {
-        const int simd_nrows_rounded = utils::rnd_up(nrows, fp8_rows_per_pack);
+        const int simd_nrows_rounded = utils::rnd_up(nrows, k_blk_step);
         const int simd_ncols_rounded = utils::rnd_up(ncolumns, n_blk_step);
 
         mov(reg_tmp,
                 reinterpret_cast<size_t>(xf16_fp8_plain_to_split_pack_idx));
         vmovdqu8(zmm_permute, ptr[reg_tmp]);
 
-        for_(int k = 0; k < simd_nrows_rounded; k += fp8_rows_per_pack)
+        for_(int k = 0; k < simd_nrows_rounded; k += k_blk_step)
         for (int n = 0; n < simd_ncols_rounded; n += n_blk_step) {
             const int rows_left = nrows - k;
             const int cols_left = ncolumns - n;
-            const int k_blk = k / k_blk_step;
-            const dim_t tr_src_off0
-                    = k_blk * tr_src_stride_ + n * k_blk_step * tr_typesize_;
-            const dim_t tr_src_off1 = tr_src_off0 + tr_src_stride_;
+            const int k_blk = k / tr_k_blk_step;
+            const dim_t tr_src_off_0
+                    = k_blk * tr_src_stride_ + n * tr_k_blk_step * tr_typesize_;
+            const dim_t tr_src_off_1 = tr_src_off_0 + tr_src_stride_;
 
             if (zeropad || rows_left <= 0 || cols_left <= 0) {
                 uni_vpxor(zmm_dst0, zmm_dst0, zmm_dst0);
@@ -6601,13 +6591,12 @@ private:
                 const auto xmm_src1 = Xmm(xmm_work_reg_base_idx + 1);
                 const auto xmm_src2 = Xmm(xmm_work_reg_base_idx + 2);
                 const auto xmm_src3 = Xmm(xmm_work_reg_base_idx + 3);
-                const auto xmm_dword_pack0 = Xmm(14);
-                const auto xmm_dword_pack1 = Xmm(15);
-                const auto xmm_dword_pack2 = Xmm(16);
-                const auto xmm_dword_pack3 = Xmm(17);
-                const auto zmm_dword_pack = Zmm(18);
-                const auto zmm_shifted = Zmm(19);
-                const reg32_t regw_tmp2 = edx;
+                const auto xmm_dword_pack0 = Xmm(xmm_work_reg_base_idx + 4);
+                const auto xmm_dword_pack1 = Xmm(xmm_work_reg_base_idx + 5);
+                const auto xmm_dword_pack2 = Xmm(xmm_work_reg_base_idx + 6);
+                const auto xmm_dword_pack3 = Xmm(xmm_work_reg_base_idx + 7);
+                const auto zmm_dword_pack = Zmm(xmm_work_reg_base_idx + 8);
+                const auto zmm_shifted = Zmm(xmm_work_reg_base_idx + 9);
                 uni_vpxor(xmm_dword_pack0, xmm_dword_pack0, xmm_dword_pack0);
                 uni_vpxor(xmm_dword_pack1, xmm_dword_pack1, xmm_dword_pack1);
                 uni_vpxor(xmm_dword_pack2, xmm_dword_pack2, xmm_dword_pack2);
@@ -6620,7 +6609,7 @@ private:
                     const dim_t src_off
                             = (n + c) * src_row_stride_ + k * typesize_;
 
-                    if (rows_left >= fp8_rows_per_pack) {
+                    if (rows_left >= k_blk_step) {
                         mov(regw_tmp, dword[reg_src + src_off]);
                     } else {
                         movzx(regw_tmp, byte[reg_src + src_off]);
@@ -6684,12 +6673,12 @@ private:
                         zmm_dst0, zmm_dst1, zmm_src_pack);
             }
 
-            const auto store_addr0
-                    = maybe_EVEX_compress_addr(reg_tr_src, tr_src_off0);
-            const auto store_addr1
-                    = maybe_EVEX_compress_addr(reg_tr_src, tr_src_off1);
-            uni_vmovups(store_addr0, zmm_dst0);
-            uni_vmovups(store_addr1, zmm_dst1);
+            const auto store_addr_0
+                    = EVEX_compress_addr(reg_tr_src, tr_src_off_0);
+            const auto store_addr_1
+                    = EVEX_compress_addr(reg_tr_src, tr_src_off_1);
+            uni_vmovups(store_addr_0, zmm_dst0);
+            uni_vmovups(store_addr_1, zmm_dst1);
         }
     }
 
@@ -6702,9 +6691,9 @@ private:
 
         auto compute_K_loop_body
                 = [&](const reg64_t &reg_K, int ncolumns, bool zeropad) {
-            const int k_step = fp8_rows_per_pack;
-            const int k_unroll = 8;
-            const int k_unroll_rows = k_unroll * k_step;
+            constexpr int k_step = k_blk_step;
+            constexpr int k_unroll = 8;
+            constexpr int k_unroll_rows = k_unroll * k_step;
 
             Label K_loop_unrolled, K_loop_single, K_loop_tail_or_done;
             cmp(reg_K, k_unroll_rows);
@@ -6713,7 +6702,7 @@ private:
             L(K_loop_unrolled);
             copy_block(k_unroll_rows, ncolumns, zeropad);
             add(reg_src, k_unroll_rows * typesize_);
-            add(reg_tr_src, (k_unroll_rows / k_blk_step) * tr_src_stride_);
+            add(reg_tr_src, (k_unroll_rows / tr_k_blk_step) * tr_src_stride_);
 
             sub(reg_K, k_unroll_rows);
             cmp(reg_K, k_unroll_rows);
@@ -6725,34 +6714,29 @@ private:
 
             copy_block(k_step, ncolumns, zeropad);
             add(reg_src, k_step * typesize_);
-            add(reg_tr_src, (k_step / k_blk_step) * tr_src_stride_);
+            add(reg_tr_src, (k_step / tr_k_blk_step) * tr_src_stride_);
 
             sub(reg_K, k_step);
             jmp(K_loop_single, T_NEAR);
 
             L(K_loop_tail_or_done);
-            Label K_loop_done, K_loop_tail_2, K_loop_tail_3;
+            Label K_loop_done;
             cmp(reg_K, 0);
             jle(K_loop_done, T_NEAR);
-            cmp(reg_K, 1);
-            jne(K_loop_tail_2, T_NEAR);
-            copy_block(1, ncolumns, zeropad);
-            add(reg_tr_src, 2 * tr_src_stride_);
-            sub(reg_K, 1);
-            jmp(K_loop_done, T_NEAR);
-
-            L(K_loop_tail_2);
-            cmp(reg_K, 2);
-            jne(K_loop_tail_3, T_NEAR);
-            copy_block(2, ncolumns, zeropad);
-            add(reg_tr_src, 2 * tr_src_stride_);
-            sub(reg_K, 2);
-            jmp(K_loop_done, T_NEAR);
-
-            L(K_loop_tail_3);
-            copy_block(3, ncolumns, zeropad);
-            add(reg_tr_src, 2 * tr_src_stride_);
-            sub(reg_K, 3);
+            // Tail of 1..k_blk_step-1 K-rows: copy_block zero-pads to a
+            // full fp8 pack and writes whole xf16 packs, so advance
+            // reg_tr_src by the full pack, not the partial row count. Leave
+            // reg_src (last source read) so the next zero-pad pass appends
+            // its packs contiguously.
+            for (int tail_rows = 1; tail_rows < k_blk_step; ++tail_rows) {
+                Label next_tail;
+                cmp(reg_K, tail_rows);
+                jne(next_tail, T_NEAR);
+                copy_block(tail_rows, ncolumns, zeropad);
+                add(reg_tr_src, (k_blk_step / tr_k_blk_step) * tr_src_stride_);
+                jmp(K_loop_done, T_NEAR);
+                L(next_tail);
+            }
 
             L(K_loop_done);
         };

@@ -45,7 +45,7 @@ header:
 
 # Clang tools configs
     - '**/.clang-*'
-
+  
 # benchdnn inputs
     - 'tests/benchdnn/inputs/**'
 
@@ -60,3 +60,4 @@ header:
     - '**/*.vcxproj*'
 
   license-location-threshold: 25
+  

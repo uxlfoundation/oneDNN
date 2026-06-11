@@ -18,8 +18,6 @@
 #ifndef CPU_RV64_JIT_RVV_SOFTMAX_KERNEL_HPP
 #define CPU_RV64_JIT_RVV_SOFTMAX_KERNEL_HPP
 
-#include <cstdint>
-
 #include "common/c_types_map.hpp"
 #include "common/float16.hpp"
 #include "cpu/rv64/jit_generator.hpp"
@@ -99,7 +97,7 @@ private:
 
 struct jit_rvv_softmax_f16_exp_sub_sum_kernel_t : public jit_generator_t {
     struct call_params_t {
-        const uint16_t *src;
+        const dnnl::impl::float16_t *src;
         float *tmp;
         dim_t len;
         float sub;
@@ -130,8 +128,8 @@ void jit_rvv_softmax_f16_gather(const dnnl::impl::float16_t *src,
 void jit_rvv_softmax_f16_scatter(const dnnl::impl::float16_t *src,
         dnnl::impl::float16_t *dst, dim_t len, dim_t stride_bytes);
 
-void jit_rvv_softmax_f16_exp_sub_sum(const dnnl::impl::float16_t *src, float *tmp,
-        dim_t len, float sub, float *sum);
+void jit_rvv_softmax_f16_exp_sub_sum(const dnnl::impl::float16_t *src,
+        float *tmp, dim_t len, float sub, float *sum);
 
 } // namespace rv64
 } // namespace cpu

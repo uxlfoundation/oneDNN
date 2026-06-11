@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2026 Institute of Software, Chinese Academy of Sciences
+* Copyright 2026 SpacemiT Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -94,6 +95,27 @@ private:
     bool gather_;
 };
 
+struct jit_rvv_softmax_f16_exp_sub_sum_kernel_t : public jit_generator_t {
+    struct call_params_t {
+        const dnnl::impl::float16_t *src;
+        float *tmp;
+        dim_t len;
+        float sub;
+        float *sum;
+    };
+
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_rvv_softmax_f16_exp_sub_sum_kernel_t)
+
+    jit_rvv_softmax_f16_exp_sub_sum_kernel_t();
+
+    void operator()(const call_params_t *p) const {
+        jit_generator_t::operator()(p);
+    }
+
+protected:
+    void generate() override;
+};
+
 void jit_rvv_softmax_f16_affine_from_f16(const dnnl::impl::float16_t *src,
         dnnl::impl::float16_t *dst, dim_t len, float sub, float mul);
 
@@ -105,6 +127,9 @@ void jit_rvv_softmax_f16_gather(const dnnl::impl::float16_t *src,
 
 void jit_rvv_softmax_f16_scatter(const dnnl::impl::float16_t *src,
         dnnl::impl::float16_t *dst, dim_t len, dim_t stride_bytes);
+
+void jit_rvv_softmax_f16_exp_sub_sum(const dnnl::impl::float16_t *src,
+        float *tmp, dim_t len, float sub, float *sum);
 
 } // namespace rv64
 } // namespace cpu

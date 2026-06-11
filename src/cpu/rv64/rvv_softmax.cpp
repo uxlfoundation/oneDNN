@@ -1,5 +1,6 @@
 /******************************************************************************
 * Copyright 2025 ZTE Corporation
+* Copyright 2026 SpacemiT Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -102,23 +103,27 @@ void compute_softmax_f16_rvv(const dnnl::impl::float16_t *src,
     }
 
     if (is_logsoftmax) {
+        float *tmp_dst = new float[len];
         float sum_exp = 0.f;
-        for (dim_t i = 0; i < len; ++i) {
-            sum_exp += expf((float)src[i] - max_val);
-        }
+
+        jit_rvv_softmax_f16_exp_sub_sum(src, tmp_dst, len, max_val, &sum_exp);
         const float log_sum = logf(sum_exp);
 
         const float sub = max_val + log_sum;
         jit_rvv_softmax_f16_affine_from_f16(src, dst, len, sub, 1.0f);
+        delete[] tmp_dst;
     } else {
         float *tmp_dst = new float[len];
         float sum_exp = 0.f;
         const bool all_minus_inf
                 = is_softmax_inf_as_zero && (max_val == -INFINITY);
-        for (dim_t i = 0; i < len; ++i) {
-            float e = all_minus_inf ? 0.f : expf((float)src[i] - max_val);
-            tmp_dst[i] = e;
-            sum_exp += e;
+
+        if (all_minus_inf) {
+            for (dim_t i = 0; i < len; ++i)
+                tmp_dst[i] = 0.f;
+        } else {
+            jit_rvv_softmax_f16_exp_sub_sum(
+                    src, tmp_dst, len, max_val, &sum_exp);
         }
         const float inv_sum = sum_exp ? (1.0f / sum_exp) : 1.0f;
 

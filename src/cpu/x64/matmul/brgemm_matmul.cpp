@@ -1511,9 +1511,7 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                 pd->attr()->post_ops_, ctx);
         base_brg_ker_idx_
                 = pd->get_brg_kernel_idx(false, true, 0, 0, false, false);
-        vnni_factor = data_type_vnni_granularity(
-                (bgmmc.is_xf16_fp8 && bgmmc.use_buffer_b) ? bgmmc.orig_wei_dt
-                                                          : bgmmc.wei_dt);
+        vnni_factor = data_type_vnni_granularity(bgmmc.wei_dt);
 
         reorder_zp_a_comp_ptr_ = nullptr;
         if (bgmmc_.has_zero_point_a && bgmmc_.blocked_B) {
@@ -1817,11 +1815,26 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         return batch_ptr + A_strides_[1] * m + A_strides_[0] * k;
     }
 
-    int get_src_wei_k_blk() const {
+    // Data type whose VNNI granularity matches the physical source-B blocked
+    // layout, used for the source-side addressing below. This is usually the
+    // compute type bgmmc_.wei_dt, but xf16-fp8 and bf32 leave the source in
+    // its original layout (fp8 VNNI4 / f32 VNNI1, given by orig_wei_dt) and
+    // only up-convert it during the copy. Int-weight decompression also has
+    // orig_wei_dt != wei_dt, but its source is reblocked to the compute
+    // granularity (see pick_blocked_B_layout: is_bf16_with_int_wei -> VNNI2,
+    // is_{f16,f32}_with_int_wei -> VNNI1), so it must keep using wei_dt and is
+    // intentionally not selected here.
+    data_type_t get_src_wei_dt() const {
         const bool use_orig_wei_layout
                 = (bgmmc_.is_xf16_fp8 && bgmmc_.use_buffer_b) || bgmmc_.is_bf32;
-        return use_orig_wei_layout ? get_wei_k_blk(bgmmc_.orig_wei_dt)
-                                   : bgmmc_.wei_k_blk;
+        return use_orig_wei_layout ? bgmmc_.orig_wei_dt : bgmmc_.wei_dt;
+    }
+
+    // K-block size and VNNI granularity of the source weights layout, which
+    // must be used together for source-side addressing.
+    int get_src_wei_k_blk() const { return get_wei_k_blk(get_src_wei_dt()); }
+    int get_src_wei_vnni_factor() const {
+        return data_type_vnni_granularity(get_src_wei_dt());
     }
 
     dim_t get_data_B_kn_off(dim_t k, dim_t n) const {
@@ -2057,11 +2070,14 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
 
         if (!bgmmc_.blocked_B) return 0;
 
+        // Source weights live in their own blocked layout, so both the block
+        // size and the VNNI interleave must use the source granularity.
         const int wei_k_blk = get_src_wei_k_blk();
+        const int vnni = get_src_wei_vnni_factor();
         dim_t x0 = k % wei_k_blk;
         dim_t x1 = n % bgmmc_.wei_n_blk;
-        dim_t offset = (x0 / vnni_factor) * vnni_factor * bgmmc_.wei_n_blk
-                + x1 * vnni_factor + x0 % vnni_factor;
+        dim_t offset
+                = (x0 / vnni) * vnni * bgmmc_.wei_n_blk + x1 * vnni + x0 % vnni;
         return bgmmc_.b_dt_sz * offset;
     }
 

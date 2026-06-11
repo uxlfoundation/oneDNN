@@ -6122,9 +6122,15 @@ private:
 
         for_(int k = 0; k < simd_nrows_rounded; k += k_blk_step)
         for (int n = 0; n < simd_ncols_rounded; n += n_blk_step) {
-            // One loop step consumes one source K-pack (k_blk_step rows) and produces k_blk_step / tr_k_blk_step destination K-packs (tr_k_blk_step rows each)
+            // One loop step consumes one source K-pack (k_blk_step rows) and
+            // converts it into two destination K-packs (tr_k_blk_step rows
+            // each). The second destination pack is stored only when the
+            // source pack actually contributes more than tr_k_blk_step rows,
+            // so the write granularity equals the destination VNNI
+            // granularity tr_k_blk_step rather than the source pack size.
             const int fp8_pack = k / k_blk_step;
             const int xf16_pack_0 = fp8_pack * (k_blk_step / tr_k_blk_step);
+            const bool store_pack_1 = (nrows - k) > tr_k_blk_step;
             const dim_t src_off
                     = fp8_pack * src_stride_ + n * k_blk_step * typesize_;
             const dim_t tr_src_off_0 = xf16_pack_0 * tr_src_stride_
@@ -6133,7 +6139,7 @@ private:
 
             if (zeropad) {
                 uni_vpxor(zmm_dst0, zmm_dst0, zmm_dst0);
-                uni_vpxor(zmm_dst1, zmm_dst1, zmm_dst1);
+                if (store_pack_1) uni_vpxor(zmm_dst1, zmm_dst1, zmm_dst1);
             } else {
                 const auto src_addr = EVEX_compress_addr(reg_src, src_off);
                 vmovdqu8(zmm_src_pack, src_addr);
@@ -6143,10 +6149,12 @@ private:
 
             const auto store_addr_0
                     = EVEX_compress_addr(reg_tr_src, tr_src_off_0);
-            const auto store_addr_1
-                    = EVEX_compress_addr(reg_tr_src, tr_src_off_1);
             uni_vmovups(store_addr_0, zmm_dst0);
-            uni_vmovups(store_addr_1, zmm_dst1);
+            if (store_pack_1) {
+                const auto store_addr_1
+                        = EVEX_compress_addr(reg_tr_src, tr_src_off_1);
+                uni_vmovups(store_addr_1, zmm_dst1);
+            }
         }
     }
 
@@ -6191,12 +6199,23 @@ private:
             Label K_loop_done;
             cmp(reg_K, 0);
             jle(K_loop_done, T_NEAR);
-            // Tail of 1..k_blk_step-1 K-rows: the source is stored as
-            // whole zero-padded fp8 packs, so one copy_block handles any
-            // tail. Leave reg_src (last source read) and advance reg_tr_src
-            // so the next zero-pad pass appends its packs contiguously.
+            // Tail of 1..k_blk_step-1 K-rows. The source is read as whole
+            // zero-padded fp8 packs, so the exact tail count only matters for
+            // the destination, which is written in whole xf16 packs of
+            // tr_k_blk_step rows. Hence just two cases: a tail wider than
+            // tr_k_blk_step writes two packs, otherwise one (tails of 1 and 2
+            // rows are identical). Leave reg_src (last source read) so the
+            // next zero-pad pass appends its packs contiguously.
+            Label tail_one_pack;
+            cmp(reg_K, tr_k_blk_step);
+            jle(tail_one_pack, T_NEAR);
             copy_block(k_blk_step, ncolumns, zeropad);
             add(reg_tr_src, (k_blk_step / tr_k_blk_step) * tr_src_stride_);
+            jmp(K_loop_done, T_NEAR);
+
+            L(tail_one_pack);
+            copy_block(tr_k_blk_step, ncolumns, zeropad);
+            add(reg_tr_src, tr_src_stride_);
 
             L(K_loop_done);
         };
@@ -6377,12 +6396,19 @@ private:
                         zmm_dst0, zmm_dst1, zmm_src_pack);
             }
 
+            // The destination is written in whole xf16 packs of tr_k_blk_step
+            // rows. Store the second pack only when this source pack
+            // contributes more than tr_k_blk_step rows, so the write
+            // granularity equals the destination VNNI granularity.
+            const bool store_pack_1 = rows_left > tr_k_blk_step;
             const auto store_addr_0
                     = EVEX_compress_addr(reg_tr_src, tr_src_off_0);
-            const auto store_addr_1
-                    = EVEX_compress_addr(reg_tr_src, tr_src_off_1);
             uni_vmovups(store_addr_0, zmm_dst0);
-            uni_vmovups(store_addr_1, zmm_dst1);
+            if (store_pack_1) {
+                const auto store_addr_1
+                        = EVEX_compress_addr(reg_tr_src, tr_src_off_1);
+                uni_vmovups(store_addr_1, zmm_dst1);
+            }
         }
     }
 
@@ -6427,17 +6453,18 @@ private:
             Label K_loop_done;
             cmp(reg_K, 0);
             jle(K_loop_done, T_NEAR);
-            // Tail of 1..k_blk_step-1 K-rows: copy_block zero-pads to a
-            // full fp8 pack and writes whole xf16 packs, so advance
-            // reg_tr_src by the full pack, not the partial row count. Leave
-            // reg_src (last source read) so the next zero-pad pass appends
-            // its packs contiguously.
+            // Tail of 1..k_blk_step-1 K-rows. The destination is written in
+            // whole xf16 packs of tr_k_blk_step rows: emit div_up(tail,
+            // tr_k_blk_step) packs and advance reg_tr_src by that many. Leave
+            // reg_src (last source read) so the next zero-pad pass appends its
+            // packs contiguously.
             for (int tail_rows = 1; tail_rows < k_blk_step; ++tail_rows) {
                 Label next_tail;
                 cmp(reg_K, tail_rows);
                 jne(next_tail, T_NEAR);
                 copy_block(tail_rows, ncolumns, zeropad);
-                add(reg_tr_src, (k_blk_step / tr_k_blk_step) * tr_src_stride_);
+                const int tr_packs = utils::div_up(tail_rows, tr_k_blk_step);
+                add(reg_tr_src, tr_packs * tr_src_stride_);
                 jmp(K_loop_done, T_NEAR);
                 L(next_tail);
             }
@@ -6673,12 +6700,19 @@ private:
                         zmm_dst0, zmm_dst1, zmm_src_pack);
             }
 
+            // The destination is written in whole xf16 packs of tr_k_blk_step
+            // rows. Store the second pack only when this source pack
+            // contributes more than tr_k_blk_step rows, so the write
+            // granularity equals the destination VNNI granularity.
+            const bool store_pack_1 = rows_left > tr_k_blk_step;
             const auto store_addr_0
                     = EVEX_compress_addr(reg_tr_src, tr_src_off_0);
-            const auto store_addr_1
-                    = EVEX_compress_addr(reg_tr_src, tr_src_off_1);
             uni_vmovups(store_addr_0, zmm_dst0);
-            uni_vmovups(store_addr_1, zmm_dst1);
+            if (store_pack_1) {
+                const auto store_addr_1
+                        = EVEX_compress_addr(reg_tr_src, tr_src_off_1);
+                uni_vmovups(store_addr_1, zmm_dst1);
+            }
         }
     }
 
@@ -6723,17 +6757,18 @@ private:
             Label K_loop_done;
             cmp(reg_K, 0);
             jle(K_loop_done, T_NEAR);
-            // Tail of 1..k_blk_step-1 K-rows: copy_block zero-pads to a
-            // full fp8 pack and writes whole xf16 packs, so advance
-            // reg_tr_src by the full pack, not the partial row count. Leave
-            // reg_src (last source read) so the next zero-pad pass appends
-            // its packs contiguously.
+            // Tail of 1..k_blk_step-1 K-rows. The destination is written in
+            // whole xf16 packs of tr_k_blk_step rows: emit div_up(tail,
+            // tr_k_blk_step) packs and advance reg_tr_src by that many. Leave
+            // reg_src (last source read) so the next zero-pad pass appends its
+            // packs contiguously.
             for (int tail_rows = 1; tail_rows < k_blk_step; ++tail_rows) {
                 Label next_tail;
                 cmp(reg_K, tail_rows);
                 jne(next_tail, T_NEAR);
                 copy_block(tail_rows, ncolumns, zeropad);
-                add(reg_tr_src, (k_blk_step / tr_k_blk_step) * tr_src_stride_);
+                const int tr_packs = utils::div_up(tail_rows, tr_k_blk_step);
+                add(reg_tr_src, tr_packs * tr_src_stride_);
                 jmp(K_loop_done, T_NEAR);
                 L(next_tail);
             }

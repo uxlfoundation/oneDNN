@@ -19,6 +19,7 @@
 #include "dnnl_common.hpp"
 #include "input_displacer.hpp"
 #include "ref_partition.hpp"
+#include "ref_primitive.hpp"
 
 namespace graph {
 

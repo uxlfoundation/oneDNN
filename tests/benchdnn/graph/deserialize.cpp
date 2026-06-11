@@ -22,6 +22,8 @@
 #include <queue>
 #include <stdexcept>
 
+#include "dnn_types.hpp"
+
 #include "deserialize.hpp"
 #include "utils/stringstream.hpp"
 

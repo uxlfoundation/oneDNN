@@ -17,36 +17,15 @@
 #ifndef BENCHDNN_GRAPH_UTILS_HPP
 #define BENCHDNN_GRAPH_UTILS_HPP
 
-#include <algorithm>
-#include <cctype>
-#include <cstddef>
-#include <future> // for std::promise and std::future
-#include <map>
-#include <numeric>
+#include "dnnl_memory.hpp"
+#include "utils/engine.hpp"
+#include "utils/timer.hpp"
+
+#include "oneapi/dnnl/dnnl_graph.hpp"
+
 #include <string>
 #include <utility>
 #include <vector>
-#include <unordered_map>
-#include <unordered_set>
-
-#include "oneapi/dnnl/dnnl.hpp"
-#include "oneapi/dnnl/dnnl_graph.hpp"
-
-#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
-#include "oneapi/dnnl/dnnl_threadpool.hpp"
-#endif
-
-#ifdef DNNL_WITH_SYCL
-#include "dnnl_sycl.hpp"
-#include "oneapi/dnnl/dnnl_graph_sycl.hpp"
-#endif
-
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-#include "oneapi/dnnl/dnnl_graph_ocl.hpp"
-#endif
-
-#include "common.hpp"
-#include "dnnl_common.hpp"
 
 namespace graph {
 

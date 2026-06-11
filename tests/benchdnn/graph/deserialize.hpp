@@ -24,7 +24,9 @@
 // It requires user to define an object to parse and `load` routines.
 #include "src/graph/utils/json.hpp"
 
-#include "utils.hpp"
+#include "graph/utils.hpp"
+
+#include <unordered_set>
 
 namespace graph {
 

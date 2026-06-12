@@ -309,9 +309,12 @@ void jit_rvv_softmax_f16_exp_sub_sum_kernel_t::generate() {
     const VReg v_acc(24);
     const VReg v_red(28);
 
-    auto load_f32 = [&](const FReg &freg, float value) {
-        li(reg_imm, static_cast<int64_t>(utils::bit_cast<uint32_t>(value)));
+    auto load_f32_bits = [&](const FReg &freg, uint32_t bits) {
+        li(reg_imm, static_cast<int64_t>(bits));
         fmv_w_x(freg, reg_imm);
+    };
+    auto load_f32 = [&](const FReg &freg, float value) {
+        load_f32_bits(freg, utils::bit_cast<uint32_t>(value));
     };
 
     ld(reg_src, reg_param, F16_EXP_SUB_SUM_OFF(src));
@@ -328,9 +331,9 @@ void jit_rvv_softmax_f16_exp_sub_sum_kernel_t::generate() {
     load_f32(f_log2_recip, 1.44269504088896341f);
     load_f32(f_log2_high, -6.93145752e-1f);
     load_f32(f_log2_low, -1.42860677e-6f);
-    load_f32(f_poly3, 0x1.555450p-3f);
-    load_f32(f_poly4, 0x1.fffff6p-2f);
-    load_f32(f_poly56, 0x1.000000p+0f);
+    load_f32_bits(f_poly3, 0x3e2aaa28u); // 0x1.555450p-3f
+    load_f32_bits(f_poly4, 0x3efffffbu); // 0x1.fffff6p-2f
+    load_f32_bits(f_poly56, 0x3f800000u); // 0x1.000000p+0f
     li(reg_minexp, static_cast<int64_t>(0xC1000000u));
     li(reg_maxexp, static_cast<int64_t>(0x3F800000u));
 

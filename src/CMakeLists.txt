@@ -24,10 +24,8 @@ file(GLOB HEADERS_SUBDIR
     ${CMAKE_CURRENT_SOURCE_DIR}/../include/oneapi/dnnl/*.hpp
     )
 
-if(DNNL_ENABLE_JIT_PROFILING OR DNNL_ENABLE_ITT_TASKS)
-    set(ITTNOTIFY_ROOT "${PROJECT_SOURCE_DIR}/third_party/ittnotify")
-    include_directories_with_host_compiler(${ITTNOTIFY_ROOT})
-endif()
+set(ITTNOTIFY_ROOT "${PROJECT_SOURCE_DIR}/third_party/ittnotify")
+include_directories_with_host_compiler(${ITTNOTIFY_ROOT})
 if(DNNL_GPU_VENDOR STREQUAL "INTEL" AND DNNL_GPU_RUNTIME MATCHES "^(OCL|SYCL|DPCPP)$")
     include_directories_with_host_compiler(${PROJECT_SOURCE_DIR}/third_party/mdapi)
 endif()

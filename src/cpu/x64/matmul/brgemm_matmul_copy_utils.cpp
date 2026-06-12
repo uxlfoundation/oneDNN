@@ -6260,43 +6260,32 @@ private:
         cmp(reg_N_blk, 0);
         jle(done, T_NEAR);
 
-        if (conf_->LDB2 != 0) {
-            Label main_N_loop, main_N_loop_tail;
-            int tail = conf_->N % conf_->LDB;
+        // LDB2 is always non-zero for is_xf16_fp8: these kernels are only created
+        // from the matmul path (init_brgemm_matmul_conf), which always sets LDB2.
+        assert(conf_->LDB2 != 0);
 
-            if (tail != 0) {
-                cmp(reg_N_blk, conf_->LDB);
-                jl(main_N_loop_tail, T_NEAR);
-            }
+        Label main_N_loop, main_N_loop_tail;
+        int tail = conf_->N % conf_->LDB;
 
-            L(main_N_loop);
-            compute_K_loop(conf_->LDB);
-            add(reg_src, conf_->LDB2 * typesize_);
-            add(reg_tr_src, conf_->LDB2 * tr_typesize_);
-
-            sub(reg_N_blk, conf_->LDB);
+        if (tail != 0) {
             cmp(reg_N_blk, conf_->LDB);
-            jge(main_N_loop, T_NEAR);
+            jl(main_N_loop_tail, T_NEAR);
+        }
 
-            if (tail != 0) {
-                L(main_N_loop_tail);
-                cmp(reg_N_blk, 0);
-                jle(done, T_NEAR);
-                compute_K_loop(tail);
-            }
+        L(main_N_loop);
+        compute_K_loop(conf_->LDB);
+        add(reg_src, conf_->LDB2 * typesize_);
+        add(reg_tr_src, conf_->LDB2 * tr_typesize_);
 
-        } else {
-            if (conf_->N_tail > 0) {
-                Label main_N_blk;
-                cmp(reg_N_blk, conf_->N_blk);
-                je(main_N_blk, T_NEAR);
-                compute_K_loop(conf_->N_tail);
-                jmp(done, T_NEAR);
+        sub(reg_N_blk, conf_->LDB);
+        cmp(reg_N_blk, conf_->LDB);
+        jge(main_N_loop, T_NEAR);
 
-                L(main_N_blk);
-            }
-
-            compute_K_loop(conf_->N_blk);
+        if (tail != 0) {
+            L(main_N_loop_tail);
+            cmp(reg_N_blk, 0);
+            jle(done, T_NEAR);
+            compute_K_loop(tail);
         }
 
         L(done);
@@ -6512,43 +6501,32 @@ private:
         cmp(reg_N_blk, 0);
         jle(done, T_NEAR);
 
-        if (conf_->LDB2 != 0) {
-            Label main_N_loop, main_N_loop_tail;
-            int tail = conf_->N % conf_->LDB;
+        // LDB2 is always non-zero for is_xf16_fp8: these kernels are only created
+        // from the matmul path (init_brgemm_matmul_conf), which always sets LDB2.
+        assert(conf_->LDB2 != 0);
 
-            if (tail != 0) {
-                cmp(reg_N_blk, conf_->LDB);
-                jl(main_N_loop_tail, T_NEAR);
-            }
+        Label main_N_loop, main_N_loop_tail;
+        int tail = conf_->N % conf_->LDB;
 
-            L(main_N_loop);
-            compute_K_loop(conf_->LDB);
-            add(reg_src, conf_->LDB2 * typesize_);
-            add(reg_tr_src, conf_->LDB2 * tr_typesize_);
-
-            sub(reg_N_blk, conf_->LDB);
+        if (tail != 0) {
             cmp(reg_N_blk, conf_->LDB);
-            jge(main_N_loop, T_NEAR);
+            jl(main_N_loop_tail, T_NEAR);
+        }
 
-            if (tail != 0) {
-                L(main_N_loop_tail);
-                cmp(reg_N_blk, 0);
-                jle(done, T_NEAR);
-                compute_K_loop(tail);
-            }
+        L(main_N_loop);
+        compute_K_loop(conf_->LDB);
+        add(reg_src, conf_->LDB2 * typesize_);
+        add(reg_tr_src, conf_->LDB2 * tr_typesize_);
 
-        } else {
-            if (conf_->N_tail > 0) {
-                Label main_N_blk;
-                cmp(reg_N_blk, conf_->N_blk);
-                je(main_N_blk, T_NEAR);
-                compute_K_loop(conf_->N_tail);
-                jmp(done, T_NEAR);
+        sub(reg_N_blk, conf_->LDB);
+        cmp(reg_N_blk, conf_->LDB);
+        jge(main_N_loop, T_NEAR);
 
-                L(main_N_blk);
-            }
-
-            compute_K_loop(conf_->N_blk);
+        if (tail != 0) {
+            L(main_N_loop_tail);
+            cmp(reg_N_blk, 0);
+            jle(done, T_NEAR);
+            compute_K_loop(tail);
         }
 
         L(done);
@@ -6852,43 +6830,32 @@ private:
         cmp(reg_N_blk, 0);
         jle(done, T_NEAR);
 
-        if (conf_->LDB2 != 0) {
-            Label main_N_loop, main_N_loop_tail;
-            int tail = conf_->N % conf_->LDB;
+        // LDB2 is always non-zero for is_xf16_fp8: these kernels are only created
+        // from the matmul path (init_brgemm_matmul_conf), which always sets LDB2.
+        assert(conf_->LDB2 != 0);
 
-            if (tail != 0) {
-                cmp(reg_N_blk, conf_->LDB);
-                jl(main_N_loop_tail, T_NEAR);
-            }
+        Label main_N_loop, main_N_loop_tail;
+        int tail = conf_->N % conf_->LDB;
 
-            L(main_N_loop);
-            compute_K_loop(conf_->LDB);
-            add(reg_src, conf_->LDB * src_row_stride_);
-            add(reg_tr_src, conf_->LDB2 * tr_typesize_);
-
-            sub(reg_N_blk, conf_->LDB);
+        if (tail != 0) {
             cmp(reg_N_blk, conf_->LDB);
-            jge(main_N_loop, T_NEAR);
+            jl(main_N_loop_tail, T_NEAR);
+        }
 
-            if (tail != 0) {
-                L(main_N_loop_tail);
-                cmp(reg_N_blk, 0);
-                jle(done, T_NEAR);
-                compute_K_loop(tail);
-            }
+        L(main_N_loop);
+        compute_K_loop(conf_->LDB);
+        add(reg_src, conf_->LDB * src_row_stride_);
+        add(reg_tr_src, conf_->LDB2 * tr_typesize_);
 
-        } else {
-            if (conf_->N_tail > 0) {
-                Label main_N_blk;
-                cmp(reg_N_blk, conf_->N_blk);
-                je(main_N_blk, T_NEAR);
-                compute_K_loop(conf_->N_tail);
-                jmp(done, T_NEAR);
+        sub(reg_N_blk, conf_->LDB);
+        cmp(reg_N_blk, conf_->LDB);
+        jge(main_N_loop, T_NEAR);
 
-                L(main_N_blk);
-            }
-
-            compute_K_loop(conf_->N_blk);
+        if (tail != 0) {
+            L(main_N_loop_tail);
+            cmp(reg_N_blk, 0);
+            jle(done, T_NEAR);
+            compute_K_loop(tail);
         }
 
         L(done);

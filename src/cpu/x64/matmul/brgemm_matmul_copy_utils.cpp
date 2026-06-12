@@ -6476,9 +6476,11 @@ private:
             jle(K_loop_done, T_NEAR);
             // Tail of 1..k_blk_step-1 K-rows. The destination is written in
             // whole xf16 packs of tr_k_blk_step rows: emit div_up(tail,
-            // tr_k_blk_step) packs and advance reg_tr_src by that many. Leave
-            // reg_src (last source read) so the next zero-pad pass appends its
-            // packs contiguously.
+            // tr_k_blk_step) packs and advance reg_tr_src by that many so the
+            // following zero-pad pass stores contiguously after the real data.
+            // reg_src is not advanced because this tail is the last source read
+            // in this pass: the zero-pad pass never reads reg_src and reg_src
+            // is restored from reg_src_back afterwards.
             for (int tail_rows = 1; tail_rows < k_blk_step; ++tail_rows) {
                 Label next_tail;
                 cmp(reg_K, tail_rows);
@@ -6814,9 +6816,11 @@ private:
             jle(K_loop_done, T_NEAR);
             // Tail of 1..k_blk_step-1 K-rows. The destination is written in
             // whole xf16 packs of tr_k_blk_step rows: emit div_up(tail,
-            // tr_k_blk_step) packs and advance reg_tr_src by that many. Leave
-            // reg_src (last source read) so the next zero-pad pass appends its
-            // packs contiguously.
+            // tr_k_blk_step) packs and advance reg_tr_src by that many so the
+            // following zero-pad pass stores contiguously after the real data.
+            // reg_src is not advanced because this tail is the last source read
+            // in this pass: the zero-pad pass never reads reg_src and reg_src is
+            // restored from reg_src_back afterwards.
             for (int tail_rows = 1; tail_rows < k_blk_step; ++tail_rows) {
                 Label next_tail;
                 cmp(reg_K, tail_rows);

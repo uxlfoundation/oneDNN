@@ -17,9 +17,13 @@
 #ifndef UTILS_STREAM_KIND_HPP
 #define UTILS_STREAM_KIND_HPP
 
-#include <sstream>
+#include "oneapi/dnnl/dnnl.hpp"
 
-#include "oneapi/dnnl/dnnl_types.h"
+#include "common.hpp"
+#include "utils/engine.hpp"
+
+#include <future>
+#include <sstream>
 
 enum class stream_kind_t {
     // The library-defined stream kind.
@@ -37,5 +41,34 @@ dnnl_stream_flags_t stream_kind2stream_flags(
 stream_kind_t str2stream_kind(const char *str);
 
 std::ostream &operator<<(std::ostream &s, stream_kind_t stream_kind);
+
+struct stream_t {
+    stream_t() = default;
+    stream_t(const engine_t &engine, void *interop_obj = nullptr);
+    operator dnnl_stream_t() const {
+        return stream_.get(/* allow_empty = */ true);
+    }
+    operator dnnl::stream &() { return stream_; }
+    // Wrapper over dnnl::stream::wait() to avoid explicit casts to dnnl::stream
+    // at graph driver call sites.
+    void wait() { stream_.wait(); }
+    stream_t &operator=(stream_t &&rhs) = default;
+
+private:
+    BENCHDNN_DISALLOW_COPY_AND_ASSIGN(stream_t);
+    dnnl::stream stream_;
+};
+
+struct stream_staller_t {
+    // Enqueue tasks to stall a primitive execution tasks for asynchronous
+    // threadpool runtime. For rest runtimes does nothing.
+    stream_staller_t(stream_t &stream);
+
+    // A signal the submission has completed and ready for execution.
+    void release();
+
+private:
+    std::promise<void> prom_;
+};
 
 #endif

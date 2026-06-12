@@ -18,7 +18,6 @@
 #define DNNL_COMMON_HPP
 
 #include <functional>
-#include <future> // for std::promise and std::future
 #include <stddef.h>
 #include <stdint.h>
 #include <vector>
@@ -38,6 +37,7 @@
 #include "utils/impl_filter.hpp"
 #include "utils/numeric.hpp"
 #include "utils/parallel.hpp"
+#include "utils/stream_kind.hpp"
 
 #include "tests/test_thread.hpp"
 
@@ -60,23 +60,6 @@ int check_primitive_cache(dnnl_primitive_t p, res_t *res);
 extern isa_hints_t hints;
 extern int default_num_streams;
 extern int num_streams;
-
-struct stream_t {
-    stream_t() = default;
-    stream_t(const engine_t &engine, void *interop_obj = nullptr);
-    operator dnnl_stream_t() const {
-        return stream_.get(/* allow_empty = */ true);
-    }
-    operator dnnl::stream &() { return stream_; }
-    // Wrapper over dnnl::stream::wait() to avoid explicit casts to dnnl::stream
-    // at graph driver call sites.
-    void wait() { stream_.wait(); }
-    stream_t &operator=(stream_t &&rhs) = default;
-
-private:
-    BENCHDNN_DISALLOW_COPY_AND_ASSIGN(stream_t);
-    dnnl::stream stream_;
-};
 
 bool is_f64_supported(const engine_t &engine = get_test_engine());
 
@@ -113,18 +96,6 @@ struct args_t {
 
 private:
     std::vector<std::pair<int, const dnn_mem_t *>> args_;
-};
-
-struct stream_staller_t {
-    // Enqueue tasks to stall a primitive execution tasks for asynchronous
-    // threadpool runtime. For rest runtimes does nothing.
-    stream_staller_t(stream_t &stream);
-
-    // A signal the submission has completed and ready for execution.
-    void release();
-
-private:
-    std::promise<void> prom_;
 };
 
 template <typename prb_t>

@@ -1512,11 +1512,6 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         base_brg_ker_idx_
                 = pd->get_brg_kernel_idx(false, true, 0, 0, false, false);
         vnni_factor = data_type_vnni_granularity(bgmmc.wei_dt);
-        const data_type_t copy_B_src_dt = bgmmc_.is_xf16_fp8 || bgmmc_.is_bf32
-                ? bgmmc_.orig_wei_dt
-                : bgmmc_.wei_dt;
-        copy_B_src_k_blk = get_wei_k_blk(copy_B_src_dt);
-        copy_B_src_vnni_factor = data_type_vnni_granularity(copy_B_src_dt);
 
         reorder_zp_a_comp_ptr_ = nullptr;
         if (bgmmc_.has_zero_point_a && bgmmc_.blocked_B) {
@@ -1821,7 +1816,10 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
     }
 
     dim_t get_data_B_kn_off(dim_t k, dim_t n) const {
-        const int k_idx = bgmmc_.blocked_B ? k / copy_B_src_k_blk : k;
+        const int wei_k_blk = bgmmc_.is_bf32 || bgmmc_.is_xf16_fp8
+                ? get_wei_k_blk(bgmmc_.orig_wei_dt)
+                : bgmmc_.wei_k_blk;
+        const int k_idx = bgmmc_.blocked_B ? k / wei_k_blk : k;
         const int n_idx = bgmmc_.blocked_B ? n / bgmmc_.wei_n_blk : n;
         const int int4_fac = bgmmc_.is_int4_weights ? 2 : 1;
         return (B_strides_[1] * k_idx + B_strides_[0] * n_idx
@@ -2052,11 +2050,17 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
 
         if (!bgmmc_.blocked_B) return 0;
 
-        dim_t x0 = k % copy_B_src_k_blk;
+        const int orig_wei_k_blk = bgmmc_.is_xf16_fp8
+                ? get_wei_k_blk(bgmmc_.orig_wei_dt)
+                : bgmmc_.wei_k_blk;
+        dim_t x0 = k % orig_wei_k_blk;
         dim_t x1 = n % bgmmc_.wei_n_blk;
-        dim_t offset = (x0 / copy_B_src_vnni_factor) * copy_B_src_vnni_factor
-                        * bgmmc_.wei_n_blk
-                + x1 * copy_B_src_vnni_factor + x0 % copy_B_src_vnni_factor;
+        const int orig_vnni_factor = bgmmc_.is_xf16_fp8
+                ? data_type_vnni_granularity(bgmmc_.orig_wei_dt)
+                : vnni_factor;
+        dim_t offset
+                = (x0 / orig_vnni_factor) * orig_vnni_factor * bgmmc_.wei_n_blk
+                + x1 * orig_vnni_factor + x0 % orig_vnni_factor;
         return bgmmc_.b_dt_sz * offset;
     }
 
@@ -2546,11 +2550,6 @@ private:
 
     int base_brg_ker_idx_;
     int vnni_factor;
-    // K-block and VNNI granularity of the B data as read into the copy-B
-    // kernel (may differ from the compute-side vnni_factor for fp8->xf16 and
-    // bf32, where the kernel converts from orig_wei_dt during the copy).
-    int copy_B_src_k_blk;
-    int copy_B_src_vnni_factor;
 
     // parallelization parameters
     int parallel_work_amount_;

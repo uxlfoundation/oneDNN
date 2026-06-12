@@ -22,8 +22,10 @@ which dimension varies across groups (`variable_dim_idx`):
 
 The `variable_dim_idx` parameter specifies which dimension varies in size across groups.
 For example, in a 2D tensor `[M, K]`:
-- If `variable_dim_idx=0`, dimension M varies per group while K stays constant.
-- If `variable_dim_idx=1`, dimension K varies per group while M stays constant.
+- If `variable_dim_idx=0`, dimension M varies per group while K stays constant,
+  it also implies row-major storage (`ab`).
+- If `variable_dim_idx=1`, dimension K varies per group while M stays constant,
+  it also implies col-major storage (`ba`).
 
 The value specified for the variable dimension in the memory descriptor represents
 the **total size** summed across all groups. Individual group sizes are determined

@@ -1398,11 +1398,9 @@ void jit_brgemm_kernel_t<Wmm>::gemv_apply_wei_scales(
 
     reg_aux_wei_scales.restore();
 
-    // Per-N scales collapse to a single scalar unless `y` is treated as a row.
-    const bool is_single_scale = !brg.is_oc_scale || !brg.treat_y_as_row;
     const Vmm vmm_wei_scales = vmm_tmp(0);
 
-    if (is_single_scale) {
+    if (brg.gemv_single_wei_scale()) {
         const auto addr = ptr[reg_aux_wei_scales + wei_scales_offset(0)];
 
         switch (brg.dt_wei_scales) {
@@ -1424,10 +1422,11 @@ void jit_brgemm_kernel_t<Wmm>::gemv_apply_wei_scales(
     for (dim_t bd = 0; bd < bd_block; bd++) {
         auto acc = accm(1, bd, 0);
 
-        if (is_single_scale) {
+        if (brg.gemv_single_wei_scale()) {
             uni_vmulps(acc, acc, vmm_wei_scales);
             continue;
         }
+
         const auto addr = ptr[reg_aux_wei_scales + wei_scales_offset(bd)];
 
         if (is_superset(brg.isa_impl, avx512_core)) {
@@ -3458,7 +3457,7 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
                 reg_bias.save();
             }
 
-            if (brg.with_wei_scales) {
+            if (brg.with_wei_scales && !brg.gemv_single_wei_scale()) {
                 reg_wei_scales.restore();
                 add(reg_wei_scales, wei_scales_offset(brg.gemv_bd_block()));
                 reg_wei_scales.save();

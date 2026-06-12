@@ -470,6 +470,14 @@ struct brgemm_desc_t {
         return !transA && is_bf16;
     }
 
+    // Returns true if GEMV uses a single scale value.
+    bool gemv_single_wei_scale() const {
+        assert(is_gemv);
+        // Per-N scales collapse to a single scalar unless `y` is treated as a
+        // row.
+        return !is_oc_scale || !treat_y_as_row;
+    }
+
     // return 'true' when FP8 MAC is not natively supported by the CPU ISA
     bool is_fp8_via_convert() const {
         return is_fp8 && utils::one_of(isa_impl, avx10_1_512_amx_fp16, avx10_2);

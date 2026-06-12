@@ -44,6 +44,7 @@
 // due to linker optimizations. The newer compiler and C++ standard, the less
 // binary size will be achieved.
 
+// This header needs a guard around ittnotify.hpp as it's used by gtests
 #if defined(DNNL_ENABLE_ITT_TASKS)
 #include "common/ittnotify.hpp"
 #endif

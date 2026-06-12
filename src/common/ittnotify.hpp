@@ -19,7 +19,15 @@
 
 #include "c_types_map.hpp"
 #include "dnnl.h"
+
+#if defined(DNNL_ENABLE_ITT_TASKS)
+#include "dnnl_debug.h"
 #include "ittnotify/ittnotify.h"
+#else
+// Forward declaration of the ITT id type defined in ittnotify/ittnotify.h.
+struct ___itt_id; // NOLINT
+typedef struct ___itt_id __itt_id; // NOLINT
+#endif
 
 namespace dnnl {
 namespace impl {
@@ -42,13 +50,14 @@ bool get_itt(__itt_task_level level);
 __itt_id make_itt_id(const char *tname, double stamp);
 void primitive_task_start(primitive_kind_t kind, const char *log_kind);
 void primitive_add_metadata_and_id(
-        const char *pd_info, const char *log_kind, __itt_id task_id);
+        const char *pd_info, const char *log_kind, const __itt_id *task_id);
 primitive_kind_t primitive_task_get_current_kind();
 void primitive_task_end(const char *log_kind);
 const char *primitive_task_get_current_info();
 const char *primitive_task_get_current_log_kind();
-__itt_id primitive_task_get_itt_id();
+const __itt_id *primitive_task_get_itt_id();
 } // namespace itt
 } // namespace impl
 } // namespace dnnl
+
 #endif

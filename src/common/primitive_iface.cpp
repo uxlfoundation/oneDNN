@@ -19,9 +19,7 @@
 #include "c_types_map.hpp"
 #include "engine.hpp"
 
-#if defined(DNNL_ENABLE_ITT_TASKS)
 #include "ittnotify.hpp"
-#endif
 
 #include "cache_hit_types.hpp"
 #include "primitive.hpp"
@@ -65,13 +63,11 @@ status_t primitive_create(primitive_iface_t **primitive_iface,
 
     std::pair<primitive_iface_t *, cache_state_t> p_iface;
 
-#if defined(DNNL_ENABLE_ITT_TASKS)
     const bool enable_itt = itt::get_itt(itt::__itt_task_level_low);
     if (enable_itt) {
         itt::primitive_task_start(
                 primitive_desc_iface->impl()->kind(), VERBOSE_create);
     }
-#endif
 
     if (get_verbose(verbose_t::create_profile,
                 prim_kind2_comp_kind(primitive_desc_iface->impl()->kind()))) {
@@ -93,7 +89,6 @@ status_t primitive_create(primitive_iface_t **primitive_iface,
                 p_iface, cache_blob));
     }
 
-#if defined(DNNL_ENABLE_ITT_TASKS)
     if (enable_itt) {
         // Before metadata is added to the ITT task, the `info()` string is
         // checked for initialization.
@@ -104,15 +99,16 @@ status_t primitive_create(primitive_iface_t **primitive_iface,
         const char *pd_info = p_iface.first->pd()->impl()->info(
                 primitive_desc_iface->engine(), false);
         if ((p_iface.second == cache_state_t::miss) || (pd_info && *pd_info)) {
-            auto task_id
+#if defined(DNNL_ENABLE_ITT_TASKS)
+            const __itt_id task_id
                     = itt::make_itt_id(p_iface.first->pd()->info(), get_msec());
             itt::primitive_add_metadata_and_id(
-                    p_iface.first->pd()->info(), VERBOSE_create, task_id);
+                    p_iface.first->pd()->info(), VERBOSE_create, &task_id);
+#endif
         }
 
         itt::primitive_task_end(VERBOSE_create);
     }
-#endif
 
     return safe_ptr_assign((*primitive_iface), p_iface.first);
 }
@@ -123,7 +119,6 @@ status_t primitive_execute(
     status_t status = success;
     auto pd = primitive_iface->pd();
 
-#if defined(DNNL_ENABLE_ITT_TASKS)
     const bool enable_itt = itt::get_itt(itt::__itt_task_level_low);
     if (enable_itt) {
         itt::primitive_task_start(pd->impl()->kind(), VERBOSE_exec);
@@ -136,14 +131,15 @@ status_t primitive_execute(
         const auto *pd_info
                 = pd->impl()->info(primitive_iface->engine(), false);
         if (pd_info && *pd_info) {
+#if defined(DNNL_ENABLE_ITT_TASKS)
             // ITT task IDs are uniquely assigned using pd->info() and
             // timestamps - the timestamps helps distinguish between different
             // instances of the same configuration
-            auto task_id = itt::make_itt_id(pd_info, get_msec());
-            itt::primitive_add_metadata_and_id(pd_info, VERBOSE_exec, task_id);
+            const __itt_id task_id = itt::make_itt_id(pd_info, get_msec());
+            itt::primitive_add_metadata_and_id(pd_info, VERBOSE_exec, &task_id);
+#endif
         }
     }
-#endif
 
     if (get_verbose(verbose_t::exec_profile,
                 prim_kind2_comp_kind(pd->impl()->kind()))) {
@@ -189,9 +185,7 @@ status_t primitive_execute(
         status = stream->enqueue_primitive(primitive_iface, ctx);
     }
 
-#if defined(DNNL_ENABLE_ITT_TASKS)
     if (enable_itt) itt::primitive_task_end(VERBOSE_exec);
-#endif
 
     if (msan_enabled) unpoison_outputs(ctx.args());
 

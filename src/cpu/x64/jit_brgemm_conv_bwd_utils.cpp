@@ -1592,7 +1592,8 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
                             && everyone_is(14, jcp.oh, jcp.ow)
                             && everyone_is(4, jcp.kh, jcp.kw)
                             && everyone_is(2, jcp.stride_h, jcp.stride_w)));
-    VDISPATCH_CONV_IC(!(is_f32 && is_regression_shape),
+    VDISPATCH_CONV_IC(!(is_f32 && !(jcp.is_deconv && attr.post_ops_.len() > 0)
+                              && is_regression_shape),
             "implementation skipped due to low performance");
 
     const bool is_signed_input = jcp.src_dt == s8;

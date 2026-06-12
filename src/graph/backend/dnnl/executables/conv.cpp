@@ -337,11 +337,11 @@ conv_bwd_data_executable_t::desc_t conv_bwd_data_executable_t::create_desc(
     auto fwd_hints = dnnl::convolution_forward::primitive_desc(p_engine,
             dnnl::prop_kind::forward_training,
             dnnl::algorithm::convolution_direct, diff_src, weight, diff_dst,
-            strides, dilates, pads_begin, pads_end);
+            strides, dilates, pads_begin, pads_end, prm_attr);
 
     dnnl::convolution_backward_data::primitive_desc pd(p_engine,
             dnnl::algorithm::convolution_direct, diff_src, weight, diff_dst,
-            strides, dilates, pads_begin, pads_end, fwd_hints);
+            strides, dilates, pads_begin, pads_end, fwd_hints, prm_attr);
 
     pd_cache.insert({op.get(), pd});
 
@@ -409,11 +409,11 @@ conv_bwd_weights_executable_t::create_desc(std::shared_ptr<op_t> &op,
     auto fwd_hints = dnnl::convolution_forward::primitive_desc(p_engine,
             dnnl::prop_kind::forward_training,
             dnnl::algorithm::convolution_direct, src, diff_weight, diff_dst,
-            strides, dilates, pads_begin, pads_end);
+            strides, dilates, pads_begin, pads_end, prm_attr);
 
     dnnl::convolution_backward_weights::primitive_desc pd(p_engine,
             dnnl::algorithm::convolution_direct, src, diff_weight, diff_dst,
-            strides, dilates, pads_begin, pads_end, fwd_hints);
+            strides, dilates, pads_begin, pads_end, fwd_hints, prm_attr);
 
     pd_cache.insert({op.get(), pd});
 

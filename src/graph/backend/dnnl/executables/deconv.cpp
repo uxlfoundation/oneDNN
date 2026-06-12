@@ -187,7 +187,7 @@ deconv_bwd_data_executable_t::desc_t deconv_bwd_data_executable_t::create_desc(
 
     dnnl::deconvolution_backward_data::primitive_desc pd(p_engine,
             dnnl::algorithm::deconvolution_direct, diff_src, weight, diff_dst,
-            strides, pads_begin, pads_end, fwd_hints);
+            strides, pads_begin, pads_end, fwd_hints, prm_attr);
 
     pd_cache.insert({op.get(), pd});
 
@@ -237,11 +237,11 @@ deconv_bwd_weights_executable_t::create_desc(std::shared_ptr<op_t> &op,
     auto fwd_hints = dnnl::deconvolution_forward::primitive_desc(p_engine,
             dnnl::prop_kind::forward_training,
             dnnl::algorithm::deconvolution_direct, src, diff_weight, diff_dst,
-            strides, dilates, pads_begin, pads_end);
+            strides, dilates, pads_begin, pads_end, prm_attr);
 
     dnnl::deconvolution_backward_weights::primitive_desc pd(p_engine,
             dnnl::algorithm::deconvolution_direct, src, diff_weight, diff_dst,
-            strides, dilates, pads_begin, pads_end, fwd_hints);
+            strides, dilates, pads_begin, pads_end, fwd_hints, prm_attr);
 
     pd_cache.insert({op.get(), pd});
 

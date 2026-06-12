@@ -183,11 +183,11 @@ pool_bwd_executable_t::desc_t pool_bwd_executable_t::create_desc(
     dnnl::pooling_forward::primitive_desc forward_hints
             = dnnl::pooling_forward::primitive_desc(p_engine,
                     prop_kind::forward_training, algo, src, diff_dst, strides,
-                    kernel, dilations, pads_begin, pads_end);
+                    kernel, dilations, pads_begin, pads_end, prm_attr);
 
     dnnl::pooling_backward::primitive_desc pd(p_engine, algo, diff_src,
             diff_dst, strides, kernel, dilations, pads_begin, pads_end,
-            forward_hints);
+            forward_hints, prm_attr);
 
     pd_cache.insert({op.get(), pd});
 

@@ -792,11 +792,12 @@ batchnorm_bwd_executable_t::desc_t batchnorm_bwd_executable_t::create_desc(
     }
 
     auto forward_hints = dnnl::batch_normalization_forward::primitive_desc(
-            p_engine, prop_kind::forward_training, src, src, epsilon, flags);
+            p_engine, prop_kind::forward_training, src, src, epsilon, flags,
+            prm_attr);
 
     dnnl::batch_normalization_backward::primitive_desc pd(p_engine,
             prop_kind::backward, src, forward_hints.dst_desc(), src, epsilon,
-            flags, forward_hints);
+            flags, forward_hints, prm_attr);
 
     pd_cache.insert({op.get(), pd});
     return {pd, false};

@@ -115,7 +115,8 @@ layernorm_bwd_executable_t::desc_t layernorm_bwd_executable_t::create_desc(
     auto diff_dst = make_dnnl_memory_desc(op->get_input_logical_tensor(1));
     auto diff_src = make_dnnl_memory_desc(op->get_output_logical_tensor(0));
     dnnl::layer_normalization_forward::primitive_desc fwd_hints(p_engine,
-            prop_kind::forward_training, src, diff_dst, epsilon, flags);
+            prop_kind::forward_training, src, diff_dst, epsilon, flags,
+            prm_attr);
 
     dnnl::layer_normalization_backward::primitive_desc pd(p_engine,
             prop_kind::backward, diff_src, diff_dst, src, epsilon, flags,

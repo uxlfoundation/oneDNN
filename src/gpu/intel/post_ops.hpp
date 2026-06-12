@@ -216,25 +216,15 @@ struct relative_md_t {
     }
     static status_t make(relative_md_t &rmd, const memory_desc_t &md,
             const ndim_normalizer_t &ndim_normalizer) {
-        if (md.format_kind != format_kind::blocked)
+        memory_desc_wrapper mdw(md);
+        // Allows grouped src1, for which we only need the broadcast mask
+        // and default inner dim below
+        if (!mdw.is_blocking_desc() && !mdw.is_grouped_desc())
             return status::unimplemented;
 
         rmd.dt = md.data_type;
 
         auto ndims = ndim_normalizer.ndims(md);
-
-        memory_desc_wrapper mdw(md);
-        gpu_assert(mdw.is_blocking_desc());
-        auto &blocking = mdw.blocking_desc();
-        gpu_assert(blocking.inner_nblks <= blocking_t::max_dims);
-
-        for (dim_t i = 0; i < blocking.inner_nblks; i++) {
-            auto rmd_i = blocking.inner_nblks - 1 - i;
-            rmd.inner_layout.idxs[rmd_i] = from_md_idx(
-                    into<int>(blocking.inner_idxs[i]), ndims, ndim_normalizer);
-            rmd.inner_layout.blocks[rmd_i]
-                    = into<uint8_t>(blocking.inner_blks[i]);
-        }
 
         // Default all dimensions to broadcast
         rmd.broadcast_mask = ~0;
@@ -246,14 +236,31 @@ struct relative_md_t {
             mask_bit = static_cast<uint16_t>(mask_bit << 1);
         }
 
-        dim_t min_stride = std::numeric_limits<dim_t>::max();
-        for (int i = 0; i < ndims; i++) {
-            if (ndim_normalizer.dim(i, md) > 1
-                    && ndim_normalizer.stride(i, md) <= min_stride) {
-                rmd.inner_dim = from_md_idx(i, ndims, ndim_normalizer);
-                min_stride = ndim_normalizer.stride(i, md);
+        if (mdw.is_blocking_desc()) {
+            auto &blocking = mdw.blocking_desc();
+            gpu_assert(blocking.inner_nblks <= blocking_t::max_dims);
+            for (dim_t i = 0; i < blocking.inner_nblks; i++) {
+                auto rmd_i = blocking.inner_nblks - 1 - i;
+                rmd.inner_layout.idxs[rmd_i]
+                        = from_md_idx(into<int>(blocking.inner_idxs[i]), ndims,
+                                ndim_normalizer);
+                rmd.inner_layout.blocks[rmd_i]
+                        = into<uint8_t>(blocking.inner_blks[i]);
+            }
+
+            dim_t min_stride = std::numeric_limits<dim_t>::max();
+            for (int i = 0; i < ndims; i++) {
+                if (ndim_normalizer.dim(i, md) > 1
+                        && ndim_normalizer.stride(i, md) <= min_stride) {
+                    rmd.inner_dim = from_md_idx(i, ndims, ndim_normalizer);
+                    min_stride = ndim_normalizer.stride(i, md);
+                }
             }
         }
+
+        // Grouped src1 is assumed row-major and the innermost dim is the
+        // contiguous one
+        // TODO: handle properly col-major/variable K grouped mem
         if (rmd.inner_dim.is_unset()) rmd.inner_dim = {0};
 
         return status::success;

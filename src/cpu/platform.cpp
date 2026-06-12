@@ -283,10 +283,13 @@ unsigned get_per_core_cache_size(int level) {
         const auto &cache_level
                 = static_cast<Xbyak_aarch64::util::Arm64CacheLevel>(level);
 
-        return aarch64::cpu().getDataCacheSize(cache_level)
-                / aarch64::cpu().getCoresSharingDataCache(cache_level);
+        const auto cache_sz = aarch64::cpu().getDataCacheSize(cache_level);
+        const auto sharing
+                = aarch64::cpu().getCoresSharingDataCache(cache_level);
+        const auto sz = (cache_sz && sharing) ? cache_sz / sharing : 0;
+        return sz ? sz : guess(level);
     } else {
-        return 0;
+        return guess(level);
     }
 #else
     return guess(level);

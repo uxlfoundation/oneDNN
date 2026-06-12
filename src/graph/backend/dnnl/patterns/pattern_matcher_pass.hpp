@@ -37,7 +37,7 @@ namespace pattern {
 class pattern_utils_t {
 public:
     inline void match(graph_t &backend_graph,
-            std::shared_ptr<graph::utils::pm::pb_graph_t> pgraph,
+            const std::shared_ptr<graph::utils::pm::pb_graph_t> &pgraph,
             std::vector<std::vector<op_t *>> &fusion_ops);
 
     inline void init_partition(graph_t &backend_graph,
@@ -51,7 +51,7 @@ public:
 };
 
 inline void pattern_utils_t::match(graph_t &backend_graph,
-        std::shared_ptr<graph::utils::pm::pb_graph_t> pgraph,
+        const std::shared_ptr<graph::utils::pm::pb_graph_t> &pgraph,
         std::vector<std::vector<op_t *>> &fusion_ops) {
     graph::utils::pm::match_pattern(backend_graph, pgraph, fusion_ops);
 }

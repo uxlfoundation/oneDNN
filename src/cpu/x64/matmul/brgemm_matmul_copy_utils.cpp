@@ -5985,7 +5985,7 @@ bool xf16_fp8_copy_b_isa_supported(const brgemm_matmul_conf_t *conf) {
 } // namespace
 
 // Reorders a row-major [r0|r1|r2|r3] pack into the split-pack layout consumed
-// by convert_from_packed_plain (used by the plain fp8->xf16 copy kernel).
+// by convert_plain (used by the plain fp8->xf16 copy kernel).
 alignas(64) static constexpr uint8_t xf16_fp8_plain_to_split_pack_idx[64]
         = {0, 16, 1, 17, 2, 18, 3, 19, 4, 20, 5, 21, 6, 22, 7, 23, 8, 24, 9, 25,
                 10, 26, 11, 27, 12, 28, 13, 29, 14, 30, 15, 31, 32, 48, 33, 49,
@@ -6007,14 +6007,13 @@ alignas(64) static constexpr uint32_t xf16_fp8_gather_col_iota[16]
         = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
 
 struct fp8_to_xf16_cvt_helper_t {
-    // Reserved by fp8 conversion routines. Keep kernel register maps disjoint.
+    // Reserved by fp8 conversion routines
     static constexpr int cvt_xmm0_idx = 0;
     static constexpr int cvt_xmm1_idx = 1;
     static constexpr int cvt_xmm2_idx = 2;
     static constexpr int cvt_xmm3_idx = 3;
     static constexpr int cvt_xmm4_idx = 4;
-    static constexpr int cvt_opmask_idx = 4;
-
+    static constexpr int cvt_opmask_idx = 1;
     static Xbyak::Reg64 cvt_scratch_gpr() { return Xbyak::util::r8; }
 
     fp8_to_xf16_cvt_helper_t(
@@ -6036,7 +6035,7 @@ struct fp8_to_xf16_cvt_helper_t {
         if (f8_e4m3_cvt_) f8_e4m3_cvt_->prepare_table();
     }
 
-    void convert(const Xbyak::Zmm &dst0, const Xbyak::Zmm &dst1,
+    void convert_vnni(const Xbyak::Zmm &dst0, const Xbyak::Zmm &dst1,
             const Xbyak::Operand &src_op) {
         if (conf_->wei_dt == data_type::bf16) {
             if (conf_->orig_wei_dt == data_type::f8_e5m2) {
@@ -6053,12 +6052,12 @@ struct fp8_to_xf16_cvt_helper_t {
         }
     }
 
-    void convert_from_packed_plain(const Xbyak::Zmm &dst0,
-            const Xbyak::Zmm &dst1, const Xbyak::Zmm &src_pack) {
+    void convert_plain(const Xbyak::Zmm &dst0, const Xbyak::Zmm &dst1,
+            const Xbyak::Zmm &src_pack) {
         const Xbyak::Ymm ymm_src_lo(src_pack.getIdx());
         const Xbyak::Ymm ymm_src_hi(dst1.getIdx());
 
-        // Split packed [64B] into two 32B chunks and run direct fp8->xf16.
+        // Extract high 256 bits to ymm_src_hi; low half stays in src_pack
         host_->vextractf64x4(ymm_src_hi, src_pack, 1);
 
         if (conf_->wei_dt == data_type::bf16) {
@@ -6168,7 +6167,7 @@ private:
                 const auto src_addr = EVEX_compress_addr(reg_src, src_off);
                 vmovdqu8(zmm_src_pack, src_addr);
 
-                cvt_helper_.convert(zmm_dst0, zmm_dst1, zmm_src_pack);
+                cvt_helper_.convert_vnni(zmm_dst0, zmm_dst1, zmm_src_pack);
             }
 
             const auto store_addr_0
@@ -6363,7 +6362,7 @@ private:
 
     constexpr static int xmm_work_reg_base_idx = 9;
 
-    opmask_t kTail = k1;
+    opmask_t kTail = k2;
 
     void copy_block(const int nrows, const int ncolumns, bool zeropad) {
         const int simd_nrows_rounded = utils::rnd_up(nrows, k_blk_step);
@@ -6407,12 +6406,11 @@ private:
                 }
 
                 // Reorder row-wise [r0|r1|r2|r3] into split-pack layout for
-                // direct conversion: low 32B interleave [r0[n], r1[n]],
-                // high 32B interleave [r2[n], r3[n]].
+                // conversion: low 32-byte half interleave [r0[n], r1[n]], high
+                // 32-byte half interleave [r2[n], r3[n]].
                 vpermb(zmm_src_pack, zmm_permute, zmm_src_pack);
 
-                cvt_helper_.convert_from_packed_plain(
-                        zmm_dst0, zmm_dst1, zmm_src_pack);
+                cvt_helper_.convert_plain(zmm_dst0, zmm_dst1, zmm_src_pack);
             }
 
             // The destination is written in whole xf16 packs of tr_k_blk_step
@@ -6571,6 +6569,7 @@ struct jit_brgemm_matmul_copy_cvt_fp8_to_xf16_transposed_t
         , tr_typesize_(conf->tr_b_dt_sz)
         , src_row_stride_(conf->copy_B_wei_stride)
         , tr_src_stride_(conf->LDB * tr_k_blk_step * tr_typesize_)
+        , can_use_gather_(src_row_stride_ <= (dim_t)(INT32_MAX / n_blk_step))
         , cvt_helper_(this, conf) {
         validate_xf16_fp8_copy_b_preconditions(conf, false, true);
     }
@@ -6583,6 +6582,7 @@ struct jit_brgemm_matmul_copy_cvt_fp8_to_xf16_transposed_t
 private:
     using reg64_t = const Xbyak::Reg64;
     using reg32_t = const Xbyak::Reg32;
+    using opmask_t = const Xbyak::Opmask;
 
     enum {
         n_blk_step = 16,
@@ -6594,6 +6594,7 @@ private:
 
     const int typesize_, tr_typesize_;
     const dim_t src_row_stride_, tr_src_stride_;
+    const bool can_use_gather_;
 
     fp8_to_xf16_cvt_helper_t cvt_helper_;
 
@@ -6613,9 +6614,8 @@ private:
     Zmm zmm_permute = Zmm(8);
     // Loop-invariant vpgatherdd column-offset vector (col_iota * src stride).
     Zmm zmm_gather_idx = Zmm(9);
-    // Writemask for vpgatherdd; reset before every gather (the gather clears
-    // it). Disjoint from the fp8 converter's reserved opmask (k4).
-    Xbyak::Opmask kGather = Xbyak::Opmask(1);
+    // Writemask for vpgatherdd; reset before every gather (the gather clears it)
+    opmask_t kGather = k2;
 
     constexpr static int xmm_work_reg_base_idx = 10;
 
@@ -6645,8 +6645,8 @@ private:
                 // has a full k_blk_step rows (so the dword read stays in
                 // bounds) and the largest column offset fits a signed 32-bit
                 // gather index; otherwise fall back to scalar assembly.
-                const bool use_gather = rows_left >= k_blk_step
-                        && src_row_stride_ <= (dim_t)(INT32_MAX / n_blk_step);
+                const bool use_gather
+                        = can_use_gather_ && rows_left >= k_blk_step;
 
                 if (use_gather) {
                     // The column-offset index vector is loop-invariant; the
@@ -6732,11 +6732,11 @@ private:
                 // Permute the column-major dword packing straight into the
                 // split-pack layout for conversion. This single vpermb fuses
                 // the per-row byte extraction and the row-interleave reorder:
-                // low 32B interleave [r0[n], r1[n]], high 32B [r2[n], r3[n]].
+                // low 32-byte half interleave [r0[n], r1[n]], high 32-byte half
+                // interleave [r2[n], r3[n]].
                 vpermb(zmm_src_pack, zmm_permute, zmm_dword_pack);
 
-                cvt_helper_.convert_from_packed_plain(
-                        zmm_dst0, zmm_dst1, zmm_src_pack);
+                cvt_helper_.convert_plain(zmm_dst0, zmm_dst1, zmm_src_pack);
             }
 
             // The destination is written in whole xf16 packs of tr_k_blk_step
@@ -6769,13 +6769,13 @@ private:
 
         // Build the loop-invariant vpgatherdd column-offset vector:
         // zmm_gather_idx[c] = c * src_row_stride_.
-        if (src_row_stride_ <= (dim_t)(INT32_MAX / n_blk_step)) {
-            const auto zmm_scratch = Zmm(xmm_work_reg_base_idx);
+        if (can_use_gather_) {
+            const auto zmm_stride = Zmm(xmm_work_reg_base_idx);
             mov(reg_tmp, reinterpret_cast<size_t>(xf16_fp8_gather_col_iota));
             vmovdqu32(zmm_gather_idx, ptr[reg_tmp]);
             mov(regw_tmp, static_cast<int>(src_row_stride_));
-            vpbroadcastd(zmm_scratch, regw_tmp);
-            vpmulld(zmm_gather_idx, zmm_gather_idx, zmm_scratch);
+            vpbroadcastd(zmm_stride, regw_tmp);
+            vpmulld(zmm_gather_idx, zmm_gather_idx, zmm_stride);
         }
 
         auto compute_K_loop_body

@@ -336,7 +336,7 @@ public:
         }
 
         barrier_init();
-        workers_.reset(new std::vector<worker_data>(num_threads_));
+        workers_.reset(new std::vector<worker_data_t>(num_threads_));
         for (int i = 0; i < num_threads_; i++) {
             auto wd = &workers_->at(i);
             wd->thread_id = i;
@@ -346,7 +346,7 @@ public:
         barrier_wait();
     }
 
-    virtual ~threadpool_t() {
+    ~threadpool_t() override {
         std::unique_lock<std::mutex> l(master_mutex_);
         barrier_init();
         task_submit(nullptr, 0);
@@ -355,13 +355,13 @@ public:
         barrier_wait();
     }
 
-    virtual int get_num_threads() const { return num_threads_; }
+    int get_num_threads() const override { return num_threads_; }
 
-    virtual bool get_in_parallel() const { return worker_self() != nullptr; }
+    bool get_in_parallel() const override { return worker_self() != nullptr; }
 
-    virtual uint64_t get_flags() const { return 0; }
+    uint64_t get_flags() const override { return 0; }
 
-    virtual void parallel_for(int n, const task_func &fn) {
+    void parallel_for(int n, const task_func &fn) override {
         if (worker_self() != nullptr)
             task_execute(0, 1, &fn, n);
         else {
@@ -379,27 +379,27 @@ private:
     std::mutex master_mutex_;
     std::mutex master_submit_mutex_;
 
-    struct worker_data {
+    struct worker_data_t {
         int thread_id;
         threadpool_t *tp;
         std::condition_variable cv;
         std::unique_ptr<std::thread> thread;
     };
-    std::unique_ptr<std::vector<worker_data>> workers_;
-    static thread_local worker_data *worker_self_;
-    worker_data *worker_self() const {
+    std::unique_ptr<std::vector<worker_data_t>> workers_;
+    static thread_local worker_data_t *worker_self_;
+    worker_data_t *worker_self() const {
         return worker_self_ != nullptr && worker_self_->tp == this
                 ? worker_self_
                 : nullptr;
     }
 
-    struct task_data {
+    struct task_data_t {
         std::atomic<int> go_flag;
         const task_func *fn;
         int n;
     };
     int master_sense_;
-    task_data tasks_[2];
+    task_data_t tasks_[2];
 
     dnnl::impl::counting_barrier_t barrier_;
 
@@ -432,7 +432,7 @@ private:
         }
     }
 
-    static void worker_loop(worker_data *wd) {
+    static void worker_loop(worker_data_t *wd) {
         worker_self_ = wd;
         int worker_sense = 0;
 
@@ -455,7 +455,7 @@ private:
     }
 };
 
-thread_local threadpool_t::worker_data *threadpool_t::worker_self_ = nullptr;
+thread_local threadpool_t::worker_data_t *threadpool_t::worker_self_ = nullptr;
 
 } // namespace testing
 } // namespace dnnl

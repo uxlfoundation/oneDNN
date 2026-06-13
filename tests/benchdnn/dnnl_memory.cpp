@@ -219,7 +219,42 @@ int execute_reorder(const dnn_mem_t &src, dnn_mem_t &dst,
     args.set(DNNL_ARG_TO, *r_dst);
     args.set(DNNL_ARG_SCRATCHPAD, scratchpad);
 
-    return execute_and_wait(prim, args);
+    // The code below copy-pastes `execute_and_wait` with some inline insertions
+    // to avoid expanding on some function declarations.
+    // The reason to have it copy-pasted is to avoid graph-recording for data
+    // preparation reorders. The issue comes around cross engine reorders which
+    // are prohibited by graph recording design. The feature intends to record
+    // device kernels and operations and shouldn't capture data movements
+    // per se.
+    //
+    // TODO: move `execute_and_wait` with its own args_t class to pass
+    // arguments. Right now the signature don't look good to expand it with a
+    // custom flag for a narrow use case.
+    stream_t stream(query_engine(query_pd(prim)));
+    std::vector<dnnl_exec_arg_t> dnnl_args;
+
+    // Copy-paste to avoid exposing symbol.
+    // execute_unmap_args(args, dnnl_args);
+    dnnl_args.resize(args.size());
+    for (int i = 0; i < args.size(); ++i) {
+        if (args.dnn_mem(i).is_mapped()) args.dnn_mem(i).unmap();
+
+        dnnl_args[i].arg = args.arg(i);
+        dnnl_args[i].memory = args.dnn_mem(i).m_;
+    }
+
+    stream_staller_t staller(stream);
+    auto status = dnnl_primitive_execute(
+            prim, stream, static_cast<int>(dnnl_args.size()), dnnl_args.data());
+    staller.release();
+    DNN_SAFE(dnnl_stream_wait(stream), CRIT);
+
+    // Copy-paste to avoid exposing symbol.
+    // execute_map_args(args);
+    for (int i = 0; i < args.size(); ++i)
+        if (!args.dnn_mem(i).is_mapped()) args.dnn_mem(i).map();
+
+    return status != dnnl_success ? FAIL : OK;
 }
 
 // `swap_dt` changes `this` data type which may be needed for

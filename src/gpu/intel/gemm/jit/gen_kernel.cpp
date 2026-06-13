@@ -329,9 +329,6 @@ status_t gen_desc_t::finalize(const char *tags) {
             return status::unimplemented;
     }
 
-    // TODO: Fix kChain handling with BDPAS.
-    if (problem_.preferBDPAS()) { strategy_.kChain = 1; }
-
     // If the M/N group size is equal to M or N, align up to a multiple of unroll size
     // XXX: Increase group size to a large value before aligning to increase reusability
     // TODO: Refactor M/N groups/thread setting to preserve MN group count.

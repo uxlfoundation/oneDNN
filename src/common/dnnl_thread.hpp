@@ -44,10 +44,7 @@
 // due to linker optimizations. The newer compiler and C++ standard, the less
 // binary size will be achieved.
 
-// This header needs a guard around ittnotify.hpp as it's used by gtests
-#if defined(DNNL_ENABLE_ITT_TASKS)
 #include "common/ittnotify.hpp"
-#endif
 
 #if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_SEQ
 #define DNNL_THR_SYNC 1
@@ -275,13 +272,11 @@ static inline void parallel(int nthr, const std::function<void(int, int)> &f) {
         f(i, nthr);
     }
 #else
-#if defined(DNNL_ENABLE_ITT_TASKS)
     auto task_primitive_kind = itt::primitive_task_get_current_kind();
     auto task_primitive_info = itt::primitive_task_get_current_info();
     auto task_primitive_log_kind = itt::primitive_task_get_current_log_kind();
     auto task_primitive_itt_id = itt::primitive_task_get_itt_id();
     bool itt_enable = itt::get_itt(itt::__itt_task_level_high);
-#endif
 #if DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL
     // Tasks must be always submitted to a threadpool, it will handle them
     // properly.
@@ -296,23 +291,18 @@ static inline void parallel(int nthr, const std::function<void(int, int)> &f) {
         int nthr_ = omp_get_num_threads();
         int ithr_ = omp_get_thread_num();
         assert(nthr_ == nthr);
-#if defined(DNNL_ENABLE_ITT_TASKS)
         if (ithr_ && itt_enable) {
             itt::primitive_task_start(
                     task_primitive_kind, task_primitive_log_kind);
             itt::primitive_add_metadata_and_id(task_primitive_info,
                     task_primitive_log_kind, task_primitive_itt_id);
         }
-#endif
         f(ithr_, nthr_);
-#if defined(DNNL_ENABLE_ITT_TASKS)
         if (ithr_ && itt_enable)
             itt::primitive_task_end(task_primitive_log_kind);
-#endif
     }
 #elif DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_TBB
     tbb::parallel_for(0, nthr, [&](int ithr) {
-#if defined(DNNL_ENABLE_ITT_TASKS)
         bool mark_task = itt::primitive_task_get_current_kind()
                 == primitive_kind::undefined;
         if (mark_task && itt_enable) {
@@ -321,12 +311,9 @@ static inline void parallel(int nthr, const std::function<void(int, int)> &f) {
             itt::primitive_add_metadata_and_id(task_primitive_info,
                     task_primitive_log_kind, task_primitive_itt_id);
         }
-#endif
         f(ithr, nthr);
-#if defined(DNNL_ENABLE_ITT_TASKS)
         if (mark_task && itt_enable)
             itt::primitive_task_end(task_primitive_log_kind);
-#endif
     }, tbb::static_partitioner());
 #elif DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
     using namespace dnnl::impl::threadpool_utils;
@@ -339,7 +326,6 @@ static inline void parallel(int nthr, const std::function<void(int, int)> &f) {
         threadpool_utils::activate_threadpool(tp);
     } else {
         tp->parallel_for(nthr, [=](int ithr, int nthr) {
-#if defined(DNNL_ENABLE_ITT_TASKS)
             bool is_master = threadpool_utils::get_active_threadpool() == tp;
             if (!is_master && itt_enable) {
                 itt::primitive_task_start(
@@ -347,13 +333,10 @@ static inline void parallel(int nthr, const std::function<void(int, int)> &f) {
                 itt::primitive_add_metadata_and_id(task_primitive_info,
                         task_primitive_log_kind, task_primitive_itt_id);
             }
-#endif
             f(ithr, nthr);
-#if defined(DNNL_ENABLE_ITT_TASKS)
             if (!is_master && itt_enable) {
                 itt::primitive_task_end(task_primitive_log_kind);
             }
-#endif
         });
     }
 #endif

@@ -44,18 +44,77 @@ typedef enum { // NOLINT(modernize-use-using)
 struct itt_task_level_t {
     int level;
 };
+
+#if defined(DNNL_ENABLE_ITT_TASKS)
+__itt_id make_itt_id(const char *tname, double stamp);
+#endif
+
+// Conditional definitions below are used since dnnl_thread.hpp is included in
+// test_thread.hpp and gets pulled into most (all) test sources, which are
+// built without DNNL_ENABLE_ITT_TASKS.
+// Strictly follow this style when adding new entry points.
+
 // Returns `true` if requested @p level is less or equal to default or specified
 // one by env variable.
+#if defined(DNNL_ENABLE_ITT_TASKS)
 bool get_itt(__itt_task_level level);
-__itt_id make_itt_id(const char *tname, double stamp);
+#else
+static inline bool get_itt(__itt_task_level) {
+    return bool();
+}
+#endif
+
+#if defined(DNNL_ENABLE_ITT_TASKS)
 void primitive_task_start(primitive_kind_t kind, const char *log_kind);
+#else
+static inline void primitive_task_start(primitive_kind_t, const char *) {}
+#endif
+
+#if defined(DNNL_ENABLE_ITT_TASKS)
 void primitive_add_metadata_and_id(
         const char *pd_info, const char *log_kind, const __itt_id *task_id);
+#else
+static inline void primitive_add_metadata_and_id(
+        const char *, const char *, const __itt_id *) {}
+#endif
+
+#if defined(DNNL_ENABLE_ITT_TASKS)
 primitive_kind_t primitive_task_get_current_kind();
+#else
+static inline primitive_kind_t primitive_task_get_current_kind() {
+    return primitive_kind_t();
+}
+#endif
+
+#if defined(DNNL_ENABLE_ITT_TASKS)
 void primitive_task_end(const char *log_kind);
+#else
+static inline void primitive_task_end(const char *) {}
+#endif
+
+#if defined(DNNL_ENABLE_ITT_TASKS)
 const char *primitive_task_get_current_info();
+#else
+static inline const char *primitive_task_get_current_info() {
+    return nullptr;
+}
+#endif
+
+#if defined(DNNL_ENABLE_ITT_TASKS)
 const char *primitive_task_get_current_log_kind();
+#else
+static inline const char *primitive_task_get_current_log_kind() {
+    return nullptr;
+}
+#endif
+
+#if defined(DNNL_ENABLE_ITT_TASKS)
 const __itt_id *primitive_task_get_itt_id();
+#else
+static inline const __itt_id *primitive_task_get_itt_id() {
+    return nullptr;
+}
+#endif
 } // namespace itt
 } // namespace impl
 } // namespace dnnl

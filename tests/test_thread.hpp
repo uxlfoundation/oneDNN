@@ -69,6 +69,8 @@ struct thr_ctx_t {
 // At the same time, the calls to dnnl::impl::parallel*() from within the
 // library continue using the library version of these functions.
 #define threadpool_utils testing_threadpool_utils
+// Prohibit ITT API instrumentation
+#undef DNNL_ENABLE_ITT_TASKS
 #include "src/common/dnnl_thread.hpp"
 #undef threadpool_utils
 

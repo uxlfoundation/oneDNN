@@ -23,10 +23,8 @@ namespace itt {
 
 #if defined(DNNL_ENABLE_ITT_TASKS)
 static setting_t<int> itt_task_level {__itt_task_level_high};
-#endif
 
 bool get_itt(__itt_task_level level) {
-#if defined(DNNL_ENABLE_ITT_TASKS)
     if (!itt_task_level.initialized()) {
         // Assumes that all threads see the same environment
         static int val
@@ -34,20 +32,13 @@ bool get_itt(__itt_task_level level) {
         itt_task_level.set(val);
     }
     return level <= itt_task_level.get();
-#else
-    UNUSED(level);
-    return false;
-#endif
 }
 
-#if defined(DNNL_ENABLE_ITT_TASKS)
 __itt_id make_itt_id(const char *tname, double stamp) {
     return __itt_id_make(
             const_cast<char *>(tname), static_cast<uint64_t>(stamp));
 }
-#endif
 
-#if defined(DNNL_ENABLE_ITT_TASKS)
 namespace {
 
 thread_local primitive_kind_t thread_primitive_kind;
@@ -75,10 +66,8 @@ __itt_domain *itt_domain(const char *log_kind) {
 }
 
 } // namespace
-#endif
 
 void primitive_task_start(primitive_kind_t kind, const char *log_kind) {
-#if defined(DNNL_ENABLE_ITT_TASKS)
     if (kind == primitive_kind::undefined) return;
     __itt_domain *pd_domain = itt_domain(log_kind);
 #define CASE(x) \
@@ -120,15 +109,10 @@ void primitive_task_start(primitive_kind_t kind, const char *log_kind) {
     }
     thread_primitive_kind = kind;
     thread_primitive_log_kind = log_kind;
-#else
-    UNUSED(kind);
-    UNUSED(log_kind);
-#endif
 }
 
 void primitive_add_metadata_and_id(
         const char *pd_info, const char *log_kind, const __itt_id *task_id) {
-#if defined(DNNL_ENABLE_ITT_TASKS)
     // A separate method for adding metadata and IDs to the primitive ITT tasks
     // provide the option to skip this step during primitive operation to avoid
     // performance impact from construction of very large metadata strings.
@@ -142,47 +126,25 @@ void primitive_add_metadata_and_id(
     // it is shared across multi-threaded executions of the same instance.
     thread_primitive_task_id = *task_id;
     __itt_id_create(pd_domain, thread_primitive_task_id);
-#else
-    UNUSED(pd_info);
-    UNUSED(log_kind);
-    UNUSED(task_id);
-#endif
 }
 
 primitive_kind_t primitive_task_get_current_kind() {
-#if defined(DNNL_ENABLE_ITT_TASKS)
     return thread_primitive_kind;
-#else
-    return primitive_kind::undefined;
-#endif
 }
 
 const char *primitive_task_get_current_info() {
-#if defined(DNNL_ENABLE_ITT_TASKS)
     return thread_primitive_info;
-#else
-    return "";
-#endif
 }
 
 const char *primitive_task_get_current_log_kind() {
-#if defined(DNNL_ENABLE_ITT_TASKS)
     return thread_primitive_log_kind;
-#else
-    return "";
-#endif
 }
 
 const __itt_id *primitive_task_get_itt_id() {
-#if defined(DNNL_ENABLE_ITT_TASKS)
     return &thread_primitive_task_id;
-#else
-    return nullptr;
-#endif
 }
 
 void primitive_task_end(const char *log_kind) {
-#if defined(DNNL_ENABLE_ITT_TASKS)
     if (thread_primitive_kind != primitive_kind::undefined) {
         __itt_task_end(itt_domain(log_kind));
         thread_primitive_kind = primitive_kind::undefined;
@@ -194,10 +156,8 @@ void primitive_task_end(const char *log_kind) {
         __itt_id_destroy(itt_domain(log_kind), thread_primitive_task_id);
         thread_primitive_task_id = __itt_null;
     }
-#else
-    UNUSED(log_kind);
-#endif
 }
+#endif // defined(DNNL_ENABLE_ITT_TASKS)
 
 } // namespace itt
 } // namespace impl

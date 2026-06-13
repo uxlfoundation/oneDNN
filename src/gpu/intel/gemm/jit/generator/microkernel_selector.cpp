@@ -534,8 +534,12 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
     }
 
     s.systolic = systolic;
-    if (systolic && hw >= HW::XeHPC)
+    if (systolic && hw >= HW::XeHPC) {
         s.extendedAtomicFMA = s.atomicFMA = true;
+        if (hw >= HW::Xe3p && problem.product.family >= ngen::ProductFamily::CRI) {
+            s.kChain = 2;
+        }
+    }
     s.registerScheme = GEMMStrategy::VAvoid;
 
     // TODO: Refine GRF limits further. This should be based on the

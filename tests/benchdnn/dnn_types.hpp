@@ -540,11 +540,7 @@ struct attr_t {
     // build time, otherwise scratchpad pointers are invalidated (as were
     // created inside threads that no longer exist when execution time comes).
     // Relevant for both engines since GPU uses CPU for faster validation.
-    static dnnl_scratchpad_mode_t get_default_scratchpad_mode() {
-        return has_bench_mode_modifier(mode_modifier_t::par_create)
-                ? dnnl_scratchpad_mode_user
-                : dnnl_scratchpad_mode_library;
-    }
+    static dnnl_scratchpad_mode_t get_default_scratchpad_mode();
 
     arg_scales_t scales;
     zero_points_t zero_points;

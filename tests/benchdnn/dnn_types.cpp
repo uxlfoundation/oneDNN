@@ -838,6 +838,12 @@ int attr_t::post_ops_t::prelu_index() const {
     return -1;
 }
 
+dnnl_scratchpad_mode_t attr_t::get_default_scratchpad_mode() {
+    return has_bench_mode_modifier(mode_modifier_t::par_create)
+            ? dnnl_scratchpad_mode_user
+            : dnnl_scratchpad_mode_library;
+}
+
 std::ostream &operator<<(std::ostream &s, const policy_t &policy) {
     s << attr_t::policy2str(policy);
     return s;

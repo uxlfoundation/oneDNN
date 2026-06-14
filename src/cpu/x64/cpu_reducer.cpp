@@ -301,9 +301,169 @@ struct reducer_2d_driver_f_s_32_t : public reducer_2d_driver_t<data_type> {
     }
 };
 
+/* xf16 (bf16/f16) reducer: upconvert -> f32 add -> downconvert. 2-byte
+ * elements; requires AVX-512 (vpmovzxwd/vcvtph2ps/vmovdqu16); bf16
+ * downconvert needs AVX512_BF16 (vcvtneps2bf16). */
+template <impl::data_type_t data_type, cpu_isa_t isa>
+struct reducer_2d_driver_xf16_t : public reducer_2d_driver_t<data_type> {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(reducer_2d_driver_xf16_t)
+
+    using data_t = typename prec_traits_t<data_type>::type;
+
+    void operator()(
+            data_t *dst, const data_t *srcs, size_t ny, size_t nx) override {
+        jit_generator_t::operator()(dst, srcs, ny, nx);
+    }
+
+    static constexpr int typesize = 2; // bf16/f16
+    static constexpr int simd_w = 16; // f32 lane count per zmm
+    static constexpr int simd_bytes = simd_w * typesize; // 32 bytes per vec
+
+    Xbyak::Reg64 reg_dst = abi_param1;
+    Xbyak::Reg64 reg_src = abi_param2;
+    Xbyak::Reg64 reg_ny = abi_param3;
+    Xbyak::Reg64 reg_nx = abi_param4;
+
+    Xbyak::Reg64 reg_x = this->rax;
+    Xbyak::Reg64 reg_long_offt = this->r11;
+    Xbyak::Reg64 reg_tmp = this->r10;
+
+    Xbyak::Opmask k_tail_mask = Xbyak::Opmask(1);
+
+    reducer_2d_driver_xf16_t(int n_src, size_t src_ld, size_t src_step,
+            size_t dst_step, bool nullify_dst)
+        : reducer_2d_driver_t<data_type>(
+                  n_src, src_ld, src_step, dst_step, nullify_dst, jit_name()) {}
+
+    void upcvt_ymm_to_zmm(const Xbyak::Zmm &z, const Xbyak::Ymm &y) {
+        if (data_type == data_type::bf16) {
+            this->vpmovzxwd(z, y);
+            this->vpslld(z, z, 16);
+        } else { // f16
+            this->vcvtph2ps(z, y);
+        }
+    }
+    void downcvt_zmm_to_ymm(const Xbyak::Ymm &y, const Xbyak::Zmm &z) {
+        if (data_type == data_type::bf16) {
+            this->vcvtneps2bf16(y, z);
+        } else { // f16
+            // 0x04 = round to current MXCSR setting (matches _op_mxcsr).
+            this->vcvtps2ph(y, z, 0x04);
+        }
+    }
+
+    // One iteration over `simd_w` (=16) elements: load dst, accumulate all
+    // srcs (already upconverted), downconvert, store.
+    void process_vec(bool with_tail_mask) {
+        using namespace Xbyak;
+        Zmm z_acc(0);
+        Zmm z_tmp(1);
+        Ymm y_acc(0);
+        Ymm y_tmp(1);
+
+        auto maybe_mask = [&](const Ymm &y, bool zeroing) {
+            if (!with_tail_mask) return y;
+            return zeroing ? Ymm(y | k_tail_mask | this->T_z) // load: {z}
+                           : Ymm(y | k_tail_mask); // store: merge
+        };
+
+        if (this->nullify_dst_) {
+            this->uni_vpxor(z_acc, z_acc, z_acc);
+        } else {
+            this->vmovdqu16(maybe_mask(y_acc, true), this->ptr[reg_dst]);
+            upcvt_ymm_to_zmm(z_acc, y_acc);
+        }
+        for (int src_id = 0; src_id < this->n_src_; ++src_id) {
+            const size_t off
+                    = (size_t)src_id * this->src_ld_ * (size_t)typesize;
+            if (off > (size_t)INT_MAX) {
+                this->mov(reg_long_offt, off);
+                this->vmovdqu16(maybe_mask(y_tmp, true),
+                        this->ptr[reg_src + reg_long_offt]);
+            } else {
+                this->vmovdqu16(
+                        maybe_mask(y_tmp, true), this->ptr[reg_src + (int)off]);
+            }
+            upcvt_ymm_to_zmm(z_tmp, y_tmp);
+            this->vaddps(z_acc, z_acc, z_tmp);
+        }
+        downcvt_zmm_to_ymm(y_acc, z_acc);
+        this->vmovdqu16(this->ptr[reg_dst], maybe_mask(y_acc, false));
+    }
+
+    void loop_x() {
+        Xbyak::Label loop_vec, loop_vec_end, tail_chk, tail_done;
+
+        this->mov(reg_x, reg_nx);
+
+        this->L(loop_vec);
+        this->cmp(reg_x, simd_bytes);
+        this->jl(loop_vec_end, this->T_NEAR);
+        process_vec(/*with_tail_mask=*/false);
+        this->add(reg_src, simd_bytes);
+        this->add(reg_dst, simd_bytes);
+        this->sub(reg_x, simd_bytes);
+        this->jmp(loop_vec, this->T_NEAR);
+
+        this->L(loop_vec_end);
+
+        // Tail in bytes: 0..(simd_bytes - typesize). Elements count = x/2.
+        this->cmp(reg_x, 0);
+        this->jle(tail_done, this->T_NEAR);
+
+        // Build a k-mask for (x / 2) elements: mask = (1u << (x / 2)) - 1.
+        this->mov(reg_tmp.cvt32(), 1);
+        this->mov(this->rcx, reg_x);
+        this->shr(this->rcx, 1); // bytes -> elements
+        this->shl(reg_tmp.cvt32(), this->cl);
+        this->sub(reg_tmp.cvt32(), 1);
+        this->kmovw(k_tail_mask, reg_tmp.cvt32());
+        process_vec(/*with_tail_mask=*/true);
+        this->add(reg_src, reg_x);
+        this->add(reg_dst, reg_x);
+
+        this->L(tail_done);
+
+        // restore address registers to row-start
+        this->sub(reg_src, reg_nx);
+        this->sub(reg_dst, reg_nx);
+    }
+
+    void generate() override {
+        static_assert(isa == avx512_core, "xf16 reducer requires avx512");
+
+        this->preamble();
+        // nx came in as element count; convert to bytes (typesize=2).
+        this->shl(reg_nx, 1);
+
+        Xbyak::Label ny_loop;
+        this->L(ny_loop);
+
+        loop_x();
+
+        this->add(reg_dst, this->dst_step_ * (size_t)typesize);
+        this->add(reg_src, this->src_step_ * (size_t)typesize);
+
+        this->dec(reg_ny);
+        this->jnz(ny_loop, this->T_NEAR);
+
+        this->postamble();
+    }
+};
+
 template <impl::data_type_t data_type>
 inline reducer_2d_driver_t<data_type> *create_reduce_2d_drv(int n_src,
         size_t src_ld, size_t src_step, size_t dst_step, bool nullify_dst) {
+    if (utils::one_of(data_type, data_type::bf16, data_type::f16)) {
+        // bf16 downconvert needs AVX512_BF16 (vcvtneps2bf16). f16 needs
+        // F16C/AVX512F. Caller is expected to only request these types
+        // when the matmul ISA already implies AMX_BF16/AMX_FP16.
+        if (mayiuse(avx512_core))
+            return new reducer_2d_driver_xf16_t<data_type, avx512_core>(
+                    n_src, src_ld, src_step, dst_step, nullify_dst);
+        assert(!"xf16 reducer requires avx512_core");
+        return nullptr;
+    }
     if (mayiuse(avx512_core))
         return new reducer_2d_driver_f_s_32_t<data_type, avx512_core>(
                 n_src, src_ld, src_step, dst_step, nullify_dst);
@@ -589,6 +749,8 @@ void cpu_accumulator_1d_t<data_type>::accumulate(
 
 template struct cpu_accumulator_1d_t<data_type::f32>;
 template struct cpu_accumulator_1d_t<data_type::s32>;
+template struct cpu_accumulator_1d_t<data_type::bf16>;
+template struct cpu_accumulator_1d_t<data_type::f16>;
 
 } // namespace x64
 } // namespace cpu

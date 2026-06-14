@@ -749,7 +749,9 @@ status_t brgemm_init_tiles(const brgemm_desc_t &brg, char palette[64]) {
 
     const auto Ac = typesize_A * rd_block;
 
-    const auto Br = (brg.typesize_C != 0) ? Ac / brg.typesize_C : 0;
+    // AMX TMUL always writes 4-byte tile elements regardless of logical
+    // dt_c; use the fixed accumulator-tile element size for the palette.
+    const auto Br = Ac / brgemm_desc_t::amx_c_tile_elem_size;
 
     if (brg.get_num_A_tiles() + brg.get_num_B_tiles() + brg.get_num_C_tiles()
             > brgemm_desc_t::AMX_TILES_NUM) {
@@ -787,7 +789,7 @@ status_t brgemm_init_tiles(const brgemm_desc_t &brg, char palette[64]) {
             const bool is_ld_tail
                     = (brg.ldb_tail && n == (brg.get_ld_block2() - 1));
             const auto Cc = (is_ld_tail ? brg.ldb_tail : brg.ld_block)
-                    * brg.typesize_C;
+                    * brgemm_desc_t::amx_c_tile_elem_size;
             const auto C_tensor
                     = brg.get_C_tensor(m, n, is_bd_tail, is_ld_tail);
             tc_configure_tile(buff, C_tensor, Cr, Cc);

@@ -1063,6 +1063,12 @@ void brg_blocking_t::iterate_ker_block(brg_blocking_t &best_brgb, int kd_block_,
         if (spb == prev_spb || spb > start_sp_block) continue;
         if (spb % stride_w != 0) continue;
         if (!has_uneven_iw && iw % spb != 0) continue;
+        // For AMX with stride, skip sp_blocks where the brgemm M dimension
+        // is smaller than amx_h (16). Such small M values severely
+        // underutilize AMX tiles and incur disproportionate setup overhead.
+        if (is_amx(isa) && stride_w > 1 && div_up(spb, stride_w) < amx_h
+                && spb < sp)
+            continue;
 
         prev_spb = spb;
         iw_block = spb;

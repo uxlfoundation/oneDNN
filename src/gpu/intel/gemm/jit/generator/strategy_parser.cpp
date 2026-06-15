@@ -647,7 +647,7 @@ void adjustStrategy(HW hw, const GEMMProblem &problem, GEMMStrategy &strategy, c
     if (problem.A.needA64) strategy.A.forceA64();
     if (problem.B.needA64) strategy.B.forceA64();
     if (problem.C.needA64) strategy.C.forceA64();
-
+    if (problem.A.needA64 && problem.B.needA64) strategy.doubleMasking = true;
     // 2D block accesses use 2D addressing where supported.
     auto use2DAddressing = [](MatrixAddressingStrategy &astrategy) {
         astrategy.address2D |= isBlock2D(astrategy.accessType);

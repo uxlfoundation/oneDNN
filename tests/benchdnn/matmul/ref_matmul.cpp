@@ -186,7 +186,8 @@ static void compute_ref_matmul_chunk(const chunk_params_t &p, int64_t M,
         int64_t N, int64_t K, int64_t mc, int64_t nc, int64_t src_row_base,
         int64_t wei_base, int64_t wei_k_stride, int64_t wei_n_stride,
         int64_t dst_row_base, int64_t bia_base, int64_t bia_m_stride,
-        int64_t bia_n_stride, const attr_t &attr, const args_t &args) {
+        int64_t bia_n_stride, const attr_t &attr, const args_t &args,
+        int64_t group_id = 0) {
     // Mutable per-element quant params; initialised to the single value when
     // applicable and overwritten per K-group otherwise.
     int src_zp = p.src_zp_single;
@@ -247,8 +248,8 @@ static void compute_ref_matmul_chunk(const chunk_params_t &p, int64_t M,
             dst += p.bia_m->get_f32_elem(bia_idx);
         }
 
-        const auto v_po_vals
-                = prepare_po_vals(*p.dst_m, args, p.v_po_masks, dst_off);
+        auto v_po_vals = prepare_po_vals(
+                *p.dst_m, args, p.v_po_masks, dst_off, group_id);
         maybe_dropout(attr, dst, dst_off, *p.dropout_mask);
         const auto sum_val = p.dst_m->get_f32_elem(dst_off);
         maybe_post_ops(attr, dst, sum_val, v_po_vals);
@@ -380,7 +381,7 @@ void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
         compute_ref_matmul_chunk(params, M_g, prb->n, prb->k, mc, nc,
                 src_row_base, wei_base, wei_k_stride, wei_n_stride,
                 dst_row_base, bia_base, bia_m_stride, bia_n_stride, prb->attr,
-                args);
+                args, g);
     });
 }
 

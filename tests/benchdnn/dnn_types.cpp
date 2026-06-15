@@ -1355,8 +1355,19 @@ int attr_args_t::prepare_post_ops_mds(const attr_t &attr, int ndims,
 
             // deduce binary, prelu dims based on input policy
             dnnl_dims_t rhs_tensor_dims = {};
-            for (auto d = 0; d < ndims; ++d)
-                rhs_tensor_dims[d] = (!(mask & (1 << d))) ? 1 : dims[d];
+            // Overload mask 0 meaning for when binary post-op is applied
+            // to grouped memory, changing it to be per-group (i.e. one value
+            // per concatenated tensor, for instance for NVFP4 global scale).
+            // The grouped dst has no explicit num_groups in dims,
+            // so form a [group_count, 1, ...] descriptor manually
+            if (grouped_count > 0 && mask == 0) {
+                for (auto d = 0; d < ndims; ++d)
+                    rhs_tensor_dims[d]
+                            = (d == grouped_var_dim_idx) ? grouped_count : 1;
+            } else {
+                for (auto d = 0; d < ndims; ++d)
+                    rhs_tensor_dims[d] = (!(mask & (1 << d))) ? 1 : dims[d];
+            }
 
             auto rhs_tensor_desc = dnn_mem_t::init_md(ndims, rhs_tensor_dims,
                     po_rhs_tensor_entry.dt, po_rhs_tensor_entry.tag,

@@ -857,13 +857,19 @@ int measure_perf(
 
 std::vector<float> prepare_po_vals(const dnn_mem_t &dst_m, const args_t &args,
         const std::vector<std::pair<int, int>> &v_po_masks,
-        const size_t dst_off) {
+        const size_t dst_off, int64_t group_id) {
     if (v_po_masks.empty()) return std::vector<float>();
 
     std::vector<float> v_vals(v_po_masks.size());
 
     for (size_t d = 0; d < v_po_masks.size(); ++d) {
-        const auto po_offset = dst_m.get_idx(dst_off, v_po_masks[d].second);
+        // For grouped memory, mask == 0 is overloaded to mean per-group:
+        // a single value per concatenated group, indexed by group_id
+        //
+        // Note, that group_id is 0 for non-grouped use
+        const auto po_offset = v_po_masks[d].second == 0
+                ? group_id
+                : dst_m.get_idx(dst_off, v_po_masks[d].second);
         const float val
                 = args.find(v_po_masks[d].first).get_f32_elem(po_offset);
         v_vals[d] = val;

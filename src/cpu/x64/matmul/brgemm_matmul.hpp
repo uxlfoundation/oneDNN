@@ -126,6 +126,8 @@ private:
     std::unique_ptr<jit_brgemm_matmul_copy_a_t> copy_A_kernel_;
     std::unique_ptr<cpu_accumulator_1d_t<data_type::f32>> acc_ker_f32_;
     std::unique_ptr<cpu_accumulator_1d_t<data_type::s32>> acc_ker_s32_;
+    std::unique_ptr<cpu_accumulator_1d_t<data_type::bf16>> acc_ker_bf16_;
+    std::unique_ptr<cpu_accumulator_1d_t<data_type::f16>> acc_ker_f16_;
     std::unique_ptr<jit_avx512_sparse_decompress_kernel_t>
             sparse_decompress_kernel_;
 

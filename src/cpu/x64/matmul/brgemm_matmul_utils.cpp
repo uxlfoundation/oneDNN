@@ -2278,6 +2278,20 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
             bgmmc.postops_inst_count = 0;
         }
 
+    // Use dst dtype (bf16/f16) for K-chunk accumulation when relaxed
+    // accumulation mode is enabled. nthr_k<=1 bypasses C buffer (beta=1 into D).
+    // Set before blocking heuristic so AMX blocking accounts for narrow C.
+    // use_buffer_c is decided inside heuristic, so not in predicate here.
+    {
+        const bool is_relaxed_acc = utils::one_of(attr.acc_mode_,
+                accumulation_mode::relaxed, accumulation_mode::any);
+        const bool dst_dt_eligible
+                = utils::one_of(bgmmc.dst_dt, data_type::bf16, data_type::f16);
+        // Only the AMX uker has the narrow-dt store/beta=1 paths.
+        const bool isa_eligible = is_superset(bgmmc.isa, avx512_core_amx);
+        bgmmc.c_buf_dst_dt = is_relaxed_acc && dst_dt_eligible && isa_eligible;
+    }
+
     // Heuristic tries to optimize the following parameters:
     // - M_blk, M_Chunk
     // - N_blk, N_Chunk
@@ -2295,8 +2309,8 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     // Per-K (grouped) scales/ZP applied at kernel time (i.e. not folded into
     // buffer B) require each brgemm call to cover at most a single K-group
     // of every active per-K axis.
+    dim_t k_group = 0;
     if (!bgmmc.is_runtime_K) {
-        dim_t k_group = 0;
         auto fold_group = [&](bool active, dim_t g) {
             if (!active || g <= 0) return;
             k_group = (k_group == 0) ? g : math::gcd(k_group, g);
@@ -2310,22 +2324,58 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         fold_group(bgmmc.is_wei_zp_per_k && !wei_zp_folded_into_buffer_b,
                 bgmmc.wei_zp_k_gsize);
         fold_group(bgmmc.is_src_zp_per_k, bgmmc.src_zp_k_gsize);
-        if (k_group > 0) {
-            const dim_t prev_chunk_K = bgmmc.K_blk * bgmmc.brgemm_batch_size;
-            if (bgmmc.K_blk > k_group) {
-                bgmmc.K_blk = rnd_up(nstl::min(bgmmc.K, k_group),
-                        bgmmc.required_k_granularity);
-                bgmmc.brgemm_batch_size = 1;
-            } else {
-                const dim_t max_bs = nstl::max<dim_t>(1, k_group / bgmmc.K_blk);
-                if (bgmmc.brgemm_batch_size > max_bs)
-                    bgmmc.brgemm_batch_size = max_bs;
-            }
+    }
 
-            const dim_t new_chunk_K = bgmmc.K_blk * bgmmc.brgemm_batch_size;
-            if ((new_chunk_K < prev_chunk_K && new_chunk_K < bgmmc.K)
-                    || get_actual_ldd() != bgmmc.N) {
-                bgmmc.use_buffer_c = true;
+    bool per_k_requires_buffer_c = false;
+    auto apply_per_k_constraints = [&]() {
+        per_k_requires_buffer_c = false;
+        if (k_group <= 0) return;
+
+        const dim_t prev_chunk_K = bgmmc.K_blk * bgmmc.brgemm_batch_size;
+        if (bgmmc.K_blk > k_group) {
+            bgmmc.K_blk = rnd_up(
+                    nstl::min(bgmmc.K, k_group), bgmmc.required_k_granularity);
+            bgmmc.brgemm_batch_size = 1;
+        } else {
+            const dim_t max_bs = nstl::max<dim_t>(1, k_group / bgmmc.K_blk);
+            if (bgmmc.brgemm_batch_size > max_bs)
+                bgmmc.brgemm_batch_size = max_bs;
+        }
+
+        const dim_t new_chunk_K = bgmmc.K_blk * bgmmc.brgemm_batch_size;
+        per_k_requires_buffer_c
+                = (new_chunk_K < prev_chunk_K && new_chunk_K < bgmmc.K)
+                || get_actual_ldd() != bgmmc.N;
+        if (per_k_requires_buffer_c) bgmmc.use_buffer_c = true;
+    };
+
+    apply_per_k_constraints();
+
+    // c_buf_dst_dt bypass viability: nthr_k<=1 accumulates into narrow-dt
+    // D with recurring RMW per K-chunk. Only viable when panel reuse is
+    // high enough to hide RMW. For low reuse, f32-buffer path is faster.
+    if (bgmmc.c_buf_dst_dt && bgmmc.nthr_k <= 1 && !bgmmc.with_sum) {
+        const dim_t panel_reuse
+                = nstl::max(bgmmc.M_chunk_size, bgmmc.N_chunk_size);
+        const dim_t bypass_k_chunk_elems
+                = static_cast<dim_t>(bgmmc.K_blk) * bgmmc.K_chunk_size;
+        const bool multiple_k_chunks
+                = bypass_k_chunk_elems > 0 && bgmmc.K > bypass_k_chunk_elems;
+        const dim_t min_panel_reuse_for_bypass = 16;
+        if (multiple_k_chunks && panel_reuse < min_panel_reuse_for_bypass) {
+            bgmmc.c_buf_dst_dt = false;
+            VCHECK_BG(compute_blocking_heuristic(bgmmc, bm_conf_utils),
+                    VERBOSE_BLOCKING_FAIL, "");
+            apply_per_k_constraints();
+            // f32-buffer path wins only if it halves K-chunk granularity.
+            // Otherwise extra f32 buffer overhead outweighs saved D-RMW.
+            const dim_t f32_k_chunk_elems
+                    = static_cast<dim_t>(bgmmc.K_blk) * bgmmc.K_chunk_size;
+            if (f32_k_chunk_elems * 2 > bypass_k_chunk_elems) {
+                bgmmc.c_buf_dst_dt = true;
+                VCHECK_BG(compute_blocking_heuristic(bgmmc, bm_conf_utils),
+                        VERBOSE_BLOCKING_FAIL, "");
+                apply_per_k_constraints();
             }
         }
     }
@@ -2369,6 +2419,10 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                           && bgmmc.N_blk != bgmmc.N),
             "The first coordinate of every N_blk that is larger than LDB "
             "needs to be divisible by LDB");
+
+    if (bgmmc.c_buf_dst_dt && bgmmc.nthr_k <= 1 && !bgmmc.with_sum
+            && !per_k_requires_buffer_c)
+        bgmmc.use_buffer_c = false;
 
     if (bgmmc.is_gemv && bgmmc.gemv_swap_a_b) {
         bgmmc.LDC = bgmmc.LDD = 1;
@@ -2617,14 +2671,25 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
     bgmmc.brgemm_batch_tail_size
             = last_chunck_batch_size % bgmmc.brgemm_batch_size;
 
+    // Effective per-element size of the brgemm C buffer. When the dst-dtype
+    // C-buffer opt-in is on AND a real C buffer is allocated (nthr_k > 1),
+    // the brgemm kernel writes bf16/f16 elements (= c_dt_sz bytes) rather
+    // than f32/s32 accumulators (= acc_dt_sz). The matching reducer is
+    // selected in brgemm_matmul_t::init().
+    const dim_t c_buf_dt_sz
+            = (bgmmc.c_buf_dst_dt && bgmmc.nthr_k > 1 && bgmmc.use_buffer_c)
+            ? bgmmc.c_dt_sz
+            : bgmmc.acc_dt_sz;
+
+    const dim_t c_buf_rows = bgmmc.gemv_swap_a_b ? bgmmc.N : bgmmc.M;
+    const dim_t c_buf_rows_blk
+            = bgmmc.gemv_swap_a_b ? bgmmc.N_blk : bgmmc.M_blk;
+
     if (!bgmmc.is_runtime_N && bgmmc.is_amx && bgmmc.nthr_k == 1) {
-        bgmmc.buffer_c_chunk_sz = rnd_up(bgmmc.N_blk, bgmmc.LDC) * bgmmc.M_blk
-                * bgmmc.acc_dt_sz;
+        bgmmc.buffer_c_chunk_sz
+                = rnd_up(bgmmc.N_blk, bgmmc.LDC) * bgmmc.M_blk * c_buf_dt_sz;
     } else {
-        const dim_t c_buf_rows = bgmmc.gemv_swap_a_b ? bgmmc.N : bgmmc.M;
-        const dim_t c_buf_rows_blk
-                = bgmmc.gemv_swap_a_b ? bgmmc.N_blk : bgmmc.M_blk;
-        bgmmc.buffer_c_chunk_sz = bgmmc.acc_dt_sz
+        bgmmc.buffer_c_chunk_sz = c_buf_dt_sz
                 * (bgmmc.is_runtime_N ? bgmmc.N_blk : bgmmc.LDC)
                 * (bgmmc.nthr_k > 1 ? c_buf_rows : c_buf_rows_blk);
     }

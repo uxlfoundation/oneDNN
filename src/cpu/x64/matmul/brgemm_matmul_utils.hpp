@@ -151,6 +151,9 @@ struct brgemm_matmul_conf_t {
     bool use_buffer_a_tail_only;
     bool use_buffer_b;
     bool use_buffer_c;
+    // Keep the intermediate C buffer in dst dtype (bf16/f16) when relaxed
+    // accumulation mode is enabled. AMX-only; gated on use_buffer_c and bf16/f16 dst.
+    bool c_buf_dst_dt = false;
     bool use_buffer_reduce;
 
     brgemm_matmul_bcast_desc_t bcast_A_desc;

@@ -228,17 +228,19 @@ static void compute_ref_matmul_chunk(const chunk_params_t &p, int64_t M,
                 wei_scale = p.wei_scales->get_f32_elem(wei_scale_idx);
             }
 
+            float group_acc = 0.f;
             for (int64_t k = 0; k < p.smallest_k_group; ++k) {
                 const auto kk = gK * p.smallest_k_group + k;
                 const auto src_off = (src_row_base + m) * K + kk;
                 const auto wei_off
                         = wei_base + kk * wei_k_stride + n * wei_n_stride;
 
-                auto s = src_scale * (p.src_m->get_f32_elem(src_off) - src_zp);
-                auto w = wei_scale * (p.wei_m->get_f32_elem(wei_off) - wei_zp);
+                const auto s = p.src_m->get_f32_elem(src_off) - src_zp;
+                const auto w = p.wei_m->get_f32_elem(wei_off) - wei_zp;
 
-                dst += s * w;
+                group_acc += s * w;
             }
+            dst += src_scale * wei_scale * group_acc;
         }
 
         const auto dst_off = (dst_row_base + m) * N + n;

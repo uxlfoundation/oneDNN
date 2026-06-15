@@ -77,18 +77,19 @@ struct gemm_desc_t : public op_desc_t {
     // Simplified accessors that comply to GEMM API
     static transpose_t get_trans(const memory_desc_t &md) {
         if (!md.ndims) return transpose::notrans; // arbitrary
+        dim_t dim1 = md.dims[md.ndims - 2];
+        dim_t dim2 = md.dims[md.ndims - 1];
 
-        // Leading dimension must be byte-aligned
-        using namespace data_type;
-        bool is_4bit = utils::one_of(md.data_type, f4_e2m1, f4_e3m0, s4, u4);
-        dim_t last_dim = md.dims[md.ndims - 1];
+        // 1D cases can use either tranpose: pick the one that packs the data together
+        if (dim1 == 1 || dim2 == 1) { // 0D (1x1) cases go here too -> trans
+            if (dim1 == 1 && dim2 == 1) return transpose::notrans;
+            return dim2 == 1 ? transpose::trans : transpose::notrans;
+        }
+
         auto strides = md.format_desc.blocking.strides;
-        dim_t notranspose_ld
-                = md.dims[md.ndims - 2] > 1 ? strides[md.ndims - 2] : last_dim;
-        if (is_4bit && notranspose_ld % 2 != 0) return transpose::trans;
-
-        return last_dim != 1 && strides[md.ndims - 1] != 1 ? transpose::trans
-                                                           : transpose::notrans;
+        // assert that one of the strides is 1?
+        return (strides[md.ndims - 1] == 1) ? transpose::notrans
+                                            : transpose::trans;
     }
     transpose_t transa() const { return get_trans(b_desc); }
     transpose_t transb() const { return get_trans(a_desc); }

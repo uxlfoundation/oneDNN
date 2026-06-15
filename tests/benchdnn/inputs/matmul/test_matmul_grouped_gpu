@@ -9,7 +9,7 @@
 --reset
 
 ########################################
-# grouped_mm: BF16/FP16               #
+# grouped_mm: BF16/FP16                #
 ########################################
 
 # mat2 row-major
@@ -70,7 +70,7 @@
 # scaled_grouped_mm: NvFP4             #
 # scale_a: f8_e4m3 block (M, K/16)     #
 # scale_b: f8_e4m3 block (E, K/16, N)  #
-# + global f32 scale via binary mul    #
+# + per-group global f32 scale         #
 ########################################
 
 --reset

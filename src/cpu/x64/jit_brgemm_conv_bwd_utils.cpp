@@ -593,7 +593,7 @@ status_t brg_blocking_t::estimate_brgemm_ur() {
             brgemm_row_major, alpha, beta, LDA, LDB, LDC, vM, vN, vK, nullptr,
             is_bf32, is_tf32));
     CHECK(brgemm_utils::brgemm_blocking(&brg));
-    ur = brg.bd_block * (is_amx(isa) ? brg.bd_block2 : 1);
+    ur = brg.bd_block * (brg.bd_block2 > 0 ? brg.bd_block2 : 1);
     if (ur == 0) return status::invalid_arguments;
     ur_block = brg.bd_block;
     if (is_1x1 && is_amx(isa) && M > 0 && M_tail > 0) {

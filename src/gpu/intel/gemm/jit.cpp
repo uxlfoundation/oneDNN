@@ -319,9 +319,9 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         arg_list.set(argn++, slm, nullptr);
     }
 
-    if (pd()->a_quant.zp_ndims > 0 || problem->aScale2D())
+    if (problem->aoPtrDims >= 1 || problem->aScale2D())
         arg_list.set(argn++, offset_aq);
-    if (pd()->b_quant.zp_ndims > 0 || problem->bScale2D())
+    if (problem->boPtrDims >= 1 || problem->bScale2D())
         arg_list.set(argn++, offset_bq);
 
     lws[0] *= nocopy_info()->subgroupSize;
@@ -629,8 +629,8 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
 
                 auto off_aq = off_aq0;
                 auto off_bq = off_bq0;
-                if (pd()->a_quant.zp_ndims >= 1 || a_scales) off_aq += Bm;
-                if (pd()->b_quant.zp_ndims >= 1 || b_scales) off_bq += Bn;
+                if (problem.aoPtrDims >= 1 || a_scales) off_aq += Bm;
+                if (problem.boPtrDims >= 1 || b_scales) off_bq += Bn;
 
                 auto off_co = off_co0;
                 switch (cmask & 3) {

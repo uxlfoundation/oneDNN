@@ -580,27 +580,27 @@
 #elif DST_DT_U4
 #define SET_DOUBLE_HALF_BYTE(x, y, z) set_double_half_byte(x, y, z)
 #define TO_DST(x) into_u4(convert_float(x))
-#define DST_DATA_FMAX 15.0
-#define DST_DATA_FMIN 0.0
+#define DST_DATA_FMAX 15.0f
+#define DST_DATA_FMIN 0.0f
 #define DST_DATA_FLOW DST_DATA_FMIN
 #elif DST_DT_S4
 #define SET_DOUBLE_HALF_BYTE(x, y, z) set_double_half_byte(x, y, z)
 #define TO_DST(x) into_s4(convert_float(x))
-#define DST_DATA_FMAX 7.0
-#define DST_DATA_FMIN 1
-#define DST_DATA_FLOW -8.0
+#define DST_DATA_FMAX 7.0f
+#define DST_DATA_FMIN 1f
+#define DST_DATA_FLOW -8.0f
 #elif DST_DT_F4_E2M1
 #define SET_DOUBLE_HALF_BYTE(x, y, z) set_double_half_byte(x, y, z)
 #define TO_DST(x) into_f4_e2m1(convert_float(x))
-#define DST_DATA_FMAX 6.0
-#define DST_DATA_FMIN 1.0
-#define DST_DATA_FLOW -6.0
+#define DST_DATA_FMAX 6.0f
+#define DST_DATA_FMIN 1.0f
+#define DST_DATA_FLOW -6.0f
 #elif DST_DT_F4_E3M0
 #define SET_DOUBLE_HALF_BYTE(x, y, z) set_double_half_byte(x, y, z)
 #define TO_DST(x) into_f4_e3m0(convert_float(x))
-#define DST_DATA_FMAX 16.0
-#define DST_DATA_FMIN 0.25
-#define DST_DATA_FLOW -16.0
+#define DST_DATA_FMAX 16.0f
+#define DST_DATA_FMIN 0.25f
+#define DST_DATA_FLOW -16.0f
 #elif DST_DT_U8
 #define TO_DST(x) convert_uchar_sat_rte(x)
 #define TO_DST2(x) convert_uchar2_sat_rte(x)

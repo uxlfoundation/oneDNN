@@ -122,8 +122,7 @@ status_t resampling_fwd_t::execute_impl(const stream_t *g_stream,
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     auto scratchpad = std::make_shared<scratchpad_t>(scratchpad_buf,
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
+            memory_planner_.total_internal_temporary_size(), p_engine_);
     prepare_args_set(res, inputs, outputs, *scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
@@ -151,8 +150,7 @@ status_t resampling_fwd_t::sycl_execute_impl(const stream_t *g_stream,
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     auto scratchpad = std::make_shared<scratchpad_t>(scratchpad_buf,
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
+            memory_planner_.total_internal_temporary_size(), p_engine_);
     prepare_args_set(res, inputs, outputs, *scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
@@ -184,8 +182,7 @@ status_t resampling_fwd_t::ocl_execute_impl(const stream_t *g_stream,
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     auto scratchpad = std::make_shared<scratchpad_t>(scratchpad_buf,
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
+            memory_planner_.total_internal_temporary_size(), p_engine_);
     prepare_args_set(res, inputs, outputs, *scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
@@ -276,8 +273,7 @@ status_t resampling_bwd_t::execute_impl(const stream_t *g_stream,
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     auto scratchpad = std::make_shared<scratchpad_t>(scratchpad_buf,
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
+            memory_planner_.total_internal_temporary_size(), p_engine_);
     prepare_args_set(res, inputs, outputs, *scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
@@ -305,8 +301,7 @@ status_t resampling_bwd_t::sycl_execute_impl(const stream_t *g_stream,
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     auto scratchpad = std::make_shared<scratchpad_t>(scratchpad_buf,
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
+            memory_planner_.total_internal_temporary_size(), p_engine_);
     prepare_args_set(res, inputs, outputs, *scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
@@ -338,8 +333,7 @@ status_t resampling_bwd_t::ocl_execute_impl(const stream_t *g_stream,
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     auto scratchpad = std::make_shared<scratchpad_t>(scratchpad_buf,
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
+            memory_planner_.total_internal_temporary_size(), p_engine_);
     prepare_args_set(res, inputs, outputs, *scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {

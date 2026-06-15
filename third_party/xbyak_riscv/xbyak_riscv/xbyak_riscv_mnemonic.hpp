@@ -131,6 +131,32 @@ void fcvt_l_s(const Reg& rd, const FReg& rs1, RM rm=RM::dyn) { opFP(0xc0200053, 
 void fcvt_lu_s(const Reg& rd, const FReg& rs1, RM rm=RM::dyn) { opFP(0xc0300053, 0, rs1, rm, rd); }
 void fcvt_s_l(const FReg& rd, const Reg& rs1, RM rm=RM::dyn) { opFP(0xd0200053, 0, rs1, rm, rd); }
 void fcvt_s_lu(const FReg& rd, const Reg& rs1, RM rm=RM::dyn) { opFP(0xd0300053, 0, rs1, rm, rd); }
+void fadd_d(const FReg& rd, const FReg& rs1, const FReg& rs2, RM rm=RM::dyn) { opFP(0x2000053, rs2, rs1, rm, rd); }
+void fsub_d(const FReg& rd, const FReg& rs1, const FReg& rs2, RM rm=RM::dyn) { opFP(0xa000053, rs2, rs1, rm, rd); }
+void fmul_d(const FReg& rd, const FReg& rs1, const FReg& rs2, RM rm=RM::dyn) { opFP(0x12000053, rs2, rs1, rm, rd); }
+void fdiv_d(const FReg& rd, const FReg& rs1, const FReg& rs2, RM rm=RM::dyn) { opFP(0x1a000053, rs2, rs1, rm, rd); }
+void fsqrt_d(const FReg& rd, const FReg& rs1, RM rm=RM::dyn) { opFP(0x5a000053, 0, rs1, rm, rd); }
+void fsgnj_d(const FReg& rd, const FReg& rs1, const FReg& rs2) { opFP(0x22000053, rs2, rs1, 0, rd); }
+void fsgnjn_d(const FReg& rd, const FReg& rs1, const FReg& rs2) { opFP(0x22001053, rs2, rs1, 0, rd); }
+void fsgnjx_d(const FReg& rd, const FReg& rs1, const FReg& rs2) { opFP(0x22002053, rs2, rs1, 0, rd); }
+void fmin_d(const FReg& rd, const FReg& rs1, const FReg& rs2) { opFP(0x2a000053, rs2, rs1, 0, rd); }
+void fmax_d(const FReg& rd, const FReg& rs1, const FReg& rs2) { opFP(0x2a001053, rs2, rs1, 0, rd); }
+void fcvt_s_d(const FReg& rd, const FReg& rs1, RM rm=RM::dyn) { opFP(0x40100053, 0, rs1, rm, rd); }
+void fcvt_d_s(const FReg& rd, const FReg& rs1, RM rm=RM::dyn) { opFP(0x42000053, 0, rs1, rm, rd); }
+void feq_d(const Reg& rd, const FReg& rs1, const FReg& rs2) { opFP(0xa2002053, rs2, rs1, 0, rd); }
+void flt_d(const Reg& rd, const FReg& rs1, const FReg& rs2) { opFP(0xa2001053, rs2, rs1, 0, rd); }
+void fle_d(const Reg& rd, const FReg& rs1, const FReg& rs2) { opFP(0xa2000053, rs2, rs1, 0, rd); }
+void fclass_d(const Reg& rd, const FReg& rs1) { opFP(0xe2001053, 0, rs1, 0, rd); }
+void fcvt_w_d(const Reg& rd, const FReg& rs1, RM rm=RM::dyn) { opFP(0xc2000053, 0, rs1, rm, rd); }
+void fcvt_wu_d(const Reg& rd, const FReg& rs1, RM rm=RM::dyn) { opFP(0xc2100053, 0, rs1, rm, rd); }
+void fcvt_d_w(const FReg& rd, const Reg& rs1, RM rm=RM::dyn) { opFP(0xd2000053, 0, rs1, rm, rd); }
+void fcvt_d_wu(const FReg& rd, const Reg& rs1, RM rm=RM::dyn) { opFP(0xd2100053, 0, rs1, rm, rd); }
+void fcvt_l_d(const Reg& rd, const FReg& rs1, RM rm=RM::dyn) { opFP(0xc2200053, 0, rs1, rm, rd); }
+void fcvt_lu_d(const Reg& rd, const FReg& rs1, RM rm=RM::dyn) { opFP(0xc2300053, 0, rs1, rm, rd); }
+void fmv_x_d(const Reg& rd, const FReg& rs1) { opFP(0xe2000053, 0, rs1, 0, rd); }
+void fcvt_d_l(const FReg& rd, const Reg& rs1, RM rm=RM::dyn) { opFP(0xd2200053, 0, rs1, rm, rd); }
+void fcvt_d_lu(const FReg& rd, const Reg& rs1, RM rm=RM::dyn) { opFP(0xd2300053, 0, rs1, rm, rd); }
+void fmv_d_x(const FReg& rd, const Reg& rs1) { opFP(0xf2000053, 0, rs1, 0, rd); }
 void fadd_h(const FReg& rd, const FReg& rs1, const FReg& rs2, RM rm=RM::dyn) { opFP(0x4000053, rs2, rs1, rm, rd); }
 void fclass_h(const Reg& rd, const FReg& rs1) { opFP(0xe4001053, 0, rs1, 0, rd); }
 void fcvt_h_s(const Reg& rd, const Reg& rs1, RM rm=RM::dyn) { opFP(0x44000053, 0, rs1, rm, rd); }
@@ -167,6 +193,11 @@ void fmadd_h(const FReg& rd, const FReg& rs1, const FReg& rs2, const FReg& rs3, 
 void fmsub_h(const FReg& rd, const FReg& rs1, const FReg& rs2, const FReg& rs3, RM rm=RM::dyn) { opR4(0x4000047, rs3, rs2, rs1, rm, rd); }
 void fnmsub_h(const FReg& rd, const FReg& rs1, const FReg& rs2, const FReg& rs3, RM rm=RM::dyn) { opR4(0x400004b, rs3, rs2, rs1, rm, rd); }
 void fnmadd_h(const FReg& rd, const FReg& rs1, const FReg& rs2, const FReg& rs3, RM rm=RM::dyn) { opR4(0x400004f, rs3, rs2, rs1, rm, rd); }
+
+void fmadd_d(const FReg& rd, const FReg& rs1, const FReg& rs2, const FReg& rs3, RM rm=RM::dyn) { opR4(0x2000043, rs3, rs2, rs1, rm, rd); }
+void fmsub_d(const FReg& rd, const FReg& rs1, const FReg& rs2, const FReg& rs3, RM rm=RM::dyn) { opR4(0x2000047, rs3, rs2, rs1, rm, rd); }
+void fnmsub_d(const FReg& rd, const FReg& rs1, const FReg& rs2, const FReg& rs3, RM rm=RM::dyn) { opR4(0x200004b, rs3, rs2, rs1, rm, rd); }
+void fnmadd_d(const FReg& rd, const FReg& rs1, const FReg& rs2, const FReg& rs3, RM rm=RM::dyn) { opR4(0x200004f, rs3, rs2, rs1, rm, rd); }
 
 
 void flq(const FReg& rd, const Reg& rs1, int32_t imm12 = 0) { opLoadFP(0x4007, imm12, rs1, rd); }

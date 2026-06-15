@@ -83,6 +83,10 @@ namespace Xbyak_riscv {
 #define RISCV_HWPROBE_EXT_ZVFH (1ULL << 30)
 #endif
 
+#ifndef RISCV_HWPROBE_EXT_ZVFBFWMA
+#define RISCV_HWPROBE_EXT_ZVFBFWMA (1ULL << 54)
+#endif
+
 struct riscv_hwprobe {
     int64_t key;
     uint64_t value;
@@ -104,7 +108,8 @@ enum class RISCVExtension : uint64_t {
     Zvfh = 1ULL << 26,
     Zvbb = 1ULL << 27,
     Zvbc = 1ULL << 28,
-    Zvkg = 1ULL << 29
+    Zvkg = 1ULL << 29,
+    Zvfbfwma = 1ULL << 30
 };
 
 template <CSR csr>
@@ -165,7 +170,8 @@ public:
                 { RISCVExtension::Zvfh, RISCV_HWPROBE_EXT_ZVFH },
                 { RISCVExtension::Zvbb, RISCV_HWPROBE_EXT_ZVBB },
                 { RISCVExtension::Zvbc, RISCV_HWPROBE_EXT_ZVBC },
-                { RISCVExtension::Zvkg, RISCV_HWPROBE_EXT_ZVKG }
+                { RISCVExtension::Zvkg, RISCV_HWPROBE_EXT_ZVKG },
+                { RISCVExtension::Zvfbfwma, RISCV_HWPROBE_EXT_ZVFBFWMA }
             };
             for (const auto& entry : table) {
                 if (v & entry.hwprobe_bit) {

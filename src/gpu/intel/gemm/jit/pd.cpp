@@ -871,28 +871,31 @@ dim_t pd_t::scale_stride(int idx, int arg) const {
     gpu_assert(utils::one_of(arg, DNNL_ARG_A, DNNL_ARG_B));
     const memory_desc_t *md_ptr
             = (arg == DNNL_ARG_A) ? &a_scale_md_ : &b_scale_md_;
-    gpu_assert(memory_desc_wrapper(md_ptr).is_plain())
-            << "Expected plain scale_md_";
-    if (md_ptr->dims[idx] == 1) return 0;
-    return md_ptr->format_desc.blocking.strides[idx];
+    const memory_desc_wrapper mdw(md_ptr);
+    if (mdw.is_host_scalar_desc()) return 0;
+    gpu_assert(mdw.is_plain()) << "Expected plain scale_md_";
+    if (mdw.dims()[idx] == 1) return 0;
+    return mdw.strides()[idx];
 }
 
 dim_t pd_t::zp_stride(int idx, int arg) const {
     gpu_assert(utils::one_of(arg, DNNL_ARG_A, DNNL_ARG_B));
     const memory_desc_t *md_ptr = (arg == DNNL_ARG_A) ? &a_zp_md_ : &b_zp_md_;
-    gpu_assert(memory_desc_wrapper(md_ptr).is_plain())
-            << "Expected plain zp_md_";
-    if (md_ptr->dims[idx] == 1) return 0;
-    return md_ptr->format_desc.blocking.strides[idx];
+    const memory_desc_wrapper mdw(md_ptr);
+    if (mdw.is_host_scalar_desc()) return 0;
+    gpu_assert(mdw.is_plain()) << "Expected plain zp_md_";
+    if (mdw.dims()[idx] == 1) return 0;
+    return mdw.strides()[idx];
 }
 
 dim_t pd_t::gs_stride(int idx, int arg) const {
     gpu_assert(utils::one_of(arg, DNNL_ARG_A, DNNL_ARG_B));
     const memory_desc_t *md_ptr = (arg == DNNL_ARG_A) ? &a_gs_md_ : &b_gs_md_;
-    gpu_assert(memory_desc_wrapper(md_ptr).is_plain())
-            << "Expected plain gs_md_";
-    if (md_ptr->dims[idx] == 1) return 0;
-    return md_ptr->format_desc.blocking.strides[idx];
+    const memory_desc_wrapper mdw(md_ptr);
+    if (mdw.is_host_scalar_desc()) return 0;
+    gpu_assert(mdw.is_plain()) << "Expected plain gs_md_";
+    if (mdw.dims()[idx] == 1) return 0;
+    return mdw.strides()[idx];
 }
 
 } // namespace jit

@@ -352,10 +352,10 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
 
     // only supported dt for now
     VDISPATCH_MATMUL(utils::one_of(src_dt, f32, f16, bf16, u8, s8, s4, u4,
-                             f8_e5m2, f8_e4m3, e8m0, f4_e2m1, f4_e3m0),
+                             f8_e5m2, f8_e4m3, f4_e2m1, f4_e3m0),
             VERBOSE_UNSUPPORTED_DT_CFG);
     VDISPATCH_MATMUL(utils::one_of(wei_dt, f32, f16, bf16, u8, s8, s4, u4,
-                             f8_e5m2, f8_e4m3, e8m0, f4_e2m1, f4_e3m0),
+                             f8_e5m2, f8_e4m3, f4_e2m1, f4_e3m0),
             VERBOSE_UNSUPPORTED_DT_CFG);
     VDISPATCH_MATMUL(
             utils::one_of(dst_dt, f32, f16, bf16), VERBOSE_UNSUPPORTED_DT_CFG);

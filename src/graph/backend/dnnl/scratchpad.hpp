@@ -40,8 +40,8 @@ namespace dnnl_impl {
 // is managed by the user; otherwise the library allocates and frees the buffer.
 class scratchpad_t {
 public:
-    scratchpad_t(const tensor_t *user_buf, size_t size, const dnnl::engine &eng,
-            const allocator_t &alloc);
+    scratchpad_t(
+            const tensor_t *user_buf, size_t size, const dnnl::engine &eng);
 
     ~scratchpad_t();
 
@@ -69,8 +69,7 @@ private:
     char *buffer_;
     size_t size_;
     bool user_managed_;
-    const dnnl::engine *eng_;
-    const allocator_t *alloc_;
+    const engine_t *eng_;
 #ifdef DNNL_WITH_SYCL
     ::sycl::event e_;
 #endif

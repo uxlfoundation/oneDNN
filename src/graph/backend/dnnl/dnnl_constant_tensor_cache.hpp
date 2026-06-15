@@ -19,6 +19,7 @@
 #include "graph/interface/constant_tensor_cache.hpp"
 
 #include "graph/backend/dnnl/common.hpp"
+#include "graph/backend/dnnl/dnnl_allocator.hpp"
 #include "graph/backend/dnnl/dnnl_backend.hpp"
 
 #include "oneapi/dnnl/dnnl.hpp"
@@ -36,27 +37,23 @@ struct dnnl_constant_buffer_t : public graph::constant_buffer_t {
 
     static void *malloc_func(
             size_t size, impl::engine_t *eng, graph::allocator_t *alc) {
-        dnnl::engine engine;
-        engine.reset(eng, true); // not own
         return dnnl_allocator_t::malloc(
-                size, engine, alc, allocator_t::mem_type_t::persistent);
+                size, *eng, allocator_t::mem_type_t::persistent);
     }
 
     static void free_func(
             void *data, impl::engine_t *eng, graph::allocator_t *alc) {
-        dnnl::engine engine;
-        engine.reset(eng, true); // not own
         if (eng->kind() == engine_kind::cpu) {
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL
-            dnnl_allocator_t::free(data, engine, alc, ::sycl::event());
+            dnnl_allocator_t::free(data, *eng, ::sycl::event());
 #else
-            dnnl_allocator_t::free(data, engine, alc);
+            dnnl_allocator_t::free(data, *eng);
 #endif
         } else if (eng->kind() == engine_kind::gpu) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
-            dnnl_allocator_t::free(data, engine, alc, ::sycl::event());
+            dnnl_allocator_t::free(data, *eng, ::sycl::event());
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-            dnnl_allocator_t::free(data, engine, alc, cl_event());
+            dnnl_allocator_t::free(data, *eng, cl_event());
 #endif
         }
     }

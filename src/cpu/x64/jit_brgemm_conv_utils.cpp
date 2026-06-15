@@ -668,7 +668,7 @@ status_t brg_blocking_t::estimate_brgemm_ur() {
     brgattr.max_bottom_vpad = max_vpad;
     CHECK(brgemm_desc_set_attr(&brg, brgattr));
     CHECK(brgemm_utils::brgemm_blocking(&brg));
-    ur = brg.bd_block * (is_amx(isa) ? brg.bd_block2 : 1);
+    ur = brg.bd_block * (brg.bd_block2 > 0 ? brg.bd_block2 : 1);
     ur_block = brg.bd_block;
     adj_ocblock = nstl::max(1, (brg.ldb2 != 0 ? brg.ld_block2 : brg.ldb2_tail));
     if (((is_1x1 && is_amx(isa)) || max_vpad > 0) && M > 0 && M_tail > 0) {

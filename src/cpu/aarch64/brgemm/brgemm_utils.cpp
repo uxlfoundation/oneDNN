@@ -93,6 +93,14 @@ void maybe_try_bf32(brgemm_desc_t *brg) {
     //
 }
 
+// only bf16 mmla is currently supported
+status_t validate_mmla_compute(const brgemm_desc_t &brg) {
+    const bool is_valid = brg.is_bf16 && !brg.is_bf16_emu && !brg.is_dgmm
+            && brg.is_row_major()
+            && utils::one_of(brg.isa_impl, sve_128, sve_256);
+    return is_valid ? status::success : status::unimplemented;
+}
+
 status_t set_isa_impl(brgemm_desc_t *brg) {
     auto is_isa_ok = [&](cpu_isa_t isa) {
         return mayiuse(isa) &&
@@ -168,6 +176,21 @@ int calculate_max_bcast_block(brgemm_desc_t *brg, const int adj_ld_block2) {
     return max_bcast_block;
 }
 
+int default_mmla_ld_block2(const brgemm_desc_t *brg) {
+    constexpr int heur_max_acc_regs = 24;
+    constexpr int heur_min_ld_block2 = 3;
+    constexpr int heur_max_ld_block2 = 6;
+
+    if (brg->bcast_dim <= 2) return 12;
+    if (!brg->brgattr.use_mmla_packed_a && brg->bcast_dim > 8) return 4;
+
+    const int bd_block = nstl::min(brg->bcast_dim, 8);
+    const int bd_pairs = utils::div_up(bd_block, mmla_bd_blk());
+    const int max_ld_block2 = heur_max_acc_regs / (2 * bd_pairs);
+    return nstl::min(
+            heur_max_ld_block2, nstl::max(heur_min_ld_block2, max_ld_block2));
+}
+
 inline size_t data_type_vnni_granularity(data_type_t data_type) {
     using namespace data_type;
     switch (data_type) {
@@ -182,6 +205,7 @@ inline size_t data_type_vnni_granularity(data_type_t data_type) {
     }
     return size_t(0); /* should not be reachable */
 }
+
 status_t brgemm_blocking(brgemm_desc_t *brg) {
 
     CHECK(set_isa_impl(brg));
@@ -189,37 +213,70 @@ status_t brgemm_blocking(brgemm_desc_t *brg) {
     assert(!brg->is_dgmm); // should not be called from brdgmm
     set_brg_vmm(brg);
 
+    const bool use_mmla = brg->brgattr.use_mmla;
     brg->ld_block = simd_elems(brg->dt_c, brg->isa_impl);
-    brg->ldb = brg->load_dim / brg->ld_block;
+    brg->ldb = use_mmla ? utils::div_up(brg->load_dim, brg->ld_block)
+                        : brg->load_dim / brg->ld_block;
     brg->ldb_tail = brg->load_dim % brg->ld_block;
 
-    int adj_ld_block2 = calculate_ldb_params(brg, 4);
-    int max_bcast_block = calculate_max_bcast_block(brg, adj_ld_block2);
-
-    // reduce 'ld_block2' to allow a larger 'bd_block'
+    const int min_block = 1;
     const int max_vpad = nstl::max(
             brg->brgattr.max_top_vpad, brg->brgattr.max_bottom_vpad);
-    if (max_bcast_block < max_vpad) {
-        adj_ld_block2 = calculate_ldb_params(brg, 2);
-        max_bcast_block = calculate_max_bcast_block(brg, adj_ld_block2);
+    const int mmla_max_bd_block = 8;
+
+    auto calc_max_bcast_block = [&](int try_ld_block2) {
+        const int adj_ld_block2 = calculate_ldb_params(brg, try_ld_block2);
+        return calculate_max_bcast_block(brg, adj_ld_block2);
+    };
+
+    if (use_mmla) {
+        const int ld_block2 = brg->brgattr.hint_ld_block2 != 0
+                ? brg->brgattr.hint_ld_block2
+                : default_mmla_ld_block2(brg);
+        calculate_ldb_params(brg, ld_block2);
+        auto set_mmla_blocking = [&]() {
+            brg->bdb = brg->bcast_dim / brg->bd_block;
+            brg->bdb_tail = brg->bcast_dim % brg->bd_block;
+            brg->rd_block = mmla_rd_block();
+            brg->rdb = brg->reduce_dim / brg->rd_block;
+            brg->rdb_tail = brg->reduce_dim % brg->rd_block;
+            brg->is_M_tail = false;
+        };
+        brg->bd_block = brg->brgattr.hint_bd_block != 0
+                ? brg->brgattr.hint_bd_block
+                : (brg->brgattr.use_mmla_packed_a
+                                          || brg->bcast_dim <= mmla_max_bd_block
+                                  ? nstl::min(brg->bcast_dim, mmla_max_bd_block)
+                                  : nstl::min(brg->bcast_dim, 6));
+        set_mmla_blocking();
+        return status::success;
     }
 
-    const int min_block = 1;
+    int max_bcast_block = calc_max_bcast_block(4);
+    if (max_bcast_block < max_vpad) {
+        max_bcast_block = calc_max_bcast_block(2);
+    }
+
     float best_bd_block_eff = 0.f;
     brg->bd_block = 1;
     for (int bd_block = max_bcast_block; bd_block >= min_block; bd_block--) {
+        const int min_bd_block = brg->bcast_dim % bd_block != 0
+                ? brg->bcast_dim % bd_block
+                : bd_block;
+        if (max_vpad > min_bd_block) continue;
+
         const auto bd_block_disb = static_cast<float>(brg->bcast_dim)
                 / rnd_up(brg->bcast_dim, bd_block);
         const auto brgemm_microkernel_eff
-                = (static_cast<float>(adj_ld_block2) * bd_block)
-                / (((adj_ld_block2) + bd_block) * max_bcast_block);
+                = (static_cast<float>(brg->ld_block2) * bd_block)
+                / (((brg->ld_block2) + bd_block) * max_bcast_block);
         const auto bd_block_eff = bd_block_disb * brgemm_microkernel_eff;
 
         float block_foot_print = static_cast<float>(brg->typesize_A)
                 * (bd_block * brg->reduce_dim);
         if (block_foot_print <= static_cast<float>(
                     platform::get_per_core_cache_size(1))
-                && (bd_block_eff > best_bd_block_eff)) {
+                && bd_block_eff > best_bd_block_eff) {
             brg->bd_block = bd_block;
             best_bd_block_eff = bd_block_eff;
         }

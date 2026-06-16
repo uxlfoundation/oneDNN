@@ -150,6 +150,11 @@ struct DNNL_API brgemm_attr_t {
     // use_interleave_stores is a value that determines whether to use the
     // interleave stores or not
     bool use_interleave_stores;
+    // use_mmla requests the mmla compute path explicitly
+    // currently supported mmla is only bf16 mmla
+    bool use_mmla;
+    // use_mmla_packed_a expects A to use the mmla pack
+    bool use_mmla_packed_a;
     impl::fpmath_mode_t fpmath_mode = fpmath_mode::strict;
     bool b_is_vnni {false};
     // Second level leading dimension describing distance between 16-line

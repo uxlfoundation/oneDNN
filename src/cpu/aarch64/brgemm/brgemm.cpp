@@ -430,7 +430,6 @@ status_t brgemm_desc_set_attr(
                 || !is_mmla_ld_blocks_supported(compute_ld_blocks)
                 || acc_regs > max_mmla_acc_regs)
             return status::unimplemented;
-        return status::unimplemented;
     }
 
     brg->LDA2 = (brgattr.LDA2 != 0) ? brgattr.LDA2 : brg->LDA;

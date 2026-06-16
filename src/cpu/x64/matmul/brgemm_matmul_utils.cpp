@@ -1580,6 +1580,28 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     const auto &wei_scales = attr.scales_.get(DNNL_ARG_WEIGHTS);
     bgmmc.with_src_scales = !src_scales.has_default_values();
     bgmmc.with_wei_scales = !wei_scales.has_default_values();
+    if (bgmmc.with_src_scales) {
+        const auto &src_scale_mask = src_scales.get_mask();
+        // src per-k grouped scales: mask has K bit set and groups are used
+        bgmmc.is_src_scale_per_k
+                = (src_scale_mask & (1 << (bgmmc.ndims - 1))) != 0
+                && !src_scales.has_default_groups();
+        // Publish the src scales dtype for ALL with_src_scales cases (not
+        // just per-K) so downstream kernels can dispatch the right load
+        // width. The common-scalar broadcast in jit_brgemm_amx_uker relies
+        // on `brg.dt_src_scales` to avoid an f32-sized load over a bf16/f16
+        // scalar buffer.
+        bgmmc.src_scales_dt = src_scales.get_data_type();
+        bgmmc.src_scales_dt_sz = types::data_type_size(bgmmc.src_scales_dt);
+        if (bgmmc.is_src_scale_per_k) {
+            bgmmc.src_scales_k_gsize = src_scales.get_group(1);
+        }
+        // Per-K src scales require driver-side K_blk alignment to the
+        // group size, which is wired in a later commit. Until then,
+        // gracefully fall back to ref.
+        VCONDCHECK_BG(
+                !bgmmc.is_src_scale_per_k, VERBOSE_UNSUPPORTED_SCALES_CFG);
+    }
     if (bgmmc.with_wei_scales) {
         const auto &wei_scale_mask = wei_scales.get_mask();
         bgmmc.is_wei_scale_common = wei_scale_mask == 0;

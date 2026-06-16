@@ -35,7 +35,7 @@ GEMMSTONE_NAMESPACE_START
 // left unchanged to preserve their calibrated selection.
 static double zeroInitCorrection(char hw)
 {
-    return (hw == kcatalog::HWTagXeHPC) ? 1e6 : 0.;
+    return (hw == kcatalog::HWTagXeHPC) ? 0. : 0.;
 }
 
 static inline int grfPerEU(char hw)

@@ -91,6 +91,9 @@ bool sdp_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
             "value:%s",
             dnnl_dt2str(ltw(inputs[graph_inport[mm1_wei]]).data_type()),
             dnnl_dt2str(ltw(inputs[graph_inport[mm2_wei]]).data_type()));
+
+    // Initialize nthr with max threads num
+    nthr = dnnl_get_max_threads();
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP
 // RATIO is an empirical value used to determine the numerical relationship
 // between batch_size, num_head_q and thread number to determine whether to use
@@ -103,8 +106,6 @@ bool sdp_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
 // TODO: Refine the inequation based on the relationship of cache size and sdp
 // memory footprint requirements.
 #define RATIO 2
-    // Initialize nthr with current threads num
-    nthr = dnnl_get_current_num_threads();
     VCHECK_SDP_DECOMP(batch_size * num_head_q > RATIO * nthr, false,
             "Doesn't meet condition for decompose: Batch size * num_head_q "
             "should be larger than ratio * nthr, but got batch_size %ld, "

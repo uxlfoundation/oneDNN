@@ -31,7 +31,6 @@
 
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
 #include "cpu/cpu_stream.hpp"
-#include "oneapi/dnnl/dnnl_threadpool.h"
 #endif
 
 namespace dnnl {
@@ -169,11 +168,6 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
     auto *tp_stream
             = dnnl::impl::utils::downcast<dnnl::impl::cpu::cpu_stream_t *>(
                     const_cast<stream_t *>(g_stream));
-    tp_stream->before_exec_hook();
-    int thread_num = 1;
-    dnnl_threadpool_interop_get_max_concurrency(&thread_num);
-    sdp_cfg_.nthr = thread_num;
-    tp_stream->after_exec_hook();
 #endif
 
     thread_local_cache_t<sdp_args_set_t> res_cache;

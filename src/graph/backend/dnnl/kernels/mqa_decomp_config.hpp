@@ -76,7 +76,7 @@ public:
     memory::dim batch_size, num_head, seq_len, size_per_head;
 
     // Thread nums during the workflow
-    int nthr;
+    int nthr = 0;
 
     // Used to record the exact input offset of the MQA subgraph
     // [mm1_src, mm1_wei, mm1_add, mm2_src]

@@ -31,7 +31,6 @@
 
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
 #include "cpu/cpu_stream.hpp"
-#include "oneapi/dnnl/dnnl_threadpool.h"
 #endif
 
 namespace dnnl {
@@ -164,10 +163,6 @@ status_t mqa_decomp_kernel_t<quantized, dt>::execute_impl(
     auto *tp_stream
             = dnnl::impl::utils::downcast<dnnl::impl::cpu::cpu_stream_t *>(
                     const_cast<stream_t *>(g_stream));
-    tp_stream->before_exec_hook();
-    int thread_num = 1;
-    dnnl_threadpool_interop_get_max_concurrency(&thread_num);
-    mqa_cfg_.nthr = thread_num;
 #endif
 
     // each thread's own local resource
@@ -275,9 +270,9 @@ status_t mqa_decomp_kernel_t<quantized, dt>::execute_impl(
         threadpool_utils::activate_threadpool(tp);
 #endif
     };
-    // TODO: remove this when primitive new API ready
-#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP
-    omp_set_num_threads(mqa_cfg_.nthr);
+
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
+    tp_stream->before_exec_hook();
 #endif
 
     parallel_nd_ext(mqa_cfg_.nthr, MBO, MBI, loop);

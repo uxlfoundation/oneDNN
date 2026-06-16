@@ -55,6 +55,9 @@ bool mqa_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
             static_cast<long int>(wei1_user_dims[0]),
             static_cast<long int>(wei2_user_dims[0]));
 
+    // Initialize nthr with max threads num
+    nthr = dnnl_get_max_threads();
+
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP
 // RATIO is an empirical value used to determine the numerical relationship
 // between batch_size, num_head and thread number to determine whether to use
@@ -67,8 +70,6 @@ bool mqa_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
 // TODO: Refine the inequation based on the relationship of cache size and mqa
 // memory footprint requirements.
 #define RATIO 2
-    // Initialize nthr with current threads num
-    nthr = dnnl_get_current_num_threads();
     VCHECK_MQA_DECOMP(batch_size * num_head > RATIO * nthr, false,
             "doesn't meet condition for decompose:"
             "batch size * num_head should be larger than ratio * nthr, but got "
@@ -76,6 +77,7 @@ bool mqa_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
             static_cast<long int>(batch_size), static_cast<long int>(num_head),
             RATIO, nthr);
 #endif
+
     return true;
 }
 
@@ -330,6 +332,10 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
 
     // memory planing for buffer sharing
     memory_planning(mqa_registry);
+    // TODO: remove this when primitive new API ready
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP
+    omp_set_num_threads(nthr);
+#endif
     return status::success;
 }
 

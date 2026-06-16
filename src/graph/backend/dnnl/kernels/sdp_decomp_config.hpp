@@ -83,7 +83,7 @@ public:
             post_add_strides;
 
     // Thread nums during the workflow
-    int nthr;
+    int nthr = 0;
 
     // Used to record the exact input offset in subgraph
     // [mm1_src,mm1_wei,mm2_wei,mm1_scale,mm1_soft_capping,mm1_add,select_condition,select_other_input]

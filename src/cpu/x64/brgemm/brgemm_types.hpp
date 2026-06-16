@@ -303,11 +303,12 @@ struct brgemm_desc_t {
     brgemm_broadcast_t zp_type_b = brgemm_broadcast_t::none;
     brgemm_broadcast_t zp_type_c = brgemm_broadcast_t::none;
 
-    // `skip_wei_scales` is controlled by the implementation and not by kernel
-    // API.
     bool skip_wei_scales = false;
-    int is_oc_scale = 0;
+    int is_single_wei_scale = 0;
+    int is_per_n_wei_scales = 0;
+    int is_per_k_wei_scales = 0;
     bool with_src_scales = false;
+    bool has_per_k_scales() const { return is_per_k_wei_scales; }
     bool with_wei_scales = false;
     // `dst_scales` passed as a bare pointer making kernel change multiplication
     // to division was proved to be significantly slower, both for pure divps
@@ -461,6 +462,17 @@ struct brgemm_desc_t {
         const bool has_tail_acc = is_bdb_tail && gemv_tail > 0;
         const dim_t full_accs = is_bdb_tail ? gemv_bdb_tail() : gemv_bd_block();
         return full_accs + has_tail_acc;
+    }
+
+    // Determines if the accumulator dt is integer.
+    //
+    // When the per-k scales are present, need to accumulate
+    // in f32 due to precision loss.
+    bool is_integer_acc() const { return is_int8 && !has_per_k_scales(); }
+
+    // Determines if the DQ2PS conversion is needed for the accumulator.
+    bool do_dq2ps_cvt() const {
+        return is_integer_acc() && (alpha != 1.f || beta != 1.f);
     }
 
     // return 'true' when FP8 MAC is not natively supported by the CPU ISA
@@ -690,33 +702,33 @@ struct brgemm_dynamic_values_t {
 };
 
 struct brgemm_kernel_params_t {
-    const void *ptr_A;
-    const void *ptr_B;
-    const brgemm_batch_element_t *batch;
-    void *ptr_C;
+    const void *ptr_A = nullptr;
+    const void *ptr_B = nullptr;
+    const brgemm_batch_element_t *batch = nullptr;
+    void *ptr_C = nullptr;
 
-    const void *ptr_bias;
-    void *ptr_D;
+    const void *ptr_bias = nullptr;
+    void *ptr_D = nullptr;
 
     const void *ptr_src_scales = nullptr;
     const void *ptr_wei_scales = nullptr;
     const void *ptr_dst_scales = nullptr;
-    void *ptr_buf;
+    void *ptr_buf = nullptr;
 
-    size_t do_post_ops;
-    size_t do_apply_comp;
-    size_t BS;
+    size_t do_post_ops = 0;
+    size_t do_apply_comp = 0;
+    size_t BS = 0;
 
     /*
      * ptr to table of void * elements that are pointers to post_op binary
      * src1 tensors
      */
-    const void *post_ops_binary_rhs_arg_vec;
-    size_t oc_logical_off;
-    size_t first_mb_matrix_addr_off;
-    size_t dst_row_logical_off;
+    const void *post_ops_binary_rhs_arg_vec = nullptr;
+    size_t oc_logical_off = 0;
+    size_t first_mb_matrix_addr_off = 0;
+    size_t dst_row_logical_off = 0;
 
-    const char *data_C_ptr_;
+    const char *data_C_ptr_ = nullptr;
 
     const void *a_zp_compensations = nullptr;
     const void *b_zp_compensations = nullptr;
@@ -807,7 +819,7 @@ private:
 
 /// @param bias Vector of bias (vector length is N)
 /// @param scales - Vector of scale factor values which represents combination
-///     scale factors for matrixes A and B. If brgemm_desc_t::is_oc_scale = true
+///     scale factors for matrixes A and B. If brgemm_desc_t::is_per_n_scale = true
 ///     vector length is N otherwise it must be broadcasted to vector of simd
 ///     width length
 /// @param binary_post_ops_rhs - Ptr to table of pointers to tensors used as rhs

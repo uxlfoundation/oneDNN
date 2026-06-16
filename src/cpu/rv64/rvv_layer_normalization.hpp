@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2025 Intel Corporation
+* Copyright 2026 SpacemiT Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -48,16 +49,28 @@ struct rvv_layer_normalization_fwd_t : public primitive_t {
             VDISPATCH_LNORM(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_LNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
 
-            VDISPATCH_LNORM(
-                    (src_md()->data_type == f32), VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_LNORM(
-                    (dst_md()->data_type == f32), VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_LNORM(utils::one_of(src_md()->data_type, f32, f16),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_LNORM((dst_md()->data_type == src_md()->data_type),
+                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_LNORM(
                     (stat_md()->data_type == f32), VERBOSE_UNSUPPORTED_DT);
 
-            VDISPATCH_LNORM((check_scale_shift_data_type()),
-                    VERBOSE_UNSUPPORTED_FEATURE,
-                    "unsupported scale or shift data type");
+            if (src_md()->data_type == f16) {
+                VDISPATCH_LNORM(platform::has_data_type_support(f16),
+                        VERBOSE_UNSUPPORTED_DT);
+                // f16 path computes statistics in a single fused pass; it does
+                // not support externally provided (global) mean/variance.
+                VDISPATCH_LNORM(!stats_are_src(), VERBOSE_UNSUPPORTED_FEATURE,
+                        "f16 does not support global stats");
+                VDISPATCH_LNORM((check_scale_shift_data_type({f32, f16})),
+                        VERBOSE_UNSUPPORTED_FEATURE,
+                        "unsupported scale or shift data type");
+            } else if (src_md()->data_type == f32) {
+                VDISPATCH_LNORM((check_scale_shift_data_type({f32})),
+                        VERBOSE_UNSUPPORTED_FEATURE,
+                        "unsupported scale or shift data type");
+            }
 
             VDISPATCH_LNORM(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
@@ -185,6 +198,7 @@ private:
     std::shared_ptr<primitive_t> reorder_;
     std::unique_ptr<jit_rvv_layernorm_fused_kernel_t> fused_kernel_;
     std::unique_ptr<jit_rvv_layernorm_data_kernel_t> data_kernel_;
+    std::unique_ptr<jit_rvv_layernorm_f16_fused_kernel_t> f16_fused_kernel_;
 };
 
 } // namespace rv64

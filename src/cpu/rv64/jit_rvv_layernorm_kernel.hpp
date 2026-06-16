@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2026 Institute of Software, Chinese Academy of Sciences
+* Copyright 2026 SpacemiT Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -78,6 +79,36 @@ protected:
 private:
     const bool with_scale_;
     const bool with_shift_;
+};
+
+struct jit_rvv_layernorm_f16_fused_kernel_t : public jit_generator_t {
+    struct call_params_t {
+        const void *src; // f16
+        void *dst; // f16
+        const void *scale; // gamma, f16 or f32 (per weights_f16_)
+        const void *shift; // beta,  f16 or f32 (per weights_f16_)
+        dim_t len;
+        float eps;
+        float *mean; // f32 out, nullptr to skip
+        float *variance; // f32 out, nullptr to skip
+    };
+
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_rvv_layernorm_f16_fused_kernel_t)
+
+    jit_rvv_layernorm_f16_fused_kernel_t(
+            bool with_scale, bool with_shift, bool weights_f16);
+
+    void operator()(const call_params_t *p) const {
+        jit_generator_t::operator()(p);
+    }
+
+protected:
+    void generate() override;
+
+private:
+    const bool with_scale_;
+    const bool with_shift_;
+    const bool weights_f16_;
 };
 
 } // namespace rv64

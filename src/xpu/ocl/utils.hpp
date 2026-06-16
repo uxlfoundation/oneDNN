@@ -46,9 +46,8 @@ const char *convert_cl_int_to_str(cl_int cl_status);
 
 #define MAYBE_REPORT_OCL_ERROR(s) \
     do { \
-        VERROR(primitive, ocl, "errcode %d,%s,%s:%d", int(s), \
-                dnnl::impl::xpu::ocl::convert_cl_int_to_str(s), __FILENAME__, \
-                __LINE__); \
+        VERROR(primitive, ocl, "errcode %d,%s", int(s), \
+                dnnl::impl::xpu::ocl::convert_cl_int_to_str(s)); \
     } while (0)
 
 #define OCL_CHECK_V(x) \
@@ -186,7 +185,10 @@ struct ref_traits<cl_context> {
         UNUSED_OCL_RESULT(xpu::ocl::clRetainContext(t));
     }
     static void release(cl_context t) {
-        UNUSED_OCL_RESULT(xpu::ocl::clReleaseContext(t));
+        auto cl_st = xpu::ocl::clReleaseContext(t);
+        if (cl_st != CL_SUCCESS && cl_st != CL_INVALID_OPERATION) {
+            UNUSED_OCL_RESULT(cl_st);
+        }
     }
 };
 
@@ -210,13 +212,27 @@ struct ref_traits<cl_program> {
     }
 };
 
+// Kernels are part of the global static kernel cache object. It gets destroyed
+// at static objects destruction point of program destruction. This moment
+// happens after `atexit` system call, when OpenCL 3.1+ library will be
+// unloaded. The unloaded library means there are no OpenCL resources that can
+// be used for proper kernels destruction leading to reporting errors from this
+// wrapper. This error reports specific `CL_INVALID_OPERATION` error code.
+// Don't print an error message for this and successful codes.
+//
+// Note: since engine object is a singleton in benchdnn, objects retained during
+// engine construction shouldn't report `CL_INVALID_OPERATION` error message,
+// too. Such objects are a context and a device.
 template <>
 struct ref_traits<cl_kernel> {
     static void retain(cl_kernel t) {
         UNUSED_OCL_RESULT(xpu::ocl::clRetainKernel(t));
     }
     static void release(cl_kernel t) {
-        UNUSED_OCL_RESULT(xpu::ocl::clReleaseKernel(t));
+        auto cl_st = xpu::ocl::clReleaseKernel(t);
+        if (cl_st != CL_SUCCESS && cl_st != CL_INVALID_OPERATION) {
+            UNUSED_OCL_RESULT(cl_st);
+        }
     }
 };
 
@@ -256,7 +272,10 @@ struct ref_traits<cl_device_id> {
         UNUSED_OCL_RESULT(xpu::ocl::clRetainDevice(t));
     }
     static void release(cl_device_id t) {
-        UNUSED_OCL_RESULT(xpu::ocl::clReleaseDevice(t));
+        auto cl_st = xpu::ocl::clReleaseDevice(t);
+        if (cl_st != CL_SUCCESS && cl_st != CL_INVALID_OPERATION) {
+            UNUSED_OCL_RESULT(cl_st);
+        }
     }
 };
 

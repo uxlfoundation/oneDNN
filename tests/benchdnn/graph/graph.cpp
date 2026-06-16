@@ -599,6 +599,22 @@ int skip_unimplemented_memory_kind(res_t *res) {
     return OK;
 }
 
+int skip_unimplemented_execution_mode(
+        const deserialized_graph_t &dg, const engine_t &eng, res_t *res) {
+    if (use_sycl_graph_exec(eng)
+            && (dg.has_backward_op()
+                    || dg.get_recognized_pattern()
+                            == graph_recognized_pattern_t::sdpa_bwd)) {
+        BENCHDNN_PRINT(2, "%s\n",
+                "[INFO]: Skip backward ops and patterns for SYCL graph "
+                "execution mode.");
+        res->state = SKIPPED;
+        res->reason = reason_t::skip_execution_mode;
+        return OK;
+    }
+    return OK;
+}
+
 int doit(const prb_t *prb, res_t *res) {
     if (bench_mode == bench_mode_t::list) return res->state = LISTED, OK;
 
@@ -618,8 +634,10 @@ int doit(const prb_t *prb, res_t *res) {
     if (res->state == SKIPPED) return OK;
 
     const dnnl::engine &eng = get_graph_engine();
+    stream_t strm(eng);
 
-    stream_t strm {get_graph_engine()};
+    skip_unimplemented_execution_mode(dg, eng, res);
+    if (res->state == SKIPPED) return OK;
 
     // mark the output logical tensors of partition as ANY layout enabled
     std::unordered_set<size_t> id_to_set_any_layout;

@@ -164,6 +164,9 @@ struct deserialized_graph_t {
         return recognized_pattern_;
     }
 
+    // Returns `true` if there are any backward ops in the graph.
+    bool has_backward_op() const;
+
 private:
     std::string engine_kind_;
     std::string version_;
@@ -180,16 +183,7 @@ private:
     std::vector<std::string> unsupport_mb_rewrite_ops_ {
             "ConvolutionBackwardData", "ConvolutionBackwardWeights",
             "ConvTransposeBackwardWeights"};
-    // bwd ops have multiple inputs
-    std::vector<std::string> bwd_ops_ {"AbsBackward", "AvgPoolBackward",
-            "BatchNormTrainingBackward", "BiasAddBackward", "ClampBackward",
-            "ConvolutionBackwardData", "ConvolutionBackwardWeights",
-            "ConvTransposeBackwardData", "ConvTransposeBackwardWeights",
-            "EluBackward", "GELUBackward", "HardSwishBackward",
-            "InterpolateBackward", "LayerNormBackward", "LogSoftmaxBackward",
-            "MaxPoolBackward", "MishBackward", "ReLUBackward",
-            "SigmoidBackward", "SoftMaxBackward", "SoftPlusBackward",
-            "SqrtBackward", "TanhBackward"};
+
     // indicate whether the graph belongs to the recognized patterns.
     graph_recognized_pattern_t recognized_pattern_
             = graph_recognized_pattern_t::ordinary;

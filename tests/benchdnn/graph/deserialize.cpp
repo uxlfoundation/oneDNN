@@ -1025,8 +1025,7 @@ bool deserialized_graph_t::check_tensor_with_mb(size_t tensor_id,
                 != unsupport_mb_rewrite_ops_.end()) {
             // those unsupport op need rewrite dst_shape / weight_shape also
             ret = false;
-        } else if (std::find(bwd_ops_.begin(), bwd_ops_.end(), aop.kind_)
-                != bwd_ops_.end()) {
+        } else if (is_backward(aop.kind_)) {
             // bwd ops have multiple inputs with mb
             ret = false;
             if (tensor_id == aop.in_lts_[0].id_
@@ -1076,6 +1075,13 @@ bool deserialized_graph_t::check_tensor_with_mb(size_t tensor_id,
 
     mb_rewrite_ret.emplace(tensor_id, ret);
     return ret;
+}
+
+bool deserialized_graph_t::has_backward_op() const {
+    return std::any_of(
+            ops_.begin(), ops_.end(), [](const deserialized_op_t &aop) {
+        return is_backward(aop.kind_);
+    });
 }
 
 } // namespace graph

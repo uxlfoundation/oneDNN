@@ -343,8 +343,10 @@ dnnl::graph::op::kind opstr2kind(const std::string &kind) {
 // The list of operations considered Unary from documentation point of view.
 //
 // Note: this list is disconnected from the rest of driver internals.
-// TODO: come up with a single struct and provide different converters and
-// getters.
+//
+// TODO: come up with a single table for each supported op with different
+// properties (unary/binary/forward/backward/etc.) and provide different
+// converters and getters for it.
 bool is_unary(const std::string &kind) {
     return is_unary(opstr2kind(kind));
 }
@@ -370,6 +372,40 @@ bool is_unary(dnnl::graph::op::kind akind) {
             op::kind::Tanh,
     };
     return std::any_of(unary_ops.begin(), unary_ops.end(),
+            [akind](dnnl::graph::op::kind _kind) { return _kind == akind; });
+}
+
+bool is_backward(const std::string &kind) {
+    return is_backward(opstr2kind(kind));
+}
+bool is_backward(dnnl::graph::op::kind akind) {
+    using namespace dnnl::graph;
+    static const std::vector<op::kind> backward_ops {
+            op::kind::AbsBackward,
+            op::kind::AvgPoolBackward,
+            op::kind::BatchNormTrainingBackward,
+            op::kind::BiasAddBackward,
+            op::kind::ClampBackward,
+            op::kind::ConvolutionBackwardData,
+            op::kind::ConvolutionBackwardWeights,
+            op::kind::ConvTransposeBackwardData,
+            op::kind::ConvTransposeBackwardWeights,
+            op::kind::EluBackward,
+            op::kind::GELUBackward,
+            op::kind::HardSwishBackward,
+            op::kind::InterpolateBackward,
+            op::kind::LayerNormBackward,
+            op::kind::LogSoftmaxBackward,
+            op::kind::MaxPoolBackward,
+            op::kind::MishBackward,
+            op::kind::ReLUBackward,
+            op::kind::SigmoidBackward,
+            op::kind::SoftMaxBackward,
+            op::kind::SoftPlusBackward,
+            op::kind::SqrtBackward,
+            op::kind::TanhBackward,
+    };
+    return std::any_of(backward_ops.begin(), backward_ops.end(),
             [akind](dnnl::graph::op::kind _kind) { return _kind == akind; });
 }
 

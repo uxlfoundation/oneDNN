@@ -66,6 +66,8 @@ std::string reason2str(reason_t reason) {
         case reason_t::skip_start: return "Skip-start option hit";
         case reason_t::skip_not_supported: return "Case not supported";
         case reason_t::skip_data_type: return "Data type not supported";
+        case reason_t::skip_execution_mode:
+            return "Execution mode not supported";
         default: assert(!"unknown reason"); return std::string();
     }
 }

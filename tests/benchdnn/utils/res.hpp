@@ -142,6 +142,9 @@ enum class reason_t {
     skip_not_supported,
     // Data type is not supported on the system.
     skip_data_type,
+    // Execution mode is not intended to work under specific conditions, e.g.,
+    // backward propagation.
+    skip_execution_mode,
 };
 
 struct res_t {

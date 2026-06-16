@@ -30,6 +30,38 @@ namespace graph {
 using namespace dnnl::graph;
 using namespace dnnl::impl::graph;
 
+namespace {
+bool is_backward_op(const std::string &op_kind) {
+    static const std::unordered_set<std::string> bwd_op_kinds = {
+            "AbsBackward",
+            "AvgPoolBackward",
+            "BatchNormTrainingBackward",
+            "BiasAddBackward",
+            "ClampBackward",
+            "ConvolutionBackwardData",
+            "ConvolutionBackwardWeights",
+            "ConvTransposeBackwardData",
+            "ConvTransposeBackwardWeights",
+            "EluBackward",
+            "GELUBackward",
+            "HardSwishBackward",
+            "InterpolateBackward",
+            "LayerNormBackward",
+            "LogSoftmaxBackward",
+            "MaxPoolBackward",
+            "MishBackward",
+            "ReLUBackward",
+            "SigmoidBackward",
+            "SoftMaxBackward",
+            "SoftPlusBackward",
+            "SqrtBackward",
+            "TanhBackward",
+    };
+
+    return bwd_op_kinds.find(op_kind) != bwd_op_kinds.end();
+}
+} // namespace
+
 void deserialized_attr_t::load(utils::json::json_reader_t *reader) {
     reader->begin_object();
     std::string key_entry;
@@ -540,6 +572,12 @@ void deserialized_graph_t::load(const std::string &pass_config_json) {
         input_ports_.emplace_back(item.first);
     }
 
+    // detect whether the graph contains any backward op.
+    has_backward_op_ = std::any_of(
+            ops_.begin(), ops_.end(), [](const deserialized_op_t &aop) {
+        return is_backward_op(aop.kind_);
+    });
+
     // detect whether the parsed graph belongs to any specific patterns that
     // requires special handling, such as SDPA.
     detect_recognized_patterns();
@@ -1025,8 +1063,7 @@ bool deserialized_graph_t::check_tensor_with_mb(size_t tensor_id,
                 != unsupport_mb_rewrite_ops_.end()) {
             // those unsupport op need rewrite dst_shape / weight_shape also
             ret = false;
-        } else if (std::find(bwd_ops_.begin(), bwd_ops_.end(), aop.kind_)
-                != bwd_ops_.end()) {
+        } else if (is_backward_op(aop.kind_)) {
             // bwd ops have multiple inputs with mb
             ret = false;
             if (tensor_id == aop.in_lts_[0].id_

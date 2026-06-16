@@ -619,6 +619,18 @@ int doit(const prb_t *prb, res_t *res) {
 
     const dnnl::engine &eng = get_graph_engine();
 
+    if (use_sycl_graph_exec(eng)
+            && (dg.has_backward_op()
+                    || dg.get_recognized_pattern()
+                            == graph_recognized_pattern_t::sdpa_bwd)) {
+        BENCHDNN_PRINT(3, "%s\n",
+                "[INFO]: Skip backward ops and patterns for SYCL graph "
+                "execution mode.");
+        res->state = SKIPPED;
+        res->reason = reason_t::skip_not_supported;
+        return OK;
+    }
+
     stream_t strm {get_graph_engine()};
 
     // mark the output logical tensors of partition as ANY layout enabled

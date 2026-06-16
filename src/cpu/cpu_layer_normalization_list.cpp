@@ -26,9 +26,6 @@ using namespace dnnl::impl::cpu::x64;
 #elif DNNL_AARCH64
 #include "cpu/aarch64/jit_uni_layer_normalization.hpp"
 using namespace dnnl::impl::cpu::aarch64;
-#if defined(DNNL_AARCH64_USE_ACL)
-#include "cpu/aarch64/acl_layer_normalization.hpp"
-#endif // DNNL_AARCH64_USE_ACL
 #elif DNNL_RV64
 #if defined(DNNL_RISCV_USE_RVV_INTRINSICS)
 #include "cpu/rv64/rvv_layer_normalization.hpp"
@@ -51,7 +48,6 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
             CPU_INSTANCE_X64(jit_uni_layer_normalization_fwd_t)
             CPU_INSTANCE_AARCH64(jit_uni_layer_normalization_fwd_t<sve>)
             CPU_INSTANCE_AARCH64(jit_uni_layer_normalization_fwd_t<asimd>)
-            CPU_INSTANCE_AARCH64_ACL(acl_layer_normalization_fwd_t)
             CPU_INSTANCE_RV64GCV(rvv_layer_normalization_fwd_t)
             CPU_INSTANCE(simple_layer_normalization_fwd_t)
             CPU_INSTANCE(ref_layer_normalization_fwd_t)

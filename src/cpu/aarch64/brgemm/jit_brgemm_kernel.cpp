@@ -571,52 +571,43 @@ void jit_brgemm_kernel_t::cvt2ps(data_type_t type_in, const ZReg zmm_in,
 }
 
 void jit_brgemm_kernel_t::ldb_regs_shift(int ld_block2, bool is_tail) {
-    int C_offset = (is_tail) ? ldb_C_offset(1, true) : ldb_C_offset(ld_block2);
-    int D_offset = (is_tail) ? ldb_D_offset(1, true) : ldb_D_offset(ld_block2);
+    int C_offset = ldb_C_offset(ld_block2, is_tail);
+    int D_offset = ldb_D_offset(ld_block2, is_tail);
 
     add_imm(reg_aux_C, reg_aux_C, C_offset, X_TMP_0);
     add_imm(reg_aux_D, reg_aux_D, D_offset, X_TMP_0);
 
-    add_imm(reg_b_offset, reg_b_offset,
-            (is_tail) ? ldb_B_offset(1, true) : ldb_B_offset(ld_block2),
+    add_imm(reg_b_offset, reg_b_offset, ldb_B_offset(ld_block2, is_tail),
             X_TMP_0);
 
     if (brg.with_bias) {
         LDR_IMM(reg_aux_bias, sp, reg_aux_bias_offs_);
-        add_imm(reg_aux_bias, reg_aux_bias,
-                (is_tail) ? bias_offset(1, true) : bias_offset(ld_block2),
+        add_imm(reg_aux_bias, reg_aux_bias, bias_offset(ld_block2, is_tail),
                 X_TMP_0);
         STR_IMM(reg_aux_bias, sp, reg_aux_bias_offs_);
     }
     if (brg.req_s8s8_compensation) {
         LDR_IMM(reg_aux_compensation, sp, reg_aux_comp_offs_);
         add_imm(reg_aux_compensation, reg_aux_compensation,
-                (is_tail) ? compensations_offset(1, true)
-                          : compensations_offset(ld_block2),
-                X_TMP_0);
+                compensations_offset(ld_block2, is_tail), X_TMP_0);
         STR_IMM(reg_aux_compensation, sp, reg_aux_comp_offs_);
     }
     if (brg.with_scales) {
         LDR_IMM(reg_aux_scales, sp, reg_aux_scales_offs_);
         add_imm(reg_aux_scales, reg_aux_scales,
-                (is_tail) ? scales_offset(1, true) : scales_offset(ld_block2),
-                X_TMP_0);
+                scales_offset(ld_block2, is_tail), X_TMP_0);
         STR_IMM(reg_aux_scales, sp, reg_aux_scales_offs_);
     }
     if (brg.zp_type_a != brgemm_broadcast_t::none) {
         LDR_IMM(reg_aux_zp_comp_a, sp, reg_aux_zp_comp_a_offs_);
         add_imm(reg_aux_zp_comp_a, reg_aux_zp_comp_a,
-                (is_tail) ? zp_comp_a_offset(1, true)
-                          : zp_comp_a_offset(ld_block2),
-                X_TMP_0);
+                zp_comp_a_offset(ld_block2, is_tail), X_TMP_0);
         STR_IMM(reg_aux_zp_comp_a, sp, reg_aux_zp_comp_a_offs_);
     }
     if (brg.zp_type_c == brgemm_broadcast_t::per_n) {
         LDR_IMM(reg_aux_zp_c_values, sp, reg_aux_zp_c_values_offs_);
         add_imm(reg_aux_zp_c_values, reg_aux_zp_c_values,
-                (is_tail) ? zp_c_values_offset(1, true)
-                          : zp_c_values_offset(ld_block2),
-                X_TMP_0);
+                zp_c_values_offset(ld_block2, is_tail), X_TMP_0);
         STR_IMM(reg_aux_zp_c_values, sp, reg_aux_zp_c_values_offs_);
     }
 }
@@ -731,17 +722,31 @@ void jit_brgemm_kernel_t::read_params() {
         str(reg_dst_scales, ptr(sp, reg_dst_scales_offs_));
     }
 
-    ldr(reg_do_post_ops, ptr(param1, GET_OFF(do_post_ops)));
-    str(reg_do_post_ops, ptr(sp, reg_do_post_ops_offs_));
+    const bool has_zero_points = !everyone_is(brgemm_broadcast_t::none,
+            brg.zp_type_a, brg.zp_type_b, brg.zp_type_c);
+    const bool are_post_ops_applicable = one_of(true, brg.with_eltwise,
+            brg.with_binary, brg.with_scales, brg.with_bias, brg.with_sum,
+            brg.dt_d != brg.dt_c, brg.with_dst_scales,
+            brg.req_s8s8_compensation, has_zero_points);
+    if (are_post_ops_applicable) {
+        ldr(reg_do_post_ops, ptr(param1, GET_OFF(do_post_ops)));
+        str(reg_do_post_ops, ptr(sp, reg_do_post_ops_offs_));
+    }
 
-    ldr(reg_skip_accm, ptr(param1, GET_OFF(skip_accm)));
-    str(reg_skip_accm, ptr(sp, reg_skip_accm_offs_));
+    if (brg.brgattr.generate_skip_accumulation) {
+        ldr(reg_skip_accm, ptr(param1, GET_OFF(skip_accm)));
+        str(reg_skip_accm, ptr(sp, reg_skip_accm_offs_));
+    }
 
-    ldr(reg_zp_a_val, ptr(param1, GET_OFF(zp_a_val)));
-    str(reg_zp_a_val, ptr(sp, reg_zp_a_val_offs_));
+    if (brg.zp_type_a != brgemm_broadcast_t::none) {
+        ldr(reg_zp_a_val, ptr(param1, GET_OFF(zp_a_val)));
+        str(reg_zp_a_val, ptr(sp, reg_zp_a_val_offs_));
+    }
 
-    ldr(reg_do_comp, ptr(param1, GET_OFF(do_apply_comp)));
-    str(reg_do_comp, ptr(sp, reg_do_comp_offs_));
+    if (brg.is_int8 && (brg.req_s8s8_compensation || has_zero_points)) {
+        ldr(reg_do_comp, ptr(param1, GET_OFF(do_apply_comp)));
+        str(reg_do_comp, ptr(sp, reg_do_comp_offs_));
+    }
 }
 
 void jit_brgemm_kernel_t::zero_accumulators(int bd_block2, bool is_bdb_tail,
@@ -2231,9 +2236,7 @@ void jit_brgemm_kernel_t::generate() {
     mov(x9, x5);
 
     vpad_exist
-            = (brg.brgattr.max_top_vpad > 0 || brg.brgattr.max_bottom_vpad > 0)
-            ? true
-            : false;
+            = brg.brgattr.max_top_vpad > 0 || brg.brgattr.max_bottom_vpad > 0;
     need_comp_pads = IMPLICATION(brg.zp_type_a == brgemm_broadcast_t::none,
                              brg.req_s8s8_compensation)
             && IMPLICATION(!vpad_exist, brg.req_cal_comp_pads);

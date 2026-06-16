@@ -68,8 +68,9 @@ status_t kernel_t::check_alignment(
 
 status_t kernel_t::set_arg(
         int arg_index, size_t arg_size, const void *arg_value) const {
-    return xpu::ze::zeKernelSetArgumentValue(
-            kernel_, arg_index, arg_size, arg_value);
+    ZE_CHECK(xpu::ze::zeKernelSetArgumentValue(
+            kernel_, arg_index, arg_size, arg_value));
+    return status::success;
 }
 
 status_t kernel_t::parallel_for(impl::stream_t &stream,
@@ -157,7 +158,7 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
                 return status::invalid_arguments;
         }
     } else {
-        CHECK(xpu::ze::zeKernelSuggestGroupSize(kernel_, global_size[0],
+        ZE_CHECK(xpu::ze::zeKernelSuggestGroupSize(kernel_, global_size[0],
                 global_size[1], global_size[2], &group_size[0], &group_size[1],
                 &group_size[2]));
     }
@@ -169,7 +170,7 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
         }
     }
 
-    CHECK(xpu::ze::zeKernelSetGroupSize(
+    ZE_CHECK(xpu::ze::zeKernelSetGroupSize(
             kernel_, group_size[0], group_size[1], group_size[2]));
     ze_group_count_t group_count = {global_size[0] / group_size[0],
             global_size[1] / group_size[1], global_size[2] / group_size[2]};
@@ -177,8 +178,8 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
     const auto &ze_deps = xpu::ze::event_t::from(deps);
     ze_event_handle_t out_event = ze_stream->create_event();
 
-    CHECK(xpu::ze::zeCommandListAppendLaunchKernel(ze_stream->list(), kernel_,
-            &group_count, out_event, ze_deps.size(), ze_deps.data()));
+    ZE_CHECK(xpu::ze::zeCommandListAppendLaunchKernel(ze_stream->list(),
+            kernel_, &group_count, out_event, ze_deps.size(), ze_deps.data()));
 
     if (out_event) xpu::ze::event_t::from(out_dep).append(out_event);
     if (stream.is_profiling_enabled()) {

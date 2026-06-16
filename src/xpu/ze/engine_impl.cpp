@@ -38,7 +38,8 @@ status_t engine_impl_t::init() {
         context_desc.pNext = nullptr;
         context_desc.flags = 0;
 
-        CHECK(ze::zeContextCreate(driver_, &context_desc, &context_.unwrap()));
+        ZE_CHECK(ze::zeContextCreate(
+                driver_, &context_desc, &context_.unwrap()));
     }
 
     cl_int err;
@@ -62,7 +63,7 @@ status_t engine_impl_t::init() {
     ze_device_properties_t device_properties = {};
     device_properties.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES;
     device_properties.pNext = nullptr;
-    CHECK(ze::zeDeviceGetProperties(device_, &device_properties));
+    ZE_CHECK(ze::zeDeviceGetProperties(device_, &device_properties));
     name_ = device_properties.name;
 
     // Note: the method below is undocumented. Implementation is sneak peeked
@@ -74,7 +75,7 @@ status_t engine_impl_t::init() {
     // src/gpu/intel/ze/devince_info.cpp, but it reports different numbers.
     // TODO: figure it out.
     ze_result_t (*pfnGetDriverVersionFn)(ze_driver_handle_t, char *, size_t *);
-    CHECK(ze::zeDriverGetExtensionFunctionAddress(driver_,
+    ZE_CHECK(ze::zeDriverGetExtensionFunctionAddress(driver_,
             "zeIntelGetDriverVersionString", (void **)&pfnGetDriverVersionFn));
 
     size_t driver_version_len = 0;

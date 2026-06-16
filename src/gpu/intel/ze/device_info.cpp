@@ -31,7 +31,7 @@ status_t device_info_t::init_device_name(impl::engine_t *engine) {
     ze_device_properties_t device_properties = {};
     device_properties.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES;
 
-    CHECK(xpu::ze::zeDeviceGetProperties(device, &device_properties));
+    ZE_CHECK(xpu::ze::zeDeviceGetProperties(device, &device_properties));
     name_ = std::string(device_properties.name);
 
     return status::success;
@@ -54,7 +54,7 @@ status_t device_info_t::init_runtime_version(impl::engine_t *engine) {
     ze_driver_properties_t driver_properties = {};
     driver_properties.stype = ZE_STRUCTURE_TYPE_DRIVER_PROPERTIES;
 
-    CHECK(xpu::ze::zeDriverGetProperties(driver, &driver_properties));
+    ZE_CHECK(xpu::ze::zeDriverGetProperties(driver, &driver_properties));
 
     // Note: for some reason this returns a different value for a minor version
     // when compared to internal API to get a version string. For a version
@@ -101,7 +101,7 @@ status_t device_info_t::init_attributes(impl::engine_t *engine) {
     device_properties.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES;
     device_properties.pNext = &eu_count_ext;
 
-    CHECK(xpu::ze::zeDeviceGetProperties(device, &device_properties));
+    ZE_CHECK(xpu::ze::zeDeviceGetProperties(device, &device_properties));
 
     eu_count_ = eu_count_ext.numTotalEUs;
 
@@ -109,13 +109,13 @@ status_t device_info_t::init_attributes(impl::engine_t *engine) {
     device_compute_properties.stype
             = ZE_STRUCTURE_TYPE_DEVICE_COMPUTE_PROPERTIES;
 
-    CHECK(xpu::ze::zeDeviceGetComputeProperties(
+    ZE_CHECK(xpu::ze::zeDeviceGetComputeProperties(
             device, &device_compute_properties));
 
     max_wg_size_ = device_compute_properties.maxTotalGroupSize;
 
     uint32_t device_cache_properties_count = 0;
-    CHECK(xpu::ze::zeDeviceGetCacheProperties(
+    ZE_CHECK(xpu::ze::zeDeviceGetCacheProperties(
             device, &device_cache_properties_count, nullptr));
 
     std::vector<ze_device_cache_properties_t> device_cache_properties(
@@ -124,7 +124,7 @@ status_t device_info_t::init_attributes(impl::engine_t *engine) {
         p.stype = ZE_STRUCTURE_TYPE_DEVICE_CACHE_PROPERTIES;
     }
 
-    CHECK(xpu::ze::zeDeviceGetCacheProperties(device,
+    ZE_CHECK(xpu::ze::zeDeviceGetCacheProperties(device,
             &device_cache_properties_count, device_cache_properties.data()));
     for (uint32_t i = 0; i < device_cache_properties_count; i++) {
         if (device_cache_properties[i].flags == 0) {
@@ -135,14 +135,15 @@ status_t device_info_t::init_attributes(impl::engine_t *engine) {
 
     ze_device_module_properties_t device_module_props = {};
     device_module_props.stype = ZE_STRUCTURE_TYPE_DEVICE_MODULE_PROPERTIES;
-    CHECK(xpu::ze::zeDeviceGetModuleProperties(device, &device_module_props));
+    ZE_CHECK(
+            xpu::ze::zeDeviceGetModuleProperties(device, &device_module_props));
     max_kernel_param_size_ = device_module_props.maxArgumentsSize;
 
     ze_device_memory_access_properties_t device_memory_access_properties = {};
     device_memory_access_properties.stype
             = ZE_STRUCTURE_TYPE_DEVICE_MEMORY_ACCESS_PROPERTIES;
 
-    CHECK(xpu::ze::zeDeviceGetMemoryAccessProperties(
+    ZE_CHECK(xpu::ze::zeDeviceGetMemoryAccessProperties(
             device, &device_memory_access_properties));
     mayiuse_system_memory_allocators_
             = device_memory_access_properties.sharedSystemAllocCapabilities;

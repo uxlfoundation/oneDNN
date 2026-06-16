@@ -47,7 +47,7 @@ status_t stream_t::init() {
     if (is_profiling_enabled()) {
         ze_device_properties_t device_properties {};
         device_properties.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES_1_2;
-        CHECK(xpu::ze::zeDeviceGetProperties(
+        ZE_CHECK(xpu::ze::zeDeviceGetProperties(
                 utils::downcast<engine_t *>(engine())->device(),
                 &device_properties));
 

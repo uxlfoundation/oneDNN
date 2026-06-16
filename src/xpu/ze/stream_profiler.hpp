@@ -89,7 +89,7 @@ public:
                     = *utils::downcast<ze::event_t *>(ev.event.get());
 
             ze_kernel_timestamp_result_t kernel_timestamp_result;
-            CHECK(ze::zeEventQueryKernelTimestamp(
+            ZE_CHECK(ze::zeEventQueryKernelTimestamp(
                     ze_event[0], &kernel_timestamp_result));
 
             entry_t entry(kernel_timestamp_result, max_timestamp_value_,

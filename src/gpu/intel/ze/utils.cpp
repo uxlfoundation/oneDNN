@@ -42,7 +42,7 @@ status_t get_ze_device_enabled_systolic_intel(
     deviceModProps.stype = ZE_STRUCTURE_TYPE_DEVICE_MODULE_PROPERTIES;
     deviceModProps.pNext = &deviceModPropsExt;
 
-    CHECK(xpu::ze::zeDeviceGetModuleProperties(device, &deviceModProps));
+    ZE_CHECK(xpu::ze::zeDeviceGetModuleProperties(device, &deviceModProps));
     mayiuse_systolic
             = deviceModPropsExt.flags & ZE_INTEL_DEVICE_MODULE_EXP_FLAG_DPAS;
     return status::success;
@@ -59,7 +59,7 @@ status_t get_ze_device_enabled_native_float_atomics(
     deviceProps.stype = ZE_STRUCTURE_TYPE_DEVICE_MODULE_PROPERTIES;
     deviceProps.pNext = &fltAtom;
 
-    CHECK(xpu::ze::zeDeviceGetModuleProperties(device, &deviceProps));
+    ZE_CHECK(xpu::ze::zeDeviceGetModuleProperties(device, &deviceProps));
 
     ze_device_fp_atomic_ext_flags_t atomic_load_store
             = ZE_DEVICE_FP_ATOMIC_EXT_FLAG_GLOBAL_LOAD_STORE
@@ -106,7 +106,7 @@ status_t get_device_ip(ze_device_handle_t device, uint32_t &ip_version) {
     deviceProps.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES;
     deviceProps.pNext = &devicePropsIP;
 
-    CHECK(xpu::ze::zeDeviceGetProperties(device, &deviceProps));
+    ZE_CHECK(xpu::ze::zeDeviceGetProperties(device, &deviceProps));
     ip_version = devicePropsIP.ipVersion;
     return status::success;
 }
@@ -128,9 +128,8 @@ status_t compile_ocl_module(ze_module_handle_t *module_ptr,
     ze_module_handle_t module_handle;
     // TODO: enable debug capabilities.
     // ze_module_build_log_handle_t module_build_log_handle;
-    auto st = xpu::ze::zeModuleCreate(context, device, &module_desc,
-            &module_handle, /* &module_build_log_handle */ nullptr);
-    if (st != status::success) return st;
+    ZE_CHECK(xpu::ze::zeModuleCreate(context, device, &module_desc,
+            &module_handle, /* &module_build_log_handle */ nullptr));
 
     *module_ptr = module_handle;
 
@@ -150,9 +149,8 @@ status_t compile_native_module(ze_module_handle_t *module_ptr,
     ze_module_handle_t module_handle;
     // TODO: enable under debug capabilities.
     // ze_module_build_log_handle_t module_build_log_handle;
-    auto st = xpu::ze::zeModuleCreate(context, device, &module_desc,
-            &module_handle, /* &module_build_log_handle */ nullptr);
-    if (st != status::success) return st;
+    ZE_CHECK(xpu::ze::zeModuleCreate(context, device, &module_desc,
+            &module_handle, /* &module_build_log_handle */ nullptr));
 
     *module_ptr = module_handle;
     return status::success;
@@ -205,7 +203,7 @@ status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
 
 status_t get_binary_size(
         ze_module_handle_t module_handle, size_t *binary_size) {
-    CHECK(xpu::ze::zeModuleGetNativeBinary(
+    ZE_CHECK(xpu::ze::zeModuleGetNativeBinary(
             module_handle, binary_size, nullptr));
     return status::success;
 }
@@ -216,7 +214,7 @@ status_t get_module_binary(
     CHECK(get_binary_size(module_handle, &module_binary_size));
 
     binary.resize(module_binary_size);
-    CHECK(xpu::ze::zeModuleGetNativeBinary(
+    ZE_CHECK(xpu::ze::zeModuleGetNativeBinary(
             module_handle, &module_binary_size, binary.data()));
 
     return status::success;
@@ -224,10 +222,11 @@ status_t get_module_binary(
 
 status_t get_kernel_binary(ze_kernel_handle_t kernel, xpu::binary_t &binary) {
     size_t binary_size = 0;
-    CHECK(xpu::ze::zeKernelGetBinaryExp(kernel, &binary_size, nullptr));
+    ZE_CHECK(xpu::ze::zeKernelGetBinaryExp(kernel, &binary_size, nullptr));
 
     binary.resize(binary_size);
-    CHECK(xpu::ze::zeKernelGetBinaryExp(kernel, &binary_size, binary.data()));
+    ZE_CHECK(
+            xpu::ze::zeKernelGetBinaryExp(kernel, &binary_size, binary.data()));
 
     return status::success;
 }
@@ -275,7 +274,8 @@ status_t create_kernels(ze_device_handle_t device, ze_context_handle_t context,
 
             uint32_t count = 1;
             const char *name = nullptr;
-            CHECK(xpu::ze::zeModuleGetKernelNames(*module_ptr, &count, &name));
+            ZE_CHECK(xpu::ze::zeModuleGetKernelNames(
+                    *module_ptr, &count, &name));
 
             kernel_name = std::string(name);
             assert(!kernel_name.empty());
@@ -286,7 +286,7 @@ status_t create_kernels(ze_device_handle_t device, ze_context_handle_t context,
         kernel_desc.pKernelName = kernel_name.c_str();
 
         ze_kernel_handle_t kernel;
-        CHECK(xpu::ze::zeKernelCreate(*module_ptr, &kernel_desc, &kernel));
+        ZE_CHECK(xpu::ze::zeKernelCreate(*module_ptr, &kernel_desc, &kernel));
 
         kernels[i] = kernel;
     }

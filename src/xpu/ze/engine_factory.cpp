@@ -32,18 +32,18 @@ engine_factory_t::engine_factory_t(engine_kind_t engine_kind) {
 
 size_t engine_factory_t::count() const {
     uint32_t driver_count = 0;
-    status_t status = status::success;
+    ze_result_t ze_status = ZE_RESULT_SUCCESS;
 
-    status = ze::zeDriverGet(&driver_count, nullptr);
-    if (status != status::success || driver_count == 0) return 0;
+    ze_status = ze::zeDriverGet(&driver_count, nullptr);
+    if (ze_status != ZE_RESULT_SUCCESS || driver_count == 0) return 0;
 
     std::vector<ze_driver_handle_t> drivers(driver_count);
-    status = ze::zeDriverGet(&driver_count, drivers.data());
-    if (status != status::success) return 0;
+    ze_status = ze::zeDriverGet(&driver_count, drivers.data());
+    if (ze_status != ZE_RESULT_SUCCESS) return 0;
 
     uint32_t device_count = 0;
-    status = ze::zeDeviceGet(drivers[0], &device_count, nullptr);
-    if (status != status::success) return 0;
+    ze_status = ze::zeDeviceGet(drivers[0], &device_count, nullptr);
+    if (ze_status != ZE_RESULT_SUCCESS) return 0;
 
     return device_count;
 }
@@ -54,22 +54,22 @@ status_t engine_factory_t::engine_create(
     ze_device_handle_t device = nullptr;
 
     uint32_t driver_count = 0;
-    CHECK(ze::zeDriverGet(&driver_count, nullptr));
+    ZE_CHECK(ze::zeDriverGet(&driver_count, nullptr));
     VERROR_ENGINE(driver_count > 0, status::invalid_arguments,
             "no drivers to query devices were found");
 
     std::vector<ze_driver_handle_t> drivers(driver_count);
-    CHECK(ze::zeDriverGet(&driver_count, drivers.data()));
+    ZE_CHECK(ze::zeDriverGet(&driver_count, drivers.data()));
     driver = drivers[0];
 
     uint32_t device_count = 0;
-    CHECK(ze::zeDeviceGet(driver, &device_count, nullptr));
+    ZE_CHECK(ze::zeDeviceGet(driver, &device_count, nullptr));
     VERROR_ENGINE(index < device_count, status::invalid_arguments,
             "asked for device %zu but only %u devices are found", index,
             device_count);
 
     std::vector<ze_device_handle_t> devices(device_count);
-    CHECK(ze::zeDeviceGet(driver, &device_count, devices.data()));
+    ZE_CHECK(ze::zeDeviceGet(driver, &device_count, devices.data()));
     device = devices[index];
 
     return engine_create(engine, driver, device, nullptr, index);

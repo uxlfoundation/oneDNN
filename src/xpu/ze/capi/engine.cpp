@@ -126,13 +126,13 @@ status_t dnnl_ze_interop_engine_get_cache_blob_id(ze_driver_handle_t driver,
     // Get device name.
     ze_device_properties_t device_properties = {};
     device_properties.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES;
-    CHECK(xpu::ze::zeDeviceGetProperties(device, &device_properties));
+    ZE_CHECK(xpu::ze::zeDeviceGetProperties(device, &device_properties));
     auto device_name = std::string(device_properties.name);
 
     // Get driver version size.
     // Note: copied from engine_impl. See a comment there.
     ze_result_t (*pfnGetDriverVersionFn)(ze_driver_handle_t, char *, size_t *);
-    CHECK(xpu::ze::zeDriverGetExtensionFunctionAddress(driver,
+    ZE_CHECK(xpu::ze::zeDriverGetExtensionFunctionAddress(driver,
             "zeIntelGetDriverVersionString", (void **)&pfnGetDriverVersionFn));
 
     size_t driver_version_len = 0;

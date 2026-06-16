@@ -35,10 +35,10 @@ status_t stream_impl_t::init(
         command_queue_desc.mode = ZE_COMMAND_QUEUE_MODE_DEFAULT;
         command_queue_desc.priority = ZE_COMMAND_QUEUE_PRIORITY_NORMAL;
 
-        CHECK(ze::zeCommandListCreateImmediate(
+        ZE_CHECK(ze::zeCommandListCreateImmediate(
                 context, device, &command_queue_desc, &list_.unwrap()));
     } else {
-        CHECK(ze::zeCommandListGetContextHandle(list_, &context));
+        ZE_CHECK(ze::zeCommandListGetContextHandle(list_, &context));
     }
 
     if ((flags() & stream_flags::out_of_order) && is_profiling_enabled()) {
@@ -57,7 +57,7 @@ status_t stream_impl_t::init(
         // validation or a single model profiling.
         event_pool_desc.count = 16 * 1024;
 
-        CHECK(ze::zeEventPoolCreate(
+        ZE_CHECK(ze::zeEventPoolCreate(
                 context, &event_pool_desc, 0, nullptr, &event_pool_.unwrap()));
     }
 
@@ -101,8 +101,8 @@ ze_event_handle_t stream_impl_t::create_event() {
     event_desc.wait = ZE_EVENT_SCOPE_FLAG_HOST;
 
     ze_event_handle_t event;
-    auto st = ze::zeEventCreate(event_pool_, &event_desc, &event);
-    if (st != status::success) return nullptr;
+    auto ze_status = ze::zeEventCreate(event_pool_, &event_desc, &event);
+    if (ze_status != ZE_RESULT_SUCCESS) return nullptr;
 
     events_.emplace_back(event);
 
@@ -110,13 +110,13 @@ ze_event_handle_t stream_impl_t::create_event() {
 }
 
 status_t stream_impl_t::wait() {
-    CHECK(ze::zeCommandListHostSynchronize(list_, UINT64_MAX));
+    ZE_CHECK(ze::zeCommandListHostSynchronize(list_, UINT64_MAX));
 
     return status::success;
 }
 
 status_t stream_impl_t::barrier() {
-    CHECK(ze::zeCommandListAppendBarrier(list_, nullptr, 0, nullptr));
+    ZE_CHECK(ze::zeCommandListAppendBarrier(list_, nullptr, 0, nullptr));
 
     return status::success;
 }

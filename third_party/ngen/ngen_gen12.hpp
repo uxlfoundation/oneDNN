@@ -926,7 +926,7 @@ static inline void encodeCommon12(Instruction12 &i, Opcode opcode, const Instruc
     i2.common.maskCtrl = mod.parts.maskCtrl;
     i2.common.atomicCtrl = mod.parts.threadCtrl;
     i2.commonXeHPC.dstExt = (dst.isIndirect() ? dst.getOffset() : dst.getByteOffset()) & 1;
-    if (opcode == Opcode::dpas)
+    if (opcode == Opcode::dpas || opcode == Opcode::bdpas)
         i2.common.accWrCtrl = mod.parts.accWrCtrl;   /* {Fwd} */
     i2.common.saturate = mod.parts.saturate;
     i.common = i2.common;

@@ -270,6 +270,14 @@ status_t micro_fwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     problem.Tc = problem.Tc_ext = Type::f32;
     problem.Ts = problem.Tc;
 
+    // Disable bdpas with unsupported k dim.
+    // TODO: Enable 2D block, masking scale loads.
+    if (problem.nativeBDPAS()) {
+        if (((!problem.Ta.isF4() || !problem.Tb.isF4())
+                    || d->head_size() % 64 == 0))
+            problem.bdpasEnabled = true;
+    }
+
     auto problem_kq = problem;
 
     problem_kq.Tc = problem_kq.Ts

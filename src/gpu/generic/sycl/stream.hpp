@@ -53,16 +53,24 @@ public:
         return status::success;
     }
 
+    void before_exec_hook() override;
+    void after_exec_hook() override;
+
     status_t reset_profiling() override {
         if (!is_profiling_enabled()) return status::invalid_arguments;
-        profiler_->reset();
+        profiler().reset();
         return status::success;
     }
 
     status_t get_profiling_data(profiling_data_kind_t data_kind,
             int *num_entries, uint64_t *data) const override {
         if (!is_profiling_enabled()) return status::invalid_arguments;
-        return profiler_->get_info(data_kind, num_entries, data);
+        return profiler().get_info(data_kind, num_entries, data);
+    }
+
+    status_t notify_profiling_complete() const override {
+        if (!is_profiling_enabled()) return status::invalid_arguments;
+        return profiler().notify_profiling_complete();
     }
 
     ::sycl::queue &queue() const { return *impl()->queue(); }

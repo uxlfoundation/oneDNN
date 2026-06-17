@@ -2694,7 +2694,7 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
             bgmmc.has_zero_point_b && !bgmmc.with_wei_decompression,
             bgmmc.has_zero_point_c, bgmmc.with_dst_scales);
 
-    bgmmc.zp_a_comp_shift_n = bgmmc.wei_n_blk;
+    bgmmc.zp_a_comp_shift_n = rnd_up(bgmmc.N_blk, bgmmc.wei_n_blk);
     bgmmc.zp_a_comp_elems_per_thr
             = bgmmc.N_chunk_size * bgmmc.zp_a_comp_shift_n;
 

@@ -110,15 +110,11 @@ bool matmul_amx_blocking_params_macro_t::is_supported(
             bm_conf_utils.check_b_layout_blocked_by_n(bgmmc.wei_tag),
             bm_conf_utils.check_b_layout_blocked_32_by_n(bgmmc.wei_tag));
 
-    bool has_zp = bgmmc.src_zp_type != brgemm_broadcast_t::none
-            || bgmmc.wei_zp_type != brgemm_broadcast_t::none
-            || bgmmc.dst_zp_type != brgemm_broadcast_t::none;
-
     return bgmmc.orig_src_dt == bgmmc.src_dt
             && (bgmmc.orig_wei_dt == bgmmc.wei_dt || bgmmc.is_xf16_fp8)
             && bgmmc.is_amx && !bgmmc.is_runtime_N && !bgmmc.is_runtime_M
             && a_dt_ok && a_tag_ok && b_dt_ok && b_tag_ok
-            && (bgmmc.reduce_kind == matmul_reduce_kind::undef) && !has_zp
+            && (bgmmc.reduce_kind == matmul_reduce_kind::undef)
             && !bgmmc.packed_sparse_weights;
 }
 
@@ -176,7 +172,7 @@ bool matmul_amx_blocking_params_macro_t::maybe_small_dims_heuristics(
 
         best_blocking.brgemm_batch_size_ = 1;
         best_blocking.need_buf_c_ = false;
-        best_blocking.need_buf_a_ = false;
+        best_blocking.need_buf_a_ = best_blocking.use_buffer_a;
 
         best_blocking.extendable_k_ = bgmmc.K % best_blocking.wei_k_blk != 0
                 && !best_blocking.skip_extendable_k();
@@ -531,9 +527,21 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
     }
 
     float strip_tmul = num_tmuls_per_strip * num_cycles_per_tmul;
+    float total_post = 4 + this->postops_inst_count;
 
-    float strip_avx
-            = this->postops_inst_count * num_postop_cache_lines / avx_ipc;
+    bool has_zp = this->src_zp_type != brgemm_broadcast_t::none
+            || this->wei_zp_type != brgemm_broadcast_t::none
+            || this->dst_zp_type != brgemm_broadcast_t::none;
+
+    bool has_scales = this->with_dst_scales || this->with_src_scales
+            || this->with_wei_scales;
+
+    // need_buf_a_ = use_buffer_a;
+
+    if (has_scales) total_post += 1;
+    if (has_zp) total_post += 1;
+
+    float strip_avx = total_post * num_postop_cache_lines / avx_ipc;
     float strip_mid_cycles = b_transform_cycles_v
             + std::max({strip_mid_dram, strip_mid_llc, l1_cycles, strip_tmul,
                     strip_avx});

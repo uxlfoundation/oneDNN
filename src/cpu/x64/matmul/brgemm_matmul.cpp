@@ -2502,9 +2502,9 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
             // problems running in multitreaded execution mode
             const int base_offset = get_bb_idx(b_idx, bgmmc_.bcast_B_desc)
                             * rnd_up(bgmmc_.N, bgmmc_.wei_n_blk)
-                    + n_blk_idx * bgmmc_.wei_n_blk;
+                    + n_blk_idx * bgmmc_.N_blk;
             PRAGMA_OMP_SIMD()
-            for (int b = 0; b < bgmmc_.wei_n_blk; b++)
+            for (int b = 0; b < bgmmc_.N_blk; b++)
                 zp_comp[b] = -get_neg_zp_a()
                         * reorder_zp_a_comp_ptr_[base_offset + b];
         }

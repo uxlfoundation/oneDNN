@@ -6151,12 +6151,11 @@ private:
             cmp(reg_K, 0);
             jle(K_loop_done, T_NEAR);
             // Tail of 1..k_blk_step-1 K-rows. The source is read as whole
-            // zero-padded fp8 packs, so the exact tail count only matters for
-            // the destination, which is written in whole xf16 packs of
-            // tr_k_blk_step rows. Hence just two cases: a tail wider than
-            // tr_k_blk_step writes two packs, otherwise one (tails of 1 and 2
-            // rows are identical). Leave reg_src (last source read) so the
-            // next zero-pad pass appends its packs contiguously.
+            // zero-padded fp8 packs, so the tail count only affects the
+            // destination: a tail wider than tr_k_blk_step writes two xf16
+            // packs, otherwise one (tails of 1 and 2 rows are identical).
+            // reg_src is not advanced: this is the last source read of the
+            // pass and reg_src is restored from reg_src_back afterwards.
             Label tail_one_pack;
             cmp(reg_K, tr_k_blk_step);
             jle(tail_one_pack, T_NEAR);

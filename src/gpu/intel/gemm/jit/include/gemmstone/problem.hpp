@@ -190,8 +190,8 @@ struct GEMMProblem : public CommonProblem {
     BatchMode batch = BatchMode::None;              // Batch mode.
     int batchDims = 0;                              // # of batch dimensions (strided batch only).
     bool sumA = false, sumB = false;                // If true, calculate A row sums/B column sums and store in CO.
-    bool forceGroupSumsA = false;
-    bool forceGroupSumsB = false;
+    bool hasGroupSumsA = false;
+    bool hasGroupSumsB = false;
     bool bdpasEnabled = false;                             // bdpas enabled for problem.
     bool cMXScale = false;
     MatrixAddressing sroundSeed;
@@ -261,8 +261,8 @@ struct GEMMProblem : public CommonProblem {
     bool aOffset2D() const { return (aoPtrDims >= 2); }
     bool bOffset2D() const { return (boPtrDims >= 2); }
 
-    bool quantized2DA() const { return forceGroupSumsB || aOffset2D() || aScale2D(); }
-    bool quantized2DB() const { return forceGroupSumsA || bOffset2D() || bScale2D(); }
+    bool quantized2DA() const { return hasGroupSumsB || aOffset2D() || aScale2D(); }
+    bool quantized2DB() const { return hasGroupSumsA || bOffset2D() || bScale2D(); }
 
     bool earlyDequantizeA() const { return (aOffset == ABOffset::Calc && earlyDequantizableOffset(Ta_ext, Tao, Ta)) || (aScale2D() && (Ta_scale.isSubsetOf(Ta) || (Ta.isFP() && !Ta.isF4() && !Ta.isF8()))); }
     bool earlyDequantizeB() const { return (bOffset == ABOffset::Calc && earlyDequantizableOffset(Tb_ext, Tbo, Tb)) || (bScale2D() && (Tb_scale.isSubsetOf(Tb) || (Tb.isFP() && !Tb.isF4() && !Tb.isF8()))); }

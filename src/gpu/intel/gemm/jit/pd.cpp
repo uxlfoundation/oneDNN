@@ -788,8 +788,8 @@ status_t pd_t::init_GEMMProblem(
     problem.sumA = (reduce_ab == sum_ab::sum_b_col);
     problem.sumB = (reduce_ab == sum_ab::sum_a_row);
     if (swap_ab_) std::swap(problem.sumA, problem.sumB);
-    problem.forceGroupSumsA = a_quant.force_gs;
-    problem.forceGroupSumsB = b_quant.force_gs;
+    problem.hasGroupSumsA = a_quant.force_gs;
+    problem.hasGroupSumsB = b_quant.force_gs;
 
     problem.postOps.cStochasticRound = dst_sround;
 
@@ -797,6 +797,7 @@ status_t pd_t::init_GEMMProblem(
         problem.autoTypeConversions(has_systolic);
 
     if (problem.needsAGroupSums()) {
+        if (!problem.hasGroupSumsA) return status::unimplemented;
         data_type_t gs_dt = a_quant.gs_type == data_type::undef
                 ? data_type::s32
                 : a_quant.gs_type;
@@ -806,6 +807,7 @@ status_t pd_t::init_GEMMProblem(
         if (problem.aqGroupK == 0) problem.aqGroupK = problem.bqGroupK;
     }
     if (problem.needsBGroupSums()) {
+        if (!problem.hasGroupSumsB) return status::unimplemented;
         data_type_t gs_dt = b_quant.gs_type == data_type::undef
                 ? data_type::s32
                 : b_quant.gs_type;

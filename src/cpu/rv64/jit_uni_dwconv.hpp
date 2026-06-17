@@ -17,6 +17,9 @@
 #ifndef CPU_RV64_JIT_UNI_DWCONV_HPP
 #define CPU_RV64_JIT_UNI_DWCONV_HPP
 
+#include "common/dnnl_thread.hpp"
+#include "common/float16.hpp"
+#include "common/memory_tracking.hpp"
 #include "common/primitive.hpp"
 #include "common/utils.hpp"
 #include "cpu/cpu_convolution_pd.hpp"
@@ -88,7 +91,31 @@ struct jit_uni_dwconv_fwd_t : public primitive_t {
                                    memory_desc_matches_tag(*weights_md(1), x)),
                     VERBOSE_UNSUPPORTED_TAG);
 
+            book_scratchpad();
+
             return status::success;
+        }
+
+    private:
+        void book_scratchpad() {
+            const dim_t padded_h = IH() + padT() + padB();
+            const dim_t padded_w = IW() + padL() + padR();
+            const dim_t groups = G();
+            const dim_t oc_per_group = OC() / groups;
+            const int nthr = dnnl_get_max_threads();
+
+            auto scratchpad = scratchpad_registry().registrar();
+            scratchpad.book<float16_t>(
+                    memory_tracking::names::key_conv_pack_space,
+                    (size_t)oc_per_group * 3 * 3 * groups);
+            scratchpad.book<float16_t>(
+                    memory_tracking::names::key_conv_rtus_space,
+                    (size_t)nthr * padded_h * padded_w * groups);
+            if (with_bias()) {
+                scratchpad.book<float>(
+                        memory_tracking::names::key_conv_padded_bias,
+                        (size_t)groups * oc_per_group);
+            }
         }
     };
 

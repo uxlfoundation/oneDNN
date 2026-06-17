@@ -18,7 +18,6 @@
 
 #include <algorithm>
 #include <cstddef>
-#include <vector>
 
 #include "common/dnnl_thread.hpp"
 #include "common/float16.hpp"
@@ -547,10 +546,9 @@ static void pack_input_nhwc(const float16_t *src,
 
 static void pack_weights_goihw(const float16_t *weights,
         const memory_desc_wrapper &wei_d, dim_t groups, dim_t oc_per_group,
-        std::vector<float16_t> &packed) {
-    packed.resize(oc_per_group * 3 * 3 * groups);
+        float16_t *packed) {
     for (dim_t oc = 0; oc < oc_per_group; ++oc) {
-        float16_t *oc_base = packed.data() + oc * 9 * groups;
+        float16_t *oc_base = packed + oc * 9 * groups;
         for (dim_t kh = 0; kh < 3; ++kh) {
             for (dim_t kw = 0; kw < 3; ++kw) {
                 float16_t *k_base = oc_base + (kh * 3 + kw) * groups;
@@ -561,17 +559,13 @@ static void pack_weights_goihw(const float16_t *weights,
     }
 }
 
-static void prepare_bias(const void *bias, bool bias_is_f32, dim_t channels,
-        std::vector<float> &bias_fp32) {
-    if (bias == nullptr) {
-        bias_fp32.clear();
-        return;
-    }
+static void prepare_bias(
+        const void *bias, bool bias_is_f32, dim_t channels, float *bias_fp32) {
+    if (bias == nullptr) return;
 
-    bias_fp32.resize(channels);
     if (bias_is_f32) {
         const auto *bias_data = static_cast<const float *>(bias);
-        std::copy_n(bias_data, channels, bias_fp32.begin());
+        std::copy_n(bias_data, channels, bias_fp32);
     } else {
         const auto *bias_data = static_cast<const float16_t *>(bias);
         for (dim_t c = 0; c < channels; ++c)
@@ -607,42 +601,60 @@ status_t jit_uni_dwconv_fwd_t::execute(const exec_ctx_t &ctx) const {
     const dim_t padded_w = iw + l_pad + r_pad;
     const dim_t stride_h = cd->strides[0];
 
-    std::vector<float16_t> packed_weights;
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
+    auto *packed_weights = scratchpad.template get<float16_t>(
+            memory_tracking::names::key_conv_pack_space);
     pack_weights_goihw(wei, wei_d, groups, oc_per_group, packed_weights);
 
-    std::vector<float> bias_fp32;
+    float *bias_fp32 = nullptr;
     const bool bias_is_f32 = pd()->with_bias()
             && pd()->weights_md(1)->data_type == data_type::f32;
-    prepare_bias(bias, bias_is_f32, groups * oc_per_group, bias_fp32);
+    if (pd()->with_bias()) {
+        bias_fp32 = scratchpad.template get<float>(
+                memory_tracking::names::key_conv_padded_bias);
+        prepare_bias(bias, bias_is_f32, groups * oc_per_group, bias_fp32);
+    }
 
-    parallel_nd(mb, oc_per_group, [&](dim_t n, dim_t oc) {
-        std::vector<float16_t> packed_src(
-                tensor_nhwc_elems(1, padded_h, padded_w, groups));
-        pack_input_nhwc(src, src_d, n, ih, iw, groups, padded_h, padded_w,
-                t_pad, l_pad, packed_src.data());
+    const dim_t packed_src_elems
+            = tensor_nhwc_elems(1, padded_h, padded_w, groups);
+    auto *packed_src_base = scratchpad.template get<float16_t>(
+            memory_tracking::names::key_conv_rtus_space);
+    const dim_t work_amount = mb * oc_per_group;
 
-        jit_uni_dwconv_kernel_t::call_params_t args;
-        args.lhs = packed_src.data();
-        args.lhs_stride_0 = padded_w * groups * (dim_t)sizeof(float16_t);
-        args.lhs_stride_1 = groups * (dim_t)sizeof(float16_t);
-        args.rhs = packed_weights.data() + oc * 9 * groups;
-        args.rhs_stride_0 = 3 * groups * (dim_t)sizeof(float16_t);
-        args.rhs_stride_1 = groups * (dim_t)sizeof(float16_t);
-        args.out = dst + dst_d.off(n, oc, 0, 0);
-        args.out_stride_0
-                = dst_d.blocking_desc().strides[2] * (dim_t)sizeof(float16_t);
-        args.out_stride_1
-                = dst_d.blocking_desc().strides[3] * (dim_t)sizeof(float16_t);
-        args.h = oh;
-        args.w = ow;
-        args.c = groups;
-        args.ratio_bytes = oc_per_group * (dim_t)sizeof(float16_t);
-        args.bias
-                = bias_fp32.empty() ? nullptr : bias_fp32.data() + oc * groups;
-        static const jit_uni_dwconv_kernel_t kernel_s1(1);
-        static const jit_uni_dwconv_kernel_t kernel_s2(2);
-        const auto &kernel = stride_h == 1 ? kernel_s1 : kernel_s2;
-        kernel(&args);
+    parallel(0, [&](int ithr, int nthr) {
+        dim_t start = 0, end = 0;
+        balance211(work_amount, nthr, ithr, start, end);
+        auto *packed_src = packed_src_base + (size_t)ithr * packed_src_elems;
+
+        for (dim_t work = start; work < end; ++work) {
+            const dim_t n = work / oc_per_group;
+            const dim_t oc = work % oc_per_group;
+            pack_input_nhwc(src, src_d, n, ih, iw, groups, padded_h, padded_w,
+                    t_pad, l_pad, packed_src);
+
+            jit_uni_dwconv_kernel_t::call_params_t args;
+            args.lhs = packed_src;
+            args.lhs_stride_0 = padded_w * groups * (dim_t)sizeof(float16_t);
+            args.lhs_stride_1 = groups * (dim_t)sizeof(float16_t);
+            args.rhs = packed_weights + oc * 9 * groups;
+            args.rhs_stride_0 = 3 * groups * (dim_t)sizeof(float16_t);
+            args.rhs_stride_1 = groups * (dim_t)sizeof(float16_t);
+            args.out = dst + dst_d.off(n, oc, 0, 0);
+            args.out_stride_0 = dst_d.blocking_desc().strides[2]
+                    * (dim_t)sizeof(float16_t);
+            args.out_stride_1 = dst_d.blocking_desc().strides[3]
+                    * (dim_t)sizeof(float16_t);
+            args.h = oh;
+            args.w = ow;
+            args.c = groups;
+            args.ratio_bytes = oc_per_group * (dim_t)sizeof(float16_t);
+            args.bias
+                    = bias_fp32 == nullptr ? nullptr : bias_fp32 + oc * groups;
+            static const jit_uni_dwconv_kernel_t kernel_s1(1);
+            static const jit_uni_dwconv_kernel_t kernel_s2(2);
+            const auto &kernel = stride_h == 1 ? kernel_s1 : kernel_s2;
+            kernel(&args);
+        }
     });
 
     return status::success;

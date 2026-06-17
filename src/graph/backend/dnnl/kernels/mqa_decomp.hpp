@@ -45,7 +45,6 @@ namespace dnnl_impl {
 template <bool quantized = false, memory::data_type dt = memory::data_type::f32>
 struct mqa_decomp_kernel_t : public kernel_base_t {
 private:
-    allocator_t *g_alloc_ = nullptr;
     // used for mqa internal memory planning
     registry_t mqa_registry_;
     std::shared_ptr<subgraph_t> subgraph_;

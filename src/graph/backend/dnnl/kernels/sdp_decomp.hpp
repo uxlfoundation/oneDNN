@@ -45,7 +45,6 @@ namespace dnnl_impl {
 template <bool quantized = false, memory::data_type dt = memory::data_type::f32>
 struct sdp_decomp_kernel_t : public kernel_base_t {
 private:
-    allocator_t *g_alloc_ = nullptr;
     // used for sdp internal memory planning
     registry_t sdp_registry_;
 

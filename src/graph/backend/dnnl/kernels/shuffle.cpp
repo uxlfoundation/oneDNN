@@ -36,8 +36,6 @@ status_t shuffle_fwd_t::compile_impl(const dnnl_partition_impl_t *part,
         const engine_t *g_engine, const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
     p_engine_ = make_dnnl_engine(*g_engine);
-    g_alloc_
-            = reinterpret_cast<graph::allocator_t *>(g_engine->get_allocator());
 
     const bool reset_layout = false;
     subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), p_engine_,

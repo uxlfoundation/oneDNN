@@ -77,8 +77,8 @@ status_t conv_base_t::execute_impl(const stream_t *g_stream,
             }
         } else {
             c_buffer = std::make_shared<dnnl_constant_buffer_t>(
-                    memory_planner_.total_internal_persistent_size(), p_engine_,
-                    g_alloc_);
+                    memory_planner_.total_internal_persistent_size(),
+                    *p_engine_.get());
             grantor_t c_grantor = memory_planner_.internal_persistent_grantor(
                     c_buffer->data<char>());
             for (auto &mem_offkey : res->get_mems_use_internal_persistent()) {
@@ -146,8 +146,8 @@ status_t conv_base_t::sycl_execute_impl(const stream_t *g_stream,
             }
         } else {
             c_buffer = std::make_shared<dnnl_constant_buffer_t>(
-                    memory_planner_.total_internal_persistent_size(), p_engine_,
-                    g_alloc_);
+                    memory_planner_.total_internal_persistent_size(),
+                    *p_engine_.get());
             grantor_t c_grantor = memory_planner_.internal_persistent_grantor(
                     c_buffer->data<char>());
             for (auto &mem_offkey : res->get_mems_use_internal_persistent()) {
@@ -220,8 +220,8 @@ status_t conv_base_t::ocl_execute_impl(const stream_t *g_stream,
             }
         } else {
             c_buffer = std::make_shared<dnnl_constant_buffer_t>(
-                    memory_planner_.total_internal_persistent_size(), p_engine_,
-                    g_alloc_);
+                    memory_planner_.total_internal_persistent_size(),
+                    *p_engine_.get());
             grantor_t c_grantor = memory_planner_.internal_persistent_grantor(
                     c_buffer->data<char>());
             for (auto &mem_offkey : res->get_mems_use_internal_persistent()) {

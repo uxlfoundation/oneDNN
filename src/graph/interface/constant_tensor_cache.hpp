@@ -17,18 +17,15 @@
 #define GRAPH_INTERFACE_CONSTANT_TENSOR_CACHE_HPP
 
 #include <atomic>
-#include <functional>
 #include <future>
-#include <limits>
 #include <memory>
-#include <type_traits>
+#include <string>
 #include <unordered_map>
 
 #include "common/c_types_map.hpp"
 #include "common/engine.hpp"
 #include "common/rw_mutex.hpp"
 
-#include "graph/interface/allocator.hpp"
 #include "graph/interface/c_types_map.hpp"
 
 namespace dnnl {
@@ -37,23 +34,22 @@ namespace graph {
 
 class constant_buffer_t {
 public:
-    using malloc_func_t = void *(*)(size_t, impl::engine_t *, allocator_t *);
-    using free_func_t = void (*)(void *, impl::engine_t *, allocator_t *);
+    using malloc_func_t = void *(*)(size_t, engine_t *);
+    using free_func_t = void (*)(void *, engine_t *);
 
     // Backends should provide these malloc and free function handles
-    constant_buffer_t(size_t size, impl::engine_t *eng, allocator_t *alc,
-            malloc_func_t malloc_func, free_func_t free_func)
+    constant_buffer_t(size_t size, engine_t *eng, malloc_func_t malloc_func,
+            free_func_t free_func)
         : size_(size)
         , eng_(eng)
-        , alc_(alc)
         , malloc_func_(malloc_func)
         , free_func_(free_func) {
-        data_ = malloc_func_(size, eng, alc);
+        data_ = malloc_func_(size, eng);
         eng_->retain();
     }
 
     virtual ~constant_buffer_t() {
-        free_func_(data_, eng_, alc_);
+        free_func_(data_, eng_);
         eng_->release();
     }
 
@@ -77,8 +73,7 @@ public:
 protected:
     void *data_;
     size_t size_;
-    impl::engine_t *eng_;
-    allocator_t *alc_;
+    engine_t *eng_;
 
 private:
     malloc_func_t malloc_func_;
@@ -166,7 +161,7 @@ private:
 };
 
 constant_tensor_cache_t *get_constant_tensor_cache(
-        impl::engine_kind_t eng_kind, size_t index);
+        engine_kind_t eng_kind, size_t index);
 
 } // namespace graph
 } // namespace impl

@@ -40,7 +40,6 @@ namespace dnnl_impl {
 
 struct sdp_bwd_primitive_kernel_t : public kernel_base_t {
 private:
-    allocator_t *g_alloc_ = nullptr;
 
     std::shared_ptr<subgraph_t> subgraph_;
     memory_planner_t memory_planner_;

@@ -38,17 +38,6 @@
 
 #define GET_OFF(field) (uint32_t) offsetof(call_params_t, field)
 
-#define LDR_IMM(reg, addr, off) \
-    { \
-        const uint64_t IMM12_MASK = ~uint64_t(0xfff); \
-        if (((off) & IMM12_MASK) == 0) { \
-            ldr(reg, ptr(addr, off)); \
-        } else { \
-            add_imm(X_DEFAULT_ADDR, addr, off, X_TMP_0); \
-            ldr(reg, ptr(X_DEFAULT_ADDR)); \
-        } \
-    }
-
 #define VCHECK_BG(f, msg, ...) \
     VCHECK(primitive, create, dispatch, brgemm_matmul, f, msg, ##__VA_ARGS__);
 
@@ -123,7 +112,7 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
     void zero_regs() {
         for (int a = 0; a < brg_.bd_block / 2; a++)
             for (int b = 0; b < brg_.ld_block; b++)
-                eor(acc(a, b).d, acc(a, b).d, acc(a, b).d);
+                uni_clear(acc(a, b));
     }
     void store_regs(int bdb, int ldb, int tail) {
         // Plain s32 dst stores the accumulators directly
@@ -285,7 +274,7 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
         }
 
         if (brg_.zp_type_c != jit_int8_broadcast_t::none) {
-            LDR_IMM(reg_zp_val_c, reg_param, GET_OFF(dst_zero_point));
+            ldr_imm(reg_zp_val_c, reg_param, GET_OFF(dst_zero_point));
             ldr(W_TMP_0, ptr(reg_zp_val_c));
             dup(z0.s, W_TMP_0);
             scvtf(z0.s, P_ALL_ONE, z0.s);
@@ -589,8 +578,8 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
     }
 
     void han_blk() {
-        LDR_IMM(reg_tmp, reg_param, GET_OFF(nb));
-        LDR_IMM(reg_na, reg_param, GET_OFF(na));
+        ldr_imm(reg_tmp, reg_param, GET_OFF(nb));
+        ldr_imm(reg_na, reg_param, GET_OFF(na));
         ldr(WReg(reg_ld_loop.getIdx()), ptr(reg_tmp));
         mov(reg_aux_a1, reg_a);
         mov(reg_aux_c1, reg_c);
@@ -599,10 +588,11 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
 
         asm_do_while(reg_ld_loop, [&]() {
             if (brg_.is_per_m_scales)
-                LDR_IMM(reg_aux_src_scales, reg_param, GET_OFF(src_scales));
+                ldr_imm(reg_aux_src_scales, reg_param, GET_OFF(src_scales));
             ldr(WReg(reg_bd_loop.getIdx()), ptr(reg_na));
             asm_do_while(reg_bd_loop, [&]() {
                 loop_k(bdb, ldb, 0);
+
                 add_imm(reg_aux_a1, reg_aux_a1,
                         div_up(brg_.K, brg_.k_blk) * brg_.k_blk * brg_.bd_block,
                         X_TMP_0);
@@ -635,8 +625,8 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
     }
 
     void han_blk_zp() {
-        LDR_IMM(reg_tmp, reg_param, GET_OFF(nb));
-        LDR_IMM(reg_na, reg_param, GET_OFF(na));
+        ldr_imm(reg_tmp, reg_param, GET_OFF(nb));
+        ldr_imm(reg_na, reg_param, GET_OFF(na));
         mov(reg_aux_a1, reg_a);
         ldr(WReg(reg_bd_loop.getIdx()), ptr(reg_na));
         ldr(WReg(reg_ld_loop.getIdx()), ptr(reg_tmp));
@@ -644,6 +634,7 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
         if (brg_.zp_type_b != jit_int8_broadcast_t::none) {
             asm_for(reg_bd_loop, reg_bd_loop, [&]() {
                 loop_k_zp(bdb, ldb, 0, 1);
+
                 add_imm(reg_aux_a1, reg_aux_a1,
                         div_up(brg_.K, brg_.k_blk) * brg_.k_blk * brg_.bd_block,
                         X_TMP_0);
@@ -654,6 +645,7 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
         if (brg_.zp_type_a != jit_int8_broadcast_t::none) {
             asm_for(reg_ld_loop, reg_ld_loop, [&]() {
                 loop_k_zp(bdb, ldb, 1, 0);
+
                 add_imm(reg_zp_a, reg_zp_a,
                         brg_.n_blk * brg_.ld_block * brg_.acc_dt_sz, X_TMP_0);
                 add_imm(reg_b, reg_b,
@@ -779,22 +771,21 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
         preamble();
         config();
 
-        LDR_IMM(reg_a, reg_param, GET_OFF(src));
-        LDR_IMM(reg_b, reg_param, GET_OFF(wei));
-        LDR_IMM(reg_c, reg_param, GET_OFF(dst));
-        LDR_IMM(reg_zp_b, reg_param, GET_OFF(zp_b_ptr));
-        LDR_IMM(reg_zp_a, reg_param, GET_OFF(zp_a_ptr));
+        ldr_imm(reg_a, reg_param, GET_OFF(src));
+        ldr_imm(reg_b, reg_param, GET_OFF(wei));
+        ldr_imm(reg_c, reg_param, GET_OFF(dst));
+        ldr_imm(reg_zp_b, reg_param, GET_OFF(zp_b_ptr));
+        ldr_imm(reg_zp_a, reg_param, GET_OFF(zp_a_ptr));
         if (brg_.is_zp_cal) {
-            LDR_IMM(reg_zp_val_b, reg_param, GET_OFF(wei_zero_point));
-            LDR_IMM(reg_zp_val_a, reg_param, GET_OFF(src_zero_point));
+            ldr_imm(reg_zp_val_b, reg_param, GET_OFF(wei_zero_point));
+            ldr_imm(reg_zp_val_a, reg_param, GET_OFF(src_zero_point));
             han_blk_zp();
         } else {
-
-            LDR_IMM(reg_bias, reg_param, GET_OFF(bias));
-            LDR_IMM(reg_src_scales, reg_param, GET_OFF(scales));
-            LDR_IMM(reg_wei_scales, reg_param, GET_OFF(wei_scales));
-            LDR_IMM(reg_aux_scales, reg_param, GET_OFF(dst_scales));
-            LDR_IMM(reg_zp_aux_b_buf, reg_param, GET_OFF(wei_zero_point_buf));
+            ldr_imm(reg_bias, reg_param, GET_OFF(bias));
+            ldr_imm(reg_src_scales, reg_param, GET_OFF(scales));
+            ldr_imm(reg_wei_scales, reg_param, GET_OFF(wei_scales));
+            ldr_imm(reg_aux_scales, reg_param, GET_OFF(dst_scales));
+            ldr_imm(reg_zp_aux_b_buf, reg_param, GET_OFF(wei_zero_point_buf));
             han_blk();
         }
 
@@ -955,7 +946,7 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
         return true;
     };
 
-    VDISPATCH_MATMUL(init_zp_type(&brg_), VERBOSE_UNSUPPORTED_ZP_CFG);
+    VDISPATCH_MATMUL(init_zp_type(&brg_int8_conf), VERBOSE_UNSUPPORTED_ZP_CFG);
 
     VDISPATCH_MATMUL(check_bias(), VERBOSE_UNSUPPORTED_BIAS_CFG);
 
@@ -985,48 +976,49 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
     auto is_dst_any = dst_d.format_kind() == format_kind::any;
 
     matmul_helper_t helper(src_d, weights_d, dst_d);
-    brg_.K = helper.K();
-    brg_.M = helper.M();
-    brg_.N = helper.N();
-    brg_.B = batch();
+    brg_int8_conf.K = helper.K();
+    brg_int8_conf.M = helper.M();
+    brg_int8_conf.N = helper.N();
+    brg_int8_conf.batch = batch();
 
-    brg_.n_blk = simd_bytes(isa) / brg_.k_blk;
+    brg_int8_conf.n_blk = simd_bytes(isa) / brg_int8_conf.k_blk;
 
     int num_threads = dnnl_get_current_num_threads();
 
-    if (brg_.N <= brg_.n_blk * 2)
-        brg_.ld_block = 2;
-    else if (brg_.N <= brg_.n_blk * 4)
-        brg_.ld_block = 4;
+    if (brg_int8_conf.N <= brg_int8_conf.n_blk * 2)
+        brg_int8_conf.ld_block = 2;
+    else if (brg_int8_conf.N <= brg_int8_conf.n_blk * 4)
+        brg_int8_conf.ld_block = 4;
     else
-        brg_.ld_block = 6;
-    m_block_sz = 32;
-    const int micro_n = brg_.n_blk * brg_.ld_block;
-    n_block_sz = (brg_.ld_block == 6) ? micro_n : 2 * micro_n;
+        brg_int8_conf.ld_block = 6;
+    const int micro_n = brg_int8_conf.n_blk * brg_int8_conf.ld_block;
+    n_block_sz = (brg_int8_conf.ld_block == 6) ? micro_n : 2 * micro_n;
 
     // micro_n is small for 128 bit.
     // so N tiles can get too tiny and we spend time in OpenMP overhead.
     // try a coarser N tile (4x/2x/1x) and pick the first that keeps
     // total work more than num_threads.
-    if (simd_bytes(isa) == 16 && brg_.ld_block == 6) {
+    if (simd_bytes(isa) == 16 && brg_int8_conf.ld_block == 6) {
         // pick the largest N size that still gives enough work.
         int best_n_block_sz = micro_n;
-        const int num_m_tiles = div_up(brg_.M, m_block_sz);
+        const int num_m_tiles = div_up(brg_int8_conf.M, m_block_sz);
         // when M is only a few blocks, starting at 4x can reduce N-parallelism.
-        const bool mid_m = (brg_.M > m_block_sz) && (brg_.M <= 4 * m_block_sz);
+        const bool mid_m = (brg_int8_conf.M > m_block_sz)
+                && (brg_int8_conf.M <= 4 * m_block_sz);
         const bool small_m = num_m_tiles <= 4;
 
         const int preferred_factor = (mid_m || small_m) ? 2 : 4;
         for (int f = preferred_factor; f >= 1; f /= 2) {
             const int temp_n_block_sz = f * micro_n;
-            const int num_n_tiles = div_up(brg_.N, temp_n_block_sz);
-            const int work = (int)brg_.B * num_m_tiles * num_n_tiles;
+            const int num_n_tiles = div_up(brg_int8_conf.N, temp_n_block_sz);
+            const int work
+                    = (int)brg_int8_conf.batch * num_m_tiles * num_n_tiles;
             if (work >= num_threads) {
                 best_n_block_sz = temp_n_block_sz;
                 break;
             }
         }
-        n_block_sz = std::min<int>(brg_.N, best_n_block_sz);
+        n_block_sz = std::min<int>(brg_int8_conf.N, best_n_block_sz);
         // keep the coarsened tile but align it to micro_n so that the last tile
         // is correctly handled by the tail kernel when needed.
         if (n_block_sz % micro_n != 0) {
@@ -1034,13 +1026,13 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
         }
     }
 
-    int num_a_blocks = div_up(brg_.M, m_block_sz);
-    int num_b_blocks = div_up(brg_.N, n_block_sz);
-    mm_parallel_work = brg_.B * num_a_blocks * num_b_blocks;
-    if (mm_parallel_work < num_threads && brg_.ld_block == 4)
+    int num_a_blocks = div_up(brg_int8_conf.M, m_block_sz);
+    int num_b_blocks = div_up(brg_int8_conf.N, n_block_sz);
+    mm_parallel_work = brg_int8_conf.batch * num_a_blocks * num_b_blocks;
+    if (mm_parallel_work < num_threads && brg_int8_conf.ld_block == 4)
         n_block_sz = micro_n;
-    num_b_blocks = div_up(brg_.N, n_block_sz);
-    mm_parallel_work = brg_.B * num_a_blocks * num_b_blocks;
+    num_b_blocks = div_up(brg_int8_conf.N, n_block_sz);
+    mm_parallel_work = brg_int8_conf.batch * num_a_blocks * num_b_blocks;
 
     auto b_tag_2d = format_tag::ab;
     auto b_tag_3d = format_tag::abc;
@@ -1089,7 +1081,7 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
                 VCHECK_BG(memory_desc_init_by_tag(dst_md_, format_tag::ab),
                         VERBOSE_UNSUPPORTED_TAG);
             if (!weights_d.matches_tag(format_tag::ab)) {
-                brg_.b_reo = false;
+                brg_int8_conf.b_reo = false;
                 VCHECK_BG(memory_desc_init_by_tag(weights_md_, b_tag_2d),
                         VERBOSE_UNSUPPORTED_TAG);
             } else {
@@ -1106,7 +1098,7 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
                 VCHECK_BG(memory_desc_init_by_tag(dst_md_, format_tag::abc),
                         VERBOSE_UNSUPPORTED_TAG);
             if (!weights_d.matches_tag(format_tag::abc)) {
-                brg_.b_reo = false;
+                brg_int8_conf.b_reo = false;
                 VCHECK_BG(memory_desc_init_by_tag(weights_md_, b_tag_3d),
                         VERBOSE_UNSUPPORTED_TAG);
             } else {
@@ -1125,7 +1117,7 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
                 VCHECK_BG(memory_desc_init_by_tag(dst_md_, format_tag::abcd),
                         VERBOSE_UNSUPPORTED_TAG);
             if (!weights_d.matches_tag(format_tag::abcd)) {
-                brg_.b_reo = false;
+                brg_int8_conf.b_reo = false;
                 VCHECK_BG(memory_desc_init_by_tag(weights_md_, b_tag_4d),
                         VERBOSE_UNSUPPORTED_TAG);
             } else {
@@ -1152,54 +1144,60 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
 
     const auto &wei_scales = attr()->scales_.get(DNNL_ARG_WEIGHTS);
 
-    brg_.dst_dt = dst_type;
-    brg_.dst_dt_sz = types::data_type_size(dst_type);
-    brg_.na = 1;
-    brg_.nb = 1;
-    brg_.m_tail = brg_.M % brg_.m_blk;
-    brg_.k_tail = brg_.K % (brg_.k_blk * brg_.rd_block);
-    brg_.n_tail = brg_.N % (brg_.n_blk * brg_.ld_block);
-    brg_.is_s8 = is_s8;
-    brg_.is_u8_s8 = is_u8_s8;
-    brg_.is_bias = with_bias();
-    brg_.with_scales = is_scales;
-    brg_.with_src_scales = has_src_scales;
-    brg_.with_wei_scales = has_wei_scales;
-    brg_.with_dst_scales = is_dst_scales;
-    brg_.is_oc_scales = wei_scales.get_mask() > 0;
-    brg_.is_per_m_scales = is_per_m_scales;
-    dyn_.K = brg_.K;
-    dyn_.N = brg_.N;
-    dyn_.M = brg_.M;
-    dyn_.B = brg_.B;
-    dyn_.mtail = brg_.m_tail;
-    dyn_.m_blk = brg_.m_blk;
-    dyn_.k_blk = brg_.k_blk;
-    dyn_.n_blk = brg_.n_blk * brg_.ld_block;
-    dyn_.ntail = brg_.n_tail;
-    dyn_.ktail = dyn_.K % brg_.k_blk;
+    brg_int8_conf.dst_dt = dst_type;
+    brg_int8_conf.dst_dt_sz = types::data_type_size(dst_type);
+    brg_int8_conf.m_tail = brg_int8_conf.M % brg_int8_conf.m_blk;
+    brg_int8_conf.k_tail
+            = brg_int8_conf.K % (brg_int8_conf.k_blk * brg_int8_conf.rd_block);
+    brg_int8_conf.n_tail
+            = brg_int8_conf.N % (brg_int8_conf.n_blk * brg_int8_conf.ld_block);
+    brg_int8_conf.is_s8 = is_s8;
+    brg_int8_conf.is_u8_s8 = is_u8_s8;
+    brg_int8_conf.is_bias = with_bias();
+    brg_int8_conf.with_scales = is_scales;
+    brg_int8_conf.with_src_scales = has_src_scales;
+    brg_int8_conf.with_wei_scales = has_wei_scales;
+    brg_int8_conf.with_dst_scales = is_dst_scales;
+    brg_int8_conf.is_oc_scales = wei_scales.get_mask() > 0;
+    brg_int8_conf.is_per_m_scales = is_per_m_scales;
+    dyn_vals.K = brg_int8_conf.K;
+    dyn_vals.N = brg_int8_conf.N;
+    dyn_vals.M = brg_int8_conf.M;
+    dyn_vals.batch = brg_int8_conf.batch;
+    dyn_vals.mtail = brg_int8_conf.m_tail;
+    dyn_vals.m_blk = brg_int8_conf.m_blk;
+    dyn_vals.k_blk = brg_int8_conf.k_blk;
+    dyn_vals.n_blk = brg_int8_conf.n_blk * brg_int8_conf.ld_block;
+    dyn_vals.ntail = brg_int8_conf.n_tail;
+    dyn_vals.ktail = dyn_vals.K % brg_int8_conf.k_blk;
 
     auto scratchpad = scratchpad_registry().registrar();
-    if (brg_.zp_type_a != jit_int8_broadcast_t::none)
+    if (brg_int8_conf.zp_type_a != jit_int8_broadcast_t::none)
         scratchpad.book(key_brgemm_primitive_zp_comp_a,
-                div_up(brg_.N, (brg_.n_blk * brg_.ld_block))
-                        * (brg_.n_blk * brg_.ld_block) * brg_.acc_dt_sz
-                        * brg_.B,
+                div_up(brg_int8_conf.N,
+                        (brg_int8_conf.n_blk * brg_int8_conf.ld_block))
+                        * (brg_int8_conf.n_blk * brg_int8_conf.ld_block)
+                        * brg_int8_conf.acc_dt_sz * brg_int8_conf.batch,
                 sizeof(char));
-    if (brg_.zp_type_b != jit_int8_broadcast_t::none)
+    if (brg_int8_conf.zp_type_b != jit_int8_broadcast_t::none)
         scratchpad.book(key_brgemm_primitive_zp_comp_b,
-                div_up(brg_.M, brg_.m_blk) * brg_.m_blk * brg_.acc_dt_sz
-                        * brg_.B,
+                div_up(brg_int8_conf.M, brg_int8_conf.m_blk)
+                        * brg_int8_conf.m_blk * brg_int8_conf.acc_dt_sz
+                        * brg_int8_conf.batch,
                 sizeof(char));
     scratchpad.book(key_brgemm_primitive_buffer_a,
-            brg_.B * div_up(brg_.M, brg_.m_blk) * div_up(brg_.K, brg_.k_blk)
-                    * brg_.m_blk * brg_.k_blk,
+            brg_int8_conf.batch * div_up(brg_int8_conf.M, brg_int8_conf.m_blk)
+                    * div_up(brg_int8_conf.K, brg_int8_conf.k_blk)
+                    * brg_int8_conf.m_blk * brg_int8_conf.k_blk,
             sizeof(char));
-    if (brg_.b_reo)
+    if (brg_int8_conf.b_reo)
         scratchpad.book(key_gemm_blocked_b,
-                brg_.B * div_up(brg_.N, (brg_.n_blk * brg_.ld_block))
-                        * (brg_.n_blk * brg_.ld_block)
-                        * div_up(brg_.K, brg_.k_blk) * brg_.k_blk,
+                brg_int8_conf.batch
+                        * div_up(brg_int8_conf.N,
+                                (brg_int8_conf.n_blk * brg_int8_conf.ld_block))
+                        * (brg_int8_conf.n_blk * brg_int8_conf.ld_block)
+                        * div_up(brg_int8_conf.K, brg_int8_conf.k_blk)
+                        * brg_int8_conf.k_blk,
                 sizeof(char));
     book_precomputed_scales(scratchpad, attr()->scales_, N());
 
@@ -1208,92 +1206,43 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
 
 template <cpu_isa_t isa>
 status_t jit_int8_matmul_t<isa>::init(engine_t *engine) {
-
-    const auto &b1 = pd()->get_b();
-    const auto &d1 = pd()->get_d();
-
-    dyn_vals_t d;
-    d.K = d1.K;
-    d.M = d1.M;
-    d.B = d1.B;
-    d.N = d1.N;
-    d.mtail = d1.mtail;
-    d.ktail = d1.ktail;
-    d.ntail = d1.ntail;
-    d.k_blk = d1.k_blk;
-    d.m_blk = d1.m_blk;
-    d.n_blk = d1.n_blk;
-
-    brg_int8_t b;
-    b.M = b1.M;
-    b.K = b1.K;
-    b.N = b1.N;
-    b.n_blk = b1.n_blk;
-    b.na = b1.na;
-    b.nb = b1.nb;
-    b.m_tail = b1.m_tail;
-    b.n_tail = b1.n_tail;
-    b.k_tail = b1.k_tail;
-    b.dst_dt = b1.dst_dt;
-    b.dst_dt_sz = b1.dst_dt_sz;
-    b.is_s8 = b1.is_s8;
-    b.is_u8_s8 = b1.is_u8_s8;
-    b.B = b1.B;
-    b.is_bias = b1.is_bias;
-    b.zp_type_a = b1.zp_type_a;
-    b.zp_type_b = b1.zp_type_b;
-    b.zp_type_c = b1.zp_type_c;
-    b.is_zp_b_int8 = b1.is_zp_b_int8;
-    b.zp_b_dt = b1.zp_b_dt;
-    b.with_scales = b1.with_scales;
-    b.with_src_scales = b1.with_src_scales;
-    b.with_wei_scales = b1.with_wei_scales;
-    b.with_dst_scales = b1.with_dst_scales;
-    b.is_oc_scales = b1.is_oc_scales;
-    b.is_per_m_scales = b1.is_per_m_scales;
-    b.b_reo = b1.b_reo;
-    b.ld_block = b1.ld_block;
+    dyn_vals_t dyn_vals = pd()->dyn_vals;
+    brg_int8_t brg_int8_conf = pd()->brg_int8_conf;
 
     const bool has_eltwise
             = pd()->attr()->post_ops_.find(primitive_kind_t::dnnl_eltwise) >= 0;
 
-    for (int z = 0; z < 2; z++)
-        for (int m = 0; m < 2; m++)
-            for (int n = 0; n < 2; n++)
-                for (int k = 0; k < 2; k++) {
-                    int idx = pd()->get_idx(z, m, k, n, b1);
-                    if (idx == -1 || idx > 15) continue;
-                    b.is_m_tail = m;
-                    b.is_k_tail = k;
-                    b.is_n_tail = n;
-                    b.is_zp_cal = z;
+    // Iterate through every combination of false (0) and true (1)
+    for (bool is_zp_cal : {false, true})
+        for (bool is_m_tail : {false, true})
+            for (bool is_n_tail : {false, true})
+                for (bool is_k_tail : {false, true}) {
+                    int idx = pd()->get_idx(is_zp_cal, is_m_tail, is_k_tail,
+                            is_n_tail, brg_int8_conf);
+                    if (idx == -1) continue;
+                    brg_int8_conf.is_m_tail = is_m_tail;
+                    brg_int8_conf.is_k_tail = is_k_tail;
+                    brg_int8_conf.is_n_tail = is_n_tail;
+                    brg_int8_conf.is_zp_cal = is_zp_cal;
 
-                    if (has_eltwise) {
-                        int8_kernels_[idx] = std::unique_ptr<
-                                jit_int8_matmul_kernel_t<isa>> {
-                                new jit_int8_matmul_kernel_t<isa>(
-                                        b, pd()->attr()->post_ops_)};
-                    } else {
-                        int8_kernels_[idx] = std::unique_ptr<
-                                jit_int8_matmul_kernel_t<isa>> {
-                                new jit_int8_matmul_kernel_t<isa>(b)};
-                    }
+                    const auto post_ops = has_eltwise ? pd()->attr()->post_ops_
+                                                      : post_ops_t {};
 
-                    if (!int8_kernels_[idx]) return status::runtime_error;
+                    safe_ptr_assign(int8_kernels_[idx],
+                            new jit_int8_matmul_kernel_t<isa>(
+                                    brg_int8_conf, post_ops));
 
                     CHECK(int8_kernels_[idx]->create_kernel());
                 }
 
-    d.reorder_a = 1;
-    d.reorder_b = 0;
-    reo_ker_a_ = std::unique_ptr<jit_int8_matmul_utils_kernel_t> {
-            new jit_int8_matmul_utils_kernel_t(d, isa)};
+    safe_ptr_assign(reo_ker_a_,
+            new jit_int8_matmul_utils_kernel_t(dyn_vals, isa,
+                    jit_int8_matmul_utils_kernel_t::alg::reorder_src));
     CHECK(reo_ker_a_->create_kernel());
 
-    d.reorder_b = 1;
-    d.reorder_a = 0;
-    reo_ker_b_ = std::unique_ptr<jit_int8_matmul_utils_kernel_t> {
-            new jit_int8_matmul_utils_kernel_t(d, isa)};
+    safe_ptr_assign(reo_ker_b_,
+            new jit_int8_matmul_utils_kernel_t(dyn_vals, isa,
+                    jit_int8_matmul_utils_kernel_t::alg::reorder_wei));
     CHECK(reo_ker_b_->create_kernel());
 
     return status::success;
@@ -1306,8 +1255,8 @@ jit_int8_matmul_t<isa>::~jit_int8_matmul_t() = default;
 
 template <cpu_isa_t isa>
 status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
-    const auto *weights_b = CTX_IN_MEM(const float *, DNNL_ARG_WEIGHTS);
-    const auto *src_b = CTX_IN_MEM(const float *, DNNL_ARG_SRC);
+    const auto *wei = CTX_IN_MEM(const float *, DNNL_ARG_WEIGHTS);
+    const auto *src = CTX_IN_MEM(const float *, DNNL_ARG_SRC);
     auto dst = CTX_OUT_MEM(uint8_t *, DNNL_ARG_DST);
     const auto *bias = CTX_IN_MEM(const float *, DNNL_ARG_BIAS);
 
@@ -1322,25 +1271,30 @@ status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
     DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
     DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
 
-    const auto &b = pd()->get_b();
-    const auto &d = pd()->get_d();
+    const auto &b = pd()->brg_int8_conf;
+    const auto &d = pd()->dyn_vals;
 
     const auto &scratchpad = ctx.get_scratchpad_grantor();
 
     int num_threads = dnnl_get_current_num_threads();
-    char *src = scratchpad.template get<char>(key_brgemm_primitive_buffer_a);
-    char *weights = (b.b_reo)
+
+    char *src_reorder_buffer
+            = scratchpad.template get<char>(key_brgemm_primitive_buffer_a);
+    char *wei_reorder_buffer = (b.b_reo)
             ? scratchpad.template get<char>(key_gemm_blocked_b)
-            : (char *)weights_b;
-    char *zp_ptr_a;
+            : (char *)wei;
+
+    float *zp_ptr_a = nullptr;
     if (b.zp_type_a != jit_int8_broadcast_t::none)
-        zp_ptr_a
-                = scratchpad.template get<char>(key_brgemm_primitive_zp_comp_a);
-    char *zp_ptr_b;
+        zp_ptr_a = scratchpad.template get<float>(
+                key_brgemm_primitive_zp_comp_a);
+
+    float *zp_ptr_b = nullptr;
     if (b.zp_type_b != jit_int8_broadcast_t::none)
-        zp_ptr_b
-                = scratchpad.template get<char>(key_brgemm_primitive_zp_comp_b);
-    alignas(16) float unit_scale_buf[16];
+        zp_ptr_b = scratchpad.template get<float>(
+                key_brgemm_primitive_zp_comp_b);
+
+    alignas(16) float unit_scale_buf[16] = {};
     utils::array_set(unit_scale_buf, 1.0f, 16);
     const auto &attr_scales = pd()->attr()->scales_;
     const bool need_wei_scale_copy = b.with_wei_scales
@@ -1351,56 +1305,77 @@ status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
                       pd()->N(), pd()->attr())
             : wei_scales;
 
-    const dim_t B = b.B;
+    const dim_t batch = b.batch;
     const dim_t M = b.M;
     const dim_t N = b.N;
     const dim_t K = b.K;
 
     auto reorder_a = [&]() {
-        int m_blks = div_up(M, b.m_blk);
-        int k_blks = div_up(K, b.k_blk);
-        int parallel_work = B * m_blks * k_blks;
-        int blk_per_bt = m_blks * k_blks;
-        auto tmp_src = src_b;
+        int num_m_blks = div_up(M, b.m_blk);
+        int num_k_blks = div_up(K, b.k_blk);
+        int blks_per_batch = num_m_blks * num_k_blks;
+        int parallel_work = batch * blks_per_batch;
         // If parallel_work == 1, we limit num threads to 1 as parallel(1, ...)
         // does not create a parallel section. We do not limit number of threads
         // for case 1 < parallel_work_amount_ < dnnl_get_max_threads() to avoid
         // potential overhead on spawning different number of OMP threads from
         // layer to layer.
-        int nt = parallel_work > 1 ? num_threads : 1;
-        parallel(nt, [&](const int ithr, const int nthr) {
+        int adjusted_threads = parallel_work > 1 ? num_threads : 1;
+
+        parallel(adjusted_threads, [&](const int ithr, const int nthr) {
             int start {0}, end {0};
-            balance211(parallel_work, nt, ithr, start, end);
+            balance211(parallel_work, adjusted_threads, ithr, start, end);
 
-            int bt = start / blk_per_bt;
-            int bs = start % blk_per_bt;
-            int nobl = end - start;
-            int nobt = 1;
-            int noblf = end - start, nobll;
+            // batch within which this thread's work range begins
+            const int start_batch = start / blks_per_batch;
+            // how far into the current batch this thread starts its work
+            int thread_start_offset = start % blks_per_batch;
+            const int thread_work_range = end - start;
+            int batches_of_this_thread = 1;
+            int work_for_first_batch = end - start;
+            int work_for_last_batch = 0;
 
-            if (bs + nobl > blk_per_bt) {
-                nobt += div_up(nobl - (blk_per_bt - bs), blk_per_bt);
-                noblf = blk_per_bt - bs;
-                nobll = (nobl - (blk_per_bt - bs)) % blk_per_bt;
-                if (nobll == 0) nobll = blk_per_bt;
+            // If this thread's work straddles more than one batch, split it up
+            // as:
+            // first batch work + n * full batches + last batch work
+            const auto spillover
+                    = thread_start_offset + thread_work_range - blks_per_batch;
+            if (spillover > 0) {
+                batches_of_this_thread += div_up(spillover, blks_per_batch);
+
+                work_for_first_batch = blks_per_batch - thread_start_offset;
+                work_for_last_batch = spillover % blks_per_batch;
+
+                if (work_for_last_batch == 0)
+                    work_for_last_batch = blks_per_batch;
             }
-            int nob;
-            for (int i = 0; i < nobt; i++) {
-                nob = (i == 0) ? noblf : ((i == nobt - 1) ? nobll : blk_per_bt);
-                bs = start % blk_per_bt;
-                int m_blk_src = bs / k_blks;
-                int k_blk_src = bs % k_blks;
-                int m_blk_dst = bs / k_blks;
-                int k_blk_dst = bs % k_blks;
 
-                int k1 = std::min(k_blks - k_blk_src, nob);
-                int k_tmp = nob - k1;
-                int m1 = (k_tmp > 0) ? k_tmp / k_blks : 0;
-                int k2 = (k_tmp > 0) ? k_tmp % k_blks : 0;
-                int src_ad = (bt * M * K) + (m_blk_src * b.m_blk * K)
+            int work_this_batch {};
+            for (int i = 0; i < batches_of_this_thread; i++) {
+                if (i == 0) {
+                    work_this_batch = work_for_first_batch;
+                } else if (i == (batches_of_this_thread - 1)) {
+                    work_this_batch = work_for_last_batch;
+                } else {
+                    work_this_batch = blks_per_batch;
+                }
+
+                thread_start_offset = start % blks_per_batch;
+                const int current_batch = start_batch + i;
+                const int m_blk_src = thread_start_offset / num_k_blks;
+                const int k_blk_src = thread_start_offset % num_k_blks;
+                const int m_blk_dst = thread_start_offset / num_k_blks;
+                const int k_blk_dst = thread_start_offset % num_k_blks;
+
+                int k1 = std::min(num_k_blks - k_blk_src, work_this_batch);
+                int k_tmp = work_this_batch - k1;
+                int m1 = (k_tmp > 0) ? k_tmp / num_k_blks : 0;
+                int k2 = (k_tmp > 0) ? k_tmp % num_k_blks : 0;
+                int src_ad = (current_batch * M * K) + (m_blk_src * b.m_blk * K)
                         + (k_blk_src * b.k_blk);
-                int dst_ad = (bt * m_blks * k_blks * b.m_blk * b.k_blk)
-                        + (m_blk_dst * k_blks * b.m_blk * b.k_blk)
+                int dst_ad = (current_batch * num_m_blks * num_k_blks * b.m_blk
+                                     * b.k_blk)
+                        + (m_blk_dst * num_k_blks * b.m_blk * b.k_blk)
                         + (k_blk_dst * b.m_blk * b.k_blk);
                 int src_new = src_ad, dst_new = dst_ad;
 
@@ -1408,165 +1383,197 @@ status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
 
                 if (k1 > 0) {
                     int a = 1;
-                    int mtl = (d.mtail > 0) ? 1 : 0;
-                    int tl = (d.ktail > 0) ? 1 : 0;
-                    if (k1 + k_blk_src < k_blks) tl = 0;
-                    if (1 + m_blk_src < m_blks) mtl = 0;
-                    k.src = (int8_t *)tmp_src + src_ad;
-                    k.dst = (int8_t *)src + dst_ad;
+                    bool is_m_tail
+                            = (d.mtail > 0) && !(m_blk_src < num_m_blks - 1);
+                    bool is_k_tail
+                            = (d.ktail > 0) && !(k1 + k_blk_src < num_k_blks);
+                    k.src = (int8_t *)src + src_ad;
+                    k.dst = (int8_t *)src_reorder_buffer + dst_ad;
                     k.nm = &a;
                     k.nk = &k1;
-                    k.tl = &tl;
-                    k.mtl = &mtl;
+                    k.is_k_tail = &is_k_tail;
+                    k.is_m_tail = &is_m_tail;
                     (*reo_ker_a_)(&k);
                 }
 
                 if (m1 > 0) {
-                    int mtl = (d.mtail > 0) ? 1 : 0;
-                    int tl = (d.ktail > 0) ? 1 : 0;
-                    if (1 + m1 + m_blk_src < m_blks) mtl = 0;
-                    if (k1 != k_blks) {
-                        src_new = src_ad - b.k_blk * (k_blks - k1)
+                    bool is_m_tail = (d.mtail > 0)
+                            && !(m1 + m_blk_src < num_m_blks - 1);
+                    bool is_k_tail = (d.ktail > 0);
+                    if (k1 != num_k_blks) {
+                        src_new = src_ad - b.k_blk * (num_k_blks - k1)
                                 + b.m_blk * K;
                     } else {
                         src_new = src_ad + b.m_blk * K;
                     }
                     dst_new = dst_ad + b.m_blk * b.k_blk * k1;
-                    k.src = (int8_t *)tmp_src + src_new;
-                    k.dst = (int8_t *)src + dst_new;
+                    k.src = (int8_t *)src + src_new;
+                    k.dst = (int8_t *)src_reorder_buffer + dst_new;
                     k.nm = &m1;
-                    k.nk = &k_blks;
-                    k.tl = &tl;
-                    k.mtl = &mtl;
+                    k.nk = &num_k_blks;
+                    k.is_k_tail = &is_k_tail;
+                    k.is_m_tail = &is_m_tail;
                     (*reo_ker_a_)(&k);
                 }
                 if (k2 > 0) {
-                    int a = 1, tl = 0;
-                    int mtl = (d.mtail > 0) ? 1 : 0;
-                    if (1 + 1 + m1 + m_blk_src < m_blks) mtl = 0;
+                    int a = 1;
+                    bool is_m_tail = (d.mtail > 0)
+                            && !(m1 + m_blk_src < num_m_blks - 2);
+                    bool is_k_tail = false;
                     if (m1 < 1) {
-                        src_new = src_ad - b.k_blk * (k_blks - k1)
+                        src_new = src_ad - b.k_blk * (num_k_blks - k1)
                                 + (b.m_blk * K);
                         dst_new = dst_ad + b.m_blk * b.k_blk * k1;
                     } else {
                         src_new += K * m1 * b.m_blk;
-                        dst_new += b.m_blk * b.k_blk * k_blks * m1;
+                        dst_new += b.m_blk * b.k_blk * num_k_blks * m1;
                     }
-                    k.src = (int8_t *)tmp_src + src_new;
-                    k.dst = (int8_t *)src + dst_new;
+                    k.src = (int8_t *)src + src_new;
+                    k.dst = (int8_t *)src_reorder_buffer + dst_new;
                     k.nm = &a;
                     k.nk = &k2;
-                    k.tl = &tl;
-                    k.mtl = &mtl;
+                    k.is_k_tail = &is_k_tail;
+                    k.is_m_tail = &is_m_tail;
                     (*reo_ker_a_)(&k);
                 }
-                bt++;
-                start += nob;
+
+                start += work_this_batch;
             }
         });
     };
 
     auto reorder_b = [&]() {
-        int k_blks = div_up(K, d.k_blk);
-        int n_blks = div_up(N, d.n_blk);
-        int parallel_work = B * n_blks * k_blks;
-        int blk_per_bt = n_blks * k_blks;
-        int nt = parallel_work > 1 ? num_threads : 1;
-        parallel(nt, [&](const int ithr, const int nthr) {
+        const int num_k_blks = div_up(K, d.k_blk);
+        const int num_n_blks = div_up(N, d.n_blk);
+        const int blks_per_batch = num_n_blks * num_k_blks;
+        const int parallel_work = batch * blks_per_batch;
+        // If parallel_work == 1, we limit num threads to 1 as parallel(1, ...)
+        // does not create a parallel section. We do not limit number of threads
+        // for case 1 < parallel_work_amount_ < dnnl_get_max_threads() to avoid
+        // potential overhead on spawning different number of OMP threads from
+        // layer to layer.
+        const int adjusted_threads = parallel_work > 1 ? num_threads : 1;
+
+        parallel(adjusted_threads, [&](const int ithr, const int nthr) {
             int start {0}, end {0};
-            balance211(parallel_work, nt, ithr, start, end);
-            int bt = start / blk_per_bt;
-            int bs = start % blk_per_bt;
-            int nobl = end - start;
-            int nobt = 1;
-            int noblf = end - start, nobll;
+            balance211(parallel_work, adjusted_threads, ithr, start, end);
+            // batch within which this thread's work range begins
+            const int start_batch = start / blks_per_batch;
+            // how far into the current batch this thread starts its work
+            int thread_start_offset = start % blks_per_batch;
+            const int thread_work_range = end - start;
+            int batches_of_this_thread = 1;
+            int work_for_first_batch = end - start;
+            int work_for_last_batch = 0;
 
-            if (bs + nobl > blk_per_bt) {
-                nobt += div_up(nobl - (blk_per_bt - bs), blk_per_bt);
-                noblf = blk_per_bt - bs;
-                nobll = (nobl - (blk_per_bt - bs)) % blk_per_bt;
-                if (nobll == 0) nobll = blk_per_bt;
+            // If this thread's work straddles more than one batch, split it up
+            // as:
+            // first batch work + n * full batches + last batch work
+            const auto spillover
+                    = thread_start_offset + thread_work_range - blks_per_batch;
+            if (spillover > 0) {
+                batches_of_this_thread += div_up(spillover, blks_per_batch);
+
+                work_for_first_batch = blks_per_batch - thread_start_offset;
+                work_for_last_batch = spillover % blks_per_batch;
+
+                if (work_for_last_batch == 0)
+                    work_for_last_batch = blks_per_batch;
             }
-            int nob;
-            for (int i = 0; i < nobt; i++) {
-                nob = (i == 0) ? noblf : ((i == nobt - 1) ? nobll : blk_per_bt);
-                bs = start % blk_per_bt;
-                int n_blk_src = bs / k_blks;
-                int k_blk_src = bs % k_blks;
-                int n_blk_dst = bs / k_blks;
-                int k_blk_dst = bs % k_blks;
 
-                int k1 = std::min(k_blks - k_blk_src, nob);
-                int k_tmp = nob - k1;
-                int n1 = (k_tmp > 0) ? k_tmp / k_blks : 0;
-                int k2 = (k_tmp > 0) ? k_tmp % k_blks : 0;
-                int src_ad = (bt * N * K) + (n_blk_src * d.n_blk)
+            int work_this_batch {};
+            for (int i = 0; i < batches_of_this_thread; i++) {
+                if (i == 0) {
+                    work_this_batch = work_for_first_batch;
+                } else if (i == (batches_of_this_thread - 1)) {
+                    work_this_batch = work_for_last_batch;
+                } else {
+                    work_this_batch = blks_per_batch;
+                }
+
+                thread_start_offset = start % blks_per_batch;
+                const int current_batch = start_batch + i;
+                const int n_blk_src = thread_start_offset / num_k_blks;
+                const int k_blk_src = thread_start_offset % num_k_blks;
+                const int n_blk_dst = thread_start_offset / num_k_blks;
+                const int k_blk_dst = thread_start_offset % num_k_blks;
+
+                int k1 = std::min(num_k_blks - k_blk_src, work_this_batch);
+                int k_tmp = work_this_batch - k1;
+                int n1 = (k_tmp > 0) ? k_tmp / num_k_blks : 0;
+                int k2 = (k_tmp > 0) ? k_tmp % num_k_blks : 0;
+                int src_ad = (current_batch * N * K) + (n_blk_src * d.n_blk)
                         + (k_blk_src * d.k_blk * N);
-                int dst_ad = (bt * n_blks * k_blks * d.k_blk * d.n_blk)
-                        + (n_blk_dst * k_blks * d.k_blk * d.n_blk)
+                int dst_ad = (current_batch * num_n_blks * num_k_blks * d.k_blk
+                                     * d.n_blk)
+                        + (n_blk_dst * num_k_blks * d.k_blk * d.n_blk)
                         + (k_blk_dst * d.k_blk * d.n_blk);
                 int src_new = src_ad, dst_new = dst_ad;
 
-                dyn_params_t k;
-
                 if (k1 > 0) {
                     int a = 1;
-                    int ntl = (d.ntail > 0) ? 1 : 0;
-                    int tl = (d.ktail > 0) ? 1 : 0;
+                    bool is_n_tail
+                            = (d.ntail > 0) && !(n_blk_src < num_n_blks - 1);
+                    bool is_k_tail
+                            = (d.ktail > 0) && !(k1 + k_blk_src < num_k_blks);
 
-                    if (k1 + k_blk_src < k_blks) tl = 0;
-                    if (1 + n_blk_src < n_blks) ntl = 0;
-                    k.src = (int8_t *)weights_b + src_ad;
-                    k.dst = (int8_t *)weights + dst_ad;
+                    dyn_params_t k;
+                    k.src = (int8_t *)wei + src_ad;
+                    k.dst = (int8_t *)wei_reorder_buffer + dst_ad;
                     k.nn = &a;
                     k.nk = &k1;
-                    k.tl = &tl;
-                    k.ntl = &ntl;
+                    k.is_k_tail = &is_k_tail;
+                    k.is_n_tail = &is_n_tail;
                     (*reo_ker_b_)(&k);
                 }
 
                 if (n1 > 0) {
-                    int ntl = (d.ntail > 0) ? 1 : 0;
-                    int tl = (d.ktail > 0) ? 1 : 0;
-                    if (1 + n1 + n_blk_src < n_blks) ntl = 0;
+                    bool is_n_tail = (d.ntail > 0)
+                            && !(n1 + n_blk_src < num_n_blks - 1);
+                    bool is_k_tail = (d.ktail > 0);
 
-                    if (k1 != k_blks) {
-                        src_new = src_ad - d.k_blk * N * (k_blks - k1)
+                    if (k1 != num_k_blks) {
+                        src_new = src_ad - d.k_blk * N * (num_k_blks - k1)
                                 + d.n_blk;
                     } else {
                         src_new = src_ad + d.n_blk;
                     }
                     dst_new = dst_ad + d.k_blk * d.n_blk * k1;
-                    k.src = (int8_t *)weights_b + src_new;
-                    k.dst = (int8_t *)weights + dst_new;
+
+                    dyn_params_t k;
+                    k.src = (int8_t *)wei + src_new;
+                    k.dst = (int8_t *)wei_reorder_buffer + dst_new;
                     k.nn = &n1;
-                    k.nk = &k_blks;
-                    k.tl = &tl;
-                    k.ntl = &ntl;
+                    k.nk = &num_k_blks;
+                    k.is_k_tail = &is_k_tail;
+                    k.is_n_tail = &is_n_tail;
                     (*reo_ker_b_)(&k);
                 }
                 if (k2 > 0) {
-                    int a = 1, tl = 0;
-                    int ntl = (d.ntail > 0) ? 1 : 0;
-                    if (1 + 1 + n1 + n_blk_src < n_blks) ntl = 0;
+                    int a = 1;
+                    bool is_n_tail = (d.ntail > 0)
+                            && !(n1 + n_blk_src < num_n_blks - 2);
+                    bool is_k_tail = false;
                     if (n1 < 1) {
-                        src_new = src_ad - d.k_blk * N * (k_blks - k1)
+                        src_new = src_ad - d.k_blk * N * (num_k_blks - k1)
                                 + d.n_blk;
                         dst_new = dst_ad + d.k_blk * d.n_blk * k1;
                     } else {
                         src_new += n1 * d.n_blk;
-                        dst_new += d.k_blk * d.n_blk * k_blks * n1;
+                        dst_new += d.k_blk * d.n_blk * num_k_blks * n1;
                     }
-                    k.src = (int8_t *)weights_b + src_new;
-                    k.dst = (int8_t *)weights + dst_new;
+
+                    dyn_params_t k;
+                    k.src = (int8_t *)wei + src_new;
+                    k.dst = (int8_t *)wei_reorder_buffer + dst_new;
                     k.nn = &a;
                     k.nk = &k2;
-                    k.tl = &tl;
-                    k.ntl = &ntl;
+                    k.is_k_tail = &is_k_tail;
+                    k.is_n_tail = &is_n_tail;
                     (*reo_ker_b_)(&k);
                 }
-                bt++;
-                start += nob;
+
+                start += work_this_batch;
             }
         });
     };
@@ -1579,8 +1586,8 @@ status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
         call_params_t p;
         p.na = &na;
         p.nb = &nb;
-        p.src = (uint8_t *)src + m_blk_adr;
-        p.wei = (uint8_t *)weights + n_blk_adr;
+        p.src = (uint8_t *)src_reorder_buffer + m_blk_adr;
+        p.wei = (uint8_t *)wei_reorder_buffer + n_blk_adr;
         p.dst = dst + dst_byte_offset;
         p.bias = (float *)bias + bias_addr;
         p.scales = src_scales;
@@ -1605,9 +1612,9 @@ status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
         int num_a_blocks = div_up(M, b.m_blk);
         int num_b_blocks = div_up(N, (b.n_blk * b.ld_block));
         int ktail = (b.k_tail == 0) ? 0 : 1;
-        int parallel_work = B * num_a_blocks;
+        int parallel_work = batch * num_a_blocks;
         int nt = parallel_work > 1 ? num_threads : 1;
-        if (b.zp_type_b != jit_int8_broadcast_t::none)
+        if (b.zp_type_b != jit_int8_broadcast_t::none) {
             parallel(nt, [&](const int ithr, const int nthr) {
                 int start {0}, end {0};
                 balance211(parallel_work, nt, ithr, start, end);
@@ -1647,10 +1654,11 @@ status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
                 }
                 start++;
             });
+        }
 
-        parallel_work = B * num_b_blocks;
+        parallel_work = batch * num_b_blocks;
         nt = parallel_work > 1 ? num_threads : 1;
-        if (b.zp_type_a != jit_int8_broadcast_t::none)
+        if (b.zp_type_a != jit_int8_broadcast_t::none) {
             parallel(nt, [&](const int ithr, const int nthr) {
                 int start {0}, end {0};
                 balance211(parallel_work, nt, ithr, start, end);
@@ -1695,6 +1703,7 @@ status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
 
                 start++;
             });
+        }
     };
 
     if (b.b_reo) reorder_b();

@@ -18,58 +18,72 @@
 #ifndef CPU_AARCH64_MATMUL_JIT_INT8_KERNEL_TYPES_HPP
 #define CPU_AARCH64_MATMUL_JIT_INT8_KERNEL_TYPES_HPP
 
+#include "common/c_types_map.hpp"
+
 namespace dnnl {
 namespace impl {
 namespace cpu {
 namespace aarch64 {
 namespace matmul {
 
-enum jit_int8_broadcast_t {
-    none = 0,
-    common = 1,
-    per_m = 2,
-    per_n = 3,
-    per_k = 4,
-};
+enum jit_int8_broadcast_t { none, common };
 
 struct dyn_vals_t {
-    int f = 0;
     dim_t M = 0;
     dim_t K = 0;
     dim_t N = 0;
-    dim_t B = 0;
-    int is_s8 = 0, is_u8 = 0;
-    int mtail, ktail, ntail, m_blk, k_blk, n_blk;
-    int get_min_max = 0, reorder_a = 0, reorder_b = 0, cal_src = 0;
-    int is_mtail = 0, is_ktail = 0;
+    dim_t batch = 0;
+    bool is_s8 = false;
+    bool is_u8 = false;
+    int mtail = 0;
+    int ktail = 0;
+    int ntail = 0;
+    int m_blk = 0;
+    int k_blk = 0;
+    int n_blk = 0;
 };
 
 struct dyn_params_t {
-    const float *dyn_src;
     const int8_t *src;
     int8_t *dst;
-    float *max, *min;
-    int *nk, *nm, *nn;
-    int *tl, *mtl, *ntl;
+    const int *nm;
+    const int *nk;
+    const int *nn;
+    const bool *is_m_tail;
+    const bool *is_k_tail;
+    const bool *is_n_tail;
 };
 
 struct brg_int8_t {
-    int M, K, N;
-    const int m_blk = 8, k_blk = 8;
-    // Number of N columns packed per B vector load. Depends on SVE vector length:
-    // sve_256 -> 4, sve_128 -> 2.
-    int n_blk = 4;
-    // rd_block represents the loop unroll factor along K dimension and bd_block represents the blocking along M dimension
-    const int rd_block = 4, bd_block = 8;
-    // ld_block represents the number of vector registers used to load along the N dimension
-    int ld_block = 6;
-    int na, nb;
-    int m_tail, n_tail, k_tail;
-    int is_m_tail, is_k_tail, is_n_tail, is_zp_cal;
+    dim_t batch;
+    int M;
+    int K;
+    int N;
+    const int m_blk = 8;
+    const int k_blk = 8;
+    // Number of N columns packed per B vector load.
+    // Depends on SVE vector length: isa_length_in_bytes / k_blk
+    int n_blk;
+    // rd_block represents the loop unroll factor along K dimension and bd_block
+    // represents the blocking along M dimension
+    const int rd_block = 4;
+    const int bd_block = 8;
+    // ld_block represents the number of vector registers used to load along the
+    // N dimension.
+    // ld_block is determined via pd init-time heuristics
+    int ld_block;
+    int m_tail;
+    int n_tail;
+    int k_tail;
+    bool is_m_tail;
+    bool is_k_tail;
+    bool is_n_tail;
+    bool is_zp_cal;
     data_type_t dst_dt;
     const int acc_dt_sz = sizeof(float);
     int dst_dt_sz;
-    bool is_s8, is_u8_s8;
+    bool is_s8;
+    bool is_u8_s8;
     bool is_bias;
     bool with_scales;
     bool with_src_scales;
@@ -83,21 +97,28 @@ struct brg_int8_t {
     bool is_zp_b_int8 = false;
     bool b_reo = true;
     data_type_t zp_b_dt;
-    dim_t B;
 };
 
 struct call_params_t {
-    const uint8_t *src, *wei;
+    const uint8_t *src;
+    const uint8_t *wei;
     uint8_t *dst;
-    const float *bias, *scales, *dst_scales;
+    const float *bias;
     const float *src_scales; // optional per-row src logical-M scales
     const float *wei_scales; // optional kernel-ready weight scales
-    dim_t M, K, N;
-    char *buf_B_ptr_;
-    int *na, *nb;
-    const int32_t *src_zero_point, *wei_zero_point, *dst_zero_point;
+    const float *scales;
+    const float *dst_scales;
+    dim_t M;
+    dim_t K;
+    dim_t N;
+    int *na;
+    int *nb;
+    const int32_t *src_zero_point;
+    const int32_t *wei_zero_point;
+    const int32_t *dst_zero_point;
     const int8_t *wei_zero_point_buf;
-    float *zp_a_ptr, *zp_b_ptr;
+    float *zp_a_ptr;
+    float *zp_b_ptr;
 };
 
 } // namespace matmul

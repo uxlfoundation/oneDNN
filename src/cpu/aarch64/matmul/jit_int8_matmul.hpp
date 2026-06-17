@@ -18,6 +18,7 @@
 #ifndef CPU_AARCH64_MATMUL_JIT_INT8_MATMUL_HPP
 #define CPU_AARCH64_MATMUL_JIT_INT8_MATMUL_HPP
 
+#include <array>
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
 
@@ -44,7 +45,6 @@ struct jit_int8_matmul_t : public primitive_t {
         status_t init(engine_t *engine);
 
         bool formats_ok() const {
-
             const memory_desc_wrapper src_d(src_md_);
             const memory_desc_wrapper weights_d(weights_md_);
             const memory_desc_wrapper dst_d(dst_md_);
@@ -71,29 +71,36 @@ struct jit_int8_matmul_t : public primitive_t {
                     || src_d.format_kind() == format_kind::any;
             return is_dst && is_wei && is_src;
         }
-        const brg_int8_t &get_b() const { return brg_; }
 
-        const dyn_vals_t &get_d() const { return dyn_; }
-
-        int get_idx(int z, int m, int k, int n, const brg_int8_t b) const {
-
-            if (b.zp_type_a == jit_int8_broadcast_t::none
-                    && b.zp_type_b == jit_int8_broadcast_t::none && z == 1)
+        int get_idx(bool is_zp_cal, bool is_m_tail, bool is_k_tail,
+                bool is_n_tail, const brg_int8_t &brg) const {
+            if (brg.zp_type_a == jit_int8_broadcast_t::none
+                    && brg.zp_type_b == jit_int8_broadcast_t::none
+                    && is_zp_cal) {
                 return -1;
-            int mt = b.M % b.m_blk;
-            int nt = b.N % (b.n_blk * b.ld_block);
-            int kt = b.K % (b.k_blk * 4);
-            if ((m == 1 && mt == 0) || (k == 1 && kt == 0)
-                    || (n == 1 && nt == 0) || (k == 0 && kt == 1))
+            }
+
+            int m_tail = brg.M % brg.m_blk;
+            int n_tail = brg.N % (brg.n_blk * brg.ld_block);
+            int k_tail = brg.K % (brg.k_blk * 4);
+
+            if ((is_m_tail && m_tail == 0) || (is_k_tail && k_tail == 0)
+                    || (is_n_tail && n_tail == 0)
+                    || (!is_k_tail && k_tail == 1)) {
                 return -1;
-            return k + n * 2 + m * 2 * 2 + z * 2 * 2 * 2;
+            }
+
+            return static_cast<int>(is_k_tail) + static_cast<int>(is_n_tail) * 2
+                    + static_cast<int>(is_m_tail) * 2 * 2
+                    + static_cast<int>(is_zp_cal) * 2 * 2 * 2;
         }
 
-        int m_block_sz, n_block_sz, mm_parallel_work;
+        static constexpr int m_block_sz = 32;
+        int n_block_sz;
+        int mm_parallel_work;
 
-    private:
-        brg_int8_t brg_;
-        dyn_vals_t dyn_;
+        brg_int8_t brg_int8_conf;
+        dyn_vals_t dyn_vals;
     };
 
     jit_int8_matmul_t(const pd_t *apd);
@@ -104,7 +111,12 @@ struct jit_int8_matmul_t : public primitive_t {
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    std::unique_ptr<jit_int8_matmul_kernel_t<isa>> int8_kernels_[16];
+
+    // 16 possible kernels from each potential combination of true or false over
+    // 4 parameters: is_m_tail, is_n_tail, is_k_tail, is_zp_cal
+    static constexpr int num_jit_kernels = 16;
+    std::array<std::unique_ptr<jit_int8_matmul_kernel_t<isa>>, num_jit_kernels>
+            int8_kernels_;
     std::unique_ptr<jit_int8_matmul_utils_kernel_t> reo_ker_a_;
     std::unique_ptr<jit_int8_matmul_utils_kernel_t> reo_ker_b_;
 };

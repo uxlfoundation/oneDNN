@@ -268,6 +268,16 @@ public:
         return addr;
     }
 
+    void ldr_imm(Xbyak_aarch64::XReg reg, Xbyak_aarch64::XReg &addr,
+            uint32_t offset) {
+        if (is_imm12(offset)) {
+            ldr(reg, ptr(addr, offset));
+        } else {
+            add_imm(X_DEFAULT_ADDR, addr, offset, X_DEFAULT_ADDR);
+            ldr(reg, ptr(X_DEFAULT_ADDR));
+        }
+    }
+
     inline int compute_off_mul_vl(int off, int size, int cpu_sveLen) {
         const int mul_vl_len = (cpu_sveLen / 4) * size;
         return off / mul_vl_len;

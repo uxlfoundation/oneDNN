@@ -21,17 +21,6 @@
 
 #define GET_OFF(field) (uint32_t) offsetof(dyn_params_t, field)
 
-#define LDR_IMM(reg, addr, off) \
-    { \
-        const uint64_t IMM12_MASK = ~uint64_t(0xfff); \
-        if (((off) & IMM12_MASK) == 0) { \
-            ldr(reg, ptr(addr, off)); \
-        } else { \
-            add_imm(X_DEFAULT_ADDR, addr, off, X_TMP_0); \
-            ldr(reg, ptr(X_DEFAULT_ADDR)); \
-        } \
-    }
-
 #define VCHECK_BG(f, msg, ...) \
     VCHECK(primitive, create, dispatch, brgemm_matmul, f, msg, ##__VA_ARGS__);
 
@@ -132,14 +121,14 @@ void jit_int8_matmul_utils_kernel_t::gen_reo_a() {
     set_preg(prd_ld.b, ktl, X_TMP_0, X_TMP_1);
     set_preg(prd_st.b, dyn_.k_blk, X_TMP_0, X_TMP_1);
 
-    LDR_IMM(reg_max, reg_param, GET_OFF(nk));
-    LDR_IMM(reg_min, reg_param, GET_OFF(nm));
+    ldr_imm(reg_max, reg_param, GET_OFF(nk));
+    ldr_imm(reg_min, reg_param, GET_OFF(nm));
 
-    LDR_IMM(reg_tmp_2, reg_param, GET_OFF(tl));
-    ldr(WReg(reg_k_tail.getIdx()), ptr(reg_tmp_2));
+    ldr_imm(reg_tmp_2, reg_param, GET_OFF(is_k_tail));
+    ldrb(WReg(reg_k_tail.getIdx()), ptr(reg_tmp_2));
 
-    LDR_IMM(reg_tmp_2, reg_param, GET_OFF(mtl));
-    ldr(WReg(reg_m_tail.getIdx()), ptr(reg_tmp_2));
+    ldr_imm(reg_tmp_2, reg_param, GET_OFF(is_m_tail));
+    ldrb(WReg(reg_m_tail.getIdx()), ptr(reg_tmp_2));
 
     ldr(WReg(reg_m_loop.getIdx()), ptr(reg_min));
 
@@ -195,14 +184,14 @@ void jit_int8_matmul_utils_kernel_t::gen_reo_b() {
     set_preg(prd_ld.b, dyn_.n_blk, X_TMP_4, X_TMP_1);
     set_preg(prd_p3.b, dyn_.ntail, X_TMP_4, X_TMP_1);
 
-    LDR_IMM(reg_max, reg_param, GET_OFF(nn));
-    LDR_IMM(reg_min, reg_param, GET_OFF(nk));
+    ldr_imm(reg_max, reg_param, GET_OFF(nn));
+    ldr_imm(reg_min, reg_param, GET_OFF(nk));
 
-    LDR_IMM(reg_tmp_2, reg_param, GET_OFF(tl));
-    ldr(WReg(reg_k_tail.getIdx()), ptr(reg_tmp_2));
+    ldr_imm(reg_tmp_2, reg_param, GET_OFF(is_k_tail));
+    ldrb(WReg(reg_k_tail.getIdx()), ptr(reg_tmp_2));
 
-    LDR_IMM(reg_tmp_2, reg_param, GET_OFF(ntl));
-    ldr(WReg(reg_n_tail.getIdx()), ptr(reg_tmp_2));
+    ldr_imm(reg_tmp_2, reg_param, GET_OFF(is_n_tail));
+    ldrb(WReg(reg_n_tail.getIdx()), ptr(reg_tmp_2));
 
     ldr(WReg(reg_n_loop.getIdx()), ptr(reg_max));
     ldr(WReg(reg_k_loop.getIdx()), ptr(reg_min));
@@ -261,13 +250,13 @@ void jit_int8_matmul_utils_kernel_t::generate() {
 
     preamble();
 
-    if (dyn_.reorder_a == 1) {
-        LDR_IMM(reg_src, reg_param, GET_OFF(src));
-        LDR_IMM(reg_dst, reg_param, GET_OFF(dst));
+    if (alg_ == alg::reorder_src) {
+        ldr_imm(reg_src, reg_param, GET_OFF(src));
+        ldr_imm(reg_dst, reg_param, GET_OFF(dst));
         gen_reo_a();
-    } else if (dyn_.reorder_b == 1) {
-        LDR_IMM(reg_src, reg_param, GET_OFF(src));
-        LDR_IMM(reg_dst, reg_param, GET_OFF(dst));
+    } else if (alg_ == alg::reorder_wei) {
+        ldr_imm(reg_src, reg_param, GET_OFF(src));
+        ldr_imm(reg_dst, reg_param, GET_OFF(dst));
         gen_reo_b();
     }
 

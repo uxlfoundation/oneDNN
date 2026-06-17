@@ -33,6 +33,8 @@ struct jit_int8_matmul_utils_kernel_t : public jit_generator_t {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_int8_matmul_utils_kernel_t);
 
+    enum class alg { reorder_src, reorder_wei };
+
     XReg reg_param = abi_param1;
     XReg reg_src = x3;
     XReg reg_dst = x4;
@@ -66,8 +68,8 @@ struct jit_int8_matmul_utils_kernel_t : public jit_generator_t {
         return jit_generator_t::operator()(p);
     }
 
-    jit_int8_matmul_utils_kernel_t(const dyn_vals_t &k, cpu_isa_t isa)
-        : cols_per_b_vec_(isa_max_vlen(isa) / 8), dyn_(k) {}
+    jit_int8_matmul_utils_kernel_t(const dyn_vals_t &k, cpu_isa_t isa, alg alg)
+        : cols_per_b_vec_(isa_max_vlen(isa) / 8), dyn_(k), alg_(alg) {}
     ~jit_int8_matmul_utils_kernel_t() override = default;
 
 private:
@@ -80,6 +82,7 @@ private:
 
     const int cols_per_b_vec_;
     dyn_vals_t dyn_;
+    alg alg_;
 };
 
 } // namespace matmul

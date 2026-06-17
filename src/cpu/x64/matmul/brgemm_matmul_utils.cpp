@@ -1114,10 +1114,11 @@ void compute_gemv_k_blocking(dim_t K, int &k_blk, int &batch_size) {
 bool is_gemv_k_split_needed(const brgemm_matmul_conf_t &bgmmc,
         const matmul_avx512_blocking_params_t::matmul_params_t &matmul,
         int min_m_blk, int nthr) {
-    if (!bgmmc.is_gemv
-            || !utils::one_of(bgmmc.gemv_strategy, gemv_strategy_t::n1_A_trans,
-                    gemv_strategy_t::m1_B_plain))
+    if (!bgmmc.is_gemv) return false;
+    if (!one_of(bgmmc.gemv_strategy, gemv_strategy_t::n1_A_trans,
+                gemv_strategy_t::m1_B_plain))
         return false;
+    if (bgmmc.batch > 1) return false;
 
     const dim_t src_dt_sz = bgmmc.gemv_swap_a_b ? bgmmc.b_dt_sz : bgmmc.a_dt_sz;
     const size_t src_sz = matmul.M * matmul.K * src_dt_sz;

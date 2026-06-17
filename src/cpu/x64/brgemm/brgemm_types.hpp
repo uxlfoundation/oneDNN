@@ -548,11 +548,6 @@ struct brgemm_desc_t {
 
     int get_convert_wsp_buffer_size() const noexcept {
         if (!is_input_convert()) return 0;
-        if (is_fp8) {
-            // One shared tile for A and B
-            return tilesize;
-        }
-
         const int n_bdb = bd_block2;
         const int n_rdb = rdb + (rdb_tail != 0);
         const int n_ldb = ldb + (ldb_tail != 0);

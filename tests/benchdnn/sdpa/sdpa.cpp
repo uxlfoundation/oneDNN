@@ -22,6 +22,10 @@
 
 #include "oneapi/dnnl/dnnl.h"
 
+// Internal alg_kind used by the GPU SDPA kernel. Must be removed once
+// softmax_accurate_inf_as_zero is promoted to a public value.
+#include "src/common/c_types_map.hpp"
+
 #include "utils/fill.hpp"
 #include "utils/memory.hpp"
 #include "utils/parallel.hpp"
@@ -77,7 +81,8 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
             default: return 0;
         }
     }(prb->mask_type);
-    dnnl_alg_kind_t softmax_alg = dnnl_softmax_accurate;
+    dnnl_alg_kind_t softmax_alg = static_cast<dnnl_alg_kind_t>(
+            dnnl::impl::alg_kind::softmax_accurate_inf_as_zero);
 
     // KV head count is always derived from the K tensor's head dimension.
     dnnl_dim_t kv_hn = prb->k_dims()[prb->ndims - 3];

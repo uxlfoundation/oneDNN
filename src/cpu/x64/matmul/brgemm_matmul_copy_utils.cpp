@@ -6122,18 +6122,31 @@ private:
             constexpr int k_unroll = 8;
             constexpr int k_unroll_rows = k_unroll * k_step;
 
-            Label K_loop_unrolled, K_loop_single, K_loop_tail_or_done;
-            cmp(reg_K, k_unroll_rows);
-            jl(K_loop_single, T_NEAR);
+            Label K_loop_single, K_loop_tail_or_done;
+            // In the zeropad pass reg_K == current_K_pad, which is always
+            // < wei_k_blk (it pads a partial K-block up to wei_k_blk). Since
+            // wei_k_blk <= k_unroll_rows here (wei_dt is bf16/f16 -> wei_k_blk == 32,
+            // and k_unroll_rows == 32), it follows that reg_K < k_unroll_rows.
+            // The unrolled loop below only runs when reg_K >= k_unroll_rows, so
+            // it never runs in the zeropad pass. Assert the invariant
+            // and skip emitting the unrolled loop there to save a dead
+            // cmp/branch.
+            assert(conf_->wei_k_blk <= k_unroll_rows);
+            if (!zeropad) {
+                Label K_loop_unrolled;
+                cmp(reg_K, k_unroll_rows);
+                jl(K_loop_single, T_NEAR);
 
-            L(K_loop_unrolled);
-            copy_block(k_unroll_rows, ncolumns, zeropad);
-            add(reg_src, (k_unroll_rows / k_blk_step) * src_stride_);
-            add(reg_tr_src, (k_unroll_rows / tr_k_blk_step) * tr_src_stride_);
+                L(K_loop_unrolled);
+                copy_block(k_unroll_rows, ncolumns, zeropad);
+                add(reg_src, (k_unroll_rows / k_blk_step) * src_stride_);
+                add(reg_tr_src,
+                        (k_unroll_rows / tr_k_blk_step) * tr_src_stride_);
 
-            sub(reg_K, k_unroll_rows);
-            cmp(reg_K, k_unroll_rows);
-            jge(K_loop_unrolled, T_NEAR);
+                sub(reg_K, k_unroll_rows);
+                cmp(reg_K, k_unroll_rows);
+                jge(K_loop_unrolled, T_NEAR);
+            }
 
             L(K_loop_single);
             cmp(reg_K, k_step);
@@ -6176,8 +6189,20 @@ private:
 
             mov(reg_K_iters, ptr[param1 + GET_OFF(current_K_iters)]);
             compute_K_loop_body(reg_K_iters, ncolumns, false);
-            mov(reg_K_iters, ptr[param1 + GET_OFF(current_K_pad)]);
-            compute_K_loop_body(reg_K_iters, ncolumns, true);
+
+            // The zero-padding pass fills the K-tail block up to wei_k_blk so brgemm
+            // can safely read the full block (extendable_k). It is only needed in case
+            // of a non-zero current_K_pad; otherwise it can be skipped.
+            // Even when emitted, a single runtime check skips it for the most common
+            // case (current_K_pad == 0), saving the block-copy work.
+            if (conf_->extendable_k || conf_->use_fused_copy_a) {
+                Label skip_zeropad;
+                mov(reg_K_iters, ptr[param1 + GET_OFF(current_K_pad)]);
+                cmp(reg_K_iters, 0);
+                jle(skip_zeropad, T_NEAR);
+                compute_K_loop_body(reg_K_iters, ncolumns, true);
+                L(skip_zeropad);
+            }
 
             mov(reg_src, reg_src_back);
             mov(reg_tr_src, reg_tr_src_back);

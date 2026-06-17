@@ -14,24 +14,25 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_RV64_RVV_DWCONV_HPP
-#define CPU_RV64_RVV_DWCONV_HPP
+#ifndef CPU_RV64_JIT_UNI_DWCONV_HPP
+#define CPU_RV64_JIT_UNI_DWCONV_HPP
 
 #include "common/primitive.hpp"
 #include "common/utils.hpp"
 #include "cpu/cpu_convolution_pd.hpp"
 #include "cpu/platform.hpp"
+#include "cpu/rv64/cpu_isa_traits.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace cpu {
 namespace rv64 {
 
-struct rvv_dwconv_fwd_t : public primitive_t {
+struct jit_uni_dwconv_fwd_t : public primitive_t {
     struct pd_t : public cpu_convolution_fwd_pd_t {
         using cpu_convolution_fwd_pd_t::cpu_convolution_fwd_pd_t;
 
-        DECLARE_COMMON_PD_T("dw_k3s1s2:rvv", rvv_dwconv_fwd_t);
+        DECLARE_COMMON_PD_T("jit_dw:uni", jit_uni_dwconv_fwd_t);
 
         status_t init(engine_t *engine) {
             using namespace data_type;
@@ -58,6 +59,7 @@ struct rvv_dwconv_fwd_t : public primitive_t {
             VDISPATCH_CONV(platform::has_data_type_support(src_d.data_type()),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_CONV(src_d.data_type() == f16, VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_CONV(mayiuse(zvfh), VERBOSE_UNSUPPORTED_ISA);
             VDISPATCH_CONV(wei_d.data_type() == src_d.data_type(),
                     VERBOSE_INCONSISTENT_DT, "src", "weights");
             VDISPATCH_CONV(dst_d.data_type() == src_d.data_type(),
@@ -90,7 +92,7 @@ struct rvv_dwconv_fwd_t : public primitive_t {
         }
     };
 
-    rvv_dwconv_fwd_t(const pd_t *apd) : primitive_t(apd) {}
+    jit_uni_dwconv_fwd_t(const pd_t *apd) : primitive_t(apd) {}
     status_t execute(const exec_ctx_t &ctx) const override;
 
 private:
@@ -104,4 +106,4 @@ private:
 } // namespace impl
 } // namespace dnnl
 
-#endif // CPU_RV64_RVV_DWCONV_HPP
+#endif // CPU_RV64_JIT_UNI_DWCONV_HPP

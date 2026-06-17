@@ -17,7 +17,6 @@
 #ifndef CPU_X64_MATMUL_AMX_BLOCKING_HEURISTICS_HPP
 #define CPU_X64_MATMUL_AMX_BLOCKING_HEURISTICS_HPP
 
-#include "common/math_utils.hpp"
 #include "cpu/x64/matmul/brgemm_matmul_utils.hpp"
 
 namespace dnnl {
@@ -138,6 +137,10 @@ public:
 protected:
     virtual float calculate_blocking_scores() const = 0;
     virtual dim_t get_actual_lda() const;
+    // Size of one C buffer element as seen by the scratchpad footprint.
+    dim_t effective_c_buf_dt_sz(int nthr_k_cand) const;
+    // Whether scoring may price C in dst dt instead of the accumulator dt.
+    bool narrow_c_scoring_active() const;
 
     // Num threads for parallelism wrt K dimension
     size_t nthr_m_ {0}, nthr_n_ {0}, nthr_k_ {0}, nthr_b_ {0};

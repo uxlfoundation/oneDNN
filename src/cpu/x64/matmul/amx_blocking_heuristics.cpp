@@ -81,6 +81,25 @@ bool matmul_amx_blocking_params_t::is_buffer_c_required() const {
             && (K > k_chunk_elems_ || K % k_blk_ > 0));
 }
 
+dim_t matmul_amx_blocking_params_t::effective_c_buf_dt_sz(
+        int nthr_k_cand) const {
+    if (!is_c_buf_dst_dt) return acc_dt_sz;
+    // Bypass (nthr_k<=1) has no scratch C buffer -> return 0 for footprint.
+    // D RMW traffic is modeled in bw() separately to avoid perturbing
+    // N_blk selection for single-K-chunk shapes.
+    if (nthr_k_cand <= 1 && !with_sum) return 0;
+    return c_dt_sz;
+}
+
+// The narrow-dt (bf16/f16) C discount only applies where the C buffer
+// actually disappears: nthr_k<=1 with several K-chunks. Elsewhere the
+// saving is dwarfed by the reduction and the M/N parallelism given up,
+// and letting it skew the score can cost an order of magnitude.
+bool matmul_amx_blocking_params_t::narrow_c_scoring_active() const {
+    const bool multiple_k_chunks = k_chunk_elems_ > 0 && K > k_chunk_elems_;
+    return is_c_buf_dst_dt && nthr_k_ <= 1 && multiple_k_chunks;
+}
+
 size_t matmul_amx_blocking_params_t::L2_threshold() {
     return 3 * platform::get_per_core_cache_size(2) / 4;
 }
@@ -420,7 +439,8 @@ void matmul_amx_blocking_params_macro_t::calculate_layer_sizes(
     if (is_horizontal) {
         // Amount of C/D bytes that are written per core
         size_t strip_dst_size = m_decomposition * n_per_thread
-                * (nthr_k_ == 1 ? c_dt_sz : acc_dt_sz);
+                * ((nthr_k_ == 1 || narrow_c_scoring_active()) ? c_dt_sz
+                                                               : acc_dt_sz);
         // Amount of compute
         layer_perf_characteristics.num_tmuls_per_strip = m_decomposition
                 * k_per_thread * n_per_thread / (m_tmul * k_tmul * n_tmul);
@@ -461,7 +481,8 @@ void matmul_amx_blocking_params_macro_t::calculate_layer_sizes(
     } else {
         // Amount of C/D bytes that are written per core
         size_t strip_dst_size = n_decomposition * m_per_thread
-                * (nthr_k_ == 1 ? c_dt_sz : acc_dt_sz);
+                * ((nthr_k_ == 1 || narrow_c_scoring_active()) ? c_dt_sz
+                                                               : acc_dt_sz);
         // Amount of compute
         layer_perf_characteristics.num_tmuls_per_strip = n_decomposition
                 * k_per_thread * m_per_thread / (m_tmul * k_tmul * n_tmul);
@@ -523,21 +544,43 @@ float matmul_amx_blocking_params_macro_t::calculate_strip_mid_cycles(
             * div_up(n_decomposition, 16) * 64;
     float c_post_write_hit = c_post_write_total - c_post_write_miss;
 
-    float c_post_read_c_tmp = c_elem_per_strip * acc_dt_sz;
+    float c_post_read_c_tmp = c_elem_per_strip
+            * (narrow_c_scoring_active() ? c_dt_sz : acc_dt_sz);
 
     float c_tmp_l1_cycles;
     if (k_blk_ == K) {
+        // tile stores into wsp (hot in l1)
         c_tmp_l1_cycles = acc_dt_sz * c_elem_per_strip * k_chunk_size_
-                / bw_interpolator.l1_load_hit_bw;
+                / bw_interpolator.l1_store_hit_bw;
     } else {
-        // TODO: modify wrt wsp
-        c_tmp_l1_cycles = acc_dt_sz * c_elem_per_strip * k_chunk_size_
-                / bw_interpolator.l1_store_miss_bw;
+        if (narrow_c_scoring_active()) {
+            // tile stores into wsp (hot in l1)
+            c_tmp_l1_cycles = acc_dt_sz * c_elem_per_strip * k_chunk_size_
+                    / bw_interpolator.l1_store_hit_bw;
+            // load from wsp to zmm
+            c_tmp_l1_cycles = acc_dt_sz * c_elem_per_strip * k_chunk_size_
+                    / bw_interpolator.l1_load_hit_bw;
+
+            assert(k_chunk_size_ > 0);
+            // load previous partial results that are stored in c_dt_sz
+            c_tmp_l1_cycles += c_dt_sz * c_elem_per_strip * (k_chunk_size_ - 1)
+                    / bw_interpolator.l1_load_miss_bw;
+            // store new partial results in c_dt_sz
+            c_tmp_l1_cycles += c_dt_sz * c_elem_per_strip * (k_chunk_size_ - 1)
+                    / bw_interpolator.l1_store_hit_bw;
+        } else {
+            // tile loads from previous partial results
+            c_tmp_l1_cycles = acc_dt_sz * c_elem_per_strip * k_chunk_size_
+                    / bw_interpolator.l1_load_miss_bw;
+            // tile stores of new partial results
+            c_tmp_l1_cycles = acc_dt_sz * c_elem_per_strip * k_chunk_size_
+                    / bw_interpolator.l1_store_hit_bw;
+        }
     }
 
     float c_l1_cycles = c_post_write_miss / bw_interpolator.l1_store_miss_bw
             + c_post_write_hit / bw_interpolator.l1_store_hit_bw
-            + c_post_read_c_tmp / bw_interpolator.l1_store_hit_bw
+            + c_post_read_c_tmp / bw_interpolator.l1_load_hit_bw
             + c_tmp_l1_cycles;
 
     float l1_cycles = temporal_matrix_l1_miss / bw_interpolator.l1_load_miss_bw
@@ -605,11 +648,16 @@ float matmul_amx_blocking_params_macro_t::calculate_reduction_cycles(
         bw_map_t &bw_interpolator) const {
     // Calculate reduction cycles
     float reduction_cycles;
-    size_t c_size_per_core = m_per_thread * n_per_thread * acc_dt_sz;
+    // Score the reduction as plain f32 accumulation: the narrower partials do
+    // not make a K-split cheap enough to justify the M/N parallelism it costs.
+    const dim_t reduction_c_dt_sz = narrow_c_scoring_active()
+            ? effective_c_buf_dt_sz(nthr_k_)
+            : acc_dt_sz;
+    size_t c_size_per_core = m_per_thread * n_per_thread * reduction_c_dt_sz;
 
     if (nthr_k_ != 1) {
         if (c_size_per_core * 2 < L2_threshold() && batch == 1) {
-            float reduction_read_bytes = (M * rnd_up(N, 16) * acc_dt_sz)
+            float reduction_read_bytes = (M * rnd_up(N, 16) * reduction_c_dt_sz)
                     * ((nthr_k_ - 1)) / (nthr_m_ * nthr_n_);
             float reduction_read_cycles;
             if (layer_perf_characteristics.a_size
@@ -803,26 +851,32 @@ size_t matmul_amx_blocking_params_macro_t::l2_matrix_usage(size_t k_chunk_size,
         size_t m_or_n_blk, size_t k_blk, bool is_horizontal,
         bool force_transform_matrix_to_l2) const {
     int decomposition = is_horizontal ? m_decomposition : n_decomposition;
-    size_t l1_matrix_size = 2 * decomposition
-            * nstl::min(k_blk * k_chunk_size, (size_t)k_per_thread)
-            * gemm_dt_sz; // 2 for prefetch
-    size_t l2_matrix_size = m_or_n_blk
-            * nstl::min(k_blk * k_chunk_size, (size_t)k_per_thread)
-            * gemm_dt_sz;
+    const dim_t k_iter_elems
+            = nstl::min((dim_t)(k_blk * k_chunk_size), (dim_t)k_per_thread);
+    size_t l1_matrix_size
+            = 2 * decomposition * k_iter_elems * gemm_dt_sz; // 2 for prefetch
+    size_t l2_matrix_size = m_or_n_blk * k_iter_elems * gemm_dt_sz;
     if (force_transform_matrix_to_l2) {
         /* L2 matrix orig size */
         l2_matrix_size += m_or_n_blk * k_blk * k_chunk_size
                 * (is_horizontal ? b_dt_sz : a_dt_sz);
     }
     // Calculate C post size (output buffer)
-    size_t c_post_size;
-    if (is_horizontal) {
-        c_post_size = 2 * m_decomposition * rnd_up(m_or_n_blk * c_dt_sz, 64);
-    } else {
-        c_post_size = 2 * rnd_up(n_decomposition * c_dt_sz, 64) * m_or_n_blk;
+    size_t c_post_size = 0;
+    if (nthr_k_ == 1 || (acc_dt == dst_dt)) {
+        // With is_c_buf_dst_dt the final dst buffer holds the intermediate
+        // results; with reduction on top of it a similarly sized buffer is
+        // used instead.
+        if (is_horizontal) {
+            c_post_size
+                    = 2 * m_decomposition * rnd_up(m_or_n_blk * c_dt_sz, 64);
+        } else {
+            c_post_size
+                    = 2 * rnd_up(n_decomposition * c_dt_sz, 64) * m_or_n_blk;
+        }
     }
     // Calculate C tmp size (partial results buffer)
-    size_t c_tmp_size;
+    int c_tmp_size;
     if (k_blk == (size_t)K || (acc_dt == dst_dt && nthr_k_ == 1)) {
         c_tmp_size = 2 * m_decomposition * n_decomposition * acc_dt_sz;
     } else {
@@ -835,32 +889,40 @@ size_t matmul_amx_blocking_params_macro_t::l2_matrix_usage(size_t k_chunk_size,
 size_t matmul_amx_blocking_params_macro_t::l2_matrix_and_c_usage(
         size_t k_chunk_size, size_t m_or_n_blk, size_t k_blk,
         bool is_horizontal) const {
+    // NOTE: this, l2_matrix_usage() and bw() run during candidate generation
+    // with trial k_blk/k_chunk, so they always price C as f32: keying them on
+    // is_c_buf_dst_dt would make relaxed enumerate a different candidate set.
     size_t per_thread_for_l1_matrix
             = is_horizontal ? m_per_thread : n_per_thread;
-    size_t l1_matrix_size = 2 * per_thread_for_l1_matrix
-            * nstl::min(k_blk * k_chunk_size, (size_t)k_per_thread)
+    const dim_t k_iter_elems
+            = nstl::min((dim_t)(k_blk * k_chunk_size), (dim_t)k_per_thread);
+    size_t l1_matrix_size = 2 * per_thread_for_l1_matrix * k_iter_elems
             * gemm_dt_sz; // 2x factor to make sure C is fresher than A,B in LRU
-    size_t l2_matrix_size = 2 * m_or_n_blk
-            * nstl::min(k_blk * k_chunk_size, (size_t)k_per_thread)
+    size_t l2_matrix_size = 2 * m_or_n_blk * k_iter_elems
             * gemm_dt_sz; // 2x factor to make sure C is fresher than A,B in LRU
-    size_t c_size
-            = per_thread_for_l1_matrix * m_or_n_blk * acc_dt_sz; // Keep C in L2
+    int c_size = per_thread_for_l1_matrix * m_or_n_blk * acc_dt_sz; // C in L2
     return l1_matrix_size + l2_matrix_size + c_size;
 }
 
 int matmul_amx_blocking_params_macro_t::bw(size_t m_blk, size_t k_chunk_size,
         size_t k_blk, size_t n_blk, bool is_horizontal) const {
-    int a_bw = m_blk * nstl::min(k_blk * k_chunk_size, (size_t)k_per_thread)
-            * gemm_dt_sz;
-    int b_bw = n_blk * nstl::min(k_blk * k_chunk_size, (size_t)k_per_thread)
-            * gemm_dt_sz;
+    const dim_t k_iter_elems
+            = nstl::min((dim_t)(k_blk * k_chunk_size), (dim_t)k_per_thread);
+    int a_bw = m_blk * k_iter_elems * gemm_dt_sz;
+    int b_bw = n_blk * k_iter_elems * gemm_dt_sz;
     int c_bw;
 
-    if ((l2_matrix_and_c_usage(k_chunk_size, is_horizontal ? n_blk : m_blk,
-                 k_blk, is_horizontal)
-                        < L2_threshold()
-                || (dim_t)nstl::min(k_blk * k_chunk_size, (size_t)k_per_thread)
-                        == K)
+    // is_c_buf_dst_dt bypass: D RMW'd per K-chunk (vs f32-scratch). CRUCIAL: RMW cost only
+    // when K>1 chunk; single K-chunk has c_bw=0 for wide-N parallelism on small shapes.
+    const bool single_k_chunk = k_iter_elems == K;
+    const bool c_bypass_to_dst
+            = is_c_buf_dst_dt && nthr_k_ <= 1 && !with_sum && !single_k_chunk;
+
+    if (!c_bypass_to_dst
+            && (l2_matrix_and_c_usage(k_chunk_size,
+                        is_horizontal ? n_blk : m_blk, k_blk, is_horizontal)
+                            < L2_threshold()
+                    || single_k_chunk)
             && nthr_k_ == 1) {
         c_bw = 0;
     } else {
@@ -871,8 +933,9 @@ int matmul_amx_blocking_params_macro_t::bw(size_t m_blk, size_t k_chunk_size,
 
 int matmul_amx_blocking_params_macro_t::compute(
         size_t m_blk, size_t k_chunk_size, size_t k_blk, size_t n_blk) const {
-    return m_blk * nstl::min(k_blk * k_chunk_size, (size_t)k_per_thread)
-            * n_blk;
+    const dim_t k_iter_elems
+            = nstl::min((dim_t)(k_blk * k_chunk_size), (dim_t)k_per_thread);
+    return m_blk * k_iter_elems * n_blk;
 }
 
 float matmul_amx_blocking_params_macro_t::ratio(size_t m_blk,
@@ -1565,8 +1628,9 @@ size_t matmul_amx_blocking_params_micro_t::calculate_chunk_memory_size() {
     const size_t B_buf_sz
             = use_buffer_b ? tr_b_dt_sz * n_blk_ * k_chunk_elems_ : 0;
     const size_t C_chunk_sz = c_dt_sz * m_chunk_elems_ * n_chunk_elems_;
-    const size_t C_buf_sz
-            = need_buf_c_ ? acc_dt_sz * m_chunk_elems_ * n_chunk_elems_ : 0;
+    const size_t C_buf_sz = need_buf_c_
+            ? effective_c_buf_dt_sz(nthr_k_) * m_chunk_elems_ * n_chunk_elems_
+            : 0;
     return A_chunk_sz + A_buf_sz + B_chunk_sz + B_buf_sz + C_chunk_sz
             + C_buf_sz;
 }

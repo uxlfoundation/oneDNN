@@ -66,8 +66,6 @@ status_t sdp_bwd_primitive_kernel_t::compile_impl(
 #endif
 
     p_engine_ = make_dnnl_engine(*g_engine);
-    g_alloc_
-            = reinterpret_cast<graph::allocator_t *>(g_engine->get_allocator());
 
     // First, dry run on a deep copy
     subgraph_

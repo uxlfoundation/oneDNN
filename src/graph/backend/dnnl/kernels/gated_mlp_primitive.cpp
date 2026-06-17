@@ -49,7 +49,6 @@ status_t gated_mlp_primitive_kernel_t<quantized>::compile_impl(
 #endif
 
     p_engine_ = make_dnnl_engine(*eng);
-    g_alloc_ = reinterpret_cast<graph::allocator_t *>(eng->get_allocator());
 
     // First, dry run on a deep copy
     subgraph_

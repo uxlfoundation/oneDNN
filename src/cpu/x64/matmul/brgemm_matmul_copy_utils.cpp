@@ -4725,6 +4725,10 @@ struct jit_brgemm_matmul_copy_b_transposed_t
         , req_s8s8_comp_(conf_->s8s8_compensation_required)
         , req_zp_b_shift_(
                   conf_->has_zero_point_b && conf_->with_wei_decompression)
+        , req_int8_zp_b_shift_(conf_->has_zero_point_b
+                  && conf_->with_int8_grouped_quantization)
+        , is_zp_int4_(one_of(conf->wei_zp_dt, data_type::s4, data_type::u4))
+        , has_vpermb_(cpu().has(Xbyak::util::Cpu::tAVX512_VBMI))
         , req_apply_wei_scales_(conf_->apply_scales_in_buffer_b)
         , avx512_core_dot_product_(
                   do_compute_compensation_ && !isa_has_int8_vnni(conf->isa))
@@ -4740,10 +4744,15 @@ struct jit_brgemm_matmul_copy_b_transposed_t
         , max_tmp_idx(16
                   - (avx512_core_dot_product_
                                   ? 8
-                                  : (do_compute_compensation_         ? 6
-                                                    : is_src_int4_    ? 2
-                                                    : req_zp_b_shift_ ? 1
-                                                                      : 0)))
+                                  : (do_compute_compensation_      ? 6
+                                                    : is_src_int4_ ? 2
+                                                    : req_zp_b_shift_
+                                                            || req_int8_zp_b_shift_
+                                                    ? 1
+                                                    : 0))
+                  - ((req_int8_zp_b_shift_ && do_compute_compensation_)
+                                  ? (is_src_int4_ ? 2 : 1)
+                                  : 0))
         , src_stride_(conf_->copy_B_wei_stride)
         , tr_src_stride_(conf_->LDB * vnni_granularity_ * tr_typesize_)
         , src_elems_per_byte_(is_src_int4_ ? 2 : 1)
@@ -4782,6 +4791,9 @@ private:
     const bool req_zp_comp_;
     const bool req_s8s8_comp_;
     const bool req_zp_b_shift_;
+    const bool req_int8_zp_b_shift_;
+    const bool is_zp_int4_;
+    const bool has_vpermb_;
     const bool req_apply_wei_scales_;
     const bool avx512_core_dot_product_;
     const bool use_fp16_instructions_;
@@ -4792,7 +4804,11 @@ private:
     const bool is_dynamic_N_;
 
     constexpr static int ldb_step_idx_offs = 0;
-    constexpr static int stack_space_needed = 8;
+    constexpr static int reg_zp_b_ptr_offs_ = 8;
+    constexpr static int reg_cur_k_offs_ = 16;
+    constexpr static int reg_src_save_offs_ = 24;
+    constexpr static int reg_init_k_rem_offs_ = 32;
+    constexpr static int stack_space_needed = 40;
 
     reg64_t reg_src_base = rax;
     reg64_t reg_tr_src_base = rbx;
@@ -4825,8 +4841,16 @@ private:
     Vmm vmm_ones_words = Vmm(max_vmm_regs_ - 7);
     Vmm vmm_dot_product_temp = Vmm(max_vmm_regs_ - 8);
 
-    Vmm vmm_zp_b_val = Vmm(max_vmm_regs_ - 1);
-    Vmm vmm_permd = Vmm(max_vmm_regs_ - 2);
+    // When int8-grouped-quant ZP runs alongside compensation, place
+    // these registers right above the (already-shrunk) tmp_vmm range
+    // so they never alias the comp registers at the top of the file.
+    Vmm vmm_zp_b_val = (req_int8_zp_b_shift_ && do_compute_compensation_)
+            ? Vmm(n_blk_step_ + max_tmp_idx)
+            : Vmm(max_vmm_regs_ - 1);
+    Vmm vmm_permd
+            = (req_int8_zp_b_shift_ && do_compute_compensation_ && is_src_int4_)
+            ? Vmm(n_blk_step_ + max_tmp_idx + 1)
+            : Vmm(max_vmm_regs_ - 2);
     // Collide with `vmm_zp_a_neg_val` as they shouldn't intersect in
     // functionality.
     Vmm vmm_wei_scales = Vmm(max_vmm_regs_ - 3);
@@ -4949,6 +4973,265 @@ private:
             case data_type::f16: vcvtph2psx(vmm_wei_scales, addr); break;
             default: assert(!"unsupported wei_scales data type");
         }
+    }
+
+    /**
+     * Converts packed int4 data in a Ymm (half-ZMM) to int8 in a full ZMM.
+     * Used for int8 grouped quantization with int4 weights in the transposed
+     * copy_b kernel. The conversion is done in-place, expanding the lower half
+     * (Ymm) into the full ZMM register.
+     *
+     * @param vmm_data The ZMM register containing packed int4 data in its
+     *                 lower half (Ymm portion).
+     */
+    void cvt_int4_to_int8_for_transposed(const Vmm &vmm_data) {
+        if (!is_src_int4_) return;
+
+        if (is_ymm_) {
+            const auto ymm_data = Ymm(vmm_data.getIdx());
+            const auto ymm_high = Ymm(vmm_permd.getIdx());
+            const auto ymm_tmp = Ymm(vmm_wei_scales.getIdx());
+
+            uni_vmovups(ymm_high, ymm_data);
+
+            mov(regq_tmp, 0xF0);
+            uni_vpbroadcastb(ymm_tmp, regq_tmp.cvt8());
+            uni_vpand(ymm_high, ymm_high, ymm_tmp);
+            vpsrld(ymm_high, ymm_high, 4);
+
+            mov(regq_tmp, 0x0F);
+            uni_vpbroadcastb(ymm_tmp, regq_tmp.cvt8());
+            uni_vpand(ymm_data, ymm_data, ymm_tmp);
+            uni_vpand(ymm_high, ymm_high, ymm_tmp);
+
+            vpunpcklbw(ymm_tmp, ymm_data, ymm_high);
+            vpunpckhbw(ymm_high, ymm_data, ymm_high);
+            vinserti128(ymm_data, ymm_tmp, Xmm(ymm_high.getIdx()), 0x1);
+
+            if (conf_->orig_wei_dt == data_type::s4) {
+                mov(regq_tmp, 0xF0);
+                uni_vpbroadcastb(ymm_tmp, regq_tmp.cvt8());
+                uni_vmovups(ymm_high, ymm_data);
+                vpslld(ymm_high, ymm_high, 4);
+                uni_vpxor(ymm_high, ymm_high, ymm_tmp);
+                vpshufb(ymm_high, ymm_tmp, ymm_high);
+                uni_vpxor(ymm_data, ymm_data, ymm_high);
+            }
+            return;
+        }
+
+        // Use tmp_vmm(2) and tmp_vmm(3) as scratch (0 and 1 are used by
+        // the transpose algorithm which may be active when loads are
+        // interleaved).
+        const auto vmm_high = tmp_vmm(2);
+        const auto vmm_mask_reg = tmp_vmm(3);
+
+        uni_vmovups(vmm_high, vmm_data);
+
+        mov(regq_tmp, 0xF0);
+        uni_vpbroadcastb(vmm_mask_reg, regq_tmp.cvt8());
+        uni_vpand(vmm_high, vmm_high, vmm_mask_reg);
+        vpsrld(vmm_high, vmm_high, 4);
+
+        mov(regq_tmp, 0x0F);
+        uni_vpbroadcastb(vmm_mask_reg, regq_tmp.cvt8());
+        uni_vpand(vmm_data, vmm_data, vmm_mask_reg);
+
+        if (has_vpermb_) {
+            copy_half_reg(
+                    Zmm(vmm_data.getIdx()), Vmm_lower_t(vmm_high.getIdx()));
+            // vmm_permd holds the int4 byte-interleave permute table
+            vpermb(Zmm(vmm_data.getIdx()), vmm_permd, Zmm(vmm_data.getIdx()));
+        } else {
+            vpunpcklbw(Zmm(vmm_mask_reg.getIdx()), Zmm(vmm_data.getIdx()),
+                    Zmm(vmm_high.getIdx()));
+            vpunpckhbw(Zmm(vmm_data.getIdx()), Zmm(vmm_data.getIdx()),
+                    Zmm(vmm_high.getIdx()));
+            vpermt2d(Zmm(vmm_mask_reg.getIdx()), vmm_permd,
+                    Zmm(vmm_data.getIdx()));
+            uni_vmovups(vmm_data, vmm_mask_reg);
+        }
+
+        // Sign-extend for s4 using LUT-based approach (same as
+        // signed_mask_int4 in jit_brgemm_matmul_copy_b_int8_t):
+        // For signed int4, values 8..15 should become -8..-1.
+        // After unpacking, each byte has value 0..15. Need to OR
+        // with 0xF0 for values >= 8 (bit 3 set).
+        if (conf_->orig_wei_dt == data_type::s4) {
+            // Broadcast 0xF0 into vmm_mask_reg (LUT)
+            mov(regq_tmp, 0xF0);
+            uni_vpbroadcastb(vmm_mask_reg, regq_tmp.cvt8());
+            // vmm_high = vmm_data << 4 (shift to make bit 3 into bit 7)
+            uni_vmovups(vmm_high, vmm_data);
+            vpslld(vmm_high, vmm_high, 4);
+            // XOR with 0xF0 to create lookup index
+            uni_vpxor(vmm_high, vmm_high, vmm_mask_reg);
+            // vpshufb: for each byte, if high bit set -> 0, else -> 0xF0
+            // This gives 0xF0 for values >= 8 and 0 for values < 8
+            vpshufb(vmm_high, vmm_mask_reg, vmm_high);
+            // OR into data to sign-extend
+            vpord(Zmm(vmm_data.getIdx()), Zmm(vmm_data.getIdx()),
+                    Zmm(vmm_high.getIdx()));
+        }
+    }
+
+    /**
+     * Applies common (broadcast) zero point shift for int8 grouped
+     * quantization. Subtracts a single ZP value from all bytes.
+     *
+     * @param vmm_src Source data register to apply ZP shift to.
+     */
+    void maybe_apply_int8_common_zp(const Vmm &vmm_src) {
+        if (!req_int8_zp_b_shift_ || !conf_->is_wei_zp_common) return;
+
+        const auto vmm_zp = vmm_zp_b_val;
+        // vmm_zp_b_val already loaded with broadcast common ZP value
+        // in generate() via load_int8_grouped_common_zp()
+        uni_vpsubb(vmm_src, vmm_src, vmm_zp);
+    }
+
+    /**
+     * Applies per-N zero point shift for int8 grouped quantization.
+     * For each row i (N dimension), loads the ZP byte and broadcasts+subtracts.
+     *
+     * @param vmm_src Source data register to apply ZP shift to.
+     * @param n The N-dimension local index (row within N block).
+     */
+    void maybe_apply_int8_per_n_zp(const Vmm &vmm_src, int n) {
+        if (!req_int8_zp_b_shift_ || !conf_->is_wei_zp_per_n
+                || conf_->is_wei_zp_per_k)
+            return;
+
+        const auto vmm_zp = vmm_zp_b_val;
+        // Save reg_src_base since we need rax for address computation
+        mov(ptr[rsp + reg_src_save_offs_], reg_src_base);
+        mov(reg_src_base, ptr[rsp + reg_zp_b_ptr_offs_]);
+
+        const auto zp_dt_sz = types::data_type_size(conf_->wei_zp_dt);
+        const auto elems_per_byte = is_zp_int4_ ? 2 : 1;
+        const auto offset = n * zp_dt_sz / elems_per_byte;
+
+        if (is_zp_int4_) {
+            const bool is_odd = n % 2 == 1;
+            movzx(regq_tmp.cvt32(), byte[reg_src_base + offset]);
+            if (is_odd)
+                shr(regq_tmp.cvt32(), 4);
+            else
+                and_(regq_tmp.cvt32(), 0x0F);
+            if (conf_->wei_zp_dt == data_type::s4) {
+                // Sign extend from 4-bit
+                shl(regq_tmp.cvt32(), 28);
+                sar(regq_tmp.cvt32(), 28);
+            }
+        } else {
+            movzx(regq_tmp.cvt32(), byte[reg_src_base + offset]);
+        }
+        uni_vpbroadcastb(vmm_zp, regq_tmp.cvt8());
+        uni_vpsubb(vmm_src, vmm_src, vmm_zp);
+        mov(reg_src_base, ptr[rsp + reg_src_save_offs_]);
+    }
+
+    /**
+     * Applies per-K (grouped) zero point shift for int8 grouped quantization.
+     * Computes the K-group offset, loads the ZP for the current (K-group, N),
+     * and applies vpsubb.
+     *
+     * @param vmm_src Source data register to apply ZP shift to.
+     * @param n The N-dimension local index (row within N block).
+     */
+    void maybe_apply_int8_per_k_zp(const Vmm &vmm_src, int n) {
+        if (!req_int8_zp_b_shift_ || !conf_->is_wei_zp_per_k) return;
+
+        const auto vmm_zp = vmm_zp_b_val;
+        // Save rax and rdx since division clobbers them.
+        // reg_src_base = rax, reg_comp_ptr/reg_zp_ptr = rdx
+        mov(ptr[rsp + reg_src_save_offs_], reg_src_base);
+        push(rdx);
+
+        // Locate the current K group:
+        // k_group_idx = current_K_position / wei_zp_k_gsize
+        // ZP offset = k_group_idx * N + n
+        xor_(rdx, rdx); // zero rdx for division
+        mov(rax, ptr[rsp + 8 /* push offset */ + reg_cur_k_offs_]);
+        mov(regq_tmp, conf_->wei_zp_k_gsize);
+        div(regq_tmp);
+        // rax = k_group_idx
+        mov(regq_tmp, conf_->N);
+        mul(regq_tmp);
+        // rax = k_group_idx * N
+
+        if (is_zp_int4_) shr(rax, 1);
+
+        // Load ZP pointer and add group offset + N offset
+        mov(regq_tmp, ptr[rsp + 8 /* push offset */ + reg_zp_b_ptr_offs_]);
+        add(regq_tmp, rax);
+        if (is_zp_int4_)
+            add(regq_tmp, n / 2);
+        else
+            add(regq_tmp, n);
+
+        if (is_zp_int4_) {
+            const bool is_odd = n % 2 == 1;
+            movzx(eax, byte[regq_tmp]);
+            if (is_odd)
+                shr(eax, 4);
+            else
+                and_(eax, 0x0F);
+            if (conf_->wei_zp_dt == data_type::s4) {
+                shl(eax, 28);
+                sar(eax, 28);
+            }
+            mov(regq_tmp, rax);
+            uni_vpbroadcastb(vmm_zp, regq_tmp.cvt8());
+        } else {
+            movzx(eax, byte[regq_tmp]);
+            mov(regq_tmp, rax);
+            uni_vpbroadcastb(vmm_zp, regq_tmp.cvt8());
+        }
+        uni_vpsubb(vmm_src, vmm_src, vmm_zp);
+        // Restore regs
+        pop(rdx);
+        mov(reg_src_base, ptr[rsp + reg_src_save_offs_]);
+    }
+
+    /**
+     * Top-level ZP shift dispatcher for int8 grouped quantization.
+     * Called from the load lambda after loading int8 data.
+     *
+     * @param vmm_src Source data register to apply ZP shift to.
+     * @param n The N-dimension local index (row within N block).
+     */
+    void maybe_apply_int8_grouped_zp(const Vmm &vmm_src, int n) {
+        if (!req_int8_zp_b_shift_) return;
+
+        maybe_apply_int8_common_zp(vmm_src);
+        maybe_apply_int8_per_n_zp(vmm_src, n);
+        maybe_apply_int8_per_k_zp(vmm_src, n);
+    }
+
+    /**
+     * Loads and broadcasts the common ZP value as a byte for int8 grouped
+     * quantization. Called from generate().
+     */
+    void load_int8_common_zp() {
+        if (!req_int8_zp_b_shift_) return;
+
+        const bool only_per_k
+                = conf_->is_wei_zp_per_k && !conf_->is_wei_zp_per_n;
+        const bool is_common_or_per_k = conf_->is_wei_zp_common || only_per_k;
+        if (!is_common_or_per_k) return;
+
+        mov(regq_tmp, ptr[rsp + reg_zp_b_ptr_offs_]);
+        mov(regq_tmp.cvt8(), byte[regq_tmp]);
+        if (is_zp_int4_) {
+            // Extract int4 value from the low nibble
+            and_(regq_tmp.cvt32(), 0x0F);
+            if (conf_->wei_zp_dt == data_type::s4) {
+                shl(regq_tmp.cvt32(), 28);
+                sar(regq_tmp.cvt32(), 28);
+            }
+        }
+        uni_vpbroadcastb(vmm_zp_b_val, regq_tmp.cvt8());
     }
 
     /** Stores half of the block using mask for the case when vnni_granularity == 2 */
@@ -5200,17 +5483,27 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
             // Upconvert: load 16 bits and move them 16 bits left.
             uni_vpmovzxwd(src_masked_reg, addr);
             uni_vpslld(src_masked_reg, src_masked_reg, 16);
+        } else if (conf_->with_int8_grouped_quantization && is_src_int4_) {
+            // Int8 grouped quantization with int4 weights:
+            // Load packed int4 data into Ymm (half of Zmm), then
+            // unpack to full int8 in Zmm and apply ZP shift.
+            auto ymm_src = Ymm(src_reg.getIdx());
+            auto ymm_src_load = maybe_mask(ymm_src, is_tail);
+            vmovdqu8(ymm_src_load, addr);
+            cvt_int4_to_int8_for_transposed(src_reg);
+            maybe_apply_int8_grouped_zp(src_reg, i);
         } else {
             vmovdqu8(src_masked_reg, addr);
+            if (req_int8_zp_b_shift_) maybe_apply_int8_grouped_zp(src_reg, i);
         }
         L(load_done);
     };
 
-    auto store = [this, columns_tail, ncolumns, cur_k_blk_step](Zmm r, int i) {
+    auto store = [this, ncolumns](Zmm r, int i) {
         auto addr = EVEX_compress_addr(reg_tr_src, i * tr_src_stride_);
         if (is_wei_grouped_over_k_) {
-            const bool is_tail = columns_tail > 0 && ncolumns < cur_k_blk_step;
-            if (is_tail && i >= columns_tail) return;
+            const int valid_stores = utils::div_up(ncolumns, vnni_granularity_);
+            if (i >= valid_stores) return;
             if (vnni_granularity_ == 2 && ncolumns == 1)
                 store_half_block(r, addr);
             else
@@ -5399,6 +5692,40 @@ void jit_brgemm_matmul_copy_b_transposed_t<Ymm>::copy_row_x_col(
             load_scales(i, is_tail);
             decompress_reg(
                     vmm_src, vmm_zp_b_val, vmm_wei_scales, conf_->orig_wei_dt);
+        } else if (conf_->with_int8_grouped_quantization && is_src_int4_) {
+            const auto src_offset = (i * src_stride_) / src_elems_per_byte_;
+            const auto addr = maybe_EVEX_compress_addr(reg_src, src_offset);
+            const int packed_load_sz = is_tail
+                    ? div_up(columns_tail * typesize_, src_elems_per_byte_)
+                    : (k_blk_step_ * typesize_) / src_elems_per_byte_;
+
+            uni_vpxor(vmm_src, vmm_src, vmm_src);
+
+            // Int4 rows may start from an odd nibble, so align packed bytes
+            // before expanding nibbles to signed/unsigned int8 values.
+            const bool need_align_half_byte = (i * src_stride_) % 2 != 0;
+            const auto xmm_src = Xmm(vmm_src.getIdx());
+            if (need_align_half_byte) {
+                if (packed_load_sz < 16 || is_tail) {
+                    load_bytes(xmm_src, addr, packed_load_sz);
+                    vpsrlq(xmm_src, xmm_src, 4);
+                } else {
+                    const auto xmm_tmp = Xmm(vmm_permd.getIdx());
+                    load_bytes(xmm_src, addr, packed_load_sz);
+                    load_bytes(xmm_tmp,
+                            maybe_EVEX_compress_addr(reg_src, src_offset + 1),
+                            packed_load_sz);
+                    vpsrlq(xmm_src, xmm_src, 4);
+                    vpsllq(xmm_tmp, xmm_tmp, 4);
+                    vpor(xmm_src, xmm_src, xmm_tmp);
+                }
+            } else {
+                load_bytes(xmm_src, addr, packed_load_sz);
+            }
+
+            cvt_int4_to_int8_for_transposed(vmm_src);
+
+            maybe_apply_int8_grouped_zp(vmm_src, i);
         } else if (is_tail) {
             load_bytes(vmm_src, reg_src, i * src_stride_,
                     columns_tail * typesize_);
@@ -5523,6 +5850,13 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::compute_K_loop(bool is_N_tail,
     Label K_loop, K_loop_tail_or_done;
     mov(reg_K_iters, ptr[param1 + GET_OFF(current_K_iters)]);
 
+    // Reset the K-within-group counter to its initial value before each
+    // N iteration's K loop, since the K loop increments it.
+    if (req_int8_zp_b_shift_ && conf_->is_wei_zp_per_k) {
+        mov(regq_tmp, ptr[rsp + reg_init_k_rem_offs_]);
+        mov(ptr[rsp + reg_cur_k_offs_], regq_tmp);
+    }
+
     mov(reg_src, reg_src_base);
     mov(reg_tr_src, reg_tr_src_base);
 
@@ -5535,6 +5869,8 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::compute_K_loop(bool is_N_tail,
     copy_row_x_col(nrows, k_blk_step_);
     add(reg_src, (k_blk_step_ * typesize_) / src_elems_per_byte_);
     add(reg_tr_src, k_blk_step_ / vnni_granularity_ * tr_src_stride_);
+    if (req_int8_zp_b_shift_ && conf_->is_wei_zp_per_k)
+        add(qword[rsp + reg_cur_k_offs_], k_blk_step_);
 
     sub(reg_K_iters, k_blk_step_);
     cmp(reg_K_iters, k_blk_step_);
@@ -5544,14 +5880,23 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::compute_K_loop(bool is_N_tail,
 
     if (curr_K_tail > 0) copy_row_x_col(nrows, curr_K_tail);
 
+    // For int8 grouped quantization the compensation buffer has a separate
+    // slot per K-chunk (driver passes a different `compensation_ptr` for
+    // each chunk via `s8s8_comp_k_str`). Each call must therefore produce
+    // a complete, finalized comp value (raw sum * 128, sign-flipped, +1)
+    // independent of other chunks.
+    const bool comp_per_chunk = conf_->with_int8_grouped_quantization;
+    const bool do_first = comp_per_chunk || is_first_K_iter;
+    const bool do_last = comp_per_chunk || is_last_K_iter;
+
     if (req_s8s8_comp_) {
         const auto addr = ptr[reg_comp_ptr];
-        if (!is_first_K_iter)
+        if (!do_first)
             uni_vpaddd(vmm_s8s8_comp_acc, vmm_comp_acc, addr);
         else
             uni_vmovups(vmm_s8s8_comp_acc, vmm_comp_acc);
 
-        if (is_last_K_iter) {
+        if (do_last) {
             // multiply by 128
             uni_vpslld(vmm_s8s8_comp_acc, vmm_s8s8_comp_acc, 7);
             // change sign
@@ -5562,9 +5907,8 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::compute_K_loop(bool is_N_tail,
     }
     if (req_zp_comp_) {
         const auto addr = ptr[reg_zp_comp_ptr];
-        if (!is_first_K_iter) vpaddd(vmm_comp_acc, vmm_comp_acc, addr);
-        if (is_last_K_iter)
-            uni_vpmulld(vmm_comp_acc, vmm_comp_acc, vmm_zp_a_neg_val);
+        if (!do_first) vpaddd(vmm_comp_acc, vmm_comp_acc, addr);
+        if (do_last) uni_vpmulld(vmm_comp_acc, vmm_comp_acc, vmm_zp_a_neg_val);
         uni_vmovups(addr, vmm_comp_acc);
     }
 }
@@ -5623,7 +5967,16 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::compute_N_loop(
         const auto elems_per_byte
                 = one_of(zp_dt, data_type::s4, data_type::u4) ? 2 : 1;
         const auto offset = n_blk_step_ * zp_dt_sz / elems_per_byte;
-        add(reg_zp_ptr, offset);
+        // For int8 grouped quantization the zp pointer is consumed via the
+        // stack-saved copy (because `reg_zp_ptr` aliases `reg_comp_ptr` and
+        // gets repurposed by the s8s8/src-zp compensation code path inside
+        // `compute_body`). Updating `reg_zp_ptr` here would corrupt the
+        // compensation pointer. Only the stack-saved ZP pointer needs to
+        // advance per N-block in that case.
+        if (req_int8_zp_b_shift_)
+            add(qword[rsp + reg_zp_b_ptr_offs_], offset);
+        else
+            add(reg_zp_ptr, offset);
     }
 
     if (req_zp_comp_) add(reg_zp_comp_ptr, comp_shift_);
@@ -5654,6 +6007,22 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::generate() {
         vpbroadcastw(vmm_ones_words, regq_tmp.cvt16());
     }
 
+    // Compute the K-within-group remainder BEFORE loading reg_src_base (rax)
+    // and reg_zp_ptr (rdx), since division clobbers both rax and rdx.
+    if (req_int8_zp_b_shift_ && conf_->is_wei_zp_per_k) {
+        // Store the K position within the current group (remainder).
+        // Since zp_b_value_ptr already points to the current K group,
+        // we need the intra-group offset to compute relative group
+        // crossings during the K loop.
+        mov(regq_tmp, conf_->wei_zp_k_gsize);
+        xor_(rdx, rdx);
+        mov(rax, ptr[param1 + GET_OFF(current_K_start)]);
+        div(regq_tmp);
+        // rdx = current_K_start % k_gsize (position within group)
+        mov(ptr[rsp + reg_cur_k_offs_], rdx);
+        mov(ptr[rsp + reg_init_k_rem_offs_], rdx);
+    }
+
     mov(reg_src_base, ptr[param1 + GET_OFF(src)]);
     mov(reg_tr_src_base, ptr[param1 + GET_OFF(tr_src)]);
     mov(reg_K_iters, ptr[param1 + GET_OFF(current_K_iters)]);
@@ -5661,6 +6030,14 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::generate() {
     mov(reg_wei_scales, ptr[param1 + GET_OFF(wei_scales_ptr)]);
     mov(reg_zp_ptr, ptr[param1 + GET_OFF(zp_b_value_ptr)]);
     mov(reg_K_start, ptr[param1 + GET_OFF(current_K_start)]);
+
+    // Save ZP pointer for int8 grouped quantization.
+    if (req_int8_zp_b_shift_) {
+        mov(ptr[rsp + reg_zp_b_ptr_offs_], reg_zp_ptr);
+        if (!conf_->is_wei_zp_per_k) {
+            mov(ptr[rsp + reg_cur_k_offs_], reg_K_start);
+        }
+    }
 
     if (!is_ymm_) {
         // 64-bit mask is also used when is_wei_[zp\scales]_per_k
@@ -5673,7 +6050,29 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::generate() {
         kmovw(kF0F0, 0xf0f0);
     }
     if (is_src_int4_) {
-        if (is_superset(conf_->isa, avx512_core)) {
+        if (conf_->with_int8_grouped_quantization
+                && is_superset(conf_->isa, avx512_core)) {
+            // For int8 grouped quantization with int4 weights, we need a
+            // byte-level interleave permute table for cvt_int4_to_int8.
+            if (has_vpermb_) {
+                alignas(64) static constexpr const uint8_t
+                        int4_permute_bytes[64]
+                        = {0, 32, 1, 33, 2, 34, 3, 35, 4, 36, 5, 37, 6, 38, 7,
+                                39, 8, 40, 9, 41, 10, 42, 11, 43, 12, 44, 13,
+                                45, 14, 46, 15, 47, 16, 48, 17, 49, 18, 50, 19,
+                                51, 20, 52, 21, 53, 22, 54, 23, 55, 24, 56, 25,
+                                57, 26, 58, 27, 59, 28, 60, 29, 61, 30, 62, 31,
+                                63};
+                mov(regq_tmp, reinterpret_cast<size_t>(int4_permute_bytes));
+                vmovdqa64(vmm_permd, ptr[regq_tmp]);
+            } else {
+                alignas(64) static constexpr const uint32_t int4_permute_dw[16]
+                        = {0, 1, 2, 3, 16, 17, 18, 19, 4, 5, 6, 7, 20, 21, 22,
+                                23};
+                mov(regq_tmp, reinterpret_cast<size_t>(int4_permute_dw));
+                vmovdqa32(vmm_permd, ptr[regq_tmp]);
+            }
+        } else if (is_superset(conf_->isa, avx512_core)) {
             alignas(64) static constexpr const uint32_t int4_permute[16]
                     = {0, 8, 1, 9, 2, 10, 3, 11, 4, 12, 5, 13, 6, 14, 7, 15};
             mov(regq_tmp, reinterpret_cast<size_t>(int4_permute));
@@ -5688,6 +6087,8 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::generate() {
 
     load_common_zp_value(vmm_zp_b_val, reg_zp_ptr);
     load_common_scale_value(vmm_wei_scales, reg_wei_scales);
+    // For int8 grouped quantization, load common ZP as byte broadcast
+    load_int8_common_zp();
 
     const dim_t N_chunk_elems = conf_->N_chunk_elems;
     assert(N_chunk_elems % n_blk_step_ == 0 || N_chunk_elems == conf_->N);
@@ -5703,7 +6104,12 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::generate() {
             : 0;
 
     auto compute_body = [&](bool is_first_K_iter, bool is_last_K_iter) {
-        if (is_last_K_iter) {
+        // For int8 grouped quantization, every call finalizes its own
+        // per-chunk comp (see comment in compute_K_loop), so the comp
+        // constants must be available regardless of is_last_K_iter.
+        const bool need_comp_constants
+                = is_last_K_iter || conf_->with_int8_grouped_quantization;
+        if (need_comp_constants) {
             if (req_s8s8_comp_) {
                 mov(imm_addr64, 0xffffffff);
                 uni_vpbroadcastd(vmm_all_bits_1, imm_addr64.cvt32());

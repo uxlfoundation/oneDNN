@@ -90,8 +90,8 @@ argument index as specified by the following table.
 4. Multiple batch dimensions and broadcasting of batch dimensions of \src
    and \weights are supported for both CPU and GPU engines.
 
-@note Check the @ref inference_int8_matmul_cpp and @ref cpu_sgemm_and_matmul_cpp
-to see #DNNL_RUNTIME_DIM_VAL support in use.
+@note Check the @ref inference_int8_matmul_cpp to see #DNNL_RUNTIME_DIM_VAL
+support in use.
 
 ### Data Types
 

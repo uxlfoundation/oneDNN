@@ -30,7 +30,6 @@ Basic Operations:
 | Example | Description |
 |:--------|:------------|
 | @ref matmul_example_cpp | \copybrief matmul_example_cpp_brief |
-| @ref cpu_sgemm_and_matmul_cpp | \copybrief cpu_sgemm_and_matmul_cpp_brief |
 
 Quantization flavors:
 

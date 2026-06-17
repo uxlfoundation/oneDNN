@@ -371,108 +371,140 @@ bool matmul_amx_blocking_params_macro_t::find_best_blocking(
     return true;
 }
 
-float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
+bool matmul_amx_blocking_params_macro_t::b_transform_fits_in_l2() const {
+    bool b_transform_in_l2;
+    auto max_l2_usage = l2_matrix_usage(
+            k_chunk_size_, n_blk_, k_blk_, true, true); /* B transform size */
+    b_transform_in_l2 = max_l2_usage < L2_threshold();
+    return b_transform_in_l2;
+}
 
-    bool strip1_b_tranform_h = is_horizontal && use_buffer_b;
-    bool strips_b_tranform_v = !is_horizontal && use_buffer_b;
-    bool strip1_b_in_mlc_h = strip1_b_tranform_h && b_transform_fits_in_l2();
+void matmul_amx_blocking_params_macro_t::init_copy_characteristics(
+        layer_perf_characteristics_t &layer_perf_characteristics) const {
+    layer_perf_characteristics.strip1_b_tranform_h
+            = is_horizontal && use_buffer_b;
+    layer_perf_characteristics.strips_b_tranform_v
+            = !is_horizontal && use_buffer_b;
+    layer_perf_characteristics.strip1_b_in_mlc_h
+            = layer_perf_characteristics.strip1_b_tranform_h
+            && b_transform_fits_in_l2();
 
-    size_t a_size = m_per_thread * k_per_thread * gemm_dt_sz;
-    size_t b_size = n_per_thread * k_per_thread * gemm_dt_sz;
-    size_t d_size = m_per_thread * n_per_thread * c_dt_sz;
+    layer_perf_characteristics.strips_a_read_h = is_horizontal && use_buffer_a;
+    layer_perf_characteristics.strip1_a_read_v = !is_horizontal && use_buffer_a;
+}
 
-    bw_map_t bw_interpulator;
+void matmul_amx_blocking_params_macro_t::calculate_layer_sizes(
+        layer_perf_characteristics_t &layer_perf_characteristics) const {
 
     int macs_per_cycle_base = 1024;
     int max_k_tmul = 64;
     int max_n_tmul = 16;
     // Reducing k-tmul or n-tmul does not shorten the cycles.
     // However, reducing mtmul reduces the number of cycles required to execute a single tmul instruction.
-    int num_cycles_per_tmul
+    layer_perf_characteristics.num_cycles_per_tmul
             = m_tmul * max_k_tmul * max_n_tmul / macs_per_cycle_base;
 
-    // Calculate reduction cycles
-    float strip_1_size_shared, strip_1_size_private, strip_1_share_coef;
-    float strip_mid_size_shared, strip_mid_size_private;
-    float num_tmuls_per_strip, strip_mid_share_coef, num_strip, nt_mat_l1_miss;
-    float l1_reuse;
-    float num_postop_cache_lines;
+    layer_perf_characteristics.a_size
+            = m_per_thread * k_per_thread * gemm_dt_sz;
+    layer_perf_characteristics.b_size
+            = n_per_thread * k_per_thread * gemm_dt_sz;
+    layer_perf_characteristics.d_size = m_per_thread * n_per_thread * c_dt_sz;
 
     if (is_horizontal) {
         // Amount of C/D bytes that are written per core
         size_t strip_dst_size = m_decomposition * n_per_thread
                 * (nthr_k_ == 1 ? c_dt_sz : acc_dt_sz);
         // Amount of compute
-        num_tmuls_per_strip = m_decomposition * k_per_thread * n_per_thread
-                / (m_tmul * k_tmul * n_tmul);
+        layer_perf_characteristics.num_tmuls_per_strip = m_decomposition
+                * k_per_thread * n_per_thread / (m_tmul * k_tmul * n_tmul);
         // Amount of strips in the execution
-        num_strip = div_up(m_per_thread, m_decomposition);
+        layer_perf_characteristics.num_strip
+                = div_up(m_per_thread, m_decomposition);
         // B is blocked to the L2 in horizontal traversal, its loads are NT
-        nt_mat_l1_miss = b_size;
+        layer_perf_characteristics.nt_mat_l1_miss
+                = layer_perf_characteristics.b_size;
         // Number of times A is reused from L1 in a strip
-        l1_reuse = div_up(n_blk_, n_decomposition);
+        layer_perf_characteristics.l1_reuse = div_up(n_blk_, n_decomposition);
 
         // In horizontal multiple cores load the same B to L2
-        strip_1_size_shared = b_size;
+        layer_perf_characteristics.strip_1_size_shared
+                = layer_perf_characteristics.b_size;
         // In strip 1 there is no sharing of A since there are no prefetches
         size_t strip_1_size_private_a
                 = m_decomposition * k_per_thread * gemm_dt_sz;
-        strip_1_size_private = strip_1_size_private_a + strip_dst_size;
+        layer_perf_characteristics.strip_1_size_private
+                = strip_1_size_private_a + strip_dst_size;
         // The cores that share B
-        strip_1_share_coef = nthr_m_;
+        layer_perf_characteristics.strip_1_share_coef = nthr_m_;
 
         // In the mid strips B is reused from L2 and
         // A is prefetched by multiple cores.
-        strip_mid_size_shared = m_decomposition * k_per_thread
-                * gemm_dt_sz; // A size per strip
+        layer_perf_characteristics.strip_mid_size_shared = m_decomposition
+                * k_per_thread * gemm_dt_sz; // A size per strip
         // C is private to a core, since each core writes to a distinct buffer
-        strip_mid_size_private = strip_dst_size;
+        layer_perf_characteristics.strip_mid_size_private = strip_dst_size;
         // share_coeff - the cores that share A
-        strip_mid_share_coef = std::max((size_t)1, nthr_n_);
+        layer_perf_characteristics.strip_mid_share_coef
+                = std::max((size_t)1, nthr_n_);
 
         // Calculate the number of cache lines to be processed in AVX postops
-        num_postop_cache_lines = m_decomposition * div_up(n_per_thread, n_tmul);
+        layer_perf_characteristics.num_postop_cache_lines
+                = m_decomposition * div_up(n_per_thread, n_tmul);
 
     } else {
         // Amount of C/D bytes that are written per core
         size_t strip_dst_size = n_decomposition * m_per_thread
                 * (nthr_k_ == 1 ? c_dt_sz : acc_dt_sz);
         // Amount of compute
-        num_tmuls_per_strip = n_decomposition * k_per_thread * m_per_thread
-                / (m_tmul * k_tmul * n_tmul);
+        layer_perf_characteristics.num_tmuls_per_strip = n_decomposition
+                * k_per_thread * m_per_thread / (m_tmul * k_tmul * n_tmul);
         // Amount of strips in the execution
-        num_strip = div_up(n_per_thread, n_decomposition);
+        layer_perf_characteristics.num_strip
+                = div_up(n_per_thread, n_decomposition);
         // A is blocked to the L2 in vertical traversal, its loads are NT
-        nt_mat_l1_miss = a_size;
+        layer_perf_characteristics.nt_mat_l1_miss
+                = layer_perf_characteristics.a_size;
         // Number of times B is reused from L1 in a strip
-        l1_reuse = div_up(m_blk_, m_decomposition);
+        layer_perf_characteristics.l1_reuse = div_up(m_blk_, m_decomposition);
 
         // In vertical multiple cores load the same A to L2
-        strip_1_size_shared = a_size;
+        layer_perf_characteristics.strip_1_size_shared
+                = layer_perf_characteristics.a_size;
         // In strip 1 there is no sharing of B since there are no prefetches
         size_t strip_1_size_private_b
                 = n_decomposition * k_per_thread * gemm_dt_sz;
-        strip_1_size_private = strip_1_size_private_b + strip_dst_size;
+        layer_perf_characteristics.strip_1_size_private
+                = strip_1_size_private_b + strip_dst_size;
         // The cores that share A
-        strip_1_share_coef = nthr_n_;
+        layer_perf_characteristics.strip_1_share_coef = nthr_n_;
 
         // In the mid strips A is reused from L2 and
         // B is prefetched by multiple cores.
-        strip_mid_size_shared = n_decomposition * k_per_thread
-                * gemm_dt_sz; // B size per strip
+        layer_perf_characteristics.strip_mid_size_shared = n_decomposition
+                * k_per_thread * gemm_dt_sz; // B size per strip
         // C is private to a core, since each core writes to a distinct buffer
-        strip_mid_size_private = strip_dst_size;
+        layer_perf_characteristics.strip_mid_size_private = strip_dst_size;
         // share_coeff - the cores that share B
-        strip_mid_share_coef = std::max((size_t)1, nthr_m_);
+        layer_perf_characteristics.strip_mid_share_coef
+                = std::max((size_t)1, nthr_m_);
 
         // Calculate the number of cache lines to be processed in AVX postops
-        num_postop_cache_lines = m_per_thread * div_up(n_decomposition, n_tmul);
+        layer_perf_characteristics.num_postop_cache_lines
+                = m_per_thread * div_up(n_decomposition, n_tmul);
     }
+}
+
+float matmul_amx_blocking_params_macro_t::calculate_strip_mid_cycles(
+        layer_perf_characteristics_t &layer_perf_characteristics,
+        bw_map_t &bw_interpolator) const {
     // There are 2 L1 misses for the L1 matrix:
     //   1. For the prefetch to the L2 (==L1 miss)
     //   2. For the read from L2
-    float temporal_matrix_l1_miss = strip_mid_size_shared * 2;
-    float temporal_matrix_l1_hit = strip_mid_size_shared * (l1_reuse - 1);
+    float temporal_matrix_l1_miss
+            = layer_perf_characteristics.strip_mid_size_shared * 2;
+    float temporal_matrix_l1_hit
+            = layer_perf_characteristics.strip_mid_size_shared
+            * (layer_perf_characteristics.l1_reuse - 1);
 
     float c_elem_per_strip = m_blk_ * n_blk_;
 
@@ -489,77 +521,81 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
     float c_tmp_l1_cycles;
     if (k_blk_ == K) {
         c_tmp_l1_cycles = acc_dt_sz * c_elem_per_strip * k_chunk_size_
-                / bw_interpulator.l1_load_hit_bw;
+                / bw_interpolator.l1_load_hit_bw;
     } else {
         // TODO: modify wrt wsp
         c_tmp_l1_cycles = acc_dt_sz * c_elem_per_strip * k_chunk_size_
-                / bw_interpulator.l1_store_miss_bw;
+                / bw_interpolator.l1_store_miss_bw;
     }
 
-    float c_l1_cycles = c_post_write_miss / bw_interpulator.l1_store_miss_bw
-            + c_post_write_hit / bw_interpulator.l1_store_hit_bw
-            + c_post_read_c_tmp / bw_interpulator.l1_store_hit_bw
+    float c_l1_cycles = c_post_write_miss / bw_interpolator.l1_store_miss_bw
+            + c_post_write_hit / bw_interpolator.l1_store_hit_bw
+            + c_post_read_c_tmp / bw_interpolator.l1_store_hit_bw
             + c_tmp_l1_cycles;
-    float l1_cycles = temporal_matrix_l1_miss / bw_interpulator.l1_load_miss_bw
-            + temporal_matrix_l1_hit / bw_interpulator.l1_load_hit_bw
-            + nt_mat_l1_miss / bw_interpulator.l1_load_miss_bw + c_l1_cycles;
 
-    float b_transform_cycles_h = strip1_b_tranform_h
-            ? strip_1_size_shared / bw_interpulator.get_bw(strip_1_share_coef)
-            : 0;
-
-    float b_transform_cycles_v = strips_b_tranform_v ? strip_mid_size_shared
-                    / bw_interpulator.get_bw(strip_mid_share_coef)
-                                                     : 0;
+    float l1_cycles = temporal_matrix_l1_miss / bw_interpolator.l1_load_miss_bw
+            + temporal_matrix_l1_hit / bw_interpolator.l1_load_hit_bw
+            + layer_perf_characteristics.nt_mat_l1_miss
+                    / bw_interpolator.l1_load_miss_bw
+            + c_l1_cycles;
 
     float strip_mid_dram;
     float strip_mid_llc;
-    if (strips_b_tranform_v) {
-        strip_mid_dram = strip_mid_size_private / bw_interpulator.get_bw(1);
-        strip_mid_llc = strip_mid_size_private / bw_interpulator.llc_bw;
+    if (layer_perf_characteristics.strips_b_tranform_v
+            || layer_perf_characteristics.strips_a_read_h) {
+        strip_mid_dram = layer_perf_characteristics.strip_mid_size_private
+                / bw_interpolator.get_bw(1);
+        strip_mid_llc = layer_perf_characteristics.strip_mid_size_private
+                / bw_interpolator.llc_bw;
     } else {
-        strip_mid_dram = strip_mid_size_shared
-                        / bw_interpulator.get_bw(strip_mid_share_coef)
-                + strip_mid_size_private / bw_interpulator.get_bw(1);
+        strip_mid_dram = layer_perf_characteristics.strip_mid_size_shared
+                        / bw_interpolator.get_bw(
+                                layer_perf_characteristics.strip_mid_share_coef)
+                + layer_perf_characteristics.strip_mid_size_private
+                        / bw_interpolator.get_bw(1);
 
-        strip_mid_llc = (strip_mid_size_private + strip_mid_size_shared)
-                / bw_interpulator.llc_bw;
+        strip_mid_llc
+                = (layer_perf_characteristics.strip_mid_size_private
+                          + layer_perf_characteristics.strip_mid_size_shared)
+                / bw_interpolator.llc_bw;
     }
 
-    float strip_tmul = num_tmuls_per_strip * num_cycles_per_tmul;
-    float total_post = 4 + this->postops_inst_count;
+    float strip_tmul = layer_perf_characteristics.num_tmuls_per_strip
+            * layer_perf_characteristics.num_cycles_per_tmul;
+    float avx_insts_per_cache_line
+            = calculate_avx_insts_per_cache_line(layer_perf_characteristics);
+    float strip_avx = avx_insts_per_cache_line
+            * layer_perf_characteristics.num_postop_cache_lines / avx_ipc;
+    float strip_mid_cycles = std::max(
+            {strip_mid_dram, strip_mid_llc, l1_cycles, strip_tmul, strip_avx});
 
-    bool has_zp = this->src_zp_type != brgemm_broadcast_t::none
-            || this->wei_zp_type != brgemm_broadcast_t::none
-            || this->dst_zp_type != brgemm_broadcast_t::none;
+    return strip_mid_cycles;
+}
 
-    bool has_scales = this->with_dst_scales || this->with_src_scales
-            || this->with_wei_scales;
-
-    // need_buf_a_ = use_buffer_a;
-
-    if (has_scales) total_post += 1;
-    if (has_zp) total_post += 1;
-
-    float strip_avx = total_post * num_postop_cache_lines / avx_ipc;
-    float strip_mid_cycles = b_transform_cycles_v
-            + std::max({strip_mid_dram, strip_mid_llc, l1_cycles, strip_tmul,
-                    strip_avx});
-
+float matmul_amx_blocking_params_macro_t::calculate_strip_1_cycles(
+        layer_perf_characteristics_t &layer_perf_characteristics,
+        bw_map_t &bw_interpolator, float strip_mid_cycles) const {
     float strip_1_cycles;
-    if (!strip1_b_tranform_h)
+    if (!layer_perf_characteristics.strip1_b_tranform_h
+            && !layer_perf_characteristics.strip1_a_read_v) {
         // default for vertical and horizontal without b transform
-        strip_1_cycles = strip_1_size_shared
-                        / bw_interpulator.get_bw(strip_1_share_coef)
-                + strip_1_size_private / bw_interpulator.get_bw(1);
-    else if (strip1_b_in_mlc_h)
+        strip_1_cycles = layer_perf_characteristics.strip_1_size_shared
+                        / bw_interpolator.get_bw(
+                                layer_perf_characteristics.strip_1_share_coef)
+                + layer_perf_characteristics.strip_1_size_private
+                        / bw_interpolator.get_bw(1);
+    } else if (layer_perf_characteristics.strip1_b_in_mlc_h
+            || layer_perf_characteristics.strip1_a_read_v)
         strip_1_cycles = strip_mid_cycles; // strip 1 is regular strip;
     else
-        strip_1_cycles = strip_1_size_shared / bw_interpulator.llc_bw;
+        strip_1_cycles = layer_perf_characteristics.strip_1_size_shared
+                / bw_interpolator.llc_bw;
+    return strip_1_cycles;
+}
 
-    float gemm_cycles = b_transform_cycles_h + strip_1_cycles
-            + (num_strip - 1) * strip_mid_cycles;
-
+float matmul_amx_blocking_params_macro_t::calculate_reduction_cycles(
+        layer_perf_characteristics_t &layer_perf_characteristics,
+        bw_map_t &bw_interpolator) const {
     // Calculate reduction cycles
     float reduction_cycles;
     size_t c_size_per_core = m_per_thread * n_per_thread * acc_dt_sz;
@@ -569,43 +605,107 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
             float reduction_read_bytes = (M * rnd_up(N, 16) * acc_dt_sz)
                     * ((nthr_k_ - 1)) / (nthr_m_ * nthr_n_);
             float reduction_read_cycles;
-            if (a_size + b_size + d_size < L2_threshold()) {
+            if (layer_perf_characteristics.a_size
+                            + layer_perf_characteristics.b_size
+                            + layer_perf_characteristics.d_size
+                    < L2_threshold()) {
                 reduction_read_cycles
-                        = reduction_read_bytes / bw_interpulator.get_bw(2);
+                        = reduction_read_bytes / bw_interpolator.get_bw(2);
             } else {
                 reduction_read_cycles
-                        = reduction_read_bytes / bw_interpulator.llc_bw;
+                        = reduction_read_bytes / bw_interpolator.llc_bw;
             }
 
             float reduction_write_bytes
                     = (M * N * c_dt_sz) / (nthr_m_ * nthr_n_);
             float reduction_write_cycles
-                    = reduction_write_bytes / bw_interpulator.get_bw(1);
+                    = reduction_write_bytes / bw_interpolator.get_bw(1);
             // Add reduction const overhead - measured
-            reduction_cycles
-                    = reduction_read_cycles + reduction_write_cycles + 25000;
+            float reduction_const_overhead = 25000;
+            reduction_cycles = reduction_read_cycles + reduction_write_cycles
+                    + reduction_const_overhead;
         } else {
             // Don't do reduction if c tmp doesn't fit
             // Also parallel reduction is not supported for large batch
-            return 0;
+            return -1;
         }
     } else {
         reduction_cycles = 0;
     }
+    return reduction_cycles;
+}
+float matmul_amx_blocking_params_macro_t::calculate_avx_insts_per_cache_line(
+        layer_perf_characteristics_t &layer_perf_characteristics) const {
+    const float down_convert_inst = 4;
+    float avx_insts_per_cache_line
+            = down_convert_inst + this->postops_inst_count;
+
+    bool has_zp = this->src_zp_type != brgemm_broadcast_t::none
+            || this->wei_zp_type != brgemm_broadcast_t::none
+            || this->dst_zp_type != brgemm_broadcast_t::none;
+
+    bool has_scales = this->with_dst_scales || this->with_src_scales
+            || this->with_wei_scales;
+
+    if (has_scales) avx_insts_per_cache_line += 1;
+    if (has_zp) avx_insts_per_cache_line += 1;
+    return avx_insts_per_cache_line;
+}
+
+float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
+    layer_perf_characteristics_t layer_perf_characteristics;
+    init_copy_characteristics(layer_perf_characteristics);
+    calculate_layer_sizes(layer_perf_characteristics);
+
+    bw_map_t bw_interpolator;
+
+    float b_transform_cycles_v = layer_perf_characteristics.strips_b_tranform_v
+            ? layer_perf_characteristics.strip_mid_size_shared
+                    / bw_interpolator.get_bw(
+                            layer_perf_characteristics.strip_mid_share_coef)
+            : 0;
+
+    float b_transform_cycles_h = layer_perf_characteristics.strip1_b_tranform_h
+            ? layer_perf_characteristics.strip_1_size_shared
+                    / bw_interpolator.get_bw(
+                            layer_perf_characteristics.strip_1_share_coef)
+            : 0;
+
+    float a_read_cycles_v = layer_perf_characteristics.strip1_a_read_v
+            ? layer_perf_characteristics.strip_1_size_shared
+                    / bw_interpolator.get_bw(
+                            layer_perf_characteristics.strip_1_share_coef)
+            : 0;
+
+    float a_read_cycles_h = layer_perf_characteristics.strips_a_read_h
+            ? layer_perf_characteristics.strip_mid_size_shared
+                    / bw_interpolator.get_bw(
+                            layer_perf_characteristics.strip_mid_share_coef)
+            : 0;
+
+    float strip_mid_cycles = calculate_strip_mid_cycles(
+            layer_perf_characteristics, bw_interpolator);
+    float strip_1_cycles = calculate_strip_1_cycles(
+            layer_perf_characteristics, bw_interpolator, strip_mid_cycles);
+
+    float gemm_cycles = a_read_cycles_v + b_transform_cycles_h + strip_1_cycles
+            + (layer_perf_characteristics.num_strip - 1)
+                    * (b_transform_cycles_v + a_read_cycles_h
+                            + strip_mid_cycles);
+
+    float reduction_cycles = calculate_reduction_cycles(
+            layer_perf_characteristics, bw_interpolator);
+
+    if (reduction_cycles < 0)
+        return 0; //reduction is not feasible, so the score is 0
 
     float total_macs = M * K * N * batch;
     float total_cycles = (gemm_cycles + reduction_cycles) * b_per_thread;
+
+    int macs_per_cycle_base = 1024;
     float peak_macs_per_cycle = (macs_per_cycle_base / gemm_dt_sz) * nthr;
     float peak_cycles = total_macs / peak_macs_per_cycle;
     return peak_cycles / total_cycles;
-}
-
-bool matmul_amx_blocking_params_macro_t::b_transform_fits_in_l2() const {
-    bool b_transform_in_l2;
-    auto max_l2_usage = l2_matrix_usage(
-            k_chunk_size_, n_blk_, k_blk_, true, true); /* B transform size */
-    b_transform_in_l2 = max_l2_usage < L2_threshold();
-    return b_transform_in_l2;
 }
 
 bool matmul_amx_blocking_params_macro_t::operator==(

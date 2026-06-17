@@ -115,8 +115,7 @@ public:
     // shared memory
     memory sub_max_src1_src2, sub_max_dst1_dst2;
 
-private:
-    // Used to record the ops contained in MQA
+private: // Used to record the ops contained in MQA
     std::vector<std::shared_ptr<op_t>> mqa_op;
 
 public:

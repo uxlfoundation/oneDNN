@@ -42,8 +42,6 @@ namespace dnnl_impl {
 template <bool quantized>
 struct prelu_fwd_t : public kernel_base_t {
 private:
-    allocator_t *g_alloc_ = nullptr;
-
     std::shared_ptr<subgraph_t> subgraph_;
     memory_planner_t memory_planner_;
 
@@ -103,8 +101,6 @@ using float_prelu_fwd = prelu_fwd_t</* quantized */ false>;
 #if BUILD_TRAINING
 struct prelu_bwd_t : public kernel_base_t {
 private:
-    allocator_t *g_alloc_ = nullptr;
-
     std::shared_ptr<subgraph_t> subgraph_;
     memory_planner_t memory_planner_;
 

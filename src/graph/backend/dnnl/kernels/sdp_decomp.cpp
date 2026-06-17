@@ -43,8 +43,6 @@ status_t sdp_decomp_kernel_t<quantized, dt>::compile_impl(
         const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
     p_engine_ = make_dnnl_engine(*g_engine);
-    g_alloc_
-            = reinterpret_cast<graph::allocator_t *>(g_engine->get_allocator());
 
     // get subgraph from the deep copied partition
     subgraph_ = std::make_shared<subgraph_t>(

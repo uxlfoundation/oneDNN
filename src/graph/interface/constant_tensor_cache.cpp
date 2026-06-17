@@ -18,9 +18,7 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include <unordered_map>
 
-#include "common/engine.hpp"
 #include "common/utils.hpp"
 
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE

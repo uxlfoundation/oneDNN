@@ -13,3 +13,6 @@
 
 # Post-op with non-broadcast load
 --reset --alg=add --attr-post-ops=binary_div:f32:common 1x4:1x4
+
+# Permuted src0 tag (acbd) with scalar broadcast should not assert (MFDNN-14988)
+--reset --allow-enum-tags-only=0 --alg=mul --sdt=f32:f32 --ddt=f32 --stag=acbd:abcd --dtag=acbd 128x12x1x256:1x1x1x1

@@ -334,14 +334,14 @@ status_t gen_desc_t::finalize(const char *tags) {
     // TODO: Refactor M/N groups/thread setting to preserve MN group count.
     constexpr int perMNGroupSize = 1 << 24;
     if (problem_.aqGroupM == m_
-            && ((!problem_.forceGroupSumsA && !problem_.preferBDPAS())
+            && ((!problem_.hasGroupSumsA && !problem_.preferBDPAS())
                     || m_ > 1)) {
         problem_.aqGroupM = std::max(problem_.aqGroupM, perMNGroupSize);
         problem_.aqGroupM
                 = utils::rnd_up(problem_.aqGroupM, strategy_.unroll[LoopM]);
     }
     if (problem_.bqGroupN == n_
-            && ((!problem_.forceGroupSumsB && !problem_.preferBDPAS())
+            && ((!problem_.hasGroupSumsB && !problem_.preferBDPAS())
                     || n_ > 1)) {
         problem_.bqGroupN = std::max(problem_.bqGroupN, perMNGroupSize);
         problem_.bqGroupN
@@ -459,7 +459,7 @@ gen_nocopy_desc_t::select_kernel(const compute::device_info_t &dev_info,
                      || problem.boPtrDims > -1)
                     && problem.aoPtrDims > -1 && problem.Ta_ext.isInt8()
                     && problem.Tb_ext.isInt8() && problem.Tc.isFP()
-                    && !problem.forceGroupSumsA && !problem.forceGroupSumsB),
+                    && !problem.hasGroupSumsA && !problem.hasGroupSumsB),
             [](Type dt) -> const char * {
         if (dt.isInt8()) return "[OH]";
         return nullptr;

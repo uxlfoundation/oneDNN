@@ -56,6 +56,12 @@ struct dnnl_constant_buffer_t : public graph::constant_buffer_t {
     }
 };
 
+inline bool is_constant_cache_enabled(const dnnl::engine &eng) {
+    auto cache = graph::get_constant_tensor_cache(
+            eng.get()->kind(), eng.get()->index());
+    return cache && cache->get_capacity() != 0;
+}
+
 inline graph::constant_tensor_cache_t::value_t dnnl_constant_cache_get_or_add(
         const dnnl::engine &eng, graph::constant_tensor_cache_t::key_t key,
         size_t size, const graph::constant_tensor_cache_t::value_t &value) {
@@ -67,6 +73,11 @@ inline graph::constant_tensor_cache_t::value_t dnnl_constant_cache_get_or_add(
             dnnl_backend_t::get_singleton().get_id(), key, size, value);
 }
 
+// The global constant_tensor_cache_t instances are managed by
+// global_cache_manager_t (in constant_tensor_cache.cpp) as a process-lifetime
+// singleton. Cached buffers are evicted only by the capacity-based policy. The
+// retain/release/remove_if_exist wrappers below are provided for potential
+// future use but are currently not called by any backend code.
 inline void dnnl_constant_cache_remove_if_exist(
         const dnnl::engine &eng, graph::constant_tensor_cache_t::key_t key) {
     auto cache = graph::get_constant_tensor_cache(
@@ -74,12 +85,6 @@ inline void dnnl_constant_cache_remove_if_exist(
     assertm(cache,
             "no available constant cache for specified engine kind and index");
     cache->remove_if_exist(dnnl_backend_t::get_singleton().get_id(), key);
-}
-
-inline bool is_constant_cache_enabled(const dnnl::engine &eng) {
-    auto cache = graph::get_constant_tensor_cache(
-            eng.get()->kind(), eng.get()->index());
-    return cache && cache->get_capacity() != 0;
 }
 
 inline void dnnl_constant_cache_retain(const dnnl::engine &eng) {

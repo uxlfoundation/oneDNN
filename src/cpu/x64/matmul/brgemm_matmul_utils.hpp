@@ -244,6 +244,7 @@ struct brgemm_matmul_conf_t {
     bool is_int4_weights = false;
     bool is_f4_via_convert = false;
     bool is_tf32 = false;
+    bool with_int8_grouped_quantization = false;
     bool req_wei_vnni_downconvert = false;
     bool is_runtime_M = false;
     bool is_runtime_N = false;
@@ -336,6 +337,10 @@ struct brgemm_matmul_conf_utils_t {
         if (bgmmc.is_bf16_with_int_wei) return true;
         if (bgmmc.is_f16_with_int_wei) return true;
         if (bgmmc.is_f32_with_int_wei) return true;
+        if (bgmmc.with_int8_grouped_quantization
+                && (bgmmc.is_int4_weights
+                        || bgmmc.wei_zp_type != brgemm_broadcast_t::none))
+            return true;
         if (bgmmc.apply_scales_in_buffer_b) return true;
         if (bgmmc.is_gemv) return false;
 
@@ -431,6 +436,10 @@ struct brgemm_matmul_conf_utils_t {
 
     inline bool is_f32_with_int_wei() const { return f32_with_int_wei_dt; }
 
+    inline bool with_int8_grouped_quantization() const {
+        return int8_grouped_quantization_dt;
+    }
+
     inline bool with_weights_decompression() const {
         return !utils::one_of(bgmmc.src_dt, data_type::s8, data_type::u8,
                        data_type::s4, data_type::u4)
@@ -476,7 +485,7 @@ private:
             int8_dt, bf32_dt, tf32_dt;
     const bool weights_decompression_support, bf16_with_int_wei_dt, f32_f16_dt,
             f32_bf16_dt, f16_with_int_wei_dt, f32_with_int_wei_dt, bf16_fp8_dt,
-            f16_fp8_dt;
+            f16_fp8_dt, int8_grouped_quantization_dt;
     const bool A_any_layout;
     const bool B_any_layout;
     const bool C_any_layout;

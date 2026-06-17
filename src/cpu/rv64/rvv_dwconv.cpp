@@ -40,7 +40,7 @@ static dim_t tensor_nhwc_elems(dim_t n, dim_t h, dim_t w, dim_t c) {
     return n * h * w * c;
 }
 
-static void pack_input_nhwc_k3s1(const float16_t *src,
+static void pack_input_nhwc(const float16_t *src,
         const memory_desc_wrapper &src_d, dim_t n, dim_t ih, dim_t iw,
         dim_t channels, dim_t padded_h, dim_t padded_w, dim_t t_pad,
         dim_t l_pad, float16_t *packed) {
@@ -118,6 +118,7 @@ status_t rvv_dwconv_fwd_t::execute(const exec_ctx_t &ctx) const {
     const dim_t r_pad = cd->padding[1][1];
     const dim_t padded_h = ih + t_pad + b_pad;
     const dim_t padded_w = iw + l_pad + r_pad;
+    const dim_t stride_h = cd->strides[0];
 
     std::vector<float16_t> packed_weights;
     pack_weights_goihw(wei, wei_d, groups, oc_per_group, packed_weights);
@@ -130,7 +131,7 @@ status_t rvv_dwconv_fwd_t::execute(const exec_ctx_t &ctx) const {
     parallel_nd(mb, oc_per_group, [&](dim_t n, dim_t oc) {
         std::vector<float16_t> packed_src(
                 tensor_nhwc_elems(1, padded_h, padded_w, groups));
-        pack_input_nhwc_k3s1(src, src_d, n, ih, iw, groups, padded_h, padded_w,
+        pack_input_nhwc(src, src_d, n, ih, iw, groups, padded_h, padded_w,
                 t_pad, l_pad, packed_src.data());
 
         jit_rvv_dwconv_kernel_t::call_params_t args;
@@ -141,16 +142,19 @@ status_t rvv_dwconv_fwd_t::execute(const exec_ctx_t &ctx) const {
         args.rhs_stride_0 = 3 * groups * (dim_t)sizeof(float16_t);
         args.rhs_stride_1 = groups * (dim_t)sizeof(float16_t);
         args.out = dst + dst_d.off(n, oc, 0, 0);
-        args.out_stride_0 = dst_d.blocking_desc().strides[2]
-                * (dim_t)sizeof(float16_t);
-        args.out_stride_1 = dst_d.blocking_desc().strides[3]
-                * (dim_t)sizeof(float16_t);
+        args.out_stride_0
+                = dst_d.blocking_desc().strides[2] * (dim_t)sizeof(float16_t);
+        args.out_stride_1
+                = dst_d.blocking_desc().strides[3] * (dim_t)sizeof(float16_t);
         args.h = oh;
         args.w = ow;
         args.c = groups;
         args.ratio_bytes = oc_per_group * (dim_t)sizeof(float16_t);
-        args.bias = bias_fp32.empty() ? nullptr : bias_fp32.data() + oc * groups;
-        static const jit_rvv_dwconv_kernel_t kernel;
+        args.bias
+                = bias_fp32.empty() ? nullptr : bias_fp32.data() + oc * groups;
+        static const jit_rvv_dwconv_kernel_t kernel_s1(1);
+        static const jit_rvv_dwconv_kernel_t kernel_s2(2);
+        const auto &kernel = stride_h == 1 ? kernel_s1 : kernel_s2;
         kernel(&args);
     });
 

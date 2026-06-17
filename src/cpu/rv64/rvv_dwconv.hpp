@@ -31,7 +31,7 @@ struct rvv_dwconv_fwd_t : public primitive_t {
     struct pd_t : public cpu_convolution_fwd_pd_t {
         using cpu_convolution_fwd_pd_t::cpu_convolution_fwd_pd_t;
 
-        DECLARE_COMMON_PD_T("dw_k3s1:rvv", rvv_dwconv_fwd_t);
+        DECLARE_COMMON_PD_T("dw_k3s1s2:rvv", rvv_dwconv_fwd_t);
 
         status_t init(engine_t *engine) {
             using namespace data_type;
@@ -68,9 +68,14 @@ struct rvv_dwconv_fwd_t : public primitive_t {
             VDISPATCH_CONV(i == 1, VERBOSE_BAD_DIM, "weights", gr_shift + 1);
             VDISPATCH_CONV(kh == 3 && kw == 3, VERBOSE_BAD_DIM, "weights",
                     gr_shift + 2);
-            VDISPATCH_CONV(stride_h == 1 && stride_w == 1, VERBOSE_BAD_DIM, "strides", 0);
-            VDISPATCH_CONV(dilate_h == 0 && dilate_w == 0, VERBOSE_BAD_DIM, "dilates", 0);
+            VDISPATCH_CONV(
+                    stride_h == stride_w && utils::one_of(stride_h, 1, 2),
+                    VERBOSE_BAD_DIM, "strides", 0);
+            VDISPATCH_CONV(dilate_h == 0 && dilate_w == 0, VERBOSE_BAD_DIM,
+                    "dilates", 0);
 
+            VDISPATCH_CONV(set_default_formats_common(nhwc, goihw, nhwc),
+                    VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_CONV(memory_desc_matches_tag(*src_md(0), nhwc),
                     VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_CONV(memory_desc_matches_tag(*dst_md(0), nhwc),

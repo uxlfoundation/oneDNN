@@ -26,7 +26,8 @@ namespace rv64 {
 using namespace Xbyak_riscv;
 
 #define DWCONV_OFF(field) \
-    static_cast<int32_t>(offsetof(jit_rvv_dwconv_kernel_t::call_params_t, field))
+    static_cast<int32_t>( \
+            offsetof(jit_rvv_dwconv_kernel_t::call_params_t, field))
 
 namespace {
 
@@ -39,13 +40,13 @@ VReg src_v(int idx) {
 }
 
 VReg acc_v(int idx) {
-    return VReg(24 + idx);
+    return VReg(26 + idx);
 }
 
 } // namespace
 
-void jit_rvv_dwconv_kernel_t::preload_dwconv3x3s1_f16(const Reg &r0,
-        const Reg &r1, const Reg &r2, const Reg &lhs_stride_1) {
+void jit_rvv_dwconv_kernel_t::preload_dwconv3x3s1_f16(
+        const Reg &r0, const Reg &r1, const Reg &r2, const Reg &lhs_stride_1) {
     vle16_v(src_v(6), r0);
     add(r0, r0, lhs_stride_1);
     vle16_v(src_v(7), r1);
@@ -66,8 +67,8 @@ void jit_rvv_dwconv_kernel_t::preload_dwconv3x3s1_f16(const Reg &r0,
     add(r2, r2, lhs_stride_1);
 }
 
-void jit_rvv_dwconv_kernel_t::compute_dwconv3x3s1_f16_m5(const Reg &r0,
-        const Reg &r1, const Reg &r2, const Reg &lhs_stride_1) {
+void jit_rvv_dwconv_kernel_t::compute_dwconv3x3s1_f16_m5(
+        const Reg &r0, const Reg &r1, const Reg &r2, const Reg &lhs_stride_1) {
     vfwmul_vv(acc_v(1), wei_v(0), src_v(0));
     vfwmul_vv(acc_v(2), wei_v(0), src_v(3));
     vfwmul_vv(acc_v(3), wei_v(0), src_v(6));
@@ -129,6 +130,38 @@ void jit_rvv_dwconv_kernel_t::compute_dwconv3x3s1_f16_m5(const Reg &r0,
     vfwmacc_vv(acc_v(5), wei_v(8), src_v(5));
 }
 
+void jit_rvv_dwconv_kernel_t::compute_dwconv3x3s2_f16_m5(
+        const Reg &r0, const Reg &r1, const Reg &r2, const Reg &lhs_stride_1) {
+    compute_dwconv3x3s2_f16_m(r0, r1, r2, lhs_stride_1, 5);
+}
+
+void jit_rvv_dwconv_kernel_t::compute_dwconv3x3s2_f16_m(const Reg &r0,
+        const Reg &r1, const Reg &r2, const Reg &lhs_stride_1, int count) {
+    for (int i = 1; i <= count; ++i) {
+        vle16_v(src_v(0), r0);
+        add(r0, r0, lhs_stride_1);
+        vle16_v(src_v(1), r1);
+        add(r1, r1, lhs_stride_1);
+        vle16_v(src_v(2), r2);
+        add(r2, r2, lhs_stride_1);
+
+        vle16_v(src_v(3), r0);
+        add(r0, r0, lhs_stride_1);
+        vle16_v(src_v(4), r1);
+        add(r1, r1, lhs_stride_1);
+        vle16_v(src_v(5), r2);
+        add(r2, r2, lhs_stride_1);
+
+        vle16_v(src_v(6), r0);
+        vle16_v(src_v(7), r1);
+        vle16_v(src_v(8), r2);
+
+        vfwmul_vv(acc_v(i), wei_v(0), src_v(0));
+        for (int k = 1; k < 9; ++k)
+            vfwmacc_vv(acc_v(i), wei_v(k), src_v(k));
+    }
+}
+
 void jit_rvv_dwconv_kernel_t::add_bias_m(const Reg &vl, int count) {
     vsetvli(x0, vl, SEW::e32, LMUL::m1, VTA::ta, VMA::ma);
     for (int i = 1; i <= count; ++i)
@@ -141,8 +174,8 @@ void jit_rvv_dwconv_kernel_t::narrow_m(int count) {
         vfncvt_f_f_w(acc_v(i), acc_v(i));
 }
 
-void jit_rvv_dwconv_kernel_t::store_m(const Reg &out,
-        const Reg &out_stride_1, const Reg &ratio_bytes, int count) {
+void jit_rvv_dwconv_kernel_t::store_m(const Reg &out, const Reg &out_stride_1,
+        const Reg &ratio_bytes, int count) {
     for (int i = 1; i <= count; ++i) {
         vsse16_v(acc_v(i), out, ratio_bytes);
         add(out, out, out_stride_1);
@@ -156,8 +189,8 @@ void jit_rvv_dwconv_kernel_t::compute_one_output(int dst_idx, int src_start) {
         vfwmacc_vv(acc_v(dst_idx), wei_v(k), src_reg(src_start + k));
 }
 
-void jit_rvv_dwconv_kernel_t::load_tail_extra_cols(const Reg &r0,
-        const Reg &r1, const Reg &r2, const Reg &lhs_stride_1, int cols) {
+void jit_rvv_dwconv_kernel_t::load_tail_extra_cols(const Reg &r0, const Reg &r1,
+        const Reg &r2, const Reg &lhs_stride_1, int cols) {
     for (int col = 0; col < cols; ++col) {
         const int base = 6 + col * 3;
         vle16_v(src_v(base), r0);
@@ -170,9 +203,8 @@ void jit_rvv_dwconv_kernel_t::load_tail_extra_cols(const Reg &r0,
 }
 
 void jit_rvv_dwconv_kernel_t::compute_tail(const Reg &r0, const Reg &r1,
-        const Reg &r2, const Reg &lhs_stride_1, const Reg &vl,
-        const Reg &out, const Reg &out_stride_1, const Reg &ratio_bytes,
-        int count) {
+        const Reg &r2, const Reg &lhs_stride_1, const Reg &vl, const Reg &out,
+        const Reg &out_stride_1, const Reg &ratio_bytes, int count) {
     if (count == 4) {
         load_tail_extra_cols(r0, r1, r2, lhs_stride_1, 3);
         for (int i = 1; i <= 3; ++i)
@@ -192,8 +224,17 @@ void jit_rvv_dwconv_kernel_t::compute_tail(const Reg &r0, const Reg &r1,
     store_m(out, out_stride_1, ratio_bytes, count);
 }
 
-jit_rvv_dwconv_kernel_t::jit_rvv_dwconv_kernel_t()
-    : jit_generator_t("jit_rvv_dwconv_kernel") {
+void jit_rvv_dwconv_kernel_t::compute_tail_s2(const Reg &r0, const Reg &r1,
+        const Reg &r2, const Reg &lhs_stride_1, const Reg &vl, const Reg &out,
+        const Reg &out_stride_1, const Reg &ratio_bytes, int count) {
+    compute_dwconv3x3s2_f16_m(r0, r1, r2, lhs_stride_1, count);
+    add_bias_m(vl, count);
+    narrow_m(count);
+    store_m(out, out_stride_1, ratio_bytes, count);
+}
+
+jit_rvv_dwconv_kernel_t::jit_rvv_dwconv_kernel_t(int stride)
+    : jit_generator_t("jit_rvv_dwconv_kernel"), stride_(stride) {
     create_kernel();
 }
 
@@ -279,75 +320,119 @@ void jit_rvv_dwconv_kernel_t::generate() {
     add(a2, a4, t5);
     add(a3, a2, t5);
 
-    vle16_v(src_v(0), a1);
-    add(a1, a1, t6);
-    vle16_v(src_v(1), a2);
-    add(a2, a2, t6);
-    vle16_v(src_v(2), a3);
-    add(a3, a3, t6);
+    if (stride_ == 1) {
+        vle16_v(src_v(0), a1);
+        add(a1, a1, t6);
+        vle16_v(src_v(1), a2);
+        add(a2, a2, t6);
+        vle16_v(src_v(2), a3);
+        add(a3, a3, t6);
 
-    vle16_v(src_v(3), a1);
-    add(a1, a1, t6);
-    vle16_v(src_v(4), a2);
-    add(a2, a2, t6);
-    vle16_v(src_v(5), a3);
-    add(a3, a3, t6);
+        vle16_v(src_v(3), a1);
+        add(a1, a1, t6);
+        vle16_v(src_v(4), a2);
+        add(a2, a2, t6);
+        vle16_v(src_v(5), a3);
+        add(a3, a3, t6);
 
-    blez(t0, tail_w);
-    preload_dwconv3x3s1_f16(a1, a2, a3, t6);
-    addi(t0, t0, -1);
-    blez(t0, tail_w5);
+        blez(t0, tail_w);
+        preload_dwconv3x3s1_f16(a1, a2, a3, t6);
+        addi(t0, t0, -1);
+        blez(t0, tail_w5);
 
-    L(loop_w);
-    addi(t0, t0, -1);
-    compute_dwconv3x3s1_f16_m5(a1, a2, a3, t6);
-    add_bias_m(t1, 5);
-    narrow_m(5);
-    preload_dwconv3x3s1_f16(a1, a2, a3, t6);
-    store_m(a0, t4, a5, 5);
-    bnez(t0, loop_w);
+        L(loop_w);
+        addi(t0, t0, -1);
+        compute_dwconv3x3s1_f16_m5(a1, a2, a3, t6);
+        add_bias_m(t1, 5);
+        narrow_m(5);
+        preload_dwconv3x3s1_f16(a1, a2, a3, t6);
+        store_m(a0, t4, a5, 5);
+        bnez(t0, loop_w);
 
-    L(tail_w5);
-    compute_dwconv3x3s1_f16_m5(a1, a2, a3, t6);
-    add_bias_m(t1, 5);
-    narrow_m(5);
-    store_m(a0, t4, a5, 5);
+        L(tail_w5);
+        compute_dwconv3x3s1_f16_m5(a1, a2, a3, t6);
+        add_bias_m(t1, 5);
+        narrow_m(5);
+        store_m(a0, t4, a5, 5);
 
-    L(tail_w);
-    ld(t0, a7, DWCONV_OFF(w));
-    li(a5, 5);
-    remw(t0, t0, a5);
-    ld(a5, a7, DWCONV_OFF(ratio_bytes));
-    addi(t0, t0, -1);
-    beqz(t0, tail_w1);
-    addi(t0, t0, -1);
-    beqz(t0, tail_w2);
-    addi(t0, t0, -1);
-    beqz(t0, tail_w3);
-    addi(t0, t0, -1);
-    beqz(t0, tail_w4);
-    j_(w_end);
+        L(tail_w);
+        ld(t0, a7, DWCONV_OFF(w));
+        li(a5, 5);
+        remw(t0, t0, a5);
+        ld(a5, a7, DWCONV_OFF(ratio_bytes));
+        addi(t0, t0, -1);
+        beqz(t0, tail_w1);
+        addi(t0, t0, -1);
+        beqz(t0, tail_w2);
+        addi(t0, t0, -1);
+        beqz(t0, tail_w3);
+        addi(t0, t0, -1);
+        beqz(t0, tail_w4);
+        j_(w_end);
 
-    L(tail_w1);
-    compute_tail(a1, a2, a3, t6, t1, a0, t4, a5, 1);
-    j_(w_end);
+        L(tail_w1);
+        compute_tail(a1, a2, a3, t6, t1, a0, t4, a5, 1);
+        j_(w_end);
 
-    L(tail_w2);
-    compute_tail(a1, a2, a3, t6, t1, a0, t4, a5, 2);
-    j_(w_end);
+        L(tail_w2);
+        compute_tail(a1, a2, a3, t6, t1, a0, t4, a5, 2);
+        j_(w_end);
 
-    L(tail_w3);
-    compute_tail(a1, a2, a3, t6, t1, a0, t4, a5, 3);
-    j_(w_end);
+        L(tail_w3);
+        compute_tail(a1, a2, a3, t6, t1, a0, t4, a5, 3);
+        j_(w_end);
 
-    L(tail_w4);
-    compute_tail(a1, a2, a3, t6, t1, a0, t4, a5, 4);
-    j_(w_end);
+        L(tail_w4);
+        compute_tail(a1, a2, a3, t6, t1, a0, t4, a5, 4);
+        j_(w_end);
+    } else {
+        blez(t0, tail_w);
+
+        L(loop_w);
+        addi(t0, t0, -1);
+        compute_dwconv3x3s2_f16_m5(a1, a2, a3, t6);
+        add_bias_m(t1, 5);
+        narrow_m(5);
+        store_m(a0, t4, a5, 5);
+        bnez(t0, loop_w);
+
+        L(tail_w);
+        ld(t0, a7, DWCONV_OFF(w));
+        li(a5, 5);
+        remw(t0, t0, a5);
+        ld(a5, a7, DWCONV_OFF(ratio_bytes));
+        addi(t0, t0, -1);
+        beqz(t0, tail_w1);
+        addi(t0, t0, -1);
+        beqz(t0, tail_w2);
+        addi(t0, t0, -1);
+        beqz(t0, tail_w3);
+        addi(t0, t0, -1);
+        beqz(t0, tail_w4);
+        j_(w_end);
+
+        L(tail_w1);
+        compute_tail_s2(a1, a2, a3, t6, t1, a0, t4, a5, 1);
+        j_(w_end);
+
+        L(tail_w2);
+        compute_tail_s2(a1, a2, a3, t6, t1, a0, t4, a5, 2);
+        j_(w_end);
+
+        L(tail_w3);
+        compute_tail_s2(a1, a2, a3, t6, t1, a0, t4, a5, 3);
+        j_(w_end);
+
+        L(tail_w4);
+        compute_tail_s2(a1, a2, a3, t6, t1, a0, t4, a5, 4);
+        j_(w_end);
+    }
 
     L(w_end);
     ld(t0, a7, DWCONV_OFF(out_stride_0));
     add(a6, a6, t0);
     add(a4, a4, t5);
+    if (stride_ == 2) add(a4, a4, t5);
     addi(t2, t2, -1);
     bnez(t2, loop_h);
 

@@ -46,7 +46,7 @@ struct jit_rvv_dwconv_kernel_t : public jit_generator_t {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_rvv_dwconv_kernel_t)
 
-    jit_rvv_dwconv_kernel_t();
+    jit_rvv_dwconv_kernel_t(int stride);
 
     void operator()(const call_params_t *p) const {
         jit_generator_t::operator()(p);
@@ -62,6 +62,12 @@ private:
     void compute_dwconv3x3s1_f16_m5(const Xbyak_riscv::Reg &r0,
             const Xbyak_riscv::Reg &r1, const Xbyak_riscv::Reg &r2,
             const Xbyak_riscv::Reg &lhs_stride_1);
+    void compute_dwconv3x3s2_f16_m5(const Xbyak_riscv::Reg &r0,
+            const Xbyak_riscv::Reg &r1, const Xbyak_riscv::Reg &r2,
+            const Xbyak_riscv::Reg &lhs_stride_1);
+    void compute_dwconv3x3s2_f16_m(const Xbyak_riscv::Reg &r0,
+            const Xbyak_riscv::Reg &r1, const Xbyak_riscv::Reg &r2,
+            const Xbyak_riscv::Reg &lhs_stride_1, int count);
     void add_bias_m(const Xbyak_riscv::Reg &vl, int count);
     void narrow_m(int count);
     void store_m(const Xbyak_riscv::Reg &out,
@@ -71,12 +77,18 @@ private:
     void load_tail_extra_cols(const Xbyak_riscv::Reg &r0,
             const Xbyak_riscv::Reg &r1, const Xbyak_riscv::Reg &r2,
             const Xbyak_riscv::Reg &lhs_stride_1, int cols);
-    void compute_tail(const Xbyak_riscv::Reg &r0,
-            const Xbyak_riscv::Reg &r1, const Xbyak_riscv::Reg &r2,
-            const Xbyak_riscv::Reg &lhs_stride_1,
+    void compute_tail(const Xbyak_riscv::Reg &r0, const Xbyak_riscv::Reg &r1,
+            const Xbyak_riscv::Reg &r2, const Xbyak_riscv::Reg &lhs_stride_1,
             const Xbyak_riscv::Reg &vl, const Xbyak_riscv::Reg &out,
             const Xbyak_riscv::Reg &out_stride_1,
             const Xbyak_riscv::Reg &ratio_bytes, int count);
+    void compute_tail_s2(const Xbyak_riscv::Reg &r0, const Xbyak_riscv::Reg &r1,
+            const Xbyak_riscv::Reg &r2, const Xbyak_riscv::Reg &lhs_stride_1,
+            const Xbyak_riscv::Reg &vl, const Xbyak_riscv::Reg &out,
+            const Xbyak_riscv::Reg &out_stride_1,
+            const Xbyak_riscv::Reg &ratio_bytes, int count);
+
+    const int stride_;
 };
 
 } // namespace rv64

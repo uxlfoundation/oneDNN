@@ -20,6 +20,8 @@
 #include <type_traits>
 
 #include "common/c_types_map.hpp"
+#include "gpu/intel/compute/device_info.hpp"
+#include "gpu/intel/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -666,6 +668,23 @@ fwd_config_t *choose_config(compute::gpu_arch_t arch, dim_t head_size,
     // TODO: remove this when Xe3 configs are added. Currently the Xe2
     // non-integrated configs perform better than integrated Xe2 configs.
     if (arch == compute::gpu_arch_t::xe3) { is_integrated = false; }
+    auto arch_str = std::string(to_string(arch));
+    std::string s = gpu_utils::dev_getenv("SDPA_SELECT_CONFIG_HW", arch_str);
+    if (!s.empty()) {
+        compute::gpu_arch_t forced_arch = compute::str2gpu_arch(s.c_str());
+        if (forced_arch == compute::gpu_arch_t::unknown) {
+            VDEBUGINFO(0, primitive, sdpa,
+                    "Invalid SDPA_SELECT_CONFIG_HW value '%s', expected one of "
+                    "'xe2', 'xe3', 'xe3p', 'xe_hpc' or 'xe_hpg'.",
+                    s.c_str());
+        }
+        if (forced_arch != arch_query) {
+            VDEBUGINFO(4, primitive, sdpa,
+                    "Overriding architecture for config selection: %s -> %s.",
+                    to_string(arch_query), to_string(forced_arch));
+            arch_query = forced_arch;
+        }
+    }
 
     bool fallback = true;
     while (fallback) {

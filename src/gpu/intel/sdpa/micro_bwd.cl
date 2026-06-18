@@ -458,53 +458,38 @@ inline void tile_store_k_slm(
 #define DST_DATA_T_DKDV DST_DATA_T
 #endif
 
-#if REDUCE_DKDV_F16
-// Enable SLM acummulation in f16 for f16 dV and dK reduce path
-// The global scratch is f32 (DST_DATA_T_DKDV=float); tile_atomic_add_f32
-// converts f16->f32 at the global write step, avoiding __builtin_IB_atomic_add_global_f16.
-DECLARE_2D_TILE(dv_reduce_tile_type, DST_DATA_T, SUBGROUP_SIZE,
-        ugemm_vs_c_type_block0, ugemm_vs_c_type_block1, ugemm_vs_c_type_nblock0,
-        ugemm_vs_c_type_nblock1)
-DECLARE_2D_TILE(a_reduce_tile_type, DST_DATA_T, SUBGROUP_SIZE,
-        ugemm_qdSt_c_type_block0, ugemm_qdSt_c_type_block1,
-        ugemm_qdSt_c_type_nblock0, ugemm_qdSt_c_type_nblock1)
-DECLARE_2D_TILE_SLM_ADD(dv_reduce_tile_type, DST_DATA_T, SUBGROUP_SIZE,
-        ugemm_vs_c_type_block0, ugemm_vs_c_type_block1, ugemm_vs_c_type_nblock0,
-        ugemm_vs_c_type_nblock1)
-DECLARE_2D_TILE_SLM_ADD(a_reduce_tile_type, DST_DATA_T, SUBGROUP_SIZE,
-        ugemm_qdSt_c_type_block0, ugemm_qdSt_c_type_block1,
-        ugemm_qdSt_c_type_nblock0, ugemm_qdSt_c_type_nblock1)
-DECLARE_2D_TILE_SLM_ADD_T(a_reduce_tile_type, DST_DATA_T, SUBGROUP_SIZE,
-        ugemm_qdSt_c_type_block0, ugemm_qdSt_c_type_block1,
-        ugemm_qdSt_c_type_nblock0, ugemm_qdSt_c_type_nblock1)
-#define SLM_DKDV_DATA_T DST_DATA_T
-typedef dv_reduce_tile_type dv_acc_tile_type;
-typedef a_reduce_tile_type dk_acc_tile_type;
-inline float round_to_dst(float v) {
-    return v;
-}
-#else
+// SLM always accumulates in f32 for dK and dV.
+// For f16 GQA (REDUCE_DKDV_F16), each per-iteration matmul contribution is
+// first quantized to f16 precision (round-trip f32->f16->f32) before being
+// added to the f32 SLM accumulator. This matches graph semantics where each
+// GEMM output is an f16 tensor, while keeping the cross-iteration accumulation
+// in f32 to avoid overflow and loss of precision from f16+f16 reduction.
+// The global scratch (DST_DATA_T_DKDV=float for GQA) is updated via f32 atomic add.
 #define SLM_DKDV_DATA_T float
 typedef dv_tile_type dv_acc_tile_type;
 typedef a_tile_type dk_acc_tile_type;
+// Quantizes a float value to destination precision (f16 for DST_DATA_T=half).
+// For REDUCE_DKDV_F16: applied per-iteration before SLM add to match graph f16 tensor semantics.
+// For non-GQA/f32: identity (CONVERT_DATA_T(float)->float is a no-op).
 inline float round_to_dst(float v) {
     return CONVERT_FLOAT_T(CONVERT_DATA_T(v));
 }
-#endif
 
 inline void tile_store_dV(dv_acc_tile_type *dV_tile_slm,
         global DST_DATA_T_DKDV *dV, int m, int n, int ld, int offset_r,
         int offset_c, int rem) {
 
 #if IS_GQA
-    // tile_copy: f16->f32 for REDUCE_DKDV_F16 (avoids __builtin_IB_atomic_add_global_f16
-    // which can produce NaN), identity for f32 SLM.
-    // round_to_dst: identity for f16 (precision already implicit from SLM);
-    // rounds to bf16 for bf16 dst to match the unfused path.
+    // SLM holds f32-accumulated sum. For REDUCE_DKDV_F16, each iteration was
+    // already quantized to f16 precision before the SLM add, so no further
+    // quantization is needed here. For bf16 (REDUCE_DKDV_F16=0), apply
+    // round_to_dst once at this point to match unfused-path bf16 semantics.
     dv_acc_tile_type dV_tile_slm_copy = *dV_tile_slm;
     dv_tile_type dV_tile_f32;
     tile_copy(dV_tile_slm_copy, dV_tile_f32);
+#if !REDUCE_DKDV_F16
     tile_elementwise_s(dV_tile_f32, round_to_dst);
+#endif
     tile_atomic_add(dV_tile_f32, dV, m, n, ld, offset_r, offset_c);
 
 #else // MHA update
@@ -531,7 +516,9 @@ inline void tile_store_dK_t(dv_acc_tile_type *dK_tile,
     dv_acc_tile_type dK_tile_slm_copy_t = *dK_tile;
     dv_tile_type dK_tile_f32;
     tile_copy(dK_tile_slm_copy_t, dK_tile_f32);
+#if !REDUCE_DKDV_F16
     tile_elementwise_s(dK_tile_f32, round_to_dst);
+#endif
     tile_atomic_add(dK_tile_f32, dK, m, n, ld, offset_r, offset_c);
 #else // MHA update
     dv_tile_type_dst dK_tile_dst;
@@ -556,7 +543,9 @@ inline void tile_store_dK(dk_acc_tile_type *dK_tile, global DST_DATA_T_DKDV *dK,
     dk_acc_tile_type dK_tile_slm_copy = *dK_tile;
     a_tile_type dK_tile_f32;
     tile_copy(dK_tile_slm_copy, dK_tile_f32);
+#if !REDUCE_DKDV_F16
     tile_elementwise_s(dK_tile_f32, round_to_dst);
+#endif
     tile_atomic_add(dK_tile_f32, dK, m, n, ld, offset_r, offset_c);
 #else // MHA update
 
@@ -971,6 +960,10 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             if (sg_ij < sg_per_wg_BcD) {
                 dv_acc_tile_type dV_tile1_store;
                 tile_copy(dV_tile1, dV_tile1_store);
+#if REDUCE_DKDV_F16
+                // Quantize to f16 precision before f32 SLM accumulation.
+                tile_elementwise_s(dV_tile1_store, round_to_dst);
+#endif
                 tile_slm_add(dV_tile1_store, dV_slm, D_MAX, sg_i0_vs, sg_j0_vs);
             }
         }
@@ -1072,6 +1065,10 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             if (sg_ij < sg_per_wg_BcD) {
                 dk_acc_tile_type dK_tile1_store;
                 tile_copy(dK_tile1, dK_tile1_store);
+#if REDUCE_DKDV_F16
+                // Quantize to f16 precision before f32 SLM accumulation.
+                tile_elementwise_s(dK_tile1_store, round_to_dst);
+#endif
 #if TRANSPOSE_K
                 tile_slm_add_t(
                         dK_tile1_store, dK_slm, D_MAX, sg_i0_dk, sg_j0_dk);

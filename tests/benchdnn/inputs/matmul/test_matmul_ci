@@ -234,3 +234,6 @@
 
 # test batch reshape with attributes
 --batch=harness_matmul_3d_bcast
+
+# test sparse features
+--batch=harness_matmul_sparse

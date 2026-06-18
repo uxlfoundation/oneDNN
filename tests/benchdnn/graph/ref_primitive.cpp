@@ -313,7 +313,8 @@ int ref_primitive_t::execute_prim(res_t *res) const {
 }
 
 void ref_primitive_t::check_correctness(
-        const args_t &args, bool has_eltwise, bool has_nans, res_t *res) const {
+        const args_t &args, bool has_eltwise, bool has_nans, res_t *res,
+        const std::unordered_map<int, size_t> &arg_2_lt_id) const {
 
     static const std::unordered_map<size_t, data_kind_t>
             dnnl_arg_2_data_kind_map {
@@ -366,6 +367,11 @@ void ref_primitive_t::check_correctness(
         SWITCH_DRIVER(CASE_CHECK_CORRECTNESS, CASE_CUSTOM_CHECK_CORRECTNESS);
 
         cmp.set_data_kind(it->second);
+        {
+            const auto id_it = arg_2_lt_id.find(arg);
+            if (id_it != arg_2_lt_id.end())
+                cmp.set_output_id(static_cast<int64_t>(id_it->second));
+        }
         cmp.set_has_eltwise_post_op(has_eltwise);
         cmp.set_op_output_has_nans(has_nans);
         // `cmp` object has internal knowledge on when this check must be

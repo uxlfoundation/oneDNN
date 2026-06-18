@@ -77,6 +77,7 @@ struct compare_t {
     void set_threshold_norm(float trhn) { trh_norm_ = trhn; }
     void set_zero_trust_percent(float ztp) { zero_trust_percent_ = ztp; }
     void set_data_kind(data_kind_t dk) { kind_ = dk; }
+    void set_output_id(int64_t id) { output_id_ = id; }
     void set_op_output_has_nans(bool ohn) { op_output_has_nans_ = ohn; }
     void set_has_eltwise_post_op(bool hepo) { has_eltwise_post_op_ = hepo; }
     void set_has_prim_ref(bool hpr) { has_prim_ref_ = hpr; }
@@ -108,6 +109,10 @@ private:
     float zero_trust_percent_ = default_zero_trust_percent_;
     // Kind specifies what tensor is checked. Not printed if default one.
     data_kind_t kind_ = DAT_TOTAL;
+    // Optional logical tensor id of the checked output. Printed when set
+    // (>= 0) to disambiguate outputs that share the same data kind (e.g. the
+    // SDPA bwd dV/dK/dQ outputs that all report as [DST]).
+    int64_t output_id_ = -1;
     // Driver-specific function that adds additional criteria for a test case to
     // pass.
     driver_check_func_t driver_check_func_;
@@ -138,10 +143,14 @@ private:
 
     std::string get_kind_str() const {
         std::string kind_str;
-        if (kind_ == DAT_TOTAL) return kind_str;
-
-        kind_str = std::string("[") + std::string(data_kind2str(kind_))
-                + std::string("]");
+        if (kind_ != DAT_TOTAL) {
+            kind_str = std::string("[") + std::string(data_kind2str(kind_))
+                    + std::string("]");
+        }
+        if (output_id_ >= 0) {
+            kind_str += std::string("[id=") + std::to_string(output_id_)
+                    + std::string("]");
+        }
         return kind_str;
     }
 };

@@ -396,6 +396,7 @@ int ref_partition_t::check_partition_correctness(
 
         // get the args that need comparing
         args_t output_args;
+        std::unordered_map<int, size_t> arg_2_lt_id;
         for (size_t out_idx = 0; out_idx < op.get().out_lts_.size();
                 ++out_idx) {
             int out_arg = get_prim_arg_name_from_graph_op_output_offset(
@@ -409,6 +410,7 @@ int ref_partition_t::check_partition_correctness(
                 auto &graph_mem = partition_mem_map.at(out_lt_id);
                 const auto &par_out_mem = graph_mem.get_mem();
                 output_args.set(out_arg, par_out_mem);
+                arg_2_lt_id.emplace(out_arg, out_lt_id);
                 break;
             }
         }
@@ -430,7 +432,7 @@ int ref_partition_t::check_partition_correctness(
         // The graph driver allows nans from the branch of Sqrt, but for the
         // other branch, the driver should not tolerate that.
         ref_prim->check_correctness(
-                output_args, has_eltwise, output_has_nans, res);
+                output_args, has_eltwise, output_has_nans, res, arg_2_lt_id);
         if (res->state == FAILED) {
             if (is_nvidia_gpu()) {
                 res->state = SKIPPED;

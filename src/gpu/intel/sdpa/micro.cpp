@@ -1337,6 +1337,13 @@ status_t micro_bwd_params_t::get_kernel_ctx(
     kernel_ctx.define_int(
             "DKDV_PROBE_WGK", gpu_utils::dev_getenv("DKDV_PROBE_WGK", 0));
 
+    // Diagnostic toggle (check #2): DKDV_DK_IDENTITY_ROUND=1 skips the per-head
+    // f16 round on the GQA dK store path so the cross-head contributions
+    // accumulate in full f32 before the single final reorder round. dV is
+    // unaffected. Off by default (keeps reference-matching per-head f16 round).
+    kernel_ctx.define_int("DKDV_DK_IDENTITY_ROUND",
+            gpu_utils::dev_getenv("DKDV_DK_IDENTITY_ROUND", 0));
+
     micro::HWInformation hw_info;
     gemmstone::GEMMProblem problem_kq, problem_vs;
     micro::GEMMOptions opts_kq, opts_vs;

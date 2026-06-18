@@ -543,6 +543,23 @@ inline float round_to_dst(float v) {
 }
 #endif
 
+// Diagnostic toggle (check #2): when DKDV_DK_IDENTITY_ROUND is set, skip the
+// per-head f16 round on the dK store path so the GQA cross-head contributions
+// accumulate in full f32 before the single final reorder round. dV is
+// unaffected. Default (0) keeps the reference-matching per-head f16 round.
+#ifndef DKDV_DK_IDENTITY_ROUND
+#define DKDV_DK_IDENTITY_ROUND 0
+#endif
+#if DKDV_DK_IDENTITY_ROUND
+inline float round_to_dst_dk(float v) {
+    return v;
+}
+#else
+inline float round_to_dst_dk(float v) {
+    return round_to_dst(v);
+}
+#endif
+
 inline void tile_store_dV(dv_acc_tile_type *dV_tile_slm,
         global DST_DATA_T_DKDV *dV, int m, int n, int ld, int offset_r,
         int offset_c, int rem) {
@@ -582,7 +599,7 @@ inline void tile_store_dK_t(dv_acc_tile_type *dK_tile,
     dv_acc_tile_type dK_tile_slm_copy_t = *dK_tile;
     dv_tile_type dK_tile_f32;
     tile_copy(dK_tile_slm_copy_t, dK_tile_f32);
-    tile_elementwise_s(dK_tile_f32, round_to_dst);
+    tile_elementwise_s(dK_tile_f32, round_to_dst_dk);
     tile_atomic_add(dK_tile_f32, dK, m, n, ld, offset_r, offset_c);
 #else // MHA update
     dv_tile_type_dst dK_tile_dst;
@@ -607,7 +624,7 @@ inline void tile_store_dK(dk_acc_tile_type *dK_tile, global DST_DATA_T_DKDV *dK,
     dk_acc_tile_type dK_tile_slm_copy = *dK_tile;
     a_tile_type dK_tile_f32;
     tile_copy(dK_tile_slm_copy, dK_tile_f32);
-    tile_elementwise_s(dK_tile_f32, round_to_dst);
+    tile_elementwise_s(dK_tile_f32, round_to_dst_dk);
     tile_atomic_add(dK_tile_f32, dK, m, n, ld, offset_r, offset_c);
 #else // MHA update
 

@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2020 Intel Corporation
+* Copyright 2026 SpacemiT Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -21,6 +22,9 @@
 #if DNNL_X64
 #include "cpu/x64/jit_uni_reduction.hpp"
 using namespace dnnl::impl::cpu::x64;
+#elif DNNL_RV64
+#include "cpu/rv64/jit_uni_reduction.hpp"
+using namespace dnnl::impl::cpu::rv64;
 #endif
 
 namespace dnnl {
@@ -33,6 +37,7 @@ using namespace dnnl::impl::data_type;
 // clang-format off
 constexpr impl_list_item_t impl_list[] = REG_REDUCTION_P({
     CPU_INSTANCE_X64(jit_uni_reduction_t)
+    CPU_INSTANCE_RV64(jit_uni_reduction_t)
     CPU_INSTANCE(ref_reduction_t)
     /* eol */
     nullptr,

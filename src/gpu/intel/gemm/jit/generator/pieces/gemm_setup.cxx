@@ -2076,9 +2076,9 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
 
     // Free unneeded registers after address setup.
     if (!state.isNested) {
-        if (strategy.A.address2D && (!strategy.prefetchA || strategy.A_prefetch.address2D))
+        if (strategy.A.address2D && (!strategy.prefetchA || strategy.A_prefetch.address2D) && !strategy.l3PrefetchA)
             state.ra.safeRelease(state.inputs.lda);
-        if (strategy.B.address2D && (!strategy.prefetchB || strategy.B_prefetch.address2D))
+        if (strategy.B.address2D && (!strategy.prefetchB || strategy.B_prefetch.address2D) && !strategy.l3PrefetchB)
             state.ra.safeRelease(state.inputs.ldb);
         if (!strategy.C.address2D && (!strategy.prefetchC || !strategy.C_prefetch.address2D) && !keepIJ0(problem, strategy)) {
             state.ra.safeRelease(state.i0);

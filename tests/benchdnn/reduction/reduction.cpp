@@ -89,6 +89,12 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
     auto dst_d = dnn_mem_t::init_md(prb->ndims, prb->vdims[1].data(),
             force_f32_dt ? dnnl_f32 : prb->ddt, prb->dtag);
 
+    printf("[REDUCTION_PD] force_f32_dt=%d prb_sdt=%s prb_ddt=%s "
+           "used_src_dt=%s used_dst_dt=%s\n",
+            force_f32_dt, dt2str(prb->sdt), dt2str(prb->ddt),
+            dt2str(force_f32_dt ? dnnl_f32 : prb->sdt),
+            dt2str(force_f32_dt ? dnnl_f32 : prb->ddt));
+
     attr_args_t attr_args;
     attr_args.prepare_post_ops_mds(prb->attr, prb->ndims, prb->vdims[1].data());
     const auto dnnl_attr = make_benchdnn_dnnl_wrapper(

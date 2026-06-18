@@ -152,3 +152,5 @@
 --check-ref-impl=
 --reset --dt=f16:s4:f32 --stag=ab --wtag=ab --dtag=ba --attr-fpmath=strict:true 2x2:2x2
 --reset --dt=s8:u8:f16 --attr-scales=src:common:2:f16+wei:per_oc 3x6x1x2x4:1x6x7x4x1
+
+--batch=harness_matmul_sparse

@@ -488,7 +488,7 @@ inline void tile_store_k_slm(
 #if KV_GROUP_SIZE > 1
 #define IS_GQA 1
 #if defined(DST_DT_F16)
-#define REDUCE_DKDV_F16 1
+#define REDUCE_DKDV_F16 0
 #else
 #define REDUCE_DKDV_F16 0
 #endif

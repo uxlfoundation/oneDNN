@@ -910,8 +910,10 @@ status_t brgemm_blocking_vmm(brgemm_desc_t *brg) {
     brg->bdb_tail = brg->bcast_dim % brg->bd_block;
 
     const int rd_unroll = brg->is_f4_fused_decompress_non_amx() ? 32 : 4;
-    const data_type_t rd_block_dt = get_mac_emu_data_type(
-            brg->dt_a, brg->isa_impl, brg->isa_impl != avx2_vnni_2);
+    const data_type_t rd_block_dt = brg->is_f4_fused_decompress_non_amx()
+            ? data_type::f32
+            : get_mac_emu_data_type(
+                      brg->dt_a, brg->isa_impl, brg->isa_impl != avx2_vnni_2);
     if (rd_block_dt == dnnl_data_type_undef) return status::unimplemented;
     const int vnni_granularity = data_type_vnni_granularity(rd_block_dt);
     brg->rd_block = rd_unroll * vnni_granularity;

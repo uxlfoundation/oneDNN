@@ -647,8 +647,7 @@ template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::rdb_B_offset() const noexcept {
     if (brg.is_gemv && brg.gemv_acc_is_vector())
         return brg.rd_block * brg.typesize_B;
-    if (brg.is_f4_fused_decompress_non_amx())
-        return brg.rd_block * brg.LDB / 2;
+    if (brg.is_f4_fused_decompress_non_amx()) return brg.rd_block * brg.LDB / 2;
     return brg.typesize_B * brg.rd_block * brg.LDB;
 }
 
@@ -2812,7 +2811,8 @@ void jit_brgemm_kernel_t<Wmm>::dot_product(Vmm v1, Vmm v2, Vmm v3) {
     else if (brg.is_fp8 && brg.is_fp8_via_convert_non_amx())
         vdpphps(v1, v2, v3);
     else if (brg.is_f32 || brg.is_f16
-            || (brg.is_bf16 && brg.isa_impl == avx2_vnni_2))
+            || (brg.is_bf16 && brg.isa_impl == avx2_vnni_2)
+            || brg.is_f4_fused_decompress_non_amx())
         uni_vfmadd231ps(v1, v2, v3);
     else if (brg.is_bf16)
         vdpbf16ps(v1, v2, v3);
@@ -3088,6 +3088,10 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
         } else {
             if (dt == data_type::f32) {
                 uni_vbroadcastss(vmm_bcast, ptr[reg_aux_A + offset]);
+            } else if (dt == data_type::bf16
+                    && brg.is_f4_fused_decompress_non_amx()) {
+                vpbroadcastw(vmm_bcast, ptr[reg_aux_A + offset]);
+                uni_vpslld(vmm_bcast, vmm_bcast, 16);
             } else if (dt == data_type::bf16) {
                 if (brg.isa_impl == avx2_vnni_2)
                     vbcstnebf162ps(vmm_bcast, ptr[reg_aux_A + offset]);
@@ -3233,7 +3237,8 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
         const auto scales_dt_sz = types::data_type_size(brg.dt_wei_scales);
         for (dim_t ld = 0; ld < ld_block2; ld++) {
             const auto vmm = vmm_f4_scale(ld);
-            const auto addr = ptr[reg_bdb_loop + ld * brg.ld_block * scales_dt_sz];
+            const auto addr
+                    = ptr[reg_bdb_loop + ld * brg.ld_block * scales_dt_sz];
             const bool is_last_ld = (ld == ld_block2 - 1);
             if (is_ld_tail && is_last_ld) {
                 vpmovzxbd(vmm | ld_tail_mask | T_z, addr);
@@ -3895,9 +3900,9 @@ void jit_brgemm_kernel_t<Wmm>::generate() {
         // The scales path uses `vpmovzxbd` + `pslld 23` to assemble fp32
         // multipliers, which only works for the e8m0 1-byte exponent layout.
         assert(brg.dt_wei_scales == data_type::e8m0);
-        alignas(64) static const float f4_e2m1_lut[16] = {0.0f, 0.5f, 1.0f,
-                1.5f, 2.0f, 3.0f, 4.0f, 6.0f, -0.0f, -0.5f, -1.0f, -1.5f,
-                -2.0f, -3.0f, -4.0f, -6.0f};
+        alignas(64) static const float f4_e2m1_lut[16]
+                = {0.0f, 0.5f, 1.0f, 1.5f, 2.0f, 3.0f, 4.0f, 6.0f, -0.0f, -0.5f,
+                        -1.0f, -1.5f, -2.0f, -3.0f, -4.0f, -6.0f};
         mov(reg_tmp_gpr, reinterpret_cast<size_t>(f4_e2m1_lut));
         vmovups(vmm_f4_lut(), ptr[reg_tmp_gpr]);
         // Permute table that duplicates each of the 8 input bytes into two

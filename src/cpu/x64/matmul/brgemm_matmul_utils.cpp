@@ -1969,9 +1969,11 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     //  - wei_scales K-group size matches the rd_block (32). Smaller groups
     //    would require reloading scales mid-microkernel; larger groups are
     //    not produced by mxfp4 spec.
+    const bool fused_f4_src_ok = bm_conf_utils.is_f32_with_f4_wei()
+            || bm_conf_utils.is_bf16_with_f4_wei()
+            || bm_conf_utils.is_f16_with_f4_wei();
     const bool use_fused_f4_decompress = !bgmmc.use_buffer_b
-            && bgmmc.with_wei_decompression
-            && bm_conf_utils.is_f32_with_f4_wei() && !bgmmc.is_amx
+            && bgmmc.with_wei_decompression && fused_f4_src_ok && !bgmmc.is_amx
             && is_superset(bgmmc.isa, avx512_core)
             && bgmmc.wei_scales_dt == data_type::e8m0 && !bgmmc.transposed_B
             && bgmmc.N % 2 == 0 && bgmmc.wei_scales_k_gsize == 32;

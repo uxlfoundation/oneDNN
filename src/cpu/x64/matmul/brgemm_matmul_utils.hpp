@@ -330,17 +330,15 @@ struct brgemm_matmul_conf_utils_t {
     inline bool use_buffer_b(bool use_heuristic = true) const {
         if (bgmmc.is_runtime_N) return true;
         if (bgmmc.is_bf16_with_int_wei) return true;
-        if (bgmmc.is_bf16_with_f4_wei) return true;
-        if (bgmmc.is_f16_with_f4_wei) return true;
-        if (bgmmc.is_f32_with_f4_wei) {
+        if (bgmmc.is_f32_with_f4_wei || bgmmc.is_bf16_with_f4_wei
+                || bgmmc.is_f16_with_f4_wei) {
             // Fused inline decompression wins on small M (decode-style,
             // memory-bound on B); for large M, copy_b pre-decompression
             // into a scratchpad lets brgemm run as native f32 GEMM at near
             // peak.
             constexpr dim_t fused_M_threshold = 4;
             const bool use_fused_f4 = !bgmmc.is_amx
-                    && is_superset(bgmmc.isa, avx512_core)
-                    && bgmmc.N % 2 == 0
+                    && is_superset(bgmmc.isa, avx512_core) && bgmmc.N % 2 == 0
                     && bgmmc.wei_scales_k_gsize == 32
                     && !check_is_transposed(bgmmc.wei_tag)
                     && bgmmc.wei_tag != format_tag::adbc

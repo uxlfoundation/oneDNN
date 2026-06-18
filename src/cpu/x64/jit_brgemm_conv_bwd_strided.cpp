@@ -929,6 +929,14 @@ status_t brgemm_convolution_bwd_strided_t<isa>::execute(
 
             for_(int id = id_begin; id < id_end; id++)
             for (int ih = ih_begin; ih < ih_end; ih++) {
+                // Zero out_buffer before processing the tail iw block to
+                // prevent stale scratchpad data from leaking into positions
+                // that may not be written (e.g., stride sectors with no
+                // valid kernel overlap).
+                if (jcp.exec_type == exec_trans && jcp.has_uneven_iw
+                        && iwb == jcp.nb_iw - 1 && out_buffer) {
+                    std::memset(out_buffer, 0, dst_dsz * jcp.out_buffer_size);
+                }
                 for (int occ = 0; occ < oc_chunks; occ++) {
                     btc.id = id;
                     btc.ih = ih;

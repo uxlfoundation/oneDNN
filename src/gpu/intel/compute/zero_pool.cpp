@@ -149,12 +149,8 @@ status_t zero_pool_t::claim(intel::stream_t *stream, size_t len,
 
     if (!inited_) {
         // One-time zero initialization before first use.
-        // Use immediate mode to ensure zero initialization
-        //   occurs now and is not recorded.
-        CHECK(stream->enter_immediate_mode());
         CHECK(stream->fill(*mem_, 0, chunk_count_ * chunk_size_,
                 stream->ctx().get_deps(), stream->ctx().get_deps()));
-        CHECK(stream->exit_immediate_mode());
         inited_ = true;
     }
 

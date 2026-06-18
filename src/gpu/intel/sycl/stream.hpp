@@ -113,9 +113,6 @@ struct stream_t : public gpu::intel::stream_t {
 
     bool recording() const;
 
-    status_t enter_immediate_mode() override;
-    status_t exit_immediate_mode() override;
-
 protected:
     xpu::sycl::stream_impl_t *impl() const {
         return (xpu::sycl::stream_impl_t *)impl::stream_t::impl_.get();
@@ -126,16 +123,6 @@ protected:
 
 private:
     status_t init();
-
-    status_t pause_recording();
-    status_t resume_recording();
-
-    std::mutex immediate_mode_mutex_;
-    int immediate_mode_level_ = 0;
-    std::unique_ptr<::sycl::ext::oneapi::experimental::command_graph<
-            ::sycl::ext::oneapi::experimental::graph_state::modifiable>>
-            paused_graph_;
-    xpu::sycl::event_t paused_dep_;
 };
 
 } // namespace sycl

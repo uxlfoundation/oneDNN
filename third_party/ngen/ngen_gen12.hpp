@@ -1246,22 +1246,22 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
                 }
                 case 3: {
                     if(op != Opcode::bdpas) return false;
-                    auto sr = bdpas.src3SubReg4_5 << 4;
-                    o.direct.regNum = bdpas.src3Reg0;
-                    o.direct.regNum |= bdpas.src3Reg1_2 << 1;
-                    o.direct.regNum |= bdpas.src3Reg3_6 << 3;
-                    o.direct.regNum |= bdpas.src3Reg7_8 << 7;
-                    rcount = 8;
-                    len = (sr + sdepth * rcount * 4 + 31) >> 5;
+                    unsigned reg = bdpas.src3Reg0;
+                    reg |= bdpas.src3Reg1_2 << 1;
+                    reg |= bdpas.src3Reg3_6 << 3;
+                    reg |= bdpas.src3Reg7_8 << 7;
+                    o.direct.regNum = reg;      // low 8 bits
+                    regNum8 = reg >> 8;         // bit 8 routed separately
+                    len = 1;
                     break;
                 }
                 case 4: {
                     if(op != Opcode::bdpas) return false;
-                    auto sr = bdpas.src4SubReg3_5 << 3;
-                    o.direct.regNum = bdpas.src4Reg0_3;
-                    o.direct.regNum |= bdpas.src4Reg4_8 << 4;
-                    rcount = 8;
-                    len = (sr + sdepth * rcount * 4 + 31) >> 5;
+                    unsigned reg = bdpas.src4Reg0_3;
+                    reg |= bdpas.src4Reg4_8 << 4;
+                    o.direct.regNum = reg;      // low 8 bits
+                    regNum8 = reg >> 8;         // bit 8 routed separately
+                    len = 1;
                     break;
                 }
                 default: return false;

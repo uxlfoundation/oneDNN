@@ -263,12 +263,15 @@ status_t check_isa_with_datatype(
                             avx2))
             && IMPLICATION(bm_conf_utils.is_int8_with_bf16_dst(),
                     is_superset(isa, avx512_core) || isa == avx2_vnni_2)
-            && IMPLICATION(bm_conf_utils.is_bf16_with_int_wei()
-                            || bm_conf_utils.is_bf16_with_f4_wei(),
+            && IMPLICATION(bm_conf_utils.is_bf16_with_int_wei(),
                     is_superset(isa, avx512_core_bf16))
-            && IMPLICATION(bm_conf_utils.is_f16_with_int_wei()
-                            || bm_conf_utils.is_f16_with_f4_wei(),
+            && IMPLICATION(bm_conf_utils.is_bf16_with_f4_wei(),
+                    is_superset(isa, avx512_core_bf16)
+                            && !is_superset(isa, avx512_core_amx))
+            && IMPLICATION(bm_conf_utils.is_f16_with_int_wei(),
                     one_of(isa, avx512_core_amx_fp16, avx512_core_fp16))
+            && IMPLICATION(
+                    bm_conf_utils.is_f16_with_f4_wei(), isa == avx512_core_fp16)
             && IMPLICATION(bm_conf_utils.is_f32_with_int_wei(),
                     one_of(isa, avx512_core, avx2))
             && IMPLICATION(
@@ -1492,8 +1495,7 @@ status_t compute_blocking_heuristic(brgemm_matmul_conf_t &bgmmc,
                       bm_conf_utils.is_bf16_with_f4_wei(),
                       (bgmmc.is_amx
                               && (bm_conf_utils.is_f16()
-                                      || bm_conf_utils.is_f16_with_int_wei()
-                                      || bm_conf_utils.is_f16_with_f4_wei())))
+                                      || bm_conf_utils.is_f16_with_int_wei())))
             && (bgmmc.isa != avx2_vnni_2) // no perf study yet.
             && bgmmc.lda_big_pow2() && bgmmc.M >= 1024 && !bgmmc.is_gemv;
 
@@ -1770,9 +1772,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         // Note 3: Since `use_buffer_b()` depends on `bgmmc.wei_tag`, which is
         // set later in the code due to its dependencies, the update of data
         // types to f32 happens below in ANCHOR: `CONVERT_F32_XF16_DATA_TYPES`.
-    } else if ((bgmmc.is_f16_with_int_wei
-                       || (bgmmc.is_f16_with_f4_wei && bgmmc.is_amx))
-            && bgmmc.isa != avx512_core_fp16) {
+    } else if (bgmmc.is_f16_with_int_wei && bgmmc.isa != avx512_core_fp16) {
         bgmmc.src_dt = f16;
         bgmmc.wei_dt = f16;
         bgmmc.tr_a_dt_sz = types::data_type_size(f16);
@@ -1970,11 +1970,11 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     //    would require reloading scales mid-microkernel; larger groups are
     //    not produced by mxfp4 spec.
     const bool use_fused_f4_decompress = !bgmmc.use_buffer_b
-            && bgmmc.with_wei_decompression && bm_conf_utils.is_f32_with_f4_wei()
-            && !bgmmc.is_amx && is_superset(bgmmc.isa, avx512_core)
-            && bgmmc.wei_scales_dt == data_type::e8m0
-            && !bgmmc.transposed_B && bgmmc.N % 2 == 0
-            && bgmmc.wei_scales_k_gsize == 32;
+            && bgmmc.with_wei_decompression
+            && bm_conf_utils.is_f32_with_f4_wei() && !bgmmc.is_amx
+            && is_superset(bgmmc.isa, avx512_core)
+            && bgmmc.wei_scales_dt == data_type::e8m0 && !bgmmc.transposed_B
+            && bgmmc.N % 2 == 0 && bgmmc.wei_scales_k_gsize == 32;
     bgmmc.is_f4_fused_decompress = use_fused_f4_decompress;
 
     if (use_fused_f4_decompress) bgmmc.apply_scales_in_buffer_b = false;

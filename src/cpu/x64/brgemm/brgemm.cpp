@@ -394,10 +394,13 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
             && (!one_of(dt_bias, data_type::undef, data_type::bf16,
                     data_type::f32)))
         return status::unimplemented;
+    // Weights decompression (e.g. f16:f4 on avx512_core_fp16) runs the brgemm
+    // as f32:f32 while the destination keeps its original f16/bf16 type and is
+    // down-converted on store, so allow those dst types here as well.
     if ((brg->dt_a == data_type::f32 && brg->dt_b == data_type::f32)
-            && (!one_of(dt_d, data_type::f32)
-                    || !one_of(
-                            dt_bias, data_type::undef, data_type::f32, dt_d)))
+            && (!one_of(dt_d, data_type::f32, data_type::f16, data_type::bf16)
+                    || !one_of(dt_bias, data_type::undef, data_type::f32,
+                            data_type::f16, data_type::bf16, dt_d)))
         return status::unimplemented;
     if (!IMPLICATION(brg->is_bf16,
                 one_of(dt_d, data_type::f32, data_type::bf16, data_type::f16,

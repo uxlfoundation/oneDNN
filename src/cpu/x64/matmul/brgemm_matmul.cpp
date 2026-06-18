@@ -338,10 +338,9 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
     // non-amx isa. s8s8 proplem type is exception to avoid compensations
     // processing for tail kernel
     const auto backup_isa = is_amx && bgmmc_.is_runtime_M && !is_s8s8
-            ? (is_f16 || is_f32_f16 || is_f16_with_int_wei || is_f16_with_f4_wei
+            ? (is_f16 || is_f32_f16 || is_f16_with_int_wei
                               ? avx512_core_fp16
                               : (is_bf16 || is_f32_bf16 || is_bf16_with_int_wei
-                                                        || is_bf16_with_f4_wei
                                                 ? avx512_core_bf16
                                                 : (is_int8 ? avx512_core_vnni
                                                            : avx512_core)))
@@ -804,8 +803,8 @@ void brgemm_matmul_t<isa>::compute_kernel(
             const char *dst_anchor_point = brgmm_ctx.get_data_C_ptr(0, 0, 0);
             const void *wei_scales_ptr = brgmm_ctx.get_wei_scales_ptr(n);
             if (bgmmc.is_f4_fused_decompress) {
-                const dim_t k_start = k_blk_idx * bgmmc.K_blk
-                        * bgmmc.brgemm_batch_size;
+                const dim_t k_start
+                        = k_blk_idx * bgmmc.K_blk * bgmmc.brgemm_batch_size;
                 wei_scales_ptr = brgmm_ctx.get_wei_scales_ptr(n, k_start);
             }
             const brgemm_post_ops_data_t post_ops_data {
@@ -824,8 +823,8 @@ void brgemm_matmul_t<isa>::compute_kernel(
         } else {
             const void *wei_scales = nullptr;
             if (bgmmc.is_f4_fused_decompress) {
-                const dim_t k_start = k_blk_idx * bgmmc.K_blk
-                        * bgmmc.brgemm_batch_size;
+                const dim_t k_start
+                        = k_blk_idx * bgmmc.K_blk * bgmmc.brgemm_batch_size;
                 wei_scales = brgmm_ctx.get_wei_scales_ptr(n, k_start);
             }
             brgemm_kernel_execute(brg_kernel, gemm_batch, addr_batch,
@@ -871,8 +870,8 @@ void brgemm_matmul_t<isa>::compute_kernel(
             const char *dst_anchor_point = brgmm_ctx.get_data_C_ptr(0, 0, 0);
             const void *wei_scales_ptr = brgmm_ctx.get_wei_scales_ptr(n);
             if (bgmmc.is_f4_fused_decompress) {
-                const dim_t k_start = k_blk_idx * bgmmc.K_blk
-                        * bgmmc.brgemm_batch_size
+                const dim_t k_start
+                        = k_blk_idx * bgmmc.K_blk * bgmmc.brgemm_batch_size
                         + gemm_batch * bgmmc.K_blk;
                 wei_scales_ptr = brgmm_ctx.get_wei_scales_ptr(n, k_start);
             }
@@ -893,8 +892,8 @@ void brgemm_matmul_t<isa>::compute_kernel(
         } else {
             const void *wei_scales = nullptr;
             if (bgmmc.is_f4_fused_decompress) {
-                const dim_t k_start = k_blk_idx * bgmmc.K_blk
-                        * bgmmc.brgemm_batch_size
+                const dim_t k_start
+                        = k_blk_idx * bgmmc.K_blk * bgmmc.brgemm_batch_size
                         + gemm_batch * bgmmc.K_blk;
                 wei_scales = brgmm_ctx.get_wei_scales_ptr(n, k_start);
             }

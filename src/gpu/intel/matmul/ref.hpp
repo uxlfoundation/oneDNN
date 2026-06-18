@@ -69,7 +69,8 @@ struct ref_t : public primitive_t {
                                                     DNNL_ARG_DST},
                                      {quantization_mode::static_sazp,
                                              quantization_mode::dynamic_mx,
-                                             quantization_mode::dynamic_fp}),
+                                             quantization_mode::dynamic_fp},
+                                     {{DNNL_ARG_SRC, {src_qmask_M()}}}),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
             VDISPATCH_MATMUL(zero_points_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
             VDISPATCH_MATMUL(

@@ -203,7 +203,6 @@ void jit_rvv_layernorm_fused_kernel_t::generate() {
     ld(reg_len, reg_param, GET_FUSED_OFF(len));
     fcvt_s_l(f_len, reg_len);
     fdiv_s(f_var, f_var_sum, f_len);
-    fmax_s(f_var, f_var, f_zero);
 
     ld(reg_mean_ptr, reg_param, GET_FUSED_OFF(mean));
     beqz(reg_mean_ptr, store_var);
@@ -675,7 +674,6 @@ void jit_rvv_layernorm_f16_fused_kernel_t::generate() {
     vfredosum_vs(v_sumsq, v_sumsq, v_sum);
     vfmv_f_s(f_var_sum, v_sumsq);
     fdiv_s(f_var, f_var_sum, f_len);
-    fmax_s(f_var, f_var, f_zero);
     ld(reg_ptr, reg_param, GET_F16_OFF(variance));
     beqz(reg_ptr, skip_var);
     fsw(f_var, reg_ptr, 0);

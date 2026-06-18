@@ -1321,6 +1321,22 @@ status_t micro_bwd_params_t::get_kernel_ctx(
     kernel_ctx.define_int("WITH_DROPOUT", dropout);
     kernel_ctx.define_int("DROPOUT_HOST_SCALARS", dropout_host_scalars);
 
+    // Pre-reduction microkernel probe (debug only). Enable with
+    // DKDV_PROBE=1 to printf per-q-block dV/dK/dS GEMM partials before any
+    // SLM reduction, gated to a single (batch, head, k-block) work-group via
+    // DKDV_PROBE_B1 / DKDV_PROBE_B0 / DKDV_PROBE_WGK. Used to quantify how much
+    // dK/dV divergence originates in the generated GEMM microkernel (which
+    // differs per arch: Generator<HW::Xe2> vs Generator<HW::XeHPC>) versus the
+    // OpenCL SLM reduction. Off by default; no effect unless DKDV_PROBE != 0.
+    kernel_ctx.define_int(
+            "DKDV_PROBE", gpu_utils::dev_getenv("DKDV_PROBE", 0));
+    kernel_ctx.define_int(
+            "DKDV_PROBE_B1", gpu_utils::dev_getenv("DKDV_PROBE_B1", 0));
+    kernel_ctx.define_int(
+            "DKDV_PROBE_B0", gpu_utils::dev_getenv("DKDV_PROBE_B0", 0));
+    kernel_ctx.define_int(
+            "DKDV_PROBE_WGK", gpu_utils::dev_getenv("DKDV_PROBE_WGK", 0));
+
     micro::HWInformation hw_info;
     gemmstone::GEMMProblem problem_kq, problem_vs;
     micro::GEMMOptions opts_kq, opts_vs;

@@ -89,7 +89,29 @@ int ref_partition_t::init_ref(
         ref_prims_.emplace(par_op_ref.get().id_, ref_prim);
         SAFE(ref_prim->init_prb(res), WARN);
 
-        SAFE_V(ref_prim->init_prim(::get_test_engine(), res));
+        // By default the graph reference forces every op to f32 I/O (see
+        // ref_primitive_t::init_prim). For the GQA dK/dV cross-head reduce --
+        // a ReduceSum whose input is produced by a MatMul (bmm_dk/bmm_dv) --
+        // optionally keep its native (f16/bf16) data type so the reference
+        // mirrors the fused kernel's reduced-precision dK/dV accumulation.
+        // Off by default (f32 reference); enable with BENCHDNN_SDPA_F16_DKDV_REDUCE=1.
+        bool force_override = false;
+        const auto &cur_op = par_op_ref.get();
+        if (cur_op.kind_ == "ReduceSum" && !cur_op.in_lts_.empty()) {
+            const auto *parent_op = get_parent_op(cur_op.in_lts_[0].id_);
+            if (parent_op && parent_op->kind_ == "MatMul") {
+                const auto &src_lt = cur_op.in_lts_[0];
+                const auto &dst_lt = cur_op.out_lts_[0];
+                printf("[DKDV_REDUCE] op=%s id=%zu src_dt=%s dst_dt=%s\n",
+                        cur_op.name_.c_str(), cur_op.id_,
+                        src_lt.data_type_.c_str(), dst_lt.data_type_.c_str());
+                if (benchdnn_getenv_int("BENCHDNN_SDPA_F16_DKDV_REDUCE", 0))
+                    force_override = true;
+            }
+        }
+
+        SAFE_V(ref_prim->init_prim(::get_test_engine(), res, force_override));
+
 
         // Check whether the op has any output logical tensor that is the
         // output of the partition. If so, the driver need to allocate memory

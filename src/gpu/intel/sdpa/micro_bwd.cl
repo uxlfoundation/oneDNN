@@ -29,6 +29,57 @@
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define DIV_UP(x, y) (((x) + (y) - 1) / (y))
 
+/* ---------------------------------------------------------------------------
+ * Pre-reduction microkernel probe (debug only).
+ *
+ * Dumps per-q-block GEMM partials (dV, dK, dS) right out of the microkernel,
+ * before any SLM reduction, so the per-arch microkernel contribution can be
+ * isolated from the OpenCL reduction. Each subgroup-tile is reduced to an
+ * exact (sum, max-abs) signature printed as hex floats (%a) for bit-level
+ * diffing between BMG (Generator<HW::Xe2>) and PVC (Generator<HW::XeHPC>).
+ *
+ * Enable at runtime: DKDV_PROBE=1; gate the work-group with
+ * DKDV_PROBE_B1 (batch), DKDV_PROBE_B0 (query head), DKDV_PROBE_WGK (k-block).
+ * No effect when DKDV_PROBE == 0 (default).
+ * ------------------------------------------------------------------------- */
+#if DKDV_PROBE
+#define DKDV_PROBE_REDUCE(t, _sumv, _maxv) \
+    do { \
+        (_sumv) = 0.0f; \
+        (_maxv) = 0.0f; \
+        _Pragma("unroll") for (int _pi = 0; \
+                               _pi < sizeof((t).x) / sizeof((t).x[0]); \
+                               _pi++) { \
+            _Pragma("unroll") for (int _ps = 0; \
+                                   _ps < sizeof((t).x[0]) / sizeof((t).x[0][0]); \
+                                   _ps++) { \
+                float _v = (float)((t).x[_pi][_ps]); \
+                (_sumv) += _v; \
+                (_maxv) = fmax((_maxv), fabs(_v)); \
+            } \
+        } \
+    } while (0)
+
+#define DKDV_PROBE_TILE(_tag, t) \
+    do { \
+        if (b1 == DKDV_PROBE_B1 && b0 == DKDV_PROBE_B0 \
+                && wg_k == DKDV_PROBE_WGK) { \
+            float _lsum, _lmax; \
+            DKDV_PROBE_REDUCE(t, _lsum, _lmax); \
+            float _gsum = sub_group_reduce_add(_lsum); \
+            float _gmax = sub_group_reduce_max(_lmax); \
+            if (get_sub_group_local_id() == 0) \
+                printf("DKDVPROBE %s b1=%d b0=%d wgk=%d sg=%d k0=%d q0=%d " \
+                       "sum=%a max=%a\n", \
+                        _tag, b1, b0, wg_k, sg_ij, k0, q0, _gsum, _gmax); \
+        } \
+    } while (0)
+#else
+#define DKDV_PROBE_TILE(_tag, t) \
+    do { \
+    } while (0)
+#endif
+
 #define sg_per_wg_BcBr \
     (ugemm_kq_sg_per_wg_m * ugemm_kq_sg_per_wg_n) // same for kq, vtdA
 #define sg_per_wg_BcD \
@@ -969,6 +1020,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
             // accumulate dv tile to slm
             if (sg_ij < sg_per_wg_BcD) {
+                DKDV_PROBE_TILE("dV", dV_tile1);
                 dv_acc_tile_type dV_tile1_store;
                 tile_copy(dV_tile1, dV_tile1_store);
                 tile_slm_add(dV_tile1_store, dV_slm, D_MAX, sg_i0_vs, sg_j0_vs);
@@ -1014,6 +1066,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
 #define binary_mul_scale(x, y) ((x) * (y) * scale)
             tile_binary(dP_tile, S2_tile, binary_mul_scale);
+            DKDV_PROBE_TILE("dS", dP_tile);
         }
 
         if (remainder_k) {
@@ -1070,6 +1123,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
             // dk slm tile
             if (sg_ij < sg_per_wg_BcD) {
+                DKDV_PROBE_TILE("dK", dK_tile1);
                 dk_acc_tile_type dK_tile1_store;
                 tile_copy(dK_tile1, dK_tile1_store);
 #if TRANSPOSE_K

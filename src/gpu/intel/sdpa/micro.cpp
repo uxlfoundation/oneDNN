@@ -34,6 +34,7 @@
 #include <cstdio>
 #include <iostream>
 #include <limits>
+#include <mutex>
 #include <vector>
 
 namespace dnnl {
@@ -454,6 +455,22 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     bool use_fma_config = !use_systolic_ukernel_;
     config = choose_bwd_config(arch_, d->head_size(), d->queries(), d->keys(),
             thin_q, quantized, is_integrated, use_fma_config, is_f32);
+
+    // f16 GQA backward with dropout has a known dK accuracy gap in the fused
+    // microkernel once the query-accumulation length exceeds 128 on Xe2. The
+    // per-head f16 dK = dS^T*Q reduction diverges from the reference beyond the
+    // f16 point-to-point threshold (dropout's 1/(1-p) scaling amplifies it),
+    // while dV/dQ stay within tolerance. Disable the fused path for this case
+    // so it falls back to the accurate decomposed primitives. This mirrors the
+    // existing seq <= 128 guard in choose_bwd_config that already routes small
+    // square problems away from the fused kernel.
+    const bool is_f16 = (desc()->qry_md()->data_type == data_type::f16);
+    const bool is_gqa = d->num_q_heads() > d->num_kv_heads();
+    const bool with_dropout = !attr()->dropout_.has_default_values();
+    if (arch_ == compute::gpu_arch_t::xe2 && is_f16 && is_gqa && with_dropout
+            && d->head_size() >= 64 && d->queries() > 128) {
+        config = nullptr;
+    }
 
     VDISPATCH_SDPA(config != nullptr,
             "No suitable kernel configuration found for the given problem "
@@ -1341,8 +1358,20 @@ status_t micro_bwd_params_t::get_kernel_ctx(
     // f16 round on the GQA dK store path so the cross-head contributions
     // accumulate in full f32 before the single final reorder round. dV is
     // unaffected. Off by default (keeps reference-matching per-head f16 round).
-    kernel_ctx.define_int("DKDV_DK_IDENTITY_ROUND",
-            gpu_utils::dev_getenv("DKDV_DK_IDENTITY_ROUND", 0));
+    // NOTE: read via getenv_int (verbatim, NOT dev_getenv) so it fires even in
+    // a non-DNNL_DEV_MODE build. Emits a one-time stderr note when enabled so
+    // the experiment can be confirmed to have taken effect.
+    const int dkdv_dk_identity_round
+            = dnnl::impl::getenv_int("DKDV_DK_IDENTITY_ROUND", 0);
+    kernel_ctx.define_int("DKDV_DK_IDENTITY_ROUND", dkdv_dk_identity_round);
+    if (dkdv_dk_identity_round) {
+        static std::once_flag flag;
+        std::call_once(flag, [] {
+            fprintf(stderr,
+                    "[DKDV] DKDV_DK_IDENTITY_ROUND=1: dK per-head f16 round "
+                    "DISABLED (full f32 cross-head accum)\n");
+        });
+    }
 
     micro::HWInformation hw_info;
     gemmstone::GEMMProblem problem_kq, problem_vs;

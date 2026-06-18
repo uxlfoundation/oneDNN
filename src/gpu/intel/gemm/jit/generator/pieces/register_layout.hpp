@@ -220,7 +220,7 @@ struct RegisterBlock {
     bool pseudoblockUseChannelScattered(const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy) const;
 
     // Get width/height/array size parameters for underlying 2D block load message.
-    void getBlock2DWH(int &w, int &h, int &count, const MatrixAddressing &atype, int *outMultiX = nullptr) const;
+    void getBlock2DWH(int &w, int &h, int &count, const MatrixAddressing &atype, bool prefetch, int *outMultiX = nullptr) const;
 
     // Count the number of address/header GRFs required by a RegisterBlock.
     int addrGRFs(const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy) const;

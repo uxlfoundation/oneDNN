@@ -228,6 +228,7 @@ status_t replace_quant_data_with_binary_post_op(
                     : graph::data_type::f32;
             const_data_dst_value->set_data_type(out_dtype);
             const_data_dst_value->set_layout_type(layout_type::strided);
+            const_data_dst_value->set_strides(get_dense_strides(new_shape));
             const_data_op->add_output(const_data_dst_value);
 
             // connect binary and constant data

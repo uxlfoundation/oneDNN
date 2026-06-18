@@ -18,6 +18,7 @@
 #include "common/nstl.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
+#include "cpu/x64/jit_avx512_core_fp8cvt.hpp"
 #include "cpu/x64/jit_generator.hpp"
 
 #include "cpu/x64/matmul/brgemm_matmul_copy_utils.hpp"
@@ -6616,16 +6617,302 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::generate() {
 }
 
 template struct jit_brgemm_matmul_copy_b_cvt_bf16_t<Zmm>;
+
+struct fp8_to_xf16_cvt_helper_t {
+    // Reserved by fp8 conversion routines
+    static constexpr int cvt_xmm0_idx = 0;
+    static constexpr int cvt_xmm1_idx = 1;
+    static constexpr int cvt_xmm2_idx = 2;
+    static constexpr int cvt_xmm3_idx = 3;
+    static constexpr int cvt_xmm4_idx = 4;
+    static constexpr int cvt_opmask_idx = 1;
+    static Xbyak::Reg64 cvt_scratch_gpr() { return Xbyak::util::r8; }
+
+    fp8_to_xf16_cvt_helper_t(
+            jit_generator_t *host, const brgemm_matmul_conf_t *conf)
+        : conf_(conf) {
+        if (conf_->orig_wei_dt == data_type::f8_e5m2) {
+            f8_e5m2_cvt_ = utils::make_unique<fp8_conversion_e5m2_t>(host,
+                    Xmm(cvt_xmm0_idx), Xmm(cvt_xmm1_idx), Xmm(cvt_xmm2_idx),
+                    Xbyak::Opmask(cvt_opmask_idx), cvt_scratch_gpr());
+        } else {
+            f8_e4m3_cvt_ = utils::make_unique<fp8_conversion_e4m3_t>(host,
+                    Xmm(cvt_xmm0_idx), Xmm(cvt_xmm1_idx), Xmm(cvt_xmm2_idx),
+                    Xmm(cvt_xmm3_idx), Xmm(cvt_xmm4_idx), cvt_scratch_gpr());
+        }
+    }
+
+    void prepare_tables() {
+        if (f8_e5m2_cvt_) f8_e5m2_cvt_->prepare_table();
+        if (f8_e4m3_cvt_) f8_e4m3_cvt_->prepare_table();
+    }
+
+    void convert_vnni(const Xbyak::Zmm &dst0, const Xbyak::Zmm &dst1,
+            const Xbyak::Operand &src_op) {
+        if (conf_->wei_dt == data_type::bf16) {
+            if (conf_->orig_wei_dt == data_type::f8_e5m2) {
+                f8_e5m2_cvt_->vcvt_f8_to_bf16_vnni(dst0, dst1, src_op);
+            } else {
+                f8_e4m3_cvt_->vcvt_f8_to_bf16_vnni(dst0, dst1, src_op);
+            }
+        } else {
+            if (conf_->orig_wei_dt == data_type::f8_e5m2) {
+                f8_e5m2_cvt_->vcvt_f8_to_f16_vnni(dst0, dst1, src_op);
+            } else {
+                f8_e4m3_cvt_->vcvt_f8_to_f16_vnni(dst0, dst1, src_op);
+            }
+        }
+    }
+
+private:
+    const brgemm_matmul_conf_t *conf_;
+    std::unique_ptr<fp8_conversion_e5m2_t> f8_e5m2_cvt_;
+    std::unique_ptr<fp8_conversion_e4m3_t> f8_e4m3_cvt_;
+};
+
+struct jit_brgemm_matmul_copy_cvt_fp8_to_xf16_t
+    : public jit_brgemm_matmul_copy_b_t,
+      public jit_generator_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_cvt_fp8_to_xf16_t)
+
+    jit_brgemm_matmul_copy_cvt_fp8_to_xf16_t(const brgemm_matmul_conf_t *conf)
+        : jit_brgemm_matmul_copy_b_t(conf)
+        , jit_generator_t(jit_name())
+        , typesize_(conf->b_dt_sz)
+        , tr_typesize_(conf->tr_b_dt_sz)
+        , src_stride_(conf->LDB * k_blk_step * typesize_)
+        , tr_src_stride_(conf->LDB * tr_k_blk_step * tr_typesize_)
+        , cvt_helper_(this, conf) {}
+
+    void operator()(const ctx_t *ctx) override {
+        jit_generator_t::operator()(ctx);
+    }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
+
+private:
+    using reg64_t = const Xbyak::Reg64;
+
+    enum {
+        n_blk_step = 16,
+        // K-pack size in source (fp8) blocked layout
+        k_blk_step = 4,
+        // K-pack size in destination (xf16) blocked layout
+        tr_k_blk_step = 2,
+    };
+
+    const int typesize_, tr_typesize_;
+    // Bytes between consecutive fp8 packs and xf16 packs, respectively
+    const dim_t src_stride_, tr_src_stride_;
+
+    fp8_to_xf16_cvt_helper_t cvt_helper_;
+
+    reg64_t reg_src = rax;
+    reg64_t reg_tr_src = rbx;
+    reg64_t reg_K_iters = r9;
+    reg64_t reg_N_blk = r10;
+    reg64_t reg_tmp = r11;
+    reg64_t reg_src_back = r12;
+    reg64_t reg_tr_src_back = r13;
+    reg64_t reg_blk_src = r14;
+    reg64_t reg_blk_dst = r15;
+
+    Zmm zmm_dst0 = Zmm(5);
+    Zmm zmm_dst1 = Zmm(6);
+    Zmm zmm_src_pack = Zmm(7);
+
+    void copy_block(const int nrows, const int ncolumns, bool zeropad) {
+
+        const int simd_nrows_rounded = utils::rnd_up(nrows, k_blk_step);
+        const int simd_ncols_rounded = utils::rnd_up(ncolumns, n_blk_step);
+
+        for_(int k = 0; k < simd_nrows_rounded; k += k_blk_step)
+        for (int n = 0; n < simd_ncols_rounded; n += n_blk_step) {
+            // One loop step consumes one source K-pack (k_blk_step rows) and
+            // converts it into two destination K-packs (tr_k_blk_step rows
+            // each). The second destination pack is stored only when the
+            // source pack actually contributes more than tr_k_blk_step rows,
+            // so the write granularity equals the destination VNNI
+            // granularity tr_k_blk_step rather than the source pack size.
+            const int fp8_pack = k / k_blk_step;
+            const int xf16_pack_0 = fp8_pack * (k_blk_step / tr_k_blk_step);
+            const bool store_pack_1 = (nrows - k) > tr_k_blk_step;
+            const dim_t src_off
+                    = fp8_pack * src_stride_ + n * k_blk_step * typesize_;
+            const dim_t tr_src_off_0 = xf16_pack_0 * tr_src_stride_
+                    + n * tr_k_blk_step * tr_typesize_;
+            const dim_t tr_src_off_1 = tr_src_off_0 + tr_src_stride_;
+
+            if (zeropad) {
+                uni_vpxor(zmm_dst0, zmm_dst0, zmm_dst0);
+                if (store_pack_1) uni_vpxor(zmm_dst1, zmm_dst1, zmm_dst1);
+            } else {
+                const auto src_addr = EVEX_compress_addr(reg_src, src_off);
+                vmovdqu8(zmm_src_pack, src_addr);
+
+                cvt_helper_.convert_vnni(zmm_dst0, zmm_dst1, zmm_src_pack);
+            }
+
+            const auto store_addr_0
+                    = EVEX_compress_addr(reg_tr_src, tr_src_off_0);
+            uni_vmovups(store_addr_0, zmm_dst0);
+            if (store_pack_1) {
+                const auto store_addr_1
+                        = EVEX_compress_addr(reg_tr_src, tr_src_off_1);
+                uni_vmovups(store_addr_1, zmm_dst1);
+            }
+        }
+    }
+
+    void generate() override {
+        preamble();
+
+        mov(reg_src, ptr[param1 + GET_OFF(src)]);
+        mov(reg_tr_src, ptr[param1 + GET_OFF(tr_src)]);
+        mov(reg_N_blk, ptr[param1 + GET_OFF(current_N_blk)]);
+
+        auto compute_K_loop_body
+                = [&](const reg64_t &reg_K, int ncolumns, bool zeropad) {
+            constexpr int k_step = k_blk_step;
+            constexpr int k_unroll = 8;
+            constexpr int k_unroll_rows = k_unroll * k_step;
+
+            Label K_loop_single, K_loop_tail_or_done;
+            // In the zeropad pass reg_K == current_K_pad, which is always
+            // < wei_k_blk (it pads a partial K-block up to wei_k_blk). Since
+            // wei_k_blk <= k_unroll_rows here (wei_dt is bf16/f16 -> wei_k_blk == 32,
+            // and k_unroll_rows == 32), it follows that reg_K < k_unroll_rows.
+            // The unrolled loop below only runs when reg_K >= k_unroll_rows, so
+            // it never runs in the zeropad pass. Assert the invariant
+            // and skip emitting the unrolled loop there to save a dead
+            // cmp/branch.
+            assert(conf_->wei_k_blk <= k_unroll_rows);
+            if (!zeropad) {
+                Label K_loop_unrolled;
+                cmp(reg_K, k_unroll_rows);
+                jl(K_loop_single, T_NEAR);
+
+                L(K_loop_unrolled);
+                copy_block(k_unroll_rows, ncolumns, zeropad);
+                add(reg_src, (k_unroll_rows / k_blk_step) * src_stride_);
+                add(reg_tr_src,
+                        (k_unroll_rows / tr_k_blk_step) * tr_src_stride_);
+
+                sub(reg_K, k_unroll_rows);
+                cmp(reg_K, k_unroll_rows);
+                jge(K_loop_unrolled, T_NEAR);
+            }
+
+            L(K_loop_single);
+            cmp(reg_K, k_step);
+            jl(K_loop_tail_or_done, T_NEAR);
+
+            copy_block(k_step, ncolumns, zeropad);
+            add(reg_src, (k_step / k_blk_step) * src_stride_);
+            add(reg_tr_src, (k_step / tr_k_blk_step) * tr_src_stride_);
+
+            sub(reg_K, k_step);
+            jmp(K_loop_single, T_NEAR);
+
+            L(K_loop_tail_or_done);
+            Label K_loop_done;
+            cmp(reg_K, 0);
+            jle(K_loop_done, T_NEAR);
+            // Tail of 1..k_blk_step-1 K-rows. The source is read as whole
+            // zero-padded fp8 packs, so the tail count only affects the
+            // destination: a tail wider than tr_k_blk_step writes two xf16
+            // packs, otherwise one (tails of 1 and 2 rows are identical).
+            // reg_src is not advanced: this is the last source read of the
+            // pass and reg_src is restored from reg_src_back afterwards.
+            Label tail_one_pack;
+            cmp(reg_K, tr_k_blk_step);
+            jle(tail_one_pack, T_NEAR);
+            copy_block(k_blk_step, ncolumns, zeropad);
+            add(reg_tr_src, (k_blk_step / tr_k_blk_step) * tr_src_stride_);
+            jmp(K_loop_done, T_NEAR);
+
+            L(tail_one_pack);
+            copy_block(tr_k_blk_step, ncolumns, zeropad);
+            add(reg_tr_src, tr_src_stride_);
+
+            L(K_loop_done);
+        };
+
+        auto compute_K_loop = [&](const int ncolumns) {
+            mov(reg_src_back, reg_src);
+            mov(reg_tr_src_back, reg_tr_src);
+
+            mov(reg_K_iters, ptr[param1 + GET_OFF(current_K_iters)]);
+            compute_K_loop_body(reg_K_iters, ncolumns, false);
+
+            // The zero-padding pass fills the K-tail block up to wei_k_blk so brgemm
+            // can safely read the full block (extendable_k). It is only needed in case
+            // of a non-zero current_K_pad; otherwise it can be skipped.
+            // Even when emitted, a single runtime check skips it for the most common
+            // case (current_K_pad == 0), saving the block-copy work.
+            if (conf_->extendable_k || conf_->use_fused_copy_a) {
+                Label skip_zeropad;
+                mov(reg_K_iters, ptr[param1 + GET_OFF(current_K_pad)]);
+                cmp(reg_K_iters, 0);
+                jle(skip_zeropad, T_NEAR);
+                compute_K_loop_body(reg_K_iters, ncolumns, true);
+                L(skip_zeropad);
+            }
+
+            mov(reg_src, reg_src_back);
+            mov(reg_tr_src, reg_tr_src_back);
+        };
+
+        Label done;
+        cmp(reg_N_blk, 0);
+        jle(done, T_NEAR);
+
+        // LDB2 is always non-zero for is_xf16_fp8: these kernels are only created
+        // from the matmul path (init_brgemm_matmul_conf), which always sets LDB2.
+        assert(conf_->LDB2 != 0);
+
+        Label main_N_loop, main_N_loop_tail;
+        int tail = conf_->N % conf_->LDB;
+
+        if (tail != 0) {
+            cmp(reg_N_blk, conf_->LDB);
+            jl(main_N_loop_tail, T_NEAR);
+        }
+
+        L(main_N_loop);
+        compute_K_loop(conf_->LDB);
+        add(reg_src, conf_->LDB2 * typesize_);
+        add(reg_tr_src, conf_->LDB2 * tr_typesize_);
+
+        sub(reg_N_blk, conf_->LDB);
+        cmp(reg_N_blk, conf_->LDB);
+        jge(main_N_loop, T_NEAR);
+
+        if (tail != 0) {
+            L(main_N_loop_tail);
+            cmp(reg_N_blk, 0);
+            jle(done, T_NEAR);
+            compute_K_loop(tail);
+        }
+
+        L(done);
+        postamble();
+        cvt_helper_.prepare_tables();
+    }
+};
+
 status_t create_brgemm_matmul_copy_b(
         std::unique_ptr<jit_brgemm_matmul_copy_b_t> &copy_ker,
         const brgemm_matmul_conf_t *conf) {
-    const bool is_bf16
-            = everyone_is(data_type::bf16, conf->src_dt, conf->wei_dt);
+    const bool is_bf16 = !conf->is_xf16_fp8
+            && everyone_is(data_type::bf16, conf->src_dt, conf->wei_dt);
     const bool is_f32 = everyone_is(data_type::f32, conf->src_dt, conf->wei_dt);
     // Note: f16 support through avx512_core_fp16 sets src_dt and wei_dt as f32
     // to imply upconverting. So, the assumption is `is_f16` below evaluates to
     // `false` on avx512_core_fp16.
-    const bool is_f16 = everyone_is(data_type::f16, conf->src_dt, conf->wei_dt);
+    const bool is_f16 = !conf->is_xf16_fp8
+            && everyone_is(data_type::f16, conf->src_dt, conf->wei_dt);
     if (conf->transposed_B) {
         if (is_superset(conf->isa, avx512_core))
             CHECK(safe_ptr_assign(copy_ker,
@@ -6666,6 +6953,16 @@ status_t create_brgemm_matmul_copy_b(
             else
                 CHECK(safe_ptr_assign(copy_ker,
                         new jit_brgemm_matmul_copy_b_f32_t<Ymm>(conf)));
+        } else if (conf->is_xf16_fp8) {
+            assert((is_superset(conf->isa, avx10_2)
+                           || (conf->wei_dt == data_type::f16
+                                           ? is_superset(conf->isa,
+                                                     avx10_1_512_amx_fp16)
+                                           : is_superset(conf->isa,
+                                                     avx512_core_amx)))
+                    && "Unsupported isa for xf16_fp8");
+            CHECK(safe_ptr_assign(copy_ker,
+                    new jit_brgemm_matmul_copy_cvt_fp8_to_xf16_t(conf)));
         } else {
             if (mayiuse(avx512_core_amx))
                 CHECK(safe_ptr_assign(copy_ker,

@@ -76,12 +76,12 @@ using namespace dnnl::impl::cpu::aarch64;
 #elif DNNL_RV64
 #if defined(DNNL_RISCV_USE_RVV_INTRINSICS)
 #include "cpu/rv64/jit_rvv_1x1_convolution.hpp"
-#include "cpu/rv64/jit_uni_dwconv.hpp"
 #include "cpu/rv64/rvv_brgemm_conv.hpp"
 #include "cpu/rv64/rvv_gemm_convolution.hpp"
 #include "cpu/rv64/rvv_winograd_convolution.hpp"
-using namespace dnnl::impl::cpu::rv64;
 #endif // DNNL_RISCV_USE_RVV_INTRINSICS
+#include "cpu/rv64/jit_uni_dwconv.hpp"
+using namespace dnnl::impl::cpu::rv64;
 #endif
 
 namespace dnnl {

@@ -453,7 +453,7 @@ application manages GPU devices, queues, and memory:
 This option controls support of Intel GPU microarchitectures in oneDNN JIT
 generator. By default all microarchitectures supported by the library are
 enabled. The list of supported microarchitectures can be restricted to any
-subset of the following list: `XELP`, `XEHP`, `XEHPG`, `XEHPC`, `XE2`, `XE3`,
+subset of the following list: `XEHP`, `XEHPG`, `XEHPC`, `XE2`, `XE3`,
 and `XE3P`.
 
 To enable support for JIT optimizations on Xe2 archtiecture and newer GPUs set

@@ -443,7 +443,6 @@ bool emulated_generator_t<hw>::supports_signature(
 
 #undef REQUIRE
 
-REG_XELP_ISA(template class emulated_generator_t<gpu_xe_lp>);
 REG_XEHP_ISA(template class emulated_generator_t<gpu_xe_hp>);
 REG_XEHPG_ISA(template class emulated_generator_t<gpu_xe_hpg>);
 REG_XEHPC_ISA(template class emulated_generator_t<gpu_xe_hpc>);

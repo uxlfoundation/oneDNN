@@ -366,7 +366,6 @@ void gen_desc_t::update_driver_info() {
         break;
 
     switch (hw_) {
-        REG_XELP_ISA(ARCH_DISPATCH(XeLP))
         REG_XEHP_ISA(ARCH_DISPATCH(XeHP))
         REG_XEHPG_ISA(ARCH_DISPATCH(XeHPG))
         REG_XEHPC_ISA(ARCH_DISPATCH(XeHPC))
@@ -1018,7 +1017,6 @@ status_t gen_kernel_t::get_kernel(
 
     try {
         switch (desc()->hw_) {
-            REG_XELP_ISA(ARCH_DISPATCH(XeLP))
             REG_XEHP_ISA(ARCH_DISPATCH(XeHP))
             REG_XEHPG_ISA(ARCH_DISPATCH(XeHPG))
             REG_XEHPC_ISA(ARCH_DISPATCH(XeHPC))

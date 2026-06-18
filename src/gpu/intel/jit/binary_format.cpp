@@ -373,9 +373,8 @@ status_t init_mayiuse_ngen_kernels(impl::engine_t *engine,
     // Bail out if the detected architecture is disabled at build time.
     bool arch_enabled = false;
     switch (arch) {
-        case compute::gpu_arch_t::xe_lp:
-            REG_XELP_ISA(arch_enabled = true);
-            break;
+        // xe_lp is intentionally skipped: Xe-LP optimizations are disabled at build time.
+        case compute::gpu_arch_t::xe_lp: break;
         // xe_hp is intentionally skipped: no publicly released hardware.
         case compute::gpu_arch_t::xe_hp: break;
         case compute::gpu_arch_t::xe_hpg:

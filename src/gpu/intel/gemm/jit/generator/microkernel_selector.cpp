@@ -381,7 +381,6 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
                                                             transC);                            \
                 }
             switch (hw) {
-                REG_XELP_ISA(ARCH_DISPATCH(XeLP))
                 REG_XEHP_ISA(ARCH_DISPATCH(XeHP))
                 REG_XEHPG_ISA(ARCH_DISPATCH(XeHPG))
                 REG_XEHPC_ISA(ARCH_DISPATCH(XeHPC))

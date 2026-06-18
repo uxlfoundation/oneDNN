@@ -19,9 +19,7 @@
 #pragma warning (disable: 4661)     /* missing definition in template instatiation */
 #endif
 
-#if defined(DNNL_GPU_ISA_XELP)
-REG_XELP_ISA(template class Generator<HW::Gen12LP>);
-#elif defined(DNNL_GPU_ISA_XEHP)
+#if defined(DNNL_GPU_ISA_XEHP)
 REG_XEHP_ISA(template class Generator<HW::XeHP>);
 #elif defined(DNNL_GPU_ISA_XEHPG)
 REG_XEHPG_ISA(template class Generator<HW::XeHPG>);
@@ -35,7 +33,6 @@ REG_XE3_ISA(template class Generator<HW::Xe3>);
 REG_XE3P_ISA(template class Generator<HW::Xe3p>);
 #else
 // Default to instantiating all classes
-REG_XELP_ISA(template class Generator<HW::Gen12LP>);
 REG_XEHP_ISA(template class Generator<HW::XeHP>);
 REG_XEHPG_ISA(template class Generator<HW::XeHPG>);
 REG_XEHPC_ISA(template class Generator<HW::XeHPC>);

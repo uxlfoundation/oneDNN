@@ -1132,7 +1132,6 @@ void eltwise_injector_f32_t<ngen_generator_t>::prepare() {
 
 template <ngen::HW hw>
 using code_gen = ngen::BinaryCodeGenerator<hw>;
-REG_XELP_ISA(template struct eltwise_injector_f32_t<code_gen<gpu_xe_lp>>);
 REG_XEHP_ISA(template struct eltwise_injector_f32_t<code_gen<gpu_xe_hp>>);
 REG_XEHPG_ISA(template struct eltwise_injector_f32_t<code_gen<gpu_xe_hpg>>);
 REG_XEHPC_ISA(template struct eltwise_injector_f32_t<code_gen<gpu_xe_hpc>>);

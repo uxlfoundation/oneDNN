@@ -111,7 +111,6 @@ require the use of run-time controls to enable them. See
 
 The library is optimized for the following GPUs:
 * Intel discrete GPUs:
-  * **[deprecated]** Intel Iris Xe MAX Graphics (formerly DG1)
   * Intel Arc(TM) A-Series Graphics (formerly Alchemist)
   * Intel Data Center GPU Flex Series (formerly Arctic Sound)
   * Intel Data Center GPU Max Series (formerly Ponte Vecchio)
@@ -119,7 +118,6 @@ The library is optimized for the following GPUs:
    (formerly Battlemage)
   * future discrete GPUs based on Xe3p-XPC architecture (code name Crescent Island)
 * Intel Graphics integrated with:
-  * **[deprecated]** 11th-14th Generation Intel Core Processors
   * Intel Graphics for Intel Core Ultra Series 1 processors (formerly Meteor Lake)
   * Intel Graphics for Intel Core Ultra Series 2 processors (formerly Arrow Lake and Lunar Lake)
   * Intel Graphics for Intel Core Ultra Series 3 processors (formerly Panther Lake)

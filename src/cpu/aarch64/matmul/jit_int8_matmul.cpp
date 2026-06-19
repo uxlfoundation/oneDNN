@@ -101,6 +101,15 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
 
     call_params_t inp;
 
+    void cvt_f32_to_xf16(const ZReg &zdata, const PReg &pg, data_type_t xf16) {
+        assert(xf16 == f16 || xf16 == bf16);
+        if (xf16 == bf16) {
+            bfcvt(zdata.h, pg / T_m, zdata.s);
+        } else {
+            fcvt(zdata.h, pg / T_m, zdata.s);
+        }
+    }
+
     void operator()(const call_params_t *p) {
         return jit_generator_t::operator()(p);
     }
@@ -322,6 +331,9 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
                             saturate_f32(zreg, z31, z0, dt, p, force_lbound);
                             frinti(zreg.s, p, zreg.s);
 
+                            // The choice of rounding instruction is a function
+                            // of signedness, so s8, and s32 are handled
+                            // together, with u8 on its own.
                             if (dt == u8) {
                                 fcvtzu(zreg.s, p, zreg.s);
                             } else {
@@ -329,6 +341,9 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
                             }
                         }
 
+                        // The choice of store instruction is a function of data
+                        // type size. So u8, s8 are handled together, with s32
+                        // on its own.
                         switch (brg_.dst_dt_sz) {
                             case 4:
                                 st1w(zreg.s, p, ptr(dst, vl, MUL_VL));
@@ -353,14 +368,16 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
 
                     break;
                 }
+                case f16:
                 case bf16:
                     for (int b = 0; b < ldb; b += 2) {
                         PReg p = (brg_.is_n_tail && b >= ldb - 2) ? prd_st
                                                                   : P_ALL_ONE;
-                        bfcvt(acc(a, b).h, p / T_m, acc(a, b).s);
+                        cvt_f32_to_xf16(acc(a, b), p, brg_.dst_dt);
                         if (store_second_row)
-                            bfcvt(acc(a, b + 1).h, p / T_m, acc(a, b + 1).s);
+                            cvt_f32_to_xf16(acc(a, b + 1), p, brg_.dst_dt);
                     }
+
                     for (int b = 0; b < ldb; b += 2) {
                         PReg p = (brg_.is_n_tail && b >= ldb - 2) ? prd_st
                                                                   : P_ALL_ONE;
@@ -987,7 +1004,7 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
     };
 
     const bool problem_dt_correct = (is_s8 || is_u8 || is_u8_s8)
-            && utils::one_of(dst_type, f32, bf16, s32, s8, u8)
+            && utils::one_of(dst_type, f32, s32, f16, bf16, s8, u8)
             && platform::has_data_type_support(dst_type);
 
     VDISPATCH_MATMUL(problem_dt_correct, VERBOSE_UNSUPPORTED_DT);

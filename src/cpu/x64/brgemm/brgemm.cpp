@@ -486,6 +486,7 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
     const auto &src_scales = attr->scales_.get(DNNL_ARG_SRC);
     const auto &wei_scales = attr->scales_.get(DNNL_ARG_WEIGHTS);
     brg->with_src_scales = !src_scales.has_default_values();
+    if (brg->with_src_scales) brg->dt_src_scales = src_scales.get_data_type();
     brg->with_wei_scales
             = !brg->skip_wei_scales && !wei_scales.has_default_values();
 
@@ -516,7 +517,7 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
     const bool scales_ok = attr->scales_.has_default_values({DNNL_ARG_SRC,
                                    DNNL_ARG_WEIGHTS, DNNL_ARG_DST})
             && IMPLICATION(!src_scales.has_default_values(),
-                    src_scales.get_mask() == 0)
+                    src_scales.get_mask() == 0 || brg->is_per_k_src_scales)
             && IMPLICATION(!dst_scales.has_default_values(),
                     dst_scales.get_mask() == 0);
     if (!scales_ok) return status::unimplemented;
@@ -839,6 +840,9 @@ int brgemm_cmp(const brgemm_desc_t &lhs, const brgemm_desc_t &rhs) {
     CMP_BRGEMM_FIELD(is_per_n_wei_scales);
     CMP_BRGEMM_FIELD(is_per_k_wei_scales);
     CMP_BRGEMM_FIELD(with_src_scales);
+    CMP_BRGEMM_FIELD(is_per_k_src_scales);
+    CMP_BRGEMM_FIELD(src_scale_m_stride);
+    CMP_BRGEMM_FIELD(dt_src_scales);
     CMP_BRGEMM_FIELD(with_wei_scales);
     CMP_BRGEMM_FIELD(with_dst_scales);
     CMP_BRGEMM_FIELD(dt_wei_scales);

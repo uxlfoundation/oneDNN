@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2022 Intel Corporation
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -146,6 +146,9 @@ dnnl_status_t brgemm_attr_init(
 #if defined(brg_x64)
         // ACE is an x64-only compute path.
         PROCESS_KEY_VAL(use_ace);
+#elif defined(brg_aarch64)
+        PROCESS_KEY_VAL(use_mmla);
+        PROCESS_KEY_VAL(use_mmla_packed_a);
 #endif
         PROCESS_KEY_VAL(b_is_vnni);
         PROCESS_KEY_VAL(postops_only);
@@ -186,27 +189,11 @@ dnnl_status_t brgemm_attr_init(
     return dnnl_success;
 }
 
-std::string prepare_wei_format_string(
-        dnnl_data_type_t dt, int64_t ldb, bool is_vnni_layout) {
-    // `dt` affects the choice of last inner block (for VNNI-friendliness).
-    // `n` affects the choice of B block.
-    std::string wtag("BA16a");
-    wtag += std::to_string(ldb) + "b";
-    if (is_vnni_layout) {
-        switch (dt) {
-            case dnnl_f32: break;
-            case dnnl_f16:
-            case dnnl_bf16: wtag += "2a"; break;
-            case dnnl_f8_e5m2:
-            case dnnl_f8_e4m3:
-            case dnnl_u8:
-            case dnnl_s8: wtag += "4a"; break;
-            default: assert(!"unsupported data type");
-        }
-    }
-
-    return wtag;
+#if defined(brg_aarch64)
+std::string mmla_wei_tag(int ld_block, int ld_block2) {
+    return std::string("BA2a") + std::to_string(ld_block * ld_block2) + "b4a";
 }
+#endif
 
 namespace_impl::brgemm_batch_kind_t str2batch_kind(const std::string &str) {
     if (str == "addr")
@@ -290,9 +277,14 @@ struct kernel_args_t {
         :
 #if !defined(DNNL_EXPERIMENTAL_UKERNEL)
         brgemm_kernel_(nullptr)
+#if defined(brg_x64)
         , palette()
-        , is_b_data_layout_vnni_(false)
         , need_tile_config_(false)
+#elif defined(brg_aarch64)
+        , use_mmla_(false)
+        , use_mmla_packed_a_(false)
+#endif
+        , is_b_data_layout_vnni_(false)
         , original_wei_md_size_(0)
 #else
         brgemm_(nullptr)
@@ -307,9 +299,15 @@ struct kernel_args_t {
     // Output members
 #if !defined(DNNL_EXPERIMENTAL_UKERNEL)
     namespace_impl::brgemm_kernel_t *brgemm_kernel_;
+#if defined(brg_x64)
     char palette[/*dnnl::impl::cpu::x64::AMX_PALETTE_SIZE = */ 64];
-    bool is_b_data_layout_vnni_;
     bool need_tile_config_;
+#elif defined(brg_aarch64)
+    std::string mmla_wei_tag_;
+    bool use_mmla_;
+    bool use_mmla_packed_a_;
+#endif
+    bool is_b_data_layout_vnni_;
     size_t original_wei_md_size_;
 #else
     dnnl_brgemm_t brgemm_;
@@ -322,6 +320,43 @@ struct kernel_args_t {
     // Input members
     const prb_t *prb_;
 };
+
+std::string prepare_src_format_string(const kernel_args_t &kernel_args) {
+#if !defined(DNNL_EXPERIMENTAL_UKERNEL) && defined(brg_aarch64)
+    if (kernel_args.use_mmla_ && kernel_args.use_mmla_packed_a_)
+        return "AB2a4b";
+#else
+    MAYBE_UNUSED(kernel_args);
+#endif
+    return "";
+}
+
+#if !defined(DNNL_EXPERIMENTAL_UKERNEL)
+std::string prepare_wei_format_string(
+        const prb_t *prb, const kernel_args_t &kernel_args) {
+#if defined(brg_aarch64)
+    if (kernel_args.use_mmla_) return kernel_args.mmla_wei_tag_;
+#endif
+    // The weights data type affects the last inner block (for VNNI-friendliness).
+    // LDB affects the choice of B block.
+    std::string wtag("BA16a");
+    wtag += std::to_string(prb->get_ldb()) + "b";
+    if (kernel_args.is_b_data_layout_vnni_) {
+        switch (prb->wei_dt()) {
+            case dnnl_f32: break;
+            case dnnl_f16:
+            case dnnl_bf16: wtag += "2a"; break;
+            case dnnl_f8_e5m2:
+            case dnnl_f8_e4m3:
+            case dnnl_u8:
+            case dnnl_s8: wtag += "4a"; break;
+            default: assert(!"unsupported data type");
+        }
+    }
+
+    return wtag;
+}
+#endif
 
 int init_kernel(kernel_args_t &kernel_args, res_t *res) {
     const prb_t *prb = kernel_args.prb_;
@@ -372,6 +407,12 @@ int init_kernel(kernel_args_t &kernel_args, res_t *res) {
 
     brgemm_attr_t brgemm_attr;
     DNN_SAFE(brgemm_attr_init(&brgemm_attr, prb), WARN);
+#if defined(brg_aarch64)
+    if (brgemm_attr.use_mmla && prb->batch_size > 1) {
+        SAFE(check_dnnl_status(dnnl_unimplemented, prb, res), WARN);
+        return OK;
+    }
+#endif
     SAFE(check_dnnl_status(
                  brgemm_desc_set_attr(&brgemm_desc, brgemm_attr), prb, res),
             WARN);
@@ -382,6 +423,14 @@ int init_kernel(kernel_args_t &kernel_args, res_t *res) {
 
     kernel_args.generate_skip_accumulation_
             = brgemm_attr.generate_skip_accumulation;
+#if defined(brg_aarch64)
+    kernel_args.use_mmla_ = brgemm_desc.brgattr.use_mmla;
+    if (kernel_args.use_mmla_) {
+        kernel_args.mmla_wei_tag_
+                = mmla_wei_tag(brgemm_desc.ld_block, brgemm_desc.ld_block2);
+    }
+    kernel_args.use_mmla_packed_a_ = brgemm_desc.brgattr.use_mmla_packed_a;
+#endif
 
     // Create BRGeMM kernel, analogous to primitive creation.
     // ctx_init can here be used to select core type on hetero ISA with TBB.
@@ -560,12 +609,14 @@ void init_memory_args(
     const dnnl_dims_t src_dims = {prb->m, prb->k * prb->batch_size};
     const dnnl_dims_t wei_dims = {prb->k * prb->batch_size, prb->n};
 
-    dims_t src_strides = {prb->get_lda(), 1};
+    const auto stag = prepare_src_format_string(kernel_args);
+    const dims_t src_strides
+            = stag.empty() ? dims_t {prb->get_lda(), 1} : dims_t {};
     dims_t dst_strides = {prb->get_ldd(), 1};
     dims_t acc_strides = prb->use_dst_as_acc() ? dst_strides : dims_t();
 
     auto src_md = dnn_mem_t::init_md(
-            prb->ndims, src_dims, prb->src_dt(), "", src_strides);
+            prb->ndims, src_dims, prb->src_dt(), stag, src_strides);
 
     auto dst_md = dnn_mem_t::init_md(
             prb->ndims, prb->dst_dims.data(), prb->dst_dt(), "", dst_strides);
@@ -575,7 +626,7 @@ void init_memory_args(
             prb->acc_dt(), tag::abx, acc_strides);
 
 #if !defined(DNNL_EXPERIMENTAL_UKERNEL)
-    // Create weights memory descriptor with VNNI-friendly format.
+    // Create weights memory descriptor with kernel-friendly format.
     // Note: LDB is not passed here. This is because it's super difficult to
     // incorporate stride on top of blocking - oneDNN API doesn't provide any
     // calls to support both options together. Submemory descriptor, which is
@@ -583,8 +634,7 @@ void init_memory_args(
     // memory. Thus, it requires two memories and we need to pass a memory
     // handle from bigger one (where LDB is an actual dim value) to smaller, but
     // there's some reorder bug resulting in an error.
-    const auto wtag = prepare_wei_format_string(
-            prb->wei_dt(), prb->get_ldb(), kernel_args.is_b_data_layout_vnni_);
+    const auto wtag = prepare_wei_format_string(prb, kernel_args);
     BENCHDNN_PRINT(6, "wtag: %s\n", wtag.c_str());
 
     auto wei_md = dnn_mem_t::init_md(prb->ndims, wei_dims, prb->wei_dt(), wtag);

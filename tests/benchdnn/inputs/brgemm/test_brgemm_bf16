@@ -26,3 +26,6 @@
 --wtag=ba
 --dt=bf16
 --batch=option_set_bf16
+
+# aarch64 mmla coverage
+--batch=harness_brgemm_mmla

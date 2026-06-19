@@ -4726,7 +4726,8 @@ struct jit_brgemm_matmul_copy_b_transposed_t
         , req_zp_b_shift_(
                   conf_->has_zero_point_b && conf_->with_wei_decompression)
         , req_int8_zp_b_shift_(conf_->has_zero_point_b
-                  && conf_->with_int8_grouped_quantization)
+                  && conf_->with_int8_grouped_quantization
+                  && !conf_->with_per_mn_compensation)
         , is_zp_int4_(one_of(conf->wei_zp_dt, data_type::s4, data_type::u4))
         , has_vpermb_(cpu().has(Xbyak::util::Cpu::tAVX512_VBMI))
         , req_apply_wei_scales_(conf_->apply_scales_in_buffer_b)

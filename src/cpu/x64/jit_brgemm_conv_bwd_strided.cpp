@@ -1849,13 +1849,15 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_trans(
                             real_dst + m * stride_bytes, ic_bytes);
                 }
             }
-            const dim_t iw_raw = static_cast<dim_t>(btc.iwb) * jcp.iw_block;
-            perform_outwork(diff_src_base, diff_src, btc.c_buffer, bias_w,
-                    btc.id, btc.ih, iw, iw_raw, g_ic, is_ic_tail, iw, iw, 0, 0,
-                    post_ops_binary_rhs_arg_vec.data(), btc.src_zp_val,
-                    btc.src_zp_comp_ptr, btc.dst_zp_vals, btc.s8s8_comp_ptr, 0,
-                    do_init, do_postwork, false, btc.src_scales, btc.wei_scales,
-                    btc.dst_scales);
+            if (!need_out_buffer) {
+                const dim_t iw_raw = static_cast<dim_t>(btc.iwb) * jcp.iw_block;
+                perform_outwork(diff_src_base, diff_src, btc.c_buffer, bias_w,
+                        btc.id, btc.ih, iw, iw_raw, g_ic, is_ic_tail, iw, iw, 0,
+                        0, post_ops_binary_rhs_arg_vec.data(), btc.src_zp_val,
+                        btc.src_zp_comp_ptr, btc.dst_zp_vals, btc.s8s8_comp_ptr,
+                        0, do_init, do_postwork, false, btc.src_scales,
+                        btc.wei_scales, btc.dst_scales);
+            }
         } else {
             // Non-AMX: brgemm handles batch_size=0 (skip_accumulation)
             // correctly at runtime via var_bs.

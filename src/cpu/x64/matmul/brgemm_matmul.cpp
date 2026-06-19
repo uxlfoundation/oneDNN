@@ -395,7 +395,19 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         auto LDD = bgmmc_.LDD;
         if (bgmmc_.with_wei_decompression && bgmmc_.has_zero_point_b)
             brg.skip_zp_b_compensation = true;
-        if (bgmmc_.apply_scales_in_buffer_b) brg.skip_wei_scales = true;
+        brg.skip_wei_scales = bgmmc_.apply_scales_in_buffer_b;
+        // Fill up the scales info in case it's computing in brgemm
+        if (!brg.skip_wei_scales && bgmmc_.with_wei_scales) {
+            brg.is_single_wei_scale = bgmmc_.is_wei_scale_common;
+            brg.is_per_n_wei_scales = bgmmc_.is_wei_scale_per_n;
+            // For grouped (per-K) wei scales: K_blk == group_size and
+            // brgemm_batch_size == 1, so each brgemm call covers exactly one
+            // K-group. The matmul driver shifts `ptr_wei_scales` to the
+            // current group's per-N vector before each call. Brgemm just
+            // applies it as per-N at C-accumulation time.
+            brg.is_per_k_wei_scales = bgmmc_.is_wei_scale_per_k;
+            brg.dt_wei_scales = bgmmc_.wei_scales_dt;
+        }
         CHECK(brgemm_desc_set_postops(
                 &brg, attr(), &dst_md_, LDD, bgmmc_.bia_dt));
 
@@ -766,51 +778,103 @@ void brgemm_matmul_t<isa>::compute_kernel(
     brgmm_ctx.maybe_backup_dst_values_to_buffer(
             ithr, b_idx, m_blk_idx, n_blk_idx);
 
+    auto is_brg_amx = [&](const int brg_idx) {
+        return is_superset(
+                pd()->get_brg_desc(brg_idx).isa_impl, avx512_core_amx);
+    };
+
+    // Execute the kernel for one K-block. Pure accumulation into C goes through
+    // the plain execute API. Accumulation-time scales / grouped s8s8
+    // compensation and the final-block epilogue go through the post-ops API.
+    // The `do_only_*` flags map to {do_post_ops, do_apply_comp} as {0,1} (comp
+    // only) and {1,1} (epilogue).
+    auto execute_brgemm = [&](const brgemm_kernel_t *kernel, const int brg_idx,
+                                  const int bs, const bool need_postops) {
+        const bool per_k_scales
+                = bgmmc.is_wei_scale_per_k && !bgmmc.apply_scales_in_buffer_b;
+        const auto k = k_blk_idx * bgmmc.K_blk * bgmmc.brgemm_batch_size;
+        const auto m = brgmm_ctx.get_M_idx(m_blk_idx, true);
+
+        if (!need_postops) {
+            // Intermediate K-block: plain accumulation unless per-K scales
+            // must be applied during accumulation.
+            if (!per_k_scales) {
+                void *scratch
+                        = is_brg_amx(brg_idx) ? (void *)wsp_tile : nullptr;
+                brgemm_kernel_execute(kernel, bs, addr_batch, (void *)ptr_C,
+                        scratch, &leading_dimensions);
+                return;
+            }
+            const void *src_scales
+                    = nullptr; // Will be introduced on next commit
+            const void *wei_scales = bgmmc.is_wei_scale_per_k
+                            && !bgmmc.apply_scales_in_buffer_b
+                    ? brgmm_ctx.get_wei_scales_ptr(n, k)
+                    : nullptr;
+            void *scratch = is_brg_amx(brg_idx) ? (void *)wsp_tile : nullptr;
+            const brgemm_post_ops_data_t post_ops_data {/*bias=*/nullptr,
+                    /*binary_post_ops_rhs=*/nullptr, /*oc_logical_off=*/0,
+                    /*dst_row_logical_off=*/0, /*data_C_ptr_=*/nullptr,
+                    /*first_mb_matrix_addr_off=*/0,
+                    /*a_zp_compensations=*/nullptr,
+                    /*b_zp_compensations=*/nullptr, /*c_zp_values=*/nullptr,
+                    /*skip_accumulation=*/false, /*zp_a_val=*/1,
+                    /*do_only_comp=*/false,
+                    /*do_only_zp_a_val=*/true, src_scales, wei_scales,
+                    /*dst_scales=*/nullptr};
+            brgemm_kernel_execute_postops(kernel, bs, addr_batch, (void *)ptr_C,
+                    (void *)ptr_D, post_ops_data, scratch, &leading_dimensions);
+            return;
+        }
+
+        // Final K-block: apply scales, compensation and post-ops. Per-K scales
+        // take precedence over the common ones.
+        const void *src_scales = brgmm_ctx.get_src_scales_ptr();
+        const void *wei_scales
+                = bgmmc.is_wei_scale_per_k && !bgmmc.apply_scales_in_buffer_b
+                ? brgmm_ctx.get_wei_scales_ptr(n, k)
+                : brgmm_ctx.get_wei_scales_ptr(n, /*k=*/0);
+        const void *dst_scales = brgmm_ctx.get_dst_scales_inv_ptr(ithr);
+        void *scratch = is_brg_amx(brg_idx)
+                ? (void *)wsp_tile
+                : (void *)brgmm_ctx.get_s8s8_comp_ptr(ithr, b_idx, n_blk_idx);
+
+        const size_t dst_row_logical_off = m;
+        const size_t batch_first_dim_idx = bgmmc.batch_ndims > 1
+                ? b_idx / bgmmc.batch_without_first_dim
+                : 0;
+        const size_t first_mb_matrix_addr_off
+                = batch_first_dim_idx * (M * N) + (dst_row_logical_off * N + n);
+
+        const brgemm_post_ops_data_t post_ops_data {
+                /*bias=*/static_cast<const void *>(ptr_bias),
+                /*binary_post_ops_rhs=*/post_ops_binary_rhs_arg_vec.data(),
+                /*oc_logical_off=*/static_cast<size_t>(n), dst_row_logical_off,
+                /*data_C_ptr_=*/brgmm_ctx.get_data_C_ptr(0, 0, 0),
+                first_mb_matrix_addr_off,
+                /*a_zp_compensations=*/static_cast<const void *>(zp_comp_a),
+                /*b_zp_compensations=*/static_cast<const void *>(zp_comp_b),
+                /*c_zp_values=*/brgmm_ctx.get_zp_c_ptr(),
+                /*skip_accumulation=*/false, /*zp_a_val=*/1,
+                /*do_only_comp=*/false, /*do_only_zp_a_val=*/false, src_scales,
+                wei_scales, dst_scales};
+
+        brgemm_kernel_execute_postops(kernel, bs, addr_batch, (void *)ptr_C,
+                (void *)ptr_D, post_ops_data, scratch, &leading_dimensions);
+    };
+
     if (gemm_batch > 0 && brg_ker_idx >= 0) {
-        const bool is_amx = is_superset(
-                pd()->get_brg_desc(brg_ker_idx).isa_impl, avx512_core_amx);
         const auto brg_kernel = brg_kernels_[brg_ker_idx].get();
         assert(brg_kernel != nullptr);
         brgemm_palettes_.maybe_tile_configure(
-                is_amx, prev_ker_idx, brg_ker_idx);
+                is_brg_amx(brg_ker_idx), prev_ker_idx, brg_ker_idx);
 
         brgmm_ctx.init_brgemm_batch_elements_values(ithr, 0, gemm_batch,
                 A_data_batch_ptr, B_data_batch_ptr, b_idx, m_blk_idx, k_blk_idx,
                 n_blk_idx);
-        if (post_ops_applicable && is_last_K_blk && !is_K_tail) {
-            void *scratch = is_amx
-                    ? static_cast<void *>(wsp_tile)
-                    : static_cast<void *>(brgmm_ctx.get_s8s8_comp_ptr(
-                              ithr, b_idx, n_blk_idx));
-
-            const size_t dst_row_logical_off
-                    = brgmm_ctx.get_M_idx(m_blk_idx, true);
-            const size_t batch_first_dim_idx = bgmmc.batch_ndims > 1
-                    ? b_idx / bgmmc.batch_without_first_dim
-                    : 0;
-            const size_t first_mb_matrix_addr_off
-                    = batch_first_dim_idx * (M * N)
-                    + (dst_row_logical_off * N + n);
-            const char *dst_anchor_point = brgmm_ctx.get_data_C_ptr(0, 0, 0);
-            const brgemm_post_ops_data_t post_ops_data {
-                    static_cast<const void *>(ptr_bias),
-                    post_ops_binary_rhs_arg_vec.data(), static_cast<size_t>(n),
-                    dst_row_logical_off, dst_anchor_point,
-                    first_mb_matrix_addr_off,
-                    static_cast<const void *>(zp_comp_a),
-                    static_cast<const void *>(zp_comp_b),
-                    brgmm_ctx.get_zp_c_ptr(), false, 1, false, false,
-                    brgmm_ctx.get_src_scales_ptr(),
-                    brgmm_ctx.get_wei_scales_ptr(n),
-                    brgmm_ctx.get_dst_scales_inv_ptr(ithr)};
-            brgemm_kernel_execute_postops(brg_kernel, gemm_batch, addr_batch,
-                    (void *)ptr_C, (void *)ptr_D, post_ops_data, scratch,
-                    &leading_dimensions);
-        } else {
-            brgemm_kernel_execute(brg_kernel, gemm_batch, addr_batch,
-                    (void *)ptr_C, is_amx ? (void *)wsp_tile : nullptr,
-                    &leading_dimensions);
-        }
+        const bool need_postops
+                = post_ops_applicable && is_last_K_blk && !is_K_tail;
+        execute_brgemm(brg_kernel, brg_ker_idx, gemm_batch, need_postops);
 
         maybe_reduce_A(brgmm_ctx, ithr, gemm_batch, m_blk_idx, n_blk_idx,
                 k_blk_idx, do_init, is_K_tail, /* do_K_tail */ false);
@@ -827,47 +891,12 @@ void brgemm_matmul_t<isa>::compute_kernel(
             assert(!"Requested brgemm kernel was not created.");
             return;
         }
-        const bool is_amx = is_superset(
-                pd()->get_brg_desc(brg_ker_idx).isa_impl, avx512_core_amx);
         brgemm_palettes_.maybe_tile_configure(
-                is_amx, prev_ker_idx, brg_ker_idx);
+                is_brg_amx(brg_ker_idx), prev_ker_idx, brg_ker_idx);
         const auto brg_kernel_k_tail = brg_kernels_[brg_ker_idx].get();
 
-        if (post_ops_applicable) {
-            void *scratch = is_amx
-                    ? static_cast<void *>(wsp_tile)
-                    : static_cast<void *>(brgmm_ctx.get_s8s8_comp_ptr(
-                              ithr, b_idx, n_blk_idx));
-
-            const size_t dst_row_logical_off
-                    = brgmm_ctx.get_M_idx(m_blk_idx, true);
-            const size_t batch_first_dim_idx = bgmmc.batch_ndims > 1
-                    ? b_idx / bgmmc.batch_without_first_dim
-                    : 0;
-            const size_t first_mb_matrix_addr_off
-                    = batch_first_dim_idx * (M * N)
-                    + (dst_row_logical_off * N + n);
-            const char *dst_anchor_point = brgmm_ctx.get_data_C_ptr(0, 0, 0);
-            const brgemm_post_ops_data_t post_ops_data {
-                    static_cast<const void *>(ptr_bias),
-                    post_ops_binary_rhs_arg_vec.data(), static_cast<size_t>(n),
-                    dst_row_logical_off, dst_anchor_point,
-                    first_mb_matrix_addr_off,
-                    static_cast<const void *>(zp_comp_a),
-                    static_cast<const void *>(zp_comp_b),
-                    brgmm_ctx.get_zp_c_ptr(), false, 1, false, false,
-                    brgmm_ctx.get_src_scales_ptr(),
-                    brgmm_ctx.get_wei_scales_ptr(n),
-                    brgmm_ctx.get_dst_scales_inv_ptr(ithr)};
-
-            brgemm_kernel_execute_postops(brg_kernel_k_tail, 1, addr_batch,
-                    (void *)ptr_C, (void *)ptr_D, post_ops_data, scratch,
-                    &leading_dimensions);
-        } else {
-            brgemm_kernel_execute(brg_kernel_k_tail, 1, addr_batch,
-                    (void *)ptr_C, is_amx ? (void *)wsp_tile : nullptr,
-                    &leading_dimensions);
-        }
+        execute_brgemm(
+                brg_kernel_k_tail, brg_ker_idx, /*bs=*/1, post_ops_applicable);
 
         maybe_reduce_A(brgmm_ctx, ithr, gemm_batch, m_blk_idx, n_blk_idx,
                 k_blk_idx, do_init, is_K_tail,
@@ -1198,7 +1227,7 @@ void brgemm_matmul_t<isa>::maybe_reduce_partial_results_and_apply_postops(
                             static_cast<const void *>(zp_comp_b),
                             brgmm_ctx.get_zp_c_ptr(), skip_accumulation, 1,
                             false, false, brgmm_ctx.get_src_scales_ptr(),
-                            brgmm_ctx.get_wei_scales_ptr(n),
+                            brgmm_ctx.get_wei_scales_ptr(n, /*k=*/0),
                             brgmm_ctx.get_dst_scales_inv_ptr(ithr)};
 
                     brgemm_kernel_execute_postops(brg_kernel, 0, nullptr,

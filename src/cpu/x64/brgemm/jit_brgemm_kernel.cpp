@@ -439,10 +439,11 @@ private:
     void apply_compensation(dim_t bd_block, dim_t ld_block, bool is_ld_tail);
     void apply_alpha_beta(
             dim_t bd_block, dim_t ld_block, bool is_ld_tail, bool is_bdb_tail);
+    void apply_wei_scales(dim_t bd_block, dim_t ld_block2, bool is_ld_tail,
+            bool dq2ps_required, bool &dq2ps_cvt_done);
+    void apply_scales(dim_t bd_block, dim_t ld_block2, bool is_ld_tail);
     void apply_post_ops(dim_t bd_block, dim_t ld_block2,
             dim_t ldb_and_bdb_offset, bool is_ld_tail, bool is_bdb_tail);
-    void apply_wei_scales(dim_t bd_block, dim_t ld_block2, bool dq2ps_required,
-            bool dq2ps_cvt_done, bool is_ld_tail);
     void gemv_apply_bias(dim_t bd_block, bool is_bdb_tail);
     void gemv_apply_wei_scales(dim_t bd_block, bool is_bdb_tail);
 
@@ -461,6 +462,8 @@ private:
             matrix_kind_t mk);
     void maybe_tileloadd_nt(matrix_kind_t matrix_kind, dim_t idx, dim_t offset,
             bool is_rd_tail, bool is_tail, bool last_bdb);
+    void load_scales_to_vmm(const data_type_t type_in, const Vmm &scales,
+            const Xbyak::Operand &op, bool is_ld_tail, bool is_single_scale);
     void dot_product(Vmm v1, Vmm v2, Vmm v3);
     void gemm_microkernel(dim_t bd_block2, bool is_bdb_tail, dim_t ld_block,
             bool is_rd_tail, bool is_ld_tail, dim_t vpad,
@@ -715,7 +718,7 @@ dim_t jit_brgemm_kernel_t<Wmm>::wei_scales_offset(
                 * types::data_type_size(brg.dt_wei_scales);
 
     const dim_t ld_offset = is_tail ? brg.ldb_tail : ld * brg.ld_block;
-    return ld_offset * brg.is_oc_scale
+    return ld_offset * brg.is_per_n_wei_scales
             * types::data_type_size(brg.dt_wei_scales);
 }
 
@@ -1359,7 +1362,7 @@ void jit_brgemm_kernel_t<Wmm>::gemv_apply_bias(
  *
  * Unlike bias, weight scales have two scale modes:
  *   - common: one scalar scale for the whole operation
- *   - per-N (`is_oc_scale`): one scale value per element along N
+ *   - per-N (`is_per_n_wei_scales`): one scale value per element along N
  *
  * In GEMV, per-N scales collapse to a single scalar only when `y` is treated
  * as a column vector.
@@ -1468,70 +1471,9 @@ void jit_brgemm_kernel_t<Wmm>::gemv_apply_wei_scales(
 }
 
 template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::apply_wei_scales(dim_t bd_block, dim_t ld_block2,
-        bool dq2ps_required, bool dq2ps_cvt_done, bool is_ld_tail) {
-
-    auto k_mask = (!is_ld_tail) ? ld_full_mask : ld_tail_mask;
-
-    reg_aux_wei_scales.restore();
-
-    for (dim_t ld = 0; ld < ld_block2; ld++) {
-        const auto addr = ptr[reg_aux_wei_scales + wei_scales_offset(ld)];
-        const bool is_tail = is_ld_tail && ld + 1 == ld_block2;
-        const bool is_single_scale = !brg.is_oc_scale;
-
-        const Vmm vmm_wei_scales = vmm_tmp(0);
-        const Vmm vmm_wei_scales_masked
-                = vmm_mask(vmm_wei_scales, is_tail, false, k_mask);
-        if (is_single_scale) {
-            switch (brg.dt_wei_scales) {
-                case data_type::f32: vbroadcastss(vmm_wei_scales, addr); break;
-                case data_type::bf16:
-                    vpbroadcastw(vmm_wei_scales, addr);
-                    uni_vpslld(vmm_wei_scales, vmm_wei_scales, 16);
-                    break;
-                case data_type::f16:
-                    vpbroadcastw(vmm_wei_scales, addr);
-                    vcvtph2ps(Xmm(vmm_wei_scales.getIdx()),
-                            Xmm(vmm_wei_scales.getIdx()));
-                    vbroadcastss(vmm_wei_scales, Xmm(vmm_wei_scales.getIdx()));
-                    break;
-                default: assert(!"unsupported wei_scales data type");
-            }
-        } else {
-            if (IMPLICATION(is_tail, isa_has_masks(brg.isa_impl))) {
-                switch (brg.dt_wei_scales) {
-                    case data_type::f32:
-                        uni_vmovups(vmm_wei_scales_masked, addr);
-                        break;
-                    case data_type::bf16:
-                        uni_vpmovzxwd(vmm_wei_scales_masked, addr);
-                        uni_vpslld(vmm_wei_scales, vmm_wei_scales, 16);
-                        break;
-                    case data_type::f16:
-                        vcvtph2ps(vmm_wei_scales_masked, addr);
-                        break;
-                    default: assert(!"unsupported wei_scales data type");
-                }
-            } else {
-                assert(brg.dt_wei_scales == data_type::f32);
-                vmaskmovps(vmm_wei_scales, vmm_tail_mask(), addr);
-            }
-        }
-
-        for (dim_t bd = 0; bd < bd_block; bd++) {
-            auto vmm = accm(ld_block2, bd, ld);
-            if (dq2ps_required && !dq2ps_cvt_done) uni_vcvtdq2ps(vmm, vmm);
-            uni_vmulps(vmm, vmm, vmm_wei_scales);
-        }
-    }
-}
-
-template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::apply_alpha_beta(
         dim_t bd_block, dim_t ld_block2, bool is_ld_tail, bool is_bdb_tail) {
     const bool apply_alpha = brg.alpha != 1.f;
-    const bool dq2ps_required = brg.is_int8 && (apply_alpha || brg.beta != 1.f);
 
     auto vmm_alpha = vmm_tmp(0);
     if (apply_alpha) {
@@ -1543,12 +1485,12 @@ void jit_brgemm_kernel_t<Wmm>::apply_alpha_beta(
     for_(dim_t bd = 0; bd < bd_block; bd++)
     for (dim_t ld = 0; ld < ld_block2; ld++) {
         auto vmm = accm(ld_block2, bd, ld);
-        if (dq2ps_required) uni_vcvtdq2ps(vmm, vmm);
+        if (brg.do_dq2ps_cvt()) uni_vcvtdq2ps(vmm, vmm);
         if (apply_alpha) uni_vmulps(vmm, vmm, vmm_alpha);
     }
 
     if (brg.beta == 0.f) return;
-    const bool use_vadd_for_beta = brg.beta == 1.f && !dq2ps_required;
+    const bool use_vadd_for_beta = brg.beta == 1.f && !brg.do_dq2ps_cvt();
     const bool need_init_beta_vmm = brg.beta != 1.f;
     auto vmm_prev_dst = vmm_tmp(0);
     if (need_init_beta_vmm) {
@@ -1583,21 +1525,19 @@ void jit_brgemm_kernel_t<Wmm>::apply_alpha_beta(
                 } else {
                     uni_vaddss(Xmm(vmm.getIdx()), Xmm(vmm.getIdx()), ptr_C);
                 }
+            } else if (IMPLICATION(is_tail,
+                               is_superset(brg.isa_impl, avx512_core))) {
+                auto vmm_masked = vmm_mask(vmm, is_tail, false, k_mask);
+                if (brg.is_integer_acc())
+                    uni_vpaddd(vmm_masked, vmm, ptr_C);
+                else
+                    uni_vaddps(vmm_masked, vmm, ptr_C);
             } else {
-                if (IMPLICATION(
-                            is_tail, is_superset(brg.isa_impl, avx512_core))) {
-                    auto vmm_masked = vmm_mask(vmm, is_tail, false, k_mask);
-                    if (brg.is_int8)
-                        uni_vpaddd(vmm_masked, vmm, ptr_C);
-                    else
-                        uni_vaddps(vmm_masked, vmm, ptr_C);
-                } else {
-                    vmaskmovps(vmm_prev_dst, vmm_tail_mask(), ptr_C);
-                    if (brg.is_int8)
-                        uni_vpaddd(vmm, vmm, vmm_prev_dst);
-                    else
-                        uni_vaddps(vmm, vmm, vmm_prev_dst);
-                }
+                vmaskmovps(vmm_prev_dst, vmm_tail_mask(), ptr_C);
+                if (brg.is_integer_acc())
+                    uni_vpaddd(vmm, vmm, vmm_prev_dst);
+                else
+                    uni_vaddps(vmm, vmm, vmm_prev_dst);
             }
         } else {
             assert(!brg.is_gemv && "int8 data type is not supported for gemv");
@@ -1760,6 +1700,96 @@ void jit_brgemm_kernel_t<Wmm>::reduce_gemv_accumulators(dim_t bd_block) {
     }
 }
 
+/** Loads scales to a given vmm, applying masking if needed.
+* Used in multiple places for loading scales for variety of supported data types.
+* @param type_in data type of the scales to be loaded.
+* @param vmm_scales vmm register to load the scales to.
+* @param op an operand to load the scales from, must point to memory.
+* @param is_ld_tail tail flag used for applying tail mask
+* @param is_single_scale single scale flag, broadcasting if it's true.
+*/
+template <typename Wmm>
+void jit_brgemm_kernel_t<Wmm>::load_scales_to_vmm(const data_type_t type_in,
+        const Vmm &vmm_scales, const Xbyak::Operand &op, bool is_ld_tail,
+        bool is_single_scale) {
+    const auto k_mask = is_ld_tail ? ld_tail_mask : ld_full_mask;
+    if (is_single_scale) {
+        switch (type_in) {
+            case data_type::f32: vbroadcastss(vmm_scales, op); break;
+            case data_type::bf16:
+                vpbroadcastw(vmm_scales, op);
+                uni_vpslld(vmm_scales, vmm_scales, 16);
+                break;
+            case data_type::f16:
+                vpbroadcastw(vmm_scales, op);
+                vcvtph2ps(Xmm(vmm_scales.getIdx()), Xmm(vmm_scales.getIdx()));
+                vbroadcastss(vmm_scales, Xmm(vmm_scales.getIdx()));
+                break;
+            default: assert(!"unsupported scales data type");
+        }
+    } else if (IMPLICATION(is_ld_tail, isa_has_masks(brg.isa_impl))) {
+        const Vmm vmm_scales_masked
+                = vmm_mask(vmm_scales, is_ld_tail, false, k_mask);
+        const auto addr = op.getAddress();
+        switch (type_in) {
+            case data_type::f32:
+                if (brg.is_gemv) {
+                    if (!brg.treat_y_as_row)
+                        uni_vmovss(vmm_scales_masked, addr);
+                } else {
+                    uni_vmovups(vmm_scales_masked, addr);
+                }
+                break;
+            case data_type::bf16:
+                uni_vpmovzxwd(vmm_scales_masked, addr);
+                uni_vpslld(vmm_scales, vmm_scales, 16);
+                break;
+            case data_type::f16: vcvtph2ps(vmm_scales_masked, addr); break;
+            default: assert(!"unsupported scales data type");
+        }
+    } else {
+        assert(one_of(
+                type_in, data_type::f32, data_type::bf16, data_type::f16));
+        load_data(type_in, vmm_scales, op.getAddress(), brg.ldb_tail);
+    }
+}
+
+template <typename Wmm>
+void jit_brgemm_kernel_t<Wmm>::apply_wei_scales(dim_t bd_block, dim_t ld_block2,
+        bool is_ld_tail, bool dq2ps_required, bool &dq2ps_cvt_done) {
+    reg_aux_wei_scales.restore();
+    for (dim_t ld = 0; ld < ld_block2; ld++) {
+        const auto addr = ptr[reg_aux_wei_scales + wei_scales_offset(ld)];
+        const bool is_tail = is_ld_tail && ld + 1 == ld_block2;
+
+        const Vmm vmm_wei_scales = vmm_tmp(0);
+        load_scales_to_vmm(brg.dt_wei_scales, vmm_wei_scales, addr, is_tail,
+                brg.is_single_wei_scale);
+
+        for (dim_t bd = 0; bd < bd_block; bd++) {
+            auto vmm = accm(ld_block2, bd, ld);
+            if (dq2ps_required && !dq2ps_cvt_done) uni_vcvtdq2ps(vmm, vmm);
+            uni_vmulps(vmm, vmm, vmm_wei_scales);
+        }
+    }
+    dq2ps_cvt_done = true;
+}
+
+// Sibling stage to post-ops; called every brgemm K-call when per-K scales
+// are active. Driver shifts scale pointers per call. Leaves accumulator as
+// f32 so apply_alpha_beta uses vaddps against f32 buffer C.
+template <typename Wmm>
+void jit_brgemm_kernel_t<Wmm>::apply_scales(
+        dim_t bd_block, dim_t ld_block2, bool is_ld_tail) {
+    assert(brg.has_per_k_scales());
+    const bool dq2ps_required = brg.is_int8;
+    bool dq2ps_cvt_done = false;
+
+    if (brg.is_per_k_wei_scales)
+        apply_wei_scales(bd_block, ld_block2, is_ld_tail, dq2ps_required,
+                dq2ps_cvt_done);
+}
+
 template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
         dim_t ld_block2, dim_t ldb_and_bdb_offset, bool is_ld_tail,
@@ -1771,14 +1801,16 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
     const bool beta_uses_vadd
             = brg.beta == 1.f && IMPLICATION(brg.is_int8, brg.alpha == 1.0f);
     const bool dq2ps_required = brg.is_int8
-            && IMPLICATION(alpha_or_beta_applicable, beta_uses_vadd);
+            && IMPLICATION(alpha_or_beta_applicable, beta_uses_vadd)
+            && !brg.has_per_k_scales();
     const bool has_ptr_b_support = is_superset(brg.isa_impl, avx512_core);
 
     // This flag tracks whether the conversion has happened, since it must be
     // done only once despite all scales and bias applications requiring it.
     // TODO: perform conversion in a dedicated loop if it is required as it is
     // done in brgemm_post_ops kernel?
-    bool dq2ps_cvt_done = false;
+    // Pre-set when apply_scales() already did the int->f32 conversion.
+    bool dq2ps_cvt_done = brg.has_per_k_scales();
 
     if (brg.with_src_scales) {
         reg_src_scales.restoreTo(reg_aux_src_scales);
@@ -1800,11 +1832,10 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
         dq2ps_cvt_done = true;
     }
 
-    if (brg.with_wei_scales) {
+    if (brg.with_wei_scales && !brg.is_per_k_wei_scales) {
         if (!brg.is_gemv) {
-            apply_wei_scales(bd_block, ld_block2, dq2ps_required,
-                    dq2ps_cvt_done, is_ld_tail);
-            dq2ps_cvt_done = true;
+            apply_wei_scales(bd_block, ld_block2, is_ld_tail, dq2ps_required,
+                    dq2ps_cvt_done);
         } else {
             gemv_apply_wei_scales(bd_block, is_bdb_tail);
         }
@@ -2409,6 +2440,9 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
 
             L_aligned(label_store_without_comp);
         }
+
+        if (brg.has_per_k_scales())
+            apply_scales(bd_block, ld_block2, is_ld_tail);
 
         if (need_to_apply_alpha_beta)
             apply_alpha_beta(bd_block, ld_block2, is_ld_tail, is_bdb_tail);

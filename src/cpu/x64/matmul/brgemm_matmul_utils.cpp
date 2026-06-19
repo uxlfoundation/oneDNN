@@ -1856,6 +1856,13 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.is_runtime_N = is_runtime_value(bgmmc.N);
     bgmmc.is_runtime_K = is_runtime_value(bgmmc.K);
 
+    // Downgrade to per-N to avoid the expensive K-scales JIT path which
+    // is not needed for this case.
+    if (bgmmc.is_wei_scale_per_k && !bgmmc.is_runtime_K
+            && bgmmc.wei_scales_k_gsize >= bgmmc.K) {
+        bgmmc.is_wei_scale_per_k = false;
+    }
+
     bgmmc.is_gemv = is_gemv_applicable(
             bgmmc, bm_conf_utils, src_md, weights_md, dst_md, attr);
 

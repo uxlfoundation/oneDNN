@@ -577,7 +577,8 @@ private:
         const bool need_to_apply_post_ops
                 = are_post_ops_applicable_ && apply_post_ops;
         const auto store_by_vectors = need_to_apply_alpha_beta_
-                || need_to_apply_post_ops || brg.brgattr.bd_mask_level;
+                || need_to_apply_post_ops || brg.brgattr.bd_mask_level
+                || brg.has_per_k_scales();
         return store_by_vectors;
     }
     bool actual_ils(bool apply_post_ops, bool skip_accumulation = false) const {
@@ -829,7 +830,7 @@ dim_t jit_brgemm_amx_uker_base_t::bias_offset(int ldb) const noexcept {
 }
 
 dim_t jit_brgemm_amx_uker_base_t::scales_offset(int ldb) const noexcept {
-    return brg.is_oc_scale * ldb * ld_block_scales_size_;
+    return brg.is_per_n_wei_scales * ldb * ld_block_scales_size_;
 }
 
 dim_t jit_brgemm_amx_uker_base_t::zp_comp_a_offset(int ldb) const noexcept {
@@ -975,8 +976,9 @@ void jit_brgemm_amx_uker_base_t::apply_alpha_beta_to_vector(
     const bool apply_beta = brg.beta != 0.f;
     if (!apply_alpha && !apply_beta) return;
 
-    const bool dq2ps_required = brg.is_int8 && (apply_alpha || brg.beta != 1.f);
-    const bool use_vadd_for_beta = brg.beta == 1.f && !dq2ps_required;
+    // When K-scales (wei or src) are applied, accumulator is already
+    // converted to float (dq2ps + scales before alpha_beta), C stores floats.
+    const bool use_vadd_for_beta = brg.beta == 1.f && !brg.do_dq2ps_cvt();
 
     if (apply_beta && !use_vadd_for_beta) {
         mov(reg_tmp_gpr, float2int(static_cast<float>(brg.beta)));
@@ -988,12 +990,12 @@ void jit_brgemm_amx_uker_base_t::apply_alpha_beta_to_vector(
         vmovq(Xmm(zmm_alpha.getIdx()), reg_tmp_gpr);
         vbroadcastss(zmm_alpha, Xmm(zmm_alpha.getIdx()));
     }
-    if (dq2ps_required) vcvtdq2ps(zmm, zmm);
+    if (brg.do_dq2ps_cvt()) vcvtdq2ps(zmm, zmm);
     if (apply_alpha) vmulps(zmm, zmm, zmm_alpha);
     if (apply_beta) {
         if (use_vadd_for_beta) {
             auto zmm_masked = zmm | k_mask | T_z;
-            if (brg.is_int8)
+            if (brg.is_integer_acc())
                 vpaddd(zmm_masked, zmm, addr);
             else
                 vaddps(zmm_masked, zmm, addr);
@@ -1131,8 +1133,42 @@ void jit_brgemm_amx_uker_base_t::prepare_post_ops_registers_ldb(
 
 void jit_brgemm_amx_uker_base_t::prepare_post_ops_registers(
         brgemm_iteration_t &bi) {
-    if (!bi.apply_postops) return;
     const auto ldi = bi.ldi;
+
+    // Load wei_scales for per K-block application (is_per_k_wei_scales).
+    // This must happen for both apply_postops and non-apply_postops paths.
+    if (brg.with_wei_scales && brg.is_per_k_wei_scales) {
+        mov(reg_scales, ptr[param1 + GET_OFF(ptr_wei_scales)]);
+        for (int ldb = 0; ldb < ldi->block2(); ldb++) {
+            auto scales_ptr = EVEX_compress_addr(
+                    reg_scales, scales_offset(ldi->pos(ldb)));
+            auto k_mask = ldi->is_tail(ldb) ? ld_tail_mask : ld_full_mask;
+            if (brg.is_single_wei_scale) {
+                // Broadcast a single scale value — handle non-f32 types.
+                switch (brg.dt_wei_scales) {
+                    case data_type::f32:
+                        vbroadcastss(zmm_scales(ldb), scales_ptr);
+                        break;
+                    case data_type::bf16:
+                        vpbroadcastw(zmm_scales(ldb), scales_ptr);
+                        vpslld(zmm_scales(ldb), zmm_scales(ldb), 16);
+                        break;
+                    case data_type::f16:
+                        vpbroadcastw(zmm_scales(ldb), scales_ptr);
+                        vcvtph2ps(zmm_scales(ldb),
+                                Xbyak::Ymm(zmm_scales(ldb).getIdx()));
+                        break;
+                    default: vbroadcastss(zmm_scales(ldb), scales_ptr); break;
+                }
+            } else {
+                // Load a vector of scale values with proper type conversion.
+                cvt2ps(brg.dt_wei_scales, zmm_scales(ldb), scales_ptr, true,
+                        false, k_mask);
+            }
+        }
+    }
+
+    if (!bi.apply_postops) return;
 
     if (brg.with_bias) {
         mov(reg_bias, ptr[param1 + GET_OFF(ptr_bias)]);
@@ -1156,18 +1192,17 @@ void jit_brgemm_amx_uker_base_t::prepare_post_ops_registers(
         }
     }
 
-    if (brg.with_wei_scales) {
+    if (brg.with_wei_scales && !brg.is_per_k_wei_scales) {
         mov(reg_scales, ptr[param1 + GET_OFF(ptr_wei_scales)]);
         for (int ldb = 0; ldb < ldi->block2(); ldb++) {
             auto scales_ptr = EVEX_compress_addr(
                     reg_scales, scales_offset(ldi->pos(ldb)));
             auto k_mask = ldi->is_tail(ldb) ? ld_tail_mask : ld_full_mask;
-            const bool is_single_scale = !brg.is_oc_scale;
 
             const auto zmm_scale = zmm_scales(ldb);
             const auto zmm_scale_masked = zmm_scales(ldb) | k_mask | T_z;
 
-            if (is_single_scale) {
+            if (brg.is_single_wei_scale) {
                 if (brg.with_src_scales) {
                     // Single value is not anticipated to be of any other type
                     // when both scales are defined.
@@ -1457,6 +1492,18 @@ void jit_brgemm_amx_uker_base_t::process_output_range(
             vmovups(vreg_acc, ptr[reg_buf + buf_offset + wsp_offset]);
         }
 
+        // For K-scales (wei and/or src), convert int32->float and apply
+        // the current K-group's scales BEFORE alpha_beta accumulation.
+        if (brg.has_per_k_scales() && !bi.skip_accumulation) {
+            vcvtdq2ps(zmm, zmm);
+
+            if (brg.is_per_k_wei_scales) {
+                const Xbyak::Zmm scaled_zmm
+                        = vmm_mask(zmm, true, false, k_mask);
+                vmulps(scaled_zmm, scaled_zmm, zmm_scales(ldb));
+            }
+        }
+
         if (need_to_apply_alpha_beta_ || bi.skip_accumulation) {
             const auto c_offset = C_offset(bi, bdb, bd, bi.ldi->pos(ldb));
             const auto ptr_C
@@ -1467,7 +1514,8 @@ void jit_brgemm_amx_uker_base_t::process_output_range(
 
         if (!bi.apply_postops) continue;
 
-        if (dq2ps_required) vcvtdq2ps(zmm, zmm);
+        // When K-scales (wei or src) are used, dq2ps already applied above.
+        if (dq2ps_required && !brg.has_per_k_scales()) vcvtdq2ps(zmm, zmm);
 
         if (brg.req_comp_pads_with_bcast)
             apply_comp_pad_to_vector(bi, bdb, bd, ldb, zmm.getIdx());
@@ -1503,7 +1551,11 @@ void jit_brgemm_amx_uker_base_t::process_output_range(
         }
     }
 
-    if (brg.with_src_scales || brg.with_wei_scales) {
+    // When K-scales (wei) are used, they were already applied
+    // per K-block above. Only apply the remaining scales (non-K) in postops.
+    const bool apply_scales_in_postops = brg.with_src_scales
+            || (brg.with_wei_scales && !brg.is_per_k_wei_scales);
+    if (apply_scales_in_postops) {
         for (auto bd = bd_start; bd < bd_finish; bd++) {
             if (!is_out_bd(bi.bdi, bdb, bd)) continue;
 
@@ -2944,7 +2996,7 @@ void jit_brgemm_amx_uker_base_t::init(brgemm_iteration_t &bi) {
                 = brg.alpha != 1.0f || brg.beta != 0.f;
         const bool beta_uses_vadd = brg.beta == 1.f
                 && IMPLICATION(brg.is_int8, brg.alpha == 1.0f);
-        dt_requires_saturation_ = brg.is_int8
+        dt_requires_saturation_ = brg.is_int8 && !brg.has_per_k_scales()
                 && !IMPLICATION(alpha_or_beta_applicable, beta_uses_vadd);
     }
     use_sat_cvt_ = dt_requires_saturation_

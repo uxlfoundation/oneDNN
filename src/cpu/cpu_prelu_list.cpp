@@ -25,9 +25,7 @@
 using namespace dnnl::impl::cpu::x64;
 #elif DNNL_AARCH64
 #include "cpu/aarch64/prelu/jit_uni_prelu_forward.hpp"
-#if defined(DNNL_AARCH64_USE_ACL)
-#include "cpu/aarch64/acl_prelu.hpp"
-#endif
+
 using namespace dnnl::impl::cpu::aarch64;
 #endif
 
@@ -46,7 +44,6 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
             CPU_INSTANCE_X64(jit_prelu_fwd_t)
             CPU_INSTANCE_AARCH64(jit_uni_prelu_fwd_t<sve>)
             CPU_INSTANCE_AARCH64(jit_uni_prelu_fwd_t<asimd>)
-            CPU_INSTANCE_AARCH64_ACL(acl_prelu_fwd_t)
             CPU_INSTANCE(ref_prelu_fwd_t)
             nullptr,
         }},

@@ -1927,7 +1927,7 @@ size_t jit_uni_eltwise_injector_t<isa, Wmm>::aux_vecs_count(
 template <cpu_isa_t isa, typename Wmm>
 bool jit_uni_eltwise_injector_t<isa, Wmm>::need_mask_register(
         alg_kind_t alg, bool is_fwd, float alpha) {
-    if (is_superset(isa, avx512_core)) return false;
+    if (isa_has_evex(isa)) return false;
 
     using namespace alg_kind;
     if (is_fwd) {

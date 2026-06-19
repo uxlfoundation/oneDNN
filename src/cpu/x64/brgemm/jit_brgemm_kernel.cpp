@@ -785,7 +785,7 @@ void jit_brgemm_kernel_t<Wmm>::cvt2ps(data_type_t type_in, const Vmm vmm_in,
     Vmm vmm = vmm_in;
     const bool has_tail = op.isMEM()
             && tail_size != vreg_traits_t<Vmm>::vlen / sizeof(float);
-    if (IMPLICATION(has_tail, is_superset(brg.isa_impl, avx512_core))) {
+    if (IMPLICATION(has_tail, isa_has_evex(brg.isa_impl))) {
         vmm = vmm_mask(vmm_in, mask_flag, store, ktail_mask);
     } else {
         load_data(type_in, vmm_in, op.getAddress(), tail_size);
@@ -1311,7 +1311,7 @@ void jit_brgemm_kernel_t<Wmm>::gemv_apply_bias(
 
         const auto addr = ptr[reg_aux_bias + bias_offset(bd)];
 
-        if (is_superset(brg.isa_impl, avx512_core)) {
+        if (isa_has_evex(brg.isa_impl)) {
             const bool use_partial_mask = !brg.gemv_acc_is_vector()
                     || gemv_is_tail_acc(bd, bd_block, is_bdb_tail);
             const auto k_mask
@@ -1429,7 +1429,7 @@ void jit_brgemm_kernel_t<Wmm>::gemv_apply_wei_scales(
 
         const auto addr = ptr[reg_aux_wei_scales + wei_scales_offset(bd)];
 
-        if (is_superset(brg.isa_impl, avx512_core)) {
+        if (isa_has_evex(brg.isa_impl)) {
             const bool use_partial_mask = !brg.gemv_acc_is_vector()
                     || gemv_is_tail_acc(bd, bd_block, is_bdb_tail);
             const auto k_mask
@@ -1572,7 +1572,7 @@ void jit_brgemm_kernel_t<Wmm>::apply_alpha_beta(
                 if (brg.gemv_acc_is_vector()) {
                     if (!gemv_is_tail_acc(bd, bd_block, is_bdb_tail)) {
                         uni_vaddps(vmm, vmm, ptr_C);
-                    } else if (is_superset(brg.isa_impl, avx512_core)) {
+                    } else if (isa_has_evex(brg.isa_impl)) {
                         uni_vmovups(
                                 vmm_prev_dst | gemv_partial_mask | T_z, ptr_C);
                         uni_vaddps(vmm, vmm, vmm_prev_dst);
@@ -1584,8 +1584,7 @@ void jit_brgemm_kernel_t<Wmm>::apply_alpha_beta(
                     uni_vaddss(Xmm(vmm.getIdx()), Xmm(vmm.getIdx()), ptr_C);
                 }
             } else {
-                if (IMPLICATION(
-                            is_tail, is_superset(brg.isa_impl, avx512_core))) {
+                if (IMPLICATION(is_tail, isa_has_evex(brg.isa_impl))) {
                     auto vmm_masked = vmm_mask(vmm, is_tail, false, k_mask);
                     if (brg.is_int8)
                         uni_vpaddd(vmm_masked, vmm, ptr_C);
@@ -1948,7 +1947,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
             prefetchw(addr);
 
         if (brg.is_gemv) {
-            if (is_superset(brg.isa_impl, avx512_core)) {
+            if (isa_has_evex(brg.isa_impl)) {
                 const bool use_partial_mask = !brg.gemv_acc_is_vector()
                         || gemv_is_tail_acc(bd, bd_block, is_bdb_tail);
                 const auto k_mask
@@ -1978,7 +1977,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
                 }
             }
             // Non-gemv path.
-        } else if (is_superset(brg.isa_impl, avx512_core)) {
+        } else if (isa_has_evex(brg.isa_impl)) {
             const Vmm r_vmm = vmm_mask(vmm, is_tail, true, k_mask);
             const Vmm_lower_t r_ymm
                     = vmm_mask(vmm_lower, is_tail, true, k_mask);
@@ -2101,8 +2100,7 @@ void jit_brgemm_kernel_t<Wmm>::apply_compensation(
                 if (IMPLICATION(!brg.req_comp_pads_with_bcast, bd == 0)) {
                     const auto comp_addr = ptr[reg_aux_compensation
                             + bd_compensation_offset(ld, bd)];
-                    if (IMPLICATION(is_tail,
-                                is_superset(brg.isa_impl, avx512_core))) {
+                    if (IMPLICATION(is_tail, isa_has_evex(brg.isa_impl))) {
                         auto vmm_comp_masked
                                 = vmm_mask(vmm_comp, is_tail, false, k_mask);
                         uni_vmovups(vmm_comp_masked, comp_addr);
@@ -2162,7 +2160,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_without_post_ops(
 
             auto vmm = accm(1, bd, 0);
 
-            if (is_superset(brg.isa_impl, avx512_core)) {
+            if (isa_has_evex(brg.isa_impl)) {
                 const bool use_partial_mask = !brg.gemv_acc_is_vector()
                         || gemv_is_tail_acc(bd, bd_block, is_bdb_tail);
                 const auto k_mask
@@ -2819,7 +2817,7 @@ void jit_brgemm_kernel_t<Wmm>::compute_int8_compensation(dim_t rd_loop,
     for (dim_t ld = 0; ld < ld_block2; ++ld) {
         const auto addr = ptr[reg_aux_B + B_offset(ld, rd)];
         const bool is_tail = is_ld_tail && ld + 1 == ld_block2;
-        if (IMPLICATION(is_tail, is_superset(brg.isa_impl, avx512_core))) {
+        if (IMPLICATION(is_tail, isa_has_evex(brg.isa_impl))) {
             auto vmm_store = vmm_mask(load(), is_tail, false, ld_tail_mask);
             uni_vmovups(vmm_store, addr);
         } else {
@@ -3077,7 +3075,7 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                 else
                     vpermw(vmm_load, f16_perm_odd_vreg(), vmm_load);
                 vcvtph2psx(vmm_load, Vmm_lower_t(vmm_load.getIdx()));
-            } else if (is_ld_tail && !is_superset(brg.isa_impl, avx512_core)) {
+            } else if (is_ld_tail && !isa_has_evex(brg.isa_impl)) {
                 load_bytes(vmm_load, addr, ldb_B_offset(0, true));
                 vcvtph2ps(vmm_load, Xmm(vmm_load.getIdx()));
             } else {
@@ -3093,13 +3091,13 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                 // Upconvert: load 16 bits and move them 16 bits left.
                 uni_vpmovzxwd(vmm_load, addr);
                 uni_vpslld(vmm_load, vmm_load, 16);
-            } else if (is_ld_tail && !is_superset(brg.isa_impl, avx512_core)) {
+            } else if (is_ld_tail && !isa_has_evex(brg.isa_impl)) {
                 load_bytes(vmm_load, addr, ldb_B_offset(0, true));
             } else {
                 uni_vmovups(vmm_load, addr);
             }
         } else if (is_ld_tail) {
-            if (is_superset(brg.isa_impl, avx512_core)) {
+            if (isa_has_evex(brg.isa_impl)) {
                 uni_vmovups(vmm_load, addr);
             } else {
                 load_bytes(vmm_load, addr, ldb_B_offset(0, true));
@@ -3673,7 +3671,7 @@ void jit_brgemm_kernel_t<Wmm>::generate() {
                              brg.req_s8s8_compensation)
             && IMPLICATION(!vpad_exist, brg.req_cal_comp_pads);
 
-    if (is_superset(brg.isa_impl, avx512_core)) {
+    if (isa_has_evex(brg.isa_impl)) {
         const auto full_mask = size_t {0xffffffffffffffff};
 
         if (!brg.is_gemv) {

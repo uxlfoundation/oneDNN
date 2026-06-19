@@ -685,7 +685,7 @@ protected:
                     // Subtract with mask to keep zeros in spots where there's
                     // no data. Otherwise, subtracting mean and accumulating
                     // towards variance will spoil the right answer.
-                    if (is_superset(isa, avx512_core)) {
+                    if (isa_has_evex(isa)) {
                         uni_vsubps(Vmm_src(ur) | tail_opmask, Vmm_src(ur),
                                 Vmm_mean(ur));
                     } else if (is_superset(isa, avx)) {

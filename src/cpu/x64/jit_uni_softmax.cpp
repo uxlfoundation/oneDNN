@@ -245,7 +245,7 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
         const Ymm &ysrc = Ymm(vsrc.getIdx());
         const Ymm &ytmp = Ymm(vtmp.getIdx());
 
-        if (is_superset(isa, avx512_core)) {
+        if (isa_has_evex(isa)) {
             vshuff32x4(ztmp, zsrc, zsrc, 0x4E); // 256-bit shuffle
             perform_op(vsrc, vsrc, vtmp, op);
             vshuff32x4(ztmp, zsrc, zsrc, 0xB1); // 128/256-bit shuffle
@@ -343,7 +343,7 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
     void uni_vaddps_maybe_tail(
             const Vmm &v1, const Vmm &v2, const Vmm &vtmp, const bool tail) {
         if (tail) {
-            if (is_superset(isa, avx512_core)) {
+            if (isa_has_evex(isa)) {
                 uni_vaddps(v1 | tail_opmask, v1, v2);
             } else {
                 uni_vpxor(vtmp, vtmp, vtmp);
@@ -357,7 +357,7 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
     void uni_vmaxps_maybe_tail(
             const Vmm &v1, const Vmm &v2, const Vmm &vtmp, const bool tail) {
         if (tail) {
-            if (is_superset(isa, avx512_core)) {
+            if (isa_has_evex(isa)) {
                 uni_vmaxps(v1 | tail_opmask, v1, v2);
             } else if (is_superset(isa, avx)) {
                 uni_vblendvps(v2, vneg_flt_max, v2, tail_vmask);
@@ -381,8 +381,7 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
         Vmm src_vmm = vmm;
 
         if (tail && axis_has_padding_) {
-            if (is_superset(isa, avx512_core)
-                    && utils::one_of(dt, f32, bf16, f16)) {
+            if (isa_has_evex(isa) && utils::one_of(dt, f32, bf16, f16)) {
                 src_vmm = vzero | tail_opmask;
                 uni_vxorps(vzero, vzero, vzero);
                 uni_vmovups(src_vmm, vmm);
@@ -1192,7 +1191,7 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
     void uni_vaddps_maybe_tail(
             const Vmm &v1, const Vmm &v2, const Vmm &vtmp, const bool tail) {
         if (tail) {
-            if (is_superset(isa, avx512_core)) {
+            if (isa_has_evex(isa)) {
                 uni_vaddps(v1 | tail_opmask, v1, v2);
             } else {
                 uni_vpxor(vtmp, vtmp, vtmp);
@@ -1206,7 +1205,7 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
     void uni_vmaxps_maybe_tail(
             const Vmm &v1, const Vmm &v2, const Vmm &vtmp, const bool tail) {
         if (tail) {
-            if (is_superset(isa, avx512_core)) {
+            if (isa_has_evex(isa)) {
                 uni_vmaxps(v1 | tail_opmask, v1, v2);
             } else if (is_superset(isa, avx)) {
                 uni_vblendvps(v2, vneg_flt_max, v2, tail_vmask);

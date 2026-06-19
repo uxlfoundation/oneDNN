@@ -84,7 +84,7 @@ jit_uni_postops_injector_t<isa, Vmm>::jit_uni_postops_injector_t(
         }
     }
 
-    if (is_superset(isa, avx512_core) && is_eltwise && is_like_binary
+    if (isa_has_evex(isa) && is_eltwise && is_like_binary
             && binary_static_params.rhs_arg_static_params.tail_size)
         assert(eltwise_static_params.k_mask_
                 != binary_static_params.rhs_arg_static_params.tail_opmask &&

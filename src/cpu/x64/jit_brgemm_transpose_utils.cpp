@@ -1707,7 +1707,7 @@ void jit_copy_f32_t::copy_block(int nrows, int ncolumns) {
         const dim_t offset = r * src_stride + cb * col_shift;
         const bool is_tail
                 = nc_tail > 0 && ncolumns - cb * column_step < column_step;
-        if (is_superset(conf_->isa, avx512_core)) {
+        if (isa_has_evex(conf_->isa)) {
             auto src_reg = get_zmm(r * cb);
             auto src_load = is_tail ? src_reg | mask_tail | T_z : src_reg;
             auto addr = EVEX_compress_addr_safe(reg_src, offset, reg_long_offt);
@@ -1724,7 +1724,7 @@ void jit_copy_f32_t::copy_block(int nrows, int ncolumns) {
 
     auto store = [&](int r, int cb) {
         const dim_t offset = r * tr_src_stride + cb * col_shift;
-        if (is_superset(conf_->isa, avx512_core)) {
+        if (isa_has_evex(conf_->isa)) {
             auto reg = get_zmm(r * cb);
             auto addr = EVEX_compress_addr_safe(
                     reg_tr_src, offset, reg_long_offt);
@@ -2331,7 +2331,7 @@ void jit_brgemm_trans_wei_f32_t::transpose_8x8() {
 
 void jit_brgemm_trans_wei_f32_t::init_masks() {
 
-    if (is_superset(conf_->isa, avx512_core)) {
+    if (isa_has_evex(conf_->isa)) {
         kmovw(k3333, 0x3333); // 0011001100110011
         kmovw(k5555, 0x5555); // 0101010101010101
         kmovw(kAAAA, 0xaaaa); // 1010101010101010

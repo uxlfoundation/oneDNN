@@ -964,7 +964,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::apply_post_ops(
             continue;
         }
 
-        if (is_superset(brg_.isa_impl, avx512_core)) {
+        if (isa_has_evex(brg_.isa_impl)) {
             auto vmm_masked = maybe_mask(vmm, tail > 0, true, k_mask);
             Vmm_lower_t vmm_low = Vmm_lower_t(vmm.getIdx());
             Vmm_lower2_t vmm_low2 = Vmm_lower2_t(vmm_low.getIdx());

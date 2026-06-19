@@ -1382,7 +1382,7 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Vmm>::init_masks() {
     alignas(64) static constexpr const uint16_t idx5[32]
             = {0, 16, 2, 18, 8, 24, 10, 26, 4, 20, 6, 22, 12, 28, 14, 30, 1, 17,
                     3, 19, 9, 25, 11, 27, 5, 21, 7, 23, 13, 29, 15, 31};
-    if (is_superset(conf_->isa, avx512_core)) {
+    if (isa_has_evex(conf_->isa)) {
         if (is_f32) {
             kmovw(k3333, 0x3333); // 0011001100110011
             kmovw(k5555, 0x5555); // 0101010101010101
@@ -5685,7 +5685,7 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::init_masks() {
     alignas(64) static constexpr const uint32_t bf16_vnni_permute[16]
             = {0, 8, 1, 9, 2, 10, 3, 11, 4, 12, 5, 13, 6, 14, 7, 15};
 
-    if (is_superset(conf_->isa, avx512_core)) {
+    if (isa_has_evex(conf_->isa)) {
         kxnorw(kFFFF, kFFFF, kFFFF); // 1111 1111 1111 1111
 
         mov(reg_tmp, reinterpret_cast<size_t>(bf16_vnni_permute));

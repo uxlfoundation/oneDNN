@@ -116,12 +116,12 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
     }
     void store_regs(int bdb, int ldb, int tail) {
         // Plain s32 dst stores the accumulators directly
-        // Convert to f32 when zero-point compensation, scales, bias addition, or eltwise post-op
-        // and then convert back to s32 when dst is s32
+        //
+        // Convert to f32 when zero-point compensation, scales, bias addition,
+        // or eltwise post-op and then convert back to s32 when dst is s32
         const bool can_store_s32_acc_directly = brg_.dst_dt == s32
-                && brg_.zp_type_a == jit_int8_broadcast_t::none
-                && brg_.zp_type_b == jit_int8_broadcast_t::none
-                && brg_.zp_type_c == jit_int8_broadcast_t::none
+                && everyone_is(jit_int8_broadcast_t::none, brg_.zp_type_a,
+                        brg_.zp_type_b, brg_.zp_type_c)
                 && !brg_.with_scales && !brg_.is_bias
                 && eltwise_injectors_.empty() && !brg_.with_dst_scales;
 
@@ -292,32 +292,6 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
             const bool store_second_row
                     = !brg_.is_m_tail || (2 * a + 1) < brg_.m_tail;
             switch (brg_.dst_dt) {
-                case s32: {
-                    if (!can_store_s32_acc_directly) {
-                        init_saturate_f32(
-                                z31, z0, reg_aux_a, data_type::f32, s32);
-                    }
-
-                    auto store_s32 = [&](const ZReg &zreg, const XReg &dst,
-                                             const PReg &p, int vl) {
-                        if (!can_store_s32_acc_directly) {
-                            saturate_f32(zreg, z31, z0, s32, p);
-                            frinti(zreg.s, p, zreg.s);
-                            fcvtzs(zreg.s, p, zreg.s);
-                        }
-                        st1w(zreg.s, p, ptr(dst, vl, MUL_VL));
-                    };
-
-                    for (int b = 0; b < ldb; b += 2) {
-                        PReg p = (brg_.is_n_tail && b >= ldb - 2) ? prd_st
-                                                                  : P_ALL_ONE;
-                        const int vl = b / 2;
-                        store_s32(acc(a, b), reg_tmp, p, vl);
-                        if (store_second_row)
-                            store_s32(acc(a, b + 1), reg_tmp_1, p, vl);
-                    }
-                    break;
-                }
                 case f32:
                     for (int b = 0; b < ldb; b += 2) {
                         PReg p = (brg_.is_n_tail && b >= ldb - 2) ? prd_st
@@ -329,6 +303,56 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
                                     ptr(reg_tmp_1, vl, MUL_VL));
                     }
                     break;
+                case data_type::s8:
+                case u8:
+                case s32: {
+                    const bool need_saturation = !can_store_s32_acc_directly
+                            || one_of(brg_.dst_dt, data_type::s8, u8);
+
+                    constexpr bool force_lbound = true;
+                    if (need_saturation) {
+                        init_saturate_f32(z31, z0, reg_aux_a, f32, brg_.dst_dt,
+                                force_lbound);
+                    }
+
+                    auto maybe_saturate_and_store
+                            = [&](const ZReg &zreg, const XReg &dst,
+                                      const PReg &p, int vl, data_type_t dt) {
+                        if (need_saturation) {
+                            saturate_f32(zreg, z31, z0, dt, p, force_lbound);
+                            frinti(zreg.s, p, zreg.s);
+
+                            if (dt == u8) {
+                                fcvtzu(zreg.s, p, zreg.s);
+                            } else {
+                                fcvtzs(zreg.s, p, zreg.s);
+                            }
+                        }
+
+                        switch (brg_.dst_dt_sz) {
+                            case 4:
+                                st1w(zreg.s, p, ptr(dst, vl, MUL_VL));
+                                break;
+                            case 1:
+                                st1b(zreg.s, p, ptr(dst, vl, MUL_VL));
+                                break;
+                            default: assert(!"unreachable dt");
+                        }
+                    };
+
+                    for (int b = 0; b < ldb; b += 2) {
+                        PReg p = (brg_.is_n_tail && b >= ldb - 2) ? prd_st
+                                                                  : P_ALL_ONE;
+                        const int vl = b / 2;
+                        maybe_saturate_and_store(
+                                acc(a, b), reg_tmp, p, vl, brg_.dst_dt);
+                        if (store_second_row)
+                            maybe_saturate_and_store(acc(a, b + 1), reg_tmp_1,
+                                    p, vl, brg_.dst_dt);
+                    }
+
+                    break;
+                }
                 case bf16:
                     for (int b = 0; b < ldb; b += 2) {
                         PReg p = (brg_.is_n_tail && b >= ldb - 2) ? prd_st
@@ -963,7 +987,7 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
     };
 
     const bool problem_dt_correct = (is_s8 || is_u8 || is_u8_s8)
-            && utils::one_of(dst_type, f32, bf16, s32)
+            && utils::one_of(dst_type, f32, bf16, s32, s8, u8)
             && platform::has_data_type_support(dst_type);
 
     VDISPATCH_MATMUL(problem_dt_correct, VERBOSE_UNSUPPORTED_DT);

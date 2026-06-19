@@ -8,6 +8,20 @@
 --attr-fpmath=bf16:true
 --batch=shapes_2d
 
+# Int8 grouped-quantized attrs in 2D, N-tail regression tests (per-MN comp).
+# Per-K grouped wei zero-points activate the AVX2 per-MN compensation JIT
+# kernel. N=3,8,15 exercise the N-tail (sub-register) path that was fixed.
+--reset
+--skip-impl=ref
+--dt=u8:s8:f32
+--stag=ab
+--wtag=ab
+--dtag=ab
+--attr-zero-points=src:common:1+wei:per_ocic:s8:32x1
+32x64:64x3
+32x64:64x8
+32x64:64x15
+
 --reset
 --skip-impl=ref
 --wtag=any,ab,ba

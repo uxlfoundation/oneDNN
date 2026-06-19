@@ -357,7 +357,7 @@ void jit_brgemm_trans_m_k_f32_t::transpose(int nrows, int ncolumns) {
 }
 
 void jit_brgemm_trans_m_k_f32_t::init_masks(int tail_length) {
-    if (isa_has_masks(conf_->isa)) {
+    if (isa_has_evex(conf_->isa)) {
         kmovw(k3333, 0x3333); // 0011001100110011
         kmovw(k5555, 0x5555); // 0101010101010101
         kmovw(kAAAA, 0xaaaa); // 1010101010101010
@@ -390,7 +390,7 @@ void jit_brgemm_trans_m_k_f32_t::generate() {
 
     const int simd_tail = ic_tail; // last_os_block_tail % transpose_size;
     init_masks(simd_tail);
-    if (last_os_block_tail && !isa_has_masks(conf_->isa))
+    if (last_os_block_tail && !isa_has_evex(conf_->isa))
         uni_vxorps(xmm_zero, xmm_zero, xmm_zero);
 
     mov(reg_src_base, ptr[param1 + GET_OFF(src)]);
@@ -461,7 +461,7 @@ void jit_brgemm_trans_m_k_f32_t::generate() {
     }
 
     postamble();
-    if (simd_tail > 0 && !isa_has_masks(conf_->isa)) {
+    if (simd_tail > 0 && !isa_has_evex(conf_->isa)) {
         align(32);
         L(mask_label_);
         for (int i = 0; i < simd_tail; ++i)
@@ -1749,7 +1749,7 @@ void jit_copy_f32_t::init_masks(int tail_length) {
         jit_generator_t::kmovd(k, regw_tmp);
     };
 
-    if (isa_has_masks(conf_->isa))
+    if (isa_has_evex(conf_->isa))
         kmovd(mask_tail, (1 << tail_length) - 1);
     else
         vmovups(ymm_tail_mask, ptr[rip + mask_label_]);
@@ -1821,7 +1821,7 @@ void jit_copy_f32_t::generate() {
 
     postamble();
 
-    if (simd_tail > 0 && !isa_has_masks(conf_->isa)) {
+    if (simd_tail > 0 && !isa_has_evex(conf_->isa)) {
         align(32);
         L(mask_label_);
         for (int i = 0; i < simd_tail; ++i)

@@ -73,7 +73,7 @@ template <typename Vmm>
 Vmm dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::vmm_mask(
         const Vmm vmm_in, bool mask_flag, bool store,
         Xbyak::Opmask ktail_mask) {
-    return mask_flag && isa_has_masks(brg_.isa_impl)
+    return mask_flag && isa_has_evex(brg_.isa_impl)
             ? (store ? vmm_in | ktail_mask : vmm_in | ktail_mask | T_z)
             : vmm_in;
 }
@@ -100,7 +100,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::accumulate_bias(
     } else {
         auto addr = ptr[aux_reg_ddst
                 + ddst_typesize_ * mult_ * idx * brg_.ld_block];
-        if (IMPLICATION(mask_flag, isa_has_masks(brg_.isa_impl)))
+        if (IMPLICATION(mask_flag, isa_has_evex(brg_.isa_impl)))
             vmovups(vddst_load, addr);
         else
             vmaskmovps(vddst_load, vmm_tail_mask, addr);
@@ -132,7 +132,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::accumulate_bias(
         vpmovzxwd(vddst_load, addr_ddst);
         vdpbf16ps(vbias_acc, vreg_unit, vddst);
     } else if (ddst_dt_ == data_type::f32) {
-        if (IMPLICATION(mask_flag, isa_has_masks(brg_.isa_impl)))
+        if (IMPLICATION(mask_flag, isa_has_evex(brg_.isa_impl)))
             vmovups(vddst_load, addr_ddst);
         else
             vmaskmovps(vddst_load, vmm_tail_mask, addr_ddst);
@@ -165,7 +165,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::store(
             }
             break;
         case data_type::f32:
-            if (IMPLICATION(mask_flag, isa_has_masks(brg_.isa_impl)))
+            if (IMPLICATION(mask_flag, isa_has_evex(brg_.isa_impl)))
                 vmovups(addr, vmm_mask(vbias, mask_flag, true, k_tail_mask));
             else
                 vmaskmovps(addr, vmm_tail_mask, vbias);
@@ -262,7 +262,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::loop_by_N(
     if (nb_tail > 0) {
         auto vbias = vmm_mask(get_bias_reg(n_), true, false, k_tail_mask);
         auto addr = ptr[reg_bias_acc + acc_typesize_ * n_ * brg_.ld_block];
-        if (isa_has_masks(brg_.isa_impl))
+        if (isa_has_evex(brg_.isa_impl))
             vmovups(vbias, addr);
         else
             vmaskmovps(vbias, vmm_tail_mask, addr);
@@ -303,7 +303,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::loop_by_N(
     if (nb_tail > 0) {
         auto addr = ptr[reg_bias_acc + acc_typesize_ * n_ * brg_.ld_block];
         auto vbias = get_bias_reg(n_);
-        if (isa_has_masks(brg_.isa_impl)) {
+        if (isa_has_evex(brg_.isa_impl)) {
             vbias = vmm_mask(vbias, true, true, k_tail_mask);
             vmovups(addr, vbias);
         } else {
@@ -336,13 +336,13 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::init_masks(
 
     if (reduce_kind_ == matmul_reduce_kind::src
             && utils::one_of(bia_dt_, data_type::f16, data_type::bf16)) {
-        assert(isa_has_masks(brg_.isa_impl));
+        assert(isa_has_evex(brg_.isa_impl));
         mov(reg_mask, 1);
         kmovq(k_store_mask, reg_mask);
     }
 
     if (tail_length == 0) return;
-    if (isa_has_masks(brg_.isa_impl)) {
+    if (isa_has_evex(brg_.isa_impl)) {
         const auto full_mask = size_t {0xffffffffffffffff};
         const auto tail_mask = size_t((1 << tail_length) - 1);
         mov(reg_mask, full_mask);
@@ -444,7 +444,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::generate() {
             dw(f16_prm_array[i]);
     }
 
-    if (!isa_has_masks(brg_.isa_impl) && tail > 0) {
+    if (!isa_has_evex(brg_.isa_impl) && tail > 0) {
         align(32);
         L(mask_label_);
         for (int i = 0; i < tail; ++i)
@@ -598,7 +598,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::cvt2ps(
             // no tail and full vmm must be processed.
             && tail_size > 0;
 
-    if (IMPLICATION(is_tail, isa_has_masks(brg_.isa_impl))) {
+    if (IMPLICATION(is_tail, isa_has_evex(brg_.isa_impl))) {
         const Vmm vmm = maybe_mask(vmm_in, is_tail, store, ktail_mask);
         switch (type_in) {
             case data_type::f32:
@@ -716,7 +716,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::apply_comp(
             auto zp_comp_a_addr = is_superset(brg_.isa_impl, avx512_core)
                     ? EVEX_compress_addr(aux_reg_zp_a_comp, zp_comp_offset)
                     : ptr[aux_reg_zp_a_comp + zp_comp_offset];
-            if (IMPLICATION(has_tail, isa_has_masks(brg_.isa_impl))) {
+            if (IMPLICATION(has_tail, isa_has_evex(brg_.isa_impl))) {
                 auto vmm_zp_comp_a_masked
                         = maybe_mask(vmm_zp_comp_a, has_tail, false, k_mask);
                 vmovups(vmm_zp_comp_a_masked, zp_comp_a_addr);
@@ -741,7 +741,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::apply_comp(
             auto comp_addr = is_superset(brg_.isa_impl, avx512_core)
                     ? EVEX_compress_addr(aux_reg_s8s8_comp, s8s8_comp_offset)
                     : ptr[aux_reg_s8s8_comp + s8s8_comp_offset];
-            if (IMPLICATION(tail > 0, isa_has_masks(brg_.isa_impl))) {
+            if (IMPLICATION(tail > 0, isa_has_evex(brg_.isa_impl))) {
                 auto vmm_comp_masked
                         = maybe_mask(vmm_comp, tail > 0, false, k_mask);
                 vmovups(vmm_comp_masked, comp_addr);
@@ -838,7 +838,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::apply_post_ops(
                     vmulps(vmm, vmm, vmm_wei_scales);
                 }
             } else {
-                if (IMPLICATION(is_tail, isa_has_masks(brg_.isa_impl))) {
+                if (IMPLICATION(is_tail, isa_has_evex(brg_.isa_impl))) {
                     const auto vmm_m = maybe_mask(vmm, is_tail, false, k_mask);
                     const auto vmm_wei_scales_masked = maybe_mask(
                             vmm_wei_scales, is_tail, false, k_mask);
@@ -1142,7 +1142,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::generate() {
     int mb = brg_.bcast_dim / m_block;
     int mb_tail = brg_.bcast_dim % m_block;
 
-    if (isa_has_masks(brg_.isa_impl)) {
+    if (isa_has_evex(brg_.isa_impl)) {
         const auto full_mask = size_t {0xffffffffffffffff};
         const auto tail_mask = size_t((1 << nb_tail) - 1);
 

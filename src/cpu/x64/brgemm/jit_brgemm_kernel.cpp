@@ -763,14 +763,14 @@ template <typename Wmm>
 template <typename U>
 U jit_brgemm_kernel_t<Wmm>::vmm_mask(const U vmm_in, bool mask_flag, bool store,
         Xbyak::Opmask ktail_mask) const {
-    return mask_flag && isa_has_masks(brg.isa_impl)
+    return mask_flag && isa_has_evex(brg.isa_impl)
             ? (store ? vmm_in | ktail_mask : vmm_in | ktail_mask | T_z)
             : vmm_in;
 }
 
 template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::maybe_set_avx_mask(bool is_tail) {
-    if (IMPLICATION(is_tail, isa_has_masks(brg.isa_impl))) return;
+    if (IMPLICATION(is_tail, isa_has_evex(brg.isa_impl))) return;
     // Note: `is_tail` may be true even when `gemv_tail == 0`.
     // In this case, the block is a tail block, but there is no partial
     // accumulator (only full accumulators are present).
@@ -1499,7 +1499,7 @@ void jit_brgemm_kernel_t<Wmm>::apply_wei_scales(dim_t bd_block, dim_t ld_block2,
                 default: assert(!"unsupported wei_scales data type");
             }
         } else {
-            if (IMPLICATION(is_tail, isa_has_masks(brg.isa_impl))) {
+            if (IMPLICATION(is_tail, isa_has_evex(brg.isa_impl))) {
                 switch (brg.dt_wei_scales) {
                     case data_type::f32:
                         uni_vmovups(vmm_wei_scales_masked, addr);
@@ -2053,7 +2053,7 @@ void jit_brgemm_kernel_t<Wmm>::apply_compensation(
                 if (IMPLICATION(!brg.req_comp_pads_with_bcast, bd == 0)) {
                     const auto zp_comp_a_addr = ptr[reg_aux_zp_comp_a
                             + bd_zp_comp_a_offset(ld, bd)];
-                    if (IMPLICATION(is_tail, isa_has_masks(brg.isa_impl))) {
+                    if (IMPLICATION(is_tail, isa_has_evex(brg.isa_impl))) {
                         auto vmm_zp_comp_a_masked = vmm_mask(
                                 vmm_zp_comp_a, is_tail, false, k_mask);
                         uni_vmovups(vmm_zp_comp_a_masked, zp_comp_a_addr);
@@ -2191,7 +2191,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_without_post_ops(
                 prefetchw(addr_c);
             if (!is_tail)
                 uni_vmovups(addr_c, vmm);
-            else if (isa_has_masks(brg.isa_impl)) { // is_tail
+            else if (isa_has_evex(brg.isa_impl)) { // is_tail
                 uni_vmovups(addr_c | ld_tail_mask | T_z, vmm);
             } else {
                 vmaskmovps(addr_c, vmm_tail_mask(), vmm);
@@ -3738,7 +3738,7 @@ void jit_brgemm_kernel_t<Wmm>::generate() {
     align(32);
 
     const dim_t simd = vreg_traits_t<Vmm>::vlen / sizeof(float);
-    if (!isa_has_masks(brg.isa_impl) && (brg.ldb_tail || brg.gemv_tail)) {
+    if (!isa_has_evex(brg.isa_impl) && (brg.ldb_tail || brg.gemv_tail)) {
         const dim_t tail_size = brg.is_gemv ? brg.gemv_tail : brg.ldb_tail;
         L(avx_tail_mask_);
         for (dim_t i = 0; i < tail_size; ++i)

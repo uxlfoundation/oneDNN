@@ -2375,7 +2375,7 @@ protected:
         const auto unmask_tail
                 = one_of(conf_->wei_dt, data_type::bf16, data_type::f16)
                 && !conf_->transposed_B;
-        if (isa_has_masks(conf_->isa))
+        if (isa_has_evex(conf_->isa))
             return is_tail ? vmm | tail_mask | T_z
                     // bf16 and f16 requires masking for tail
                     // to avoid AVX512F issues with zeroing upper bits
@@ -2431,7 +2431,7 @@ protected:
         vpermd(reg, vmm_permd, reg);
         // Without masks int4 is going to use 2 tmp registers
         // To perform masks using VPAND operator
-        if (!isa_has_masks(conf_->isa)) {
+        if (!isa_has_evex(conf_->isa)) {
             // TODO: Unify register usage over kernels
             const auto mask_vmm = Vmm(conf_->transposed_B ? 13 : 0);
             const auto tmp_vmm = vmm_permd;
@@ -3731,7 +3731,7 @@ private:
     Vmm vmm_wei_scales = Vmm(4);
 
     void kmovx(Opmask k, unsigned w) {
-        if (!isa_has_masks(conf_->isa)) return;
+        if (!isa_has_evex(conf_->isa)) return;
         const auto regw_tmp = reg_tmp.cvt32();
         if (is_dynamic_N) {
             mov(reg_tmp, 1);
@@ -3794,7 +3794,7 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::copy_2x32(
                 = one_of(zp_dt, data_type::s4, data_type::u4) ? 2 : 1;
         const auto offset = n * zp_dt_sz / elems_per_byte;
         const auto addr = maybe_EVEX_compress_addr(reg_zp_ptr, offset);
-        if (is_tail && !isa_has_masks(conf_->isa)) {
+        if (is_tail && !isa_has_evex(conf_->isa)) {
             load_bytes(vmm_zp_b_shift, addr, columns_tail / elems_per_byte);
             load_value(vmm_zp_b_shift, vmm_zp_b_shift, vmm_permd, zp_dt);
         }
@@ -3813,7 +3813,7 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::copy_2x32(
         const auto scales_dt_sz = types::data_type_size(scales_dt);
         const auto offset = n * scales_dt_sz;
         const auto addr = maybe_EVEX_compress_addr(reg_wei_scales, offset);
-        if (is_tail && !isa_has_masks(conf_->isa)) {
+        if (is_tail && !isa_has_evex(conf_->isa)) {
             load_bytes(
                     vmm_wei_scales, addr, columns_tail * wei_scales_typesize);
             load_scale_value(vmm_wei_scales, vmm_wei_scales, scales_dt,
@@ -3833,7 +3833,7 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::copy_2x32(
         const auto reg_src_load
                 = is_dynamic_stride && k % 2 != 0 ? reg_src_load_1 : reg_src;
         auto load_addr = maybe_EVEX_compress_addr(reg_src_load, offset);
-        if (!isa_has_masks(conf_->isa)) {
+        if (!isa_has_evex(conf_->isa)) {
             if (is_tail)
                 load_bytes(src_load, load_addr,
                         columns_tail * tr_typesize / elems_per_byte);
@@ -3965,7 +3965,7 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::init_masks() {
         mov(reg_tmp, reinterpret_cast<size_t>(bf16_vnni_permute));
         vmovdqa64(vmm_permw, ptr[reg_tmp]);
 
-        if (isa_has_masks(conf_->isa)) {
+        if (isa_has_evex(conf_->isa)) {
             // 64-bit mask is also used when is_wei_[zp\scales]_per_k
             mov(reg_tmp, 0xAAAAAAAAAAAAAAAA);
             kmovq(kAAAA, reg_tmp);
@@ -4249,7 +4249,7 @@ private:
     Ymm ymm_tail_mask = ymm1;
 
     inline void kmovw(Opmask k, unsigned w) {
-        if (!isa_has_masks(conf_->isa)) return;
+        if (!isa_has_evex(conf_->isa)) return;
         mov(regw_tmp, w);
         jit_generator_t::kmovd(k, regw_tmp);
     }
@@ -4281,7 +4281,7 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::copy_16_x_n_block(
         const bool is_tail = ncolumns - n < simd_w_;
         auto addr = maybe_EVEX_compress_addr(reg_src,
                 (k * src_stride_ + n * typesize_in_) / src_elems_per_byte_);
-        if (is_tail && !isa_has_masks(conf_->isa)) {
+        if (is_tail && !isa_has_evex(conf_->isa)) {
             load_bytes(src_vmm, addr,
                     (ncolumns % simd_w_) * typesize_in_ / src_elems_per_byte_);
             load_value(src_vmm, src_vmm, vmm_permd, conf_->orig_wei_dt, false);
@@ -4305,7 +4305,7 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::copy_16_x_n_block(
                 = one_of(zp_dt, data_type::s4, data_type::u4) ? 2 : 1;
         const auto offset = n * zp_dt_sz / elems_per_byte;
         const auto addr = maybe_EVEX_compress_addr(reg_zp_ptr, offset);
-        if (is_tail && !isa_has_masks(conf_->isa)) {
+        if (is_tail && !isa_has_evex(conf_->isa)) {
             load_bytes(vmm_zp_b_shift, addr,
                     (ncolumns % simd_w_) * zp_dt_sz / elems_per_byte);
             load_value(vmm_zp_b_shift, vmm_zp_b_shift, vmm_permd, zp_dt, false);
@@ -4325,7 +4325,7 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::copy_16_x_n_block(
         const auto scales_dt_sz = types::data_type_size(scales_dt);
         const auto offset = n * scales_dt_sz;
         const auto addr = maybe_EVEX_compress_addr(reg_wei_scales, offset);
-        if (is_tail && !isa_has_masks(conf_->isa)) {
+        if (is_tail && !isa_has_evex(conf_->isa)) {
             load_bytes(
                     vmm_wei_scales, addr, (ncolumns % simd_w_) * scales_dt_sz);
             load_scale_value(vmm_wei_scales, vmm_wei_scales, scales_dt, false);
@@ -4335,7 +4335,7 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::copy_16_x_n_block(
 
     const int columns_tail = ncolumns % simd_w_;
     if (columns_tail < simd_w_) {
-        if (isa_has_masks(conf_->isa)) {
+        if (isa_has_evex(conf_->isa)) {
             const auto tail_mask = (1 << columns_tail) - 1;
             kmovw(kTail, tail_mask);
             if (is_src_int4_ || is_src_f4_) {
@@ -4741,7 +4741,7 @@ template <typename Vmm>
 void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::init_tail_mask(
         const int columns_tail, const bool use_int4_mask) {
     assert(IMPLICATION(use_int4_mask, is_src_int4_));
-    assert(isa_has_masks(conf_->isa));
+    assert(isa_has_evex(conf_->isa));
     if (columns_tail > 0) {
         const int dt_step = req_cvtps2xf16_ || use_fp16_instructions_
                         || use_bf16_instructions_

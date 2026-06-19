@@ -1,5 +1,6 @@
 #===============================================================================
 # Copyright 2017 Intel Corporation
+# Copyright 2026 Arm Ltd. and affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -211,6 +212,10 @@ foreach(driver ${all_drivers})
             list(REMOVE_ITEM test_files_gpu "test_matmul_grouped_gpu")
             list(REMOVE_ITEM test_files_cpu "test_matmul_grouped_gpu")
             list(REMOVE_ITEM test_files_cpu "test_matmul_grouped")
+        endif()
+
+        if(driver STREQUAL "brgemm" AND NOT DNNL_TARGET_ARCH STREQUAL "AARCH64")
+            list(REMOVE_ITEM test_files_cpu "test_brgemm_mmla")
         endif()
 
         ## Filter out gpu, large cpu and invalid inputs from cpu

@@ -18,6 +18,9 @@
 #include "gpu/intel/include/tile_ops.h"
 #include "gpu/intel/include/types_interop.h"
 #include "gpu/intel/sdpa/utils.h"
+#ifdef DBG_DKDV_PRINTS
+#pragma OPENCL EXTENSION cl_intel_printf : enable
+#endif
 
 /* Microkernel headers -- generated at runtime */
 #include "gemm_kq.h"
@@ -292,6 +295,29 @@ DECLARE_2D_TILE_COPY_REBLOCK(ktq_tile_type, SUBGROUP_SIZE,
         SUBGROUP_SIZE, ugemm_ktq_sg_tile_m, 1, 1, ugemm_ktq_sg_tile_n,
         CONVERT_TILE_DATA_T)
 
+/* Debug prints for dK/dV tiles, guarded by DBG_DKDV_PRINTS.
+ * Enable with: kernel_ctx.define_int("DBG_DKDV_PRINTS", 1);
+ *
+ * DBG_PRINT_TILE_ELEM: prints a representative element [0][0] from every
+ * subgroup lane in wg(0,0,0). Each tile row is owned by the lane equal to
+ * its row index mod SUBGROUP_SIZE, so lane k prints the element it holds
+ * at tile row k, col 0. This gives a correct per-lane sample for distributed
+ * (SIMD-interleaved) tile storage, without needing a cross-lane reduction. */
+#ifdef DBG_DKDV_PRINTS
+#define DBG_PRINT_TILE_ELEM(tile, br, bc, nbr, nbc, label) \
+    do { \
+        if (get_group_id(0) == 0 && get_group_id(1) == 0 \
+                && get_group_id(2) == 0 && get_local_id(1) == 0) { \
+            float _v = convert_float( \
+                    tile_access(tile, 0, 0, SUBGROUP_SIZE, br, bc, nbr)); \
+            printf("[DBG] %s lane%u = %.6f\n", label, \
+                    get_sub_group_local_id(), _v); \
+        } \
+    } while (0)
+#else
+#define DBG_PRINT_TILE_ELEM(tile, br, bc, nbr, nbc, label) do {} while (0)
+#endif
+
 DECLARE_2D_TILE_COPY_REBLOCK(s_tile_type, SUBGROUP_SIZE, ugemm_kq_c_type_block0,
         ugemm_kq_c_type_block1, ugemm_kq_c_type_nblock0,
         ugemm_kq_c_type_nblock1, s_tile_type_reblock, SUBGROUP_SIZE,
@@ -491,6 +517,10 @@ inline void tile_store_dV(dv_acc_tile_type *dV_tile_slm,
     tile_elementwise_s(dV_tile_f32, round_to_dst);
 #endif
     tile_atomic_add(dV_tile_f32, dV, m, n, ld, offset_r, offset_c);
+    DBG_PRINT_TILE_ELEM(dV_tile_f32,
+            ugemm_vs_c_type_block0, ugemm_vs_c_type_block1,
+            ugemm_vs_c_type_nblock0, ugemm_vs_c_type_nblock1,
+            "dV after atomic_add");
 
 #else // MHA update
 
@@ -520,6 +550,10 @@ inline void tile_store_dK_t(dv_acc_tile_type *dK_tile,
     tile_elementwise_s(dK_tile_f32, round_to_dst);
 #endif
     tile_atomic_add(dK_tile_f32, dK, m, n, ld, offset_r, offset_c);
+    DBG_PRINT_TILE_ELEM(dK_tile_f32,
+            ugemm_vs_c_type_block0, ugemm_vs_c_type_block1,
+            ugemm_vs_c_type_nblock0, ugemm_vs_c_type_nblock1,
+            "dK_t after atomic_add");
 #else // MHA update
     dv_tile_type_dst dK_tile_dst;
     tile_copy_reblock(*dK_tile, &dK_tile_dst);
@@ -547,6 +581,10 @@ inline void tile_store_dK(dk_acc_tile_type *dK_tile, global DST_DATA_T_DKDV *dK,
     tile_elementwise_s(dK_tile_f32, round_to_dst);
 #endif
     tile_atomic_add(dK_tile_f32, dK, m, n, ld, offset_r, offset_c);
+    DBG_PRINT_TILE_ELEM(dK_tile_f32,
+            ugemm_qdSt_c_type_block0, ugemm_qdSt_c_type_block1,
+            ugemm_qdSt_c_type_nblock0, ugemm_qdSt_c_type_nblock1,
+            "dK after atomic_add");
 #else // MHA update
 
     a_tile_type_dst dK_tile_dst;
@@ -962,7 +1000,15 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                 tile_copy(dV_tile1, dV_tile1_store);
 #if REDUCE_DKDV_F16
                 // Quantize to f16 precision before f32 SLM accumulation.
+                DBG_PRINT_TILE_ELEM(dV_tile1_store,
+                        ugemm_vs_c_type_block0, ugemm_vs_c_type_block1,
+                        ugemm_vs_c_type_nblock0, ugemm_vs_c_type_nblock1,
+                        "dV pre-quant");
                 tile_elementwise_s(dV_tile1_store, round_to_dst);
+                DBG_PRINT_TILE_ELEM(dV_tile1_store,
+                        ugemm_vs_c_type_block0, ugemm_vs_c_type_block1,
+                        ugemm_vs_c_type_nblock0, ugemm_vs_c_type_nblock1,
+                        "dV post-quant");
 #endif
                 tile_slm_add(dV_tile1_store, dV_slm, D_MAX, sg_i0_vs, sg_j0_vs);
             }
@@ -1067,7 +1113,15 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                 tile_copy(dK_tile1, dK_tile1_store);
 #if REDUCE_DKDV_F16
                 // Quantize to f16 precision before f32 SLM accumulation.
+                DBG_PRINT_TILE_ELEM(dK_tile1_store,
+                        ugemm_qdSt_c_type_block0, ugemm_qdSt_c_type_block1,
+                        ugemm_qdSt_c_type_nblock0, ugemm_qdSt_c_type_nblock1,
+                        "dK pre-quant");
                 tile_elementwise_s(dK_tile1_store, round_to_dst);
+                DBG_PRINT_TILE_ELEM(dK_tile1_store,
+                        ugemm_qdSt_c_type_block0, ugemm_qdSt_c_type_block1,
+                        ugemm_qdSt_c_type_nblock0, ugemm_qdSt_c_type_nblock1,
+                        "dK post-quant");
 #endif
 #if TRANSPOSE_K
                 tile_slm_add_t(

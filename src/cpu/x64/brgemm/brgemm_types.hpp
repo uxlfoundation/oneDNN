@@ -297,6 +297,7 @@ struct brgemm_desc_t {
     bool with_eltwise = false;
     bool with_binary = false;
     bool skip_zp_b_compensation = false;
+    bool skip_zp_a_compensation = false;
     bool n_bcast_1_load = false;
 
     brgemm_broadcast_t zp_type_a = brgemm_broadcast_t::none;
@@ -311,6 +312,8 @@ struct brgemm_desc_t {
     bool is_per_k_src_scales = false;
     dim_t src_scale_m_stride = 0;
     data_type_t dt_src_scales = data_type::undef;
+
+    bool with_per_mn_compensation = false;
 
     bool has_per_k_scales() const {
         return is_per_k_wei_scales || is_per_k_src_scales;
@@ -488,9 +491,11 @@ struct brgemm_desc_t {
 
     // Determines if the accumulator dt is integer.
     //
-    // When the per-k scales are present, need to accumulate
-    // in f32 due to precision loss.
-    bool is_integer_acc() const { return is_int8 && !has_per_k_scales(); }
+    // When the per-k scales or per-MN compensation are present, need to
+    // accumulate in f32 due to precision loss.
+    bool is_integer_acc() const {
+        return is_int8 && !has_per_k_scales() && !with_per_mn_compensation;
+    }
 
     // Determines if the DQ2PS conversion is needed for the accumulator.
     bool do_dq2ps_cvt() const {
@@ -756,6 +761,7 @@ struct brgemm_kernel_params_t {
     const void *b_zp_compensations = nullptr;
     const void *a_zp_values = nullptr;
     const void *c_zp_values = nullptr;
+    const void *ptr_per_mn_compensation = nullptr;
     size_t skip_accm = 0;
     int32_t zp_a_val = 1;
     dim_t dynamic_LDA = 0;
@@ -881,7 +887,8 @@ struct brgemm_post_ops_data_t {
             int32_t zp_a_val = 1, bool do_only_comp = false,
             bool do_only_zp_a_val = false, const void *src_scales = nullptr,
             const void *wei_scales = nullptr, const void *dst_scales = nullptr,
-            const void *a_zp_values = nullptr)
+            const void *a_zp_values = nullptr,
+            const void *per_mn_compensation = nullptr)
         : bias(bias)
         , binary_post_ops_rhs(binary_post_ops_rhs)
         , oc_logical_off(oc_logical_off)
@@ -898,7 +905,8 @@ struct brgemm_post_ops_data_t {
         , src_scales(src_scales)
         , wei_scales(wei_scales)
         , dst_scales(dst_scales)
-        , a_zp_values(a_zp_values) {}
+        , a_zp_values(a_zp_values)
+        , per_mn_compensation(per_mn_compensation) {}
 
     const void *bias = nullptr;
     const void *binary_post_ops_rhs = nullptr;
@@ -917,6 +925,7 @@ struct brgemm_post_ops_data_t {
     const void *wei_scales = nullptr;
     const void *dst_scales = nullptr;
     const void *a_zp_values = nullptr;
+    const void *per_mn_compensation = nullptr;
 };
 
 } // namespace x64

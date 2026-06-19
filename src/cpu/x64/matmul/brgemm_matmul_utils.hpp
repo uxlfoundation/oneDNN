@@ -245,6 +245,10 @@ struct brgemm_matmul_conf_t {
     bool is_f4_via_convert = false;
     bool is_tf32 = false;
     bool with_int8_grouped_quantization = false;
+    // Enables the driver-side per-(M, N) f32 compensation tile that captures
+    // the symmetric src/wei zero-point + 128-shift correction in the grouped
+    // int8 quantization path. Mirrors brgemm_desc_t::with_per_mn_compensation.
+    bool with_per_mn_compensation = false;
     bool req_wei_vnni_downconvert = false;
     bool is_runtime_M = false;
     bool is_runtime_N = false;
@@ -268,6 +272,7 @@ struct brgemm_matmul_conf_t {
 
     // Src scales per-K
     bool is_src_scale_per_k = false;
+    bool is_src_scale_per_m = false;
     dim_t src_scales_k_gsize = 0;
     data_type_t src_scales_dt = data_type::undef;
     size_t src_scales_dt_sz = 0;
@@ -281,6 +286,12 @@ struct brgemm_matmul_conf_t {
     brgemm_broadcast_t dst_zp_type;
 
     data_type_t src_zp_dt = data_type::undef;
+
+    // Per-K src zero-points: stride between K-group slots (in
+    // elements). Used by the per-mn compensation src ZP gather.
+    bool is_src_zp_per_k = false;
+    bool is_src_zp_per_m = false;
+    dim_t src_zp_k_gsize = 0;
 
     dim_t wei_zp_k_gsize = 0;
     bool is_wei_zp_per_k = false;

@@ -17,6 +17,7 @@
 #include <functional>
 
 #include "common/dnnl_thread.hpp"
+#include "common/memory_desc.hpp"
 #include "cpu/cpu_primitive.hpp"
 #include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/x64/jit_uni_binary.hpp"
@@ -47,11 +48,16 @@ static bool compare_layouts(const memory_desc_wrapper &src0_md,
     if (is_bcast) return true;
 
     bool same_layouts = true;
-    // For batch size == 1, the first dimension is ignored for stride checks,
-    // as non-contiguous strides in this dimension do not affect correctness.
-    int start_dim = (dims0[0] == 1 && dims1[0] == 1) ? 1 : 0;
-    for (int d = start_dim; d < ndims; ++d)
+    // A unit dim doesn't affect addressing, so its stride is ignored
+    // (e.g. acbd and abcd with H == 1 are the same layout). The exception is
+    // a unit dim that gets padded (pdims != 1): the padding occupies memory,
+    // so its stride is real and must match.
+    const dims_t &pdims0 = src0_md.padded_dims();
+    const dims_t &pdims1 = src1_md.padded_dims();
+    for (int d = 0; d < ndims; ++d) {
+        if (dims0[d] == 1 && pdims0[d] == 1 && pdims1[d] == 1) continue;
         same_layouts = same_layouts && strides0[d] == strides1[d];
+    }
     return same_layouts;
 }
 
@@ -192,8 +198,9 @@ status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
     conf_.bcast_type = is_tensor_op() ? bcast_t::none
                                       : get_bcast_type(src1_md_, bcast_dims);
     // op_type only matters for broadcasted operation
-    assert(IMPLICATION(
-            conf_.bcast_type != bcast_t::none, conf_.op_type != op_t::none));
+    VDISPATCH_BINARY(IMPLICATION(conf_.bcast_type != bcast_t::none,
+                             conf_.op_type != op_t::none),
+            "unsupported src0 layout for broadcast operation");
     conf_.broadcast_src1_value = (conf_.op_type == op_t::n_c_spatial
                                          && conf_.bcast_type == bcast_t::per_c)
             || (utils::one_of(conf_.op_type, op_t::n_spatial_c, op_t::c_blocked)
@@ -265,6 +272,26 @@ status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
     return status::success;
 }
 
+// Removes all unit (size-1) dims from a plain layout, producing an equivalent
+// lower-rank descriptor. Unit dims don't affect addressing, so a permuted
+// plain layout (e.g. `acbd` with H == 1) maps to a canonical nxc/ncx layout
+// once they are gone. Returns false (leaving `squeezed_md` untouched) for a
+// non-plain layout, when nothing is squeezed, or when fewer than 2 dims
+// remain. Mirrors the pattern in brgemm_matmul_reorders.cpp.
+static bool squeeze_unit_dims(
+        const memory_desc_wrapper &mdw, memory_desc_t &squeezed_md) {
+    if (!mdw.is_plain()) return false;
+    const auto &dims = mdw.dims();
+    const int ndims = mdw.ndims();
+    dims_t squeezed_dims {};
+    int ndims_out = 0;
+    for (int i = 0; i < ndims; ++i)
+        if (dims[i] != 1) squeezed_dims[ndims_out++] = dims[i];
+    if (ndims_out < 2 || ndims_out >= ndims) return false;
+    return memory_desc_reshape(squeezed_md, *mdw.md_, ndims_out, squeezed_dims)
+            == status::success;
+}
+
 op_t jit_uni_binary_t::pd_t::get_op_type(const memory_desc_wrapper &src0_d) {
     const auto &strides = src0_d.blocking_desc().strides;
     const auto ndims = src0_d.ndims();
@@ -276,6 +303,13 @@ op_t jit_uni_binary_t::pd_t::get_op_type(const memory_desc_wrapper &src0_d) {
     else if (strides[0] >= strides[1]
             && IMPLICATION(ndims >= 3, strides[1] >= strides[2]))
         return op_t::n_c_spatial;
+
+    // A permuted plain layout with unit dims is equivalent to a canonical
+    // one once the unit dims are squeezed out; retry on the squeezed layout.
+    // Anything else (non-plain, non-unit permuted dims) stays unclassified.
+    memory_desc_t squeezed_md {};
+    if (squeeze_unit_dims(src0_d, squeezed_md))
+        return get_op_type(memory_desc_wrapper(squeezed_md));
     return op_t::none;
 }
 
@@ -293,6 +327,13 @@ bool jit_uni_binary_t::pd_t::is_format_non_blocked(
     const auto &dims = mdw.dims();
     const auto &strides = mdw.blocking_desc().strides;
     const auto &ndims = mdw.ndims();
+
+    // Squeeze out unit dims and re-check, so a permuted plain layout is
+    // recognized as non-blocked and handled by jit:uni instead of falling
+    // back to ref. See squeeze_unit_dims().
+    memory_desc_t squeezed_md {};
+    if (squeeze_unit_dims(mdw, squeezed_md))
+        return is_format_non_blocked(memory_desc_wrapper(squeezed_md));
 
     const bool is_ncx
             = IMPLICATION(strides[0] != 0,
@@ -477,9 +518,16 @@ bool jit_uni_binary_t::pd_t::is_applicable() {
                         is_src_different_layouts, different_layouts_allowed)))
         return false;
 
-    // only nspc and ncsp formats are supported for bcast
+    // only nspc and ncsp formats are supported for bcast; permuted plain
+    // formats with unit dims are also accepted once the unit dims squeeze
+    // out. The two src0 checks are complementary, not redundant:
+    // is_format_non_blocked() validates the whole layout (every stride plus
+    // innermost == 1) and rejects permuted/non-dense plain layouts, while
+    // get_op_type() only checks that src0 maps to an execution strategy and
+    // uses a weaker stride test, so neither check subsumes the other.
     if (src0_d.is_plain() && src1_d.is_plain())
-        return is_format_non_blocked(src0_d) && is_format_non_blocked(src1_d);
+        return is_format_non_blocked(src0_d) && is_format_non_blocked(src1_d)
+                && get_op_type(src0_d) != op_t::none;
 
     // blocked formats
     if (!conf_.is_i8) {

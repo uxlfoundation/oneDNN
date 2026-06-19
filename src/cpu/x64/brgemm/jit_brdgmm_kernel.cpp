@@ -324,7 +324,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::apply_post_ops(
         auto vmm_sum_zp = vmm_tmp(0);
         if (p_sum_zp_reg_set) {
             mov(reg_ptr_sum_zp, reinterpret_cast<size_t>(p_sum_zp));
-            if (is_superset(brg.isa_impl, avx512_core)) {
+            if (isa_has_evex(brg.isa_impl)) {
                 vcvtdq2ps(vmm_sum_zp, ptr_b[reg_ptr_sum_zp]);
             } else {
                 uni_vpbroadcastd(vmm_sum_zp, ptr[reg_ptr_sum_zp]);
@@ -346,7 +346,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::apply_post_ops(
             if (!p_sum_scale_reg_set)
                 vaddps(vmm, vmm_prev_dst);
             else {
-                if (is_superset(brg.isa_impl, avx512_core)) {
+                if (isa_has_evex(brg.isa_impl)) {
                     vfmadd231ps(vmm, vmm_prev_dst, ptr_b[reg_ptr_sum_scale]);
                 } else {
                     auto vmm_scale = vmm_bcast();
@@ -508,7 +508,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_apply_post_ops(
     if (compute_dst_zp_) {
         auto vmm_dst_zp = vmm_tmp(0);
         reg_dst_zero_point.restore();
-        if (is_superset(brg.isa_impl, avx512_core)) {
+        if (isa_has_evex(brg.isa_impl)) {
             vcvtdq2ps(vmm_dst_zp,
                     EVEX_compress_addr(reg_dst_zero_point, 0, true));
         } else {
@@ -591,14 +591,14 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_apply_post_ops(
                         vcvtps2ph(addr, r_vmm, _op_mxcsr);
                         break;
                     case data_type::s8:
-                        if (is_superset(brg.isa_impl, avx512_core))
+                        if (isa_has_evex(brg.isa_impl))
                             vpmovsdb(addr, r_vmm);
                         else
                             store_data(brg.dt_d, vmm, reg_aux_D, offset,
                                     substep_simd);
                         break;
                     case data_type::u8:
-                        if (is_superset(brg.isa_impl, avx512_core))
+                        if (isa_has_evex(brg.isa_impl))
                             vpmovusdb(addr, r_vmm);
                         else
                             store_data(brg.dt_d, vmm, reg_aux_D, offset,
@@ -728,7 +728,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::compute_int8_compensation(
                 vmovups(vmm_zp,
                         maybe_EVEX_compress_addr(reg_aux_zp_comp, offset));
                 if (is_src_zp_bcast_) {
-                    if (is_superset(brg.isa_impl, avx512_core))
+                    if (isa_has_evex(brg.isa_impl))
                         vpmulld(vmm_zp, vmm_zp,
                                 maybe_EVEX_compress_addr(
                                         reg_aux_src_zp, 0, true));
@@ -906,7 +906,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::comp_dot_product(
             const size_t offset = comp_offset(n);
             if (IMPLICATION(is_tail_block, isa_has_evex(brg.isa_impl))) {
                 if (is_src_zp_bcast_) {
-                    if (is_superset(brg.isa_impl, avx512_core))
+                    if (isa_has_evex(brg.isa_impl))
                         vpmulld(vmm_zp, vmmb,
                                 maybe_EVEX_compress_addr(
                                         reg_aux_src_zp, 0, true));

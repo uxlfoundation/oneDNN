@@ -640,7 +640,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
         auto vmm_sum_zp = vmm_tmp(1);
         if (*p_sum_zp != 0) {
             mov(reg_ptr_sum_zp, (size_t)p_sum_zp);
-            if (is_superset(brg_.isa_impl, avx512_core)) {
+            if (isa_has_evex(brg_.isa_impl)) {
                 vcvtdq2ps(vmm_sum_zp, ptr_b[reg_ptr_sum_zp]);
             } else {
                 vpbroadcastd(vmm_sum_zp, ptr[reg_ptr_sum_zp]);
@@ -661,7 +661,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
             if (*p_sum_scale == 1.f)
                 uni_vaddps(vmm, vmm, vmm_prev_dst);
             else {
-                if (is_superset(brg_.isa_impl, avx512_core)) {
+                if (isa_has_evex(brg_.isa_impl)) {
                     vfmadd231ps(vmm, vmm_prev_dst, ptr_b[reg_ptr_sum_scale]);
                 } else {
                     auto vmm_sum_scale = vmm_tmp(2);
@@ -713,7 +713,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::apply_comp(
         for (int n = 0; n < n_block; n++) {
             const size_t zp_comp_offset
                     = sizeof(int32_t) * (n * brg_.ld_block + m * brg_.LDB);
-            auto zp_comp_a_addr = is_superset(brg_.isa_impl, avx512_core)
+            auto zp_comp_a_addr = isa_has_evex(brg_.isa_impl)
                     ? EVEX_compress_addr(aux_reg_zp_a_comp, zp_comp_offset)
                     : ptr[aux_reg_zp_a_comp + zp_comp_offset];
             if (IMPLICATION(has_tail, isa_has_evex(brg_.isa_impl))) {
@@ -738,7 +738,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::apply_comp(
             const size_t s8s8_comp_offset
                     = sizeof(int32_t) * (n * brg_.ld_block + m * brg_.LDB);
 
-            auto comp_addr = is_superset(brg_.isa_impl, avx512_core)
+            auto comp_addr = isa_has_evex(brg_.isa_impl)
                     ? EVEX_compress_addr(aux_reg_s8s8_comp, s8s8_comp_offset)
                     : ptr[aux_reg_s8s8_comp + s8s8_comp_offset];
             if (IMPLICATION(tail > 0, isa_has_evex(brg_.isa_impl))) {
@@ -902,7 +902,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::apply_post_ops(
         mov(aux_reg_zp_c_values, ptr[rsp + aux_reg_zp_c_values_offs_]);
         auto vmm_zp_c = vmm_tmp(0);
         if (brg_.zp_type_c == brgemm_broadcast_t::per_tensor) {
-            if (is_superset(brg_.isa_impl, avx512_core))
+            if (isa_has_evex(brg_.isa_impl))
                 vcvtdq2ps(vmm_zp_c,
                         EVEX_compress_addr(aux_reg_zp_c_values, 0, true));
             else {
@@ -913,7 +913,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::apply_post_ops(
         for (int n = 0; n < n_block; n++) {
             if (brg_.zp_type_c == brgemm_broadcast_t::per_n) {
                 int zp_c_off = zp_c_values_offset(n);
-                auto zp_c_addr = is_superset(brg_.isa_impl, avx512_core)
+                auto zp_c_addr = isa_has_evex(brg_.isa_impl)
                         ? EVEX_compress_addr(aux_reg_zp_c_values, zp_c_off)
                         : ptr[aux_reg_zp_c_values + zp_c_off];
                 cvt2ps(data_type::s32, vmm_zp_c, zp_c_addr, tail, false,

@@ -668,7 +668,7 @@ void jit_io_helper_t<Vmm>::load_f32(
 template <typename Vmm>
 void jit_io_helper_t<Vmm>::load_s32(
         const Xbyak::Address &src_addr, const Vmm &dst_vmm, const bool tail) {
-    if (is_superset(isa_, avx512_core))
+    if (isa_has_evex(isa_))
         host_->uni_vcvtdq2ps(dst_vmm, src_addr);
     else {
         load_f32(src_addr, dst_vmm, tail);
@@ -992,7 +992,7 @@ void jit_io_helper_t<Vmm>::broadcast(
                         dst_vmm, host_->ptr_b[src_addr.getRegExp()]);
             break;
         case data_type::s32: {
-            if (is_superset(isa_, avx512_core)) {
+            if (isa_has_evex(isa_)) {
                 host_->uni_vcvtdq2ps(
                         dst_vmm, host_->ptr_b[src_addr.getRegExp()]);
             } else {

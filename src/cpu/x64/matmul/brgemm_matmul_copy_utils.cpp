@@ -3931,7 +3931,7 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::copy_2x32(
         else
             uni_vxorps(src_vmm1, src_vmm1, src_vmm1);
 
-        if (is_superset(conf_->isa, avx512_core)) {
+        if (isa_has_evex(conf_->isa)) {
             const auto src_ymm1 = ymm(src_vmm1.getIdx());
             vinsertf64x4(src_zmm0, src_zmm0, src_ymm1, 1);
             vpermw(src_zmm0, vmm_permw, src_zmm0);

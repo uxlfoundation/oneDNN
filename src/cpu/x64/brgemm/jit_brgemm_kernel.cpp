@@ -1672,7 +1672,7 @@ void jit_brgemm_kernel_t<Wmm>::apply_post_ops(dim_t bd_block, dim_t ld_block2,
                 if (p_sum_zp_reg_set) {
                     assert(!brg.is_gemv && "feature is not supported for gemv");
                     mov(reg_ptr_sum_zp, reinterpret_cast<size_t>(p_sum_zp));
-                    if (is_superset(brg.isa_impl, avx512_core)) {
+                    if (isa_has_evex(brg.isa_impl)) {
                         vcvtdq2ps(vmm_sum_zp, ptr_b[reg_ptr_sum_zp]);
                     } else {
                         uni_vpbroadcastd(vmm_sum_zp, ptr[reg_ptr_sum_zp]);
@@ -1681,7 +1681,7 @@ void jit_brgemm_kernel_t<Wmm>::apply_post_ops(dim_t bd_block, dim_t ld_block2,
                 }
 
                 if (p_sum_scale_reg_set) {
-                    if (is_superset(brg.isa_impl, avx512_core)) {
+                    if (isa_has_evex(brg.isa_impl)) {
                         // embd bcast fma
                         mov(reg_ptr_sum_scale,
                                 reinterpret_cast<size_t>(p_sum_scale));
@@ -1719,7 +1719,7 @@ void jit_brgemm_kernel_t<Wmm>::apply_post_ops(dim_t bd_block, dim_t ld_block2,
                     if (p_sum_zp_reg_set)
                         uni_vsubps(vmm_prev_dst, vmm_prev_dst, vmm_sum_zp);
                     if (p_sum_scale_reg_set) {
-                        if (is_superset(brg.isa_impl, avx512_core))
+                        if (isa_has_evex(brg.isa_impl))
                             uni_vfmadd231ps(vmm, vmm_prev_dst,
                                     ptr_b[reg_ptr_sum_scale]);
                         else
@@ -1872,7 +1872,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
         reg_aux_zp_c_values.restore();
         auto vmm_zp_c = vmm_tmp(0);
         if (brg.zp_type_c == brgemm_broadcast_t::per_tensor) {
-            if (is_superset(brg.isa_impl, avx512_core)) {
+            if (isa_has_evex(brg.isa_impl)) {
                 uni_vcvtdq2ps(vmm_zp_c,
                         EVEX_compress_addr(reg_aux_zp_c_values, 0, true));
             } else {
@@ -1886,7 +1886,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
             const bool is_tail = is_ld_tail && ld + 1 == ld_block2;
             if (brg.zp_type_c == brgemm_broadcast_t::per_n) {
                 dim_t zp_c_off = zp_c_values_offset(ld);
-                if (is_superset(brg.isa_impl, avx512_core)) {
+                if (isa_has_evex(brg.isa_impl)) {
                     auto zp_c_addr
                             = EVEX_compress_addr(reg_aux_zp_c_values, zp_c_off);
                     cvt2ps(data_type::s32, vmm_zp_c, zp_c_addr, is_tail, false,
@@ -2077,7 +2077,7 @@ void jit_brgemm_kernel_t<Wmm>::apply_compensation(
             dim_t zp_comp_b_off = zp_comp_b_offset(bd);
             for (dim_t ld = 0; ld < ld_block2; ld++) {
                 auto vmm = accm(ld_block2, bd, ld);
-                if (is_superset(brg.isa_impl, avx512_core)) {
+                if (isa_has_evex(brg.isa_impl)) {
                     const auto zp_comp_b_addr = EVEX_compress_addr(
                             reg_aux_zp_comp_b, zp_comp_b_off, true);
                     uni_vpaddd(vmm, vmm, zp_comp_b_addr);
@@ -2847,7 +2847,7 @@ void jit_brgemm_kernel_t<Wmm>::gemv_microkernel(
     const auto load_and_convert_to_f32
             = [this](const Vmm vmm, const Xbyak::Address addr,
                       const data_type_t dt, bool is_tail) {
-        if (is_superset(brg.isa_impl, avx512_core)) {
+        if (isa_has_evex(brg.isa_impl)) {
             assert(one_of(brg.dt_a, data_type::bf16, data_type::f16));
             assert(one_of(brg.dt_b, data_type::bf16, data_type::f16));
 
@@ -3170,7 +3170,7 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                     if (prefetch_offset <= INT_MAX) {
                         prefetcht0(ptr[reg_aux_B + prefetch_offset]);
                     } else {
-                        if (is_superset(brg.isa_impl, avx512_core)) {
+                        if (isa_has_evex(brg.isa_impl)) {
                             prefetcht0(EVEX_compress_addr_safe(reg_aux_B,
                                     prefetch_offset, reg_tmp_microkernel));
                         } else {

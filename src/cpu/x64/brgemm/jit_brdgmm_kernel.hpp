@@ -291,9 +291,8 @@ private:
     }
     inline bool grouped_bs() const { return grouped_bs(brg); }
     static bool is_fma_embd(const brgemm_desc_t &brg) {
-        return grouped_bs(brg)
-                ? false
-                : brg.is_f32 && is_superset(brg.isa_impl, avx512_core);
+        return grouped_bs(brg) ? false
+                               : brg.is_f32 && isa_has_evex(brg.isa_impl);
     }
     bool is_fma_embd() { return is_fma_embd(brg); }
     bool is_fast_vnni_int8() { return is_fast_vnni_int8(brg); }

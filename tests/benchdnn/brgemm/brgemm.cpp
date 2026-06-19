@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2022 Intel Corporation
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -143,6 +143,10 @@ dnnl_status_t brgemm_attr_init(
         // PROCESS_KEY_VAL(bd_mask_level);
         PROCESS_KEY_VAL(use_uker);
         PROCESS_KEY_VAL(use_interleave_stores);
+#if defined(brg_aarch64)
+        PROCESS_KEY_VAL(use_mmla);
+        PROCESS_KEY_VAL(use_mmla_packed_a);
+#endif
         PROCESS_KEY_VAL(b_is_vnni);
         PROCESS_KEY_VAL(postops_only);
         PROCESS_KEY_VAL(hint_bd_block);
@@ -203,6 +207,53 @@ std::string prepare_wei_format_string(
 
     return wtag;
 }
+
+#if defined(brg_aarch64)
+// packing helpers to test mmla brgemm kernel
+constexpr const char *mmla_src_tag = "AB2a4b";
+
+int get_mmla_ld_block() {
+    using namespace namespace_impl;
+    const bool use_sve256 = dnnl_get_effective_cpu_isa()
+            >= cpu_isa_traits<sve_256>::user_option_val;
+
+    return use_sve256 ? cpu_isa_traits<sve_256>::vlen / sizeof(float)
+                      : cpu_isa_traits<sve_128>::vlen / sizeof(float);
+}
+
+std::string prepare_mmla_wei_format_string(int ld_blocks) {
+    return std::string("BA2a") + std::to_string(ld_blocks * get_mmla_ld_block())
+            + "b4a";
+}
+
+int pack_for_mmla(const prb_t *prb, data_kind_t kind, const char *src_ptr,
+        std::vector<uint16_t> &packed_mem, size_t &batch_elems,
+        const dims_t &dims, const dims_t &strides, const std::string &tag,
+        size_t batch_offset, res_t *res) {
+    const size_t batch_offset_elems = batch_offset / sizeof(uint16_t);
+    auto src_md = dnn_mem_t::init_md(
+            2, dims.data(), prb->get_dt(kind), "", strides);
+    auto dst_md = dnn_mem_t::init_md(2, dims.data(), prb->get_dt(kind), tag);
+    dnn_mem_t dst_size_mem(dst_md, get_test_engine(), /* prefill = */ false);
+
+    batch_elems = dst_size_mem.size() / sizeof(uint16_t);
+    packed_mem.assign(prb->batch_size * batch_elems, 0);
+
+    const auto *src = reinterpret_cast<const uint16_t *>(src_ptr);
+    for (int bs = 0; bs < prb->batch_size; bs++) {
+        auto *src_batch = const_cast<uint16_t *>(src + bs * batch_offset_elems);
+        auto *dst_batch = packed_mem.data() + bs * batch_elems;
+
+        auto src_mem = dnn_mem_t::create_from_host_ptr(
+                src_md, get_test_engine(), src_batch);
+        auto dst_mem = dnn_mem_t::create_from_host_ptr(
+                dst_md, get_test_engine(), dst_batch);
+        SAFE(dst_mem.reorder(src_mem, res), WARN);
+    }
+
+    return OK;
+}
+#endif
 
 namespace_impl::brgemm_batch_kind_t str2batch_kind(const std::string &str) {
     if (str == "addr")
@@ -297,6 +348,11 @@ struct kernel_args_t {
 #endif
         , scratchpad_size_(0)
         , generate_skip_accumulation_(false)
+#if defined(brg_aarch64)
+        , mmla_ld_block2_(1)
+        , use_mmla_(false)
+        , use_mmla_packed_a_(false)
+#endif
         , prb_(prb) {
     }
 
@@ -314,6 +370,11 @@ struct kernel_args_t {
 #endif
     size_t scratchpad_size_;
     bool generate_skip_accumulation_;
+#if defined(brg_aarch64)
+    int mmla_ld_block2_;
+    bool use_mmla_;
+    bool use_mmla_packed_a_;
+#endif
 
     // Input members
     const prb_t *prb_;
@@ -378,6 +439,11 @@ int init_kernel(kernel_args_t &kernel_args, res_t *res) {
 
     kernel_args.generate_skip_accumulation_
             = brgemm_attr.generate_skip_accumulation;
+#if defined(brg_aarch64)
+    kernel_args.mmla_ld_block2_ = brgemm_desc.ld_block2;
+    kernel_args.use_mmla_ = brgemm_desc.brgattr.use_mmla;
+    kernel_args.use_mmla_packed_a_ = brgemm_desc.brgattr.use_mmla_packed_a;
+#endif
 
     // Create BRGeMM kernel, analogous to primitive creation.
     // ctx_init can here be used to select core type on hetero ISA with TBB.
@@ -579,11 +645,24 @@ void init_memory_args(
     // memory. Thus, it requires two memories and we need to pass a memory
     // handle from bigger one (where LDB is an actual dim value) to smaller, but
     // there's some reorder bug resulting in an error.
+#if defined(brg_aarch64)
+    const bool pack_mmla_wei_per_batch
+            = kernel_args.use_mmla_ && prb->batch_size > 1;
+    const auto wtag = kernel_args.use_mmla_
+            ? prepare_mmla_wei_format_string(kernel_args.mmla_ld_block2_)
+            : prepare_wei_format_string(prb->wei_dt(), prb->get_ldb(),
+                      kernel_args.is_b_data_layout_vnni_);
+    dims_t plain_wei_strides = {prb->get_ldb(), 1};
+    auto wei_md = pack_mmla_wei_per_batch
+            ? dnn_mem_t::init_md(prb->ndims, wei_dims, prb->wei_dt(), "",
+                      plain_wei_strides)
+            : dnn_mem_t::init_md(prb->ndims, wei_dims, prb->wei_dt(), wtag);
+#else
     const auto wtag = prepare_wei_format_string(
             prb->wei_dt(), prb->get_ldb(), kernel_args.is_b_data_layout_vnni_);
-    BENCHDNN_PRINT(6, "wtag: %s\n", wtag.c_str());
-
     auto wei_md = dnn_mem_t::init_md(prb->ndims, wei_dims, prb->wei_dt(), wtag);
+#endif
+    BENCHDNN_PRINT(6, "wtag: %s\n", wtag.c_str());
     kernel_args.original_wei_md_size_ = dnnl_memory_desc_get_size(wei_md);
 
     // Prepare and assign extra for wei_md when s8s8 compensation, or source
@@ -1083,17 +1162,47 @@ int doit(const prb_t *prb, res_t *res) {
             : nullptr;
 
 #if !defined(DNNL_EXPERIMENTAL_UKERNEL)
+    size_t src_batch_offset = prb->get_src_batch_offset();
+    size_t wei_batch_offset = prb->get_wei_batch_offset();
+#if defined(brg_aarch64)
+    std::vector<uint16_t> packed_src;
+    std::vector<uint16_t> packed_wei;
+    if (kernel_args.use_mmla_ && kernel_args.use_mmla_packed_a_) {
+        size_t src_batch_elems = 0;
+        const dims_t src_dims = {prb->m, prb->k};
+        const dims_t src_strides = {prb->get_lda(), 1};
+        BENCHDNN_PRINT(6, "stag: %s\n", mmla_src_tag);
+        SAFE(pack_for_mmla(prb, SRC, src_ptr, packed_src, src_batch_elems,
+                     src_dims, src_strides, mmla_src_tag,
+                     prb->get_src_batch_offset(), res),
+                WARN);
+        src_ptr = reinterpret_cast<const char *>(packed_src.data());
+        src_batch_offset = src_batch_elems * sizeof(uint16_t);
+    }
+    if (kernel_args.use_mmla_ && prb->batch_size > 1) {
+        size_t wei_batch_elems = 0;
+        const dims_t wei_dims = {prb->k, prb->n};
+        const dims_t wei_strides = {prb->get_ldb(), 1};
+        SAFE(pack_for_mmla(prb, WEI, wei_ptr, packed_wei, wei_batch_elems,
+                     wei_dims, wei_strides,
+                     prepare_mmla_wei_format_string(
+                             kernel_args.mmla_ld_block2_),
+                     prb->get_wei_batch_offset(), res),
+                WARN);
+        wei_ptr = reinterpret_cast<const char *>(packed_wei.data());
+        wei_batch_offset = wei_batch_elems * sizeof(uint16_t);
+    }
+#endif
+
     std::vector<namespace_impl::brgemm_batch_element_t> v_batch_element(
             prb->batch_size);
     for (size_t i = 0; i < v_batch_element.size(); i++) {
         if (prb->batch_kind == "addr") {
-            v_batch_element[i].ptr.A
-                    = src_ptr + i * prb->get_src_batch_offset();
-            v_batch_element[i].ptr.B
-                    = wei_ptr + i * prb->get_wei_batch_offset();
+            v_batch_element[i].ptr.A = src_ptr + i * src_batch_offset;
+            v_batch_element[i].ptr.B = wei_ptr + i * wei_batch_offset;
         } else if (prb->batch_kind == "offs") {
-            v_batch_element[i].offset.A = i * prb->get_src_batch_offset();
-            v_batch_element[i].offset.B = i * prb->get_wei_batch_offset();
+            v_batch_element[i].offset.A = i * src_batch_offset;
+            v_batch_element[i].offset.B = i * wei_batch_offset;
         }
     }
 

@@ -190,6 +190,7 @@ private:
     const reg64_savable_t reg_zp_a_values {regscratchpad_, rbx, r18};
     const reg64_savable_t reg_zp_comp_b {regscratchpad_, rbx, r19};
     const reg64_savable_t reg_zp_c_values {regscratchpad_, rbx, r20};
+    const reg64_savable_t reg_src_scales_per_k {regscratchpad_, rbx, r21};
     const reg64_t reg_ptr_sum_zp = rbx;
     const reg64_t reg_converted_stride = rsi;
     const reg64_t reg_zp_comp_pad_a = rsi;
@@ -935,6 +936,11 @@ void jit_brgemm_amx_uker_base_t::read_params() {
         mov(reg_zp_c_values, ptr[param1 + GET_OFF(c_zp_values)]);
         reg_zp_c_values.save();
     }
+
+    if (brg.is_per_k_src_scales) {
+        mov(reg_src_scales_per_k, ptr[param1 + GET_OFF(ptr_src_scales)]);
+        reg_src_scales_per_k.save();
+    }
 }
 
 void jit_brgemm_amx_uker_base_t::load_accumulators(brgemm_iteration_t &bi) {
@@ -1181,14 +1187,31 @@ void jit_brgemm_amx_uker_base_t::prepare_post_ops_registers(
         }
     }
 
-    if (brg.with_src_scales) {
+    if (brg.with_src_scales && !brg.is_per_k_src_scales) {
         mov(reg_scales, ptr[param1 + GET_OFF(ptr_src_scales)]);
         for (int ldb = 0; ldb < ldi->block2(); ldb++) {
             // Hard-coded assumption for a single src scale value being
             // supported, thus, offset is 0.
             auto scales_ptr = EVEX_compress_addr(reg_scales, /* offset = */ 0);
             auto k_mask = ldi->is_tail(ldb) ? ld_tail_mask : ld_full_mask;
-            vbroadcastss(zmm_scales(ldb) | k_mask | T_z, scales_ptr);
+            const auto zmm_scale = zmm_scales(ldb);
+            const auto zmm_scale_masked = zmm_scales(ldb) | k_mask | T_z;
+            switch (brg.dt_src_scales) {
+                case data_type::f32:
+                    vbroadcastss(zmm_scale_masked, scales_ptr);
+                    break;
+                case data_type::bf16:
+                    vpbroadcastw(zmm_scale, scales_ptr);
+                    uni_vpslld(zmm_scale_masked, zmm_scale, 16);
+                    break;
+                case data_type::f16:
+                    vpbroadcastw(zmm_scale, scales_ptr);
+                    vcvtph2psx(
+                            Xmm(zmm_scale.getIdx()), Xmm(zmm_scale.getIdx()));
+                    vbroadcastss(zmm_scale_masked, Xmm(zmm_scale.getIdx()));
+                    break;
+                default: assert(!"unsupported src_scales data type");
+            }
         }
     }
 
@@ -1203,7 +1226,7 @@ void jit_brgemm_amx_uker_base_t::prepare_post_ops_registers(
             const auto zmm_scale_masked = zmm_scales(ldb) | k_mask | T_z;
 
             if (brg.is_single_wei_scale) {
-                if (brg.with_src_scales) {
+                if (brg.with_src_scales && !brg.is_per_k_src_scales) {
                     // Single value is not anticipated to be of any other type
                     // when both scales are defined.
                     assert(brg.dt_wei_scales == data_type::f32);
@@ -1248,7 +1271,7 @@ void jit_brgemm_amx_uker_base_t::prepare_post_ops_registers(
                 default: assert(!"unsupported wei_scales data type");
             }
 
-            if (brg.with_src_scales) {
+            if (brg.with_src_scales && !brg.is_per_k_src_scales) {
                 // Src scales are set, need to multiply by their value.
                 vmulps(zmm_scale_masked, zmm_scale, zmm_wei_scale);
             } else {
@@ -1497,10 +1520,34 @@ void jit_brgemm_amx_uker_base_t::process_output_range(
         if (brg.has_per_k_scales() && !bi.skip_accumulation) {
             vcvtdq2ps(zmm, zmm);
 
+            const Xbyak::Zmm scaled_zmm = vmm_mask(zmm, true, false, k_mask);
+            // Apply K-wei_scales if present (pre-loaded per-ldb vector).
             if (brg.is_per_k_wei_scales) {
-                const Xbyak::Zmm scaled_zmm
-                        = vmm_mask(zmm, true, false, k_mask);
                 vmulps(scaled_zmm, scaled_zmm, zmm_scales(ldb));
+            }
+            // Apply K-src_scales per-bd: each M-row has its own scalar.
+            if (brg.is_per_k_src_scales) {
+                reg_src_scales_per_k.restore();
+                const auto out_bd = get_out_bd(bi.bdi, bdb, bd);
+                const auto src_sc_offset = out_bd * brg.src_scale_m_stride;
+                const auto src_sc_ptr = EVEX_compress_addr(
+                        reg_src_scales_per_k, src_sc_offset);
+                const auto zmm_src_sc = zmm_tmp_1();
+                switch (brg.dt_src_scales) {
+                    case data_type::f32:
+                        vbroadcastss(zmm_src_sc, src_sc_ptr);
+                        break;
+                    case data_type::bf16:
+                        vpbroadcastw(zmm_src_sc, src_sc_ptr);
+                        vpslld(zmm_src_sc, zmm_src_sc, 16);
+                        break;
+                    case data_type::f16:
+                        vpbroadcastw(zmm_src_sc, src_sc_ptr);
+                        vcvtph2ps(zmm_src_sc, Xbyak::Ymm(zmm_src_sc.getIdx()));
+                        break;
+                    default: assert(!"unsupported src_scales data type");
+                }
+                vmulps(scaled_zmm, scaled_zmm, zmm_src_sc);
             }
         }
 
@@ -1553,8 +1600,12 @@ void jit_brgemm_amx_uker_base_t::process_output_range(
 
     // When K-scales (wei) are used, they were already applied
     // per K-block above. Only apply the remaining scales (non-K) in postops.
-    const bool apply_scales_in_postops = brg.with_src_scales
-            || (brg.with_wei_scales && !brg.is_per_k_wei_scales);
+    const bool src_scales_in_postops
+            = brg.with_src_scales && !brg.is_per_k_src_scales;
+    const bool wei_scales_in_postops
+            = brg.with_wei_scales && !brg.is_per_k_wei_scales;
+    const bool apply_scales_in_postops
+            = src_scales_in_postops || wei_scales_in_postops;
     if (apply_scales_in_postops) {
         for (auto bd = bd_start; bd < bd_finish; bd++) {
             if (!is_out_bd(bi.bdi, bdb, bd)) continue;
